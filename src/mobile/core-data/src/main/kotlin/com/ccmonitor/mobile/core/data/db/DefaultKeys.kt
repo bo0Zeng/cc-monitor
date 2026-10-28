@@ -5,7 +5,7 @@ import com.ccmonitor.mobile.core.copy.copyText
 
 /*
  * 默认三组：常用 · shell · vim。每组最左一颗 ⇌（单击切到下一组、长按编辑按键）。
- * 「常用」照答 Claude 卡住的菜单来排（Esc · Ctrl-C · ↑↓ · 回车 · Shift-Tab）。
+ * 「常用」照答 Claude 卡住的菜单来排（Esc · Ctrl-C · ↑↓ · 回车 · Shift-Tab）；Ctrl-B 是托管终端与 tmux 共用的前缀（缺省 Ctrl+b）。
  *
  * 新装走 AppDatabase 的 onCreate、「恢复默认」走 [KeyDao.replaceAll]，读的是同一份 [defaultKeyGroups] / [defaultKeys]。
  * 默认那几颗 id 固定、[TermKey.defaultId] 等于自己的 id；「还原一颗」照 defaultId 找回原样。
@@ -48,6 +48,7 @@ private val SEEDS: List<Pair<String, List<Seed>>> =
                 switchKey("common"),
                 Seed("dk-common-esc", special(SpecialKey.ESC)),
                 Seed("dk-common-ctrlc", chord("c", KeyMod.CTRL)),
+                Seed("dk-common-prefix", chord("b", KeyMod.CTRL)),
                 Seed("dk-common-up", special(SpecialKey.UP)),
                 Seed("dk-common-down", special(SpecialKey.DOWN)),
                 Seed("dk-common-enter", special(SpecialKey.ENTER)),

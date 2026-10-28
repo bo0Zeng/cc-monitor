@@ -170,6 +170,27 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     expect(dialog().textContent).toContain(copyText("newSession.place.noTmux"));
   });
 
+  it("★ 那台能托管 ⇒ 「放在哪」多一张托管终端、缺省勾它，交的请求 `run: managed`、第一句照交；那台不能托管 ⇒ 不出那一张", async () => {
+    replies.set("session-open-facts", { ...FACTS, hosts: ["managed", "tmux", "direct"], run: "managed" });
+    void openNewSession({ origin: "devbox", prompt: "看一下" });
+    await flush();
+    const radios = (): HTMLInputElement[] => [...dialog().querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+    const managed = radios().find((r) => r.value === "managed")!;
+    expect(managed.closest("label")!.hidden).toBe(false);
+    expect(managed.checked).toBe(true);
+    expect(managed.closest("label")!.textContent).toContain(copyText("newSession.place.managed"));
+    expect(rowOf(input(copyText("newSession.label.tmuxName"))).hidden).toBe(true);
+    createBtn().click();
+    await flush();
+    expect(newRequests()[0]).toMatchObject({ run: "managed", what: { prompt: "看一下" } });
+    document.body.replaceChildren();
+    replies.set("session-open-facts", FACTS);
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    expect(radios().find((r) => r.value === "managed")!.closest("label")!.hidden).toBe(true);
+    expect(radios().find((r) => r.value === "tmux")!.checked).toBe(true);
+  });
+
   it("选了需登录的号 ⇒ 那一格下照那台那一句说「需登录」＋［登录…］（那台说给才给），［新建］灰着", async () => {
     void openNewSession({ origin: "devbox" });
     await flush();

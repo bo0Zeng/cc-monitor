@@ -686,7 +686,7 @@ pub enum ArriveEnd {
     },
 }
 
-/// 放在哪：这台 tmux 里（关终端不断）· 直路（开一个终端直接跑，关了就停）。
+/// 放在哪：cc-monitor 托管的终端（关终端不断、能预览、能接管输入）· 这台 tmux 里（关终端不断）· 直路（开一个终端直接跑，关了就停）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -695,6 +695,7 @@ pub enum ArriveEnd {
 )]
 #[serde(rename_all = "lowercase")]
 pub enum Run {
+    Managed,
     Tmux,
     Direct,
 }
@@ -711,7 +712,7 @@ pub struct OpenFacts {
     pub recent: Vec<RecentDir>,
     /// 这台能放在哪几种（`run` 那一格可选的值，照 `Run` 的序；只有 `direct` ⇒ 只能开终端窗口）。
     pub hosts: Vec<Run>,
-    /// 新建框默认「运行于」：同 `session-open {what: new}` 不给 `run` 时落的那一形（`hosts` 里有 tmux 就 tmux，分叉照源会话那一种）。
+    /// 新建框默认「运行于」：同 `session-open {what: new}` 不给 `run` 时落的那一形（能托管就托管，分叉的源会话在 tmux 里 ⇒ tmux）。
     pub run: Run,
     /// 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序），各带名字与可选的模型 · 权限档。
     pub agents: Vec<AgentFacts>,

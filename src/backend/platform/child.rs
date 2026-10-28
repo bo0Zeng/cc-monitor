@@ -533,12 +533,6 @@ impl Child {
     }
 }
 
-/// 本平台能不能「脱离当前进程单独跑」（常驻后端的前提）：能 ⇒ `None`；不能 ⇒ 那一句话（Windows）。
-/// 判只住这一处：[`Child::detach`] 与常驻那两个入口（`--resident-ensure` · 带常驻开关的流模式，经 `control::resident::unsupported_here`）都问它。
-pub(crate) fn cannot_detach() -> Option<String> {
-    os::cannot_detach()
-}
-
 /// 跑着的程序文件能不能被覆盖 · 删掉：Windows 上不能（系统攥着它的映像），Unix 上能（换的是目录项，跑着的那一份照跑）。
 /// 托管进程从按版本的副本跑就看它（`host/managed/bin.rs`）。
 pub(crate) const RUNNING_PROGRAM_IS_LOCKED: bool = cfg!(windows);
@@ -697,10 +691,6 @@ mod os {
     pub(super) fn spawn_detached(cmd: &mut Command) -> std::io::Result<std::process::Child> {
         cmd.process_group(0);
         cmd.spawn()
-    }
-
-    pub(super) fn cannot_detach() -> Option<String> {
-        None
     }
 
     pub(super) fn exec_replace(mut cmd: Command, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
@@ -904,10 +894,6 @@ mod os {
             }
             other => other,
         }
-    }
-
-    pub(super) fn cannot_detach() -> Option<String> {
-        None
     }
 
     pub(super) fn exec_replace(mut cmd: Command, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {

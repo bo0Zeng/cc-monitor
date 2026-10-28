@@ -66,9 +66,34 @@ pub(crate) fn rows_of(name: &str, sids: Vec<String>) -> Vec<SessionRow> {
 
 /// 已被占用的会话名。字段刻意是模块私有的：铸名避让（`ccm::plan::build`）只收这个类型，「另起一份名字集合」编译不过。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TakenNames(Vec<String>, Vec<SessionRow>);
+pub(crate) struct TakenNames(Vec<String>, Vec<SessionRow>, Vec<SessionRow>);
 
 impl TakenNames {
+    /// 并上这台活着的托管终端（名字 ＋ 挂着的 sid；`ccm` 那一侧凭盘现读交进来）：
+    /// 托管名照同一份避让（两种宿主的名字不撞），「在跑」也认托管那几行（[`Self::running_hosted`]）。
+    pub(crate) fn with_hosted(mut self, rows: Vec<SessionRow>) -> Self {
+        for r in &rows {
+            if !self.0.contains(&r.name) {
+                self.0.push(r.name.clone());
+            }
+        }
+        self.2 = rows;
+        self
+    }
+
+    /// 只有托管那一臂（tmux 那一份问不到：没装 · 列不成）：避让照托管那几个名字。
+    pub(crate) fn hosted_only(rows: Vec<SessionRow>) -> Self {
+        TakenNames(Vec::new(), Vec::new(), Vec::new()).with_hosted(rows)
+    }
+
+    /// claude 会话 `sid` 正在哪个托管终端里跑（那一个的事实挂着它）；没有 ⇒ `None`。
+    pub(crate) fn running_hosted(&self, sid: &str) -> Option<&str> {
+        self.2
+            .iter()
+            .find(|r| !sid.is_empty() && r.ccm_sid == sid)
+            .map(|r| r.name.as_str())
+    }
+
     /// 给避让算法用的那一份。
     pub(crate) fn as_slice(&self) -> &[String] {
         &self.0
@@ -117,7 +142,7 @@ impl SessionSnapshot {
         let rows = self.query()?;
         let mut names: Vec<String> = rows.iter().map(|r| r.name.clone()).collect();
         names.dedup();
-        Ok(TakenNames(names, rows))
+        Ok(TakenNames(names, rows, Vec::new()))
     }
 
     /// 观测方把刚看到的一份**焐进来**。

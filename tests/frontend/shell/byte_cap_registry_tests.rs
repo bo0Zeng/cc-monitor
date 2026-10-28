@@ -468,6 +468,44 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "BUSY_WAIT_MS",
         "**时间**（管道每个实例都连着人时最多等多久再连，毫秒），不是字节。",
     ),
+    // ── Windows 托管终端（A3-3-9：后端 `platform/child.rs` 脱离起 · `platform/win_term.rs` 瘦客户端的控制台）带进来的 ──
+    //    全是 Win32 标志位 / 标准句柄号，没有一个量字节。
+    (
+        "DETACHED_PROCESS",
+        "**Win32 进程创建标志位**（`CreateProcess` 不给子进程控制台）。是位掩码不是尺寸。",
+    ),
+    (
+        "CREATE_NEW_PROCESS_GROUP",
+        "同上：Win32 进程创建标志位（子进程自成进程组）。",
+    ),
+    (
+        "CREATE_BREAKAWAY_FROM_JOB",
+        "同上：Win32 进程创建标志位（子进程不进起它的那个 Job）。",
+    ),
+    (
+        "ENABLE_PROCESSED_INPUT",
+        "**Win32 控制台模式位**（`SetConsoleMode`：Ctrl+C 变信号）。是位掩码不是尺寸。",
+    ),
+    ("ENABLE_LINE_INPUT", "同上：Win32 控制台模式位（按行读）。"),
+    ("ENABLE_ECHO_INPUT", "同上：Win32 控制台模式位（回显）。"),
+    ("ENABLE_WINDOW_INPUT", "同上：Win32 控制台模式位（尺寸变了进输入事件队列）。"),
+    (
+        "ENABLE_VIRTUAL_TERMINAL_INPUT",
+        "同上：Win32 控制台模式位（键按虚拟终端序列交）。",
+    ),
+    (
+        "ENABLE_VIRTUAL_TERMINAL_PROCESSING",
+        "同上：Win32 控制台模式位（输出按虚拟终端序列解释）。",
+    ),
+    (
+        "DISABLE_NEWLINE_AUTO_RETURN",
+        "同上：Win32 控制台模式位（换行不自带回车）。",
+    ),
+    (
+        "STD_INPUT",
+        "**Win32 标准句柄号**（`GetStdHandle(STD_INPUT_HANDLE)`，`(DWORD)-10`）。是编号不是尺寸。",
+    ),
+    ("STD_OUTPUT", "同上：Win32 标准句柄号（`(DWORD)-11`）。"),
     (
         "TOKEN_QUERY",
         "**Win32 访问掩码**（`OpenProcessToken` 的查询权限位）。是位掩码不是尺寸。",

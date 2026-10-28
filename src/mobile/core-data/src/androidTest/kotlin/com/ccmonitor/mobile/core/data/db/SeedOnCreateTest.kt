@@ -43,6 +43,6 @@ class SeedOnCreateTest {
             val dao = db.keyDao()
             assertEquals(defaultKeyGroups(), dao.observeGroups().first())
             assertEquals(defaultKeys().sortedWith(compareBy({ it.groupId }, { it.sortOrder }, { it.id })), dao.allKeys())
-            assertEquals(listOf("⇌", "Esc", "Ctrl-C", "↑", "↓", "⏎", "Tab", "Shift-Tab", "粘贴"), dao.keys(DEFAULT_GROUP_COMMON).map { it.cap() })
+            assertEquals(listOf("⇌", "Esc", "Ctrl-C", "Ctrl-B", "↑", "↓", "⏎", "Tab", "Shift-Tab", "粘贴"), dao.keys(DEFAULT_GROUP_COMMON).map { it.cap() })
         }
 }

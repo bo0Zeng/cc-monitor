@@ -139,9 +139,6 @@ enum class AppAction(
 
     companion object {
         fun fromWire(s: String): AppAction? = entries.firstOrNull { it.wire == s }
-
-        /** 要那台有 tmux 才做得了的。 */
-        val NEEDS_TMUX: Set<AppAction> = setOf(TMUX_SESSIONS, CAPTURE)
     }
 }
 
