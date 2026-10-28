@@ -286,6 +286,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "「账号」那一行 `accountRow.root`（`s.nsRow`）—— 建时收起",
   "src/frontend/ui/new-session.ts::aliasRow.root":
     "「别名」那一行 `aliasRow.root`（`s.nsRow`）—— 建时收起（那台有能用的别名才出）",
+  "src/frontend/ui/new-session.ts::machineRow.root":
+    "「机器」那一行 `machineRow.root`（`s.nsRow`）—— 问图时收起（机器锁在计划页那台）",
   "src/frontend/ui/new-session.ts::sets.el":
     "一组页 `sets.el`（`s.nsPage`，它写了 display:flex，`.nsPage[hidden]` 收住）—— 单个页露着时收起",
   "src/frontend/ui/new-session.ts::single":
