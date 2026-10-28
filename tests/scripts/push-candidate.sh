@@ -32,7 +32,7 @@ git merge-base --is-ancestor origin/main "$sha" || die "$br 不是 origin/main �
 gh auth status >/dev/null 2>&1 || die "gh 没登录（gh auth status）"
 # 要推出去的这一段提交：说明与改动里不许有私人标识（树里干净不够——旧提交里的会跟着历史出去）
 bash "$scan" --history "origin/main..$sha" || die "要推的提交历史里有私人标识（见上）；main 没动"
-node "$here/dep-advisories.mjs" --rev "$sha" || die "依赖漏洞判据没过（见上：红 ⇒ 升锁或登记豁免，判不了 ⇒ OSV 问不到）；main 没动"
+node "$here/dep-advisories.mjs" --root "$main_tree" --rev "$sha" || die "依赖漏洞判据没过（见上：红 ⇒ 升锁或登记豁免，判不了 ⇒ OSV 问不到）；main 没动"
 short=${sha:0:9}
 
 # 等 <分支> 上 ci.yml 对 $sha 的那一趟 push 跑完；全部 job 绿 ⇒ 返回 0，否则印红的 job · 链接 · 失败日志并返回 1。
