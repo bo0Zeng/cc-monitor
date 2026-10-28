@@ -35,13 +35,15 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import kotlinx.coroutines.launch
 
 /**
- * tmux 会话管理弹窗：列出、附着、结束、新建，不用手输命令。
+ * 终端管理弹窗：列出、附着、结束、新建，不用手输命令。
  * 列 · 结束 · 新建 · 后台起 cc 都是那台核心的命令（[terminals] 带着它们，见 `TerminalOps`）；附着要进终端，经 [onAttach] 交给调用方
  * （新 tab 敲那台渲出的那一行）。状态与 scope 都在本函数，子块只收参数。
+ * 名单照那台列（tmux 与托管两种都在）；新建那一排是在那台 tmux 里建，[noTmux] ＝ 那台没 tmux 时那一句 ⇒ 那一排灰着、上面写它。
  */
 @Composable
 fun TmuxManagerDialog(
     terminals: TerminalOps,
+    noTmux: String?,
     onAttach: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -70,6 +72,7 @@ fun TmuxManagerDialog(
         text = {
             TmuxManagerBody(
                 terminals = terminals,
+                noTmux = noTmux,
                 loading = loading,
                 sessions = sessions,
                 newName = newName,
@@ -112,6 +115,7 @@ fun TmuxManagerDialog(
 @Composable
 private fun TmuxManagerBody(
     terminals: TerminalOps,
+    noTmux: String?,
     loading: Boolean,
     sessions: List<TerminalsList.Row>,
     newName: String,
@@ -134,6 +138,7 @@ private fun TmuxManagerBody(
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = tokens.spacing.sm))
         TmuxNewSessionRow(
+            noTmux = noTmux,
             newName = newName,
             onNameChange = onNameChange,
             onNewDetached = { n ->
@@ -245,9 +250,10 @@ private fun TmuxSessionRow(
     HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
 }
 
-/** 底部新建那一段：名字框一行，下面新建 / 后台 agent / 新建并附着。 */
+/** 底部新建那一段：名字框一行，下面新建 / 后台 agent / 新建并附着；那台没 tmux（[noTmux] 那一句）⇒ 上面写它、框与按钮灰着。 */
 @Composable
 private fun TmuxNewSessionRow(
+    noTmux: String?,
     newName: String,
     onNameChange: (String) -> Unit,
     onNewDetached: (String) -> Unit,
@@ -255,12 +261,15 @@ private fun TmuxNewSessionRow(
     onNewAttach: (String) -> Unit,
 ) {
     val tokens = LocalAppTokens.current
+    val can = noTmux == null && newName.isNotBlank()
+    noTmux?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     // 名字框独占一行：与三颗按钮同挤一行时窄屏上按钮先量，框只剩一个字宽（标签竖排、敲不进字）。按钮一排靠右，放不下换行。
     OutlinedTextField(
         value = newName,
         onValueChange = onNameChange,
         label = { Text(copyText("mobTmux.new.name")) },
         singleLine = true,
+        enabled = noTmux == null,
         modifier = Modifier.fillMaxWidth(),
     )
     FlowRow(
@@ -268,9 +277,9 @@ private fun TmuxNewSessionRow(
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm, Alignment.End),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
-        SecondaryButton(enabled = newName.isNotBlank(), onClick = { onNewDetached(newName.trim()) }) { Text(copyText("mobTmux.new.detached")) }
+        SecondaryButton(enabled = can, onClick = { onNewDetached(newName.trim()) }) { Text(copyText("mobTmux.new.detached")) }
         // 后台起一个跑着 agent 的 tmux 会话，不进入，之后可打开。
-        SecondaryButton(enabled = newName.isNotBlank(), onClick = { onNewDetachedCc(newName.trim()) }) { Text(copyText("mobTmux.new.detachedCc")) }
-        SecondaryButton(enabled = newName.isNotBlank(), onClick = { onNewAttach(newName.trim()) }) { Text(copyText("mobTmux.new.attach")) }
+        SecondaryButton(enabled = can, onClick = { onNewDetachedCc(newName.trim()) }) { Text(copyText("mobTmux.new.detachedCc")) }
+        SecondaryButton(enabled = can, onClick = { onNewAttach(newName.trim()) }) { Text(copyText("mobTmux.new.attach")) }
     }
 }

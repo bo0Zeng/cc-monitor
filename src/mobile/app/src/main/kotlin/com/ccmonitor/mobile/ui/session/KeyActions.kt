@@ -22,11 +22,10 @@ sealed interface KeyActionFail {
 
 /**
  * App 动作束：键条上绑了 App 动作的触发经 [invoke] 触达终端屏已有的回调。
- * 要 tmux 的那几个（[AppAction.NEEDS_TMUX]）在 [noTmux] 时不做、推公钥在 [noBackend] 时不做，回 [KeyActionFail.Unavailable]；
+ * 要那台后端的那几个（终端名单 · 抓屏 · 推公钥）在 [noBackend] 时不做，回 [KeyActionFail.Unavailable]（终端名单两种宿主都列，不看有没有 tmux）；
  * [onGotoGroup] 回 false ＝ 那组已经不在。
  */
 class KeyActions(
-    val noTmux: String?,
     val noBackend: String?,
     val onShowTabs: () -> Unit,
     val onCommandPalette: () -> Unit,
@@ -40,8 +39,7 @@ class KeyActions(
     val onGotoGroup: (String) -> Boolean,
 ) {
     fun invoke(b: KeyBinding.App): KeyActionFail? {
-        val why = if (b.action in AppAction.NEEDS_TMUX) noTmux else noBackend.takeIf { b.action == AppAction.PUSH_KEY }
-        if (why != null) return KeyActionFail.Unavailable(why)
+        if (b.action in NEEDS_BACKEND) noBackend?.let { return KeyActionFail.Unavailable(it) }
         when (b.action) {
             AppAction.NEXT_GROUP -> onNextGroup()
             AppAction.GOTO_GROUP -> if (b.groupId?.let(onGotoGroup) != true) return KeyActionFail.GroupGone
@@ -55,6 +53,10 @@ class KeyActions(
             AppAction.PUSH_KEY -> onPushKey()
         }
         return null
+    }
+
+    private companion object {
+        val NEEDS_BACKEND: Set<AppAction> = setOf(AppAction.TMUX_SESSIONS, AppAction.CAPTURE, AppAction.PUSH_KEY)
     }
 }
 

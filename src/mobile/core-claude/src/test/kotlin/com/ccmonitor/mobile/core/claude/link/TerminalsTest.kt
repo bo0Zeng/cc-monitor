@@ -26,6 +26,19 @@ class TerminalsTest {
     }
 
     @Test
+    fun `托管那一行：名字 · 句柄照收，输入在别处 ⇒ 持有者是那台写好的那一句`() {
+        val reply = terminals.obj("terminals-list")!!.obj("reply")!!
+        val tmuxRow = (reply["terminals"] as List<*>).first() as Map<*, *>
+        val held = mapOf("kind" to "held", "holder" to mapOf("who" to "terminal-window", "mine" to false, "said" to "S-desk"))
+        val managed = tmuxRow + mapOf("host" to "managed", "terminal" to "m-7f3a", "name" to "work", "input" to held)
+        val row = TerminalsList.of(reply + mapOf("terminals" to listOf(managed)))!!.single()
+        assertEquals("work", row.name)
+        assertEquals("m-7f3a", row.terminal)
+        assertEquals(TerminalsList.Holder("S-desk", false), row.holder)
+        assertEquals("结束按句柄交", TerminalEnd.args("m-7f3a"), mapOf("terminal" to "m-7f3a", "client" to "mobile"))
+    }
+
+    @Test
     fun `按 tmux 名找句柄：只认名字一模一样的那一行`() {
         val rows = TerminalsList.of(terminals.obj("terminals-list")!!.obj("reply"))!!
         assertEquals("tmux-1-1", TerminalsList.handleOf(rows, "demo-cc"))

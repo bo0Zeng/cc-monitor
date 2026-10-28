@@ -167,7 +167,6 @@ internal fun ActionPickSheet(
                         actionIcon(a),
                         appActionName(a),
                         onClick = { if (a == AppAction.GOTO_GROUP) pickGroup = true else onPick(KeyBinding.App(a)) },
-                        trailing = if (a in AppAction.NEEDS_TMUX) copyText("mobKeys.action.needTmux") else null,
                         more = a == AppAction.GOTO_GROUP,
                         enabled = a != AppAction.GOTO_GROUP || groups.isNotEmpty(),
                     )

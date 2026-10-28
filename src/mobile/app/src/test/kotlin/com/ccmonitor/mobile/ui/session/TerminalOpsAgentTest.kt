@@ -125,15 +125,19 @@ class TerminalOpsAgentTest {
             assertEquals(listOf("authorized-keys-add" to mapOf("key" to "ssh-ed25519 AAAA k")), l.calls)
         }
 
-    /** 那台说没有 tmux ⇒ tmux 那几样灰、推公钥照亮；后端问不到 ⇒ 都灰、写那一句。 */
+    /** 那台说没有 tmux ⇒ 名单 · 抓屏 · 换模型照出（托管终端也在名单上）；后端问不到 ⇒ 这几样不出、推公钥灰着写那一句。 */
     @Test
     fun whatTheMachineCanDoComesFromTheMachine() =
         runTest {
             val none = TerminalOps(link(tmux = false), { "box" }).reach()
             assertEquals(Reach(noBackend = null, noTmux = copyText("mobTerm.tmux.none", "host" to "box")), none)
             val palette = terminalPaletteActions(none, listOf(AgentPick("opus", "Opus")), {}, {}, {}, {})
-            assertEquals("没 tmux ⇒ 模型 · 抓屏 · tmux 会话都不出，只剩推公钥（能点）", listOf(copyText("mobPalette.item.key")), palette.map { it.label })
-            assertNotNull(palette.single().run)
+            assertEquals(
+                "没 tmux ⇒ 模型 · 抓屏 · 终端名单照出，推公钥能点",
+                listOf("Opus", copyText("mobPalette.item.capture"), copyText("mobPalette.item.tmux"), copyText("mobPalette.item.key")),
+                palette.map { it.label },
+            )
+            assertNotNull(palette.last().run)
             assertEquals(Reach(), TerminalOps(link(tmux = true), { "box" }).reach())
 
             val down = TerminalOps(FakeCoreLink(), { "box" }).reach()
