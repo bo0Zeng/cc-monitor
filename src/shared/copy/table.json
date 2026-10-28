@@ -23242,12 +23242,6 @@
       "zh": "回退并发送",
       "args": []
     },
-    "mobSaidEdit.pick.noSession": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "会话未起成，无法回退",
-      "args": []
-    },
     "mobChat.history.retry": {
       "kind": "body",
       "role": "说明",

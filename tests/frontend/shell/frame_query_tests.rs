@@ -473,6 +473,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "session-queue-read",
         "typed：一条会话此刻的名单（推送 `changed {session_queue}` 没带体时重问）；前端 `session-queue.ts` 按类型问，monitor 这一侧零发送点",
     ),
+    (
+        "session-rewind-options",
+        "typed：编辑已发的一句、发送那一下给哪几项（会话那台照那一家申报的交出）；前端 `session-queue.ts` 按类型问，monitor 这一侧零发送点",
+    ),
     // 会话中途换模型 · 切权限档：那台送那一家的那一行 / 按切档键、从记录里读回，界面直接说。
     (
         "session-model",

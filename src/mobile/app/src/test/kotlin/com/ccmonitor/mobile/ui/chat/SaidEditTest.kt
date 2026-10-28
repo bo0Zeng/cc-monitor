@@ -51,7 +51,7 @@ class SaidEditTest {
     }
 
     @Test
-    fun `发送那一下的缺省：照那台标的；没给什么时候退 ⇒ 等本轮完；怎么退没有项 ⇒ 不支持`() {
+    fun `发送那一下的缺省：照那台标的；没给什么时候退 ⇒ 等这一轮跑完；怎么退没有项 ⇒ 不支持`() {
         val how = listOf(RewindChoiceRow(RewindHow.CONVERSATION, "a", false), RewindChoiceRow(RewindHow.CODE_AND_CONVERSATION, "b", true))
         assertEquals(RewindHow.CODE_AND_CONVERSATION to RewindWhen.AFTER_TURN, defaultsOf(RewindOptions(how, emptyList())))
         val whn = listOf(RewindWhenRow(RewindWhen.AFTER_TURN, "c", false), RewindWhenRow(RewindWhen.NOW, "d", true))
@@ -66,10 +66,10 @@ class SaidEditTest {
             val cache = DraftCache()
             val s = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope, cache = cache).also { it.open() }
             runCurrent()
-            s.editSaid("u2", "改了一半")
+            s.edits.text("u2", "改了一半")
             runCurrent()
             assertEquals(mapOf("u2" to "改了一半"), s.state.value.editDrafts)
-            s.sayEdited("u2", "改过的", RewindHow.CONVERSATION, RewindWhen.AFTER_TURN)
+            s.edits.send("u2", "改过的", RewindHow.CONVERSATION, RewindWhen.AFTER_TURN)
             runCurrent()
             val first = link.calls("session-queue-put").single()!!
             assertEquals(mapOf("to" to "u2", "how" to "conversation", "when" to "after_turn"), first["rewind"])

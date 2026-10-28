@@ -22,22 +22,33 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.cache.ChatCache
+import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.SessionRewindOptions
+import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.sheet.ActionSheet
 import com.ccmonitor.mobile.core.ui.sheet.SheetAction
-import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.wire.gen.Rewind
 import com.ccmonitor.mobile.core.wire.gen.RewindHow
 import com.ccmonitor.mobile.core.wire.gen.RewindOptions
 import com.ccmonitor.mobile.core.wire.gen.RewindWhen
+import com.ccmonitor.mobile.link.problem
+import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.claude.SaidHooks
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 /*
  * 编辑已发的一句（手机）：自己那句（记录里的）长按 ⇒「编辑 · 复制」；还在队里、没送进的那一句长按 ⇒「撤回」（同那一排的撤）。
  * 编辑：气泡变编辑框、原文填好，下面的流淡掉；改字落本地草稿。发送 ⇒ 问会话那台 `session-rewind-options`，底部弹层照回包摆
- * 「怎么退」几项（缺省先选上）、主 agent 在干活多一行「什么时候退」（缺省等本轮完）；回包没项 ⇒ 只写那一句为什么。
+ * 「怎么退」几项（缺省先选上）、主 agent 在干活多一行「什么时候退」（缺省等这一轮跑完）；回包没项 ⇒ 只写那一句为什么。
  * 确认 ⇒ 带 `rewind` 的那一句进待发（同编号重交 · 回执才算出去，[ChatSession.sayEdited]）。选项的字都是那台写好的。
  */
 
@@ -66,7 +77,8 @@ internal object EditDrafts {
 
     fun encode(all: List<EditDraft>): String =
         all.joinToString(RECORD.toString()) { d ->
-            listOf(d.uuid, d.text, d.sent?.localId.orEmpty(), d.sent?.how?.wire.orEmpty(), d.sent?.`when`?.wire.orEmpty()).joinToString(FIELD.toString())
+            val s = d.sent
+            listOf(d.uuid, d.text, s?.localId ?: "", s?.how?.wire ?: "", s?.`when`?.wire ?: "").joinToString(FIELD.toString())
         }
 
     fun decode(s: String?): List<EditDraft> =
@@ -82,6 +94,98 @@ internal object EditDrafts {
     private const val FIELDS = 5
 }
 
+/**
+ * 一条会话的编辑草稿（[EditDrafts] 那一格，改了就整格写回、[shown] 交给界面那一份 uuid ⇒ 字）与发送那一下问选项（`session-rewind-options`）。
+ * 待发里那一句本身由 [ChatSession] 交（同普通那一句），这里只记它的编号与选的怎么退，回执到了删、撤了留字。
+ */
+internal class SaidEdits(
+    private val link: CoreLink,
+    private val machine: String,
+    private val cache: ChatCache,
+    private val scope: CoroutineScope,
+    private val sid: () -> String?,
+    /** 编辑那几句进待发、交出去（同普通那一句，[ChatSession] 做）。 */
+    private val pend: (List<Outgoing>) -> Unit,
+    private val shown: (Map<String, String>) -> Unit,
+) {
+    private var all: List<EditDraft> = emptyList()
+
+    private fun keep() {
+        val s = sid() ?: return
+        val now = all
+        shown(now.associate { it.uuid to it.text })
+        scope.launch { cache.saveDraft(EditDrafts.key(s), EditDrafts.encode(now), null, null) }
+    }
+
+    /** 开屏读回；确认过、还没回执的那几句照同一个编号带 `rewind` 回到待发（接上那台再交）。 */
+    suspend fun load(s: String) {
+        all = EditDrafts.decode(cache.draft(EditDrafts.key(s)))
+        shown(all.associate { it.uuid to it.text })
+        pend(all.mapNotNull { d -> d.sent?.let { outgoingOf(it.localId, d.uuid, d.text, it.how, it.`when`) } })
+    }
+
+    /** 编辑框里的字变了。 */
+    fun text(
+        uuid: String,
+        text: String,
+    ) {
+        all = all.filterNot { it.uuid == uuid } + (all.firstOrNull { it.uuid == uuid }?.copy(text = text) ?: EditDraft(uuid, text))
+        keep()
+    }
+
+    /** 确认那一下：铸那一句待发的编号、随草稿记下，进待发交出去；还没有会话 ⇒ 不动。 */
+    fun send(
+        uuid: String,
+        text: String,
+        how: RewindHow,
+        whn: RewindWhen,
+    ) {
+        sid() ?: return
+        val o = outgoingOf("local-${UUID.randomUUID()}", uuid, text, how, whn)
+        all = all.filterNot { it.uuid == uuid } + EditDraft(uuid, text, EditDraft.Sent(o.localId, how, whn))
+        keep()
+        pend(listOf(o))
+    }
+
+    /** 交过一次：编辑的那一句回执到了 ⇒ 它的编辑草稿删掉。 */
+    fun landed(o: Outgoing) {
+        val r = o.rewind ?: return
+        if (!o.receipt) return
+        all = all.filterNot { it.uuid == r.to }
+        keep()
+    }
+
+    /** 撤了编辑的那一句：草稿留着字、不再带待发编号（下次开屏不再交）。 */
+    fun unsent(localId: String) {
+        if (all.none { it.sent?.localId == localId }) return
+        all = all.map { if (it.sent?.localId == localId) it.copy(sent = null) else it }
+        keep()
+    }
+
+    /** 发送那一下：问会话那台此刻给哪几项。 */
+    suspend fun options(): RewindPick {
+        val s = sid() ?: return RewindPick.Asking
+        return when (val r = link.call(SessionRewindOptions.COMMAND, SessionRewindOptions.args(s), INPUT_MS)) {
+            is Reply.Ok ->
+                SessionRewindOptions.of(r.data)?.let { RewindPick.Got(it) }
+                    ?: RewindPick.Failed(unreadableReply(machine, SessionRewindOptions.COMMAND, r.data.toString()).text)
+            else -> RewindPick.Failed(r.problem(machine, SessionRewindOptions.COMMAND, link.offline.value)?.text.orEmpty())
+        }
+    }
+
+    private fun outgoingOf(
+        localId: String,
+        uuid: String,
+        text: String,
+        how: RewindHow,
+        whn: RewindWhen,
+    ) = Outgoing(localId, text, DeliveryState.SENDING, copyText("mobChat.delivery.sending"), rewind = Rewind(uuid, how, whn))
+
+    private companion object {
+        const val INPUT_MS = 20_000L
+    }
+}
+
 /** 聊天屏交给流的那几样：落编辑草稿 · 问选项 · 确认那一下 · 撤回还没送进的那一句（按编号）。 */
 data class SaidActions(
     val edit: (uuid: String, text: String) -> Unit,
@@ -90,7 +194,7 @@ data class SaidActions(
     val recall: (id: String) -> Unit,
 )
 
-/** 选项里缺省那一项（「怎么退」没有 ⇒ `null`：那一家不支持）；「什么时候退」没给 ⇒ 等本轮完。 */
+/** 选项里缺省那一项（「怎么退」没有 ⇒ `null`：那一家不支持）；「什么时候退」没给 ⇒ 等这一轮跑完。 */
 internal fun defaultsOf(o: RewindOptions): Pair<RewindHow, RewindWhen>? {
     val how = (o.how.firstOrNull { it.default } ?: o.how.firstOrNull())?.how ?: return null
     val whn = (o.`when`.firstOrNull { it.default } ?: o.`when`.firstOrNull())?.`when` ?: RewindWhen.AFTER_TURN

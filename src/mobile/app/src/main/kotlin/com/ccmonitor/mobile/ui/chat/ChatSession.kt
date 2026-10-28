@@ -12,7 +12,6 @@ import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionArrive
 import com.ccmonitor.mobile.core.claude.link.SessionOpen
-import com.ccmonitor.mobile.core.claude.link.SessionRewindOptions
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.canStop
@@ -32,9 +31,6 @@ import com.ccmonitor.mobile.core.wire.gen.Held
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCardNow
-import com.ccmonitor.mobile.core.wire.gen.Rewind
-import com.ccmonitor.mobile.core.wire.gen.RewindHow
-import com.ccmonitor.mobile.core.wire.gen.RewindWhen
 import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
 import com.ccmonitor.mobile.core.wire.gen.TailHow
@@ -253,7 +249,7 @@ class ChatSession(
         if (!draftAsked) {
             draftAsked = true
             scope.launch { cache.draft(draftKey())?.let { _state.value = _state.value.copy(draft = it) } }
-            sid?.let { s -> scope.launch { restoreEdits(s) } }
+            sid?.let { s -> scope.launch { edits.load(s) } }
         }
         attach?.open()
         if (!succeeding) {
@@ -395,10 +391,7 @@ class ChatSession(
 
     /** 再发一次那台拒了的那一句（只有能改的原因才有这颗）：同一个编号。 */
     fun retry(localId: String) {
-        val o = outgoing.firstOrNull { it.localId == localId && it.delivery == DeliveryState.FAILED } ?: return
-        o.delivery = DeliveryState.SENDING
-        o.deliveryText = copyText("mobChat.delivery.sending")
-        o.attempts++
+        val o = box.retrying(localId) ?: return
         publish()
         scope.launch {
             cache.settle(o.localId, PendingOutcome.PENDING, o.attempts)
@@ -406,96 +399,22 @@ class ChatSession(
         }
     }
 
-    /** 编辑已发的那几句（这条会话的，[EditDrafts] 那一格）：读回来 · 改了就整格写回。 */
-    private var edits: List<EditDraft> = emptyList()
-
-    private suspend fun keepEdits(s: String) {
-        _state.value = _state.value.copy(editDrafts = edits.associate { it.uuid to it.text })
-        cache.saveDraft(EditDrafts.key(s), EditDrafts.encode(edits), null, null)
-    }
-
-    /** 开屏：编辑草稿读回来；确认过、还没回执的那几句照同一个编号带 `rewind` 回到待发（接上那台再交）。 */
-    private suspend fun restoreEdits(s: String) {
-        edits = EditDrafts.decode(cache.draft(EditDrafts.key(s)))
-        _state.value = _state.value.copy(editDrafts = edits.associate { it.uuid to it.text })
-        for (d in edits) {
-            val sent = d.sent ?: continue
-            if (outgoing.any { it.localId == sent.localId }) continue
-            outgoing += Outgoing(sent.localId, d.text, DeliveryState.SENDING, copyText("mobChat.delivery.sending"), rewind = Rewind(d.uuid, sent.how, sent.`when`))
-        }
-        publish()
-        resend()
-    }
-
-    /** 编辑框里的字变了：落那一句的编辑草稿。 */
-    fun editSaid(
-        uuid: String,
-        text: String,
-    ) {
-        val s = sid ?: return
-        edits = edits.filterNot { it.uuid == uuid } + (edits.firstOrNull { it.uuid == uuid }?.copy(text = text) ?: EditDraft(uuid, text))
-        scope.launch { keepEdits(s) }
-    }
-
-    /** 发送那一下：问会话那台此刻给哪几项（[SaidEdit]）。 */
-    suspend fun rewindOptions(): RewindPick {
-        val s = sid ?: return RewindPick.Failed(copyText("mobSaidEdit.pick.noSession"))
-        val r = link.call(SessionRewindOptions.COMMAND, SessionRewindOptions.args(s), INPUT_MS)
-        return when (r) {
-            is Reply.Ok -> SessionRewindOptions.of(r.data)?.let { RewindPick.Got(it) } ?: RewindPick.Failed(unreadableReply(machine, SessionRewindOptions.COMMAND, r.data.toString()).text)
-            else -> RewindPick.Failed(r.problem(machine, SessionRewindOptions.COMMAND, link.offline.value)?.text.orEmpty())
-        }
-    }
-
     /**
-     * 确认那一下：带 `rewind` 的那一句进待发（编号 ＝ 投进队的 id，随编辑草稿落盘），交出去；回执到了 ⇒ 那一句的编辑草稿删掉。
-     * 没回执 ⇒ 留在待发，接上那台照同一个编号再交（[resend]）。
+     * 编辑已发的那几句（[SaidEdits]：草稿 · 问选项 · 确认那一下；聊天屏直接经它）。那几句进待发（确认那一下 · 开屏读回的）同普通那一句：
+     * 上屏、交出去；没回执 ⇒ 接上那台照同一个编号再交（[resend]）。
      */
-    fun sayEdited(
-        uuid: String,
-        text: String,
-        how: RewindHow,
-        whn: RewindWhen,
-    ) {
-        val s = sid ?: return
-        val o = Outgoing("local-${UUID.randomUUID()}", text, DeliveryState.SENDING, copyText("mobChat.delivery.sending"), rewind = Rewind(uuid, how, whn))
-        outgoing += o
-        edits = edits.filterNot { it.uuid == uuid } + EditDraft(uuid, text, EditDraft.Sent(o.localId, how, whn))
-        publish()
-        scope.launch {
-            keepEdits(s)
-            deliver(o)
-        }
-    }
+    internal val edits =
+        SaidEdits(link, machine, cache, scope, { sid }, { os ->
+            box.adopt(os)
+            publish()
+            resend()
+        }) { _state.value = _state.value.copy(editDrafts = it) }
 
-    /** 编辑的那一句回执到了 ⇒ 它的编辑草稿删掉。 */
-    private suspend fun editLanded(o: Outgoing) {
-        val r = o.rewind ?: return
-        val s = sid ?: return
-        if (!o.receipt) return
-        edits = edits.filterNot { it.uuid == r.to }
-        keepEdits(s)
-    }
-
-    /** 撤待发里一句（见 [ChatOutbox.cancel]）；是编辑的那一句 ⇒ 它的编辑草稿留着字、不再带待发编号（下次开屏不再交）。 */
-    fun cancel(localId: String) {
-        box.cancel(localId, sid)
-        unsent(localId)
-    }
+    /** 撤待发里一句（见 [ChatOutbox.cancel]）；是编辑的那一句 ⇒ 它的编辑草稿留着字、不再带待发编号。 */
+    fun cancel(localId: String) = box.cancel(localId, sid).also { edits.unsent(localId) }
 
     /** 撤输入队名单里一条（哪一端投的都撤得了；照编号请会话那台撤，见 [ChatQueue.cancel]）；编辑的那一句同上。 */
-    fun cancelQueued(id: String) {
-        sid?.let { queue.cancel(id, it) }
-        unsent(id)
-    }
-
-    /** 撤了编辑的那一句：它的编辑草稿留着字、不再带待发编号。 */
-    private fun unsent(localId: String) {
-        val s = sid ?: return
-        if (edits.none { it.sent?.localId == localId }) return
-        edits = edits.map { if (it.sent?.localId == localId) it.copy(sent = null) else it }
-        scope.launch { keepEdits(s) }
-    }
+    fun cancelQueued(id: String) = sid?.let { queue.cancel(id, it) }.also { edits.unsent(id) }
 
     /** 待发里该再交的那几句照同一个编号再交一遍。 */
     private fun resend() {
@@ -591,7 +510,7 @@ class ChatSession(
         if (o.inFlight || o.receipt && !o.refresh) return
         val s = sid ?: started(o)?.also { if (o.handed) return } ?: return fail(o, permanent = false, text = null)
         box.put(o, s)
-        editLanded(o)
+        edits.landed(o)
     }
 
     private fun mark(

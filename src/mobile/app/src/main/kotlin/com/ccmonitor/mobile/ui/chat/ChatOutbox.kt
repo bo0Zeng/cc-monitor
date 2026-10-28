@@ -90,6 +90,20 @@ internal class ChatOutbox(
         }
     }
 
+    /** 再发一次那台拒了的那一句（能改的原因才有这颗）：同一个编号，标回「发送中」、次数加一；不是没送到的那一句 ⇒ `null`。 */
+    fun retrying(localId: String): Outgoing? {
+        val o = lines.firstOrNull { it.localId == localId && it.delivery == DeliveryState.FAILED } ?: return null
+        o.delivery = DeliveryState.SENDING
+        o.deliveryText = copyText("mobChat.delivery.sending")
+        o.attempts++
+        return o
+    }
+
+    /** 收进待发（编辑已发的那几句：确认那一下 · 开屏照编辑草稿读回的）；同一个编号已在 ⇒ 不再收。 */
+    fun adopt(os: List<Outgoing>) {
+        lines += os.filter { n -> lines.none { it.localId == n.localId } }
+    }
+
     /** 该再交一遍的那几句：还没回执也没在交的 · 回执是上次开着时到的（拿此刻排第几）。 */
     fun due(): List<Outgoing> = lines.filter { !it.inFlight && (it.refresh || !it.receipt && it.delivery == DeliveryState.SENDING) }
 

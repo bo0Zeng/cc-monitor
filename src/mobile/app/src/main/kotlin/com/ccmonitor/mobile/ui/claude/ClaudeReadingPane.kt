@@ -96,7 +96,7 @@ fun ClaudeReadingPane(
             // 没有 contentType 组合就不复用，每滑一屏都在重建 TextView、重跑 Markwon。
             // 在就地编辑的那一句排第几：它后面的都淡掉（示意从这里往后会退掉）。
             val editAt = said?.editing?.let { k -> items.indexOfFirst { (it as? StreamItem.Card)?.unit?.key == k } } ?: -1
-            itemsIndexed(items, key = { _, it -> it.key }, contentType = { _, it -> (it as? StreamItem.Card)?.unit?.let { u -> u::class } ?: it::class }) { i, item ->
+            itemsIndexed(items, key = { _, s -> s.key }, contentType = { _, s -> (s as? StreamItem.Card)?.unit?.let { u -> u::class } ?: s::class }) { i, item ->
                 val fade = if (editAt in 0 until i) Modifier.alpha(EDIT_FADE) else Modifier
                 when (item) {
                     is StreamItem.Process -> Box(fade) { process(item) }
