@@ -1848,6 +1848,24 @@
       "zh": "已送进\n记录里还未读到",
       "args": []
     },
+    "beRewind.off.unsupported": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "此会话不支持此项",
+      "args": []
+    },
+    "beRewind.off.noCodeChange": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "此句之后未改动代码",
+      "args": []
+    },
+    "beRewind.note.runsAfter": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "此句之后派出的 agent ×{n} 仍在运行",
+      "args": ["n"]
+    },
     "beSessionModel.set.saved": {
       "kind": "body",
       "role": "说明",

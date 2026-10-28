@@ -20,8 +20,8 @@ const AT: SaidAt = { origin: "devbox", sid: "s-1", id: "u-2", text: "第二句" 
 
 const IDLE: RewindOptions = {
   how: [
-    { how: "conversation", text: "how-conv", default: true },
-    { how: "code_and_conversation", text: "how-code", default: false },
+    { how: "conversation", text: "how-conv", default: true, enabled: true },
+    { how: "code_and_conversation", text: "how-code", default: false, enabled: true },
   ],
   when: [],
 };
@@ -102,7 +102,7 @@ describe("编辑已发的一句 · 桌面", () => {
     edit.open(cards[1]!, AT);
     btn("said-edit-send")!.click();
     await flush();
-    expect(io.options).toHaveBeenCalledWith("devbox", "s-1");
+    expect(io.options).toHaveBeenCalledWith("devbox", "s-1", "u-2");
     expect(radios("said-edit-how").map((r) => r.checked)).toEqual([true, false]);
     expect(document.body.textContent).toContain("how-conv");
     expect(radios("said-edit-when")).toEqual([]);
@@ -151,6 +151,35 @@ describe("编辑已发的一句 · 桌面", () => {
     const { cards: fourth } = stream();
     rig().edit.open(fourth[1]!, AT);
     expect(box().value).toBe("又改");
+  });
+
+  it("★ 不能选的那一项灰着、点不了、下面写那台那一句为什么；退之前要知道的那一句写在选项下面", async () => {
+    const { cards } = stream();
+    const { edit, sent } = rig({
+      options: {
+        how: [
+          { how: "conversation", text: "how-conv", default: true, enabled: true },
+          { how: "code_and_conversation", text: "how-code", default: false, enabled: false, why: "why-no-code" },
+        ],
+        when: [],
+        said: "said-runs-after",
+      },
+    });
+    edit.open(cards[1]!, AT);
+    btn("said-edit-send")!.click();
+    await flush();
+    const [conv, code] = radios("said-edit-how");
+    expect(conv!.disabled).toBe(false);
+    expect(code!.disabled).toBe(true);
+    const row = code!.closest("label")!;
+    expect(row.getAttribute("aria-disabled")).toBe("true");
+    expect(row.parentElement!.textContent).toContain("why-no-code");
+    expect(conv!.closest("label")!.getAttribute("aria-disabled")).toBeNull();
+    expect(document.body.textContent).toContain("said-runs-after");
+    code!.click();
+    btn("said-edit-confirm")!.click();
+    await flush();
+    expect(sent.map((s) => s.rewind.how)).toEqual(["conversation"]);
   });
 
   it("★ 那一家不支持 ⇒ 只写那台那一句、不给确认", async () => {

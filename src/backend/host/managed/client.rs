@@ -77,13 +77,22 @@ fn ask<T>(sock: &Path, ctls: Vec<Ctl>, pick: impl Fn(Ctl) -> Option<T>) -> std::
     for c in ctls {
         send(&s, &Frame::Ctl(c))?;
     }
-    let mut buf = Vec::new();
+    let t = upto(&s, &mut Vec::new(), pick)?;
+    bye(&s);
+    Ok(t)
+}
+
+/// 读到 `pick` 认的那一控制帧为止（终端结束了 ⇒ `NotConnected`）。
+fn upto<T>(
+    s: &own_chan::BlockingStream,
+    buf: &mut Vec<u8>,
+    pick: impl Fn(Ctl) -> Option<T>,
+) -> std::io::Result<T> {
     loop {
-        match next_frame(&s, &mut buf)? {
+        match next_frame(s, buf)? {
             Frame::Ctl(Ctl::Ended { .. }) => return Err(ended()),
             Frame::Ctl(c) => {
                 if let Some(t) = pick(c) {
-                    bye(&s);
                     return Ok(t);
                 }
             }
@@ -110,6 +119,36 @@ pub(crate) fn clients(sock: &Path) -> std::io::Result<Vec<ClientRow>> {
         Ctl::ClientsAre { clients } => Some(clients.into_iter().filter(|r| !r.mine).collect()),
         _ => None,
     })
+}
+
+/// 往会话说一句（会话输入队投递那一下）：不持有输入，托管进程照写、不换持有者。
+/// 回 `true` ＝ 写进去了；`false` ＝ 持有者输入行里有没交的字、没写（投递照排着）。
+/// 先读 `welcome`：托管进程是不认 `say` 的旧版本（proto 低于 [`wire::SAY_SINCE`]）⇒ 不说、报 `Unsupported`（那个托管终端要重开）。
+pub(crate) fn say(sock: &Path, bytes: &[u8]) -> std::io::Result<bool> {
+    let text = String::from_utf8(bytes.to_vec()).map_err(|_| bad("say: not utf-8"))?;
+    let s = open(sock, None)?;
+    let mut buf = Vec::new();
+    let proto = upto(&s, &mut buf, |c| match c {
+        Ctl::Welcome { proto, .. } => Some(proto),
+        _ => None,
+    })?;
+    if proto < wire::SAY_SINCE {
+        bye(&s);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            format!(
+                "hosted terminal speaks proto {proto}, say needs {}",
+                wire::SAY_SINCE
+            ),
+        ));
+    }
+    send(&s, &Frame::Ctl(Ctl::Say { text }))?;
+    let put = upto(&s, &mut buf, |c| match c {
+        Ctl::Said { pending } => Some(!pending),
+        _ => None,
+    })?;
+    bye(&s);
+    Ok(put)
 }
 
 /// 抓回来的一屏：回滚里最近 `back` 行 ＋ 当屏（`color` ⇒ 行里带 SGR）、尺寸、光标（行 · 列）。

@@ -83,7 +83,7 @@ describe("抓一屏：金样与形状", () => {
   it("★ 名单：金样读得出句柄与 tmux 名", () => {
     const rows = rowsOf(LIST.reply as unknown as TerminalsList);
     expect(rows.length).toBe((LIST.reply.terminals as unknown[]).length);
-    expect(rows.every((r) => r.terminal !== "" && r.tmuxName !== "")).toBe(true);
+    expect(rows.every((r) => r.terminal !== "" && r.name !== "")).toBe(true);
   });
 
   it("★ 名单（终端页要的几格）：会话 ID · 连着几个终端窗口 · 输入在谁手里 · 能不能送（后端写好的那一句原样）", () => {
