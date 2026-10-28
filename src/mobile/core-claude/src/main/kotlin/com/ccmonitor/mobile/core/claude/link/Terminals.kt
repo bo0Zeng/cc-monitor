@@ -1,10 +1,10 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.wire.Wire
-import com.ccmonitor.mobile.core.wire.gen.InputNow
 import com.ccmonitor.mobile.core.wire.gen.Preview
 import com.ccmonitor.mobile.core.wire.gen.TermInput
 import com.ccmonitor.mobile.core.wire.gen.TerminalEnded
+import com.ccmonitor.mobile.core.wire.gen.WireTerminalHost
 import com.ccmonitor.mobile.core.wire.gen.TerminalsList as TerminalsListReply
 
 /*
@@ -35,22 +35,24 @@ object TerminalsList {
         val agent: String?,
         /** 里面跑着的会话（`session-model` 认它）；没有 ⇒ `null`。 */
         val sid: String?,
-        /** 托管那一形：此刻谁在输入（那台写好的那一句 ＋ 是不是手机）；tmux 那一形 ⇒ `null`。 */
-        val holder: Holder? = null,
+        /** 住在 tmux 里（副标题带「tmux」）；托管那一形 ⇒ `false`。 */
+        val tmux: Boolean = true,
+        /** 托管那一形：此刻谁在输入，那台写好的那一句（同桌面 · 你的终端那一句）；tmux 那一形 ⇒ `null`。手机不接管、不交还。 */
+        val holder: String? = null,
     )
-
-    /** 托管终端的输入持有者：那台写好的那一句 · 是不是手机这一端。 */
-    data class Holder(
-        val said: String,
-        val mine: Boolean,
-    )
-
-    /** 输入那一格 ⇒ 持有者（tmux 那一形 ⇒ `null`）。名单那一行与接管 · 交还的回包同一个读法。 */
-    fun holderOf(input: TermInput?): Holder? = (input as? TermInput.Held)?.holder?.let { Holder(it.said, it.mine) }
 
     fun of(data: Any?): List<Row>? =
         Wire.bind<TerminalsListReply>(data)?.terminals?.map { t ->
-            Row(t.terminal, t.name, t.title, attached = t.clients.isNotEmpty(), agent = t.session?.agent, sid = t.session?.sid, holder = holderOf(t.input))
+            Row(
+                t.terminal,
+                t.name,
+                t.title,
+                attached = t.clients.isNotEmpty(),
+                agent = t.session?.agent,
+                sid = t.session?.sid,
+                tmux = t.host == WireTerminalHost.TMUX,
+                holder = (t.input as? TermInput.Held)?.holder?.said,
+            )
         }
 
     /** 里面跑着 [sid] 那条会话的那一行（名单上的 `session.sid`，那台认的）；没有 ⇒ `null`。 */
@@ -84,15 +86,4 @@ object TerminalEnd {
 
     /** 结束了的那个终端（回的句柄）。 */
     fun of(data: Any?): String? = Wire.bind<TerminalEnded>(data)?.terminal
-}
-
-/** `terminal-take-input` · `terminal-release-input`：替手机接管 / 交还托管终端的输入（只认托管那一形）；回那一行此刻的持有者。 */
-object TerminalHold {
-    const val TAKE: String = "terminal-take-input"
-    const val RELEASE: String = "terminal-release-input"
-
-    fun args(terminal: String): Map<String, Any?> = mapOf("terminal" to terminal, "client" to CLIENT)
-
-    /** 那一行此刻的持有者（回的不是托管那一形 ⇒ `null`）。 */
-    fun of(data: Any?): TerminalsList.Holder? = TerminalsList.holderOf(Wire.bind<InputNow>(data)?.input)
 }

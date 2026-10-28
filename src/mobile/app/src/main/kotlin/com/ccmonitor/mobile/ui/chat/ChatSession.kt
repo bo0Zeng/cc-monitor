@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.cache.ChatCache
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionArrive
+import com.ccmonitor.mobile.core.claude.link.SessionInterrupt
 import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
@@ -158,7 +159,7 @@ sealed interface ChatTarget {
  * - 新建会话：第一条按 ➤ ⇒ `session-open`（在那台 tmux 里起，桌面那一侧看得到、接得上），那一句随起交（`prompt`：那台作为启动参数交给 agent，
  *   作为启动参数交，送没送到看回包）；那台没交（回包没有 `prompt`）⇒ 等它报到（会话表里那个目录新出现的一条）再经 `terminal-input` 送。
  *   新起的会话记录要等第一句进去才落盘 ⇒ 读正文之前先等那台推来它的记录路径（[freshPath]）。
- * - 送字 / 停：`terminal-input`（字 · `esc`）；送没送到是那台判的（`delivered` · `unsure` · `refused`）。
+ * - 送字：投进那条会话的输入队（`session-queue-put`，编号去重，回执才算出去，见 [ChatOutbox]）；停：`session-interrupt`（不进队、不靠持有输入，没成照那台那一句）。
  * - 正文：`history-tail` ＋ `history-read` 读最后一屏，之后跟流上这条会话的 `line` 帧；往上翻再读上一段（读到哪 · 怎么读归 [ChatRecord]）。记录 ⇒ 渲染单元见 [RecordUnits]。
  *   从搜内容的一处命中打开（[jump]）⇒ 先读命中那一页，再往下读到尾、尾段就从命中那一行起，之后同上。
  * - 在屏上（[visible]）才进这台的 `stream-watch` 名单；进名单 · 断线重接之后，`[已有, seq)` 那一段按行号用 `history-lines` 补上
@@ -441,10 +442,23 @@ class ChatSession(
 
     fun rename(title: String) = chips.rename(title)
 
-    /** ■：往那条会话送 Esc；中断那一条看记录。 */
+    /** ■：中断那条会话这一轮（`session-interrupt`：不进队、不靠持有输入）；中断那一条看记录。成了不说，没成 ⇒ chip 上方那一行照那台那一句。 */
     fun stop() {
         val s = sid ?: return
-        scope.launch { link.call(TerminalInput.COMMAND, TerminalInput.key(s, "esc"), INPUT_MS) }
+        scope.launch {
+            val r = link.call(SessionInterrupt.COMMAND, SessionInterrupt.args(s), INPUT_MS)
+            val said =
+                when {
+                    r !is Reply.Ok -> r.problem(machine, SessionInterrupt.COMMAND, link.offline.value)?.text
+                    else ->
+                        when (val res = TerminalInput.of(r.data)) {
+                            is TerminalInput.Result.Refused -> res.said
+                            TerminalInput.Result.Unsure -> copyText("terminal.input.unsure", "machine" to machine)
+                            else -> null
+                        }
+                }
+            if (said != null) _state.value = _state.value.copy(note = said)
+        }
     }
 
     /** 往上翻（见 [ChatRecord.loadOlder]）。 */

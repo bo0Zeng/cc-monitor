@@ -18,7 +18,7 @@ class TerminalsTest {
         val rows = TerminalsList.of(terminals.obj("terminals-list")!!.obj("reply"))!!
         assertEquals(listOf("demo-cc", "other", "pipe-x"), rows.map { it.name })
         val demo = rows.first { it.name == "demo-cc" }
-        assertEquals(TerminalsList.Row(terminal = "tmux-1-1", name = "demo-cc", title = "demo title", attached = true, agent = "claude", sid = "sid-a"), demo)
+        assertEquals(TerminalsList.Row(terminal = "tmux-1-1", name = "demo-cc", title = "demo title", attached = true, agent = "claude", sid = "sid-a", tmux = true), demo)
         val other = rows.first { it.name == "other" }
         assertEquals("没人连着 ⇒ 不算附着", false, other.attached)
         assertNull("里面没跑会话 ⇒ 不知道是哪一家", other.agent)
@@ -26,7 +26,7 @@ class TerminalsTest {
     }
 
     @Test
-    fun `托管那一行：名字 · 句柄照收，输入在别处 ⇒ 持有者是那台写好的那一句`() {
+    fun `托管那一行：名字 · 句柄照收，不是 tmux；持有者那一句照那台写好的（手机不接管、不交还，只摆那一句）`() {
         val reply = terminals.obj("terminals-list")!!.obj("reply")!!
         val tmuxRow = (reply["terminals"] as List<*>).first() as Map<*, *>
         val held = mapOf("kind" to "held", "holder" to mapOf("who" to "terminal-window", "mine" to false, "said" to "S-desk"))
@@ -34,7 +34,8 @@ class TerminalsTest {
         val row = TerminalsList.of(reply + mapOf("terminals" to listOf(managed)))!!.single()
         assertEquals("work", row.name)
         assertEquals("m-7f3a", row.terminal)
-        assertEquals(TerminalsList.Holder("S-desk", false), row.holder)
+        assertEquals(false, row.tmux)
+        assertEquals("S-desk", row.holder)
         assertEquals("结束按句柄交", TerminalEnd.args("m-7f3a"), mapOf("terminal" to "m-7f3a", "client" to "mobile"))
     }
 
@@ -60,11 +61,6 @@ class TerminalsTest {
     }
 
     @Test
-    fun `terminal-input：按句柄送字`() {
-        assertEquals(mapOf("terminal" to "tmux-1", "text" to "/model opus"), TerminalInput.textInto("tmux-1", "/model opus"))
-    }
-
-    @Test
     fun `terminal-end：按句柄结束，自报是手机；应答认回的句柄`() {
         assertEquals(mapOf("terminal" to "m-7f3a", "client" to "mobile"), TerminalEnd.args("m-7f3a"))
         assertEquals("m-7f3a", TerminalEnd.of(mapOf("terminal" to "m-7f3a")))
@@ -72,11 +68,7 @@ class TerminalsTest {
     }
 
     @Test
-    fun `接管 · 交还：按句柄交，自报是手机；应答读出此刻的持有者（那台写好的那一句），tmux 那一形没有`() {
-        assertEquals(mapOf("terminal" to "m-7f3a", "client" to "mobile"), TerminalHold.args("m-7f3a"))
-        val held = mapOf("input" to mapOf("kind" to "held", "holder" to mapOf("who" to "mobile", "mine" to true, "said" to "S-here")))
-        assertEquals(TerminalsList.Holder("S-here", true), TerminalHold.of(held))
-        assertNull(TerminalHold.of(mapOf("input" to mapOf("kind" to "shared"))))
-        assertEquals("tmux 那一行没有持有者", null, TerminalsList.of(terminals.obj("terminals-list")!!.obj("reply"))!!.first().holder)
+    fun `tmux 那一行没有持有者那一句`() {
+        assertEquals(null, TerminalsList.of(terminals.obj("terminals-list")!!.obj("reply"))!!.first().holder)
     }
 }
