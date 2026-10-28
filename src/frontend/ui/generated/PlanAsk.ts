@@ -15,4 +15,8 @@ alias: string | null,
 /**
  * 开口那句：别名的那句 ＋ 换行 ＋「看 {编号}「{标题}」这一格：」；没有别名 / 别名没写 ⇒ 只有后一半。
  */
-line: string, };
+line: string, 
+/**
+ * 起在哪那一句（「tmux 里 · 号 lab（来自 look）· 进分组「看图」」，照别名合下来的写）；没有别名 ⇒ `null`。
+ */
+runs: string | null, };

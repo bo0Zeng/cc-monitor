@@ -6,6 +6,6 @@ import type { RotTarget } from "./RotTarget";
  */
 export type RotationViewReq = { target: RotTarget, 
 /**
- * 往后推几小时（1–48，缺 ⇒ 12）。
+ * 设置页那一形往后推几小时（1–48，缺 ⇒ 12）；会话那一形不画推演，不看它。
  */
 hours?: number, };

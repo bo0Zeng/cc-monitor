@@ -6,9 +6,9 @@ import type { RowPlan } from "./RowPlan";
  */
 export type SetPlan = { rows: Array<RowPlan>, more: number, 
 /**
- * 几行连起来的那一句（组菜单那一项的第二行）。
+ * 组菜单那一项的第二行：「N 个目录 · M 个会话」（有起不了的行 ⇒ 再写「K 行起不了」）。
  */
-said: string, 
+short: string, 
 /**
  * 右侧那一格：「再起 N」· 都够了「已齐」。
  */
