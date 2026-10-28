@@ -13,6 +13,7 @@
  * 7. 浮在消息流上的块（答题块 · 查找条 …，`#message-stream` 下除流以外的直接孩子）：块里几处点上去打中的不是流里的东西（流不盖住它）。
  * 4. 账号面板轮换列表一行：每段字一行不折（重置时刻那种）；状态标签（在用 · 起始 …）全字可见、不被省略
  *    （号名可以省略，只读的封顶标签可以省略）；兜底开关开着 ⇒ 看得见、有底色；关着 ⇒ 所在行没悬停、没焦点时看不见。
+ * 8. 鼠标停着的人说的那一句：「编辑」看得见、整颗不伸出任何会裁它的祖先（绘制隔离 `content-visibility: auto` · 溢出裁切）、中心点命中它自己。
  *
  * 回一串「哪里不对」；空 ＝ 都对。
  */
@@ -271,8 +272,40 @@ function overStream(): string[] {
   return out;
 }
 
+/** 这个祖先会不会把伸出它框外的子孙裁掉（绘制隔离 · 溢出裁切）。 */
+function clips(el: Element): boolean {
+  const cs = getComputedStyle(el);
+  const cut = (v: string): boolean => v === "hidden" || v === "clip" || v === "auto" || v === "scroll";
+  return cs.contentVisibility === "auto" || /paint|strict|content/.test(cs.contain) || cut(cs.overflowX) || cut(cs.overflowY);
+}
+
+/** 8. 鼠标停着的人说的那一句：「编辑」看得见、整颗不被哪一层裁掉、中心点命中的是它自己。 */
+function hoveredEdit(): string[] {
+  const out: string[] = [];
+  for (const card of document.querySelectorAll<HTMLElement>(".has-said-edit:hover")) {
+    const b = card.querySelector<HTMLElement>(':scope > [data-role="said-edit"]');
+    if (!b) continue;
+    const r = b.getBoundingClientRect();
+    if (!visible(b) || Number(getComputedStyle(b).opacity) === 0) {
+      out.push(`悬停着的 ${name(card)} 上「编辑」${fmt(r)} 看不见`);
+      continue;
+    }
+    for (let a = b.parentElement; a !== null && a !== document.body; a = a.parentElement) {
+      if (!clips(a)) continue;
+      const ar = a.getBoundingClientRect();
+      if (r.left < ar.left - EPS || r.right > ar.right + EPS || r.top < ar.top - EPS || r.bottom > ar.bottom + EPS) {
+        out.push(`悬停着的「编辑」${fmt(r)} 伸出 ${name(a)} ${fmt(ar)}，被它裁掉`);
+        break;
+      }
+    }
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    if (!hit || !b.contains(hit)) out.push(`悬停着的「编辑」${fmt(r)} 中心点打中的是 ${hit ? name(hit) : "空"}`);
+  }
+  return out;
+}
+
 export function layoutProblems(): string[] {
-  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...chartRows(), ...messageRows(), ...overStream()];
+  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...chartRows(), ...messageRows(), ...overStream(), ...hoveredEdit()];
   // 也写进页里的控制台（截图工具每张存一份），整趟被打断时还查得到。
   for (const p of out) console.warn(`[layout] ${p}`);
   return out;
