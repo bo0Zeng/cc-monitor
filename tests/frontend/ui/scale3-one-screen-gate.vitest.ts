@@ -45,7 +45,7 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { owned } from "../../test-support/owned-tab-manager.ts";
-import { announced, goldenFace } from "../../test-support/session-faces";
+import { announced } from "../../test-support/session-faces";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { estimateStreamNodeHeight, __resetUnknownCardWarnings } from "../../../src/frontend/ui/height-estimate";
@@ -554,7 +554,7 @@ describe("秤 3 · 丁：生产门控（驱动真 TabStreamView ＋ 假布局）
  * 以及切进一个「钉过水位、没满一屏、`scrollHeight` 被估值撑高」的 tab 时，按真实布局补到满一屏。
  * 同一个假布局台子（本文件「丁」段）：卡高按类 —— retry 23.05 px、assistant 1000 px（一张就满屏）。
  */
-describe("秤 3 · 戊：B5 空闲物化队列收哪些后台 tab", () => {
+describe("秤 3 · 戊：切进钉过水位、没满一屏的 tab 按真实布局补满", () => {
   const VIEW_H = CLIENT_HEIGHT;
   const heightOf = (el: Element): number =>
     el.classList.contains("card-api-retry")
@@ -603,48 +603,7 @@ describe("秤 3 · 戊：B5 空闲物化队列收哪些后台 tab", () => {
       ),
       sid,
     );
-  const tall = (sid: string, seq: number): RigPayload =>
-    withSession(
-      rigLine(seq, {
-        t: "reply",
-        id: `${sid}-a${seq}`,
-        at: "2026-09-10T00:00:00.000Z",
-        blocks: [{ type: "text", text: "一张很高的卡" }],
-        autoReply: false,
-        draw: "card",
-        human: false,
-      }),
-      sid,
-    );
-
-  it("批结束后空闲物化补到的后台 tab == {virgin 的 a, 钉过水位没满屏的 b}；满屏的 c · 账本空的 d · 已结束的 e · 当前的 act 都不补", () => {
-    installViewerRig();
-    installFakeLayout();
-    const idle: IdleRequestCallback[] = [];
-    vi.stubGlobal("requestIdleCallback", (cb: IdleRequestCallback) => idle.push(cb));
-    const barEl = document.createElement("div");
-    const streamRootEl = document.createElement("div");
-    document.body.append(barEl, streamRootEl);
-    const tm = owned(announced(new TabManager(barEl, streamRootEl)));
-    const tabOf = (sid: string): Tab =>
-      (tm as unknown as { store: { tabs: Map<string, Tab> } }).store.tabs.get(sid)!;
-    // 非批期：act（第一个 ⇒ 当前）· b（一张细条卡钉水位）· c（一张高卡钉水位）· d（一张细条卡钉水位）
-    tm.onLine(sys("act", 5000, true) as never);
-    tm.onLine(sys("b", 5000, true) as never);
-    tm.onLine(tall("c", 5000) as never);
-    tm.onLine(sys("d", 5000, true) as never);
-    // 批期：a / e 是 virgin 后台 tab；b / c 收到更早的行（seq < floor ⇒ 收纳）
-    tm.onBatchStart();
-    for (const sid of ["a", "b", "c", "e"]) for (let s = 0; s < 150; s++) tm.onLine(sys(sid, s, s % 10 === 0) as never);
-    tm.onFace("e", goldenFace("ended"));
-    const before = new Map(["a", "b", "c", "d", "e", "act"].map((sid) => [sid, tabOf(sid).window.pendingCount]));
-    tm.onBatchEnd();
-    for (let i = 0; i < 20 && idle.length > 0; i++) idle.shift()!({ didTimeout: false, timeRemaining: () => 50 });
-    const touched = new Set([...before].filter(([sid, n]) => tabOf(sid).window.pendingCount < n).map(([sid]) => sid));
-    console.log(`[秤3·戊] 空闲物化补到：${[...touched].sort().join(",")}`);
-    expect(before.get("b"), "反空真：b 的账本得真压着历史").toBeGreaterThan(0);
-    expect(touched).toEqual(new Set(["a", "b"]));
-  });
+  // 「批结束后空闲物化补到哪些后台 tab」那一格随后台空闲物化一起删了（A17-45-3-4：后台 tab 只进账本，判据在 skeleton-view.vitest.ts）。
 
   it("切进钉过水位、没满一屏、scrollHeight 被估值撑高的 tab ⇒ 按真实布局补满", () => {
     const rig = installViewerRig();
