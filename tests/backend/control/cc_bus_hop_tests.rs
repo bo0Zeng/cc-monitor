@@ -121,7 +121,7 @@ impl Remote for Owner {
             }
             assert_eq!(line["cmd"], json!("bus-send"));
             let req: BusEnvelopeReq = serde_json::from_value(line["args"].clone()).unwrap();
-            let own = crate::platform::fs::Own::issue_data_at(&self.home);
+            let own = crate::platform::fs::Own::issue_roots(&self.home, &self.home);
             match send_here(&own, &req, Ok(&self.roster), 1_000) {
                 Ok(sent) => Ok(serde_json::to_string(&sent).unwrap()),
                 Err((code, message)) => Err(Said {
@@ -189,6 +189,29 @@ async fn a_letter_for_another_machine_lands_in_that_machines_inbox_once() {
         "交给那台的是同一条、machine 换成那台眼里的本机"
     );
     assert!(!here.join(store::DIR).exists(), "本机一个字节不写");
+}
+
+#[tokio::test]
+async fn a_tier_one_letter_for_another_machine_knocks_in_that_machines_input_queue() {
+    let here = home("knock-here");
+    let there = home("knock-there");
+    let owner = Owner::at(&there, roster(&[]), false);
+    send_from(&here, &letter(Some("far"), "占位标题"), &owner)
+        .await
+        .unwrap();
+    let queue = |h: &std::path::Path| {
+        crate::history::session_queue::read(
+            &crate::platform::fs::Own::issue_roots(h, h),
+            B,
+            2_000,
+        )
+        .unwrap()
+        .items
+    };
+    let q = queue(&there);
+    assert_eq!(q.len(), 1, "那台那条会话的输入队多一条（敲门在收件那台敲）");
+    assert_eq!(q[0].end, "cc-bus");
+    assert!(queue(&here).is_empty(), "本机的输入队不动");
 }
 
 #[tokio::test]
