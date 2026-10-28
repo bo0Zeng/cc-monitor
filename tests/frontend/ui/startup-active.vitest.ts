@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { StartupActive, type StartupIo } from "../../../src/frontend/ui/startup-active";
-import { AllListed } from "../../../src/frontend/ui/all-listed";
+import { AllListed } from "../../../src/frontend/ui/tab-store";
 
 function rig() {
   const log: string[] = [];

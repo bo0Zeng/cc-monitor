@@ -35,14 +35,13 @@ import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
 import type { SessionFace } from "./generated/SessionFace";
 import { closesFromMenu, closesQuietly, hasTerminal, isEnded, isLive } from "./face-can";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
-import { AllListed } from "./all-listed";
 // `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
 import { TabMenu } from "./tab-menu";
 import type { MenuItem } from "./kit/menu";
 import { TabSelection } from "./tab-selection";
 import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
-import { TabStore, type ActiveView } from "./tab-store";
+import { AllListed, TabStore, type ActiveView } from "./tab-store";
 import { appStore, type Slice } from "./app-store";
 import { TabStreamView } from "./tab-stream-view";
 import { LiveCards, type LivePainter } from "./live-card";
@@ -1032,7 +1031,7 @@ export class TabManager {
   }
 
   /**
-   * 「各台都报完了」那一刻（`all-listed.ts`：壳说过、且订着的每台都在自己那条流上报完了）：迁旧分组 · 交 {@link onAllListed}。
+   * 「各台都报完了」那一刻（`tab-store.ts` 的 `AllListed`：壳说过、且订着的每台都在自己那条流上报完了）：迁旧分组 · 交 {@link onAllListed}。
    */
   private readonly listed = new AllListed(() => {
     this.settleUnarrivedOnce();

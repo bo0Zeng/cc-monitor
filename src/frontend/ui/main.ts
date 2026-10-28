@@ -375,7 +375,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     tasksPanel,
     agentsPanel,
   );
-  // 各台都报完了（壳说过、且每台都在自己那条流上报完了：`all-listed.ts`）⇒ 记住的那一格还没出现 ⇒ 明说。
+  // 各台都报完了（壳说过、且每台都在自己那条流上报完了：`tab-store.ts` 的 `AllListed`）⇒ 记住的那一格还没出现 ⇒ 明说。
   tabs.onAllListed = () => startup?.onAllListed();
   // 「需手动」的入口跳过来 ⇒ 焦点进答题块（块自己出现时不抢焦点）。
   tabs.onAnswerJump = (sid) => answerBlock.focusFor(sid);
