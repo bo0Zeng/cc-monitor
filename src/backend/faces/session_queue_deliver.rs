@@ -3,7 +3,7 @@
 //! - **起**：占着常驻的那一个进程起一份（[`start`]，经 `stream::inbound::deliver_queues`）；一台只有它一个投递的，不会两边各送一次。
 //! - **醒**：活会话表发布一份（[`crate::history::live_table::on_publish`] 那一声）· 队动了（本进程投进一条 · watcher 看见别的进程写了队目录，
 //!   都经 [`crate::history::session_queue::moved`]）·
-//!   有等着的期限（送出后等那一轮起来 [`CONFIRM_MS`] · 收着的等够了）到点。别的时候一直睡。
+//!   有等着的期限（送出后等那一轮起来 [`CONFIRM_MS`] · 收着的等够了 · 送那一下回了「等」之后再试 [`WAITING_RETRY_MS`]）到点。别的时候一直睡。
 //! - **判**（[`step`]，纯函数）：
 //!   - 不活：这一段队里有东西时看见它活过 ⇒ 会话结束，没送的标未送达；没看见过 ⇒ 送（送字本体恢复它，那一句当第一句）。
 //!   - 闲着 · 一轮停了、后台在跑 ⇒ 送；但上一条送出之后那一态没换过（那一态起始不晚于送出那一刻）、又没过 [`CONFIRM_MS`] ⇒ 等，
@@ -11,10 +11,10 @@
 //!   - 在跑 · 在等人（批准 · 回答框开着，打的字会落进框里）· 说不清 ⇒ 等。
 //!   - 编辑已发的那一句、选了「现在停」⇒ 在跑也送（停下这一轮是回退那一串的第一步，[`crate::control::rewind`]）。
 //! - **送**：照送字本体（`faces/session_send.rs`：同一道身份门 · 只剩 shell 不送 · 终端没了按记下的号恢复）。结局：送到 · 不知道送没送到 ⇒ 摘掉
-//!   （不重送）；在等人 ⇒ 照排着；别的被拒 ⇒ 那一条标未送达（留给发件人看、撤）；命令级错 ⇒ 照排着，下一次醒再试。
+//!   （不重送）；在等人 · 托管终端里人敲了半句没回车 ⇒ 照排着，最晚 [`WAITING_RETRY_MS`] 再试（人把半句删回空行又不回车时没有事件来）；别的被拒 ⇒ 那一条标未送达（留给发件人看、撤）；命令级错 ⇒ 照排着，下一次醒再试。
 //!   编辑已发的那一句（带 `rewind`）⇒ 先在会话里退到那一句之前再说它（[`super::session_rewind_face::walk_here`]）：成了 ⇒ 摘掉；
 //!   等 ⇒ 照排着；没退成 · 退了没送进 ⇒ 标未送达、那一条写上为什么；送进了、记录里还没读到 ⇒ 摘掉（不重送）。
-//! - 终端输入行里有没提交的字，tmux 判不出：这一道等托管那一形给事实；此刻不等。
+//! - 终端输入行里有没提交的字：托管那一形由托管进程判（回「等」，见上）；tmux 那一形判不出，照送。
 
 use super::session_send::Delivery;
 use crate::agents::SessionActivity;
@@ -27,6 +27,10 @@ use std::collections::BTreeMap;
 
 /// 送出一条之后，那一态一直没换（那一句没起一轮：`/clear` 一类）最多等多久就送下一条（毫秒，这台的钟）。
 pub(crate) const CONFIRM_MS: i64 = 15_000;
+
+/// 送那一下回「等」（托管终端里人敲了半句没回车 · 框开着）之后，最晚多久再试一次（毫秒）：人把半句删回空行又不回车时
+/// 没有一样事件会来，不到点再试那一条就一直排着。
+pub(crate) const WAITING_RETRY_MS: i64 = 5_000;
 
 /// 一条会话此刻的样子（活会话表那一份）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +48,8 @@ pub(crate) struct Memo {
     sent_ms: Option<i64>,
     /// 这一段队里有东西时看见它活过（队空了就清掉）。
     live: bool,
+    /// 上一回送那一下回了「等」：最晚这一刻再试（[`WAITING_RETRY_MS`]）；之后送成 · 被拒 · 队空了 ⇒ 清掉。
+    retry_ms: Option<i64>,
 }
 
 /// 每条会话一份 [`Memo`]。
@@ -125,8 +131,13 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
         if memo.sent_ms.is_some_and(|t| settled(&look, t, now_ms)) {
             memo.sent_ms = None;
         }
+        // 到了再试那一刻 ⇒ 这一遍就是那一次再试（照判送不送）；又回「等」会再记一个。不清 ⇒ 过了点的期限一遍遍立刻叫醒。
+        if memo.retry_ms.is_some_and(|t| t <= now_ms) {
+            memo.retry_ms = None;
+        }
         let Some(item) = due.item else {
             memo.live = false;
+            memo.retry_ms = None;
             continue;
         };
         let now_step = match step(&look, memo, now_ms) {
@@ -150,11 +161,14 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
             }
             Step::Send => match (deps.send)(sid, &item) {
                 Ok(sent) => match landed(&sent) {
+                    None => memo.retry_ms = Some(now_ms.saturating_add(WAITING_RETRY_MS)),
                     Some(true) => {
+                        memo.retry_ms = None;
                         noted(q::delivered(deps.own, sid, &item.id), sid, After::Delivered);
                         memo.sent_ms = Some(now_ms);
                     }
                     Some(false) => {
+                        memo.retry_ms = None;
                         tracing::warn!(
                             "[session-queue] {sid} 那一条送不进去（{:?}），标未送达",
                             sent
@@ -167,7 +181,6 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
                         };
                         noted(q::give_up(deps.own, sid, &item.id, why), sid, After::GaveUp);
                     }
-                    None => {}
                 },
                 Err(f) => tracing::warn!(
                     "[session-queue] {sid} 送没成，下次再试：{} {}",
@@ -181,6 +194,9 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
         }
         if let Some(t) = memo.sent_ms {
             soon(t.saturating_add(CONFIRM_MS));
+        }
+        if let Some(t) = memo.retry_ms {
+            soon(t);
         }
     }
     wake
