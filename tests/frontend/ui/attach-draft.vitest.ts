@@ -42,7 +42,7 @@ describe("桌面附件草稿", () => {
   it("★ 收的逐块进暂存区再提交（块数 · 字节 · 摘要照交），完了才给编号；送出不再挡", async () => {
     const { draft, io } = rig();
     draft.add([{ name: "login.css", blob: blob(CHUNK * 2 + 5) }]);
-    expect(draft.blocker()).toBe(copyText("attach.blocked.sending"));
+    expect(draft.blocker("")).toBe(copyText("attach.blocked.sending"));
     await flush();
     expect(io.check).toHaveBeenCalledWith("s-1", [{ name: "login.css", bytes: CHUNK * 2 + 5 }]);
     expect(io.stage.mock.calls.map((c) => [c[1], c[2].length])).toEqual([
@@ -54,7 +54,7 @@ describe("桌面附件草稿", () => {
     expect(draft.ids()).toEqual(["1027-1200-0001"]);
     expect(draft.chips()[0].class).toBe("code");
     expect(draft.chips()[0].classText).toBe("class-of-login.css");
-    expect(draft.blocker()).toBeNull();
+    expect(draft.blocker("")).toBeNull();
   });
 
   it("那台不收的那份当场落失败（那台写好的一句，不给重试），不传；挡着送出", async () => {
@@ -69,9 +69,9 @@ describe("桌面附件草稿", () => {
     expect(dir.class).toBe("folder");
     expect(png.at.at).toBe("done");
     expect(io.stage).toHaveBeenCalledTimes(1);
-    expect(draft.blocker()).toBe(copyText("attach.blocked.failed"));
+    expect(draft.blocker("")).toBe(copyText("attach.blocked.failed"));
     draft.remove(dir.n);
-    expect(draft.blocker()).toBeNull();
+    expect(draft.blocker("")).toBeNull();
   });
 
   it("后加的那一批也把已在草稿里的列进那一问（按草稿里的先后）", async () => {
@@ -99,7 +99,7 @@ describe("桌面附件草稿", () => {
     draft.add([{ name: "big.log", blob: blob(CHUNK * 2) }]);
     await flush();
     expect(draft.chips()[0].at).toEqual({ at: "offline", done: CHUNK });
-    expect(draft.blocker()).toBe(copyText("attach.blocked.sending"));
+    expect(draft.blocker("那台离线那一句（夹具）"), "有断着的 ⇒ 悬停是连接层那一句").toBe("那台离线那一句（夹具）");
     draft.resume();
     await flush();
     expect(io.stage.mock.calls.map((c) => c[1])).toEqual([0, 1, 1]);

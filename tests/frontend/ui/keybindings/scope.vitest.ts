@@ -7,7 +7,7 @@ import type { ActionId } from "../../../../src/frontend/ui/keybindings/actions";
 
 let d: KeybindingDispatcher;
 let fired: string[];
-const ids: ActionId[] = ["panel.toggle-tasks", "app.open-command-bar", "app.undo", "session.to-bottom", "tab.context-menu", "session.prev-turn", "tabBar.move-up", "tabBar.rename-group", "tabBar.focus-cycle"];
+const ids: ActionId[] = ["panel.toggle-tasks", "app.open-command-bar", "app.undo", "session.to-bottom", "tab.context-menu", "session.prev-turn", "tabBar.move-up", "tabBar.rename", "tabBar.focus-cycle"];
 
 function at(where: "body" | "input" | "tabs" | "status" | "stream"): void {
   const el = document.getElementById(`w-${where}`);
@@ -110,7 +110,7 @@ describe("快捷键 · 一个键分给几个作用范围", () => {
       at(w);
       press("F2");
     }
-    expect(fired).toEqual(["tabBar.rename-group"]);
+    expect(fired).toEqual(["tabBar.rename"]);
   });
 
   it("🔴 主区那一条改了键，栏那一条照旧（不连带）", () => {
@@ -128,7 +128,7 @@ describe("快捷键 · 一个键分给几个作用范围", () => {
     expect(d.whoOwns("Alt+ArrowUp", "main")).toBe("session.prev-turn");
     expect(d.whoOwns("Alt+ArrowUp", "idle"), "「没有输入焦点时」与两边都相交").not.toBeNull();
     expect(d.whoOwns("F2", "main"), "F2 只在栏里").toBeNull();
-    expect(d.whoOwns("F2", "nav")).toBe("tabBar.rename-group");
+    expect(d.whoOwns("F2", "nav")).toBe("tabBar.rename");
   });
 
   it("🔴 F6：主区 ↔ 栏轮转那一键随时放行（输入框里也能跳出来）", () => {

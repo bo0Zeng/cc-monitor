@@ -646,14 +646,13 @@ export class TabBarView {
   }
 
   /**
-   * 栏上就地改这个标签页的名（`tab-rename.ts`：输入框浮在标题那一格上）。这一行不在栏上 / 看不见（收着的组里 · 已隐藏那一行收着）⇒ `false`（改走对话框）。
+   * 栏上就地改这个标签页的名（`tab-rename.ts`：输入框浮在名字那一格上，前面的目录名不盖）。这一行不在栏上 / 看不见（收着的组里 · 已隐藏那一行收着）⇒ `false`（改走对话框）。
    */
   renameTabNow(tab: Tab): boolean {
     const refs = this.tabButtons.get(tab.sessionId);
-    const title = refs?.label.parentElement;
     const folded = this.isHiddenTab(tab.sessionId) || (tab.hidden !== null && !this.hiddenOpen());
-    if (!refs || !title || !this.listEl.contains(refs.root) || folded) return false;
-    editOver(title, tab.label ?? "", (next) => {
+    if (!refs || !this.listEl.contains(refs.root) || folded) return false;
+    editOver(refs.label, tab.label ?? "", (next) => {
       if (next !== null) void commitRename(tab, next);
     });
     return true;

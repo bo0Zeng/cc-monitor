@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.core.claude.model
 
+import com.ccmonitor.mobile.core.wire.gen.Attachment
+
 /**
  * 手机这边送出去、记录里还没出现的那一句的投递状态（历史记录恒为 `null`）。
  * 送到了的不挂标；记录里出现了这句人话 ⇒ 整句换成记录里那一条。
@@ -20,6 +22,12 @@ enum class DeliveryState {
     /** 没送到、重试没用（会话已结束 · 不归这里管）：不给重试。 */
     FAILED_PERMANENT,
 }
+
+/** 人说的那一句里的一张图：图片类型 ＋ base64（记录里那一块照抄）。 */
+data class SaidImage(
+    val mediaType: String,
+    val base64: String,
+)
 
 /**
  * 正文的渲染单元，由 [RecordUnits] 从核心的通用记录排出来；UI 把每个 unit 映射成一张卡片。
@@ -43,6 +51,10 @@ sealed interface RenderUnit {
         val delivery: DeliveryState? = null,
         /** 气泡下那一句（文案表 `terminal.input.*` 那一族写好的），贴在这条消息旁边。 */
         val deliveryText: String? = null,
+        /** 这一句带的图片（记录里的图片块，自带原图），画在气泡外上方。 */
+        val images: List<SaidImage> = emptyList(),
+        /** 这一句带的附件（后端认出的 `attachments[]`：类别字 · 名字 · 大小 · 已清理都是那台写好的），画在气泡外上方。 */
+        val attachments: List<Attachment> = emptyList(),
     ) : RenderUnit
 
     /** 助手正文，按 markdown 渲染。 */
