@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034  # CCBUS_CODE · CCBUS_OUT 是给 source 本文件的那几个动词读的
-# cc-bus-lib.sh —— 各动词共用的几行:找后端 · 把一句交给后端 · 敲门。被各动词 source,不自执行。
-# 规矩(信封 · 范围 · 去重 · 限流 · 敲不敲)、收件箱、已读位置都住 cc-monitor 后端(`ccm -- --bus-<动词>`);
-# 这里不读写任何文件、不加锁、不判。
+# cc-bus-lib.sh —— 各动词共用的几行:找后端 · 把一句交给后端 · 装 agent 词典。被各动词 source,不自执行。
+# 规矩(信封 · 范围 · 去重 · 限流 · 敲不敲)、收件箱、已读位置、敲门都住 cc-monitor 后端(`ccm -- --bus-<动词>`);
+# 这里不读写任何文件、不加锁、不判、不往会话里说话。
 
 # 找这台的后端(就是 `ccm`)。唯一一处查找次序:
 #   `$CCM_BIN`(显式) → 部署落点 `~/.cc-monitor/bin/ccm` → PATH 上的 `cc-monitor-backend` → PATH 上的 `ccm`。
@@ -50,24 +50,4 @@ ccbus_agent_load() {
   [ -f "$f" ] || { echo "cc-bus: 没有 ${CCBUS_ADAPT_AGENT:-claude} 这个 agent 的词典($f)" >&2; return 1; }
   # shellcheck disable=SC1090
   . "$f"
-}
-
-# ── 敲门那一句 ───────────────────────────────────────────────────────────
-# 🔴 敲门那一句是对方的输入,正文进去就成了指令 ⇒ 只填发信人(会话 id,后端核过)。正文只经 Stop 钩子喂回。
-ccbus_knock_text() { printf '🔔 cc-bus: 你有来自 %s 的新消息,运行 cc-bus recv 读取并按内容处理' "$1"; }
-
-# 经后端往那条会话投一句(敲门):投进那条会话的输入队(`session-queue-put`,发自 `cc-bus`,id 这里铸)——
-#   后端那台的投递照它的规矩送:等它闲着 · 在等人不送 · 一次一条;这里不看屏、不判。
-#   没投进 ⇒ rc=1 并说一句(信已在收件箱里,回合结束时 Stop 钩子照样喂回,不丢)。
-ccbus_say() {   # <会话 id> <那一句>
-  local sid="$1" text="$2" ccm out res now
-  ccm=$(ccbus_ccm_bin) || return 1
-  now=$(( $(date +%s) * 1000 ))
-  out=$(jq -cn --arg s "$sid" --arg t "$text" --arg i "cc-bus-$now-$$-$RANDOM" --argjson at "$now" \
-      '{machine:"<local>", sid:$s, id:$i, end:"cc-bus", atMs:$at, text:$t}' \
-    | "$ccm" -- --session-queue-put --within-ms 10000 2>&1)
-  res=$(printf '%s' "$out" | jq -r '(.data // .).outcome // empty' 2>/dev/null)
-  case "$res" in queued|held|seen) return 0 ;; esac
-  echo "cc-bus: 没敲门($(printf '%s' "$out" | jq -r '.code // "?"' 2>/dev/null))—— 信在收件箱里,轮末照样喂回" >&2
-  return 1
 }

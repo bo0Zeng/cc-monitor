@@ -188,3 +188,58 @@ fn reading_never_writes() {
     assert_eq!(snap(), before);
     assert_eq!(tail(&bus(&d), B, 10).unwrap().len(), 1);
 }
+
+/// 一档那一封：收件人那条会话的输入队（同一台）此刻的名单。
+fn queue_of(home: &Path, sid: &str) -> Vec<cmd_wire::queue::QueueItem> {
+    let own = crate::platform::fs::Own::issue_at(home);
+    crate::history::session_queue::read(&own, sid, 2_000)
+        .unwrap()
+        .items
+}
+
+fn tier1(to: &str, title: &str, id: &str) -> BusEnvelope {
+    BusEnvelope {
+        tier: 1,
+        ..env(to, title, id)
+    }
+}
+
+#[test]
+fn a_tier_one_letter_knocks_by_queueing_one_line_for_the_recipient() {
+    let h = tmp("knock");
+    let own = crate::platform::fs::Own::issue_at(&h);
+    assert_eq!(deliver(&own, &tier1(B, "合一下", "m1"), 1_000), Ok(true));
+    let q = queue_of(&h, B);
+    assert_eq!(q.len(), 1, "收件人的输入队多一条");
+    assert_eq!(q[0].end, "cc-bus", "发自 cc-bus");
+    assert_eq!(
+        q[0].id, "cc-bus-m1",
+        "id 由那一封的 id 来（重投只入队一次）"
+    );
+    assert!(q[0].text.contains(A), "那一句说是谁来的信");
+    assert!(q[0].text.contains("cc-bus recv"), "叫对方去收信");
+    assert!(
+        !q[0].text.contains("合一下") && !q[0].text.contains("占位正文"),
+        "不带标题与正文：那一句是对方的输入"
+    );
+    // 去抖窗里第二封照收、不再敲。
+    assert_eq!(deliver(&own, &tier1(B, "又一封", "m2"), 1_500), Ok(false));
+    assert_eq!(queue_of(&h, B).len(), 1);
+    assert_eq!(unread(&h.join(".cc-monitor").join(DIR), B).unwrap(), 2);
+}
+
+#[test]
+fn a_tier_two_letter_never_touches_the_input_queue() {
+    let h = tmp("noknock");
+    let own = crate::platform::fs::Own::issue_at(&h);
+    assert_eq!(deliver(&own, &env(B, "t", "m1"), 1_000), Ok(false));
+    assert!(queue_of(&h, B).is_empty());
+}
+
+#[test]
+fn a_knock_that_cannot_be_queued_still_keeps_the_letter() {
+    // 只有数据目录、没有家目录 ⇒ 输入队那一处写不了：信照收，回「没敲」。
+    let d = tmp("knockfail");
+    assert_eq!(deliver(&own(&d), &tier1(B, "t", "m1"), 1_000), Ok(false));
+    assert_eq!(unread(&bus(&d), B).unwrap(), 1);
+}

@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 # cc-bus 安装脚本 —— 把唯一的入口 `cc-bus` 软链到 PATH。收件箱与规矩都住 cc-monitor 后端,这里不建任何运行时目录。
 # 【只做可逆的本地安装】:不改全局 settings.json、不 systemctl。最后打印需手动做的激活步骤。
-# 可用环境变量覆盖(供测试):CCBUS_BINDIR(默 ~/.local/bin)。
-#
-# 老版装进来的十几个命令(cc-send · cc-recv · …)老名字不留:链接目录里指向某个 `cc-bus/scripts/` 的同名链接当场删掉;
-# 别的同名命令(不是链接、或指向别处)不碰,只说一句。
+# 可用环境变量覆盖(供测试):CCBUS_BINDIR(默 ~/.local/bin)。链接目录里别的东西一概不碰。
 set -euo pipefail
 SRC=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)     # 脚本规范源目录
 BINDIR="${CCBUS_BINDIR:-$HOME/.local/bin}"
@@ -13,18 +10,6 @@ mkdir -p "$BINDIR"
 
 # 前置检查:cc-bus 运行时需要 jq。缺了只告警(不失败——安装本身不需要它)。
 command -v jq >/dev/null 2>&1 || echo "⚠ 运行时依赖缺失(cc-bus 需要):jq"
-
-# 老名字:从前装进 PATH 的那几条。
-OLD_NAMES="cc-whoami cc-send cc-recv cc-peek cc-commit cc-list cc-log cc-bus-stop-hook cc-register cc-agents cc-spawn cc-kill cc-broadcast cc-busd cc-spawned-record cc-keepalive"
-removed=""; kept=""
-for s in $OLD_NAMES; do
-  dst="$BINDIR/$s"
-  [ -L "$dst" ] || { [ -e "$dst" ] && kept="$kept $s"; continue; }
-  case "$(readlink "$dst")" in
-    */cc-bus/scripts/"$s") rm -f "$dst"; removed="$removed $s" ;;
-    *) kept="$kept $s" ;;
-  esac
-done
 
 # 入口:不静默覆盖已有的同名命令 —— 只刷新指向某个 `cc-bus/scripts/cc-bus` 的旧链接。
 chmod +x "$SRC/cc-bus" "$SRC"/cc-bus-*.sh
@@ -38,15 +23,13 @@ fi
 ln -sfn "$SRC/cc-bus" "$dst"
 
 echo "✅ 已安装:cc-bus → $BINDIR"
-[ -n "$removed" ] && echo "   删掉了老名字的链接:$removed"
-[ -n "$kept" ] && echo "⚠ 同名的老名字不是这份 cc-bus 装的,没动:$kept"
 case ":$PATH:" in *":$BINDIR:"*) :;; *) echo "⚠ $BINDIR 不在 PATH,请加入";; esac
 
 cat <<EOF
 
 —— 剩下需手动做的激活步骤(本脚本刻意不碰)——
 
-1) 【收信钩子】Claude Code:合并进 ~/.claude/settings.json 的顶层(保留现有字段,只加 hooks;从前那条 cc-bus-stop-hook 换成这一条):
+1) 【收信钩子】Claude Code:合并进 ~/.claude/settings.json 的顶层(保留现有字段,只加 hooks):
    "hooks": {
      "Stop": [ { "hooks": [ { "type": "command", "command": "cc-bus stop-hook" } ] } ]
    }
