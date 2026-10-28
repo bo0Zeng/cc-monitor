@@ -54,6 +54,9 @@ data class Filters(
     val active: Boolean get() = unchecked.isNotEmpty() || withinDays != null || sort != null || hidden
 
     fun ask(query: String?): ListAsk = ListAsk(query, withinDays, sort, hidden)
+
+    /** 按组分段只在按时间、没筛选也没搜标题时：组是用户摆的，筛着 · 搜着看的是命中的那几条。 */
+    fun banded(query: String?): Boolean = view == ChatsView.TIME && !active && query == null
 }
 
 /** 筛选抽屉里机器那一勾：名字 · 勾没勾 · 断没断。 */
@@ -72,6 +75,22 @@ data class ChatGroup(
 ) {
     /** 展开着的组记在屏上用的键（同名目录在两台是两行）。 */
     val id: String get() = "$hostId\n${group.key}"
+}
+
+/**
+ * 一组一段（`groups-read` 那一组，一台一段）：段头是那台写好的组名 [title] 与计数那几句 [heads]，段里是组员（清单里有的照清单那一行）。
+ * [machineTag] 同行上的机器小标签。
+ */
+data class GroupBand(
+    val hostId: String,
+    val groupId: String,
+    val title: String,
+    val heads: List<String>,
+    val rows: List<ChatRow>,
+    val machineTag: String? = null,
+) {
+    /** 屏上用的键（同一组在两台是两段）。 */
+    val id: String get() = "$hostId\n$groupId"
 }
 
 /** 按天连着的一段：段头（那台写的）＋ 那几行。 */
@@ -108,8 +127,13 @@ data class ChatsUi(
     val filters: Filters = Filters(),
     val query: String? = null,
     val choices: List<HostChoice> = emptyList(),
+    /** 按天那几段（分了组 ⇒ 已在固定 · 组那几段里的不再重出）。 */
     val sections: List<ChatSection> = emptyList(),
     val groups: List<ChatGroup> = emptyList(),
+    /** 固定的那一段（各台照机器表先后接）：只在按时间、没筛选也没搜标题时有。 */
+    val pinned: List<ChatRow> = emptyList(),
+    /** 一组一段（各台照机器表先后接）：同 [pinned]。 */
+    val bands: List<GroupBand> = emptyList(),
     /** 各台顶上那一条（照机器表先后）。 */
     val bars: List<HostBar> = emptyList(),
     /** 各台装到哪一步（条上没画的那几台）。 */
@@ -317,11 +341,10 @@ internal fun chatsView(
     val multi = parts.size > 1
     val tag = { p: HostPart -> p.machine.takeIf { multi && p.hostId != current } }
     val rows = mergeBy(parts.map { p -> p.rows.map { it.copy(machineTag = tag(p)) } }) { it.at }
-    val sections = mutableListOf<ChatSection>()
-    for (r in rows) {
-        val last = sections.lastOrNull()
-        if (last != null && last.title == r.section) sections[sections.size - 1] = last.copy(rows = last.rows + r) else sections += ChatSection(r.section, listOf(r))
-    }
+    val (pinned, bands) = if (filters.banded(query)) bandsOf(parts, tag) else emptyList<ChatRow>() to emptyList()
+    val placed = (pinned + bands.flatMap { it.rows }).map { it.hostId to it.sessionId }.toSet()
+    val none = rows.isEmpty() && placed.isEmpty()
+    val sections = daySections(rows.filter { (it.hostId to it.sessionId) !in placed })
     val groups = mergeBy(parts.map { p -> p.groups.map { ChatGroup(p.hostId, it, tag(p)) } }) { it.group.order }
     val down = parts.filter { it.bar?.offline == true }.map { it.hostId }.toSet()
     // 机器表还没读到（一台都没有、又没去勾）也算在读。
@@ -332,18 +355,38 @@ internal fun chatsView(
         choices = table.map { HostChoice(it.id, it.label, it.id !in filters.unchecked, it.id in down) },
         sections = sections,
         groups = groups,
+        pinned = pinned,
+        bands = bands,
         bars = parts.mapNotNull { it.bar },
         deploying = parts.filter { it.bar == null && it.deploying != null },
-        notices = parts.mapNotNull { it.notice }.distinct(),
+        notices = parts.flatMap { listOfNotNull(it.notice) + it.groupLines }.distinct(),
         truncated = parts.any { it.truncated },
-        skeleton = rows.isEmpty() && loading,
+        skeleton = none && loading,
         empty =
             when {
-                rows.isNotEmpty() || loading -> Empty.NONE
+                !none || loading -> Empty.NONE
                 filters.active || query != null -> Empty.NO_MATCH
                 else -> Empty.NO_SESSIONS
             },
     )
+}
+
+/** 固定那一段与各组那几段（各台照机器表先后接）：段与行带上那台的机器小标签。 */
+private fun bandsOf(
+    parts: List<HostPart>,
+    tag: (HostPart) -> String?,
+): Pair<List<ChatRow>, List<GroupBand>> =
+    parts.flatMap { p -> p.pinned.map { it.copy(machineTag = tag(p)) } } to
+        parts.flatMap { p -> p.bands.map { b -> b.copy(machineTag = tag(p), rows = b.rows.map { it.copy(machineTag = tag(p)) }) } }
+
+/** 并好的一列 ⇒ 按段头（那台写的）连着的几段。 */
+private fun daySections(rows: List<ChatRow>): List<ChatSection> {
+    val sections = mutableListOf<ChatSection>()
+    for (r in rows) {
+        val last = sections.lastOrNull()
+        if (last != null && last.title == r.section) sections[sections.size - 1] = last.copy(rows = last.rows + r) else sections += ChatSection(r.section, listOf(r))
+    }
+    return sections
 }
 
 /** 各台各自按 [key] 倒序排好的几列 ⇒ 一列（同值照台的先后，稳定）。只并、不另判。 */

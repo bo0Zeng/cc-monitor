@@ -17,6 +17,40 @@ use super::cc_bus_wire::{
     BusList, BusPeekReq, BusPeeked, BusUnread, BusUnreadReq,
 };
 
+/// 敲门那一句：给收件那条 agent 的输入，只填发信人（会话 id，信封核过形状）；标题与正文不进去 —— 进去就成了对方的指令，
+/// 正文只经 Stop 钩子喂回。不是给人看的话，不进文案表。
+fn knock_text(from: &str) -> String {
+    format!("🔔 cc-bus: 你有来自 {from} 的新消息,运行 cc-bus recv 读取并按内容处理")
+}
+
+/// 敲门：往收件那条会话的输入队（这一台，会话的主人）投一句，发自 `cc-bus`，id 由那一封的 id 来（同一封重投只入队一次）；
+/// 什么时候送进去归投递那一侧（闲着才送 · 在等人不送 · 一次一条）。投不进 ⇒ 记一行、回 `false`：信已在收件箱里，轮末 Stop 钩子照样喂回。
+pub(crate) fn knock(own: &crate::platform::Own, env: &BusEnvelope, now_ms: i64) -> bool {
+    let Ok(sid) = cmd_wire::Sid::try_from(env.to.clone()) else {
+        tracing::info!("cc-bus knock skipped: {} is not a session id", env.to);
+        return false;
+    };
+    let req = cmd_wire::queue::SessionQueuePutReq {
+        machine: cmd_wire::Machine::local(),
+        sid,
+        id: format!("cc-bus-{}", env.id),
+        end: "cc-bus".to_string(),
+        n: None,
+        at_ms: now_ms,
+        text: knock_text(&env.from),
+        attachments: vec![],
+    };
+    let put = crate::history::session_queue::put(own, &req, now_ms);
+    crate::history::session_queue::moved();
+    match put {
+        Ok(_) => true,
+        Err(f) => {
+            tracing::info!("cc-bus knock not queued for {}: {}", env.to, f.code);
+            false
+        }
+    }
+}
+
 /// 命令级错误：`(code, message)`。
 type CmdErr = (String, String);
 

@@ -128,7 +128,7 @@ fun ChatsScreen(
     }
 }
 
-/** 列表本体：搜内容那一份 · 「搜内容「{q}」」· 骨架 · 空 · 按目录 · 按时间。[onToggle] 展开 / 收起一组。 */
+/** 列表本体：搜内容那一份 · 「搜内容「{q}」」· 骨架 · 空 · 按目录 · 按时间（固定 · 各组 · 按天）。[onToggle] 展开 / 收起一组。 */
 private fun LazyListScope.body(
     ui: ChatsUi,
     act: ChatsActions,
@@ -144,8 +144,42 @@ private fun LazyListScope.body(
         ui.skeleton -> items(SKELETON_ROWS) { SkeletonRow() }
         ui.empty != Empty.NONE -> item { EmptyView(ui, act.filters) }
         ui.filters.view == ChatsView.DIR -> for (g in ui.groups) group(g, g.id in open, ui, act) { onToggle(g.id) }
-        else -> for (s in ui.sections) section(s, act)
+        else -> {
+            pinned(ui.pinned, act)
+            for (b in ui.bands) band(b, act)
+            for (s in ui.sections) section(s, act)
+        }
     }
+}
+
+/** 固定的那一段（最前）：段头是骨架字，段里照行画。 */
+private fun LazyListScope.pinned(
+    rows: List<ChatRow>,
+    act: ChatsActions,
+) {
+    if (rows.isEmpty()) return
+    item(key = "pinned-head") { SectionHeader(copyText("sessionState.pinned.head")) }
+    items(rows, key = { "pin-${it.hostId}\n${it.sessionId}" }) { r -> SessionRow(r, act) }
+}
+
+/** 一组一段：段头 ＝ 机器小标签 · 那台写好的组名 · 计数那几句（用分隔符连）；段里是组员。 */
+private fun LazyListScope.band(
+    b: GroupBand,
+    act: ChatsActions,
+) {
+    item(key = "band-${b.id}") {
+        Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            b.machineTag?.let { MachineTag(it) }
+            Text(
+                (listOf(b.title) + b.heads).joinToString(copyText("kit.text.sep")),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+    items(b.rows, key = { "in-band-${b.id}\n${it.sessionId}" }) { r -> SessionRow(r, act) }
 }
 
 /** 生效着的筛选排一排（机器 · 时间 · 排序 · 显示已隐藏），点一颗去掉那一条；没有就不画。 */
