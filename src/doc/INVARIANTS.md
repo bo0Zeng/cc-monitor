@@ -31,7 +31,7 @@
 
 **为什么不能松动**：核心价值是「看 claude 的输出不破坏它」。用户对「数据源就是我自己的命令痕迹」的信任一旦破了就回不来；写只能是显式的、可见的（足迹页逐条列出）。
 
-**谁在守**：`write_site_registry_tests.rs::every_monitor_write_site_lands_outside_the_users_files`（monitor 写盘落点闭集，没有「用户文件」一档）· `write_site_registry_tests.rs::the_files_that_used_to_write_users_files_write_nothing_now` · `dial_home_registry_tests.rs::the_interface_side_ssh_debt_is_one_number_and_it_is_printed`（monitor 的依赖清单里没有 SSH crate，拿不到远端写的能力） · `readonly_guard.rs::every_process_spawn_in_production_is_registered` · `cc_bus_install_tests.rs::a_symlinked_skills_dir_is_refused`。
+**谁在守**：`write_site_registry_tests.rs::every_monitor_write_site_lands_outside_the_users_files`（monitor 写盘落点闭集，没有「用户文件」一档）· `dial_home_registry_tests.rs::the_interface_side_ssh_debt_is_one_number_and_it_is_printed`（monitor 的依赖清单里没有 SSH crate，拿不到远端写的能力） · `readonly_guard.rs::every_process_spawn_in_production_is_registered` · `cc_bus_install_tests.rs::a_symlinked_skills_dir_is_refused`。
 
 ---
 
