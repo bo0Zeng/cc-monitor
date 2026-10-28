@@ -40,11 +40,11 @@ pub(crate) mod session_commands_face; // 帧面 `session-commands`（typed）：
 pub(crate) mod session_mode_face;
 pub(crate) mod session_model_face; // 帧面 `session-model`（typed）：换模型（送那一行、从记录读回；终端没了记下等恢复） // 帧面 `session-permission`（typed）：切权限档（按循环键、等重画、读回到了为止；终端没了记下等恢复）
 pub(crate) mod session_open_face; // 帧面 `session-open` · `-facts` · `-dir`：起新的 · 恢复 · 接回一个请求，起新会话框要的这台事实与目录那一问
-pub(crate) mod session_queue_deliver; // 会话输入队的投递：主人这台一条线程，到「能送」才送一条（照 session-say 的送字本体）
-pub(crate) mod session_queue_face; // 会话输入队那三条（typed）：session-queue-put · -cancel · -read，本体在 history/session_queue.rs
+pub(crate) mod session_queue_deliver; // 会话输入队的投递：主人这台一条线程，到「能送」才送一条（送字本体在 session_send.rs）
+pub(crate) mod session_queue_face; // 会话输入队那三条（typed）：session-queue-put（往会话说一句的唯一入口）· -cancel · -read，本体在 history/session_queue.rs
 pub(crate) mod session_queue_hop; // 会话输入队那三条的跨台那一跳：会话不在这台 ⇒ 交给那台的常驻，够不到 ⇒ offline
 pub mod session_restart_face;
-pub(crate) mod session_say_face;
+pub(crate) mod session_send; // 往一条会话送进一句的本体（在等人不送 · 只剩 shell 不送 · 终端没了恢复再交 · 附件照那一家拼）；只由投递调
 pub(crate) mod session_set_face; // 帧面 `set-plan` · `set-launch`：补足一组会话要的这台事实与手（配置文件 · 活会话表 · 启动台账的别名 · 起会话 · 组注解）；判定住 control/session_set.rs
 pub(crate) mod session_window_face; // 帧面 `session-window`（typed）：↗ 那一问，会话在这台电脑上的哪儿（本机 · 远端同一个形）
 pub(crate) mod terminals_board_face; // 「终端」视图那两条（typed）：terminals-board-here（这台那几行）· terminals-board（问到各台、合成一份）

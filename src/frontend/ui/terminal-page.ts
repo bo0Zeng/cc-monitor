@@ -15,8 +15,9 @@
  *   没送的字按会话各记一份，切回来还在。
  * - 页头右边「切到终端」只在 ↗ 真能用时出（同会话头那一道）。
  * - 附件（`attach-row.ts` · `attach-draft.ts`）：输入框上方一排 chip，［＋］· 拖到面板上 · 粘贴进同一排；按会话各记一份草稿。
- *   带附件那一句经 `session-say {sid, text, attachments}` 送（不带照旧 `terminal-input`）；附件没传完 / 有失败 ⇒［送出］灰、悬停说为什么。
- *   送到 / 不知道 ⇒ 字与 chip 一起清；被拒 ⇒ 原样留着；那台说有几份已不在 ⇒ 那几颗变失败、可重传。那台连上 ⇒ 断着的接着传。
+ *   附件没传完 / 有失败 ⇒［送出］灰、悬停说为什么。那台连上 ⇒ 断着的接着传。
+ * - 带附件那一句 ＝ 说一句：投进那条会话的输入队（`session-queue.ts`，编号随那一句交）；会话那台落盘回执到了 ⇒ 字与 chip 一起清；
+ *   那台拒了 ⇒ 原样留着；没回执 ⇒ 留着「发送中」，那台连上照同一个编号再交。不带附件的照旧往终端里打字（`terminal-input`）。
  */
 import { countText } from "./format";
 import type { Tab } from "./tab-model";
@@ -27,12 +28,10 @@ import { terminalFrontAvailable } from "./terminal-front";
 import { dotOf, fullTitle, stateWord } from "./session-face";
 import { renderScreen, screenPre } from "./terminal-screen";
 import { startFollow, type Follow, type FollowEvents, type FollowStop } from "./terminal-follow";
-import { listTerminals, previewShot, sendToTerminal, sentOf, type TerminalRow, type TerminalSend, type TerminalSent, type TerminalShot } from "./terminal-reads";
+import { listTerminals, previewShot, sendToTerminal, type TerminalRow, type TerminalSend, type TerminalSent, type TerminalShot } from "./terminal-reads";
 import { AttachDraft, channelIo, type AttachIo } from "./attach-draft";
 import { AttachRow } from "./attach-row";
-import { settleTyped } from "./control-said";
-import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import type { SessionSayReq } from "./generated/SessionSayReq";
+import { CHANNEL_PUT, outgoing, putOnce, type Outgoing, type QueuePutFn } from "./session-queue";
 import type { Origin } from "./ipc/origin";
 import { el } from "./kit/el";
 import { button, setBusy, setButtonLabel, setDisabled } from "./kit/button";
@@ -59,24 +58,15 @@ export const CHANNEL_READS: TerminalReads = {
   follow: (origin, terminal, events) => startFollow(origin, terminal, events),
 };
 
-/** 带附件那一路要的两口（缺省走通道；测试换成假的）。 */
+/** 说一句那一路要的两口（缺省走通道；测试换成假的）。 */
 export interface AttachReads {
-  /** 带附件说一句（`session-say`）：结局 ＋ 那台说已不在的那几个附件编号。 */
-  say(origin: Origin, req: SessionSayReq): Promise<{ sent: TerminalSent; gone: string[] }>;
+  /** 投一句进那条会话的输入队（`session-queue-put`）。 */
+  put: QueuePutFn;
   /** 那台的附件那几口（判收不收 · 逐块传 · 提交 · 撤）。 */
   io(origin: Origin): AttachIo;
 }
 
-/** 带附件说一句的期限（同送字送键）。 */
-const SAY_BUDGET_MS = 20_000;
-
-export const CHANNEL_ATTACH: AttachReads = {
-  say: async (origin, req) => {
-    const v = await settleTyped(origin, "session-say", callTyped(origin, "session-say", req, budgetWithin(SAY_BUDGET_MS)));
-    return { sent: sentOf(v), gone: v.gone ?? [] };
-  },
-  io: channelIo,
-};
+export const CHANNEL_ATTACH: AttachReads = { put: CHANNEL_PUT, io: channelIo };
 
 /** 实时那一格：没订 · 正在接 · 实时中 · 停了（那一句 ＋ 是不是那台断开）· 那台只能快照（那一句）。 */
 type Live = { at: "off" } | { at: "joining" } | { at: "on" } | { at: "stopped"; said: string; offline: boolean } | { at: "snapOnly"; said: string };
@@ -158,6 +148,8 @@ export class TerminalPage {
   private readonly drafts = new Map<string, string>();
   /** 没送的附件，按会话各记一份（键 ＝ 那台 ＋ 会话 ID）。 */
   private readonly attachDrafts = new Map<string, AttachDraft>();
+  /** 交出去、会话那台还没回执的那一句，按会话各一份（键同附件草稿）：那台连上照同一个编号再交。 */
+  private readonly waiting = new Map<string, Outgoing>();
   private readonly attach: AttachRow;
   /** 每一次名单 / 抓屏的代次：慢的那次回来不许盖掉后发的那次、不许落到切走之后的会话上。 */
   private seq = 0;
@@ -349,6 +341,7 @@ export class TerminalPage {
   /** 一台机器连上了（宿主转来机器状态推送里的「已连上」）：实时正停在「这台断开」⇒ 重找终端、重新订上（输入框随之恢复）；别的情形不动。 */
   machineUp(origin: string): void {
     for (const [k, d] of this.attachDrafts) if (k.startsWith(`${origin}\u0000`)) d.resume();
+    for (const [k, o] of this.waiting) if (k.startsWith(`${origin}\u0000`)) void this.putWaiting(origin as Origin, k, o);
     if (!this.visible || this.origin !== origin || this.live.at !== "stopped" || !this.live.offline) return;
     this.live = { at: "off" };
     void this.refresh();
@@ -586,28 +579,58 @@ export class TerminalPage {
     return row.inputNo ?? (this.live.at === "stopped" && this.live.offline ? this.live.said : null);
   }
 
-  /** 带附件说一句（`session-say`）：送到 / 不知道 ⇒ 字与 chip 一起清；被拒 ⇒ 原样留着，那台说已不在的那几颗变失败。 */
+  /**
+   * 带附件说一句：投进那条会话的输入队。那一句先成待发（这一端铸编号），交出去；会话那台落了盘回执到了 ⇒ 字与 chip 一起清、
+   * 照那台写的那一句说一下；那台拒了 ⇒ 原样留着、说那台那一句；没回执（断线 · 期限到了）⇒ 留着「发送中」，那台连上照同一个编号再交。
+   */
   private async say(draft: AttachDraft, text: string): Promise<void> {
-    let gone: string[] = [];
-    const sent = await this.deliver(async (origin) => {
-      const got = await this.attachReads.say(origin, { sid: draft.sid, text, attachments: draft.ids(), ...(this.shot ? { seen_screen: this.shot.screen } : {}) });
-      gone = got.gone;
-      return got.sent;
-    }, null);
-    if (sent === null) return;
-    if (sent.result === "refused") {
-      draft.markGone(gone);
+    const origin = this.origin;
+    const sid = this.sayingTo();
+    if (origin === undefined || sid === null || this.sending) return;
+    const key = `${origin}\u0000${sid}`;
+    const had = this.waiting.get(key);
+    const o = had !== undefined && had.text === text ? had : outgoing(sid, text, draft.ids());
+    this.waiting.set(key, o);
+    this.sending = true;
+    this.paint();
+    await this.putWaiting(origin, key, o);
+  }
+
+  /** 此刻说一句是说给哪条会话（名单里挂着的那一条 · 标签页那一条）；认不出 ⇒ `null`。 */
+  private sayingTo(): string | null {
+    const w = this.host.active();
+    return this.row?.sid ?? (w?.kind === "tab" ? w.tab.sessionId : null);
+  }
+
+  /** 交待发里那一句一次（同一个编号交几次那台都只收一条），照结局清框或留着。 */
+  private async putWaiting(origin: Origin, key: string, o: Outgoing): Promise<void> {
+    const end = await putOnce(this.attachReads.put, origin, o);
+    if (this.waiting.get(key) !== o) return;
+    const here = this.origin === origin && this.sayingTo() === o.sid;
+    if (here) this.sending = false;
+    // 没回执 ⇒ 留在待发（那台连上再交）；那台拒了 ⇒ 不留。两样都照那一句说、字留着。
+    if (end.at !== "receipt") {
+      if (end.at === "refused") this.waiting.delete(key);
+      if (here) this.showNote({ text: end.said, tone: "error" });
       return;
     }
-    if (this.box.value === text) {
+    this.waiting.delete(key);
+    if (here && this.box.value === o.text) {
       this.box.value = "";
       if (this.sid !== null) this.drafts.delete(this.sid);
       this.onBoxInput();
     }
-    draft.clear();
+    this.attachDrafts.get(key)?.clear();
+    if (here) {
+      this.showNote({ text: end.said, tone: "ok" });
+      if (!this.isLive) this.schedule();
+    }
   }
 
-  /** 送框里那段字（`enter` ＝ 之后补一个回车）。送到了才清框。草稿里有附件 ⇒ 传完了才送、经 `session-say` 带上。 */
+  /**
+   * 送框里那段字。草稿里有附件 ⇒ 那是说一句：传完了才送、投进那条会话的输入队、编号随那一句交（[say]）。
+   * 没附件 ⇒ 往这个终端里打字（`terminal-input`；`enter` ＝ 之后补一个回车），送到了才清框。
+   */
   private sendBox(enter: boolean): void {
     const text = this.box.value;
     const draft = this.attachDraft();

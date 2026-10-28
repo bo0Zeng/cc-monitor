@@ -1037,7 +1037,6 @@ fn the_next_steps_after_a_send_are_judged_here() {
         "waiting",
         "elsewhere",
         "not_resumed",
-        "not_idle",
     ] {
         assert_eq!(acts("refused", Some(no_retry)), json!([]), "{no_retry}");
     }

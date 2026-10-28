@@ -31,7 +31,7 @@ const REGISTERED: &[(&str, &str, &str)] = &[
     // `src/shared/cc-bus/scripts/` 里那条长驻 broker（本表扩面当天逮到的唯一真轮询：每 0.5s 扫一次队列目录）
     //   随「投递只一条路」整份删了 ⇒ 行删；同批删的两条一次性 `sleep`（收会话的宽限 · 起会话的让路）跟着删。
     // `src/shared/cc-bus/scripts/cc-bus-lib.sh` 那一行（敲门时两发 send-keys 之间的 `sleep 0.3`）退役：
-    //   敲门改经后端 `session-say`（回车由后端补），往窗格里打字那一档整条删了 ⇒ 行删。
+    //   敲门是投进对方会话的输入队（后端 `session-queue-put`，投递那一下补回车），往窗格里打字那一档整条删了 ⇒ 行删。
 ];
 
 /// ★ **前提触发器**：本模块头注说「Rust 那半的家是 `rust_timer_registry`」——

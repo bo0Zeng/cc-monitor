@@ -143,7 +143,7 @@ pub(crate) struct Adapter {
     pub(crate) launch: Option<LaunchFace>,
     /// 请求压缩上下文用的那一句（送进会话所在的终端，换号重启「先压缩」那一步）；`None` ＝ 这一家不支持。
     pub(crate) compact_request: Option<&'static str>,
-    /// 清空会话用的那一句（［+］面板「清空会话」经 `session-say` 送）；`None` ＝ 这一家不支持。
+    /// 清空会话用的那一句（［+］面板「清空会话」经 `session-queue-put` 投进队）；`None` ＝ 这一家不支持。
     pub(crate) clear_request: Option<&'static str>,
     /// 这一家在本机的布局（家目录解析 · pidfile · 进程认法）；`None` ＝ 这一家今天不由后端盯着判活。
     pub(crate) local: Option<LocalFace>,

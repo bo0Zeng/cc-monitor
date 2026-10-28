@@ -1,4 +1,5 @@
-//! 往会话说一句：在等人 ⇒ 不送；不在等 ⇒ 照 `terminal-input` 那一条送（带回车，身份门同一份）。
+//! 往会话送进一句（投递那一下）：在等人 ⇒ 不送；不在等 ⇒ 照 `terminal-input` 那一条送（带回车，身份门同一份）；
+//! 终端没了 ⇒ 按记下的号恢复、那一句当第一句；带附件 ⇒ 照那一家的写法拼，有一份不在 ⇒ 一个字都不送。
 
 use super::*;
 use crate::control::session_open::{Landed, Opened};
@@ -6,21 +7,29 @@ use crate::control::terminals::Refused;
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq};
 use std::cell::RefCell;
 
-fn req(sid: &str, text: &str) -> SessionSayReq {
-    SessionSayReq {
+fn req(sid: &str, text: &str) -> Say {
+    Say {
         sid: sid.parse().unwrap(),
         text: text.into(),
         client: Some("phone".into()),
-        seen_screen: None,
-        idle_only: None,
         attachments: Vec::new(),
     }
+}
+
+/// 不带附件那一句原样送。
+fn say_with(
+    say: &Say,
+    waiting: &dyn Fn(&str) -> bool,
+    send: &dyn Fn(&TerminalInputReq) -> Result<Sent, CmdErr>,
+    resume: &dyn Fn(&Say) -> Option<Reopened>,
+) -> Result<Sent, CmdErr> {
+    say_typed(say, &plain(&say.text), waiting, send, resume)
 }
 
 const SID: &str = "11111111-2222-3333-4444-555555555555";
 
 /// 不该走到恢复那一支。
-fn no_resume(_: &SessionSayReq) -> Option<Reopened> {
+fn no_resume(_: &Say) -> Option<Reopened> {
     panic!("恢复了")
 }
 
@@ -72,41 +81,6 @@ fn a_session_that_waits_for_someone_gets_nothing_typed_into_it() {
     assert!(sent.borrow().is_empty(), "在等人时送了字");
 }
 
-/// ★ 「只在闲着时送」（cc-bus 一档敲门用）：闲着 ⇒ 放行；一轮在跑 · 后台在跑 · 判不出 · 不活 ⇒ 不送、回 `not_idle`；
-/// 在等人那一档留给 `say_with` 说 `waiting`（话更准）。不要求闲着 ⇒ 这一道一律放行（聊天屏 ➤ 照旧能在一轮中间排一句）。
-#[test]
-fn idle_only_refuses_unless_the_session_is_idle() {
-    use crate::agents::SessionActivity as A;
-    let mut r = req(SID, "🔔");
-    r.idle_only = Some(true);
-    let case = |d: Option<Option<A>>| idle_gate(&r, &move |_: &str| d).map(|s| s.why);
-    assert_eq!(case(Some(Some(A::Idle))), None, "闲着 ⇒ 放行");
-    assert_eq!(
-        case(Some(Some(A::NeedsYou))),
-        None,
-        "等人那一档交给 say_with"
-    );
-    for d in [
-        Some(Some(A::Working)),
-        Some(Some(A::BackgroundWork)),
-        Some(None),
-        None,
-    ] {
-        assert_eq!(case(d), Some(Some(Refused::NotIdle)), "{d:?}");
-    }
-    let refused = idle_gate(&r, &|_: &str| Some(Some(A::Working))).unwrap();
-    assert_eq!(refused.result, SentResult::Refused);
-    assert_eq!(
-        refused.said.as_deref(),
-        Some(copy_core::copy_text("beTerminal.no.notIdle", &[]).as_str())
-    );
-    let plain = req(SID, "继续");
-    assert!(
-        idle_gate(&plain, &|_: &str| Some(Some(A::Working))).is_none(),
-        "没要求闲着 ⇒ 不拦"
-    );
-}
-
 /// ★ 不在等 ⇒ 按 sid 送这一句、补回车，自报的前端照交（过同一道身份门）；送的结局原样回。
 #[test]
 fn a_session_that_does_not_wait_gets_the_line_with_enter() {
@@ -127,22 +101,12 @@ fn a_session_that_does_not_wait_gets_the_line_with_enter() {
     assert!(r.terminal.is_none() && r.key.is_none() && r.seen_screen.is_none());
 }
 
-/// ★ 不是会话 id ⇒ `bad_args`，不问在不在等、不送。
-#[test]
-fn a_malformed_sid_is_refused_before_anything_is_asked() {
-    // sid 是会话 id（`cmd_wire::Sid`）：形状不对解入参那一下就解不开，到不了问在不在等 · 送 · 恢复。
-    assert!(serde_json::from_value::<SessionSayReq>(
-        serde_json::json!({"sid": "../x", "text": "hi"})
-    )
-    .is_err());
-}
-
 /// ★ 终端没了（名单里没有 · 送的那一刻没了）⇒ 按记下的号恢复，那一句当第一句交出去；成了 ⇒ 交到了 ＋ `resumed`。
 #[test]
 fn a_session_whose_terminal_is_gone_is_resumed_with_the_line() {
     for gone in [Refused::NotKnown, Refused::Ended] {
         let asked = RefCell::new(Vec::<(String, String)>::new());
-        let resume = |r: &SessionSayReq| {
+        let resume = |r: &Say| {
             asked.borrow_mut().push((r.sid.to_string(), r.text.clone()));
             Some(at(Landed::Started, Some("p-cc")))
         };
@@ -162,12 +126,7 @@ fn a_session_whose_terminal_is_gone_is_resumed_with_the_line() {
             *asked.borrow(),
             vec![(SID.to_string(), "接着做".to_string())]
         );
-        let wire = serde_json::to_value(&got).unwrap();
-        assert_eq!(wire["resumed"], true);
     }
-    // 送到了的那一形不带这一格。
-    let wire = serde_json::to_value(sent_as(SentResult::Delivered)).unwrap();
-    assert!(wire.get("resumed").is_none(), "{wire}");
 }
 
 /// ★ 恢复没成：开在 tmux 之外的终端里（另有活进程在写）⇒ `elsewhere`；别的没成 ⇒ `not_resumed`；都带那一句、都不是交到了。
@@ -198,15 +157,10 @@ fn a_resume_that_does_not_happen_says_why_and_delivers_nothing() {
     }
 }
 
-/// ★ 别的被拒（别的前端的 · 不归我们管 · 多个 · 画面变了）不恢复，原样回。
+/// ★ 别的被拒（别的前端的 · 不归我们管 · 多个）不恢复，原样回。
 #[test]
 fn other_refusals_are_passed_back_without_resuming() {
-    for why in [
-        Refused::NotYours,
-        Refused::NotManaged,
-        Refused::Ambiguous,
-        Refused::ScreenChanged,
-    ] {
+    for why in [Refused::NotYours, Refused::NotManaged, Refused::Ambiguous] {
         let got = say_with(
             &req(SID, "hi"),
             &|_| false,
@@ -218,46 +172,11 @@ fn other_refusals_are_passed_back_without_resuming() {
     }
 }
 
-/// ★ 带了看见的那一屏的指纹 ⇒ 原样交给 `terminal-input`（画面变了它就不送，原样回）；
-/// 送的那一刻终端没了也不恢复：看见的那一屏已经不在了，恢复出来的不是调用方看见的那一条。
-#[test]
-fn a_seen_screen_rides_along_and_a_gone_terminal_is_not_resumed() {
-    let with_seen = |sid: &str| SessionSayReq {
-        seen_screen: Some("0123456789abcdef".into()),
-        ..req(sid, "看一下收件箱")
-    };
-    let sent = RefCell::new(Vec::<TerminalInputReq>::new());
-    let changed = |r: &TerminalInputReq| {
-        sent.borrow_mut().push(r.clone());
-        Ok(Sent {
-            screen: Some("fedcba9876543210".into()),
-            ..refused(Refused::ScreenChanged)
-        })
-    };
-    let got = say_with(&with_seen(SID), &|_| false, &changed, &no_resume).unwrap();
-    assert_eq!(got.why, Some(Refused::ScreenChanged));
-    assert_eq!(
-        sent.borrow()[0].seen_screen.as_deref(),
-        Some("0123456789abcdef"),
-        "看见的那一屏的指纹没交给送字那一条"
-    );
-    for gone in [Refused::NotKnown, Refused::Ended] {
-        let got = say_with(
-            &with_seen(SID),
-            &|_| false,
-            &|_| Ok(refused(gone)),
-            &no_resume,
-        )
-        .unwrap();
-        assert_eq!((got.result, got.why), (SentResult::Refused, Some(gone)));
-    }
-}
-
-// ── 带附件说一句 ────────────────────────────────────────────
+// ── 带附件的那一句 ────────────────────────────────────────────
 
 /// 一个会话工作目录：`ids` 各落一份（编号目录里一份 `<名>`）。
 fn workdir(tag: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-say-att-{tag}-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!("ccm-send-att-{tag}-{}", std::process::id()));
     std::fs::remove_dir_all(&d).ok();
     for (id, name) in files {
         let at = d.join(".ccm-attach").join(id);
@@ -267,9 +186,9 @@ fn workdir(tag: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
     d
 }
 
-/// ★ 带一张图一份文件说一句（Claude）：送字那一条收到「图的绝对路径单独粘」＋「正文后面一行 `@相对路径`」；恢复那一支交的第一句全写成行。
+/// ★ 带一张图一份文件（Claude）：送字那一条收到「图的绝对路径单独粘」＋「正文后面一行 `@相对路径`」。
 #[test]
-fn a_say_with_attachments_types_what_the_agent_adapter_wrote() {
+fn a_line_with_attachments_types_what_the_agent_adapter_wrote() {
     let cwd = workdir(
         "ok",
         &[("1023-1529-a3f2", "a.png"), ("1023-1529-7c01", "login.css")],
@@ -299,9 +218,9 @@ fn a_say_with_attachments_types_what_the_agent_adapter_wrote() {
     let _ = std::fs::remove_dir_all(&cwd);
 }
 
-/// 有一份那台已清掉 ⇒ 一个字都不送：`refused` ＋ `attachment_gone`，`gone` 列出那几个编号。
+/// 有一份那台已清掉 ⇒ 一个字都不送：`refused` ＋ `attachment_gone`，`gone` 列出那几个编号（与投进队那一刻同一份判法）。
 #[test]
-fn a_cleared_attachment_refuses_the_whole_say_and_names_it() {
+fn a_cleared_attachment_refuses_the_whole_line_and_names_it() {
     let cwd = workdir("gone", &[("1023-1529-a3f2", "a.png")]);
     let mut r = req(SID, "再看下");
     r.attachments = vec!["1023-1529-a3f2".into(), "1023-1530-e95b".into()];
@@ -311,6 +230,10 @@ fn a_cleared_attachment_refuses_the_whole_say_and_names_it() {
         (SentResult::Refused, Some(Refused::AttachmentGone))
     );
     assert_eq!(no.gone, ["1023-1530-e95b"]);
+    assert_eq!(
+        crate::common::attachment_dir::missing(&cwd, &r.attachments),
+        ["1023-1530-e95b"]
+    );
     assert!(no.said.is_some());
     let _ = std::fs::remove_dir_all(&cwd);
 }

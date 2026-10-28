@@ -88,4 +88,7 @@ object ChatTestTags {
 
     /** 顶栏左上的 ☰，拉出抽屉。 */
     const val DRAWER_OPEN = "chat-drawer-open"
+
+    /** 输入框上方待发里的一句（还没回执）。 */
+    const val OUTBOX = "chat-outbox"
 }

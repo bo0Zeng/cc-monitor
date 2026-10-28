@@ -48,7 +48,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::session_mode_face::SessionPermission>(
         "切权限档（开着 ⇒ 按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按；终端没了 ⇒ 记下、下次恢复照它起）",
     ),
-    crate::wire::typed::blocking::<crate::faces::session_say_face::SessionSay>("往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交）"),
     // 终端实时预览三条（`control/terminal_follow.rs`）：订阅名单里一个终端的画面，有变化就推一整屏（`terminal_screen` 帧），
     //   一帧在途、客户端回执之后才推下一帧；停了推 `terminal_follow_end`。都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
     crate::wire::typed::frame::<crate::control::terminal_follow::TerminalFollow>(

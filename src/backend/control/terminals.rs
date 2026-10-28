@@ -63,7 +63,7 @@ pub(crate) const KEYS: &[(&str, &str)] = &[
 pub(crate) use cmd_wire::session::Refused;
 use cmd_wire::session::SentAct;
 
-/// 这台已经没有它的终端（名单里没有 · 送的那一刻没了 · 窗格里只剩 shell）：`session-say` 恢复再送，换模型 / 权限档记下等恢复，同这一判。
+/// 这台已经没有它的终端（名单里没有 · 送的那一刻没了 · 窗格里只剩 shell）：输入队投递那一下恢复再送，换模型 / 权限档记下等恢复，同这一判。
 pub(crate) fn terminal_gone(why: Option<Refused>) -> bool {
     matches!(why, Some(Refused::NotKnown | Refused::Ended))
 }
@@ -95,7 +95,6 @@ pub(crate) fn no_said(why: Refused) -> String {
         Refused::Waiting => copy_text("beTerminal.no.waiting", &[]),
         Refused::Elsewhere => copy_text("beTerminal.no.elsewhere", &[]),
         Refused::NotResumed => copy_text("beTerminal.no.notResumed", &[]),
-        Refused::NotIdle => copy_text("beTerminal.no.notIdle", &[]),
         Refused::AttachmentGone => copy_text("beTerminal.no.attachmentGone", &[]),
     }
 }
@@ -659,7 +658,7 @@ pub(crate) fn input_of(req: &TerminalInputReq) -> Result<Input, CmdErr> {
     let bad = |m: &str| CmdErr::new("bad_args", crate::common::contract::malformed(m));
     match (&req.text, &req.key) {
         (Some(t), None) => {
-            // 只带附件、没写字（`session-say` 那一支）⇒ 正文可以是空的，粘的那几段照同一把尺子量。
+            // 只带附件、没写字（输入队投递那一支）⇒ 正文可以是空的，粘的那几段照同一把尺子量。
             for p in &req.pastes {
                 super::launch::check_input_text(p)?;
             }
@@ -711,7 +710,7 @@ pub(crate) fn input_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, CmdEr
     send_on(on, req, |_| true)
 }
 
-/// 往一条会话说一句（`session-say` 那一条送字）：同 [`input_on`]，过了身份门再多一道 —— 挂着它的那个窗格此刻前台是不是 agent
+/// 往一条会话送进一句（输入队投递那一下的送字，`faces/session_send.rs`）：同 [`input_on`]，过了身份门再多一道 —— 挂着它的那个窗格此刻前台是不是 agent
 /// （名单那一刻的 `#{pane_current_command}`，同名单里「程序已退出」那一处：[`agent_in_front`]）。
 /// 不是（agent 退了，或前台换成了别的程序）⇒ 一个字都不送，回「已经没了」（`ended`）：话是说给 agent 的，送进 shell 就成了一行命令。
 pub(crate) fn say_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, CmdErr> {

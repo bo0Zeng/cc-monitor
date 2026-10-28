@@ -6,13 +6,13 @@ import com.ccmonitor.mobile.core.wire.gen.FileClass
 import com.ccmonitor.mobile.core.wire.gen.SessionAttachmentCheckReq
 import com.ccmonitor.mobile.core.wire.gen.SessionAttachmentCommitReq
 import com.ccmonitor.mobile.core.wire.gen.SessionAttachmentDropReq
-import com.ccmonitor.mobile.core.wire.gen.SessionSayReq
+import com.ccmonitor.mobile.core.wire.gen.SessionQueuePutReq
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** 附件那三条的入参照生成的那几形（后端 `deny_unknown_fields`，多一格就拒）；回包经生成的类解；`session-say` 有编号才带那一格。 */
+/** 附件那三条的入参照生成的那几形（后端 `deny_unknown_fields`，多一格就拒）；回包经生成的类解；`session-queue-put` 有编号才带那一格。 */
 class AttachmentsTest {
     private val staged = FilesCommitUpload.Staged("k", 3L, 9L, "ab".repeat(32))
 
@@ -37,11 +37,11 @@ class AttachmentsTest {
     }
 
     @Test
-    fun say_carries_ids_only_when_there_are_some() {
-        assertFalse("attachments" in SessionSay.args("s", "hi"))
-        val with = SessionSay.args("s", "hi", listOf("x", "y"))
+    fun put_carries_ids_only_when_there_are_some() {
+        assertFalse("attachments" in SessionQueuePut.args("s", "m", "hi", 1L))
+        val with = SessionQueuePut.args("s", "m", "hi", 1L, listOf("x", "y"))
         assertEquals(listOf("x", "y"), with["attachments"])
-        assertEquals(listOf("x", "y"), Wire.bind<SessionSayReq>(with)?.attachments)
+        assertEquals(listOf("x", "y"), Wire.bind<SessionQueuePutReq>(with)?.attachments)
     }
 
     /** 发出去的那一行（同跨语言金样那一形，[Json.args]）：格序照生成的类，缺省的格不交。 */
@@ -53,14 +53,23 @@ class AttachmentsTest {
             Json.args(SessionAttachmentCommit.args("s", "a.png", staged)),
         )
         assertEquals("""{"sid":"s","id":"i"}""", Json.args(SessionAttachmentDrop.args("s", "i")))
-        assertEquals("""{"sid":"s","text":"hi","client":"mobile","attachments":["i"]}""", Json.args(SessionSay.args("s", "hi", listOf("i"))))
+        assertEquals(
+            """{"machine":"<local>","sid":"s","id":"m","end":"mobile","atMs":1,"text":"hi","attachments":["i"]}""",
+            Json.args(SessionQueuePut.args("s", "m", "hi", 1L, listOf("i"))),
+        )
     }
 
     @Test
     fun replies_decode_through_the_generated_types() {
         val verdicts =
             SessionAttachmentCheck.of(
-                mapOf("items" to listOf(mapOf("ok" to true), mapOf("ok" to false, "why" to "too_big", "said" to "超上限"))),
+                mapOf(
+                    "items" to
+                        listOf(
+                            mapOf("ok" to true, "class" to "image", "class_text" to "图"),
+                            mapOf("ok" to false, "class" to "other", "class_text" to "文件", "why" to "too_big", "said" to "超上限"),
+                        ),
+                ),
             )!!
         assertEquals(listOf(true, false), verdicts.map { it.ok })
         assertEquals(AttachRefused.TOO_BIG, verdicts[1].why)

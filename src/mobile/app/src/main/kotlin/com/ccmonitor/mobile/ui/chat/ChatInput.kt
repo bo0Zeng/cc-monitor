@@ -72,6 +72,10 @@ data class ChatInputActions(
     val loadPicks: () -> Unit = {},
     val loadCommands: () -> Unit = {},
     val say: (String) -> Unit = {},
+    /** 撤待发里还没回执的一句（按编号）。 */
+    val cancel: (String) -> Unit = {},
+    /** 再交一次那台拒了的那一句（按编号）。 */
+    val retry: (String) -> Unit = {},
     /** 输入框里的字变了（本地存草稿）。 */
     val editDraft: (String) -> Unit = {},
     /** 输入框上方那一排附件；这条会话没有那一排（新建会话）⇒ `null`。 */
@@ -100,6 +104,7 @@ internal fun ChatInputArea(
     Surface(color = tokens.bg2) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs)) {
             chipLine(state)?.let { (text, warn) -> NoteLine(text, warn) }
+            state.outbox.forEach { OutboxRow(it, actions) }
             if (attach != null && actions.attach != null) {
                 AttachArea(attach, actions.attach) {
                     actions.loadCommands()
@@ -137,6 +142,27 @@ internal fun ChatInputArea(
     InputSheets(sheet, state, actions, pick, { sheet = it }) { text ->
         draft = TextFieldValue(text, TextRange(text.length))
         actions.editDraft(text)
+    }
+}
+
+/** 待发里的一句（会话那台还没回执）：那一句 · 「发送中」或那台拒的那一句 ·［撤］（拒了的另有［重试］）。 */
+@Composable
+private fun OutboxRow(
+    line: OutboxLine,
+    actions: ChatInputActions,
+) {
+    val tokens = LocalAppTokens.current
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = tokens.spacing.xs).testTag(ChatTestTags.OUTBOX),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(line.text, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(line.said, style = MaterialTheme.typography.bodySmall, color = if (line.failed) tokens.errorText else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (line.retry) SecondaryButton(onClick = { actions.retry(line.id) }) { Text(copyText("terminal.input.retry")) }
+        SecondaryButton(onClick = { actions.cancel(line.id) }) { Text(copyText("mobChat.outbox.cancel")) }
     }
 }
 

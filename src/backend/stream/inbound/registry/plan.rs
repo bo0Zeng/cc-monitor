@@ -37,7 +37,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     typed::blocking::<crate::faces::plan_face::PlanRefsCmd>(
         "会话消息里提到的格：照会话接手的那块（否则工作目录所在的那片）认片，几段正文一次交 pb 的 `dump --refs`，回每段的几处（UTF-16 下标 ＋ 跟在编号后面的标题）；认不出片 · pb 不在 ⇒ 每段空",
     ),
-    // 审面三条也在阻塞档：认可读—改—写后端自己那份小文件（跨进程锁）；退回现读一次计划（起 pb）再走 `session-say` 的本体（起 tmux）。
+    // 审面三条也在阻塞档：认可读—改—写后端自己那份小文件（跨进程锁）；退回现读一次计划（起 pb）再投进那条会话的输入队（写自家状态）。
     typed::blocking::<crate::faces::plan_review_face::PlanAckCmd>(
         "认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `changed {plan}` 带新的数",
     ),
@@ -45,6 +45,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "撤掉一条认可（没有也不算错）；推一帧 `changed {plan}` 带新的数",
     ),
     typed::blocking::<crate::faces::plan_return_face::PlanReturnCmd>(
-        "把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，认不出 ⇒ 只给复制，已结束 ⇒ 只给复制或（`resume`）在这台恢复它再送，能送走 `session-say`；送到了记一条已退回",
+        "把人的话投给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，认不出 ⇒ 只给复制，已结束 ⇒ 只给复制或（`resume`）照投（投递时在这台恢复它），能投就投进它的输入队；排进去了记一条已退回",
     ),
 ];

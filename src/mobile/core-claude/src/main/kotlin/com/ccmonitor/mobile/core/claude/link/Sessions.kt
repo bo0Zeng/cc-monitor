@@ -14,6 +14,8 @@ import com.ccmonitor.mobile.core.wire.gen.ModeSwitched
 import com.ccmonitor.mobile.core.wire.gen.ModelSwitched
 import com.ccmonitor.mobile.core.wire.gen.OpenFacts
 import com.ccmonitor.mobile.core.wire.gen.Opened
+import com.ccmonitor.mobile.core.wire.gen.QueueCancelled
+import com.ccmonitor.mobile.core.wire.gen.QueuePut
 import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SentResult
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
@@ -214,19 +216,41 @@ object SessionCommandList {
     fun of(data: Any?): SessionCommands? = Wire.bind<SessionCommands>(data)
 }
 
-/** `session-say`：往一条会话说一句（那台判：在等人不送 · 终端没了按记下的号恢复再交）。结局同 [TerminalInput]。 */
-object SessionSay {
-    const val COMMAND: String = "session-say"
+/**
+ * `session-queue-put`：往一条会话说一句 ＝ 投进那条会话的输入队（会话那台落盘了才回；那台能送时再送进 agent）。
+ * [id] 是这一端待发箱里那一句的编号：没回执就连上重发同一个，那台按它去重、只进一条。
+ */
+object SessionQueuePut {
+    const val COMMAND: String = "session-queue-put"
 
     /** [attachments]：随这一句发的附件编号（[SessionAttachmentCommit] 回的，按草稿里的先后）；没有 ⇒ 不带这一格。 */
     fun args(
         sid: String,
+        id: String,
         text: String,
+        atMs: Long,
         attachments: List<String> = emptyList(),
-    ): Map<String, Any?> = mapOf("sid" to sid, "text" to text, "client" to CLIENT) + listOfNotNull(attachments.takeIf { it.isNotEmpty() }?.let { "attachments" to it })
+    ): Map<String, Any?> =
+        mapOf("machine" to LOCAL, "sid" to sid, "id" to id, "end" to CLIENT, "atMs" to atMs, "text" to text) +
+            listOfNotNull(attachments.takeIf { it.isNotEmpty() }?.let { "attachments" to it })
 
-    fun of(data: Any?): TerminalInput.Result? = TerminalInput.of(data)
+    fun of(data: Any?): QueuePut? = Wire.bind<QueuePut>(data)
 }
+
+/** `session-queue-cancel`：撤队里一条还没送的（回撤完的整份名单）。 */
+object SessionQueueCancel {
+    const val COMMAND: String = "session-queue-cancel"
+
+    fun args(
+        sid: String,
+        id: String,
+    ): Map<String, Any?> = mapOf("machine" to LOCAL, "sid" to sid, "id" to id)
+
+    fun of(data: Any?): QueueCancelled? = Wire.bind<QueueCancelled>(data)
+}
+
+/** 问的就是连着的那台自己（线上逐字 `<local>`）。 */
+private const val LOCAL = "<local>"
 
 /** `terminal-input`：往一条会话所在的终端送字或送键（那台过身份门、判送没送到）。 */
 object TerminalInput {
@@ -266,7 +290,7 @@ object TerminalInput {
     /** 核心按 `cmd-wire` 那一份解过的回包 ⇒ 结局。被拒却没带那一句 ⇒ `null`（没有可上屏的话）。 */
     fun of(data: Any?): Result? = Wire.bind<SentWire>(data)?.let { of(it) }
 
-    /** 解过的回包（`terminal-input` · `session-say` · `session-open` 里第一句那一格同一形）⇒ 结局。 */
+    /** 解过的回包（`terminal-input` · `session-open` 里第一句那一格同一形）⇒ 结局。 */
     fun of(sent: SentWire): Result? =
         when (sent.result) {
             SentResult.DELIVERED -> Result.Delivered

@@ -50,14 +50,9 @@ fn stale_line(v: &Value) -> Option<String> {
     ))
 }
 
-fn done_of(key: &str, p: &Value) -> String {
-    copy_text(
-        key,
-        &[
-            ("done", &n(p, "done").to_string()),
-            ("of", &n(p, "of").to_string()),
-        ],
-    )
+/// 「做完几 / 共几」那两个数（那一句在调用处照字面键写）。
+fn done_of(p: &Value) -> (String, String) {
+    (n(p, "done").to_string(), n(p, "of").to_string())
 }
 
 // ═══ 片 ═══════════════════════════════════════════════════════════════════════
@@ -82,7 +77,10 @@ pub fn slices(list: &Value) -> Option<Value> {
                     let end = sl
                         .get("progress")
                         .filter(|p| !p.is_null())
-                        .map(|p| done_of("plan.outline.rootProgress", p));
+                        .map(|p| {
+                            let (done, of) = done_of(p);
+                            copy_text("plan.outline.rootProgress", &[("done", &done), ("of", &of)])
+                        });
                     json!({
                         "slice": s(sl, "name").unwrap_or_default(),
                         "line": line,
@@ -149,7 +147,7 @@ impl<'a> Slice<'a> {
             "id": id,
             "label": self.label(id),
             "look": look(c),
-            "end": state_text(c),
+            "end": end_line(c),
             "kids": kids,
         }))
     }
@@ -163,8 +161,8 @@ fn look(c: &Value) -> &str {
     s(c, "statusCode").unwrap_or("none")
 }
 
-/// 状态那一句：pb 的状态行 ＋ 后端写好的原因。
-fn state_text(c: &Value) -> String {
+/// 一行右端那一句：pb 的状态行 ＋ 后端写好的原因。
+fn end_line(c: &Value) -> String {
     joined([
         s(c, "stateLine"),
         c.get("whyShort").and_then(|w| s(w, "text")),
@@ -237,7 +235,10 @@ fn need(sl: &Slice, nd: &Value, i: usize, total: usize) -> Value {
             lines.extend(owner.map(who_name));
             let why = root.and_then(|r| r.get("whyCode"));
             lines.push(match why.filter(|w| s(w, "kind") == Some("inside")) {
-                Some(w) => done_of("plan.review.endedWhat", w),
+                Some(w) => {
+                    let (done, of) = done_of(w);
+                    copy_text("plan.review.endedWhat", &[("done", &done), ("of", &of)])
+                }
                 None => copy_text("plan.review.endedOpen", &[]),
             });
             if owner.and_then(|o| s(o, "kind")) == Some("subagent") {
@@ -280,7 +281,9 @@ fn mine(sl: &Slice, read: &Value, sid: &str) -> Option<Value> {
         .and_then(|blk| blk.get("inside"))
         .filter(|x| !x.is_null());
     if let Some(k) = inside {
-        rows.push(json!({ "k": copy_text("plan.blocks.inside", &[]), "v": done_of("plan.whyShort.inside", k) }));
+        let (done, of) = done_of(k);
+        let v = copy_text("plan.whyShort.inside", &[("done", &done), ("of", &of)]);
+        rows.push(json!({ "k": copy_text("plan.blocks.inside", &[]), "v": v }));
     }
     Some(json!({ "head": copy_text("plan.overview.blocks", &[]), "rows": rows }))
 }
@@ -297,7 +300,8 @@ pub fn outline(read: &Value, slice: &str, sid: Option<&str>) -> Option<Value> {
         meta.push(copy_text("plan.overview.readAt", &[("time", t)]));
     }
     if let Some(p) = sl.v.get("progress").filter(|p| !p.is_null()) {
-        meta.push(done_of("plan.overview.top", p));
+        let (done, of) = done_of(p);
+        meta.push(copy_text("plan.overview.top", &[("done", &done), ("of", &of)]));
     }
     if sl.v.get("docsOnly").and_then(Value::as_bool) == Some(true) {
         meta.push(copy_text("plan.sub.docsOnly", &[]));
@@ -328,14 +332,13 @@ pub fn outline(read: &Value, slice: &str, sid: Option<&str>) -> Option<Value> {
 // ═══ 一格 ═════════════════════════════════════════════════════════════════════
 
 fn file_word(code: Option<&str>) -> Option<String> {
-    let key = match code? {
-        "ok" => "plan.fileState.ok",
-        "missing" => "plan.fileState.missing",
-        "empty" => "plan.fileState.empty",
-        "broken" => "plan.fileState.broken",
+    Some(match code? {
+        "ok" => copy_text("plan.fileState.ok", &[]),
+        "missing" => copy_text("plan.fileState.missing", &[]),
+        "empty" => copy_text("plan.fileState.empty", &[]),
+        "broken" => copy_text("plan.fileState.broken", &[]),
         _ => return None,
-    };
-    Some(copy_text(key, &[]))
+    })
 }
 
 /// `plan-read` 里一格 ⇒ 一格详情那一屏。
@@ -352,7 +355,7 @@ pub fn cell(read: &Value, slice: &str, id: &str) -> Option<Value> {
         at = sl.cell(p).and_then(|x| s(x, "parent"));
     }
     up.reverse();
-    let state = Some(state_text(c))
+    let state = Some(end_line(c))
         .filter(|t| !t.is_empty())
         .unwrap_or_else(|| copy_text("plan.state.none", &[]));
     let block = arr(sl.v, "blocks")
