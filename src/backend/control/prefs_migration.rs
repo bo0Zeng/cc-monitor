@@ -125,9 +125,6 @@ pub(crate) enum Reshaped {
     WriteFailed(String),
 }
 
-/// `prefs.json` 按原样读（换形要看旧键）：状态（读不懂 ⇒ 不动）。
-const PREFS_RAW: Doc<Value> = Doc::state(relay_route_core::PREFS_REL, MAX_BYTES);
-
 /// 盘上第 1 版的 `prefs.json`（恢复那一格是开关 `resumeInTmux`）⇒ 第 2 版（三选 `resumeWhere`，[`resume_where_of`]），别的几格原样。
 /// 换完照第 2 版的值域核一遍再写；核不过 ⇒ 一个字节不写（读不懂的不当空的换）。
 pub(crate) fn reshape_prefs_in(own: &Own) -> Reshaped {
@@ -135,7 +132,8 @@ pub(crate) fn reshape_prefs_in(own: &Own) -> Reshaped {
     let Ok(at) = own.at_home(machine_prefs::DOC.rel) else {
         return Reshaped::Nothing;
     };
-    let mut v = match PREFS_RAW.read(at.as_path()) {
+    // 同一份声明按原样读（换形要看旧键；读不懂 ⇒ 不动）。
+    let mut v = match machine_prefs::DOC.read_as::<Value>(at.as_path()) {
         Read::Absent => return Reshaped::Nothing,
         Read::Unreadable(why) => return Reshaped::Unreadable(why.said),
         Read::Present(v) => v,

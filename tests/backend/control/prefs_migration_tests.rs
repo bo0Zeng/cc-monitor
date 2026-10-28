@@ -95,7 +95,9 @@ fn a_first_version_prefs_file_is_reshaped_once() {
     assert_eq!(p.models.get("work").map(String::as_str), Some("opus"));
     assert_eq!(p.child_tab, cmd_wire::session::Tab::Show);
     let raw = std::fs::read_to_string(&at).unwrap();
-    assert!(!raw.contains("resumeInTmux"), "旧键留下了：{raw}");
+    let keys: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert!(keys.get("resumeInTmux").is_none(), "旧键留下了：{raw}");
+    assert_eq!(keys["version"], 2);
     assert_eq!(reshape_prefs_in(&own), Reshaped::Nothing);
     assert_eq!(std::fs::read_to_string(&at).unwrap(), raw, "第 2 版又被写了");
     // 关着 ⇒ 托管。
