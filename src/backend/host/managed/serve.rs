@@ -87,7 +87,8 @@ pub(crate) struct Hub {
     screen: Screen,
     clients: BTreeMap<u64, Client>,
     holder: Option<u64>,
-    /// 持有者自上次回车以来敲进、还没交的字数（[`typed_after`]）：不是 0 ⇒ 后端那一句（`say`）不写。换了持有者清零。
+    /// 伪终端输入行里自上次回车以来敲进、还没交的字数（[`typed_after`]，按持有者送进的字节记）：不是 0 ⇒ 后端那一句（`say`）不写。
+    /// 跟伪终端走、不跟持有者走：换持有者不清（那半句还在 Claude 的输入框里）。
     typed: usize,
     next: u64,
     ended: bool,
@@ -320,7 +321,6 @@ impl Hub {
             return Vec::new();
         }
         self.holder = next;
-        self.typed = 0;
         for id in self.greeted_ids() {
             let holder = self.holder_for(id);
             self.push(id, Frame::Ctl(Ctl::Holder { holder }));
