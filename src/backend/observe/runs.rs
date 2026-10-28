@@ -806,7 +806,7 @@ impl RunTrack {
     /// 一个会话的主记录在这里（宣告 / 每次读到它时都说；只有头一次真去找）：把它此刻已有的子运行记录收进来。
     /// 簿里已经收场（父侧那一截在这之前补进来了，[`Self::prime`]）、记录又 [`STALE_AFTER`] 之内没再写的，只留游标、不读正文 ——
     /// 没读的那几格（工具调用次数 · 最近一件事）只有它自己的记录说得出；它再被写 ⇒ 文件事件照旧从 0 读起。其余从头读一遍。
-    /// 之后新长出来的子运行记录靠它自己的文件事件进来（[`Self::on_path`]）。回：运行表变没变。
+    /// 之后新长出来的子运行记录靠它自己的文件事件进来（[`Self::on_path`]）。读得多 ⇒ 读完把放掉的内存还给系统。回：运行表变没变。
     pub(crate) fn adopt(&mut self, sid: &str, parent: &Path) -> bool {
         if !self.has_children() {
             return false;
@@ -817,7 +817,10 @@ impl RunTrack {
             return false;
         }
         ps.push(key);
-        self.discover_under(sid, parent)
+        let before = self.child_read;
+        let changed = self.discover_under(sid, parent);
+        crate::platform::proc::return_freed_memory_after(self.child_read - before);
+        changed
     }
 
     /// 收进 `parent` 底下此刻在盘上的子运行记录（已收进来的不动；收场又久未再写的不读，[`Self::adopt`]）。

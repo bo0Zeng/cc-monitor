@@ -323,17 +323,38 @@ pub(crate) fn session_alive(pid: u32, expected_start: Option<u64>) -> bool {
     super::liveness::is_same_live_process(exists, expected_start, current_start)
 }
 
-/// 把分配器手里已经放掉、却还占着物理页的内存还给系统（全文搜索整份重读了一大批之后调一次）。
+/// 一趟读盘超过这么多字节才把放掉的内存还给系统（[`return_freed_memory_after`]）：没读什么的那一趟不费这一下。
+pub(crate) const TRIM_AFTER_BYTES: u64 = 16 << 20;
+
+/// 一趟大读（读了 `read` 字节）之后，把分配器手里已经放掉、却还占着物理页的内存还给系统；没过 [`TRIM_AFTER_BYTES`] ⇒ 不做。
+/// 回：做了没有。
 /// glibc 的 `malloc` 放掉的空洞只在堆顶时才自己还 ⇒ 一问含工具的搜索读过几百 MB、只留下 128 MB 的常驻之后，
 /// 进程 RSS 停在那一问的高水位（680 MB 合成世界实测 ~570 MB → 调它之后 ~280 MB）。
-/// 远端 musl 版的分配器是 mimalloc（`main.rs`；它自己隔一会儿把空页还回去）、Windows 的系统堆没有这一招 ⇒ 这两处不做。
-pub(crate) fn return_freed_memory() {
+/// 远端 musl 版的分配器是 mimalloc（`main.rs`）：它只在之后还有分配活动时才顺手还空页，大读之后闲下来就一直占着
+/// ⇒ 当场 `mi_collect(true)`（这条线程的空页与放掉的段一起还）。Windows 的系统堆没有这一招 ⇒ 不做。
+pub(crate) fn return_freed_memory_after(read: u64) -> bool {
+    if read < TRIM_AFTER_BYTES {
+        return false;
+    }
     // SAFETY: 纯 libc 调用，不带指针；只把空闲页还给内核，不动在用的块。
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     unsafe {
         libc::malloc_trim(0);
     }
+    // SAFETY: mimalloc 的公开口（`mimalloc` crate 底下那份 C 库自带、链进了远端二进制），不带指针；只还空闲的页，不动在用的块。
+    #[cfg(target_env = "musl")]
+    unsafe {
+        extern "C" {
+            fn mi_collect(force: bool);
+        }
+        mi_collect(true);
+    }
+    true
 }
+
+#[cfg(test)]
+#[path = "../../../tests/backend/platform/freed_memory_tests.rs"]
+mod freed_memory_tests;
 
 /// 把**调用它的这条线程**降到低优先级（后台一次性热缓存用：不跟前台的帧命令抢 CPU）。
 /// 回真 ＝ 降成了；降不了 / 这一平台不支持 ⇒ 假（照常跑，只是不让）。它之后由这条线程起的线程随它（Linux 按线程记 nice）。

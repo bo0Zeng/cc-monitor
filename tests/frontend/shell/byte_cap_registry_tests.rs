@@ -407,9 +407,9 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "TRIM_AFTER_BYTES",
-        "**还内存的门槛**，不是上限：全文搜索一问读盘超过它，才把分配器放掉的空页还给系统\
-             （`observe/search_query.rs` → `platform/proc.rs::return_freed_memory`）。没有任何东西被拒、被截 —— \
-             每份照样读、照样搜；限常驻多少的是同文件的 `RESIDENT_MAX_BYTES`（`CAPS` 里那一行）。",
+        "**还内存的门槛**，不是上限：一趟大读（全文搜索一问 · 收下会话 · 冷扫一份记录）读盘超过它，才把分配器放掉的空页还给系统\
+             （`platform/proc.rs::return_freed_memory_after`）。没有任何东西被拒、被截 —— \
+             每份照样读、照样搜；限搜索常驻多少的是 `observe/search_query.rs` 的 `RESIDENT_MAX_BYTES`（`CAPS` 里那一行）。",
     ),
     // ── 后端 Windows 判活（`platform/win_proc.rs` · `platform/proc.rs`）带进来的五个 ──
     //    全是 Win32 常量与时间换算，没有一个量字节。

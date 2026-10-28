@@ -104,9 +104,7 @@ pub(crate) fn search_counting(
     let unreadable = index.search(&fence, &q, opts, &live, push)?;
     let r = index.last;
     // 〔perfC2〕这一问整份重读过一大批（含工具时常驻装不下的那几份）⇒ 读完放掉的那些空洞还给系统，常驻不停在这一问的高水位。
-    if r.bytes >= TRIM_AFTER_BYTES {
-        crate::platform::proc::return_freed_memory();
-    }
+    crate::platform::proc::return_freed_memory_after(r.bytes);
     tracing::debug!(
         "history-search index: full={} appended={} reused={} bytes={}",
         r.full,
@@ -726,9 +724,6 @@ impl Refresh {
         self.bytes += o.bytes;
     }
 }
-
-/// 一问读盘超过这么多字节才把放掉的内存还给系统（[`crate::platform::proc::return_freed_memory`]）：没读什么的那一问不费这一下。
-const TRIM_AFTER_BYTES: u64 = 16 << 20;
 
 /// 全局搜索一次交给几条线程同时带的份数（[`SearchIndex::search`]）：常驻装不下的那几份每问整份重读重解，
 /// 一批批地并行带、再按最近优先逐份搜 —— 批小，同时在手里的整格（含工具文本）就少。
