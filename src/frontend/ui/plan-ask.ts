@@ -1,7 +1,8 @@
 /**
  * **问图**（计划页一格详情头的［问这一块…］）：开全产品那一个新建会话框的问图样子。
  *
- * 开之前问计划页那台一次 `plan-ask`：开口那句那台拼好（别名的那句 ＋「看 编号「标题」这一格：」），别名预选那台记着的问图用的那条；
+ * 开之前问计划页那台一次 `plan-ask`：框顶那一句 · 开口那句那台写好（别名的那句 ＋「看 编号「标题」：」），别名预选那台记着的问图用的那条；
+ * 那台没有 tmux（开口那句只跟 tmux）⇒ 那台拒，这里照它那一句报、不开框；
  * 框里改选别名 ⇒ 带上那条再问一次（那台记新的、拼新的）。机器锁那台、目录锁工作区根；起会话照旧走 `session-open`。
  * 问图不补足：同一格连问两次 ＝ 起两条。
  */
@@ -21,7 +22,7 @@ export function askSpec(origin: Origin, workspace: string, slice: PlanSlice, cel
     lockCwd: true,
     prompt: first.line,
     ask: {
-      title: copyText("plan.ask.title", { title: cell.title ?? cell.id }),
+      title: first.title,
       alias: first.alias,
       relined: async (alias: string) => (await askPlan(origin, { ...at, alias })).line,
     },

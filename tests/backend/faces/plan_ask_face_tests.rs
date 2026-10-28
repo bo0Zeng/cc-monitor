@@ -32,15 +32,24 @@ fn cell_part() -> String {
     copy_core::copy_text("bePlan.ask.line", &[("id", "A1-1"), ("title", "甲的读入")])
 }
 
-/// 问一次：交回回包与记下的别名。
+/// 问一次（这台有 tmux）：交回回包与记下的别名。
 fn ask(args: Value, kept: Option<&str>) -> (Result<Value, Fail>, Vec<String>) {
+    ask_on(args, kept, Some(true))
+}
+
+/// 问一次，这台有没有 tmux 由判据给。
+fn ask_on(
+    args: Value,
+    kept: Option<&str>,
+    tmux: Option<bool>,
+) -> (Result<Value, Fail>, Vec<String>) {
     let got = RefCell::new(Vec::new());
     let keep = |a: &str| {
         got.borrow_mut().push(a.to_string());
         Ok(())
     };
     let req: PlanAskReq = serde_json::from_value(args).expect("入参解得出");
-    let out = ask_with(&req, &doc(), &book(), kept, &keep).map(|r| as_json(&r));
+    let out = ask_with(&req, &doc(), &book(), kept, tmux, &keep).map(|r| as_json(&r));
     (out, got.into_inner())
 }
 
@@ -53,7 +62,30 @@ fn a_chosen_alias_says_its_line_then_the_cell_and_is_kept() {
     let out = out.expect("问得出");
     assert_eq!(out["alias"], "look", "{out}");
     assert_eq!(out["line"], format!("{SAY}\n{}", cell_part()), "{out}");
+    assert_eq!(
+        out["title"],
+        copy_core::copy_text("bePlan.ask.title", &[("title", "甲的读入")]),
+        "框顶那一句也由这台写：{out}"
+    );
     assert_eq!(kept, vec!["look".to_string()], "选了的这条记成这台问图用的");
+}
+
+#[test]
+fn a_tmuxless_machine_refuses_with_no_tmux() {
+    let (out, kept) = ask_on(
+        json!({"workspace": "/w", "slice": "alpha", "id": "A1-1", "alias": "look"}),
+        None,
+        Some(false),
+    );
+    let e = out.expect_err("没有 tmux 要拒（开口那句只跟 tmux）");
+    assert_eq!(e.code, crate::NO_TMUX, "{e:?}");
+    assert!(kept.is_empty(), "拒了就不记：{kept:?}");
+    let (out, _) = ask_on(
+        json!({"workspace": "/w", "slice": "alpha", "id": "A1-1"}),
+        None,
+        None,
+    );
+    assert!(out.is_ok(), "探不出 tmux ⇒ 照做：{out:?}");
 }
 
 #[test]

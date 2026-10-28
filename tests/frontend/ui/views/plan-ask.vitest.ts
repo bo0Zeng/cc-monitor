@@ -72,21 +72,21 @@ describe("一格详情头的［问这一块…］", () => {
 });
 
 describe("问图框交出的那一份", () => {
-  it("那台 · 机器锁住 · 目录锁在工作区根 · 开口那句是那台拼的 · 别名预选那台回的那条 · 标题带这一格的标题", () => {
-    const spec = askSpec("gpu-box", "/work/ledger", slice(), cell(), { alias: "look", line: "读图。\n看 A2-1-3「编码探测」这一格：" });
-    expect(spec).toMatchObject({ origin: "gpu-box", lockMachine: true, cwd: "/work/ledger", lockCwd: true, prompt: "读图。\n看 A2-1-3「编码探测」这一格：" });
+  it("那台 · 机器锁住 · 目录锁在工作区根 · 开口那句是那台拼的 · 别名预选那台回的那条 · 框顶那一句照那台写的", () => {
+    const spec = askSpec("gpu-box", "/work/ledger", slice(), cell(), { title: "问图 · 编码探测", alias: "look", line: "读图。\n看 A2-1-3「编码探测」：" });
+    expect(spec).toMatchObject({ origin: "gpu-box", lockMachine: true, cwd: "/work/ledger", lockCwd: true, prompt: "读图。\n看 A2-1-3「编码探测」：" });
     expect(spec.ask?.alias).toBe("look");
-    expect(spec.ask?.title).toBe("plan.ask.title(title=编码探测)");
+    expect(spec.ask?.title).toBe("问图 · 编码探测");
   });
 
   it("没问过图（那台回 null）⇒ 别名不预选", () => {
-    const spec = askSpec("gpu-box", "/work/ledger", slice(), cell(), { alias: null, line: "看 A2-1-3「编码探测」这一格：" });
+    const spec = askSpec("gpu-box", "/work/ledger", slice(), cell(), { title: "t", alias: null, line: "看 A2-1-3「编码探测」：" });
     expect(spec.ask?.alias).toBeNull();
   });
 
   it("改选别名 ⇒ 带上那条再问那台一次，拿回新拼的那句", async () => {
     asked.calls.length = 0;
-    const spec = askSpec("gpu-box", "/work/ledger", slice(), cell(), { alias: null, line: "x" });
+    const spec = askSpec("gpu-box", "/work/ledger", slice(), cell(), { title: "t", alias: null, line: "x" });
     await expect(spec.ask!.relined("look")).resolves.toBe("line-of-look");
     expect(asked.calls).toEqual([["gpu-box", { workspace: "/work/ledger", slice: "ledger", id: "A2-1-3", alias: "look" }]]);
   });

@@ -1,6 +1,7 @@
 //! 问图（`plan-ask`）的帧面宿主：计划页［问这一块…］开框前问这台一次 —— 开口那句由这台拼
-//! （别名合下来的开口那句 `say` ＋「看 {编号}「{标题}」这一格：」），别名预选这台记着的「问图用的」那条。
+//! （别名合下来的开口那句 `say` ＋「看 {编号}「{标题}」：」），框顶那一句也由这台写，别名预选这台记着的「问图用的」那条。
 //!
+//! - 这台没有 tmux ⇒ `no_tmux`（开口那句只跟 tmux）：不开框，界面照 hello 里的「做不到」也能先灰。
 //! - 给了 `alias` ⇒ 那条要在这台的配置文件里、合得下来，记成这台问图用的（[`crate::plan::review`] 的 `ask`，后端自己的状态）；
 //!   没给 ⇒ 用记着的那条，那条已经没了 / 合不下来 ⇒ 不预选（`alias: null`），只给后一半。
 //! - 只读计划（手上上一次读好的那一份；还没读过 ⇒ 现读），计划仓一个字节不写；起会话照旧走 `session-open`
@@ -25,8 +26,16 @@ pub(crate) fn ask_with(
     doc: &PlanRead,
     book: &Book,
     kept: Option<&str>,
+    tmux: Option<bool>,
     keep: Keep,
 ) -> Answer {
+    // 开口那句只跟 tmux（`session-open` 的 `prompt` 只随 `run: tmux`）：这台没有 ⇒ 不开框；探不出 ⇒ 照做，起的那一步再说。
+    if tmux == Some(false) {
+        return Err(Fail::new(
+            crate::NO_TMUX,
+            copy_text("bePlan.ask.noTmux", &[]),
+        ));
+    }
     let no_cell = || Fail::new("no_such_cell", copy_text("bePlan.review.noSuchCell", &[]));
     let sl = doc
         .slices
@@ -34,10 +43,12 @@ pub(crate) fn ask_with(
         .find(|s| s.name == req.slice)
         .ok_or_else(no_cell)?;
     let cell = needs::target(sl, &req.id).ok_or_else(no_cell)?;
-    let part = match cell.title.as_deref().filter(|t| !t.is_empty()) {
+    let named = cell.title.as_deref().filter(|t| !t.is_empty());
+    let part = match named {
         Some(title) => copy_text("bePlan.ask.line", &[("id", &req.id), ("title", title)]),
         None => copy_text("bePlan.ask.lineBare", &[("id", &req.id)]),
     };
+    let title = copy_text("bePlan.ask.title", &[("title", named.unwrap_or(&req.id))]);
     let (alias, say) = match req.alias.as_deref().map(str::trim) {
         Some(a) => {
             let say = say_of(book, a).map_err(|why| {
@@ -59,7 +70,7 @@ pub(crate) fn ask_with(
     } else {
         format!("{say}\n{part}")
     };
-    Ok(PlanAsk { alias, line })
+    Ok(PlanAsk { title, alias, line })
 }
 
 /// 这条别名合下来的开口那句（没写 ⇒ 空）；不在 / 合不下来 ⇒ 那一句。
@@ -84,7 +95,14 @@ fn ask_here(
     let store = crate::assets::aliases::load(files).map_err(|m| Fail::new("refused", m))?;
     let review = crate::plan::review::current(crate::plan::review::review_path().as_deref());
     let keep = |a: &str| crate::plan::review::ask_at(own, a);
-    ask_with(req, &doc, &store.book, review.ask(), &keep)
+    ask_with(
+        req,
+        &doc,
+        &store.book,
+        review.ask(),
+        crate::control::terminals::tmux_here(),
+        &keep,
+    )
 }
 
 typed::codes! {
@@ -96,6 +114,8 @@ typed::codes! {
         NoPb = "no_pb",
         NoSuchAlias = "no_such_alias",
         NoSuchCell = "no_such_cell",
+        /// 这台没有 tmux（开口那句只跟 tmux）。
+        NoTmux = "no_tmux",
         NotWorkspace = "not_workspace",
         PbUnsupported = "pb_unsupported",
         Refused = "refused",
@@ -151,6 +171,8 @@ pub(crate) struct PlanAskReq {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PlanAsk {
+    /// 框顶那一句（「问图 · {标题}」）。
+    pub(crate) title: String,
     /// 预选的别名（这一问给的，或记着的那条）；没有 ⇒ `null`（框里那一格空着，选了才能起）。
     pub(crate) alias: Option<String>,
     /// 开口那句：别名的那句 ＋ 换行 ＋「看 {编号}「{标题}」这一格：」；没有别名 / 别名没写 ⇒ 只有后一半。
