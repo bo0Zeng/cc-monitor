@@ -44,6 +44,8 @@ export const LS_KEYS = {
   tabBarFolded: "cc-monitor.tab-bar.folded",
   /** 终端面板说的那一句还没回执的待发（`{"<那台>\u0000<sid>": {id, sid, text, attachments}}`）：重开还在、接上照同一个编号再交。读写者只有 `session-queue.ts`。 */
   queuePending: "cc-monitor.queue.pending",
+  /** 编辑已发的一句时改到一半的字（`{"<那台>\u0000<sid>\u0000<那一句的 id>": "字"}`）：重开还在，回执到了删。读写者只有 `said-edit.ts`。 */
+  saidEditDrafts: "cc-monitor.said-edit.drafts",
 } as const;
 
 export function safeGet(key: string): string | null {

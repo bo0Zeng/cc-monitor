@@ -23092,6 +23092,54 @@
       "zh": "撤回",
       "args": []
     },
+    "saidEdit.card.edit": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "编辑",
+      "args": []
+    },
+    "saidEdit.bar.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "发送后回退到此句之前，之后的内容不再保留",
+      "args": []
+    },
+    "saidEdit.bar.cancel": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "取消",
+      "args": []
+    },
+    "saidEdit.bar.send": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "发送",
+      "args": []
+    },
+    "saidEdit.pick.loading": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "正在读取回退选项",
+      "args": []
+    },
+    "saidEdit.pick.how": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "回退方式",
+      "args": []
+    },
+    "saidEdit.pick.when": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "回退时机",
+      "args": []
+    },
+    "saidEdit.pick.confirm": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "回退并发送",
+      "args": []
+    },
     "mobChat.delivery.sending": {
       "kind": "body",
       "role": "状态",

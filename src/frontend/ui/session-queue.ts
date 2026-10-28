@@ -16,6 +16,8 @@ import type { QueueCancelled } from "./generated/QueueCancelled";
 import type { QueuePut } from "./generated/QueuePut";
 import type { QueueList } from "./generated/QueueList";
 import type { SessionQueuePutReq } from "./generated/SessionQueuePutReq";
+import type { Rewind } from "./generated/Rewind";
+import type { RewindOptions } from "./generated/RewindOptions";
 import { saidOf } from "./kit/detail";
 import { LS_KEYS, safeGetJson, safeSetJson } from "./local-storage";
 
@@ -38,6 +40,10 @@ export type QueueWatchFn = (origin: Origin, on: (m: QueueMoved) => void) => () =
 const QUEUE_BUDGET_MS = 10_000;
 
 export const CHANNEL_READ: QueueReadFn = (origin, sid) => callTyped(origin, "session-queue-read", { machine: LOCAL_ORIGIN, sid }, budgetWithin(QUEUE_BUDGET_MS));
+
+/** 编辑已发的一句、发送那一下问会话那台给哪几项（`session-rewind-options`）。 */
+export const CHANNEL_REWIND_OPTIONS = (origin: Origin, sid: string): Promise<RewindOptions> =>
+  callTyped(origin, "session-rewind-options", { machine: LOCAL_ORIGIN, sid }, budgetWithin(QUEUE_BUDGET_MS));
 
 export const CHANNEL_CANCEL: QueueCancelFn = (origin, sid, id) =>
   callTyped(origin, "session-queue-cancel", { machine: LOCAL_ORIGIN, sid, id }, budgetWithin(QUEUE_BUDGET_MS));
@@ -110,11 +116,13 @@ export interface Outgoing {
   sid: string;
   text: string;
   attachments: string[];
+  /** 编辑已发的那一句（`said-edit.ts` 确认那一下）：会话那台投递时先退到 `rewind.to` 之前再说它。普通的一句 ⇒ 不在。 */
+  rewind?: Rewind;
 }
 
 /** 新铸一句待发（编号这一端唯一）。 */
-export function outgoing(sid: string, text: string, attachments: string[]): Outgoing {
-  return { id: `${END}-${crypto.randomUUID()}`, sid, text, attachments };
+export function outgoing(sid: string, text: string, attachments: string[], rewind?: Rewind): Outgoing {
+  return { id: `${END}-${crypto.randomUUID()}`, sid, text, attachments, ...(rewind !== undefined ? { rewind } : {}) };
 }
 
 /** 交一次的结局：回执到了（那台写好的那一句）· 那台拒了（那台写好的那一句）· 没回执（留着，接上再交）。 */
@@ -131,6 +139,7 @@ export async function putOnce(put: QueuePutFn, origin: Origin, o: Outgoing): Pro
     atMs: Date.now(),
     text: o.text,
     ...(o.attachments.length > 0 ? { attachments: o.attachments } : {}),
+    ...(o.rewind !== undefined ? { rewind: o.rewind } : {}),
   };
   try {
     const got = await put(origin, req);

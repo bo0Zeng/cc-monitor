@@ -812,6 +812,23 @@
   margin-left: auto;
 }
 
+/* 人说的那一句的「编辑」（`said-edit.ts`）：贴在气泡左边、悬停气泡才显（同分叉按钮那一套）。 */
+.has-said-edit {
+  position: relative;
+}
+
+.said-edit-btn {
+  position: absolute;
+  top: 4px;
+  right: calc(100% + 4px);
+  opacity: 0;
+}
+
+.has-said-edit:hover .said-edit-btn,
+.has-said-edit .said-edit-btn:focus-visible {
+  opacity: 1;
+}
+
 /* assistant 消息：full-width、无背景、无色条 */
 .card-assistant {
   background: transparent;
