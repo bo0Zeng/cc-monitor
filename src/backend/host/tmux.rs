@@ -112,6 +112,7 @@ pub(crate) fn parse_rows(text: &str) -> (Vec<TermRow>, bool) {
         program: l.f[10].into(),
         cwd: l.f[11].into(),
         title: l.f[12].into(),
+        input: super::Input::Shared,
     };
     let mut rows = Vec::new();
     let mut seen: Vec<&str> = Vec::new();

@@ -630,6 +630,16 @@ fn handler_files_of(
 /// 够得着 tmux、却**不**声明 `no_tmux` 的命令 —— 逐条写理由（tmux 在它那里是可选的：问不到就降级，命令本身照做）。
 const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     (
+        "terminal-end",
+        "按名单里的句柄结束：名单两种宿主合一份，没 tmux ⇒ 只剩托管那几行，托管的照结束（托管口挂断子进程组，不碰 tmux）；\
+         tmux 那一行过三道门，过门那一刻 tmux 起不来 ⇒ 落 `kill_failed`",
+    ),
+    (
+        "terminal-take-input",
+        "托管终端的接管：只认托管那一行（经托管口），对上 tmux 那一行才列一次名单说 `not_managed`；没 tmux ⇒ 照做",
+    ),
+    ("terminal-release-input", "同上（交还）"),
+    (
         "session-window",
         "↗ 那一问：本机会话在 tmux 里才问 tmux 谁连着；不在 tmux 里（Windows 恒是）⇒ 链从会话进程自己起，命令照答",
     ),

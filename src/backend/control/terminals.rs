@@ -61,7 +61,7 @@ pub(crate) const KEYS: &[(&str, &str)] = &[
 
 /// 送不了 / 结束不了的原因：线上形住 `cmd-wire::session`（手机端也吃这两格）。
 pub(crate) use cmd_wire::session::Refused;
-use cmd_wire::session::SentAct;
+use cmd_wire::session::{HolderWho, InputHolder, SentAct, TermInput};
 
 /// 这台已经没有它的终端（名单里没有 · 送的那一刻没了 · 窗格里只剩 shell）：输入队投递那一下恢复再送，换模型 / 权限档记下等恢复，同这一判。
 pub(crate) fn terminal_gone(why: Option<Refused>) -> bool {
@@ -96,6 +96,32 @@ pub(crate) fn no_said(why: Refused) -> String {
         Refused::Elsewhere => copy_text("beTerminal.no.elsewhere", &[]),
         Refused::NotResumed => copy_text("beTerminal.no.notResumed", &[]),
         Refused::AttachmentGone => copy_text("beTerminal.no.attachmentGone", &[]),
+        Refused::HeldElsewhere => copy_text("beTerminal.no.heldElsewhere", &[]),
+    }
+}
+
+/// 输入那一格的成品：托管那一形写出此刻的持有者，`mine` ＝ 后端替这次请求自报的那个前端持有着。
+fn input_of_row(input: &crate::host::Input, requester: Option<&str>) -> TermInput {
+    use crate::host::{HeldBy, Input};
+    match input {
+        Input::Shared => TermInput::Shared,
+        Input::Held(by) => {
+            let (who, mine) = match by {
+                None => (HolderWho::None, false),
+                Some(HeldBy::Terminal) => (HolderWho::TerminalWindow, false),
+                Some(HeldBy::Front(f)) => (
+                    if f == "mobile" {
+                        HolderWho::Mobile
+                    } else {
+                        HolderWho::Desktop
+                    },
+                    requester == Some(f.as_str()),
+                ),
+            };
+            TermInput::Held {
+                holder: InputHolder { who, mine },
+            }
+        }
     }
 }
 
@@ -105,7 +131,7 @@ pub(crate) fn terminal_json(
     clients: &[(String, u64, u64)],
     requester: Option<&str>,
 ) -> TerminalItem {
-    let who = gate::identity(&row.name, &row.client, &row.sid, requester);
+    let who = gate::identity_of(row, requester);
     let input = match who {
         Who::Pass => Ability::Yes,
         Who::OtherClient => super::terminals_wire::refused(Refused::NotYours),
@@ -131,8 +157,8 @@ pub(crate) fn terminal_json(
     let nonempty = |s: &str| (!s.is_empty()).then(|| s.to_string());
     TerminalItem {
         terminal: row.handle(),
-        host: row.host.as_wire().to_string(),
-        tmux_name: row.name.clone(),
+        host: row.host,
+        name: row.name.clone(),
         title,
         program: row.program.clone(),
         cwd: row.cwd.clone(),
@@ -153,7 +179,7 @@ pub(crate) fn terminal_json(
                 last_activity: *last,
             })
             .collect(),
-        input: "shared".to_string(),
+        input: input_of_row(&row.input, requester),
         state,
         last_activity: row.activity,
         // 抓屏不过身份门、恒可用 ⇒ 不在这里占一格（`can` 只放会随调用方 / 此刻变的能力）。
@@ -530,6 +556,17 @@ pub(crate) fn preview_on(
     let color = req.color.unwrap_or(true);
     let asked = req.scrollback.unwrap_or(0);
     let back = asked.min(u64::from(MAX_SCROLLBACK)) as u32;
+    if let Some(row) = managed_row(&target)? {
+        let view = managed_view(&row.id, color, back)?;
+        let at = now_secs();
+        return Ok(preview_reply(
+            &view,
+            color,
+            asked > u64::from(MAX_SCROLLBACK),
+            at,
+            &crate::common::time::secs_hms(i64::try_from(at).unwrap_or(i64::MAX), tz),
+        ));
+    }
     let (rows, _, _) = rows_on(on)?;
     let row = match find(&rows, &target) {
         Found::One(r) => r,
@@ -783,6 +820,9 @@ fn send_on(
 ) -> Result<Sent, CmdErr> {
     let target = target(req.terminal.as_deref(), req.sid.as_deref())?;
     let input = input_of(req)?;
+    if let Some(row) = managed_row(&target)? {
+        return send_managed(&row, req, &input, takes);
+    }
     let seen = req.seen_screen.clone();
     let at = match admit_on(on, &target, req.client.as_deref(), takes)? {
         Ok((_, at)) => at,
@@ -818,6 +858,191 @@ fn send_on(
         Some(_) => Ok(input_reply(SentResult::Unsure, None, None)),
         None => Ok(refused(Refused::Ended)),
     }
+}
+
+// ── 托管那一形（抓屏 · 送字 · 接管 · 交还：经宿主口的托管那一臂，不起 tmux）────────────────
+
+/// 目标对上的托管那一行（只看托管名单：不在里面 ⇒ `None`，交 tmux 那一形）。几个托管终端挂着同一个 sid ⇒ `ambiguous`。
+fn managed_row(target: &Target) -> Result<Option<TermRow>, CmdErr> {
+    let (rows, _) = crate::host::managed::listed();
+    match find(&rows, target) {
+        Found::One(r) => Ok(Some(r.clone())),
+        Found::NotKnown => Ok(None),
+        Found::Ambiguous => Err(CmdErr::from((
+            "ambiguous",
+            crate::common::contract::malformed(
+                "more than one terminal carries this sid; point at one by `terminal`",
+            ),
+        ))),
+    }
+}
+
+/// 托管口那一下没成 ⇒ 「那个终端在读的时候没了」（原话进复制详情）。
+fn managed_gone(e: &std::io::Error) -> CmdErr {
+    CmdErr::new(
+        "no_such_session",
+        crate::common::contract::malformed("the hosted terminal did not answer"),
+    )
+    .with_raw(Some(&e.to_string()))
+}
+
+/// 托管终端的一屏（托管口 `capture`）⇒ 与 tmux 那一形同一份 [`View`]（之后的成品 · 指纹同一套）。
+fn managed_view(id: &str, color: bool, back: u32) -> Result<View, CmdErr> {
+    let got =
+        crate::host::managed::capture(id, back as usize, color).map_err(|e| managed_gone(&e))?;
+    let mut text = got.lines.join("\n");
+    text.push('\n');
+    Ok(View {
+        text,
+        cols: u32::from(got.size.cols),
+        rows: u32::from(got.size.rows),
+        cursor_x: u32::from(got.cursor[1]),
+        cursor_y: u32::from(got.cursor[0]),
+        cursor_visible: true,
+    })
+}
+
+/// 后端替哪个前端持有：请求自报的那个；没报 ⇒ 桌面（手机恒自报 `mobile`）。
+fn front_of(requester: Option<&str>) -> String {
+    requester.unwrap_or("desktop").to_string()
+}
+
+/// 键表里的 tmux 键名 ⇒ 送进伪终端的字节（`xterm` 那一套，与 `TERM=xterm-256color` 一致）。
+fn key_bytes(tmux: &str) -> &'static [u8] {
+    match tmux {
+        "Escape" => b"\x1b",
+        "C-c" => b"\x03",
+        "C-d" => b"\x04",
+        "Up" => b"\x1b[A",
+        "Down" => b"\x1b[B",
+        "Right" => b"\x1b[C",
+        "Left" => b"\x1b[D",
+        "Tab" => b"\t",
+        "BTab" => b"\x1b[Z",
+        "Enter" => b"\r",
+        "BSpace" => b"\x7f",
+        "PPage" => b"\x1b[5~",
+        "NPage" => b"\x1b[6~",
+        _ => b"",
+    }
+}
+
+/// 送字那一份字节：粘的那几段各包一次括号粘贴；正文多行 ⇒ 也包括号粘贴（同 tmux 那一形按粘贴送）；要回车 ⇒ 补一个 `\r`。
+pub(crate) fn managed_bytes(input: &Input, pastes: &[String]) -> Vec<u8> {
+    let paste = |out: &mut Vec<u8>, s: &str| {
+        out.extend_from_slice(b"\x1b[200~");
+        out.extend_from_slice(s.as_bytes());
+        out.extend_from_slice(b"\x1b[201~");
+    };
+    let mut out = Vec::new();
+    match input {
+        Input::Text { text, enter } => {
+            for p in pastes {
+                paste(&mut out, p);
+            }
+            if text.contains('\n') {
+                paste(&mut out, text);
+            } else {
+                out.extend_from_slice(text.as_bytes());
+            }
+            if *enter {
+                out.push(b'\r');
+            }
+        }
+        Input::Key(k) => out.extend_from_slice(key_bytes(k)),
+    }
+    out
+}
+
+/// [`send_on`] 的托管那一臂：过门（按行事实）→ `takes` → 输入在不在这个前端手里（不在：带了 `take` ⇒ 先接管，否则 `held_elsewhere`）
+/// → 比画面 → 经持有的那一条送。
+fn send_managed(
+    row: &TermRow,
+    req: &TerminalInputReq,
+    input: &Input,
+    takes: impl Fn(&TermRow) -> bool,
+) -> Result<Sent, CmdErr> {
+    let requester = gate::requester(req.client.as_deref())?;
+    match gate::identity_of(row, requester.as_deref()) {
+        Who::Pass => {}
+        Who::OtherClient => return Ok(refused(Refused::NotYours)),
+        Who::NotOurs => return Ok(refused(Refused::NotManaged)),
+    }
+    if !takes(row) {
+        return Ok(refused(Refused::Ended));
+    }
+    let front = front_of(requester.as_deref());
+    use crate::host::managed::hold;
+    if hold::holder(&row.id).as_deref() != Some(front.as_str()) {
+        if req.take != Some(true) {
+            return Ok(refused(Refused::HeldElsewhere));
+        }
+        if crate::host::managed::take(&row.id, &front).is_err() {
+            return Ok(refused(Refused::Ended));
+        }
+    }
+    if let Some(seen) = &req.seen_screen {
+        let v = managed_view(&row.id, false, 0)?;
+        let mut style = Style::default();
+        let plain: Vec<String> = split_lines(&v.text)
+            .into_iter()
+            .map(|l| parse_line(l, &mut style).0)
+            .collect();
+        let now = fingerprint(&plain, v.rows);
+        if now != *seen {
+            return Ok(input_reply(
+                SentResult::Refused,
+                Some(Refused::ScreenChanged),
+                Some(&now),
+            ));
+        }
+    }
+    match hold::send(&row.id, &managed_bytes(input, &req.pastes)) {
+        Ok(true) => Ok(input_reply(SentResult::Delivered, None, None)),
+        Ok(false) => Ok(refused(Refused::HeldElsewhere)),
+        Err(_) => Ok(input_reply(SentResult::Unsure, None, None)),
+    }
+}
+
+/// `terminal-take-input` · `terminal-release-input` 的本体：只认托管那一形（tmux 各端都能打字，没有持有 ⇒ `not_managed`）；
+/// 过门（按行事实）之后替请求自报的前端接管 / 交还，回那一行此刻的输入那一格。
+pub(crate) fn hold_on(
+    terminal: &str,
+    client: Option<&str>,
+    take: bool,
+) -> Result<TermInput, CmdErr> {
+    let requester = gate::requester(client)?;
+    let t = target(Some(terminal), None)?;
+    let Some(row) = managed_row(&t)? else {
+        let (rows, _, _) = crate::host::list(On::default())?;
+        return Err(match find(&rows, &t) {
+            Found::NotKnown => not_known("not_known"),
+            _ => CmdErr::new(
+                "not_managed",
+                crate::common::contract::malformed(
+                    "a tmux terminal takes input from every end; nothing to hold",
+                ),
+            ),
+        });
+    };
+    if gate::identity_of(&row, requester.as_deref()) != Who::Pass {
+        return Err(CmdErr::new(
+            "not_yours",
+            crate::common::contract::malformed("this terminal belongs to another front end"),
+        ));
+    }
+    let front = front_of(requester.as_deref());
+    if take {
+        crate::host::managed::take(&row.id, &front).map_err(|e| managed_gone(&e))?;
+    } else if crate::host::managed::hold::holder(&row.id).as_deref() == Some(front.as_str()) {
+        crate::host::managed::hold::release(&row.id);
+    }
+    let (rows, _) = crate::host::managed::listed();
+    let now = rows
+        .iter()
+        .find(|r| r.id == row.id)
+        .map_or(crate::host::Input::Held(None), |r| r.input.clone());
+    Ok(input_of_row(&now, requester.as_deref()))
 }
 
 #[cfg(test)]

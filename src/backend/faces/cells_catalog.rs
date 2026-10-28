@@ -1036,7 +1036,7 @@ mod specimens {
                         title: s("t"),
                         face: SessionFace::of(Life::Live {
                             activity: Some(SessionActivity::Working),
-                            tmux: None,
+                            host: None,
                         }),
                         hidden: crate::history::session_hidden::judge(
                             &crate::history::session_hidden::Facts {
@@ -1050,7 +1050,7 @@ mod specimens {
                         title: s("t"),
                         face: SessionFace::of(Life::Live {
                             activity: Some(SessionActivity::Working),
-                            tmux: None,
+                            host: None,
                         }),
                         hidden: crate::history::session_hidden::judge(
                             &crate::history::session_hidden::Facts {
@@ -1103,7 +1103,7 @@ mod specimens {
             label: crate::common::cells::Words("t".into()),
             face: crate::wire::SessionFace::of(crate::wire::Life::Live {
                 activity: Some(crate::agents::SessionActivity::NeedsYou),
-                tmux: None,
+                host: None,
             }),
             needs: Needs {
                 kind: NeedsKind::Approve,
@@ -1169,7 +1169,7 @@ mod specimens {
             path: some("/p"),
             face: crate::wire::SessionFace::of(crate::wire::Life::Live {
                 activity: Some(activity),
-                tmux: None,
+                host: None,
             })
             .under(some("b")),
             name_face: named(),
@@ -1203,7 +1203,7 @@ mod specimens {
                     sid: s("s"),
                     face: crate::wire::SessionFace::of(crate::wire::Life::Live {
                         activity: Some(a),
-                        tmux: None,
+                        host: None,
                     })
                     .under(some("b")),
                     name_face: named(),

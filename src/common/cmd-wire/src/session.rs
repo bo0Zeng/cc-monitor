@@ -41,6 +41,8 @@ pub enum Refused {
     NotResumed,
     /// 带的附件里有那台已经不在的（过了七天清掉 · 撤过）：一个字都没送，`gone` 列出那几个编号（投递那一下才有）。
     AttachmentGone,
+    /// 托管终端的输入此刻在别的一端手里（`terminal-input` 没带 `take`）：没送。
+    HeldElsewhere,
 }
 
 /// `terminal-input` 的回包：送到了 · 不知道送没送到（别重发）· 被拒（原因码 ＋ 那一句；画面变了带新指纹）。
@@ -137,11 +139,10 @@ pub struct TerminalsList {
 pub struct TerminalItem {
     /// 名单里那一行的不透明句柄（前端不拼、不解析；送字 / 抓屏时交回）。
     pub terminal: String,
-    /// 终端宿主（这一版是 `tmux`）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "\"tmux\""))]
-    pub host: String,
-    /// tmux 会话名。
-    pub tmux_name: String,
+    /// 终端宿主。
+    pub host: crate::frame::TerminalHost,
+    /// 给人看的名（tmux：会话名；托管：`ccm --attach <名>` 认的那个名）。
+    pub name: String,
     /// 里面跑着会话、前台是 agent 时是窗格标题；否则是前台程序名。
     pub title: String,
     /// 前台程序名。
@@ -156,9 +157,8 @@ pub struct TerminalItem {
     pub started_by: StartedBy,
     /// 此刻连着它的终端客户端；空 ＝ 后台。
     pub clients: Vec<Attached>,
-    /// 输入方式：`shared`（tmux：各端都能打字）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "\"shared\""))]
-    pub input: String,
+    /// 输入怎么进：`shared`（tmux：各端都能打字）· `held`（托管：只有持有者的进）。
+    pub input: TermInput,
     /// 此刻的样子。
     pub state: TermState,
     /// 最近动静（秒）。
@@ -166,6 +166,76 @@ pub struct TerminalItem {
     pub last_activity: u64,
     /// 这个调用方能做什么（抓屏不过身份门、恒可用，不在这里）。
     pub can: TerminalCan,
+}
+
+/// 名单一行的输入怎么进。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TermInput {
+    /// tmux：连着的各端都能打字。
+    Shared,
+    /// 托管：只收持有者的。
+    Held { holder: InputHolder },
+}
+
+/// 托管终端此刻的输入持有者。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct InputHolder {
+    /// 哪一端。
+    pub who: HolderWho,
+    /// 是不是这次请求自报的那个前端。
+    pub mine: bool,
+}
+
+/// `terminal-take-input` · `terminal-release-input` 的回包：那一行此刻的输入那一格。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct InputNow {
+    pub input: TermInput,
+}
+
+/// `terminal-end` 的回包：结束了的那个终端（名单里的句柄）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct TerminalEnded {
+    pub terminal: String,
+}
+
+/// 持有输入的是哪一端。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum HolderWho {
+    /// 一个真终端（用户的终端窗口 · ssh 进来的终端 · 手机的 SSH 终端）。
+    TerminalWindow,
+    /// 桌面经后端持有。
+    Desktop,
+    /// 手机经后端持有。
+    Mobile,
+    /// 此刻没人持有。
+    None,
 }
 
 /// 名单一行里跑着的会话。

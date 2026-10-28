@@ -450,6 +450,15 @@ fn tl2_fn_body<'a>(src: &'a str, name: &str) -> &'a str {
     &tail[..tail.find("\n}").expect("函数没收尾")]
 }
 
+/// 过门的命令里，把门的某个码当场翻成自己的那几格：`(命令, 门的码, 翻成什么 · 为什么)`。翻的那一处在实现里（变异：删掉那一处翻码，
+/// 那个码就会原样上线、而 `codes` 没列它 —— 本条照登记放过，那一格自己的行为判据钉着翻码）。
+const GATE_CODES_RECAST: &[(&str, &str, &str)] = &[(
+    "terminal-end",
+    "no_tmux",
+    "`kill.rs::end_terminal`：只有名单里有 tmux 那一行才过三道门，过门那一刻 tmux 起不来 ⇒ `kill_failed`；\
+     不声明 `no_tmux`：没 tmux 的机器上托管那一行照结束（`kill_tests` 钉着）",
+)];
+
 /// 要求住址：`INVARIANTS §34`（tmux 破坏性 / 半破坏性命令三道门）· `INVARIANTS §42`（线上契约文档与代码不许漂）。
 ///
 /// C4e 交上来的缺口逐字：「`launch` 那条后端登记表的 `codes` **没列 `wrong_owner`**，而 `control/launch.rs::run` 经 `gate::admit` 真会回它」。
@@ -553,8 +562,14 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
                 if !prod.contains(&format!("gate::{door}(")) {
                     continue;
                 }
-                let have: std::collections::BTreeSet<String> =
+                let mut have: std::collections::BTreeSet<String> =
                     spec.codes.iter().map(|s| s.to_string()).collect();
+                // 照实现说过的翻码：那一格把门的这几个码换成了自己的（翻成什么、为什么住 `GATE_CODES_RECAST`）。
+                for (cmd, code, _) in GATE_CODES_RECAST {
+                    if *cmd == spec.name {
+                        have.insert((*code).to_string());
+                    }
+                }
                 let missing: Vec<_> = want.difference(&have).collect();
                 assert!(
                     missing.is_empty(),
@@ -568,11 +583,14 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
     }
     checked.sort();
     checked.dedup();
-    // 正控 ＋ 人群：今天登记表里直接过门的恰好是 kill（admit_destructive）；`admit` 由 `session-open` · 换号重启经
+    // 正控 ＋ 人群：今天登记表里直接过门的恰好是 kill 与 terminal-end（admit_destructive，tmux 那一形）；`admit` 由 `session-open` · 换号重启经
     //   `launch::run` 在里头过（码各自翻成自己的），`terminal-input` 那一路过的是 `admit_with`。多了少了都要回来看一眼。
     assert_eq!(
         checked,
-        vec![("kill", "admit_destructive")],
+        vec![
+            ("kill", "admit_destructive"),
+            ("terminal-end", "admit_destructive")
+        ],
         "过门的命令变了"
     );
 }

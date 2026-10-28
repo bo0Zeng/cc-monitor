@@ -386,7 +386,7 @@ fn a_codex_round_ending_turns_the_session_idle_and_the_next_round_turns_it_worki
     };
     assert_eq!(
         face.name,
-        crate::wire::SessionFace::of(crate::wire::Life::Reading { tmux: None }).name,
+        crate::wire::SessionFace::of(crate::wire::Life::Reading { host: None }).name,
         "宣告那一帧说的不是「读记录中」"
     );
     let append = |r: &Rig, s: &str| {

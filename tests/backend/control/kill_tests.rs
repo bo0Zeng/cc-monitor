@@ -157,3 +157,70 @@ fn an_off_shape_sid_does_not_decode() {
         Some("0473c3a0-1111-2222-3333-444455556666")
     );
 }
+
+// ── `terminal-end` ───────────────────────────────────────────────────
+
+/// 这台没有 tmux server（私有 socket 指向一个不存在的路径：名单里 tmux 那一臂是空的）：托管那一行照结束，不回 `no_tmux`。
+/// 假子进程（`sh`）、沙箱数据目录，不起真 claude。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn terminal_end_ends_a_hosted_terminal_where_there_is_no_tmux() {
+    use crate::host::managed::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+    use crate::host::managed::wire::{read_frame, Ctl, Frame, Want};
+    let (own, data) = sandbox_own("end-cmd");
+    let script = r#"trap 'exit 7' HUP; printf 'ready\r\n'; while :; do read x; done"#;
+    // 用户在自己的终端里敲 `cc` 起的（`client` 同 tmux 那一形的 `@ccm_client`：`ccm` ＝ 用户的终端）。
+    let mut s = spec("t-endcmd", script);
+    s.client = crate::control::gate_rules::CLIENT_TERMINAL.into();
+    let (sock, task) = start(&own, s).await;
+    let mut viewer = hello(&sock, Want::View).await;
+    read_until_out(&mut viewer, "ready").await;
+    let bogus = data.join("no-tmux-here").to_string_lossy().into_owned();
+    let o = own.clone();
+    let b = bogus.clone();
+    let got = tokio::task::spawn_blocking(move || {
+        end_terminal(
+            crate::host::tmux::On { socket: Some(&b) },
+            Some(&o),
+            &TerminalEndReq {
+                terminal: Some("t-endcmd".into()),
+                ..TerminalEndReq::default()
+            },
+        )
+    })
+    .await
+    .expect("线没崩");
+    assert_eq!(
+        got.map_err(|f| f.code),
+        Ok(TerminalEnded {
+            terminal: "t-endcmd".into()
+        })
+    );
+    loop {
+        match read_frame(&mut viewer).await.expect("读") {
+            Some(Frame::Ctl(Ctl::Ended { .. })) | None => break,
+            Some(_) => {}
+        }
+    }
+    task.await.expect("任务没崩").expect("跑完");
+    assert!(
+        crate::host::managed::rows_at(&own).is_empty(),
+        "名单里那一行没了"
+    );
+    // 名单里没有的 ⇒ `not_known`。
+    let o = own.clone();
+    let gone = tokio::task::spawn_blocking(move || {
+        end_terminal(
+            crate::host::tmux::On {
+                socket: Some(&bogus),
+            },
+            Some(&o),
+            &TerminalEndReq {
+                terminal: Some("t-endcmd".into()),
+                ..TerminalEndReq::default()
+            },
+        )
+    })
+    .await
+    .expect("线没崩");
+    assert_eq!(gone.map_err(|f| f.code), Err("not_known".to_string()));
+}

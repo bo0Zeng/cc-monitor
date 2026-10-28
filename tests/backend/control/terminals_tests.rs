@@ -84,6 +84,7 @@ fn row(id: &str, name: &str, sid: &str, client: &str, program: &str) -> TermRow 
         program: program.into(),
         cwd: "/p".into(),
         title: "t".into(),
+        input: crate::host::Input::Shared,
     }
 }
 
@@ -515,7 +516,7 @@ impl Iso {
             .as_array()
             .unwrap()
             .iter()
-            .find(|t| t["tmux_name"] == name)
+            .find(|t| t["name"] == name)
             .unwrap_or_else(|| panic!("名单里没有 {name}：{l}"))["terminal"]
             .as_str()
             .unwrap()
@@ -746,7 +747,7 @@ fn on_a_real_tmux_a_sid_reaches_its_own_pane_not_the_active_one() {
         .as_array()
         .unwrap()
         .iter()
-        .map(|t| format!("{}:{}", t["tmux_name"], t["session"]["sid"]))
+        .map(|t| format!("{}:{}", t["name"], t["session"]["sid"]))
         .collect();
     assert_eq!(
         sids,
@@ -850,7 +851,7 @@ fn on_a_real_tmux_a_line_for_a_session_goes_only_to_its_agent_not_to_the_shell_l
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|t| t["tmux_name"] == name && t["program"] == want);
+                .any(|t| t["name"] == name && t["program"] == want);
             if !hit {
                 std::thread::sleep(std::time::Duration::from_millis(20));
             }
@@ -1123,4 +1124,39 @@ fn a_row_carries_no_constant_purpose() {
 fn screen_fingerprint_value_is_pinned() {
     let lines: Vec<String> = ["a ", "b", "c  "].map(String::from).to_vec();
     assert_eq!(fingerprint(&lines, 2), "fff1451912fbad5a");
+}
+
+/// 托管那一形送进伪终端的字节：一行字 ＋ 回车 ⇒ 原样 ＋ `\r`；多行 ⇒ 包括号粘贴；粘的那几段各包一次；键照 xterm 那一套。
+#[test]
+fn hosted_input_turns_into_the_bytes_a_terminal_would_send() {
+    let text = |t: &str, enter: bool| Input::Text {
+        text: t.into(),
+        enter,
+    };
+    assert_eq!(managed_bytes(&text("hi", true), &[]), b"hi\r".to_vec());
+    assert_eq!(managed_bytes(&text("hi", false), &[]), b"hi".to_vec());
+    assert_eq!(
+        managed_bytes(&text("a\nb", true), &[]),
+        b"\x1b[200~a\nb\x1b[201~\r".to_vec()
+    );
+    assert_eq!(
+        managed_bytes(&text("", true), &["/p.png".into()]),
+        b"\x1b[200~/p.png\x1b[201~\r".to_vec()
+    );
+    for (wire, bytes) in [
+        ("esc", &b"\x1b"[..]),
+        ("ctrl-c", b"\x03"),
+        ("up", b"\x1b[A"),
+        ("shift-tab", b"\x1b[Z"),
+        ("enter", b"\r"),
+        ("backspace", b"\x7f"),
+        ("page-down", b"\x1b[6~"),
+    ] {
+        let k = KEYS.iter().find(|(w, _)| *w == wire).expect("键表里有").1;
+        assert_eq!(managed_bytes(&Input::Key(k), &[]), bytes.to_vec(), "{wire}");
+    }
+    // 键表里每一颗都有字节（漏一颗 ⇒ 托管那一形按了没反应）。
+    for (wire, k) in KEYS {
+        assert!(!managed_bytes(&Input::Key(k), &[]).is_empty(), "{wire}");
+    }
 }

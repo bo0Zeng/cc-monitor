@@ -33,7 +33,7 @@ pub(crate) struct Facts {
     /// 哪一家（`claude` · `codex` …；起的时候 ccm 交来，后端 `tag` 可改）。
     #[serde(default)]
     pub(crate) agent: String,
-    /// 谁起的（`terminal` · `desktop` · `mobile`），门按它判。
+    /// 谁起的（词同 tmux 那一形的 `@ccm_client`：`ccm` ＝ 用户自己的终端 · `desktop` · `mobile`；空 ＝ 没声明），门按它判（`gate::identity_of`）。
     #[serde(default)]
     pub(crate) client: String,
     /// 后端写来的会话 id。

@@ -126,14 +126,14 @@ fn row_of(
     if !attached {
         tags.push(BoardTag::Background);
     }
-    let find = format!("{title}\n{cwd}\n{}", t.tmux_name).to_lowercase();
+    let find = format!("{title}\n{cwd}\n{}", t.name).to_lowercase();
     Some((
         band(dot, attached),
         t.last_activity,
         BoardRow {
             key: t.terminal.clone(),
             terminal: t.terminal.clone(),
-            tmux_name: t.tmux_name.clone(),
+            tmux_name: t.name.clone(),
             sid,
             dot,
             dot_name,

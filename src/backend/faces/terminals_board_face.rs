@@ -79,7 +79,7 @@ pub(crate) fn here(req: &BoardHereReq) -> Result<BoardHere, BoardHereErr> {
                 .and_then(|a| a.account.clone()),
             face: crate::wire::SessionFace::of(crate::wire::Life::Live {
                 activity: *activity,
-                tmux: Some(true),
+                host: Some(crate::wire::Housed::In(crate::wire::TerminalHost::Tmux)),
             }),
         })
     };

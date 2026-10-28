@@ -706,7 +706,7 @@ pub(crate) fn live_needs(
                 )),
                 face: crate::wire::SessionFace::of(crate::wire::Life::Live {
                     activity: Some(crate::agents::SessionActivity::NeedsYou),
-                    tmux: None,
+                    host: None,
                 }),
                 // 那台说在等 ⇒ 配上它在等什么；只挂着请求（挡着终端的那种 pidfile 不说在等）⇒ 交 `dress` 配请求。
                 needs: dress(

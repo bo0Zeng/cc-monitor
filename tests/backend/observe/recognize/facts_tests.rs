@@ -1428,7 +1428,7 @@ fn waiting_row(sid: &str, tier: usize, waited: Option<u64>) -> cmd_wire::needs::
         face: <crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(
             crate::wire::Life::Live {
                 activity: Some(crate::agents::SessionActivity::NeedsYou),
-                tmux: None,
+                host: None,
             },
         ),
         needs: ranked(tier, waited),
