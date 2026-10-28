@@ -146,7 +146,7 @@ describe("栏顶拆分按钮 · 命令面板那一条", () => {
     expect(text).toContain(copyText("setMenu.list.edit"));
   });
 
-  it("窄栏只剩「＋」：点了开同一张菜单；这台没存过组 ⇒ 只有「新建一组…」", async () => {
+  it("窄栏里「＋」也开新建框（组菜单只在「⌄」）", async () => {
     h.readProfiles.mockResolvedValue({ sets: [] });
     document.body.dataset.tabBar = "folded";
     const hs = host();
@@ -154,9 +154,9 @@ describe("栏顶拆分按钮 · 命令面板那一条", () => {
     document.body.appendChild(el);
     el.querySelector<HTMLButtonElement>('[data-role="new-session"]')!.click();
     await flush();
-    expect(hs.newSession).not.toHaveBeenCalled();
-    expect(document.body.textContent).toContain(copyText("setMenu.list.create"));
-    expect(h.planSet).not.toHaveBeenCalled();
+    expect(hs.newSession).toHaveBeenCalledTimes(1);
+    expect(document.body.querySelector("[role=menu]")).toBeNull();
+    delete document.body.dataset.tabBar;
   });
 
   it("命令面板「起一组…」开的是同一张组菜单", async () => {

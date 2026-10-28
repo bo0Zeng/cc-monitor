@@ -748,9 +748,10 @@ export class TerminalPage {
     this.dropWaiting(key, o);
     this.sending = false;
     this.paint();
+    // 没撤成同撤名单里那一条：说那台那一句（多半是离线 · 读不出名单），不吞。
     void this.attachReads.cancel(origin, sid, id).then(
       (r) => this.gotQueue(key, r.queue),
-      () => {},
+      (e: unknown) => this.showNote({ text: saidOf(e), tone: "error", detail: detailOf(e) }),
     );
   }
 

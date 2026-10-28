@@ -13,6 +13,7 @@ import type { QueueItem } from "../../../src/frontend/ui/generated/QueueItem";
 import type { QueueList } from "../../../src/frontend/ui/generated/QueueList";
 import { ChanError } from "../../../src/comms/inward/chan";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { saidOf } from "../../../src/frontend/ui/kit/detail";
 
 const SLOT: Watched = { kind: "slot", origin: "devbox", terminal: "%7", name: "web-1", title: "web-console" };
 const ROW: TerminalRow = { terminal: "%7", name: "web-1", sid: "s-1", clients: 0, input: "shared", programExited: false, inputNo: null };
@@ -151,5 +152,18 @@ describe("终端面板的输入队那一排", () => {
     expect(cancel).toHaveBeenCalledWith("devbox", "s-1", id);
     expect(rows(page)).toEqual([]);
     expect(box(page).value).toBe("算了");
+  });
+
+  it("撤待发那一问回拒 ⇒ 写那台那一句（不吞）", async () => {
+    const down = new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "no-answer");
+    const { page, cancel } = await opened({ put: async () => Promise.reject(down) });
+    const refused = new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "cancel-refused");
+    cancel.mockImplementationOnce(async () => Promise.reject(refused));
+    box(page).value = "算了";
+    box(page).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    await flush();
+    cancelOf(page, 0).click();
+    await flush();
+    expect(page.el.textContent).toContain(saidOf(refused));
   });
 });

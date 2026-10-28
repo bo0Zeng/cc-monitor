@@ -160,7 +160,6 @@ const ASK_CALLERS = [
   "src/frontend/ui/settings/config-page.ts",
   "src/frontend/ui/settings/machine-card.ts",
   "src/frontend/ui/settings/panel.ts",
-  "src/frontend/ui/tab-rename.ts", // 标签页改名 · 历史页改标题：没有栏 / 历史页走对话框问名字
   "src/frontend/ui/views/history.ts",
   "src/frontend/ui/views/plan.ts",
 ];
