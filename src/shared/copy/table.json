@@ -31203,7 +31203,7 @@
     "beRotation.line.out": {
       "kind": "body",
       "role": "片段",
-      "zh": "此刻用不了",
+      "zh": "此刻不可用",
       "args": []
     },
     "beRotation.line.off": {
@@ -31366,7 +31366,7 @@
     "rot.order.groupOut": {
       "kind": "title",
       "role": "标题",
-      "zh": "此刻用不了",
+      "zh": "此刻不可用",
       "args": []
     },
     "rot.order.groupOff": {
@@ -31394,26 +31394,26 @@
       "args": []
     },
     "rot.order.lifted": {
-      "kind": "aria",
-      "role": "读屏",
-      "zh": "已拿起 · ↑↓ 挪，空格放下，Esc 取消",
+      "kind": "body",
+      "role": "说明",
+      "zh": "已拿起 · 上下键挪动 · 空格放下 · Esc 取消",
       "args": []
     },
     "rot.order.atFirst": {
-      "kind": "aria",
-      "role": "读屏",
-      "zh": "第 1 格 · 放下即换过去",
+      "kind": "body",
+      "role": "说明",
+      "zh": "首格 · 放下即换过去",
       "args": []
     },
     "rot.order.dropped": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "body",
+      "role": "说明",
       "zh": "已放下",
       "args": []
     },
     "rot.order.cancel": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "body",
+      "role": "说明",
       "zh": "已取消 · 回到原位",
       "args": []
     },
