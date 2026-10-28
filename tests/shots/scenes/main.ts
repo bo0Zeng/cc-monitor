@@ -7,6 +7,7 @@ import { Convo } from "../fake/records";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { answerConvo, defaultWorld, LOCAL, session } from "../fake/world";
 import { byText, click, hover, mainReady, openTab, rightClick, scrollStream, settled, sleep, streamScroller, until, waitFor } from "./helpers";
+import { SAID_EDIT_SCENES } from "./said-edit";
 
 const W = 1280;
 const H = 800;
@@ -576,5 +577,7 @@ export const MAIN_SCENES: Scene[] = [
     await mainReady(ALL_TABS);
     await openCard("table", 0, "center");
   }),
+  // 消息流里编辑已发的那一句（一份另写，接在主窗口这份清单里）。
+  ...SAID_EDIT_SCENES,
 ];
 
