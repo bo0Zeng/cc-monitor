@@ -14,6 +14,8 @@ use copy_core::copy_text;
 /// `--ccm-tmux` / `--ccm-agent` 带前缀：claude 自己有 `--tmux` / `--agent`。
 pub(crate) mod flag {
     pub(crate) const TMUX: &str = "--ccm-tmux";
+    /// `--hosted`：放进 cc-monitor 托管的终端（`host/managed`）。不在 tmux 窗格里敲、这台能托管时缺省就是它（`plan::container_host`）。
+    pub(crate) const HOSTED: &str = "--hosted";
     pub(crate) const TMUX_BASE: &str = "--tmux-base";
     pub(crate) const TMUX_SIZE: &str = "--tmux-size";
     pub(crate) const DETACH: &str = "--detach";
@@ -87,6 +89,8 @@ impl Defaults {
     pub(crate) const CWD: CwdSpec = CwdSpec::Auto;
     /// 不给 `--tmux` ⇒ 不进容器路。
     pub(crate) const USE_TMUX: bool = false;
+    /// 不给 `--hosted` ⇒ 照在不在 tmux 里 · 这台能不能托管定（`plan::container_host`）。
+    pub(crate) const HOSTED: bool = false;
     /// 不给 `--base` ⇒ 不是基座态。
     pub(crate) const USE_BASE: bool = false;
     /// 不给 `--detach` ⇒ 建完接进去。
@@ -107,6 +111,8 @@ pub(crate) struct Opts {
     /// `--attach <名>`；空 = 没给（起会话）。
     pub(crate) attach_name: String,
     pub(crate) use_tmux: bool,
+    /// `--hosted`。
+    pub(crate) hosted: bool,
     pub(crate) tmux_name: String,
     pub(crate) tmux_base: String,
     /// 空串 = **没给** —— 它与「给了一个空值」在本 CLI 上同形（bash 那侧也是）。
@@ -193,6 +199,7 @@ pub(crate) fn blank_opts(left: &[String]) -> Opts {
     Opts {
         attach_name: String::new(),
         use_tmux: Defaults::USE_TMUX,
+        hosted: Defaults::HOSTED,
         tmux_name: String::new(),
         tmux_base: String::new(),
         account: String::new(),
@@ -221,6 +228,7 @@ pub(crate) fn blank_opts(left: &[String]) -> Opts {
 pub(crate) const RIGHT_WORDS: &[&str] = &[
     flag::NEW,
     flag::TMUX,
+    flag::HOSTED,
     flag::TMUX_BASE,
     flag::TMUX_SIZE,
     flag::DETACH,
@@ -360,6 +368,7 @@ pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Ear
         flag::SAY => o.say = v(0),
         flag::ACCOUNT_DIR => o.account_dir = v(0),
         flag::DETACH => o.detach = true,
+        flag::HOSTED => o.hosted = true,
         flag::NO_ROTATION => o.no_rotation = true,
         flag::TMUX_SIZE => o.tmux_size = v(0),
         flag::CCM_PRINT => o.print = true,
@@ -575,10 +584,13 @@ fn validate(o: &Opts) -> Result<(), Die> {
             &[("agent", &o.agent.to_string())],
         ));
     }
-    if o.detach && !o.use_tmux {
+    if o.hosted && o.use_tmux {
+        return die(&copy_text("beArgv.validate.hostedAndTmux", &[]));
+    }
+    if o.detach && !o.use_tmux && !o.hosted {
         return die(&copy_text("beArgv.validate.detachNeedsTmux", &[]));
     }
-    if !o.tmux_size.is_empty() && !o.use_tmux {
+    if !o.tmux_size.is_empty() && !o.use_tmux && !o.hosted {
         return die(&copy_text("beArgv.validate.sizeNeedsTmux", &[]));
     }
     if !o.tmux_name.is_empty() && !o.tmux_base.is_empty() {

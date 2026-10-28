@@ -636,6 +636,14 @@ mod tests {
              而这一处**没有门**，归 PM（要么进适配层，要么随那一格一起裁）。",
         ),
         (
+            "control/ccm/plan.rs",
+            "\"sh\".to_string(),",
+            "真漏",
+            "A3-3-8：托管容器那一形（`host_run_argv`）里托管进程跑的是 `sh -c <载荷>` —— 载荷与键进 tmux 窗格的是同一串 POSIX 命令。\
+             托管容器只在 `HOSTS_HERE`（今天 `cfg!(unix)`）为真时落；Windows 那一形（ConPTY，A3-3-9）要打开缺省托管时，\
+             这一处换成按平台起那一家（PowerShell 方言的载荷），归 A3-3-9 之后那一块。",
+        ),
+        (
             "footprint/registry.rs",
             "named: \"bash\"",
             "合法线外",

@@ -1438,6 +1438,7 @@ fn fix_a_resume_of_a_session_already_running_in_tmux_rejoins_it() {
         name: "work".into(),
         sid: "sid-1".into(),
         detach,
+        host: TerminalHost::Tmux,
     };
     for (args, want) in [
         (&["--resume", "sid-1"][..], Some(rejoin(false))),
@@ -2281,6 +2282,7 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
                 name: "work".into(),
                 sid: "sid-1".into(),
                 detach: false,
+                host: TerminalHost::Tmux,
             },
         ),
         (
@@ -2659,5 +2661,131 @@ fn the_shell_line_writes_the_key_the_route_takes() {
             !line.contains(&pass),
             "{shell:?} `/s/` 那一行插了只许直通那一把：{line}"
         );
+    }
+}
+
+/// 这台能托管（Linux）、不在 tmux 里那一份环境。
+fn hosting_env() -> Env {
+    Env {
+        can_host: true,
+        ..env()
+    }
+}
+
+/// 一份固定快照：tmux 那几个名字 ＋ 这台活着的托管终端那几个名字（挂着的 sid 空）。
+fn snapshot_with_hosted(tmux: &[&str], hosted: &[&str]) -> TakenNames {
+    let rows = |names: &[&str]| -> Vec<crate::common::session_snapshot::SessionRow> {
+        names
+            .iter()
+            .map(|n| crate::common::session_snapshot::SessionRow {
+                name: (*n).to_string(),
+                ccm_sid: String::new(),
+            })
+            .collect()
+    };
+    snapshot_of(tmux).with_hosted(rows(hosted))
+}
+
+/// A3-3-8 第一条：这台能托管、不在 tmux 里敲 `cc`（不带 `--ccm-tmux`）⇒ 托管容器；名字照 tmux 那一形铸，
+/// `--ccm-print` 那一行里就是那个名字（真跑读同一份计划）。
+#[test]
+fn outside_tmux_a_plain_cc_goes_into_a_managed_container_named_like_tmux_would() {
+    let e = hosting_env();
+    let taken = snapshot_of(&[]);
+    let p = plan_of_with(&["--cwd", "/x/proj"], &e, &no_library, Some(&taken));
+    let Plan::Container(c) = &p else {
+        panic!("该是托管容器：{p:?}")
+    };
+    assert_eq!(c.host, crate::wire::TerminalHost::Managed);
+    assert_eq!(c.name, "proj-cc");
+    let line = render(&p);
+    assert!(
+        line.contains("'--host-run' 'proj-cc' 'name=proj-cc'"),
+        "`--ccm-print` 该说出同一个托管名：{line}"
+    );
+    assert!(
+        !line.contains("tmux -u new-session"),
+        "托管那一形不建 tmux 会话：{line}"
+    );
+}
+
+/// 托管名避让的那份「已占用」＝ tmux 快照 ∪ 这台活着的托管终端。
+#[test]
+fn the_managed_name_steps_aside_of_tmux_and_managed_names_alike() {
+    let e = hosting_env();
+    let name = |taken: &TakenNames| match plan_of_with(
+        &["--cwd", "/x/proj"],
+        &e,
+        &no_library,
+        Some(taken),
+    ) {
+        Plan::Container(c) => c.name,
+        other => panic!("该是托管容器：{other:?}"),
+    };
+    assert_eq!(name(&snapshot_with_hosted(&["proj-cc"], &[])), "proj-cc-2");
+    assert_eq!(name(&snapshot_with_hosted(&[], &["proj-cc"])), "proj-cc-2");
+    assert_eq!(
+        name(&snapshot_with_hosted(&["proj-cc"], &["proj-cc-2"])),
+        "proj-cc-3"
+    );
+}
+
+/// 不是托管的那几种：在 tmux 窗格里（就地直路）· 这台不能托管 · 已在托管终端里（`can_host` 由入口按 `CCM_HOST` 摘掉）。
+#[test]
+fn in_a_tmux_pane_or_where_hosting_is_off_a_plain_cc_still_runs_in_place() {
+    let in_tmux = Env {
+        tmux: Some("/tmp/tmux-1000/default,1,0".into()),
+        ..hosting_env()
+    };
+    for (what, e) in [("在 tmux 窗格里", in_tmux), ("不能托管", env())] {
+        let p = plan_of(&["--cwd", "/x/proj"], &e, &no_library);
+        assert!(matches!(p, Plan::Direct(_)), "{what}：该是直路，实得 {p:?}");
+    }
+}
+
+/// `--hosted` ⇒ 托管容器（在 tmux 窗格里也是）；`--detach` 认托管那一形；与 `--ccm-tmux` 不同时给。
+#[test]
+fn hosted_asks_for_a_managed_container_and_takes_detach() {
+    let in_tmux = Env {
+        tmux: Some("/tmp/tmux-1000/default,1,0".into()),
+        ..hosting_env()
+    };
+    let p = plan_of(
+        &["--hosted", "--detach", "--cwd", "/x/proj"],
+        &in_tmux,
+        &no_library,
+    );
+    let Plan::Container(c) = &p else {
+        panic!("该是托管容器：{p:?}")
+    };
+    assert_eq!(c.host, crate::wire::TerminalHost::Managed);
+    assert!(c.detach);
+    let a: Vec<String> = ["--hosted", "--ccm-tmux", "--cwd", "/x/proj"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    assert!(parse(&a).is_err(), "`--hosted` 与 `--ccm-tmux` 同时给该拒");
+}
+
+/// resume 的那条正在一个托管终端里跑 ⇒ 接回那个托管终端，不另起。
+#[test]
+fn resuming_a_session_running_in_a_managed_terminal_rejoins_it() {
+    let sid = "11111111-2222-4333-8444-555555555555";
+    let taken = snapshot_of(&[]).with_hosted(vec![crate::common::session_snapshot::SessionRow {
+        name: "proj-cc".into(),
+        ccm_sid: sid.into(),
+    }]);
+    let p = plan_of_with(
+        &["--resume", sid, "--cwd", "/x/proj"],
+        &hosting_env(),
+        &no_library,
+        Some(&taken),
+    );
+    match p {
+        Plan::Rejoin { name, host, .. } => {
+            assert_eq!(name, "proj-cc");
+            assert_eq!(host, crate::wire::TerminalHost::Managed);
+        }
+        other => panic!("该接回那个托管终端：{other:?}"),
     }
 }
