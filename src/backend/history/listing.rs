@@ -17,7 +17,7 @@ pub(crate) use cmd_wire::listing::{Can, CanDelete, CanResume};
 use copy_core::copy_text;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::UNIX_EPOCH;
 
 /// **这条会话能做什么**（`can`）——界面按它画，不另判：
@@ -288,8 +288,12 @@ static LOADED: std::sync::Once = std::sync::Once::new();
 /// 内存那一份自上次落盘之后变过没有（没变不重写）。
 static DIRTY: AtomicBool = AtomicBool::new(false);
 
-/// 到此刻清单扫描从记录里读了多少字节（判据数它，不按墙钟）。
-static READ: AtomicU64 = AtomicU64::new(0);
+/// 记一笔：清单扫描从 `p` 读了 `n` 字节（只在测试构建里记，账住判据那一侧，按记录分开记）。
+fn tally_read(p: &Path, n: u64) {
+    #[cfg(test)]
+    tests::tally_read(p, n);
+    let _ = (p, n);
+}
 
 /// 盘上那一份的格式：形状或读法变了就加一（对不上 ⇒ 当没有，照记录重扫、覆盖）。
 const STORE_VERSION: u32 = 3;
@@ -456,7 +460,7 @@ impl ListingEntry {
         }
         e.read.saw((mtime, end));
         e.last_bytes = end;
-        READ.fetch_add(end, Ordering::Relaxed);
+        tally_read(p, end);
         e.row = e.done.joined(&e.tail).row(p);
         e
     }
@@ -608,7 +612,7 @@ fn analyze_session_cached(p: &Path) -> serde_json::Value {
                 return analyze_session(p);
             }
             e.last_bytes = bytes + new.read();
-            READ.fetch_add(e.last_bytes, Ordering::Relaxed);
+            tally_read(p, e.last_bytes);
             e
         }
         _ => ListingEntry::scan(p, seen.0),
