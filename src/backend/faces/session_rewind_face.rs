@@ -43,7 +43,7 @@ impl Aimed for SessionRewindOptionsReq {
 /// `session-rewind-options`：发送那一下给哪几项（问会话所在那台）。
 #[allow(
     dead_code,
-    reason = "命令表那一行在 `stream/inbound/registry/`（不在 A2-13 写区，合并时补，补的时候摘掉这一条）"
+    reason = "命令表那一行在 `stream/inbound/registry/`（还没登记；登记的时候摘掉这一条）"
 )]
 pub(crate) struct SessionRewindOptionsCmd;
 
@@ -120,7 +120,7 @@ pub(crate) fn options_here(sid: &str) -> Result<RewindOptions, Fail> {
     not(test),
     allow(
         dead_code,
-        reason = "接进输入队投递那几份在输入队那一路手里（补丁随 A2-13 交回），合进来之前只有判据调它"
+        reason = "接进输入队投递那几份在输入队那一路手里，合进来之前只有判据调它"
     )
 )]
 pub(crate) fn walk_here(

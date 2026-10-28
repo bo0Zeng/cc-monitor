@@ -1,11 +1,11 @@
 //! Claude Code 的回退菜单（注册表 `LaunchFace.rewind` 那一格）：怎么调出来 · 每一屏怎么认 · 确认页上那几项叫什么。
 //!
-//! 照 10-27 主会话在这台起的 v2.1.312 实测（私有 socket，测完停掉）：
+//! 照 v2.1.312 的实测（私有 socket，测完停掉）：
 //! - 主 agent 空着、输入行空 ⇒ 双击 Esc 弹「Rewind」列表：人说过的每一句一行（下面一行标「No code changes」或改了哪些），
 //!   末行「(current)」；↑↓ 选、Enter 进确认页、Esc 取消。
 //! - 确认页（没改代码的那句）四项：`1. Restore conversation` · `2. Summarize from here` · `3. Summarize up to here` · `4. Never mind`，
 //!   写明「This message and everything after it will be removed. …」；Esc 回到列表。
-//! - 屏底「esc to interrupt」＝ 主 agent 在出字：第一下 Esc 是打断本轮，被打断的那一句放回输入行，不弹列表。
+//! - 屏底「esc to interrupt」＝ 主 agent 在出字：第一下 Esc 是打断这一轮，被打断的那一句放回输入行，不弹列表。
 //! - 只有后台命令在跑（屏底「1 shell still running」）、主 agent 空着 ⇒ 照常弹列表。
 //! - 同样「Esc、0.3 秒、Esc」一次弹了一次没弹（疑两下被并成一键）⇒ 两下之间隔得比那次长，且第二下之前读屏（通用层做）。
 //!

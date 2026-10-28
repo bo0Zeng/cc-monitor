@@ -389,3 +389,35 @@ impl RewindIo for FakeTerm {
             .collect())
     }
 }
+
+/// 假终端画出来的每一屏，它自己的认屏都认得出（判据拿它当 Claude 的替身之前先自检）。
+#[test]
+fn the_fake_reads_back_every_screen_it_draws() {
+    let mut t = FakeTerm::with(&["一", "二"]);
+    assert_eq!(
+        read(&t.lines()),
+        RewindScreen::Prompt {
+            typed: String::new()
+        }
+    );
+    t.busy = true;
+    assert_eq!(read(&t.lines()), RewindScreen::Busy);
+    t.busy = false;
+    t.key("esc");
+    t.key("esc");
+    assert!(
+        matches!(read(&t.lines()), RewindScreen::List { rows } if rows.len() == 3 && rows[2].current && rows[2].selected)
+    );
+    t.key("up");
+    t.key("enter");
+    assert!(
+        matches!(read(&t.lines()), RewindScreen::Confirm { items } if items[0].label == TALK && items[0].selected)
+    );
+    t.new_look = true;
+    t.key("left");
+    assert_eq!(
+        read(&t.lines()),
+        RewindScreen::Unknown,
+        "换了样子的列表认不出"
+    );
+}

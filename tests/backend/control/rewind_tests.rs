@@ -125,7 +125,7 @@ fn the_chosen_item_is_selected_before_the_final_enter() {
     assert_eq!(texts(&t), ["一", "改过的"]);
 }
 
-/// 主 agent 在出字、选了等本轮完 ⇒ 一个键不按，回等（输入队照排着）。
+/// 主 agent 在出字、选了等这一轮完 ⇒ 一个键不按，回等（输入队照排着）。
 #[test]
 fn busy_and_after_turn_waits_without_a_key() {
     let mut t = FakeTerm::with(&["一", "二"]);
@@ -311,7 +311,7 @@ fn same_line_takes_a_truncated_row_but_not_another_line() {
     assert!(!same_line("", "x"));
 }
 
-/// 发送那一下的选项：照那一家申报的几项；主 agent 在干活才给「什么时候退」，缺省等本轮完；没申报 ⇒ 空、带不支持那一句。
+/// 发送那一下的选项：照那一家申报的几项；主 agent 在干活才给「什么时候退」，缺省等这一轮完；没申报 ⇒ 空、带不支持那一句。
 #[test]
 fn options_follow_the_declared_choices_and_the_busy_state() {
     let idle = options_of(Some(&FACE), false);
@@ -346,7 +346,7 @@ fn options_follow_the_declared_choices_and_the_busy_state() {
     assert_eq!(
         options_of(Some(&no_stop), true).when.len(),
         1,
-        "不支持现在停 ⇒ 只给等本轮完"
+        "不支持现在停 ⇒ 只给等这一轮完"
     );
 
     let none = options_of(None, true);
