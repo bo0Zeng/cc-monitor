@@ -42,6 +42,8 @@ export const LS_KEYS = {
   mainZoom: "cc-monitor.main.zoom",
   /** 标签页栏手动收起（命令面板「收起标签页栏」）：`"1"` 收起，其余照窗宽。 */
   tabBarFolded: "cc-monitor.tab-bar.folded",
+  /** 终端面板说的那一句还没回执的待发（`{"<那台>\u0000<sid>": {id, sid, text, attachments}}`）：重开还在、接上照同一个编号再交。读写者只有 `session-queue.ts`。 */
+  queuePending: "cc-monitor.queue.pending",
 } as const;
 
 export function safeGet(key: string): string | null {

@@ -11,13 +11,14 @@
  * - 往上翻了不拽回：底部出「回到最新」。
  * - 能不能送、输入会不会和别的终端窗口混在一起：只读名单里后端给的 `can.input` · `clients` · `input`，界面不判。
  * - 送字带上看到的那一屏的指纹：画面已经变了 ⇒ 后端不送，这里重抓给人看。不知道送没送到 ⇒ 照实说、不重发。
- * - 输入框：回车送字并补回车 · Shift+回车换行 · Ctrl+回车只送字；组字时回车归输入法；Esc 只把焦点还给消息流（不清字、不收抽屉）。
- *   没送的字按会话各记一份，切回来还在。
+ * - 输入框：回车说一句（投进输入队，见下）· Shift+回车换行 · Ctrl+回车只往终端里打字、不补回车（`terminal-input`）；组字时回车归输入法；
+ *   Esc 只把焦点还给消息流（不清字、不收抽屉）。没送的字按会话各记一份，切回来还在。常用键一律往终端里送（按键不是说一句）。
  * - 页头右边「切到终端」只在 ↗ 真能用时出（同会话头那一道）。
  * - 附件（`attach-row.ts` · `attach-draft.ts`）：输入框上方一排 chip，［＋］· 拖到面板上 · 粘贴进同一排；按会话各记一份草稿。
  *   附件没传完 / 有失败 ⇒［送出］灰、悬停说为什么。那台连上 ⇒ 断着的接着传。
- * - 带附件那一句 ＝ 说一句：投进那条会话的输入队（`session-queue.ts`，编号随那一句交）；会话那台落盘回执到了 ⇒ 字与 chip 一起清；
- *   那台拒了 ⇒ 原样留着；没回执 ⇒ 留着「发送中」，那台连上照同一个编号再交。不带附件的照旧往终端里打字（`terminal-input`）。
+ * - 输入行送出的那一句（带不带附件）＝ 说一句：投进那条会话的输入队（`session-queue.ts`，编号随那一句交）；会话那台落盘回执到了 ⇒ 字与 chip 一起清；
+ *   那台拒了 ⇒ 原样留着；没回执 ⇒ 待发（落本地存储，重开还在）在队那一排写「发送中」，那台连上照同一个编号再交。认不出会话（占位那一形没挂会话）⇒ 往终端里打字。
+ * - 队那一排（`queue-row.ts`）：会话那台推来的整份名单（`changed {session_queue}`，不各自记）＋ 这一端的待发；每条可撤（`session-queue-cancel`）。
  */
 import { countText } from "./format";
 import type { Tab } from "./tab-model";
@@ -31,7 +32,25 @@ import { startFollow, type Follow, type FollowEvents, type FollowStop } from "./
 import { listTerminals, previewShot, sendToTerminal, type TerminalRow, type TerminalSend, type TerminalSent, type TerminalShot } from "./terminal-reads";
 import { AttachDraft, channelIo, type AttachIo } from "./attach-draft";
 import { AttachRow } from "./attach-row";
-import { CHANNEL_PUT, outgoing, putOnce, type Outgoing, type QueuePutFn } from "./session-queue";
+import {
+  CHANNEL_CANCEL,
+  CHANNEL_PUT,
+  CHANNEL_READ,
+  CHANNEL_WATCH,
+  loadPending,
+  outgoing,
+  pendingKey,
+  putOnce,
+  savePending,
+  type Outgoing,
+  type QueueCancelFn,
+  type QueueMoved,
+  type QueuePutFn,
+  type QueueReadFn,
+  type QueueWatchFn,
+} from "./session-queue";
+import { QueueRow } from "./queue-row";
+import type { SessionQueue } from "./generated/SessionQueue";
 import type { Origin } from "./ipc/origin";
 import { el } from "./kit/el";
 import { button, setBusy, setButtonLabel, setDisabled } from "./kit/button";
@@ -58,15 +77,21 @@ export const CHANNEL_READS: TerminalReads = {
   follow: (origin, terminal, events) => startFollow(origin, terminal, events),
 };
 
-/** 说一句那一路要的两口（缺省走通道；测试换成假的）。 */
+/** 说一句那一路要的几口（缺省走通道；测试换成假的）。 */
 export interface AttachReads {
   /** 投一句进那条会话的输入队（`session-queue-put`）。 */
   put: QueuePutFn;
   /** 那台的附件那几口（判收不收 · 逐块传 · 提交 · 撤）。 */
   io(origin: Origin): AttachIo;
+  /** 读那条会话此刻的名单（`session-queue-read`）。 */
+  read: QueueReadFn;
+  /** 撤队里一条（`session-queue-cancel`）。 */
+  cancel: QueueCancelFn;
+  /** 订那台的 `changed {session_queue}`。 */
+  watch: QueueWatchFn;
 }
 
-export const CHANNEL_ATTACH: AttachReads = { put: CHANNEL_PUT, io: channelIo };
+export const CHANNEL_ATTACH: AttachReads = { put: CHANNEL_PUT, io: channelIo, read: CHANNEL_READ, cancel: CHANNEL_CANCEL, watch: CHANNEL_WATCH };
 
 /** 实时那一格：没订 · 正在接 · 实时中 · 停了（那一句 ＋ 是不是那台断开）· 那台只能快照（那一句）。 */
 type Live = { at: "off" } | { at: "joining" } | { at: "on" } | { at: "stopped"; said: string; offline: boolean } | { at: "snapOnly"; said: string };
@@ -148,8 +173,16 @@ export class TerminalPage {
   private readonly drafts = new Map<string, string>();
   /** 没送的附件，按会话各记一份（键 ＝ 那台 ＋ 会话 ID）。 */
   private readonly attachDrafts = new Map<string, AttachDraft>();
-  /** 交出去、会话那台还没回执的那一句，按会话各一份（键同附件草稿）：那台连上照同一个编号再交。 */
-  private readonly waiting = new Map<string, Outgoing>();
+  /** 交出去、会话那台还没回执的那几句，按会话各一份（键 ＝ 那台 ＋ 会话 ID，同附件草稿）：落本地存储，那台连上照同一个编号再交。 */
+  private readonly waiting: Map<string, Outgoing[]> = loadPending();
+  /** 此刻看着的那条会话的名单（会话那台那一份；还没读到 ⇒ `null`）与它是哪一条（键同上）。 */
+  private queue: SessionQueue | null = null;
+  private queueOf: string | null = null;
+  /** 这一页交过的编号（本地存储里挂回来的、还没交过的那几句开页时交一次）。 */
+  private readonly tried = new Set<string>();
+  /** 订着哪一台的 `changed {session_queue}` 与退订。 */
+  private watching: { origin: Origin; stop: () => void } | null = null;
+  private readonly queueRow: QueueRow;
   private readonly attach: AttachRow;
   /** 每一次名单 / 抓屏的代次：慢的那次回来不许盖掉后发的那次、不许落到切走之后的会话上。 */
   private seq = 0;
@@ -287,7 +320,8 @@ export class TerminalPage {
     }
     this.noteEl = el("div");
     this.noteEl.className = s.termNote;
-    this.inputArea.append(toRow, this.attach.row, boxRow, keys, this.noteEl);
+    this.queueRow = new QueueRow({ cancel: (id) => void this.cancelQueued(id), cancelPending: (id) => this.cancelWaiting(id) });
+    this.inputArea.append(toRow, this.queueRow.el, this.attach.row, boxRow, keys, this.noteEl);
     this.body = el("div");
     this.body.className = s.termBody;
     this.el.append(this.body);
@@ -303,6 +337,7 @@ export class TerminalPage {
     else {
       this.stopTimers();
       this.stopLive();
+      this.unwatch();
     }
   }
 
@@ -332,6 +367,8 @@ export class TerminalPage {
     this.note = null;
     this.sending = false;
     this.phase = "loading";
+    this.queue = null;
+    this.queueOf = null;
     this.box.value = sid === null ? "" : (this.drafts.get(sid) ?? "");
     this.onBoxInput();
     this.paint();
@@ -341,7 +378,8 @@ export class TerminalPage {
   /** 一台机器连上了（宿主转来机器状态推送里的「已连上」）：实时正停在「这台断开」⇒ 重找终端、重新订上（输入框随之恢复）；别的情形不动。 */
   machineUp(origin: string): void {
     for (const [k, d] of this.attachDrafts) if (k.startsWith(`${origin}\u0000`)) d.resume();
-    for (const [k, o] of this.waiting) if (k.startsWith(`${origin}\u0000`)) void this.putWaiting(origin as Origin, k, o);
+    for (const [k, list] of this.waiting) if (k.startsWith(`${origin}\u0000`)) for (const o of list) void this.putWaiting(origin as Origin, k, o);
+    if (this.visible && this.origin === origin) void this.readQueue();
     if (!this.visible || this.origin !== origin || this.live.at !== "stopped" || !this.live.offline) return;
     this.live = { at: "off" };
     void this.refresh();
@@ -382,6 +420,11 @@ export class TerminalPage {
       if (this.row?.terminal !== hits[0].terminal) this.stopLive();
       this.row = hits[0];
       this.phase = "ready";
+      this.watch(origin);
+      void this.readQueue();
+      // 上次开着时没等到回执的那几句（本地存储里的）：这一页还没交过 ⇒ 照同一个编号交一次。
+      const to = this.sayingTo();
+      if (to !== null) for (const o of this.waiting.get(pendingKey(origin, to)) ?? []) if (!this.tried.has(o.id)) void this.putWaiting(origin, pendingKey(origin, to), o);
     } catch (e) {
       if (mine !== this.seq) return;
       this.phase = "error";
@@ -580,20 +623,102 @@ export class TerminalPage {
   }
 
   /**
-   * 带附件说一句：投进那条会话的输入队。那一句先成待发（这一端铸编号），交出去；会话那台落了盘回执到了 ⇒ 字与 chip 一起清、
-   * 照那台写的那一句说一下；那台拒了 ⇒ 原样留着、说那台那一句；没回执（断线 · 期限到了）⇒ 留着「发送中」，那台连上照同一个编号再交。
+   * 说一句：投进那条会话的输入队。那一句先成待发（这一端铸编号，落本地存储），交出去；会话那台落了盘回执到了 ⇒ 字与 chip 一起清、
+   * 照那台写的那一句说一下；那台拒了 ⇒ 原样留着、说那台那一句；没回执（断线 · 期限到了）⇒ 留在待发（队那一排「发送中」），那台连上照同一个编号再交。
+   * 待发里已有同一句（没回执又点了一次送出）⇒ 照它的编号再交，不另起一条。
    */
-  private async say(draft: AttachDraft, text: string): Promise<void> {
-    const origin = this.origin;
-    const sid = this.sayingTo();
-    if (origin === undefined || sid === null || this.sending) return;
-    const key = `${origin}\u0000${sid}`;
-    const had = this.waiting.get(key);
-    const o = had !== undefined && had.text === text ? had : outgoing(sid, text, draft.ids());
-    this.waiting.set(key, o);
+  private async say(origin: Origin, sid: string, text: string, ids: string[]): Promise<void> {
+    if (this.sending) return;
+    const key = pendingKey(origin, sid);
+    const list = this.waiting.get(key) ?? [];
+    let o = list.find((x) => x.text === text);
+    if (o === undefined) {
+      o = outgoing(sid, text, ids);
+      this.waiting.set(key, [...list, o]);
+      savePending(this.waiting);
+    }
     this.sending = true;
     this.paint();
     await this.putWaiting(origin, key, o);
+  }
+
+  /** 待发里拿掉那一句（落本地存储）。 */
+  private dropWaiting(key: string, o: Outgoing): void {
+    const left = (this.waiting.get(key) ?? []).filter((x) => x !== o);
+    if (left.length > 0) this.waiting.set(key, left);
+    else this.waiting.delete(key);
+    savePending(this.waiting);
+  }
+
+  /** 撤待发里那一句：本地拿掉；万一已经交到那台了，照编号请它撤（送过的撤不了，那台说了算）。 */
+  private cancelWaiting(id: string): void {
+    const origin = this.origin;
+    const sid = this.sayingTo();
+    if (origin === undefined || sid === null) return;
+    const key = pendingKey(origin, sid);
+    const o = this.waiting.get(key)?.find((x) => x.id === id);
+    if (o === undefined) return;
+    this.dropWaiting(key, o);
+    this.sending = false;
+    this.paint();
+    void this.attachReads.cancel(origin, sid, id).then(
+      (r) => this.gotQueue(key, r.queue),
+      () => {},
+    );
+  }
+
+  /** 撤名单里那一条（照编号请会话那台撤），照回的整份名单画；没成 ⇒ 说那台那一句。 */
+  private async cancelQueued(id: string): Promise<void> {
+    const origin = this.origin;
+    const sid = this.sayingTo();
+    if (origin === undefined || sid === null) return;
+    try {
+      const r = await this.attachReads.cancel(origin, sid, id);
+      this.gotQueue(pendingKey(origin, sid), r.queue);
+    } catch (e) {
+      this.showNote({ text: saidOf(e), tone: "error", detail: detailOf(e) });
+    }
+  }
+
+  /** 问一次此刻那条会话的名单；问不到 ⇒ 名单留着上一份（推送或下一次重问补上）。 */
+  private async readQueue(): Promise<void> {
+    const origin = this.origin;
+    const sid = this.sayingTo();
+    if (origin === undefined || sid === null) return;
+    try {
+      this.gotQueue(pendingKey(origin, sid), await this.attachReads.read(origin, sid));
+    } catch {
+      // 断着 · 那台没有这一条：照旧画手上那一份。
+    }
+  }
+
+  /** 会话那台那一份名单到了（问回来的 · 推来的 · 撤完回的）：是此刻看着的那一条才换。 */
+  private gotQueue(key: string, q: SessionQueue): void {
+    if (this.origin === undefined || this.sayingTo() === null || pendingKey(this.origin, this.sayingTo() as string) !== key) return;
+    this.queue = q;
+    this.queueOf = key;
+    this.paint();
+  }
+
+  /** 订那台的 `changed {session_queue}`（已订着那一台 ⇒ 不动）。 */
+  private watch(origin: Origin): void {
+    if (this.watching?.origin === origin) return;
+    this.unwatch();
+    this.watching = { origin, stop: this.attachReads.watch(origin, (m) => this.queueMoved(origin, m)) };
+  }
+
+  private unwatch(): void {
+    this.watching?.stop();
+    this.watching = null;
+  }
+
+  /** 那台推来一批：看着的那一条带了名单 ⇒ 换；没带 · 可能漏了 ⇒ 重问。 */
+  private queueMoved(origin: Origin, m: QueueMoved): void {
+    const sid = this.sayingTo();
+    if (this.origin !== origin || sid === null) return;
+    const got = m.got.get(sid);
+    if (got !== undefined) this.gotQueue(pendingKey(origin, sid), got);
+    else if (m.all || m.ask.includes(sid)) void this.readQueue();
   }
 
   /** 此刻说一句是说给哪条会话（名单里挂着的那一条 · 标签页那一条）；认不出 ⇒ `null`。 */
@@ -604,17 +729,19 @@ export class TerminalPage {
 
   /** 交待发里那一句一次（同一个编号交几次那台都只收一条），照结局清框或留着。 */
   private async putWaiting(origin: Origin, key: string, o: Outgoing): Promise<void> {
+    this.tried.add(o.id);
     const end = await putOnce(this.attachReads.put, origin, o);
-    if (this.waiting.get(key) !== o) return;
+    if (!(this.waiting.get(key) ?? []).includes(o)) return;
     const here = this.origin === origin && this.sayingTo() === o.sid;
     if (here) this.sending = false;
     // 没回执 ⇒ 留在待发（那台连上再交）；那台拒了 ⇒ 不留。两样都照那一句说、字留着。
     if (end.at !== "receipt") {
-      if (end.at === "refused") this.waiting.delete(key);
+      if (end.at === "refused") this.dropWaiting(key, o);
       if (here) this.showNote({ text: end.said, tone: "error" });
       return;
     }
-    this.waiting.delete(key);
+    this.dropWaiting(key, o);
+    if (here) void this.readQueue();
     if (here && this.box.value === o.text) {
       this.box.value = "";
       if (this.sid !== null) this.drafts.delete(this.sid);
@@ -628,16 +755,22 @@ export class TerminalPage {
   }
 
   /**
-   * 送框里那段字。草稿里有附件 ⇒ 那是说一句：传完了才送、投进那条会话的输入队、编号随那一句交（[say]）。
-   * 没附件 ⇒ 往这个终端里打字（`terminal-input`；`enter` ＝ 之后补一个回车），送到了才清框。
+   * 送框里那段字。`say` ⇒ 说一句：投进那条会话的输入队、编号随那一句交（[say]；草稿里有附件 ⇒ 传完了才送，附件编号随它交）。
+   * 只打字（Ctrl+回车）· 认不出会话（占位那一形没挂会话）⇒ 往这个终端里打字（`terminal-input`；说一句的那一下补回车），送到了才清框。
    */
-  private sendBox(enter: boolean): void {
+  private sendBox(say: boolean): void {
     const text = this.box.value;
     const draft = this.attachDraft();
-    if (draft !== null && draft.chips().length > 0) {
-      if (draft.blocker() === null) void this.say(draft, text);
+    const chips = draft !== null && draft.chips().length > 0;
+    const origin = this.origin;
+    const sid = this.sayingTo();
+    if (chips || (say && origin !== undefined && sid !== null && this.row !== null)) {
+      if (chips && draft.blocker() !== null) return;
+      if (text === "" && !chips) return;
+      if (origin !== undefined && sid !== null) void this.say(origin, sid, text, chips ? draft.ids() : []);
       return;
     }
+    const enter = say;
     if (text === "") return;
     void this.send({ text, enter }).then((ok) => {
       if (ok && this.box.value === text) {
@@ -761,6 +894,9 @@ export class TerminalPage {
     // 附件没传完 / 有失败 ⇒ 送出灰着、悬停说为什么（字照样能打）。
     setDisabled(this.sendBtn, no ?? this.attachDraft()?.blocker() ?? null);
     this.attach.paint();
+    const to = this.sayingTo();
+    const qKey = this.origin !== undefined && to !== null ? pendingKey(this.origin, to) : null;
+    this.queueRow.paint(qKey !== null && this.queueOf === qKey ? this.queue : null, qKey === null ? [] : (this.waiting.get(qKey) ?? []));
     setBusy(this.sendBtn, this.sending ? copyText("terminal.input.send") : null);
     for (const b of this.keyBtns) setDisabled(b, no);
     this.noteEl.replaceChildren();

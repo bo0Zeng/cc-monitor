@@ -213,6 +213,17 @@ impl Book {
 
     fn receipt(&self, i: usize, outcome: QueuePutOutcome) -> QueuePut {
         let e = &self.items[i];
+        let (place, said) = self.said_of(e);
+        QueuePut {
+            outcome,
+            seq: e.seq,
+            place,
+            said,
+        }
+    }
+
+    /// 那一条此刻排第几（排着才有）与那一句（回执 · 名单每条同一句）。
+    fn said_of(&self, e: &Entry) -> (Option<u32>, String) {
         let place = (e.state == QueueState::Queued).then(|| self.place_of(e));
         let said = match (e.state, place) {
             (QueueState::Queued, Some(p)) => {
@@ -221,11 +232,21 @@ impl Book {
             (QueueState::Undelivered, _) => copy_text("beQueue.said.undelivered", &[]),
             _ => copy_text("beQueue.said.held", &[]),
         };
-        QueuePut {
-            outcome,
+        (place, said)
+    }
+
+    /// 名单里的一条（带会话那台写好的那一句与发自哪一端的那个词）。
+    fn item(&self, e: &Entry) -> QueueItem {
+        QueueItem {
             seq: e.seq,
-            place,
-            said,
+            id: e.id.clone(),
+            end: e.end.clone(),
+            at_ms: e.at_ms,
+            text: e.text.clone(),
+            attachments: e.attachments.clone(),
+            state: e.state,
+            said: self.said_of(e).1,
+            from: from_word(&e.end),
         }
     }
 
@@ -266,7 +287,7 @@ impl Book {
             .iter()
             .filter(|e| e.state == QueueState::Queued)
             .min_by_key(|e| e.seq)
-            .map(item)
+            .map(|e| self.item(e))
     }
 
     /// 那一条送不进去（恢复没成 · 附件没了 · 不归我们）：标未送达、留给发件人看。不在排着 ⇒ `false`。
@@ -327,21 +348,18 @@ impl Book {
             )
         });
         SessionQueue {
-            items: v.into_iter().map(item).collect(),
+            items: v.into_iter().map(|e| self.item(e)).collect(),
             sent: self.sent.iter().cloned().collect(),
         }
     }
 }
 
-fn item(e: &Entry) -> QueueItem {
-    QueueItem {
-        seq: e.seq,
-        id: e.id.clone(),
-        end: e.end.clone(),
-        at_ms: e.at_ms,
-        text: e.text.clone(),
-        attachments: e.attachments.clone(),
-        state: e.state,
+/// 发自哪一端 ⇒ 名单里那个词：桌面 · 手机写名字，别的端（cc-bus …）照它自报的名字。
+fn from_word(end: &str) -> String {
+    match end {
+        "monitor" => copy_text("beQueue.from.desktop", &[]),
+        "mobile" => copy_text("beQueue.from.phone", &[]),
+        _ => end.to_string(),
     }
 }
 

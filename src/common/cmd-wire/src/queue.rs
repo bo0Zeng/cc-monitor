@@ -44,6 +44,10 @@ pub struct QueueItem {
     pub attachments: Vec<String>,
     #[cfg_attr(any(test, feature = "ts"), ts(inline))]
     pub state: QueueState,
+    /// 那一条此刻的样子，会话那台写好（排队 · 第 N · 排队 · 失败 · 未送进会话；同回执那一句）：各端照摆，不按 `state` 自己挑字。
+    pub said: String,
+    /// 发自哪一端，会话那台写好的那个词（认得的端写名字，别的照 `end` 原样）。
+    pub from: String,
 }
 
 /// 一条会话此刻的名单：排着的照序号在前，收着的照到达先后在后，未送达的照序号在最后。
