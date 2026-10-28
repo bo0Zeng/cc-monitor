@@ -231,10 +231,10 @@ pub(crate) enum Intent {
 /// 想进 tmux（新起：分叉的源会话在 tmux 里；不是分叉 ⇒ 这台不能托管时才想；恢复：偏好「恢复时放在哪」说的，
 /// `machine_prefs::Prefs::resume_wants_tmux`）且有 tmux ⇒ tmux；
 /// 否则这台能托管（`managed`）⇒ 托管；都不能 ⇒ 直路（A3-3-19：Windows 托管做完那一版删）。
-pub(crate) fn default_run(intent: Intent, resume_in_tmux: bool, tmux: bool, managed: bool) -> Run {
+pub(crate) fn default_run(intent: Intent, resume_wants_tmux: bool, tmux: bool, managed: bool) -> Run {
     let want_tmux = match intent {
         Intent::New { fork_tmux } => fork_tmux.unwrap_or(!managed),
-        Intent::Resume => resume_in_tmux,
+        Intent::Resume => resume_wants_tmux,
     };
     if want_tmux && tmux {
         Run::Tmux

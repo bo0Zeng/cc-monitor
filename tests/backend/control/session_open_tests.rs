@@ -424,7 +424,7 @@ fn asking_for_tmux_where_there_is_none_is_refused_not_rerouted() {
 
 /// 恢复进 tmux：没在哪个 tmux 里 ⇒ 铸名建会话（`--detach`）、回接进去那一行；空 tmux ⇒ 就地键入；在跑 ⇒ 不另起。
 #[test]
-fn resume_in_tmux_lands_where_the_session_can_be() {
+fn a_resume_asked_into_tmux_lands_where_the_session_can_be() {
     let rig = Rig::new(Some(vec![]));
     let o = rig.open(resume(Some("tmux"))).unwrap();
     assert_eq!(
