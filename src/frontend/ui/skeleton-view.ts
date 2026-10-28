@@ -341,13 +341,15 @@ export class SkeletonView {
       const j = cuts.findIndex((c) => c.top >= bottom);
       if (j >= 0 && j < cuts.length - 1) ranges.push([cuts[j].seq, cuts[cuts.length - 1].seq]);
     }
-    if (ranges.length === 0) return 0;
+    // 折着的过程里建过的卡（轮次落地之前建的那一截尾巴 · 展开过又收起的）：0 高、看不见，一并交回 0 高的占位（不量：折着量出来是 0，不是它的真高）
+    const folded = this.foldedBuilt(ranges);
+    if (ranges.length === 0 && folded.length === 0) return 0;
     let n = 0;
     const cards: HTMLElement[] = [];
     this.pinned(() => {
       const heights = ranges.map(([a, b]) => this.measure(a, b));
       for (const h of heights) this.ledger.measured(h);
-      for (const [a, b] of ranges) {
+      for (const [a, b] of [...ranges, ...folded]) {
         const gaps = new Set(this.gaps.map((g) => g.el));
         const gone = new Set<HTMLElement>();
         for (const e of this.timeline.removeBetween(a, b)) {
@@ -360,8 +362,25 @@ export class SkeletonView {
         n += b - a;
       }
     });
-    this.host.released(ranges, cards);
+    this.host.released([...ranges, ...folded], cards);
     return n;
+  }
+
+  /**
+   * 账本里折着的那几段（`foldedRanges`，后端给的段）里还建着卡的、不在 `taken` 里的、里面没有取回中的占位的那几段。
+   * 折着的段两头是边界（轮的开头 · 露着的那一条），调用与它的结果、并进左邻居的那几行都在段里。
+   */
+  private foldedBuilt(taken: ReadonlyArray<readonly [number, number]>): Array<readonly [number, number]> {
+    const spans = this.ledger.foldedRanges;
+    if (spans.length === 0) return [];
+    const out: Array<readonly [number, number]> = [];
+    for (const [a, b] of spans) {
+      if (taken.some(([x, y]) => x <= a && b <= y)) continue;
+      if (this.gaps.some((g) => g.fetching && g.lo < b && g.hi > a)) continue;
+      const gapEls = new Set(this.gaps.map((g) => g.el));
+      if (this.timeline.between(a, b).some((e) => !gapEls.has(e.element))) out.push([a, b]);
+    }
+    return out;
   }
 
   /**

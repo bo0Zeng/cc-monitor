@@ -891,22 +891,28 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
 
   async function rig(late = false) {
     const { invoke } = await import("@tauri-apps/api/core");
-    const { isChanCall, chanArgsJson, chanReply } = await import("../../test-support/chan-fake");
+    const { isChanCall, chanArgsJson, chanReply, withSessionReads } = await import("../../test-support/chan-fake");
     const { packIndex } = await import("../../test-support/pack-index");
     const { TabStreamView } = await import("../../../src/frontend/ui/tab-stream-view");
     const { TabStore } = await import("../../../src/frontend/ui/tab-store");
     vi.stubGlobal("CSS", { escape: (s: string) => s });
     onTestFinished(() => void vi.unstubAllGlobals());
     const rows = Array.from({ length: N }, (_, i) => facts(i));
-    // 骨架索引照后端：从 `offset` 起、至多 `limit` 行
+    // 骨架索引照后端：从 `offset` 起、至多 `limit` 行；按偏移取正文：第 i 行占字节 [100i, 100i + 100)
+    const payload = (s: number) => ({ session_id: "c", cwd: "/p", path: "/p/c.jsonl", seq: s, record: reply(s) });
+    const others = withSessionReads((which, a) =>
+      which === "read_session_range"
+        ? Array.from({ length: (Number(a.until) - Number(a.offset)) / 100 }, (_, k) => payload(Number(a.offset) / 100 + k))
+        : undefined,
+    );
     vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
       if (isChanCall(cmd, args, "history-index")) {
         const b = chanArgsJson(args) as { offset: number; limit?: number };
         const lo = b.offset / 100;
-        const hi = Math.min(N, b.limit === undefined ? N : lo + b.limit);
+        const hi = Math.min(rows.length, b.limit === undefined ? rows.length : lo + b.limit);
         return chanReply({ ...packIndex(lo * 100, hi * 100, rows.slice(lo, hi)), next: null });
       }
-      return null;
+      return (await others(cmd, args)) ?? null;
     });
     onTestFinished(() => void vi.mocked(invoke).mockReset().mockResolvedValue(null));
     const root = document.createElement("div");
@@ -958,7 +964,13 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
       tsv.activate(tab as never);
       tsv.scrollToBottom(tab as never); // 宿主切进来照「贴着底」贴底（`tabs.ts::switchTo`）
     };
-    return { tab, dom, layout, built, open, turns, letTurns: () => letTurns?.() };
+    /** 实时来一行（记录文件同时长了一行：索引里也有它）。 */
+    const live = (s: number): void => {
+      rows.push(facts(s));
+      const p = payload(s) as never;
+      if (tsv.admit(tab as never, p)) tsv.ingest(tab as never, p);
+    };
+    return { tab, dom, layout, built, open, turns, letTurns: () => letTurns?.(), store, tsv, live };
   }
 
   /** 视口 ±`KEEP_SCREENS` 屏放得下几张卡。 */
@@ -1007,5 +1019,76 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
       return a + Math.max(0, Math.min(b.bottom, VIEW_H) - Math.max(b.top, 0));
     }, 0);
     expect(covered, "过程藏掉之后视口里露出的占位没补").toBeGreaterThanOrEqual(VIEW_H - CARD_H);
+  });
+
+  // 〔A17-45-3-3〕收起的 tab 只留视口那一截：冷开建的那一截尾巴与接骨架之后建的都要交得回去
+  //（骨架索引从前只要 `[0, floor)`，冷开建的尾巴落在账本外，`release` 认不到它的切点 ⇒ 一条都不交）。
+  /** 一屏放得下几张卡，再加切点两头各一张。 */
+  const screenCards = Math.ceil(VIEW_H / CARD_H) + 2;
+  const settled = async (r: Awaited<ReturnType<typeof rig>>): Promise<void> => {
+    await vi.waitFor(() => expect(r.tab.skeleton, "骨架没接上").not.toBeNull(), UNTIL_CEILING);
+    await vi.waitFor(() => expect(r.turns).toHaveBeenCalled(), UNTIL_CEILING);
+    await new Promise((res) => setTimeout(res, 0));
+    await new Promise((res) => setTimeout(res, 0));
+  };
+  const hide = (r: Awaited<ReturnType<typeof rig>>): void => {
+    r.store.activeId = "other";
+    r.tsv.showOnly("other");
+  };
+
+  it("〔A17-45-3-3〕冷开、接上骨架之后切走：留下的已建条目 ≤ 一屏", async () => {
+    const r = await rig();
+    r.open();
+    await settled(r);
+    hide(r);
+    const ids = r.built();
+    expect(ids.length, `切走之后还留着 ${ids.length} 张：${ids.join(",")}`).toBeLessThanOrEqual(screenCards);
+  });
+
+  it("〔A17-45-3-3〕接上骨架之后又来了几屏实时行：切走 · 切回 · 再切走 ⇒ 留下的 ≤ 一屏（账本续到了末尾）", async () => {
+    const r = await rig();
+    r.open();
+    await settled(r);
+    for (let s = N; s < N + 40; s++) r.live(s);
+    expect(r.built().filter((s) => s >= N).length, "前置：实时行建了卡").toBe(40);
+    hide(r);
+    await vi.waitFor(() => expect(r.tab.skeleton!.ledger.endSeq, "收起时没把账本续到末尾").toBe(N + 40), UNTIL_CEILING);
+    r.store.activeId = "c";
+    r.tsv.showOnly("c");
+    r.tsv.activate(r.tab as never);
+    await new Promise((res) => requestAnimationFrame(() => res(null)));
+    hide(r);
+    const kept = r.built();
+    expect(kept.length, `切走之后还留着 ${kept.length} 张：${kept.join(",")}`).toBeLessThanOrEqual(screenCards);
+  });
+
+  it("〔A17-45-3-3〕往上翻过几屏再切走：留下的 ≤ 一屏；切回来建的 ≤ 一屏、视口不空", async () => {
+    const r = await rig();
+    r.open();
+    await settled(r);
+    for (let k = 0; k < 6; k++) {
+      r.layout.scrollTop = Math.max(0, r.layout.scrollTop - VIEW_H);
+      r.dom.streamEl.dispatchEvent(new Event("scroll"));
+      await new Promise((res) => setTimeout(res, 0));
+    }
+    await vi.waitFor(() => expect(r.dom.stream.contentElement.querySelector("[data-skeleton-fetching]"), "取回中的还没落").toBeNull(), UNTIL_CEILING);
+    expect(r.built().length, "前置：翻过之后建了卡").toBeGreaterThan(0);
+    hide(r);
+    const kept = r.built();
+    expect(kept.length, `切走之后还留着 ${kept.length} 张：${kept.join(",")}`).toBeLessThanOrEqual(screenCards);
+    // 切回来：照「切进来」那一路（非 virgin ⇒ 下一帧补可见区）
+    r.store.activeId = "c";
+    r.tsv.showOnly("c");
+    r.tsv.activate(r.tab as never);
+    await new Promise((res) => requestAnimationFrame(() => res(null)));
+    await vi.waitFor(() => expect(r.dom.stream.contentElement.querySelector("[data-skeleton-fetching]")).toBeNull(), UNTIL_CEILING);
+    const back = r.built();
+    // 补可见区多建视口上下各半屏（`OVERSCAN`）⇒ 至多两屏
+    expect(back.length - kept.length, "切回来建了不止视口 ±半屏").toBeLessThanOrEqual(2 * Math.ceil(VIEW_H / CARD_H) + 2);
+    const covered = back.reduce((a, s) => {
+      const b = r.dom.stream.contentElement.querySelector<HTMLElement>(`[data-id="u${s}"]`)!.getBoundingClientRect();
+      return a + Math.max(0, Math.min(b.bottom, VIEW_H) - Math.max(b.top, 0));
+    }, 0);
+    expect(covered, "切回来视口里空着").toBeGreaterThanOrEqual(VIEW_H - CARD_H);
   });
 });

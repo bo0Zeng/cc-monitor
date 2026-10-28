@@ -181,6 +181,8 @@ export class TabStreamView {
   private readonly indexEnds = new WeakMap<Tab, number>();
   /** 〔骨架〕正文重来时从上一代接过来的账本与它的末字节：要骨架时从这里续，不从 0 再要（`restartTail`）。 */
   private readonly carriedSkeletons = new WeakMap<Tab, { ledger: SkeletonLedger; end: number }>();
+  /** 〔骨架〕账本续到末尾那一趟在途的 tab（同一个 tab 同时只续一趟，`extendIndex`）。 */
+  private readonly extending = new WeakSet<Tab>();
   /** 每个 tab 的第一趟会话事实 ＋ 轮次什么时候问（当前的先、后台的空闲时一个一个，`tab-cold-reads.ts`）。 */
   private readonly cold: ColdReads;
 
@@ -507,7 +509,11 @@ export class TabStreamView {
   showOnly(sessionId: string): void {
     for (const [sid, t] of this.store.tabs) {
       // 收起的那一个只留视口那一截（收起之后几何不作数 ⇒ 在翻走之前交）
-      if (sid !== sessionId && t.streamEl.classList.contains("active")) t.skeleton?.release(0);
+      // 账本只到上次索引的末尾：之后来的实时行认不到切点，这一次交不回 ⇒ 顺手续一截，下一次收起时交
+      if (sid !== sessionId && t.streamEl.classList.contains("active") && t.skeleton) {
+        t.skeleton.release(0);
+        this.extendIndex(t);
+      }
       t.streamEl.classList.toggle("active", sid === sessionId);
       t.stream.park(sid !== sessionId); // 收起期间几何不作数（`MessageStream.park`）
       // 面板与它那条流同进同出：漏掉的话所有 tab 的面板一起挂在屏幕上，点下去找的是别人的流。
@@ -595,6 +601,7 @@ export class TabStreamView {
         this.attachSkeleton(next, parked);
       }
       this.requestSkeleton(next); // 上面刚物化过尾段 ⇒ floor 已钉；要过的不重要
+      this.extendIndex(next); // 接过骨架的：收起期间来的实时行进账本（收起时才交得回去）
       this.cold.toFront(next); // 第一趟会话事实与轮次：停住的这一个插到最前（后台排着的等它落地）
       if (next.outline.needsFetch) this.refreshOutline(next); // 大纲：有新行才要
     }, TabStreamView.STAY_MS);
@@ -603,6 +610,13 @@ export class TabStreamView {
     // 刚为 virgin tab 跑过 `materializeUntilFilled`、账本还有余的不再踢：它补不满时自己排了下一帧的接续（一次同步调用要有界）。
     // 「满没满」要读几何 ⇒ 挪到下一帧再问：同步段里一读，浏览器就得当场把刚翻出来的整个 tab 样式与布局算完（点击处理被拖长、这一帧更晚画出来）；
     // 下一帧的回调里读，排的就是那一帧本来要排的那一份。期间又切走（`activeId` 守卫）⇒ 不补。
+    // 〔骨架〕收起时只留了视口那一截（`showOnly`），切回来没有 scroll 事件来叫 ⇒ 下一帧补一次可见区（同上：同步段不读几何）。
+    if (next.skeleton) {
+      // 调度：一次性 —— 切进来的下一帧补一次骨架的可见区
+      requestAnimationFrame(() => {
+        if (this.inFront(next)) this.fillSkeleton(next);
+      });
+    }
     const continuing = virginFill && next.window.pendingCount > 0;
     if (!continuing && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
       // 调度：一次性 —— 切进来的下一帧问一次满没满，没满踢一脚补批（之后由补批自己的 rAF 自链接管）
@@ -1040,8 +1054,9 @@ export class TabStreamView {
       this.continueSkeleton(tab, carried.ledger, carried.end);
       return;
     }
-    // 只要尾段之上那一截（`[0, floor)`：floor 往后是尾段，实时行管）—— 正在看的 tab 先取它要的那一截，不等整份。
-    const first = readSessionIndex(origin, jsonlPath, 0, tab.window.floorSeq);
+    // 整份要到末尾（连冷开建的那一截尾巴）：尾巴的切点 · 折叠也得在账本里，收起时才交得回去（`release` 只认账本里的切点）。
+    // 从前只要 `[0, floor)`，冷开那一截与之后的实时行都在账本外，切走一条都不交（A17-45-3-3）。
+    const first = readSessionIndex(origin, jsonlPath, 0);
     // 〔欠账〕大纲**等这一趟**：索引顺带出清单（后端 `IndexRow::x`）⇒ 首屏同一份文件
     // 只读一遍；带不回（老后端 / 零条 / 失败）⇒ 它自己照旧从 0 要一份清单。
     tab.outline.awaitSeed(first.then(outlineSeedFromIndex));
@@ -1083,22 +1098,19 @@ export class TabStreamView {
   }
 
   /**
-   * 〔骨架〕从上一代接过来的账本：只续它没覆盖到、尾段之上的那一截（`[endSeq, floor)`，从它的末字节要），续上了照常接；
+   * 〔骨架〕从上一代接过来的账本：只续它没覆盖到的那一截（从它的末字节要到末尾），续上了照常接；
    * 续不上（要不到）⇒ 这一份不用了，下一次触发点从 0 要（同瞬时失败）。
    */
   private continueSkeleton(tab: Tab, ledger: SkeletonLedger, end: number): void {
-    const floor = tab.window.floorSeq!; // 进来时判过不是 null，之后只会往下钉
-    const want = floor - ledger.endSeq;
-    const more = want > 0 ? readSessionIndex(tab.origin, tab.parentPath!, end, want) : Promise.resolve(null);
-    void more
+    void readSessionIndex(tab.origin, tab.parentPath!, end)
       .then((res) => {
         if (this.store.tabs.get(tab.sessionId) !== tab) return;
-        if (res && !res.available) {
+        if (!res.available) {
           tab.skeletonFetch = "again";
           return;
         }
-        if (res) ledger.append(res.pages);
-        this.indexEnds.set(tab, res ? res.end : end);
+        ledger.append(res.pages);
+        this.indexEnds.set(tab, res.end);
         tab.skeletonFetch = "done";
         if (this.store.activeId !== tab.sessionId) {
           this.parkedSkeletons.set(tab, ledger);
@@ -1110,6 +1122,26 @@ export class TabStreamView {
         tab.skeletonFetch = "again";
         console.warn(`[tabs] 骨架续传失败（${tab.sessionId.slice(0, 8)}）：`, e);
       });
+  }
+
+  /**
+   * 〔骨架〕接上了的账本续到记录文件末尾（从上次索引的末字节要，只读新写的那一截）：已建的卡比账本长（实时行）才续。
+   * 续上的行进了账本，`release` 才认得它们的切点 · 折叠。同一个 tab 同时只续一趟；续不上就算了，下一次再续。
+   */
+  private extendIndex(tab: Tab): void {
+    const sk = tab.skeleton;
+    const end = this.indexEnds.get(tab);
+    if (!sk || end === undefined || !tab.parentPath || this.extending.has(tab)) return;
+    if (tab.timeline.maxSeq < sk.ledger.endSeq) return;
+    this.extending.add(tab);
+    void readSessionIndex(tab.origin, tab.parentPath, end)
+      .then((res) => {
+        if (!res.available || this.store.tabs.get(tab.sessionId) !== tab || tab.skeleton !== sk) return;
+        sk.ledger.append(res.pages);
+        this.indexEnds.set(tab, res.end);
+      })
+      .catch((e: unknown) => console.warn(`[tabs] 骨架续到末尾失败（${tab.sessionId.slice(0, 8)}）：`, e))
+      .finally(() => this.extending.delete(tab));
   }
 
   /**
@@ -1212,6 +1244,8 @@ export class TabStreamView {
             tab.seenSeqs.addRange(a, b); // 这一段整段到过（不可显示的也算）
             if (again.length > 0) this.renderPayloadsBatch(tab, again);
           });
+          // 真高换了估高，视口里可能又露出占位（没有 scroll 事件来叫）⇒ 还在眼前就再补一次
+          if (this.inFront(tab) && tab.skeleton === view) this.fillSkeleton(tab);
         })
         .catch((e: unknown) => {
           if (this.store.tabs.get(tab.sessionId) === tab) view.failed(a, b);
