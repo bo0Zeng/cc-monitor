@@ -44,6 +44,10 @@ struct Rig {
     e2e: bool,
     /// 分叉的源会话此刻在不在 tmux 里（宿主读的那一格）。
     fork_tmux: Option<bool>,
+    /// 这台能托管（名单那一格 `managed`）。
+    hosts: bool,
+    /// 起 ccm 那一趟的 stdout（托管那一形报 `ccm-session=<名>`）。
+    ccm_out: String,
     ccm: RefCell<Vec<Vec<String>>>,
     sent: RefCell<Vec<(String, String)>>,
     marks: RefCell<usize>,
@@ -70,6 +74,8 @@ impl Rig {
             minted: None,
             e2e: false,
             fork_tmux: None,
+            hosts: false,
+            ccm_out: String::new(),
             ccm: RefCell::new(vec![]),
             sent: RefCell::new(vec![]),
             marks: RefCell::new(0),
@@ -131,7 +137,8 @@ impl Rig {
                 None => Ok(crate::control::session_batch::Listed::of(
                     self.rows.clone(),
                     self.hosted.clone(),
-                )),
+                )
+                .hosting(self.hosts)),
             }
         };
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
@@ -149,7 +156,7 @@ impl Rig {
         };
         let run_ccm = |argv: &[String]| -> Result<(i32, String, String), CmdErr> {
             self.ccm.borrow_mut().push(argv.to_vec());
-            Ok((self.ccm_rc, String::new(), "坏了".into()))
+            Ok((self.ccm_rc, self.ccm_out.clone(), "坏了".into()))
         };
         let mint = |base: NameBase| -> Result<String, CmdErr> {
             if let Some(n) = &self.minted {
@@ -250,11 +257,12 @@ fn default_run_is_the_whole_table() {
     for i in intents {
         for pref in [false, true] {
             for tmux in [false, true] {
-                got.push((i, pref, tmux, default_run(i, pref, tmux)));
+                got.push((i, pref, tmux, default_run(i, pref, tmux, false)));
             }
         }
     }
     let n = |f| New { fork_tmux: f };
+    // 这台不能托管（Windows · 判据没给托管的家）：同 A3-3-8 之前那一张。
     let want = vec![
         (n(None), false, false, Direct),
         (n(None), false, true, Tmux),
@@ -274,6 +282,107 @@ fn default_run_is_the_whole_table() {
         (Resume, true, true, Tmux),
     ];
     assert_eq!(got, want);
+    // 这台能托管：新起 ⇒ 托管（分叉：源会话在 tmux 里且这台有 tmux ⇒ tmux）；恢复 ⇒ 偏好开着且有 tmux 才 tmux，否则托管。直路一个都不落。
+    let mut got = Vec::new();
+    for i in intents {
+        for pref in [false, true] {
+            for tmux in [false, true] {
+                got.push((i, pref, tmux, default_run(i, pref, tmux, true)));
+            }
+        }
+    }
+    let want = vec![
+        (n(None), false, false, Managed),
+        (n(None), false, true, Managed),
+        (n(None), true, false, Managed),
+        (n(None), true, true, Managed),
+        (n(Some(true)), false, false, Managed),
+        (n(Some(true)), false, true, Tmux),
+        (n(Some(true)), true, false, Managed),
+        (n(Some(true)), true, true, Tmux),
+        (n(Some(false)), false, false, Managed),
+        (n(Some(false)), false, true, Managed),
+        (n(Some(false)), true, false, Managed),
+        (n(Some(false)), true, true, Managed),
+        (Resume, false, false, Managed),
+        (Resume, false, true, Managed),
+        (Resume, true, false, Managed),
+        (Resume, true, true, Tmux),
+    ];
+    assert_eq!(got, want);
+}
+
+/// A3-3-8 第一条：这台能托管、不说放在哪起新会话 ⇒ 落托管：交的那一行 ccm 带 `--hosted --detach`（名字由 ccm 铸、从它的 stdout 读回），
+/// 回接进去那一行 `--attach <名>`；这台不铸 tmux 名、不交 `--ccm-tmux`。
+#[test]
+fn where_this_machine_hosts_a_new_session_without_run_lands_in_a_managed_terminal() {
+    let mut rig = Rig::new(Some(vec![]));
+    rig.hosts = true;
+    rig.ccm_out = "ccm-session=p-cc-2\n".into();
+    let o = rig.open(new(json!({}))).unwrap();
+    assert_eq!(
+        (o.landed, o.session.as_deref()),
+        (Landed::Started, Some("p-cc-2"))
+    );
+    assert!(
+        o.line.as_deref().unwrap().ends_with("--attach p-cc-2"),
+        "{:?}",
+        o.line
+    );
+    let argv = rig.ccm.borrow()[0].clone();
+    assert!(
+        argv.iter().any(|a| a == "--hosted") && argv.iter().any(|a| a == "--detach"),
+        "{argv:?}"
+    );
+    assert!(
+        !argv.iter().any(|a| a.starts_with("--ccm-tmux")),
+        "托管那一形不进 tmux：{argv:?}"
+    );
+    assert!(
+        argv.windows(2).any(|w| w == ["--cwd", "/p"]),
+        "后端替人起：工作目录随行：{argv:?}"
+    );
+    // 显式要托管、这台不能托管 ⇒ 拒（不悄悄改道）。
+    let rig = Rig::new(Some(vec![]));
+    let e = rig
+        .open(
+            json!({ "what": { "kind": "new", "agent": "claude", "cwd": "/p" }, "run": "managed" }),
+        )
+        .unwrap_err();
+    assert_eq!(e.0, "place_unavailable");
+}
+
+/// 恢复：这台能托管、偏好没开 ⇒ 托管；那一条正在一个托管终端里跑 ⇒ 接回那一行、不另起。
+#[test]
+fn a_resume_where_this_machine_hosts_lands_managed_or_rejoins_its_managed_terminal() {
+    let mut rig = Rig::new(Some(vec![]));
+    rig.hosts = true;
+    rig.ccm_out = "ccm-session=p-cc\n".into();
+    let o = rig.open(resume(None)).unwrap();
+    assert_eq!(
+        (o.landed, o.session.as_deref()),
+        (Landed::Started, Some("p-cc"))
+    );
+    let argv = rig.ccm.borrow()[0].join(" ");
+    assert!(
+        argv.contains("--hosted") && argv.contains("--detach") && argv.contains(A),
+        "{argv}"
+    );
+    let mut rig = Rig::new(Some(vec![]));
+    rig.hosts = true;
+    rig.hosted = vec![TermEntry {
+        host: crate::wire::TerminalHost::Managed,
+        name: "p-cc".into(),
+        terminal: "p-cc".into(),
+        sid: Some(A.into()),
+        agent: true,
+    }];
+    let o = rig.open(resume(None)).unwrap();
+    assert_eq!(
+        (o.landed, o.session.as_deref()),
+        (Landed::Running, Some("p-cc"))
+    );
+    assert!(rig.ccm.borrow().is_empty(), "在跑不另起");
 }
 
 /// ★ 直路也过「已有进程在写就拒」那道门：拒 ⇒ `already_live`，零次预标、零次起 ccm、不渲那一行。
@@ -958,24 +1067,35 @@ fn the_facts_run_is_where_a_new_session_without_run_lands() {
                 if !forked && fork_tmux.is_some() {
                     continue;
                 }
-                let mut rig = Rig::new(tmux.then(Vec::new));
-                rig.fork_tmux = fork_tmux;
-                let extra = if forked {
-                    json!({ "fork": { "sid": A, "uuid": U } })
-                } else {
-                    json!({})
-                };
-                let got = rig
-                    .open(new(extra))
-                    .unwrap_or_else(|e| panic!("没起：{e:?}"));
-                let landed = match crate::faces::session_open_face::facts_run(fork_tmux, tmux) {
-                    Run::Tmux => Landed::Started,
-                    Run::Direct => Landed::Window,
-                };
-                assert_eq!(
-                    got.landed, landed,
-                    "tmux {tmux} · 分叉 {forked} · 源在 tmux {fork_tmux:?}"
-                );
+                for hosts in [false, true] {
+                    let mut rig = Rig::new(tmux.then(Vec::new));
+                    rig.fork_tmux = fork_tmux;
+                    rig.hosts = hosts;
+                    rig.ccm_out = "ccm-session=p-cc\n".into();
+                    let extra = if forked {
+                        json!({ "fork": { "sid": A, "uuid": U } })
+                    } else {
+                        json!({})
+                    };
+                    let got = rig
+                        .open(new(extra))
+                        .unwrap_or_else(|e| panic!("没起：{e:?}"));
+                    let run = crate::faces::session_open_face::facts_run(fork_tmux, tmux, hosts);
+                    let landed = match run {
+                        Run::Tmux | Run::Managed => Landed::Started,
+                        Run::Direct => Landed::Window,
+                    };
+                    assert_eq!(
+                        got.landed, landed,
+                        "tmux {tmux} · 托管 {hosts} · 分叉 {forked} · 源在 tmux {fork_tmux:?}"
+                    );
+                    let hosted = rig
+                        .ccm
+                        .borrow()
+                        .first()
+                        .is_some_and(|a| a.iter().any(|w| w == "--hosted"));
+                    assert_eq!(hosted, run == Run::Managed, "{run:?}");
+                }
             }
         }
     }

@@ -42,16 +42,24 @@ pub(crate) struct TermEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Listed {
     pub(crate) tmux: bool,
+    /// 这台能托管终端（给了托管的家、平台能托管）：起会话缺省放在哪 · `run: managed` 收不收只看它。
+    pub(crate) managed: bool,
     pub(crate) rows: Vec<TermEntry>,
 }
 
 impl Listed {
-    /// tmux 那一臂（`None` ＝ 没装 tmux）＋ 托管那几行。
+    /// tmux 那一臂（`None` ＝ 没装 tmux）＋ 托管那几行；能不能托管另由 [`Listed::hosting`] 说（缺省不能）。
     pub(crate) fn of(tmux: Option<Vec<TermEntry>>, hosted: Vec<TermEntry>) -> Self {
         Self {
             tmux: tmux.is_some(),
+            managed: false,
             rows: tmux.unwrap_or_default().into_iter().chain(hosted).collect(),
         }
+    }
+
+    /// 这台能不能托管终端。
+    pub(crate) fn hosting(self, managed: bool) -> Self {
+        Self { managed, ..self }
     }
 }
 
@@ -119,7 +127,12 @@ pub(crate) fn listed_on(
         .map(crate::host::managed::rows_at)
         .unwrap_or_default();
     let entries = |rows: Vec<crate::host::TermRow>| rows.into_iter().map(entry_of).collect();
-    Ok(Listed::of(tmux.map(entries), entries(hosted)))
+    Ok(Listed::of(tmux.map(entries), entries(hosted)).hosting(hosts_with(managed)))
+}
+
+/// 这台能不能托管终端：给了托管的家、平台能托管（[`crate::control::ccm::plan::HOSTS_HERE`]）。名单那一格与起会话框的 `hosts` 都问它。
+pub(crate) fn hosts_with(managed: Option<&crate::platform::fs::Own>) -> bool {
+    managed.is_some() && crate::control::ccm::plan::HOSTS_HERE
 }
 
 /// 名单里一行 ⇒ 认会话用的五格。
@@ -403,7 +416,12 @@ pub(crate) fn where_(req: &SidsReq, deps: &Deps) -> Result<Whereabouts, CmdErr> 
             }
         })
         .collect();
-    let run = open::default_run(open::Intent::Resume, deps.prefs.resume_in_tmux, listed.tmux);
+    let run = open::default_run(
+        open::Intent::Resume,
+        deps.prefs.resume_in_tmux,
+        listed.tmux,
+        listed.managed,
+    );
     Ok(Whereabouts { results, run })
 }
 

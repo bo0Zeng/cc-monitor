@@ -873,11 +873,24 @@ fn execute_hosted(c: &plan::Container, own: &crate::platform::fs::Own) -> i32 {
     finish_container(c, own)
 }
 
+/// `--detach` 报名字那一行的前缀（[`finish_container`] 写、[`session_reported`] 读）。
+const SESSION_SAID: &str = "ccm-session=";
+
+/// `--detach` 那一趟 stdout 里报的终端名（最后一行 `ccm-session=<名>`；没有 ⇒ `None`）。后端替人起托管终端时读它。
+pub(crate) fn session_reported(stdout: &str) -> Option<String> {
+    stdout
+        .lines()
+        .rev()
+        .find_map(|l| l.trim().strip_prefix(SESSION_SAID))
+        .map(str::to_string)
+        .filter(|n| !n.is_empty())
+}
+
 /// 容器建好之后（两种宿主同一段）：`--detach` ⇒ 报名字；再跑收尾（自检 · 接进去）。
 fn finish_container(c: &plan::Container, own: &crate::platform::fs::Own) -> i32 {
     // 会话名必须由**建它的人**说出来（`--detach` 的既有契约）。
     if c.detach {
-        println!("ccm-session={}", c.name);
+        println!("{SESSION_SAID}{}", c.name);
     }
     let tail = plan::render_container_tail(c);
     if tail.is_empty() {

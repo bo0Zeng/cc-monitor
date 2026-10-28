@@ -140,11 +140,15 @@ pub enum Action<'a> {
     Attach { name: &'a str },
 }
 
-/// 容器：直路 · 建进一个新的 tmux 会话（接回那一形是接进去的那个）。
+/// 容器：直路 · 建进一个新的 tmux 会话（接回那一形是接进去的那个）· 建一个托管终端。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Container<'a> {
     None,
-    Tmux { name: &'a str },
+    Tmux {
+        name: &'a str,
+    },
+    /// `--hosted`（名字由 ccm 铸）：后端替人起、不接进去时带 `--detach`。
+    Hosted,
 }
 
 /// 渲染 ccm 调用行所需的全部输入。
@@ -370,6 +374,12 @@ pub fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String>, 
             });
         }
         ours.push(format!("--ccm-tmux={name}"));
+        if spec.detach {
+            ours.push("--detach".into());
+        }
+    }
+    if spec.container == Container::Hosted {
+        ours.push("--hosted".into());
         if spec.detach {
             ours.push("--detach".into());
         }

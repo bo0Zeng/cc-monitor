@@ -227,15 +227,18 @@ pub(crate) enum Intent {
     Resume,
 }
 
-/// **默认放在哪**（`run` 缺时照它；`sessions-where` · 起新会话框要画勾的那两处读它）。两条规则住这一处：
-/// 新起 ⇒ 有 tmux 就 tmux（分叉照源会话那一种）；恢复 ⇒ 照这台的偏好「恢复时进 tmux」。这台没 tmux ⇒ 一律直路。
-pub(crate) fn default_run(intent: Intent, resume_in_tmux: bool, tmux: bool) -> Run {
-    let want = match intent {
-        Intent::New { fork_tmux } => fork_tmux.unwrap_or(true),
+/// **默认放在哪**（`run` 缺时照它；`sessions-where` · 起新会话框要画勾的那两处读它）。规则住这一处：
+/// 想进 tmux（新起：分叉的源会话在 tmux 里；不是分叉 ⇒ 这台不能托管时才想；恢复：偏好「恢复时进 tmux」开着）且有 tmux ⇒ tmux；
+/// 否则这台能托管（`managed`）⇒ 托管；都不能 ⇒ 直路（A3-3-19：Windows 托管做完那一版删）。
+pub(crate) fn default_run(intent: Intent, resume_in_tmux: bool, tmux: bool, managed: bool) -> Run {
+    let want_tmux = match intent {
+        Intent::New { fork_tmux } => fork_tmux.unwrap_or(!managed),
         Intent::Resume => resume_in_tmux,
     };
-    if want && tmux {
+    if want_tmux && tmux {
         Run::Tmux
+    } else if managed {
+        Run::Managed
     } else {
         Run::Direct
     }
@@ -417,13 +420,91 @@ fn resume_default(deps: &Deps) -> Result<Run, Failed> {
         Intent::Resume,
         deps.prefs.resume_in_tmux,
         listed.tmux,
+        listed.managed,
     ))
+}
+
+/// 这台不能托管 ⇒ `place_unavailable`（给了托管不悄悄改道）。
+fn managed_ok(listed: &Listed) -> Result<(), Failed> {
+    if listed.managed {
+        Ok(())
+    } else {
+        Err(fail(
+            "place_unavailable",
+            copy_core::copy_text("beSessionNew.place.noManaged", &[]),
+            Some(Field::Place),
+        ))
+    }
+}
+
+/// 交那一行 ccm 起一个托管终端（`--hosted --detach`：名字由 ccm 铸、避让这台的 tmux 会话名与托管终端），读回它报的名字。
+/// 后端替人起 ⇒ 工作目录随行（[`lr::hosted_argv_of`]）。
+fn start_hosted(l: &Launch, account: &Settled, here: Here, deps: &Deps) -> Result<String, Failed> {
+    let argv = own_entry(deps)
+        .and_then(|entry| lr::hosted_argv_of(l, account, here, deps.caps, &entry))
+        .map_err(|m| fail("refused", m, None))?;
+    match (deps.run_ccm)(&argv) {
+        Ok((0, out, err)) => crate::control::ccm::session_reported(&out).ok_or_else(|| {
+            let (c, s, d, _) = fail(
+                "start_failed",
+                copy_core::copy_text("beSessionNew.hosted.noName", &[]),
+                None,
+            );
+            (c, s, d, Some(format!("{}\n{}", out.trim(), err.trim())))
+        }),
+        Ok((rc, _, err)) => {
+            let (c, s, d, _) = fail(
+                "start_failed",
+                copy_core::copy_text("beSessionNew.start.failed", &[]),
+                None,
+            );
+            Err((c, s, d, Some(format!("exit {rc}\n{}", err.trim()))))
+        }
+        Err(e) => Err(lower(e)),
+    }
+}
+
+/// 在托管终端里恢复：在跑（哪种宿主里都算）⇒ 接回那一行；已有活进程在写 ⇒ 不起；都不是 ⇒ 起一个托管终端。
+/// 「空 tmux 就地键入」只给 tmux（托管终端里那一家一退终端就收，没有空着的托管终端）。
+fn start_in_hosted(
+    it: &Item,
+    b: &Batch,
+    account: &Settled,
+    rows: &[TermEntry],
+    here: Here,
+    live: &[u32],
+    deps: &Deps,
+) -> Result<Opened, Failed> {
+    let (landed, name, note) = match carriers(rows, &it.sid) {
+        Standing::Running(e) => (Landed::Running, e.name.clone(), None),
+        Standing::Ambiguous(es) => {
+            let first = es[0].name.clone();
+            let note = copy_core::copy_text(
+                "beSessionOpen.look.many",
+                &[("n", &es.len().to_string()), ("name", &first)],
+            );
+            (Landed::Running, first, Some(note))
+        }
+        _ if !live.is_empty() => return Err(already_live(live)),
+        Standing::Idle(_) | Standing::None => {
+            pretrust(account, &it.cwd, deps);
+            let name = start_hosted(&resume_launch(it, b, None), account, here, deps)?;
+            (Landed::Started, name, None)
+        }
+    };
+    let line = attach_line(&name, here, deps)?;
+    Ok(Opened {
+        note,
+        ..opened(landed, Some(name), Some(line))
+    })
 }
 
 /// 这台的名单；没 tmux ⇒ `place_unavailable`（给了 tmux 不悄悄改直路）。
 fn tmux_rows(deps: &Deps) -> Result<Vec<TermEntry>, Failed> {
     match listed(deps).map_err(lower)? {
-        Listed { tmux: true, rows } => Ok(rows),
+        Listed {
+            tmux: true, rows, ..
+        } => Ok(rows),
         Listed { tmux: false, .. } => Err(fail(
             "place_unavailable",
             copy_core::copy_text("beSessionNew.place.noTmux", &[]),
@@ -691,6 +772,11 @@ fn start_one(it: &Item, b: &Batch, run: Run, here: Here, deps: &Deps) -> Result<
     let live = (deps.writers)(&it.sid);
     let out = match run {
         Run::Tmux => start_in_tmux(it, b, &account, &tmux_rows(deps)?, here, &live, deps)?,
+        Run::Managed => {
+            let listed = listed(deps).map_err(lower)?;
+            managed_ok(&listed)?;
+            start_in_hosted(it, b, &account, &listed.rows, here, &live, deps)?
+        }
         Run::Direct => {
             if !live.is_empty() {
                 return Err(already_live(&live));
@@ -886,7 +972,12 @@ pub(crate) fn resume_saying(it: &Item, agent: &str, deps: &Deps) -> Result<Opene
     if it.say.is_some() && !b.takes_first_say() {
         return Err((NO_FIRST_PROMPT, agent.to_string(), None, None));
     }
-    start_one(it, &b, Run::Tmux, Here::Remote, deps)
+    // 这台后端自己起、不开窗 ⇒ 落在容器里：照恢复的缺省（偏好 × 有没有 tmux × 能不能托管），直路那一形改 tmux（没有 tmux 照拒）。
+    let run = match resume_default(deps)? {
+        Run::Direct => Run::Tmux,
+        r => r,
+    };
+    start_one(it, &b, run, Here::Remote, deps)
 }
 
 /// **换号重启**起新那一步：旧的已停，在让出来的那个名字里用判好的号起。
@@ -939,13 +1030,28 @@ fn start_new(
     }
     // 放在哪：没说 ⇒ 这台定；说了 tmux 而这台没有 ⇒ 拒（下面铸名那一步说）。
     let listed = listed(deps).map_err(lower)?;
-    let run = run.unwrap_or_else(|| default_run(Intent::New { fork_tmux }, false, listed.tmux));
-    // 第一句：只跟 tmux（直路那一形的终端在界面那一侧）；空的不收；那一家声明不认起的时候带 ⇒ 不收。
+    let run = run.unwrap_or_else(|| {
+        default_run(
+            Intent::New { fork_tmux },
+            false,
+            listed.tmux,
+            listed.managed,
+        )
+    });
+    if run == Run::Managed {
+        managed_ok(&listed)?;
+        if req.tmux_name.is_some() {
+            return Err(malformed("`tmuxName` goes only with `run: tmux`"));
+        }
+    }
+    // 第一句：只跟容器（tmux · 托管；直路那一形的终端在界面那一侧）；空的不收；那一家声明不认起的时候带 ⇒ 不收。
     let prompt = match req.prompt.as_deref().map(str::trim) {
         None => None,
         Some("") => return Err(malformed("`prompt` must not be empty")),
-        Some(_) if run != Run::Tmux => {
-            return Err(malformed("`prompt` goes only with `run: tmux`"))
+        Some(_) if run == Run::Direct => {
+            return Err(malformed(
+                "`prompt` goes only with `run: tmux` or `run: managed`",
+            ))
         }
         Some(_) if first_prompt_refused(&face).is_some() => {
             return Err(malformed(first_prompt_refused(&face).unwrap_or_default()))
@@ -1025,10 +1131,14 @@ fn start_new(
     let source = req.fork.as_ref().map(|f| f.sid.as_str());
     let account =
         la::settle(asked, source, &deps.prefs.models, deps.accounts).map_err(unavailable)?;
+    // tmux 那一形这台先铸名；托管那一形名字由 ccm 铸（起好之后读回）。
     let name = match run {
-        Run::Direct => None,
+        Run::Direct | Run::Managed => None,
         Run::Tmux => {
-            let Listed { tmux: true, rows } = listed else {
+            let Listed {
+                tmux: true, rows, ..
+            } = listed
+            else {
                 return Err(fail(
                     "place_unavailable",
                     copy_core::copy_text("beSessionNew.place.noTmux", &[]),
@@ -1096,6 +1206,11 @@ fn start_new(
                 run_ccm(&argv, name, deps)?;
                 let line = attach_line(name, here, deps)?;
                 opened(Landed::Started, Some(name.clone()), Some(line))
+            }
+            None if run == Run::Managed => {
+                let name = start_hosted(&l, &account, here, deps)?;
+                let line = attach_line(&name, here, deps)?;
+                opened(Landed::Started, Some(name), Some(line))
             }
             None => {
                 let line = lr::line_of(&l, &account, here, deps.caps, &entry)

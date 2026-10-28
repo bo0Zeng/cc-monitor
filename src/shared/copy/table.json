@@ -1656,6 +1656,18 @@
       "args": [],
       "limited": ["tmux"]
     },
+    "beSessionNew.place.noManaged": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "这台不能托管终端",
+      "args": []
+    },
+    "beSessionNew.hosted.noName": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "托管终端没报回名字",
+      "args": []
+    },
     "beSessionNew.tmux.taken": {
       "kind": "error",
       "role": "报错",
