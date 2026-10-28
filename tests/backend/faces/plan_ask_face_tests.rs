@@ -91,7 +91,10 @@ fn a_kept_alias_that_is_gone_preselects_nothing() {
 
 #[test]
 fn nothing_kept_preselects_nothing() {
-    let (out, _) = ask(json!({"workspace": "/w", "slice": "alpha", "id": "A1-1"}), None);
+    let (out, _) = ask(
+        json!({"workspace": "/w", "slice": "alpha", "id": "A1-1"}),
+        None,
+    );
     let out = out.expect("问得出");
     assert_eq!(out["alias"], Value::Null, "{out}");
     assert_eq!(out["line"], cell_part(), "{out}");
