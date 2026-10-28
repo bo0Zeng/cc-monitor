@@ -42,7 +42,9 @@ import { readMachines } from "./machine-feed";
 import type { MachineState } from "./generated/MachineState";
 import { readStrategies } from "./rot-reads";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
-import { readProfiles } from "./profiles-reads";
+import { readProfiles, resolveProfile, type Resolved } from "./profiles-reads";
+import type { ProfileMergeRow } from "./generated/ProfileMergeRow";
+import { saidOf } from "./kit/detail";
 import { pageTabs, setPage } from "./new-session-set";
 import s from "./new-session.module.css";
 
@@ -406,7 +408,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   // 问图：那一格总在，第一项是「选一条别名」（选了才能起），预选那台记着的那条；改选 ⇒ 问那台新拼的那句。
   const ask = spec.ask ?? null;
   const noAlias = { value: "", label: ask ? copyText("newSession.ask.pick") : copyText("newSession.alias.none") };
-  const aliasSel = select({ label: copyText("newSession.label.alias"), options: [noAlias], value: "", onChange: (v) => void relineFor(v) });
+  // 单个页选了别名 ⇒ 各格写那台合下来的值（`mergeFor`）；问图 ⇒ 问那台新拼的那句（`relineFor`）。
+  const aliasSel = select({ label: copyText("newSession.label.alias"), options: [noAlias], value: "", onChange: (v) => void (ask ? relineFor(v) : mergeFor(v)) });
   const aliasRow = row(copyText("newSession.label.alias"), aliasSel.el, false);
   aliasRow.root.hidden = ask === null;
   single.appendChild(aliasRow.root);
@@ -468,6 +471,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     label: copyText("newSession.label.account"),
     options: [],
     onChange: () => {
+      // 人改了这一格 ⇒ 盖过别名。
+      fromAlias.account = false;
       paintAccountNote();
       handle.refresh();
     },
@@ -533,6 +538,88 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow } = moreFields(fork !== null);
   moreRow.hidden = ask !== null;
   single.appendChild(moreRow);
+
+  // 单个页选了别名：账号 · 运行于 · 开口那句写那台合下来的值（`profiles-resolve` 的合并表，同别名页一个读法）＋「来自 {别名}」。
+  // 改一格 ⇒ 那一格盖过别名（灰字消失、照交）；开口那句清空 ⇒ 回到别名那一句。没改过的格不交（照别名起）。
+  let merged: { alias: string; say: string | null } | null = null;
+  let mergedProblem: string | null = null;
+  let mergeSeq = 0;
+  const fromAlias = { account: false, place: false, say: false };
+  const clearMerged = (): void => {
+    merged = null;
+    mergedProblem = null;
+    fromAlias.account = fromAlias.place = fromAlias.say = false;
+    for (const r of [aliasRow, placeRow, promptRow]) r.setNote("");
+    paintAccountNote();
+  };
+  const mergeFor = async (alias: string): Promise<void> => {
+    const my = ++mergeSeq;
+    clearMerged();
+    handle.refresh();
+    if (alias === "") return;
+    let r: Resolved;
+    try {
+      r = await resolveProfile(origin, alias, null, cwdInput.value.trim() || null);
+    } catch (e) {
+      if (my !== mergeSeq) return;
+      // 问不到：各格照缺省，不画成「别名没写」。
+      aliasRow.setNote(copyText("newSession.alias.unread", { alias, why: saidOf(e) }));
+      return;
+    }
+    if (my !== mergeSeq || aliasSel.value() !== alias) return;
+    if (r.problem !== null) {
+      mergedProblem = r.problem;
+      aliasRow.setNote(r.problem, "error");
+      handle.refresh();
+      return;
+    }
+    const kept = r.rows.filter((x) => x.overriddenBy === null);
+    const at = (slot: string): ProfileMergeRow | undefined => kept.find((x) => x.slot === slot);
+    const from = (row: ProfileMergeRow): string => copyText("newSession.alias.from", { alias: row.from });
+    const acct = at("account");
+    const name = acct?.key === "account" ? acct.vals[0] : undefined;
+    if (acct && name !== undefined && accounts?.some((a) => a.name === name)) {
+      accountSel.setValue(name);
+      paintAccountNote();
+      fromAlias.account = true;
+      if (chosenAccountOpt()?.ready !== false) accountRow.setNote(from(acct));
+    }
+    const tmux = at("tmux");
+    if (tmux && !tmuxRadio.label.hidden) {
+      tmuxRadio.input.checked = true;
+      fromAlias.place = true;
+      placeRow.setNote(from(tmux));
+      paintPlace();
+    }
+    const say = at("say");
+    merged = { alias, say: say ? say.vals.join(" ") : null };
+    if (say && merged.say !== null) {
+      promptInput.value = merged.say;
+      fromAlias.say = true;
+      promptRow.setNote(from(say));
+    }
+    handle.refresh();
+  };
+  for (const p of Object.keys(radios) as Place[]) {
+    radios[p].input.addEventListener("change", () => {
+      if (!fromAlias.place) return;
+      fromAlias.place = false;
+      placeRow.setNote("");
+    });
+  }
+  promptInput.addEventListener("input", () => {
+    if (!fromAlias.say || promptInput.value === merged?.say) return;
+    fromAlias.say = false;
+    promptRow.setNote("");
+  });
+  promptInput.addEventListener("blur", () => {
+    // 清空那一格就是回到别名（不另放「回到别名」按钮）。
+    const say = merged?.say ?? null;
+    if (say === null || promptInput.value.trim() !== "") return;
+    promptInput.value = say;
+    fromAlias.say = true;
+    promptRow.setNote(copyText("newSession.alias.from", { alias: merged!.alias }));
+  });
 
   /** 勾的哪一张；那台的默认还没到、也没人勾 ⇒ `null`（请求不带 `run`，那台照自己的默认）。 */
   const place = (): Place | null =>
@@ -675,14 +762,15 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
 
   /** 点［新建］交的那一份：哪一家 · 目录 · 放在哪 · 点名的号（跟随 ⇒ 不带）· 改过的终端名与命令 · 分叉的两个 id。 */
   const buildRequest = (): SessionOpenReq => {
-    const accountValue = accountRow.root.hidden ? null : accountSel.value();
+    // 别名合下来、人没改过的那几格不交（照别名起）。
+    const accountValue = accountRow.root.hidden || fromAlias.account ? null : accountSel.value();
     const account: AccountAsk | undefined =
       accountValue === null || accountValue === ACCOUNT_FOLLOW ? undefined : chosenAccount(accountValue);
     const what: NewOpen = { agent, cwd: cwdInput.value.trim() };
     if (!fork && place() === "tmux" && tmuxInput.value.trim() !== "") what.tmuxName = tmuxInput.value.trim();
     if (cmdInput.value.trim() !== "") what.command = cmdInput.value.trim();
     if (fork) what.fork = { sid: fork.sid, uuid: fork.uuid };
-    if (place() !== "window" && promptInput.value.trim() !== "") what.prompt = promptInput.value;
+    if (place() !== "window" && !fromAlias.say && promptInput.value.trim() !== "") what.prompt = promptInput.value;
     if (!aliasRow.root.hidden && aliasSel.value() !== "") what.alias = aliasSel.value();
     // 新会话用的那份不写（新会话本来就用它）；挑了别的（含「不轮换」）⇒ 起之前写成那一份。
     const rot = rotRow.root.hidden ? forNew : rotSel.value();
@@ -782,6 +870,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       if (onSet) return sets.blocked();
       if (facts === null) return copyText("kit.state.reading");
       if (ask && !aliasSel.value()) return copyText("newSession.ask.pick");
+      if (mergedProblem !== null) return mergedProblem;
       const a = chosenAccountOpt();
       if (a && !a.ready && !accountRow.root.hidden) return a.why ?? "";
       if (cwdInput.value.trim() === "") return copyText("newSession.cwd.empty");

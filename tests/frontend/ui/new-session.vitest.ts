@@ -230,6 +230,85 @@ describe("单个 · 一组：页签与别名那一格", () => {
     expect(whatOf(newRequests()[0]).alias).toBe("look");
   });
 
+  /** look 合下来的那几格（那台 `profiles-resolve` 的合并表，结构夹具）。 */
+  const RESOLVED = {
+    chain: ["look"],
+    rows: [
+      { key: "account", slot: "account", label: "acct-label", vals: ["lab"], said: "lab", from: "look", overriddenBy: null },
+      { key: "ccm-tmux", slot: "tmux", label: "tmux-label", vals: [], said: "tmux-said", from: "look", overriddenBy: null },
+      { key: "say", slot: "say", label: "say-label", vals: ["读 pb 图（夹具）"], said: "读 pb 图（夹具）", from: "look", overriddenBy: null },
+    ],
+    line: null,
+    lineShort: null,
+    lineError: null,
+    problem: null,
+  };
+  /** 那台多一个能起的号 lab（别名 look 用它）；回放回原样的那一手。 */
+  const withLab = async (): Promise<() => void> => {
+    const orig = vi.mocked(fetchAccounts).getMockImplementation()!;
+    const st = await fetchAccounts("devbox");
+    vi.mocked(fetchAccounts).mockImplementation(async () => ({ ...st, accounts: [...st.accounts, { ...st.accounts[1], name: "lab", configDir: "/h/.cc/lab", isDefault: false }] }));
+    return () => void vi.mocked(fetchAccounts).mockImplementation(orig);
+  };
+
+  it("★ 选了别名 ⇒ 账号 · 运行于 · 开口那句写合下来的值 ＋「来自 look」；没改过的格不另交（照别名起）", async () => {
+    const restore = await withLab();
+    replies.set("profiles-read", BOOK);
+    replies.set("profiles-resolve", RESOLVED);
+    const done = openNewSession({ origin: "devbox" });
+    await flush();
+    choose(sel(copyText("newSession.label.alias")), "look");
+    await flush();
+    expect(sent.find((s) => s.op === "profiles-resolve")?.body).toMatchObject({ name: "look", edit: null });
+    const acct = sel(copyText("newSession.label.account"));
+    const from = copyText("newSession.alias.from", { alias: "look" });
+    expect(acct.textContent, "账号格是别名合下来的号").toContain("lab");
+    expect(rowOf(acct).textContent).toContain(from);
+    const prompt = dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("newSession.label.prompt")}"]`)!;
+    expect(prompt.value).toBe("读 pb 图（夹具）");
+    expect(rowOf(prompt).textContent).toContain(from);
+    createBtn().click();
+    await flush();
+    await done;
+    const req = newRequests()[0];
+    expect(whatOf(req).alias).toBe("look");
+    expect(req.account, "账号照别名，不另交").toBeUndefined();
+    expect(whatOf(req).prompt, "开口那句照别名，不另交").toBeUndefined();
+    restore();
+  });
+
+  it("改一格 ⇒ 盖过别名（灰字消失、照交）；清空开口那句 ⇒ 回到别名；问不到 ⇒ 各格照缺省、别名格下写读不出", async () => {
+    const restore = await withLab();
+    replies.set("profiles-read", BOOK);
+    replies.set("profiles-resolve", RESOLVED);
+    const done = openNewSession({ origin: "devbox" });
+    await flush();
+    choose(sel(copyText("newSession.label.alias")), "look");
+    await flush();
+    const acct = sel(copyText("newSession.label.account"));
+    choose(acct, "work");
+    const from = copyText("newSession.alias.from", { alias: "look" });
+    expect(rowOf(acct).textContent).not.toContain(from);
+    const prompt = dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("newSession.label.prompt")}"]`)!;
+    prompt.value = "";
+    prompt.dispatchEvent(new Event("input"));
+    prompt.dispatchEvent(new Event("blur"));
+    expect(prompt.value, "清空 ⇒ 回到别名那一句").toBe("读 pb 图（夹具）");
+    createBtn().click();
+    await flush();
+    await done;
+    expect(newRequests()[0].account).toEqual({ kind: "named", name: "work" });
+    document.body.replaceChildren();
+    refusal = { op: "profiles-resolve", code: "refused", message: "devbox 离线", data: null };
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    const alias = sel(copyText("newSession.label.alias"));
+    choose(alias, "look");
+    await flush();
+    expect(rowOf(alias).textContent).toContain(copyText("newSession.alias.unread", { alias: "look", why: "devbox 离线" }));
+    restore();
+  });
+
   it("页签「单个 · 一组」：换到一组页，主按钮字跟着换；分叉打开时没有页签", async () => {
     replies.set("profiles-read", BOOK);
     void openNewSession({ origin: "devbox" });

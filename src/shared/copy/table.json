@@ -12667,6 +12667,18 @@
       "zh": "不用别名",
       "args": []
     },
+    "newSession.alias.from": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "来自 {alias}",
+      "args": ["alias"]
+    },
+    "newSession.alias.unread": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "读取失败 · {alias} 合并值 · {why}",
+      "args": ["alias", "why"]
+    },
     "newSession.page.single": {
       "kind": "action",
       "role": "按钮",
