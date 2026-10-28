@@ -2,16 +2,17 @@
  * 新建会话框的「一组」页：组名 ＋［换一组］· 几行（目录 · 别名 · 个数 · 组名）·［＋ 加一行］· 预览 ·［仅保存］，主按钮「启动 N」。
  *
  * - 判定与那几句全在那台后端：预览现问 `set-plan {rows}`（改了停手 300ms 再问，只读不写）；每行已有几个 · 再起几个 · 组名缺省是什么 ·
- *   起不了的原因 · 合计 · 主按钮的字都照成品摆。个数上限 · 同一目录同一别名只许一行 · 合计上限由那台存的时候判（拒了那一句落在页底）。
+ *   起不了的原因 · 合计 · 主按钮的字都照成品摆。「＋」能不能再点（一行上限 · 合计上限）与重行也是那台在预览里当场判的（`canMore` · `moreWhy` · `blocked`），存的时候那台照旧再判（拒了那一句落在页底）。
+ * - 打开的是存好的那一组：组名格旁［删除］直接删（`removeSet`）＋ toast［撤销］（照读到的那一份 `saveSet` 写回）。
  * - 组名一格留空 ＝ 缺省（占位字是那台算的缺省组名）；写了才进那一行的 `tab-group`。
  * - ［仅保存］只写配置文件那一段（`profiles-write` 的 `saveSet`）；主按钮 ＝ 存 ＋ 照存下的补足起（`set-start.ts`，同栏顶那一项）。
  */
 import { copyText } from "./copy-table";
 import { el } from "./kit/el";
-import { button } from "./kit/button";
+import { button, setDisabled } from "./kit/button";
 import { openMenu } from "./kit/menu";
 import { select, type SelectHandle } from "./kit/select";
-import { toast } from "./kit/toast";
+import { toast, undoToast } from "./kit/toast";
 import { detailOf, saidOf } from "./kit/detail";
 import { readProfiles, writeProfiles } from "./profiles-reads";
 import { planSet, type RowEdit, type SetPlan } from "./set-reads";
@@ -80,6 +81,11 @@ export function setPage(refresh: () => void): SetPage {
   switchBtn.dataset.role = "set-switch";
   const nameBox = el("div", s.nsBox);
   nameBox.append(nameInput, switchBtn);
+  // 打开的是存好的那一组才有：直接删 ＋ toast［撤销］（撤得回不确认）。
+  const deleteBtn = button({ label: copyText("newSessionSet.set.delete"), kind: "icon", size: "compact", icon: "close" });
+  deleteBtn.dataset.role = "set-delete";
+  const nameCell = el("div", s.nsSetName);
+  nameCell.append(nameBox, deleteBtn);
   const rowsBox = el("div", s.nsSetRows);
   const addBtn = button({ label: copyText("newSessionSet.row.add"), kind: "ghost", size: "compact", icon: "plus" });
   addBtn.dataset.role = "set-add";
@@ -95,7 +101,7 @@ export function setPage(refresh: () => void): SetPage {
     return r;
   };
   root.append(
-    labeled(copyText("newSessionSet.label.name"), nameBox),
+    labeled(copyText("newSessionSet.label.name"), nameCell),
     labeled(copyText("newSessionSet.label.rows"), (() => {
       const c = el("div", s.nsCell);
       c.append(rowsBox, addBtn);
@@ -211,7 +217,11 @@ export function setPage(refresh: () => void): SetPage {
       count.dataset.role = "set-n";
       const plus = button({ label: copyText("newSessionSet.row.more"), kind: "icon", size: "compact", icon: "plus" });
       plus.dataset.role = "set-more";
+      // 能不能再加一是那台当场判的（一行上限 · 一组合计上限）；还没问到 ⇒ 照常可点，问回来再灰。
+      const fit = plan?.rows[i];
+      setDisabled(plus, fit !== undefined && !fit.canMore ? (fit.moreWhy ?? "") : null);
       plus.addEventListener("click", () => {
+        if (plus.getAttribute("aria-disabled") === "true") return;
         d.n += 1;
         paintRows();
         changed();
@@ -240,6 +250,14 @@ export function setPage(refresh: () => void): SetPage {
       groupBox.append(el("span", s.nsPlaceNote, copyText("newSessionSet.row.group")), group);
       line.append(cwdBox, aliasSel(d).el, minus, count, plus, drop, groupBox);
       rowsBox.append(line);
+      // 那台说这一行起不了（重行 · 别名不在 · 目录不在）⇒ 淡掉，下面一行写那台那一句。
+      const why = fit?.blocked ?? null;
+      line.dataset.blocked = String(why !== null);
+      if (why !== null) {
+        const note = el("div", s.nsSetRowWhy, why);
+        note.dataset.role = "set-row-why";
+        rowsBox.append(note);
+      }
     });
   };
 
@@ -247,6 +265,8 @@ export function setPage(refresh: () => void): SetPage {
   const open = (x: SetOut | null): void => {
     was = x?.name ?? null;
     nameInput.value = x?.name ?? "";
+    // kit 按钮自带 display，`hidden` 切不动它 ⇒ 收起走 style。
+    deleteBtn.style.display = was === null ? "none" : "";
     drafts = x ? x.rows.map((r) => ({ cwd: r.cwd, alias: r.alias, n: r.n, tabGroup: r.tabGroup ?? "" })) : [{ cwd: "", alias: aliases[0] ?? "", n: 1, tabGroup: "" }];
     plan = null;
     planFailed = null;
@@ -277,6 +297,32 @@ export function setPage(refresh: () => void): SetPage {
     drafts.push({ cwd: last?.cwd ?? "", alias: last?.alias ?? aliases[0] ?? "", n: 1, tabGroup: "" });
     paintRows();
     changed();
+  });
+
+  /** 删打开的那一组（`removeSet`）：成了 ⇒ 页换新建、toast［撤销］（撤销 ＝ 照读到的那一份 `saveSet` 写回）；不成 ⇒ 页不换、页底那一句。 */
+  deleteBtn.addEventListener("click", () => {
+    const gone = sets.find((x) => x.name === was);
+    if (!gone) return;
+    void (async () => {
+      try {
+        rev = (await writeProfiles(origin, [{ op: "removeSet", name: gone.name }], rev)).rev;
+      } catch (e) {
+        say(saidOf(e));
+        return;
+      }
+      sets = sets.filter((x) => x !== gone);
+      open(null);
+      const rows = rowsOf(gone.rows.map((r) => ({ cwd: r.cwd, alias: r.alias, n: r.n, tabGroup: r.tabGroup ?? "" })));
+      const undo = async (): Promise<void> => {
+        try {
+          rev = (await writeProfiles(origin, [{ op: "saveSet", was: null, set: { name: gone.name, rows } }], rev)).rev;
+          sets = [...sets, gone];
+        } catch (e) {
+          toast(copyText("newSessionSet.delete.undoFailed"), saidOf(e));
+        }
+      };
+      undoToast(copyText("newSessionSet.delete.done"), () => void undo(), () => {});
+    })();
   });
 
   /** 存这一组（改名照打开时的名字）；成了记下新版本与名字。不成 ⇒ 那一句。 */

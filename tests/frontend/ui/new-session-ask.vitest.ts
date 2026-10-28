@@ -68,13 +68,16 @@ const OK = {
 };
 
 const LINE = "读图。\n看 A2-1-3「编码探测」这一格：";
-const spec = (alias: string | null, relined: (a: string) => Promise<string> = async (a) => `${a} 的那句\n看 A2-1-3「编码探测」这一格：`): NewSessionSpec => ({
+const spec = (
+  alias: string | null,
+  relined: (a: string) => Promise<{ line: string; runs: string | null }> = async (a) => ({ line: `${a} 的那句\n看 A2-1-3「编码探测」这一格：`, runs: null }),
+): NewSessionSpec => ({
   origin: "devbox",
   lockMachine: true,
   cwd: "/work/ledger",
   lockCwd: true,
   prompt: LINE,
-  ask: { title: "问图 · 编码探测", alias, relined },
+  ask: { title: "问图 · 编码探测", alias, runs: null, relined },
 });
 
 beforeEach(() => {
@@ -112,7 +115,7 @@ describe("问图框", () => {
 
   it("没问过图（alias null）⇒ 别名空着、［新建］灰；选了 ⇒ 问那台新拼的那句，前一半换掉、人打的留着，才能起", async () => {
     const asked: string[] = [];
-    void openNewSession(spec(null, async (a) => (asked.push(a), `${a} 的那句\n看 A2-1-3「编码探测」这一格：`)));
+    void openNewSession(spec(null, async (a) => (asked.push(a), { line: `${a} 的那句\n看 A2-1-3「编码探测」这一格：`, runs: null })));
     await flush();
     expect(sel(copyText("newSession.label.alias")).dataset.value).toBe("");
     expect(createBtn().getAttribute("aria-disabled")).toBe("true");

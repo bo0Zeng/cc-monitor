@@ -391,7 +391,7 @@ function fillSaid(body: HTMLElement, text: string, pasted: readonly Pasted[] | u
   plain(afterFold ? text.slice(at).replace(/^\r?\n/, "") : text.slice(at));
 }
 
-/** 人说的那一句：气泡（带的附件画在正文上方；远端那台上的点开 ⇒ 文件窗口定位到那一份）。正文与附件都没有 ⇒ `null`。 */
+/** 人说的那一句：气泡（带的附件画在气泡外、上方；远端那台上的点开 ⇒ 文件窗口定位到那一份）。正文与附件都没有 ⇒ `null`。 */
 function buildSaidCard(rec: Extract<LineRecord, { t: "said" }>, ctx: RenderContext, time: string): HTMLElement | null {
   const cwd = rec.cwd;
   const open = isRemoteOrigin(ctx.origin) && cwd ? (rel: string) => void openRemoteFileInSftp(ctx.origin, `${cwd.replace(/\/+$/, "")}/${rel}`) : undefined;
@@ -411,13 +411,22 @@ function buildUserCard(
   const card = document.createElement("div");
   card.className = "card card-user";
   card.appendChild(cardHeader(copyText("cards.user.title"), time));
-  if (strip) card.appendChild(strip);
-
+  const body = document.createElement("div");
+  body.className = "card-body";
+  if (text) fillSaid(body, text, pasted);
+  // 只有字 ⇒ 卡本身就是气泡；带附件 ⇒ 卡是透明的一列：附件那一排在前，气泡另起一格（附件画在气泡外，同 Claude app）；没有字不画空气泡。
+  if (strip === null) {
+    if (text) card.appendChild(body);
+    return card;
+  }
+  card.classList.add("said-attached");
+  card.appendChild(strip);
   if (text) {
-    const body = document.createElement("div");
-    body.className = "card-body";
-    fillSaid(body, text, pasted);
-    card.appendChild(body);
+    const bubble = document.createElement("div");
+    bubble.className = "said-bubble";
+    bubble.dataset.role = "said-bubble";
+    bubble.appendChild(body);
+    card.appendChild(bubble);
   }
   return card;
 }

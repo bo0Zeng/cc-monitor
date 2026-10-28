@@ -91,6 +91,7 @@ describe("终端面板输入行的附件", () => {
     expect(c.textContent).toContain("kind-code");
     expect(c.textContent).toContain("login.css");
     expect(c.dataset.state).toBe("sending");
+    expect(c.querySelector('[data-role="attach-state"]')?.textContent, "传输中只写那个词，不拼字节").toBe(copyText("attach.chip.sending"));
     const send = Array.from(page.el.querySelectorAll("button")).find((b) => b.textContent === copyText("terminal.input.send")) as HTMLButtonElement;
     expect(send.getAttribute("aria-disabled")).toBe("true");
     expect(send.title).toBe(copyText("attach.blocked.sending"));

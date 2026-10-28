@@ -1,7 +1,10 @@
 package com.ccmonitor.mobile.ui.claude
 
+import android.graphics.BitmapFactory
+import android.util.Base64
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,6 +12,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -38,6 +44,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -408,6 +416,80 @@ private fun UserTextCard(
     matched: Boolean,
     onRetrySend: (String) -> Unit = {},
     said: SaidHooks? = null,
+) {
+    val tokens = LocalAppTokens.current
+    val editing = said != null && said.editing == unit.key
+    // 带的图片与附件画在气泡外、上方、靠右（同桌面）；没有字也不在送 ⇒ 只画附件，不画空气泡。
+    val bubble = editing || unit.text.isNotEmpty() || unit.delivery != null
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+        if (unit.images.isNotEmpty() || unit.attachments.isNotEmpty()) SaidAttachments(unit)
+        if (bubble) UserBubble(unit, matched, onRetrySend, said)
+    }
+}
+
+/** 人说的那一句带的图片（小图一排）与附件（chip：类别字 · 名字 · 大小；那台已清理 ⇒ 淡着写「已清理」）。 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SaidAttachments(unit: RenderUnit.UserText) {
+    val tokens = LocalAppTokens.current
+    val gap = Arrangement.spacedBy(tokens.spacing.xs, Alignment.End)
+    if (unit.images.isNotEmpty()) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = gap, verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+            for (img in unit.images) {
+                val bitmap =
+                    remember(img) {
+                        runCatching { Base64.decode(img.base64, Base64.DEFAULT) }
+                            .getOrNull()
+                            ?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
+                    }
+                if (bitmap != null) {
+                    Image(
+                        bitmap,
+                        contentDescription = copyText("attach.msg.image"),
+                        modifier = Modifier.size(width = 160.dp, height = 110.dp).clip(RoundedCornerShape(tokens.radius.l)),
+                        contentScale = ContentScale.Crop,
+                    )
+                }
+            }
+        }
+    }
+    if (unit.attachments.isNotEmpty()) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = gap, verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+            for (a in unit.attachments) {
+                val gone = a.gone == true
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(tokens.radius.l))
+                        .border(1.dp, if (gone) tokens.borderFaint else tokens.borderStrong, RoundedCornerShape(tokens.radius.l))
+                        .background(tokens.bg2)
+                        .padding(horizontal = tokens.spacing.xs, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                ) {
+                    Text(a.classText, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        a.name,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (gone) tokens.textFaint else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 180.dp),
+                    )
+                    val size = if (gone) copyText("attach.msg.cleared") else a.sizeText
+                    size?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun UserBubble(
+    unit: RenderUnit.UserText,
+    matched: Boolean,
+    onRetrySend: (String) -> Unit,
+    said: SaidHooks?,
 ) {
     val tokens = LocalAppTokens.current
     Box(
