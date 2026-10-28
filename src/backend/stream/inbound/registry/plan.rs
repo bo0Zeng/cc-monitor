@@ -2,7 +2,8 @@
 //! 反查 `plan-files`（文件窗口：目录里每份文件归哪一格）；代敲 `plan-command`（以人的身份跑 pb 的 `continue` · `pause` · `adopt` · `render` · `repo`；写盘的是 pb）；
 //! 新计划框 `plan-new`（能选的领域 · 落在哪 · 要敲的那一行；只起 `pb dump --domains`）；
 //! 校验 `plan-pb-check`（一个路径能不能当 pb 用）；认消息里的编号 `plan-refs`（认编号交 pb 的 `dump --refs`）；
-//! 审面 `plan-ack` · `plan-unack` · `plan-return`（认可与退回记在后端自己的 `~/.cc-monitor/plan-review.json`，计划仓一个字节不写）。
+//! 审面 `plan-ack` · `plan-unack` · `plan-return`（认可与退回记在后端自己的 `~/.cc-monitor/plan-review.json`，计划仓一个字节不写）；
+//! 问图 `plan-ask`（拼开口那句 · 问图用的别名同记在那一份）。
 
 use crate::wire::spec::CommandSpec;
 use crate::wire::typed;
@@ -46,5 +47,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     typed::blocking::<crate::faces::plan_return_face::PlanReturnCmd>(
         "把人的话投给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，认不出 ⇒ 只给复制，已结束 ⇒ 只给复制或（`resume`）照投（投递时在这台恢复它），能投就投进它的输入队；排进去了记一条已退回",
+    ),
+    // 问图开框前那一问也在阻塞档：手上没有那一份计划 ⇒ 起 pb；读这台的配置文件；记问图用的别名写自家状态。
+    typed::blocking::<crate::faces::plan_ask_face::PlanAskCmd>(
+        "问图开框前那一问：后端拼开口那句（别名的那句 ＋「看 {编号}「{标题}」：」），别名预选这台记着的问图用的那条；给了别名 ⇒ 记成问图用的",
     ),
 ];

@@ -65,6 +65,11 @@ export interface NewSessionSpec {
   fork?: { sid: string; uuid: string; title: string };
   /** 开在「一组」页：存好的那一组的名字（`null` ＝ 新建一组）；缺 ⇒ 单个页。 */
   set?: string | null;
+  /**
+   * 问图（计划页［问这一块…］，`plan-ask.ts`）：框里只别名 · 目录 · 开口那句；号 · 轮换 · 哪一家随别名，运行于定在 tmux（开口那句只跟 tmux）。
+   * `alias` 预选的那条（`null` ⇒ 空着，选了才能起）；改选 ⇒ `relined` 问那台新拼的那句，开口那句前一半跟着换、人打的留着。
+   */
+  ask?: { title: string; alias: string | null; relined: (alias: string) => Promise<string> };
 }
 
 /** 一台机器那一项：连没连上。 */
@@ -318,6 +323,7 @@ function fieldRow(field: string | null, rows: Record<"cwd" | "tmuxName" | "comma
 
 const dialogTitle = (spec: NewSessionSpec, origin: Origin): string => {
   if (spec.fork) return copyText("newSession.title.fork");
+  if (spec.ask) return spec.ask.title;
   return spec.lockMachine ? copyText("newSession.title.onMachine", { machine: machineName(origin) }) : copyText("newSession.title.plain");
 };
 
@@ -390,9 +396,12 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   if (paged) form.appendChild(sets.el);
 
   // 别名（一类 ＝ 一条别名；起的那一行 `ccm @别名`，合下来的几格在那台合）：第一项「不用别名」。别名住在那台 ⇒ 换机器重列。
-  const aliasSel = select({ label: copyText("newSession.label.alias"), options: [{ value: "", label: copyText("newSession.alias.none") }], value: "" });
+  // 问图：那一格总在，第一项是「选一条别名」（选了才能起），预选那台记着的那条；改选 ⇒ 问那台新拼的那句。
+  const ask = spec.ask ?? null;
+  const noAlias = { value: "", label: ask ? copyText("newSession.ask.pick") : copyText("newSession.alias.none") };
+  const aliasSel = select({ label: copyText("newSession.label.alias"), options: [noAlias], value: "", onChange: (v) => void relineFor(v) });
   const aliasRow = row(copyText("newSession.label.alias"), aliasSel.el, false);
-  aliasRow.root.hidden = true;
+  aliasRow.root.hidden = ask === null;
   single.appendChild(aliasRow.root);
   const loadAliases = async (): Promise<void> => {
     let names: string[] = [];
@@ -401,8 +410,30 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     } catch {
       names = [];
     }
-    aliasRow.root.hidden = names.length === 0;
-    aliasSel.setOptions([{ value: "", label: copyText("newSession.alias.none") }, ...names.map((n) => ({ value: n, label: n }))], "");
+    aliasRow.root.hidden = ask === null && names.length === 0;
+    const pick = ask && ask.alias !== null && names.includes(ask.alias) ? ask.alias : "";
+    aliasSel.setOptions([noAlias, ...names.map((n) => ({ value: n, label: n }))], pick);
+    handle.refresh();
+  };
+  /** 问图：开口那句里那台拼的那一截（改选别名时换掉它，人打的留着）。 */
+  let askLine = spec.prompt ?? "";
+  const relineFor = async (alias: string): Promise<void> => {
+    if (!ask || alias === "") {
+      handle.refresh();
+      return;
+    }
+    let line: string;
+    try {
+      line = await ask.relined(alias);
+    } catch (e) {
+      aliasRow.setNote(e instanceof Error ? e.message : String(e), "error");
+      return;
+    }
+    if (aliasSel.value() !== alias) return;
+    aliasRow.setNote("");
+    if (promptInput.value.startsWith(askLine)) promptInput.value = line + promptInput.value.slice(askLine.length);
+    askLine = line;
+    handle.refresh();
   };
 
   // 工作目录 ＋「最近的」
@@ -454,7 +485,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       list = null;
     }
     if (my !== rotSeq) return;
-    rotRow.root.hidden = list === null;
+    rotRow.root.hidden = list === null || ask !== null;
     if (list === null) return;
     forNew = list.forNew;
     rotSel.setOptions(
@@ -470,6 +501,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const places = el("div");
   places.className = s.nsPlaces;
   const placeRow = row(copyText("newSession.label.place"), places, false);
+  placeRow.root.hidden = ask !== null;
   single.appendChild(placeRow.root);
   const tmuxRadio = placeRadio(places, "tmux");
   const windowRadio = placeRadio(places, "window");
@@ -484,9 +516,11 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   promptInput.setAttribute("aria-label", copyText("newSession.label.prompt"));
   const promptRow = row(copyText("newSession.label.prompt"), promptInput);
   single.appendChild(promptRow.root);
+  if (ask) promptRow.setNote(copyText("newSession.ask.note"));
 
   // 更多
   const { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow } = moreFields(fork !== null);
+  moreRow.hidden = ask !== null;
   single.appendChild(moreRow);
 
   /** 勾的哪一张；那台的默认还没到、也没人勾 ⇒ `null`（请求不带 `run`，那台照自己的默认）。 */
@@ -542,7 +576,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
 
   const paintAgent = (): void => {
     const offered = facts?.agents ?? [];
-    agentRow.root.hidden = offered.length <= 1;
+    agentRow.root.hidden = offered.length <= 1 || ask !== null;
     agentSel.setOptions(
       offered.map((a) => ({ value: a.kind, label: a.text })),
       offered.some((a) => a.kind === agent) ? agent : undefined,
@@ -552,7 +586,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
 
   const paintAccounts = async (): Promise<void> => {
     accounts = await listAccounts(origin, agent);
-    accountRow.root.hidden = accounts === null;
+    accountRow.root.hidden = accounts === null || ask !== null;
     if (accounts === null) return;
     const opts: SelectOption[] = [];
     // 分叉、而那台说不出源会话的号 ⇒ 跟随（那台按源会话上次的号判），不拿当前号顶替。
@@ -598,7 +632,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     }
     if (!cwdLocked && cwdInput.value === "" && f.recent.length > 0) cwdInput.value = f.recent[0].cwd;
     // 默认「运行于」那台定（有 tmux 就 tmux，分叉照源会话那一种）。
-    (f.run === "tmux" ? tmuxRadio : windowRadio).input.checked = true;
+    // 问图定在 tmux（开口那句只跟 tmux；没有 tmux 的那台在开框之前就拒了，`plan-ask` 的 `no_tmux`）。
+    (f.run === "tmux" || ask !== null ? tmuxRadio : windowRadio).input.checked = true;
   };
 
   const loadMachine = async (): Promise<void> => {
@@ -728,11 +763,12 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     action: copyText("newSession.action.create"),
     body: form,
     narrow: true,
-    focusAction: true,
+    focusAction: ask === null,
     blocked: () => {
       if (!up()) return offlineLine();
       if (onSet) return sets.blocked();
       if (facts === null) return copyText("kit.state.reading");
+      if (ask && !aliasSel.value()) return copyText("newSession.ask.pick");
       const a = chosenAccountOpt();
       if (a && !a.ready && !accountRow.root.hidden) return a.why ?? "";
       if (cwdInput.value.trim() === "") return copyText("newSession.cwd.empty");
@@ -788,6 +824,20 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     );
   });
   for (const r of [tmuxRadio, windowRadio]) r.input.addEventListener("change", paintPlace);
+  // 问图：打完问题 Enter 就起（Shift+Enter 换行）；光标先停在那台拼的那句末尾。
+  if (ask) {
+    promptInput.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
+        ev.preventDefault();
+        handle.submit();
+      }
+    });
+    // 调度：一次性 —— 框挂上之后的下一帧把光标放进开口那句末尾，只这一下
+    requestAnimationFrame(() => {
+      promptInput.focus();
+      promptInput.setSelectionRange(promptInput.value.length, promptInput.value.length);
+    });
+  }
 
   // 机器清单（断开的灰着、第二行「离线」）；分叉 / 机器卡入口锁定那一台。
   void listMachines().then((ms) => {

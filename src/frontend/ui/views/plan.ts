@@ -60,6 +60,7 @@ import { freshPane, phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
 import { blocksOfGroup, groupsCell, sliceForGroup } from "./plan-groups";
 import { openNewPlan } from "./plan-new";
 import { openNewSession } from "../new-session";
+import { openPlanAsk } from "../plan-ask";
 import { openSettingsWindow } from "../open-settings";
 import { pbDirOf } from "../settings-dest";
 import s from "./plan.module.css";
@@ -152,6 +153,10 @@ export class PlanView {
       switchTo: (sid) => this.goSession(sid),
       returnCell: (slice, cell) => openReturn(this.review, slice, cellTarget(slice, cell)),
       takeover: (b) => this.takeover(b),
+      ask: (slice, cell) => {
+        const cur = this.current;
+        if (cur) void openPlanAsk(cur.origin, cur.workspace, slice, cell);
+      },
     });
     this.review = {
       origin: () => this.current?.origin ?? LOCAL_ORIGIN,

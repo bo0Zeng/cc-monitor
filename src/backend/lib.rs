@@ -235,6 +235,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--plan-ack",
     "--plan-unack",
     "--plan-return",
+    // 问图开框前那一问（`plan-ask`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    "--plan-ask",
     // 代敲 pb 的用户命令（`plan-command`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--plan-command",
     // 文件窗口反查（`plan-files`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
