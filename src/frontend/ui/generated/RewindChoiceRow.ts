@@ -9,6 +9,14 @@ export type RewindChoiceRow = { how: "conversation" | "code_and_conversation",
  */
 text: string, 
 /**
- * 缺省选它。
+ * 缺省选它（只落在能选的那一项上）。
  */
-default: boolean, };
+default: boolean, 
+/**
+ * 这一刻能不能选；不能 ⇒ 界面灰着摆、写 [`Self::why`]。
+ */
+enabled: boolean, 
+/**
+ * 不能选的那一句（会话那台写好）；能选 ⇒ 不在。
+ */
+why?: string, };

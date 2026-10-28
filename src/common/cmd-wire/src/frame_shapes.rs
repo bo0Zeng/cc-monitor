@@ -6,7 +6,7 @@ pub const FRAMES: &[(&str, &str)] = &[
     ("cancelled", "59eb66d7"),
     ("changed", "f0a25bb7"),
     ("files_batch", "b343f828"),
-    ("line", "7024961c"),
+    ("line", "e74e1081"),
     ("live_card", "4320b506"),
     ("overflow", "6c57a5a8"),
     ("probe", "9b42ff05"),

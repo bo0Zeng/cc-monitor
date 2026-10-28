@@ -13,11 +13,11 @@ export type OpenFacts = {
  */
 recent: Array<RecentDir>, 
 /**
- * 这台有没有 tmux（`false` ⇒ 只能开终端窗口）。
+ * 这台能放在哪几种（`run` 那一格可选的值，照 `Run` 的序；只有 `direct` ⇒ 只能开终端窗口）。
  */
-tmux: boolean, 
+hosts: Array<Run>, 
 /**
- * 新建框默认「运行于」：同 `session-open {what: new}` 不给 `run` 时落的那一形（有 tmux 就 tmux，分叉照源会话那一种）。
+ * 新建框默认「运行于」：同 `session-open {what: new}` 不给 `run` 时落的那一形（能托管就托管，分叉的源会话在 tmux 里 ⇒ tmux）。
  */
 run: Run, 
 /**

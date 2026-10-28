@@ -227,6 +227,8 @@ import type { PlaceAnswer } from "./PlaceAnswer";
 import type { PlaceReq } from "./PlaceReq";
 import type { PlanAckReply } from "./PlanAckReply";
 import type { PlanAckReq } from "./PlanAckReq";
+import type { PlanAsk } from "./PlanAsk";
+import type { PlanAskReq } from "./PlanAskReq";
 import type { PlanCellView } from "./PlanCellView";
 import type { PlanCellViewReq } from "./PlanCellViewReq";
 import type { PlanCmdReply } from "./PlanCmdReply";
@@ -512,6 +514,7 @@ export interface TypedCommands {
   "ping": { req: NoArgs; reply: null; code: "bad_args" };
   "place-verdict": { req: PlaceReq; reply: PlaceAnswer; code: "bad_args" | "refused" | "undecidable" };
   "plan-ack": { req: PlanAckReq; reply: PlanAckReply; code: "bad_args" | "io_failed" | "no_such_need" | "not_ackable" | "not_read" | "review_unreadable" };
+  "plan-ask": { req: PlanAskReq; reply: PlanAsk; code: "bad_args" | "child_timed_out" | "failed" | "io_failed" | "no_pb" | "no_such_alias" | "no_such_cell" | "no_tmux" | "not_workspace" | "pb_unsupported" | "refused" | "review_unreadable" };
   "plan-cell-view": { req: PlanCellViewReq; reply: PlanCellView; code: "bad_args" | "failed" | "no_pb" | "no_view" | "not_workspace" | "pb_unsupported" };
   "plan-command": { req: PlanCommandReq; reply: PlanCmdReply; code: "bad_args" | "failed" | "no_pb" | "no_such_slice" | "not_workspace" | "pb_unsupported" | "refused" };
   "plan-files": { req: PlanFilesReq; reply: PlanFiles; code: "bad_args" };

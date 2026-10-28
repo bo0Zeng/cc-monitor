@@ -3,6 +3,10 @@ import type { Origin } from "./Origin";
 import type { Sid } from "./Sid";
 
 /**
- * `session-rewind-options` 的入参：`machine` 那台 `sid` 那条会话此刻发送那一下给哪几项。
+ * `session-rewind-options` 的入参：`machine` 那台 `sid` 那条会话、退到 `to` 那一句之前，此刻发送那一下给哪几项。
  */
-export type SessionRewindOptionsReq = { machine: Origin, sid: Sid, };
+export type SessionRewindOptionsReq = { machine: Origin, sid: Sid, 
+/**
+ * 被编辑的那一句在记录里的 id（同 [`Rewind::to`]）：哪一项能选按那一句之后的事判。
+ */
+to: string, };

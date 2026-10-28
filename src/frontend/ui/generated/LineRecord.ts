@@ -4,6 +4,7 @@ import type { ApiReason } from "./ApiReason";
 import type { Attachment } from "./Attachment";
 import type { Block } from "./Block";
 import type { ChildRunTag } from "./ChildRunTag";
+import type { Draw } from "./Draw";
 import type { ReplyError } from "./ReplyError";
 import type { StepResult } from "./StepResult";
 import type { TitleBy } from "./TitleBy";
@@ -35,7 +36,15 @@ timeText?: string,
 /**
  * `at` 的毫秒（自 1970；出口那一下随钟面一起写）：界面算「两条记录之间多久」只用这一格（交那一个读口），不自己解析 `at`；解不出 ⇒ 缺。
  */
-atMs?: number, } & ({ "t": "said", 
+atMs?: number, 
+/**
+ * 这条在消息流里画成哪一形（后端从这条通用记录算一次；界面照它摆，不再判画不画）。
+ */
+draw: Draw, 
+/**
+ * 人在这条里说了话（人打的字 · 斜杠命令 · `!` 命令）：切 tab 那一道认它。
+ */
+human: boolean, } & ({ "t": "said", 
 /**
  * 谁说的、要显示的正文（判定只在适配层）。
  */

@@ -7,7 +7,7 @@ import type { RewindWhenRow } from "./RewindWhenRow";
  */
 export type RewindOptions = { 
 /**
- * 「怎么退」那几项；空 ⇒ 这一家不支持从这里回退（为什么见 `said`）。
+ * 「怎么退」那几项（通用的几种都列，不能选的灰着带原因）；空 ⇒ 这一家不支持从这里回退（为什么见 `said`）。
  */
 how: Array<RewindChoiceRow>, 
 /**
@@ -15,6 +15,6 @@ how: Array<RewindChoiceRow>,
  */
 when: Array<RewindWhenRow>, 
 /**
- * 不支持 · 这一刻退不了的那一句（会话那台写好）；能退 ⇒ 不在。
+ * 给人看的那一句（会话那台写好）：`how` 空 ⇒ 为什么退不了；有项 ⇒ 退之前要知道的（这句之后派出的子 agent 还在跑）；都没有 ⇒ 不在。
  */
 said?: string, };
