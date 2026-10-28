@@ -2,7 +2,8 @@
 //!
 //! 两个前端共用，**形状与宿主无关**：目标用名单里的不透明句柄（`terminal`）或会话 ID（`sid`）指，
 //! 回话不带任何 tmux 目标串。名单经宿主口（`host::list`，tmux 与托管两种宿主合一份，每行带 `host`）。tmux 那一形：挂着 `@ccm_sid` 的窗格各是一个终端（一个 tmux 会话里几个 claude 就几个）；
-//! 一个都没挂的 tmux 会话是一个终端（看它当前窗口的当前窗格）。抓屏与送字这一版只认 tmux 那一形的行。
+//! 一个都没挂的 tmux 会话是一个终端（看它当前窗口的当前窗格）。托管那一形抓屏 · 送字经托管口：人打字要先持有输入，
+//! 输入队投递那一句不持有（托管口 `say`，持有者敲了半句没回车 ⇒ `waiting`）。
 //!
 //! # 纪律
 //!
@@ -750,14 +751,33 @@ fn refused(why: Refused) -> Sent {
 /// 送不了的（不在名单 · 别的前端的 · 不归我们管 · 画面变了 · 已经没了）回 `result: "refused"` ＋ `why`，不是错；
 /// 形状不对才是错（`bad_target` · `bad_args`）。
 pub(crate) fn input_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, CmdErr> {
-    send_on(on, req, |_| true)
+    send_on(on, req, Via::Typed)
+}
+
+/// 送字走哪一道。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Via {
+    /// 人在桌面 · 手机打字（`terminal-input`）：托管那一形要先持有输入。
+    Typed,
+    /// 输入队投递那一句（[`say_on`]）：窗格前台得是 agent；托管那一形不持有，经托管口 `say` 送（不换持有者，持有者敲了半句 ⇒ 等）。
+    Queued,
+}
+
+impl Via {
+    /// 名单里那一行（过了身份门之后）此刻收不收。
+    fn takes(self, row: &TermRow) -> bool {
+        match self {
+            Via::Typed => true,
+            Via::Queued => agent_in_front(row),
+        }
+    }
 }
 
 /// 往一条会话送进一句（输入队投递那一下的送字，`faces/session_send.rs`）：同 [`input_on`]，过了身份门再多一道 —— 挂着它的那个窗格此刻前台是不是 agent
 /// （名单那一刻的 `#{pane_current_command}`，同名单里「程序已退出」那一处：[`agent_in_front`]）。
 /// 不是（agent 退了，或前台换成了别的程序）⇒ 一个字都不送，回「已经没了」（`ended`）：话是说给 agent 的，送进 shell 就成了一行命令。
 pub(crate) fn say_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, CmdErr> {
-    send_on(on, req, agent_in_front)
+    send_on(on, req, Via::Queued)
 }
 
 /// 这个窗格前台是不是某一家 agent 的进程（[`crate::agents::is_agent_process`]，与 `sessions-where` 认窗格同一个判法）。
@@ -818,19 +838,15 @@ pub(crate) fn say_target_on(
     )
 }
 
-/// [`input_on`] · [`say_on`] 的本体：`takes` 答名单里那一行（过了身份门之后）此刻收不收。
-fn send_on(
-    on: On<'_>,
-    req: &TerminalInputReq,
-    takes: impl Fn(&TermRow) -> bool,
-) -> Result<Sent, CmdErr> {
+/// [`input_on`] · [`say_on`] 的本体：`via` 答走哪一道（[`Via`]）。
+fn send_on(on: On<'_>, req: &TerminalInputReq, via: Via) -> Result<Sent, CmdErr> {
     let target = target(req.terminal.as_deref(), req.sid.as_deref())?;
     let input = input_of(req)?;
     if let Some(row) = managed_row(&target)? {
-        return send_managed(&row, req, &input, takes);
+        return send_managed(&row, req, &input, via);
     }
     let seen = req.seen_screen.clone();
-    let at = match admit_on(on, &target, req.client.as_deref(), takes)? {
+    let at = match admit_on(on, &target, req.client.as_deref(), |r| via.takes(r))? {
         Ok((_, at)) => at,
         Err(why) => return Ok(refused(why)),
     };
@@ -908,6 +924,32 @@ fn managed_view(id: &str, color: bool, back: u32) -> Result<View, CmdErr> {
     })
 }
 
+/// 投递那一句进托管终端（[`Via::Queued`]）：经托管口 `say`，不持有输入、不换持有者。
+/// 写进去了 ⇒ 送到；持有者输入行里有没交的字 ⇒ `waiting`（投递照排着，别和人打到一半的字搅在一起）；
+/// 连不上 · 终端结束了 ⇒ 已经没了（投递照它恢复再送）；连上之后没等到回音（不认 `say` 的旧托管进程）⇒ 不知道送没送到。
+pub(crate) fn say_managed_at(sock: &std::path::Path, input: &Input, pastes: &[String]) -> Sent {
+    use std::io::ErrorKind as K;
+    match crate::host::managed::client::say(sock, &managed_bytes(input, pastes)) {
+        Ok(true) => input_reply(SentResult::Delivered, None, None),
+        Ok(false) => refused(Refused::Waiting),
+        Err(e) if matches!(e.kind(), K::WouldBlock | K::TimedOut) => {
+            input_reply(SentResult::Unsure, None, None)
+        }
+        Err(_) => refused(Refused::Ended),
+    }
+}
+
+/// [`say_managed_at`] 那一下的托管口：装好的数据目录底下那一个（没装 · 拼不出 ⇒ 已经没了）。
+fn say_managed(id: &str, input: &Input, pastes: &[String]) -> Sent {
+    let Some(own) = crate::host::managed::installed() else {
+        return refused(Refused::Ended);
+    };
+    match crate::host::managed::home::sock_of(own, id) {
+        Ok(sock) => say_managed_at(&sock, input, pastes),
+        Err(_) => refused(Refused::Ended),
+    }
+}
+
 /// 后端替哪个前端持有：请求自报的那个；没报 ⇒ 桌面（手机恒自报 `mobile`）。
 fn front_of(requester: Option<&str>) -> String {
     requester.unwrap_or("desktop").to_string()
@@ -960,13 +1002,13 @@ pub(crate) fn managed_bytes(input: &Input, pastes: &[String]) -> Vec<u8> {
     out
 }
 
-/// [`send_on`] 的托管那一臂：过门（按行事实）→ `takes` → 输入在不在这个前端手里（不在：带了 `take` ⇒ 先接管，否则 `held_elsewhere`）
-/// → 比画面 → 经持有的那一条送。
+/// [`send_on`] 的托管那一臂：过门（按行事实）→ `via` 收不收 → 投递那一句 ⇒ 经托管口 `say`（[`say_managed`]）；
+/// 人打字 ⇒ 输入在不在这个前端手里（不在：带了 `take` ⇒ 先接管，否则 `held_elsewhere`）→ 比画面 → 经持有的那一条送。
 fn send_managed(
     row: &TermRow,
     req: &TerminalInputReq,
     input: &Input,
-    takes: impl Fn(&TermRow) -> bool,
+    via: Via,
 ) -> Result<Sent, CmdErr> {
     let requester = gate::requester(req.client.as_deref())?;
     match gate::identity_of(row, requester.as_deref()) {
@@ -974,8 +1016,11 @@ fn send_managed(
         Who::OtherClient => return Ok(refused(Refused::NotYours)),
         Who::NotOurs => return Ok(refused(Refused::NotManaged)),
     }
-    if !takes(row) {
+    if !via.takes(row) {
         return Ok(refused(Refused::Ended));
+    }
+    if via == Via::Queued {
+        return Ok(say_managed(&row.id, input, &req.pastes));
     }
     let front = front_of(requester.as_deref());
     use crate::host::managed::hold;

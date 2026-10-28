@@ -128,6 +128,9 @@ pub(crate) enum Ctl {
     End,
     /// 这一端要走了（断开，会话照跑）。
     Bye,
+    /// 往会话说一句（只后端发：会话输入队投递那一下）：不必持有输入，照写进伪终端、不换持有者；
+    /// 持有者那一端自上次回车以来敲了字 ⇒ 不写（回 `said {pending: true}`），不把这一句和人打到一半的字搅在一起。
+    Say { text: String },
 
     // ── 下行（托管 → 各端）──
     /// 回 `hello`：整屏字节 ＋ 此刻谁持有。
@@ -164,6 +167,8 @@ pub(crate) enum Ctl {
     },
     /// 回 `clients`。
     ClientsAre { clients: Vec<ClientRow> },
+    /// 回 `say`：`pending` ＝ 持有者输入行里有没交的字、这一句没写；否则写进去了。
+    Said { pending: bool },
     /// 子进程退了（之后托管进程收尾退出）。
     Ended {
         #[serde(default, skip_serializing_if = "Option::is_none")]
