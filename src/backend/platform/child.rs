@@ -514,14 +514,15 @@ impl Child {
         }
     }
 
-    /// 脱离起（自成进程组，stdio 全空），不等；回它的 pid。本平台不能脱离（[`cannot_detach`]）：`Io(Unsupported)`，带那一句。
+    /// 脱离起（自成进程组，stdio 全空；Windows 另不要控制台、脱离起它的那个 Job），不等；回它的 pid。
     pub(crate) fn detach(self) -> Result<u32, ChildFail> {
         let mut cmd = self.command();
         cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        os::detach(&mut cmd)?;
-        cmd.spawn().map(|c| c.id()).map_err(ChildFail::of_spawn)
+        os::spawn_detached(&mut cmd)
+            .map(|c| c.id())
+            .map_err(ChildFail::of_spawn)
     }
 
     /// ccm 最终那一跳：POSIX 就地 exec（成功不返回）；Windows 起它、等它、交回它的退出码（由 `main` 退，模块里不退进程）。
@@ -537,6 +538,10 @@ impl Child {
 pub(crate) fn cannot_detach() -> Option<String> {
     os::cannot_detach()
 }
+
+/// 跑着的程序文件能不能被覆盖 · 删掉：Windows 上不能（系统攥着它的映像），Unix 上能（换的是目录项，跑着的那一份照跑）。
+/// 托管进程从按版本的副本跑就看它（`host/managed/bin.rs`）。
+pub(crate) const RUNNING_PROGRAM_IS_LOCKED: bool = cfg!(windows);
 
 /// [`Child::stream`] 起的那个长寿子进程：stdout 交给读的那一方，stdin 一直开着（有的程序见 stdin 关了就退），
 /// 拿着它的那一方可以先关（[`Streaming::close_stdin`]）请它自己退。
@@ -666,6 +671,16 @@ mod os {
         exited_unreaped_pid(child.id());
     }
 
+    /// 伪终端起的那一个：按 pid 不收尸地等（它不是 `std::process::Child`）。
+    pub(super) fn terminal_exited_unreaped(
+        _child: &(dyn portable_pty::Child + Send + Sync),
+        pid: Option<u32>,
+    ) {
+        if let Some(pid) = pid {
+            exited_unreaped_pid(pid);
+        }
+    }
+
     /// 同 [`exited_unreaped`]，按 pid 等（伪终端起的那一个不是 `std::process::Child`）。
     pub(super) fn exited_unreaped_pid(pid: u32) {
         let pid = pid as libc::id_t;
@@ -679,9 +694,9 @@ mod os {
         }
     }
 
-    pub(super) fn detach(cmd: &mut Command) -> Result<(), ChildFail> {
+    pub(super) fn spawn_detached(cmd: &mut Command) -> std::io::Result<std::process::Child> {
         cmd.process_group(0);
-        Ok(())
+        cmd.spawn()
     }
 
     pub(super) fn cannot_detach() -> Option<String> {
@@ -856,15 +871,43 @@ mod os {
         let _ = child.wait();
     }
 
-    pub(super) fn detach(_cmd: &mut Command) -> Result<(), ChildFail> {
-        Err(ChildFail::Io(std::io::Error::new(
-            std::io::ErrorKind::Unsupported,
-            cannot_detach().unwrap_or_default(),
-        )))
+    /// 伪终端起的那一个：等它的进程句柄有信号（＝ 它退了），不取退出码（取在锁里）。
+    pub(super) fn terminal_exited_unreaped(
+        child: &(dyn portable_pty::Child + Send + Sync),
+        _pid: Option<u32>,
+    ) {
+        if let Some(h) = child.as_raw_handle() {
+            // SAFETY：句柄归 `child`，它活过这一次等待。
+            let h = unsafe { std::os::windows::io::BorrowedHandle::borrow_raw(h) };
+            crate::platform::win_proc::wait_exited(h);
+        }
+    }
+
+    /// 脱离起：不要控制台（`DETACHED_PROCESS`：关掉起它的那个窗口不连它一起关）· 自成进程组（起它的那一方的 Ctrl+C 不传给它）·
+    /// 脱离起它的那个 Job（`CREATE_BREAKAWAY_FROM_JOB`：那个 Job 被收掉时它不跟着没）。
+    /// 本进程所在的 Job 不许脱离 ⇒ 系统拒（拒绝访问）⇒ 去掉脱离 Job 那一位再起一次，照实记一行：那时它留在 Job 里，Job 收掉它也没。
+    pub(super) fn spawn_detached(cmd: &mut Command) -> std::io::Result<std::process::Child> {
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+        const ERROR_ACCESS_DENIED: i32 = 5;
+        let stay = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP;
+        cmd.creation_flags(stay | CREATE_BREAKAWAY_FROM_JOB);
+        match cmd.spawn() {
+            Err(e) if e.raw_os_error() == Some(ERROR_ACCESS_DENIED) => {
+                tracing::warn!(
+                    "脱离起 {:?}：本进程所在的 Job 不许脱离，它留在这个 Job 里（Job 收掉时它跟着没）",
+                    cmd.get_program()
+                );
+                cmd.creation_flags(stay);
+                cmd.spawn()
+            }
+            other => other,
+        }
     }
 
     pub(super) fn cannot_detach() -> Option<String> {
-        Some(copy_core::copy_text("beDetach.detach.notUnix", &[]))
+        None
     }
 
     pub(super) fn exec_replace(mut cmd: Command, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
@@ -1037,15 +1080,8 @@ impl Child {
         let reaped = Arc::new(Mutex::new(false));
         let reaped_w = Arc::clone(&reaped);
         std::thread::spawn(move || {
-            #[cfg(unix)]
-            if let Some(pid) = pid {
-                os::exited_unreaped_pid(pid);
-            }
-            let status = {
-                let mut r = reaped_w.lock().unwrap_or_else(|p| p.into_inner());
-                *r = true;
-                child.wait()
-            };
+            let pid = child.process_id();
+            let status = reap_terminal_child(&mut child, pid, &reaped_w);
             // Windows 的伪终端它退了也不给读的那一端读到头 ⇒ 先关终端；Unix 上先读完再关（关早了会丢它最后那几行）。
             #[cfg(windows)]
             drop(master);
@@ -1208,7 +1244,6 @@ pub(crate) struct TerminalIo {
 pub(crate) struct TerminalChild {
     child: Box<dyn portable_pty::Child + Send + Sync>,
     /// 等它退那一下按 pid 不收尸地等（只 Unix 用；Windows 上句柄占着进程）。
-    #[cfg_attr(not(unix), allow(dead_code))]
     pid: Option<u32>,
     reaped: Arc<Mutex<bool>>,
 }
@@ -1216,18 +1251,24 @@ pub(crate) struct TerminalChild {
 impl TerminalChild {
     /// 等它退（阻塞）：交回退出码（被信号杀的 ⇒ 伪终端库给的那个数）。
     pub(crate) fn wait(mut self) -> Option<i32> {
-        #[cfg(unix)]
-        if let Some(pid) = self.pid {
-            os::exited_unreaped_pid(pid);
-        }
-        let mut r = self.reaped.lock().unwrap_or_else(|p| p.into_inner());
-        *r = true;
-        let status = self.child.wait();
-        drop(r);
-        status
+        reap_terminal_child(&mut self.child, self.pid, &self.reaped)
             .ok()
             .map(|s| i32::try_from(s.exit_code()).unwrap_or(i32::MAX))
     }
+}
+
+/// 等伪终端里的那个子进程退、收尸，记下「已收尸」（挂断 · 杀组那一下照它判还动不动手）。
+/// 先不拿锁、不收尸地等它退（[`os::terminal_exited_unreaped`]），再在锁里收尸：杀组与收尸互斥，不会杀到复用了那个号的别人；
+/// 拿着锁等就不行 —— 挂断那一下要拿同一把锁，就得等它自己退，永远等不到。
+fn reap_terminal_child(
+    child: &mut Box<dyn portable_pty::Child + Send + Sync>,
+    pid: Option<u32>,
+    reaped: &Mutex<bool>,
+) -> std::io::Result<portable_pty::ExitStatus> {
+    os::terminal_exited_unreaped(child.as_ref(), pid);
+    let mut r = reaped.lock().unwrap_or_else(|p| p.into_inner());
+    *r = true;
+    child.wait()
 }
 
 fn pty_fail(e: impl std::fmt::Display) -> ChildFail {

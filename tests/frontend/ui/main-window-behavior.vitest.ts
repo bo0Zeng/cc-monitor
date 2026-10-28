@@ -452,6 +452,8 @@ function toolCalls(calls: { id: string; name: string; input: unknown }[], cards:
     atMs: Date.UTC(2026, 0, 1, 2, 2),
     blocks: calls.map((c) => ({ type: "tool_use", ...c })),
     autoReply: false,
+    draw: "steps",
+    human: false,
     cards,
   } as never;
 }
@@ -464,6 +466,8 @@ function results(rs: { id: string; text: string; error?: boolean }[]): LineRecor
     atMs: Date.UTC(2026, 0, 1, 2, 3),
     blocks: rs.map((r) => ({ type: "tool_result", for: r.id, content: [{ type: "text", text: r.text }], isError: r.error ?? false })),
     who: { speaker: { kind: "toolResult" }, text: "" },
+    draw: "steps",
+    human: false,
   } as never;
 }
 const ctx = (): RenderContext => ({
@@ -643,7 +647,7 @@ describe("一步一行：后端的 steps / results 排成一行", () => {
 // 人粘贴的块：边界 / 正文那一截 / 行数是后端的 `who.pasted`；超过 12 行折起，不超过的只露正文。
 describe("粘贴块", () => {
   const said = (text: string, pasted: object[]): LineRecord =>
-    ({ agent: "claude", t: "said", id: "p", at: "2026-01-01T14:02:00.000Z", blocks: [{ type: "text", text }], who: { speaker: { kind: "human" }, text, pasted } }) as never;
+    ({ agent: "claude", t: "said", id: "p", at: "2026-01-01T14:02:00.000Z", blocks: [{ type: "text", text }], who: { speaker: { kind: "human" }, text, pasted }, draw: "card", human: true }) as never;
   const span = (text: string, open: string, body: string, close: string, lines: number) => {
     const start = text.indexOf(open);
     const bodyStart = start + open.length;
@@ -667,8 +671,8 @@ describe("粘贴块", () => {
 
 // 不是人说的（事件条）：来源只看后端给的 speaker，正文是后端补的 `speaker.body`。
 describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并条 · 中断标记", () => {
-  const userRec = (speaker: object, ts = "2026-01-01T14:02:00.000Z"): LineRecord =>
-    ({ agent: "claude", t: "said", id: "s", at: ts, blocks: [{ type: "text", text: "x" }], who: { speaker, text: "" } }) as never;
+  const userRec = (speaker: object, ts = "2026-01-01T14:02:00.000Z", draw = "card"): LineRecord =>
+    ({ agent: "claude", t: "said", id: "s", at: ts, blocks: [{ type: "text", text: "x" }], who: { speaker, text: "" }, draw, human: false }) as never;
 
   it("★ 交回默认展开、正文是 body、带「打开窗口 ›」（点了发 ccm:reveal-run）；途中来话默认收起；标签按运行表查", () => {
     const c = { ...ctx(), runLabelOf: (run: string) => (run === "a7" ? "审面板交互" : undefined) };
@@ -688,7 +692,7 @@ describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并�
     const i = renderMessage(userRec({ kind: "interrupt" }), c);
     if (i.kind !== "card") throw new Error(i.kind);
     expect(i.element.textContent).toMatch(copyPattern("speaker.interrupt.line", {}, { whole: true }));
-    expect(renderMessage(userRec({ kind: "system" }), c).kind, "系统注入默认不露").toBe("skip");
+    expect(renderMessage(userRec({ kind: "system" }, undefined, "none"), c).kind, "系统注入默认不露").toBe("skip");
   });
 
   it("★ 相邻的后台通知并成一条：后台任务 ×3 · 时段 · 失败 N；展开看逐条", () => {

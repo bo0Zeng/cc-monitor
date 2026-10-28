@@ -20,6 +20,7 @@ import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.ModeSwitchResult
 import com.ccmonitor.mobile.core.wire.gen.OpenFacts
 import com.ccmonitor.mobile.core.wire.gen.PushOutcome
+import com.ccmonitor.mobile.core.wire.gen.Run
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import java.util.UUID
@@ -59,13 +60,13 @@ class TerminalOps(
         take: Boolean,
     ): String? = ask(if (take) TerminalHold.TAKE else TerminalHold.RELEASE, TerminalHold.args(row.terminal), TerminalHold::of).exceptionOrNull()?.message
 
-    /** 这台的起会话事实（`session-open-facts`：几家 · 名字 · 可选的模型 · 有没有 tmux 都是那台给的）。 */
+    /** 这台的起会话事实（`session-open-facts`：几家 · 名字 · 可选的模型 · 能放在哪几种都是那台给的）。 */
     suspend fun facts(): Result<OpenFacts> = ask(SessionOpenFacts.COMMAND, emptyMap(), SessionOpenFacts::of)
 
     /** 那台能做什么（[Reach]）；问不到 ⇒ 那一句（tmux 也当没有）。 */
     suspend fun reach(): Reach =
         facts().fold(
-            onSuccess = { f -> Reach(noTmux = if (f.tmux) null else copyText("mobTerm.tmux.none", "host" to machine())) },
+            onSuccess = { f -> Reach(noTmux = if (Run.TMUX in f.hosts) null else copyText("mobTerm.tmux.none", "host" to machine())) },
             onFailure = { Reach(it.message.orEmpty(), it.message.orEmpty()) },
         )
 

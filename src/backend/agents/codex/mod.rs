@@ -38,7 +38,6 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     // 没有进程状态文件 ⇒ 此刻在干什么照记录里的事件翻（判法只在 `record::activity_of`）。
     activity: Some(record::activity_of),
     // 骨架那一问：照整条翻译的类（这一家的会话不大，不另写一份便宜判法 ⇒ 与翻译恒一致）。
-    class: Some(record::class_of),
     chain: None,
     find_session: history::find_session,
     // 今天不分叉。

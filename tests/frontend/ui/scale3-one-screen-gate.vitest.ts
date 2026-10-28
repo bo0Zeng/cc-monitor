@@ -474,7 +474,7 @@ describe("秤 3 · 丁：生产门控（驱动真 TabStreamView ＋ 假布局）
     );
   const skip = (seq: number): RigPayload =>
     withSession(
-      rigLine(seq, { t: "reply", id: `k${seq}`, at: "2026-09-10T00:00:00.000Z", blocks: [], autoReply: true }),
+      rigLine(seq, { t: "reply", id: `k${seq}`, at: "2026-09-10T00:00:00.000Z", blocks: [], autoReply: true, draw: "none", human: false }),
       "s2",
     );
 
@@ -598,8 +598,8 @@ describe("秤 3 · 戊：B5 空闲物化队列收哪些后台 tab", () => {
       rigLine(
         seq,
         retryCard
-          ? { t: "retry", id: `${sid}-r${seq}`, at: "2026-09-10T00:00:00.000Z", reason: "network", attempt: 1, max: 5 }
-          : { t: "reply", id: `${sid}-k${seq}`, at: "2026-09-10T00:00:00.000Z", blocks: [], autoReply: true },
+          ? { t: "retry", id: `${sid}-r${seq}`, at: "2026-09-10T00:00:00.000Z", reason: "network", attempt: 1, max: 5, draw: "card", human: false }
+          : { t: "reply", id: `${sid}-k${seq}`, at: "2026-09-10T00:00:00.000Z", blocks: [], autoReply: true, draw: "none", human: false },
       ),
       sid,
     );
@@ -611,6 +611,8 @@ describe("秤 3 · 戊：B5 空闲物化队列收哪些后台 tab", () => {
         at: "2026-09-10T00:00:00.000Z",
         blocks: [{ type: "text", text: "一张很高的卡" }],
         autoReply: false,
+        draw: "card",
+        human: false,
       }),
       sid,
     );

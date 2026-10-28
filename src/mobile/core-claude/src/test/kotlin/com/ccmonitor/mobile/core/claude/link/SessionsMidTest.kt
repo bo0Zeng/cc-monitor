@@ -81,7 +81,7 @@ class SessionsMidTest {
             SessionOpenFacts.of(
                 mapOf(
                     "recent" to emptyList<Any>(),
-                    "tmux" to true,
+                    "hosts" to listOf("tmux", "direct"),
                     "run" to "tmux",
                     "agents" to
                         listOf(

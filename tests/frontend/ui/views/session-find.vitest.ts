@@ -397,6 +397,7 @@ describe("SE2 · 实时 tab 上的查找面板", () => {
       o: k * 10,
       n: 10,
       t: "reply",
+      dr: "card",
       u: `u${k}`,
       ch: 10,
       pl: 1,

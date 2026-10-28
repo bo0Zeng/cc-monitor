@@ -15,7 +15,7 @@ import type { FoldSegment } from "../../../src/frontend/ui/generated/FoldSegment
 import type { TurnRow } from "../../../src/frontend/ui/generated/TurnRow";
 import { renderContentRecord, type StreamSink } from "../../../src/frontend/ui/render-stream-record";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
-import { estimateFromFacts, setInjectedShown, skeletonKind } from "../../../src/frontend/ui/height-estimate";
+import { estimateFromFacts, setInjectedShown } from "../../../src/frontend/ui/height-estimate";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -547,9 +547,9 @@ describe("轮次刻度", () => {
 // 系统注入：旁注细条——开关关着不露、估高 0；不算任何人的邻居（不打散重试 · 后台通知的相邻合并）。
 describe("系统注入的旁注细条", () => {
   const tool = (uuid: string, id: string) =>
-    ({ agent: "claude", t: "reply", id: uuid, at: "2026-01-01T02:02:00.000Z", blocks: [{ type: "tool_use", id, name: "Read", input: {} }], autoReply: false }) as never;
+    ({ agent: "claude", t: "reply", id: uuid, at: "2026-01-01T02:02:00.000Z", blocks: [{ type: "tool_use", id, name: "Read", input: {} }], autoReply: false, draw: "steps", human: false }) as never;
   const injected = (uuid: string, body?: string) =>
-    ({ agent: "claude", t: "said", id: uuid, at: "2026-01-01T02:02:30.000Z", blocks: [{ type: "text", text: "x" }], who: { speaker: { kind: "system", ...(body ? { body } : {}) }, text: "" } }) as never;
+    ({ agent: "claude", t: "said", id: uuid, at: "2026-01-01T02:02:30.000Z", blocks: [{ type: "text", text: "x" }], who: { speaker: { kind: "system", ...(body ? { body } : {}) }, text: "" }, draw: body ? "strip" : "none", human: false }) as never;
 
   it("★ 有正文 ⇒ 一条隐藏的细条进流（带 uuid），按 seq 落在两次工具调用之间；没正文 ⇒ 什么都不放", () => {
     const content = document.createElement("div");
@@ -569,8 +569,7 @@ describe("系统注入的旁注细条", () => {
   });
 
   it("★ 估高跟着开关：关着 0、开着一条细条；它自成一类（照取回、照建细条）", () => {
-    const f = { o: 0, n: 1, t: "said", sp: "system", ch: 200, pl: 9 } as never;
-    expect(skeletonKind(f)).toBe("strip");
+    const f = { o: 0, n: 1, t: "said", dr: "strip", ch: 200, pl: 9 } as never;
     setInjectedShown(false);
     expect(estimateFromFacts(f)).toBe(0);
     setInjectedShown(true);

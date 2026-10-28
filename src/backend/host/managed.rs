@@ -3,6 +3,7 @@
 //! 后端对托管终端不留进程内状态：名单（[`rows`]）与打标（[`tag_pid`]）都是问的那一刻凭盘现做 ⇒ 后端重启 · 升级之后照样认得。
 
 pub(crate) mod attach;
+pub(crate) mod bin;
 pub(crate) mod client;
 pub(crate) mod hold;
 pub(crate) mod home;
@@ -128,12 +129,20 @@ pub(crate) fn tag_pid(pid: u32, sid: &str) -> Option<Tagged> {
 /// [`tag_pid`] 的本体：数据目录由调用方给。
 ///
 /// 认法：这个进程环境里的 `CCM_HOST`（托管进程给子进程设的，[`run::HOST_ENV`]；里面的 ccm · claude 原样继承）。
-/// 没设 · 读不到 ⇒ `None`。设了 ⇒ 容器就是那个托管终端；事实里已是这个 sid ⇒ 不写；否则经托管口发 `tag`，等托管进程写完才回。
+/// 没设 ⇒ `None`；环境读不到（Windows）⇒ 按进程祖先认（[`host_by_ancestry`]），认不出 ⇒ `None`。认出了 ⇒ 容器就是那个托管终端；事实里已是这个 sid ⇒ 不写；否则经托管口发 `tag`，等托管进程写完才回。
 pub(crate) fn tag_pid_at(own: &Own, pid: u32, sid: &str) -> Option<Tagged> {
-    use crate::platform::proc::{proc_env_var, EnvRead};
+    use crate::platform::proc::{parent_of, proc_env_var, EnvRead};
     let id = match proc_env_var(pid, run::HOST_ENV) {
         EnvRead::Value(v) => v.trim().to_string(),
-        EnvRead::Unset | EnvRead::Unreadable => return None,
+        EnvRead::Unset => return None,
+        // 环境读不到（Windows 上读不到别的进程的环境）⇒ 按祖先认。
+        EnvRead::Unreadable => {
+            let hosts: Vec<(String, u32)> = home::alive(own)
+                .into_iter()
+                .filter_map(|f| f.child_pid.map(|c| (f.id, c)))
+                .collect();
+            host_by_ancestry(pid, &hosts, parent_of)?
+        }
     };
     // 形状不对 · sid 不是会话 id：说得出它在托管终端里，但不往里写没核过的字符串。
     if !home::id_ok(&id) {
@@ -165,6 +174,26 @@ pub(crate) fn tag_pid_at(own: &Own, pid: u32, sid: &str) -> Option<Tagged> {
         }
     };
     Some((container, wrote))
+}
+
+/// 往上走几层父进程就不走了（会话里的 claude 离托管终端的子进程至多隔着几层外壳；父进程表成环时也靠它停）。
+const ANCESTRY_MAX: usize = 32;
+
+/// `pid` 住在哪个托管终端里，按进程祖先认：从它自己起往上找父进程，碰到某个托管终端记下的子进程号（`hosts`：`(托管 id, 子进程号)`）
+/// 就是那一个。只认此刻活着的托管终端自己写下的子进程号，进程号复用的风险由此兜住。**纯函数**：父进程从 `parent` 问。
+pub(crate) fn host_by_ancestry(
+    pid: u32,
+    hosts: &[(String, u32)],
+    parent: impl Fn(u32) -> Option<u32>,
+) -> Option<String> {
+    let mut at = pid;
+    for _ in 0..ANCESTRY_MAX {
+        if let Some((id, _)) = hosts.iter().find(|(_, child)| *child == at) {
+            return Some(id.clone());
+        }
+        at = parent(at).filter(|p| *p != 0 && *p != at)?;
+    }
+    None
 }
 
 #[cfg(test)]

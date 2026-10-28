@@ -3848,6 +3848,7 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
       o: i * 10,
       n: 10,
       t: kindAt(i + shift),
+      dr: "card",
       ch: 100,
       pl: 1,
     })),
@@ -4068,7 +4069,7 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
       available: true,
       from: fromOffset,
       end: fromOffset + n * 10,
-      rows: Array.from({ length: n }, (_, k) => ({ o: fromOffset + k * 10, n: 10, t: "reply", u: `u${fromOffset / 10 + k}`, ch: 100, pl: 1 })),
+      rows: Array.from({ length: n }, (_, k) => ({ o: fromOffset + k * 10, n: 10, t: "reply", dr: "card", u: `u${fromOffset / 10 + k}`, ch: 100, pl: 1 })),
     });
     /**
      * 一个 tab 先接上 `[0, first)` 的骨架，再从 `watchAt` 起上流（缺得多 ⇒ 正文重来）；按行号取一页答到 `end`。
@@ -4204,10 +4205,10 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     const INJ = 101;
     const make = ((sid: string, seq: number, uuid: string) =>
       seq === INJ
-        ? { session_id: sid, cwd: "/p", path: `/p/${sid}.jsonl`, seq, record: { t: "said", id: uuid, who: { speaker: { kind: "system", body: "注入" } } } }
+        ? { session_id: sid, cwd: "/p", path: `/p/${sid}.jsonl`, seq, record: { t: "said", id: uuid, who: { speaker: { kind: "system", body: "注入" } }, draw: "strip", human: false } }
         : mk(sid, seq, uuid)) as typeof mk;
     const index = idx(300);
-    index.rows[INJ] = { ...index.rows[INJ], t: "said", sp: "system" } as never;
+    index.rows[INJ] = { ...index.rows[INJ], t: "said", dr: "strip" } as never;
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
       if (cmd === "read_session_index") return Promise.resolve(index);
       if (cmd === "read_session_range") {

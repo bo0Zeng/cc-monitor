@@ -12,7 +12,6 @@
 //! session_meta/turn_context/world_state/response_item/event_msg；后两者的 `payload.type` 再细分。
 
 use super::parse::{normalize_event, payload_type, unwrap_envelope};
-use crate::agents::record::BodyExt as _;
 use crate::agents::record::{Block, Body, Record};
 use crate::agents::SpeakerExt as _;
 use crate::agents::{Speaker, Translated, UserText};
@@ -494,15 +493,6 @@ pub(crate) fn translated(line: &crate::agents::Line<'_>) -> Result<Option<Transl
 /// | 认不出的顶层类型 · 认不出的 `response_item` 子型 | `unread`（写好的一句 ＋ 原文摘录） |
 /// | 事件 · 元记录 | 无记录 |
 ///
-/// 一条已解析的记录 ⇒ 骨架上它是哪一类（注册表 `RecordFace.class`）：就是 [`record_of`] 出的那条记录的类
-/// （类与起点偏移无关），认不出的那一种（`unread`）骨架上不出（同记录树那一家）。
-pub(crate) fn class_of(v: &Value) -> Option<crate::agents::record::RecordClass> {
-    use crate::agents::record::RecordClass;
-    record_of(v, 0)
-        .map(|r| r.body.class())
-        .filter(|c| *c != RecordClass::Unread)
-}
-
 /// `id`：`payload.id`；没有（user / developer / 工具输出常没有）⇒ 按这一行的起点字节偏移合成（[`crate::agents::line_id`]）。
 pub fn record_of(v: &Value, start: u64) -> Option<Record> {
     use CodexRecordKind as K;
@@ -558,19 +548,12 @@ pub fn record_of(v: &Value, start: u64) -> Option<Record> {
         _ => return None,
     };
     let at = super::parse::envelope_ts(v).map(String::from);
-    Some(Record {
-        agent: AGENT.into(),
-        id: payload
-            .get("id")
-            .and_then(Value::as_str)
-            .filter(|id| !id.is_empty())
-            .map_or_else(|| crate::agents::line_id(start), str::to_string),
-        // 钟面按看的那一台的时区，出口那一下写（[`Record::stamp`]）。
-        time_text: None,
-        at_ms: None,
-        at,
-        body,
-    })
+    let id = payload
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .map_or_else(|| crate::agents::line_id(start), str::to_string);
+    Some(crate::agents::record::record(AGENT.into(), id, at, body))
 }
 
 /// 文本 ⇒ 内容块：空 ⇒ 没有块（免空气泡）。

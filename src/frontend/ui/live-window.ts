@@ -9,12 +9,7 @@
  */
 import type { JsonlLinePayload } from "./events";
 import type { HistoryIndex } from "./generated/HistoryIndex";
-import {
-  estimateFromFacts,
-  skeletonKind,
-  type SkeletonFacts,
-  type SkeletonKind,
-} from "./height-estimate";
+import { estimateFromFacts, type SkeletonFacts } from "./height-estimate";
 
 /**
  * **一个 tab 见过的行号**（入口按 seq 去重的那一格），存成升序、互不相邻的半开区间 `[lo, hi)`。
@@ -453,12 +448,13 @@ export class SkeletonLedger {
   /** 正文那五个数：哪几行（下标，升序）＋ 五列。 */
   private bodyAt = new Column(u32);
   private body = [new Column(u32), new Column(u32), new Column(u32), new Column(u32), new Column(u32)] as const;
-  /** 来源：哪几行（下标，升序）＋ 那个词。 */
-  private spAt = new Column(u32);
-  private spV: string[] = [];
+  /** 画成哪一形（`draws` 里的号，从 1 起；0 ＝ 不画）· 本账本里出现过的画法。 */
+  private dr = new Column(u8);
+  private draws: string[] = [];
+  /** 人说的那几行（下标，升序）。 */
+  private huAt = new Column(u32);
   /** prefix[i] = seq [base, base+i) 的估高之和；长度 = 行数 + 1 */
   private prefix: number[] = [0];
-  private kinds: SkeletonKind[] = [];
   /** 每行第一级粗估（`prefix` 由它与 `refined` 合出来）。 */
   private est: number[] = [];
   /** 〔第二级〕Worker 精算回来的高 · 交回占位前量的真高（seq → px，当前列宽下）；有它就用它、没有用第一级。 */
@@ -496,6 +492,10 @@ export class SkeletonLedger {
       const k = this.classes.indexOf(c);
       return (k < 0 ? this.classes.push(c) : k + 1);
     });
+    const drs = v.draws.map((d) => {
+      const k = this.draws.indexOf(d);
+      return (k < 0 ? this.draws.push(d) : k + 1);
+    });
     let at = v.from;
     for (let i = 0; i < v.count; i++) {
       at += v.o[i];
@@ -503,6 +503,7 @@ export class SkeletonLedger {
       this.len.push(v.n[i]);
       at += v.n[i];
       this.cls.push(v.t[i] > 0 ? cls[v.t[i] - 1] : 0);
+      this.dr.push(v.dr[i] > 0 ? drs[v.dr[i] - 1] : 0);
       this.fd.push(v.fd[i]);
     }
     let i = first - 1;
@@ -513,17 +514,15 @@ export class SkeletonLedger {
       this.body.forEach((c, k) => c.push(cols[k][j]));
     });
     i = first - 1;
-    v.sp.at.forEach((g, j) => {
+    for (const g of v.hu) {
       i += g + 1;
-      this.spAt.push(i);
-      this.spV.push(v.sp.v[j]);
-    });
+      this.huAt.push(i);
+    }
     for (let k = first; k < this.off.length; k++) {
       const seq = this.base + k;
       const f = this.factsOf(seq)!;
       const h = estimateFromFacts(f, this.colW);
       this.estimated++;
-      this.kinds.push(skeletonKind(f));
       this.est.push(h);
       this.prefix.push(this.prefix[this.prefix.length - 1] + this.rowHeight(seq, h));
     }
@@ -616,7 +615,7 @@ export class SkeletonLedger {
     for (const [seq, px] of entries) {
       const i = seq - this.base;
       if (i < 0 || i >= this.off.length || !(px >= 0)) continue;
-      if (measured ? this.isFolded(seq) : this.kinds[i] === "none") continue;
+      if (measured ? this.isFolded(seq) : this.dr.at(i) === 0) continue;
       const h = measured && this.lines.has(seq) ? Math.max(0, px - this.linePx) : px;
       if (this.refined.get(seq) === h) continue;
       this.refined.set(seq, h);
@@ -715,8 +714,10 @@ export class SkeletonLedger {
       if (cb > 0) f.cb = cb;
       if (cl > 0) f.cl = cl;
     }
-    const s = this.spAt.lowerBound(i);
-    if (s < this.spAt.length && this.spAt.at(s) === i) f.sp = this.spV[s];
+    const d = this.dr.at(i);
+    if (d > 0) f.dr = this.draws[d - 1] as SkeletonFacts["dr"];
+    const h = this.huAt.lowerBound(i);
+    if (h < this.huAt.length && this.huAt.at(h) === i) f.hu = true;
     return f;
   }
 

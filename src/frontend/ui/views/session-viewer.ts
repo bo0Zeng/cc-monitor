@@ -19,7 +19,6 @@ import { renderStreamRecord, type StreamSink } from "../render-stream-record";
 // 查看器 ＝ 骨架 ＋ 按视口取：与实时 tab **同一个** `SkeletonView`（占位 ＋ 只物化可见区）、同一条取法（`rowRuns` → `readRange`）。
 import { SkeletonView, ledgerFromIndex, rowRuns } from "../skeleton-view";
 import type { SkeletonLedger } from "../live-window";
-import { skeletonKind } from "../height-estimate";
 import { findInSession, readSessionIndex } from "../session-reads";
 import { readBranch, readLines, readRange, readRecordById } from "../record-reads";
 import { followSession, type FollowEvent } from "../events";
@@ -170,9 +169,8 @@ const ISLAND_RADIUS = 100; // 深链岛：命中那一条上下各取几条
 
 /** 这一行建不建卡（注入细条不算）。 */
 function buildsCard(ledger: SkeletonLedger, q: number): boolean {
-  const f = ledger.factsOf(q);
-  const k = f && skeletonKind(f);
-  return k === "card" || k === "tool";
+  const dr = ledger.factsOf(q)?.dr;
+  return dr === "card" || dr === "steps";
 }
 
 /** 从 `from`（不含）往前数 `k` 条建卡的行，回最早那一条的 seq（不够 ⇒ 账本第一行）。 */

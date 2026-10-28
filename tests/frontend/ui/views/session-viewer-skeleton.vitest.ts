@@ -43,7 +43,7 @@ const index = () => ({
   from: 0,
   end: ROWS * 10,
   rows: Array.from({ length: ROWS }, (_, s) =>
-    s % 2 === 0 ? { o: s * 10, n: 10, t: "said", u: `u${s / 2}`, ch: 10, pl: 1 } : { o: s * 10, n: 10 },
+    s % 2 === 0 ? { o: s * 10, n: 10, t: "said", dr: "card", hu: true, u: `u${s / 2}`, ch: 10, pl: 1 } : { o: s * 10, n: 10 },
   ),
 });
 const ranges = () => recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_range");

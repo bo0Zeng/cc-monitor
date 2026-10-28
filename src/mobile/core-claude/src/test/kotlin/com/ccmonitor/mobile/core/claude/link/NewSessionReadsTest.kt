@@ -34,7 +34,7 @@ class NewSessionReadsTest {
             SessionOpenFacts.of(
                 mapOf(
                     "recent" to listOf(mapOf("cwd" to "/h/a", "shown" to "~/a", "lastMs" to 2.0, "lastText" to "19:02"), mapOf("cwd" to "/h/b", "shown" to "~/b", "lastMs" to 1.0, "lastText" to "昨天")),
-                    "tmux" to true,
+                    "hosts" to listOf("tmux", "direct"),
                     "run" to "tmux",
                     "agents" to listOf(mapOf("kind" to "claude", "text" to "Claude Code", "models" to emptyList<Any>(), "permissionModes" to emptyList<Any>())),
                     "fork" to null,

@@ -9,7 +9,7 @@
  * 改这里任何一个常数都要跑 `npx vitest run tests/frontend/ui/scale2-height-truth.vitest.ts`（两个真引擎的金标准）。
  */
 import type { LineRecord } from "./generated/LineRecord";
-import { drawsCard } from "./speaker";
+import type { Draw } from "./generated/Draw";
 
 // 镜像 styles.css 的字体 token(canvas font 接受完整 fallback 栈——必须逐字同栈,
 // 否则"装了 Source Serif Pro 没装 4"的机器上 DOM 与 canvas 各走各的字体,度量漂移)
@@ -365,8 +365,10 @@ export interface SkeletonFacts {
   n: number;
   /** 这一行会翻成的通用记录的类（与读正文时那条记录的 `t` 同一个词；不进界面 ⇒ 缺） */
   t?: LineRecord["t"];
-  /** user 记录是谁说的（后端判好的来源；人说的与工具结果省略） */
-  sp?: string;
+  /** 画成哪一形（就是那条通用记录的 `draw`；不画 ⇒ 缺） */
+  dr?: Draw;
+  /** 人在这条里说了话（就是那条通用记录的 `human`） */
+  hu?: true;
   /** 正文字符数（代码块外） */
   ch?: number;
   /** 其中 CJK */
@@ -380,16 +382,6 @@ export interface SkeletonFacts {
   /** 折叠单元数（tool_use / tool_result / thinking / image） */
   fd?: number;
 }
-
-/**
- * 一条记录在骨架里算哪一类：
- * - `none`：**不建卡**（不进界面的行 · 标题 · 不画的来源 …）——高 0；
- * - `strip`：系统注入 —— 不建卡、照建一条旁注细条（物化时与别的行一样取回），露不露、占不占高只看「显示系统注入」；
- * - `tool`：只有折叠单元的记录（纯 tool_use / 纯 tool_result）——assistant 那一侧一条一张「几步」卡（每步一行）；
- *   user 那一侧的纯工具结果注入进它那个调用的那一行，不另建卡（高 0）；
- * - `card`：其余。
- */
-export type SkeletonKind = "none" | "strip" | "tool" | "card";
 
 /**
  * 卡片外框（padding ＋ border ＋ 卡间 margin）的常数。
@@ -432,17 +424,6 @@ function factCode(f: SkeletonFacts): number {
   return (f.cl ?? 0) * LH_MONO + cb * (CODE_BAR_H + CODE_PAD_V + CODE_MARGIN);
 }
 
-/** 一条记录属于哪一类（不看邻居）。 */
-export function skeletonKind(f: SkeletonFacts): SkeletonKind {
-  if (f.t !== "said" && f.t !== "reply" && f.t !== "retry") return "none";
-  if (f.sp === "system") return "strip";
-  if (f.sp && !drawsCard(f.sp)) return "none";
-  if (f.t === "retry") return "card";
-  const hasBody = (f.ch ?? 0) > 0 || (f.cb ?? 0) > 0;
-  if (!hasBody) return (f.fd ?? 0) > 0 ? "tool" : "none";
-  return "card";
-}
-
 /**
  * **第一级粗估**：由宽度无关料 × 当前列宽算一条记录在骨架里占多高（px，border-box 口径）。
  *
@@ -453,14 +434,21 @@ export function skeletonKind(f: SkeletonFacts): SkeletonKind {
  * 第二级（建卡时 `applyIntrinsicSize` ＋ `contain-intrinsic-size: auto` 记住真值）接管已渲染的那部分。
  */
 export function estimateFromFacts(f: SkeletonFacts, colW: number = COL_W): number {
-  const kind = skeletonKind(f);
-  if (kind === "strip") return injectedShown ? SKEL_INJECTED_H : 0;
-  if (kind === "none") return 0;
-  if (kind === "tool") {
-    const n = f.fd ?? 0;
-    return f.t === "said" ? 0 : n * SUMMARY_H + Math.max(0, n - 1) * STEPS_GAP + SKEL_STEPS_CHROME;
+  // 画成哪一形是后端那一格（`dr`）：
+  // 系统注入的细条露不露、占不占高只看「显示系统注入」；几步卡每步一行（人那一侧的工具结果注入进它那个调用的那一行，高 0）；不画 ⇒ 0。
+  switch (f.dr) {
+    case "strip":
+      return injectedShown ? SKEL_INJECTED_H : 0;
+    case "steps": {
+      const n = f.fd ?? 0;
+      return f.t === "said" ? 0 : n * SUMMARY_H + Math.max(0, n - 1) * STEPS_GAP + SKEL_STEPS_CHROME;
+    }
+    case "card":
+      break;
+    default:
+      return 0;
   }
-  if (f.t === "retry") return SKEL_SYSTEM_H;
+  if (f.t === "retry" || f.t === "unread") return SKEL_SYSTEM_H;
   const folded = (f.fd ?? 0) * SUMMARY_H;
   if (f.t === "said") {
     const userW = colW * 0.8 - 34;
@@ -537,8 +525,7 @@ function splitFences(md: string): { prose: string; codeLines: number; codeBlocks
  * 与 `estimateFromFacts` 逐项同形：只把 `factLines(…) × 行高` 换成 pretext 排出来的高。`colW` 同第一级。
  */
 export function refineItemOf(rec: LineRecord, colW: number = COL_W): RefineItem | null {
-  if (rec.t !== "said" && rec.t !== "reply") return null;
-  if (rec.t === "said" && !drawsCard(rec.who.speaker.kind)) return null;
+  if (rec.draw !== "card" || (rec.t !== "said" && rec.t !== "reply")) return null;
   let folded = 0;
   const texts: string[] = [];
   for (const b of rec.blocks ?? []) {

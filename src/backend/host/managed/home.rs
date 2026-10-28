@@ -64,11 +64,12 @@ pub(crate) fn dir_of(own: &Own, id: &str) -> Result<OwnPath, Said> {
     hosts_dir(own)?.join(id)
 }
 
-/// 它的套接字路径；超过上限 ⇒ 拒，说清路径多长。
+/// 它的套接字路径；超过上限 ⇒ 拒，说清路径多长。上限只在通道是盘上一个文件的平台上有（Windows 命名管道的名字由
+/// `own-chan` 自己判长短，绑那一下照实回）。
 pub(crate) fn sock_of(own: &Own, id: &str) -> Result<PathBuf, Said> {
     let p = dir_of(own, id)?.as_path().join(SOCK);
     let n = p.as_os_str().len();
-    if n > SOCK_PATH_MAX {
+    if own_chan::BOUND_AS_FILE && n > SOCK_PATH_MAX {
         return Err(copy_text(
             "beHost.home.sockTooLong",
             &[
@@ -89,6 +90,11 @@ pub(crate) struct Home {
     lock: OwnLock,
     sock: PathBuf,
 }
+
+// SAFETY：家的锁只经 `Own::try_lock` 拿（[`Home::claim`]）：那一种锁是「有名对象在不在」（Unix 目录 `flock` · Windows 有名互斥体
+// 建没建成），不认线程，在哪条线程上落地都放得对。`OwnLock` 本身在 Windows 上不是 `Send`，是因为它的另一种（`Own::lock`，等着拿的
+// 互斥量）归拿它的那条线程所有 —— 家不用那一种。托管进程的家在收连接 · 读伪终端 · 收尾几条线程之间共用。
+unsafe impl Send for Home {}
 
 impl Home {
     /// 占一个家：建 `hosts/` 与 `hosts/<id>/`（0700，本人的真目录），抢它的锁；抢不到 ⇒ 这个 id 有人在用。

@@ -20,7 +20,6 @@ import { buildSlashCommandCard } from "./slash";
 import { buildBashInputCard, buildBashOutputCard } from "./bash";
 import { buildCompactSummaryCard } from "./compact";
 import { buildAgentBar, buildCoordinatorBar, buildInterruptLine, buildNoticeLine, buildPeerBar } from "./speaker-bar";
-import { drawsCard } from "../speaker";
 import { buildBriefCard } from "./brief";
 import { buildAgentCard, settleRunCard } from "./subagent";
 import { buildDiffBody } from "./diff";
@@ -233,13 +232,24 @@ export type RenderResult =
   | { kind: "steps"; units: HTMLElement[] };
 
 export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number): RenderResult {
+  // 画成哪一形是后端算好的那一格（`draw`）：不画的与系统注入细条（另放，`render-stream-record.ts`）不建卡；
+  // 下面只照类与来源挑哪一种卡的排版件。
+  if (rec.draw === "none" || rec.draw === "strip") return { kind: "skip" };
   const time = rec.timeText ?? "";
   switch (rec.t) {
     case "said": {
-      // 谁说的由后端判好（`who.speaker`）；不建卡的那几种（系统注入 · agent 来话 · 后台通知 · 中断标记……）只是不建卡。
       const said = rec.who;
       const speaker = said.speaker;
-      if (!drawsCard(speaker.kind)) return { kind: "skip" };
+      if (rec.draw === "steps") {
+        // 工具结果回灌：注入到对应 tool_use 折叠条内部，返回 null；
+        // 只有找不到匹配 tool_use 的 fallback 才产生独立 element。
+        const facts = stepFactsOf(rec, seq);
+        const units = rec.blocks
+          .filter((b) => b.type === "tool_result")
+          .map((b) => renderBlock(b, ctx, NO_CARDS, NO_RUNS, facts))
+          .filter((el): el is HTMLElement => el !== null);
+        return units.length === 0 ? { kind: "skip" } : { kind: "steps", units };
+      }
       switch (speaker.kind) {
         case "slashCommand":
           return { kind: "card", element: buildSlashCommandCard(speaker, time) };
@@ -248,13 +258,10 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number)
         case "bashOutput":
           return { kind: "card", element: buildBashOutputCard(speaker, time) };
         case "compactSummary":
-          if (!said.text) return { kind: "skip" };
           return {
             kind: "card",
             element: buildCompactSummaryCard(said.text, speaker.charsText, time),
           };
-        case "toolResult":
-          break;
         case "agentMessage":
           return { kind: "card", element: buildAgentBar(speaker, time, speaker.from ? ctx.runLabelOf?.(speaker.from) : undefined) };
         case "peerSession":
@@ -267,25 +274,13 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number)
           return { kind: "card", element: buildInterruptLine(time) };
         case "agentTask":
           // 派给子 agent 的活：不是用户说的，画成带抬头的框（谁派的 · 几点派的）。
-          if (!said.text) return { kind: "skip" };
           return { kind: "card", element: buildBriefCard(said.text, time, ctx.briefFrom ?? null) };
         default: {
-          // 人说的话：用户气泡；带的附件（图片块 · `attachments[]`）画在正文上方。正文与附件都没有 ⇒ 不建卡。
+          // 人说的话：用户气泡；带的附件（图片块 · `attachments[]`）画在正文上方。图片来源一张都画不出 ⇒ 没东西可摆。
           const card = buildSaidCard(rec, ctx, time);
           return card === null ? { kind: "skip" } : { kind: "card", element: card };
         }
       }
-
-      // 工具结果回灌：注入到对应 tool_use 折叠条内部，返回 null；
-      // 只有找不到匹配 tool_use 的 fallback 才产生独立 element。
-      const blocks = rec.blocks.filter((b) => b.type === "tool_result");
-      if (blocks.length === 0) return { kind: "skip" };
-      const facts = stepFactsOf(rec, seq);
-      const units = blocks
-        .map((b) => renderBlock(b, ctx, NO_CARDS, NO_RUNS, facts))
-        .filter((el): el is HTMLElement => el !== null);
-      if (units.length === 0) return { kind: "skip" };
-      return { kind: "steps", units };
     }
     case "reply": {
       // 上游最终失败写的报错 → 红色报错卡（当普通回复画会让人以为还在跑）。
@@ -300,26 +295,16 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number)
           }),
         };
       }
-      // 代理那一侧自动写的应答（不是模型说的）：不建卡。
-      if (rec.autoReply) return { kind: "skip" };
-      // 思考的空串是后端说「没写进记录」（线上约定，后端判一次）⇒ 留着画成一行；只有空的正文才跳过。
+      // 空的正文块不摆（思考的空串是「没写进记录」，照摆一行）。卡还是几步是后端那一格：
+      // 带正文的、含交互等待工具（issue #21，要默认可见）的画成卡；全是思考 · 工具调用 · 工具结果的画成过程里的几步。
       const meaningful = rec.blocks.filter((b) => b.type !== "text" || b.text.trim().length > 0);
-      if (meaningful.length === 0) return { kind: "skip" };
-
-      const hasText = meaningful.some((b) => b.type === "text");
-      // issue #21：含交互等待工具（AskUserQuestion / ExitPlanMode）的消息走
-      // kind:"card"——它们要默认可见（画成带正文的卡）。
       const cards = toolCardsOf(rec);
-      const hasInteractive = meaningful.some(
-        (b) => b.type === "tool_use" && cards[b.id] === "interactive",
-      );
-      if (hasText || hasInteractive) {
+      if (rec.draw === "card") {
         return {
           kind: "card",
           element: buildAssistantCard(rec, meaningful, ctx, seq),
         };
       }
-      // 全是 thinking / tool_use / tool_result → 过程里的几步
       const facts = stepFactsOf(rec, seq);
       const units = meaningful
         .map((b) => renderBlock(b, ctx, cards, childRunsOf(rec), facts))
