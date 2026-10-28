@@ -11648,7 +11648,7 @@
     "beTerminal.no.waiting": {
       "kind": "body",
       "role": "片段",
-      "zh": "会话在等批准或回答",
+      "zh": "会话在等批准或回答 · 或终端里有没交的半句",
       "args": []
     },
     "beQueue.put.attachmentGone": {
@@ -11661,6 +11661,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "输入在另一端 · 没送",
+      "args": []
+    },
+    "beTerminal.no.hostOutdated": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "托管终端版本过低 · 需重开",
       "args": []
     },
     "beTerminal.holder.here": {

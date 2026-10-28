@@ -281,7 +281,7 @@
     "name": "运行中",
     "order": 1,
     "settled": false,
-    "tip": "不在 tmux 会话里运行 · 程序退出后只能恢复",
+    "tip": "程序退出后只能恢复",
     "tone": "now"
   },
   "reading": {
