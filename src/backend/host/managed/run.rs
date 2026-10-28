@@ -333,11 +333,7 @@ async fn wait_briefly<F: std::future::Future>(f: F, within_ms: u64) {
 
 /// 接一条连接：登记进账、起读写两个任务；交回写那一半的任务（收尾时等它把 `ended` 写完）。
 fn serve_conn(ctx: &Arc<Ctx>, s: own_chan::Stream) -> tokio::task::JoinHandle<()> {
-    let pid = s
-        .peer_cred()
-        .ok()
-        .and_then(|c| c.pid())
-        .and_then(|p| u32::try_from(p).ok());
+    let pid = own_chan::peer_pid(&s).ok();
     let (id, out) = locked(&ctx.hub).connect(pid, crate::common::time::now_ms());
     let (mut rd, mut wr) = tokio::io::split(s);
     let reader = {

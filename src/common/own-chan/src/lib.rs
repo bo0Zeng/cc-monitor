@@ -121,6 +121,23 @@ fn my_uid() -> u32 {
     unsafe { libc::getuid() }
 }
 
+/// 一条连接的对端进程号（系统给，不靠对端自报）：Unix `SO_PEERCRED` 那一格（拿不到 pid 的平台 ⇒ `Unsupported`）；
+/// Windows 服务端那一头问 `GetNamedPipeClientProcessId`、客户端那一头问 `GetNamedPipeServerProcessId`。
+#[cfg(unix)]
+pub fn peer_pid(s: &Stream) -> std::io::Result<u32> {
+    s.peer_cred()?
+        .pid()
+        .and_then(|p| u32::try_from(p).ok())
+        .filter(|p| *p != 0)
+        .ok_or_else(|| std::io::ErrorKind::Unsupported.into())
+}
+
+/// 一条连接的对端进程号（见 Unix 那一形）。
+#[cfg(windows)]
+pub fn peer_pid(s: &Stream) -> std::io::Result<u32> {
+    s.peer_pid()
+}
+
 /// 连那个通道（异步）。要在 tokio 运行时里调。
 #[cfg(unix)]
 pub async fn connect(path: &Path) -> std::io::Result<Stream> {
@@ -513,6 +530,29 @@ mod win {
     pub enum Stream {
         Server(NamedPipeServer),
         Client(NamedPipeClient),
+    }
+
+    impl Stream {
+        /// 对端进程号：服务端那一头问连上来的客户端，客户端那一头问在听的服务端。
+        pub fn peer_pid(&self) -> io::Result<u32> {
+            use std::os::windows::io::AsRawHandle as _;
+            let mut pid: u32 = 0;
+            // SAFETY：句柄属于活着的那一头；`pid` 在本栈上。
+            let ok = unsafe {
+                match self {
+                    Stream::Server(s) => {
+                        GetNamedPipeClientProcessId(s.as_raw_handle() as Raw, &mut pid)
+                    }
+                    Stream::Client(c) => {
+                        GetNamedPipeServerProcessId(c.as_raw_handle() as Raw, &mut pid)
+                    }
+                }
+            };
+            if ok == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(pid)
+        }
     }
 
     impl AsyncRead for Stream {

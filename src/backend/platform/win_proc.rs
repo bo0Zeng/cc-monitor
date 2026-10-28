@@ -106,6 +106,15 @@ pub(crate) fn wait_within(h: &OwnedHandle, ms: u32) -> Result<bool, std::io::Err
     }
 }
 
+/// 一直等到那个进程退了（进程句柄有信号；只等内核那一个事件，不是定时器）。不取退出码、不关句柄 —— 句柄归调用方
+/// （伪终端起的那一个：`platform/child.rs` 先这样不收尸地等，再在锁里收尸）。
+pub(crate) fn wait_exited(h: std::os::windows::io::BorrowedHandle<'_>) {
+    /// `INFINITE`。
+    const WAIT_FOREVER: u32 = 0xFFFF_FFFF;
+    // SAFETY：句柄由调用方借给这一次调用，期间有效。
+    unsafe { WaitForSingleObject(h.as_raw_handle(), WAIT_FOREVER) };
+}
+
 /// 强杀（`TerminateProcess`，退出码 1）。
 pub(crate) fn terminate(h: &OwnedHandle) -> Result<(), std::io::Error> {
     // SAFETY：句柄有效，且带 `PROCESS_TERMINATE`（由 `open_for_stop` 开出来的）。

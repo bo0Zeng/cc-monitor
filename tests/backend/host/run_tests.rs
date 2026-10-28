@@ -22,7 +22,30 @@ pub(crate) fn sandbox_own(tag: &str) -> (Own, std::path::PathBuf) {
     (own, data)
 }
 
+/// 假子进程是 `sh -c <script>`（只在 Unix 上跑的那几条判据用）。
 pub(crate) fn spec(id: &str, script: &str) -> Spec {
+    spec_argv(id, vec!["sh".into(), "-c".into(), script.into()])
+}
+
+/// 两个平台都跑的那几条判据：Unix 交 `sh -c <sh>`，Windows 交 `cmd /d /v:on /c <cmd>`（`!x!` 是读进来那一刻的值）。
+pub(crate) fn spec_any(id: &str, sh: &str, cmd: &str) -> Spec {
+    let argv = if cfg!(windows) {
+        ["cmd", "/d", "/v:on", "/c", cmd]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    } else {
+        vec!["sh".into(), "-c".into(), sh.into()]
+    };
+    spec_argv(id, argv)
+}
+
+/// 最常用的那一个假子进程：打一行 `ready`，读一行就退。
+pub(crate) fn spec_ready(id: &str) -> Spec {
+    spec_any(id, "printf 'ready\\r\\n'; read x", "echo ready& set /p x=")
+}
+
+fn spec_argv(id: &str, argv: Vec<String>) -> Spec {
     Spec {
         id: id.into(),
         name: format!("name-{id}"),
@@ -30,7 +53,7 @@ pub(crate) fn spec(id: &str, script: &str) -> Spec {
         cwd: String::new(),
         agent: "fake".into(),
         client: "terminal".into(),
-        argv: vec!["sh".into(), "-c".into(), script.into()],
+        argv,
     }
 }
 
@@ -105,10 +128,13 @@ async fn read_until_ended(s: &mut own_chan::Stream) -> Option<i32> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_hosted_terminal_echoes_input_and_cleans_up_when_the_child_exits() {
     let (own, data) = sandbox_own("echo");
-    let script = r#"printf 'ready\r\n'; read x; printf 'got:%s\r\n' "$x"; printf 'host=%s term=%s\r\n' "$CCM_HOST" "$TERM"; read y; exit 3"#;
-    let (sock, task) = start(&own, spec("t-echo", script)).await;
+    let sh = r#"printf 'ready\r\n'; read x; printf 'got:%s\r\n' "$x"; printf 'host=%s term=%s\r\n' "$CCM_HOST" "$TERM"; read y; exit 3"#;
+    let cmd =
+        "echo ready& set /p x=& echo got:!x!& echo host=!CCM_HOST! term=!TERM!& set /p y=& exit 3";
+    let (sock, task) = start(&own, spec_any("t-echo", sh, cmd)).await;
     let dir = data.join("hosts").join("t-echo");
-    // 家：0700、事实在、锁攥着（活着）。
+    // 家：0700（Unix）、事实在、锁攥着（活着）。
+    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
         let mode = std::fs::metadata(&dir)
@@ -154,8 +180,9 @@ async fn a_hosted_terminal_echoes_input_and_cleans_up_when_the_child_exits() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn end_hangs_up_the_child_group() {
     let (own, data) = sandbox_own("end");
-    let script = r#"trap 'exit 7' HUP; printf 'ready\r\n'; while :; do read x; done"#;
-    let (sock, task) = start(&own, spec("t-end", script)).await;
+    let sh = r#"trap 'exit 7' HUP; printf 'ready\r\n'; while :; do read x; done"#;
+    let cmd = "echo ready& ping -n 600 127.0.0.1 >nul";
+    let (sock, task) = start(&own, spec_any("t-end", sh, cmd)).await;
     let mut s = hello(&sock, Want::View).await;
     read_until_out(&mut s, "ready").await;
     write_frame(&mut s, &Frame::Ctl(Ctl::End))
@@ -170,8 +197,8 @@ async fn end_hangs_up_the_child_group() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_same_id_cannot_be_hosted_twice() {
     let (own, _data) = sandbox_own("twice");
-    let (sock, task) = start(&own, spec("t-twice", "printf 'ready\\r\\n'; read x")).await;
-    let again = run(spec("t-twice", "true"), &own, |_| {}).await;
+    let (sock, task) = start(&own, spec_ready("t-twice")).await;
+    let again = run(spec_any("t-twice", "true", "exit 0"), &own, |_| {}).await;
     assert!(again.is_err(), "第二个拿不到锁");
     let mut s = hello(&sock, Want::Input).await;
     read_until_out(&mut s, "ready").await;
@@ -184,8 +211,9 @@ async fn the_same_id_cannot_be_hosted_twice() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_viewer_cannot_type_into_the_terminal() {
     let (own, _data) = sandbox_own("view");
-    let script = r#"printf 'ready\r\n'; read x; printf 'got:%s\r\n' "$x""#;
-    let (sock, task) = start(&own, spec("t-view", script)).await;
+    let sh = r#"printf 'ready\r\n'; read x; printf 'got:%s\r\n' "$x""#;
+    let cmd = "echo ready& set /p x=& echo got:!x!";
+    let (sock, task) = start(&own, spec_any("t-view", sh, cmd)).await;
     let mut viewer = hello(&sock, Want::View).await;
     read_until_out(&mut viewer, "ready").await;
     write_frame(&mut viewer, &Frame::In(b"nope\r".to_vec()))
@@ -242,7 +270,32 @@ fn args_parse_into_a_spec() {
     );
 }
 
+/// 托管口认得连上来的那一端是哪个进程（系统给的对端进程号：Unix `SO_PEERCRED` · Windows 命名管道的客户端进程号）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_host_knows_which_process_each_end_is() {
+    let (own, _data) = sandbox_own("peer");
+    let (sock, task) = start(&own, spec_ready("t-peer")).await;
+    let mut s = hello(&sock, Want::Input).await;
+    read_until_out(&mut s, "ready").await;
+    let asked = sock.clone();
+    let ends = tokio::task::spawn_blocking(move || super::super::client::clients(&asked))
+        .await
+        .expect("问的那条线没崩")
+        .expect("问到了");
+    let term = ends
+        .iter()
+        .find(|e| e.kind == WhoKind::Terminal)
+        .expect("真终端那一端在名单里");
+    assert_eq!(term.pid, Some(std::process::id()), "{ends:?}");
+    write_frame(&mut s, &Frame::In(b"\r".to_vec()))
+        .await
+        .expect("送字");
+    task.await.expect("任务没崩").expect("跑完");
+}
+
 /// 数据目录很长、`hosts/<id>/sock` 超过套接字上限 ⇒ 起不来，回的话带路径与长度；不偷偷换地方，盘上不留那个家。
+/// 只在通道是盘上一个文件的平台上有这一条上限。
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_socket_path_over_the_limit_refuses_to_start_and_says_how_long() {
     let (own, data) = sandbox_own(&"l".repeat(home::SOCK_PATH_MAX));

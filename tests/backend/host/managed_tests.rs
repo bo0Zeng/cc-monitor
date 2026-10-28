@@ -1,7 +1,7 @@
-//! 托管名单 · 打标那一手：真起托管终端（假子进程 `sh`），沙箱数据目录，不起真 claude。
+//! 托管名单 · 打标那一手：真起托管终端（假子进程：Unix `sh` · Windows `cmd`），沙箱数据目录，不起真 claude。
 
 use super::home;
-use super::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+use super::run::tests::{hello, read_until_out, sandbox_own, spec_ready, start};
 use super::wire::{write_frame, Frame, Want};
 use super::*;
 use crate::wire::{SessionContainer, TerminalHost};
@@ -21,7 +21,7 @@ async fn finish(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_hosted_terminal_is_listed_as_managed_from_disk_alone() {
     let (own, _data) = sandbox_own("rows");
-    let mut s = spec("t-rows", "printf 'ready\\r\\n'; read x");
+    let mut s = spec_ready("t-rows");
     s.cwd = "/".into();
     let (sock, task) = start(&own, s).await;
     let rows = rows_at(&own);
@@ -41,7 +41,7 @@ async fn a_hosted_terminal_is_listed_as_managed_from_disk_alone() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn tagging_the_child_pid_hangs_the_session_on_its_hosted_terminal() {
     let (own, data) = sandbox_own("tag");
-    let (sock, task) = start(&own, spec("t-tag", "printf 'ready\\r\\n'; read x")).await;
+    let (sock, task) = start(&own, spec_ready("t-tag")).await;
     // 等子进程真跑起来（exec 之前 `/proc/<pid>/environ` 还是父进程那一份，没有 `CCM_HOST`）——同生产：claude 跑起来才写 pidfile。
     let mut w = hello(&sock, Want::View).await;
     read_until_out(&mut w, "ready").await;
@@ -109,7 +109,7 @@ async fn a_stale_home_is_not_listed_and_the_next_host_sweeps_it() {
     )
     .expect("写事实");
     assert!(rows_at(&own).is_empty(), "锁空 ⇒ 不列");
-    let (sock, task) = start(&own, spec("t-new", "printf 'ready\\r\\n'; read x")).await;
+    let (sock, task) = start(&own, spec_ready("t-new")).await;
     assert!(!stale.exists(), "起托管的那一方顺手删了陈旧的");
     let rows = rows_at(&own);
     assert_eq!(rows.len(), 1);
@@ -118,4 +118,37 @@ async fn a_stale_home_is_not_listed_and_the_next_host_sweeps_it() {
     read_until_out(&mut s, "ready").await;
     drop(s);
     finish(&sock, task).await;
+}
+
+/// 读不到那个进程的环境（Windows 上读不到别的进程的环境）⇒ 按祖先认：往上找父进程，碰到某个托管终端记下的子进程号就是它（含它自己）。
+#[test]
+fn a_process_is_found_in_its_hosted_terminal_by_its_ancestors() {
+    // 10 → 20（托管终端 a 的子进程）· 30 → 31 → 40（托管终端 b 的子进程）→ 1；99 不在任何托管终端里。
+    let parent = |p: u32| match p {
+        10 => Some(20),
+        20 => Some(1),
+        30 => Some(31),
+        31 => Some(40),
+        40 => Some(1),
+        99 => Some(1),
+        _ => None,
+    };
+    let hosts = [("a".to_string(), 20), ("b".to_string(), 40)];
+    assert_eq!(host_by_ancestry(10, &hosts, parent).as_deref(), Some("a"));
+    assert_eq!(
+        host_by_ancestry(20, &hosts, parent).as_deref(),
+        Some("a"),
+        "它自己就是那个子进程"
+    );
+    assert_eq!(host_by_ancestry(30, &hosts, parent).as_deref(), Some("b"));
+    assert_eq!(host_by_ancestry(99, &hosts, parent), None);
+    assert_eq!(host_by_ancestry(7, &hosts, parent), None, "父进程问不到");
+}
+
+/// 父进程表成了环（进程号复用时快照里会有）⇒ 走到上限就停，不挂死、不瞎认。
+#[test]
+fn walking_the_ancestors_stops_on_a_loop() {
+    let parent = |p: u32| Some(if p == 5 { 6 } else { 5 });
+    let hosts = [("a".to_string(), 20)];
+    assert_eq!(host_by_ancestry(5, &hosts, parent), None);
 }

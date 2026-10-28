@@ -1,9 +1,10 @@
-//! 托管终端的一生：各种情形下谁还在（A3-3-18）。假子进程（`sh`）、沙箱数据目录，不起真 claude。
+//! 托管终端的一生：各种情形下谁还在（A3-3-18）。假子进程（Unix `sh` · Windows `cmd`）、沙箱数据目录，不起真 claude。
+//! 同一份在 Linux 门禁里跑，也交叉编到 Windows 上真跑（Win11 虚拟机）。
 //!
 //! 「后端重启」＝ 丢掉手上所有连接、只凭盘重扫：后端对托管终端不留进程内状态，名单 · 打标都是问的那一刻现做。
 
 use super::home;
-use super::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+use super::run::tests::{hello, read_until_out, sandbox_own, spec_any, spec_ready, start};
 use super::wire::{read_frame, write_frame, Ctl, Frame, Want};
 use super::*;
 
@@ -44,8 +45,9 @@ async fn ended_of(s: &mut own_chan::Stream) -> bool {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn after_the_terminal_window_goes_a_new_backend_finds_it_with_the_same_screen() {
     let (own, _data) = sandbox_own("life-detach");
-    let script = r#"printf 'one\r\ntwo\r\nready\r\n'; read x; printf 'bye\r\n'"#;
-    let (sock, task) = start(&own, spec("t-life", script)).await;
+    let sh = r#"printf 'one\r\ntwo\r\nready\r\n'; read x; printf 'bye\r\n'"#;
+    let cmd = "echo one& echo two& echo ready& set /p x=& echo bye";
+    let (sock, task) = start(&own, spec_any("t-life", sh, cmd)).await;
     // 一个真终端接上、看到画面、走掉（没有后端连着）。
     let mut term = hello(&sock, Want::Input).await;
     let before = screen_of(&read_until_out(&mut term, "ready").await);
@@ -78,7 +80,7 @@ async fn after_the_terminal_window_goes_a_new_backend_finds_it_with_the_same_scr
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_new_backend_rescans_and_retags_without_writing_twice() {
     let (own, data) = sandbox_own("life-retag");
-    let (sock, task) = start(&own, spec("t-retag", "printf 'ready\\r\\n'; read x")).await;
+    let (sock, task) = start(&own, spec_ready("t-retag")).await;
     // 等子进程真跑起来（exec 之前它的环境还是父进程那一份）。
     let mut w = hello(&sock, Want::View).await;
     read_until_out(&mut w, "ready").await;
@@ -103,7 +105,15 @@ async fn a_new_backend_rescans_and_retags_without_writing_twice() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn when_the_agent_exits_every_end_hears_ended_and_the_row_is_gone() {
     let (own, data) = sandbox_own("life-exit");
-    let (sock, task) = start(&own, spec("t-exit", "printf 'ready\\r\\n'; read x; exit 0")).await;
+    let (sock, task) = start(
+        &own,
+        spec_any(
+            "t-exit",
+            "printf 'ready\\r\\n'; read x; exit 0",
+            "echo ready& set /p x=& exit 0",
+        ),
+    )
+    .await;
     let mut viewer = hello(&sock, Want::View).await;
     let mut term = hello(&sock, Want::Input).await;
     read_until_out(&mut term, "ready").await;
@@ -120,8 +130,9 @@ async fn when_the_agent_exits_every_end_hears_ended_and_the_row_is_gone() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn ending_the_terminal_hangs_up_the_child_and_the_row_is_gone() {
     let (own, _data) = sandbox_own("life-end");
-    let script = r#"trap 'exit 7' HUP; printf 'ready\r\n'; while :; do read x; done"#;
-    let (sock, task) = start(&own, spec("t-kill", script)).await;
+    let sh = r#"trap 'exit 7' HUP; printf 'ready\r\n'; while :; do read x; done"#;
+    let cmd = "echo ready& ping -n 600 127.0.0.1 >nul";
+    let (sock, task) = start(&own, spec_any("t-kill", sh, cmd)).await;
     let mut s = hello(&sock, Want::View).await;
     read_until_out(&mut s, "ready").await;
     write_frame(&mut s, &Frame::Ctl(Ctl::End))
