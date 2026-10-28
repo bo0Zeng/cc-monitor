@@ -12,10 +12,12 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 /// 协议版本。加只发不等回话的动词不升；加要对方回话的动词 · 改了已有动词的意思升（新的一方按对方的 `proto` 说话）。
-/// 1 ＝ 起头那一版；2 ＝ 认 `say`（[`SAY_SINCE`]）。
-pub(crate) const PROTO: u32 = 2;
+/// 1 ＝ 起头那一版；2 ＝ 认 `say`（[`SAY_SINCE`]）；3 ＝ 认 `interrupt`（[`INTERRUPT_SINCE`]）。
+pub(crate) const PROTO: u32 = 3;
 /// 托管进程从这一版起认 `say`（回 `said`）：`welcome` 报的比它低 ⇒ 是旧托管进程，不说。
 pub(crate) const SAY_SINCE: u32 = 2;
+/// 托管进程从这一版起认 `interrupt`（回 `interrupted`）：低于它 ⇒ 不说、照实报旧版。
+pub(crate) const INTERRUPT_SINCE: u32 = 3;
 /// 一帧最长（种 ＋ 载荷）。整屏一帧最大也就几百 KB；超过它 ⇒ 不是我们的对端，断线。
 pub(crate) const MAX_FRAME: u32 = 16 * 1024 * 1024;
 
@@ -136,6 +138,8 @@ pub(crate) enum Ctl {
     /// 往会话说一句（只后端发：会话输入队投递那一下）：不必持有输入，照写进伪终端、不换持有者；
     /// 持有者那一端自上次回车以来敲了字 ⇒ 不写（回 `said {pending: true}`），不把这一句和人打到一半的字搅在一起。
     Say { text: String },
+    /// 中断这一轮（只后端发：会话 ■）：往伪终端写一个 ESC；不看持有者、不看半句、不换持有者。回 `interrupted`。
+    Interrupt,
 
     // ── 下行（托管 → 各端）──
     /// 回 `hello`：整屏字节 ＋ 此刻谁持有。
@@ -174,6 +178,8 @@ pub(crate) enum Ctl {
     ClientsAre { clients: Vec<ClientRow> },
     /// 回 `say`：`pending` ＝ 持有者输入行里有没交的字、这一句没写；否则写进去了。
     Said { pending: bool },
+    /// 回 `interrupt`：ESC 写进去了。
+    Interrupted,
     /// 子进程退了（之后托管进程收尾退出）。
     Ended {
         #[serde(default, skip_serializing_if = "Option::is_none")]

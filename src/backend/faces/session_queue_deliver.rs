@@ -104,7 +104,7 @@ pub(crate) fn urgent(item: &QueueItem) -> bool {
 fn landed(d: &Delivery) -> Option<bool> {
     match d {
         Delivery::In { .. } => Some(true),
-        Delivery::Waiting => None,
+        Delivery::Waiting | Delivery::HalfTyped => None,
         Delivery::No(_) => Some(false),
     }
 }
@@ -161,7 +161,18 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
             }
             Step::Send => match (deps.send)(sid, &item) {
                 Ok(sent) => match landed(&sent) {
-                    None => memo.retry_ms = Some(now_ms.saturating_add(WAITING_RETRY_MS)),
+                    None => {
+                        // 等的是托管终端里那半句 ⇒ 那一条说出来（三端照摆）；别的等 ⇒ 不说。没变不写。
+                        let half = sent == Delivery::HalfTyped;
+                        if let Err(f) = q::mark_half(deps.own, sid, &item.id, half) {
+                            tracing::warn!(
+                                "[session-queue] {sid} 记等的原因没成：{} {}",
+                                f.code,
+                                f.message
+                            );
+                        }
+                        memo.retry_ms = Some(now_ms.saturating_add(WAITING_RETRY_MS));
+                    }
                     Some(true) => {
                         memo.retry_ms = None;
                         noted(q::delivered(deps.own, sid, &item.id), sid, After::Delivered);

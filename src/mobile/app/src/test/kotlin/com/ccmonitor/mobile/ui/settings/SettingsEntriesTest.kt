@@ -30,7 +30,7 @@ class SettingsEntriesTest {
         for (e in settingsEntries()) {
             assertTrue("入口「${e.title}」指向的 ${e.route} 没有在 AppNavHost 里注册：$registered", e.route in registered)
         }
-        assertFalse("终端只从抽屉进", settingsEntries().any { it.route == Screen.SessionsOverview.route || it.route == Screen.Session.route })
+        assertFalse("终端只从抽屉进", settingsEntries().any { it.route == Screen.Session.route })
     }
 
     /** 入口不许写回 composable 里：屏上看着一样，而数据里那一项没了，上面两条就守不住任何东西。 */
@@ -73,10 +73,8 @@ class SettingsEntriesTest {
                 "Identities" to Screen.Identities.route,
                 "Keys" to Screen.Keys.route,
                 "Session" to Screen.Session.route,
-                "SessionsOverview" to Screen.SessionsOverview.route,
                 "Conversations" to Screen.Conversations.route,
                 "Chat" to Screen.Chat.route,
-                "NewSessionHostPicker" to Screen.NewSessionHostPicker.route,
                 "Settings" to Screen.Settings.route,
                 "Rotation" to Screen.Rotation.route,
                 "RotationHere" to Screen.RotationHere.route,

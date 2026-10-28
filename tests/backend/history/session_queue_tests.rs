@@ -370,20 +370,20 @@ fn each_item_carries_the_owner_written_words() {
 fn the_waiting_line_counts_queued_and_held_but_not_undelivered() {
     let o = own(&home("waiting"));
     let waiting = |n: usize| Some(copy_text("beQueue.said.waiting", &[("n", &n.to_string())]));
-    assert_eq!(
-        waiting_said(&read(&o, SID, T0).unwrap()),
-        None,
-        "空队 ⇒ 没有"
-    );
+    assert_eq!(waiting_said(&o, SID, T0), None, "空队 ⇒ 没有");
     put(&o, &req("a", "mobile", None, T0), T0).unwrap();
     put(&o, &req("h", "deskA", Some(2), T0), T0 + 1).unwrap();
     assert_eq!(
-        waiting_said(&read(&o, SID, T0 + 2).unwrap()),
+        waiting_said(&o, SID, T0 + 2),
         waiting(2),
         "排着 1 ＋ 收着 1"
     );
-    let left = end(&o, SID, T0 + 3).unwrap();
-    assert_eq!(waiting_said(&left), None, "会话结束标未送达 ⇒ 不算在等");
+    end(&o, SID, T0 + 3).unwrap();
+    assert_eq!(
+        waiting_said(&o, SID, T0 + 4),
+        None,
+        "会话结束标未送达 ⇒ 不算在等"
+    );
 }
 
 /// 托管终端的沙箱：数据目录（`hosts/`）与家目录（队）分开，都在判据的沙箱里。

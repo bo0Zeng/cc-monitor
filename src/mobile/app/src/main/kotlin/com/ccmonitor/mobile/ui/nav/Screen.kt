@@ -33,10 +33,6 @@ sealed class Screen(
         ): String = "session/$key?$ARG_OPEN=" + URLEncoder.encode(open, "UTF-8").replace("+", "%20")
     }
 
-    // 终端 tab 总览。注意：与 [Conversations]（Claude 对话总览）是两件事，
-    // 后者的路由刻意不用 `sessions*` 前缀以免混淆。
-    data object SessionsOverview : Screen("sessions")
-
     /** 会话列表（抽屉「会话」进）：已固定 → 各组（段头 组名 ＋ 计数）→ 按天；顶栏「需手动 n」进需手动屏。 */
     data object Conversations : Screen("conversations/{hostId}") {
         fun of(hostId: String): String = "conversations/$hostId"
@@ -77,10 +73,6 @@ sealed class Screen(
     data object Overview : Screen("overview/{hostId}") {
         fun of(hostId: String): String = "overview/$hostId"
     }
-
-    // 「新建会话 · 选主机」：复用 HostListScreen，但连接一律 forceNew=true；
-    // 选中即 popUpTo 弹出本页，返回键即取消，不留 force-new 状态。
-    data object NewSessionHostPicker : Screen("sessions/new")
 
     data object Settings : Screen("settings")
 

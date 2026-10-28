@@ -51,6 +51,8 @@ fun TerminalManagerDialog(
     var sessions by remember { mutableStateOf<List<TerminalsList.Row>>(emptyList()) }
     var newName by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(true) }
+    // 名单读不出时那台那一句（不画成「无终端」，［刷新］再问）；读到了 ⇒ null。
+    var failed by remember { mutableStateOf<String?>(null) }
     var refreshTick by remember { mutableStateOf(0) }
     // 待确认要结束的会话（null = 没有）
     var pendingKill by remember { mutableStateOf<TerminalsList.Row?>(null) }
@@ -58,7 +60,13 @@ fun TerminalManagerDialog(
 
     androidx.compose.runtime.LaunchedEffect(refreshTick) {
         loading = true
-        sessions = terminals.list().getOrDefault(emptyList())
+        terminals.list().fold(
+            onSuccess = {
+                sessions = it
+                failed = null
+            },
+            onFailure = { failed = it.message.orEmpty() },
+        )
         loading = false
     }
 
@@ -74,17 +82,12 @@ fun TerminalManagerDialog(
                 terminals = terminals,
                 noTmux = noTmux,
                 loading = loading,
+                failed = failed,
                 sessions = sessions,
                 newName = newName,
                 onNameChange = { newName = it },
                 onAttach = onAttach,
                 onKillRequested = { pendingKill = it },
-                onHold = { row, take ->
-                    scope.launch {
-                        terminals.hold(row, take)?.let { snackbar.show(Notice(it)) }
-                        refresh()
-                    }
-                },
                 onCreated = {
                     newName = ""
                     refresh()
@@ -117,12 +120,12 @@ private fun TerminalManagerBody(
     terminals: TerminalOps,
     noTmux: String?,
     loading: Boolean,
+    failed: String?,
     sessions: List<TerminalsList.Row>,
     newName: String,
     onNameChange: (String) -> Unit,
     onAttach: (String) -> Unit,
     onKillRequested: (TerminalsList.Row) -> Unit,
-    onHold: (TerminalsList.Row, Boolean) -> Unit,
     onCreated: () -> Unit,
     onFailed: (String) -> Unit,
     scope: kotlinx.coroutines.CoroutineScope,
@@ -131,10 +134,10 @@ private fun TerminalManagerBody(
     Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
         TerminalList(
             loading = loading,
+            failed = failed,
             sessions = sessions,
             onAttach = onAttach,
             onKillRequested = onKillRequested,
-            onHold = onHold,
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = tokens.spacing.sm))
         TmuxNewSessionRow(
@@ -187,19 +190,20 @@ private fun KillConfirmDialog(
 }
 
 /**
- * 会话列表段（加载 / 空态 / 各行）。
- * 行上点「结束」只经 [onKillRequested] 交给父级，由父级做二次确认与结果反馈；托管那一行的［接管输入］/［交还］经 [onHold] 交父级。
+ * 会话列表段（加载 / 读不出 / 空态 / 各行）。读不出 ⇒ 那台那一句（［刷新］在弹窗底下），不画成「无终端」。
+ * 行上点「结束」只经 [onKillRequested] 交给父级，由父级做二次确认与结果反馈。手机不接管 · 不交还托管终端的输入（聊天走队；终端 tab 接上就持有）。
  */
 @Composable
 private fun TerminalList(
     loading: Boolean,
+    failed: String?,
     sessions: List<TerminalsList.Row>,
     onAttach: (String) -> Unit,
     onKillRequested: (TerminalsList.Row) -> Unit,
-    onHold: (TerminalsList.Row, Boolean) -> Unit,
 ) {
     when {
         loading -> Text(copyText("kit.state.reading"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        failed != null -> Text(failed, color = MaterialTheme.colorScheme.error)
         sessions.isEmpty() -> Text(copyText("mobTerms.list.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
         else ->
             sessions.forEach { s ->
@@ -207,19 +211,17 @@ private fun TerminalList(
                     s = s,
                     onAttach = { onAttach(s.name) },
                     onKill = { onKillRequested(s) },
-                    onHold = { take -> onHold(s, take) },
                 )
             }
     }
 }
 
-/** 单个终端行：名称、运行中命令、托管那一形谁在输入，以及附着 / 接管或交还 / 结束。 */
+/** 单个终端行：名称、运行中命令（tmux 那一形带「tmux」）、托管那一形谁在输入（那台那一句），以及附着 / 结束。 */
 @Composable
 private fun TerminalRow(
     s: TerminalsList.Row,
     onAttach: () -> Unit,
     onKill: () -> Unit,
-    onHold: (Boolean) -> Unit,
 ) {
     val tokens = LocalAppTokens.current
     Row(
@@ -231,9 +233,10 @@ private fun TerminalRow(
             // 显示那台写好的标题（免得盲杀正在干活的会话）、附着态。
             Text(
                 listOfNotNull(
+                    copyText("mobTerms.row.tmux").takeIf { s.tmux },
                     s.title.takeIf { it.isNotBlank() }?.let { copyText("mobTerms.row.running", "command" to it) },
                     copyText("mobTerms.row.attached").takeIf { s.attached },
-                    s.holder?.said,
+                    s.holder,
                 ).joinToString(copyText("kit.text.sep")),
                 style = monoSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -242,9 +245,6 @@ private fun TerminalRow(
             )
         }
         SecondaryButton(onClick = onAttach) { Text(copyText("mobTerms.row.attach")) }
-        s.holder?.let { h ->
-            SecondaryButton(onClick = { onHold(!h.mine) }) { Text(if (h.mine) copyText("terminal.input.release") else copyText("terminal.input.take")) }
-        }
         SecondaryButton(danger = true, onClick = onKill) { Text(copyText("mobTerms.row.kill")) }
     }
     HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)

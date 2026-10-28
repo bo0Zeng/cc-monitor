@@ -469,15 +469,15 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(c.page.el.textContent).toContain(copyText("terminal.empty.ended", { state: copyText("sessionState.ended.name") }));
   });
 
-  it("★ 活着、不在 tmux 里（容器 none）⇒ 照实说「不在 tmux 里」，不说「非 cc-monitor 启动」；↗ 真能用时给［切到终端］", async () => {
+  it("★ 活着、不在任何终端里 · 在终端里却认不出 ⇒ 同一种空态「非 cc-monitor 起的」（页里不出现 tmux，A3-3-32-8）；↗ 真能用时给［切到终端］", async () => {
     vi.mocked(terminalFrontAvailable).mockReturnValue(true);
     try {
       const d = rig([], { t: tab("d", { face: liveFace("working", false) }) });
       d.page.setVisible(true);
       await flush();
-      expect(d.page.el.textContent).toContain(copyText("terminal.empty.notInTmux"));
-      expect(d.page.el.textContent).toContain(copyText("terminal.empty.notInTmuxHint"));
-      expect(d.page.el.textContent).not.toContain(copyText("terminal.empty.notOurs"));
+      expect(d.page.el.textContent).toContain(copyText("terminal.empty.notOurs"));
+      expect(d.page.el.textContent).toContain(copyText("terminal.empty.notOursHint"));
+      expect(d.page.el.textContent).not.toContain("tmux");
       const front = [...d.page.el.querySelectorAll("button")].find((x) => x.textContent?.includes(copyText("terminal.head.front")));
       expect(front, "Windows 上不在 tmux 里的会话还能切到它的终端窗口").toBeDefined();
       front!.click();
@@ -490,7 +490,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       const f = rig([], { t: tab("f", { face: liveFace("working", true) }) });
       f.page.setVisible(true);
       await flush();
-      expect(f.page.el.textContent, "在 tmux 里、名单却认不出的才是「非 cc-monitor 启动」").toContain(copyText("terminal.empty.notOurs"));
+      expect(f.page.el.textContent, "在终端里、名单却认不出的同一句").toContain(copyText("terminal.empty.notOurs"));
     } finally {
       vi.mocked(terminalFrontAvailable).mockReturnValue(false);
     }

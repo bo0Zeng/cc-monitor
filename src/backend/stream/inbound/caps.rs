@@ -13,6 +13,7 @@ pub(crate) const CAPS: &[(&str, Deadline)] = &[
     ("terminals-list", terminals::TERMINALS_LIST_CAP),
     ("terminal-preview", terminals::TERMINAL_PREVIEW_CAP),
     ("terminal-input", terminals::TERMINAL_PREVIEW_CAP),
+    ("session-interrupt", terminals::TERMINAL_PREVIEW_CAP),
     // 名单一趟 ＋ 结束 / 接管那一下（托管口每读一下 5 s 期限），同送字那一档。
     ("terminal-end", terminals::TERMINAL_PREVIEW_CAP),
     ("terminal-take-input", terminals::TERMINAL_PREVIEW_CAP),

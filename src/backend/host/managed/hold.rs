@@ -6,7 +6,9 @@
 //! 后端重启 ⇒ 表空了、那条连接随进程断开，托管进程照常把输入交给最近连上的真终端（不留陈旧的「后端持有」）。
 
 use super::client;
-use super::wire::{Ctl, Frame};
+use super::wire::{Ctl, Frame, WhoKind};
+use cmd_wire::session::HolderWho;
+use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -30,6 +32,36 @@ static TABLE: Mutex<Table> = Mutex::new(Table {
 
 fn table() -> MutexGuard<'static, Table> {
     TABLE.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// 持有输入的是哪一端：托管口报的种类 ＋ 后端替哪个前端（`mobile` ⇒ 手机，别的 ⇒ 桌面）。
+pub(crate) fn who_of(kind: WhoKind, front: Option<&str>) -> HolderWho {
+    match (kind, front) {
+        (WhoKind::Terminal, _) => HolderWho::TerminalWindow,
+        (WhoKind::Backend, Some("mobile")) => HolderWho::Mobile,
+        (WhoKind::Backend, _) => HolderWho::Desktop,
+    }
+}
+
+/// 「谁持有」那一句，只这一处写（A3-3-32-5）：名单 · 实时流 · 瘦客户端底行都调它。`mine` ＝ 看的这一端就是持有者。
+pub(crate) fn said_of(who: HolderWho, mine: bool) -> String {
+    match (who, mine) {
+        (HolderWho::None, _) => copy_text("beTerminal.holder.none", &[]),
+        (_, true) => copy_text("beTerminal.holder.here", &[]),
+        (HolderWho::Desktop, _) => copy_text("beTerminal.holder.desktop", &[]),
+        (HolderWho::Mobile, _) => copy_text("beTerminal.holder.mobile", &[]),
+        (HolderWho::TerminalWindow, _) => copy_text("beTerminal.holder.terminalWindow", &[]),
+    }
+}
+
+/// 那一端的短词（瘦客户端 `前缀 D` 单子的种类那一列）：终端窗口 · 桌面 · 手机。
+pub(crate) fn word_of(who: HolderWho) -> String {
+    match who {
+        HolderWho::TerminalWindow => copy_text("beTerminal.who.terminalWindow", &[]),
+        HolderWho::Desktop => copy_text("beTerminal.who.desktop", &[]),
+        HolderWho::Mobile => copy_text("beTerminal.who.mobile", &[]),
+        HolderWho::None => String::new(),
+    }
 }
 
 /// 此刻后端替哪个前端持有它（没有 ⇒ `None`）。

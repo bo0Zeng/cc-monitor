@@ -52,6 +52,7 @@ use tokio::sync::mpsc;
 
 use super::terminals::{self, On};
 use crate::wire::{FollowEnd, Frame};
+use cmd_wire::session::TermInput;
 
 /// 订上。
 pub const FOLLOW: &str = <TerminalFollow as crate::wire::typed::Command>::NAME;
@@ -451,6 +452,10 @@ impl Desk {
     /// 凭占位起：认终端 · 看版本 · 起控制模式客户端，再把占位换成真的；占位已经被退订摘掉 ⇒ 收掉刚起的客户端、回 `Ok`。
     fn take_seat(&self, seat: &Seat, req: &FollowReq, tz: &crate::Tz) -> Result<(), CmdErr> {
         let me = &self.0;
+        if let Some(sock) = terminals::hosted_sock_of(req.terminal.as_deref(), req.sid.as_deref())?
+        {
+            return self.take_hosted(seat, &sock, tz);
+        }
         let on = On {
             socket: me.socket.as_deref(),
         };
@@ -476,15 +481,85 @@ impl Desk {
         spawn_reader(out, t.pane.clone(), tx, Arc::clone(&pending));
         let worker = Worker {
             ticket: seat.ticket.clone(),
-            target: t.target,
-            socket: me.socket.clone(),
+            source: Source::Tmux {
+                target: t.target,
+                socket: me.socket.clone(),
+            },
             replies: me.replies.clone(),
             tickets: Arc::clone(&me.tickets),
             pending,
             tz: tz.clone(),
         };
-        std::thread::spawn(move || worker.run(rx, proc));
+        std::thread::spawn(move || worker.run(rx, Conn::Tmux(proc)));
         Ok(())
+    }
+
+    /// 托管那一形凭占位起：经托管口开一条只看的连接（`hello{want: view, who: backend}`），读线记「变了」；
+    /// 抓屏照旧走托管口 `capture`，帧里带此刻的持有者。托管口连接失败 ⇒ `not_known`（同 tmux 那一行不在）。不设定时器：同 tmux 那一形，一次只有一帧在送。
+    fn take_hosted(
+        &self,
+        seat: &Seat,
+        sock: &std::path::Path,
+        tz: &crate::Tz,
+    ) -> Result<(), CmdErr> {
+        let me = &self.0;
+        let (conn, held, buf) = open_hosted(sock)?;
+        let held = Arc::new(Mutex::new(held));
+        let ended = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = smpsc::channel::<Ev>();
+        let pending = Arc::new(AtomicBool::new(false));
+        spawn_hosted_reader(
+            Arc::clone(&conn),
+            buf,
+            Arc::clone(&held),
+            Arc::clone(&ended),
+            tx.clone(),
+            Arc::clone(&pending),
+        );
+        {
+            let mut g = lock(&me.tickets);
+            match g.slots.get(&seat.ticket) {
+                Some(Slot::Starting(n)) if *n == seat.n => {
+                    g.slots.insert(seat.ticket.clone(), Slot::On(Follow { tx }));
+                }
+                _ => {
+                    std::thread::spawn(move || let_go(Conn::Hosted(conn), &rx, false));
+                    return Ok(());
+                }
+            }
+        }
+        let worker = Worker {
+            ticket: seat.ticket.clone(),
+            source: Source::Hosted {
+                sock: sock.to_path_buf(),
+                held,
+                ended,
+            },
+            replies: me.replies.clone(),
+            tickets: Arc::clone(&me.tickets),
+            pending,
+            tz: tz.clone(),
+        };
+        std::thread::spawn(move || worker.run(rx, Conn::Hosted(conn)));
+        Ok(())
+    }
+
+    /// 判据那一口：直接订托管口 `sock` 那个终端（不经名单认）。
+    #[cfg(test)]
+    pub(crate) fn follow_hosted_at(
+        &self,
+        ticket: &str,
+        sock: &std::path::Path,
+        tz: &crate::Tz,
+    ) -> Result<(), CmdErr> {
+        let Some(seat) = self.reserve(ticket)? else {
+            return Ok(());
+        };
+        let r = self.take_hosted(&seat, sock, tz);
+        if r.is_err() {
+            self.release(&seat);
+        }
+        r
     }
 
     /// 帧面那一口：[`Desk::follow`] 挪进阻塞线程池做（起 tmux 那几下不占 worker，同换号重启那几步）。
@@ -761,11 +836,159 @@ fn detach(mut proc: crate::platform::child::Streaming, rx: &smpsc::Receiver<Ev>)
     drop(proc);
 }
 
+/// 托管口那一下没成 ⇒ 同 tmux 那一行不在（不另立码）。
+fn hosted_gone(e: &std::io::Error) -> CmdErr {
+    CmdErr::new(
+        "not_known",
+        crate::common::contract::malformed("the hosted terminal did not answer"),
+    )
+    .with_raw(Some(&e.to_string()))
+}
+
+/// 托管口报的持有者 ⇒ 名单那一格的读法（同 `host::managed::listed_at`）。
+fn held_by(h: crate::host::managed::wire::Holder) -> crate::host::HeldBy {
+    use crate::host::managed::wire::WhoKind;
+    match h.kind {
+        WhoKind::Terminal => crate::host::HeldBy::Terminal,
+        WhoKind::Backend => crate::host::HeldBy::Front(h.front.unwrap_or_default()),
+    }
+}
+
+/// 开一条只看的连接、读到 `welcome`（此刻的持有者）；之后读那一半不设期限（有字节才醒）。交回连接 · 持有者 · 读剩下的半帧。
+fn open_hosted(
+    sock: &std::path::Path,
+) -> Result<
+    (
+        Arc<own_chan::BlockingStream>,
+        Option<crate::host::HeldBy>,
+        Vec<u8>,
+    ),
+    CmdErr,
+> {
+    use crate::host::managed::client;
+    use crate::host::managed::wire::{Ctl, Frame as HostFrame};
+    let s = client::open(sock, None).map_err(|e| hosted_gone(&e))?;
+    let mut buf = Vec::new();
+    let held = loop {
+        match client::next_frame(&s, &mut buf).map_err(|e| hosted_gone(&e))? {
+            HostFrame::Ctl(Ctl::Welcome { holder, .. }) => break holder.map(held_by),
+            HostFrame::Ctl(Ctl::Ended { .. }) => {
+                return Err(hosted_gone(&std::io::ErrorKind::NotConnected.into()))
+            }
+            _ => {}
+        }
+    };
+    s.set_read_timeout(None).map_err(|e| hosted_gone(&e))?;
+    Ok((Arc::new(s), held, buf))
+}
+
+/// 读那条只看的连接：`out` · 尺寸变了 · 整屏重来 · 持有者变了（记下新的）⇒ 「变了」（连着几笔只报一次，同 [`spawn_reader`]）；
+/// `ended` ⇒ 记下终端没了；读到头 ⇒ 「客户端退了」。
+fn spawn_hosted_reader(
+    conn: Arc<own_chan::BlockingStream>,
+    mut buf: Vec<u8>,
+    held: Arc<Mutex<Option<crate::host::HeldBy>>>,
+    ended: Arc<AtomicBool>,
+    tx: smpsc::Sender<Ev>,
+    pending: Arc<AtomicBool>,
+) {
+    use crate::host::managed::client;
+    use crate::host::managed::wire::{Ctl, Frame as HostFrame};
+    std::thread::spawn(move || {
+        loop {
+            let changed = match client::next_frame(&conn, &mut buf) {
+                Ok(HostFrame::Out(_) | HostFrame::Ctl(Ctl::Size { .. } | Ctl::Resync { .. })) => {
+                    true
+                }
+                Ok(HostFrame::Ctl(Ctl::Holder { holder })) => {
+                    *held.lock().unwrap_or_else(|p| p.into_inner()) = holder.map(held_by);
+                    true
+                }
+                Ok(HostFrame::Ctl(Ctl::Ended { .. })) => {
+                    ended.store(true, Ordering::Release);
+                    break;
+                }
+                Ok(_) => false,
+                Err(_) => break,
+            };
+            if changed && !pending.swap(true, Ordering::AcqRel) && tx.send(Ev::Changed).is_err() {
+                break;
+            }
+        }
+        let _ = tx.send(Ev::Closed);
+    });
+}
+
+/// 订的是哪一种宿主上的终端：tmux（抓屏的句柄 ＋ 问哪台）· 托管（托管口 ＋ 读线记下的持有者 ＋ 收没收到 `ended`）。
+enum Source {
+    Tmux {
+        target: String,
+        socket: Option<String>,
+    },
+    Hosted {
+        sock: std::path::PathBuf,
+        held: Arc<Mutex<Option<crate::host::HeldBy>>>,
+        ended: Arc<AtomicBool>,
+    },
+}
+
+impl Source {
+    /// 这一刻那一屏 ＋ 输入那一格（tmux 恒 `shared`；托管 ＝ 读线记下的持有者，`mine` 按桌面那一问算）。
+    fn shot(&self, tz: &crate::Tz) -> Result<(cmd_wire::session::Preview, TermInput), CmdErr> {
+        match self {
+            Source::Tmux { target, socket } => terminals::screen_view_on(
+                On {
+                    socket: socket.as_deref(),
+                },
+                target,
+                tz,
+            )
+            .map(|v| (v, TermInput::Shared)),
+            Source::Hosted { sock, held, .. } => {
+                let v = terminals::hosted_screen_at(sock, tz)?;
+                let h = held.lock().unwrap_or_else(|p| p.into_inner()).clone();
+                Ok((
+                    v,
+                    terminals::input_of_row(&crate::host::Input::Held(h), None),
+                ))
+            }
+        }
+    }
+
+    /// 看着它的那条路收了之后的停因：托管口说过 `ended` ⇒ `gone`；否则再看一眼（终端 / tmux 都没了 ⇒ `gone`，还在 ⇒ `lost`）。
+    fn end_after_close(&self, tz: &crate::Tz) -> FollowEnd {
+        if let Source::Hosted { ended, .. } = self {
+            if ended.load(Ordering::Acquire) {
+                return FollowEnd::Gone;
+            }
+        }
+        end_of(&self.shot(tz))
+    }
+}
+
+/// 看着它的那条路：tmux 控制模式客户端 · 托管口上那条只看的连接。
+enum Conn {
+    Tmux(crate::platform::child::Streaming),
+    Hosted(Arc<own_chan::BlockingStream>),
+}
+
+/// 放手那条路：`closed` ＝ 它已经退了（只收尸）；没退 ⇒ tmux 照 [`detach`]，托管说 `bye`、等读线读到头。
+fn let_go(conn: Conn, rx: &smpsc::Receiver<Ev>, closed: bool) {
+    match conn {
+        Conn::Tmux(p) if closed => drop(p),
+        Conn::Tmux(p) => detach(p, rx),
+        Conn::Hosted(_) if closed => {}
+        Conn::Hosted(c) => {
+            crate::host::managed::client::bye(&c);
+            while !matches!(rx.recv(), Ok(Ev::Closed) | Err(_)) {}
+        }
+    }
+}
+
 /// 一张票的订阅本身：抓屏 · 推帧 · 等回执。
 struct Worker {
     ticket: String,
-    target: String,
-    socket: Option<String>,
+    source: Source,
     replies: mpsc::Sender<Frame>,
     tickets: Tickets,
     pending: Arc<AtomicBool>,
@@ -782,11 +1005,11 @@ enum Step {
 }
 
 impl Worker {
-    fn run(self, rx: smpsc::Receiver<Ev>, proc: crate::platform::child::Streaming) {
+    fn run(self, rx: smpsc::Receiver<Ev>, conn: Conn) {
         let mut seq = 0u64;
         let mut in_flight = false;
         let mut dirty = true;
-        let mut last: Option<String> = None;
+        let mut last: Option<(String, TermInput)> = None;
         let mut step = self.capture(&mut seq, &mut in_flight, &mut dirty, &mut last);
         let mut closed = false;
         while matches!(step, Step::Go) {
@@ -813,23 +1036,12 @@ impl Worker {
                 Ok(Ev::Closed) => {
                     // 客户端退了：终端还在 ⇒ 看着它的那条路断了；不在 ⇒ 终端没了。
                     closed = true;
-                    let on = On {
-                        socket: self.socket.as_deref(),
-                    };
-                    Step::End(end_of(&terminals::screen_view_on(
-                        on,
-                        &self.target,
-                        &self.tz,
-                    )))
+                    Step::End(self.source.end_after_close(&self.tz))
                 }
                 Ok(Ev::Stop) | Err(_) => Step::Quit,
             };
         }
-        if closed {
-            drop(proc); // 它已经退了：收尸
-        } else {
-            detach(proc, &rx);
-        }
+        let_go(conn, &rx, closed);
         if let Step::End(why) = step {
             lock(&self.tickets).slots.remove(&self.ticket);
             let _ = self.replies.blocking_send(Frame::TerminalFollowEnd(
@@ -842,23 +1054,20 @@ impl Worker {
         }
     }
 
-    /// 变了、而且没有在途的那一帧 ⇒ 抓一屏；指纹与上一帧相同就不推。
+    /// 变了、而且没有在途的那一帧 ⇒ 抓一屏；指纹与输入那一格都与上一帧相同就不推（持有者变了、画面没变也推）。
     fn capture(
         &self,
         seq: &mut u64,
         in_flight: &mut bool,
         dirty: &mut bool,
-        last: &mut Option<String>,
+        last: &mut Option<(String, TermInput)>,
     ) -> Step {
         *dirty = false;
-        let on = On {
-            socket: self.socket.as_deref(),
-        };
-        let shot = match terminals::screen_view_on(on, &self.target, &self.tz) {
+        let (shot, input) = match self.source.shot(&self.tz) {
             Ok(v) => v,
             seen @ Err(_) => return Step::End(end_of(&seen)),
         };
-        let fp = Some(shot.screen.clone());
+        let fp = Some((shot.screen.clone(), input.clone()));
         if fp == *last {
             return Step::Go;
         }
@@ -874,6 +1083,7 @@ impl Worker {
                 ticket: self.ticket.clone(),
                 seq: *seq,
                 view: shot,
+                input,
             })) {
             Ok(()) => Step::Go,
             Err(_) => Step::Quit,

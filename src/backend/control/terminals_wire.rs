@@ -78,10 +78,6 @@ pub(crate) struct TerminalInputReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) client: Option<String>,
-    /// 托管终端的输入在别的一端手里时：`true` ⇒ 先替这个前端接管再送；缺省 ⇒ 不送、回 `refused` ＋ `held_elsewhere`。tmux 那一形不看它。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) take: Option<bool>,
     /// `text` 之前各单独粘一次的那几段（投递带附件那一句时的图片绝对路径，由那台按附件编号写好）。不上线：入参里写了它 ⇒ `bad_args`（`deny_unknown_fields`）。
     #[serde(skip)]
     #[cfg_attr(test, ts(skip))]
@@ -97,6 +93,20 @@ pub(crate) struct TerminalHoldReq {
     /// 名单里的不透明句柄（托管那一形）。
     pub(crate) terminal: String,
     /// 自报的前端（`desktop` · `mobile`；缺省按桌面）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) client: Option<String>,
+}
+
+/// `session-interrupt` 的入参：哪条会话 ＋ 自报的前端（过「哪个前端的会话」那一维）。
+#[derive(Debug, Clone, Default, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SessionInterruptReq {
+    /// 会话 id。
+    pub(crate) sid: String,
+    /// 自报的前端。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) client: Option<String>,
@@ -355,6 +365,33 @@ pub(crate) fn preview_said(code: &str) -> String {
 /// 送字 / 送键（生产：默认 socket）。计划退回那一条也经它送（`faces/plan_return_face.rs`）。
 pub(crate) fn input(req: &TerminalInputReq) -> Result<Sent, CmdErr> {
     t::input_on(On::default(), req)
+}
+
+/// `session-interrupt`：中断一条会话这一轮（会话 ■）。不进输入队、不靠持有输入：托管那一形经托管口 `interrupt`，tmux 那一形送一个 Escape。
+/// 回包同 `terminal-input`（送到了 · 不知道 · 被拒 ＋ 那一句）。阻塞档（起 tmux · 连托管口）。
+pub(crate) struct SessionInterruptCmd;
+
+impl Command for SessionInterruptCmd {
+    const NAME: &'static str = "session-interrupt";
+    type Req = SessionInterruptReq;
+    type Reply = Sent;
+    type Err = TerminalInputErr;
+}
+
+impl crate::wire::typed::Handle for SessionInterruptCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: SessionInterruptReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Sent, TerminalInputErr>> + Send + 'static {
+        async move {
+            t::interrupt_on(On::default(), &req.sid, req.client.as_deref()).map_err(|f| {
+                typed::of_fail_said(f, TerminalInputErr::Unobservable, |_| {
+                    Some(copy_text("terminalReads.input.refused", &[]))
+                })
+            })
+        }
+    }
 }
 
 /// 往一条会话说一句（生产：默认 socket）：同 [`input`]，窗格前台只剩 shell ⇒ 不送、回 `ended`（[`t::say_on`]）。输入队投递经它送（`faces/session_send.rs`）。

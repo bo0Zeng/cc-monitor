@@ -94,7 +94,7 @@ beforeEach(() => {
 });
 
 describe("照 landed 开不开 · 报到交那台等", () => {
-  it("★ 单个：每一种都开那一行；带等报到那一问的原样交 `session-arrive`，接上已有的当场说接上（整表两向相等）", async () => {
+  it("★ 恢复同新起落后台（A3-3-32-15）：只有 window（不跑就没起）开那一行；带等报到那一问的原样交 `session-arrive`；已经在跑的不开窗、不抢输入", async () => {
     const got: Record<string, { opened: boolean; asked: boolean; said: boolean }> = {};
     for (const landed of LANDS) {
       vi.clearAllMocks();
@@ -110,10 +110,28 @@ describe("照 landed 开不开 · 报到交那台等", () => {
     }
     expect(got).toEqual({
       window: { opened: true, asked: true, said: true },
-      started: { opened: true, asked: true, said: true },
-      in_place: { opened: true, asked: true, said: true },
-      running: { opened: true, asked: false, said: true },
-      idle: { opened: true, asked: false, said: true },
+      started: { opened: false, asked: true, said: true },
+      in_place: { opened: false, asked: true, said: true },
+      running: { opened: false, asked: false, said: false },
+      idle: { opened: false, asked: false, said: false },
+    });
+  });
+
+  it("★ 接回（［在终端里打开］）：每一种都开那一行；接上已有的当场说接上", async () => {
+    const got: Record<string, { opened: boolean; said: boolean }> = {};
+    for (const landed of LANDS) {
+      vi.clearAllMocks();
+      reply = opened(landed);
+      expect(await openSession("devbox", { what: { kind: "look", session: "demo" }, local: false })).toBe(true);
+      await flush();
+      got[landed] = { opened: term.openTerminal.mock.calls.length === 1, said: toasts.toast.mock.calls.length === 1 };
+    }
+    expect(got).toEqual({
+      window: { opened: true, said: true },
+      started: { opened: true, said: true },
+      in_place: { opened: true, said: true },
+      running: { opened: true, said: true },
+      idle: { opened: true, said: true },
     });
   });
 
@@ -224,10 +242,10 @@ describe("失败按码挑按钮，那一句是那台的原话", () => {
 
 describe("开窗失败 · 在飞", () => {
   it("★ 开窗失败 ⇒ 剪贴板里是那一行", async () => {
-    reply = opened("started");
+    reply = opened("window");
     term.openTerminal.mockRejectedValue(new Error("拉不起"));
     expect(await openSession("devbox", RESUME)).toBe(false);
-    expect(clip.writeClipboard).toHaveBeenCalledWith("line:started");
+    expect(clip.writeClipboard).toHaveBeenCalledWith("line:window");
     expect(arrives()).toEqual([]);
   });
 

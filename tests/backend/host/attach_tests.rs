@@ -86,6 +86,16 @@ struct Fake {
     task: tokio::task::JoinHandle<Result<Left, Said>>,
 }
 
+/// 假外层接的那个托管终端在断开 · 结束那一行里叫什么。
+const NAME: &str = "t-name";
+
+/// 离开备用屏（`?1049l`）之后往外层原屏写的那几个字节。
+fn after_leave(s: &Screen) -> String {
+    let raw = s.raw();
+    let at = raw.rfind("\x1b[?1049l").expect("离开过备用屏") + "\x1b[?1049l".len();
+    raw[at..].to_string()
+}
+
 fn attach_fake(sock: &std::path::Path) -> Fake {
     let (ktx, krx) = tokio::sync::mpsc::unbounded_channel();
     let (rtx, rrx) = tokio::sync::mpsc::unbounded_channel();
@@ -101,7 +111,7 @@ fn attach_fake(sock: &std::path::Path) -> Fake {
         in_tmux: false,
     };
     let sock = sock.to_path_buf();
-    let task = tokio::spawn(async move { session(&sock, outer, &Vec::new, qrx).await });
+    let task = tokio::spawn(async move { session(&sock, NAME, outer, &Vec::new, qrx).await });
     Fake {
         keys: ktx,
         _resized: rtx,
@@ -139,6 +149,14 @@ async fn detaching_leaves_the_terminal_running_and_reattaching_shows_the_same_sc
     let before = a.screen.seen();
     a.keys.send(b"\x02d".to_vec()).unwrap();
     assert_eq!(a.task.await.unwrap().unwrap(), Left::Detached);
+    // 还原外层之后，原屏上印一行：断开了 · 照跑 · 怎么接回（A3-3-32-11）。
+    assert_eq!(
+        after_leave(&a.screen),
+        format!(
+            "{}\r\n",
+            copy_text("beHost.attach.detached", &[("name", NAME)])
+        )
+    );
     // 托管与子进程照跑。
     assert_eq!(super::super::home::alive(&own).len(), 1);
     assert!(!a.screen.raw().ends_with("\x02"), "前缀没送进去");
@@ -159,7 +177,71 @@ async fn detaching_leaves_the_terminal_running_and_reattaching_shows_the_same_sc
     until_seen(&b.screen, &copy_text("beHost.attach.confirmEnd", &[])).await;
     b.keys.send(b"y".to_vec()).unwrap();
     assert!(matches!(b.task.await.unwrap().unwrap(), Left::Ended(_)));
+    // 结束之后原屏上那一行带名字。
+    assert_eq!(
+        after_leave(&b.screen),
+        format!(
+            "{}\r\n",
+            copy_text("beHost.attach.ended", &[("name", NAME)])
+        )
+    );
     task.await.unwrap().unwrap();
+}
+
+/// 瘦客户端底行与名单那一格同一句（A3-3-32-5）：无人持有 ⇒ 底行前半句与 `terminals-list` 的 `holder.said` 逐字相同；
+/// 终端窗口持有（看的这一端不是它）⇒ 同。
+#[test]
+fn the_bottom_line_starts_with_the_same_holder_sentence_as_the_list() {
+    use crate::control::terminals::input_of_row;
+    use cmd_wire::session::TermInput;
+    let listed = |input: crate::host::Input| match input_of_row(&input, Some("desktop")) {
+        TermInput::Held { holder } => holder.said,
+        TermInput::Shared => panic!("托管那一行是 held"),
+    };
+    let none = held_line(None);
+    assert!(
+        none.starts_with(&listed(crate::host::Input::Held(None))),
+        "{none:?}"
+    );
+    let other = Holder {
+        client: 3,
+        kind: WhoKind::Terminal,
+        front: None,
+        pid: None,
+        mine: false,
+    };
+    let terminal = listed(crate::host::Input::Held(Some(
+        crate::host::HeldBy::Terminal,
+    )));
+    assert!(held_line(Some(&other)).starts_with(&terminal));
+}
+
+/// `前缀 D` 单子：种类那一列是那几个短词，末行一次图例。
+#[test]
+fn the_clients_sheet_uses_the_short_words_and_ends_with_the_legend() {
+    let row =
+        |client: u64, kind: WhoKind, front: Option<&str>, holder: bool, mine: bool| ClientRow {
+            client,
+            kind,
+            front: front.map(str::to_string),
+            pid: Some(7),
+            since_ms: 0,
+            last_ms: 0,
+            holder,
+            mine,
+        };
+    let lines = client_lines(&[
+        row(1, WhoKind::Terminal, None, true, false),
+        row(2, WhoKind::Backend, Some("desktop"), false, false),
+        row(3, WhoKind::Terminal, None, false, true),
+    ]);
+    assert_eq!(lines.len(), 4);
+    assert!(lines[0].contains(&copy_text("beTerminal.who.terminalWindow", &[])));
+    assert!(lines[1].contains(&copy_text("beTerminal.who.desktop", &[])));
+    assert_eq!(
+        lines.last().map(String::as_str),
+        Some(copy_text("beHost.attach.clientsLegend", &[]).as_str())
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -186,7 +268,7 @@ async fn a_viewer_types_nothing_until_enter_takes_over() {
         &a.screen,
         &copy_text(
             "beHost.attach.heldBy",
-            &[("who", &copy_text("beHost.attach.whoTerminal", &[]))],
+            &[("said", &copy_text("beTerminal.holder.terminalWindow", &[]))],
         ),
     )
     .await;
@@ -272,9 +354,13 @@ async fn the_session_ending_returns_the_childs_code() {
     until_seen(&a.screen, "ready").await;
     a.keys.send(b"\r".to_vec()).unwrap();
     assert_eq!(a.task.await.unwrap().unwrap(), Left::Ended(Some(5)));
-    assert!(
-        a.screen.raw().ends_with("\x1b[?1049l"),
-        "出来时还原外层终端"
+    assert_eq!(
+        after_leave(&a.screen),
+        format!(
+            "{}\r\n",
+            copy_text("beHost.attach.ended", &[("name", NAME)])
+        ),
+        "出来时还原外层终端，原屏上印结束那一行"
     );
     task.await.unwrap().unwrap();
 }

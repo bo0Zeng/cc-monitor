@@ -457,13 +457,20 @@ class ChatSessionTest {
         }
 
     @Test
-    fun `停：往那条会话送 Esc`() =
+    fun `停：中断那条会话这一轮（session-interrupt，不进队 · 不靠持有输入）；成了不说，没成照那台那一句`() =
         runTest {
             val link = FakeCoreLink()
             link.answer = { _, _ -> ok(mapOf("result" to "delivered")) }
-            ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope).stop()
+            val s = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope)
+            s.stop()
             runCurrent()
-            assertEquals(listOf(mapOf("sid" to "s1", "key" to "esc")), link.calls("terminal-input"))
+            assertEquals(listOf(mapOf("sid" to "s1", "client" to "mobile")), link.calls("session-interrupt"))
+            assertEquals("不往终端里按 Esc", emptyList<Any>(), link.calls("terminal-input"))
+            assertEquals(null, s.state.value.note)
+            link.answer = { _, _ -> ok(mapOf("result" to "refused", "why" to "host_outdated", "said" to "S-old")) }
+            s.stop()
+            runCurrent()
+            assertEquals("S-old", s.state.value.note)
         }
 
     @Test

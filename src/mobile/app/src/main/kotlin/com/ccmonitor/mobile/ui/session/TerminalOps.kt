@@ -8,8 +8,6 @@ import com.ccmonitor.mobile.core.claude.link.SessionModel
 import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.TerminalEnd
-import com.ccmonitor.mobile.core.claude.link.TerminalHold
-import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.TerminalPreview
 import com.ccmonitor.mobile.core.claude.link.TerminalsList
 import com.ccmonitor.mobile.core.copy.copyText
@@ -26,7 +24,7 @@ import com.ccmonitor.mobile.link.unreadableReply
 import java.util.UUID
 
 /**
- * 终端屏里要那台核心做的几件（列 · 结束 · 进终端那一行 · 建会话 · 后台起 · 送字 · 抓屏 · 推公钥 · 别名），都经这台的常驻流 [feed]。
+ * 终端屏里要那台核心做的几件（列 · 结束 · 进终端那一行 · 建会话 · 后台起 · 抓屏 · 推公钥 · 别名），都经这台的常驻流 [feed]。
  * 找哪个窗格、怎么附着、怎么建、shell 方言全在那台；这里只把回话翻成屏上那一句。失败的那一句是那台写好的（[problem]）。
  * [machine] 是这台在手机上的名字（走不通时那一句里用）。
  * 哪几家、叫什么、能换哪些模型都问那台（`session-open-facts`），手机一家都不认识。
@@ -53,12 +51,6 @@ class TerminalOps(
                 },
                 onFailure = { Notice(it.message.orEmpty()) },
             )
-
-    /** 接管（[take]）/ 交还 [row] 的输入（托管那一形）：成了 ⇒ `null`；否则那台写好的那一句。 */
-    suspend fun hold(
-        row: TerminalsList.Row,
-        take: Boolean,
-    ): String? = ask(if (take) TerminalHold.TAKE else TerminalHold.RELEASE, TerminalHold.args(row.terminal), TerminalHold::of).exceptionOrNull()?.message
 
     /** 这台的起会话事实（`session-open-facts`：几家 · 名字 · 可选的模型 · 能放在哪几种都是那台给的）。 */
     suspend fun facts(): Result<OpenFacts> = ask(SessionOpenFacts.COMMAND, emptyMap(), SessionOpenFacts::of)
@@ -134,24 +126,6 @@ class TerminalOps(
             if (r.result != ModeSwitchResult.DONE) throw Problem(r.said.orEmpty())
             r.said.orEmpty()
         }
-
-    /** 往名叫 [name] 的那个终端里送一句（末尾补回车）。送到了 ⇒ `null`；否则那一句。 */
-    suspend fun typeInto(
-        name: String,
-        text: String,
-    ): String? =
-        handleOf(name)
-            .mapCatching { h -> ask(TerminalInput.COMMAND, TerminalInput.textInto(h, text), TerminalInput::of).getOrThrow() }
-            .fold(
-                onSuccess = { r ->
-                    when (r) {
-                        TerminalInput.Result.Delivered -> null
-                        TerminalInput.Result.Unsure -> copyText("terminal.input.unsure", "machine" to machine())
-                        is TerminalInput.Result.Refused -> r.said
-                    }
-                },
-                onFailure = { it.message },
-            )
 
     /** 抓名叫 [name] 的那个终端的一屏（纯文字）。 */
     suspend fun capture(name: String): Result<String> =
