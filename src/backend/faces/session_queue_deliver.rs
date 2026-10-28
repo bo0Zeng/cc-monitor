@@ -13,8 +13,8 @@
 //!   （不重送）；在等人 ⇒ 照排着；别的被拒 ⇒ 那一条标未送达（留给发件人看、撤）；命令级错 ⇒ 照排着，下一次醒再试。
 //! - 终端输入行里有没提交的字，tmux 判不出：这一道等托管那一形给事实；此刻不等。
 
-use crate::agents::SessionActivity;
 use super::session_send::Delivery;
+use crate::agents::SessionActivity;
 use crate::history::session_queue as q;
 use crate::platform::fs::Own;
 use crate::wire::spec::Fail;

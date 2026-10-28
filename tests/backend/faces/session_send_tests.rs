@@ -85,7 +85,11 @@ fn a_session_that_does_not_wait_gets_the_line_with_enter() {
         Ok(sent_as(SentResult::Unsure))
     };
     let got = say_with(&req(SID, "/compact"), &|_| false, &send, &no_resume).unwrap();
-    assert_eq!(got, Delivery::In { resumed: false }, "不知道送没送到也算送进去了（不重发）");
+    assert_eq!(
+        got,
+        Delivery::In { resumed: false },
+        "不知道送没送到也算送进去了（不重发）"
+    );
     let sent = sent.borrow();
     assert_eq!(sent.len(), 1);
     let r = &sent[0];
