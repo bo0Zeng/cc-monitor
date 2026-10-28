@@ -22824,6 +22824,18 @@
       "zh": "运行于",
       "args": []
     },
+    "resumeMenu.run.managed": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "在托管终端里",
+      "args": []
+    },
+    "resumeMenu.hint.managed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "托管终端里",
+      "args": []
+    },
     "resumeMenu.run.tmux": {
       "kind": "action",
       "role": "菜单项",
@@ -22840,9 +22852,8 @@
     "resumeMenu.run.direct": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "不用 tmux",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "新的终端窗口",
+      "args": []
     },
     "resumeMenu.account.base": {
       "kind": "action",

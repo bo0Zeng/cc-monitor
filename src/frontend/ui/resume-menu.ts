@@ -80,7 +80,14 @@ function pickedAccountLabel(accounts: ResumeAccounts, p: ResumePick): string | n
 /** 勾着的那一组怎么说：`personal · tmux 里` / 没有号可说时 `tmux 里`；放在哪没动过、也没问到这台 ⇒ 照这台的设置。 */
 export function pickWords(accounts: ResumeAccounts, p: ResumePick, machineRun?: Run): string {
   const r = p.run ?? machineRun;
-  const run = r === undefined ? copyText("resumeMenu.run.machine") : r === "tmux" ? copyText("resumeMenu.hint.tmux") : copyText("resumeMenu.run.direct");
+  const run =
+    r === undefined
+      ? copyText("resumeMenu.run.machine")
+      : r === "managed"
+        ? copyText("resumeMenu.hint.managed")
+        : r === "tmux"
+          ? copyText("resumeMenu.hint.tmux")
+          : copyText("resumeMenu.run.direct");
   const account = pickedAccountLabel(accounts, p);
   return account === null ? run : copyText("resumeMenu.pick.account", { account, run });
 }
@@ -164,6 +171,15 @@ export function resumeMenuItems(spec: ResumeMenuSpec): MenuItem[] {
   }
   items.push(
     { label: copyText("resumeMenu.group.run"), heading: true },
+    {
+      label: copyText("resumeMenu.run.managed"),
+      radio: "run",
+      checked: placed === "managed",
+      onClick: () => {
+        pick.run = "managed";
+        changed();
+      },
+    },
     {
       label: copyText("resumeMenu.run.tmux"),
       radio: "run",
