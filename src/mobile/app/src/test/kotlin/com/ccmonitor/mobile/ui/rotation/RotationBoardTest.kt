@@ -58,11 +58,11 @@ class RotationBoardTest {
     }
 
     @Test
-    fun `会话：读 rotation-view {sid} 推 12 小时；号牌照每个号身上那一枚（不另问账号清单）；四块画的全是回包里的那一份`() =
+    fun `会话：读 rotation-view {sid}（不带推几小时）；号牌照每个号身上那一枚（不另问账号清单）；画的全是回包里的那一份`() =
         runTest {
             val (link, b) = board()
             val s = b.state.value
-            assertEquals(mapOf("target" to mapOf("sid" to "s1"), "hours" to 12), link.calls(Rotation.VIEW).single())
+            assertEquals(mapOf("target" to mapOf("sid" to "s1")), link.calls(Rotation.VIEW).single())
             assertEquals("spread", s.view?.strategy?.id)
             assertEquals(
                 listOf("work", "team", "lab"),
@@ -114,7 +114,7 @@ class RotationBoardTest {
         runTest {
             val (link, b) = board(view = { RotFixture.view(off = listOf("api")) })
             val v = b.state.value.view!!
-            assertEquals(listOf("team", "work", "api", "lab"), v.lineup)
+            assertEquals(listOf("team", "work", "api", "lab"), v.lineup.map { it.account })
             assertEquals(listOf("api"), v.off)
             assertEquals(
                 "夹具·work 的理由",
@@ -148,13 +148,15 @@ class RotationBoardTest {
         }
 
     @Test
-    fun `临时条目：拖到最上那条 ⇒ rotation-temp place {account, t}（松手那一刻；排到第几段由那台照推演数）；清掉 ⇒ op clear`() =
+    fun `照策略排 ⇒ rotation-temp clear；顺序一号一行照回包（右格的字 · 能不能拖都是那台给的）`() =
         runTest {
             val (link, b) = board()
-            b.place("lab", RotFixture.NOW + 6_000)
-            assertEquals(mapOf("sid" to "s1", "op" to mapOf("place" to mapOf("account" to "lab", "t" to RotFixture.NOW + 6_000))), link.calls(Rotation.TEMP).single())
             b.clearTemp()
-            assertEquals(mapOf("sid" to "s1", "op" to "clear"), link.calls(Rotation.TEMP).last())
+            assertEquals(mapOf("sid" to "s1", "op" to "clear"), link.calls(Rotation.TEMP).single())
+            val line = b.state.value.view!!.lineup
+            assertEquals(listOf("team", "work", "api", "lab"), line.map { it.account })
+            assertEquals(listOf(false, true, true, false), line.map { it.movable })
+            assertEquals("夹具·下一个 · 约 16:07", line[1].state)
         }
 
     @Test
@@ -239,17 +241,19 @@ class RotationBoardTest {
     }
 
     @Test
-    fun `顺序里长按拖一行 ⇒ rotation-temp move {account, to}（拖完那一串 · 第一格当现在用都由那台认）；没挪 ⇒ 不发；拖到第一格那台回 unusable ⇒ 照 rot·acct·refused 写那一句`() =
+    fun `放下 ⇒ 交一次 rotation-temp move {account, to}，回包才定：成 ⇒ 重读；拖到第一格那台回 unusable ⇒ 滑回、照 rot·acct·refused 写那一句`() =
         runTest {
             val (link, b) = board(more = { cmd, args -> if (cmd == Rotation.TEMP && ((args?.get("op") as? Map<*, *>)?.get("move") as? Map<*, *>)?.get("to") == 0) RotFixture.failed("unusable", "用不了") else null })
-            b.drop("lab", 3, 1)
-            assertEquals(mapOf("sid" to "s1", "op" to mapOf("move" to mapOf("account" to "lab", "to" to 1))), link.calls(Rotation.TEMP).single())
-            b.drop("api", 2, 2)
-            assertEquals("没挪 ⇒ 不发", 1, link.calls(Rotation.TEMP).size)
-            b.drop("lab", 3, 0)
-            assertEquals(mapOf("sid" to "s1", "op" to mapOf("move" to mapOf("account" to "lab", "to" to 0))), link.calls(Rotation.TEMP).last())
+            val ends = mutableListOf<MoveEnd>()
+            val reads = link.calls(Rotation.VIEW).size
+            b.drop("api", 1) { ends += it }
+            assertEquals(mapOf("sid" to "s1", "op" to mapOf("move" to mapOf("account" to "api", "to" to 1))), link.calls(Rotation.TEMP).single())
+            assertEquals("成了重读一次", reads + 1, link.calls(Rotation.VIEW).size)
+            b.drop("work", 0) { ends += it }
+            assertEquals(mapOf("sid" to "s1", "op" to mapOf("move" to mapOf("account" to "work", "to" to 0))), link.calls(Rotation.TEMP).last())
+            assertEquals(listOf(MoveEnd.DONE, MoveEnd.BACK), ends)
             assertEquals(0, link.calls(Rotation.USE_NOW).size)
-            assertEquals("lab" to copyText("rot.acct.refused", "account" to "lab", "why" to "5 小时用量已到上限"), b.state.value.refused)
+            assertEquals("work" to copyText("rot.acct.refused", "account" to "Work", "why" to "用不了"), b.state.value.refused)
         }
 
     @Test

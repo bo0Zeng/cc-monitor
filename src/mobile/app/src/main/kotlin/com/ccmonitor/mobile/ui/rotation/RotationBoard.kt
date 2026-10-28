@@ -30,6 +30,13 @@ enum class NoteTone {
     INFO,
 }
 
+/** 放下之后那一次写的结局：成 · 拒（滑回）· 说不清（没回包 · 断线：留在放下处标「没确认」）。 */
+enum class MoveEnd {
+    DONE,
+    BACK,
+    UNSURE,
+}
+
 /** 一格改动没收下：哪一格（[RotCellId]）· 那一句（`rot.fail.settings` ＋ 那台的话）。 */
 data class CellFailure(
     val cell: String,
@@ -111,8 +118,6 @@ class RotationBoard(
     val state: StateFlow<RotationUi> = _state.asStateFlow()
 
     private val reading = Mutex()
-
-    val inSession: Boolean get() = sid != null
 
     init {
         scope.launch { refresh() }
@@ -324,22 +329,35 @@ class RotationBoard(
         args: Map<String, Any?>,
     ) {
         scope.launch {
-            val r = link.call(command, args, WRITE_MS)
-            val f = (r as? Reply.Failed)?.failure
-            when {
-                r is Reply.Ok -> _state.update { it.copy(refused = null) }
-                f?.code == UNUSABLE -> {
-                    val why =
-                        _state.value.view
-                            ?.accounts
-                            ?.firstOrNull { it.account == account }
-                            ?.blocked
-                            ?.text ?: f.message
-                    _state.update { it.copy(refused = account to copyText("rot.acct.refused", "account" to label(account), "why" to why)) }
-                }
-                else -> fail(what, problemOf(r, command))
-            }
+            settled(account, what, command, link.call(command, args, WRITE_MS))
             refresh()
+        }
+    }
+
+    /** 一次换号 / 挪动的回包落到哪：成 · 拒（用不了 ⇒ 顺序上方那一句；别的 ⇒ 底部一次）· 说不清（没回包 · 断线）。 */
+    private fun settled(
+        account: String,
+        what: String,
+        command: String,
+        r: Reply,
+    ): MoveEnd {
+        val f = (r as? Reply.Failed)?.failure
+        val blocked = _state.value.view?.accounts?.firstOrNull { it.account == account }?.blocked?.text
+        val line = account to copyText("rot.acct.refused", "account" to label(account), "why" to (blocked ?: f?.message.orEmpty()))
+        return when {
+            r is Reply.Ok -> {
+                _state.update { it.copy(refused = null) }
+                MoveEnd.DONE
+            }
+            f?.code == UNUSABLE -> {
+                _state.update { it.copy(refused = line) }
+                MoveEnd.BACK
+            }
+            f != null -> {
+                fail(what, problemOf(r, command))
+                MoveEnd.BACK
+            }
+            else -> MoveEnd.UNSURE
         }
     }
 
@@ -350,25 +368,22 @@ class RotationBoard(
         scope.launch { refresh() }
     }
 
-    /** 拖到最上那条、松在时刻 [t]（unix 秒）：排到第几段 · 能不能用 · 跳不跳都由那台照推演答。 */
-    fun place(
-        account: String,
-        t: Long,
-    ) {
-        val s = sid ?: return
-        launchWrite(copyText("rot.fail.temp"), Rotation.TEMP, Rotation.place(s, account, t))
-    }
-
-    /** 顺序里长按把第 [i] 行拖到第 [to] 格：交拖的号与第几格（第一格当现在用 · 拖完那一串都由那台认）；没挪 ⇒ 不发。 */
+    /**
+     * 顺序里拿起的那一行放到第 [to] 格：交拖的号与第几格（第一格当现在用 · 拖完那一串都由那台认），回包才定 ⇒ [done]；
+     * 成 · 拒 ⇒ 重读照那台画；说不清 ⇒ 留在放下处，下一次重读（连上 · 推送）照那台画。
+     */
     fun drop(
         account: String,
-        i: Int,
         to: Int,
+        done: (MoveEnd) -> Unit,
     ) {
-        val s = sid ?: return
-        val line = _state.value.view?.lineup ?: return
-        if (line.getOrNull(i) != account || to !in line.indices || to == i) return
-        switchTo(account, copyText("rot.fail.temp"), Rotation.TEMP, Rotation.move(s, account, to))
+        val s = sid ?: return done(MoveEnd.BACK)
+        scope.launch {
+            val command = Rotation.TEMP
+            val end = settled(account, copyText("rot.fail.temp"), command, link.call(command, Rotation.move(s, account, to), WRITE_MS))
+            done(end)
+            if (end != MoveEnd.UNSURE) refresh()
+        }
     }
 
     fun clearTemp() {
