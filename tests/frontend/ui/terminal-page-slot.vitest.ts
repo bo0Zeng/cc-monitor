@@ -34,7 +34,7 @@ function rig(rows: TerminalRow[]): {
     follow: vi.fn(() => ({ stop: () => {} })),
   };
   const holds = { take: vi.fn(), release: vi.fn() };
-  const page = new TerminalPage({ active: () => SLOT, front: () => {}, focusStream: () => {} }, reads as unknown as TerminalReads, undefined, holds as unknown as InputHolds);
+  const page = new TerminalPage({ active: () => SLOT, front: () => {}, focusStream: () => {} }, reads as unknown as TerminalReads, holds as unknown as InputHolds);
   document.body.replaceChildren(page.el);
   return { page, reads, holds };
 }

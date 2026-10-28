@@ -244,7 +244,7 @@ fn fold_line(book: &mut SessionBook, line: &str) {
 
 /// 那台这一条连接断的那一刻：簿里活的 · 可重连的每一条落成说不清（看不见那一张脸，`face.life = unclear`），
 /// 自己先折进簿，交回要转出去的那几行（按 sid 排）。已结束 · 记录已不在的不说。
-fn unclear_now(book: &mut SessionBook) -> Vec<String> {
+fn unclear_now(book: &mut SessionBook, machine: &str) -> Vec<String> {
     let open: Vec<String> = book
         .seats()
         .filter(|(_, p)| match p {
@@ -253,7 +253,9 @@ fn unclear_now(book: &mut SessionBook) -> Vec<String> {
         })
         .map(|(sid, _)| sid.clone())
         .collect();
-    let face = SessionFace::of(crate::wire::Life::Unseen);
+    let face = SessionFace::unseen(cmd_wire::cells::Words(comms_inward::chan::said::offline(
+        machine,
+    )));
     open.into_iter()
         .filter_map(|sid| {
             let f: cmd_wire::frame::Frame<serde_json::Value> =
@@ -316,7 +318,7 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
                         s.up = up.then(|| crate::dial::streams::hold(&name));
                         let ended = !up && std::mem::take(&mut s.attached);
                         let unclear = if ended {
-                            unclear_now(&mut s.book)
+                            unclear_now(&mut s.book, &name)
                         } else {
                             Vec::new()
                         };

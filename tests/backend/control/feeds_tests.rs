@@ -565,7 +565,9 @@ async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backe
         .iter()
         .position(|r| matches!(r, Relayed::Ended { .. }))
         .unwrap();
-    let unclear = crate::wire::SessionFace::of(Life::Unseen);
+    let unclear = crate::wire::SessionFace::unseen(crate::common::cells::Words(
+        comms_inward::chan::said::offline(machine),
+    ));
     let said_left = |sid: &str| Relayed::Line {
         machine: machine.into(),
         line: serde_json::to_string(&Frame::<serde_json::Value>::SessionLeft(

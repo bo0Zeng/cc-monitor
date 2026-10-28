@@ -660,8 +660,8 @@
      每帧不同会造成整块内容 ±0.5px 高频抖动。 */
   /* 宽内容(表格/公式/代码)各自局部滚动,流本身永不横滚 */
   overflow-x: hidden;
-  /* 底下让出答题块那么高（`answer-block.ts` 量了写 `--answer-room`；没有块 ⇒ 0）：贴着底时最后那一行在块上面。 */
-  padding: 24px 24px calc(48px + var(--answer-room, 0px));
+  /* 底下让出输入框（`composer.ts` 量了写 `--composer-room`）与答题块（`answer-block.ts` 写 `--answer-room`）那么高：贴着底时最后那一行在它们上面。 */
+  padding: 24px 24px calc(48px + var(--answer-room, 0px) + var(--composer-room, 0px));
   content-visibility: hidden;
 }
 

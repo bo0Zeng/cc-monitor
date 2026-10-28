@@ -33,9 +33,7 @@ import { fakeNeedsBook, listOf, sessionItem } from "../../test-support/needs-fak
 import { NeedsTitle } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
 import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
-import { TerminalPage, type AttachReads, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
-import type { AttachIo } from "../../../src/frontend/ui/attach-draft";
-import type { SessionQueuePutReq } from "../../../src/frontend/ui/generated/SessionQueuePutReq";
+import { TerminalPage, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
 import type { TerminalSend, TerminalSent, TerminalShot } from "../../../src/frontend/ui/terminal-reads";
 import type { FollowEvents } from "../../../src/frontend/ui/terminal-follow";
 import { fmtDur } from "../../../src/frontend/ui/duration-format";
@@ -415,21 +413,10 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       }),
     };
     const host = { active: () => (cur.t ? { kind: "tab" as const, tab: cur.t } : null), front: vi.fn(), focusStream: vi.fn() };
-    const said: SessionQueuePutReq[] = [];
-    const attach: AttachReads = {
-      put: vi.fn(async (_o, req: SessionQueuePutReq) => {
-        said.push(req);
-        return { outcome: "queued" as const, seq: said.length, place: 1, said: "排队 · 第 1" };
-      }),
-      io: () => ({}) as AttachIo,
-      read: async () => ({ items: [], sent: [] }),
-      cancel: async () => ({ cancelled: false, queue: { items: [], sent: [] } }),
-      watch: () => () => {},
-    };
-    const page = new TerminalPage(host, reads, attach);
+    const page = new TerminalPage(host, reads);
     document.body.appendChild(page.el);
     page.sessionChanged();
-    return { page, reads, host, sent, said, follows, shotCount: () => shots, setReply: (r: () => Promise<TerminalSent>) => (reply = r), failShots: (e: Error | null) => (shotFails = e) };
+    return { page, reads, host, sent, follows, shotCount: () => shots, setReply: (r: () => Promise<TerminalSent>) => (reply = r), failShots: (e: Error | null) => (shotFails = e) };
   }
   const box = (p: TerminalPage): HTMLTextAreaElement => p.el.querySelector("textarea")!;
   const key = (el: HTMLElement, k: string, o: KeyboardEventInit = {}): void => void el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...o }));
@@ -496,7 +483,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     }
   });
 
-  it("★ 回车说一句（投进那条会话的输入队、不往终端里打字），回执到了清框、0.5 · 1.5 · 3 秒各再抓一次；Ctrl+回车只送字、带上看到的那一屏的指纹、送到了写「已送达」；Shift+回车与组字不送", async () => {
+  it("★ 输入行只敲进终端（说一句在消息流底下）：回车连字带回车送、送到了清框、0.5 · 1.5 · 3 秒各再抓一次；Ctrl+回车只送字、带上看到的那一屏的指纹、送到了写「已送达」；Shift+回车与组字不送", async () => {
     vi.useFakeTimers();
     try {
       const r = rig([row("a")], { t: tab("a") });
@@ -507,13 +494,12 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       key(b, "Enter", { shiftKey: true });
       key(b, "Enter", { isComposing: true });
       await flush();
-      expect([r.sent, r.said]).toEqual([[], []]);
+      expect(r.sent).toEqual([]);
       key(b, "Enter");
       await flush();
-      expect(r.sent, "回车是说一句：不往终端里打字").toEqual([]);
-      expect(r.said.map((q) => [q.sid, q.text])).toEqual([["a", "/usage"]]);
+      expect(r.sent, "回车敲进终端、补回车").toEqual([{ what: { text: "/usage", enter: true }, seen: "fp1" }]);
       expect(b.value).toBe("");
-      expect(r.page.el.textContent, "照那台写的回执那一句说").toContain("排队 · 第 1");
+      expect(r.page.el.textContent).toContain(copyText("terminal.input.delivered"));
       for (const ms of [500, 1000, 1500]) {
         vi.advanceTimersByTime(ms);
         await flush();
@@ -522,7 +508,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       b.value = "y";
       key(b, "Enter", { ctrlKey: true });
       await flush();
-      expect(r.sent).toEqual([{ what: { text: "y", enter: false }, seen: "fp4" }]);
+      expect(r.sent.at(-1)).toEqual({ what: { text: "y", enter: false }, seen: "fp4" });
       expect(b.value).toBe("");
       expect(r.page.el.textContent).toContain(copyText("terminal.input.delivered"));
       b.value = "字".repeat(2001);
@@ -730,12 +716,12 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(named).not.toBe(box(r.page).placeholder);
   });
 
-  it("★ 输入框占位只写「发消息…」；快捷键那句挪进悬停（文案表那一句）；送不了时不挂（键不起作用）", async () => {
+  it("★ 输入框占位只写「敲进终端…」；快捷键那句挪进悬停（文案表那一句）；送不了时不挂（键不起作用）", async () => {
     const r = rig([row("a")], { t: tab("a") });
     r.page.setVisible(true);
     await flush();
     const tip = (b: HTMLTextAreaElement): string => b.getAttribute("title") ?? b.dataset.kitTitle ?? "";
-    expect(box(r.page).placeholder).toBe(copyText("chat.input.placeholder"));
+    expect(box(r.page).placeholder).toBe(copyText("terminal.input.placeholder"));
     expect(tip(box(r.page))).toBe(copyText("terminal.input.keysHint"));
     const no = rig([row("a", { inputNo: "那台写的一句 · 不归这边" })], { t: tab("a") });
     no.page.setVisible(true);

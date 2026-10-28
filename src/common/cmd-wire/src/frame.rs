@@ -952,6 +952,9 @@ pub struct SessionCan {
     pub permission: Allow,
     /// 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
     pub stop: Allow,
+    /// 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
+    /// `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
+    pub say: CanSay,
 }
 
 /// 一样此刻能不能做：`{can: "yes"}` · `{can: "no", why: 写好的那一句}`。
@@ -961,6 +964,16 @@ pub struct SessionCan {
 #[serde(tag = "can", rename_all = "snake_case")]
 pub enum Allow {
     Yes,
+    No { why: Words },
+}
+
+/// 说不说得了一句：`{can: "yes", hint: 框里的占位那一句}` · `{can: "no", why: 写好的那一句}`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(tag = "can", rename_all = "snake_case")]
+pub enum CanSay {
+    Yes { hint: Words },
     No { why: Words },
 }
 

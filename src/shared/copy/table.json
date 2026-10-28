@@ -23265,11 +23265,17 @@
     "terminal.input.keysHint": {
       "kind": "body",
       "role": "悬停",
-      "zh": "回车送出 · Shift+回车换行 · Ctrl+回车仅送字",
+      "zh": "回车连回车送进终端 · Shift+回车换行 · Ctrl+回车只送字",
       "args": [],
       "waive": {
         "C-W12": "终端输入框的固定键（不可改绑）"
       }
+    },
+    "terminal.input.placeholder": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "敲进终端…",
+      "args": []
     },
     "terminal.input.readOnly": {
       "kind": "control",
@@ -23346,11 +23352,8 @@
     "terminal.input.placeholderHeld": {
       "kind": "control",
       "role": "占位",
-      "zh": "回车说一句 · Shift+回车换行 · 直接打字需接管",
-      "args": [],
-      "waive": {
-        "C-W12": "终端输入框的固定键（不可改绑）"
-      }
+      "zh": "直接打字需接管",
+      "args": []
     },
     "terminal.queue.sending": {
       "kind": "body",
@@ -29186,6 +29189,39 @@
       "role": "占位",
       "zh": "发消息…",
       "args": []
+    },
+    "composer.input.aria": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "说一句",
+      "args": []
+    },
+    "composer.input.send": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "发送",
+      "args": []
+    },
+    "composer.input.ended": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "会话已结束 · 发一句会先恢复它",
+      "args": []
+    },
+    "composer.input.offline": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "发出的这句连上后送",
+      "args": []
+    },
+    "composer.input.keysHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "回车发送 · Shift+回车换行",
+      "args": [],
+      "waive": {
+        "C-W12": "输入框的固定键（不可改绑）"
+      }
     },
     "mobChat.input.stop": {
       "kind": "action",

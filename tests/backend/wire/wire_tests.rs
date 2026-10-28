@@ -1196,7 +1196,7 @@ fn loc1b_session_added_carries_the_pid() {
     .unwrap();
     assert_eq!(
         line,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"life\":{\"is\":\"live\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"host\":\"direct\"},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"no\",\"why\":\"状态不明\"}}},\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"life\":{\"is\":\"live\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"host\":\"direct\"},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"no\",\"why\":\"状态不明\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"}}},\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
     );
 }
 
@@ -1777,9 +1777,8 @@ fn every_life_has_one_whole_face_and_it_matches_the_golden() {
         ("ended", Life::Ended),
         ("gone", Life::Gone),
         ("unclear", Life::Unclear),
-        ("unseen", Life::Unseen),
     ];
-    let produced: serde_json::Map<String, Value> = lives
+    let mut produced: serde_json::Map<String, Value> = lives
         .into_iter()
         .map(|(k, l)| {
             (
@@ -1788,6 +1787,13 @@ fn every_life_has_one_whole_face_and_it_matches_the_golden() {
             )
         })
         .collect();
+    produced.insert(
+        "unseen".into(),
+        serde_json::to_value(SessionFace::unseen(crate::common::cells::Words(
+            comms_inward::chan::said::offline("gpu-01"),
+        )))
+        .unwrap(),
+    );
     let produced = serde_json::to_string_pretty(&produced).unwrap() + "\n";
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -1856,6 +1862,7 @@ fn the_written_faces_are_built_in_one_place_only() {
     }
     let want: std::collections::BTreeSet<String> = [
         "of · SessionFace",
+        "unseen · SessionFace",
         "live_face · SessionFace",
         "of_parts · NameFace",
     ]
@@ -1962,11 +1969,13 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
 }
 
 /// 那台看不见时画的那一张（断线那一刻本机后端给那台每条活的 · 可重连的发它）：点「说不清」、不说在跑、不是定局；
-/// 只在右键菜单里关，不给恢复（也许还在跑，再起一份就是同一会话两个进程），别的都不给；字里不写机器名。
+/// 只在右键菜单里关，不给恢复（也许还在跑，再起一份就是同一会话两个进程），别的都不给；
+/// 悬停那一句 · 状态一句就是那台的离线那一句（与机器成品的 `offline_said` 同一处取字），短名照旧「状态不明」、不说已结束。
 #[test]
-fn the_unseen_face_is_unknown_closes_from_the_menu_and_offers_nothing_else() {
+fn the_unseen_face_is_unknown_closes_from_the_menu_and_says_that_machines_offline_line() {
     use cmd_wire::frame::{Allow, CanClose, CanTerm, SessionDot};
-    let f = crate::wire::SessionFace::of(Life::Unseen);
+    let said = comms_inward::chan::said::offline("gpu-01");
+    let f = crate::wire::SessionFace::unseen(crate::common::cells::Words(said.clone()));
     assert_eq!(f.dot, SessionDot::Unknown);
     assert_eq!(f.life, crate::wire::WireLife::Unclear);
     assert!(!f.settled, "看不见不是定局：重连后那台的帧把脸带回来");
@@ -1981,10 +1990,11 @@ fn the_unseen_face_is_unknown_closes_from_the_menu_and_offers_nothing_else() {
     ] {
         assert!(matches!(a, Allow::No { .. }), "{a:?}");
     }
+    assert_eq!(f.tip.0, said, "悬停是那台的离线那一句");
+    assert_eq!(f.line.0, said);
     assert_eq!(
-        f.line.0,
-        copy_core::copy_text("sessionState.unseen.tooltip", &[]),
-        "字里不写机器名（哪台由界面在别处写）"
+        f.name.0,
+        copy_core::copy_text("sessionState.unseen.name", &[])
     );
 }
 

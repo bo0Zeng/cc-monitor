@@ -33,7 +33,7 @@ fn member(sid: &str) -> GroupMember {
         sid: sid.into(),
         pinned: false,
         face: <crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(
-            crate::wire::Life::Unseen,
+            crate::wire::Life::Unclear,
         ),
         facts: MemberFacts {
             title: "t".into(),

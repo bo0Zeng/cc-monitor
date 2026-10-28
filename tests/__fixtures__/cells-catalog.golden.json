@@ -802,6 +802,18 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "children[].face.can.say.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "children[].face.can.say.hint",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "children[].face.can.stop.can",
           "type": "string"
         },
@@ -1372,6 +1384,18 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "startedBy.face.can.say.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "startedBy.face.can.say.hint",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "startedBy.face.can.stop.can",
           "type": "string"
         },
@@ -1648,6 +1672,18 @@
           "frozen": false,
           "kind": "text",
           "path": "face.can.resume.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.say.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.say.hint",
           "type": "string"
         },
         {
@@ -2188,6 +2224,18 @@
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.say.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.say.hint",
+          "type": "string"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "face.can.stop.can",
@@ -2397,6 +2445,18 @@
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.say.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.say.hint",
+          "type": "string"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "face.can.stop.can",
@@ -2579,6 +2639,24 @@
           "frozen": false,
           "kind": "text",
           "path": "face.can.resume.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.say.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.say.hint",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.say.why",
           "type": "string"
         },
         {
@@ -3548,6 +3626,24 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "up.*.face.can.say.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "up.*.face.can.say.hint",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "up.*.face.can.say.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "up.*.face.can.stop.can",
           "type": "string"
         },
@@ -3895,6 +3991,18 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "groups[].members[].face.can.say.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "groups[].members[].face.can.say.hint",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "groups[].members[].face.can.stop.can",
           "type": "string"
         },
@@ -4136,6 +4244,18 @@
           "frozen": false,
           "kind": "text",
           "path": "pinned[].face.can.resume.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "pinned[].face.can.say.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "pinned[].face.can.say.hint",
           "type": "string"
         },
         {

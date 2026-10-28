@@ -96,7 +96,9 @@ import { acctSessionWiring } from "./acct-session";
 import { buildAccountCommands } from "./account-commands";
 import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
-import { setLaunchSlots } from "./session-open";
+import { openSession, setLaunchSlots } from "./session-open";
+import { Composer } from "./composer";
+import { outbox } from "./outbox";
 import { FOCUS_SESSION_EVENT, openNewSession } from "./new-session";
 import { newSessionSplit, startSetCommand, type SetMenuHost } from "./set-menu";
 import { copyText } from "./copy-table";
@@ -239,7 +241,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 编辑已发的一句：卡上「编辑」冒上来的事件在这里接住；确认那一下交给终端页那一份待发（同编号重交 · 回执才算出去）。
   const saidEdit = new SaidEdit({
     options: CHANNEL_REWIND_OPTIONS,
-    send: (origin, sid, text, rewind) => terminalPage.sayEdited(origin, sid, text, rewind),
+    send: (origin, sid, text, rewind) => outbox.say(origin, sid, text, [], rewind),
   });
   document.addEventListener(SAID_EDIT_EVENT, (ev) => {
     const card = ev.target instanceof HTMLElement ? ev.target : null;
@@ -299,6 +301,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   onMachineState((origin, m) => tabs.machineChanged(origin, m));
   // 那台接上了（起来时本机后端还在起 · 断开之后又连上）⇒ 接上之前问过它的那几处再问一次；终端页停在「那台断开」的实时自己重新订上。
   onMachineUp((origin) => {
+    outbox.machineUp(origin);
+    composer.machineUp(origin);
     terminalPage.machineUp(origin);
     boardFace.machineUp(origin);
     pokeBoard();
@@ -361,6 +365,20 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
   });
   streamRoot.appendChild(answerBlock.el);
+  // 占位标签页那一页显着（它没有会话可说）。
+  let slotOver = false;
+  // 说一句（消息流底下、贴着流底）：跟着当前标签页走；答题块浮在它上面。
+  const composer = new Composer({
+    active: () => (slotOver ? null : tabs.activeTab()),
+    resume: (sid) => {
+      const origin = tabs.originOf(sid);
+      return origin === null ? Promise.resolve(false) : openSession(origin, { what: { kind: "resume", sid }, local: isLocalOrigin(origin) });
+    },
+    front: (sid) => tabs.frontFor(sid),
+    focusStream: () => activeTab()?.streamEl.focus({ preventScroll: true }),
+    room: (px) => streamRoot.style.setProperty("--composer-room", `${px}px`),
+  });
+  streamRoot.appendChild(composer.el);
   const needsTitle = new NeedsTitle((title) => {
     document.title = title;
     void getCurrentWindow().setTitle(title).catch((e: unknown) => console.warn("set title failed:", e));
@@ -380,6 +398,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         paintTerminalActs();
         pokeBoard();
         answerBlock.render();
+        composer.render();
         paintNeedsTitle();
       });
     },
@@ -429,6 +448,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   setLaunchSlots((spec) => tabs.addLaunchSlot(spec));
   // 占位标签页那一页显着：会话头与真标签页的选中样子让开。
   tabs.onSlotShown = (on) => {
+    slotOver = on;
+    composer.render();
     sessionHead.el.toggleAttribute("data-slot-over", on);
     tabBar.toggleAttribute("data-slot-over", on);
     terminalPage.sessionChanged();
@@ -490,6 +511,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     terminalPage.sessionChanged();
     paintTerminalActs();
     answerBlock.render();
+    composer.render();
     usageHud.setActive(a.usage, a.modelText);
     usageHud.setUnavailable(a.unavailable);
     // 状态栏账号按钮 = 本会话（排在竖线前那一组）；没有会话 ⇒ `默认 work`，排到竖线后。面板开着就跟着换成那个会话（不关）。
