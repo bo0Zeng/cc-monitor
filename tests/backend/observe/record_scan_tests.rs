@@ -770,6 +770,9 @@ fn r11_lines_of_types_the_adapter_does_not_read_build_no_tree() {
     }
     let quiet = map.facts.quiet_unread.as_ref().expect("事实里该数到它们");
     assert_eq!(quiet.count as usize, unread, "认不出、又不成卡的几行");
-    assert!(map.facts.bg_tasks.is_empty(), "请求副本里的后台调用不算这条会话的");
+    assert!(
+        map.facts.bg_tasks.is_empty(),
+        "请求副本里的后台调用不算这条会话的"
+    );
     assert_eq!(map.inputs.len(), 3, "用户输入照旧");
 }
