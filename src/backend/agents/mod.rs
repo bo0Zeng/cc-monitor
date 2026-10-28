@@ -937,12 +937,15 @@ pub use cmd_wire::frame::RunDid;
 /// - 派出：`tool` 有、`run` 无 ⇒ 这次工具调用派出了一个子运行（标签 · 类别）；
 /// - 对上：`tool` 与 `run` 都有 ⇒ 这次调用派出的就是这个子运行（可带收场：前台跑完的那次结果）；
 /// - 收场：只有 `run` 与 `end` ⇒ 派出那一方说这个子运行完了 / 败了 / 被叫停（不认识的运行不立新行）。
+/// 子运行那一侧派出那一刻落盘的对上（`ChildFace::spawned`）也是「对上」那一形，可带标签 · 类别 · `from` · 后台派出。
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct ChildLink {
     pub(crate) tool: Option<String>,
     pub(crate) label: Option<String>,
     pub(crate) kind: Option<String>,
     pub(crate) run: Option<String>,
+    /// 派出它的那个子运行（主运行派出的 ⇒ `None`）：只有子运行那一侧落盘的对上说得出。
+    pub(crate) from: Option<String>,
     /// 派出那一方说这个子运行已经收场了；没说 ⇒ `None`。
     pub(crate) end: Option<RunEnd>,
     /// 派出那一方收到的报错原话（失败收场时，说得出才有）。

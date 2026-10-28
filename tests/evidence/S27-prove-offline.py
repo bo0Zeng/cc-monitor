@@ -81,10 +81,8 @@ def prime() -> bool:
     shutil.rmtree(WORK, ignore_errors=True)
     (WORK / "src").mkdir(parents=True)
     shutil.copytree(ROOT / "src" / "backend", WORK / "src" / "backend")
-    # 共享 crate 的 path 依赖写的是 `../common/…`（原 `../bridge/crates/…`）⇒ 软链补同深度才解得开；
-    # russh 补丁副本 `../vendor/russh` 同理。
+    # 共享 crate 的 path 依赖写的是 `../common/…`（原 `../bridge/crates/…`）⇒ 软链补同深度才解得开。
     (WORK / "src" / "common").symlink_to(ROOT / "src" / "common")
-    (WORK / "src" / "vendor").symlink_to(ROOT / "src" / "vendor")
 
     manifest = WORK / "src" / "backend" / "Cargo.toml"
     text = manifest.read_text(encoding="utf-8")

@@ -209,6 +209,7 @@ private fun ChatBody(
         needs = { ChatNeeds(needs) },
         modifier = modifier,
         attach = attach,
+        onFollow = vm::follow,
     )
 }
 

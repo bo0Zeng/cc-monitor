@@ -1,5 +1,5 @@
 # 锁文件里有、但不进产物的第三方包（只在别的平台 / 只开发期 / 没开的特性用）。
-# 由 tests/scripts/third-party-notices.py 生成（== 两份 Cargo.lock 的第三方包 ∪ src/vendor − THIRD-PARTY-NOTICES.txt 里的），不手改。
+# 由 tests/scripts/third-party-notices.py 生成（== 两份 Cargo.lock 的第三方包 − THIRD-PARTY-NOTICES.txt 里的），不手改。
 crate: accesskit_consumer 0.38.0
 crate: accesskit_macos 0.26.3
 crate: android-activity 0.6.1
@@ -28,10 +28,10 @@ crate: dispatch 0.2.0
 crate: dispatch2 0.3.1
 crate: embed_plist 1.2.2
 crate: fax 0.2.7
+crate: fiat-crypto 0.3.0
 crate: foreign-types 0.5.0
 crate: foreign-types-macros 0.2.3
 crate: foreign-types-shared 0.3.1
-crate: fsevent-sys 4.1.0
 crate: glifo 0.2.0
 crate: gloo-timers 0.4.0
 crate: hermit-abi 0.5.2
@@ -77,6 +77,7 @@ crate: objc2-core-image 0.2.2
 crate: objc2-core-image 0.3.2
 crate: objc2-core-location 0.2.2
 crate: objc2-core-location 0.3.2
+crate: objc2-core-services 0.3.2
 crate: objc2-core-text 0.3.2
 crate: objc2-encode 4.1.0
 crate: objc2-exception-helper 0.1.1
@@ -107,7 +108,6 @@ crate: r-efi 6.0.0
 crate: redox_syscall 0.4.1
 crate: redox_syscall 0.5.18
 crate: redox_syscall 0.7.5
-crate: redox_users 0.4.6
 crate: redox_users 0.5.2
 crate: ref-cast 1.0.25
 crate: ref-cast-impl 1.0.25
@@ -148,26 +148,21 @@ crate: wgpu-core-deps-emscripten 30.0.1
 crate: winapi-i686-pc-windows-gnu 0.4.0
 crate: winapi-x86_64-pc-windows-gnu 0.4.0
 crate: windows_aarch64_gnullvm 0.42.2
-crate: windows_aarch64_gnullvm 0.48.5
 crate: windows_aarch64_gnullvm 0.52.6
 crate: windows_aarch64_gnullvm 0.53.1
 crate: windows_aarch64_msvc 0.42.2
-crate: windows_aarch64_msvc 0.48.5
 crate: windows_aarch64_msvc 0.52.6
 crate: windows_aarch64_msvc 0.53.1
 crate: windows_i686_gnu 0.42.2
-crate: windows_i686_gnu 0.48.5
 crate: windows_i686_gnu 0.52.6
 crate: windows_i686_gnu 0.53.1
 crate: windows_i686_gnullvm 0.52.6
 crate: windows_i686_gnullvm 0.53.1
 crate: windows_i686_msvc 0.42.2
-crate: windows_i686_msvc 0.48.5
 crate: windows_i686_msvc 0.52.6
 crate: windows_i686_msvc 0.53.1
 crate: windows_x86_64_gnu 0.42.2
 crate: windows_x86_64_gnullvm 0.42.2
-crate: windows_x86_64_gnullvm 0.48.5
 crate: windows_x86_64_gnullvm 0.52.6
 crate: windows_x86_64_gnullvm 0.53.1
 crate: wit-bindgen 0.51.0

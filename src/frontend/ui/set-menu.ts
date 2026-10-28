@@ -83,9 +83,6 @@ export async function openSetMenu(anchor: HTMLElement, origin: Origin, host: Set
   }
 }
 
-/** 窄栏（栏收成一列图标）：拆分按钮只剩「＋」，点了开同一张菜单。 */
-const narrow = (): boolean => document.body.dataset.tabBar === "folded";
-
 /** 栏顶那排里的一颗图标按钮（同栏顶别的入口：`styles.css` 的 `.tab-bar-icon`）。 */
 function headIcon(cls: string, role: string, name: Parameters<typeof icon>[0], label: string): HTMLButtonElement {
   const b = document.createElement("button");
@@ -105,10 +102,8 @@ export function newSessionSplit(origin: () => Origin, host: SetMenuHost): HTMLEl
   root.dataset.role = "new-split";
   const plus = headIcon("tab-bar-split-plus", "new-session", "plus", copyText("main.cmd.newSession"));
   const caret = headIcon("tab-bar-split-caret", "set-menu", "caretDown", copyText("setMenu.open.label"));
-  plus.addEventListener("click", () => {
-    if (narrow()) void openSetMenu(plus, origin(), host);
-    else host.newSession();
-  });
+  // 「＋」永远开新建框（窄栏也是）；组菜单只在「⌄」与命令面板「起一组…」。
+  plus.addEventListener("click", () => host.newSession());
   caret.addEventListener("click", () => void openSetMenu(caret, origin(), host));
   root.append(plus, caret);
   return root;

@@ -25,7 +25,6 @@
 //! 不扫、不轮询）：一醒就从内存与盘上删那一条（[`forget`]）。挂的那一刻那个 shell 已经不在、或进程号已被别人复用（起始时刻对不上）⇒ 当场删。
 
 use notify::RecursiveMode;
-use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -171,28 +170,48 @@ fn scan_registry_dir(dir: &Path) -> HashMap<u32, HwndEntry> {
     crate::utils::scan_dir_jsons(dir, |e: &HwndEntry| e.ps_pid)
 }
 
+type AwaitEars = (
+    notify::RecommendedWatcher,
+    std::sync::mpsc::Receiver<notify::Result<notify::Event>>,
+);
+
+/// await 目录那道耳朵（notify 原生监听）：每一声原样进 channel，叫不叫醒由 [`wakes`] 判。
+fn await_ears(await_dir: &Path) -> notify::Result<AwaitEars> {
+    use notify::Watcher as _;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut ears = notify::recommended_watcher(tx)?;
+    ears.watch(await_dir, RecursiveMode::NonRecursive)?;
+    Ok((ears, rx))
+}
+
+/// 这一声要不要再扫一遍 await 目录：「打开了」不算。notify 7 起 inotify 也报打开，不滤的话 [`drain_await_dir`]
+/// 一读目录 · 读记录就又叫醒自己，空转不停。
+fn wakes(res: &notify::Result<notify::Event>) -> bool {
+    !res.as_ref().is_ok_and(|ev| {
+        matches!(
+            ev.kind,
+            notify::EventKind::Access(notify::event::AccessKind::Open(_))
+        )
+    })
+}
+
 fn run_await_watcher(this: Arc<BindRegistry>, await_dir: PathBuf) {
-    let (tx, rx) = std::sync::mpsc::channel::<DebounceEventResult>();
-    let mut debouncer = match new_debouncer(Duration::from_millis(50), tx) {
-        Ok(d) => d,
+    let (_ears, rx) = match await_ears(&await_dir) {
+        Ok(v) => v,
         Err(e) => {
-            tracing::error!("bind debouncer init failed: {e}");
+            tracing::error!("bind watch failed for {}: {e}", await_dir.display());
             return;
         }
     };
-    if let Err(e) = debouncer
-        .watcher()
-        .watch(&await_dir, RecursiveMode::NonRecursive)
-    {
-        tracing::error!("bind watch failed for {}: {e}", await_dir.display());
-        return;
-    }
 
     // 启动时也扫一遍现有的（monitor 起来之前开的 shell 留下的那几份）
     drain_await_dir(&this, &await_dir);
 
-    while let Ok(_evt) = rx.recv() {
-        drain_await_dir(&this, &await_dir);
+    // 记录由接入块先写 `.part` 再改名落成（不会读到半份）⇒ 不去抖，来一声扫一遍；扫是幂等的。
+    for res in rx.iter() {
+        if wakes(&res) {
+            drain_await_dir(&this, &await_dir);
+        }
     }
 }
 

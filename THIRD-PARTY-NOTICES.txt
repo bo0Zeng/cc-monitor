@@ -19,8 +19,8 @@ Used by:
     crate: khronos_api 3.1.0
     crate: owned_ttf_parser 0.25.1
     crate: pageant 0.2.5
-    crate: russh 0.61.1
-    crate: russh-cryptovec 0.61.0
+    crate: russh 0.65.0
+    crate: russh-cryptovec 0.62.0
     crate: russh-util 0.52.0
     crate: serial2 0.2.38
 
@@ -2127,7 +2127,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 -------- BSD 3-Clause "New" or "Revised" License (BSD-3-Clause) --------
 Used by:
-    crate: curve25519-dalek 5.0.0-pre.6
+    crate: curve25519-dalek 5.0.0
 
 Copyright (c) 2016-2021 isis agora lovecruft. All rights reserved.
 Copyright (c) 2016-2021 Henry de Valence. All rights reserved.
@@ -2162,7 +2162,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 -------- BSD 3-Clause "New" or "Revised" License (BSD-3-Clause) --------
 Used by:
-    crate: ed25519-dalek 3.0.0-pre.7
+    crate: ed25519-dalek 3.0.0
 
 Copyright (c) 2017-2019 isis agora lovecruft. All rights reserved.
 
@@ -2310,7 +2310,7 @@ DEALINGS IN THE SOFTWARE.
 
 -------- Creative Commons Zero v1.0 Universal (CC0-1.0) --------
 Used by:
-    crate: notify 6.1.1
+    crate: notify 8.2.1
 
 Creative Commons CC0 1.0 Universal
 
@@ -2551,8 +2551,8 @@ insights.
 
 -------- ISC License (ISC) --------
 Used by:
-    crate: inotify 0.9.6
-    crate: inotify-sys 0.1.5
+    crate: inotify 0.11.5
+    crate: inotify-sys 0.1.8
 
 Copyright (c) Hanno Braun and contributors
 
@@ -3146,7 +3146,7 @@ Used by:
     crate: epaint 0.36.2
     crate: jni-sys-macros 0.4.1
     crate: libm 0.2.16
-    crate: md5 0.7.0
+    crate: md5 0.8.1
     crate: profiling 1.0.18
     crate: rhai_codegen 3.2.0
     crate: siphasher 1.0.3
@@ -3197,23 +3197,19 @@ Used by:
     crate: windows-strings 0.4.2
     crate: windows-strings 0.5.1
     crate: windows-sys 0.45.0
-    crate: windows-sys 0.48.0
     crate: windows-sys 0.52.0
     crate: windows-sys 0.59.0
     crate: windows-sys 0.60.2
     crate: windows-sys 0.61.2
     crate: windows-targets 0.42.2
-    crate: windows-targets 0.48.5
     crate: windows-targets 0.52.6
     crate: windows-targets 0.53.5
     crate: windows-threading 0.1.0
     crate: windows-threading 0.2.1
     crate: windows-version 0.1.7
-    crate: windows_x86_64_gnu 0.48.5
     crate: windows_x86_64_gnu 0.52.6
     crate: windows_x86_64_gnu 0.53.1
     crate: windows_x86_64_msvc 0.42.2
-    crate: windows_x86_64_msvc 0.48.5
     crate: windows_x86_64_msvc 0.52.6
     crate: windows_x86_64_msvc 0.53.1
 
@@ -3267,6 +3263,7 @@ Used by:
     crate: event-listener-strategy 0.5.4
     crate: fastrand 2.4.1
     crate: futures-lite 2.6.1
+    crate: group 0.14.0
     crate: itoa 1.0.18
     crate: khronos-egl 6.0.0
     crate: linux-raw-sys 0.12.1
@@ -3287,7 +3284,6 @@ Used by:
     crate: rsa 0.10.0-rc.18
     crate: rustc-hash 1.1.0
     crate: rustc-hash 2.1.2
-    crate: rustcrypto-group 0.14.0-rc.1
     crate: rustix 0.38.44
     crate: rustix 1.1.4
     crate: rustversion 1.0.22
@@ -3349,9 +3345,9 @@ DEALINGS IN THE SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: aead 0.6.0-rc.10
+    crate: aead 0.6.1
 
-Copyright (c) 2019-2025 The RustCrypto Project Developers
+Copyright (c) 2019-2026 The RustCrypto Project Developers
 Copyright (c) 2019 MobileCoin, LLC
 
 Permission is hereby granted, free of charge, to any
@@ -3413,9 +3409,12 @@ DEALINGS IN THE SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: aes-gcm 0.11.0-rc.4
+    crate: aes-gcm 0.11.1
+    crate: chacha20 0.10.0
+    crate: ghash 0.6.0
+    crate: polyval 0.7.1
 
-Copyright (c) 2019 The RustCrypto Project Developers
+Copyright (c) 2019-2026 The RustCrypto Project Developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -4058,9 +4057,8 @@ Used by:
     crate: bitflags 1.3.2
     crate: bitflags 2.13.2
     crate: glob 0.3.3
-    crate: internal-russh-num-bigint 0.5.0
     crate: log 0.4.34
-    crate: num-bigint 0.4.6
+    crate: num-bigint 0.5.1
     crate: num-integer 0.1.46
     crate: num-traits 0.2.19
     crate: regex 1.12.3
@@ -4130,7 +4128,6 @@ DEALINGS IN THE SOFTWARE.
 -------- MIT License (MIT) --------
 Used by:
     crate: block-buffer 0.10.4
-    crate: block-padding 0.3.3
 
 Copyright (c) 2018-2019 The RustCrypto Project Developers
 
@@ -4529,39 +4526,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: chacha20 0.10.0
-    crate: ghash 0.6.0
-    crate: polyval 0.7.1
-
-Copyright (c) 2019-2026 The RustCrypto Project Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-
--------- MIT License (MIT) --------
-Used by:
     crate: cipher 0.5.2
 
 Copyright (c) 2016-2025 RustCrypto Developers
@@ -4594,7 +4558,7 @@ DEALINGS IN THE SOFTWARE.
 -------- MIT License (MIT) --------
 Used by:
     crate: cmov 0.5.4
-    crate: hybrid-array 0.4.12
+    crate: hybrid-array 0.4.15
 
 Copyright (c) 2022-2026 The RustCrypto Project Developers
 
@@ -4836,7 +4800,7 @@ SOFTWARE.
 -------- MIT License (MIT) --------
 Used by:
     crate: cpubits 0.1.1
-    crate: ssh-cipher 0.3.0-rc.9
+    crate: ssh-cipher 0.3.0
 
 Copyright (c) 2023-2026 The RustCrypto Project Developers
 
@@ -4993,8 +4957,8 @@ Used by:
     crate: scrypt 0.12.0
     crate: sec1 0.8.1
     crate: spki 0.8.0
-    crate: ssh-encoding 0.3.0-rc.9
-    crate: ssh-key 0.7.0-rc.10
+    crate: ssh-encoding 0.3.0
+    crate: ssh-key 0.7.0-rc.11
 
 Copyright (c) 2021-2026 The RustCrypto Project Developers
 
@@ -5400,9 +5364,7 @@ DEALINGS IN THE SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: dirs 5.0.1
     crate: dirs 6.0.0
-    crate: dirs-sys 0.4.1
     crate: dirs-sys 0.5.0
 
 Copyright (c) 2018-2019 dirs-rs contributors
@@ -5542,40 +5504,9 @@ DEALINGS IN THE SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: ecdsa 0.17.0-rc.18
-    crate: keccak 0.2.0
-
-Copyright (c) 2018-2022 RustCrypto Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-
--------- MIT License (MIT) --------
-Used by:
+    crate: ecdsa 0.17.0
     crate: ed25519 3.0.0
-    crate: rfc6979 0.5.0
+    crate: rfc6979 0.6.0
     crate: signature 3.0.0
 
 Copyright (c) 2018-2026 RustCrypto Developers
@@ -5669,9 +5600,11 @@ DEALINGS IN THE SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: elliptic-curve 0.14.0-rc.32
+    crate: elliptic-curve 0.14.3
+    crate: p256 0.14.0
+    crate: p521 0.14.0
 
-Copyright (c) 2020-2025 RustCrypto Developers
+Copyright (c) 2020-2026 RustCrypto Developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -6036,11 +5969,11 @@ DEALINGS IN THE SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: fiat-crypto 0.3.0
+    crate: ff 0.14.0
 
 The MIT License (MIT)
 
-Copyright (c) 2015-2020 the fiat-crypto authors (see the AUTHORS file).
+Copyright (c) 2017 Sean Bowe
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -6049,16 +5982,16 @@ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 
 
 -------- MIT License (MIT) --------
@@ -6984,38 +6917,6 @@ SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: inout 0.1.4
-
-Copyright (c) 2022 The RustCrypto Project Developers
-Copyright (c) 2022 Artyom Pavlov
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-
--------- MIT License (MIT) --------
-Used by:
     crate: inout 0.2.2
 
 Copyright (c) 2022-2025 The RustCrypto Project Developers
@@ -7236,6 +7137,37 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+-------- MIT License (MIT) --------
+Used by:
+    crate: keccak 0.2.0
+
+Copyright (c) 2018-2022 RustCrypto Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 
 -------- MIT License (MIT) --------
@@ -7662,7 +7594,6 @@ SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: mio 0.8.11
     crate: mio 1.2.0
 
 Copyright (c) 2014 Carl Lerche and other MIO contributors
@@ -7885,7 +7816,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: notify-debouncer-mini 0.4.1
+    crate: notify-types 2.2.0
 
 Copyright (c) 2023 Notify Contributors
 
@@ -8025,72 +7956,9 @@ THE SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: p256 0.14.0-rc.9
-    crate: primeorder 0.14.0-rc.9
-
-Copyright (c) 2020-2023 RustCrypto Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-
--------- MIT License (MIT) --------
-Used by:
-    crate: p384 0.14.0-rc.9
+    crate: p384 0.14.0
 
 Copyright (c) 2020-2021 RustCrypto Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-
--------- MIT License (MIT) --------
-Used by:
-    crate: p521 0.14.0-rc.9
-
-Copyright (c) 2020-2022 RustCrypto Developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -8384,9 +8252,40 @@ SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: primefield 0.14.0-rc.9
+    crate: primefield 0.14.0
 
-Copyright (c) 2024 RustCrypto Developers
+Copyright (c) 2024-2026 RustCrypto Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+-------- MIT License (MIT) --------
+Used by:
+    crate: primeorder 0.14.0
+
+Copyright (c) 2020-2023 RustCrypto Developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -8670,33 +8569,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-
--------- MIT License (MIT) --------
-Used by:
-    crate: rustcrypto-ff 0.14.0-rc.1
-
-The MIT License (MIT)
-
-Copyright (c) 2017 Sean Bowe
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
 
 
 -------- MIT License (MIT) --------
@@ -9077,6 +8949,7 @@ DEALINGS IN THE SOFTWARE.
 -------- MIT License (MIT) --------
 Used by:
     crate: sha3 0.11.0
+    crate: sha3 0.12.0
 
 Copyright (c) 2020-2026 The RustCrypto Project Developers
 Copyright (c) 2016-2023 Artyom Pavlov, Marek Kotewicz
@@ -9391,6 +9264,37 @@ THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+-------- MIT License (MIT) --------
+Used by:
+    crate: sponge-cursor 0.1.0
+
+Copyright (c) 2026 The RustCrypto Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 
 -------- MIT License (MIT) --------
@@ -10644,6 +10548,38 @@ DEALINGS IN THE SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
+    crate: wnaf 0.14.1
+
+Copyright (c) 2026 RustCrypto Developers
+Copyright (c) 2018-2025 `group` crate developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+-------- MIT License (MIT) --------
+Used by:
     crate: wry 0.55.1
 
 MIT License
@@ -10935,29 +10871,33 @@ DEALINGS IN THE SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: zeroize 1.8.2
+    crate: zeroize 1.9.1
 
-MIT License
+Copyright (c) 2018-2026 The RustCrypto Project Developers
 
-Copyright (c) 2018-2021 The RustCrypto Project Developers
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 
 -------- MIT License (MIT) --------
