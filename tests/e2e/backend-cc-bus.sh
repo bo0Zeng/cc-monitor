@@ -80,12 +80,12 @@ chk "空总线回空数组（不是报错）" "$(printf '%s' "$out" | jq -c '.ag
 chk "  只读：没投过信就不建收件箱目录" "$([ -e "$(busdir)" ] && echo 建了 || echo 没建)" "没建"
 
 # ===== 发信：cc-bus send 只把那一封交给后端 `bus-send`（核信封 · 范围 · 去重 · 限流都在那一处），后端收进收件箱 =====
-# 台架的 ccm：一份记账的桩 —— `--bus-*` 原样转给被测的后端二进制（真判、真落盘），看屏 / 说一句只记下来、答「送到了」。
-#   `--session-self`（「我是哪条会话」）答 `$SELF_SID`；它空着 ⇒ 照后端的形状拒成 `not_in_session`。
-#   不起真 claude、不碰真会话：敲门那一下到桩为止，桩里看得见 cc-bus 要后端做什么（`idle_only` 带没带）。
+# 台架的 ccm：一份记账的桩 —— `--bus-*` 原样转给被测的后端二进制（真判、真落盘，敲门也是它投进沙箱家里那条会话的输入队）。
+#   `--session-self`（「我是哪条会话」）答 `$SELF_SID`；它空着 ⇒ 照后端的形状拒成 `not_in_session`。别的一律不答（退 9）：脚本不该问别的。
+#   不起真 claude、不碰真会话：输入队只落在沙箱家里，没有投递那一侧把它送进哪个窗格。
 SA="aaaaaaaa-1111-2222-3333-444444444444"   # 发件人（会话 id 的形状，占位）
 SB="bbbbbbbb-1111-2222-3333-444444444444"   # 收件人
-FK="$SANDBOX/fakeccm"; mkdir -p "$FK"; CALLS="$SANDBOX/ccm-calls.txt"; SAYS="$SANDBOX/ccm-says.txt"
+FK="$SANDBOX/fakeccm"; mkdir -p "$FK"; CALLS="$SANDBOX/ccm-calls.txt"
 cat > "$FK/ccm" <<'EOF'
 #!/bin/bash
 printf '%s\n' "$*" >> "$CALLS"
@@ -94,15 +94,15 @@ case " $* " in
   *" --session-self "*)
     if [ -n "${SELF_SID:-}" ]; then printf '{"sid":"%s","groups":[],"looked":"this_machine"}\n' "$SELF_SID"
     else printf '{"code":"not_in_session","message":"no session above","detail":""}\n' >&2; exit 2; fi ;;
-  *" --terminal-preview "*) cat >/dev/null; printf '{"screen":"fp-0"}\n' ;;
-  *" --session-say "*) cat >> "$SAYS"; printf '\n'; printf '{"result":"delivered"}\n' ;;
   *) echo "fake ccm: 没想到会被问 $*" >&2; exit 9 ;;
 esac
 EOF
 chmod +x "$FK/ccm"
+# 那个家里一条会话的输入队（后端敲门投进去的那几条）：`items` 照到达先后；队文件不在 ⇒ 空。
+queue_of() { local f; f="${2:-$NOHOME}/.cc-monitor/session-queue/$1.json"; if [ -f "$f" ]; then jq -c '.items' "$f"; else echo '[]'; fi; }
 # 一次 = 一个干净的 env（逐次给全）。FROM 缺 ⇒ SA；家缺省 $NOHOME。
 bus() {  # <动词> [参数…]
-  env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" SAYS="$SAYS" CLAUDE_CONFIG_DIR="$CLA" HOME="${SNDHOME:-$NOHOME}" \
+  env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" CLAUDE_CONFIG_DIR="$CLA" HOME="${SNDHOME:-$NOHOME}" \
       SELF_SID="${FROM-$SA}" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-bus" "$@" 2>"$SANDBOX/snd.err"
 }
 snd() { bus send "$@"; }
@@ -125,7 +125,7 @@ chk "★ 这台没记录的那条：判不了 ⇒ live=null（不是 false）· 
   "$(printf '%s' "$out" | jq -r --arg s "$SU" '.agents[] | select(.id==$s) | [.title, .live] | map(tostring) | join("|")')" "$SU|null"
 
 echo "[3] cc-bus send：信封过后端、落进收件人的收件箱；缺省二档、不敲门"
-: > "$CALLS"; : > "$SAYS"
+: > "$CALLS"
 snd "$SB" --act inform --title "占位标题" "占位正文" >/dev/null; _rc=$?
 chk "退出 0" "$_rc" "0"
 chk "★ 收件箱（后端数据目录里，按会话 id）多了一行" "$(lines_of "$SB")" "1"
@@ -134,8 +134,8 @@ chk "  信封各格：from · to · tier 缺省 2 · act · title · 正文" \
   "$(printf '%s' "$_e" | jq -c '[.from, .to, .tier, .act, .title, .text]')" "[\"$SA\",\"$SB\",2,\"inform\",\"占位标题\",\"占位正文\"]"
 chk "  id 与时间是后端盖的（m 打头 · UTC）" \
   "$(printf '%s' "$_e" | jq -r '(.id | startswith("m")) and (.ts | endswith("Z"))')" "true"
-chk "★ 二档不敲门：一次看屏 / 说一句都没问" "$(grep -cE -- '--terminal-preview|--session-say' "$CALLS")" "0"
-chk "  发信只问了后端一次 bus-send" "$(grep -c -- '--bus-send' "$CALLS")" "1"
+chk "★ 二档不敲门：收件人的输入队里一条都没有" "$(queue_of "$SB")" "[]"
+chk "  发信只问了后端一次 bus-send（别的一句都没问）" "$(grep -c -- '--bus-send' "$CALLS")|$(grep -vc -- '--bus-send\|--session-self' "$CALLS")" "1|0"
 
 echo "[3b] ★ 去重：同一封 1 秒内发两次 ⇒ 后端只收一次，第二次退 3、说重复"
 _before="$(lines_of "$SB")"
@@ -172,18 +172,19 @@ chk "★ 拒掉的一封都没进收件箱" "$(lines_of "$SB")" "$_before"
 head -c 1200 /dev/zero | tr '\0' y | snd "$SB" --act inform --title "正好 1200 字节" - >/dev/null; _rc=$?
 chk "  对照：正好 1200 字节（从 stdin 读）照样发得出去" "$_rc|$(lines_of "$SB")" "0|$((_before + 1))"
 
-echo "[5] ★ 一档：后端说敲才敲，且要后端「只在闲着时送」；同一条会话 2 秒内只敲一次"
+echo "[5] ★ 一档：后端收信那一下自己敲门 —— 投进收件人那条会话的输入队（闲着时由投递送）；同一条会话 2 秒内只敲一次"
 SK="cccc0000-1111-2222-3333-444444444444"
-: > "$CALLS"; : > "$SAYS"
+: > "$CALLS"
 snd "$SK" --tier 1 --act request --title "合一下" --ref commit:393349b8b >/dev/null; _rc=$?
 chk "退出 0" "$_rc" "0"
-chk "★ 敲了门：先看屏、再说一句" "$(grep -c -- '--terminal-preview' "$CALLS")|$(grep -c -- '--session-say' "$CALLS")" "1|1"
-chk "★ 说的那一句要后端只在闲着时送（idle_only）、敲的是收件人那条会话、带着看到的指纹" \
-  "$(jq -sc '.[0] | [.idle_only, .sid, .seen_screen]' "$SAYS")" "[true,\"$SK\",\"fp-0\"]"
-chk "  敲门那一句不带正文（只说去收信）" "$(jq -s -r '.[0].text | contains("合一下")' "$SAYS")" "false"
-chk "  敲门那一句叫对方跑 cc-bus recv（一个入口）" "$(jq -s -r '.[0].text | contains("cc-bus recv")' "$SAYS")" "true"
+chk "★ 敲了门：收件人的输入队多一条，发自 cc-bus，id 由那一封来" \
+  "$(queue_of "$SK" | jq -c '[length, .[0].end, (.[0].id | startswith("cc-bus-m"))]')" '[1,"cc-bus",true]'
+chk "★ 脚本只问了 bus-send：不看屏、不自己投" "$(grep -vc -- '--bus-send\|--session-self' "$CALLS")" "0"
+chk "  敲门那一句不带标题与正文（只说谁来信、去收信）" "$(queue_of "$SK" | jq -r '.[0].text | contains("合一下")')" "false"
+chk "  敲门那一句说发信人、叫对方跑 cc-bus recv（一个入口）" \
+  "$(queue_of "$SK" | jq -r --arg a "$SA" '.[0].text | (contains($a) and contains("cc-bus recv"))')" "true"
 snd "$SK" --tier 1 --act request --title "紧跟着又一封" >/dev/null; _rc=$?
-chk "★ 去抖：紧跟着的第二封照收、不再敲" "$_rc|$(lines_of "$SK")|$(grep -c -- '--session-say' "$CALLS")" "0|2|1"
+chk "★ 去抖：紧跟着的第二封照收、不再敲" "$_rc|$(lines_of "$SK")|$(queue_of "$SK" | jq length)" "0|2|1"
 
 echo "[5b] ★ 组范围（后端那一处判）：发件人在组里 ⇒ 只送得到同组；名单读不到 ⇒ 拒；退 3 与信封写错的 2 分得开"
 # 沙箱家里的一份注解（只采结构）：SA · SD 在「开发组」，SG 不在任何组。
@@ -270,7 +271,7 @@ chk "  台架自检：窗格上确实挂着诱饵标记" "$(tmux display-message
 # 一次 = 一个干净的 env；诱饵三样（CC_BUS_ID · CLAUDE_CODE_SESSION_ID · 窗格标记）全摆上。
 idrun() {  # <动词> [参数…]；SELF_SID / AGENT / CCM 由调用方给
   local s="$1"; shift
-  env ${CCM:+CCM_BIN="$CCM"} D="$D" CALLS="$CALLS" SAYS="$SAYS" SELF_SID="${SELF_SID-}" HOME="$NOHOME" PATH="${IDPATH:-$PATH}" \
+  env ${CCM:+CCM_BIN="$CCM"} D="$D" CALLS="$CALLS" SELF_SID="${SELF_SID-}" HOME="$NOHOME" PATH="${IDPATH:-$PATH}" \
       CCBUS_ADAPT_AGENT="${AGENT:-claude}" CLAUDE_CONFIG_DIR="$CLA" \
       CC_BUS_ID="$DECOY" CLAUDE_CODE_SESSION_ID="$DECOY" TMUX_PANE="$_wp" \
       "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-bus" "$s" "$@" 2>"$SANDBOX/id.err"
@@ -315,22 +316,21 @@ FROM="$SU2" bus unread "a/b" >/dev/null; _rc=$?
 chk "  id 不是那个形状 ⇒ 退 2" "$_rc" "2"
 chk "  没有收件箱 ⇒ 0" "$(FROM="$SU2" bus unread "f2000000-1111-2222-3333-444444444444")" "0"
 
-echo "[15] ★ 装：PATH 上只有 cc-bus 一个命令；从前链进来的老名字删掉，别人的同名命令不碰；不建运行时目录"
+echo "[15] ★ 装：只往 PATH 上链 cc-bus 一个命令；链接目录里别的东西一概不碰；不建运行时目录"
 IH="$SANDBOX/insthome"; mkdir -p "$IH/.local/bin" "$IH/other"
-ln -s "$IH/.claude/skills/cc-bus/scripts/cc-send" "$IH/.local/bin/cc-send"        # 老版装进来的（指向某个 cc-bus/scripts/，已经不在）
-ln -s "$SCRIPTS/cc-whoami" "$IH/.local/bin/cc-whoami"                              # 老版装进来的（指向仓里）
+ln -s "$SCRIPTS/cc-whoami" "$IH/.local/bin/cc-whoami"                              # 指向某个 cc-bus/scripts/ 的别的名字（不是装口的事）
 printf '#!/bin/sh\n' > "$IH/other/cc-recv"; chmod +x "$IH/other/cc-recv"; ln -s "$IH/other/cc-recv" "$IH/.local/bin/cc-recv"   # 别人的
 env HOME="$IH" PATH="$IH/.local/bin:/usr/bin:/bin" bash "$SCRIPTS/cc-bus-install.sh" >"$SANDBOX/inst.out" 2>&1; _rc=$?
-chk "★ 装完链接目录里只有 cc-bus（＋ 别人的那一个）" "$_rc|$(ls "$IH/.local/bin" | tr '\n' ' ')" "0|cc-bus cc-recv "
+chk "★ 装完链接目录里多了 cc-bus 一个，原有的两个都在" "$_rc|$(ls "$IH/.local/bin" | tr '\n' ' ')" "0|cc-bus cc-recv cc-whoami "
 chk "  cc-bus 指向仓里这一份入口" "$(readlink -f "$IH/.local/bin/cc-bus")" "$SCRIPTS/cc-bus"
-chk "  别人的同名命令原样留着" "$(readlink "$IH/.local/bin/cc-recv")" "$IH/other/cc-recv"
+chk "  原有的链接原样留着" "$(readlink "$IH/.local/bin/cc-recv")|$(readlink "$IH/.local/bin/cc-whoami")" "$IH/other/cc-recv|$SCRIPTS/cc-whoami"
 chk "★ 不建 ~/.cc-bus（收件箱住后端）" "$([ -e "$IH/.cc-bus" ] && echo 建了 || echo 没建)" "没建"
 _hv="$(env HOME="$IH" PATH="$IH/.local/bin:/usr/bin:/bin" cc-bus help 2>&1)"; _rc=$?
 chk "  装完在 PATH 上叫得动：cc-bus help 退 0、列出各动词" "$_rc|$(printf '%s' "$_hv" | grep -cE '^ +(send|recv|peek|commit|list|whoami|unread|log|stop-hook) ')" "0|9"
 env HOME="$IH" PATH="$IH/.local/bin:/usr/bin:/bin" cc-bus nosuchverb >/dev/null 2>&1; _rc=$?
 chk "  不认识的动词退 2" "$_rc" "2"
 env HOME="$IH" PATH="$IH/.local/bin:/usr/bin:/bin" bash "$SCRIPTS/cc-bus-install.sh" >/dev/null 2>&1
-chk "  再装一次：照旧只有那两个（幂等）" "$(ls "$IH/.local/bin" | tr '\n' ' ')" "cc-bus cc-recv "
+chk "  再装一次：照旧是那三个（幂等）" "$(ls "$IH/.local/bin" | tr '\n' ' ')" "cc-bus cc-recv cc-whoami "
 
 echo "[SH1-b] ★ 驾驶舱读面 —— 名单只认会话 id 形状的收件箱 · 收件箱只看尾巴、不推位置"
 # 台架造一个**脏**的收件箱目录（只采结构：名字不是会话 id 的 · 坏行）。
