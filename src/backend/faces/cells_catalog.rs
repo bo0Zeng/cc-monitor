@@ -664,6 +664,12 @@ pub(crate) const PRODUCTS: &[Product] = &[
         tags: &[],
         specimens: specimens::history_list,
     },
+    // 组（`groups-read`）：手机会话列表按组分段照段头的组名 · 计数那几句与组员读。
+    Product {
+        name: "groups_read",
+        tags: &[],
+        specimens: specimens::groups_read,
+    },
 ];
 
 /// 各件成品的样本。全用成品自己的类型造（编译器管住字段齐全；`None` / 空列表由判据管）。
@@ -1095,6 +1101,10 @@ mod specimens {
 
     pub(super) fn history_list() -> Vec<Specimen> {
         vec![node_of(&crate::history::history_list::specimen())]
+    }
+
+    pub(super) fn groups_read() -> Vec<Specimen> {
+        vec![node_of(&crate::history::groups::specimen())]
     }
 
     pub(super) fn needs_row() -> Vec<Specimen> {
