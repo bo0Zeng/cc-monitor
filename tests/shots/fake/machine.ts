@@ -5,6 +5,7 @@
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
 import type { BackendStatus } from "../../../src/frontend/ui/generated/BackendStatus";
+import type { FootprintClient } from "../../../src/frontend/ui/generated/FootprintClient";
 import type { CommandHandler } from "./commands";
 import type { OpHandler, World } from "./types";
 
@@ -296,7 +297,8 @@ export function machineCommands(): Record<string, CommandHandler> {
         configUnknown: keys.length,
       };
     },
-    footprint_client_facts: () => ({}),
+    // 形状照壳那一口（`footprint_client.rs`）：界面原样带进本机后端的 `{client}`，后端照 `FootprintClient` 收；家是沙箱里后端那一份。
+    footprint_client_facts: (): FootprintClient => ({ home: HOME, path: `${HOME}/.cc-monitor/bin:/usr/bin:/bin` }),
   };
 }
 
