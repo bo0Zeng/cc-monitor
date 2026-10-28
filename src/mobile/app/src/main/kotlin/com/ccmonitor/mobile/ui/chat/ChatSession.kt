@@ -442,20 +442,16 @@ class ChatSession(
 
     fun rename(title: String) = chips.rename(title)
 
-    /** ■：中断那条会话这一轮（`session-interrupt`：不进队、不靠持有输入）；中断那一条看记录。成了不说，没成 ⇒ chip 上方那一行照那台那一句。 */
+    /** ■：中断那条会话这一轮（`session-interrupt`：不进队、不靠持有输入）；中断那一条看记录。成了 · 不知道成没成不说（看记录），被拒 ⇒ chip 上方那一行照那台那一句。 */
     fun stop() {
         val s = sid ?: return
         scope.launch {
             val r = link.call(SessionInterrupt.COMMAND, SessionInterrupt.args(s), INPUT_MS)
             val said =
-                when {
-                    r !is Reply.Ok -> r.problem(machine, SessionInterrupt.COMMAND, link.offline.value)?.text
-                    else ->
-                        when (val res = TerminalInput.of(r.data)) {
-                            is TerminalInput.Result.Refused -> res.said
-                            TerminalInput.Result.Unsure -> copyText("terminal.input.unsure", "machine" to machine)
-                            else -> null
-                        }
+                if (r !is Reply.Ok) {
+                    r.problem(machine, SessionInterrupt.COMMAND, link.offline.value)?.text
+                } else {
+                    (TerminalInput.of(r.data) as? TerminalInput.Result.Refused)?.said
                 }
             if (said != null) _state.value = _state.value.copy(note = said)
         }

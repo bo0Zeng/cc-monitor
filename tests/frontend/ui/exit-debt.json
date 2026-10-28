@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1824,
+  "ceiling": 1822,
   "groups": [
     {
       "kind": "首登",
@@ -311,8 +311,7 @@
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/SessionScreen.kt", "key", 7],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/SessionTabsSheet.kt", "key", 2],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/SessionViewModel.kt", "key", 3],
-        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/SessionsOverviewScreen.kt", "key", 1],
-        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/TerminalOps.kt", "key", 7],
+        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/TerminalOps.kt", "key", 6],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/TerminalToolbar.kt", "key", 1],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/TerminalManager.kt", "key", 3],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/keys/KeyEditPage.kt", "key", 2],

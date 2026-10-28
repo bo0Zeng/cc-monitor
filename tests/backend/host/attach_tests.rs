@@ -176,16 +176,13 @@ async fn detaching_leaves_the_terminal_running_and_reattaching_shows_the_same_sc
     b.keys.send(b"\x02x".to_vec()).unwrap();
     until_seen(&b.screen, &copy_text("beHost.attach.confirmEnd", &[])).await;
     b.keys.send(b"y".to_vec()).unwrap();
-    let Left::Ended(code) = b.task.await.unwrap().unwrap() else {
-        panic!("该是结束");
-    };
-    // 结束之后原屏上那一行带名字与退出码。
-    let code = code.map_or_else(|| "-".to_string(), |c| c.to_string());
+    assert!(matches!(b.task.await.unwrap().unwrap(), Left::Ended(_)));
+    // 结束之后原屏上那一行带名字。
     assert_eq!(
         after_leave(&b.screen),
         format!(
             "{}\r\n",
-            copy_text("beHost.attach.ended", &[("name", NAME), ("code", &code)])
+            copy_text("beHost.attach.ended", &[("name", NAME)])
         )
     );
     task.await.unwrap().unwrap();
@@ -358,7 +355,7 @@ async fn the_session_ending_returns_the_childs_code() {
         after_leave(&a.screen),
         format!(
             "{}\r\n",
-            copy_text("beHost.attach.ended", &[("name", NAME), ("code", "5")])
+            copy_text("beHost.attach.ended", &[("name", NAME)])
         ),
         "出来时还原外层终端，原屏上印结束那一行"
     );

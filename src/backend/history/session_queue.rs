@@ -341,12 +341,16 @@ impl Book {
                 .filter(|e| e.state != QueueState::Undelivered)
         };
         let n = waiting().count().to_string();
-        let key = if waiting().any(|e| e.half && e.state == QueueState::Queued) {
-            "beQueue.said.waitingHalf"
-        } else {
-            "beQueue.said.waiting"
-        };
-        (n != "0").then(|| copy_text(key, &[("n", &n)]))
+        if n == "0" {
+            return None;
+        }
+        Some(
+            if waiting().any(|e| e.half && e.state == QueueState::Queued) {
+                copy_text("beQueue.said.waitingHalf", &[("n", &n)])
+            } else {
+                copy_text("beQueue.said.waiting", &[("n", &n)])
+            },
+        )
     }
 
     /// 有收着的（同一端前一号还没到）：最早那一条等够了是几点（主人的钟）。

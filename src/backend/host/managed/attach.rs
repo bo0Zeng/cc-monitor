@@ -328,13 +328,8 @@ pub(crate) fn client_lines(clients: &[ClientRow]) -> Vec<String> {
 fn left_line(left: &Left, name: &str) -> Option<String> {
     match left {
         Left::Detached => Some(copy_text("beHost.attach.detached", &[("name", name)])),
-        Left::Ended(code) => {
-            let code = code.map_or_else(|| "-".to_string(), |c| c.to_string());
-            Some(copy_text(
-                "beHost.attach.ended",
-                &[("name", name), ("code", &code)],
-            ))
-        }
+        // 退出码不插进话里（C-Y5）：它是这个进程自己的退出码，外层 shell 照样拿得到。
+        Left::Ended(_) => Some(copy_text("beHost.attach.ended", &[("name", name)])),
         Left::Lost | Left::Switch(_) | Left::OuterGone => None,
     }
 }

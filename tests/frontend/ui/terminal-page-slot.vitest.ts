@@ -19,6 +19,9 @@ function row(over: Partial<TerminalRow>): TerminalRow {
 
 const SHOT: TerminalShot = { lines: [], text: "$", screen: "fp", atText: "12:00:00" };
 
+/** 别端持有时按键尾巴 · Ctrl+回车那一句：名单那一句 ＋「接管后可按键」。 */
+const HELD_LINE = ["S-in-window", copyText("terminal.input.afterTake")].join(copyText("kit.text.sep"));
+
 function rig(rows: TerminalRow[]): {
   page: TerminalPage;
   reads: { [K in keyof TerminalReads]: ReturnType<typeof vi.fn> };
@@ -108,14 +111,14 @@ describe("托管那一形：谁在输入 · 接管 · 交还", () => {
     const keys = [...page.el.querySelectorAll("button")].filter((b) => b.textContent === copyText("terminal.key.esc"));
     expect(keys).toHaveLength(1);
     expect(keys[0].getAttribute("aria-disabled") === "true" || keys[0].disabled, "按键灰着").toBe(true);
-    expect(page.el.textContent).toContain(copyText("terminal.input.keysHeld", { said: "S-in-window" }));
+    expect(page.el.textContent).toContain(HELD_LINE);
     const box = page.el.querySelector("textarea") as HTMLTextAreaElement;
     expect(box.placeholder).toBe(copyText("terminal.input.placeholderHeld"));
     box.value = "ls";
     box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }));
     await flush();
     expect(reads.send, "Ctrl+回车不发").not.toHaveBeenCalled();
-    expect(page.el.textContent).toContain(copyText("terminal.input.keysHeld", { said: "S-in-window" }));
+    expect(page.el.textContent).toContain(HELD_LINE);
     // 实时流推来新的持有者（画面没变）⇒ 就地换。
     live!.screen(SHOT, { said: "S-here", mine: true });
     await flush();
