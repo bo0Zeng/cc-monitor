@@ -384,7 +384,7 @@ describe("会话头", () => {
 
 describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键）", () => {
   type Row = Awaited<ReturnType<TerminalReads["list"]>>[number];
-  const row = (sid: string, over: Partial<Row> = {}): Row => ({ terminal: `tmux-${sid}`, tmuxName: `${sid}-cc`, sid, clients: 0, input: "shared", programExited: false, inputNo: null, ...over });
+  const row = (sid: string, over: Partial<Row> = {}): Row => ({ terminal: `tmux-${sid}`, name: `${sid}-cc`, sid, clients: 0, input: "shared", programExited: false, inputNo: null, ...over });
   const flush = async (): Promise<void> => {
     for (let i = 0; i < 6; i++) await Promise.resolve();
   };

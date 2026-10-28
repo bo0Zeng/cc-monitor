@@ -43,12 +43,12 @@ vi.mock("../../../../src/frontend/ui/remote-config", () => ({
   findHostByOrigin: (rows: { name: string }[], o: string) => rows.find((r) => r.name === o) ?? null,
 }));
 vi.mock("../../../../src/frontend/ui/events", () => ({ subscribeTopics: () => Promise.resolve(() => {}) }));
-/** 那台有没有 tmux（`session-open-facts` 的 `tmux`）。 */
+/** 那台有没有 tmux（`session-open-facts` 的 `hosts` 里有没有 `tmux`）。 */
 const facts = vi.hoisted(() => ({ tmux: true, asked: 0 }));
 vi.mock("../../../../src/frontend/ui/new-session-reads", () => ({
   askFacts: async () => {
     facts.asked++;
-    return { tmux: facts.tmux };
+    return { hosts: facts.tmux ? ["tmux", "direct"] : ["direct"] };
   },
 }));
 vi.mock("../../../../src/frontend/ui/settings/account-login", () => ({
