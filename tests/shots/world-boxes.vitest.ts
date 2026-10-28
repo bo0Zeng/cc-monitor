@@ -10,7 +10,7 @@
  * 买不到：真后端 · 真无头壳 · 本机那一跳握手（截图那一趟本身判）。要真 bwrap：起不来的机器（Windows · 不许建命名空间的）这一格让开。
  */
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -85,17 +85,8 @@ async function post(serve: Serve, url: string, body: unknown): Promise<{ status:
 }
 
 /** 命令行里带着这个目录的进程（看收场收干净没有）。 */
-function procsUnder(dir: string): number[] {
-  return readdirSync("/proc")
-    .filter((p) => /^\d+$/.test(p))
-    .filter((p) => {
-      try {
-        return readFileSync(`/proc/${p}/cmdline`, "utf8").includes(dir);
-      } catch {
-        return false;
-      }
-    })
-    .map(Number);
+function procsUnder(dir: string): string[] {
+  return spawnSync("pgrep", ["-f", dir], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
 }
 
 describe.skipIf(!boxWorks)("截图台架起带远端的世界", () => {
