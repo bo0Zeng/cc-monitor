@@ -267,7 +267,7 @@ describe("端到端（假 OSV）", () => {
     const r = await runScript(fixtureRoot(), api);
     expect(r.code, r.out).toBe(2);
   });
-  it("连不上 OSV ⇒ 判不了", async () => {
+  it("OSV 连接失败 ⇒ 判不了", async () => {
     const api = await fakeOsv(oneHit);
     const dead = api; // 先拿到端口再关掉，这个端口上就没人听了
     cleanups.splice(0).forEach((f) => f());

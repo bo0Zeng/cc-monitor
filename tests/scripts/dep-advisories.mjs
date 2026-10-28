@@ -10,7 +10,7 @@
 //   红     随产品发的包（两份 Cargo.lock 全部 · package-lock 里不是 dev 的）有修复版、且豁免表里没登 —— 退 1
 //   红     豁免表里有一行没命中任何公告（死行，删掉）—— 退 1
 //   只印   不再维护（RustSec informational = unmaintained 一类）· 无修复版 · 开发依赖
-//   判不了 OSV 连不上 · 回的不是 200 · 回的形状不对 · 条数对不上 · 哪份锁一个包都没读出来 —— 退 2，不当通过
+//   判不了 OSV 连接失败 ·回的不是 200 · 回的形状不对 · 条数对不上 · 哪份锁一个包都没读出来 —— 退 2，不当通过
 //   末行恒是 `DEP-ADVISORIES: OK` / `DEP-ADVISORIES: 红 <n> 条` / `DEP-ADVISORIES: 判不了 …`。
 // 豁免表：本目录 `dep-advisories-waived.txt`，一行一条「包 编号 理由」（编号写公告本号或它的别名都认）。
 // 环境变量：OSV_API（默认 https://api.osv.dev，测试指本地假 OSV）· OSV_TIMEOUT_MS 每个请求的兜底期限（默认 60000）。
@@ -144,7 +144,7 @@ async function osv(api, path, body) {
       signal: AbortSignal.timeout(timeout),
     });
   } catch (e) {
-    throw new Undecidable(`连不上 OSV（${api}${path}）：${e.cause?.code ?? e.message}`);
+    throw new Undecidable(`OSV 连接失败（${api}${path}）：${e.cause?.code ?? e.message}`);
   }
   if (res.status !== 200) throw new Undecidable(`OSV 回 ${res.status}（${path}）`);
   try {
