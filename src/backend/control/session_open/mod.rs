@@ -72,7 +72,7 @@ pub(crate) enum Open {
     New(NewOpen),
     /// 恢复某条：哪一家 · 目录 · 模型 · 权限档这台从记录里读。
     Resume { sid: cmd_wire::Sid },
-    /// 接回 / 看一眼，不起 agent：按会话（找挂着它的 tmux 会话）或按 tmux 会话名，两格给一格。
+    /// 接回 / 看一眼，不起 agent：按会话（找挂着它的终端：tmux 会话 · 托管终端）或按终端名，两格给一格。
     Look {
         #[serde(default)]
         #[cfg_attr(test, ts(optional))]
@@ -432,7 +432,7 @@ fn tmux_rows(deps: &Deps) -> Result<Vec<TermEntry>, Failed> {
     }
 }
 
-/// 接进 `name` 那个 tmux 会话那一行。
+/// 接进 `name` 那个终端那一行（tmux 会话名 · 托管终端的句柄；`ccm --attach` 先认托管名单，再落 tmux）。
 fn attach_line(name: &str, here: Here, deps: &Deps) -> Result<String, Failed> {
     let l = Launch {
         agent: String::new(),
@@ -465,32 +465,40 @@ fn opened(landed: Landed, session: Option<String>, line: Option<String>) -> Open
     }
 }
 
-/// 接回：按会话（挂着它的那个；命中多个接第一个、`note` 说一句）或按 tmux 会话名。
+/// 接回：按会话（挂着它的那个；命中多个接第一个、`note` 说一句）或按终端名。两种宿主都认（名单是入口交的那一份）：
+/// tmux 那一行接会话名，托管那一行接句柄（瘦客户端 `--attach <句柄>`）。一个都没认到、这台又没 tmux ⇒ `place_unavailable`。
 fn look(
     sid: Option<&str>,
     session: Option<&str>,
     here: Here,
     deps: &Deps,
 ) -> Result<Opened, Failed> {
-    let rows = tmux_rows(deps)?;
-    let (landed, name, note) = match (sid, session) {
-        (Some(sid), None) if shell_quote_core::session_id_ok(sid) => match carriers(&rows, sid) {
-            Standing::Running(e) => (Landed::Running, e.name.clone(), None),
+    let listed = listed(deps).map_err(lower)?;
+    let rows = &listed.rows;
+    let missing = |code_key: &str, args: &[(&str, &str)]| -> Failed {
+        if listed.tmux {
+            fail("not_in_tmux", copy_core::copy_text(code_key, args), None)
+        } else {
+            fail(
+                "place_unavailable",
+                copy_core::copy_text("beSessionNew.place.noTmux", &[]),
+                Some(Field::Place),
+            )
+        }
+    };
+    let (landed, at, note) = match (sid, session) {
+        (Some(sid), None) if shell_quote_core::session_id_ok(sid) => match carriers(rows, sid) {
+            Standing::Running(e) => (Landed::Running, e, None),
             Standing::Ambiguous(es) => {
-                let first = es[0].name.clone();
                 let n = es.len().to_string();
-                let note =
-                    copy_core::copy_text("beSessionOpen.look.many", &[("n", &n), ("name", &first)]);
-                (Landed::Running, first, Some(note))
+                let note = copy_core::copy_text(
+                    "beSessionOpen.look.many",
+                    &[("n", &n), ("name", &es[0].name)],
+                );
+                (Landed::Running, es[0], Some(note))
             }
-            Standing::Idle(e) => (Landed::Idle, e.name.clone(), None),
-            Standing::None => {
-                return Err(fail(
-                    "not_in_tmux",
-                    copy_core::copy_text("beSessionOpen.look.notInTmux", &[]),
-                    None,
-                ))
-            }
+            Standing::Idle(e) => (Landed::Idle, e, None),
+            Standing::None => return Err(missing("beSessionOpen.look.notInTmux", &[])),
         },
         (None, Some(name)) => match rows.iter().find(|r| r.name == name) {
             Some(r) => (
@@ -499,14 +507,13 @@ fn look(
                 } else {
                     Landed::Idle
                 },
-                r.name.clone(),
+                r,
                 None,
             ),
             None => {
-                return Err(fail(
-                    "not_in_tmux",
-                    copy_core::copy_text("beSessionOpen.look.noSession", &[("name", name)]),
-                    None,
+                return Err(missing(
+                    "beSessionOpen.look.noSession",
+                    &[("name", name)],
                 ))
             }
         },
@@ -516,7 +523,12 @@ fn look(
             ))
         }
     };
-    let line = attach_line(&name, here, deps)?;
+    let target = match at.host {
+        crate::wire::TerminalHost::Tmux => &at.name,
+        crate::wire::TerminalHost::Managed => &at.terminal,
+    };
+    let name = at.name.clone();
+    let line = attach_line(target, here, deps)?;
     Ok(Opened {
         sid: sid.map(str::to_string),
         note,
