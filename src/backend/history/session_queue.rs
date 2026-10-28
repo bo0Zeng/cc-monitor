@@ -88,6 +88,9 @@ struct Entry {
     /// 标未送达时投递那一下说的为什么（没退成 · 退了没送进）；没有 ⇒ 照「未送进会话」那一句。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     why: Option<String>,
+    /// 上一回送那一下托管终端说「持有者输入行里有没交的字」：这一条在等那一行交掉 · 清掉（名单那一句 · 底行都说出来）。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    half: bool,
 }
 
 impl Default for Book {
@@ -205,6 +208,7 @@ impl Book {
             rewind: req.rewind.clone(),
             state: QueueState::Held,
             why: None,
+            half: false,
         });
         let i = self.items.len() - 1;
         if req.n.is_none() {
@@ -233,6 +237,9 @@ impl Book {
     fn said_of(&self, e: &Entry) -> (Option<u32>, String) {
         let place = (e.state == QueueState::Queued).then(|| self.place_of(e));
         let said = match (e.state, place) {
+            (QueueState::Queued, Some(p)) if e.half => {
+                copy_text("beQueue.said.placeHalf", &[("place", &p.to_string())])
+            }
             (QueueState::Queued, Some(p)) => {
                 copy_text("beQueue.said.place", &[("place", &p.to_string())])
             }
@@ -313,6 +320,33 @@ impl Book {
         e.state = QueueState::Undelivered;
         e.why = why;
         true
+    }
+
+    /// 送那一下等着的原因：`half` ＝ 托管终端里持有者输入行有没交的字（名单那一句 · 底行照它多那半截）。不在排着 ⇒ 不动。
+    pub(crate) fn mark_half(&mut self, id: &str, half: bool) {
+        if let Some(e) = self
+            .items
+            .iter_mut()
+            .find(|e| e.id == id && e.state == QueueState::Queued)
+        {
+            e.half = half;
+        }
+    }
+
+    /// 瘦客户端底行那一句：还在等的（排着 · 收着）合计 N 条；有一条在等半句交掉 ⇒ 带那半截；一条都没有 ⇒ `None`。
+    pub(crate) fn waiting_line(&self) -> Option<String> {
+        let waiting = || {
+            self.items
+                .iter()
+                .filter(|e| e.state != QueueState::Undelivered)
+        };
+        let n = waiting().count().to_string();
+        let key = if waiting().any(|e| e.half && e.state == QueueState::Queued) {
+            "beQueue.said.waitingHalf"
+        } else {
+            "beQueue.said.waiting"
+        };
+        (n != "0").then(|| copy_text(key, &[("n", &n)]))
     }
 
     /// 有收着的（同一端前一号还没到）：最早那一条等够了是几点（主人的钟）。
@@ -490,14 +524,22 @@ pub(crate) fn read(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Fail>
     })
 }
 
-/// 瘦客户端底行那一句：名单里还在等的（排着 · 收着）合计 N 条；一条都没有 ⇒ `None`。
-pub(crate) fn waiting_said(list: &QueueList) -> Option<String> {
-    let n = list
-        .items
-        .iter()
-        .filter(|i| i.state != QueueState::Undelivered)
-        .count();
-    (n > 0).then(|| copy_text("beQueue.said.waiting", &[("n", &n.to_string())]))
+/// 瘦客户端底行那一句（[`Book::waiting_line`]，先把等够了的排掉）；读不出 ⇒ `None`。
+pub(crate) fn waiting_said(own: &Own, sid: &str, now_ms: i64) -> Option<String> {
+    with_book(own, sid, |b| {
+        b.settle(now_ms);
+        Ok(b.waiting_line())
+    })
+    .ok()
+    .flatten()
+}
+
+/// 投递口：送那一下等着的原因（[`Book::mark_half`]）；没变就不写。
+pub(crate) fn mark_half(own: &Own, sid: &str, id: &str, half: bool) -> Result<(), Fail> {
+    with_book(own, sid, |b| {
+        b.mark_half(id, half);
+        Ok(())
+    })
 }
 
 /// 托管终端 `id` 底行此刻那一句：没打标 · 没在等的 · 读不出 ⇒ `None`。
@@ -509,8 +551,7 @@ pub(crate) fn line_of_host(own: &Own, id: &str) -> Option<String> {
     if sid.is_empty() {
         return None;
     }
-    let list = read(own, &sid, crate::common::time::now_ms()).ok()?;
-    waiting_said(&list)
+    waiting_said(own, &sid, crate::common::time::now_ms())
 }
 
 /// 瘦客户端底行「排队 N 条」的耳朵：经 [`crate::platform::watch_file`] 盯 `hosts/<id>/`（打标那一下）与这台的队目录（队动了），
