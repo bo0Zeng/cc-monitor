@@ -3,7 +3,6 @@
  *
  * 会话状态全在 `TabStore`（同一个实例）；要别处做的事经 `TabStreamHost`：按偏移取回的历史行走 `onLine` 全套 ·
  * 刷 tab 栏（立即 / 帧末合批）· 应用 ai-title · 真用户输入上屏时的自动跟随 · 起分叉出来的新会话。
- * `replay-tail-keep.vitest.ts` 按原文抽 `MATERIALIZE_TAIL_K` 与 `MATERIALIZE_ROUNDS_PER_CALL` 对拍 Rust 侧的 `REPLAY_TAIL_KEEP`。
  */
 import { speakerNameOf } from "./agent-profile";
 import { SPEAKER_SELECTOR } from "./cards/speaker";
@@ -125,10 +124,15 @@ export type TabStreamDom = Pick<
 >;
 
 export class TabStreamView {
-  /** 物化 / 后台 tab 尾段条数（与查看器的 TAIL_INITIAL 同义） */
+  /** 后台 tab 空闲物化的尾段条数。 */
   private static readonly MATERIALIZE_TAIL_K = 150;
-  /** `materializeUntilFilled` 一次同步调用最多跑几轮（不是「到此为止」：没满就下一帧接着补）。 */
-  private static readonly MATERIALIZE_ROUNDS_PER_CALL = 4;
+  /**
+   * 冷开（没建过卡的 tab）从尾部窗口一截建几条：自下而上一截一截建，建到 [`coldFilled`] 为止 ——
+   * 只建视口那一截，更早的接上骨架之后照账本补可见区（折着的过程扣掉）。
+   */
+  private static readonly COLD_CHUNK = 20;
+  /** `materializeUntilFilled` 一次同步调用最多建几截（不是「到此为止」：没满就下一帧接着补）。 */
+  private static readonly MATERIALIZE_ROUNDS_PER_CALL = 8;
   /** 上翻补批的批量 / 触发距离 */
   private static readonly FILL_BATCH = 200;
   /**
@@ -350,7 +354,11 @@ export class TabStreamView {
       jump: (to) => void Promise.resolve(this.jumpInTab(sessionId, streamEl, to)).catch(() => undefined),
       inFront: () => this.store.activeId === sessionId,
     });
-    turnFold.onTurns = () => turnRail.render();
+    turnFold.onTurns = () => {
+      turnRail.render();
+      // 轮次落地、过程藏掉之后视口可能露出占位（没有 scroll 事件来叫）⇒ 当前的那一个补一次可见区
+      if (this.store.activeId === sessionId) this.fillSkeleton(this.store.tabs.get(sessionId));
+    };
     this.streamRootEl.appendChild(turnRail.el);
     return {
       streamEl,
@@ -373,6 +381,13 @@ export class TabStreamView {
     };
   }
 
+  /** 〔骨架〕补可见区：建了新卡才交回远处的（建卡这一下本来就要排版；没建的不量卡），视口附近的占位行交第二级精算。 */
+  private fillSkeleton(t: Tab | undefined): void {
+    if (!t?.skeleton) return;
+    if (t.skeleton.fillVisible() > 0) t.skeleton.release();
+    this.refineNearby(t);
+  }
+
   /** 给刚建好的 tab 挂上翻补批的滚动监听与视口变大的补批（原是 `ensureTab` 里的一段，逐字）。 */
   wireTab(tab: Tab): void {
     const sessionId = tab.sessionId;
@@ -385,9 +400,7 @@ export class TabStreamView {
       // 〔骨架〕接上了 ⇒ 占位可能在任何位置（拖滚动条到中部），**每次滚动**都看一眼
       // 视口里有没有占位 —— 不能沿用「离顶 800px 内才补」那道门（那是尾部窗口单洞后缀的假设）
       if (t?.skeleton) {
-        // 建了新卡才交回远处的（建卡这一下本来就要排版；没建的滚动不量卡）
-        if (t.skeleton.fillVisible() > 0) t.skeleton.release();
-        this.refineNearby(t); // 第二级：视口附近的占位行交 Worker 精算
+        this.fillSkeleton(t);
         return;
       }
       if (t && t.streamEl.scrollTop <= TabStreamView.TOP_TRIGGER_PX) this.fillAbove(t);
@@ -681,7 +694,7 @@ export class TabStreamView {
     // 批后空闲物化还没轮到这个 tab 就来了实时行：先物化尾段（takeTail 顺带钉 floor），再照常收这一行 ——
     //   直接按新行钉 floor 会把账本里整段历史钉死在下面。
     if (tab.window.floorSeq === null && !this.store.inBatch && tab.window.pendingCount > 0) {
-      this.materializeTail(tab);
+      this.materializeTail(tab, TabStreamView.COLD_CHUNK);
     }
     const floor = tab.window.floorSeq;
     let render: boolean;
@@ -933,9 +946,10 @@ export class TabStreamView {
   }
 
   /**
-   * 补到一屏填满（`contentReachesBottom`）或账本弹尽：一批 150 条可能只产出几张卡（工具结果注入进调用那一行、skip 记录占配额）。
-   * 一次同步调用只跑 {@link MATERIALIZE_ROUNDS_PER_CALL} 轮（每一下有界）；没满、账本还有 ⇒ 下一帧接着补
+   * 补到 [`coldFilled`] 或账本弹尽：一截 {@link COLD_CHUNK} 条，一截可能只产出几张卡（工具结果注入进调用那一行、skip 记录占配额）。
+   * 一次同步调用至多 {@link MATERIALIZE_ROUNDS_PER_CALL} 截（每一下有界）；没满、账本还有 ⇒ 下一帧接着补
    * （`scheduleFillContinuation`，与上翻补批同一条 rAF 自链）—— 不可滚的元素不产生 scroll，没有别的入口会再补。
+   * 只建视口那一截：从前一截 150 条、至多四截（600 行，一半落在折着的过程里 0 高），WebKit 冷切停住那一帧一秒多。
    */
   private materializeUntilFilled(tab: Tab): void {
     if (tab.skeleton) {
@@ -944,10 +958,19 @@ export class TabStreamView {
     }
     for (let round = 0; round < TabStreamView.MATERIALIZE_ROUNDS_PER_CALL; round++) {
       if (tab.window.pendingCount === 0) return;
-      if (round > 0 && this.contentReachesBottom(tab)) return;
-      this.materializeTail(tab);
+      if (round > 0 && this.coldFilled(tab)) return;
+      this.materializeTail(tab, TabStreamView.COLD_CHUNK);
     }
-    if (tab.window.pendingCount > 0 && !this.contentReachesBottom(tab)) this.scheduleFillContinuation(tab);
+    if (tab.window.pendingCount > 0 && !this.coldFilled(tab)) this.scheduleFillContinuation(tab);
+  }
+
+  /**
+   * 冷开那一截够了没有：够到视口下沿（`contentReachesBottom`），而且贴底时离顶超过上翻补批的触发距离 ——
+   * 不然贴底那一下的 scroll 落在触发区里，上翻补批接着一批 {@link FILL_BATCH} 条往上建（还没接骨架时走的是尾部窗口那一路）。
+   */
+  private coldFilled(tab: Tab): boolean {
+    const el = tab.streamEl;
+    return this.contentReachesBottom(tab) && el.scrollHeight - el.clientHeight > TabStreamView.TOP_TRIGGER_PX;
   }
 
   /**
@@ -988,7 +1011,7 @@ export class TabStreamView {
   }
 
   /** 物化 tab 的尾段：从窗口账本弹出 seq 最高的 ≤ k 条建卡。对象是没有滚动位置要保的 tab，不做滚动补偿（那在 fillAbove）。 */
-  private materializeTail(tab: Tab, k = TabStreamView.MATERIALIZE_TAIL_K): void {
+  private materializeTail(tab: Tab, k: number): void {
     this.renderPayloadsBatch(tab, tab.window.takeTail(k, TabStreamView.BATCH_BUDGET));
     this.updateSentinel(tab);
   }
@@ -1296,10 +1319,10 @@ export class TabStreamView {
   }
 
   /**
-   * 上流点之下缺得比这还多 ⇒ 不往后接那一整段，tab 整份重来、只取上流点之下这么多行（一次开 tab 最多物化的条数，
-   * 与壳留存每会话留的同值），更早的往上翻时按行号 / 按骨架取回。
+   * 上流点之下缺得比这还多 ⇒ 不往后接那一整段，tab 整份重来、只取上流点之下这么多行（与壳留存每会话留的尾巴
+   * `event_replay.rs::REPLAY_TAIL_KEEP` 同值：重来之后手上的就是 F5 之后重放会推来的那一截），更早的往上翻时按行号 / 按骨架取回。
    */
-  private static readonly WATCH_REFILL_MAX = TabStreamView.MATERIALIZE_TAIL_K * TabStreamView.MATERIALIZE_ROUNDS_PER_CALL;
+  private static readonly WATCH_REFILL_MAX = 600;
 
   /**
    * **这个会话刚进了这条流的「在看」名单**（`TabManager.onSessionWatch`）：这份记录从第 `seq` 行起上流，

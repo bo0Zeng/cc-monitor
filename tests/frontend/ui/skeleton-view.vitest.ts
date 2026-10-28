@@ -10,7 +10,7 @@
  * **买不到**：真引擎里的像素（布局模型是一维的累加，没有 margin 折叠 / content-visibility）；
  * 秤 3（半屏）那种端到端读数得在真 webview 里打。
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { estimateFromFacts, initialColumnWidth, type SkeletonFacts } from "../../../src/frontend/ui/height-estimate";
 import { SkeletonLedger } from "../../../src/frontend/ui/live-window";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
@@ -814,5 +814,198 @@ describe("〔P3〕列宽变了", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(releases.length, "换代之后还交了 Worker").toBe(2);
     expect(s.view.staleCount, "换代之后还接着交").toBe(1);
+  });
+});
+
+// ===== 〔A17-45-3-2〕冷开只建视口那一截，折着的过程不建卡 =====
+// 冷开一个没建过卡的 tab：尾部窗口里是重放推来的 600 行（壳留存每会话的尾巴），之前一轮 150 条、四轮全建（489 个条目，
+// 205 个在折着的过程里 0 高）—— WebKit 冷切停住那一帧 1.6 s 跟着它走。改成：只建填满一屏的那一截，接上骨架、轮次落地之后
+// 照账本补可见区（折着的扣掉）。真 `TabStreamView` ＋ 真 `MessageStream` · `RecordTimeline` · `TurnFold`；几何同上面的一维模型，
+// 只是卡没有 `data-h`（真渲染出来的）⇒ 一律 60px，`proc-hidden` 的 0、过程行 0；IPC 只有骨架索引与轮次两问是替身。
+describe("〔A17-45-3-2〕冷开只建一屏", () => {
+  const N = 600;
+  const PER = 20;
+  const CARD_H = 60;
+  const reply = (seq: number) =>
+    ({ agent: "claude", t: "reply", id: `u${seq}`, blocks: [{ type: "text", text: "x" }], autoReply: false, draw: "card", human: false }) as never;
+  const facts = (i: number) => ({ o: i * 100, n: 100, t: "reply", dr: "card", ch: 200, pl: 2 });
+  /** 每轮：开头那一行露着、结尾（最后一行）露着，中间是过程（折着）。 */
+  const turn = (k: number) => ({
+    at: k * PER * 100,
+    line: k * PER,
+    uuid: `u${k * PER}`,
+    start: "2026-10-06T02:01:00Z",
+    end: "2026-10-06T02:04:02Z",
+    startText: "02:01",
+    endText: "02:04",
+    said: "q",
+    tools: 3,
+    thinking: 0,
+    agents: 0,
+    background: 0,
+    retries: 0,
+    peers: 0,
+    fails: 0,
+    shown: [`u${k * PER + PER - 1}`],
+    reply: "",
+    done: true,
+    phase: "idle",
+    folds: [{ after: `u${k * PER}`, afterLine: k * PER, until: `u${k * PER + PER - 1}`, untilLine: k * PER + PER - 1, parts: [{ text: "p", tone: "plain" }], span: { text: "", from: null, to: null }, phase: "idle", firstFail: null }],
+  });
+
+  /** 一维布局（同上），外加 `scrollHeight` / `clientHeight`：流的贴底读它们。 */
+  function layoutOf(scrollEl: HTMLElement, content: HTMLElement): { scrollTop: number } {
+    const state = { scrollTop: 0 };
+    const h = (el: Element): number => {
+      const e = el as HTMLElement;
+      if (e.classList.contains("proc-hidden") || e.classList.contains("proc-line") || e.classList.contains("stream-more-above")) return 0;
+      if (e.style.height) return parseFloat(e.style.height);
+      return CARD_H;
+    };
+    const total = (): number => Array.from(content.children).reduce((a, c) => a + h(c), 0);
+    // 内容变矮了 scrollTop 跟着夹回去（同真引擎）
+    const top = (): number => (state.scrollTop = Math.max(0, Math.min(state.scrollTop, total() - VIEW_H)));
+    Object.defineProperty(scrollEl, "scrollTop", { get: top, set: (v: number) => ((state.scrollTop = v), top()), configurable: true });
+    Object.defineProperty(scrollEl, "scrollHeight", { get: () => Math.max(VIEW_H, total()), configurable: true });
+    Object.defineProperty(scrollEl, "clientHeight", { get: () => VIEW_H, configurable: true });
+    const rect = (y: number, hh: number): DOMRect => ({ top: y, bottom: y + hh, height: hh, left: 0, right: 100, width: 100, x: 0, y }) as DOMRect;
+    scrollEl.getBoundingClientRect = () => rect(0, VIEW_H);
+    content.getBoundingClientRect = () => rect(-top(), total());
+    const orig = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement): DOMRect {
+      if (this.parentElement !== content) return orig.call(this);
+      if (h(this) === 0 && !this.style.height) return rect(0, 0);
+      let y = -top();
+      for (const c of Array.from(content.children)) {
+        const hh = h(c);
+        if (c === this) return rect(y, hh);
+        y += hh;
+      }
+      return rect(0, 0);
+    };
+    onTestFinished(() => {
+      HTMLElement.prototype.getBoundingClientRect = orig;
+    });
+    return state;
+  }
+
+  async function rig(late = false) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const { isChanCall, chanArgsJson, chanReply } = await import("../../test-support/chan-fake");
+    const { packIndex } = await import("../../test-support/pack-index");
+    const { TabStreamView } = await import("../../../src/frontend/ui/tab-stream-view");
+    const { TabStore } = await import("../../../src/frontend/ui/tab-store");
+    vi.stubGlobal("CSS", { escape: (s: string) => s });
+    onTestFinished(() => void vi.unstubAllGlobals());
+    const rows = Array.from({ length: N }, (_, i) => facts(i));
+    // 骨架索引照后端：从 `offset` 起、至多 `limit` 行
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (isChanCall(cmd, args, "history-index")) {
+        const b = chanArgsJson(args) as { offset: number; limit?: number };
+        const lo = b.offset / 100;
+        const hi = Math.min(N, b.limit === undefined ? N : lo + b.limit);
+        return chanReply({ ...packIndex(lo * 100, hi * 100, rows.slice(lo, hi)), next: null });
+      }
+      return null;
+    });
+    onTestFinished(() => void vi.mocked(invoke).mockReset().mockResolvedValue(null));
+    const root = document.createElement("div");
+    document.body.replaceChildren(root);
+    const store = new TabStore();
+    const host = { onLine() {}, refreshTabBar() {}, scheduleTabBarRefresh() {}, userActive() {}, forkFrom() {}, runLabelOf: () => undefined, markNewRunCard() {} };
+    const tsv = new TabStreamView(store, root, host);
+    onTestFinished(() => tsv.dispose());
+    const dom = tsv.mountTabDom("c");
+    // 轮次那一问：`late` ⇒ 等测试放行（骨架先接上、轮次后到那一形）
+    let letTurns!: () => void;
+    const gate = late ? new Promise<void>((res) => (letTurns = res)) : Promise.resolve();
+    const turns = vi.fn(async () => {
+      await gate;
+      return { available: true, from: 0, end: N * 100, turns: Array.from({ length: N / PER }, (_, k) => turn(k)) };
+    });
+    (dom.turnFold as unknown as { read: unknown }).read = turns;
+    const tab = {
+      sessionId: "c",
+      ...dom,
+      parentPath: "/p/c.jsonl",
+      origin: "<local>",
+      agent: null,
+      face: null,
+      needs: null,
+      pending: [],
+      retries: new Map(),
+      toolUseNames: new Map(),
+      runCards: new Map(),
+      unread: 0,
+      fullRecord: async () => null,
+      facts: { reset() {}, markStale() {}, refresh: async () => {}, needsFetch: false },
+    };
+    store.tabs.set("c", tab as never);
+    const layout = layoutOf(dom.streamEl, dom.stream.contentElement);
+    // 重放推来的尾巴：全收纳（后台 tab，还没建过卡）
+    for (let s = 0; s < N; s++) {
+      tab.seenSeqs.add(s);
+      tab.window.defer({ session_id: "c", cwd: "/p", path: "/p/c.jsonl", seq: s, record: reply(s) } as never);
+    }
+    const built = (): number[] =>
+      Array.from(dom.stream.contentElement.children)
+        .map((c) => c.getAttribute("data-id"))
+        .filter((id): id is string => id !== null && /^u\d+$/.test(id))
+        .map((id) => Number(id.slice(1)));
+    const open = (): void => {
+      store.activeId = "c";
+      tsv.showOnly("c");
+      tsv.activate(tab as never);
+      tsv.scrollToBottom(tab as never); // 宿主切进来照「贴着底」贴底（`tabs.ts::switchTo`）
+    };
+    return { tab, dom, layout, built, open, turns, letTurns: () => letTurns?.() };
+  }
+
+  /** 视口 ±`KEEP_SCREENS` 屏放得下几张卡。 */
+  const keepCards = (1 + 2 * SkeletonView.KEEP_SCREENS) * Math.ceil(VIEW_H / CARD_H);
+
+  it("冷开返回时：已建的只有填满一屏那一截（≤ 视口 ±KEEP_SCREENS 屏），贴底，最后一张卡顶到视口下沿", async () => {
+    const r = await rig();
+    r.open();
+    const ids = r.built();
+    expect(ids.length, `冷开建了 ${ids.length} 张卡`).toBeGreaterThan(0);
+    expect(ids.length, `冷开建了 ${ids.length} 张卡（视口 ±${SkeletonView.KEEP_SCREENS} 屏放得下 ${keepCards} 张）`).toBeLessThanOrEqual(keepCards);
+    expect(Math.max(...ids)).toBe(N - 1);
+    const last = r.dom.stream.contentElement.querySelector<HTMLElement>(`[data-id="u${N - 1}"]`)!;
+    expect(last.getBoundingClientRect().bottom, "没贴底").toBeCloseTo(VIEW_H, 0);
+  });
+
+  it.each([
+    ["轮次先到", false],
+    ["骨架先接上、轮次后到", true],
+  ])("接上骨架、轮次落地之后（%s）：补可见区不建折着的过程，已建的都在视口 ±KEEP_SCREENS 屏里，视口里不空", async (_name, late) => {
+    const r = await rig(late);
+    r.open();
+    const atOpen = new Set(r.built());
+    await vi.waitFor(() => expect(r.tab.skeleton, "骨架没接上").not.toBeNull(), UNTIL_CEILING);
+    r.letTurns();
+    await vi.waitFor(() => expect(r.turns).toHaveBeenCalled(), UNTIL_CEILING);
+    await new Promise((res) => setTimeout(res, 0));
+    await new Promise((res) => setTimeout(res, 0));
+    const sk = r.tab.skeleton!;
+    const folded = sk.ledger.foldedRanges;
+    expect(folded.length, "前置：账本拿到了折叠").toBeGreaterThan(0);
+    const ids = r.built();
+    const inFold = ids.filter((s) => !atOpen.has(s) && folded.some(([a, b]) => s >= a && s < b));
+    expect(inFold, "骨架补可见区建了折着的过程").toEqual([]);
+    expect(ids.length, `已建 ${ids.length} 张`).toBeLessThanOrEqual(keepCards);
+    for (const s of ids) {
+      const el = r.dom.stream.contentElement.querySelector<HTMLElement>(`[data-id="u${s}"]`)!;
+      if (el.classList.contains("proc-hidden")) continue;
+      const box = el.getBoundingClientRect();
+      expect(box.bottom, `第 ${s} 行离视口超过 ${SkeletonView.KEEP_SCREENS} 屏`).toBeGreaterThan(-VIEW_H * SkeletonView.KEEP_SCREENS);
+      expect(box.top).toBeLessThan(VIEW_H * (1 + SkeletonView.KEEP_SCREENS));
+    }
+    // 视口里有多高是卡（占位不算）：过程藏掉之后露出来的占位要补成卡，不许留着一块空的
+    const covered = ids.reduce((a, s) => {
+      const b = r.dom.stream.contentElement.querySelector<HTMLElement>(`[data-id="u${s}"]`)!.getBoundingClientRect();
+      return a + Math.max(0, Math.min(b.bottom, VIEW_H) - Math.max(b.top, 0));
+    }, 0);
+    expect(covered, "过程藏掉之后视口里露出的占位没补").toBeGreaterThanOrEqual(VIEW_H - CARD_H);
   });
 });
