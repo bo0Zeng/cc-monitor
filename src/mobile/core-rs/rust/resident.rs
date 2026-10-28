@@ -645,7 +645,7 @@ mod tests {
         );
         let short = serde_json::json!({"total": 1});
         assert_eq!(j("history-tail", short.clone())["data"], short);
-        let good = serde_json::json!({"agent": "claude", "by": "agent", "id": "@1", "t": "title", "text": "Fix", "later": 2});
+        let good = serde_json::json!({"agent": "claude", "by": "agent", "id": "@1", "t": "title", "text": "Fix", "draw": "none", "human": false, "later": 2});
         let read = serde_json::json!({"rows": [{"end": 10, "hash": 1, "record": good, "cwd": "/w", "later": 3}], "next": 10, "eof": true, "later": 4});
         assert_eq!(j("history-read", read.clone())["data"], read);
         let raw = serde_json::json!({"anything": [1, 2]});
@@ -657,7 +657,7 @@ mod tests {
     #[test]
     fn one_unreadable_record_becomes_an_unread_card_and_the_page_stays_readable() {
         use copy_core::copy_text;
-        let good = serde_json::json!({"agent": "claude", "by": "agent", "id": "@1", "t": "title", "text": "Fix"});
+        let good = serde_json::json!({"agent": "claude", "by": "agent", "id": "@1", "t": "title", "text": "Fix", "draw": "none", "human": false});
         let short = serde_json::json!({"agent": "claude", "id": "@2", "t": "reply", "model": "m"});
         let novel = serde_json::json!({"agent": "claude", "id": "@3", "t": "brandNew", "x": 1});
         let card = |raw: &serde_json::Value, why: &str, kind: &str, id: &str| {
@@ -669,7 +669,7 @@ mod tests {
             serde_json::json!({
                 "agent": "claude", "id": id, "t": "unread", "why": why, "type": kind,
                 "text": text, "tone": "warn",
-                "excerpt": raw.to_string(), "count": 1,
+                "excerpt": raw.to_string(), "count": 1, "draw": "card", "human": false,
             })
         };
         let row = |r: &serde_json::Value| serde_json::json!({"end": 10, "hash": 1, "record": r, "cwd": "/w"});

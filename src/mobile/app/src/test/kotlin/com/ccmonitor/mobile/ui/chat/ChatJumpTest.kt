@@ -74,7 +74,7 @@ class ChatJumpTest {
     @Test
     fun `命中落在一次工具调用的卡里 ⇒ 落点是那张工具卡`() =
         runTest {
-            val call = mapOf("agent" to "claude", "id" to "a101", "t" to "reply", "autoReply" to false, "blocks" to listOf(mapOf("type" to "tool_use", "id" to "c1", "name" to "Read", "input" to emptyMap<String, Any>())))
+            val call = mapOf("agent" to "claude", "id" to "a101", "t" to "reply", "autoReply" to false, "draw" to "steps", "human" to false, "blocks" to listOf(mapOf("type" to "tool_use", "id" to "c1", "name" to "Read", "input" to emptyMap<String, Any>())))
             file.records[101] = call
             val link = FakeCoreLink()
             val s = session(link)

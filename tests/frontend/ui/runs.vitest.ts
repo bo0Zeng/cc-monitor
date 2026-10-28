@@ -147,6 +147,8 @@ function dispatch(seq: number, tool: string, label: string): never {
     autoReply: false,
     cards: { [tool]: "agent" },
     runs: { [tool]: { label, kind: "Explore" } },
+    draw: "steps",
+    human: false,
   }) as never;
 }
 
@@ -159,6 +161,8 @@ function result(seq: number, tool: string, text: string, kind: "handback" | "lau
     who: { speaker: { kind: "toolResult" }, text: "" },
     blocks: [{ type: "tool_result", for: tool, content: [{ type: "text", text }], isError: false }],
     results: { [tool]: { ok: true, preview: text, chars: [...text].length, kind } },
+    draw: "steps",
+    human: false,
   }) as never;
 }
 
@@ -171,6 +175,8 @@ function foldedResult(seq: number, tool: string, preview: string, chars: number)
     who: { speaker: { kind: "toolResult" }, text: "" },
     blocks: [{ type: "tool_result", for: tool, isError: false }],
     results: { [tool]: { ok: true, preview, chars, kind: "handback" } },
+    draw: "steps",
+    human: false,
   }) as never;
 }
 
