@@ -6,4 +6,4 @@ zip RUSTSEC-2026-0369 同上：ZipStreamReader::extract · ZipArchive::extract �
 glib RUSTSEC-2024-0429 VariantStrIter 本仓不用；glib 0.18 是 Tauri Linux 那一支（gtk-rs 0.18）带的，只能随 Tauri 换到 gtk 0.20+ 再升
 quick-xml RUSTSEC-2026-0194 只经 plist 进来：tauri-utils 那条只在构建时读自家配置，syntect 那条（文件窗口的高亮）只用内置的二进制语法包、不解 plist；读的都不是外来 XML。0.41 要等 plist 升
 quick-xml RUSTSEC-2026-0195 同上
-katex GHSA-238p-pmpm-9mq7 要先有原型污染才绕得过 trust；本仓 KATEX_OPTIONS 不开 trust，渲染结果另过 DOMPurify。升 0.18 要改 package.json 的版本要求，另做
+katex GHSA-238p-pmpm-9mq7 要先有原型污染才绕得过 trust；本仓 KATEX_OPTIONS 不开 trust，渲染结果另过 DOMPurify。升 0.18 要改 package.json 的版本要求，和开发工具链那批 npm 升级一起定
