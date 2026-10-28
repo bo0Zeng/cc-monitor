@@ -71,7 +71,7 @@ class RecordUnitsTest {
                 .single() as RenderUnit.ToolCall
         assertTrue(call(mapOf("c" to "interactive"), "card").interactive)
         assertEquals(false, call(mapOf("c" to "diff"), "steps").interactive)
-        assertEquals(false, call(null).interactive)
+        assertEquals(false, call(null, "steps").interactive)
     }
 
     @Test
