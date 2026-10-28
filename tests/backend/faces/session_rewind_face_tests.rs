@@ -33,6 +33,23 @@ fn handing_to_the_other_machine_rewrites_it_as_local() {
 /// 测试沙箱的家里没有这条会话 ⇒ `no_such_session`（不照缺省那一家瞎给选项）。
 #[test]
 fn a_session_without_a_record_here_is_no_such_session() {
-    let got = here("00000000-0000-4000-8000-0000000000a9").expect_err("沙箱里没有这条会话");
+    let got = options_here("00000000-0000-4000-8000-0000000000a9").expect_err("沙箱里没有这条会话");
     assert_eq!(got.code, "no_such_session");
+}
+
+/// 这台没有那条会话的记录 ⇒ 一个键不按，回不支持（测试沙箱的家是空的）。
+#[test]
+fn a_session_without_a_record_here_is_not_walked() {
+    let got = walk_here(
+        "00000000-0000-4000-8000-0000000000b1",
+        &Rewind {
+            to: "u1".into(),
+            how: cmd_wire::rewind::RewindHow::Conversation,
+            when: cmd_wire::rewind::RewindWhen::AfterTurn,
+        },
+        "x",
+        None,
+    )
+    .expect("没有记录不是命令级错");
+    assert_eq!(got, Walked::No(Why::Unsupported));
 }

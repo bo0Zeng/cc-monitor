@@ -369,13 +369,19 @@ pub(crate) struct RewindChoice {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RewindScreen {
     /// 输入行，主 agent 空着；`typed` ＝ 输入行里此刻的字（空着 ⇒ 空串）。
-    Prompt { typed: String },
+    Prompt {
+        typed: String,
+    },
     /// 主 agent 正在这一轮里（出字 · 调工具 · 等工具结果）。
     Busy,
     /// 回退列表：人说过的每一句一行（先说的在上），末行是「此刻」。
-    List { rows: Vec<RewindRow> },
+    List {
+        rows: Vec<RewindRow>,
+    },
     /// 选中一句之后的确认页：几项、哪项选中。
-    Confirm { items: Vec<RewindItem> },
+    Confirm {
+        items: Vec<RewindItem>,
+    },
     Unknown,
 }
 

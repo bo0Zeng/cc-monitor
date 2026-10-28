@@ -382,16 +382,3 @@ fn the_outcome_writes_its_own_reason() {
         Some(copy_text("beRewind.unsure.notReadBack", &[]))
     );
 }
-
-/// 这台没有那条会话的记录 ⇒ 一个键不按，回不支持（测试沙箱的家是空的）。
-#[test]
-fn a_session_without_a_record_here_is_not_walked() {
-    let got = here(
-        "00000000-0000-4000-8000-0000000000b1",
-        &edit("u1", RewindHow::Conversation, RewindWhen::AfterTurn),
-        "x",
-        None,
-    )
-    .expect("没有记录不是命令级错");
-    assert_eq!(got, Walked::No(Why::Unsupported));
-}
