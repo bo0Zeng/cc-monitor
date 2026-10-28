@@ -389,9 +389,9 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 
 #### `CanTerm`
 
-还有没有终端可去：`yes` 带它在不在 tmux 里（终端窗口关了也能「在终端里打开」）。
+还有没有终端可去：`yes` 带它住在哪种宿主里（`tmux` · `managed`；不在任何宿主里 ⇒ `direct`）。
 
-- `can: "yes"`，带 `tmux` bool
+- `can: "yes"`，带 `host` Run
 - `can: "no"`，带 `why` Words
 
 #### `NameFace`
@@ -4227,7 +4227,7 @@ removed: boolean, };
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type GroupsHere = { groups: Array<HereGroup>, members: Array<HereMember>, };
 type HereGroup = { id: string, name: string, made: number, named: number, };
 type HereMember = { sid: string, groups: Array<string>, pinned: boolean, face: SessionFace, facts: MemberFacts, };
@@ -4258,6 +4258,7 @@ bg: boolean,
  */
 at: number | null, };
 type NoArgs = Record<symbol, never>;
+type Run = "managed" | "tmux" | "direct";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -4336,7 +4337,7 @@ type Words = string;
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type GroupCount = { dot: SessionDot, n: number, word: string, 
 /**
  * 组头那一句（「需手动 2」那样，出口照摆）。
@@ -4407,6 +4408,7 @@ bg: boolean,
  * 最后活动（毫秒；清单里没有 ⇒ 缺）。
  */
 at: number | null, };
+type Run = "managed" | "tmux" | "direct";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -4502,7 +4504,7 @@ type HereGroup = { id: string, name: string, made: number, named: number, };
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type GroupCount = { dot: SessionDot, n: number, word: string, 
 /**
  * 组头那一句（「需手动 2」那样，出口照摆）。
@@ -4559,6 +4561,7 @@ bg: boolean,
  */
 at: number | null, };
 type NoArgs = Record<symbol, never>;
+type Run = "managed" | "tmux" | "direct";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -4666,7 +4669,7 @@ delete: CanDelete, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
-type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -4768,6 +4771,7 @@ at: number, atText: Words, sectionText: Words, spanText: Words,
 origin?: string, };
 type HistorySort = "activity" | "created";
 type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Run = "managed" | "tmux" | "direct";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -4870,7 +4874,7 @@ delete: CanDelete, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
-type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -5004,6 +5008,7 @@ origin?: string, sid: string, };
 type HistorySection = { at: number, text: string, };
 type HistorySort = "activity" | "created";
 type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Run = "managed" | "tmux" | "direct";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -5188,7 +5193,7 @@ delete: CanDelete, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
-type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -5231,6 +5236,7 @@ limit?: number,
  */
 titles?: boolean, };
 type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Run = "managed" | "tmux" | "direct";
 type SearchHit = { 
 /**
  * 消息 uuid：打开查看器后据此滚动定位、高亮。
@@ -5408,7 +5414,7 @@ delete: CanDelete, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
-type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -5526,6 +5532,7 @@ forkedFrom?: ForkedFrom,
  */
 face: SessionFace, };
 type Origin = string;
+type Run = "managed" | "tmux" | "direct";
 type SearchDown = { origin: Origin, said: string, };
 type SearchHit = { 
 /**
@@ -7325,7 +7332,7 @@ type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AnsweredRow = { sid: string, said: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
@@ -7495,6 +7502,7 @@ face: SessionFace, needs: Needs,
  */
 hidden: Hidden | null, };
 type NoArgs = Record<symbol, never>;
+type Run = "managed" | "tmux" | "direct";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -7575,7 +7583,7 @@ type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
@@ -7737,6 +7745,7 @@ face: SessionFace, needs: Needs,
 hidden: Hidden | null, };
 type NeedsUnreadable = { origin: Origin, said: Words, };
 type Origin = string;
+type Run = "managed" | "tmux" | "direct";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -7900,7 +7909,7 @@ cmd: string | null,
  */
 at: string | null, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type FactsBackground = { 
 /**
  * 「后台任务运行中 · make test-all · 12m」；命令拿不到 ⇒ 「后台任务运行中」。手机与 CLI 照抄、按节拍重问。
@@ -8276,6 +8285,7 @@ type RetryRun = {
  * 这一串首条重试记录的 `uuid`（界面那条细条就挂在它上面）。
  */
 id: string, outcome: RetryOutcome, };
+type Run = "managed" | "tmux" | "direct";
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -13057,9 +13067,9 @@ client?: string, };
 type Sid = string;
 ```
 
-码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `record_gone` · `already_live` · `not_in_tmux` · `wrong_owner` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_strategy`
+码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `record_gone` · `already_live` · `not_hosted` · `wrong_owner` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_strategy`
 
-失败带 `data` 的码：`bad_args` ⇒ `OpenRefusal` · `unknown_agent` ⇒ `OpenRefusal` · `bad_command` ⇒ `OpenRefusal` · `no_dir` ⇒ `OpenRefusal` · `account_unavailable` ⇒ `OpenRefusal` · `place_unavailable` ⇒ `OpenRefusal` · `bad_tmux_name` ⇒ `OpenRefusal` · `tmux_taken` ⇒ `OpenRefusal` · `record_gone` ⇒ `OpenRefusal` · `already_live` ⇒ `OpenRefusal` · `not_in_tmux` ⇒ `OpenRefusal` · `wrong_owner` ⇒ `OpenRefusal` · `unobservable` ⇒ `OpenRefusal` · `fork_failed` ⇒ `OpenRefusal` · `refused` ⇒ `OpenRefusal` · `start_failed` ⇒ `OpenRefusal` · `child_timed_out` ⇒ `OpenRefusal` · `launch_pending` ⇒ `OpenRefusal` · `no_strategy` ⇒ `OpenRefusal`
+失败带 `data` 的码：`bad_args` ⇒ `OpenRefusal` · `unknown_agent` ⇒ `OpenRefusal` · `bad_command` ⇒ `OpenRefusal` · `no_dir` ⇒ `OpenRefusal` · `account_unavailable` ⇒ `OpenRefusal` · `place_unavailable` ⇒ `OpenRefusal` · `bad_tmux_name` ⇒ `OpenRefusal` · `tmux_taken` ⇒ `OpenRefusal` · `record_gone` ⇒ `OpenRefusal` · `already_live` ⇒ `OpenRefusal` · `not_hosted` ⇒ `OpenRefusal` · `wrong_owner` ⇒ `OpenRefusal` · `unobservable` ⇒ `OpenRefusal` · `fork_failed` ⇒ `OpenRefusal` · `refused` ⇒ `OpenRefusal` · `start_failed` ⇒ `OpenRefusal` · `child_timed_out` ⇒ `OpenRefusal` · `launch_pending` ⇒ `OpenRefusal` · `no_strategy` ⇒ `OpenRefusal`
 
 #### `session-arrive`
 
@@ -15102,7 +15112,7 @@ type PlanStale = { said: string | null, raw: string | null, since: number, since
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanArchived = { id: string, title: string | null, kind: string | null, replacedBy: string | null, };
 type PlanBlock = { id: string, 
@@ -15396,6 +15406,7 @@ face: SessionFace,
 label: string | null, };
 type PlanWhyCode = { "kind": "nosign" } | { "kind": "inside", done: number, of: number, } | { "kind": "upper" } | { "kind": "undecided" };
 type PlanWhyShort = { text: string, wait: boolean, };
+type Run = "managed" | "tmux" | "direct";
 type SeenAt = { 
 /**
  * 记下的时刻（毫秒）。
@@ -15801,7 +15812,7 @@ key: string, };
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
-type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanReturnReply = { line: string, to: PlanWho | null, 
 /**
@@ -15858,6 +15869,7 @@ face: SessionFace,
  * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；会话本身 · 认不出 ⇒ `null`（界面写标签页的名字 · 认不出那一形）。
  */
 label: string | null, };
+type Run = "managed" | "tmux" | "direct";
 type SessionCan = { 
 /**
  * 关掉它的标签页。

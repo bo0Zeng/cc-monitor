@@ -42,10 +42,15 @@ object Rotation {
     const val DELETE = "rotation-strategy-delete"
     const val TZ = "rotation-strategy-tz"
 
+    /** 会话那一形不画推演 ⇒ 不带 [hours]；设置页那一形推 [hours] 小时。 */
     fun view(
         where: RotWhere,
         hours: Int,
-    ): Map<String, Any?> = mapOf("target" to where.wire(), "hours" to hours)
+    ): Map<String, Any?> =
+        when (where) {
+            is RotWhere.Session -> mapOf("target" to where.wire())
+            is RotWhere.Strategy -> mapOf("target" to where.wire(), "hours" to hours)
+        }
 
     fun ofView(data: Any?): RotationViewReply? = Wire.bind<RotationViewReply>(data)
 
@@ -66,13 +71,6 @@ object Rotation {
     fun reload(strategy: String): Map<String, Any?> = mapOf("strategy" to strategy)
 
     fun forNew(strategy: String?): Map<String, Any?> = mapOf("strategy" to strategy)
-
-    /** 临时条目：把 [account] 拖到最上那条、松在时刻 [t]（unix 秒；排到第几段由那台照推演数）。 */
-    fun place(
-        sid: String,
-        account: String,
-        t: Long,
-    ): Map<String, Any?> = mapOf("sid" to sid, "op" to mapOf("place" to mapOf("account" to account, "t" to t)))
 
     /** 会话顺序里把 [account] 那一行拖到第 [to] 格（第一格 ⇒ 现在用它；拖完那一串由那台认）。 */
     fun move(

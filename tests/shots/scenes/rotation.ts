@@ -142,7 +142,7 @@ const NIGHT_BROKEN = `fn decide(ctx) {
 }
 `;
 export const ROTATION_SCENES: Scene[] = [
-  panelScene("rot-panel", "面板 · 平时", "高并发（照编辑器建的那一份）：第一行下拉 ＋ 编辑策略 · 说明 · 顺序（第一格在用的 team，每行一个勾 · 用量 · 号名旁的记号 · 此刻怎样，用不了的沉底）· 模拟照真推演", openPanel),
+  panelScene("rot-panel", "面板 · 平时", "高并发（照编辑器建的那一份）：提示 · 策略一行（下拉 ＋ 编辑策略，说明一行截断）· 顺序（第一格在用的 team 加高绿边；每行把手 · 序号 · 号名＋记号 · 两条量 · 右格后端写的此刻怎样 · 行尾的勾；此刻用不了 · 先不用各成一组），没有模拟", openPanel),
   panelScene("rot-open", "面板 · 点一行看这个号", "点顺序里 lab 那一行：小窗贴着那一行，只看 —— 此刻怎样 · 用量与重置 · 它在这份策略里的规则 · 立即用 lab · 编辑策略", async () => {
     await openPanel();
     await tap(`${PANEL} [data-rot-row][data-account="lab"]`, "[data-rot-pop]");
@@ -150,7 +150,7 @@ export const ROTATION_SCENES: Scene[] = [
   panelScene(
     "rot-off",
     "面板 · 本会话先不用一个号",
-    "personal 那一行的勾去掉：顺序里沉到最下、模拟里那一行整行「不用」；策略不变",
+    "personal 那一行的勾去掉：落进「先不用」那一组、没有把手，右格写「先不用」；策略不变",
     openPanel,
     rotWorld((rw) => {
       rw.sessions[0] = { ...rw.sessions[0], off: ["personal"] };
@@ -172,8 +172,8 @@ export const ROTATION_SCENES: Scene[] = [
   },
   panelScene(
     "rot-temp",
-    "面板 · 拖出来的临时条目",
-    "会话拖过「接下来 lab → personal」：最上那条拖出来的段白描边加圆点，轮到时用不了的写「跳过」；标题右边 手动 N 段 · 清掉手动顺序",
+    "面板 · 手动排过",
+    "会话拖过「接下来 lab → personal」：顺序照拖出来的排，标题右边「手动排过 ·［照策略排］」",
     openPanel,
     rotWorld((rw) => {
       rw.sessions[0] = { ...rw.sessions[0], temp: ["team", "lab", "personal"] };
@@ -182,7 +182,7 @@ export const ROTATION_SCENES: Scene[] = [
   panelScene(
     "rot-hold",
     "面板 · 一个号都用不了 · 已停发",
-    "四个订阅号都被拒：顶上琥珀一条照后端那一句（几点谁恢复 · 还有多久）；模拟里同一段画成「停下」",
+    "四个订阅号都被拒：顶上琥珀一条照后端那一句（几点谁恢复 · 还有多久）；顺序里都落进「此刻用不了」那一组，右格写各自几点重置",
     openPanel,
     rotWorld((rw) => {
       rw.quota = [ledger("work", [100, 97], [60, 3 * 1440], true), ledger("team", [100, 127], [40, 4 * 1440], true), ledger("lab", [100, 47], [30, 3 * 1440], true), ledger("personal", [100, 200], [100, 2 * 1440], true)];
@@ -196,27 +196,6 @@ export const ROTATION_SCENES: Scene[] = [
     rotWorld((rw) => {
       rw.strategies["夜里省着用"] = `// 夜里只用 lab 和 team（示意：decide 里有一处写错了）\n\n/*--- rotation\n{ "format": 5, "tz": "UTC", "settings": { "accounts": [{ "id": "team" }, { "id": "lab" }] }, "form": [] }\n---*/\n\n${NIGHT_BROKEN}`;
       rw.sessions[0] = { start: "work", current: "team", strategy: "夜里省着用" };
-    }),
-  ),
-  panelScene(
-    "rot-past",
-    "面板 · 时间轴过去那一截",
-    "往前 2 小时照会话的换号记录与读数画成实心：最上那条 team → work（停发 10 分钟）→ team；work 那一行从被换下那一刻起发不出去、lab 从开窗那一刻起写 ↻；此刻一条竖线，往后浅色虚边",
-    openPanel,
-    rotWorld((rw) => {
-      const t = now();
-      rw.quota = [ledger("work", [100, 97], [40, 3 * 1440]), ledger("team", [58, 127], [30, 4 * 1440]), ledger("lab", [35, 197], [20, 3 * 1440]), ledger("personal", undefined, [20, 2 * 1440])];
-      rw.sessions[0] = {
-        start: "work",
-        current: "team",
-        strategy: NAME,
-        since: t - 70 * M,
-        log: [
-          { at: t - 100 * M, from: "team", to: "work", cause: { k: "order" } },
-          { at: t - 80 * M, from: "work", to: "work", cause: { k: "hold", until: t - 70 * M } },
-          { at: t - 70 * M, from: "work", to: "team", cause: { k: "unusable" } },
-        ],
-      };
     }),
   ),
   {
@@ -262,7 +241,7 @@ export const ROTATION_SCENES: Scene[] = [
     }),
   ),
   {
-    ...panelScene("rot-drag", "面板 · 拖一行改本会话先后", "真鼠标拖顺序第 3 行松在第 2 行上 ⇒ 拖完的那一串交后端（本会话先后），回来的顺序照它排、模拟照它推演", async () => {
+    ...panelScene("rot-drag", "面板 · 拖一行改本会话先后", "真鼠标拖顺序第 3 行松在第 2 行上：跟手 · 别的行让位，松手交一次 move，回包之后顺序照后端排", async () => {
       await openPanel();
       dragFrom = order();
     }),

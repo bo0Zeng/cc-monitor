@@ -3158,7 +3158,7 @@ sealed interface CanTerm {
 
     @Suppress("UNCHECKED_CAST")
     data class Yes(
-        val tmux: Boolean,
+        val host: Run,
     ) : CanTerm, Ordered {
         override val can: String get() = "yes"
         override var wireOrder: IntArray? = null
@@ -3179,10 +3179,10 @@ sealed interface CanTerm {
                 Variant("yes", CanTerm.Yes::class.java, obj(
                         listOf(
                         Field("can", { tag("yes") }, optional = false, nullable = false),
-                        Field("tmux", { Bool }, optional = false, nullable = false),
+                        Field("host", { Run.ADAPTER }, optional = false, nullable = false),
                         ),
-                        { a -> CanTerm.Yes(a[1] as Boolean) },
-                        { v -> arrayOf("yes", v.tmux) },
+                        { a -> CanTerm.Yes(a[1] as Run) },
+                        { v -> arrayOf("yes", v.host) },
                     )),
                 Variant("no", CanTerm.No::class.java, obj(
                         listOf(

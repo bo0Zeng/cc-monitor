@@ -41,7 +41,7 @@ import kotlinx.coroutines.launch
  * 名单照那台列（tmux 与托管两种都在）；新建那一排是在那台 tmux 里建，[noTmux] ＝ 那台没 tmux 时那一句 ⇒ 那一排灰着、上面写它。
  */
 @Composable
-fun TmuxManagerDialog(
+fun TerminalManagerDialog(
     terminals: TerminalOps,
     noTmux: String?,
     onAttach: (String) -> Unit,
@@ -68,9 +68,9 @@ fun TmuxManagerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(copyText("mobTmux.dialog.title")) },
+        title = { Text(copyText("mobTerms.dialog.title")) },
         text = {
-            TmuxManagerBody(
+            TerminalManagerBody(
                 terminals = terminals,
                 noTmux = noTmux,
                 loading = loading,
@@ -93,7 +93,7 @@ fun TmuxManagerDialog(
                 scope = scope,
             )
         },
-        confirmButton = { SecondaryButton(onClick = { refresh() }) { Text(copyText("mobTmux.dialog.refresh")) } },
+        confirmButton = { SecondaryButton(onClick = { refresh() }) { Text(copyText("mobTerms.dialog.refresh")) } },
         dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
     )
 
@@ -113,7 +113,7 @@ fun TmuxManagerDialog(
 
 /** 弹窗主体：会话列表 + 新建行。 */
 @Composable
-private fun TmuxManagerBody(
+private fun TerminalManagerBody(
     terminals: TerminalOps,
     noTmux: String?,
     loading: Boolean,
@@ -129,7 +129,7 @@ private fun TmuxManagerBody(
 ) {
     val tokens = LocalAppTokens.current
     Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-        TmuxSessionList(
+        TerminalList(
             loading = loading,
             sessions = sessions,
             onAttach = onAttach,
@@ -174,14 +174,14 @@ private fun KillConfirmDialog(
     target ?: return
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(copyText("mobTmux.kill.title", "name" to target.name)) },
+        title = { Text(copyText("mobTerms.kill.title", "name" to target.name)) },
         text = {
             Text(
-                target.title.takeIf { it.isNotBlank() }?.let { copyText("mobTmux.kill.bodyCmd", "command" to it) }
-                    ?: copyText("mobTmux.kill.body"),
+                target.title.takeIf { it.isNotBlank() }?.let { copyText("mobTerms.kill.bodyCmd", "command" to it) }
+                    ?: copyText("mobTerms.kill.body"),
             )
         },
-        confirmButton = { SecondaryButton(onClick = { onConfirm(target) }) { Text(copyText("mobTmux.kill.ok")) } },
+        confirmButton = { SecondaryButton(onClick = { onConfirm(target) }) { Text(copyText("mobTerms.kill.ok")) } },
         dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
@@ -191,7 +191,7 @@ private fun KillConfirmDialog(
  * 行上点「结束」只经 [onKillRequested] 交给父级，由父级做二次确认与结果反馈；托管那一行的［接管输入］/［交还］经 [onHold] 交父级。
  */
 @Composable
-private fun TmuxSessionList(
+private fun TerminalList(
     loading: Boolean,
     sessions: List<TerminalsList.Row>,
     onAttach: (String) -> Unit,
@@ -200,10 +200,10 @@ private fun TmuxSessionList(
 ) {
     when {
         loading -> Text(copyText("kit.state.reading"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        sessions.isEmpty() -> Text(copyText("mobTmux.list.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        sessions.isEmpty() -> Text(copyText("mobTerms.list.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
         else ->
             sessions.forEach { s ->
-                TmuxSessionRow(
+                TerminalRow(
                     s = s,
                     onAttach = { onAttach(s.name) },
                     onKill = { onKillRequested(s) },
@@ -215,7 +215,7 @@ private fun TmuxSessionList(
 
 /** 单个终端行：名称、运行中命令、托管那一形谁在输入，以及附着 / 接管或交还 / 结束。 */
 @Composable
-private fun TmuxSessionRow(
+private fun TerminalRow(
     s: TerminalsList.Row,
     onAttach: () -> Unit,
     onKill: () -> Unit,
@@ -231,8 +231,8 @@ private fun TmuxSessionRow(
             // 显示那台写好的标题（免得盲杀正在干活的会话）、附着态。
             Text(
                 listOfNotNull(
-                    s.title.takeIf { it.isNotBlank() }?.let { copyText("mobTmux.row.running", "command" to it) },
-                    copyText("mobTmux.row.attached").takeIf { s.attached },
+                    s.title.takeIf { it.isNotBlank() }?.let { copyText("mobTerms.row.running", "command" to it) },
+                    copyText("mobTerms.row.attached").takeIf { s.attached },
                     s.holder?.said,
                 ).joinToString(copyText("kit.text.sep")),
                 style = monoSmall,
@@ -241,11 +241,11 @@ private fun TmuxSessionRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        SecondaryButton(onClick = onAttach) { Text(copyText("mobTmux.row.attach")) }
+        SecondaryButton(onClick = onAttach) { Text(copyText("mobTerms.row.attach")) }
         s.holder?.let { h ->
             SecondaryButton(onClick = { onHold(!h.mine) }) { Text(if (h.mine) copyText("terminal.input.release") else copyText("terminal.input.take")) }
         }
-        SecondaryButton(danger = true, onClick = onKill) { Text(copyText("mobTmux.row.kill")) }
+        SecondaryButton(danger = true, onClick = onKill) { Text(copyText("mobTerms.row.kill")) }
     }
     HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
 }
@@ -267,7 +267,7 @@ private fun TmuxNewSessionRow(
     OutlinedTextField(
         value = newName,
         onValueChange = onNameChange,
-        label = { Text(copyText("mobTmux.new.name")) },
+        label = { Text(copyText("mobTerms.new.name")) },
         singleLine = true,
         enabled = noTmux == null,
         modifier = Modifier.fillMaxWidth(),
@@ -277,9 +277,9 @@ private fun TmuxNewSessionRow(
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm, Alignment.End),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
-        SecondaryButton(enabled = can, onClick = { onNewDetached(newName.trim()) }) { Text(copyText("mobTmux.new.detached")) }
+        SecondaryButton(enabled = can, onClick = { onNewDetached(newName.trim()) }) { Text(copyText("mobTerms.new.detached")) }
         // 后台起一个跑着 agent 的 tmux 会话，不进入，之后可打开。
-        SecondaryButton(enabled = can, onClick = { onNewDetachedCc(newName.trim()) }) { Text(copyText("mobTmux.new.detachedCc")) }
-        SecondaryButton(enabled = can, onClick = { onNewAttach(newName.trim()) }) { Text(copyText("mobTmux.new.attach")) }
+        SecondaryButton(enabled = can, onClick = { onNewDetachedCc(newName.trim()) }) { Text(copyText("mobTerms.new.detachedCc")) }
+        SecondaryButton(enabled = can, onClick = { onNewAttach(newName.trim()) }) { Text(copyText("mobTerms.new.attach")) }
     }
 }

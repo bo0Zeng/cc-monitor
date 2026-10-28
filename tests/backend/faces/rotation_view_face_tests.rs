@@ -439,7 +439,10 @@ fn a_strategy_view_reads_the_file_as_it_is_now() {
     )
     .expect("ok");
     assert_eq!(v.listed, 2, "照文件此刻的号列表");
-    assert!(v.lineup.is_empty() && v.past.is_none(), "设置页没有会话");
+    assert!(
+        v.lineup.is_empty() && v.timeline.is_some(),
+        "设置页没有会话、带推演"
+    );
     assert!(matches!(
         view_with(
             &ctx,
@@ -517,27 +520,36 @@ fn a_preset_session_can_be_written_as_not_rotating() {
     assert!(v.strategy.is_none(), "起成了不轮换的会话");
 }
 
-/// ★ 时刻的字由后端写（界面不换算时刻）：此刻 · 刻度 · 换号时刻 · 每号行每段的起点 · 停发到几点；每段还带剩多少（事实）。
+/// ★ 时刻的字由后端写（界面不换算时刻）：此刻 · 刻度 · 换号时刻 · 每号行每段的起点（设置页那一形的推演）· 停发到几点；每段还带剩多少（事实）。
 #[test]
-fn a_session_view_writes_every_time_it_carries() {
+fn a_view_writes_every_time_it_carries() {
     let home = Home::new("view-texts");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
     seen(&ctx, "a", 0.4, None);
-    let v = session_view(&ctx, &home, S1);
+    home.settings_of(
+        "by-list",
+        json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}, {"id": "a"}]}),
+    );
+    let v = strategy_view(&ctx, &home, "by-list");
     let hm = |t: &str| t.len() == 5 && t.as_bytes()[2] == b':';
     assert!(hm(&v.now_text), "{}", v.now_text);
     let tl = v.timeline.as_ref().expect("推演");
-    // 01:00–15:00（UTC）这一截里每个整两点一格：02:00 起到 14:00。
-    let want: Vec<(u64, String)> = (0..7u64)
-        .map(|k| (now() - 3600 + k * 7200, format!("{:02}:00", 2 + 2 * k)))
+    // 03:00–15:00（UTC）这一截里每个整两点一格：04:00 起到 14:00。
+    let want: Vec<(u64, String)> = (0..6u64)
+        .map(|k| (now() + 3600 + k * 7200, format!("{:02}:00", 4 + 2 * k)))
         .collect();
     let got: Vec<(u64, String)> = tl.ticks.iter().map(|t| (t.at, t.text.clone())).collect();
     assert_eq!(got, want, "12 小时每 2 小时一格");
     for w in tl.switches.iter() {
         assert!(hm(&w.at_text), "{w:?}");
     }
-    let seg = &tl.lanes[0].segs[0];
+    let seg = &tl
+        .lanes
+        .iter()
+        .find(|l| l.account == "a")
+        .expect("a 那一行")
+        .segs[0];
     assert_eq!(seg.text, "剩 60%", "剩 ＝ 100 − 两窗里用得多的：{seg:?}");
 
     // 停发：到几点那一刻也写好。
@@ -571,133 +583,13 @@ fn session_view_in(ctx: &Ctx, home: &Home, sid: &str, tz: &crate::Tz) -> Rotatio
     .expect("读得到")
 }
 
-/// ★ 时间轴过去那一截（只会话有）：往前推演时长的 1/6；最上那条照换号记录切段（停发停到 `until`）；
-/// 每号一行只画说得出的：窗口开在这一截里 ⇒ 重置那段；此刻用满、记录里它被换下 ⇒ 那一刻起发不出去；刻度从这一截开头起。
-#[test]
-fn a_session_view_draws_what_already_happened() {
-    let home = Home::new("view-past");
-    let ctx = home.ctx();
-    home.saw(&ctx, S1);
-    let n = now();
-    seen_resetting(&ctx, "a", 0.3, None, n + 4 * 3600);
-    seen(&ctx, "b", 1.0, None);
-    home.copy_of(&ctx, S1, |c| {
-        c.settings =
-            json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}, {"id": "b"}]});
-    });
-    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        let s = b.sessions.get_mut(S1).expect("s1");
-        s.log = vec![
-            book::Log {
-                at: n - 9000,
-                from: "a".into(),
-                to: "b".into(),
-                cause: book::Cause::Order,
-                why: None,
-            },
-            book::Log {
-                at: n - 5400,
-                from: "b".into(),
-                to: "a".into(),
-                cause: book::Cause::Unusable,
-                why: None,
-            },
-            book::Log {
-                at: n - 1800,
-                from: "a".into(),
-                to: "a".into(),
-                cause: book::Cause::Hold {
-                    until: Some(n - 900),
-                },
-                why: None,
-            },
-        ];
-    })
-    .expect("w");
-    let v = session_view(&ctx, &home, S1);
-    let p = v.past.as_ref().expect("会话有过去那一截");
-    let near = |x: u64, y: u64| x.abs_diff(y) <= 5;
-    assert!(near(p.from, n - 7200), "12 小时往前 2 小时：{}", p.from);
-    let tops: Vec<(Option<&str>, bool, bool)> = p
-        .uses
-        .iter()
-        .map(|u| {
-            (
-                u.account.as_deref(),
-                near(u.from, n - 7200)
-                    || near(u.from, n - 5400)
-                    || near(u.from, n - 1800)
-                    || near(u.from, n - 900),
-                near(u.to, v.now)
-                    || near(u.to, n - 5400)
-                    || near(u.to, n - 1800)
-                    || near(u.to, n - 900),
-            )
-        })
-        .collect();
-    assert_eq!(
-        tops.iter().map(|t| t.0).collect::<Vec<_>>(),
-        [Some("b"), Some("a"), None, Some("a")],
-        "{:?}",
-        p.uses
-    );
-    assert!(tops.iter().all(|t| t.1 && t.2), "{:?}", p.uses);
-    // 每段写的字后端写好：号名 · 停发那一句；接着此刻、跟推演第一段同一个号的那一段不写（同一段只写一次，写在推演那一截）。
-    let first = v
-        .timeline
-        .as_ref()
-        .and_then(|t| t.uses.first())
-        .expect("推演第一段");
-    assert_eq!(
-        (first.from, first.account.as_deref(), first.text.as_str()),
-        (v.now, Some("a"), "a")
-    );
-    assert_eq!(
-        p.uses.iter().map(|u| u.text.as_str()).collect::<Vec<_>>(),
-        ["b", "a", copy_text("rot.sim.hold", &[]).as_str(), ""],
-        "{:?}",
-        p.uses
-    );
-    // 用满了的那几窗后端说（号牌上的小计量照它画满）。
-    let full = |id: &str| {
-        v.accounts
-            .iter()
-            .find(|x| x.fact.account == id)
-            .map(|x| x.full.clone())
-            .expect("号牌")
-    };
-    assert_eq!(full("b"), ["5h"]);
-    assert!(full("a").is_empty());
-    let lane = |id: &str| p.lanes.iter().find(|l| l.account == id).expect("那一行");
-    let a = lane("a");
-    assert_eq!(a.segs.len(), 1, "{:?}", a.segs);
-    assert!(a.segs[0].reset && a.segs[0].sendable && near(a.segs[0].from, n - 3600));
-    assert!(
-        a.segs[0].text.starts_with('↻') && a.segs[0].text.chars().count() == 6,
-        "{:?}",
-        a.segs[0]
-    );
-    let b = lane("b");
-    assert_eq!(
-        b.segs.iter().map(|s| s.sendable).collect::<Vec<_>>(),
-        [true, false],
-        "{:?}",
-        b.segs
-    );
-    assert!(near(b.segs[1].from, n - 5400));
-    let tl = v.timeline.as_ref().expect("推演");
-    assert!(
-        tl.ticks.iter().any(|t| t.at < v.now && t.at > p.from),
-        "刻度从过去那一截起：{:?}",
-        tl.ticks
-    );
-
-    // 设置页没有会话 ⇒ 没有过去那一截。
-    let s = view_with(
-        &ctx,
+/// 设置页那一形（照文件此刻的）。
+pub(crate) fn strategy_view(ctx: &Ctx, home: &Home, id: &str) -> RotationViewReply {
+    view_with(
+        ctx,
         &RotationViewReq {
             target: RotTarget::Strategy {
-                strategy: "by-list".into(),
+                strategy: id.into(),
             },
             hours: None,
         },
@@ -705,8 +597,145 @@ fn a_session_view_draws_what_already_happened() {
         &crate::Tz::default(),
         &home.alive(),
     )
-    .expect("ok");
-    assert!(s.past.is_none());
+    .expect("读得到")
+}
+
+/// ★ 会话那一形只交顺序（一号一行）、不交时间轴：回包里没有 `timeline` 与 `past` 两键；第一行是在用的号（`use`）；
+/// 每行右格的字 · 为什么 · 可不可挪都是后端写好的（界面不挑字、不判）；设置页那一形照旧带推演、没有顺序。
+#[test]
+fn a_session_view_hands_the_order_as_lines_without_a_timeline() {
+    let home = Home::new("view-lines");
+    let ctx = home.ctx();
+    home.saw(&ctx, S1);
+    seen(&ctx, "a", 0.4, None);
+    home.copy_of(&ctx, S1, |c| {
+        c.settings = json!({"caps": {}, "capKind": "soft",
+            "accounts": [{"start": true}, {"id": "b"}, {"id": "api"}]});
+    });
+    seen(&ctx, "b", 0.0, Some(now() + 600));
+    let v = session_view(&ctx, &home, S1);
+    let wire = serde_json::to_value(&v).expect("json");
+    assert!(
+        wire.get("timeline").is_none() && wire.get("past").is_none(),
+        "会话那一形不带时间轴：{:?}",
+        wire.as_object().map(|o| o.keys().collect::<Vec<_>>())
+    );
+    assert_eq!(wire["lineup"][0]["group"], "use");
+    let line = |id: &str| v.lineup.iter().find(|l| l.account == id).expect("在顺序里");
+    let first = &v.lineup[0];
+    assert_eq!(first.account, v.current);
+    assert_eq!(
+        (first.state.as_str(), first.movable),
+        (copy_text("beRotation.line.use", &[]).as_str(), false)
+    );
+    let api = line("api");
+    assert_eq!(api.group, RotGroup::Next);
+    assert!(api.movable && api.stay.is_none());
+    assert!(
+        api.state
+            .starts_with(&copy_text("beRotation.line.next", &[])),
+        "第二格写「下一个」：{api:?}"
+    );
+    let b = line("b");
+    let blocked = v
+        .accounts
+        .iter()
+        .find(|x| x.fact.account == "b")
+        .and_then(|x| x.fact.blocked.clone())
+        .expect("b 被拒");
+    assert_eq!(b.group, RotGroup::Out);
+    assert_eq!(b.state, blocked.text, "用不了的那一行右格写那台的那一句");
+    assert!(!b.movable);
+    assert_eq!(
+        b.stay.as_deref(),
+        Some(copy_text("beRotation.edit.unusable", &[("acct", "b")]).as_str())
+    );
+    assert!(!v.manual, "没拖过");
+
+    // 先不用的号落进「先不用」那一组、不能拖，悬停那一句是后端写的。
+    crate::faces::rotation_act_face::temp_with(
+        &ctx,
+        &home.own(),
+        &crate::faces::rotation_act_face::RotationTempReq {
+            sid: S1.into(),
+            op: crate::faces::rotation_act_face::RotTempOp::Off {
+                account: "api".into(),
+                off: true,
+            },
+        },
+        now(),
+    )
+    .expect("先不用");
+    let v = session_view(&ctx, &home, S1);
+    let api = v
+        .lineup
+        .iter()
+        .find(|l| l.account == "api")
+        .expect("在顺序里");
+    assert_eq!(
+        (api.account.as_str(), api.group, api.movable),
+        ("api", RotGroup::Off, false)
+    );
+    assert_eq!(api.state, copy_text("beRotation.line.off", &[]));
+    assert_eq!(
+        api.stay.as_deref(),
+        Some(copy_text("beRotation.edit.offNow", &[("acct", "api")]).as_str())
+    );
+
+    // 设置页：推演照旧，没有顺序。
+    let s = strategy_view(&ctx, &home, "by-list");
+    assert!(s.timeline.is_some() && s.lineup.is_empty() && !s.manual);
+}
+
+/// ★ 「下一个」那一格的钟点由同一份推演出：在用的号推得出几点到上限、换到的正是第二格 ⇒「下一个 · 约 HH:MM」；
+/// 推不准（在用的号量不到用速）⇒ 只写「下一个」；接着此刻那段（马上就换）不写钟点。
+#[test]
+fn the_next_line_says_when_from_the_same_simulation() {
+    let face = |t: u64| crate::common::time::hm(crate::Tz::default().local(t as i64));
+    let lines = |next_at: Option<(String, String)>| {
+        lines_of(
+            &["a".to_string(), "b".to_string(), "c".to_string()],
+            &[],
+            &|_| true,
+            &|_| None,
+            &[("b".to_string(), "b 余量多".to_string())],
+            next_at,
+        )
+    };
+    let at = face(now() + 600);
+    let got = lines(Some(("b".into(), at.clone())));
+    assert_eq!(
+        got[1].state,
+        copy_text("beRotation.line.nextAt", &[("at", &at)])
+    );
+    assert_eq!(
+        got[1].why.as_deref(),
+        Some("b 余量多"),
+        "策略写的那一句挂在名下"
+    );
+    assert_eq!(got[2].state, copy_text("beRotation.line.spare", &[]));
+    assert_eq!(lines(None)[1].state, copy_text("beRotation.line.next", &[]));
+    assert_eq!(
+        lines(Some(("c".into(), at)))[1].state,
+        copy_text("beRotation.line.next", &[]),
+        "换到的不是第二格 ⇒ 不写钟点"
+    );
+    // 在用的号本会话先不用：照旧在第一格，右格写到下一个节点换下。
+    let off_now = lines_of(
+        &["a".to_string(), "b".to_string()],
+        &["a".to_string()],
+        &|_| true,
+        &|_| None,
+        &[],
+        None,
+    );
+    assert_eq!(
+        (off_now[0].group, off_now[0].state.as_str()),
+        (
+            RotGroup::Use,
+            copy_text("beRotation.line.offUse", &[]).as_str()
+        )
+    );
 }
 
 /// ★ 「时区不明」总带上一个时区（「设时区」设成它）：信封里说了 ⇒ 那个名；`local` ⇒ 这台系统的时区名；

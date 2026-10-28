@@ -48,7 +48,7 @@ class TerminalOps(
             .fold(
                 onSuccess = { ended ->
                     Notice(
-                        if (ended == row.terminal) copyText("mobTmux.kill.done", "name" to row.name) else copyText("tmuxControl.kill.notConfirmed", "machine" to machine(), "target" to row.name),
+                        if (ended == row.terminal) copyText("mobTerms.kill.done", "name" to row.name) else copyText("tmuxControl.kill.notConfirmed", "machine" to machine(), "target" to row.name),
                     )
                 },
                 onFailure = { Notice(it.message.orEmpty()) },

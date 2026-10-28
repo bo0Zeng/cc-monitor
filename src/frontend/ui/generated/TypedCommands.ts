@@ -562,7 +562,7 @@ export interface TypedCommands {
   "session-commands": { req: SessionCommandsReq; reply: SessionCommands; code: "bad_args" | "no_such_session" };
   "session-fork": { req: ForkReq; reply: Forked; code: "bad_args" | "fork_failed" };
   "session-model": { req: SessionModelReq; reply: ModelSwitched; code: "bad_args" | "unsupported" | "no_such_session" | "no_tmux" | "unobservable" | "child_timed_out" };
-  "session-open": { req: SessionOpenReq; reply: Opened; code: "bad_args" | "unknown_agent" | "bad_command" | "no_dir" | "account_unavailable" | "place_unavailable" | "bad_tmux_name" | "tmux_taken" | "record_gone" | "already_live" | "not_in_tmux" | "wrong_owner" | "unobservable" | "fork_failed" | "refused" | "start_failed" | "child_timed_out" | "launch_pending" | "no_strategy" };
+  "session-open": { req: SessionOpenReq; reply: Opened; code: "bad_args" | "unknown_agent" | "bad_command" | "no_dir" | "account_unavailable" | "place_unavailable" | "bad_tmux_name" | "tmux_taken" | "record_gone" | "already_live" | "not_hosted" | "wrong_owner" | "unobservable" | "fork_failed" | "refused" | "start_failed" | "child_timed_out" | "launch_pending" | "no_strategy" };
   "session-open-dir": { req: OpenDirReq; reply: DirChecked; code: "bad_args" };
   "session-open-facts": { req: OpenFactsReq; reply: OpenFacts; code: "bad_args" | "fork_failed" };
   "session-permission": { req: SessionPermissionReq; reply: ModeSwitched; code: "bad_args" | "unsupported" | "launch_only" | "not_known" | "ambiguous" | "no_tmux" | "tmux_too_old" | "no_server" | "no_such_session" | "capture_failed" | "unobservable" | "child_timed_out" };
@@ -619,7 +619,7 @@ export interface RefusalData {
   "rotation-strategy-tz": { "stale": RotStale };
   "rotation-temp": { "unusable": RotUnusable };
   "rotation-use-now": { "unusable": RotUnusable };
-  "session-open": { "bad_args": OpenRefusal; "unknown_agent": OpenRefusal; "bad_command": OpenRefusal; "no_dir": OpenRefusal; "account_unavailable": OpenRefusal; "place_unavailable": OpenRefusal; "bad_tmux_name": OpenRefusal; "tmux_taken": OpenRefusal; "record_gone": OpenRefusal; "already_live": OpenRefusal; "not_in_tmux": OpenRefusal; "wrong_owner": OpenRefusal; "unobservable": OpenRefusal; "fork_failed": OpenRefusal; "refused": OpenRefusal; "start_failed": OpenRefusal; "child_timed_out": OpenRefusal; "launch_pending": OpenRefusal; "no_strategy": OpenRefusal };
+  "session-open": { "bad_args": OpenRefusal; "unknown_agent": OpenRefusal; "bad_command": OpenRefusal; "no_dir": OpenRefusal; "account_unavailable": OpenRefusal; "place_unavailable": OpenRefusal; "bad_tmux_name": OpenRefusal; "tmux_taken": OpenRefusal; "record_gone": OpenRefusal; "already_live": OpenRefusal; "not_hosted": OpenRefusal; "wrong_owner": OpenRefusal; "unobservable": OpenRefusal; "fork_failed": OpenRefusal; "refused": OpenRefusal; "start_failed": OpenRefusal; "child_timed_out": OpenRefusal; "launch_pending": OpenRefusal; "no_strategy": OpenRefusal };
   "session-restart": { "account_unavailable": AccountUnavailable; "ambiguous": RestartRefused; "already_live": RestartRefused; "stop_failed": RestartRefused; "start_failed": RestartRefused };
   "terminal-follow": { "bad_target": FollowRefused; "not_known": FollowRefused; "ambiguous": FollowRefused; "no_tmux": FollowRefused; "tmux_too_old": FollowRefused; "too_many_follows": FollowRefused; "unobservable": FollowRefused; "child_timed_out": FollowRefused };
   "transfer-copy": { "exists": Conflicts };

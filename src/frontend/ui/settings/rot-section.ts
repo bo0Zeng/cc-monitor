@@ -1,6 +1,6 @@
 /**
  * 设置窗 → 机器 → 「轮换」栏：那台的策略目录 · 新会话用哪份 · 那一份的设置与模拟。
- * 画的是会话面板同一处（`rot-mount.ts` 目标 `{strategy}`）：第一行选中的那份 ＝ 新会话用的，右边写「设置 · 那台」；
+ * 接线在 `rot-mount.ts`（目标 `{strategy}`）：第一行选中的那份 ＝ 新会话用的，右边写「设置 · 那台」；
  * 改一格当场存成那份的新版（在用旧版的会话各自「载入新版」）。跟着「当前在看哪台机器」换；那台推来策略目录 / 会话变了 ⇒ 重读。
  * 判据：`tests/frontend/ui/settings/rot-section.vitest.ts`。
  */
@@ -52,7 +52,7 @@ export class RotationSection {
   }
 
   private remount(): void {
-    this.mount = mountRotation({ origin: this.origin, sid: null, machine: machineName(this.origin) });
+    this.mount = mountRotation({ origin: this.origin, machine: machineName(this.origin) });
     this.element.replaceChildren(this.mount.root);
     if (!this.takePending()) void this.mount.refresh();
   }

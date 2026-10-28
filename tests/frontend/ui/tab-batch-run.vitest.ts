@@ -104,7 +104,7 @@ describe("批量停：每台一次、逐个答", () => {
         return {
           results: [
             res(sids[0], "done", null, { session: "a-cc" }),
-            res(sids[1], "skipped", "not_in_tmux", { said: "S-b" }),
+            res(sids[1], "skipped", "not_hosted", { said: "S-b" }),
           ],
         };
       return {
