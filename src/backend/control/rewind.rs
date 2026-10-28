@@ -180,6 +180,9 @@ pub(crate) fn code_after<'a>(
     })
 }
 
+/// 通用的几种退法（发送那一下照这个先后都列出，那一家没申报的灰着）。
+const HOWS: [RewindHow; 2] = [RewindHow::Conversation, RewindHow::CodeAndConversation];
+
 /// 一种退法这一刻能不能选：那一家没申报 ⇒ 不支持；要退代码、那一句之后没改过代码 ⇒ 没东西可退。
 fn off_why(declared: bool, how: RewindHow, after: After) -> Option<String> {
     if !declared {
@@ -198,7 +201,7 @@ pub(crate) fn options_of(face: Option<&RewindFace>, busy: bool, after: After) ->
             ..RewindOptions::default()
         };
     };
-    let mut how: Vec<RewindChoiceRow> = RewindHow::ALL
+    let mut how: Vec<RewindChoiceRow> = HOWS
         .iter()
         .map(|&h| {
             let c = face.choices.iter().find(|c| c.how == h);

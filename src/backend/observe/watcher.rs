@@ -1042,6 +1042,14 @@ impl WatchHandle {
     }
 }
 
+/// 这台那一本运行簿（[`spawn`] 记下的；没起 watcher ⇒ `None`）。只读着用：编辑已发的一句发送那一下数「这句之后派出、还在跑的子 agent」。
+pub(crate) fn run_book() -> Option<std::sync::Arc<crate::observe::runs::RunBook>> {
+    RUN_BOOK.get().cloned()
+}
+
+static RUN_BOOK: std::sync::OnceLock<std::sync::Arc<crate::observe::runs::RunBook>> =
+    std::sync::OnceLock::new();
+
 /// 起这台的 watcher（**一个进程一份**：本机远端、stdio 与常驻都只起这一份；各条流连接经 [`WatcherPoke::attach`] 接上来）。
 /// 回戳它的句柄 ＋ 这台的运行簿（整台一本：watcher 写、各连接的流归位读）。
 /// `own`：写自家状态的句柄（启动时造的那一份）—— 认起会话便条、记 `sid → 号` 经它写。
@@ -1054,6 +1062,8 @@ pub fn spawn(
     // 托管名单与打标那一臂的家（`hosts/` 在这个数据目录底下）：看守起来这一下装上。
     crate::host::managed::install(&own);
     let book = std::sync::Arc::new(crate::observe::runs::RunBook::default());
+    // 进程里第一份 watcher 的那一本记下来，给只读着用的那几处（[`run_book`]）。
+    let _ = RUN_BOOK.set(book.clone());
     // P4：事件 channel 从 `watch_loop` 内部**上提到这里**造 —— 因为 poke 句柄必须在线程
     // 起来之前就能交给 `main`。**仍然只有这一条 channel**（账本第 1 行不许再开第二条）：
     // 交出去的是同一个 sender 的 clone，`watch_loop` 收的是同一条的 receiver。

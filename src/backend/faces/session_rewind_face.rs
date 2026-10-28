@@ -14,13 +14,14 @@ use crate::control::rewind::{
 use crate::control::terminals::{self, CmdErr, On};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq, TerminalPreviewReq};
 use crate::dial::remote_ask::{DialRemote, REACH};
+use crate::observe::lines::Lines;
 use crate::platform::fs::Ro;
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, codes, Codes as _, Command};
 use cmd_wire::rewind::{Rewind, RewindOptions, SessionRewindOptionsReq};
 use cmd_wire::Machine;
 use copy_core::copy_text;
-use std::io::{Read as _, Seek as _, SeekFrom};
+use std::io::{Seek as _, SeekFrom};
 use std::path::Path;
 
 codes! {
@@ -116,7 +117,10 @@ pub(crate) fn options_here(sid: &str, to: &str) -> Result<RewindOptions, Fail> {
     if face.is_none() {
         return Ok(options_of(None, false, After::default()));
     }
-    let runs = crate::stream::tap::hub().live().book().runs(sid);
+    // 这台的运行簿（watcher 起了才有；一次性的命令行那一形没有 ⇒ 不说子 agent）。
+    let runs = crate::observe::watcher::run_book()
+        .map(|b| b.runs(sid))
+        .unwrap_or_default();
     let Some(after) = after_in(&record, to, &runs).map_err(|raw| no_record(&raw))? else {
         return Ok(RewindOptions {
             said: Some(copy_text("beRewind.no.noSuchLine", &[])),
@@ -139,17 +143,15 @@ pub(crate) fn after_in(
     let Some(line) = map.inputs.iter().find(|r| r.uuid == to) else {
         return Ok(None);
     };
+    // 读行走观测层那一份（同冷开扫描图）：从那一句起，读到扫描图扫到的那一行为止。
     let mut file = Ro::open(record).map_err(|e| e.to_string())?;
     file.seek(SeekFrom::Start(line.at))
         .map_err(|e| e.to_string())?;
-    let mut bytes = Vec::new();
-    file.take(map.end.saturating_sub(line.at))
-        .read_to_end(&mut bytes)
-        .map_err(|e| e.to_string())?;
-    let records: Vec<serde_json::Value> = bytes
-        .split(|b| *b == b'\n')
-        .filter_map(|l| serde_json::from_slice::<serde_json::Value>(l).ok())
-        .collect();
+    let mut rows = Lines::new(std::io::BufReader::new(file), line.at).upto(map.end);
+    let mut records = Vec::new();
+    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        records.extend(crate::observe::lines::parse(row.body()));
+    }
     let kind = crate::agents::pick_kind(crate::agents::record_kind_of(record))
         .map(|(k, _)| k)
         .map_err(|e| e.to_string())?;

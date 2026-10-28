@@ -252,11 +252,6 @@ impl Live {
         self.book = book;
     }
 
-    /// 这台那一本运行簿（只读着用：编辑已发的一句发送那一下数「这句之后派出、还在跑的子 agent」）。
-    pub(crate) fn book(&self) -> Arc<RunBook> {
-        self.book.clone()
-    }
-
     /// 接上一条连接（没报过名单 ＝ 全看）：此刻每张可见的卡先欠它一张整卡。回它的号与叫醒口。
     pub(crate) fn join(&mut self) -> (u64, Arc<tokio::sync::Notify>) {
         let id = self.next_conn;

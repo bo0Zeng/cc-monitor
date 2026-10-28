@@ -19,11 +19,6 @@ pub enum RewindHow {
     CodeAndConversation,
 }
 
-impl RewindHow {
-    /// 通用的几种（发送那一下照这个先后都列出，那一家没申报的灰着）。
-    pub const ALL: [RewindHow; 2] = [RewindHow::Conversation, RewindHow::CodeAndConversation];
-}
-
 /// 主 agent 正在干活时什么时候退。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
