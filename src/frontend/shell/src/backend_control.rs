@@ -104,18 +104,15 @@ fn backend_status_now(origin: String) -> Result<BackendStatus, Said> {
 /// `async`（`INVARIANTS §10`）：本机那一支（`start_local_backend`）一路会起进程、连本机后端口、读 hello、`sleep` 等它绑上口 ⇒ 进 `spawn_blocking`；
 /// 远端那一支只是换一个流任务的把手，不等任何东西，就地做。判据 `sync_command_registry_tests`。
 #[tauri::command]
-pub async fn backend_start(origin: String) -> Result<String, Said> {
-    let r: Result<String, Said> = async move {
+pub async fn backend_start(origin: String) -> Result<(), Said> {
+    let r: Result<(), Said> = async move {
         check_origin(&origin)?;
         if is_local(&origin) {
             // 失败要回 `Err`：「没内嵌后端」「释放失败」是真失败，要弹出来。
             return Ok(tauri::async_runtime::spawn_blocking(|| {
                 use crate::local_backend_host::StartOutcome;
                 match crate::local_backend_host::start_local_backend() {
-                    StartOutcome::Started(p) => Ok(format!("已起：{}", p.display())),
-                    StartOutcome::AlreadyRunning => {
-                        Ok("本机后端已经在跑（C8①：每台机只许一个）".into())
-                    }
+                    StartOutcome::Started(_) | StartOutcome::AlreadyRunning => Ok(()),
                     StartOutcome::Failed { reason, looked_at } => Err(Said::restate(
                         copy_text(
                             "rsBackendControl.start.notFound",
@@ -140,7 +137,7 @@ pub async fn backend_start(origin: String) -> Result<String, Said> {
         // 那台的常驻流（装 · 版本门 · 状态成品）住本机后端：叫醒它（停过的不再停着、断着的不等退避马上再接）。
         //   主窗口那条 `{machine} 离线` 的［重新连接］走的就是这里。
         wake_backend_feed(&origin).await;
-        Ok(origin)
+        Ok(())
     }
     .await;
     r.map_err(|s| s.named("backend_start"))
