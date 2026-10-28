@@ -390,18 +390,13 @@ fn load(own: &Own, sid: &str) -> Result<Book, Fail> {
     }
 }
 
-/// 锁里现读 → `f` 改 → 有变化才原子换；交 `f` 的结果。
-fn with_book<R>(
-    own: &Own,
-    sid: &str,
-    f: impl FnOnce(&mut Book) -> Result<R, Fail>,
-) -> Result<R, Fail> {
-    let home = own.home_dir().map_err(io_failed)?;
-    let dir = own.at_home(DIR_REL).map_err(io_failed)?;
-    let file = dir.join(&format!("{sid}.json")).map_err(io_failed)?;
+/// 这台的队目录，不在就建（连家目录那一层）：写口 · 要盯它的（瘦客户端底行）都从这里拿。
+pub(crate) fn made_dir(own: &Own) -> Result<crate::platform::fs::OwnPath, Said> {
+    let home = own.home_dir()?;
+    let dir = own.at_home(DIR_REL)?;
     for d in [&home, &dir] {
         own.ensure_dir(d).map_err(|e| {
-            io_failed(Said::with_raw(
+            Said::with_raw(
                 copy_text(
                     "reason.fs.writeFailed",
                     &[
@@ -410,9 +405,20 @@ fn with_book<R>(
                     ],
                 ),
                 e,
-            ))
+            )
         })?;
     }
+    Ok(dir)
+}
+
+/// 锁里现读 → `f` 改 → 有变化才原子换；交 `f` 的结果。
+fn with_book<R>(
+    own: &Own,
+    sid: &str,
+    f: impl FnOnce(&mut Book) -> Result<R, Fail>,
+) -> Result<R, Fail> {
+    let dir = made_dir(own).map_err(io_failed)?;
+    let file = dir.join(&format!("{sid}.json")).map_err(io_failed)?;
     let held = own.lock(&dir).map_err(|e| io_failed(Said::from(e)))?;
     let mut book = load(own, sid)?;
     let before = book.clone();
@@ -469,6 +475,16 @@ pub(crate) fn read(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Fail>
         b.settle(now_ms);
         Ok(b.view())
     })
+}
+
+/// 瘦客户端底行那一句：名单里还在等的（排着 · 收着）合计 N 条；一条都没有 ⇒ `None`。
+pub(crate) fn waiting_said(list: &QueueList) -> Option<String> {
+    let n = list
+        .items
+        .iter()
+        .filter(|i| i.state != QueueState::Undelivered)
+        .count();
+    (n > 0).then(|| copy_text("beQueue.said.waiting", &[("n", &n.to_string())]))
 }
 
 /// 会话结束：没送的标未送达，回此刻的名单。

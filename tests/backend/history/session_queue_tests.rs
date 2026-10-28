@@ -363,3 +363,24 @@ fn each_item_carries_the_owner_written_words() {
         "撤掉第 1 条 ⇒ 原第 2 条写第 1"
     );
 }
+
+/// 瘦客户端底行那一句（会话那台写）：排着 · 收着合计 N 条；未送达的不算；一条都没在等 ⇒ 没有。
+#[test]
+fn the_waiting_line_counts_queued_and_held_but_not_undelivered() {
+    let o = own(&home("waiting"));
+    let waiting = |n: usize| Some(copy_text("beQueue.said.waiting", &[("n", &n.to_string())]));
+    assert_eq!(
+        waiting_said(&read(&o, SID, T0).unwrap()),
+        None,
+        "空队 ⇒ 没有"
+    );
+    put(&o, &req("a", "mobile", None, T0), T0).unwrap();
+    put(&o, &req("h", "deskA", Some(2), T0), T0 + 1).unwrap();
+    assert_eq!(
+        waiting_said(&read(&o, SID, T0 + 2).unwrap()),
+        waiting(2),
+        "排着 1 ＋ 收着 1"
+    );
+    let left = end(&o, SID, T0 + 3).unwrap();
+    assert_eq!(waiting_said(&left), None, "会话结束标未送达 ⇒ 不算在等");
+}
