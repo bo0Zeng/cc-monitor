@@ -668,8 +668,8 @@ fn a_restart_takes_the_listing_from_disk() {
 }
 
 /// 清单缓存：两条线程同时要同一份记录的那一行（后台热缓存与预读取名同时冷开那一形）⇒ 记录只从头扫一遍，
-/// 后到的等先到的扫完、照它留下的那一行起步（没变 ⇒ 不再读）。数清单扫描从记录读的字节（[`READ`]）。
-/// 别的判据同时在扫的都是几 KB 的小夹具，这一份 20 MB：多扫一遍就是多 20 MB。
+/// 后到的等先到的扫完、照它留下的那一行起步（没变 ⇒ 不再读）。数清单扫描从这一份读的字节（[`READ`] 按记录分开记：
+/// 别的判据同时在扫别的记录，有的几 MB，合成一个数就会多出不定的一截）。多扫一遍 ⇒ 2 倍。
 #[test]
 fn two_threads_asking_for_one_record_scan_it_once() {
     let tmp = std::env::temp_dir().join(format!("ccm-hq-once-{}", std::process::id()));
@@ -685,7 +685,8 @@ fn two_threads_asking_for_one_record_scan_it_once() {
         .collect();
     std::fs::write(&p, &body).unwrap();
     let len = body.len() as u64;
-    let before = READ.load(Ordering::Relaxed);
+    let read_of = || READ.lock().unwrap().get(&p).copied().unwrap_or(0);
+    let before = read_of();
     let gate = std::sync::Barrier::new(2);
     let rows: Vec<_> = std::thread::scope(|s| {
         let hs: Vec<_> = (0..2)
@@ -698,10 +699,10 @@ fn two_threads_asking_for_one_record_scan_it_once() {
             .collect();
         hs.into_iter().map(|h| h.join().unwrap()).collect()
     });
-    let read = READ.load(Ordering::Relaxed) - before;
+    let read = read_of() - before;
     assert_eq!(rows, vec![Some("/w/once".to_string()); 2]);
-    assert!(
-        read >= len && read < len + len / 2,
+    assert_eq!(
+        read, len,
         "两条线程一齐要这一份，清单扫描读了 {read} 字节（记录 {len}）"
     );
     std::fs::remove_dir_all(&tmp).ok();
