@@ -13288,12 +13288,6 @@
       "zh": "「{q}」 · 只列前 {n} 条 · 会话 {m} · 换更具体的词可列全",
       "args": ["q", "n", "m"]
     },
-    "rsHistory.attach.windows": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "Windows 上不支持接回已有会话",
-      "args": []
-    },
     "rsHistory.relay.downRefused": {
       "kind": "error",
       "role": "报错",
@@ -31555,6 +31549,12 @@
       "role": "片段",
       "zh": "5h {u5}% · 7d {u7}%",
       "args": ["u5", "u7"]
+    },
+    "rot.acct.missing": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "这台没有这个号",
+      "args": []
     },
     "rot.acct.reset": {
       "kind": "body",
