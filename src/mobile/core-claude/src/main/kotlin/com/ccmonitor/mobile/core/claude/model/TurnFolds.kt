@@ -41,9 +41,56 @@ object TurnFolds {
         if (folds.isEmpty()) return units.map { StreamItem.Card(it) }
         val byAfter = folds.associateBy { it.after }
         val out = ArrayList<StreamItem>(units.size)
-        var cur: FoldSegment? = head(units, folds, byAfter)
+        val cur: FoldSegment? = head(units, folds, byAfter)
         cur?.let { out += StreamItem.Process(it, it.after in open) }
-        for ((i, u) in units.withIndex()) {
+        walk(out, units, 0, cur, byAfter, open)
+        return out
+    }
+
+    /**
+     * 从上一份往下重折：[prev] 是拿 [prevUnits] · [prevFolds] · 同一份 [open] 折出来的。它最后一行过程之前的那几项原样留着（同一个实例），
+     * 只从那一段的头往下折 —— 前提是那一段之前的单元没换（同一个实例）、分段没变；不满足 ⇒ 整份折。结果与 [fold] 一样。
+     * 分段在时间上一段接一段、不交叠：最上面那一段（`after` 还没拉到的）不会因为尾巴上来了新的而换。
+     */
+    fun foldTail(
+        prev: List<StreamItem>,
+        prevUnits: List<RenderUnit>,
+        prevFolds: List<FoldSegment>,
+        units: List<RenderUnit>,
+        turns: List<TurnRow>,
+        open: Set<String>,
+    ): List<StreamItem> {
+        val folds = turns.flatMap { it.folds }
+        val k = prev.indexOfLast { it is StreamItem.Process }
+        val after = (prev.getOrNull(k) as? StreamItem.Process)?.fold?.after ?: return fold(units, turns, open)
+        // 那一段在分段里排第几：它之前的分段一样、它自己还在（字可以变）。
+        val at = prevFolds.indexOfFirst { it.after == after }
+        val same = at >= 0 && folds.size > at && folds[at].after == after && (0 until at).all { folds[it] == prevFolds[it] }
+        // 那一段从哪张卡之后起：`after` 那一条的最后一张卡之后；那之前的单元要原样。
+        val j = if (same) units.indexOfLast { it.sourceUuid == after } + 1 else 0
+        val kept = j in 1..prevUnits.size && prevUnits.getOrNull(j)?.sourceUuid != after && (0 until j).all { units[it] === prevUnits[it] }
+        if (!kept) return fold(units, turns, open)
+        val byAfter = folds.associateBy { it.after }
+        val cur = folds[at]
+        val out = ArrayList<StreamItem>(prev.size + units.size - prevUnits.size + 1)
+        out.addAll(prev.subList(0, k))
+        out += StreamItem.Process(cur, cur.after in open)
+        walk(out, units, j, cur, byAfter, open)
+        return out
+    }
+
+    /** 从第 [from] 张卡起往下折进 [out]（[start] ＝ 那张卡之前生效的那一段）。 */
+    private fun walk(
+        out: MutableList<StreamItem>,
+        units: List<RenderUnit>,
+        from: Int,
+        start: FoldSegment?,
+        byAfter: Map<String, FoldSegment>,
+        open: Set<String>,
+    ) {
+        var cur = start
+        for (i in from until units.size) {
+            val u = units[i]
             val id = u.sourceUuid
             // 一条记录的头一张卡：段到 `until` 为止；又是另一段的 `after` · 本机还没进记录的那一句 ⇒ 也到此为止。
             val firstOfRecord = i == 0 || units[i - 1].sourceUuid != id
@@ -56,7 +103,6 @@ object TurnFolds {
                 out += StreamItem.Process(next, next.after in open)
             }
         }
-        return out
     }
 
     /** 卡 [key] 收在哪一段过程里（那一段的 `after`）；露着 · 不在 ⇒ `null`。跳到一条之前先展开它（记成手动开）。 */
