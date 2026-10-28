@@ -7234,12 +7234,40 @@
       "zh": "命令",
       "args": []
     },
-    "settingsPanel.behavior.resumeInTmux": {
+    "settings.machine.resumeWhere": {
       "kind": "control",
       "role": "标签",
-      "zh": "恢复到 tmux 里",
+      "zh": "恢复时放在哪",
+      "args": []
+    },
+    "settings.machine.resumeWhereTip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "恢复时未选位置的去处\n同启动时：无记录或无 tmux 的机器落托管终端",
+      "args": [],
+      "limited": ["tmux"],
+      "waive": {
+        "C-W14": "说明这一格的效果，不是 tmux 缺失 / 启动失败那一族"
+      }
+    },
+    "settings.machine.resumeManaged": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "托管终端",
+      "args": []
+    },
+    "settings.machine.resumeTmux": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "tmux",
       "args": [],
       "limited": ["tmux"]
+    },
+    "settings.machine.resumeAsStarted": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "同启动时",
+      "args": []
     },
     "settings.machine.childTab": {
       "kind": "control",
@@ -7289,16 +7317,6 @@
       "role": "按钮",
       "zh": "隐藏",
       "args": []
-    },
-    "settingsPanel.behavior.resumeInTmuxHelp": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "历史页与标签页「恢复」默认运行于 tmux · 无 tmux 的机器直接恢复",
-      "args": [],
-      "limited": ["tmux"],
-      "waive": {
-        "C-W14": "说明开关的效果（恢复到 tmux 里），不是 tmux 缺失 / 启动失败那一族"
-      }
     },
     "settingsPanel.behavior.autoFront": {
       "kind": "control",

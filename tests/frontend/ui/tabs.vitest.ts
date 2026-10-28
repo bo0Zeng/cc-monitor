@@ -1479,7 +1479,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     const rest = withHistoryReads(() => Promise.resolve(undefined));
     vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) =>
       isChanCall(cmd, args, "sessions-where")
-        ? chanReply({ results: [{ sid, standing, names: ["box-cc"], terminals: [{ host: "managed", terminal: "h-1" }] }], run: "direct" })
+        ? chanReply({ results: [{ sid, standing, names: ["box-cc"], terminals: [{ host: "managed", terminal: "h-1" }], run: "direct" }] })
         : rest(cmd, args),
     );
   };
