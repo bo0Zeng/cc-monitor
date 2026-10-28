@@ -4,9 +4,11 @@
 //! - 认可：`工作区 ⇒ 片 ⇒ [键]`。键带条目的版本（[`super::needs`]），版本换了就对不上、那一条再出；
 //!   每次写只留那一片此刻还在的键（过了版本的顺手清掉）。
 //! - 退回：`工作区 ⇒ 片 ⇒ 格 ⇒ 那一次`（送给谁 · 送没送到 · 当时的子格与正文摘要），同一格后退回的盖掉先前的。
+//! - 问图用的别名：这台一条（问图框里最近选的那条，下次预选）。
 //!
 //! 读三态（不在 ＝ 什么都没记 · 读不懂 ＝ 不覆盖、照没记算，写的那一刻回错）；读—改—写在跨进程锁里、原子写。
-//! 全仓唯一的写口是本模块的 `answer_*` 三个：认可两个只从 `faces/plan_review_face.rs` 进，记退回那一个只从 `faces/plan_return_face.rs` 进。
+//! 全仓唯一的写口是本模块的 `answer_*` 三个与 [`ask_at`]：认可两个只从 `faces/plan_review_face.rs` 进，记退回那一个只从 `faces/plan_return_face.rs` 进，
+//! 问图用的别名只从 `faces/plan_ask_face.rs` 进。
 
 use super::needs::{self, Returned};
 use super::wire::{PlanRead, PlanReturned};
@@ -33,9 +35,17 @@ pub(crate) struct Review {
     /// 工作区 ⇒ 片 ⇒ 格 ⇒ 最近那一次退回。
     #[serde(default)]
     returns: BTreeMap<String, BTreeMap<String, BTreeMap<String, Returned>>>,
+    /// 这台问图用的那条别名（问图框里最近选的那条）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ask: Option<String>,
 }
 
 impl Review {
+    /// 这台问图用的那条别名（计划页［问这一块…］预选它）。
+    pub(crate) fn ask(&self) -> Option<&str> {
+        self.ask.as_deref()
+    }
+
     /// 这一条认可过没有。
     pub(crate) fn acked(&self, ws: &str, slice: &str, key: &str) -> bool {
         self.acks
@@ -230,6 +240,11 @@ pub(crate) fn answer_returned(
     rec: Returned,
 ) -> Result<(), Err> {
     returned_at(own, ws, slice, cell, rec)
+}
+
+/// 记这台问图用的那条别名（盖掉先前那条；**只从 `faces/plan_ask_face.rs` 进**）。
+pub(crate) fn ask_at(own: &Own, alias: &str) -> Result<(), Err> {
+    edit_at(own, |r| r.ask = Some(alias.to_string()))
 }
 
 #[cfg(test)]

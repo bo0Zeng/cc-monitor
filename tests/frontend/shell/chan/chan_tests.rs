@@ -559,8 +559,13 @@ async fn losing_the_connection_turns_calls_into_dropped_and_subs_into_unseen_not
 
 /// 生产句柄：没有控制通道的 `origin` ⇒ 立即 `Hop{第 1 跳 open, NotSent, Unreachable}`；
 /// `subscribe` 原位说「没有这条流」（`Closed{Peer}`），不装作订阅成功。
+///
+/// 两样进程全局自己管，不靠别的用例：本机那一格拿锁（锁里必空，别的用例登记的假客户端不漏进来）；
+/// 会话流句柄自己装一份（先装的算数，没装时答的是 `Ours(Broken)`、不是这一条要钉的）。
 #[tokio::test]
 async fn the_production_handle_says_unreachable_and_no_such_stream_out_loud() {
+    let _local = crate::inbound_client::local_origin_test_lock();
+    crate::event_replay::install(Arc::new(crate::event_replay::EventReplay::new()));
     let prod = InboundBackends;
     let r = prod
         .call(

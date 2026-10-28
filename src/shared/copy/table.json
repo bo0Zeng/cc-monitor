@@ -1633,9 +1633,8 @@
     "beSessionOpen.look.notInTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "未接回 · 会话不在 tmux 里",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "未接回 · 会话不在终端里",
+      "args": []
     },
     "beSessionOpen.look.noSession": {
       "kind": "error",
@@ -2141,9 +2140,8 @@
     "sessionState.liveResumable.tooltip": {
       "kind": "body",
       "role": "悬停",
-      "zh": "不在 tmux 会话里运行 · 程序退出后只能恢复",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "程序退出后只能恢复",
+      "args": []
     },
     "sessionState.gone.name": {
       "kind": "body",
@@ -11650,7 +11648,7 @@
     "beTerminal.no.waiting": {
       "kind": "body",
       "role": "片段",
-      "zh": "会话在等批准或回答",
+      "zh": "会话在等批准或回答 · 或终端里有没交的半句",
       "args": []
     },
     "beQueue.put.attachmentGone": {
@@ -11663,6 +11661,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "输入在另一端 · 没送",
+      "args": []
+    },
+    "beTerminal.no.hostOutdated": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "托管终端版本过低 · 需重开",
       "args": []
     },
     "beTerminal.holder.here": {
@@ -12661,6 +12665,18 @@
       "kind": "action",
       "role": "按钮",
       "zh": "一组",
+      "args": []
+    },
+    "newSession.ask.pick": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "选一条别名",
+      "args": []
+    },
+    "newSession.ask.note": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "号 · 哪一家 · 轮换随别名",
       "args": []
     },
     "newSessionSet.label.name": {
@@ -14621,6 +14637,37 @@
       "role": "片段",
       "zh": "人 · {id} {title}：{text}",
       "args": ["id", "title", "text"]
+    },
+    "bePlan.ask.line": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "看 {id}「{title}」：",
+      "args": ["id", "title"]
+    },
+    "bePlan.ask.lineBare": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "看 {id}：",
+      "args": ["id"]
+    },
+    "bePlan.ask.noSuchAlias": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "别名 {alias} 不可用 · {why}",
+      "args": ["alias", "why"]
+    },
+    "bePlan.ask.noTmux": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "问图只在 tmux 里起 · 无 tmux",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "bePlan.ask.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "问图 · {title}",
+      "args": ["title"]
     },
     "bePlan.face.noView": {
       "kind": "error",
@@ -22971,9 +23018,8 @@
     "terminal.tag.tmux": {
       "kind": "body",
       "role": "片段",
-      "zh": "tmux 会话 {name}",
-      "args": ["name"],
-      "limited": ["tmux"]
+      "zh": "终端 {name}",
+      "args": ["name"]
     },
     "terminal.tag.windows": {
       "kind": "body",
@@ -25722,9 +25768,8 @@
     "tabSessionActions.kill.cuts": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} tmux 会话 {name} 里的 Claude · 当前轮次",
-      "args": ["machine", "name"],
-      "limited": ["tmux"]
+      "zh": "{machine} 终端 {name} 里的 Claude · 当前轮次",
+      "args": ["machine", "name"]
     },
     "tabSessionActions.kill.keeps": {
       "kind": "body",
@@ -25759,9 +25804,8 @@
     "tabMenu.attach.dupesWhy": {
       "kind": "body",
       "role": "说明",
-      "zh": "tmux 会话 ×{n} · 打开「{name}」",
-      "args": ["n", "name"],
-      "limited": ["tmux"]
+      "zh": "终端 ×{n} · 打开「{name}」",
+      "args": ["n", "name"]
     },
     "tabMenu.inPlace.label": {
       "kind": "action",
@@ -25798,9 +25842,8 @@
     "tabMenu.probe.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 会话未查到",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "所在终端未查到",
+      "args": []
     },
     "sessionState.kill.done": {
       "kind": "body",
@@ -28759,6 +28802,18 @@
       "kind": "action",
       "role": "按钮",
       "zh": "新会话接手…",
+      "args": []
+    },
+    "plan.ask.open": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "问图…",
+      "args": []
+    },
+    "plan.ask.failed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "问图框没打开",
       "args": []
     },
     "plan.takeover.unbuilt": {
