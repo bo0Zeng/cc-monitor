@@ -674,13 +674,11 @@ fn resolve_writes_a_short_form_beside_the_whole_script() {
         "整条还在 line：{cct}"
     );
     let cc = answer_resolve(&t.door(), &json!({"name": "cc", "at": "~"})).unwrap();
-    // 不进 tmux 的那一条：这台能托管 ⇒ 托管那一形（建哪个托管终端 ＋ 里面跑的是 ccm）；不能 ⇒ 直路。
-    let want = if crate::control::ccm::plan::HOSTS_HERE {
-        "ccm -- --host-run notes-cc … ccm -- …"
-    } else {
-        "cd ~/projects/notes && claude"
-    };
-    assert_eq!(cc["lineShort"], want, "{cc}");
+    // 不进 tmux 的那一条：各平台都能托管 ⇒ 托管那一形（建哪个托管终端 ＋ 里面跑的是 ccm）。
+    assert_eq!(
+        cc["lineShort"], "ccm -- --host-run notes-cc … ccm -- …",
+        "{cc}"
+    );
     // 算不出 ⇒ 两格都没有。
     let team = answer_resolve(&t.door(), &json!({"name": "teamcct"})).unwrap();
     assert!(
@@ -989,11 +987,7 @@ fn an_aliases_say_rides_the_line_only_when_it_lands_in_a_container() {
     let tmux = line_of("cct", None);
     assert!(tmux.contains(say), "tmux 那一路带开口那句：{tmux}");
     let here = line_of("cc", None);
-    if crate::control::ccm::plan::HOSTS_HERE {
-        assert!(here.contains(say), "托管那一路带开口那句：{here}");
-    } else {
-        assert!(!here.contains(say), "直路不带：{here}");
-    }
+    assert!(here.contains(say), "托管那一路带开口那句：{here}");
     let own = line_of("cct", Some("-- 这一趟自己的那句"));
     assert!(
         own.contains("这一趟自己的那句") && !own.contains(say),
