@@ -197,6 +197,9 @@ impl notify::EventHandler for FsSink {
     fn handle_event(&mut self, event: notify::Result<notify::Event>) {
         // 接收端已走（reader 退出）⇒ 丢弃即可，不 panic。
         match event {
+            // notify 7 起 inotify 也报「打开了」：本进程自己读一下被监视的目录 · 文件就又叫醒自己（重挂时 `read_dir`
+            // 那一下 ⇒ 账号目录「变了」⇒ 再重挂 …）。打开不是改动，不进名单。
+            Ok(ev) if is_open(&ev.kind) => {}
             Ok(ev) => {
                 if self.pending.add(ev.paths) {
                     let _ = self.tx.send(WatchEvent::Notify);
@@ -207,6 +210,13 @@ impl notify::EventHandler for FsSink {
             }
         }
     }
+}
+
+fn is_open(kind: &notify::EventKind) -> bool {
+    matches!(
+        kind,
+        notify::EventKind::Access(notify::event::AccessKind::Open(_))
+    )
 }
 
 /// 文件系统那道耳朵：notify 原生监听 ＋ 它报过还没取走的那张名单。
