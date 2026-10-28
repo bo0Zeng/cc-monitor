@@ -290,6 +290,8 @@ pub fn run(
     if let Some(rest) = host_run_args(args) {
         return host_run(rest, own);
     }
+    // 托管名单的家：铸托管名避让 · resume 认托管那几行 · `--attach` 都凭它（`host::managed::installed`）。
+    crate::host::managed::install(own);
     if refuses_without_terminal(
         args,
         std::io::stdin().is_terminal(),
@@ -401,7 +403,22 @@ fn plan_of(
     //
     // 问不到就 `None` ⇒ **不退让**（诚实降级，见 `plan::build` 头注）。
     // ⚠ 探测点仍然只有一个（快照那处），`readonly_guard::spawn_registry` 的数不变。
-    let taken = crate::host::snapshot().taken_names().ok();
+    // 并上这台活着的托管终端（凭盘现读，家由入口装好）：托管名与 tmux 名同一份避让，resume 也认托管那几行。
+    // tmux 那一份问不到 ⇒ 只照托管那几个名字避让（tmux 那一臂照旧诚实降级）。
+    let hosted: Vec<crate::common::session_snapshot::SessionRow> =
+        crate::host::managed::installed()
+            .map(crate::host::managed::home::alive)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|f| crate::common::session_snapshot::SessionRow {
+                name: f.name,
+                ccm_sid: f.sid,
+            })
+            .collect();
+    let taken = Some(match crate::host::snapshot().taken_names() {
+        Ok(t) => t.with_hosted(hosted),
+        Err(_) => crate::common::session_snapshot::TakenNames::hosted_only(hosted),
+    });
     // 号那一格只在真要判的时候读成品（`--base` · 已继承号目录 · 这一家没有账号这一维都不读）。
     let mut plan = plan::build(o, &env, &|| accounts(&env.home, &o.agent), taken.as_ref())?;
     // 接管 agent 原本的出网设置（免代理表加中转口）：继承那一格同账号目录，别名预览不继承。
@@ -690,6 +707,23 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
                 .unwrap_or_default();
             attach_managed(own, &id)
         }
+        // resume 的那条在一个托管终端里跑 ⇒ 瘦客户端接上它（`--detach` ⇒ 只报名字，照下一条的渲染）。
+        Plan::Rejoin {
+            name,
+            sid,
+            detach: false,
+            host: plan::TerminalHost::Managed,
+        } => {
+            eprintln!(
+                "{}",
+                copy_text("beCcm.execute.rejoin", &[("sid", sid), ("name", name)])
+            );
+            let id = crate::host::managed::home::find(own, name)
+                .map(|f| f.id)
+                .unwrap_or_else(|| name.clone());
+            attach_managed(own, &id)
+        }
+        Plan::Container(c) if c.host == plan::TerminalHost::Managed => execute_hosted(c, own),
         Plan::Attach { .. } | Plan::Rejoin { .. } => {
             if let Plan::Rejoin { name, sid, .. } = &plan {
                 eprintln!(
@@ -762,23 +796,7 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
                     }
                 }
             }
-            // 会话名必须由**建它的人**说出来（`--detach` 的既有契约）。
-            if c.detach {
-                println!("ccm-session={}", c.name);
-            }
-            let tail = plan::render_container_tail(c);
-            if tail.is_empty() {
-                0
-            } else {
-                // 收尾片段以 ` && ` / `; ` 开头（它在 `--ccm-print` 里是接在建会话那段后面的）
-                // ⇒ 单独跑时前面补一个 `:`，**不重写一份**（重写就是第二处住址）。
-                exec_shell(
-                    &format!(":{tail}"),
-                    &WHY_SHELL_CONTAINER_TAIL,
-                    Note::NONE,
-                    own,
-                )
-            }
+            finish_container(c, own)
         }
         Plan::Direct(d) => {
             // 不轮换：起之前在轮换账本里给它记好（同 `session-open` 选了「不轮换」那一形）；记不成就不起 ——
@@ -811,6 +829,90 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
             }
             exec_direct(d, upstream, own)
         }
+    }
+}
+
+/// 托管容器真跑：脱离起托管进程（[`plan::Container::host_run`]，stdio 全空、自成一组、不继承 `TMUX`）→ 等它的家出现 →
+/// `--detach` ⇒ 报名字；收尾（自检 · 接上）与 `--ccm-print` 那一段是同一份渲染（[`plan::render_container_tail`]）。
+/// 起不来 · 期限内没起来 ⇒ 退 4。名字是计划里铸好的那一个（同 tmux 那一形：这里一个字都不改它）。
+fn execute_hosted(c: &plan::Container, own: &crate::platform::fs::Own) -> i32 {
+    let Some((exe, rest)) = c.host_run.split_first() else {
+        return die(&copy_text(
+            "beCcm.execute.hostSpawnFailed",
+            &[("name", &c.name), ("why", "argv")],
+        ));
+    };
+    let spawned = Child::new(exe)
+        .args(rest)
+        .env_remove("TMUX")
+        .env_remove("TMUX_PANE")
+        .detach();
+    let pid = match spawned {
+        Ok(pid) => pid,
+        Err(e) => {
+            eprintln!(
+                "{}",
+                copy_text(
+                    "beCcm.execute.hostSpawnFailed",
+                    &[("name", &c.name), ("why", &e.to_string())]
+                )
+            );
+            return 4;
+        }
+    };
+    if !hosted_up(own, &c.name, pid) {
+        eprintln!(
+            "{}",
+            copy_text(
+                "beCcm.execute.hostNotUp",
+                &[("name", &c.name), ("secs", &HOST_UP_SECS.to_string())]
+            )
+        );
+        return 4;
+    }
+    finish_container(c, own)
+}
+
+/// 容器建好之后（两种宿主同一段）：`--detach` ⇒ 报名字；再跑收尾（自检 · 接进去）。
+fn finish_container(c: &plan::Container, own: &crate::platform::fs::Own) -> i32 {
+    // 会话名必须由**建它的人**说出来（`--detach` 的既有契约）。
+    if c.detach {
+        println!("ccm-session={}", c.name);
+    }
+    let tail = plan::render_container_tail(c);
+    if tail.is_empty() {
+        0
+    } else {
+        // 收尾片段以 ` && ` / `; ` 开头（它在 `--ccm-print` 里是接在建会话那段后面的）
+        // ⇒ 单独跑时前面补一个 `:`，**不重写一份**（重写就是第二处住址）。
+        exec_shell(
+            &format!(":{tail}"),
+            &WHY_SHELL_CONTAINER_TAIL,
+            Note::NONE,
+            own,
+        )
+    }
+}
+
+/// 等托管进程起好的期限（秒）。
+const HOST_UP_SECS: u64 = 10;
+
+/// 刚脱离起的托管进程（`pid`）把家写好了没有：名单里那个名字的事实是它写的（托管口在写事实之前已绑好）。
+/// 脱离起的进程 stdio 全空，没有回信的管道 ⇒ 看盘，一次有界等待（起好就不等）。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "起托管终端那一下等它把托管口绑好的一次有界等待：脱离起的托管进程没有给起它的一方回信的管道；起好即止，不是节拍"
+)]
+fn hosted_up(own: &crate::platform::fs::Own, name: &str, pid: u32) -> bool {
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(HOST_UP_SECS);
+    loop {
+        if crate::host::managed::home::find(own, name).is_some_and(|f| f.host_pid == pid) {
+            return true;
+        }
+        if std::time::Instant::now() >= until {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
     }
 }
 

@@ -385,6 +385,8 @@ fn the_agent_set_has_one_address_and_every_member_is_wired() {
 #[test]
 fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
     let c = plan::Container {
+        host: plan::TerminalHost::Tmux,
+        host_run: Vec::new(),
         name: "n1".into(),
         cwd: "/p".into(),
         agent: "claude".into(),
@@ -561,8 +563,8 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
     // 反向自检：抽取没坏（生产段里真有那两处起进程口）。
     assert_eq!(
         prod.matches("Child::new(").count(),
-        2,
-        "本文件生产段的起进程口不是 2 处了 —— `readonly_guard::spawn_registry` 那个数要一起看"
+        3,
+        "本文件生产段的起进程口不是 3 处了（sh 收尾 · exec 那一家 · 脱离起托管进程） —— `readonly_guard::spawn_registry` 那个数要一起看"
     );
 }
 
@@ -617,6 +619,8 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
                 .unwrap_or_default()
                 .to_string(),
             self_argv: vec!["ccm".into()],
+            // 预览答「从这台的一个新终端敲」：能托管就落托管（同 `Env::for_preview_in`）。
+            can_host: plan::HOSTS_HERE,
             ..Default::default()
         };
         // 账号清单成品照这台机器的真值（预览要的就是这一点：「这台机器上敲这条别名」）—— 与真跑同一个入口交的那一份。

@@ -225,6 +225,8 @@ fn the_file_speaks_exactly_the_command_lines_words() {
         flag::TAB_FROM,
         flag::CCM_ALIAS,
         flag::NO_ROTATION,
+        // 放进托管终端：不在 tmux 窗格里敲时缺省就是它；后端起会话那一下自己说，写进配置没意义。
+        flag::HOSTED,
     ];
     let keys: Vec<&str> = PROFILE_FLAGS.iter().map(|f| key_of(f)).collect();
     for k in &keys {

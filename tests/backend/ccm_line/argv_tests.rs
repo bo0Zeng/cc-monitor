@@ -25,8 +25,9 @@ pub(crate) fn mixed_to_split(old: &[String]) -> Vec<String> {
         flag::CCM_SID,
         flag::END,
     ];
-    const BARE: [&str; 8] = [
+    const BARE: [&str; 9] = [
         flag::TMUX,
+        flag::HOSTED,
         flag::DETACH,
         flag::BASE,
         flag::CCM_PRINT,
