@@ -259,12 +259,22 @@ impl Hub {
                 Vec::new()
             }
             Ctl::Say { text } => self.say(id, text),
+            Ctl::Interrupt => self.interrupt(id),
             Ctl::Tag { sid, agent } => vec![Effect::Tag { sid, agent }],
             Ctl::End => vec![Effect::End],
             Ctl::Bye => vec![Effect::Drop(id)],
             // 下行的动词从上行来 · 认不出的 · 第二次 `hello`：不理。
             _ => Vec::new(),
         }
+    }
+
+    /// 后端中断这一轮（A3-3-32-10）：写一个 ESC、回 `interrupted`；不看持有者、不看半句、不换持有者。真终端说它 ⇒ 断它（它有自己的 `in`）。
+    fn interrupt(&mut self, id: u64) -> Vec<Effect> {
+        if self.clients.get(&id).map(|c| c.who.kind) != Some(WhoKind::Backend) {
+            return vec![Effect::Drop(id)];
+        }
+        self.push(id, Frame::Ctl(Ctl::Interrupted));
+        vec![Effect::Write(b"\x1b".to_vec())]
     }
 
     /// 后端说一句：不看谁持有，照写；持有者输入行里有没交的字 ⇒ 不写、回 `pending`。真终端说 `say` ⇒ 不是它该说的，断它。

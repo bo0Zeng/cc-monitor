@@ -968,13 +968,58 @@ pub(crate) fn say_managed_at(sock: &std::path::Path, input: &Input, pastes: &[St
 
 /// [`say_managed_at`] 那一下的托管口：装好的数据目录底下那一个（没装 · 拼不出 ⇒ 已经没了）。
 fn say_managed(id: &str, input: &Input, pastes: &[String]) -> Sent {
+    at_managed(id, |sock| say_managed_at(sock, input, pastes))
+}
+
+/// 托管 `id` 的托管口交给 `go`；没装 · 拼不出 ⇒ 已经没了。
+fn at_managed(id: &str, go: impl FnOnce(&std::path::Path) -> Sent) -> Sent {
     let Some(own) = crate::host::managed::installed() else {
         return refused(Refused::Ended);
     };
     match crate::host::managed::home::sock_of(own, id) {
-        Ok(sock) => say_managed_at(&sock, input, pastes),
+        Ok(sock) => go(&sock),
         Err(_) => refused(Refused::Ended),
     }
+}
+
+/// 中断托管终端里这一轮（A3-3-32-10）：经托管口 `interrupt`，托管进程写一个 ESC —— 不持有输入、不看半句、不换持有者。
+/// 旧托管进程 ⇒ `host_outdated`；连上之后没等到回音 ⇒ 不知道；托管口不在 ⇒ 已经没了。
+pub(crate) fn interrupt_managed_at(sock: &std::path::Path) -> Sent {
+    use std::io::ErrorKind as K;
+    match crate::host::managed::client::interrupt(sock) {
+        Ok(()) => input_reply(SentResult::Delivered, None, None),
+        Err(e) if e.kind() == K::Unsupported => refused(Refused::HostOutdated),
+        Err(e) if matches!(e.kind(), K::WouldBlock | K::TimedOut) => {
+            input_reply(SentResult::Unsure, None, None)
+        }
+        Err(_) => refused(Refused::Ended),
+    }
+}
+
+/// `session-interrupt` 的本体：中断那条会话这一轮，不进输入队（队等这一轮完才送，中断正是打断这一轮）。
+/// 托管那一形过门（按行事实）、前台得是 agent，经托管口 `interrupt`；tmux 那一形同投递那一道送一个 Escape（各端都能打字，不涉持有）。
+/// 名单里没有它 ⇒ `not_known`；那一刻没了 ⇒ `ended`。
+pub(crate) fn interrupt_on(on: On<'_>, sid: &str, client: Option<&str>) -> Result<Sent, CmdErr> {
+    let t = target(None, Some(sid))?;
+    if let Some(row) = managed_row(&t)? {
+        let requester = gate::requester(client)?;
+        match gate::identity_of(&row, requester.as_deref()) {
+            Who::Pass => {}
+            Who::OtherClient => return Ok(refused(Refused::NotYours)),
+            Who::NotOurs => return Ok(refused(Refused::NotManaged)),
+        }
+        if !agent_in_front(&row) {
+            return Ok(refused(Refused::Ended));
+        }
+        return Ok(at_managed(&row.id, interrupt_managed_at));
+    }
+    let req = TerminalInputReq {
+        sid: Some(sid.to_string()),
+        key: Some("esc".to_string()),
+        client: client.map(str::to_string),
+        ..TerminalInputReq::default()
+    };
+    send_on(on, &req, Via::Queued)
 }
 
 /// 后端替哪个前端持有：请求自报的那个；没报 ⇒ 桌面（手机恒自报 `mobile`）。

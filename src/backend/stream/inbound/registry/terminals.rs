@@ -46,6 +46,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::control::terminals_wire::TerminalReleaseInputCmd>(
         "交还托管终端的输入",
     ),
+    // 会话 ■：中断这一轮，不进输入队、不靠持有输入（`control/terminals.rs::interrupt_on`；托管那一形经托管口 `interrupt`）。
+    crate::wire::typed::blocking::<crate::control::terminals_wire::SessionInterruptCmd>(
+        "中断一条会话这一轮（不进输入队、不换持有者）",
+    ),
     // 按名单里的句柄结束一个终端，两种宿主同一条（`control/kill.rs::end_terminal`）。
     crate::wire::typed::blocking::<crate::control::kill::TerminalEnd>("结束名单里的一个终端"),
     crate::wire::typed::blocking::<crate::faces::session_commands_face::SessionCommandsCmd>(

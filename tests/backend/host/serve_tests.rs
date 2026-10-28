@@ -369,3 +369,20 @@ fn changing_the_holder_keeps_the_half_typed_line_blocking_a_say() {
     hub.gone(d);
     assert!(hub.frame(b, say("b\r"), 9).is_empty());
 }
+
+/// ★ 中断（A3-3-32-10）：后端说 `interrupt` ⇒ 伪终端收一个 ESC、回 `interrupted`；不看持有者、不看半句、不换持有者。
+/// 真终端说 `interrupt` ⇒ 不是它该说的（它有自己的 `in`），断它。
+#[test]
+fn an_interrupt_from_the_backend_writes_one_esc_whoever_holds_and_whatever_is_half_typed() {
+    let (mut hub, t, b, b_out) = held_by_a_terminal_with_a_backend_viewer();
+    hub.frame(t, Frame::In(b"half".to_vec()), 1);
+    let eff = hub.frame(b, Frame::Ctl(Ctl::Interrupt), 2);
+    assert_eq!(eff, vec![Effect::Write(b"\x1b".to_vec())]);
+    assert_eq!(take(&b_out), vec![Frame::Ctl(Ctl::Interrupted)]);
+    assert_eq!(hub.holder, Some(t), "持有者不换");
+    assert!(hub.frame(b, say("x\r"), 3).is_empty(), "半句照旧在");
+    assert_eq!(
+        hub.frame(t, Frame::Ctl(Ctl::Interrupt), 4),
+        vec![Effect::Drop(t)]
+    );
+}

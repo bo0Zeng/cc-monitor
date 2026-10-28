@@ -1320,3 +1320,72 @@ fn the_desktop_that_did_not_name_itself_sees_its_own_hold_as_mine() {
         (false, copy_text("beTerminal.holder.mobile", &[]))
     );
 }
+
+/// ★ 中断不靠持有输入（A3-3-32-10）：托管终端的输入在一个真终端手里、那个真终端还敲了半句 ⇒ 中断照样把一个 ESC 写进伪终端
+/// （子进程读到 `0x1b`），持有者不变；回「送到了」。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_interrupt_reaches_a_hosted_terminal_held_elsewhere_with_a_half_typed_line() {
+    use crate::host::managed::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+    use crate::host::managed::wire::{write_frame, Frame, Want, WhoKind};
+    let (own, _data) = sandbox_own("term-int");
+    // 子进程逐字节读、按十六进制印出来（原始模式：不等回车）。
+    let script = "stty raw -echo; printf 'ready\\r\\n'; while :; do c=$(dd bs=1 count=1 2>/dev/null | od -An -tx1 | tr -d ' '); printf 'k:%s\\r\\n' \"$c\"; done";
+    let (sock, task) = start(&own, spec("t-int", script)).await;
+    let mut t = hello(&sock, Want::Input).await;
+    read_until_out(&mut t, "ready").await;
+    write_frame(&mut t, &Frame::In(b"a".to_vec()))
+        .await
+        .expect("半句");
+    read_until_out(&mut t, "k:61").await;
+    let s = sock.clone();
+    let sent = tokio::task::spawn_blocking(move || interrupt_managed_at(&s))
+        .await
+        .expect("没崩");
+    assert_eq!(sent.result, SentResult::Delivered, "{sent:?}");
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        read_until_out(&mut t, "k:1b"),
+    )
+    .await
+    .expect("子进程 5 秒内没读到 ESC");
+    let s = sock.clone();
+    let rows = tokio::task::spawn_blocking(move || crate::host::managed::client::clients(&s))
+        .await
+        .expect("没崩")
+        .expect("答了");
+    assert!(
+        rows.iter().any(|r| r.holder && r.kind == WhoKind::Terminal),
+        "持有者还是那个真终端：{rows:?}"
+    );
+    drop(t);
+    let s = sock.clone();
+    tokio::task::spawn_blocking(move || crate::host::managed::client::end(&s))
+        .await
+        .expect("没崩")
+        .expect("结束");
+    task.await.expect("任务没崩").expect("跑完");
+}
+
+/// ★ 中断旧托管进程（`welcome` 报 proto 1）：当场 `host_outdated`、那一句照「旧版 · 结束后恢复即进新版」，不说给它。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_interrupt_to_an_old_hosted_terminal_is_refused_as_outdated() {
+    let dir = test_home::sandbox_root().join("old-host-int");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("建沙箱目录");
+    let sock = dir.join("sock");
+    let host = old_host(sock.clone()).await;
+    let s = sock.clone();
+    let sent = tokio::task::spawn_blocking(move || interrupt_managed_at(&s))
+        .await
+        .expect("没崩");
+    assert_eq!(
+        (sent.result, sent.why, sent.said.as_deref()),
+        (
+            SentResult::Refused,
+            Some(Refused::HostOutdated),
+            Some(copy_text("beTerminal.no.hostOutdated", &[]).as_str())
+        ),
+        "{sent:?}"
+    );
+    host.await.expect("假托管没崩");
+}
