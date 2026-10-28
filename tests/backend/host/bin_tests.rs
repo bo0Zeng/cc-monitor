@@ -75,3 +75,21 @@ fn an_old_copy_still_running_is_left_until_it_exits() {
     versioned_copy(&own, "2.0.0", &me).expect("再起一次");
     assert!(!old.exists(), "它退了之后下一次起托管时删掉");
 }
+
+/// A3-3-34：起托管那一下用哪个程序 —— Windows 上是按版本的副本（跑着的 `ccm.exe` 盖不掉），别处就是被叫成的那个词。
+#[test]
+fn the_host_program_is_the_versioned_copy_only_where_running_programs_are_locked() {
+    let (own, data) = sandbox_own("bin-pick");
+    let me = fake_me(&data.join("fixture"), b"me");
+    let got = host_program(&own, "ccm", &me).expect("定得了");
+    if crate::platform::child::RUNNING_PROGRAM_IS_LOCKED {
+        let want = data
+            .join("hosts")
+            .join(".bin")
+            .join(env!("CARGO_PKG_VERSION"))
+            .join(program_name());
+        assert_eq!(std::path::PathBuf::from(&got), want);
+    } else {
+        assert_eq!(got, "ccm");
+    }
+}

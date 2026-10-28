@@ -389,9 +389,9 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 ## 36. 本地（Windows）路径不经 IR 产出命令——嵌套 env 污染保护已在进程启动期做完，别在本地渲染器里重复实现（F06 / unify-launch；R07 收紧）
 
-本机那几形由本机后端出成品（`session-open`，渲在 `control/launch_render/mod.rs::line_of`）；Windows 那一格也只是一行 `ccm --resume <sid> -- …`（没有 tmux ⇒ 直路；接回说不出 ⇒ 拒）。**本地渲染器不渲任何清变量的代码**：清 Claude 自己的嵌套会话标记归 `ccm` 在最终 exec 那一处（进程内摘环境，不是一段 PowerShell 语法），本机远端、两个平台同一处。这一形要 `ccm` 在用户的 `PATH` 上。
+本机那几形由本机后端出成品（`session-open`，渲在 `control/launch_render/mod.rs::line_of`）；Windows 那一格也只是一行 `ccm --resume <sid> -- …`（没有 tmux ⇒ 说了进 tmux 的走直路；起会话 · 恢复缺省落托管终端，接回那一行是 `ccm -- --attach <名>`）。**本地渲染器不渲任何清变量的代码**：清 Claude 自己的嵌套会话标记归 `ccm` 在最终 exec 那一处（进程内摘环境，不是一段 PowerShell 语法），本机远端、两个平台同一处。这一形要 `ccm` 在用户的 `PATH` 上。
 
-**谁在守**：`ccm_invocation_tests.rs::windows_launches_go_the_direct_way_and_attach_is_refused`。
+**谁在守**：`ccm_invocation_tests.rs::windows_launches_go_the_direct_way_and_attach_is_the_thin_client`。
 
 ## 37. 新维度的 `applies` 该不该恒真，看这个维度的"沉默"是否等价于用户期望——不是看它是不是账号相关（F07 / unify-launch）
 
@@ -417,7 +417,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 要求：「我的目的就是把本地当成不走 ssh 的远端。后面都要这么搞。」凡新增「起会话 / 看会话 / 管配置」的能力，先问它能不能只是远端那条路少一跳 ssh；能，就不许另起一套。本机与远端是同一个后端二进制、同一套帧命令，差别只在载体（本机：本人套接字 / 管道；远端：SSH 上的链路）。
 
-**功能面也要一致**（「本地的功能要和远程功能一致」）：新能力必须同时落在本机与远端，或者显式登记为天然不对称并写理由。既有缺口逐条登记、按节奏还。天然不对称的：端口转发（本地没有「转发到自己」）· 多地址故障切换（本地没有地址）· 本机那份后端由宿主启动时自己释放、不经部署命令。Windows 本机是唯一的平台例外（没有 tmux；起会话走直路，§36）。
+**功能面也要一致**（「本地的功能要和远程功能一致」）：新能力必须同时落在本机与远端，或者显式登记为天然不对称并写理由。既有缺口逐条登记、按节奏还。天然不对称的：端口转发（本地没有「转发到自己」）· 多地址故障切换（本地没有地址）· 本机那份后端由宿主启动时自己释放、不经部署命令。Windows 本机是唯一的平台例外（没有 tmux：托管终端照常有，tmux 那一形没有，§36）。
 
 **谁在守**：`parity_ledger`（Tauri 命令逐条：两侧都有，或在白名单里带理由；新增不登记就红）。
 

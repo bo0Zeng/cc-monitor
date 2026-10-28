@@ -126,6 +126,10 @@
             "can": "no",
             "why": "运行中"
           },
+          "say": {
+            "can": "yes",
+            "hint": "发消息…"
+          },
           "stop": {
             "can": "yes"
           },
@@ -197,6 +201,10 @@
           },
           "resume": {
             "can": "yes"
+          },
+          "say": {
+            "can": "yes",
+            "hint": "会话已结束 · 发一句会先恢复它"
           },
           "stop": {
             "can": "no",
@@ -271,6 +279,10 @@
           "resume": {
             "can": "yes"
           },
+          "say": {
+            "can": "yes",
+            "hint": "会话已结束 · 发一句会先恢复它"
+          },
           "stop": {
             "can": "no",
             "why": "会话已结束"
@@ -344,6 +356,10 @@
           },
           "resume": {
             "can": "yes"
+          },
+          "say": {
+            "can": "yes",
+            "hint": "会话已结束 · 发一句会先恢复它"
           },
           "stop": {
             "can": "no",
@@ -424,6 +440,10 @@
           "resume": {
             "can": "no",
             "why": "暂不恢复"
+          },
+          "say": {
+            "can": "no",
+            "why": "状态不明"
           },
           "stop": {
             "can": "no",

@@ -652,9 +652,10 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
     );
 }
 
-/// Windows 本机：没有 tmux ⇒ 说了建进 tmux 也走直路（不带会话名、不打身份标记），那一行是 PowerShell 那一形；接回说不出 ⇒ 拒。
+/// Windows 本机：没有 tmux ⇒ 说了建进 tmux 也走直路（不带会话名、不打身份标记），那一行是 PowerShell 那一形；
+/// 接回只会是托管终端（A3-3-34）⇒ `ccm -- --attach <名>` 那一行，瘦客户端接得上。
 #[test]
-fn windows_launches_go_the_direct_way_and_attach_is_refused() {
+fn windows_launches_go_the_direct_way_and_attach_is_the_thin_client() {
     use super::super::{line_of, Act, Here};
     use crate::control::launch_account::Settled;
     let win = Here::Local { windows: true };
@@ -673,7 +674,11 @@ fn windows_launches_go_the_direct_way_and_attach_is_refused() {
     );
     let mut attach = launch("claude", Act::Attach("cc-x".into()));
     attach.tmux = Some("cc-x".into());
-    assert!(line_of(&attach, &Settled::Base, win, &caps, "C:/cc/ccm.exe").is_err());
+    let line = line_of(&attach, &Settled::Base, win, &caps, "C:/cc/ccm.exe").expect("接得回");
+    assert!(
+        line.starts_with("& 'C:/cc/ccm.exe' -- --attach ") && line.contains("cc-x"),
+        "{line}"
+    );
 }
 
 /// 经别名起：`@别名` 紧跟入口（ccm 只认第一个词是 `@名`）；PowerShell 那一行写成字面量（裸的 `@名` 在那里是摊开变量）。
