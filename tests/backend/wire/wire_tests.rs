@@ -1196,7 +1196,7 @@ fn loc1b_session_added_carries_the_pid() {
     .unwrap();
     assert_eq!(
         line,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"life\":{\"is\":\"live\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"host\":\"direct\"},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"no\",\"why\":\"状态不明\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"}}},\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"life\":{\"is\":\"live\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"host\":\"direct\"},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"no\",\"why\":\"状态不明\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
     );
 }
 
@@ -1720,6 +1720,60 @@ fn session_frames_say_whether_model_and_permission_can_switch_now() {
     assert_eq!(
         switch(Life::Gone),
         serde_json::json!({"model": no("sessionState.gone.tooltip"), "permission": no("sessionState.gone.tooltip")})
+    );
+}
+
+/// 整份脸上能不能结束（`can.end`，右键 · 多选 · 终端名单 · 占位都只读它）由核心判：
+/// 活着且住在终端宿主里（或住哪判不了，交了由那台认）· 程序退了 tmux 会话还在 ⇒ 能；
+/// 不在任何宿主里 ⇒ 不能、写非 cc-monitor 起的那一句；已结束 · 记录已不在 ⇒ 不能、写已结束那一句；说不清 · 看不见 ⇒ 不能、写那一态那一句。
+#[test]
+fn session_frames_say_whether_the_session_can_be_ended() {
+    use crate::wire::{Housed, Life, SessionFace, TerminalHost};
+    let end = |f: SessionFace| serde_json::to_value(f).unwrap()["can"]["end"].clone();
+    let yes = serde_json::json!({"can": "yes"});
+    let no = |why: String| serde_json::json!({"can": "no", "why": why});
+    for host in [
+        Some(Housed::In(TerminalHost::Tmux)),
+        Some(Housed::In(TerminalHost::Managed)),
+        None,
+    ] {
+        assert_eq!(
+            end(SessionFace::of(Life::Live {
+                activity: None,
+                host
+            })),
+            yes,
+            "{host:?}"
+        );
+        assert_eq!(end(SessionFace::of(Life::Reading { host })), yes, "{host:?}");
+    }
+    assert_eq!(end(SessionFace::of(Life::Reconnectable)), yes);
+    assert_eq!(
+        end(SessionFace::of(Life::Live {
+            activity: None,
+            host: Some(Housed::Bare)
+        })),
+        no(copy_core::copy_text("terminal.empty.notOurs", &[]))
+    );
+    let ended = copy_core::copy_text("sessionState.ended.name", &[]);
+    assert_eq!(
+        end(SessionFace::of(Life::Ended)),
+        no(copy_core::copy_text("tabBatch.why.ended", &[("ended", &ended)]))
+    );
+    let gone = copy_core::copy_text("sessionState.gone.name", &[]);
+    assert_eq!(
+        end(SessionFace::of(Life::Gone)),
+        no(copy_core::copy_text("tabBatch.why.ended", &[("ended", &gone)]))
+    );
+    assert_eq!(
+        end(SessionFace::of(Life::Unclear)),
+        no(copy_core::copy_text("beSession.activity.unclear", &[]))
+    );
+    assert_eq!(
+        end(SessionFace::unseen(crate::common::cells::Words(
+            "gpu-01 离线".into()
+        ))),
+        no("gpu-01 离线".into())
     );
 }
 

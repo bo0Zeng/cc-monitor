@@ -13,13 +13,19 @@ import { openBatchMenu, type TabBatchHost, type TabBatchRun } from "../../../src
 import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { askText } from "../../../src/frontend/ui/kit/dialog";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { endConfirm } from "../../../src/frontend/ui/end-confirm";
 import { showMessage } from "../../../src/frontend/ui/status-messages";
 import { goldenFace, liveFace } from "../../test-support/session-faces";
 import { LOCAL_ORIGIN, originFromWire } from "../../../src/frontend/ui/ipc/origin";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 
+/** 活着、在 tmux 里干活的那一张（结束得了，同 `SessionFace::of` 对住在 tmux 里的那一判）。 */
+const inTmux = () => {
+  const f = liveFace("working", true);
+  return { ...f, can: { ...f.can, end: { can: "yes" as const } } };
+};
 const tab = (sid: string, live: boolean, extra: Partial<Tab> = {}): Tab =>
-  ({ sessionId: sid, origin: LOCAL_ORIGIN, title: `T-${sid}`, label: `T-${sid}`, labelProject: null, projectDir: null, background: false, bgName: null, forkedFromSessionId: null, face: live ? liveFace("working", true) : goldenFace("ended"), pinned: false, group: null, ...extra }) as Tab;
+  ({ sessionId: sid, origin: LOCAL_ORIGIN, title: `T-${sid}`, label: `T-${sid}`, labelProject: null, projectDir: null, background: false, bgName: null, forkedFromSessionId: null, face: live ? inTmux() : goldenFace("ended"), pinned: false, group: null, ...extra }) as Tab;
 
 let tabs: Tab[];
 let host: TabBatchHost;
@@ -95,15 +101,15 @@ describe("批量菜单", () => {
     expect(toastBody().split("\n")).toContain(unseen);
   });
 
-  it("★ 杀：能做的照脸上 can.term 数，跳过的理由照抄各自那一格的 why；「已结束几个」按点数（不拿句子比）", async () => {
-    const ended = { ...goldenFace("ended"), can: { ...goldenFace("ended").can, term: { can: "no" as const, why: "核心·e" } } };
-    const gone = { ...goldenFace("gone"), can: { ...goldenFace("gone").can, term: { can: "no" as const, why: "核心·g" } } };
+  it("★ 杀：能做的照脸上 can.end 数，跳过的理由照抄各自那一格的 why；「已结束几个」按点数（不拿句子比）；确认框是结束会话那一个", async () => {
+    const ended = { ...goldenFace("ended"), can: { ...goldenFace("ended").can, end: { can: "no" as const, why: "核心·e" } } };
+    const gone = { ...goldenFace("gone"), can: { ...goldenFace("gone").can, end: { can: "no" as const, why: "核心·g" } } };
     tabs = [tab("e1", false, { face: ended }), tab("e2", false, { face: ended }), tab("g", false, { face: gone }), tab("r", true)];
     run.stop.mockResolvedValue([{ sid: "r", outcome: "done", why: "" }]);
     open();
     await press(copyText("tabBatch.menu.stop", { n: 1 }));
     expect(run.stop.mock.calls[0][0].map((t: Tab) => t.sessionId)).toEqual(["r"]);
-    expect((run.confirm.mock.calls[0][0] as { note?: string }).note).toBe(copyText("sessionState.batch.skipped", { n: 3 }));
+    expect(run.confirm.mock.calls[0][0]).toEqual(endConfirm(["T-r"], copyText("sessionState.batch.skipped", { n: 3 })));
     expect(toastBody().split("\n")).toEqual([
       copyText("tabBatch.result.skippedLine", { title: "T-e1", why: "核心·e" }),
       copyText("tabBatch.result.skippedLine", { title: "T-e2", why: "核心·e" }),

@@ -230,6 +230,7 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { appStore, putIn } from "../../../src/frontend/ui/app-store";
 import type { SessionAccountReply } from "../../../src/frontend/ui/generated/SessionAccountReply";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { endConfirm } from "../../../src/frontend/ui/end-confirm";
 import { recordFileWiring } from "../../../src/frontend/ui/record-file-notice";
 
 /** 会话事实里的一格 usage（上限由后端定：这里按「判不出 ⇒ 1M」那一形造）。 */
@@ -1404,36 +1405,19 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     );
   });
 
-  it("P3 刀2-UI 本机 tab 右键：问不到那台（null）→ 结束项灰着、第二行写原因，不留能点的破坏性动作", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_local_tmux" ? Promise.resolve(null) : Promise.resolve(undefined),
-    ));
+  // 「结束会话…」能不能只照脸上的 `can.end`（A2-17-12-3）：不等问那台在哪个终端里（命中几个 · 不在终端里交了由那台判、那台说）。
+  it("★ 结束项照 can.end：能 ⇒ 菜单一开就可点（问那台还没回）；不能 ⇒ 灰着、第二行是那一格的 why", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(() => new Promise(() => {})));
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
+    tm.onFace("k1abcdef", goldenFace("live-needs-you-tmux"));
     rightClick("k1abcdef");
-    expect(killBtn()?.disabled, "还在问：先画出项、不可点").toBe(true);
-    expect(killBtn()?.querySelector("[data-part=label]")?.textContent, "问的时候不换字").toBe(copyText("tabMenu.kill.label"));
-    await flush();
+    expect(killBtn()?.disabled).toBe(false);
+    expect(await killConfirmText()).toContain(copyText("tabBatch.stop.title", { n: 1 }));
+    tm.ensureTab("k2abcdef", "/home/u/p", "/p/k2.jsonl", "hostA");
+    tm.onFace("k2abcdef", goldenFace("live-working-plain"));
+    rightClick("k2abcdef");
     expect(killBtn()?.disabled).toBe(true);
-    expect(whyOf(killBtn())).toBe(copyText("tabMenu.probe.failed"));
-  });
-
-  it("P3 刀2-UI 本机 tab 右键：按 @ccm_sid 认出唯一那个（名字前缀是诱饵）", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_local_tmux"
-        ? Promise.resolve([
-            // ★ 名字长得就是本 tab 的 `<sid8>-cc`，但 `@ccm_sid` 是别人的 —— **诱饵**。
-            //   按名字前缀猜就会中它，那是「拿命名巧合当身份」（§30 禁的那一类）。
-            { name: "k1abcdef-cc", path: "/home/u/p", command: "claude", attached: false, windows: 1, sid: "someone-else", agent: true },
-            { name: "unrelated-cc", path: "/home/u/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef", agent: true },
-          ])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
-    rightClick("k1abcdef");
-    await flush();
-    const said = await killConfirmText();
-    expect(said, "tmux 会话名在确认框正文里").toContain("unrelated-cc");
-    expect(said).not.toContain("k1abcdef-cc");
+    expect(whyOf(killBtn())).toBe(copyText("terminal.empty.notOurs"));
   });
 
   // 本机**空 tmux**（claude 已退、只剩交互 shell）：恢复只在「恢复 ▸」里（运行于 tmux 那一项），
@@ -1441,7 +1425,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   const menuLabels = (): string[] =>
     [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem] [data-part=label]") ?? [])].map((n) => n.textContent ?? "");
 
-  it("本机空 tmux（Claude 已退出）→ 菜单顶层没有「在 tmux 会话里恢复」；结束的确认框点名那个 tmux 会话", async () => {
+  it("本机空 tmux（Claude 已退出）→ 菜单顶层没有「在 tmux 会话里恢复」", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_local_tmux"
         ? Promise.resolve([
@@ -1454,21 +1438,6 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     rightClick("k1abcdef");
     await flush();
     expect(menuLabels()).not.toContain("在 tmux 会话里恢复");
-    expect(await killConfirmText()).toContain(copyText("sessionState.killIdle.title", { name: "i1-cc" }));
-  });
-
-  it("本机 tmux 里还跑着 claude → 结束的确认框写会中断那个 tmux 会话", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_local_tmux"
-        ? Promise.resolve([
-            { name: "i1-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef", agent: true },
-          ])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
-    rightClick("k1abcdef");
-    await flush();
-    expect(await killConfirmText()).toMatch(copyPattern("tabSessionActions.kill.cuts", { name: "i1-cc" }));
   });
 
   /** 那台答这个会话在托管终端里（`sessions-where` 的 `terminals[].host` ＝ `managed`）。 */
@@ -1480,15 +1449,6 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
         : rest(cmd, args),
     );
   };
-
-  it("★ 本机：会话在托管终端里 ⇒ 出［结束］（确认框点名那个终端）", async () => {
-    inHostedTerminal("k1abcdef", "idle");
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
-    rightClick("k1abcdef");
-    await flush();
-    expect(killBtn()?.disabled).toBe(false);
-    expect(await killConfirmText()).toContain(copyText("sessionState.killIdle.title", { name: "box-cc" }));
-  });
 
   it("★ 本机：会话在托管终端里 ⇒ 出［在终端里打开］，点了恰好一问 `session-open {look, sid, local}`（那一行由那台渲：瘦客户端接句柄）", async () => {
     inHostedTerminal("k1abcdef", "running");
@@ -1511,36 +1471,15 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     rightClick("k1abcdef");
     await flush();
     expect(attachBtn()).toBeNull();
-    expect(killBtn()?.disabled).toBe(false);
   });
 
-  it("★ 远端：会话在托管终端里 ⇒ 出［结束］与［在终端里打开］（接回那一条那台两种宿主都认）", async () => {
+  it("★ 远端：会话在托管终端里 ⇒ 出［在终端里打开］（接回那一条那台两种宿主都认）", async () => {
     inHostedTerminal("A", "running");
     tm.ensureTab("A", "/a", "p", "hostA");
     rightClick("A");
     await flush();
     expect(attachBtn()?.disabled).toBe(false);
-    expect(killBtn()?.disabled).toBe(false);
-    expect(await killConfirmText()).toMatch(copyPattern("tabSessionActions.kill.cuts", { name: "box-cc" }));
-    rightClick("A");
-    await flush();
     expect(attachTarget()).toEqual({ what: { kind: "look", sid: "A" }, local: false });
-  });
-
-  it("P3 刀2-UI 本机 tab 右键：同身份命中 2 个 → 拒绝，不折叠成第一个", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_local_tmux"
-        ? Promise.resolve([
-            { name: "a-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef", agent: true },
-            { name: "b-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef", agent: true },
-          ])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
-    rightClick("k1abcdef");
-    await flush();
-    expect(whyOf(killBtn())).toBe(copyText("tabMenu.kill.dupesWhy", { n: 2 }));
-    expect(killBtn()?.disabled).toBe(true);
   });
 
   it("远端 tab 右键 → 反查命中 claude 会话 → attach 项由禁用占位就绪为可点", async () => {
@@ -1614,9 +1553,8 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(attachTarget()).toEqual({ what: { kind: "look", sid: "A" }, local: false });
   });
 
-  // F04（R10）：命中 ≥2 个精确同 sid 的活会话——attach 仍就绪（非破坏性，警告即可），
-  // kill 项禁用 + 诊断文案（破坏性，选错代价不可逆，须到终端手动处理）。preview 不受影响。
-  it("目标 sid 同时活在 2 个 tmux（命中 ≥2 个）→ attach 仍就绪，kill 项禁用+诊断文案", async () => {
+  // F04（R10）：命中 ≥2 个精确同 sid 的活会话——attach 仍就绪（非破坏性，警告即可）；结束交了由那台拒（`sessions-stop` 的 ambiguous）。
+  it("目标 sid 同时活在 2 个 tmux（命中 ≥2 个）→ attach 仍就绪、第二行写命中几个", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
@@ -1630,8 +1568,6 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     await flush();
     expect(attachBtn()?.disabled).toBe(false);
     expect(whyOf(attachBtn())).toBe(copyText("tabMenu.attach.dupesWhy", { n: 2, name: "cc-A1" }));
-    expect(killBtn()?.disabled).toBe(true);
-    expect(whyOf(killBtn())).toBe(copyText("tabMenu.kill.dupesWhy", { n: 2 }));
   });
 
   // 〔终端 L1〕看画面只有一个入口：抽屉终端页（「看它的终端」）；盖住主窗口的旧浮层那一项不再出（远端本机都一样）。
@@ -1925,7 +1861,7 @@ describe("auto-e2e F-E4 可注入 confirm seam（endSession：交那台 sessions
     const confirmSpy = vi.spyOn(window, "confirm");
     home(tm).actions.endSession("hostA", "s1", "cc-abc");
     await microFlush();
-    expect(askDialogText(), "没弹应用内对话框").toContain(copyText("tabSessionActions.kill.title", { title: "cc-abc" }));
+    expect(askDialogText(), "没弹应用内对话框").toContain(copyText("tabBatch.stop.title", { n: 1 }));
     expect(killCalls(), "还没答就杀了").toHaveLength(0);
     await answerAskDialog(false);
     expect(killCalls()).toHaveLength(0);
@@ -1952,41 +1888,18 @@ describe("auto-e2e F-E4 可注入 confirm seam（endSession：交那台 sessions
     confirmSpy.mockRestore();
   });
 
-  // UX 审计 #1：灰态(idle-tmux) tab 也能 kill——opts.idle 走"Claude 已退出"文案（非"正在运行"），照常 kill。
-  it("endSession { idle:true } → 文案说 Claude 已退出、非'正在运行'，仍 kill 空 tmux", async () => {
-    const msgs: string[] = [];
-    home(tm).actions.endSession("hostA", "s1", "cc-idle1234", {
-      idle: true,
+  // 结束会话只一个确认框（A2-17-12-3）：单个交出去的就是多选 · 终端名单那一份，只列这一条的名字。
+  it("★ endSession 的确认框 ＝ 结束会话那一个（endConfirm），列的是这一条的名字", async () => {
+    const asked: unknown[] = [];
+    home(tm).actions.endSession("hostA", "s1", "表格分页", {
       confirm: (m) => {
-        msgs.push(m.body ?? "");
-        return true;
-      },
-    });
-    await microFlush();
-    expect(msgs).toHaveLength(1);
-    expect(msgs[0]).toContain(copyText("sessionState.reconnectable.name"));
-    expect(msgs[0]).not.toContain("正在运行的 Claude");
-    expect(killCalls()).toHaveLength(1);
-    expect(killCalls()[0]).toEqual(["hostA", ["s1"]]);
-  });
-
-  // 护栏：live（非 idle）的确认框逐项写会中断什么（那个 tmux 会话里的 Claude · 当前轮次）与保留什么。
-  it("endSession 非 idle → 中断那一项点名 tmux 会话里的 Claude 与当前轮次；保留会话记录（live 路径护栏）", async () => {
-    const rows: { label: string; items: string[] }[][] = [];
-    home(tm).actions.endSession("hostA", "s1", "cc-live1234", {
-      title: "表格分页",
-      confirm: (m) => {
-        rows.push(m.rows ?? []);
+        asked.push(m);
         return false;
       },
     });
     await microFlush();
-    expect(rows).toEqual([
-      [
-        { label: copyText("kit.interrupts.cut"), items: [copyText("tabSessionActions.kill.cuts", { machine: "hostA", name: "cc-live1234" })] },
-        { label: copyText("kit.interrupts.keep"), items: [copyText("tabSessionActions.kill.keeps")] },
-      ],
-    ]);
+    expect(asked).toEqual([endConfirm(["表格分页"])]);
+    expect(killCalls()).toHaveLength(0);
   });
 });
 
@@ -5599,6 +5512,7 @@ describe("tab 多选与批量菜单", () => {
     expect(batchHead(), "单个菜单").not.toBe(head(2));
     click("b", { ctrlKey: true });
     tm.onFace("b", goldenFace("ended"));
+    for (const sid of ["a", "c"]) tm.onFace(sid, goldenFace("live-needs-you-tmux"));
     rightClick("b");
     const labels = menuLabels();
     expect(document.body.querySelector("[role=menu] [role=presentation]")?.textContent, "头一行「已选 N 个」").toBe(head(2));

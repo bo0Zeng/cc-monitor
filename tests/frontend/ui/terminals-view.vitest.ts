@@ -249,9 +249,9 @@ describe("结束几行", () => {
       ["devbox", { terminal: "h-b" }, "乙"],
       ["<local>", { terminal: "h-c" }, "丙"],
     ]);
-    expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toBe(copyText("terminalsView.end.done"));
+    expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toBe(copyText("sessionState.batch.done", { done: 3 }));
     end.mockRejectedValueOnce(new Error("refused"));
     await endRows(items.slice(0, 1), async () => true);
-    expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toBe(copyText("terminalsView.end.failed"));
+    expect(vi.mocked(toast).mock.calls.at(-1)?.slice(0, 2)).toEqual([copyText("tabSessionActions.kill.failed", { title: "甲" }), "refused"]);
   });
 });

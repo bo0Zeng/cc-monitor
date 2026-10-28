@@ -4650,24 +4650,6 @@
       "zh": "结束失败 · {title}",
       "args": ["title"]
     },
-    "tabSessionActions.who.local": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机",
-      "args": []
-    },
-    "tabSessionActions.kill.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "结束会话「{title}」",
-      "args": ["title"]
-    },
-    "tabSessionActions.kill.action": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "结束会话",
-      "args": []
-    },
     "tabSessionActions.openInWindow.failed": {
       "kind": "error",
       "role": "报错",
@@ -13160,13 +13142,6 @@
       "role": "按钮",
       "zh": "关闭标签页",
       "args": []
-    },
-    "launch.slot.killCuts": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} tmux 会话 {name} 里正在跑的程序",
-      "args": ["machine", "name"],
-      "limited": ["tmux"]
     },
     "sessionOpen.arrived.body": {
       "kind": "body",
@@ -25960,29 +25935,6 @@
       "zh": "→",
       "args": []
     },
-    "sessionState.killIdle.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "结束 tmux 会话「{name}」",
-      "args": ["name"],
-      "limited": ["tmux"]
-    },
-    "sessionState.killIdle.action": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "结束 tmux 会话",
-      "args": [],
-      "limited": ["tmux"],
-      "waive": {
-        "C-W15": "压了换事实：结束的是 tmux 会话，压成「结束会话」读着像结束 Claude 会话"
-      }
-    },
-    "tabSessionActions.kill.cuts": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} 终端 {name} 里的 Claude · 当前轮次",
-      "args": ["machine", "name"]
-    },
     "tabSessionActions.kill.keeps": {
       "kind": "body",
       "role": "片段",
@@ -26036,13 +25988,6 @@
       "role": "菜单项",
       "zh": "结束会话…",
       "args": []
-    },
-    "tabMenu.kill.dupesWhy": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "tmux 会话 ×{n} · 无法确定",
-      "args": ["n"],
-      "limited": ["tmux"]
     },
     "tabMenu.probe.failed": {
       "kind": "error",
@@ -32539,24 +32484,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "结束所选",
-      "args": []
-    },
-    "terminalsView.end.title": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "结束所选终端",
-      "args": []
-    },
-    "terminalsView.end.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "有终端没结束",
-      "args": []
-    },
-    "terminalsView.end.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "所选终端已结束",
       "args": []
     },
     "terminalsView.list.partial": {

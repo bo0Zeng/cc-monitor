@@ -247,10 +247,19 @@ export class TabMenu {
       });
     }
 
-    // ⑤ 结束会话…（在 tmux 里的才有；先画出来、问到了再变可点）
-    if (remote !== null || local) {
+    // ⑤ 结束会话…：能不能照脸上的 `can.end`（灰着右边写那台那一句）；命中几个 · 在哪个终端里交了由那台判。
+    if (t?.face) {
+      const end = t.face.can.end;
       items.push({ label: "", divider: true });
-      items.push(grey({ id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, pending: true }));
+      items.push({
+        id: "end",
+        icon: "failed",
+        label: copyText("tabMenu.kill.label"),
+        danger: true,
+        enabled: end.can === "yes",
+        why: end.can === "no" ? end.why : undefined,
+        onClick: () => this.actions.endSession(t.origin, sid, fullTitle(t)),
+      });
     }
     // 那台握手时说过做不到的那几项置灰（事实住 monitor 那份 `Offer`）。
     return { items: t ? items.map((i) => gateByOffer(t.origin, i)) : items, t, unseen, remote, local };
@@ -271,8 +280,8 @@ export class TabMenu {
     // 这一代菜单问那台一次 `sessions-where`：几格 tmux 项与「恢复 ▸」的勾共用这一答。
     let asked: Promise<Standing | undefined> | null = null;
     const where = (): Promise<Standing | undefined> => (asked ??= standingOf(t.origin, sid));
-    if (remote !== null) void this.resolveRemoteTmuxItems(remote, sid, fullTitle(t), where);
-    if (local) void this.resolveLocalTmuxItems(sid, fullTitle(t), where);
+    if (remote !== null) void this.resolveRemoteTmuxItems(remote, sid, where);
+    if (local) void this.resolveLocalTmuxItems(sid, where);
     // 已结束的会话：那台的号与默认放在哪到了再把「恢复 ▸」换上。
     if (t.face !== null) void this.appendAccountMenuItems(t.origin, sid, t.face, where);
   }
@@ -324,45 +333,26 @@ export class TabMenu {
     await openSession(origin, { what: { kind: "look", sid }, local: isLocalOrigin(origin) });
   }
 
-  /** 远端：那台答回这个会话在哪个 tmux 会话里 ⇒ 在终端里打开 · 看一眼画面 · 结束三格就位（菜单已换 / 已关 ⇒ 不动）。 */
-  private async resolveRemoteTmuxItems(origin: string, sid: string, title: string, where: () => Promise<Standing | undefined>): Promise<void> {
+  /** 远端：那台答回这个会话在哪个终端里 ⇒［在终端里打开］就位（菜单已换 / 已关 ⇒ 不动）。 */
+  private async resolveRemoteTmuxItems(origin: string, sid: string, where: () => Promise<Standing | undefined>): Promise<void> {
     const gen = menuGeneration();
     const s = await where();
     if (gen !== menuGeneration()) return;
-    const drop = (...ids: string[]): void => ids.forEach((id) => removeMenuItem(id));
-    if (s === undefined) return this.unresolved(["attach", "end"]);
-    if (s.kind === "none" || s.kind === "no_tmux") return drop("attach", "end");
-    const name = s.names[0];
-    if (s.kind === "idle" && !this.host.isAttachable(sid)) return drop("attach", "end");
-    const ambiguous = s.kind === "ambiguous";
+    if (s === undefined) return this.unresolved();
+    if (s.kind === "none" || s.kind === "no_tmux" || (s.kind === "idle" && !this.host.isAttachable(sid))) return removeMenuItem("attach");
     // 接回走 `session-open look`，那台两种宿主都认。
     updateMenuItem("attach", this.attachItem(origin, sid, s));
-    // 命中多个 ⇒ 不给结束（破坏性，选错了不可逆）。
-    updateMenuItem("end", gateByOffer(origin, ambiguous
-      ? { id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, enabled: false, why: copyText("tabMenu.kill.dupesWhy", { n: s.names.length }) }
-      : { id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, onClick: () => this.actions.endSession(origin, sid, name, { idle: s.kind === "idle", title }) }));
   }
 
-  /** 本机：那台答回这个会话在哪个 tmux 会话里 ⇒ 在终端里打开 · 结束两格就位（菜单已换 / 已关 ⇒ 不动）。恢复只在「恢复 ▸」里。 */
-  private async resolveLocalTmuxItems(sid: string, title: string, where: () => Promise<Standing | undefined>): Promise<void> {
+  /** 本机：那台答回这个会话在哪个终端里 ⇒［在终端里打开］就位（菜单已换 / 已关 ⇒ 不动）。恢复只在「恢复 ▸」里。 */
+  private async resolveLocalTmuxItems(sid: string, where: () => Promise<Standing | undefined>): Promise<void> {
     const gen = menuGeneration();
     const s = await where();
     if (gen !== menuGeneration()) return;
-    if (s === undefined) return this.unresolved(["attach", "end"]);
-    // 不在哪个终端里 ⇒ 不留一个假装能用的破坏性项。
-    if (s.kind === "none" || s.kind === "no_tmux" || (s.kind === "idle" && !this.host.isAttachable(sid))) {
-      removeMenuItem("attach");
-      removeMenuItem("end");
-      return;
-    }
-    const name = s.names[0];
-    // 本机 tmux 那一行有 ccm 开的那个窗口（［切到终端］）⇒ 只对托管终端那一行出［在终端里打开］。
-    const attach = this.attachItem(LOCAL_ORIGIN, sid, s);
-    if (inTmux(s)) removeMenuItem("attach");
-    else updateMenuItem("attach", attach);
-    updateMenuItem("end", gateByOffer(LOCAL_ORIGIN, s.kind === "ambiguous"
-      ? { id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), enabled: false, danger: true, why: copyText("tabMenu.kill.dupesWhy", { n: s.names.length }) }
-      : { id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, onClick: () => this.actions.endSession(LOCAL_ORIGIN, sid, name, { idle: s.kind === "idle", title }) }));
+    if (s === undefined) return this.unresolved();
+    // 不在哪个终端里 · 本机 tmux 那一行（ccm 开的那个窗口 ·［切到终端］）⇒ 不出；只对托管终端那一行出。
+    if (s.kind === "none" || s.kind === "no_tmux" || (s.kind === "idle" && !this.host.isAttachable(sid)) || inTmux(s)) return removeMenuItem("attach");
+    updateMenuItem("attach", this.attachItem(LOCAL_ORIGIN, sid, s));
   }
 
   /** 就位的［在终端里打开］那一项：命中多个 ⇒ 那台接第一个（第二行先说了）。 */
@@ -377,16 +367,9 @@ export class TabMenu {
     };
   }
 
-  /** 问不到那台（通道不在 / 超时）：那几格停在灰着、第二行写原因（不悄悄摘掉）。 */
-  private unresolved(ids: Array<"attach" | "end">): void {
-    const why = copyText("tabMenu.probe.failed");
-    for (const id of ids) {
-      const item: MenuItem =
-        id === "attach"
-          ? { id, icon: "terminal", label: copyText("tabMenu.attach.label") }
-          : { id, icon: "failed", label: copyText("tabMenu.kill.label"), danger: true };
-      updateMenuItem(id, { ...item, enabled: false, why });
-    }
+  /** 问不到那台（通道不在 / 超时）：［在终端里打开］停在灰着、第二行写原因（不悄悄摘掉）。 */
+  private unresolved(): void {
+    updateMenuItem("attach", { id: "attach", icon: "terminal", label: copyText("tabMenu.attach.label"), enabled: false, why: copyText("tabMenu.probe.failed") });
   }
 
   /** 每个标签页「恢复 ▸」里勾着的那一组（本窗开着时记）。 */
