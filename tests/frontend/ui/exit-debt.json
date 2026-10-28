@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1829,
+  "ceiling": 1824,
   "groups": [
     {
       "kind": "首登",
@@ -302,11 +302,10 @@
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/identity/IdentityScreen.kt", "key", 2],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/identity/IdentityViewModel.kt", "key", 1],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/needs/OverviewScreen.kt", "key", 6],
-        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/rotation/RotOrder.kt", "key", 3],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/rotation/RotSettings.kt", "key", 1],
-        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/rotation/RotSim.kt", "key", 3],
+        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/rotation/RotSim.kt", "key", 2],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/rotation/RotTop.kt", "key", 3],
-        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/rotation/RotationBoard.kt", "key", 21],
+        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/rotation/RotationBoard.kt", "key", 20],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/rotation/RotationScreen.kt", "key", 1],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/MovedLaunches.kt", "key", 3],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/SessionScreen.kt", "key", 7],

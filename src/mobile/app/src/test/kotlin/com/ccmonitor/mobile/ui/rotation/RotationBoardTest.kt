@@ -153,7 +153,8 @@ class RotationBoardTest {
             val (link, b) = board()
             b.clearTemp()
             assertEquals(mapOf("sid" to "s1", "op" to "clear"), link.calls(Rotation.TEMP).single())
-            val line = b.state.value.view!!.lineup
+            val view = b.state.value.view!!
+            val line = view.lineup
             assertEquals(listOf("team", "work", "api", "lab"), line.map { it.account })
             assertEquals(listOf(false, true, true, false), line.map { it.movable })
             assertEquals("夹具·下一个 · 约 16:07", line[1].state)

@@ -151,7 +151,12 @@ fn an_account_left_out_for_this_session_is_not_used() {
         Some("a"),
         "第一格是在用的号"
     );
-    let at = |x: &str| v.lineup.iter().position(|a| a.account == x).expect("在顺序里");
+    let at = |x: &str| {
+        v.lineup
+            .iter()
+            .position(|a| a.account == x)
+            .expect("在顺序里")
+    };
     assert!(at("api") < at("b"), "去掉的沉底：{:?}", v.lineup);
     match use_now_with(
         &ctx,

@@ -342,7 +342,12 @@ class RotationBoard(
         r: Reply,
     ): MoveEnd {
         val f = (r as? Reply.Failed)?.failure
-        val blocked = _state.value.view?.accounts?.firstOrNull { it.account == account }?.blocked?.text
+        val blocked =
+            _state.value.view
+                ?.accounts
+                ?.firstOrNull { it.account == account }
+                ?.blocked
+                ?.text
         val line = account to copyText("rot.acct.refused", "account" to label(account), "why" to (blocked ?: f?.message.orEmpty()))
         return when {
             r is Reply.Ok -> {

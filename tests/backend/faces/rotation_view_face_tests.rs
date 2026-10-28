@@ -439,7 +439,10 @@ fn a_strategy_view_reads_the_file_as_it_is_now() {
     )
     .expect("ok");
     assert_eq!(v.listed, 2, "照文件此刻的号列表");
-    assert!(v.lineup.is_empty() && v.timeline.is_some(), "设置页没有会话、带推演");
+    assert!(
+        v.lineup.is_empty() && v.timeline.is_some(),
+        "设置页没有会话、带推演"
+    );
     assert!(matches!(
         view_with(
             &ctx,
@@ -629,7 +632,8 @@ fn a_session_view_hands_the_order_as_lines_without_a_timeline() {
     assert_eq!(api.group, RotGroup::Next);
     assert!(api.movable && api.stay.is_none());
     assert!(
-        api.state.starts_with(&copy_text("beRotation.line.next", &[])),
+        api.state
+            .starts_with(&copy_text("beRotation.line.next", &[])),
         "第二格写「下一个」：{api:?}"
     );
     let b = line("b");
@@ -663,7 +667,11 @@ fn a_session_view_hands_the_order_as_lines_without_a_timeline() {
     )
     .expect("先不用");
     let v = session_view(&ctx, &home, S1);
-    let api = v.lineup.iter().find(|l| l.account == "api").expect("在顺序里");
+    let api = v
+        .lineup
+        .iter()
+        .find(|l| l.account == "api")
+        .expect("在顺序里");
     assert_eq!(
         (api.account.as_str(), api.group, api.movable),
         ("api", RotGroup::Off, false)
@@ -700,7 +708,11 @@ fn the_next_line_says_when_from_the_same_simulation() {
         got[1].state,
         copy_text("beRotation.line.nextAt", &[("at", &at)])
     );
-    assert_eq!(got[1].why.as_deref(), Some("b 余量多"), "策略写的那一句挂在名下");
+    assert_eq!(
+        got[1].why.as_deref(),
+        Some("b 余量多"),
+        "策略写的那一句挂在名下"
+    );
     assert_eq!(got[2].state, copy_text("beRotation.line.spare", &[]));
     assert_eq!(lines(None)[1].state, copy_text("beRotation.line.next", &[]));
     assert_eq!(

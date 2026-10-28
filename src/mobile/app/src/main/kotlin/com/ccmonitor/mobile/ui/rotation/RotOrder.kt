@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +62,72 @@ private data class Pose(
     val first: String? = null,
 )
 
+/** 手上那一行：状态机 ＋ 量好的行 ＋ 拿起那一刻的那一份 ＋ 没确认的那一个号（重组照这几格画）。 */
+private class Hand(
+    private val drag: OrderDrag,
+    private val board: RotationBoard,
+) {
+    val rects = mutableStateMapOf<Int, Rect>()
+    var pose by mutableStateOf(Pose())
+    var held by mutableStateOf<List<RotLine>?>(null)
+    var unsure by mutableStateOf<String?>(null)
+    private var lineup: List<RotLine> = emptyList()
+    private var moved = 0f
+
+    private fun sync() {
+        pose = Pose(lineup.indices.map(drag::offset), if (drag.phase == DragPhase.LIFTED) drag.from else -1, drag.account.takeIf { drag.first })
+    }
+
+    /** 长按拿起第 [i] 行（拿不起 ⇒ `false`）。 */
+    fun lift(
+        rows: List<RotLine>,
+        i: Int,
+    ): Boolean {
+        val geo = rows.mapIndexed { k, l -> DragRow(l.account, l.movable, rects[k]?.top ?: 0f, rects[k]?.height ?: 0f) }
+        if (!drag.lift(geo, i)) return false
+        lineup = rows
+        held = rows
+        unsure = null
+        moved = 0f
+        sync()
+        return true
+    }
+
+    /** 跟手（拿着才认，认了 ⇒ `true`）。 */
+    fun follow(dy: Float): Boolean {
+        if (drag.phase != DragPhase.LIFTED) return false
+        moved += dy
+        drag.move(moved)
+        sync()
+        return true
+    }
+
+    /** 松手：交了 ⇒ 回包才定（成 · 拒 ⇒ 回静止照那台画；说不清 ⇒ 留在放下处标「没确认」）。 */
+    fun release() {
+        val end = drag.release()
+        sync()
+        if (end !is DragEnd.Drop) {
+            held = null
+            return
+        }
+        board.drop(end.account, end.to) { how ->
+            if (how == MoveEnd.UNSURE) {
+                unsure = end.account
+            } else {
+                drag.settle()
+                held = null
+            }
+            sync()
+        }
+    }
+
+    fun cancel() {
+        drag.cancel()
+        held = null
+        sync()
+    }
+}
+
 /** 顺序这一块：小标题（手动排过 ·［照策略排］）＋ 被拦下那一句 ＋ 一号一行 ＋ 点开的那个号（底下拉出）。 */
 @Composable
 internal fun Order(
@@ -74,17 +141,11 @@ internal fun Order(
         if (view.manual) SecondaryButton(onClick = board::clearTemp) { Text(copyText("rot.order.reset")) }
     }
     ui.refused?.let { (_, t) -> Text(t, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-    val rects = remember { mutableStateMapOf<Int, Rect>() }
-    val drag = remember { OrderDrag { !offline } }
-    var pose by remember { mutableStateOf(Pose()) }
-    var held by remember { mutableStateOf<List<RotLine>?>(null) }
-    var unsure by remember { mutableStateOf<String?>(null) }
+    val down by rememberUpdatedState(offline)
+    val hand = remember { Hand(OrderDrag { !down }, board) }
     val haptic = LocalHapticFeedback.current
     // 拿着 · 等回包 ⇒ 画拿起那一刻的那一份；静止了照那台此刻的。
-    val lineup = held ?: view.lineup
-    val sync = {
-        pose = Pose(lineup.indices.map(drag::offset), if (drag.phase == DragPhase.LIFTED) drag.from else -1, drag.account.takeIf { drag.first })
-    }
+    val lineup = hand.held ?: view.lineup
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         var group: RotGroup? = null
         lineup.forEachIndexed { i, line ->
@@ -93,61 +154,24 @@ internal fun Order(
                 group = g
                 GroupHead(g)
             }
-            if (i == 0) pose.first?.let { DropFirst(board.label(it)) }
+            if (i == 0) hand.pose.first?.let { DropFirst(board.label(it)) }
             OrderRow(
                 i,
                 line,
                 view,
                 board,
-                lifted = pose.lifted == i,
-                unconfirmed = unsure == line.account,
-                shift = pose.shifts.getOrElse(i) { 0f },
+                lifted = hand.pose.lifted == i,
+                unconfirmed = hand.unsure == line.account,
+                shift = hand.pose.shifts.getOrElse(i) { 0f },
                 modifier =
                     Modifier
-                        .onGloballyPositioned { rects[i] = it.boundsInRoot() }
+                        .onGloballyPositioned { hand.rects[i] = it.boundsInRoot() }
                         .pointerInput(i, line.account, offline) {
-                            var moved = 0f
                             detectDragGesturesAfterLongPress(
-                                onDragStart = {
-                                    val rows = lineup.mapIndexed { k, l -> DragRow(l.account, l.movable, rects[k]?.top ?: 0f, rects[k]?.height ?: 0f) }
-                                    if (drag.lift(rows, i)) {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        held = lineup
-                                        unsure = null
-                                        moved = 0f
-                                        sync()
-                                    }
-                                },
-                                onDrag = { ch, d ->
-                                    if (drag.phase == DragPhase.LIFTED) {
-                                        ch.consume()
-                                        moved += d.y
-                                        drag.move(moved)
-                                        sync()
-                                    }
-                                },
-                                onDragEnd = {
-                                    val end = drag.release()
-                                    sync()
-                                    if (end is DragEnd.Drop) {
-                                        board.drop(end.account, end.to) { how ->
-                                            if (how == MoveEnd.UNSURE) {
-                                                unsure = end.account
-                                            } else {
-                                                drag.settle()
-                                                held = null
-                                            }
-                                            sync()
-                                        }
-                                    } else {
-                                        held = null
-                                    }
-                                },
-                                onDragCancel = {
-                                    drag.cancel()
-                                    held = null
-                                    sync()
-                                },
+                                onDragStart = { if (hand.lift(lineup, i)) haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
+                                onDrag = { ch, d -> if (hand.follow(d.y)) ch.consume() },
+                                onDragEnd = hand::release,
+                                onDragCancel = hand::cancel,
                             )
                         },
             )

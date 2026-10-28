@@ -180,9 +180,11 @@ export function createOrder(origin: Origin, acts: OrderActs, onIdle: () => void)
       scroll.box.scrollTop += d;
       drag.move(scroll.y + scroll.box.scrollTop - scroll.top0);
       apply();
+      // 调度：自链 —— 贴边自动滚，每帧一步；离开边沿 · 松手 · 取消（stopScroll）即停
       scroll.raf = requestAnimationFrame(tick);
     };
     cancelAnimationFrame(scroll.raf);
+    // 调度：自链 —— 同上，链的起点
     scroll.raf = requestAnimationFrame(tick);
   };
 
@@ -358,6 +360,7 @@ export function createOrder(origin: Origin, acts: OrderActs, onIdle: () => void)
       if (d === 0) continue;
       r.style.transition = "none";
       r.style.transform = `translateY(${d}px)`;
+      // 调度：一次性 —— FLIP：下一帧放开过渡，行从旧位置滑到新位置
       requestAnimationFrame(() => {
         r.style.transition = "";
         r.style.transform = "";
