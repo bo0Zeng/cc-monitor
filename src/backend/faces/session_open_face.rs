@@ -409,7 +409,7 @@ impl crate::wire::typed::Handle for SessionOpenFacts {
     }
 }
 
-/// `session-open-facts` 的本体：`{forkOf?, at?}` ⇒ `{recent, tmux, agents, fork}`。
+/// `session-open-facts` 的本体：`{forkOf?, at?}` ⇒ `{recent, hosts, run, agents, fork}`。
 /// `tz` ＝ 看的那一台的时区：分叉那一轮的起点钟面按它写。
 pub(crate) fn facts(
     req: &OpenFactsReq,
@@ -476,7 +476,11 @@ pub(crate) fn facts(
             ),
             crate::platform::paths::home_dir().as_deref(),
         ),
-        tmux,
+        hosts: if tmux {
+            vec![open::Run::Tmux, open::Run::Direct]
+        } else {
+            vec![open::Run::Direct]
+        },
         run,
         agents: {
             let prefs = crate::common::machine_prefs::read_now().prefs();
