@@ -442,6 +442,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Manual("Windows 上让开：替身起 `python3`、PATH 照 Unix 给；Linux 上门禁与 quick-check 的整套 vitest 跑它"),
     ),
     (
+        "tests/shots/world-boxes.vitest.ts",
+        "!boxWorks",
+        Trigger::Manual("起不了 bwrap 的机器（Windows · 不许建命名空间的）让开：判的是台架自己起远端几台的沙箱；Linux 上门禁与 quick-check 的整套 vitest 跑它"),
+    ),
+    (
         "tests/frontend/shell/deploy_tests.rs",
         "sr1b_loopback_deploy_and_transfer_through_the_resident_backend",
         Trigger::Filter { by: "tests/evidence/SR1b-sftp-loopback.py", needle: "sr1b_loopback_deploy_and_transfer_through_the_resident_backend" },

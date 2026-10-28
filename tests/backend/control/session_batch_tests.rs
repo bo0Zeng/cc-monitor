@@ -307,7 +307,7 @@ fn stop_ends_exactly_the_one_terminal_carrying_each_sid() {
         outcomes(&out),
         vec![
             (A.into(), "done".into(), Value::Null),
-            (B.into(), "skipped".into(), json!("not_in_tmux")),
+            (B.into(), "skipped".into(), json!("not_hosted")),
             (C.into(), "skipped".into(), json!("ambiguous")),
         ]
     );
@@ -380,7 +380,7 @@ fn every_stop_item_not_done_carries_its_sentence() {
         codes,
         [
             "no_tmux",
-            "not_in_tmux",
+            "not_hosted",
             "ambiguous",
             "too_many_windows",
             "wrong_owner",

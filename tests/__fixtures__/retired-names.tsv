@@ -7,6 +7,9 @@ BothHomeRelative
 SftpScreen
 SftpUi
 SftpViewModel
+TmuxManager
+TmuxManagerDialog
+Yes { tmux
 a_capability_line_has_landed
 a_config_dir_that_names_no_account_is_refused_instead_of_falling_back
 a_directory_we_cannot_list_is_an_error_not_a_blank_window
@@ -126,7 +129,9 @@ local_shell_read
 local_tmux_closed
 look_on_path
 merge_search_results
+mobTmux
 needs_remote_sid
+not_in_tmux
 observation_tokens_double_write_point_stays_in_sync
 panorama_diagram_kinds
 parse_for_kind

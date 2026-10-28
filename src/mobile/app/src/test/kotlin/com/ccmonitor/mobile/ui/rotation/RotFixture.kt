@@ -139,7 +139,14 @@ internal object RotFixture {
             "board" to if (strategy == null) mapOf("all" to emptyList<Any>(), "rows" to emptyList<Any>()) else BOARD,
             "start" to "work",
             "current" to "team",
-            "lineup" to listOf("team", "work", "api", "lab"),
+            "lineup" to
+                listOf(
+                    mapOf("account" to "team", "group" to "use", "state" to "夹具·在用", "movable" to false),
+                    mapOf("account" to "work", "group" to "next", "state" to "夹具·下一个 · 约 16:07", "why" to "夹具·work 的理由", "movable" to true),
+                    mapOf("account" to "api", "group" to "next", "state" to "夹具·备着", "movable" to true),
+                    mapOf("account" to "lab", "group" to "out", "state" to "5 小时用量已到上限", "movable" to false, "stay" to "夹具·lab 此刻无法发送"),
+                ),
+            "manual" to temp.isNotEmpty(),
             "off" to off,
             "accounts" to listOf(fact("work", 80.4, 10.0, "16:07"), fact("team", 58.0, 30.0, "18:30"), fact("lab", 99.0, 20.0, blocked = "5 小时用量已到上限"), fact("api", 0.0, 0.0)),
             "listed" to 3.0,
@@ -171,7 +178,6 @@ internal object RotFixture {
                         "ticks" to listOf(mapOf("at" to (NOW + 12_600).toDouble(), "text" to "18:00")),
                     )
                 },
-            "past" to null,
             "log" to emptyList<Any>(),
             "hints" to hints,
         )
