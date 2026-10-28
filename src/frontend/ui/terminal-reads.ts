@@ -34,8 +34,8 @@ export interface TerminalRow {
   sid: string | null;
   /** 此刻连着它的终端窗口几个（0 ＝ 后台）。 */
   clients: number;
-  /** 输入在谁手里：`shared` ＝ 各端都能打字（tmux）· `nobody` · 别的（托管那一形的持有者）原样带着。 */
-  input: string;
+  /** 输入怎么进：`shared` ＝ 各端都能打字（tmux）· `held` ＝ 托管那一形，只有持有者的进（谁持有在名单那一行的 `input.holder`）。 */
+  input: TerminalsList["terminals"][number]["input"]["kind"];
   /** Claude 已退出、终端还开着。 */
   programExited: boolean;
   /** 能不能送字 / 送键：`null` ＝ 能；否则为什么不能（后端写好的那一句）。 */
@@ -74,10 +74,10 @@ const noSaid = (): string => copyText("reason.code.refused");
 export function rowsOf(v: TerminalsList): TerminalRow[] {
   return v.terminals.map((r) => ({
     terminal: r.terminal,
-    tmuxName: r.tmux_name,
+    tmuxName: r.name,
     sid: r.session?.sid ?? null,
     clients: r.clients.length,
-    input: r.input,
+    input: r.input.kind,
     programExited: r.state === "program_exited",
     inputNo: r.can.input === true ? null : r.can.input.said,
   }));
