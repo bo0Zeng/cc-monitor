@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use russh::client;
-use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey};
+use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate};
 
 use crate::env::{self, Credential};
 use crate::{DialRequest, Endpoint, JumpHop, Said, Stage, StageSink, Why};
@@ -325,8 +325,17 @@ impl client::Handler for Checker {
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &PublicKey,
+        offered: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
+        // 本端不播报证书类 host key 算法（`Preferred::host_key_certificates` 缺省为空）⇒ 对端交的是一把裸钥匙；
+        // 交来证书就是协商之外的东西 ⇒ 不认（不拿证书里那把钥匙去比记过的，那等于绕过签发者校验）。
+        let PublicKeyOrCertificate::PublicKey {
+            key: server_public_key,
+            ..
+        } = offered
+        else {
+            return Ok(false);
+        };
         let actual = server_public_key.fingerprint(HashAlg::Sha256).to_string();
         let line = match server_public_key.to_openssh() {
             Ok(l) => Some(l.split_whitespace().take(2).collect::<Vec<_>>().join(" ")),
@@ -403,7 +412,7 @@ fn label(ep: &Endpoint) -> String {
 // ═══ **压缩：开不开，判准只此一处** ═══════════════════════════════════════════
 //
 // 用户要求：「智能多开链接\压缩等等」「这是属于 ssh 优化的部分」。SSH 传输层零压缩，
-// 而会话数据 gzip 3.1–4.1×。russh 0.61.1 的默认偏好序是
+// 而会话数据 gzip 3.1–4.1×。russh 的默认偏好序（0.61 到 0.65 不变）是
 // `[none, zlib, zlib@openssh.com]`，客户端按**自己的**偏好序挑双方都有的第一个 ⇒ **永远 `none`**。
 //
 // 判准看的是**这一跳真实的往返时间**（内核 `TCP_INFO`，`tcp_rtt`），不是地址长什么样：
@@ -424,17 +433,18 @@ pub const COMPRESS_ON: &[russh::compression::Name] = &[
 /// 压缩偏好序：**不压**。
 pub const COMPRESS_OFF: &[russh::compression::Name] = &[russh::compression::NONE];
 
-/// 🔴 **闸：russh 自己的 zlib 解压对不对**。**开了**（仓内打补丁版 russh 修好了解压）。
+/// 🔴 **闸：russh 自己的 zlib 解压对不对**。**开了**（上游 russh 0.62.7 起修好了解压）。
 ///
 /// 来历（NT1 现打）：上游 `russh 0.61.1` / `0.61.2` 的 `Decompress::decompress` 收尾判断用的是**这一次调用之前**的进度
 /// （`n_in_` / `n_out_`）⇒ 解出来的字节比输入多一倍以上时，它在输出缓冲第二次撑满的那一刻提前收工：一包只交出 ≈ 2 × 包长，
 /// 余下的留在解压器里、拼进**下一包** ⇒ 包流错位。真 sshd（`OpenSSH_10.2p1`，`zlib@openssh.com`）上的样子：鉴权过了、
 /// 第一条通道的确认被吃掉、会话卡死。
 ///
-/// 今天链的是仓内补过的那一份（`Cargo.toml` 末尾 `[patch.crates-io]` → `../vendor/russh`，改了哪几行见那里的 `VENDOR.md`）
-/// ⇒ 闸开：判准的答案落到连接上。压那一半同病（不可压的满长包只交出前一截 ⇒ 对端断链，WIN3 读数 A），同一份副本里补了。
+/// 上游 issue #749 修在 `0.62.7`；压那一半同病（不可压的满长包只交出前一截 ⇒ 对端断链，WIN3 读数 A），`0.65` 也修了。
+/// 今天链 crates.io 的 `0.65`（`dial_compress_tests::russh_comes_from_crates_io_at_a_version_with_the_zlib_fix` 钉来源与版本）
+/// ⇒ 闸开：判准的答案落到连接上。
 /// `dial_compress_tests::the_gate_matches_what_russh_really_does` 两向钉着「闸 == russh 一来一回对不对」：
-/// 谁把补丁撤了（或换回一份还坏着的 russh）而闸还开着 ⇒ 红；russh 对着而闸被关回去 ⇒ 红。
+/// 谁换回一份还坏着的 russh 而闸还开着 ⇒ 红；russh 对着而闸被关回去 ⇒ 红。
 pub const RUSSH_ZLIB_SOUND: bool = true;
 
 /// 🔴 **判准只此一处**：这一跳（`peer` ＋ 内核量到的往返微秒）要不要开 SSH 压缩。

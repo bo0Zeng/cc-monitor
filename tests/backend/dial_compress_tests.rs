@@ -1,9 +1,9 @@
 //!
 //! 用户要求：「今天每台机器只有一条连接可以看情况多开. 智能一点. 这是属于 ssh 优化的部分. 智能多开链接\压缩等等」。
 //! 跨互联网那一跳按需开 SSH 压缩（本机回环 / 局域网不开），判准只有一处；一行 `preferred` 覆盖全部 SSH 跳。
-//! russh 用仓内打补丁版（修好 zlib 解压，`[patch.crates-io]`）。
+//! russh 链 crates.io 上游那一份（0.62.7 起修好 zlib 解压，0.65 的压缩那一半也修了）。
 //!
-//! 闸开了（Z5 翻面 ＋ 多包一格）；补丁那一族两条：VR1 副本只改了登记的那一份 · VR2 补丁真接上了。
+//! 闸开着（Z5 两向钉「闸 == russh 一来一回对不对」）；VR 钉 russh 从哪来（crates.io · 版本 ≥ 0.62.7 · 仓内不留副本）。
 //!
 //! `ssh-dial/connect.rs` 的压缩判准（[`compression_for`]）与它的接法。四件：
 //! Z1 真值表 · Z2 两张偏好序 · Z3 判准只有一处、只有一个调用点 · Z4 回环上内核真量得到往返时间、判准答「不压」。
@@ -11,7 +11,6 @@
 //! （由 `tests/evidence/NT1-net-loopback.py --compress` 带环境变量来跑）。
 
 use super::*;
-use std::collections::{BTreeMap, BTreeSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 /// ★ Z1：判准的真值表。**期望逐格手写**（异源于实现）：
@@ -251,8 +250,8 @@ fn russh_zlib_compresses_whole_packets(packets: &[Vec<u8>]) -> bool {
 /// ★ Z5：**闸 == russh 的解压今天对不对**（两向相等）。异源 = russh 自己的编解码。
 ///
 /// NT1 现打（上游 0.61.1）：一包 1000 字节的可压载荷（压成 39 字节）解回来只有 78 字节 —— 解压器最多交出 ≈ 2 × 包长。
-/// 今天链的是 `[patch.crates-io]` 那份补过的副本 ⇒ 对 ⇒ 闸开。多包那一格：三包连着走（1000 · 30000 · 200 字节，
-/// 可压比都 ≫ 2），每包逐字节同 —— 补丁若只修了「这一包交全」而状态跨包错了，这一格看得见。
+/// 今天链的是 crates.io 的 0.65（0.62.7 起修好）⇒ 对 ⇒ 闸开。多包那一格：三包连着走（1000 · 30000 · 200 字节，
+/// 可压比都 ≫ 2），每包逐字节同 —— 修法若只修了「这一包交全」而状态跨包错了，这一格看得见。
 /// 正控：压缩比 < 2 的一包（短、近乎不可压）照样一来一回全对 —— 量具本身没用错，坏的只是「解出来比输入多一倍以上」那一形。
 #[test]
 fn the_gate_matches_what_russh_really_does() {
@@ -291,50 +290,6 @@ fn the_gate_matches_what_russh_really_does() {
     );
 }
 
-/// vendored russh 副本的住址（仓根相对）。与后端清单 `[patch.crates-io]` 那一行指的是同一处（VR2 对拍）。
-const VENDORED_RUSSH: &str = "src/vendor/russh";
-
-/// 副本目录的绝对住址。住址写成字面量（`test_tiers` 扫描层按 `repo_root().join("…")` 字面量核它在盘上），
-/// 与 [`VENDORED_RUSSH`] 同一处由这里的断言钉住（VR2 拿常量去比 `[patch.crates-io]` 那一行）。
-fn vendored_russh_dir() -> std::path::PathBuf {
-    let dir = guard_core::addr::repo_root().join("src/vendor/russh");
-    assert_eq!(dir, guard_core::addr::repo_root().join(VENDORED_RUSSH));
-    dir
-}
-
-/// `VENDOR.md` 里 `<!-- {tag} 起 -->` 与 `<!-- {tag} 止 -->` 之间、代码围栏里的非空行，各按空白切成字段。
-/// 标记缺一个 ⇒ `Err`（不许退化成空清单：空清单会让下面的对拍零命中地绿）。
-fn vendor_block(doc: &str, tag: &str) -> Result<Vec<Vec<String>>, String> {
-    let begin = format!("<!-- {tag} 起 -->");
-    let end = format!("<!-- {tag} 止 -->");
-    let rows: Vec<&str> = doc.lines().collect();
-    let at = |needle: &str| {
-        let hits: Vec<usize> = rows
-            .iter()
-            .enumerate()
-            .filter(|(_, l)| l.trim() == needle)
-            .map(|(i, _)| i)
-            .collect();
-        match hits.as_slice() {
-            [i] => Ok(*i),
-            _ => Err(format!(
-                "`VENDOR.md` 里 `{needle}` 这一行出现 {} 次（要恰好 1 次）",
-                hits.len()
-            )),
-        }
-    };
-    let (b, e) = (at(&begin)?, at(&end)?);
-    if b >= e {
-        return Err(format!("`VENDOR.md` 里 `{begin}` 不在 `{end}` 之前"));
-    }
-    Ok(rows[b + 1..e]
-        .iter()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty() && !l.starts_with("```"))
-        .map(|l| l.split_whitespace().map(str::to_string).collect())
-        .collect())
-}
-
 fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::Digest;
     sha2::Sha256::digest(bytes)
@@ -343,200 +298,82 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// 目录下全部文件（相对路径 → 内容），走共享原语（空扩展名表 = 整棵树；副本里全是文本，读不成 UTF-8 就 panic）。
-fn files_under(dir: &std::path::Path) -> BTreeMap<String, String> {
-    guard_core::scan_tree_excluding(dir, &[], &[])
-        .into_iter()
-        .map(|(path, src)| {
-            let rel = path.strip_prefix(dir).unwrap_or(&path);
-            (rel.to_string_lossy().replace('\\', "/"), src)
-        })
-        .collect()
-}
-
-/// ★ VR1：**副本只改了登记的那几份**（「副本是上游的镜子，不是分身」—— 改了哪几行要一眼可见、上游修好之后撤得干净）。
-///
-/// `VENDOR.md` 三张表：原样清单（`sha256  路径`，逐份取自 `russh-0.61.1.crate`，那份 `.crate` 的 sha256 == 后端 lock 原先锁的 checksum）·
-/// 改过的文件（`路径  原样 sha256  补后 sha256`）· 副本特有的（`sha256  路径`）。判：
-/// ① 盘上文件集合 == 原样清单 ∪ 副本特有 ∪ {`VENDOR.md`}（两向：多一份、少一份都红；`Cargo.lock` 不算 —— 仓根 `.gitignore` 挡着它、
-///    path 依赖的 lock 不参加解析，有人在副本里跑过 cargo 就会长出来）；
-/// ② 改过的文件：盘上 == 补后指纹、且补后 ≠ 原样、且原样指纹 == 原样清单那一行（改过的真是清单里那一份）；
-/// ③ 其余每一份：盘上 == 登记的指纹。
-/// 反空真：改过的文件恰好是 `{src/compression.rs}`（相等，不是地板）；原样清单里有 `Cargo.toml` 与 `src/lib.rs`（抽取器没抽空）。
-#[test]
-fn the_vendored_russh_differs_from_the_crate_only_where_registered() {
-    let dir = vendored_russh_dir();
-    let doc = std::fs::read_to_string(dir.join("VENDOR.md"))
-        .unwrap_or_else(|e| panic!("{VENDORED_RUSSH}/VENDOR.md 读不到：{e}"));
-    let manifest = vendor_block(&doc, "原样清单").unwrap();
-    let patched = vendor_block(&doc, "改过的文件").unwrap();
-    let extra = vendor_block(&doc, "副本特有").unwrap();
-    let pairs = |rows: &[Vec<String>], what: &str| -> BTreeMap<String, String> {
-        rows.iter()
-            .map(|r| match r.as_slice() {
-                [h, p] if h.len() == 64 => (p.clone(), h.clone()),
-                _ => panic!("`VENDOR.md` {what} 这一行不是 `sha256  路径`：{r:?}"),
-            })
-            .collect()
-    };
-    let manifest = pairs(&manifest, "原样清单");
-    let extra = pairs(&extra, "副本特有");
-    let patched: BTreeMap<String, (String, String)> = patched
-        .iter()
-        .map(|r| match r.as_slice() {
-            [p, a, b] if a.len() == 64 && b.len() == 64 => (p.clone(), (a.clone(), b.clone())),
-            _ => panic!("`VENDOR.md` 改过的文件 这一行不是 `路径  原样  补后`：{r:?}"),
-        })
-        .collect();
-    // 反空真。
-    assert!(
-        manifest.contains_key("Cargo.toml") && manifest.contains_key("src/lib.rs"),
-        "原样清单抽空了 / 抽歪了：{} 行",
-        manifest.len()
-    );
-    assert_eq!(
-        patched.keys().cloned().collect::<Vec<_>>(),
-        vec!["src/compression.rs".to_string()],
-        "改过的文件变了 —— 补丁的射程只许是 `Decompress::decompress` 那一份（多改一份就先登记、写清为什么）"
-    );
-
-    // ① 集合两向相等。
-    let mut contents = files_under(&dir);
-    contents.remove("Cargo.lock");
-    let on_disk: BTreeSet<String> = contents.keys().cloned().collect();
-    let want: BTreeSet<String> = manifest
-        .keys()
-        .chain(extra.keys())
-        .cloned()
-        .chain(["VENDOR.md".to_string()])
-        .collect();
-    assert_eq!(
-        on_disk.difference(&want).collect::<Vec<_>>(),
-        Vec::<&String>::new(),
-        "副本里多出了没登记的文件（往副本里加东西 ⇒ 先登记进 VENDOR.md 的「副本特有」或「改过的文件」）"
-    );
-    assert_eq!(
-        want.difference(&on_disk).collect::<Vec<_>>(),
-        Vec::<&String>::new(),
-        "VENDOR.md 登记了、盘上却没有的文件（副本被删了几份）"
-    );
-
-    // ② ③ 逐份指纹。
-    let mut wrong = Vec::new();
-    for rel in &on_disk {
-        if rel == "VENDOR.md" {
-            continue;
-        }
-        let got = sha256_hex(contents[rel].as_bytes());
-        let want = if let Some((orig, fixed)) = patched.get(rel) {
-            assert_ne!(
-                orig, fixed,
-                "{rel}：登记的补后指纹 == 原样指纹 —— 那就不是改过的文件"
-            );
-            assert_eq!(
-                manifest.get(rel),
-                Some(orig),
-                "{rel}：「改过的文件」里记的原样指纹与原样清单那一行不一致"
-            );
-            fixed
-        } else if let Some(h) = manifest.get(rel) {
-            h
-        } else {
-            &extra[rel]
-        };
-        if &got != want {
-            wrong.push(format!("  {rel}: 盘上 {got} ≠ 登记 {want}"));
-        }
+/// lock 里 russh 那一块的版本号拆成三段数字（`0.65.0` ⇒ `(0, 65, 0)`）；带预发布尾巴（`-beta.1`）的不认 ⇒ `None`。
+fn semver_triple(v: &str) -> Option<(u64, u64, u64)> {
+    let mut it = v.split('.').map(|p| p.parse::<u64>().ok());
+    match (it.next(), it.next(), it.next(), it.next()) {
+        (Some(Some(a)), Some(Some(b)), Some(Some(c)), None) => Some((a, b, c)),
+        _ => None,
     }
-    assert!(
-        wrong.is_empty(),
-        "副本里这几份与 VENDOR.md 登记的指纹不一致（改补丁就同拍改登记；别在副本里改出自己的版本）：\n{}",
-        wrong.join("\n")
-    );
 }
 
-/// ★ VR2：**补丁真接上了**（三份文本对拍）。
+/// ★ VR：**链的是 crates.io 上游那一份、而且是修好 zlib 的版本**（仓内不留补过的副本）。
 ///
-/// ① 后端清单 `[patch.crates-io]` 段里恰好一条、就是 `russh`、指向 `../vendor/russh`（== [`VENDORED_RUSSH`]）；
-/// ② 依赖声明那一行的版本 == 副本 `Cargo.toml` 的 `version` == lock 里 `russh` 那一块的 `version`；
-/// ③ lock 里 `russh` 恰好一块、而且**没有** `source`（= path 来源；有 `source` 就是 crates.io 那份还坏着的）。
-/// 没接上的样子（有人删了补丁那两行）：③ 当场红；Z5 也红（链回上游那份坏的）。
+/// 上游 russh issue #749「zlib decompression truncates packets」修在 `0.62.7`（解压收尾判断改用调用之后的进度）；
+/// 压那一半（输出缓冲撑满回 `Ok` 就收工）`0.65` 的 `compression.rs` 同样修了（它自带 `incompressible_packets_round_trip`）。
+/// 两半对不对由上面 Z5 的闸判据现打；本条只钉「从哪来」：
+/// ① 后端清单（workspace 根）里没有 `[patch.…]` 段 —— 谁再把 russh 换回一份仓内副本就红；
+/// ② lock 里 `russh` 恰好一块、`source` 是 crates.io、版本 ≥ `0.62.7`（几个 crate 的声明对不齐 ⇒ 多块 ⇒ 红）；
+/// ③ `src/` 底下没有 `vendor/` 目录（副本删干净了，不留一份没人链的死树）。
 #[test]
-fn the_russh_patch_is_really_wired() {
+fn russh_comes_from_crates_io_at_a_version_with_the_zlib_fix() {
     let manifest = include_str!("../../src/backend/Cargo.toml");
     let lock = include_str!("../../src/backend/Cargo.lock");
-    // ① `[patch.crates-io]` 段的条目（剥整行注释，按列 0 起的 `名 = …` 认）。
+    // ① 剥整行注释，按段头认。
     let uncommented = guard_core::strip_hash_comment_lines(manifest);
-    let mut section = String::new();
-    let mut patch_rows = Vec::new();
-    let mut dep_rows = Vec::new();
-    for line in uncommented.lines() {
-        let t = line.trim();
-        if t.starts_with('[') {
-            section = t.to_string();
-            continue;
-        }
-        if t.is_empty() || line.starts_with(char::is_whitespace) {
-            continue;
-        }
-        if section == "[patch.crates-io]" {
-            patch_rows.push(t.to_string());
-        } else if section == "[dependencies]" && t.starts_with("russh =") {
-            dep_rows.push(t.to_string());
-        }
-    }
-    let want_path = format!(
-        "path = \"../{}\"",
-        VENDORED_RUSSH.trim_start_matches("src/")
-    );
-    assert_eq!(
-        patch_rows,
-        vec![format!("russh = {{ {want_path} }}")],
-        "`[patch.crates-io]` 段不是恰好一条指向副本的 russh"
-    );
-    // ② 三处版本。
-    let [dep] = dep_rows.as_slice() else {
-        panic!("`[dependencies]` 里 `russh = …` 不是恰好一行：{dep_rows:?}");
-    };
-    let declared = dep
-        .split("version = \"")
-        .nth(1)
-        .and_then(|r| r.split('"').next())
-        .expect("依赖声明那一行抠不出 version");
-    let vendored_dir = vendored_russh_dir();
-    let vendored_toml =
-        std::fs::read_to_string(vendored_dir.join("Cargo.toml")).expect("副本 Cargo.toml");
-    // 只看 `[package]` 段（后面的依赖段里也有 `version = "…"`）。
-    let vendored: Vec<&str> = vendored_toml
-        .split("\n[")
-        .find(|seg| seg.starts_with("package]"))
-        .expect("副本 Cargo.toml 没有 [package] 段")
+    let patch_sections: Vec<&str> = uncommented
         .lines()
-        .filter_map(|l| l.strip_prefix("version = \""))
-        .filter_map(|r| r.strip_suffix('"'))
+        .map(str::trim)
+        .filter(|t| t.starts_with("[patch"))
         .collect();
-    // ③ lock 里那一块。
+    assert_eq!(
+        patch_sections,
+        Vec::<&str>::new(),
+        "后端清单里还有 `[patch.…]` 段 —— russh 要链 crates.io 上游那一份"
+    );
+    // ② lock 里那一块。
     let blocks: Vec<&str> = lock
         .split("[[package]]\n")
         .filter(|b| b.lines().next() == Some("name = \"russh\""))
         .collect();
     let [block] = blocks.as_slice() else {
-        panic!("lock 里 `russh` 不是恰好一块：{} 块", blocks.len());
+        panic!(
+            "lock 里 `russh` 不是恰好一块：{} 块（几个 crate 的版本声明对不齐）",
+            blocks.len()
+        );
     };
-    let locked = block
-        .lines()
-        .find_map(|l| l.strip_prefix("version = \""))
-        .and_then(|r| r.strip_suffix('"'))
-        .expect("lock 那一块抠不出 version");
+    let field = |key: &str| {
+        let head = format!("{key} = \"");
+        block
+            .lines()
+            .find_map(|l| l.strip_prefix(head.as_str()).map(str::to_string))
+            .and_then(|r| r.strip_suffix('"').map(str::to_string))
+    };
     assert_eq!(
-        vendored,
-        vec![declared],
-        "副本 Cargo.toml 的 version 与依赖声明（{declared}）对不上 —— `[patch.crates-io]` 要求副本版本满足声明"
+        field("source").as_deref(),
+        Some("registry+https://github.com/rust-lang/crates.io-index"),
+        "lock 里 russh 那一块不是 crates.io 来的：\n{block}"
     );
-    assert_eq!(locked, declared, "lock 里 russh 的版本与依赖声明对不上");
+    let version = field("version").expect("lock 那一块抠不出 version");
+    let triple = semver_triple(&version)
+        .unwrap_or_else(|| panic!("lock 里 russh 的版本 `{version}` 不是三段数字"));
     assert!(
-        !block.lines().any(|l| l.starts_with("source = ")),
-        "lock 里 russh 那一块还带着 `source` —— 链的是 crates.io 那份（解压还坏着），不是副本：\n{block}"
+        triple >= (0, 62, 7),
+        "lock 里 russh 是 {version}：zlib 解压截包（上游 issue #749）修在 0.62.7，低于它就还坏着"
+    );
+    // ③ 副本目录不在。
+    let src_entries: Vec<String> = std::fs::read_dir(guard_core::addr::repo_root().join("src"))
+        .expect("读仓根 src/")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        src_entries.iter().any(|n| n == "backend"),
+        "反空真：src/ 底下没读到 backend —— 读错了目录：{src_entries:?}"
+    );
+    assert!(
+        !src_entries.iter().any(|n| n == "vendor"),
+        "src/vendor/ 还在 —— 仓内补过的 russh 副本没删干净"
     );
 }
 
@@ -845,7 +682,7 @@ async fn the_checker_trusts_only_what_the_library_holds() {
     .public_key()
     .clone();
     let fp = |k: &PublicKey| k.fingerprint(HashAlg::Sha256).to_string();
-    async fn judge(trust: Trust, offered: &PublicKey) -> (bool, Option<String>) {
+    async fn judge_offer(trust: Trust, offered: &PublicKeyOrCertificate) -> (bool, Option<String>) {
         let stages = StageSink::new(false);
         let mut c = Checker {
             trust,
@@ -858,6 +695,9 @@ async fn the_checker_trusts_only_what_the_library_holds() {
             c.check_server_key(offered).await.unwrap(),
             stages.expected(),
         )
+    }
+    async fn judge(trust: Trust, offered: &PublicKey) -> (bool, Option<String>) {
+        judge_offer(trust, &PublicKeyOrCertificate::from(offered.clone())).await
     }
     let (a, b) = (key(1), key(2));
     let known = |ks: Vec<PublicKey>| Trust {
@@ -880,7 +720,34 @@ async fn the_checker_trusts_only_what_the_library_holds() {
     };
     assert_eq!(judge(pending(fp(&a)), &a).await, (true, None));
     assert_eq!(judge(pending(fp(&a)), &b).await, (false, Some(fp(&a))));
+
+    // 交来的是 host 证书（本端不播报证书类算法，协商之外）：证书里那把钥匙就是库里记过的那一把，也不认；首见也不收。
+    let cert = russh::keys::Certificate::from_openssh(HOST_CERT).expect("夹具证书解得开");
+    let inner = PublicKey::from_openssh(HOST_KEY).expect("夹具钥匙解得开");
+    assert_eq!(
+        cert.public_key(),
+        inner.key_data(),
+        "夹具：证书里那把就是这把钥匙"
+    );
+    let offered = PublicKeyOrCertificate::from(cert);
+    assert!(
+        !judge_offer(known(vec![inner.clone()]), &offered).await.0,
+        "证书里的钥匙记过 ⇒ 仍不认"
+    );
+    assert!(
+        !judge_offer(Trust::default(), &offered).await.0,
+        "首见的证书 ⇒ 不收"
+    );
+    assert!(
+        judge(known(vec![inner.clone()]), &inner).await.0,
+        "正控：同一把裸钥匙照认"
+    );
 }
+
+/// 一次性生成的夹具（`ssh-keygen -s <一次性 CA> -h`，CA 私钥没留）：host 证书与它签的那把 ed25519 钥匙。
+const HOST_CERT: &str = "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIJuOCJgC3QI3sS1MIb69b5knvtw9u6t+1CZg1QydDfhxAAAAIN5PoygyZ6/rhEULYYG2b/9PWPcyzV+rkl88snLcUkaDAAAAAAAAAAAAAAACAAAADGZpeHR1cmUtaG9zdAAAAA0AAAAJYS5leGFtcGxlAAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAgIUjnwniAhMh6DezKphpGheSNVSN+bkyUXa+s6Aw86jgAAABTAAAAC3NzaC1lZDI1NTE5AAAAQGVkyH9mpS84cj+Z8j7O03hQ8yd/EJYGH09psJTnO35l1YpvrN6MbpjTWlOWnqwj6ILPswFTk6KseKBO1vDE4gw= fixture-host";
+const HOST_KEY: &str =
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN5PoygyZ6/rhEULYYG2b/9PWPcyzV+rkl88snLcUkaD fixture-host";
 
 /// 竞速全输了：那一句只带原因词（拨不通 ⇒「端口不通」）与试过的地址，各地址的系统原话进详情、不上句子。
 #[tokio::test]
