@@ -99,10 +99,10 @@ describe("终端面板的输入队那一排", () => {
 
   it("★ 输入行送出不带附件的那一句也投进队（不走送字），回执到了清框", async () => {
     const { page, reads, put } = await opened();
-    box(page).value = "继续";
+    box(page).value = "go on";
     box(page).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     await flush();
-    expect(put).toHaveBeenCalledWith("devbox", expect.objectContaining({ machine: "<local>", sid: "s-1", text: "继续", end: "monitor" }));
+    expect(put).toHaveBeenCalledWith("devbox", expect.objectContaining({ machine: "<local>", sid: "s-1", text: "go on", end: "monitor" }));
     expect(reads.send).not.toHaveBeenCalled();
     expect(box(page).value).toBe("");
   });
