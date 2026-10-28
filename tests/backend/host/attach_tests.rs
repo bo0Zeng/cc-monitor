@@ -264,3 +264,154 @@ fn the_host_run_word_routes_to_the_hosted_terminal_not_the_query_face() {
         "不紧跟打头的 `--` 不算"
     );
 }
+
+// ── 不起托管进程、直接喂帧的那几条（外层是假的，尺寸由判据定）──
+
+fn bare(outer_rows: u16, outer_cols: u16) -> (Client, Screen) {
+    let (_k, keys) = tokio::sync::mpsc::unbounded_channel();
+    let (_r, resized) = tokio::sync::mpsc::unbounded_channel();
+    let screen = Screen::default();
+    let outer = Outer {
+        keys,
+        resized,
+        size: Box::new(move || {
+            Some(Size {
+                rows: outer_rows,
+                cols: outer_cols,
+            })
+        }),
+        out: Box::new(screen.clone()),
+        prefix: keys::DEFAULT_PREFIX,
+        vi: false,
+        in_tmux: false,
+    };
+    (Client::new(outer), screen)
+}
+
+fn holder_of(mine: bool) -> Option<Holder> {
+    Some(Holder {
+        client: if mine { 1 } else { 2 },
+        kind: WhoKind::Terminal,
+        front: None,
+        pid: None,
+        mine,
+    })
+}
+
+fn welcome(c: &mut Client, rows: u16, cols: u16, mine: bool) {
+    assert!(c
+        .frame(Frame::Ctl(Ctl::Welcome {
+            proto: PROTO,
+            id: "t".into(),
+            size: Size { rows, cols },
+            you: 1,
+            holder: holder_of(mine),
+            screen: String::new(),
+        }))
+        .is_none());
+}
+
+fn out(c: &mut Client, b: &[u8]) {
+    assert!(c.frame(Frame::Out(b.to_vec())).is_none());
+}
+
+fn no_list() -> Vec<(String, String)> {
+    Vec::new()
+}
+
+/// 里面开括号粘贴 · 焦点 ⇒ 持有者在外层也开；只看的不开，接管那一下补上。
+#[test]
+fn the_holder_mirrors_paste_and_focus_and_a_viewer_does_not() {
+    let (mut c, s) = bare(24, 80);
+    welcome(&mut c, 24, 80, true);
+    out(&mut c, b"\x1b[?2004h\x1b[?1004h");
+    assert!(s.raw().contains("\x1b[?2004h"), "持有者外层开括号粘贴");
+    assert!(s.raw().contains("\x1b[?1004h"), "持有者外层开焦点");
+
+    let (mut v, vs) = bare(24, 80);
+    welcome(&mut v, 24, 80, false);
+    out(&mut v, b"\x1b[?2004h\x1b[?1004h\x1b[?1000h\x1b[?1006h");
+    for seq in ["\x1b[?2004h", "\x1b[?1004h", "\x1b[?1000h"] {
+        assert!(!vs.raw().contains(seq), "只看的不开 {seq:?}");
+    }
+    assert!(v
+        .frame(Frame::Ctl(Ctl::Holder {
+            holder: holder_of(true)
+        }))
+        .is_none());
+    for seq in ["\x1b[?2004h", "\x1b[?1004h", "\x1b[?1000h", "\x1b[?1006h"] {
+        assert!(vs.raw().contains(seq), "接管之后补开 {seq:?}");
+    }
+}
+
+#[test]
+fn the_cursor_shape_reaches_the_outer_terminal() {
+    let (mut c, s) = bare(24, 80);
+    welcome(&mut c, 24, 80, true);
+    out(&mut c, b"\x1b[5 q");
+    assert!(s.raw().contains("\x1b[5 q"));
+}
+
+/// 同步输出开着时屏照算、外层一个字都没收到；关上那一下整段画出。
+#[test]
+fn synchronized_output_is_drawn_only_when_it_closes() {
+    let (mut c, s) = bare(24, 80);
+    welcome(&mut c, 24, 80, true);
+    out(&mut c, b"\x1b[?2026hhalf");
+    out(&mut c, b" done");
+    assert!(!s.raw().contains("half"), "开着时不画：{:?}", s.raw());
+    out(&mut c, b"\x1b[?2026l");
+    assert!(s.text().contains("half done"));
+}
+
+/// 伪终端 120×40、外层 80×24（只看的一端）⇒ 每行只画前 80 列、不折行；标题带伪终端的尺寸。
+#[test]
+fn a_smaller_outer_terminal_shows_the_top_left_crop_without_wrapping() {
+    let (mut c, s) = bare(24, 80);
+    welcome(&mut c, 40, 120, false);
+    let mut b = Vec::new();
+    for i in 0..40 {
+        b.extend_from_slice(format!("L{i:02}{}R", "-".repeat(116)).as_bytes());
+        if i < 39 {
+            b.extend_from_slice(b"\r\n");
+        }
+    }
+    out(&mut c, &b);
+    let seen = s.seen();
+    let rows: Vec<String> = seen.screen().rows(0, 80).collect();
+    for (i, r) in rows.iter().enumerate() {
+        assert_eq!(r, &format!("L{i:02}{}", "-".repeat(77)), "第 {i} 行");
+    }
+    assert!(s.raw().contains("120×40"), "标题带伪终端的尺寸");
+    // 再来一行（滚一下）：照旧裁着画。
+    out(&mut c, b"\r\nNEW");
+    let rows: Vec<String> = s.seen().screen().rows(0, 80).collect();
+    assert_eq!(rows[0], format!("L01{}", "-".repeat(77)));
+    assert_eq!(rows[23], format!("L24{}", "-".repeat(77)));
+}
+
+/// 翻看着的时候子进程接着打印：本地屏照算，退出翻看外层就是最新一屏。
+#[test]
+fn output_during_copy_mode_is_kept_and_quitting_shows_the_latest_screen() {
+    let (mut c, s) = bare(24, 80);
+    welcome(&mut c, 24, 80, true);
+    out(&mut c, b"first\r\n");
+    let (sends, left) = c.key(b"\x02[", &no_list);
+    assert!(left.is_none());
+    assert!(sends
+        .iter()
+        .any(|f| matches!(f, Frame::Ctl(Ctl::Capture { .. }))));
+    assert!(c
+        .frame(Frame::Ctl(Ctl::Captured {
+            lines: vec!["first".into()],
+            capped: false,
+            size: Size { rows: 24, cols: 80 },
+            cursor: [1, 0],
+        }))
+        .is_none());
+    out(&mut c, b"late line\r\n");
+    assert!(!s.text().contains("late line"), "翻看着不画到外层");
+    let _ = c.key(b"q", &no_list);
+    assert!(s.text().contains("late line"), "退出翻看是最新一屏");
+    assert!(s.text().contains("first"));
+}

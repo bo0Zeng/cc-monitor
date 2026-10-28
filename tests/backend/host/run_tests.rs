@@ -241,3 +241,20 @@ fn args_parse_into_a_spec() {
         "句柄带路径字符"
     );
 }
+
+/// 数据目录很长、`hosts/<id>/sock` 超过套接字上限 ⇒ 起不来，回的话带路径与长度；不偷偷换地方，盘上不留那个家。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_socket_path_over_the_limit_refuses_to_start_and_says_how_long() {
+    let (own, data) = sandbox_own(&"l".repeat(home::SOCK_PATH_MAX));
+    let mut bound = false;
+    let got = run(spec("t-long", "true"), &own, |_| bound = true).await;
+    let said = got.expect_err("路径超过上限起不来").logged();
+    let sock = data.join("hosts").join("t-long").join("sock");
+    assert!(
+        said.contains(&sock.as_os_str().len().to_string()),
+        "说清多长：{said}"
+    );
+    assert!(said.contains(&home::SOCK_PATH_MAX.to_string()), "说清上限：{said}");
+    assert!(!bound, "没绑口");
+    assert!(!data.join("hosts").join("t-long").exists(), "不留那个家");
+}
