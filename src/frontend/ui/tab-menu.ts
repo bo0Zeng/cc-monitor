@@ -337,7 +337,7 @@ export class TabMenu {
     if (s.kind === "idle" && !this.host.isAttachable(sid)) return drop("attach", "end");
     const ambiguous = s.kind === "ambiguous";
     // 接回走 `session-open look`，那台两种宿主都认。
-    this.attachReady(origin, sid, s);
+    updateMenuItem("attach", this.attachItem(origin, sid, s));
     // 命中多个 ⇒ 不给结束（破坏性，选错了不可逆）。
     updateMenuItem("end", gateByOffer(origin, ambiguous
       ? { id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, enabled: false, why: copyText("tabMenu.kill.dupesWhy", { n: s.names.length }) }
@@ -359,8 +359,9 @@ export class TabMenu {
     }
     const name = s.names[0];
     // 本机 tmux 那一行有 ccm 开的那个窗口（［切到终端］）⇒ 只对托管终端那一行出［在终端里打开］。
+    const attach = this.attachItem(LOCAL_ORIGIN, sid, s);
     if (inTmux(s)) removeMenuItem("attach");
-    else this.attachReady(LOCAL_ORIGIN, sid, s);
+    else updateMenuItem("attach", attach);
     if (s.kind === "idle" && inTmux(s)) {
       // Claude 已退出、tmux 会话在：就地恢复（非破坏性）与结束并列。就地恢复往 tmux 会话里键入 ⇒ 托管终端那一行不出。
       updateMenuItem("resume-into", gateByOffer(LOCAL_ORIGIN, { id: "resume-into", icon: "history", label: copyText("tabMenu.inPlace.label"), onClick: () => void this.actions.resume(sid, { run: "tmux" }) }));
@@ -370,15 +371,16 @@ export class TabMenu {
       : { id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, onClick: () => this.actions.endSession(LOCAL_ORIGIN, sid, name, { idle: s.kind === "idle", title }) }));
   }
 
-  /** ［在终端里打开］就位：命中多个 ⇒ 那台接第一个（第二行先说了）。 */
-  private attachReady(origin: Origin, sid: string, s: Standing): void {
-    updateMenuItem("attach", {
+  /** 就位的［在终端里打开］那一项：命中多个 ⇒ 那台接第一个（第二行先说了）。 */
+  private attachItem(origin: Origin, sid: string, s: Standing): MenuItem {
+    const ambiguous = s.kind === "ambiguous";
+    return {
       id: "attach",
       icon: "terminal",
       label: copyText("tabMenu.attach.label"),
-      why: s.kind === "ambiguous" ? copyText("tabMenu.attach.dupesWhy", { n: s.names.length, name: s.names[0] }) : undefined,
+      why: ambiguous ? copyText("tabMenu.attach.dupesWhy", { n: s.names.length, name: s.names[0] }) : undefined,
       onClick: () => void this.attach(origin, sid),
-    });
+    };
   }
 
   /** 问不到那台（通道不在 / 超时）：那几格停在灰着、第二行写原因（不悄悄摘掉）。 */

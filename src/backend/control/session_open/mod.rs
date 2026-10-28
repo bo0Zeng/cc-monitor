@@ -475,9 +475,10 @@ fn look(
 ) -> Result<Opened, Failed> {
     let listed = listed(deps).map_err(lower)?;
     let rows = &listed.rows;
-    let missing = |code_key: &str, args: &[(&str, &str)]| -> Failed {
+    // 没认到：那一句由调用处取好（这台没 tmux ⇒ 改说放不了）。
+    let missing = |said: String| -> Failed {
         if listed.tmux {
-            fail("not_in_tmux", copy_core::copy_text(code_key, args), None)
+            fail("not_in_tmux", said, None)
         } else {
             fail(
                 "place_unavailable",
@@ -498,7 +499,12 @@ fn look(
                 (Landed::Running, es[0], Some(note))
             }
             Standing::Idle(e) => (Landed::Idle, e, None),
-            Standing::None => return Err(missing("beSessionOpen.look.notInTmux", &[])),
+            Standing::None => {
+                return Err(missing(copy_core::copy_text(
+                    "beSessionOpen.look.notInTmux",
+                    &[],
+                )))
+            }
         },
         (None, Some(name)) => match rows.iter().find(|r| r.name == name) {
             Some(r) => (
@@ -511,10 +517,10 @@ fn look(
                 None,
             ),
             None => {
-                return Err(missing(
+                return Err(missing(copy_core::copy_text(
                     "beSessionOpen.look.noSession",
                     &[("name", name)],
-                ))
+                )))
             }
         },
         _ => {
