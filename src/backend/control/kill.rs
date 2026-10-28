@@ -242,6 +242,154 @@ pub(crate) fn reply(name: &str) -> Killed {
     }
 }
 
+// ── `terminal-end`：按名单里的句柄结束一个终端，两种宿主同一条 ─────────────────────
+
+/// `terminal-end` 的入参：目标恰给一个（名单里的句柄 · 会话 id），同 `terminal-input`。
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TerminalEndReq {
+    /// 目标：名单里的不透明句柄（与 `sid` 恰给一个）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) terminal: Option<String>,
+    /// 目标：会话 id（与 `terminal` 恰给一个）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) sid: Option<String>,
+    /// 自报的前端（过「哪个前端的会话」那一维）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) client: Option<String>,
+}
+
+pub(crate) use cmd_wire::session::TerminalEnded;
+
+crate::wire::typed::codes! {
+    /// `terminal-end` 的码：认目标 · 列名单 · 过门 · 结束那一下。
+    pub(crate) enum TerminalEndErr {
+        /// 目标没恰给一个（或不是非空短串）。
+        BadTarget = "bad_target",
+        /// 名单里此刻没有它。
+        NotKnown = "not_known",
+        /// 不止一个终端挂着这个 sid。
+        Ambiguous = "ambiguous",
+        /// 没有这个会话（tmux：过门那一刻它已经没了）。
+        NoSuchSession = "no_such_session",
+        /// 身份门不过（不是我们起的 · 别的前端的）。
+        WrongOwner = "wrong_owner",
+        /// 窗口门不过（tmux 那个会话里还有别的窗口）。
+        TooManyWindows = "too_many_windows",
+        /// 没结束成（原话进复制详情）。
+        KillFailed = "kill_failed",
+        /// 列名单失败。
+        Unobservable = "unobservable",
+        /// 那一发 `tmux` 过了期限。
+        ChildTimedOut = "child_timed_out",
+    }
+}
+
+/// `terminal-end`：结束名单里的一个终端（tmux：三道门、杀句柄；托管：子进程组挂断）。阻塞档。
+pub(crate) struct TerminalEnd;
+
+impl crate::wire::typed::Command for TerminalEnd {
+    const NAME: &'static str = "terminal-end";
+    type Req = TerminalEndReq;
+    type Reply = TerminalEnded;
+    type Err = TerminalEndErr;
+}
+
+impl crate::wire::typed::Handle for TerminalEnd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: TerminalEndReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<TerminalEnded, TerminalEndErr>> + Send + 'static
+    {
+        async move {
+            end_terminal(
+                crate::host::tmux::On::default(),
+                crate::host::managed::installed(),
+                &req,
+            )
+            .map_err(|f| match f.code.as_str() {
+                // 同 `terminals-list`：tmux 装了却起不来 ⇒ 列不出（不另立 `no_tmux`：没 tmux 照样结束托管的）。
+                "no_tmux" => TerminalEndErr::Unobservable(f.into_said()),
+                _ => crate::wire::typed::of_fail(f, TerminalEndErr::KillFailed),
+            })
+        }
+    }
+}
+
+/// `terminal-end` 的本体：名单里对上那一行（两种宿主合一份；`managed` ＝ 托管名单的家，生产是装好的那一个）⇒ 按它的宿主结束。
+/// 托管那一行不靠 tmux（这台没装 tmux 也照结束）；tmux 那一行过三道门，过门那一刻 tmux 起不来 ⇒ `kill_failed`（不回 `no_tmux`：名单刚列出它）。
+pub(crate) fn end_terminal(
+    on: crate::host::tmux::On<'_>,
+    managed: Option<&crate::platform::fs::Own>,
+    req: &TerminalEndReq,
+) -> Result<TerminalEnded, CmdErr> {
+    use super::terminals::{find, target, Found};
+    let t = target(req.terminal.as_deref(), req.sid.as_deref())?;
+    let requester = super::gate::requester(req.client.as_deref())?;
+    let (rows, _, _) = crate::host::list_with(on, &|| {
+        managed
+            .map(crate::host::managed::listed_at)
+            .unwrap_or_default()
+    })?;
+    let row = match find(&rows, &t) {
+        Found::One(r) => r,
+        Found::NotKnown => {
+            return Err(CmdErr::new(
+                "not_known",
+                crate::common::contract::malformed("no such terminal in the list right now"),
+            ))
+        }
+        Found::Ambiguous => {
+            return Err(CmdErr::new(
+                "ambiguous",
+                crate::common::contract::malformed(
+                    "more than one terminal carries this sid; point at one by `terminal`",
+                ),
+            ))
+        }
+    };
+    match row.host {
+        crate::wire::TerminalHost::Tmux => {
+            // 挂着 sid 的窗格 ⇒ 只结束它（会话里还有别的 claude 窗格时不关整个会话），同 `kill {name, sid}`。
+            let sid = row.pane.as_ref().map(|_| row.sid.as_str());
+            run_expecting(&row.name, sid, requester.as_deref()).map_err(|f| {
+                if f.code == "no_tmux" {
+                    CmdErr::new("kill_failed", copy_text("beKill.run.failed", &[]))
+                        .with_raw(Some(&f.message))
+                } else {
+                    f
+                }
+            })?;
+        }
+        crate::wire::TerminalHost::Managed => {
+            if super::gate::identity_of(row, requester.as_deref()) != super::gate::Who::Pass {
+                return Err(CmdErr::new(
+                    "wrong_owner",
+                    copy_text("tmuxControl.kill.wrongOwner", &[("target", &row.name)]),
+                ));
+            }
+            // 名单里有托管那一行 ⇒ 托管名单的家装着（`managed` 有值）。
+            let done = match managed {
+                Some(own) => crate::host::managed::end_at(own, &row.id),
+                None => Err(std::io::ErrorKind::NotFound.into()),
+            };
+            done.map_err(|e| {
+                CmdErr::new("kill_failed", copy_text("beKill.run.failed", &[]))
+                    .with_raw(Some(&e.to_string()))
+            })?;
+        }
+    }
+    Ok(TerminalEnded {
+        terminal: row.handle(),
+    })
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/control/kill_tests.rs"]
 mod tests;

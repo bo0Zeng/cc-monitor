@@ -27,7 +27,7 @@
           ],
           "cwd": "/p",
           "host": "tmux",
-          "input": "shared",
+          "input": { "kind": "shared" },
           "last_activity": 100,
           "program": "claude",
           "session": {
@@ -41,7 +41,7 @@
           "state": "running",
           "terminal": "tmux-1-1",
           "title": "demo title",
-          "tmux_name": "demo-cc"
+          "name": "demo-cc"
         },
         {
           "can": {
@@ -57,7 +57,7 @@
           "clients": [],
           "cwd": "/r",
           "host": "tmux",
-          "input": "shared",
+          "input": { "kind": "shared" },
           "last_activity": 300,
           "program": "vim",
           "started_by": {
@@ -67,7 +67,7 @@
           "state": "idle",
           "terminal": "tmux-3",
           "title": "vim",
-          "tmux_name": "other"
+          "name": "other"
         },
         {
           "can": {
@@ -77,7 +77,7 @@
           "clients": [],
           "cwd": "/q",
           "host": "tmux",
-          "input": "shared",
+          "input": { "kind": "shared" },
           "last_activity": 200,
           "program": "bash",
           "session": {
@@ -91,7 +91,7 @@
           "state": "program_exited",
           "terminal": "tmux-2-2",
           "title": "bash",
-          "tmux_name": "pipe-x"
+          "name": "pipe-x"
         }
       ]
     },

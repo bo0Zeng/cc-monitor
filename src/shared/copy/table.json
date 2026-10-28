@@ -11557,6 +11557,12 @@
       "zh": "附件已不在 · 没送",
       "args": []
     },
+    "beTerminal.no.heldElsewhere": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "输入在另一端 · 没送",
+      "args": []
+    },
     "beTerminal.no.elsewhere": {
       "kind": "body",
       "role": "片段",

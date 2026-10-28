@@ -16,7 +16,7 @@ fn added(sid: &str, cwd: Option<&str>) -> Frame {
         path: None,
         face: crate::wire::SessionFace::of(crate::wire::Life::Live {
             activity: None,
-            tmux: None,
+            host: None,
         }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         hidden: None,

@@ -28,6 +28,26 @@ pub(crate) struct TermRow {
     pub(crate) program: String,
     pub(crate) cwd: String,
     pub(crate) title: String,
+    /// 输入怎么进：tmux 那一形各端都能打字；托管那一形只有一个持有者。
+    pub(crate) input: Input,
+}
+
+/// 一个终端的输入此刻怎么进。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Input {
+    /// tmux：连着的各端都能打字。
+    Shared,
+    /// 托管：只收持有者的；`None` ＝ 此刻没人持有。
+    Held(Option<HeldBy>),
+}
+
+/// 托管终端此刻的输入持有者。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HeldBy {
+    /// 一个真终端里的瘦客户端（用户的终端窗口 · ssh 进来的终端 · 手机的 SSH 终端）。
+    Terminal,
+    /// 后端替这个前端持有（`desktop` · `mobile`）。
+    Front(String),
 }
 
 impl TermRow {
@@ -45,18 +65,20 @@ impl TermRow {
     }
 }
 
-/// 两种宿主合起来的名单：tmux 那几行在前、托管的在后；客户端与「报全了没有」照 tmux 那一份。
+/// 两种宿主合起来的名单：tmux 那几行在前、托管的在后；连着的客户端两种宿主合一份（`(行的 id, 接上, 最近动静)`），「报全了没有」照 tmux 那一份。
 pub(crate) fn list(on: tmux::On<'_>) -> Result<tmux::Listed, tmux::CmdErr> {
-    list_with(on, &managed::rows)
+    list_with(on, &managed::listed)
 }
 
-/// [`list`] 的本体，托管那一臂由调用方交进来（生产 = [`managed::rows`]；判据交一个报一行的假托管）。
+/// [`list`] 的本体，托管那一臂由调用方交进来（生产 = [`managed::listed`]；判据交一个报一行的假托管）。
 pub(crate) fn list_with(
     on: tmux::On<'_>,
-    managed: &dyn Fn() -> Vec<TermRow>,
+    managed: &dyn Fn() -> (Vec<TermRow>, Vec<(String, u64, u64)>),
 ) -> Result<tmux::Listed, tmux::CmdErr> {
-    let (mut rows, clients, complete) = tmux::rows_on(on)?;
-    rows.extend(managed());
+    let (mut rows, mut clients, complete) = tmux::rows_on(on)?;
+    let (m_rows, m_clients) = managed();
+    rows.extend(m_rows);
+    clients.extend(m_clients);
     Ok((rows, clients, complete))
 }
 

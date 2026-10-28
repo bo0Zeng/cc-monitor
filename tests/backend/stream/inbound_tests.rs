@@ -1198,11 +1198,11 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
     rows.extend(t::parse_rows("$4\t%4\t1\t1\tbare\t1\t400\tsid-d\t\t\tclaude\t/s\t\n").0);
     assert_eq!(
         wire(&t::list_reply(&rows, &clients, false, Some("mobile"))),
-        r##"{"complete":false,"terminals":[{"can":{"end":true,"input":true},"clients":[{"kind":"terminal-window","last_activity":90,"since":50}],"cwd":"/p","host":"tmux","input":"shared","last_activity":100,"program":"claude","session":{"agent":"claude","sid":"sid-a"},"started_by":{"client":"ccm","mine":true},"state":"running","terminal":"tmux-1-1","title":"demo title","tmux_name":"demo-cc"},{"can":{"end":{"no":"not_yours","said":"手机端内部会话"},"input":{"no":"not_yours","said":"手机端内部会话"}},"clients":[],"cwd":"/r","host":"tmux","input":"shared","last_activity":300,"program":"vim","started_by":{"client":"desktop","mine":false},"state":"idle","terminal":"tmux-3","title":"vim","tmux_name":"other"},{"can":{"end":true,"input":true},"clients":[],"cwd":"/q","host":"tmux","input":"shared","last_activity":200,"program":"bash","session":{"agent":"claude","sid":"sid-b"},"started_by":{"client":"mobile","mine":true},"state":"program_exited","terminal":"tmux-2-2","title":"bash","tmux_name":"pipe-x"},{"can":{"end":true,"input":true},"clients":[],"cwd":"/s","host":"tmux","input":"shared","last_activity":400,"program":"claude","session":{"sid":"sid-d"},"started_by":{"client":null,"mine":true},"state":"running","terminal":"tmux-4-4","title":"claude","tmux_name":"bare"}]}"##
+        r##"{"complete":false,"terminals":[{"can":{"end":true,"input":true},"clients":[{"kind":"terminal-window","last_activity":90,"since":50}],"cwd":"/p","host":"tmux","input":{"kind":"shared"},"last_activity":100,"name":"demo-cc","program":"claude","session":{"agent":"claude","sid":"sid-a"},"started_by":{"client":"ccm","mine":true},"state":"running","terminal":"tmux-1-1","title":"demo title"},{"can":{"end":{"no":"not_yours","said":"手机端内部会话"},"input":{"no":"not_yours","said":"手机端内部会话"}},"clients":[],"cwd":"/r","host":"tmux","input":{"kind":"shared"},"last_activity":300,"name":"other","program":"vim","started_by":{"client":"desktop","mine":false},"state":"idle","terminal":"tmux-3","title":"vim"},{"can":{"end":true,"input":true},"clients":[],"cwd":"/q","host":"tmux","input":{"kind":"shared"},"last_activity":200,"name":"pipe-x","program":"bash","session":{"agent":"claude","sid":"sid-b"},"started_by":{"client":"mobile","mine":true},"state":"program_exited","terminal":"tmux-2-2","title":"bash"},{"can":{"end":true,"input":true},"clients":[],"cwd":"/s","host":"tmux","input":{"kind":"shared"},"last_activity":400,"name":"bare","program":"claude","session":{"sid":"sid-d"},"started_by":{"client":null,"mine":true},"state":"running","terminal":"tmux-4-4","title":"claude"}]}"##
     );
     assert_eq!(
         wire(&t::list_reply(&rows, &clients, false, None)),
-        r##"{"complete":false,"terminals":[{"can":{"end":true,"input":true},"clients":[{"kind":"terminal-window","last_activity":90,"since":50}],"cwd":"/p","host":"tmux","input":"shared","last_activity":100,"program":"claude","session":{"agent":"claude","sid":"sid-a"},"started_by":{"client":"ccm","mine":true},"state":"running","terminal":"tmux-1-1","title":"demo title","tmux_name":"demo-cc"},{"can":{"end":{"no":"not_yours","said":"手机端内部会话"},"input":{"no":"not_yours","said":"手机端内部会话"}},"clients":[],"cwd":"/r","host":"tmux","input":"shared","last_activity":300,"program":"vim","started_by":{"client":"desktop","mine":false},"state":"idle","terminal":"tmux-3","title":"vim","tmux_name":"other"},{"can":{"end":{"no":"not_yours","said":"手机端内部会话"},"input":{"no":"not_yours","said":"手机端内部会话"}},"clients":[],"cwd":"/q","host":"tmux","input":"shared","last_activity":200,"program":"bash","session":{"agent":"claude","sid":"sid-b"},"started_by":{"client":"mobile","mine":false},"state":"program_exited","terminal":"tmux-2-2","title":"bash","tmux_name":"pipe-x"},{"can":{"end":true,"input":true},"clients":[],"cwd":"/s","host":"tmux","input":"shared","last_activity":400,"program":"claude","session":{"sid":"sid-d"},"started_by":{"client":null,"mine":true},"state":"running","terminal":"tmux-4-4","title":"claude","tmux_name":"bare"}]}"##
+        r##"{"complete":false,"terminals":[{"can":{"end":true,"input":true},"clients":[{"kind":"terminal-window","last_activity":90,"since":50}],"cwd":"/p","host":"tmux","input":{"kind":"shared"},"last_activity":100,"name":"demo-cc","program":"claude","session":{"agent":"claude","sid":"sid-a"},"started_by":{"client":"ccm","mine":true},"state":"running","terminal":"tmux-1-1","title":"demo title"},{"can":{"end":{"no":"not_yours","said":"手机端内部会话"},"input":{"no":"not_yours","said":"手机端内部会话"}},"clients":[],"cwd":"/r","host":"tmux","input":{"kind":"shared"},"last_activity":300,"name":"other","program":"vim","started_by":{"client":"desktop","mine":false},"state":"idle","terminal":"tmux-3","title":"vim"},{"can":{"end":{"no":"not_yours","said":"手机端内部会话"},"input":{"no":"not_yours","said":"手机端内部会话"}},"clients":[],"cwd":"/q","host":"tmux","input":{"kind":"shared"},"last_activity":200,"name":"pipe-x","program":"bash","session":{"agent":"claude","sid":"sid-b"},"started_by":{"client":"mobile","mine":false},"state":"program_exited","terminal":"tmux-2-2","title":"bash"},{"can":{"end":true,"input":true},"clients":[],"cwd":"/s","host":"tmux","input":{"kind":"shared"},"last_activity":400,"name":"bare","program":"claude","session":{"sid":"sid-d"},"started_by":{"client":null,"mine":true},"state":"running","terminal":"tmux-4-4","title":"claude"}]}"##
     );
     let view = t::View {
         text: "\u{1b}[1m\u{1b}[31mline\u{1b}[0m one\n\u{1b}[2;3;4;7;48;5;200;38;2;1;2;3mx\u{1b}[22;23;24;27;39;49my\u{1b}[44;92mz\u{1b}[0m\nplain\n".into(),
@@ -1289,16 +1289,16 @@ mod erased_wire {
     }
 }
 
-/// ★ 终端那三条只收它们真用得上的那几格（`terminal-input` 原先还收一格 `take`「先接管输入」：收了、校验了、然后丢掉，
-/// 第二个前端照字段表画了一颗按钮、按下去什么都不变 ⇒ 删了）。多送一格 · 类型不对 ⇒ `bad_args`，在解入参那一步就回（碰 tmux 之前），
+/// ★ 终端那三条只收它们真用得上的那几格（`terminal-input` 的 `take` 现在真用上了：托管终端的输入在别处时先接管再送，A3-3-5）。
+/// 多送一格 · 类型不对 ⇒ `bad_args`，在解入参那一步就回（碰 tmux 之前），
 /// 多出来的那一格诊断里点名（类型不对的那一种，解码器那一句不带格名，只比码）。
 #[test]
 fn the_terminal_trio_refuses_fields_it_does_not_use() {
     for (cmd, args, named) in [
         (
             "terminal-input",
-            serde_json::json!({ "terminal": "tmux-1", "text": "x", "take": true }),
-            "take",
+            serde_json::json!({ "terminal": "tmux-1", "text": "x", "take": "yes" }),
+            "",
         ),
         (
             "terminal-input",

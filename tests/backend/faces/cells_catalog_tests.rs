@@ -375,7 +375,7 @@ fn corpus(name: &str) -> Vec<Value> {
             let live =
                 serde_json::to_value(crate::wire::SessionFace::of(crate::wire::Life::Live {
                     activity: Some(crate::agents::SessionActivity::Working),
-                    tmux: None,
+                    host: None,
                 }))
                 .unwrap();
             f["startedBy"]["face"] = live.clone();
@@ -443,7 +443,7 @@ fn corpus(name: &str) -> Vec<Value> {
                     label: crate::common::cells::Words("t".into()),
                     face: crate::wire::SessionFace::of(crate::wire::Life::Live {
                         activity: Some(crate::agents::SessionActivity::NeedsYou),
-                        tmux: None,
+                        host: None,
                     }),
                     needs: needs.clone(),
                     // 隐藏的会话照样在需手动清单里、带着那一格（真判定现造）。

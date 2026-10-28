@@ -57,7 +57,7 @@ fn added(sid: &str) -> Ev {
         path: None,
         face: crate::wire::SessionFace::of(crate::wire::Life::Live {
             activity: None,
-            tmux: None,
+            host: None,
         }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         hidden: None,
@@ -176,7 +176,7 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
         path: None,
         face: crate::wire::SessionFace::of(crate::wire::Life::Live {
             activity: None,
-            tmux: None,
+            host: None,
         }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         hidden: None,
@@ -383,7 +383,7 @@ fn status(sid: &str) -> Frame {
         sid: sid.into(),
         face: crate::wire::SessionFace::of(crate::wire::Life::Live {
             activity: None,
-            tmux: None,
+            host: None,
         }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,

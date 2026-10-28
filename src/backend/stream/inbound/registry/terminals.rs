@@ -39,6 +39,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::control::terminals_wire::TerminalInputCmd>(
         "往一个终端送字或送键（过身份门）",
     ),
+    // 托管终端只有一个写者：接管 · 交还（`control/terminals.rs::hold_on`；tmux 那一形回 `not_managed`）。
+    crate::wire::typed::blocking::<crate::control::terminals_wire::TerminalTakeInputCmd>(
+        "替自报的前端接管托管终端的输入",
+    ),
+    crate::wire::typed::blocking::<crate::control::terminals_wire::TerminalReleaseInputCmd>(
+        "交还托管终端的输入",
+    ),
+    // 按名单里的句柄结束一个终端，两种宿主同一条（`control/kill.rs::end_terminal`）。
+    crate::wire::typed::blocking::<crate::control::kill::TerminalEnd>("结束名单里的一个终端"),
     crate::wire::typed::blocking::<crate::faces::session_commands_face::SessionCommandsCmd>(
         "一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录）",
     ),

@@ -1696,7 +1696,7 @@
       }
     },
     "terminals-list": {
-      "rust": "{\"terminals\":[{\"terminal\":\"terminal-x\",\"host\":\"tmux\",\"tmux_name\":\"tmux_name-x\",\"title\":\"title-x\",\"program\":\"program-x\",\"cwd\":\"cwd-x\",\"session\":{\"sid\":\"sid-x\",\"agent\":\"agent-x\"},\"started_by\":{\"client\":\"client-x\",\"mine\":true},\"clients\":[{\"kind\":\"terminal-window\",\"since\":7,\"last_activity\":7}],\"input\":\"shared\",\"state\":\"running\",\"last_activity\":7,\"can\":{\"input\":true,\"end\":true}}],\"complete\":true}",
+      "rust": "{\"terminals\":[{\"terminal\":\"terminal-x\",\"host\":\"tmux\",\"name\":\"name-x\",\"title\":\"title-x\",\"program\":\"program-x\",\"cwd\":\"cwd-x\",\"session\":{\"sid\":\"sid-x\",\"agent\":\"agent-x\"},\"started_by\":{\"client\":\"client-x\",\"mine\":true},\"clients\":[{\"kind\":\"terminal-window\",\"since\":7,\"last_activity\":7}],\"input\":{\"kind\":\"shared\"},\"state\":\"running\",\"last_activity\":7,\"can\":{\"input\":true,\"end\":true}}],\"complete\":true}",
       "sample": {
         "complete": true,
         "terminals": [
@@ -1714,8 +1714,11 @@
             ],
             "cwd": "cwd-x",
             "host": "tmux",
-            "input": "shared",
+            "input": {
+              "kind": "shared"
+            },
             "last_activity": 7,
+            "name": "name-x",
             "program": "program-x",
             "session": {
               "agent": "agent-x",
@@ -1727,8 +1730,7 @@
             },
             "state": "running",
             "terminal": "terminal-x",
-            "title": "title-x",
-            "tmux_name": "tmux_name-x"
+            "title": "title-x"
           }
         ]
       }

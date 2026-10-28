@@ -2084,7 +2084,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
                 label: crate::common::cells::Words("t".into()),
                 face: crate::wire::SessionFace::of(crate::wire::Life::Live {
                     activity: Some(crate::agents::SessionActivity::NeedsYou),
-                    tmux: None,
+                    host: None,
                 }),
                 needs: needs_of(
                     crate::agents::claudecode::AGENT_KIND,

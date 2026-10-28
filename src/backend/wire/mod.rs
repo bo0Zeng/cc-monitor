@@ -40,16 +40,16 @@ pub use cmd_wire::frame::{SessionFileGone, SessionFileReread};
 pub use cmd_wire::frame::{Topic, Unavailable};
 
 /// 一条会话此刻处在哪一段（[`SessionFaceExt::of`] 的入参）：比线上那一格 [`WireLife`] 多带写字要的几样
-/// （在不在 tmux 里 · 记录读没读完 · 那台看不见）。
+/// （住在哪种宿主里 · 记录读没读完 · 那台看不见）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Life {
-    /// 进程在：那一家说在干什么（说不清 ⇒ `None`）· 在不在 tmux 里（判不了 ⇒ `None`）。
+    /// 进程在：那一家说在干什么（说不清 ⇒ `None`）· 住在哪（判不了 ⇒ `None`）。
     Live {
         activity: Option<SessionActivity>,
-        tmux: Option<bool>,
+        host: Option<Housed>,
     },
     /// 进程在、此刻在干什么只有记录说、记录还没读完。
-    Reading { tmux: Option<bool> },
+    Reading { host: Option<Housed> },
     /// 程序退了、tmux 会话还在。
     Reconnectable,
     /// 进程没了、容器也没了。
@@ -67,13 +67,13 @@ impl Life {
     pub(crate) fn live(activity: Option<SessionActivity>, c: Option<&SessionContainer>) -> Self {
         Life::Live {
             activity,
-            tmux: in_tmux(c),
+            host: housed(c),
         }
     }
 
     /// 记录还没读完的那一段（容器同上）。
     pub(crate) fn reading(c: Option<&SessionContainer>) -> Self {
-        Life::Reading { tmux: in_tmux(c) }
+        Life::Reading { host: housed(c) }
     }
 
     /// 清单行 · 搜索命中那一段：那台判的一生（清单不看容器）。
@@ -81,7 +81,7 @@ impl Life {
         match life {
             WireLife::Live { activity } => Life::Live {
                 activity: *activity,
-                tmux: None,
+                host: None,
             },
             WireLife::Reconnectable => Life::Reconnectable,
             WireLife::Ended { .. } => Life::Ended,
@@ -91,8 +91,21 @@ impl Life {
     }
 }
 
-fn in_tmux(c: Option<&SessionContainer>) -> Option<bool> {
-    c.map(|c| matches!(c, SessionContainer::Tmux { .. }))
+/// 一条活会话住在哪（容器那一格去掉句柄）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Housed {
+    /// 在某种宿主的终端里。
+    In(TerminalHost),
+    /// 不在任何宿主里。
+    Bare,
+}
+
+fn housed(c: Option<&SessionContainer>) -> Option<Housed> {
+    c.map(|c| match c {
+        SessionContainer::Tmux { .. } => Housed::In(TerminalHost::Tmux),
+        SessionContainer::Managed { .. } => Housed::In(TerminalHost::Managed),
+        SessionContainer::None => Housed::Bare,
+    })
 }
 
 /// **一条会话整份脸的唯一构造口**（[`SessionFace`]）：点 · 字 · 语气 · 序 · 能做什么都只在这里判。
@@ -121,8 +134,8 @@ impl SessionFaceExt for SessionFace {
             ))
         };
         match life {
-            Life::Live { activity, tmux } => live_face(activity, tmux, false),
-            Life::Reading { tmux } => live_face(None, tmux, true),
+            Life::Live { activity, host } => live_face(activity, host, false),
+            Life::Reading { host } => live_face(None, host, true),
             Life::Reconnectable => {
                 let tip = Words(copy_core::copy_text(
                     "sessionState.reconnectable.tooltip",
@@ -249,7 +262,11 @@ impl SessionFaceExt for SessionFace {
 }
 
 /// 进程在的那几段（`reading` ＝ 记录还没读完、此刻在干什么只有记录说）。
-fn live_face(activity: Option<SessionActivity>, tmux: Option<bool>, reading: bool) -> SessionFace {
+fn live_face(
+    activity: Option<SessionActivity>,
+    host: Option<Housed>,
+    reading: bool,
+) -> SessionFace {
     let running = || Words(copy_core::copy_text("tabBatch.why.live", &[]));
     let (dot, key, tone, order) = match activity {
         Some(SessionActivity::NeedsYou) => (
@@ -294,12 +311,12 @@ fn live_face(activity: Option<SessionActivity>, tmux: Option<bool>, reading: boo
         ),
     };
     let name = key;
-    let tip = match tmux {
-        Some(true) => Words(copy_core::copy_text(
+    let tip = match host {
+        Some(Housed::In(TerminalHost::Tmux)) => Words(copy_core::copy_text(
             "sessionState.liveAttachable.tooltip",
             &[],
         )),
-        Some(false) => Words(copy_core::copy_text(
+        Some(Housed::In(TerminalHost::Managed) | Housed::Bare) => Words(copy_core::copy_text(
             "sessionState.liveResumable.tooltip",
             &[],
         )),
@@ -345,7 +362,7 @@ fn live_face(activity: Option<SessionActivity>, tmux: Option<bool>, reading: boo
             close: CanClose::No { why: running() },
             resume: no(running()),
             term: CanTerm::Yes {
-                tmux: tmux == Some(true),
+                tmux: host == Some(Housed::In(TerminalHost::Tmux)),
             },
             reattach: no(running()),
             model,
