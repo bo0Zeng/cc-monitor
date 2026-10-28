@@ -2469,12 +2469,6 @@ mod g6_dependency_signoff {
              纯内存里的解析与格子，backend 在它身上的用法不需要它碰盘、也不起进程",
         ),
         (
-            "notify-debouncer-mini",
-            DEPS,
-            UNMEASURED,
-            "把上面那条的事件去抖之后再交出来 —— 同一条路上的第二段，同样只在读侧",
-        ),
-        (
             "flate2",
             DEPS,
             UNMEASURED,

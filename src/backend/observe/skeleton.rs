@@ -157,12 +157,6 @@ impl Skeletons {
         self.dir()?.join(&format!("{}.json", digest(key))).ok()
     }
 
-    /// `path` 那一份落过没有（只看在不在，不读）。
-    pub(crate) fn has(&self, path: &Path) -> bool {
-        self.file(&key_of(path))
-            .is_some_and(|f| Ro::metadata(f.as_path()).is_ok_and(|m| m.is_file()))
-    }
-
     /// 读 `path` 那一份。没有 · 读不出 · 版本或路径对不上 ⇒ `None`。
     pub(crate) fn load<T: DeserializeOwned>(&self, path: &Path) -> Option<T> {
         let key = key_of(path);

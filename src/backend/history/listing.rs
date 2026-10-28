@@ -17,7 +17,7 @@ pub(crate) use cmd_wire::listing::{Can, CanDelete, CanResume};
 use copy_core::copy_text;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::UNIX_EPOCH;
 
 /// **这条会话能做什么**（`can`）——界面按它画，不另判：
@@ -288,6 +288,9 @@ static LOADED: std::sync::Once = std::sync::Once::new();
 /// 内存那一份自上次落盘之后变过没有（没变不重写）。
 static DIRTY: AtomicBool = AtomicBool::new(false);
 
+/// 到此刻清单扫描从记录里读了多少字节（判据数它，不按墙钟）。
+static READ: AtomicU64 = AtomicU64::new(0);
+
 /// 盘上那一份的格式：形状或读法变了就加一（对不上 ⇒ 当没有，照记录重扫、覆盖）。
 const STORE_VERSION: u32 = 3;
 
@@ -453,6 +456,7 @@ impl ListingEntry {
         }
         e.read.saw((mtime, end));
         e.last_bytes = end;
+        READ.fetch_add(end, Ordering::Relaxed);
         e.row = e.done.joined(&e.tail).row(p);
         e
     }
@@ -553,8 +557,37 @@ pub(crate) fn session_title_of(p: &Path, custom: Option<String>) -> String {
     .0
 }
 
+/// 清单缓存里正在扫的那几份：同一份后到的等先到的扫完（[`Scanning::begin`]），再照它留下的那一行起步。
+static SCANNING: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+static SCANNED: std::sync::Condvar = std::sync::Condvar::new();
+
+/// 这一份正由本线程扫着（放手时摘掉、叫醒等它的）。
+struct Scanning<'a>(&'a Path);
+
+impl<'a> Scanning<'a> {
+    /// 同一份正在扫 ⇒ 等它扫完（阻塞等结果，不定时醒），再记成本线程在扫。
+    fn begin(p: &'a Path) -> Self {
+        let mut g = SCANNING.lock().unwrap_or_else(|e| e.into_inner());
+        while g.iter().any(|q| q == p) {
+            g = SCANNED.wait(g).unwrap_or_else(|e| e.into_inner());
+        }
+        g.push(p.to_path_buf());
+        Scanning(p)
+    }
+}
+
+impl Drop for Scanning<'_> {
+    fn drop(&mut self) {
+        let mut g = SCANNING.lock().unwrap_or_else(|e| e.into_inner());
+        g.retain(|q| q != self.0);
+        SCANNED.notify_all();
+    }
+}
+
 /// [`analyze_session`] 过一层 [`SESSION_META`]：没变 ⇒ 上次那一行；变长且前面没被改写 ⇒ 只扫新增的；其余整份重扫。
+/// 同一份正在扫 ⇒ 等它扫完，照它留下的那一行起步（不并发扫两遍）。
 fn analyze_session_cached(p: &Path) -> serde_json::Value {
+    let _scanning = Scanning::begin(p);
     let prev = table().remove(p);
     // 读到过读不动的一行（之后的都不算）⇒ 不追加读：那一行之后的内容要整份重扫才对得上。
     let may_append = prev.as_ref().is_some_and(|e| !e.done.stopped);
@@ -575,6 +608,7 @@ fn analyze_session_cached(p: &Path) -> serde_json::Value {
                 return analyze_session(p);
             }
             e.last_bytes = bytes + new.read();
+            READ.fetch_add(e.last_bytes, Ordering::Relaxed);
             e
         }
         _ => ListingEntry::scan(p, seen.0),
