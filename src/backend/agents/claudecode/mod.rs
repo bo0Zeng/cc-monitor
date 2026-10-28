@@ -55,6 +55,8 @@ pub(crate) mod quota;
 pub(crate) mod records;
 // 官方客户端报一个号的用量（`claude -p /usage`）→ 通用的额度窗口：命令行与读法。
 pub(crate) mod resume;
+// 回退菜单（双击 Esc 的 Rewind）：怎么调出来 · 每一屏怎么认 · 确认页那几项叫什么。
+pub(crate) mod rewind;
 pub(crate) mod usage;
 // 子运行（子 agent）的形状：对账键 · 归属 · 派出链接 · 记录住址 · 请求自报身份的头。
 pub(crate) mod runs;
@@ -241,6 +243,7 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
             key: "enter",
         }),
     }),
+    rewind: Some(rewind::FACE),
 };
 
 /// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**。
