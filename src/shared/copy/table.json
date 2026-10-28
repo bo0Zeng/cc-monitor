@@ -14732,12 +14732,6 @@
       "zh": "{program} 结果未知",
       "args": ["program"]
     },
-    "beDetach.detach.notUnix": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "此机器非 Unix · 不能脱离当前进程单独跑 · 未启动",
-      "args": []
-    },
     "beSshAgent.connect.unsupported": {
       "kind": "error",
       "role": "报错",
@@ -29454,9 +29448,8 @@
     "mobDefaultButtons.label.tmux": {
       "kind": "action",
       "role": "按钮",
-      "zh": "tmux 会话",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "终端",
+      "args": []
     },
     "mobDefaultButtons.label.paste": {
       "kind": "action",
@@ -29629,9 +29622,8 @@
     "mobTerm.capture.noTmux": {
       "kind": "body",
       "role": "toast",
-      "zh": "无 tmux 会话",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "未在终端里",
+      "args": []
     },
     "mobTerm.tmux.none": {
       "kind": "body",
@@ -29801,16 +29793,14 @@
     "mobPalette.group.tmux": {
       "kind": "title",
       "role": "标题",
-      "zh": "tmux 会话",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "终端",
+      "args": []
     },
     "mobPalette.item.tmux": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "tmux 会话管理",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "终端管理",
+      "args": []
     },
     "mobPalette.group.key": {
       "kind": "title",
@@ -29875,9 +29865,8 @@
     "mobKeys.action.tmux": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "tmux 会话",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "终端管理",
+      "args": []
     },
     "mobKeys.action.keyboard": {
       "kind": "action",
@@ -30299,13 +30288,6 @@
       "zh": "{a} 无法发送 · 未录入",
       "args": ["a"]
     },
-    "mobKeys.action.needTmux": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "需 tmux",
-      "args": [],
-      "limited": ["tmux"]
-    },
     "mobKeys.err.actionUnavailable": {
       "kind": "error",
       "role": "报错",
@@ -30447,9 +30429,8 @@
     "mobTmux.dialog.title": {
       "kind": "title",
       "role": "确认框",
-      "zh": "tmux 会话",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "终端",
+      "args": []
     },
     "mobTmux.dialog.refresh": {
       "kind": "action",
@@ -30460,9 +30441,8 @@
     "mobTmux.kill.done": {
       "kind": "body",
       "role": "toast",
-      "zh": "已关闭 tmux 会话「{name}」",
-      "args": ["name"],
-      "limited": ["tmux"]
+      "zh": "已结束「{name}」",
+      "args": ["name"]
     },
     "mobTmux.kill.title": {
       "kind": "title",
@@ -30479,9 +30459,8 @@
     "mobTmux.kill.body": {
       "kind": "body",
       "role": "确认框",
-      "zh": "中断  tmux 会话里运行的程序\n不可撤销",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "中断  终端里运行的程序\n不可撤销",
+      "args": []
     },
     "mobTmux.kill.ok": {
       "kind": "action",
@@ -30492,9 +30471,8 @@
     "mobTmux.list.empty": {
       "kind": "body",
       "role": "空态",
-      "zh": "无 tmux 会话",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "无终端",
+      "args": []
     },
     "mobTmux.row.running": {
       "kind": "body",

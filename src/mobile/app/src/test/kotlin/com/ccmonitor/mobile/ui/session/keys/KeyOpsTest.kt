@@ -61,9 +61,9 @@ class KeyOpsTest {
             val gid = defaultKeyGroups().first().id
             val k = ops.save(KeyDraft(id = null, groupId = gid, tap = Slot.of(esc)))
             assertEquals(dao.keys(gid).last(), k)
-            assertEquals(9, k.sortOrder)
+            assertEquals(10, k.sortOrder)
             val m = ops.addModifier(gid, KeyMod.ALT)
-            assertEquals(TermKey("tk-id1", gid, 10, modifier = KeyMod.ALT), m)
+            assertEquals(TermKey("tk-id1", gid, 11, modifier = KeyMod.ALT), m)
         }
 
     @Test
@@ -76,7 +76,7 @@ class KeyOpsTest {
             val first = dao.keys(gid).first().id
             ops.moveKey(gid, 0, 2)
             assertEquals(first, dao.keys(gid)[2].id)
-            assertEquals((0 until 9).toList(), dao.keys(gid).map { it.sortOrder })
+            assertEquals((0 until 10).toList(), dao.keys(gid).map { it.sortOrder })
         }
 
     @Test

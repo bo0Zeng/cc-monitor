@@ -167,7 +167,7 @@ class ChatSessionMidTest {
             val facts =
                 mapOf(
                     "recent" to emptyList<Any>(),
-                    "tmux" to true,
+                    "hosts" to listOf("tmux", "direct"),
                     "run" to "tmux",
                     "agents" to
                         listOf(

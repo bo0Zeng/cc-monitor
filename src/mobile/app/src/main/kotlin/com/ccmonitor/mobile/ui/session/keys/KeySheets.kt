@@ -147,7 +147,7 @@ internal fun actionIcon(a: AppAction): Ph =
         AppAction.PUSH_KEY -> Ph.Key
     }
 
-/** 选 App 动作：一列动作；「切到某一组 ›」进第二层列出全部组（存的是组的编号）。要 tmux 的那几项行尾写「需 tmux」。 */
+/** 选 App 动作：一列动作；「切到某一组 ›」进第二层列出全部组（存的是组的编号）。 */
 @Composable
 internal fun ActionPickSheet(
     trigger: String,
