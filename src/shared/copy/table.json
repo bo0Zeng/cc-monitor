@@ -22129,24 +22129,11 @@
       "zh": "{machine} · 需手动清单无法读取",
       "args": ["machine"]
     },
-    "tabBar.machineDown.body": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} 离线 · {n} 会话状态不明",
-      "args": ["machine", "n"]
-    },
-    "tabBar.machineDown.seen": {
+    "tabBar.strip.more": {
       "kind": "body",
       "role": "片段",
-      "zh": "采样 {ago} 前",
-      "args": ["ago"]
-    },
-    "tabBar.machineDown.reconnect": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "重新连接",
-      "args": [],
-      "limited": ["连接"]
+      "zh": "未连上（{n}）",
+      "args": ["n"]
     },
     "rsFilewinChrome.link.readOnly": {
       "kind": "body",
