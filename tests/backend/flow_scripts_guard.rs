@@ -306,7 +306,7 @@ mod tests {
             "M\tsrc/common/copy-core/src/lib.rs\n",
             "A\tsrc/common/copy-core/src/new_part.rs\n",
             "M\tsrc/backend/ssh-dial/lib.rs\n",
-            "M\tsrc/vendor/russh/russh/src/lib.rs\n",
+            "M\tsrc/backend/deploy/lib.rs\n",
         ] {
             assert_eq!(
                 cells(change),
@@ -1262,7 +1262,6 @@ mod tests {
             "src/common",
             "src/comms",
             "src/doc",
-            "src/vendor",
             ".github",
         ]
         .iter()

@@ -99,7 +99,7 @@ tracked = set(f for f in ls if f)
 WS = {
     "shellrs": ("src/frontend/shell/", "src/frontend/filewin/", "src/common/", "src/comms/",
                 "tests/frontend/shell/", "tests/frontend/filewin/", "tests/common/", "tests/comms/"),
-    "backendrs": ("src/backend/", "src/vendor/", "src/comms/outward/", "src/common/", "tests/backend/", "tests/benches/"),
+    "backendrs": ("src/backend/", "src/comms/outward/", "src/common/", "tests/backend/", "tests/benches/"),
 }
 owners = defaultdict(set)
 for f in tracked:

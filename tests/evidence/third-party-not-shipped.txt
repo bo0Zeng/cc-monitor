@@ -1,5 +1,5 @@
 # 锁文件里有、但不进产物的第三方包（只在别的平台 / 只开发期 / 没开的特性用）。
-# 由 tests/scripts/third-party-notices.py 生成（== 两份 Cargo.lock 的第三方包 ∪ src/vendor − THIRD-PARTY-NOTICES.txt 里的），不手改。
+# 由 tests/scripts/third-party-notices.py 生成（== 两份 Cargo.lock 的第三方包 − THIRD-PARTY-NOTICES.txt 里的），不手改。
 crate: accesskit_consumer 0.38.0
 crate: accesskit_macos 0.26.3
 crate: android-activity 0.6.1
@@ -28,6 +28,7 @@ crate: dispatch 0.2.0
 crate: dispatch2 0.3.1
 crate: embed_plist 1.2.2
 crate: fax 0.2.7
+crate: fiat-crypto 0.3.0
 crate: foreign-types 0.5.0
 crate: foreign-types-macros 0.2.3
 crate: foreign-types-shared 0.3.1
