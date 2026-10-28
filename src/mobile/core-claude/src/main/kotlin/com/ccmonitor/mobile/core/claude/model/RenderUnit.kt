@@ -5,8 +5,11 @@ package com.ccmonitor.mobile.core.claude.model
  * 送到了的不挂标；记录里出现了这句人话 ⇒ 整句换成记录里那一条。
  */
 enum class DeliveryState {
-    /** 正在送。 */
+    /** 正在送（会话那台还没回执）。 */
     SENDING,
+
+    /** 会话那台已回执（写进了那条会话的输入队、落了盘）：排着 · 已送进，字照回执写。 */
+    QUEUED,
 
     /** 那台回 `unsure`（或期限到了）：不知道送没送到，不重发。 */
     UNSURE,

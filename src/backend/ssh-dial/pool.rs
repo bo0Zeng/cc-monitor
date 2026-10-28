@@ -228,14 +228,11 @@ impl LinkFacts {
 /// 一条的读数 ⇒ 成品那一项（那一句照文案表写好：地址〔· 经代理〕· 压没压 · 收 · 发）。
 fn row(w: &Wire, jump: bool) -> cmd_wire::machine::MachineLink {
     use copy_core::{copy_text, size_text};
-    let packing = copy_text(
-        if w.compressed {
-            "beLinks.pack.compressed"
-        } else {
-            "beLinks.pack.plain"
-        },
-        &[],
-    );
+    let packing = if w.compressed {
+        copy_text("beLinks.pack.compressed", &[])
+    } else {
+        copy_text("beLinks.pack.plain", &[])
+    };
     let place = if w.via_proxy {
         copy_text("beLinks.route.proxy", &[("endpoint", &w.endpoint)])
     } else {

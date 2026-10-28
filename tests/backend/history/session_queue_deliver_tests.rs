@@ -7,7 +7,7 @@ use super::*;
 use crate::agents::SessionActivity as A;
 use crate::control::terminals_wire::{Sent, SentResult};
 use crate::history::session_queue as q;
-use crate::history::session_queue_wire::{QueueState as S, SessionQueuePutReq};
+use cmd_wire::queue::{QueueItem, QueueState as S, SessionQueuePutReq};
 use cmd_wire::{session::Refused, Machine};
 use std::cell::RefCell;
 
@@ -32,10 +32,38 @@ fn put(o: &crate::platform::fs::Own, id: &str, now: i64) {
             n: None,
             at_ms: now,
             text: format!("text of {id}"),
+            attachments: Vec::new(),
         },
         now,
     )
     .unwrap();
+}
+
+/// 队里那一条带的附件原样交给送字本体（拼进去的那一份照那一家的写法，见 `session_send_tests`）；端名合形状才当自报的前端。
+#[test]
+fn the_line_sent_carries_its_attachments() {
+    let o = own("attach");
+    q::put(
+        &o,
+        &SessionQueuePutReq {
+            machine: Machine::local(),
+            sid: SID.parse().unwrap(),
+            id: "a".into(),
+            end: "mobile".into(),
+            n: None,
+            at_ms: T0,
+            text: "看图".into(),
+            attachments: vec!["1027-1200-a3f2".into()],
+        },
+        T0,
+    )
+    .unwrap();
+    let it = q::due(&o, SID, T0).unwrap().item.expect("排着");
+    let say = say_of(SID.parse().unwrap(), &it, Some("mobile".into()));
+    assert_eq!(
+        (say.text.as_str(), say.attachments.as_slice()),
+        ("看图", ["1027-1200-a3f2".to_string()].as_slice())
+    );
 }
 
 fn sent(result: SentResult, why: Option<Refused>) -> Sent {
@@ -71,7 +99,7 @@ impl Rig {
             doing: *self.doing.borrow(),
             since_ms: *self.since.borrow(),
         };
-        let send = |_: &str, it: &crate::history::session_queue_wire::QueueItem| {
+        let send = |_: &str, it: &QueueItem| {
             self.said.borrow_mut().push(it.text.clone());
             Ok(self.answer.borrow().clone())
         };

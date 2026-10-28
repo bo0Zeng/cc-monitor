@@ -21,7 +21,7 @@
     "tests/backend/control/deploy_plan_tests.rs": [
       { "text": "本机", "use": "输入" }
     ],
-    "tests/backend/faces/session_say_face_tests.rs": [
+    "tests/backend/faces/session_send_tests.rs": [
       { "text": "继续", "use": "输入" }
     ],
     "tests/backend/plan/book_tests.rs": [

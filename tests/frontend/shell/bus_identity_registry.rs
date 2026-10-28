@@ -9,7 +9,7 @@
 //!
 //! # 今天 cc-bus 不按名字点名 tmux
 //!
-//! 收件人是会话 id，敲门经 cc-monitor 的公开命令（`session-say`，后端照 `@ccm_sid` 认窗格），
+//! 收件人是会话 id，敲门经 cc-monitor 的公开命令（`session-queue-put` 投进那条会话的输入队，后端投递时照 `@ccm_sid` 认窗格），
 //! cc-bus 的脚本里不再起 tmux。真要再长出一处按名字点名的，同一行要问 `#{pane_pid}` 核身份。
 //!
 //! ⚠ 用**完整地址**而不是 `list-panes -t "=<id>"` —— 后者取的是**当前窗口**的 pane，

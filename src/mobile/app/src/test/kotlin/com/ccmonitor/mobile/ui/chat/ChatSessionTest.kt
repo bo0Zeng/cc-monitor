@@ -24,7 +24,7 @@ import org.junit.Test
 
 /**
  * 聊天屏的会话：起会话 · 送字 · 正文全走那台核心。
- * 判据：手机起的会话是那台 tmux 里的（`session-open` 的 `run: tmux`，桌面那一侧看得到、接得上）；手机打的字经 `session-say` 进那条会话。
+ * 判据：手机起的会话是那台 tmux 里的（`session-open` 的 `run: tmux`，桌面那一侧看得到、接得上）；手机打的字投进那条会话的输入队（`session-queue-put`）。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatSessionTest {
@@ -46,14 +46,23 @@ class ChatSessionTest {
             .filterIsInstance<RenderUnit.UserText>()
             .filter { it.sourceUuid == null }
 
+    /** 待发里（会话那台还没回执）的那几句。 */
+    private fun ChatSession.box() = state.value.outbox
+
+    /** 投进队的那几句：会话 · 那一句。 */
+    private fun FakeCoreLink.puts() = calls("session-queue-put").map { it!!["sid"] to it["text"] }
+
+    /** 会话那台的回执：排进去了、排第一。 */
+    private val queued = Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1"))
+
     @Test
-    fun `新建会话：第一句 ⇒ 请那台在 tmux 里起（带票）⇒ 回包那一问原样交那台等报到 ⇒ 字经 session-say 进那条会话`() =
+    fun `新建会话：第一句 ⇒ 请那台在 tmux 里起（带票）⇒ 回包那一问原样交那台等报到 ⇒ 字投进那条会话的输入队`() =
         runTest {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
                 when (cmd) {
                     "session-open" -> ok(started)
-                    "session-say" -> ok(mapOf("result" to "delivered"))
+                    "session-queue-put" -> queued
                     "history-tail" -> ok(FakeCoreLink.tail(0, 0, 0))
                     else -> ok(mapOf("rows" to emptyList<Any>(), "next" to 0, "eof" to true))
                 }
@@ -74,15 +83,17 @@ class ChatSessionTest {
                 link.calls("session-open"),
             )
             assertEquals(listOf(mapOf("by" to mapOf("kind" to "cwd", "cwd" to "/h/proj"), "since" to 2L, "session" to "proj-cc")), link.calls("session-arrive"))
-            assertTrue("报到之前不送字", link.calls("session-say").isEmpty())
-            assertEquals(DeliveryState.SENDING, s.local().single().delivery)
+            assertTrue("报到之前不送字", link.puts().isEmpty())
+            assertEquals("回执到之前在待发里、不进流", listOf("你好"), s.box().map { it.text })
+            assertTrue(s.local().isEmpty())
 
             link.report("new", "/h/proj")
             link.arrive("new")
             runCurrent()
             assertEquals("new", s.state.value.sid)
-            assertEquals(listOf(mapOf("sid" to "new", "text" to "你好", "client" to "mobile")), link.calls("session-say"))
-            assertNull("送到了的不挂标", s.local().single().delivery)
+            assertEquals(listOf("new" to "你好"), link.puts())
+            assertEquals("回执到了进流、标排着", DeliveryState.QUEUED, s.local().single().delivery)
+            assertTrue(s.box().isEmpty())
 
             link.line("new", 0, human("u1", "你好"))
             runCurrent()
@@ -99,7 +110,7 @@ class ChatSessionTest {
         started + mapOf("sid" to "pre", "prompt" to prompt, "arrival" to arrival + ("by" to mapOf("kind" to "sid", "sid" to "pre")))
 
     @Test
-    fun `新建会话：第一句随 session-open 交（那台作为启动参数交），送没送到照回包里的 prompt；不另走 session-say`() =
+    fun `新建会话：第一句随 session-open 交（那台作为启动参数交），送没送到照回包里的 prompt；不另投进队`() =
         runTest {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
@@ -115,18 +126,18 @@ class ChatSessionTest {
             val opened = link.calls("session-open").single().what()
             assertEquals("你好", opened?.get("prompt"))
             assertEquals("pre", s.state.value.sid)
-            assertTrue("第一句已随起交了，不再送一遍", link.calls("session-say").isEmpty())
+            assertTrue("第一句已随起交了，不再送一遍", link.puts().isEmpty())
             assertNull("送到了的不挂标", s.local().single().delivery)
         }
 
     @Test
-    fun `新建会话（兜底）：那台说第一句没交到（refused，能改的）⇒ 那句标未送达、字照那台写的；再发一次走 session-say`() =
+    fun `新建会话（兜底）：那台说第一句没交到（refused，能改的）⇒ 那句留在待发、字照那台写的；再发一次投进队`() =
         runTest {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
                 when (cmd) {
                     "session-open" -> ok(said(mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在", "acts" to listOf("retry", "relist"))))
-                    "session-say" -> ok(mapOf("result" to "delivered"))
+                    "session-queue-put" -> queued
                     else -> Reply.LinkDown
                 }
             }
@@ -134,12 +145,12 @@ class ChatSessionTest {
             s.send("你好")
             link.arrive("pre")
             runCurrent()
-            val o = s.local().single()
-            assertEquals(DeliveryState.FAILED, o.delivery)
-            assertEquals(copyText("terminal.input.failed", "why" to "终端已不在"), o.deliveryText)
-            s.retry(o.key)
+            val o = s.box().single()
+            assertTrue(o.failed && o.retry)
+            assertEquals(copyText("terminal.input.failed", "why" to "终端已不在"), o.said)
+            s.retry(o.id)
             runCurrent()
-            assertEquals(listOf(mapOf("sid" to "pre", "text" to "你好", "client" to "mobile")), link.calls("session-say"))
+            assertEquals(listOf("pre" to "你好"), link.puts())
             assertEquals(1, link.calls("session-open").size)
         }
 
@@ -181,13 +192,13 @@ class ChatSessionTest {
         }
 
     @Test
-    fun `Codex 那台也落聊天屏：新建会话起的是 Codex，字同样经 session-say 进那条会话`() =
+    fun `Codex 那台也落聊天屏：新建会话起的是 Codex，字同样投进那条会话的输入队`() =
         runTest {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
                 when (cmd) {
                     "session-open" -> ok(started + ("agent" to "codex"))
-                    "session-say" -> ok(mapOf("result" to "delivered"))
+                    "session-queue-put" -> queued
                     "history-tail" -> ok(FakeCoreLink.tail(0, 0, 0))
                     else -> ok(mapOf("rows" to emptyList<Any>(), "next" to 0, "eof" to true))
                 }
@@ -200,15 +211,15 @@ class ChatSessionTest {
             link.report("cx", "/h/proj")
             link.arrive("cx")
             runCurrent()
-            assertEquals(listOf(mapOf("sid" to "cx", "text" to "看一下", "client" to "mobile")), link.calls("session-say"))
-            assertNull("送到了的不挂标", s.local().single().delivery)
+            assertEquals(listOf("cx" to "看一下"), link.puts())
+            assertEquals(DeliveryState.QUEUED, s.local().single().delivery)
         }
 
     @Test
     fun `新建会话：第二句等同一次起，不起第二个`() =
         runTest {
             val link = FakeCoreLink()
-            link.answer = { cmd, _ -> if (cmd == "session-open") ok(started) else ok(mapOf("result" to "delivered")) }
+            link.answer = { cmd, _ -> if (cmd == "session-open") ok(started) else queued }
             val s = draft(link)
             s.send("一")
             s.send("二")
@@ -217,7 +228,7 @@ class ChatSessionTest {
             link.arrive("new")
             runCurrent()
             assertEquals(1, link.calls("session-open").size)
-            assertEquals(listOf("一", "二"), link.calls("session-say").map { it?.get("text") })
+            assertEquals(listOf("一", "二"), link.puts().map { it.second })
         }
 
     @Test
@@ -229,7 +240,7 @@ class ChatSessionTest {
             s.send("你好")
             runCurrent()
             assertEquals("目录不在", s.state.value.failedWhy)
-            assertEquals(DeliveryState.FAILED, s.local().single().delivery)
+            assertTrue("那句话留在待发、可再发一次", s.box().single().retry)
         }
 
     @Test
@@ -243,7 +254,7 @@ class ChatSessionTest {
             link.miss("命令已发出 · 会话未报到\n已等 43s 未报到")
             runCurrent()
             assertEquals("命令已发出 · 会话未报到\n已等 43s 未报到", s.state.value.failedWhy)
-            assertTrue(link.calls("session-say").isEmpty())
+            assertTrue(link.puts().isEmpty())
         }
 
     @Test
@@ -363,7 +374,7 @@ class ChatSessionTest {
         runTest {
             val link = FakeCoreLink()
             val file = FakeCoreLink.File(mutableListOf(human("u0", "问")))
-            link.answer = { cmd, args -> if (cmd == "session-say") ok(mapOf("result" to "delivered")) else file.answer(cmd, args) ?: Reply.LinkDown }
+            link.answer = { cmd, args -> if (cmd == "session-queue-put") queued else file.answer(cmd, args) ?: Reply.LinkDown }
             link.report("s1", "/w")
             val s = existing(link)
             runCurrent()
@@ -417,32 +428,32 @@ class ChatSessionTest {
             assertNull("接上以后那一句撤掉", s.state.value.failedWhy)
         }
 
+    /** 回执：排着 ⇒ 排第几 · 那个编号收过、已不在排着 ⇒ 已送进；期限到了 · 断线 ⇒ 没回执、照旧发送中；那台拒了（码）⇒ 待发里标没送到、那一句照那台写的。 */
     @Test
-    fun `送达未知 · 画面变了 · 会话已结束：各是各的标，字照文案表`() =
+    fun `回执 · 没回执 · 那台拒了：各是各的样子，字照文案表`() =
         runTest {
             val link = FakeCoreLink()
             val results =
                 ArrayDeque(
                     listOf(
-                        mapOf("result" to "unsure", "acts" to listOf("recapture")),
-                        mapOf("result" to "refused", "why" to "screen_changed", "said" to "画面已变", "acts" to listOf("retry", "recapture")),
-                        mapOf("result" to "refused", "why" to "ended", "said" to "已结束", "acts" to listOf("relist")),
+                        queued,
+                        Reply.Ok(mapOf("outcome" to "seen", "said" to "in")),
+                        Reply.TimedOut,
+                        failed("队满了"),
                     ),
                 )
-            link.answer = { cmd, _ -> if (cmd == "session-say") ok(results.removeFirst()) else Reply.LinkDown }
+            link.answer = { cmd, _ -> if (cmd == "session-queue-put") results.removeFirst() else Reply.LinkDown }
             val s = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope)
-            s.send("a")
-            runCurrent()
-            s.send("b")
-            runCurrent()
-            s.send("c")
-            runCurrent()
-            val (a, b, c) = s.local()
-            assertEquals(DeliveryState.UNSURE, a.delivery)
-            assertEquals(copyText("terminal.input.unsure", "machine" to "box"), a.deliveryText)
-            assertEquals(DeliveryState.FAILED, b.delivery)
-            assertEquals(copyText("terminal.input.failed", "why" to "画面已变"), b.deliveryText)
-            assertEquals(DeliveryState.FAILED_PERMANENT, c.delivery)
+            for (t in listOf("a", "b", "c", "d")) {
+                s.send(t)
+                runCurrent()
+            }
+            val (a, b) = s.local()
+            assertEquals("回执那一句照那台写的", DeliveryState.QUEUED to "q-1", a.delivery to a.deliveryText)
+            assertEquals(DeliveryState.QUEUED to "in", b.delivery to b.deliveryText)
+            val (c, d) = s.box()
+            assertEquals(copyText("mobChat.delivery.sending") to false, c.said to c.failed)
+            assertEquals(copyText("terminal.input.failed", "why" to "队满了") to true, d.said to d.retry)
         }
 
     @Test
@@ -530,7 +541,7 @@ class ChatSessionTest {
             assertEquals(mapOf("kind" to "named", "name" to "personal"), args["account"])
             assertTrue("起不来 ⇒ 选项回来", s.state.value.drafting)
             start = ok(started + ("sid" to "pre"))
-            s.retry(s.local().single().key)
+            s.retry(s.box().single().id)
             link.arrive("pre")
             runCurrent()
             assertEquals("pre", s.state.value.sid)

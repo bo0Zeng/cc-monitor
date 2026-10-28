@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1848,
+  "ceiling": 1845,
   "groups": [
     {
       "kind": "首登",
@@ -269,8 +269,8 @@
         ["src/frontend/ui/views/plan-bits.ts", "key", 2],
         ["src/frontend/ui/views/plan-cell.ts", "branch", 14],
         ["src/frontend/ui/views/plan-cell.ts", "key", 8],
-        ["src/frontend/ui/views/plan-review.ts", "branch", 36],
-        ["src/frontend/ui/views/plan-review.ts", "key", 14],
+        ["src/frontend/ui/views/plan-review.ts", "branch", 34],
+        ["src/frontend/ui/views/plan-review.ts", "key", 13],
         ["src/frontend/ui/views/plan.ts", "branch", 8],
         ["src/frontend/ui/views/plan.ts", "key", 27],
         ["src/frontend/ui/views/session-find.ts", "branch", 5],
@@ -281,7 +281,8 @@
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/service/SshKeepAliveService.kt", "key", 1],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ssh/HostConnect.kt", "key", 5],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatChips.kt", "key", 4],
-        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatSession.kt", "key", 4],
+        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatOutbox.kt", "key", 1],
+        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatSession.kt", "key", 3],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/LiveCardView.kt", "key", 1],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/needs/NeedsDesk.kt", "key", 2],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/needs/NeedsViews.kt", "key", 5],

@@ -79,7 +79,6 @@ const TARGET_GAPS: &[(&str, &str, Target, &str)] = &[
         Target::Windows,
         NO_TMUX_YET,
     ),
-    ("wire-commands", "plan-return", Target::Windows, NO_TMUX_YET),
     ("wire-commands", "set-plan", Target::Windows, NO_TMUX_YET),
     ("wire-commands", "set-launch", Target::Windows, NO_TMUX_YET),
     (
@@ -94,7 +93,6 @@ const TARGET_GAPS: &[(&str, &str, Target, &str)] = &[
         Target::Windows,
         NO_TMUX_YET,
     ),
-    ("wire-commands", "session-say", Target::Windows, NO_TMUX_YET),
     (
         "wire-commands",
         "session-permission",
@@ -123,18 +121,6 @@ const TARGET_GAPS: &[(&str, &str, Target, &str)] = &[
     (
         "cli-subcommands",
         "--terminal-input",
-        Target::Windows,
-        NO_TMUX_YET,
-    ),
-    (
-        "cli-subcommands",
-        "--plan-return",
-        Target::Windows,
-        NO_TMUX_YET,
-    ),
-    (
-        "cli-subcommands",
-        "--session-say",
         Target::Windows,
         NO_TMUX_YET,
     ),

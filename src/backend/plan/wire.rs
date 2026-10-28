@@ -696,21 +696,19 @@ pub(crate) struct PlanAckReply {
     pub need_count: u32,
 }
 
-/// `plan-return` 的回包：送出的那一行（后端拼）· 送给谁 · 结局 · 是不是先在这台恢复了它。
+/// `plan-return` 的回包：拼好的那一行（后端拼）· 给谁 · 结局。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct PlanReturnReply {
     pub line: String,
     pub to: Option<PlanWho>,
-    /// `delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制）。
-    #[cfg_attr(test, ts(type = "\"delivered\" | \"unsure\" | \"refused\" | \"copy\""))]
+    /// `queued`（投进那条会话的输入队、那台已落盘；投递在它能收时送，已结束的先恢复它）· `copy`（投不了，只给这一行去复制）。
+    #[cfg_attr(test, ts(type = "\"queued\" | \"copy\""))]
     pub result: String,
+    /// `copy` 的原因：`unknown`（认不出接手）· `ended`（已结束、没点恢复）。
     pub why: Option<String>,
     pub said: Option<String>,
-    pub screen: Option<String>,
-    /// `true` ⇒ 那个会话已结束、这一趟在这台按记下的号恢复了它，这一行是它的第一句；负责人照旧是它。
-    pub resumed: bool,
 }
 
 /// `plan-files` 的回包住 `cmd-wire`（文件窗口按同一份类型解）；这里只转一下名字，帧面出口照旧写 `wire::PlanFiles`。

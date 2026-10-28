@@ -1,5 +1,5 @@
 //! 会话族那几条帧命令的**回包**线上形（`terminal-input` · `session-open` · `session-open-facts` · `session-model` ·
-//! `session-permission` · `session-commands` · `session-say` · `terminals-list` · `terminal-preview` · `kill` · `history-tail`）—— 两侧同一份：后端按这里的类型回，
+//! `session-permission` · `session-commands` · `terminals-list` · `terminal-preview` · `kill` · `history-tail`）—— 两侧同一份：后端按这里的类型回，
 //! 手机按这里生成的 Kotlin 类解（`gen-kotlin-wire.mjs`），界面用从这里导出的类型（`src/frontend/ui/generated/`）。
 //! 入参与码还住后端（`control/terminals_wire.rs` 等）：手机交的入参不经这里。
 
@@ -33,15 +33,13 @@ pub enum Refused {
     Ended,
     /// 画面变了（带新指纹）。
     ScreenChanged,
-    /// 那台说这条会话在等人（批准 · 回答）：此刻打的字会落进那个框里（`session-say` 才回它）。
+    /// 那台说这条会话在等人（批准 · 回答）：此刻打的字会落进那个框里（输入队投递那一下才有：照排着、等它答完）。
     Waiting,
-    /// 这台 tmux 里没有它的终端、可另有活进程在写它（开在 tmux 之外的终端里）：不另起一个（`session-say` 才回它）。
+    /// 这台 tmux 里没有它的终端、可另有活进程在写它（开在 tmux 之外的终端里）：不另起一个（投递那一下才有）。
     Elsewhere,
-    /// 终端已经没了，按记下的号恢复这条会话没成（`session-say` 才回它；原话记日志）。
+    /// 终端已经没了，按记下的号恢复这条会话没成（投递那一下才有；原话记日志）。
     NotResumed,
-    /// 要求「只在闲着时送」，而它此刻不闲（一轮在跑 · 后台在跑 · 判不出 · 不活）：不插进那一轮中间（`session-say` 才回它）。
-    NotIdle,
-    /// 带的附件里有那台已经不在的（过了七天清掉 · 撤过）：一个字都没送，`gone` 列出那几个编号（`session-say` 才回它）。
+    /// 带的附件里有那台已经不在的（过了七天清掉 · 撤过）：一个字都没送，`gone` 列出那几个编号（投递那一下才有）。
     AttachmentGone,
     /// 托管终端的输入此刻在别的一端手里（`terminal-input` 没带 `take`）：没送。
     HeldElsewhere,
@@ -69,7 +67,7 @@ pub struct Sent {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub screen: Option<String>,
-    /// `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
+    /// 投递那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub resumed: bool,
@@ -965,7 +963,7 @@ pub struct SessionCommands {
     pub skills: Vec<SessionSkill>,
     /// 读不出来的那几份（一句一份；不整条失败）。
     pub problems: Vec<String>,
-    /// ［+］面板分隔线下「压缩上下文」：送进会话的那一句（经 `session-say` 送）；这一家没有 ⇒ `null`（那一行不画）。
+    /// ［+］面板分隔线下「压缩上下文」：送进会话的那一句（经 `session-queue-put` 投进队）；这一家没有 ⇒ `null`（那一行不画）。
     pub compact: Option<SessionAct>,
     /// 同上「清空会话」。
     pub clear: Option<SessionAct>,
@@ -979,7 +977,7 @@ pub struct SessionCommands {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct SessionAct {
-    /// 经 `session-say` 送进会话的那一句（那一家声明的）。
+    /// 经 `session-queue-put` 投进会话的那一句（那一家声明的）。
     pub say: String,
     /// 送之前先确认（清空 ⇒ 是；压缩 ⇒ 否）。
     pub confirm: bool,
@@ -1044,7 +1042,7 @@ pub struct SessionSkill {
     pub name: String,
     /// 简介；没写 ⇒ `null`。
     pub text: Option<String>,
-    /// 点它时发进会话的那一句（后端写好，经 `session-say` 发）。
+    /// 点它时发进会话的那一句（后端写好，经 `session-queue-put` 投进队）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
     pub say: String,
 }

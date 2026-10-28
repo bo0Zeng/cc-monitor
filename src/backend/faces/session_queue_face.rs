@@ -5,11 +5,14 @@
 use super::session_queue_hop::route;
 use crate::dial::remote_ask::{DialRemote, REACH};
 use crate::history::session_queue as q;
-use crate::history::session_queue_wire::{
+use crate::platform::fs::Own;
+use crate::wire::spec::Fail;
+use crate::wire::typed::{self, codes, Codes as _, Command};
+use cmd_wire::queue::{
     QueueCancelled, QueuePut, SessionQueue, SessionQueueCancelReq, SessionQueuePutReq,
     SessionQueueReadReq,
 };
-use crate::wire::typed::{self, codes, Codes as _, Command};
+use copy_core::copy_text;
 
 codes! {
     /// `session-queue-put` 的码。
@@ -22,6 +25,8 @@ codes! {
         QueueFull = "queue_full",
         /// 那一句太长。
         TextTooLong = "text_too_long",
+        /// 带的附件里有那台已经不在的（过了七天清掉 · 撤过 · 会话记录里找不到工作目录）：一个字节没写，那一句列出编号。
+        AttachmentGone = "attachment_gone",
         /// 会话所在那台够不到（不在机器表 · 链路坏 · 常驻没在跑 · 过了期限）：本机一个字节没写。
         Offline = "offline",
     }
@@ -50,7 +55,7 @@ impl typed::Handle for SessionQueuePutCmd {
             route::<Self, _>(
                 &req,
                 move || {
-                    let put = q::put(&own, &r, crate::common::time::now_ms());
+                    let put = put_here(&own, &r, crate::common::time::now_ms(), &cwd_here);
                     // 投进来了 ⇒ 叫一声这台的投递那一侧（这一个进程没起它 ⇒ 不做什么，常驻那一份由 watcher 看见队目录动了叫醒）。
                     q::moved();
                     put
@@ -65,6 +70,39 @@ impl typed::Handle for SessionQueuePutCmd {
             .map_err(|f| typed::of_fail(f, SessionQueuePutErr::IoFailed))
         }
     }
+}
+
+/// 这台这条会话的工作目录（记录按 sid 在这台各家自己的记录根里找，工作目录从会话事实那一处读；同恢复那一支读的那一格）。
+pub(crate) fn cwd_here(sid: &str) -> Option<std::path::PathBuf> {
+    use crate::observe::query::locate as hq;
+    let home = crate::history::listing::agent_home();
+    let path = hq::session_record(&home, sid).ok()?;
+    hq::facts_project_dir(&home, path.to_str()?).map(std::path::PathBuf::from)
+}
+
+/// 主人这台投一句：带附件 ⇒ 先按会话工作目录（`cwd_of`，读不出 ⇒ 每一份都算不在）找，有不在的 ⇒ `attachment_gone`、一个字节不写；再投进队。
+pub(crate) fn put_here(
+    own: &Own,
+    req: &SessionQueuePutReq,
+    now_ms: i64,
+    cwd_of: &dyn Fn(&str) -> Option<std::path::PathBuf>,
+) -> Result<QueuePut, Fail> {
+    if !req.attachments.is_empty() {
+        let gone = match cwd_of(req.sid.as_str()) {
+            Some(cwd) => crate::common::attachment_dir::missing(&cwd, &req.attachments),
+            None => req.attachments.clone(),
+        };
+        if !gone.is_empty() {
+            return Err(Fail::new(
+                "attachment_gone",
+                copy_text(
+                    "beQueue.put.attachmentGone",
+                    &[("ids", &gone.join(&copy_text("kit.text.sep", &[])))],
+                ),
+            ));
+        }
+    }
+    q::put(own, req, now_ms)
 }
 
 codes! {

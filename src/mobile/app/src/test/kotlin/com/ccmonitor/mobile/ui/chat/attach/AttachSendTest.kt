@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.chat.attach
 
+import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.ui.chat.ChatSession
 import com.ccmonitor.mobile.ui.chat.ChatTarget
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
@@ -20,7 +20,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import kotlin.coroutines.EmptyCoroutineContext
 
-/** ➤ 那一下：那一排全落好了才发，编号随那一句交 `session-say`（按先后），排清空；没送到重发照带；新建会话没有那一排。 */
+/** ➤ 那一下：那一排全落好了才发，编号随那一句交 `session-queue-put`（按先后），排清空；那台拒了重发照带；新建会话没有那一排。 */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AttachSendTest {
     @get:Rule val dir = TemporaryFolder()
@@ -31,9 +31,9 @@ class AttachSendTest {
         var n = 0
         answer = { cmd, args ->
             when (cmd) {
-                "session-attachment-check" -> Reply.Ok(mapOf("items" to List((args!!["items"] as List<*>).size) { mapOf("ok" to true) }))
+                "session-attachment-check" -> Reply.Ok(mapOf("items" to List((args!!["items"] as List<*>).size) { OK }))
                 "session-attachment-commit" -> Reply.Ok(mapOf("id" to "id-${++n}", "name" to "n", "path" to "/w/n", "rel" to "n", "bytes" to 5.0, "sha256" to "ab", "class" to "image"))
-                "session-say" -> say()
+                "session-queue-put" -> say()
                 "history-tail" -> Reply.Ok(FakeCoreLink.tail(0, 0, 0))
                 else -> Reply.Ok(mapOf("rows" to emptyList<Any>(), "next" to 0, "eof" to true))
             }
@@ -56,12 +56,14 @@ class AttachSendTest {
         runCurrent()
     }
 
-    private fun says(link: FakeCoreLink) = link.calls("session-say").map { it!!["text"] to it["attachments"] }
+    private fun says(link: FakeCoreLink) = link.calls("session-queue-put").map { it!!["text"] to it["attachments"] }
+
+    private val queued = Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1"))
 
     @Test
     fun send_hands_the_ids_in_order_with_the_line_and_clears_the_row() =
         runTest {
-            val link = FakeCoreLink().apply { there { Reply.Ok(mapOf("result" to "delivered")) } }
+            val link = FakeCoreLink().apply { there { queued } }
             val s = session(link)
             val tray = s.attach!!
             tray.add("a.png", true) { ByteArray(5).inputStream() }
@@ -76,7 +78,7 @@ class AttachSendTest {
     @Test
     fun nothing_goes_out_until_every_card_has_landed_and_a_bare_row_can_go_alone() =
         runTest {
-            val link = FakeCoreLink().apply { there { Reply.Ok(mapOf("result" to "delivered")) } }
+            val link = FakeCoreLink().apply { there { queued } }
             link.state.value = linkDown("down")
             val s = session(link)
             s.attach!!.add("a.png", true) { ByteArray(5).inputStream() }
@@ -96,15 +98,15 @@ class AttachSendTest {
     fun a_retry_after_a_failed_send_carries_the_same_ids() =
         runTest {
             var first = true
-            val refused = mapOf("result" to "refused", "why" to "screen_changed", "said" to "画面变了", "acts" to listOf("retry"))
+            val refused = Reply.Failed(CoreFailure("queue_full", "队满了", "", null))
             val link =
                 FakeCoreLink().apply {
                     there {
                         if (first) {
                             first = false
-                            Reply.Ok(refused)
+                            refused
                         } else {
-                            Reply.Ok(mapOf("result" to "delivered"))
+                            queued
                         }
                     }
                 }
@@ -114,10 +116,9 @@ class AttachSendTest {
             s.send("这张")
             runCurrent()
             val local =
-                s.state.value.units
-                    .filterIsInstance<RenderUnit.UserText>()
-                    .single { it.sourceUuid == null }
-                    .key
+                s.state.value.outbox
+                    .single { it.failed && it.retry }
+                    .id
             s.retry(local)
             runCurrent()
             assertEquals(List(2) { "这张" to listOf("id-1") }, says(link))

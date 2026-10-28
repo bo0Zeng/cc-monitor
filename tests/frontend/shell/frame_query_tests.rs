@@ -462,8 +462,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "typed：草稿上 ✕ 掉那一份，后端删掉那个附件目录；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
     ),
     (
-        "session-say",
-        "typed：带附件说一句，按编号找到那几份、照那一家的写法拼进去都在后端（`faces/session_say_face.rs`）；前端 `terminal-page.ts::CHANNEL_ATTACH` 按类型问，monitor 这一侧零发送点",
+        "session-queue-put",
+        "typed：说一句 ＝ 投进那条会话的输入队，去重 · 发序号 · 附件在不在都在后端（`faces/session_queue_face.rs`）；前端 `session-queue.ts` 按类型问，monitor 这一侧零发送点",
     ),
     // 会话中途换模型 · 切权限档：那台送那一家的那一行 / 按切档键、从记录里读回，界面直接说。
     (

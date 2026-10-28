@@ -575,6 +575,7 @@ private fun NavGraphBuilder.chatRoutes(
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
             onOpenRotation = { s -> nav.navigate(Screen.Rotation.of(hostId, s)) },
             onOpenAgents = { s -> nav.navigate(Screen.Agents.of(hostId, s)) },
+            onOpenPlan = { s -> nav.navigate(Screen.Plan.of(hostId, s)) },
             onOpenTerminal = { to -> nav.navigate("session/${tabManager.open(hostId, to)}") },
             onOpenOverview = { nav.navigate(Screen.Overview.of(hostId)) },
         )

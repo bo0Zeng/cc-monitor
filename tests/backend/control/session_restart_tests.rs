@@ -501,7 +501,7 @@ fn every_request_sid_cell_is_a_session_id() {
     let _ = |r: &RestartReq,
              m: &crate::faces::session_mode_face::SessionPermissionReq,
              c: &crate::faces::session_commands_face::SessionCommandsReq,
-             s: &crate::faces::session_say_face::SessionSayReq,
+             s: &cmd_wire::queue::SessionQueuePutReq,
              o: &crate::faces::session_model_face::SessionModelReq,
              t: &crate::observe::session_terminals::SidReq,
              b: &crate::control::session_batch::SidsReq,

@@ -1,15 +1,15 @@
-//! 计划审面退回那一半（`plan-return`）的帧面宿主：拼「人 · {编号} {标题}：{原话}」（对象是一格，或顶块 `project`：标题是片名），先判目标能不能送 ——
-//! 在等你（批准 · 回答 · 计划）⇒ 拒；认不出 ⇒ 只给这一行去复制；已结束 ⇒ 只给复制，人点了恢复（`resume`）⇒ 在这台恢复它、这一行当第一句；
-//! 能送就走 `session-say` 的本体（同一道身份门、同一个「画面变了不送」、agent 退了不往 shell 里打字，不另造路），
-//! 送到了 / 送达未知 ⇒ 记一条「已退回」（[`crate::plan::review`] 的退回写口只从本文件进），
+//! 计划审面退回那一半（`plan-return`）的帧面宿主：拼「人 · {编号} {标题}：{原话}」（对象是一格，或顶块 `project`：标题是片名），先判目标 ——
+//! 认不出 ⇒ 只给这一行去复制；已结束 ⇒ 只给复制，人点了恢复（`resume`）⇒ 照投；能投就投进那条会话的输入队（`session-queue-put`
+//! 那一半，同一个写口：在等人 · 一轮在跑都由投递等，已结束的由投递恢复它、这一行当第一句），
+//! 排进去了 ⇒ 记一条「已退回」（[`crate::plan::review`] 的退回写口只从本文件进），
 //! 之后 `plan-read` 里那一格带落没落地（[`crate::plan::needs::landing`]）。
 
 use crate::plan::needs::{self, Returned};
 use crate::plan::wire::{PlanRead, PlanReturnReply, PlanWho};
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command, Cx, Handle};
+use cmd_wire::queue::{QueuePut, SessionQueuePutReq};
 use copy_core::copy_text;
-use serde_json::{json, Map, Value};
 
 type Answer = Result<PlanReturnReply, Fail>;
 
@@ -24,10 +24,13 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// 说一句（`session-say` 的入参那一形 ＋ 这台已经没有它的终端时恢不恢复它；生产 ＝ `session-say` 的本体）。
-pub(crate) type Send<'a> = &'a dyn Fn(&Value, bool) -> Result<Value, Fail>;
+/// 投进那条会话的输入队（生产 ＝ `session-queue-put` 在这台的那一半）。
+pub(crate) type Put<'a> = &'a dyn Fn(&SessionQueuePutReq) -> Result<QueuePut, Fail>;
 /// 记一次退回（生产 ＝ [`crate::plan::review`] 的写口）。
 pub(crate) type Record<'a> = &'a dyn Fn(&str, &str, &str, Returned) -> Result<(), Fail>;
+
+/// 发自哪一端：没自报 ⇒ 这一个。
+const END: &str = "plan";
 
 fn reply(
     line: &str,
@@ -42,18 +45,15 @@ fn reply(
         result: result.to_string(),
         why: why.map(str::to_string),
         said,
-        screen: None,
-        resumed: false,
     }
 }
 
-/// `plan-return` 的本体：`doc` 是此刻现读、标过的那一份；`waiting(sid)` ＝ 活会话表说那条会话在等人（在等 ⇒ 拒，只问它）。
+/// `plan-return` 的本体：`doc` 是此刻现读、标过的那一份；`now` 是这一刻（毫秒，也拿来铸这一句的 id）。
 pub(crate) fn return_with(
     req: &PlanReturnReq,
     doc: &PlanRead,
-    send: Send,
+    put: Put,
     record: Record,
-    waiting: &dyn Fn(&str) -> bool,
     now: u64,
 ) -> Answer {
     let (ws, slice, id) = (req.workspace.as_str(), req.slice.as_str(), req.id.as_str());
@@ -90,9 +90,7 @@ pub(crate) fn return_with(
             Some(copy_text("bePlan.return.unknown", &[])),
         ));
     };
-    let resume = req.resume == Some(true);
-    let alive = needs::live_of(to).is_some();
-    if !alive && !resume {
+    if needs::live_of(to).is_none() && req.resume != Some(true) {
         return Ok(reply(
             &line,
             to,
@@ -101,83 +99,45 @@ pub(crate) fn return_with(
             Some(copy_text("sessionState.planReturn.ended", &[])),
         ));
     }
-    if waiting(sid) {
-        return Ok(reply(
-            &line,
-            to,
-            "refused",
-            Some("waiting"),
-            Some(copy_text("bePlan.return.waiting", &[])),
-        ));
-    }
-    let mut input = Map::new();
-    input.insert("sid".into(), json!(sid));
-    input.insert("text".into(), json!(line));
-    if let Some(v) = &req.client {
-        input.insert("client".into(), json!(v));
-    }
-    // 恢复的那一个没有可看的那一屏：带着指纹就不恢复（`session-say` 的规矩）。
-    if let Some(v) = req.seen_screen.as_ref().filter(|_| alive) {
-        input.insert("seen_screen".into(), json!(v));
-    }
-    let got = send(&Value::Object(input), resume)?;
-    let result = got
-        .get("result")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    if result == "delivered" || result == "unsure" {
-        record(
-            ws,
-            slice,
-            id,
-            Returned {
-                at: now,
-                to: sid.to_string(),
-                result: result.to_string(),
-                children: cell.children.clone(),
-                body: needs::body_digest(cell.body.as_deref()),
-            },
-        )?;
-    }
-    let text = |k: &str| got.get(k).and_then(Value::as_str).map(str::to_string);
-    let mut out = reply(
-        &line,
-        to,
-        result,
-        got.get("why").and_then(Value::as_str),
-        text("said"),
-    );
-    out.screen = text("screen");
-    out.resumed = got.get("resumed").and_then(Value::as_bool) == Some(true);
-    Ok(out)
+    put(&SessionQueuePutReq {
+        machine: cmd_wire::Machine::local(),
+        sid: sid.parse().map_err(|_| bad("`sid` is not a session id"))?,
+        id: format!("{END}-{now}-{slice}-{id}"),
+        end: req.client.clone().unwrap_or_else(|| END.to_string()),
+        n: None,
+        at_ms: i64::try_from(now).unwrap_or(i64::MAX),
+        text: line.clone(),
+        attachments: Vec::new(),
+    })?;
+    record(
+        ws,
+        slice,
+        id,
+        Returned {
+            at: now,
+            to: sid.to_string(),
+            result: "queued".to_string(),
+            children: cell.children.clone(),
+            body: needs::body_digest(cell.body.as_deref()),
+        },
+    )?;
+    Ok(reply(&line, to, "queued", None, None))
 }
 
-fn give_back(
-    req: &PlanReturnReq,
-    files: crate::wire::typed::Files,
-    own: &crate::platform::fs::Own,
-) -> Answer {
+fn give_back(req: &PlanReturnReq, own: &crate::platform::fs::Own) -> Answer {
     let ws = req.workspace.as_str();
     // 只拿此刻的接手与状态（不交出去），时刻的字用不上 ⇒ 按 UTC 写的那一份也行。
     let doc = crate::faces::plan_face::read_fresh(ws, &crate::Tz::default())?;
-    // 说的那一句是本条现拼的（`return_with`）⇒ 按 `session-say` 的入参类型解一次，形状不对同那一条回 `bad_args`。
-    let home = crate::history::listing::agent_home();
-    let waiting = |sid: &str| crate::history::live_table::now(&home).waiting(sid);
-    let send = |a: &Value, resume: bool| {
-        use crate::faces::session_say_face as say;
-        let req: say::SessionSayReq = typed::take(a)?;
-        let again = |r: &say::SessionSayReq| {
-            resume
-                .then(|| say::resume_here(&r.sid, r.client.as_deref(), Some(&r.text), files))
-                .flatten()
-        };
-        say::say_with(&req, &waiting, &crate::control::terminals_wire::say, &again)
-            .and_then(|sent| crate::wire::spec::wire(&sent))
+    let put = |r: &SessionQueuePutReq| {
+        use super::session_queue_face as face;
+        let got = face::put_here(own, r, crate::common::time::now_ms(), &face::cwd_here);
+        crate::history::session_queue::moved();
+        got
     };
     let record = |ws: &str, sl: &str, id: &str, r: Returned| {
         crate::plan::review::answer_returned(own, ws, sl, id, r)
     };
-    return_with(req, &doc, &send, &record, &waiting, now_ms())
+    return_with(req, &doc, &put, &record, now_ms())
 }
 
 /// `plan-return` 的入参。
@@ -198,42 +158,36 @@ pub(crate) struct PlanReturnReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable, type = "\"owner\" | \"signer\""))]
     pub(crate) to: Option<String>,
-    /// 自报的前端（过 `terminal-input` 那一道身份门）。
+    /// 自报的前端（投进队的那一条记作发自它；投递时过 `terminal-input` 那一道身份门）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) client: Option<String>,
-    /// 送之前看到的那一屏的指纹（同 `terminal-input`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) seen_screen: Option<String>,
-    /// `true` ⇒ 目标会话已结束时在这台恢复它、这一行当它的第一句（人点了［恢复并退回］）。
+    /// `true` ⇒ 目标会话已结束时照投（投递时在这台恢复它、这一行当它的第一句；人点了［恢复并退回］）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) resume: Option<bool>,
 }
 
 typed::codes! {
-    /// `plan-return` 的码：现读计划（起 pb）· 判目标 · 说一句（`session-say` 的本体，起 tmux）· 记一条退回。
+    /// `plan-return` 的码：现读计划（起 pb）· 判目标 · 投进那条会话的输入队 · 记一条退回。
     pub(crate) enum PlanReturnErr {
-        BadTarget = "bad_target",
-        CaptureFailed = "capture_failed",
+        AttachmentGone = "attachment_gone",
         ChildTimedOut = "child_timed_out",
         Failed = "failed",
         IoFailed = "io_failed",
         NoPb = "no_pb",
-        NoServer = "no_server",
         NoSuchCell = "no_such_cell",
-        NoSuchSession = "no_such_session",
         NoTarget = "no_target",
-        NoTmux = "no_tmux",
         NotWorkspace = "not_workspace",
         PbUnsupported = "pb_unsupported",
+        QueueFull = "queue_full",
+        QueueUnreadable = "queue_unreadable",
         ReviewUnreadable = "review_unreadable",
-        Unobservable = "unobservable",
+        TextTooLong = "text_too_long",
     }
 }
 
-/// `plan-return`：把人的话送给负责那一格的会话（起 pb ＋ tmux ⇒ 阻塞档；记退回写自家状态）。
+/// `plan-return`：把人的话投给负责那一格的会话（起 pb ⇒ 阻塞档；投进队 · 记退回写自家状态）。
 pub(crate) struct PlanReturnCmd;
 
 impl Command for PlanReturnCmd {
@@ -244,7 +198,7 @@ impl Command for PlanReturnCmd {
 }
 
 impl Handle for PlanReturnCmd {
-    type Needs = typed::needs::FilesOwn;
+    type Needs = typed::needs::Own;
     fn run(
         req: PlanReturnReq,
         cx: Cx<Self::Needs>,
@@ -252,8 +206,8 @@ impl Handle for PlanReturnCmd {
            + std::marker::Send
            + 'static {
         async move {
-            let (_, (files, own)) = cx.split();
-            give_back(&req, files, &own).map_err(|f| typed::of_fail(f, PlanReturnErr::Failed))
+            let (_, own) = cx.split();
+            give_back(&req, &own).map_err(|f| typed::of_fail(f, PlanReturnErr::Failed))
         }
     }
 }

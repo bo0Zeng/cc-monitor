@@ -4,7 +4,7 @@
 //! ⚠ 家目录一律是临时目录（`Own::issue_at`），真 `~/.cc-monitor/` 一个字节都不碰。
 
 use super::*;
-use crate::history::session_queue_wire::{QueuePutOutcome as O, QueueState as S};
+use cmd_wire::queue::{QueuePutOutcome as O, QueueState as S};
 use cmd_wire::{Machine, Sid};
 
 fn home(tag: &str) -> std::path::PathBuf {
@@ -33,6 +33,7 @@ fn req(id: &str, end: &str, n: Option<u64>, at_ms: i64) -> SessionQueuePutReq {
         n,
         at_ms,
         text: format!("text of {id}"),
+        attachments: Vec::new(),
     }
 }
 
@@ -290,4 +291,44 @@ fn a_refused_line_is_kept_as_undelivered_and_a_held_one_says_when_it_is_due() {
     put(&o, &req("h", "deskB", Some(2), T0), T0 + 5).unwrap();
     let d = due(&o, SID, T0 + 6).unwrap();
     assert_eq!((d.item, d.held_until), (None, Some(T0 + 5 + HOLD_MS)));
+}
+
+/// 附件编号随那一条落盘、名单与投递口原样交出；送掉的 id 进名单的 `sent`（发件端据它标「已送进」），撤掉的不进；
+/// `sent` 只留最近 [`SENT_KEEP`] 个。
+#[test]
+fn attachments_ride_with_the_line_and_sent_ids_are_listed() {
+    let o = own(&home("sent"));
+    let mut a = req("a", "desk", None, T0);
+    a.attachments = vec!["1027-1200-a3f2".into()];
+    put(&o, &a, T0).unwrap();
+    put(&o, &req("b", "desk", None, T0), T0).unwrap();
+    let l = read(&o, SID, T0).unwrap();
+    assert_eq!(l.items[0].attachments, ["1027-1200-a3f2"]);
+    assert!(l.sent.is_empty());
+    assert_eq!(
+        next_due(&o, SID, T0).unwrap().map(|i| i.attachments),
+        Some(vec!["1027-1200-a3f2".to_string()])
+    );
+    assert!(delivered(&o, SID, "a").unwrap());
+    cancel(&o, SID, "b", T0).unwrap();
+    let l = read(&o, SID, T0).unwrap();
+    assert_eq!((l.items.len(), l.sent.clone()), (0, vec!["a".to_string()]));
+    // 重投收过的编号：回执那一句照那条此刻的样子写（送进去了 · 撤了）。
+    let again = |id: &str| put(&o, &req(id, "desk", None, T0), T0).unwrap();
+    assert_eq!(
+        (again("a").outcome, again("a").said),
+        (O::Seen, copy_text("beQueue.said.sent", &[]))
+    );
+    assert_eq!(again("b").said, copy_text("beQueue.said.cancelled", &[]));
+    for i in 0..SENT_KEEP + 3 {
+        let id = format!("m{i}");
+        put(&o, &req(&id, "desk", None, T0), T0).unwrap();
+        assert!(delivered(&o, SID, &id).unwrap());
+    }
+    let sent = read(&o, SID, T0).unwrap().sent;
+    assert_eq!(sent.len(), SENT_KEEP);
+    assert_eq!(
+        sent.last().map(String::as_str),
+        Some(format!("m{}", SENT_KEEP + 2).as_str())
+    );
 }

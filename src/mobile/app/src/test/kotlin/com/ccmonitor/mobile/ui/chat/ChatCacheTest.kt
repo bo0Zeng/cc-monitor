@@ -11,6 +11,7 @@ import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.PendingOutcome
 import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.human
@@ -260,7 +261,7 @@ class ChatCacheTest {
         runTest {
             val link = FakeCoreLink()
             val file = FakeCoreLink.File()
-            link.answer = { cmd, args -> if (cmd == "session-say") Reply.Ok(mapOf("result" to "unsure")) else file.answer(cmd, args) ?: Reply.LinkDown }
+            link.answer = { cmd, args -> if (cmd == "session-queue-put") Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1")) else file.answer(cmd, args) ?: Reply.LinkDown }
             link.report("s1", "/w")
             val cache = MemCache().apply { drafts["s1"] = "没发的" }
             val s = open(link, cache)
@@ -280,7 +281,7 @@ class ChatCacheTest {
             val (key, p) = cache.promoted.single()
             assertEquals("s1", key)
             assertEquals("你好", p.text)
-            assertEquals(PendingOutcome.UNSURE, cache.pend.single().outcome)
+            assertEquals("回执到了 ⇒ 记成到了", PendingOutcome.DELIVERED, cache.pend.single().outcome)
 
             file.records += human("u1", "你好")
             link.line("s1", 0, human("u1", "你好"))
@@ -288,19 +289,80 @@ class ChatCacheTest {
             assertTrue("记录里出现了 ⇒ 待发里删掉", cache.pend.isEmpty())
         }
 
+    /**
+     * ★ 回执到之前 App 被杀：重开那一句在输入框上方「发送中」、不在消息流里；接上那台照同一个编号再交（断了又接上再交一遍），
+     * 那台的队按编号去重只有一条；回执到了才进流、标排第几，待发里记成到了。
+     */
     @Test
-    fun `上次还在等回包、App 就没了的那一句：重开挂回去，标送达未知（别重发）`() =
+    fun `回执到之前 App 被杀：重开那一句在发送中；接上照同一个编号重交，那台队里只有一条；回执到了才进流`() =
         runTest {
             val link = FakeCoreLink()
+            link.state.value = linkDown("断开")
+            val file = FakeCoreLink.File()
+            // 那台的队：编号 ⇒ 那一句（同编号只进一条）。
+            val queue = linkedMapOf<String, String>()
+            link.answer = { cmd, args ->
+                if (cmd == "session-queue-put") {
+                    val id = args!!["id"] as String
+                    queue.putIfAbsent(id, args["text"] as String)
+                    val place = queue.keys.indexOf(id) + 1L
+                    Reply.Ok(mapOf("outcome" to "queued", "seq" to place, "place" to place, "said" to "q-$place"))
+                } else {
+                    file.answer(cmd, args) ?: Reply.LinkDown
+                }
+            }
+            link.report("s1", "/w")
             val cache = MemCache().apply { pend += Pending("local-x", "s1", "半路的", PendingOutcome.PENDING, 1) }
             val s = open(link, cache)
             runCurrent()
-            val u =
-                s.state.value.units
-                    .filterIsInstance<RenderUnit.UserText>()
-                    .single()
+            val box = s.box().single()
+            assertEquals("local-x" to "半路的", box.id to box.text)
+            assertEquals(copyText("mobChat.delivery.sending"), box.said)
+            assertTrue("回执到之前不进流", s.said().isEmpty())
+            assertTrue("断着不交", link.calls("session-queue-put").isEmpty())
+
+            link.state.value = linkUp()
+            runCurrent()
+            link.state.value = linkDown("又断了")
+            runCurrent()
+            link.state.value = linkUp()
+            runCurrent()
+            assertEquals("那台队里只有一条", listOf("local-x"), queue.keys.toList())
+            assertTrue(link.calls("session-queue-put").all { it!!["id"] == "local-x" })
+            assertTrue(s.box().isEmpty())
+            val u = s.said().single()
             assertEquals("半路的", u.text)
-            assertEquals(DeliveryState.UNSURE, u.delivery)
+            assertEquals(DeliveryState.QUEUED, u.delivery)
+            assertEquals("那台写的那一句", "q-1", u.deliveryText)
+            assertEquals(PendingOutcome.DELIVERED, cache.pend.single().outcome)
             assertNull(s.state.value.draft)
+        }
+
+    /** 待发里（还没回执）的那几句。 */
+    private fun ChatSession.box() = state.value.outbox
+
+    /** 流里本地那几句（回执到了的）。 */
+    private fun ChatSession.said() = state.value.units.filterIsInstance<RenderUnit.UserText>()
+
+    /** 待发里还没回执的那一句撤掉：本地删掉、不再交；照编号请那台撤（万一已经交到了）。 */
+    @Test
+    fun `撤待发里的一句：不再交，照编号请那台撤`() =
+        runTest {
+            val link = FakeCoreLink()
+            link.state.value = linkDown("断开")
+            val file = FakeCoreLink.File()
+            link.answer = { cmd, args -> if (cmd == "session-queue-cancel") Reply.Ok(mapOf("cancelled" to false, "queue" to mapOf("items" to emptyList<Any>(), "sent" to emptyList<Any>()))) else file.answer(cmd, args) ?: Reply.LinkDown }
+            link.report("s1", "/w")
+            val cache = MemCache().apply { pend += Pending("local-x", "s1", "半路的", PendingOutcome.PENDING, 1) }
+            val s = open(link, cache)
+            runCurrent()
+            s.cancel("local-x")
+            runCurrent()
+            link.state.value = linkUp()
+            runCurrent()
+            assertTrue(s.box().isEmpty())
+            assertTrue(cache.pend.isEmpty())
+            assertTrue("撤了就不再交", link.calls("session-queue-put").isEmpty())
+            assertEquals(listOf("local-x"), link.calls("session-queue-cancel").map { it!!["id"] })
         }
 }

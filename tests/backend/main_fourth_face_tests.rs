@@ -83,6 +83,7 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
     //    🔴 **5 → 6**：计划退回 `plan-return` 进表（送字走 `terminal-input` 的本体、要起 tmux，声明了 `no_tmux`）。
     //    🔴 **−1**：没人调的 `launch` 撤了。
     //    🔴 **+2**：起一组那两条（`set-plan` · `set-launch`，一组只起在 tmux 里，声明了 `no_tmux`）进表。
+    //    🔴 **−2**：`session-say` 撤了、`plan-return` 改成投进会话输入队（不碰 tmux，送字归投递）。
     //    ⚠ 顺序按 `REGISTRY` 的排列，不是字典序。
     assert_eq!(
         names,
@@ -93,10 +94,8 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
             "terminal-input",
             "session-model",
             "session-permission",
-            "session-say",
             "terminal-follow",
-            "kill",
-            "plan-return"
+            "kill"
         ],
         "没有 tmux 的那台机器上，做不到的恰好是 `REGISTRY` 里登记了 `{NO_TMUX}` 的那几条。\n\
              ⚠ 本条红**未必是错**：你要是新加了一条会回 `{NO_TMUX}` 的命令，它已经自动进表了\n\
@@ -233,6 +232,7 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
     // 🔴 **5 → 6**：计划退回 `plan-return` 进表。
     // 🔴 **−1**：没人调的 `launch` 撤了。
     // 🔴 **+2**：起一组那两条进表。
+    // 🔴 **−2**：`session-say` 撤了、`plan-return` 改成投进会话输入队。
     assert_eq!(
         names,
         vec![
@@ -242,10 +242,8 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
             "terminal-input".to_string(),
             "session-model".to_string(),
             "session-permission".to_string(),
-            "session-say".to_string(),
             "terminal-follow".to_string(),
-            "kill".to_string(),
-            "plan-return".to_string()
+            "kill".to_string()
         ],
         "🔴 **Windows 上这张表又空了** —— 这一格就是这里的正题。\n\
              握手帧第四条面在动机平台上不说话 = 这一格什么都没买到。\n\

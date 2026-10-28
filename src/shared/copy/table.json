@@ -11545,11 +11545,11 @@
       "zh": "会话在等批准或回答",
       "args": []
     },
-    "beTerminal.no.notIdle": {
+    "beQueue.put.attachmentGone": {
       "kind": "body",
       "role": "片段",
-      "zh": "会话不在闲着 · 没送",
-      "args": []
+      "zh": "附件已不在：{ids} · 没排进队",
+      "args": ["ids"]
     },
     "beTerminal.no.attachmentGone": {
       "kind": "body",
@@ -14471,12 +14471,6 @@
       "role": "报错",
       "zh": "该节点无{role} · 换一个送给",
       "args": ["role"]
-    },
-    "bePlan.return.waiting": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "会话在等批准或回答 · 先去会话里答",
-      "args": []
     },
     "sessionState.planReturn.ended": {
       "kind": "error",
@@ -17634,6 +17628,12 @@
       "role": "片段",
       "zh": "不压缩",
       "args": []
+    },
+    "beLinks.route.proxy": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{endpoint} · 经代理",
+      "args": ["endpoint"]
     },
     "beConnect.jump.targetFailed": {
       "kind": "error",
@@ -22948,6 +22948,42 @@
       "zh": "发送中",
       "args": []
     },
+    "beQueue.said.place": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "排队 · 第 {place}",
+      "args": ["place"]
+    },
+    "beQueue.said.held": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "排队",
+      "args": []
+    },
+    "beQueue.said.sent": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已送进会话",
+      "args": []
+    },
+    "beQueue.said.cancelled": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "已取消",
+      "args": []
+    },
+    "beQueue.said.undelivered": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "失败 · 未送进会话",
+      "args": []
+    },
+    "mobChat.outbox.cancel": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "撤回",
+      "args": []
+    },
     "mobChat.history.retry": {
       "kind": "body",
       "role": "说明",
@@ -27713,14 +27749,8 @@
     "plan.return.sent": {
       "kind": "body",
       "role": "toast",
-      "zh": "已送给 {session}",
+      "zh": "已排进 {session} 的输入队",
       "args": ["session"]
-    },
-    "plan.return.unsure": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "送达未知 · 别重发",
-      "args": []
     },
     "plan.return.resumeSend": {
       "kind": "action",
@@ -27733,12 +27763,6 @@
       "role": "按钮",
       "zh": "恢复并送出",
       "args": []
-    },
-    "plan.return.resumedSent": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已恢复 {session} 并送出",
-      "args": ["session"]
     },
     "plan.return.copied": {
       "kind": "body",

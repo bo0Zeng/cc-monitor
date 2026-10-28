@@ -282,14 +282,14 @@ export function openReturn(host: ReviewHost, slice: PlanSlice, cell: ReturnTarge
       try {
         const resume = ended(target());
         const r = await returnCell(host.origin(), { workspace: host.workspace(), slice: slice.name, id: cell.id, text: ta.value, to, ...(resume ? { resume } : {}) });
-        if (r.result === "delivered" || r.result === "unsure") {
-          const sent = r.resumed ? copyText("plan.return.resumedSent", { session: host.sessionName(r.to) }) : copyText("plan.return.sent", { session: host.sessionName(r.to) });
-          toast(r.result === "delivered" ? sent : copyText("plan.return.unsure"), "", { level: r.result === "delivered" ? "success" : "warn" });
+        // 投进了那条会话的输入队（那台落了盘；它能收时送进去，已结束的先恢复它）。
+        if (r.result === "queued") {
+          toast(copyText("plan.return.sent", { session: host.sessionName(r.to) }), "", { level: "success" });
           host.reread();
           return null;
         }
-        // 送不了（认不出 · 恢复没成）⇒ 给这一行去复制。
-        if (r.result === "copy" || (resume && r.result === "refused")) {
+        // 投不了（认不出 · 已结束没点恢复）⇒ 给这一行去复制。
+        if (r.result === "copy") {
           const copy = button({
             label: copyText("plan.return.copyLine"),
             icon: "copy",

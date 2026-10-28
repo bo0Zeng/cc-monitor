@@ -14,5 +14,4 @@ pub(crate) mod remote_listing; // 远端那台的清单：那台怎么答（`his
 pub(crate) mod search_rules; // 搜索与叫会话什么的通用口径（原共享 crate `search-core` 通用那一半：常量 · snippet 预算 · 最近优先 · 片段 / 截断 · 标题）
 pub(crate) mod session_hidden; // 隐藏的判定在历史这一层的口（注解里单个那一格 · 叫主会话什么）
 pub(crate) mod session_queue; // 会话输入队：往一条会话说的每一句排这一条（住会话那一台，主人发序号；帧面 `session-queue-*`，自家状态经 `Own`）
-pub(crate) mod session_queue_wire; // 会话输入队那三条的线上形（入参 · 回执 · 名单）
 pub(crate) mod session_self; // agent 自问：帧面 `session-self`（调用进程往上找这台的哪一条会话 · 它在哪几组；组转给常驻问到各台）

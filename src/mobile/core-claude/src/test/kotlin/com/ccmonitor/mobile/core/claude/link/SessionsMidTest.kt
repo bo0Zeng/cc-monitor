@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.core.claude.link
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.CommandScope
 import com.ccmonitor.mobile.core.wire.gen.ModeSwitchResult
+import com.ccmonitor.mobile.core.wire.gen.QueuePutOutcome
 import com.ccmonitor.mobile.core.wire.gen.SessionAct
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -56,10 +57,14 @@ class SessionsMidTest {
     }
 
     @Test
-    fun `session-say：入参 sid · text · client；结局同送字那一形`() {
-        assertEquals(mapOf("sid" to "s1", "text" to "/compact", "client" to "mobile"), SessionSay.args("s1", "/compact"))
-        assertEquals(TerminalInput.Result.Delivered, SessionSay.of(mapOf("result" to "delivered")))
-        assertEquals(TerminalInput.Result.Refused("先答完需手动", emptyList()), SessionSay.of(mapOf("result" to "refused", "why" to "waiting", "said" to "先答完需手动")))
+    fun `session-queue-put：投进连着的那台、发自手机、带编号；回执照生成的那一形解`() {
+        assertEquals(
+            mapOf("machine" to "<local>", "sid" to "s1", "id" to "m1", "end" to "mobile", "atMs" to 7L, "text" to "/compact"),
+            SessionQueuePut.args("s1", "m1", "/compact", 7L),
+        )
+        val got = SessionQueuePut.of(mapOf("outcome" to "queued", "seq" to 3L, "place" to 1L, "said" to "q"))!!
+        assertEquals(Triple(QueuePutOutcome.QUEUED, 3L, 1), Triple(got.outcome, got.seq, got.place))
+        assertNull("回执缺必填格 ⇒ 解不出", SessionQueuePut.of(mapOf("seq" to 3L)))
     }
 
     @Test
