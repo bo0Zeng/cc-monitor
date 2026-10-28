@@ -17,7 +17,7 @@
 #[test]
 fn the_event_dispatch_has_no_catch_all_arm() {
     let prod = guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
-    let anchor = "WatchEvent::Notify(Ok(events)) =>";
+    let anchor = "WatchEvent::Notify =>";
     let at = prod
         .find(anchor)
         .expect("找不到事件分派的锚点臂 —— 分派改形了，本条要跟着改");
@@ -55,6 +55,54 @@ fn the_event_dispatch_has_no_catch_all_arm() {
     );
 }
 use super::*;
+use std::time::Duration;
+
+/// 等文件耳朵叫醒一次（[`fs_ears`]），回那一批路径；`wait` 里没叫醒 ⇒ `None`。
+fn woke(
+    erx: &std::sync::mpsc::Receiver<WatchEvent>,
+    pending: &FsPending,
+    wait: Duration,
+) -> Option<Vec<PathBuf>> {
+    match erx.recv_timeout(wait) {
+        Ok(WatchEvent::Notify) => Some(pending.take()),
+        _ => None,
+    }
+}
+
+/// 文件事件不经计时器合并：名单从空变非空那一下叫醒一次；reader 取走之前再来的（同一条或别的）只并进名单、不另叫醒；
+/// 取走之后再来的另叫醒。名单照到达先后、同一条只记一次。
+#[test]
+fn file_events_wake_the_reader_once_until_it_takes_the_pending_paths() {
+    let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
+    let pending = std::sync::Arc::new(FsPending::default());
+    let mut sink = FsSink {
+        pending: pending.clone(),
+        tx,
+    };
+    let ev = |p: &str| {
+        Ok(
+            notify::Event::new(notify::EventKind::Modify(notify::event::ModifyKind::Any))
+                .add_path(PathBuf::from(p)),
+        )
+    };
+    use notify::EventHandler as _;
+    sink.handle_event(ev("/r/a.jsonl"));
+    sink.handle_event(ev("/r/b.jsonl"));
+    sink.handle_event(ev("/r/a.jsonl"));
+    let wakes = |rx: &std::sync::mpsc::Receiver<WatchEvent>| {
+        rx.try_iter()
+            .filter(|e| matches!(e, WatchEvent::Notify))
+            .count()
+    };
+    assert_eq!(wakes(&rx), 1, "名单没取走之前只该叫醒一次");
+    assert_eq!(
+        pending.take(),
+        vec![PathBuf::from("/r/a.jsonl"), PathBuf::from("/r/b.jsonl")]
+    );
+    sink.handle_event(ev("/r/a.jsonl"));
+    assert_eq!(wakes(&rx), 1, "取走之后再来的该另叫醒");
+    assert_eq!(pending.take(), vec![PathBuf::from("/r/a.jsonl")]);
+}
 
 /// 一帧的帧种（线上 `kind` 那一格）。
 fn kind_of(f: &Frame) -> String {
@@ -2722,7 +2770,7 @@ fn vis2_pidfile(sessions: &Path, pid: u32, sid: &str) -> PathBuf {
     at
 }
 
-/// ★★ 〔「判据换成真 inotify 行为（先无后建 ⇒ 补发 `session_added`）」〕真 debouncer ＋ `HomeEars`：
+/// ★★ 〔「判据换成真 inotify 行为（先无后建 ⇒ 补发 `session_added`）」〕真 notify 耳朵 ＋ `HomeEars`：
 /// `agent_home` 不在 ⇒ 挂上一层；一口气建出来并立刻写 pidfile ⇒ 恰好一帧 `session_added`（sid 手写）；再写一份 ⇒ 事件来得了。
 #[cfg(target_os = "linux")]
 #[test]
@@ -2737,10 +2785,9 @@ fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
     assert!(!home.exists(), "夹具坏了：agent_home 一开始就在");
 
     let (etx, erx) = std::sync::mpsc::channel::<WatchEvent>();
-    let mut debouncer = new_debouncer(Duration::from_millis(DEBOUNCE_MS), DebouncerSink(etx))
-        .expect("debouncer 起不来");
+    let (mut fs_watch, pending) = fs_ears(etx).expect("文件耳朵起不来");
     let mut ears = HomeEars::new(&home, &projects, &sessions);
-    ears.arm(&mut debouncer);
+    ears.arm(&mut fs_watch);
     // ①
     assert_eq!(
         (ears.home_watched, ears.parent_watched),
@@ -2759,9 +2806,9 @@ fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
     let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
     let mut added: Vec<String> = Vec::new();
     while added.is_empty() && std::time::Instant::now() < deadline {
-        if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
+        if let Some(evs) = woke(&erx, &pending, Duration::from_millis(200)) {
             for ev in evs {
-                ears.on_path(&mut debouncer, &ev.path, &mut state, &mut sink);
+                ears.on_path(&mut fs_watch, &ev, &mut state, &mut sink);
             }
         }
         while let Ok(f) = rx.try_recv() {
@@ -2777,8 +2824,8 @@ fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
     let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
     let mut heard_second = false;
     while !heard_second && std::time::Instant::now() < deadline {
-        if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
-            heard_second = evs.iter().any(|ev| ev.path == second);
+        if let Some(evs) = woke(&erx, &pending, Duration::from_millis(200)) {
+            heard_second = evs.contains(&second);
         }
     }
 
@@ -2786,7 +2833,7 @@ fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
         let _ = k.kill();
         let _ = k.wait();
     }
-    drop(debouncer);
+    drop(fs_watch);
     std::fs::remove_dir_all(&root).ok();
 
     assert_eq!(
@@ -2835,7 +2882,7 @@ fn vis2_s3_the_watch_loop_goes_through_the_home_ears_exactly_once() {
     );
     let arm_fn = prod.find("fn arm_ears(").expect("`arm_ears` 不在了");
     assert_eq!(
-        count(&prod[arm_fn..arm_fn + 400], "ears.arm(debouncer)"),
+        count(&prod[arm_fn..arm_fn + 400], "ears.arm(fs_watch)"),
         1,
         "`arm_ears` 没经 `HomeEars::arm`"
     );
@@ -3489,7 +3536,7 @@ fn the_two_session_file_frames_have_exactly_these_bytes() {
     assert!(!gone.loss_is_recoverable());
 }
 
-/// ★★ 〔「账号目录起步不在或被删掉重建 ⇒ 这一路失聪」〕真 debouncer ＋ `AccountsEar`：
+/// ★★ 〔「账号目录起步不在或被删掉重建 ⇒ 这一路失聪」〕真 notify 耳朵 ＋ `AccountsEar`：
 /// 起步不在 ⇒ 挂上一层；建出来 ⇒ 它自己那一格事件（`on_path` 回 true）且之后写 manifest 听得见；删掉重建 ⇒ 仍听得见。
 #[cfg(target_os = "linux")]
 #[test]
@@ -3500,13 +3547,12 @@ fn gap1_an_accounts_dir_created_or_rebuilt_after_start_is_still_heard() {
     let dir = root.join("accts");
     let manifest = dir.join("accounts.json");
     let (etx, erx) = std::sync::mpsc::channel::<WatchEvent>();
-    let mut debouncer = new_debouncer(Duration::from_millis(DEBOUNCE_MS), DebouncerSink(etx))
-        .expect("debouncer 起不来");
+    let (mut fs_watch, pending) = fs_ears(etx).expect("文件耳朵起不来");
     let mut ear = AccountsEar::new(&dir);
-    ear.arm(&mut debouncer);
+    ear.arm(&mut fs_watch);
     let armed = (ear.watched, ear.parent_watched);
     // 建目录 ⇒ 等到它自己那一格事件；再写 manifest ⇒ 等到 manifest 那一格。回 (目录事件到没到, manifest 事件到没到)。
-    let mut round = |ear: &mut AccountsEar, debouncer: &mut _| {
+    let mut round = |ear: &mut AccountsEar, fs_watch: &mut _| {
         std::fs::create_dir_all(&dir).unwrap();
         let (mut dir_seen, mut manifest_seen) = (false, false);
         let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
@@ -3514,20 +3560,20 @@ fn gap1_an_accounts_dir_created_or_rebuilt_after_start_is_still_heard() {
             if dir_seen {
                 std::fs::write(&manifest, b"{}").unwrap();
             }
-            if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
+            if let Some(evs) = woke(&erx, &pending, Duration::from_millis(200)) {
                 for ev in &evs {
-                    dir_seen |= ear.on_path(debouncer, &ev.path);
+                    dir_seen |= ear.on_path(fs_watch, ev);
                 }
                 manifest_seen |=
-                    dir_seen && manifest_touched(evs.iter().map(|e| e.path.as_path()), &manifest);
+                    dir_seen && manifest_touched(evs.iter().map(PathBuf::as_path), &manifest);
             }
         }
         (dir_seen, manifest_seen)
     };
-    let first = round(&mut ear, &mut debouncer);
+    let first = round(&mut ear, &mut fs_watch);
     std::fs::remove_dir_all(&dir).unwrap();
-    let second = round(&mut ear, &mut debouncer);
-    drop(debouncer);
+    let second = round(&mut ear, &mut fs_watch);
+    drop(fs_watch);
     std::fs::remove_dir_all(&root).ok();
     assert_eq!(
         armed,
@@ -3546,7 +3592,7 @@ fn gap1_an_accounts_dir_created_or_rebuilt_after_start_is_still_heard() {
     );
 }
 
-/// ★★ 〔登录完成那一刻界面自己变「已登录」〕真 debouncer ＋ `AccountsEar`：起步就有的号目录 · 起步之后才建的号目录，
+/// ★★ 〔登录完成那一刻界面自己变「已登录」〕真 notify 耳朵 ＋ `AccountsEar`：起步就有的号目录 · 起步之后才建的号目录，
 /// 各自写进凭据文件 ⇒ `on_path` 回 true；号目录里别的文件 ⇒ 不回 true。
 #[cfg(target_os = "linux")]
 #[test]
@@ -3557,15 +3603,14 @@ fn a_credentials_file_appearing_in_an_account_dir_is_heard() {
     let old = dir.join("acct-a");
     std::fs::create_dir_all(&old).unwrap();
     let (etx, erx) = std::sync::mpsc::channel::<WatchEvent>();
-    let mut debouncer = new_debouncer(Duration::from_millis(DEBOUNCE_MS), DebouncerSink(etx))
-        .expect("debouncer 起不来");
+    let (mut fs_watch, pending) = fs_ears(etx).expect("文件耳朵起不来");
     let mut ear = AccountsEar::new(&dir);
-    ear.arm(&mut debouncer);
+    ear.arm(&mut fs_watch);
     // 写一份文件，等到一批事件里 `on_path` 回过 true（或期限到）。回到没到。
     // 「不该听见」那一格是个没发生：紧跟着再写一份收尾记号，等记号那条事件到了就停（排在它前面的都过完了），
     //   不拿「等满期限还没听见」当答案（那样绿的时候每次都要等满兜底的那个数）。
     let heard =
-        |ear: &mut AccountsEar, debouncer: &mut _, path: &Path, settle: Option<&Path>| -> bool {
+        |ear: &mut AccountsEar, fs_watch: &mut _, path: &Path, settle: Option<&Path>| -> bool {
             std::fs::write(path, b"{}").unwrap();
             if let Some(s) = settle {
                 std::fs::write(s, b"").unwrap();
@@ -3576,12 +3621,10 @@ fn a_credentials_file_appearing_in_an_account_dir_is_heard() {
             while !(if settle.is_some() { settled } else { got })
                 && std::time::Instant::now() < deadline
             {
-                if let Ok(WatchEvent::Notify(Ok(evs))) =
-                    erx.recv_timeout(Duration::from_millis(200))
-                {
+                if let Some(evs) = woke(&erx, &pending, Duration::from_millis(200)) {
                     for ev in &evs {
-                        got |= ear.on_path(debouncer, &ev.path);
-                        settled |= settle.is_some_and(|s| ev.path.file_name() == s.file_name());
+                        got |= ear.on_path(fs_watch, ev);
+                        settled |= settle.is_some_and(|s| ev.file_name() == s.file_name());
                     }
                 }
             }
@@ -3589,13 +3632,13 @@ fn a_credentials_file_appearing_in_an_account_dir_is_heard() {
         };
     let other = heard(
         &mut ear,
-        &mut debouncer,
+        &mut fs_watch,
         &old.join("settings.json"),
         Some(&old.join("zz-settle")),
     );
     let at_start = heard(
         &mut ear,
-        &mut debouncer,
+        &mut fs_watch,
         &old.join(".credentials.json"),
         None,
     );
@@ -3604,19 +3647,19 @@ fn a_credentials_file_appearing_in_an_account_dir_is_heard() {
     // 号目录出现那一格先到（重挂各号目录），之后那份凭据才听得见。
     let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
     while !ear.subs.contains(&fresh) && std::time::Instant::now() < deadline {
-        if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
+        if let Some(evs) = woke(&erx, &pending, Duration::from_millis(200)) {
             for ev in &evs {
-                ear.on_path(&mut debouncer, &ev.path);
+                ear.on_path(&mut fs_watch, ev);
             }
         }
     }
     let later = heard(
         &mut ear,
-        &mut debouncer,
+        &mut fs_watch,
         &fresh.join(".credentials.json"),
         None,
     );
-    drop(debouncer);
+    drop(fs_watch);
     std::fs::remove_dir_all(&root).ok();
     assert!(!other, "号目录里别的文件不该当成「清单可能变了」");
     assert!(at_start, "起步就有的号目录里出现凭据文件，没听见");
@@ -4080,10 +4123,9 @@ fn a_task_written_after_start_is_heard_for_its_session() {
     let sessions = crate::agents::claudecode::paths::sessions_root(&home);
     let tasks = crate::observe::tasks_query::tasks_root(&home);
     let (etx, erx) = std::sync::mpsc::channel::<WatchEvent>();
-    let mut debouncer = new_debouncer(Duration::from_millis(DEBOUNCE_MS), DebouncerSink(etx))
-        .expect("debouncer 起不来");
+    let (mut fs_watch, pending) = fs_ears(etx).expect("文件耳朵起不来");
     let mut ears = HomeEars::new(&home, &projects, &sessions);
-    ears.arm(&mut debouncer);
+    ears.arm(&mut fs_watch);
     assert!(!ears.tasks_watched, "夹具坏了：tasks/ 一开始就在");
     let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::new(tx);
@@ -4091,9 +4133,9 @@ fn a_task_written_after_start_is_heard_for_its_session() {
     std::fs::create_dir_all(&tasks).unwrap();
     let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
     while !ears.tasks_watched && std::time::Instant::now() < deadline {
-        if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
+        if let Some(evs) = woke(&erx, &pending, Duration::from_millis(200)) {
             for ev in evs {
-                ears.on_path(&mut debouncer, &ev.path, &mut state, &mut sink);
+                ears.on_path(&mut fs_watch, &ev, &mut state, &mut sink);
             }
         }
     }
@@ -4102,12 +4144,12 @@ fn a_task_written_after_start_is_heard_for_its_session() {
     let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
     let mut heard: Vec<String> = Vec::new();
     while heard.is_empty() && std::time::Instant::now() < deadline {
-        if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
-            heard = tasks_touched(evs.iter().map(|ev| ev.path.as_path()), &ears.tasks);
+        if let Some(evs) = woke(&erx, &pending, Duration::from_millis(200)) {
+            heard = tasks_touched(evs.iter().map(PathBuf::as_path), &ears.tasks);
         }
     }
     let watched = ears.tasks_watched;
-    drop(debouncer);
+    drop(fs_watch);
     std::fs::remove_dir_all(&root).ok();
     assert!(watched, "`tasks/` 后建出来之后没挂上");
     assert_eq!(
@@ -4256,7 +4298,7 @@ fn announcing_a_session_finds_its_records_from_the_table_not_a_full_walk() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// ★ 配置文件（`profiles.toml`）那道耳朵，真 debouncer：直接写 · 写旁名再换名上位（设置窗与 `Door::put` 的写法）都听得见；
+/// ★ 配置文件（`profiles.toml`）那道耳朵，真 notify 耳朵：直接写 · 写旁名再换名上位（设置窗与 `Door::put` 的写法）都听得见；
 /// 同目录别的文件不算；目录起步不在、后建出来也听得见。
 #[cfg(target_os = "linux")]
 #[test]
@@ -4267,16 +4309,15 @@ fn the_profiles_file_is_heard_written_or_renamed_into_place_and_nothing_else_cou
     let dir = root.join(".cc-monitor");
     let file = dir.join("profiles.toml");
     let (etx, erx) = std::sync::mpsc::channel::<WatchEvent>();
-    let mut debouncer = new_debouncer(Duration::from_millis(DEBOUNCE_MS), DebouncerSink(etx))
-        .expect("debouncer 起不来");
+    let (mut fs_watch, pending) = fs_ears(etx).expect("文件耳朵起不来");
     let mut ear = ProfilesEar::new(file.clone()).expect("有上一层");
-    ear.arm(&mut debouncer);
+    ear.arm(&mut fs_watch);
     // 做一件事，等到那一批：回这一批里配置文件算不算动了。
     // 「不算」那一格是个没发生：事后再写一份收尾记号（`settle`），等记号那条事件到了就停（排在它前面的都过完了），
     //   不拿「等满期限还没听见」当答案（那样绿的时候每次都要等满兜底的那个数）。
     let settle = dir.join("zz-settle");
     let mut heard =
-        |ear: &mut ProfilesEar, debouncer: &mut _, act: &dyn Fn(), settle: Option<&Path>| -> bool {
+        |ear: &mut ProfilesEar, fs_watch: &mut _, act: &dyn Fn(), settle: Option<&Path>| -> bool {
             act();
             if let Some(s) = settle {
                 std::fs::write(s, "").unwrap();
@@ -4287,19 +4328,17 @@ fn the_profiles_file_is_heard_written_or_renamed_into_place_and_nothing_else_cou
             while !(if settle.is_some() { settled } else { got })
                 && std::time::Instant::now() < deadline
             {
-                if let Ok(WatchEvent::Notify(Ok(evs))) =
-                    erx.recv_timeout(Duration::from_millis(300))
-                {
-                    got |= ear.touched(debouncer, evs.iter().map(|e| e.path.as_path()));
-                    settled |= settle
-                        .is_some_and(|s| evs.iter().any(|e| e.path.file_name() == s.file_name()));
+                if let Some(evs) = woke(&erx, &pending, Duration::from_millis(300)) {
+                    got |= ear.touched(fs_watch, evs.iter().map(PathBuf::as_path));
+                    settled |=
+                        settle.is_some_and(|s| evs.iter().any(|e| e.file_name() == s.file_name()));
                 }
             }
             got
         };
     let made = heard(
         &mut ear,
-        &mut debouncer,
+        &mut fs_watch,
         &|| {
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(&file, "[cc]\n").unwrap();
@@ -4308,20 +4347,20 @@ fn the_profiles_file_is_heard_written_or_renamed_into_place_and_nothing_else_cou
     );
     let other = heard(
         &mut ear,
-        &mut debouncer,
+        &mut fs_watch,
         &|| std::fs::write(dir.join("aliases.sh"), "x").unwrap(),
         Some(&settle),
     );
     let renamed = heard(
         &mut ear,
-        &mut debouncer,
+        &mut fs_watch,
         &|| {
             std::fs::write(dir.join(".profiles.toml.tmp"), "[cct]\n").unwrap();
             std::fs::rename(dir.join(".profiles.toml.tmp"), &file).unwrap();
         },
         None,
     );
-    drop(debouncer);
+    drop(fs_watch);
     std::fs::remove_dir_all(&root).ok();
     assert!(made, "目录后建出来、写进配置文件 ⇒ 要听得见");
     assert!(!other, "同目录别的文件不算配置文件变了");

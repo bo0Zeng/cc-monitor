@@ -8,7 +8,7 @@
 //! This module is split into two halves joined by a **bounded** `mpsc` channel
 //! (see [`spawn`]):
 //!
-//! - the **reader** ([`watch_loop`]) owns the `notify-debouncer-mini` watcher,
+//! - the **reader** ([`watch_loop`]) owns the `notify` watcher（不经计时器合并：[`FsSink`]）,
 //!   does the incremental per-file offset reads, assigns `seq`s, and *sends*
 //!   [`Frame`]s into the channel via [`FrameSink`]. It uses `try_send`, so a full
 //!   channel drops the frame rather than ever blocking the notify callback — but
@@ -24,8 +24,8 @@
 //! 每条流连接经 [`WatcherPoke::attach`] 拿一条自己的有界通道（[`Sub`]：名单 · 丢帧账按连接），reader 逐条连接投帧。
 //! 记录的预读不在 reader 线程上做：宣告先发，预读交线程池（[`PrimePool`]），读完交回再接着出那条会话的行。
 //!
-//! The reader runs on a dedicated blocking thread (`notify-debouncer-mini` is a
-//! synchronous, `std::sync::mpsc`-based API) and talks to the async writer
+//! The reader runs on a dedicated blocking thread (it waits on a
+//! synchronous `std::sync::mpsc` channel) and talks to the async writer
 //! through `tokio::sync::mpsc`.
 //!
 //! # 增量读的规则（今天全仓只有这一份）
@@ -64,8 +64,7 @@ use crate::platform::fs::{Ro, RoFile};
 use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
 use crate::wire::{FrameMake as _, FrameRules as _, SessionFaceExt as _, TopicExt as _};
 use cmd_wire::frame::{HiddenNow, Relayed};
-use notify::RecursiveMode;
-use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
+use notify::{RecursiveMode, Watcher as _};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -89,7 +88,6 @@ use crate::platform::liveness::is_same_live_process;
 use crate::platform::proc::{parse_btime, parse_starttime_from_stat, session_alive};
 #[cfg(all(test, target_os = "linux"))]
 use pidwatch_core::pidfd_open;
-use std::time::Duration;
 use tokio::sync::mpsc;
 use walkdir::WalkDir;
 
@@ -108,8 +106,10 @@ enum WatchEvent {
         now: std::collections::BTreeSet<String>,
         moved: Option<String>,
     },
-    /// 文件系统事件（`notify-debouncer-mini` 经 [`DebouncerSink`] 转投进来）。
-    Notify(DebounceEventResult),
+    /// 文件系统那道耳朵有新路径了（[`FsSink`] 叫醒；路径在 [`FsPending`] 里，reader 醒来整份取走）。
+    Notify,
+    /// 那道耳朵报了错（notify 后端的错）。
+    NotifyFailed(notify::Error),
     /// **P3：tmux server 的 pidfd 醒了** —— 那个 server 进程实例已退出 ⇒ 等价于零会话。
     ///
     /// 带 `pid` 同样是为了挡陈旧唤醒（server 复活后是**新** pid，旧看守迟到的事件要被忽略）。
@@ -162,15 +162,63 @@ enum WatchEvent {
     Primed(PrimeDone),
 }
 
-/// P2：把 debouncer 的事件转投进统一 channel（零额外线程——`notify` 本来就在自己的
-/// 线程里回调 handler，这里只是换个投递目标）。
-struct DebouncerSink(std::sync::mpsc::Sender<WatchEvent>);
+/// 文件系统那道耳朵报过、reader 还没取走的路径（先后照到达，同一条只记一次）。
+/// 不经计时器合并：reader 醒来整份取走、照此刻的盘读到尾；它读的时候再来的事件只并进这里（「还要再读一次」），不另叫醒。
+#[derive(Default)]
+pub(crate) struct FsPending(std::sync::Mutex<Vec<PathBuf>>);
 
-impl notify_debouncer_mini::DebounceEventHandler for DebouncerSink {
-    fn handle_event(&mut self, event: DebounceEventResult) {
-        // 接收端已走（reader 退出）⇒ 丢弃即可，不 panic。
-        let _ = self.0.send(WatchEvent::Notify(event));
+impl FsPending {
+    /// 并进几条路径；回：名单是不是从空变成了非空（⇒ 该叫醒 reader 一次）。
+    fn add(&self, paths: Vec<PathBuf>) -> bool {
+        let mut g = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let wake = g.is_empty();
+        for p in paths {
+            if !g.contains(&p) {
+                g.push(p);
+            }
+        }
+        wake && !g.is_empty()
     }
+
+    /// 整份取走（之后再来的另叫醒）。
+    fn take(&self) -> Vec<PathBuf> {
+        std::mem::take(&mut *self.0.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+}
+
+/// P2：notify 的事件并进 [`FsPending`]、名单从空变非空才往统一 channel 投一声（零额外线程 —— `notify` 本来就在自己的
+/// 线程里回调 handler）。
+struct FsSink {
+    pending: std::sync::Arc<FsPending>,
+    tx: std::sync::mpsc::Sender<WatchEvent>,
+}
+
+impl notify::EventHandler for FsSink {
+    fn handle_event(&mut self, event: notify::Result<notify::Event>) {
+        // 接收端已走（reader 退出）⇒ 丢弃即可，不 panic。
+        match event {
+            Ok(ev) => {
+                if self.pending.add(ev.paths) {
+                    let _ = self.tx.send(WatchEvent::Notify);
+                }
+            }
+            Err(e) => {
+                let _ = self.tx.send(WatchEvent::NotifyFailed(e));
+            }
+        }
+    }
+}
+
+/// 文件系统那道耳朵：notify 原生监听 ＋ 它报过还没取走的那张名单。
+fn fs_ears(
+    tx: std::sync::mpsc::Sender<WatchEvent>,
+) -> notify::Result<(notify::RecommendedWatcher, std::sync::Arc<FsPending>)> {
+    let pending = std::sync::Arc::new(FsPending::default());
+    let w = notify::recommended_watcher(FsSink {
+        pending: pending.clone(),
+        tx,
+    })?;
+    Ok((w, pending))
 }
 
 /// P3：pidfd 看守的目标——决定醒了之后发哪个事件。**让 `spawn_pid_watcher` 一份实现服务
@@ -420,11 +468,8 @@ fn wire_bytes(frame: &Frame) -> usize {
     serde_json::to_writer(&mut c, frame).map_or(0, |()| c.0)
 }
 
-/// notify-debouncer-mini debounce window.（从前写「与 monitor 那份读者对齐」—— 那份 CF1 删了。）
-const DEBOUNCE_MS: u64 = 100;
-
 fn rewatch_dir(
-    debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+    fs_watch: &mut impl notify::Watcher,
     dir: &Path,
     watched: &mut bool,
     mode: RecursiveMode,
@@ -432,13 +477,13 @@ fn rewatch_dir(
     if !dir.is_dir() {
         if *watched {
             tracing::info!("目录消失了 {} —— 解除记账，等它回来再挂", dir.display());
-            let _ = debouncer.watcher().unwatch(dir);
+            let _ = fs_watch.unwatch(dir);
             *watched = false;
         }
         return;
     }
-    let _ = debouncer.watcher().unwatch(dir);
-    match debouncer.watcher().watch(dir, mode) {
+    let _ = fs_watch.unwatch(dir);
+    match fs_watch.watch(dir, mode) {
         Ok(()) => {
             if !*watched {
                 tracing::info!("已（重新）挂上 watch: {}", dir.display());
@@ -456,7 +501,7 @@ fn rewatch_dir(
 /// 上一层挂上不摘：它可能与别的挂点同一目录（`unwatch` 会连带摘掉），留着也听得见 `agent_home` 被删后重建。
 /// `what` = 日志里怎么称呼它（账号目录也走这一个函数）。
 fn rewatch_agent_home(
-    debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+    fs_watch: &mut impl notify::Watcher,
     agent_home: &Path,
     what: &str,
     home_watched: &mut bool,
@@ -465,11 +510,8 @@ fn rewatch_agent_home(
     if agent_home.is_dir() {
         let was = *home_watched;
         // 无条件先 unwatch 再 watch：分不清「同 inode 的普通事件」与「换了 inode」（`rewatch_dir` 同一条纪律）。
-        let _ = debouncer.watcher().unwatch(agent_home);
-        return match debouncer
-            .watcher()
-            .watch(agent_home, RecursiveMode::NonRecursive)
-        {
+        let _ = fs_watch.unwatch(agent_home);
+        return match fs_watch.watch(agent_home, RecursiveMode::NonRecursive) {
             Ok(()) => {
                 *home_watched = true;
                 if !was {
@@ -493,15 +535,14 @@ fn rewatch_agent_home(
             "{what} 消失了 {} —— 解除记账，等它回来再挂",
             agent_home.display()
         );
-        let _ = debouncer.watcher().unwatch(agent_home);
+        let _ = fs_watch.unwatch(agent_home);
         *home_watched = false;
     }
     if *parent_watched {
         return false;
     }
     match agent_home.parent().filter(|d| d.is_dir()) {
-        Some(parent) => match debouncer
-            .watcher()
+        Some(parent) => match fs_watch
             .watch(parent, RecursiveMode::NonRecursive)
         {
             Ok(()) => {
@@ -558,12 +599,9 @@ impl ProfilesEar {
         })
     }
 
-    pub(crate) fn arm(
-        &mut self,
-        debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
-    ) {
+    pub(crate) fn arm(&mut self, fs_watch: &mut impl notify::Watcher) {
         rewatch_agent_home(
-            debouncer,
+            fs_watch,
             &self.dir,
             "profiles dir",
             &mut self.watched,
@@ -574,7 +612,7 @@ impl ProfilesEar {
     /// 一批事件里配置文件动没动。目录自己出现 / 消失 ⇒ 重挂，也算动了（里面的配置文件可能跟着来了 / 没了）。
     pub(crate) fn touched<'a>(
         &mut self,
-        debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+        fs_watch: &mut impl notify::Watcher,
         paths: impl Iterator<Item = &'a Path>,
     ) -> bool {
         let mut hit = false;
@@ -584,7 +622,7 @@ impl ProfilesEar {
             dir_moved |= p == self.dir;
         }
         if dir_moved {
-            self.arm(debouncer);
+            self.arm(fs_watch);
         }
         hit || dir_moved
     }
@@ -607,9 +645,9 @@ impl QueueEar {
         })
     }
 
-    fn arm(&mut self, debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>) {
+    fn arm(&mut self, fs_watch: &mut impl notify::Watcher) {
         rewatch_agent_home(
-            debouncer,
+            fs_watch,
             &self.dir,
             "session queue dir",
             &mut self.watched,
@@ -621,12 +659,12 @@ impl QueueEar {
     /// （重挂之前写进去的那几份听不见）；否则是动过的那几份 `<sid>.json`。
     fn touched<'a>(
         &mut self,
-        debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+        fs_watch: &mut impl notify::Watcher,
         paths: impl Iterator<Item = &'a Path> + Clone,
         own: Option<&crate::platform::fs::Own>,
     ) -> Option<Vec<String>> {
         if paths.clone().any(|p| p == self.dir) {
-            self.arm(debouncer);
+            self.arm(fs_watch);
             return Some(
                 own.map(crate::history::session_queue::sids)
                     .unwrap_or_default(),
@@ -667,19 +705,19 @@ impl AccountsEar {
         }
     }
 
-    fn arm(&mut self, debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>) {
+    fn arm(&mut self, fs_watch: &mut impl notify::Watcher) {
         rewatch_agent_home(
-            debouncer,
+            fs_watch,
             &self.dir,
             "accounts dir",
             &mut self.watched,
             &mut self.parent_watched,
         );
-        self.arm_subs(debouncer);
+        self.arm_subs(fs_watch);
     }
 
     /// 按盘上此刻挂各号目录：新出现的挂上，不在了的摘掉（符号链接不跟）。
-    fn arm_subs(&mut self, debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>) {
+    fn arm_subs(&mut self, fs_watch: &mut impl notify::Watcher) {
         let now: std::collections::BTreeSet<PathBuf> = Ro::read_dir(&self.dir)
             .map(|rd| {
                 rd.flatten()
@@ -689,12 +727,12 @@ impl AccountsEar {
             })
             .unwrap_or_default();
         for gone in self.subs.difference(&now) {
-            let _ = debouncer.watcher().unwatch(gone);
+            let _ = fs_watch.unwatch(gone);
         }
         let fresh: Vec<PathBuf> = now.difference(&self.subs).cloned().collect();
         self.subs.retain(|p| now.contains(p));
         for d in fresh {
-            match debouncer.watcher().watch(&d, RecursiveMode::NonRecursive) {
+            match fs_watch.watch(&d, RecursiveMode::NonRecursive) {
                 Ok(()) => {
                     self.subs.insert(d);
                 }
@@ -705,24 +743,20 @@ impl AccountsEar {
 
     /// 一个事件路径 ⇒ 要不要发「清单可能变了」：账号目录自己出现 / 消失（重挂）· 某个号的凭据文件动了 ⇒ `true`；
     /// 账号目录里多了 / 少了一项 ⇒ 重挂各号目录（清单本身动没动由调用方看 manifest）。
-    fn on_path(
-        &mut self,
-        debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
-        p: &Path,
-    ) -> bool {
+    fn on_path(&mut self, fs_watch: &mut impl notify::Watcher, p: &Path) -> bool {
         if p == self.dir.as_path() {
             rewatch_agent_home(
-                debouncer,
+                fs_watch,
                 &self.dir,
                 "accounts dir",
                 &mut self.watched,
                 &mut self.parent_watched,
             );
-            self.arm_subs(debouncer);
+            self.arm_subs(fs_watch);
             return true;
         }
         if p.parent() == Some(self.dir.as_path()) {
-            self.arm_subs(debouncer);
+            self.arm_subs(fs_watch);
             return false;
         }
         credentials_touched(p, &self.dir)
@@ -770,7 +804,7 @@ impl HomeEars {
     }
 
     /// 起步挂一次：`agent_home`（不在 ⇒ 它的上一层）· `projects/`（可重入挂法）· `sessions/`。
-    fn arm(&mut self, debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>) {
+    fn arm(&mut self, fs_watch: &mut impl notify::Watcher) {
         // ★★ `P0b-Y2`：**监视 `agent_home` 本身** —— 这是「子目录出现/被换掉」的唯一耳朵。
         //
         // inotify 的 watch 绑在 **inode** 上，不是路径上。`sessions/` 被 `rm -rf` 再 `mkdir`
@@ -778,7 +812,7 @@ impl HomeEars {
         // **而且不会有任何错误**（backend 活着、不吭声）。
         // 监视父目录之后，`sessions` 的创建/删除会作为**父目录里的一个事件**送到，我们据此重挂。
         rewatch_agent_home(
-            debouncer,
+            fs_watch,
             &self.agent_home,
             "agent home",
             &mut self.home_watched,
@@ -788,24 +822,21 @@ impl HomeEars {
         //    被换 inode 之后**行帧再也不来**（实测：删掉重建后写入，line 帧停在 1）。
         //    这是 `sessions/`（第十拍）与 socket 目录（第二十二拍）之后的**同族第三个**。
         rewatch_dir(
-            debouncer,
+            fs_watch,
             &self.projects,
             &mut self.projects_watched,
             RecursiveMode::Recursive,
         );
         // `tasks/` 同一套可重入挂法（不在 ⇒ 等它作为 `agent_home` 里的一个事件出现再挂）。
         rewatch_dir(
-            debouncer,
+            fs_watch,
             &self.tasks,
             &mut self.tasks_watched,
             RecursiveMode::Recursive,
         );
         // Watch sessions (flat) for PID.json add/remove. 起步挂一次，之后归 `rewatch_sessions`。
         if self.sessions.is_dir() {
-            match debouncer
-                .watcher()
-                .watch(&self.sessions, RecursiveMode::NonRecursive)
-            {
+            match fs_watch.watch(&self.sessions, RecursiveMode::NonRecursive) {
                 Ok(()) => self.sessions_watched = true,
                 Err(e) => tracing::error!("watch failed for {}: {e}", self.sessions.display()),
             }
@@ -823,7 +854,7 @@ impl HomeEars {
     /// 「删了又建」很可能只到一个事件，靠 kind 去分辨是猜）。
     fn on_path(
         &mut self,
-        debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+        fs_watch: &mut impl notify::Watcher,
         p: &Path,
         state: &mut ReaderState,
         sink: &mut FrameSink,
@@ -831,7 +862,7 @@ impl HomeEars {
         // `agent_home` 刚出现 ⇒ 挂上它本身，再把它下面此刻已在的两个目录挂上（`sessions/` 带重扫）。
         if p == self.agent_home.as_path()
             && rewatch_agent_home(
-                debouncer,
+                fs_watch,
                 &self.agent_home,
                 "agent home",
                 &mut self.home_watched,
@@ -839,19 +870,19 @@ impl HomeEars {
             )
         {
             rewatch_dir(
-                debouncer,
+                fs_watch,
                 &self.projects,
                 &mut self.projects_watched,
                 RecursiveMode::Recursive,
             );
             rewatch_dir(
-                debouncer,
+                fs_watch,
                 &self.tasks,
                 &mut self.tasks_watched,
                 RecursiveMode::Recursive,
             );
             rewatch_sessions(
-                debouncer,
+                fs_watch,
                 &self.sessions,
                 &mut self.sessions_watched,
                 state,
@@ -861,7 +892,7 @@ impl HomeEars {
         // ★ `projects/` 换 inode 时也要重挂（同族第三个，见 `rewatch_dir` 头注）。
         if p == self.projects.as_path() {
             rewatch_dir(
-                debouncer,
+                fs_watch,
                 &self.projects,
                 &mut self.projects_watched,
                 RecursiveMode::Recursive,
@@ -870,7 +901,7 @@ impl HomeEars {
         // `tasks/` 刚出现 / 换了 inode ⇒ 重挂（同族第四个）。
         if p == self.tasks.as_path() {
             rewatch_dir(
-                debouncer,
+                fs_watch,
                 &self.tasks,
                 &mut self.tasks_watched,
                 RecursiveMode::Recursive,
@@ -879,7 +910,7 @@ impl HomeEars {
         // ★★ `P0b-Y2`：**`sessions/` 换了 inode 或刚出现 ⇒ 重挂 + 重扫。**
         if p == self.sessions.as_path() {
             rewatch_sessions(
-                debouncer,
+                fs_watch,
                 &self.sessions,
                 &mut self.sessions_watched,
                 state,
@@ -910,7 +941,7 @@ impl HomeEars {
 /// （那条红线管的是我们自己发 tmux 命令时必须带 socket 选择器）。
 /// 把 watch 挂到 socket 目录**本身**（目录在才挂，幂等）。见调用点的两段头注。
 fn watch_sock_dir_if_present(
-    debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+    fs_watch: &mut impl notify::Watcher,
     sock_dir: &Path,
     watched: &mut bool,
 ) {
@@ -925,18 +956,15 @@ fn watch_sock_dir_if_present(
                 "tmux socket 目录消失了 {} —— 解除记账，等它回来再挂",
                 sock_dir.display()
             );
-            let _ = debouncer.watcher().unwatch(sock_dir);
+            let _ = fs_watch.unwatch(sock_dir);
             *watched = false;
         }
         return;
     }
     // 目录在。**无条件先 unwatch 再 watch**（分辨不出「同 inode 的普通事件」与「换了 inode」，
     // 而重挂同一个 inode 无害、漏挂新 inode 致命）——与 `rewatch_sessions` 同一条纪律。
-    let _ = debouncer.watcher().unwatch(sock_dir);
-    match debouncer
-        .watcher()
-        .watch(sock_dir, RecursiveMode::NonRecursive)
-    {
+    let _ = fs_watch.unwatch(sock_dir);
+    match fs_watch.watch(sock_dir, RecursiveMode::NonRecursive) {
         Ok(()) => {
             let first = !*watched;
             *watched = true;
@@ -1178,36 +1206,33 @@ pub(crate) fn resync(only: Option<&str>) -> (Reconciled, usize) {
 /// 挂全部耳朵：`agent_home` / `projects/` / `sessions/`（[`HomeEars::arm`]）· tmux socket 目录 · 账号目录。
 /// 起步一次；「重新对齐」再调同一个（各挂法都先摘再挂，重挂无害、漏挂新 inode 致命）。
 fn arm_ears(
-    debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+    fs_watch: &mut impl notify::Watcher,
     ears: &mut HomeEars,
     sock_dir: &Path,
     sock_dir_watched: &mut bool,
     accounts_ear: Option<&mut AccountsEar>,
 ) {
-    ears.arm(debouncer);
+    ears.arm(fs_watch);
     // ★★ `P0b-Y2` 第十六拍：**零 server 时也要有耳朵** —— 监视 tmux socket 目录本身。
     // 目录不在（本机从没起过 tmux）⇒ 退一层监视它的父，等目录被创建出来。
     // 两种情况都只当「该重新探一次」的触发器，绝不拿文件存在性判活（沿用 P3 的既定纪律）。
     if let Some(parent) = sock_dir.parent() {
         if parent.is_dir() {
-            if let Err(e) = debouncer
-                .watcher()
-                .watch(parent, RecursiveMode::NonRecursive)
-            {
+            if let Err(e) = fs_watch.watch(parent, RecursiveMode::NonRecursive) {
                 tracing::warn!("监视 {} 失败: {e}", parent.display());
             }
         }
     }
-    watch_sock_dir_if_present(debouncer, sock_dir, sock_dir_watched);
+    watch_sock_dir_if_present(fs_watch, sock_dir, sock_dir_watched);
     // **账号清单变了 ⇒ 一帧 `changed {accounts}`**。监视 manifest 所在目录
     // （NonRecursive；写 manifest 常是「写临时文件再 rename」，盯文件本身会在 rename 之后失聪）。
     // 目录起步不在 / 被删重建 ⇒ 由 `AccountsEar` 挂上一层等它、出现时重挂（原先这里失聪）。
     if let Some(ear) = accounts_ear {
-        ear.arm(debouncer);
+        ear.arm(fs_watch);
     }
 }
 
-/// The reader half: initial walkdir scan, then the live debouncer loop.
+/// The reader half: initial walkdir scan, then the live fs_watch loop.
 ///
 /// Runs on its own OS thread. `tx` is the bounded sender; it is wrapped in a
 /// [`FrameSink`] whose [`FrameSink::send`] never blocks the notify callback and
@@ -1238,7 +1263,7 @@ fn watch_loop(
     for f in crate::agents::followed(&agent_home) {
         state.follow(&f);
     }
-    // 「开着即活」那几家的记录根：行由 debouncer 那道耳朵读（与记录树同一条路），谁在写由 `writers` 那道耳朵报。
+    // 「开着即活」那几家的记录根：行由 fs_watch 那道耳朵读（与记录树同一条路），谁在写由 `writers` 那道耳朵报。
     let writer_roots: Vec<PathBuf> = state
         .roots
         .iter()
@@ -1274,7 +1299,7 @@ fn watch_loop(
     state.events_tx = Some(events_tx.clone());
 
     // --- 先挂耳朵（Phase 2 的那几道），再做 Phase 1 的初扫 ---
-    // 🔴 顺序是承重的（10-07 修）：原先先扫 `sessions/`、再建 debouncer 挂耳朵 ⇒ 扫完到挂上之间落下的
+    // 🔴 顺序是承重的（10-07 修）：原先先扫 `sessions/`、再建 fs_watch 挂耳朵 ⇒ 扫完到挂上之间落下的
     //   pidfile 两头都看不见，那条会话一直不报（之后的记录文件也被「只认活会话」筛掉），死了也不报。
     //   后端起来那一刻正在起的 claude 就落在这个窗里（e2e `resume-frames` 间歇红的根因）。
     //   ⇒ 先挂：挂上之后落下的由事件接（扫的过程中来的事件在 channel 里排队，初扫完再消费；
@@ -1290,17 +1315,10 @@ fn watch_loop(
     // the Ctrl+H history browser's job (Phase 1 for remote).
     let sock_dir = tmux_socket_dir();
     let armed = arm_then_scan(&sessions, &mut state, &mut sink, || {
-        #[allow(
-            clippy::disallowed_methods,
-            reason = "notify-debouncer 的事件合并窗口：它不产生唤醒，只决定「同一批文件事件攒多久再一起交付」"
-        )]
-        let mut debouncer = match new_debouncer(
-            Duration::from_millis(DEBOUNCE_MS),
-            DebouncerSink(events_tx.clone()),
-        ) {
+        let (mut fs_watch, fs_pending) = match fs_ears(events_tx.clone()) {
             Ok(d) => d,
             Err(e) => {
-                tracing::error!("debouncer init failed: {e}");
+                tracing::error!("file watcher init failed: {e}");
                 return None;
             }
         };
@@ -1316,12 +1334,12 @@ fn watch_loop(
             ))
         });
         if let Some(ear) = profiles_ear.as_mut() {
-            ear.arm(&mut debouncer);
+            ear.arm(&mut fs_watch);
         }
         // 会话注解那份文件（改过的名）：与配置文件同一种耳朵（盯它所在的目录）。
         let mut notes_ear = notes_path.clone().and_then(ProfilesEar::new);
         if let Some(ear) = notes_ear.as_mut() {
-            ear.arm(&mut debouncer);
+            ear.arm(&mut fs_watch);
         }
         // 隐藏要的另两份（这台偏好 · 会话血缘）：动了 ⇒ 活会话重判隐藏（同一种耳朵）。
         let mut hide_ears: Vec<ProfilesEar> = crate::history::session_hidden::rule_files()
@@ -1329,18 +1347,18 @@ fn watch_loop(
             .filter_map(ProfilesEar::new)
             .collect();
         for ear in &mut hide_ears {
-            ear.arm(&mut debouncer);
+            ear.arm(&mut fs_watch);
         }
         // 会话输入队那一层：动了 ⇒ 叫一声投递那一侧。
         let mut queue_ear = QueueEar::new();
         if let Some(ear) = queue_ear.as_mut() {
-            ear.arm(&mut debouncer);
+            ear.arm(&mut fs_watch);
         }
-        // 「开着即活」那几家：记录根挂上 debouncer（读行；根还不在 ⇒ 等写者那道耳朵报它出现时再挂）＋ 写者那道耳朵。
+        // 「开着即活」那几家：记录根挂上 fs_watch（读行；根还不在 ⇒ 等写者那道耳朵报它出现时再挂）＋ 写者那道耳朵。
         let mut writer_watch: Vec<(PathBuf, bool)> =
             writer_roots.iter().map(|r| (r.clone(), false)).collect();
         for (root, watched) in &mut writer_watch {
-            rewatch_dir(&mut debouncer, root, watched, RecursiveMode::Recursive);
+            rewatch_dir(&mut fs_watch, root, watched, RecursiveMode::Recursive);
         }
         let writer_ears: Vec<crate::platform::writers::OpenEar> = writer_roots
             .iter()
@@ -1352,14 +1370,14 @@ fn watch_loop(
             })
             .collect();
         arm_ears(
-            &mut debouncer,
+            &mut fs_watch,
             &mut ears,
             &sock_dir,
             &mut sock_dir_watched,
             accounts_ear.as_mut(),
         );
         Some((
-            debouncer,
+            (fs_watch, fs_pending),
             ears,
             sock_dir_watched,
             accounts_ear,
@@ -1369,7 +1387,7 @@ fn watch_loop(
     });
     // --- Phase 2: live watch. ---
     let Some((
-        mut debouncer,
+        (mut fs_watch, fs_pending),
         mut ears,
         mut sock_dir_watched,
         mut accounts_ear,
@@ -1395,7 +1413,7 @@ fn watch_loop(
 
     // 本循环没有节拍。期限两个，取早的那个（`runs::next_event`）：会话账本里最早那个「久未动静」的时刻 ·
     // 主运行心跳的到点时刻（`beat_due`）；到点回循环头判一次、重算期限；两个都没有 ⇒ 无超时等。
-    // 事件源：notify（经 DebouncerSink）· pidfd 看守线程 · 一次性 tmux 探测线程 · 外部戳。
+    // 事件源：notify（经 FsSink）· pidfd 看守线程 · 一次性 tmux 探测线程 · 外部戳。
     // 加事件源只往 `WatchEvent` 加变体 ＋ 加发送方，不另挂独立定时器。
     // 所有发送端都掉了就结束。
     loop {
@@ -1419,19 +1437,19 @@ fn watch_loop(
                 Err(_) => break,
             };
         match event {
-            WatchEvent::Notify(Ok(events)) => {
+            WatchEvent::Notify => {
+                // 名单整份取走、照此刻的盘读到尾；读的时候再来的另叫醒（[`FsPending`]）。
+                let events = fs_pending.take();
                 // 账号目录自己出现 / 消失 ⇒ 先重挂；它也算「清单可能变了」。
                 let mut dir_moved = false;
                 if let Some(ear) = accounts_ear.as_mut() {
                     for ev in &events {
-                        dir_moved |= ear.on_path(&mut debouncer, &ev.path);
+                        dir_moved |= ear.on_path(&mut fs_watch, ev);
                     }
                 }
                 // 一批里 manifest 动了几次都只报一帧（批内合并；下一批再动再报）。
-                if manifest_touched(
-                    events.iter().map(|ev| ev.path.as_path()),
-                    &accounts_manifest,
-                ) || dir_moved
+                if manifest_touched(events.iter().map(PathBuf::as_path), &accounts_manifest)
+                    || dir_moved
                 {
                     sink.send(Frame::changed(Changed::Accounts {}));
                     // 账号清单动了 ⇒ 需登录的那几个号可能变了。
@@ -1439,7 +1457,7 @@ fn watch_loop(
                 }
                 // 哪个号记「MCP 要登录」的那份文件翻了（那一家连它碰到要登录 · 登完自己删掉那一条）⇒ 需手动清单可能变了。
                 if needs_login_touched(
-                    events.iter().map(|ev| ev.path.as_path()),
+                    events.iter().map(PathBuf::as_path),
                     accounts_manifest.parent(),
                     &agent_home,
                     &crate::agents::mcp_needs_login_files(),
@@ -1448,21 +1466,20 @@ fn watch_loop(
                 }
                 // 配置文件动了 ⇒ 一帧 `changed {profiles}`（批内合并）。
                 if let Some(ear) = profiles_ear.as_mut() {
-                    if ear.touched(&mut debouncer, events.iter().map(|ev| ev.path.as_path())) {
+                    if ear.touched(&mut fs_watch, events.iter().map(PathBuf::as_path)) {
                         sink.send(Frame::changed(Changed::Profiles {}));
                     }
                 }
                 // 注解动了 ⇒ 重读，改了名的活会话各一帧 `session_status`、隐不隐藏变了的各一帧 `changed {session_hidden}`。
                 if let Some(ear) = notes_ear.as_mut() {
-                    if ear.touched(&mut debouncer, events.iter().map(|ev| ev.path.as_path())) {
+                    if ear.touched(&mut fs_watch, events.iter().map(PathBuf::as_path)) {
                         state.reload_annotations(annotations_table(), &mut sink);
                     }
                 }
                 // 这台偏好 · 会话血缘动了 ⇒ 活会话重判隐藏（批内合并）。
                 let mut rules_moved = false;
                 for ear in &mut hide_ears {
-                    rules_moved |=
-                        ear.touched(&mut debouncer, events.iter().map(|ev| ev.path.as_path()));
+                    rules_moved |= ear.touched(&mut fs_watch, events.iter().map(PathBuf::as_path));
                 }
                 if rules_moved {
                     state.rejudge_hidden(&mut sink);
@@ -1471,8 +1488,8 @@ fn watch_loop(
                 if let Some(ear) = queue_ear.as_mut() {
                     let own = state.launch.as_ref().map(|(_, own)| own.clone());
                     if let Some(sids) = ear.touched(
-                        &mut debouncer,
-                        events.iter().map(|ev| ev.path.as_path()),
+                        &mut fs_watch,
+                        events.iter().map(PathBuf::as_path),
                         own.as_ref(),
                     ) {
                         crate::history::session_queue::moved();
@@ -1489,7 +1506,7 @@ fn watch_loop(
                     }
                 }
                 // 任务目录里的动静 ⇒ 每个动过的会话一帧 `changed {tasks, key: sid}`（批内合并）。
-                for sid in tasks_touched(events.iter().map(|ev| ev.path.as_path()), &ears.tasks) {
+                for sid in tasks_touched(events.iter().map(PathBuf::as_path), &ears.tasks) {
                     // 体按各连接看的那一台的时区现写。
                     sink.send_each(|tz| {
                         let c = crate::wire::topic_hook::body(Topic::Tasks, Some(&sid), tz);
@@ -1501,16 +1518,16 @@ fn watch_loop(
                 }
                 // 记录文件的表先跟上这一批（同一批里 pidfile 先到、记录文件后到时，宣告也查得到它）。
                 for ev in &events {
-                    note_jsonl(&mut state, &ev.path);
+                    note_jsonl(&mut state, ev);
                 }
                 // 子运行记录动过的会话（批内合并：一批里同一个会话的运行表只发一帧）。
                 let mut runs_touched = std::collections::BTreeSet::new();
                 for ev in events {
-                    let p = ev.path.as_path();
+                    let p = ev.as_path();
                     // ★★ `P0b-Y2`：**`sessions/` 换了 inode 或刚出现 ⇒ 重挂 + 重扫**；`projects/` 同族；
                     // `agent_home` 自己刚出现 ⇒ 挂上它、再挂它下面那两个。
                     // 触发面刻意宽：这三个路径上任何动静都来这儿判一次（判的是盘上此刻的样子）。
-                    ears.on_path(&mut debouncer, p, &mut state, &mut sink);
+                    ears.on_path(&mut fs_watch, p, &mut state, &mut sink);
                     // P3：**tmux socket 复活**——我们监视的正是它所在目录，socket 被
                     // unlink+create 时（P0 实测 inode 会变）这里就会命中。
                     // 只当"该重新探一次"的触发器：立刻起一次探测（若无在途），
@@ -1528,7 +1545,7 @@ fn watch_loop(
                     //   `sock_dir_watched` 仍是 true ⇒ 那个条件会把重挂整个短路掉，
                     //   于是新 inode 永远没人听（实测：新起的 server 一帧都收不到）。
                     if p == sock_dir.as_path() || p.parent() == Some(sock_dir.as_path()) {
-                        watch_sock_dir_if_present(&mut debouncer, &sock_dir, &mut sock_dir_watched);
+                        watch_sock_dir_if_present(&mut fs_watch, &sock_dir, &mut sock_dir_watched);
                     }
                     if watched_socket.as_deref() == Some(p) || in_sock_dir {
                         start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
@@ -1594,11 +1611,11 @@ fn watch_loop(
                     }
                 }
             }
-            WatchEvent::Notify(Err(errs)) => tracing::warn!("debouncer failed: {errs:?}"),
+            WatchEvent::NotifyFailed(e) => tracing::warn!("file watcher failed: {e:?}"),
             // 「开着即活」那几家：根刚出现 ⇒ 挂上读行那道耳朵；这一批候选扫一趟进程表对上账。
             WatchEvent::Writers(batch) => {
                 for (root, watched) in writer_watch.iter_mut().filter(|(_, w)| !*w) {
-                    rewatch_dir(&mut debouncer, root, watched, RecursiveMode::Recursive);
+                    rewatch_dir(&mut fs_watch, root, watched, RecursiveMode::Recursive);
                 }
                 on_writers(batch, &mut state, &mut sink);
             }
@@ -1657,7 +1674,7 @@ fn watch_loop(
                 if let Some(sock) = probe.socket_path.as_ref() {
                     if watched_socket.as_ref() != Some(sock) {
                         if let Some(dir) = sock.parent() {
-                            match debouncer.watcher().watch(dir, RecursiveMode::NonRecursive) {
+                            match fs_watch.watch(dir, RecursiveMode::NonRecursive) {
                                 Ok(()) => {
                                     tracing::info!("已监视 tmux socket 目录 {}", dir.display());
                                     watched_socket = Some(sock.clone());
@@ -1723,23 +1740,23 @@ fn watch_loop(
                     // 整机重对表：记录文件的表作废，下一次宣告整棵走一遍重建（事件可能丢过）。
                     state.sid_files = None;
                     arm_ears(
-                        &mut debouncer,
+                        &mut fs_watch,
                         &mut ears,
                         &sock_dir,
                         &mut sock_dir_watched,
                         accounts_ear.as_mut(),
                     );
                     if let Some(ear) = profiles_ear.as_mut() {
-                        ear.arm(&mut debouncer);
+                        ear.arm(&mut fs_watch);
                     }
                     if let Some(ear) = notes_ear.as_mut() {
-                        ear.arm(&mut debouncer);
+                        ear.arm(&mut fs_watch);
                     }
                     for ear in &mut hide_ears {
-                        ear.arm(&mut debouncer);
+                        ear.arm(&mut fs_watch);
                     }
                     if let Some(ear) = queue_ear.as_mut() {
-                        ear.arm(&mut debouncer);
+                        ear.arm(&mut fs_watch);
                     }
                     state.reload_annotations(annotations_table(), &mut sink);
                     sink.send(Frame::changed(Changed::Accounts {}));
@@ -3123,7 +3140,7 @@ fn note_name(
 /// 当一行交出去：写端写完 JSON、没来得及写 `\n` 就被杀，这一行从此不会再有文件事件。活着的写端照旧等 `\n`。
 /// 这一行**不推进游标、不占计数器**：同一文件日后被续写时，残行与新字节拼成的那一行仍是这个号（冷读的行号空间里它也是
 /// 这个号），前端按 seq 去重吸收；冷读（`lines::counts` 口径）不数这截残行 —— 会话已死、没人再写，差的只是它自己。
-/// 退休之前先补读还有一层用处：pidfd 比 debounce 快，死前最后几行的文件事件可能在退休之后才到、被判活过滤挡掉。
+/// 退休之前先补读还有一层用处：pidfd 可能比文件事件先到，死前最后几行的文件事件可能在退休之后才到、被判活过滤挡掉。
 /// 回补读出几行（`resync` 应答的 `caught_up`；不数收尾残行 —— `resync` 那一路写端活着、不收尾）。
 fn catch_up_session(
     sid: &str,
@@ -3219,7 +3236,7 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
 /// **但「它是否也是 `#60` 本身的根因」要等台架跑出第一份可信读数才能说** —— 见 `P0b §1c`：
 /// 不拿到可信读数不写根因。
 fn rewatch_sessions(
-    debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+    fs_watch: &mut impl notify::Watcher,
     sessions: &Path,
     watched: &mut bool,
     state: &mut ReaderState,
@@ -3232,7 +3249,7 @@ fn rewatch_sessions(
                 "sessions 目录消失了 {} —— 解除记账，等它回来再挂",
                 sessions.display()
             );
-            let _ = debouncer.watcher().unwatch(sessions);
+            let _ = fs_watch.unwatch(sessions);
             *watched = false;
         }
         return;
@@ -3240,11 +3257,8 @@ fn rewatch_sessions(
     // 目录在。**无条件先 unwatch 再 watch**：我们分辨不出「同一个 inode 的普通事件」与
     // 「换了 inode」——而重挂同一个 inode 是无害的（notify 幂等），漏挂新 inode 是致命的。
     // ⇒ 宁可多挂一次。`unwatch` 在没挂过时会报错，忽略它。
-    let _ = debouncer.watcher().unwatch(sessions);
-    match debouncer
-        .watcher()
-        .watch(sessions, RecursiveMode::NonRecursive)
-    {
+    let _ = fs_watch.unwatch(sessions);
+    match fs_watch.watch(sessions, RecursiveMode::NonRecursive) {
         Ok(()) => {
             if !*watched {
                 tracing::info!("sessions 目录已（重新）挂上 watch: {}", sessions.display());
@@ -3272,7 +3286,7 @@ fn rewatch_sessions(
 /// `sessionId`, cache PID→sid, emit [`Frame::SessionAdded`].
 ///
 /// Idempotent: if we already cached the same sid for this path, skip the emit
-/// so a debounced modify event does not re-announce an existing session.
+/// so a modify event does not re-announce an existing session.
 /// 回真 = 这一次真往 tmux 里写了身份标签（首次宣告或对账纠正）。
 fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> bool {
     let key = path_key(path);
@@ -3305,7 +3319,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     }
     // 后台会话（适配层判，`ProcFact::background`）照宣告，帧带 `background: true`；成不成 tab 由客户端按这一格定。
     let background = fact.background;
-    // Idempotent: a debounced modify of an already-tracked session re-announces
+    // Idempotent: a modify of an already-tracked session re-announces
     // nothing —— Batch9-F27：但「在干什么 / 在等什么」变了要发 session_status 帧
     // （远端红绿灯的唯一数据源；CC 仅在状态转换时重写 pidfile，天然稀疏）。
     if state.sessions.get(&key).map(|e| e.sid.as_str()) == Some(sid.as_str()) {
