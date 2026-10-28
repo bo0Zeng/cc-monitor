@@ -1633,9 +1633,8 @@
     "beSessionOpen.look.notInTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "未接回 · 会话不在 tmux 里",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "未接回 · 会话不在终端里",
+      "args": []
     },
     "beSessionOpen.look.noSession": {
       "kind": "error",
@@ -2141,9 +2140,8 @@
     "sessionState.liveResumable.tooltip": {
       "kind": "body",
       "role": "悬停",
-      "zh": "不在 tmux 会话里运行 · 程序退出后只能恢复",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "程序退出后只能恢复",
+      "args": []
     },
     "sessionState.gone.name": {
       "kind": "body",
@@ -23014,9 +23012,8 @@
     "terminal.tag.tmux": {
       "kind": "body",
       "role": "片段",
-      "zh": "tmux 会话 {name}",
-      "args": ["name"],
-      "limited": ["tmux"]
+      "zh": "终端 {name}",
+      "args": ["name"]
     },
     "terminal.tag.windows": {
       "kind": "body",
@@ -25765,9 +25762,8 @@
     "tabSessionActions.kill.cuts": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} tmux 会话 {name} 里的 Claude · 当前轮次",
-      "args": ["machine", "name"],
-      "limited": ["tmux"]
+      "zh": "{machine} 终端 {name} 里的 Claude · 当前轮次",
+      "args": ["machine", "name"]
     },
     "tabSessionActions.kill.keeps": {
       "kind": "body",
@@ -25802,9 +25798,8 @@
     "tabMenu.attach.dupesWhy": {
       "kind": "body",
       "role": "说明",
-      "zh": "tmux 会话 ×{n} · 打开「{name}」",
-      "args": ["n", "name"],
-      "limited": ["tmux"]
+      "zh": "终端 ×{n} · 打开「{name}」",
+      "args": ["n", "name"]
     },
     "tabMenu.inPlace.label": {
       "kind": "action",
@@ -25841,9 +25836,8 @@
     "tabMenu.probe.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 会话未查到",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "所在终端未查到",
+      "args": []
     },
     "sessionState.kill.done": {
       "kind": "body",
