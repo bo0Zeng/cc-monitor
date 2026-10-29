@@ -277,6 +277,7 @@ import type { QueueList } from "./QueueList";
 import type { QueuePut } from "./QueuePut";
 import type { QuotaProbeReq } from "./QuotaProbeReq";
 import type { QuotaRead } from "./QuotaRead";
+import type { QuotaReadReq } from "./QuotaReadReq";
 import type { ReadChunkReply } from "./ReadChunkReply";
 import type { ReadChunkReq } from "./ReadChunkReq";
 import type { ReadTextReply } from "./ReadTextReply";
@@ -544,7 +545,7 @@ export interface TypedCommands {
   "profiles-write": { req: ProfilesWriteReq; reply: ProfilesWriteDone; code: "bad_args" | "refused" | "stale" };
   "pubkey-push": { req: PubkeyPushReq; reply: PubkeyPushed; code: "bad_args" | "bad_jump" | "refused" | "failed" };
   "quota-probe": { req: QuotaProbeReq; reply: Probed; code: "bad_args" | "child_timed_out" | "failed" | "io_failed" | "not_found" | "unsupported" };
-  "quota-read": { req: NoArgs; reply: QuotaRead; code: "bad_args" };
+  "quota-read": { req: QuotaReadReq; reply: QuotaRead; code: "bad_args" };
   "remote-probe": { req: ProbeReq; reply: null; code: "bad_args" | "bad_jump" | "failed" };
   "resync": { req: ResyncReq; reply: Resynced; code: "bad_args" };
   "rotation-facts": { req: RotationFactsReq; reply: RotationFactsReply; code: "bad_args" };
