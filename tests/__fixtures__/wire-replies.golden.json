@@ -2064,7 +2064,7 @@
                   ],
                   "run": {
                     "id": "id-x",
-                    "kind": "kind-x"
+                    "text": "text-x"
                   },
                   "sinceMs": 7,
                   "tool": "tool-x",
