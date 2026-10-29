@@ -102,4 +102,20 @@ class SaidEditTest {
             assertEquals(first["rewind"], again["rewind"])
             assertNull("回执到了 ⇒ 编辑草稿删掉", EditDrafts.decode(cache.drafts[EditDrafts.key("s1")]).firstOrNull { it.uuid == "u2" })
         }
+
+    @Test
+    fun `退法抽屉的按钮：在问 ⇒ 骨架 ＋［取消］＋ 灰着的主按钮；有项 ⇒［取消］＋ 主按钮；都不能选 ⇒［关闭］；问不到 ⇒［重试］＋［取消］`() {
+        val on = RewindChoiceRow(RewindHow.CONVERSATION, "a", true, true)
+        val off = RewindChoiceRow(RewindHow.CODE_AND_CONVERSATION, "b", false, false, "主 agent 正在等批准")
+        val asking = sheetFace(RewindPick.Asking)
+        assertEquals(true, asking.skeleton)
+        assertEquals(listOf(SheetAct.CANCEL, SheetAct.CONFIRM), asking.acts)
+        assertEquals(false, asking.confirm)
+        val got = sheetFace(RewindPick.Got(RewindOptions(listOf(on, off), emptyList())))
+        assertEquals(listOf(SheetAct.CANCEL, SheetAct.CONFIRM), got.acts)
+        assertEquals(true, got.confirm)
+        assertEquals(false, got.skeleton)
+        assertEquals(listOf(SheetAct.CLOSE), sheetFace(RewindPick.Got(RewindOptions(listOf(off), emptyList(), "先答完批准再改这一句"))).acts)
+        assertEquals(listOf(SheetAct.RETRY, SheetAct.CANCEL), sheetFace(RewindPick.Failed("devbox 无应答")).acts)
+    }
 }
