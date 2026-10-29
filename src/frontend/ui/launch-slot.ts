@@ -51,10 +51,11 @@ export interface SlotHost {
   viewTerminal(): void;
 }
 
-/** 没报到时那台说的：那一句（第一行标题）· 起在的那个终端还在 ⇒ 它的句柄。 */
+/** 没报到时那台说的：那一句（第一行标题）· 起在的那个终端还在 ⇒ 它的句柄 · 问不到那台（中途断了，说不清起没起来）。 */
 interface Missed {
   said: string;
   terminal: string | null;
+  unknown: boolean;
 }
 
 interface Slot {
@@ -65,6 +66,10 @@ interface Slot {
 }
 
 const projOf = (cwd: string): string => cwd.split("/").filter(Boolean).pop() ?? cwd;
+
+/** 那一行 · 那一页的标题：正在启动 · 未报到 · 问不到那台 ⇒ 状态不明。 */
+const titleOf = (sl: Slot): string =>
+  sl.missed === null ? copyText("launch.placeholder.title") : sl.missed.unknown ? copyText("launch.slot.unknownTitle") : copyText("launch.slot.missedTitle");
 
 export class LaunchSlots {
   private readonly slots = new Map<number, Slot>();
@@ -102,11 +107,27 @@ export class LaunchSlots {
     this.host.tail.appendChild(row);
     this.paintRow(slot);
     this.show(id);
+    this.ask(slot);
+    return id;
+  }
+
+  /** 问那台等这一条报到（开出来那一下 ·［再查一次］同一问）。 */
+  private ask(sl: Slot): void {
+    const { id, spec } = sl;
     void this.acts.arrive(spec.origin, spec.arrival, SLOT_MISS_MS).then((end) => {
       if (end.kind === "arrived") this.arrived(id, end.sid);
-      else this.miss(id, end.kind === "missed" ? end : { said: end.said, terminal: null });
+      else this.miss(id, end.kind === "missed" ? { ...end, unknown: false } : { said: end.said, terminal: null, unknown: true });
     });
-    return id;
+  }
+
+  /** ［再查一次］：回到「正在启动」，同一问再等一回。 */
+  private again(id: number): void {
+    const sl = this.slots.get(id);
+    if (!sl || sl.missed === null) return;
+    sl.missed = null;
+    this.paintRow(sl);
+    if (this.showing === id) this.paintPanel(sl);
+    this.ask(sl);
   }
 
   /** 一个会话的标签页建好了：正等着切过去的就是它 ⇒ 切过去。 */
@@ -185,7 +206,7 @@ export class LaunchSlots {
 
   private paintRow(sl: Slot): void {
     const { origin, cwd } = sl.spec;
-    const dot = sl.missed ? statusDot("failed", copyText("launch.slot.missedTitle"), "compact") : spinner();
+    const dot = sl.missed ? statusDot("failed", titleOf(sl), "compact") : spinner();
     dot.classList.add("tab-dot");
     const title = document.createElement("span");
     title.className = "tab-title one-line";
@@ -194,7 +215,7 @@ export class LaunchSlots {
     proj.textContent = projOf(cwd);
     const label = document.createElement("span");
     label.className = "tab-label";
-    label.textContent = sl.missed ? copyText("launch.slot.missedTitle") : copyText("launch.placeholder.title");
+    label.textContent = titleOf(sl);
     title.append(proj, label);
     const parts: HTMLElement[] = [dot];
     if (isRemoteOrigin(origin)) {
@@ -204,7 +225,7 @@ export class LaunchSlots {
     }
     parts.push(title);
     sl.row.replaceChildren(...parts);
-    sl.row.dataset.state = sl.missed ? "missed" : "starting";
+    sl.row.dataset.state = sl.missed === null ? "starting" : sl.missed.unknown ? "unknown" : "missed";
   }
 
   private paintPanel(sl: Slot): void {
@@ -213,10 +234,10 @@ export class LaunchSlots {
 
     const head = document.createElement("div");
     head.className = s.slotHead;
-    const dot = sl.missed ? statusDot("failed", copyText("launch.slot.missedTitle"), "compact") : spinner();
+    const dot = sl.missed ? statusDot("failed", titleOf(sl), "compact") : spinner();
     const title = document.createElement("span");
     title.className = s.slotTitle;
-    title.textContent = sl.missed ? copyText("launch.slot.missedTitle") : copyText("launch.placeholder.title");
+    title.textContent = titleOf(sl);
     const where = document.createElement("span");
     where.className = s.slotWhere;
     where.textContent = `${machine}${copyText("kit.text.sep")}${cwd}`;
@@ -250,7 +271,9 @@ export class LaunchSlots {
       body.appendChild(out);
     }
 
-    const acts: HTMLElement[] = [];
+    const again = button({ label: copyText("launch.slot.again"), size: "compact", onClick: () => this.again(sl.id) });
+    again.dataset.act = "again";
+    const acts: HTMLElement[] = [again];
     if (tmuxName !== null && m.terminal !== null) {
       const shot = button({ label: copyText("launch.slot.screen"), size: "compact", icon: "search", onClick: () => this.host.viewTerminal() });
       shot.dataset.act = "screen";

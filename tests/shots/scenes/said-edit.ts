@@ -100,7 +100,7 @@ export const SAID_EDIT_SCENES: Scene[] = [
     world(
       () => IDLE,
       () => {
-        throw new Refuse("offline", copyText("sessionState.unseen.tooltip"));
+        throw new Refuse("offline", copyText("link.machine.offline", { machine: "gpu-01" }));
       },
     ),
   ),
