@@ -56,7 +56,11 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         is_error: false,
     };
     let image = || Block::Image {
-        source: serde_json::json!({}),
+        media_type: "image/png".into(),
+        bytes: 1,
+        at: 0,
+        n: 0,
+        data: String::new(),
     };
     let quiet = |r: Body| match r {
         Body::Reply {
