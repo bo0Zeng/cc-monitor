@@ -947,8 +947,14 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     item: NONE,
     // 「对象」那一项（只收标识：会话写机器 ＋ 短 sid，不写标题）；界面不写详情。
     target: NONE,
-    // 「一句 ＋ 原话」（`said` 模块，后端与共享契约 crate 同一份）：界面只收后端写好的句子与详情，TS 侧没有孪生。
+    // 「码 ＋ 一句 ＋ 原话 ＋ data」（`said` 模块，后端与共享契约 crate 同一份）：界面只收后端写好的句子与详情，TS 侧没有孪生。
+    FALLBACK_CODE: NONE,
+    and_raw: NONE,
+    code_or_fallback: NONE,
+    coded: NONE,
     logged: NONE,
+    retold: NONE,
+    with_data: NONE,
     with_raw: NONE,
     wrap: NONE,
     many: "J26",
