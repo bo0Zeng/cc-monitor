@@ -112,3 +112,44 @@ async fn close_write_is_done_when_the_reader_says_the_stream_ended() {
         .await
         .expect("说了读到底还没完成");
 }
+
+/// 照类型问（`ask::<C>`）：名字取 `C::NAME`、入参照类型写进信封、回包照 `C::Reply` 解；回包对不上类型 ⇒ 里层那一格是解码器那一句，不当成没成。
+#[tokio::test(start_paused = true)]
+async fn ask_sends_the_calls_name_and_decodes_its_reply_type() {
+    use cmd_wire::files::{FilesPathReply, HomeReq, WirePath};
+    let (mine, theirs) = tokio::io::duplex(64 * 1024);
+    let client = park(mine).into_client(hello());
+    let mut peer = tokio::io::BufReader::new(theirs);
+    let deadline = || tokio::time::Instant::now() + Duration::from_secs(5);
+    let want = FilesPathReply {
+        path: WirePath(b"/home/u".to_vec()),
+    };
+    for (data, decodes) in [
+        (serde_json::to_value(&want).unwrap(), true),
+        (serde_json::json!({"path": 7}), false),
+    ] {
+        let c = client.clone();
+        let asked =
+            tokio::spawn(async move { c.ask(Some("devbox"), &HomeReq {}, None, deadline()).await });
+        let mut line = String::new();
+        peer.read_line(&mut line).await.unwrap();
+        let v: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v["cmd"], "files-home");
+        assert_eq!(v["machine"], "devbox");
+        assert_eq!(v["args"], serde_json::json!({}));
+        assert!(client.route_reply(
+            v["id"].as_str().unwrap(),
+            true,
+            None,
+            None,
+            None,
+            Some(data)
+        ));
+        let got = asked.await.unwrap().expect("这一问成了");
+        match (got, decodes) {
+            (Ok(r), true) => assert_eq!(r, want),
+            (Err(_), false) => {}
+            (other, _) => panic!("解码结局不对：{other:?}"),
+        }
+    }
+}

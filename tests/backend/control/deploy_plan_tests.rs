@@ -312,7 +312,7 @@ async fn stale_deploy_leftovers_in_staging_are_handed_over_and_nothing_else() {
     );
 }
 
-/// 键集合 == 金样 `tests/__fixtures__/deploy-install.golden.json` 的键（monitor 的解码器读同一份金样）：装 · 卸的应答各一份。
+/// 键集合 == 金样 `tests/__fixtures__/deploy-install.golden.json` 的键（两端同一份类型 `cmd_wire::deploy`，它照同一份金样解再写回）：装 · 卸的应答各一份。
 /// 应答那一句是 `deploy` crate 写的那一句；`build` 是落点上现在那一份（`keep` ⇒ 那台的）。
 #[test]
 fn the_install_reply_has_exactly_the_golden_keys() {

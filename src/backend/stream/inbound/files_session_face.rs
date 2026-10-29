@@ -29,9 +29,7 @@ codes! {
 pub(crate) struct FilesDeleteSession;
 
 impl Command for FilesDeleteSession {
-    const NAME: &'static str = "files-delete-session";
-    type Req = wire::FilesDeleteSessionReq;
-    type Reply = wire::FilesPathReply;
+    typed::by_call!(wire::FilesDeleteSessionReq);
     type Err = FilesDeleteSessionErr;
 }
 

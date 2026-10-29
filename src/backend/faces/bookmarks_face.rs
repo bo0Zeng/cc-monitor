@@ -19,10 +19,8 @@ codes! {
 pub(crate) struct BookmarksReadCmd;
 
 impl Command for BookmarksReadCmd {
-    const NAME: &'static str = "bookmarks-read";
+    typed::by_call!(BookmarksReadReq);
     const TAKES_INPUT: bool = false;
-    type Req = BookmarksReadReq;
-    type Reply = Bookmarks;
     type Err = BookmarksReadErr;
 }
 
@@ -55,9 +53,7 @@ codes! {
 pub(crate) struct BookmarksEditCmd;
 
 impl Command for BookmarksEditCmd {
-    const NAME: &'static str = "bookmarks-edit";
-    type Req = BookmarksEditReq;
-    type Reply = Bookmarks;
+    typed::by_call!(BookmarksEditReq);
     type Err = BookmarksEditErr;
 }
 

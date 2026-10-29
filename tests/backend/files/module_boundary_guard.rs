@@ -102,7 +102,7 @@ fn paths_from(prod: &str, ident: &str) -> BTreeSet<String> {
 }
 
 /// `at` 处那个词是不是一条从这个 crate 出发的路径的头：前面是 `::` ⇒ 它是别的路径里的一段，
-/// 只有那条路径从 `super` / `self` 起才算（`cmd_wire::files::Call` 是线上类型那个 crate 的，不是本模块）。
+/// 只有那条路径从 `super` / `self` 起才算（`cmd_wire::files::StatReq` 是线上类型那个 crate 的，不是本模块）。
 fn starts_here(prod: &str, at: usize) -> bool {
     let b = prod.as_bytes();
     let mut k = at;
@@ -816,7 +816,7 @@ fn the_edge_extractors_see_what_they_should_and_nothing_else() {
     );
     // 内向按路径认：别的 crate 底下的同名段（线上类型 `cmd_wire::files::…`）不是这个模块；经 `super` 走回来的是。
     let src =
-        "cmd_wire::files::Call; use cmd_wire::files::{StatReq}; super::super::files::answer();";
+        "cmd_wire::files::LsReq; use cmd_wire::files::{StatReq}; super::super::files::answer();";
     assert_eq!(inward_edges(src), want(&["files::answer"]));
     // 注释：抽取器自己不剥，判据先过 `production_code`。
     assert_eq!(

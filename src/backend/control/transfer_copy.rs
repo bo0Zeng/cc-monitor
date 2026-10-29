@@ -76,9 +76,7 @@ codes! {
 pub(crate) struct TransferCopy;
 
 impl typed::Command for TransferCopy {
-    const NAME: &'static str = "transfer-copy";
-    type Req = TransferCopyReq;
-    type Reply = BatchReply;
+    typed::by_call!(TransferCopyReq);
     type Err = CopyErr;
 }
 
@@ -391,7 +389,7 @@ pub(crate) struct Wired {
 }
 
 /// 问落点那台后端一条命令（经那条连接的 CLI 面；入参类型选中那条命令）。
-async fn ask_to<C: cwf::Call>(w: &Wired, req: &C) -> Result<C::Reply, Miss> {
+async fn ask_to<C: cmd_wire::Call>(w: &Wired, req: &C) -> Result<C::Reply, Miss> {
     crate::dial::remote_ask::ask_dialed(&w.to_dial, req, &w.tz, w.remote.as_ref())
         .await
         .map_err(|s| {

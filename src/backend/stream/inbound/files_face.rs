@@ -54,9 +54,7 @@ codes! {
 pub(crate) struct FilesLs;
 
 impl Command for FilesLs {
-    const NAME: &'static str = "files-ls";
-    type Req = wire::LsReq;
-    type Reply = wire::LsReply;
+    typed::by_call!(wire::LsReq);
     type Err = FilesLsErr;
 }
 
@@ -89,9 +87,7 @@ codes! {
 pub(crate) struct FilesStat;
 
 impl Command for FilesStat {
-    const NAME: &'static str = "files-stat";
-    type Req = wire::StatReq;
-    type Reply = wire::StatReply;
+    typed::by_call!(wire::StatReq);
     type Err = FilesStatErr;
 }
 
@@ -127,9 +123,7 @@ codes! {
 pub(crate) struct FilesFind;
 
 impl Command for FilesFind {
-    const NAME: &'static str = "files-find";
-    type Req = wire::FindReq;
-    type Reply = wire::FindReply;
+    typed::by_call!(wire::FindReq);
     type Err = FilesFindErr;
 }
 
@@ -159,10 +153,8 @@ codes! {
 pub(crate) struct FilesIndexStatus;
 
 impl Command for FilesIndexStatus {
-    const NAME: &'static str = "files-index-status";
+    typed::by_call!(wire::IndexStatusReq);
     const TAKES_INPUT: bool = false;
-    type Req = wire::IndexStatusReq;
-    type Reply = wire::IndexStatusReply;
     type Err = FilesIndexStatusErr;
 }
 
@@ -201,9 +193,7 @@ codes! {
 pub(crate) struct FilesIndexRebuild;
 
 impl Command for FilesIndexRebuild {
-    const NAME: &'static str = "files-index-rebuild";
-    type Req = wire::RebuildReq;
-    type Reply = wire::RebuildReply;
+    typed::by_call!(wire::RebuildReq);
     type Err = FilesIndexRebuildErr;
 }
 
@@ -236,9 +226,7 @@ codes! {
 pub(crate) struct FilesBrowse;
 
 impl Command for FilesBrowse {
-    const NAME: &'static str = "files-browse";
-    type Req = wire::BrowseReq;
-    type Reply = wire::BrowseReply;
+    typed::by_call!(wire::BrowseReq);
     type Err = FilesBrowseErr;
 }
 
@@ -279,9 +267,7 @@ codes! {
 pub(crate) struct FilesReadText;
 
 impl Command for FilesReadText {
-    const NAME: &'static str = "files-read-text";
-    type Req = wire::ReadTextReq;
-    type Reply = wire::ReadTextReply;
+    typed::by_call!(wire::ReadTextReq);
     type Err = FilesReadTextErr;
 }
 
@@ -317,9 +303,7 @@ codes! {
 pub(crate) struct FilesReadChunk;
 
 impl Command for FilesReadChunk {
-    const NAME: &'static str = "files-read-chunk";
-    type Req = wire::ReadChunkReq;
-    type Reply = wire::ReadChunkReply;
+    typed::by_call!(wire::ReadChunkReq);
     type Err = FilesReadChunkErr;
 }
 
@@ -354,9 +338,7 @@ codes! {
 pub(crate) struct FilesSize;
 
 impl Command for FilesSize {
-    const NAME: &'static str = "files-size";
-    type Req = wire::SizeReq;
-    type Reply = wire::SizeReply;
+    typed::by_call!(wire::SizeReq);
     type Err = FilesSizeErr;
 }
 
@@ -388,10 +370,8 @@ codes! {
 pub(crate) struct FilesHome;
 
 impl Command for FilesHome {
-    const NAME: &'static str = "files-home";
+    typed::by_call!(wire::HomeReq);
     const TAKES_INPUT: bool = false;
-    type Req = wire::HomeReq;
-    type Reply = wire::FilesPathReply;
     type Err = FilesHomeErr;
 }
 
@@ -425,9 +405,7 @@ codes! {
 pub(crate) struct FilesGrep;
 
 impl Command for FilesGrep {
-    const NAME: &'static str = "files-grep";
-    type Req = wire::GrepReq;
-    type Reply = wire::GrepReply;
+    typed::by_call!(wire::GrepReq);
     type Err = FilesGrepErr;
 }
 

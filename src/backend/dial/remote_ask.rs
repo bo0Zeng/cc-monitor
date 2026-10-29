@@ -220,7 +220,7 @@ where
 
 /// 同 [`ask_json`]，那一台不按名字查可达表、直接给拨号请求（两台之间复制：请求里带着两台的拨号请求）；
 /// 命令由线上入参类型选（名字 · 回包类型都挂在它上面）。
-pub async fn ask_dialed<C: cmd_wire::files::Call>(
+pub async fn ask_dialed<C: cmd_wire::Call>(
     dial: &Value,
     req: &C,
     tz: &crate::Tz,

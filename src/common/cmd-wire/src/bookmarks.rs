@@ -85,16 +85,6 @@ pub struct Bookmarks {
     pub dirs: Vec<String>,
 }
 
-impl crate::files::Call for BookmarksReadReq {
-    const NAME: &'static str = "bookmarks-read";
-    type Reply = Bookmarks;
-}
-
-impl crate::files::Call for BookmarksEditReq {
-    const NAME: &'static str = "bookmarks-edit";
-    type Reply = Bookmarks;
-}
-
 #[cfg(test)]
 #[path = "../../../../tests/common/cmd-wire/bookmarks_tests.rs"]
 mod tests;

@@ -492,7 +492,7 @@ pub enum Cut {
 /// 这一件落到哪条命令上（那台说做不到它 ⇒ 这一件做不到）。
 fn command_of(a: Action) -> Option<&'static str> {
     match a {
-        Action::Chmod => Some(<cmd_wire::files::FilesChmodReq as cmd_wire::files::Call>::NAME),
+        Action::Chmod => Some(<cmd_wire::files::FilesChmodReq as cmd_wire::Call>::NAME),
         _ => None,
     }
 }

@@ -22,7 +22,7 @@ pub struct Over<'a> {
 
 impl chunk_core::Ask for Over<'_> {
     type Fail = super::source::Failed;
-    async fn ask<C: cmd_wire::files::Call + Sync>(&self, req: &C) -> Result<C::Reply, Self::Fail> {
+    async fn ask<C: cmd_wire::Call + Sync>(&self, req: &C) -> Result<C::Reply, Self::Fail> {
         super::source::ask_typed(self.line, self.origin, req, CHUNK_BUDGET).await
     }
 }
@@ -62,7 +62,7 @@ pub async fn upload_by_chunks(
                 ],
             ),
             origin,
-            <cmd_wire::files::FilesStageChunkReq as cmd_wire::files::Call>::NAME,
+            <cmd_wire::files::FilesStageChunkReq as cmd_wire::Call>::NAME,
             Some(&e.to_string()),
         )
     };

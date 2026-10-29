@@ -62,9 +62,9 @@ use cmd_wire::transfer::{
 };
 
 /// 开单：上传。
-pub const TRANSFER_UPLOAD: &str = "transfer-upload";
+pub const TRANSFER_UPLOAD: &str = <TransferUpload as typed::Command>::NAME;
 /// 开单：下载。
-pub const TRANSFER_DOWNLOAD: &str = "transfer-download";
+pub const TRANSFER_DOWNLOAD: &str = <TransferDownload as typed::Command>::NAME;
 /// 起跑。
 pub const TRANSFER_START: &str = <TransferStart as typed::Command>::NAME;
 /// 撤。
@@ -82,9 +82,7 @@ codes! {
 }
 
 impl typed::Command for TransferUpload {
-    const NAME: &'static str = "transfer-upload";
-    type Req = TransferUploadReq;
-    type Reply = TransferOpened;
+    typed::by_call!(TransferUploadReq);
     type Err = UploadErr;
 }
 
@@ -147,9 +145,7 @@ codes! {
 }
 
 impl typed::Command for TransferDownload {
-    const NAME: &'static str = "transfer-download";
-    type Req = TransferDownloadReq;
-    type Reply = TransferOpened;
+    typed::by_call!(TransferDownloadReq);
     type Err = DownloadErr;
 }
 
