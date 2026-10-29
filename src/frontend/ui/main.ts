@@ -70,7 +70,6 @@ import { restoreZoom, stepZoom } from "./zoom";
 import { mountTabBarFold, tabBarManuallyFolded, toggleTabBarFold } from "./tab-bar-fold";
 import { attachTooltip } from "./kit/tooltip";
 import { bindErrorToast } from "./backend-errors";
-import { bindRemoteHealthToast } from "./remote-health";
 // 顶栏远端文件入口：按远端主机数 0 / 1 / N 分支（`sftp-host-picker.ts`）。
 import { openSftpFromTopbar, toggleSftpFromTopbar } from "./sftp-host-picker";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
@@ -1046,10 +1045,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   //   与「独立窗口的订阅本身就是它的就绪点」同一个道理。
   onAccountsChanged();
 
-  // 后端 ERROR 级别 tracing → 右下角红色 toast
+  // 壳推来的出错（`monitor-error`，有哪几种见 `ui_error.rs::UiError`）→ 出错 toast
   bindErrorToast();
-  // 远端健康事件（拥塞丢行 / 版本不符）→ 右下角 info toast
-  bindRemoteHealthToast();
 
   // 先读记忆再建骨架：骨架（会话流里的 `live` 成品，在下面 `frontend-ready` 的就绪点才到）一建出来就可能经 switchTo 写回 localStorage，读晚了就把记忆覆写掉。
   // 启动 active = 上次所在 tab：此刻还没有骨架 ⇒ 挂 pending，等它的 `live` 到达时补切（本机 `onSessionStarted` ·

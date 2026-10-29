@@ -549,8 +549,7 @@ async fn local_changed_pushes_reach_the_ui_subscription() {
         );
     }
     let (tx, rx) = tokio::sync::mpsc::channel::<LocalItem>(16);
-    let health: crate::stream_source::HealthOut = std::sync::Arc::new(|_| Ok(()));
-    let consumer = tokio::spawn(crate::stream_source::consume(rx, replay.clone(), health));
+    let consumer = tokio::spawn(crate::stream_source::consume(rx, replay.clone()));
     for line in [
         r#"{"kind":"changed","topic":"quota"}"#,
         r#"{"kind":"changed","topic":"rotation","key":"s1"}"#,
