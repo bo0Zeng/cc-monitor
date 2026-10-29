@@ -395,6 +395,18 @@ pub enum DeployAction {
     Keep { theirs: String, why: String },
 }
 
+impl DeployAction {
+    /// 线上那个标签（`deploy-install` 回包的 `action`）。
+    pub fn tag(&self) -> cmd_wire::deploy::ActionTag {
+        use cmd_wire::deploy::ActionTag;
+        match self {
+            DeployAction::Skip => ActionTag::Skip,
+            DeployAction::Deploy(_) => ActionTag::Deploy,
+            DeployAction::Keep { .. } => ActionTag::Keep,
+        }
+    }
+}
+
 /// 〔部署只在「我的比盘上的新」时才换（BUILD_ID 可比序）〕**`BUILD_ID` 的序键** —— 唯一实现。
 ///
 /// 形状 `p<代号>` ＋ `<一个小写字母>` ＋ `-<名>`（`p1a-history` … `p3m-ssh-zlib`）⇒ 序键 `(代号, 字母)`。

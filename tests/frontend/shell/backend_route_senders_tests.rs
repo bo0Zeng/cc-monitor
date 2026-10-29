@@ -209,8 +209,11 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
     // 目录里所有「走后端」的文件：生产段出现 `.call(` 的。
     // 另一个动词 `.call_until(`（`InboundClient::call_until`：截止时刻由调用方给的那一形）同样是发送 ——
     //   只认 `.call(` 的话，改用它的发送端会整个逃出扫描面（`frame_query.rs` 改成它的那一刻当场从人群里消失，本条因此红过）。
+    //   照类型问的那一形（`InboundClient::ask`，头一格是问哪台 `None` / `Some(..)`）也是发送：改用它的发送端同样不许逃出人群
+    //   （`deploy.rs` 改成它那一刻当场红过）。只认 `.ask(` 会把别的 crate 里同名的 `Ask::ask(req)` 一并收进来。
     let verb = format!(".call({}", "");
     let verb_until = format!(".call_until({}", "");
+    let verb_ask = [format!(".ask(None{}", ""), format!(".ask(Some({}", "")];
     let mut senders: Vec<String> = Vec::new();
     // ⚠ 发现阶段就把生产段留下：下面按名字取时**不能再用 `dir.join(name)`**，
     //   扩面之后 `dir` 是整棵 `src/`，而发送端散在子目录里（第一版就栽在这，
@@ -222,7 +225,10 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
     for (p, src) in guard_core::scan_tree!(&dir, &["rs"]) {
         let prod = guard_core::production_code(&src);
         all_prod.push((p.to_string_lossy().replace('\\', "/"), prod.clone()));
-        if prod.contains(verb.as_str()) || prod.contains(verb_until.as_str()) {
+        if prod.contains(verb.as_str())
+            || prod.contains(verb_until.as_str())
+            || verb_ask.iter().any(|v| prod.contains(v.as_str()))
+        {
             senders.push(p.file_name().unwrap().to_string_lossy().to_string());
             by_name.insert(
                 p.file_name().unwrap().to_string_lossy().to_string(),

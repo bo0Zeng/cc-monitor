@@ -4,6 +4,7 @@
 
 use crate::batch::{BatchReply, FilesBatchStopReply, FilesBatchStopReq};
 use crate::bookmarks::{Bookmarks, BookmarksEditReq, BookmarksReadReq};
+use crate::deploy::{DeployInstallReq, DeployUninstallReq, Installed, Uninstalled};
 use crate::files::*;
 use crate::transfer::{
     TransferCopyAsk, TransferCopyReq, TransferDownloadAsk, TransferDownloadReq, TransferOpened,
@@ -54,6 +55,8 @@ calls! {
     FilesBatchStopReq => "files-batch-stop", FilesBatchStopReply;
     BookmarksReadReq => "bookmarks-read", Bookmarks;
     BookmarksEditReq => "bookmarks-edit", Bookmarks;
+    DeployInstallReq => "deploy-install", Installed;
+    DeployUninstallReq => "deploy-uninstall", Uninstalled;
     // 传输台那三条各两层：窗口说给 monitor 的（`*Ask`）· monitor 补上那台转给本机后端的（`*Req`），名字同一个。
     TransferUploadAsk => "transfer-upload", TransferOpened;
     TransferUploadReq => "transfer-upload", TransferOpened;

@@ -331,60 +331,18 @@ fn the_deploy_paths_only_hand_facts_to_the_backend() {
         }
     }
     let body = dp1_body(&prod, "async fn install_for(");
-    guard_core::find_pinned(&body, "ask_backend(machine, INSTALL_CMD, slots)")
+    guard_core::find_pinned(&body, "ask_backend(&DeployInstallReq {")
         .unwrap_or_else(|e| panic!("装那一口不是恰好一处问本机后端（{e}）"));
     let body = dp1_body(&prod, "async fn uninstall_for(");
-    guard_core::find_pinned(&body, "ask_backend(machine, UNINSTALL_CMD, slots)")
+    guard_core::find_pinned(&body, "ask_backend(&DeployUninstallReq {")
         .unwrap_or_else(|e| panic!("卸那一口不是恰好一处问本机后端（{e}）"));
-    let body = dp1_body(&prod, "async fn ask_backend(");
-    guard_core::find_pinned(&body, ".call(cmd, args, INSTALL_BUDGET)")
+    let body = dp1_body(&prod, "async fn ask_backend<");
+    guard_core::find_pinned(&body, ".ask(None, req, None, deadline)")
         .unwrap_or_else(|e| panic!("问本机后端那一口不是恰好一处（{e}）"));
     // 正控：每一种写法都认得出来。
     assert_eq!(
         decisions("probe_key( choose( key_from_uname( judge( stamp_scan_cmd( interpret_stamp_scan( interpret_target_probe( identity_decision( identity_of_bytes( build_relation( fs.put( fs.mkdirs( fs.remove(").len(),
         13
-    );
-}
-
-/// 应答的解码器读后端那一侧同一份金样（`tests/__fixtures__/deploy-install.golden.json`，后端 `deploy_plan_tests` 核键集 == 真产出）；
-/// 严格收：少一格 · 多一格 · 认不出的动作 · 空身份都是错（两侧漂了当场说出来）。
-#[test]
-fn the_reply_decoder_reads_the_golden() {
-    let golden: serde_json::Value = serde_json::from_str(include_str!(
-        "../../__fixtures__/deploy-install.golden.json"
-    ))
-    .unwrap();
-    let product = &golden["product"];
-    let got = decode_installed(product).expect("金样解不开");
-    assert_eq!(
-        (
-            got.did,
-            got.build.as_str(),
-            got.os.as_str(),
-            got.said.as_str()
-        ),
-        (Did::Keep, "p0b-placeholder", "Linux", "placeholder")
-    );
-    let with = |k: &str, v: serde_json::Value| {
-        let mut x = product.clone();
-        x[k] = v;
-        x
-    };
-    let mut missing = product.clone();
-    missing.as_object_mut().unwrap().remove("said");
-    let mut extra = product.clone();
-    extra["surprise"] = serde_json::json!(1);
-    for bad in [
-        missing,
-        extra,
-        with("action", serde_json::json!("overwrite")),
-        with("build", serde_json::json!("")),
-    ] {
-        assert!(decode_installed(&bad).is_err(), "该拒却收了：{bad}");
-    }
-    assert_eq!(
-        decode_installed(&with("action", serde_json::json!("skip"))).map(|i| i.did),
-        Ok(Did::Skip)
     );
 }
 
@@ -404,29 +362,6 @@ fn the_landing_constant_is_the_backend_one_and_no_entry_is_made_here() {
         "exec {} ccm",
     ] {
         assert!(!prod.contains(gone), "deploy.rs 又在造 ccm 入口了：{gone}");
-    }
-}
-
-/// 卸载那一口的应答解码读后端那一侧同一份金样里的 `uninstalled`（后端 `deploy_plan_tests` 核键集 == 真产出）；严格收。
-#[test]
-fn the_uninstall_reply_decoder_reads_the_golden() {
-    let golden: serde_json::Value = serde_json::from_str(include_str!(
-        "../../__fixtures__/deploy-install.golden.json"
-    ))
-    .unwrap();
-    let product = &golden["uninstalled"];
-    assert_eq!(
-        decode_uninstalled(product).as_deref(),
-        Ok("placeholder-uninstall")
-    );
-    let mut missing = product.clone();
-    missing.as_object_mut().unwrap().remove("removed");
-    let mut extra = product.clone();
-    extra["surprise"] = serde_json::json!(1);
-    let mut not_bool = product.clone();
-    not_bool["removed"] = serde_json::json!("yes");
-    for bad in [missing, extra, not_bool] {
-        assert!(decode_uninstalled(&bad).is_err(), "该拒却收了：{bad}");
     }
 }
 
@@ -504,10 +439,13 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         panic!("被测后端不说自己是哪一版");
     };
     let key = deploy_contract::Key::this_machine().expect("台架那台的键认不出");
-    let slots = vec![serde_json::json!({
-        "os": key.os.label(), "arch": key.arch.label(), "id": id, "path": s("backend"),
-    })];
-    let decide = || async { install_for(&cfg, slots.clone()).await.map(|i| i.did) };
+    let slots = vec![SlotRow {
+        os: key.os.label().to_string(),
+        arch: key.arch.label().to_string(),
+        id,
+        path: s("backend"),
+    }];
+    let decide = || async { install_for(&cfg, slots.clone()).await.map(|i| i.action) };
     // 「落点上是一份不说自己是哪一版的东西」那一句照文案表现拼（原话改了这里跟着走，不抄字面量）。
     let unstamped = copy_core::copy_text(
         "rsSftp.identity.unstamped",
@@ -540,7 +478,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         .await
         .expect("卸载（出路）");
     assert!(msg.starts_with("已删除 ~/.cc-monitor/bin/ccm"), "{msg}");
-    assert_eq!(decide().await, Ok(Did::Deploy), "落点缺 ⇒ 该装");
+    assert_eq!(decide().await, Ok(ActionTag::Deploy), "落点缺 ⇒ 该装");
     assert_eq!(
         std::fs::read(&backend_path).unwrap(),
         me,
@@ -548,11 +486,11 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     );
     assert_eq!(
         decide().await,
-        Ok(Did::Skip),
+        Ok(ActionTag::Skip),
         "装完 ⇒ 该跳过（那台上那份的戳没被扫出来就不会是这一格）"
     );
     std::fs::write(&backend_path, b"").unwrap();
-    assert_eq!(decide().await, Ok(Did::Deploy), "截成 0 字节 ⇒ 该重装");
+    assert_eq!(decide().await, Ok(ActionTag::Deploy), "截成 0 字节 ⇒ 该重装");
     // 落点上是一份不说自己是谁的东西 ⇒ 显式失败、不覆盖（盘上那份原样）。
     std::fs::write(&backend_path, b"#!/bin/sh\necho not ours\n").unwrap();
     let d3 = decide().await;
