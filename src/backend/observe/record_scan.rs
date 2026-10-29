@@ -55,7 +55,8 @@ pub(crate) struct ScanMap {
 }
 
 /// 接着扫要的：游标前的见证 · 没滤主线外的用户输入与收了尾的轮次 · 还没收尾那一轮 · 链索引；
-/// 外加实时跟读起步要的两样：说到子运行的那几行原文（过了预筛的）· 最后一件说了的「此刻在干什么」。
+/// 外加实时跟读起步要的两样：说到子运行的那几行说了什么（派出 · 对上 · 收场与时刻，不留原文，[`super::runs::said_of`]）·
+/// 最后一件说了的「此刻在干什么」。
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct Rest {
     witness: Vec<u8>,
@@ -65,7 +66,8 @@ struct Rest {
     open: TurnScan,
     #[serde(with = "crate::agents::mainline::skel")]
     chain: Chain,
-    runs: Vec<String>,
+    #[serde(with = "super::runs::skel")]
+    runs: Vec<super::runs::RunSaid>,
     activity: Option<crate::agents::SessionActivity>,
 }
 
@@ -133,9 +135,9 @@ impl Scan {
             if let Some(f) = chain.and_then(|c| c(&line)) {
                 self.rest.chain.load(f);
             }
-            if runs.hint(line.text()) {
-                self.rest.runs.push(line.text().to_string());
-            }
+            self.rest
+                .runs
+                .extend(super::runs::said_of(&runs, line.text()));
             // 子运行的记录不说主运行此刻在干什么（同实时那一路 `watcher::send_line`）。
             if let Some(a) = said.and_then(|f| f(&line)) {
                 if run_of.is_none_or(|f| line.value().and_then(f).is_none()) {
@@ -215,7 +217,7 @@ impl Scan {
 
 impl ScanMap {
     /// 实时跟读从这一张起步要的那几样：读到哪（游标 · 当时的长度 · 游标前的见证）· 几个可计行 · 链索引 ·
-    /// 说到子运行的那几行原文 · 最后一件说了的「此刻在干什么」。
+    /// 说到子运行的那几行说了什么 · 最后一件说了的「此刻在干什么」。
     pub(crate) fn seen(&self) -> u64 {
         self.seen
     }
@@ -232,7 +234,7 @@ impl ScanMap {
         &self.rest.chain
     }
 
-    pub(crate) fn runs(&self) -> &[String] {
+    pub(crate) fn runs(&self) -> &[super::runs::RunSaid] {
         &self.rest.runs
     }
 
@@ -329,7 +331,12 @@ impl ScanMap {
             .sum();
         // 接着扫要的那几样：没滤的用户输入与轮次（与滤过的同量级）· 链索引每个节点几个短串。
         let chain = self.rest.chain.len() * 160
-            + self.rest.runs.iter().map(|r| 24 + r.len()).sum::<usize>();
+            + self
+                .rest
+                .runs
+                .iter()
+                .map(super::runs::RunSaid::bytes)
+                .sum::<usize>();
         self.starts.len() * 8 + index + 2 * (inputs + turns) + chain + 1024
     }
 }
