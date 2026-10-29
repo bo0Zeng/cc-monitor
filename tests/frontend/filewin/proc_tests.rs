@@ -1,5 +1,5 @@
 //! 窗口进程那一侧的躯体（`proc.rs`：读种子那一行 · 在 stdin / stdout 上起通道 · 列第一屏 · `child_main` 的行序）那几条判据 ——
-//! 原住 `tests/frontend/shell/filewin/proc_tests.rs` 的后半，随躯体搬进独立包；进程形态（起进程 · 种子 · 就绪那一行）那一半留在 monitor 那一侧。
+//! 进程形态（起进程 · 种子 · 就绪那一行）那一半在 monitor 那一侧 `tests/frontend/shell/filewin/proc_tests.rs`。
 
 use super::*;
 

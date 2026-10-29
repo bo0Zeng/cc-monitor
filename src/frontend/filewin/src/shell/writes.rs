@@ -19,12 +19,8 @@ impl FileWindow {
 
     /// 摆出「新建目录」那个框。回值 = 真的摆出来了。
     ///
-    /// 🔴〔2026-09-23 本机侧退役〕**`remote_only()` 那道共用闸整条删了。**
-    /// 它从前是四个入口（新建目录 · 改名 · 删除 · 权限）的共用住址，
-    /// 干的事是「窗口看着本机 ⇒ 出声拒」（理由：这四条全要一条 SFTP 会话）。
-    /// `Source` 收成 newtype 之后那个状态**写不出来** ⇒ 四处各少一句
-    /// `if !self.remote_only() { return false; }`，那不是四道闸被删掉了，
-    /// 是它们要守的那个状态整条不在了（逐条理由住 `crate::source::Source` 头注）。
+    /// 🔴 四个写入口（新建目录 · 改名 · 删除 · 权限）都没有「窗口看着本机 ⇒ 出声拒」那道闸：
+    /// `Source` 是 newtype，那个状态**写不出来**（逐条理由住 `crate::source::Source` 头注）。
     pub fn begin_mkdir(&mut self) -> bool {
         self.begin_inline(WritePrompt::for_new(&self.cwd, false))
     }
@@ -105,8 +101,7 @@ impl FileWindow {
 
     /// 第 `i` 行，且它**能被写**。`None` ⇒ 不接（越界 / 有损名）。
     ///
-    /// ⚠ 从前这句话是「越界 / 有损名 / **本机源**，已出声」—— 本机源那一档不在了
-    /// （同 [`Self::begin_mkdir`] 那条）。它不是**静默**掉的：那个状态写不出来。
+    /// ⚠ 没有「本机源」那一档（同 [`Self::begin_mkdir`] 那条）：那个状态写不出来。
     pub(super) fn writable_row(&mut self, i: usize) -> Option<crate::source::Listed> {
         let rows = self.listing.rows.lock().unwrap();
         match rows.get(i) {

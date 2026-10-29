@@ -29,6 +29,9 @@
 //! 文案表 · cc-bus 包（Claude 的「一轮」是那里的真术语）· 禁用词表与对外文案普查量具（它们列这个词就是为了禁它）。
 //! 第三副网眼（口语的连接说法）：「连不」＋「上」。连接说「断开」，机器状态说「{machine} 离线」。放过禁用词表与文案规则表（列它、举它当反例）。
 //!
+//! 第六张网（施工史 · 施工代号 · 已删的旧面板）：`src/` · `tests/` · `.github/` 里拦，今天的存量记在一张按文件的名单里、只许变短；
+//! 名单清空的那个提交连名单一起删，网照旧拦。
+//!
 //! 买不到：换了说法、不落在网眼上的指路（代号网只认登记过的前缀；编号网只认几种常见写法）。
 
 use regex::Regex;
@@ -199,7 +202,7 @@ fn process_words_exempt(rel: &str) -> bool {
     rel == "src/shared/copy/table.json"
         || rel == "src/shared/copy/terms.json"
         || rel.starts_with("src/shared/cc-bus/")
-        || rel.starts_with(concat!("tests/evi", "dence/K-T68-"))
+        || rel.starts_with(concat!("tests/evi", "dence/K", "-T68-"))
 }
 
 /// 第五张网的第三副网眼：口语的连接说法（「连不」＋「上」）。连接说「断开」，机器状态说「{machine} 离线」。拆两段拼。
@@ -634,7 +637,7 @@ fn the_process_words_net_catches_build_wording_and_spares_the_turn_copy() {
         "src/shared/copy/table.json",
         "src/shared/copy/terms.json",
         "src/shared/cc-bus/examples/policy.tsv",
-        "tests/evidence/K-T68-A1-outward-copy-census.py",
+        concat!("tests/evi", "dence/K", "-T68-A1-outward-copy-census.py"),
         "src/shared/copy/rules.json",
         "src/backend/lib.rs",
     ]
@@ -647,7 +650,7 @@ fn the_process_words_net_catches_build_wording_and_spares_the_turn_copy() {
             "src/shared/copy/table.json",
             "src/shared/copy/terms.json",
             "src/shared/cc-bus/examples/policy.tsv",
-            "tests/evidence/K-T68-A1-outward-copy-census.py",
+            concat!("tests/evi", "dence/K", "-T68-A1-outward-copy-census.py"),
         ],
         "豁免名单只该放过文案表 · 禁用词表 · cc-bus 包 · 对外文案普查量具"
     );
@@ -719,7 +722,7 @@ fn the_unblocked_net_catches_its_two_shapes_and_spares_the_rest() {
         (
             0,
             vec![
-                format!("// 🔴 `K-R{}`：先让它自己说一遍", "70"), // 1 ✔
+                format!("// 🔴 `K{}`：先让它自己说一遍", "-R70"), // 1 ✔
                 format!("// `KR{}D2` 那条", "120"),               // 2 ✔
                 format!("// 用户 `K{}` 逐字", "33"),              // 3 ✔
                 format!("// F{}（#39）：可打开文件窗口", "83"),   // 4 ✔
@@ -756,6 +759,234 @@ fn the_unblocked_net_catches_its_two_shapes_and_spares_the_rest() {
             "第三张网「{name}」在合成夹具上抓到的行 ≠ 标定 —— 网坏了，报出来的数不作数"
         );
     }
+}
+
+/// 第六张网（施工史与施工代号）：拦，带一张只许变短的存量名单。
+/// 人群：`src/` · `tests/` · `.github/` 底下跟踪着的文本文件（名单自己除外：它列的就是这些名字）；测试声明行不扫。
+/// 生成物（[`GENERATED`]）不扫：那里的字来自 Rust 源码注释，源头在人群里；它随重新生成变，名单跟不住它。
+/// 三形各一个名字，每个网眼拆两段、运行期拼：
+/// - 施工史：「先」「从」＋「前」（「从」＋「前端 / 前后」不算）·「原」＋「住」·「搬家」＋「前」·「回修」＋「轮」·「这一」＋「刀」
+///   —— 写的是现在是什么样，不是从哪儿改过来；
+/// - 施工代号：`K-` 后跟大写或数字 · `KR` / `KPY` / `DoD-` / `cut` 后跟数字，前面不紧挨字母、数字、`_`；
+/// - 已删的旧面板：「老」＋「面板」· 那个已经不在的目录（`src/` 底下的 `sftp`）。
+///
+/// 另有一形看文件名：量具目录里以代号打头的文件名（`K-` 后跟大写或数字 · 大写字母＋数字＋连字符）。
+fn history_eyes() -> [(&'static str, Regex); 3] {
+    let past = [
+        "先",
+        "前|从",
+        "前(?:[^端后]|$)|原",
+        "住|搬家",
+        "前|回修",
+        "轮|这一",
+        "刀",
+    ]
+    .concat();
+    let codes = format!(
+        "(?:^|[^A-Za-z0-9_])(?:K{}|KR{}|KPY{}|DoD{}|cut{})",
+        "-[A-Z0-9]", "[0-9]", "[0-9]", "-[0-9]", "[0-9]"
+    );
+    let panel = format!("老面{}|src/sf{}", "板", "tp");
+    [
+        ("施工史", Regex::new(&past).expect("施工史网眼")),
+        ("施工代号", Regex::new(&codes).expect("施工代号网眼")),
+        ("已删的旧面板", Regex::new(&panel).expect("旧面板网眼")),
+    ]
+}
+
+/// 量具目录里以代号打头的文件名。
+fn coded_evidence_name() -> Regex {
+    Regex::new(&format!(
+        "^(?:K{}|[A-Z]+[0-9]+[A-Za-z]?{})",
+        "-[A-Z0-9]", "-"
+    ))
+    .expect("文件名网眼")
+}
+
+/// 存量名单：`路径<TAB>命中行数`，一份一行。只许变短：名单外的命中 ⇒ 红；名单里的一份命中行数比记下的多 ⇒ 红；
+/// 名单里的一份已经零命中（或不在了）⇒ 红，删掉那一行。名单清空的那个提交连它和本段读名单的那几行一起删。
+const HISTORY_STOCK: &str = "tests/__fixtures__/outside-refs-pending.tsv";
+
+/// 界面那份生成物的目录：第六张网不扫它。
+const GENERATED: &str = "src/frontend/ui/generated/";
+
+/// 一份文件里第六张网的命中：`(行号, 片段)`；文件名命中记成第 0 行。
+fn history_hits(
+    eyes: &[(&str, Regex)],
+    decl: &Regex,
+    rel: &str,
+    text: &str,
+) -> Vec<(usize, String)> {
+    let mut hits = Vec::new();
+    if let Some(name) = rel.strip_prefix(EVIDENCE_DIR) {
+        if coded_evidence_name().is_match(name) {
+            hits.push((0, format!("文件名 {name}")));
+        }
+    }
+    for (i, line) in text.lines().enumerate() {
+        if decl.is_match(line) {
+            continue;
+        }
+        if let Some(at) = eyes
+            .iter()
+            .find_map(|(_, rx)| rx.find(line).map(|m| m.start()))
+        {
+            hits.push((i + 1, snippet(line, at)));
+        }
+    }
+    hits
+}
+
+/// 名单与今天的命中对一遍：返回违规的那几条（空 ⇒ 过）。
+fn history_stock_violations(
+    stock: &std::collections::BTreeMap<String, usize>,
+    found: &std::collections::BTreeMap<String, Vec<(usize, String)>>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for (rel, hits) in found {
+        match stock.get(rel) {
+            None => out.push(format!(
+                "{rel}：名单外的新命中 {} 行，例：{}:{}",
+                hits.len(),
+                hits[0].0,
+                hits[0].1
+            )),
+            Some(&n) if hits.len() > n => out.push(format!(
+                "{rel}：命中 {} 行，名单记的是 {n}（只许变少），例：{}:{}",
+                hits.len(),
+                hits[0].0,
+                hits[0].1
+            )),
+            _ => {}
+        }
+    }
+    for rel in stock.keys().filter(|r| !found.contains_key(*r)) {
+        out.push(format!("{rel}：已经零命中（或不在了），从名单删掉这一行"));
+    }
+    out
+}
+
+fn read_history_stock(root: &Path) -> std::collections::BTreeMap<String, usize> {
+    let p = root.join(HISTORY_STOCK);
+    let text =
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{HISTORY_STOCK} 读不动：{e}"));
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let (rel, n) = l
+                .split_once('\t')
+                .unwrap_or_else(|| panic!("{HISTORY_STOCK} 这一行不是 `路径<TAB>行数`：{l}"));
+            let n = n
+                .trim()
+                .parse()
+                .unwrap_or_else(|_| panic!("{HISTORY_STOCK} 这一行的行数不是数：{l}"));
+            (rel.to_string(), n)
+        })
+        .collect()
+}
+
+#[test]
+fn no_build_history_or_codes_beyond_the_shrinking_stock_list() {
+    let root = repo();
+    let texts = tracked_texts(&root);
+    assert!(
+        texts.len() > 500,
+        "人群只有 {} 份 —— `git ls-files` 口径坏了，零命中不作数",
+        texts.len()
+    );
+    let (eyes, decl) = (history_eyes(), test_declaration());
+    let mut found = std::collections::BTreeMap::new();
+    for (rel, text) in &texts {
+        let in_scope = ["src/", "tests/", ".github/"]
+            .iter()
+            .any(|d| rel.starts_with(d));
+        if !in_scope || rel == HISTORY_STOCK || rel.starts_with(GENERATED) {
+            continue;
+        }
+        let hits = history_hits(&eyes, &decl, rel, text);
+        if !hits.is_empty() {
+            found.insert(rel.clone(), hits);
+        }
+    }
+    // 今天的命中按名单的形状打到标准输出（`-- --nocapture` 看得见），删行时照它对。
+    println!("== 第六张网今天的命中：{} 份", found.len());
+    for (rel, hits) in &found {
+        println!("{rel}\t{}", hits.len());
+    }
+    let stock = read_history_stock(&root);
+    let bad = history_stock_violations(&stock, &found);
+    assert!(
+        bad.is_empty(),
+        "施工史 · 施工代号 · 已删的旧面板对不上存量名单 `{HISTORY_STOCK}`（今天命中 {} 份，名单 {} 行）。\
+         新写的删掉、写成现在是什么样；清完的那一份从名单删行。{} 条，前 50 条：\n{}",
+        found.len(),
+        stock.len(),
+        bad.len(),
+        bad.iter().take(50).cloned().collect::<Vec<_>>().join("\n")
+    );
+}
+
+/// 合成夹具：三形与文件名该抓的抓到、该放过的放过；名单只许变短的三种红各判一次。
+#[test]
+fn the_history_net_catches_its_shapes_and_the_stock_list_only_shrinks() {
+    let (eyes, decl) = (history_eyes(), test_declaration());
+    let lines = [
+        format!("// 先{}住在 lib.rs", "前"),          // 1 ✔
+        format!("// 从{}这里是两条", "前"),           // 2 ✔
+        "// 从前端发来 · 从前后两侧夹住".to_string(), // 3 ✘ 从＋前端 · 从＋前后
+        format!("// 原{} `ccm/src/a.rs`", "住"),      // 4 ✔
+        format!("// 搬家{}的样子", "前"),             // 5 ✔
+        format!("// 回修{}补上", "轮"),               // 6 ✔
+        format!("// 这一{}只改名", "刀"),             // 7 ✔
+        format!("// 见 `K{}70`", "-R"),               // 8 ✔
+        format!("// KR{}D2 · KPY{} · DoD{}1 · cut{}b", "120", "3", "-", "8"), // 9 ✔
+        "// WORK-R1 · SKR1 · ACK-1 · shortcut9 · K-means".to_string(), // 10 ✘ 粘在别的词里 / 小写
+        format!("// 老面{}的列宽", "板"),             // 11 ✔
+        format!("// 见 `src/sf{}/panel.ts`", "tp"),   // 12 ✔
+        format!("describe(\"K{}45 指路\", () => {{", "-R"), // 13 ✘ 测试声明行
+        "// 现在住 lib.rs，一刀切 · 原生 · 先后".to_string(), // 14 ✘
+    ];
+    let text = lines.join("\n");
+    let got: BTreeSet<usize> = history_hits(&eyes, &decl, "src/x.rs", &text)
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect();
+    assert_eq!(
+        got,
+        BTreeSet::from([1, 2, 4, 5, 6, 7, 8, 9, 11, 12]),
+        "第六张网在合成夹具上抓到的行 ≠ 标定（该抓 1、2、4–9、11、12；该放过 3、10、13、14）—— 网坏了，名单对账不作数"
+    );
+    let named = |rel: &str| !history_hits(&eyes, &decl, rel, "").is_empty();
+    let dir = EVIDENCE_DIR;
+    assert_eq!(
+        [
+            named(&format!("{dir}K{}124-ruler.py", "-R")),
+            named(&format!("{dir}RT{}-lib.ps1", "1")),
+            named(&format!("{dir}SR1b{}sftp-loopback.py", "-")),
+            named(&format!("{dir}U-scale2-run.sh")),
+            named(&format!("{dir}README.md")),
+            named(&format!("tests/RT{}-lib.ps1", "1")),
+        ],
+        [true, true, true, false, false, false],
+        "文件名网眼判错了（量具目录里代号打头的抓，别的放过）"
+    );
+    let found: std::collections::BTreeMap<String, Vec<(usize, String)>> =
+        [("a.rs", 2), ("b.rs", 1), ("new.rs", 1)]
+            .into_iter()
+            .map(|(r, n)| (r.to_string(), vec![(1, "x".to_string()); n]))
+            .collect();
+    let stock: std::collections::BTreeMap<String, usize> =
+        [("a.rs", 1), ("b.rs", 3), ("gone.rs", 1)]
+            .into_iter()
+            .map(|(r, n)| (r.to_string(), n))
+            .collect();
+    let bad = history_stock_violations(&stock, &found);
+    let who: Vec<&str> = bad.iter().map(|b| b.split('：').next().unwrap()).collect();
+    assert_eq!(
+        who,
+        ["a.rs", "new.rs", "gone.rs"],
+        "名单对账判错了（a.rs 变多 · new.rs 名单外 · gone.rs 已清该删行，三样都该红；b.rs 变少放过）：{bad:?}"
+    );
 }
 
 /// 量具目录（仓根相对）。
@@ -851,16 +1082,16 @@ fn the_evidence_net_catches_missing_files_and_spares_present_ones() {
         .into();
     let dir = format!("tests/evi{}", "dence/");
     let cases: [(bool, String); 10] = [
-        (false, format!("// 量具 `{dir}K-R1-gone.py`")), // 1 ✔ 不在
+        (false, format!("// 量具 `{dir}Q-R1-gone.py`")), // 1 ✔ 不在
         (false, format!("// 量具 `{dir}CP-copy-judges.py`。")), // 2 ✘ 在（句末标点不算名字）
         (false, format!("// 本目录 `{dir}` 被排除")),    // 3 ✘ 目录本身
         (false, format!("// `{dir}*.sh` 纳进 shellcheck")), // 4 ✘ 通配
-        (true, format!("口径同 `{}-ruler.py`", "K-R9")), // 5 ✔ 量具目录里的短名，不在
+        (true, format!("口径同 `{}-ruler.py`", "Q-R9")), // 5 ✔ 量具目录里的短名，不在
         (true, format!("命令住 `{}-readings.md §1`", "S9")), // 6 ✔ 短名点 .md，仓里没有
         (true, format!("见 `{}-COMMANDS.md`", "IPC")),   // 7 ✘ 仓里别处有
-        (false, format!("口径同 `{}-ruler.py`", "K-R9")), // 8 ✘ 量具目录外不扫短名
-        (true, format!("口径同 `evidence/{}-ruler.py`", "K-R9")), // 9 ✔ 带半截目录的短名
-        (true, format!("读数在 `{}-发版读数.{} § 1`", "K-R9", "md")), // 10 ✔ 名字里带汉字
+        (false, format!("口径同 `{}-ruler.py`", "Q-R9")), // 8 ✘ 量具目录外不扫短名
+        (true, format!("口径同 `evidence/{}-ruler.py`", "Q-R9")), // 9 ✔ 带半截目录的短名
+        (true, format!("读数在 `{}-发版读数.{} § 1`", "Q-R9", "md")), // 10 ✔ 名字里带汉字
     ];
     let got: BTreeSet<usize> = cases
         .iter()

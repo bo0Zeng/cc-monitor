@@ -10,8 +10,7 @@ import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { detailOf, saidOf } from "./kit/detail";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
-import { writeClipboard } from "./clipboard";
-import { NoTerminalWindow, openLocalTerminal, openTerminal, sayNoTerminal } from "./terminal-open";
+import { copyCommand, NoTerminalWindow, openLocalTerminal, openTerminal, sayNoTerminal } from "./terminal-open";
 import { chosenAccount } from "./launch-account";
 import { offerResyncRetry } from "./resync";
 import { openLoginDrawer } from "./login-drawer";
@@ -205,7 +204,10 @@ function sayEnd(origin: Origin, req: SessionOpenReq, how: OpenHow, end: Exclude<
   toast(title, body, { detail: end.detail });
 }
 
-/** 开那一行：本机带起始目录（`null` ⇒ 壳照家目录开）、远端经 ssh。开不了 ⇒ 那一行进剪贴板、说一句（找不到终端 ⇒ 照实说、给设置入口）。 */
+/**
+ * 开那一行：本机带起始目录（`null` ⇒ 壳照家目录开）、远端经 ssh。开不了 ⇒「终端未打开」＋ 在哪跑 ＋ 那一行 ＋［复制命令］
+ * （不自动写剪贴板）；找不到终端 ⇒ 照实说、给设置入口。
+ */
 async function openLine(origin: Origin, line: string, cwd: string | null): Promise<boolean> {
   try {
     if (isLocalOrigin(origin)) await openLocalTerminal(line, cwd);
@@ -216,18 +218,13 @@ async function openLine(origin: Origin, line: string, cwd: string | null): Promi
       sayNoTerminal(err);
       return false;
     }
-    let copied = true;
-    try {
-      await writeClipboard(line);
-    } catch {
-      copied = false;
-    }
     const where = isLocalOrigin(origin)
       ? copyText("sessionOpen.copy.runLocal")
       : copyText("sessionOpen.copy.runRemote", { machine: origin });
-    toast(copied ? copyText("sessionOpen.copy.copied") : copyText("sessionOpen.copy.manual"), `${where}\n${line}`, {
+    toast(copyText("sessionOpen.terminal.notOpened"), `${where}\n${line}`, {
       detail: detailOf(err),
-      level: "info",
+      level: "error",
+      action: copyCommand(line),
     });
     return false;
   }

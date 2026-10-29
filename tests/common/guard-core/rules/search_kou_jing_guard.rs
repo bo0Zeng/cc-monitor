@@ -7,7 +7,7 @@
 
 use super::{none, rule};
 
-/// 收口前在两侧**各写一遍**的那 12 个助手（`K-R85` 逐条实测同名同形）。
+/// 两侧共用、只许住一处的那 12 个助手。
 const HELPERS: &[&str] = &[
     "extract_text_blocks",
     "extract_tool_text",
