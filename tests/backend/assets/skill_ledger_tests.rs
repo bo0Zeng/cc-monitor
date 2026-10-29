@@ -443,7 +443,11 @@ fn a_format_one_ledger_is_upgraded_and_its_original_kept_beside() {
     )
     .expect("记");
     let on_disk: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
-    assert_eq!(on_disk["version"], json!(2), "写出去的不是第 2 版：{on_disk}");
+    assert_eq!(
+        on_disk["version"],
+        json!(2),
+        "写出去的不是第 2 版：{on_disk}"
+    );
     assert!(on_disk.get("v").is_none(), "第 2 版还带着 `v`：{on_disk}");
     assert!(
         on_disk["installs"].get(&old_dir).is_some(),

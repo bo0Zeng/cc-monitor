@@ -240,7 +240,11 @@ fn the_book_carries_its_version_and_a_newer_one_is_left_alone() {
     assert_eq!(answered(Some(&path), 0)["state"], "unreadable");
     let (l, _rx) = ringing(Some(path.clone()));
     record_seen(&l, &own, None, "claude-code", "q", reading(0.2, false), 20);
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), newer, "新版那份被动了");
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        newer,
+        "新版那份被动了"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
