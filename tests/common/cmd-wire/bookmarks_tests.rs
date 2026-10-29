@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// 老面板 `normalize` 那份 vitest 的原样例，外加几格手推。
+/// 书签路径 `normalize` 的原样例，外加几格手推。
 #[test]
 fn normalize_matches_the_old_panel_case_by_case() {
     let cases: &[(&str, &str)] = &[
@@ -21,7 +21,7 @@ fn normalize_matches_the_old_panel_case_by_case() {
     }
 }
 
-/// 老面板那两步替换的逐字移植（反复 `replace` 到不动为止、再去尾）：与生产那一趟扫描刻意不同写法。
+/// 两步替换的对照写法（反复 `replace` 到不动为止、再去尾）：与生产那一趟扫描刻意不同写法。
 fn old_two_step(path: &str) -> String {
     let mut c = path.to_string();
     while c.contains("//") {

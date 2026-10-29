@@ -152,7 +152,7 @@ fn drawn_files() -> Vec<(String, String)> {
     //   这条排除就成了一个洞。如实记；补它要一条「哪些字面量会走到 `ui` 上」的判准，
     //   而那正是本条今天刻意不判的东西。
     // 窗口独立成包：「`filewin/` 那棵树」今天是两棵 —— 本包 ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`
-    //   （`entry.rs` 在那边，人群与搬家前逐份相同）。`mod.rs` 的躯体成了本包的 `lib.rs`（两份都摘）；两侧各有一份 `proc.rs`（都摘）；
+    //   （`entry.rs` 在那边）。`mod.rs` 的躯体成了本包的 `lib.rs`（两份都摘）；两侧各有一份 `proc.rs`（都摘）；
     //   `frame_log.rs`（帧日志）同理：它写的是一份日志文件，一个字都不画在 egui 上。
     //   `render.rs`（挑哪块显卡）同理：它的话只上 stderr（挑中的那一行 · 挑不出时那一句），一个字都不画在 egui 上。
     //   通信层的 `chan/said.rs` 进人群：通道没成时窗口上画的那一句从它取（全产品一份，不住本包）。

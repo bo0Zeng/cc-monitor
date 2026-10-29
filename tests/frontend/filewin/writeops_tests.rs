@@ -25,7 +25,6 @@ use std::sync::atomic::{AtomicUsize, Ordering as O};
 use super::*;
 
 /// 一条会话记录形状的路径（`projects/` 下恰两段、以 `.jsonl` 收尾）。
-/// 它从前叫「受保护的路径」；今天它与别的路径同一条路。
 fn session_path() -> String {
     "/home/u/.claude/projects/dash-proj/abc-123.jsonl".to_string()
 }
@@ -378,7 +377,7 @@ async fn a_batch_with_nothing_dangerous_asks_nobody() {
 /// 🔴 那一问回来的东西**只起「准不准」的作用** —— 它没法凭空塞进一件新操作。
 ///
 /// 少了这条过滤，一个坏掉（或被改坏）的看板就能把一件**调用方没交给它**的操作递进 `apply`。
-/// 从前的说法是「没过围栏的操作」；围栏删了，这条过滤的理由没变（人点的是哪几件，就只做哪几件）。
+/// 人点的是哪几件，就只做哪几件。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_answer_cannot_smuggle_in_an_operation_nobody_fenced() {
     let applied = Applied::default();

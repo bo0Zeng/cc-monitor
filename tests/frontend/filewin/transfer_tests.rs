@@ -1069,7 +1069,7 @@ async fn the_transfer_id_the_pool_gets_is_the_one_the_window_can_name() {
     assert_eq!(ids.len(), 3);
     assert_eq!(desk.minted(), 3, "造键的处数与真起过的趟数不等");
     // 🔴 **三个键互不相同** —— 同一个键会让两趟互相摘掉对方在池子里的登记
-    //    （从前池子那张取消登记表的注释逐字记着这一条；那张表已删，键照旧是本层在飞表的键）。
+    //    （键是本层在飞表的键）。
     let uniq: std::collections::BTreeSet<&String> = ids.iter().collect();
     assert_eq!(uniq.len(), 3, "造出了重复的 `transfer_id`：{ids:?}");
     // 收场之后表是空的；而**取消照旧送得出去**（送的是当时在飞的那几个，此刻 0 个）。

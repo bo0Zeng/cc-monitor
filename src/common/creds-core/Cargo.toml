@@ -3,9 +3,9 @@ name = "creds-core"
 version = "0.1.0"
 edition = "2021"
 workspace = "../../frontend/shell"
-description = "K-H2a：第三方 API key 的**唯一**住址——装它的类型、它落盘的格式、它权限够不够窄的判断。monitor 与远端后端共用。"
+description = "第三方 API key 的**唯一**住址——装它的类型、它落盘的格式、它权限够不够窄的判断。monitor 与远端后端共用。"
 
-# ★★ **本 crate 存在的理由是「一个安全性质只许有一个实现」**〔`K-H2a` 裁三，PM 08-27〕。
+# ★★ **本 crate 存在的理由是「一个安全性质只许有一个实现」**。
 #
 # 读 key 的上游选择（挂在常驻后端进程里的中转上）住 `cc-monitor-backend`（`src/backend/`），它**不依赖 `src/frontend/shell` 整体**，
 # 只经 path 依赖吃 `src/common/` 下的共享 crate。所以 key 这件事有三种落点，前两种都是病：
@@ -24,7 +24,6 @@ description = "K-H2a：第三方 API key 的**唯一**住址——装它的类�
 # **化解办法是把平台那半做成可选 feature，默认不开**：
 #   · backend 开 `harden`（每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端账号域，`apikey-key-set`）；
 #   · `src/frontend/shell` **不开**（monitor 既不写也不读这份文件 —— 写半边在它那一侧连编都编不进来）。
-#   〔审计 F 🔴-3〕先前这两行正好说反（monitor 开、backend 不开）：那是 `K-H2a` 裁四「backend 只许读」时的分工，RM1a / GP1 / US1 之后倒过来了。
 # ⇒ 默认构建下本 crate **零依赖、零平台 cfg**，那条共享约束原样成立；
 #   平台原语只在开了 `harden` 的那一侧存在。
 #

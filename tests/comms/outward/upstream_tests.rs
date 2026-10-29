@@ -38,8 +38,8 @@ fn rejects_shapes_it_does_not_understand() {
     assert!(Base::parse("https://ok.example").is_ok(), "这把尺子是瞎的");
 }
 
-/// ★★★ **`K-R1` 的正主之一**：`base_url` 里那一段路径**装得下了**，
-/// 而先前它被 `rest.split('/').next()` 整个丢掉、且照样回 `Some`。
+/// ★★★ `base_url` 里那一段路径**装得下**：
+/// 不会被 `rest.split('/').next()` 整个丢掉、还照样回 `Some`。
 ///
 /// # 死值验就在这条判据的第一格上
 ///
@@ -102,7 +102,7 @@ fn a_base_url_that_carries_things_a_prefix_cannot_carry_says_why() {
     );
 }
 
-/// `K-R1`：**本地部署那一格的谓词** —— 回环认得出来，别的一律说「不是」。
+/// **本地部署那一格的谓词** —— 回环认得出来，别的一律说「不是」。
 ///
 /// ⚠ 它只是**谓词**；「明文非回环要不要拒」是 `table::build` 的决定，判据在那边。
 #[test]
@@ -140,20 +140,19 @@ fn host_header_omits_the_default_port_only() {
     assert_eq!(d.host_header(), "api.example.com");
     let n = Base::parse("http://127.0.0.1:18789").expect("n");
     assert_eq!(n.host_header(), "127.0.0.1:18789");
-    // ★ `K-R1`：`Host:` 头里**没有**路径前缀那一段（它属于请求行，不属于这里）。
+    // ★ `Host:` 头里**没有**路径前缀那一段（它属于请求行，不属于这里）。
     let p = Base::parse("https://api.example.com/anthropic").expect("p");
     assert_eq!(p.host_header(), "api.example.com");
 }
 
 /// TLS 那条路**没有任何行为验证**（不许打真 API，本机也没有 HTTPS 夹具）。
 ///
-/// # 名字只承诺它证得了的那一半（回修轮 08-25 改名，D1 `重要-2`）
+/// # 名字只承诺它证得了的那一半
 ///
-/// 旧名里的 **carries roots** 是**空真**：
-/// 它断的是 crate 常量 `webpki_roots::TLS_SERVER_ROOTS` 非空，**不是** `tls_config()`
-/// 真把根装了进去 ⇒ 把装配点的根证书集换成空 `Vec::new()`，它照样全绿（审计 `CS`）。
+/// 只断 crate 常量 `webpki_roots::TLS_SERVER_ROOTS` 非空的话是**空真**：那**不是** `tls_config()`
+/// 真把根装了进去 ⇒ 把装配点的根证书集换成空 `Vec::new()`，它照样全绿。
 ///
-/// 今天它断的是**生产段的装配函数** `root_store()` 的**根证书条数 > 0**，
+/// 它断的是**生产段的装配函数** `root_store()` 的**根证书条数 > 0**，
 /// 而 `tls_config()` 里那一份就是它返回的那一份（唯一调用点，就在上面几行）。
 ///
 /// **它仍然不证明**：握手成功 · 证书校验真的按这套根做 · 逐块透传在 TLS 上成立。

@@ -71,7 +71,7 @@ class InstrumentedTestInventoryTest {
 
     /**
      * 每一份 instrumented 测都从入口脚本跑到：入口里不再用 instrumentation 过滤挑文件
-     * （从前那一份要真 SSH 服务端的测已经删了；RustTransportTest 不带台架参数时自己整份跳过，不靠过滤）。
+     * （RustTransportTest 不带台架参数时自己整份跳过，不靠过滤）。
      */
     @Test
     fun noInstrumentedFileIsFilteredOutOfTheEntry() {

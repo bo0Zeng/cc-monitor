@@ -1,4 +1,4 @@
-//! `DoD-4㈠` 零命中：**中转的生产段里不许出现非回环 bind 的字面量。**
+//! 零命中：**中转的生产段里不许出现非回环 bind 的字面量。**
 //!
 //! 人群：中转 crate（`src/comms/outward`）＋ 后端里它的宿主（`src/backend/relay`，绑口在 `listen.rs`）。
 //!

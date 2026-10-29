@@ -39,13 +39,12 @@ impl RequestHead {
     /// 请求体长度。**只认 `Content-Length`**：chunked 的请求体本中转不接
     /// （claude 发的是带 `Content-Length` 的 `POST`）。不认的形状由调用方回 4xx。
     ///
-    /// ★★ **返回三值，不是 `Option`**〔回修轮之五 08-25，D3 `重要-2(D3)`〕：
-    /// 先前这里是 `…parse().ok()`，于是「**没有这个头**」与「**有这个头但读不懂**」
-    /// 挤进了同一个 `None`，而调用点把 `None` 当成「没有请求体」
+    /// ★★ **返回三值，不是 `Option`**：
+    /// 「**没有这个头**」与「**有这个头但读不懂**」挤进同一个 `None` 的话，调用点把 `None` 当成「没有请求体」
     /// ⇒ 一发 `Content-Length: 7abc` + 7 字节体 ⇒ **请求体被静默丢掉**、
-    /// 上游收到空体、下游拿到一条正常的 200，全程零日志零 4xx（D3 实测）。
+    /// 上游收到空体、下游拿到一条正常的 200，全程零日志零 4xx。
     /// 中转搬的正是 `POST /v1/messages` 的载荷，丢了它 claude 当场坏而门禁全绿。
-    /// ⇒ 今天两件事分成两张脸，`Unparsable` 由调用方回 **400**。
+    /// ⇒ 两件事分成两张脸，`Unparsable` 由调用方回 **400**。
     pub fn content_length(&self) -> BodyLen {
         let Some(raw) = self.header("content-length") else {
             return BodyLen::Absent;
@@ -67,8 +66,7 @@ impl RequestHead {
 ///
 /// `cap` 是头部字节上限，超了返回 `None`（而不是无限吃内存）。
 ///
-/// ⚠ 订正〔回修轮 08-25，承接件文件 `判不了-6` / D1 `建议-9`〕：先前这里逐字写「回 **431**」，
-/// **盘上没有 431**。`None` 有**两个**来源（超上限 · 头没读完就 EOF），本函数**不区分**它们，
+/// ⚠ 不回 **431**。`None` 有**两个**来源（超上限 · 头没读完就 EOF），本函数**不区分**它们，
 /// 而两个调用点各自按自己的语境回：请求那一侧 `server.rs` 回 **400 Bad Request**，
 /// 响应那一侧回 **502 Bad Gateway**。要真回 431 得先让本函数把两个来源分开。
 pub fn read_head<R: Read>(r: &mut R, cap: usize) -> std::io::Result<Option<Vec<u8>>> {
@@ -201,7 +199,7 @@ impl Default for ChunkedView {
 }
 
 impl ChunkedView {
-    /// # `cap` 管的是**攒着还没成形的那截**〔回修轮之五 08-25，`阻-1(D3)` 的同职面〕
+    /// # `cap` 管的是**攒着还没成形的那截**
     ///
     /// `left > 0` 那一支每次都把能拿的**全部**吐出去，分帧器里不会累积；
     /// 真正会无界涨的只有**块长度行还没读到 `\r\n`** 那一支 —— 它把收到的一切原样留在分帧器里。
@@ -305,7 +303,7 @@ pub fn parse_response(raw: &[u8]) -> Option<(String, Vec<(String, String)>)> {
     Some((status, headers))
 }
 
-/// 状态行是不是 **1xx 中间响应**〔回修轮之五 08-25，D3 `重要-1(D3)`〕。
+/// 状态行是不是 **1xx 中间响应**。
 ///
 /// 1xx 是「还没完，后面还有一条真的」，**不是最终响应**。判法：状态行的第 2 段是
 /// **恰好三位数字且首位是 `1`**。
@@ -336,18 +334,15 @@ pub fn is_interim_status(status_line: &str) -> bool {
 /// ⚠ 这里的 `None` 与 `read_head` 的 `None` **不同族**：那边一个 `None` 装了**两个**来源
 /// （超上限 · 提前 EOF，它自己的头注登记着这一点），这里**只有一个**。
 ///
-/// # ★★ 为什么不再是 `vec![0u8; n]`〔回修轮之五 08-25，D3 `阻-1(D3)`〕
+/// # ★★ 为什么不是 `vec![0u8; n]`
 ///
-/// 先前这一行是 `let mut body = vec![0u8; n];`，而 `n` 来自 `content_length()`，
-/// 值域是 **`usize` 全域，没有任何上界**（`HEAD_CAP` 只管头**字节数**，管不到它）。
-/// 一条 `Content-Length: 1000000000000` 的下游请求 ⇒ 分配失败 ⇒ `std::alloc::handle_alloc_error`
+/// `n` 来自 `content_length()`，值域是 **`usize` 全域，没有任何上界**（`HEAD_CAP` 只管头**字节数**，管不到它）。
+/// 按 `n` 预分配的话，一条 `Content-Length: 1000000000000` 的下游请求 ⇒ 分配失败 ⇒ `std::alloc::handle_alloc_error`
 /// ⇒ **abort（SIGABRT）**。**abort 不走 unwind** ⇒ `panic = "unwind"` 与 `catch_unwind`
-/// 一概接不住；而这里的形状是「**一个进程**服务 N 个会话」（`K9` 裁定二第 1 条）
+/// 一概接不住；而这里的形状是「**一个进程**服务 N 个会话」
 /// ⇒ 这一发打掉的不是一条连接，是**当时所有会话的在途流**。
-/// 我自己重打过这一刀，逐字读数（`memory allocation of 1000000000000 bytes failed` ·
-/// `signal: 6, SIGABRT` · 退出码 101 · 判定行 **0**）见件文件 §8.20.1。
 ///
-/// 今天两道，缺一不可：
+/// 两道，缺一不可：
 /// 1. **`n > cap` 当场拒收**，一个字节不读、一个字节不分配；
 /// 2. 即便 `n <= cap`，也**按真的读到的字节增长**（`take(n).read_to_end`），**不按 `n` 预分配**
 ///    —— 否则一条「只声明 `Content-Length: <cap>`、一个字节不发」的请求照样能逼出
