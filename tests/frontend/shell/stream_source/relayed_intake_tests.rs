@@ -103,9 +103,8 @@ fn harness(
         None,
         64,
     );
-    let health: HealthOut = Arc::new(|_| Ok(()));
     let (tx, rx) = tokio::sync::mpsc::channel(64);
-    let consumer = tokio::spawn(consume(rx, replay, health));
+    let consumer = tokio::spawn(consume(rx, replay));
     (tx, cells, consumer)
 }
 

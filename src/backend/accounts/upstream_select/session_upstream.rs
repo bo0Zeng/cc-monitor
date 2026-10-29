@@ -44,11 +44,9 @@ impl UpstreamDesc {
 /// 子目录名（便条目录底下）。
 const SUB: &str = "upstream";
 
-/// 一条会话一份：状态（读不懂的那份不作数）。读盘上限与起会话便条同一个。
-const DESC: crate::common::own_state::Doc<UpstreamDesc> = crate::common::own_state::Doc::state(
-    ".cc-monitor/launch-pending/upstream/<origin>.json",
-    crate::history::launch_book::MAX_BYTES,
-);
+/// 一条会话一份：状态（读不懂的那份不作数；落点 · 版本 · 读上限照表）。
+const DESC: crate::common::own_state::Doc<UpstreamDesc> =
+    crate::common::own_state::Doc::of(&relay_route_core::SESSION_UPSTREAM_FILE);
 
 /// 便条目录名（落点的上一层）。
 const NOTES_DIR: &str = relay_route_core::file_name_of(relay_route_core::LAUNCH_NOTES_DIR_REL);
@@ -91,9 +89,7 @@ pub(crate) fn leave(
             }
         }
     }
-    let file = dir.join(&name)?;
-    let body = crate::common::own_state::json_body(file.as_path(), desc)?;
-    own.write(&file, &held, &body)
+    DESC.write_named(own, &dir, &name, &held, desc)
 }
 
 /// 来处 `origin` 那条会话的描述（`data` ＝ 数据目录）。没有 · 读不懂 · 来处不过段闸 ⇒ `None`。

@@ -276,8 +276,8 @@ enum Kind {
     /// monitor 那一侧：monitor 自己的数据目录 —— 书签文件住那儿，
     /// 开窗时在这一侧算好全路径、放进种子交给窗口进程（窗口进程自己不找数据目录）。
     DataDir,
-    /// monitor 那一侧：出声的既有通道（`remote-health` 事件与它的载荷）——
-    /// 窗口进程「判成功」之后又不体面地退了，那一句经它到界面 toast。
+    /// monitor 那一侧：告诉用户的那一个出口（`ui_error`）——
+    /// 窗口进程「判成功」之后又不体面地退了，那一句经它到界面出错 toast。
     Notify,
     /// monitor 那一侧：**monitor 自带的那份窗口程序**（exe 旁边没有它时用）—— 字节从唯一的取字节口来（`byte_table`），
     /// 放到盘上那一步与本机后端同一套（`local_backend::place_local_program` ＋ 两样平台注入），落点目录与本机后端同一个。
@@ -406,9 +406,9 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("MAIN_WINDOW_LABEL", Kind::Geometry),
     // 类型搬进 `host_core`；问 Tauri 那一下留在壳里，改名 `work_area_of`。
     ("work_area_of", Kind::Geometry),
-    // 开出来之后又退了那一句经 `remote-health` 出声。
-    ("ui_contract::RemoteHealthPayload", Kind::Notify),
-    ("ui_contract::events::REMOTE_HEALTH", Kind::Notify),
+    // 开出来之后又退了那一句经 `ui_error` 告诉用户。
+    ("ui_error::tell", Kind::Notify),
+    ("ui_error::UiError::FileWindowExited", Kind::Notify),
 ];
 
 /// 一段生产代码 → `(函数名, 那一块)`。函数外的行归 `""`。

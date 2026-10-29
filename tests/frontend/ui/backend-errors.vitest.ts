@@ -53,3 +53,18 @@ describe("壳推来的出错 toast", () => {
     expect(mod.uiErrorActions(payload({ reconnect: undefined })).map((a) => a.label)).toEqual([log]);
   });
 });
+
+describe("界面只有一个出错 listener", () => {
+  it("生产代码里订的壳推出错事件只有 `monitor-error` 一处；`remote-health` 零处（带正控）", async () => {
+    const { productionTsFiles } = await import("../../test-support/production-sources.ts");
+    const { stripComments } = await import("../../test-support/strip-comments.ts");
+    const files = productionTsFiles("src/frontend/ui");
+    expect(files.length, "一份界面生产代码都没读到").toBeGreaterThan(20);
+    const listened = (event: string): string[] =>
+      files.filter((f) => new RegExp(`\\blisten(<[^>]*>)?\\(\\s*"${event}"`).test(stripComments(f.text, "ts"))).map((f) => f.file);
+    expect(listened("remote-health"), "界面还在订 `remote-health`").toEqual([]);
+    expect(listened("monitor-error"), "订 `monitor-error` 的不是恰好 backend-errors.ts 一处").toEqual(["src/frontend/ui/backend-errors.ts"]);
+    // 正控：同一个认法认得出带类型参数的那一形。
+    expect(new RegExp(`\\blisten(<[^>]*>)?\\(\\s*"x-y"`).test(`listen<P>("x-y", f)`)).toBe(true);
+  });
+});

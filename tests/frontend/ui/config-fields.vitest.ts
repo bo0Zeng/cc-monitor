@@ -8,7 +8,7 @@
  *
  * 2c 挂着「那些 0% 文件没补测试」。逐个看过之后先剔掉两类：
  *
- * - **其实有测试的**：`cards/api-error.ts` · `format.ts` · `remote-health-throttle.ts`
+ * - **其实有测试的**：`cards/api-error.ts` · `format.ts`
  *   都有 node 侧 `*.test.ts`。「0%」是**覆盖率只统计 `*.vitest.ts`** 的产物，不是「没测」。
  * - **错了看得见的**：`session-viewer` / `keybindings/editor` / `tasks-panel` / `agents-panel`
  *   / 各 `cards/*` 都是渲染与面板 —— 坏了当场看得出来。

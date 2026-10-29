@@ -52,7 +52,8 @@ fn 上次读数那一格_按看的那一台的时区写好() {
     // 读不懂的那一样（旧版存的没带形状指纹）也说是什么时候的。
     std::fs::write(
         d.file(),
-        json!({"devbox": {"data": {"atMs": at_ms, "value": report()}}}).to_string(),
+        json!({"version": 2, "origins": {"devbox": {"data": {"atMs": at_ms, "value": report()}}}})
+            .to_string(),
     )
     .unwrap();
     assert_eq!(at("UTC"), seen(at_ms, "02:03"));
@@ -245,7 +246,11 @@ fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那�
         json!({"accounts": null, "data": kept(10, &report())})
     );
     let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(d.file()).unwrap()).unwrap();
-    assert!(raw.get("devbox").is_none(), "盘上还留着那台：{raw}");
+    assert!(
+        raw["origins"].get("devbox").is_none(),
+        "盘上还留着那台：{raw}"
+    );
+    assert!(raw["origins"].get("gpu-01").is_some(), "别的台没了：{raw}");
     write_at(&d.own(), &json!({"origin": "never", "forget": true}), 30).unwrap();
     // 清就只清：带着 kind / value 的 forget 不收（两件事别混在一次里）。
     let mixed = write_at(
@@ -315,7 +320,7 @@ fn 每一样按回包类型收_形状不对的不收() {
     let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(d.file()).unwrap()).unwrap();
     for (kind, cmd) in [("data", "data-report"), ("accounts", "accounts-list")] {
         assert_eq!(
-            raw["devbox"][kind]["shape"],
+            raw["origins"]["devbox"][kind]["shape"],
             json!(cmd_wire::shapes::shape_of(cmd).unwrap()),
             "{kind}：存档要记下是哪一版的回包"
         );
@@ -361,7 +366,11 @@ fn 存档不是这一版_照实说读不懂_不交原样() {
             json!({"atMs": 7, "shape": now_accounts, "value": bent}),
         ),
     ] {
-        std::fs::write(d.file(), json!({ o: {kind: entry} }).to_string()).unwrap();
+        std::fs::write(
+            d.file(),
+            json!({"version": 2, "origins": { o: {kind: entry} }}).to_string(),
+        )
+        .unwrap();
         let got = read_at(&d.file(), &json!({"origin": o})).unwrap();
         assert_eq!(got[kind]["state"], json!("unreadable"), "{o}: {got}");
         assert!(
@@ -397,5 +406,35 @@ fn 同一份再交_内容不变_时刻是新的() {
     assert_eq!(
         read_at(&d.file(), &json!({"origin": "devbox"})).unwrap()["accounts"],
         json!(kept(30, &changed))
+    );
+}
+
+/// 盘上那一份带版本，各台住 `origins` 底下：名叫 `version` 的那台不和版本那一格撞；第 1 版（各台在顶层）的旧份当没有。
+#[test]
+fn 带版本_各台住origins底下_旧的那一版当没有() {
+    let d = Dir::new("ver");
+    write_at(
+        &d.own(),
+        &json!({"origin": "version", "kind": "data", "value": report()}),
+        9,
+    )
+    .unwrap();
+    let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(d.file()).unwrap()).unwrap();
+    assert_eq!(raw["version"], json!(2), "{raw}");
+    assert_eq!(
+        read_at(&d.file(), &json!({"origin": "version"})).unwrap()["data"],
+        json!(kept(9, &report())),
+        "名叫 version 的那台读不回"
+    );
+    let shape = cmd_wire::shapes::shape_of("data-report").unwrap();
+    std::fs::write(
+        d.file(),
+        json!({"devbox": {"data": {"atMs": 3, "shape": shape, "value": report()}}}).to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        read_at(&d.file(), &json!({"origin": "devbox"})).unwrap(),
+        json!({"accounts": null, "data": null}),
+        "第 1 版的旧份没当没有"
     );
 }

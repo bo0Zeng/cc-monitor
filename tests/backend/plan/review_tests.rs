@@ -170,3 +170,22 @@ fn a_return_of_the_top_block_lands_when_a_new_top_cell_appears() {
     current(Some(&f)).annotate(&mut doc);
     assert_eq!(doc.slices[0].returned.as_ref().unwrap().state, "returned");
 }
+
+#[test]
+fn the_file_is_written_with_its_version_and_read_back() {
+    let f = file("review-ver");
+    ack_at(
+        &own_of(&f),
+        "/w",
+        "alpha",
+        "top:r1",
+        &["top:r1".to_string()],
+    )
+    .unwrap();
+    let back: serde_json::Value = serde_json::from_slice(&std::fs::read(&f).unwrap()).unwrap();
+    assert_eq!(back["version"], serde_json::json!(1), "写回没带版本");
+    assert!(
+        current(Some(&f)).acked("/w", "alpha", "top:r1"),
+        "带版本的那一份读不回"
+    );
+}

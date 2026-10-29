@@ -9,7 +9,7 @@
 //!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 账号库 [`ACCOUNTS_DIR_REL`] 与它的清单。
 //!   后端各写者引它们落盘；后端「文件与数据」那一份成品（`footprint/data.rs::own_rows`，经 [`OWN_HOME_ENTRIES`]）按它们列出，界面照抄；判据两向对着这一族。
 //! - **声明表**：每份落盘文件一个 [`Decl`] 常量（`*_FILE`：落点 · 状态 / 缓存 · 格式与版本 · 读上限），后端读写口
-//!   `common/own_state.rs` 的 `Doc::of` 从它取；家里那几样有声明的，「删了会丢」照声明。排成一张的 `OWN_FILES` 今天只有判据读（测试档）。
+//!   `common/own_state.rs` 的 `Doc::of` 与 monitor 读写 `config.json`（[`CONFIG_FILE`]）从它取；家里那几样有声明的，「删了会丢」照声明。排成一张的 `OWN_FILES` 今天只有判据读（测试档）。
 //! - crate 名还是「relay-route」—— 它最早只装中转门牌。
 //!
 //! # 它为什么是一个共享 crate
@@ -82,6 +82,10 @@ pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
 /// 〔「一台机器一个家」〕后端的**上传暂存区**（相对家目录）：SFTP 传输台只往这里写 `<key>.part`，
 /// 传完由那台后端提交、挪进目标。后端按它落盘（`control/files_commit.rs::STAGING_DIR`），monitor 的数据位置页按它列出。
 pub const STAGING_DIR_REL: &str = ".cc-monitor/staging";
+
+/// monitor 的设置（monitor `config.rs::patch_config_at` 是唯一写者；后端第 7 批换形只读它，`control/prefs_migration.rs`）。
+/// 住 monitor 的数据目录（默认就是 `~/.cc-monitor/`），不在家里那几样（[`OWN_HOME_ENTRIES`]）里。
+pub const CONFIG_REL: &str = ".cc-monitor/config.json";
 
 /// 〔「家里的都进唯一枚举」〕这台机器上后端的**退出行为设置**（只有后端写，`control/exit_policy.rs`）。
 pub const BACKEND_POLICY_REL: &str = ".cc-monitor/backend.json";
@@ -452,7 +456,7 @@ pub enum Kind {
 }
 
 /// 一份落盘文件的格式：我们的 JSON（顶层整数 `version`，缺了当 1；读得懂 `floor..=version`，低于 `version` 的经升级步）·
-/// 不是我们的格式（`Foreign`：不带版本、不查版本，如 OpenSSH 的主机钥匙）。
+/// 不带版本（`Foreign`：不写版本、不查版本 —— 不是我们的格式，如 OpenSSH 的主机钥匙；或定了不加版本的，如 monitor 的设置）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     Json { version: u32, floor: u32 },
@@ -520,7 +524,7 @@ impl<K: Class> Decl<K> {
         }
     }
 
-    /// 不是我们的格式。
+    /// 不带版本（不是我们的格式，或定了不加版本的）。
     pub const fn foreign(rel: &'static str, cap: u64) -> Self {
         Self::new(rel, Format::Foreign, cap)
     }
@@ -568,12 +572,23 @@ pub const BACKEND_POLICY_FILE: Decl<State> = Decl::<State>::json(BACKEND_POLICY_
 pub const PREFS_FILE: Decl<State> = Decl::<State>::json(PREFS_REL, 2, 2, 256 * 1024);
 /// 机器表。
 pub const MACHINES_FILE: Decl<State> = Decl::<State>::json(MACHINES_REL, 1, 1, 1024 * 1024);
+/// monitor 设置那一份的读上限（超了当读不懂：读那一口报错、写口一个字节不写）。
+const CONFIG_MAX_BYTES: u64 = 4 * 1024 * 1024;
+/// monitor 的设置（不带版本，定了的；monitor 在自己的数据目录里按 [`file_name_of`] 取名）。
+pub const CONFIG_FILE: Decl<State> = Decl::<State>::foreign(CONFIG_REL, CONFIG_MAX_BYTES);
+/// 「待办」选择那一份的读上限（超了当读不懂：不覆盖、`marks_unreadable`）。
+const CHORES_MAX_BYTES: u64 = 64 * 1024;
 /// 「待办」里记下的选择。
-pub const CHORES_FILE: Decl<State> = Decl::<State>::json(CHORES_REL, 1, 1, 64 * 1024);
+pub const CHORES_FILE: Decl<State> = Decl::<State>::json(CHORES_REL, 1, 1, CHORES_MAX_BYTES);
+/// 计划认可与退回那一份的读上限（超了当读不懂：不覆盖）。
+const PLAN_REVIEW_MAX_BYTES: u64 = 1024 * 1024;
 /// 计划的认可与退回。
-pub const PLAN_REVIEW_FILE: Decl<State> = Decl::<State>::json(PLAN_REVIEW_REL, 1, 1, 1024 * 1024);
-/// 离线那台的上次值。
-pub const LAST_SEEN_FILE: Decl<Cache> = Decl::<Cache>::json(LAST_SEEN_REL, 1, 32 * 1024 * 1024);
+pub const PLAN_REVIEW_FILE: Decl<State> =
+    Decl::<State>::json(PLAN_REVIEW_REL, 1, 1, PLAN_REVIEW_MAX_BYTES);
+/// 上次值整份的读上限：每份封顶 × 两样 × 台数封顶 ＝ 256 KiB × 2 × 64。
+const LAST_SEEN_MAX_BYTES: u64 = 32 * 1024 * 1024;
+/// 离线那台的上次值（第 2 版：各台住 `origins` 底下，不和顶层 `version` 同一层）。
+pub const LAST_SEEN_FILE: Decl<Cache> = Decl::<Cache>::json(LAST_SEEN_REL, 2, LAST_SEEN_MAX_BYTES);
 /// 书签。
 pub const BOOKMARKS_FILE: Decl<State> = Decl::<State>::json(BOOKMARKS_REL, 1, 1, 256 * 1024);
 /// skill 装记录（第 1 版写在 `"v"` 里，第 2 版换成顶层 `version`）。
@@ -588,8 +603,10 @@ pub const QUOTA_FILE: Decl<State> = Decl::<State>::json(QUOTA_LEDGER_REL, 1, 1, 
 pub const ROTATION_FILE: Decl<State> = Decl::<State>::json(ROTATION_REL, 3, 3, 16 << 20);
 /// 轮换用哪份策略。
 pub const ROTATION_USES_FILE: Decl<State> = Decl::<State>::json(ROTATION_USES_REL, 1, 1, 16 << 20);
+/// 血缘那一份的读上限（90 天清一次，远到不了）。
+const LINEAGE_MAX_BYTES: u64 = 16 << 20;
 /// 会话血缘。
-pub const LINEAGE_FILE: Decl<State> = Decl::<State>::json(LINEAGE_REL, 1, 1, 16 << 20);
+pub const LINEAGE_FILE: Decl<State> = Decl::<State>::json(LINEAGE_REL, 1, 1, LINEAGE_MAX_BYTES);
 /// 起会话用的号。
 pub const LAUNCH_ACCOUNTS_FILE: Decl<State> =
     Decl::<State>::json(LAUNCH_ACCOUNTS_REL, 1, 1, 16 << 20);
@@ -599,8 +616,80 @@ pub const KNOWN_HOSTS_FILE: Decl<State> = Decl::<State>::foreign(KNOWN_HOSTS_REL
 pub const SSH_CONFIG_FILE: Decl<Cache> = Decl::<Cache>::foreign(SSH_CONFIG_REL, 4 << 20);
 /// 中转钥匙（一行十六进制；丢了重铸）。
 pub const KEY_FILE: Decl<Cache> = Decl::<Cache>::foreign(KEY_FILE_REL, 4096);
+/// 历史清单缓存的读上限。
+const LISTING_CACHE_MAX_BYTES: u64 = 256 << 20;
 /// 历史清单缓存。
-pub const LISTING_CACHE_FILE: Decl<Cache> = Decl::<Cache>::json(LISTING_CACHE_REL, 3, 256 << 20);
+pub const LISTING_CACHE_FILE: Decl<Cache> =
+    Decl::<Cache>::json(LISTING_CACHE_REL, 3, LISTING_CACHE_MAX_BYTES);
+/// 一条会话的消息队（[`SESSION_QUEUE_DIR_REL`] 底下一条会话一份）。
+pub const SESSION_QUEUE_FILE: Decl<State> = Decl::<State>::json(
+    ".cc-monitor/session-queue/<sid>.json",
+    1,
+    1,
+    SESSION_QUEUE_MAX_BYTES,
+);
+/// 一条会话那一份消息队的读上限（满队 × 最长一句，留余量）。
+const SESSION_QUEUE_MAX_BYTES: u64 = 24 << 20;
+/// 起会话便条（[`LAUNCH_NOTES_DIR_REL`] 底下一个进程一张；丢了只是那一次没记上号）。
+pub const LAUNCH_NOTE_FILE: Decl<Cache> = Decl::<Cache>::json(
+    ".cc-monitor/launch-pending/<pid>.json",
+    1,
+    LAUNCH_NOTE_MAX_BYTES,
+);
+/// 一张起会话便条的读上限。
+const LAUNCH_NOTE_MAX_BYTES: u64 = 16 << 20;
+/// 一份记录的骨架（[`SKELETON_DIR_REL`] 底下一份记录一份；能照记录重扫）。
+pub const SKELETON_FILE: Decl<Cache> = Decl::<Cache>::json(
+    ".cc-monitor/cache/skeleton/<digest>.json",
+    7,
+    SKELETON_MAX_BYTES,
+);
+/// 一份骨架的读上限。
+const SKELETON_MAX_BYTES: u64 = 1 << 30;
+/// 远端那台的清单副本（[`REMOTE_LISTING_DIR_REL`] 底下一台一份；原样是那台交来的字节）。
+pub const REMOTE_LISTING_FILE: Decl<Cache> = Decl::<Cache>::foreign(
+    ".cc-monitor/cache/remote-listing/<machine>.json",
+    REMOTE_LISTING_MAX_BYTES,
+);
+/// 一台远端清单副本的读上限。
+const REMOTE_LISTING_MAX_BYTES: u64 = 64 << 20;
+/// API key 表（住数据目录根上；人手改的那一份，未知键原样留）。
+pub const APIKEY_CREDENTIALS_FILE: Decl<State> = Decl::<State>::json(
+    ".cc-monitor/apikey-credentials.json",
+    1,
+    1,
+    APIKEY_CREDENTIALS_MAX_BYTES,
+);
+/// API key 表的读上限（一个号一格 key）。
+const APIKEY_CREDENTIALS_MAX_BYTES: u64 = 4 << 20;
+/// 订阅号的凭据文件（一个号一份，住那个号的配置目录、文件名由那一家登记；那一家的格式）。
+pub const ACCOUNT_CREDS_FILE: Decl<State> = Decl::<State>::foreign(
+    "<account-config-dir>/<credentials-file>",
+    ACCOUNT_CREDS_MAX_BYTES,
+);
+/// 订阅号凭据文件的读上限。
+const ACCOUNT_CREDS_MAX_BYTES: u64 = 1 << 20;
+/// 一条会话一份的上游描述（起会话便条那个目录底下，按来处存）。
+pub const SESSION_UPSTREAM_FILE: Decl<State> = Decl::<State>::json(
+    ".cc-monitor/launch-pending/upstream/<origin>.json",
+    1,
+    1,
+    SESSION_UPSTREAM_MAX_BYTES,
+);
+/// 一份上游描述的读上限。
+const SESSION_UPSTREAM_MAX_BYTES: u64 = 16 << 20;
+/// 一个托管终端一份的事实。
+pub const HOST_FACTS_FILE: Decl<State> = Decl::<State>::json(
+    ".cc-monitor/hosts/<id>/facts.json",
+    1,
+    1,
+    HOST_FACTS_MAX_BYTES,
+);
+/// 事实文件的读上限（几百字节的东西，大了就不是我们写的）。
+const HOST_FACTS_MAX_BYTES: u64 = 64 * 1024;
+/// 托管进程跑的那份按版本的程序副本（后端不读它，只交给系统去跑；没有 · 坏了照自己再复制一份）。
+pub const HOST_PROGRAM_FILE: Decl<Cache> =
+    Decl::<Cache>::foreign(".cc-monitor/hosts/.bin/<version>/ccm.exe", 0);
 
 /// 〔「一份落盘文件一行」〕上面那几份排成一张（判据逐行查自洽、查家里那几样与声明对得上）。
 #[cfg(test)]
@@ -622,7 +711,17 @@ const OWN_FILES: &[Row] = &[
     KNOWN_HOSTS_FILE.row,
     SSH_CONFIG_FILE.row,
     KEY_FILE.row,
+    CONFIG_FILE.row,
     LISTING_CACHE_FILE.row,
+    SESSION_QUEUE_FILE.row,
+    LAUNCH_NOTE_FILE.row,
+    SKELETON_FILE.row,
+    REMOTE_LISTING_FILE.row,
+    APIKEY_CREDENTIALS_FILE.row,
+    ACCOUNT_CREDS_FILE.row,
+    SESSION_UPSTREAM_FILE.row,
+    HOST_FACTS_FILE.row,
+    HOST_PROGRAM_FILE.row,
 ];
 
 /// 家里那几样的一格，照声明取落点与「删了会丢」。

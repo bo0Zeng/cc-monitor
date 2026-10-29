@@ -536,7 +536,7 @@ pub fn run() {
             let replay = Arc::new(event_replay::EventReplay::new());
             // 会话内容经通道 `subscribe` 交给 webview（`chan/webview.rs` 头注）：出口先装上。
             replay.attach_sink(Arc::new(chan::webview::WebviewSink(app.handle().clone())));
-            local_lines::install(app.handle().clone(), replay.clone());
+            local_lines::install(replay.clone());
             stream_watch::spawn(replay.clone());
 
             // 主窗的初始尺寸（`tauri.conf.json`）夹进工作区（小屏上底边别压在任务栏下）、摆在正中（重启不漂）。
@@ -807,14 +807,6 @@ pub fn run() {
                 // 本机中转住在上面那个后端进程里 ⇒ 这里**没有**第三个进程要收。
             }
         });
-}
-
-/// `remote-health` 事件的出口：窗口把手只在这一层，交给 `stream_source`（它不认识 GUI 宿主）的是一个闭包。
-pub(crate) fn remote_health_out(app: tauri::AppHandle) -> stream_source::HealthOut {
-    Arc::new(move |payload| {
-        app.emit(ui_contract::events::REMOTE_HEALTH, payload)
-            .map_err(|e| e.to_string())
-    })
 }
 
 /// 起来时那一趟起本机后端的结局进日志；起不来那一句由 `local_backend_host` 记进本机后端那一格（`LocalBackend::Down.said`），机器条本机那一行与设置窗照画。

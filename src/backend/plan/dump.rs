@@ -43,7 +43,7 @@ pub(crate) fn run_domains(entry: &Path, cwd: &Path, dir: &str) -> Ran {
 /// 起了一次 pb ⇒ 结局（纯函数）：起不来 ⇒ 失败；过了期限 ⇒ 读计划超时（等了多久照原语说的）；跑完了 ⇒ [`classify`]。
 pub(crate) fn ran_of(r: Result<Done, Said>) -> Ran {
     match r {
-        Err(Said { said, raw }) => Ran::Failed { said, raw },
+        Err(Said { said, raw, .. }) => Ran::Failed { said, raw },
         Ok(Done {
             waited_secs: Some(secs),
             ..
