@@ -55,15 +55,8 @@ pub fn load_config() -> Result<Value, Said> {
 
 /// 读一份 `config.json`：不在 ⇒ 最小骨架；读上限照声明表（`relay_route_core::CONFIG_FILE`），超了 ⇒ 读不出来、照实说。
 pub(crate) fn load_config_at(path: &Path) -> Result<Value, Said> {
-    let raw = match read_config_text(path) {
-        Ok(Some(raw)) => raw,
-        Ok(None) => return Ok(default_config()),
-        Err(NotRead { why, raw }) => {
-            return Err(Said::with_raw(
-                copy_text("rsShellCmd.config.readFailed", &[("why", &why)]),
-                format!("{}\n{raw}", path.display()),
-            ))
-        }
+    let Some(raw) = read_config_text(path)? else {
+        return Ok(default_config());
     };
     serde_json::from_str(&raw).map_err(|e| {
         Said::with_raw(
@@ -73,30 +66,26 @@ pub(crate) fn load_config_at(path: &Path) -> Result<Value, Said> {
     })
 }
 
-/// `config.json` 读不出来：原因词（超了上限 · 盘上那一步的原因）与进复制详情的原话。
-struct NotRead {
-    why: String,
-    raw: String,
-}
-
-/// 读 `config.json` 的原文，上限照声明表：不在 ⇒ `None`。
-fn read_config_text(path: &Path) -> Result<Option<String>, NotRead> {
+/// 读 `config.json` 的原文，上限照声明表：不在 ⇒ `None`；读不出来（超了上限 · 盘上那一步）⇒ 那一句，原话进复制详情。
+/// 读设置与写口现读都经它（同一句「读取设置失败 · 原因」）。
+fn read_config_text(path: &Path) -> Result<Option<String>, Said> {
     let cap = relay_route_core::CONFIG_FILE.row.cap;
-    match host_core::read_capped(path, cap) {
-        Ok(host_core::Capped::Text(raw)) => Ok(Some(raw)),
-        Ok(host_core::Capped::Absent) => Ok(None),
-        Ok(host_core::Capped::TooBig) => Err(NotRead {
-            why: copy_text(
+    let (why, raw) = match host_core::read_capped(path, cap) {
+        Ok(host_core::Capped::Text(raw)) => return Ok(Some(raw)),
+        Ok(host_core::Capped::Absent) => return Ok(None),
+        Ok(host_core::Capped::TooBig) => (
+            copy_text(
                 "rsConfig.read.tooBig",
                 &[("cap", &copy_core::size_text(cap))],
             ),
-            raw: format!("> {cap} bytes"),
-        }),
-        Err(e) => Err(NotRead {
-            why: copy_core::reason::io_reason(e.kind()),
-            raw: e.to_string(),
-        }),
-    }
+            format!("> {cap} bytes"),
+        ),
+        Err(e) => (copy_core::reason::io_reason(e.kind()), e.to_string()),
+    };
+    Err(Said::with_raw(
+        copy_text("rsShellCmd.config.readFailed", &[("why", &why)]),
+        format!("{}\n{raw}", path.display()),
+    ))
 }
 
 /// 一条配置补丁。`path[0]` 是顶层键，其后是逐层子键。
@@ -220,15 +209,7 @@ pub(crate) fn patch_config_at(
 
     // ③ 锁内现读。不存在 ⇒ 空对象；读不懂 / 根不是对象 ⇒ 不写。
     //     读上限照声明表：超了 ⇒ 读不出来，同样一个字节不写。
-    let read = read_config_text(path).map_err(|NotRead { why, raw }| {
-        ConfigWriteError::Io(Said::with_raw(
-            copy_text(
-                "reason.fs.readFailed",
-                &[("path", &path.display().to_string()), ("why", &why)],
-            ),
-            raw,
-        ))
-    })?;
+    let read = read_config_text(path).map_err(ConfigWriteError::Io)?;
     let mut root: Map<String, Value> = if let Some(raw) = read {
         match serde_json::from_str::<Value>(&raw) {
             Ok(Value::Object(m)) => m,
