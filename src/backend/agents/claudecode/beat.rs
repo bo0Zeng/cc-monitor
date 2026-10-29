@@ -47,7 +47,7 @@ fn ask_of(tool: &str) -> CallAsk {
     }
 }
 
-/// 一个工具调用的主参数一行（主参数取哪格查 [`super::steps::main_arg`]，头一个非空行；提问工具取第一问）。
+/// 一个工具调用的主参数一行（主参数取哪格查 [`super::steps::main_arg`]，摆哪一段查 [`super::steps::main_text`]，头一个非空行；提问工具取第一问）。
 pub(crate) fn what_of(name: &str, input: Option<&Value>) -> Option<String> {
     let input = input?;
     if name == ASK_TOOL {
@@ -60,7 +60,11 @@ pub(crate) fn what_of(name: &str, input: Option<&Value>) -> Option<String> {
             .and_then(one_line);
     }
     let (key, _) = super::steps::main_arg(name)?;
-    input.get(key).and_then(Value::as_str).and_then(one_line)
+    input
+        .get(key)
+        .and_then(Value::as_str)
+        .map(|s| super::steps::main_text(name, s))
+        .and_then(one_line)
 }
 
 fn edits_of<'a>(name: &str, input: Option<&'a Value>) -> Option<Cow<'a, str>> {

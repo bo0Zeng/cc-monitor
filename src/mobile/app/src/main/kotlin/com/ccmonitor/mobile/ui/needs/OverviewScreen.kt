@@ -34,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
@@ -43,6 +44,7 @@ import com.ccmonitor.mobile.core.ui.icon.BackButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.link.HostBackends
@@ -208,6 +210,11 @@ private fun SessionLine(
         Column(Modifier.weight(1f)) {
             Text(line.row.label, style = MaterialTheme.typography.bodyMedium)
             Text(n.text, style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.warn)
+            // 批什么（核心挑好的那一段）· 谁要批（agent 发的那一条，核心写好的那一句），与桌面同序。
+            n.what?.let { Text(it, style = monoSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            n.ask?.run?.let {
+                Text(it.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
         DurationFormat.waited(n.waitedMs, 0L, 0L)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }

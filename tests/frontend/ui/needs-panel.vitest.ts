@@ -106,6 +106,23 @@ describe("入口的数 ＝ 两份清单相加", () => {
 });
 
 describe("浮层", () => {
+  it("★ agent 发的那一条：第二行摆核心挑好的批什么，另起一行照摆谁要批；主会话发的没有那一行", async () => {
+    const fromAgent = {
+      ...waiting.needs,
+      what: "核心·sed -n 1,40p",
+      ask: { id: "ask-1", kind: "approve", tool: "Bash", run: { id: "a1", text: "核心·agent「Audit」 · Explore" }, what: "核心·sed -n 1,40p", detail: "", choices: [], questions: [], sinceMs: 0 },
+    } as Needs;
+    const r = rig([tab("a", { ...waiting, needs: fromAgent }), tab("b", waiting)], {
+      [LOCAL_ORIGIN]: listOf([sessionItem("a", fromAgent), sessionItem("b", waiting.needs)]),
+    });
+    await r.book.refresh(LOCAL_ORIGIN);
+    r.strip.click();
+    const [a, b] = rows();
+    expect(a.querySelector("[data-part=by]")?.textContent).toBe("核心·agent「Audit」 · Explore");
+    expect(a.textContent).toContain("核心·sed -n 1,40p");
+    expect(b.querySelector("[data-part=by]")).toBeNull();
+  });
+
   it("★ 点入口开浮层（不跳）：会话行 · 分隔线 · 会话外每一项（said ＋ 机器名 ＋［登录…］）；开的那一下各台重问一次", async () => {
     const r = rig([tab("a", waiting)], { [LOCAL_ORIGIN]: machine(["a"], [acctItem("t1")]), "gpu-01": machine([], [mcpItem("s1")]) });
     await r.book.refreshAll([LOCAL_ORIGIN, "gpu-01" as Origin]);

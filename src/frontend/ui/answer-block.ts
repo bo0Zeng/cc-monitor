@@ -176,7 +176,7 @@ export class AnswerBlock {
       const tag = document.createElement("span");
       tag.className = s.abTag;
       tag.dataset.part = "tag";
-      tag.textContent = ask.run.kind ? copyText("askBlock.tag.run", { kind: ask.run.kind }) : copyText("askBlock.tag.runBare");
+      tag.textContent = ask.run.text;
       head.append(tag);
     }
     this.since = document.createElement("span");

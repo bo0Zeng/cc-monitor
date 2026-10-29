@@ -289,11 +289,14 @@ private fun SheetHead(
         sheet.ask.run?.let { run ->
             Spacer(Modifier.width(8.dp))
             Text(
-                run.kind?.let { copyText("askBlock.tag.run", "kind" to it) } ?: copyText("askBlock.tag.runBare"),
+                run.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier =
                     Modifier
+                        .weight(1f, fill = false)
                         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp))
                         .padding(horizontal = 6.dp, vertical = 2.dp),
             )
