@@ -8,14 +8,16 @@ use cmd_wire::accounts::AccountsList;
 /// 起会话那几条要的文件管理面（起之前预标信任经它写）：生产那一份由命令表交（`stream/inbound` 的 `LocalFiles`）。
 pub(crate) type Files = &'static (dyn Door + Sync);
 
-/// 起之前：`cwd` 标成 `dir` 那个号信任过（那一家有「信任」这件事才做；写不成只出声、照常起）。
+/// 起之前（用的是账号库里的号）：账号库先对齐（共享库里新冒出来的项各号都链上，会话起来就看得见），
+/// 再把 `cwd` 标成 `dir` 那个号信任过（那一家有「信任」这件事才做）。写不成只出声、照常起。
 pub(crate) fn pretrust_with(files: Option<Files>, agent: &str, dir: &str, cwd: &str) {
     use crate::accounts::manage::trust_share_exec::{pretrust, Marked};
     let Some(d) = files else { return };
-    if crate::agents::accounts_face(agent)
-        .and_then(|f| f.trust)
-        .is_none()
-    {
+    let Some(face) = crate::agents::accounts_face(agent) else {
+        return;
+    };
+    crate::accounts::manage::wire::align_here(d);
+    if face.trust.is_none() {
         return;
     }
     match pretrust(d, dir, cwd) {

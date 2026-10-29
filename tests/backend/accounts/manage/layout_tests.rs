@@ -27,7 +27,8 @@ fn dir(mode: u32, entries: &[(&str, Item)]) -> DirState {
     }
 }
 
-/// `/h` 家；共享库有 skills · settings.json · agents · plans · projects · sessions · accounts（排除）· x.bak（排除）；清单里一个号 z。
+/// `/h` 家；共享库有 skills · settings.json · agents · plans · projects · sessions · accounts（排除）· x.bak（排除）·
+/// 登录刷新那把锁与它的属主记录（排除）；清单里一个号 z。
 fn snap(z: DirState) -> Snapshot {
     let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[{"name":"z","email":"","configDir":"/h/.cc-monitor/accounts/z","isDefault":true}]}"#;
     let mut dirs = BTreeMap::new();
@@ -51,6 +52,8 @@ fn snap(z: DirState) -> Snapshot {
                 ("sessions", Item::Dir { mode: Some(0o700) }),
                 ("accounts", Item::Dir { mode: Some(0o755) }),
                 ("x.bak", file(0o644)),
+                (".oauth_refresh.lock", Item::Dir { mode: Some(0o700) }),
+                (".oauth_refresh.lock.owner", file(0o600)),
             ],
         ),
         accts: dir(0o700, &[]),
@@ -257,10 +260,11 @@ fn the_shared_dirs_claude_makes_on_demand_are_linked_before_the_shared_store_has
     }
 }
 
-/// 升级那一步只碰按需才建的那几项：谁都没有 ⇒ 建、两个号都链；一个号有实体 ⇒ 挪进共享库、两个号都链；
-/// 两个号各有一份 ⇒ 建一份空的、两个号都不动；接好之后 ⇒ 空计划。别的共享项缺链接它不管（那是修复的事）。
+/// 对齐：共享库里新冒出来的项（`bridge-spawn`，Claude Code 升级后自己建的）⇒ 每个号补一条链；按需才建的那几个谁都没有 ⇒ 建、都链；
+/// 一个号有实体 ⇒ 挪进共享库、都链；两个号各有一份 ⇒ 建一份空的、两个号都不动；号里自己的实体（`skills`）不动；
+/// 锁文件不链；只建目录 · 挪按需才建的那一份 · 建链接；接好之后 ⇒ 空计划。
 #[test]
-fn the_upgrade_step_touches_only_the_on_demand_dirs_and_settles_to_nothing() {
+fn aligning_links_every_shared_item_an_account_lacks_and_settles_to_nothing() {
     let acct = |n: &str| format!("/h/.cc-monitor/accounts/{n}");
     let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[{"name":"z","email":"","configDir":"/h/.cc-monitor/accounts/z","isDefault":true},{"name":"b","email":"","configDir":"/h/.cc-monitor/accounts/b","isDefault":false}]}"#;
     let two = |z: DirState, b: DirState| {
@@ -270,13 +274,15 @@ fn the_upgrade_step_touches_only_the_on_demand_dirs_and_settles_to_nothing() {
         s.dirs.insert(acct("b"), b);
         s.shared.entries.remove("agents");
         s.shared.entries.remove("plans");
+        s.shared
+            .entries
+            .insert("bridge-spawn".into(), Item::Dir { mode: Some(0o700) });
         s
     };
     let bare = || {
         let mut d = healthy();
         d.entries.remove("agents");
         d.entries.remove("plans");
-        d.entries.remove("skills");
         d
     };
     let with = |n: &str| {
@@ -289,20 +295,36 @@ fn the_upgrade_step_touches_only_the_on_demand_dirs_and_settles_to_nothing() {
         target: format!("/h/.claude/{n}"),
         at: format!("{}/{n}", acct(who)),
     };
-    let p = plan_shared_on_demand(&two(bare(), bare())).unwrap();
+    let p = plan_align(&two(bare(), bare())).unwrap();
     assert_eq!(
         p.ops,
         vec![
             mk("agents"),
             mk("plans"),
             ln("z", "agents"),
+            ln("z", "bridge-spawn"),
             ln("z", "plans"),
             ln("b", "agents"),
+            ln("b", "bridge-spawn"),
             ln("b", "plans"),
-        ],
-        "缺的 skills 链接不归它管"
+        ]
     );
-    let p = plan_shared_on_demand(&two(with("plans"), bare())).unwrap();
+    let mut own_skills = bare();
+    own_skills.entries.remove("skills");
+    own_skills
+        .entries
+        .insert("skills".into(), Item::Dir { mode: Some(0o700) });
+    let p = plan_align(&two(own_skills, bare())).unwrap();
+    assert!(
+        !p.ops.iter().any(|o| match o {
+            Op::Link { at, .. } | Op::Relink { at, .. } => at.ends_with("/z/skills"),
+            Op::Remove(at) => at.ends_with("/skills"),
+            _ => false,
+        }),
+        "号里自己的 skills 被动了：{:?}",
+        p.ops
+    );
+    let p = plan_align(&two(with("plans"), bare())).unwrap();
     assert_eq!(
         p.ops,
         vec![
@@ -312,12 +334,14 @@ fn the_upgrade_step_touches_only_the_on_demand_dirs_and_settles_to_nothing() {
                 to: "/h/.claude/plans".into()
             },
             ln("z", "agents"),
+            ln("z", "bridge-spawn"),
             ln("z", "plans"),
             ln("b", "agents"),
+            ln("b", "bridge-spawn"),
             ln("b", "plans"),
         ]
     );
-    let p = plan_shared_on_demand(&two(with("agents"), with("agents"))).unwrap();
+    let p = plan_align(&two(with("agents"), with("agents"))).unwrap();
     assert!(p.ops.contains(&mk("agents")), "{:?}", p.ops);
     assert!(
         !p.ops.contains(&ln("z", "agents")) && !p.ops.contains(&ln("b", "agents")),
@@ -325,10 +349,7 @@ fn the_upgrade_step_touches_only_the_on_demand_dirs_and_settles_to_nothing() {
         p.ops
     );
     // 接好之后：空计划。
-    assert_eq!(
-        plan_shared_on_demand(&snap(healthy())).unwrap(),
-        Plan::default()
-    );
+    assert_eq!(plan_align(&snap(healthy())).unwrap(), Plan::default());
 }
 
 /// 会话记录（`projects`）与在跑会话的那份登记（`sessions`）：后端只在共享库里找它们，所以各号必须链回共享库那一份。

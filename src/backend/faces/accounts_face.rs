@@ -370,7 +370,7 @@ impl crate::wire::typed::Handle for AccountsRollback {
     }
 }
 
-/// `accounts-verify`：链接 · 权限 · 邮箱逐项核一遍（只读）。
+/// `accounts-verify`：先对齐账号库（缺的共享链接补上），再把链接 · 权限 · 邮箱逐项核一遍。
 pub(crate) struct AccountsVerify;
 
 impl Command for AccountsVerify {
