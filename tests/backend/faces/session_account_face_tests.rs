@@ -104,6 +104,7 @@ fn relayed_swapped_session_answers_current_account_with_usage_and_badge() {
         last: s("personal"),
         default: s("personal"),
         queryable: true,
+        own_upstream: false,
     };
     let got = product(&f, &q);
     assert_eq!(got.account.as_deref(), Some("work"));
@@ -288,6 +289,52 @@ fn unknown_default_or_unqueryable_host_draws_no_badge() {
     assert!(got.differs);
     assert!(!got.queryable);
     assert_eq!(got.badge, None);
+}
+
+/// ★ 上游是自设的（用户自己的网关）：那一格写上；不画那个号的用量（额度账上有也不画）；悬停写看不到 · 不适用；
+/// 不与默认号比、不出徽章；标签页悬停卡那一行照它写。
+#[test]
+fn own_upstream_session_says_quota_unseen_and_switching_not_applicable() {
+    let q = quota("own");
+    let f = Facts {
+        alive: true,
+        live: s("work"),
+        default: s("personal"),
+        queryable: true,
+        own_upstream: true,
+        ..Facts::default()
+    };
+    let got = product(&f, &q);
+    let line = copy_text("acct.own.line", &[]);
+    assert_eq!(got.own_upstream.as_deref(), Some(line.as_str()));
+    assert_eq!(got.usage, None, "画了那个号的用量");
+    assert_eq!(
+        got.hover,
+        vec![
+            vec![label("work")],
+            vec![
+                copy_text("acct.hover.usage", &[]),
+                copy_text("acct.own.usage", &[]),
+            ],
+            vec![
+                copy_text("acct.hover.switch", &[]),
+                copy_text("acct.own.switch", &[]),
+            ],
+        ]
+    );
+    assert_eq!(got.sampled, None);
+    assert!(!got.differs);
+    assert_eq!(got.badge, None);
+    assert_eq!(got.account_line.as_deref(), Some(line.as_str()));
+    // 不是自设的 ⇒ 那一格不在。
+    let plain = product(
+        &Facts {
+            own_upstream: false,
+            ..f
+        },
+        &q,
+    );
+    assert_eq!(plain.own_upstream, None);
 }
 
 /// 入参多一格 ⇒ 收不下（`deny_unknown_fields`）。
