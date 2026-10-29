@@ -17,6 +17,7 @@
 use crate::wire::Frame;
 use crate::wire::{SessionFace, SessionFaceExt as _, SessionLeft};
 use cmd_wire::frame::Relayed;
+use cmd_wire::machine::MachineState;
 use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom};
 use resident_client::book::{Seat, SessionBook};
 use resident_client::feed::{self, Boxed, Config, Event, Exec, Feed, Problem, Progress, Transport};
@@ -540,17 +541,22 @@ fn named(req: &MachineName) -> Result<&str, String> {
 }
 
 crate::wire::typed::codes! {
-    /// `machine-wake` 没有别的码。
-    pub(crate) enum MachineWakeErr {}
+    /// `machine-wake` 的码：机器表里没有那台 · 那台停用着（「连接这台」关着）· 正在连 / 装 / 更新（带那一刻的成品）。
+    pub(crate) enum MachineWakeErr {
+        UnknownMachine = "unknown_machine",
+        Disabled = "disabled",
+        Busy = "busy" => MachineState,
+    }
 }
 
-/// `machine-wake`：机器页「起」/［重试］—— 那台不再停着；断着 ⇒ 不等退避马上再接。
+/// `machine-wake`：重新连接一台（机器条 · 新建会话框 · 会话头 · 机器页「起」/［重试］都是这一条）——
+/// 那台不再停着；断着 ⇒ 不等退避马上再接。回那台此刻的成品（多半之后照常推 `changed {machine}`）。
 pub(crate) struct MachineWake;
 
 impl crate::wire::typed::Command for MachineWake {
     const NAME: &'static str = "machine-wake";
     type Req = MachineName;
-    type Reply = ();
+    type Reply = MachineState;
     type Err = MachineWakeErr;
 }
 
@@ -559,8 +565,41 @@ impl crate::wire::typed::Handle for MachineWake {
     fn run(
         req: MachineName,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<(), MachineWakeErr>> + Send + 'static {
-        std::future::ready(named(&req).map(resume).map_err(MachineWakeErr::BadArgs))
+    ) -> impl std::future::Future<Output = Result<MachineState, MachineWakeErr>> + Send + 'static
+    {
+        std::future::ready(
+            named(&req)
+                .map_err(MachineWakeErr::BadArgs)
+                .and_then(|m| wake_in(m, &crate::control::machine_state::read(), resume)),
+        )
+    }
+}
+
+/// [`MachineWake`] 的本体（各台此刻的成品与「叫醒」由调用方给）：先照那台的成品判拒不拒，不拒才叫醒。
+pub(crate) fn wake_in(
+    machine: &str,
+    states: &std::collections::BTreeMap<String, MachineState>,
+    wake: impl FnOnce(&str),
+) -> Result<MachineState, MachineWakeErr> {
+    use cmd_wire::machine::MachineStateKind as K;
+    let Some(m) = states
+        .get(machine)
+        .filter(|_| machine != cmd_wire::machine::LOCAL)
+    else {
+        return Err(MachineWakeErr::UnknownMachine(copy_core::copy_text(
+            "beMachineWake.refuse.unknown",
+            &[("machine", machine)],
+        )));
+    };
+    match m.state {
+        K::Disabled => Err(MachineWakeErr::Disabled(m.said.clone())),
+        K::Connecting | K::Installing | K::Updating => {
+            Err(MachineWakeErr::Busy(m.said.clone(), m.clone()))
+        }
+        _ => {
+            wake(machine);
+            Ok(m.clone())
+        }
     }
 }
 

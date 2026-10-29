@@ -2278,6 +2278,29 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     await clickUpdate();
     expect(pop(), "取消了：浮层不再出").toBeNull();
   });
+
+  it("★ 机器条那一行的［更新］与 ↗ 浮层 · 机器卡同一个动作（共用部署模块，先问会打断什么），不开设置窗", async () => {
+    const tm = makeTM();
+    vi.mocked(updateBackendOf).mockReset();
+    vi.mocked(updateBackendOf).mockResolvedValue("已部署 Z");
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue([]);
+    tm.fixMachine("devbox", "update");
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(updateBackendOf).mock.calls.map((c) => [c[0], c[1]])).toEqual([["devbox", "devbox"]]);
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "open_settings_window"), "不开设置窗").toEqual([]);
+  });
+
+  it("★ ［重新连接］那台拒了（停用着 · 正在连 · 机器表里没有）⇒ 那一句原样进状态栏消息，不只进日志", async () => {
+    const tm = makeTM();
+    mockInvoke.mockReset();
+    mockInvoke.mockImplementation((cmd: string) => (cmd === "backend_start" ? Promise.reject(new Error("那台停用着-甲")) : Promise.resolve([])));
+    vi.mocked(noteMessage).mockClear();
+    tm.fixMachine("devbox", "retry");
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "backend_start").map((c) => c[1])).toEqual([{ origin: "devbox" }]);
+    expect(vi.mocked(noteMessage).mock.calls.map((c) => c[0])).toEqual(["那台停用着-甲"]);
+  });
 });
 
 /**

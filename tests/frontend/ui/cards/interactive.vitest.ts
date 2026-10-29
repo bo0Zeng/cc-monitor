@@ -116,6 +116,15 @@ describe("交互卡：按核心那一格（`steps[id].ask`）建，不认入参�
     expect(plan().textContent).not.toMatch(/User has/);
   });
 
+  it("★ 拒了 · 没成 ⇒ 底行就是核心写的那一句（`StepResult.text`，同过程那一步），卡上不另有一套字", () => {
+    const no = buildInteractiveCard(asked("选哪个方案", ["甲案", "乙案"]), opts);
+    settleInteractive(no, { ok: false, rejected: true, text: "核心·拒了那一句" });
+    expect(no.querySelector(".block-interactive-done")?.textContent).toBe("核心·拒了那一句");
+    const bad = buildInteractiveCard(asked("选哪个方案", ["甲案", "乙案"]), opts);
+    settleInteractive(bad, { ok: false, text: "核心·没成那一句" });
+    expect(bad.querySelector(".block-interactive-done")?.textContent).toBe("核心·没成那一句");
+  });
+
   it("★ 计划卡的标题照核心写的那一句（状态格打头）：等批准 ⇒ 批了换「已批准」那一句 · 没批换「继续规划」那一句；界面不写一个字", () => {
     const title = { waiting: "核心·等批准 · 计划", approved: "核心·已批准 · 计划", kept: "核心·未批准 · 继续规划" };
     const card = () => buildInteractiveCard({ kind: "plan", text: "甲", title }, opts);

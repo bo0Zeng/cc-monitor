@@ -104,9 +104,8 @@ const SENDERS: &[(&str, Verdict)] = &[
     // 一台的常驻流（`resident-client/feed.rs`）：问活只记一行日志、没有第二条路；
     //   替宿主转发的一问一答把 `CallError` 原样交回宿主（手机核心按它说那一句），这里不做回落判断。
     ("feed.rs", Verdict::ProbeOnlyNoFallbackDecision),
-    // 机器页「起」·［重试］叫醒本机后端手上那台的常驻流（`backend_control.rs::wake_backend_feed`，`machine-wake`）：没叫醒只记一行日志 ——
-    //   壳这一条照样重起，那台的状态成品等本机后端下一轮；没有第二条路，成败也不交给任何人。
-    ("backend_control.rs", Verdict::ProbeOnlyNoFallbackDecision),
+    // `backend_control.rs` 那一行退役了：［重新连接］叫醒那台（`machine-wake`）改经 `frame_query::call`（走分流器），
+    //   拒了那一句回给界面，壳那一份不再直连 `inbound_client`，发现阶段扫不到它。
     // ★ 机器页「停」：请**本机**后端 `machine-stop`（先停它那一条、再在那台跑 `--resident-stop`），经 `remote_resident.rs::stop` 这一口；
     //   没有第二条路可回落（停那台只经本机后端那条 SSH），失败经共用分流器翻成人话。形状与 `deploy.rs` 那一行同。
     ("remote_resident.rs", Verdict::UsesRouter),

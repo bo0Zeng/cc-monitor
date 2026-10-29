@@ -58,7 +58,7 @@ export function buildAccountCommands(input: AccountCommandsInput): AccountComman
 
   cmds.push({
     id: "acct-manage",
-    title: copyText("accountCommands.manage.title"),
+    title: copyText("acct.menu.manage"),
     keywords: copyText("accountCommands.manage.keywords"),
     run: () => input.openSettings(),
   });

@@ -1220,10 +1220,28 @@ export class TabManager {
     return this.store.tabs.get(sid)?.pinned === true;
   }
 
-  /** 栏底机器条那一行的修法：重新连接就地做；别的（连接设置 · 推公钥 · 比对指纹 · 更新 …）在那台的机器页做。 */
+  /**
+   * 栏底机器条那一行的修法：重新连接 · 更新就地做（更新与 ↗ 浮层 · 机器卡同一个动作 `backend-deploy.ts`：先问会打断什么、有才确认；
+   * 更新中那一态由那台的状态成品画在那一行上；没换上是一次出错 ⇒ 红 toast）；别的（连接设置 · 推公钥 · 比对指纹 …）在那台的机器页做。
+   */
   fixMachine(origin: string, fix: MachineFix): void {
     if (fix === "retry") this.reconnect(origin);
+    else if (fix === "update") void this.updateFromStrip(origin);
     else void openSettingsWindow(undefined, machineOf(origin));
+  }
+
+  /** 更新没换上那一句（↗ 浮层标题 · 机器条［更新］的红 toast 同一句）。 */
+  private updateFailedTitle(machine: string): string {
+    return copyText("front.title.updateFailed", { machine });
+  }
+
+  private async updateFromStrip(origin: string): Promise<void> {
+    const machine = machineName(origin);
+    try {
+      if ((await updateBackendOf(origin, machine)) !== null) await this.actions.redial(origin);
+    } catch (e) {
+      failToast(this.updateFailedTitle(machine), e, { level: "error" });
+    }
   }
 
   /** ［重新连接］：那台断着在退避里等 ⇒ 立刻重拨一次（壳那一侧 `backend_start`：在跑就是「别等了」）。 */
@@ -1558,7 +1576,7 @@ export class TabManager {
       done = await updateBackendOf(origin, machine, () => show(view(copyText("front.title.updating", { machine }), "", "grey", [])));
     } catch (e) {
       const said = e instanceof Error ? e.message : String(e);
-      show(view(copyText("front.title.updateFailed", { machine }), said, "red", [{ kind: "retry-update" }, { kind: "copy", detail: detailOf(e) }]));
+      show(view(this.updateFailedTitle(machine), said, "red", [{ kind: "retry-update" }, { kind: "copy", detail: detailOf(e) }]));
       return;
     }
     if (done === null) return;
