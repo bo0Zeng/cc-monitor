@@ -310,6 +310,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              （后端 `session_attachment·rs::sweep`，事件上跑、不是节拍器）。附件目录的体量上限是另一格 `MAX_DIR_BYTES`。",
     ),
     (
+        "KEPT_MAX_AGE_SECS",
+        "**时间**不是体量：远端换版本时留存区里一份被盖掉的落点过多少秒删\
+             （后端 `place_self·rs::prune_kept`，每趟换完收拾、不是节拍器）。留几份是另一格 `KEPT_MAX`（条数），不限任何字节量。",
+    ),
+    (
         "TRIM_SLACK",
         "**条数**不是体量：重放缓冲里一个会话要**多出**这么多条才修剪一次\
              （`event_replay·rs::push_and_trim`）—— 量的是摊还节奏，不是容量。\

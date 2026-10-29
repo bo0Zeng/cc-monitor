@@ -117,7 +117,6 @@ tests/backend/history/history_browse_tests.rs	3
 tests/backend/history/listing_tests.rs	1
 tests/backend/history/search_rules_tests.rs	1
 tests/backend/layering_guard.rs	9
-tests/backend/main_argv_table_guard.rs	5
 tests/backend/main_fourth_face_tests.rs	8
 tests/backend/no_timer_guard.rs	6
 tests/backend/observe/accounts_query_tests.rs	16
