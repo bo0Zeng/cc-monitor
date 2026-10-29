@@ -373,6 +373,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `permission` | Allow | 切权限档（`session-permission`） |
 | `stop` | Allow | 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能 |
 | `say` | CanSay | 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、 `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好 |
+| `end` | Allow | 结束它（右键 · 多选 · 终端名单 · 占位同一个确认框，交 `sessions-stop`）：活着且住在终端宿主里（住哪判不了 ⇒ 交了由那台认）·程序退了 tmux 会话还在 ⇒ 能；不在任何宿主里 · 已结束 · 记录已不在 · 说不清 · 看不见 ⇒ 不能、`why` 写好 |
 
 #### `Allow`
 
@@ -4305,7 +4306,12 @@ stop: Allow,
  * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
  * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
  */
-say: CanSay, };
+say: CanSay, 
+/**
+ * 结束它（右键 · 多选 · 终端名单 · 占位同一个确认框，交 `sessions-stop`）：活着且住在终端宿主里（住哪判不了 ⇒ 交了由那台认）·
+ * 程序退了 tmux 会话还在 ⇒ 能；不在任何宿主里 · 已结束 · 记录已不在 · 说不清 · 看不见 ⇒ 不能、`why` 写好。
+ */
+end: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -4461,7 +4467,12 @@ stop: Allow,
  * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
  * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
  */
-say: CanSay, };
+say: CanSay, 
+/**
+ * 结束它（右键 · 多选 · 终端名单 · 占位同一个确认框，交 `sessions-stop`）：活着且住在终端宿主里（住哪判不了 ⇒ 交了由那台认）·
+ * 程序退了 tmux 会话还在 ⇒ 能；不在任何宿主里 · 已结束 · 记录已不在 · 说不清 · 看不见 ⇒ 不能、`why` 写好。
+ */
+end: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -4620,7 +4631,12 @@ stop: Allow,
  * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
  * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
  */
-say: CanSay, };
+say: CanSay, 
+/**
+ * 结束它（右键 · 多选 · 终端名单 · 占位同一个确认框，交 `sessions-stop`）：活着且住在终端宿主里（住哪判不了 ⇒ 交了由那台认）·
+ * 程序退了 tmux 会话还在 ⇒ 能；不在任何宿主里 · 已结束 · 记录已不在 · 说不清 · 看不见 ⇒ 不能、`why` 写好。
+ */
+end: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -4836,7 +4852,12 @@ stop: Allow,
  * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
  * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
  */
-say: CanSay, };
+say: CanSay, 
+/**
+ * 结束它（右键 · 多选 · 终端名单 · 占位同一个确认框，交 `sessions-stop`）：活着且住在终端宿主里（住哪判不了 ⇒ 交了由那台认）·
+ * 程序退了 tmux 会话还在 ⇒ 能；不在任何宿主里 · 已结束 · 记录已不在 · 说不清 · 看不见 ⇒ 不能、`why` 写好。
+ */
+end: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -5079,7 +5100,12 @@ stop: Allow,
  * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
  * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
  */
-say: CanSay, };
+say: CanSay, 
+/**
+ * 结束它（右键 · 多选 · 终端名单 · 占位同一个确认框，交 `sessions-stop`）：活着且住在终端宿主里（住哪判不了 ⇒ 交了由那台认）·
+ * 程序退了 tmux 会话还在 ⇒ 能；不在任何宿主里 · 已结束 · 记录已不在 · 说不清 · 看不见 ⇒ 不能、`why` 写好。
+ */
+end: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -5392,7 +5418,12 @@ stop: Allow,
  * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
  * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
  */
-say: CanSay, };
+say: CanSay, 
+/**
+ * 结束它（右键 · 多选 · 终端名单 · 占位同一个确认框，交 `sessions-stop`）：活着且住在终端宿主里（住哪判不了 ⇒ 交了由那台认）·
+ * 程序退了 tmux 会话还在 ⇒ 能；不在任何宿主里 · 已结束 · 记录已不在 · 说不清 · 看不见 ⇒ 不能、`why` 写好。
+ */
+end: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -5638,7 +5669,12 @@ stop: Allow,
  * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
  * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
  */
-say: CanSay, };
+say: CanSay, 
+/**
+ * 结束它（右键 · 多选 · 终端名单 · 占位同一个确认框，交 `sessions-stop`）：活着且住在终端宿主里（住哪判不了 ⇒ 交了由那台认）·
+ * 程序退了 tmux 会话还在 ⇒ 能；不在任何宿主里 · 已结束 · 记录已不在 · 说不清 · 看不见 ⇒ 不能、`why` 写好。
+ */
+end: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -7591,7 +7627,12 @@ stop: Allow,
  * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
  * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
  */
-say: CanSay, };
+say: CanSay, 
+/**
+ * 结束它（右键 · 多选 · 终端名单 · 占位同一个确认框，交 `sessions-stop`）：活着且住在终端宿主里（住哪判不了 ⇒ 交了由那台认）·
+ * 程序退了 tmux 会话还在 ⇒ 能；不在任何宿主里 · 已结束 · 记录已不在 · 说不清 · 看不见 ⇒ 不能、`why` 写好。
+ */
+end: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -7840,7 +7881,12 @@ stop: Allow,
  * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
  * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
  */
-say: CanSay, };
+say: CanSay, 
+/**
+ * 结束它（右键 · 多选 · 终端名单 · 占位同一个确认框，交 `sessions-stop`）：活着且住在终端宿主里（住哪判不了 ⇒ 交了由那台认）·
+ * 程序退了 tmux 会话还在 ⇒ 能；不在任何宿主里 · 已结束 · 记录已不在 · 说不清 · 看不见 ⇒ 不能、`why` 写好。
+ */
+end: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -8386,7 +8432,12 @@ stop: Allow,
  * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
  * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
  */
-say: CanSay, };
+say: CanSay, 
+/**
+ * 结束它（右键 · 多选 · 终端名单 · 占位同一个确认框，交 `sessions-stop`）：活着且住在终端宿主里（住哪判不了 ⇒ 交了由那台认）·
+ * 程序退了 tmux 会话还在 ⇒ 能；不在任何宿主里 · 已结束 · 记录已不在 · 说不清 · 看不见 ⇒ 不能、`why` 写好。
+ */
+end: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -15524,7 +15575,12 @@ stop: Allow,
  * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
  * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
  */
-say: CanSay, };
+say: CanSay, 
+/**
+ * 结束它（右键 · 多选 · 终端名单 · 占位同一个确认框，交 `sessions-stop`）：活着且住在终端宿主里（住哪判不了 ⇒ 交了由那台认）·
+ * 程序退了 tmux 会话还在 ⇒ 能；不在任何宿主里 · 已结束 · 记录已不在 · 说不清 · 看不见 ⇒ 不能、`why` 写好。
+ */
+end: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -15984,7 +16040,12 @@ stop: Allow,
  * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
  * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
  */
-say: CanSay, };
+say: CanSay, 
+/**
+ * 结束它（右键 · 多选 · 终端名单 · 占位同一个确认框，交 `sessions-stop`）：活着且住在终端宿主里（住哪判不了 ⇒ 交了由那台认）·
+ * 程序退了 tmux 会话还在 ⇒ 能；不在任何宿主里 · 已结束 · 记录已不在 · 说不清 · 看不见 ⇒ 不能、`why` 写好。
+ */
+end: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
