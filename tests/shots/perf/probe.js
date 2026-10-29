@@ -103,20 +103,55 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", watch);
   else watch();
 
-  // 开窗那一段的帧间隔：DOMContentLoaded 起记 15 s（人一开窗就去点 —— 这一段一帧卡多久，就是点下去要等多久）
-  P.bootFrames = [];
+  // 开窗那一段的帧（人一开窗就去点 —— 这一段一帧卡多久，就是点下去要等多久）：DOMContentLoaded 起一条 rAF 链，
+  // 每帧记 [这一帧开始的时刻, 与上一帧的间隔]，记到安静为止（不固定记多久：世界起得慢时固定 15 s 会整个漏掉产品那一段）。
+  // 另记两个时刻：流里第一张卡出现（主窗口）· `__shots` 离开 booting（场景演完）—— 早的那个是产品那一段的起点，之前是台架起世界、页里还没东西可画。
+  // 安静 ＝ 起点之后 `BOOT_QUIET_MS` 里没有长任务、也没有新建节点（同 `quiet`）：链自己停，`bootStopped` 兑现；台架也可以先 `bootEnd()` 收掉。
+  const BOOT_QUIET_MS = 1000;
+  /** 一直不安静（页里有东西不停地建节点）也只记这么久，免得链一直跑、算进后面量的空闲 CPU。 */
+  const BOOT_CAP_MS = 180_000;
+  const lastBusy = () => Math.max(P.lt.length ? P.lt[P.lt.length - 1].s + P.lt[P.lt.length - 1].d : 0, P.mut.length ? P.mut[P.mut.length - 1].t : 0);
+  const B = (P.boot = { frames: [], firstCard: null, booted: null, quietAt: null, on: true });
+  let stopped = () => undefined;
+  /** 开窗那条链停了（安静了 / 到了上限 / 台架收了）。 */
+  P.bootStopped = new Promise((r) => (stopped = r));
+  const bootStart = () => (B.firstCard === null && B.booted === null ? null : Math.min(B.firstCard ?? Infinity, B.booted ?? Infinity));
+  const bootStop = () => {
+    if (!B.on) return;
+    B.on = false;
+    const start = bootStart();
+    B.quietAt = start === null ? null : Math.max(lastBusy(), start);
+    stopped();
+  };
   const bootRec = () => {
-    const t0 = performance.now();
-    let last = t0;
+    let last = performance.now();
     const step = (t) => {
-      P.bootFrames.push(t - last);
+      if (!B.on) return;
+      B.frames.push([t, t - last]);
       last = t;
-      if (t - t0 < 15000) requestAnimationFrame(step);
+      if (B.firstCard === null && document.querySelector("#message-stream .card")) B.firstCard = t;
+      if (B.booted === null && window.__shots && window.__shots.state !== "booting") B.booted = t;
+      const start = bootStart();
+      if ((start !== null && t - Math.max(lastBusy(), start) >= BOOT_QUIET_MS) || t > BOOT_CAP_MS) return bootStop();
+      requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bootRec);
   else bootRec();
+  /**
+   * 开窗那一段的读数（链还在跑就当场收掉）：起点（第一张卡与离开 booting 早的那个）到安静那一刻（最后一个长任务 / 新建节点）的帧间隔，
+   * 另交世界握上手的那一刻（假适配层记的 `ccm-world-ready`）。时刻都是 `performance.now()`（从导航起算）。起点一个都没见到 ⇒ `start` 为 null、帧为空。
+   */
+  P.bootEnd = () => {
+    bootStop();
+    const start = bootStart();
+    const quietAt = B.quietAt ?? lastBusy();
+    const world = performance.getEntriesByName("ccm-world-ready")[0]?.startTime ?? null;
+    // 起点那一刻收到的那一帧间隔里就有插第一张卡那一下 ⇒ 从它算起；到安静那一刻之前开始的帧为止
+    const frames = start === null ? [] : B.frames.filter(([t, d]) => t >= start && t - d <= quietAt).map(([, d]) => d);
+    return { start, firstCard: B.firstCard, booted: B.booted, world, quietAt, frames };
+  };
 
   /** 某一时刻之后的那一截读数。 */
   P.since = (t) => ({

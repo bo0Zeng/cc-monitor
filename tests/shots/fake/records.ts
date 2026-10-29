@@ -43,6 +43,19 @@ export const projectDir = (cwd: string): string => cwd.replace(/[/\\.:]/g, "-");
 /** 那个会话的主记录（相对家目录）。 */
 export const jsonlOf = (cwd: string, sid: string): string => `.claude/projects/${projectDir(cwd)}/${sid}.jsonl`;
 
+/** 一段对话接着往下写要的那几样（伺服造好整份、页里只拿这一截接着写：父链 · 时刻 · 工具号 · 号段都接得上）。 */
+export interface ConvoTail {
+  sid: string;
+  cwd: string;
+  model: string;
+  agentId: string | null;
+  t: number;
+  toolN: number;
+  parent: string | null;
+  /** 造这一份时已经发到第几号（接着写的号从它往后排，不撞盘上那几条）。 */
+  uid: number;
+}
+
 /** 一段对话：按时间往后排。 */
 export class Convo {
   /** 一行一条：对象照 JSON 写；串原样写（演认不出 / 读不懂的那一行）。 */
@@ -69,6 +82,20 @@ export class Convo {
   ) {
     this.t = Date.parse(start);
     this.agentId = agentId;
+  }
+
+  /** 接着往下写要的那一截（[`ConvoTail`]）。 */
+  tail(): ConvoTail {
+    return { sid: this.sid, cwd: this.cwd, model: this.model, agentId: this.agentId, t: this.t, toolN: this.toolN, parent: this.parent, uid };
+  }
+
+  /** 从一截接着写的空段：`lines` 是空的，往后写的那几条接在盘上那一份的末一条后面。 */
+  static resume(x: ConvoTail): Convo {
+    const c = new Convo(x.sid, x.cwd, new Date(x.t).toISOString(), x.model, x.agentId);
+    c.toolN = x.toolN;
+    c.parent = x.parent;
+    uid = Math.max(uid, x.uid);
+    return c;
   }
 
   /** 一个子 agent 的那一段（同一个会话 id、同一个工作目录；从父这一刻往后排）。 */

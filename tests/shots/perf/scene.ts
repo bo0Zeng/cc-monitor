@@ -3,7 +3,7 @@
  */
 import type { Scene } from "../scenes/index";
 import { sleep, waitCount, waitFor } from "../scenes/helpers";
-import { HUGE_TURNS, PERF_TURNS, perfHugeWorld, perfMainWorld, perfWorld } from "./world";
+import { PERF_TURNS, perfHugeWorld, perfMainWorld, perfWorld } from "./world";
 import "./actions";
 import { sidOf } from "../fake/world";
 import { SETTINGS_SCALE, settingsPerfWorld } from "./settings-world";
@@ -20,10 +20,10 @@ export const PERF_SCENES: Scene[] = [
     desc: "最长那条十一万多行（真报过卡渲染的那种规模），其余同 perf-main；页内动作同 perf-main",
     width: 1280,
     height: 800,
-    world: perfHugeWorld,
+    world: () => perfHugeWorld(),
     act: async (ctx) => {
       window.__perfBackend = ctx.backend;
-      await waitCount("#tab-bar .tab", HUGE_TURNS.length, 600_000);
+      await waitCount("#tab-bar .tab", PERF_TURNS.length, 600_000);
       await sleep(900);
     },
   },

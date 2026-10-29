@@ -2,14 +2,14 @@
  * 性能台架（设置窗 · 长开内存）：量设置窗开窗 / 每一页切换 / 滚动 / 扩展页筛选 / 关了再开，以及主窗口长开几轮的内存走势。
  *
  *   node tests/shots/perf/settings-bench.mjs [--runs 2] [--out <目录>] [--only open,pages,scroll,filter,reopen,soak] [--cycles 20]
- *   node tests/shots/perf/settings-bench.mjs --eval <表达式> [--page <导航项 id> | --main]   # 调试：点那一页（缺省扩展）之后 / 主窗口开窗 15 s 后在页里求值
+ *   node tests/shots/perf/settings-bench.mjs --eval <表达式> [--page <导航项 id> | --main]   # 调试：点那一页（缺省扩展）之后 / 主窗口开窗安静后在页里求值
  *   node tests/shots/perf/settings-bench.mjs --dev --cpuprofile <导航项 id> [--out <目录>]   # 点那一页（首次可见；`--again` ＝ 回来那一下）录一份 CPU 画像，打印自身耗时前 25 的函数
  *
  * 环境与 `bench.mjs` 同一套（生产构建 ＋ 页里假后端 ＋ 无头 Chromium，HOME 隔离进 `.build/perf-sandbox/`；不起后端、不起 claude、不碰 tmux）。
  * 世界：设置窗 `settings-world.ts`（十几台机器 · 二十几个账号 · 三十条规则 · 几百个扩展）；长开那一项用主窗口 `world.ts`。
  *
  * 量法：
- * - **开窗**（open）：新开页到导航第一项出来 · 到机器子页全注册 · 到安静；DOMContentLoaded 之后的长任务；开窗 15 s 之后 3 s 的 CPU（空闲还在干活？探针那条 rAF 链停了之后才量）；节点数 · JS 堆。
+ * - **开窗**（open）：新开页到导航第一项出来 · 到机器子页全注册 · 到安静；DOMContentLoaded 之后的长任务；开窗安静之后 3 s 的 CPU（空闲还在干活？探针那条 rAF 链停了之后才量）；节点数 · JS 堆。
  * - **切页**（pages）：导航每一项（顶层页 ＋ 每台机器页）真点两遍（第一遍 ＝ 首次可见、发 I/O 建内容；第二遍 ＝ 回来），
  *   再在本机页里把横向几栏各点两遍。每下：按下到画出（Event Timing）· 同步段 · 稳定（最后一个长任务结束）· 长任务 · 新建节点 · 布局 / 样式 / 脚本毫秒。
  * - **滚动**（scroll）：机器列表 · 扩展 · 本机账号栏 · 本机轮换栏，各在内容区滚轮往下 30 下（每下 400 px、50 ms），量帧间隔与长任务。
@@ -104,10 +104,10 @@ const result = { when: new Date().toISOString(), runs, cycles, load: { start: lo
 const watchdog = (what, p) => Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(`${what} 超过 8 分钟没跑完`)), 8 * 60_000))]);
 if (args.eval) {
   // 调试：开设置窗、点 `--page` 那一页（缺省扩展），在页里求一段表达式
-  // `--main`：开主窗口（一屋子 tab）而不是设置窗，等开窗 15 s 之后再求
+  // `--main`：开主窗口（一屋子 tab）而不是设置窗，等探针开窗那条帧链停了（安静了）再求
   const main = Boolean(args.main);
   const { page } = await openWin(main ? "index" : "settings", main ? "perf-tabs" : "perf-settings");
-  if (main) await page.eval("new Promise((r) => setTimeout(r, Math.max(0, 15500 - performance.now())))");
+  if (main) await page.eval("__perf.bootStopped");
   else await measuredClick(page, navSel(String(args.page ?? "ext")), 2500);
   console.log(JSON.stringify(await page.eval(String(args.eval))));
   cdp.close();
@@ -116,10 +116,10 @@ if (args.eval) {
 }
 if (args.cpuprofile) {
   // 开发服务器下函数名是源码里的名字：看清那一下的时间花在谁身上
-  // `--main --cpuprofile idle`：主窗口开窗 15 s 后什么都不做，录 3 s
+  // `--main --cpuprofile idle`：主窗口开窗安静之后（探针那条帧链停了）什么都不做，录 3 s
   const idle = Boolean(args.main) && args.cpuprofile === "idle";
   const { page } = await openWin(idle ? "index" : "settings", idle ? "perf-tabs" : "perf-settings");
-  if (idle) await page.eval("new Promise((r) => setTimeout(r, Math.max(0, 15500 - performance.now())))");
+  if (idle) await page.eval("__perf.bootStopped");
   if (args.again) {
     // `--again`：先去过一次、回到机器列表，录的是「回来」那一下
     await measuredClick(page, navSel(String(args.cpuprofile)), 2500);
@@ -258,8 +258,8 @@ async function benchOpen(run) {
   const { page, ready, quiet } = await openWin("settings", "perf-settings", firstNav);
   const openCpu = cpuMs(browser.pid) - c0;
   const o = await page.eval("(() => { const dcl = performance.getEntriesByType('navigation')[0]?.domContentLoadedEventStart ?? 0; const lt = __perf.lt.filter((x) => x.s >= dcl); return { dcl, firstNav: window.__firstNav ?? null, ltN: lt.length, ltMs: lt.reduce((a, x) => a + x.d, 0), ltMax: lt.reduce((a, x) => Math.max(a, x.d), 0), nodes: document.getElementsByTagName('*').length }; })()");
-  // 探针开窗那 15 s 自己起着一条 rAF 链（记开窗帧间隔）⇒ 空闲 CPU 等它停了再量
-  await page.eval("new Promise((r) => setTimeout(r, Math.max(0, 15500 - (performance.now() - (performance.getEntriesByType('navigation')[0]?.domContentLoadedEventStart ?? 0)))))");
+  // 探针开窗那一段自己起着一条 rAF 链（记开窗帧间隔，安静了自己停）⇒ 空闲 CPU 等它停了再量
+  await page.eval("__perf.bootStopped");
   const c1 = cpuMs(browser.pid);
   await sleep(3000);
   const idleCpu = cpuMs(browser.pid) - c1;
@@ -392,8 +392,8 @@ async function benchReopen() {
 async function benchSoak() {
   const { page } = await openWin("index", "perf-tabs");
   const n = await page.eval("document.querySelectorAll('#tab-bar .tab').length");
-  // 空闲 CPU：等探针开窗那条 15 s 的 rAF 链停了再量（`bench.mjs` 的「安静时 CPU」是链还在跑时量的）
-  await page.eval("new Promise((r) => setTimeout(r, Math.max(0, 15500 - (performance.now() - (performance.getEntriesByType('navigation')[0]?.domContentLoadedEventStart ?? 0)))))");
+  // 空闲 CPU：等探针开窗那条 rAF 链停了（安静了自己停）再量
+  await page.eval("__perf.bootStopped");
   const c0 = cpuMs(browser.pid);
   await sleep(3000);
   const idleCpu = cpuMs(browser.pid) - c0;
@@ -493,7 +493,7 @@ function summarize(r) {
     L.push("");
   };
   trend("设置窗关了再开", r.reopen);
-  if (r.soak.length) L.push(`主窗口开窗 15 s 之后空闲 3 s 的 CPU：${f0(r.soak[0].idleCpu)} ms（停住页里 ${r.soak[0].anims} 个 CSS 动画之后 ${f0(r.soak[0].idleCpuNoAnim)} ms）`, "");
+  if (r.soak.length) L.push(`主窗口开窗安静之后空闲 3 s 的 CPU：${f0(r.soak[0].idleCpu)} ms（停住页里 ${r.soak[0].anims} 个 CSS 动画之后 ${f0(r.soak[0].idleCpuNoAnim)} ms）`, "");
   trend("主窗口长开", r.soak);
   return L.join("\n");
 }

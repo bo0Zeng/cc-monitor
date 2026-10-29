@@ -7,7 +7,7 @@
 import { Refuse, type World } from "./types";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { diskOf } from "./world";
-import type { Convo } from "./records";
+import { Convo, type ConvoTail } from "./records";
 import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
 
 const LOCAL = "<local>";
@@ -170,26 +170,36 @@ export class FakeBackend {
     for (const op of REAL_OPS) {
       if (op in world.ops) this.miss(`场景替真后端答了 ${op}（改写 world.disk）`);
     }
-    const machines = diskOf(world);
+    // 盘照配方由伺服造（`World.diskFrom`）⇒ 只交配方名；否则页里出盘交上去。
+    const disk = world.diskFrom === undefined ? { machines: diskOf(world) } : { diskFrom: world.diskFrom };
     const reach = reachOf(world);
-    this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines, reach, now: Date.now(), scene: new URLSearchParams(location.search).get("scene") ?? "" }) }).then(async (r) => {
+    this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, ...disk, reach, now: Date.now(), scene: new URLSearchParams(location.search).get("scene") ?? "" }) }).then(async (r) => {
       if (!r.ok) throw new Error(`真后端起不来：${await r.text()}`);
-      // 无头壳交的格（同壳交给页的 `chan-items` 事件体），原样当事件发。
-      // 事件流**连上了才算起好**：别的问（帧命令 · 订阅）都排在它后面。浏览器对一个源同时只开 6 条连接，
-      // 机器忙时那几问答得慢，后开的事件流排不上队 ⇒ 一格都收不到、一个 tab 都起不来（负载高时偶发的「现有 0 个 tab」就是它）。
-      const es = new EventSource(`/__ccm/items?key=${encodeURIComponent(this.key)}`);
-      es.onmessage = (m) => {
-        const d = JSON.parse(m.data as string) as { sub: number; items: { t: string; body?: string }[] };
-        this.watch(d.sub, d.items);
-        for (const it of d.items) {
-          if (it.t !== "frame" || !it.body?.startsWith('{"added"')) continue;
-          const sid = (JSON.parse(it.body) as { added?: { sid?: string } }).added?.sid;
-          if (sid) this.liveSent.add(sid);
-        }
-        void this.emit("chan-items", d);
-      };
-      await new Promise<void>((resolve) => (es.onopen = () => resolve()));
+      // 伺服造的盘：每个会话接着往下写的那一截（场景开页之后再写几行时接得上盘上那一份）。
+      const { tails } = (await r.json()) as { tails?: Record<string, ConvoTail> };
+      for (const s of world.sessions) if (tails?.[s.sid]) s.convo = Convo.resume(tails[s.sid]);
+      // 世界握上手的那一刻（性能台架拿它分「台架起世界」与「产品那一段」）。
+      performance.mark("ccm-world-ready");
     });
+    // 无头壳交的格（同壳交给页的 `chan-items` 事件体），原样当事件发。
+    // 事件流**连上了才算起好**：别的问（帧命令 · 订阅）都排在它后面。浏览器对一个源同时只开 6 条连接，
+    // 机器忙时那几问答得慢，后开的事件流排不上队 ⇒ 一格都收不到、一个 tab 都起不来（负载高时偶发的「现有 0 个 tab」就是它）。
+    // 和起世界那一问同时连、不等世界起好：Chromium 在 vite 开发服务器下，起世界那一段之后新发的 GET 一律压后十几秒到两分钟才交给页
+    // （伺服当场写了头、网络那一层 1 ms 就收到、页的主线程闲着；同一刻发的 POST 几毫秒就回），等世界起好再连，事件流连不上、tab 栏一个都没有。
+    // 伺服那一侧先收下这条连接、世界起好了再往里写（`real/pool.mjs` 的 `/__ccm/items`）。
+    const es = new EventSource(`/__ccm/items?key=${encodeURIComponent(this.key)}`);
+    es.onmessage = (m) => {
+      const d = JSON.parse(m.data as string) as { sub: number; items: { t: string; body?: string }[] };
+      this.watch(d.sub, d.items);
+      for (const it of d.items) {
+        if (it.t !== "frame" || !it.body?.startsWith('{"added"')) continue;
+        const sid = (JSON.parse(it.body) as { added?: { sid?: string } }).added?.sid;
+        if (sid) this.liveSent.add(sid);
+      }
+      void this.emit("chan-items", d);
+    };
+    const open = new Promise<void>((resolve) => (es.onopen = () => resolve()));
+    this.ready = Promise.all([this.ready, open]).then(() => undefined);
     if (!opts.mainWindow) {
       for (const origin of new Set(world.sessions.map((x) => x.origin))) {
         this.listedOrigins.add(origin);

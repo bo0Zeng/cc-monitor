@@ -57,6 +57,11 @@ export class Refuse {
 export interface World {
   /** 每台机器家目录里的原始文件（真后端读它们答 `REAL_OPS` 那几条；`../disk`）。缺 ⇒ 空家目录。 */
   disk: Record<string, import("../disk").MachineDisk>;
+  /**
+   * 盘由伺服照这张配方造（性能台架：几万条记录的正文不在页里造，`perf/disks.ts`）：页里只交配方名，`disk` 与会话的 `convo` 都不用；
+   * 起好之后每个会话的 `convo` 换成接着往下写的那一截（`Convo.resume`）。缺 ⇒ 页里照 `disk` 与会话记录出盘交上去。
+   */
+  diskFrom?: string;
   /** 第一台是本机（`<local>`）。 */
   machines: string[];
   /** 订阅时看不见的那几台（流里第一格 `unseen`）。 */
