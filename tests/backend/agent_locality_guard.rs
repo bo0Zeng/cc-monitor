@@ -160,16 +160,6 @@ mod tests {
         // `control/ccm/argv.rs` 那一条摘了：账号库的门牌号搬进后端的家（契约 crate 的 `ACCOUNTS_DIR_REL`），那里不再有 `.claude` 字样。
         // `observe/search_query.rs` 那一条摘了（第 8 批）：`history-search-merge` 的回包改成 typed 结构体，字面量 `"sessions"` 随之没了。
         // `faces/rotation_switch_face.rs` · `stream/inbound/registry/accounts.rs` 那两条摘了：「现在就换」随轮换第五版删了，登记表里也没有那一格了。
-        (
-            "accounts/quota/setup/migrate.rs",
-            "\"sessions\": sessions,",
-            "`rotation.json` 第二版的会话表那一格（升级链第一节写出的 JSON），不是哪个 agent 的 `sessions/` 目录布局。",
-        ),
-        (
-            "accounts/quota/setup/upgrade.rs",
-            ".get(\"sessions\")",
-            "同上一条：读第二版 `rotation.json` 的会话表，不是目录布局。",
-        ),
         // `stream/inbound/registry/history.rs` 那一条摘了（第 8 批）：`history-search-merge` 成了 typed 命令，登记里不再手写字段表。
     ];
 

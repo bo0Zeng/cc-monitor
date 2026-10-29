@@ -20,7 +20,7 @@ fn a(id: &str, used: f64, rate: Option<f64>) -> Acct {
 }
 
 fn source() -> String {
-    crate::accounts::quota::setup::upgrade::material(0).to_string()
+    crate::accounts::quota::setup::samples::of(0).to_string()
 }
 
 fn settings() -> serde_json::Value {
