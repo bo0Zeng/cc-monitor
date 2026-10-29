@@ -112,21 +112,137 @@ impl Write for Conn {
 /// 装进 `ClientConfig` 的那一份根证书集 —— 用 `webpki-roots` 内嵌的那套（不读机器上的证书目录：本 crate 会被推到任意远端）。
 /// 抽成有名字的生产段，判据打得到真正装进去的那一份（断 crate 常量 `webpki_roots::TLS_SERVER_ROOTS` 非空是另一个东西）。
 fn root_store() -> rustls::RootCertStore {
-    rustls::RootCertStore {
+    #[cfg_attr(not(test), allow(unused_mut))]
+    let mut roots = rustls::RootCertStore {
         roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+    };
+    // 测试档多认一张沙箱 CA（`tests/__fixtures__/relay-tls/`），判据里的 TLS 假上游才握得上手；生产段的根证书集不变。
+    #[cfg(test)]
+    roots
+        .add(tests::sandbox_ca())
+        .expect("沙箱 CA 应当装得进根证书集");
+    roots
+}
+
+/// 进程里只有一份：rustls 的会话缓存（TLS 1.3 票据 · 1.2 会话号）挂在 `ClientConfig` 上，每发新建一份就等于没有缓存，
+/// 还要每发重建一遍根证书表与校验器。
+fn tls_config() -> Arc<rustls::ClientConfig> {
+    static ONE: std::sync::OnceLock<Arc<rustls::ClientConfig>> = std::sync::OnceLock::new();
+    Arc::clone(ONE.get_or_init(|| {
+        let cfg = rustls::ClientConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .expect("rustls 默认协议版本集应当可用")
+        .with_root_certificates(root_store())
+        .with_no_client_auth();
+        Arc::new(cfg)
+    }))
+}
+
+/// 连接池分格的键：一条留着的上游连接只给同一格的下一发用。
+///
+/// - 来处（[`crate::RouteOrigin::token`]）：宿主按它取那条会话的出网描述，经不同代理开的连接不能互借；
+/// - 去处标签（上游选择答的 `tag`，哪个号）：不同号的请求不走同一条连接；
+/// - 协议 · 主机 · 端口：连接本身连到哪。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Lane {
+    origin: Option<String>,
+    tag: String,
+    tls: bool,
+    host: String,
+    port: u16,
+}
+
+impl Lane {
+    pub fn new(origin: Option<&str>, tag: &str, base: &Base) -> Lane {
+        Lane {
+            origin: origin.map(str::to_string),
+            tag: tag.to_string(),
+            tls: base.tls,
+            host: base.host.clone(),
+            port: base.port,
+        }
     }
 }
 
-fn tls_config() -> Arc<rustls::ClientConfig> {
-    let roots = root_store();
-    let cfg = rustls::ClientConfig::builder_with_provider(Arc::new(
-        rustls::crypto::ring::default_provider(),
-    ))
-    .with_safe_default_protocol_versions()
-    .expect("rustls 默认协议版本集应当可用")
-    .with_root_certificates(roots)
-    .with_no_client_auth();
-    Arc::new(cfg)
+/// 整个池里至多留几条空闲连接（各格合计）。满了先扔最早还回来的那条。
+/// 没有按时间的淘汰（零定时器护栏）：对端关掉的那条在下一次取的时候被探活扔掉，在那之前至多占这么多个描述符。
+const POOL_IDLE_MAX: usize = 8;
+
+/// 上游连接池：读完一个应答、连接还能用就还回来，同一格的下一发先从这里取。
+///
+/// 只在写请求头**之前**取：取出时探活（[`Conn::idle_and_open`]），死的扔掉换下一条，都没有就由调用方新连。
+/// 请求头写出去之后出的错一律照旧往下游回码，不在这一层重发（`POST /v1/messages` 不幂等）。
+pub struct Pool {
+    idle: std::sync::Mutex<std::collections::VecDeque<(Lane, Conn)>>,
+}
+
+impl Default for Pool {
+    fn default() -> Self {
+        Pool {
+            idle: std::sync::Mutex::new(std::collections::VecDeque::new()),
+        }
+    }
+}
+
+impl Pool {
+    /// 取这一格里一条还活着的连接（最近还回来的先取），读写期限换成这一发的。
+    pub fn take(&self, lane: &Lane, deadline: Duration) -> Option<Conn> {
+        loop {
+            let mut conn = {
+                let mut idle = self.idle.lock().unwrap_or_else(|e| e.into_inner());
+                let at = idle.iter().rposition(|(l, _)| l == lane)?;
+                idle.remove(at)?.1
+            };
+            if conn.idle_and_open() && conn.set_deadline(deadline).is_ok() {
+                return Some(conn);
+            }
+        }
+    }
+
+    /// 还回一条读完了应答、还能接着用的连接。
+    pub fn put(&self, lane: Lane, conn: Conn) {
+        let mut idle = self.idle.lock().unwrap_or_else(|e| e.into_inner());
+        if idle.len() >= POOL_IDLE_MAX {
+            idle.pop_front();
+        }
+        idle.push_back((lane, conn));
+    }
+}
+
+impl Conn {
+    fn tcp(&self) -> &TcpStream {
+        match self {
+            Conn::Plain(s) => s,
+            Conn::Tls(s) => &s.sock,
+        }
+    }
+
+    fn set_deadline(&self, deadline: Duration) -> std::io::Result<()> {
+        self.tcp().set_read_timeout(Some(deadline))?;
+        self.tcp().set_write_timeout(Some(deadline))
+    }
+
+    /// 空闲着、对端也没关：socket 上什么都没到（非阻塞 `peek` 答「暂时没有」），TLS 那一层也没有攒着没交出去的明文或对端的关闭通知。
+    /// 读到 FIN（0 字节）、读到任何字节（空闲连接上不该有）、读出错，都算不能用。
+    fn idle_and_open(&mut self) -> bool {
+        if let Conn::Tls(s) = self {
+            let st = s.conn.process_new_packets();
+            if !st.is_ok_and(|st| st.plaintext_bytes_to_read() == 0 && !st.peer_has_closed()) {
+                return false;
+            }
+        }
+        let tcp = self.tcp();
+        if tcp.set_nonblocking(true).is_err() {
+            return false;
+        }
+        let quiet = matches!(
+            tcp.peek(&mut [0u8; 1]),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock
+        );
+        tcp.set_nonblocking(false).is_ok() && quiet
+    }
 }
 
 /// 开出站 TCP 的那一口：主机 · 端口 · 期限 ⇒ 一条到那里的 TCP。由宿主交进来（后端交的是它的出网口：直连或经代理），
@@ -225,4 +341,4 @@ pub fn fetch(
 
 #[cfg(test)]
 #[path = "../../../tests/comms/outward/upstream_tests.rs"]
-mod tests;
+pub(crate) mod tests;

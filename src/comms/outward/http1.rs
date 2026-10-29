@@ -130,44 +130,96 @@ pub fn is_hop_by_hop(name: &str) -> bool {
     HOP_BY_HOP.iter().any(|h| name.eq_ignore_ascii_case(h))
 }
 
-/// 响应体的**解码视图** —— 只喂 tee，**不影响下游拿到的字节**。
+/// 响应体的**解码视图** —— 喂 tee，并说出这个应答收在哪；**不影响下游拿到的字节**。
 ///
 /// 下游拿到的永远是上游原样的字节（含 chunked 分帧）；tee 要看见 SSE 文本，
 /// 所以这里把 chunked 拆掉。两条路吃的是同一批字节，但**下游那条不经过这里**。
+/// 收尾（[`BodyView::ended`]）是连接能不能接着用的依据：收在边上、后面没有多出来的字节，才还回连接池。
 pub enum BodyView {
-    Identity,
+    /// 没有体：`HEAD` 的应答 · 204 · 304。头读完就收尾。
+    Empty { over: bool },
+    /// `Content-Length` 定长：还差几个字节。
+    Length { left: u64, over: bool },
+    /// 既不定长也不分块：读到对端关为止，收尾判不出。
+    UntilClose,
     Chunked(ChunkedView),
 }
 
 impl BodyView {
+    /// 按应答头选：分块 ⇒ `Chunked`；有读得懂的 `Content-Length` ⇒ `Length`；都没有 ⇒ `UntilClose`。
     pub fn for_response(headers: &[(String, String)]) -> Self {
         let chunked = headers.iter().any(|(k, v)| {
             k.eq_ignore_ascii_case("transfer-encoding")
                 && v.to_ascii_lowercase().contains("chunked")
         });
         if chunked {
-            BodyView::Chunked(ChunkedView::default())
-        } else {
-            BodyView::Identity
+            return BodyView::Chunked(ChunkedView::default());
+        }
+        let length = headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("content-length"))
+            .and_then(|(_, v)| v.trim().parse::<u64>().ok());
+        match length {
+            Some(left) => BodyView::Length { left, over: false },
+            None => BodyView::UntilClose,
         }
     }
 
-    /// 喂一段原始字节，拿回其中的**解码后**载荷。
+    /// 同 [`BodyView::for_response`]，再按请求方法与状态码认出没有体的那几形（`HEAD` 的应答 · 204 · 304：带了 `Content-Length` 也没有体）。
+    pub fn for_answer(method: &str, status: u16, headers: &[(String, String)]) -> Self {
+        if method.eq_ignore_ascii_case("HEAD") || status == 204 || status == 304 {
+            BodyView::Empty { over: false }
+        } else {
+            BodyView::for_response(headers)
+        }
+    }
+
+    /// 喂一段原始字节，拿回其中的**解码后**载荷。收尾之后多出来的字节不算体（记下「多了」）。
     ///
     /// `cap` 是**攒着还没成形的那截**的上限，见 `ChunkedView::feed`。
     pub fn feed(&mut self, raw: &[u8], cap: usize) -> Vec<u8> {
         match self {
-            BodyView::Identity => raw.to_vec(),
+            BodyView::Empty { over } => {
+                *over |= !raw.is_empty();
+                Vec::new()
+            }
+            BodyView::Length { left, over } => {
+                let take = usize::try_from(*left).unwrap_or(usize::MAX).min(raw.len());
+                *left -= take as u64;
+                *over |= take < raw.len();
+                raw[..take].to_vec()
+            }
+            BodyView::UntilClose => raw.to_vec(),
             BodyView::Chunked(v) => v.feed(raw, cap),
         }
+    }
+
+    /// 这个应答的体收完了（定长的够数 · 分块的终止块连尾部头读完 · 没有体的那几形）。读到对端关为止的那一形永远答「没有」。
+    pub fn ended(&self) -> bool {
+        match self {
+            BodyView::Empty { .. } => true,
+            BodyView::Length { left, .. } => *left == 0,
+            BodyView::UntilClose => false,
+            BodyView::Chunked(v) => v.ended,
+        }
+    }
+
+    /// 收在边上：收完了，而且收尾之后没有多出来的字节。只有这样，同一条连接上的下一个应答才从头开始。
+    pub fn ended_cleanly(&self) -> bool {
+        self.ended()
+            && match self {
+                BodyView::Empty { over } | BodyView::Length { over, .. } => !over,
+                BodyView::UntilClose => false,
+                BodyView::Chunked(v) => !v.over,
+            }
     }
 
     /// 取走并清零「本视图因超 `cap` 丢掉的字节数」。**丢的只是 tee 那一路** ——
     /// 下游拿到的是上游原样的字节，一个都不经过本模块（见本类型头注）。
     pub fn take_dropped(&mut self) -> u64 {
         match self {
-            BodyView::Identity => 0,
             BodyView::Chunked(v) => std::mem::take(&mut v.dropped),
+            _ => 0,
         }
     }
 }
@@ -175,13 +227,19 @@ impl BodyView {
 /// 增量 chunked 拆帧。**只拆不攒**：喂进来多少就尽量吐多少。
 ///
 /// 攒字节、找块长度行交给 [`super::framer::LineFramer`]（`relay/` 里唯一的增量分帧器）
-/// —— 这里只剩 chunked 自己的那一层：块长度、块尾 CRLF、终止块、上限。
+/// —— 这里只剩 chunked 自己的那一层：块长度、块尾 CRLF、终止块与它后面的尾部头、上限。
 pub struct ChunkedView {
     pub framer: super::framer::LineFramer,
     /// 当前块还剩多少字节（含结尾的 `\r\n` 由 `crlf_left` 单管）。
     left: usize,
     crlf_left: usize,
+    /// 读到了终止块，正在读尾部头（读到空行收尾）。
+    trailers: bool,
     done: bool,
+    /// 收尾了：终止块与尾部头都读完（超 `cap` 或块长度读不懂而停下的 `done` 不算）。
+    ended: bool,
+    /// 收尾之后又来了字节。
+    over: bool,
     /// 超 `cap` 时丢掉的字节数（累计，由 `BodyView::take_dropped` 取走）。
     dropped: u64,
 }
@@ -192,7 +250,10 @@ impl Default for ChunkedView {
             framer: super::framer::LineFramer::new(b"\r\n"),
             left: 0,
             crlf_left: 0,
+            trailers: false,
             done: false,
+            ended: false,
+            over: false,
             dropped: 0,
         }
     }
@@ -213,6 +274,10 @@ impl ChunkedView {
     /// tee 少一段，**下游的字节一个不少**。计数由 `server.rs::serve_one` 取走交给 tee
     /// （在 tap 上占一个号不发）⇒ **不是静默丢**。
     fn feed(&mut self, raw: &[u8], cap: usize) -> Vec<u8> {
+        if self.ended {
+            self.over |= !raw.is_empty();
+            return Vec::new();
+        }
         self.framer.push(raw);
         let pending = self.framer.pending();
         if pending > cap {
@@ -225,6 +290,18 @@ impl ChunkedView {
         loop {
             if self.done {
                 break;
+            }
+            // 终止块之后：尾部头一行一行读掉（不进 tee），读到空行收尾；收尾之后还剩字节 ⇒ 多了。
+            if self.trailers {
+                let Some(line) = self.framer.next_line() else {
+                    break;
+                };
+                if line.is_empty() {
+                    self.done = true;
+                    self.ended = true;
+                    self.over = self.framer.pending() > 0;
+                }
+                continue;
             }
             if self.crlf_left > 0 {
                 let take = self.crlf_left.min(self.framer.pending());
@@ -254,10 +331,7 @@ impl ChunkedView {
             let line = String::from_utf8_lossy(line).to_string();
             let size_hex = line.split(';').next().unwrap_or("").trim().to_string();
             match usize::from_str_radix(&size_hex, 16) {
-                Ok(0) => {
-                    self.done = true;
-                    break;
-                }
+                Ok(0) => self.trailers = true,
                 Ok(n) => self.left = n,
                 Err(_) => {
                     self.done = true;

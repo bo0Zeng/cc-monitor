@@ -181,3 +181,42 @@ fn tls_client_config_builds_from_a_non_empty_root_store() {
     let conn = rustls::ClientConnection::new(tls_config(), name);
     assert!(conn.is_ok(), "TLS 客户端连接对象应当建得起来");
 }
+
+/// 沙箱 CA（`tests/__fixtures__/relay-tls/`：自签 CA ＋ 它签的 `localhost` 叶子，有效期一百年，只在判据里用）。
+pub(crate) fn sandbox_ca() -> rustls::pki_types::CertificateDer<'static> {
+    rustls::pki_types::CertificateDer::from(
+        &include_bytes!("../../__fixtures__/relay-tls/ca.der")[..],
+    )
+}
+
+/// TLS 假上游那一侧的配置：沙箱 CA 签的 `localhost` 叶子。
+pub(crate) fn sandbox_server_config() -> Arc<rustls::ServerConfig> {
+    let leaf = rustls::pki_types::CertificateDer::from(
+        &include_bytes!("../../__fixtures__/relay-tls/leaf.der")[..],
+    );
+    let key = rustls::pki_types::PrivateKeyDer::Pkcs8(
+        rustls::pki_types::PrivatePkcs8KeyDer::from(
+            &include_bytes!("../../__fixtures__/relay-tls/leaf-key.der")[..],
+        ),
+    );
+    let cfg = rustls::ServerConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .expect("rustls 默认协议版本集应当可用")
+    .with_no_client_auth()
+    .with_single_cert(vec![leaf], key)
+    .expect("沙箱叶子证书与私钥应当配得上");
+    Arc::new(cfg)
+}
+
+/// 进程里只有一份 TLS 客户端配置：两次取到的是同一个 `Arc`（rustls 的会话缓存挂在它上面，每发新建一份就等于没有缓存）。
+#[test]
+fn the_tls_client_config_is_built_once_per_process() {
+    let a = tls_config();
+    let b = tls_config();
+    assert!(
+        Arc::ptr_eq(&a, &b),
+        "每取一次都新建了一份 ClientConfig ⇒ 会话缓存跨发不起作用"
+    );
+}

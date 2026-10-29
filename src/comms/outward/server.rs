@@ -180,6 +180,8 @@ pub struct Relay {
     /// 开上游那条 TCP 的那一口（这一发的来处 · 主机 · 端口 · 期限 ⇒ 一条 TCP）。**由后端交下来**：后端交的是它的出网口
     /// （按那条会话的出网描述，没有 ⇒ 这台的；直连或经代理，代理永远在最外层）；中转自己不开 TCP，也不知道这一跳经没经代理。
     open: Arc<OpenFor>,
+    /// 上游那一跳留着的 keep-alive 连接（按 来处 · 去处标签 · 协议 · 主机 · 端口 分格，[`upstream::Lane`]）。
+    pool: upstream::Pool,
 }
 
 impl Relay {
@@ -204,6 +206,7 @@ impl Relay {
             downstream_deadline,
             upstream_deadline,
             open,
+            pool: upstream::Pool::default(),
         }
     }
 }
@@ -335,8 +338,8 @@ fn drain_arrived(down: &mut TcpStream) {
 /// 「发到一半断了」也回码：下游那时一个字节都还没收到，回一个码不会与已发的字节打架
 /// ⇒ 并进传输失败、回 502 说清卡在发请求（出声，不静默）。
 enum Answered {
-    /// 已连上、请求已写完。带着**这是谁**（后面等响应那一段失败时 `why` 要说得出来）。
-    Sent(Conn, Who),
+    /// 已连上、请求已写完。带着**这是谁**（后面等响应那一段失败时 `why` 要说得出来）与它在连接池里归哪一格（读完应答还回去）。
+    Sent(Conn, Who, upstream::Lane),
     Refused {
         status: &'static str,
         reason: &'static str,
@@ -493,6 +496,14 @@ impl UpstreamFailure {
     }
 }
 
+/// 这一发怎么够到上游：期限 · 开 TCP 的那一口（已带上这一发的来处）· 连接池 · 来处本身（池分格要用）。
+struct Reach<'a> {
+    deadline: std::time::Duration,
+    open: &'a Open<'a>,
+    pool: &'a upstream::Pool,
+    origin: Option<&'a str>,
+}
+
 /// 把一个**成立**的目的地兑现成一条「已连上、请求已写完」的上游连接。
 ///
 /// ★★ **`upstream::connect(` 全后端生产段恰好一处，就是这里**
@@ -504,16 +515,21 @@ impl UpstreamFailure {
 ///
 /// ⚠ `auth` 那一格**只能从调用方那一个 `Destination` 里解构出来**，
 /// 不许由调用方自己凑 —— 凑得出来就等于「A 的端点配 B 的 key」又写得出来了。
+///
+/// 先从连接池取这一格（来处 · 去处标签 · 上游）留着的一条：取的时候探活，都在写请求头之前；取不到才新连。
+/// 请求头一旦开始写，之后的失败照旧回码，这里不换连接重发（`POST /v1/messages` 不幂等）。
 fn send_upstream(
     base: &Base,
+    tag: &str,
     auth: Option<&AuthSwap<'_>>,
     head: &RequestHead,
     rest: &str,
     body: &[u8],
-    deadline: std::time::Duration,
-    open: &Open<'_>,
+    reach: &Reach<'_>,
 ) -> Answered {
-    let mut up = match upstream::connect(base, deadline, open) {
+    let lane = upstream::Lane::new(reach.origin, tag, base);
+    let pooled = reach.pool.take(&lane, reach.deadline);
+    let mut up = match pooled.map_or_else(|| upstream::connect(base, reach.deadline, reach.open), Ok) {
         Ok(c) => c,
         Err(e) => {
             let who = Who::of(base);
@@ -532,7 +548,7 @@ fn send_upstream(
         up.flush()
     })();
     match wrote {
-        Ok(()) => Answered::Sent(up, Who::of(base)),
+        Ok(()) => Answered::Sent(up, Who::of(base), lane),
         Err(e) => Answered::UpstreamFailed(UpstreamFailure::new(
             &Who::of(base),
             FailedAt::Send,
@@ -632,27 +648,25 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     // 开上游那一口带上这一发的来处（不透明，宿主按它取那条会话的出网描述）；被拒后重发也是同一发、同一个来处。
     let token = r.origin.as_ref().map(|o| o.token.as_str());
     let open = |h: &str, p: u16, d: std::time::Duration| (relay.open)(token, h, p, d);
+    let reach = Reach {
+        deadline: relay.upstream_deadline,
+        open: &open,
+        pool: &relay.pool,
+        origin: token,
+    };
     // 答的那个去处贴的标签（不透明，回包头到了原样交回 `observe`）。
     let mut tag = String::new();
     let mut answered: Option<Answered> = None;
     relay.dest.resolve(r.mode, &r.key, &ask, &mut |d| {
-        answered = Some(dispatch(
-            d,
-            &head,
-            &r.rest,
-            &body,
-            relay.upstream_deadline,
-            &open,
-            &mut tag,
-        ));
+        answered = Some(dispatch(d, &head, &r.rest, &body, &reach, &mut tag));
     });
     // 上游选择必须**恰好答一次**（契约写在 `Destinations::resolve` 头注里）。
     // 一次都不答 ＝ 下游会拿到一个没有任何 HTTP 响应的 FIN，那正是 `阻-3(D3)`
     // 点名的静默拒绝 ⇒ 宁可在这里当场炸，也不静默。
-    let (mut up, who) = match answered
+    let (mut up, who, mut lane) = match answered
         .expect("上游选择一次都没答 —— `Destinations::resolve` 的契约被破了")
     {
-        Answered::Sent(up, who) => (up, who),
+        Answered::Sent(up, who, lane) => (up, who, lane),
         Answered::Refused {
             status,
             reason,
@@ -714,35 +728,34 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
         relay
             .dest
             .retry(r.mode, &r.key, &ask, &heard, &names, &mut |d| {
-                again = Some(dispatch(
-                    d,
-                    &head,
-                    &r.rest,
-                    &body,
-                    relay.upstream_deadline,
-                    &open,
-                    &mut next_tag,
-                ));
+                again = Some(dispatch(d, &head, &r.rest, &body, &reach, &mut next_tag));
             });
         // 换成一份现成回包 ⇒ 手上这个上游回包整个丢掉（下游一个字节都没收到过），回那一份。
+        // 丢掉的那条连接上还压着没读的应答体 ⇒ 不还池，关掉。
         if let Some(Answered::Replied(bytes)) = again {
             drop(up);
             return reply_and_drain(&mut down_w, &bytes);
         }
-        let Some(Answered::Sent(mut up2, who2)) = again else {
+        let Some(Answered::Sent(mut up2, who2, lane2)) = again else {
             break;
         };
         tried.push(next_tag.clone());
         let Ok((s2, h2, raw2)) = read_final_head(&mut up2, &who2) else {
             break;
         };
-        (up, tag) = (up2, next_tag);
+        (up, tag, lane) = (up2, next_tag, lane2);
         (status_line, headers, raw_resp) = (s2, h2, raw2);
     }
     down_w.write_all(&rewrite_response_head(&raw_resp))?;
     down_w.flush()?;
 
-    let mut view = BodyView::for_response(&headers);
+    let mut view = BodyView::for_answer(
+        &head.method,
+        http1::status_code(&status_line).unwrap_or(0),
+        &headers,
+    );
+    // 这条连接读完应答之后还能不能接着用：HTTP/1.1 且上游没说要关（收没收在边上要等转发完才知道）。
+    let keep = status_line.starts_with("HTTP/1.1 ") && !says_close(&headers);
     let mut splitter = SseSplitter::default();
     // ★ 路由键与流标签收成一个 `StreamId`—— 中转这一侧**没有业务名**；tee 只抄流标签（① 不问账号）。
     // 流标签取自请求自己带的头（会话 id 归 agent），不是路径段；名单上的头随 0 号那一件交一次（与交给上游选择的同一份）。
@@ -752,20 +765,38 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     };
     // `open` 发一个这一响应自己的游标（位置号 `n` 从 0 起），`event` / `note_dropped_bytes` / `close` 都拿它。
     let mut at = relay.tee.open();
-    let outcome = pump(&mut up, &mut down_w, &mut |raw| {
-        let decoded = view.feed(raw, TEE_DECODE_CAP);
-        for payload in splitter.feed(&decoded, TEE_DECODE_CAP) {
-            relay.tee.event(id, &mut at, &payload);
-        }
-        // 解码那一路超上限丢掉的字节要**报出去**，不许静默（见 `TEE_DECODE_CAP` 头注）。
-        relay
-            .tee
-            .note_dropped_bytes(&mut at, view.take_dropped() + splitter.take_dropped());
-    });
+    // 没有体的那几形（`HEAD` 的应答 · 204 · 304）头写完就收尾，不读上游（读的话要等到期限）。
+    let outcome = if view.ended() {
+        Ok(())
+    } else {
+        pump(&mut up, &mut down_w, &mut |raw| {
+            let decoded = view.feed(raw, TEE_DECODE_CAP);
+            for payload in splitter.feed(&decoded, TEE_DECODE_CAP) {
+                relay.tee.event(id, &mut at, &payload);
+            }
+            // 解码那一路超上限丢掉的字节要**报出去**，不许静默（见 `TEE_DECODE_CAP` 头注）。
+            relay
+                .tee
+                .note_dropped_bytes(&mut at, view.take_dropped() + splitter.take_dropped());
+            view.ended()
+        })
+    };
     // 收尾交一件：转发以错误收尾（claude 按了 Esc / 上游 RST / 下游写不动）⇒ `broken`。
     relay.tee.close(id, at, outcome.is_err());
+    // 转发没出错、应答正好收在边上、上游没说要关 ⇒ 这条连接还回池里给同一格的下一发；否则这里关掉。
+    if outcome.is_ok() && keep && view.ended_cleanly() {
+        relay.pool.put(lane, up);
+    }
     outcome?;
     Ok(())
+}
+
+/// 应答头里有没有 `Connection: close`（值是逗号分隔的列表，任一项是 `close` 就算）。
+fn says_close(headers: &[(String, String)]) -> bool {
+    headers.iter().any(|(k, v)| {
+        k.eq_ignore_ascii_case("connection")
+            && v.split(',').any(|t| t.trim().eq_ignore_ascii_case("close"))
+    })
 }
 
 /// 上游选择的一个答案 → 照做（发上游 / 记下要回的拒绝）。`tag_out` 收下这个去处的标签。
@@ -774,8 +805,7 @@ fn dispatch(
     head: &RequestHead,
     rest: &str,
     body: &[u8],
-    deadline: std::time::Duration,
-    open: &Open<'_>,
+    reach: &Reach<'_>,
     tag_out: &mut String,
 ) -> Answered {
     match d {
@@ -799,7 +829,7 @@ fn dispatch(
         // 下游那份 auth 头**原样转发**。中转手里没有任何 key。
         Destination::Passthrough { upstream, tag } => {
             tag.clone_into(tag_out);
-            send_upstream(upstream, None, head, rest, body, deadline, open)
+            send_upstream(upstream, tag, None, head, rest, body, reach)
         }
         // 剥掉下游 auth，按这一行自己的说法写（`key` 为 `None` ＝ 什么都不写，
         // 那是 `AuthSwap::write == None` 那一档，理由整段住 `accounts::upstream_select::dispatch_auth`）。
@@ -813,12 +843,12 @@ fn dispatch(
             tag.clone_into(tag_out);
             send_upstream(
                 upstream,
+                tag,
                 Some(&auth),
                 head,
                 rest,
                 swapped.unwrap_or(body),
-                deadline,
-                open,
+                reach,
             )
         }
     }
@@ -899,10 +929,13 @@ fn stream_label<'h>(head: &'h RequestHead, names: &[&str]) -> &'h str {
 /// **最终内容一模一样**，只有时序能分开两者 —— 所以它的 acceptor 量的是时序，不是内容。
 /// 〔这句头注在 08-25 兑现了：审计切出的 `K4` 正是这一形，而当时 384 条判据全绿。
 ///  接住它的两条判据见 `every_chunk_reaches_the_client_before_upstream_sends_the_next_one`。〕
+///
+/// `on_chunk` 答「这个应答收尾了」⇒ 写完这一块就停，不再读（上游留着连接、不会关，再读就等到期限）；
+/// 读到对端关也停。
 fn pump<R: Read, W: Write>(
     up: &mut R,
     down: &mut W,
-    on_chunk: &mut dyn FnMut(&[u8]),
+    on_chunk: &mut dyn FnMut(&[u8]) -> bool,
 ) -> std::io::Result<()> {
     let mut buf = vec![0u8; READ_CHUNK];
     loop {
@@ -914,7 +947,9 @@ fn pump<R: Read, W: Write>(
         };
         down.write_all(&buf[..n])?;
         down.flush()?;
-        on_chunk(&buf[..n]);
+        if on_chunk(&buf[..n]) {
+            break;
+        }
     }
     Ok(())
 }
@@ -922,7 +957,7 @@ fn pump<R: Read, W: Write>(
 /// 渲染给上游的请求行 + 头。
 ///
 /// - 路由前缀已被剥掉，`target` 是下游原样的**真路径 + 查询串**。
-/// - 逐跳头不转发；`Host` 换成上游的。
+/// - 逐跳头不转发；`Host` 换成上游的；不写 `Connection`（上游那一跳留连接）。
 /// - `Accept-Encoding` 收窄成 `identity`（见 `super` 头注㈢）。
 /// - ⚠ **其余头一律原样转发，包括 auth 头** —— 转发但**不记录**。
 ///
@@ -986,7 +1021,7 @@ pub fn render_upstream_request(
     let mut out = format!("{} {} HTTP/1.1\r\n", head.method, target);
     out.push_str(&format!("Host: {}\r\n", base.host_header()));
     out.push_str("Accept-Encoding: identity\r\n");
-    out.push_str("Connection: close\r\n");
+    // 不写 `Connection`：HTTP/1.1 默认留着连接，读完应答还回连接池（下游那一跳仍是 `Connection: close`）。
     // ★ 这一趟要不要把客户端自带的鉴权头收掉 —— **答案就是「上游选择答的是不是 `Substitute`」**。
     //   ⚠⚠ 判断整条住上游选择的那一个 `match`（`accounts::upstream_select::dispatch_auth`），
     //      中转这边没有第二处可以判错。

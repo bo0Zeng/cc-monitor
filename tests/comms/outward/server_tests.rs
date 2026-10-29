@@ -111,3 +111,249 @@ fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread
     );
     drop(whole);
 }
+
+// ══ 上游那一跳复用连接 ═══════════════════════════════════════════════════
+//
+// TLS 假上游（沙箱 CA 签的 `localhost` 叶子，`upstream::tests::sandbox_server_config`）数它接下了几条 TCP 连接、收到了哪几份请求体。
+// 中转经 `serve_one` 走全程：进门 · 路由 · 上游选择（判据自己的一张：去处标签就是路由第二段，即「哪个号」）· 连上游 · 逐块透传。
+
+/// 全权钥匙与直通钥匙（形状照 `relay_route_core::key_shape_ok`：64 位小写十六进制）。
+const POOL_FULL_KEY: &str = "7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57";
+const POOL_PASS_KEY: &str = "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12";
+
+/// 假上游每一发怎么答。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Answer {
+    /// chunked 的 SSE，答完连接留着。
+    KeepChunked,
+    /// `Content-Length` 定长，答完连接留着。
+    KeepLength,
+    /// 应答头里说 `Connection: close`，但连接**不关**（中转要自己不再用它，否则下一发挂住）。
+    SaysCloseButStaysOpen,
+    /// 答完发 close_notify 再关掉（两发之间对端走了）。
+    CloseAfter,
+}
+
+struct TlsStub {
+    port: u16,
+    accepted: Arc<std::sync::atomic::AtomicUsize>,
+    bodies: Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+fn spawn_tls_stub(answer: Answer) -> TlsStub {
+    let l = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 假上游");
+    let port = l.local_addr().expect("addr").port();
+    let accepted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (n, b) = (Arc::clone(&accepted), Arc::clone(&bodies));
+    let cfg = upstream::tests::sandbox_server_config();
+    std::thread::spawn(move || {
+        for s in l.incoming() {
+            let Ok(tcp) = s else { continue };
+            n.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let (b, cfg) = (Arc::clone(&b), Arc::clone(&cfg));
+            std::thread::spawn(move || {
+                let _ = tcp.set_read_timeout(Some(guard_core::wall::CEILING));
+                let conn = rustls::ServerConnection::new(cfg).expect("服务端连接");
+                let mut tls = rustls::StreamOwned::new(conn, tcp);
+                loop {
+                    let Ok(Some(raw)) = http1::read_head(&mut tls, HEAD_CAP) else {
+                        return;
+                    };
+                    let head = http1::parse_request(&raw).expect("假上游收到的该是 HTTP 请求");
+                    let len = match head.content_length() {
+                        http1::BodyLen::Exact(n) => n,
+                        _ => 0,
+                    };
+                    let mut body = vec![0u8; len];
+                    if tls.read_exact(&mut body).is_err() {
+                        return;
+                    }
+                    let text = String::from_utf8_lossy(&body).into_owned();
+                    b.lock().expect("lock").push(text.clone());
+                    let sse = format!("data: {{\"echo\":\"{text}\"}}\n\n");
+                    let reply = match answer {
+                        Answer::KeepChunked | Answer::CloseAfter => format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{sse}\r\n0\r\n\r\n",
+                            sse.len()
+                        ),
+                        Answer::KeepLength => format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\n\r\n{sse}",
+                            sse.len()
+                        ),
+                        Answer::SaysCloseButStaysOpen => format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{sse}",
+                            sse.len()
+                        ),
+                    };
+                    if tls.write_all(reply.as_bytes()).and_then(|()| tls.flush()).is_err() {
+                        return;
+                    }
+                    // 照真上游：请求说了 `Connection: close` ⇒ 答完就关。
+                    let asked_close = head
+                        .header("connection")
+                        .is_some_and(|v| v.to_ascii_lowercase().contains("close"));
+                    if answer == Answer::CloseAfter || asked_close {
+                        tls.conn.send_close_notify();
+                        let _ = tls.flush();
+                        return;
+                    }
+                }
+            });
+        }
+    });
+    TlsStub {
+        port,
+        accepted,
+        bodies,
+    }
+}
+
+/// 判据自己的上游选择：一律直通到那个 TLS 假上游，去处标签 ＝ 路由第二段（哪个号）。
+struct ToStub(Base);
+impl Destinations for ToStub {
+    fn resolve(
+        &self,
+        _mode: super::super::Mode,
+        key: &super::super::RouteKey,
+        _ask: &Ask<'_>,
+        act: &mut dyn FnMut(Destination<'_>),
+    ) {
+        act(Destination::Passthrough {
+            upstream: &self.0,
+            tag: &key.seg2,
+        });
+    }
+    fn stream_label_headers(&self) -> Vec<&'static str> {
+        Vec::new()
+    }
+}
+
+struct NoTap;
+impl super::super::TapPort for NoTap {
+    fn offer(&self, _ev: super::super::TapEvent) -> bool {
+        true
+    }
+}
+
+/// 起一个中转（监听回环），上游是 `https://localhost:<假上游端口>`；开 TCP 那一口一律连回环上的假上游。
+fn spawn_pool_relay(stub_port: u16) -> SocketAddr {
+    let base = Base::parse(&format!("https://localhost:{stub_port}")).expect("base");
+    let open: Arc<OpenFor> = Arc::new(move |_from, _h, _p, _d| {
+        TcpStream::connect(SocketAddr::new(LOOPBACK, stub_port))
+    });
+    let relay = Arc::new(Relay::new(
+        Arc::new(ToStub(base)),
+        door::Keys {
+            full: door::Key::from_text(POOL_FULL_KEY).expect("全权钥匙"),
+            pass: door::Key::from_text(POOL_PASS_KEY).expect("直通钥匙"),
+        },
+        TeeSink::to_port(Arc::new(NoTap)),
+        open,
+        guard_core::wall::CEILING,
+        guard_core::wall::CEILING,
+    ));
+    let l = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 中转");
+    let addr = l.local_addr().expect("中转地址");
+    std::thread::spawn(move || {
+        for s in l.incoming() {
+            let Ok(s) = s else { continue };
+            let r = Arc::clone(&relay);
+            std::thread::spawn(move || {
+                let _ = serve_one(s, &r);
+            });
+        }
+    });
+    addr
+}
+
+/// 打一发（`acct` 是路由第二段，即哪个号；来处段固定一个），读回下游收到的全部字节。
+fn pool_send(relay: SocketAddr, acct: &str, body: &str) -> String {
+    let mut c = TcpStream::connect(relay).expect("连中转");
+    c.set_read_timeout(Some(guard_core::wall::CEILING))
+        .expect("读期限");
+    let req = format!(
+        "POST /{POOL_FULL_KEY}/t/agentA/{acct}/~tok1/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    c.write_all(req.as_bytes()).expect("写请求");
+    let mut got = Vec::new();
+    c.read_to_end(&mut got)
+        .expect("读下游响应（挂住 ⇒ 中转在等一个不会关的上游）");
+    String::from_utf8(got).expect("utf8")
+}
+
+fn accepted(stub: &TlsStub) -> usize {
+    stub.accepted.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// 同一个号连发 5 发 ⇒ 上游只接下 1 条 TCP 连接（chunked 与定长两种收尾各走一遍），5 份请求体各到一次、应答原样回到下游。
+#[test]
+fn five_sends_on_one_account_ride_one_upstream_connection() {
+    for answer in [Answer::KeepChunked, Answer::KeepLength] {
+        let stub = spawn_tls_stub(answer);
+        let relay = spawn_pool_relay(stub.port);
+        for i in 0..5 {
+            let got = pool_send(relay, "acctA", &format!("m{i}"));
+            assert!(got.starts_with("HTTP/1.1 200 OK\r\n"), "第 {i} 发：{got}");
+            assert!(
+                got.contains(&format!("data: {{\"echo\":\"m{i}\"}}\n\n")),
+                "第 {i} 发的应答体没原样回到下游：{got}"
+            );
+        }
+        assert_eq!(
+            *stub.bodies.lock().expect("lock"),
+            vec!["m0", "m1", "m2", "m3", "m4"],
+            "每份请求体该恰好到上游一次"
+        );
+        assert_eq!(accepted(&stub), 1, "同一个号连发 5 发，上游该只接下 1 条连接");
+    }
+}
+
+/// 连接随号分开：换一个号另开一条，两个号各自接着复用自己那一条（不串号）。
+#[test]
+fn another_account_gets_its_own_upstream_connection() {
+    let stub = spawn_tls_stub(Answer::KeepChunked);
+    let relay = spawn_pool_relay(stub.port);
+    pool_send(relay, "acctA", "a0");
+    pool_send(relay, "acctB", "b0");
+    assert_eq!(accepted(&stub), 2, "另一个号该另开一条连接，不借前一个号的");
+    pool_send(relay, "acctA", "a1");
+    pool_send(relay, "acctB", "b1");
+    assert_eq!(accepted(&stub), 2, "两个号各自复用自己那一条");
+    assert_eq!(
+        *stub.bodies.lock().expect("lock"),
+        vec!["a0", "b0", "a1", "b1"]
+    );
+}
+
+/// 上游说了 `Connection: close`（哪怕连接实际还开着）⇒ 那条不再用，下一发另开；也不挂住。
+#[test]
+fn an_upstream_that_says_close_is_not_reused() {
+    let stub = spawn_tls_stub(Answer::SaysCloseButStaysOpen);
+    let relay = spawn_pool_relay(stub.port);
+    for i in 0..3 {
+        let got = pool_send(relay, "acctA", &format!("m{i}"));
+        assert!(got.starts_with("HTTP/1.1 200 OK\r\n"), "第 {i} 发：{got}");
+    }
+    assert_eq!(accepted(&stub), 3, "说了要关的连接不该还回池里");
+}
+
+/// 上游在两发之间关掉了留着的那条（close_notify ＋ FIN）：下一发在写请求头之前探活扔掉它、另开一条照常成功，
+/// 每份请求体只到上游一次（没有「发出去了、失败了、再发一次」）。
+#[test]
+fn a_pooled_connection_the_upstream_closed_is_dropped_before_any_byte_is_sent() {
+    let stub = spawn_tls_stub(Answer::CloseAfter);
+    let relay = spawn_pool_relay(stub.port);
+    for i in 0..3 {
+        let got = pool_send(relay, "acctA", &format!("m{i}"));
+        assert!(got.starts_with("HTTP/1.1 200 OK\r\n"), "第 {i} 发：{got}");
+        assert!(got.contains(&format!("\"echo\":\"m{i}\"")), "第 {i} 发：{got}");
+    }
+    assert_eq!(
+        *stub.bodies.lock().expect("lock"),
+        vec!["m0", "m1", "m2"],
+        "每份请求体该恰好到上游一次"
+    );
+    assert_eq!(accepted(&stub), 3);
+}
