@@ -9,7 +9,7 @@ pub(crate) use cmd_wire::rotation::RotEdit;
 pub(crate) use cmd_wire::rotation::RotSeg;
 /// 设置声明那几格（策略文件头里写的 · `rotation-view` 带的同一形）：线上形住 `cmd-wire`。
 pub(crate) use cmd_wire::rotation::{
-    FormCell as Cell, RotFormKind as Kind, FormScope as Scope, RotFrom,
+    FormCell as Cell, FormScope as Scope, RotFormKind as Kind, RotFrom,
 };
 use serde::Deserialize;
 use serde_json::Value;
