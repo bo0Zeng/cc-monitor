@@ -13,11 +13,9 @@
 //! `hide` 是单个那一格（`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则，判定住 `history/session_hidden.rs`）。
 //! 条目上的 `groups`（在哪几组）· `pinned`（固定）是这条会话的组员关系；顶层 `groups` 那一节是这台那一片：这台有组员的那几组各一份 `{name, made, named}`（并几台的那一层住 `history/groups.rs`）。
 //!
-//! # 升级链（一节，下一个大版本删）
+//! # 版本
 //!
-//! 第 0 版（没有 `version` 或 `0`）条目里是 `hidden: bool`：`true` ⇒ `hide: "on"`，`false` ⇒ 丢掉（照规则）。
-//! 读的一侧在内存里照它换一遍来用（[`upgraded`]）；写回只一次：常驻后端起来时（[`migrate_here`]），或在那之前先来的那一次写，
-//! 都在那个目录的锁里换整份、原文留 `history-metadata.json.v1`。
+//! 只认 [`VERSION`]：别的（没有 `version` · `0` · 比它新的）一律读不懂 —— 读回「不知道」、拒写、原文一个字节不动。
 //!
 //! # 写：一条不丢
 //!
@@ -43,7 +41,7 @@ use serde_json::{json, Map, Value};
 /// 一条注解约 150 字节 ⇒ 64 MiB 装得下四十万条；真撞上说明那份文件不对劲，不拿截断的当完整的用。
 pub const MAX_BYTES: u64 = 64 * 1024 * 1024;
 
-/// 注解文件：状态（读不懂 ⇒ 读回「不知道」、拒写）。读成原文字节，升级链在内存里先升一遍再解。
+/// 注解文件：状态（读不懂 ⇒ 读回「不知道」、拒写）。读成原文字节再严格解。
 const FILE: crate::common::own_state::Doc<Vec<u8>> =
     crate::common::own_state::Doc::state(".cc-monitor/history-metadata.json", MAX_BYTES);
 
@@ -61,41 +59,14 @@ pub(crate) enum HideAsk {
     Rule,
 }
 
-/// 这一版的号（第 0 版的条目带 `hidden: bool`，见头注「升级链」）。
+/// 这一版的号（头注「版本」）。
 pub(crate) const VERSION: u32 = 1;
-
-/// 原文留底的那一份：`<文件名>.v1`。
-const OLD_SUFFIX: &str = ".v1";
-
-/// **升级链那一节**：第 0 版的原文 JSON ⇒ 这一版（`hidden: true` ⇒ `hide: "on"`，`false` ⇒ 丢掉；别的键不动）。
-/// 已经是这一版 / 不是对象 ⇒ 原样、`false`。版本号不是非负整数的那一份原样交回，由严格读拒。
-pub(crate) fn upgraded(mut raw: Value) -> (Value, bool) {
-    let old = match raw.get("version") {
-        None => raw.is_object(),
-        Some(v) => v.as_u64().is_some_and(|n| n < u64::from(VERSION)),
-    };
-    if !old {
-        return (raw, false);
-    }
-    if let Some(entries) = raw.get_mut("entries").and_then(Value::as_object_mut) {
-        for e in entries.values_mut() {
-            if let Some(o) = e.as_object_mut() {
-                if o.remove("hidden").and_then(|h| h.as_bool()) == Some(true) {
-                    o.insert("hide".into(), json!("on"));
-                }
-            }
-        }
-    }
-    raw["version"] = json!(VERSION);
-    (raw, true)
-}
 
 /// 整份文件。
 #[derive(Debug, Default, Deserialize)]
 struct Doc {
+    /// 缺 ⇒ 0：不是 [`VERSION`] 的一律读不懂（[`parse`]）。
     #[serde(default)]
-    #[allow(dead_code)]
-    // 读进来只为「类型对不对」那一道闸（同 monitor 那份）；值不参与任何判定
     version: u32,
     #[serde(default)]
     entries: BTreeMap<String, Entry>,
@@ -227,9 +198,9 @@ fn read_raw(path: &Path) -> Result<Option<Vec<u8>>, crate::common::said::Said> {
     }
 }
 
-/// 严格读（第 0 版先在内存里升一遍，[`upgraded`]）。
+/// 严格读：只认这一版（[`VERSION`]）。
 fn parse(bytes: &[u8], path: &Path) -> Result<Doc, String> {
-    let unparsable = |e: serde_json::Error| {
+    let unparsable = |e: &dyn std::fmt::Display| {
         crate::common::said::Said::with_raw(
             copy_text(
                 "beHistoryAnnotations.parse.unparsable",
@@ -239,8 +210,14 @@ fn parse(bytes: &[u8], path: &Path) -> Result<Doc, String> {
         )
         .into_note()
     };
-    let raw: Value = serde_json::from_slice(bytes).map_err(unparsable)?;
-    serde_json::from_value::<Doc>(upgraded(raw).0).map_err(unparsable)
+    let doc = serde_json::from_slice::<Doc>(bytes).map_err(|e| unparsable(&e))?;
+    if doc.version != VERSION {
+        return Err(unparsable(&format!(
+            "version {} (this build reads {VERSION})",
+            doc.version
+        )));
+    }
+    Ok(doc)
 }
 
 /// 读一份（给 join 那一层）。
@@ -334,16 +311,12 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// 读原文成「严格读过的结构 ＋ 原文 JSON（已升到这一版）＋ 是不是刚升的」。文件不在 ⇒ 缺省形状（这一版）。
-fn read_for_write(path: &Path) -> Result<(Doc, Value, bool), crate::wire::spec::Fail> {
+/// 读原文成「严格读过的结构 ＋ 原文 JSON」。文件不在 ⇒ 缺省形状（这一版）。
+fn read_for_write(path: &Path) -> Result<(Doc, Value), crate::wire::spec::Fail> {
     match read_raw(path)
         .map_err(|e| crate::wire::spec::Fail::from(("annotations_unreadable", e)))?
     {
-        None => Ok((
-            Doc::default(),
-            json!({ "version": VERSION, "entries": {} }),
-            false,
-        )),
+        None => Ok((Doc::default(), json!({ "version": VERSION, "entries": {} }))),
         Some(b) => {
             let doc = parse(&b, path).map_err(|e| ("annotations_unreadable", e))?;
             let raw: Value = serde_json::from_slice(&b)
@@ -357,55 +330,8 @@ fn read_for_write(path: &Path) -> Result<(Doc, Value, bool), crate::wire::spec::
                     ),
                 )));
             }
-            let (raw, moved) = upgraded(raw);
-            Ok((doc, raw, moved))
+            Ok((doc, raw))
         }
-    }
-}
-
-/// 刚升的那一份：原文先留底（`<文件名>.v1`，已有就不动），再由调用方整份写回。锁由调用方拿着。
-fn keep_old(
-    own: &Own,
-    dir: &OwnPath,
-    file: &OwnPath,
-    held: &OwnLock,
-) -> Result<(), crate::common::said::Said> {
-    let name = file
-        .as_path()
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let old = dir.join(&format!("{name}{OLD_SUFFIX}"))?;
-    if crate::platform::fs::Ro::symlink_metadata(old.as_path()).is_ok() {
-        return Ok(());
-    }
-    let bytes = read_raw(file.as_path())?.unwrap_or_default();
-    own.write(&old, held, &bytes)
-}
-
-/// 常驻后端起来时调一次（升级链那一节的写回）：第 0 版 ⇒ 原文留 `.v1`、整份换成这一版。没有文件 / 已是这一版 / 读不懂 ⇒ 不写；写不成只出声。
-pub fn migrate_here(own: &Own) {
-    let run = || -> Result<bool, crate::wire::spec::Fail> {
-        let (dir, file) = need_path(own)?;
-        if crate::platform::fs::Ro::symlink_metadata(file.as_path()).is_err() {
-            return Ok(false);
-        }
-        let held = lock_for_write(own, &dir)?;
-        let (_, raw, moved) = read_for_write(file.as_path())?;
-        if moved {
-            keep_old(own, &dir, &file, &held)
-                .and_then(|()| write_at(own, &file, &held, &raw))
-                .map_err(|e| crate::wire::spec::Fail::from(("io_failed", e)))?;
-        }
-        Ok(moved)
-    };
-    match run() {
-        Ok(true) => tracing::info!(
-            "[annotations] {} 升到第 {VERSION} 版（原文留 {OLD_SUFFIX}）",
-            creds_core::store::HISTORY_METADATA_FILE
-        ),
-        Ok(false) => {}
-        Err(f) => tracing::warn!("[annotations] 升级写回不成：{} {}", f.code, f.message),
     }
 }
 
@@ -594,11 +520,7 @@ pub(crate) fn annotate_at(
     let patch = req.patch;
     let (dir, file) = need_path(own).map_err(err)?;
     let held = lock_for_write(own, &dir).map_err(err)?;
-    let (doc, mut raw, moved) = read_for_write(file.as_path()).map_err(err)?;
-    if moved {
-        keep_old(own, &dir, &file, &held)
-            .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
-    }
+    let (doc, mut raw) = read_for_write(file.as_path()).map_err(err)?;
     let mut entry = doc.entries.get(sid).cloned().unwrap_or_default();
     let prev = entry.hide;
     let prev_title = entry.custom_title.clone();
@@ -652,11 +574,8 @@ pub(crate) fn keep_resume_at(
     let sid = checked_sid(sid).map_err(|e| e.into_fail())?;
     let (dir, file) = need_path(own)?;
     let held = lock_for_write(own, &dir)?;
-    let (doc, mut raw, moved) = read_for_write(file.as_path())?;
+    let (doc, mut raw) = read_for_write(file.as_path())?;
     let io = |e| crate::wire::spec::Fail::from(("io_failed", e));
-    if moved {
-        keep_old(own, &dir, &file, &held).map_err(io)?;
-    }
     let mut entry = doc.entries.get(sid).cloned().unwrap_or_default();
     entry.resume_with = Some(match entry.resume_with.take() {
         Some(old) if old.end == pick.end => ResumeWith {
@@ -728,14 +647,10 @@ pub(crate) fn edit_slice_at<T>(
 ) -> Result<T, AnnotationErr> {
     let (dir, file) = need_path(own).map_err(err)?;
     let held = lock_for_write(own, &dir).map_err(err)?;
-    let (doc, mut raw, moved) = read_for_write(file.as_path()).map_err(err)?;
+    let (doc, mut raw) = read_for_write(file.as_path()).map_err(err)?;
     let mut table = doc.entries.clone();
     let mut book = doc.groups;
     let out = edit(&mut table, &mut book)?;
-    if moved {
-        keep_old(own, &dir, &file, &held)
-            .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
-    }
     for (sid, e) in &mut table {
         if doc.entries.get(sid) != Some(e) {
             e.updated_at = now;
@@ -794,13 +709,9 @@ pub(crate) fn forget_at(own: &Own, req: ForgetReq) -> Result<Forgotten, Annotati
     let sid = checked_sid(&req.sid)?;
     let (dir, file) = need_path(own).map_err(err)?;
     let held = lock_for_write(own, &dir).map_err(err)?;
-    let (doc, mut raw, moved) = read_for_write(file.as_path()).map_err(err)?;
+    let (doc, mut raw) = read_for_write(file.as_path()).map_err(err)?;
     if !doc.entries.contains_key(sid) {
         return Ok(Forgotten { removed: false });
-    }
-    if moved {
-        keep_old(own, &dir, &file, &held)
-            .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
     }
     put_entry(&mut raw, sid, None);
     write_at(own, &file, &held, &raw)

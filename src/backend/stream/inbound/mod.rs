@@ -60,7 +60,7 @@ pub(crate) use caps::{cap_of, MARGIN_MS};
 pub use cli_only::CLI_ONLY_DOCS;
 pub(crate) use doors::LocalFiles;
 pub use doors::{
-    deliver_queues, fill_account_colors, migrate_aliases, share_on_demand_dirs, watch_account_mcp,
+    align_aliases, deliver_queues, fill_account_colors, share_on_demand_dirs, watch_account_mcp,
     watch_rotation,
 };
 #[cfg(test)]

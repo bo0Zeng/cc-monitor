@@ -108,7 +108,6 @@ pub(crate) fn refresh() {
         if let Some(replay) = crate::main_replay() {
             tell_followed(&replay);
         }
-        crate::prefs_migration::after_machines_read(&reply);
     });
 }
 

@@ -1,6 +1,6 @@
 //! **这台的偏好**帧面那两条命令（`prefs-read` · `prefs-set`）与起会话要的那几样。那份文件的形状、值域、读与整份写住 `common/machine_prefs.rs`。
 //!
-//! - 谁决定写：只有本模块的 [`answer_set`]（帧面 `prefs-set` ＋ 派生的 CLI 面）与第 7 批换形那一次（[`super::prefs_migration`]，下一版删）；前端从不碰这个文件。
+//! - 谁决定写：只有本模块的 [`answer_set`]（帧面 `prefs-set` ＋ 派生的 CLI 面）与第 1 ⇒ 2 版那一次换形（[`super::prefs_migration`]）；前端从不碰这个文件。
 //! - 读不懂：不写回，`prefs-set` 也拒（不拿空的盖掉原文）。
 
 use crate::common::machine_prefs::{check, path_in, read_at, read_now, write, Loaded, Prefs};
@@ -25,14 +25,8 @@ pub(crate) fn agent_homes_in(l: &Loaded) -> BTreeMap<String, PathBuf> {
 /// 流模式起来时调一次（`main.rs`，在解析 agent 家目录、起任何线程之前）：这台给某一家设了数据目录 ⇒ 交成本进程里
 /// 那一家的目录环境变量（变量名问注册表那一格 `account_env_of`；解析只在 `agents::home_at` 一处，起的会话照旧继承）；
 /// 没设 / 那一家没有这个变量 ⇒ 不动。改了要重启后端才生效。
-/// `own` 只用来认出换形之前那一次（[`super::prefs_migration::agent_homes_before_move`]，下一版删）。
-pub fn apply_agent_homes(own: &Own) {
-    let l = read_now();
-    let homes = match l {
-        Loaded::Absent => super::prefs_migration::agent_homes_before_move(own),
-        _ => agent_homes_in(&l),
-    };
-    for (env, d) in agent_home_envs(homes) {
+pub fn apply_agent_homes() {
+    for (env, d) in agent_home_envs(agent_homes_in(&read_now())) {
         tracing::info!("这台设了数据目录：{env}={}", d.display());
         std::env::set_var(env, d);
     }
