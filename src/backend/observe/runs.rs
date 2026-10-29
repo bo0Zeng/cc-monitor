@@ -993,7 +993,7 @@ pub(crate) mod skel {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     #[derive(Serialize, Deserialize)]
-    struct Said {
+    struct Run {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         at: Option<u64>,
         links: Vec<Link>,
@@ -1028,7 +1028,7 @@ pub(crate) mod skel {
 
     pub(crate) fn serialize<S: Serializer>(v: &[RunSaid], s: S) -> Result<S::Ok, S::Error> {
         s.collect_seq(v.iter().map(|r| {
-            Said {
+            Run {
                 at: r.when,
                 links: r
                     .links
@@ -1053,7 +1053,7 @@ pub(crate) mod skel {
     }
 
     pub(crate) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<RunSaid>, D::Error> {
-        Ok(Vec::<Said>::deserialize(d)?
+        Ok(Vec::<Run>::deserialize(d)?
             .into_iter()
             .map(|r| RunSaid {
                 when: r.at,

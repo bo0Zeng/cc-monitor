@@ -51,7 +51,7 @@ pub(crate) fn ask_with(
     let title = copy_text("bePlan.ask.title", &[("title", named.unwrap_or(&req.id))]);
     let (alias, said) = match req.alias.as_deref().map(str::trim) {
         Some(a) => {
-            let said = said_of(book, a).map_err(|why| {
+            let said = lines_of(book, a).map_err(|why| {
                 Fail::new(
                     "no_such_alias",
                     copy_text("bePlan.ask.noSuchAlias", &[("alias", a), ("why", &why)]),
@@ -60,7 +60,7 @@ pub(crate) fn ask_with(
             keep(a)?;
             (Some(a.to_string()), Some(said))
         }
-        None => match kept.and_then(|a| said_of(book, a).ok().map(|s| (a, s))) {
+        None => match kept.and_then(|a| lines_of(book, a).ok().map(|s| (a, s))) {
             Some((a, said)) => (Some(a.to_string()), Some(said)),
             None => (None, None),
         },
@@ -80,7 +80,7 @@ pub(crate) fn ask_with(
 }
 
 /// 一条别名合下来、问图要的两样：开口那句（没写 ⇒ 空）· 起在哪那一句。
-struct Said {
+struct AliasLines {
     say: String,
     runs: String,
 }
@@ -88,7 +88,7 @@ struct Said {
 /// 这条别名合下来的那两样；不在 / 合不下来 ⇒ 那一句。
 /// 起在哪：「tmux 里」恒在（问图只跟 tmux）· 号那一项照合下来的 `--account` / `--base` 和它来自哪一层 ·
 /// 进分组照 `--tab-group`；没写的那一段不出。机器不写：这台不知道看的那一端管它叫什么，框本来就锁在这台。
-fn said_of(book: &Book, name: &str) -> Result<Said, String> {
+fn lines_of(book: &Book, name: &str) -> Result<AliasLines, String> {
     let r = profile::resolve(book, name, &[])?;
     let Parsed::Opts(o) = r.parsed else {
         return Err(copy_text("beSessionSet.alias.missing", &[("alias", name)]));
@@ -119,7 +119,7 @@ fn said_of(book: &Book, name: &str) -> Result<Said, String> {
             &[("group", &o.tab_group)],
         ));
     }
-    Ok(Said {
+    Ok(AliasLines {
         say: o.say.clone(),
         runs: parts.join(&copy_text("bePlan.ask.runsSep", &[])),
     })

@@ -13,7 +13,7 @@
 //! 有字时按 Enter 就把它说出去 —— 通用层哪一步没核对就按，判据当场看得见。
 
 use crate::agents::{RewindChoice, RewindFace, RewindItem, RewindRow, RewindScreen};
-use crate::control::rewind::{RewindIo, SaidLine};
+use crate::control::rewind::{RewindIo, UserLine};
 use crate::control::terminals::CmdErr;
 use crate::control::terminals_wire::{Sent, SentResult};
 use cmd_wire::rewind::RewindHow;
@@ -223,7 +223,7 @@ impl FakeTerm {
     }
 
     /// 此刻那一屏。
-    pub(crate) fn lines(&self) -> Vec<String> {
+    pub(crate) fn drawn(&self) -> Vec<String> {
         let mut out = vec!["fake agent v0".to_string()];
         match self.mode {
             Mode::Prompt => {
@@ -360,7 +360,7 @@ fn delivered() -> Sent {
 
 impl RewindIo for FakeTerm {
     fn screen(&mut self) -> Result<Vec<String>, CmdErr> {
-        Ok(self.lines())
+        Ok(self.drawn())
     }
     fn press(&mut self, key: &str) -> Result<Sent, CmdErr> {
         self.key(key);
@@ -378,11 +378,11 @@ impl RewindIo for FakeTerm {
         }
         Ok(delivered())
     }
-    fn said(&mut self) -> Result<Vec<SaidLine>, CmdErr> {
+    fn lines(&mut self) -> Result<Vec<UserLine>, CmdErr> {
         Ok(self
             .said
             .iter()
-            .map(|l| SaidLine {
+            .map(|l| UserLine {
                 uuid: l.uuid.clone(),
                 text: l.text.clone(),
             })
@@ -395,28 +395,28 @@ impl RewindIo for FakeTerm {
 fn the_fake_reads_back_every_screen_it_draws() {
     let mut t = FakeTerm::with(&["一", "二"]);
     assert_eq!(
-        read(&t.lines()),
+        read(&t.drawn()),
         RewindScreen::Prompt {
             typed: String::new()
         }
     );
     t.busy = true;
-    assert_eq!(read(&t.lines()), RewindScreen::Busy);
+    assert_eq!(read(&t.drawn()), RewindScreen::Busy);
     t.busy = false;
     t.key("esc");
     t.key("esc");
     assert!(
-        matches!(read(&t.lines()), RewindScreen::List { rows } if rows.len() == 3 && rows[2].current && rows[2].selected)
+        matches!(read(&t.drawn()), RewindScreen::List { rows } if rows.len() == 3 && rows[2].current && rows[2].selected)
     );
     t.key("up");
     t.key("enter");
     assert!(
-        matches!(read(&t.lines()), RewindScreen::Confirm { items } if items[0].label == TALK && items[0].selected)
+        matches!(read(&t.drawn()), RewindScreen::Confirm { items } if items[0].label == TALK && items[0].selected)
     );
     t.new_look = true;
     t.key("left");
     assert_eq!(
-        read(&t.lines()),
+        read(&t.drawn()),
         RewindScreen::Unknown,
         "换了样子的列表认不出"
     );

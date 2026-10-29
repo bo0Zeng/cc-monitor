@@ -8,7 +8,7 @@
 
 use super::session_queue_hop::{route, Aimed};
 use crate::control::rewind::{
-    code_after, options_of, runs_after, walk, After, Plan, RewindFace, RewindIo, SaidLine, Walked,
+    code_after, options_of, runs_after, walk, After, Plan, RewindFace, RewindIo, UserLine, Walked,
     Why,
 };
 use crate::control::terminals::{self, CmdErr, On};
@@ -249,7 +249,7 @@ impl RewindIo for Live<'_> {
     fn say(&mut self, text: &str) -> Result<Sent, CmdErr> {
         self.input(None, Some(text))
     }
-    fn said(&mut self) -> Result<Vec<SaidLine>, CmdErr> {
+    fn lines(&mut self) -> Result<Vec<UserLine>, CmdErr> {
         let no_record = |raw: &str| {
             CmdErr::new(
                 "no_such_session",
@@ -266,7 +266,7 @@ impl RewindIo for Live<'_> {
         Ok(map
             .inputs
             .iter()
-            .map(|r| SaidLine {
+            .map(|r| UserLine {
                 uuid: r.uuid.clone(),
                 text: r.excerpt.clone(),
             })
