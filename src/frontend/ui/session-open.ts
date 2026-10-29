@@ -14,6 +14,8 @@ import { writeClipboard } from "./clipboard";
 import { NoTerminalWindow, openLocalTerminal, openTerminal, sayNoTerminal } from "./terminal-open";
 import { chosenAccount } from "./launch-account";
 import { offerResyncRetry } from "./resync";
+import { openLoginDrawer } from "./login-drawer";
+import { DEFAULT_AGENT } from "./agent-profile";
 import type { SessionOpenReq } from "./generated/SessionOpenReq";
 import type { OpenWhat } from "./generated/OpenWhat";
 import type { Opened } from "./generated/Opened";
@@ -160,7 +162,10 @@ export async function landOpened(origin: Origin, req: SessionOpenReq, o: Opened,
   return true;
 }
 
-/** 没成的那几形各说一句；按钮只有两种：选不了号 ⇒ 改用那台给的替代（没有 ⇒ 不指定账号）· 不是这个会话的 ⇒ 对齐后重试。 */
+/**
+ * 没成的那几形各说一句；按钮只有两种：选不了号 ⇒ 改用那台给的替代（没有 ⇒ 不指定账号）＋［登录…］（开那个号的登录抽屉）·
+ * 不是这个会话的 ⇒ 对齐后重试。
+ */
 function sayEnd(origin: Origin, req: SessionOpenReq, how: OpenHow, end: Exclude<OpenEnd, { kind: "opened" }>): void {
   if (end.kind === "pending") {
     toast(...lines(end.said), { level: "info" });
@@ -176,12 +181,18 @@ function sayEnd(origin: Origin, req: SessionOpenReq, how: OpenHow, end: Exclude<
     case "account_unavailable": {
       const u = end.unavailable;
       const alt = u?.listKnown ? u.alternative : null;
+      const agent = req.what.kind === "new" ? req.what.agent : DEFAULT_AGENT;
       toast(title, body, {
         detail: end.detail,
-        action: {
-          label: alt === null ? copyText("sessionOpen.account.useBase") : copyText("sessionOpen.account.useAlt", { alt }),
-          run: () => void again({ ...req, account: chosenAccount(alt) }),
-        },
+        action: [
+          {
+            label: alt === null ? copyText("sessionOpen.account.useBase") : copyText("sessionOpen.account.useAlt", { alt }),
+            run: () => void again({ ...req, account: chosenAccount(alt) }),
+          },
+          ...(u === null
+            ? []
+            : [{ label: copyText("newSession.account.login"), run: () => void openLoginDrawer({ origin, target: { kind: "account" as const, agent, account: u.requested } }) }]),
+        ],
       });
       return;
     }

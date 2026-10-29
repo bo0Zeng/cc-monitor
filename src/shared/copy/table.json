@@ -13080,6 +13080,18 @@
       "zh": "未报到",
       "args": []
     },
+    "launch.slot.unknownTitle": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "状态不明",
+      "args": []
+    },
+    "launch.slot.again": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "再查一次",
+      "args": []
+    },
     "launch.slot.tmuxGone": {
       "kind": "body",
       "role": "说明",
