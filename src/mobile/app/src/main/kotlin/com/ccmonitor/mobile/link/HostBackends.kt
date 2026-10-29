@@ -5,6 +5,7 @@ import com.ccmonitor.mobile.core.claude.link.EmbeddedBuild
 import com.ccmonitor.mobile.core.claude.link.KeptBatches
 import com.ccmonitor.mobile.core.claude.link.ResidentCore
 import com.ccmonitor.mobile.core.claude.link.ResidentFeed
+import com.ccmonitor.mobile.core.wire.gen.EmptyFace
 import com.ccmonitor.mobile.ssh.HostConnector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +43,11 @@ class HostBackends(
     /** 此刻起着的那几条（按台；跨会话的需手动板对每一条各问一份，不为它另连）。 */
     val feeds: StateFlow<Map<String, ResidentFeed>> = feedsFlow.asStateFlow()
 
+    private val emptyFlow = MutableStateFlow<EmptyFace?>(null)
+
+    /** 首屏那一句（核心照手上看着的每台合的，哪一条流交的都是整份；还没交 ⇒ `null`）：会话列表空着时照摆。 */
+    val empty: StateFlow<EmptyFace?> = emptyFlow.asStateFlow()
+
     init {
         scope.launch { connector.dialing.collect { ids -> ids.forEach { of(it).ensure() } } }
         // SSH 那层握着的那条死了 ⇒ 交给这台的常驻流当一件事（当场再拨；停在要人动手那一步的也叫起来）。
@@ -74,6 +80,7 @@ class HostBackends(
             tz = ZoneId.systemDefault().id,
             kept = keptOf(hostId),
             onBreak = ::onBreak,
+            onEmpty = { emptyFlow.value = it },
         ).also { f -> scope.launch { f.sshReached.collect { connector.loopReached(hostId, it) } } }
     }
 

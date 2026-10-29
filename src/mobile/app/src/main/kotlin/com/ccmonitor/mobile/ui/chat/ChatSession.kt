@@ -81,6 +81,8 @@ data class ChatUiState(
     val permission: SwitchChip = SwitchChip(),
     /** chip 上方那一行（换的结局没成）：那台写好的那一句；`null` ＝ 不画。 */
     val note: String? = null,
+    /** 输入框照脸上 `can.say` 的样子（[sayLook]）；`null` ＝ 照常。 */
+    val say: SayLook? = null,
     /** 两个 chip 抽屉里列的（那台那一家给的）；还没问 ⇒ `null`。 */
     val picks: Picks? = null,
     /** ［+］面板里的命令与 Skill（那台给的这条会话那一份）。 */

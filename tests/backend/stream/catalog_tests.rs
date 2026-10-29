@@ -211,7 +211,11 @@ fn skill_files() -> Vec<(String, String)> {
                 && p.parent().and_then(|d| d.parent()) == Some(shared.as_path())
         })
         .map(|(p, text)| {
-            let rel = p.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/");
+            let rel = p
+                .strip_prefix(&root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
             (rel, text)
         })
         .collect();

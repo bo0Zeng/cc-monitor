@@ -117,7 +117,13 @@ val appModule =
         // 会话屏：参数 ＝ `parametersOf(当前那台)`；机器表照库里的先后。
         viewModel { params ->
             val make = hostChats(get(), get())
-            ChatsBoard(params.get(0), get<HostRepository>().observeAll().map { hs -> hs.map { HostName(it.id, it.label.ifBlank { it.id }) } }, make, CoreResident::searchMerge)
+            ChatsBoard(
+                params.get(0),
+                get<HostRepository>().observeAll().map { hs -> hs.map { HostName(it.id, it.label.ifBlank { it.id }) } },
+                make,
+                CoreResident::searchMerge,
+                empty = get<HostBackends>().empty,
+            )
         }
         // 抽屉「最近」：参数 ＝ `parametersOf(那台, 它的名字)`。
         viewModel { params ->
