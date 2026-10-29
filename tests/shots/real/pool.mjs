@@ -4,6 +4,7 @@
  * 页里的帧命令与订阅经 vite 的这几个口原样交给无头壳。成品（额度行 · 时刻字 · 状态字 · 拒答的复制详情 …）一律是真后端与壳算的，台架不写。
  *
  *   POST /__ccm/world  {key, machines: {<origin>: {files: {<相对家目录的路径>: <内容>}}}}  ⇒ 造好家目录、起无头壳与各台后端、全部握上手再答
+ *                      {key, diskFrom: <配方>} ⇒ 盘由伺服照配方造（`backendPool` 的 `disks`），答 `{ok, tails}`
  *   POST /__ccm/call   {key, origin, op, args, view?, leftMs?} ⇒ 壳 `chan_call` 那一跳的结局：`{ok:true, body}` / `{ok:false, fail:{err, body, detail}}`
  *   POST /__ccm/sub    {key, id, origin, kind, want} · /__ccm/want {key, id, more} · /__ccm/stop {key, id} · /__ccm/ready {key, priority_sid}
  *   POST /__ccm/watch  {key, sessions: [{origin, sessionId}]}  ⇒ 主窗口在看哪几个（同 Tauri 命令 `watch_sessions`）
@@ -13,7 +14,8 @@
  *   POST /__ccm/paint  {key, origin, sid, text}            ⇒ 那个会话的替身往自己的窗格里再印一段（原样的终端输出）
  *   POST /__ccm/end    {key, origin}                         ⇒ 那台已结束 / 可重连的那几个这时收场（页里收到那台的清单之后发），见到裁出来的那一格才答
  *   POST /__ccm/kill   {key, origin}                         ⇒ 那台后端当场杀掉（演「断了」）
- *   GET  /__ccm/items?key=…                                  ⇒ 事件流（SSE）：一格一条 `{sub, items}`，同壳交给页的 `chan-items` 事件体
+ *   GET  /__ccm/items?key=…                                  ⇒ 事件流（SSE）：一格一条 `{sub, items}`，同壳交给页的 `chan-items` 事件体。
+ *                                                              页里和起世界那一问同时连：世界还没起好就先收着，起好了接上（攒着的格补上）
  *   POST /__ccm/trace  {scene}                               ⇒ 那个场景的世界里台架与无头壳之间的来往（最近 [`TRACE_KEEP`] 条，带毫秒）落进
  *                                                              `<沙箱>/trace/<场景>.log`，答那几份的路径（一张图没截成时 `run.mjs` 来要，问题表里点名它）
  *
@@ -361,10 +363,16 @@ function tmuxOf(dir) {
   return (args) => spawnSync("env", ["-u", "TMUX", "-u", "TMUX_PANE", "tmux", "-S", sock, "-f", "/dev/null", ...args], { stdio: "ignore", env: { PATH: "/usr/bin:/bin", LANG: "C.UTF-8" } }).status === 0;
 }
 
-export function backendPool({ repo, sandbox }) {
+/**
+ * `disks`：照配方造盘的那一手（`/__ccm/world` 带 `diskFrom` 时用，性能台架 `perf/serve.mjs` 给）：配方 ⇒ `{machines, tails}`，
+ * `machines` 同页里交来的那一格，`tails` 原样答回页里（会话接着往下写的那一截）。没给 ⇒ 只认页里交来的盘。
+ */
+export function backendPool({ repo, sandbox, disks = null }) {
   const bin = process.env.CCM_SHOTS_BACKEND ?? path.join(BACKEND_TARGET(repo), "debug/cc-monitor-backend");
   const shellBin = path.join(repo, ".build/shell/debug/examples", SHELL_EXAMPLE);
   const worlds = new Map();
+  /** 世界还没起好就先连上的事件流（按世界的钥匙）：`makeWorld` 起好那一刻接上。 */
+  const early = new Map();
 
   function kill(key) {
     const w = worlds.get(key);
@@ -623,7 +631,10 @@ export function backendPool({ repo, sandbox }) {
       for (const origin of origins) {
         for (;;) {
           if (gone) throw gone;
-          if ((await Promise.race([ask({ t: "offer", origin }), exited])).up === true) break;
+          if ((await Promise.race([ask({ t: "offer", origin }), exited])).up === true) {
+            w.trace(`${origin} 握上手了`);
+            break;
+          }
           if (Date.now() > until) throw new Error(`${origin} 的后端 30 秒没握上手`);
           await new Promise((r) => setTimeout(r, 20));
         }
@@ -698,7 +709,11 @@ export function backendPool({ repo, sandbox }) {
   async function makeWorld(body) {
     if (!existsSync(bin)) throw new Error(`真后端二进制不在：${bin}（先 cd src/backend && cargo build）`);
     if (!existsSync(shellBin)) throw new Error(`无头壳不在：${shellBin}（先 cd src/frontend/shell && cargo build --features shots --example ${SHELL_EXAMPLE}）`);
-    const { key, machines } = body;
+    const { key } = body;
+    // 盘照配方由伺服造（性能台架），否则是页里交来的。
+    if (body.diskFrom !== undefined && !disks) throw new Error("这个伺服不认照配方造盘（diskFrom）");
+    const made = body.diskFrom !== undefined ? await disks(String(body.diskFrom)) : { machines: body.machines, tails: undefined };
+    const { machines } = made;
     // 页里那一刻（页开头拨过钟）；没给 ⇒ 台架那一刻。
     const now = Number.isFinite(body.now) ? body.now : SHOTS_NOW_MS;
     kill(key);
@@ -714,6 +729,8 @@ export function backendPool({ repo, sandbox }) {
     };
     const w = { dir, homes: new Map(), paints: new Map(), doomed: [], inner: new Map(), listeners: [], backlog: [], shell: null, boxes: [],shift: now - Date.now(), scene: String(body.scene ?? ""), lines, trace };
     worlds.set(key, w);
+    for (const res of early.get(key) ?? []) attach(w, res);
+    early.delete(key);
     // 本机后端问得到的那几台（`reach`）：各起一个常驻；本机那一台起 sshd、挂上它们的套接字目录（先建好，0700 同常驻自己建的那一形）。
     const order = Object.keys(machines);
     const reach = Object.entries(body.reach ?? {}).filter(([o]) => o !== LOCAL && o in machines);
@@ -755,6 +772,8 @@ export function backendPool({ repo, sandbox }) {
     // 握上手：本机那一台，和本机后端照常接得上的那几台（演旧了 · 拖住 · 正在装的那几台由场景自己等它那一态）。
     await sh.up(list.filter((m) => m.origin === LOCAL || peers.some((p) => p.origin === m.origin && !p.fake)).map((m) => m.origin));
     while (worlds.size > KEEP) kill(worlds.keys().next().value);
+    w.trace("世界起好了，答页里");
+    return made.tails === undefined ? { ok: true } : { ok: true, tails: made.tails };
   }
 
   /** 那个场景还留着的世界：各自的来往落盘（同一场景几个世界 ⇒ 几份，按起的先后编号）。 */
@@ -840,25 +859,35 @@ export function backendPool({ repo, sandbox }) {
 
   const TELL = new Set(["/__ccm/sub", "/__ccm/want", "/__ccm/stop", "/__ccm/ready", "/__ccm/kill", "/__ccm/watch", "/__ccm/kept", "/__ccm/write", "/__ccm/status", "/__ccm/paint"]);
 
+  /** 事件流接在那个世界上：攒着的格先补上，之后来一格写一格。 */
+  function attach(w, res) {
+    w.trace(`http /__ccm/items 接上（积着 ${w.backlog.length} 格）`);
+    for (const msg of w.backlog.splice(0)) res.write(msg);
+    w.listeners.push(res);
+    res.on("close", () => (w.listeners = w.listeners.filter((x) => x !== res)));
+  }
+
   async function serve(req, res, next) {
     if (req.method === "GET" && req.url?.startsWith("/__ccm/items?")) {
-      const w = worlds.get(new URL(req.url, "http://x").searchParams.get("key"));
-      if (!w) {
-        res.statusCode = 404;
-        return res.end();
-      }
+      // 页里和起世界那一问同时连（`fake/backend.ts`）：头当场写，世界还没起好就先收着，起好了再接上（`makeWorld`）。
+      const key = new URL(req.url, "http://x").searchParams.get("key");
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
       res.write(":\n\n");
-      for (const msg of w.backlog.splice(0)) res.write(msg);
-      w.listeners.push(res);
-      req.on("close", () => (w.listeners = w.listeners.filter((x) => x !== res)));
+      const w = worlds.get(key);
+      if (w) return attach(w, res);
+      early.set(key, [...(early.get(key) ?? []), res]);
+      res.on("close", () => {
+        const left = (early.get(key) ?? []).filter((x) => x !== res);
+        if (left.length > 0) early.set(key, left);
+        else early.delete(key);
+      });
       return;
     }
     if (req.method !== "POST" || !(req.url === "/__ccm/world" || req.url === "/__ccm/call" || req.url === "/__ccm/end" || req.url === "/__ccm/trace" || TELL.has(req.url))) return next();
     try {
       const body = JSON.parse(await readBody(req));
       let out = { ok: true };
-      if (req.url === "/__ccm/world") await makeWorld(body);
+      if (req.url === "/__ccm/world") out = await makeWorld(body);
       else if (req.url === "/__ccm/call") out = await call(body);
       else if (req.url === "/__ccm/end") {
         worlds.get(body.key)?.trace(`http /__ccm/end ${body.origin}`);

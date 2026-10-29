@@ -4,7 +4,8 @@
  */
 import { describe, expect, it } from "vitest";
 import golden from "../../../__fixtures__/machine-state.golden.json";
-import { localBackendFace, machineFace, paintProblem, type MachineState } from "../../../../src/frontend/ui/settings/machine-state";
+import { machineFace, paintProblem, type MachineState } from "../../../../src/frontend/ui/settings/machine-state";
+import { localBackendFace } from "../../../../src/frontend/ui/local-backend-face";
 import type { LocalBackend } from "../../../../src/frontend/ui/generated/LocalBackend";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 

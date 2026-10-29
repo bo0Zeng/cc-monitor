@@ -5,17 +5,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), recentToasts: vi.fn(() => [{ title: "最新一条" }]) }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn(), recentToasts: vi.fn(() => [{ title: "最新一条" }]) }));
 vi.mock("../../../src/frontend/ui/status-messages", () => ({ showMessage: vi.fn() }));
 vi.mock("../../../src/frontend/ui/terminal-reads", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/terminal-reads")>()),
   endTerminal: vi.fn(async () => undefined),
 }));
 
-import { endConfirm, sayEnded } from "../../../src/frontend/ui/end-confirm";
+import { endConfirm, sayEnded, sayRows } from "../../../src/frontend/ui/end-confirm";
 import { endRows } from "../../../src/frontend/ui/terminals-board-reads";
 import { endTerminal } from "../../../src/frontend/ui/terminal-reads";
-import { toast } from "../../../src/frontend/ui/kit/toast";
+import { toast, undoToast } from "../../../src/frontend/ui/kit/toast";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { BoardRow } from "../../../src/frontend/ui/generated/BoardRow";
 
@@ -65,5 +65,32 @@ describe("结束会话的确认框", () => {
     expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toBe(copyText("sessionState.kill.done", { title: "甲" }));
     sayEnded([{ title: "甲", outcome: "failed", why: "那台说的", detail: "d" }]);
     expect(vi.mocked(toast).mock.calls.at(-1)).toEqual([copyText("tabSessionActions.kill.failed", { title: "甲" }), "那台说的", { detail: "d" }]);
+  });
+});
+
+describe("一批的结局带［撤销］（批量隐藏 · 取消隐藏，A2-17-7-3-1）", () => {
+  const rows = [
+    { title: "甲", outcome: "done" as const, why: "" },
+    { title: "乙", outcome: "failed" as const, why: "那台拒了", detail: "详情-乙" },
+  ];
+  it("★ 给了撤销且有成了的 ⇒ 同一条上［撤销］［查看］：汇总照 head，没成的逐条进「消息」，不另出一条", () => {
+    const run = vi.fn();
+    const settle = vi.fn();
+    sayRows(rows, (done, failed) => `动作 ${done} · 失败 ×${failed}`, { run, settle });
+    expect(toast).not.toHaveBeenCalled();
+    expect(undoToast).toHaveBeenCalledTimes(1);
+    const [title, undo, commit, opts] = vi.mocked(undoToast).mock.calls[0];
+    expect(title).toBe("动作 1 · 失败 ×1");
+    expect(undo).toBe(run);
+    expect(commit).toBe(settle);
+    expect(opts?.level).toBe("error");
+    expect(opts?.more).toEqual([copyText("tabBatch.result.failedLine", { title: "乙", why: "那台拒了" })]);
+    expect((opts?.action as { label: string } | undefined)?.label).toBe(copyText("tabBatch.result.view"));
+    expect(opts?.detail).toBe("那台拒了\n详情-乙");
+  });
+  it("一个都没成 ⇒ 没有可撤的，照旧那一条（不出［撤销］）", () => {
+    sayRows([rows[1]], (done, failed) => `动作 ${done} · 失败 ×${failed}`, { run: vi.fn(), settle: vi.fn() });
+    expect(undoToast).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledTimes(1);
   });
 });

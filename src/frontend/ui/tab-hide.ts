@@ -14,6 +14,8 @@ import { sameHidden, undoHide, type HideSet, type SessionHidden } from "./sessio
 import { copyText } from "./copy-table";
 import type { Hide } from "./generated/Hide";
 import { fullTitle } from "./session-face";
+import type { EndRow } from "./end-confirm";
+import { detailOf, saidOf } from "./kit/detail";
 
 /** 隐藏那几件要宿主做的：交命令 · 出 toast · 重画 · 关掉一个已结束的。 */
 export interface TabHideHost {
@@ -23,6 +25,11 @@ export interface TabHideHost {
   undoToast(title: string, undo: () => void, settle: () => void): void;
   /** 没交成那一句。 */
   failed(title: string, e: unknown): void;
+  /**
+   * 一批（≥ 2 个）里有没成的：结束那一种结局一条（`end-confirm.ts::sayRows`，汇总照 `tab-batch-menu.ts::batchHead(action)`）；
+   * `undo` 给了 ⇒ 同一条上［撤销］成了的那几个。
+   */
+  batch(action: string, rows: readonly EndRow[], undo?: { run: () => void; settle: () => void }): void;
   refreshTabBar(): void;
   /** 关掉一个已结束的（同 ×：拆流、让后端忘掉）。 */
   close(sid: string): void;
@@ -33,6 +40,16 @@ interface Missed {
   tab: Tab;
   on: boolean;
   e: unknown;
+}
+
+/** 一批的逐条结局（照交的先后）：没成的带那台那一句与详情，别的算成了。 */
+function rowsOf(tabs: readonly Tab[], missed: readonly Missed[]): EndRow[] {
+  return tabs.map((t): EndRow => {
+    const m = missed.find((x) => x.tab === t);
+    if (!m) return { title: fullTitle(t), outcome: "done", why: "" };
+    const detail = detailOf(m.e);
+    return { title: fullTitle(t), outcome: "failed", why: saidOf(m.e), ...(detail !== "" ? { detail } : {}) };
+  });
 }
 
 /** 隐藏之前那一刻（撤销时放回）：顺序里那一格 · 分组 · 固定。 */
@@ -93,15 +110,20 @@ export class TabHide {
     // 撤销回到隐藏之前那一份单独设置（各个照后端回的改之前那一格，`undoHide`），不一律钉成「单独显示」。
     const prevs = new Map<string, Hide | null>();
     void this.send(tabs, () => "on", (t, prev) => prevs.set(t.sessionId, prev)).then((missed) => {
-      this.sayMissed(missed);
       const done = tabs.filter((t) => prevs.has(t.sessionId));
+      const undo = {
+        run: () => void this.send(done, (t) => undoHide(prevs.get(t.sessionId) ?? null)).then((m) => this.sayMissed(m)),
+        settle: () => done.forEach((t) => this.before.delete(t.sessionId)),
+      };
+      // 一批里有没成的 ⇒ 一条结局（「已隐藏 k · 失败 ×m」·［撤销］［查看］），不逐个弹。
+      if (tabs.length > 1 && missed.length > 0) {
+        this.host.batch(copyText("tabBatch.action.hide"), rowsOf(tabs, missed), done.length > 0 ? undo : undefined);
+        return;
+      }
+      this.sayMissed(missed);
       if (done.length === 0) return;
       const title = done.length === 1 ? copyText("tabBar.hide.done", { title: fullTitle(done[0]) }) : copyText("tabBar.hide.doneMany", { n: done.length });
-      this.host.undoToast(
-        title,
-        () => void this.send(done, (t) => undoHide(prevs.get(t.sessionId) ?? null)).then((m) => this.sayMissed(m)),
-        () => done.forEach((t) => this.before.delete(t.sessionId)),
-      );
+      this.host.undoToast(title, undo.run, undo.settle);
     });
   }
 
@@ -110,7 +132,11 @@ export class TabHide {
    */
   unhide(sids: readonly string[]): void {
     const tabs = sids.map((s) => this.store.tabs.get(s)).filter((t): t is Tab => t !== undefined && (t.hidden ?? null) !== null);
-    if (tabs.length > 0) void this.send(tabs, () => "off").then((m) => this.sayMissed(m));
+    if (tabs.length === 0) return;
+    void this.send(tabs, () => "off").then((m) => {
+      if (tabs.length > 1 && m.length > 0) this.host.batch(copyText("tabBatch.action.unhide"), rowsOf(tabs, m));
+      else this.sayMissed(m);
+    });
   }
 
   /** 逐个交（`to` ＝ 这一个交什么）；交成了 ⇒ `done(那一个, 改之前那一格)`。回没成的那几个（不出声，调用方定怎么说）。 */

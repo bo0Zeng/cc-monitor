@@ -732,6 +732,7 @@ object Commands {
             ProfileSlotChange::class.java to ProfileSlotChange.ADAPTER,
             ProfileSlotId::class.java to ProfileSlotId.ADAPTER,
             ProfileTmuxMode::class.java to ProfileTmuxMode.ADAPTER,
+            ProfileTmuxNaming::class.java to ProfileTmuxNaming.ADAPTER,
             ProfileTmuxPick::class.java to ProfileTmuxPick.ADAPTER,
             ProfilesBases::class.java to ProfilesBases.ADAPTER,
             ProfilesBasesReq::class.java to ProfilesBasesReq.ADAPTER,

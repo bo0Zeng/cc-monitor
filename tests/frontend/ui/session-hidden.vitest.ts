@@ -31,6 +31,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import { hiddenPushed, undoHide, lineageOf, NO_LINEAGE, type HideSet, type SessionHidden } from "../../../src/frontend/ui/session-hidden";
 import { setHide } from "../../../src/frontend/ui/session-hidden-cmds";
 import { TabHide, type TabHideHost } from "../../../src/frontend/ui/tab-hide";
+import type { EndRow } from "../../../src/frontend/ui/end-confirm";
 import { applyFacts } from "../../../src/frontend/ui/tab-session-facts";
 import { SessionHead } from "../../../src/frontend/ui/session-head";
 import { readFileSync } from "node:fs";
@@ -145,7 +146,7 @@ describe("推帧主题「会话隐藏」：那一格到了就挪", () => {
   it("★ 收到那一帧 ⇒ 当场挪出标签栏、进「已隐藏」；再来一帧 `null` ⇒ 挪回", () => {
     const r = bar([tab("a"), tab("b")]);
     const prefs = { ...r.prefs, setPinnedMany: vi.fn(), adoptGroup: vi.fn(), persistOrder: vi.fn(async () => {}) };
-    const hider = new TabHide(r.store, prefs as unknown as TabBarPrefs, { setHide: vi.fn(), undoToast: vi.fn(), failed: vi.fn(), refreshTabBar: () => r.view.refresh(), close: vi.fn() });
+    const hider = new TabHide(r.store, prefs as unknown as TabBarPrefs, { setHide: vi.fn(), undoToast: vi.fn(), failed: vi.fn(), batch: vi.fn(), refreshTabBar: () => r.view.refresh(), close: vi.fn() });
     const push = (hidden: SessionHidden | null): void => {
       for (const [sid, h] of hiddenPushed({ cells: [{ key: "b", rev: null, body: { hidden } }], all: false })) hider.land(sid, h);
       r.view.refresh();
@@ -237,6 +238,7 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
       setHide: vi.fn(async (_t: Tab, _to: HideSet): Promise<"on" | "off" | null> => null),
       undoToast: vi.fn((title: string, undo: () => void, settle: () => void) => void toasts.push({ title, undo, settle })),
       failed: vi.fn(),
+      batch: vi.fn((_action: string, _rows: readonly EndRow[], _undo?: { run: () => void; settle: () => void }) => {}),
       refreshTabBar: vi.fn(),
       close: vi.fn(),
     } satisfies TabHideHost;
@@ -285,7 +287,7 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
     expect(r.host.failed.mock.calls[0][0]).toBe(copyText("tabBar.hide.failed", { title: "名-b" }));
   });
 
-  it("★ 批量里有没成的 ⇒ 撤销那一条只数成了的（「已隐藏 ×k」）、撤销只撤成了的那几个；没成的说它那一句", async () => {
+  it("★ 批量里有没成的 ⇒ 只一条结局（结束那一种：「已隐藏 k · 失败 ×m」·［撤销］［查看］）：没成的逐条、不各弹一条；撤销只撤成了的那几个（A2-17-7-3-1）", async () => {
     const r = rig([tab("a"), tab("b"), tab("c")]);
     r.host.setHide.mockImplementation(async (t: Tab, to: HideSet) => {
       if (t.sessionId === "b" && to === "on") throw new Error("拒-乙");
@@ -293,11 +295,31 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
     });
     r.h.hide(["a", "b", "c"]);
     await new Promise((x) => setTimeout(x, 0));
-    expect(r.toasts.map((t) => t.title)).toEqual([copyText("tabBar.hide.doneMany", { n: 2 })]);
-    expect(r.host.failed.mock.calls.map((c) => c[0])).toEqual([copyText("tabBar.hide.failed", { title: "名-b" })]);
-    r.toasts[0].undo();
+    expect(r.toasts, "不另出撤销那一条").toEqual([]);
+    expect(r.host.failed, "没成的不各弹一条").not.toHaveBeenCalled();
+    expect(r.host.batch).toHaveBeenCalledTimes(1);
+    const [action, rows, undo] = r.host.batch.mock.calls[0];
+    expect(action).toBe(copyText("tabBatch.action.hide"));
+    expect(rows.map((x) => [x.title, x.outcome, x.why])).toEqual([["名-a", "done", ""], ["名-b", "failed", "拒-乙"], ["名-c", "done", ""]]);
+    undo!.run();
     await new Promise((x) => setTimeout(x, 0));
     expect(r.host.setHide.mock.calls.slice(3).map((c) => (c[0]).sessionId)).toEqual(["a", "c"]);
+  });
+
+  it("★ 批量取消隐藏有没成的 ⇒ 同一种结局一条（「已取消隐藏 k · 失败 ×m」·［查看］，没有撤销）", async () => {
+    const r = rig([tab("a", { hidden: SELF }), tab("b", { hidden: SELF })]);
+    r.host.setHide.mockImplementation(async (t: Tab) => {
+      if (t.sessionId === "b") throw new Error("拒-乙");
+      return null;
+    });
+    r.h.unhide(["a", "b"]);
+    await new Promise((x) => setTimeout(x, 0));
+    expect(r.host.failed).not.toHaveBeenCalled();
+    expect(r.host.batch).toHaveBeenCalledTimes(1);
+    const [action, rows, undo] = r.host.batch.mock.calls[0];
+    expect(action).toBe(copyText("tabBatch.action.unhide"));
+    expect(rows.map((x) => x.outcome)).toEqual(["done", "failed"]);
+    expect(undo).toBeUndefined();
   });
 
   it("★ 推帧说隐藏了 ⇒ 摘固定、不画在组里（组员关系不动）；撤销期里推帧说不隐藏了 ⇒ 原位 · 原分组 · 原固定放回", async () => {

@@ -17,7 +17,7 @@ pub(crate) enum TmuxNaming {
     Base,
 }
 
-/// 撞名时退不退让（`K-R96`）：只有显式名不让。起会话取名（`control::ccm::plan::build`）与别名页那句说明都照这一处。
+/// 撞名时退不退让：只有显式名不让。起会话取名（`control::ccm::plan::build`）与别名页那句说明都照这一处。
 pub(crate) const fn tmux_steps_aside(n: TmuxNaming) -> bool {
     !matches!(n, TmuxNaming::Fixed)
 }

@@ -2,6 +2,7 @@
 import type { ProfileProblem } from "./ProfileProblem";
 import type { ProfileRow } from "./ProfileRow";
 import type { ProfileSlot } from "./ProfileSlot";
+import type { ProfileTmuxNaming } from "./ProfileTmuxNaming";
 import type { ProfilesMigrated } from "./ProfilesMigrated";
 import type { SetOut } from "./SetOut";
 
@@ -64,4 +65,8 @@ tmux: boolean | null,
 /**
  * 表单各格的标签，按表单从上到下的顺序（表单 · 删一段时「会丢哪几项」那一句照它写格名）。
  */
-slots: Array<ProfileSlot>, };
+slots: Array<ProfileSlot>, 
+/**
+ * 「在哪起」那三种 tmux 取名各一句（怎么取名 ＋ 撞名时怎样），按 auto · fixed · base。
+ */
+tmuxNaming: Array<ProfileTmuxNaming>, };

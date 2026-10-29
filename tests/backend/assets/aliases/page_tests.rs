@@ -629,6 +629,34 @@ fn the_read_carries_whether_this_machine_has_tmux() {
     }
 }
 
+/// 「在哪起」那三句：撞名那半句照 `ccm_line::tmux_steps_aside` 选（起会话取名真照它走，`plan_tests` 那条按真取到的名字对拍）。
+#[test]
+fn the_tmux_naming_sentences_follow_the_one_step_aside_rule() {
+    use crate::ccm_line::{tmux_steps_aside, TmuxNaming};
+    let t = tmp("tmux-naming", None);
+    let read = read_with(&t.door(), &json!({}), Some(true), &Default::default()).unwrap();
+    let step = copy_text("beProfile.tmuxNaming.stepAside", &[]);
+    let keep = copy_text("beProfile.tmuxNaming.keep", &[]);
+    let rows = read["tmuxNaming"].as_array().expect("tmuxNaming 该是一列");
+    let modes: Vec<&str> = rows.iter().map(|r| r["mode"].as_str().unwrap()).collect();
+    assert_eq!(modes, ["auto", "fixed", "base"]);
+    for (row, n) in rows
+        .iter()
+        .zip([TmuxNaming::Auto, TmuxNaming::Fixed, TmuxNaming::Base])
+    {
+        let text = row["text"].as_str().unwrap();
+        let (want, not) = if tmux_steps_aside(n) {
+            (&step, &keep)
+        } else {
+            (&keep, &step)
+        };
+        assert!(
+            text.contains(want.as_str()) && !text.contains(not.as_str()),
+            "{n:?}：{text}"
+        );
+    }
+}
+
 /// ★ 一批改动按顺序在同一份正在改的配置上判：后一条看得见前一条（新增 `cc` ＋ 新增基于它的 `cct` ＋ 把现有一段改成基于 `cct`，一次写成）；
 /// `profiles-impact` 同一批照样算得出来。
 #[test]
@@ -717,7 +745,7 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
     let t = tmp("pin-seed", None);
     assert_eq!(
         wire_in(&without_path_facts(read(&t)), &t),
-        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":false,"fileProblem":null,"migrated":null,"path":"<HOME>/.cc-monitor/profiles.toml","pathShown":"~/.cc-monitor/profiles.toml","profiles":[],"rev":null,"seed":[{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"cwd":null,"cwdIf":null,"detach":false,"from":null,"launcher":null,"name":"cc","say":null,"tab":null,"tabGroup":null,"tmux":null,"tmuxSize":null},"from":null,"functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cc","own":[],"problem":null,"said":"当前终端","start":"'<HOME>/.cc-monitor/bin/ccm' @cc","usable":true},{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"cwd":null,"cwdIf":null,"detach":false,"from":"cc","launcher":null,"name":"cct","say":null,"tab":null,"tabGroup":null,"tmux":{"mode":"auto","name":""},"tmuxSize":null},"from":"cc","functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cct","own":[{"key":"ccm-tmux","line":5,"slot":"tmux","vals":[]}],"problem":null,"said":"+ tmux · 自动取名","start":"'<HOME>/.cc-monitor/bin/ccm' @cct","usable":true}],"seedCreate":"建这两条","seedHint":"别名 = ccm 的具名配置 · 一条一组选项\n可基于另一条 · 先建下面两条","sets":[],"slots":[{"id":"account","label":"账号"},{"id":"tmux","label":"在哪起"},{"id":"cwdIf","label":"按目录"},{"id":"cwd","label":"其余进哪"},{"id":"agent","label":"agent"},{"id":"args","label":"交给 agent"},{"id":"launcher","label":"启动器"},{"id":"tmuxSize","label":"tmux 尺寸"},{"id":"detach","label":"起完不接进去"},{"id":"tab","label":"标签页"},{"id":"tabGroup","label":"标签页分组"},{"id":"say","label":"第一句话"}],"tmux":true}"#
+        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":false,"fileProblem":null,"migrated":null,"path":"<HOME>/.cc-monitor/profiles.toml","pathShown":"~/.cc-monitor/profiles.toml","profiles":[],"rev":null,"seed":[{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"cwd":null,"cwdIf":null,"detach":false,"from":null,"launcher":null,"name":"cc","say":null,"tab":null,"tabGroup":null,"tmux":null,"tmuxSize":null},"from":null,"functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cc","own":[],"problem":null,"said":"当前终端","start":"'<HOME>/.cc-monitor/bin/ccm' @cc","usable":true},{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"cwd":null,"cwdIf":null,"detach":false,"from":"cc","launcher":null,"name":"cct","say":null,"tab":null,"tabGroup":null,"tmux":{"mode":"auto","name":""},"tmuxSize":null},"from":"cc","functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cct","own":[{"key":"ccm-tmux","line":5,"slot":"tmux","vals":[]}],"problem":null,"said":"+ tmux · 自动取名","start":"'<HOME>/.cc-monitor/bin/ccm' @cct","usable":true}],"seedCreate":"建这两条","seedHint":"别名 = ccm 的具名配置 · 一条一组选项\n可基于另一条 · 先建下面两条","sets":[],"slots":[{"id":"account","label":"账号"},{"id":"tmux","label":"在哪起"},{"id":"cwdIf","label":"按目录"},{"id":"cwd","label":"其余进哪"},{"id":"agent","label":"agent"},{"id":"args","label":"交给 agent"},{"id":"launcher","label":"启动器"},{"id":"tmuxSize","label":"tmux 尺寸"},{"id":"detach","label":"起完不接进去"},{"id":"tab","label":"标签页"},{"id":"tabGroup","label":"标签页分组"},{"id":"say","label":"第一句话"}],"tmux":true,"tmuxNaming":[{"mode":"auto","text":"名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n在会话窗格里敲则就地启动"},{"mode":"fixed","text":"用填的名字 · 被占用则报错退出 · 不改名"},{"mode":"base","text":"先用填的名字 · 被占用依次试 -2 -3…"}]}"#
     );
 
     let t = tmp(
@@ -737,7 +765,7 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
     r["fileProblem"]["detail"] = json!("<DETAIL>");
     assert_eq!(
         wire_in(&r, &t),
-        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":true,"fileProblem":{"detail":"<DETAIL>","line":3,"message":"配置文件格式错误"},"migrated":{"count":2,"path":"/a/b","shown":"/a/b","skipped":["cca() { x; }"]},"path":"<HOME>/.cc-monitor/profiles.toml","pathShown":"~/.cc-monitor/profiles.toml","profiles":[],"rev":"33-2c4c3ef6bd89afa9","seed":[],"seedCreate":"","seedHint":"","sets":[],"slots":[{"id":"account","label":"账号"},{"id":"tmux","label":"在哪起"},{"id":"cwdIf","label":"按目录"},{"id":"cwd","label":"其余进哪"},{"id":"agent","label":"agent"},{"id":"args","label":"交给 agent"},{"id":"launcher","label":"启动器"},{"id":"tmuxSize","label":"tmux 尺寸"},{"id":"detach","label":"起完不接进去"},{"id":"tab","label":"标签页"},{"id":"tabGroup","label":"标签页分组"},{"id":"say","label":"第一句话"}],"tmux":true}"#
+        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":true,"fileProblem":{"detail":"<DETAIL>","line":3,"message":"配置文件格式错误"},"migrated":{"count":2,"path":"/a/b","shown":"/a/b","skipped":["cca() { x; }"]},"path":"<HOME>/.cc-monitor/profiles.toml","pathShown":"~/.cc-monitor/profiles.toml","profiles":[],"rev":"33-2c4c3ef6bd89afa9","seed":[],"seedCreate":"","seedHint":"","sets":[],"slots":[{"id":"account","label":"账号"},{"id":"tmux","label":"在哪起"},{"id":"cwdIf","label":"按目录"},{"id":"cwd","label":"其余进哪"},{"id":"agent","label":"agent"},{"id":"args","label":"交给 agent"},{"id":"launcher","label":"启动器"},{"id":"tmuxSize","label":"tmux 尺寸"},{"id":"detach","label":"起完不接进去"},{"id":"tab","label":"标签页"},{"id":"tabGroup","label":"标签页分组"},{"id":"say","label":"第一句话"}],"tmux":true,"tmuxNaming":[{"mode":"auto","text":"名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n在会话窗格里敲则就地启动"},{"mode":"fixed","text":"用填的名字 · 被占用则报错退出 · 不改名"},{"mode":"base","text":"先用填的名字 · 被占用依次试 -2 -3…"}]}"#
     );
 
     let lost = BOOK.to_string() + "\n[orphan]\nfrom = \"nope\"\n";

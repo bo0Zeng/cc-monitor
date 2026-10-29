@@ -5,7 +5,7 @@
  */
 import { confirmDialog, type ConfirmFn, type ConfirmSpec } from "./kit/dialog";
 import { copyText } from "./copy-table";
-import { recentToasts, toast, type ToastRecord } from "./kit/toast";
+import { recentToasts, toast, undoToast, type ToastRecord } from "./kit/toast";
 import { showMessage } from "./status-messages";
 
 /** 那个确认框：标题与按钮写个数；`note` ＝ 清单下那一行（多选里跳过了几个已结束的）。 */
@@ -39,8 +39,9 @@ export interface EndRow {
 /**
  * 一批的结局 toast：一句汇总；没成的 · 跳过的逐条（各自那一句）进「消息」那一条，［查看］展开它。
  * `head` 给了 ⇒ 用它当汇总（多选里别的几项）；不给 ⇒ 结束的那一句（「已结束 k · 失败 ×m」）。
+ * `undo` 给了、又有做成了的（撤得回的批量：隐藏）⇒ 同一条上先［撤销］（只撤成了的那几个；`Ctrl Z` 同样），再［查看］。
  */
-export function sayRows(rows: readonly EndRow[], head?: (done: number, failed: number) => string): void {
+export function sayRows(rows: readonly EndRow[], head?: (done: number, failed: number) => string, undo?: { run: () => void; settle: () => void }): void {
   const n = (k: EndRow["outcome"]): number => rows.filter((r) => r.outcome === k).length;
   const done = n("done");
   const failed = n("failed");
@@ -60,7 +61,9 @@ export function sayRows(rows: readonly EndRow[], head?: (done: number, failed: n
     .filter((r) => r.outcome === "failed" && r.detail)
     .map((r) => `${r.why}\n${r.detail}`)
     .join("\n\n");
-  toast(said, "", { level: failed > 0 ? "error" : "success", more: lines, action: view, detail });
+  const level = failed > 0 ? "error" : "success";
+  if (undo && done > 0) undoToast(said, undo.run, undo.settle, { level, more: lines, detail, ...(view ? { action: view } : {}) });
+  else toast(said, "", { level, more: lines, action: view, detail });
   made.rec = recentToasts()[0];
 }
 

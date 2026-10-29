@@ -272,7 +272,8 @@ async function stream(where: "active" | "background" = "active"): Promise<Record
   const s = scroller();
   s.scrollTop = s.scrollHeight;
   await sleep(300);
-  const active = be.world.sessions.reduce((a, b) => ((b.convo?.lines.length ?? 0) > (a.convo?.lines.length ?? 0) ? b : a));
+  // 最长那条是世界里第一个会话（`world.ts` 轮数表的头一格）；会话记录的正文在伺服那一侧，页里只有接着写的那一截。
+  const active = be.world.sessions[0];
   const target = where === "active" ? active : be.world.sessions[1];
   let n = 0;
   let no = 0;
@@ -473,7 +474,7 @@ async function drawer(): Promise<Record<string, unknown>> {
   await toLongest();
   const be = window.__perfBackend;
   if (!be) throw new Error("没有假后端句柄");
-  const active = be.world.sessions.reduce((a, b) => ((b.convo?.lines.length ?? 0) > (a.convo?.lines.length ?? 0) ? b : a));
+  const active = be.world.sessions[0];
   return measure("drawer", async (steps) => {
     const btn = await waitSel("#session-head button[aria-label='看它的终端']");
     await step(steps, "open", () => clickEl(btn));
