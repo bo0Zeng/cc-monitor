@@ -11,14 +11,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 pub(crate) const DIR_NAME: &str = "strategies";
 /// 第三版脚本挪去的子目录。
 pub(crate) const OLD_DIR: &str = "v3";
-/// 一份文件至多多大。
-pub(crate) const MAX_SOURCE_BYTES: usize = 64 * 1024;
-
-/// 一份策略文件：状态（读不懂的也列出来、照实写原因，不覆盖）。
-const SOURCE: crate::common::own_state::Doc<String> = crate::common::own_state::Doc::state(
-    ".cc-monitor/strategies/<id>.rhai",
-    MAX_SOURCE_BYTES as u64,
-);
+/// 一份策略文件：状态（读不懂的也列出来、照实写原因，不覆盖；上限照声明表）。
+const SOURCE: crate::common::own_state::Doc<String> =
+    crate::common::own_state::Doc::of(&relay_route_core::STRATEGY_SOURCE_FILE);
 /// 目录里至多读几份。
 pub(crate) const MAX_FILES: usize = 64;
 /// id 至多几个字。
