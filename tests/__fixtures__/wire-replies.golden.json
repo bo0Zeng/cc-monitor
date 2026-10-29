@@ -47,6 +47,116 @@
         "notice": "notice-x"
       }
     },
+    "assets-catalog": {
+      "rust": "{\"self\":\"self-x\",\"machines\":[{\"id\":\"id-x\",\"label\":\"label-x\",\"gen\":7,\"seenAt\":7,\"assets\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"project\":\"project-x\",\"dir\":\"dir-x\",\"digest\":\"digest-x\",\"summary\":{},\"off\":true}],\"projectDirs\":[\"projectDirs-x\"],\"notes\":{\"k\":{\"text\":\"text-x\",\"rev\":7}},\"sharedMcp\":true}],\"rows\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"state\":\"state-x\",\"from\":[{\"machine\":\"machine-x\",\"project\":\"project-x\",\"digest\":\"digest-x\",\"summary\":{}}]}],\"problems\":[\"problems-x\"],\"changed\":true,\"path\":\"path-x\"}",
+      "sample": {
+        "changed": true,
+        "machines": [
+          {
+            "assets": [
+              {
+                "digest": "digest-x",
+                "dir": "dir-x",
+                "kind": "skill",
+                "name": "name-x",
+                "off": true,
+                "project": "project-x",
+                "summary": {}
+              }
+            ],
+            "gen": 7,
+            "id": "id-x",
+            "label": "label-x",
+            "notes": {
+              "k": {
+                "rev": 7,
+                "text": "text-x"
+              }
+            },
+            "projectDirs": [
+              "projectDirs-x"
+            ],
+            "seenAt": 7,
+            "sharedMcp": true
+          }
+        ],
+        "path": "path-x",
+        "problems": [
+          "problems-x"
+        ],
+        "rows": [
+          {
+            "from": [
+              {
+                "digest": "digest-x",
+                "machine": "machine-x",
+                "project": "project-x",
+                "summary": {}
+              }
+            ],
+            "kind": "skill",
+            "name": "name-x",
+            "state": "state-x"
+          }
+        ],
+        "self": "self-x"
+      }
+    },
+    "assets-catalog-merge": {
+      "rust": "{\"self\":\"self-x\",\"machines\":[{\"id\":\"id-x\",\"label\":\"label-x\",\"gen\":7,\"seenAt\":7,\"assets\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"project\":\"project-x\",\"dir\":\"dir-x\",\"digest\":\"digest-x\",\"summary\":{},\"off\":true}],\"projectDirs\":[\"projectDirs-x\"],\"notes\":{\"k\":{\"text\":\"text-x\",\"rev\":7}},\"sharedMcp\":true}],\"rows\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"state\":\"state-x\",\"from\":[{\"machine\":\"machine-x\",\"project\":\"project-x\",\"digest\":\"digest-x\",\"summary\":{}}]}],\"problems\":[\"problems-x\"],\"changed\":true,\"path\":\"path-x\"}",
+      "sample": {
+        "changed": true,
+        "machines": [
+          {
+            "assets": [
+              {
+                "digest": "digest-x",
+                "dir": "dir-x",
+                "kind": "skill",
+                "name": "name-x",
+                "off": true,
+                "project": "project-x",
+                "summary": {}
+              }
+            ],
+            "gen": 7,
+            "id": "id-x",
+            "label": "label-x",
+            "notes": {
+              "k": {
+                "rev": 7,
+                "text": "text-x"
+              }
+            },
+            "projectDirs": [
+              "projectDirs-x"
+            ],
+            "seenAt": 7,
+            "sharedMcp": true
+          }
+        ],
+        "path": "path-x",
+        "problems": [
+          "problems-x"
+        ],
+        "rows": [
+          {
+            "from": [
+              {
+                "digest": "digest-x",
+                "machine": "machine-x",
+                "project": "project-x",
+                "summary": {}
+              }
+            ],
+            "kind": "skill",
+            "name": "name-x",
+            "state": "state-x"
+          }
+        ],
+        "self": "self-x"
+      }
+    },
     "assets-sync": {
       "rust": "{\"self\":\"self-x\",\"synced\":[{\"origin\":\"origin-x\",\"peer\":\"peer-x\",\"changed\":true,\"pushed\":7,\"error\":\"error-x\"}],\"reach\":[{\"origin\":\"origin-x\",\"machine\":\"machine-x\"}]}",
       "sample": {

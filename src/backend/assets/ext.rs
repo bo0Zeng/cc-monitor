@@ -423,15 +423,14 @@ impl ExtLoc {
     }
 }
 
-impl ExtKind {
-    pub(crate) fn from_arg(args: &Value) -> Result<ExtKind, crate::wire::spec::Fail> {
-        serde_json::from_value(args.get("kind").cloned().unwrap_or(Value::Null)).map_err(|_| {
-            crate::wire::spec::Fail::new(
-                "bad_args",
-                crate::common::contract::malformed("`kind` must be skill, mcp or plugin"),
-            )
-        })
-    }
+/// 入参里那一格 `kind` ⇒ 条目种类（不认 ⇒ `bad_args`）。
+pub(crate) fn kind_from_arg(args: &Value) -> Result<ExtKind, crate::wire::spec::Fail> {
+    serde_json::from_value(args.get("kind").cloned().unwrap_or(Value::Null)).map_err(|_| {
+        crate::wire::spec::Fail::new(
+            "bad_args",
+            crate::common::contract::malformed("`kind` must be skill, mcp or plugin"),
+        )
+    })
 }
 
 // ───────────────────────── 表（纯） ─────────────────────────

@@ -158,7 +158,7 @@ fn refused_pair(kind: ExtKind) -> (String, String) {
 
 fn ask_of(args: &Value) -> Result<Ask<'_>, (String, String)> {
     let own = |e: crate::wire::spec::Fail| (e.code, e.message);
-    let kind = ExtKind::from_arg(args).map_err(own)?;
+    let kind = super::ext::kind_from_arg(args).map_err(own)?;
     let name = str_arg(args, "name")?;
     // 自己发版的插件（planned-build）照 skill 那条路装：整个目录拷进用户级 skills 目录；别的插件只读。
     if super::ext::read_only(kind).is_some() && !super::ext::is_release(kind, name) {

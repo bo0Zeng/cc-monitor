@@ -430,6 +430,24 @@ fn machine_and_exit_policy_requests_are_the_ones_the_backend_takes() {
     );
 }
 
+#[test]
+fn catalog_requests_are_the_ones_the_backend_takes() {
+    use crate::assets::{AssetsCatalogMergeReq, AssetsCatalogReq, CatalogIn};
+    sent(AssetsCatalogReq {}, "assets-catalog", json!({}));
+    sent(
+        AssetsCatalogMergeReq {
+            catalog: CatalogIn { machines: vec![] },
+        },
+        "assets-catalog-merge",
+        json!({"catalog": {"machines": []}}),
+    );
+    // 并进来的那一份是另一台的整份应答：只读 `machines`，别的键照收。
+    let theirs: AssetsCatalogMergeReq =
+        serde_json::from_value(json!({"catalog": {"self": "x", "machines": [], "rows": []}}))
+            .unwrap();
+    assert!(theirs.catalog.machines.is_empty());
+}
+
 /// `machine-stop` 的回包照两端同一个类型解；`machine-read` 的回包是各台成品 ＋ 首屏那一句。
 #[test]
 fn machine_stop_and_read_replies_are_the_shared_types() {
