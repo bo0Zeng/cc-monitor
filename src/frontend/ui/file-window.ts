@@ -21,9 +21,7 @@
  * ⇒ 这里 `await` 到的错是真错，那一句与复制详情放进 toast。成功不另外出声：窗口自己出现就是回应。
  */
 import { commands } from "./ipc/commands";
-import type { MachineRow } from "./generated/MachineRow";
 import { failToast } from "./kit/toast";
-import { findHostByOrigin, readRemoteConfig } from "./remote-config";
 import { copyText } from "./copy-table";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { revealInFolder } from "./reveal-in-folder";
@@ -93,31 +91,30 @@ export function fileWindowTheme(): Record<string, string> {
 export type FileWindowTarget = { readonly dir: string } | { readonly revealFile: string };
 
 /**
- * 在原生文件窗口里打开机器表里那一行那台远端（只交它的名字）。
+ * 在原生文件窗口里打开那台远端：只交它的名字（机器表里那一格；认那台 · 认不出那一句都在壳那一头）。
  *
  * 回值 ＝ 窗口起来了（`false` ＝ 失败，且已经 toast 过）。
  */
-export async function openFileWindow(row: MachineRow, at?: FileWindowTarget): Promise<boolean> {
+export async function openFileWindow(machine: string, at?: FileWindowTarget): Promise<boolean> {
   const path = at && "dir" in at ? at.dir : "";
   const revealFile = at && "revealFile" in at ? at.revealFile : null;
   try {
-    await commands.open_file_window({ origin: row.name, path, revealFile, theme: fileWindowTheme() });
+    await commands.open_file_window({ origin: machine, path, revealFile, theme: fileWindowTheme() });
     return true;
   } catch (e) {
-    failToast(copyText("fileWindow.openFileWindow.failed"), e, { fact: row.name });
+    failToast(copyText("fileWindow.openFileWindow.failed"), e, { fact: machine });
     return false;
   }
 }
 
 /**
  * 「在文件窗口打开」那一路（会话来源 ⇒ 落点）：本机 ⇒ 系统文件管理器里显示它；远端 ⇒ 文件窗口开到它。
- * 远端那台在主机表里找不到（被删 / 改名）⇒ 什么都不做。读主机表失败照原样抛给调用方（它自己出声）。
+ * 远端那台认不出（被删 / 改名）⇒ 壳那一句进失败 toast。
  */
 export async function openOnMachine(origin: Origin, at: FileWindowTarget): Promise<void> {
   if (isLocalOrigin(origin)) {
     await revealInFolder("dir" in at ? at.dir : at.revealFile);
     return;
   }
-  const host = findHostByOrigin((await readRemoteConfig()).hosts, origin);
-  if (host) await openFileWindow(host, at);
+  await openFileWindow(origin, at);
 }

@@ -2931,18 +2931,6 @@
       "zh": "文本",
       "args": []
     },
-    "cards.remoteFile.noMachine": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "机器列表里无 {machine}",
-      "args": ["machine"]
-    },
-    "cards.remoteFile.openFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "打开文件失败",
-      "args": []
-    },
     "cards.remoteFile.openHint": {
       "kind": "body",
       "role": "说明",
@@ -4635,31 +4623,6 @@
       "role": "标题",
       "zh": "切到终端的结果",
       "args": []
-    },
-    "tabSessionActions.openCwd.body": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "会话在远端 [{machine}] · 工作目录 {cwd} 不在本机 · {why}",
-      "args": ["machine", "cwd", "why"]
-    },
-    "tabSessionActions.openCwd.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "远端目录无法在本机打开",
-      "args": []
-    },
-    "tabSessionActions.openCwd.noConfig": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "机器列表无此机器",
-      "args": []
-    },
-    "tabSessionActions.openCwd.incomplete": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "连接配置缺主机或用户名",
-      "args": [],
-      "limited": ["连接"]
     },
     "tabSessionActions.kill.failed": {
       "kind": "error",
@@ -22465,12 +22428,6 @@
       "kind": "body",
       "role": "说明",
       "zh": "固定在最右",
-      "args": []
-    },
-    "sessionHead.edit.onlyLocal": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "仅本机",
       "args": []
     },
     "sessionHead.edit.onlyWindows": {
