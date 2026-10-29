@@ -206,6 +206,37 @@ describe("粘贴 · 提交 · 结果照 again", () => {
     await settle();
     expect(ops()).not.toContain("login-cancel");
   });
+
+  it("★ 起不来、后端说终端窗口那条路在（terminal 真）⇒ 红条上多［在终端窗口里登录］：问那台登录那一行、开终端窗口跑它、抽屉关；假 ⇒ 没有那一颗", async () => {
+    const terms: string[] = [];
+    const answerAll = async (cmd: string, a: ChanCallArgs & { command?: string }) => {
+      if (cmd === "open_terminal_window") {
+        terms.push(a.command ?? "");
+        return "opened";
+      }
+      return cmd === "chan_call" ? chanReply(answer[a.op](chanArgsJson(a))) : null;
+    };
+    answer["accounts-login-cmd"] = () => ({ cmd: "claude-login t1" });
+    answer["login-start"] = () => {
+      throw refusedReply("failed", "核心·起不来", { again: "restart", terminal: false });
+    };
+    invokeMock.mockImplementation(answerAll);
+    await open();
+    const named = () => [...drawer()!.querySelectorAll<HTMLButtonElement>('[data-again] button')].map((b) => b.textContent);
+    expect(named()).toContain(copyText("login.act.restart"));
+    expect(named()).not.toContain(copyText("login.act.terminal"));
+
+    answer["login-start"] = () => {
+      throw refusedReply("failed", "核心·起不来", { again: "restart", terminal: true });
+    };
+    await open();
+    expect(named().filter((n) => n === copyText("login.act.restart") || n === copyText("login.act.terminal"))).toEqual([copyText("login.act.restart"), copyText("login.act.terminal")]);
+    [...drawer()!.querySelectorAll<HTMLButtonElement>('[data-again] button')].find((b) => b.textContent === copyText("login.act.terminal"))!.click();
+    await settle();
+    expect(sent().filter(([, op]) => op === "accounts-login-cmd").map(([, , a]) => a)).toEqual([{ name: "t1" }]);
+    expect(terms).toEqual(["claude-login t1"]);
+    expect(drawer(), "开了终端窗口 ⇒ 抽屉关").toBeNull();
+  });
 });
 
 describe("取消 · 推来的结局", () => {

@@ -514,6 +514,60 @@ fn the_os_from_the_deploy_stays_across_rounds() {
     assert_eq!(p.os.as_deref(), Some("Linux"));
 }
 
+/// 上一趟更新没换上（部署收了、带着那一句）⇒ 那台照旧「要更新」，问题行写「上次没更新成」＋ 那一句、修法照旧［更新］；
+/// 再起一趟部署 · 换上了 ⇒ 那一句不再挂着（A2-17-14-2：不弹红 toast，写在机器条那一行）。
+#[test]
+fn a_failed_update_stays_on_the_machines_line_until_the_next_attempt() {
+    let failed = || Fact::UpdateFailed {
+        said: "推不上去-甲".into(),
+    };
+    let p = of(
+        vec![
+            up(Relation::Older, &[]),
+            Fact::Step(Step::Plan),
+            failed(),
+            up(Relation::Older, &[]),
+        ],
+        true,
+    );
+    assert_eq!(p.state, K::NeedsUpdate);
+    assert_eq!(
+        p.said,
+        copy_text(
+            "machineState.problem.updateFailed",
+            &[("machine", M), ("why", "推不上去-甲")]
+        )
+    );
+    assert_eq!(
+        p.fixes.iter().map(|f| f.fix).collect::<Vec<_>>(),
+        vec![MachineFix::Update]
+    );
+    // 再起一趟：那一句摘掉（正在更新那一态照常说自己那一句）。
+    let p = of(
+        vec![
+            up(Relation::Older, &[]),
+            failed(),
+            up(Relation::Older, &[]),
+            Fact::Step(Step::Plan),
+            up(Relation::Older, &[]),
+        ],
+        true,
+    );
+    assert_eq!(
+        p.said,
+        copy_text("machineState.problem.needsUpdate", &[("machine", M)])
+    );
+    // 换上了：同一版连上 ⇒ 没有问题行。
+    let p = of(
+        vec![failed(), up(Relation::Same, &[]), up(Relation::Older, &[])],
+        true,
+    );
+    assert_eq!(
+        p.said,
+        copy_text("machineState.problem.needsUpdate", &[("machine", M)])
+    );
+}
+
 /// 两枚指纹（那台出示的 · 库里记下的）只在「指纹变了」那一态带；下一轮换成别的原因就不挂着。
 #[test]
 fn the_two_keys_ride_only_the_host_key_state() {
@@ -734,4 +788,46 @@ fn listed_is_dropped_when_the_machine_reconnects_or_goes_down() {
     let mut kept = listed_up();
     kept.push(up(Relation::Same, &[]));
     assert!(folded(kept).listed());
+}
+
+/// 接上过的那台又在连 ⇒ 「正在重新连接 X」、不带修法（两端机器条照摆）；头一回连照旧是连接那一句；部署那一步照部署那一句。
+#[test]
+fn a_machine_that_was_up_and_is_connecting_again_says_reconnecting() {
+    let first = of(vec![round(Round::Connecting)], true);
+    assert_eq!(
+        first.said,
+        said(K::Connecting, Some(Stage::Attach), None, M),
+        "头一回连就说了重连"
+    );
+    let again = of(
+        vec![up(Relation::Same, &[]), round(Round::Connecting)],
+        true,
+    );
+    assert_eq!(
+        (again.state, again.said.as_str(), again.fixes.len()),
+        (
+            K::Connecting,
+            text("machineState.busy.reconnecting").as_str(),
+            0
+        )
+    );
+    let after_drop = of(
+        vec![
+            up(Relation::Same, &[]),
+            down_(Some(Why::Timeout)),
+            round(Round::Connecting),
+        ],
+        true,
+    );
+    assert_eq!(
+        after_drop.said,
+        text("machineState.busy.reconnecting"),
+        "断过一轮再连也是重连"
+    );
+    let deploying = of(vec![up(Relation::Same, &[]), Fact::Step(Step::Plan)], true);
+    assert_ne!(
+        deploying.said,
+        text("machineState.busy.reconnecting"),
+        "部署那一步说成了重连"
+    );
 }

@@ -680,7 +680,7 @@ export class MachineCard {
       this.renderTestResult(null, copyText("machineCard.build.filesNeedHost"));
       return;
     }
-    void openFileWindow({ name: this.savedName(), host: cfg });
+    void openFileWindow(this.savedName());
   }
 
   /** 点「测试连接」：组本卡片 → 本机后端 `remote-probe`→ 渲染结果。 */
