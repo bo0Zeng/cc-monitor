@@ -1,7 +1,8 @@
 //! 帧命令两端必须对上的那几样（契约类：只放形状，不放判定）。
 //!
 //! - [`bookmarks`]：书签那两条（`bookmarks-read` · `-edit`）的入参与回包 · 目录归一的唯一一份；
-//! - [`call`]：一条命令的身份（[`Call`]：名字 · 回包挂在入参类型上）与那一张 `calls!` 表 —— 命令身份唯一的声明；
+//! - [`call`]：一条命令的身份（[`Call`]：名字 · 回包挂在入参类型上）与那一张 `calls!` 表 —— 命令身份唯一的声明
+//!   （判据 · 手机生成的类也照它：表里每条的名字与照回包类型解再写回的那一步）；
 //! - [`exit_policy`]：「退出行为」那个值的读数（`exit-policy-read` · `-set` 的回包）；
 //! - [`assets`]：资产目录同步那一条（`assets-sync`）的入参与回包；
 //! - [`terminal`]：给一台开终端那一条（`terminal-ssh`）的入参与回包；
@@ -20,10 +21,11 @@
 //! - [`quota`]：`quota-read` 的回包（额度账的显示态 · 写好的几行 · 开窗那一判）；
 //! - [`rotation`]：轮换那几条（`rotation-*`）的回包与失败带的 `data`；
 //! - [`cells`]：成品格的两种标记类型（写好的字 [`cells::Words`] · 语气 [`cells::Tone`]）；
-//! - [`session`] · [`needs`] · [`listing`] · [`record`]：手机问的那几条的回包（会话族 · 需手动 · 历史清单 · 读记录连同通用记录）；
+//! - [`session`] · [`needs`] · [`listing`] · [`record`]：手机问的那几条的入参与回包（会话族 · 需手动 · 历史清单 · 读记录连同通用记录；
+//!   记录那一格的认不认得 [`record::mend_records`]）；
+//! - [`open`]：起会话那两条（`session-open` · `session-open-facts`）的入参；
 //! - [`phone`]：手机嵌的 Rust 核心与 Kotlin 之间那一层（JNI 交上来的几样事 · 几个口的回值；Kotlin 读从这里生成的类）；
 //! - [`plan`]：计划反查 `plan-files` 的回包（文件窗口按它解）；
-//! - [`replies`]：「命令 ⇒ 回包类型」那一张表（判据对后端 · 手机生成的类都照它）；记录那一格的认不认得（[`replies::mend_records`]）；
 //! - [`transfer`]：传输台开单那两条（`transfer-upload` · `-download`）：窗口说给 monitor 的 · monitor 补上拨号转给本机后端的，两层入参各一个类型；
 //! - [`shapes`]：每条 typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹。
 //!   后端在 hello 里交出它自己那一份，客户端拿自己编进来的这一份比：对得上就直接按类型用，对不上就说「那台后端版本不同」。
@@ -61,12 +63,12 @@ pub mod listing;
 pub mod live;
 pub mod machine;
 pub mod needs;
+pub mod open;
 pub mod phone;
 pub mod plan;
 pub mod queue;
 pub mod quota;
 pub mod record;
-pub mod replies;
 pub mod rewind;
 pub mod rotation;
 pub mod search;
