@@ -23,7 +23,8 @@ pub(crate) trait Wire {}
 #[cfg(not(test))]
 impl<T> Wire for T {}
 
-/// 一条 typed 命令的三个类型。
+/// 一条 typed 命令的三个类型。入参住 cmd-wire 的那几条（有 Rust 客户端）名字 · 入参 · 回包写 [`by_call!`]，
+/// 从 `cmd_wire::Call` 那一张表来；只有后端自己用的那几条在这里写一处。
 pub(crate) trait Command: 'static {
     /// 线上命令名。
     const NAME: &'static str;
@@ -33,6 +34,16 @@ pub(crate) trait Command: 'static {
     type Reply: serde::Serialize + Wire;
     type Err: Codes;
 }
+
+/// `impl Command` 里那三格从入参类型的 `cmd_wire::Call` 取：`by_call!(入参);`。
+macro_rules! by_call {
+    ($req:ty) => {
+        const NAME: &'static str = <$req as cmd_wire::Call>::NAME;
+        type Req = $req;
+        type Reply = <$req as cmd_wire::Call>::Reply;
+    };
+}
+pub(crate) use by_call;
 
 /// [`Codes::Data`] 的约束：测试档要算得出 TS 形状（`tests::DataTys`）；发布二进制里它什么都不要求。
 #[cfg(test)]

@@ -1275,6 +1275,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     raw: NONE, // 拒绝里那台答的原话（进复制详情；TS 不判拒绝）
     say: NONE,
     stamp_scan_cmd: NONE,
+    // 部署判定那三种的线上标签（`deploy-install` 回包的 `action`）：壳照回包里的标签挑句子，TS 侧没有孪生。
+    tag: NONE,
     this_machine: NONE,
   },
 };

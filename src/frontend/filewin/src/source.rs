@@ -864,9 +864,9 @@ pub async fn ask_coded(
     .await
 }
 
-/// 照类型问一条：名字 · 入参 · 回包都挂在入参类型上（`cmd_wire::files::Call`，后端登记那一行用的是同一份）。
+/// 照类型问一条：名字 · 入参 · 回包都挂在入参类型上（`cmd_wire::Call`，后端登记那一行用的是同一份）。
 /// 入参按类型发，回包按类型解；解不出 ⇒ 这一侧的那一句（解码器原话进复制详情）。两端形状对不对得上，由握手时的形状指纹先管。
-pub async fn ask_typed<C: cmd_wire::files::Call>(
+pub async fn ask_typed<C: cmd_wire::Call>(
     line: &Line,
     origin: &Origin,
     req: &C,
@@ -892,7 +892,7 @@ pub async fn ask_typed<C: cmd_wire::files::Call>(
 }
 
 /// 一组只一项那几条（复制 · 删除 · 改权限）：做成了 ⇒ 那一项的结局；没做成 ⇒ 那一项的码与那一句（复制详情是那一项的原话）。
-pub async fn ask_one<C: cmd_wire::files::Call<Reply = cmd_wire::batch::BatchReply>>(
+pub async fn ask_one<C: cmd_wire::Call<Reply = cmd_wire::batch::BatchReply>>(
     line: &Line,
     origin: &Origin,
     req: &C,
@@ -953,7 +953,7 @@ pub fn one_of(r: cmd_wire::batch::BatchReply) -> Result<cmd_wire::batch::BatchOu
 }
 
 /// 一份回包按那条命令的回包类型解（解不出 ⇒ 解码器那一句）。
-pub fn reply_of<C: cmd_wire::files::Call>(d: serde_json::Value) -> Result<C::Reply, String> {
+pub fn reply_of<C: cmd_wire::Call>(d: serde_json::Value) -> Result<C::Reply, String> {
     serde_json::from_value(d).map_err(|e| e.to_string())
 }
 

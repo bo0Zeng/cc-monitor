@@ -27,6 +27,10 @@
 
 use crate::platform::fs::Ro;
 
+/// 装 · 卸那两条的入参与回包住 cmd-wire（名字与回包挂在入参上，monitor 照同一份发、照同一份解）。
+pub(crate) use cmd_wire::deploy::{
+    DeployInstallReq, DeployUninstallReq, Installed, SlotRow, Uninstalled,
+};
 use copy_core::copy_text;
 use deploy_contract::{DeployAction, Key, Refusal, RemoteIdentity, Route};
 use serde::{Deserialize, Serialize};
@@ -61,19 +65,6 @@ pub async fn plan(
     deploy::plan(facing, carried, machine, now_secs)
         .await
         .map_err(fail_of)
-}
-
-/// `slots` 的一行：monitor 带着的那一格（哪种机器 · 字节自报的身份 · 落在本机哪个文件）。
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct SlotRow {
-    pub(crate) os: String,
-    pub(crate) arch: String,
-    pub(crate) id: String,
-    /// 本机上那一格字节的文件（绝对路径；本后端读它，不经帧传字节）。
-    pub(crate) path: String,
 }
 
 /// `slots` 那几行 ⇒ `deploy::Slot`。键认不出 / 身份空 / 路径不是绝对 ⇒ `bad_args`（monitor 交的是它自己表里的词，认不出就是两侧漂了）。
@@ -145,52 +136,24 @@ pub(crate) fn carried_slots_in(home: &std::path::Path) -> Result<Vec<SlotRow>, S
     Ok(rows)
 }
 
-/// `deploy-install` 的入参：monitor 带着的那几格 · 那台的名字（怎么够到它照这一端的机器表组）。
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct DeployInstallReq {
-    pub(crate) slots: Vec<SlotRow>,
-    /// 那台的名字（非空；机器表按它查 · 状态成品按它记）。
-    pub(crate) machine: String,
-}
-
-/// `deploy-install` 的应答：这一趟做了什么 · 那一句 · 落点上现在是哪一版 · 那台是什么 OS。
-#[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Installed {
-    /// `skip`（已是这一版）· `deploy`（放上了这一版）· `keep`（那台不比这一版旧 ⇒ 一个字节没写）。
-    #[cfg_attr(test, ts(type = "\"skip\" | \"deploy\" | \"keep\""))]
-    pub(crate) action: &'static str,
-    /// 这一趟做了什么那一句（`deploy::Plan::said`）。
-    pub(crate) said: String,
-    /// 落点上现在那一份自报的身份（`keep` ⇒ 那台上那一份的；否则这一版的）。
-    pub(crate) build: String,
-    /// 那台的 OS（表 A 的词）。
-    pub(crate) os: &'static str,
-}
-
 /// 装完的那份计划 → 应答。
 pub(crate) fn installed_of(p: &Plan) -> Installed {
-    let (action, build) = match &p.action {
-        DeployAction::Skip => ("skip", p.expected.clone()),
-        DeployAction::Deploy(_) => ("deploy", p.expected.clone()),
-        DeployAction::Keep { theirs, .. } => ("keep", theirs.clone()),
+    let build = match &p.action {
+        DeployAction::Keep { theirs, .. } => theirs.clone(),
+        DeployAction::Skip | DeployAction::Deploy(_) => p.expected.clone(),
     };
     Installed {
-        action,
+        action: p.action.tag(),
         said: p.said(),
         build,
-        os: p.key.os.label(),
+        os: p.key.os.label().to_string(),
     }
 }
 
 /// 入参那几行 ⇒ `deploy::Slot`；`machine` 空 ⇒ `bad_args`。
-fn checked(req: &DeployInstallReq) -> Result<Vec<deploy::Slot>, Fail> {
-    let slots = slots_of(&req.slots)?;
-    if req.machine.trim().is_empty() {
+fn checked(rows: &[SlotRow], machine: &str) -> Result<Vec<deploy::Slot>, Fail> {
+    let slots = slots_of(rows)?;
+    if machine.trim().is_empty() {
         return Err(Fail::new(
             "bad_args",
             crate::common::contract::malformed("missing `machine` (string)"),
@@ -210,7 +173,7 @@ pub async fn install(
     host: &dyn deploy::Place,
     on: &(dyn Fn(deploy::Step) + Send + Sync),
 ) -> Result<Installed, Fail> {
-    let slots = checked(req)?;
+    let slots = checked(&req.slots, &req.machine)?;
     let now = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -239,9 +202,7 @@ crate::wire::typed::codes! {
 pub(crate) struct DeployInstall;
 
 impl crate::wire::typed::Command for DeployInstall {
-    const NAME: &'static str = "deploy-install";
-    type Req = DeployInstallReq;
-    type Reply = Installed;
+    crate::wire::typed::by_call!(DeployInstallReq);
     type Err = DeployInstallErr;
 }
 
@@ -258,10 +219,10 @@ impl crate::wire::typed::Handle for DeployInstall {
 
 /// 真拨那台的对面（装 · 卸同一个）：拨号核心那一套（钥匙 · known_hosts · 写规矩）先装上；一次性命令走全后端那一处
 /// （`remote_ask::capture_full`，池里那条连接上多开一个 exec）。机器表里没有那台 · 组不成请求 ⇒ 那一句（`bad_args`）。
-fn facing_of(req: &DeployInstallReq) -> Result<DialFacing, String> {
+fn facing_of(machine: &str) -> Result<DialFacing, String> {
     let hosts = crate::control::machines::here();
     let (dial, to) =
-        crate::dial::named_both(&hosts, req.machine.trim(), "capture", serde_json::json!({}))
+        crate::dial::named_both(&hosts, machine.trim(), "capture", serde_json::json!({}))
             .map_err(|(_, said)| said)?;
     crate::dial::host();
     let exec: deploy::Exec = Box::new(move |command| {
@@ -273,14 +234,14 @@ fn facing_of(req: &DeployInstallReq) -> Result<DialFacing, String> {
 
 /// 生产的 `deploy-install`：真拨号；每一步与收尾记进那台的状态成品。
 pub(crate) async fn answer_install(req: DeployInstallReq) -> Result<Installed, DeployInstallErr> {
-    let facing = facing_of(&req).map_err(DeployInstallErr::BadArgs)?;
+    let facing = facing_of(&req.machine).map_err(DeployInstallErr::BadArgs)?;
     let machine = req.machine.clone();
     let got = install(&req, &facing, &move |s| {
         crate::control::machine_state::note(&machine, deploy::machine::Fact::Step(s));
     })
     .await;
     if !req.machine.trim().is_empty() {
-        let os = got.as_ref().ok().map(|i| i.os.to_string());
+        let os = got.as_ref().ok().map(|i| i.os.clone());
         crate::control::machine_state::note(&req.machine, deploy::machine::Fact::Deployed { os });
     }
     got.map_err(|f| crate::wire::typed::of_fail(f, DeployInstallErr::IoFailed))
@@ -288,24 +249,14 @@ pub(crate) async fn answer_install(req: DeployInstallReq) -> Result<Installed, D
 
 // ═══ 卸载（帧命令 `deploy-uninstall`）═══════════════════════════════════════════════════════
 //
-// SFTP 只写暂存区 ⇒ 卸载也传一份暂存件上去，由它删落点那一份（`deploy::uninstall`）。入参同 `deploy-install`。
-
-/// `deploy-uninstall` 的应答：删没删 · 那一句（`deploy` crate 写的）。
-#[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Uninstalled {
-    /// 删了落点那一份 ⇒ `true`；本来就不在 ⇒ `false`。
-    pub(crate) removed: bool,
-    pub(crate) said: String,
-}
+// SFTP 只写暂存区 ⇒ 卸载也传一份暂存件上去，由它删落点那一份（`deploy::uninstall`）。入参那两格同 `deploy-install`。
 
 /// `deploy-uninstall` 的本体（对面由调用方给）。
 pub async fn uninstall(
-    req: &DeployInstallReq,
+    req: &DeployUninstallReq,
     host: &dyn deploy::Place,
 ) -> Result<Uninstalled, Fail> {
-    let slots = checked(req)?;
+    let slots = checked(&req.slots, &req.machine)?;
     deploy::uninstall(host, &slots, &load, &req.machine)
         .await
         .map(|r| Uninstalled {
@@ -331,21 +282,19 @@ crate::wire::typed::codes! {
 pub(crate) struct DeployUninstall;
 
 impl crate::wire::typed::Command for DeployUninstall {
-    const NAME: &'static str = "deploy-uninstall";
-    type Req = DeployInstallReq;
-    type Reply = Uninstalled;
+    crate::wire::typed::by_call!(DeployUninstallReq);
     type Err = DeployUninstallErr;
 }
 
 impl crate::wire::typed::Handle for DeployUninstall {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
-        req: DeployInstallReq,
+        req: DeployUninstallReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<Uninstalled, DeployUninstallErr>> + Send + 'static
     {
         async move {
-            let facing = facing_of(&req).map_err(DeployUninstallErr::BadArgs)?;
+            let facing = facing_of(&req.machine).map_err(DeployUninstallErr::BadArgs)?;
             uninstall(&req, &facing)
                 .await
                 .map_err(|f| crate::wire::typed::of_fail(f, DeployUninstallErr::IoFailed))

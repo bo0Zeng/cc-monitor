@@ -30,17 +30,15 @@ use crate::backend_route::{route_call_error, Routed};
 use crate::inbound_client::InboundClient;
 
 /// 开单：上传。载荷 `cmd_wire::transfer::TransferUploadAsk`，回 `TransferOpened`（逐项；上传那几项带 `staged` ＝ 暂存件的键，提交时交给远端后端）。
-pub const TRANSFER_UPLOAD: &str =
-    <cmd_wire::transfer::TransferUploadAsk as cmd_wire::files::Call>::NAME;
+pub const TRANSFER_UPLOAD: &str = <cmd_wire::transfer::TransferUploadAsk as cmd_wire::Call>::NAME;
 /// 开单：下载。载荷 `cmd_wire::transfer::TransferDownloadAsk`，回 `TransferOpened`。
 pub const TRANSFER_DOWNLOAD: &str =
-    <cmd_wire::transfer::TransferDownloadAsk as cmd_wire::files::Call>::NAME;
+    <cmd_wire::transfer::TransferDownloadAsk as cmd_wire::Call>::NAME;
 /// 🔴 **窗口经通道说得出的传输命令：恰好这两条。** 取消不是命令（停订即撤）。
 pub const TRANSFER_OPS: [&str; 2] = [TRANSFER_UPLOAD, TRANSFER_DOWNLOAD];
 /// 两台之间复制一组。载荷 `cmd_wire::transfer::TransferCopyAsk`（寻址 ＝ 源那台，`to` ＝ 落点那台的名字），回 `BatchReply`。
 /// 不开单：本机后端做完整组才回，进度走 `files_batch` 帧（[`crate::files_batch_relay`]），撤是 `files-batch-stop`。
-pub const TRANSFER_COPY: &str =
-    <cmd_wire::transfer::TransferCopyAsk as cmd_wire::files::Call>::NAME;
+pub const TRANSFER_COPY: &str = <cmd_wire::transfer::TransferCopyAsk as cmd_wire::Call>::NAME;
 /// 进度流的 `kind`：`transfer/<id>`。
 pub const TRANSFER_KIND_PREFIX: &str = "transfer/";
 
@@ -242,7 +240,7 @@ fn ask_of<A: serde::de::DeserializeOwned>(
 }
 
 /// 按后端那一份类型转给本机后端，回包按类型解（解不出 ⇒ 没回传输编号），登记一个中继。
-async fn relay<R: cmd_wire::files::Call<Reply = cmd_wire::transfer::TransferOpened>>(
+async fn relay<R: cmd_wire::Call<Reply = cmd_wire::transfer::TransferOpened>>(
     machine: &str,
     req: R,
 ) -> Result<serde_json::Value, Refusal> {

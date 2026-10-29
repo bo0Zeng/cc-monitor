@@ -12,73 +12,16 @@
 //! - **F50**：追加公钥到远端 `~/.ssh/authorized_keys`：本机常驻后端的帧命令 `pubkey-push`（不在本模块，登记于此备查）。
 
 use crate::detail::Said;
+use cmd_wire::deploy::{ActionTag, DeployInstallReq, DeployUninstallReq, Installed, SlotRow};
 use copy_core::copy_text;
-
-/// 本机常驻后端那两条命令的名字（命令表 `src/backend/stream/inbound/registry/machine.rs` 里那两行）。
-pub(crate) const INSTALL_CMD: &str = "deploy-install";
-pub(crate) const UNINSTALL_CMD: &str = "deploy-uninstall";
 
 /// 等那一趟的上限：问几次那台 ＋ 推一份 MB 级的字节 ＋ 读回。
 const INSTALL_BUDGET: std::time::Duration = std::time::Duration::from_secs(600);
 
-/// 这一趟做了什么（应答的 `action`）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Did {
-    /// 已是这一版。
-    Skip,
-    /// 放上了这一版。
-    Deploy,
-    /// 那台不比这一版旧 ⇒ 一个字节没写。
-    Keep,
-}
-
-/// `deploy-install` 的应答（线上形状 `tests/__fixtures__/deploy-install.golden.json`）。
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct Installed {
-    pub(crate) did: Did,
-    /// 后端写好的那一句。
-    pub(crate) said: String,
-    /// 落点上现在那一份自报的身份。
-    pub(crate) build: String,
-    pub(crate) os: String,
-}
-
-/// `deploy-install` 的应答 → [`Installed`]（**严格收**：少一格、多一格、认不出的值都是错 —— 两侧漂了要当场说出来）。
-pub(crate) fn decode_installed(v: &serde_json::Value) -> Result<Installed, String> {
-    const KEYS: [&str; 4] = ["action", "build", "os", "said"];
-    let bad = || copy_text("rsSftp.plan.badProduct", &[("v", &v.to_string())]);
-    let obj = v.as_object().ok_or_else(bad)?;
-    let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
-    keys.sort_unstable();
-    if keys != KEYS {
-        return Err(bad());
-    }
-    let text = |k: &str| {
-        obj.get(k)
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string)
-            .ok_or_else(bad)
-    };
-    let did = match text("action")?.as_str() {
-        "skip" => Did::Skip,
-        "deploy" => Did::Deploy,
-        "keep" => Did::Keep,
-        _ => return Err(bad()),
-    };
-    Ok(Installed {
-        did,
-        said: text("said")?,
-        build: Some(text("build")?)
-            .filter(|b| !b.is_empty())
-            .ok_or_else(bad)?,
-        os: text("os")?,
-    })
-}
-
 /// 这一版带着的那几格落成本机文件（`~/.cc-monitor/bin/slots/<os>-<arch>`，与本机后端同一套落盘：盘上那份逐字节相等就不动；
 /// 名字两侧同读：本机后端照它认哪一格，`deploy_plan::carried_slots`）⇒ `deploy-install` 的 `slots`。每个进程只落一次（同一版的字节不会变）。
-fn slot_rows() -> Result<Vec<serde_json::Value>, Said> {
-    static ROWS: std::sync::OnceLock<Vec<serde_json::Value>> = std::sync::OnceLock::new();
+fn slot_rows() -> Result<Vec<SlotRow>, Said> {
+    static ROWS: std::sync::OnceLock<Vec<SlotRow>> = std::sync::OnceLock::new();
     if let Some(r) = ROWS.get() {
         return Ok(r.clone());
     }
@@ -102,12 +45,12 @@ fn slot_rows() -> Result<Vec<serde_json::Value>, Said> {
                 &e,
             )
         })?;
-        rows.push(serde_json::json!({
-            "os": key.os.label(),
-            "arch": key.arch.label(),
-            "id": id,
-            "path": path.display().to_string(),
-        }));
+        rows.push(SlotRow {
+            os: key.os.label().to_string(),
+            arch: key.arch.label().to_string(),
+            id: id.to_string(),
+            path: path.display().to_string(),
+        });
     }
     Ok(ROWS.get_or_init(|| rows).clone())
 }
@@ -135,22 +78,16 @@ async fn install(machine: &str) -> Result<Installed, Said> {
     install_for(machine, slot_rows()?).await
 }
 
-/// 问本机常驻后端一条装 / 卸的命令：入参只有事实（带着哪几格 · 那台叫什么；怎么够到它照本机后端的机器表），回应答原样。
-async fn ask_backend(
-    machine: &str,
-    cmd: &'static str,
-    slots: Vec<serde_json::Value>,
-) -> Result<serde_json::Value, Said> {
+/// 问本机常驻后端一条装 / 卸的命令：入参只有事实（带着哪几格 · 那台叫什么；怎么够到它照本机后端的机器表），回包照那条命令的类型。
+async fn ask_backend<C: cmd_wire::Call>(req: &C) -> Result<C::Reply, Said> {
     use crate::backend_route::{route_call_error, Routed};
-    let args = serde_json::json!({
-        "slots": slots,
-        "machine": machine,
-    });
+    let cmd = C::NAME;
     let client = crate::inbound_client::local_backend_accepting(cmd)
         .await
         .map_err(|said| Said::new(said, cmd, None))?;
+    let deadline = tokio::time::Instant::now() + INSTALL_BUDGET;
     // 那一趟在本机常驻后端里 ⇒ 它写的那份详情（那台答 `uname` 的原话也在里面）原样带上。
-    let data = client.call(cmd, args, INSTALL_BUDGET).await.map_err(|e| {
+    let got = client.ask(None, req, None, deadline).await.map_err(|e| {
         let said = match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
             message.to_string()
         }) {
@@ -158,13 +95,23 @@ async fn ask_backend(
         };
         Said::of_call(said, cmd, &crate::origin::Origin::local(), &e)
     })?;
-    data.ok_or_else(|| Said::new(copy_text("rsSftp.plan.internal", &[]), cmd, None))
+    // 回包对不上类型：那一句不接原话，解码器那一句进复制详情。
+    got.map_err(|e| {
+        Said::new(
+            copy_text("rsSftp.plan.badProduct", &[]),
+            cmd,
+            Some(&e.to_string()),
+        )
+    })
 }
 
 /// [`install`] 的本体，「带着哪几格」由调用方交（生产 = 这一版的槽落成的文件；回环台架交它送去的那一份）。
-async fn install_for(machine: &str, slots: Vec<serde_json::Value>) -> Result<Installed, Said> {
-    let data = ask_backend(machine, INSTALL_CMD, slots).await?;
-    decode_installed(&data).map_err(|said| Said::new(said, INSTALL_CMD, None))
+async fn install_for(machine: &str, slots: Vec<SlotRow>) -> Result<Installed, Said> {
+    ask_backend(&DeployInstallReq {
+        slots,
+        machine: machine.to_string(),
+    })
+    .await
 }
 
 // ============================================================================
@@ -181,9 +128,9 @@ pub async fn deploy_remote_backend(origin: String) -> Result<String, Said> {
         install(&origin).await
     }
     .await;
-    r.map(|got| match got.did {
-        Did::Keep => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &got.said)]),
-        Did::Skip | Did::Deploy => got.said,
+    r.map(|got| match got.action {
+        ActionTag::Keep => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &got.said)]),
+        ActionTag::Skip | ActionTag::Deploy => got.said,
     })
     .map_err(|s| s.named("deploy_remote_backend"))
 }
@@ -216,23 +163,15 @@ pub async fn uninstall_remote_backend(origin: String) -> Result<String, Said> {
 }
 
 /// [`uninstall_remote_backend`] 的本体，「带着哪几格」由调用方交（同 [`install_for`]）。
-async fn uninstall_for(machine: &str, slots: Vec<serde_json::Value>) -> Result<String, Said> {
-    let data = ask_backend(machine, UNINSTALL_CMD, slots).await?;
-    let said = decode_uninstalled(&data).map_err(|said| Said::new(said, UNINSTALL_CMD, None))?;
+async fn uninstall_for(machine: &str, slots: Vec<SlotRow>) -> Result<String, Said> {
+    let said = ask_backend(&DeployUninstallReq {
+        slots,
+        machine: machine.to_string(),
+    })
+    .await?
+    .said;
     tracing::info!("远端 [{machine}] 卸载后端：{said}");
     Ok(said)
-}
-
-/// `deploy-uninstall` 的应答 → 那一句（严格收：键集恰是 `{removed, said}`）。
-pub(crate) fn decode_uninstalled(v: &serde_json::Value) -> Result<String, String> {
-    let bad = || copy_text("rsSftp.plan.badProduct", &[("v", &v.to_string())]);
-    let obj = v.as_object().ok_or_else(bad)?;
-    let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
-    keys.sort_unstable();
-    if keys != ["removed", "said"] || !obj["removed"].is_boolean() {
-        return Err(bad());
-    }
-    obj["said"].as_str().map(str::to_string).ok_or_else(bad)
 }
 
 #[cfg(test)]

@@ -13,7 +13,8 @@ use std::collections::BTreeMap;
 use std::future::Future;
 
 use cmd_wire::batch::{BatchOutcome, BatchReply, Conflict, Conflicts, Decide, ItemState};
-use cmd_wire::files::{Call, CopyItem, FilesCopyReq, WirePath};
+use cmd_wire::files::{CopyItem, FilesCopyReq, WirePath};
+use cmd_wire::Call;
 use copy_core::copy_text;
 
 /// 一个文件名拆成「名」与「扩展名」（扩展名带点、取最后一个点起；点打头的名字 · 没有点 ⇒ 扩展名空）。

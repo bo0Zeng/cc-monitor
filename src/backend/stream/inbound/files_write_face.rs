@@ -53,9 +53,7 @@ codes! {
 pub(crate) struct FilesCreate;
 
 impl Command for FilesCreate {
-    const NAME: &'static str = "files-create";
-    type Req = wire::FilesCreateReq;
-    type Reply = wire::FilesPathBytesReply;
+    typed::by_call!(wire::FilesCreateReq);
     type Err = FilesCreateErr;
 }
 
@@ -96,9 +94,7 @@ codes! {
 pub(crate) struct FilesMkdir;
 
 impl Command for FilesMkdir {
-    const NAME: &'static str = "files-mkdir";
-    type Req = wire::FilesMkdirReq;
-    type Reply = wire::FilesPathReply;
+    typed::by_call!(wire::FilesMkdirReq);
     type Err = FilesMkdirErr;
 }
 
@@ -138,9 +134,7 @@ codes! {
 pub(crate) struct FilesRename;
 
 impl Command for FilesRename {
-    const NAME: &'static str = "files-rename";
-    type Req = wire::FilesRenameReq;
-    type Reply = wire::FilesPathReply;
+    typed::by_call!(wire::FilesRenameReq);
     type Err = FilesRenameErr;
 }
 
@@ -172,9 +166,7 @@ codes! {
 pub(crate) struct FilesDelete;
 
 impl Command for FilesDelete {
-    const NAME: &'static str = "files-delete";
-    type Req = wire::FilesDeleteReq;
-    type Reply = BatchReply;
+    typed::by_call!(wire::FilesDeleteReq);
     type Err = FilesDeleteErr;
 }
 
@@ -210,9 +202,7 @@ codes! {
 pub(crate) struct FilesChmod;
 
 impl Command for FilesChmod {
-    const NAME: &'static str = "files-chmod";
-    type Req = wire::FilesChmodReq;
-    type Reply = BatchReply;
+    typed::by_call!(wire::FilesChmodReq);
     type Err = FilesChmodErr;
 }
 
@@ -247,9 +237,7 @@ codes! {
 pub(crate) struct FilesCopy;
 
 impl Command for FilesCopy {
-    const NAME: &'static str = "files-copy";
-    type Req = wire::FilesCopyReq;
-    type Reply = BatchReply;
+    typed::by_call!(wire::FilesCopyReq);
     type Err = FilesCopyErr;
 }
 
@@ -285,9 +273,7 @@ codes! {
 pub(crate) struct FilesBatchStop;
 
 impl Command for FilesBatchStop {
-    const NAME: &'static str = "files-batch-stop";
-    type Req = FilesBatchStopReq;
-    type Reply = FilesBatchStopReply;
+    typed::by_call!(FilesBatchStopReq);
     type Err = FilesBatchStopErr;
 }
 
@@ -323,9 +309,7 @@ codes! {
 pub(crate) struct FilesExtract;
 
 impl Command for FilesExtract {
-    const NAME: &'static str = "files-extract";
-    type Req = wire::FilesExtractReq;
-    type Reply = wire::FilesTreeReply;
+    typed::by_call!(wire::FilesExtractReq);
     type Err = FilesExtractErr;
 }
 
@@ -363,9 +347,7 @@ codes! {
 pub(crate) struct FilesWriteText;
 
 impl Command for FilesWriteText {
-    const NAME: &'static str = "files-write-text";
-    type Req = wire::FilesWriteTextReq;
-    type Reply = wire::FilesWrittenReply;
+    typed::by_call!(wire::FilesWriteTextReq);
     type Err = FilesWriteTextErr;
 }
 
@@ -400,9 +382,7 @@ codes! {
 pub(crate) struct FilesStageChunk;
 
 impl Command for FilesStageChunk {
-    const NAME: &'static str = "files-stage-chunk";
-    type Req = wire::FilesStageChunkReq;
-    type Reply = wire::FilesStageChunkReply;
+    typed::by_call!(wire::FilesStageChunkReq);
     type Err = FilesStageChunkErr;
 }
 
@@ -441,9 +421,7 @@ codes! {
 pub(crate) struct FilesCommitText;
 
 impl Command for FilesCommitText {
-    const NAME: &'static str = "files-commit-text";
-    type Req = wire::FilesCommitTextReq;
-    type Reply = wire::FilesWrittenReply;
+    typed::by_call!(wire::FilesCommitTextReq);
     type Err = FilesCommitTextErr;
 }
 
@@ -486,9 +464,7 @@ codes! {
 pub(crate) struct FilesCommitUpload;
 
 impl Command for FilesCommitUpload {
-    const NAME: &'static str = "files-commit-upload";
-    type Req = wire::FilesCommitUploadReq;
-    type Reply = wire::FilesPathBytesReply;
+    typed::by_call!(wire::FilesCommitUploadReq);
     type Err = FilesCommitUploadErr;
 }
 

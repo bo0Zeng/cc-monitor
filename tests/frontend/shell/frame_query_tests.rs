@@ -97,14 +97,9 @@ fn backend_command_blocks() -> Vec<(String, String)> {
                     .unwrap_or_else(|| panic!("找不到 `{}` 那个模块的文件", module.join("::")));
                 let src = std::fs::read_to_string(&file)
                     .unwrap_or_else(|e| panic!("读不到 `{}`：{e}", file.display()));
-                let imp = src
-                    .find(&format!("Command for {ty} {{"))
-                    .unwrap_or_else(|| {
-                        panic!("`{}` 里没有 `impl Command for {ty}`", file.display())
-                    });
-                let key = "const NAME: &'static str = \"";
-                let n = src[imp..].find(key).expect("没有 `const NAME`") + imp + key.len();
-                let name: String = src[n..].chars().take_while(|c| *c != '"').collect();
+                let name = guard_core::typed_command_name(&src, ty).unwrap_or_else(|| {
+                    panic!("`{}` 里没有 `impl Command for {ty}`", file.display())
+                });
                 blocks.push((name, format!("{ctor}{path}>()")));
             }
         }

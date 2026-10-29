@@ -14,8 +14,7 @@ use cmd_wire::batch::{Conflict, Decide};
 use copy_core::copy_text;
 
 /// 下载一组那一条（monitor 补拨号请求、转给本机后端的传输台）。
-pub const CMD_DOWNLOAD: &str =
-    <cmd_wire::transfer::TransferDownloadAsk as cmd_wire::files::Call>::NAME;
+pub const CMD_DOWNLOAD: &str = <cmd_wire::transfer::TransferDownloadAsk as cmd_wire::Call>::NAME;
 
 /// 冲突框里摆着的那一问。
 pub struct Asking {

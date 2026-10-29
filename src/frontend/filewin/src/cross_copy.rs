@@ -37,7 +37,7 @@ pub fn origin_of(shown: &str) -> String {
 }
 
 /// 两台之间复制一组那一条（本机后端；monitor 补上两台的拨号请求）。
-pub const CMD_CROSS: &str = <cmd_wire::transfer::TransferCopyAsk as cmd_wire::files::Call>::NAME;
+pub const CMD_CROSS: &str = <cmd_wire::transfer::TransferCopyAsk as cmd_wire::Call>::NAME;
 
 /// 那一问（UI 线程自己的）：要复制的那几项 ＋ 用户正在填的机器名与目标目录。
 #[derive(Clone, Debug, PartialEq, Eq)]

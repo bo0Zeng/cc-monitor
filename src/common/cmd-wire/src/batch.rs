@@ -226,8 +226,3 @@ pub struct FilesBatchStopReq {
 pub struct FilesBatchStopReply {
     pub stopping: bool,
 }
-
-impl crate::files::Call for FilesBatchStopReq {
-    const NAME: &'static str = "files-batch-stop";
-    type Reply = FilesBatchStopReply;
-}

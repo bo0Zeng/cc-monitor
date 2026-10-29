@@ -6,8 +6,9 @@
 
 use crate::resident::{self, OnEvent};
 use chunk_core::{Ask, Sink, Watch};
-use cmd_wire::files::{Call, WirePath};
+use cmd_wire::files::WirePath;
 use cmd_wire::phone::{CallEnd, Moved};
+use cmd_wire::Call;
 use resident_client::client::CallError;
 use std::collections::HashMap;
 use std::fs::File;
@@ -30,23 +31,22 @@ impl Ask for Over {
             return Err(cancelled(self.id));
         };
         let deadline = tokio::time::Instant::now() + self.within;
-        let args = serde_json::to_value(req).unwrap_or_default();
         let got = match f.client_by(deadline).await {
-            Some(c) => c.call_until(C::NAME, args, deadline).await,
+            Some(c) => c.ask(None, req, None, deadline).await,
             None => Err(CallError::Disconnected),
         };
         typed::<C>(self.id, f.machine(), got)
     }
 }
 
-/// 一问的结局 ⇒ 那条命令的回包；没成 · 形状对不上 ⇒ 交 Kotlin 的那一行。
+/// 照类型问的结局（`InboundClient::ask`）⇒ 那条命令的回包；没成 · 形状对不上 ⇒ 交 Kotlin 的那一行。
 pub fn typed<C: Call>(
     id: i64,
     machine: &str,
-    got: Result<Option<serde_json::Value>, CallError>,
+    got: Result<Result<C::Reply, serde_json::Error>, CallError>,
 ) -> Result<C::Reply, String> {
     match got {
-        Ok(v) => serde_json::from_value(v.unwrap_or(serde_json::Value::Null)).map_err(|e| {
+        Ok(r) => r.map_err(|e| {
             line(&CallEnd::Unreadable {
                 call: id,
                 detail: format!("{}: {e}", C::NAME),
@@ -367,7 +367,7 @@ mod tests {
                 })
                 .unwrap()
             };
-            typed::<C>(7, "box", Ok(Some(reply)))
+            typed::<C>(7, "box", Ok(serde_json::from_value(reply)))
         }
     }
 
@@ -644,8 +644,12 @@ mod tests {
     /// 形状对不上的回包 ⇒ `unreadable`（不当成功用），详情点名那条命令。
     #[test]
     fn a_reply_of_the_wrong_shape_is_unreadable_not_ok() {
-        let e = typed::<FilesStageChunkReq>(9, "box", Ok(Some(serde_json::json!({"nope": 1}))))
-            .unwrap_err();
+        let e = typed::<FilesStageChunkReq>(
+            9,
+            "box",
+            Ok(serde_json::from_value(serde_json::json!({"nope": 1}))),
+        )
+        .unwrap_err();
         let v = json(&e);
         assert_eq!(
             (v["call"].as_i64(), v["end"].as_str()),
