@@ -336,7 +336,11 @@ fn the_phone_column_merges_like_the_backend() {
             format!("g:{}|{}:false", o(&g.origin), g.key)
         })
         .collect();
-    assert_eq!(groups, tokens(&lay(&a, &shape(By::Project)), By::Project), "组的先后");
+    assert_eq!(
+        groups,
+        tokens(&lay(&a, &shape(By::Project)), By::Project),
+        "组的先后"
+    );
     // 已摆进固定 · 组那几段的不再进按天那几段。
     let placed = column(&ask(&|r| r.session_id == "k1" || r.session_id == "b1"));
     let without: Vec<String> = want
