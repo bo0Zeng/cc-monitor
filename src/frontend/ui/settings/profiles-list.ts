@@ -200,19 +200,6 @@ function startSlot(f: ProfileForm, s: SlotId, accounts: readonly string[]): Prof
   return n;
 }
 
-/**
- * 「在哪起」那三种 tmux 取名**撞名时会怎样**（下拉的选项只有名字，没有一句说撞了会怎样）。
- *
- * 规则不在这里：取名与退让住后端 `control/ccm/plan.rs::build`。`stepsAside` 与后端逐条对拍
- * （`tests/frontend/ui/settings/machine-aliases-naming.vitest.ts` 读后端原文，两向相等），说明里点出退让的后缀（-2）⇔ 它为真。
- */
-// ⚠ `text` 是取文函数：模块顶层调 `copyText` 会让打包器把本模块挪进主窗口也要的共享块。
-export const TMUX_NAMING: Record<"auto" | "fixed" | "base", { stepsAside: boolean; text: () => string }> = {
-  auto: { stepsAside: true, text: () => copyText("machineAliases.tmuxNaming.auto") },
-  fixed: { stepsAside: false, text: () => copyText("machineAliases.tmuxNaming.named") },
-  base: { stepsAside: true, text: () => copyText("machineAliases.tmuxNaming.base") },
-};
-
 /** 表单上直接露出来的几格；其余收在「更多」里。 */
 const MAIN_SLOTS: readonly SlotId[] = ["account", "tmux", "cwdIf", "cwd"];
 const MORE_SLOTS: readonly SlotId[] = ["agent", "args", "launcher", "tmuxSize", "detach", "tabGroup", "say"];
@@ -866,6 +853,8 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     const back = link(copyText("profilesPage.form.back"), () => changed(clearSlot(f, s)));
     if (s === "tmux" && f.tmux) {
       const t = f.tmux;
+      // 每种取名撞名时怎样：后端写好的那句（退不退让住 `plan.rs`），这里照摆。
+      const naming = (m: typeof t.mode): string => book?.tmuxNaming.find((x) => x.mode === m)?.text ?? "";
       const sel = el("select", "settings-input");
       for (const [v, label] of [
         ["auto", copyText("beProfile.val.tmuxAuto")],
@@ -874,7 +863,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       ] as const) {
         const o = el("option", "", label);
         o.value = v;
-        o.title = TMUX_NAMING[v].text();
+        o.title = naming(v);
         sel.appendChild(o);
       }
       sel.value = t.mode;
@@ -884,9 +873,9 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       row.append(sel);
       if (t.mode !== "auto") row.append(text(t.name, copyText("profilesPage.form.tmuxName"), (v) => changed({ ...f, tmux: { ...t, name: v } })));
       row.append(back);
-      const naming = el("div", "cfg-hint", TMUX_NAMING[t.mode].text());
-      naming.dataset.role = "tmux-naming";
-      cell.append(row, naming);
+      const said = el("div", "cfg-hint", naming(t.mode));
+      said.dataset.role = "tmux-naming";
+      cell.append(row, said);
       // 这台没有 tmux（那台后端判的，与起新会话框同一个判法）⇒ 格不藏，旁边说一句。
       if (book?.tmux === false) {
         const none = el("div", "cfg-hint", copyText("profilesPage.form.noTmux"));

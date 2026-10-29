@@ -6,6 +6,7 @@
 //! 渲不出来带理由（[`Refusal`]）：某个维度说不成 ccm 参数 ⇒ 整条放弃，不渲一条丢了修饰的命令。
 //! 独立说法：本文件的自测（判据自带清单）与那一行的字节表（`ccm_invocation_tests.rs::cells`，手写期望）。
 
+use crate::ccm_line::argv::flag;
 use crate::control::launch_account::Settled;
 use copy_core::copy_text;
 use std::collections::BTreeSet;
@@ -237,14 +238,14 @@ const DIMENSION_ORDER: &[Dim] = &[
     Dim {
         id: "identity",
         applies: |s| s.ccm_sid.is_some(),
-        cli_flags: |s| Some(vec![format!("--ccm-sid={}", s.ccm_sid.unwrap_or_default())]),
+        cli_flags: |s| Some(vec![format!("{}={}", flag::CCM_SID, s.ccm_sid.unwrap_or_default())]),
         caps: &["ccm-sid"],
     },
     Dim {
         id: "agent",
         // **恒真** —— 同账号维度：不说是哪一家 ＝ ccm 落默认那一家，起错家也不报错。
         applies: |_| true,
-        cli_flags: |s| Some(vec!["--ccm-agent".into(), s.agent.to_string()]),
+        cli_flags: |s| Some(vec![flag::AGENT.into(), s.agent.to_string()]),
         caps: &["agent"],
     },
     Dim {
@@ -252,8 +253,8 @@ const DIMENSION_ORDER: &[Dim] = &[
         // **恒真** —— 账号维度必须永远显式表态（沉默 = 意外身份切换）；继承是「表了态的省略」。
         applies: |_| true,
         cli_flags: |s| match s.account {
-            Settled::Base => Some(vec!["--base".into()]),
-            Settled::Account(a) => Some(vec!["--account".into(), a.name.to_string()]),
+            Settled::Base => Some(vec![flag::BASE.into()]),
+            Settled::Account(a) => Some(vec![flag::ACCOUNT.into(), a.name.to_string()]),
             Settled::Unsaid => Some(vec![]),
         },
         caps: &["account"],
@@ -331,7 +332,7 @@ pub fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String>, 
         };
         need("attach")?;
         existing_name_ok(name)?;
-        ours.push("--attach".into());
+        ours.push(flag::ATTACH.into());
         ours.push(name.to_string());
         return Ok(join_halves(tokens, ours));
     }
@@ -373,15 +374,15 @@ pub fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String>, 
                 value: format!("{name:?}"),
             });
         }
-        ours.push(format!("--ccm-tmux={name}"));
+        ours.push(format!("{}={name}", flag::TMUX));
         if spec.detach {
-            ours.push("--detach".into());
+            ours.push(flag::DETACH.into());
         }
     }
     if spec.container == Container::Hosted {
-        ours.push("--hosted".into());
+        ours.push(flag::HOSTED.into());
         if spec.detach {
-            ours.push("--detach".into());
+            ours.push(flag::DETACH.into());
         }
     }
 
@@ -401,11 +402,11 @@ pub fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String>, 
                 value: format!("{cwd:?}"),
             });
         }
-        ours.push("--cwd".into());
+        ours.push(flag::CWD.into());
         ours.push(cwd.to_string());
     }
     if spec.launcher != spec.default_launcher {
-        ours.push("--launcher".into());
+        ours.push(flag::LAUNCHER.into());
         ours.push(spec.launcher.to_string());
     }
     if let Some(a) = spec.args.iter().find(|a| !shell_quote_core::arg_text_ok(a)) {
@@ -468,8 +469,8 @@ fn identifiers_ok(spec: &CliSpec) -> Result<(), Refusal> {
 /// `<ccm> <交给 agent 的…> -- <ccm 自己的…>`：ccm 那一半空、而 agent 那一半里没有 `--` ⇒ 不写 `--`；
 /// agent 那一半里有它自己的 `--` ⇒ 末尾照样补一个（按最后一个 `--` 切，空的 ccm 部分也得标出来）。
 fn join_halves(mut agent: Vec<String>, ours: Vec<String>) -> Vec<String> {
-    if !ours.is_empty() || agent.iter().skip(1).any(|a| a == "--") {
-        agent.push("--".into());
+    if !ours.is_empty() || agent.iter().skip(1).any(|a| a == flag::END) {
+        agent.push(flag::END.into());
         agent.extend(ours);
     }
     agent

@@ -154,6 +154,48 @@ fn slots_out() -> Vec<SlotOut> {
         .collect()
 }
 
+/// 「在哪起」那三种 tmux 取名各一句（下拉的选项只有名字）：怎么取名 ＋ 撞名时怎样。界面照摆。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileTmuxNaming"
+    )
+)]
+pub(crate) struct TmuxNamingOut {
+    mode: TmuxMode,
+    text: String,
+}
+
+/// 撞名那半句只问 `plan::tmux_steps_aside`（起会话取名真照它走），这里不另判退不退让。
+fn tmux_naming_out() -> Vec<TmuxNamingOut> {
+    use crate::control::ccm::plan::{tmux_steps_aside, TmuxNaming};
+    [TmuxMode::Auto, TmuxMode::Fixed, TmuxMode::Base]
+        .into_iter()
+        .map(|mode| {
+            let naming = match mode {
+                TmuxMode::Auto => TmuxNaming::Auto,
+                TmuxMode::Fixed => TmuxNaming::Fixed,
+                TmuxMode::Base => TmuxNaming::Base,
+            };
+            let clash = if tmux_steps_aside(naming) {
+                copy_text("beProfile.tmuxNaming.stepAside", &[])
+            } else {
+                copy_text("beProfile.tmuxNaming.keep", &[])
+            };
+            let text = match mode {
+                TmuxMode::Auto => copy_text("beProfile.tmuxNaming.auto", &[("clash", &clash)]),
+                TmuxMode::Fixed => copy_text("beProfile.tmuxNaming.fixed", &[("clash", &clash)]),
+                TmuxMode::Base => copy_text("beProfile.tmuxNaming.base", &[("clash", &clash)]),
+            };
+            TmuxNamingOut { mode, text }
+        })
+        .collect()
+}
+
 /// 一个 ccm 选项（或 `None` ＝ 交给 agent 的那串）归哪一格。
 fn slot_of(f: Option<&str>) -> &'static Slot {
     SLOTS
@@ -904,6 +946,8 @@ pub(crate) struct ProfilesBook {
     tmux: Option<bool>,
     /// 表单各格的标签，按表单从上到下的顺序（表单 · 删一段时「会丢哪几项」那一句照它写格名）。
     slots: Vec<SlotOut>,
+    /// 「在哪起」那三种 tmux 取名各一句（怎么取名 ＋ 撞名时怎样），按 auto · fixed · base。
+    tmux_naming: Vec<TmuxNamingOut>,
 }
 
 /// `profiles-read` → 整份：每段的成品 ＋ 文件级错误 ＋ 版本 ＋ 手改过没有 ＋ 迁移说明 ＋ 空态那两条的预览 ＋ 这台有没有 tmux。
@@ -969,6 +1013,7 @@ pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Ans
         accounts: super::account_table(&store.home),
         tmux,
         slots: slots_out(),
+        tmux_naming: tmux_naming_out(),
         path_shown: shown_in(&path, &store.home),
         path,
     })
