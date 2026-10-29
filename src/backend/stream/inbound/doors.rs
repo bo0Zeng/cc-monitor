@@ -138,9 +138,9 @@ pub fn fill_account_colors() {
     crate::accounts::manage::wire::colors_here(&LocalFiles);
 }
 
-/// 后端起来时那一次：账号库接上按需才建的共用目录（同补号色那一扇门）。只由 `main.rs` 在常驻那一个里调。
+/// 后端起来时那一次：账号库对齐 —— 按需才建的共用目录接上 · 各号缺的共享链接补上（同补号色那一扇门）。只由 `main.rs` 在常驻那一个里调。
 pub fn share_on_demand_dirs() {
-    crate::accounts::manage::wire::shared_on_demand_here(&LocalFiles);
+    crate::accounts::manage::wire::align_here(&LocalFiles);
 }
 
 /// 后端起来时那一次照配置文件对齐别名文件与链接（经本进程自己的文件管理面，写经 [`LocalFiles`]，与帧命令同一扇门）：只由 `main.rs` 调。

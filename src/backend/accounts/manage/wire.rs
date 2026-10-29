@@ -331,10 +331,6 @@ pub(crate) fn align_here(d: &dyn Door) {
     }
 }
 
-/// 常驻那一个起来时那一次（`stream::inbound::doors` 调）：就是 [`align_here`]。
-pub(crate) fn shared_on_demand_here(d: &dyn Door) {
-    align_here(d);
-}
 
 fn rollback(
     d: &dyn Door,
