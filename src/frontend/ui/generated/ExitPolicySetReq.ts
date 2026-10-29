@@ -3,4 +3,4 @@
 /**
  * `exit-policy-set` 的入参：要写的值。
  */
-export type ExitPolicySet = { killOnExit: boolean, };
+export type ExitPolicySetReq = { killOnExit: boolean, };

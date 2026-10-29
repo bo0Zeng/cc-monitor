@@ -1,16 +1,15 @@
 //! `rotation-uses.json`（配置编辑层那份账本，第一版）：新会话默认用哪份。会话载入的副本存在基础层那份 `rotation.json` 里，
 //! 载入只经这里（[`Setup::load`] · 新会话那一份 [`Adoptions::for_new`] · 起会话之前那一笔 [`preset`]）。
-//! 存取同 `rotation.json` 一处（[`rotation::DocStore`]）。另住旧版账本的升级写回（[`migrate_at`]）· 盯目录（[`watch_here`]）。
+//! 存取同 `rotation.json` 一处（[`rotation::DocStore`]）。另住盯目录（[`watch_here`]）。
 
 use crate::accounts::quota::nodes::{self, Nodes, Source};
-use crate::accounts::quota::rotation::{self, io_said, DiskSeen, Doc, DocStore, RotationStore};
+use crate::accounts::quota::rotation::{self, DiskSeen, Doc, DocStore, RotationStore};
 use crate::accounts::quota::rules::book::{self, Book, Copy};
 use crate::accounts::quota::rules::Adoptions;
 use crate::common::said::Said;
 use crate::platform::fs::Own;
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -223,148 +222,6 @@ pub(crate) fn watch_here(own: &Own) {
         Err(e) => {
             tracing::warn!("[rotation] 盯不上轮换账本：{e}（别处写的轮换要等面板重开才看得见）")
         }
-    }
-}
-
-// ── 升级写回 ───────────────────────────────────────────────────────────────
-
-/// 升级要的外部事实（宿主给）：会话还活着吗（问 pidfile）· 「其余的订阅号」展开成哪几个 · 会话的标题。
-pub(crate) struct UpgradeEnv<'a> {
-    pub(crate) live: &'a dyn Fn(&str) -> bool,
-    pub(crate) rest: Vec<String>,
-    pub(crate) title: &'a dyn Fn(&str) -> Option<String>,
-}
-
-/// 写回那一下做了什么。
-#[derive(Debug, Default, PartialEq, Eq)]
-pub(crate) struct Migrated {
-    /// 从第几版升上来的（`None` ＝ 本来就是这一版 / 没有）。
-    pub(crate) from: Option<u8>,
-    /// 升级写出来的策略文件。
-    pub(crate) wrote: Vec<String>,
-    /// 挪进 `strategies/v3/` 的旧脚本。
-    pub(crate) moved: Vec<String>,
-}
-
-/// ★ 升级写回（一次；接了中转的那个进程起来时调，[`migrate_here`]）。在 `rotation.json` 那一层的锁里做：
-/// 旧版 ⇒ v1 → v2 → 新格式一次换完、写出 `rotation.json`（会话带着升级来的那份副本）与升级来的策略文件（同名已有不覆盖）、
-/// 第三版格式的脚本挪进 `strategies/v3/`、原文留 `.v1` / `.v2`（已有不覆盖）。这一版 · 没有文件 ⇒ 什么都不写。读不懂的那一份不动。
-pub(crate) fn migrate_at(own: &Own, env: &UpgradeEnv<'_>) -> Result<Migrated, Said> {
-    use crate::common::own_state::Read;
-    let shelf_dir = super::shelf::DIR_NAME;
-    let file = own.path(rotation::FILE_NAME)?;
-    let root = own
-        .root()
-        .ok_or_else(|| Said::from(copy_text("beRotation.read.noHome", &[])))?;
-    let path = file.as_path();
-    own.ensure_dir(&root)
-        .map_err(|e| io_said(root.as_path(), &e))?;
-    let sdir = own.path(shelf_dir)?;
-    own.ensure_dir(&sdir)
-        .map_err(|e| io_said(sdir.as_path(), &e))?;
-    let held = own.lock(&root)?;
-    let mut out = Migrated::default();
-    let bad = |m: String| {
-        Said::with_raw(
-            copy_text(
-                "beOwnState.read.notJson",
-                &[("path", &path.display().to_string())],
-            ),
-            &m,
-        )
-    };
-    let raw: Value = match <Book as Doc>::DISK.read_as(path) {
-        Read::Absent => return Ok(out),
-        Read::Unreadable(e) => return Err(e),
-        Read::Present(v) => v,
-    };
-    let (v1, v2) = match raw.get("version").map(Value::as_u64) {
-        None => {
-            let local = crate::platform::local_tz::iana_name();
-            (
-                Some(raw.clone()),
-                super::migrate::from_v1(&raw, local.as_deref()).map_err(bad)?,
-            )
-        }
-        Some(Some(2)) => (None, raw),
-        _ => return Ok(out),
-    };
-    out.from = Some(if v1.is_some() { 1 } else { 2 });
-    let local = crate::platform::local_tz::iana_name();
-    let u = super::upgrade::from_v2(
-        &v2,
-        &super::upgrade::Env {
-            rest: &env.rest,
-            live: env.live,
-            title: env.title,
-            local_tz: local.as_deref(),
-        },
-    )
-    .map_err(bad)?;
-    let sheld = own.lock(&sdir)?;
-    // 第三版格式的脚本（没有第五版的头）挪开：原文写进 v3/、删掉原处。
-    let odir = sdir.join(super::shelf::OLD_DIR)?;
-    for s in super::shelf::all(Some(sdir.as_path())).iter() {
-        if s.source.is_empty() || super::script::has_head(&s.source) {
-            continue;
-        }
-        own.ensure_dir(&odir)
-            .map_err(|e| io_said(odir.as_path(), &e))?;
-        let oheld = own.lock(&odir)?;
-        let to = odir.join(&format!("{}.rhai", s.id))?;
-        if !to.as_path().exists() {
-            own.write(&to, &oheld, s.source.as_bytes())?;
-        }
-        let from = sdir.join(&format!("{}.rhai", s.id))?;
-        own.delete_file(&from)
-            .map_err(|e| io_said(from.as_path(), &e))?;
-        out.moved.push(s.id.clone());
-    }
-    for (id, text) in &u.files {
-        let to = sdir.join(&format!("{id}.rhai"))?;
-        if !to.as_path().exists() {
-            own.write(&to, &sheld, text.as_bytes())?;
-            out.wrote.push(id.clone());
-        }
-    }
-    drop(sheld);
-    let keep = |name: String, body: &Value| -> Result<(), Said> {
-        let backup = own.path(&name)?;
-        if !backup.as_path().exists() {
-            let b = crate::common::own_state::json_body(backup.as_path(), body)?;
-            own.write(&backup, &held, &b)?;
-        }
-        Ok(())
-    };
-    match &v1 {
-        Some(v1) => keep(format!("{}.v1", rotation::FILE_NAME), v1)?,
-        None => keep(format!("{}.v2", rotation::FILE_NAME), &v2)?,
-    }
-    let body = crate::common::own_state::json_body(path, &u.book)?;
-    own.write(&file, &held, &body)?;
-    drop(held);
-    nodes::emit(nodes::bus(), Source::Strategies, None);
-    Ok(out)
-}
-
-/// 这台的轮换账本升级写回（[`migrate_at`]）；写不成只出声。
-pub(crate) fn migrate_here(own: &Own, env: &UpgradeEnv<'_>) {
-    match migrate_at(own, env) {
-        Ok(m) => {
-            if let Some(n) = m.from {
-                tracing::info!(
-                    "[rotation] {} 从第 {n} 版升到新格式：写了 {:?}，挪开 {:?}",
-                    rotation::FILE_NAME,
-                    m.wrote,
-                    m.moved
-                );
-            }
-        }
-        Err(e) => tracing::warn!(
-            "[rotation] {} 升级写回不成：{}",
-            rotation::FILE_NAME,
-            e.logged()
-        ),
     }
 }
 

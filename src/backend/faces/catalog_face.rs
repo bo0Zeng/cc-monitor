@@ -4,7 +4,7 @@
 
 use crate::assets::asset_catalog;
 use crate::assets::ext;
-use crate::wire::typed::{self, codes, Command, NoArgs};
+use crate::wire::typed::{self, codes, Command};
 
 codes! {
     /// 资产目录那三条的码（`assets-catalog` · `-merge` · `ext-note-set`）。
@@ -20,17 +20,15 @@ codes! {
 pub(crate) struct AssetsCatalogCmd;
 
 impl Command for AssetsCatalogCmd {
-    const NAME: &'static str = "assets-catalog";
+    typed::by_call!(asset_catalog::AssetsCatalogReq);
     const TAKES_INPUT: bool = false;
-    type Req = NoArgs;
-    type Reply = asset_catalog::CatalogReply;
     type Err = CatalogErr;
 }
 
 impl crate::wire::typed::Handle for AssetsCatalogCmd {
     type Needs = crate::wire::typed::needs::Own;
     fn run(
-        _req: NoArgs,
+        _req: asset_catalog::AssetsCatalogReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<asset_catalog::CatalogReply, CatalogErr>>
            + Send
@@ -48,16 +46,14 @@ impl crate::wire::typed::Handle for AssetsCatalogCmd {
 pub(crate) struct AssetsCatalogMergeCmd;
 
 impl Command for AssetsCatalogMergeCmd {
-    const NAME: &'static str = "assets-catalog-merge";
-    type Req = asset_catalog::CatalogMergeReq;
-    type Reply = asset_catalog::CatalogReply;
+    typed::by_call!(asset_catalog::AssetsCatalogMergeReq);
     type Err = CatalogErr;
 }
 
 impl crate::wire::typed::Handle for AssetsCatalogMergeCmd {
     type Needs = crate::wire::typed::needs::Own;
     fn run(
-        req: asset_catalog::CatalogMergeReq,
+        req: asset_catalog::AssetsCatalogMergeReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<asset_catalog::CatalogReply, CatalogErr>>
            + Send

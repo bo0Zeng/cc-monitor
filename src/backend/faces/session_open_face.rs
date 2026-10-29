@@ -13,9 +13,7 @@ use std::collections::BTreeMap;
 pub(crate) struct SessionOpen;
 
 impl crate::wire::typed::Command for SessionOpen {
-    const NAME: &'static str = "session-open";
-    type Req = open::SessionOpenReq;
-    type Reply = open::Opened;
+    crate::wire::typed::by_call!(open::SessionOpenReq);
     type Err = open::SessionOpenErr;
 }
 
@@ -374,21 +372,8 @@ fn record_dirs(home: &std::path::Path) -> Vec<(String, i64)> {
     out
 }
 
-/// `session-open-facts` 的入参。
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct OpenFactsReq {
-    /// 可缺：分叉源会话 sid。
-    #[serde(default, rename = "forkOf")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) fork_of: Option<String>,
-    /// 可缺（随 `forkOf`）：从哪条消息处分叉（框顶说第几轮、几点）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) at: Option<String>,
-}
+/// `session-open-facts` 的入参：线上形住 `cmd-wire::open`（名字与回包挂在 `cmd_wire::Call` 上）。
+pub(crate) use cmd_wire::open::OpenFactsReq;
 
 crate::wire::typed::codes! {
     /// `session-open-facts` 的码。
@@ -402,9 +387,7 @@ crate::wire::typed::codes! {
 pub(crate) struct SessionOpenFacts;
 
 impl crate::wire::typed::Command for SessionOpenFacts {
-    const NAME: &'static str = "session-open-facts";
-    type Req = OpenFactsReq;
-    type Reply = OpenFacts;
+    crate::wire::typed::by_call!(OpenFactsReq);
     type Err = OpenFactsErr;
 }
 

@@ -62,13 +62,11 @@ src/frontend/shell/.gitignore	5
 src/frontend/shell/Cargo.toml	6
 src/frontend/shell/build.rs	5
 src/frontend/shell/src/backend_policy.rs	10
-src/frontend/shell/src/config.rs	1
 src/frontend/shell/src/filewin/entry.rs	12
 src/frontend/shell/src/filewin/proc.rs	1
 src/frontend/shell/src/lib.rs	8
 src/frontend/shell/src/local_backend.rs	34
 src/frontend/shell/src/local_backend_host.rs	32
-src/frontend/shell/src/logging.rs	1
 src/frontend/shell/src/platform/hwnd.rs	1
 src/frontend/shell/src/platform/mod.rs	2
 src/frontend/shell/src/platform/pid.rs	1
@@ -147,7 +145,6 @@ tests/backend/history/search_rules_tests.rs	1
 tests/backend/layering_guard.rs	9
 tests/backend/main_argv_table_guard.rs	5
 tests/backend/main_fourth_face_tests.rs	8
-tests/backend/main_window_raise_guard.rs	1
 tests/backend/no_timer_guard.rs	6
 tests/backend/observe/accounts_query_tests.rs	16
 tests/backend/observe/search_query_support.rs	3
@@ -171,7 +168,6 @@ tests/backend/relay/table_guard.rs	17
 tests/backend/relay/upstream_selection_guard.rs	1
 tests/backend/relay/wire_golden.rs	1
 tests/backend/single_stream_guard.rs	24
-tests/backend/ssh_dial_android_cfg_guard.rs	1
 tests/backend/ssh_dial_config_text_tests.rs	1
 tests/backend/ssh_dial_features_tests.rs	2
 tests/backend/stderr_log_tests.rs	1
@@ -301,7 +297,6 @@ tests/frontend/ui/events-burst.vitest.ts	2
 tests/frontend/ui/file-window.vitest.ts	2
 tests/frontend/ui/format.test.ts	1
 tests/frontend/ui/generated-boundary-guard.vitest.ts	2
-tests/frontend/ui/import-cycle-guard.vitest.ts	4
 tests/frontend/ui/ipc/commands.vitest.ts	3
 tests/frontend/ui/judgment-single-home.vitest.ts	7
 tests/frontend/ui/kit/single-home.vitest.ts	1

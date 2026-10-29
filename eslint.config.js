@@ -4,6 +4,7 @@
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import globals from "globals";
+import { importX, createNodeResolver } from "eslint-plugin-import-x";
 
 /** 界面「只一个口」那几条的语法树形状；`shellCall` = 连直呼壳命令 `clipboard_write` · `clipboard_read` 一起禁。 */
 function uiSingleDoors(shellCall) {
@@ -88,6 +89,33 @@ export default tseslint.config(
   {
     files: ["src/frontend/ui/clipboard.ts"],
     rules: { "no-restricted-syntax": ["error", ...uiSingleDoors(false)] },
+  },
+  // 产品 TS 的 import 图（`tests/frontend/ui/import-graph-lint.vitest.ts` 证这两条会抓人）：
+  // - 零运行期环：环两头的用点今天都在函数体里不炸，换个求值顺序就是 TDZ。只算运行期边：`import type` 编译期擦除，
+  //   `import-x/no-cycle` 不跟它走（整句 type-only、逐项全是 type 的都不算）。`export … from` 算边；
+  //   只为副作用的 `import "./x"` 它也不算（本仓只入口文件这样写，入口没人 import）。
+  // - 主窗口的视图（`views/`）与设置窗（`settings/`）互不引用：只一边用的挪到那一边，两边都用的挪到 `src/frontend/ui/` 那一层。
+  // 解析照 TS：带 `.ts` 后缀的与不带的都认，目录取 `index.ts`；裸包名是外部依赖，不进图。
+  {
+    files: ["src/**/*.ts"],
+    plugins: { "import-x": importX },
+    settings: {
+      "import-x/resolver-next": [createNodeResolver({ extensions: [".ts", ".js"] })],
+      "import-x/extensions": [".ts", ".js"],
+      "import-x/parsers": { "@typescript-eslint/parser": [".ts"] },
+    },
+    rules: {
+      "import-x/no-cycle": ["error", { ignoreExternal: true }],
+      "import-x/no-restricted-paths": [
+        "error",
+        {
+          zones: [
+            { target: "./src/frontend/ui/views", from: "./src/frontend/ui/settings", message: "主窗口的视图不引设置窗：两边都用的挪到 src/frontend/ui/ 那一层。" },
+            { target: "./src/frontend/ui/settings", from: "./src/frontend/ui/views", message: "设置窗不引主窗口的视图：两边都用的挪到 src/frontend/ui/ 那一层。" },
+          ],
+        },
+      ],
+    },
   },
   {
     // 测试文件（tsx node 的 *.test.ts / jsdom 的 *.vitest.ts）：补 node 全局。

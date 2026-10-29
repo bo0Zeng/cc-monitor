@@ -52,6 +52,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "DEFLATE_CHUNK",
+        "**步长**不是体量：常驻流压缩器一次往外攒多少字节就先往下写（`wire/listen.rs::Down`），流本身多长不受它限。",
+    ),
+    (
         "VERSION",
         "**格式版本号**不是体量：骨架落盘那一格（`observe/skeleton.rs`），值取声明表（`relay_route_core::SKELETON_FILE`）。",
     ),
@@ -823,17 +827,17 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         // 这是回显不是清单：超了保尾、成品里 `truncated: true` 说清（与 monitor 旧那条同档）。
         "截断+说清",
     ),
-    // cc-bus 的收件箱住后端（A13-8）：一份收件箱 · 状态文件的读上限。超了当读不出来：读面照实回错，写面不覆盖
-    //   （同输入队 · 会话血缘那几份 `Doc::state`，一档）。
+    // cc-bus 的收件箱住后端：一份收件箱 · 状态文件的读上限（声明表那两行）。超了当读不出来：读面照实回错，写面不覆盖
+    //   （同输入队 · 会话血缘那几份状态，一档）。
     (
-        "src/backend/control/cc_bus/store.rs",
-        "INBOX_CAP",
+        "src/common/relay-route-core/src/lib.rs",
+        "CC_BUS_INBOX_MAX_BYTES",
         "一条会话的 cc-bus 收件箱 `~/.cc-monitor/cc-bus/<sid>.jsonl`（一封一行，只往后加）",
         "拒收+回错",
     ),
     (
-        "src/backend/control/cc_bus/store.rs",
-        "STATE_CAP",
+        "src/common/relay-route-core/src/lib.rs",
+        "CC_BUS_STATE_MAX_BYTES",
         "cc-bus 的状态文件 `~/.cc-monitor/cc-bus/state.json`（各会话已读位置 ＋ 发信规矩的账）",
         "拒收+回错",
     ),
@@ -1162,12 +1166,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/accounts/quota/setup/shelf.rs",
-        "MAX_SOURCE_BYTES",
-        "一份轮换策略文件 `~/.cc-monitor/strategies/<id>.rhai`（超了不加载，列表里照实写读不懂）",
-        "拒收+回错",
-    ),
-    (
         "src/common/relay-route-core/src/lib.rs",
         "LINEAGE_MAX_BYTES",
         "后端自有的会话血缘 `~/.cc-monitor/lineage.json`（读不出来就不覆盖）",
@@ -1186,8 +1184,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/control/exit_policy.rs",
-        "MAX_BYTES",
+        "src/common/relay-route-core/src/lib.rs",
+        "BACKEND_POLICY_MAX_BYTES",
         "后端自有的退出行为 `~/.cc-monitor/backend.json`（一格布尔；读不出来 ⇒ `unreadable` 带原因回出去，按缺省办）",
         "拒收+回错",
     ),
@@ -1198,21 +1196,15 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/control/machines.rs",
-        "MAX_BYTES",
+        "src/common/relay-route-core/src/lib.rs",
+        "MACHINES_MAX_BYTES",
         "后端自有的机器表 `~/.cc-monitor/machines.json`（至多 256 台；读不出来 ⇒ `unreadable` 带原因回出去、照空表办，写口拒、不覆盖）",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/control/prefs_migration.rs",
-        "MAX_BYTES",
-        "第 7 批换形（下一版删）读 monitor 的 `config.json` 与「待交」`~/.cc-monitor/prefs-handoff.json`（读不出来 ⇒ 不搬、不写；待交读不懂 ⇒ 当没有、不写回）",
         "拒收+回错",
     ),
     (
         "src/common/relay-route-core/src/lib.rs",
         "CONFIG_MAX_BYTES",
-        "monitor 的设置 `config.json` 整份（monitor `config.rs` 读与写口现读都取它）：超了 ⇒ 读那一口报「超出上限」、写口一个字节不写",
+        "monitor 的设置 `config.json` 整份（monitor `config.rs` 读与写口现读、后端第 7 批换形读它都取它）：超了 ⇒ 读那一口报「超出上限」、写口一个字节不写、换形不搬",
         "拒收+回错",
     ),
     (
@@ -1228,8 +1220,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "跳过+说清",
     ),
     (
-        "src/backend/control/ccm/mod.rs",
-        "PLUGIN_FILE_MAX_BYTES",
+        "src/common/relay-route-core/src/lib.rs",
+        "ANSWER_PLUGIN_MAX_BYTES",
         "读回答题插件的一份文件（`~/.cc-monitor/answer-plugin/` 底下，只为比内容一样不一样）；超了 ⇒ `warn!` 带路径，当没有、重写",
         "跳过+说清",
     ),
@@ -1273,9 +1265,21 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/control/bookmarks.rs",
-        "MAX_BYTES",
+        "src/common/relay-route-core/src/lib.rs",
+        "BOOKMARKS_MAX_BYTES",
         "这台的书签 `~/.cc-monitor/bookmarks.json`（超了当读不懂：`bookmarks_unreadable`，不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/common/relay-route-core/src/lib.rs",
+        "SET_GROUPS_MAX_BYTES",
+        "套组名与为它建的那一组 `~/.cc-monitor/set-groups.json`（超了当读不懂：起套组不进旧组、记绑定那一下拒，不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/common/relay-route-core/src/lib.rs",
+        "STRATEGY_SOURCE_MAX_BYTES",
+        "一份轮换策略文件 `~/.cc-monitor/strategies/<id>.rhai` 的声明（超了不加载，列表里照实写读不懂）",
         "拒收+回错",
     ),
     (
@@ -2016,6 +2020,13 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
         "cap + 1",
         "`read_file_capped` 是后端侧共用的有界读助手，上限是入参；\
              调用方给的是 `MAX_CONFIG_BYTES` / `MAX_MANIFEST_BYTES` 等具名常量。",
+    ),
+    (
+        "src/common/host-core/src/atomic.rs",
+        "cap.saturating_add(1)",
+        "`read_capped` 是两个前端共用的有界读助手，上限是入参；\
+             调用方给的是声明表那一行的读上限（`relay_route_core::CONFIG_FILE` ⇒ `CONFIG_MAX_BYTES`，已在 `CAPS` 里）；\
+             多读一个字节只为分辨读满与其实还有，超了回 `TooBig`、不当完整的用。",
     ),
     // ⚠〔`K-H1` 回修轮之五 08-25，D3 `阻-1(D3)`〕这一处的 `n` 与上面两条**不同族**，
     //    差别要写清楚，否则下一个人会以为它也是「调用方给具名常量」那一档：

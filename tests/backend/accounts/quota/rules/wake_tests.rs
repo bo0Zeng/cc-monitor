@@ -1,14 +1,14 @@
-//! 升级材料里「约下次叫醒」那一段（`setup/upgrade/turn.rhai` 末尾）逐块点名：每条一个小场景，刚好走到那一块，
+//! 样例里「约下次叫醒」那一段（`setup/samples/turn.rhai` 末尾）逐块点名：每条一个小场景，刚好走到那一块，
 //! 直接问策略一判（不经 turn 的连换），断言它约的时刻 `wake_at` 与读数 `wake_when`。哪一块改坏，点它名的那条红。
 //! 一致性那几组（`s22` · `s26` · `s36`）比的是推演与逐发判对不对得上，接不住「约晚了一档」这一类改坏，这里补上。
 
 use super::*;
 
 /// 问策略一判：此刻 T，在用的是 `cur`，会话还没有 memo。
-fn ask(p: &Material, s: &Value, cur: &str, f: &[Acct]) -> Verdict {
+fn ask(p: &Sample, s: &Value, cur: &str, f: &[Acct]) -> Verdict {
     let sg = sig(cur, &[]);
     p.decide(&ctx_of(&sg, f, s, clock(T), T))
-        .expect("升级材料判得出")
+        .expect("样例判得出")
 }
 
 /// 这个号 5 小时那一窗照这一用速（每分钟涨几个百分点）在被用。

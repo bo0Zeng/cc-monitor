@@ -72,12 +72,9 @@ pub fn policy_path() -> Option<PathBuf> {
     )
 }
 
-/// 读盘的上限：文件只有一格布尔。
-const MAX_BYTES: u64 = 4096;
-
-/// 退出行为：状态（读不懂 ⇒ 照实说、按缺省办）。
+/// 退出行为：状态（读不懂 · 比这一版新 ⇒ 照实说、按缺省办；落点 · 上限 · 版本照声明表）。
 const DOC: crate::common::own_state::Doc<serde_json::Value> =
-    crate::common::own_state::Doc::state(relay_route_core::BACKEND_POLICY_REL, MAX_BYTES);
+    crate::common::own_state::Doc::of(&relay_route_core::BACKEND_POLICY_FILE);
 
 /// 读一次 `path`。**每次调用都真去读盘**，没有任何记忆。
 pub fn read_at(path: &Path) -> Read {
@@ -136,12 +133,8 @@ pub fn last_client_left() -> bool {
     r.kill_on_exit()
 }
 
-/// 文件的全部内容。**只有一格**，写的时候整份写（单写者 ⇒ 不需要读—改—写）。
-fn render(kill: bool) -> String {
-    format!("{{\"{KEY_KILL_ON_EXIT}\":{kill}}}\n")
-}
-
-/// 全仓唯一的写者（经 `Own` 原子写）⇒ 读者（[`read_at`]）要么看到旧的整份、要么看到新的整份。
+/// 全仓唯一的写者（经声明的读写口原子写；文件**只有一格**，整份写，单写者 ⇒ 不需要读—改—写）
+/// ⇒ 读者（[`read_at`]）要么看到旧的整份、要么看到新的整份。
 /// 目录不在就建这一层（`~/.cc-monitor` 本身）。
 fn write_at(own: &Own, kill: bool) -> Result<(), crate::common::said::Said> {
     let dir = own.home_dir().map_err(|_| {
@@ -162,7 +155,12 @@ fn write_at(own: &Own, kill: bool) -> Result<(), crate::common::said::Said> {
     })?;
     // 写之前拿那个目录的跨进程锁（原子写的签名要它）。这一份没有读—改—写，锁只为这条规矩没有例外。
     let held = own.lock(&dir)?;
-    own.write(&dir.join(FILE_NAME)?, &held, render(kill).as_bytes())
+    DOC.write(
+        own,
+        &dir,
+        &held,
+        &serde_json::json!({ KEY_KILL_ON_EXIT: kill }),
+    )
 }
 
 /// 这台后端是不是回环常驻（脱离了起它的那一方）—— 与 `main` 选载体同一个纯函数、同一份环境，不另记一份。
@@ -185,8 +183,8 @@ fn said(r: &Read, resident: bool) -> String {
     }
 }
 
-/// 一次读数的线上形状与 `exit-policy-read` 的入参住 cmd-wire（monitor 退出臂照同一份问、照同一份收）。
-pub(crate) use cmd_wire::exit_policy::{ExitPolicy, ExitPolicyReadReq};
+/// 一次读数的线上形状与两条的入参住 cmd-wire（monitor 退出臂照同一份问、照同一份收）。
+pub(crate) use cmd_wire::exit_policy::{ExitPolicy, ExitPolicyReadReq, ExitPolicySetReq};
 
 fn wire(r: &Read, path: Option<&Path>) -> ExitPolicy {
     wire_as(r, path, resident_now())
@@ -214,18 +212,9 @@ pub(crate) fn answer_read() -> ExitPolicy {
     wire(&read_now(), path.as_deref())
 }
 
-/// `exit-policy-set` 的入参：要写的值。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct ExitPolicySet {
-    pub(crate) kill_on_exit: bool,
-}
-
 /// `exit-policy-set`：写 `killOnExit`，**写完再读一遍**，回读到的那份（回的是盘上的事实，不是「我以为写进去了」）。
 pub(crate) fn answer_set(
-    req: &ExitPolicySet,
+    req: &ExitPolicySetReq,
     own: &Own,
 ) -> Result<ExitPolicy, crate::wire::spec::Fail> {
     let path = policy_path().ok_or_else(|| {
@@ -270,16 +259,14 @@ crate::wire::typed::codes! {
 pub(crate) struct ExitPolicySetCmd;
 
 impl crate::wire::typed::Command for ExitPolicySetCmd {
-    const NAME: &'static str = "exit-policy-set";
-    type Req = ExitPolicySet;
-    type Reply = ExitPolicy;
+    crate::wire::typed::by_call!(ExitPolicySetReq);
     type Err = ExitSetErr;
 }
 
 impl crate::wire::typed::Handle for ExitPolicySetCmd {
     type Needs = crate::wire::typed::needs::Own;
     fn run(
-        req: ExitPolicySet,
+        req: ExitPolicySetReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<ExitPolicy, ExitSetErr>> + Send + 'static {
         let (_cx, needs) = cx.split();

@@ -2,6 +2,6 @@
 import type { CatalogIn } from "./CatalogIn";
 
 /**
- * `assets-catalog-merge` 的入参。
+ * `assets-catalog-merge` 的入参：另一台后端的整份目录。
  */
-export type CatalogMergeReq = { catalog: CatalogIn, };
+export type AssetsCatalogMergeReq = { catalog: CatalogIn, };

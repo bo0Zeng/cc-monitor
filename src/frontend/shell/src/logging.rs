@@ -366,11 +366,9 @@ fn find_latest_log_file(log_dir: &Path) -> Option<PathBuf> {
 // ===== diagnostics 字段 R/W（独立读写 config.json 的子对象） =====
 
 fn read_diagnostics_from_config(monitor_data_dir: &Path) -> DiagnosticsConfig {
-    let cfg_path = monitor_data_dir.join("config.json");
-    let Ok(raw) = std::fs::read_to_string(&cfg_path) else {
-        return DiagnosticsConfig::default();
-    };
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) else {
+    // 落点与读上限照声明表（经 `config` 那一口）；读不出来 ⇒ 照缺省。
+    let Ok(v) = crate::config::load_config_at(&crate::config::config_path_in(monitor_data_dir))
+    else {
         return DiagnosticsConfig::default();
     };
     v.get("diagnostics")
@@ -389,12 +387,12 @@ fn write_diagnostics_to_config(
         path: vec!["diagnostics".to_string()],
         value,
     };
-    crate::config::patch_config_at(&monitor_data_dir.join("config.json"), &[edit])
+    crate::config::patch_config_at(&crate::config::config_path_in(monitor_data_dir), &[edit])
         .map(|_| ())
         .map_err(|e| {
             match e {
-                // 〔D4 / D7〕读不懂 ⇒ **不写**，说清为什么。从前这里退成 `{}` 再整份写回 ——
-                //   用户手填的那份（哪怕只是少了一个逗号）连同里面别的设置被静默盖成只剩 `diagnostics` 一格。
+                // 〔D4 / D7〕读不懂 ⇒ **不写**，说清为什么：退成 `{}` 再整份写回的话，
+                //   用户手填的那份（哪怕只是少了一个逗号）连同里面别的设置会被静默盖成只剩 `diagnostics` 一格。
                 crate::config::ConfigWriteError::Unreadable { path, detail } => Said::with_raw(
                     copy_text(
                         "rsLogging.diagnostics.badConfig",

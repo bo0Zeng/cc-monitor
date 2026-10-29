@@ -8,9 +8,9 @@ fn hm(m: u64) -> String {
     format!("{}:{:02}", m / 60, m % 60)
 }
 
-/// 升级材料「离重置近的权重高」那一份声明（用量上限 · 上限类型 · 权重容差 · 强制切换阈值 · 耗尽后启用 · 启用延迟 · 单次用量上限）：五种格都在里面。
+/// 样例「离重置近的权重高」那一份声明（用量上限 · 上限类型 · 权重容差 · 强制切换阈值 · 耗尽后启用 · 启用延迟 · 单次用量上限）：五种格都在里面。
 fn full_form() -> Vec<Cell> {
-    super::super::script::parse(super::super::upgrade::material(1))
+    super::super::script::parse(super::super::samples::of(1))
         .expect("读得懂")
         .head
         .form
@@ -135,15 +135,15 @@ fn a_bad_form_is_refused_when_the_file_is_read() {
     assert!(check_form(&f).is_err());
 }
 
-/// ★ 说明写法：升级材料合规；标签里写了第二人称或讲结构的字 ⇒ 不合规（设置照样能用）。
+/// ★ 说明写法：样例合规；标签里写了第二人称或讲结构的字 ⇒ 不合规（设置照样能用）。
 #[test]
 fn second_person_or_structure_words_in_labels_are_flagged() {
     for n in 0..3 {
-        let f = super::super::script::parse(super::super::upgrade::material(n))
+        let f = super::super::script::parse(super::super::samples::of(n))
             .expect("读")
             .head
             .form;
-        assert!(!words_bad(&f), "材料 {n}");
+        assert!(!words_bad(&f), "样例 {n}");
     }
     for bad in ["你的上限", "参数", "Your limit"] {
         let mut f = full_form();

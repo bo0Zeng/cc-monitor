@@ -1,6 +1,7 @@
-# 删掉的名字（判据名 · 函数 · 命令 · 模块）：仓里除了本表与 CHANGELOG.md，哪儿都不许再出现，按标识符整词认。
-# 判据 `tests/common/guard-core/retired_names_tests.rs`。一行一个名字；删了一个符号、不想它回来，就加一行。
-# 也可以是一句删掉的说法（短语，前后不紧挨字母、数字、`_` 就算）。
+# 删掉的名字（判据名 · 函数 · 命令 · 模块）：到期之后仓里除了本表与 CHANGELOG.md，哪儿都不许再出现，按标识符整词认。
+# 判据 `tests/common/guard-core/retired_names_tests.rs`。一行「名字 ⇥ 删于」；删了一个符号、不想它回来，就加一行。
+# 「删于」空 ⇒ 今天起到期；写版本（X.Y · X.Y.Z）⇒ package.json 的 version 到了那一版起到期（当桥的兼容代码挂下一版，打版本号那一刻红、由打版本号的那一路删）。
+# 名字也可以是一句删掉的说法（短语，前后不紧挨字母、数字、`_` 就算）。
 Anywhere
 AppAssumesPresent
 BothHomeRelative
@@ -362,3 +363,12 @@ hasCompactWaiters
 每~8秒推帧
 每~8秒推送
 用户原话
+main_window_raise_guard
+window_raise_guard
+window_raising_lives_in_one_file_and_only_behind_cfg_windows
+ssh_dial_android_cfg_guard
+android_cfg_guard
+no_platform_cfg_in_the_dial_core_silently_drops_android
+the_android_judge_sees_both_shapes
+test_home_guard
+every_rust_test_binary_pulls_in_the_sandboxed_home

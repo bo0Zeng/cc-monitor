@@ -23222,6 +23222,12 @@
       "zh": "发送中",
       "args": []
     },
+    "terminal.queue.stale": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "名单为上次所知",
+      "args": []
+    },
     "beQueue.from.desktop": {
       "kind": "body",
       "role": "片段",
@@ -23409,6 +23415,18 @@
       "kind": "action",
       "role": "按钮",
       "zh": "回退并发送",
+      "args": []
+    },
+    "mobSaidEdit.sheet.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "回退并发送",
+      "args": []
+    },
+    "mobSaidEdit.sheet.to": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "退到此句之前：",
       "args": []
     },
     "mobChat.history.retry": {
@@ -31050,12 +31068,6 @@
       "zh": "在用的会话 {n} · 先换掉再删",
       "args": ["n"]
     },
-    "beRotation.migrate.oldSeedName": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "默认",
-      "args": []
-    },
     "beRotation.edit.badTz": {
       "kind": "error",
       "role": "报错",
@@ -31151,12 +31163,6 @@
       "role": "片段",
       "zh": "先不用",
       "args": []
-    },
-    "beRotation.write.v1Pending": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "轮换文件是旧格式 · 后端更新前不写 · {path}",
-      "args": ["path"]
     },
     "rot.top.pick": {
       "kind": "control",
@@ -32118,14 +32124,6 @@
       "role": "状态",
       "zh": "失败",
       "args": []
-    },
-    "mobAttach.card.percent": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "{n}%",
-      "args": [
-        "n"
-      ]
     },
     "mobAttach.card.remove": {
       "kind": "action",

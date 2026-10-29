@@ -1,7 +1,7 @@
 # 全局不变量
 
 跨模块约束清单。违反任一条都是 bug，code review 时应该被指出。每条写：性质 · 为什么不能松动 · 谁在守（判据名）。
-已由判据钉住的条目只写一句规矩加判据名，细节看判据头注；沿革不写在这里（看 git 历史）。节号被代码与判据头注引用，不改号；删掉的条目留一行「已删，理由是…」。
+已由判据钉住的条目只写一句规矩加判据名，细节看判据头注；沿革不写在这里（看 git 历史）。节号被代码与判据头注引用，不改号；删掉的节整节去掉、不留墓碑，节号不复用。
 
 ---
 
@@ -55,8 +55,8 @@
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled` 是真相；`monitor_exe_path` 每次启动自愈改写 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | Linux bash / zsh 接入块留的终端记录与认出来的窗口，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | `monitor/` 按天滚动、留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
-| `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `answer-plugin/` `ssh_config` `profiles-written.json` `cache/skeleton/` `cache/listing.json` `cache/remote-listing/` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 资产目录 · 离线那台的上次值 · 起会话便条 · 答题插件 · 终端用的 ssh 配置 · 上次写出的配置指纹 · 大记录的骨架 · 历史清单缓存（都照记录重扫）· 远端那几台的会话清单副本（照那台再问一次整份） |
-| `relay-key` `run/` `backend.json` `prefs.json` `prefs-handoff.json` `machines.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `plan-review.json` `bookmarks.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `rotation-uses.json` `lineage.json` `launch-accounts.json` `session-queue/` `cc-bus/` `known_hosts` | **真相** | 本机后端 | 删了会丢的：中转根钥匙 · 常驻后端的套接字与进程记录 · 退出行为 · 这台的偏好（启动命令 · 每号模型 · 上下文上限 · 各家数据目录）· 机器表 · 升级时搬来、还没交给远端那几台的偏好 · 别名配置 · 装记录 · 「待办」里的选择 · 计划需手动的认可 · 这台的书签（文件窗口与手机收藏的目录）· 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号 · 会话输入队（还没送进会话的那几句，一条会话一份）· cc-bus 的收件箱与已读位置 · 各台的主机钥匙（删了下回连上就是首见）。名字取契约常量（`relay_route_core` · `creds_core::store`）：家里那几样由本机后端 `data-report` 的 `own` 列（`relay_route_core::OWN_HOME_ENTRIES`）；住数据目录的 `logs/backend/` · `apikey-credentials.json` 由 `data_paths.rs::monitor_entries` 列 |
+| `bin/` `staging/` `logs/backend/` `relay-key` `last-seen.json` `launch-pending/` `answer-plugin/` `ssh_config` `profiles-written.json` `cache/skeleton/` `cache/listing.json` `cache/remote-listing/` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 中转钥匙（丢了重铸）· 离线那台的上次值 · 起会话便条 · 答题插件 · 终端用的 ssh 配置 · 上次写出的配置指纹 · 大记录的骨架 · 历史清单缓存（都照记录重扫）· 远端那几台的会话清单副本（照那台再问一次整份） |
+| `run/` `backend.json` `prefs.json` `prefs-handoff.json` `machines.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `assets-catalog.json` `chores.json` `plan-review.json` `bookmarks.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `rotation-uses.json` `lineage.json` `launch-accounts.json` `session-queue/` `cc-bus/` `known_hosts` | **真相** | 本机后端 | 删了会丢的：常驻后端的套接字与进程记录 · 退出行为 · 这台的偏好（启动命令 · 每号模型 · 上下文上限 · 各家数据目录）· 机器表 · 升级时搬来、还没交给远端那几台的偏好 · 别名配置 · 装记录 · 资产目录 · 「待办」里的选择 · 计划需手动的认可 · 这台的书签（文件窗口与手机收藏的目录）· 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号 · 会话输入队（还没送进会话的那几句，一条会话一份）· cc-bus 的收件箱与已读位置 · 各台的主机钥匙（删了下回连上就是首见）。名字取契约常量（`relay_route_core` · `creds_core::store`）：家里那几样由本机后端 `data-report` 的 `own` 列（`relay_route_core::OWN_HOME_ENTRIES`）；住数据目录的 `logs/backend/` · `apikey-credentials.json` 由 `data_paths.rs::monitor_entries` 列 |
 
 - **真相** = 用户手写 / 意图，删了丢东西、要备份、要迁移友好；**缓存/派生** = 能从别处重建，随便删。
 - **新增任何 data dir 文件，必须声明它是哪类**：界面这一侧的（monitor 数据目录）在 `data_paths.rs` 的枚举里（`DataPathInfo.class: DataClass` 非可选）；本机后端家里的（`~/.cc-monitor/`）在 `relay_route_core::OWN_HOME_ENTRIES` 里（后端 `data-report` 的 `own` 照它出、界面照抄）。设置页每行据它显示「删了会丢 / 可随手删」。两边拼起来与上表两向相等（`data_paths_tests.rs`，异源判据）；后端自家那几样另与上表逐样对（`footprint/data_tests.rs`）。
@@ -275,22 +275,6 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 基类 `.stream` 默认 `visibility: hidden`，只有 `.stream.active` 可见（多 Tab 机制）。复用 `.stream` 样式但不归 `TabManager` 管的视图（`SessionViewer`）必须在自己的 CSS 里显式 `visibility: visible`。
 
 **为什么不能松动**：「历史会话点进去空白」就是它：卡片全进了 DOM 却不可见，状态栏照常显示记录数。
-
----
-
-## 24. 远端活跃集 `remote_active` 恒等于"前端当前应视为 live 的远端 sid"（issue #20）
-
-monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那台后端的会话账本裁（`observe/session_ledger.rs::SessionLedger`，单写者 = 发帧唯一出口），成品帧 `session_left`（去向在 `face.life`）；monitor 只留成品缓存 `session_book.rs`（本机远端同一条 `session-book-emitter` 线程转交，不裁决），自己唯一知道的事实是「到那台的连接断了」⇒ 那台的成品作废、界面说「说不清」，不许显示成「已结束」。
-
-两条派生约束照旧：① 一个会话的 `session_added` 必须先于（或同批于）它的行到达；② 前端把起停帧与行同序处理（`events.ts` 同一条队列）。
-
-**为什么不能松动**：「一次性的结束信号」要在重载后重建出来，账一不准，要么僵尸 Tab，要么活会话被误归档。
-
-**谁在守**：`tests/backend/observe/session_ledger_tests.rs`。
-
-## 24bis. 远端 idle-tmux 灰灯（audit-fixes F03.2）：`REMOTE_IDLE` 与 `remote_active` 正交、同一 emitter 单写
-
-已并进 §24：「claude 退了、tmux 会话还在」就是账本里的**可重连**（那台后端出整份脸 `SessionFace`，界面存 `Tab.face`、只经 `face-can.ts` 读 `can`，不攒状态）。`/branch`、`/clear` 原地换 sid ⇒ 旧 sid 恒归档、不查 tmux 快照。tmux 的观测分四态（`tmux_observe.rs::classify_tmux_probe`：有会话 · 零会话 · 没有 tmux · 观测不到），只有前两态参与收割。
 
 ---
 
@@ -558,7 +542,7 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 
 ### 48.1 门由内核给（本人通道，没有钥匙）
 
-常驻后端只听这台家里的一个 Unix 套接字 `<家>/run/backend.sock`（路径只由共享 crate `relay_route_core::listen_socket_for` 算）。`run/` 只给本人（`0700`），每条连接再核对端 uid（共享 crate `own-chan`），不同 ⇒ 关掉、出声；在听的那一个攥着 `run/` 的独占锁，抢不到就带「已有人在听」的退出码退。attach 行只是 `{"attach":true}`（可带 `tz` · `mine` · `watch`，类型 `cmd_wire::attach::AttachLine`），形状不对 ⇒ `malformed-attach`；带了 `mine` ⇒ 回话里是这台相对它的新旧。远端经 ssh 跑 `ccm -- --resident-attach` 小中继去连那台的套接字。常驻后端起子进程时清掉常驻开关、诊断文件与后端内部那几族环境（`platform/child_env.rs`）。沙箱跑（`CCM_SANDBOX=1`）却要占本账号真家目录里的门牌 ⇒ 拒绝起。文件窗口的通道不监听（父子管道，`chan/host.rs::serve_window`）。
+常驻后端只听这台家里的一个 Unix 套接字 `<家>/run/backend.sock`（路径只由共享 crate `relay_route_core::listen_socket_for` 算）。`run/` 只给本人（`0700`），每条连接再核对端 uid（共享 crate `own-chan`），不同 ⇒ 关掉、出声；在听的那一个攥着 `run/` 的独占锁，抢不到就带「已有人在听」的退出码退。attach 行只是 `{"attach":true}`（可带 `tz` · `mine` · `deflate` · `watch`，类型 `cmd_wire::attach::AttachLine`），形状不对 ⇒ `malformed-attach`；带了 `mine` ⇒ 回话里是这台相对它的新旧；带了 `deflate` ⇒ 回话认它，之后这台写过去的字节整条是一个 raw deflate 流（每帧 sync flush，`wire::listen::Down`）。远端经 ssh 跑 `ccm -- --resident-attach` 小中继去连那台的套接字。常驻后端起子进程时清掉常驻开关、诊断文件与后端内部那几族环境（`platform/child_env.rs`）。沙箱跑（`CCM_SANDBOX=1`）却要占本账号真家目录里的门牌 ⇒ 拒绝起。文件窗口的通道不监听（父子管道，`chan/host.rs::serve_window`）。
 
 **为什么不能松动**：从前的回环 TCP 口没有权限位，只能靠一把钥匙补，钥匙文件又被别的实例改写过（远端从此一直被拒）⇒ 已删，换成内核给的本人门。能连上套接字的只有本账号自己的进程。
 

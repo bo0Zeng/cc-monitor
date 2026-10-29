@@ -17,7 +17,7 @@
 use crate::wire::Frame;
 use crate::wire::{SessionFace, SessionFaceExt as _, SessionLeft};
 use cmd_wire::frame::Relayed;
-use cmd_wire::machine::MachineState;
+use cmd_wire::machine::{MachineState, MachineStopReq, MachineStopped, MachineWakeReq};
 use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom};
 use resident_client::book::{Seat, SessionBook};
 use resident_client::feed::{self, Boxed, Config, Event, Exec, Feed, Problem, Progress, Transport};
@@ -521,17 +521,9 @@ impl Ssh for Pool {
     }
 }
 
-/// `machine-wake` 的入参与 `machine-stop` 的入参：那台的名字。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct MachineName {
-    pub(crate) machine: String,
-}
-
-fn named(req: &MachineName) -> Result<&str, String> {
-    let m = req.machine.trim();
+/// `machine-wake` · `machine-stop` 入参里那台的名字（空白 ⇒ `bad_args`）。
+fn named(machine: &str) -> Result<&str, String> {
+    let m = machine.trim();
     if m.is_empty() {
         return Err(crate::common::contract::malformed(
             "missing `machine` (non-empty string)",
@@ -554,21 +546,19 @@ crate::wire::typed::codes! {
 pub(crate) struct MachineWake;
 
 impl crate::wire::typed::Command for MachineWake {
-    const NAME: &'static str = "machine-wake";
-    type Req = MachineName;
-    type Reply = MachineState;
+    crate::wire::typed::by_call!(MachineWakeReq);
     type Err = MachineWakeErr;
 }
 
 impl crate::wire::typed::Handle for MachineWake {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
-        req: MachineName,
+        req: MachineWakeReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<MachineState, MachineWakeErr>> + Send + 'static
     {
         std::future::ready(
-            named(&req)
+            named(&req.machine)
                 .map_err(MachineWakeErr::BadArgs)
                 .and_then(|m| wake_in(m, &crate::control::machine_state::read(), resume)),
         )
@@ -603,15 +593,6 @@ pub(crate) fn wake_in(
     }
 }
 
-/// `machine-stop` 的回包：那台常驻怎么停的（`graceful` · `killed` · `not_running`）· 被停的 pid。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct MachineStopped {
-    pub(crate) stopped: String,
-    pub(crate) pid: Option<u32>,
-}
-
 crate::wire::typed::codes! {
     /// `machine-stop` 的码：在那台上停没成（够不到 · 那台说的那一句）。
     pub(crate) enum MachineStopErr {
@@ -623,21 +604,21 @@ crate::wire::typed::codes! {
 pub(crate) struct MachineStop;
 
 impl crate::wire::typed::Command for MachineStop {
-    const NAME: &'static str = "machine-stop";
-    type Req = MachineName;
-    type Reply = MachineStopped;
+    crate::wire::typed::by_call!(MachineStopReq);
     type Err = MachineStopErr;
 }
 
 impl crate::wire::typed::Handle for MachineStop {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
-        req: MachineName,
+        req: MachineStopReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<MachineStopped, MachineStopErr>> + Send + 'static
     {
         async move {
-            let machine = named(&req).map_err(MachineStopErr::BadArgs)?.to_string();
+            let machine = named(&req.machine)
+                .map_err(MachineStopErr::BadArgs)?
+                .to_string();
             hold(&machine);
             stop_with(&Pool, &machine)
                 .await

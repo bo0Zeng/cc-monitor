@@ -4,10 +4,10 @@
 //!   拿回 `graceful | killed | not_running`。本机那一趟（`local_backend_host::run_resident_stop`）读 `--resident-stop` 那一行，读法同循环那一份。
 
 use crate::detail::Said;
+use cmd_wire::machine::{MachineStopReq, MachineStopped};
+use cmd_wire::Call;
 use copy_core::copy_text;
 
-/// 本机后端那条命令（命令表 `src/backend/stream/inbound/registry/machine.rs`）。
-const MACHINE_STOP: &str = "machine-stop";
 /// 等它的上限：那台自己的宽限期 ＋ 强杀后再等的那一段 ＋ 拨号都得在这里头
 /// （`remote_resident_tests::the_stop_budget_outlasts_the_remote_stop` 现抠后端两个毫秒字面量比）。
 const STOP_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
@@ -52,40 +52,56 @@ pub(crate) fn read_stop(
 /// 等与强杀由那台自己做（同机监督者），这里只拿回结局。
 pub(crate) async fn stop(machine: &str) -> Result<StopAnswer, Said> {
     use crate::backend_route::{route_call_error, Routed};
-    let client = crate::inbound_client::local_backend_accepting(MACHINE_STOP)
+    const NAME: &str = MachineStopReq::NAME;
+    let client = crate::inbound_client::local_backend_accepting(NAME)
         .await
-        .map_err(|said| Said::new(said, MACHINE_STOP, None))?;
-    let args = serde_json::json!({ "machine": machine });
-    let v = client
-        .call(MACHINE_STOP, args, STOP_BUDGET)
-        .await
-        .map_err(|e| {
-            let said = match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
-                message.to_string()
-            }) {
-                Routed::NoChannel(s) | Routed::Refused(s) => s,
-            };
-            Said::of_call(said, MACHINE_STOP, &crate::origin::Origin::local(), &e)
-        })?
-        .unwrap_or_default();
-    stop_answer_of(&v)
+        .map_err(|said| Said::new(said, NAME, None))?;
+    let req = MachineStopReq {
+        machine: machine.to_string(),
+    };
+    let deadline = tokio::time::Instant::now() + STOP_BUDGET;
+    let got = client.ask(None, &req, None, deadline).await.map_err(|e| {
+        let said = match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
+            message.to_string()
+        }) {
+            Routed::NoChannel(s) | Routed::Refused(s) => s,
+        };
+        Said::of_call(said, NAME, &crate::origin::Origin::local(), &e)
+    })?;
+    match got {
+        Ok(r) => answer_of_stopped(&r),
+        Err(e) => Err(unknown_answer(e.to_string())),
+    }
 }
 
-/// `machine-stop` 的回包 `{stopped, pid}` ⇒ 结局（三个词之外的一律是错，不猜）。
+/// `machine-stop` 的回包 ⇒ 结局（三个词之外的一律是错，不猜）。
+pub(crate) fn answer_of_stopped(r: &MachineStopped) -> Result<StopAnswer, Said> {
+    let raw = || serde_json::to_string(r).unwrap_or_default();
+    answer_of(Some(&r.stopped), r.pid, raw)
+}
+
+/// `--resident-stop` 那一行 `{stopped, pid}` ⇒ 结局（同上）。
 pub(crate) fn stop_answer_of(v: &serde_json::Value) -> Result<StopAnswer, Said> {
-    let stopped = match v["stopped"].as_str() {
+    let pid = v["pid"].as_u64().and_then(|p| u32::try_from(p).ok());
+    answer_of(v["stopped"].as_str(), pid, || v.to_string())
+}
+
+fn answer_of(
+    stopped: Option<&str>,
+    pid: Option<u32>,
+    raw: impl FnOnce() -> String,
+) -> Result<StopAnswer, Said> {
+    let stopped = match stopped {
         Some("graceful") => StopWord::Graceful,
         Some("killed") => StopWord::Killed,
         Some("not_running") => StopWord::NotRunning,
-        _ => {
-            return Err(Said::with_raw(
-                copy_text("rsRemoteResident.stop.unknownAnswer", &[]),
-                v.to_string(),
-            ))
-        }
+        _ => return Err(unknown_answer(raw())),
     };
-    let pid = v["pid"].as_u64().and_then(|p| u32::try_from(p).ok());
     Ok(StopAnswer { stopped, pid })
+}
+
+fn unknown_answer(raw: String) -> Said {
+    Said::with_raw(copy_text("rsRemoteResident.stop.unknownAnswer", &[]), raw)
 }
 
 #[cfg(test)]

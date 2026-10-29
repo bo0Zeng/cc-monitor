@@ -89,7 +89,7 @@ agent 不是我们起的进程：后端渲好一行 `ccm …`，交给用户的�
 - **起停与状态也在这条流里**：会话账本整本在后端（`observe/session_ledger`），帧 `session_added` · `session_left` · `sessions_replayed` 随 `session-lines` 一起来，起停帧没 credit 也照交（照扣，可欠）、不许丢。monitor 只留一份「那台说过的成品」缓存（`session_book.rs`；每台一本，折法是端核心那一份 `resident_client::book`，手机同一份）。到那台的连接断了，由本机后端给那台活的 · 可重连的每一条发一帧 `session_left`（「说不清」那张脸），并在机器状态里记「这台 N 条状态不明」（`MachineState.unclear`）；monitor 不合成，只把那台「清单报完了」作废。
 - **背压**：界面给 credit；实时行没有 credit 就丢，并在原位报 gap，界面按行号向那台后端补（帧命令 `history-lines`）。
 - **大小分流**（`event_replay.rs::on_line_batch_awaited`）：小批逐行一格；大批（`--resume` 灌历史、重放）按 `CHUNK_SIZE = 600` 切块、末块先发，每块带 batch 边界，界面进 batch 模式（代码高亮延后）。
-- **启动序**：主窗口先经通道订好每台机器的会话流，再发 `frontend-ready`（带优先会话）——那就是这些订阅的就绪点。monitor 在 `event_replay.rs::ready_point` 里按会话分组切块、优先会话先交，并按活跃集补发 `session-ended`，归档落在全部重放行之后（INVARIANTS §24）。本机活会话的骨架 tab 也由这条流的起停帧给出。
+- **启动序**：主窗口先经通道订好每台机器的会话流，再发 `frontend-ready`（带优先会话）——那就是这些订阅的就绪点。monitor 在 `event_replay.rs::ready_point` 里按会话分组切块、优先会话先交，并按活跃集补发 `session-ended`，归档落在全部重放行之后。本机活会话的骨架 tab 也由这条流的起停帧给出。
 - **冷读也问那台后端**：历史清单、整页正文、按偏移读、按行号读、子 agent、全文搜索都是帧命令（`history-*`）。记录解释（一行 jsonl → 通用记录，各家的翻译表在 `agents/<家>/`）只在后端，界面按 `t` 与格排版；主线外清单（ESC 回退掉的那几条）也是后端给的成品（实时帧 `session_branch` · 冷读 `history-branch`）；多台的搜索结果由本机后端合并排序。
 - **「X 变了 ⇒ 重读」只一种帧** `changed {topic, key?, rev?, body?}`：主题表（名字 · 可不可丢 · 带不带小成品、上限）只住后端 `wire/topic.rs`，协议见 IPC-PROTOCOL「`changed` 主题表」。壳不认主题，按 `topic` 原样扇给订了 `changed/<topic>` 的界面订阅；界面按生成的 `Topic` 订、读，带了 `body` 就不重问。
 - **Task 面板**：那台后端盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `changed {tasks, key: sid}`，界面订 `changed/tasks`，收到就重问 `tasks-list`。
@@ -358,7 +358,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 线上类型只在 Rust 写一份，经 ts-rs 导出成 TS：界面那份在 `src/frontend/ui/generated/`。`npm run gen:types` 重生成（两棵 Rust 树各跑一次 `export_bindings`），`npm run check:types` 要求重生成后零差异；生成物勿手改。
 
-手机的 Kotlin 类也从这一份来：`tests/scripts/gen-kotlin-wire.mjs` 读那份 TS 声明，出生成的类与各自的编解码（不经反射；写回与 Rust 逐字节同，金样 `tests/__fixtures__/wire-replies.golden.json` 钉），`generated-drift.sh` 要求重生成后零差异。手机嵌的 Rust 核心与 Kotlin 之间那一层（JNI 交上来的几样事 · 几个口的回值 · Kotlin 交进去的拨号请求与同名那一答）形状住 `cmd-wire` 的 `phone` · `dial`，同一个生成器出 Kotlin：缺一格就是两端契约对不上（报一次、不补默认值）。核心不先解再转：回包原样交 Kotlin，由生成的类解那一次；只有记录那一格在核心里一条一条判认不认得（`replies::mend_records`，认不出的成「认不出的记录」那一条，文案在核心）。
+手机的 Kotlin 类也从这一份来：`tests/scripts/gen-kotlin-wire.mjs` 读那份 TS 声明，出生成的类与各自的编解码，手机按类型读回包的命令就是 `cmd-wire` 那张 `calls!` 表（不经反射；写回与 Rust 逐字节同，金样 `tests/__fixtures__/wire-replies.golden.json` 钉），`generated-drift.sh` 要求重生成后零差异。手机嵌的 Rust 核心与 Kotlin 之间那一层（JNI 交上来的几样事 · 几个口的回值 · Kotlin 交进去的拨号请求与同名那一答）形状住 `cmd-wire` 的 `phone` · `dial`，同一个生成器出 Kotlin：缺一格就是两端契约对不上（报一次、不补默认值）。核心不先解再转：回包原样交 Kotlin，由生成的类解那一次；只有记录那一格在核心里一条一条判认不认得（`record::mend_records`，认不出的成「认不出的记录」那一条，文案在核心）。
 
 ### 3.8 格目录与 `BUILD_ID`
 

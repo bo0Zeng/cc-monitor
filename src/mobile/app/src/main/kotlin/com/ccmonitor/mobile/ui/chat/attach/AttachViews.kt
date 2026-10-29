@@ -146,7 +146,23 @@ private class Deleting(
     }
 }
 
-/** ［+］面板头一排：拍照 · 图片 · 文件（点一格 ⇒ 面板收起、开那个系统入口）。 */
+/** ［+］面板头一排的一格：开哪个系统入口 · 图标 · 字 · 判据认它的标签。 */
+internal class PlusTile(
+    val source: AttachSource,
+    val icon: Ph,
+    val label: () -> String,
+    val tag: String,
+)
+
+/** ［+］面板头一排：拍照 · 图片 · 文件。 */
+internal val PLUS_TILES =
+    listOf(
+        PlusTile(AttachSource.CAMERA, Ph.Camera, { copyText("mobAttach.plus.camera") }, ChatTestTags.PLUS_CAMERA),
+        PlusTile(AttachSource.IMAGE, Ph.Image, { copyText("mobAttach.plus.image") }, ChatTestTags.PLUS_IMAGE),
+        PlusTile(AttachSource.FILE, Ph.File, { copyText("mobAttach.plus.file") }, ChatTestTags.PLUS_FILE),
+    )
+
+/** ［+］面板头一排（[PLUS_TILES]；点一格 ⇒ 面板收起、开那个系统入口）。 */
 @Composable
 fun PlusAttachRow(pick: (AttachSource) -> Unit) {
     val tokens = LocalAppTokens.current
@@ -154,9 +170,7 @@ fun PlusAttachRow(pick: (AttachSource) -> Unit) {
         Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs),
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
     ) {
-        Tile(Ph.Circle, copyText("mobAttach.plus.camera"), ChatTestTags.PLUS_CAMERA) { pick(AttachSource.CAMERA) }
-        Tile(Ph.Square, copyText("mobAttach.plus.image"), ChatTestTags.PLUS_IMAGE) { pick(AttachSource.IMAGE) }
-        Tile(Ph.File, copyText("mobAttach.plus.file"), ChatTestTags.PLUS_FILE) { pick(AttachSource.FILE) }
+        PLUS_TILES.forEach { t -> Tile(t.icon, t.label(), t.tag) { pick(t.source) } }
     }
 }
 
@@ -216,7 +230,7 @@ fun AttachArea(
     }
 }
 
-/** 一张卡：图片 64dp 方块缩略图；文件是名 ＋ 状态的小卡。角上 ✕；传输中环 ＋ 百分比；排队断着 ⇒ 虚线、淡；失败 · 不收 ⇒ 描红。 */
+/** 一张卡：图片 64dp 方块缩略图；文件是名 ＋ 状态的小卡。角上 ✕；传输中只转环（不写进度数字）；排队断着 ⇒ 虚线、淡；失败 · 不收 ⇒ 描红。 */
 @Composable
 private fun Card(
     c: AttachCard,

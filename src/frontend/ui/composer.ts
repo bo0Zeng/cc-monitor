@@ -3,6 +3,7 @@
  *
  * - 一行：［＋］附件 · 字 · ➤；Enter 发、Shift+Enter 换行，组字时回车归输入法；Esc 焦点还给消息流。没发的字按会话各记一份。
  * - 上方一排（`queue-row.ts`）：这一端的待发（`outbox.ts`，发送中 ·［撤回］）＋ 那台推来的整份队列名单（排第 n · 谁发的 ·［撤回］）；
+ *   那台离线（机器成品，宿主经 `machineChanged` 交来）⇒ 照手上那一份淡着画、头上写名单是上次所知；
  *   再上一排是附件（`attach-row.ts`，拖到框上 · 粘贴 · ［＋］进同一排）。
  * - 交出只走 `session-queue-put`（经待发）：回执到了 ⇒ 字与 chip 一起清、框下写那台那一句；那台拒了 ⇒ 字留着、写那台那一句；
  *   没回执 ⇒ 留在待发（那一排「发送中」），那台接上照原编号重交（不挂在这条会话开没开着）。
@@ -104,6 +105,8 @@ export class Composer {
   private queue: QueueList | null = null;
   private queueOf: string | null = null;
   private watching: { origin: Origin; stop: () => void } | null = null;
+  /** 此刻离线的那几台 ⇒ 连接层写好的离线那一句（机器成品 `offlineSaid`）。 */
+  private readonly offline = new Map<string, string>();
   private note: Note | null = null;
   private sending = false;
   private lastRoom = -1;
@@ -184,6 +187,15 @@ export class Composer {
     for (const [k, d] of this.attachDrafts) if (k.startsWith(`${origin}\u0000`)) d.resume();
     const t = this.host.active();
     if (t && t.origin === origin) void this.readQueue();
+  }
+
+  /** 一台的状态成品来了（宿主跟着机器条一起交）：离线 ⇒ 记下连接层那句离线，名单照手上那一份淡着画；连着 ⇒ 拿掉。 */
+  machineChanged(origin: string, m: { readonly offline: boolean; readonly offlineSaid: string }): void {
+    const now = m.offline ? m.offlineSaid : undefined;
+    if (this.offline.get(origin) === now) return;
+    if (now === undefined) this.offline.delete(origin);
+    else this.offline.set(origin, now);
+    if (this.host.active()?.origin === origin) this.paint();
   }
 
   /** 焦点进框（说不了 ⇒ 不进）。 */
@@ -374,7 +386,7 @@ export class Composer {
     setDisabled(this.sendBtn, no ?? this.attachDraft()?.blocker(this.offlineLine()) ?? null);
     setBusy(this.sendBtn, this.sending ? this.sendLabel : null);
     this.attach.paint();
-    this.queueRow.paint(this.queueOf === this.key ? this.queue : null, this.outbox.of(t.origin, t.sessionId));
+    this.queueRow.paint(this.queueOf === this.key ? this.queue : null, this.outbox.of(t.origin, t.sessionId), this.offline.get(t.origin) ?? null);
     // 说不了、还有终端可去 ⇒ 那条出路（同会话头 ↗ 那一道）。
     this.frontBtn.style.display = no !== null && hasTerminal(t.face) && terminalFrontAvailable() ? "" : "none";
     const parts: HTMLElement[] = [this.frontBtn];

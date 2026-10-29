@@ -116,17 +116,17 @@ describe("运行表 × 活卡", () => {
 });
 
 describe("面板照帧里写好的三组与 chip 的字排", () => {
-  it("★ 三组照 `groups`（与 `state` 无关）、组内照它给的先后；chip 的字照抄 `summary`；组里点名表里没有的 ⇒ 不画", () => {
+  it("★ 三组照 `groups`（与 `state` 无关）、组内照它给的先后；更早那一组的组头照抄 `older_text`、chip 的字照抄 `summary`；组里点名表里没有的 ⇒ 不画", () => {
     const panel = new AgentsPanel();
     // 故意让分组与状态对不上：界面若还按 `state` 自己分，这条就红。
     const runs = [run("a", "done"), run("b", "running"), run("c", "failed"), run("d", "unknown")];
-    panel.setSession(SID, { ...table(runs, [], { running: ["c", "a"], recent: ["d"], older: ["b", "gone"] }), summary: "核心·agent 摘要" });
+    panel.setSession(SID, { ...table(runs, [], { running: ["c", "a"], recent: ["d"], older: ["b", "gone"], older_text: "核心·更早 ×1" }), summary: "核心·agent 摘要" });
     const rows = () => [...panel.pageElement.querySelectorAll<HTMLElement>(".agent-row")].map((r) => r.dataset.run);
     expect(rows()).toEqual(["c", "a", "d"]);
     expect([...panel.pageElement.querySelectorAll(".agent-group")].map((g) => g.textContent)).toEqual([
       copyText("agentsPanel.group.running"),
       copyText("agentsPanel.group.recent"),
-      copyText("agentsPanel.group.older", { n: 1 }),
+      "核心·更早 ×1",
     ]);
     expect(panel.summaryElement.textContent).toBe("核心·agent 摘要");
     expect(panel.label).toBe("核心·agent 摘要");
@@ -233,7 +233,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const { tm, streamRootEl, panel } = rig();
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.switchTo(SID);
-    tm.onSessionRuns(table(SIX, [], { running: ["w6"], recent: ["w4", "w3", "w2", "w1"], older: ["w5"] }));
+    tm.onSessionRuns(table(SIX, [], { running: ["w6"], recent: ["w4", "w3", "w2", "w1"], older: ["w5"], older_text: "核心·更早 ×1" }));
 
     // 主 tab：只在运行表里出现的那几个标签，消息流里一个字都没有；也没有任何按运行标的行。
     const mainText = streamRootEl.textContent ?? "";
@@ -247,7 +247,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     expect(groupsIn(panel)).toEqual([
       copyText("agentsPanel.group.running"),
       copyText("agentsPanel.group.recent"),
-      copyText("agentsPanel.group.older", { n: 1 }),
+      "核心·更早 ×1",
     ]);
     expect(rowsIn(panel)).toEqual([
       { run: "w6", ...st("running") },

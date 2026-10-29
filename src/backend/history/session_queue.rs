@@ -1,7 +1,7 @@
 //! 会话输入队：往一条会话说的每一句（聊天 ➤ · 压缩 · 清空 · Skill · 别的 agent 发来的）都排进那条会话的这一条队。
 //! 队住会话所在那台（主人），一条会话一份 `~/.cc-monitor/session-queue/<sid>.json`；后端自己的状态（删了会丢）。
 //!
-//! - **序号**：放进队那一下由主人发，`nextSeq` 落盘、单调递增，重启接着数；先后只看序号。发件端自报的几点（`atMs`）只给人看，
+//! - **序号**：放进队那一下由主人发，`nextSeq` 落盘、单调递增，重启接着数；先后只看序号。发件端自报的几点（`atMs`）只记在盘上，
 //!   各台的钟歪多少都不影响排队。主人自己的钟只用来判「收着的等够了没有」。
 //! - **去重**：同 id 再投只入队一次（送过 · 撤过的 id 也记着，最近 [`SEEN_KEEP`] 个），回原来那一条的样子。
 //! - **端内保序**：带端序号 `n` 的，前一号还没到 ⇒ 先收着（不发序号）；补上了连同后面接得上的一起排；
@@ -69,6 +69,7 @@ struct Entry {
     end: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     n: Option<u64>,
+    /// 发件端自报的几点（入参照交）：名单上不给人看了，盘上仍记着，同版本号的旧后端读这一份要这一格。
     at_ms: i64,
     arrived_ms: i64,
     text: String,
@@ -250,7 +251,6 @@ impl Book {
             seq: e.seq,
             id: e.id.clone(),
             end: e.end.clone(),
-            at_ms: e.at_ms,
             text: e.text.clone(),
             attachments: e.attachments.clone(),
             rewind: e.rewind.clone(),

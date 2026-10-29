@@ -993,7 +993,7 @@ pub(crate) mod skel {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     #[derive(Serialize, Deserialize)]
-    struct Said {
+    struct Run {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         at: Option<u64>,
         links: Vec<Link>,
@@ -1028,7 +1028,7 @@ pub(crate) mod skel {
 
     pub(crate) fn serialize<S: Serializer>(v: &[RunSaid], s: S) -> Result<S::Ok, S::Error> {
         s.collect_seq(v.iter().map(|r| {
-            Said {
+            Run {
                 at: r.when,
                 links: r
                     .links
@@ -1053,7 +1053,7 @@ pub(crate) mod skel {
     }
 
     pub(crate) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<RunSaid>, D::Error> {
-        Ok(Vec::<Said>::deserialize(d)?
+        Ok(Vec::<Run>::deserialize(d)?
             .into_iter()
             .map(|r| RunSaid {
                 when: r.at,
@@ -1241,7 +1241,8 @@ fn end_of(i: &RunInfo) -> Option<RunEndLine> {
     })
 }
 
-/// 列表的三组（运行表最早动过的在前 ⇒ 每组最近动过的在前）：在跑的全列 · 最近结束的 [`RECENT_ENDED`] 个 · 其余连状态不明的。
+/// 列表的三组（运行表最早动过的在前 ⇒ 每组最近动过的在前）：在跑的全列 · 最近结束的 [`RECENT_ENDED`] 个 · 其余连状态不明的；
+/// 更早那一组的组头字（「更早 ×n」）这里写好，那一组空 ⇒ 不上线。
 fn groups_of(runs: &[RunInfo]) -> RunGroups {
     let mut g = RunGroups::default();
     for r in runs.iter().rev() {
@@ -1256,6 +1257,12 @@ fn groups_of(runs: &[RunInfo]) -> RunGroups {
             _ => g.older.push(id),
         }
     }
+    g.older_text = (!g.older.is_empty()).then(|| {
+        Words(copy_text(
+            "agentsPanel.group.older",
+            &[("n", &g.older.len().to_string())],
+        ))
+    });
     g
 }
 

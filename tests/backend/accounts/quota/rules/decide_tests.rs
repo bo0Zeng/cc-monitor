@@ -1,4 +1,4 @@
-//! 后端的一判与推演。「策」＝ 拿三份升级材料（`setup::upgrade::material`：照号列表 · 离重置近的权重高 · 余量多的权重高，同一段换号的写法）＋ 积木库跑后端的 `turn`；
+//! 后端的一判与推演。「策」＝ 拿三份样例（`setup::samples`：照号列表 · 离重置近的权重高 · 余量多的权重高，同一段换号的写法）＋ 积木库跑后端的 `turn`；
 //! 「后」＝ 只测后端积木，策略是判据里的假策略。
 
 use super::*;
@@ -23,14 +23,14 @@ fn clock(t: u64) -> u16 {
     ((t % 86_400) / 60) as u16
 }
 
-fn material(n: usize) -> Material {
-    Material(script::parse(crate::accounts::quota::setup::upgrade::material(n)).expect("读得懂"))
+fn sample(n: usize) -> Sample {
+    Sample(script::parse(crate::accounts::quota::setup::samples::of(n)).expect("读得懂"))
 }
 
-/// 一份升级材料，判在判据这一层的沙箱里（[`test_engine`]）。
-struct Material(File);
+/// 一份样例，判在判据这一层的沙箱里（[`test_engine`]）。
+struct Sample(File);
 
-impl Strategy for Material {
+impl Strategy for Sample {
     fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
         self.0.code.decide_in(test_engine(), ctx)
     }
@@ -52,22 +52,22 @@ fn test_engine() -> &'static rhai::Engine {
     })
 }
 
-/// 权重恒 0：照号列表先后（升级材料 1）。
-fn by_list() -> &'static Material {
-    static F: OnceLock<Material> = OnceLock::new();
-    F.get_or_init(|| material(0))
+/// 权重恒 0：照号列表先后（样例 1）。
+fn by_list() -> &'static Sample {
+    static F: OnceLock<Sample> = OnceLock::new();
+    F.get_or_init(|| sample(0))
 }
 
-/// 离 5 小时重置越近权重越高（升级材料 2）。
-fn by_reset() -> &'static Material {
-    static F: OnceLock<Material> = OnceLock::new();
-    F.get_or_init(|| material(1))
+/// 离 5 小时重置越近权重越高（样例 2）。
+fn by_reset() -> &'static Sample {
+    static F: OnceLock<Sample> = OnceLock::new();
+    F.get_or_init(|| sample(1))
 }
 
-/// 余量多的权重高（升级材料 3）。
-fn by_left() -> &'static Material {
-    static F: OnceLock<Material> = OnceLock::new();
-    F.get_or_init(|| material(2))
+/// 余量多的权重高（样例 3）。
+fn by_left() -> &'static Sample {
+    static F: OnceLock<Sample> = OnceLock::new();
+    F.get_or_init(|| sample(2))
 }
 
 fn acct(id: &str, used5h: f64) -> Acct {
@@ -156,7 +156,7 @@ impl Strategy for Fixed {
     }
 }
 
-// ── 策：升级材料 ＋ 积木库 ─────────────────────────────────────────────────────
+// ── 策：样例 ＋ 积木库 ─────────────────────────────────────────────────────
 
 #[test]
 fn s01_never_switches_to_an_account_that_cannot_be_used() {
@@ -1155,7 +1155,7 @@ fn s36_one(seed: u64) -> (usize, usize) {
 }
 
 /// 常规那一趟跑哪几组：从原先常规跑的那一批（#22 第 1–20 组 · #26 第 1–5 组）里挑出的最少几组，挑法两条都要满足：
-/// · 那一批走到的策略分支（升级材料与积木库里每一个 `{…}` 块）· 判据这边的结局（比上 · 强制切换），这几组一样不少；
+/// · 那一批走到的策略分支（样例与积木库里每一个 `{…}` 块）· 判据这边的结局（比上 · 强制切换），这几组一样不少；
 /// · 把策略里约叫醒的那几处逐一改坏（删一处按时刻 · 按读数的叫醒、关掉一段条件，共 20 处），那一批红的，这几组也红：
 ///   #22 第 13 组独一份接得住「单次用量上限那一读数」两处，#26 第 5 组独一份接得住「要用的号窗口还没开」两处。
 /// 测试档的 Rhai 一组一到三秒，多跑的组不多走一个分支、不多接一处改坏，只多花时间；大样本照旧由下面 500 组那条在全量里跑。

@@ -9,7 +9,7 @@
 #   建 fixture(fake-claude 活 + @ccm_sid) → app 经 backend session_added 建 live 远端 tab
 #   → kill fake-claude(留 tmux shell) → backend session_left(life 可重连;后端会话账本裁)
 #     → 那一帧的脸(exited)→ tabs.onFace → `[e2e] tab-state … dot=exited`(Claude 已退出)
-#   → tmux kill-session(另留一个无关 cc-* 防空 backend 卡灰,§24bis) → @ccm_sid 消失
+#   → tmux kill-session(另留一个无关 cc-* 防空 backend 卡灰) → @ccm_sid 消失
 #     → 收割/对账 retire → session_left(life 已结束,脸 ended)→ tabs.onFace → `[e2e] tab-state … dot=ended`(已结束)
 # 探针行在那颗点变了的那一刻打一行(`tabs.ts::onFace`)。两条 grep 模式与探针真吐的行由 `tests/frontend/ui/tabs.vitest.ts` 对拍。
 set -euo pipefail

@@ -104,7 +104,7 @@ fn a_choice_missing_from_the_confirm_page_backs_out_without_confirming() {
     assert_eq!(t.keys, ["esc", "esc", "up", "up", "enter", "left", "left"]);
     assert_eq!(texts(&t), ["一", "二", "三"]);
     assert!(
-        matches!((FACE.read)(&t.lines()), RewindScreen::Prompt { .. }),
+        matches!((FACE.read)(&t.drawn()), RewindScreen::Prompt { .. }),
         "退回了输入行"
     );
 }
@@ -290,8 +290,8 @@ impl RewindIo for Lying<'_> {
     fn say(&mut self, text: &str) -> Result<Sent, CmdErr> {
         self.0.say(text)
     }
-    fn said(&mut self) -> Result<Vec<SaidLine>, CmdErr> {
-        let mut v = self.0.said()?;
+    fn lines(&mut self) -> Result<Vec<UserLine>, CmdErr> {
+        let mut v = self.0.lines()?;
         if let Some(l) = v.last_mut() {
             l.text = "别的话".to_string();
         }

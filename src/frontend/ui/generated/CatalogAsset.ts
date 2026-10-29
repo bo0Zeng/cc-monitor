@@ -2,7 +2,7 @@
 import type { ExtKind } from "./ExtKind";
 
 /**
- * 目录里的一条。
+ * 目录里的一条（盘上那一份与线上同一形）。
  */
 export type CatalogAsset = { kind: ExtKind, name: string, 
 /**

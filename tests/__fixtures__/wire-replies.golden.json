@@ -47,6 +47,137 @@
         "notice": "notice-x"
       }
     },
+    "assets-catalog": {
+      "rust": "{\"self\":\"self-x\",\"machines\":[{\"id\":\"id-x\",\"label\":\"label-x\",\"gen\":7,\"seenAt\":7,\"assets\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"project\":\"project-x\",\"dir\":\"dir-x\",\"digest\":\"digest-x\",\"summary\":{},\"off\":true}],\"projectDirs\":[\"projectDirs-x\"],\"notes\":{\"k\":{\"text\":\"text-x\",\"rev\":7}},\"sharedMcp\":true}],\"rows\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"state\":\"state-x\",\"from\":[{\"machine\":\"machine-x\",\"project\":\"project-x\",\"digest\":\"digest-x\",\"summary\":{}}]}],\"problems\":[\"problems-x\"],\"changed\":true,\"path\":\"path-x\"}",
+      "sample": {
+        "changed": true,
+        "machines": [
+          {
+            "assets": [
+              {
+                "digest": "digest-x",
+                "dir": "dir-x",
+                "kind": "skill",
+                "name": "name-x",
+                "off": true,
+                "project": "project-x",
+                "summary": {}
+              }
+            ],
+            "gen": 7,
+            "id": "id-x",
+            "label": "label-x",
+            "notes": {
+              "k": {
+                "rev": 7,
+                "text": "text-x"
+              }
+            },
+            "projectDirs": [
+              "projectDirs-x"
+            ],
+            "seenAt": 7,
+            "sharedMcp": true
+          }
+        ],
+        "path": "path-x",
+        "problems": [
+          "problems-x"
+        ],
+        "rows": [
+          {
+            "from": [
+              {
+                "digest": "digest-x",
+                "machine": "machine-x",
+                "project": "project-x",
+                "summary": {}
+              }
+            ],
+            "kind": "skill",
+            "name": "name-x",
+            "state": "state-x"
+          }
+        ],
+        "self": "self-x"
+      }
+    },
+    "assets-catalog-merge": {
+      "rust": "{\"self\":\"self-x\",\"machines\":[{\"id\":\"id-x\",\"label\":\"label-x\",\"gen\":7,\"seenAt\":7,\"assets\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"project\":\"project-x\",\"dir\":\"dir-x\",\"digest\":\"digest-x\",\"summary\":{},\"off\":true}],\"projectDirs\":[\"projectDirs-x\"],\"notes\":{\"k\":{\"text\":\"text-x\",\"rev\":7}},\"sharedMcp\":true}],\"rows\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"state\":\"state-x\",\"from\":[{\"machine\":\"machine-x\",\"project\":\"project-x\",\"digest\":\"digest-x\",\"summary\":{}}]}],\"problems\":[\"problems-x\"],\"changed\":true,\"path\":\"path-x\"}",
+      "sample": {
+        "changed": true,
+        "machines": [
+          {
+            "assets": [
+              {
+                "digest": "digest-x",
+                "dir": "dir-x",
+                "kind": "skill",
+                "name": "name-x",
+                "off": true,
+                "project": "project-x",
+                "summary": {}
+              }
+            ],
+            "gen": 7,
+            "id": "id-x",
+            "label": "label-x",
+            "notes": {
+              "k": {
+                "rev": 7,
+                "text": "text-x"
+              }
+            },
+            "projectDirs": [
+              "projectDirs-x"
+            ],
+            "seenAt": 7,
+            "sharedMcp": true
+          }
+        ],
+        "path": "path-x",
+        "problems": [
+          "problems-x"
+        ],
+        "rows": [
+          {
+            "from": [
+              {
+                "digest": "digest-x",
+                "machine": "machine-x",
+                "project": "project-x",
+                "summary": {}
+              }
+            ],
+            "kind": "skill",
+            "name": "name-x",
+            "state": "state-x"
+          }
+        ],
+        "self": "self-x"
+      }
+    },
+    "assets-sync": {
+      "rust": "{\"self\":\"self-x\",\"synced\":[{\"origin\":\"origin-x\",\"peer\":\"peer-x\",\"changed\":true,\"pushed\":7,\"error\":\"error-x\"}],\"reach\":[{\"origin\":\"origin-x\",\"machine\":\"machine-x\"}]}",
+      "sample": {
+        "reach": [
+          {
+            "machine": "machine-x",
+            "origin": "origin-x"
+          }
+        ],
+        "self": "self-x",
+        "synced": [
+          {
+            "changed": true,
+            "error": "error-x",
+            "origin": "origin-x",
+            "peer": "peer-x",
+            "pushed": 7
+          }
+        ]
+      }
+    },
     "bookmarks-edit": {
       "rust": "{\"dirs\":[\"dirs-x\"]}",
       "sample": {
@@ -61,6 +192,62 @@
         "dirs": [
           "dirs-x"
         ]
+      }
+    },
+    "deploy-install": {
+      "rust": "{\"action\":\"skip\",\"said\":\"said-x\",\"build\":\"build-x\",\"os\":\"os-x\"}",
+      "sample": {
+        "action": "skip",
+        "build": "build-x",
+        "os": "os-x",
+        "said": "said-x"
+      }
+    },
+    "deploy-uninstall": {
+      "rust": "{\"removed\":true,\"said\":\"said-x\"}",
+      "sample": {
+        "removed": true,
+        "said": "said-x"
+      }
+    },
+    "exit-policy-read": {
+      "rust": "{\"state\":\"absent\",\"killOnExit\":true,\"reason\":\"reason-x\",\"detail\":\"detail-x\",\"path\":\"path-x\",\"said\":\"said-x\"}",
+      "sample": {
+        "detail": "detail-x",
+        "killOnExit": true,
+        "path": "path-x",
+        "reason": "reason-x",
+        "said": "said-x",
+        "state": "absent"
+      }
+    },
+    "exit-policy-set": {
+      "rust": "{\"state\":\"absent\",\"killOnExit\":true,\"reason\":\"reason-x\",\"detail\":\"detail-x\",\"path\":\"path-x\",\"said\":\"said-x\"}",
+      "sample": {
+        "detail": "detail-x",
+        "killOnExit": true,
+        "path": "path-x",
+        "reason": "reason-x",
+        "said": "said-x",
+        "state": "absent"
+      }
+    },
+    "files-batch-stop": {
+      "rust": "{\"stopping\":true}",
+      "sample": {
+        "stopping": true
+      }
+    },
+    "files-browse": {
+      "rust": "{\"added\":7,\"removed\":7,\"rejected\":7,\"browse_watch_cap\":7,\"watching\":7,\"watch_failed\":7,\"watch_error\":\"watch_error-x\"}",
+      "sample": {
+        "added": 7,
+        "browse_watch_cap": 7,
+        "rejected": 7,
+        "removed": 7,
+        "watch_error": "watch_error-x",
+        "watch_failed": 7,
+        "watching": 7
       }
     },
     "files-chmod": {
@@ -85,11 +272,41 @@
         "said": "said-x"
       }
     },
+    "files-commit-text": {
+      "rust": "{\"path\":\"path-x\",\"bytes\":7,\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}",
+      "sample": {
+        "bytes": 7,
+        "path": "path-x",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
     "files-commit-upload": {
       "rust": "{\"path\":\"path-x\",\"bytes\":7}",
       "sample": {
         "bytes": 7,
         "path": "path-x"
+      }
+    },
+    "files-copy": {
+      "rust": "{\"outcomes\":[{\"key\":\"key-x\",\"state\":\"done\",\"path\":\"path-x\",\"new_name\":\"new_name-x\",\"bytes\":7,\"files\":7,\"dirs\":7,\"removed\":7,\"before\":7,\"code\":\"code-x\",\"reason\":\"reason-x\",\"detail\":\"detail-x\"}],\"said\":\"said-x\"}",
+      "sample": {
+        "outcomes": [
+          {
+            "before": 7,
+            "bytes": 7,
+            "code": "code-x",
+            "detail": "detail-x",
+            "dirs": 7,
+            "files": 7,
+            "key": "key-x",
+            "new_name": "new_name-x",
+            "path": "path-x",
+            "reason": "reason-x",
+            "removed": 7,
+            "state": "done"
+          }
+        ],
+        "said": "said-x"
       }
     },
     "files-create": {
@@ -121,10 +338,133 @@
         "said": "said-x"
       }
     },
+    "files-delete-session": {
+      "rust": "{\"path\":\"path-x\"}",
+      "sample": {
+        "path": "path-x"
+      }
+    },
+    "files-extract": {
+      "rust": "{\"path\":\"path-x\",\"bytes\":7,\"files\":7,\"dirs\":7,\"links\":7}",
+      "sample": {
+        "bytes": 7,
+        "dirs": 7,
+        "files": 7,
+        "links": 7,
+        "path": "path-x"
+      }
+    },
+    "files-find": {
+      "rust": "{\"hits\":[{\"path\":\"path-x\",\"kind\":\"dir\",\"class\":\"folder\",\"location\":\"location-x\",\"size\":7,\"mtime_secs\":7,\"mtime_text\":\"mtime_text-x\",\"marks\":[[7,7]]}],\"start\":\"start-x\",\"sort\":\"relevance\",\"desc\":true,\"total_hits\":7,\"truncated\":true,\"scanned\":7,\"index_age_secs\":7,\"index_missing\":true,\"stale\":true,\"index_root\":\"index_root-x\",\"out_of_index\":true,\"cover_root\":\"cover_root-x\",\"seq\":7,\"offset\":7}",
+      "sample": {
+        "cover_root": "cover_root-x",
+        "desc": true,
+        "hits": [
+          {
+            "class": "folder",
+            "kind": "dir",
+            "location": "location-x",
+            "marks": [
+              [
+                7,
+                7
+              ]
+            ],
+            "mtime_secs": 7,
+            "mtime_text": "mtime_text-x",
+            "path": "path-x",
+            "size": 7
+          }
+        ],
+        "index_age_secs": 7,
+        "index_missing": true,
+        "index_root": "index_root-x",
+        "offset": 7,
+        "out_of_index": true,
+        "scanned": 7,
+        "seq": 7,
+        "sort": "relevance",
+        "stale": true,
+        "start": "start-x",
+        "total_hits": 7,
+        "truncated": true
+      }
+    },
+    "files-grep": {
+      "rust": "{\"path\":\"path-x\",\"hits\":[{\"path\":\"path-x\",\"rel\":\"rel-x\",\"line\":7,\"text\":\"text-x\",\"matches\":7,\"lines\":[{\"line\":7,\"text\":\"text-x\",\"marks\":[[7,7]]}]}],\"files\":7,\"bytes\":7,\"links\":7,\"skipped_binary\":7,\"skipped_large\":7,\"skipped_mounts\":7,\"unreadable\":7,\"limit\":7,\"truncated\":true,\"stopped\":\"hits\"}",
+      "sample": {
+        "bytes": 7,
+        "files": 7,
+        "hits": [
+          {
+            "line": 7,
+            "lines": [
+              {
+                "line": 7,
+                "marks": [
+                  [
+                    7,
+                    7
+                  ]
+                ],
+                "text": "text-x"
+              }
+            ],
+            "matches": 7,
+            "path": "path-x",
+            "rel": "rel-x",
+            "text": "text-x"
+          }
+        ],
+        "limit": 7,
+        "links": 7,
+        "path": "path-x",
+        "skipped_binary": 7,
+        "skipped_large": 7,
+        "skipped_mounts": 7,
+        "stopped": "hits",
+        "truncated": true,
+        "unreadable": 7
+      }
+    },
     "files-home": {
       "rust": "{\"path\":\"path-x\"}",
       "sample": {
         "path": "path-x"
+      }
+    },
+    "files-index-rebuild": {
+      "rust": "{\"path\":\"path-x\",\"entries\":7,\"resident_bytes\":7,\"unreadable_dirs\":7,\"unreadable_paths\":[\"unreadable_paths-x\"],\"truncated\":true,\"skipped_mounts\":7}",
+      "sample": {
+        "entries": 7,
+        "path": "path-x",
+        "resident_bytes": 7,
+        "skipped_mounts": 7,
+        "truncated": true,
+        "unreadable_dirs": 7,
+        "unreadable_paths": [
+          "unreadable_paths-x"
+        ]
+      }
+    },
+    "files-index-status": {
+      "rust": "{\"index_missing\":true,\"entries\":7,\"resident_bytes\":7,\"unreadable_dirs\":7,\"unreadable_paths\":[\"unreadable_paths-x\"],\"truncated\":true,\"skipped_mounts\":7,\"age_secs\":7,\"rewalk_interval_secs\":7,\"stale\":true,\"browse_watches\":7,\"browse_watch_cap\":7,\"cold_first_build_secs\":7}",
+      "sample": {
+        "age_secs": 7,
+        "browse_watch_cap": 7,
+        "browse_watches": 7,
+        "cold_first_build_secs": 7,
+        "entries": 7,
+        "index_missing": true,
+        "resident_bytes": 7,
+        "rewalk_interval_secs": 7,
+        "skipped_mounts": 7,
+        "stale": true,
+        "truncated": true,
+        "unreadable_dirs": 7,
+        "unreadable_paths": [
+          "unreadable_paths-x"
+        ]
       }
     },
     "files-ls": {
@@ -216,6 +556,19 @@
       "rust": "{\"path\":\"path-x\"}",
       "sample": {
         "path": "path-x"
+      }
+    },
+    "files-size": {
+      "rust": "{\"path\":\"path-x\",\"bytes\":7,\"files\":7,\"dirs\":7,\"links\":7,\"other\":7,\"skipped_mounts\":7,\"unreadable_dirs\":7}",
+      "sample": {
+        "bytes": 7,
+        "dirs": 7,
+        "files": 7,
+        "links": 7,
+        "other": 7,
+        "path": "path-x",
+        "skipped_mounts": 7,
+        "unreadable_dirs": 7
       }
     },
     "files-stage-chunk": {
@@ -723,10 +1076,109 @@
         "total": 7
       }
     },
+    "machine-read": {
+      "rust": "{\"machines\":{\"k\":{\"name\":\"name-x\",\"state\":\"up\",\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"versionRelation\":\"same\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\"}},\"empty\":{\"line\":\"line-x\",\"hint\":\"hint-x\"}}",
+      "sample": {
+        "empty": {
+          "hint": "hint-x",
+          "line": "line-x"
+        },
+        "machines": {
+          "k": {
+            "detail": "detail-x",
+            "expectedHostKey": "expectedHostKey-x",
+            "fixes": [
+              {
+                "fix": "retry",
+                "label": "label-x"
+              }
+            ],
+            "name": "name-x",
+            "offline": true,
+            "offlineSaid": "offlineSaid-x",
+            "os": "os-x",
+            "reason": "resolve",
+            "route": "route-x",
+            "said": "said-x",
+            "seenHostKey": "seenHostKey-x",
+            "stage": "deploy",
+            "state": "up",
+            "version": "version-x",
+            "versionRelation": "same",
+            "word": "word-x"
+          }
+        }
+      }
+    },
+    "machine-stop": {
+      "rust": "{\"stopped\":\"stopped-x\",\"pid\":7}",
+      "sample": {
+        "pid": 7,
+        "stopped": "stopped-x"
+      }
+    },
+    "machine-wake": {
+      "rust": "{\"name\":\"name-x\",\"state\":\"up\",\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"versionRelation\":\"same\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\"}",
+      "sample": {
+        "detail": "detail-x",
+        "expectedHostKey": "expectedHostKey-x",
+        "fixes": [
+          {
+            "fix": "retry",
+            "label": "label-x"
+          }
+        ],
+        "name": "name-x",
+        "offline": true,
+        "offlineSaid": "offlineSaid-x",
+        "os": "os-x",
+        "reason": "resolve",
+        "route": "route-x",
+        "said": "said-x",
+        "seenHostKey": "seenHostKey-x",
+        "stage": "deploy",
+        "state": "up",
+        "version": "version-x",
+        "versionRelation": "same",
+        "word": "word-x"
+      }
+    },
     "needs-answer": {
       "rust": "{\"result\":\"answered\"}",
       "sample": {
         "result": "answered"
+      }
+    },
+    "plan-files": {
+      "rust": "{\"workspace\":\"workspace-x\",\"slice\":\"slice-x\",\"unreadable\":\"unreadable-x\",\"entries\":[{\"name\":\"name-x\",\"id\":\"id-x\",\"label\":\"label-x\",\"title\":\"title-x\",\"statusCode\":\"done\",\"status\":\"status-x\",\"block\":\"block-x\",\"fileState\":\"ok\",\"fileNote\":\"fileNote-x\",\"dup\":[{\"id\":\"id-x\",\"label\":\"label-x\",\"title\":\"title-x\"}]}],\"unowned\":[\"unowned-x\"],\"unownedWhy\":\"unownedWhy-x\"}",
+      "sample": {
+        "entries": [
+          {
+            "block": "block-x",
+            "dup": [
+              {
+                "id": "id-x",
+                "label": "label-x",
+                "title": "title-x"
+              }
+            ],
+            "fileNote": "fileNote-x",
+            "fileState": "ok",
+            "id": "id-x",
+            "label": "label-x",
+            "name": "name-x",
+            "status": "status-x",
+            "statusCode": "done",
+            "title": "title-x"
+          }
+        ],
+        "slice": "slice-x",
+        "unowned": [
+          "unowned-x"
+        ],
+        "unownedWhy": "unownedWhy-x",
+        "unreadable": "unreadable-x",
+        "workspace": "workspace-x"
       }
     },
     "quota-read": {
@@ -1687,6 +2139,16 @@
         "scrollback_lines": 7
       }
     },
+    "terminal-ssh": {
+      "rust": "{\"command\":\"command-x\"}",
+      "sample": {
+        "command": "command-x"
+      }
+    },
+    "terminal-unfollow": {
+      "rust": "null",
+      "sample": null
+    },
     "terminals-list": {
       "rust": "{\"terminals\":[{\"terminal\":\"terminal-x\",\"host\":\"tmux\",\"name\":\"name-x\",\"title\":\"title-x\",\"program\":\"program-x\",\"cwd\":\"cwd-x\",\"session\":{\"sid\":\"sid-x\",\"agent\":\"agent-x\"},\"started_by\":{\"client\":\"client-x\",\"mine\":true},\"clients\":[{\"kind\":\"terminal-window\",\"since\":7,\"last_activity\":7}],\"input\":{\"kind\":\"shared\"},\"state\":\"running\",\"last_activity\":7,\"can\":{\"input\":true,\"end\":true}}],\"complete\":true}",
       "sample": {
@@ -1726,12 +2188,80 @@
           }
         ]
       }
+    },
+    "transfer-copy": {
+      "rust": "{\"outcomes\":[{\"key\":\"key-x\",\"state\":\"done\",\"path\":\"path-x\",\"new_name\":\"new_name-x\",\"bytes\":7,\"files\":7,\"dirs\":7,\"removed\":7,\"before\":7,\"code\":\"code-x\",\"reason\":\"reason-x\",\"detail\":\"detail-x\"}],\"said\":\"said-x\"}",
+      "sample": {
+        "outcomes": [
+          {
+            "before": 7,
+            "bytes": 7,
+            "code": "code-x",
+            "detail": "detail-x",
+            "dirs": 7,
+            "files": 7,
+            "key": "key-x",
+            "new_name": "new_name-x",
+            "path": "path-x",
+            "reason": "reason-x",
+            "removed": 7,
+            "state": "done"
+          }
+        ],
+        "said": "said-x"
+      }
+    },
+    "transfer-download": {
+      "rust": "{\"items\":[{\"key\":\"key-x\",\"state\":\"opened\",\"id\":\"id-x\",\"staged\":\"staged-x\",\"path\":\"path-x\",\"new_name\":\"new_name-x\",\"overwrite\":true,\"code\":\"code-x\",\"reason\":\"reason-x\",\"detail\":\"detail-x\"}]}",
+      "sample": {
+        "items": [
+          {
+            "code": "code-x",
+            "detail": "detail-x",
+            "id": "id-x",
+            "key": "key-x",
+            "new_name": "new_name-x",
+            "overwrite": true,
+            "path": "path-x",
+            "reason": "reason-x",
+            "staged": "staged-x",
+            "state": "opened"
+          }
+        ]
+      }
+    },
+    "transfer-start": {
+      "rust": "null",
+      "sample": null
+    },
+    "transfer-stop": {
+      "rust": "null",
+      "sample": null
+    },
+    "transfer-upload": {
+      "rust": "{\"items\":[{\"key\":\"key-x\",\"state\":\"opened\",\"id\":\"id-x\",\"staged\":\"staged-x\",\"path\":\"path-x\",\"new_name\":\"new_name-x\",\"overwrite\":true,\"code\":\"code-x\",\"reason\":\"reason-x\",\"detail\":\"detail-x\"}]}",
+      "sample": {
+        "items": [
+          {
+            "code": "code-x",
+            "detail": "detail-x",
+            "id": "id-x",
+            "key": "key-x",
+            "new_name": "new_name-x",
+            "overwrite": true,
+            "path": "path-x",
+            "reason": "reason-x",
+            "staged": "staged-x",
+            "state": "opened"
+          }
+        ]
+      }
     }
   },
   "说明": [
     "手机读的那几条回包的跨语言金样。",
     "sample：结构夹具（每格都填、并集取第一形；node tests/scripts/gen-kotlin-wire.mjs --samples 现出，不放真正文）。",
-    "rust：cmd-wire 的 replies 表按类型解 sample、照类型写成的那一行（tests/common/cmd-wire/reply_goldens_tests.rs）。",
+    "rust：cmd-wire 的 calls! 表按类型解 sample、照类型写成的那一行（tests/common/cmd-wire/reply_goldens_tests.rs）。",
     "Kotlin：core-wire 的 RepliesGoldenTest 拿生成的类解 rust、再写回，逐字节同。"
   ]
 }

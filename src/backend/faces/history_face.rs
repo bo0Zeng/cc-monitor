@@ -13,9 +13,9 @@ use crate::observe::query::locate::{self, RecordProbe};
 use crate::observe::query::tail::TailPlan;
 use crate::observe::query::turns::{HistoryTurns, HistoryTurnsReq};
 use crate::observe::query::{body, jlen, tail, ENVELOPE_BYTES};
-use crate::wire::typed::{self, codes, of_pair, Command, NoArgs};
+use crate::wire::typed::{self, codes, of_pair, Command};
 use crate::wire::SessionFaceExt as _;
-pub(crate) use cmd_wire::needs::{AnsweredRow, NeedsList};
+pub(crate) use cmd_wire::needs::{AnsweredRow, NeedsList, SessionsNeedsReq};
 /// 这两条的回包住 `cmd-wire`（手机按同一份解，记录那一格按完整记录）；后端写的那一份记录是原样的一团（缺省 `Value`）。
 pub(crate) use cmd_wire::record::{HistoryImage, HistoryLines, HistoryRead, HistoryReadReq};
 pub(crate) use cmd_wire::session::{Held, HistoryTail, HistoryTailReq, TailHow};
@@ -278,23 +278,8 @@ pub(crate) fn page_at(
 
 // ───────────────────────── history-lines ─────────────────────────
 
-/// `history-lines` 的入参：按行号取 `[from, until)`。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct HistoryLinesReq {
-    /// jsonl 路径（围栏同 `history-read`）。
-    pub(crate) path: String,
-    /// 第一行的行号（缺 ⇒ 0）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) from: Option<u64>,
-    /// 可选右端（半开区间）；缺 ⇒ 到最后一个完整行为止。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) until: Option<u64>,
-}
+/// `history-lines` 的入参：线上形住 `cmd-wire::record`（名字与回包挂在 `cmd_wire::Call` 上）。
+pub(crate) use cmd_wire::record::HistoryLinesReq;
 
 page_codes!(
     /// `history-lines` 的码。
@@ -305,9 +290,7 @@ page_codes!(
 pub(crate) struct HistoryLinesCmd;
 
 impl Command for HistoryLinesCmd {
-    const NAME: &'static str = "history-lines";
-    type Req = HistoryLinesReq;
-    type Reply = HistoryLines;
+    crate::wire::typed::by_call!(HistoryLinesReq);
     type Err = HistoryLinesErr;
 }
 
@@ -790,17 +773,15 @@ codes! {
 pub(crate) struct SessionsNeedsCmd;
 
 impl Command for SessionsNeedsCmd {
-    const NAME: &'static str = "sessions-needs";
+    crate::wire::typed::by_call!(SessionsNeedsReq);
     const TAKES_INPUT: bool = false;
-    type Req = NoArgs;
-    type Reply = NeedsList;
     type Err = SessionsNeedsErr;
 }
 
 impl crate::wire::typed::Handle for SessionsNeedsCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
-        _req: NoArgs,
+        _req: SessionsNeedsReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<NeedsList, SessionsNeedsErr>> + Send + 'static
     {
@@ -948,7 +929,7 @@ pub(crate) async fn needs_merge_with(
 ) -> Result<crate::observe::recognize::facts::NeedsMerged, NeedsMergeErr> {
     let got = crate::dial::remote_ask::ask_each::<SessionsNeedsCmd, _>(
         machines,
-        &NoArgs::default(),
+        &SessionsNeedsReq {},
         local,
         tz,
         until,

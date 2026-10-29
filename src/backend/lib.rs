@@ -95,8 +95,8 @@ mod single_stream_guard; // K-P1 KPY8：多客户按连接各一份 —— 「�
 pub mod stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；后端自有状态，经 `Own`，写口只从 main.rs 进）
 pub mod stream; // 进后端的口（最上层）：命令表 · 帧面与 CLI 面的分派 · 门 · 期限 · 出口声明 · tap（谁都不引它，只 main / lib 接）
 #[cfg(test)]
-#[path = "../../tests/backend/test_home_guard.rs"]
-mod test_home_guard; // 每个有判据的 Rust crate 都引了 `src/common/test-home`（测试档的家一开始就是沙箱）
+#[path = "../../tests/backend/test_home_tests.rs"]
+mod test_home_tests; // `src/common/test-home` 自己的行为（换家 · 摘会话变量 · 临时目录照旧）：子进程那几条要真测试二进制
 pub mod wire; // 帧面的协议零件（最底下那一层，只引 platform · common · agents · relay）：帧 · typed 命令 · 登记形状 · 复制详情 · 主题表 · 监听判定 · 收场闸
 
 /// 后端身份（`Hello` 帧的 `build_id`，也烤进二进制的身份戳）：monitor 拿它比内嵌那份的，不同 ⇒ 那台该换后端。
@@ -582,11 +582,6 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
 #[cfg(test)]
 #[path = "../../tests/backend/main_fourth_face_tests.rs"]
 mod fourth_face_tests;
-
-#[allow(clippy::items_after_test_module)]
-#[cfg(test)]
-#[path = "../../tests/backend/main_window_raise_guard.rs"]
-mod window_raise_guard;
 
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]

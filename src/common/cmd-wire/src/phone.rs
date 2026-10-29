@@ -29,7 +29,7 @@ pub enum LinkLine {
 }
 
 /// `reply` 那一件：一问一答的结局（`call` ＝ 问的时候领的那个号）。成了的 `data` 是那台回包原样（Kotlin 照那条命令的回包类型解那一次；
-/// 记录那一格核心先判过认不认得，`replies::mend_records`）。
+/// 记录那一格核心先判过认不认得，`record::mend_records`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(

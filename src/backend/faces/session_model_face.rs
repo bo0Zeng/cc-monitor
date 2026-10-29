@@ -12,26 +12,12 @@ use crate::faces::session_mode_face::SwitchResult;
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
-use serde::Deserialize;
 
 /// 送出那一行之后最多等多久读回（毫秒）：那一家处理本地命令是当场的，这是兜底的期限。
 const READBACK_MS: u64 = 15_000;
 
-/// `session-model` 的入参。
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct SessionModelReq {
-    /// 会话 id。
-    pub(crate) sid: cmd_wire::Sid,
-    /// 要换成的模型（原值；必须是 `session-open-facts` 那一家 `models` 里的一个）。
-    pub(crate) model: String,
-    /// 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) client: Option<String>,
-}
+/// `session-model` 的入参：线上形住 `cmd-wire::session`（名字与回包挂在 `cmd_wire::Call` 上）。
+pub(crate) use cmd_wire::session::SessionModelReq;
 
 /// `session-model` 的回包：线上形住 `cmd-wire::session`。
 pub(crate) use cmd_wire::session::ModelSwitched;
@@ -224,9 +210,7 @@ fn box_watch(sid: &str, client: Option<&str>) -> Option<crate::control::terminal
 pub(crate) struct SessionModel;
 
 impl Command for SessionModel {
-    const NAME: &'static str = "session-model";
-    type Req = SessionModelReq;
-    type Reply = ModelSwitched;
+    typed::by_call!(SessionModelReq);
     type Err = SessionModelErr;
 }
 

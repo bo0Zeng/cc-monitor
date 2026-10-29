@@ -424,14 +424,21 @@ pub struct AnswerReq {
     /// `needs.ask.choices[].id`。
     pub choice: String,
     /// 可缺：附的那句话（选项 `note` 是 required 时必给）。
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub note: Option<String>,
     /// 提问那一种选 `answer` 时必给：题 id ⇒ 那一题的答，每题都要答、单选至多一项。
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub picks: Option<std::collections::BTreeMap<String, AnswerPick>>,
 }
+
+/// `sessions-needs` 的入参（没有格）。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SessionsNeedsReq {}
 
 /// 提问那一种里一题的答：选了哪几项 ＋ 自由文本。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

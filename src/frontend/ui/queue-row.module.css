@@ -1,4 +1,4 @@
-/* 终端面板输入框上方那一排输入队：每条一行（那一句 · 谁发的几点 · 那一句开头 ·［撤回］）。 */
+/* 消息流底下输入框上方那一排输入队：那台离线时头上一行；每条一行（那一句 · 谁发的 · 那一句开头 ·［撤回］），最多露三行、多的框里滚。 */
 @layer components {
   .queueRow {
     display: flex;
@@ -10,8 +10,27 @@
     display: none;
   }
 
+  .queueHead {
+    composes: one-line from global;
+    color: var(--text-2);
+  }
+
+  /* 三行：每行高是一颗紧凑按钮（［撤回］），行间 --space-1；多的框里滚，不往上顶消息流。 */
+  .queueLines {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    max-height: calc(3 * var(--control-h-compact) + 2 * var(--space-1));
+    overflow-y: auto;
+  }
+
+  .queueRow[data-stale="true"] .queueLines {
+    opacity: 0.62;
+  }
+
   .queueLine {
     display: flex;
+    flex: none;
     align-items: center;
     gap: var(--space-3);
     min-width: 0;

@@ -228,14 +228,14 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/control/exit_policy_tests.rs", needle: "control::exit_policy::tests::wire_child" },
     ),
     (
-        "tests/backend/test_home_guard.rs",
+        "tests/backend/test_home_tests.rs",
         "child_sees_no_outer_session",
-        Trigger::Filter { by: "tests/backend/test_home_guard.rs", needle: "test_home_guard::child_sees_no_outer_session" },
+        Trigger::Filter { by: "tests/backend/test_home_tests.rs", needle: "test_home_tests::child_sees_no_outer_session" },
     ),
     (
-        "tests/backend/test_home_guard.rs",
+        "tests/backend/test_home_tests.rs",
         "child_litters_the_temp_dir",
-        Trigger::Filter { by: "tests/backend/test_home_guard.rs", needle: "test_home_guard::child_litters_the_temp_dir" },
+        Trigger::Filter { by: "tests/backend/test_home_tests.rs", needle: "test_home_tests::child_litters_the_temp_dir" },
     ),
     (
         "tests/backend/stream/caps_tests.rs",

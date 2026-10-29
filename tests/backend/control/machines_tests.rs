@@ -151,6 +151,24 @@ fn an_unreadable_table_is_reported_and_never_overwritten() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// 版本归声明表那一行：没写 `version` 的当第 1 版读；写回的那一份顶层带 `version: 1`。
+#[test]
+fn the_version_is_kept_by_the_declaration() {
+    let home = scratch("version");
+    std::fs::write(
+        path_in(&home),
+        r#"{"hosts": [{"host": "h.lan", "user": "pi"}]}"#,
+    )
+    .unwrap();
+    let r = answer_read_in(Some(&home));
+    assert_eq!((r.state, r.hosts.len()), (cmd_wire::FileState::Ok, 1));
+    set(&home, json!([insert("gpu", "g.lan")])).unwrap();
+    let v: Value = serde_json::from_slice(&std::fs::read(path_in(&home)).unwrap()).unwrap();
+    assert_eq!(v["version"], 1);
+    assert_eq!(v["hosts"].as_array().map(Vec::len), Some(2));
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 /// 写完响一下（流连接照它推 `changed {machines}`）；一条都没动 ⇒ 不写。
 #[test]
 fn a_write_rings_the_bell_and_a_no_op_does_not() {

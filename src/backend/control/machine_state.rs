@@ -7,7 +7,7 @@
 //! （[`crate::dial::links`]）；池里成员动了（放进一条 · 断了 · 没人用了）⇒ 每台重推一份（[`follow_pool`]，零定时器）。
 
 use crate::dial::links::Links;
-use cmd_wire::machine::{EmptyFace, MachineState, Round};
+use cmd_wire::machine::{EmptyFace, MachineRead, MachineReadReq, MachineState, Round};
 use deploy::machine::{fold, product, Entry, Fact};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -193,15 +193,6 @@ fn local_row() -> MachineState {
     product(&e, &copy_core::local_machine(), true, true)
 }
 
-/// `machine-read` 的回包：机器表里每台 → 成品；连同此刻的首屏那一句。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct MachineRead {
-    pub(crate) machines: BTreeMap<String, MachineState>,
-    pub(crate) empty: EmptyFace,
-}
-
 crate::wire::typed::codes! {
     /// `machine-read` 没有别的码。
     pub(crate) enum MachineReadErr {}
@@ -211,17 +202,15 @@ crate::wire::typed::codes! {
 pub(crate) struct MachineReadCmd;
 
 impl crate::wire::typed::Command for MachineReadCmd {
-    const NAME: &'static str = "machine-read";
+    crate::wire::typed::by_call!(MachineReadReq);
     const TAKES_INPUT: bool = false;
-    type Req = crate::wire::typed::NoArgs;
-    type Reply = MachineRead;
     type Err = MachineReadErr;
 }
 
 impl crate::wire::typed::Handle for MachineReadCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
-        _req: crate::wire::typed::NoArgs,
+        _req: MachineReadReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<MachineRead, MachineReadErr>> + Send + 'static
     {

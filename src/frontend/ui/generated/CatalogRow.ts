@@ -3,6 +3,6 @@ import type { CatalogFrom } from "./CatalogFrom";
 import type { ExtKind } from "./ExtKind";
 
 /**
- * 「别的机器有的，这台怎样」那一行：`state` 闭集 `missing` · `differs` · `same`（[`HERE_STATES`]）。
+ * 「别的机器有的，这台怎样」那一行：`state` 闭集 `missing` · `differs` · `same`（判定在后端 `asset_catalog::rows`）。
  */
 export type CatalogRow = { kind: ExtKind, name: string, state: string, from: Array<CatalogFrom>, };

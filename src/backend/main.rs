@@ -575,7 +575,8 @@ fn spawn_sigusr1_task() -> tokio::task::JoinHandle<()> {
 /// ⇒ 「hello 先于 reader」这条时序在换了载体之后**逐字保留**，仍然编译期不可表示。
 struct Attached {
     reader: tokio::io::BufReader<tokio::io::ReadHalf<own_chan::Stream>>,
-    writer: BufWriter<tokio::io::WriteHalf<own_chan::Stream>>,
+    /// 回话那一行之后的写半边：客户端要了 deflate ⇒ 整条压（`listen::Down`）。
+    writer: listen::Down<BufWriter<tokio::io::WriteHalf<own_chan::Stream>>>,
     hello_flushed: wire::HelloFlushed,
     /// 看的这一台的时区（attach 行里的 `tz`）。
     tz: cc_monitor_backend::Tz,
@@ -636,6 +637,11 @@ async fn handshake_one(
             if listen::write_line(&mut w, &reply.line()).await.is_err() {
                 return;
             }
+            let deflate = matches!(
+                reply,
+                cmd_wire::attach::AttachReply::Ok { deflate: true, .. }
+            );
+            let w = listen::Down::new(w, deflate);
             let tz = tz
                 .as_deref()
                 .and_then(cc_monitor_backend::Tz::named)

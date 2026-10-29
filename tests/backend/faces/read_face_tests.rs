@@ -2198,7 +2198,7 @@ fn every_golden_record_is_decoded_by_the_phone_as_a_whole_record() {
 
 fn phone_decodes_back(cmd: &str, bytes: &str) {
     let v: serde_json::Value = serde_json::from_str(bytes).unwrap();
-    match cmd_wire::replies::typed_text(cmd, v.clone()) {
+    match cmd_wire::call::typed_text(cmd, v.clone()) {
         // 记录一条一条地解（解不开的那一条成认不出那一条、整份不失败）⇒ 照类型写回与原样同值（键序是类型的序、不比）才说明每一条都按完整记录解开了。
         Some(Ok(back)) => assert_eq!(
             serde_json::from_str::<serde_json::Value>(&back).unwrap(),

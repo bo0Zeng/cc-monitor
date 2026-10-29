@@ -285,7 +285,7 @@ impl Fail {
 /// 接上之后到开读之前定下的那几样。
 struct Connected<S> {
     client: Arc<InboundClient>,
-    reader: tokio::io::BufReader<tokio::io::ReadHalf<S>>,
+    reader: crate::line::Downstream<tokio::io::ReadHalf<S>>,
     hello: attach::Hello,
     relation: Relation,
     /// 形状对不上的那几种帧（[`State::Up`] 那一格）。
@@ -666,13 +666,33 @@ impl<T: Transport> Feed<T> {
         })
     }
 
-    /// 开一条 `--resident-attach`、握手（attach 行带手上这一版，那台回新旧）。
-    /// 开链路那一步：[`DIAL_WITHIN`] 里拨号核心一步进展都没报（[`Progress`]）⇒ 丢下（[`AttachOr::Unanswered`]）；每报一步重新计时；拨着的时候宿主报了事 ⇒ 丢下（[`AttachOr::Interrupted`]）：
-    /// [`Feed::wake`] · [`Feed::reconnect`]（按的那一下在开拨之后才算：开拨之前按的照旧只省一次等）· [`Feed::set_transport`]（拨这一轮的收工信号 `cut`）。
+    /// 开一条 `--resident-attach`、握手：attach 行带手上这一版（那台回新旧）、要那台压（回认 ⇒ 读半边边读边解）。
+    /// 那台认不得这一形（比 `deflate` 那一格早）而这一侧不自己装后端 ⇒ 不带这一格再开一条，照不压接上；自己装的宿主照旧当旧（装上这一版再接）。
     async fn attach_on(
         &self,
         t: &Arc<T>,
         cut: &Notify,
+    ) -> Result<attach::Attached<T::Stream>, AttachOr> {
+        match self.attach_once(t, cut, true).await {
+            Err(AttachOr::Shake(AttachFail::Old)) if !t.installs() => {
+                tracing::info!(
+                    "resident feed [{}] 那台认不得带 deflate 的 attach 行 ⇒ 不压再接",
+                    self.cfg.machine
+                );
+                self.attach_once(t, cut, false).await
+            }
+            r => r,
+        }
+    }
+
+    /// 开一条 `--resident-attach`、握手一次（`deflate` ⇒ attach 行要那台压）。
+    /// 开链路那一步：[`DIAL_WITHIN`] 里拨号核心一步进展都没报（[`Progress`]）⇒ 丢下（[`AttachOr::Unanswered`]）；每报一步重新计时；拨着的时候宿主报了事 ⇒ 丢下（[`AttachOr::Interrupted`]）：
+    /// [`Feed::wake`] · [`Feed::reconnect`]（按的那一下在开拨之后才算：开拨之前按的照旧只省一次等）· [`Feed::set_transport`]（拨这一轮的收工信号 `cut`）。
+    async fn attach_once(
+        &self,
+        t: &Arc<T>,
+        cut: &Notify,
+        deflate: bool,
     ) -> Result<attach::Attached<T::Stream>, AttachOr> {
         let mut kicked = self.kick.subscribe();
         let progress = Progress::default();
@@ -704,6 +724,7 @@ impl<T: Transport> Feed<T> {
             self.cfg.tz.as_deref(),
             self.cfg.mine.as_deref(),
             Some(self.desk.ask_for_attach()),
+            deflate,
             self.cfg.handshake,
         )
         .await
@@ -817,7 +838,7 @@ impl<T: Transport> Feed<T> {
     async fn pump(
         &self,
         client: &Arc<InboundClient>,
-        reader: tokio::io::BufReader<tokio::io::ReadHalf<T::Stream>>,
+        reader: crate::line::Downstream<tokio::io::ReadHalf<T::Stream>>,
         cut: &Notify,
     ) {
         let mut buf = Vec::new();

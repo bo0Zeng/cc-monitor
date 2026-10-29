@@ -3,7 +3,7 @@
 //! 从开出链路到通着一个来回。桌面与手机同一份零件；两端都整段走 [`handshake`]（经 [`crate::feed`]）。
 
 use crate::client::{split_and_park, BackendHello, ParkedWriter};
-use crate::line::{read_capped_line, CappedLine};
+use crate::line::{read_capped_line, CappedLine, Downstream};
 use cmd_wire::attach::{AttachLine, AttachReply, Relation, Yes};
 use cmd_wire::watch::WatchAsk;
 use copy_core::copy_text;
@@ -28,22 +28,30 @@ pub fn relay_refusal(first: &str) -> Option<String> {
     }
 }
 
-/// attach 行：「我要流」＋ 看的这一台的时区 ＋ 手上这一版的身份 ＋ 在看名单（本机 · 远端 · 手机同一处拼）。
+/// attach 行：「我要流」＋ 看的这一台的时区 ＋ 手上这一版的身份 ＋ 在看名单（本机那一条：同机不压）。
 /// `tz` ⇒ `None` 不带（后端按 UTC 写推来的钟面）；`mine` ⇒ `None` 不带（那台就不回新旧）；`watch` 照名单台此刻那份（[`crate::watch::Desk::ask_for_attach`]）。
 pub fn attach_line(tz: Option<&str>, mine: Option<&str>, watch: Option<WatchAsk>) -> String {
+    line_of(tz, mine, watch, false)
+}
+
+/// attach 行只在这一处拼（本机 · 远端 · 手机）；`deflate` ⇒ 要那台把回话之后的字节整条压过来。
+fn line_of(tz: Option<&str>, mine: Option<&str>, watch: Option<WatchAsk>, deflate: bool) -> String {
     AttachLine {
         attach: Yes,
         tz: tz.map(str::to_string),
         mine: mine.map(str::to_string),
+        deflate,
         watch,
     }
     .line()
 }
 
-/// attach 回话：「可以」⇒ 那台相对 `mine` 的新旧（没回 ⇒ 不可比）；拒了 ⇒ [`AttachFail::Refused`]（原因原样）；别的 ⇒ 那一句。
-pub fn attach_reply(line: &str) -> Result<Relation, AttachFail> {
+/// attach 回话：「可以」⇒ 那台相对 `mine` 的新旧（没回 ⇒ 不可比）＋ 认没认 deflate；拒了 ⇒ [`AttachFail::Refused`]（原因原样）；别的 ⇒ 那一句。
+pub fn attach_reply(line: &str) -> Result<(Relation, bool), AttachFail> {
     match AttachReply::of(line) {
-        Some(AttachReply::Ok { relation }) => Ok(relation.unwrap_or(Relation::Incomparable)),
+        Some(AttachReply::Ok { relation, deflate }) => {
+            Ok((relation.unwrap_or(Relation::Incomparable), deflate))
+        }
         Some(AttachReply::Refused { reason }) => Err(AttachFail::Refused(reason)),
         None => Err(AttachFail::Reply(copy_text(
             "rsRemoteResident.handshake.refused",
@@ -112,9 +120,9 @@ pub enum AttachFail {
     Reply(String),
 }
 
-/// 握完手的那一条：读半边（带缓冲，紧跟 attach 的帧已在里面）· 停着的写半边 · hello · 那台相对这一版 · attach 行带过的名单。
+/// 握完手的那一条：读半边（带缓冲，紧跟 attach 的帧已在里面；那台认了 deflate ⇒ 边读边解）· 停着的写半边 · hello · 那台相对这一版 · attach 行带过的名单。
 pub struct Attached<S> {
-    pub reader: BufReader<ReadHalf<S>>,
+    pub reader: Downstream<ReadHalf<S>>,
     pub writer: ParkedWriter<WriteHalf<S>>,
     pub hello: Hello,
     pub relation: Relation,
@@ -155,14 +163,15 @@ fn read_failed(hello: bool, raw: String) -> AttachFail {
 /// 常驻后端认不得 attach 行时回的原因（后端 `wire/listen.rs` 的 `REFUSE_MALFORMED`）。
 pub const REFUSE_MALFORMED: &str = "malformed-attach";
 
-/// 整段握手：写 attach 行（`mine` ＝ 手上这一版；没带 ⇒ 新旧记不可比；`watch` ＝ 在看名单）→ 读第一行（拒绝 ⇒ [`AttachFail::Refused`]；不是 hello ⇒
-/// [`AttachFail::NotOurs`]）→ 读回话（认不得这一形 ⇒ [`AttachFail::Old`]）。每一行各等至多 `within`。
+/// 整段握手：写 attach 行（`mine` ＝ 手上这一版；没带 ⇒ 新旧记不可比；`watch` ＝ 在看名单；`deflate` ⇒ 要那台压）→ 读第一行（拒绝 ⇒ [`AttachFail::Refused`]；不是 hello ⇒
+/// [`AttachFail::NotOurs`]）→ 读回话（认不得这一形 ⇒ [`AttachFail::Old`]；要了 deflate、回话认了 ⇒ 读半边边读边解）。每一行各等至多 `within`。
 /// 写半边在写完 attach 行那一刻就停住（[`split_and_park`]）。attach 行没写出去（链路已断）照读第一行：小中继的拒绝行先于断开。
 pub async fn handshake<S>(
     mut stream: S,
     tz: Option<&str>,
     mine: Option<&str>,
     watch: Option<WatchAsk>,
+    deflate: bool,
     within: Duration,
 ) -> Result<Attached<S>, AttachFail>
 where
@@ -170,7 +179,7 @@ where
 {
     let sent = async {
         stream
-            .write_all(attach_line(tz, mine, watch.clone()).as_bytes())
+            .write_all(line_of(tz, mine, watch.clone(), deflate).as_bytes())
             .await?;
         stream.flush().await
     }
@@ -196,12 +205,12 @@ where
     let first = first?;
     let hello = Hello::parse(&first).ok_or_else(|| AttachFail::NotOurs(first.clone()))?;
     let reply = line_within(&mut reader, false, within).await?;
-    let relation = match attach_reply(&reply) {
+    let (relation, deflated) = match attach_reply(&reply) {
         Err(AttachFail::Refused(r)) if r == REFUSE_MALFORMED => return Err(AttachFail::Old),
         r => r?,
     };
     Ok(Attached {
-        reader,
+        reader: Downstream::new(reader, deflate && deflated),
         writer,
         hello,
         relation: if mine.is_some() {

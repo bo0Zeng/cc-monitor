@@ -880,7 +880,7 @@ fn the_backend_test_command_in_the_docs_matches_ci() {
 // ════════════════════════════════════════════════════════════════════════
 
 /// `INVARIANTS.md` 里的节号 → 那一节的正文（到下一个同级或更高级标题为止）。
-/// 节号认 `## N.` / `### N.M` / `## 24bis.` / `### 17a.` 这几形标题行。
+/// 节号认 `## N.` / `### N.M` / `### 17a.` 这几形标题行（字母后缀可以不止一个字母）。
 fn invariant_sections() -> std::collections::BTreeMap<String, String> {
     let mut out: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
     let mut cur: Option<(String, usize)> = None;
@@ -987,7 +987,7 @@ fn invariant_ref_resolves(secs: &std::collections::BTreeMap<String, String>, id:
 fn every_invariants_section_cited_in_code_exists() {
     let secs = invariant_sections();
     // 正控：节号表读得出，且三种形状各在（否则认法坏了）。
-    for id in ["2", "2.1", "24bis", "17a", "41.6", "49"] {
+    for id in ["2", "2.1", "17a", "41.6", "49"] {
         assert!(
             secs.contains_key(id),
             "INVARIANTS 的节号表里没有 `{id}` —— 标题认法坏了（读到 {} 节）",

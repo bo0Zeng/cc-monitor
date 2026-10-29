@@ -190,6 +190,7 @@ pub enum Admit {
 
 /// 判一行 attach 请求、分档。**纯函数**。形状是 `cmd_wire::attach::AttachLine`（认不得的格 · `attach` 不是 `true` · 不是 JSON ⇒ malformed）；
 /// 多客户：形状对就交流，不看「有没有人占着」。新旧按 `deploy_contract::build_relation(own, mine)` 判（序键是 `BUILD_ID` 的，哪一版后端算都一样）。
+/// 要了 deflate ⇒ 这台总认（回话带那一格，之后那条流经 [`Down`] 压）。
 pub fn admit(line: &str, own: &str) -> Admit {
     match serde_json::from_str::<AttachLine>(line.trim()) {
         Ok(l) => Admit::Stream {
@@ -198,6 +199,7 @@ pub fn admit(line: &str, own: &str) -> Admit {
                     .mine
                     .as_deref()
                     .map(|m| deploy_contract::build_relation(own, m)),
+                deflate: l.deflate,
             },
             tz: l.tz,
             watch: l.watch,
@@ -243,6 +245,127 @@ where
     use tokio::io::AsyncWriteExt;
     w.write_all(line.as_bytes()).await?;
     w.flush().await
+}
+
+/// deflate 级别（同 OpenSSH ≤ 10.5 的 `zlib@openssh.com`）。
+pub const DEFLATE_LEVEL: u32 = 6;
+
+/// 压缩器一次往外攒多少字节（攒满就先往下写，再接着压）。
+const DEFLATE_CHUNK: usize = 64 * 1024;
+
+/// 接成流之后这台写过去的那一半：原样，或客户端要了 deflate（回话认了）⇒ 回话那一行之后整条是一个 raw deflate 流。
+/// `poll_write` 只往压缩器里喂、攒出来的往下写；`poll_flush` 先做一次 sync flush 再 flush 下面 ⇒ `writer_task` 每帧一 flush，
+/// 每一帧到了对端就解得出来。整条一个压缩上下文：与 SSH 层 zlib 压这条流时同一形。
+pub struct Down<W> {
+    inner: W,
+    z: Option<Deflating>,
+}
+
+struct Deflating {
+    z: flate2::Compress,
+    /// 压出来、还没写下去的字节（`out[at..]`）。
+    out: Vec<u8>,
+    at: usize,
+    /// 上一次 sync flush 之后喂过字节。
+    dirty: bool,
+}
+
+impl<W> Down<W> {
+    pub fn new(inner: W, deflate: bool) -> Self {
+        Down {
+            inner,
+            z: deflate.then(|| Deflating {
+                z: flate2::Compress::new(flate2::Compression::new(DEFLATE_LEVEL), false),
+                out: Vec::with_capacity(DEFLATE_CHUNK),
+                at: 0,
+                dirty: false,
+            }),
+        }
+    }
+
+    pub fn get_ref(&self) -> &W {
+        &self.inner
+    }
+}
+
+/// 攒着的那几字节写下去（写完清空，好接着压）。
+fn drain<W: tokio::io::AsyncWrite + Unpin>(
+    inner: &mut W,
+    d: &mut Deflating,
+    cx: &mut std::task::Context<'_>,
+) -> std::task::Poll<std::io::Result<()>> {
+    while d.at < d.out.len() {
+        let n = std::task::ready!(std::pin::Pin::new(&mut *inner).poll_write(cx, &d.out[d.at..]))?;
+        if n == 0 {
+            return std::task::Poll::Ready(Err(std::io::ErrorKind::WriteZero.into()));
+        }
+        d.at += n;
+    }
+    d.out.clear();
+    d.at = 0;
+    std::task::Poll::Ready(Ok(()))
+}
+
+fn deflate_failed(e: flate2::CompressError) -> std::io::Error {
+    std::io::Error::other(e)
+}
+
+impl<W: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Down<W> {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        let this = self.get_mut();
+        let Some(d) = this.z.as_mut() else {
+            return std::pin::Pin::new(&mut this.inner).poll_write(cx, buf);
+        };
+        loop {
+            std::task::ready!(drain(&mut this.inner, d, cx))?;
+            let was = d.z.total_in();
+            d.z.compress_vec(buf, &mut d.out, flate2::FlushCompress::None)
+                .map_err(deflate_failed)?;
+            let took = (d.z.total_in() - was) as usize;
+            d.dirty |= took > 0;
+            if took > 0 || buf.is_empty() {
+                return std::task::Poll::Ready(Ok(took));
+            }
+            // 一个字节没吃：压缩器先吐的那一截占满了 ⇒ 写下去再喂；什么都没吐 ⇒ 压缩器卡住了。
+            if d.out.is_empty() {
+                return std::task::Poll::Ready(Err(std::io::Error::other(
+                    "deflate made no progress",
+                )));
+            }
+        }
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let this = self.get_mut();
+        if let Some(d) = this.z.as_mut() {
+            loop {
+                std::task::ready!(drain(&mut this.inner, d, cx))?;
+                if !d.dirty {
+                    break;
+                }
+                d.z.compress_vec(&[], &mut d.out, flate2::FlushCompress::Sync)
+                    .map_err(deflate_failed)?;
+                // 没攒满 ⇒ 这一次 flush 收完了；攒满了 ⇒ 写下去再接着收。
+                d.dirty = d.out.len() == d.out.capacity();
+            }
+        }
+        std::pin::Pin::new(&mut this.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::ready!(self.as_mut().poll_flush(cx))?;
+        std::pin::Pin::new(&mut self.get_mut().inner).poll_shutdown(cx)
+    }
 }
 
 #[cfg(test)]
