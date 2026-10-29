@@ -4698,6 +4698,7 @@ dependencies = [
  "comms-inward",
  "copy-core",
  "deploy-contract",
+ "flate2",
  "guard-core",
  "relay-route-core",
  "serde",
