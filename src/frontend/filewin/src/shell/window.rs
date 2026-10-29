@@ -179,7 +179,7 @@ pub fn open_detached_seeded(
     // 已经列好的那一屏（手上那一份：记号 ＋ 行；之后的重问带着它的记号）。
     first: crate::source::Shown,
     // 🔴`reveal` = 开窗就高亮这一行（`None` = 不高亮）。
-    //    那是老面板 `open(revealPath)` 那一形（会话工具卡 → 文件跳转）。
+    //    会话工具卡 → 文件跳转那一形用它。
     reveal: Option<String>,
     // 视图文件（记缩放与预览开关；monitor 算好交过来；`None` ＝ 照样能缩放、开预览，只是不记）。
     view: Option<std::path::PathBuf>,

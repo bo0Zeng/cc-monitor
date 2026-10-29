@@ -238,7 +238,7 @@ fixtures / 驱动:
 
 ## auto-e2e:Tier2 Windows DOM 冒烟(F-E5)
 
-真 WebView2 DOM 冒烟(WebDriver + session-1 hop),独立文档见 `tests/e2e/tier2/README.md`。E5a 裸壳 6/6(壳元素/状态文案/6 顶栏钮可点/H·G·Ctrl+K overlay 开+Escape 关);E5b 会话相关未做、路径已记档。
+真 WebView2 DOM 冒烟(WebDriver + session-1 hop),独立文档见 `tests/e2e/tier2/README.md`。E5a 裸壳 6/6(壳元素/状态文案/栏顶入口按钮可点/H·G·Ctrl+K overlay 开+Escape 关);E5b 会话相关未做、路径已记档。
 
 ## 人工场景(未脚本化,原因与流程)
 

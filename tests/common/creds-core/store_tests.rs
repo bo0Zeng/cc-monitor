@@ -206,7 +206,7 @@ fn several_shapes_all_mean_not_configured() {
     );
 }
 
-// ================================================================ `K-H2` `KH5`：多条
+// ================================================================ 多条
 
 /// ★★ **`KH5a`**：`KS9③`（导入）在**多条**形状下重验 —— 一份人手写的多账号 JSON
 /// 放进去就算配好，**两层的未知键都还在**，不需要任何迁移步骤。
@@ -259,12 +259,12 @@ fn a_hand_authored_multi_account_file_is_read_as_a_table_with_both_layers_intact
     assert!(doc.get("_schema_version").is_none());
 }
 
-/// **`KH5a` 的另一半**：`K-H2a` 交付的那份**旧文件**（顶层一把 key）升级之后照常能用，
+/// **另一半**：**旧文件**（顶层一把 key）升级之后照常能用，
 /// 它变成一条 id 逐字是 [`LEGACY_ACCOUNT_ID`] 的**有名字的行**。
 ///
 /// ⚠⚠ 「有名字的行」与「默认行」的分界就在这一条判据上：
 /// 本条只证「`default` 查得到」，**不证也不许证**「别的 id 也能拿到它」——
-/// 那一半由 `K-H2` `KH2` 的 404 判据反向钉住。
+/// 那一半由「查不到行 ⇒ 404」的判据反向钉住。
 #[test]
 fn the_legacy_top_level_key_becomes_one_named_row_not_a_default_row() {
     let doc = parse(r#"{"_note":"旧文件","api_key":"LEGACY-KEY"}"#).expect("旧形状");
@@ -299,7 +299,7 @@ fn the_legacy_top_level_key_becomes_one_named_row_not_a_default_row() {
 
 /// ★★★ **「没配」就是零条 —— 一条「默认行」都不许有。**
 ///
-/// 这是 `K-H2` `KH2` 在存储那一层的那一半：**零条 ⇒ `/s/` 全部 404**（上游选择查不到行）。
+/// 这是存储那一层的那一半：**零条 ⇒ `/s/` 全部 404**（上游选择查不到行）。
 /// 只要这里凭空多出一条什么都没配的行，「查不到就用它」马上就写得出来了，
 /// 而那正是件计划逐字禁的**回落**。
 ///
@@ -332,13 +332,10 @@ fn an_unconfigured_file_yields_no_rows_at_all() {
 /// ★★ **一条什么都没填的账号是合法的一条**：`base_url` 空 = 用默认上游，
 /// `api_key` 空 = 原样转发客户端自己那份鉴权头。
 ///
-/// # 它买回来的是 `K-H1` 甲半那条被多账号「顺手弄没了」的性质
+/// # 透传是显式的一条路
 ///
-/// 先前「不配凭据 ⇒ 中转仍是一条能用的透传路」是一条**隐式的全局行为**
-/// （`render_upstream_request` 的头注逐字写着它）。改成按表路由之后，
-/// 那条隐式行为**必然消失** —— 因为不再有「全局」这个东西。
-/// ⇒ 它没有被删掉，是被**改成显式的一条路**：写一条空账号就有了。
-/// **这两句话差得很远，所以要有一条判据钉着后一句。**
+/// 按表路由没有「全局」这个东西，所以没有「不配凭据 ⇒ 全部透传」那条隐式行为；
+/// 透传是**显式的一条路**：写一条空账号就有了。这条判据钉的就是它。
 #[test]
 fn an_account_with_nothing_filled_in_is_still_a_row() {
     let doc = parse(r#"{"accounts":{"passthrough":{}}}"#).expect("夹具");
@@ -351,12 +348,12 @@ fn an_account_with_nothing_filled_in_is_still_a_row() {
     // ⚠ 但值**不是对象**的那一条要跳过（有人写成 `"acct": "sk-..."`）。
     let wrong = parse(r#"{"accounts":{"acct":"sk-not-an-object"}}"#).expect("夹具");
     assert!(read_accounts(&wrong).is_empty(), "非对象的那一条不该进表");
-    // ★ `K-R1`：没写 `auth_style` 的那一条读回来是 `Absent`，**不是**默认值 ——
+    // ★ 没写 `auth_style` 的那一条读回来是 `Absent`，**不是**默认值 ——
     //   把它折成默认值是调用方的事，本模块只报「文件里写了什么」。
     assert_eq!(rows[0].auth_style, AuthStyleSetting::Absent);
 }
 
-/// ★★ `K-R1`：那个闭集**只有一个住址**，而且两头对得上。
+/// ★★ 那个闭集**只有一个住址**，而且两头对得上。
 ///
 /// # 它买的是什么
 ///
@@ -405,11 +402,11 @@ fn every_registered_auth_style_survives_the_round_trip_through_its_field_value()
     }
 }
 
-/// ★★★ `K-R1`：`auth_style` 那一格读出来是**三态**，
+/// ★★★ `auth_style` 那一格读出来是**三态**，
 /// 「缺席」与「写了个认不出的词」**不许挤进同一态**。
 ///
 /// 合成一态的唯一去处是回落成默认 ⇒ 一个打错字母的 `auth_style` 静默走默认头，
-/// 症状是**一条查不出来的 401**，与「key 打错了」同形。〔`K-R21` 那一族〕
+/// 症状是**一条查不出来的 401**，与「key 打错了」同形。
 #[test]
 fn a_typo_in_auth_style_is_not_the_same_state_as_leaving_it_out() {
     // 分母 = 下面这 6 形，逐形手写期望值。
@@ -451,7 +448,7 @@ fn a_typo_in_auth_style_is_not_the_same_state_as_leaving_it_out() {
     );
 }
 
-/// ★★ `K-R1`：顶层那一格 `auth_style` **单独在，造不出一条行**。
+/// ★★ 顶层那一格 `auth_style` **单独在，造不出一条行**。
 ///
 /// 加进「要不要造这一行」的条件里就等于「只写了 `auth_style` 的文件也有一条
 /// 什么都没配的 `default` 行」，而那正是 [`read_accounts`] 头注逐字禁的**回落**。
@@ -475,7 +472,7 @@ fn a_top_level_auth_style_on_its_own_does_not_conjure_a_row() {
 }
 
 /// ★★★ **`KH5b` 的正主**〔件计划 `§0c` 第 3 问逐字点名的那个**新**形状〕：
-/// **程序只改其中一条，别的条不许被动。**`K-H2a` 没验过这一格。
+/// **程序只改其中一条，别的条不许被动。**
 ///
 /// # 量法：**B 那一条序列化出来的文本逐字节相等**
 ///
@@ -498,10 +495,9 @@ fn writing_one_account_leaves_every_other_account_byte_for_byte_untouched() {
     let merged = merge_account_key(&hand, "A", &SecretKey::new("A-NEW"));
     let merged_b = merge_account_key(&hand, "B", &SecretKey::new("B-NEW"));
 
-    // ★★ **非空对照排最前**〔`D1` 一并修，08-28〕：同一把尺子，改 **B** 的时候 B **应当**变。
+    // ★★ **非空对照排最前**：同一把尺子，改 **B** 的时候 B **应当**变。
     //    没有这一格，下面 ㈡ 那条可能只是因为这把尺子看不见任何变化。
-    //    ⚠ 先前它排在整条判据的**最后** —— 与 `D1-M6` 逮到的那一形同族：
-    //    前面任何一条先炸，它就一次都没被求值。
+    //    ⚠ 排在最后的话，前面任何一条先炸，它就一次都没被求值。
     let b_after_writing_b = serde_json::to_string(&merged_b["accounts"]["B"]).expect("序列化 B");
     assert_ne!(
         b_after_writing_b, before_b,
@@ -524,7 +520,7 @@ fn writing_one_account_leaves_every_other_account_byte_for_byte_untouched() {
 }
 
 /// **`KH5b` 的第二半**：往一份**还没有 `accounts` 段**的文件里写一条账号，
-/// 顶层原有的东西（含 `K-H2a` 那把顶层 key）一个都不许被吃掉。
+/// 顶层原有的东西（含那把顶层 key）一个都不许被吃掉。
 #[test]
 fn adding_the_first_account_to_a_legacy_file_keeps_the_legacy_half() {
     let legacy = parse(r#"{"_note":"旧的","api_key":"LEGACY"}"#).expect("旧文件");
@@ -545,7 +541,7 @@ fn nested_objects_are_also_ordered_by_name_in_what_lands_on_disk() {
     let text = to_pretty_json(&doc);
 
     // ★ **反空真排最前**〔`D1` 一并修〕：真的落到了嵌套那一层（不是整份被压成一行），
-    //   且落盘的仍然是合法 JSON。先前这两条排在最后。
+    //   且落盘的仍然是合法 JSON。
     assert!(
         text.lines().count() >= 8,
         "输出只有 {} 行",
@@ -755,7 +751,7 @@ fn both_halves_read_the_home_through_this_one_function() {
     let mut got: Vec<String> = Vec::new();
     for tree in ["src/frontend", "src/backend"] {
         let mut files = guard_core::scan_tree_excluding(&root.join(tree), &["rs"], &[]);
-        // 前端那一侧 ＋ monitor 人群声明里住在它外面的兄弟包（通道 · 宿主原语 · 开窗契约）：通道成员从前经壳 `#[path]` 挂在前端树的人群里。
+        // 前端那一侧 ＋ monitor 人群声明里住在它外面的兄弟包（通道 · 宿主原语 · 开窗契约）。
         let frontend = root.join("src/frontend");
         if tree == "src/frontend" {
             for (_, t) in guard_core::population_trees(&frontend.join("shell/src")) {

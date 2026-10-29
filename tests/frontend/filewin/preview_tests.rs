@@ -377,7 +377,7 @@ fn a_long_line_wraps_to_the_pane_instead_of_being_cut() {
 }
 
 /// 🔴 同一个文件换了内容、字节数恰好不变（行数却变多了）⇒ 折行那份缓存不能当成还能用：
-/// 从前缓存只认「路径 · 字节数 · 宽度」，旧的 `tops` 比新的行数短 ⇒ 画到第几行时 `tops[i]` 越界、整扇窗退出。
+/// 缓存只认「路径 · 字节数 · 宽度」的话，旧的 `tops` 比新的行数短 ⇒ 画到第几行时 `tops[i]` 越界、整扇窗退出。
 #[test]
 fn same_size_new_text_with_more_lines_does_not_reuse_the_old_wrap() {
     let mut p = Preview::default();

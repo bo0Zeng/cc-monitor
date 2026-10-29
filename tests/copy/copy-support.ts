@@ -25,7 +25,6 @@ export interface Term {
   examples?: string[];
   counterExamples?: string[];
   census?: string;
-  ledger?: string[];
   source?: string;
   note?: string;
   ask?: string;

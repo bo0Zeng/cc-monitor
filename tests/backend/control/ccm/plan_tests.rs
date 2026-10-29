@@ -260,6 +260,26 @@ fn only_two_of_the_three_naming_paths_step_aside_on_a_collision() {
     assert_eq!(path(&["--tmux-base", "n1", "--cwd", "/p"]), "n1-2");
     // 不给名、从 cwd 派生：退让
     assert_eq!(path(&["--ccm-tmux", "--cwd", "/x/proj"]), "proj-cc-2");
+    // 真取到的名字与 `tmux_steps_aside` 那一处说的一致（别名页那句说明照的就是它）。
+    for (naming, args, base) in [
+        (
+            TmuxNaming::Fixed,
+            &["--ccm-tmux=n1", "--cwd", "/p"][..],
+            "n1",
+        ),
+        (
+            TmuxNaming::Base,
+            &["--tmux-base", "n1", "--cwd", "/p"][..],
+            "n1",
+        ),
+        (
+            TmuxNaming::Auto,
+            &["--ccm-tmux", "--cwd", "/x/proj"][..],
+            "proj-cc",
+        ),
+    ] {
+        assert_eq!(path(args) != base, tmux_steps_aside(naming), "{naming:?}");
+    }
     // 问不到快照（`None`）⇒ 诚实降级成「不退让」，不是「假装没占」之外的第三种行为
     assert_eq!(
         match plan_of_with(&["--ccm-tmux", "--cwd", "/x/proj"], &e, &t, None) {
@@ -432,6 +452,11 @@ fn the_container_path_carries_every_intent_inward() {
         panic!("该是容器路：{p:?}")
     };
     assert!(out.contains("-s 'cc-p1'"), "会话名没进 new-session：{out}");
+    // 建会话必须 detached：不带 `-d` 就在当前终端 attach，「先建 → send-keys 打字 → 最后 attach」的顺序整个落空。
+    assert!(
+        out.contains("new-session -d -s 'cc-p1'"),
+        "new-session 没带 -d：{out}"
+    );
     assert!(out.contains("-c '/tmp'"), "cwd 没进 -c：{out}");
     assert!(out.contains("@ccm_sid_expect 'p1'"), "意图标没打：{out}");
     assert!(

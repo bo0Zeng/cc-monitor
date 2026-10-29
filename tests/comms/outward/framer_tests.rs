@@ -45,8 +45,8 @@ fn small_lines(n: usize) -> Vec<u8> {
 
 /// ★ F1 —— 点名的那一形：一条巨记录卡在缓冲里，按 16 KiB 一块陆续到，完了再跟 1 000 条小行。
 ///
-/// 先前的 `SseSplitter`：每块都从 `partial` 开头重找 `\n`（617 KiB / 16 KiB ≈ 39 块 ⇒ 扫 ≈ 39²/2 × 16 KiB ≈ 12 MiB），
-/// 巨行吐出之后每切一条小行又 `drain` 一次前缀。今天 `examined == pushed`、`moved == 0`。
+/// 朴素写法每块都从 `partial` 开头重找 `\n`（617 KiB / 16 KiB ≈ 39 块 ⇒ 扫 ≈ 39²/2 × 16 KiB ≈ 12 MiB），
+/// 巨行吐出之后每切一条小行又 `drain` 一次前缀。这里要 `examined == pushed`、`moved == 0`。
 #[test]
 fn f1_a_giant_sse_line_arriving_in_pieces_is_scanned_exactly_once_and_never_moved() {
     let giant = giant_line();
@@ -217,8 +217,8 @@ fn f3_a_read_boundary_moves_only_the_half_size_line_it_cuts() {
         assert_eq!(out, data, "切法 {step}");
         assert_eq!(
             ledger.moved, expected_moved,
-            "切法 {step}：先前每块三次前缀 drain、每次搬剩下的全部；\
-             今天只该搬被 `read` 边界切开、且前面有东西被消费掉的那半条块长度行"
+            "切法 {step}：只该搬被 `read` 边界切开、且前面有东西被消费掉的那半条块长度行\
+             （朴素写法每块三次前缀 drain、每次搬剩下的全部）"
         );
     }
     assert!(

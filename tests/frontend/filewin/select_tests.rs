@@ -144,7 +144,7 @@ fn stepping_stops_at_the_ends_and_enters_from_the_right_side() {
     assert_eq!(step_target(5, Some(4), 1), Some(4), "到底了却绕回去了");
     assert_eq!(step_target(5, Some(0), -1), Some(0), "到顶了却绕回去了");
     // Home / End 另有一个落点函数，**没有光标时 End 也落最后一行**
-    // （先前那一版借「挪一个很大的步」，没光标时 End 落在了第一行）。
+    // （借「挪一个很大的步」的话，没光标时 End 会落在第一行）。
     assert_eq!(edge_target(0, true), None);
     assert_eq!(edge_target(5, false), Some(0));
     assert_eq!(edge_target(5, true), Some(4));
@@ -740,7 +740,7 @@ fn two_lossy_names_that_look_the_same_are_still_two_picks() {
         "取消一个，另一个也跟着没了"
     );
     assert_eq!(s.cursor_index(&rows), Some(0), "光标认错了行");
-    // 无损名的键就是名字本身（那一族判据按名字断言，不许被这一刀改掉）。
+    // 无损名的键就是名字本身（那一族判据按名字断言）。
     assert_eq!(pick_key(&rows[2]), "b.txt");
     // 有损而没有字节 ⇒ 退回显示串（它反正不许写，选中只用来看）。
     assert_eq!(pick_key(&row("x\u{FFFD}", false, 1, true)), "x\u{FFFD}");

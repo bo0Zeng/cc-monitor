@@ -18,7 +18,7 @@ fn response_head_keeps_framing_and_forces_close() {
     assert!(out.ends_with("\r\n\r\n"));
 }
 
-/// ★★ `阻-3(D3)` **后半段**的行为格㈡〔回修轮之六 08-25〕：**机制那一半**。
+/// ★★ 读写期限的行为格㈡：**机制那一半**。
 ///
 /// 它买两样，都是行为：
 /// 1. socket 上有读期限时，`read_head` 面对一条**半开**连接（只发半个请求头、
@@ -84,8 +84,8 @@ fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread
     drop(half);
 
     // ── ㈡ 非空对照：同一把尺子，一条**发全了**的连接必须走通、不等期限。
-    //    期限换成兜底的那一个数（不再是 200 ms）：数据已经在那儿了，「等满期限才回」就是等满五分钟 ⇒ 红；
-    //    机器忙时立刻返回那一下也慢不到它（从前比 200 ms，负载高时会误红）。
+    //    期限用兜底的那一个数：数据已经在那儿了，「等满期限才回」就是等满五分钟 ⇒ 红；
+    //    机器忙时立刻返回那一下也慢不到它（比 200 ms 的话，负载高时会误红）。
     let mut whole = TcpStream::connect(a).expect("connect 完整");
     whole
         .write_all(b"POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
