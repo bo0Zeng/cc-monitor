@@ -1211,6 +1211,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/dial/opened_windows.rs",
+        "MAX_BYTES",
+        "↗ 的本机记录一份 `<数据目录>/opened-windows/<sid>`（两行：窗口标签 · 那台的名字；超了 ⇒ `warn!` 带路径，当没有、照问那台）",
+        "跳过+说清",
+    ),
+    (
         "src/common/relay-route-core/src/lib.rs",
         "LAUNCH_NOTE_MAX_BYTES",
         "一张起会话便条 `~/.cc-monitor/launch-pending/<pid>.json`（缓存：超了 ⇒ `warn!` 带路径，当没有、那一次不记号）",
