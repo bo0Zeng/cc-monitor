@@ -137,7 +137,14 @@ async fn ask_sends_the_calls_name_and_decodes_its_reply_type() {
         assert_eq!(v["cmd"], "files-home");
         assert_eq!(v["machine"], "devbox");
         assert_eq!(v["args"], serde_json::json!({}));
-        assert!(client.route_reply(v["id"].as_str().unwrap(), true, None, None, None, Some(data)));
+        assert!(client.route_reply(
+            v["id"].as_str().unwrap(),
+            true,
+            None,
+            None,
+            None,
+            Some(data)
+        ));
         let got = asked.await.unwrap().expect("这一问成了");
         match (got, decodes) {
             (Ok(r), true) => assert_eq!(r, want),

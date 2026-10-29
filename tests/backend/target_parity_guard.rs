@@ -602,17 +602,8 @@ fn typed_handler_files_of(
             let file = file_of(mods, &path)
                 .unwrap_or_else(|| panic!("typed 那一行的 `{ty}` 找不到它住的文件"));
             let src = &tree[&file];
-            let imp = src
-                .find(&format!("Command for {ty} {{"))
+            let name = guard_core::typed_command_name(src, &ty)
                 .unwrap_or_else(|| panic!("`{file}` 里没有 `impl Command for {ty}`"));
-            let n = src[imp..]
-                .find("const NAME: &'static str = \"")
-                .expect("没有 `const NAME`")
-                + imp;
-            let name: String = src[n + "const NAME: &'static str = \"".len()..]
-                .chars()
-                .take_while(|c| *c != '"')
-                .collect();
             out.insert(name, std::iter::once(file).collect());
         }
     }

@@ -514,17 +514,9 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
             else {
                 continue;
             };
-            let Some(imp) = src.find(&format!("Command for {ty} {{")) else {
+            let Some(name) = guard_core::typed_command_name(&src, ty) else {
                 continue;
             };
-            let key = "const NAME: &'static str = \"";
-            let Some(n) = src[imp..].find(key) else {
-                continue;
-            };
-            let name: String = src[imp + n + key.len()..]
-                .chars()
-                .take_while(|c| *c != '"')
-                .collect();
             typed_cells.push((name, format!("crate::control::{module}::{ty}")));
         }
     }

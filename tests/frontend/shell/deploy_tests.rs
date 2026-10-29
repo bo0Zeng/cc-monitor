@@ -490,7 +490,11 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         "装完 ⇒ 该跳过（那台上那份的戳没被扫出来就不会是这一格）"
     );
     std::fs::write(&backend_path, b"").unwrap();
-    assert_eq!(decide().await, Ok(ActionTag::Deploy), "截成 0 字节 ⇒ 该重装");
+    assert_eq!(
+        decide().await,
+        Ok(ActionTag::Deploy),
+        "截成 0 字节 ⇒ 该重装"
+    );
     // 落点上是一份不说自己是谁的东西 ⇒ 显式失败、不覆盖（盘上那份原样）。
     std::fs::write(&backend_path, b"#!/bin/sh\necho not ours\n").unwrap();
     let d3 = decide().await;

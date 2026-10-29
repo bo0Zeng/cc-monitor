@@ -95,11 +95,12 @@ async fn ask_backend<C: cmd_wire::Call>(req: &C) -> Result<C::Reply, Said> {
         };
         Said::of_call(said, cmd, &crate::origin::Origin::local(), &e)
     })?;
+    // 回包对不上类型：那一句不接原话，解码器那一句进复制详情。
     got.map_err(|e| {
         Said::new(
-            copy_text("rsSftp.plan.badProduct", &[("v", &e.to_string())]),
+            copy_text("rsSftp.plan.badProduct", &[]),
             cmd,
-            None,
+            Some(&e.to_string()),
         )
     })
 }

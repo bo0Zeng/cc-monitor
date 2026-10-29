@@ -85,7 +85,6 @@ pub struct Bookmarks {
     pub dirs: Vec<String>,
 }
 
-
 #[cfg(test)]
 #[path = "../../../../tests/common/cmd-wire/bookmarks_tests.rs"]
 mod tests;

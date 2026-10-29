@@ -27,11 +27,11 @@
 
 use crate::platform::fs::Ro;
 
-use copy_core::copy_text;
 /// 装 · 卸那两条的入参与回包住 cmd-wire（名字与回包挂在入参上，monitor 照同一份发、照同一份解）。
 pub(crate) use cmd_wire::deploy::{
     DeployInstallReq, DeployUninstallReq, Installed, SlotRow, Uninstalled,
 };
+use copy_core::copy_text;
 use deploy_contract::{DeployAction, Key, Refusal, RemoteIdentity, Route};
 use serde::{Deserialize, Serialize};
 
@@ -66,7 +66,6 @@ pub async fn plan(
         .await
         .map_err(fail_of)
 }
-
 
 /// `slots` 那几行 ⇒ `deploy::Slot`。键认不出 / 身份空 / 路径不是绝对 ⇒ `bad_args`（monitor 交的是它自己表里的词，认不出就是两侧漂了）。
 pub(crate) fn slots_of(rows: &[SlotRow]) -> Result<Vec<deploy::Slot>, Fail> {

@@ -2079,6 +2079,34 @@ pub fn inline_table_paths(toml: &str) -> Vec<String> {
     out
 }
 
+/// 后端一份源码里 `impl … Command for <ty> {` 那一块登记的命令名（判据照源码数命令时只经这一处读）：
+/// 块里写字面量 `const NAME` ⇒ 那一个；写 `by_call!(<入参>)` ⇒ cmd-wire `calls!` 表里那个入参那一行的名字。
+/// 没有那一块 ⇒ `None`；块里两样都没有 · 表里没有那个入参 ⇒ panic（读法跟不上源码就当场说）。
+pub fn typed_command_name(src: &str, ty: &str) -> Option<String> {
+    let head = format!("Command for {ty} {{");
+    let at = src.find(&head)?;
+    let body = &src[at..at + src[at..].find("\n}").expect("impl 没收尾")];
+    let key = "const NAME: &'static str = \"";
+    let until_quote = |s: &str| s.chars().take_while(|c| *c != '"').collect::<String>();
+    if let Some(n) = body.find(key) {
+        return Some(until_quote(&body[n + key.len()..]));
+    }
+    let b = body
+        .find("by_call!(")
+        .unwrap_or_else(|| panic!("`impl Command for {ty}` 里没有 `const NAME` 也没有 `by_call!`"));
+    let req = &body[b + "by_call!(".len()..];
+    let req = &req[..req.find(')').expect("by_call! 没收尾")];
+    let seg = req.rsplit("::").next().unwrap_or(req).trim();
+    let table_path = addr::repo_root().join("src/common/cmd-wire/src/call.rs");
+    let table = std::fs::read_to_string(&table_path)
+        .unwrap_or_else(|e| panic!("读不到 {}：{e}", table_path.display()));
+    let row = format!("\n    {seg} => \"");
+    let n = table
+        .find(&row)
+        .unwrap_or_else(|| panic!("`calls!` 表里没有 `{seg}` 那一行"));
+    Some(until_quote(&table[n + row.len()..]))
+}
+
 pub fn find_pinned(hay: &str, needle: &str) -> Result<usize, String> {
     if needle.is_empty() {
         return Err("needle 为空 —— 那会匹配到任何地方，等于关掉判据".into());

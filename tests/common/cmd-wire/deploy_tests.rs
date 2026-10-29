@@ -15,7 +15,12 @@ fn the_install_reply_decodes_the_golden_and_writes_it_back() {
     let product = golden()["product"].clone();
     let got: Installed = serde_json::from_value(product.clone()).expect("金样解不开");
     assert_eq!(
-        (got.action, got.build.as_str(), got.os.as_str(), got.said.as_str()),
+        (
+            got.action,
+            got.build.as_str(),
+            got.os.as_str(),
+            got.said.as_str()
+        ),
         (ActionTag::Keep, "p0b-placeholder", "Linux", "placeholder")
     );
     assert_eq!(serde_json::to_value(&got).unwrap(), product);
@@ -38,7 +43,10 @@ fn the_install_reply_decodes_the_golden_and_writes_it_back() {
 fn the_uninstall_reply_decodes_the_golden_and_writes_it_back() {
     let product = golden()["uninstalled"].clone();
     let got: Uninstalled = serde_json::from_value(product.clone()).expect("金样解不开");
-    assert_eq!((got.removed, got.said.as_str()), (true, "placeholder-uninstall"));
+    assert_eq!(
+        (got.removed, got.said.as_str()),
+        (true, "placeholder-uninstall")
+    );
     assert_eq!(serde_json::to_value(&got).unwrap(), product);
 }
 
