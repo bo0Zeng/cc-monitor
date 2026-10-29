@@ -1195,7 +1195,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ACCOUNTS_MANIFEST_NAME: NONE,
     BACKEND_POLICY_REL: NONE,
     PREFS_REL: NONE,
-    PREFS_HANDOFF_REL: NONE,
     MACHINES_REL: NONE,
     file_name_of: NONE,
     // 家目录底下一条相对路径的远端 POSIX 写法（部署叫暂存那一份用）；TS 侧没有孪生。
@@ -1209,7 +1208,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     SANDBOX_ENV: NONE,
     POSIX_ALIASES_REL: NONE,
     PROFILES_REL: NONE,
-    PROFILES_MIGRATED_REL: NONE,
     PROFILES_WRITTEN_REL: NONE,
     PS_ALIASES_REL: NONE,
     SKILL_LEDGER_REL: NONE,

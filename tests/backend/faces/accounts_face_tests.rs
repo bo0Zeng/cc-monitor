@@ -1293,15 +1293,12 @@ fn a_profiles_file_with_a_mistake_is_left_alone() {
 #[test]
 fn a_user_alias_with_the_same_name_is_not_overwritten() {
     let t = machine("alias-taken");
-    t.write(
-        ".cc-monitor/aliases.sh",
-        "labcc() { ccm \"$@\" -- --ccm-tmux; }\n",
-    );
+    t.write(".cc-monitor/profiles.toml", "[labcc]\nccm-tmux = true\n");
     let got = ok(&t, "accounts-init", json!({ "name": "lab" }));
     assert_eq!(
         own(&t, "labcc"),
         (None, sv(&["--ccm-tmux"])),
-        "用户那一条（迁进配置文件的）没被盖"
+        "用户那一条没被盖"
     );
     assert_eq!(got["aliases"][0]["skipped"], json!(["labcc"]));
     assert_eq!(got["aliases"][0]["added"], json!(["labcct"]));

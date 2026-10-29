@@ -87,7 +87,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
             fileProblem: null,
             profiles: [],
             seed: [],
-            migrated: null,
             binDir: "/h/.cc-monitor/bin",
             accounts: ["z", "b"],
           });

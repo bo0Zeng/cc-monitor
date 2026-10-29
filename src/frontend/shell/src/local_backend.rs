@@ -1509,7 +1509,6 @@ pub(crate) fn local_stdio_consumer(
         // stdio 载体没有 attach 行 ⇒ 接上即在它上面报名单（名单台那一处）。
         crate::stream_watch::desk(&route.origin).up(&client, None);
         registered = Some(client);
-        crate::prefs_migration::after_local_ready();
         crate::bookmarks_migration::after_ready(crate::origin::Origin::local());
         crate::machine_table::refresh();
         tracing::info!(

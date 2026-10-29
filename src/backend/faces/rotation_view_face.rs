@@ -8,7 +8,7 @@ use crate::accounts::quota::rules::{standing, Adopted};
 use crate::accounts::quota::setup::{self, form, script, shelf, uses};
 use crate::accounts::quota::strategy::FailWhy;
 use crate::common::cells::Words;
-use crate::faces::rotation_act_face::{judged, lineup_of, Judged};
+use crate::faces::rotation_act_face::{judged, lineup_of, plain_lineup, Judged};
 use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_try_face::{decision_of, timeline_of};
 use crate::wire::typed::Command;
@@ -331,15 +331,23 @@ fn face(t: u64, tz: &crate::Tz) -> String {
 /// 会话那一形推多远，只为「下一个」那一格的钟点（不上线）。
 const SESSION_HOURS: u64 = 12;
 
+/// 顺序后面那几格是什么：会话有策略 ⇒ 接下来先用谁（可拖）；不轮换 ⇒ 只是备着的号（不可拖，不写「下一个」）。
+pub(crate) enum Ahead {
+    /// `next_at` ＝ 推演里第一次换号换到谁、几点（钟面；推不准 · 马上就换 ⇒ 缺）：换到的正是第二格才写钟点。
+    Strategy {
+        next_at: Option<(String, String)>,
+    },
+    Plain,
+}
+
 /// 会话的顺序成行（`line` ＝ [`lineup_of`] 排好的先后，第一格是在用的号）：哪一组 · 右格的字 · 策略那一句 · 能不能拖。
-/// `next_at` ＝ 推演里第一次换号换到谁、几点（钟面；推不准 · 马上就换 ⇒ 缺）：换到的正是第二格才写钟点。
 pub(crate) fn lines_of(
     line: &[String],
     off: &[String],
     sendable: &dyn Fn(&str) -> bool,
     blocked: &dyn Fn(&str) -> Option<String>,
     why: &[(String, String)],
-    next_at: Option<(String, String)>,
+    ahead: Ahead,
 ) -> Vec<RotLine> {
     let is_off = |a: &str| off.iter().any(|x| x == a);
     line.iter()
@@ -354,8 +362,11 @@ pub(crate) fn lines_of(
             let state = match group {
                 RotGroup::Use if is_off(a) => copy_text("beRotation.line.offUse", &[]),
                 RotGroup::Use => copy_text("beRotation.line.use", &[]),
-                RotGroup::Next if i == 1 => match &next_at {
-                    Some((to, at)) if to == a => copy_text("beRotation.line.nextAt", &[("at", at)]),
+                RotGroup::Next if i == 1 && matches!(ahead, Ahead::Strategy { .. }) => match &ahead
+                {
+                    Ahead::Strategy {
+                        next_at: Some((to, at)),
+                    } if to == a => copy_text("beRotation.line.nextAt", &[("at", at)]),
                     _ => copy_text("beRotation.line.next", &[]),
                 },
                 RotGroup::Next => copy_text("beRotation.line.spare", &[]),
@@ -378,7 +389,7 @@ pub(crate) fn lines_of(
                     .find(|(x, _)| x == a)
                     .map(|(_, w)| w.clone())
                     .filter(|w| !w.is_empty()),
-                movable: group == RotGroup::Next,
+                movable: group == RotGroup::Next && matches!(ahead, Ahead::Strategy { .. }),
                 stay,
             }
         })
@@ -463,6 +474,35 @@ pub(crate) fn view_with(
                 FailWhy::Other,
             ));
         }
+        // 不轮换 ＝ 不自动换：会话那一形照样一号一行（手动换号照常），不判、不推演；号都不在号列表里。
+        let (lineup, ids) = match &req.target {
+            RotTarget::Session { sid } => {
+                let row = ctx.row(&agent);
+                let facts = ctx
+                    .hop
+                    .accts(sid, &session, &base, &plan.settings, &row, now);
+                let line = plain_lineup(&session, &facts, now);
+                let sendable = |a: &str| {
+                    facts
+                        .iter()
+                        .find(|x| x.id == a)
+                        .is_some_and(|x| standing::sendable(x, now))
+                };
+                let all = ctx.hop.facts(&agent, &row, now, tz);
+                let blocked = |a: &str| {
+                    all.iter()
+                        .find(|f| f.account == a)
+                        .and_then(|f| f.blocked.as_ref())
+                        .map(|b| b.text.clone())
+                };
+                let lines = lines_of(&line, &session.off, &sendable, &blocked, &[], Ahead::Plain);
+                (lines, line)
+            }
+            RotTarget::Strategy { .. } => (Vec::new(), vec![session.start.clone()]),
+        };
+        let lib = ctx.hop.library();
+        let row = ctx.row(&agent);
+        let colors = crate::observe::accounts_query::account_colors();
         return Ok(RotationViewReply {
             now,
             now_text: face(now, tz),
@@ -471,25 +511,13 @@ pub(crate) fn view_with(
             board: RotBoard::default(),
             start: session.start.clone(),
             current: session.current.clone(),
-            lineup: Vec::new(),
+            lineup,
             manual: false,
             off: session.off.clone(),
-            // 不轮换 ⇒ 只有开会话的那个号（号列表之外，只为它那一枚号牌）。
-            accounts: (!session.start.is_empty())
-                .then(|| {
-                    account_of(
-                        ctx.hop.fact_one(
-                            &agent,
-                            &ctx.hop.library(),
-                            &session.start,
-                            &ctx.row(&agent),
-                            now,
-                            tz,
-                        ),
-                        &crate::observe::accounts_query::account_colors(),
-                    )
-                })
-                .into_iter()
+            accounts: ids
+                .iter()
+                .filter(|id| !id.is_empty())
+                .map(|id| account_of(ctx.hop.fact_one(&agent, &lib, id, &row, now, tz), &colors))
                 .collect(),
             listed: 0,
             decision: None,
@@ -658,7 +686,7 @@ pub(crate) fn view_with(
                     &sendable,
                     &blocked,
                     &d.why,
-                    next_at,
+                    Ahead::Strategy { next_at },
                 ),
                 None,
                 log_rows(&session.log),

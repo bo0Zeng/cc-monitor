@@ -31,7 +31,7 @@
 
 **为什么不能松动**：核心价值是「看 claude 的输出不破坏它」。用户对「数据源就是我自己的命令痕迹」的信任一旦破了就回不来；写只能是显式的、可见的（足迹页逐条列出）。
 
-**谁在守**：`write_site_registry_tests.rs::every_monitor_write_site_lands_outside_the_users_files`（monitor 写盘落点闭集，没有「用户文件」一档）· `dial_home_registry_tests.rs::the_interface_side_ssh_debt_is_one_number_and_it_is_printed`（monitor 的依赖清单里没有 SSH crate，拿不到远端写的能力） · `readonly_guard.rs::every_process_spawn_in_production_is_registered` · `cc_bus_install_tests.rs::a_symlinked_skills_dir_is_refused`。
+**谁在守**：`write_site_registry_tests.rs::every_write_site_is_declared`（monitor 写盘落点逐个登记，落点类别是闭集 `Lands`，没有「用户文件」一档）· `dial_move_judge.rs::the_interface_manifest_has_no_ssh_dependency`（monitor 的依赖清单里没有 SSH crate，拿不到远端写的能力） · `readonly_guard.rs::every_process_spawn_in_production_is_registered` · `cc_bus_install_tests.rs::a_symlinked_skills_dir_is_refused`。
 
 ---
 
@@ -56,7 +56,7 @@
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | Linux bash / zsh 接入块留的终端记录与认出来的窗口，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | `monitor/` 按天滚动、留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
 | `bin/` `staging/` `logs/backend/` `relay-key` `last-seen.json` `launch-pending/` `answer-plugin/` `ssh_config` `profiles-written.json` `cache/skeleton/` `cache/listing.json` `cache/remote-listing/` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 中转钥匙（丢了重铸）· 离线那台的上次值 · 起会话便条 · 答题插件 · 终端用的 ssh 配置 · 上次写出的配置指纹 · 大记录的骨架 · 历史清单缓存（都照记录重扫）· 远端那几台的会话清单副本（照那台再问一次整份） |
-| `run/` `backend.json` `prefs.json` `prefs-handoff.json` `machines.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `assets-catalog.json` `chores.json` `plan-review.json` `bookmarks.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `rotation-uses.json` `lineage.json` `launch-accounts.json` `session-queue/` `cc-bus/` `known_hosts` | **真相** | 本机后端 | 删了会丢的：常驻后端的套接字与进程记录 · 退出行为 · 这台的偏好（启动命令 · 每号模型 · 上下文上限 · 各家数据目录）· 机器表 · 升级时搬来、还没交给远端那几台的偏好 · 别名配置 · 装记录 · 资产目录 · 「待办」里的选择 · 计划需手动的认可 · 这台的书签（文件窗口与手机收藏的目录）· 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号 · 会话输入队（还没送进会话的那几句，一条会话一份）· cc-bus 的收件箱与已读位置 · 各台的主机钥匙（删了下回连上就是首见）。名字取契约常量（`relay_route_core` · `creds_core::store`）：家里那几样由本机后端 `data-report` 的 `own` 列（`relay_route_core::OWN_HOME_ENTRIES`）；住数据目录的 `logs/backend/` · `apikey-credentials.json` 由 `data_paths.rs::monitor_entries` 列 |
+| `run/` `backend.json` `prefs.json` `machines.json` `profiles.toml` `aliases.sh` `aliases.ps1` `skill-installs.json` `assets-catalog.json` `chores.json` `plan-review.json` `bookmarks.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `rotation-uses.json` `lineage.json` `launch-accounts.json` `session-queue/` `cc-bus/` `known_hosts` | **真相** | 本机后端 | 删了会丢的：常驻后端的套接字与进程记录 · 退出行为 · 这台的偏好（启动命令 · 每号模型 · 上下文上限 · 各家数据目录）· 机器表 · 别名配置 · 装记录 · 资产目录 · 「待办」里的选择 · 计划需手动的认可 · 这台的书签（文件窗口与手机收藏的目录）· 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号 · 会话输入队（还没送进会话的那几句，一条会话一份）· cc-bus 的收件箱与已读位置 · 各台的主机钥匙（删了下回连上就是首见）。名字取契约常量（`relay_route_core` · `creds_core::store`）：家里那几样由本机后端 `data-report` 的 `own` 列（`relay_route_core::OWN_HOME_ENTRIES`）；住数据目录的 `logs/backend/` · `apikey-credentials.json` 由 `data_paths.rs::monitor_entries` 列 |
 
 - **真相** = 用户手写 / 意图，删了丢东西、要备份、要迁移友好；**缓存/派生** = 能从别处重建，随便删。
 - **新增任何 data dir 文件，必须声明它是哪类**：界面这一侧的（monitor 数据目录）在 `data_paths.rs` 的枚举里（`DataPathInfo.class: DataClass` 非可选）；本机后端家里的（`~/.cc-monitor/`）在 `relay_route_core::OWN_HOME_ENTRIES` 里（后端 `data-report` 的 `own` 照它出、界面照抄）。设置页每行据它显示「删了会丢 / 可随手删」。两边拼起来与上表两向相等（`data_paths_tests.rs`，异源判据）；后端自家那几样另与上表逐样对（`footprint/data_tests.rs`）。
@@ -323,7 +323,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 会话后端（多路复用器）是机器的属性，不是界面的属性。**前端绝不出现可执行的 `tmux attach` / `new-session` / `send-keys` 字面量**：起 / 接会话的命令一律问后端要（只交一行 `ccm …`，§33）。加任何第二种会话后端之前必须先答「另一端还接得上吗」；登记表主键守 §28。
 
-**谁在守**：`tests/frontend/ui/launch-no-shell-in-ts.vitest.ts`（`src/**/*.ts` 生产段零处 tmux 动词 / `&&` 字面量，不开例外）。
+**谁在守**：`eslint.config.js` 的 `singleDoors`（`src/**/*.ts` 生产段的串里零处 tmux 动词 / `&&`，不开例外；`tests/frontend/ui/single-home-lint.vitest.ts` 证这一项会抓人）。
 
 手机那一侧：列会话 · 附着 · 建会话 · 结束 · 抓屏 · 送字都问那台核心（进终端那一行由 `session-open` 渲、手机原样敲进自己的终端），不改会话级选项。
 
