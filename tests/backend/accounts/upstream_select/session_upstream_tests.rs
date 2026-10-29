@@ -138,11 +138,11 @@ fn a_left_description_carries_its_version() {
     let data = sandbox("ver");
     let own = crate::platform::fs::Own::issue_data_at(&data);
     leave(&own, "0123abcd", &desc(7, &[]), &|_| true).expect("写得下");
-    let dir = data.join(NOTES_DIR).join(SUB);
-    let files: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().collect();
-    assert_eq!(files.len(), 1);
-    let v: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(files[0].path()).unwrap()).unwrap();
+    let file = data
+        .join(NOTES_DIR)
+        .join(SUB)
+        .join(file_name("0123abcd").unwrap());
+    let v: serde_json::Value = serde_json::from_slice(&std::fs::read(file).unwrap()).unwrap();
     assert_eq!(v["version"], serde_json::json!(1), "没带版本：{v}");
     assert_eq!(
         of(&data, "0123abcd").map(|d| d.pid),

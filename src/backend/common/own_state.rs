@@ -423,13 +423,12 @@ fn opened(path: &Path, cap: u64) -> Read<crate::platform::fs::RoFile> {
 
 /// 读不出来的那一句：路径 ＋ 原因词；下层原话照留。
 fn failed(path: &Path, e: Said) -> Said {
-    Said {
-        said: copy_text(
+    e.wrap(|why| {
+        copy_text(
             "reason.fs.readFailed",
-            &[("path", &path.display().to_string()), ("why", &e.said)],
-        ),
-        raw: e.raw,
-    }
+            &[("path", &path.display().to_string()), ("why", why)],
+        )
+    })
 }
 
 /// 读整份并按 JSON 解成 `T`。解不开 ⇒ `Unreadable`。
