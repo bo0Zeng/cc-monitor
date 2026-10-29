@@ -713,18 +713,8 @@ pub(crate) fn fork_tmux_base(source: &str) -> String {
     format!("{seg}-fork-cc")
 }
 
-/// 新会话的 tmux 名从哪来：不给名（从工作目录派生）· `--ccm-tmux=<名>` · `--tmux-base <名>`。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TmuxNaming {
-    Auto,
-    Fixed,
-    Base,
-}
-
-/// 撞名时退不退让（`K-R96`）：只有显式名不让。[`build`] 取名与别名页那句说明都照这一处。
-pub(crate) const fn tmux_steps_aside(n: TmuxNaming) -> bool {
-    !matches!(n, TmuxNaming::Fixed)
-}
+// 撞名退不退让只问 `ccm_line::tmux_steps_aside`（别名页那句说明照的是同一处）。
+use crate::ccm_line::{tmux_steps_aside, TmuxNaming};
 
 /// 给一个基名、一份**那张快照**里的已占用名 ⇒ 最终名（撞了往后排）。
 /// 起会话铸名（[`super::terminal_name_mint_with`]）与 [`build`] 走同一个 [`next_free_name`]；`taken` 只收 [`TakenNames`]（造不出第二份）。

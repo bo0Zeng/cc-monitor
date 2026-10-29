@@ -170,9 +170,9 @@ pub(crate) struct TmuxNamingOut {
     text: String,
 }
 
-/// 撞名那半句只问 `plan::tmux_steps_aside`（起会话取名真照它走），这里不另判退不退让。
+/// 撞名那半句只问 `ccm_line::tmux_steps_aside`（起会话取名真照它走），这里不另判退不退让。
 fn tmux_naming_out() -> Vec<TmuxNamingOut> {
-    use crate::control::ccm::plan::{tmux_steps_aside, TmuxNaming};
+    use crate::ccm_line::{tmux_steps_aside, TmuxNaming};
     [TmuxMode::Auto, TmuxMode::Fixed, TmuxMode::Base]
         .into_iter()
         .map(|mode| {
