@@ -71,45 +71,27 @@ fn joined(lines: &[&str]) -> String {
     }
 }
 
-/// 首见：这台一行都没有 ⇒ 追加一行（`key` = 算法 ＋ base64），顺手去掉这台待核的指纹；有行 ⇒ 不动（`None`）。
+/// 首见：这台一行都没有 ⇒ 追加一行（`key` = 算法 ＋ base64）；有行 ⇒ 不动（`None`）。
 /// 记过的都在握手时严格比过了，走到这一步就是那一把，没有「换掉旧行」这件事。
 pub fn remembered(text: &str, addrs: &[Endpoint], key: &str) -> Option<String> {
     if text.lines().any(|l| is_of(l, addrs)) {
         return None;
     }
     let line = format!("{} {key}", names(addrs));
-    let mut lines = kept(text, |l| !is_pending_of(l, addrs));
+    let mut lines = kept(text, |_| true);
     lines.push(&line);
     Some(joined(&lines))
 }
 
-/// 忘掉这台：删这台的所有行（连同待核的指纹）。没有可删的 ⇒ `None`。
+/// 忘掉这台：删这台的所有行。没有可删的 ⇒ `None`。
 pub fn forgotten(text: &str, addrs: &[Endpoint]) -> Option<String> {
-    let lines = kept(text, |l| !is_of(l, addrs) && !is_pending_of(l, addrs));
+    let lines = kept(text, |l| !is_of(l, addrs));
     (lines.len() != kept(text, |_| true).len()).then(|| joined(&lines))
 }
 
 /// 一把钥匙的指纹（`SHA256:…`）。
 pub fn fingerprint(key: &PublicKey) -> String {
     key.fingerprint(HashAlg::Sha256).to_string()
-}
-
-// ═══ 待核的指纹：库里的一行注释（ssh 不认它；这里只读不写）═══
-// 这台没记过钥匙时按它严格比（`connect.rs`），鉴权过了记整把、这一行随之去掉。
-
-const PENDING: &str = "#cc-monitor-pending-fingerprint";
-
-fn is_pending_of(line: &str, addrs: &[Endpoint]) -> bool {
-    let mut f = line.split_whitespace();
-    f.next() == Some(PENDING) && f.next().is_some_and(|n| names_hit(n, addrs))
-}
-
-/// 这台待核的指纹（没有 ⇒ `None`）。
-pub fn pending(text: &str, addrs: &[Endpoint]) -> Option<String> {
-    text.lines()
-        .find(|l| is_pending_of(l, addrs))
-        .and_then(|l| l.split_whitespace().nth(2))
-        .map(str::to_string)
 }
 
 #[cfg(test)]

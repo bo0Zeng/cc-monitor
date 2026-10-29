@@ -52,15 +52,10 @@ fn first_seen_appends_once_and_any_address_reads_it_back() {
     );
 }
 
-/// 忘掉删这台的全部行（几种类型几行都删、连同待核的指纹），别的台留着；没有可删的 ⇒ 不写。
+/// 忘掉删这台的全部行（几种类型几行都删），别的台留着；没有可删的 ⇒ 不写。
 #[test]
 fn forgetting_drops_every_line_of_that_machine_only() {
-    let t = format!(
-        "a {}\n[a]:2 {}\nb {}\n#cc-monitor-pending-fingerprint a SHA256:x\n",
-        key(1),
-        key(2),
-        key(3)
-    );
+    let t = format!("a {}\n[a]:2 {}\nb {}\n", key(1), key(2), key(3));
     let m = [ep("a", 22), ep("a", 2)];
     assert_eq!(forgotten(&t, &m).unwrap(), format!("b {}\n", key(3)));
     assert_eq!(forgotten(&format!("b {}\n", key(3)), &m), None);
@@ -72,16 +67,4 @@ fn forgetting_drops_every_line_of_that_machine_only() {
 fn comments_markers_and_hashed_names_are_not_keys() {
     let t = format!("# a {k}\n@revoked a {k}\n|1|abc= {k}\n", k = key(1));
     assert!(known(&t, &[ep("a", 22)]).is_empty());
-}
-
-/// 待核的指纹（库里已有的那一行注释）：按任一地址读得回；记下整把时随之去掉。
-#[test]
-fn a_pending_fingerprint_lives_until_the_whole_key_is_remembered() {
-    let m = [ep("a", 22), ep("b", 22)];
-    let t = "#cc-monitor-pending-fingerprint a,b SHA256:fp\n";
-    assert_eq!(pending(t, &[ep("b", 22)]).as_deref(), Some("SHA256:fp"));
-    assert!(known(t, &m).is_empty(), "待核那一行不是钥匙");
-    let after = remembered(&t, &[ep("a", 22)], &key(1)).unwrap();
-    assert_eq!(after, format!("a {}\n", key(1)));
-    assert_eq!(pending(&after, &m), None);
 }
