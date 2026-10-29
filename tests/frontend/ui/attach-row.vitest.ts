@@ -47,6 +47,7 @@ function rig(opts: { hold?: boolean; put?: () => Promise<QueuePut> } = {}) {
   const outbox = new Outbox(say);
   const page = new Composer({ active: () => TAB, resume: async () => true, front: () => {}, focusStream: () => {} }, outbox, reads);
   document.body.replaceChildren(page.el);
+  page.render(); // 第一次画由宿主叫（构造里不画，A2-17-10-1-2）
   return { page, say, release, outbox };
 }
 
