@@ -75,6 +75,9 @@ import {
 import { frontView, type FrontAct, type FrontResult, type FrontView } from "./front-result";
 import { updateBackendOf } from "./backend-deploy";
 import { machineName } from "./control-said";
+import type { MachineFix } from "./generated/MachineFix";
+import { openSettingsWindow } from "./open-settings";
+import { machineOf } from "./settings-dest";
 import { closeFrontResult, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
 import type { Watched } from "./terminal-page";
@@ -140,7 +143,7 @@ export class TabManager {
       toggleSelect: (sid) => this.pick(sid, "toggle"),
       openMenuAt: (el, sid) => this.openMenu(el, sid),
       rereadAll: () => this.rereadAll(),
-      reconnect: (origin) => this.reconnect(origin),
+      fixMachine: (origin, fix) => this.fixMachine(origin, fix),
       planForGroup: (gid, name, members) => this.onPlanForGroup(gid, name, members),
     });
     this.slots = new LaunchSlots(
@@ -1222,7 +1225,13 @@ export class TabManager {
     return this.store.tabs.get(sid)?.pinned === true;
   }
 
-  /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨一次（壳那一侧 `backend_start`：在跑就是「别等了」）。 */
+  /** 栏底机器条那一行的修法：重新连接就地做；别的（连接设置 · 推公钥 · 比对指纹 · 更新 …）在那台的机器页做。 */
+  fixMachine(origin: string, fix: MachineFix): void {
+    if (fix === "retry") this.reconnect(origin);
+    else void openSettingsWindow(undefined, machineOf(origin));
+  }
+
+  /** ［重新连接］：那台断着在退避里等 ⇒ 立刻重拨一次（壳那一侧 `backend_start`：在跑就是「别等了」）。 */
   reconnect(origin: string): void {
     this.actions.reconnect(origin);
   }

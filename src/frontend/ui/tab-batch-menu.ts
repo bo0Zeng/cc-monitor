@@ -4,18 +4,17 @@
  *
  * 每一项在一个 tab 上的语义就是单个菜单里那一项：杀死会话 · Resume（tmux 后台 / 各开一个终端）· 固定 / 取消固定 ·
  * 加入集合 / 新建集合 / 移出集合 · 关闭（同 ×）。「能做的个数」按单个菜单亮那一项用的同一个谓词数
- * （杀 = 有终端可去 `can.term`；Resume ＝ `can.resume`；关闭 ＝ `can.close` 为 quiet；跳过的理由照抄那一格的 `why`）；那台能不能做、怎么做由那台后端判（`tab-batch-run.ts`）。
- * 固定 · 集合 · 关闭是 monitor 自己的界面状态，不经后端。
+ * （结束 ＝ `can.end`，确认框 · 结局同单个那一个，`end-confirm.ts`；Resume ＝ `can.resume`；关闭 ＝ `can.close` 为 quiet；跳过的理由照抄那一格的 `why`）；
+ * 那台能不能做、怎么做由那台后端判（`tab-batch-run.ts`）。固定 · 集合 · 关闭是 monitor 自己的界面状态，不经后端。
  */
 import type { Tab } from "./tab-model";
-import { canResume, closesQuietly, hasTerminal, isEnded } from "./face-can";
+import { canEnd, canResume, closesQuietly, isEnded } from "./face-can";
 import { copyText } from "./copy-table";
 import { openMenu, type MenuItem } from "./kit/menu";
 import type { TabGroup } from "./tab-bar-prefs";
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { groupSubmenu } from "./tab-menu";
-import { recentToasts, toast, type ToastRecord } from "./kit/toast";
-import { showMessage } from "./status-messages";
+import { askEnd, sayRows, type EndRow } from "./end-confirm";
 import { machineName } from "./control-said";
 import { fullTitle } from "./session-face";
 import { isRemoteOrigin } from "./ipc/origin";
@@ -67,37 +66,20 @@ function lineTitle(t: Tab): string {
   return isRemoteOrigin(t.origin) ? copyText("tabBatch.line.remote", { title: fullTitle(t), machine: machineName(t.origin) }) : fullTitle(t);
 }
 
-/** 结果提示：一句汇总（做了 · 失败几个）；逐个跳过与失败的（各为什么）进「消息」那一条，［查看］展开。 */
-export function sayBatch(action: string | ((done: number, failed: number) => string), tabs: readonly Tab[], outcomes: readonly BatchOutcome[]): void {
+/** 这一批的结局逐条（标题照那一行的称呼）。 */
+function rowsOf(tabs: readonly Tab[], outcomes: readonly BatchOutcome[]): EndRow[] {
   const title = (sid: string): string => {
     const t = tabs.find((x) => x.sessionId === sid);
     return t ? lineTitle(t) : sid;
   };
-  const n = (k: BatchOutcome["outcome"]) => outcomes.filter((o) => o.outcome === k).length;
-  // 一句结果（`已结束 11 · 失败 ×1`）；第二行起逐条写没做的为什么（出错的不自己走）。
-  const head =
-    typeof action === "function"
-      ? action(n("done"), n("failed"))
-      : n("failed") > 0
-        ? copyText("tabBatch.result.someFailed", { action, done: n("done"), failed: n("failed") })
-        : copyText("tabBatch.result.done", { action, done: n("done") });
-  const lines: string[] = [];
-  for (const o of outcomes) {
-    if (o.outcome === "failed") lines.push(copyText("tabBatch.result.failedLine", { title: title(o.sid), why: o.why }));
-  }
-  for (const o of outcomes) {
-    if (o.outcome === "skipped") lines.push(copyText("tabBatch.result.skippedLine", { title: title(o.sid), why: o.why }));
-  }
-  // toast 只说一句汇总；逐条原因进「消息」那一条，［查看］点了展开它。
-  const made: { rec?: ToastRecord } = {};
-  const view = lines.length > 0 ? { label: copyText("tabBatch.result.view"), run: () => made.rec && showMessage(made.rec), toastOnly: true } : undefined;
-  // 复制详情：失败那几个各一段（那一句 ＋ 那台写的详情），段间空一行；成功的不进（条带 §5.6）。
-  const detail = outcomes
-    .filter((o) => o.outcome === "failed" && o.detail)
-    .map((o) => `${o.why}\n${o.detail}`)
-    .join("\n\n");
-  toast(head, "", { level: n("failed") > 0 ? "error" : "success", more: lines, action: view, detail });
-  made.rec = recentToasts()[0];
+  return outcomes.map((o) => ({ title: title(o.sid), outcome: o.outcome, why: o.why, ...(o.detail ? { detail: o.detail } : {}) }));
+}
+
+/** 结果提示：一句汇总（「动作 k · 失败 ×m」）；逐个跳过与失败的（各为什么）进「消息」那一条，［查看］展开（同结束那一种）。 */
+export function sayBatch(action: string, tabs: readonly Tab[], outcomes: readonly BatchOutcome[]): void {
+  sayRows(rowsOf(tabs, outcomes), (done, failed) =>
+    failed > 0 ? copyText("tabBatch.result.someFailed", { action, done, failed }) : copyText("tabBatch.result.done", { action, done }),
+  );
 }
 
 /** 只经 monitor 的那几项：同步改完 ⇒ 每一个都做成了，跳过的照原因列。 */
@@ -127,27 +109,15 @@ export function openBatchMenu(
       })();
     },
   });
-  const [stoppable, notStoppable] = split(tabs, (t) => hasTerminal(t.face), (t) => whyOf(t.face?.can.term));
+  const [stoppable, notStoppable] = split(tabs, (t) => canEnd(t.face), (t) => whyOf(t.face?.can.end));
   const [startable, notStartable] = split(tabs, (t) => canResume(t.face), (t) => whyOf(t.face?.can.resume));
   const items: MenuItem[] = [
     { label: copyText("tabBatch.menu.head", { n: tabs.length }), heading: true },
     item(copyText("tabBatch.menu.stop", { n: stoppable.length }), stoppable.length, async () => {
       const ended = tabs.filter((t) => isEnded(t.face)).length;
-      const confirm = {
-        title: copyText("tabBatch.stop.title", { n: stoppable.length }),
-        action: copyText("tabBatch.stop.action", { n: stoppable.length }),
-        danger: true,
-        rows: [
-          { label: copyText("kit.interrupts.cut"), items: [copyText("tabBatch.stop.cuts")] },
-          { label: copyText("kit.interrupts.keep"), items: [copyText("tabSessionActions.kill.keeps")] },
-        ],
-        list: stoppable.map(lineTitle),
-        note: ended > 0 ? copyText("sessionState.batch.skipped", { n: ended }) : undefined,
-      };
-      if (!(await run.confirm(confirm))) return;
-      const said = (done: number, failed: number): string =>
-        failed > 0 ? copyText("sessionState.batch.someFailed", { done, failed }) : copyText("sessionState.batch.done", { done });
-      sayBatch(said, tabs, [...(await run.stop(stoppable)), ...notStoppable]);
+      const note = ended > 0 ? copyText("sessionState.batch.skipped", { n: ended }) : undefined;
+      if (!(await askEnd(stoppable.map(lineTitle), run.confirm, note))) return;
+      sayRows(rowsOf(tabs, [...(await run.stop(stoppable)), ...notStoppable]));
     }, true, notStoppable[0]?.why),
     item(copyText("tabBatch.menu.startTmux", { n: startable.length }), startable.length, async () => {
       sayBatch(copyText("tabBatch.action.startTmux"), tabs, [...(await run.start(startable, "tmux")), ...notStartable]);

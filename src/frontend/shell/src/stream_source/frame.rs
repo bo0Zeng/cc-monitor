@@ -98,52 +98,38 @@ impl UnreadNotes {
         };
         if self.said.insert(key) {
             tracing::warn!("[{}] {why}", self.origin);
-            health(unread_health(&self.origin, &self.label, &why));
+            if let Some(p) = unread_health(&self.origin, &self.label, &why) {
+                health(p);
+            }
         }
         None
     }
 }
 
-/// 进不来那一帧的健康信息（每条连接每种一次）。
+/// 进不来那一帧的健康信息（每条连接每种一次）：只有解不开的那一种说；帧门拦下的（那台那一版形状不同 · 不认）只进日志 ——
+/// 版本对不上由栏底机器条照那台的成品说（`MachineState.versionRelation` · 要更新），不另弹「远端提示」。
 pub(crate) fn unread_health(
     origin: &str,
     label: &str,
     why: &Unread,
-) -> crate::ui_contract::RemoteHealthPayload {
-    let (kind, message, detail) = match why {
-        Unread::Differs(k) => (
-            "frame-differs",
-            copy_text(
-                "peerVersion.said.framesDiffer",
-                &[("machine", &label.to_string())],
-            ),
-            format!("frames: {k}"),
-        ),
-        Unread::BadShape { kind: k, .. } => (
-            "frame-shape",
-            copy_text(
-                "rsSshSource.health.badFrame",
-                &[
-                    ("host", &label.to_string()),
-                    (
-                        "kind",
-                        &if k.is_empty() {
-                            "?".to_string()
-                        } else {
-                            k.clone()
-                        },
-                    ),
-                ],
-            ),
-            String::new(),
-        ),
+) -> Option<crate::ui_contract::RemoteHealthPayload> {
+    let Unread::BadShape { kind: k, .. } = why else {
+        return None;
     };
-    crate::ui_contract::RemoteHealthPayload {
+    let kind = if k.is_empty() {
+        "?".to_string()
+    } else {
+        k.clone()
+    };
+    Some(crate::ui_contract::RemoteHealthPayload {
         origin: origin.to_string(),
-        kind: kind.to_string(),
-        message,
-        detail,
-    }
+        kind: "frame-shape".to_string(),
+        message: copy_text(
+            "rsSshSource.health.badFrame",
+            &[("host", &label.to_string()), ("kind", &kind)],
+        ),
+        detail: String::new(),
+    })
 }
 
 /// 本机那两条载体（stdio · 脱离）的健康出口：窗口把手只在宿主层，`lib.rs` setup 装一次。

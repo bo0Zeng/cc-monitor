@@ -1039,4 +1039,4 @@ pub(crate) async fn answer(
 
 #[cfg(test)]
 #[path = "../../../tests/backend/history/history_list_tests.rs"]
-mod tests;
+pub(crate) mod tests;

@@ -13,6 +13,7 @@ import { LaunchSlots, SLOT_MISS_MS, type SlotActs, type SlotSpec } from "../../.
 import type { ArriveSaid } from "../../../src/frontend/ui/session-open";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { endConfirm } from "../../../src/frontend/ui/end-confirm";
 
 let tail: HTMLElement;
 let root: HTMLElement;
@@ -143,17 +144,17 @@ describe("没见到", () => {
         TITLE +
         "已等 18s 未报到 · tmux 会话「billing-2」末几行" +
         "claude: error: unknown option '--modle'\n(Did you mean --model?)" +
-        `${copyText("launch.slot.screen")}${copyText("sessionHead.act.openTerm")}${copyText("sessionState.killIdle.action")}${copyText("launch.slot.close")}`,
+        `${copyText("launch.slot.screen")}${copyText("sessionHead.act.openTerm")}${copyText("tabMenu.kill.label")}${copyText("launch.slot.close")}`,
     );
     expect(root.querySelector("pre")?.textContent).toBe("claude: error: unknown option '--modle'\n(Did you mean --model?)");
-    expect(actsOnCard()).toEqual([`screen:${copyText("launch.slot.screen")}`, `attach:${copyText("sessionHead.act.openTerm")}`, `end:${copyText("sessionState.killIdle.action")}`, `close:${copyText("launch.slot.close")}`]);
+    expect(actsOnCard()).toEqual([`screen:${copyText("launch.slot.screen")}`, `attach:${copyText("sessionHead.act.openTerm")}`, `end:${copyText("tabMenu.kill.label")}`, `close:${copyText("launch.slot.close")}`]);
     expect(vi.mocked(toast), "不再另弹一句").not.toHaveBeenCalled();
   });
 
   it("本机起的：没有［在终端里打开］（本机没有接回终端那条路）", async () => {
     make().add({ ...SPEC, origin: LOCAL_ORIGIN });
     await missWith(SAID, "%7");
-    expect(actsOnCard()).toEqual([`screen:${copyText("launch.slot.screen")}`, `end:${copyText("sessionState.killIdle.action")}`, `close:${copyText("launch.slot.close")}`]);
+    expect(actsOnCard()).toEqual([`screen:${copyText("launch.slot.screen")}`, `end:${copyText("tabMenu.kill.label")}`, `close:${copyText("launch.slot.close")}`]);
   });
 
   it("★ 那个终端已不在 / 读不到 / 开窗起的（那台不给句柄）⇒ 只有那一句 ＋［关闭标签页］、不出画面那一块", async () => {
@@ -190,17 +191,13 @@ describe("报错卡上的几颗", () => {
     expect(slots.watched(), "收起了 ⇒ 抽屉回到当前标签页").toBeNull();
   });
 
-  it("★［结束］先问会打断什么，结束了 ⇒ 这一行关掉", async () => {
+  it("★［结束］开的是结束会话那一个确认框，结束了 ⇒ 这一行关掉", async () => {
     make().add(SPEC);
     await missWith(SAID, "%7");
     click("end");
     await tick();
-    expect(acts.confirm).toHaveBeenCalledWith({
-      title: copyText("sessionState.killIdle.title", { name: "billing-2" }),
-      action: copyText("sessionState.killIdle.action"),
-      danger: true,
-      rows: [{ label: copyText("kit.interrupts.cut"), items: [copyText("launch.slot.killCuts", { machine: "devbox", name: "billing-2" })] }],
-    });
+    expect(acts.confirm).toHaveBeenCalledWith(endConfirm(["billing-2"]));
+    expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toBe(copyText("sessionState.kill.done", { title: "billing-2" }));
     expect(acts.end, "按名单里的句柄结束（terminal-end），不按会话名").toHaveBeenCalledWith("devbox", "%7", "billing-2");
     expect(rows()).toEqual([]);
   });
@@ -215,7 +212,7 @@ describe("报错卡上的几颗", () => {
     acts.end.mockRejectedValueOnce(new Error("不在名单"));
     click("end");
     await tick();
-    expect(vi.mocked(failToast).mock.calls.map((c) => [c[0], String(c[1])])).toEqual([[copyText("tabSessionActions.kill.failed", { title: "billing-2" }), "Error: 不在名单"]]);
+    expect(vi.mocked(toast).mock.calls.at(-1)?.slice(0, 2)).toEqual([copyText("tabSessionActions.kill.failed", { title: "billing-2" }), "不在名单"]);
     expect(rows()).toHaveLength(1);
   });
 
