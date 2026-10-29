@@ -108,16 +108,11 @@ pub(crate) struct LineIntake {
 
 impl LineIntake {
     /// 后端不重放历史 ⇒ 历史走旁路快照（起分发器）。
-    pub(super) fn open(
-        origin_label: String,
-        replay: &Arc<EventReplay>,
-        health: &HealthOut,
-    ) -> Self {
+    pub(super) fn open(origin_label: String, replay: &Arc<EventReplay>) -> Self {
         let snapshots = SnapshotQueue::new();
         tauri::async_runtime::spawn(snapshot_dispatcher(
             snapshots.clone(),
             replay.clone(),
-            health.clone(),
             origin_label.clone(),
         ));
         LineIntake {

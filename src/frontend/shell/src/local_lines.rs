@@ -39,19 +39,13 @@ pub(crate) const LOCAL_LINES_CAPACITY: usize = 1024;
 static SENDER: OnceLock<tokio::sync::mpsc::Sender<LocalItem>> = OnceLock::new();
 
 /// 造通道、起消费者。**只调一次**（第二次调是用法错：大声说，不起第二个消费者）。
-pub(crate) fn install(app: tauri::AppHandle, replay: Arc<EventReplay>) {
+pub(crate) fn install(replay: Arc<EventReplay>) {
     let (tx, rx) = tokio::sync::mpsc::channel::<LocalItem>(LOCAL_LINES_CAPACITY);
     if SENDER.set(tx).is_err() {
         tracing::error!("local_lines::install 被调了第二次 —— 本机内容消费者只许有一个，这次不起");
         return;
     }
-    // 本机两条载体解不出来的帧也进健康信息（同一个出口）。
-    crate::stream_source::install_local_health(crate::remote_health_out(app.clone()));
-    tauri::async_runtime::spawn(crate::stream_source::consume(
-        rx,
-        replay,
-        crate::remote_health_out(app),
-    ));
+    tauri::async_runtime::spawn(crate::stream_source::consume(rx, replay));
 }
 
 fn sender() -> Option<&'static tokio::sync::mpsc::Sender<LocalItem>> {

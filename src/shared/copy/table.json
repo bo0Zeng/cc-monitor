@@ -5118,34 +5118,10 @@
       "zh": "贴到 · {target}",
       "args": ["target"]
     },
-    "remoteHealth.bindRemoteHealthToast.noMessage": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "无消息内容",
-      "args": []
-    },
-    "remoteHealth.head.notice": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "远端提示",
-      "args": []
-    },
     "remoteHealth.head.notDeployed": {
       "kind": "body",
       "role": "片段",
       "zh": "远端 cc-monitor 未装",
-      "args": []
-    },
-    "remoteHealth.head.fileWindowGone": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "文件窗口已退出",
-      "args": []
-    },
-    "remoteHealth.head.historyFailed": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "读取远端历史失败",
       "args": []
     },
     "skeletonView.ledgerFromIndex.noIndex": {
@@ -29026,6 +29002,12 @@
       "role": "报错",
       "zh": "读取机器列表失败 · 内容无法解析",
       "args": []
+    },
+    "rsUiError.overflow.said": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{host} · {said}",
+      "args": ["host", "said"]
     },
     "beClaudePaths.delete.badId": {
       "kind": "error",

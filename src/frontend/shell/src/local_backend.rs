@@ -1357,7 +1357,7 @@ pub(crate) const BACKEND_SEP: &str = "--";
 pub(crate) struct StdioRoute {
     /// 入方向通道登记在哪个名下、吸收点交 tap / 画面时说哪台。
     pub origin: crate::origin::Origin,
-    /// 解不出来的帧进健康信息时说「哪台」那一格。
+    /// 解不出来的帧告诉用户时说「哪台」那一格。
     pub place: String,
     pub out: crate::local_lines::StdioOut,
 }
@@ -1458,7 +1458,7 @@ pub(crate) fn local_stdio_consumer(
     let mut rd = std::io::BufReader::new(stdout);
     // 这条载体上跳过了几帧认不出的、几行不是合法 UTF-8 —— 记账，流结束出总账。
     let mut tally = crate::frame_tally::FrameTally::new("本机后端（stdio 载体）");
-    // 解不出来的帧每种说一次（日志 ＋ 本机的健康信息）。
+    // 解不出来的帧每种说一次（日志 ＋ 告诉用户）。
     let mut unread =
         crate::stream_source::UnreadNotes::new(route.origin.to_string(), route.place.clone());
     loop {
@@ -1492,12 +1492,7 @@ pub(crate) fn local_stdio_consumer(
         if line.is_empty() {
             continue; // 空行
         }
-        let Some(frame) = unread.take(
-            &line,
-            registered.as_deref(),
-            &mut tally,
-            &crate::stream_source::local_health,
-        ) else {
+        let Some(frame) = unread.take(&line, registered.as_deref(), &mut tally) else {
             continue;
         };
         // 还没登记时先看它是不是 hello；别的（或已经登记过了）⇒ 分派第一层，有序的那几种送进本机内容通道（裸线程 ⇒ `_blocking` 那一形）。

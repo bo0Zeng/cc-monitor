@@ -133,11 +133,11 @@ fn w5vis_no_frame_reader_skips_an_unparsed_frame_silently() {
     const TAKES: &[(&str, &str)] = &[
         (
             "local_backend_host.rs",
-            "let Some(f) = unread.take(\n                line,\n                Some(&client),\n                &mut tally,\n                &crate::stream_source::local_health,\n            ) else {",
+            "let Some(f) = unread.take(line, Some(&client), &mut tally) else {",
         ),
         (
             "local_backend.rs",
-            "let Some(frame) = unread.take(\n            &line,\n            registered.as_deref(),\n            &mut tally,\n            &crate::stream_source::local_health,\n        ) else {",
+            "let Some(frame) = unread.take(&line, registered.as_deref(), &mut tally) else {",
         ),
     ];
     fn block_after<'a>(prod: &'a str, head: &str) -> Result<&'a str, String> {

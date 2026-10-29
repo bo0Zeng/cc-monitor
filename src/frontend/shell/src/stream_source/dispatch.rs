@@ -114,7 +114,6 @@ pub(crate) async fn apply(
     item: Ordered,
     intake: &mut LineIntake,
     replay: &Arc<EventReplay>,
-    health: &HealthOut,
 ) {
     let host_label = origin.to_string();
     let at = host_label.to_string();
@@ -164,7 +163,7 @@ pub(crate) async fn apply(
             intake.removed(sid);
             told(at, Frame::SessionLeft(s));
         }
-        Ordered::Overflow(o) => on_overflow(origin, health, &o),
+        Ordered::Overflow(o) => on_overflow(origin, &o),
         Ordered::Changed(c) => {
             let topic = serde_json::to_value(c.topic())
                 .ok()
@@ -213,20 +212,14 @@ fn told(origin: String, frame: Frame) {
     crate::session_book::feed(BookIn::Told { origin, frame });
 }
 
-/// 那台管道拥塞丢过帧：日志 ＋ 经 `remote-health` 原样交那台写的那一句（标题位界面排机器名）。
+/// 那台管道拥塞丢过帧：日志 ＋ 告诉用户（那台写的那一句原样带上，前面排机器名）。
 /// 丢了会话状态那一类的，那台紧跟着在同一条连接上整份重报，这里不判、不重接。
-fn on_overflow(origin: &crate::origin::Origin, health: &HealthOut, o: &wire::Overflow) {
-    let at = origin.to_string();
-    tracing::warn!("stream_source [{at}] overflow: {}", o.said.0);
-    let payload = crate::ui_contract::RemoteHealthPayload {
-        origin: at.to_string(),
-        kind: "overflow".to_string(),
-        message: o.said.0.clone(),
-        detail: String::new(),
-    };
-    if let Err(e) = health(payload) {
-        tracing::warn!("stream_source remote-health emit failed: {e}");
-    }
+fn on_overflow(origin: &crate::origin::Origin, o: &wire::Overflow) {
+    tracing::warn!("stream_source [{origin}] overflow: {}", o.said.0);
+    crate::ui_error::tell(crate::ui_error::UiError::Overflow {
+        host: host_label(origin),
+        said: o.said.0.clone(),
+    });
 }
 
 #[cfg(test)]

@@ -170,7 +170,7 @@ pub async fn open_file_window(
     theme: std::collections::BTreeMap<String, String>,
 ) -> Result<usize, Said> {
     let r: Result<usize, Said> = async move {
-        use tauri::{Emitter, Manager};
+        use tauri::Manager;
         // 窗口的样子：主界面此刻 `:root` 上的那一套（含用户改过的）解成数。解不出来就不开（不替它补一套）。
         let theme = filewin_contract::Theme::from_tokens(&theme).map_err(Said::written)?;
         // 主窗所在那台显示器的工作区（窗口进程开出来第一拍夹进它）。
@@ -178,28 +178,18 @@ pub async fn open_file_window(
             .get_webview_window(crate::MAIN_WINDOW_LABEL)
             .as_ref()
             .and_then(crate::work_area_of);
-        // 开出来之后又不体面地退了 ⇒ 经远端健康那条通道出声（同一个 toast 出口）。
-        let late_origin = origin.clone();
-        let late: super::proc::LateExit = Box::new(move |f| {
-            let said = process_said(f);
-            let payload = crate::ui_contract::RemoteHealthPayload {
-                origin: late_origin,
-                kind: FILEWIN_EXIT_KIND.to_string(),
-                message: said.said,
-                detail: said.detail,
-            };
-            if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
-                tracing::warn!("文件窗口没了那一条没有发出去：{e}");
-            }
+        // 开出来之后又不体面地退了 ⇒ 告诉用户（出错 toast 那一个出口）；退出状态与错误输出进复制详情。
+        let late: super::proc::LateExit = Box::new(|f| {
+            crate::ui_error::tell(crate::ui_error::UiError::FileWindowExited {
+                code: f.code,
+                raw: f.raw,
+            })
         });
         Ok(open_with(origin, path, reveal_file, work_area, theme, late).await?)
     }
     .await;
     r.map_err(|s| s.named("open_file_window"))
 }
-
-/// 文件窗口开出来之后又退了那一形在 `remote-health` 上的 `kind`（界面 `remote-health.ts` 按它选标题）。
-pub(crate) const FILEWIN_EXIT_KIND: &str = "filewin-exit";
 
 /// [`open_file_window`] 去掉「问 Tauri」那一步之后的全部（判据从这里进：判据进程里没有 `AppHandle`）。
 pub(crate) async fn open_with(
