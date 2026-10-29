@@ -3363,12 +3363,6 @@
       "zh": "已选「{option}」",
       "args": ["option"]
     },
-    "interactive.done.rejected": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "未批准",
-      "args": []
-    },
     "interactive.ask.multi": {
       "kind": "body",
       "role": "说明",
