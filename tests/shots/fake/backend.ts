@@ -36,6 +36,8 @@ export const REAL_OPS = new Set([
   "rotation-temp",
   "history-page",
   "history-lines",
+  // 按引用取回一张图（人贴的图画到那一格才问）：真后端读台架盘上那一行。
+  "history-image",
   "history-index",
   "history-user-inputs",
   "history-turns",

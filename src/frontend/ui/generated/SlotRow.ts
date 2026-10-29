@@ -5,6 +5,6 @@
  */
 export type SlotRow = { os: string, arch: string, id: string, 
 /**
- * 本机上那一格字节的文件（绝对路径；本后端读它，不经帧传字节）。
+ * 本机上那一格字节的文件（绝对路径；后端读它，不经帧传字节）。
  */
 path: string, };

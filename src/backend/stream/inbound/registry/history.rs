@@ -71,6 +71,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // 按**行号**取回（没接骨架的会话丢掉的正文从这里要回来）。同族同档、同一个只读宿主。
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryLinesCmd>("按行号取回一段"),
+    // 按引用取回一张图（记录行上线只带引用，画到那一格才问）。同族同档、同一个只读宿主。
+    crate::wire::typed::blocking::<crate::faces::history_face::HistoryImageCmd>("按引用取回一张图"),
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryReadCmd>(
         "按字节分页读一份会话",
     ),
