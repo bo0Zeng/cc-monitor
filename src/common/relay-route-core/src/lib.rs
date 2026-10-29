@@ -9,7 +9,7 @@
 //!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 账号库 [`ACCOUNTS_DIR_REL`] 与它的清单。
 //!   后端各写者引它们落盘；后端「文件与数据」那一份成品（`footprint/data.rs::own_rows`，经 [`OWN_HOME_ENTRIES`]）按它们列出，界面照抄；判据两向对着这一族。
 //! - **声明表**：每份落盘文件一个 [`Decl`] 常量（`*_FILE`：落点 · 状态 / 缓存 · 格式与版本 · 读上限），后端读写口
-//!   `common/own_state.rs` 的 `Doc::of` 从它取；家里那几样有声明的，「删了会丢」照声明。排成一张的 `OWN_FILES` 今天只有判据读（测试档）。
+//!   `common/own_state.rs` 的 `Doc::of` 与 monitor 读写 `config.json`（[`CONFIG_FILE`]）从它取；家里那几样有声明的，「删了会丢」照声明。排成一张的 `OWN_FILES` 今天只有判据读（测试档）。
 //! - crate 名还是「relay-route」—— 它最早只装中转门牌。
 //!
 //! # 它为什么是一个共享 crate
@@ -82,6 +82,10 @@ pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
 /// 〔「一台机器一个家」〕后端的**上传暂存区**（相对家目录）：SFTP 传输台只往这里写 `<key>.part`，
 /// 传完由那台后端提交、挪进目标。后端按它落盘（`control/files_commit.rs::STAGING_DIR`），monitor 的数据位置页按它列出。
 pub const STAGING_DIR_REL: &str = ".cc-monitor/staging";
+
+/// monitor 的设置（monitor `config.rs::patch_config_at` 是唯一写者；后端第 7 批换形只读它，`control/prefs_migration.rs`）。
+/// 住 monitor 的数据目录（默认就是 `~/.cc-monitor/`），不在家里那几样（[`OWN_HOME_ENTRIES`]）里。
+pub const CONFIG_REL: &str = ".cc-monitor/config.json";
 
 /// 〔「家里的都进唯一枚举」〕这台机器上后端的**退出行为设置**（只有后端写，`control/exit_policy.rs`）。
 pub const BACKEND_POLICY_REL: &str = ".cc-monitor/backend.json";
@@ -452,7 +456,7 @@ pub enum Kind {
 }
 
 /// 一份落盘文件的格式：我们的 JSON（顶层整数 `version`，缺了当 1；读得懂 `floor..=version`，低于 `version` 的经升级步）·
-/// 不是我们的格式（`Foreign`：不带版本、不查版本，如 OpenSSH 的主机钥匙）。
+/// 不带版本（`Foreign`：不写版本、不查版本 —— 不是我们的格式，如 OpenSSH 的主机钥匙；或定了不加版本的，如 monitor 的设置）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     Json { version: u32, floor: u32 },
@@ -520,7 +524,7 @@ impl<K: Class> Decl<K> {
         }
     }
 
-    /// 不是我们的格式。
+    /// 不带版本（不是我们的格式，或定了不加版本的）。
     pub const fn foreign(rel: &'static str, cap: u64) -> Self {
         Self::new(rel, Format::Foreign, cap)
     }
@@ -568,6 +572,10 @@ pub const BACKEND_POLICY_FILE: Decl<State> = Decl::<State>::json(BACKEND_POLICY_
 pub const PREFS_FILE: Decl<State> = Decl::<State>::json(PREFS_REL, 2, 2, 256 * 1024);
 /// 机器表。
 pub const MACHINES_FILE: Decl<State> = Decl::<State>::json(MACHINES_REL, 1, 1, 1024 * 1024);
+/// monitor 设置那一份的读上限（超了当读不懂：读那一口报错、写口一个字节不写）。
+const CONFIG_MAX_BYTES: u64 = 4 * 1024 * 1024;
+/// monitor 的设置（不带版本，定了的；monitor 在自己的数据目录里按 [`file_name_of`] 取名）。
+pub const CONFIG_FILE: Decl<State> = Decl::<State>::foreign(CONFIG_REL, CONFIG_MAX_BYTES);
 /// 「待办」选择那一份的读上限（超了当读不懂：不覆盖、`marks_unreadable`）。
 const CHORES_MAX_BYTES: u64 = 64 * 1024;
 /// 「待办」里记下的选择。
@@ -703,6 +711,7 @@ const OWN_FILES: &[Row] = &[
     KNOWN_HOSTS_FILE.row,
     SSH_CONFIG_FILE.row,
     KEY_FILE.row,
+    CONFIG_FILE.row,
     LISTING_CACHE_FILE.row,
     SESSION_QUEUE_FILE.row,
     LAUNCH_NOTE_FILE.row,

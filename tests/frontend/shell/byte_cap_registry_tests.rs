@@ -1210,6 +1210,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/common/relay-route-core/src/lib.rs",
+        "CONFIG_MAX_BYTES",
+        "monitor 的设置 `config.json` 整份（monitor `config.rs` 读与写口现读都取它）：超了 ⇒ 读那一口报「超出上限」、写口一个字节不写",
+        "拒收+回错",
+    ),
+    (
         "src/backend/history/launch_book.rs",
         "MAX_BYTES",
         "后端自有的「会话用的号」记录 `~/.cc-monitor/launch-accounts.json`（读不出来就不覆盖、`unreadable`）",
