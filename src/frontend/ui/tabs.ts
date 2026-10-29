@@ -15,6 +15,7 @@ import { NO_RUNS, runLabel } from "./runs";
 import type { SessionRuns } from "./generated/SessionRuns";
 import type { WatchFrom } from "./generated/WatchFrom";
 import type { MachineState } from "./generated/MachineState";
+import type { LocalBackend } from "./generated/LocalBackend";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
@@ -35,7 +36,8 @@ export type { Tab, TabsSummary } from "./tab-model";
 import { TabMenu } from "./tab-menu";
 import type { MenuItem } from "./kit/menu";
 import { TabSelection } from "./tab-selection";
-import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
+import { batchHead, openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
+import { sayRows } from "./end-confirm";
 import { AllListed, TabStore, type ActiveView } from "./tab-store";
 import { appStore, type Slice } from "./app-store";
 import { TabStreamView } from "./tab-stream-view";
@@ -205,6 +207,7 @@ export class TabManager {
     setHide: (tab, to) => setHide(tab.origin, tab.sessionId, to),
     undoToast: (title, undo, settle) => undoToast(title, undo, settle),
     failed: (title, e) => failToast(title, e),
+    batch: (action, rows, undo) => sayRows(rows, batchHead(action), undo),
     refreshTabBar: () => this.refreshTabBar(),
     close: (sid) => this.closeTab(sid),
   });
@@ -1090,6 +1093,11 @@ export class TabManager {
   /** 一台的状态成品来了（本机后端推的 `changed {machine}`）⇒ 栏里那条机器离线条照它画（离线 · 几条状态不明都是后端说的）。 */
   machineChanged(origin: Origin, m: MachineState): void {
     this.bar.machineChanged(origin, m);
+  }
+
+  /** 壳那一格（本机后端起没起来，`local-backend`）来了 ⇒ 机器条本机那一行照它画（起不来那一句 ·［重试］）。 */
+  localBackendChanged(l: LocalBackend): void {
+    this.bar.localBackendChanged(l);
   }
 
   /** 栏顶左边那几颗全局入口（宿主建好交进来）。 */

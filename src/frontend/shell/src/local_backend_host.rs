@@ -1349,6 +1349,8 @@ fn backend_supervise_events() -> std::sync::Arc<dyn Fn(local_backend::SuperviseE
 /// 「两份措辞迟早对不上」。账上那一行里的原因与 `StartOutcome::Failed` 手上的那一句
 /// **逐字相同**，由 `the_never_started_reason_is_the_same_string_the_caller_gets` 钉着。
 fn note_never_started(out: StartOutcome) -> StartOutcome {
+    // 起不来那一句同时是本机那一行要说的（[`local_backend`] 的 `Down`）；起成了 ⇒ 清掉。
+    note_local_failed(out.failure().map(|(reason, _)| reason));
     if let Some((reason, looked_at)) = out.failure() {
         let ev = crate::backend_policy::DeathEvidence {
             outcome: crate::backend_policy::Outcome::NeverSpawned,
@@ -1704,6 +1706,16 @@ pub(crate) fn note_local_refused(next: Option<&str>) {
     local_backend_changed();
 }
 
+/// 上一趟起本机后端起不来的那一句（`StartOutcome::Failed.reason`，原样）：本机那一行没起来时说它；
+/// 只在「从来没起来」那个喂点写（[`note_never_started`]），起成了清掉。
+static LOCAL_FAILED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// 记下（或清掉）起不来的那一句。
+pub(crate) fn note_local_failed(said: Option<&str>) {
+    *LOCAL_FAILED.lock().unwrap_or_else(|e| e.into_inner()) = said.map(str::to_string);
+    local_backend_changed();
+}
+
 /// 本机后端那一趟起着没有（[`start_local_backend`] 起止各记一次）。
 static LOCAL_STARTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -1766,9 +1778,10 @@ pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
             fixes,
             next,
         },
+        // 起不来过 ⇒ 说起不来的那一句（没带后端 · 释放失败 · 起了接不上 · 被拒）；没有 ⇒ 只说没在跑。
         Relation::Same | Relation::Incomparable => LocalBackend::Down {
             word: copy_text("machinePage.state.down", &[]),
-            said: copy_text("machineState.down.local", &[]),
+            said: lock(&LOCAL_FAILED).unwrap_or_else(|| copy_text("machineState.down.local", &[])),
             fixes,
             next,
         },

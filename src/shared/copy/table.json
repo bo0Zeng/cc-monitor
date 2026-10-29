@@ -81,6 +81,12 @@
       "zh": "写入失败 · {rel} · 不是数据目录底下的相对名",
       "args": ["rel"]
     },
+    "beOwnState.read.newer": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{path} 由版本更高的后端写入 · 未覆盖 · 此后端认格式 {mine} · 它是 {theirs}",
+      "args": ["path", "mine", "theirs"]
+    },
     "beOwnState.read.notJson": {
       "kind": "error",
       "role": "报错",
@@ -4102,6 +4108,18 @@
       "kind": "body",
       "role": "片段",
       "zh": "已关闭",
+      "args": []
+    },
+    "tabBatch.action.hide": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已隐藏",
+      "args": []
+    },
+    "tabBatch.action.unhide": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已取消隐藏",
       "args": []
     },
     "tabBatch.result.skippedLine": {
@@ -12418,24 +12436,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "查询中",
-      "args": []
-    },
-    "machineAliases.tmuxNaming.auto": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n在会话窗格里敲则就地启动",
-      "args": []
-    },
-    "machineAliases.tmuxNaming.named": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "用填的名字 · 被占用则报错退出 · 不改名",
-      "args": []
-    },
-    "machineAliases.tmuxNaming.base": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "先用填的名字 · 被占用依次 -2 -3",
       "args": []
     },
     "rsCcmInvocation.refusal.idSid": {
@@ -26167,6 +26167,36 @@
       "role": "报错",
       "zh": "取消隐藏失败 · {title}",
       "args": ["title"]
+    },
+    "beProfile.tmuxNaming.auto": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "名字取自工作目录（目录名-cc） · {clash}\n在会话窗格里敲则就地启动",
+      "args": ["clash"]
+    },
+    "beProfile.tmuxNaming.fixed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "用填的名字 · {clash}",
+      "args": ["clash"]
+    },
+    "beProfile.tmuxNaming.base": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "先用填的名字 · {clash}",
+      "args": ["clash"]
+    },
+    "beProfile.tmuxNaming.stepAside": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "被占用依次试 -2 -3…",
+      "args": []
+    },
+    "beProfile.tmuxNaming.keep": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "被占用则报错退出 · 不改名",
+      "args": []
     },
     "beProfile.seedHint.two": {
       "kind": "body",

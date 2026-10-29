@@ -9,6 +9,7 @@ import { pushedProducts } from "./changed-stream";
 import { subscribeTopics } from "./events";
 import { budgetWithin, callTyped, noteMachine } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
+import { commands } from "./ipc/commands";
 import type { LocalBackend } from "./generated/LocalBackend";
 import type { MachineState } from "./generated/MachineState";
 import type { EmptyFace } from "./generated/EmptyFace";
@@ -19,12 +20,19 @@ export const LOCAL_BACKEND_EVENT = "local-backend";
 /** `machine-read` 等多久。 */
 const READ_BUDGET_MS = 5_000;
 
-/** 订本机后端起没起来：壳每推一帧回调一次。回退订函数。 */
+/**
+ * 订本机后端起没起来：壳每推一帧回调一次；订上之后再问一次 `backend_status` 的 `local`（起来那一趟的几帧多半早于订上，
+ * 起不来那一句只在那几帧里）。推来的先到 ⇒ 问回来的不盖它。回退订函数。
+ */
 export function onLocalBackend(cb: (local: LocalBackend) => void): () => void {
   let off: (() => void) | null = null;
   let dropped = false;
+  let pushed = false;
   try {
-    listen<LocalBackend>(LOCAL_BACKEND_EVENT, (e) => cb(e.payload)).then(
+    listen<LocalBackend>(LOCAL_BACKEND_EVENT, (e) => {
+      pushed = true;
+      cb(e.payload);
+    }).then(
       (u) => {
         if (dropped) u();
         else off = u;
@@ -35,6 +43,12 @@ export function onLocalBackend(cb: (local: LocalBackend) => void): () => void {
     // 没有事件通道（宿主不是壳）⇒ 只靠打开 / 刷新时问 `backend_status`。
     console.warn("[local-backend] 订不上推送：", e);
   }
+  commands.backend_status({ origin: LOCAL_ORIGIN }).then(
+    (s) => {
+      if (!dropped && !pushed && s.local) cb(s.local);
+    },
+    (e: unknown) => console.warn("[local-backend] 问不到壳那一格：", e),
+  );
   return () => {
     dropped = true;
     off?.();

@@ -80,7 +80,7 @@ import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { MainDrawer } from "./main-drawer";
 import { TerminalPage, type Watched } from "./terminal-page";
-import { onMachineState, onMachineUp } from "./machine-feed";
+import { onLocalBackend, onMachineState, onMachineUp } from "./machine-feed";
 import type { Tab } from "./tab-model";
 import { REVEAL_RUN_EVENT } from "./cards/speaker-bar";
 import { getBehavior } from "./behavior";
@@ -297,6 +297,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const needsBook = new NeedsBook();
   // 组的账：本机后端问到各台的组并成一份（标签页栏的分组与固定照它画）。
   const groupBook = new GroupBook();
+  // 本机后端起没起来（壳那一格）⇒ 机器条本机那一行：本机后端不在时没有成品可推，起不来那一句只有壳说得出。
+  onLocalBackend((l) => tabs.localBackendChanged(l));
   // 各台的状态成品 ⇒ 栏底机器条；首屏那一句（各台报完了没有 · 哪几台还在连）也由本机后端合好随它推。
   onMachineState(
     (origin, m) => tabs.machineChanged(origin, m),
