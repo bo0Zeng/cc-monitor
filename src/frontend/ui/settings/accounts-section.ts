@@ -11,8 +11,6 @@ import { emit } from "@tauri-apps/api/event";
 import { getCurrentMachine, subscribeMachine } from "../machine-context";
 import { SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT } from "./events";
 import { renderNewAccountForm, type NewAccountForm, type NewAccountRequest } from "./account-new-form";
-import { openLoginWindow, loginInTmux } from "./account-login";
-import { askFacts } from "../new-session-reads";
 import { accountRowKind, deriveUi, defaultAccount, type Account, type AccountsState } from "../accounts";
 import { accountsAgentProfile, fetchAccounts, launchAgentId } from "../account-reads";
 import { readPrefs, setPrefs } from "../machine-prefs";
@@ -35,7 +33,6 @@ import { emptyState } from "../kit/empty";
 import { skeletonRows } from "../kit/skeleton";
 import { field } from "../kit/field";
 import { openMenu, type MenuItem } from "../kit/menu";
-import { spinner } from "../kit/progress";
 import { tag } from "../kit/badge";
 import { toast, failToast } from "../kit/toast";
 import { copyText } from "../copy-table";
@@ -74,10 +71,6 @@ export class AccountsSection {
   private seq = 0;
   /** 展开着的行（按「机器 ＋ 号」记，重读后不收起）。 */
   private readonly open = new Set<string>();
-  /** 这次开着窗口时为它开过登录窗口的号（那一行「等待终端登录…」＋［重新打开登录窗口］）。 */
-  private readonly waiting = new Set<string>();
-  /** 开不了终端窗口的号 ⇒ 那台有没有 tmux（那一行改说「本机无法开终端窗口」，有 ⇒ ＋［在 tmux 里登录］）。 */
-  private readonly noWindow = new Map<string, boolean>();
   /** 这次窗口里修复过的机器（警告条 ⋯ 里才有「恢复到修复之前」）。 */
   private readonly repaired = new Set<Origin>();
   private form: NewAccountForm | null = null;
@@ -420,8 +413,6 @@ export class AccountsSection {
     line1.appendChild(nm);
     const isDef = a.name === f.state.meta?.effectiveDefault;
     if (isDef) line1.appendChild(tag(copyText("acctPage.row.default")));
-    const waiting = this.waiting.has(key) && accountRowKind(a) === "notLoggedIn";
-    if (waiting) line1.appendChild(spinner());
     if (q?.login === "needsKey") {
       const t = tag(copyText("acctPage.row.keyNotSaved"));
       t.dataset.shade = "error";
@@ -429,7 +420,7 @@ export class AccountsSection {
     }
     const line2 = document.createElement("div");
     line2.className = "acct-row-kind one-line";
-    line2.textContent = kindLine(a, waiting);
+    line2.textContent = kindLine(a);
     who.append(line1, line2);
 
     const u5 = document.createElement("div");
@@ -445,16 +436,7 @@ export class AccountsSection {
       fn();
     };
     if (!readonly) {
-      if (this.noWindow.has(key)) {
-        const why = document.createElement("span");
-        why.className = "acct-row-why";
-        why.textContent = copyText("acctPage.login.noWindow");
-        act.append(why);
-        // 那台说了没有 tmux ⇒ 不出［在 tmux 里登录］（tmux 一律可选，不画成「要装」）。
-        if (this.noWindow.get(key) !== false) act.appendChild(button({ label: copyText("acctPage.login.inTmux"), size: "compact", onClick: stop(() => void this.tmuxLogin(origin, a)) }));
-      } else if (waiting) {
-        act.appendChild(button({ label: copyText("acctPage.login.reopen"), size: "compact", onClick: stop(() => void this.login(origin, a)) }));
-      } else if (accountRowKind(a) === "notLoggedIn") {
+      if (accountRowKind(a) === "notLoggedIn") {
         // 需登录 ⇒［登录…］开登录抽屉（与「需手动」浮层里那一行同一个）。
         const go = button({ label: copyText("newSession.account.login"), size: "compact", onClick: stop(() => this.signIn(origin, a)) });
         go.dataset.action = "acct-login";
@@ -501,9 +483,8 @@ export class AccountsSection {
     if (a.name !== f.state.meta?.effectiveDefault) items.push({ label: copyText("acctPage.row.setDefault"), onClick: () => void this.setDefault(origin, a), ...off });
     if (accountRowKind(a) === "apikey") items.push({ label: copyText("acctPage.menu.changeKey"), onClick: () => this.openDetail(a.name), ...off });
     else {
+      // 在终端窗口里登录只在登录抽屉里：抽屉那一趟起不来、后端说那条路在时才亮。
       items.push({ label: copyText("acctPage.menu.relogin"), onClick: () => this.signIn(origin, a), ...off });
-      // 在终端里登录只留在这里（开终端跑那台答的登录那一行；开不了 ⇒ 那一行改给［tmux 里登录］）。
-      if (a.configDir !== null) items.push({ label: copyText("acctPage.menu.loginTerminal"), onClick: () => void this.login(origin, a), ...off });
     }
     const cmds = f.commands.get(a.name) ?? [];
     if (cmds.length > 0) items.push({ label: copyText("acctPage.menu.copyCommands"), onClick: () => copyCmds(cmds) });
@@ -701,41 +682,7 @@ export class AccountsSection {
 
   /** ［登录…］·「⋯ 重新登录…」：开登录抽屉（目标照这一行拼：那一家 ＋ 号名）。登成了那一行随推送自己变。 */
   private signIn(origin: Origin, a: Account): void {
-    const key = this.key(a.name, origin);
-    this.noWindow.delete(key);
-    this.waiting.delete(key);
     openLoginDrawer({ origin, target: { kind: "account", agent: launchAgentId(), account: a.name }, onDone: () => void this.reload(true) });
-    if (this.facts) this.paint(this.facts);
-  }
-
-  /** 「⋯ 在终端里登录…」：开终端窗口跑那台答的登录那一行。 */
-  private async login(origin: Origin, a: Account): Promise<void> {
-    const key = this.key(a.name, origin);
-    try {
-      if ((await openLoginWindow(origin, a.name)) === "opened") {
-        this.noWindow.delete(key);
-        this.waiting.add(key);
-      } else {
-        // 开不了窗 ⇒ 问那台有没有 tmux（问不到 ⇒ 照给［在 tmux 里登录］，按下去那台照实说）。
-        this.noWindow.set(key, await askFacts(origin, null).then((f) => f.hosts.includes("tmux"), () => true));
-      }
-    } catch (e) {
-      failToast(copyText("acctPage.login.failed", { name: a.name }), e, { level: "error" });
-    }
-    if (this.facts) this.paint(this.facts);
-  }
-
-  private async tmuxLogin(origin: Origin, a: Account): Promise<void> {
-    if (a.configDir === null) return;
-    const key = this.key(a.name, origin);
-    try {
-      await loginInTmux(origin, a.name, a.configDir);
-      this.noWindow.delete(key);
-      this.waiting.add(key);
-    } catch (e) {
-      failToast(copyText("acctPage.login.failed", { name: a.name }), e, { level: "error" });
-    }
-    if (this.facts) this.paint(this.facts);
   }
 
   private async reveal(origin: Origin, dir: string): Promise<void> {
@@ -830,11 +777,10 @@ function quotaOf(quota: QuotaRead, agent: string, account: string): QuotaShow | 
   return u ? { kind: u.kind, state: "unseen", stale: false, slots: [], login: u.login, usage: u.usage } : null;
 }
 
-/** 第二行：`订阅 · {email}` ／ `API key · {地址}` ／ `订阅 · 等待终端登录…` ／ `订阅 · 未登录`。 */
-function kindLine(a: Account, waiting: boolean): string {
+/** 第二行：`订阅 · {email}` ／ `API key · {地址}` ／ `订阅 · 未登录`。 */
+function kindLine(a: Account): string {
   const kind = accountRowKind(a);
   if (kind === "apikey") return a.baseUrl ? copyText("acctPage.row.apikeyAt", { host: hostOf(a.baseUrl) }) : copyText("acctPage.row.apikey");
-  if (waiting) return copyText("acctPage.row.waiting");
   if (kind === "notLoggedIn") return copyText("acctPage.row.notLoggedIn");
   return a.email ? copyText("acctPage.row.sub", { email: a.email }) : copyText("acctPage.row.subNoEmail");
 }

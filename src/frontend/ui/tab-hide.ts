@@ -28,6 +28,13 @@ export interface TabHideHost {
   close(sid: string): void;
 }
 
+/** 交了没成的那一个：哪一个 · 交的是不是「隐藏」· 那一句。 */
+interface Missed {
+  tab: Tab;
+  on: boolean;
+  e: unknown;
+}
+
 /** 隐藏之前那一刻（撤销时放回）：顺序里那一格 · 分组 · 固定。 */
 interface Before {
   index: number;
@@ -75,20 +82,27 @@ export class TabHide {
     return true;
   }
 
-  /** 右键 / 批量「隐藏」：交命令、给撤销 toast（`已隐藏 orders` · `已隐藏 3 个`）；不弹确认。已经隐藏的跳过。 */
+  /**
+   * 右键 / 批量「隐藏」：交命令；回包成了才给撤销 toast，只数成了的那几个（`已隐藏 orders` · `已隐藏 ×3`）；
+   * 没成的各说那一句（全没成 ⇒ 只有那几句）。不弹确认；已经隐藏的跳过。
+   */
   hide(sids: readonly string[]): void {
     const tabs = sids.map((s) => this.store.tabs.get(s)).filter((t): t is Tab => t !== undefined && (t.hidden ?? null) === null);
     if (tabs.length === 0) return;
     for (const t of tabs) this.before.set(t.sessionId, { index: this.store.orderedIds.indexOf(t.sessionId), group: t.group, pinned: t.pinned });
     // 撤销回到隐藏之前那一份单独设置（各个照后端回的改之前那一格，`undoHide`），不一律钉成「单独显示」。
     const prevs = new Map<string, Hide | null>();
-    const sent = this.send(tabs, () => "on", (t, prev) => prevs.set(t.sessionId, prev));
-    const title = tabs.length === 1 ? copyText("tabBar.hide.done", { title: fullTitle(tabs[0]) }) : copyText("tabBar.hide.doneMany", { n: tabs.length });
-    this.host.undoToast(
-      title,
-      () => void sent.then(() => this.send(tabs.filter((t) => prevs.has(t.sessionId)), (t) => undoHide(prevs.get(t.sessionId) ?? null))),
-      () => tabs.forEach((t) => this.before.delete(t.sessionId)),
-    );
+    void this.send(tabs, () => "on", (t, prev) => prevs.set(t.sessionId, prev)).then((missed) => {
+      this.sayMissed(missed);
+      const done = tabs.filter((t) => prevs.has(t.sessionId));
+      if (done.length === 0) return;
+      const title = done.length === 1 ? copyText("tabBar.hide.done", { title: fullTitle(done[0]) }) : copyText("tabBar.hide.doneMany", { n: done.length });
+      this.host.undoToast(
+        title,
+        () => void this.send(done, (t) => undoHide(prevs.get(t.sessionId) ?? null)).then((m) => this.sayMissed(m)),
+        () => done.forEach((t) => this.before.delete(t.sessionId)),
+      );
+    });
   }
 
   /**
@@ -96,11 +110,12 @@ export class TabHide {
    */
   unhide(sids: readonly string[]): void {
     const tabs = sids.map((s) => this.store.tabs.get(s)).filter((t): t is Tab => t !== undefined && (t.hidden ?? null) !== null);
-    if (tabs.length > 0) void this.send(tabs, () => "off");
+    if (tabs.length > 0) void this.send(tabs, () => "off").then((m) => this.sayMissed(m));
   }
 
-  /** 逐个交（`to` ＝ 这一个交什么）；交成了 ⇒ `done(那一个, 改之前那一格)`。 */
-  private async send(tabs: readonly Tab[], to: (t: Tab) => HideSet, done?: (t: Tab, prev: Hide | null) => void): Promise<void> {
+  /** 逐个交（`to` ＝ 这一个交什么）；交成了 ⇒ `done(那一个, 改之前那一格)`。回没成的那几个（不出声，调用方定怎么说）。 */
+  private async send(tabs: readonly Tab[], to: (t: Tab) => HideSet, done?: (t: Tab, prev: Hide | null) => void): Promise<Missed[]> {
+    const missed: Missed[] = [];
     await Promise.all(
       tabs.map((t) => {
         const word = to(t);
@@ -108,12 +123,20 @@ export class TabHide {
           (prev) => done?.(t, prev),
           (e: unknown) => {
             this.before.delete(t.sessionId);
-            const title = fullTitle(t);
-            this.host.failed(word === "on" ? copyText("tabBar.hide.failed", { title }) : copyText("tabBar.unhide.failed", { title }), e);
+            missed.push({ tab: t, on: word === "on", e });
           },
         );
       }),
     );
+    return missed;
+  }
+
+  /** 没成的各说那一句。 */
+  private sayMissed(missed: readonly Missed[]): void {
+    for (const { tab, on, e } of missed) {
+      const title = fullTitle(tab);
+      this.host.failed(on ? copyText("tabBar.hide.failed", { title }) : copyText("tabBar.unhide.failed", { title }), e);
+    }
   }
 
   /** 隐藏了又结束的：不留（「已隐藏」只列活的，要看去历史）；正看着的那一个切走再收。 */

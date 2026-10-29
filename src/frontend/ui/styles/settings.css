@@ -2124,11 +2124,6 @@ body.settings-window-mode .settings-panel {
   gap: var(--space-3);
 }
 
-.acct-row-why {
-  color: var(--text-2);
-  font-size: var(--font-size-small);
-}
-
 /* 「设为默认」悬停 / 焦点才出现。 */
 .acct-row-hoverbtn {
   visibility: hidden;

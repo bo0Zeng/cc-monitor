@@ -288,7 +288,7 @@ export class SessionHead {
     });
     switch (id) {
       case "cwd":
-        return !isRemoteOrigin(tab.origin) && tab.projectDir ? plain(copyText("tabBarView.tab.cwdHint"), "tab.open-cwd", () => this.host.openCwd(sid), copyText("tabMenu.open.cwd")) : null;
+        return tab.projectDir ? plain(copyText("tabBarView.tab.cwdHint"), "tab.open-cwd", () => this.host.openCwd(sid), copyText("tabMenu.open.cwd")) : null;
       case "front": {
         // 做不了也画、灰着，悬停写那一句（A2-17-12-1）：壳说这台 ↗ 不是真的 · 那台说没有终端可去。
         const why = frontWhy(tab.face);

@@ -25,7 +25,32 @@ import { CHANNEL_CANCEL, CHANNEL_READ, CHANNEL_WATCH, pendingKey, type QueueCanc
 import { el } from "./kit/el";
 import { button, setBusy, setDisabled } from "./kit/button";
 import { copyDetailButton, detailOf, saidOf } from "./kit/detail";
+import { LS_KEYS, safeGetJson, safeSetJson } from "./local-storage";
 import s from "./composer.module.css";
+
+/**
+ * 打到一半的字：按「那台 ＋ 会话」一格，落本地存储（重开还在；这扇窗的界面便利，读不到 ⇒ 框空）。空串 ⇒ 删那一格。
+ * 每次改都整份写回（格数就是开过几条会话，小）。
+ */
+class DraftBook {
+  private readonly m: Map<string, string>;
+  constructor() {
+    const saved = safeGetJson<Record<string, unknown>>(LS_KEYS.composerDrafts);
+    this.m = new Map(Object.entries(saved ?? {}).filter((e): e is [string, string] => typeof e[1] === "string" && e[1] !== ""));
+  }
+  get(key: string): string | undefined {
+    return this.m.get(key);
+  }
+  set(key: string, text: string): void {
+    if ((this.m.get(key) ?? "") === text) return;
+    if (text === "") this.m.delete(key);
+    else this.m.set(key, text);
+    safeSetJson(LS_KEYS.composerDrafts, Object.fromEntries(this.m));
+  }
+  delete(key: string): void {
+    this.set(key, "");
+  }
+}
 
 /** 输入框要的几口（缺省走通道；测试换成假的）。 */
 export interface ComposerReads {
@@ -73,7 +98,7 @@ export class Composer {
   private readonly attach: AttachRow;
   /** 此刻对着的那条会话（键 ＝ 那台 ＋ 会话）。 */
   private key: string | null = null;
-  private readonly drafts = new Map<string, string>();
+  private readonly drafts = new DraftBook();
   private readonly attachDrafts = new Map<string, AttachDraft>();
   /** 此刻那条会话的名单（那台那一份；还没读到 ⇒ `null`）与它是哪一条。 */
   private queue: QueueList | null = null;
@@ -327,6 +352,7 @@ export class Composer {
   }
 
   private onInput(): void {
+    if (this.key !== null) this.drafts.set(this.key, this.box.value);
     const lines = this.box.value.split("\n").length;
     this.box.rows = Math.min(MAX_ROWS, Math.max(1, lines));
     this.measure();

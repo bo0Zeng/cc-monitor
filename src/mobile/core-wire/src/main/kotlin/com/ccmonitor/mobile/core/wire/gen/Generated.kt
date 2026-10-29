@@ -11571,6 +11571,7 @@ data class LogTail(
 @Suppress("UNCHECKED_CAST")
 data class LoginAgain(
     val again: LoginAgainHow,
+    val terminal: Boolean,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -11578,9 +11579,10 @@ data class LoginAgain(
         val ADAPTER: JsonAdapter<LoginAgain> = obj(
             listOf(
             Field("again", { LoginAgainHow.ADAPTER }, optional = false, nullable = false),
+            Field("terminal", { Bool }, optional = false, nullable = false),
             ),
-            { a -> LoginAgain(a[0] as LoginAgainHow) },
-            { v -> arrayOf(v.again) },
+            { a -> LoginAgain(a[0] as LoginAgainHow, a[1] as Boolean) },
+            { v -> arrayOf(v.again, v.terminal) },
         )
     }
 }

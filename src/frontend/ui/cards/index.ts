@@ -39,8 +39,6 @@ import { buildUnreadLine } from "./unread";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 import { firstLineOf, sizeText } from "../format";
 import { openFileWindow } from "../file-window";
-import { resolveRemoteConfigByOrigin } from "../remote-config";
-import { toast } from "../kit/toast";
 import { isRemoteOrigin, type Origin } from "../ipc/origin";
 
 /**
@@ -629,17 +627,13 @@ function buildRemoteFileLink(origin: string, filePath: string): HTMLElement {
   el.className = "tool-file-link";
   el.textContent = copyText("cards.remoteFile.open", { path: filePath });
   el.title = copyText("cards.remoteFile.openHint");
-  el.addEventListener("click", () => void openRemoteFileInSftp(origin, filePath));
+  el.addEventListener("click", () => openRemoteFileInSftp(origin, filePath));
   return el;
 }
 
-async function openRemoteFileInSftp(origin: string, filePath: string): Promise<void> {
-  const cfg = await resolveRemoteConfigByOrigin(origin);
-  if (!cfg) {
-    toast(copyText("cards.remoteFile.openFailed"), copyText("cards.remoteFile.noMachine", { machine: origin }));
-    return;
-  }
-  void openFileWindow(cfg, { revealFile: filePath });
+/** 文件窗口定位到那台上那一份：只凭那台名字开（认不出那台那一句由壳说、进失败 toast）。 */
+function openRemoteFileInSftp(origin: string, filePath: string): void {
+  void openFileWindow(origin, { revealFile: filePath });
 }
 
 /**

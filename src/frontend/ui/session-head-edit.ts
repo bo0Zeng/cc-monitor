@@ -26,7 +26,7 @@ export interface HeadEditHost {
 
 /** 每一颗在清单里的名字 · 图标 · 右侧灰字（只在哪种会话才有）。 */
 export const HEAD_BUTTON_FACE: Readonly<Record<HeadButtonId, { icon: IconName; name: () => string; note?: () => string }>> = {
-  cwd: { icon: "folder", name: () => copyText("tabMenu.open.cwd"), note: () => copyText("sessionHead.edit.onlyLocal") },
+  cwd: { icon: "folder", name: () => copyText("tabMenu.open.cwd") },
   front: { icon: "front", name: () => copyText("tabMenu.open.front"), note: () => copyText("sessionHead.edit.onlyWindows") },
   terminal: { icon: "terminal", name: () => copyText("sessionHead.act.terminal") },
   popOut: { icon: "popOut", name: () => copyText("sessionHead.act.popOut") },

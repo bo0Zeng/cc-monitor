@@ -399,6 +399,10 @@ const f64 = (n: number): Float64Array => new Float64Array(n);
 const u32 = (n: number): Uint32Array => new Uint32Array(n);
 const u8 = (n: number): Uint8Array => new Uint8Array(n);
 
+/** 骨架账本前缀和的块长（行）：`2 ** LEDGER_SHIFT`。 */
+const LEDGER_SHIFT = 10;
+const LEDGER_BLOCK = 1 << LEDGER_SHIFT;
+
 /**
  * 骨架账本（纯数据，零 DOM）。
  *
@@ -416,6 +420,8 @@ const u8 = (n: number): Uint8Array => new Uint8Array(n);
  *
  * 按列收后端索引（帧面 `history-index` 本来按列排）：每行都有的几格各一列定长数组，稀疏的几格（正文那五个数 · 来源）
  * 各一张按行号升序的小表；`factsOf(seq)` 现拼一行的料。
+ * 估高的前缀和按块存（[`LEDGER_BLOCK`] 行一块：块内累加 ＋ 块前缀一列）：改一行只重算它那一块与块前缀，
+ * 不从那一行一路重算到尾（十几万行的会话在顶部精算 · 量回 · 展开一轮各省一整列）。
  *
  * # 坐标
  *
@@ -453,9 +459,11 @@ export class SkeletonLedger {
   private draws: string[] = [];
   /** 人说的那几行（下标，升序）。 */
   private huAt = new Column(u32);
-  /** prefix[i] = seq [base, base+i) 的估高之和；长度 = 行数 + 1 */
-  private prefix: number[] = [0];
-  /** 每行第一级粗估（`prefix` 由它与 `refined` 合出来）。 */
+  /** inner[i] = 第 i 行所在那一块从块头到第 i 行（含）的估高之和。 */
+  private inner: number[] = [];
+  /** blockPre[j] = 第 j 块之前各块的估高之和；长度 = 块数 + 1。 */
+  private blockPre: number[] = [0];
+  /** 每行第一级粗估（前缀和由它与 `refined` 合出来）。 */
   private est: number[] = [];
   /** 〔第二级〕Worker 精算回来的高 · 交回占位前量的真高（seq → px，当前列宽下）；有它就用它、没有用第一级。 */
   private refined = new Map<number, number>();
@@ -474,6 +482,8 @@ export class SkeletonLedger {
   private staleEnd = 0;
   /** 到此刻按第一级估过几行（判据：改列宽当场只估视口附近那几行）。 */
   estimated = 0;
+  /** 到此刻重合前缀和时重算过几行（判据：改一行只重算它那一块）。 */
+  summed = 0;
 
   constructor(base: number, pages: readonly HistoryIndex[], colW?: number) {
     this.base = base;
@@ -524,8 +534,10 @@ export class SkeletonLedger {
       const h = estimateFromFacts(f, this.colW);
       this.estimated++;
       this.est.push(h);
-      this.prefix.push(this.prefix[this.prefix.length - 1] + this.rowHeight(seq, h));
+      const r = this.rowHeight(seq, h);
+      this.inner.push(k & (LEDGER_BLOCK - 1) ? this.inner[k - 1] + r : r);
     }
+    this.sumBlocksFrom(first >> LEDGER_SHIFT);
   }
 
   /**
@@ -545,7 +557,9 @@ export class SkeletonLedger {
     this.staleBelow = lo;
     this.staleAbove = hi;
     this.staleEnd = n;
-    this.rebuildFrom(0);
+    const all = new Set<number>();
+    this.markRows(all, 0, n);
+    this.resum(all);
     return redo;
   }
 
@@ -556,22 +570,22 @@ export class SkeletonLedger {
 
   /** 按当前列宽补估至多 `max` 行没估的（离视口近的先：上面那一截往尾推、下面那一截往 0 退，轮流）。回：有没有哪一行变了高。 */
   settle(max: number): boolean {
-    let lowest = Infinity;
+    const blocks = new Set<number>();
     let k = 0;
     while (k < max && (this.staleBelow > 0 || this.staleAbove < this.staleEnd)) {
       if (this.staleAbove < this.staleEnd) {
         const i = this.staleAbove++;
-        if (this.reestimate(i) && i < lowest) lowest = i;
+        if (this.reestimate(i)) blocks.add(i >> LEDGER_SHIFT);
         k++;
       }
       if (k < max && this.staleBelow > 0) {
         const i = --this.staleBelow;
-        if (this.reestimate(i) && i < lowest) lowest = i;
+        if (this.reestimate(i)) blocks.add(i >> LEDGER_SHIFT);
         k++;
       }
     }
-    if (lowest === Infinity) return false;
-    this.rebuildFrom(lowest);
+    if (blocks.size === 0) return false;
+    this.resum(blocks);
     return true;
   }
 
@@ -595,7 +609,7 @@ export class SkeletonLedger {
   }
 
   /**
-   * 〔第二级〕Worker 精算回来的高换进账本（越界 / 不建卡的行不收）；从改动的最低那一行起重合一次前缀和。
+   * 〔第二级〕Worker 精算回来的高换进账本（越界 / 不建卡的行不收）；改到的那几块重合前缀和。
    * 返回有没有哪一行真的变了。
    */
   refine(entries: Iterable<readonly [number, number]>): boolean {
@@ -611,7 +625,7 @@ export class SkeletonLedger {
   }
 
   private take(entries: Iterable<readonly [number, number]>, measured: boolean): boolean {
-    let lowest = Infinity;
+    const blocks = new Set<number>();
     for (const [seq, px] of entries) {
       const i = seq - this.base;
       if (i < 0 || i >= this.off.length || !(px >= 0)) continue;
@@ -619,37 +633,62 @@ export class SkeletonLedger {
       const h = measured && this.lines.has(seq) ? Math.max(0, px - this.linePx) : px;
       if (this.refined.get(seq) === h) continue;
       this.refined.set(seq, h);
-      lowest = Math.min(lowest, i);
+      blocks.add(i >> LEDGER_SHIFT);
     }
-    if (lowest === Infinity) return false;
-    this.rebuildFrom(lowest);
+    if (blocks.size === 0) return false;
+    this.resum(blocks);
     return true;
   }
 
   /**
    * 〔大折叠〕折着的过程那几段（seq 半开区间）与带过程行的轮的开头换成这一组：折着的行按 0 高，开头那一行多算 `linePx`
-   * （过程行本身的高）。从变动的最低那一行起重合前缀和。返回有没有变（同一组 ⇒ `false`，什么都不动）。
+   * （过程行本身的高）。只重合两份之间不一样的那几段与那几个开头所在的块。返回有没有变（同一组 ⇒ `false`，什么都不动）。
    */
   setFolds(f: TurnFolds): boolean {
     const next = f.folded.filter(([a, b]) => b > a).map(([a, b]) => [a, b] as const).sort((x, y) => x[0] - y[0]);
     const prev = this.folded;
     const lines = new Set(f.lines);
-    const sameFold = next.length === prev.length && next.every(([a, b], i) => a === prev[i][0] && b === prev[i][1]);
-    const sameLines = f.linePx === this.linePx && lines.size === this.lines.size && [...lines].every((x) => this.lines.has(x));
-    if (sameFold && sameLines) return false;
-    // 动到的最低一行：新旧两份折叠的开头（·行号变了再加新旧两份过程行的开头）。逐个比，不展开成实参 ——
-    // 这几份各约一轮一个，几万轮时合计十几万个号，超过 V8（Windows 的 WebView2）一次调用的实参上限会抛 RangeError。
-    let lowest = Infinity;
-    for (const [a] of next) if (a < lowest) lowest = a;
-    for (const [a] of prev) if (a < lowest) lowest = a;
-    if (!sameLines) {
-      for (const x of lines) if (x < lowest) lowest = x;
-      for (const x of this.lines) if (x < lowest) lowest = x;
+    // 动到的块：新旧两份里只在一边的折叠段（两份都按开头升序、段不相交 ⇒ 并着走一遍）· 只在一边的开头
+    // （过程行高变了 ⇒ 新旧两份开头全算）。逐个走，不展开成实参 —— 这几份各约一轮一个，几万轮时合计十几万个号，
+    // 超过 V8（Windows 的 WebView2）一次调用的实参上限会抛 RangeError。
+    const blocks = new Set<number>();
+    const pxChanged = f.linePx !== this.linePx;
+    let differ = pxChanged;
+    const seg = (s: readonly [number, number]) => {
+      differ = true;
+      this.markRows(blocks, s[0] - this.base, s[1] - this.base);
+    };
+    let p = 0;
+    let q = 0;
+    while (p < prev.length || q < next.length) {
+      const a = prev[p];
+      const b = next[q];
+      if (a && b && a[0] === b[0]) {
+        if (a[1] !== b[1]) {
+          seg(a);
+          seg(b);
+        }
+        p++;
+        q++;
+      } else if (!b || (a && a[0] < b[0])) {
+        seg(a);
+        p++;
+      } else {
+        seg(b);
+        q++;
+      }
     }
+    const head = (x: number) => {
+      differ = true;
+      this.markRows(blocks, x - this.base, x - this.base + 1);
+    };
+    for (const x of lines) if (pxChanged || !this.lines.has(x)) head(x);
+    for (const x of this.lines) if (pxChanged || !lines.has(x)) head(x);
+    if (!differ) return false;
     this.folded = next;
     this.lines = lines;
     this.linePx = f.linePx;
-    this.rebuildFrom(lowest === Infinity ? 0 : Math.max(0, lowest - this.base));
+    this.resum(blocks);
     return true;
   }
 
@@ -675,10 +714,41 @@ export class SkeletonLedger {
     return l < this.folded.length && this.folded[l][0] <= seq;
   }
 
-  private rebuildFrom(lowest: number): void {
-    for (let i = lowest; i < this.off.length; i++) {
-      this.prefix[i + 1] = this.prefix[i] + this.rowHeight(this.base + i, this.est[i]);
+  /** 下标 `[lo, hi)`（夹进账本）落在的块号记进 `blocks`。 */
+  private markRows(blocks: Set<number>, lo: number, hi: number): void {
+    const a = Math.max(0, lo);
+    const b = Math.min(this.off.length, hi);
+    for (let j = a >> LEDGER_SHIFT; b > a && j <= (b - 1) >> LEDGER_SHIFT; j++) blocks.add(j);
+  }
+
+  /** 这几块重合块内累加，再从最低那一块起重合块前缀（块前缀只有行数 / 块长那么多格）。 */
+  private resum(blocks: Iterable<number>): void {
+    const n = this.off.length;
+    let lowest = Infinity;
+    for (const j of blocks) {
+      const lo = j << LEDGER_SHIFT;
+      const hi = Math.min(n, lo + LEDGER_BLOCK);
+      let acc = 0;
+      for (let i = lo; i < hi; i++) {
+        acc += this.rowHeight(this.base + i, this.est[i]);
+        this.inner[i] = acc;
+      }
+      this.summed += Math.max(0, hi - lo);
+      if (j < lowest) lowest = j;
     }
+    if (lowest !== Infinity) this.sumBlocksFrom(lowest);
+  }
+
+  private sumBlocksFrom(j: number): void {
+    const n = this.off.length;
+    const nb = (n + LEDGER_BLOCK - 1) >> LEDGER_SHIFT;
+    this.blockPre.length = nb + 1;
+    for (let k = j; k < nb; k++) this.blockPre[k + 1] = this.blockPre[k] + this.inner[Math.min(n, (k + 1) << LEDGER_SHIFT) - 1];
+  }
+
+  /** 下标 `[0, i)` 的估高之和。 */
+  private prefixAt(i: number): number {
+    return i > 0 ? this.blockPre[(i - 1) >> LEDGER_SHIFT] + this.inner[i - 1] : 0;
   }
 
   /** 行数 */
@@ -693,7 +763,7 @@ export class SkeletonLedger {
 
   /** 全会话估高 */
   get totalHeight(): number {
-    return this.prefix[this.prefix.length - 1];
+    return this.prefixAt(this.off.length);
   }
 
   /** seq 那一行的料（越界 ⇒ undefined；现拼，不留）。 */
@@ -725,25 +795,33 @@ export class SkeletonLedger {
   heightOf(lo: number, hi: number): number {
     const a = this.clampIdx(lo);
     const b = this.clampIdx(hi);
-    return b > a ? this.prefix[b] - this.prefix[a] : 0;
+    return b > a ? this.prefixAt(b) - this.prefixAt(a) : 0;
   }
 
   /**
    * 在 `[lo, hi)` 这一段里，距段顶 `y` 像素处落在哪一条（返回 seq）。
    * `y < 0` ⇒ `lo`；`y ≥ 段高` ⇒ `hi - 1`；空段 ⇒ `lo`。零高行（不建卡的）不会被单独命中，
-   * 返回的是**覆盖该像素**的那一条（二分找 prefix 里第一个 > 目标的位置）。
+   * 返回的是**覆盖该像素**的那一条（先在块前缀里二分到块，再在块内累加里二分：第一个前缀和 > 目标的位置）。
    */
   seqAt(lo: number, hi: number, y: number): number {
     const a = this.clampIdx(lo);
     const b = this.clampIdx(hi);
     if (b <= a) return lo;
-    const target = this.prefix[a] + Math.max(0, y);
-    // 找最小的 i ∈ [a, b) 使 prefix[i+1] > target
-    let l = a;
-    let r = b - 1;
+    const target = this.prefixAt(a) + Math.max(0, y);
+    // 找最小的 i ∈ [a, b) 使 prefixAt(i+1) > target：先找块（i+1 的前缀落在 i 那一块 ⇒ 块前缀 ≤ 目标的最后一块），再块内
+    let jl = a >> LEDGER_SHIFT;
+    let jr = (b - 1) >> LEDGER_SHIFT;
+    while (jl < jr) {
+      const mid = (jl + jr + 1) >>> 1;
+      if (this.blockPre[mid] > target) jr = mid - 1;
+      else jl = mid;
+    }
+    let l = Math.max(a, jl << LEDGER_SHIFT);
+    let r = Math.min(b - 1, ((jl + 1) << LEDGER_SHIFT) - 1);
+    const pre = this.blockPre[jl];
     while (l < r) {
       const mid = (l + r) >>> 1;
-      if (this.prefix[mid + 1] > target) r = mid;
+      if (pre + this.inner[mid] > target) r = mid;
       else l = mid + 1;
     }
     return this.base + l;

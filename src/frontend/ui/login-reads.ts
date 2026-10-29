@@ -26,12 +26,13 @@ const START_BUDGET_MS = 40_000;
 const FINISH_BUDGET_MS = 70_000;
 const CANCEL_BUDGET_MS = 10_000;
 
-/** 登录那几条没成：那一句（后端写好）· 原话 · 还能怎么办（后端 `data.again`）。 */
+/** 登录那几条没成：那一句（后端写好）· 原话 · 还能怎么办（后端 `data.again`）· 终端窗口那条路在不在（后端 `data.terminal`）。 */
 export class LoginFailed extends Error {
   constructor(
     readonly said: string,
     readonly detail: string,
     readonly again: LoginAgainHow,
+    readonly terminal = false,
   ) {
     super(said);
     this.name = "LoginFailed";
@@ -43,7 +44,7 @@ export class LoginFailed extends Error {
 function failedOf(e: unknown, cmd: "login-start" | "login-finish"): LoginFailed {
   if (e instanceof LoginFailed) return e;
   const r = refusalIn(e, cmd);
-  return new LoginFailed(saidOf(e), detailOf(e), r ? (r.data?.again ?? "none") : "restart");
+  return new LoginFailed(saidOf(e), detailOf(e), r ? (r.data?.again ?? "none") : "restart", r?.data?.terminal ?? false);
 }
 
 /**
