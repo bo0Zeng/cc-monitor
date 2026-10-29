@@ -80,12 +80,6 @@ src/frontend/shell/src/spawn_managed.rs	3
 src/frontend/ui/account-color.ts	1
 src/frontend/ui/agent-profile.ts	2
 src/frontend/ui/assets-sync-reads.ts	2
-src/frontend/ui/generated/AliasBlockState.ts	1
-src/frontend/ui/generated/AliasStartupFile.ts	2
-src/frontend/ui/generated/EnvTier.ts	1
-src/frontend/ui/generated/Unavailable.ts	1
-src/frontend/ui/generated/WatchReply.ts	1
-src/frontend/ui/generated/agent-profile-table.ts	2
 src/frontend/ui/keybindings/editor.ts	1
 src/frontend/ui/skeleton-view.ts	1
 src/frontend/ui/styles.css	2

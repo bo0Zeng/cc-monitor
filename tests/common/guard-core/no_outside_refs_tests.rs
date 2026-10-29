@@ -763,6 +763,7 @@ fn the_unblocked_net_catches_its_two_shapes_and_spares_the_rest() {
 
 /// 第六张网（施工史与施工代号）：拦，带一张只许变短的存量名单。
 /// 人群：`src/` · `tests/` · `.github/` 底下跟踪着的文本文件（名单自己除外：它列的就是这些名字）；测试声明行不扫。
+/// 生成物（[`GENERATED`]）不扫：那里的字来自 Rust 源码注释，源头在人群里；它随重新生成变，名单跟不住它。
 /// 三形各一个名字，每个网眼拆两段、运行期拼：
 /// - 施工史：「先」「从」＋「前」（「从」＋「前端 / 前后」不算）·「原」＋「住」·「搬家」＋「前」·「回修」＋「轮」·「这一」＋「刀」
 ///   —— 写的是现在是什么样，不是从哪儿改过来；
@@ -805,6 +806,9 @@ fn coded_evidence_name() -> Regex {
 /// 存量名单：`路径<TAB>命中行数`，一份一行。只许变短：名单外的命中 ⇒ 红；名单里的一份命中行数比记下的多 ⇒ 红；
 /// 名单里的一份已经零命中（或不在了）⇒ 红，删掉那一行。名单清空的那个提交连它和本段读名单的那几行一起删。
 const HISTORY_STOCK: &str = "tests/__fixtures__/outside-refs-pending.tsv";
+
+/// 界面那份生成物的目录：第六张网不扫它。
+const GENERATED: &str = "src/frontend/ui/generated/";
 
 /// 一份文件里第六张网的命中：`(行号, 片段)`；文件名命中记成第 0 行。
 fn history_hits(
@@ -896,7 +900,7 @@ fn no_build_history_or_codes_beyond_the_shrinking_stock_list() {
         let in_scope = ["src/", "tests/", ".github/"]
             .iter()
             .any(|d| rel.starts_with(d));
-        if !in_scope || rel == HISTORY_STOCK {
+        if !in_scope || rel == HISTORY_STOCK || rel.starts_with(GENERATED) {
             continue;
         }
         let hits = history_hits(&eyes, &decl, rel, text);
