@@ -2,7 +2,7 @@
 import type { Origin } from "./Origin";
 
 /**
- * `terminal-ssh` 的入参：哪一台（名字；怎么拨照这一端的机器表组）＋ 要在那台跑什么。
+ * `terminal-ssh` 的入参：哪一台（名字；怎么拨照本机后端的机器表组）＋ 要在那台跑什么。
  * `command`（主界面交成品命令）与 `cwd`（文件窗口「在此打开终端」只交意图，命令由后端拼）**至多给一个**；都不给 ⇒ 那台的登录 shell（命令面板「打开终端」）。
  */
 export type TerminalSshReq = { 

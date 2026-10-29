@@ -2130,7 +2130,10 @@ sealed interface Block {
     }
     @Suppress("UNCHECKED_CAST")
     data class Image(
-        val source: Raw,
+        val mediaType: String,
+        val bytes: Long,
+        val at: Long,
+        val n: Int,
     ) : Block, Ordered {
         override val `type`: String get() = "image"
         override var wireOrder: IntArray? = null
@@ -2180,10 +2183,13 @@ sealed interface Block {
                 Variant("image", Block.Image::class.java, obj(
                         listOf(
                         Field("type", { tag("image") }, optional = false, nullable = false),
-                        Field("source", { RawJson }, optional = false, nullable = false),
+                        Field("mediaType", { Str }, optional = false, nullable = false),
+                        Field("bytes", { U64 }, optional = false, nullable = false),
+                        Field("at", { U64 }, optional = false, nullable = false),
+                        Field("n", { Int32 }, optional = false, nullable = false),
                         ),
-                        { a -> Block.Image(a[1] as Raw) },
-                        { v -> arrayOf("image", v.source) },
+                        { a -> Block.Image(a[1] as String, a[2] as Long, a[3] as Long, a[4] as Int) },
+                        { v -> arrayOf("image", v.mediaType, v.bytes, v.at, v.n) },
                     )),
                 ),
             )
@@ -3678,6 +3684,13 @@ sealed interface Changed {
         override var wireOrder: IntArray? = null
     }
     @Suppress("UNCHECKED_CAST")
+    data class Empty(
+        val body: EmptyFace? = null,
+    ) : Changed, Ordered {
+        override val topic: String get() = "empty"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
     data class SessionHidden(
         val key: String,
         val body: HiddenNow? = null,
@@ -3801,6 +3814,14 @@ sealed interface Changed {
                         ),
                         { a -> Changed.Machine(a[1] as String, a[2] as MachineState?) },
                         { v -> arrayOf("machine", v.key, v.body) },
+                    )),
+                Variant("empty", Changed.Empty::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("empty") }, optional = false, nullable = false),
+                        Field("body", { opt(EmptyFace.ADAPTER) }, optional = true, nullable = true),
+                        ),
+                        { a -> Changed.Empty(a[1] as EmptyFace?) },
+                        { v -> arrayOf("empty", v.body) },
                     )),
                 Variant("session_hidden", Changed.SessionHidden::class.java, obj(
                         listOf(
@@ -5163,6 +5184,25 @@ data class ElemKey(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class EmptyFace(
+    val line: String,
+    val hint: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<EmptyFace> = obj(
+            listOf(
+            Field("line", { Str }, optional = false, nullable = false),
+            Field("hint", { Str }, optional = false, nullable = false),
+            ),
+            { a -> EmptyFace(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.line, v.hint) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class Endpoint(
     val host: String,
     val port: Int,
@@ -5249,6 +5289,10 @@ data class ExitPolicy(
             { v -> arrayOf(v.state, v.killOnExit, v.reason, v.detail, v.path, v.said) },
         )
     }
+}
+
+data object ExitPolicyReadReq {
+    val ADAPTER: JsonAdapter<ExitPolicyReadReq> = obj(emptyList(), { ExitPolicyReadReq }, { emptyArray() })
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -8584,6 +8628,48 @@ data class HistoryHead(
             ),
             { a -> HistoryHead(a[0] as List<HistoryGroup>, a[1] as String?) },
             { v -> arrayOf(v.groups, v.notice) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class HistoryImage(
+    val mediaType: String,
+    val data: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<HistoryImage> = obj(
+            listOf(
+            Field("mediaType", { Str }, optional = false, nullable = false),
+            Field("data", { Str }, optional = false, nullable = false),
+            ),
+            { a -> HistoryImage(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.mediaType, v.data) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class HistoryImageReq(
+    val path: String,
+    val at: Long,
+    val n: Long,
+    val id: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<HistoryImageReq> = obj(
+            listOf(
+            Field("path", { Str }, optional = false, nullable = false),
+            Field("at", { Lng }, optional = false, nullable = false),
+            Field("n", { Lng }, optional = false, nullable = false),
+            Field("id", { Str }, optional = false, nullable = false),
+            ),
+            { a -> HistoryImageReq(a[0] as String, a[1] as Long, a[2] as Long, a[3] as String) },
+            { v -> arrayOf(v.path, v.at, v.n, v.id) },
         )
     }
 }
@@ -12209,6 +12295,7 @@ data class MachineName(
 @Suppress("UNCHECKED_CAST")
 data class MachineRead(
     val machines: Map<String, MachineState>,
+    val empty: EmptyFace,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -12216,9 +12303,10 @@ data class MachineRead(
         val ADAPTER: JsonAdapter<MachineRead> = obj(
             listOf(
             Field("machines", { dict(MachineState.ADAPTER) }, optional = false, nullable = false),
+            Field("empty", { EmptyFace.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> MachineRead(a[0] as Map<String, MachineState>) },
-            { v -> arrayOf(v.machines) },
+            { a -> MachineRead(a[0] as Map<String, MachineState>, a[1] as EmptyFace) },
+            { v -> arrayOf(v.machines, v.empty) },
         )
     }
 }
@@ -12353,7 +12441,6 @@ data class MachineState(
     val seenHostKey: String?,
     val expectedHostKey: String?,
     val detail: String?,
-    val unclear: Int? = null,
     val route: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -12376,11 +12463,10 @@ data class MachineState(
             Field("seenHostKey", { opt(Str) }, optional = false, nullable = true),
             Field("expectedHostKey", { opt(Str) }, optional = false, nullable = true),
             Field("detail", { opt(Str) }, optional = false, nullable = true),
-            Field("unclear", { opt(Int32) }, optional = true, nullable = true),
             Field("route", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as Boolean, a[3] as DialWhy?, a[4] as MachineStage?, a[5] as String?, a[6] as VersionRelation?, a[7] as String?, a[8] as String, a[9] as String, a[10] as String, a[11] as List<MachineFixButton>, a[12] as String?, a[13] as String?, a[14] as String?, a[15] as Int?, a[16] as String?) },
-            { v -> arrayOf(v.name, v.state, v.offline, v.reason, v.stage, v.version, v.versionRelation, v.os, v.word, v.said, v.offlineSaid, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail, v.unclear, v.route) },
+            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as Boolean, a[3] as DialWhy?, a[4] as MachineStage?, a[5] as String?, a[6] as VersionRelation?, a[7] as String?, a[8] as String, a[9] as String, a[10] as String, a[11] as List<MachineFixButton>, a[12] as String?, a[13] as String?, a[14] as String?, a[15] as String?) },
+            { v -> arrayOf(v.name, v.state, v.offline, v.reason, v.stage, v.version, v.versionRelation, v.os, v.word, v.said, v.offlineSaid, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail, v.route) },
         )
     }
 }
@@ -24496,6 +24582,7 @@ enum class Topic(val wire: String) {
     LOGIN("login"),
     MACHINES("machines"),
     MACHINE("machine"),
+    EMPTY("empty"),
     SESSION_HIDDEN("session_hidden"),
     FILES_DIR("files_dir"),
     HISTORY_LIST("history_list"),
@@ -24642,6 +24729,40 @@ data class TransferOpened(
             ),
             { a -> TransferOpened(a[0] as List<OpenedItem>) },
             { v -> arrayOf(v.items) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class TransferStartReq(
+    val id: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<TransferStartReq> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            ),
+            { a -> TransferStartReq(a[0] as String) },
+            { v -> arrayOf(v.id) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class TransferStopReq(
+    val id: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<TransferStopReq> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            ),
+            { a -> TransferStopReq(a[0] as String) },
+            { v -> arrayOf(v.id) },
         )
     }
 }

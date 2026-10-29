@@ -77,6 +77,7 @@ import type { DirChecked } from "./DirChecked";
 import type { DriftMerge } from "./DriftMerge";
 import type { DriftReport } from "./DriftReport";
 import type { ExitPolicy } from "./ExitPolicy";
+import type { ExitPolicyReadReq } from "./ExitPolicyReadReq";
 import type { ExitPolicySet } from "./ExitPolicySet";
 import type { ExtDone } from "./ExtDone";
 import type { ExtList } from "./ExtList";
@@ -135,6 +136,8 @@ import type { HistoryFactsReq } from "./HistoryFactsReq";
 import type { HistoryFind } from "./HistoryFind";
 import type { HistoryFindReq } from "./HistoryFindReq";
 import type { HistoryHead } from "./HistoryHead";
+import type { HistoryImage } from "./HistoryImage";
+import type { HistoryImageReq } from "./HistoryImageReq";
 import type { HistoryIndex } from "./HistoryIndex";
 import type { HistoryIndexReq } from "./HistoryIndexReq";
 import type { HistoryLine } from "./HistoryLine";
@@ -370,8 +373,9 @@ import type { TerminalsList } from "./TerminalsList";
 import type { TerminalsListReq } from "./TerminalsListReq";
 import type { TransferCopyReq } from "./TransferCopyReq";
 import type { TransferDownloadReq } from "./TransferDownloadReq";
-import type { TransferIdReq } from "./TransferIdReq";
 import type { TransferOpened } from "./TransferOpened";
+import type { TransferStartReq } from "./TransferStartReq";
+import type { TransferStopReq } from "./TransferStopReq";
 import type { TransferUploadReq } from "./TransferUploadReq";
 import type { UnfollowReq } from "./UnfollowReq";
 import type { Uninstalled } from "./Uninstalled";
@@ -431,7 +435,7 @@ export interface TypedCommands {
   "deploy-uninstall": { req: DeployUninstallReq; reply: Uninstalled; code: "bad_args" | "io_failed" | "refused" | "unreachable" | "not_carried" | "fenced" | "place_failed" };
   "drift-merge": { req: NoArgs; reply: DriftMerge; code: "bad_args" };
   "drift-report": { req: NoArgs; reply: DriftReport; code: "bad_args" };
-  "exit-policy-read": { req: NoArgs; reply: ExitPolicy; code: "bad_args" };
+  "exit-policy-read": { req: ExitPolicyReadReq; reply: ExitPolicy; code: "bad_args" };
   "exit-policy-set": { req: ExitPolicySet; reply: ExitPolicy; code: "bad_args" | "io_failed" };
   "ext-hub-apply": { req: HubApplyReq; reply: HubApplied; code: "bad_args" | "missing" | "catalog_unreadable" | "io_failed" };
   "ext-hub-preview": { req: HubReq; reply: HubPreview; code: "bad_args" | "missing" | "catalog_unreadable" | "io_failed" };
@@ -478,6 +482,7 @@ export interface TypedCommands {
   "history-facts": { req: HistoryFactsReq; reply: FactsReply; code: "bad_args" | "failed" | "too_large" | "no_such_session" };
   "history-find": { req: HistoryFindReq; reply: HistoryFind; code: "bad_args" | "failed" | "too_large" };
   "history-forget": { req: ForgetReq; reply: Forgotten; code: "bad_args" | "annotations_unreadable" | "io_failed" | "no_annotations" };
+  "history-image": { req: HistoryImageReq; reply: HistoryImage; code: "bad_args" | "failed" | "oversized_line" | "refused" | "not_found" };
   "history-index": { req: HistoryIndexReq; reply: HistoryIndex; code: "bad_args" | "failed" | "too_large" };
   "history-lines": { req: HistoryLinesReq; reply: HistoryLines; code: "bad_args" | "failed" | "oversized_line" | "refused" };
   "history-list": { req: HistoryListReq; reply: SyncPatch<HistoryHead, HistoryRow>; code: "bad_args" | "failed" | "unreachable" | "resident_absent" };
@@ -603,8 +608,8 @@ export interface TypedCommands {
   "terminals-list": { req: TerminalsListReq; reply: TerminalsList; code: "bad_args" | "unobservable" | "child_timed_out" };
   "transfer-copy": { req: TransferCopyReq; reply: BatchReply; code: "bad_args" | "exists" | "unreachable" | "sftp_home_mismatch" };
   "transfer-download": { req: TransferDownloadReq; reply: TransferOpened; code: "bad_args" | "refused" | "exists" };
-  "transfer-start": { req: TransferIdReq; reply: null; code: "bad_args" | "no_such_transfer" | "already_started" };
-  "transfer-stop": { req: TransferIdReq; reply: null; code: "bad_args" };
+  "transfer-start": { req: TransferStartReq; reply: null; code: "bad_args" | "no_such_transfer" | "already_started" };
+  "transfer-stop": { req: TransferStopReq; reply: null; code: "bad_args" };
   "transfer-upload": { req: TransferUploadReq; reply: TransferOpened; code: "bad_args" | "exists" };
 }
 

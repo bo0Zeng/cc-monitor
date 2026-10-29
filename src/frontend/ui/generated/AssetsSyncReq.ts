@@ -2,7 +2,7 @@
 
 /**
  * `assets-sync` 的入参：缺 ⇒ 对机器表里「连这台」的每一台各一趟；给 `origin` ⇒ 先对那一台（机器表里要有）。
- * 怎么够到那台只看这一端的机器表：线上不交拨号（带 `dial` ⇒ `bad_args`）。
+ * 怎么够到那台只看本机后端的机器表：线上不交拨号（带 `dial` ⇒ `bad_args`）。
  */
 export type AssetsSyncReq = { 
 /**

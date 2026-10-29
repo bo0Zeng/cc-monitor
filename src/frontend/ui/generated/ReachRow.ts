@@ -2,7 +2,7 @@
 import type { Origin } from "./Origin";
 
 /**
- * 那几台的一行（线上形）：`machine` = 对面的资产目录 id，没拉过 ⇒ `null`。
+ * 「连这台」的那几台的一行：`machine` = 对面的资产目录 id，没拉过 ⇒ `null`。
  */
 export type ReachRow = { 
 /**

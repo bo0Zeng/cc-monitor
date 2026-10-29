@@ -452,6 +452,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
 - `machine` —— 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）
+- `empty` —— 这一端的首屏那一句（一条会话都没有时正文区中央那一块；`body` ＝ `EmptyFace`，各台的成品与报完了没有合的；丢了重问 `machine-read`）
 - `session_hidden` —— 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：注解 · 这台偏好 · 会话血缘动了之后判出来的
 - `files_dir` —— 这台某个正被浏览的目录里有了动静（`key` ＝ 那个目录的 `WirePath::key`；名单由 `files-browse` 交）：正开着那个目录的那一屏带着手上的记号重问 `files-ls`，只拿变了的那几行
 - `history_list` —— 这台的会话清单可能动了（会话来去 · 名字 / 状态变 · 记录长了 · 注解 · 隐藏规则；同一个会话在这台答下一份清单之前只说一次）：正看着清单的那一屏带着手上的记号重问 `history-list`（远端那台由本机后端带 `fresh` 去同步），只拿变了的那几行
@@ -931,14 +932,10 @@ type WirePath = string | { b16: string };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-入参 `TransferIdReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `TransferStartReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type TransferIdReq = { 
-/**
- * 传输单 id（开单那一条回的）。
- */
-id: string, };
+type TransferStartReq = { id: string, };
 ```
 
 码：`bad_args` · `no_such_transfer` · `already_started`
@@ -949,14 +946,10 @@ id: string, };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-入参 `TransferIdReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `TransferStopReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type TransferIdReq = { 
-/**
- * 传输单 id（开单那一条回的）。
- */
-id: string, };
+type TransferStopReq = { id: string, };
 ```
 
 码：`bad_args`
@@ -5778,9 +5771,21 @@ for: string,
  */
 content: Array<Block>, isError: boolean, } | { "type": "image", 
 /**
- * 图片来源原样（形状照那一家的写法透传）。
+ * 图片类型（`image/png` …）。
  */
-source: unknown, };
+mediaType: string, 
+/**
+ * 原图多少字节（base64 解开之后）。
+ */
+bytes: number, 
+/**
+ * 图在哪一行：那一行在记录里的起点字节偏移（翻译那一下写）。
+ */
+at: number, 
+/**
+ * 这一行里第几张（从 0 起，按块的先后深度优先，工具结果里的也数）。
+ */
+n: number, };
 type ChildRunTag = { label: string, kind?: string, };
 type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
@@ -6193,9 +6198,21 @@ for: string,
  */
 content: Array<Block>, isError: boolean, } | { "type": "image", 
 /**
- * 图片来源原样（形状照那一家的写法透传）。
+ * 图片类型（`image/png` …）。
  */
-source: unknown, };
+mediaType: string, 
+/**
+ * 原图多少字节（base64 解开之后）。
+ */
+bytes: number, 
+/**
+ * 图在哪一行：那一行在记录里的起点字节偏移（翻译那一下写）。
+ */
+at: number, 
+/**
+ * 这一行里第几张（从 0 起，按块的先后深度优先，工具结果里的也数）。
+ */
+n: number, };
 type ChildRunTag = { label: string, kind?: string, };
 type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
@@ -6516,6 +6533,45 @@ pasted?: Array<Pasted>, };
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
 
+#### `history-image`
+
+按引用取回一张图。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-image`
+
+入参 `HistoryImageReq` · 回包 `HistoryImage`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type HistoryImage = { 
+/**
+ * 图片类型（`image/png` …）。
+ */
+mediaType: string, 
+/**
+ * 图的字节，base64（记录里那一块照抄）。
+ */
+data: string, };
+type HistoryImageReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 那一行的起点字节（引用里的 `at`）。
+ */
+at: number, 
+/**
+ * 这一行里第几张（引用里的 `n`）。
+ */
+n: number, 
+/**
+ * 那一条记录的 `id`：起点上读出来的不是它 ⇒ `not_found`（记录被改写过也不给错的图）。
+ */
+id: string, };
+```
+
+码：`bad_args` · `failed` · `oversized_line` · `refused` · `not_found`
+
 #### `history-read`
 
 按字节分页读一份会话。
@@ -6577,9 +6633,21 @@ for: string,
  */
 content: Array<Block>, isError: boolean, } | { "type": "image", 
 /**
- * 图片来源原样（形状照那一家的写法透传）。
+ * 图片类型（`image/png` …）。
  */
-source: unknown, };
+mediaType: string, 
+/**
+ * 原图多少字节（base64 解开之后）。
+ */
+bytes: number, 
+/**
+ * 图在哪一行：那一行在记录里的起点字节偏移（翻译那一下写）。
+ */
+at: number, 
+/**
+ * 这一行里第几张（从 0 起，按块的先后深度优先，工具结果里的也数）。
+ */
+n: number, };
 type ChildRunTag = { label: string, kind?: string, };
 type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
@@ -6945,9 +7013,21 @@ for: string,
  */
 content: Array<Block>, isError: boolean, } | { "type": "image", 
 /**
- * 图片来源原样（形状照那一家的写法透传）。
+ * 图片类型（`image/png` …）。
  */
-source: unknown, };
+mediaType: string, 
+/**
+ * 原图多少字节（base64 解开之后）。
+ */
+bytes: number, 
+/**
+ * 图在哪一行：那一行在记录里的起点字节偏移（翻译那一下写）。
+ */
+at: number, 
+/**
+ * 这一行里第几张（从 0 起，按块的先后深度优先，工具结果里的也数）。
+ */
+n: number, };
 type ChildRunTag = { label: string, kind?: string, };
 type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
@@ -8840,9 +8920,21 @@ for: string,
  */
 content: Array<Block>, isError: boolean, } | { "type": "image", 
 /**
- * 图片来源原样（形状照那一家的写法透传）。
+ * 图片类型（`image/png` …）。
  */
-source: unknown, };
+mediaType: string, 
+/**
+ * 原图多少字节（base64 解开之后）。
+ */
+bytes: number, 
+/**
+ * 图在哪一行：那一行在记录里的起点字节偏移（翻译那一下写）。
+ */
+at: number, 
+/**
+ * 这一行里第几张（从 0 起，按块的先后深度优先，工具结果里的也数）。
+ */
+n: number, };
 type ChildRunTag = { label: string, kind?: string, };
 type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
@@ -13949,9 +14041,18 @@ removed: boolean, said: string, };
 
 ```ts
 type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
+type EmptyFace = { 
+/**
+ * 大字那一句（「无会话」· 「本机无会话」· 一台都没报完那一句）。
+ */
+line: string, 
+/**
+ * 下面那一行（怎么让它有 · 哪几台还在连 · 哪几台未计入）。
+ */
+hint: string, };
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
-type MachineRead = { machines: { [key in string]: MachineState }, };
+type MachineRead = { machines: { [key in string]: MachineState }, empty: EmptyFace, };
 type MachineStage = "deploy" | "attach";
 type MachineState = { 
 /**
@@ -14006,10 +14107,6 @@ expectedHostKey: string | null,
  * 复制详情：这一轮没连上 / 做不了时那一份（界面照原样跟在问题行那句后面）；连着时末尾接每条连接那一段（卡头 ⋯ 里复制）。
  */
 detail: string | null, 
-/**
- * 这台此刻几条会话状态不明（连接断的那一刻本机后端说过说不清、那台还没重报的；没有 ⇒ 省略）。界面照它写「N 会话状态不明」，不自己数。
- */
-unclear?: number, 
 /**
  * 到这台怎么连过去的那一句（「经跳板 devbox · 经代理」；多跳外到内「经跳板 a → b」）：跳板照配置，经代理连上了才知道。
  * 直连又不经代理 ⇒ 省略。界面有就摆一行，不拼字；每条连接的读数不上卡头，在 `detail` 末尾「连接：」那一段。
@@ -14121,10 +14218,6 @@ expectedHostKey: string | null,
  * 复制详情：这一轮没连上 / 做不了时那一份（界面照原样跟在问题行那句后面）；连着时末尾接每条连接那一段（卡头 ⋯ 里复制）。
  */
 detail: string | null, 
-/**
- * 这台此刻几条会话状态不明（连接断的那一刻本机后端说过说不清、那台还没重报的；没有 ⇒ 省略）。界面照它写「N 会话状态不明」，不自己数。
- */
-unclear?: number, 
 /**
  * 到这台怎么连过去的那一句（「经跳板 devbox · 经代理」；多跳外到内「经跳板 a → b」）：跳板照配置，经代理连上了才知道。
  * 直连又不经代理 ⇒ 省略。界面有就摆一行，不拼字；每条连接的读数不上卡头，在 `detail` 末尾「连接：」那一段。
@@ -14283,12 +14376,12 @@ type PushOutcome = "added" | "already";
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --exit-policy-read`
 
-入参 `NoArgs` · 回包 `ExitPolicy`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `ExitPolicyReadReq` · 回包 `ExitPolicy`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type ExitPolicy = { 
 /**
- * `absent`（没设过）· `chosen` · `unreadable`（读不出：也照答，不是失败）。
+ * `absent`（没设过）· `chosen` · `unreadable`（读不出：也照答，不是失败）—— 后端 `exit_policy::Read::state` 那三个词。
  */
 state: "absent" | "chosen" | "unreadable", 
 /**
@@ -14311,7 +14404,7 @@ path: string | null,
  * 这个值意味着什么的一句话。
  */
 said: string, };
-type NoArgs = Record<symbol, never>;
+type ExitPolicyReadReq = Record<symbol, never>;
 ```
 
 码：`bad_args`
@@ -14327,7 +14420,7 @@ type NoArgs = Record<symbol, never>;
 ```ts
 type ExitPolicy = { 
 /**
- * `absent`（没设过）· `chosen` · `unreadable`（读不出：也照答，不是失败）。
+ * `absent`（没设过）· `chosen` · `unreadable`（读不出：也照答，不是失败）—— 后端 `exit_policy::Read::state` 那三个词。
  */
 state: "absent" | "chosen" | "unreadable", 
 /**
@@ -16131,7 +16224,7 @@ alias?: string | null, };
 ## 5. CLI 子命令
 
 一次性调用：`ccm -- --子命令 …`（打头的 `--` 之后才归后端）；收 `args` 的那一段 JSON 从 stdin 读，或经 `--args-b64 <base64>` 走 argv（二选一，上限与码见 `IPC-PROTOCOL.md` §8），回一行 JSON 到 stdout。
-「＝ 帧命令」的那几条与流上同名命令是同一个处理器。
+「＝ 帧命令」的那几条与流上同名命令是同一个处理器。本表随二进制走的那一份：`ccm -- --commands`（同一个口，`stream/catalog.rs`）。
 
 | 子命令 | 说明 |
 |---|---|
@@ -16172,6 +16265,7 @@ alias?: string | null, };
 | `--ccm-user-path` | ＝ 帧命令 `ccm-user-path`：`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤 |
 | `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「待办」里的一个选择 |
 | `--chores-merge` | ＝ 帧命令 `chores-merge`：问到各台的「文件与数据」、件数合成一份 |
+| `--commands` | 列全部命令与用途：stdout 一行 `{commands: [{cmd?, cli?, usage?, what, args?}]}`（`cmd` 帧命令名 · `cli` 子命令 · `what` 一句话 · `args` 收不收参数；只在流上的没有 `cli`，CLI 独有的没有 `cmd`） |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
 | `--drift-merge` | ＝ 帧命令 `drift-merge`：本机与各台的漂移账 |
 | `--drift-report` | ＝ 帧命令 `drift-report`：这台后端的漂移账 |
@@ -16215,6 +16309,7 @@ alias?: string | null, };
 | `--history-facts` | ＝ 帧命令 `history-facts`：会话事实 |
 | `--history-find` | ＝ 帧命令 `history-find`：会话内查找 |
 | `--history-forget` | ＝ 帧命令 `history-forget`：删一条历史注解 |
+| `--history-image` | ＝ 帧命令 `history-image`：按引用取回一张图 |
 | `--history-index` | ＝ 帧命令 `history-index`：会话骨架索引 |
 | `--history-lines` | ＝ 帧命令 `history-lines`：按行号取回一段 |
 | `--history-list` | ＝ 帧命令 `history-list`：历史页的平铺会话清单 |

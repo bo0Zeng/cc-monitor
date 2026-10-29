@@ -13,6 +13,18 @@ for: string,
  */
 content: Array<Block>, isError: boolean, } | { "type": "image", 
 /**
- * 图片来源原样（形状照那一家的写法透传）。
+ * 图片类型（`image/png` …）。
  */
-source: unknown, };
+mediaType: string, 
+/**
+ * 原图多少字节（base64 解开之后）。
+ */
+bytes: number, 
+/**
+ * 图在哪一行：那一行在记录里的起点字节偏移（翻译那一下写）。
+ */
+at: number, 
+/**
+ * 这一行里第几张（从 0 起，按块的先后深度优先，工具结果里的也数）。
+ */
+n: number, };

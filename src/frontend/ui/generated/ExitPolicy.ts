@@ -5,7 +5,7 @@
  */
 export type ExitPolicy = { 
 /**
- * `absent`（没设过）· `chosen` · `unreadable`（读不出：也照答，不是失败）。
+ * `absent`（没设过）· `chosen` · `unreadable`（读不出：也照答，不是失败）—— 后端 `exit_policy::Read::state` 那三个词。
  */
 state: "absent" | "chosen" | "unreadable", 
 /**
