@@ -11,7 +11,7 @@ copy-core = { path = "../copy-core" }
 # 会话 id 的值域（`Sid` 解码就判）：全仓那一份 `session_id_ok`。
 shell-quote-core = { path = "../shell-quote-core" }
 serde = { version = "1", features = ["derive"] }
-# 回包里记录那一格一条一条判认不认得（`replies::mend_records`：进来的是一份 JSON 值）。`raw_value`：判据按「原文照转」那一种解 `line` 帧
+# 回包里记录那一格一条一条判认不认得（`record::mend_records`：进来的是一份 JSON 值）。`raw_value`：判据按「原文照转」那一种解 `line` 帧
 #   （记录那一格是 `RawValue`，同壳的快路）；开在这里而不在测试档 —— 本 crate 也进壳的构建期依赖（经 `deploy-contract`），
 #   只在测试档开会让判据构建与发布构建的特性集分叉。它只多出一个类型，不改解析行为。
 serde_json = { version = "1", features = ["raw_value"] }

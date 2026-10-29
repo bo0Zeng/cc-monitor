@@ -99,20 +99,8 @@ pub(crate) fn pick(
 
 // ───────────────────────────── 起会话那几条共用的一步 ─────────────────────────────
 
-/// 线上 `account` 那一格（三条起会话请求同一份）：跟随 · 账号 0 · 用户点名。
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub enum AccountAsk {
-    /// 这条会话上次用的号 → 这台的默认号 → 不指定（新起的会话没有上次的号）。
-    Follow,
-    Base,
-    /// 用户点名的那个号（按名字判；分叉沿用源会话的号也是名字，由这台从源会话推出）。
-    Named {
-        name: String,
-    },
-}
+/// 线上 `account` 那一格（三条起会话请求同一份）：线上形住 `cmd-wire::open`。
+pub use cmd_wire::open::AccountAsk;
 
 /// 判定要的事实，由入口交（control 不读观测层）。
 pub(crate) struct Facts<'a> {
