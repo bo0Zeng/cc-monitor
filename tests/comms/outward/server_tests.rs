@@ -186,7 +186,11 @@ fn spawn_tls_stub(answer: Answer) -> TlsStub {
                             sse.len()
                         ),
                     };
-                    if tls.write_all(reply.as_bytes()).and_then(|()| tls.flush()).is_err() {
+                    if tls
+                        .write_all(reply.as_bytes())
+                        .and_then(|()| tls.flush())
+                        .is_err()
+                    {
                         return;
                     }
                     // 照真上游：请求说了 `Connection: close` ⇒ 答完就关。
@@ -239,9 +243,8 @@ impl super::super::TapPort for NoTap {
 /// 起一个中转（监听回环），上游是 `https://localhost:<假上游端口>`；开 TCP 那一口一律连回环上的假上游。
 fn spawn_pool_relay(stub_port: u16) -> SocketAddr {
     let base = Base::parse(&format!("https://localhost:{stub_port}")).expect("base");
-    let open: Arc<OpenFor> = Arc::new(move |_from, _h, _p, _d| {
-        TcpStream::connect(SocketAddr::new(LOOPBACK, stub_port))
-    });
+    let open: Arc<OpenFor> =
+        Arc::new(move |_from, _h, _p, _d| TcpStream::connect(SocketAddr::new(LOOPBACK, stub_port)));
     let relay = Arc::new(Relay::new(
         Arc::new(ToStub(base)),
         door::Keys {
@@ -306,7 +309,11 @@ fn five_sends_on_one_account_ride_one_upstream_connection() {
             vec!["m0", "m1", "m2", "m3", "m4"],
             "每份请求体该恰好到上游一次"
         );
-        assert_eq!(accepted(&stub), 1, "同一个号连发 5 发，上游该只接下 1 条连接");
+        assert_eq!(
+            accepted(&stub),
+            1,
+            "同一个号连发 5 发，上游该只接下 1 条连接"
+        );
     }
 }
 
@@ -348,7 +355,10 @@ fn a_pooled_connection_the_upstream_closed_is_dropped_before_any_byte_is_sent() 
     for i in 0..3 {
         let got = pool_send(relay, "acctA", &format!("m{i}"));
         assert!(got.starts_with("HTTP/1.1 200 OK\r\n"), "第 {i} 发：{got}");
-        assert!(got.contains(&format!("\"echo\":\"m{i}\"")), "第 {i} 发：{got}");
+        assert!(
+            got.contains(&format!("\"echo\":\"m{i}\"")),
+            "第 {i} 发：{got}"
+        );
     }
     assert_eq!(
         *stub.bodies.lock().expect("lock"),

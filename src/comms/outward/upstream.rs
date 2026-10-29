@@ -116,7 +116,7 @@ fn root_store() -> rustls::RootCertStore {
     let mut roots = rustls::RootCertStore {
         roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
     };
-    // 测试档多认一张沙箱 CA（`tests/__fixtures__/relay-tls/`），判据里的 TLS 假上游才握得上手；生产段的根证书集不变。
+    // 测试档多认一张沙箱 CA（`tests/__fixtures__/relay-tls-ca.der`），判据里的 TLS 假上游才握得上手；生产段的根证书集不变。
     #[cfg(test)]
     roots
         .add(tests::sandbox_ca())

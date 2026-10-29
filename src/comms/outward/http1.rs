@@ -137,9 +137,14 @@ pub fn is_hop_by_hop(name: &str) -> bool {
 /// 收尾（[`BodyView::ended`]）是连接能不能接着用的依据：收在边上、后面没有多出来的字节，才还回连接池。
 pub enum BodyView {
     /// 没有体：`HEAD` 的应答 · 204 · 304。头读完就收尾。
-    Empty { over: bool },
+    Empty {
+        over: bool,
+    },
     /// `Content-Length` 定长：还差几个字节。
-    Length { left: u64, over: bool },
+    Length {
+        left: u64,
+        over: bool,
+    },
     /// 既不定长也不分块：读到对端关为止，收尾判不出。
     UntilClose,
     Chunked(ChunkedView),

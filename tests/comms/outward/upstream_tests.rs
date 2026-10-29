@@ -182,23 +182,21 @@ fn tls_client_config_builds_from_a_non_empty_root_store() {
     assert!(conn.is_ok(), "TLS 客户端连接对象应当建得起来");
 }
 
-/// 沙箱 CA（`tests/__fixtures__/relay-tls/`：自签 CA ＋ 它签的 `localhost` 叶子，有效期一百年，只在判据里用）。
+/// 沙箱 CA（`tests/__fixtures__/relay-tls-ca.der` 自签 CA ＋ 它签的 `localhost` 叶子 `relay-tls-leaf.der` / `relay-tls-leaf-key.der`，有效期一百年，只在判据里用）。
 pub(crate) fn sandbox_ca() -> rustls::pki_types::CertificateDer<'static> {
     rustls::pki_types::CertificateDer::from(
-        &include_bytes!("../../__fixtures__/relay-tls/ca.der")[..],
+        &include_bytes!("../../__fixtures__/relay-tls-ca.der")[..],
     )
 }
 
 /// TLS 假上游那一侧的配置：沙箱 CA 签的 `localhost` 叶子。
 pub(crate) fn sandbox_server_config() -> Arc<rustls::ServerConfig> {
     let leaf = rustls::pki_types::CertificateDer::from(
-        &include_bytes!("../../__fixtures__/relay-tls/leaf.der")[..],
+        &include_bytes!("../../__fixtures__/relay-tls-leaf.der")[..],
     );
-    let key = rustls::pki_types::PrivateKeyDer::Pkcs8(
-        rustls::pki_types::PrivatePkcs8KeyDer::from(
-            &include_bytes!("../../__fixtures__/relay-tls/leaf-key.der")[..],
-        ),
-    );
+    let key = rustls::pki_types::PrivateKeyDer::Pkcs8(rustls::pki_types::PrivatePkcs8KeyDer::from(
+        &include_bytes!("../../__fixtures__/relay-tls-leaf-key.der")[..],
+    ));
     let cfg = rustls::ServerConfig::builder_with_provider(Arc::new(
         rustls::crypto::ring::default_provider(),
     ))

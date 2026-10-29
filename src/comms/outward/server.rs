@@ -497,7 +497,7 @@ impl UpstreamFailure {
 }
 
 /// 这一发怎么够到上游：期限 · 开 TCP 的那一口（已带上这一发的来处）· 连接池 · 来处本身（池分格要用）。
-struct Reach<'a> {
+struct UpHop<'a> {
     deadline: std::time::Duration,
     open: &'a Open<'a>,
     pool: &'a upstream::Pool,
@@ -525,21 +525,22 @@ fn send_upstream(
     head: &RequestHead,
     rest: &str,
     body: &[u8],
-    reach: &Reach<'_>,
+    reach: &UpHop<'_>,
 ) -> Answered {
     let lane = upstream::Lane::new(reach.origin, tag, base);
     let pooled = reach.pool.take(&lane, reach.deadline);
-    let mut up = match pooled.map_or_else(|| upstream::connect(base, reach.deadline, reach.open), Ok) {
-        Ok(c) => c,
-        Err(e) => {
-            let who = Who::of(base);
-            return Answered::UpstreamFailed(UpstreamFailure::new(
-                &who,
-                FailedAt::Connect,
-                Some(e),
-            ));
-        }
-    };
+    let mut up =
+        match pooled.map_or_else(|| upstream::connect(base, reach.deadline, reach.open), Ok) {
+            Ok(c) => c,
+            Err(e) => {
+                let who = Who::of(base);
+                return Answered::UpstreamFailed(UpstreamFailure::new(
+                    &who,
+                    FailedAt::Connect,
+                    Some(e),
+                ));
+            }
+        };
     let wrote = (|| -> std::io::Result<()> {
         up.write_all(&render_upstream_request(head, rest, base, auth, body.len()))?;
         if !body.is_empty() {
@@ -648,7 +649,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     // 开上游那一口带上这一发的来处（不透明，宿主按它取那条会话的出网描述）；被拒后重发也是同一发、同一个来处。
     let token = r.origin.as_ref().map(|o| o.token.as_str());
     let open = |h: &str, p: u16, d: std::time::Duration| (relay.open)(token, h, p, d);
-    let reach = Reach {
+    let reach = UpHop {
         deadline: relay.upstream_deadline,
         open: &open,
         pool: &relay.pool,
@@ -766,21 +767,18 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     // `open` 发一个这一响应自己的游标（位置号 `n` 从 0 起），`event` / `note_dropped_bytes` / `close` 都拿它。
     let mut at = relay.tee.open();
     // 没有体的那几形（`HEAD` 的应答 · 204 · 304）头写完就收尾，不读上游（读的话要等到期限）。
-    let outcome = if view.ended() {
-        Ok(())
-    } else {
-        pump(&mut up, &mut down_w, &mut |raw| {
-            let decoded = view.feed(raw, TEE_DECODE_CAP);
-            for payload in splitter.feed(&decoded, TEE_DECODE_CAP) {
-                relay.tee.event(id, &mut at, &payload);
-            }
-            // 解码那一路超上限丢掉的字节要**报出去**，不许静默（见 `TEE_DECODE_CAP` 头注）。
-            relay
-                .tee
-                .note_dropped_bytes(&mut at, view.take_dropped() + splitter.take_dropped());
-            view.ended()
-        })
-    };
+    let bodiless = view.ended();
+    let outcome = pump(&mut up, &mut down_w, bodiless, &mut |raw| {
+        let decoded = view.feed(raw, TEE_DECODE_CAP);
+        for payload in splitter.feed(&decoded, TEE_DECODE_CAP) {
+            relay.tee.event(id, &mut at, &payload);
+        }
+        // 解码那一路超上限丢掉的字节要**报出去**，不许静默（见 `TEE_DECODE_CAP` 头注）。
+        relay
+            .tee
+            .note_dropped_bytes(&mut at, view.take_dropped() + splitter.take_dropped());
+        view.ended()
+    });
     // 收尾交一件：转发以错误收尾（claude 按了 Esc / 上游 RST / 下游写不动）⇒ `broken`。
     relay.tee.close(id, at, outcome.is_err());
     // 转发没出错、应答正好收在边上、上游没说要关 ⇒ 这条连接还回池里给同一格的下一发；否则这里关掉。
@@ -805,7 +803,7 @@ fn dispatch(
     head: &RequestHead,
     rest: &str,
     body: &[u8],
-    reach: &Reach<'_>,
+    reach: &UpHop<'_>,
     tag_out: &mut String,
 ) -> Answered {
     match d {
@@ -931,12 +929,16 @@ fn stream_label<'h>(head: &'h RequestHead, names: &[&str]) -> &'h str {
 ///  接住它的两条判据见 `every_chunk_reaches_the_client_before_upstream_sends_the_next_one`。〕
 ///
 /// `on_chunk` 答「这个应答收尾了」⇒ 写完这一块就停，不再读（上游留着连接、不会关，再读就等到期限）；
-/// 读到对端关也停。
+/// 读到对端关也停；`ended` 为真（没有体的那几形）一次都不读。
 fn pump<R: Read, W: Write>(
     up: &mut R,
     down: &mut W,
+    ended: bool,
     on_chunk: &mut dyn FnMut(&[u8]) -> bool,
 ) -> std::io::Result<()> {
+    if ended {
+        return Ok(());
+    }
     let mut buf = vec![0u8; READ_CHUNK];
     loop {
         let n = match up.read(&mut buf) {

@@ -224,7 +224,10 @@ fn an_endless_chunk_size_line_is_dropped_and_counted_instead_of_growing_forever(
 #[test]
 fn body_view_picks_chunked_only_when_the_header_says_so() {
     let plain = vec![("Content-Type".to_string(), "text/event-stream".to_string())];
-    assert!(matches!(BodyView::for_response(&plain), BodyView::UntilClose));
+    assert!(matches!(
+        BodyView::for_response(&plain),
+        BodyView::UntilClose
+    ));
     let ch = vec![("Transfer-Encoding".to_string(), "chunked".to_string())];
     assert!(matches!(BodyView::for_response(&ch), BodyView::Chunked(_)));
     let len = vec![("Content-Length".to_string(), "12".to_string())];
@@ -260,7 +263,10 @@ fn a_chunked_answer_ends_only_after_the_trailers_and_notices_extra_bytes() {
     // ㈢ 收尾之后同一块里多了字节 ⇒ 收尾了，但不在边上。
     let mut o = BodyView::Chunked(ChunkedView::default());
     o.feed(b"0\r\n\r\nHTTP/1.1", NO_CAP);
-    assert!(o.ended() && !o.ended_cleanly(), "收尾之后多出来的字节没记下");
+    assert!(
+        o.ended() && !o.ended_cleanly(),
+        "收尾之后多出来的字节没记下"
+    );
 
     // ㈣ 长度行读不懂而停下的不算收尾。
     let mut g = BodyView::Chunked(ChunkedView::default());
@@ -284,7 +290,10 @@ fn a_length_answer_ends_at_its_length_and_bodiless_answers_end_at_the_head() {
 
     for (method, status) in [("HEAD", 200), ("POST", 204), ("GET", 304)] {
         let e = BodyView::for_answer(method, status, &len);
-        assert!(e.ended_cleanly(), "{method} {status} 没有体，头读完就该收尾");
+        assert!(
+            e.ended_cleanly(),
+            "{method} {status} 没有体，头读完就该收尾"
+        );
     }
     // 非空对照：同样的头、有体的那一形不是一读完头就收尾。
     assert!(!BodyView::for_answer("GET", 200, &len).ended());
