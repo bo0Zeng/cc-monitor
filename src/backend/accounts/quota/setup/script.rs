@@ -100,11 +100,6 @@ fn about_of(lead: &str) -> String {
     out.join("\n")
 }
 
-/// 这一份是不是第五版的策略文件（说明之后是那一段头）：不是的（第三版脚本）升级时挪开。
-pub(crate) fn has_head(source: &str) -> bool {
-    split(source).is_ok()
-}
-
 /// ★ 读一份策略文件：头照形状解、代码编一次、要有 `decide`。
 pub(crate) fn parse(source: &str) -> Result<File, Fail> {
     let (lead, head, code) = split(source)?;

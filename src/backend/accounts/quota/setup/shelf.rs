@@ -1,6 +1,6 @@
 //! 策略目录（`<家>/strategies/`）：一份策略 ＝ 一个 `.rhai` 文件，文件名去 `.rhai` 就是 id，也就是标题（§2.1）；全是用户自己的（没有随包策略）。
 //! 目录的戳变了才重读；读不懂的那一份也列着、带原因。
-//! 第三版的脚本升级时挪进 `v3/`，不加载（[`old_files`] 列出来，界面提示「N 份旧格式的策略没有加载」、点开看是哪几份）。
+//! `v3/` 里是第三版的旧脚本，不加载（[`old_files`] 列出来，界面提示「N 份旧格式的策略没有加载」、点开看是哪几份）。
 
 use super::script;
 use crate::accounts::quota::strategy::{Fail, FailKind};
@@ -65,17 +65,6 @@ pub(crate) fn id_ok(id: &str) -> bool {
         && id.chars().any(char::is_alphanumeric)
         && id.trim() == id
         && !RESERVED.contains(&id.to_lowercase().as_str())
-}
-
-/// 一个名字照 [`id_ok`] 的写法改一遍：收不下的字换 `-`、截到 32 字、去首尾空白；改完还不成 ⇒ `None`。
-pub(crate) fn id_from(name: &str) -> Option<String> {
-    let s: String = name
-        .chars()
-        .map(|c| if name_char(c) { c } else { '-' })
-        .take(MAX_ID_CHARS)
-        .collect();
-    let s = s.trim().to_string();
-    id_ok(&s).then_some(s)
 }
 
 /// 一段字节的摘要（十六进制的 SHA-256）。

@@ -40,22 +40,6 @@ pub(crate) fn account_ok(a: &str) -> bool {
     crate::relay::segment_is_safe(a) && a != super::endpoint::UNDECLARED_ACCOUNT_SEGMENT
 }
 
-/// 「账号库里其余的订阅号」此刻是哪几个：库里没点名（`named`）、名字过得了路由段的订阅号，按名字排。
-/// 挑号（[`Rotation`] 排候选）与配置编辑器那一行写成员都照它。
-pub(crate) fn rest_members<'a>(
-    ids: impl IntoIterator<Item = &'a str>,
-    named: &[String],
-    is_sub: impl Fn(&str) -> bool,
-) -> Vec<String> {
-    let mut rest: Vec<String> = ids
-        .into_iter()
-        .filter(|x| !named.iter().any(|n| n == x) && account_ok(x) && is_sub(x))
-        .map(str::to_string)
-        .collect();
-    rest.sort();
-    rest
-}
-
 /// 备好的这一发去处（自有值：令牌与改写后的请求体跨出判定、在上游选择的锁里交给中转）。
 pub(crate) enum Go {
     /// 照起会话那个号走（那张决策表）。

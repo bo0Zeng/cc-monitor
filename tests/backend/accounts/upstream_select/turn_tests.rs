@@ -118,7 +118,7 @@ impl Home {
             Some(n) => serde_json::json!({"5h": [{"from": 0, "to": 1440, "v": n}]}),
             None => serde_json::json!({}),
         };
-        let src = crate::accounts::quota::setup::upgrade::material(0);
+        let src = crate::accounts::quota::setup::samples::of(0);
         let mut head = script::parse(&src).expect("读得懂").head;
         head.settings = serde_json::json!({
             "caps": caps,
@@ -689,7 +689,7 @@ fn acct(id: &str, used: f64, rate: Option<f64>, t: u64) -> crate::accounts::quot
 }
 
 fn fixture_by_list() -> crate::accounts::quota::rules::Adopted {
-    let f = script::parse(crate::accounts::quota::setup::upgrade::material(0)).expect("读得懂");
+    let f = script::parse(crate::accounts::quota::setup::samples::of(0)).expect("读得懂");
     crate::accounts::quota::setup::adopted_of_file("", "", &f, None)
 }
 

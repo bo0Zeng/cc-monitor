@@ -1,7 +1,6 @@
 //! 轮换的账本存取，两份账本共用这一处：基础功能层那份 `rotation.json`（[`book`]）· 配置编辑层那份（那一侧定形，经 [`Doc`] 接进来）。
 //!
-//! - 盘上不是这一版（第一版 · 第二版）⇒ 当没有、写一律拒，等接了中转的那个进程起来时一次升级写回（配置编辑层做）。
-//! - 读不懂的那一份不覆盖：照上一份读懂的接着用。
+//! - 读不懂的那一份（连盘上不是这一版的）不覆盖、写一律拒：照上一份读懂的接着用。
 //! - 写在跨进程锁里读 → 改 → 原子写回；改到的各发一件节点（[`Doc::ring`]）。`rotation.json` 的写只经两扇门：
 //!   中转那一路（[`relay_change`]）与帧面那一路（[`face_change`]）。
 
@@ -73,10 +72,6 @@ pub(crate) trait Doc:
     fn version() -> u64;
     /// 没有文件时那一份。
     fn fresh() -> Self;
-    /// 盘上的 `version` 是还没升级写回的旧版。
-    fn old(_version: Option<u64>) -> bool {
-        false
-    }
     /// 改了以后发哪几件。
     fn ring(tx: &super::nodes::Nodes, before: &Self, after: &Self);
     /// 本进程最后见过的盘上那一份（每种一张表）。
@@ -91,9 +86,6 @@ impl Doc for Book {
     }
     fn fresh() -> Self {
         Book::fresh()
-    }
-    fn old(version: Option<u64>) -> bool {
-        matches!(version, None | Some(2))
     }
     /// 改到的会话各发一件（它那一条变了）。
     fn ring(tx: &super::nodes::Nodes, before: &Self, after: &Self) {
@@ -121,12 +113,10 @@ impl Doc for Book {
 pub(crate) enum Disk<D> {
     Absent,
     Now(D),
-    /// 还没升级写回的旧版。
-    Old,
     Unreadable(Said),
 }
 
-/// ★ 读一次盘：这一版照形状读（多一格 ⇒ 读不懂）；旧版 ⇒ [`Disk::Old`]；别的版本 ⇒ 读不懂。
+/// ★ 读一次盘：这一版照形状读（多一格 ⇒ 读不懂）；别的版本（连没有 `version` 的）⇒ 读不懂。
 pub(crate) fn read_at<D: Doc>(path: &Path) -> Disk<D> {
     use crate::common::own_state::Read;
     let v: Value = match D::DISK.read_as(path) {
@@ -143,13 +133,11 @@ pub(crate) fn read_at<D: Doc>(path: &Path) -> Disk<D> {
             &m,
         ))
     };
-    let version = v.get("version").map(Value::as_u64);
-    match version {
+    match v.get("version").map(Value::as_u64) {
         Some(Some(n)) if n == D::version() => match serde_json::from_value::<D>(v) {
             Ok(b) => Disk::Now(b),
             Err(e) => bad(e.to_string()),
         },
-        _ if D::old(version.flatten()) && version != Some(None) => Disk::Old,
         n => bad(format!("unknown {} version {n:?}", D::FILE)),
     }
 }
@@ -196,7 +184,7 @@ impl<D: Doc> DocStore<D> {
         &self.nodes
     }
 
-    /// 此刻那一份（盘上动过就重读；读不懂 ⇒ 照上一份读懂的；旧版 ⇒ 当没有）。
+    /// 此刻那一份（盘上动过就重读；读不懂 ⇒ 照上一份读懂的）。
     pub(crate) fn now(&self) -> D {
         let mut g = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         let Some(p) = self.path.as_deref() else {
@@ -208,7 +196,7 @@ impl<D: Doc> DocStore<D> {
         }
         let b = match read_at::<D>(p) {
             Disk::Now(b) => b,
-            Disk::Absent | Disk::Old => D::fresh(),
+            Disk::Absent => D::fresh(),
             Disk::Unreadable(e) => {
                 if g.stamp != s {
                     tracing::warn!(
@@ -238,7 +226,7 @@ impl<D: Doc> DocStore<D> {
             .clone()
     }
 
-    /// 在跨进程锁里读盘 → 改 → 原子写回 → 缓存跟上；改到的各发一件节点。读不懂 · 还是旧版的那一份不覆盖。
+    /// 在跨进程锁里读盘 → 改 → 原子写回 → 缓存跟上；改到的各发一件节点。读不懂的那一份不覆盖。
     pub(crate) fn change<R>(&self, own: &Own, f: impl FnOnce(&mut D) -> R) -> Result<R, Said> {
         let mut g = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         let (r, before, after) = match self.path.as_deref() {
@@ -269,7 +257,7 @@ fn seen_swap<D: Doc>(path: &Path, st: Option<Stamp>, doc: &D) -> Option<D> {
         .map(|(_, b)| b)
 }
 
-/// 重扫一次盘：戳与上回见过的不同（别的进程写了）⇒ 重读、比对、改到的各发一件节点。第一次 ⇒ 只记下。读不懂 · 旧版 ⇒ 不动。
+/// 重扫一次盘：戳与上回见过的不同（别的进程写了）⇒ 重读、比对、改到的各发一件节点。第一次 ⇒ 只记下。读不懂 ⇒ 不动。
 pub(crate) fn rescan<D: Doc>(path: &Path) {
     let st = Ro::stamp(path);
     let known = {
@@ -282,7 +270,6 @@ pub(crate) fn rescan<D: Doc>(path: &Path) {
     let now = match read_at::<D>(path) {
         Disk::Now(b) => b,
         Disk::Absent => D::fresh(),
-        Disk::Old => return,
         Disk::Unreadable(e) => {
             tracing::warn!("[rotation] 重扫 {} 读不懂：{e}", path.display());
             return;
@@ -332,19 +319,11 @@ fn write_locked<D: Doc, R>(own: &Own, f: impl FnOnce(&mut D) -> R) -> Result<(R,
         .root()
         .ok_or_else(|| Said::from(copy_text("beRotation.read.noHome", &[])))?;
     let path = file.as_path();
-    let shown = path.display().to_string();
     own.ensure_dir(&dir).map_err(|e| io_said(path, &e))?;
     let held = own.lock(&dir)?;
     let before = match read_at::<D>(path) {
         Disk::Absent => D::fresh(),
         Disk::Now(b) => b,
-        // 盘上还是旧版：只有起来时接了中转的那个进程升级（那时旧版的中转已经让出了口）；别的写一律不写。
-        Disk::Old => {
-            return Err(Said::from(copy_text(
-                "beRotation.write.v1Pending",
-                &[("path", &shown)],
-            )))
-        }
         Disk::Unreadable(e) => {
             return Err(e.wrap(|said| copy_text("beRotation.write.unreadable", &[("said", said)])))
         }

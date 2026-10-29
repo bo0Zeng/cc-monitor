@@ -1,4 +1,4 @@
-//! `rotation.json` 第三版的存取：旧版没升级前当没有、写一律拒 · 读不懂不覆盖 · 新会话 · 清旧会话。临时家目录，不碰真文件。
+//! `rotation.json` 第三版的存取：读不懂（连第一版 · 第二版）不覆盖、写一律拒 · 新会话 · 清旧会话。临时家目录，不碰真文件。
 
 use super::*;
 use serde_json::json;
@@ -29,7 +29,7 @@ impl Home {
     }
 }
 
-/// ★ 读不懂的那一份：升级不动它、写也不覆盖；读的一侧照上一份读懂的（没有过 ⇒ 新的那一份）接着用、说得出为什么。
+/// ★ 读不懂的那一份：写不覆盖；读的一侧照上一份读懂的（没有过 ⇒ 新的那一份）接着用、说得出为什么。
 #[test]
 fn an_unreadable_book_is_never_overwritten() {
     let home = Home::new("unread");
@@ -60,18 +60,22 @@ fn an_unreadable_book_is_never_overwritten() {
     assert!(matches!(read_at::<Book>(&home.file()), Disk::Now(_)));
 }
 
-/// ★ 旧版（第一版没有 `version` · 第二版）没升级写回前：读的一侧当没有，写一律拒、不碰原文。
+/// ★ 第一版（没有 `version`）· 第二版不升级：读不懂、说得出为什么，写一律拒、盘上字节不变。
 #[test]
-fn an_old_book_reads_as_none_and_is_not_written() {
+fn an_old_book_is_unreadable_and_left_as_is() {
     for v in [
         json!({"rules": {}, "sessions": {}}),
         json!({"version": 2, "configs": {}, "sessions": {}}),
     ] {
         let home = Home::new("old");
         std::fs::write(home.file(), v.to_string()).expect("w");
-        assert!(matches!(read_at::<Book>(&home.file()), Disk::Old));
+        assert!(matches!(
+            read_at::<Book>(&home.file()),
+            Disk::Unreadable(_)
+        ));
         let store = home.store();
         assert!(store.now().sessions.is_empty());
+        assert!(store.unreadable().is_some());
         assert!(face_change(&store, &home.own(), |b| b.saw(
             "s",
             "claude-code",
