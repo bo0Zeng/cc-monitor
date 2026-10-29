@@ -133,8 +133,8 @@ describe("输入框的附件", () => {
     expect(overlay.hidden).toBe(false);
     const card = overlay.querySelector<HTMLElement>('[data-role="attach-drop-card"]')!;
     expect(Array.from(card.children, (c) => c.textContent)).toEqual([
-      copyText("attach.drop.into", { title: "web-console" }) + copyText("kit.text.sep") + "devbox",
-      copyText("attach.drop.where"),
+      ["web-console", "devbox"].join(copyText("kit.text.sep")),
+      copyText("attach.drop.title"),
     ]);
     expect(card.textContent, "不写几份").not.toMatch(/\d/);
     const over = dragEv("dragover", dt);

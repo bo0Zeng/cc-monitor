@@ -105,8 +105,9 @@ export class AttachRow {
     overlay.hidden = true;
     const card = el("div", s.attachDropCard);
     card.dataset.role = "attach-drop-card";
+    // 第一行是成品照抄（标签页名 · 机器名），第二行是骨架字：出口取的键不带插值。
     const into = el("div", s.attachDropTitle);
-    card.append(into, el("div", s.attachDropSub, copyText("attach.drop.where")));
+    card.append(into, el("div", s.attachDropSub, copyText("attach.drop.title")));
     overlay.append(card);
     zone.appendChild(overlay);
     const carriesFiles = (ev: DragEvent): boolean => Array.from(ev.dataTransfer?.types ?? []).includes("Files");
@@ -118,7 +119,7 @@ export class AttachRow {
       depth++;
       if (!can()) return;
       const t = this.host.target();
-      into.textContent = [copyText("attach.drop.into", { title: t.title }), t.machine].filter((x) => x !== "").join(copyText("kit.text.sep"));
+      into.textContent = [t.title, t.machine].filter((x) => x !== "").join(copyText("kit.text.sep"));
       overlay.hidden = false;
     });
     zone.addEventListener("dragover", (ev) => {
