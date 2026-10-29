@@ -542,11 +542,22 @@ async fn a_backend_older_than_deflate_is_attached_again_plain() {
     until("不压接上", || up(&feed)).await;
     let lines = f.attach_lines.lock().unwrap().clone();
     assert_eq!(lines.len(), 2, "{lines:?}");
-    assert!(lines[0].contains("\"deflate\":true"), "先要 deflate：{}", lines[0]);
-    assert!(!lines[1].contains("deflate"), "再接不带这一格：{}", lines[1]);
+    assert!(
+        lines[0].contains("\"deflate\":true"),
+        "先要 deflate：{}",
+        lines[0]
+    );
+    assert!(
+        !lines[1].contains("deflate"),
+        "再接不带这一格：{}",
+        lines[1]
+    );
     assert_eq!(f.ensured.load(Ordering::SeqCst), 0, "在跑，不 ensure");
     assert!(
-        matches!(ask(&feed, "ping", Duration::from_secs(5)).await, Ok(Some(_))),
+        matches!(
+            ask(&feed, "ping", Duration::from_secs(5)).await,
+            Ok(Some(_))
+        ),
         "不压那一条照常一问一答"
     );
 }

@@ -106,8 +106,9 @@ async fn a_silent_peer_is_cut_at_the_handshake_deadline() {
 fn mid_shaped_frames(n: usize) -> Vec<String> {
     const WORDS: &[&str] = &[
         "read", "the", "file", "then", "edit", "test", "run", "cargo", "build", "frame", "line",
-        "stream", "path", "offset", "reply", "page", "error", "ok", "fix", "check", "node", "graph",
-        "commit", "branch", "merge", "deflate", "flush", "write", "async", "tokio", "serde", "json",
+        "stream", "path", "offset", "reply", "page", "error", "ok", "fix", "check", "node",
+        "graph", "commit", "branch", "merge", "deflate", "flush", "write", "async", "tokio",
+        "serde", "json",
     ];
     let sid = "6f1c0d2e-3b4a-4c5d-8e9f-0a1b2c3d4e5f";
     let path = format!("/home/u/.claude/projects/-home-u-work-repo/{sid}.jsonl");
@@ -154,7 +155,10 @@ async fn deflating_peer(
         .unwrap();
     let mut got = String::new();
     r.read_line(&mut got).await.unwrap();
-    assert!(got.contains("\"deflate\":true"), "attach 行要带 deflate：{got}");
+    assert!(
+        got.contains("\"deflate\":true"),
+        "attach 行要带 deflate：{got}"
+    );
     let reply = if ack {
         r#"{"attach":"ok","deflate":true}"#
     } else {

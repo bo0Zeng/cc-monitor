@@ -52,6 +52,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "DEFLATE_CHUNK",
+        "**步长**不是体量：常驻流压缩器一次往外攒多少字节就先往下写（`wire/listen.rs::Down`），流本身多长不受它限。",
+    ),
+    (
         "VERSION",
         "**格式版本号**不是体量：骨架落盘那一格（`observe/skeleton.rs`），值取声明表（`relay_route_core::SKELETON_FILE`）。",
     ),

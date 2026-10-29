@@ -332,7 +332,9 @@ impl<W: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Down<W> {
             }
             // 一个字节没吃：压缩器先吐的那一截占满了 ⇒ 写下去再喂；什么都没吐 ⇒ 压缩器卡住了。
             if d.out.is_empty() {
-                return std::task::Poll::Ready(Err(std::io::Error::other("deflate made no progress")));
+                return std::task::Poll::Ready(Err(std::io::Error::other(
+                    "deflate made no progress",
+                )));
             }
         }
     }

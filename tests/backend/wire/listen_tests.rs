@@ -374,11 +374,7 @@ async fn a_deflating_writer_flushes_each_frame_so_it_inflates_on_arrival() {
             .unwrap();
         fed = wire.len();
         let made = (z.total_out() - before) as usize;
-        assert_eq!(
-            &out[..made],
-            f.as_bytes(),
-            "flush 之后这一帧当场解得出来"
-        );
+        assert_eq!(&out[..made], f.as_bytes(), "flush 之后这一帧当场解得出来");
         back.extend_from_slice(&out[..made]);
     }
     let raw: usize = frames.iter().map(String::len).sum();
