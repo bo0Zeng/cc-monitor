@@ -1,8 +1,9 @@
-//! **核对**（只读）：结构 · 隔离 · 共享逐项核一遍 —— 纯：快照进、报告出。
+//! **核对**（只读）：结构 · 隔离 · 共享逐项核一遍 —— 纯：快照进、报告出。命令那一层先对齐账号库再拍快照
+//! （`wire::run_verify`），所以这里看见的缺链接都是补不上的。
 //!
 //! 致命（`fail`）：身份没隔离开（身份文件是链接 · 两个号邮箱相同 · 共享库里留着原生根在家目录的那份身份）、
 //! 权限不对（号的目录不是 `0700` · 凭据不是 `0600`）、共享没接上（缺链接 · 链错地方 · 断链 · 共享项在号里是实体文件）。
-//! 提示（`warn`）：还没登录 · 号里有意料之外的实体项 · 共享库本身的源头断了 · 身份本体哪儿都找不到 ·
+//! 提示（`warn`）：还没登录 · 号里有意料之外的实体项（排除项 —— 编辑器备份 · 锁文件 —— 不算）· 共享库本身的源头断了 · 身份本体哪儿都找不到 ·
 //! 共享库顶层有一份 `0600` 的文件却不在身份表里（它会被链给每个号）。
 
 use super::layout::{identity, is_excluded, is_identity, share_items, shared_on_demand};
@@ -310,7 +311,11 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                 );
             }
             for (base, it) in &d.entries {
-                if it.is_link() || is_identity(base) || base.contains(".ccm-tmp-") {
+                if it.is_link()
+                    || is_identity(base)
+                    || is_excluded(base)
+                    || base.contains(".ccm-tmp-")
+                {
                     continue;
                 }
                 if items.contains(base) {

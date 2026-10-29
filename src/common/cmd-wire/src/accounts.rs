@@ -212,7 +212,7 @@ pub struct VerifyCheck {
     pub text: String,
 }
 
-/// `accounts-verify` 的成品：链接 · 权限 · 邮箱逐项核一遍（只读）。
+/// `accounts-verify` 的成品：先对齐账号库（缺的共享链接补上），再把链接 · 权限 · 邮箱逐项核一遍。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
