@@ -327,7 +327,7 @@ fn the_phone_column_merges_like_the_backend() {
     let got = column(&ask(&|_| false));
     let want = tokens(&lay(&a, &shape(By::Time)), By::Time);
     assert!(want.len() > 10, "金样那几台的行少了：{want:?}");
-    assert_eq!(phone(&got), want, "按时间");
+    assert_eq!(phone(&got), want, "按天那几段的先后");
     let groups: Vec<String> = got
         .groups
         .iter()
@@ -336,7 +336,7 @@ fn the_phone_column_merges_like_the_backend() {
             format!("g:{}|{}:false", o(&g.origin), g.key)
         })
         .collect();
-    assert_eq!(groups, tokens(&lay(&a, &shape(By::Project)), By::Project), "按目录");
+    assert_eq!(groups, tokens(&lay(&a, &shape(By::Project)), By::Project), "组的先后");
     // 已摆进固定 · 组那几段的不再进按天那几段。
     let placed = column(&ask(&|r| r.session_id == "k1" || r.session_id == "b1"));
     let without: Vec<String> = want
