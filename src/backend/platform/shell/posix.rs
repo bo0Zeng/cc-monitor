@@ -35,6 +35,14 @@ pub(crate) fn cd_then_login_shell(quoted_dir: Option<&str>) -> String {
     }
 }
 
+/// 跑这一行的那个 shell 把自己的窗口标签（`$$-<`/proc/$$/stat` 第 22 格>`，与接入块设的 `LC_CCM_WINDOW` 同一个键）与 `machine`
+/// 两行写进 `file`（先写 `part` 再 `mv`）；没有 `/proc` ⇒ 不写；错误吞掉。三个词已成词。以 `; ` 收尾，后面接那一行。
+pub(crate) fn note_own_window(file: &str, part: &str, machine: &str) -> String {
+    format!(
+        "{{ [ -r /proc/$$/stat ] && printf '%s-%s\\n%s\\n' \"$$\" \"$(sed 's/.*) //' /proc/$$/stat | cut -d' ' -f20)\" {machine} > {part} && mv -f {part} {file}; }} 2>/dev/null; "
+    )
+}
+
 /// `cd <已 quote 的目录>`（只进目录，不跟别的命令）。
 pub(crate) fn cd(quoted_dir: &str) -> String {
     format!("cd {quoted_dir}")

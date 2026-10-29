@@ -43,27 +43,22 @@ pub(crate) fn label_parts(label: &str) -> Option<(u32, u64)> {
     Some((pid.parse().ok()?, start.parse().ok()?))
 }
 
-/// 前奏：跑这一行的那个 shell 把自己的标签与 `machine` 写进 `file`（先写旁名 `.part` 再挪过去；UTF-8 无 BOM），再接后面那一行。本机终端方言：
-/// PowerShell `$PID` ＋ `StartTime.ToFileTime()`（在一个脚本块里跑，变量不留在那个窗口里）；POSIX `$$` ＋ `/proc/$$/stat` 第 22 格（没有 `/proc` ⇒ 不写）。
-/// 错误都吞掉，不往那个终端里打字。两个路径与机器名都经本方言的单引号字面量；PowerShell 那一形不带双引号。
+/// 前奏：跑这一行的那个 shell 把自己的标签与 `machine` 写进 `file`（先写旁名 `.part` 再挪过去），再接后面那一行。
+/// 写法按本机终端方言，住 `platform/shell/{posix, powershell}.rs::note_own_window`；三个词经本方言的单引号字面量。
 pub(crate) fn prelude(powershell: bool, file: &Path, machine: &str) -> String {
     let file = file.to_string_lossy();
     let part = format!("{file}.part");
     if powershell {
-        format!(
-            "try {{ & {{ param($f, $t, $m) $ErrorActionPreference = 'Stop'; \
-             [System.IO.File]::WriteAllText($t, ('{{0}}-{{1}}' -f $PID, [System.Diagnostics.Process]::GetCurrentProcess().StartTime.ToFileTime()) + [char]10 + $m + [char]10); \
-             Move-Item -LiteralPath $t -Destination $f -Force }} {file} {part} {machine} }} catch {{}}; ",
-            file = ps_literal(&file),
-            part = ps_literal(&part),
-            machine = ps_literal(machine),
+        crate::platform::shell::powershell::note_own_window(
+            &ps_literal(&file),
+            &ps_literal(&part),
+            &ps_literal(machine),
         )
     } else {
-        format!(
-            "{{ [ -r /proc/$$/stat ] && printf '%s-%s\\n%s\\n' \"$$\" \"$(sed 's/.*) //' /proc/$$/stat | cut -d' ' -f20)\" {machine} > {part} && mv -f {part} {file}; }} 2>/dev/null; ",
-            file = shell_quote_core::posix_quote(&file),
-            part = shell_quote_core::posix_quote(&part),
-            machine = shell_quote_core::posix_quote(machine),
+        crate::platform::shell::posix::note_own_window(
+            &shell_quote_core::posix_quote(&file),
+            &shell_quote_core::posix_quote(&part),
+            &shell_quote_core::posix_quote(machine),
         )
     }
 }
