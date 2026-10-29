@@ -309,12 +309,14 @@ ts-rs = "12.0.1"
 # 假时钟（停着的钟，`advance` 才走）：测「挂着的提问自己带的期限」· 保活几轮判死不按墙钟等。只在测试档开。
 tokio = { version = "1", features = ["test-util"] }
 
-# 发布档按体积编（size2 10-11）：后端在 monitor 里内嵌三份（本机一份 · 远端两份），每份小一截，包就小一大截。
-# · opt-level "s" 而不是 "z"：量过 "z" 冷扫一份 383 MB 会话 CPU 慢 1.3–1.9 倍；"s" 与默认的 3 一样快。
+# 发布档按速度编：后端在 monitor 里内嵌三份（本机一份 · 远端两份）。
+# · opt-level 3 而不是 "s"：一份 587 MB 记录，冷开 CPU 4.2 s → 3.2 s（−25%），会话内查找头一问（含工具）0.99 s → 0.65 s（−34%）；
+#   微基准上数行 · 预筛 · 搜索匹配这类字节循环在 "s" 下不向量化。代价：二进制 24 MB → 34 MB（+40%）、编一趟 CPU +46%。"z" 更慢。
+# · lto · 一个编译单元 · 去符号：速度不变，体积小一截。
 # · panic 刻意留 unwind（不写 = 默认）：常驻后端里一个任务 panic 靠监督接住；abort 会把整个进程带走。
-# 判据：`build_features_tests.rs` 的 `the_backend_release_profile_is_built_for_size_and_keeps_unwinding`。
+# 判据：`build_features_tests.rs` 的 `the_backend_release_profile_is_optimized_for_speed_and_keeps_unwinding`。
 [profile.release]
-opt-level = "s"
+opt-level = 3
 lto = true
 codegen-units = 1
 strip = true

@@ -43,13 +43,14 @@ fn the_backend_test_build_resolves_serde_json_like_the_release_build() {
     );
 }
 
-/// 发布档按体积编（size1 报告 ①）：opt-level "s" · lto · codegen-units 1 · strip；panic 刻意不改 abort。
+/// 发布档：opt-level 3 · lto · codegen-units 1 · strip；panic 刻意不改 abort。
 ///
-/// - 不写这一段时后端走 cargo 默认（opt-level 3、不开 LTO、16 个编译单元、不去符号），每份大约多 40%，而它在 monitor 里内嵌三份。
-/// - "s" 不是 "z"：量过 "z" 冷扫慢 1.3–1.9 倍（报告 ⑦）。
-/// - panic 留 unwind：常驻后端里一个任务 panic 靠监督接住；abort 会把整个进程带走（报告 ⑧）。
+/// - opt-level 3 不是 "s"：587 MB 一份记录，冷开 CPU 4.2 s → 3.2 s（−25%），会话内查找头一问（含工具）0.99 s → 0.65 s（−34%）；
+///   代价是二进制 24 MB → 34 MB（+40%，monitor 里内嵌三份）、release 编一趟 CPU +46%。"z" 更慢（冷扫慢 1.3–1.9 倍）。
+/// - lto · 一个编译单元 · 去符号：同样的速度下体积小一截。
+/// - panic 留 unwind：常驻后端里一个任务 panic 靠监督接住；abort 会把整个进程带走。
 #[test]
-fn the_backend_release_profile_is_built_for_size_and_keeps_unwinding() {
+fn the_backend_release_profile_is_optimized_for_speed_and_keeps_unwinding() {
     let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
     let text = std::fs::read_to_string(&manifest)
         .unwrap_or_else(|e| panic!("读不到 {}：{e}", manifest.display()));
@@ -59,14 +60,14 @@ fn the_backend_release_profile_is_built_for_size_and_keeps_unwinding() {
         .and_then(|p| p.get("release"))
         .unwrap_or_else(|| {
             panic!(
-                "后端 Cargo.toml 没有 `[profile.release]` —— 发布档会走 cargo 默认（不按体积编）"
+                "后端 Cargo.toml 没有 `[profile.release]` —— 发布档会走 cargo 默认（不开 LTO、不去符号）"
             )
         });
     let field = |k: &str| release.get(k).map(|v| v.to_string().trim().to_string());
     assert_eq!(
         field("opt-level").as_deref(),
-        Some("\"s\""),
-        "opt-level 要 \"s\"（\"z\" 冷扫慢，3 不按体积）"
+        Some("3"),
+        "opt-level 要 3（\"s\" 冷扫与查找慢两到三成，\"z\" 更慢）"
     );
     assert_eq!(field("lto").as_deref(), Some("true"), "lto 要开");
     assert_eq!(
