@@ -8,6 +8,7 @@
 //! | R4 | 几个线程同时冷开同一份 ⇒ 只扫一遍（都拿到同一张） | 真文件、8 线程 |
 //! | R10 | 图被挤掉（条数 · 被一张超字节上限的挤）⇒ 留下事实尾巴；再问事实只读追加的那一截，答案同从 0 扫 | 真文件 |
 //! | R12 | 预读收下会话只借那一张：缓存里不留整张图、只留事实尾巴；界面留着的照用不挤；预读与界面同时冷开 ⇒ 照界面的留 | 真文件、8 线程 |
+//! | R13 | 骨架里没有子运行那几行的原文、整份比那几行小二十倍以上；照骨架补的运行表 ＝ 照原文补的 | 合成记录 |
 
 use super::*;
 use std::io::Write as _;
@@ -862,4 +863,76 @@ fn r12_a_prime_lends_the_map_and_leaves_only_a_facts_tail() {
     }
     std::fs::remove_dir_all(&d).ok();
     std::fs::remove_dir_all(&sd).ok();
+}
+
+/// 照真形状的派出与交回：派出那次的调用带一段长提示、交回那次的结果带一大段交回的话，外加子运行自己那几行（带 `agentId`、
+/// 不说派出 / 收场）。正文全是占位字（[`PAD`]）；`n` 个子运行，最后一个后台派出、还在跑。
+fn with_runs(n: usize) -> String {
+    let pad = PAD.repeat(1500);
+    let mut s = String::new();
+    for i in 0..n {
+        s.push_str(&format!(r#"{{"type":"user","uuid":"u{i}","timestamp":"2026-10-01T00:{i:02}:00.000Z","message":{{"role":"user","content":"第 {i} 句"}}}}"#));
+        s.push('\n');
+        s.push_str(&format!(r#"{{"type":"assistant","uuid":"a{i}","parentUuid":"u{i}","timestamp":"2026-10-01T00:{i:02}:01.000Z","message":{{"id":"m{i}","model":"m-x","role":"assistant","content":[{{"type":"tool_use","id":"t{i}","name":"Agent","input":{{"description":"L{i}","subagent_type":"k","prompt":"{pad}"}}}}],"usage":{{"input_tokens":3,"output_tokens":1}}}}}}"#));
+        s.push('\n');
+        s.push_str(&format!(r#"{{"type":"progress","uuid":"p{i}","timestamp":"2026-10-01T00:{i:02}:02.000Z","data":{{"agentId":"w{i}","text":"{pad}"}}}}"#));
+        s.push('\n');
+        let status = if i + 1 == n {
+            "async_launched"
+        } else {
+            "completed"
+        };
+        s.push_str(&format!(r#"{{"type":"user","uuid":"r{i}","parentUuid":"a{i}","timestamp":"2026-10-01T00:{i:02}:03.000Z","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"t{i}","content":"{pad}"}}]}},"toolUseResult":{{"status":"{status}","agentId":"w{i}","content":[{{"type":"text","text":"{pad}"}}]}}}}"#));
+        s.push('\n');
+    }
+    s
+}
+
+/// 夹具里只出现在子运行那几行正文里的占位字。
+const PAD: &str = "派出占位";
+
+/// R13（骨架不留子运行原文）：预读从骨架起步只要「哪几个子运行派出 / 收场了」那几样 ⇒ 骨架里没有子运行那几行的原文（占位字一个都不在），
+/// 整份骨架比那几行原文小得多；照骨架补进运行簿的运行表 ＝ 照整份记录原文补的。
+#[test]
+fn r13_the_skeleton_keeps_what_the_prime_takes_not_the_child_run_lines() {
+    let kind = crate::agents::claudecode::AGENT_KIND;
+    let face = Some(crate::agents::claudecode::RECORDS);
+    let faces = crate::agents::RunFaces::of(&crate::agents::claudecode::RECORDS);
+    let text = with_runs(6);
+    let bytes = text.as_bytes();
+    let map = ScanMap::scan_with(bytes, bytes.len() as u64, kind, face).unwrap();
+    let raw = serde_json::to_string(&SkelView {
+        mark: Mark::default(),
+        scan: map.view(),
+    })
+    .unwrap();
+    let said: usize = text.lines().filter(|l| faces.hint(l)).map(str::len).sum();
+    assert!(said > 0, "正控：夹具里要有说到子运行的行");
+    assert!(!raw.contains(PAD), "骨架里留了子运行那几行的原文");
+    assert!(
+        raw.len() * 20 < said,
+        "骨架 {} 字节，没比说到子运行那几行的原文（{said} 字节）小得多",
+        raw.len()
+    );
+
+    // 照骨架补的运行表 ＝ 照原文补的（骨架读回来再收成图，同界面冷开照骨架起步那一路）。
+    let back: Skel = serde_json::from_str(&raw).expect("骨架读不回来");
+    let from_skel = back.scan.done(bytes.len() as u64);
+    let table = |prime: &dyn Fn(&crate::observe::runs::RunTrack)| {
+        let book = Arc::new(crate::observe::runs::RunBook::default());
+        let track = crate::observe::runs::RunTrack::new(faces, book.clone());
+        prime(&track);
+        serde_json::to_string(&book.runs("s")).unwrap()
+    };
+    let want = table(&|t| {
+        t.prime("s", bytes);
+    });
+    assert!(
+        want.contains("w5") && want.contains("L0"),
+        "正控：原文补出的运行表该有那几个子运行：{want}"
+    );
+    let got = table(&|t| {
+        t.prime_said("s", from_skel.runs());
+    });
+    assert_eq!(got, want, "照骨架补的运行表跟照原文补的不一样");
 }
