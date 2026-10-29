@@ -197,8 +197,7 @@ fn no_two_test_attributes_land_on_the_same_function() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// `K-R77`（09-12）：**「`#[cfg(test)]` 顶层再导出自己的测试模块」那道绕道** ——
-// 拆掉最后一处的同一拍给它上棘轮。
+// **「`#[cfg(test)]` 顶层再导出自己的测试模块」那道绕道** —— 恒零的棘轮。
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 顶层 = **列 0**（不带前导空白）且非空行。
@@ -240,9 +239,8 @@ fn detour_next_item<'a>(lines: &[&'a str], from: usize) -> Option<(usize, &'a st
 
 /// 本文件里由 `#[cfg(test)]` 修饰的**顶层模块**名 —— **可见性一律不看**。
 ///
-/// 🔴 这一句就是 `K-R75` 治过的那个病的复发点：那一版剥法只认字面 `mod `，
-/// 一个 `pub(crate)` 前缀就让整份文件**静默掉出人群**。⇒ 走同一份权威的形状判定
-/// `crate::strip_visibility`，**不再各写一份近似的**（本仓 `E3`）。
+/// 🔴 只认字面 `mod ` 的话，一个 `pub(crate)` 前缀就让整份文件**静默掉出人群**。
+/// ⇒ 走同一份权威的形状判定 `crate::strip_visibility`，**不各写一份近似的**。
 fn cfg_test_module_names(src: &str) -> std::collections::BTreeSet<&str> {
     let lines: Vec<&str> = src.lines().collect();
     let mut out = std::collections::BTreeSet::new();
@@ -297,7 +295,7 @@ fn cfg_test_reexport_sites(src: &str) -> Vec<(usize, String)> {
 
 /// 住址：仓根相对路径（够不着仓根就退回原样）。
 ///
-/// `K-R75` 那条逐字：**点名要给住址，不是基名** —— 两棵树里同名文件是常态。
+/// **点名要给住址，不是基名** —— 两棵树里同名文件是常态。
 fn detour_addr(p: &std::path::Path) -> String {
     p.strip_prefix(addr_repo_root())
         .unwrap_or(p)
@@ -323,25 +321,23 @@ fn detour_over_ceiling(today: usize, ceiling: usize) -> Option<usize> {
     }
 }
 
-/// 🔴 `K-R77` `KR77D2`：**那道 `#[cfg(test)]` 顶层再导出的绕道，恒零。**
+/// 🔴 **那道 `#[cfg(test)]` 顶层再导出的绕道，恒零。**
 ///
 /// # 它治的是什么
 ///
 /// 绕道的形状：测试模块写成私有 `mod X`，再在文件顶层补一行
 /// `#[cfg(test)] pub(crate) use X::…`，把要跨模块用的东西导出去。
-/// 它**曾经有一个真理由** —— `crate::test_module_ranges` 那时按字面前缀认
-/// `mod `，模块一带可见性前缀就认不出来，那份文件**整段测试代码留在生产段里**被别的
-/// 守卫扫。`K-R75`（09-12）把那一步换成按形状剥可见性
-/// （`crate::strip_visibility`）之后，**那个理由没了**，而盘上那三处还在。
+/// 它的理由只在「按字面前缀认 `mod `」的剥法下成立（模块一带可见性前缀就认不出来，
+/// 那份文件**整段测试代码留在生产段里**被别的守卫扫）；`crate::test_module_ranges`
+/// 按形状剥可见性（`crate::strip_visibility`），**那个理由不在**。
 ///
-/// # 🔴 在本条落地之前，这一族**一颗牙都没有**
+/// # 🔴 这一族只有这一道闸
 ///
-/// `K-R76` 现打（它的刀 `M3`）：把已经拆掉的那道绕道**整个装回去**，全量门禁 **0 红**。
-/// ⇒ 本条不是「再加一层保险」，它是这一族的**第一道闸**。
+/// 把那道绕道**整个装回去**，别的判据**0 红** ⇒ 本条不是「再加一层保险」，它是这一族的**第一道闸**。
 ///
 /// # 凭什么可以恒零（而不是「比历史最低档低」）
 ///
-/// `K-R38` 亲手证过「**钉一个固定上限买不到棘轮**」—— 降到低点再涨回来仍然过。
+/// **钉一个固定上限买不到棘轮** —— 降到低点再涨回来仍然过。
 /// 这里选**恒零**，三条理由缺一条都不该恒零：
 /// ① **今天真的是 0**：本条自己就是那个读数（两棵树 · 现打，见
 ///    [`the_detour_ratchet_reaches_both_trees`] 的分母）；
@@ -404,12 +400,12 @@ fn the_cfg_test_reexport_detour_stays_extinct() {
         panic!(
             "这里有 {} 处「`#[cfg(test)]` 顶层再导出自己的测试模块」，比上限 \
                  {DETOUR_CEILING} 多 {over} 处：\n{}\n\n\
-                 ⇒ **这道绕道今天没有理由了**：`crate::test_module_ranges` 自 `K-R75`\n\
-                 起按形状剥可见性修饰，测试模块直接写成 `pub(crate) mod X` 就认得出来，\n\
+                 ⇒ **这道绕道没有理由**：`crate::test_module_ranges`\n\
+                 按形状剥可见性修饰，测试模块直接写成 `pub(crate) mod X` 就认得出来，\n\
                  跨模块的取名走 `crate::<文件>::X::…`，不需要在顶层再导出一次。\n\
                  修法：把 `mod X` 写成 `pub(crate) mod X`，删掉这一行，引用者改走全路径。\n\
-                 （盘上三处的先例：`stream_source/` 的 `dial_move_judge` · `local_backend_host.rs` 的\n\
-                  `tests` · `readonly_guard.rs` 的 `g6_doctrine`，`K-R76`/`K-R77` 各拆过。）\n\
+                 （照这样写的先例：`stream_source/` 的 `dial_move_judge` · `local_backend_host.rs` 的\n\
+                  `tests` · `readonly_guard.rs` 的 `g6_doctrine`。）\n\
                  ⚠ 真有正当理由要开口子 ⇒ 先立裁定，**不许**在这里抬 \
                  `DETOUR_CEILING`。",
             sites.len(),
@@ -418,7 +414,7 @@ fn the_cfg_test_reexport_detour_stays_extinct() {
     }
 }
 
-/// 🔴 `K-R77` `KR77D3`：上面那条棘轮的语料面**跨两棵树** —— 少一棵当场红。
+/// 🔴 上面那条棘轮的语料面**跨两棵树** —— 少一棵当场红。
 ///
 /// # 为什么要单独一条
 ///
@@ -428,7 +424,7 @@ fn the_cfg_test_reexport_detour_stays_extinct() {
 /// ⇒ 这一条把「够得到」本身变成判据：**逐棵树各有地板**，并且**点名**那三份
 /// 真长过绕道的文件必须在语料里。
 ///
-/// # ⚠ 它买不到什么 —— `KR77D3` 要的那个诚实读数，写在这里
+/// # ⚠ 它买不到什么
 ///
 /// 闸**住在 monitor 这棵树上**（门禁 `cargo` 那一格 = `cargo test --workspace --lib`），
 /// 靠**读盘上的 `src/backend`** 够到后端。
@@ -447,7 +443,7 @@ fn the_detour_ratchet_reaches_both_trees() {
         if rel.starts_with("src/backend/") {
             backend += 1;
         } else if rel.starts_with("src/frontend/") {
-            // 文件窗口独立成包（`src/frontend/filewin/`）：它从前就在 monitor 这棵树里，照旧算这一棵。
+            // 文件窗口那个包（`src/frontend/filewin/`）算 monitor 这一棵。
             monitor += 1;
         } else if rel.starts_with("tests/") {
             tests += 1;
@@ -474,11 +470,10 @@ fn the_detour_ratchet_reaches_both_trees() {
     }
 }
 
-/// 🔴 `K-R77` `KR77D2` 的**反向那半** —— 照 `K-R38` 那条的形。
+/// 🔴 恒零那条的**反向那半**。
 ///
 /// 真树上今天处数与 `DETOUR_CEILING` **都是 0** ⇒ 把 [`detour_over_ceiling`] 里的
-/// `>` 写成 `<`（或 `>=`、`!=`），**正题照样绿**。`K-R38` 那次实打逐字：
-/// 「正题照样绿、只有反向红 ⇒ 反向那半承重」。
+/// `>` 写成 `<`（或 `>=`、`!=`），**正题照样绿**：正题照样绿、只有反向红 ⇒ 反向那半承重。
 /// ⇒ 这里拿**合成读数**把方向钉死，一格都不靠真树。
 #[test]
 fn the_detour_reader_can_tell_a_new_one_from_none() {
@@ -498,10 +493,9 @@ fn the_detour_reader_can_tell_a_new_one_from_none() {
     assert_eq!(detour_over_ceiling(6, 5), Some(1), "刚越线那一格没逮住");
 }
 
-/// 🔴 `K-R77` `KR77D2` 的**失效方向**那半：人群**不许只认一种可见性**。
+/// 🔴 恒零那条的**失效方向**那半：人群**不许只认一种可见性**。
 ///
-/// 那正是 `K-R75` 治过的病换个地方再犯 —— 前一版剥法只认字面 `mod `，
-/// 一个 `pub(crate)` 前缀就让整份文件掉出人群，**而判据照样绿**。
+/// 只认字面 `mod ` 的剥法，一个 `pub(crate)` 前缀就让整份文件掉出人群，**而判据照样绿**。
 /// Rust 的 `Visibility` 文法是语言定死的闭集，而 `pub(in <路径>)` 的路径**任意长**
 /// ⇒ **前缀表穷举不了、形状认得出**。这一条逐形喂一遍，外加反面五形。
 #[test]
@@ -527,7 +521,7 @@ fn the_detour_scanner_sees_every_visibility() {
             hits.len(),
             1,
             "可见性写成 `{vis}` 时逮不到（实得 {hits:?}）—— 人群只认一种拼法，\
-                 那是 `K-R75` 治过的病换个地方再犯"
+                 一个可见性前缀就让整份文件掉出人群"
         );
         assert!(
             hits[0].1.ends_with("use tests::HELPER;"),
@@ -693,7 +687,7 @@ fn every_comment_stripping_transformer_is_registered() {
         ("registry_tests.rs::declared_fields_of", "不是剥法：解析结构体字段声明"),
         // **方向恰好相反的一条**：它不剥注释，它**把注释留下来并指名**。
         // 那一格的正题是「你 rc 里这几行是旧的」——`#` 打头的行照样进结果，只是分类成
-        // `LegacyRcKind::Comment`（`K-R57` 现打用户 `~/.bashrc`：14 行里 4 行是注释，
+        // `LegacyRcKind::Comment`（一份真 `~/.bashrc` 里 14 行有 4 行是注释，
         // 那 4 行也该让用户看见）。⇒ 共享原语在这里不是「不够」，是**用了就把活做反了**。
         (
             // 「待办」失效行那一件（`src/backend/platform/shell/posix.rs`）。
@@ -1262,15 +1256,14 @@ fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// `K-R17`：源码里的地址这一族，三条判据
+// 源码里的地址这一族，三条判据
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 仓根。
 ///
 /// ⚠ **只跳一级**（`src/frontend/shell` 的上级就是仓根，这是 cargo 给的事实，不是猜的）。
-/// 跳两级那种写法是 `K-R13` 刚治过的病：主树上算出来的东西恰好存在、工作树上
-/// 算错了却被人补了一个假落点 ⇒ 判据变绿而它证明的事根本不成立。
-/// 形状与从前那条帧节奏说法判据（今天并进 `retired-names.tsv`）同源（本仓已有先例）。
+/// 跳两级的话，主树上算出来的东西恰好存在、工作树上
+/// 算错了却会被人补一个假落点 ⇒ 判据变绿而它证明的事根本不成立。
 fn addr_repo_root() -> std::path::PathBuf {
     crate::addr::repo_root().to_path_buf()
 }
@@ -1362,7 +1355,7 @@ fn every_symbol_address_in_the_sources_still_resolves() {
                  （同一条例外逐字住在 `doc/` 那条同族判据里，两处口径一致）",
         ),
         // 下面两条是**示例占位符**：`doc_claim_registry.rs` 的头注要讲「地址长什么样」，
-        // 于是逐字写了一个假地址（同族的 `doc/` 判据从前也有一条同形的例外，随 CONTRIBUTING 重写摘了）。
+        // 于是逐字写了一个假地址。
         // ⚠ 例外**按符号名**认 ⇒ 它们同时也遮住了真名叫 `symbol` / `foo` 的符号。
         //   今天全仓这两个名字**一处声明都没有**（现打），所以遮不住任何真东西；
         //   哪天真有人这么命名，上面那条保鲜自检会让这条例外**变成假绿**，如实登记。
@@ -1561,7 +1554,7 @@ fn the_verb_scan_reads_production_only_and_is_not_vacuous() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// `K-R20`：**只活在散文里的名字**（零定义的名字被当现状说）
+// **只活在散文里的名字**（零定义的名字被当现状说）
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 至少几个下划线才进人群。**只能是 2，不许往上调。**
@@ -1700,8 +1693,8 @@ fn backtick_spans(line: &str) -> Vec<&str> {
 /// `//` 那一族（`.rs` / `.ts` / …）走 [`crate::strip_comment_lines`] ——
 /// **整行注释与行尾注释都剥，而且字符串安全**（`"http://host"` 不会被切短）。
 ///
-/// 🔴 **行尾注释必须算注释**，这是 `K-R19` 实测出来的坑：它第一版尺子只认整行注释，
-/// 于是 `tests/frontend/ui/ipc/commands.vitest.ts` 那行「代码 + 行尾注释」被判成「代码里有这个名字」
+/// 🔴 **行尾注释必须算注释**：只认整行注释的尺子，
+/// 会把 `tests/frontend/ui/ipc/commands.vitest.ts` 那行「代码 + 行尾注释」判成「代码里有这个名字」
 /// ⇒ 旗舰活体 `local_tmux_names` **一次都没进人群**。
 ///
 /// `.md` 整份算散文（它不定义任何符号）；其余一律**整份算代码**（最保守：
@@ -1870,7 +1863,7 @@ fn the_dead_name_scanner_really_sees_each_shape() {
         backtick_spans(&md)
     );
 
-    // ④ 🔴 **行尾注释必须算注释**（`K-R19` 那个坑）：一行「代码 + 行尾注释」，
+    // ④ 🔴 **行尾注释必须算注释**：一行「代码 + 行尾注释」，
     //    名字写在行尾注释里 ⇒ 它属于注释侧，**不是**「代码里有这个名字」。
     let ts = format!("expect(keys.length).toBe(135) // 见 {tick}{n}{tick}\n");
     let rows = dead_name_split("x.ts", &ts);

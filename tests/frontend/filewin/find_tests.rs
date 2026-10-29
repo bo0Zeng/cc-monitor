@@ -219,7 +219,7 @@ async fn a_find_against_a_backend_that_never_built_an_index_comes_back_empty_and
     let root = tree.remote_root();
     // 🔴 它**不声明** `files-index-rebuild` ⇒ 客户端连发都发不出去
     //    （`InboundClient::call` 第一行的能力协商），索引永远建不起来。
-    //    这正是从前真机上的那一态（「零生产调用方 ⇒ 恒回 index_missing」）。
+    //    这就是「零生产调用方 ⇒ 恒回 index_missing」那一态。
     let wired = testing::wire_up(
         "b1-find-noindex",
         FakeBackend::new(
@@ -626,7 +626,7 @@ async fn the_scope_follows_the_directory_and_a_hit_takes_you_there() {
     let rebuilds = w.search.rebuilds_sent();
     w.fire_search(None, false);
     testing::settle(&w.search, before, "整台机器那一趟").await;
-    // 合成机器的「整台」就是它那棵合成树（已经在索引里）⇒ 这一趟不该发重走（从前合成后端拿真盘上的 `/` 当范围、去走整台真机器）。
+    // 合成机器的「整台」就是它那棵合成树（已经在索引里）⇒ 这一趟不该发重走（不许拿真盘上的 `/` 当范围、去走整台真机器）。
     assert_eq!(
         w.search.rebuilds_sent(),
         rebuilds,
@@ -1085,7 +1085,7 @@ async fn a_warm_rewalk_never_claims_to_be_the_cold_first_build() {
 ///
 /// 而「定了」并**不**削弱本条 —— 恰恰相反：不许前后端各写一份，
 /// 一个**已经定下来的**数比一个待定的数更容易被人顺手抄到界面这一侧
-/// （「反正就是 300」）。⇒ 本条这一刀**加宽**了，见下面 §射程。
+/// （「反正就是 300」）。⇒ 本条扫得宽，见下面 §射程。
 ///
 /// # 射程：从一份文件扩到**整棵客户端树**，另加一条后端侧的唯一性
 ///
@@ -1093,7 +1093,7 @@ async fn a_warm_rewalk_never_claims_to_be_the_cold_first_build() {
 /// 的任何一处，上一版**看不见**。今天扫的是 `filewin/` 整棵树的生产段。
 ///
 /// 窗口独立成包之后「`filewin/` 整棵树」是两棵：窗口包 `src/frontend/filewin/src/` ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`
-/// （开窗入口 · 起进程），人群与搬家前逐份相同；键写相对 `src/frontend/` 的路径（两棵里都有 `proc.rs`）。
+/// （开窗入口 · 起进程）；键写相对 `src/frontend/` 的路径（两棵里都有 `proc.rs`）。
 ///
 /// 加宽之后撞到一个**真的、合法的** `300`，逐条登记在 [`MILLIS_NOT_SECONDS`] 里：
 /// monitor 那一侧 `proc.rs` 的 `EARLY_FAILURE_BUDGET` 是 **300 毫秒**（开窗那一跳的预算）——

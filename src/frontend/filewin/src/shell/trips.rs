@@ -6,11 +6,8 @@ use super::*;
 impl FileWindow {
     /// 拖进来的那几个本机文件 → 待传清单（**目标目录 = 当前目录**）。
     ///
-    /// 🔴〔2026-09-23 本机侧退役〕**这里少了一道闸，而那是对的。** 从前开头有一句
-    /// `if !self.source.is_remote() { return Vec::new(); }` —— 它防的是
-    /// 「窗口看着本机时把本机文件拖进本机」。`Source` 收成 newtype 之后
-    /// 那个状态**写不出来了**（理由住 `crate::source::Source` 头注）⇒ 那道闸
-    /// 不是被删掉了，是它要守的东西整条不在了。
+    /// 🔴 **这里没有「是不是远端」那道闸，而那是对的。** 「窗口看着本机时把本机文件拖进本机」
+    /// 这个状态**写不出来**：`Source` 是 newtype，只可能是一台远端（理由住 `crate::source::Source` 头注）。
     pub fn pending_for(&self, local_paths: &[String]) -> Vec<Pending> {
         local_paths
             .iter()
@@ -216,9 +213,8 @@ impl FileWindow {
     /// 一律不接。列表上那两档压根不画那颗按钮，这里是第二道，防的是
     /// 「按钮没了、调用还在」（那正是死值验刀 2 那一形）。
     ///
-    /// 🔴〔2026-09-23 本机侧退役〕**第二道闸（「远端才有」）删了。** `copy-data` 是
-    /// SFTP 协议的扩展，本机复制压根不经 SFTP ⇒ 从前本机源上要出声拒。
-    /// 今天窗口**只可能**看着一台远端（`Source` 是 newtype）⇒ 那句话说不出口了。
+    /// 🔴 **没有「远端才有」那道闸**：`copy-data` 是 SFTP 协议的扩展，而窗口**只可能**看着一台远端
+    /// （`Source` 是 newtype）⇒ 本机源这个状态写不出来。
     pub fn begin_copy(&mut self, i: usize) -> bool {
         *self.prompt_error.lock().unwrap() = None;
         let row = {

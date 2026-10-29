@@ -1,7 +1,7 @@
 //! **上游 base URL 能不能用** —— 全仓唯一的一份。
 //!
-//! 先前三份各管一截：写口 `creds-core` 的形状关 · 中转 `relay/upstream.rs::Base::parse` · 上游选择装表时的「明文只许回环」；
-//! 界面还有一份用 `new URL()` 的（与后端漂开）。今天：[`parse`]（形状）＋ [`upstream_is_loopback`] ＝ [`usable`]；
+//! 写口 `creds-core` 的形状关 · 中转的 `Base::parse` · 上游选择装表时的「明文只许回环」都用这一份，界面也不另写 `new URL()` 那一份。
+//! [`parse`]（形状）＋ [`upstream_is_loopback`] ＝ [`usable`]；
 //! 界面读 monitor 从这里现生成的式子（`src/frontend/ui/generated/judgment-rules.ts`），两侧由金样 `tests/__fixtures__/upstream-url.golden.json` 逐条对。
 //! 本 crate 只判、不说：句子归调用处（同后端 `control/gate_rules.rs::TmuxNameIssue` 的先例）。
 //!
@@ -69,7 +69,7 @@ impl Unusable {
 }
 
 /// 形状：无空白 · `<协议>://` · 协议在 [`SCHEMES`] · authority 非空、无 `?#` · 最后一个 `:` 之后是 u16（整段 `[…]` 不带口 ⇒ 默认口）· 主机非空 ·
-/// 路径前缀无 `?#`、去掉尾 `/` 之后不以 `//` 开头。逐步照搬先前 `Base::parse`（外加写口那一格「无空白」）。
+/// 路径前缀无 `?#`、去掉尾 `/` 之后不以 `//` 开头。
 pub fn parse(url: &str) -> Result<UpstreamUrl, ShapeIssue> {
     if url.chars().any(char::is_whitespace) {
         return Err(ShapeIssue::Whitespace);

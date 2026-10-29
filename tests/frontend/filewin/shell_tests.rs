@@ -51,15 +51,13 @@ fn a_remote_source_is_titled_by_its_label() {
 
 /// 🔴 **「能往下走、退得回来」这件事有判据了。**
 ///
-/// # ⚠它换了构造器，**买到的东西缩了一格，如实记**
+/// # ⚠ 买不到「进去之后列的是 `sub` 的内容」那一格读数
 ///
-/// 从前这条跑在**本机侧的真目录**上（真 `read_dir`），于是它顺带买到
-/// 「进去之后列的是 `sub` 的内容，不是上一层留下的」那一格相等断言。
-/// 本机侧退役之后窗口只看远端，而远端列目录**跑不了真的**
-/// （本仓红线不许起真连接）⇒ 那一格的**读数买不到了**。
+/// 窗口只看远端，而远端列目录**跑不了真的**（本仓红线不许起真连接）⇒「进去之后列的是 `sub` 的内容，
+/// 不是上一层留下的」那一格的**读数买不到**。
 ///
 /// ⇒ 换成 [`FileWindow::seeded`]（那个构造器正是为「屏幕上先有行」存在的），
-/// 本条今天钉的是**换目录这件事本身**：点开一个目录 ⇒ `cwd` 换成那一行的路径；
+/// 本条钉的是**换目录这件事本身**：点开一个目录 ⇒ `cwd` 换成那一行的路径；
 /// 退一级 ⇒ `cwd` 换回来（`parent_dir` 那条纯函数有自己的判据，住 `source_tests`）。
 /// ⚠ 「换了目录上一屏要被清掉」由 `changing_directory_clears_the_previous_rows_...`
 /// 单独钉 —— 别读成本条还在判列表内容。
@@ -123,7 +121,7 @@ fn a_symlink_to_a_directory_walks_in_on_activate_and_enter() {
 
 /// 点一个**文件**：什么都不做。
 ///
-/// ⚠ 这不是「还没做完」的占位 —— 文件那一侧（预览/编辑/下载）这一刀明确没做，
+/// ⚠ 这不是「还没做完」的占位 —— 文件那一侧（预览/编辑/下载）明确不做，
 /// 而「点了文件把 cwd 换成那个文件的路径」会让下一趟 `read_dir` 报错，
 /// 屏幕上出现一条莫名其妙的红字。⇒ 明确的不动。
 #[test]
@@ -156,8 +154,7 @@ fn walking_up_from_the_top_stays_at_the_top() {
 #[test]
 fn changing_directory_clears_the_previous_rows_instead_of_leaving_them_up() {
     // 起点是**先播好的一屏** ⇒ 列表非空；再换一个目录（没有运行时 ⇒ 列不出来）。
-    // ⚠ 从前这里的起点是本机一棵真目录树（`FileWindow::new(Source::Local, …)`），
-    //   本机侧退役之后换成 `seeded` —— 本条要的从来只是「屏幕上先有行」。
+    // 本条要的从来只是「屏幕上先有行」⇒ 用 `seeded`。
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
     assert!(!w.listing.rows.lock().unwrap().is_empty());
 
@@ -286,7 +283,7 @@ fn a_drop_with_no_runtime_says_so_instead_of_swallowing_the_files() {
 /// 传完一趟要重列目录（新文件得出现），而且**只重列一次**。
 #[test]
 fn finishing_a_drop_round_triggers_exactly_one_reload() {
-    // ⚠ 本条要的只是「有一个窗口」，从前拿本机一棵真目录树当窗口；本机侧退役之后换 `seeded`。
+    // ⚠ 本条要的只是「有一个窗口」⇒ 用 `seeded`。
     let mut w = remote_window_with_rows("/srv/data", Vec::new());
     assert!(!w.settle_trips(), "一趟都没跑却说要重列");
     let (_, up) = adopt_upload(&mut w);
@@ -528,10 +525,8 @@ fn join_verdict(
 fn xvfb_worker_opens_a_real_window() {
     use crate::rows::testing::xvfb;
     let display = xvfb::child_display();
-    // 🔴〔2026-09-23 本机侧退役〕**种子从「真目录树」换成「合成的几行」。**
-    //    从前这里造一棵临时目录树、列一趟本机目录当种子。
-    //    窗口今天只看远端 ⇒ 那棵树没有对应的一侧了。
-    //    ⚠ 这一换**不减读数**：`open_detached_seeded` 从来就不列目录（种子是给它的），
+    // 🔴 **种子是合成的几行**：窗口只看远端，没有本机目录树那一侧。
+    //    ⚠ 这**不减读数**：`open_detached_seeded` 从来就不列目录（种子是给它的），
     //      这一格买的是「窗口真的起来了 ＋ 标题 ＋ 几何 ＋ 循环干净退出」。
     let cwd = "/srv/xvfb-open".to_string();
     let rows = vec![dir_row("sub"), file_row("f.txt")];
@@ -864,37 +859,9 @@ fn a_window_that_cannot_come_up_comes_back_as_a_reason_not_a_silent_ok() {
 
 /// 🔴🔴 **第二趟、第三趟开窗都成功** —— 一趟一个进程。
 ///
-/// ══════════════════════════════════════════════════════════════════════
-/// # 🪦 这一格先前买的是**另一条性质**，它为什么退役（原话逐字留在这儿）
-/// ══════════════════════════════════════════════════════════════════════
-///
-/// 上一版这条判据叫「同一个进程里第二次开窗不许是一条静默成功」，头注逐字写着：
-///
-/// > winit 全进程只许建一个事件循环（那个「已经建过了」的进程级标志只在
-/// > web 平台会被清回去），而 eframe 把建好的那个缓存在**线程局部**里。
-/// > `open_detached_seeded` 每趟 `std::thread::spawn` 一条**新线程**
-/// > ⇒ **同一个进程里第二次开窗，必然失败。**
-/// > 现打读数（本判据每趟自己印出来）：第二趟裁决 `err`、窗口数 `0`。
-/// > ⇒ **用户把这个文件窗口关掉之后，这个 app 活着的时候再也开不起来了。**
-///
-/// 而它**刻意不断言「第二趟必须失败」**，原话同样逐字：
-///
-/// > 它**不**断言「第二趟必须失败」—— 那样就把一个缺陷钉成了期望值，
-/// > 哪天有人真把它修好（复用那条线程／那个事件循环）这条判据会反过来拦住修复。
-/// > 它断言的是两支**各自自洽**：回 `ok` ⇒ 屏幕上必须真有一个窗口；
-/// > 回 `err`／`panic` ⇒ 必须带着一句非空的原因。
-///
-/// 🔴 **那句「哪天有人真把它修好」就是今天，而修法不是它设想的那一种。**
-/// 「**窗口生命周期就是销毁**」。而「同进程第二趟必然失败」
-/// 这条**现打事实**使得「关掉就销毁」与「关掉之后还能再打开」**不可同时成立**
-/// ⇒ 裁「销毁」之后只剩一条路：**每开一个窗口起一个独立进程**
-/// （逐条推理链与它顺带解掉的三条缺陷住 `crate::proc` 头注）。
-///
-/// ⇒ 旧那条性质**在新形态下没有被推翻，是失去了指称对象**：生产那条路上
-/// 再也不会有「同一个进程里的第二个窗口」。继续钉它，钉的是台架自己造的形状。
-/// ⚠ 它那两支里有一支**没有**跟着搬过来：「失败时那句原因非空」。
-/// 那一支今天由 `proc_tests` 买（当场死掉的**进程**回一句非空的原因）——
-/// 本条不买它，别以为它跟着搬过去了。
+/// winit 一个进程只许一个事件循环 ⇒ 同一进程里第二次开窗必然失败；「关掉就销毁」与「关掉之后还能再打开」
+/// 只在**每开一个窗口起一个独立进程**下同时成立（逐条推理住 `crate::proc` 头注）。
+/// 「失败时那句原因非空」由 `proc_tests` 买（当场死掉的**进程**回一句非空的原因），本条不买它。
 ///
 /// ══════════════════════════════════════════════════════════════════════
 /// # 它买到什么（逐条）
@@ -916,11 +883,7 @@ fn a_window_that_cannot_come_up_comes_back_as_a_reason_not_a_silent_ok() {
 ///   （理由住 `scenario_trips`：门禁那一格 `--lib`，不构建 bin）。
 ///   ⇒ 它买的是「**一个进程一个窗口这件事成立**」，不是「那份发版二进制跑得起来」。
 /// - **真 GPU / 字体回落 / DPI / 合成器四样一个都买不到**（台架头注逐条）。
-/// - 🪦〔X1 2026-09-24 结案〕上一版这里写着「**刻意不要求那三趟干净退出**」——
-///   理由是关窗那一下的拆卸竞态让约 1/4 的趟数退出码变成 `None`、「归因未定」。
-///   **归因定了**：那不是产品的拆卸竞态，是台架那一锤（`xdotool windowclose`
-///   = `XDestroyWindow`）替 winit 把窗口拆了，winit 每趟都 panic、约一成落在持锁段升级成 abort。
-///   锤子换成窗口管理器那一条请求之后，**三趟都判退出码 0 ＋ 收场 `ok`**（④）。
+/// - 关窗那一锤用窗口管理器那一条请求（不是 `xdotool windowclose` 那种替 winit 拆窗）⇒ **三趟都判退出码 0 ＋ 收场 `ok`**（④）。
 #[cfg(not(windows))]
 #[test]
 fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
@@ -992,9 +955,8 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
 /// - `dpi_aware=true` ⇒ `UNAWARE` → `PER_MONITOR_AWARE_V2`；
 /// - `dpi_aware=false` ⇒ **全程 `UNAWARE`**（没有别人替它设 ⇒ 高 DPI 下整窗发糊）。
 ///
-/// 从前本条钉的是 `false`，理由是「同进程里 Tauri 先设了」。那个前提在第十三刀
-/// （窗口进程独立）之后没了 —— 而旧判据只钉**值**、不钉**前提**，于是它一直绿着守一个错值。
-/// ⇒ 这一版两半、两侧异源：
+/// 窗口进程里没有 Tauri、没有别人替它设；只钉**值**、不钉**前提**的话，会一直绿着守一个错值。
+/// ⇒ 两半、两侧异源：
 ///
 /// ① **值**：那一句是 `with_dpi_aware(builder, true)`，恰好一行（`pin_line`）；`false` 零命中。
 /// ② **前提**：这个 hook 在生产上只经一条链被用到 ——
@@ -1413,8 +1375,7 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
 
 /// 🔴🔴 **整条链一趟走完**：真点一下会话文件那一行的「删除」→ 问一次 → 答做 → 后端真收到 `files-delete`。
 ///
-/// 从前这一条是「→ 围栏挡住 → 屏幕上有话」，而且断「后端一行都没收到」。
-/// 用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 同一行、同一次真点击，今天必须**走到后端**。
+/// 用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 同一行、同一次真点击必须**走到后端**。
 ///
 /// # 它是这一摞里唯一一条**不跳任何一跳**的判据
 ///
@@ -1452,7 +1413,7 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
     );
     assert!(w.rt.is_some(), "这一条要一个运行时，否则它卡在另一支上");
     // 写面走通道 ⇒ 挂一台合成后端（它声明了 `files-delete`）。
-    // 本条从前证的是「本地那道预判把它挡在上线之前」；今天证的是它**上了线**。
+    // 本条证的是它**上了线**。
     let wired = crate::find::testing::wire_up(
         "e2e-fence",
         crate::find::testing::FakeBackend::new(
@@ -1756,7 +1717,7 @@ async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
     assert!(e.contains("huge.log"), "没说是哪一行：{e}");
 }
 
-/// 🔴 **改了没存就关 ⇒ 先问。** 这一刀的「不静默丢弃」。
+/// 🔴 **改了没存就关 ⇒ 先问。** 「不静默丢弃」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
     let mut w = FileWindow::seeded(
@@ -2403,9 +2364,7 @@ async fn a_reveal_target_that_is_gone_says_so_and_drops_the_highlight() {
 /// 🔴 留着的后果具体：新目录里**恰好同名**的另一个文件会被高亮，
 /// 而用户会以为那就是他要找的那个。
 ///
-/// ⚠从前这条还判「**换机器**那两条路同样」（`go_local` / `go_remote`
-/// 各清一次）。本机侧退役之后一个窗口的机器**一辈子只有一台** ——
-/// 换机器那件事不存在了，不是那两格没人看了。
+/// ⚠ 一个窗口的机器**一辈子只有一台**，没有「换机器」那条路。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn navigating_away_drops_the_highlight() {
     let mut w = FileWindow::seeded(

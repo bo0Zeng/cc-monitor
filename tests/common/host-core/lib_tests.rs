@@ -1,5 +1,4 @@
 //! （文件窗口成独立包）：原子写与窗口几何收进 `host-core`，两个前端共用一份。
-//! 下面几条原住 `tests/frontend/shell/utils_tests.rs`（原子写）与 `lib_window_lifecycle_tests.rs`（夹进工作区），随代码逐字搬来。
 
 use super::*;
 

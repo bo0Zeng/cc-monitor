@@ -36,7 +36,7 @@ fn the_union_keeps_everything_both_sides_already_had() {
     }
 }
 
-// ---- K-A1：鉴权方式这一维 ----
+// ---- 鉴权方式这一维 ----
 
 /// ★ **金样与规则互钉。** 改了 [`auth_ready`] 而没改金样、或反过来，这条红。
 ///

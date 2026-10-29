@@ -58,7 +58,7 @@ fn entries() -> &'static serde_json::Map<String, serde_json::Value> {
 ///
 /// **单趟**：从左到右扫一遍模板，`{名}` 且这个名给了值 ⇒ 换成值，**值本身不再被扫**；
 /// 没给的原样留 `{名}`（Rust 读口的处置，认可的两读口差异，金样 `_differences` 登记着）。
-/// 先前逐个参数对整串 `replace` —— 前一个参数的值里若含 `{后一个参数名}`，会被后一个再换一遍：插值重新解释了值。
+/// 不逐个参数对整串 `replace`：那样前一个参数的值里若含 `{后一个参数名}`，会被后一个再换一遍：插值重新解释了值。
 /// 与前端读口 `copy-table.ts::copyText` 那一趟同形（金样 `tests/__fixtures__/copy-interpolation.golden.json` 两侧各对）。
 ///
 /// 〔`rules.json` C-L5〕值与相邻汉字之间的空格随值定（[`join_seams`]）：「{machine}上」与「{machine} 上」同一个意思。

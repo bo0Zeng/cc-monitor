@@ -38,12 +38,12 @@ use std::sync::Arc;
 
 /// 请求头部字节上限。
 const HEAD_CAP: usize = 64 * 1024;
-/// **请求体**字节上限〔回修轮之五 08-25，D3 `阻-1(D3)`〕。
+/// **请求体**字节上限。
 ///
 /// 它管的是**一条下游请求的请求体**，超了**拒收+回错**：回 `413 Payload Too Large`，
 /// 且**一个字节都不读、一个字节都不分配**（见 `http1::read_exact_body` 的头注）。
 ///
-/// ⚠ `HEAD_CAP` **管不到这个量** —— 它只管头**字节数**。先前这一格没有任何上限，
+/// ⚠ `HEAD_CAP` **管不到这个量** —— 它只管头**字节数**。这一格没有上限的话，
 /// 一条 `Content-Length: 1000000000000` 就能把**整个中转进程** abort 掉
 /// （`std::alloc::handle_alloc_error` ⇒ SIGABRT，不走 unwind），而这里是「一个进程服务 N 个会话」
 /// ⇒ 打掉的是当时**所有会话**的在途流。
@@ -91,7 +91,7 @@ const NOT_A_ROUTE: &str = "404 Not Found";
 /// ⚠ 名字刻意不带 `CAP`/`MAX`/`LIMIT`/`BYTES`（那几个词是 `byte_cap_registry` 的钩子）。
 pub const BUSY: &str = "503 Service Unavailable";
 /// 🔴 **中转自己的传输失败、而且不是超时**：上游断开 · 发到一半断了 · 没回应就断 · 回的不是 HTTP · 只给 1xx。
-/// 先前一律 504（502 被上游选择的 `Refuse` 占着）；那个 `Refuse` 改成 4xx 之后 502 让回给它的本义。
+/// 上游选择的拒绝回的是 4xx，502 只留给这个本义。
 const UPSTREAM_UNREACHABLE: &str = "502 Bad Gateway";
 /// 🔴 **中转自己的传输失败、卡在超时上**（连接超时 · 等响应超时）。
 const UPSTREAM_TOO_SLOW: &str = "504 Gateway Timeout";
@@ -133,7 +133,7 @@ pub fn apply_downstream_deadline(
     s.set_write_timeout(Some(deadline))
 }
 
-/// 上游**中间响应**（1xx）最多容忍几条〔回修轮之五 08-25，D3 `重要-1(D3)`〕。
+/// 上游**中间响应**（1xx）最多容忍几条。
 /// 超了回 [`UPSTREAM_UNREACHABLE`]（502）：那已经不是一个正常的上游。
 const INTERIM_RESPONSES_ALLOWED: usize = 8;
 
@@ -142,42 +142,19 @@ pub const RETRY_HARD_CAP: usize = 8;
 
 /// 中转的运行期状态。**一个进程一份**，跨连接共享。
 ///
-/// # ⚠⚠ 这里**曾经**有两个字段，`K-H2` 把它们删掉了 —— 经过记在这里
+/// # ⚠⚠ 这里没有进程级的上游与 key
 ///
-/// 先前是 `base: Base` + `key: Option<SecretKey>`，两个**各自独立**的进程级字段：
-/// `handle` 里一处取 `relay.base` 去连、另一处取 `relay.key` 去换头，**各取各的**，
-/// 而路由键**一格都不参与**这个决定（它只喂 tee）。
-/// ⇒ 那在语义上就是「**回落到默认上游 + 默认 key**」，而且是当时**唯一**的行为。
-/// 一把 key 时无害；多账号之后，同一条代码路径就是 `KH2` 逐字点名的最坏失效形态：
-/// **拿 A 账号的 key 去发 B 账号的请求，而两边看起来都成功了。**
+/// 进程级的 `base` / `key` 两个字段会让每一发都「回落到默认上游 + 默认 key」，路由键不参与；
+/// 多账号时那就是最坏的失效形态：**拿 A 账号的 key 去发 B 账号的请求，而两边看起来都成功了。**
+/// 去处与凭据一律由上游选择按路由键给（[`Destinations`]），`Relay` 手里只有一个 `dyn Destinations`。
 ///
-/// # ⚠⚠⚠ 订正〔`D1` 阻-1 回修，08-28〕：**上一段先前的结论说大了，两句都是假的**
-///
-/// 先前这里逐字写着：「⇒ **进程里没有「默认上游」这个值可以回落**，而「A 的端点配 B 的 key」
-/// 也**在类型上不可表示**……**这两条都是编译器买的**。」**两句都被 `D1` 实测证伪。**
-///
-/// | 先前那句 | 实测 | 读数 |
-/// |---|---|---|
-/// | 「进程里没有默认上游这个值」 | **假** | `DEFAULT_UPSTREAM` 就是本文件 `:24` 的 crate 常量；`Base` 三个字段**全是 `pub(crate)`**、`Base::parse` 也是 ⇒ 本 crate 里**一行就能造一个 `Base`** |
-/// | 「A 的端点配 B 的 key 在类型上不可表示」 | **假** | 两行同时在作用域里、A 连 B 渲染，**编译通过**（`D1-M2`；我自己复打过，跑得通）。只有一条**行为**断言会红 |
-///
-/// **编译器真正买到的只有很窄的一条**：**从一个 `Row` 里拿不到 `&Base` 这个值**
-/// （字段私有、住 `table::mod sealed`、没有 `base()` 访问器）。
-/// ⇒ 它挡住的是「**顺手**把两行拆开拼」，**挡不住**「有意去重建一个 `Base`」——
-/// `D1-M1` 实测：把签名换成收 `host: &str` + key、用 `row.host_header()` 把 `Base` 重建出来去连，
-/// **488 passed / 0 failed，一条都没红。**
-///
-/// ⇒ 「不许再有进程级的上游 / key」这条性质今天**由一条文本棘轮守**
+/// 这条性质**由一条文本棘轮守**，不是编译器买的
 /// （`table_guard::the_relay_carries_no_process_wide_upstream_and_no_process_wide_key`，
 /// 它扫的是 `struct Relay` 那个窗口里有没有 `base:` / `key:` 两个**字面**）。
-/// **那是文本判据，不是编译器。**它认不出：换个字段名（`endpoint:` / `fallback:`）·
-/// 把值藏进别的结构体再放进 `Relay` · 干脆用一个 `static`。
-/// ⚠ **这几条我没有逐条实测**（`D1` 实测的是上表那两形）⇒ 它们是**读源码得出的形状，不是读数**。
-///
-/// ⚠⚠ ** 之后，上面这一整段的后半截要重读**：`table` / `reload`
-/// 两个字段**已经不在本结构体里了**，它们随热重载一起搬进了 `accounts/`（上游选择）。
-/// 今天 `Relay` 手里只剩一个 `dyn Destinations` —— 上游选择整块藏在它后面。
-/// 那条文本棘轮**仍然留着**（它守的是「别把那两个字段加回来」），只是它守的窗口更小了。
+/// 编译器只买到很窄的一条：**从一个 `Row` 里拿不到 `&Base` 这个值**（字段私有、没有 `base()` 访问器），
+/// 挡住「顺手把两行拆开拼」，挡不住「有意重建一个 `Base`」。
+/// 文本棘轮认不出：换个字段名（`endpoint:` / `fallback:`）· 把值藏进别的结构体再放进 `Relay` · 干脆用一个 `static`
+/// （这几形是读源码得出的形状，不是实测读数）。
 pub struct Relay {
     /// 上游选择整块藏在这后面（那张「之后」的图）。
     ///
@@ -196,8 +173,7 @@ pub struct Relay {
     /// 下游那条 socket 的读写期限。**由后端交下来**（`C4`：值归后端 · 执行归本层）。
     ///
     /// ⚠ 它是**一个字段**而不是两处各写一次 —— [`apply_downstream_deadline`] 有两个
-    /// 调用点，而它们**必须用同一个数**（先前那件事由「都引同一个 `const`」保证，
-    /// 值搬走之后由这一格保证）。
+    /// 调用点，而它们**必须用同一个数**，由这一格保证。
     downstream_deadline: std::time::Duration,
     /// 上游那条 socket 的读写期限。同上，由后端交下来。
     upstream_deadline: std::time::Duration,
@@ -209,11 +185,8 @@ pub struct Relay {
 impl Relay {
     /// **生产段唯一的构造入口**（`run_with` 走它）。
     ///
-    /// ⚠ 先前有两个入口（`new` / `with_key`），`K-H2` 之后只剩一个：
-    /// 「带不带 key」不再是**中转**的属性，而是**表里某一行**的属性。
-    ///
-    /// ⚠⚠：入参从一张**路由表**换成了一个 `dyn Destinations`
-    /// —— 中转从此不认识「表」这个东西。
+    /// 只有这一个入口：「带不带 key」不是**中转**的属性，而是**表里某一行**的属性。
+    /// 入参是一个 `dyn Destinations` —— 中转不认识「表」这个东西。
     pub fn new(
         dest: Arc<dyn Destinations>,
         door: door::Keys,
@@ -359,8 +332,8 @@ fn drain_arrived(down: &mut TcpStream) {
 /// | `Replied` | 上游选择给的现成回包 ＋ 原因头 | **否** |
 /// | `UpstreamFailed` | 502 / 504 ＋ 原因头 ＋ 一句 `why`（[`UpstreamFailure`]） | 断开 ⇒ 否；发到一半断了 ⇒ 发过一截 |
 ///
-/// 「发到一半断了」（先前的 `WriteFailed`）原先**什么都不回**（连接以错误收尾）：
-/// 下游那时一个字节都还没收到，回一个码不会与已发的字节打架 ⇒ 并进传输失败、回 502 说清卡在发请求（出声，不静默）。
+/// 「发到一半断了」也回码：下游那时一个字节都还没收到，回一个码不会与已发的字节打架
+/// ⇒ 并进传输失败、回 502 说清卡在发请求（出声，不静默）。
 enum Answered {
     /// 已连上、请求已写完。带着**这是谁**（后面等响应那一段失败时 `why` 要说得出来）。
     Sent(Conn, Who),
@@ -413,7 +386,7 @@ impl Who {
 pub enum FailedAt {
     /// 连接都没建立起来（拒绝连接 · 名字解析不了 · TLS 握手失败 · 连接超时）。
     Connect,
-    /// 连上了，请求没发完连接就断了（先前的 `WriteFailed`，FIX3 起回码）。
+    /// 连上了，请求没发完连接就断了。
     Send,
     /// 请求发过去了，对方没回响应就把连接关了。
     ClosedBeforeAnswer,
@@ -526,8 +499,7 @@ impl UpstreamFailure {
 /// （`table_guard::the_only_place_that_opens_an_upstream_connection_is_the_exchange`
 /// 那条相等断言钉着）⇒ 没有第二条路能绕过 `resolve` 把请求发出去。
 ///
-/// ⚠⚠ **它先前住 `table::Row::connect`**（搬到这里）。搬的理由：
-/// 把「连上游」划给中转的 `exchange`，而中转手里只有 `Destination`
+/// 「连上游」归中转的 `exchange`，而中转手里只有 `Destination`
 /// 里那个 `&Base`。**换到手里的东西**写在 `table::Row::base` 的头注里。
 ///
 /// ⚠ `auth` 那一格**只能从调用方那一个 `Destination` 里解构出来**，
@@ -616,7 +588,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
         eprintln!("[relay] refused by key scope: {status}");
         return respond_body_and_drain(&mut down_w, status, reason, format!("{status}\n{why}\n"));
     }
-    // ★ `阻-1(D3)` + `重要-2(D3)`：请求体这一格先前有**两个**洞，两个都在这几行上。
+    // ★ 请求体这一格守两个洞，两个都在这几行上。
     //   ① 长度**无上界** ⇒ `Content-Length: 1e12` 把整个进程 abort 掉（SIGABRT，不走 unwind）；
     //   ② 长度**读不懂**（`7abc`）与「没有这个头」挤在同一个 `None` 里 ⇒ 请求体被静默丢掉、
     //      上游收到空体、下游拿到一条正常的 200。中转搬的正是 `POST /v1/messages` 的载荷。
@@ -697,18 +669,16 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
         Answered::UpstreamFailed(why) => return respond_upstream_failed(&mut down_w, &why),
     };
 
-    // ★★ `重要-1(D3)`：**1xx 是中间响应，不是最终响应**。
+    // ★★ **1xx 是中间响应，不是最终响应**。
     //
-    // 先前这里读到第一个 `\r\n\r\n` 就收工，而 `parse_response` 只校验 `HTTP/1.`
-    // ⇒ 上游先发一条 `HTTP/1.1 100 Continue\r\n\r\n` 的话，那条被当成**最终响应头**写给下游，
-    //   紧随其后的**真** `HTTP/1.1 200 OK` 连同全部响应头被 `pump` 当**响应体**透传。
-    //   D3 实测下游逐字拿到
-    //   `"HTTP/1.1 100 Continue\r\nConnection: close\r\n\r\nHTTP/1.1 200 OK\r\n…"`，
+    // 读到第一个 `\r\n\r\n` 就收工的话（`parse_response` 只校验 `HTTP/1.`），
+    // 上游先发一条 `HTTP/1.1 100 Continue\r\n\r\n` 就会被当成**最终响应头**写给下游，
+    //   紧随其后的**真** `HTTP/1.1 200 OK` 连同全部响应头被 `pump` 当**响应体**透传，
     //   ⚠ 而同一趟的 **tee 完全正常** ⇒ 这一形靠看日志/tee 发现不了。
-    //   配套的另一半：下游发的 `Expect: 100-continue` 会被 `render_upstream_request`
+    //   下游发的 `Expect: 100-continue` 会被 `render_upstream_request`
     //   **原样转给上游**（它不在逐跳表里）⇒ 合规的上游正好回 100，正中这一形。
     //
-    // 今天：1xx 一律**读掉丢弃**再读下一条，直到拿到非 1xx 的那条；
+    // 所以 1xx 一律**读掉丢弃**再读下一条，直到拿到非 1xx 的那条；
     // 超过 `INTERIM_RESPONSES_ALLOWED` 条就回 [`UPSTREAM_UNREACHABLE`]（那已经不是一个正常的上游）。
     // ⚠ `101 Switching Protocols` 也是 1xx：本中转**不支持**协议升级（带 `Upgrade` 的请求进门后当场回 426，
     //   转出去的请求里 `Upgrade` / `Connection` 也都在逐跳表里），真收到 101 就会
@@ -716,9 +686,8 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //   那是个**定义好的**结局，不是「当成最终响应发下去」。
     //
     // 🔴 这一段的四种失败**全是中转自己的传输失败**（上游不答 / 答的不是
-    //   HTTP），先前三支回 502、读出错那一支**什么都不回**（`?` 往上抛，下游拿到一个没有
-    //   任何 HTTP 响应的 FIN）。今天四支一律回码（超时 504、其余 502，FIX3）＋ 原因头 ＋ 一句说得清卡在哪的话。
-    //   ⚠ 读出错那一支（上游读期限到了 / 连接被重置）从「静默 FIN」变成「504（超时）或 502 ＋ why」：
+    //   HTTP），四支一律回码（超时 504、其余 502）＋ 原因头 ＋ 一句说得清卡在哪的话。
+    //   ⚠ 读出错那一支（上游读期限到了 / 连接被重置）也回「504（超时）或 502 ＋ why」，不是静默 FIN：
     // 「把传输失败翻成一个 HTTP 响应，原样回给 agent」。
     //     下游那一侧此刻**一个字节都还没收到**（响应头还没写），所以回一个状态码不会与已发的字节打架。
     let (mut status_line, mut headers, mut raw_resp) = match read_final_head(&mut up, &who) {
@@ -957,65 +926,35 @@ fn pump<R: Read, W: Write>(
 /// - `Accept-Encoding` 收窄成 `identity`（见 `super` 头注㈢）。
 /// - ⚠ **其余头一律原样转发，包括 auth 头** —— 转发但**不记录**。
 ///
-/// # ⚠⚠ 订正〔回修轮之五 08-25，D3 `重要-3(D3)`〕：上一行先前引 `K11 裁定一` 当依据，**那半句今天是假的**
+/// 端点与 key 都归**按账号查的那张路由表**（上游选择的 apikey 表）；客户端一个凭据都不配。
 ///
-/// `K11 裁定一` 在 **08-25 被改判**，现行正文三句：端点与 key 都归**按账号查的那张路由表**
-/// （原文把那张表记在中转名下 —— 它今天是上游选择的 apikey 表）；转发时替换 `Authorization` 头；
-/// 客户端一个凭据都不配。
-/// ⇒ 那条裁定只支持上面的**后半句（不记录）**，**前半句（原样转发 auth 头）已被它的现行版推翻**。
-/// 08-24 那半（「key 归 `--settings` 覆盖层」）在里是**带删除线的来历段**，不是现行。
+/// # 鉴权头怎么走
 ///
-/// # ★★ 订正：**上面那 4 条里的第 1、2 条今天已经不成立了 —— 换头做了**
-///
-/// 先前这里逐字写着「本函数**原样转发**下游那份 `Authorization`，**不替换**」+「『换头』**这里不做**，
-/// 落点是下一件」。**`K-H2a` 就是那一件，它已经落地** ⇒ 那两句留着就会变成隔壁
-/// `parity_ledger` 里反复记的那一形（**改了行为没回来改理由，账本当天就开始撒谎**）。
-///
-/// **今天盘上的真话，逐条重写**：
-/// 1. **配了 key ⇒ 换头**：下游那份 `Authorization` 被**丢掉**，换上**上游选择交下来的那一格头**
-///    （上游选择按这一行的 key 算好的；本层手里没有 key）。取明文的那一行今天住
-///    `accounts::upstream_select`（先前住本文件），它是 `expose_for_auth_header` 在**整个后端生产段里唯一**的调用点
-///    （`KS2`，由 `creds_store_exits::the_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees` 相等断言钉住）。
-/// 2. **这一行没配 key ⇒ 原样转发**（`K-H1` 甲半那个形状，一个字节不动）。
-///
-///    ⚠⚠ **订正：这一条先前的理由今天是假的，已收口。**
-///    先前逐字写的是「这一支刻意留着：**中转在没配凭据时仍然是一条能用的透传路**」——
-///    那句话描述的是一条**隐式的全局行为**（进程级 `key` 是 `None` ⇒ 所有路由键都透传）。
-///    `K-H2` 把进程级那两个字段删掉之后，「全局」这个东西**不存在了**
-///    ⇒ 那条隐式行为**必然消失**，而且必须消失：它就是「查不到也照发」的另一种写法。
-///
-///    **它没有被删掉，是被改成了显式的一条路**：在凭据文件里写一条空账号
-///    （`{"accounts": {"passthrough": {}}}`）就得到一条 keyless 的透传行。
-///    ⇒ 今天准确的说法只有两句：①**apikey 表里一个账号都没有 ⇒ `/s/` 请求全部 404**；
-///    ②**透传要显式配一条**。判据分别在
+/// 1. **配了 key ⇒ 换头**：下游那份鉴权头被**丢掉**，换上**上游选择交下来的那一格头**
+///    （上游选择按这一行的 key 算好的；本层手里没有 key）。取明文的那一行住
+///    `accounts::upstream_select`，它是 `expose_for_auth_header` 在**整个后端生产段里唯一**的调用点
+///    （由 `creds_store_exits::the_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees` 相等断言钉住）。
+/// 2. **这一行没配 key ⇒ 原样转发**（一个字节不动）。没有「全局透传」：进程级的 key 不存在，
+///    透传要在凭据文件里显式写一条空账号（`{"accounts": {"passthrough": {}}}`），得到一条 keyless 的透传行；
+///    apikey 表里一个账号都没有 ⇒ `/s/` 请求全部 404。判据分别在
 ///    `store::tests::an_unconfigured_file_yields_no_rows_at_all` 与
 ///    `store::tests::an_account_with_nothing_filled_in_is_still_a_row`。
-/// 3. 「不记录」那一半照旧由两条判据钉：`the_auth_header_is_forwarded_but_never_teed`
+/// 3. 「不记录」由两条判据钉：`the_auth_header_is_forwarded_but_never_teed`
 ///    与 `a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_stdout`。
-/// 4. ★★ **第 4 条那个预言兑现了，而且必须在这里点名**：那两条判据喂进去的是
-///    **客户端发来的那个头**，它们证的是「**进来的**东西没被记下来」；
-///    而 `K-H2a` 要保的是**换上去的那个 key**，那是**另一个值、从另一条路（那份文件）进来**。
-///    ⇒ **判据守的是前门，key 从后门进。**（件计划 `§0` 逐字：这一形骗过了 PM 与一路审计。）
-///    接住后门那一格的是**新加的**那条金丝雀：
-///    `the_substituted_key_never_shows_up_in_any_of_the_four_exits`（`KS3`）。
-///    **两族缺一都不成立**，别把老那两条读成已经覆盖了新的。
+/// 4. ★★ 那两条判据喂进去的是**客户端发来的那个头**，它们证的是「**进来的**东西没被记下来」；
+///    **换上去的那个 key** 是**另一个值、从另一条路（那份文件）进来** ⇒ **判据守的是前门，key 从后门进。**
+///    接住后门那一格的是那条金丝雀：`the_substituted_key_never_shows_up_in_any_of_the_four_exits`。
+///    **两族缺一都不成立**，别把前两条读成已经覆盖了它。
 ///
 /// # ⚠ 射程如实写：换的是**哪一个**头
 ///
-/// ⚠⚠ **订正：这一节先前那两句今天是假的，逐字重写。**
-/// 先前写的是「只换 `Authorization`（`K11 裁定一` 逐字点名的就是它）」+
-/// 「客户端若自带 `x-api-key` / `Proxy-Authorization` 一类，本函数**照旧原样转发**」，
-/// 并把后者登记成射程外、说那是 `K-H2` 正文的活。**`K-H2` 已签收，那一格没人接。**
-///
-/// **今天盘上的真话**：
-/// 1. **换哪个头由那一行的 `auth_style` 定**（见 `accounts::upstream_select::auth_header_of`，`P16` 搬去上游选择了）——
-///    〔用 09-04〕逐字要「api做成通用的」⇒ 只押一种鉴权头 = 只接得上一半的上游，
+/// 1. **换哪个头由那一行的 `auth_style` 定**（见 `accounts::upstream_select::auth_header_of`）——
+///    api 要做成通用的 ⇒ 只押一种鉴权头 = 只接得上一半的上游，
 ///    而押错的症状是 **401**，与「key 打错了」同形。
 /// 2. **这一行有自己的 key 时，客户端那份鉴权头一律不转发** ——
 ///    人群是 `AuthSwap::clear` 那个**由上游选择交下来**的闭集，不只 `Authorization` 那一个。
-///    ⚠ 这是**行为改变**，理由两条：㈠ 我这一趟要写的那个头名可能正是客户端也带着的
-///    （`x-api-key` 那一档），同名头出现两次是未定义行为 —— 那正是先前丢掉
-///    `Authorization` 的理由，逐字同一条；㈡ 把客户端的凭据**连带**送给一个第三方上游，
+///    理由两条：㈠ 这一趟要写的那个头名可能正是客户端也带着的
+///    （`x-api-key` 那一档），同名头出现两次是未定义行为；㈡ 把客户端的凭据**连带**送给一个第三方上游，
 ///    是把一份不属于这一行的秘密多送出去一次。
 ///    ⚠ **`Proxy-Authorization` 仍然照旧转发** —— 它说的是「与代理之间」的鉴权，
 ///    不是与上游之间的，收掉它是另一件事。**登记为射程外，不假装覆盖了。**
@@ -1029,26 +968,18 @@ pub fn render_upstream_request(
     auth: Option<&AuthSwap<'_>>,
     body_len: usize,
 ) -> Vec<u8> {
-    // ★★ **签名变迁记两拍，别读成放宽**：
-    //    · `K-H2`：从 `(&Base, Option<&SecretKey>)` 收成一个 `&Row` —— 那时「上游」与
-    //      「key」是两个各取各的参数，「A 的端点 + B 的 key」**写得出来**；
-    //    ·：从 `&Row` 换成 `(&Base, auth)` **两个参数**，
-    //      而两个参数**只能从同一个 `Destination` 变体里解构出来**（`send_upstream`
-    //      是唯一调用方，它自己也只从上游选择那一个答案里取）⇒ 同源这件事从
-    //      「一个值的两个方法」换成了「一个变体的两个字段」，**没有变松**。
-    //
-    //    · 从 `(Option<&SecretKey>, AuthStyle)` 换成一个
-    //      `&AuthSwap` —— **两个 `creds-core` 类型退出中转的类型面**（`C2`），
-    //      而同源那件事**更紧了一格**：先前是「一个变体的两个字段」，今天是
-    //      「一个变体的**一个**字段」⇒ 连「从同一个变体里取两个、但取错搭配」都写不出来。
+    // ★★ **`base` 与 `auth` 同源**：两个参数**只能从同一个 `Destination` 变体里解构出来**
+    //    （`send_upstream` 是唯一调用方，它自己也只从上游选择那一个答案里取），
+    //    鉴权那一半是**一个**字段 `&AuthSwap`（`creds-core` 的类型不进中转的类型面）
+    //    ⇒ 「A 的端点 + B 的 key」与「从同一个变体里取两个、但取错搭配」都写不出来。
     //
     //  `auth` 的三态与它们各自的字节，整张表住 `accounts::upstream_select::dispatch_auth` 的头注：
     //    `None`                            ⇒ 下游那份鉴权头**原样转发**
     //    `Some(AuthSwap{ write: Some(_) })` ⇒ 丢掉 `clear` 那几份，写上游选择算好的那一条
     //    `Some(AuthSwap{ write: None })`    ⇒ 丢掉 `clear` 那几份，**一个头都不写**
-    // ★★★ **`K-R1`：请求行的目标由那个基址自己算**（前缀 + 客户端的真路径）。
-    //    ⚠ 参数名从 `target` 改成 `rest` 是有意的：进来的是**下游那一段**，
-    //      发出去的目标是**算出来的**。留着旧名字会让下一个人以为它已经是最终目标。
+    // ★★★ **请求行的目标由那个基址自己算**（前缀 + 客户端的真路径）。
+    //    ⚠ 参数叫 `rest` 不叫 `target`：进来的是**下游那一段**，
+    //      发出去的目标是**算出来的**。
     //    ⚠ 拼接刻意**不在这里做**（实现只有一份，住 `upstream::Base::upstream_target`）——
     //      「忘了拼前缀」这件事在这个签名上写不出来（`rest` 只有一条去处）。
     let target = base.upstream_target(rest);
@@ -1057,11 +988,9 @@ pub fn render_upstream_request(
     out.push_str("Accept-Encoding: identity\r\n");
     out.push_str("Connection: close\r\n");
     // ★ 这一趟要不要把客户端自带的鉴权头收掉 —— **答案就是「上游选择答的是不是 `Substitute`」**。
-    //   ⚠⚠ 这一行先前是个复合条件 `(key.is_some() && auth_header_of(style).is_some())
-    //      || style == NoAuth`，头注逐字警告过「两个条件都要，缺一格就漏一形」。
-    //      那个判断**整条搬进上游选择的那一个 `match`** 了（`accounts::upstream_select::dispatch_auth`），
-    //      中转这边因此再也没有第二处可以判错 —— 少一处能判错的地方，不是少一条判断。
-    //   ⚠ **丢哪几个头**也跟着搬走了（`AuthSwap::clear`）：中转从此
+    //   ⚠⚠ 判断整条住上游选择的那一个 `match`（`accounts::upstream_select::dispatch_auth`），
+    //      中转这边没有第二处可以判错。
+    //   ⚠ **丢哪几个头**也由那一侧给（`AuthSwap::clear`）：中转
     //      连那份名单都没有 ⇒ 它也不可能自己凑一份缩水的。
     for (k, v) in &head.headers {
         if http1::is_hop_by_hop(k)

@@ -74,6 +74,6 @@ pub struct BranchHeld {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct WatchReply {
-    /// 刚进名单的会话每份记录一格（先前就在名单里的不回）。
+    /// 刚进名单的会话每份记录一格（已在名单里的不回）。
     pub from: Vec<WatchFrom>,
 }
