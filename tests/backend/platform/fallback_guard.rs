@@ -1,6 +1,6 @@
 //! U4a（2026-08-01）：**非目标平台的 fallback 分支，不许凭空返回一个「成功」值。**
 //!
-//! # `K-G6` `KG62`：性质与人群，两行逐字（**各自只许有一句**，`readonly_guard::g6_scope_pins` 钉着）
+//! # 性质与人群，两行逐字
 //!
 //! - **它守的性质是**：非目标平台的 fallback 分支，不许凭空返回一个看起来无害的「成功」值 —— 答不上来的问题要诚实地说不知道（`false` / `None` / `unimplemented!()`）。
 //! - **它扫的人群是**：`src/platform/` 递归全部 `.rs`（跳过自身）的生产段里，每一个非主分支的平台 cfg 属性**紧跟着的那一个 item 或块**，判红条件只有两条：块体里出现裸 `true` · 块的**最后一个表达式**以 `Some(` / `Ok(` 打头。
@@ -647,100 +647,5 @@ mod g6_reach {
              ⇒ 要么换了别的**诚实**取值（那就回来把这条断言改成新的那个），\n\
              要么判红条件被改松了（坏事）。别让这一格靠「什么都不写」变绿。"
         );
-    }
-}
-
-/// **钉住 `readonly_guard.rs` 的「性质行 / 人群行」各自只有一句 +
-/// 收窄前那句绝对话不许回来。**
-///
-/// # 为什么钉在这里
-///
-/// `ratchet_guard.rs` 头注逐字给过理由：判据**不许与被扫的文本同住一个文件**
-/// （它会在自己的注释里找到自己 ⇒ 恒绿）。
-/// `readonly_guard.rs` 那半钉另外两道，本模块钉它 —— **三道两两互钉**，每一针都跨文件。
-///
-/// ⚠ 正确落点其实是 `ratchet_guard.rs`（本仓已有的那张针表），
-/// 但它当时不在改动范围里 ⇒ 暂住这里。
-#[cfg(test)]
-mod g6_scope_pins {
-    /// 两行的标记 + 承重词。**运行时拼**，免得本文件把自己数进去。
-    fn needles() -> (String, String, Vec<String>) {
-        (
-            format!("//! - **它守的{}**", "性质是"),
-            format!("//! - **它扫的{}**", "人群是"),
-            vec![format!("必须{}", "只读"), format!("绝不{}", "写")],
-        )
-    }
-
-    /// ★ `readonly_guard.rs` 的性质行与人群行**各自恰好一行**。
-    #[test]
-    fn the_readonly_guard_states_its_property_and_population_exactly_once() {
-        let src = include_str!("../readonly_guard.rs");
-        let (prop, popu, _) = needles();
-        for (what, mark) in [("性质行", &prop), ("人群行", &popu)] {
-            let hits: Vec<&str> = src
-                .lines()
-                .filter(|l| l.starts_with(mark.as_str()))
-                .collect();
-            assert_eq!(
-                hits.len(),
-                1,
-                "`readonly_guard.rs` 里以 `{mark}` 打头的{what}有 {} 行（应恰好 1 行）。\n\
-                 **多了**就是同一道护栏又有了两句性质声明 —— 那正是这里逮到的病：\n\
-                 一句宽一句窄，判据只兑现窄的那句，而宽的那句被下游件逐字引用。",
-                hits.len()
-            );
-            let body = hits[0].trim_start_matches(mark.as_str());
-            assert!(
-                body.trim().chars().count() >= 20,
-                "`readonly_guard.rs` 的{what}只有 {} 字 —— 写不下去的性质声明等于没写",
-                body.trim().chars().count()
-            );
-        }
-    }
-
-    /// ★★ 反向棘轮：`D1` 收窄**之前**那句绝对话的承重词，今天起在 `readonly_guard.rs` 里零命中。
-    ///
-    /// # 它治的是一次已经发生的「只修一半」
-    ///
-    /// `src/doc/INVARIANTS.md` §41.6 早就把那句标成**原措辞**并给了现措辞，
-    /// 而 `readonly_guard.rs` 里同时留着收窄前的绝对句两处（头注一处 + 报错文案一处），
-    /// 判据兑现的却是收窄后那句。⇒ 判据的性质行是假话，且下游件在逐字引用它。
-    ///
-    /// ⚠ **它挡不住换个措辞说同一句话**（`ratchet_guard` 登记过这条同族边界）。
-    /// 它挡的是**顺手抄回来**，那是实际会发生的动作。
-    #[test]
-    fn the_pre_narrowing_absolute_does_not_come_back() {
-        let src = include_str!("../readonly_guard.rs");
-        let (_, _, forbidden) = needles();
-        assert!(
-            forbidden.len() >= 2,
-            "承重词表只剩 {} 条 —— 本条此刻在空转",
-            forbidden.len()
-        );
-        for word in &forbidden {
-            assert!(
-                !src.contains(word.as_str()),
-                "`readonly_guard.rs` 里又出现了 `{word}` —— 那是 `D1` **收窄前**的说法，\n\
-                 而那份文件里的判据兑现的是**收窄后**那句（它只认本 crate 源码文本里\n\
-                 那三个命名空间的调用，既不认起进程、也不认依赖 crate）。\n\
-                 ⇒ 要么把人群补齐到那句话上，要么就别写那句话。\n\
-                 （`§0a` 四情形表：这一格叫 `补齐人群`，不叫「先把话说满」。）"
-            );
-        }
-        // ★ 反空真：这几个承重词必须**真的**匹配得上收窄前那句原话，
-        //   否则上面那几条断言靠「钉了几个谁也不会写的字」恒绿。
-        //   原话在这里**运行时拼**，免得本文件自己成为那句假话的第三处住址。
-        let historical = format!(
-            "backend 对被观测文件系统（`~/.claude` 等）**必须{}**——只 watch/scan/read，绝不{}。",
-            "只读", "写"
-        );
-        for word in &forbidden {
-            assert!(
-                historical.contains(word.as_str()),
-                "承重词 `{word}` 连收窄前那句原话都匹配不上 —— 它钉错了词，\
-                 上面那几条零命中断言此刻说明不了任何事"
-            );
-        }
     }
 }

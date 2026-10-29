@@ -366,8 +366,10 @@ fn no_frame_command_or_derived_cli_flag_names_the_tmux_host() {
         "派生出来的 CLI 面带了宿主名 tmux"
     );
     assert!(
-        crate::SUBCOMMANDS.iter().any(|f| names_tmux(f)),
-        "正控失败：同一个找法在 `SUBCOMMANDS` 里认不出 `--tmux-notify` —— 上面的零命中不可信"
+        crate::stream::cli::subcommands()
+            .iter()
+            .any(|f| names_tmux(f)),
+        "正控失败：同一个找法在子命令全集里认不出 `--tmux-notify` —— 上面的零命中不可信"
     );
 }
 

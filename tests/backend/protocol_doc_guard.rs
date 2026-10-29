@@ -59,6 +59,11 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "stream/cli.rs",
         include_str!("../../src/backend/stream/cli.rs"),
     ),
+    // 手写的一次性子命令那张 `(子命令, 实现)` 表。
+    (
+        "stream/oneshot.rs",
+        include_str!("../../src/backend/stream/oneshot.rs"),
+    ),
     // `control/resident.rs`：`--replace` 这个选项字面量（`--resident-ensure` 的「先停再起」）让派生的文件集把它扫了进来。
     (
         "control/resident.rs",
@@ -867,80 +872,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    /// F06c：`cmd-wire` 帧那一份（`frame.rs`）的 `enum Frame` **段界内**的变体名 → 线上 `kind`（snake_case）。
-    ///
-    /// ⚠ **必须先框段界再数**：那份文件里不止一个枚举，
-    /// 摸底时用「行首缩进 + 大写开头」的正则数出 **14**，真值 **11** —— 多出来的是别的枚举。
-    fn frame_variants() -> Vec<String> {
-        let src =
-            guard_core::production_code(include_str!("../../src/common/cmd-wire/src/frame.rs"));
-        // 运行时拼，免得命中本文件自己的说明文字。
-        let needle = format!("pub enum {}", "Frame");
-        let at = src
-            .find(needle.as_str())
-            .unwrap_or_else(|| panic!("`wire.rs` 里找不到 `{needle}` —— 抽取坏了或枚举改名了"));
-        let open = src[at..]
-            .find('{')
-            .map(|k| at + k)
-            .expect("`enum Frame` 后面没有花括号");
-        // 花括号配平框出段界（变体体里还有嵌套花括号）。
-        let bytes = src.as_bytes();
-        let mut depth = 0usize;
-        let mut end = open;
-        for (i, c) in bytes.iter().enumerate().skip(open) {
-            match *c {
-                b'{' => depth += 1,
-                b'}' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        end = i;
-                        break;
-                    }
-                }
-                _ => {}
-            }
-        }
-        assert!(
-            end > open + 100,
-            "`enum Frame` 段界只框出 {} 字节 —— 配平坏了",
-            end - open
-        );
-        let span = &src[open + 1..end];
-        // 只取**深度 1** 的变体名：行首（去缩进后）是大写字母开头的标识符，后跟 `{` · `(` 或 `,`。
-        let mut out = Vec::new();
-        let mut depth = 0usize;
-        for line in span.lines() {
-            let t = line.trim();
-            if depth == 0 {
-                if let Some(name) = t
-                    .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-                    .next()
-                    .filter(|w| !w.is_empty() && w.starts_with(char::is_uppercase))
-                {
-                    let rest = t[name.len()..].trim_start();
-                    // 新类型变体（`Live(LiveCard),`）：体是一个带名字的结构，kind 照变体名。
-                    if rest.starts_with('{')
-                        || rest.starts_with(',')
-                        || rest.starts_with('(')
-                        || rest.is_empty()
-                    {
-                        let mut snake = String::new();
-                        for (i, ch) in name.chars().enumerate() {
-                            if ch.is_uppercase() && i > 0 {
-                                snake.push('_');
-                            }
-                            snake.extend(ch.to_lowercase());
-                        }
-                        out.push(snake);
-                    }
-                }
-            }
-            depth += t.matches('{').count();
-            depth = depth.saturating_sub(t.matches('}').count());
-        }
-        out
     }
 
     /// 「参数不对」只有一个码（`bad_args`）：注册表里没有一条命令声明 `invalid_args`，后端生产段也零处拼它

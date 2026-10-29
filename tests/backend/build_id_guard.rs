@@ -126,31 +126,18 @@ mod tests {
         // 反向自检之二：**测试段真的剥掉了**。旧的 `len` 自检光靠剥注释就满足，
         // 与测试段有没有剥掉毫无关系 —— 那正是本护栏扫了几个月测试代码没人发现的原因。
         assert_no_test_code("build_id_guard/main.rs", &prod);
-        // **改用权威登记表 `SUBCOMMANDS`，不再自己抠 `Some("--`。**
-        //
-        // 原来那种抠法有两个洞，都是实测出来的：
-        // ① **只认一种写法**：把新子命令写成 `Some(x) if x == "--foo" =>`，指纹不变
-        //    （本条全绿；逮住它的是隔壁 `argv_table_guard` 与 `protocol_doc_guard`）；
-        // ② **更要命的一条**：那种抠法今天只抠到 **9** 条，而 `SUBCOMMANDS` 登记着 **14** ——
-        //    `--list-projects` / `--list-sessions` / `--read-session*` 这几条**改了也不会让指纹变**。
-        //    也就是说 E77 的正题（「加了子命令就必须 bump」）对其中 5 条**本来就不成立**。
-        //
-        // 〔audit-0805 08-06 复核〕**这个前提已被实测验过，不再只是断言**：
-        // 把一条子命令的 token 字面量搬到 `DISPATCH_FILES` 之外（`wire.rs`）再分派，
-        // `protocol_doc_guard::dispatch_registry_is_complete` **当场红** ——
-        // 因为「哪些文件参与分派」那一层是**派生**的，不是手写清单。
-        // ⚠ 边界：token 连 `"--` 字面量都不出现（`concat!` 拼）时全绿，已登记（见那边头注）。
-        // `SUBCOMMANDS` 是那一面的权威登记表，而且**有人守着它别漏**：
-        // `argv_table_guard::every_dispatched_token_is_classified` 要求每个被分派的 token
-        // 都在 `SUBCOMMANDS` / `SUBCOMMAND_OPTIONS` / `STREAM_FLAGS` 三张表之一里。
-        // ⇒ 新子命令必须先进那张表，才轮得到本条 —— 「漏一条」这件事从此有两道门。
-        let mut subs: Vec<String> = crate::SUBCOMMANDS.iter().map(|s| s.to_string()).collect();
+        // 子命令那一面取子命令全集（`stream::cli::subcommands`：手写的一次性表 ∪ 帧命令派生的 CLI 面），不自己抠 `Some("--`：
+        // 分派查的就是这一份，加一条子命令不进它就分派不到。
+        let mut subs: Vec<String> = crate::stream::cli::subcommands()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         subs.sort_unstable();
         subs.dedup();
         // 反向自检：登记表被掏瘪 ⇒ 指纹退化，本护栏静默失效。
         assert!(
             subs.len() >= 10,
-            "从 `SUBCOMMANDS` 只拿到 {} 条子命令 —— 登记表被掏了（08-06 实测 14 条）：{subs:?}",
+            "子命令全集只拿到 {} 条 —— 派生坏了：{subs:?}",
             subs.len()
         );
         // ── 第二个命令面：常驻通道命令（`inbound::REGISTRY` 是它的单一源头，`command_names` 取名）──────

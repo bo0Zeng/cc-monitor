@@ -41,9 +41,7 @@
 //! `fn run(claude_dir: &Path, …)` 这种签名让「谁是通用层」只能靠人记得 ——
 //! 协议干净了，代码里仍然是一句 agent 名。
 //!
-//! ⇒ 通用层的 home 参数一律叫 `agent_home`（`S4b` 改了 8 个文件；生产段 `claude_dir` 64 行 → 3 行）。
-//! 例外只有**冻结的 wire 字段名**（Rust 侧标识符必须与线上字段名同名，改名 = 破坏契约），
-//! 逐条登记进 [`tests::AGENT_NAMED_WIRE_FIELDS`]，**每条带解锁条件、条数有天花板**。
+//! ⇒ 通用层的 home 参数一律叫 `agent_home`，零命中，没有例外。
 //!
 //! ## ④通用层**零处**直呼某个适配层
 //!
@@ -183,24 +181,6 @@ mod tests {
         names.dedup();
         names.into_iter().map(|n| format!("\"{n}\"")).collect()
     }
-
-    /// **冻结的 wire 字段名**（`文件`, `片段`, 为什么改不动, **解锁条件**）——
-    /// 判据③唯一的例外表。
-    ///
-    /// 这三处都是**同一个 wire 字段名在 Rust 侧的落点**：两处声明 + 一处构造。
-    /// serde 直接拿 Rust 标识符当线上字段名（`rename_all` 只改大小写风格），
-    /// ⇒ 在这里改名 = **改线上契约**，而两条契约都有手机端这个消费方。
-    ///
-    /// ⚠ 与 `agent_boundary_guard::FROZEN_COMPAT` **不是一张表，别合并**：
-    /// 那张的作用域是「已宣称通用的文件（`CORE_FILES`）里的 agent **字面量**」，
-    /// 本张的作用域是「**整棵 `src/`** 里 `<名>_dir` 这一形的**标识符**」。
-    /// 两者恰好在 `wire.rs` 重叠一行 —— 那是同一个事实被两个不同问题各问了一次，
-    /// 不是重复登记。★ 真正的证据在这里：`control/resolve_query.rs`（已删）那条
-    /// **`S4` 当时没看见**（它不在 `CORE_FILES` 里，`S1` 的判据扫不到它），
-    /// 是本判据把它逼出来的 —— 两张表的作用域确实不一样。
-    ///
-    /// 两条纪律同 `FROZEN_COMPAT`：① 每条必须有非空解锁条件；② 条数有天花板且只许降。
-    const AGENT_NAMED_WIRE_FIELDS: &[(&str, &str, &str, &str)] = &[];
 
     /// **适配层注册表**住哪几个文件（`文件`, 为什么它不该被压到零）。
     ///
@@ -492,50 +472,15 @@ mod tests {
                 }
             }
         }
-        let (known, unknown): (Vec<String>, Vec<String>) = hits.into_iter().partition(|h| {
-            AGENT_NAMED_WIRE_FIELDS
-                .iter()
-                .any(|(f, frag, _, _)| h.starts_with(&format!("{f}:")) && h.contains(frag))
-        });
         assert!(
-            unknown.is_empty(),
+            hits.is_empty(),
             "通用层的标识符里出现了 `<agent 名>_dir`（{} 处）：\n  {}\n\n\
-             ⇒ 通用层的 home 参数一律叫 `agent_home`（`S4b`）。协议面 `D3` 已经裁过\n\
+             ⇒ 通用层的 home 参数一律叫 `agent_home`。协议面已经定过\n\
              「agent 维度只许出现在**值**里」；仓内同理 —— 签名里写死一个 agent 的名字，\n\
-             「谁是通用层」就又只能靠人记得了。\n\
-             ⚠ 真是冻结的 wire 字段（改名 = 破坏跨仓契约），登记进 `AGENT_NAMED_WIRE_FIELDS`，\n\
-             **并写解锁条件**；没有解锁条件的冻结只是「永久豁免」的好听说法。",
-            unknown.len(),
-            unknown.join("\n  ")
+             「谁是通用层」就又只能靠人记得了。线上字段同样不许带 agent 名：往 `homes` 里加一项，不要加字段。",
+            hits.len(),
+            hits.join("\n  ")
         );
-        // 幽灵检查：登记的必须**还在命中**。字段真删掉了却不摘登记，
-        // 下一个人会以为这里还冻着、进而不敢动。
-        for (f, frag, _, _) in AGENT_NAMED_WIRE_FIELDS {
-            assert!(
-                known
-                    .iter()
-                    .any(|h| h.starts_with(&format!("{f}:")) && h.contains(frag)),
-                "`AGENT_NAMED_WIRE_FIELDS` 里登记的 `{f}`（片段 `{frag}`）已经不再命中 —— \
-                 修好了就摘登记（这张表只许缩短）"
-            );
-        }
-        // 只许那一个历史字段（`claude_dir`）留着：登记一个别的 `<名>_dir` 字段 = 走 `D3` 逐字排除掉的那条路，
-        // 终点是 hello 里五个并列的目录字段。往 `homes` 里加一项，不要加字段。
-        for (f, frag, ..) in AGENT_NAMED_WIRE_FIELDS {
-            assert_eq!(
-                *frag, "claude_dir",
-                "`AGENT_NAMED_WIRE_FIELDS` 登记了 `{f}` 的 `{frag}` —— 只许那一个历史字段，往 `homes` 里加一项，不要加字段"
-            );
-        }
-        for (f, frag, why, unlock) in AGENT_NAMED_WIRE_FIELDS {
-            assert!(!why.trim().is_empty(), "{f}:{frag} 没写「为什么改不动」");
-            assert!(
-                unlock.trim().len() >= 20,
-                "{f}:{frag} 没写**解锁条件**（实得 {} 字节）—— 要写的是「什么条件满足之后\
-                 这一条就能删」，不是「为什么现在不能删」",
-                unlock.trim().len()
-            );
-        }
     }
 
     /// 通用层里每个文件**直呼适配层**的处数（`agents/<名>/` 自己的家不算）。
