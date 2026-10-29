@@ -19,10 +19,6 @@ import type { SessionWindow } from "./generated/SessionWindow";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, type RecordProbe } from "./session-reads";
 import { openFileWindow } from "./file-window";
-import {
-  readRemoteConfig,
-  findHostByOrigin,
-} from "./remote-config";
 import { callStop, type Reply } from "./tab-batch-run";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import type { Tab } from "./tab-model";
@@ -121,12 +117,11 @@ export class TabSessionActions {
     );
   }
 
-  /** 说不清（那台暂时看不见）⇒ 不恢复、说一句：会话也许还在跑，再起一份就是同一会话两个 claude。 */
+  /** 说不清（那台暂时看不见）⇒ 不恢复、照脸说一句（为什么不恢复 ＋ 那台离线那一句，都是后端写的）：会话也许还在跑，再起一份就是同一会话两个 claude。 */
   private refuseUnseen(tab: Tab): boolean {
-    if (tab.face?.dot !== "unknown") return false;
-    toast(copyText("sessionState.unseen.noResume"), copyText("sessionState.unseen.tooltip"), {
-      level: "info",
-    });
+    const face = tab.face;
+    if (face?.dot !== "unknown") return false;
+    toast(face.can.resume.can === "no" ? face.can.resume.why : face.name, face.line, { level: "info" });
     return true;
   }
 
@@ -172,22 +167,9 @@ export class TabSessionActions {
   async openTabCwd(sid: string): Promise<void> {
     const tab = this.host.tab(sid);
     if (!tab?.projectDir) return;
-    // 远端路径本机 openPath 打不开 ⇒ 用那台的配置开文件窗口进该目录；找不到那台的配置才回退成提示。
+    // 远端路径本机 openPath 打不开 ⇒ 文件窗口只凭那台名字开进该目录（认不出那台那一句由壳说）。
     if (isRemoteOrigin(tab.origin)) {
-      const host = findHostByOrigin((await readRemoteConfig()).hosts, tab.origin);
-      if (host && host.host.host.trim() !== "" && host.host.user.trim() !== "") {
-        void openFileWindow(host, { dir: tab.projectDir });
-        return;
-      }
-      // 找到但缺 host / user ＝ 配置不完整；没找到 ＝ 未配置：分开措辞。
-      const why = host
-        ? copyText("tabSessionActions.openCwd.incomplete")
-        : copyText("tabSessionActions.openCwd.noConfig");
-      toast(
-        copyText("tabSessionActions.openCwd.title"),
-        copyText("tabSessionActions.openCwd.body", { machine: tab.origin, cwd: tab.projectDir, why }),
-        { level: "info" },
-      );
+      await openFileWindow(tab.origin, { dir: tab.projectDir });
       return;
     }
     try {

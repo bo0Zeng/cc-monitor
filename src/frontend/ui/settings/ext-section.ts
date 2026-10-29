@@ -656,7 +656,7 @@ export class ExtSection {
       row.appendChild(
         button({ label: copyText("extPage.button.openFiles"), onClick: () => {
           void resolveRemoteConfigByOrigin(host).then((cfg) => {
-            if (cfg) void openFileWindow(cfg, { dir });
+            if (cfg) void openFileWindow(cfg.name, { dir });
             else this.setSlot(machineKey(m), { error: { text: copyText("extPage.error.noHostConfig", { machine: machineName(m) }), stale: false } });
           });
         } }),

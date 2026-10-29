@@ -1,6 +1,6 @@
 /**
  * **起新会话：全产品一个框、一个请求。** 命令面板「新建会话…」· 历史 / 标签页「在此目录新建会话」· 消息流「从这里分叉」·
- * 设置 › 机器卡 ⋯「新建会话…」都开这一个框（[`openNewSession`]）；设置 › 账号页［在 tmux 里登录］不开框、直接走同一个请求（[`startNewSession`]）。
+ * 设置 › 机器卡 ⋯「新建会话…」都开这一个框（[`openNewSession`]）。
  *
  * 判定都在那台后端（`new-session-reads.ts` 那两问 ＋ 起的那一问 `session-open`）：目录在不在 · 用哪个号（选不了 ⇒ 不起、带替代号）· 终端名 ·
  * 能起哪几家 · 分叉只在点［新建］那一步写分支记录。这里只排版：那台说哪一格不行，那一句就落在那一格下；整体不行落在框顶。
@@ -31,7 +31,7 @@ import { accountAvatarEl } from "./account-color";
 import { accountLabel } from "./acct-words";
 import { readPrefs } from "./machine-prefs";
 import { chosenAccount, type AccountAsk } from "./launch-account";
-import { askOpen, landOpened, openSession, type OpenEnd, type OpenHow, type Opened, type SessionOpenReq } from "./session-open";
+import { askOpen, landOpened, type OpenEnd, type OpenHow, type Opened, type SessionOpenReq } from "./session-open";
 import { openLoginDrawer } from "./login-drawer";
 import { askDir, askFacts, type OpenFacts } from "./new-session-reads";
 import type { AccountUnavailable } from "./generated/AccountUnavailable";
@@ -1009,9 +1009,4 @@ function landing(origin: Origin): OpenHow {
       });
     },
   };
-}
-
-/** 不开框、直接起一个（设置 › 账号页［在 tmux 里登录］）：同一个请求；结局与报错由 `session-open.ts` 说。回「起了没有」。 */
-export function startNewSession(origin: Origin, req: SessionOpenReq): Promise<boolean> {
-  return openSession(origin, req, landing(origin));
 }

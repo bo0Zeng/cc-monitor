@@ -260,7 +260,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/file-window.ts", // F78：远端会话「打开工作目录」（老 SFTP 面板删了，改开文件窗口）
     "src/frontend/ui/ipc/commands.ts",
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端各走哪条动作
-    "src/frontend/ui/remote-config.ts",
     "src/frontend/ui/ipc/chan-caller.ts", // ↗ 问本机后端 `session-window`（会话在这台电脑上的哪儿）、认它的码
     "src/comms/inward/chan.ts", // ↗ 那一问失败按通道那一跳的归因落结局（期限到 · 断开那一句照摆）
     "src/frontend/ui/resync.ts", // 关卡 2 拒了结束会话 ⇒ 提示带「对齐后重试」（认拒绝码 ＋ 对齐 ＋ 再做一次，都在那一个口）
