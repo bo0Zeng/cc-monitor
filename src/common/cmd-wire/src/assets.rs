@@ -132,8 +132,8 @@ where
     any(test, feature = "ts"),
     ts(
         export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "CatalogAsset"
+        rename = "CatalogAsset",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub struct Asset {
@@ -164,8 +164,8 @@ pub struct Asset {
     any(test, feature = "ts"),
     ts(
         export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "CatalogNote"
+        rename = "CatalogNote",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub struct Note {
