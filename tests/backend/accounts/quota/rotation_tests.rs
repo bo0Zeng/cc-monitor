@@ -69,10 +69,7 @@ fn an_old_book_is_unreadable_and_left_as_is() {
     ] {
         let home = Home::new("old");
         std::fs::write(home.file(), v.to_string()).expect("w");
-        assert!(matches!(
-            read_at::<Book>(&home.file()),
-            Disk::Unreadable(_)
-        ));
+        assert!(matches!(read_at::<Book>(&home.file()), Disk::Unreadable(_)));
         let store = home.store();
         assert!(store.now().sessions.is_empty());
         assert!(store.unreadable().is_some());
