@@ -8,8 +8,8 @@
 //! - **家**（相对家目录，`.cc-monitor/` 开头的每一个常量）：后端落点 [`BACKEND_LANDING_REL`] · 暂存区 ·
 //!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 账号库 [`ACCOUNTS_DIR_REL`] 与它的清单。
 //!   后端各写者引它们落盘；后端「文件与数据」那一份成品（`footprint/data.rs::own_rows`，经 [`OWN_HOME_ENTRIES`]）按它们列出，界面照抄；判据两向对着这一族。
-//! - **声明表** [`OWN_FILES`]：每份落盘文件一行 [`Decl`]（落点 · 状态 / 缓存 · 格式与版本 · 读上限），后端读写口
-//!   `common/own_state.rs` 从它取；家里那几样有声明的，「删了会丢」照声明。
+//! - **声明表**：每份落盘文件一个 [`Decl`] 常量（`*_FILE`：落点 · 状态 / 缓存 · 格式与版本 · 读上限），后端读写口
+//!   `common/own_state.rs` 的 `Doc::of` 从它取；家里那几样有声明的，「删了会丢」照声明。排成一张的 `OWN_FILES` 今天只有判据读（测试档）。
 //! - crate 名还是「relay-route」—— 它最早只装中转门牌。
 //!
 //! # 它为什么是一个共享 crate
@@ -602,8 +602,9 @@ pub const KEY_FILE: Decl<Cache> = Decl::<Cache>::foreign(KEY_FILE_REL, 4096);
 /// 历史清单缓存。
 pub const LISTING_CACHE_FILE: Decl<Cache> = Decl::<Cache>::json(LISTING_CACHE_REL, 3, 256 << 20);
 
-/// 〔「一份落盘文件一行」〕声明表：后端读写口（`common/own_state.rs` 的 `Doc::of`）取它。
-pub const OWN_FILES: &[Row] = &[
+/// 〔「一份落盘文件一行」〕上面那几份排成一张（判据逐行查自洽、查家里那几样与声明对得上）。
+#[cfg(test)]
+const OWN_FILES: &[Row] = &[
     BACKEND_POLICY_FILE.row,
     PREFS_FILE.row,
     MACHINES_FILE.row,
