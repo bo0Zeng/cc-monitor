@@ -77,7 +77,7 @@ egui = "0.36"
 # ## ⚠ 锁文件里 `gpu-allocator` 的 `windows` 必须是 0.62（手钉的，别 `cargo update` 回去）
 # `gpu-allocator 0.28` 的 spec 是 `windows = ">=0.53, <=0.62"`，cargo 自己解会拿本仓现成的 **0.56**（项目自用那一份），
 # 而 `wgpu-hal 30` 用 **0.62** ⇒ 同一段 D3D12 代码里的 `ID3D12Device` 来自两个 crate ⇒ E0308/E0277，Windows 编不过
-# （从前 Windows 也用 glow，就是因为这一条）。锁文件里那一行指到 `windows 0.62.2` 就过。
+# 锁文件里那一行指到 `windows 0.62.2` 就过。
 # 解回 0.56 不用另写判据：Windows 交叉检查（`winchk`）当场编不过。
 #
 # ## 为什么 Linux 不换

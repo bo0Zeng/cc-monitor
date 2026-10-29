@@ -52,7 +52,7 @@ function isSymbolChar(ch: string): boolean {
 
 /** 顶栏按钮的 class 全集 —— **从源码派生**，不是手写清单。 */
 function triggerClasses(main: string): string[] {
-  // 顶栏入口搬进标签页栏顶之后经 `headButton("<class>", "<图标>", …)` 建（`tests/frontend/ui/topbar-list-parity.vitest.ts` 同形）。
+  // 顶栏入口搬进标签页栏顶之后经 `headButton("<class>", "<图标>", …)` 建。
   return [...main.matchAll(/headButton\("([a-z-]*trigger)"/g)].map((m) => m[1]);
 }
 

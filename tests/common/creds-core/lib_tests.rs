@@ -169,8 +169,8 @@ fn fns_in_block(block: &str) -> Vec<(String, String, String)> {
         let Some(body) = brace_block(block, i) else {
             continue;
         };
-        // ★ **签名**（从 `fn` 到函数体左花括号）单独交出去〔`D3` 阻塞二回修，08-27〕。
-        //   先前只回 `body`，而 `body` 是 `brace_block` 从 `{` 起切的
+        // ★ **签名**（从 `fn` 到函数体左花括号）单独交出去。
+        //   只回 `body` 不够：`body` 是 `brace_block` 从 `{` 起切的
         //   ⇒ **参数表根本不在里面**，于是下面第 ⑤ 段对 `body` 做 `find('(')`
         //   两头都错：真的出参形**漏**（25P/0F 一声不吭），
         //   而一个只在体内 `std::mem::swap(&mut a, &mut b)`、**完全不碰明文**的函数**误报**
@@ -529,14 +529,14 @@ fn every_string_returning_exit_is_registered_by_name() {
 #[test]
 fn the_type_has_no_second_impl_block_that_hands_the_inner_string_out() {
     let prod = production();
-    // ⚠ 人群**按 impl 这个 item 的「头」画，不按「`impl ` 那一行」画**〔D2 回修，08-27〕。
-    //   先前是 `prod[i..].lines().next()` —— **只取一行**，于是
+    // ⚠ 人群**按 impl 这个 item 的「头」画，不按「`impl ` 那一行」画**。
+    //   用 `prod[i..].lines().next()` **只取一行**的话，
     //       impl std::ops::Deref
     //           for SecretKey
     //       { … }
     //   这种把头断成两行的写法**整个看不见**，而本条的报文逐字点名 `Deref` 是它要挡的那一形。
-    //   D2 复审实打：那一刀 creds-core **23 passed; 0 failed**（我自己复打确认）。
-    //   今天取的是「从 `impl ` 到它的左花括号为止」——那才是这个 item 的头，换行不影响。
+    //   （那样改坏，creds-core 整套照样全绿。）
+    //   取的是「从 `impl ` 到它的左花括号为止」——那才是这个 item 的头，换行不影响。
     let impls: Vec<String> = prod
         .match_indices("impl ")
         .filter_map(|(i, _)| {

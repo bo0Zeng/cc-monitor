@@ -24,9 +24,7 @@
 ///
 /// # 🔴 这几个字段**用位置名，不用业务名**
 ///
-/// 先前它是 `{ agent, account, key }` 三个业务名。今天是
-/// `{ mode, key: RouteKey{seg1,seg2}, rest }` —— 中转只知道「第 1/2 段」，整包交给上游选择当键
-/// （第 3 段退役）。
+/// 字段是 `{ mode, key: RouteKey{seg1,seg2}, rest }` —— 中转只知道「第 1/2 段」，整包交给上游选择当键。
 /// 谁是 agent、谁是账号，**只在 `accounts/` 那一层才有这两个词**。
 #[derive(Debug, PartialEq, Eq)]
 pub struct Route {
@@ -46,7 +44,7 @@ pub struct Route {
 ///
 /// ★ 同一条性质只许有一个实现：装路由表时判「这个账号 id 当得了路由段吗」与本函数问的是同一个问题。
 /// 它与两个前缀、拼 / 拆路由一起住共享 crate `relay_route_core`（目标）：
-/// monitor 那一侧（起会话身份 token · 载荷里中转地址的校验）与这里 `use` 同一份，先前的「两侧各写一份、样例对拍」退役。
+/// monitor 那一侧（起会话身份 token · 载荷里中转地址的校验）与这里 `use` 同一份。
 /// 那个 crate 不是业务 crate（没有账号 / 凭据的名字），本文件是通信层成员也可以依赖它（`C2`）。
 pub use relay_route_core::segment_is_safe;
 
