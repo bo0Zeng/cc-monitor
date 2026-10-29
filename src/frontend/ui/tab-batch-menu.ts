@@ -75,11 +75,15 @@ function rowsOf(tabs: readonly Tab[], outcomes: readonly BatchOutcome[]): EndRow
   return outcomes.map((o) => ({ title: title(o.sid), outcome: o.outcome, why: o.why, ...(o.detail ? { detail: o.detail } : {}) }));
 }
 
+/** 一批的汇总那一句（「动作 k · 失败 ×m」）：多选菜单与批量隐藏 · 取消隐藏（`tab-hide.ts` 经宿主）都照这一处。 */
+export function batchHead(action: string): (done: number, failed: number) => string {
+  return (done, failed) =>
+    failed > 0 ? copyText("tabBatch.result.someFailed", { action, done, failed }) : copyText("tabBatch.result.done", { action, done });
+}
+
 /** 结果提示：一句汇总（「动作 k · 失败 ×m」）；逐个跳过与失败的（各为什么）进「消息」那一条，［查看］展开（同结束那一种）。 */
 export function sayBatch(action: string, tabs: readonly Tab[], outcomes: readonly BatchOutcome[]): void {
-  sayRows(rowsOf(tabs, outcomes), (done, failed) =>
-    failed > 0 ? copyText("tabBatch.result.someFailed", { action, done, failed }) : copyText("tabBatch.result.done", { action, done }),
-  );
+  sayRows(rowsOf(tabs, outcomes), batchHead(action));
 }
 
 /** 只经 monitor 的那几项：同步改完 ⇒ 每一个都做成了，跳过的照原因列。 */

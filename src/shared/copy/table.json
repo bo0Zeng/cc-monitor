@@ -4110,6 +4110,18 @@
       "zh": "已关闭",
       "args": []
     },
+    "tabBatch.action.hide": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已隐藏",
+      "args": []
+    },
+    "tabBatch.action.unhide": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已取消隐藏",
+      "args": []
+    },
     "tabBatch.result.skippedLine": {
       "kind": "body",
       "role": "片段",

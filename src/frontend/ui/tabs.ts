@@ -35,7 +35,8 @@ export type { Tab, TabsSummary } from "./tab-model";
 import { TabMenu } from "./tab-menu";
 import type { MenuItem } from "./kit/menu";
 import { TabSelection } from "./tab-selection";
-import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
+import { batchHead, openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
+import { sayRows } from "./end-confirm";
 import { AllListed, TabStore, type ActiveView } from "./tab-store";
 import { appStore, type Slice } from "./app-store";
 import { TabStreamView } from "./tab-stream-view";
@@ -205,6 +206,7 @@ export class TabManager {
     setHide: (tab, to) => setHide(tab.origin, tab.sessionId, to),
     undoToast: (title, undo, settle) => undoToast(title, undo, settle),
     failed: (title, e) => failToast(title, e),
+    batch: (action, rows, undo) => sayRows(rows, batchHead(action), undo),
     refreshTabBar: () => this.refreshTabBar(),
     close: (sid) => this.closeTab(sid),
   });
