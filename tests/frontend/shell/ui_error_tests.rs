@@ -29,6 +29,18 @@ pub(crate) fn during(f: impl FnOnce()) -> Vec<serde_json::Value> {
         .collect()
 }
 
+/// 同 [`during`]，`fut` 跑完那一段（单线程运行时：`spawn` 出去的也在本线程上跑）。
+pub(crate) async fn during_async(
+    fut: impl std::future::Future<Output = ()>,
+) -> Vec<serde_json::Value> {
+    CAPTURE.with(|c| *c.borrow_mut() = Some(Vec::new()));
+    fut.await;
+    let got = CAPTURE.with(|c| c.borrow_mut().take()).unwrap_or_default();
+    got.iter()
+        .map(|p| serde_json::to_value(p).expect("payload 序列化"))
+        .collect()
+}
+
 /// 一条推给界面的出错事件：带文案键 · 那句话 = 照键与参数取出来的那一句 · 除复制详情外没有一格是日志行的形状。
 pub(crate) fn assert_is_copy_not_log(ev: &serde_json::Value) {
     let key = ev.get("key").and_then(|v| v.as_str()).unwrap_or_default();
@@ -185,6 +197,81 @@ fn every_kind_of_ui_error_is_a_copy_keyed_sentence_and_the_log_line_stays_in_the
     });
     assert_eq!(got.len(), 1);
     assert_is_copy_not_log(&got[0]);
+}
+
+/// 远端那四种（解不开的帧 · 拥塞丢帧 · 历史快照没拉下 · 文件窗口开了又退）也走这一个出口：
+/// 每种恰好一条、过 [`assert_is_copy_not_log`]，原话只在复制详情里，没有［重新连接］。
+#[test]
+fn the_remote_kinds_are_copy_keyed_sentences_too() {
+    let cases: Vec<(&str, UiError, &str)> = vec![
+        (
+            "frame-shape",
+            UiError::FrameUnreadable {
+                host: "devbox".into(),
+                kind: "line".into(),
+                why: "frame `line` malformed: missing field".into(),
+            },
+            "missing field",
+        ),
+        (
+            "overflow",
+            UiError::Overflow {
+                host: "devbox".into(),
+                said: "那台写的一句".into(),
+            },
+            "",
+        ),
+        (
+            "snapshot",
+            UiError::HistoryUnfetched {
+                sid: "abcd1234".into(),
+                raw: "连接断了 · 夹具".into(),
+            },
+            "连接断了 · 夹具",
+        ),
+        (
+            "filewin-exit",
+            UiError::FileWindowExited {
+                code: Some("exit status: 7".into()),
+                raw: None,
+            },
+            "exit status: 7",
+        ),
+        (
+            "filewin-exit",
+            UiError::FileWindowExited {
+                code: Some("exit status: 1".into()),
+                raw: Some("夹具 stderr 一行".into()),
+            },
+            "夹具 stderr 一行",
+        ),
+    ];
+    for (code, e, raw) in cases {
+        let got = during(|| tell(e.clone()));
+        assert_eq!(got.len(), 1, "{e:?} 没推、或推了不止一条：{got:?}");
+        let ev = &got[0];
+        assert_is_copy_not_log(ev);
+        assert_eq!(ev["code"], code, "{e:?} 的码不对：{ev}");
+        assert!(
+            ev.get("reconnect").is_none(),
+            "远端提示不给［重新连接］：{ev}"
+        );
+        assert!(
+            ev["detail"].as_str().unwrap_or_default().contains(raw),
+            "原话没进复制详情：{ev}"
+        );
+    }
+    let got = during(|| {
+        tell(UiError::Overflow {
+            host: "devbox".into(),
+            said: "那台写的一句".into(),
+        })
+    });
+    let said = got[0]["said"].as_str().unwrap_or_default();
+    assert!(
+        said.contains("devbox") && said.contains("那台写的一句"),
+        "拥塞那一句没点名那台、或没原样带那台写的：{said}"
+    );
 }
 
 /// 推给界面的出错只有一个出口：事件名只在定义它的两处与 `logging.rs` 装出口那一处出现，

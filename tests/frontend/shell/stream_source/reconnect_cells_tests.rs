@@ -219,9 +219,8 @@ async fn a_drop_then_reconnect_then_resume_hands_each_line_over_exactly_once() {
         None,
         64,
     );
-    let health: HealthOut = Arc::new(|_| Ok(()));
     let (tx, rx) = tokio::sync::mpsc::channel(64);
-    let consumer = tokio::spawn(consume(rx, replay.clone(), health));
+    let consumer = tokio::spawn(consume(rx, replay.clone()));
     let lines = |c: &Cells| {
         c.0.lock()
             .unwrap()

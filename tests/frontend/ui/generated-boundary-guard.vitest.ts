@@ -607,7 +607,7 @@ describe("C01 边界生成物", () => {
  * 没有专属 payload struct（11 个 struct 里没有它）。写了就是假红。
  */
 describe("C02 事件名钉死", () => {
-  it("ui_contract.rs 的事件名常量（今天 4 个），TS 侧字面量逐个对上", () => {
+  it("ui_contract.rs 的事件名常量（今天 3 个），TS 侧字面量逐个对上", () => {
     const rust = rustCode(read("src/frontend/shell/src/ui_contract.rs"));
     expect(rust, "剥过头了").toContain("pub const");
 
@@ -615,31 +615,13 @@ describe("C02 事件名钉死", () => {
     const pairs = [...rust.matchAll(/pub const\s+([A-Z0-9_]+)\s*:\s*&str\s*=\s*"([^"]+)"\s*;/g)].map(
       (m) => ({ konst: m[1], value: m[2] }),
     );
-    // 计数自检用等号：加/删事件时必须红一次，逼人来更新 TS 侧与本断言
-    // 11 = 原 10 个（Rust emit → 前端 listen）+ `FRONTEND_READY`（方向相反，前端 emit →
-    // Rust listen）。后者由 C02 Phase D 审计 I3 补上：C02 给它上了类型，却把名字漏在门禁外。
-    // 11 → 12：`REMOTE_BACKEND_READY`（"remote-backend-ready"）——某台远端长连接
-    // 握手完成。前端 `main.ts` 订阅它，替掉那个 10 秒账号轮询（改事件驱动）。
-    // 12 → 14：`SESSION_CONTAINER`（"session-container"，活会话的容器）·
-    // `ORIGIN_SESSIONS_LISTED`（"listed 格"，某台的活会话清单报完了）。两条都由 `events.ts` 订阅。
-    // 14 → 12：`JSONL_LINE` / `JSONL_BATCH` 退役（会话内容改走通道 `subscribe`，交格的事件名
-    //   `chan-items` 住 `chan/webview.rs::ITEMS_EVENT`、由 `src/comms/inward/chan.ts` 听 —— 它是通道那一跳的，不是 `ui_contract.rs` 的业务事件）。
-    // 不加事件名：活卡走通道 `subscribe`（会话流 `session-live-card`），不开裸 Tauri 事件。
-    // 12 → 13：`SESSION_UNSEEN`（"session-unseen"，那台机器看不见了 ⇒ 说不清）。由 `events.ts` 订阅。
-    // 13 → 12：`REMOTE_BACKEND_READY`（"remote-backend-ready"）退役 —— 前端经通道订每台的 `changed/accounts`
-    //   （`events.ts::bindEvents` 的 `accounts` 那一种流，句柄 `event_replay.rs`），「前端只有两个动作」。
-    // 12 → 11：`TASKS_UPDATE`（"task-update"）退役 —— 任务变更经通道 `subscribe(origin, "changed/tasks")`。
-    // 12 → 3：会话起停 / 状态那 9 个（`session-started` / `-ended` / `-idle` / `-container` / `-unseen` / `-activity` ·
-    //   `remote-session-added` · `origin-sessions-listed` · `snapshot-inflight`）并进会话流 `subscribe(origin, "session-lines")`（`ui_contract.rs::SessionStreamFrame`）；
-    //   剩 `frontend-ready` · `remote-health` · `task-update`。
-    // 主线 11 ＋ MIG-1 −9 ⇒ 2（剩 `frontend-ready` · `remote-health`）。
-    // 2 → 3：`LOCAL_BACKEND`（"local-backend"，本机后端起没起来一变就推一帧；各台的状态成品走本机后端的 `changed/machine`），由 `machine-feed.ts` 订阅。
-    // 3 → 4：`UI_ERROR`（"monitor-error"，要让用户知道的出错：码 ＋ 文案键 ＋ 那句话 ＋ 复制详情），由 `backend-errors.ts` 订阅。
-    //   名字原来只在 `logging.rs` 里一个私有常量上，没进这张表。
-    expect(pairs.length, `期望恰好 4 个事件名常量，实得 ${pairs.length}`).toBe(4);
+    // 计数自检用等号：加/删事件时必须红一次，逼人来更新 TS 侧与本断言。今天三个：
+    // `FRONTEND_READY`（方向相反：前端 emit、Rust listen）· `LOCAL_BACKEND`（本机后端起没起来，`machine-feed.ts` 订）·
+    // `UI_ERROR`（"monitor-error"，要让用户知道的出错，`backend-errors.ts` 订）。会话内容与各主题走通道 `subscribe`，不开裸事件。
+    expect(pairs.length, `期望恰好 3 个事件名常量，实得 ${pairs.length}`).toBe(3);
 
     // 每个字面量必须在 TS 侧真的被订阅/emit（剥注释后再找，防散文里提过就算）
-    const tsFiles = ["src/frontend/ui/events.ts", "src/frontend/ui/main.ts", "src/frontend/ui/remote-health.ts", "src/frontend/ui/machine-feed.ts", "src/frontend/ui/backend-errors.ts"];
+    const tsFiles = ["src/frontend/ui/events.ts", "src/frontend/ui/main.ts", "src/frontend/ui/machine-feed.ts", "src/frontend/ui/backend-errors.ts"];
     const tsCode = tsFiles.map((f) => code(read(f))).join("\n");
     // `events.ts` 里那个 `sub<` 包装随最后几条 Tauri 监听退役没了，自检改认一个今天真在的调用形。
     expect(tsCode, "剥过头了").toContain("chan.subscribe(");
