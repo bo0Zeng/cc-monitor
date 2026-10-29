@@ -1241,7 +1241,8 @@ fn end_of(i: &RunInfo) -> Option<RunEndLine> {
     })
 }
 
-/// 列表的三组（运行表最早动过的在前 ⇒ 每组最近动过的在前）：在跑的全列 · 最近结束的 [`RECENT_ENDED`] 个 · 其余连状态不明的。
+/// 列表的三组（运行表最早动过的在前 ⇒ 每组最近动过的在前）：在跑的全列 · 最近结束的 [`RECENT_ENDED`] 个 · 其余连状态不明的；
+/// 更早那一组的组头字（「更早 ×n」）这里写好，那一组空 ⇒ 不上线。
 fn groups_of(runs: &[RunInfo]) -> RunGroups {
     let mut g = RunGroups::default();
     for r in runs.iter().rev() {
@@ -1256,6 +1257,12 @@ fn groups_of(runs: &[RunInfo]) -> RunGroups {
             _ => g.older.push(id),
         }
     }
+    g.older_text = (!g.older.is_empty()).then(|| {
+        Words(copy_text(
+            "agentsPanel.group.older",
+            &[("n", &g.older.len().to_string())],
+        ))
+    });
     g
 }
 

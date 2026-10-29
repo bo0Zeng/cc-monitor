@@ -108,3 +108,26 @@ fn within_keep_is_exact() {
     assert_eq!(listed, 3);
     assert_eq!(summary, done_text(3));
 }
+
+#[test]
+fn older_group_head_is_written_here() {
+    let book = RunBook::default();
+    spawn(&book, RECENT_ENDED + 2, Some(RunEnd::Done));
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000 + 100);
+    let Frame::SessionRuns(r) = book.frame_at(SID, now) else {
+        panic!("frame_at 该出运行表帧");
+    };
+    assert_eq!(r.groups.older.len(), 2, "前提：更早那一组两条");
+    assert_eq!(
+        r.groups.older_text.map(|w| w.0),
+        Some(copy_text("agentsPanel.group.older", &[("n", "2")])),
+        "更早那一组的组头字由这里写好，界面照抄"
+    );
+
+    let few = RunBook::default();
+    spawn(&few, 1, Some(RunEnd::Done));
+    let Frame::SessionRuns(r) = few.frame_at(SID, now) else {
+        panic!("frame_at 该出运行表帧");
+    };
+    assert_eq!(r.groups.older_text, None, "更早那一组空 ⇒ 不上线");
+}
