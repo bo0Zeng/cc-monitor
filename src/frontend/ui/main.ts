@@ -697,8 +697,8 @@ window.addEventListener("DOMContentLoaded", async () => {
         { id: "toggle-terminal", group: "current", icon: "terminal", title: copyText("main.cmd.terminal"), keywords: copyText("main.cmd.terminalKeywords"), hint: chordHint("panel.toggle-terminal"), run: () => mainDrawer.toggle("terminal") },
         { id: "pop-out", group: "current", icon: "popOut", title: copyText("main.cmd.popOut"), keywords: copyText("main.cmd.popOutKeywords"), hint: chordHint("tab.pop-out"), run: () => tabs.openActiveInNewWindow() },
         { id: "open-cwd", group: "current", icon: "folder", title: copyText("main.cmd.openCwd"), keywords: copyText("main.cmd.openCwdKeywords"), hint: chordHint("tab.open-cwd"), run: () => tabs.openActiveTabCwd() },
-        // ↗：只有 cc-monitor 跑在 Windows 上才能用；别的系统上灰着（门与 tab 上那颗按钮是同一道，见 `terminal-front-command.ts`）。
-        ...terminalFrontCommand({ id: "term-front", group: "current" as const, icon: "front" as const, title: copyText("main.cmd.terminalFront"), keywords: copyText("main.cmd.terminalFrontKeywords"), hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }),
+        // ↗：一直列着，做不了灰着写那一句（与 tab 上那颗按钮是同一道，见 `terminal-front-command.ts`）。
+        ...terminalFrontCommand({ id: "term-front", group: "current" as const, icon: "front" as const, title: copyText("main.cmd.terminalFront"), keywords: copyText("main.cmd.terminalFrontKeywords"), hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }, tabs.activeTab()?.face ?? null),
         tabs.isPinned(cur)
           ? { id: "unpin", group: "current", icon: "pin", title: copyText("main.cmd.unpin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) }
           : { id: "pin", group: "current", icon: "pin", title: copyText("main.cmd.pin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) },

@@ -18,9 +18,8 @@ import type { TabGroup } from "./tab-bar-prefs";
 import type { GroupCount } from "./generated/GroupCount";
 import { barRows, type BarRow, type RowRect } from "./tab-drop";
 import { lightOf } from "./session-status";
-import { terminalFrontAvailable } from "./terminal-front";
 import { isRemoteOrigin } from "./ipc/origin";
-import { closesQuietly, hasTerminal, isEnded, isLive, machineOf } from "./face-can";
+import { closesQuietly, frontWhy, isEnded, isLive, machineOf } from "./face-can";
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
@@ -69,6 +68,8 @@ export interface TabButtonRefs {
   /** 停发的会话标题后琥珀字 `停发`（与「等批准」同位）。 */
   holdBadge: HTMLSpanElement;
   cwdBtn: HTMLSpanElement;
+  /** 行尾 ↗：一直在，做不了 ⇒ 灰着、`data-why` 是那一句（悬停照它说，A2-17-12-1）。 */
+  frontBtn: HTMLSpanElement;
   /**
    * 📌 角标。**纯展示，不可点** —— 与 `.tab-badge`（未读数）同族。
    * 固定是右键菜单那一项的事；这里再放一个能点的东西就是同一个动作两个入口。
@@ -463,9 +464,9 @@ export class TabBarView {
       } else if (sub.classList.contains("tab-more")) {
         this.host.openMenuAt(sub as HTMLElement, sid);
       } else if (sub.classList.contains("tab-focus")) {
-        // ↗ 拉对应终端窗口。非 Windows 不渲（`terminal-front.ts`）——不渲就点不到。
+        // ↗ 拉对应终端窗口。灰着的（这台 ↗ 不是真的 · 没有终端可去）点了不做事，悬停说为什么。
         const t = this.store.tabs.get(sid);
-        if (!t || !hasTerminal(t.face)) return; // 活着，或可重连（ssh 窗还在）才拉
+        if (!t || frontWhy(t.face) !== null) return;
         // 点那一刻现查此刻显示它的终端（本机 · 远端同一问）。
         void this.host.bringTerminalToFront(sid);
       } else {
@@ -1171,14 +1172,15 @@ export class TabBarView {
     };
     const cwdBtn = act("tab-cwd", "folder", copyText("tabBarView.tab.cwdHint"));
     acts.appendChild(cwdBtn);
-    // ↗ 切到终端：只 Windows 渲（`terminal-front.ts`）。
-    if (terminalFrontAvailable()) acts.appendChild(act("tab-focus", "front", copyText("tabBarView.tab.terminalHint")));
+    // ↗ 切到终端：一直渲，做不了灰着（`updateTabButton` 照 `frontWhy` 写）。
+    const frontBtn = act("tab-focus", "front", copyText("tabBarView.tab.terminalHint"));
+    acts.appendChild(frontBtn);
     acts.appendChild(act("tab-more", "more", copyText("tabBarView.tab.moreHint")));
     acts.appendChild(act("tab-close", "close", copyText("tabBarView.tab.closeHint")));
 
     root.append(dot, abbr, machine, titleEl, trail, acts);
 
-    return { root, dot, abbr, machine, proj, bg, label, needs, badge, acctBadge, holdBadge, cwdBtn, pinBadge, drawn: null, acctDrawn: "" };
+    return { root, dot, abbr, machine, proj, bg, label, needs, badge, acctBadge, holdBadge, cwdBtn, frontBtn, pinBadge, drawn: null, acctDrawn: "" };
   }
 
   /**
@@ -1262,7 +1264,8 @@ export class TabBarView {
       refs.root.classList.toggle("active", active);
       refs.root.classList.toggle("selected", selected);
       refs.root.classList.toggle("ended", ended);
-      refs.root.classList.toggle("unseen", unseen);
+      // 状态不明（那台看不见）：没有自己的样式（点 · 字都照脸画），只给判据与读屏读。
+      refs.root.toggleAttribute("data-unseen", unseen);
       refs.root.classList.toggle("pinned", pinned);
       refs.root.classList.toggle("has-cwd", hasCwd);
       refs.root.classList.toggle("remote", remote);
@@ -1289,6 +1292,18 @@ export class TabBarView {
       setText(refs.badge, unreadText);
     }
     this.updateAccountBadge(refs, sid, tab); // 账号头像随 tab 更新一并刷新
+    // ↗ 灰不灰 · 那一句：变了才写（脸 · 壳那一份变了都可能变，不进上面那串）。
+    const why = frontWhy(tab.face);
+    const was = refs.frontBtn.dataset.why ?? null;
+    if (was !== why) {
+      if (why === null) {
+        delete refs.frontBtn.dataset.why;
+        refs.frontBtn.removeAttribute("aria-disabled");
+      } else {
+        refs.frontBtn.dataset.why = why;
+        refs.frontBtn.setAttribute("aria-disabled", "true");
+      }
+    }
   }
 }
 
@@ -1306,7 +1321,11 @@ function setShown(el: HTMLElement, on: boolean): void {
 /** 行尾那几颗动作的悬停提示（按类认是哪一颗）。 */
 function actHint(el: HTMLElement): string | null {
   if (el.classList.contains("tab-cwd")) return withKey(copyText("tabBarView.tab.cwdHint"), "tab.open-cwd");
-  if (el.classList.contains("tab-focus")) return withKey(copyText("tabBarView.tab.terminalHint"), "terminal.bring-front");
+  if (el.classList.contains("tab-focus")) {
+    const hint = withKey(copyText("tabBarView.tab.terminalHint"), "terminal.bring-front");
+    const why = el.dataset.why;
+    return why ? `${copyText("tabBarView.tab.terminalHint")} · ${why}` : hint;
+  }
   if (el.classList.contains("tab-close")) return withKey(copyText("tabBarView.tab.closeHint"), "tab.close-archived");
   if (el.classList.contains("tab-more")) return copyText("tabBarView.tab.moreHint");
   return null;

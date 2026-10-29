@@ -9,6 +9,7 @@ import type { SessionFace } from "./generated/SessionFace";
 import type { Origin } from "./generated/Origin";
 import { isRemoteOrigin } from "./ipc/origin";
 import { copyText } from "./copy-table";
+import { terminalFrontAvailable } from "./terminal-front";
 
 /** 这个会话在哪台：本机写「本机」，远端写机器名。 */
 export function machineOf(t: { origin: Origin }): string {
@@ -22,6 +23,16 @@ type Face = SessionFace | null;
 export const isLive = (f: Face): boolean => f?.life.is === "live";
 /** 还有终端可去（拉前 · 停 · 终端页 · 自动跟随 · 后台物化）。 */
 export const hasTerminal = (f: Face): boolean => f?.can.term.can === "yes";
+/**
+ * ↗ 切到终端此刻点不点得了（菜单 · 会话头 · 栏行尾 · 命令面板 · 快捷键同一道，A2-17-12-1）：点得了 ⇒ `null`；
+ * 点不了 ⇒ 那一句 —— 壳说这台上 ↗ 不是真的（`terminal-front.ts`）⇒ 那一句；会话脸 `can.term` 说不能 ⇒ 那台写好的那一句；
+ * 还没收到脸 ⇒ 空串（灰着、不说为什么）。各处一律画、灰着写这一句，不藏。
+ */
+export function frontWhy(f: Face): string | null {
+  if (!terminalFrontAvailable()) return copyText("terminalFront.unavailable.short");
+  if (!f) return "";
+  return f.can.term.can === "yes" ? null : f.can.term.why;
+}
 /** 结束得了（右键 · 多选同一个确认框，交 `sessions-stop`）。 */
 export const canEnd = (f: Face): boolean => f?.can.end.can === "yes";
 /** 能恢复（Resume / 在 tmux 里起）。 */

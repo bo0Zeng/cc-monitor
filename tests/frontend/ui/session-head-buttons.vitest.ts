@@ -157,12 +157,16 @@ describe("纯函数：读盘 · 清单 · 勾 · 挪 · 拖 · 放不下", () =>
 });
 
 describe("会话头那一排", () => {
-  it("★ 默认：目录 · 看它的终端 · 在新窗口打开 · 账号 · 显示 · 查找 · ⋯（Linux 没有「切到终端」，不留空位）", () => {
-    const { h } = rig();
-    expect(heads(h)).toEqual(["cwd", "terminal", "popOut", "account", "display", "find", "more"]);
+  it("★ 默认：目录 · 切到终端 · 看它的终端 · 在新窗口打开 · 账号 · 显示 · 查找 · ⋯；这台认不出终端窗口 ⇒ ↗ 在、灰着、点了不做事（A2-17-12-1）", () => {
+    const { h, host } = rig();
+    expect(heads(h)).toEqual(["cwd", "front", "terminal", "popOut", "account", "display", "find", "more"]);
+    expect(btn(h, "front").getAttribute("aria-disabled"), "做不了只灰着一种样子").toBe("true");
+    btn(h, "front").click();
+    expect((host as unknown as { front: ReturnType<typeof vi.fn> }).front).not.toHaveBeenCalled();
     vi.mocked(terminalFrontAvailable).mockReturnValue(true);
     const w = rig(tab("w"));
     expect(heads(w.h)).toEqual(["cwd", "front", "terminal", "popOut", "account", "display", "find", "more"]);
+    expect(btn(w.h, "front").hasAttribute("aria-disabled")).toBe(false);
   });
 
   it("★ 照盘上那一格排（读盘时跳过认不出的）；「⋯」永远在最右", async () => {
@@ -261,7 +265,7 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     box("pin").click();
     await flush();
     expect(store.cfg).toEqual({ sessionHead: { buttons: [...DEFAULT_HEAD_BUTTONS, "pin"] } });
-    expect(heads(h)).toEqual(["cwd", "terminal", "popOut", "account", "display", "find", "pin", "more"]);
+    expect(heads(h)).toEqual(["cwd", "front", "terminal", "popOut", "account", "display", "find", "pin", "more"]);
     expect(rows().map((r) => r.dataset.row).slice(0, 8), "清单跟着重排：勾上的进上段末尾").toEqual([...DEFAULT_HEAD_BUTTONS, "pin"]);
   });
 
@@ -295,7 +299,7 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     await flush();
     expect(lastButtonsWrite()).toEqual([{ op: "remove", path: ["sessionHead"] }]);
     expect(store.cfg).toEqual({});
-    expect(heads(h)).toEqual(["cwd", "terminal", "popOut", "account", "display", "find", "more"]);
+    expect(heads(h)).toEqual(["cwd", "front", "terminal", "popOut", "account", "display", "find", "more"]);
     expect(vi.mocked(undoToast).mock.calls[0][0]).toBe(copyText("sessionHead.edit.resetDone"));
     vi.mocked(undoToast).mock.calls[0][1]();
     await flush();
@@ -311,10 +315,10 @@ describe("放不下：从最后一颗起收进「⋯」最上面一组", () => {
     Object.defineProperty(title, "clientWidth", { configurable: true, get: () => 300 - 28 * visible() });
     Object.defineProperty(title, "scrollWidth", { configurable: true, get: () => 400 });
     h.fit();
-    expect(heads(h)).toEqual(["cwd", "terminal", "popOut", "account", "display", "more"]); // 300-140=160
+    expect(heads(h)).toEqual(["cwd", "front", "terminal", "popOut", "account", "more"]); // 300-140=160（↗ 灰着也占一颗）
     btn(h, "more").click();
     const extra = host.more.mock.calls[0][2] as { top: MenuItem[]; bottom: MenuItem[] };
-    expect(extra.top.map((i) => i.label)).toEqual([copyText("sessionHead.act.find"), ""]);
+    expect(extra.top.map((i) => i.label)).toEqual([copyText("sessionHead.act.display"), copyText("sessionHead.act.find"), ""]);
     expect(store.edits, "收进去不改设置").toEqual([]);
   });
 });

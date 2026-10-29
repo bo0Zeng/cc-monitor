@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1781,
+  "ceiling": 1779,
   "groups": [
     {
       "kind": "首登",
@@ -243,7 +243,6 @@
         ["src/frontend/ui/tasks-panel.ts", "branch", 5],
         ["src/frontend/ui/tasks-panel.ts", "key", 2],
         ["src/frontend/ui/terminal-follow.ts", "branch", 4],
-        ["src/frontend/ui/terminal-front.ts", "key", 2],
         ["src/frontend/ui/terminal-open.ts", "branch", 6],
         ["src/frontend/ui/terminal-open.ts", "key", 1],
         ["src/frontend/ui/terminal-page.ts", "branch", 19],

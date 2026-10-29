@@ -134,6 +134,11 @@ function remember(r: ToastRecord): void {
   changed();
 }
 
+/** 只进状态栏「消息」、不弹出的一条（按键碰到做不了的事：那一句记下，不拽人）。 */
+export function noteMessage(title: string, detail: string): void {
+  remember({ level: "info", title, detail, count: 1, at: Date.now(), actions: [], seen: true, more: [], copy: [] });
+}
+
 /** 右侧抽屉开着时它的宽（toast 让到它左边）；`null` ＝ 没开着。 */
 let drawerRight: number | null = null;
 

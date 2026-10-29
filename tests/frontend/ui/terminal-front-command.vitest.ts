@@ -18,8 +18,9 @@ import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { factsOn } from "../../test-support/host-facts";
+import { goldenFace, liveFace } from "../../test-support/session-faces";
 
-describe("命令面板的 ↗：Windows · Linux 以外灰着、第二行写哪几种能用", () => {
+describe("命令面板的 ↗：一直列着；做不了灰着、第二行写那一句", () => {
   afterEach(() => __setHostFactsForTests(null));
 
   const cases: ReadonlyArray<readonly [HostOs, boolean]> = [
@@ -32,12 +33,20 @@ describe("命令面板的 ↗：Windows · Linux 以外灰着、第二行写哪�
     it(`${os} ⇒ ${ok ? "能用" : "灰着"}`, () => {
       __setHostFactsForTests(factsOn(os));
       const item = { id: "term-front" };
-      const got = terminalFrontCommand(item);
+      const got = terminalFrontCommand(item, liveFace("idle"));
       expect(got.length).toBe(1);
       if (ok) expect(got[0]).toBe(item); // 原样那一项，不是副本
       else expect(got[0]).toEqual({ id: "term-front", disabled: copyText("terminalFront.unavailable.short") });
     });
   }
+
+  it("★ A2-17-12-1：当前会话那台说没有终端可去 ⇒ 照样列、灰着，第二行是那台那一句", () => {
+    __setHostFactsForTests(factsOn("windows"));
+    const face = goldenFace("ended");
+    expect(face.can.term.can, "金样自检：已结束那一张没有终端可去").toBe("no");
+    const why = face.can.term.can === "no" ? face.can.term.why : "";
+    expect(terminalFrontCommand({ id: "term-front" }, face)).toEqual([{ id: "term-front", disabled: why }]);
+  });
 
   it("★ 接线：main.ts 里 term-front 恰好一处，且就是经 terminalFrontCommand 展开的那一处", () => {
     const code = stripComments(readFileSync(resolve(REPO_ROOT, "src/frontend/ui/main.ts"), "utf8"), "ts");

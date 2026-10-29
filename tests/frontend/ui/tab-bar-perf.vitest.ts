@@ -209,9 +209,10 @@ describe("P2 ＋ P7 ＋ P1：整刷改成差量刷", () => {
       // 10 → 11：说不清（那台看不见）`.unseen` 那一个开关。
       // 11 → 13：跑完你还没看（`.unseen-done`，标题 600）· 在等你（`.waiting-you`，窄窗字母琥珀）。
       // 13 → 10：灯那一档 · 可重连改成 `data-*` 钩子（没有样式的三个类不再 toggle）。
+      // 10 → 9：说不清 `.unseen` 也改成 `data-unseen` 钩子（↗ 不再按它藏，那个类没有样式了，A2-17-12-1）。
       (r.store.tabs.get("s5") as { pinned: boolean }).pinned = true;
       r.view.refresh();
-      expect(spy).toHaveBeenCalledTimes(10);
+      expect(spy).toHaveBeenCalledTimes(9);
     } finally {
       spy.mockRestore();
     }

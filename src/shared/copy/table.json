@@ -5341,18 +5341,6 @@
       "zh": "未开始",
       "args": []
     },
-    "terminalFront.unavailable.detail": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "仅 Windows · Linux 可切到终端窗口",
-      "args": []
-    },
-    "terminalFront.unavailable.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机不支持切到终端",
-      "args": []
-    },
     "machineAliases.ps.saveFailed": {
       "kind": "error",
       "role": "报错",
