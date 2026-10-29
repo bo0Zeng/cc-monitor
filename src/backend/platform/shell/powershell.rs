@@ -129,6 +129,17 @@ pub(crate) fn remove_env<S: AsRef<str>>(vars: &[S]) -> String {
     format!("Remove-Item {} -ErrorAction Ignore; ", names.join(", "))
 }
 
+/// 跑这一行的那个 PowerShell 把自己的窗口标签（`$PID-<StartTime.ToFileTime()>`，与接入块设的 `LC_CCM_WINDOW` 同一个键）与 `machine`
+/// 两行写进 `file`（UTF-8 无 BOM，先写 `part` 再挪过去）。在一个脚本块里跑（变量不留在那个窗口里），错误吞掉、不往终端里打字；
+/// 不带双引号。三个词由调用方先过 `dialect::ps_literal`。以 `; ` 收尾，后面接那一行。
+pub(crate) fn note_own_window(file: &str, part: &str, machine: &str) -> String {
+    format!(
+        "try {{ & {{ param($f, $t, $m) $ErrorActionPreference = 'Stop'; \
+         [System.IO.File]::WriteAllText($t, [string]$PID + '-' + [System.Diagnostics.Process]::GetCurrentProcess().StartTime.ToFileTime() + [char]10 + $m + [char]10); \
+         Move-Item -LiteralPath $t -Destination $f -Force }} {file} {part} {machine} }} catch {{}}; "
+    )
+}
+
 /// `Set-Location -LiteralPath <词>; `
 pub(crate) fn set_location(dir_word: &str) -> String {
     format!("Set-Location -LiteralPath {dir_word}; ")

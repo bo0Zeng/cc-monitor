@@ -410,6 +410,7 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
         machine: cmd_wire::Machine::named(host),
         command: None,
         cwd: Some(cwd.clone()),
+        sid: None,
     };
     let Some(local) = inbound_client::local_client() else {
         return Err(backend_route::layer_no_channel(HOP));
