@@ -81,6 +81,12 @@
       "zh": "写入失败 · {rel} · 不是数据目录底下的相对名",
       "args": ["rel"]
     },
+    "beOwnState.read.newer": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{path} 由版本更高的后端写入 · 未覆盖 · 此后端认格式 {mine} · 它是 {theirs}",
+      "args": ["path", "mine", "theirs"]
+    },
     "beOwnState.read.notJson": {
       "kind": "error",
       "role": "报错",
