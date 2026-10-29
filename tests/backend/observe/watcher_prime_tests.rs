@@ -406,6 +406,10 @@ fn prime_once(
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::new(tx);
     initial_session_scan(&rig.sessions, &mut state, &mut sink);
+    assert!(
+        scans.peek(rec).is_none(),
+        "预读收下会话把整张扫描图留在了缓存里（没人开界面）"
+    );
     scans.get(rec).expect("界面问扫描图");
     scans.flush();
     let read = state.prime_bytes + scans.bytes_read();
