@@ -40,9 +40,8 @@
 //!
 //! - **写**这份文件：每台机器上恰好一个程序写者。每台都是那台的后端 —— 只有账号域那一份 `accounts/upstream_select/file_face.rs`，
 //!   只从帧面 `apikey-key-set` 进来（`readonly_guard` 第四层登记）。两侧都开本 crate 的 `harden`。
-//! - **读**这份文件：两侧都读。`K-H2a` 裁四原话「backend 只许读」**收窄**成上面那一格：
-//!   后端里除了那一份，照旧一个写都没有 —— 先前由「feature 不开」这件事让编译器兜着，
-//!   今天由两条判据兜（`readonly_guard::g6_dependency_signoff` 的写半边引用处判据 ·
+//! - **读**这份文件：两侧都读。后端里除了上面那一份，一个写都没有 ——
+//!   由两条判据兜（`readonly_guard::g6_dependency_signoff` 的写半边引用处判据 ·
 //!   `relay::creds_guard` 的 feature 声明判据）。
 
 pub mod perm;

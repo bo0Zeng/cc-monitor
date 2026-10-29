@@ -1,4 +1,4 @@
-//! 文件窗口进程的**躯体**（原住壳里 `filewin/proc.rs` 的「子进程那一侧」，逐字搬来）：读种子（stdin 第一行）→ 在自己的 stdin / stdout 上起通道 → 列第一屏、在 stderr 上说那一行 → 开窗。
+//! 文件窗口进程的**躯体**：读种子（stdin 第一行）→ 在自己的 stdin / stdout 上起通道 → 列第一屏、在 stderr 上说那一行 → 开窗。
 //!
 //! 进程形态（一窗一进程 · 种子走 stdin · 为什么）与 monitor 那一侧（起进程 · 写种子 · 读就绪那一行 · 收尸）住壳里
 //! `src/frontend/shell/src/filewin/proc.rs` 的头注；两边对上的形状住 `filewin-contract`。

@@ -89,7 +89,7 @@ fn the_shared_interpolation_golden_agrees_with_this_reader() {
 /// 一个不成对 / 不是给了值的 `{` 原样留着、后面的占位符照认。正反各一格（只断「不重扫」的话，把插值焊成「一个都不换」也能绿）。
 #[test]
 fn the_interpolation_is_one_pass_and_never_rescans_a_value() {
-    // 值里带另一个参数的占位符：原样留着（先前逐个 replace ⇒ `[%1] tmux: %1`）。
+    // 值里带另一个参数的占位符：原样留着（逐个 replace 的话会成 `[%1] tmux: %1`）。
     assert_eq!(
         copy_text(
             "sessionOpen.attached.body",
@@ -97,7 +97,7 @@ fn the_interpolation_is_one_pass_and_never_rescans_a_value() {
         ),
         "{name} · tmux 会话「%1」"
     );
-    // 参数给的顺序反过来也一样（先前的写法只在一个方向上重扫 —— 顺序不该是语义的一部分）。
+    // 参数给的顺序反过来也一样（顺序不是语义的一部分）。
     assert_eq!(
         copy_text(
             "sessionOpen.attached.body",

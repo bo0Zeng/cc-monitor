@@ -336,9 +336,7 @@ pub struct CancelDesk {
 impl CancelDesk {
     /// 造一个这一趟的 `transfer_id` 并登记进在飞表。
     ///
-    /// ⚠ 每趟现造：它是池子取消登记表的键，两趟用同一个键会互相摘掉对方的登记
-    /// （从前池子那张按 id 的取消登记表的注释逐字记着这一条；那张表随老 Tauri 传输一路删了，
-    /// 这一趟今天是停订即撤，键仍要唯一 —— 它是本层在飞表的键）。
+    /// ⚠ 每趟现造：它是本层在飞表的键，两趟用同一个键会互相摘掉对方的登记（撤一趟是停订即撤）。
     pub fn mint(&self, name: &str) -> String {
         let id = format!("filewin-{}", uuid::Uuid::new_v4());
         self.in_flight
