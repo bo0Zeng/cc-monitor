@@ -13439,6 +13439,25 @@ data class NeedsAt(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class NeedsCell(
+    val id: String,
+    val label: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<NeedsCell> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("label", { Str }, optional = false, nullable = false),
+            ),
+            { a -> NeedsCell(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.id, v.label) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class NeedsChoice(
     val id: String,
     val text: String,
@@ -13512,7 +13531,7 @@ sealed interface NeedsItem {
         override val rank: Long,
         val workspace: String,
         val slice: String,
-        val k: Int,
+        val cell: NeedsCell? = null,
     ) : NeedsItem, Ordered {
         override val kind: String get() = "plan"
         override var wireOrder: IntArray? = null
@@ -13546,10 +13565,10 @@ sealed interface NeedsItem {
                         Field("rank", { U64 }, optional = false, nullable = false),
                         Field("workspace", { Str }, optional = false, nullable = false),
                         Field("slice", { Str }, optional = false, nullable = false),
-                        Field("k", { Int32 }, optional = false, nullable = false),
+                        Field("cell", { opt(NeedsCell.ADAPTER) }, optional = true, nullable = true),
                         ),
-                        { a -> NeedsItem.Plan(a[1] as Long, a[2] as String, a[3] as String, a[4] as Int) },
-                        { v -> arrayOf("plan", v.rank, v.workspace, v.slice, v.k) },
+                        { a -> NeedsItem.Plan(a[1] as Long, a[2] as String, a[3] as String, a[4] as NeedsCell?) },
+                        { v -> arrayOf("plan", v.rank, v.workspace, v.slice, v.cell) },
                     )),
                 Variant("manual", NeedsItem.Manual::class.java, obj(
                         listOf(

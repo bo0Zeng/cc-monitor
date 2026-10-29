@@ -7619,6 +7619,7 @@ type NeedsAskRun = { id: string,
  * 它是哪一种（那一家原样，如 `general-purpose`）；没说 ⇒ `null`。
  */
 kind: string | null, };
+type NeedsCell = { id: string, label: string, };
 type NeedsChoice = { 
 /**
  * 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
@@ -7633,7 +7634,7 @@ note: NeedsNote,
  */
 row: NeedsChoiceRow, };
 type NeedsChoiceRow = "main" | "hold" | "release";
-type NeedsItem = { "kind": "session", rank: number, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, k: number, } | { "kind": "manual", rank: number, manual: ManualItem, };
+type NeedsItem = { "kind": "session", rank: number, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, cell?: NeedsCell, } | { "kind": "manual", rank: number, manual: ManualItem, };
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsList = { 
 /**
@@ -7882,6 +7883,7 @@ type NeedsAskRun = { id: string,
  */
 kind: string | null, };
 type NeedsAt = { origin: Origin, item: NeedsItem, };
+type NeedsCell = { id: string, label: string, };
 type NeedsChoice = { 
 /**
  * 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
@@ -7897,7 +7899,7 @@ note: NeedsNote,
 row: NeedsChoiceRow, };
 type NeedsChoiceRow = "main" | "hold" | "release";
 type NeedsDown = { origin: Origin, said: string, };
-type NeedsItem = { "kind": "session", rank: number, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, k: number, } | { "kind": "manual", rank: number, manual: ManualItem, };
+type NeedsItem = { "kind": "session", rank: number, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, cell?: NeedsCell, } | { "kind": "manual", rank: number, manual: ManualItem, };
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsMergeReq = { machines: Array<Origin>, };
 type NeedsMerged = { items: Array<NeedsAt>, total: number, unreadable: Array<NeedsUnreadable>, down: Array<NeedsDown>, };
