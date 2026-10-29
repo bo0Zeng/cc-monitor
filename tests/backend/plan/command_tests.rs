@@ -269,10 +269,7 @@ fn a_timed_out_or_unstarted_pb_is_failed_with_the_verb() {
         )
     );
     assert_eq!(raw, None);
-    let gone = copy_core::said::Said {
-        said: "x".into(),
-        raw: Some("no such file".into()),
-    };
+    let gone = copy_core::said::Said::with_raw("x".into(), "no such file");
     let (code, said, raw) = answer("render", Err(gone)).unwrap_err();
     assert_eq!(
         (code, said.as_str(), raw.as_deref()),

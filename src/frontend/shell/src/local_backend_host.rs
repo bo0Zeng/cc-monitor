@@ -767,7 +767,7 @@ fn attach_stream(
         let mut reader_end = crate::backend_policy::ReaderEnd::CleanEof;
         // 这条载体上丢了几行 / 几帧 —— 原先两处裸 `continue` 一声不吭；记账，流结束出总账。
         let mut tally = crate::frame_tally::FrameTally::new("本机常驻后端（脱离载体）");
-        // 解不出来的帧每种说一次（日志 ＋ 本机的健康信息）。
+        // 解不出来的帧每种说一次（日志 ＋ 告诉用户）。
         let mut unread = crate::stream_source::UnreadNotes::new(
             crate::inbound_client::LOCAL_ORIGIN,
             copy_text("rsLocalBackendHost.local.machine", &[]),
@@ -802,12 +802,7 @@ fn attach_stream(
                 }
                 continue;
             };
-            let Some(f) = unread.take(
-                line,
-                Some(&client),
-                &mut tally,
-                &crate::stream_source::local_health,
-            ) else {
+            let Some(f) = unread.take(line, Some(&client), &mut tally) else {
                 continue;
             };
             // 与 stdio 那条载体同一处分派；有序的那几种送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。

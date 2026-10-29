@@ -1,6 +1,6 @@
 //! 前后端契约的单一来源：Tauri 事件名常量 + emit payload schema。
 //!
-//! `events` 子模块定义所有 `emit` 事件名（task-update / remote-health …；会话起停并进了会话流的格）；payload 结构体
+//! `events` 子模块定义所有 `emit` 事件名；payload 结构体
 //! （如 `JsonlLinePayload`，携带 per-file 单调 `seq`，前端 RecordTimeline 据此排序）也在本文件。
 //! 前端 `events.ts` 的 TS 接口须与此保持一致。
 //!
@@ -21,11 +21,6 @@ pub mod events {
     /// 于是「10 个事件名钉死」那条守卫**不含它** —— 给它上了类型却把名字漏在门禁外。
     /// 加常量本身零行为变化（同一个字面量，只是有了名字）。
     pub const FRONTEND_READY: &str = "frontend-ready";
-    /// **远端健康通道**（SS-F，issue #32 起）：远端数据源把「拥塞丢行 / 版本不符」等
-    /// 非致命健康事件回传给用户。前端单一 listener（remote-health.ts）按 origin 节流后
-    /// 弹 toast。`kind` 区分类别（"overflow" / "version" / …），payload 见
-    /// [`RemoteHealthPayload`]。#33 版本协商复用同通道、只换 kind/message，不另造。
-    pub const REMOTE_HEALTH: &str = "remote-health";
     /// **本机后端起没起来变了**：[`LocalBackend`](super::LocalBackend)（与 `backend_status` 的 `local` 那一格同形，
     /// `local_backend_host::local_backend_now`）。通道接上 / 断了 · 正在起 · 口上换了人 · 起的时候被拒就推一帧；
     /// 各台（含本机）的状态成品走本机后端的 `changed {machine}`。
@@ -321,21 +316,4 @@ pub enum LocalBackend {
         fixes: Vec<cmd_wire::machine::FixButton>,
         next: Option<String>,
     },
-}
-
-/// 远端健康事件 payload（SS-F，issue #32 起）。`origin` = 出问题的远端机器 label
-/// （从 `Option<String>` 改成 `String`：五个发射点全在 `stream_source/`、全都带着那台的 label，
-/// 「没有 origin」从来不是一个会发生的值 —— 类型里就不给它留格子，TS 那侧随之不再装得下 `null`）；
-/// `kind` = 类别（"overflow" / "version-older" / "version-newer" / "version-incomparable" / …）供前端节流键与图标选择；`message` =
-/// 直接展示给用户的人读说明。
-#[derive(Debug, Serialize, Clone)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub struct RemoteHealthPayload {
-    pub origin: String,
-    pub kind: String,
-    pub message: String,
-    /// 「复制详情」那几行（壳写；空 ⇒ 界面不出按钮）。今天只有文件窗口开了又退那一形带（退出状态 · stderr 末几行）。
-    pub detail: String,
 }

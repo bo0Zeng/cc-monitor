@@ -30,10 +30,14 @@ impl FileChange {
     }
 }
 
-/// `remote-health` 的出口：宿主（`lib.rs::remote_health_out`）拿窗口把手造它，本模块只调它、不认识 GUI 宿主（`backend_client_guard_tests.rs::GUARDED`）。
-/// 回 `Err(原话)` ＝ 没发出去，各发射点那句 warn 照旧。
-pub(crate) type HealthOut =
-    Arc<dyn Fn(crate::ui_contract::RemoteHealthPayload) -> Result<(), String> + Send + Sync>;
+/// 告诉用户的那几句里那台叫什么：本机 ⇒「本机」，别台 ⇒ 它的名字。
+pub(crate) fn host_label(origin: &crate::origin::Origin) -> String {
+    if origin.is_local() {
+        copy_core::copy_text("rsLocalBackend.place.thisMachine", &[])
+    } else {
+        origin.to_string()
+    }
+}
 
 /// 「这台」那几句的读法：给人看的那一句 ＋ 复制详情。
 pub(crate) fn said_of(p: &resident_client::feed::Problem) -> crate::detail::Said {
@@ -60,17 +64,17 @@ struct Conn {
     intake: LineIntake,
     /// 这条流上跳过了几帧认不出的。
     tally: crate::frame_tally::FrameTally,
-    /// 解不出来的帧每种说一次（日志 ＋ 这台的健康信息）。
+    /// 解不出来的帧每种说一次（日志 ＋ 告诉用户）。
     unread: UnreadNotes,
 }
 
 impl Conn {
-    fn open(origin: &crate::origin::Origin, replay: &Arc<EventReplay>, health: &HealthOut) -> Conn {
+    fn open(origin: &crate::origin::Origin, replay: &Arc<EventReplay>) -> Conn {
         let label = origin.to_string();
         Conn {
-            intake: LineIntake::open(label.clone(), replay, health),
+            intake: LineIntake::open(label.clone(), replay),
             tally: crate::frame_tally::FrameTally::new(format!("stream_source {label}")),
-            unread: UnreadNotes::new(label.clone(), label),
+            unread: UnreadNotes::new(label, host_label(origin)),
         }
     }
 }
@@ -88,7 +92,6 @@ impl Conn {
 pub(crate) async fn consume(
     mut rx: tokio::sync::mpsc::Receiver<LocalItem>,
     replay: Arc<EventReplay>,
-    health: HealthOut,
 ) {
     let local = crate::origin::Origin::local();
     let mut conns: HashMap<crate::origin::Origin, Conn> = HashMap::new();
@@ -101,14 +104,14 @@ pub(crate) async fn consume(
             return;
         };
         if !matches!(item, LocalItem::StreamEnded) && !conns.contains_key(&local) {
-            conns.insert(local.clone(), Conn::open(&local, &replay, &health));
+            conns.insert(local.clone(), Conn::open(&local, &replay));
             replay.origin_seen(&local, true);
         }
         match item {
-            LocalItem::Frame(Ordered::Relayed(r)) => relayed(r, &mut conns, &replay, &health).await,
+            LocalItem::Frame(Ordered::Relayed(r)) => relayed(r, &mut conns, &replay).await,
             LocalItem::Frame(f) => {
                 if let Some(c) = conns.get_mut(&local) {
-                    apply(&local, f, &mut c.intake, &replay, &health).await
+                    apply(&local, f, &mut c.intake, &replay).await
                 }
             }
             LocalItem::LineLost => {
@@ -160,13 +163,7 @@ async fn relayed(
     r: Relayed,
     conns: &mut HashMap<crate::origin::Origin, Conn>,
     replay: &Arc<EventReplay>,
-    health: &HealthOut,
 ) {
-    let say = |p| {
-        if let Err(e) = health(p) {
-            tracing::warn!("stream_source remote-health (frame) emit failed: {e}");
-        }
-    };
     match r {
         Relayed::Line { machine, line } => {
             let origin = crate::origin::Origin::named(machine);
@@ -179,8 +176,8 @@ async fn relayed(
                 if let Some(mut old) = conns.remove(&origin) {
                     old.intake.flush().await;
                 }
-                let mut c = Conn::open(&origin, replay, health);
-                let hello = c.unread.take(&line, None, &mut c.tally, &say);
+                let mut c = Conn::open(&origin, replay);
+                let hello = c.unread.take(&line, None, &mut c.tally);
                 attached(&origin, hello, replay);
                 conns.insert(origin.clone(), c);
                 return;
@@ -193,9 +190,9 @@ async fn relayed(
                 );
                 return;
             };
-            let frame = c.unread.take(&line, None, &mut c.tally, &say);
+            let frame = c.unread.take(&line, None, &mut c.tally);
             if let Some(item) = frame.and_then(|f| route(&origin, None, f)) {
-                apply(&origin, item, &mut c.intake, replay, health).await;
+                apply(&origin, item, &mut c.intake, replay).await;
             }
         }
         // 那台流上一行超长、整行丢了 ⇒ 订阅原位一格 `Gap`（`to_seq` 缺）。

@@ -1,7 +1,7 @@
 //! `control/launch_account.rs`：起会话挑号的规则表（逐条行为）＋ 那份记录（临时目录上真写真读、并发写不丢）。
 
 use super::*;
-use crate::history::launch_book::last_of;
+use crate::history::launch_book::{last_of, FILE_NAME};
 use crate::observe::accounts_query::test_support::{list, row as ok, row_with as acct, unreadable};
 use crate::observe::accounts_query::{AccountRow, ScannedAccount};
 use std::path::PathBuf;
@@ -258,6 +258,33 @@ fn a_note_is_adopted_into_the_record_and_kept_while_the_process_lives() {
     // 已经记着同一个号 ⇒ 不再写。
     assert!(!adopt(&own_at(&h), 4242, "s2", Some(990), &none_alive).unwrap());
     assert!(h.join(NOTES_DIR).join("4242.json").exists());
+    let _ = std::fs::remove_dir_all(&h);
+}
+
+/// 台账与便条都带声明的版本落盘；没有版本的旧台账照第 1 版读。
+#[test]
+fn the_ledger_and_the_note_carry_their_version() {
+    let h = temp_home("ver");
+    std::fs::write(h.join(FILE_NAME), r#"{"sessions":{"s0":"old"}}"#).unwrap();
+    leave_note(&own_at(&h), 4343, Some("x"), false, None, 1_000).unwrap();
+    let note: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(h.join(NOTES_DIR).join("4343.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        note["version"],
+        serde_json::json!(1),
+        "便条没带版本：{note}"
+    );
+    assert!(adopt(&own_at(&h), 4343, "s1", Some(990), &none_alive).unwrap());
+    let book: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(h.join(FILE_NAME)).unwrap()).unwrap();
+    assert_eq!(
+        book["version"],
+        serde_json::json!(1),
+        "台账没带版本：{book}"
+    );
+    assert_eq!(last_of(Some(&h), "s0").as_deref(), Some("old"));
+    assert_eq!(last_of(Some(&h), "s1").as_deref(), Some("x"));
     let _ = std::fs::remove_dir_all(&h);
 }
 

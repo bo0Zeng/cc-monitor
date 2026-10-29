@@ -422,8 +422,7 @@ describe("本机恢复的主路：人没动过 ⇒ 不带号 · 不带放在哪�
 // | ② 生成物面 | `src/frontend/ui/generated/Origin.ts` 的**正文** | `ts-rs` 从 Rust 的 `origin::Origin` 生成 | 有人手写一处 `origin: string \| null` ⇒ 生成物一个字不动，而本条照绿 |
 //
 // ⚠ **它们买不到**：① 换个名字传同一件事（`host: string | null`）——
-//   词是 `origin`，改名就出人群；② **出方向**那一半（`JsonlRecord` 一族仍是可缺省的 `origin`，缺省 = 本机；
-// `RemoteHealthPayload.origin` 已改成恒有值的 `string`）——
+//   词是 `origin`，改名就出人群；② **出方向**那一半（`JsonlRecord` 一族仍是可缺省的 `origin`，缺省 = 本机）——
 //   那几份住 `src/frontend/shell/src/{ui_contract,history,search}.rs` 与 `lib.rs`，
 //   当时没改。**别把这一节读成「全仓没有 `null` 了」。**
 // ══════════════════════════════════════════════════════════════════════════
@@ -572,8 +571,7 @@ describe("：origin 去 null 化（入方向）", () => {
  * 它与盘上的违例两向相等，修好了不摘 ⇒ 红；新长一处 ⇒ 红。
  */
 const PENDING: Record<string, string> = {
-  // 最后一行摘了：`RemoteHealthPayload.origin` Rust 侧改成 `String`（五个发射点全带 label），
-  //   生成物随之是 `origin: string`。本表从此是空表 —— 判据照旧两向相等：新长一处装得下 null 的 origin ⇒ 红。
+  // 空表 —— 判据照旧两向相等：新长一处装得下 null 的 origin ⇒ 红。
 };
 
 

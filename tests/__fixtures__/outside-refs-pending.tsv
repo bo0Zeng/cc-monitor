@@ -47,7 +47,6 @@ src/backend/platform/tmux.rs	5
 src/backend/relay/listen.rs	1
 src/backend/relay/mod.rs	2
 src/backend/ssh-dial/connect.rs	1
-src/backend/ssh-dial/sftp.rs	2
 src/backend/stream/inbound/registry/file_manager.rs	1
 src/backend/wire/listen.rs	1
 src/backend/wire/mod.rs	2

@@ -2,10 +2,13 @@
 //!
 //! | # | 判据 | 正控 |
 //! |---|---|---|
-//! | D1 | 经 `Own` 写（`own.write(` · `own.write_streamed(`，空白不计）的生产文件里都有 `Doc::state(` / `Doc::cache(` 声明 | 写了没声明的一份 ⇒ 红 |
+//! | D1 | 经 `Own` 写（`own.write(` · `own.write_streamed(`，空白不计）的生产文件里都有 `Doc` 声明（从声明表取的 `Doc::of(` · `upgrade!(`，还没换上表的 `Doc::state(` / `Doc::cache(`） | 写了没声明的一份 ⇒ 红 |
 //! | D2 | 声明只住 `const` 条目（`const X: Doc<…> = Doc::…(`），落点 `rel` 全仓不重名 | 声明写在调用里 · 两份同名 ⇒ 红 |
 //!
 //! 盲区：写句柄不叫 `own` 的那一处 D1 看不见（今天全仓写句柄都叫 `own` / `self.own`）。
+
+/// 声明的写法：从表取（`Doc::of(` · 挂升级步的 `upgrade!(`）· 还没换上表的两种。
+const CTORS: [&str; 4] = ["Doc::of(", "upgrade!(", "Doc::state(", "Doc::cache("];
 
 fn production_files() -> Vec<(String, String)> {
     let root = guard_core::addr::backend_src_root();
@@ -35,7 +38,7 @@ fn writers_without_doc(files: &[(String, String)]) -> Vec<String> {
         .filter_map(|(rel, src)| {
             let s = squeezed(src);
             let writes = s.contains("own.write(") || s.contains("own.write_streamed(");
-            let declares = s.contains("Doc::state(") || s.contains("Doc::cache(");
+            let declares = CTORS.iter().any(|c| s.contains(c));
             (writes && !declares).then(|| rel.clone())
         })
         .collect()
@@ -50,7 +53,7 @@ fn declarations(files: &[(String, String)]) -> (Vec<(String, String)>, Vec<Strin
             continue;
         }
         let s = squeezed(src);
-        for ctor in ["Doc::state(", "Doc::cache("] {
+        for ctor in CTORS {
             let mut from = 0;
             while let Some(i) = s[from..].find(ctor).map(|i| i + from) {
                 from = i + ctor.len();

@@ -154,11 +154,8 @@ impl Book {
 
 type Read = crate::common::own_state::Read<Book>;
 
-/// 读盘的上限（90 天清一次，远到不了）。
-const MAX_BYTES: u64 = 16 << 20;
-
-/// 那一份：状态（读不懂不覆盖）。
-const DOC: Doc<Book> = Doc::state(relay_route_core::LINEAGE_REL, MAX_BYTES);
+/// 那一份：状态（读不懂不覆盖；落点 · 版本 · 读上限照表）。
+const DOC: Doc<Book> = Doc::of(&relay_route_core::LINEAGE_FILE);
 
 pub(crate) fn read_at(path: &Path) -> Read {
     DOC.read(path)
@@ -255,8 +252,7 @@ fn write_locked(own: &Own, f: impl FnOnce(&mut Book) -> bool) -> Result<Book, Sa
         }
     };
     if f(&mut book) {
-        let body = crate::common::own_state::json_body(path, &book)?;
-        own.write(&file, &held, &body)?;
+        DOC.write(own, &dir, &held, &book)?;
     }
     Ok(book)
 }

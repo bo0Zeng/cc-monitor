@@ -13,12 +13,12 @@ use std::path::Path;
 pub(crate) const FILE_NAME: &str =
     relay_route_core::file_name_of(relay_route_core::LAUNCH_ACCOUNTS_REL);
 
-/// 读盘的上限（一条会话一行；便条那几张同用这一个）。
-pub(crate) const MAX_BYTES: u64 = 16 << 20;
+/// 读盘的上限（一条会话一行）：照表。
+pub(crate) const MAX_BYTES: u64 = relay_route_core::LAUNCH_ACCOUNTS_FILE.row.cap;
 
-/// 启动台账：状态（读不懂不覆盖）。
+/// 启动台账：状态（读不懂不覆盖；落点 · 版本 · 读上限照表）。
 const BOOK: crate::common::own_state::Doc<Book> =
-    crate::common::own_state::Doc::state(relay_route_core::LAUNCH_ACCOUNTS_REL, MAX_BYTES);
+    crate::common::own_state::Doc::of(&relay_route_core::LAUNCH_ACCOUNTS_FILE);
 
 /// `launch-accounts.json`（启动台账）：`sid → 号` ＋ 起会话时给了 `--tab` 的那几条 `sid → 标签页`。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,6 +42,16 @@ pub(crate) fn read_book(home: &Path) -> Result<Book, crate::common::said::Said> 
         Read::Present(b) => Ok(b),
         Read::Unreadable(why) => Err(why),
     }
+}
+
+/// 整份写回（`dir` 是数据目录那一根，`held` 是它的锁；顶层带声明的版本）。写者只有 `control::launch_account::adopt`。
+pub(crate) fn write_book(
+    own: &crate::platform::fs::Own,
+    dir: &crate::platform::fs::OwnPath,
+    held: &crate::platform::fs::OwnLock,
+    book: &Book,
+) -> Result<(), crate::common::said::Said> {
+    BOOK.write(own, dir, held, book)
 }
 
 /// 这条会话上次用的号（读不出 / 没记 ⇒ `None`）。

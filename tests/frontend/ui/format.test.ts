@@ -2,7 +2,7 @@
  * format.ts 纯函数断言脚本：sizeText（大小的那一个读口）。
  *
  * 跑法：`node tests/frontend/ui/format.test.ts` 或 `npm run test:format`。
- * 同 remote-health.test.ts：零 node 依赖、失败 throw 非零退出作 pre-push 门禁；tsc --noEmit 类型检查。
+ * 零 node 依赖、失败 throw 非零退出作 pre-push 门禁；tsc --noEmit 类型检查。
  *
  * 为什么值得锁：大小的写法从前有三份（界面 GB 两位 · 文件窗口 GB 一位带 TB · 卡片自己除 1024），收成这一个读口与核心一份。
  */

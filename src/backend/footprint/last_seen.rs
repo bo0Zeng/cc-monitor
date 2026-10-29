@@ -148,12 +148,17 @@ pub(crate) const KINDS: [&str; 2] = ["accounts", "data"];
 pub(crate) const MAX_VALUE_BYTES: usize = 256 * 1024;
 /// 最多记几台。
 pub(crate) const MAX_ORIGINS: usize = 64;
-/// 整份文件最大多少字节（超了当读不懂）：每份封顶 × 两样 × 台数封顶 ＝ 256 KiB × 2 × 64。
-const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
+/// 那一份：缓存（再连上一次就有；落点 · 版本 · 读上限照表，读上限 ＝ 每份封顶 × 两样 × 台数封顶）。
+const DOC: crate::common::own_state::Doc<Store> =
+    crate::common::own_state::Doc::of(&relay_route_core::LAST_SEEN_FILE);
 
-/// 那一份：缓存（再连上一次就有）。
-const DOC: crate::common::own_state::Doc<Map<String, Value>> =
-    crate::common::own_state::Doc::cache(relay_route_core::LAST_SEEN_REL, MAX_FILE_BYTES);
+/// 盘上那一份：各台住 `origins` 底下（顶层还有读写口带的 `version`，台名不和它同一层）。
+#[derive(Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Store {
+    #[serde(default)]
+    origins: Map<String, Value>,
+}
 /// 机器名最长多少字节。
 const MAX_ORIGIN_BYTES: usize = 256;
 
@@ -174,10 +179,10 @@ fn origin_arg(m: &cmd_wire::Machine) -> Result<String, crate::wire::spec::Fail> 
         .ok_or_else(|| bad("`origin` missing or not a short non-empty string"))
 }
 
-/// 整份（读不懂 / 不在 ⇒ 空：缓存，下一次记的时候整份重来）。形状：`{<origin>: {<kind>: {atMs, value}}}`。
+/// 各台那一层（读不懂 / 不在 / 旧版 ⇒ 空：缓存，下一次记的时候整份重来）。形状：`{<origin>: {<kind>: {atMs, shape, value}}}`。
 fn load(path: &Path) -> Map<String, Value> {
     match DOC.read(path) {
-        crate::common::own_state::Read::Present(m) => m,
+        crate::common::own_state::Read::Present(s) => s.origins,
         _ => Map::new(),
     }
 }
@@ -285,10 +290,9 @@ fn locked_edit(
     let held = own
         .lock(dir)
         .map_err(|e| io(crate::common::said::Said::from(e)))?;
-    let mut all = load(file.as_path());
-    if edit(&mut all) {
-        let body = crate::common::own_state::json_body(file.as_path(), &all).map_err(io)?;
-        own.write(file, &held, &body).map_err(io)?;
+    let mut origins = load(file.as_path());
+    if edit(&mut origins) {
+        DOC.write(own, dir, &held, &Store { origins }).map_err(io)?;
     }
     Ok(())
 }
