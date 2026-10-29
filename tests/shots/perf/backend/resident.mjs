@@ -1,6 +1,6 @@
 // 后端常驻台架（手跑，不进门禁）：沙箱 HOME 起一个后端，挂 N 条「在跑」的会话（pidfile 指向本脚本起的 sleep 进程），
 // 等它起来、热完，再量一个窗口里的 CPU · 常驻 · 线程 · fd · inotify · 上下文切换 · 收到的帧。
-// 常驻比较一律看 footprintMb（RssAnon ＋ 换出的）；窗口里换出的涨了 ⇒ swapped: true（这时 rss1 偏小、不可比）。thpMb 是透明大页。
+// 常驻比较一律看 footprintMb（RssAnon ＋ 换出的）；窗口里换出的涨了 1 MB 以上 ⇒ swapped: true（这时 rss1 偏小、不可比）。thpMb 是透明大页。
 // node resident.mjs <bin> <home> <live.json> <mode: idle0|idle10|live10|big1> <窗口秒> [--warm 秒] [--rate 每会话每秒行数]
 //   [--search 热完先问两次全文搜索] [--append 非 live10 也追加] [--fork 追加时造分叉] [--skip N] [--env K=V,…] [--tag 名]
 // <home> 是沙箱家（底下 .claude/projects/… 放只读拷进来的记录）；<live.json> 是相对 projects 的记录路径数组。
@@ -110,7 +110,7 @@ if (mode === "live10" || process.argv.includes("--append")) {
 const secs = (performance.now() - tw) / 1000;
 const tt1 = tt(); const byThr = {}; for (const [t, [n, v]] of Object.entries(tt1)) { const d = v - (tt0[t]?.[1] ?? 0); if (d > 0) byThr[n] = (byThr[n] ?? 0) + d; }
 const m1 = status(); const c1 = stat(); const x1 = ctx(); const fd = fds();
-console.log(JSON.stringify({ tag: TAG, searched, mode, helloMs: +helloMs.toFixed(0), warmS: WARM, winS: +secs.toFixed(1), cpuPct: +(((c1 - c0) / secs)).toFixed(2), ctxPerS: +((x1 - x0) / secs).toFixed(1), appended, framesPerS: +((frames - f0) / secs).toFixed(2), kbPerS: +((bytes - b0) / 1024 / secs).toFixed(1), footprintMb: m1.footprintMb, swap0: m0.swapMb, swap1: m1.swapMb, swapped: m1.swapMb > m0.swapMb, thpMb: m1.thpMb, rss0: m0.rssMb, rss1: m1.rssMb, anon1: m1.anonMb, hwm: m1.hwmMb, threads: m1.threads, fds: fd.n, watches: fd.watches, fdBy: fd.by, threadNames: threadNames(), cpuByThread: byThr, kinds, load: readFileSync("/proc/loadavg", "utf8").split(" ").slice(0, 3).join(" ") }));
+console.log(JSON.stringify({ tag: TAG, searched, mode, helloMs: +helloMs.toFixed(0), warmS: WARM, winS: +secs.toFixed(1), cpuPct: +(((c1 - c0) / secs)).toFixed(2), ctxPerS: +((x1 - x0) / secs).toFixed(1), appended, framesPerS: +((frames - f0) / secs).toFixed(2), kbPerS: +((bytes - b0) / 1024 / secs).toFixed(1), footprintMb: m1.footprintMb, swap0: m0.swapMb, swap1: m1.swapMb, swapped: m1.swapMb - m0.swapMb >= 1, thpMb: m1.thpMb, rss0: m0.rssMb, rss1: m1.rssMb, anon1: m1.anonMb, hwm: m1.hwmMb, threads: m1.threads, fds: fd.n, watches: fd.watches, fdBy: fd.by, threadNames: threadNames(), cpuByThread: byThr, kinds, load: readFileSync("/proc/loadavg", "utf8").split(" ").slice(0, 3).join(" ") }));
 child.kill("SIGTERM");
 for (const s of sleepers) s.kill("SIGTERM");
 // 不截回：截短会让下一趟后端认成「记录变短」、从 0 整份重读（台架自己造的假象）。追加的行留着，下一趟照「会话变长了」接着读。
