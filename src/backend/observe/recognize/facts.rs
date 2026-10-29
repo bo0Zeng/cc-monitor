@@ -781,12 +781,12 @@ const PLAN_RANK: u64 = (NEEDS_BY_DANGER.len() as u64 + 1) * NEEDS_TIER_SPAN;
 /// 会话外的（需登录的号 · MCP）排在计划格之后那一档。
 const MANUAL_RANK: u64 = (NEEDS_BY_DANGER.len() as u64 + 2) * NEEDS_TIER_SPAN;
 
-/// **一台的需手动整份**（`sessions-needs` 的回包，唯一一处拼）：在等的会话（各带 `needs.rank`）· 计划里每一片要人看的那几格
-/// （`plan` ＝ 工作区 · 片名 · 要人看几格，照 `plan-list` 的先后）· 会话外的（`manual`：读不出 ⇒ 那一句，那一截不列）。
+/// **一台的需手动整份**（`sessions-needs` 的回包，唯一一处拼）：在等的会话（各带 `needs.rank`）· 计划里要人看的每一条
+/// （`plan` ＝ [`crate::plan::needs::need_items`] 摊开的那几条：工作区 · 片名 · 落在哪一格）· 会话外的（`manual`：读不出 ⇒ 那一句，那一截不列）。
 /// 排好：照 `rank`，并列照交进来的先后。纯计算。
 pub(crate) fn needs_list(
     sessions: Vec<cmd_wire::needs::NeedsRow>,
-    plan: &[(String, String, u32)],
+    plan: &[crate::plan::needs::NeedAt],
     manual: Result<Vec<cmd_wire::needs::ManualItem>, String>,
     answered: Vec<cmd_wire::needs::AnsweredRow>,
 ) -> cmd_wire::needs::NeedsList {
@@ -798,14 +798,12 @@ pub(crate) fn needs_list(
             session: r,
         })
         .collect();
-    for (workspace, slice, n) in plan {
-        items.extend((0..*n).map(|k| NeedsItem::Plan {
-            rank: PLAN_RANK,
-            workspace: workspace.clone(),
-            slice: slice.clone(),
-            k,
-        }));
-    }
+    items.extend(plan.iter().map(|p| NeedsItem::Plan {
+        rank: PLAN_RANK,
+        workspace: p.workspace.clone(),
+        slice: p.slice.clone(),
+        cell: p.cell.clone(),
+    }));
     let manual_unreadable = match manual {
         Ok(list) => {
             items.extend(list.into_iter().map(|m| NeedsItem::Manual {

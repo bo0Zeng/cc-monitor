@@ -204,14 +204,48 @@ pub(crate) fn ackable(sl: &PlanSlice, key: &str) -> Option<bool> {
         .map(|x| x.kind != ASK)
 }
 
-/// 一片要你看的数：没认可的、不算问人那一种（那一条由会话那一侧数，只算一次）。
+/// 一片要你看的数：[`open_cells`] 那几条。
 pub(crate) fn count_slice(sl: &PlanSlice) -> u32 {
-    let n = sl
-        .needs
+    u32::try_from(open_cells(sl).len()).unwrap_or(u32::MAX)
+}
+
+/// 一片里还要人看的每一条（没认可的、不算问人那一种：那一条由会话那一侧数，只算一次）落在哪一格，照 `needs` 的先后：
+/// 那一条的格在图上 ⇒ 编号 ＋ `labels` 里后端写好的「编号 标题」；没有格可落（顶块的根 `project` · 不通过那一条不在哪个权力范围里）⇒ `None`。
+pub(crate) fn open_cells(sl: &PlanSlice) -> Vec<Option<cmd_wire::needs::NeedsCell>> {
+    sl.needs
         .iter()
         .filter(|x| x.kind != ASK && !x.acked)
-        .count();
-    u32::try_from(n).unwrap_or(u32::MAX)
+        .map(|x| {
+            let id = x.cell.as_deref().filter(|id| cell(sl, id).is_some())?;
+            sl.labels.get(id).map(|label| cmd_wire::needs::NeedsCell {
+                id: id.to_string(),
+                label: label.clone(),
+            })
+        })
+        .collect()
+}
+
+/// 计划里要人看的一条：哪个工作区 · 哪一片 · 落在哪一格（[`open_cells`]）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NeedAt {
+    pub(crate) workspace: String,
+    pub(crate) slice: String,
+    pub(crate) cell: Option<cmd_wire::needs::NeedsCell>,
+}
+
+/// 几份（标过认可的）成品里要人看的每一条，照成品 · 片 · [`open_cells`] 的先后摊开（`sessions-needs` 计划那一截）。
+pub(crate) fn need_items(docs: &[PlanRead]) -> Vec<NeedAt> {
+    docs.iter()
+        .flat_map(|doc| {
+            doc.slices.iter().flat_map(move |sl| {
+                open_cells(sl).into_iter().map(move |cell| NeedAt {
+                    workspace: doc.workspace.clone(),
+                    slice: sl.name.clone(),
+                    cell,
+                })
+            })
+        })
+        .collect()
 }
 
 /// 退回 / 说给负责的那一个对象：一格，或顶块 `project`（pb 里与格同样可寻址：`pb see project`）。

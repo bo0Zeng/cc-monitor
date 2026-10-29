@@ -298,3 +298,54 @@ fn every_red_check_is_exactly_one_red_need() {
     assert_eq!(got.iter().filter(|n| n.kind == "red").count(), reds);
     assert!(reds > 0, "夹具里没有不通过的 —— 本条空转");
 }
+
+/// ★ 每条还要人看的落在哪一格（`open_cells`）：与 `count_slice` 同一判（没认可 · 不算问人），先后照 `needs`；
+/// 落在图上的一格 ⇒ 那一格的编号与后端写好的「编号 标题」；顶块没有根格 · 红灯不在块里 ⇒ 没有格。
+#[test]
+fn each_need_still_open_lands_on_its_cell_labelled_by_the_backend() {
+    let mut d = dump("/w");
+    d["repos"][0]["check"]["failures"] = json!([
+        {"rule": "悬空", "message": "x", "scope": "A2", "fix": "x", "refs": []},
+        {"rule": "无主", "message": "y", "scope": null, "fix": "y", "refs": []},
+        {"rule": "又一条", "message": "z", "scope": "A2", "fix": "z", "refs": []}
+    ]);
+    let a2 = Some(cmd_wire::needs::NeedsCell {
+        id: "A2".into(),
+        label: "A2 乙功能".into(),
+    });
+    // 停了：红灯三条（第三条认可过）· project 停了（顶块的根不是图上的格）· A2 停了。
+    let mut sl = slice_with(&d, &all_ended);
+    sl.needs = of_slice(&sl, None, &nobody_waits);
+    for x in &mut sl.needs {
+        x.acked = x.key == "red:又一条@A2";
+    }
+    let got = open_cells(&sl);
+    assert_eq!(got, vec![a2.clone(), None, None, a2.clone()], "{:?}", sl.needs);
+    assert_eq!(usize::try_from(count_slice(&sl)).unwrap(), got.len());
+    // 在等人：问人那两条不在里头（由会话那一侧数）。
+    let mut sl = slice_with(&d, &all_working);
+    sl.needs = of_slice(&sl, None, &main_waits);
+    assert_eq!(open_cells(&sl), vec![a2.clone(), None, a2]);
+}
+
+/// ★ 这台要人看的每一条（`sessions-needs` 计划那一截）只经 [`need_items`] 从几份成品摊开：照成品 · 片 · `open_cells` 的先后，
+/// 各带工作区 · 片名 · 那一格；没有要看的片不出。
+#[test]
+fn need_items_spread_every_open_need_with_its_workspace_slice_and_cell() {
+    let mut d = dump("/w");
+    d["repos"][0]["check"]["failures"][0]["scope"] = json!("A2");
+    let mut doc = made_with(&d, &all_working);
+    for sl in &mut doc.slices {
+        sl.needs = of_slice(sl, None, &nobody_waits);
+    }
+    let got: Vec<(String, String, Option<String>)> = need_items(std::slice::from_ref(&doc))
+        .into_iter()
+        .map(|n| (n.workspace, n.slice, n.cell.map(|c| c.label)))
+        .collect();
+    assert_eq!(
+        got,
+        vec![("/w".into(), "alpha".into(), Some("A2 乙功能".into()))],
+        "beta 那一片没有要看的 ⇒ 不出"
+    );
+    assert!(need_items(&[]).is_empty());
+}

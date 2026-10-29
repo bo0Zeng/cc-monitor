@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.ui.needs
 
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
+import com.ccmonitor.mobile.core.wire.gen.NeedsCell
 import com.ccmonitor.mobile.core.wire.gen.NeedsItem
 import com.ccmonitor.mobile.core.wire.gen.NeedsRow
 import com.ccmonitor.mobile.link.Problem
@@ -19,13 +20,16 @@ sealed interface NeedsLine {
         val row: NeedsRow,
     ) : NeedsLine
 
-    /** 计划里一片要人看的那几格（同一片收成一行 · 带条数）：点了进那一片的大纲。 */
+    /** 计划里要人看的一条（一条一行）：落在 [cell] 那一格 ⇒ 点了进那一格；没有格可落 ⇒ 进那一片的大纲。 */
     data class Plan(
         override val host: HostName,
         val workspace: String,
         val slice: String,
-        val n: Int,
-    ) : NeedsLine
+        val cell: NeedsCell?,
+    ) : NeedsLine {
+        /** 第一行：那一格的「编号 标题」（那台写好）；没有格 ⇒ 片名。 */
+        val title: String get() = cell?.label ?: slice
+    }
 
     /** 会话外的一项：有解法 ⇒［登录…］、整行可点；没有 ⇒ 第二行写为什么、不可点。 */
     data class Manual(
@@ -62,7 +66,7 @@ data class Overview(
 
 /**
  * 板 ⇒ 需手动屏。机器的先后：当前那台在前，别的照机器列表的先后；每台里的行照那台给的先后，不重排。
- * 这里只按台排、按片收行、把条数相加；判 · 排 · 写字都在那台。
+ * 这里只按台排、把条数相加；判 · 排 · 写字（连计划那一格的「编号 标题」）都在那台。
  */
 fun overviewOf(
     board: Map<String, MachineNeeds>,
@@ -84,24 +88,15 @@ fun overviewOf(
     )
 }
 
-/** 一台的几项 ⇒ 行（照那台的先后；计划同一片收成一行）。 */
+/** 一台的几项 ⇒ 行（照那台的先后，一项一行）。 */
 private fun linesOf(
     h: HostName,
     items: List<NeedsItem>,
-): List<NeedsLine> {
-    val out = mutableListOf<NeedsLine>()
-    for (it in items) {
-        val last = out.lastOrNull()
+): List<NeedsLine> =
+    items.map {
         when (it) {
-            is NeedsItem.Session -> out += NeedsLine.Session(h, it.session)
-            is NeedsItem.Manual -> out += NeedsLine.Manual(h, it.manual)
-            is NeedsItem.Plan ->
-                if (last is NeedsLine.Plan && last.workspace == it.workspace && last.slice == it.slice) {
-                    out[out.lastIndex] = last.copy(n = last.n + 1)
-                } else {
-                    out += NeedsLine.Plan(h, it.workspace, it.slice, 1)
-                }
+            is NeedsItem.Session -> NeedsLine.Session(h, it.session)
+            is NeedsItem.Manual -> NeedsLine.Manual(h, it.manual)
+            is NeedsItem.Plan -> NeedsLine.Plan(h, it.workspace, it.slice, it.cell)
         }
     }
-    return out
-}
