@@ -94,8 +94,8 @@ pub fn fingerprint(key: &PublicKey) -> String {
     key.fingerprint(HashAlg::Sha256).to_string()
 }
 
-// ═══ 待核的指纹：桌面机器表那一格换形过来的，只活这一版（下一版连同 `connect.rs` 里用它的那一支删）═══
-// 机器表里固化的只是指纹、还原不出钥匙 ⇒ 写成一行注释（ssh 不认它）；这台下回连上按它严格比，鉴权过了记整把、这一行随之去掉。
+// ═══ 待核的指纹：库里的一行注释（ssh 不认它；这里只读不写）═══
+// 这台没记过钥匙时按它严格比（`connect.rs`），鉴权过了记整把、这一行随之去掉。
 
 const PENDING: &str = "#cc-monitor-pending-fingerprint";
 
@@ -110,17 +110,6 @@ pub fn pending(text: &str, addrs: &[Endpoint]) -> Option<String> {
         .find(|l| is_pending_of(l, addrs))
         .and_then(|l| l.split_whitespace().nth(2))
         .map(str::to_string)
-}
-
-/// 给这台写一行待核的指纹（已有 ⇒ `None`）。
-pub fn with_pending(text: &str, addrs: &[Endpoint], fp: &str) -> Option<String> {
-    if pending(text, addrs).is_some() {
-        return None;
-    }
-    let line = format!("{PENDING} {} {}", names(addrs), fp.trim());
-    let mut lines = kept(text, |_| true);
-    lines.push(&line);
-    Some(joined(&lines))
 }
 
 #[cfg(test)]

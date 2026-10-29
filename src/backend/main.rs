@@ -213,7 +213,7 @@ async fn main() {
     // 一次性查询模式 stderr 只承载结构化错误/查询结果，不掺 info——兑现协议 v1 §3
     // 「错误 exit2 + stderr 纯 JSON 失败信封」，客户端可整段 JSON-parse stderr）。
     // 这台设了的各家数据目录（本机 `prefs.json` 的 `agentHomes`）交成那一家的目录环境变量：排在解析家目录、起任何会话之前。
-    control::apply_agent_homes(&own);
+    control::apply_agent_homes();
     let agent_home = resolve_agent_home();
     tracing::info!("agent_home = {}", agent_home.display());
 
@@ -251,7 +251,7 @@ async fn main() {
     let off_thread = legacy.is_some();
     let relay_own = own.clone();
     let legacy_own = own.clone();
-    // 占着常驻的那一个（常驻监听口在本进程）：账号库补号色只由它写，与 `rotation.json` 换形写回同一处、同一个写的人。
+    // 占着常驻的那一个（常驻监听口在本进程）：账号库补号色只由它写。
     let resident = listening.is_some();
     let start_relay = move || {
         if let Some(said) = legacy
@@ -276,15 +276,11 @@ async fn main() {
     }
     // 历史清单的缓存起来就后台热（低优先级的一次性线程）：第一次打开历史页 / 按 sid 开查看窗不再现扫整台。
     history::listing::warm_listing_in_background(agent_home.clone());
-    // 别名清单换了存法（配置文件 `profiles.toml`）：这台的配置文件还不在、旧形状的别名文件在 ⇒ 起来时一次性转过去（迁完就不再看旧文件）。
-    stream::inbound::migrate_aliases();
-    // 这台的偏好换了住处（`config.json` 那几格 ⇒ 各台 `prefs.json`）：只由常驻那一位换一次、远端那几份记成待交（下一版删）。
+    // 照这台的配置文件 `profiles.toml` 把别名文件与链接对齐一次（写法变了的那一份当场换）。
+    stream::inbound::align_aliases();
+    // `prefs.json` 第 1 版 ⇒ 第 2 版：只由常驻那一位换一次。
     if resident {
         control::prefs_migration::migrate_here(&own);
-        // 机器表里固化的主机指纹换进拨号核心那份库（下一版删）。
-        control::host_key_migration::migrate_here(&own);
-        // 历史注解的「隐藏」换成三态（升级链那一节）：常驻那一位起来时整份换一次、原文留 `.v1`。
-        cc_monitor_backend::history::history_annotations::migrate_here(&own);
         // 各台的常驻流归常驻这一位（机器表里要连的那几台各起一条，`control/feeds.rs`）；那台流上的事交每一份 watcher，
         //   投给连着这一位的每条流连接（控制面与观测面互不引用，由这里接上）。
         control::feeds::start(std::sync::Arc::new(observe::watcher::relay));

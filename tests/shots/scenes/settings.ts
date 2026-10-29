@@ -616,11 +616,6 @@ export const SETTINGS_SCENES: Scene[] = [
     top(pf("[data-role=tree]"));
     await sleep(300);
   }, profilesWorld("normal"), 860, 1180),
-  settings("profiles-10-migrated", "设置 · 别名 · 10 第一次升级后", "页首绿卡：11 条已转进配置文件（知道了）；.bashrc 里同名函数三个选择", async () => {
-    await profilesPage();
-    top(pf(".prof-notes"));
-    await sleep(300);
-  }, profilesWorld("migrated"), 1000),
   settings("profiles-11-empty", "设置 · 别名 · 11 空态", "没有配置文件：首建两条的预览 · 建这两条 · 从空的开始", async () => {
     await profilesPage();
     top(".settings-page:not([hidden]) .machine-aliases");

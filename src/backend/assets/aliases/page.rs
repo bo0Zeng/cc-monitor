@@ -822,38 +822,6 @@ fn edited_at(d: &dyn Door, store: &super::Store, path: &str, tz: &crate::Tz) -> 
     ))
 }
 
-/// 旧别名清单一次性转进配置文件之后的那张说明（写的那一头 [`super::migrate`]，读的这一头页首说一次）。
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ProfilesMigrated"
-    )
-)]
-pub(crate) struct Migrated {
-    /// 转进来几段。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) count: usize,
-    /// 配置文件的路径。
-    pub(crate) path: String,
-    /// `path` 的显示形（读的那一下按这台的家目录写好，界面照抄）；存盘那一份是空串、读的时候盖掉。
-    #[serde(default)]
-    pub(crate) shown: String,
-    /// 没能转的那几行（原样）。
-    pub(crate) skipped: Vec<String>,
-}
-
-/// 一次性迁移的说明（在 ⇒ 页首说一次）。
-fn migrated_note(d: &dyn Door, home: &str) -> Option<Migrated> {
-    let p = door::peek(d, home, relay_route_core::PROFILES_MIGRATED_REL).ok()?;
-    let mut m: Migrated = serde_json::from_str(&p.text?).ok()?;
-    m.shown = shown_in(&m.path, home);
-    Some(m)
-}
-
 /// 这台家目录底下的路径 ⇒ 显示形（[`crate::platform::paths::home_short`]）。
 fn shown_in(path: &str, home: &str) -> String {
     crate::platform::paths::home_short(path, Some(std::path::Path::new(home)))
@@ -936,8 +904,6 @@ pub(crate) struct ProfilesBook {
     /// 空态那一块的说明与按钮字，随 `seed` 的条数（没有 tmux 的那台只建一条）；`seed` 空 ⇒ 空串。
     seed_hint: String,
     seed_create: String,
-    /// 旧别名清单一次性转进来之后那张说明（「知道了」之后 `null`）。
-    migrated: Option<Migrated>,
     /// 链接住的目录（`~/.cc-monitor/bin`）。
     bin_dir: String,
     /// 这台的账号表（具名号，按账号库的顺序；表单「账号」那一格的选项）。
@@ -1008,7 +974,6 @@ pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Ans
         seed,
         seed_hint,
         seed_create,
-        migrated: migrated_note(d, &store.home),
         bin_dir: door::join_under(&store.home, links::bin_rel()),
         accounts: super::account_table(&store.home),
         tmux,
@@ -1261,8 +1226,6 @@ pub(crate) enum Op {
     },
     /// 配置文件还不在时建出来：`seed` ⇒ 带首建那两条，否则一段都没有。
     Init { seed: bool },
-    /// 迁移说明「知道了」：删掉那张说明。
-    AckMigrated {},
     /// 存一组（`was` ＝ `null` ⇒ 新建；名字变了 ⇒ 改名）。
     SaveSet {
         was: Option<String>,
@@ -1419,7 +1382,7 @@ fn changes_of_remove(
     Ok(out)
 }
 
-/// 线上那几种改动 ⇒ 配置文件的改动（`AckMigrated` / `Init` 另说，不在这里）。
+/// 线上那几种改动 ⇒ 配置文件的改动（`Init` 另说，不在这里）。
 /// **依次**判：每一条都在「盘上那份 ＋ 前面几条改完」那一份上判（后一条看得见前一条新增 / 改名的段）。
 fn changes_of(text: Option<&str>, ops: &[Op]) -> Result<Vec<Change>, String> {
     let mut out = Vec::new();
@@ -1433,7 +1396,7 @@ fn changes_of(text: Option<&str>, ops: &[Op]) -> Result<Vec<Change>, String> {
             }
             Op::Remove { name, children } => changes_of_remove(&book, name, *children)?,
             Op::Init { seed: true } => seed_changes(),
-            Op::Init { seed: false } | Op::AckMigrated {} => continue,
+            Op::Init { seed: false } => continue,
             Op::SaveSet { was, set } => changes_of_save_set(&book, was.as_deref(), set)?,
             Op::RemoveSet { name } => vec![Change::RemoveSet(name.clone())],
         };
@@ -1703,19 +1666,7 @@ pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<Profi
     let if_rev = req.if_rev.as_deref();
     let store = super::load(d).map_err(refused)?;
     let path = profile::path_in(&store.home);
-    if ops.iter().any(|o| matches!(o, Op::AckMigrated {})) {
-        if migrated_note(d, &store.home).is_some() {
-            door::remove(
-                d,
-                &store.home,
-                relay_route_core::PROFILES_MIGRATED_REL,
-                false,
-            )
-            .map_err(refused)?;
-        }
-    }
-    let touches_file = ops.iter().any(|o| !matches!(o, Op::AckMigrated {}));
-    if !touches_file {
+    if ops.is_empty() {
         return Ok(ProfilesWriteDone {
             wrote: false,
             rev: super::rev_of(store.text.as_deref()),

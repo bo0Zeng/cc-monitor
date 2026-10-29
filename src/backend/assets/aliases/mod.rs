@@ -73,12 +73,6 @@ pub(crate) const CALL: dialect::Call<'static> = dialect::Call {
     landing: Some(relay_route_core::BACKEND_LANDING_REL),
 };
 
-/// 早先版本写别名文件时的那条（裸叫 `ccm`）：只给一次性迁移读旧文件（[`old_list`]）。
-pub(crate) const OLD_CALL: dialect::Call<'static> = dialect::Call {
-    landing: None,
-    ..CALL
-};
-
 /// 生成文件自己的围栏（整份重写，所以它只是给人看的边界；两种方言共用，理由同上）。
 /// v1 → v2：`71` 逐字「不要有 account alias 这种东西」—— 文件里只有**一类**别名。
 /// 读回（[`read_in`]）不认这两行（注释行一律跳过），所以盘上那份 v1 照样读得回来。
@@ -220,30 +214,6 @@ pub(crate) fn first_aliases(shell: Shell) -> Vec<Alias> {
         ));
     }
     v
-}
-
-/// 旧形状的别名文件（一条一组参数）⇒ 那几条 ＋ 认不出的行。只给一次性迁移用（[`migrate`]）：
-/// 已经是新形状的那一行（`名字() { ccm @名字 "$@"; }`）不算。
-fn old_list(shell: Shell, text: &str) -> (Vec<Alias>, Vec<String>) {
-    let dia = shell.dialect();
-    let mut aliases = Vec::new();
-    let mut unparsed = Vec::new();
-    for got in dia.parse_file(OLD_CALL, dia.decode_from_disk(text)) {
-        match got {
-            Ok((name, args, rest_to)) => {
-                if args == [own_word(&name)] && rest_to == RestTo::Agent {
-                    continue;
-                }
-                aliases.push(Alias {
-                    name,
-                    args,
-                    rest_to,
-                })
-            }
-            Err(raw) => unparsed.push(raw),
-        }
-    }
-    (aliases, unparsed)
 }
 
 /// 一条别名在别名文件里交给 ccm 的那一个词：`@<名>`。
@@ -389,7 +359,7 @@ pub(crate) fn wants_function(name: &str, shell: Shell) -> bool {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 配置文件这一侧：读（顺带一次性迁移）· 写 · 照它生成别名文件与链接
+// 配置文件这一侧：读 · 写 · 照它生成别名文件与链接
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 这台机器上配置文件此刻的样子（读的那一刻）。
@@ -400,14 +370,11 @@ pub(crate) struct Store {
     pub book: profile::Book,
 }
 
-/// 读配置文件。不在、而旧形状的别名文件在 ⇒ 先一次性迁移（[`migrate`]）再读。
+/// 读配置文件（不在 ⇒ 空清单）。
 pub(crate) fn load(d: &dyn Door) -> Result<Store, String> {
     let home = door::home(d)?;
     let path = profile::path_in(&home);
-    let mut text = read_profiles(d, &home, &path)?;
-    if text.is_none() && migrate(d, &home)? {
-        text = read_profiles(d, &home, &path)?;
-    }
+    let text = read_profiles(d, &home, &path)?;
     let book = text.as_deref().map(profile::parse_book).unwrap_or_default();
     Ok(Store { home, text, book })
 }
@@ -421,117 +388,29 @@ fn read_profiles(d: &dyn Door, home: &str, path: &str) -> Result<Option<String>,
     }
 }
 
-/// **一次性迁移**：配置文件还不在、旧形状的别名文件（一条一组参数）在 ⇒ 每条转成一段（自己那几项，不猜继承），
-/// 写出配置文件，再照它重写别名文件、补链接。转不进去的（调用时的词交给 ccm 那一形 · 认不出的行）记进日志。
-/// 迁完旧形状的读口只剩这一处用；配置文件在了就不再看旧文件。回：迁了没有。
-pub(crate) fn migrate(d: &dyn Door, home: &str) -> Result<bool, String> {
-    let mut olds: Vec<Alias> = Vec::new();
-    let mut notes = Vec::new();
-    for shell in machine_shells() {
-        let path = alias_file_in(home, shell);
-        let Look::Text(t) = look(d, home, &path)? else {
-            continue;
-        };
-        let (list, bad) = old_list(shell, &t);
-        notes.extend(
-            bad.into_iter()
-                .map(|line| copy_text("beProfile.migrate.unparsed", &[("line", &line)])),
-        );
-        for a in list {
-            if olds.iter().any(|o| o.name == a.name) {
-                continue;
+/// 后端起来时那一次（经本进程自己的文件管理面，门由 `stream::inbound::align_aliases` 递）：配置文件在、读得懂 ⇒
+/// 照它把别名文件 · 链接对齐一次（[`sync_outputs`]，内容一样一个字节不写）—— 写法变了的那一份不等人再改一次清单才换。
+/// 配置文件不在 ⇒ 什么都不做（旧形状的别名文件不转）。没做成只记日志，不挡起来。
+pub(crate) fn align_here(d: &dyn Door) {
+    let res = door::home(d).and_then(|home| {
+        let path = profile::path_in(&home);
+        if let Some(text) = read_profiles(d, &home, &path)? {
+            // 整份写坏了（TOML 解不开）⇒ 读不出清单，不照「空清单」去删别名与链接。
+            let book = profile::parse_book(&text);
+            if book.file_problem().is_none() {
+                for p in sync_outputs(d, &home, &book, None).problems {
+                    tracing::warn!("{p}");
+                }
             }
-            if a.rest_to == RestTo::Ccm {
-                notes.push(copy_text(
-                    "beProfile.migrate.restToCcm",
-                    &[("name", &a.name)],
-                ));
-                continue;
-            }
-            olds.push(a);
         }
-    }
-    for n in &notes {
-        tracing::warn!("{n}");
-    }
-    if olds.is_empty() {
-        return Ok(false);
-    }
-    let mut changes = Vec::new();
-    for a in &olds {
-        let e = edit_of_alias(a, None);
-        match profile::name_ok(&a.name).and_then(|()| profile::check_alone(&e)) {
-            Ok(()) => changes.push(profile::Change::Set(e)),
-            Err(why) => tracing::warn!(
-                "{}",
-                copy_text(
-                    "beProfile.migrate.unparsed",
-                    &[(
-                        "line",
-                        &copy_text("beProfile.named.say", &[("name", &a.name), ("said", &why)])
-                    )]
-                )
-            ),
-        }
-    }
-    let text = profile::apply_changes(None, &changes)?;
-    write_profiles(d, home, None, &text).map_err(|e| e.said())?;
-    let note = serde_json::to_string(&page::Migrated {
-        count: profile::parse_book(&text).profiles.len(),
-        path: profile::path_in(home),
-        // 显示形读的那一下才写（存盘这一份不带）。
-        shown: String::new(),
-        skipped: notes,
-    })
-    .map_err(|e| e.to_string())?;
-    if let Err(e) = write_ours(
-        d,
-        home,
-        relay_route_core::PROFILES_MIGRATED_REL,
-        &mut |_| Ok(Some(note.clone())),
-    ) {
+        Ok(())
+    });
+    if let Err(e) = res {
         tracing::warn!("{e}");
     }
-    let book = profile::parse_book(&text);
-    for p in sync_outputs(d, home, &book, None).problems {
-        tracing::warn!("{p}");
-    }
-    Ok(true)
 }
 
-/// 后端起来时那一次（经本进程自己的文件管理面，门由 `stream::inbound::migrate_aliases` 递）：配置文件还不在、旧形状的别名文件在 ⇒ [`migrate`]；
-/// 配置文件在、读得懂 ⇒ 照它把别名文件 · 链接对齐一次（[`sync_outputs`]，内容一样一个字节不写）—— 早先版本写下的那一份（如 PowerShell 裸叫 `ccm`）
-/// 不等人再改一次清单才换成当下的写法。没做成只记日志，不挡起来。
-pub(crate) fn migrate_here(d: &dyn Door) {
-    match door::home(d).and_then(|home| {
-        let path = profile::path_in(&home);
-        match read_profiles(d, &home, &path)? {
-            Some(text) => {
-                // 整份写坏了（TOML 解不开）⇒ 读不出清单，不照「空清单」去删别名与链接。
-                let book = profile::parse_book(&text);
-                if book.file_problem().is_none() {
-                    for p in sync_outputs(d, &home, &book, None).problems {
-                        tracing::warn!("{p}");
-                    }
-                }
-                Ok(false)
-            }
-            None => migrate(d, &home),
-        }
-    }) {
-        Ok(true) => tracing::info!(
-            "{}",
-            copy_text(
-                "beProfile.migrate.done",
-                &[("path", relay_route_core::PROFILES_REL)]
-            )
-        ),
-        Ok(false) => {}
-        Err(e) => tracing::warn!("{}", copy_text("beProfile.migrate.failed", &[("why", &e)])),
-    }
-}
-
-/// 这台说哪几种 shell（POSIX 恒有；Windows 上另有 PowerShell）⇒ 生成哪几份别名文件、迁移看哪几份旧文件。
+/// 这台说哪几种 shell（POSIX 恒有；Windows 上另有 PowerShell）⇒ 生成哪几份别名文件。
 fn machine_shells() -> Vec<Shell> {
     let mut v = vec![Shell::Posix];
     if crate::platform::shell::speaks_powershell() {
@@ -545,14 +424,6 @@ fn machine_shells() -> Vec<Shell> {
 pub(crate) enum WriteErr {
     Stale(String),
     Refused(String),
-}
-
-impl WriteErr {
-    fn said(self) -> String {
-        match self {
-            WriteErr::Stale(s) | WriteErr::Refused(s) => s,
-        }
-    }
 }
 
 /// 把 `text` 写成配置文件：盘上此刻要恰是 `was`（读的那一刻的原文；`None` ＝ 不在），否则一个字节不写（[`WriteErr::Stale`]）。

@@ -74,14 +74,13 @@ fn comments_markers_and_hashed_names_are_not_keys() {
     assert!(known(&t, &[ep("a", 22)]).is_empty());
 }
 
-/// 待核的指纹：写一行注释、按任一地址读得回；记下整把时随之去掉；同一台不写第二行。
+/// 待核的指纹（库里已有的那一行注释）：按任一地址读得回；记下整把时随之去掉。
 #[test]
 fn a_pending_fingerprint_lives_until_the_whole_key_is_remembered() {
     let m = [ep("a", 22), ep("b", 22)];
-    let t = with_pending("", &m, " SHA256:fp ").unwrap();
-    assert_eq!(pending(&t, &[ep("b", 22)]).as_deref(), Some("SHA256:fp"));
-    assert!(known(&t, &m).is_empty(), "待核那一行不是钥匙");
-    assert_eq!(with_pending(&t, &m, "SHA256:other"), None);
+    let t = "#cc-monitor-pending-fingerprint a,b SHA256:fp\n";
+    assert_eq!(pending(t, &[ep("b", 22)]).as_deref(), Some("SHA256:fp"));
+    assert!(known(t, &m).is_empty(), "待核那一行不是钥匙");
     let after = remembered(&t, &[ep("a", 22)], &key(1)).unwrap();
     assert_eq!(after, format!("a {}\n", key(1)));
     assert_eq!(pending(&after, &m), None);

@@ -3062,12 +3062,6 @@ body.settings-window-mode .settings-panel {
 .prof-card .prof-opt.rec {
   border-color: color-mix(in srgb, var(--accent) 60%, transparent);
 }
-.prof-note-ok {
-  border-left-color: var(--success);
-}
-.prof-sub {
-  margin-top: var(--space-2);
-}
 .prof-notes .cfg-link {
   margin-left: var(--space-4);
 }

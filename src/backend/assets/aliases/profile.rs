@@ -998,20 +998,6 @@ pub(crate) fn problems_after(text: &str) -> Vec<String> {
     out
 }
 
-/// 一段单独拿出来逐项合不合格：回第一处写错的原话（不带段名与行号）。几项之间怎么组合要连「基于」那一层一起看，不在这里判
-/// （整份判见 [`problems_after`]）。
-pub(crate) fn check_alone(e: &ProfileEdit) -> Result<(), String> {
-    let alone = ProfileEdit {
-        from: None,
-        ..e.clone()
-    };
-    let text = apply_changes(Some(""), &[Change::Set(alone)])?;
-    match parse_book(&text).problems.first() {
-        Some(p) => Err(p.message.clone()),
-        None => Ok(()),
-    }
-}
-
 /// 基于 `name` 的那几段（直接写 `from = name` 的）。
 pub(crate) fn children_of<'a>(book: &'a Book, name: &str) -> Vec<&'a str> {
     book.profiles
