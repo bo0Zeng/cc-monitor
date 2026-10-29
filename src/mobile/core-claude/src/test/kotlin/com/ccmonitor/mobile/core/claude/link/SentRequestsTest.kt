@@ -48,6 +48,7 @@ class SentRequestsTest {
             Groups.COMMAND to listOf(Groups.ARGS),
             HistoryFacts.COMMAND to listOf(HistoryFacts.args("/p/s.jsonl"), HistoryFacts.bySid("0a1b2c3d-0000-4000-8000-000000000001")),
             HistoryLines.COMMAND to listOf(HistoryLines.args("/p/s.jsonl", 0L, 10L)),
+            HistoryImage.COMMAND to listOf(HistoryImage.args("/p/s.jsonl", 120L, 0, "u-a")),
             HistoryAnnotate.COMMAND to
                 listOf(
                     HistoryAnnotate.hide("s", Hide.ON),

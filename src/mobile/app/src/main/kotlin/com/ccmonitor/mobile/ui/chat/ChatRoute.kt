@@ -210,6 +210,7 @@ private fun ChatBody(
         modifier = modifier,
         attach = attach,
         onFollow = vm::follow,
+        loadImage = vm::image,
     )
 }
 

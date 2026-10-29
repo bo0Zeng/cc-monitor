@@ -1,7 +1,9 @@
 package com.ccmonitor.mobile.ui.chat
 
+import android.util.Base64
 import com.ccmonitor.mobile.cache.ChatCache
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.HistoryImage
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionArrive
 import com.ccmonitor.mobile.core.claude.link.SessionInterrupt
@@ -13,6 +15,7 @@ import com.ccmonitor.mobile.core.claude.link.generation
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
+import com.ccmonitor.mobile.core.claude.model.SaidImage
 import com.ccmonitor.mobile.core.claude.model.StreamItem
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Draft
@@ -472,6 +475,14 @@ class ChatSession(
     fun loadOlder() {
         following = false
         record.loadOlder()
+    }
+
+    /** 人说的那一句里的一张图：画到它那一格时按引用问那台要字节（`history-image`）；记录还没认出 · 问不到 · 解不开 ⇒ `null`（那一格留占位）。 */
+    suspend fun image(img: SaidImage): ByteArray? {
+        val p = record.path ?: return null
+        val r = link.call(HistoryImage.COMMAND, HistoryImage.args(p, img.at, img.n, img.record), ChatReads.READ_MS)
+        val data = (r as? Reply.Ok)?.let { HistoryImage.of(it.data) } ?: return null
+        return runCatching { Base64.decode(data, Base64.DEFAULT) }.getOrNull()
     }
 
     /** 聊天屏进 / 出：进了名单这条会话的行才上流，退了就停（`stream-watch`）。 */

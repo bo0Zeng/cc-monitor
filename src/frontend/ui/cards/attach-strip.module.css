@@ -22,6 +22,13 @@
     object-fit: cover;
   }
 
+  /* 图还没取回（引用 ⇒ 进视口再取）/ 取不到：定尺寸的占位，取回之前不跳版。 */
+  .saImage:not([src]) {
+    width: 160px;
+    height: 110px;
+    background: var(--bg-2);
+  }
+
   .saFiles {
     display: flex;
     flex-wrap: wrap;
