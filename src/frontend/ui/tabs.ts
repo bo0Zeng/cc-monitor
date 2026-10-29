@@ -20,20 +20,15 @@ import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
 import type { BehaviorConfig } from "./behavior";
-import { failToast, toast, undoToast } from "./kit/toast";
+import { failToast, noteMessage, undoToast } from "./kit/toast";
 import { detailOf } from "./kit/detail";
 import { copyText } from "./copy-table";
 import { fullTitle, needsOf } from "./session-face";
 import type { AgentsPanel } from "./agents-panel";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
-import {
-  terminalFrontAvailable,
-  TERMINAL_FRONT_UNAVAILABLE_TITLE,
-  TERMINAL_FRONT_UNAVAILABLE_DETAIL,
-} from "./terminal-front";
 import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
 import type { SessionFace } from "./generated/SessionFace";
-import { closesFromMenu, closesQuietly, hasTerminal, isEnded, isLive } from "./face-can";
+import { closesFromMenu, closesQuietly, frontWhy, isEnded, isLive } from "./face-can";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 // `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
@@ -1156,7 +1151,7 @@ export class TabManager {
   /** 会话头 · 钉条 · 命令面板的 ↗ 与行尾那颗同一条路（结果锚在会话头的 ↗）。 */
   frontFor(sid: string): void {
     const tab = this.store.tabs.get(sid);
-    if (!tab || !hasTerminal(tab.face) || !terminalFrontAvailable()) return;
+    if (!tab || this.frontRefused(tab)) return;
     void this.frontFrom(sid, "head");
   }
 
@@ -1459,19 +1454,23 @@ export class TabManager {
     if (this.router.bringMonitorToFront) bringMonitorToFront();
   }
 
+  /**
+   * ↗ 此刻做不了（这台 ↗ 不是真的 · 那台说没有终端可去，`frontWhy`）⇒ 那一句进状态栏「消息」、不弹 toast、不发 IPC，回 `true`（A2-17-12-1）。
+   * 按钮那几处本来灰着点不到；快捷键 · 命令面板走到这里才用得上。
+   */
+  private frontRefused(tab: Tab): boolean {
+    const why = frontWhy(tab.face);
+    const title = copyText("tabBarView.tab.terminalHint");
+    if (why === null) return false;
+    if (why !== "") noteMessage(title, why);
+    return true;
+  }
+
   /** Ctrl+`：把当前 Tab 的终端窗口拉到前台。 */
   bringActiveTerminalToFront(): void {
-    // 非 Windows 上 ↗ 的最后一跳每点必败 ⇒ 按钮不画；快捷键 / 命令面板还够得到这里 ⇒ 说一句实话，不发 IPC。
-    if (!terminalFrontAvailable()) {
-      toast(TERMINAL_FRONT_UNAVAILABLE_TITLE, TERMINAL_FRONT_UNAVAILABLE_DETAIL, {
-        level: "info",
-      });
-      return;
-    }
     if (!this.store.activeId) return;
     const tab = this.store.tabs.get(this.store.activeId);
-    // 还有终端可去（活着，或可重连：登录 shell 的 ssh 窗还在）才拉。
-    if (!tab || !hasTerminal(tab.face)) return;
+    if (!tab || this.frontRefused(tab)) return;
     void this.frontFrom(this.store.activeId, "head");
   }
 

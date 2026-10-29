@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.chat
 
 import androidx.lifecycle.ViewModel
+import com.ccmonitor.mobile.core.claude.model.SaidImage
 import com.ccmonitor.mobile.ui.chat.attach.AttachActions
 import com.ccmonitor.mobile.ui.chat.attach.AttachUi
 import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPicker
@@ -25,6 +26,9 @@ class ChatViewModel(
     }
 
     fun loadOlder() = session.loadOlder()
+
+    /** 人说的那一句里的一张图（画到那一格时取，见 [ChatSession.image]）。 */
+    suspend fun image(img: SaidImage): ByteArray? = session.image(img)
 
     /** 视口贴不贴着底（见 [ChatSession.follow]）。 */
     fun follow(on: Boolean) = session.follow(on)

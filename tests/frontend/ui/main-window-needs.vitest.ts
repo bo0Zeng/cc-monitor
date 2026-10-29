@@ -314,7 +314,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     const r = await bar([tab("g1", { origin: "gpu-01" as never, face: goldenFace("unseen") })]);
     const b = r.view.tabButtons.get("g1")!;
     expect(b.dot.dataset.state).toBe("unknown");
-    expect([b.root.classList.contains("unseen"), b.root.classList.contains("ended")]).toEqual([true, false]);
+    expect([b.root.hasAttribute("data-unseen"), b.root.classList.contains("ended")]).toEqual([true, false]);
     expect(b.machine.textContent, "远端：标题前一个机器徽标（不再用方括号前缀）").toBe("gpu-01");
   });
 });
@@ -343,16 +343,20 @@ describe("会话头", () => {
   // 右边那一排（换模型 · 切权限档那两颗另有判据：`session-switch.vitest.ts`）。
   const labels = (el: HTMLElement): string[] => [...el.querySelectorAll("button:not([data-switch])")].map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
 
-  it("★ 标题全名 · 机器 · 目录 · 状态一句；在等你时状态那一句琥珀；右边：目录（本机）· 看它的终端 · 显示 · 查找 · 更多", () => {
+  it("★ 标题全名 · 机器 · 目录 · 状态一句；在等你时状态那一句琥珀；右边：目录（本机）· 切到终端（这台认不出终端窗口 ⇒ 灰着）· 看它的终端 · 显示 · 查找 · 更多", () => {
     const { h, host } = head(tab("a", { label: "加重试", labelProject: "orders", projectDir: "/w/orders", ...waiting, needs: approve() }));
     expect(h.el.textContent).toContain("orders 加重试");
     expect(h.el.textContent).toContain(copyText("sessionFace.machine.local"));
     expect(h.el.textContent).toContain("/w/orders");
     // 默认那一排（ui3 · `session-head-buttons.vitest.ts`）；这台宿主不给「⋯」里的项 ⇒ 借那份菜单的几颗（在新窗口打开 · 账号）不出。
-    expect(labels(h.el)).toEqual([copyText("tabBarView.tab.cwdHint"), copyText("sessionHead.act.terminal"), copyText("sessionHead.act.display"), copyText("sessionHead.act.find"), copyText("tabBarView.tab.moreHint")]);
-    h.el.querySelectorAll<HTMLButtonElement>("button:not([data-switch])")[1].click();
+    expect(labels(h.el)).toEqual([copyText("tabBarView.tab.cwdHint"), copyText("tabBarView.tab.terminalHint"), copyText("sessionHead.act.terminal"), copyText("sessionHead.act.display"), copyText("sessionHead.act.find"), copyText("tabBarView.tab.moreHint")]);
+    const btns = h.el.querySelectorAll<HTMLButtonElement>("button:not([data-switch])");
+    expect(btns[1].getAttribute("aria-disabled")).toBe("true");
+    btns[1].click();
+    expect(host.front, "灰着的 ↗ 点了不做事").not.toHaveBeenCalled();
+    btns[2].click();
     expect(host.viewTerminal).toHaveBeenCalled();
-    h.el.querySelectorAll<HTMLButtonElement>("button:not([data-switch])")[3].click();
+    btns[4].click();
     expect(host.find).toHaveBeenCalled();
   });
 

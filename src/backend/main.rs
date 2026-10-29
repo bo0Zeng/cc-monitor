@@ -190,6 +190,8 @@ async fn main() {
             Some("--place-self") => control::place_self::run(&own),
             // 卸载那一趟：暂存区里传上去的那一份删掉落点那一份、再删自己。
             Some("--unplace-self") => control::place_self::run_unplace(&own),
+            // 列全部命令与用途（帧命令 · 子命令 · 一句话；`stream/catalog.rs`）。
+            Some("--commands") => stream::catalog::run(),
             // `--dial` 那条拨号代理臂**删了**：拨号全在本机那一个常驻后端里（`dial/`），不再每趟起一个进程。
             // 历史读面 · 搜索 · 账号读面 · 分叉 · `--resolve` 那几条手写臂（第 7 批第二题）删了：帧面早有同义的帧命令、
             //   生产里没人调（`--resolve` 10-26 连帧命令 `resolve` 一起撤了）。

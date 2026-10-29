@@ -509,11 +509,19 @@
   color: var(--text);
 }
 
-/* × 只给已结束 / 记录已不在（其余由「更多」占那一格）；目录只给本机且知道目录的；↗ 只给还有终端可去的。 */
+/* × 只给已结束 / 记录已不在（其余由「更多」占那一格）；目录只给本机且知道目录的。↗ 一直在，做不了灰着（悬停说为什么）。 */
+.tab-focus[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tab-focus[aria-disabled="true"]:hover {
+  background: none;
+  color: var(--text-2);
+}
+
 .tab:not(.ended) .tab-close,
 .tab.ended .tab-more,
-.tab.ended .tab-focus,
-.tab.unseen .tab-focus,
 .tab.remote .tab-cwd,
 .tab:not(.has-cwd) .tab-cwd {
   display: none;

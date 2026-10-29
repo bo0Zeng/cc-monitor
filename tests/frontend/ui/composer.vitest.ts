@@ -44,6 +44,7 @@ function rig(opts: { face?: SessionFace; first?: QueueList; put?: (o: string, r:
   const outbox = new Outbox(put);
   const c = new Composer({ active: () => tab, resume, front: () => {}, focusStream: () => {} }, outbox, reads);
   document.body.replaceChildren(c.el);
+  c.render(); // 第一次画由宿主叫（构造里不画，A2-17-10-1-2）
   return {
     c,
     put,

@@ -130,7 +130,7 @@ export class Composer {
     this.attach.dropOn(this.el);
     this.outbox.onChange(() => this.paint());
     this.outbox.onSettled((origin, o, end) => this.settled(pendingKey(origin, o.sid), o, end));
-    this.render();
+    // 构造里不画：宿主那一头（标签页栏）此刻可能还没建好，第一次画由宿主叫 `render()`（同会话头 · 答题块）。
   }
 
   /** 当前标签页换了 / 它的脸变了（宿主跟着标签页栏一起叫）。 */

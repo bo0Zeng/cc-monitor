@@ -155,7 +155,8 @@ describe("退订", () => {
     const ts = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/terminal-follow.ts"), "utf8");
     expect(ts).not.toContain('"terminal-unfollow"');
     const rs = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/event_replay.rs"), "utf8");
-    expect(rs).toContain('const UNFOLLOW: &str = "terminal-unfollow";');
+    // 壳照类型问（`cmd_wire::terminal::UnfollowReq`，名字挂在入参上）。
+    expect(rs).toContain("let req = UnfollowReq {");
   });
 });
 

@@ -129,7 +129,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-store.ts",
     "src/frontend/ui/tab-stream-view.ts",
     "src/frontend/ui/tasks-panel.ts", // ensureTab：初始 task 快照
-    "src/frontend/ui/terminal-front.ts", // bringActiveTerminalToFront 的 OS 门
     "src/frontend/ui/views/facts-source.ts", // ensureTab：每个 tab 一份会话事实的数据源（问后端 `history-facts`）
   ],
   // ① 形状：只有类型。
@@ -213,8 +212,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-drop.ts", // 照 `barRows` 一趟摆组与散的（组员聚在第一个组员那一格）
     "src/frontend/ui/tab-group-rename.module.css", // 组头就地改名那个输入框的样式（UC2：新样式一律 module）
     "src/frontend/ui/session-status.ts",
-    "src/frontend/ui/face-can.ts", // 按钮上的两个状态类 · ↗ / 中键的两道门
-    "src/frontend/ui/terminal-front.ts",
+    "src/frontend/ui/face-can.ts", // 按钮上的两个状态类 · ↗ / 中键的两道门（↗ 灰不灰 · 那一句：`frontWhy`）
     "src/frontend/ui/rot-words.ts", // 停发标与悬停那一句（后端写好的停发提示，填「还有多久」）
     "src/frontend/ui/tab-quota.module.css", // 停发标那一格的样式
   ],
@@ -251,7 +249,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/sessions-where.ts", // 在 tmux 里那几项亮不亮、写哪个名字：问那台（`sessions-where`）
     "src/frontend/ui/keybindings/registry.ts", // 菜单项右侧现拼当前键位（在新窗口打开 N · 打开工作目录 E …）
     "src/frontend/ui/session-face.ts", // 结束确认框标题里那个会话的名字（`fullTitle`，与会话头同一份）
-    "src/frontend/ui/terminal-front.ts", // 「切到终端」只在 cc-monitor 跑在 Windows 上才列（与 tab 上那颗 ↗ 同一道门）
   ],
   // ⑤ 会话动作。原先是「tab 层唯一直呼 invoke 的一份」；那 11 处收进了包装层，
   //   本份从此与其余几份一样只经 `ipc/commands.ts` 说话。

@@ -528,19 +528,21 @@ impl RunBook {
         changed
     }
 
-    /// 父记录里只读派出 / 收场那几格（不学对账键：只读尾巴的流接上会话时补读已有的那一截用）。回：运行表变没变。
-    pub(crate) fn links(&self, faces: &RunFaces, sid: &str, v: &Value) -> bool {
-        let links = faces.child_links(v);
-        if links.is_empty() {
+    /// 父记录里说到子运行的那几行只记派出 / 收场（不学对账键：只读尾巴的流接上会话时补读已有的那一截用，[`RunTrack::prime`]）。
+    /// 回：运行表变没变。
+    pub(crate) fn said(&self, sid: &str, said: &[RunSaid]) -> bool {
+        if said.is_empty() {
             return false;
         }
         let now = crate::common::time::now();
-        let when = faces.written(v).or_else(|| ms(now));
         self.with(|m| {
             let s = m.entry(sid.to_string()).or_default();
             let mut changed = false;
-            for l in links {
-                changed |= s.link(l, now, when, None);
+            for r in said {
+                let when = r.when.or_else(|| ms(now));
+                for l in &r.links {
+                    changed |= s.link(l.clone(), now, when, None);
+                }
             }
             changed
         })
@@ -791,7 +793,8 @@ impl RunTrack {
     }
 
     /// 只读尾巴的流接上一个会话：它的主记录已有的那一截（`chunk`，从头起）里说到子运行的几行补进簿里 ——
-    /// 接上之前派出 / 收场的那些，否则只剩子记录自己的那一半（标签没有、收场看不见）。只挑预筛命中的行解析。回：运行表变没变。
+    /// 接上之前派出 / 收场的那些，否则只剩子记录自己的那一半（标签没有、收场看不见）。只挑预筛命中的行解析（[`said_of`]）。
+    /// 回：运行表变没变。
     pub(crate) fn prime(&self, sid: &str, chunk: &[u8]) -> bool {
         if !self.has_children() {
             return false;
@@ -799,19 +802,16 @@ impl RunTrack {
         let Some(last_nl) = chunk.iter().rposition(|&b| b == b'\n') else {
             return false;
         };
-        let mut changed = false;
-        for line in chunk[..last_nl].split(|&b| b == b'\n') {
-            let Ok(text) = std::str::from_utf8(line) else {
-                continue;
-            };
-            if !self.faces.hint(text) {
-                continue;
-            }
-            if let Some(v) = super::lines::parse(line) {
-                changed |= self.book.links(&self.faces, sid, &v);
-            }
-        }
-        changed
+        let said: Vec<RunSaid> = chunk[..last_nl]
+            .split(|&b| b == b'\n')
+            .filter_map(|line| said_of(&self.faces, std::str::from_utf8(line).ok()?))
+            .collect();
+        self.book.said(sid, &said)
+    }
+
+    /// 同 [`Self::prime`]，那一截已经照 [`said_of`] 挑好了（冷开扫描图 · 骨架留的那几条，`record_scan`）。
+    pub(crate) fn prime_said(&self, sid: &str, said: &[RunSaid]) -> bool {
+        self.has_children() && self.book.said(sid, said)
     }
 
     /// 一个会话的主记录在这里（宣告 / 每次读到它时都说；只有头一次真去找）：把它此刻已有的子运行记录收进来。
@@ -947,6 +947,136 @@ impl RunTrack {
         self.parents.remove(sid);
         self.children.retain(|_, c| c.sid != sid);
         self.book.forget(sid);
+    }
+}
+
+/// 主记录里说到子运行的一行留下的：它说的那几条派出 / 对上 / 收场 ＋ 它写下的时刻（毫秒；没写 ⇒ 补进簿那一刻算）。
+/// 补簿只要这两样：冷开扫描图与骨架留它、不留那一行原文（[`skel`]）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RunSaid {
+    pub(crate) when: Option<u64>,
+    pub(crate) links: Vec<ChildLink>,
+}
+
+impl RunSaid {
+    /// 估算的常驻字节（扫描图的字节上限按它算）。
+    pub(crate) fn bytes(&self) -> usize {
+        let s = |v: &Option<String>| v.as_ref().map_or(0, String::len);
+        32 + self
+            .links
+            .iter()
+            .map(|l| {
+                96 + s(&l.tool) + s(&l.label) + s(&l.kind) + s(&l.run) + s(&l.from) + s(&l.error)
+            })
+            .sum::<usize>()
+    }
+}
+
+/// 一行主记录（原文）说到子运行了没有：过了预筛、整行解得出、说出了派出 / 对上 / 收场 ⇒ 那几条与写下的时刻；其余 ⇒ `None`。
+/// 按块补簿（[`RunTrack::prime`]）与冷开扫描图（`record_scan`）同这一处挑。
+pub(crate) fn said_of(faces: &RunFaces, text: &str) -> Option<RunSaid> {
+    if !faces.hint(text) {
+        return None;
+    }
+    let v = super::lines::parse(text.as_bytes())?;
+    let links = faces.child_links(&v);
+    (!links.is_empty()).then(|| RunSaid {
+        when: faces.written(&v),
+        links,
+    })
+}
+
+/// 骨架里 [`RunSaid`] 那一格的写法（`#[serde(with = …)]`）：适配层的 [`ChildLink`] 不为骨架带序列化，形状只在这里写一份；
+/// 改了它骨架版本号加一（`observe::skeleton::VERSION`）。
+pub(crate) mod skel {
+    use super::{ChildLink, RunEnd, RunSaid};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Serialize, Deserialize)]
+    struct Said {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<u64>,
+        links: Vec<Link>,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    struct Link {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tool: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        run: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        end: Option<End>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        background: bool,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    enum End {
+        Done,
+        Failed,
+        Stopped,
+    }
+
+    pub(crate) fn serialize<S: Serializer>(v: &[RunSaid], s: S) -> Result<S::Ok, S::Error> {
+        s.collect_seq(v.iter().map(|r| {
+            Said {
+                at: r.when,
+                links: r
+                    .links
+                    .iter()
+                    .map(|l| Link {
+                        tool: l.tool.clone(),
+                        label: l.label.clone(),
+                        kind: l.kind.clone(),
+                        run: l.run.clone(),
+                        from: l.from.clone(),
+                        end: l.end.map(|e| match e {
+                            RunEnd::Done => End::Done,
+                            RunEnd::Failed => End::Failed,
+                            RunEnd::Stopped => End::Stopped,
+                        }),
+                        error: l.error.clone(),
+                        background: l.background,
+                    })
+                    .collect(),
+            }
+        }))
+    }
+
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<RunSaid>, D::Error> {
+        Ok(Vec::<Said>::deserialize(d)?
+            .into_iter()
+            .map(|r| RunSaid {
+                when: r.at,
+                links: r
+                    .links
+                    .into_iter()
+                    .map(|l| ChildLink {
+                        tool: l.tool,
+                        label: l.label,
+                        kind: l.kind,
+                        run: l.run,
+                        from: l.from,
+                        end: l.end.map(|e| match e {
+                            End::Done => RunEnd::Done,
+                            End::Failed => RunEnd::Failed,
+                            End::Stopped => RunEnd::Stopped,
+                        }),
+                        error: l.error,
+                        background: l.background,
+                    })
+                    .collect(),
+            })
+            .collect())
     }
 }
 

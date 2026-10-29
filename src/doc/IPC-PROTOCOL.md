@@ -138,6 +138,7 @@
 | `login` | 否 | 带 | — | 带（≤ 8192 B） | `sessions-needs` |
 | `machines` | 是 | — | — | — | `machines-read` |
 | `machine` | 是 | 带 | — | 带（≤ 8192 B） | `machine-read` |
+| `empty` | 是 | — | — | 带（≤ 1024 B） | `machine-read` |
 | `session_hidden` | 否 | 带 | — | 带（≤ 1024 B） | `history-list` |
 | `files_dir` | 是 | 带 | — | — | `files-ls` |
 | `history_list` | 是 | — | — | — | `history-list` |

@@ -24,7 +24,7 @@ import { buildBriefCard } from "./brief";
 import { buildAgentCard, settleRunCard } from "./subagent";
 import { buildDiffBody } from "./diff";
 import { buildInteractiveCard, settleInteractive } from "./interactive";
-import { attachStrip } from "./attach-strip";
+import { attachStrip, fetchImage, type ImageRef } from "./attach-strip";
 import { markEditable } from "../said-edit";
 import type { Pasted } from "../generated/Pasted";
 import type { ToolCard } from "../generated/ToolCard";
@@ -395,7 +395,8 @@ function fillSaid(body: HTMLElement, text: string, pasted: readonly Pasted[] | u
 function buildSaidCard(rec: Extract<LineRecord, { t: "said" }>, ctx: RenderContext, time: string): HTMLElement | null {
   const cwd = rec.cwd;
   const open = isRemoteOrigin(ctx.origin) && cwd ? (rel: string) => void openRemoteFileInSftp(ctx.origin, `${cwd.replace(/\/+$/, "")}/${rel}`) : undefined;
-  const strip = attachStrip(rec.blocks, rec.attachments ?? [], open);
+  const images = { load: (image: ImageRef) => fetchImage(ctx.origin, ctx.parentPath, rec.id, image), lazy: ctx.lazy === true };
+  const strip = attachStrip(rec.blocks, rec.attachments ?? [], open, images);
   if (!rec.who.text && strip === null) return null;
   const card = buildUserCard(time, rec.who.text, rec.who.pasted, strip);
   if (ctx.editSaid !== undefined && rec.who.text) markEditable(card, { origin: ctx.origin, sid: ctx.editSaid.sid, id: rec.id, text: rec.who.text });
@@ -1252,9 +1253,8 @@ function renderResultContent(content: readonly Block[]): string {
     if (item.type === "text") {
       parts.push(item.text);
     } else if (item.type === "image") {
-      // 图片是给模型看的 base64，监控视图不展开
-      const src = item.source as { media_type?: string } | null;
-      parts.push(`[image ${src?.media_type ?? "unknown"}]`);
+      // 图片是给模型看的，监控视图不展开（记录里只带引用，不取字节）
+      parts.push(`[image ${item.mediaType}]`);
     } else {
       parts.push(prettyJson(item));
     }

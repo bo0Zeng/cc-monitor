@@ -147,7 +147,8 @@ class RecordUnitsTest {
 
     @Test
     fun `人说的那一句带的图片与附件照收进单元（画在气泡外）；只有附件没有字也成一个单元`() {
-        val image = mapOf("type" to "image", "source" to mapOf("type" to "base64", "media_type" to "image/png", "data" to "AAAA"))
+        // 图片块只带引用（类型 · 字节数 · 哪一行 · 第几张）：单元里记下它与那一条的身份，字节画到那一格时另取。
+        val image = mapOf("type" to "image", "mediaType" to "image/png", "bytes" to 3L, "at" to 120L, "n" to 0)
         val file = mapOf("name" to "login.css", "rel" to ".ccm-attach/1023-1529-7c01/login.css", "class" to "code", "classText" to "代码", "sizeText" to "1.3 KB")
         val gone = mapOf("name" to "old.pdf", "rel" to ".ccm-attach/1016-0900-aaaa/old.pdf", "class" to "pdf", "classText" to "PDF", "gone" to true)
 
@@ -169,7 +170,7 @@ class RecordUnitsTest {
             ),
         )
         val u = RecordUnits.of(listOf(said("u-a", "截图在这"), said("u-b", ""))).map { it as RenderUnit.UserText }
-        assertEquals(listOf(SaidImage("image/png", "AAAA")), u[0].images)
+        assertEquals(listOf(SaidImage("image/png", 120L, 0, "u-a")), u[0].images)
         assertEquals(listOf("login.css", "old.pdf"), u[0].attachments.map { it.name })
         assertEquals(listOf(null, true), u[0].attachments.map { it.gone })
         assertEquals("只有附件也成单元", "", u[1].text)

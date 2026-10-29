@@ -377,8 +377,8 @@ describe("说不清（那台暂时看不见）不当已结束：tab 上是另一
     tm.switchTo("u");
     const btn = (sid: string): HTMLElement =>
       (tm as unknown as { bar: { tabButtons: Map<string, { root: HTMLElement }> } }).bar.tabButtons.get(sid)!.root;
-    expect([btn("u").classList.contains("unseen"), btn("u").classList.contains("ended")]).toEqual([true, false]);
-    expect([btn("e").classList.contains("unseen"), btn("e").classList.contains("ended")]).toEqual([false, true]);
+    expect([btn("u").hasAttribute("data-unseen"), btn("u").classList.contains("ended")]).toEqual([true, false]);
+    expect([btn("e").hasAttribute("data-unseen"), btn("e").classList.contains("ended")]).toEqual([false, true]);
     // 中键：已结束的关、说不清的不关。
     btn("u").dispatchEvent(new MouseEvent("mousedown", { button: 1, bubbles: true, cancelable: true }));
     expect(st.tabs.has("u")).toBe(true);

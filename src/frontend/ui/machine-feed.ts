@@ -11,6 +11,7 @@ import { budgetWithin, callTyped, noteMachine } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import type { LocalBackend } from "./generated/LocalBackend";
 import type { MachineState } from "./generated/MachineState";
+import type { EmptyFace } from "./generated/EmptyFace";
 
 /** 壳那一侧的事件名（`ui_contract::events::LOCAL_BACKEND`）。 */
 export const LOCAL_BACKEND_EVENT = "local-backend";
@@ -50,8 +51,11 @@ export async function readMachines(): Promise<Record<string, MachineState>> {
   return r.machines;
 }
 
-/** 订一份：每来一台的一帧回调一次（先记下那台的名字与离线那一句，`machineName` · `offlineSaid` 照它）。回退订函数。 */
-export function onMachineState(each: (origin: string, machine: MachineState) => void): () => void {
+/**
+ * 订一份：每来一台的一帧回调一次（先记下那台的名字与离线那一句，`machineName` · `offlineSaid` 照它）；
+ * 给了 `face` ⇒ 首屏那一句（`EmptyFace`，本机后端合各台写好的，`changed {empty}` · `machine-read` 回包的 `empty`）每来一次也回调。回退订函数。
+ */
+export function onMachineState(each: (origin: string, machine: MachineState) => void, face?: (f: EmptyFace) => void): () => void {
   const cb = (origin: string, machine: MachineState): void => {
     noteMachine(origin, machine);
     each(origin, machine);
@@ -60,19 +64,25 @@ export function onMachineState(each: (origin: string, machine: MachineState) => 
   let dropped = false;
   const readAll = async (): Promise<void> => {
     try {
-      const machines = await readMachines();
-      for (const [origin, m] of Object.entries(machines)) if (!dropped) each(origin, m);
+      const r = await callTyped(LOCAL_ORIGIN, "machine-read", {}, budgetWithin(READ_BUDGET_MS));
+      if (dropped) return;
+      for (const [origin, m] of Object.entries(r.machines)) cb(origin, m);
+      face?.(r.empty);
     } catch (e) {
       console.warn("[machine-state] 问不到远端各台：", e);
     }
   };
-  subscribeTopics([LOCAL_ORIGIN], ["machine"], (_o, changes) => {
+  subscribeTopics([LOCAL_ORIGIN], face ? ["machine", "empty"] : ["machine"], (_o, changes) => {
+    if (dropped) return;
     const c = changes.get("machine");
-    if (dropped || !c) return;
-    const { got, ask, all } = pushedProducts(c, "machine");
-    if (all || ask.length > 0) void readAll();
-    // 帧里那一份就是 `machine-read` 回包里那一台。
-    for (const [key, m] of got) if (key !== null && key !== "") cb(key, m);
+    const e = changes.get("empty");
+    const machines = c ? pushedProducts(c, "machine") : null;
+    const faces = e ? pushedProducts(e, "empty") : null;
+    if (machines?.all || (machines?.ask.length ?? 0) > 0 || faces?.all || (faces?.ask.length ?? 0) > 0) void readAll();
+    // 帧里那一份就是 `machine-read` 回包里那一台 · 那一句。
+    for (const [key, m] of machines?.got ?? []) if (key !== null && key !== "") cb(key, m);
+    const f = faces?.got.get(null);
+    if (f) face?.(f);
   })
     .then(
       (stop) => {

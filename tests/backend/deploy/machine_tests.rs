@@ -635,17 +635,103 @@ fn the_product_carries_its_name_and_whether_it_is_offline() {
     }
 }
 
-/// 「这台 N 条状态不明」照最近那一件事实（本机后端那台的会话簿数的）；没有 ⇒ 省略；换一轮连接不清它（那台重报的帧把它降下来）。
+/// 一台的成品与它报完了没有（首屏那一句的一行）。
+fn seat(name: &str, facts: Vec<Fact>, enabled: bool) -> (MachineState, bool) {
+    let e = folded(facts);
+    (product(&e, name, enabled, true), e.listed())
+}
+
+fn face_of(rows: &[(MachineState, bool)]) -> cmd_wire::machine::EmptyFace {
+    empty(&rows.iter().map(|(m, l)| (m, *l)).collect::<Vec<_>>())
+}
+
+fn listed_up() -> Vec<Fact> {
+    vec![up(Relation::Same, &[]), Fact::Listed]
+}
+
+/// ★ A2-17-6-2 先红的那一条：本机报完了、为空，gpu-01 还在连 ⇒ 首屏不说「无会话」，说本机无会话 · gpu-01 还在连。
 #[test]
-fn the_unclear_count_rides_the_product_as_told() {
-    assert_eq!(of(vec![Fact::Unclear(3)], true).unclear, Some(3));
+fn the_empty_line_says_who_is_still_connecting_instead_of_no_sessions() {
+    let f = face_of(&[
+        seat("here", listed_up(), true),
+        seat("gpu-01", vec![Fact::Step(crate::Step::Plan)], true),
+    ]);
+    assert_eq!(f.line, copy_text("beEmpty.line.some", &[("names", "here")]));
     assert_eq!(
-        of(vec![Fact::Unclear(3), Fact::Unclear(0)], true).unclear,
-        None
+        f.hint,
+        copy_text("beEmpty.hint.pending", &[("names", "gpu-01")])
     );
+    assert_ne!(f.line, copy_text("beEmpty.line.none", &[]));
+}
+
+/// 各台都报完了 ⇒ 「无会话」＋ 怎么让它有；停用的那台不算；连上了还没报完 ⇒ 仍在连；一台都没报完 ⇒ 不说谁无会话。
+#[test]
+fn the_empty_line_says_no_sessions_only_once_every_machine_has_reported() {
+    let all = face_of(&[
+        seat("here", listed_up(), true),
+        seat("nas", listed_up(), true),
+        seat("off", vec![], false),
+    ]);
     assert_eq!(
-        of(vec![Fact::Unclear(2), up(Relation::Same, &[])], true).unclear,
-        Some(2)
+        (all.line, all.hint),
+        (
+            copy_text("beEmpty.line.none", &[]),
+            copy_text("beEmpty.hint.none", &[])
+        )
     );
-    assert_eq!(of(vec![], true).unclear, None);
+    let unreported = face_of(&[
+        seat("here", listed_up(), true),
+        seat("nas", vec![up(Relation::Same, &[])], true),
+    ]);
+    assert_eq!(
+        unreported.hint,
+        copy_text("beEmpty.hint.pending", &[("names", "nas")])
+    );
+    let none_yet = face_of(&[seat("nas", vec![], true)]);
+    assert_eq!(none_yet.line, copy_text("beEmpty.line.waiting", &[]));
+}
+
+/// 没连上 · 要更新的那几台 ⇒ 名字 ＋ 那台的词、会话未计入；与还在连的那几台各一段。
+#[test]
+fn the_empty_line_says_which_machines_are_not_counted() {
+    let f = face_of(&[
+        seat("here", listed_up(), true),
+        seat("devbox", vec![down_(Some(Why::Timeout))], true),
+        seat("nas", vec![up(Relation::Older, &[])], true),
+        seat("gpu-01", vec![round(Round::Connecting)], true),
+    ]);
+    let one = |name: &str, word: &str| {
+        copy_text(
+            "beEmpty.hint.outOne",
+            &[("name", name), ("word", &copy_text(word, &[]))],
+        )
+    };
+    let out = [
+        one("devbox", "machinePage.state.down"),
+        one("nas", "machineState.word.needsUpdate"),
+    ]
+    .join(&copy_text("beEmpty.list.sep", &[]));
+    assert_eq!(
+        f.hint,
+        [
+            copy_text("beEmpty.hint.pending", &[("names", "gpu-01")]),
+            copy_text("beEmpty.hint.out", &[("names", &out)]),
+        ]
+        .join(&copy_text("kit.text.sep", &[]))
+    );
+}
+
+/// 报完了是这一条连接上的事实：又在连 · 断了 ⇒ 作废；连上那一轮不清（那台随后才报完）。
+#[test]
+fn listed_is_dropped_when_the_machine_reconnects_or_goes_down() {
+    assert!(folded(listed_up()).listed());
+    let mut again = listed_up();
+    again.push(round(Round::Connecting));
+    assert!(!folded(again).listed());
+    let mut lost = listed_up();
+    lost.push(down_(None));
+    assert!(!folded(lost).listed());
+    let mut kept = listed_up();
+    kept.push(up(Relation::Same, &[]));
+    assert!(folded(kept).listed());
 }

@@ -9,7 +9,7 @@
  * 点下去真正做事的住 `tab-session-actions.ts`。
  */
 import type { Tab } from "./tab-model";
-import { canResume, closesFromMenu, hasTerminal, isLive } from "./face-can";
+import { canResume, closesFromMenu, frontWhy, hasTerminal, isLive } from "./face-can";
 import type { SessionFace } from "./generated/SessionFace";
 import { copyText } from "./copy-table";
 import type { TabGroup } from "./tab-bar-prefs";
@@ -33,7 +33,6 @@ import type { TabSessionActions } from "./tab-session-actions";
 import { machineName, offlineSaid, unavailableSaid } from "./control-said";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import type { ActionId } from "./keybindings/actions";
-import { terminalFrontAvailable } from "./terminal-front";
 import { fullTitle } from "./session-face";
 import { fmtDur } from "./duration-format";
 import { renameTab } from "./tab-rename";
@@ -190,8 +189,11 @@ export class TabMenu {
     // ① 看它
     items.push({ id: "popOut", icon: "popOut", label: copyText("tabMenu.open.openInWindow"), detail: keyOf("tab.pop-out"), onClick: () => void this.actions.openInNewWindow(sid) });
     if (t?.projectDir) items.push({ icon: "folder", label: copyText("tabMenu.open.cwd"), detail: keyOf("tab.open-cwd"), onClick: () => this.host.openCwd(sid) });
-    if (t && hasTerminal(t.face) && terminalFrontAvailable()) {
-      items.push({ icon: "front", label: copyText("tabMenu.open.front"), detail: keyOf("terminal.bring-front"), onClick: () => this.host.front(sid) });
+    // ↗ 一直在：做不了灰着、右边写那一句（A2-17-12-1：壳说这台 ↗ 不是真的 · 那台说没有终端可去）。
+    if (t) {
+      const why = frontWhy(t.face);
+      const front: MenuItem = { icon: "front", label: copyText("tabMenu.open.front"), detail: keyOf("terminal.bring-front"), onClick: () => this.host.front(sid) };
+      items.push(why === null ? front : { ...front, enabled: false, why, onClick: () => {} });
     }
     if (t) items.push({ icon: "terminal", label: copyText("tabMenu.open.drawer"), detail: keyOf("panel.toggle-terminal"), onClick: () => this.host.viewTerminal(sid) });
 

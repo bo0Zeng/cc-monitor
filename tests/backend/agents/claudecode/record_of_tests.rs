@@ -7,7 +7,7 @@ fn one(raw: &str) -> Option<Record> {
     let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
         .unwrap()
         .unwrap();
-    record_of(rec, &crate::agents::line_id(4096)).map(|mut r| {
+    record_of(rec, 4096).map(|mut r| {
         // 钟面随这台的时区变；金样里写成固定的样子（形状是「HH:MM」）。
         if r.time_text.is_some() {
             r.time_text = Some("09:30".into());
@@ -235,7 +235,7 @@ fn the_skeleton_row_is_what_the_record_says() {
     for raw in &lines {
         let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
             .unwrap()
-            .and_then(|r| record_of(r, "L1"));
+            .and_then(|r| record_of(r, 0));
         let want = rec
             .as_ref()
             .map_or((None, crate::agents::record::Draw::None, false), |r| {
@@ -349,7 +349,7 @@ fn records_without_a_reader_do_not_come_out() {
         let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
             .unwrap()
             .unwrap();
-        assert!(record_of(rec, "L1").is_none(), "{raw}");
+        assert!(record_of(rec, 0).is_none(), "{raw}");
     }
 }
 
@@ -395,7 +395,7 @@ fn claude_status_lines_are_known_and_stay_off_screen() {
             ),
             "{t} 还落在认不出那一支"
         );
-        assert!(record_of(rec, "L1").is_none(), "{t}");
+        assert!(record_of(rec, 0).is_none(), "{t}");
     }
 }
 
@@ -505,7 +505,7 @@ fn a_bookkeeping_line_without_identity_is_no_card() {
             rec,
             crate::agents::claudecode::schema::JsonlRecord::Unrecognized { .. }
         );
-        let carded = record_of(rec, "@0").is_some();
+        let carded = record_of(rec, 0).is_some();
         let quiet = quiet_unread_of(&v);
         assert_eq!(quiet.is_some(), unrecognized && !carded, "{raw}");
         if let Some(t) = quiet {
@@ -558,7 +558,7 @@ fn scale_records(inflated: bool) -> String {
         else {
             continue;
         };
-        if let Some(mut r) = record_of(rec, &crate::agents::line_id(start)) {
+        if let Some(mut r) = record_of(rec, start) {
             r.time_text = None;
             got.push_str(&serde_json::to_string(&r).unwrap());
             got.push('\n');
@@ -679,4 +679,55 @@ fn ordinary_mentions_and_bracket_words_stay_in_the_text() {
     };
     assert_eq!(who.text, "[Image #1] 看看\n@src/main.rs");
     assert!(attachments.is_empty());
+}
+
+/// ★ 图那一块翻成引用：类型 · 原图字节数 · 那一行的起点 · 这一行里第几张（深度优先，工具结果里的也数）；字节留在块里、不上线。
+/// 来源不是内联 base64 图的那一块不出块（出口不再判画不画得出）。
+#[test]
+fn an_image_becomes_a_reference_to_its_line_and_place() {
+    let raw = serde_json::json!({
+        "type": "user", "uuid": "u-img", "timestamp": "2026-10-09T01:30:00.000Z", "cwd": "/w",
+        "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "c1", "content": [
+                {"type": "text", "text": "shot"},
+                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAAAA=="}}
+            ]},
+            {"type": "image", "source": {"type": "url", "url": "https://example.invalid/a.png"}},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": "AAAA"}}
+        ]}
+    })
+    .to_string();
+    let Some(rec) = one(&raw) else {
+        panic!("该出一条")
+    };
+    let Body::Said { ref blocks, .. } = rec.body else {
+        panic!("该是人说的一条")
+    };
+    let inner = match &blocks[0] {
+        Block::ToolResult { content, .. } => content[1].clone(),
+        b => panic!("头一块该是工具结果：{b:?}"),
+    };
+    assert_eq!(
+        inner,
+        Block::Image {
+            media_type: "image/png".into(),
+            bytes: 4,
+            at: 4096,
+            n: 0,
+            data: "AAAAAA==".into()
+        }
+    );
+    assert_eq!(blocks.len(), 2, "url 那一形不出块：{blocks:?}");
+    assert_eq!(
+        blocks[1],
+        Block::Image {
+            media_type: "image/jpeg".into(),
+            bytes: 3,
+            at: 4096,
+            n: 1,
+            data: "AAAA".into()
+        }
+    );
+    let wire = serde_json::to_string(&rec).unwrap();
+    assert!(!wire.contains("AAAA"), "图的字节不上线：{wire}");
 }
