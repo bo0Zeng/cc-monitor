@@ -110,6 +110,8 @@
   const BOOT_QUIET_MS = 1000;
   /** 一直不安静（页里有东西不停地建节点）也只记这么久，免得链一直跑、算进后面量的空闲 CPU。 */
   const BOOT_CAP_MS = 180_000;
+  /** 安静那一刻（最后一个长任务结束 / 最后一次建节点）之后，接着画出来的那一帧最晚落在这么久之内。 */
+  const BOOT_TAIL_MS = 100;
   const lastBusy = () => Math.max(P.lt.length ? P.lt[P.lt.length - 1].s + P.lt[P.lt.length - 1].d : 0, P.mut.length ? P.mut[P.mut.length - 1].t : 0);
   const B = (P.boot = { frames: [], firstCard: null, booted: null, quietAt: null, on: true });
   let stopped = () => undefined;
@@ -148,8 +150,9 @@
     const start = bootStart();
     const quietAt = B.quietAt ?? lastBusy();
     const world = performance.getEntriesByName("ccm-world-ready")[0]?.startTime ?? null;
-    // 起点那一刻收到的那一帧间隔里就有插第一张卡那一下 ⇒ 从它算起；到安静那一刻之前开始的帧为止
-    const frames = start === null ? [] : B.frames.filter(([t, d]) => t >= start && t - d <= quietAt).map(([, d]) => d);
+    // 起点那一刻收到的那一帧间隔里就有插第一张卡那一下 ⇒ 从它算起；到安静那一刻之后紧跟的那一帧为止（`BOOT_TAIL_MS` 之内画出的）。
+    // 再往后的帧间隔是闲着没东西画：WebKit 闲时把 rAF 放慢到一秒一次，算进来就是一个假的 1000 ms 卡帧。
+    const frames = start === null ? [] : B.frames.filter(([t]) => t >= start && t <= quietAt + BOOT_TAIL_MS).map(([, d]) => d);
     return { start, firstCard: B.firstCard, booted: B.booted, world, quietAt, frames };
   };
 

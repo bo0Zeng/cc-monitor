@@ -203,7 +203,8 @@ return true;
 def boot(v, url, result):
     b0 = time.monotonic()
     v.load(url)
-    v.js("for (;;) { if (window.__shots && window.__shots.state !== 'booting') return window.__shots.state; await new Promise((r) => setTimeout(r, 100)); }")
+    # 起世界（真后端池起四台、伺服造盘）在机器忙时要一分多钟：等条件，兜底 5 分钟（同真后端池的上限）
+    v.js("for (;;) { if (window.__shots && window.__shots.state !== 'booting') return window.__shots.state; await new Promise((r) => setTimeout(r, 100)); }", 300_000)
     st = v.js("return window.__shots.state")
     if st != "done":
         raise RuntimeError(v.js("return window.__shots.error"))

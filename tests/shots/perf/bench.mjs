@@ -202,7 +202,8 @@ async function openPage() {
   const boot = async () => {
     // 开页最多等 2 分钟（load 事件不来时 `goto` 自己不会超时）
     await Promise.race([page.goto(`${base}/index.html?scene=perf-tabs`), sleep(120_000).then(() => Promise.reject(new Error("开页 2 分钟没等到 load")))]);
-    await page.waitFor("window.__shots && window.__shots.state !== 'booting'", 120_000);
+    // 起世界（真后端池起四台、伺服造盘）在机器忙时要一分多钟：等条件，兜底 5 分钟（同真后端池的上限）
+    await page.waitFor("window.__shots && window.__shots.state !== 'booting'", 300_000);
     const st = await page.eval("window.__shots.state");
     if (st !== "done") throw new Error(`场景没起来：${await page.eval("window.__shots.error")}`);
     return page.eval("__perf.quiet(1000, 60000)");
