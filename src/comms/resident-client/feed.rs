@@ -141,6 +141,11 @@ pub trait Transport: Send + Sync + 'static {
     fn installs(&self) -> bool {
         false
     }
+    /// 刚开出来的那条长 exec 走的这一跳远不远：拨号核心那一跳判准的答案（`ssh-dial` 的 `compression_for`，经池里那条连接的读数交来）。
+    /// 近（回环 · 往返不到门槛）⇒ attach 行不要那台压（压了只花那台的 CPU、多等几十毫秒）。答不上来 ⇒ 远（缺省：宁可压）。
+    fn far(&self) -> bool {
+        true
+    }
 }
 
 /// 那台后端的一条子命令在远端 shell 里的写法（落点固定 `~/.cc-monitor/bin/ccm`，打头的 `--` 让它当后端用）。只收常量词。
@@ -666,7 +671,7 @@ impl<T: Transport> Feed<T> {
         })
     }
 
-    /// 开一条 `--resident-attach`、握手：attach 行带手上这一版（那台回新旧）、要那台压（回认 ⇒ 读半边边读边解）。
+    /// 开一条 `--resident-attach`、握手：attach 行带手上这一版（那台回新旧）、这一跳远 ⇒ 要那台压（回认 ⇒ 读半边边读边解；近的不要）。
     /// 那台认不得这一形（比 `deflate` 那一格早）而这一侧不自己装后端 ⇒ 不带这一格再开一条，照不压接上；自己装的宿主照旧当旧（装上这一版再接）。
     async fn attach_on(
         &self,
@@ -685,7 +690,7 @@ impl<T: Transport> Feed<T> {
         }
     }
 
-    /// 开一条 `--resident-attach`、握手一次（`deflate` ⇒ attach 行要那台压）。
+    /// 开一条 `--resident-attach`、握手一次（`deflate` 且这一跳远（[`Transport::far`]）⇒ attach 行要那台压）。
     /// 开链路那一步：[`DIAL_WITHIN`] 里拨号核心一步进展都没报（[`Progress`]）⇒ 丢下（[`AttachOr::Unanswered`]）；每报一步重新计时；拨着的时候宿主报了事 ⇒ 丢下（[`AttachOr::Interrupted`]）：
     /// [`Feed::wake`] · [`Feed::reconnect`]（按的那一下在开拨之后才算：开拨之前按的照旧只省一次等）· [`Feed::set_transport`]（拨这一轮的收工信号 `cut`）。
     async fn attach_once(
@@ -724,7 +729,7 @@ impl<T: Transport> Feed<T> {
             self.cfg.tz.as_deref(),
             self.cfg.mine.as_deref(),
             Some(self.desk.ask_for_attach()),
-            deflate,
+            deflate && t.far(),
             self.cfg.handshake,
         )
         .await

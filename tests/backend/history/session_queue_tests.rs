@@ -62,7 +62,8 @@ fn skewed_clocks_do_not_matter_owner_numbers_in_arrival_order() {
     assert_eq!((a.outcome, a.seq, a.place), (O::Queued, Some(1), Some(1)));
     assert_eq!((b.outcome, b.seq, b.place), (O::Queued, Some(2), Some(2)));
     let due = next_due(&o, &sid(), T0 + 2).unwrap().expect("有一条可送");
-    assert_eq!(due.id, "a", "先送先到的那一条，不看它自报的几点");}
+    assert_eq!(due.id, "a", "先送先到的那一条，不看它自报的几点");
+}
 
 #[test]
 fn same_id_twice_enters_once() {
