@@ -2,7 +2,7 @@
 import type { SlotRow } from "./SlotRow";
 
 /**
- * `deploy-install` 的入参：monitor 带着的那几格 · 那台的名字（怎么够到它照这一端的机器表组）。
+ * `deploy-install` 的入参：monitor 带着的那几格 · 那台的名字（怎么够到它照本机后端的机器表组）。
  */
 export type DeployInstallReq = { slots: Array<SlotRow>, 
 /**

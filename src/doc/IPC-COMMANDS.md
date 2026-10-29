@@ -2537,7 +2537,11 @@ title: string, } | null,
 /**
  * 那台的号查得了（账号库启用了）。
  */
-queryable: boolean, };
+queryable: boolean, 
+/**
+ * 上游是自设的（用户自己的网关）⇒ 写好的那一句（额度看不到 · 换号不适用）：这时不画用量、不出徽章，面板照它出一条提示。不是 ⇒ 不上线。
+ */
+ownUpstream?: string, };
 type SessionAccountReq = { sid: string, };
 type Usage = { 
 /**
@@ -13883,16 +13887,13 @@ type UserPathState = "on" | "off" | "unknown" | "not_windows";
 入参 `DeployInstallReq` · 回包 `Installed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type ActionTag = "skip" | "deploy" | "keep";
 type DeployInstallReq = { slots: Array<SlotRow>, 
 /**
  * 那台的名字（非空；机器表按它查 · 状态成品按它记）。
  */
 machine: string, };
-type Installed = { 
-/**
- * `skip`（已是这一版）· `deploy`（放上了这一版）· `keep`（那台不比这一版旧 ⇒ 一个字节没写）。
- */
-action: "skip" | "deploy" | "keep", 
+type Installed = { action: ActionTag, 
 /**
  * 这一趟做了什么那一句（`deploy::Plan::said`）。
  */
@@ -13907,7 +13908,7 @@ build: string,
 os: string, };
 type SlotRow = { os: string, arch: string, id: string, 
 /**
- * 本机上那一格字节的文件（绝对路径；本后端读它，不经帧传字节）。
+ * 本机上那一格字节的文件（绝对路径；后端读它，不经帧传字节）。
  */
 path: string, };
 ```
@@ -13920,17 +13921,13 @@ path: string, };
 
 收 `args` · 可撤 · 只在流上
 
-入参 `DeployInstallReq` · 回包 `Uninstalled`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `DeployUninstallReq` · 回包 `Uninstalled`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type DeployInstallReq = { slots: Array<SlotRow>, 
-/**
- * 那台的名字（非空；机器表按它查 · 状态成品按它记）。
- */
-machine: string, };
+type DeployUninstallReq = { slots: Array<SlotRow>, machine: string, };
 type SlotRow = { os: string, arch: string, id: string, 
 /**
- * 本机上那一格字节的文件（绝对路径；本后端读它，不经帧传字节）。
+ * 本机上那一格字节的文件（绝对路径；后端读它，不经帧传字节）。
  */
 path: string, };
 type Uninstalled = { 
