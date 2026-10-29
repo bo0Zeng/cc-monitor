@@ -208,3 +208,35 @@ fn viewer_tz_follows_the_tz_variable_before_the_system_zone() {
         None
     );
 }
+
+// ── 有上限的读：前端自有状态文件读回来先过上限（上限从声明表来，见 `relay_route_core::CONFIG_FILE`）──
+
+fn capped_dir(tag: &str) -> std::path::PathBuf {
+    let d = std::env::temp_dir().join(format!("ccm-capped-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
+#[test]
+fn a_capped_read_says_absent_whole_or_too_big_at_the_exact_boundary() {
+    let d = capped_dir("edge");
+    let f = d.join("s.json");
+    assert_eq!(read_capped(&f, 8).unwrap(), Capped::Absent);
+    std::fs::write(&f, "12345678").unwrap();
+    assert_eq!(read_capped(&f, 8).unwrap(), Capped::Text("12345678".into()));
+    std::fs::write(&f, "123456789").unwrap();
+    assert_eq!(read_capped(&f, 8).unwrap(), Capped::TooBig);
+    assert_eq!(read_capped(&f, 9).unwrap(), Capped::Text("123456789".into()));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn a_capped_read_of_bytes_that_are_not_utf8_is_a_read_error() {
+    let d = capped_dir("utf8");
+    let f = d.join("s.json");
+    std::fs::write(&f, [0xffu8, 0xfe]).unwrap();
+    let e = read_capped(&f, 64).unwrap_err();
+    assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
+    let _ = std::fs::remove_dir_all(&d);
+}
