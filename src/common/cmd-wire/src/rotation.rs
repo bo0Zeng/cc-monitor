@@ -210,7 +210,7 @@ pub enum StrategyText {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
-    ts(rename = "RotLog", export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct RotLog {
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
@@ -229,7 +229,6 @@ pub struct RotLog {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
     ts(
-        rename = "RotLogCause",
         export,
         export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )

@@ -91,6 +91,5 @@ pub struct PlanFiles {
     pub unowned: Option<Vec<String>>,
     /// 仓库读不出、判不了无主的那一句（pb 原样）；判得了 ⇒ `null`。
     #[serde(rename = "unownedWhy")]
-    #[cfg_attr(any(test, feature = "ts"), ts(rename = "unownedWhy"))]
     pub unowned_why: Option<String>,
 }
