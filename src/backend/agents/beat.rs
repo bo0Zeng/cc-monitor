@@ -139,6 +139,103 @@ pub(crate) struct Watch {
 /// 一行人话至多几个字（工具主参数 · 最后一段正文的头一行）。
 pub(crate) const SAY_CHARS: usize = 160;
 
+/// 只做准备、说不出用意的那几个打头的词（换目录 · 设变量 · 设 shell 选项 · 读进环境 · 空命令）。
+const SETUP_WORDS: &[&str] = &[
+    "cd", "pushd", "popd", "export", "unset", "set", "shopt", "umask", "local", "readonly",
+    "declare", "typeset", "source", ".", ":", "true",
+];
+
+/// 一条 shell 命令里说得出用意的那一段起到末尾（需手动 · 钉条摆的「批什么」）：按顶层的 `;` · `&&` · `||` · `|` · `&` · 换行切段
+/// （引号里的 · 反斜杠转义的 · `2>&1` `&>` 这类重定向不切），跳过只做准备的段（纯赋值 `F=…` · [`SETUP_WORDS`] 打头 · 注释），
+/// 段首的环境赋值（`LC_ALL=C sort`）也跳过。全是准备段 ⇒ 原文。
+pub(crate) fn command_intent(cmd: &str) -> &str {
+    let b = cmd.as_bytes();
+    let (mut i, mut start, mut quote) = (0, 0, None::<u8>);
+    let cut = |from: usize, to: usize| intent_in(&cmd[from..to]).map(|off| &cmd[from + off..]);
+    while i < b.len() {
+        let c = b[i];
+        match quote {
+            Some(b'\'') => {
+                if c == b'\'' {
+                    quote = None;
+                }
+            }
+            Some(_) => match c {
+                b'\\' => i += 1,
+                b'"' => quote = None,
+                _ => {}
+            },
+            None => match c {
+                b'\\' => i += 1,
+                b'\'' | b'"' => quote = Some(c),
+                b'#' if i == start || b[i - 1].is_ascii_whitespace() => {
+                    // 注释：到行尾都不算。
+                    while i < b.len() && b[i] != b'\n' {
+                        i += 1;
+                    }
+                    continue;
+                }
+                b'&' if (i > 0 && b[i - 1] == b'>') || b.get(i + 1) == Some(&b'>') => {}
+                b';' | b'\n' | b'|' | b'&' => {
+                    if let Some(s) = cut(start, i) {
+                        return s.trim_end();
+                    }
+                    if matches!(c, b'|' | b'&') && b.get(i + 1) == Some(&c) {
+                        i += 1;
+                    }
+                    start = i + 1;
+                }
+                _ => {}
+            },
+        }
+        i += 1;
+    }
+    cut(start.min(b.len()), b.len()).map_or(cmd, str::trim_end)
+}
+
+/// 一段里用意从哪起（相对这一段的字节位置）：跳过段首的赋值词，剩下第一个词是准备词 · 没有词 ⇒ `None`。
+fn intent_in(seg: &str) -> Option<usize> {
+    let b = seg.as_bytes();
+    let mut i = 0;
+    loop {
+        while i < b.len() && b[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= b.len() || b[i] == b'#' {
+            return None;
+        }
+        let from = i;
+        let mut quote = None::<u8>;
+        while i < b.len() {
+            let c = b[i];
+            match quote {
+                Some(q) if c == q => quote = None,
+                Some(b'"') if c == b'\\' => i += 1,
+                Some(_) => {}
+                None if c.is_ascii_whitespace() => break,
+                None if c == b'\\' => i += 1,
+                None if c == b'\'' || c == b'"' => quote = Some(c),
+                None => {}
+            }
+            i += 1;
+        }
+        let word = &seg[from..i.min(b.len())];
+        if is_assignment(word) {
+            continue;
+        }
+        return (!SETUP_WORDS.contains(&word)).then_some(from);
+    }
+}
+
+/// `NAME=…`（shell 变量赋值的那个形）。
+fn is_assignment(word: &str) -> bool {
+    word.split_once('=').is_some_and(|(name, _)| {
+        let mut cs = name.chars();
+        cs.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    })
+}
+
 /// 头一个非空行，压成一行、至多 [`SAY_CHARS`] 字（超 ⇒ 截断加 `…`）。空 ⇒ `None`。
 pub(crate) fn one_line(s: &str) -> Option<String> {
     let line = s.lines().map(str::trim).find(|l| !l.is_empty())?;

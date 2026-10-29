@@ -93,6 +93,17 @@ pub(crate) fn main_arg(name: &str) -> Option<(&'static str, bool)> {
         .find(|(t, _, _)| *t == name)
         .map(|&(_, k, path)| (k, path))
 }
+/// 跑 shell 命令的那个工具（主参数是一整条命令）。
+const SHELL_TOOL: &str = "Bash";
+/// 主参数原文里摆得出的那一段：跑命令的工具 ⇒ 说得出用意的那一段起（[`crate::agents::beat::command_intent`]）；别的工具原样。
+/// 待答请求的钉条（`asks`）· 没结果的调用那一行（`beat::what_of`）都经它，各按自己的长度截。
+pub(crate) fn main_text<'a>(tool: &str, text: &'a str) -> &'a str {
+    if tool == SHELL_TOOL {
+        crate::agents::beat::command_intent(text)
+    } else {
+        text
+    }
+}
 /// 认得、但没有主参数的工具（只写工具名；提问 / 计划查 [`INTERACTIVE_TOOLS`]）。
 const BARE_TOOLS: &[&str] = &["TodoWrite", "LS"];
 /// 说明那一格（Bash 的 `description`）。

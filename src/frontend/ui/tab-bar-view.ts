@@ -359,6 +359,7 @@ export class TabBarView {
         title: t ? fullTitle(t) : session.label,
         state: t ? stateLine(t, now).text : session.needs.text,
         what: session.needs.what,
+        by: session.needs.ask?.run?.text ?? null,
       };
     });
     return {

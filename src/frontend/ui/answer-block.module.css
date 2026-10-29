@@ -64,6 +64,8 @@
   }
 
   .abTag {
+    composes: one-line from global;
+    min-width: 0;
     padding: 0 var(--space-3);
     border: 1px solid var(--border-medium);
     border-radius: var(--radius-s);

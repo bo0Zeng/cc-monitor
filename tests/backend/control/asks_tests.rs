@@ -49,7 +49,7 @@ fn answer_of(sid: &str, ask: &str, choice: &str) -> Result<Value, (&'static str,
 
 #[test]
 fn approval_choices_are_written_and_the_never_ask_again_one_is_not_first() {
-    let a = product_of("x", &approve("t-choices"), 5);
+    let a = product_of("x", &approve("t-choices"), None, 5);
     assert_eq!(
         ids(&a),
         ["allow", "always-0", "deny", "deny-note", "deny-stop"]
@@ -66,14 +66,14 @@ fn plan_and_question_choices() {
     p.kind = AskKind::Plan;
     p.suggestions.clear();
     assert_eq!(
-        ids(&product_of("x", &p, 0)),
+        ids(&product_of("x", &p, None, 0)),
         ["plan-auto", "plan-edits", "plan-manual", "plan-keep"]
     );
     let mut q = approve("t-q");
     q.kind = AskKind::Question;
     q.suggestions.clear();
     assert_eq!(
-        ids(&product_of("x", &q, 0)),
+        ids(&product_of("x", &q, None, 0)),
         ["dismiss"],
         "没有题 ⇒ 答不了，只能不回答"
     );
@@ -92,7 +92,7 @@ fn plan_and_question_choices() {
             },
         ],
     }];
-    let pq = product_of("x", &q, 0);
+    let pq = product_of("x", &q, None, 0);
     assert_eq!(ids(&pq), ["answer", "dismiss"]);
     assert_eq!(pq.questions[0].id, "q0");
     assert_eq!(pq.questions[0].options[1].id, "q0o1");
@@ -172,8 +172,9 @@ fn a_sub_agent_request_lands_in_needs_carries_its_id_and_is_answered() {
     assert_eq!(needs.tool.as_deref(), Some("Bash"));
     assert_eq!(ask.run.as_ref().map(|r| r.id.as_str()), Some("agent-7"));
     assert_eq!(
-        ask.run.as_ref().and_then(|r| r.kind.as_deref()),
-        Some("general-purpose")
+        ask.run.as_ref().map(|r| r.text.0.contains("general-purpose")),
+        Some(true),
+        "谁要批那一句带着类别"
     );
     assert_eq!(
         ids(&ask).last(),

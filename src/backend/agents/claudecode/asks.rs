@@ -246,7 +246,7 @@ fn str_of<'a>(input: &'a Value, key: &str) -> Option<&'a str> {
     input.get(key).and_then(Value::as_str)
 }
 
-/// 钉条里那一段：命令头一行 · 文件路径 · 第一道题；说不出 ⇒ `None`。
+/// 钉条里那一段：命令里说得出用意的那一段（[`super::steps::main_text`]）的头一行 · 文件路径 · 第一道题；说不出 ⇒ `None`。
 fn what_of(tool: &str, input: &Value, questions: &[AskQuestion]) -> Option<String> {
     let first_line = |s: &str| s.lines().next().map(str::trim).map(str::to_string);
     match tool {
@@ -264,6 +264,7 @@ fn what_of(tool: &str, input: &Value, questions: &[AskQuestion]) -> Option<Strin
                 "path",
             ])
             .find_map(|k| str_of(input, k))
+            .map(|s| super::steps::main_text(tool, s))
             .and_then(first_line)
             .filter(|s| !s.is_empty()),
     }
