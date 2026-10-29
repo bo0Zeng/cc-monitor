@@ -368,7 +368,12 @@ fn the_real_adapters_speak_only_through_the_channel() {
         "生产段只剩 {} 字节 —— 剥法把它剥没了，下面几条在空转",
         prod.len()
     );
-    for needle in ["UploadItem {", "\"files-commit-upload\"", "pub fn lanes()"] {
+    // 提交那一条的名字从它的入参取（`cmd_wire::Call`），不再是字面量。
+    for needle in [
+        "UploadItem {",
+        "FilesCommitUploadReq as cmd_wire::Call>::NAME",
+        "pub fn lanes()",
+    ] {
         assert_eq!(
             prod.matches(needle).count(),
             1,
