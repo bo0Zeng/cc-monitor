@@ -6,7 +6,9 @@
 //!   [`super::recognize::facts::note_record`] · [`super::lines::counts`]）。
 //! - 留着：没变 ⇒ 那一张；变长了 ⇒ 核游标前那几个字节（见证），对得上就从那一张接着扫追加的那一截（还没收尾那一轮的扫描状态
 //!   也留着）、对不上 ⇒ 整份重扫；条数与估算字节各有上限，超了先淘汰最久没用的；单张比字节上限还大 ⇒ 照留、别的全挤掉
-//!   （问的时候它本来就整张在内存里；不留就每问回盘重读）。常驻上界 = 字节上限与眼下最大那一张取大。
+//!   （问的时候它本来就整张在内存里；不留就每问回盘重读）。常驻上界 = 字节上限与界面问过的最大那一张取大。
+//! - 只有界面问的才留：收下在跑的会话那一路（预读）只借那一张（[`RecordScans::lend`]），取完就放、只留事实尾巴；
+//!   之后界面再开照骨架起步。预读与界面撞在同一趟扫上 ⇒ 照界面的留。
 //! - 落盘：大记录扫完落一份骨架（[`super::skeleton`]）；进程里没有那一张时照骨架起步 —— 没变 ⇒ 不读，变长了 ⇒ 只读追加的那一截。
 //! - 同时冷开同一份（界面开一条会话几问是一齐发的）：先到的那一个扫，后到的等它扫完拿同一张 —— 那一张是它们发问之后才扫完的，
 //!   每样都带着 `end`，续取从那里接。
@@ -347,6 +349,8 @@ struct Slot {
 struct Flight {
     done: Mutex<Option<Result<Arc<ScanMap>, String>>>,
     cv: Condvar,
+    /// 扫完留不留（界面问的 · 本来留着的 ⇒ 留；只有预读借 ⇒ 不留）：起的那一趟与后到的界面在 [`Inner`] 的锁里写，收尾在同一把锁里读。
+    keep: std::sync::atomic::AtomicBool,
 }
 
 /// 一张图被挤掉时留下的事实累加器：从 `end` 接着读（读之前核游标前的见证）。
@@ -491,9 +495,27 @@ impl RecordScans {
         Some(s.map.clone())
     }
 
+    /// `path` 那一份此刻的扫描图（同 [`Self::get`]）借给 `f` 用一下：用完就放，缓存里不为它添一张 —— 只留事实尾巴
+    /// （[`Inner::leave_tail`]）。收下在跑的会话那一路（预读）用它：没人开界面，整张图不该常驻。
+    /// 进程里本来留着这一份（界面问过）⇒ 用的就是那一张、照样留着；同一趟扫有界面在等 ⇒ 照界面的留。
+    pub(crate) fn lend<T>(&self, path: &Path, f: impl FnOnce(&ScanMap) -> T) -> std::io::Result<T> {
+        let read_before = self.bytes_read();
+        let map = self.fetch(path, false)?;
+        let out = f(&map);
+        drop(map);
+        // 借完放掉的那一张（几十 MB）还给系统；还在落骨架的那条旁线程落完自己放、自己还（[`Self::store_later`]）。
+        crate::platform::proc::return_freed_memory(self.bytes_read() - read_before);
+        Ok(out)
+    }
+
     /// `path` 那一份此刻的扫描图：没变 ⇒ 留着的那张；变长了 ⇒ 从留着的那张（或盘上的骨架）接着扫追加的那一截；
-    /// 别的 ⇒ 现扫整份（同一份正在扫 ⇒ 等它）。
+    /// 别的 ⇒ 现扫整份（同一份正在扫 ⇒ 等它）。界面问的走这里：扫出来的那张留着（之后几问共用）。
     pub(crate) fn get(&self, path: &Path) -> std::io::Result<Arc<ScanMap>> {
+        self.fetch(path, true)
+    }
+
+    /// [`Self::get`] · [`Self::lend`] 共用的那一趟：`keep` ⇒ 扫出来的那张留在缓存里；不留 ⇒ 只留事实尾巴。
+    fn fetch(&self, path: &Path, keep: bool) -> std::io::Result<Arc<ScanMap>> {
         let file = Ro::open(path)?;
         let meta = file.metadata()?;
         let stamp: Stamp = (meta.len(), meta.modified().ok());
@@ -511,6 +533,10 @@ impl RecordScans {
             }
             if let Some((_, f)) = g.flights.iter().find(|(p, _)| p == path) {
                 let f = f.clone();
+                // 在锁里记下：扫的那一趟收尾也在锁里看它，记了就不会漏。
+                if keep {
+                    f.keep.store(true, Ordering::Relaxed);
+                }
                 drop(g);
                 return wait(&f);
             }
@@ -520,22 +546,31 @@ impl RecordScans {
                 .find(|s| s.path == path)
                 .map(|s| s.map.clone());
             let f = Arc::new(Flight::default());
+            // 本来留着这一份（变长了，接着它扫）⇒ 新的那张照样留。
+            f.keep.store(keep || base.is_some(), Ordering::Relaxed);
             g.flights.push((path.to_path_buf(), f.clone()));
             (f, base)
         };
+        if base.is_none() {
+            self.settle_write(path);
+        }
         let read_before = self.bytes_read();
-        let scanned = self.build(path, file, &meta, base).map(|(map, mark)| {
-            let map = Arc::new(map);
-            if let Some(mark) = mark {
-                self.store_later(path, mark, map.clone());
-            }
-            map
-        });
+        let scanned = self
+            .build(path, file, &meta, base, keep)
+            .map(|(map, mark)| {
+                let map = Arc::new(map);
+                if let Some(mark) = mark {
+                    self.store_later(path, mark, map.clone());
+                }
+                map
+            });
         {
             let mut g = self.lock();
             g.flights.retain(|(p, _)| p != path);
             g.slots.retain(|s| s.path != path);
-            if let Ok(map) = &scanned {
+            if let (Ok(map), false) = (&scanned, flight.keep.load(Ordering::Relaxed)) {
+                g.leave_tail(path, map);
+            } else if let Ok(map) = &scanned {
                 let tick = g.tick;
                 g.tails.retain(|t| t.path != path);
                 g.slots.push(Slot {
@@ -548,7 +583,10 @@ impl RecordScans {
             }
         }
         // 一遍扫了一大份（这一趟进程里为扫描图读的，含同时在扫的别几份）⇒ 扫的时候放掉的那些还给系统，常驻不停在扫的高水位。
-        crate::platform::proc::return_freed_memory(self.bytes_read() - read_before);
+        // 借的那一趟等借完放了那张图再还（[`Self::lend`]）。
+        if keep {
+            crate::platform::proc::return_freed_memory(self.bytes_read() - read_before);
+        }
         let shared = scanned.as_ref().map(Arc::clone).map_err(|e| e.to_string());
         *flight.done.lock().unwrap_or_else(|e| e.into_inner()) = Some(shared);
         flight.cv.notify_all();
@@ -563,6 +601,7 @@ impl RecordScans {
         mut file: RoFile,
         meta: &crate::platform::fs::Metadata,
         base: Option<Arc<ScanMap>>,
+        keep: bool,
     ) -> std::io::Result<(ScanMap, Option<Mark>)> {
         use std::io::{Seek, SeekFrom};
         let len = meta.len();
@@ -606,7 +645,12 @@ impl RecordScans {
         let mut map = scan.done(len);
         map.stored = stored;
         // 盘上那份照的是 `stored`：没落过 · 接着扫过了门槛 ⇒ 落一份新的（落了就记成照到此刻）；没过门槛 ⇒ 不重写几十 MB。
-        let due = home.filter(|h| stored == 0 || map.end >= stored + h.rewrite_after(stored));
+        // 借完不留的（`keep` 否）读过新的就落：进程里不留这一张，下一问只能照骨架起步，不落就要再读一遍这一截（每趟起来只借一次）。
+        let due = home.filter(|h| {
+            stored == 0
+                || map.end >= stored + h.rewrite_after(stored)
+                || (!keep && map.end > stored)
+        });
         let mark = due.map(|_| Mark {
             len,
             mtime,
@@ -638,8 +682,31 @@ impl RecordScans {
                     scan: map.view(),
                 },
             );
+            // 借出去的那张（[`Self::lend`]）落完骨架就只剩这里攥着 ⇒ 放掉、还给系统。
+            if let Some(map) = Arc::into_inner(map) {
+                let bytes = map.bytes as u64;
+                drop(map);
+                crate::platform::proc::return_freed_memory(bytes);
+            }
         });
         w.push((path.to_path_buf(), h));
+    }
+
+    /// 这一份的骨架还在旁线程上落 ⇒ 等它落完（借完没留的那张，下一问照骨架起步；没落完就去读 ⇒ 读到旧的或没有，整份重扫）。
+    fn settle_write(&self, path: &Path) {
+        let pending: Vec<_> = {
+            let mut w = self.writes.lock().unwrap_or_else(|e| e.into_inner());
+            let (mine, rest) = std::mem::take(&mut *w)
+                .into_iter()
+                .partition(|(p, _)| p == path);
+            *w = rest;
+            mine
+        };
+        for (p, h) in pending {
+            if h.join().is_err() {
+                tracing::debug!("skeleton write for {} panicked", p.display());
+            }
+        }
     }
 
     /// 条数或字节超了 ⇒ 从最久没用的开始扔；刚放进来的 `kept` 那张不扔。它一张就比字节上限大 ⇒ 别的全扔、它独留，说一声。

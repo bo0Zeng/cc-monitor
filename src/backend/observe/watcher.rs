@@ -4257,7 +4257,7 @@ pub(crate) struct FilePrime {
     face: Option<crate::agents::RecordFace>,
     /// 子运行补记那一半（只用它的运行面与整台那本运行簿，[`crate::observe::runs::RunTrack::prime`]）。
     runs: Option<crate::observe::runs::RunTrack>,
-    /// 冷开扫描图（进程里还没有这份的游标时：它留着这一份的图或盘上有骨架 ⇒ 照它；`None` ⇒ 只轻读）。
+    /// 冷开扫描图（进程里还没有这份的游标时：借它留着的那张或盘上的骨架起步，借完不留；`None` ⇒ 只轻读）。
     scans: Option<&'static crate::observe::record_scan::RecordScans>,
 }
 
@@ -4357,22 +4357,16 @@ fn prime_file_cursor(
         gone,
         bytes: 0,
     };
-    // 进程里还没有这份的游标（重启 · 头一次宣告）⇒ 照冷开扫描图起步（[`RecordScans::get`]）：游标 · 行数 · 链 · 子运行 · 活动全从那一张取，
-    // 界面随后问的那几样也在同一张里 —— 一份记录冷开只读一遍。留着那张图 · 盘上落过骨架 ⇒ 没变不读、变长了只读追加的那一截；
-    // 同一份正在扫 ⇒ 等它。
+    // 进程里还没有这份的游标（重启 · 头一次宣告）⇒ 照冷开扫描图起步，只借不留（[`RecordScans::lend`]）：游标 · 行数 · 链 · 子运行 · 活动
+    // 全从那一张取，取完就放 —— 没人开界面，整张图不常驻；界面随后开照它落的骨架起步，跟预读撞在同一趟上就共用那一张。
+    // 留着那张图 · 盘上落过骨架 ⇒ 没变不读、变长了只读追加的那一截；同一份正在扫 ⇒ 等它。
     let fresh = prev == ReadCursor::default() && probe.is_none();
     if let Some(scans) = scans.filter(|_| fresh) {
-        let map = match scans.get(&path) {
-            Ok(m) => m,
-            Err(e) => return (none(key, e.kind() == std::io::ErrorKind::NotFound), None),
-        };
-        if let Some(r) = runs.as_ref() {
-            r.prime(session_id, &said_lines(map.runs()));
-        }
-        let done = FileDone {
-            path: path.clone(),
-            key,
-            read: Some(FileRead {
+        let lent = scans.lend(&path, |map| {
+            if let Some(r) = runs.as_ref() {
+                r.prime(session_id, &said_lines(map.runs()));
+            }
+            let read = FileRead {
                 cursor: ReadCursor {
                     consumed: map.end,
                     seen_len: map.seen().max(map.end),
@@ -4380,12 +4374,22 @@ fn prime_file_cursor(
                 tail: map.witness().to_vec(),
                 seq: map.lines(),
                 chain: chain.map(|_| map.chain().clone()),
-            }),
+            };
+            (read, map.activity())
+        });
+        let (read, activity) = match lent {
+            Ok(got) => got,
+            Err(e) => return (none(key, e.kind() == std::io::ErrorKind::NotFound), None),
+        };
+        let done = FileDone {
+            path: path.clone(),
+            key,
+            read: Some(read),
             gone: false,
             // 扫描图读的记在它自己的账上（[`RecordScans::bytes_read`]）。
             bytes: 0,
         };
-        return (done, map.activity());
+        return (done, activity);
     }
     // 接着此刻的游标读（重新宣告；没有扫描图的夹具从 0 读）⇒ 按块读（[`PrimeReader`]），不攒整份 —— 要的只是行数与说到子运行的那几行。
     // 「不在 ⇒ 丢游标 · 变短 / 改写 ⇒ 从 0 重数」与续读同一套；这里不出声：那句话由之后的 `process_jsonl` 说。
