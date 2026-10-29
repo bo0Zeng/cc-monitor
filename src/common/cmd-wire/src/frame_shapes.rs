@@ -18,7 +18,7 @@ pub const FRAMES: &[(&str, &str)] = &[
     ("session_file_reread", "bdab1d4a"),
     ("session_left", "ba40df1c"),
     ("session_primed", "84796fd7"),
-    ("session_runs", "77275c42"),
+    ("session_runs", "8f349ac0"),
     ("session_status", "a73c3291"),
     ("sessions_replayed", "039f74b7"),
     ("terminal_follow_end", "59702041"),
