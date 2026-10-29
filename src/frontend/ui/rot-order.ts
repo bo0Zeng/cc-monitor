@@ -1,6 +1,7 @@
 /**
  * 会话面板的顺序：照 `rotation-view` 会话形的 `lineup` 一号一行（第一格在用；「可挪」· 此刻用不了 · 先不用三组，后两组没有把手）。
  * 行：把手 · 序号 · 头像 · 号名＋记号（名下策略写的那一句）· 5h/7d 两条量 · 右格（后端写好的此刻怎样）· 行尾的勾。
+ * 会话不轮换（`strategy` 空）⇒ 同一张表，没有拖动那句 · 勾 ·［编辑策略］；点一行照样［立即用］。
  *
  * - 字全是回包里的（右格 `state` · 名下 `why` · 不可挪的 `stay`）；可不可挪照 `movable`。界面不挑字、不判顺序。
  * - 拖一行（`rot-drag.ts` 那张状态表）：挪过 4px 拿起，只沿纵向跟手、夹在可挪那一组里；别的行跨中线 120ms 让位；贴边 40px 列表自己滚；
@@ -258,7 +259,7 @@ export function createOrder(origin: Origin, acts: OrderActs, onIdle: () => void)
       btns.appendChild(use);
     }
     const go = acts.editStrategy;
-    if (go) {
+    if (go && v.strategy) {
       btns.appendChild(
         button({
           label: W.edit,
@@ -300,16 +301,20 @@ export function createOrder(origin: Origin, acts: OrderActs, onIdle: () => void)
     const f = v.accounts.find((x) => x.account === l.account);
     const state = el("span", s.rotOrderState, l.state);
     state.dataset.rotState = "";
-    const tick = document.createElement("input");
-    tick.type = "checkbox";
-    tick.className = s.rotOrderTick;
-    tick.checked = l.group !== "off";
-    tick.disabled = input?.offline ?? false;
-    tick.setAttribute("aria-labelledby", acct.id);
-    tick.addEventListener("pointerdown", (e) => e.stopPropagation());
-    tick.addEventListener("change", () => acts.off(l.account, !tick.checked));
     const end = el("span", s.rotOrderEnd);
-    end.append(state, tick);
+    end.append(state);
+    // 「先不用」只对自动换号有意义：不轮换 ⇒ 不出勾。
+    if (v.strategy) {
+      const tick = document.createElement("input");
+      tick.type = "checkbox";
+      tick.className = s.rotOrderTick;
+      tick.checked = l.group !== "off";
+      tick.disabled = input?.offline ?? false;
+      tick.setAttribute("aria-labelledby", acct.id);
+      tick.addEventListener("pointerdown", (e) => e.stopPropagation());
+      tick.addEventListener("change", () => acts.off(l.account, !tick.checked));
+      end.appendChild(tick);
+    }
     r.append(handle, el("span", s.rotOrderIx, String(k + 1)), avatar(v, l.account, origin), name);
     if (f) r.appendChild(meters(f, undefined));
     r.appendChild(end);
@@ -323,7 +328,9 @@ export function createOrder(origin: Origin, acts: OrderActs, onIdle: () => void)
     input = next;
     const v = next.view;
     const head = el("div", s.rotOrderHead);
-    head.append(el("span", s.rotOrderHeadText, W.order), el("span", s.rotOrderHeadNote, W.hint));
+    head.append(el("span", s.rotOrderHeadText, W.order));
+    // 拖动那句只对有策略的会话说（不轮换没有先后可拖）。
+    if (v.strategy) head.append(el("span", s.rotOrderHeadNote, W.hint));
     if (v.manual) {
       head.append(
         el("span", s.rotOrderSpacer),

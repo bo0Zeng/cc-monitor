@@ -1,7 +1,7 @@
 /**
  * 会话账号面板中间那一块（目标 `{sid}`：照这个会话载入的那份副本；只做这个会话的临时动作）：
  * 提示（后端那几条）→ 策略一行（下拉 ＋［编辑策略］；说明一行截断，点「说明」展开，展开与否归界面）→ 顺序（`rot-order.ts`）。
- * 不轮换 ⇒ 只剩策略一行 ＋「只用开会话的号 X」。与设置页共用的只有策略一行与提示（`rot-board.ts` 的 `firstRow` · `hints`）。
+ * 不轮换 ＝ 不自动换：策略一行 ＋ 那一句 ＋ 同一个顺序（号照后端排、不可拖，点一行照样［立即用］）。与设置页共用的只有策略一行与提示（`rot-board.ts` 的 `firstRow` · `hints`）。
  *
  * - 读 `rotation-strategies` · `rotation-view {sid}`；手势翻成命令（`rotation-use` · `rotation-temp` · `rotation-use-now`），成了重读。
  * - 拖着一行 · 等回包时推送来的重读先记下，静止了再读（手上正在改的不被盖掉）。读不出 ⇒ 红条 ＋［重试］，上次所知的淡掉、不拿起。
@@ -19,7 +19,7 @@ import { el } from "./kit/el";
 import { morph } from "./kit/morph";
 import { failToast } from "./kit/toast";
 import { openSettingsWindow } from "./open-settings";
-import { avatar, firstRow, hints, nameIn, type TopSpec } from "./rot-board";
+import { firstRow, hints, type TopSpec } from "./rot-board";
 import { rotAnchor, sendWrite, topActs } from "./rot-mount";
 import { createOrder, type MoveEnd } from "./rot-order";
 import { readStrategies, readView, rotBudget } from "./rot-reads";
@@ -147,11 +147,11 @@ export function mountSessionRotation(origin: Origin, sid: string): SessionRot {
     editStrategy,
   };
 
-  /** 说明：一行截断 ＋「说明」展开全文（不轮换 ⇒ 只用开会话的号 X）。 */
+  /** 说明：一行截断 ＋「说明」展开全文（不轮换 ⇒ 只那一句；号照样在顺序里）。 */
   const about = (v: RotationViewReply): HTMLElement => {
     const box = el("div", s.rotSessionAbout);
     if (!v.strategy) {
-      box.append(el("span", s.rotSessionAboutText, W.none), avatar(v, v.start, origin), el("span", "", nameIn(v, v.start)));
+      box.append(el("span", s.rotSessionAboutText, W.none));
       return box;
     }
     const st = v.strategy;
@@ -179,8 +179,8 @@ export function mountSessionRotation(origin: Origin, sid: string): SessionRot {
     if (readErr !== null) kids.push(banner("error", readErr, [button({ label: W.retry, kind: "ghost", size: "compact", onClick: () => void refresh() })]));
     const spec: TopSpec = { view, list, acts: top, oldOpen };
     kids.push(...hints(spec), firstRow(spec));
-    if (view) kids.push(about(view));
-    if (view?.strategy) {
+    if (view) {
+      kids.push(about(view));
       order.draw({ view, refused, offline: readErr !== null });
       kids.push(order.el);
     }

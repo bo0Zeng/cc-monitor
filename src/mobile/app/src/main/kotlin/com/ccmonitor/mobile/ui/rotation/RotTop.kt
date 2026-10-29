@@ -28,7 +28,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,7 +50,6 @@ import com.ccmonitor.mobile.core.wire.gen.RotNote
 import com.ccmonitor.mobile.core.wire.gen.RotStrategyItem
 import com.ccmonitor.mobile.core.wire.gen.RotationViewReply
 import com.ccmonitor.mobile.core.wire.gen.Tone
-import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.PickRow
 import com.ccmonitor.mobile.ui.chat.newsession.SheetHead
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
@@ -116,7 +114,7 @@ internal fun FirstRow(
     if (more) MoreSheet(item, titles, board) { more = false }
 }
 
-/** 说明：选中那份的开头注释（默认两行，⌄ 展开）；不轮换 ⇒「只用开会话的号」＋ 号牌（会话里）。 */
+/** 说明：选中那份的开头注释（默认两行，⌄ 展开）；不轮换 ⇒ 那一句（会话里号照样在顺序里）。 */
 @Composable
 private fun About(
     view: RotationViewReply?,
@@ -125,14 +123,9 @@ private fun About(
 ) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val st = view?.strategy
-    val boardUi by board.state.collectAsState()
     if (st == null) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(copyText("rot.none.desc"), color = muted, style = MaterialTheme.typography.bodyMedium)
-            if (inSession && view != null) {
-                AccountBadge(boardUi.plate(view.start)?.text, boardUi.plate(view.start)?.color, 18)
-                Text(board.label(view.start), style = MaterialTheme.typography.bodyMedium)
-            }
             if (!inSession) SecondaryButton(onClick = board::create) { Text(copyText("rot.more.create")) }
         }
         return
