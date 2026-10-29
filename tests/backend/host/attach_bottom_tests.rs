@@ -22,7 +22,10 @@ impl Screen {
     fn bottom(&self) -> String {
         let mut p = vt100::Parser::new(24, 80, 0);
         p.process(&self.0.lock().unwrap());
-        p.screen().contents_between(23, 0, 23, 80).trim_end().to_string()
+        p.screen()
+            .contents_between(23, 0, 23, 80)
+            .trim_end()
+            .to_string()
     }
 }
 
