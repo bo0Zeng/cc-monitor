@@ -59,7 +59,7 @@ ssh win11 "powershell -NoProfile -Command \"Get-Content \$env:USERPROFILE\e2e-ti
 
 ## 覆盖 / 不覆盖
 
-- **E5a（本 spec，已落地）**：壳元素 · 状态栏文案 · 6 顶栏钮 + cmdk 可点 · H/G/Ctrl+K
+- **E5a（本 spec，已落地）**：壳元素 · 状态栏文案 · 栏顶入口按钮（照页面取）+ cmdk 可点 · H/G/Ctrl+K
   overlay 开关（物理码 `browser.keys`）。无 fixture、无破坏性动作。
 - **E5b（会话相关，未落地——需 fixture）**：`button.tab` / `.tab-title` / `.live-dot`、
   右键 `.tab-context-menu`、archived tab 的 resume 项。落地路径：VM app 配 devbox 当远端

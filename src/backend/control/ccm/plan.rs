@@ -713,6 +713,9 @@ pub(crate) fn fork_tmux_base(source: &str) -> String {
     format!("{seg}-fork-cc")
 }
 
+// 撞名退不退让只问 `ccm_line::tmux_steps_aside`（别名页那句说明照的是同一处）。
+use crate::ccm_line::{tmux_steps_aside, TmuxNaming};
+
 /// 给一个基名、一份**那张快照**里的已占用名 ⇒ 最终名（撞了往后排）。
 /// 起会话铸名（[`super::terminal_name_mint_with`]）与 [`build`] 走同一个 [`next_free_name`]；`taken` 只收 [`TakenNames`]（造不出第二份）。
 pub(crate) fn mint_tmux_name(base: &str, taken: &TakenNames) -> String {
@@ -1240,12 +1243,12 @@ pub(crate) fn build_among(
         inherited_gate(env)?;
         let (base, step_aside) = if !o.tmux_base.is_empty() {
             validate_tmux_name(&o.tmux_base)?;
-            (o.tmux_base.clone(), true)
+            (o.tmux_base.clone(), tmux_steps_aside(TmuxNaming::Base))
         } else if !o.tmux_name.is_empty() {
             validate_tmux_name(&o.tmux_name)?;
-            (o.tmux_name.clone(), false)
+            (o.tmux_name.clone(), tmux_steps_aside(TmuxNaming::Fixed))
         } else {
-            (derive_tmux_name(&cwd), true)
+            (derive_tmux_name(&cwd), tmux_steps_aside(TmuxNaming::Auto))
         };
         // ★★ `K-R96`：**退让就在这里发生**，`--ccm-print` 与真跑因此拿到同一个名字。
         let name = match (step_aside, taken) {

@@ -3,7 +3,7 @@
 // 经 session-1 hop 驱真 WebView2，用 WebDriver 断言 cc-monitor 的裸壳（无会话时）：
 //   1. 壳元素存在：#app / #tab-bar / #message-stream / #status-bar
 //   2. 无会话时：状态栏里没有这个会话的几枚（任务 · agent · 上下文），.empty-state 可见含「暂无活跃会话」
-//   3. 5 顶栏钮 + .status-cmdk 存在且可点（isClickable，不实际点——避免开窗/弹层副作用）
+//   3. 栏顶每颗入口按钮（照页面取）+ .status-cmdk 存在且可点（isClickable，不实际点——避免开窗/弹层副作用）
 //   4. overlay 快捷键（物理码，dispatcher 按 KeyboardEvent.code 归一）：
 //        KeyH → 历史 overlay 出现；Escape → 关；
 //        Ctrl+KeyK → 命令栏出现；Escape → 关。
@@ -11,30 +11,14 @@
 // 键盘用 browser.keys（真 WebDriver Actions），比 execute 合成事件更强的活证。
 // 单键快捷键在可编辑焦点里被 dispatcher 抑制（registry.ts isEditableTarget），
 // 故每个 overlay 测试结束都归位（Esc + blur），保证下一个单键能触发。
-import { browser, $, expect } from "@wdio/globals";
+import { browser, $, $$, expect } from "@wdio/globals";
 import { Key } from "webdriverio";
 
 const SHELL = ["#app", "#tab-bar", "#message-stream", "#status-bar"];
-// 🔴 **这张表是手写的，而它腐过一次** —— 2026-09-21 现打逮到：
-// `.usage-trigger` 在（09-18）里随那个入口整删，生产里 **0 处**，
-// 而本表还列着它并断言 `isClickable` ⇒ 一条**必然失败**的断言。
-//
-// 它为什么能静默活三天：**tier-2 这一档要真 Windows ＋ WebView2 ＋ session-1 hop**
-// ⇒ 不在 `npm test`、不在 `cargo test`、不在 `tests/scripts/gate.sh` 里
-// ⇒ **没有任何门禁跑得到它**。对照：姊妹判据 `tests/frontend/ui/topbar-icons.vitest.ts`
-// 那条地板同拍就 6 → 5 改对了 —— 因为**它的人群是从 `main.ts` 现场派生的**，腐不了。
-//
-// ⇒ 处置不只是删那一行：`tests/frontend/ui/topbar-list-parity.vitest.ts` 现在把**本表**与
-// 从 `main.ts` 派生出来的那一份做**双向相等**。那条判据跑在本地门禁里
-// ⇒ **这一档跑不到，但这张表的前提从此有人看着。**
-const TOPBAR = [
-  ".settings-trigger",
-  ".history-trigger",
-  ".plan-trigger",
-  ".grid-monitor-trigger",
-  ".sftp-trigger",
-  ".status-cmdk",
-];
+// 栏顶那排全局入口不在这里手写：跑的那台没有仓、读不到 `main.ts`，手写的清单腐过一次
+// （入口删了、表里还列着 ⇒ 必然失败的断言）。照页面取：栏顶入口区里的每颗图标按钮。
+const TOPBAR_BUTTONS = ".tab-bar-head-acts .tab-bar-icon";
+const CMDK = ".status-cmdk";
 
 // 把所有 overlay 关掉并释放焦点，隔离各快捷键用例（Esc 关栈顶；blur 解除可编辑焦点抑制）。
 async function resetOverlays() {
@@ -94,12 +78,15 @@ describe("F-E5a cc-monitor 裸壳 DOM 冒烟", () => {
     expect(emptyText).toContain("暂无活跃会话");
   });
 
-  it("3) 5 顶栏钮 + status-cmdk 存在且可点", async () => {
-    for (const sel of TOPBAR) {
-      const el = $(sel);
+  it("3) 栏顶每颗入口按钮 + status-cmdk 存在且可点", async () => {
+    const buttons = await $$(TOPBAR_BUTTONS);
+    console.log(`[E5a] topbar buttons=${buttons.length}`);
+    // 取不到一颗 ⇒ 栏顶搬家或没画出来，不许零命中地绿。
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const el of [...buttons, $(CMDK)]) {
       const exists = await el.isExisting();
       const clickable = exists ? await el.isClickable() : false;
-      console.log(`[E5a] topbar ${sel} exists=${exists} clickable=${clickable}`);
+      console.log(`[E5a] topbar ${await el.getAttribute("class")} exists=${exists} clickable=${clickable}`);
       expect(exists).toBe(true);
       expect(clickable).toBe(true);
     }
