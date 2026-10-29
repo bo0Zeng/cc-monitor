@@ -160,11 +160,7 @@ impl Skeletons {
         let key = key_of(path);
         let f = self.file(&key)?;
         // 不在 ⇒ 没落过（不出声）；别的读不出（超了上限 · 不是文件 · 读错）· 解析不了 ⇒ 说一声是哪一份，当没有、照记录整份重扫。
-        let parse = |r: &mut dyn std::io::Read| {
-            serde_json::from_reader::<_, File<T>>(r)
-                .map_err(|e| crate::common::said::Said::from(e.to_string()))
-        };
-        let crate::common::own_state::Read::Present(got) = DOC.read_stream(f.as_path(), parse)
+        let crate::common::own_state::Read::Present(got) = DOC.read_stream(f.as_path(), decode)
         else {
             return None;
         };
@@ -240,6 +236,15 @@ impl Skeletons {
             }
         }
     }
+}
+
+/// 从流里解一份骨架。解析器逐字节取：直接读 `dyn Read` ⇒ 每个字节一次动态调用（比解析本身还慢）；
+/// 套一层定型的缓冲 ⇒ 逐字节走缓冲里那一路，往下一块（[`READ_BLOCK`]）一读，手里仍只有一块。
+fn decode<T: DeserializeOwned>(
+    r: &mut dyn std::io::Read,
+) -> Result<File<T>, crate::common::said::Said> {
+    serde_json::from_reader(std::io::BufReader::with_capacity(READ_BLOCK, r))
+        .map_err(|e| crate::common::said::Said::from(e.to_string()))
 }
 
 /// 一份骨架的键：规范化之后的路径（解不开 ⇒ 原样）。

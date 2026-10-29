@@ -101,6 +101,13 @@ impl Transport for PhoneLink {
             })
         })
     }
+
+    /// 照 Kotlin 交的拨号请求问这台手机那个池里那几条连接的读数（`ssh_dial::pool::far_of`，同桌面一处判）；请求读不动 ⇒ 远（宁可压）。
+    fn far(&self) -> bool {
+        self.request(serde_json::json!({})).map_or(true, |req| {
+            ssh_dial::pool::far_of(&ssh_dial::pool::ssh().links(), &req)
+        })
+    }
 }
 
 /// 拨号核心没开成的那一份 ⇒ 那一句（空 ⇒ 链路断了那一句）＋ 复制详情 ＋ 原因码与那台出示的 · 库里记下的指纹。
@@ -1085,7 +1092,7 @@ mod tests {
         use ssh_dial::pool::{LinkFacts, Wire};
         let wire = |endpoint: &str, via_proxy: bool| Wire {
             endpoint: endpoint.to_string(),
-            compressed: !via_proxy,
+            far: !via_proxy,
             via_proxy,
             bytes_in: 4096,
             bytes_out: 300,
