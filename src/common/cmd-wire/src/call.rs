@@ -13,7 +13,15 @@ use crate::quota::{QuotaRead, QuotaReadReq};
 use crate::rotation::*;
 use crate::record::{HistoryRead, HistoryReadReq};
 use crate::session::{HistoryTail, HistoryTailReq};
-use crate::terminal::{SshCommand, TerminalSshReq, UnfollowReq};
+use crate::accounts::{AccountsList, AccountsListReq};
+use crate::listing::{HistoryHead, HistoryListReq, HistoryRow};
+use crate::search::{HistorySearchReply, HistorySearchReq};
+use crate::session::{Preview, Sent, TerminalsList};
+use crate::sync::Patch;
+use crate::terminal::{
+    SshCommand, TerminalInputReq, TerminalPreviewReq, TerminalSshReq, TerminalsListReq,
+    UnfollowReq,
+};
 use crate::transfer::{
     TransferCopyAsk, TransferCopyReq, TransferDownloadAsk, TransferDownloadReq, TransferOpened,
     TransferStartReq, TransferStopReq, TransferUploadAsk, TransferUploadReq,
@@ -98,6 +106,12 @@ calls! {
     RotationTempReq => "rotation-temp", RotationTempReply;
     RotationUseNowReq => "rotation-use-now", RotDone;
     RotationTryReq => "rotation-try", RotationTryReply;
+    TerminalsListReq => "terminals-list", TerminalsList;
+    TerminalPreviewReq => "terminal-preview", Preview;
+    TerminalInputReq => "terminal-input", Sent;
+    HistorySearchReq => "history-search", HistorySearchReply;
+    HistoryListReq => "history-list", Patch<HistoryHead, HistoryRow>;
+    AccountsListReq => "accounts-list", AccountsList;
 }
 
 #[cfg(test)]
