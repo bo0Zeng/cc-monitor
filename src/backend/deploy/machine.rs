@@ -27,6 +27,10 @@ pub struct Entry {
     blocker: Option<Blocker>,
     /// 这一条连接上那台说过「活会话清单报完了」（[`Fact::Listed`]；又在连 · 断了 ⇒ 作废）。
     listed: bool,
+    /// 上一趟更新没换上那一句（再起一趟部署 · 换上了 ⇒ 摘掉）。
+    update_failed: Option<String>,
+    /// 接上过那台（有过一轮 `Up`）：之后再在接常驻 ⇒ 说「正在重新连接」。
+    was_up: bool,
 }
 
 /// 一件事实。
@@ -41,6 +45,8 @@ pub enum Fact {
     Step(Step),
     /// 部署那一趟收了（成没成都算）；问到了那台的系统就带上。
     Deployed { os: Option<String> },
+    /// 那一趟没换上：那一句（紧跟在 [`Fact::Deployed`] 后面记；再起一趟部署 · 换上了 ⇒ 摘掉）。
+    UpdateFailed { said: String },
     /// 那台在这一条连接上说活会话清单报完了（`sessions_replayed`）。
     Listed,
 }
@@ -59,9 +65,13 @@ pub fn fold(e: &mut Entry, fact: Fact) {
                 });
                 e.stage = None;
                 e.relation = Some(relation);
+                if relation == Relation::Same && differs.is_empty() {
+                    e.update_failed = None;
+                }
                 e.version = version.filter(|_| relation == Relation::Same);
                 e.problem = None;
                 e.blocker = None;
+                e.was_up = true;
             }
             Round::Down { problem, blocker } => {
                 e.state = Some(match blocker {
@@ -86,8 +96,10 @@ pub fn fold(e: &mut Entry, fact: Fact) {
         Fact::Step(s) => {
             let (state, stage) = s.kind();
             busy(e, state, stage);
+            e.update_failed = None;
         }
         Fact::Listed => e.listed = true,
+        Fact::UpdateFailed { said } => e.update_failed = Some(said),
         Fact::Deployed { os } => {
             if os.is_some() {
                 e.os = os;
@@ -198,6 +210,18 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
         said: match (state, blocker, problem) {
             // 没有后端：是哪一种（没装 · 起不了 · 不是我们的）只有通信层那一句说得清。
             (K::Down, Some(Blocker::NoBackend), Some(p)) => p.text.clone(),
+            // 接上过、又在接常驻（不是部署那一步）⇒ 重连那一句。
+            (K::Connecting, _, _) if e.was_up && e.stage != Some(Stage::Deploy) => {
+                copy_text("machineState.busy.reconnecting", &[("machine", machine)])
+            }
+            // 还旧、上一趟更新没换上 ⇒ 说那一趟为什么没成（不另弹 toast）。
+            (K::NeedsUpdate, _, _) if e.update_failed.is_some() => copy_text(
+                "machineState.problem.updateFailed",
+                &[
+                    ("machine", machine),
+                    ("why", e.update_failed.as_deref().unwrap_or_default()),
+                ],
+            ),
             _ => said(state, e.stage, why, machine),
         },
         offline_said: comms_inward::chan::said::offline(machine),

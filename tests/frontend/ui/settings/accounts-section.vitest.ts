@@ -20,8 +20,6 @@ const accountsSetDefault = vi.fn();
 const readProfiles = vi.fn();
 const readRemoteConfig = vi.fn();
 const emit = vi.fn();
-const openLoginWindow = vi.fn();
-const loginInTmux = vi.fn();
 const setModelForAccount = vi.fn();
 const accountsInit = vi.fn();
 const accountsRepair = vi.fn();
@@ -43,18 +41,6 @@ vi.mock("../../../../src/frontend/ui/remote-config", () => ({
   findHostByOrigin: (rows: { name: string }[], o: string) => rows.find((r) => r.name === o) ?? null,
 }));
 vi.mock("../../../../src/frontend/ui/events", () => ({ subscribeTopics: () => Promise.resolve(() => {}) }));
-/** 那台有没有 tmux（`session-open-facts` 的 `hosts` 里有没有 `tmux`）。 */
-const facts = vi.hoisted(() => ({ tmux: true, asked: 0 }));
-vi.mock("../../../../src/frontend/ui/new-session-reads", () => ({
-  askFacts: async () => {
-    facts.asked++;
-    return { hosts: facts.tmux ? ["tmux", "direct"] : ["direct"] };
-  },
-}));
-vi.mock("../../../../src/frontend/ui/settings/account-login", () => ({
-  openLoginWindow: (...a: unknown[]) => openLoginWindow(...a),
-  loginInTmux: (...a: unknown[]) => loginInTmux(...a),
-}));
 const getModelForAccount = vi.fn();
 // 每号模型住那台的偏好（`prefs-read` / `prefs-set`）：桩成「读那一号的那一格 · 写那一号的那一格」两件，判据照旧按号说。
 vi.mock("../../../../src/frontend/ui/machine-prefs", () => ({
@@ -167,7 +153,7 @@ beforeEach(() => {
   setCurrentMachine("devbox");
   confirmed = [];
   answer = true;
-  for (const m of [fetchAccounts, readQuota, accountsVerify, accountsRemove, accountsSetDefault, readProfiles, readRemoteConfig, emit, openLoginWindow, loginInTmux, setModelForAccount, accountsInit, accountsRepair, accountsAdd, writeApikeyKey, openLoginDrawer]) m.mockReset();
+  for (const m of [fetchAccounts, readQuota, accountsVerify, accountsRemove, accountsSetDefault, readProfiles, readRemoteConfig, emit, setModelForAccount, accountsInit, accountsRepair, accountsAdd, writeApikeyKey, openLoginDrawer]) m.mockReset();
   const change = (p: object = {}) => ({ applied: true, steps: ["一步"], notes: [], backup: null, account: null, aliasNames: ["teamcc", "teamcct"], keyMasked: null, keyProblem: null, aliases: [], ...p });
   accountsInit.mockResolvedValue(change());
   accountsRepair.mockResolvedValue(change());
@@ -409,7 +395,7 @@ describe("各态", () => {
 });
 
 describe("登录与指路", () => {
-  it("★ 需登录那一行［登录…］·「⋯ 重新登录…」都开登录抽屉（目标照这一行拼：那一家 ＋ 号名）；在终端里登录只在「⋯」里", async () => {
+  it("★ 需登录那一行［登录…］·「⋯ 重新登录…」都开登录抽屉（目标照这一行拼：那一家 ＋ 号名）；「⋯」里没有在终端里登录（只在抽屉里）", async () => {
     fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, authReady: false, selectable: false })] }));
     const el = await mount();
     const go = rowOf(el, "team").querySelector<HTMLButtonElement>('[data-action="acct-login"]')!;
@@ -417,56 +403,11 @@ describe("登录与指路", () => {
     expect(rowOf(el, "work").querySelector('[data-action="acct-login"]'), "已登录的那一行没有").toBeNull();
     go.click();
     expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "team" } }));
-    expect(openLoginWindow, "不开终端").not.toHaveBeenCalled();
     buttonNamed(rowOf(el, "work"), copyText("acctPage.row.more", { name: "work" })).click();
     const items = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")];
-    expect(items.some((m) => m.textContent?.includes(copyText("acctPage.menu.loginTerminal"))), "终端那条路留在「⋯」里").toBe(true);
+    expect(items.some((m) => m.textContent?.includes(copyText("login.act.terminal"))), "终端那条路只在抽屉里").toBe(false);
     items.find((m) => m.textContent?.includes(copyText("acctPage.menu.relogin")))!.click();
     expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "work" } }));
-    expect(openLoginWindow).not.toHaveBeenCalled();
-  });
-
-  it("开不了终端窗口 ⇒ 那一行说「本机无法开终端窗口」＋［在 tmux 里登录］，点了用这个号起 tmux 会话", async () => {
-    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, authReady: false, selectable: false })] }));
-    openLoginWindow.mockResolvedValue("noWindow");
-    loginInTmux.mockResolvedValue(undefined);
-    const el = await mount();
-    expect(rowOf(el, "team").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.notLoggedIn"));
-    buttonNamed(rowOf(el, "team"), copyText("acctPage.row.more", { name: "team" })).click();
-    const relogin = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.loginTerminal")))!;
-    relogin.click();
-    await settle();
-    expect(openLoginWindow).toHaveBeenCalledWith("devbox", "team");
-    expect(rowOf(el, "team").textContent).toContain(copyText("acctPage.login.noWindow"));
-    buttonNamed(rowOf(el, "team"), copyText("acctPage.login.inTmux")).click();
-    await settle();
-    expect(loginInTmux).toHaveBeenCalledWith("devbox", "team", "/h/.cc-monitor/accounts/z");
-  });
-
-  it("那台说了没有 tmux ⇒ 开不了终端窗口时只说那一句，不出［在 tmux 里登录］（开不了窗那一刻问那台一次）", async () => {
-    facts.tmux = false;
-    facts.asked = 0;
-    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, authReady: false, selectable: false })] }));
-    openLoginWindow.mockResolvedValue("noWindow");
-    const el = await mount();
-    buttonNamed(rowOf(el, "team"), copyText("acctPage.row.more", { name: "team" })).click();
-    [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.loginTerminal")))!.click();
-    await settle();
-    expect(rowOf(el, "team").textContent).toContain(copyText("acctPage.login.noWindow"));
-    expect([...rowOf(el, "team").querySelectorAll("button")].some((b) => b.textContent === copyText("acctPage.login.inTmux"))).toBe(false);
-    expect(facts.asked).toBe(1);
-    facts.tmux = true;
-  });
-
-  it("开了登录窗口 ⇒ 那一行「等待终端登录…」＋［重新打开登录窗口］；后端推来已登录 ⇒ 行变回正常", async () => {
-    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, email: "" })] }));
-    openLoginWindow.mockResolvedValue("opened");
-    const el = await mount();
-    buttonNamed(rowOf(el, "team"), copyText("acctPage.row.more", { name: "team" })).click();
-    [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.loginTerminal")))!.click();
-    await settle();
-    expect(rowOf(el, "team").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.waiting"));
-    expect(buttonNamed(rowOf(el, "team"), copyText("acctPage.login.reopen"))).toBeDefined();
   });
 
   it("表下没有指路框（默认轮换与规则在同一台的「轮换」栏里管），只剩「共用 MCP」那一行", async () => {
@@ -541,12 +482,10 @@ describe("动作", () => {
     await settle();
     expect(accountsAdd).toHaveBeenLastCalledWith("devbox", { name: "team", kind: "subscription" });
     expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "team" } }));
-    expect(openLoginWindow).not.toHaveBeenCalled();
     expect(el.querySelector(".acct-new")).toBeNull();
   });
 
   it("★ 建好那一句的下一行照后端回的提示（如「已开的终端要重读别名」），界面不另拼", async () => {
-    openLoginWindow.mockResolvedValue("opened");
     accountsAdd.mockImplementation((_o: string, a: { dryRun?: boolean }) =>
       Promise.resolve({ applied: true, steps: [], notes: a.dryRun ? [] : ["已开的终端要重读别名-xyz"], backup: null, account: null, aliasNames: ["teamcc", "teamcct"], keyMasked: null, keyProblem: null, aliases: [] }),
     );

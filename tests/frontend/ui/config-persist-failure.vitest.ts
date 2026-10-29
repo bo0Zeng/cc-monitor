@@ -73,7 +73,7 @@ function groupedPrefs(): TabBarPrefs {
   return p;
 }
 
-const CASES: readonly { name: string; run: () => Promise<void>; head: string }[] = [
+const CASES: readonly { name: string; run: () => Promise<unknown>; head: string }[] = [
   { name: "分组", run: () => groupedPrefs().dissolveGroup("g"), head: copyText("tabBar.persist.collectionsFailed") },
   { name: "固定", run: () => groupedPrefs().setPinnedMany(["s"], true), head: copyText("tabBar.persist.pinnedFailed") },
   { name: "收着的组", run: () => prefs().setCollapsed(["g"], true), head: copyText("tabBar.persist.collectionsFailed") },

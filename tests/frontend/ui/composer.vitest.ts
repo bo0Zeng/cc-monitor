@@ -70,6 +70,21 @@ const rows = (c: Composer): string[] => Array.from(c.el.querySelectorAll<HTMLEle
 beforeEach(() => localStorage.clear());
 
 describe("消息流底下的输入框", () => {
+  it("★ 打到一半的草稿落本地存储：重开窗口（新起一个输入框）那条会话的框里还是那一句；发出去、回执到了 ⇒ 不再留", async () => {
+    const first = rig();
+    await flush();
+    box(first.c).value = "半句-甲";
+    box(first.c).dispatchEvent(new Event("input"));
+    const again = rig();
+    await flush();
+    expect(box(again.c).value, "重开还在").toBe("半句-甲");
+    enter(again.c, "半句-甲");
+    await flush();
+    const third = rig();
+    await flush();
+    expect(box(third.c).value, "回执到了 ⇒ 草稿删").toBe("");
+  });
+
   it("★ 打开一条闲着的会话、不开抽屉 ⇒ 消息流底下有输入框，Enter 发出一问 session-queue-put；回执到了清框、写那台那一句", async () => {
     const { c, put } = rig();
     await flush();

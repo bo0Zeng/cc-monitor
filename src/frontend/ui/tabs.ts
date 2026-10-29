@@ -228,12 +228,13 @@ export class TabManager {
   loadOrder(): Promise<void> {
     return this.prefs.loadOrder();
   }
-  /** 固定 / 取消固定。取消固定撤得回 ⇒ 不确认：直接做 ＋ 8 秒撤销。 */
+  /** 固定 / 取消固定。取消固定撤得回 ⇒ 不确认：直接做，那台收下了才给 8 秒撤销（拒了 ⇒ 只有没成那一句、行回去）。 */
   togglePin(sid: string): void {
     const t = this.store.tabs.get(sid);
     const wasPinned = t?.pinned === true;
-    this.prefs.togglePin(sid);
-    if (t && wasPinned) undoToast(copyText("tabBar.unpinned.toast", { title: fullTitle(t) }), () => this.prefs.togglePin(sid), () => {});
+    void this.prefs.togglePin(sid).then((ok) => {
+      if (ok && t && wasPinned) undoToast(copyText("tabBar.unpinned.toast", { title: fullTitle(t) }), () => void this.prefs.togglePin(sid), () => {});
+    });
   }
 
   /** 按下 / 焦点的这一个在多选里（≥2）⇒ 选中的全部（按栏里的顺序）；否则只有它。 */
@@ -1222,7 +1223,7 @@ export class TabManager {
 
   /**
    * 栏底机器条那一行的修法：重新连接 · 更新就地做（更新与 ↗ 浮层 · 机器卡同一个动作 `backend-deploy.ts`：先问会打断什么、有才确认；
-   * 更新中那一态由那台的状态成品画在那一行上；没换上是一次出错 ⇒ 红 toast）；别的（连接设置 · 推公钥 · 比对指纹 …）在那台的机器页做。
+   * 更新中 · 上次没换上都由那台的状态成品画在那一行上，不另弹 toast）；别的（连接设置 · 推公钥 · 比对指纹 …）在那台的机器页做。
    */
   fixMachine(origin: string, fix: MachineFix): void {
     if (fix === "retry") this.reconnect(origin);
@@ -1230,7 +1231,7 @@ export class TabManager {
     else void openSettingsWindow(undefined, machineOf(origin));
   }
 
-  /** 更新没换上那一句（↗ 浮层标题 · 机器条［更新］的红 toast 同一句）。 */
+  /** 更新没换上那一句（↗ 浮层标题）。 */
   private updateFailedTitle(machine: string): string {
     return copyText("front.title.updateFailed", { machine });
   }
@@ -1240,7 +1241,8 @@ export class TabManager {
     try {
       if ((await updateBackendOf(origin, machine)) !== null) await this.actions.redial(origin);
     } catch (e) {
-      failToast(this.updateFailedTitle(machine), e, { level: "error" });
+      // 没换上那一句由那台的成品写在机器条那一行（`machineState.problem.updateFailed`）。
+      console.warn(`[machine] ${origin} 更新没换上：`, e);
     }
   }
 
