@@ -69,13 +69,13 @@ export class MachineStrip {
     const dot = statusDot(machineDot(m.state), m.word, "compact");
     attachTooltip(dot, () => m.said);
     const name = document.createElement("span");
-    name.className = "machine-strip-name";
+    name.className = "machine-strip-name one-line";
     name.textContent = m.name;
     const word = document.createElement("span");
     word.className = "machine-strip-word";
     word.textContent = m.word;
     const said = document.createElement("span");
-    said.className = "machine-strip-said";
+    said.className = "machine-strip-said one-line";
     said.textContent = m.said;
     const body = document.createElement("span");
     body.className = "machine-strip-body";

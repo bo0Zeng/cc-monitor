@@ -201,20 +201,12 @@
 }
 
 .machine-strip-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--text);
 }
 
 .machine-strip-word,
 .machine-strip-said {
   color: var(--text-2);
-}
-
-.machine-strip-said {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .machine-strip-fix {
