@@ -19,6 +19,8 @@ use cmd_wire::cells::Words;
 use cmd_wire::listing::{HistoryGroup, HistoryHead, HistoryRow};
 use cmd_wire::sync::{Patch, Range};
 use cmd_wire::Machine;
+// 几台并一列：手机会话屏同一份（端核心）。
+use resident_client::column::merge_by;
 use serde::{Deserialize, Serialize};
 
 use super::history_list::{answer_from, blocking, filters, listing_annotations, Sort};
@@ -498,24 +500,6 @@ impl Shape {
             key: g.key.clone(),
         };
         self.all_open || (self.fold.open != self.fold.except.contains(&id))
-    }
-}
-
-/// 各台各自排好（`key` 大的在前）的几列 ⇒ 并成一列；同值照台的先后（稳定）。只并、不另判。
-fn merge_by<'a, T>(lists: &[&'a [T]], key: impl Fn(&T) -> i64) -> Vec<&'a T> {
-    let mut at = vec![0usize; lists.len()];
-    let mut out = Vec::with_capacity(lists.iter().map(|l| l.len()).sum());
-    loop {
-        let mut best: Option<usize> = None;
-        for (i, l) in lists.iter().enumerate() {
-            let Some(x) = l.get(at[i]) else { continue };
-            if best.is_none_or(|b| key(x) > key(&lists[b][at[b]])) {
-                best = Some(i);
-            }
-        }
-        let Some(b) = best else { return out };
-        out.push(&lists[b][at[b]]);
-        at[b] += 1;
     }
 }
 
