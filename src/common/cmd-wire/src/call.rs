@@ -5,6 +5,8 @@
 use crate::batch::{BatchReply, FilesBatchStopReply, FilesBatchStopReq};
 use crate::bookmarks::{Bookmarks, BookmarksEditReq, BookmarksReadReq};
 use crate::deploy::{DeployInstallReq, DeployUninstallReq, Installed, Uninstalled};
+use crate::assets::{AssetsSyncReq, AssetsSynced};
+use crate::exit_policy::{ExitPolicy, ExitPolicyReadReq};
 use crate::files::*;
 use crate::plan::{PlanFiles, PlanFilesReq};
 use crate::terminal::{SshCommand, TerminalSshReq, UnfollowReq};
@@ -62,6 +64,8 @@ calls! {
     PlanFilesReq => "plan-files", PlanFiles;
     TerminalSshReq => "terminal-ssh", SshCommand;
     UnfollowReq => "terminal-unfollow", ();
+    ExitPolicyReadReq => "exit-policy-read", ExitPolicy;
+    AssetsSyncReq => "assets-sync", AssetsSynced;
     // 传输台那三条各两层：窗口说给 monitor 的（`*Ask`）· monitor 补上那台转给本机后端的（`*Req`），名字同一个。
     TransferUploadAsk => "transfer-upload", TransferOpened;
     TransferUploadReq => "transfer-upload", TransferOpened;

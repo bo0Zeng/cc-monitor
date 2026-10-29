@@ -185,26 +185,8 @@ fn said(r: &Read, resident: bool) -> String {
     }
 }
 
-/// 一次读数的线上形状（`exit-policy-read` 与 `exit-policy-set` 共用）。`said` 是成品，界面原样摆。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ExitPolicy {
-    /// `absent`（没设过）· `chosen` · `unreadable`（读不出：也照答，不是失败）。
-    #[cfg_attr(test, ts(type = "\"absent\" | \"chosen\" | \"unreadable\""))]
-    pub(crate) state: &'static str,
-    /// 生效值：monitor 退出时结束本机常驻后端。
-    pub(crate) kill_on_exit: bool,
-    /// `unreadable` 时的原因（那一句不带原话）。
-    pub(crate) reason: Option<String>,
-    /// `unreadable` 时的复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答）。
-    pub(crate) detail: Option<String>,
-    /// 那份文件的路径（在 `~/.cc-monitor/` 下；家目录说不出 ⇒ `null`）。
-    pub(crate) path: Option<String>,
-    /// 这个值意味着什么的一句话。
-    pub(crate) said: String,
-}
+/// 一次读数的线上形状与 `exit-policy-read` 的入参住 cmd-wire（monitor 退出臂照同一份问、照同一份收）。
+pub(crate) use cmd_wire::exit_policy::{ExitPolicy, ExitPolicyReadReq};
 
 fn wire(r: &Read, path: Option<&Path>) -> ExitPolicy {
     wire_as(r, path, resident_now())
@@ -217,7 +199,7 @@ fn wire_as(r: &Read, path: Option<&Path>, resident: bool) -> ExitPolicy {
     };
     let (reason, detail) = crate::wire::detail::unreadable("exit-policy-read", why);
     ExitPolicy {
-        state: r.state(),
+        state: r.state().to_string(),
         kill_on_exit: r.kill_on_exit(),
         reason,
         detail,
@@ -262,17 +244,15 @@ crate::wire::typed::codes! {
 pub(crate) struct ExitPolicyRead;
 
 impl crate::wire::typed::Command for ExitPolicyRead {
-    const NAME: &'static str = "exit-policy-read";
+    crate::wire::typed::by_call!(ExitPolicyReadReq);
     const TAKES_INPUT: bool = false;
-    type Req = crate::wire::typed::NoArgs;
-    type Reply = ExitPolicy;
     type Err = ExitReadErr;
 }
 
 impl crate::wire::typed::Handle for ExitPolicyRead {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
-        _req: crate::wire::typed::NoArgs,
+        _req: ExitPolicyReadReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<ExitPolicy, ExitReadErr>> + Send + 'static {
         async move { Ok(answer_read()) }

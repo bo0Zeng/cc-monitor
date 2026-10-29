@@ -2,6 +2,8 @@
 //!
 //! - [`bookmarks`]：书签那两条（`bookmarks-read` · `-edit`）的入参与回包 · 目录归一的唯一一份；
 //! - [`call`]：一条命令的身份（[`Call`]：名字 · 回包挂在入参类型上）与那一张 `calls!` 表 —— 命令身份唯一的声明；
+//! - [`exit_policy`]：「退出行为」那个值的读数（`exit-policy-read` · `-set` 的回包）；
+//! - [`assets`]：资产目录同步那一条（`assets-sync`）的入参与回包；
 //! - [`terminal`]：给一台开终端那一条（`terminal-ssh`）的入参与回包；
 //! - [`deploy`]：装 · 卸远端后端那两条（`deploy-install` · `deploy-uninstall`）的入参与回包；
 //! - [`files`]：文件管理那一族（`files-*`）的入参与回包，路径走原始字节（[`files::WirePath`]）；
@@ -35,6 +37,7 @@
 
 pub mod accounts;
 pub mod agent;
+pub mod assets;
 pub mod attach;
 pub mod attachment;
 pub mod batch;
@@ -45,6 +48,7 @@ pub mod call;
 pub mod cells;
 pub mod deploy;
 pub mod dial;
+pub mod exit_policy;
 pub mod file_class;
 pub mod files;
 #[cfg(any(test, feature = "ts"))]

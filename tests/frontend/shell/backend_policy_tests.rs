@@ -1,4 +1,5 @@
 use super::*;
+use serde_json::Value;
 
 /// 那个值**不在 monitor 进程里**：本模块生产段里唯一的 `static` 是死亡账那一张
 /// （`ledger()`），原来那张「推进来的生效值表」连同推它的命令一起没了。
@@ -27,7 +28,7 @@ fn the_monitor_keeps_no_copy_of_the_exit_value() {
         "唯一那个 `static` 不是死亡账那张（正控失败）：{}",
         statics[0]
     );
-    for f in ["fn kill_on_exit_now(", "async fn exit_policy_call("] {
+    for f in ["fn kill_on_exit_now(", "async fn exit_policy_call<"] {
         let at = guard_core::find_pinned(&prod, f).unwrap_or_else(|e| panic!("切不出 `{f}`：{e}"));
         let body = &prod[at..at + prod[at..].find("\n}\n").expect("函数没有收尾")];
         for c in [
@@ -44,26 +45,23 @@ fn the_monitor_keeps_no_copy_of_the_exit_value() {
             );
         }
         assert!(
-            body.contains("exit-policy-read") || body.contains(".call("),
-            "`{f}` 体内既不发那条命令也不 `.call(` —— 它不再去问了，那它的答案从哪来？"
+            body.contains("ExitPolicyReadReq") || body.contains(".ask("),
+            "`{f}` 体内既不造那条命令的入参也不 `.ask(` —— 它不再去问了，那它的答案从哪来？"
         );
     }
 }
 
+/// 退出臂照后端那一份类型（`cmd_wire::exit_policy::ExitPolicy`）收：形状不对的应答解不开（调用方按缺省办并出声），不编一个值。
 #[test]
 fn the_exit_answer_is_read_from_the_backend_shape_and_nothing_else() {
-    assert_eq!(
-        kill_from_answer(&json!({ "killOnExit": true, "state": "chosen" })),
-        Some(true)
-    );
-    assert_eq!(
-        kill_from_answer(&json!({ "killOnExit": false, "state": "unreadable" })),
-        Some(false)
-    );
-    for bad in [json!({}), json!({ "killOnExit": "true" }), json!(null)] {
-        assert_eq!(
-            kill_from_answer(&bad),
-            None,
+    use cmd_wire::exit_policy::ExitPolicy;
+    use serde_json::json;
+    let full = |kill: serde_json::Value| json!({ "state": "chosen", "killOnExit": kill, "reason": null, "detail": null, "path": null, "said": "s" });
+    let ok: ExitPolicy = serde_json::from_value(full(json!(true))).expect("后端那一形");
+    assert!(ok.kill_on_exit);
+    for bad in [json!({}), full(json!("true")), json!(null)] {
+        assert!(
+            serde_json::from_value::<ExitPolicy>(bad.clone()).is_err(),
             "形状不对的应答 {bad} 被读出了一个值 —— 退出臂会拿一个编的答案去收进程"
         );
     }
@@ -76,8 +74,7 @@ fn without_a_channel_nothing_is_made_up() {
     let o = Origin::named("这台机从来没连上过-b2");
     let r = tauri::async_runtime::block_on(exit_policy_call(
         &o,
-        "exit-policy-read",
-        serde_json::json!({}),
+        &cmd_wire::exit_policy::ExitPolicyReadReq {},
         std::time::Duration::from_secs(1),
     ));
     assert!(r.is_err(), "没通道却答出了一个值：{r:?}");
