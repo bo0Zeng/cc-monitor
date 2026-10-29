@@ -4,7 +4,7 @@
  * - 一行：［＋］附件 · 字 · ➤；Enter 发、Shift+Enter 换行，组字时回车归输入法；Esc 焦点还给消息流。没发的字按会话各记一份。
  * - 上方一排（`queue-row.ts`）：这一端的待发（`outbox.ts`，发送中 ·［撤回］）＋ 那台推来的整份队列名单（排第 n · 谁发的 ·［撤回］）；
  *   那台离线（机器成品，宿主经 `machineChanged` 交来）⇒ 照手上那一份淡着画、头上写名单是上次所知；
- *   再上一排是附件（`attach-row.ts`，拖到框上 · 粘贴 · ［＋］进同一排）。
+ *   再上一排是附件（`attach-row.ts`，拖到主区上（宿主经 `takeDrops` 交落点）· 粘贴 · ［＋］进同一排）。
  * - 交出只走 `session-queue-put`（经待发）：回执到了 ⇒ 字与 chip 一起清、框下写那台那一句；那台拒了 ⇒ 字留着、写那台那一句；
  *   没回执 ⇒ 留在待发（那一排「发送中」），那台接上照原编号重交（不挂在这条会话开没开着）。
  * - 能不能说只读脸上的 `can.say`（那台判好、`why` 写好）：不能 ⇒ 框灰着、占位就是那一句，还有终端可去 ⇒ 给［切到终端］。
@@ -155,7 +155,6 @@ export class Composer {
     });
     col.append(this.queueRow.el, this.attach.row, this.outRow, this.noteEl);
     this.el.append(col);
-    this.attach.dropOn(this.el);
     this.outbox.onChange(() => this.paint());
     this.outbox.onSettled((origin, o, end) => this.settled(pendingKey(origin, o.sid), o, end));
     // 构造里不画：宿主那一头（标签页栏）此刻可能还没建好，第一次画由宿主叫 `render()`（同会话头 · 答题块）。
@@ -196,6 +195,11 @@ export class Composer {
     if (now === undefined) this.offline.delete(origin);
     else this.offline.set(origin, now);
     if (this.host.active()?.origin === origin) this.paint();
+  }
+
+  /** 宿主交来的拖放落点（主区：消息流 ＋ 这个框）：拖进来的文件进这一排、焦点进框。收件只这一处，入口只决定落点。 */
+  takeDrops(zone: HTMLElement): void {
+    this.attach.dropOn(zone, () => this.focus());
   }
 
   /** 焦点进框（说不了 ⇒ 不进）。 */
