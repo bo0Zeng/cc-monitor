@@ -31,7 +31,7 @@ fn embedded_backend_binaries_present_and_valid() {
     assert!(key_of("Linux", "riscv64").is_err(), "未知 arch → 表外");
 }
 
-/// ★★ 🔴 `K-R70`（09-12）：**内嵌那份的身份只许来自它自己的字节。**
+/// ★★ 🔴 **内嵌那份的身份只许来自它自己的字节。**
 ///
 /// # 它取代了什么，以及为什么不是「换个写法」
 ///
@@ -75,7 +75,7 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
             *l, "build_id: my_backend_id(),",
             "这一格的身份不是从**字节**来的：{l}\n\
                  ★ 只有 `my_backend_id()`（`build.rs` 从内嵌字节里扫出的 `BACKEND_EMBEDDED_ID`）是字节自报的；\n\
-                 写字面量、或写一份 `.build_id` 旁文件再读它，是把标签换个地方抄（`KR70D1` 逐字点名的失效方向）。"
+                 写字面量、或写一份 `.build_id` 旁文件再读它，是把标签换个地方抄（本条点名的失效方向）。"
         );
     }
     // ② 字节出门前的自检住后端（`deploy::install` 照计划核那一格自报的身份，判据 `install_tests` 那一条）。
@@ -224,8 +224,7 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
             ),
             // 🔴 这里原来还有第三条：`staged/cc-monitor-backend-<arch>.build_id`，
             //    理由逐字「少了旁挂的 .build_id 清单（没有它，运行时只能回退到会误拒正品的启发式）」。
-            //    **那条清单没有了**（它是从源码常量抠出来的标签，不是指纹 ——
-            //    `K-R68`），身份改从字节里扫。
+            //    **那条清单没有了**（它是从源码常量抠出来的标签，不是指纹），身份从字节里扫。
             //    ⇒ 接替它的不是一条**按 arch** 的判据（校验那一步是 `foreach ($a in …)`，
             //      路径里带的是变量不是字面 arch，按 arch 去 grep 只会零命中地红），
             //      而是这个 arch 出现在那个 `foreach` 的清单里 ＋ 循环外那两条（见下）。
@@ -257,7 +256,7 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
         (
             "ReadAllBytes",
             "校验那一步没有把二进制的字节读进来 —— 那它验的就不是这份字节，\
-                 而是它旁边的某个文件（`K-R70` 整件治的就是这个）",
+                 而是它旁边的某个文件（身份只许来自字节，治的就是这个）",
         ),
         (
             "const STAMP_OPEN",
@@ -371,7 +370,7 @@ fn the_landing_constant_is_the_backend_one_and_no_entry_is_made_here() {
 /// 只由 `tests/evidence/SR1b-sftp-loopback.py --monitor` 带 `SR1B_LOOPBACK`
 /// （`{host,port,user,key_path,backend,home,rhome,up,dl_remote,dl_local}`）来跑；那台 sshd 的 sftp 起始目录是临时的 `rhome`，
 /// 写不到真 home。买到：部署判定四形（缺 ⇒ 部署 · 装完 ⇒ 那台 sshd 上真扫出戳、跳过 · 截成 0 字节 ⇒ 重部署 ·
-/// 无戳的文件 ⇒ 显式失败不覆盖；从前那份三行入口也一样）·
+/// 无戳的文件 ⇒ 显式失败不覆盖；三行入口那种旧文件也一样）·
 /// 卸载按钮删后端那一份 · 上传 / 下载经中继走完、最后一格是后端那一帧的终局。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/SR1b-sftp-loopback.py --monitor 带环境变量来跑"]

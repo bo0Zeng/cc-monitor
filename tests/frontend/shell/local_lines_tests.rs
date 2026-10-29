@@ -166,7 +166,7 @@ fn the_first_layer_hands_back_exactly_the_content_and_lifecycle_frames() {
     );
 }
 
-/// 分身会话不再在壳里整条丢（从前「显示分身会话」关掉 ⇒ 连它的批准框一起丢；隐藏只管占不占标签页，在等人的会话照样要人答）：
+/// 分身会话不在壳里整条丢（整条丢的话「显示分身会话」关掉 ⇒ 连它的批准框一起丢；隐藏只管占不占标签页，在等人的会话照样要人答）：
 /// 收的那一头里没有那道门，也不再读那个开关。
 #[test]
 fn no_read_loop_drops_background_sessions() {
@@ -513,7 +513,7 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
 // ─── Q1 本机那条路上的 `changed` ⇒ 界面那条订阅收得到 ───────────────────────
 //
 // 要求住址：`INVARIANTS §40` 逐字「我的目的就是把本地当成不走 ssh 的远端」—— 远端那条收事那一头
-// 收到 `changed` 就交 `changed/<主题>` 订阅；本机这条从前在吸收点丢过额度 · 账号清单 · 配置文件，界面只能等别的事件顺带重读。
+// 收到 `changed` 就交 `changed/<主题>` 订阅；本机这条不许在吸收点丢掉额度 · 账号清单 · 配置文件（丢了界面只能等别的事件顺带重读）。
 
 /// 手写线上帧走生产那一串：`decode` → 分派第一层 → 本机内容通道 → `consume` → 第二层 → 重放缓冲；
 /// 订了 `<local>` 上 `changed/quota` · `changed/rotation` · `changed/accounts` 的订阅各逐格收到自己那一格（期望手写）。

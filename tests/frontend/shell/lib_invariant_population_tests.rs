@@ -368,7 +368,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "",
     ),
-    // 公钥推送进了本机后端：一行公钥拼进那一次 exec 之前先过 `sanitize_public_key`（恰一行 · 无控制字符 · 类型前缀 ＋ base64 主体），原住 monitor `pubkey.rs`。
+    // 公钥推送进了本机后端：一行公钥拼进那一次 exec 之前先过 `sanitize_public_key`（恰一行 · 无控制字符 · 类型前缀 ＋ base64 主体）。
     (
         "src/backend/assets/pubkey.rs",
         &["authorized_keys_cmd"],

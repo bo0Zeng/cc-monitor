@@ -106,7 +106,7 @@ test("trailing-newline-only difference → zero spurious rows", () => {
 });
 
 // (j) 超大输入：cell-budget 守卫退化路径，不挂不抛。
-// 不看墙钟（10-11 起：从前比 `dt < 3000`，忙机上会误红）：走没走退化那一支看形状 ——
+// 不看墙钟（比 `dt < 3000` 的话忙机上会误红）：走没走退化那一支看形状 ——
 // 两边隔行相同：走了 O(mn) 矩阵会认出同行（ctx）、增删各 2500；退化那一支整删整增、一行同行都没有、增删各 5000。
 test("huge 5000-line rewrite: budget-guard degenerate path", () => {
   const old = Array.from({ length: 5000 }, (_, i) => (i % 2 ? `old line ${i}` : `same ${i}`)).join("\n");

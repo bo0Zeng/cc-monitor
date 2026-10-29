@@ -924,7 +924,7 @@ fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
 ///
 /// 模式杀没有「只杀我起的那些」这个概念：打到什么由命令行长相决定。本仓第三次栽在这上面是
 /// `local-backend-supervise.sh` 收尾的 `pkill -f "$BACKEND"` —— 它打死了**跑这套件的那条调用方 shell**，
-/// 而且替一条漏网的判据（`KPY2` 第一个宿主起的后端没人收）兜了一个月。收尸一律按自己起的 pid /
+/// 而且替一条漏网的判据（第一个宿主起的后端没人收）兜过底。收尸一律按自己起的 pid /
 /// 进程表里的事实（`/proc/<pid>/exe` ＋ 环境）认。上面 `the_harness_no_longer_teaches_a_bare_pattern_kill`
 /// 只钉一份文件；这一条钉整棵树。
 #[test]

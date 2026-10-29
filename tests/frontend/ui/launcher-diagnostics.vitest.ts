@@ -39,7 +39,7 @@ describe("diagnoseRemoteLauncher", () => {
     const msg = diagnoseRemoteLauncher("cct");
     expect(msg).toContain("ccm");
     expect(msg).toContain(copyText("launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm"));
-    // 从前指「下面的生成器」—— 生成器并进了机器页的「别名」，那句话跟着指过去。
+    // 生成器在机器页的「别名」里，那句话指过去。
     expect(msg).toContain(copyText("launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm"));
   });
 });

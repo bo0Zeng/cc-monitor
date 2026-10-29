@@ -210,15 +210,14 @@ fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
 // 🔴三者优先级 —— `P3` 的最后一格功能前置
 // ════════════════════════════════════════════════════════════════════════
 //
-// 老面板 `open()` 有三种入口模式，窗口此前只覆盖两种。差的那一格是 **F54**：
-// 远端**文件**路径 ⇒ 进它父目录 ＋ 高亮那一行。而那条路是**活的**
+// 窗口有三种入口模式：目录 · 文件 · home。文件那一格是 **F54**：
+// 远端**文件**路径 ⇒ 进它父目录 ＋ 高亮那一行。那条路是**活的**
 //（`src/frontend/ui/cards/index.ts::openRemoteFileInSftp` 里那个可点元素）
-// ⇒ 先退役老面板 = 那颗「跳到这个文件」当场失效。
+// ⇒ 少了这一格，那颗「跳到这个文件」当场失效。
 
 /// `path` 非空 ⇒ 它赢，**`reveal_file` 一起给也不管用**。
 ///
-/// ⚠ 那个优先级是**照抄老面板**的（`initialDir > revealPath > home`），
-/// 理由住 `plan_target` 头注：前端那几条调用点今天就是按它写的。
+/// ⚠ 那个优先级（目录 > 文件 > home）的理由住 `plan_target` 头注：前端那几条调用点今天就是按它写的。
 #[test]
 fn an_explicit_directory_beats_a_reveal_request() {
     assert_eq!(

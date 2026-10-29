@@ -89,7 +89,7 @@ fn powershell_encoded_command_is_shell_safe() {
     assert!(!enc.contains(' ') && !enc.contains(';') && !enc.contains('"'));
 }
 
-/// ★★ 〔`K-H2b` `D8 阻-2`，08-29〕**带中转前缀的那一串，编码之后前缀还在。**
+/// ★★ **带中转前缀的那一串，编码之后前缀还在。**
 ///
 /// # 它为什么活到第九轮才有人量 —— **一次平台归属的连坐误分类**
 ///

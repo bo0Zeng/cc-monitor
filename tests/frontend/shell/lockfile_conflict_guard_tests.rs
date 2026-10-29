@@ -208,7 +208,7 @@ fn the_cross_target_check_still_runs_under_the_backend_lock() {
              「平台线唯一真判据」）。要么它被删了（那是个更大的问题），\n\
              要么它被搬进了别的 job —— 而别的 job 的 `working-directory` 不是\n\
              `src/backend` ⇒ 它改走 **monitor 的 lock**，本模块整套论证反过来。\n\
-             ⚠ 08-07 变异实测：这一刀之前本条是绿的。"
+             ⚠ 变异实测过：把它搬出 `backend:` job，本条红。"
     );
 }
 

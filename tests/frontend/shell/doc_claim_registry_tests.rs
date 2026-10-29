@@ -194,8 +194,8 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
     ] {
         srcs.extend(guard_core::scan_tree!(&repo_root().join(root), &["rs"]));
     }
-    // 〔08-06 第二次补扫描面〕**把 `doc_claim_registry.rs` 也收进来**。
-    // ⚠ 先前这里的理由是「`scan_tree!` 按构造摘除调用者」——
+    // **把 `doc_claim_registry.rs` 也收进来**。
+    // ⚠ 理由不是「`scan_tree!` 按构造摘除调用者」——
     //   那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ 折返路径 ⇒ 后缀比不命中），
     //   而且上面四棵根里逐字含 `"tests"` ⇒ **本判据文件本来就在语料里**。
     //   ⇒ 下面这一 `push` 今天是冗余的（`src/frontend/shell/src` 那棵已经收过同一份），
@@ -560,15 +560,14 @@ fn read_repo_file(rel: &str) -> String {
 /// 「这个约定被整份抹掉、而『不许被埋』那条从此零命中地绿」。〕
 const BREAKING_MARK: &str = "会改变已有行为";
 
-/// 〔`K-R120` `KR120D2`，09-14〕**`CHANGELOG.md` 最上面那一节的版本号，
+/// **`CHANGELOG.md` 最上面那一节的版本号，
 /// 必须就是这棵树此刻要发的那个版本号。**
 ///
-/// # 它从哪来 —— 一条**现打出来**的缺口，不是设想
+/// # 它守什么 —— 一条**现打出来**的缺口，不是设想
 ///
-/// `K-R118` 的死值验第 ⑦ 刀：
-/// 把版本号各处 **一起** bump，而 `CHANGELOG.md`
-/// 一个字不动 ⇒ 实测 `GATE: OK —— 16 格全绿，一条都没红`
-/// ⇒ 「**版本号 bump 了而 CHANGELOG 没跟**」这一形当时**没有任何东西在守**。
+/// 死值验：把版本号各处 **一起** bump，而 `CHANGELOG.md`
+/// 一个字不动 ⇒ 没有本条时门禁全绿，一条都不红
+/// ⇒ 「**版本号 bump 了而 CHANGELOG 没跟**」这一形要有东西守。
 /// 它的后果正是本区最贵的那一族：一次**静默的行为改变** —— 用户拿到的包只涨了小版本号，
 /// 而里面有几条会让他原来的用法当场失效。
 ///
@@ -601,7 +600,7 @@ const BREAKING_MARK: &str = "会改变已有行为";
 ///    **不保证最上面那一节里那一处还在**。
 /// 3. 本条只读 `CHANGELOG.md` 一份文件 ＋ 一个编译期常量。那一节里**写的内容对不对、
 ///    全不全**（六条是不是真的六条、有没有漏掉一条）一个字都不判 ——
-///    那是人裁的，`K-R118` 交回时逐字写过「**用户可见**那一层给不出判别式」。
+///    那是人裁的：「**用户可见**那一层给不出判别式」。
 #[test]
 fn the_changelog_top_section_is_the_version_we_ship() {
     /// 段界记号。**一律走具名常量** —— `needle_anchor_registry` 那条递减棘轮数的正是
@@ -638,8 +637,8 @@ fn the_changelog_top_section_is_the_version_we_ship() {
     assert_eq!(
         top_version, shipping,
         "`CHANGELOG.md` 最上面那一节写的是 `{top_version}`，而这棵树要发的是 `{shipping}`。\n\n\
-             ★ 本条接的是 `K-R118` `d7` 那一刀现打出来的缺口：那一刀把版本号七处一起 bump、\n\
-             `CHANGELOG.md` 一个字不动 ⇒ 当时 **16 格全绿，一条都没红**。\n\
+             ★ 本条守的缺口：版本号七处一起 bump、\n\
+             `CHANGELOG.md` 一个字不动 ⇒ 没有本条时门禁**全绿，一条都不红**。\n\
              「小版本号 ＋ 没人说的破坏性变更」= 一次静默的行为改变，那是本区最贵的一族。\n\n\
              出路二选一（**不是**「把这一条放宽」）：\n\
              ① 版本号真的要 bump ⇒ 在 `CHANGELOG.md` 顶上补 `## [{shipping}] — <日期>` 那一节，\n\

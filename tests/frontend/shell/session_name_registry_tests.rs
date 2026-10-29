@@ -16,7 +16,7 @@ const REGISTERED: &[(&str, &str, &str)] = &[
         "本体：`derive_tmux_name`（cwd 派生 `<项目名>-cc`，空 ⇒ `session-cc`）＋ `fork_tmux_base`（分叉 `<源名>-fork-cc`）。\
 全仓唯一一份：`ccm` 起会话与 `session-open` 铸名都走它，\
              撞名避让走同文件的 `next_free_name`（`mint_tmux_name`，只收会话快照那张 `TakenNames`）。\
-             ★★ `K-R96`（09-12）退役了 sid 派生那一族（`pickFreshTmuxName`，用户 `R55`「要是可读的名字 / 不要id」）；\
+             ★★ 没有 sid 派生那一族（`pickFreshTmuxName`，用户 `R55`「要是可读的名字 / 不要id」）；\
              sid 骑在 `@ccm_sid` 上。",
     ),
     (

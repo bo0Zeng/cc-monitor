@@ -102,12 +102,8 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
     );
     // 样子：漂了 ⇒ 窗口画的不是主界面那一套。
     assert_eq!(got.theme, want.theme, "样子漂了");
-    // 🔴〔2026-09-23 本机侧退役〕**这里少了一次「判别式过得去吗」的比对。**
-    //    从前 `Source` 是个两格枚举，这一段要先 `match` 出两侧都是 `Remote`
-    //    （对不上就 `panic!("源的判别式没过得去")`），下面还单独喂一份
-    //    `Source::Local` 的种子对拍它那一格。`Source` 收成 newtype 之后
-    //    **判别式这个概念不存在了** ⇒ 那两处不是被删掉的判据，是它们判的东西没了。
-    // 那台的名字（从前是整份远端配置：主机 · 口 · 用户 · 钥匙路径 · 地址表逐格比；窗口今天只拿名字）。
+    // 🔴 `Source` 是 newtype（窗口只有远端一侧）⇒ 没有「判别式过得去吗」这一比。
+    // 那台的名字（窗口只拿名字，不拿整份远端配置）。
     assert_eq!(
         got.origin, want.origin,
         "那台的名字漂了 —— 窗口会问另一台机器（或者谁都没登记过的名字）"
@@ -826,7 +822,7 @@ fn the_entry_command_has_no_in_process_fallback_left() {
 // 窗口进程拨回 monitor 那一下 · 第一屏那两条（窗口那一侧的躯体）随它搬去了 `tests/frontend/filewin/proc_tests.rs`。
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴「当场就死了」不再被报成成功（原住 `shell_tests`：`early_failure` 随起进程那一侧留在 monitor）
+// 🔴「当场就死了」不被报成成功（`early_failure` 住起进程那一侧，也就是 monitor）
 //    下面两条**照旧喂线程**：它们钉的是那条轮询本身的两个方向（「结束了」认得出 · 「还在跑」不误判），
 //    线程是这两个方向最便宜的合成输入；进程那一侧的行为判据是上面那几条（真起进程）。
 // ════════════════════════════════════════════════════════════════════════
@@ -889,7 +885,7 @@ fn the_spawn_result_is_never_thrown_away() {
         prod.contains("pub fn open_in_new_process"),
         "剥生产段把那条路一起剥掉了 —— 下面几比此刻不可信"
     );
-    // 定义随「起进程那一侧」搬进本文件（从前住窗口的 `shell.rs`）⇒ 数调用处：总数减掉定义那一行。
+    // 定义也在被扫的这份文件里 ⇒ 数调用处：总数减掉定义那一行。
     assert_eq!(
         (
             prod.matches("fn early_failure(").count(),
@@ -904,10 +900,10 @@ fn the_spawn_result_is_never_thrown_away() {
         !prod.contains(&format!("let _ = {spawn_needle}")),
         "起进程的结果又被 `let _ = …` 丢掉了 —— 那就回到了「静默成功」那一形"
     );
-    // 🔴 **先把那个函数项切出来，再比先后** —— 而这一刀是死值验逼出来的，不是洁癖。
+    // 🔴 **先把那个函数项切出来，再比先后** —— 不是洁癖。
     //
-    // 上一版在**整份生产段**上比 `find(spawn_window()` 与 `find(early_failure()`。
-    // 死值验现打：把那一跳原地挪到起进程**之前**，这一条**照旧报绿**。
+    // 在**整份生产段**上比 `find(spawn_window()` 与 `find(early_failure()` 的话，
+    // 把那一跳原地挪到起进程**之前**，这一条**照旧报绿**（死值验实测）。
     // 病根是 `spawn_window` 的**定义**（`pub fn spawn_window(`）就在文件里更靠前的位置
     // ⇒ `at_spawn` 拿到的是定义的偏移，恒小于任何一处调用 ⇒ **那一比恒真**。
     // ⇒ 人群必须收到「`open_in_new_process` 这一个函数项」里面。

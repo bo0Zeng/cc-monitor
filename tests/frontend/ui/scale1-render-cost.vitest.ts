@@ -261,7 +261,7 @@ let inflatedSamples: RenderCostSample[] = [];
 const lineBytes = fixtureLines.map((l) => new TextEncoder().encode(l).length);
 
 // 慢：这一段真渲 `69 × (8+1) = 621` 条记录，单独跑约 4.5s，vitest 全量并发时它和另外一百多个文件抢 CPU
-// ⇒ 从前在默认 10s 上随机超时（S21 那一路先撞见，单独跑 14/14 全过）。不另给期限：钩子的上限是兜底的那一个数
+// ⇒ 默认 10s 会随机超时（单独跑全过）。不另给期限：钩子的上限是兜底的那一个数
 // （`tests/test-support/wall-ceiling.ts`，vitest.config 的 hookTimeout）；判的东西一律不看墙钟。
 beforeAll(() => {
   // 预热一遍再开探针：marked / highlight.js / katex 的首次调用要初始化语言表与
@@ -362,7 +362,7 @@ beforeAll(() => {
     lines.push(`| ${name} | ${cells.join(" | ")} |`);
   }
   lines.push("");
-  lines.push("只看**正文卡型**（`BODY_CARD_TYPES`）逐桶 ——先前是「`card` 分支」，那里混着便宜的 `card-compact`：");
+  lines.push("只看**正文卡型**（`BODY_CARD_TYPES`）逐桶 —— 不看「`card` 分支」，那里混着便宜的 `card-compact`：");
   lines.push(
     "| 桶 | n | total p50 | total p90 | total max | render p50 | render 占比 p50 |",
   );

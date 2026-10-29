@@ -365,8 +365,8 @@ async fn without_a_local_backend_the_transfer_is_refused_out_loud() {
 
 /// 🔴 本机落点是一份会话记录的形状 ⇒ **照样转给本机后端开单**，落点原样带过去。
 ///
-/// 从前这一条是「踩线的本机落点 ⇒ 回围栏那句话，而且在转给后端之前（一条请求都不发）」。
-/// 用户「文件管理器全部都可以改. 不需要任何围栏」⇒ monitor 这一侧开单时那一判删了。
+/// 没有「踩线的本机落点 ⇒ 在转给后端之前回围栏那句话」这一判：
+/// 用户「文件管理器全部都可以改. 不需要任何围栏」⇒ monitor 这一侧开单时不判。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_download_onto_a_session_file_is_forwarded_like_any_other() {
     let _g = crate::inbound_client::local_origin_test_lock();

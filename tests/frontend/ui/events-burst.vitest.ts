@@ -65,7 +65,7 @@ describe("events.ts 的突发哨兵（audit-0805 F17：这 135 条语句此前 0
 
   // 🔴 **收尾处置那个定时器 —— 不是「多等一会儿」。**
   //
-  // 病灶逐字〔K-W1C 09-04，机制由 K-R24 道读出〕：`scheduleBatchEnd` 排的
+  // 病灶：`scheduleBatchEnd` 排的
   // `window.setTimeout(…, BATCH_END_GRACE_MS)` 在本文件断言完之后仍然挂着；
   // 没人 `clearTimeout`、也没人等它。它在**测试之外**触发，一路跑进
   // `emitPerfSummary` 的遥测那一跳，而那条路上没有任何调用栈接得住异常
@@ -104,7 +104,7 @@ describe("events.ts 的突发哨兵（audit-0805 F17：这 135 条语句此前 0
     ).toBe(1);
   });
 
-  // K-W1C 09-04：把那条 flaky 的**那一形**变成一条点得出名字的判据。
+  // 把那条 flaky 的**那一形**变成一条点得出名字的判据。
   //
   // 它钉的不是「不要炸」，是**前提的两半**：
   //   ① 建立 —— 那个 grace 定时器**确实**在桩还装着的时候跑完了（`runAllTimersAsync`，

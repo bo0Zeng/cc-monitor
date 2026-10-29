@@ -71,7 +71,7 @@ const CLIENT_SIDE_COMMS: &[(&str, &str)] = &[
 const FRONTEND_PACKAGES: &[(&str, &str, &str)] = &[(
     "src/frontend/filewin",
     "src/frontend/filewin/src/main.rs",
-    "文件窗口（又一个前端）：它自己的 `[[bin]] cc-monitor-filewin` 一行转调库面；只经 monitor 内嵌那份出货（不进安装包，K-R124 ⑭a）；monitor 一行都不引它",
+    "文件窗口（又一个前端）：它自己的 `[[bin]] cc-monitor-filewin` 一行转调库面；只经 monitor 内嵌那份出货（不进安装包，入包量具 ⑭a）；monitor 一行都不引它",
 )];
 
 /// 部署判定（原 `deploy-core` 的判定那一半）：各自只许在后端那一个家恰一处定义 —— (名字, 家)。
