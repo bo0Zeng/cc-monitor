@@ -63,6 +63,10 @@ pub const SANDBOX_ENV: &str = "CCM_SANDBOX";
 /// 远端的 `backendPath`（可填的格）删了，monitor 与后端往那台拼命令、推字节都只认这一处。
 pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";
 
+/// 换版本时被盖掉的那几份落点（相对家目录，`ccm-<那一份自报的身份>`）：后端 `control/place_self.rs` 在盖落点那一下之前留，
+/// 有上限、过期删。在落点那层 `bin` 底下（同一块盘；数据页由 `bin` 那一行代表）。
+pub const BACKEND_KEPT_DIR_REL: &str = ".cc-monitor/bin/kept";
+
 /// 同一个落点在远端 POSIX shell 里的写法（远端今天只承诺 POSIX）：`$HOME` 在那台上展开，其余字节都是安全字符。
 pub const BACKEND_LANDING_SHELL: &str = "\"$HOME\"/.cc-monitor/bin/ccm";
 
