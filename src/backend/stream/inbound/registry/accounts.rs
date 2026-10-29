@@ -58,7 +58,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // 改账号库的那几条（typed：入参 · 成品 · 码表都从 `cmd_wire::accounts` 与 `faces::accounts_face` 的类型来）：本体 `accounts/manage/`，
     //   帧面宿主 `faces/accounts_face.rs`（建 API 号写 key · 账号表变了改配置文件、重生成别名）。
-    //   写经这台的文件管理面（[`LocalFiles`]）与分派那一层递的写句柄（key 表）；同步文件 I/O ⇒ 阻塞档。`accounts-verify` / `accounts-login-cmd` 只读。
+    //   写经这台的文件管理面（[`LocalFiles`]）与分派那一层递的写句柄（key 表）；同步文件 I/O ⇒ 阻塞档。`accounts-verify` 只先补缺的共享链接（账号库对齐）；`accounts-login-cmd` 只读。
     crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsInit>("建账号库"),
     crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsAdd>("新建一个号"),
     crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsRemove>("删一个号"),
