@@ -72,3 +72,79 @@ describe("改列宽只当场估视口附近（read8b，瓶颈 #10）", () => {
     expect(l.seqAt(0, ROWS, whole.heightOf(0, 123_456) + 0.5)).toBe(whole.seqAt(0, ROWS, whole.heightOf(0, 123_456) + 0.5));
   });
 });
+
+/**
+ * 〔A17-45-3-5〕前缀和按块存：改一行只重算它那一块（块长 1 024 行）＋ 块和那一列，不从改动那一行一路重算到尾。
+ * 起因：用户真会话 15.5 万行，视口在顶部时 WebKitGTK 上交回占位一次 15 ms、精算一批 8 ms（整列从改动处重合）。
+ * 判据数行（`summed`：重合前缀和摸过几行），不卡毫秒。
+ */
+describe("骨架账本改一行只重算它那一块（40 万行 · 4 万轮折着）", () => {
+  const BLOCK = 1024;
+  const fresh = (): SkeletonLedger => {
+    const l = new SkeletonLedger(0, indexPages(synthRows()), 800);
+    l.setFolds({ ...synthFolds(ROWS / TURN), linePx: 30 });
+    return l;
+  };
+
+  it("顶部精算 20 行（一行一次）· 交回占位量回一行 · 展开再收起顶部一轮：每一下至多重算一两块", () => {
+    const l = fresh();
+    let mark = l.summed;
+    for (let k = 0; k < 20; k++) l.refine([[k * TURN, 100 + k]]);
+    expect(l.summed - mark, "顶部精算一行从那一行重算到了尾").toBeLessThanOrEqual(20 * BLOCK);
+    mark = l.summed;
+    l.measured([[3 * TURN, 77]]);
+    expect(l.summed - mark, "交回占位量回一行从那一行重算到了尾").toBeLessThanOrEqual(BLOCK);
+    const all = synthFolds(ROWS / TURN);
+    mark = l.summed;
+    l.setFolds({ folded: all.folded.slice(1), lines: all.lines, linePx: 30 });
+    l.setFolds({ folded: all.folded, lines: all.lines, linePx: 30 });
+    expect(l.summed - mark, "展开 / 收起一轮重算了整份").toBeLessThanOrEqual(2 * BLOCK);
+  });
+
+  it("一串改动之后与照同一份结果整份建的账本处处一样高、像素落在同一行", () => {
+    const l = fresh();
+    const all = synthFolds(ROWS / TURN);
+    const refined: Array<[number, number]> = [];
+    // 跨块边上的、块里的、尾巴上的；同一行改两遍
+    for (const seq of [0, 10, 1020, 1030, 2040, 2050, 199_990, 200_000, ROWS - 10, 10]) refined.push([seq, 50 + (seq % 97)]);
+    for (const e of refined) l.refine([e]);
+    l.measured([[1023 * TURN, 61], [ROWS - 1, 0]]);
+    const keep = all.folded.filter((_, k) => k % 1000 !== 7);
+    l.setFolds({ folded: keep, lines: all.lines, linePx: 26 });
+    l.refine([[5000 * TURN + 1, 999]]); // 折着的行精算回来也收（展开了才见）
+
+    // 同一份结果、一次一大批：整份折上 → 精算一批 → 量回 → 换折叠 → 精算
+    const whole = fresh();
+    whole.refine([...new Map(refined).entries()]);
+    whole.measured([[1023 * TURN, 61], [ROWS - 1, 0]]);
+    whole.setFolds({ folded: keep, lines: all.lines, linePx: 26 });
+    whole.refine([[5000 * TURN + 1, 999]]);
+
+    expect(l.totalHeight).toBeCloseTo(whole.totalHeight, 6);
+    for (let i = 0; i <= ROWS; i += 997) expect(l.heightOf(0, i), `前 ${i} 行`).toBeCloseTo(whole.heightOf(0, i), 6);
+    for (const i of [BLOCK - 1, BLOCK, BLOCK + 1, 2 * BLOCK, ROWS - 1, ROWS]) expect(l.heightOf(i - 1, i), `第 ${i - 1} 行`).toBeCloseTo(whole.heightOf(i - 1, i), 6);
+    for (let k = 0; k < 400; k++) {
+      const y = (k * 7919.37) % whole.totalHeight;
+      expect(l.seqAt(0, ROWS, y), `y=${y}`).toBe(whole.seqAt(0, ROWS, y));
+      expect(l.seqAt(150_000, 160_000, y / 50), `段内 y=${y / 50}`).toBe(whole.seqAt(150_000, 160_000, y / 50));
+    }
+    // 像素落在哪一行另照 heightOf 逐行找一遍（不走 seqAt 的二分）：块边上 · 零高的块（整块折着）· 段顶段尾
+    const at = (lo: number, hi: number, y: number): number => {
+      for (let i = lo; i < hi; i++) if (l.heightOf(lo, i + 1) > Math.max(0, y)) return i;
+      return hi - 1;
+    };
+    const quiet = new SkeletonLedger(0, indexPages(synthRows()), 800);
+    quiet.setFolds({ folded: [[2 * BLOCK, 4 * BLOCK]], lines: [], linePx: 0 });
+    for (const [lo, hi] of [[0, 6 * BLOCK], [BLOCK - 3, 3 * BLOCK + 5], [2 * BLOCK + 1, 5 * BLOCK]]) {
+      for (const y of [-1, 0, 0.5, 1e9, ...Array.from({ length: 60 }, (_, k) => k * 913.7)]) {
+        expect(l.seqAt(lo, hi, y), `[${lo},${hi}) y=${y}`).toBe(at(lo, hi, y));
+      }
+      const top = quiet.heightOf(lo, 2 * BLOCK);
+      for (const y of [top - 0.5, top, top + 0.5]) {
+        let want = hi - 1;
+        for (let i = lo; i < hi; i++) if (quiet.heightOf(lo, i + 1) > Math.max(0, y)) { want = i; break; }
+        expect(quiet.seqAt(lo, hi, y), `整块零高 [${lo},${hi}) y=${y}`).toBe(want);
+      }
+    }
+  });
+});

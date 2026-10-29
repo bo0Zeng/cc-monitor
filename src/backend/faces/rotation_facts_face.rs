@@ -2,19 +2,7 @@
 //! 只读；拼装只在 [`crate::accounts::upstream_select::rotate::Hop::facts`] 一处。
 
 use crate::wire::typed::Command;
-pub(crate) use cmd_wire::rotation::RotationFactsReply;
-
-/// `rotation-facts` 的入参。
-#[derive(Debug, Default, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct RotationFactsReq {
-    /// 哪一家（线上的 kind）；缺 ⇒ 有账号库的那一家。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) agent: Option<crate::agents::AgentKind>,
-}
+pub(crate) use cmd_wire::rotation::{RotationFactsReply, RotationFactsReq};
 
 crate::wire::typed::codes! {
     /// `rotation-facts` 自己的码（只有入参不对那一种）。
@@ -25,9 +13,7 @@ crate::wire::typed::codes! {
 pub(crate) struct RotationFacts;
 
 impl Command for RotationFacts {
-    const NAME: &'static str = "rotation-facts";
-    type Req = RotationFactsReq;
-    type Reply = RotationFactsReply;
+    crate::wire::typed::by_call!(RotationFactsReq);
     type Err = RotationFactsErr;
 }
 

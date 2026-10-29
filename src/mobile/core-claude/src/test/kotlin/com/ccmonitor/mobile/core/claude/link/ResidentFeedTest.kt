@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.Decide
+import com.ccmonitor.mobile.core.wire.gen.EmptyFace
 import com.ccmonitor.mobile.core.wire.gen.HiddenNow
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCards
@@ -310,6 +311,30 @@ class ResidentFeedTest {
                 val got = f.state.value.deployFix()
                 assertEquals(name, fix, got?.fix)
             }
+        }
+
+    /** 核心跟着 `state` 交的首屏那一句（手上每台合的）原样交出去；装不进 ⇒ 报契约对不上、不交。 */
+    @Test
+    fun `核心交的首屏那一句原样交给 onEmpty`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val got = mutableListOf<EmptyFace>()
+            val breaks = mutableListOf<String>()
+            ResidentFeed(
+                scope = backgroundScope,
+                core = core,
+                machine = { "box" },
+                ssh = MutableStateFlow(null),
+                mine = "p10g-mine",
+                tz = "Asia/Shanghai",
+                kept = Disk(),
+                onBreak = { breaks += it },
+                onEmpty = { got += it },
+            ).ensure()
+            core.emit("empty", """{"line":"会话清单未报完","hint":"box 连接中"}""")
+            core.emit("empty", """{"line":"x"}""")
+            assertEquals(listOf(EmptyFace("会话清单未报完", "box 连接中")), got)
+            assertEquals(1, breaks.size)
         }
 
     /** 成品装不进（缺格 · 修法认不出）⇒ 报一次契约对不上，状态不动。 */

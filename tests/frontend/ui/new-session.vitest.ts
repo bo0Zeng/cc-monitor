@@ -71,7 +71,6 @@ vi.mock("../../../src/frontend/ui/open-settings", async (importOriginal) => ({ .
 
 import { openNewSession } from "../../../src/frontend/ui/new-session";
 import { setLaunchSlots } from "../../../src/frontend/ui/session-open";
-import { loginInTmux } from "../../../src/frontend/ui/settings/account-login";
 import { commands } from "../../../src/frontend/ui/ipc/commands";
 import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -828,27 +827,6 @@ describe("分叉：那台说得出源会话的号与终端", () => {
     const acct = sel(copyText("newSession.label.account"));
     expect(acct.dataset.value).toBe("personal");
     expect(optionsOf(acct).some((o) => o.includes(copyText("newSession.account.follow")))).toBe(false);
-  });
-});
-
-describe("账号页［在 tmux 里登录］：不开框，同一个请求", () => {
-  it("★ 一问 `session-open`：起默认那一家、目录 = 那个号的目录、点名那个号、放在 tmux；不接进终端；设置窗里报到了说「已启动」＋［切过去］", async () => {
-    await loginInTmux("devbox", "team", "/h/.cc/team");
-    await flush();
-    expect(newRequests()).toEqual([{ what: { kind: "new", agent: "claude", cwd: "/h/.cc/team" }, run: "tmux", local: false, account: { kind: "named", name: "team" } }]);
-    expect(sent.map((x) => x.op), "起那一问 ＋ 等报到那一问").toEqual(["session-open", "session-arrive"]);
-    expect(term.openTerminal).not.toHaveBeenCalled();
-    expect(arriveAsks()).toEqual([OK.arrival]);
-    expect(document.body.textContent).toContain(copyText("launch.fromSettings.done", { name: "orders-cc", machine: "devbox" }));
-    expect(document.body.textContent).toContain(copyText("newSession.switch.action"));
-  });
-
-  it("那台说没 tmux ⇒ 那一句原样上屏，不起", async () => {
-    refusal = { op: "session-open", code: "place_unavailable", message: "那台没 tmux-甲", data: { field: "place", unavailable: null } };
-    await loginInTmux("devbox", "team", "/h/.cc/team");
-    await flush();
-    expect(document.body.textContent).toContain("那台没 tmux-甲");
-    expect(arriveAsks()).toEqual([]);
   });
 });
 

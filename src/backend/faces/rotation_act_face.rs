@@ -8,9 +8,10 @@ use crate::accounts::quota::rules::{simulate, standing, Acct, Adopted};
 use crate::accounts::upstream_select::turn;
 use crate::faces::rotation_face::Ctx;
 use crate::wire::typed::Command;
-pub(crate) use cmd_wire::rotation::{RotDone, RotUnusable, RotationTempReply};
+pub(crate) use cmd_wire::rotation::{
+    RotDone, RotTempOp, RotUnusable, RotationTempReply, RotationTempReq, RotationUseNowReq,
+};
 use copy_core::copy_text;
-use serde::Deserialize;
 
 fn no_session() -> String {
     copy_text("beRotation.session.gone", &[])
@@ -94,28 +95,6 @@ fn judged_session(ctx: &Ctx, sid: &str, s: &Session, now: u64, end: u64) -> Judg
 
 // ── rotation-temp ─────────────────────────────────────────────────────────────────────────
 
-/// 会话侧的临时动作：顺序里把一行拖到第 `to` 格（0 起，第 0 格是在用的号）· 清掉 · 这个会话先不用 / 再用一个号。
-/// 第几格由这里照这个会话此刻的顺序认（界面只交松手的那一格）。
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) enum RotTempOp {
-    Move { account: String, to: usize },
-    Clear,
-    Off { account: String, off: bool },
-}
-
-/// `rotation-temp` 的入参。
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationTempReq {
-    pub(crate) sid: String,
-    pub(crate) op: RotTempOp,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-temp` 自己的码。
     pub(crate) enum RotationTempErr {
@@ -132,9 +111,7 @@ crate::wire::typed::codes! {
 pub(crate) struct RotationTemp;
 
 impl Command for RotationTemp {
-    const NAME: &'static str = "rotation-temp";
-    type Req = RotationTempReq;
-    type Reply = RotationTempReply;
+    crate::wire::typed::by_call!(RotationTempReq);
     type Err = RotationTempErr;
 }
 
@@ -241,16 +218,6 @@ pub(crate) fn temp_with(
 
 // ── rotation-use-now ──────────────────────────────────────────────────────────────────────
 
-/// `rotation-use-now` 的入参。
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationUseNowReq {
-    pub(crate) sid: String,
-    pub(crate) account: String,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-use-now` 自己的码。
     pub(crate) enum RotationUseNowErr {
@@ -266,9 +233,7 @@ crate::wire::typed::codes! {
 pub(crate) struct RotationUseNow;
 
 impl Command for RotationUseNow {
-    const NAME: &'static str = "rotation-use-now";
-    type Req = RotationUseNowReq;
-    type Reply = RotDone;
+    crate::wire::typed::by_call!(RotationUseNowReq);
     type Err = RotationUseNowErr;
 }
 

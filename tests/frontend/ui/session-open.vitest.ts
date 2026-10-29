@@ -45,6 +45,8 @@ const toasts = vi.hoisted(() => ({ toast: vi.fn(), failToast: vi.fn() }));
 vi.mock("../../../src/frontend/ui/kit/toast", () => toasts);
 const resync = vi.hoisted(() => ({ offerResyncRetry: vi.fn() }));
 vi.mock("../../../src/frontend/ui/resync", () => resync);
+const drawer = vi.hoisted(() => ({ openLoginDrawer: vi.fn() }));
+vi.mock("../../../src/frontend/ui/login-drawer", () => drawer);
 
 import { openSession, setLaunchSlots } from "../../../src/frontend/ui/session-open";
 import type { ArriveAsk } from "../../../src/frontend/ui/generated/ArriveAsk";
@@ -227,10 +229,19 @@ describe("失败按码挑按钮，那一句是那台的原话", () => {
       refusal = { code: "account_unavailable", message: "选不了", data: { field: null, unavailable: u } };
       await openSession("devbox", RESUME);
       reply = opened("started");
-      toasts.toast.mock.calls[0][2].action.run();
+      toasts.toast.mock.calls[0][2].action[0].run();
       await flush();
       expect(sent.map((s) => s.body.account)).toEqual([undefined, want]);
     }
+  });
+
+  it("★ 选不了号 ⇒ 那一条上另有［登录…］：开那台那个号的登录抽屉（同新建会话框那一颗，A2-17-11-1）", async () => {
+    refusal = { code: "account_unavailable", message: "z 需登录", data: { field: null, unavailable: { requested: "z", pinned: true, listKnown: true, alternative: "b" } } };
+    await openSession("devbox", RESUME);
+    const acts = toasts.toast.mock.calls[0][2].action as { label: string; run: () => void }[];
+    expect(acts.map((a) => a.label)).toEqual([copyText("sessionOpen.account.useAlt", { alt: "b" }), copyText("newSession.account.login")]);
+    acts[1].run();
+    expect(drawer.openLoginDrawer).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "z" } }));
   });
 
   it("记录已不在 ⇒ 零次开窗（标签页的「记录已不在」由那台账本重发一帧脸）", async () => {

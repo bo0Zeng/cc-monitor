@@ -171,7 +171,7 @@ import {
   recordReadCalls,
 } from "../../test-support/chan-fake";
 import type { SessionFacts, UsageFact } from "../../../src/frontend/ui/session-reads";
-import { noteMessage, silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
+import { failToast, noteMessage, silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
 import { __setHostFactsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
 import { openSession } from "../../../src/frontend/ui/session-open";
 import { pickAsk } from "../../../src/frontend/ui/resume-menu";
@@ -298,7 +298,10 @@ function groupBackend(): {
   note: (origin: string, sid: string) => { groups: string[]; pinned: boolean; facts: MemberFacts };
   group: (id: string, name: string) => void;
   connect: (tm: TabManager) => Promise<void>;
+  /** 那台拒固定 / 取消固定那一问（`history-annotate {pinned}`）。 */
+  refuse: { pin: boolean };
 } {
+  const refuse = { pin: false };
   const groups: Array<{ id: string; name: string; named: number }> = [];
   const notes = new Map<string, { origin: string; sid: string; groups: string[]; pinned: boolean; facts: MemberFacts }>();
   const calls: Array<[string, string, unknown]> = [];
@@ -364,6 +367,7 @@ function groupBackend(): {
     }
     const { sid, patch } = req as { sid: string; patch: Patch };
     const m = note(origin, sid);
+    if (patch.pinned != null && refuse.pin) throw new Error("那台拒了固定-甲");
     if (patch.pinned != null) m.pinned = patch.pinned;
     return { entry: {}, prev: null } as never;
   };
@@ -373,6 +377,7 @@ function groupBackend(): {
     calls,
     note,
     group: (id, name) => void groups.push({ id, name, named: 0 }),
+    refuse,
     connect: async (tm) => {
       tm.attachGroups(book);
       await book.refreshAll([LOCAL_ORIGIN]);
@@ -2291,6 +2296,16 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "open_settings_window"), "不开设置窗").toEqual([]);
   });
 
+  it("★ 机器条［更新］没换上 ⇒ 不弹红 toast（那一句由那台的状态成品写在机器条那一行，A2-17-14-2）", async () => {
+    const tm = makeTM();
+    vi.mocked(updateBackendOf).mockReset();
+    vi.mocked(updateBackendOf).mockRejectedValue(new Error("推不上去-甲"));
+    vi.mocked(failToast).mockClear();
+    tm.fixMachine("devbox", "update");
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(failToast)).not.toHaveBeenCalled();
+  });
+
   it("★ ［重新连接］那台拒了（停用着 · 正在连 · 机器表里没有）⇒ 那一句原样进状态栏消息，不只进日志", async () => {
     const tm = makeTM();
     mockInvoke.mockReset();
@@ -3109,6 +3124,27 @@ describe("步 17·B 固定：交那台 · 复活 · 正交", () => {
     await settleGroups();
     expect(tabOf("s1").pinned).toBe(false);
     expect(be.note(LOCAL_ORIGIN, "s1").pinned, "取消固定之后那台还留着 ⇒ 下次启动它又回来了").toBe(false);
+  });
+
+  it("★ 取消固定：那台回包成了才出「已取消固定」［撤销］；那台拒了 ⇒ 全程没有那一条、行回到固定（A2-17-7-3）", async () => {
+    await be.connect(tm);
+    tm.ensureTab("s1", "/home/u/proj", "/p/s1.jsonl", LOCAL_ORIGIN);
+    tm.togglePin("s1");
+    await settleGroups();
+    const unpinned = copyText("tabBar.unpinned.toast", { title: fullTitle(tabOf("s1")) });
+    const said = (): string[] => vi.mocked(undoToast).mock.calls.map((c) => c[0]).filter((t) => t === unpinned);
+    vi.mocked(undoToast).mockClear();
+    be.refuse.pin = true;
+    tm.togglePin("s1");
+    expect(said(), "回包之前不出").toEqual([]);
+    await settleGroups();
+    expect(said()).toEqual([]);
+    expect(tabOf("s1").pinned, "拒了 ⇒ 重读那台、回到固定").toBe(true);
+    be.refuse.pin = false;
+    tm.togglePin("s1");
+    expect(said()).toEqual([]);
+    await settleGroups();
+    expect(said()).toEqual([unpinned]);
   });
 
   it("🔴 没接组的账的实例（撕离出来的查看窗）：`togglePin` 什么都不做", async () => {

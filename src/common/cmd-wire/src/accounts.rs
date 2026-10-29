@@ -503,3 +503,16 @@ pub struct SessionAccountReply {
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub own_upstream: Option<String>,
 }
+
+/// `accounts-list` 的入参。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct AccountsListReq {
+    /// 这次起会话的是哪一家（线上的 kind，同 `session-open-facts` 给的那一格；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。
+    pub agent: crate::AgentKind,
+}

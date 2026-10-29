@@ -11,7 +11,6 @@
  *    （就是那个开口）。多一处 ＝ 有人绕开开口另起一条路；少一处 ＝ 某个入口掉线了。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { MachineRow } from "../../../src/frontend/ui/generated/MachineRow";
 
 const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({
@@ -21,18 +20,18 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 const toastMock = vi.fn();
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ failToast: (...a: unknown[]) => toastMock(...a) }));
+const plainToast = vi.fn();
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ failToast: (...a: unknown[]) => toastMock(...a), toast: (...a: unknown[]) => plainToast(...a) }));
 
 import { openFileWindow, fileWindowTheme, FILE_WINDOW_THEME_TOKENS } from "../../../src/frontend/ui/file-window";
+import { TabSessionActions } from "../../../src/frontend/ui/tab-session-actions";
+import type { Tab } from "../../../src/frontend/ui/tab-model";
 import { productionTsFiles } from "../../test-support/production-sources";
 import { stripComments } from "../../test-support/strip-comments";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
-/** 机器表里那一行（名字是后端算好的那一格）。 */
-const CFG: MachineRow = {
-  name: "devbox",
-  host: { label: "devbox", host: "h", port: 22, user: "u", keyPath: "", addresses: [], jump: "", connect: true },
-};
+/** 那台的名字（机器表里那一格；壳那一头自己认那台）。 */
+const CFG = "devbox";
 
 describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
   beforeEach(() => {
@@ -75,7 +74,16 @@ describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
     const [title, e, opts] = toastMock.mock.calls[0] as [string, Error & { detail: string }, { fact: string }];
     expect(title).toBe(copyText("fileWindow.openFileWindow.failed"));
     expect([e.message, e.detail]).toEqual(["窗口没起来：没有图形会话", detail]);
-    expect(opts.fact).toBe(CFG.name);
+    expect(opts.fact).toBe(CFG);
+  });
+
+  it("★ 远端会话「打开工作目录」⇒ 只凭那台名字开文件窗口落在那个目录，不读机器表、不出「远端目录无法在本机打开」（A2-17-7-5）", async () => {
+    invokeMock.mockResolvedValue(1);
+    plainToast.mockReset();
+    const t = { sessionId: "r1", origin: "gpu-01", projectDir: "/srv/proj" } as unknown as Tab;
+    await new TabSessionActions({ tab: () => t, isAttachable: () => false }).openTabCwd("r1");
+    expect(invokeMock.mock.calls).toEqual([["open_file_window", { origin: "gpu-01", path: "/srv/proj", revealFile: null, theme: fileWindowTheme() }]]);
+    expect(plainToast).not.toHaveBeenCalled();
   });
 });
 
