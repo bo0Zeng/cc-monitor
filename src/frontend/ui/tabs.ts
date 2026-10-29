@@ -1345,7 +1345,7 @@ export class TabManager {
       taken.push(sid);
     }
     if (taken.length === 0) return;
-    // 放回按原来的位置从前往后插（摘的时候各自记的是摘之前的那一格）。
+    // 放回按原来的位置由前到后插（摘的时候各自记的是摘之前的那一格）。
     const back = [...taken].sort((a, b) => at.get(a)! - at.get(b)!);
     undoToast(headline, () => this.undoClose(back, refocus), () => back.forEach((sid) => this.settleClose(sid)));
   }

@@ -1,4 +1,4 @@
-//! **出网口**：这台所有出站 TCP 只在这里开（`tests/backend/egress_guard.rs` 钉着「生产段开 TCP 只此一处」）。
+//! **出网口**：这台所有出站 TCP 只在这里开（后端 `clippy.toml` 禁开 TCP 的那几个调用，只本文件那一处放行）。
 //!
 //! 一份出网描述（[`Egress`]）决定到一个目的地怎么走：直连，或经代理（HTTP `CONNECT` · SOCKS5，代理鉴权照描述带）；
 //! 回环目的地恒直连、免代理表命中 ⇒ 直连；代理那一格读不懂 ⇒ 一条都不连、报那一句。代理永远在最外层：中转去上游 · 拨 SSH 都在它里面。
@@ -124,6 +124,10 @@ fn tcp_to(host: &str, port: u16, deadline: Option<Duration>) -> Result<TcpStream
             io: io::Error::new(io::ErrorKind::NotFound, format!("{h}: no address")),
         });
     }
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "出网口：这台出站 TCP 只在这一处开，中转 · 拨号 · 探活都经 `open` 到这里"
+    )]
     let tcp = TcpStream::connect(&addrs[..]).map_err(|io| Failed {
         stage: Stage::Connect,
         io,
@@ -147,8 +151,3 @@ mod tests;
 #[cfg(test)]
 #[used]
 static TEST_HOME: fn() = test_home::linked;
-
-// 出站 TCP 只此一口（扫后端源码树 ＋ 中转 crate 的生产段）。
-#[cfg(test)]
-#[path = "../../../tests/backend/egress_guard.rs"]
-mod egress_guard;

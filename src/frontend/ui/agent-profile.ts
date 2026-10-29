@@ -45,7 +45,7 @@ export function listAgents(table: readonly AgentProfileRow[] = AGENT_PROFILE_TAB
  * 查一个 agent 的画像。
  *
  * 🔴 查不到**不回落**到任何别的 agent（尤其不是 claude）—— 回一句说得出口的话，
- * 由调用方决定怎么摆。这一条是 `KR93D3` 的本体。
+ * 由调用方决定怎么摆（`agent-profile-parity.vitest.ts` 那条「问不到就说不知道」钉着）。
  */
 export function lookupAgentProfile(
   agent: string,
@@ -93,7 +93,7 @@ export type FullAgentProfile = {
  *
  * 失败**不静默**：agent 不在表里 ⇒ 抛 [`lookupAgentProfile`] 那句话。
  * 「某一格是 `null` ⇒ 抛」那一半随五格词表进了后端（今天没有可空的列表格）。
- * 🔴 **不许在这里塞一个「回落到 claude」的兜底** —— 那正是 `KR93D3` 禁的那件事。
+ * 🔴 **不许在这里塞一个「回落到 claude」的兜底** —— 理由同 [`lookupAgentProfile`]。
  */
 export function fullAgentProfile(
   agent: string,

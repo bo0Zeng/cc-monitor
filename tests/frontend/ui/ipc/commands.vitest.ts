@@ -34,7 +34,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, join, sep } from "node:path";
 import ts from "typescript";
 
-// ── `K-H2b` `D4 阻-2`：文件末尾那一组是**行为**判据，要驱动真的 `views/history.ts`。
+// ── 文件末尾那一组是**行为**判据，要驱动真的 `views/history.ts`。
 //    mock 骨架照 `views/history-actions.vitest.ts`（路径多一层 `../`）。
 //    ⚠ 这几条 mock 是**文件级**的，但本文件其余判据全是「读源码文本 + 数命令名」，
 //      一条都不经过被 mock 的那几个模块 ⇒ 它们的读数一格不动（入场/交回各打过一次全量）。
@@ -57,7 +57,7 @@ vi.mock("../../../../src/frontend/ui/keybindings/registry", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 
-// ── `K-H2b` `D5 阻-2`：文件末尾再加一组行为判据，驱动**真的 `TabManager`**。
+// ── 文件末尾再有一组行为判据，驱动**真的 `TabManager`**。
 //    `tabs.ts` 的模块图很重（stream / cards / 渲染族），这几条 mock 是**为了让它能在
 //    jsdom 里实例化**，形状照 `tests/frontend/ui/tabs.vitest.ts`（那边路径少一层 `../`）。
 //    ⚠ 与上面那组同一条纪律：本文件其余判据一条都不经过被 mock 的这几个模块
@@ -144,7 +144,7 @@ const WRAPPER_FILE = "src/frontend/ui/ipc/commands.ts";
 // 加/删一条命令时三处跟着现打，不用回来改数（原先三个手抄的数，每路合并都要对一次）。
 
 /**
- * `K-R122`（09-14）：**吐出来的路径一律用 `/` 分隔，跟这台机器的 `path.sep` 无关。**
+ * **吐出来的路径一律用 `/` 分隔，跟这台机器的 `path.sep` 无关。**
  *
  * 🔴 它治的是一条**判据自己的病**，不是产品的病。云端 `Frontend typecheck + build` 那个 job
  * 跑在 **windows runner** 上，`join()` 给回的是 `src\ipc\local-tmux-name.ts`；

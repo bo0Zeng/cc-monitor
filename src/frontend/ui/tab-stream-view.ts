@@ -688,7 +688,7 @@ export class TabStreamView {
 
     // 门控（单洞后缀不变量，纯按 seq）：
     // - virgin ＋ 批：一律收纳，当前 tab 也一样 —— 批收尾（`batchEnd`）· 取完（`catchUpTo`）· 切进来（`activate`）只建视口那一截
-    //   （从前当前 tab 首条钉 floor、之后直渲：开页那一批的尾段整段建成卡，A17-45-3-6-2）；
+    //   （不是首条钉 floor、之后直渲：那样开页那一批的尾段会整段建成卡）；
     // - virgin ＋ 实时：新开 tab 直渲并钉 floor；
     // - seq ≥ floor：渲染；seq < floor：收纳（旧块 / 尾部优先回填 / 迟到块，与批哨兵无关）。
     // 账本里收着历史、还没建过卡的 tab 来了实时行：先物化一截尾段（takeTail 顺带钉 floor），再照常收这一行 ——
@@ -949,7 +949,7 @@ export class TabStreamView {
    * 补到 [`coldFilled`] 或账本弹尽：一截 {@link COLD_CHUNK} 条，一截可能只产出几张卡（工具结果注入进调用那一行、skip 记录占配额）。
    * 一次同步调用至多 {@link MATERIALIZE_ROUNDS_PER_CALL} 截（每一下有界）；没满、账本还有 ⇒ 下一帧接着补
    * （`scheduleFillContinuation`，与上翻补批同一条 rAF 自链）—— 不可滚的元素不产生 scroll，没有别的入口会再补。
-   * 只建视口那一截：从前一截 150 条、至多四截（600 行，一半落在折着的过程里 0 高），WebKit 冷切停住那一帧一秒多。
+   * 只建视口那一截：一截 150 条连建四截的话（600 行，一半落在折着的过程里 0 高），WebKit 冷切会停住那一帧一秒多。
    */
   private materializeUntilFilled(tab: Tab): void {
     if (tab.skeleton) {
@@ -1042,7 +1042,7 @@ export class TabStreamView {
       return;
     }
     // 整份要到末尾（连冷开建的那一截尾巴）：尾巴的切点 · 折叠也得在账本里，收起时才交得回去（`release` 只认账本里的切点）。
-    // 从前只要 `[0, floor)`，冷开那一截与之后的实时行都在账本外，切走一条都不交（A17-45-3-3）。
+    // 只要 `[0, floor)` 的话，冷开那一截与之后的实时行都在账本外，切走一条都不交。
     const first = readSessionIndex(origin, jsonlPath, 0);
     // 〔欠账〕大纲**等这一趟**：索引顺带出清单（后端 `IndexRow::x`）⇒ 首屏同一份文件
     // 只读一遍；带不回（老后端 / 零条 / 失败）⇒ 它自己照旧从 0 要一份清单。

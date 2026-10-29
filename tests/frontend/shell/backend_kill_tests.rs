@@ -45,19 +45,12 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
              派生名那条走 `derive_tmux_name`，它的字符集只放行 `[A-Za-z0-9_-]`，\
              **构造上产不出禁字**。三条入口都由 `control::ccm::plan::tests::a_session_name_that_would_confuse_tmux_is_refused` 钉住",
     ),
-    // 🔴 **`K-R104`（09-13）：`src/frontend/shell/src/account_usage.rs` 这一行删了。**
-    //    它原来的理由是「探针会话名是 `ccm-usage-<slug>`……且它自己 `kill-session` 收尾」。
-    //    今天那两句都不成立了：编排搬上后端帧面之后，**monitor 不再建任何 tmux 会话**
-    //    （会话由 `oneshot-session` 原语铸并建，收尾发帧面的 `kill`）。
-    //    ⇒ 它不再是一个「创建路径」⇒ 留着就是幽灵条目，而本表的遍历会当场逮住。
-    //    ★ 同 `K-R72` 那次逐字：这一改是**结构性强制的随动**，不是顺手删记录。
-    // 🔴 **`src/session-backend.ts` 这一行删了** —— 收官那天删的
-    //    就是它（下面那条 Rust 对侧的注释原来逐字预告了这一行）。它原来的理由是「只是渲染器：名字由上游
-    //    `mintTmuxName` 产、由 `src/frontend/ui/shell-quote.ts::isValidNewTmuxName` 校验」；那条上游关系今天挂在
-    //    下面那条 Rust 创建路径的理由里（③b 要求每条校验器都有创建路径点它的名）。
-    // `src/backend/control/launch_render/payload.rs` 这一行删了：起会话只交一行 `ccm …`，外层三格那一层整层删了 ——
-    //   今天建会话的只剩上面两条（`ccm` 的 `--ccm-tmux=` 走 `plan.rs`；控制面走 `launch.rs`）。
-    //   它带来的「放行集」那一族（把禁字逐个喂进去的那一段）随它没了成员，一起删了。
+    // 🔴 **monitor 不建任何 tmux 会话**（会话由后端 `oneshot-session` 原语铸并建，收尾发帧面的 `kill`）
+    //    ⇒ monitor 这一侧没有创建路径；表里多一条不建会话的就是幽灵条目，本表的遍历会当场逮住。
+    // 界面 `mintTmuxName` → `src/frontend/ui/shell-quote.ts::isValidNewTmuxName` 那条上游关系挂在
+    //    上面那条 Rust 创建路径的理由里（③b 要求每条校验器都有创建路径点它的名）。
+    // 建会话的只有上面两条（`ccm` 的 `--ccm-tmux=` 走 `plan.rs`；控制面走 `launch.rs`）：起会话只交一行 `ccm …`，
+    //   没有外层渲染那一层，也就没有「放行集」那一族。
 ];
 
 /// **校验器**登记表：`(路径, 它是谁)`。
@@ -138,7 +131,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
     let mut stack: Vec<std::path::PathBuf> =
         // **这里没有 `"src/backend"`，不是漏了**：后端树搬到
         // `<repo>/src/backend` 之后它已经是 `"src"` 的**子目录**，两个都列会把
-        // 后端的每个文件数两遍（搬家前 `src/backend` 与 `src` 是互斥的）。
+        // 后端的每个文件数两遍。
         // **这里没有 `"src/frontend/shell/src"`，不是漏了**：
         // 它已经是 `"src"` 的子目录，两个都列会把每个文件数两遍。
         ["src", "shared"]
@@ -257,7 +250,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
 
     // ── ③b 🔴 **反方向**：每条校验器都得有一条创建路径指着它 ────────────
     //
-    // 〔`K-R105` 09-13，`KR105D4`〕**删创建路径要连它的校验器一起看。**
+    // **删创建路径要连它的校验器一起看。**
     // 上面 ③ 走的是「创建路径 → 校验器」那一向：记成「自己校验」就必须在下表里。
     // **反过来没人查** —— 而这两张表的**发现机制不对称**正是漏洞所在：
     // `CREATION_PATHS` 是遍历出来的（少一条会红），`VALIDATORS` 是**手写**的，
@@ -340,22 +333,15 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
 /// 「回落这段代码到底还在不在」绑在一起。F11 删回落时它会主动红，
 /// 逼人回来把那句话一起改掉。
 ///
-/// 🔴 **`K-R72`（09-12）：它真的响了，而且响得对。**
-/// 那一刀删掉杀远端会话时的一次性 SSH 回落，本条**当场红**，
-/// 逼着把 `src/doc/IPC-PROTOCOL.md` 那两处「过渡期」的说法一起改成「已删」。
-/// ⇒ 今天两侧都是 `false`：代码里没有回落，文档里也不再说有。
-/// **本条不因此作废** —— 它两个方向都咬：谁把回落加回来不改文档、
-/// 或谁把那句话写回文档而代码里没有，都会红。
+/// 🔴 两侧都是 `false`：代码里没有杀远端会话时的一次性 SSH 回落，文档里也不说有。
+/// 它两个方向都咬：谁把回落加回来不改文档、或谁把那句话写回文档而代码里没有，都会红。
 ///
-/// # 🔴🔴 `K-R106`（09-13）`KR106D3`：**人群从一份文档扩到整棵 `doc/`**
+/// # 🔴🔴 **人群是整棵 `doc/`，不是一份文档**
 ///
-/// 本条此前只 `include_str!` **一份** `src/doc/IPC-PROTOCOL.md` ——
-/// 而同一句话当时在盘上还有**另外三份副本**，它们**结构上够不着**：
-/// `src/doc/CONTRIBUTING.md`（正文 ＋ 同节表格两处）· `src/doc/ARCHITECTURE.md` ·
-/// 一份已经不在仓里的抓用量的方案文档。`K-R72` 那次「响得对」只响到了它看得见的那一份，
-/// 于是它逼人改的也只有那一份 —— **一条判据挡住的，只有它人群里的那些**。
+/// 同一句话可以在好几份文档里各有一份副本（`IPC-PROTOCOL.md` · `CONTRIBUTING.md` · `ARCHITECTURE.md` …）；
+/// 只 `include_str!` 一份的话，别的副本**结构上够不着** —— **一条判据挡住的，只有它人群里的那些**。
 ///
-/// ⇒ 发现机制从**一个 `include_str!`** 换成**遍历 `doc/`**（同本文件
+/// ⇒ 发现机制是**遍历 `doc/`**（同本文件
 /// `CREATION_PATHS` 那条的做法：人群靠遍历发现，不靠手写清单）。
 /// ⚠ 这是**扩扫描面 = 更严**，不是放宽闸：两个方向都还咬，只是够得着的人多了。
 ///
@@ -434,7 +420,7 @@ fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
         "只扫到 {} 份耐久文档（`src/doc/**/*.md`）—— 遍历坏了，本条此刻在空转：{scanned:?}",
         scanned.len()
     );
-    // ★ 地板的第二半：人群里必须**真的有**那份 `K-R72` 逼着改过的文档，
+    // ★ 地板的第二半：人群里必须**真的有** `IPC-PROTOCOL.md` 那份文档，
     //   否则「扫到 8 份」也可能扫的是另外八份。
     assert!(
         scanned.iter().any(|f| f.ends_with("IPC-PROTOCOL.md")),

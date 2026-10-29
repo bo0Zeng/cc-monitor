@@ -2389,14 +2389,12 @@
   background: var(--bg);
 }
 
-/* === K-R45：「我说过的 N 句」清单面板 ===
-   上一轮 `src/frontend/ui/styles.css` 没跟着改，这两条规则写成了 `style.cssText`（**申报过的债**）。
-   已搬进来，**逐条属性逐字照搬、一个值都没改** —— 搬家不是改外观的时机。
+/* === 「我说过的 N 句」清单面板 ===
+   规则住样式表，不写成 `style.cssText`。
 
-   🔴 **第三轮改的只有类名**（`.session-viewer-*` → `.user-*`），声明**一条没动**：
+   🔴 类名是 `.user-*`，不是 `.session-viewer-*`：
    这块界面由历史查看器与实时窗口**共用一份实现**（`views/user-input-panel.ts`），
-   而一个会出现在实时 tab 里的元素叫「session-viewer-…」就是名字在说谎 ——
-   本仓最贵的那族病里，「名字与它实际住的地方对不上」是复发最多的一种。
+   一个会出现在实时 tab 里的元素叫「session-viewer-…」就是名字在说谎。
    位置差异（查看器是流内一块、实时是悬浮在流上）落在**宿主自己的**
    `.session-find`（实时 tab 的查找面板）上，不落在这三条共用规则里。
 
@@ -2523,15 +2521,8 @@
   align-items: center;
 }
 
-/* 🔴 这里原先是归档抽屉 `.tab-archive*` 的几条规则，
-   连同三段说明（P7a-1 抽屉是 `#tab-bar` 的兄弟、不挂拖拽 · S24 止血三条：认领 `archive`
-   具名行 / 宽度跟 `--tab-bar-w` / 封顶高度 · S24 `hidden` 被作者层 `display` 盖掉），
-   以及一段 S30 写的说明，讲 `.tab-archive-list`
-   的 `hidden` 是空写、归档抽屉的折叠从来没生效、箭头在骗人。
-   **那条缺陷随抽屉一起消失了** —— 「没有归档这个东西，
-   不要归档，就是灰 tab。现在的归档是错误的，甚至是 bug 的来源，全部删掉」。
-抬头本来就写着「已定：删归档抽屉」，这一刀是步 17 的 A。
-   `css-conventions.vitest.ts` 的 `HIDDEN_KNOWN_BAD` 里那条登记同拍摘了（那张表今天是空的）。 */
+/* 🔴 没有归档抽屉（`.tab-archive*`）：「没有归档这个东西，不要归档，就是灰 tab」。
+   `css-conventions.vitest.ts` 的 `HIDDEN_KNOWN_BAD` 是空的。 */
 
 /* 压住（建组 / 进组）或落在组头：目标那一行 2px 外框 ＋ 12% accent 底，右侧小标签（`tab-group.module.css` 的 `.pill`）。
    用 `outline` 不用 `border`、不缩放：不改盒模型 ⇒ 不连锁 reflow，也不改到停留判定量的那块矩形；不加 transition（瞬时反馈）。 */

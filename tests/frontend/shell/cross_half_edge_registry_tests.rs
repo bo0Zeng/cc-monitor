@@ -307,7 +307,7 @@ fn every_non_literal_include_is_registered_with_a_reason() {
              不是对面那一半的**源码** ⇒ 不属两半编译期互咬。\
              ⚠ 但它确实是一条编译期边：`OUT_DIR` 里没有那个文件就编不过 —— \
              那条边由 `build.rs`（`embedded_backends` 那个 cfg）与 `shared_crate_registry` 的 CI 步骤那侧管。\
-             〔从前这两处住 `sftp.rs`，全仓唯一的取字节口立起来之后收进这一份。〕",
+             〔这两处收在全仓唯一的取字节口这一份里。〕",
     )];
     let mut found: Vec<String> = Vec::new();
     // 🔴 **排除的住址跟着本文件搬，而且加上「摘不到就红」那一格。**

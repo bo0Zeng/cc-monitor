@@ -29,3 +29,7 @@ test-home = { path = "../../common/test-home" }
 # 合成 SFTP 服务端（`ssh_dial::sftp::rig`）：手机那一趟装的判据在它上面跑。
 ssh-dial = { path = "../ssh-dial", features = ["test-support"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "sync", "time"] }
+
+[lints.clippy]
+# 禁的路径与理由住上一级的 `clippy.toml`（系统钟 · 零定时器 · 出站 TCP 只在出网口开 · 起子进程只经原语）。
+disallowed_methods = "deny"

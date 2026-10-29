@@ -1048,7 +1048,7 @@ fn unregister_never_removes_someone_elses_client() {
 
 // ── P28：给这条源码扫描型守卫立**负对照** ──
 //
-// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。被扫的那一份从前是 monitor 的 `inbound_client.rs`，
+// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。被扫的那一份里，
 // `park()` 挂着 `#[cfg(test)]` 住在 `into_client` 之前 ⇒ 便宜近似 `src.split("\n#[cfg(test)]").next()` 会把构造点整个切掉、零命中地绿。
 // 本体搬进 `resident-client`（`client.rs`）之后，只给判据用的那几样改挂 `#[cfg(any(test, feature = "test-support"))]`
 // （monitor 的测试档要够得到它们），**整份里唯一的 `#[cfg(test)]` 是末尾那个测试模块** ⇒ 两种剥法圈住的是同一段，那个缩水的口子不在了。

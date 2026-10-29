@@ -112,6 +112,9 @@
 //! 本 crate 自己不开 TCP：直连还是经代理（代理永远在最外层）是出网口的事，TLS 在它交回的那条 TCP 里面。
 //! 对外的口就是本文件里 `pub` 的那几样，逐条登记在后端 `layering_guard::RELAY_EXPORTS`（两向相等）。
 
+// 不开 TCP 由同目录 `clippy.toml` 守；测试段的夹具要自己拨本机回环。
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 // 上游选择不在这里：它住后端 `src/backend/accounts/`（用户逐字「中转层不要有账号, 账号就账号中转就中转」）。
 // 绑口 · 在途上界 · 两个期限值 · 钥匙落盘也不在这里：都归后端（`src/backend/relay/`），中转只收它交下来的。
 mod door; // 中转口的门：钥匙的形状 · 进门三问（Origin / Host / 钥匙）· 定长比对

@@ -544,7 +544,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "大小（字节 ⇒ 给人看的一格：B · KB · MB · GB · TB，一位小数）",
     homes: ["copy-core::size_text"],
     // 认可的双读口（同 J28）：后端 · 壳 · 文件窗口写大小都调核心这一处；界面那一个读口 `format.ts::sizeText` 写回包里只有字节数的那几格
-    //   （日志 · 自有文件 · 诊断 · 卡片里一段正文多长），同一份金样。从前三份（界面 GB 两位 · 文件窗口带 TB · 卡片自己除 1024）收成这一份。
+    //   （日志 · 自有文件 · 诊断 · 卡片里一段正文多长），同一份金样；界面 · 文件窗口 · 卡片不各写一份。
     status: "mirror",
     defs: ["sizeText"],
     gone: ["formatBytes"],
@@ -559,7 +559,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "计数（几个字 · 几条 ⇒ 给人看的一格：每三位一个逗号）",
     homes: ["copy-core::count_text"],
     // 认可的双读口（同 J31）：成品里的计数核心写好（压缩摘要的字数）；界面那一个读口 `format.ts::countText` 只给现数现写的那几处
-    //   （终端页输入框的字数），同一份金样。从前两处各用 `toLocaleString`（一处不指定语言、一处 en-US）。
+    //   （终端页输入框的字数），同一份金样；不各用 `toLocaleString`（不指定语言与 en-US 结果不同）。
     status: "mirror",
     defs: ["countText"],
     gone: [],
@@ -572,7 +572,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J33: {
     what: "这台本来那一份登录（不设配置目录）的号名 / 路由段是哪个",
-    // 账号库清单里写它的名字、上游选择在 `/t/` 路由里写它的账号段、号名的字认它 —— 从前三处各写一个 `"0"`
+    // 账号库清单里写它的名字、上游选择在 `/t/` 路由里写它的账号段、号名的字认它 —— 三处不各写一个 `"0"`
     //   （`accounts/manage/model.rs` · `upstream_select/endpoint.rs` · `quota/name_words.rs`）。账号域的两半互不引用，
     //   所以住共享 crate：三处都引它。
     homes: ["acct-core::BARE_ACCOUNT"],
@@ -587,8 +587,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J34: {
     what: "哪些号能当换号 · 加号的候选（起会话时没说是哪个号的 `_` 不是）",
-    // 从前界面三处（账号面板的轮换那一块 · 现在就换 · 设置页轮换的「＋ 加号…」）各把额度账与没出过数的号拼起来、自己滤 `_`，
-    //   后端会话那一份（`session_left`）另滤一遍。⇒ `quota-read` 回包写 `candidates`，会话那一份调同一个判断；界面只照抄。
+    // 界面三处（账号面板的轮换那一块 · 现在就换 · 设置页轮换的「＋ 加号…」）不各把额度账与没出过数的号拼起来、自己滤 `_`：
+    //   `quota-read` 回包写 `candidates`，会话那一份调同一个判断；界面只照抄。
     homes: ["src/backend/accounts/quota/name_words.rs::is_candidate"],
     status: "zero",
     defs: [],
@@ -603,7 +603,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J35: {
     what: "一个号画哪一格号色（`--acct-c0..c7`）",
-    // 从前界面按名字哈希（FNV-1a % 8），team 与 lab 撞同一格。⇒ 号色是账号库里的事实：加号时后端分第一个空格、存进清单，
+    // 界面不按名字哈希（FNV-1a % 8 会让 team 与 lab 撞同一格）。⇒ 号色是账号库里的事实：加号时后端分第一个空格、存进清单，
     //   旧号由常驻那一个补一次；8 格用满才按哈希兜底，哈希只住后端这一处。界面只画 `accounts-list` 每号的 `color`。
     homes: ["src/backend/accounts/manage/model.rs::color_fallback"],
     status: "zero",
@@ -676,9 +676,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J29: {
     what: "这个号能不能选 · 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）",
     homes: ["acct-core::account_selectable", "acct-core::effective_default"],
-    // 从前三处判、口径不一：命令行 `plan.rs::default_name` 只认标了的（没标 ⇒ 起成不指定号）；起会话跟随
-    //   `launch_account.rs` 与界面 `accounts.ts::effectiveDefault` 回落第一个；可选两处各写一遍（界面那份不看号目录写没写）。
-    //   ⇒ 清单成品逐号写 `selectable`、`meta` 写 `effectiveDefault`，起会话与界面只读；命令行调同一个函数。金样 `tests/__fixtures__/account-default.golden.json`。
+    // 默认号与可选只判一处（命令行 · 起会话 · 界面三处各判时口径不一：有的只认标了的，有的回落第一个）：
+    //   清单成品逐号写 `selectable`、`meta` 写 `effectiveDefault`，起会话与界面只读；命令行调同一个函数。金样 `tests/__fixtures__/account-default.golden.json`。
     status: "zero",
     defs: ["isSelectable", "effectiveDefault", "currentWorkingAccount"],
     needles: [
@@ -1453,7 +1452,7 @@ describe("DUP1 判定只有一个家", () => {
   const tsByFile = new Map(ts.map((s) => [s.file, s.code]));
 
   it("① 人群两向：盘上 `src/common/` 各 crate 的 pub 项 == 登记表（逐 crate）", () => {
-    // 人群是 `src/common/` 下的全部 crate（D5：从文件系统全集来）—— 从前按 `*-core` 后缀筛，`deploy-contract` 会静默出列。
+    // 人群是 `src/common/` 下的全部 crate（D5：从文件系统全集来）—— 按 `*-core` 后缀筛的话，`deploy-contract` 会静默出列。
     const diskCrates = [...byCrate.keys()].sort();
     nonEmpty(diskCrates);
     expect(diskCrates, "盘上 `src/common/` 的 crate 集合 ≠ 登记表 crate 集合 ∪ {guard-core}").toEqual(

@@ -246,14 +246,14 @@ describe("C01 边界生成物", () => {
     // 审计实测：往 `src/frontend/ui/generated/` 塞一个连 ts-rs 头都没有的手写文件 → 5 条全绿。
     const GENERATED_BY = [
       TS_RS_HEADER,
-      "src/backend/agents/mod.rs", // `agent-profile-table.ts` 的生成器随值的家进了后端注册表（从前是 monitor `adapter.rs`）
+      "src/backend/agents/mod.rs", // `agent-profile-table.ts` 的生成器跟着值的家住后端注册表
       "src/frontend/shell/src/payload.rs", // `judgment-rules.ts`
       "src/backend/wire/typed.rs", // `TypedCommands.ts`
     ];
     for (const dir of REGISTERED_GENERATED_DIRS) {
       const files = readdirSync(resolve(ROOT, dir)).filter((f) => f.endsWith(".ts"));
       files.sort();
-      // `K-R93`：「谁生成的」这一格从此认**多种**标记（ts-rs / 上面那两个值表生成器）——
+      // 「谁生成的」这一格认**多种**标记（ts-rs / 上面那两个值表生成器）——
       // 让一个非 ts-rs 的生成物顶着 ts-rs 的头，那是往生成物里写一句假话。
       // ⚠ 「不许手改」那一格**一个字没放松**：两种生成物都必须带。
       for (const f of files) {

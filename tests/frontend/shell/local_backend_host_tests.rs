@@ -1047,13 +1047,12 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
     // 写死成 1 会让本条以「多了一处」的形式假红，而假红的判据最后会被人删掉。
     let pins: &[(&str, &str, usize, &str)] = &[
         // 平台例外表那一针（`backend_client_guard_tests.rs`）随那张表数到 0 摘了：表连同那条判据删了，壳里平台形态只许住 `platform/`。
-        // 🔴 **`write_site_registry.rs` 剖成了三份，下面按新住址逐条重排。**
+        // 🔴 **`write_site_registry.rs` 剖成了两份，下面按新住址逐条重排。**
         //
         // 原来这里是三行、盯同一份文件（`missing.is_empty(),` 写 2 次、两条地板各 1 次）。
         // 剖分之后那两张表各自成了一份文件：
         //   · 写盘落点那张 → `write_site_registry_tests.rs`
         //   · 起进程落点那张 → `write_site_registry_spawn_sites.rs`
-        //   · （第三份 `write_site_registry_writers.rs` 里这四根针一根都没有）
         // ⇒ 「`missing.is_empty(),` 恰好 2 次」拆成**两行各 1 次**。
         // **针的总处数一格没变（4 → 4）**，只是按文件分开数了 ——
         // 而分开数比合起来数**更严**：原来一份文件里写两次、另一份写零次也能凑够 2。

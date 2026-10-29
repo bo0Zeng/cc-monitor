@@ -44,7 +44,7 @@ describe("一个组件一个家（对话框 · 菜单 · 悬停提示 · toast�
   });
 });
 
-/** 设置页从前那套按钮类（拼出来写，免得本文件自己成了全仓 grep 的一处命中）。 */
+/** 设置页不许再有的那套按钮类（拼出来写，免得本文件自己成了全仓 grep 的一处命中）。 */
 const OLD_BTN = ["settings", "btn"].join("-");
 
 const PIECE_NEEDLES: { what: string; re: RegExp }[] = [

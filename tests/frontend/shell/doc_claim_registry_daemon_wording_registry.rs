@@ -5,7 +5,7 @@ fn repo_root() -> PathBuf {
     guard_core::addr::repo_root()
 }
 
-/// 本闸的扫描面 —— `K-R116` 改过的那 9 份散文。**闭集，按住址点名。**
+/// 本闸的扫描面 —— 收干净措辞的那 9 份散文。**闭集，按住址点名。**
 ///
 /// 🔴 表名起成 `SITES` 是 `scanning_guard_registry::TABLE_DECLS` 那条纪律要的
 /// （「新写一条『扫描面 ＋ 常量表』型的判据，那张表要起成 `TABLE_DECLS` 里已有的名字之一」）。

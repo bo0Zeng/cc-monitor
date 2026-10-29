@@ -48,20 +48,19 @@
  * 4. 只覆盖 `claude` 与 `codex` 两个 agent。加第三个时本条**不会自动扩** ——
  *    `AGENTS` 那个常量会与 golden 的行数对不上而红，那就是提醒。
  *
- * # 🔴 `K-R93`（09-12）：**第四份没有了，前端那一份改成从后端取值**
+ * # 🔴 **没有第四份：前端那一份从后端取值**
  *
- * 上面那张表说的是「同一个事实住在三个地方」。**前端 `src/frontend/ui/agent-profile.ts` 是第四个地方**
- * —— 而它只认 claude（`K-R54` 表第 11 行）。它的**取值来源**已改成后端：
+ * 上面那张表说的是「同一个事实住在三个地方」。前端 `src/frontend/ui/agent-profile.ts` 不是第四个地方，
+ * 它的**取值来源**是后端：
  *
  * ```text
- * src/backend/agents/<名>/resume.rs（注册表 `Adapter.launch`）〔从前是 monitor 那份适配表的取数口〕
+ * src/backend/agents/<名>/resume.rs（注册表 `Adapter.launch`）
  *   └─（cargo test --lib export_bindings ＝ npm run gen:types）→
  *      src/frontend/ui/generated/agent-profile-table.ts  →  src/frontend/ui/agent-profile.ts
  * ```
  *
  * ⇒ **前端那一份不再是副本**，它是那条链的末端。下面第二个 `describe` 钉的就是这条链：
- * 值真的跟着后端走（`KR93D1`）· codex 那一格不再是漏的（`KR93D2`）·
- * 问不到时说得出「不知道」而不是偷偷用 claude（`KR93D3`）。
+ * 值真的跟着后端走 · codex 那一格不漏 · 问不到时说得出「不知道」而不是偷偷用 claude。
  *
  * ⚠ **两道门各盖一半，别只报一边**（同 `C05` 那个拆法）：
  * · 「已提交的生成物 == Rust 源」由**门禁第六格 `generated`** 盖
@@ -223,14 +222,13 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
   });
 });
 
-// ── `K-R93`（09-12）：前端那一份的**值来自后端** ──────────────────────────────
+// ── 前端那一份的**值来自后端** ──────────────────────────────
 
 const TABLE_TS = "src/frontend/ui/generated/agent-profile-table.ts";
 const PROFILE_TS = "src/frontend/ui/agent-profile.ts";
 
-// 〔判定只在后端〕从前这里有 `rustStaticList` 与 `CLAUDE_TABLES`：claude 那五张工具 / 判活进程词表
-//   在 `adapter.rs` 里的住址，拿来对拍生成物。那五张表连同判定进了后端适配层（`src/backend/agents/claudecode/cards.rs`，
-//   判据 `tests/backend/agents/claudecode/cards_tests.rs`），生成物与画像里都没有那五格了 ⇒ 对拍随之退役。
+// 〔判定只在后端〕claude 那五张工具 / 判活进程词表连同判定住后端适配层（`src/backend/agents/claudecode/cards.rs`，
+//   判据 `tests/backend/agents/claudecode/cards_tests.rs`），生成物与画像里没有那五格 ⇒ 这里不对拍它们。
 
 /** 生成物里某个 agent 那一行（没有就红，不回 `undefined` 让下面静默通过）。 */
 function row(agent: string): AgentProfileRow {
@@ -326,7 +324,7 @@ describe("K-R93 前端那份 agent 画像：值来自后端", () => {
     expect(
       leaked,
       "这几个值被写死回前端了 —— 那就退回了「前端自己一份常量」，" +
-        "`KR93D1` 判的是**值从哪来**，不是有没有 import 那个模块。",
+        "这里判的是**值从哪来**，不是有没有 import 那个模块。",
     ).toEqual([]);
   });
 
@@ -385,7 +383,7 @@ describe("界面上的 agent 名单只从后端注册表来", () => {
     () => {
       const names = [...new Set(AGENT_PROFILE_TABLE.map((r) => r.agent))];
       const quoted = (n: string) => new RegExp(`["'\`]${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'\`]`);
-      // 正控：从前派生那一栏的写法必须被认出；问生成物的写法不许被认出。
+      // 正控：前端自己派生那一栏的写法必须被认出；问生成物的写法不许被认出。
       const bad = `for (const v of ["${AGENT_PROFILE_TABLE[0]!.agent}", "x"]) {}`;
       expect(names.some((n) => quoted(n).test(bad)), "针认不出写死的名单").toBe(true);
       expect(names.some((n) => quoted(n).test("for (const v of listAgents()) {}"))).toBe(false);
@@ -402,31 +400,6 @@ describe("界面上的 agent 名单只从后端注册表来", () => {
         const code = stripComments(read(f), "ts");
         expect(names.some((n) => quoted(n).test(code)), `${f} 已经不写名字了，摘掉它`).toBe(true);
       }
-    },
-  );
-});
-
-describe("起会话按会话的那一家取画像", () => {
-  it(
-    "★ 界面生产段里零处 `AGENT_PROFILE` / `ACTIVE_AGENT`（没有「当前那一家」：会话是哪一家由后端说）；起法意图里不带启动命令（`launcherOverride:` 零处：那台照自己的偏好定）",
-    () => {
-      const profile = /\bAGENT_PROFILE\b(?!_)|\bACTIVE_AGENT\b/;
-      const ctx = /\blauncherOverride\s*:/;
-      // 正控：从前的写法认得出；画像表与类型声明不算。
-      expect(profile.test("launcher = AGENT_PROFILE.defaultLauncher")).toBe(true);
-      expect(profile.test("AGENT_PROFILE_TABLE.map(f)")).toBe(false);
-      expect(profile.test("callStart(origin, mode, items, ACTIVE_AGENT)")).toBe(true);
-      expect(ctx.test("return { action, launcherOverride: launcher, ccmSid };")).toBe(true);
-      const files = productionTsFiles("src/frontend/ui");
-      const profileAt: string[] = [];
-      const ctxAt: string[] = [];
-      for (const { file, text } of files) {
-        const code = stripComments(text, "ts");
-        if (profile.test(code)) profileAt.push(file);
-        if (ctx.test(code)) ctxAt.push(file);
-      }
-      expect(profileAt, "又按「当前那一家」取了 —— 按会话的 agent 取（标签页 `tab.agent` · 历史行 `agent`，都是后端给的）").toEqual([]);
-      expect(ctxAt.sort(), "启动命令又随起法意图交了 —— 它住那台的偏好（`prefs.json`），那台自己读").toEqual([]);
     },
   );
 });

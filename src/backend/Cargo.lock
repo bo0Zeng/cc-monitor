@@ -846,7 +846,6 @@ dependencies = [
 name = "egress"
 version = "0.1.0"
 dependencies = [
- "guard-core",
  "test-home",
  "upstream-url-core",
 ]

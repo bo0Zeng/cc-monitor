@@ -1,5 +1,5 @@
 // 号色：账号库里的事实 —— 那台后端加号时分第一个空格、存进清单（`accounts/manage/model.rs::Manifest::with_colors`），
-// `accounts-list` 每号带 `color`（`--acct-c0..c7` 第几格）。界面只照它画，不按名字算（team / lab 从前按名字哈希撞同一格）。
+// `accounts-list` 每号带 `color`（`--acct-c0..c7` 第几格）。界面只照它画，不按名字算（按名字哈希时 team / lab 撞同一格）。
 // 那台没给这个号（清单还没问到 · 不在库里）⇒ 不猜：画中性的头像（没有 `acct-cN`）。
 import { appStore } from "./app-store";
 import { copyText } from "./copy-table";
