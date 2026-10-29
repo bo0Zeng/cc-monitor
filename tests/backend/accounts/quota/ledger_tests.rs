@@ -225,6 +225,25 @@ fn a_file_it_cannot_read_is_left_alone_and_said_so() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// 版本照声明表：落一笔之后盘上顶层是 `version: 1`；盘上那份比这一版新 ⇒ 读不出来、这一笔不落、一个字节不动。
+#[test]
+fn the_book_carries_its_version_and_a_newer_one_is_left_alone() {
+    let d = temp_dir("version");
+    let path = d.join(FILE_NAME);
+    let own = crate::platform::fs::Own::issue_data_at(&d);
+    let (l, _rx) = ringing(Some(path.clone()));
+    record_seen(&l, &own, None, "claude-code", "q", reading(0.1, false), 10);
+    let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(v["version"], serde_json::json!(1), "没带声明的版本：{v}");
+    let newer = r#"{"version":2,"accounts":[]}"#;
+    std::fs::write(&path, newer).unwrap();
+    assert_eq!(answered(Some(&path), 0)["state"], "unreadable");
+    let (l, _rx) = ringing(Some(path.clone()));
+    record_seen(&l, &own, None, "claude-code", "q", reading(0.2, false), 20);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), newer, "新版那份被动了");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
 #[test]
 fn the_ledger_path_follows_the_data_home() {
     let got = path_from(&|k| match k {
