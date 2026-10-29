@@ -30,9 +30,6 @@ use serde_json::{json, Map, Value};
 /// 写者仍只有本模块（`asset_catalog_tests` 钉）。
 pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::ASSET_CATALOG_REL);
 
-/// 文件格式版本。读到别的版本 ⇒ 不认、**不覆盖**（多半是更新的后端写的）。
-pub const FORMAT_V: u64 = 1;
-
 /// 条目种类。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -83,12 +80,15 @@ pub const HERE_SAME: &str = "same";
 pub const SKILL_MAX_FILES: usize = 512;
 /// 一个文件最多读这么多字节进摘要（超了只记长度 ＋ `truncated`）。
 pub const SKILL_MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
-/// 读自己那份目录文件的上限（远超正常量级；超了当读不出来，不截断）。
+/// 读自己那份目录文件的上限（远超正常量级；超了当读不出来，不截断）。读的那一口照声明表的那一格；
+/// 这里的名字给字节上限登记表认、远端拉回那一侧取同一个数，两处须相等（下一行编译期查）。
 pub const CATALOG_MAX_BYTES: u64 = 16 * 1024 * 1024;
+const _: () = assert!(CATALOG_MAX_BYTES == relay_route_core::ASSET_CATALOG_FILE.row.cap);
 
-/// 资产目录：状态（读不出来不覆盖；更新的格式整份不认）。
+/// 资产目录：状态（读不出来不覆盖；版本照声明表、在顶层 `version`，更新的格式整份不认 —— 读写口管）。
+/// 旧文件里的 `"v":1` 读的时候不认、写的时候不再写。
 const DOC: crate::common::own_state::Doc<Catalog> =
-    crate::common::own_state::Doc::state(relay_route_core::ASSET_CATALOG_REL, CATALOG_MAX_BYTES);
+    crate::common::own_state::Doc::of(&relay_route_core::ASSET_CATALOG_FILE);
 /// 机器 id 的长度上限（入参校验用；本模块生成的是 16 个十六进制字符）。
 const MAX_ID_BYTES: usize = 64;
 
@@ -182,7 +182,6 @@ pub struct Visits {
 /// 目录文件的全部内容。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Catalog {
-    pub v: u64,
     /// 这台机器的 id（第一次记目录时生成，之后不变）。
     #[serde(rename = "self")]
     pub self_id: String,
@@ -511,7 +510,6 @@ pub(crate) fn scan_here() -> Scanned {
 /// 一份新目录（这台第一次记）。
 pub fn fresh(self_id: String) -> Catalog {
     Catalog {
-        v: FORMAT_V,
         self_id,
         machines: BTreeMap::new(),
         known: BTreeMap::new(),
@@ -893,34 +891,17 @@ fn new_machine_id() -> String {
 pub type Read = crate::common::own_state::Read<Catalog>;
 
 pub fn read_at(path: &Path) -> Read {
-    DOC.read(path).and_then(|c| {
-        if c.v == FORMAT_V {
-            Read::Present(c)
-        } else {
-            Read::Unreadable(
-                copy_text(
-                    "beAssetCatalog.read.newer",
-                    &[
-                        ("path", &path.display().to_string()),
-                        ("mine", &FORMAT_V.to_string()),
-                        ("theirs", &c.v.to_string()),
-                    ],
-                )
-                .into(),
-            )
-        }
-    })
+    DOC.read(path)
 }
 
-/// **全仓唯一的写者**（经 `own_state` 原子写）。目录由 [`update_at`] 在拿锁之前建（那一层）。
+/// **全仓唯一的写者**（经读写口整份原子写、带版本）。`dir` 是目录文件那一层（[`update_at`] 在拿锁之前建）。
 fn write_at(
     own: &Own,
-    file: &OwnPath,
+    dir: &OwnPath,
     held: &OwnLock,
     cat: &Catalog,
 ) -> Result<(), crate::common::said::Said> {
-    let body = crate::common::own_state::json_body(file.as_path(), cat)?;
-    own.write(file, held, &body)
+    DOC.write(own, dir, held, cat)
 }
 
 //
@@ -1031,7 +1012,7 @@ fn update_core(
         dirty = true;
     }
     if dirty || !path.exists() {
-        write_at(own, &file, &held, &cat)
+        write_at(own, &dir, &held, &cat)
             .map_err(|e| crate::wire::spec::Fail::from(("io_failed", e)))?;
     }
     Ok((cat, problems, changed))

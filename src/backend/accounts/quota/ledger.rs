@@ -517,12 +517,13 @@ pub(crate) fn record_probe(
 /// 读一次盘。三态：没有（还没看到过）/ 读得懂 / 读不懂（不覆盖）。
 pub(crate) type Read = crate::common::own_state::Read<Book>;
 
-/// 读盘的上限（一台的号数有限，远到不了）。
+/// 读盘的上限（一台的号数有限，远到不了）。读的那一口照声明表的那一格；这里的名字给字节上限登记表认，两处须相等（下一行编译期查）。
 const MAX_BYTES: u64 = 16 << 20;
+const _: () = assert!(MAX_BYTES == relay_route_core::QUOTA_FILE.row.cap);
 
-/// 那一份：状态（读不懂不覆盖）。
+/// 那一份：状态（读不懂不覆盖；版本照声明表，读写口管）。
 const DOC: crate::common::own_state::Doc<Book> =
-    crate::common::own_state::Doc::state(relay_route_core::QUOTA_LEDGER_REL, MAX_BYTES);
+    crate::common::own_state::Doc::of(&relay_route_core::QUOTA_FILE);
 
 pub(crate) fn read_at(path: &Path) -> Read {
     DOC.read(path)
@@ -582,8 +583,7 @@ fn write_merged(
     book.accounts.push(entry.clone());
     book.accounts
         .sort_by(|a, b| (&a.agent, &a.account).cmp(&(&b.agent, &b.account)));
-    let body = crate::common::own_state::json_body(path, &book)?;
-    own.write(&file, &held, &body)?;
+    DOC.write(own, &dir, &held, &book)?;
     Ok((entry, Ro::stamp(path)))
 }
 
