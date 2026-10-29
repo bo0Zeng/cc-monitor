@@ -6,18 +6,15 @@
 //! - 切换 · 删 · 加怎么比（按归一之后的形，`cmd_wire::bookmarks::normalize_dir`）只在这里判。
 //! - 读三态：不在 ⇒ 空的一份；读不懂 ⇒ `bookmarks_unreadable`，**不覆盖**（照实说出来，由人去看那份文件）。
 
-use crate::common::own_state::{json_body, Doc, Read};
+use crate::common::own_state::{Doc, Read};
 use crate::common::said::Said;
 use crate::platform::fs::Own;
 use crate::wire::spec::Fail;
 use cmd_wire::bookmarks::{normalize_dir, BookmarkOp, Bookmarks, BookmarksEditReq};
 use copy_core::copy_text;
 
-/// 那份文件最大多少字节（超了当读不懂）。
-pub(crate) const MAX_BYTES: u64 = 256 * 1024;
-
-/// 那一份：状态（读不懂不覆盖）。
-const DOC: Doc<Bookmarks> = Doc::state(relay_route_core::BOOKMARKS_REL, MAX_BYTES);
+/// 那一份：状态（读不懂 · 比这一版新 ⇒ 不覆盖；落点 · 上限 · 版本照声明表）。
+const DOC: Doc<Bookmarks> = Doc::of(&relay_route_core::BOOKMARKS_FILE);
 
 fn no_home(_: Said) -> Fail {
     Fail::new("io_failed", copy_text("beBookmarks.store.noHome", &[]))
@@ -56,7 +53,6 @@ pub(crate) fn answer_read(own: &Own) -> Result<Bookmarks, Fail> {
 /// `bookmarks-edit`：上锁 → 现读 → 改 → 原子换，回改完的整份。
 pub(crate) fn answer_edit(own: &Own, req: &BookmarksEditReq) -> Result<Bookmarks, Fail> {
     let dir = own.home_dir().map_err(no_home)?;
-    let file = own.at_home(DOC.rel).map_err(no_home)?;
     own.ensure_dir(&dir).map_err(|e| {
         Fail::from((
             "io_failed",
@@ -76,8 +72,7 @@ pub(crate) fn answer_edit(own: &Own, req: &BookmarksEditReq) -> Result<Bookmarks
     for d in &req.dirs {
         apply(&mut book.dirs, req.op, d);
     }
-    let body = json_body(file.as_path(), &book).map_err(|e| Fail::from(("io_failed", e)))?;
-    own.write(&file, &held, &body)
+    DOC.write(own, &dir, &held, &book)
         .map_err(|e| Fail::from(("io_failed", e)))?;
     Ok(book)
 }

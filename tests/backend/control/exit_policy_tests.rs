@@ -119,6 +119,22 @@ fn the_writer_is_atomic_creates_its_own_dir_and_leaves_nothing_behind() {
 }
 
 #[test]
+fn the_written_file_carries_the_declared_version_and_a_newer_one_reads_unreadable() {
+    let d = temp_dir("version");
+    let f = d.join(DIR_NAME).join(FILE_NAME);
+    let own = crate::platform::fs::Own::issue_at(&d);
+    write_at(&own, true).expect("写");
+    let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&f).unwrap()).unwrap();
+    assert_eq!(v, serde_json::json!({ "version": 1, "killOnExit": true }));
+    std::fs::write(&f, "{\"version\":2,\"killOnExit\":true}").unwrap();
+    assert!(
+        matches!(read_at(&f), Read::Unreadable(_)),
+        "比声明新的一份 ⇒ 读不出来，不当成谁选过"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn set_rejects_a_non_boolean_and_writes_nothing() {
     for bad in [
         serde_json::json!({}),
@@ -328,8 +344,8 @@ fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
 
 // ═══════════════════════════ E1：写者全仓只有一处 ═══════════════════════════
 
-/// 本模块生产段里的落盘原语 —— 几种写法加起来**恰好**一处，就是 `own.write(`
-/// （那一下原子写进去，真正落进 `backend.json` 的唯一一下）。
+/// 本模块生产段里的落盘原语 —— 几种写法加起来**恰好**一处，就是 `DOC.write(`
+/// （经声明的读写口原子写进去，真正落进 `backend.json` 的唯一一下）。
 /// 数的写法：`.write(` · `write_all(` · `fs::write` · `File::create` · `OpenOptions` · `rename(` · `.put(`。
 /// 买不到：经别的模块转一手的写（那一半归下面 `E1` 的全仓半）。
 #[test]
@@ -354,8 +370,8 @@ fn the_module_has_exactly_one_commit_point() {
         vec![(".write(", 1)],
         "`exit_policy.rs` 生产段的落盘写法不是恰好一处 `.write(`"
     );
-    guard_core::find_pinned(&prod, "own.write(")
-        .unwrap_or_else(|e| panic!("那一处 `.write(` 不是 `own.write(`：{e}"));
+    guard_core::find_pinned(&prod, "DOC.write(")
+        .unwrap_or_else(|e| panic!("那一处 `.write(` 不是 `DOC.write(`：{e}"));
 }
 
 /// 一份生产源码去掉注释之后的样子（按扩展名分流，剥法全走共享原语，不另写一份）：

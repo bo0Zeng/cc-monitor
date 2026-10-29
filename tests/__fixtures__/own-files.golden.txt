@@ -10,7 +10,7 @@ box.lan ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA
 {"account":"work","at":1700000000,"plugin":true,"version":1}
 
 == machines.json
-{"version":1,"hosts":[{"label":"box","host":"box.lan","port":2222,"user":"u","keyPath":"","addresses":["box-2.example"],"jump":"","connect":true}]}
+{"hosts":[{"addresses":["box-2.example"],"connect":true,"host":"box.lan","jump":"","keyPath":"","label":"box","port":2222,"user":"u"}],"version":1}
 
 == plan-review.json
 {"acks":{"/w":{"s1":["k1"]}},"returns":{},"version":1}

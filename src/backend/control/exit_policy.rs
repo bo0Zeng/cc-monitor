@@ -72,12 +72,9 @@ pub fn policy_path() -> Option<PathBuf> {
     )
 }
 
-/// 读盘的上限：文件只有一格布尔。
-const MAX_BYTES: u64 = 4096;
-
-/// 退出行为：状态（读不懂 ⇒ 照实说、按缺省办）。
+/// 退出行为：状态（读不懂 · 比这一版新 ⇒ 照实说、按缺省办；落点 · 上限 · 版本照声明表）。
 const DOC: crate::common::own_state::Doc<serde_json::Value> =
-    crate::common::own_state::Doc::state(relay_route_core::BACKEND_POLICY_REL, MAX_BYTES);
+    crate::common::own_state::Doc::of(&relay_route_core::BACKEND_POLICY_FILE);
 
 /// 读一次 `path`。**每次调用都真去读盘**，没有任何记忆。
 pub fn read_at(path: &Path) -> Read {
@@ -136,12 +133,8 @@ pub fn last_client_left() -> bool {
     r.kill_on_exit()
 }
 
-/// 文件的全部内容。**只有一格**，写的时候整份写（单写者 ⇒ 不需要读—改—写）。
-fn render(kill: bool) -> String {
-    format!("{{\"{KEY_KILL_ON_EXIT}\":{kill}}}\n")
-}
-
-/// 全仓唯一的写者（经 `Own` 原子写）⇒ 读者（[`read_at`]）要么看到旧的整份、要么看到新的整份。
+/// 全仓唯一的写者（经声明的读写口原子写；文件**只有一格**，整份写，单写者 ⇒ 不需要读—改—写）
+/// ⇒ 读者（[`read_at`]）要么看到旧的整份、要么看到新的整份。
 /// 目录不在就建这一层（`~/.cc-monitor` 本身）。
 fn write_at(own: &Own, kill: bool) -> Result<(), crate::common::said::Said> {
     let dir = own.home_dir().map_err(|_| {
@@ -162,7 +155,12 @@ fn write_at(own: &Own, kill: bool) -> Result<(), crate::common::said::Said> {
     })?;
     // 写之前拿那个目录的跨进程锁（原子写的签名要它）。这一份没有读—改—写，锁只为这条规矩没有例外。
     let held = own.lock(&dir)?;
-    own.write(&dir.join(FILE_NAME)?, &held, render(kill).as_bytes())
+    DOC.write(
+        own,
+        &dir,
+        &held,
+        &serde_json::json!({ KEY_KILL_ON_EXIT: kill }),
+    )
 }
 
 /// 这台后端是不是回环常驻（脱离了起它的那一方）—— 与 `main` 选载体同一个纯函数、同一份环境，不另记一份。
