@@ -4636,3 +4636,32 @@ fn the_launch_start_returns_before_the_backend_is_up() {
         "结局没交到 then"
     );
 }
+
+/// 本机后端起不来（没带后端 · 释放失败 · 起了接不上 · 被拒）⇒ 本机那一行（`LocalBackend::Down`）说的是起不来那一句，
+/// 不是泛泛的「本机后端未运行」；那一句在「从来没起来」的唯一喂点（`note_never_started`）记下（A2-17-15-1-1）。
+#[test]
+fn a_failed_local_start_says_why_on_the_local_row() {
+    use crate::ui_contract::LocalBackend as L;
+    let _g = crate::inbound_client::local_origin_test_lock();
+    super::note_local_foreign(None);
+    super::note_local_failed(Some("没带本机后端 · 测试那一句"));
+    let failed = super::local_backend(false, Some("p8c-mine"));
+    super::note_local_failed(None);
+    let plain = super::local_backend(false, Some("p8c-mine"));
+    assert!(
+        matches!(&failed, L::Down { said, .. } if said == "没带本机后端 · 测试那一句"),
+        "{failed:?}"
+    );
+    assert!(
+        matches!(&plain, L::Down { said, .. } if *said == copy_text("machineState.down.local", &[])),
+        "{plain:?}"
+    );
+    let me = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/local_backend_host.rs"
+    ));
+    let feed = body_of(&me, "fn note_never_started(");
+    assert!(
+        feed.contains("note_local_failed("),
+        "起不来那一句没在 `note_never_started` 记下 ⇒ 本机那一行只说「未运行」，用户不知道为什么"
+    );
+}
