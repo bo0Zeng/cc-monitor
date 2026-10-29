@@ -2,13 +2,15 @@
 //! 下面那一张 `calls!` 表是命令身份唯一的声明：后端登记那一行照它取名、取回包，
 //! 有 Rust 客户端的那几端（壳 · 文件窗口 · 手机核心）照它发、照它解。
 
+use crate::assets::{AssetsSyncReq, AssetsSynced};
 use crate::batch::{BatchReply, FilesBatchStopReply, FilesBatchStopReq};
 use crate::bookmarks::{Bookmarks, BookmarksEditReq, BookmarksReadReq};
 use crate::deploy::{DeployInstallReq, DeployUninstallReq, Installed, Uninstalled};
-use crate::assets::{AssetsSyncReq, AssetsSynced};
 use crate::exit_policy::{ExitPolicy, ExitPolicyReadReq};
 use crate::files::*;
 use crate::plan::{PlanFiles, PlanFilesReq};
+use crate::record::{HistoryRead, HistoryReadReq};
+use crate::session::{HistoryTail, HistoryTailReq};
 use crate::terminal::{SshCommand, TerminalSshReq, UnfollowReq};
 use crate::transfer::{
     TransferCopyAsk, TransferCopyReq, TransferDownloadAsk, TransferDownloadReq, TransferOpened,
@@ -66,6 +68,9 @@ calls! {
     UnfollowReq => "terminal-unfollow", ();
     ExitPolicyReadReq => "exit-policy-read", ExitPolicy;
     AssetsSyncReq => "assets-sync", AssetsSynced;
+    // 记录那一格是原样的一团（`Value`）：各端照自己的读法再判（手机核心 `replies::mend_records` · 壳搬成品）。
+    HistoryReadReq => "history-read", HistoryRead;
+    HistoryTailReq => "history-tail", HistoryTail;
     // 传输台那三条各两层：窗口说给 monitor 的（`*Ask`）· monitor 补上那台转给本机后端的（`*Req`），名字同一个。
     TransferUploadAsk => "transfer-upload", TransferOpened;
     TransferUploadReq => "transfer-upload", TransferOpened;
