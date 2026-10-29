@@ -133,8 +133,8 @@ async fn run(
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let step = |s: deploy::Step| {
-        if let Some(line) = resident::note(h, |f| f.step(s, machine)) {
-            on(h, "state", line);
+        for (kind, body) in resident::note(h, |f| f.step(s, machine)) {
+            on(h, kind, body);
         }
     };
     let load = |p: &std::path::Path| std::fs::read(p);
@@ -152,8 +152,8 @@ async fn run(
             }
         }
     };
-    if let Some(line) = resident::note(h, |f| f.settle(machine)) {
-        on(h, "state", line);
+    for (kind, body) in resident::note(h, |f| f.settle(machine)) {
+        on(h, kind, body);
     }
     emit(ended);
 }

@@ -136,6 +136,16 @@ fun ChatRoute(
     val picker = vm.picker
     val needs = rememberChatNeeds(open.key, hostId, backends.of(hostId), remember(vm) { vm.state.map { it.sid } }, host.machine)
     val terminals = remember(hostId) { TerminalOps(backends.of(hostId), { host.machine }) }
+    val findTerminal: suspend (String) -> TermEntry? = { s ->
+        terminals
+            .list()
+            .getOrNull()
+            ?.let { rows -> TerminalsList.holding(rows, s)?.let { TermEntry.Attach(it.name) } ?: TermEntry.Resume }
+    }
+    // 说不了时框旁［切到终端］：同 ⋯「在终端里打开」那一个去处。
+    val toTerminal: () -> Unit = {
+        state.sid?.let { s -> scope.launch { findTerminal(s)?.let { onOpenTerminal(it.target(s)) } } }
+    }
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawer) {
         Scaffold(
             modifier = modifier,
@@ -144,12 +154,7 @@ fun ChatRoute(
                     title = if (state.drafting) copyText("newSession.title.plain") else state.label ?: product,
                     onOpenDrawer = { scope.launch { drawerState.open() } },
                     sid = state.sid?.takeIf { !state.drafting },
-                    findTerminal = { s ->
-                        terminals
-                            .list()
-                            .getOrNull()
-                            ?.let { rows -> TerminalsList.holding(rows, s)?.let { TermEntry.Attach(it.name) } ?: TermEntry.Resume }
-                    },
+                    findTerminal = findTerminal,
                     onTerminal = onOpenTerminal,
                     onRotation = onOpenRotation,
                     onPlan = onOpenPlan,
@@ -169,7 +174,7 @@ fun ChatRoute(
                     .imePadding(),
             ) {
                 ChatHead(hostId, host.machine, picker?.takeIf { state.drafting }) { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) }
-                ChatBody(vm, state, needs, Modifier.weight(1f))
+                ChatBody(vm, state, needs, toTerminal, Modifier.weight(1f))
             }
         }
     }
@@ -195,13 +200,14 @@ private fun ChatBody(
     vm: ChatViewModel,
     state: ChatUiState,
     needs: NeedsViewModel,
+    toTerminal: () -> Unit,
     modifier: Modifier,
 ) {
     val needsUi by needs.desk.state.collectAsStateWithLifecycle()
     val attach = vm.attach?.collectAsStateWithLifecycle()?.value
     ChatScreen(
         state = state,
-        actions = vm.actions,
+        actions = vm.actions.copy(toTerminal = toTerminal),
         onRetrySend = vm::retry,
         onLoadOlder = vm::loadOlder,
         process = ProcessActions(toggle = vm::toggle, jumpFail = vm::jumpFail),

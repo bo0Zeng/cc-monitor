@@ -9,6 +9,7 @@ import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.ClashRow
 import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.DeployEnd
+import com.ccmonitor.mobile.core.wire.gen.EmptyFace
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCards
 import com.ccmonitor.mobile.core.wire.gen.Moved
@@ -38,7 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 嵌的 Rust 核心里那一台常驻流的几个口（`Core.resident*`，手写 JNI、走消息）。生产上直通 JNI；JVM 单测给假的。
- * 交回来的事经 [open] 时给的 `events` 回（`state` · `book` · `live` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy` · `batch` · `batch_keep`）：
+ * 交回来的事经 [open] 时给的 `events` 回（`state` · `empty` · `book` · `live` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy` · `batch` · `batch_keep`）：
  * 每一样的形状是 `cmd-wire` 的 `phone` 那一份（会话簿 · 活卡是端核心 `resident-client` 那一份）—— 生成的类照它解，缺一格就是两端契约对不上，不补默认值。
  */
 interface ResidentCore {
@@ -154,6 +155,8 @@ class ResidentFeed(
     /** 这一台在做的几组落盘的那一份（核心交 `batch_keep` 时写 · 删；开起来交回核心再问）。 */
     private val kept: KeptBatches,
     private val onBreak: (String) -> Unit = {},
+    /** 核心跟着 `state` 交的首屏那一句（手上看着的每台合的一份，不只这一台；最新那一行算数）。 */
+    private val onEmpty: (EmptyFace) -> Unit = {},
 ) : CoreLink,
     SessionWatch {
     private val stateFlow = MutableStateFlow<LinkLine?>(null)
@@ -361,6 +364,7 @@ class ResidentFeed(
     ) {
         when (kind) {
             "state" -> Wire.read<LinkLine>(body)?.let(::onState) ?: broke(kind, body)
+            "empty" -> Wire.read<EmptyFace>(body)?.let(onEmpty) ?: broke(kind, body)
             "frame", "unread", "book", "live" -> onStream(kind, body)
             "watch_from" -> onWatchFrom(body)
             "ssh" -> sshFlow.value = body == "true"
