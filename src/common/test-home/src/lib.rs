@@ -4,11 +4,11 @@
 //! 每个有判据的 Rust crate（后端 · monitor · 文件窗口 · `src/common/*` · `src/comms/*`）都把本 crate 当 dev 依赖，并在 crate 根上
 //! 留一行 `#[cfg(test)] #[used] static TEST_HOME: fn() = test_home::linked;`（让链接器一定把启动段那一节带进测试二进制）。
 //! 于是直接敲 `cargo test`、IDE 里点、quick-check 都一样：测试二进制起来时（`main` 之前，单线程），`HOME` 若是本账号在账号数据库里
-//! 登记的那个真家（或没设），就把 `HOME` · `USERPROFILE` · `XDG_*` 指到这个进程自己的临时目录；`CCM_DATA_DIR` 指在真家里 ⇒ 摘掉。
-//! 判据自己给的家（例如起子进程时 `env_clear()` 再设的 `HOME`）照用。
-//! 换家的同时，外面那个会话带进来的状态（`CLAUDE_CONFIG_DIR` 指着真账号目录 · `TMUX` / `TMUX_PANE` 指着默认 tmux ·
-//! `CCM_*` / `ANTHROPIC_*` 一族指着真数据目录、真端口、真上游）一并摘掉：清单是仓里那一张会话变量表（见 [`leaked`]）。自己给了家的（台架 ·
-//! 判据 `env_clear()` 后起的子进程）环境是给的那一方配的，照用（父判据给子进程设的 `CCM_RELAY_PORT` 之类不摘）。
+//! 登记的那个真家（或没设），就把 `HOME` · `USERPROFILE` · `XDG_*` 指到这个进程自己的临时目录。给了别的家照用。
+//! 不论家是谁给的，外面那个会话带进来的状态（`CLAUDE_CONFIG_DIR` 指着真账号目录 · `TMUX` / `TMUX_PANE` 指着默认 tmux ·
+//! `CCM_*` / `ANTHROPIC_*` / `CODEX_*` 一族指着真数据目录、真端口、真上游）一律摘掉：清单是仓里那一张会话变量表（见 [`leaked`]）。
+//! 摘掉之后记录树 · 账号库 · 数据目录都退回 `HOME` 底下（10-28 那一次：只换了 `HOME`、没摘 `CLAUDE_CONFIG_DIR`，判据照着真账号的记录树读写）。
+//! 判据起的子测试进程继承沙箱标记，不再摘：父判据给它设的 `CCM_DATA_DIR` · `CCM_RELAY_PORT` 之类照用。
 //!
 //! 判据要真家的只能自己显式去拿账号数据库那一格；本 crate 不给。
 //!
@@ -50,9 +50,6 @@ pub fn leaked(name: &str) -> bool {
     }
     take && !keep
 }
-
-/// 后端的数据目录变量（与 `creds_core::store::DATA_DIR_ENV` 同名；本 crate 不依赖它，免得测试档多一层依赖）。
-const DATA_DIR_ENV: &str = "CCM_DATA_DIR";
 
 /// 各 crate 根上那一行 `static` 指着它：让链接器把本 crate 的目标文件（连同启动段）带进测试二进制。什么都不做。
 pub fn linked() {}
@@ -105,12 +102,6 @@ pub fn must_move(home: Option<&Path>, account_home: Option<&Path>) -> bool {
 
 #[ctor::ctor]
 fn sandbox_home() {
-    let real = account_home();
-    if let (Some(d), Some(r)) = (std::env::var_os(DATA_DIR_ENV), &real) {
-        if Path::new(&d).starts_with(r) {
-            std::env::remove_var(DATA_DIR_ENV);
-        }
-    }
     if std::env::var_os(SANDBOX_MARK).is_some() {
         return;
     }
@@ -124,19 +115,17 @@ fn sandbox_home() {
     for k in TEMP_VARS {
         std::env::set_var(k, &root);
     }
-    let home = std::env::var_os("HOME").map(PathBuf::from);
-    if !must_move(home.as_deref(), real.as_deref()) {
-        return;
+    // 摘外面会话的状态：不看家是谁给的（只换了 `HOME` 的，`CLAUDE_CONFIG_DIR` 照样指着真账号）。
+    let gone: Vec<std::ffi::OsString> = std::env::vars_os()
+        .map(|(k, _)| k)
+        .filter(|k| k.to_str().is_some_and(leaked))
+        .collect();
+    for k in gone {
+        std::env::remove_var(k);
     }
-    // 摘外面会话的状态：`HOME` 没设，或就是真家（查不到真家的平台上只认「没设」：给了家 ⇒ 是谁配好的环境）。
-    if home.is_none() || home.as_deref() == real.as_deref() {
-        let gone: Vec<std::ffi::OsString> = std::env::vars_os()
-            .map(|(k, _)| k)
-            .filter(|k| k.to_str().is_some_and(leaked))
-            .collect();
-        for k in gone {
-            std::env::remove_var(k);
-        }
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    if !must_move(home.as_deref(), account_home().as_deref()) {
+        return;
     }
     let home = root.join("home");
     if let Err(e) = std::fs::create_dir_all(&home) {
