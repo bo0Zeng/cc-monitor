@@ -64,6 +64,10 @@ vi.mock("../../../src/frontend/ui/machine-prefs", () => ({ readPrefs: vi.fn(asyn
 const term = vi.hoisted(() => ({ openTerminal: vi.fn(async () => {}), openLocalTerminal: vi.fn(async () => {}) }));
 vi.mock("../../../src/frontend/ui/terminal-open", async (importOriginal) => ({ ...(await importOriginal<object>()), ...term }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
+const login = vi.hoisted(() => ({ openLoginDrawer: vi.fn() }));
+vi.mock("../../../src/frontend/ui/login-drawer", () => login);
+const settings = vi.hoisted(() => ({ openSettingsWindow: vi.fn(async () => {}) }));
+vi.mock("../../../src/frontend/ui/open-settings", async (importOriginal) => ({ ...(await importOriginal<object>()), ...settings }));
 
 import { openNewSession } from "../../../src/frontend/ui/new-session";
 import { setLaunchSlots } from "../../../src/frontend/ui/session-open";
@@ -199,6 +203,18 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     expect(rowOf(acct).textContent).toContain(copyText("acct.tag.login"));
     expect(rowOf(acct).textContent).toContain(copyText("newSession.account.login"));
     expect(createBtn().getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("★ 点［登录…］⇒ 框不关、开登录抽屉（那台 · 那一家 · 那个号），不开设置窗", async () => {
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    const acct = sel(copyText("newSession.label.account"));
+    choose(acct, "personal");
+    [...rowOf(acct).querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.account.login"))!.click();
+    await flush();
+    expect(login.openLoginDrawer).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "personal" } }));
+    expect(settings.openSettingsWindow).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]'), "框还开着").not.toBeNull();
   });
 
   it("★ 那台说登不了（`login: false`）⇒ 只写那一句、不给［登录…］", async () => {
