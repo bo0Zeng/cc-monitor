@@ -10,7 +10,7 @@ import type { BackgroundWork, Needs } from "./session-reads";
 import type { FactsLine } from "./generated/FactsLine";
 import type { Tab } from "./tab-model";
 import { projectNameFromCwd } from "./tab-model";
-import { clockNow, spanNow } from "./duration-format";
+import { clockNow } from "./duration-format";
 
 /** 会话事实里那一句此刻作数：写它时那一态与脸上那一态相同。不作数 ⇒ `null`。 */
 function lineOf(tab: Tab): FactsLine | null {
@@ -38,10 +38,6 @@ export function backgroundLine(b: BackgroundWork, now: number): string {
   return b.clock ? clockNow(b.clock, now) : b.text;
 }
 
-/** 时刻（毫秒，后端解好的）⇒ 距 `now` 多久（那一个读口）；没有 ⇒ `null`。 */
-export function sinceText(atMs: number | null, now: number): string | null {
-  return atMs === null ? null : spanNow(atMs, now);
-}
 
 /**
  * 状态一句（会话头 · 悬停卡第三行）：会话事实那一句（会走的那一截按此刻填）与脸同一刻 ⇒ 用它；否则脸上那一句。

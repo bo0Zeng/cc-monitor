@@ -230,6 +230,7 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { appStore, putIn } from "../../../src/frontend/ui/app-store";
 import type { SessionAccountReply } from "../../../src/frontend/ui/generated/SessionAccountReply";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { endConfirm } from "../../../src/frontend/ui/end-confirm";
 import { recordFileWiring } from "../../../src/frontend/ui/record-file-notice";
 
 /** 会话事实里的一格 usage（上限由后端定：这里按「判不出 ⇒ 1M」那一形造）。 */
@@ -728,8 +729,8 @@ describe("TabManager 生命周期", () => {
   // 🔴 **它服务哪条业务要求：`INVARIANTS.md` §21 第 3 项**〔`P21` 2026-09-22 现打补写〕。
   //    §21（启动重放滚动稳定性·贴底不抖）第 3 项逐字：「重放期「视口上方」旧内容不建 DOM
   //    —— `TabManager.onLine` 按 seq 门控，`seq < tab.window.floorSeq` 的旧记录只进
-  //    `TailWindow` 账本，**根本不建卡不挂 DOM**；后台 virgin tab 在 `onBatchEnd` 空闲物化
-  //    尾段 / `switchTo` 时同步物化」——**下面这一组（F40a 门控矩阵 → F40b fill）就是它。**
+  //    `TailWindow` 账本，**根本不建卡不挂 DOM**；后台 virgin tab 只进账本，`switchTo` 时同步物化视口那一截」
+  //    〔A17-45-3-4 删了后台空闲物化〕——**下面这一组（F40a 门控矩阵 → F40b fill）就是它。**
   // 把 §21 记成「全树零命中」并推出「所以它没人守」：读数对
   //    （没人在散文里点出条号），推论错（第 3 项这一组等值断言一直在守）。
   //    ⚠ §21 的第 1/2 项（守卫式 `snap()` · 不手动补偿 scrollTop）**不在这里** ——
@@ -789,7 +790,7 @@ describe("TabManager 生命周期", () => {
     for (let s = 10; s < 15; s++) tm.onLine(mkContent("vg", s, `v-${s}`)); // 后台收纳 5 条
     tm.onBatchEnd();
     const vg = home(tm).store.tabs.get("vg")!;
-    expect(vg.window.pendingCount).toBe(5); // rIC 还没轮到（异步）
+    expect(vg.window.pendingCount).toBe(5); // 后台 tab 只进账本
     spy.mockClear();
     tm.onLine(mkContent("vg", 99, "v-live")); // 真 live 行先到
     expect(vg.window.pendingCount).toBe(0); // 先物化（takeTail 钉 floor=10）
@@ -824,50 +825,6 @@ describe("TabManager 生命周期", () => {
     expect(order.join(",")).toContain("unwrap,render,render,reconcile,rebuild");
     spy.mockImplementation(f15.insertingRender); // ★ 不是 `() => {}`：见 `f15.insertingRender` 头注
     vi.mocked(reconcilePendingToolResults).mockImplementation(() => []);
-  });
-
-  /**
-   * 后台空闲物化一次只建一小截、看着空闲期限走：开窗那几秒里人就会去点 —— 一次空闲回调建满 150 条（Chromium 一下 50 ms 级，
-   * WebKitGTK 没有 requestIdleCallback、走 setTimeout 兜底，一下一两百 ms）就是开窗时一串长任务，点下去要等它跑完。
-   * 期限用完 ⇒ 这个 tab 排回队首，下一个空闲期接着建；总量照旧（virgin 的尾段一共 150 条）。
-   */
-  it("后台空闲物化按空闲期限分截建：期限用完就停、下一个空闲期接着，总量照旧", async () => {
-    const spy = await spyRender();
-    const idle: IdleRequestCallback[] = [];
-    const had = window.requestIdleCallback;
-    window.requestIdleCallback = ((cb: IdleRequestCallback) => idle.push(cb)) as typeof window.requestIdleCallback;
-    try {
-      tm.onLine(mkContent("chunkA", 1, "ch-1")); // active
-      tm.onBatchStart();
-      for (let s = 0; s < 150; s++) tm.onLine(mkContent("chunkB", 1000 + s, `chb-${s}`)); // 后台 virgin 150 条
-      tm.onBatchEnd();
-      const t = home(tm).store.tabs.get("chunkB")!;
-      expect(t.window.pendingCount).toBe(150);
-      spy.mockClear();
-      expect(idle.length, "前提：排了一个空闲回调").toBe(1);
-      idle.shift()!({ didTimeout: false, timeRemaining: () => 0 }); // 期限已经用完
-      const first = spy.mock.calls.length;
-      expect(first, "期限用完还一口气建满 150 条 ⇒ 开窗时一串长任务").toBeLessThan(150);
-      expect(first, "至少建一截（不然永远建不完）").toBeGreaterThan(0);
-      for (let i = 0; i < 40 && idle.length > 0; i++) idle.shift()!({ didTimeout: false, timeRemaining: () => 0 });
-      expect(t.window.pendingCount, "分截之后总量照旧：virgin 的尾段 150 条全建").toBe(0);
-    } finally {
-      window.requestIdleCallback = had;
-    }
-  });
-
-  it("F40a S-5：archived tab 不进后台物化队列", () => {
-    tm.onLine(mkContent("act4", 1, "z-1")); // active
-    tm.onBatchStart();
-    tm.onLine(mkContent("dead", 30, "d-1")); // 后台收纳
-    tm.onLine(mkContent("idle1", 40, "i-1")); // 后台收纳 ×2
-    tm.onLine(mkContent("idle2", 41, "i-2"));
-    tm.onFace("dead", goldenFace("ended"));
-    tm.onBatchEnd();
-    // scheduleIdleMaterialize 同步 shift 队首进定时器闭包 → 队列只剩第二个非归档 tab;
-    // 关键断言:dead 从未入队(队首 shift 的是 idle1)
-    expect(home(tm).view.materializeQueue).toEqual(["idle2"]);
-    expect(home(tm).store.tabs.get("dead")!.window.pendingCount).toBe(1); // 未被物化
   });
 
   // === Batch13-F40b：R-1 缓冲 / 上翻补批 / 哨兵 ===
@@ -910,20 +867,21 @@ describe("TabManager 生命周期", () => {
     const t = home(tm).store.tabs.get("fills")!;
     expect(t.window.pendingCount).toBe(700);
 
-    // 选区进行中切入:virgin 物化照走(4 轮×150=600,物化不看选区);
-    // R-2 踢链(不可滚+账余 100)被选区守卫挡 → 账保 100
+    // 选区进行中切入:virgin 物化照走(jsdom 恒不满一屏 ⇒ 一次同步调用建满 8 截 × 20 = 160,物化不看选区);
+    // R-2 踢链(不可滚+账余 540)被选区守卫挡 → 账保 540
     const selSpy = vi
       .spyOn(document, "getSelection")
       .mockReturnValue({ isCollapsed: false } as unknown as Selection);
     tm.switchTo("fills");
-    expect(t.window.pendingCount).toBe(100);
+    expect(t.window.pendingCount).toBe(540);
     // 选区仍在:scroll 也被挡
     t.streamEl.dispatchEvent(new Event("scroll"));
-    expect(t.window.pendingCount).toBe(100);
-    // 选区收起:scroll → 补批弹尽
+    expect(t.window.pendingCount).toBe(540);
+    // 选区收起:scroll → 补一批 200,之后 rAF 自链接着补到弹尽
     selSpy.mockReturnValue({ isCollapsed: true } as unknown as Selection);
     t.streamEl.dispatchEvent(new Event("scroll"));
-    expect(t.window.pendingCount).toBe(0);
+    expect(t.window.pendingCount).toBe(340);
+    await vi.waitFor(() => expect(t.window.pendingCount).toBe(0), UNTIL_CEILING);
     selSpy.mockRestore();
 
     // 非 active:先切走,再给 fills(后台,floor 已钉)造残账——onBatchEnd 的
@@ -946,8 +904,8 @@ describe("TabManager 生命周期", () => {
     for (let s = 1000; s < 1300; s++) tm.onLine(mkContent("reB", s, `re-${s}`)); // 后台 300
     tm.onBatchEnd();
     const t = home(tm).store.tabs.get("reB")!;
-    tm.switchTo("reB"); // virgin 全物化(300≤600),floor=1000
-    expect(t.window.pendingCount).toBe(0);
+    tm.switchTo("reB"); // virgin:同步建一截截(jsdom 恒不满一屏),余下的 rAF 自链补完,floor=1000
+    await vi.waitFor(() => expect(t.window.pendingCount).toBe(0), UNTIL_CEILING);
 
     tm.switchTo("reA");
     tm.onBatchStart();
@@ -984,7 +942,8 @@ describe("TabManager 生命周期", () => {
     for (let s = 1000; s < 1300; s++) tm.onLine(mkContent("geoB", s, `geo-${s}`));
     tm.onBatchEnd();
     const t = home(tm).store.tabs.get("geoB")!;
-    tm.switchTo("geoB"); // virgin 全物化，floor 钉住
+    tm.switchTo("geoB"); // virgin：同步建一截截、余下的 rAF 自链补完，floor 钉住
+    await vi.waitFor(() => expect(t.window.pendingCount).toBe(0), UNTIL_CEILING);
     tm.switchTo("geoA");
     tm.onBatchStart();
     for (let s = 100; s < 400; s++) tm.onLine(mkContent("geoB", s, `geo-old-${s}`)); // < floor ⇒ 收纳 300
@@ -1018,6 +977,7 @@ describe("TabManager 生命周期", () => {
     tm.onBatchEnd();
     const t = home(tm).store.tabs.get("padB")!;
     tm.switchTo("padB");
+    await vi.waitFor(() => expect(t.window.pendingCount).toBe(0), UNTIL_CEILING); // 冷开那一截之后 rAF 自链补完
     tm.switchTo("padA");
     tm.onBatchStart();
     for (let s = 100; s < 400; s++) tm.onLine(mkContent("padB", s, `pad-old-${s}`)); // 账本有余 300
@@ -1073,10 +1033,12 @@ describe("TabManager 生命周期", () => {
     tm.onBatchStart();
     for (let s = 100; s < 300; s++) tm.onLine(mkContent("sentB", s, `sb-${s}`));
     tm.onBatchEnd();
-    tm.switchTo("sentB"); // 物化(4 轮×150 上限 → 200 全弹尽)
+    tm.switchTo("sentB"); // 冷开：同步建 8 截 × 20 = 160（jsdom 恒不满一屏），余 40 下一帧接着补
     const t = home(tm).store.tabs.get("sentB")!;
+    expect(t.window.pendingCount).toBe(40);
+    await new Promise((r) => requestAnimationFrame(() => r(null))); // 下一帧补尽
     expect(t.window.pendingCount).toBe(0);
-    await new Promise((r) => requestAnimationFrame(() => r(null))); // 切进来那一脚补批在下一帧（同步段不读几何）
+    await new Promise((r) => requestAnimationFrame(() => r(null))); // 再下一帧：账尽 ⇒ 按行号往下问
     // 渲染窗口最老那一条是第 100 行（> 0）⇒ 下面可能还有：jsdom 恒不可滚 ⇒ 切入的 R-2 踢链（下一帧）问 [0, 100)
     // 只数这个 tab 的（等那一帧时，前面几格留下的切入那一脚也会在同一帧里跑，问的是它们自己的 tab）
     expect(recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_lines").filter((a) => (a as { jsonlPath: string }).jsonlPath === "/p/sentB.jsonl")).toEqual([
@@ -1113,8 +1075,8 @@ describe("TabManager 生命周期", () => {
    * 造的正是用户报的那一屏：**`scrollHeight` 说"滚得动"，而屏幕上是半屏空的**。
    * 成因不是假设 —— 每张顶层卡都带 `contain-intrinsic-size: auto <估值>`
    * （`height-estimate.ts`），没渲染过的卡按**估值**计入 `scrollHeight`。
-   * 旧判据 `scrollHeight - clientHeight > 1` 在第 1 轮就成立 ⇒ 补批当场停手（只补 150 条）；
-   * 新判据问的是「最后一张卡的底边到没到容器下沿」⇒ 该补的 4 轮补满（600 条）。
+   * 旧判据 `scrollHeight - clientHeight > 1` 在第 1 截就成立 ⇒ 补批当场停手（只补 20 条）；
+   * 新判据问的是「最后一张卡的底边到没到容器下沿」⇒ 一次同步调用的 8 截补满（160 条）。
    *
    * # 量的是条数，不是像素
    *
@@ -1146,8 +1108,8 @@ describe("TabManager 生命周期", () => {
     tm.switchTo("fillBody"); // virgin ⇒ 同步物化，停手条件就是本格的被测对象
     expect(
       t.window.pendingCount,
-      "读 scrollHeight 的话第 1 轮就停手（余 550）；读真实布局才会补满 4 轮（余 100）",
-    ).toBe(100);
+      "读 scrollHeight 的话第 1 截就停手（余 680）；读真实布局才会补满一次同步调用的 8 截 × 20（余 540）",
+    ).toBe(540);
   });
 
   /**
@@ -1404,36 +1366,19 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     );
   });
 
-  it("P3 刀2-UI 本机 tab 右键：问不到那台（null）→ 结束项灰着、第二行写原因，不留能点的破坏性动作", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_local_tmux" ? Promise.resolve(null) : Promise.resolve(undefined),
-    ));
+  // 「结束会话…」能不能只照脸上的 `can.end`（A2-17-12-3）：不等问那台在哪个终端里（命中几个 · 不在终端里交了由那台判、那台说）。
+  it("★ 结束项照 can.end：能 ⇒ 菜单一开就可点（问那台还没回）；不能 ⇒ 灰着、第二行是那一格的 why", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(() => new Promise(() => {})));
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
+    tm.onFace("k1abcdef", goldenFace("live-needs-you-tmux"));
     rightClick("k1abcdef");
-    expect(killBtn()?.disabled, "还在问：先画出项、不可点").toBe(true);
-    expect(killBtn()?.querySelector("[data-part=label]")?.textContent, "问的时候不换字").toBe(copyText("tabMenu.kill.label"));
-    await flush();
+    expect(killBtn()?.disabled).toBe(false);
+    expect(await killConfirmText()).toContain(copyText("tabBatch.stop.title", { n: 1 }));
+    tm.ensureTab("k2abcdef", "/home/u/p", "/p/k2.jsonl", "hostA");
+    tm.onFace("k2abcdef", goldenFace("live-working-plain"));
+    rightClick("k2abcdef");
     expect(killBtn()?.disabled).toBe(true);
-    expect(whyOf(killBtn())).toBe(copyText("tabMenu.probe.failed"));
-  });
-
-  it("P3 刀2-UI 本机 tab 右键：按 @ccm_sid 认出唯一那个（名字前缀是诱饵）", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_local_tmux"
-        ? Promise.resolve([
-            // ★ 名字长得就是本 tab 的 `<sid8>-cc`，但 `@ccm_sid` 是别人的 —— **诱饵**。
-            //   按名字前缀猜就会中它，那是「拿命名巧合当身份」（§30 禁的那一类）。
-            { name: "k1abcdef-cc", path: "/home/u/p", command: "claude", attached: false, windows: 1, sid: "someone-else", agent: true },
-            { name: "unrelated-cc", path: "/home/u/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef", agent: true },
-          ])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
-    rightClick("k1abcdef");
-    await flush();
-    const said = await killConfirmText();
-    expect(said, "tmux 会话名在确认框正文里").toContain("unrelated-cc");
-    expect(said).not.toContain("k1abcdef-cc");
+    expect(whyOf(killBtn())).toBe(copyText("terminal.empty.notOurs"));
   });
 
   // 本机**空 tmux**（claude 已退、只剩交互 shell）：恢复只在「恢复 ▸」里（运行于 tmux 那一项），
@@ -1441,7 +1386,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   const menuLabels = (): string[] =>
     [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem] [data-part=label]") ?? [])].map((n) => n.textContent ?? "");
 
-  it("本机空 tmux（Claude 已退出）→ 菜单顶层没有「在 tmux 会话里恢复」；结束的确认框点名那个 tmux 会话", async () => {
+  it("本机空 tmux（Claude 已退出）→ 菜单顶层没有「在 tmux 会话里恢复」", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_local_tmux"
         ? Promise.resolve([
@@ -1454,21 +1399,6 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     rightClick("k1abcdef");
     await flush();
     expect(menuLabels()).not.toContain("在 tmux 会话里恢复");
-    expect(await killConfirmText()).toContain(copyText("sessionState.killIdle.title", { name: "i1-cc" }));
-  });
-
-  it("本机 tmux 里还跑着 claude → 结束的确认框写会中断那个 tmux 会话", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_local_tmux"
-        ? Promise.resolve([
-            { name: "i1-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef", agent: true },
-          ])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
-    rightClick("k1abcdef");
-    await flush();
-    expect(await killConfirmText()).toMatch(copyPattern("tabSessionActions.kill.cuts", { name: "i1-cc" }));
   });
 
   /** 那台答这个会话在托管终端里（`sessions-where` 的 `terminals[].host` ＝ `managed`）。 */
@@ -1480,15 +1410,6 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
         : rest(cmd, args),
     );
   };
-
-  it("★ 本机：会话在托管终端里 ⇒ 出［结束］（确认框点名那个终端）", async () => {
-    inHostedTerminal("k1abcdef", "idle");
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
-    rightClick("k1abcdef");
-    await flush();
-    expect(killBtn()?.disabled).toBe(false);
-    expect(await killConfirmText()).toContain(copyText("sessionState.killIdle.title", { name: "box-cc" }));
-  });
 
   it("★ 本机：会话在托管终端里 ⇒ 出［在终端里打开］，点了恰好一问 `session-open {look, sid, local}`（那一行由那台渲：瘦客户端接句柄）", async () => {
     inHostedTerminal("k1abcdef", "running");
@@ -1511,36 +1432,15 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     rightClick("k1abcdef");
     await flush();
     expect(attachBtn()).toBeNull();
-    expect(killBtn()?.disabled).toBe(false);
   });
 
-  it("★ 远端：会话在托管终端里 ⇒ 出［结束］与［在终端里打开］（接回那一条那台两种宿主都认）", async () => {
+  it("★ 远端：会话在托管终端里 ⇒ 出［在终端里打开］（接回那一条那台两种宿主都认）", async () => {
     inHostedTerminal("A", "running");
     tm.ensureTab("A", "/a", "p", "hostA");
     rightClick("A");
     await flush();
     expect(attachBtn()?.disabled).toBe(false);
-    expect(killBtn()?.disabled).toBe(false);
-    expect(await killConfirmText()).toMatch(copyPattern("tabSessionActions.kill.cuts", { name: "box-cc" }));
-    rightClick("A");
-    await flush();
     expect(attachTarget()).toEqual({ what: { kind: "look", sid: "A" }, local: false });
-  });
-
-  it("P3 刀2-UI 本机 tab 右键：同身份命中 2 个 → 拒绝，不折叠成第一个", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_local_tmux"
-        ? Promise.resolve([
-            { name: "a-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef", agent: true },
-            { name: "b-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef", agent: true },
-          ])
-        : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
-    rightClick("k1abcdef");
-    await flush();
-    expect(whyOf(killBtn())).toBe(copyText("tabMenu.kill.dupesWhy", { n: 2 }));
-    expect(killBtn()?.disabled).toBe(true);
   });
 
   it("远端 tab 右键 → 反查命中 claude 会话 → attach 项由禁用占位就绪为可点", async () => {
@@ -1614,9 +1514,8 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(attachTarget()).toEqual({ what: { kind: "look", sid: "A" }, local: false });
   });
 
-  // F04（R10）：命中 ≥2 个精确同 sid 的活会话——attach 仍就绪（非破坏性，警告即可），
-  // kill 项禁用 + 诊断文案（破坏性，选错代价不可逆，须到终端手动处理）。preview 不受影响。
-  it("目标 sid 同时活在 2 个 tmux（命中 ≥2 个）→ attach 仍就绪，kill 项禁用+诊断文案", async () => {
+  // F04（R10）：命中 ≥2 个精确同 sid 的活会话——attach 仍就绪（非破坏性，警告即可）；结束交了由那台拒（`sessions-stop` 的 ambiguous）。
+  it("目标 sid 同时活在 2 个 tmux（命中 ≥2 个）→ attach 仍就绪、第二行写命中几个", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
@@ -1630,8 +1529,6 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     await flush();
     expect(attachBtn()?.disabled).toBe(false);
     expect(whyOf(attachBtn())).toBe(copyText("tabMenu.attach.dupesWhy", { n: 2, name: "cc-A1" }));
-    expect(killBtn()?.disabled).toBe(true);
-    expect(whyOf(killBtn())).toBe(copyText("tabMenu.kill.dupesWhy", { n: 2 }));
   });
 
   // 〔终端 L1〕看画面只有一个入口：抽屉终端页（「看它的终端」）；盖住主窗口的旧浮层那一项不再出（远端本机都一样）。
@@ -1925,7 +1822,7 @@ describe("auto-e2e F-E4 可注入 confirm seam（endSession：交那台 sessions
     const confirmSpy = vi.spyOn(window, "confirm");
     home(tm).actions.endSession("hostA", "s1", "cc-abc");
     await microFlush();
-    expect(askDialogText(), "没弹应用内对话框").toContain(copyText("tabSessionActions.kill.title", { title: "cc-abc" }));
+    expect(askDialogText(), "没弹应用内对话框").toContain(copyText("tabBatch.stop.title", { n: 1 }));
     expect(killCalls(), "还没答就杀了").toHaveLength(0);
     await answerAskDialog(false);
     expect(killCalls()).toHaveLength(0);
@@ -1952,41 +1849,18 @@ describe("auto-e2e F-E4 可注入 confirm seam（endSession：交那台 sessions
     confirmSpy.mockRestore();
   });
 
-  // UX 审计 #1：灰态(idle-tmux) tab 也能 kill——opts.idle 走"Claude 已退出"文案（非"正在运行"），照常 kill。
-  it("endSession { idle:true } → 文案说 Claude 已退出、非'正在运行'，仍 kill 空 tmux", async () => {
-    const msgs: string[] = [];
-    home(tm).actions.endSession("hostA", "s1", "cc-idle1234", {
-      idle: true,
+  // 结束会话只一个确认框（A2-17-12-3）：单个交出去的就是多选 · 终端名单那一份，只列这一条的名字。
+  it("★ endSession 的确认框 ＝ 结束会话那一个（endConfirm），列的是这一条的名字", async () => {
+    const asked: unknown[] = [];
+    home(tm).actions.endSession("hostA", "s1", "表格分页", {
       confirm: (m) => {
-        msgs.push(m.body ?? "");
-        return true;
-      },
-    });
-    await microFlush();
-    expect(msgs).toHaveLength(1);
-    expect(msgs[0]).toContain(copyText("sessionState.reconnectable.name"));
-    expect(msgs[0]).not.toContain("正在运行的 Claude");
-    expect(killCalls()).toHaveLength(1);
-    expect(killCalls()[0]).toEqual(["hostA", ["s1"]]);
-  });
-
-  // 护栏：live（非 idle）的确认框逐项写会中断什么（那个 tmux 会话里的 Claude · 当前轮次）与保留什么。
-  it("endSession 非 idle → 中断那一项点名 tmux 会话里的 Claude 与当前轮次；保留会话记录（live 路径护栏）", async () => {
-    const rows: { label: string; items: string[] }[][] = [];
-    home(tm).actions.endSession("hostA", "s1", "cc-live1234", {
-      title: "表格分页",
-      confirm: (m) => {
-        rows.push(m.rows ?? []);
+        asked.push(m);
         return false;
       },
     });
     await microFlush();
-    expect(rows).toEqual([
-      [
-        { label: copyText("kit.interrupts.cut"), items: [copyText("tabSessionActions.kill.cuts", { machine: "hostA", name: "cc-live1234" })] },
-        { label: copyText("kit.interrupts.keep"), items: [copyText("tabSessionActions.kill.keeps")] },
-      ],
-    ]);
+    expect(asked).toEqual([endConfirm(["表格分页"])]);
+    expect(killCalls()).toHaveLength(0);
   });
 });
 
@@ -4065,7 +3939,8 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
       available: true,
       from: fromOffset,
       end: fromOffset + n * 10,
-      rows: Array.from({ length: n }, (_, k) => ({ o: fromOffset + k * 10, n: 10, t: "reply", dr: "card", u: `u${fromOffset / 10 + k}`, ch: 100, pl: 1 })),
+      // 第 i 行的类与 `mk` 那一行同一个算法（重来之后取回的那一截收在账本里，接骨架前要对拍 seq 空间）
+      rows: Array.from({ length: n }, (_, k) => ({ o: fromOffset + k * 10, n: 10, t: kindAt(fromOffset / 10 + k), dr: "card", u: `u${fromOffset / 10 + k}`, ch: 100, pl: 1 })),
     });
     /**
      * 一个 tab 先接上 `[0, first)` 的骨架，再从 `watchAt` 起上流（缺得多 ⇒ 正文重来）；按行号取一页答到 `end`。
@@ -4137,7 +4012,8 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
       expect(t.skeleton, "切走了还在后台接骨架").toBeNull();
       tm.switchTo("cp");
       await vi.waitFor(() => expect(t.skeleton, "切回来停住了该接上").not.toBeNull(), UNTIL_CEILING);
-      expect(fromOffsets("cp"), "停着的那一份直接用，不重问").toEqual([0, 3000]);
+      // 接上之后从账本的末字节往后续一截（`extendIndex`：尾段之后来的行进账本，收起时交得回去）不算重问
+      expect(fromOffsets("cp").filter((o) => o <= 3000), "停着的那一份直接用，不重问").toEqual([0, 3000]);
     });
   });
 
@@ -5505,7 +5381,7 @@ describe("〔RENDER2〕去重集是区间、收全了的会话收成一段", () 
 // ===== 批的第二道闸：急路要当场物化的正文字符 =====
 // 要求：「批的闸门应是字节预算（或『字节 ＋ 条数』双闸）」＋ 同节「要做的话闸的单位该换成『急路要物化的正文字符』」。
 describe("〔RENDER2〕物化一批按正文字符截", () => {
-  it("两条长正文合起来超预算 ⇒ 第一批只有最高那条、第二批是另一条连同其余短的 ⇒ 建卡顺序 == 手算的 [149, 0‥148]", async () => {
+  it("两条长正文合起来超预算 ⇒ 第一截只有最高那条、第二截是另一条连同其余短的 ⇒ 建卡顺序 == 手算的 [149, 129‥148, 109‥128, …]", async () => {
     const { renderContentRecord } = await import("../../../src/frontend/ui/render-stream-record");
     const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
     const tm = makeTM();
@@ -5526,7 +5402,9 @@ describe("〔RENDER2〕物化一批按正文字符截", () => {
     spy.mockClear();
     tm.switchTo("bgB");
     const order = spy.mock.calls.map((c) => (c[0] as { seq: number }).seq);
-    expect(order).toEqual([149, ...Array.from({ length: 149 }, (_, i) => i)]);
+    // 冷开一截 20 条、一次同步调用至多 8 截（jsdom 恒不满一屏 ⇒ 8 截建满）：第一截被预算截成只有 149，之后每截 20 条、截内升序
+    const chunk = (hi: number): number[] => Array.from({ length: 20 }, (_, i) => hi - 19 + i);
+    expect(order).toEqual([149, ...[148, 128, 108, 88, 68, 48, 28].flatMap(chunk)]);
   });
 });
 
@@ -5599,6 +5477,7 @@ describe("tab 多选与批量菜单", () => {
     expect(batchHead(), "单个菜单").not.toBe(head(2));
     click("b", { ctrlKey: true });
     tm.onFace("b", goldenFace("ended"));
+    for (const sid of ["a", "c"]) tm.onFace(sid, goldenFace("live-needs-you-tmux"));
     rightClick("b");
     const labels = menuLabels();
     expect(document.body.querySelector("[role=menu] [role=presentation]")?.textContent, "头一行「已选 N 个」").toBe(head(2));
@@ -6633,7 +6512,7 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     expect([...inflight()], "前提：B 那一趟在途").toEqual(["B"]);
     const pendingIds = Array.from({ length: idle.length }, (_, k) => idleAsked - idle.length + 1 + k);
     tm.dispose();
-    expect(idleCancelled.sort(), "挂着的空闲回调（空闲物化那几个）当场撤掉").toEqual(pendingIds.sort());
+    expect(idleCancelled.sort(), "挂着的空闲回调（冷读排班那几个）当场撤掉").toEqual(pendingIds.sort());
     const askedAtDispose = idleAsked;
     const coldAtDispose = cold.length;
     // 拆掉以后 window 上的空闲回调一碰就记一笔（测试环境拆掉之后 window 已经不在：碰了就是 ReferenceError）。

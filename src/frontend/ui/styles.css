@@ -143,46 +143,73 @@
   background: transparent;
 }
 
-/* 机器离线条（I5「过期」）：一台一条；连上了自己消失。 */
-.tab-machine-down {
+/* 栏底机器条（A2-17-6-1）：钉在列表下面、往上长（标签页不跳位）；一行一台没连上的，连上了当场摘掉。 */
+.machine-strip {
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border-soft);
 }
 
-.tab-machine-down:empty {
+.machine-strip:empty {
   display: none;
 }
 
-.tab-machine-down-row {
+.machine-strip-row,
+.machine-strip-more {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  margin: 6px 6px 0;
-  padding: 6px 8px;
-  border-left: 3px solid var(--warn);
+  margin: 0 6px;
+  padding: 4px 8px;
   border-radius: var(--radius-m);
-  background: var(--card);
   font-size: var(--font-size-small);
 }
 
-.tab-machine-down-row > [role="img"] {
+.machine-strip-more {
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-small);
+  text-align: left;
+  cursor: pointer;
+}
+
+.machine-strip-more:hover {
+  background: var(--card);
+}
+
+.machine-strip-row > [role="img"] {
   margin-top: 5px;
 }
 
-.tab-machine-down-body {
+.machine-strip-body {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
 }
 
-.tab-machine-down-seen {
+.machine-strip-head {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.machine-strip-name {
+  color: var(--text);
+}
+
+.machine-strip-word,
+.machine-strip-said {
   color: var(--text-2);
 }
 
-.tab-machine-down-act {
+.machine-strip-fix {
   flex: none;
   padding: 0;
   border: 0;
@@ -2750,8 +2777,9 @@ body[data-tab-bar="folded"]:not(.viewer-mode) .tab-bar-head-sp,
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab-needs-text,
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab-needs kbd,
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab-needs .tab-bar-head-sp,
-body[data-tab-bar="folded"]:not(.viewer-mode) .tab-machine-down-body,
-body[data-tab-bar="folded"]:not(.viewer-mode) .tab-machine-down-act,
+body[data-tab-bar="folded"]:not(.viewer-mode) .machine-strip-body,
+body[data-tab-bar="folded"]:not(.viewer-mode) .machine-strip-fix,
+body[data-tab-bar="folded"]:not(.viewer-mode) .machine-strip-more-text,
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-title,
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-trail,
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-machine,
@@ -2770,9 +2798,10 @@ body[data-tab-bar="folded"]:not(.viewer-mode) .tab-needs {
   padding: 0;
   gap: 3px;
 }
-body[data-tab-bar="folded"]:not(.viewer-mode) .tab-machine-down-row {
+body[data-tab-bar="folded"]:not(.viewer-mode) .machine-strip-row,
+body[data-tab-bar="folded"]:not(.viewer-mode) .machine-strip-more {
   justify-content: center;
-  margin: 6px 4px 0;
+  margin: 0 4px;
   padding: 6px 0;
 }
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab {
