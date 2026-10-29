@@ -31,6 +31,7 @@ pub use ssh_dial::{
 
 pub(crate) mod forwards; // 端口转发的账（起 · 停 · 列三条帧命令）
 pub(crate) mod known_hosts;
+pub(crate) mod opened_windows; // ↗ 的本机记录：开终端那一刻那个 shell 写下的窗口标签
 pub(crate) mod links; // 每一跳可观测：池里的连接读数归到那一台（机器状态成品的 `links`） // cc-monitor 自己那份 known_hosts（握手认下的钥匙；开终端那一行交给 ssh）
 pub use known_hosts::install as install_known_hosts;
 pub(crate) mod probe; // 测试连接（`remote-probe`）
