@@ -89,11 +89,13 @@ fn no_identity(uuid: Option<&str>, parent_uuid: Option<&str>) -> bool {
     uuid.is_none() && parent_uuid.is_none()
 }
 
-/// 一条解析好的盘上记录 ⇒ 通用记录；不进界面 ⇒ `None`。没有身份的那几类（标题 · 排队）`id` 用 `fallback_id`（调用方给，会话内唯一）。
-pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
+/// 一条解析好的盘上记录 ⇒ 通用记录；不进界面 ⇒ `None`。`start` ＝ 这一行在记录里的起点字节：没有身份的那几类（标题 · 排队）`id` 按它合成
+/// （[`crate::agents::line_id`]，会话内唯一），图那一块的引用也记它（[`Block::Image`] 的 `at`）。
+pub(crate) fn record_of(rec: JsonlRecord, start: u64) -> Option<Record> {
+    let mut images = Images { at: start, n: 0 };
     let rec_of = |id: String, at: Option<String>, body: Body| {
         let id = if id.is_empty() {
-            fallback_id.to_string()
+            crate::agents::line_id(start)
         } else {
             id
         };
@@ -109,7 +111,7 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
             tool_results,
             ..
         } => {
-            let blocks = blocks_of(&message.content);
+            let blocks = blocks_of(&message.content, &mut images);
             let (who, attachments) = with_attachments(user_text, &blocks, cwd.as_deref());
             Some(rec_of(
                 uuid,
@@ -144,7 +146,7 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
                 uuid,
                 Some(timestamp),
                 Body::Reply {
-                    blocks: blocks_of(&message.content),
+                    blocks: blocks_of(&message.content, &mut images),
                     model: message.model.filter(|m| m != AUTO_REPLY_MODEL),
                     auto_reply,
                     cards: tool_cards,
@@ -196,7 +198,7 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
             user_text: Some(who),
             ..
         } => {
-            let blocks = blocks_of(&a.prompt);
+            let blocks = blocks_of(&a.prompt, &mut images);
             let (who, attachments) = with_attachments(who, &blocks, cwd.as_deref());
             Some(rec_of(
                 uuid,
@@ -338,15 +340,21 @@ fn attachment_at(cwd: Option<&str>, id: &str, name: &str) -> cmd_wire::attachmen
     }
 }
 /// `message.content`（字符串 · 块数组）⇒ 通用内容块；认不出的块跳过。
-pub(crate) fn blocks_of(content: &Value) -> Vec<Block> {
+pub(crate) fn blocks_of(content: &Value, images: &mut Images) -> Vec<Block> {
     match content {
         Value::String(s) => vec![Block::Text { text: s.clone() }],
-        Value::Array(a) => a.iter().filter_map(block_of).collect(),
+        Value::Array(a) => a.iter().filter_map(|b| block_of(b, images)).collect(),
         _ => Vec::new(),
     }
 }
 
-fn block_of(b: &Value) -> Option<Block> {
+/// 一行里的图数到第几张了（[`Block::Image`] 的 `at` · `n`）：一行一份，按块的先后深度优先数。
+pub(crate) struct Images {
+    at: u64,
+    n: u32,
+}
+
+fn block_of(b: &Value, images: &mut Images) -> Option<Block> {
     let s = |k: &str| b.get(k).and_then(Value::as_str).map(str::to_string);
     Some(match b.get("type").and_then(Value::as_str)? {
         "text" => Block::Text { text: s("text")? },
@@ -363,13 +371,33 @@ fn block_of(b: &Value) -> Option<Block> {
         },
         "tool_result" => Block::ToolResult {
             of: s("tool_use_id")?,
-            content: b.get("content").map(blocks_of).unwrap_or_default(),
+            content: b
+                .get("content")
+                .map(|c| blocks_of(c, images))
+                .unwrap_or_default(),
             is_error: b.get("is_error").and_then(Value::as_bool) == Some(true),
         },
-        "image" => Block::Image {
-            source: b.get("source").cloned().unwrap_or(Value::Null),
-        },
+        "image" => image_of(b.get("source")?, images)?,
         _ => return None,
+    })
+}
+
+/// 图那一块 ⇒ 引用（字节留在块里、不上线）。只认内联 base64 的图片（`{type: base64, media_type: image/…, data}`）；别的来源画不出 ⇒ 不出块。
+fn image_of(source: &Value, images: &mut Images) -> Option<Block> {
+    let s = |k: &str| source.get(k).and_then(Value::as_str);
+    if s("type")? != "base64" {
+        return None;
+    }
+    let media_type = s("media_type").filter(|m| m.starts_with("image/"))?;
+    let data = s("data")?;
+    let n = images.n;
+    images.n += 1;
+    Some(Block::Image {
+        media_type: media_type.to_string(),
+        bytes: (data.trim_end_matches('=').len() as u64) * 3 / 4,
+        at: images.at,
+        n,
+        data: data.to_string(),
     })
 }
 

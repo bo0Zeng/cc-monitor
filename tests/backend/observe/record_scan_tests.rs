@@ -7,6 +7,7 @@
 //! | R3 | 条数上限：超了先淘汰最久没用的；单张比字节上限还大 ⇒ 照留、别的全挤掉（连问几次只读一遍盘） | 真文件 |
 //! | R4 | 几个线程同时冷开同一份 ⇒ 只扫一遍（都拿到同一张） | 真文件、8 线程 |
 //! | R10 | 图被挤掉（条数 · 被一张超字节上限的挤）⇒ 留下事实尾巴；再问事实只读追加的那一截，答案同从 0 扫 | 真文件 |
+//! | R12 | 预读收下会话只借那一张：缓存里不留整张图、只留事实尾巴；界面留着的照用不挤；预读与界面同时冷开 ⇒ 照界面的留 | 真文件、8 线程 |
 
 use super::*;
 use std::io::Write as _;
@@ -775,4 +776,90 @@ fn r11_lines_of_types_the_adapter_does_not_read_build_no_tree() {
         "请求副本里的后台调用不算这条会话的"
     );
     assert_eq!(map.inputs.len(), 3, "用户输入照旧");
+}
+
+/// R12（预读借图不留）：收下一份在跑的会话（[`RecordScans::lend`]）只借那一张、取完就放 —— 缓存里不为它添一张图，只留事实尾巴
+/// （之后问事实只读追加的那一截）；界面问过、留着的那一张，预读照用、不挤掉；预读与界面同时冷开同一份 ⇒ 照界面的留。
+#[test]
+fn r12_a_prime_lends_the_map_and_leaves_only_a_facts_tail() {
+    let d = sandbox("r12");
+    let probe = crate::observe::skeleton::WITNESS;
+    let limits = crate::observe::recognize::facts::ContextLimits::default();
+    let p = d.join("p.jsonl");
+    std::fs::write(&p, fixture(3)).unwrap();
+
+    let scans = RecordScans::new(4, 64 << 20);
+    let (lent, end) = scans.lend(&p, |m| (whole(m), m.end)).unwrap();
+    assert!(scans.peek(&p).is_none(), "预读收下会话把整张图留在了缓存里");
+    assert_eq!(
+        lent,
+        whole(&RecordScans::new(4, 64 << 20).get(&p).unwrap()),
+        "借的那张跟界面问的不一样"
+    );
+    let more = "{\"type\":\"user\",\"uuid\":\"z\",\"message\":{\"role\":\"user\",\"content\":\"再一句\"}}\n";
+    append(&p, more);
+    let before = scans.bytes_read();
+    scans.facts(&p, &limits, None).unwrap();
+    // 夹具末尾有一截残行：尾巴的游标停在最后一个整行之后，追加的那一截从那里算起。
+    let grown = std::fs::metadata(&p).unwrap().len();
+    assert_eq!(
+        scans.bytes_read() - before,
+        grown - end + probe,
+        "预读之后问事实没有照尾巴只读追加的那一截"
+    );
+
+    // 界面问过、留着的 ⇒ 预读拿的就是那一张，之后它照样留着。
+    let q = d.join("q.jsonl");
+    std::fs::write(&q, fixture(2)).unwrap();
+    let held = scans.get(&q).unwrap();
+    let before = scans.bytes_read();
+    let at = scans.lend(&q, |m| m as *const ScanMap).unwrap();
+    assert_eq!(at, Arc::as_ptr(&held), "留着的那张预读没用上");
+    assert_eq!(
+        scans.bytes_read(),
+        before,
+        "留着的那张没变，预读还是读了记录"
+    );
+    assert!(scans.peek(&q).is_some(), "预读把界面留着的那张挤掉了");
+
+    // 借完没留、骨架在旁线程上落 ⇒ 界面接着开照骨架起步：不读记录（等那份骨架落完再读，不撞上没落完的整份重扫）。
+    let (sd, own) = crate::observe::skeleton::tests::sandbox("scan-r12");
+    let s = sd.join("s.jsonl");
+    std::fs::write(&s, branched(40)).unwrap();
+    let skel = RecordScans::new(4, 64 << 20).with_skeletons(Skeletons::at(own, 0));
+    skel.lend(&s, |_| ()).unwrap();
+    let before = skel.bytes_read();
+    skel.get(&s).unwrap();
+    assert_eq!(
+        skel.bytes_read(),
+        before,
+        "预读借完、界面再开，没照骨架起步"
+    );
+
+    // 同时冷开（一半是预读、一半是界面）⇒ 只扫一遍，留着的就是界面拿到的那张。
+    let r = d.join("r.jsonl");
+    std::fs::write(&r, fixture(4000)).unwrap();
+    let len = std::fs::metadata(&r).unwrap().len();
+    for _ in 0..4 {
+        let scans = RecordScans::new(4, 256 << 20);
+        let asked: Vec<Arc<ScanMap>> = std::thread::scope(|s| {
+            let lends: Vec<_> = (0..4)
+                .map(|_| s.spawn(|| scans.lend(&r, |m| m.lines()).unwrap()))
+                .collect();
+            let gets: Vec<_> = (0..4).map(|_| s.spawn(|| scans.get(&r).unwrap())).collect();
+            lends.into_iter().for_each(|h| drop(h.join().unwrap()));
+            gets.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let kept = scans.peek(&r).expect("界面同时问的那张没留下");
+        assert!(
+            asked.iter().all(|m| Arc::ptr_eq(m, &kept)),
+            "界面拿到的不是留着的那张"
+        );
+        assert!(
+            scans.bytes_read() <= 2 * len,
+            "同时冷开扫了两遍以上（预读那一趟先完、界面再扫一遍是许的）"
+        );
+    }
+    std::fs::remove_dir_all(&d).ok();
+    std::fs::remove_dir_all(&sd).ok();
 }

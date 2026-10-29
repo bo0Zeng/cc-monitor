@@ -277,8 +277,11 @@ jiff = { version = "0.2", default-features = false, features = ["std", "tzdb-bun
 # 本机 glibc 版（它会 `malloc_trim`，见 `platform/proc.rs::return_freed_memory`）与 Windows 版照旧用系统分配器，不多编这一棵 C。
 # 许可 MIT（crate 与它带的 C 源都是）；C 源由 `cc` 编，交叉编译走 `cargo zigbuild` 的 zig cc（`cc` 本 lock 里早就有，`ring` 用它）。
 # 缺省 feature 为空（v3、不开 secure / override）。签字行住 `readonly_guard::g6_dependency_signoff`。
+# 只开 `no_thp`：不给 arena 打 `MADV_HUGEPAGE`。透明大页是 `madvise` 档的机器上，用得半满的 2 MB 区段会被并成大页，
+# 空闲常驻每次多出 18–44 MB、每次不一样。设选项来不及（arena 在 `main` 之前第一次分配时就 mmap 了）⇒ 编进去。
+# 判据 `freed_memory_tests::the_heap_takes_no_huge_pages`。
 [target.'cfg(target_env = "musl")'.dependencies]
-mimalloc = { version = "0.1", default-features = false }
+mimalloc = { version = "0.1", default-features = false, features = ["no_thp"] }
 
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。

@@ -455,7 +455,7 @@ fn user_scope_hits_are_what_the_stream_draws_as_said_by_the_person() {
         .filter_map(|l| {
             let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(l, 0))
                 .ok()??;
-            let r = crate::agents::claudecode::record_of::record_of(rec, "x")?;
+            let r = crate::agents::claudecode::record_of::record_of(rec, 0)?;
             match r.body {
                 crate::agents::record::Body::Said { who, .. } => who
                     .speech()

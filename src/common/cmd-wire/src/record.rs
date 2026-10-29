@@ -236,11 +236,36 @@ pub enum Block {
         #[serde(rename = "isError")]
         is_error: bool,
     },
+    /// 一张内联图（来源认得出的那一形才有这一块）：上线只交引用，图的字节按 `at` · `n` 另取（`history-image`）。
     Image {
-        /// 图片来源原样（形状照那一家的写法透传）。
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
-        source: serde_json::Value,
+        /// 图片类型（`image/png` …）。
+        #[serde(rename = "mediaType")]
+        media_type: String,
+        /// 原图多少字节（base64 解开之后）。
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        bytes: u64,
+        /// 图在哪一行：那一行在记录里的起点字节偏移（翻译那一下写）。
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        at: u64,
+        /// 这一行里第几张（从 0 起，按块的先后深度优先，工具结果里的也数）。
+        n: u32,
+        /// 图的字节（base64）：后端取图那一条读它，**不上线**（解出来是空的）。
+        #[serde(skip)]
+        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
+        data: String,
     },
+}
+
+/// `history-image` 的回包：一张图。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct HistoryImage {
+    /// 图片类型（`image/png` …）。
+    pub media_type: String,
+    /// 图的字节，base64（记录里那一块照抄）。
+    pub data: String,
 }
 
 /// 一个 `tool_use` 在界面上画成哪一种卡 —— **通用的值域**；哪个工具名算哪一种是各家的格式知识（`agents/<名>/`，
@@ -911,5 +936,45 @@ mod lenient_tests {
             })
             .collect();
         assert_eq!(tags, BODY_TAGS);
+    }
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::*;
+
+    /// 图那一块上线只交引用（类型 · 字节数 · 哪一行 · 第几张），图的字节留在后端（取图那一条才交）。
+    #[test]
+    fn an_image_goes_on_the_wire_as_a_reference_without_its_bytes() {
+        let data = "A".repeat(600 << 10);
+        let b = Block::Image {
+            media_type: "image/png".to_string(),
+            bytes: 460_800,
+            at: 1234,
+            n: 2,
+            data: data.clone(),
+        };
+        let s = serde_json::to_string(&b).unwrap();
+        assert!(s.len() <= 200, "一块图上线 {} 字节", s.len());
+        assert_eq!(
+            serde_json::from_str::<Value>(&s).unwrap(),
+            serde_json::json!({"type": "image", "mediaType": "image/png", "bytes": 460800, "at": 1234, "n": 2})
+        );
+        // 手机按同一份解：字节那一格是空的。
+        let back: Block = serde_json::from_str(&s).unwrap();
+        assert!(matches!(back, Block::Image { ref data, .. } if data.is_empty()));
+    }
+
+    /// 取图的回包：类型 ＋ base64。
+    #[test]
+    fn the_image_reply_is_media_type_and_base64() {
+        let r = HistoryImage {
+            media_type: "image/png".to_string(),
+            data: "AAAA".to_string(),
+        };
+        assert_eq!(
+            serde_json::to_value(&r).unwrap(),
+            serde_json::json!({"mediaType": "image/png", "data": "AAAA"})
+        );
     }
 }
