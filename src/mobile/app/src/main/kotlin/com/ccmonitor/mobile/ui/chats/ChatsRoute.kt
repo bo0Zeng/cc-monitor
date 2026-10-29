@@ -252,8 +252,8 @@ private fun detailOf(f: Fetched.Failed): String = listOf(f.problem.text, f.probl
 private suspend fun setHide(
     chats: HostChats,
     sid: String,
-    pin: Hide?,
-) = chats.call(HistoryAnnotate.COMMAND, HistoryAnnotate.hide(sid, pin), HistoryAnnotate::of).also { if (it is Fetched.Got) chats.fetch() }
+    hide: Hide?,
+) = chats.call(HistoryAnnotate.COMMAND, HistoryAnnotate.hide(sid, hide), HistoryAnnotate::of).also { if (it is Fetched.Got) chats.fetch() }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

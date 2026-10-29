@@ -135,14 +135,14 @@ object HistoryAnnotate {
     /** 单个那一格交成什么：`ON` 隐藏 · `OFF` 明说显示 · `null` 摘掉、回到规则（`rule`）。 */
     fun hide(
         sid: String,
-        pin: Hide?,
+        hide: Hide?,
     ): Map<String, Any?> =
         mapOf(
             "sid" to sid,
             "patch" to
                 mapOf(
                     "hide" to
-                        when (pin) {
+                        when (hide) {
                             Hide.ON -> "on"
                             Hide.OFF -> "off"
                             null -> "rule"
