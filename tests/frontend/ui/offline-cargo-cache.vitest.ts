@@ -1,5 +1,5 @@
 /**
- * S27（步 `23a`）：**断网门禁的 crate 缓存齐不齐** —— 装进 `npm test` 的那一半。
+ * S27：**断网门禁的 crate 缓存齐不齐** —— 装进 `npm test` 的那一半。
  *
  * # 它治的病
  *
@@ -54,10 +54,8 @@ const METER = resolve(HERE, "../../evidence", "S27-offline-cache-check.py");
 
 type Report = {
   cache_dirs: string[];
-  p1_total: number;
-  p1_missing: string[];
-  p2_total: number;
-  p2_missing: string[];
+  total: number;
+  missing: string[];
   structural_failures: string[];
   ok: boolean;
 };
@@ -105,10 +103,9 @@ describe("S27 · 断网门禁的 crate 缓存", () => {
 
   it("量具本身在盘上（它是本条判据的全部内容，丢了就等于判据没了）", () => {
     expect(existsSync(METER)).toBe(true);
-    expect(existsSync(join(HERE, "../../evidence", "S27-cache-manifest.md"))).toBe(true);
   });
 
-  it("本机缓存里，今天那几份 lock ＋ `23a` 那 26 条，一条都不缺", () => {
+  it("本机缓存里，今天那几份 lock 要的 .crate 一条都不缺", () => {
     const { report, why } = runMeter();
 
     // ── 判不了 · 理由一：这台机器上没有 python3 / 量具跑不起来 ──────────
@@ -120,10 +117,10 @@ describe("S27 · 断网门禁的 crate 缓存", () => {
 
     // ── 判不了 · 理由二：这台机器从没服务过本仓的断网构建 ────────────────
     const noCache = report.cache_dirs.length === 0;
-    const foreign = report.p1_total > 0 && report.p1_missing.length === report.p1_total;
+    const foreign = report.total > 0 && report.missing.length === report.total;
     if (noCache || foreign) {
       console.warn(
-        `S27: 判不了 —— ${noCache ? "本机没有 cargo registry 缓存目录" : `本仓 ${report.p1_total} 条一条都不在本机缓存里（云端 CI 就是这一形）`}。` +
+        `S27: 判不了 —— ${noCache ? "本机没有 cargo registry 缓存目录" : `本仓 ${report.total} 条一条都不在本机缓存里（云端 CI 就是这一形）`}。` +
           "**这不是绿**；门禁沙箱与宿主上这一格是要判的。",
       );
       return;
@@ -131,19 +128,14 @@ describe("S27 · 断网门禁的 crate 缓存", () => {
 
     // ── 判得了：从这里起，缺一条就红，并且点名 ────────────────────────────
     //
-    // 🔴 反空真：人群自己先立住。量具那边有地板（P1 ≥ 500 · P2 == 26），
+    // 🔴 反空真：人群自己先立住。量具那边有地板（≥ 500 条），
     //    立不住会落进 `structural_failures`，这里原样炸出来。
     expect(report.structural_failures, report.structural_failures.join(" / ")).toEqual([]);
-    expect(report.p2_total).toBe(26);
 
     expect(
-      report.p1_missing,
-      `断网门禁今天就喂不饱：本机缓存缺这几份 .crate ⇒ ${report.p1_missing.join(" · ")}`,
-    ).toEqual([]);
-    expect(
-      report.p2_missing,
-      `\`russh-sftp 3.0.0\` 一落地门禁当场断网失败：缺 ⇒ ${report.p2_missing.join(" · ")}\n` +
-        "补法：python3 tests/evidence/S27-prove-offline.py --prime（那一步要联网，它就是「喂缓存」本身）",
+      report.missing,
+      `断网门禁今天就喂不饱：本机缓存缺这几份 .crate ⇒ ${report.missing.join(" · ")}\n` +
+        "补法：在有网的地方对缺包那棵树跑一次 `cargo fetch`（不带 --target），再跑 tests/evidence/S27-prove-offline.py 断网验一次",
     ).toEqual([]);
   });
 });
