@@ -498,7 +498,7 @@ export class TabBarDrag {
   }
 
   /**
-   * 把一次落点的全部后果落实：顺序 ＋ 组，一拍做完；给撤销（改了分组 ⇒ toast；只排了顺序 ⇒ 不出条，`Ctrl+Z` 能撤）。
+   * 把一次落点的全部后果落实：顺序 ＋ 组，一拍做完；给撤销（改了分组 ⇒ 那几台收下了才出 toast；只排了顺序 ⇒ 不出条，`Ctrl+Z` 能撤）。
    * 建组 ⇒ 组就在目标那一格、名字框立刻打开。没拉过组表的实例（撕离出来的查看窗）⇒ 组一个字不动，顺序照常。
    */
   applyDrop(dragged: string | readonly string[], target: DropTarget): void {
@@ -514,6 +514,7 @@ export class TabBarDrag {
     }
     let title: string | null = null;
     let founded: string | null = null;
+    let landed: Promise<boolean> | undefined;
     const move = this.prefs.collectionsLoaded ? plan.move : ({ kind: "stay" } as const);
     if (move.kind === "found") {
       const name = defaultGroupName(
@@ -521,15 +522,19 @@ export class TabBarDrag {
         this.store.tabs.get(sid)?.projectDir ?? null,
         this.prefs.collections.map((c) => c.name),
       );
-      founded = this.prefs.foundGroup([move.with, ...sids], name);
-      if (founded !== null) title = copyText("tabBar.group.founded", { name });
+      const made = this.prefs.foundGroup([move.with, ...sids], name);
+      if (made !== null) {
+        founded = made.id;
+        landed = made.landed;
+        title = copyText("tabBar.group.founded", { name });
+      }
     } else if (move.kind === "join") {
-      void this.prefs.joinGroupMany(sids, move.gid);
+      landed = this.prefs.joinGroupMany(sids, move.gid);
       const col = this.prefs.collections.find((c) => c.id === move.gid);
       if (col) title = sids.length > 1 ? copyText("tabBar.group.joinedMany", { name: col.name, n: sids.length }) : copyText("tabBar.group.joined", { name: col.name });
     } else if (move.kind === "leave") {
       const old = before.groups.find((c) => c.id === before.groupAt.get(sid));
-      void this.prefs.leaveGroupMany(sids);
+      landed = this.prefs.leaveGroupMany(sids);
       if (sids.length > 1) title = copyText("tabBar.group.leftMany", { n: sids.length });
       else if (old) title = copyText("tabBar.group.left", { name: old.name });
     }
@@ -538,7 +543,7 @@ export class TabBarDrag {
     this.host.refreshTabBar();
     if (moved) void this.prefs.persistOrder();
     if (title === null && !moved) return;
-    this.prefs.offerUndo(title, before);
+    this.prefs.offerUndo(title, before, landed);
     this.flashLanded(sids);
     if (founded !== null) this.host.renameGroupNow(founded);
   }
@@ -590,11 +595,11 @@ export class TabBarDrag {
     if (!this.prefs.collectionsLoaded || sids.length === 0) return;
     const before = this.prefs.snapshot();
     const name = defaultGroupName(null, null, this.prefs.collections.map((c) => c.name));
-    const id = this.prefs.foundGroup(sids, name);
-    if (id === null) return;
+    const made = this.prefs.foundGroup(sids, name);
+    if (made === null) return;
     this.host.refreshTabBar();
-    this.prefs.offerUndo(copyText("tabBar.group.founded", { name }), before);
-    this.host.renameGroupNow(id);
+    this.prefs.offerUndo(copyText("tabBar.group.founded", { name }), before, made.landed);
+    this.host.renameGroupNow(made.id);
   }
 
   /** 右键 / 命令「分组 ▸ 某组」：这几个挪进那个组、排最后；可撤（同拖进组）。 */
