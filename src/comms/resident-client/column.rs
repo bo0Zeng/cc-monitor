@@ -110,7 +110,15 @@ fn placed_in<'a, T: 'a>(lists: impl Iterator<Item = &'a [T]>) -> Vec<Vec<(Column
         .map(|(h, l)| {
             l.iter()
                 .enumerate()
-                .map(|(i, x)| (ColumnAt { host: n(h), at: n(i) }, x))
+                .map(|(i, x)| {
+                    (
+                        ColumnAt {
+                            host: n(h),
+                            at: n(i),
+                        },
+                        x,
+                    )
+                })
                 .collect()
         })
         .collect()
@@ -121,7 +129,10 @@ pub fn column(ask: &ChatsColumnAsk) -> ChatsColumn {
     let rows = placed_in(ask.hosts.iter().map(|h| h.rows.as_slice()));
     let row_lists: Vec<&[(ColumnAt, &ColumnRow)]> = rows.iter().map(Vec::as_slice).collect();
     let mut sections: Vec<ColumnSection> = Vec::new();
-    for (at, r) in merge_by(&row_lists, |(_, r)| r.at).into_iter().filter(|(_, r)| !r.placed) {
+    for (at, r) in merge_by(&row_lists, |(_, r)| r.at)
+        .into_iter()
+        .filter(|(_, r)| !r.placed)
+    {
         match sections.last_mut() {
             Some(s) if s.title == r.section => s.rows.push(*at),
             _ => sections.push(ColumnSection {
@@ -134,6 +145,9 @@ pub fn column(ask: &ChatsColumnAsk) -> ChatsColumn {
     let group_lists: Vec<&[(ColumnAt, &i64)]> = groups.iter().map(Vec::as_slice).collect();
     ChatsColumn {
         sections,
-        groups: merge_by(&group_lists, |(_, o)| **o).into_iter().map(|(at, _)| *at).collect(),
+        groups: merge_by(&group_lists, |(_, o)| **o)
+            .into_iter()
+            .map(|(at, _)| *at)
+            .collect(),
     }
 }
