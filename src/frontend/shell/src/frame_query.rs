@@ -34,7 +34,7 @@ use crate::detail::Said;
 use crate::inbound_client;
 use crate::origin::Origin;
 use copy_core::copy_text;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::time::Duration;
 
 /// 一问一页的期限（一次 `history-tail` · 一段 `history-lines`）：与旧逐行读的单次超时同值（60s）。
@@ -135,6 +135,19 @@ pub(crate) async fn call(
     data.ok_or_else(|| Said::written(copy_core::reply_unreadable(&who)))
 }
 
+/// 照类型问一条（[`call`] 那一口）：名字取 `C::NAME`、入参照类型写、回包照 `C::Reply` 解；解不开 ⇒ 读不懂那台的回包。
+pub(crate) async fn ask<C: cmd_wire::Call>(
+    origin: &Origin,
+    req: &C,
+    view: Option<&Value>,
+    deadline: Deadline,
+) -> Result<C::Reply, Said> {
+    let unreadable = || Said::written(copy_core::reply_unreadable(&who(origin)));
+    let args = serde_json::to_value(req).map_err(|_| unreadable())?;
+    let data = call(origin, C::NAME, args, view, deadline).await?;
+    serde_json::from_value(data).map_err(|_| unreadable())
+}
+
 /// 三态里给人看的那句话。`Done` 在本族走不到（查询不产「已完成」这一档）。
 fn said(r: Routed) -> String {
     match r {
@@ -160,18 +173,15 @@ pub(crate) async fn tail(
     held: Option<&cmd_wire::session::Held>,
     deadline: Deadline,
 ) -> Result<Tail, String> {
-    let data = call(
-        origin,
-        "history-tail",
-        json!({"path": path, "n": n, "held": held}),
-        Some(folded_view()),
-        deadline,
-    )
-    .await
-    .map_err(|e| e.said)?;
+    let req = cmd_wire::session::HistoryTailReq {
+        path: path.to_string(),
+        n,
+        held: held.cloned(),
+    };
+    let reply = ask(origin, &req, Some(folded_view()), deadline)
+        .await
+        .map_err(|e| e.said)?;
     let who = who(origin);
-    let reply: cmd_wire::session::HistoryTail =
-        serde_json::from_value(data).map_err(|_| copy_core::reply_unreadable(&who))?;
     let plan = reply.plan;
     if plan.tail_from > plan.total || plan.split_at > plan.end || reply.from > plan.total {
         return Err(copy_text(
@@ -256,21 +266,19 @@ pub(crate) async fn read_page(
     upto: Option<u64>,
     deadline: Deadline,
 ) -> Result<Page, String> {
-    let mut args = json!({"path": path, "offset": offset});
-    if let Some(u) = upto {
-        args["until"] = json!(u);
-    }
-    let data = call(origin, "history-read", args, Some(folded_view()), deadline)
+    let req = cmd_wire::record::HistoryReadReq {
+        path: path.to_string(),
+        offset: Some(offset),
+        until: upto,
+    };
+    let p = ask(origin, &req, Some(folded_view()), deadline)
         .await
         .map_err(|e| e.said)?;
     let who = who(origin);
-    let page: Option<(Vec<Row>, u64, bool)> =
-        serde_json::from_value::<cmd_wire::record::HistoryRead>(data)
-            .ok()
-            .and_then(|p| Some((rows_of(p.rows)?, p.next, p.eof)));
-    let Some((rows, next, eof)) = page else {
+    let Some(rows) = rows_of(p.rows) else {
         return Err(copy_core::reply_unreadable(&who));
     };
+    let (next, eof) = (p.next, p.eof);
     if !eof && next <= offset {
         return Err(copy_text(
             "rsFrameQuery.readPage.stuck",

@@ -24700,23 +24700,6 @@ data class TransferDownloadReq(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class TransferIdReq(
-    val id: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<TransferIdReq> = obj(
-            listOf(
-            Field("id", { Str }, optional = false, nullable = false),
-            ),
-            { a -> TransferIdReq(a[0] as String) },
-            { v -> arrayOf(v.id) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class TransferOpened(
     val items: List<OpenedItem>,
 ) : Ordered {
