@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1779,
+  "ceiling": 1778,
   "groups": [
     {
       "kind": "首登",
@@ -53,7 +53,7 @@
         ["src/frontend/filewin/src/transfer.rs", "key", 4],
         ["src/frontend/filewin/src/workspace.rs", "key", 9],
         ["src/frontend/filewin/src/writeops.rs", "key", 22],
-        ["src/frontend/shell/src/asset_sync.rs", "key", 2],
+        ["src/frontend/shell/src/asset_sync.rs", "key", 1],
         ["src/frontend/shell/src/auto_launch.rs", "key", 1],
         ["src/frontend/shell/src/backend_control.rs", "key", 2],
         ["src/frontend/shell/src/backend_policy.rs", "key", 7],
