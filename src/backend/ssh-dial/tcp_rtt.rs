@@ -12,8 +12,9 @@
 //! - Linux：`getsockopt(IPPROTO_TCP, TCP_INFO)`，读 `tcpi_rtt`（平滑 RTT，握手之后就有第一份样本）。
 //! - Windows：`WSAIoctl(SIO_TCP_INFO)`（Windows 10 1703 起），读 `TCP_INFO_v0.RttUs`；
 //!   更老的系统那一问失败 ⇒ `None`。照 `win_proc.rs` 先例手写 `extern "system"`，不为一个函数加 `windows-sys`。
-//! - Android（手机，不算 linux）：明写 `None`（零读数，不猜）。
-//! - 其余（macOS）：**答不上来就说不知道**（`None`）—— 判准那一侧对「不知道」有明文处置（按「远」压）。
+//! - Android（手机，不算 linux）：明写 `None`（零读数，不猜）—— 判准那一侧对「不知道」有明文处置（按「远」压）。
+//!
+//! 各臂穷举、没有「其余平台」那一臂：漏写哪个平台，那个 target 就编不过（手机那一臂由门禁 `androidbuild` · `mobile` 两格编）。
 //!
 //! 两臂同一条：内核回 0 = 还没有样本，那是「不知道」，不是「0 微秒」。
 
@@ -30,11 +31,6 @@ pub fn rtt_us(stream: &tokio::net::TcpStream) -> Option<u32> {
     // 手机（android 不算 linux）：**明写说不知道**。内核那一问在 android 上也有，但手机这一侧零读数、没量过
     // （厂商内核 · SELinux 策略都可能挡），不猜 ⇒ 判准按「不知道」处置（按远，压）。哪天量过再接 linux 那一臂。
     #[cfg(target_os = "android")]
-    {
-        let _ = stream;
-        None
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "android", windows)))]
     {
         let _ = stream;
         None

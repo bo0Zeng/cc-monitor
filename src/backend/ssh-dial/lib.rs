@@ -23,7 +23,8 @@
 //!
 //! - 竞速不错开起拨：本 crate 不许有「睡到点自己醒」的构件（后端那条 `no_timer_guard` 管到这里），RFC 8305 那 250 ms 的阶梯做不了 ⇒
 //!   所有地址同时起拨，首个握手成功者胜、其余立即丢弃；给的顺序（last-good 排首）只决定同时完成时谁先被看到。
-//! - 平台 cfg：android 不算 linux，凡是点名 linux 的 cfg 都要把 android 明写出来（`android_cfg_guard`）。
+//! - 平台 cfg：android 不算 linux。平台分叉各臂穷举、不写「其余平台」那一臂，android 那一臂明写：漏了就编不过
+//!   （门禁 `androidbuild` · `mobile` 两格编手机两个 target）。
 
 // 测试段可以用会自己醒来的构件（夹具的期限）；生产段的放行逐处写在调用点（`../clippy.toml`）。
 #![cfg_attr(test, allow(clippy::disallowed_methods))]
@@ -57,10 +58,6 @@ mod guard_support;
 #[cfg(test)]
 #[path = "../../../tests/backend/ssh_dial_features_tests.rs"]
 mod features_tests;
-
-#[cfg(test)]
-#[path = "../../../tests/backend/ssh_dial_android_cfg_guard.rs"]
-mod android_cfg_guard;
 
 /// 契约错的那一句（`detail`：英文诊断，不进表、不上句子，记一行日志）。后端 `common/contract.rs` 转用这一份（全仓只此一处）。
 /// 诊断跟着这一串走（隔一个 [`DIAG_SEP`]），由失败信封那一处（[`parts`]）拆开：句子照旧只有「请求格式不对」，

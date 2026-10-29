@@ -85,7 +85,7 @@ const OBS_UNOBSERVABLE: &str = "unobservable";
 /// **为什么要一个专用 rc 而不是让脚本 `printf 'NO_TMUX'`**：P1 之前脚本用
 /// `tmux ls … || true` 把 tmux 自己的 rc **吞掉了**，于是「零会话」「`tmux ls` 出错」
 /// 「exec 失败」三种语义全压成同一个空串，monitor 只能一律保守跳过 ⇒ 就是
-/// `src/doc/INVARIANTS.md` §24bis 那条残留 bug 的根。改成 `exec tmux …` 让 tmux 的 rc
+/// 远端 idle 灰灯判错那条残留 bug 的根。改成 `exec tmux …` 让 tmux 的 rc
 /// 原样成为 `sh` 的 rc，无 tmux 那格才需要一个不与 tmux 冲突的自定义值。
 ///
 /// 97 是任意选的哨兵值（tmux 只用 0/1）。

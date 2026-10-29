@@ -67,7 +67,7 @@ command -v tmux >/dev/null || { echo "无 tmux"; exit 1; }
 SID="$(cat /proc/sys/kernel/random/uuid)"
 SID8="${SID:0:8}"
 SESSION="cc-$SID8"
-KEEP="cc-e2ekeep-$$"   # 无关 cc-* 会话:kill 掉 fixture 后 backend 仍非空(§24bis 空 backend 守卫)
+KEEP="cc-e2ekeep-$$"   # 无关 cc-* 会话:kill 掉 fixture 后 backend 仍非空(空 backend 守卫)
 
 pass=0; fail=0
 ok()  { echo "  PASS $1"; pass=$((pass+1)); }

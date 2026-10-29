@@ -1016,8 +1016,10 @@ run_gate clippy-backend '不是数出来的数：`cargo clippy --workspace --all
 # CI 用 `-msvc`、本格用 `-gnu`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）。这一族错是 `cfg(unix)` 那一维
 #   （`std::os::unix` · `libc::utimensat` 之类），与 ABI 无关，两者等价；MSVC ABI 专属的那一类只有 CI 有。
 # `--all-targets` 是承重的：这类错会全落在 test 档、生产段照样编得过。不带 `--locked`，与 CI 那一步一致。
-run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `src/backend` 那一棵 workspace（后端 ＋ 拨号核心）的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src/frontend/shell` 那棵树由上面 winchk 那一格盖' \
-         bash -c 'cd src/backend && cargo check --workspace --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-backend: 1 passed"'
+# 跑的是 clippy（含 check）：`src/backend/clippy.toml` 里只在 Windows 那一支认得出的那几条（后端不拉窗）只有这一格看得见。
+#   不带 `-D warnings`，与 `clippy-backend` 一样只有 deny 档的 lint 与编译错红。
+run_gate winchk-backend '不是数出来的数：`cargo clippy --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `src/backend` 那一棵 workspace（后端 ＋ 拨号核心）的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的），连 `clippy.toml` 里 Windows 那一支才解得出的禁用路径（后端不拉窗）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src/frontend/shell` 那棵树由上面 winchk 那一格盖' \
+         bash -c 'cd src/backend && out=$(cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "winchk-backend: 1 passed"'
 
 # ── `muslbuild`：远端 Linux 那一格 —— 两个 musl target 编得出静态字节 ──
 # 与发版那一步同一条配方：都调 `re-embed.sh --build-only`（配方只住那条命令）；编哪几个 target 读它印的那几行。
@@ -1026,7 +1028,7 @@ run_gate muslbuild '不是数出来的数：`re-embed.sh --build-only` 编的那
          bash -c 'out=$(bash tests/scripts/re-embed.sh --build-only 2>&1) || { printf "%s\n" "$out" | tail -20; echo "musl: re-embed.sh --build-only 编不过"; exit 1; }; ts=$(printf "%s\n" "$out" | sed -n "s/^==> cargo zigbuild .* --target \(.*\)$/\1/p"); [ -n "$ts" ] || { echo "musl: re-embed.sh --build-only 一个 target 都没编"; exit 1; }; n=0; for t in $ts; do grep -qa "mimalloc: " ".build/backend/$t/release/cc-monitor-backend" || { echo "musl: $t 的字节里认不出 mimalloc（分配器没换上）"; exit 1; }; n=$((n+1)); done; printf "muslbuild: %s passed（re-embed.sh --build-only 编的 %s 个 target，字节里都认得出 mimalloc，zig $(zig version)）\n" "$n" "$n"'
 
 # ── `androidbuild`：拨号核心（`src/backend/ssh-dial`，手机也链）编得过手机那两个 target ──
-# android 不算 linux：平台 cfg 悄悄落进「别的平台」那一支是编得过的 —— 那一维由判据 `android_cfg_guard` 管；本格只管「编得过」。
+# android 不算 linux：拨号核心的平台分叉各臂穷举、不写「其余平台」那一臂（`tcp_rtt.rs`）⇒ 漏了 android 那一臂，本格编不过。以后新写的 `not(linux)` 兜底那一形本格认不出。
 # 工具链：NDK 版本住 `src/mobile/gradle.properties` 的 `ccm.ndkVersion`（手机构建同一份）；SDK 找法同 `mobile` 那一格（env.sh）。
 # API 级别 26 = 手机的 minSdk。`cargo check` 不链接，`ring` 的 build script 仍要 NDK 的 clang 编它那几份 C。
 gate_androidbuild() {
@@ -1048,7 +1050,7 @@ gate_androidbuild() {
     echo "androidbuild: $n passed（拨号核心两个 android target 各一趟 cargo check，NDK $v）"
   )
 }
-run_gate androidbuild '不是数出来的数：拨号核心（`ssh-dial`）对 `aarch64-linux-android` · `x86_64-linux-android` 各一趟 `cargo check`，只有绿/红两态。⚠ 只编不链、不跑；平台 cfg 有没有悄悄丢下 android 不归本格（判据 `android_cfg_guard`）；后端整包不编（手机只链拨号核心）' \
+run_gate androidbuild '不是数出来的数：拨号核心（`ssh-dial`）对 `aarch64-linux-android` · `x86_64-linux-android` 各一趟 `cargo check`，只有绿/红两态。⚠ 只编不链、不跑；平台分叉各臂穷举，漏了 android 那一臂本格红；新写的 `not(linux)` 兜底那一形认不出；后端整包不编（手机只链拨号核心）' \
          gate_androidbuild
 
 # ── 「前端」道（与下面「覆盖率」道）：读 `src/frontend/ui/generated/` 的那几格，等 `cargo` 与 `backend` 两格写完它 ──
