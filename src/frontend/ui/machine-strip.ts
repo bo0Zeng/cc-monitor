@@ -6,8 +6,13 @@
 import type { MachineState } from "./generated/MachineState";
 import type { MachineStateKind } from "./generated/MachineStateKind";
 import type { MachineFix } from "./generated/MachineFix";
+import type { MachineFixButton } from "./generated/MachineFixButton";
+import type { LocalBackend } from "./generated/LocalBackend";
 import { machineDot } from "./machine-dot";
-import { statusDot } from "./kit/status-dot";
+import { statusDot, type MachineDotState } from "./kit/status-dot";
+import { localBackendFace } from "./settings/machine-state";
+import { machineName } from "./ipc/chan-caller";
+import { LOCAL_ORIGIN } from "./ipc/origin";
 import { attachTooltip } from "./kit/tooltip";
 import { copyText } from "./copy-table";
 
@@ -22,9 +27,22 @@ const NOT_LISTED: ReadonlySet<MachineStateKind> = new Set(["up", "newer", "disab
 /** 多于这几台收成一行。 */
 const MAX_ROWS = 3;
 
+/** 条上一行要的几样（那台的成品 · 壳那一格各自挑出来）。 */
+interface Line {
+  name: string;
+  dot: MachineDotState;
+  word: string;
+  said: string;
+  fixes: readonly MachineFixButton[];
+}
+
+const lineOf = (m: MachineState): Line => ({ name: m.name, dot: machineDot(m.state), word: m.word, said: m.said, fixes: m.fixes });
+
 export class MachineStrip {
   readonly el: HTMLDivElement;
   private readonly machines = new Map<string, MachineState>();
+  /** 本机后端没起来那一格（壳的 `local-backend`）；连着 ⇒ `null`，本机那一台照本机后端的成品。 */
+  private localDown: Line | null = null;
   /** 收起那一行点开过。 */
   private open = false;
 
@@ -40,8 +58,21 @@ export class MachineStrip {
     this.paint();
   }
 
+  /**
+   * 壳那一格来了（本机后端起没起来是壳的事实，R5）：没起来 · 正在起 · 口上占着别的构建 ⇒ 本机那一行照它摆（词 · 那一句 · 修法同设置窗那一格，
+   * `localBackendFace`），排在最前、盖过本机那台的成品；连着 ⇒ 摘掉。
+   */
+  local(l: LocalBackend): void {
+    const face = localBackendFace(l);
+    this.localDown = face && { name: machineName(LOCAL_ORIGIN), dot: face.dot, word: face.word, said: face.problem, fixes: face.fixes };
+    this.paint();
+  }
+
   private paint(): void {
-    const list = [...this.machines];
+    const list: [string, Line][] = [
+      ...(this.localDown ? [[LOCAL_ORIGIN, this.localDown] as [string, Line]] : []),
+      ...[...this.machines].filter(([o]) => !(this.localDown && o === LOCAL_ORIGIN)).map(([o, m]): [string, Line] => [o, lineOf(m)]),
+    ];
     if (list.length > MAX_ROWS && !this.open) {
       const more = document.createElement("button");
       more.type = "button";
@@ -62,11 +93,11 @@ export class MachineStrip {
     this.el.replaceChildren(...list.map(([origin, m]) => this.row(origin, m)));
   }
 
-  private row(origin: string, m: MachineState): HTMLElement {
+  private row(origin: string, m: Line): HTMLElement {
     const row = document.createElement("div");
     row.className = "machine-strip-row";
     row.dataset.machine = origin;
-    const dot = statusDot(machineDot(m.state), m.word, "compact");
+    const dot = statusDot(m.dot, m.word, "compact");
     attachTooltip(dot, () => m.said);
     const name = document.createElement("span");
     name.className = "machine-strip-name one-line";

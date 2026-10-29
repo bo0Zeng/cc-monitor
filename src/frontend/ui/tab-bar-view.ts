@@ -42,6 +42,7 @@ import { commitRename, editOver, mountInline, renameTab } from "./tab-rename";
 import { abbrOf, dotOf, fullTitle, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "./session-face";
 import type { MachineState } from "./generated/MachineState";
 import type { MachineFix } from "./generated/MachineFix";
+import type { LocalBackend } from "./generated/LocalBackend";
 import { MachineStrip } from "./machine-strip";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
@@ -272,6 +273,11 @@ export class TabBarView {
   /** 一台的状态成品来了 ⇒ 栏底机器条照它摆（没连上 ⇒ 那一行；连上了 ⇒ 摘掉）。 */
   machineChanged(origin: string, m: MachineState): void {
     this.strip.set(origin, m);
+  }
+
+  /** 壳那一格（本机后端起没起来）来了 ⇒ 机器条本机那一行照它摆。 */
+  localBackendChanged(l: LocalBackend): void {
+    this.strip.local(l);
   }
 
   /**

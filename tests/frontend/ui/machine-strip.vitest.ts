@@ -9,6 +9,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { MachineStrip } from "../../../src/frontend/ui/machine-strip";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { MachineState } from "../../../src/frontend/ui/generated/MachineState";
+import type { LocalBackend } from "../../../src/frontend/ui/generated/LocalBackend";
+import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 
 const m = (name: string, over: Partial<MachineState> = {}): MachineState =>
   ({
@@ -76,5 +78,46 @@ describe("机器条", () => {
     s.set("d", m("d", { state: "up", word: "", said: "", fixes: [] }));
     expect(rows(s)).toEqual(["a", "b", "c"]);
     expect(s.el.querySelector(".machine-strip-more")).toBeNull();
+  });
+});
+
+describe("机器条：本机后端没起来那一行（A2-17-15-1-1）", () => {
+  const down = (said: string): LocalBackend => ({
+    state: "down",
+    word: "壳·未连上",
+    said,
+    fixes: [{ fix: "retry", label: "壳·重试" }],
+    next: null,
+  });
+
+  it("★ 壳那一格不是 up ⇒ 本机那一行写壳的那一句（起不来那一句）·［重试］交宿主；排在最前、盖过本机那台的成品", () => {
+    const fix = vi.fn();
+    const s = new MachineStrip({ fix });
+    s.set("gpu-01", m("gpu-01"));
+    s.set(LOCAL_ORIGIN, m("本机", { said: "核心·旧的那一句" }));
+    s.local(down("壳·没带本机后端"));
+    expect(rows(s)).toEqual([LOCAL_ORIGIN, "gpu-01"]);
+    const row = s.el.querySelector<HTMLElement>(".machine-strip-row")!;
+    expect(row.querySelector(".machine-strip-word")?.textContent).toBe("壳·未连上");
+    expect(row.querySelector(".machine-strip-said")?.textContent).toBe("壳·没带本机后端");
+    const btn = row.querySelector<HTMLButtonElement>("button")!;
+    expect(btn.textContent).toBe("壳·重试");
+    btn.click();
+    expect(fix).toHaveBeenCalledWith(LOCAL_ORIGIN, "retry");
+  });
+
+  it("★ 壳说 up ⇒ 那一行摘掉，本机那台照它自己的成品（连着就不列）", () => {
+    const s = new MachineStrip({ fix: vi.fn() });
+    s.local(down("壳·起不来"));
+    expect(rows(s)).toEqual([LOCAL_ORIGIN]);
+    s.local({ state: "up" });
+    expect(rows(s)).toEqual([]);
+  });
+
+  it("正在起 ⇒ 那一行写正在起那一句、不给修法", () => {
+    const s = new MachineStrip({ fix: vi.fn() });
+    s.local({ state: "starting", word: "壳·连接中", said: "壳·启动 cc-monitor" });
+    expect(s.el.querySelector(".machine-strip-said")?.textContent).toBe("壳·启动 cc-monitor");
+    expect(s.el.querySelectorAll("button")).toHaveLength(0);
   });
 });

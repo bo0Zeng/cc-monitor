@@ -13,6 +13,14 @@ let sink: ((items: unknown[]) => void) | null = null;
 const reads: string[] = [];
 let readReply: { machines: Record<string, MachineState> } = { machines: {} };
 
+// 壳的 `backend_status`（订上之后问一次本机后端那一格）：默认不回（不影响别的几条）；要它回的那一条自己定。
+const status = vi.hoisted(() => ({ reply: null as Promise<unknown> | null, asked: [] as unknown[] }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn((cmd: string, args: unknown) => {
+    if (cmd === "backend_status") status.asked.push(args);
+    return status.reply ?? new Promise(() => {});
+  }),
+}));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn((event: string, cb: Listener) => {
     listeners.set(event, cb);
@@ -89,6 +97,35 @@ describe("机器状态成品的推送", () => {
     listeners.get(LOCAL_BACKEND_EVENT)!({ payload: down });
     expect(got).toEqual([down]);
     expect(states).toEqual([]);
+  });
+
+  it("★ 订上就问一次壳那一格（`backend_status` 本机的 `local`）：订上之前起不来的那几帧收不到，问回来的照交（A2-17-15-1-1）", async () => {
+    const down: LocalBackend = { state: "down", word: "w", said: "起不来那一句", fixes: [], next: null };
+    status.asked.length = 0;
+    status.reply = Promise.resolve({ local: down });
+    const got: LocalBackend[] = [];
+    const off = onLocalBackend((l) => got.push(l));
+    await flush();
+    await flush();
+    status.reply = null;
+    expect(status.asked).toEqual([{ origin: "<local>" }]);
+    expect(got).toEqual([down]);
+    off();
+  });
+
+  it("推来的那一帧先到 ⇒ 问回来的那一份不盖它（推的更新）", async () => {
+    const pushed: LocalBackend = { state: "up" };
+    let answer: (v: unknown) => void = () => {};
+    status.reply = new Promise((r) => (answer = r));
+    const got: LocalBackend[] = [];
+    const off = onLocalBackend((l) => got.push(l));
+    await flush();
+    listeners.get(LOCAL_BACKEND_EVENT)!({ payload: pushed });
+    answer({ local: { state: "down", word: "w", said: "旧的", fixes: [], next: null } });
+    await flush();
+    status.reply = null;
+    expect(got).toEqual([pushed]);
+    off();
   });
 
   it("★ 远端那几格：带了成品的原样交；没带的那一格 ⇒ 整份重问 machine-read、每台交一次", async () => {
