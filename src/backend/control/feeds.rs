@@ -582,7 +582,10 @@ pub(crate) fn wake_in(
     wake: impl FnOnce(&str),
 ) -> Result<MachineState, MachineWakeErr> {
     use cmd_wire::machine::MachineStateKind as K;
-    let Some(m) = states.get(machine).filter(|_| machine != cmd_wire::machine::LOCAL) else {
+    let Some(m) = states
+        .get(machine)
+        .filter(|_| machine != cmd_wire::machine::LOCAL)
+    else {
         return Err(MachineWakeErr::UnknownMachine(copy_core::copy_text(
             "beMachineWake.refuse.unknown",
             &[("machine", machine)],
@@ -590,7 +593,9 @@ pub(crate) fn wake_in(
     };
     match m.state {
         K::Disabled => Err(MachineWakeErr::Disabled(m.said.clone())),
-        K::Connecting | K::Installing | K::Updating => Err(MachineWakeErr::Busy(m.said.clone(), m.clone())),
+        K::Connecting | K::Installing | K::Updating => {
+            Err(MachineWakeErr::Busy(m.said.clone(), m.clone()))
+        }
         _ => {
             wake(machine);
             Ok(m.clone())

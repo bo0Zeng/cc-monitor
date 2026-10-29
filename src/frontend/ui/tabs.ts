@@ -78,8 +78,6 @@ import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
 import type { Watched } from "./terminal-page";
 import type { ActionId } from "./keybindings/actions";
 
-/** 更新没换上那一句（↗ 浮层标题 · 机器条［更新］的红 toast 同一句）。 */
-const updateFailedTitle = (machine: string): string => copyText("front.title.updateFailed", { machine });
 
 export class TabManager {
   /** 会话状态账（`tab-store.ts`）：本类与拆出去的几份读写同一个实例。 */
@@ -1232,12 +1230,17 @@ export class TabManager {
     else void openSettingsWindow(undefined, machineOf(origin));
   }
 
+  /** 更新没换上那一句（↗ 浮层标题 · 机器条［更新］的红 toast 同一句）。 */
+  private updateFailedTitle(machine: string): string {
+    return copyText("front.title.updateFailed", { machine });
+  }
+
   private async updateFromStrip(origin: string): Promise<void> {
     const machine = machineName(origin);
     try {
       if ((await updateBackendOf(origin, machine)) !== null) await this.actions.redial(origin);
     } catch (e) {
-      failToast(updateFailedTitle(machine), e, { level: "error" });
+      failToast(this.updateFailedTitle(machine), e, { level: "error" });
     }
   }
 
@@ -1573,7 +1576,7 @@ export class TabManager {
       done = await updateBackendOf(origin, machine, () => show(view(copyText("front.title.updating", { machine }), "", "grey", [])));
     } catch (e) {
       const said = e instanceof Error ? e.message : String(e);
-      show(view(updateFailedTitle(machine), said, "red", [{ kind: "retry-update" }, { kind: "copy", detail: detailOf(e) }]));
+      show(view(this.updateFailedTitle(machine), said, "red", [{ kind: "retry-update" }, { kind: "copy", detail: detailOf(e) }]));
       return;
     }
     if (done === null) return;

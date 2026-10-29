@@ -593,7 +593,10 @@ async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backe
 }
 
 /// 一台的成品（只填 `wake_in` 读的那几格）。
-fn wake_row(kind: cmd_wire::machine::MachineStateKind, said: &str) -> cmd_wire::machine::MachineState {
+fn wake_row(
+    kind: cmd_wire::machine::MachineStateKind,
+    said: &str,
+) -> cmd_wire::machine::MachineState {
     cmd_wire::machine::MachineState {
         name: "nas".into(),
         state: kind,
@@ -619,7 +622,9 @@ fn reconnecting_a_machine_answers_with_its_state_and_refuses_unknown_disabled_or
     use cmd_wire::machine::MachineStateKind as K;
     let woke = std::cell::RefCell::new(Vec::<String>::new());
     let wake = |m: &str| woke.borrow_mut().push(m.to_string());
-    let one = |kind: K| std::collections::BTreeMap::from([("nas".to_string(), wake_row(kind, "nas 那一句"))]);
+    let one = |kind: K| {
+        std::collections::BTreeMap::from([("nas".to_string(), wake_row(kind, "nas 那一句"))])
+    };
     // 断着 ⇒ 叫醒、回那台此刻的成品。
     let got = wake_in("nas", &one(K::Down), wake).expect("断着的那台照常叫醒");
     assert_eq!(got.state, K::Down);
