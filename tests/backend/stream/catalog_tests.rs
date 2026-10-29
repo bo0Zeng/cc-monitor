@@ -14,12 +14,17 @@ const OPEN: &str = "<!-- 命令：";
 /// 命令段的收尾一行。
 const CLOSE: &str = "<!-- /命令 -->";
 /// 命令段头一行里写给读的人的那半句（生成物、怎么重打）。
-const NOTE: &str = "生成物：照 `ccm -- --commands` 现打，勿手改；重打见 `tests/backend/stream/catalog_tests.rs`";
+const NOTE: &str =
+    "生成物：照 `ccm -- --commands` 现打，勿手改；重打见 `tests/backend/stream/catalog_tests.rs`";
 
 fn name_of(e: &Entry) -> String {
     e.cmd
         .map(str::to_string)
-        .or_else(|| e.cli.as_deref().map(|f| f.trim_start_matches("--").to_string()))
+        .or_else(|| {
+            e.cli
+                .as_deref()
+                .map(|f| f.trim_start_matches("--").to_string())
+        })
         .unwrap_or_default()
 }
 
@@ -53,7 +58,10 @@ fn the_catalog_is_the_dispatch_table() {
     );
     assert!(rows.iter().all(|e| e.cmd.is_some() || e.cli.is_some()));
     assert!(rows.iter().all(|e| !e.what.is_empty()), "有一条没有一句话");
-    assert!(cmd_set.len() >= 50 && cli_set.len() >= 50, "口里不足 50 条 —— 本断言在空转");
+    assert!(
+        cmd_set.len() >= 50 && cli_set.len() >= 50,
+        "口里不足 50 条 —— 本断言在空转"
+    );
 }
 
 #[test]
@@ -78,7 +86,10 @@ fn pick(sel: &str, rows: &[Entry]) -> Vec<Entry> {
     let mut got: Vec<Entry> = Vec::new();
     for tok in sel.split_whitespace() {
         let hits: Vec<&Entry> = match tok.strip_suffix('*') {
-            Some(pre) => rows.iter().filter(|e| name_of(e).starts_with(pre)).collect(),
+            Some(pre) => rows
+                .iter()
+                .filter(|e| name_of(e).starts_with(pre))
+                .collect(),
             None => rows.iter().filter(|e| name_of(e) == tok).collect(),
         };
         assert!(!hits.is_empty(), "命令段选了 `{tok}`，口里没有这一条");
@@ -196,12 +207,19 @@ fn skill_files() -> Vec<(String, String)> {
     for d in std::fs::read_dir(root.join("src/shared")).unwrap() {
         let p = d.unwrap().path().join("SKILL.md");
         if let Ok(text) = std::fs::read_to_string(&p) {
-            let rel = p.strip_prefix(&root).unwrap().to_string_lossy().into_owned();
+            let rel = p
+                .strip_prefix(&root)
+                .unwrap()
+                .to_string_lossy()
+                .into_owned();
             got.push((rel, text));
         }
     }
     got.sort();
-    assert!(got.len() >= 3, "src/shared 底下的 SKILL.md 不足 3 份 —— 本断言在空转");
+    assert!(
+        got.len() >= 3,
+        "src/shared 底下的 SKILL.md 不足 3 份 —— 本断言在空转"
+    );
     got
 }
 
@@ -245,17 +263,24 @@ fn the_skill_command_sections_are_what_the_catalog_generates() {
         for line in &outside {
             for f in flags_in(line) {
                 if !listed.contains(f) {
-                    red.push(format!("{rel}：命令段以外提到 `{f}`，本份命令段里没有它 —— 选进命令段：{line}"));
+                    red.push(format!(
+                        "{rel}：命令段以外提到 `{f}`，本份命令段里没有它 —— 选进命令段：{line}"
+                    ));
                 }
             }
             let t = line.trim_start().trim_start_matches(['-', '*', '|', ' ']);
             let t = t.trim_start_matches('`').trim_start_matches("ccm -- ");
             if crate::SUBCOMMANDS.iter().any(|f| t.starts_with(f)) {
-                red.push(format!("{rel}：命令段以外手抄了一行命令 —— 删掉，命令段里有：{line}"));
+                red.push(format!(
+                    "{rel}：命令段以外手抄了一行命令 —— 删掉，命令段里有：{line}"
+                ));
             }
         }
     }
-    assert!(sections >= 2, "带命令段的 SKILL.md 不足 2 段 —— 本断言在空转");
+    assert!(
+        sections >= 2,
+        "带命令段的 SKILL.md 不足 2 段 —— 本断言在空转"
+    );
     assert!(red.is_empty(), "{}", red.join("\n"));
 }
 
