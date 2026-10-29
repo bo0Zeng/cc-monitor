@@ -180,10 +180,7 @@ fn a_timed_out_or_unstarted_pb_is_a_failed_read() {
         ),
         other => panic!("{other:?}"),
     }
-    let gone = copy_core::said::Said {
-        said: "x".into(),
-        raw: Some("no such file".into()),
-    };
+    let gone = copy_core::said::Said::with_raw("x".into(), "no such file");
     match ran_of(Err(gone)) {
         Ran::Failed { said, raw } => {
             assert_eq!(said, "x");
