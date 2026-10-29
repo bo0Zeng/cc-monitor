@@ -123,7 +123,9 @@ fn attach_fake(sock: &std::path::Path) -> Fake {
 
 /// 等外层终端上出现那段字（拍子跟着托管口走，判据这边只能轮询；每轮让出一下）。
 async fn until_seen(s: &Screen, needle: &str) {
-    for _ in 0..20_000 {
+    // 按墙钟等、不按轮数：机器忙时让出一轮的耗时差几十倍，数轮数会在负载高时假红。
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while std::time::Instant::now() < deadline {
         if s.text().contains(needle) || s.raw().contains(needle) {
             return;
         }
