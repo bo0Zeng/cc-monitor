@@ -30,7 +30,8 @@ fn squeezed(src: &str) -> String {
 fn writers_without_doc(files: &[(String, String)]) -> Vec<String> {
     files
         .iter()
-        .filter(|(rel, _)| rel != "platform/fs/own.rs")
+        // 原子写的本体与读写口（`Doc::write`）本身：它们就是声明住的那一层。
+        .filter(|(rel, _)| rel != "platform/fs/own.rs" && rel != "common/own_state.rs")
         .filter_map(|(rel, src)| {
             let s = squeezed(src);
             let writes = s.contains("own.write(") || s.contains("own.write_streamed(");

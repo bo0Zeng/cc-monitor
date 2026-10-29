@@ -252,15 +252,22 @@ describe("失败按码挑按钮，那一句是那台的原话", () => {
 });
 
 describe("开窗失败 · 在飞", () => {
-  it("★ 开窗失败 ⇒ 剪贴板里是那一行", async () => {
+  it("★ 开窗失败 ⇒「终端未打开」＋ 在哪跑 ＋ 那一行 ＋［复制命令］，不自动写剪贴板；点了剪贴板里是那一行（A2-17-8-2）", async () => {
     reply = opened("window");
     term.openTerminal.mockRejectedValue(new Error("拉不起"));
     expect(await openSession("devbox", RESUME)).toBe(false);
+    expect(clip.writeClipboard, "不许自动写剪贴板").not.toHaveBeenCalled();
+    const [title, body, opts] = toasts.toast.mock.calls[0] as [string, string, { action?: { label: string; run: () => void } | { label: string; run: () => void }[] }];
+    expect(title).toBe(copyText("sessionOpen.terminal.notOpened"));
+    expect(body).toBe(`${copyText("sessionOpen.copy.runRemote", { machine: "devbox" })}\nline:window`);
+    const acts = [opts.action ?? []].flat();
+    expect(acts.map((a) => a.label)).toEqual([copyText("terminalOpen.noTerminal.copy")]);
+    acts[0].run();
     expect(clip.writeClipboard).toHaveBeenCalledWith("line:window");
     expect(arrives()).toEqual([]);
   });
 
-  it("这台找不到终端（按壳回的结局判）⇒ 照实说 ＋［设置］［复制命令］，不自动写剪贴板；只是话里带着那一句的真失败 ⇒ 照样复制", async () => {
+  it("这台找不到终端（按壳回的结局判）⇒ 照实说 ＋［设置］［复制命令］，不自动写剪贴板；只是话里带着那一句的真失败 ⇒ 也只给［复制命令］", async () => {
     reply = opened("window");
     term.openLocalTerminal.mockRejectedValueOnce(new NoTerminalWindow("line:window", "setMissing"));
     await openSession("<local>", { ...RESUME, local: true });
@@ -272,7 +279,9 @@ describe("开窗失败 · 在飞", () => {
     clip.writeClipboard.mockResolvedValue(undefined);
     term.openLocalTerminal.mockRejectedValueOnce(new Error(copyText("rsLaunch.posix.noTerminalWindow")));
     await openSession("<local>", { ...RESUME, local: true });
-    expect(clip.writeClipboard).toHaveBeenCalledWith("line:window");
+    expect(clip.writeClipboard).not.toHaveBeenCalled();
+    expect(toasts.toast.mock.calls[0][0]).toBe(copyText("sessionOpen.terminal.notOpened"));
+    expect(toasts.toast.mock.calls[0][1]).toBe(`${copyText("sessionOpen.copy.runLocal")}\nline:window`);
   });
 
   it("★ 同一条在飞再点 ⇒ 零次第二问；别的那台同一个 sid 照问", async () => {

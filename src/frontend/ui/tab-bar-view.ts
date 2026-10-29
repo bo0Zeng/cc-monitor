@@ -1000,11 +1000,11 @@ export class TabBarView {
       {
         label: copyText("tabMenu.group.dissolve"),
         onClick: () => {
-          // 撤得回 ⇒ 不确认：直接解散 ＋ 8 秒撤销（组员留在原位）。
+          // 撤得回 ⇒ 不确认：直接解散 ＋ 各台收下了才出 8 秒撤销（组员留在原位）。
           const before = this.prefs.snapshot();
-          void this.prefs.dissolveGroup(gid);
+          const landed = this.prefs.dissolveGroup(gid);
           this.host.refreshTabBar();
-          this.prefs.offerUndo(copyText("tabBar.group.dissolved", { name: col.name }), before);
+          this.prefs.offerUndo(copyText("tabBar.group.dissolved", { name: col.name }), before, landed);
         },
       },
     ];
