@@ -1,7 +1,7 @@
 # 全局不变量
 
 跨模块约束清单。违反任一条都是 bug，code review 时应该被指出。每条写：性质 · 为什么不能松动 · 谁在守（判据名）。
-已由判据钉住的条目只写一句规矩加判据名，细节看判据头注；沿革不写在这里（看 git 历史）。节号被代码与判据头注引用，不改号；删掉的条目留一行「已删，理由是…」。
+已由判据钉住的条目只写一句规矩加判据名，细节看判据头注；沿革不写在这里（看 git 历史）。节号被代码与判据头注引用，不改号；删掉的节整节去掉、不留墓碑，节号不复用。
 
 ---
 
@@ -275,22 +275,6 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 基类 `.stream` 默认 `visibility: hidden`，只有 `.stream.active` 可见（多 Tab 机制）。复用 `.stream` 样式但不归 `TabManager` 管的视图（`SessionViewer`）必须在自己的 CSS 里显式 `visibility: visible`。
 
 **为什么不能松动**：「历史会话点进去空白」就是它：卡片全进了 DOM 却不可见，状态栏照常显示记录数。
-
----
-
-## 24. 远端活跃集 `remote_active` 恒等于"前端当前应视为 live 的远端 sid"（issue #20）
-
-monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那台后端的会话账本裁（`observe/session_ledger.rs::SessionLedger`，单写者 = 发帧唯一出口），成品帧 `session_left`（去向在 `face.life`）；monitor 只留成品缓存 `session_book.rs`（本机远端同一条 `session-book-emitter` 线程转交，不裁决），自己唯一知道的事实是「到那台的连接断了」⇒ 那台的成品作废、界面说「说不清」，不许显示成「已结束」。
-
-两条派生约束照旧：① 一个会话的 `session_added` 必须先于（或同批于）它的行到达；② 前端把起停帧与行同序处理（`events.ts` 同一条队列）。
-
-**为什么不能松动**：「一次性的结束信号」要在重载后重建出来，账一不准，要么僵尸 Tab，要么活会话被误归档。
-
-**谁在守**：`tests/backend/observe/session_ledger_tests.rs`。
-
-## 24bis. 远端 idle-tmux 灰灯（audit-fixes F03.2）：`REMOTE_IDLE` 与 `remote_active` 正交、同一 emitter 单写
-
-已并进 §24：「claude 退了、tmux 会话还在」就是账本里的**可重连**（那台后端出整份脸 `SessionFace`，界面存 `Tab.face`、只经 `face-can.ts` 读 `can`，不攒状态）。`/branch`、`/clear` 原地换 sid ⇒ 旧 sid 恒归档、不查 tmux 快照。tmux 的观测分四态（`tmux_observe.rs::classify_tmux_probe`：有会话 · 零会话 · 没有 tmux · 观测不到），只有前两态参与收割。
 
 ---
 
