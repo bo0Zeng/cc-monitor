@@ -23,7 +23,7 @@ pub(crate) use cmd_wire::session::Rules;
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct Facts<'a> {
     /// 单个那一格（注解）。
-    pub(crate) pin: Option<Hide>,
+    pub(crate) hide: Option<Hide>,
     /// 起会话时那一格（启动台账）。
     pub(crate) launch: Option<&'a LaunchTab>,
     /// 是不是分身会话。
@@ -39,7 +39,7 @@ pub(crate) struct Facts<'a> {
 /// 〔继承表〕标签页那一格：命令行或别名写了 `--tab` 照它；没写 ⇒ 不随调用方，照这台偏好（分身 · 有主会话各一格）。
 pub(crate) fn judge(f: &Facts) -> Option<Hidden> {
     let hide = |by: HiddenBy, said: String| Some(Hidden { by, said });
-    match f.pin {
+    match f.hide {
         Some(Hide::On) => return hide(HiddenBy::Own, copy_text("beSession.hidden.self", &[])),
         Some(Hide::Off) => return None,
         None => {}
@@ -111,17 +111,17 @@ impl Here {
         self.lineage.parent_of(sid)
     }
 
-    /// 判这条会话（`pin` ＝ 注解里单个那一格；`bg` ＝ 是不是分身会话；`title_of` ＝ 主会话叫什么）。
+    /// 判这条会话（`hide` ＝ 注解里单个那一格；`bg` ＝ 是不是分身会话；`title_of` ＝ 主会话叫什么）。
     pub(crate) fn hidden(
         &self,
-        pin: Option<Hide>,
+        hide: Option<Hide>,
         sid: &str,
         bg: bool,
         title_of: &dyn Fn(&str) -> String,
     ) -> Option<Hidden> {
         let parent = self.parent_of(sid).map(title_of);
         judge(&Facts {
-            pin,
+            hide,
             launch: self.ledger.tabs.get(sid),
             bg,
             parent: parent.as_deref(),

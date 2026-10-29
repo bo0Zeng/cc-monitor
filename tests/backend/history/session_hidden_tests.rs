@@ -14,7 +14,7 @@ fn launch(tab: Tab, alias: Option<&str>) -> LaunchTab {
 /// 下面四档都会让它隐藏的那一组事实（分身 · 有主会话 · 偏好两格都是隐藏 · 起会话时写了隐藏）。
 fn all_hide(l: &LaunchTab) -> Facts<'_> {
     Facts {
-        pin: None,
+        hide: None,
         launch: Some(l),
         bg: true,
         parent: Some("orders"),
@@ -30,12 +30,12 @@ fn by(f: &Facts) -> Option<HiddenBy> {
 }
 
 #[test]
-fn tier_1_the_single_pin_beats_every_rule() {
+fn tier_1_the_single_hide_beats_every_rule() {
     let hide = launch(Tab::Hide, Some("cct"));
     let show = launch(Tab::Show, None);
     // 点了「隐藏」：别的都说显示也隐藏。
     let on = Facts {
-        pin: Some(Hide::On),
+        hide: Some(Hide::On),
         launch: Some(&show),
         ..Facts::default()
     };
@@ -48,7 +48,7 @@ fn tier_1_the_single_pin_beats_every_rule() {
     );
     // 点了「取消隐藏」：下面四档都说隐藏也不隐藏。
     let off = Facts {
-        pin: Some(Hide::Off),
+        hide: Some(Hide::Off),
         ..all_hide(&hide)
     };
     assert_eq!(judge(&off), None);
@@ -132,10 +132,10 @@ fn tier_5_nothing_said_means_shown_and_the_defaults_hide_children_only() {
 }
 
 #[test]
-fn here_reads_pin_ledger_and_lineage_for_one_session() {
+fn here_reads_hide_ledger_and_lineage_for_one_session() {
     let mut annotations = Table::new();
     annotations.insert(
-        "s-pin".into(),
+        "s-hide".into(),
         crate::history::history_annotations::Entry {
             hide: Some(Hide::On),
             ..Default::default()
@@ -164,7 +164,7 @@ fn here_reads_pin_ledger_and_lineage_for_one_session() {
          bg,
          title: &dyn Fn(&str) -> String| { hidden_here(here, t, sid, bg, title) };
     assert_eq!(
-        hidden_of(&here, &annotations, "s-pin", false, &title).map(|h| h.by),
+        hidden_of(&here, &annotations, "s-hide", false, &title).map(|h| h.by),
         Some(HiddenBy::Own)
     );
     assert_eq!(

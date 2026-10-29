@@ -438,7 +438,7 @@ struct Finished {
     untitled: bool,
     face: crate::wire::SessionFace,
     /// 单个那一格（注解）：隐藏的判定在所有行都叫得出名字之后（[`answer_from`]），主会话的名字从同一份清单里取。
-    pin: Option<crate::history::history_annotations::Hide>,
+    hide: Option<crate::history::history_annotations::Hide>,
     hidden: Option<cmd_wire::session::Hidden>,
 }
 
@@ -496,7 +496,7 @@ fn finish_row(mut raw: RawRow, ann: Option<&Table>) -> Finished {
         label,
         untitled,
         face,
-        pin: meta.hide,
+        hide: meta.hide,
         hidden: None,
     }
 }
@@ -598,7 +598,7 @@ pub(crate) fn answer_from(
                 .unwrap_or_else(|| p.chars().take(8).collect())
         });
         f.hidden = crate::history::session_hidden::judge(&crate::history::session_hidden::Facts {
-            pin: f.pin,
+            hide: f.hide,
             launch: f.raw.launch_tab.as_ref(),
             bg: f.raw.is_bg,
             parent: parent.as_deref(),
@@ -849,7 +849,7 @@ pub(crate) fn specimen() -> Patch<HistoryHead, HistoryRow> {
         starred: true,
         custom_title: Some(s("c")),
         hidden: crate::history::session_hidden::judge(&crate::history::session_hidden::Facts {
-            pin: Some(crate::history::history_annotations::Hide::On),
+            hide: Some(crate::history::history_annotations::Hide::On),
             ..Default::default()
         }),
         forked_from_session_id: Some(s("f")),
