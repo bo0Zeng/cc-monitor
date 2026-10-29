@@ -247,7 +247,9 @@ pub(crate) async fn answer_install(req: DeployInstallReq) -> Result<Installed, D
         if let Err(f) = &got {
             crate::control::machine_state::note(
                 &req.machine,
-                deploy::machine::Fact::UpdateFailed { said: f.message.clone() },
+                deploy::machine::Fact::UpdateFailed {
+                    said: f.message.clone(),
+                },
             );
         }
     }
