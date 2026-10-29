@@ -90,11 +90,12 @@ fn secret_key_has_no_printing_shortcut() {
 ///
 /// ★ 这个区分是 `D2` 要求「钉住」的那一格：换成「函数体提到 `self.0`」画人群之后，
 /// 表会变长（内部用法也进来），而**一张长登记表最容易退化成「谁红了就往里加一行」**。
-/// ⇒ 每一行都要说清它属于哪一类，而 [`Handling::HandsOut`] 那一类**钉死条数**。
+/// ⇒ 每一行都要说清它属于哪一类；[`Handling::HandsOut`] 那一类带着唯一调用点住的文件，
+/// guard-core 的 `creds_store_exits` 照它数调用点（每个恰好一处、就在那份）。
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 enum Handling {
-    /// **把明文原样交到调用方手里。**只许有两条，名字就是那两个具名出口。
-    HandsOut,
+    /// **把明文原样交到调用方手里**，括号里是唯一调用点住的文件（仓根相对）。
+    HandsOut(&'static str),
     /// 从明文**派生**出一个不含明文的东西（掩码）。
     Derives,
     /// 只读出一个**与内容无关**的事实（空不空 / 多长）。
@@ -135,20 +136,29 @@ const INNER_FIELD_USERS: &[(&str, Handling, &str)] = &[
     ),
     (
         "expose_for_auth_header",
-        Handling::HandsOut,
-        "唯一的**换头**出口。调用点恰好 1 处，在 `src/comms/outward/server.rs`",
+        Handling::HandsOut("src/backend/accounts/upstream_select/mod.rs"),
+        "唯一的**换头**出口：上游选择算鉴权头的值",
     ),
     (
         "expose_for_persisting",
-        Handling::HandsOut,
-        "唯一的**落盘**出口。调用点恰好 1 处，在 `crates/creds-core/src/store.rs`",
+        Handling::HandsOut("src/common/creds-core/src/store.rs"),
+        "唯一的**落盘**出口",
     ),
     (
         "expose_for_token_request",
-        Handling::HandsOut,
-        "唯一的**续期请求体**出口（订阅号续登录令牌：刷新令牌原样进那一发的请求体）。调用点恰好 1 处，在 `src/common/creds-core/src/token.rs`",
+        Handling::HandsOut("src/common/creds-core/src/token.rs"),
+        "唯一的**续期请求体**出口（订阅号续登录令牌：刷新令牌原样进那一发的请求体）",
     ),
 ];
+
+/// `INNER_FIELD_USERS` 里标 `HandsOut` 的那几个名字。
+fn hands_out_names() -> Vec<&'static str> {
+    INNER_FIELD_USERS
+        .iter()
+        .filter(|(_, h, _)| matches!(h, Handling::HandsOut(_)))
+        .map(|(n, _, _)| *n)
+        .collect()
+}
 
 /// 把一个 impl 块切成 `(fn 名, 函数体)`。
 ///
@@ -382,22 +392,7 @@ fn every_fn_touching_the_inner_field_is_classified() {
         "人群与登记表条数不等"
     );
 
-    // ③ ★ **区分那一格**：`HandsOut` 恰好 2 条，而且就是那两个具名出口。
-    let hands_out: Vec<&str> = INNER_FIELD_USERS
-        .iter()
-        .filter(|(_, h, _)| *h == Handling::HandsOut)
-        .map(|(n, _, _)| *n)
-        .collect();
-    assert_eq!(
-        hands_out,
-        vec![
-            "expose_for_auth_header",
-            "expose_for_persisting",
-            "expose_for_token_request"
-        ],
-        "把明文原样交出去的 fn 变了。**这一格是本判据的全部意义** —— \n\
-             把一个新出口标成 `ReadsOnly` 混进表里，正是这张表最容易退化成的样子。"
-    );
+    // ③ `HandsOut` 有几条、叫什么，由 `the_plaintext_has_exactly_three_named_exits` 照源码里交出内层字段的处数钉。
     // ④ 每一行都要写得出理由（空理由 = 「谁红了就加一行」的症状）。
 
     // ⑤ 结构性纵深：块里**任何 fn 都不许有 `&mut` 出参**。
@@ -422,23 +417,12 @@ fn every_fn_touching_the_inner_field_is_classified() {
     }
 }
 
-/// `impl SecretKey` 里**每一个能把字符串带出去的 fn（任何可见性）**，及它为什么可以存在。
+/// `impl SecretKey` 里**能把字符串带出去、却不是明文出口的 fn（任何可见性）**，及它为什么可以存在。
+/// 明文出口那几个取自 `INNER_FIELD_USERS` 的 `HandsOut`（[`hands_out_names`]），这里不再抄一遍。
 ///
-/// **默认拒绝**：不在这张表里的当场红。⚠ 加一行**就是在放宽**，
-/// 而 `KS2` 逐字：「真要多一处，**必须在件计划里单独说清那一处是什么**」。
-const STRING_RETURNING_EXITS: &[(&str, &str)] = &[
-    (
-        "expose_for_auth_header",
-        "唯一的**换头**出口。只出现在后端生产段，相等断言 == 1",
-    ),
-    (
-        "expose_for_persisting",
-        "唯一的**落盘**出口。只出现在 creds-core 生产段，相等断言 == 1",
-    ),
-    (
-        "expose_for_token_request",
-        "唯一的**续期请求体**出口。只出现在 creds-core 生产段（`token.rs::refresh_body`），相等断言 == 1",
-    ),
+/// **默认拒绝**：不在这张表里、也不是 `HandsOut` 的当场红。⚠ 加一行**就是在放宽**：
+/// 真要多一处，必须先说清那一处是什么。
+const STRING_RETURNING_NON_EXITS: &[(&str, &str)] = &[
     (
         "masked",
         "**不是明文出口** —— 它回的是遮蔽形，由 `masking_keeps_only_the_two_ends_and_swallows_short_keys_whole` 钉着。\
@@ -496,29 +480,30 @@ fn every_string_returning_exit_is_registered_by_name() {
         fns.len()
     );
 
-    let registered: Vec<&str> = STRING_RETURNING_EXITS.iter().map(|(n, _)| *n).collect();
+    let mut registered: Vec<&str> = hands_out_names();
+    registered.extend(STRING_RETURNING_NON_EXITS.iter().map(|(n, _)| *n));
     for name in &string_returning {
         assert!(
             registered.contains(&name.as_str()),
             "`impl SecretKey` 里多了一个能把字符串带出去的 fn：`{name}`。\n\
-                 ⚠ 它**没有登记** —— `KS2` 逐字：加行是收紧、动断言是放宽，\n\
-                 真要多一处**必须先在件计划里说清那一处是什么**，不许在实现里顺手把表加大。\n\
+                 ⚠ 它**没有登记** —— 加行是收紧、动断言是放宽，\n\
+                 真要多一处**必须先说清那一处是什么**，不许在实现里顺手把表加大。\n\
                  今天登记的是：{registered:?}"
         );
     }
     // 反向：登记表里不许留死名字（改名了就来改表）。
-    for (name, _) in STRING_RETURNING_EXITS {
+    for name in &registered {
         assert!(
             string_returning.iter().any(|n| n == name),
-            "登记表里的 `{name}` 在 `impl SecretKey` 里找不到了 —— 表和盘对不上"
+            "登记的 `{name}` 不在 `impl SecretKey` 能带出字符串的 fn 里了 —— 表和盘对不上"
         );
     }
     assert_eq!(
         string_returning.len(),
-        STRING_RETURNING_EXITS.len(),
+        registered.len(),
         "能把字符串带出去的 fn 有 {} 个，登记了 {} 个：{string_returning:?}",
         string_returning.len(),
-        STRING_RETURNING_EXITS.len()
+        registered.len()
     );
 }
 
@@ -602,14 +587,17 @@ fn the_plaintext_has_exactly_three_named_exits() {
              多一处 ⇒ **必须先在件计划里说清那一处是什么**（`KS2` 逐字：\
              加行是收紧、动断言是放宽，不许在实现里顺手把断言改大）"
     );
-    // 两个名字都得真在（否则上面那个 2 可能来自两处匿名写法）。
-    for name in [
-        "fn expose_for_auth_header",
-        "fn expose_for_persisting",
-        "fn expose_for_token_request",
-    ] {
+    // 登记的 `HandsOut` 恰好是这三处，名字都得真在（否则上面那个 3 可能来自匿名写法）。
+    let named = hands_out_names();
+    assert_eq!(
+        named.len(),
+        exits,
+        "`INNER_FIELD_USERS` 标 `HandsOut` 的有 {} 条，源码里交出内层字段的有 {exits} 处：{named:?}",
+        named.len()
+    );
+    for name in named {
         assert_eq!(
-            block.matches(name).count(),
+            block.matches(&format!("fn {name}(")).count(),
             1,
             "`{name}` 在 impl 块里应当恰好定义一次"
         );

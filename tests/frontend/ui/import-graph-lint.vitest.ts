@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
 
 const UI = join(REPO_ROOT, "src", "frontend", "ui");
 const eslint = new ESLint({ cwd: REPO_ROOT });
@@ -35,21 +36,21 @@ describe("import 图的规矩由 eslint 守", () => {
   it("原样零报（下面几条报的是补上去的那一行）", async () => {
     expect(await rulesHit(LEAF)).toEqual([]);
     expect(await rulesHit(VIEW)).toEqual([]);
-  }, 60_000);
+  }, WALL_CEILING_MS);
 
   it("两份界面模块互相 import（值边）⇒ import-x/no-cycle", async () => {
     expect(await rulesHit(LEAF, '\nimport { _probe } from "./account-reads";\n')).toEqual(["import-x/no-cycle"]);
-  }, 60_000);
+  }, WALL_CEILING_MS);
 
   it("回头那一条是 export … from（运行期再导出）⇒ 照样 import-x/no-cycle", async () => {
     expect(await rulesHit(LEAF, '\nexport * from "./account-reads";\n')).toEqual(["import-x/no-cycle"]);
-  }, 60_000);
+  }, WALL_CEILING_MS);
 
   it("回头那一条带 .ts 后缀 ⇒ 照样 import-x/no-cycle（本仓两种写法都有）", async () => {
     expect(await rulesHit(LEAF, '\nimport { _probe } from "./account-reads.ts";\n')).toEqual(["import-x/no-cycle"]);
-  }, 60_000);
+  }, WALL_CEILING_MS);
 
   it("视图 import 设置窗 ⇒ import-x/no-restricted-paths", async () => {
     expect(await rulesHit(VIEW, '\nimport "../settings/router";\n')).toContain("import-x/no-restricted-paths");
-  }, 60_000);
+  }, WALL_CEILING_MS);
 });
