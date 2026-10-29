@@ -31160,7 +31160,7 @@
     "rot.none.desc": {
       "kind": "body",
       "role": "说明",
-      "zh": "只用开会话的号",
+      "zh": "不自动换号",
       "args": []
     },
     "rot.tag.forNew": {
