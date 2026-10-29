@@ -697,20 +697,36 @@ fn an_image_becomes_a_reference_to_its_line_and_place() {
         ]}
     })
     .to_string();
-    let Some(rec) = one(&raw) else { panic!("该出一条") };
-    let Body::Said { ref blocks, .. } = rec.body else { panic!("该是人说的一条") };
+    let Some(rec) = one(&raw) else {
+        panic!("该出一条")
+    };
+    let Body::Said { ref blocks, .. } = rec.body else {
+        panic!("该是人说的一条")
+    };
     let inner = match &blocks[0] {
         Block::ToolResult { content, .. } => content[1].clone(),
         b => panic!("头一块该是工具结果：{b:?}"),
     };
     assert_eq!(
         inner,
-        Block::Image { media_type: "image/png".into(), bytes: 4, at: 4096, n: 0, data: "AAAAAA==".into() }
+        Block::Image {
+            media_type: "image/png".into(),
+            bytes: 4,
+            at: 4096,
+            n: 0,
+            data: "AAAAAA==".into()
+        }
     );
     assert_eq!(blocks.len(), 2, "url 那一形不出块：{blocks:?}");
     assert_eq!(
         blocks[1],
-        Block::Image { media_type: "image/jpeg".into(), bytes: 3, at: 4096, n: 1, data: "AAAA".into() }
+        Block::Image {
+            media_type: "image/jpeg".into(),
+            bytes: 3,
+            at: 4096,
+            n: 1,
+            data: "AAAA".into()
+        }
     );
     let wire = serde_json::to_string(&rec).unwrap();
     assert!(!wire.contains("AAAA"), "图的字节不上线：{wire}");

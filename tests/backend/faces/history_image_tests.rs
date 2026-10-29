@@ -13,7 +13,10 @@ fn scratch(tag: &str) -> PathBuf {
 }
 
 fn write(home: &Path, sid: &str, text: &str) -> String {
-    let p = home.join("projects").join("-p").join(format!("{sid}.jsonl"));
+    let p = home
+        .join("projects")
+        .join("-p")
+        .join(format!("{sid}.jsonl"));
     std::fs::write(&p, text).unwrap();
     p.to_string_lossy().into_owned()
 }
@@ -21,7 +24,9 @@ fn write(home: &Path, sid: &str, text: &str) -> String {
 /// 600 KB 的 base64（占位字节，不是真图）。
 fn shot() -> String {
     let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    (0..600 * 1024).map(|i| alphabet[(i * 7 + i / 64) % 64] as char).collect()
+    (0..600 * 1024)
+        .map(|i| alphabet[(i * 7 + i / 64) % 64] as char)
+        .collect()
 }
 
 fn with_shot(data: &str) -> String {
@@ -43,7 +48,16 @@ fn a_line_with_a_shot_carries_only_a_reference_and_the_reference_fetches_the_byt
     let text = format!("{head}\n{}\n", with_shot(&data));
     let path = write(&home, "s-ref", &text);
     let tz = crate::Tz::default();
-    let page = lines_at(&home, HistoryLinesReq { path: path.clone(), from: Some(1), until: Some(2) }, &tz).unwrap();
+    let page = lines_at(
+        &home,
+        HistoryLinesReq {
+            path: path.clone(),
+            from: Some(1),
+            until: Some(2),
+        },
+        &tz,
+    )
+    .unwrap();
     let line = serde_json::to_value(&page.lines[0]).unwrap();
     let wire = serde_json::to_string(&line).unwrap();
     assert!(wire.len() <= 4096, "带截图的那一行上线 {} 字节", wire.len());
@@ -73,10 +87,23 @@ fn a_reference_that_does_not_match_is_not_found() {
     let text = format!("{}\n", with_shot("AAAA"));
     let path = write(&home, "s-miss", &text);
     let ask = |at: u64, n: u32, id: &str| {
-        image_at(&home, HistoryImageReq { path: path.clone(), at, n, id: id.into() })
+        image_at(
+            &home,
+            HistoryImageReq {
+                path: path.clone(),
+                at,
+                n,
+                id: id.into(),
+            },
+        )
     };
     assert!(ask(0, 0, "u-shot").is_ok());
-    for (at, n, id) in [(0, 1, "u-shot"), (0, 0, "u-other"), (5, 0, "u-shot"), (999_999, 0, "u-shot")] {
+    for (at, n, id) in [
+        (0, 1, "u-shot"),
+        (0, 0, "u-other"),
+        (5, 0, "u-shot"),
+        (999_999, 0, "u-shot"),
+    ] {
         assert!(
             matches!(ask(at, n, id), Err(HistoryImageErr::NotFound(_))),
             "at {at} · n {n} · id {id} 该是 not_found"
