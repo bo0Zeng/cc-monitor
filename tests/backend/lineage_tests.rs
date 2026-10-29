@@ -149,14 +149,28 @@ fn a_file_without_version_reads_as_format_1_and_is_written_back_with_it() {
     .unwrap();
     let own = crate::platform::fs::Own::issue_data_at(&dir);
     let store = LineageStore::at(Some(path.clone()));
-    assert_eq!(store.now().parent_of("s-old"), Some("s-p"), "没有版本那一份没读成第 1 版");
+    assert_eq!(
+        store.now().parent_of("s-old"),
+        Some("s-p"),
+        "没有版本那一份没读成第 1 版"
+    );
     store.saw(&own, o(T, Some("s-q")), "s-new", "claude-code", 200);
     let back: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     assert_eq!(back["version"], serde_json::json!(1), "写回没带版本");
     assert_eq!(back["parents"]["s-old"]["parent"], "s-p");
     let newer = br#"{"version":2,"origins":{},"parents":{}}"#;
     std::fs::write(&path, newer).unwrap();
-    LineageStore::at(Some(path.clone())).saw(&own, o("ffff000011112222", None), "s-b", "claude-code", 300);
-    assert_eq!(std::fs::read(&path).unwrap(), newer, "比声明新的那一份被盖了");
+    LineageStore::at(Some(path.clone())).saw(
+        &own,
+        o("ffff000011112222", None),
+        "s-b",
+        "claude-code",
+        300,
+    );
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        newer,
+        "比声明新的那一份被盖了"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

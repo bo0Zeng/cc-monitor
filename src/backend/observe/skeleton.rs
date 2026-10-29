@@ -22,8 +22,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::OnceLock;
 
-/// 格式版本：骨架里任何一样的形状变了就加一（旧的那几份读出来版本对不上 ⇒ 整份重扫、覆盖）。
-pub(crate) const VERSION: u32 = 7;
+/// 格式版本：骨架里任何一样的形状变了就在表里（`relay_route_core::SKELETON_FILE`）加一（旧的那几份读出来版本对不上 ⇒ 整份重扫、覆盖）。
+pub(crate) const VERSION: u32 = DOC.version();
 
 /// 见证多长：游标前这么多字节（续读核「游标之前没被改写」的那一段，watcher 的续读指纹也是这个数）。
 pub const WITNESS: u64 = 64;
@@ -34,12 +34,10 @@ pub(crate) const MIN_LEN: u64 = 1 << 20;
 /// 目录里至多留几份（超了删最久没写的）。
 pub(crate) const MAX_FILES: usize = 256;
 
-/// 读一份骨架的上限。
-const MAX_READ: u64 = 1 << 30;
-
-/// 一份骨架：缓存（读不出来 · 版本或路径对不上 ⇒ 当没有，照记录整份重扫）。各份读成哪一形由 [`Skeletons::load`] 的调用方定。
+/// 一份骨架：缓存（读不出来 · 版本或路径对不上 ⇒ 当没有，照记录整份重扫；落点 · 版本 · 读上限照表）。
+/// 各份读成哪一形由 [`Skeletons::load`] 的调用方定；流式读写不经读写口的 `Value`，顶层 `version` 自己核。
 const DOC: crate::common::own_state::Doc<serde_json::Value> =
-    crate::common::own_state::Doc::cache(".cc-monitor/cache/skeleton/<digest>.json", MAX_READ);
+    crate::common::own_state::Doc::of(&relay_route_core::SKELETON_FILE);
 
 /// 一份骨架记的「读到哪了」：那一刻的长度 · 修改时刻 · 游标（最后一个整行之后）· 游标前那几个字节。
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,7 +84,7 @@ impl Mark {
 /// 盘上一份：版本 ＋ 路径（摘要撞了也认得出）＋ 那一样。
 #[derive(Serialize, Deserialize)]
 struct File<T> {
-    v: u32,
+    version: u32,
     path: String,
     body: T,
 }
@@ -170,7 +168,7 @@ impl Skeletons {
         else {
             return None;
         };
-        (got.v == VERSION && Path::new(&got.path) == key).then_some(got.body)
+        (got.version == VERSION && Path::new(&got.path) == key).then_some(got.body)
     }
 
     /// 落 `path` 那一份（整份原子写）。写不成只记一笔调试日志：缓存，下一次照记录重扫。
@@ -195,7 +193,7 @@ impl Skeletons {
                 write_lined(
                     f,
                     &File {
-                        v: VERSION,
+                        version: VERSION,
                         path: key.to_string_lossy().into_owned(),
                         body,
                     },

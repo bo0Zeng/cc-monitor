@@ -150,13 +150,9 @@ impl Shelf for Installed {
 }
 
 /// 副本落盘那一份：缓存（读不懂 · 版本对不上 ⇒ 当没有，照那台再问一次整份）。一台一份，文件名照 `listing_copy::file_stem`。
-const COPY_DOC: crate::common::own_state::Doc<Vec<u8>> = crate::common::own_state::Doc::cache(
-    ".cc-monitor/cache/remote-listing/<machine>.json",
-    COPY_MAX_READ,
-);
-
-/// 读一台副本的上限。
-const COPY_MAX_READ: u64 = 64 << 20;
+/// 落点 · 读上限照表；原样是那台交来的字节（不是我们的格式，版本在那份里头）。
+const COPY_DOC: crate::common::own_state::Doc<Vec<u8>> =
+    crate::common::own_state::Doc::of(&relay_route_core::REMOTE_LISTING_FILE);
 
 /// 落在 `own` 那个数据目录底下的副本表（[`relay_route_core::REMOTE_LISTING_DIR_REL`]，一台一份）。
 pub(crate) fn disk_copies(own: Own) -> Copies {

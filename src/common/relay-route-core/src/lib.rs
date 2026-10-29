@@ -568,12 +568,19 @@ pub const BACKEND_POLICY_FILE: Decl<State> = Decl::<State>::json(BACKEND_POLICY_
 pub const PREFS_FILE: Decl<State> = Decl::<State>::json(PREFS_REL, 2, 2, 256 * 1024);
 /// 机器表。
 pub const MACHINES_FILE: Decl<State> = Decl::<State>::json(MACHINES_REL, 1, 1, 1024 * 1024);
+/// 「待办」选择那一份的读上限（超了当读不懂：不覆盖、`marks_unreadable`）。
+pub const CHORES_MAX_BYTES: u64 = 64 * 1024;
 /// 「待办」里记下的选择。
-pub const CHORES_FILE: Decl<State> = Decl::<State>::json(CHORES_REL, 1, 1, 64 * 1024);
+pub const CHORES_FILE: Decl<State> = Decl::<State>::json(CHORES_REL, 1, 1, CHORES_MAX_BYTES);
+/// 计划认可与退回那一份的读上限（超了当读不懂：不覆盖）。
+pub const PLAN_REVIEW_MAX_BYTES: u64 = 1024 * 1024;
 /// 计划的认可与退回。
-pub const PLAN_REVIEW_FILE: Decl<State> = Decl::<State>::json(PLAN_REVIEW_REL, 1, 1, 1024 * 1024);
-/// 离线那台的上次值。
-pub const LAST_SEEN_FILE: Decl<Cache> = Decl::<Cache>::json(LAST_SEEN_REL, 1, 32 * 1024 * 1024);
+pub const PLAN_REVIEW_FILE: Decl<State> =
+    Decl::<State>::json(PLAN_REVIEW_REL, 1, 1, PLAN_REVIEW_MAX_BYTES);
+/// 上次值整份的读上限：每份封顶 × 两样 × 台数封顶 ＝ 256 KiB × 2 × 64。
+pub const LAST_SEEN_MAX_BYTES: u64 = 32 * 1024 * 1024;
+/// 离线那台的上次值（第 2 版：各台住 `origins` 底下，不和顶层 `version` 同一层）。
+pub const LAST_SEEN_FILE: Decl<Cache> = Decl::<Cache>::json(LAST_SEEN_REL, 2, LAST_SEEN_MAX_BYTES);
 /// 书签。
 pub const BOOKMARKS_FILE: Decl<State> = Decl::<State>::json(BOOKMARKS_REL, 1, 1, 256 * 1024);
 /// skill 装记录（第 1 版写在 `"v"` 里，第 2 版换成顶层 `version`）。
@@ -588,8 +595,10 @@ pub const QUOTA_FILE: Decl<State> = Decl::<State>::json(QUOTA_LEDGER_REL, 1, 1, 
 pub const ROTATION_FILE: Decl<State> = Decl::<State>::json(ROTATION_REL, 3, 3, 16 << 20);
 /// 轮换用哪份策略。
 pub const ROTATION_USES_FILE: Decl<State> = Decl::<State>::json(ROTATION_USES_REL, 1, 1, 16 << 20);
+/// 血缘那一份的读上限（90 天清一次，远到不了）。
+pub const LINEAGE_MAX_BYTES: u64 = 16 << 20;
 /// 会话血缘。
-pub const LINEAGE_FILE: Decl<State> = Decl::<State>::json(LINEAGE_REL, 1, 1, 16 << 20);
+pub const LINEAGE_FILE: Decl<State> = Decl::<State>::json(LINEAGE_REL, 1, 1, LINEAGE_MAX_BYTES);
 /// 起会话用的号。
 pub const LAUNCH_ACCOUNTS_FILE: Decl<State> =
     Decl::<State>::json(LAUNCH_ACCOUNTS_REL, 1, 1, 16 << 20);
@@ -599,8 +608,43 @@ pub const KNOWN_HOSTS_FILE: Decl<State> = Decl::<State>::foreign(KNOWN_HOSTS_REL
 pub const SSH_CONFIG_FILE: Decl<Cache> = Decl::<Cache>::foreign(SSH_CONFIG_REL, 4 << 20);
 /// 中转钥匙（一行十六进制；丢了重铸）。
 pub const KEY_FILE: Decl<Cache> = Decl::<Cache>::foreign(KEY_FILE_REL, 4096);
+/// 历史清单缓存的读上限。
+pub const LISTING_CACHE_MAX_BYTES: u64 = 256 << 20;
 /// 历史清单缓存。
-pub const LISTING_CACHE_FILE: Decl<Cache> = Decl::<Cache>::json(LISTING_CACHE_REL, 3, 256 << 20);
+pub const LISTING_CACHE_FILE: Decl<Cache> =
+    Decl::<Cache>::json(LISTING_CACHE_REL, 3, LISTING_CACHE_MAX_BYTES);
+/// 一条会话的消息队（[`SESSION_QUEUE_DIR_REL`] 底下一条会话一份）。
+pub const SESSION_QUEUE_FILE: Decl<State> = Decl::<State>::json(
+    ".cc-monitor/session-queue/<sid>.json",
+    1,
+    1,
+    SESSION_QUEUE_MAX_BYTES,
+);
+/// 一条会话那一份消息队的读上限（满队 × 最长一句，留余量）。
+pub const SESSION_QUEUE_MAX_BYTES: u64 = 24 << 20;
+/// 起会话便条（[`LAUNCH_NOTES_DIR_REL`] 底下一个进程一张；丢了只是那一次没记上号）。
+pub const LAUNCH_NOTE_FILE: Decl<Cache> = Decl::<Cache>::json(
+    ".cc-monitor/launch-pending/<pid>.json",
+    1,
+    LAUNCH_NOTE_MAX_BYTES,
+);
+/// 一张起会话便条的读上限。
+pub const LAUNCH_NOTE_MAX_BYTES: u64 = 16 << 20;
+/// 一份记录的骨架（[`SKELETON_DIR_REL`] 底下一份记录一份；能照记录重扫）。
+pub const SKELETON_FILE: Decl<Cache> = Decl::<Cache>::json(
+    ".cc-monitor/cache/skeleton/<digest>.json",
+    7,
+    SKELETON_MAX_BYTES,
+);
+/// 一份骨架的读上限。
+pub const SKELETON_MAX_BYTES: u64 = 1 << 30;
+/// 远端那台的清单副本（[`REMOTE_LISTING_DIR_REL`] 底下一台一份；原样是那台交来的字节）。
+pub const REMOTE_LISTING_FILE: Decl<Cache> = Decl::<Cache>::foreign(
+    ".cc-monitor/cache/remote-listing/<machine>.json",
+    REMOTE_LISTING_MAX_BYTES,
+);
+/// 一台远端清单副本的读上限。
+pub const REMOTE_LISTING_MAX_BYTES: u64 = 64 << 20;
 
 /// 〔「一份落盘文件一行」〕上面那几份排成一张（判据逐行查自洽、查家里那几样与声明对得上）。
 #[cfg(test)]
@@ -623,6 +667,10 @@ const OWN_FILES: &[Row] = &[
     SSH_CONFIG_FILE.row,
     KEY_FILE.row,
     LISTING_CACHE_FILE.row,
+    SESSION_QUEUE_FILE.row,
+    LAUNCH_NOTE_FILE.row,
+    SKELETON_FILE.row,
+    REMOTE_LISTING_FILE.row,
 ];
 
 /// 家里那几样的一格，照声明取落点与「删了会丢」。

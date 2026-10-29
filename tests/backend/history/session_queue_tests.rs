@@ -226,7 +226,11 @@ fn queues_are_per_session_and_land_in_the_declared_place() {
     let file = h.join(DIR_REL).join(format!("{SID}.json"));
     let v: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-    assert_eq!(v["version"], serde_json::json!(VERSION), "顶层整数版本");
+    assert_eq!(
+        v["version"],
+        serde_json::json!(DOC.version()),
+        "顶层整数版本"
+    );
     assert_eq!(v["nextSeq"], serde_json::json!(2));
 }
 
@@ -242,7 +246,7 @@ fn an_unreadable_queue_is_reported_and_left_untouched() {
     assert_eq!(e.code, "queue_unreadable");
     assert_eq!(std::fs::read(&file).unwrap(), b"{not json", "不覆盖");
     // 更新的版本也不覆盖。
-    std::fs::write(&file, format!("{{\"version\":{}}}", VERSION + 1)).unwrap();
+    std::fs::write(&file, format!("{{\"version\":{}}}", DOC.version() + 1)).unwrap();
     assert_eq!(read(&o, &sid(), T0).unwrap_err().code, "queue_unreadable");
 }
 

@@ -52,6 +52,14 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "VERSION",
+        "**格式版本号**不是体量：骨架落盘那一格（`observe/skeleton.rs`），值取声明表（`relay_route_core::SKELETON_FILE`）。",
+    ),
+    (
+        "STORE_VERSION",
+        "**格式版本号**不是体量：历史清单缓存那一格（`history/listing.rs`），值取声明表（`relay_route_core::LISTING_CACHE_FILE`）。",
+    ),
+    (
         "SCROLLBACK",
         "**行数**不是体量：托管终端（`host/managed/screen.rs`）的回滚留几行，与终端页往回看的上限 `MAX_SCROLLBACK` 对齐。",
     ),
@@ -1160,8 +1168,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/lineage.rs",
-        "MAX_BYTES",
+        "src/common/relay-route-core/src/lib.rs",
+        "LINEAGE_MAX_BYTES",
         "后端自有的会话血缘 `~/.cc-monitor/lineage.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
@@ -1202,6 +1210,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/common/relay-route-core/src/lib.rs",
+        "LAUNCH_NOTE_MAX_BYTES",
+        "一张起会话便条 `~/.cc-monitor/launch-pending/<pid>.json`（缓存：超了 ⇒ `warn!` 带路径，当没有、那一次不记号）",
+        "跳过+说清",
+    ),
+    (
         "src/backend/control/ccm/mod.rs",
         "PLUGIN_FILE_MAX_BYTES",
         "读回答题插件的一份文件（`~/.cc-monitor/answer-plugin/` 底下，只为比内容一样不一样）；超了 ⇒ `warn!` 带路径，当没有、重写",
@@ -1235,14 +1249,14 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // 「待办」记下的选择：超了当读不懂 ⇒ 不覆盖、`marks_unreadable`；判的时候照没记算。
     (
-        "src/backend/footprint/chores/marks.rs",
-        "MAX_BYTES",
+        "src/common/relay-route-core/src/lib.rs",
+        "CHORES_MAX_BYTES",
         "后端自有的「待办」选择 `~/.cc-monitor/chores.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
     (
-        "src/backend/plan/review.rs",
-        "MAX_BYTES",
+        "src/common/relay-route-core/src/lib.rs",
+        "PLAN_REVIEW_MAX_BYTES",
         "后端自有的计划认可与退回记录 `~/.cc-monitor/plan-review.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
@@ -1253,8 +1267,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/history/session_queue.rs",
-        "MAX_BYTES",
+        "src/common/relay-route-core/src/lib.rs",
+        "SESSION_QUEUE_MAX_BYTES",
         "一条会话的输入队 `~/.cc-monitor/session-queue/<sid>.json`（超了当读不懂：`queue_unreadable`，不覆盖）",
         "拒收+回错",
     ),
@@ -1272,8 +1286,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/footprint/last_seen.rs",
-        "MAX_FILE_BYTES",
+        "src/common/relay-route-core/src/lib.rs",
+        "LAST_SEEN_MAX_BYTES",
         "后端自有的上次值 `~/.cc-monitor/last-seen.json` 整份（每份封顶 × 两样 × 台数封顶）；超了 `warn!` 带路径说读不懂，照没记过算",
         "跳过+说清",
     ),
@@ -1312,22 +1326,22 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // 记录骨架读回来的上限：超了 ⇒ 当没有骨架，照记录整份重扫（记一笔调试日志）。
     (
-        "src/backend/observe/skeleton.rs",
-        "MAX_READ",
+        "src/common/relay-route-core/src/lib.rs",
+        "SKELETON_MAX_BYTES",
         "读回一份记录骨架（数据目录 `cache/skeleton/` 底下，冷开扫描图落的那一份）：超了 ⇒ `warn!` 说是哪一份，当没有骨架、照记录整份重扫",
         "跳过+说清",
     ),
     // 历史清单缓存读回来的上限：超了 ⇒ 当没有缓存，照记录重扫（说一声）。
     (
-        "src/backend/history/listing.rs",
-        "STORE_MAX_READ",
+        "src/common/relay-route-core/src/lib.rs",
+        "LISTING_CACHE_MAX_BYTES",
         "读回历史清单缓存（数据目录 `cache/listing.json`，清单那一族落的一份）：超了 ⇒ `warn!` 说一声，当没有缓存、照记录重扫",
         "跳过+说清",
     ),
     // 远端那几台的清单副本读回来的上限：超了 ⇒ 当没有副本，下一问不带记号、那台答整份（说一声）。
     (
-        "src/backend/history/remote_listing.rs",
-        "COPY_MAX_READ",
+        "src/common/relay-route-core/src/lib.rs",
+        "REMOTE_LISTING_MAX_BYTES",
         "读回一台的远端清单副本（数据目录 `cache/remote-listing/<机器>.json`）：超了 ⇒ `warn!` 说一声，当没有副本、照那台再问一次整份",
         "跳过+说清",
     ),
@@ -1914,9 +1928,11 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
             //   `common/own_state.rs` 的 `Doc::settle`（缓存读不出来 ⇒ 说是哪一份、当没有），针改去那里认。
             //   声明折成几行时 `Doc::cache(` 在上面一两行 ⇒ 往上看两行。
             let declared = lines[i.saturating_sub(2)..=i].join("\n");
+            // 缓存的声明（还没换上表的 `Doc::cache(`，或声明表里的 `Decl::<Cache>`）：读不出来那一臂住读写口。
             let scope = if *sem == "跳过+说清"
                 && (guard_core::contains_word(&scope, "Doc::cache")
-                    || guard_core::contains_word(&declared, "Doc::cache"))
+                    || guard_core::contains_word(&declared, "Doc::cache")
+                    || declared.contains("Decl::<Cache>"))
             {
                 own_state_cache_arm(&root)
             } else {

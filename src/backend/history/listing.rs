@@ -295,11 +295,8 @@ fn tally_read(p: &Path, n: u64) {
     let _ = (p, n);
 }
 
-/// 盘上那一份的格式：形状或读法变了就加一（对不上 ⇒ 当没有，照记录重扫、覆盖）。
-const STORE_VERSION: u32 = 3;
-
-/// 读盘上那一份的上限。
-const STORE_MAX_READ: u64 = 256 << 20;
+/// 盘上那一份的格式：形状或读法变了就在表里（`LISTING_CACHE_FILE`）加一（对不上 ⇒ 当没有，照记录重扫、覆盖）。
+const STORE_VERSION: u32 = STORE_DOC.version();
 
 /// 启动时装一次（拿启动时造的写句柄）：之后重启照盘上那一份接着认 —— 没变的记录不读、变长的只读追加的那一截。
 pub fn install(own: &Own) {
@@ -310,10 +307,10 @@ pub fn install(own: &Own) {
     super::remote_listing::install(own);
 }
 
-/// 盘上一份：版本 ＋ 每份记录读到哪了、累计的那几格、成品行。
+/// 盘上一份：版本（顶层 `version`，流式读写不经读写口的 `Value`，自己核）＋ 每份记录读到哪了、累计的那几格、成品行。
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Saved {
-    v: u32,
+    version: u32,
     rows: Vec<SavedRow>,
 }
 
@@ -336,9 +333,9 @@ fn table() -> std::sync::MutexGuard<'static, std::collections::BTreeMap<PathBuf,
     SESSION_META.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 落盘那一份：缓存（读不出来 · 版本对不上 ⇒ 当没有，照记录重扫）。
+/// 落盘那一份：缓存（读不出来 · 版本对不上 ⇒ 当没有，照记录重扫；落点 · 版本 · 读上限照表）。
 const STORE_DOC: crate::common::own_state::Doc<Saved> =
-    crate::common::own_state::Doc::cache(relay_route_core::LISTING_CACHE_REL, STORE_MAX_READ);
+    crate::common::own_state::Doc::of(&relay_route_core::LISTING_CACHE_FILE);
 
 /// 落盘那一份的（目录, 文件）。
 fn store_at(own: &Own) -> Option<(OwnPath, OwnPath)> {
@@ -361,7 +358,7 @@ pub(crate) fn load_from(own: &Own) {
         crate::common::own_state::Read::Present(s) => s,
         _ => return,
     };
-    if saved.v != STORE_VERSION {
+    if saved.version != STORE_VERSION {
         return;
     }
     let mut t = SESSION_META.lock().unwrap_or_else(|e| e.into_inner());
@@ -401,7 +398,7 @@ pub(crate) fn save_to(own: &Own) {
         .collect();
     let rows: Vec<SavedRow> = rows.into_iter().filter(|r| r.path.is_file()).collect();
     let saved = Saved {
-        v: STORE_VERSION,
+        version: STORE_VERSION,
         rows,
     };
     let written = (|| -> Result<(), String> {

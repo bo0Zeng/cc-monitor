@@ -12,7 +12,7 @@
 //!   （连同收着的几点等够）· [`delivered`] 把它摘掉 · [`give_up`] 送不进去标未送达 · [`end`] 会话结束。
 //! - 全仓唯一的写口在这里：读—改—写在那个目录的跨进程锁里、原子换。读不出来（坏了 · 更新的版本）⇒ `queue_unreadable`，不覆盖。
 
-use crate::common::own_state::{json_body, Doc, Read};
+use crate::common::own_state::{Doc, Read};
 use crate::common::said::Said;
 use crate::platform::fs::Own;
 use crate::wire::spec::Fail;
@@ -33,23 +33,16 @@ pub(crate) const SENT_KEEP: usize = 32;
 pub(crate) const ITEMS_MAX: usize = 256;
 /// 一句最长多少字节。
 pub(crate) const TEXT_MAX: usize = 64 * 1024;
-/// 盘上那一份的版本（顶层整数）。
-pub(crate) const VERSION: u32 = 1;
-
 /// 队文件所在那一层（相对家目录）。
-pub(crate) const DIR_REL: &str = ".cc-monitor/session-queue";
+pub(crate) const DIR_REL: &str = relay_route_core::SESSION_QUEUE_DIR_REL;
 
-/// 那一份最大多少字节（满队 × 最长一句，留余量）。
-const MAX_BYTES: u64 = 24 * 1024 * 1024;
+/// 一条会话的那一份：状态（读不懂 · 比这一版新 ⇒ 不覆盖；落点 · 版本 · 读上限照表，上限 ＝ 满队 × 最长一句留余量）。
+const DOC: Doc<Book> = Doc::of(&relay_route_core::SESSION_QUEUE_FILE);
 
-/// 一条会话的那一份：状态（读不懂不覆盖）。
-const DOC: Doc<Book> = Doc::state(".cc-monitor/session-queue/<sid>.json", MAX_BYTES);
-
-/// 盘上那一份。
+/// 盘上那一份（顶层 `version` 由读写口带）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Book {
-    version: u32,
     /// 下一条放进队的序号。
     next_seq: u64,
     /// 每一端已经排进队的最大端序号。
@@ -96,7 +89,6 @@ struct Entry {
 impl Default for Book {
     fn default() -> Self {
         Book {
-            version: VERSION,
             next_seq: 1,
             ends: BTreeMap::new(),
             seen: VecDeque::new(),
@@ -429,13 +421,6 @@ fn load(own: &Own, sid: &str) -> Result<Book, Fail> {
         .map_err(io_failed)?;
     match DOC.read(file.as_path()) {
         Read::Absent => Ok(Book::default()),
-        Read::Present(b) if b.version > VERSION => Err(unreadable(Said::from(copy_text(
-            "reason.fs.readFailed",
-            &[
-                ("path", &file.as_path().display().to_string()),
-                ("why", &copy_text("reason.code.unsupported", &[])),
-            ],
-        )))),
         Read::Present(b) => Ok(b),
         Read::Unreadable(why) => Err(unreadable(why)),
     }
@@ -469,14 +454,13 @@ fn with_book<R>(
     f: impl FnOnce(&mut Book) -> Result<R, Fail>,
 ) -> Result<R, Fail> {
     let dir = made_dir(own).map_err(io_failed)?;
-    let file = dir.join(&format!("{sid}.json")).map_err(io_failed)?;
     let held = own.lock(&dir).map_err(|e| io_failed(Said::from(e)))?;
     let mut book = load(own, sid)?;
     let before = book.clone();
     let out = f(&mut book)?;
     if book != before {
-        let body = json_body(file.as_path(), &book).map_err(io_failed)?;
-        own.write(&file, &held, &body).map_err(io_failed)?;
+        DOC.write_named(own, &dir, &format!("{sid}.json"), &held, &book)
+            .map_err(io_failed)?;
     }
     Ok(out)
 }
