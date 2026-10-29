@@ -73,7 +73,7 @@ fn read_table(p: &Path) -> Table {
     }
 }
 
-/// ★ 判据 1：新读者读夹具（第 0 版：`hidden: bool`）== 金样（逐条、逐格；`hidden: true` 读成 `hide: "on"`，`false` 读成照规则）。
+/// ★ 判据 1：读夹具 == 金样（逐条、逐格；蛇形别名与驼峰读成同一格）。
 #[test]
 fn the_new_reader_reads_the_fixture_exactly_as_the_old_reader_did() {
     let t = read_table(&fixture_dir().join("history-metadata.fixture.json"));
@@ -89,9 +89,7 @@ fn the_new_reader_reads_the_fixture_exactly_as_the_old_reader_did() {
 #[test]
 fn writing_one_entry_loses_nothing_else() {
     let p = temp_copy("one");
-    // 夹具是第 0 版：写那一次先整份升一节（另有判据钉）⇒ 「原文不动」比的是升过的那一份。
-    let before_raw: Value =
-        upgraded(serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap()).0;
+    let before_raw: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
     let sid = "0000aaaa-0000-4000-8000-000000000002"; // 蛇形别名那一条
     let got = answer_annotate_at(
         &own_of(&p),
@@ -532,74 +530,6 @@ fn an_unreadable_file_hands_its_raw_to_the_detail_not_the_sentence() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// ★ 升级链那一节：第 0 版（`hidden: bool`）在写之前整份换成这一版 —— `true` ⇒ `hide: "on"`、`false` ⇒ 摘掉；别的键原样；
-/// 原文留一份 `history-metadata.json.v1`（只留一次）；常驻起来那一次（[`migrate_here`]）与先来的那一次写走的是同一步。
-#[test]
-fn the_old_hidden_flag_is_upgraded_once_and_the_original_kept() {
-    let p = temp_copy("upgrade");
-    let before = std::fs::read(&p).unwrap();
-    let old = p.with_file_name("history-metadata.json.v1");
-    migrate_here(&own_of(&p));
-    assert_eq!(std::fs::read(&old).unwrap(), before, "原文没留成 .v1");
-    let raw: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
-    assert_eq!(raw["version"], VERSION);
-    assert_eq!(raw["extraTop"], json!({"kept": true}), "顶层认不出的键没了");
-    let e = &raw["entries"];
-    assert_eq!(e["0000aaaa-0000-4000-8000-000000000002"]["hide"], "on");
-    assert_eq!(e["0000aaaa-0000-4000-8000-000000000005"]["hide"], "on");
-    assert_eq!(
-        e["0000aaaa-0000-4000-8000-000000000005"]["note"],
-        "认不出的键，写回时要原样留着"
-    );
-    for (sid, v) in e.as_object().unwrap() {
-        assert!(v.get("hidden").is_none(), "{sid} 还带着旧的 hidden");
-    }
-    assert!(
-        e["0000aaaa-0000-4000-8000-000000000001"]
-            .get("hide")
-            .is_none(),
-        "false 该摘掉"
-    );
-    // 已是这一版 ⇒ 再来一次一个字节不动，.v1 也不被盖。
-    let now = std::fs::read(&p).unwrap();
-    migrate_here(&own_of(&p));
-    assert_eq!(std::fs::read(&p).unwrap(), now);
-    assert_eq!(std::fs::read(&old).unwrap(), before);
-    // 读出来与升级之前读的逐格一样（读的一侧在内存里照同一节换）。
-    assert_eq!(norm(&read_table(&p)), golden());
-    let _ = std::fs::remove_dir_all(p.parent().unwrap());
-}
-
-/// 第 0 版那一份先来的是一次写（常驻还没起来换）：同一步、同一把锁里先整份换形留底，再改那一条。
-#[test]
-fn the_first_write_on_an_old_file_upgrades_it_too() {
-    let p = temp_copy("upgrade-write");
-    let before = std::fs::read(&p).unwrap();
-    answer_annotate_at(
-        &own_of(&p),
-        &json!({"sid": "0000aaaa-0000-4000-8000-000000000002", "patch": {"hide": "rule"}}),
-        7,
-    )
-    .unwrap();
-    assert_eq!(
-        std::fs::read(p.with_file_name("history-metadata.json.v1")).unwrap(),
-        before
-    );
-    let raw: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
-    assert_eq!(raw["version"], VERSION);
-    assert!(
-        raw["entries"]["0000aaaa-0000-4000-8000-000000000002"]
-            .get("hide")
-            .is_none(),
-        "rule 没摘掉单个那一格"
-    );
-    assert_eq!(
-        raw["entries"]["0000aaaa-0000-4000-8000-000000000004"]["hide"], "on",
-        "别的条目没跟着换形"
-    );
-    let _ = std::fs::remove_dir_all(p.parent().unwrap());
-}
-
 /// ★ 「下次恢复用」那一格：记下的模型 · 权限档读得回；同一个 `end` 上先后记的两样并成一份；记录长过了再记 ⇒ 换掉旧那一份；
 /// 改星标那一类写不碰它，别的条目原样。
 #[test]
@@ -644,4 +574,40 @@ fn the_resume_pick_is_kept_merged_on_one_end_and_replaced_past_it() {
         None
     );
     let _ = std::fs::remove_dir_all(p.parent().unwrap());
+}
+
+/// 第 0 版（没有 `version` · `0`，条目带 `hidden: bool`）与比这一版新的：读不懂 —— 读回那一句、写一律拒、原文一个字节不动、不留 `.v1`。
+#[test]
+fn a_file_of_another_version_is_unreadable_and_left_as_is() {
+    let d = std::env::temp_dir().join(format!("ccm-annot-v0-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    let p = d.join("history-metadata.json");
+    for old in [
+        r#"{"entries": {"s": {"hidden": true}}}"#,
+        r#"{"version": 0, "entries": {"s": {"hidden": false}}}"#,
+        r#"{"entries": {}}"#,
+        r#"{"version": 2, "entries": {}}"#,
+    ] {
+        std::fs::write(&p, old).unwrap();
+        assert!(
+            matches!(load_at(&p), Loaded::Unreadable(_)),
+            "别的版本读成了表：{old}"
+        );
+        let e = answer_annotate_at(
+            &own_of(&p),
+            &json!({"sid": "s", "patch": {"starred": true}}),
+            1,
+        )
+        .expect_err("别的版本也写了");
+        assert_eq!(e.code, "annotations_unreadable", "{old}：{e:?}");
+        let e = answer_forget_at(&own_of(&p), &json!({"sid": "s"})).expect_err("别的版本也删了");
+        assert_eq!(e.code, "annotations_unreadable");
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), old, "原文被动了");
+        assert!(
+            !p.with_file_name("history-metadata.json.v1").exists(),
+            "留了 .v1：{old}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&d);
 }

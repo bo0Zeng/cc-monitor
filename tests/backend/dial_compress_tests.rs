@@ -686,10 +686,7 @@ async fn the_checker_trusts_only_what_the_library_holds() {
         judge_offer(trust, &PublicKeyOrCertificate::from(offered.clone())).await
     }
     let (a, b) = (key(1), key(2));
-    let known = |ks: Vec<PublicKey>| Trust {
-        known: ks,
-        pending: None,
-    };
+    let known = |ks: Vec<PublicKey>| Trust { known: ks };
     assert_eq!(judge(Trust::default(), &a).await, (true, None), "首见收下");
     assert_eq!(judge(known(vec![a.clone()]), &a).await, (true, None));
     assert_eq!(
@@ -700,12 +697,6 @@ async fn the_checker_trusts_only_what_the_library_holds() {
         judge(known(vec![ec.clone()]), &a).await,
         (false, Some(String::new()))
     );
-    let pending = |f: String| Trust {
-        known: vec![],
-        pending: Some(f),
-    };
-    assert_eq!(judge(pending(fp(&a)), &a).await, (true, None));
-    assert_eq!(judge(pending(fp(&a)), &b).await, (false, Some(fp(&a))));
 
     // 交来的是 host 证书（本端不播报证书类算法，协商之外）：证书里那把钥匙就是库里记过的那一把，也不认；首见也不收。
     let cert = russh::keys::Certificate::from_openssh(HOST_CERT).expect("夹具证书解得开");

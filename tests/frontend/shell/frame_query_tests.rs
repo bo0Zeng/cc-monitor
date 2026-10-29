@@ -813,12 +813,6 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
          应答只记日志、不给界面（界面那一问经通道直问本机后端）",
     ),
     (
-        "prefs-read",
-        1,
-        "第 7 批换形的壳那一半（`prefs_migration.rs::after_local_ready`，下一版删）：本机通道登记上那一刻问一次本机那一份写成没有，\
-         说 `ok` 才删 `config.json` 里搬走的那几个键 —— 它的答案不给界面",
-    ),
-    (
         "machines-read",
         1,
         "机器表的最近一答（`machine_table.rs::refresh`）：本机通道登记上那一刻 ＋ 本机流每帧 `changed {machines}` 各问一次，\
@@ -1469,12 +1463,6 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "fetch_snapshot",
         2,
         "快照是两件事：先问（一问，连第一页正文，`PAGE_BUDGET`）· 剩下的正文（分页，问过之后按还差的字节数给 `read_budget`）",
-    ),
-    (
-        "prefs_migration.rs",
-        "after_local_ready",
-        1,
-        "第 7 批换形（下一版删）：本机通道登记上那一刻问一次本机的偏好写成没有（一问，10 秒）",
     ),
     (
         "bookmarks_migration.rs",

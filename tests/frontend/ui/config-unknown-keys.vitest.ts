@@ -74,29 +74,20 @@ const sorted = (xs: readonly string[]): string[] => [...xs].sort();
  * 本工作区吃过这个亏（「恒等两侧同源会恒真」）。
  *
  * 这一份的来源是**现打的反向全扫**（2026-09-21）：`src/` 下每个 `import … from "./config"`
- * 的模块，逐个读它对 `cfg[…]` / `cfg.…` 的顶层存取。Rust 侧另读一个
- *（`remote`；`showBgSessions` 随「显示分身会话」开关整条删了，分身进不进标签栏改由各台偏好管），都已在列；`claudeDir` 第 7 批起只剩迁移那一段删它。
+ * 的模块，逐个读它对 `cfg[…]` / `cfg.…` 的顶层存取。
+ * 偏好与机器表那几格（`accounts` · `claudeDir` · `remote` · `contextLimits` · `resumeCommand` · `localResumeCommand` · `resumeInTmux`）
+ * 住各台后端，这里没有主人：旧 `config.json` 还带着 ⇒ 照认不出的键喊出来。
  */
 const CENSUS: readonly string[] = [
   "theme", // src/frontend/ui/theme.ts
   "keybindings", // src/frontend/ui/keybindings/store.ts
-  // 第 7 批搬到各台后端的那几格（`accounts` · `contextLimits` · `resumeCommand` · `localResumeCommand` · `resumeInTmux`）：
-  //   只剩迁移那一段读、迁完由壳删（`src/frontend/shell/src/prefs_migration.rs`）；下一版删迁移时这几行一起删。
-  "accounts",
-  "claudeDir", // 本机 `agentHomes`
-  // `backendPolicy` 退役（值搬到后端那台机器上）⇒ 这一行删掉，两份普查恒等地各少一键。
-  "remote", // src/frontend/ui/remote-config.ts
   "tabBar", // src/frontend/ui/tab-bar-state.ts
   "tabCollections", // src/frontend/ui/tab-groups-migrate.ts（旧组表：迁移那一段读、迁完删）
   "sessionHead", // src/frontend/ui/session-head.ts（会话头按钮）
-  "contextLimits",
   "autoFollowUserActive", // ── src/frontend/ui/behavior.ts 那一族 ──
   "bringMonitorToFrontOnUserActive",
-  "resumeCommand",
-  "localResumeCommand",
   "terminal", // src/frontend/ui/settings/terminal-row.ts（壳开终端时只读）
   "resumeCommandPresets",
-  "resumeInTmux",
   // `forceLaunchPayloadRenderer` 退役 ⇒ 这一行删，两份普查恒等地各少一键。
   // 现打反扫 Rust 侧补一个：`src/frontend/shell/src/logging.rs::write_diagnostics_to_config` 写的 `diagnostics`。
   //   上面那句「Rust 侧另读三个」漏了它 ⇒ 存过一次诊断设置的用户，设置页「认不出的键」提示条会把它点名（假警报）。
@@ -169,12 +160,12 @@ describe("P12 ② 未知键要被数出来（`unknownKeysIn` / `loadConfig` 那�
     ).toEqual([RETIRED_KEY]);
   });
 
-  it("★ 反空真正控：把 [`CENSUS`] 那 18 个键整份喂进去 ⇒ 一个未知键都不许报", () => {
+  it("★ 反空真正控：把 [`CENSUS`] 那几个键整份喂进去 ⇒ 一个未知键都不许报", () => {
     const full: Record<string, unknown> = {};
     for (const k of CENSUS) full[k] = true;
     expect(
       unknownKeysIn(full),
-      "真实用户会写的那 18 个键里，有的被当成了未知键 —— 这把尺子会对着正常配置喊，" +
+      "真实用户会写的那几个键里，有的被当成了未知键 —— 这把尺子会对着正常配置喊，" +
         "而一把乱喊的尺子用不了几天就会被关掉",
     ).toEqual([]);
   });
@@ -208,16 +199,8 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
 
   it("分母：登记了多少个主人", () => {
     const owners = new Set(Object.values(CONFIG_KEY_OWNERS));
-    // 10 → 9：`src/frontend/ui/backend-policy.ts` 不再是任何配置键的主人（`backendPolicy` 退役，
-    //   「退出行为」那个值搬到后端所在那台机器上）。少的就是它这一个，别的主人一个没动。
-    // 9 → 10：补上 `src/frontend/shell/src/logging.rs`（`diagnostics` 那一键的主人，Rust 写的）。多的就是它这一个。
-    // 10 → 11：补上 `src/frontend/ui/local-machine-prefs.ts`（本机那一格恢复命令覆盖 `localResumeCommand` 的主人）。
-    // 11 → 12：`terminal` 那一键（设置 → 通用 → 终端，`src/frontend/ui/settings/terminal-row.ts`）。
-    // 12 → 13：`sessionHead` 那一键（会话头按钮，`src/frontend/ui/session-head.ts`）。
-    // 13 → 11：第 7 批这台的偏好搬到各台后端 ⇒ `accounts.ts` · `main.ts` · `local-machine-prefs.ts` 不再是主人，
-    //   那几个键改登记给迁移那一段 `src/frontend/shell/src/prefs_migration.rs`（多它一个）。
-    // 11 → 10：机器表搬进本机后端 `machines.json` ⇒ `remote-config.ts` 不再是 `remote` 的主人，那一键也改登记给迁移那一段。
-    expect(owners.size, `主人 ${owners.size} 个（现打 9）`).toBe(9);
+    // theme · keybindings/store · tab-bar-state · tab-groups-migrate · session-head · behavior · terminal-row · 壳 logging.rs。
+    expect(owners.size, `主人 ${owners.size} 个（现打 8）`).toBe(8);
   });
 
   it("★ 每个登记的主人文件真的在盘上，而且那个键名逐字出现在它里面", () => {

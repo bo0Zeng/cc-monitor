@@ -107,8 +107,8 @@ fn inst(h: &TmpHome, list: &[Alias], shell: Shell) -> Result<bool, String> {
     if !bad.is_empty() {
         return Err(bad.join("\n"));
     }
-    let wrote =
-        write_profiles(&d, &store.home, store.text.as_deref(), &text).map_err(|e| e.said())?;
+    let wrote = write_profiles(&d, &store.home, store.text.as_deref(), &text)
+        .map_err(|e| format!("{e:?}"))?;
     let out = sync_outputs(&d, &store.home, &profile::parse_book(&text), Some(shell));
     Ok(wrote || out.links_changed || !out.rewrote.is_empty())
 }
@@ -402,58 +402,28 @@ fn a_rendered_alias_really_appends_the_callers_args_in_bash() {
     );
 }
 
-/// **一次性迁移**：配置文件还不在、旧形状的别名文件在 ⇒ 每条转成一段、写出配置文件、别名文件重写成新形状、补链接；
-/// 认不出的行与转不进去的（诊断口 · 接回会话那一形）不进配置文件（记进日志）；配置文件在了就不再看旧文件。
+/// 旧形状的别名文件（一条一组参数）在、配置文件不在 ⇒ 读的那一下与后端起来那一下都不转：配置文件不建、旧文件一个字节不动、不留迁移说明。
 #[test]
-fn the_old_alias_file_is_migrated_once_into_the_profiles_file() {
-    let h = tmp_home("old");
+fn an_old_alias_file_is_not_turned_into_a_profiles_file() {
+    let h = tmp_home("old-left");
     let p = alias_path(&h.0, P);
-    std::fs::write(
-        &p,
-        "# === cc-monitor account aliases BEGIN v1 ===\n\
-         # 注释\n\
-         workcc() { ccm \"$@\" -- --account 'work'; }\n\
-         teamcct() { \"${CCM:-/h/.cc-monitor/bin/ccm}\" \"$@\" -- new --ccm-tmux --account 'team'; }\n\
-         cca() { ccm -- --attach \"$@\"; }\n\
-         alias x=ls\n\
-         bad() { ccm \"$@\" -- --ccm-print; }\n\
-         # === cc-monitor account aliases END ===\n",
-    )
-    .unwrap();
+    let old = "workcc() { ccm \"$@\" -- --account 'work'; }\n";
+    std::fs::write(&p, old).unwrap();
     read_in(&h.0, P, None).unwrap();
-    let book = profile::parse_book(&std::fs::read_to_string(profiles_path(&h.0)).unwrap());
-    assert!(book.problems.is_empty(), "{:?}", book.problems);
-    let got: Vec<(String, Vec<String>)> = book
-        .profiles
-        .iter()
-        .map(|p| (p.name.clone(), p.ccm_words()))
-        .collect();
-    let w = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
-    assert_eq!(
-        got,
-        vec![
-            ("workcc".to_string(), w(&["--account", "work"])),
-            (
-                "teamcct".to_string(),
-                w(&["--ccm-tmux", "--account", "team"])
-            ),
-        ]
-    );
-    let new_file = std::fs::read_to_string(&p).unwrap();
+    align_here(&door(&h));
     assert!(
-        !new_file.contains("--account"),
-        "别名文件里不再有规则：{new_file}"
+        !profiles_path(&h.0).exists(),
+        "旧别名文件又被转成了配置文件"
     );
-    assert_eq!(link_of(&h, "workcc").as_deref(), Some("ccm"));
-    assert_eq!(link_of(&h, "teamcct").as_deref(), Some("ccm"));
-    // 迁过了 ⇒ 旧文件再出现也不看。
-    std::fs::write(&p, "altcc() { ccm \"$@\" -- --account alt; }\n").unwrap();
-    read_in(&h.0, P, None).unwrap();
-    assert!(!names_on_disk(&h).contains(&"altcc".to_string()));
-    // 两样都不在 ≠ 读失败（配置文件不建）。
-    let empty = tmp_home("none");
-    read_in(&empty.0, P, None).unwrap();
-    assert!(!profiles_path(&empty.0).exists());
+    assert_eq!(
+        std::fs::read_to_string(&p).unwrap(),
+        old,
+        "旧别名文件被动了"
+    );
+    assert!(
+        !h.0.join(".cc-monitor/profiles-migrated.json").exists(),
+        "留了迁移说明"
+    );
 }
 
 /// 配置文件在了 ⇒ 后端起来那一次照它重写别名文件（与当下的写法对不上的那一份，比如早先版本写下的裸 `& ccm` 别名，
@@ -465,14 +435,14 @@ fn a_stale_alias_file_is_rewritten_from_the_profiles_file_when_the_backend_start
     let p = alias_path(&h.0, P);
     let fresh = std::fs::read_to_string(&p).unwrap();
     std::fs::write(&p, "cc() { old-ccm @cc \"$@\"; }\n").unwrap();
-    migrate_here(&door(&h));
+    align_here(&door(&h));
     assert_eq!(
         std::fs::read_to_string(&p).unwrap(),
         fresh,
         "旧的那一份没照配置文件重写"
     );
     let before = std::fs::metadata(&p).unwrap().modified().unwrap();
-    migrate_here(&door(&h));
+    align_here(&door(&h));
     assert_eq!(
         std::fs::metadata(&p).unwrap().modified().unwrap(),
         before,
@@ -480,7 +450,7 @@ fn a_stale_alias_file_is_rewritten_from_the_profiles_file_when_the_backend_start
     );
     // 配置文件整份写坏了 ⇒ 读不出清单，不照空清单把别名删掉。
     std::fs::write(profiles_path(&h.0), "[[[ not toml").unwrap();
-    migrate_here(&door(&h));
+    align_here(&door(&h));
     assert_eq!(
         std::fs::read_to_string(&p).unwrap(),
         fresh,

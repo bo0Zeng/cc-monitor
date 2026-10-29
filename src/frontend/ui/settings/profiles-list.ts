@@ -492,16 +492,6 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const renderNotes = (): void => {
     notes.replaceChildren();
     if (!book) return;
-    if (book.migrated) {
-      const m = book.migrated;
-      const n = el("div", "cfg-note prof-note-ok");
-      n.dataset.role = "migrated";
-      n.appendChild(el("span", "", copyText("profilesPage.migrated.line", { n: String(m.count), path: m.shown })));
-      if (opts.local) n.appendChild(link(copyText("profilesPage.edited.look"), () => void onOpenFile()));
-      n.appendChild(link(copyText("profilesPage.migrated.ack"), () => void ackMigrated()));
-      for (const s of m.skipped) n.appendChild(el("div", "prof-sub", s));
-      notes.appendChild(n);
-    }
     if (clashes.length) notes.appendChild(clashCard());
     if (editedAt !== null) {
       const n = el("div", "cfg-note");
@@ -702,10 +692,6 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
 
   const init = async (seed: boolean): Promise<void> => {
     await send([{ op: "init", seed }]);
-  };
-
-  const ackMigrated = async (): Promise<void> => {
-    await send([{ op: "ackMigrated" }]);
   };
 
   const onOpenFile = async (): Promise<void> => {

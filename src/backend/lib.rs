@@ -158,7 +158,8 @@ pub const fn build_stamp() -> [u8; BUILD_STAMP_LEN] {
 #[no_mangle]
 pub static CC_MONITOR_BUILD_STAMP: [u8; BUILD_STAMP_LEN] = build_stamp();
 
-/// ② 一次性查询子命令：**只有 `args[0]` 是其中之一才进查询模式**。
+/// ② 一次性查询子命令的手写名单：ccm 那一侧认后端词（`ccm_line::is_backend_word`）读它。闸门与分派问的是派生的那一份
+/// （`stream::cli::is_subcommand`：`stream::oneshot::ONESHOTS` 那几条 ∪ 帧命令派生的 CLI 面），两份两向相等由 `stream::cli` 的测试钉。
 pub const SUBCOMMANDS: &[&str] = &[
     // 改账号库那几条帧命令（`inbound::REGISTRY` 的 `accounts-*`，本体 `accounts/manage/`）**自动派生**的 CLI 面。
     // 登记理由同下面那几族：`is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
@@ -192,7 +193,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--backend-log",
     // ── P4d：控制面的 CLI 面。**它们不在这里各写一条实现** ——
     // 分派臂按 `stream::cli::spec_for` 派生（见下面那条臂），实现落在 `inbound::REGISTRY`。
-    // 登记在这张表里是因为 `is_query_mode` 与 `argv_table_guard` 都读它，
+    // 登记在这张表里是因为 ccm 那一侧认后端词读它（与派生的那一份两向相等），
     // 而且 `build_id_guard` 的指纹也取自它 ⇒ 加在这里会**逼出一次 BUILD_ID bump**，那正是要的。
     // P4f：cc-bus 的几条命令。⚠ **不加这几行的后果是静默的** ——
     // 分派臂是派生的（认得出来），但 `is_query_mode` 这道**闸门**读的是本表：
@@ -592,16 +593,6 @@ mod one_clock_guard;
 #[cfg(test)]
 #[path = "../../tests/backend/main_stream_flag_tests.rs"]
 mod stream_flag_tests;
-
-/// U6b-2：**argv 三分表的完备性与互斥**。
-///
-/// 这是 [`SUBCOMMANDS`] 那套判据能成立的**唯一**理由：判据改成「`args[0]` ∈ SUBCOMMANDS
-/// ⇒ 查询模式」之后，漏登记一条子命令的后果**不再是 exit 2**（吵，但看得见），
-/// 而是那条子命令**静默变成「起了个流」** —— 调用方拿到一堆 jsonl 行而不是查询结果。
-/// v3.4.0 `--account-trust-zero` 漏登记那次事故的加强版。
-#[cfg(test)]
-#[path = "../../tests/backend/main_argv_table_guard.rs"]
-mod argv_table_guard;
 
 // ── 第四面：本机到底缺什么（tmux 可用性） ───────────
 // 它们不是「分派」，是 hello 帧的**内容**。`main_fourth_face_tests` 用 `super::` 引它们。
