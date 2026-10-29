@@ -49,6 +49,8 @@ pub(crate) trait Ssh: Send + Sync + 'static {
     fn capture(&self, machine: &str, command: String) -> Boxed<'_, Result<Exec, Problem>>;
     /// 把这一版的后端放到那台的落点（成没成记进机器状态，不阻断这一轮）。
     fn install(&self, machine: &str) -> Boxed<'_, ()>;
+    /// 到那台的这一跳远不远（池里那条连接的读数，`ssh_dial::pool::far_of`；常驻流照它定要不要那台压）。
+    fn far(&self, machine: &str) -> bool;
 }
 
 /// 那台流上的事转到哪（生产 ＝ 每一份 watcher 的出方向，`main.rs` 起常驻时交进来，[`start`]；判据收下来看）。
@@ -84,6 +86,10 @@ impl Transport for Link {
 
     fn installs(&self) -> bool {
         true
+    }
+
+    fn far(&self) -> bool {
+        self.ssh.far(&self.machine)
     }
 }
 
@@ -518,6 +524,12 @@ impl Ssh for Pool {
                 tracing::warn!("[feeds] {machine} 没装上（照样接已有的后端）：{e:?}");
             }
         })
+    }
+
+    /// 照这台的拨号请求问池里那几条连接的读数；请求组不成 ⇒ 远（宁可压）。
+    fn far(&self, machine: &str) -> bool {
+        Self::request(machine, "stream", serde_json::json!({}))
+            .map_or(true, |req| ssh_dial::pool::far_of(&ssh_dial::pool::ssh().links(), &req))
     }
 }
 
