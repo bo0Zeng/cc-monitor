@@ -99,7 +99,7 @@
       { "text": "最小化", "use": "非文案" },
       { "text": "全屏", "use": "非文案" }
     ],
-    "tests/frontend/shell/command_home_registry_tests.rs": [
+    "tests/frontend/shell/parity_ledger_tests.rs": [
       { "text": "日志", "use": "非文案" }
     ],
     "tests/frontend/shell/doc_claim_registry_tests.rs": [

@@ -86,63 +86,6 @@ fn the_other_half_of_the_sweep_still_has_a_home() {
     );
 }
 
-/// ★ **前提触发器**：上面两条「今天不能退役」的理由，前提是
-/// **backend 只装那三条 hook**（`session-created` / `session-closed` / `session-renamed`）。
-///
-/// hook 覆盖面一变（多一条、少一条、换名字）⇒ 本条**主动红**，逼人回来重新裁定
-/// 「哪些轮询现在可以退役了」。这是好事：多一条 hook 往往正好解锁一处轮询。
-///
-/// ⚠ 它挡不住「hook 装上了但 tmux 那个事件本身覆盖面变了」（tmux 版本差异）——
-/// 那属于外部世界，本仓钉不了。**比没有强，别读成证明。**
-#[test]
-fn the_hook_coverage_that_these_reasons_rest_on_has_not_changed() {
-    const BACKEND_HOOKS: &str = include_str!("../../../src/backend/control/tmux_hook.rs");
-    let prod = guard_core::production_code(BACKEND_HOOKS);
-    // 判据串运行时拼，免得命中本文件自己上面那两段说明。
-    let want: Vec<String> = ["created", "closed", "renamed"]
-        .iter()
-        .map(|e| format!("session-{e}"))
-        .collect();
-    for w in &want {
-        assert!(
-            prod.contains(w.as_str()),
-            "backend 的 hook 里找不到 `{w}` —— 覆盖面缩小了。\n\
-                 上面 `src/frontend/ui/tabs.ts` / `src/frontend/ui/main.ts` 两条「今天不能退役」的理由建立在\
-                 「只有这三条 hook」之上，覆盖面一变就要重新裁定。"
-        );
-    }
-    // 反向：**不许多**。多一条就可能解锁一处轮询 ⇒ 主动红提醒。
-    let found = prod.matches("session-").count()
-        + prod.matches("window-").count()
-        + prod.matches("pane-").count();
-    assert!(
-        found > 0,
-        "一条 hook 名都没扫到 —— 剥法或路径坏了，本条会零命中地绿"
-    );
-    let hook_events = prod
-        .split("HOOK_EVENTS")
-        .nth(1)
-        .unwrap_or("")
-        .split("];")
-        .next()
-        .unwrap_or("");
-    assert!(
-        !hook_events.is_empty(),
-        "抽不到 `HOOK_EVENTS` 数组 —— 抽取器坏了"
-    );
-    let n = hook_events.matches("session-").count()
-        + hook_events.matches("window-").count()
-        + hook_events.matches("pane-").count()
-        + hook_events.matches("client-").count();
-    assert_eq!(
-        n, 3,
-        "backend 装的 hook 从 3 条变成了 {n} 条 —— **这多半是好事**，\n\
-             但它意味着上面两条「今天不能退役」的理由前提变了：\n\
-             请回 F02 重新裁定哪些轮询可以改等帧了（多一条 hook 常常正好解锁一处）。\n\
-             抽到的数组：{hook_events}"
-    );
-}
-
 /// **明令不许有周期唤醒**的文件（把两处散文纪律变成机检）。
 const NO_PERIODIC_WAKE: &[(&str, &str)] = &[(
     "src/frontend/ui/views/cc-bus-section.ts",

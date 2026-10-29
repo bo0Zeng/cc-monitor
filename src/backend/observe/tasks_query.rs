@@ -3,7 +3,7 @@
 //! # 它补的是哪一格
 //!
 //! monitor 那头的任务面板（`tasks-panel.ts`）此前只读**本机** `tasks/<sid>/*.json`
-//! （`parity_ledger` 的 `session.tasks` 那笔 `ParityDebt`）：远端会话的任务在远端机器上，
+//! 而远端会话的任务在远端机器上，
 //! 远端 tab 永远拿不到。⇒ 读这件事搬进后端：**本机后端与远端后端是同一个二进制**，
 //! monitor 按 origin 问那一台，本机也走这里（monitor 里那份读实现随之退役）。
 //!

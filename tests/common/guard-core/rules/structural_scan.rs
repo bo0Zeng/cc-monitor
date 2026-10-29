@@ -62,11 +62,12 @@ fn no_two_test_attributes_land_on_the_same_function() {
     // 🔴 本条这一轮真的咬到东西了：`src/backend` 从来不在它的射程里，
     // 而那棵树上**有 3 处**「一个 fn 两个 `#[test]`」（libtest 因此把它们各注册两遍：
     // `cargo test -- --list` 705 行 / 702 个不同名字）。逐处在步 7c 报告里点名。
+    // 壳那个包（`src/frontend/shell/src` · `tests/frontend/shell`）不在这里：叠两个 `#[test]` 由它 manifest 里的
+    //   `duplicate_macro_attributes = "deny"` 在编译期挡，测试段孤儿函数由门禁 `deadcode` 那格（`cargo check --tests` 的 `dead_code` 零条）挡。
+    //   后端包也 deny 了那条 lint，但它测试档今天还有 `dead_code` 没清、门禁不查它 ⇒ 后端两棵树与另几个包照旧在这里扫。
     let mut files = Vec::new();
     for t in [
-        "src/frontend/shell/src",
         "src/backend",
-        "tests/frontend/shell",
         "tests/frontend/filewin",
         "tests/backend",
         "tests/comms",
@@ -404,8 +405,7 @@ fn the_cfg_test_reexport_detour_stays_extinct() {
                  按形状剥可见性修饰，测试模块直接写成 `pub(crate) mod X` 就认得出来，\n\
                  跨模块的取名走 `crate::<文件>::X::…`，不需要在顶层再导出一次。\n\
                  修法：把 `mod X` 写成 `pub(crate) mod X`，删掉这一行，引用者改走全路径。\n\
-                 （照这样写的先例：`stream_source/` 的 `dial_move_judge` · `local_backend_host.rs` 的\n\
-                  `tests` · `readonly_guard.rs` 的 `g6_doctrine`。）\n\
+                 （照这样写的先例：`stream_source/` 的 `dial_move_judge` · `local_backend_host.rs` 的 `tests`。）\n\
                  ⚠ 真有正当理由要开口子 ⇒ 先立裁定，**不许**在这里抬 \
                  `DETOUR_CEILING`。",
             sites.len(),
