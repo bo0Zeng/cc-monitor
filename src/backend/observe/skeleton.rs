@@ -238,15 +238,12 @@ impl Skeletons {
     }
 }
 
-/// 解析时往下一次读多少（[`decode`]）。
-const DECODE_BUF: usize = 64 << 10;
-
 /// 从流里解一份骨架。解析器逐字节取：直接读 `dyn Read` ⇒ 每个字节一次动态调用（比解析本身还慢）；
-/// 套一层定型的缓冲 ⇒ 逐字节走缓冲里那一路，往下 [`DECODE_BUF`] 一读，手里仍只有一小块。
+/// 套一层定型的缓冲 ⇒ 逐字节走缓冲里那一路，往下一块（[`READ_BLOCK`]）一读，手里仍只有一块。
 fn decode<T: DeserializeOwned>(
     r: &mut dyn std::io::Read,
 ) -> Result<File<T>, crate::common::said::Said> {
-    serde_json::from_reader(std::io::BufReader::with_capacity(DECODE_BUF, r))
+    serde_json::from_reader(std::io::BufReader::with_capacity(READ_BLOCK, r))
         .map_err(|e| crate::common::said::Said::from(e.to_string()))
 }
 
