@@ -817,7 +817,7 @@ pub(crate) fn remote_health_out(app: tauri::AppHandle) -> stream_source::HealthO
     })
 }
 
-/// 起来时那一趟起本机后端的结局只进日志：被拒（口上有东西、接不上）那一句下一步由 `local_backend_host` 交给本机后端那一格（`LocalBackend`），设置窗照画。
+/// 起来时那一趟起本机后端的结局进日志；起不来那一句由 `local_backend_host` 记进本机后端那一格（`LocalBackend::Down.said`），机器条本机那一行与设置窗照画。
 fn say_local_start(out: local_backend_host::StartOutcome) {
     use local_backend_host::StartOutcome;
     match out {

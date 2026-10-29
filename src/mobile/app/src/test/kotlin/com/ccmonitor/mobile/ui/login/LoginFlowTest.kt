@@ -25,7 +25,7 @@ class LoginFlowTest {
     fun `起 · 粘错一回（那一格下面那一句、作业还在）· 再交成了 ⇒ done；成了之后收起不再撤`() =
         runTest {
             val l = FakeCoreLink()
-            var finish: Reply = Reply.Failed(CoreFailure("bad_paste", "粘贴的内容对不上本次登录 · 可重新粘贴", "d", mapOf("again" to "paste")))
+            var finish: Reply = Reply.Failed(CoreFailure("bad_paste", "粘贴的内容对不上本次登录 · 可重新粘贴", "d", mapOf("again" to "paste", "terminal" to false)))
             l.answer = { cmd, _ ->
                 when (cmd) {
                     "login-start" -> Reply.Ok(started)
@@ -91,7 +91,7 @@ class LoginFlowTest {
                 l.answer = { cmd, _ ->
                     when (cmd) {
                         "login-start" -> Reply.Ok(started)
-                        "login-finish" -> Reply.Failed(CoreFailure("expired", "这次登录已过期", "d", mapOf("again" to again)))
+                        "login-finish" -> Reply.Failed(CoreFailure("expired", "这次登录已过期", "d", mapOf("again" to again, "terminal" to false)))
                         else -> Reply.Ok(mapOf("was" to true))
                     }
                 }
@@ -113,7 +113,7 @@ class LoginFlowTest {
     fun `没起成 ⇒ again none 不给重新开始；回包里没有 again ⇒ 给`() =
         runTest {
             for ((reply, can) in listOf(
-                Reply.Failed(CoreFailure("unsupported", "不支持", "d", mapOf("again" to "none"))) to false,
+                Reply.Failed(CoreFailure("unsupported", "不支持", "d", mapOf("again" to "none", "terminal" to false))) to false,
                 Reply.TimedOut to true,
             )) {
                 val l = FakeCoreLink().also { it.answer = { _, _ -> reply } }
