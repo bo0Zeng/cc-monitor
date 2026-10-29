@@ -89,7 +89,6 @@ mod byte_table; // 全仓唯一的取字节口：一台机器要哪一份可执�
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/contract_crate_guard_tests.rs"]
 mod contract_crate_guard;
-mod copy_table; // 过渡：等 stream_source/snapshot.rs 改用 copy_core 再删
 /// 这一版的产品版本号（全产品一个源：monitor 那个包的版本，与安装包 · 界面同一个号）。
 pub(crate) const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub(crate) mod detail; // 壳这一端写的「复制详情」那几行 ＋ 壳命令失败的那一形 `Said`
