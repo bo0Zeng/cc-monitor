@@ -15,20 +15,16 @@ use super::session_batch::{
 pub(crate) mod new;
 use crate::platform::child::{Child, Deadline};
 pub use cmd_wire::session::{ArriveAsk, ArriveBy, Landed, Opened, Run};
-pub(crate) use new::{
-    dir_answer, DirChecked, ForkWrite, OpenDirErr, OpenDirReq, PreRotation,
-};
-use new::{
-    expand_home, first_prompt_refused, OpenField as Field, OpenRefusal as Refusal,
-};
+pub(crate) use new::{dir_answer, DirChecked, ForkWrite, OpenDirErr, OpenDirReq, PreRotation};
+use new::{expand_home, first_prompt_refused, OpenField as Field, OpenRefusal as Refusal};
 use serde_json::Value;
 
 /// 失败：码 ＋ 那一句 ＋ `data`（[`Refusal`]：哪一格 · 选不了号那一形）＋ 下层原话（不进那一句，进复制详情；没有 ⇒ `None`）。
 pub(crate) type Failed = (&'static str, String, Option<Value>, Option<String>);
 
+use cmd_wire::open::RotationPick;
 /// `session-open` 的入参与它引到的几样：线上形住 `cmd-wire::open`（名字与回包挂在 `cmd_wire::Call` 上）。
 pub(crate) use cmd_wire::open::{NewOpen, OpenWhat as Open, SessionOpenReq};
-use cmd_wire::open::RotationPick;
 
 /// `session-open` 会回的码（`bad_args` 打头）。
 pub(crate) const OPEN_CODES: &[&str] = &[

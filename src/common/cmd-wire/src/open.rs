@@ -159,7 +159,9 @@ pub enum AccountAsk {
     Follow,
     Base,
     /// 用户点名的那个号（按名字判；分叉沿用源会话的号也是名字，由这台从源会话推出）。
-    Named { name: String },
+    Named {
+        name: String,
+    },
 }
 
 /// `session-open-facts` 的入参。

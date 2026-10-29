@@ -274,7 +274,9 @@ fn terminal_input_pastes_stay_off_the_wire() {
 #[test]
 fn needs_history_lines_and_session_requests_are_the_ones_the_backend_takes() {
     use crate::needs::{AnswerReq, SessionsNeedsReq};
-    use crate::open::{AccountAsk, ForkFrom, NewOpen, OpenFactsReq, OpenWhat, RotationPick, SessionOpenReq};
+    use crate::open::{
+        AccountAsk, ForkFrom, NewOpen, OpenFactsReq, OpenWhat, RotationPick, SessionOpenReq,
+    };
     use crate::record::HistoryLinesReq;
     use crate::session::{Run, SessionCommandsReq, SessionModelReq, SessionPermissionReq};
     let sid = || "s1".parse::<crate::Sid>().unwrap();

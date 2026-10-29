@@ -10,10 +10,10 @@ use crate::deploy::{DeployInstallReq, DeployUninstallReq, Installed, Uninstalled
 use crate::exit_policy::{ExitPolicy, ExitPolicyReadReq};
 use crate::files::*;
 use crate::listing::{HistoryHead, HistoryListReq, HistoryRow};
-use crate::plan::{PlanFiles, PlanFilesReq};
-use crate::quota::{QuotaRead, QuotaReadReq};
 use crate::needs::{AnswerReq, Answered, NeedsList, SessionsNeedsReq};
 use crate::open::{OpenFactsReq, SessionOpenReq};
+use crate::plan::{PlanFiles, PlanFilesReq};
+use crate::quota::{QuotaRead, QuotaReadReq};
 #[cfg(any(test, feature = "ts"))]
 use crate::record::OrUnread;
 use crate::record::{HistoryLines, HistoryLinesReq, HistoryRead, HistoryReadReq};
@@ -21,8 +21,8 @@ use crate::rotation::*;
 use crate::search::{HistorySearchReply, HistorySearchReq};
 use crate::session::{HistoryTail, HistoryTailReq};
 use crate::session::{
-    ModeSwitched, ModelSwitched, OpenFacts, Opened, Preview, SessionCommands, SessionCommandsReq,
-    SessionModelReq, SessionPermissionReq, Sent, TerminalsList,
+    ModeSwitched, ModelSwitched, OpenFacts, Opened, Preview, Sent, SessionCommands,
+    SessionCommandsReq, SessionModelReq, SessionPermissionReq, TerminalsList,
 };
 use crate::sync::Patch;
 use crate::terminal::{
