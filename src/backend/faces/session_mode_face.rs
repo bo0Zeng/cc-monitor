@@ -6,26 +6,12 @@ use crate::common::contract::malformed;
 use crate::control::terminals::{self, no_said, CmdErr, On, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq, TerminalPreviewReq};
 use crate::wire::typed::{self, Command};
-use serde::Deserialize;
 
 /// 按一下之后最多等几次重画（每次至多 `terminal_follow::REDRAW_WAIT`）：重画了、读到的档却还没变 ⇒ 再等一次。
 const REDRAWS_PER_PRESS: usize = 4;
 
-/// `session-permission` 的入参。
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct SessionPermissionReq {
-    /// 会话 id。
-    pub(crate) sid: cmd_wire::Sid,
-    /// 要切到的档（原值；必须是 `session-open-facts` 那一家 `permissionModes` 里的一个）。
-    pub(crate) mode: String,
-    /// 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) client: Option<String>,
-}
+/// `session-permission` 的入参：线上形住 `cmd-wire::session`（名字与回包挂在 `cmd_wire::Call` 上）。
+pub(crate) use cmd_wire::session::SessionPermissionReq;
 
 /// `session-permission` 的回包：线上形住 `cmd-wire::session`。
 pub(crate) use cmd_wire::session::ModeSwitched;
@@ -230,9 +216,7 @@ impl ModeIo for Live<'_> {
 pub(crate) struct SessionPermission;
 
 impl Command for SessionPermission {
-    const NAME: &'static str = "session-permission";
-    type Req = SessionPermissionReq;
-    type Reply = ModeSwitched;
+    typed::by_call!(SessionPermissionReq);
     type Err = SessionPermissionErr;
 }
 
