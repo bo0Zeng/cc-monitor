@@ -11,8 +11,12 @@ use crate::agents::{AccountsFace, IdentityClass, IdentityRoot};
 use crate::platform::acct_view::Item;
 use copy_core::copy_text;
 
-/// 共享库顶层里**不链**给各号的那几项（`accounts` 目录 · 编辑器留的 `*.bak` / `*.bak-*`）。
+/// 共享库顶层里**不链**给各号的那几项（`accounts` 目录 · 编辑器留的 `*.bak` / `*.bak-*` · 锁文件，见 [`is_excluded`]）。
 const SHARE_EXCLUDE_EXACT: &[&str] = &["accounts"];
+
+/// 锁文件的尾巴：Claude Code 刷新登录时在配置根下建 `.oauth_refresh.lock` 与记着谁持锁的 `.oauth_refresh.lock.owner`。
+/// 链给各号 ⇒ 几个号抢同一把锁、读到别的号的持锁人；每个号用自己配置根下的那一把。
+const LOCK_SUFFIXES: &[&str] = &[".lock", ".lock.owner"];
 
 /// 这台机器上账号库的布局（注册表里那一家的；没有 ⇒ 这台做不了多账号，`wire` 那一层先拒）。
 pub(crate) fn face() -> Option<AccountsFace> {
@@ -74,7 +78,10 @@ pub(crate) fn email_in(dir: &str) -> Option<String> {
 
 /// 共享库顶层里不链给各号的那几项。
 pub(crate) fn is_excluded(name: &str) -> bool {
-    SHARE_EXCLUDE_EXACT.contains(&name) || name.ends_with(".bak") || name.contains(".bak-")
+    SHARE_EXCLUDE_EXACT.contains(&name)
+        || name.ends_with(".bak")
+        || name.contains(".bak-")
+        || LOCK_SUFFIXES.iter().any(|s| name.ends_with(s))
 }
 
 /// 那一家按需才建、各号该共用的那几个目录：共享库里还没有也照样链（计划里先在共享库建出来）。
@@ -208,15 +215,10 @@ fn check_name(name: &str) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// 一个号该有的共享链接（只计划新建的那几条）。
+/// 新建的那个号该有的共享链接（目录还不在 ⇒ 每一项都缺）。
 fn link_all(plan: &mut Plan, s: &Snapshot, cfg: &str) {
     seed_shared(plan, s);
-    for it in share_items(&s.shared) {
-        plan.ops.push(Op::Link {
-            target: join(&s.roots().shared, &it),
-            at: join(cfg, &it),
-        });
-    }
+    link_missing(plan, s, cfg, &share_items(&s.shared), &[], |_, _, _| {});
 }
 
 /// **建账号库**：这台机器现在登录的那个身份收成名叫 `name` 的默认号 —— 身份那几份搬进 `<账号库>/<name>`，
@@ -491,25 +493,46 @@ fn own_dirs<'a>(s: &'a Snapshot, m: &'a Manifest) -> impl Iterator<Item = &'a Ac
         .filter(move |a| s.dir(&a.config_dir).is_dir())
 }
 
-/// **按需才建的共用目录接上**（升级那一步，常驻那一个起来时做）：共享库里没有 ⇒ 建（恰好一个号里有实体 ⇒ 挪进去），
-/// 每个号缺的那一条链补上（挪走的那个号链回去）；两个号以上各有一份的那几个号不动（核对提示，不替人合并）。
-/// 只碰 [`shared_on_demand`] 那几项；接好之后再算 ⇒ 空计划（不写、不留备份）。
-pub(crate) fn plan_shared_on_demand(s: &Snapshot) -> Result<Plan, Refusal> {
+/// 号的目录 `c` 照 `items` 逐项：号里没有 · 它那一份刚挪进共享库（`lifted`）⇒ 链回共享库；号里已有的（链接或实体）交 `had` 判。
+/// 对齐与修复补链都走这一处。
+fn link_missing(
+    plan: &mut Plan,
+    s: &Snapshot,
+    c: &str,
+    items: &[String],
+    lifted: &[(String, &str)],
+    mut had: impl FnMut(&mut Plan, &str, &Item),
+) {
+    let shared = &s.roots().shared;
+    let d = s.dir(c);
+    for it in items {
+        let moved = lifted.iter().any(|(from, n)| from == c && *n == it.as_str());
+        match d.get(it) {
+            Item::Absent => {}
+            _ if moved => {}
+            other => {
+                had(plan, it, other);
+                continue;
+            }
+        }
+        plan.ops.push(Op::Link {
+            target: join(shared, it),
+            at: join(c, it),
+        });
+    }
+}
+
+/// **账号库对齐**（常驻那一个起来时 · 核对之前 · 起会话之前做）：按需才建的那几个共享库里没有 ⇒ 建（恰好一个号里有实体 ⇒ 挪进去）；
+/// 每个号照 [`share_items`] 缺的链补上（挪走的那个号链回去）—— Claude Code 升级后在共享库里新建的项也在内。
+/// 只建目录 · 建链接：号里已有的（指错的链接 · 自己的实体 · 两个号以上各有一份的按需目录）不动，那是「修复」与核对的事。
+/// 接好之后再算 ⇒ 空计划（不写、不留备份）。
+pub(crate) fn plan_align(s: &Snapshot) -> Result<Plan, Refusal> {
     let m = need_manifest(s)?;
-    let r = s.roots();
+    let items = share_items(&s.shared);
     let mut plan = Plan::default();
     let lifted = lift_on_demand(&mut plan, s, m);
     for a in own_dirs(s, m) {
-        let c = &a.config_dir;
-        for n in shared_on_demand() {
-            let moved = lifted.iter().any(|(from, it)| from == c && it == n);
-            if moved || !s.dir(c).get(n).exists() {
-                plan.ops.push(Op::Link {
-                    target: join(&r.shared, n),
-                    at: join(c, n),
-                });
-            }
-        }
+        link_missing(&mut plan, s, &a.config_dir, &items, &lifted, |_, _, _| {});
     }
     Ok(plan)
 }
@@ -558,33 +581,20 @@ pub(crate) fn plan_repair(s: &Snapshot) -> Result<Plan, Refusal> {
                     }
                 }
             }
-            for it in &items {
+            link_missing(&mut plan, s, c, &items, &lifted, |plan, it, had| {
                 let want = join(&r.shared, it);
-                match d.get(it) {
+                match had {
                     Item::Link { target, .. } if *target == want => {}
                     Item::Link { .. } => plan.ops.push(Op::Relink {
                         target: want,
                         at: join(c, it),
                     }),
-                    Item::Absent => plan.ops.push(Op::Link {
-                        target: want,
-                        at: join(c, it),
-                    }),
-                    _ if lifted
-                        .iter()
-                        .any(|(from, n)| from == c && *n == it.as_str()) =>
-                    {
-                        plan.ops.push(Op::Link {
-                            target: want,
-                            at: join(c, it),
-                        })
-                    }
                     _ => plan.notes.push(copy_text(
                         "beAcctPlan.repair.entity",
                         &[("name", &a.name), ("item", it)],
                     )),
                 }
-            }
+            });
             for (base, it) in &d.entries {
                 let Item::Link { target, .. } = it else {
                     continue;

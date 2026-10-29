@@ -9,7 +9,7 @@
  * | 删一个号 | `accounts-remove` |
  * | 修复（补链接 · 修权限 · 刷新邮箱 · 补别名） | `accounts-repair` |
  * | 按备份还原 | `accounts-rollback` |
- * | 核对（只读） | `accounts-verify` |
+ * | 核对（先补上缺的共享链接，再报补不上的） | `accounts-verify` |
  * | 在终端里登录一个号的那一行 | `accounts-login-cmd` |
  * | 各号共用的用户级 MCP：看 · 删一条 · 两边都改了时挑一版 | `accounts-mcp-read` · `accounts-mcp-remove` · `accounts-mcp-pick` |
  *
@@ -125,7 +125,7 @@ export async function accountsRollback(
   );
 }
 
-/** 核对（只读）。 */
+/** 核对（先补上缺的共享链接，再报补不上的）。 */
 export async function accountsVerify(origin: Origin): Promise<VerifyReport> {
   return settleTyped(
     origin,
