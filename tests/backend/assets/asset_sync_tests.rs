@@ -507,10 +507,7 @@ fn the_remote_flags_are_real_subcommands_of_the_catalog_commands() {
         (PULL_FLAG, "assets-catalog"),
         (PUSH_FLAG, "assets-catalog-merge"),
     ] {
-        assert!(
-            crate::SUBCOMMANDS.contains(&flag),
-            "{flag} 不在 SUBCOMMANDS"
-        );
+        assert!(crate::stream::cli::is_subcommand(flag), "{flag} 不是子命令");
         assert_eq!(format!("--{cmd}"), flag);
         let spec = crate::stream::inbound::REGISTRY
             .iter()

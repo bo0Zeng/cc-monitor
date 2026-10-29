@@ -55,7 +55,7 @@ fn only_the_right_of_the_last_end_is_ccm_and_nothing_is_intercepted_without_it()
     ] {
         assert!(claude.contains(want), "{version}：抽不出 {want}，抽取坏了");
     }
-    let backend: BTreeSet<String> = crate::SUBCOMMANDS
+    let backend: BTreeSet<String> = crate::stream::cli::subcommands()
         .iter()
         .chain(crate::STREAM_FLAGS.iter())
         .map(|s| s.to_string())

@@ -59,6 +59,11 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "stream/cli.rs",
         include_str!("../../src/backend/stream/cli.rs"),
     ),
+    // 手写的一次性子命令那张 `(子命令, 实现)` 表。
+    (
+        "stream/oneshot.rs",
+        include_str!("../../src/backend/stream/oneshot.rs"),
+    ),
     // `control/resident.rs`：`--replace` 这个选项字面量（`--resident-ensure` 的「先停再起」）让派生的文件集把它扫了进来。
     (
         "control/resident.rs",
