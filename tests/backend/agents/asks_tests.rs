@@ -206,7 +206,11 @@ fn a_terminal_blocking_ask_gets_release_last_and_a_run_carries_the_agent() {
 #[test]
 fn who_asks_names_the_agent_and_its_kind_with_what_is_known() {
     let mut a = ask_in(AskKind::Approve);
-    assert_eq!(product_of("a", &a, Some("l"), 1).run, None, "主会话发的不带 run");
+    assert_eq!(
+        product_of("a", &a, Some("l"), 1).run,
+        None,
+        "主会话发的不带 run"
+    );
     a.agent_id = Some("ag".into());
     let text = |a: &AskIn, label: Option<&str>| product_of("a", a, label, 1).run.unwrap().text.0;
     let named = copy_text("speaker.agent.title", &[("label", "Audit")]);
