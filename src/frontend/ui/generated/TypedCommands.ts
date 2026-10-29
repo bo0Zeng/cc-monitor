@@ -72,6 +72,7 @@ import type { ConfigSurfaceReport } from "./ConfigSurfaceReport";
 import type { Conflicts } from "./Conflicts";
 import type { DataReport } from "./DataReport";
 import type { DeployInstallReq } from "./DeployInstallReq";
+import type { DeployUninstallReq } from "./DeployUninstallReq";
 import type { DirChecked } from "./DirChecked";
 import type { DriftMerge } from "./DriftMerge";
 import type { DriftReport } from "./DriftReport";
@@ -427,7 +428,7 @@ export interface TypedCommands {
   "chores-merge": { req: ChoresMergeReq; reply: ChoresMerged; code: "bad_args" };
   "data-report": { req: FootprintReq; reply: DataReport; code: "bad_args" | "failed" };
   "deploy-install": { req: DeployInstallReq; reply: Installed; code: "bad_args" | "io_failed" | "refused" | "unreachable" | "undecidable" | "not_carried" | "fenced" | "place_failed" };
-  "deploy-uninstall": { req: DeployInstallReq; reply: Uninstalled; code: "bad_args" | "io_failed" | "refused" | "unreachable" | "not_carried" | "fenced" | "place_failed" };
+  "deploy-uninstall": { req: DeployUninstallReq; reply: Uninstalled; code: "bad_args" | "io_failed" | "refused" | "unreachable" | "not_carried" | "fenced" | "place_failed" };
   "drift-merge": { req: NoArgs; reply: DriftMerge; code: "bad_args" };
   "drift-report": { req: NoArgs; reply: DriftReport; code: "bad_args" };
   "exit-policy-read": { req: NoArgs; reply: ExitPolicy; code: "bad_args" };

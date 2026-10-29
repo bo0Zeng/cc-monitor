@@ -803,6 +803,17 @@ data class AckReq(
     }
 }
 
+enum class ActionTag(val wire: String) {
+    SKIP("skip"),
+    DEPLOY("deploy"),
+    KEEP("keep"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<ActionTag> = enumOf(entries) { it.wire }
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class AgentFacts(
     val kind: String,
@@ -4723,6 +4734,25 @@ data class DeployInstallReq(
             Field("machine", { Str }, optional = false, nullable = false),
             ),
             { a -> DeployInstallReq(a[0] as List<SlotRow>, a[1] as String) },
+            { v -> arrayOf(v.slots, v.machine) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class DeployUninstallReq(
+    val slots: List<SlotRow>,
+    val machine: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<DeployUninstallReq> = obj(
+            listOf(
+            Field("slots", { arr(SlotRow.ADAPTER) }, optional = false, nullable = false),
+            Field("machine", { Str }, optional = false, nullable = false),
+            ),
+            { a -> DeployUninstallReq(a[0] as List<SlotRow>, a[1] as String) },
             { v -> arrayOf(v.slots, v.machine) },
         )
     }
@@ -9921,7 +9951,7 @@ data class InputNow(
 
 @Suppress("UNCHECKED_CAST")
 data class Installed(
-    val action: DeployAct,
+    val action: ActionTag,
     val said: String,
     val build: String,
     val os: String,
@@ -9931,12 +9961,12 @@ data class Installed(
     companion object {
         val ADAPTER: JsonAdapter<Installed> = obj(
             listOf(
-            Field("action", { DeployAct.ADAPTER }, optional = false, nullable = false),
+            Field("action", { ActionTag.ADAPTER }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
             Field("build", { Str }, optional = false, nullable = false),
             Field("os", { Str }, optional = false, nullable = false),
             ),
-            { a -> Installed(a[0] as DeployAct, a[1] as String, a[2] as String, a[3] as String) },
+            { a -> Installed(a[0] as ActionTag, a[1] as String, a[2] as String, a[3] as String) },
             { v -> arrayOf(v.action, v.said, v.build, v.os) },
         )
     }
@@ -20905,6 +20935,7 @@ data class SessionAccountReply(
     val differs: Boolean,
     val badge: SessionAccountReplyBadge?,
     val queryable: Boolean,
+    val ownUpstream: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -20924,9 +20955,10 @@ data class SessionAccountReply(
             Field("differs", { Bool }, optional = false, nullable = false),
             Field("badge", { opt(SessionAccountReplyBadge.ADAPTER) }, optional = false, nullable = true),
             Field("queryable", { Bool }, optional = false, nullable = false),
+            Field("ownUpstream", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> SessionAccountReply(a[0] as String?, a[1] as String, a[2] as SessionAccountReplyWhen, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as Usage?, a[7] as Boolean, a[8] as List<List<String>>, a[9] as Long?, a[10] as Boolean, a[11] as SessionAccountReplyBadge?, a[12] as Boolean) },
-            { v -> arrayOf(v.account, v.name, v.`when`, v.from, v.accountLine, v.fromLine, v.usage, v.stale, v.hover, v.sampled, v.differs, v.badge, v.queryable) },
+            { a -> SessionAccountReply(a[0] as String?, a[1] as String, a[2] as SessionAccountReplyWhen, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as Usage?, a[7] as Boolean, a[8] as List<List<String>>, a[9] as Long?, a[10] as Boolean, a[11] as SessionAccountReplyBadge?, a[12] as Boolean, a[13] as String?) },
+            { v -> arrayOf(v.account, v.name, v.`when`, v.from, v.accountLine, v.fromLine, v.usage, v.stale, v.hover, v.sampled, v.differs, v.badge, v.queryable, v.ownUpstream) },
         )
     }
 }
