@@ -42,8 +42,8 @@ fn absent_reads_as_empty_and_writes_land_where_the_contract_says() {
     let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
     assert_eq!(
         v,
-        serde_json::json!({ "dirs": ["/srv"] }),
-        "存的是归一之后的形"
+        serde_json::json!({ "version": 1, "dirs": ["/srv"] }),
+        "存的是归一之后的形，顶层带声明表那一版"
     );
     assert_eq!(answer_read(&o).unwrap().dirs, vec!["/srv".to_string()]);
 }
@@ -116,4 +116,25 @@ fn an_unreadable_file_is_said_and_never_overwritten() {
     .unwrap_err();
     assert_eq!(e.code, "bookmarks_unreadable");
     assert_eq!(std::fs::read(&f).unwrap(), b"{ not json", "读不懂 ⇒ 不覆盖");
+}
+
+#[test]
+fn a_newer_file_is_said_and_never_overwritten() {
+    let h = home("newer");
+    let f = h.join(relay_route_core::BOOKMARKS_REL);
+    std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+    let newer = br#"{"version":2,"dirs":["/a"]}"#;
+    std::fs::write(&f, newer).unwrap();
+    let o = own(&h);
+    assert_eq!(answer_read(&o).unwrap_err().code, "bookmarks_unreadable");
+    let e = answer_edit(
+        &o,
+        &BookmarksEditReq {
+            op: BookmarkOp::Add,
+            dirs: vec!["/x".into()],
+        },
+    )
+    .unwrap_err();
+    assert_eq!(e.code, "bookmarks_unreadable");
+    assert_eq!(std::fs::read(&f).unwrap(), newer, "比这一版新 ⇒ 不覆盖");
 }

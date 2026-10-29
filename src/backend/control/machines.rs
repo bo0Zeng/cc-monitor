@@ -19,15 +19,9 @@ use std::path::{Path, PathBuf};
 /// 那份文件名（字面量只住契约 crate）。
 pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::MACHINES_REL);
 
-/// 盘上那一版。
-const VERSION: u32 = 1;
-
-/// 读盘的上限。
-const MAX_BYTES: u64 = 1024 * 1024;
-
-/// 机器表：状态（读不懂不覆盖）。
+/// 机器表：状态（读不懂 · 比这一版新 ⇒ 不覆盖；落点 · 上限 · 版本照声明表）。
 pub(crate) const DOC: crate::common::own_state::Doc<OnDisk> =
-    crate::common::own_state::Doc::state(relay_route_core::MACHINES_REL, MAX_BYTES);
+    crate::common::own_state::Doc::of(&relay_route_core::MACHINES_FILE);
 
 /// 一张表至多几台。
 pub(crate) const HOSTS_MAX: usize = 256;
@@ -35,11 +29,10 @@ pub(crate) const HOSTS_MAX: usize = 256;
 /// 一台（盘上那一形，也是线上那一形）：住拨号核心。
 pub(crate) use ssh_dial::machine::{table_fault, Host, MachineFault, MachineFaultCode, MachineRow};
 
-/// 盘上整份。
+/// 盘上整份（顶层 `version` 归读写口）。
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct OnDisk {
-    version: u32,
     hosts: Vec<Host>,
 }
 
@@ -97,10 +90,6 @@ pub(crate) fn read_at(path: &Path) -> Loaded {
     match DOC.read(path) {
         Read::Absent => Loaded::Absent,
         Read::Unreadable(why) => Loaded::Unreadable(why),
-        Read::Present(d) if d.version != VERSION => Loaded::Unreadable(not_ours(
-            path,
-            format!("version {} (this backend reads {VERSION})", d.version),
-        )),
         Read::Present(d) if d.hosts.len() > HOSTS_MAX => Loaded::Unreadable(not_ours(
             path,
             format!("{} hosts (at most {HOSTS_MAX})", d.hosts.len()),
@@ -109,11 +98,18 @@ pub(crate) fn read_at(path: &Path) -> Loaded {
     }
 }
 
-fn body_of(path: &Path, hosts: &[Host]) -> Result<Vec<u8>, Said> {
-    crate::common::own_state::json_body(
-        path,
+/// 锁里整份写进 `dir`（`~/.cc-monitor`）。
+fn put(
+    own: &Own,
+    dir: &crate::platform::fs::OwnPath,
+    held: &crate::platform::fs::OwnLock,
+    hosts: &[Host],
+) -> Result<(), Said> {
+    DOC.write(
+        own,
+        dir,
+        held,
         &OnDisk {
-            version: VERSION,
             hosts: hosts.to_vec(),
         },
     )
@@ -138,8 +134,7 @@ pub(crate) fn write(own: &Own, hosts: &[Host]) -> Result<(), Said> {
     own.ensure_dir(&dir)
         .map_err(|e| mkdir_said(dir.as_path(), e))?;
     let held = own.lock(&dir)?;
-    let path = dir.join(FILE_NAME)?;
-    own.write(&path, &held, &body_of(path.as_path(), hosts)?)?;
+    put(own, &dir, &held, hosts)?;
     drop(held);
     ring();
     Ok(())
@@ -509,9 +504,7 @@ pub(crate) fn answer_set_in(
     };
     let p = patched(&base, &req.edits)?;
     if p.changed {
-        let at = dir.join(FILE_NAME).map_err(io)?;
-        let body = body_of(at.as_path(), &p.hosts).map_err(io)?;
-        own.write(&at, &held, &body).map_err(io)?;
+        put(own, &dir, &held, &p.hosts).map_err(io)?;
     }
     drop(held);
     if p.changed {

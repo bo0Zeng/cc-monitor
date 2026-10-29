@@ -8832,8 +8832,8 @@ data class HistoryLinesReq(
         val ADAPTER: JsonAdapter<HistoryLinesReq> = obj(
             listOf(
             Field("path", { Str }, optional = false, nullable = false),
-            Field("from", { opt(Lng) }, optional = true, nullable = true),
-            Field("until", { opt(Lng) }, optional = true, nullable = true),
+            Field("from", { opt(U64) }, optional = true, nullable = true),
+            Field("until", { opt(U64) }, optional = true, nullable = true),
             ),
             { a -> HistoryLinesReq(a[0] as String, a[1] as Long?, a[2] as Long?) },
             { v -> arrayOf(v.path, v.from, v.until) },
@@ -18371,29 +18371,6 @@ enum class Refused(val wire: String) {
 }
 
 @Suppress("UNCHECKED_CAST")
-data class RemoteHealthPayload(
-    val origin: String,
-    val kind: String,
-    val message: String,
-    val detail: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<RemoteHealthPayload> = obj(
-            listOf(
-            Field("origin", { Str }, optional = false, nullable = false),
-            Field("kind", { Str }, optional = false, nullable = false),
-            Field("message", { Str }, optional = false, nullable = false),
-            Field("detail", { Str }, optional = false, nullable = false),
-            ),
-            { a -> RemoteHealthPayload(a[0] as String, a[1] as String, a[2] as String, a[3] as String) },
-            { v -> arrayOf(v.origin, v.kind, v.message, v.detail) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class ReplyError(
     val reason: ApiReason,
     val status: Int? = null,
@@ -22083,6 +22060,10 @@ data class SessionWindowReq(
             { v -> arrayOf(v.machine, v.sid) },
         )
     }
+}
+
+data object SessionsNeedsReq {
+    val ADAPTER: JsonAdapter<SessionsNeedsReq> = obj(emptyList(), { SessionsNeedsReq }, { emptyArray() })
 }
 
 @Suppress("UNCHECKED_CAST")
