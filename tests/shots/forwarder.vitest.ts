@@ -21,12 +21,12 @@ import { HOST_KEYS } from "./fake/machine";
 import { UNTIL_CEILING } from "../test-support/wall-ceiling";
 
 const POOL = "./real/pool.mjs";
-type Peer = { port: number; k: number; refuse?: string[]; fake?: "older" | "hang" | "install" };
+type Peer = { port: number; k: number; refuse?: string[]; fake?: "older" | "hang" | "install"; handshake?: false };
 type Row = { label: string; host: string; port: number; user: string; keyPath: string; connect: boolean };
 const { forwarderSh, reachTable, DOER_PY } = (await import(POOL)) as {
   DOER_PY: string;
   forwarderSh: (peers: Peer[], backend?: string, slowSftp?: string, doer?: string) => string;
-  reachTable: (table: string | undefined, reach: [string, { refuse: string[]; fake?: Peer["fake"] }][]) => { hosts: Row[]; peers: (Peer & { origin: string })[] };
+  reachTable: (table: string | undefined, reach: [string, { refuse: string[]; fake?: Peer["fake"]; handshake?: false }][]) => { hosts: Row[]; peers: (Peer & { origin: string })[] };
 };
 /** 转发那几格用的口（任意，只要转发表里写的是它）。 */
 const PEER_PORT_BASE = 2201;
@@ -261,6 +261,8 @@ describe("交本机后端的机器表", () => {
     const row = hosts.find((h) => h.label === "gpu-01");
     expect(files[".cc-monitor/known_hosts"].split("\n")).toContain(`[${row?.host}]:${row?.port} ${HOST_KEYS["gpu-01"].key}`);
     expect(tableOf(defaultWorld()).files[".cc-monitor/known_hosts"]).not.toMatch(/^\[/m);
+    // 那台的钥匙对不上 ⇒ 本机后端拒、握不上手：造世界不等它（别台照等）。
+    expect(Object.fromEntries(tableOf(k).peers.map((p) => [p.origin, p.handshake]))).toEqual({ devbox: undefined, "gpu-01": false, "win-laptop": undefined });
   });
 
   it("问得到的那台在场景表里没有那一行 ⇒ 拒（不现编一台）", () => {

@@ -328,7 +328,7 @@ export function reachTable(table, reach) {
     const row = hosts.find((h) => h.label === origin);
     if (!row) throw new Error(`问得到的 ${origin} 在场景那张机器表里没有那一行`);
     if (row.host !== "127.0.0.1" || !Number.isInteger(row.port)) throw new Error(`${origin} 在场景表里不是回环上的一个口：${row.host}:${row.port}`);
-    return { origin, k, port: row.port, refuse: r.refuse ?? [], ...(r.fake ? { fake: r.fake } : {}) };
+    return { origin, k, port: row.port, refuse: r.refuse ?? [], ...(r.fake ? { fake: r.fake } : {}), ...(r.handshake === false ? { handshake: false } : {}) };
   });
   return { hosts: hosts.map((h) => (peers.some((p) => p.origin === h.label) ? { ...h, keyPath: `${SSH_DIR}/client` } : h)), peers };
 }
@@ -771,8 +771,8 @@ export function backendPool({ repo, sandbox, disks = null }) {
     w.shell = sh.child;
     w.sh = sh;
     sh.send({ t: "machines", machines: list.filter((m) => m.origin === LOCAL) });
-    // 握上手：本机那一台，和本机后端照常接得上的那几台（演旧了 · 拖住 · 正在装的那几台由场景自己等它那一态）。
-    await sh.up(list.filter((m) => m.origin === LOCAL || peers.some((p) => p.origin === m.origin && !p.fake)).map((m) => m.origin));
+    // 握上手：本机那一台，和本机后端照常接得上的那几台（演旧了 · 拖住 · 正在装 · 指纹变了的那几台由场景自己等它那一态）。
+    await sh.up(list.filter((m) => m.origin === LOCAL || peers.some((p) => p.origin === m.origin && !p.fake && p.handshake !== false)).map((m) => m.origin));
     while (worlds.size > KEEP) kill(worlds.keys().next().value);
     w.trace("世界起好了，答页里");
     return made.tails === undefined ? { ok: true } : { ok: true, tails: made.tails };
