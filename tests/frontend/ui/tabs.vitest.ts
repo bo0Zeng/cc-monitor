@@ -171,7 +171,7 @@ import {
   recordReadCalls,
 } from "../../test-support/chan-fake";
 import type { SessionFacts, UsageFact } from "../../../src/frontend/ui/session-reads";
-import { noteMessage, silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
+import { failToast, noteMessage, silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
 import { __setHostFactsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
 import { openSession } from "../../../src/frontend/ui/session-open";
 import { pickAsk } from "../../../src/frontend/ui/resume-menu";
@@ -2294,6 +2294,16 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
     expect(vi.mocked(updateBackendOf).mock.calls.map((c) => [c[0], c[1]])).toEqual([["devbox", "devbox"]]);
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "open_settings_window"), "不开设置窗").toEqual([]);
+  });
+
+  it("★ 机器条［更新］没换上 ⇒ 不弹红 toast（那一句由那台的状态成品写在机器条那一行，A2-17-14-2）", async () => {
+    const tm = makeTM();
+    vi.mocked(updateBackendOf).mockReset();
+    vi.mocked(updateBackendOf).mockRejectedValue(new Error("推不上去-甲"));
+    vi.mocked(failToast).mockClear();
+    tm.fixMachine("devbox", "update");
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(failToast)).not.toHaveBeenCalled();
   });
 
   it("★ ［重新连接］那台拒了（停用着 · 正在连 · 机器表里没有）⇒ 那一句原样进状态栏消息，不只进日志", async () => {

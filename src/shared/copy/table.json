@@ -24426,6 +24426,12 @@
       "zh": "{machine} 要更新",
       "args": ["machine"]
     },
+    "machineState.problem.updateFailed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine} 上次更新失败 · {why}",
+      "args": ["machine", "why"]
+    },
     "machineState.problem.newer": {
       "kind": "body",
       "role": "说明",
