@@ -25,7 +25,7 @@ use serde_json::Value;
 use super::source::{Line, Origin};
 
 /// 按内容搜的线上名。
-pub const CMD_GREP: &str = "files-grep";
+pub const CMD_GREP: &str = <cmd_wire::files::GrepReq as cmd_wire::Call>::NAME;
 
 /// 一趟的往返上限：那台后端走一整棵树、至多读 256 MiB（后端的上界）；给足冷缓存的余量。
 /// ⚠ 上界是后端那几个数（字节 · 命中份数），这一侧不持一份；这个期限只管「这一趟最多等多久」。

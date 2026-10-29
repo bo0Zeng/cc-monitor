@@ -21,7 +21,7 @@ pub static SIZE_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinSize.label.size", &[]));
 
 /// 那条线上命令（后端读族第九条）。
-pub const CMD_SIZE: &str = "files-size";
+pub const CMD_SIZE: &str = <cmd_wire::files::SizeReq as cmd_wire::Call>::NAME;
 
 /// 一趟的往返上限：与递归删同一个上界（走一整棵树、取消不掉 ⇒ 期限是它唯一的上界）。
 pub const SIZE_BUDGET: std::time::Duration = super::writeops::TREE_BUDGET;

@@ -38,7 +38,7 @@ impl CopyJob {
 }
 
 /// 复制那条线上命令的名字。
-pub const CMD_COPY: &str = "files-copy";
+pub const CMD_COPY: &str = <cmd_wire::files::FilesCopyReq as cmd_wire::Call>::NAME;
 
 /// 「复制为」那个框：UI 线程自己的状态（正在输入的那个名字只有 UI 线程碰得到）。
 #[derive(Clone, Debug, PartialEq, Eq)]
