@@ -356,9 +356,7 @@ internal fun chatsView(
     val down = parts.filter { it.bar?.offline == true }.map { it.hostId }.toSet()
     // 机器表还没读到（一台都没有、又没去勾）也算在读。
     val loading = parts.any { it.loading } || (parts.isEmpty() && !filters.active)
-    val asked = filters.active || query != null
-    // 没筛选又一行都没有：说哪一句由核心定（各台报完才是「无会话」）；它还没交 ⇒ 当在读。
-    val unsaid = none && !loading && !asked && face == null
+    val empty = emptyOf(none, loading, filters.active || query != null, face)
     return ChatsUi(
         filters = filters,
         query = query,
@@ -371,16 +369,27 @@ internal fun chatsView(
         deploying = parts.filter { it.bar == null && it.deploying != null },
         notices = parts.flatMap { listOfNotNull(it.notice) + it.groupLines }.distinct(),
         truncated = parts.any { it.truncated },
-        skeleton = none && (loading || unsaid),
-        empty =
-            when {
-                !none || loading || unsaid -> Empty.NONE
-                asked -> Empty.NO_MATCH
-                else -> Empty.NO_SESSIONS
-            },
+        skeleton = none && empty == Empty.NONE,
+        empty = empty,
         emptyFace = face,
     )
 }
+
+/**
+ * 空着时说哪一句：有行 · 在读 ⇒ 不说；带筛选 · 在搜 ⇒ 无匹配；没筛选 ⇒ 照核心那一句（各台报完才是「无会话」），它还没交 ⇒ 不说（当在读）。
+ */
+private fun emptyOf(
+    none: Boolean,
+    loading: Boolean,
+    asked: Boolean,
+    face: EmptyFace?,
+): Empty =
+    when {
+        !none || loading -> Empty.NONE
+        asked -> Empty.NO_MATCH
+        face == null -> Empty.NONE
+        else -> Empty.NO_SESSIONS
+    }
 
 /** 固定那一段与各组那几段（各台照机器表先后接）：段与行带上那台的机器小标签。 */
 private fun bandsOf(

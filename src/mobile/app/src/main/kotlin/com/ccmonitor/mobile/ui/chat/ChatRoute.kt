@@ -136,16 +136,9 @@ fun ChatRoute(
     val picker = vm.picker
     val needs = rememberChatNeeds(open.key, hostId, backends.of(hostId), remember(vm) { vm.state.map { it.sid } }, host.machine)
     val terminals = remember(hostId) { TerminalOps(backends.of(hostId), { host.machine }) }
-    val findTerminal: suspend (String) -> TermEntry? = { s ->
-        terminals
-            .list()
-            .getOrNull()
-            ?.let { rows -> TerminalsList.holding(rows, s)?.let { TermEntry.Attach(it.name) } ?: TermEntry.Resume }
-    }
+    val findTerminal: suspend (String) -> TermEntry? = { s -> termEntry(terminals, s) }
     // 说不了时框旁［切到终端］：同 ⋯「在终端里打开」那一个去处。
-    val toTerminal: () -> Unit = {
-        state.sid?.let { s -> scope.launch { findTerminal(s)?.let { onOpenTerminal(it.target(s)) } } }
-    }
+    val toTerminal: () -> Unit = { state.sid?.let { s -> scope.launch { findTerminal(s)?.let { onOpenTerminal(it.target(s)) } } } }
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawer) {
         Scaffold(
             modifier = modifier,
@@ -461,6 +454,16 @@ fun chatKey(
  * 会话起好之后的 sid 是那台报到时说的，不是它。
  */
 fun newConversationId(): String = UUID.randomUUID().toString()
+
+/** 那条会话在终端里的样子（问那台的终端名单）：有终端握着它 ⇒ 附着那个；没有 ⇒ 恢复；问不到 ⇒ `null`。 */
+private suspend fun termEntry(
+    terminals: TerminalOps,
+    sid: String,
+): TermEntry? =
+    terminals
+        .list()
+        .getOrNull()
+        ?.let { rows -> TerminalsList.holding(rows, sid)?.let { TermEntry.Attach(it.name) } ?: TermEntry.Resume }
 
 /** ⋯「在终端里打开」那一项：它所在的终端还在 ⇒ 附着那个；已经不在 ⇒ 先让那台恢复再附着。 */
 internal sealed interface TermEntry {
