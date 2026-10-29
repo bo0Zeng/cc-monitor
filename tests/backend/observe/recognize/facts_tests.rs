@@ -1452,12 +1452,26 @@ fn account_item(account: &str) -> cmd_wire::needs::ManualItem {
     }
 }
 
-/// 一项的短名（判先后用）：会话 ⇒ sid；计划 ⇒ `片#k`；会外 ⇒ `@号`。
+/// 计划里要人看的一条（夹具）：工作区 · 片 · 落在哪一格（编号 · 「编号 标题」；`None` ⇒ 没有格可落）。
+fn plan_at(workspace: &str, slice: &str, cell: Option<(&str, &str)>) -> NeedAt {
+    NeedAt {
+        workspace: workspace.into(),
+        slice: slice.into(),
+        cell: cell.map(|(id, label)| cmd_wire::needs::NeedsCell {
+            id: id.into(),
+            label: label.into(),
+        }),
+    }
+}
+
+/// 一项的短名（判先后用）：会话 ⇒ sid；计划 ⇒ `片@格`（没有格 ⇒ `片@-`）；会外 ⇒ `@号`。
 fn item_name(i: &cmd_wire::needs::NeedsItem) -> String {
     use cmd_wire::needs::{ManualItem, NeedsItem};
     match i {
         NeedsItem::Session { session, .. } => session.sid.clone(),
-        NeedsItem::Plan { slice, k, .. } => format!("{slice}#{k}"),
+        NeedsItem::Plan { slice, cell, .. } => {
+            format!("{slice}@{}", cell.as_ref().map_or("-", |c| c.id.as_str()))
+        }
         NeedsItem::Manual {
             manual: ManualItem::AccountLogin { account, .. },
             ..
@@ -1466,18 +1480,21 @@ fn item_name(i: &cmd_wire::needs::NeedsItem) -> String {
     }
 }
 
-/// ★ 一台的需手动整份（`sessions-needs`）只经 [`needs_list`] 拼：在等的会话（照 `needs.rank`）· 计划里每一片要人看的每一格 ·
-/// 会话外的每一项，依次排；计划 · 会外各占会话之后的一档（判不出种类的会话也排在计划前）。会外那一截读不出 ⇒ 那一句、那一截不列。
+/// ★ 一台的需手动整份（`sessions-needs`）只经 [`needs_list`] 拼：在等的会话（照 `needs.rank`）· 计划里要人看的每一条（各带它落在的那一格，
+/// 没有格可落 ⇒ 不带）· 会话外的每一项，依次排；计划 · 会外各占会话之后的一档（判不出种类的会话也排在计划前）。会外那一截读不出 ⇒ 那一句、那一截不列。
 #[test]
 fn one_machines_needs_are_sessions_then_plan_cells_then_the_rest() {
     let got = needs_list(
         vec![waiting_row("s", 7, None)],
-        &[("/w".into(), "a".into(), 2)],
+        &[
+            plan_at("/w", "a", Some(("A2-1", "A2-1 乙的一半"))),
+            plan_at("/w", "a", None),
+        ],
         Ok(vec![account_item("work")]),
         vec![],
     );
     let names: Vec<String> = got.items.iter().map(item_name).collect();
-    assert_eq!(names, ["s", "a#0", "a#1", "@work"]);
+    assert_eq!(names, ["s", "a@A2-1", "a@-", "@work"]);
     assert_eq!(got.manual_unreadable, None);
     let ranks: Vec<u64> = got.items.iter().map(rank_of).collect();
     assert!(
@@ -1487,7 +1504,14 @@ fn one_machines_needs_are_sessions_then_plan_cells_then_the_rest() {
     let v = serde_json::to_value(&got.items[1]).unwrap();
     assert_eq!(
         v,
-        json!({"kind": "plan", "rank": v["rank"], "workspace": "/w", "slice": "a", "k": 0})
+        json!({"kind": "plan", "rank": v["rank"], "workspace": "/w", "slice": "a",
+               "cell": {"id": "A2-1", "label": "A2-1 乙的一半"}})
+    );
+    let v = serde_json::to_value(&got.items[2]).unwrap();
+    assert_eq!(
+        v,
+        json!({"kind": "plan", "rank": v["rank"], "workspace": "/w", "slice": "a"}),
+        "没有格 ⇒ 不带 cell"
     );
     let unreadable = needs_list(vec![], &[], Err("坏了".into()), vec![]);
     assert!(unreadable.items.is_empty());
@@ -1584,13 +1608,13 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
     // 两台各一份整份：会话先、计划次之、会外最后；计划 · 会外并列时本机在前；总数相加；读不出的那台各带那一句。
     let remote = needs_list(
         vec![waiting_row("r", 1, Some(5))],
-        &[("/w".into(), "x".into(), 1)],
+        &[plan_at("/w", "x", None)],
         Err("读不懂".into()),
         vec![],
     );
     let local = needs_list(
         vec![],
-        &[("/v".into(), "y".into(), 1)],
+        &[plan_at("/v", "y", Some(("A1", "A1 甲")))],
         Ok(vec![account_item("home")]),
         vec![],
     );
@@ -1606,7 +1630,7 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
         down,
     );
     let names: Vec<String> = got.items.iter().map(|x| item_name(&x.item)).collect();
-    assert_eq!(names, ["r", "y#0", "x#0", "@home"]);
+    assert_eq!(names, ["r", "y@A1", "x@-", "@home"]);
     assert_eq!(got.total, 4);
     let v = serde_json::to_value(&got).unwrap();
     assert_eq!(

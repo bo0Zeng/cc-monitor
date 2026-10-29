@@ -110,13 +110,13 @@ fun NeedsEntryView(
 /**
  * 需手动屏（列表 · 聊天屏顶栏「需手动 n」进）：顶栏 ← · 需手动；那几行（会话 · 计划 · 会话外，照板上那几台、当前那台在前）＋ 各台读的结局。
  * 读中 ⇒ 骨架、组头不带数；整份没问到 ⇒ 那台一行 ＋［重试］；断着 ⇒「X 离线 · 未计入」；各台都读到且 0 件 ⇒「无需手动事项」＋ 读到了哪几台。
- * 点会话行 ⇒ 打开那条会话；点计划行 ⇒ 那一片的大纲；点会话外那一行或［登录…］⇒ 登录抽屉（目标 ＝ 那一项的 `fix.args` 原样）。
+ * 点会话行 ⇒ 打开那条会话；点计划行 ⇒ 那一格（没有格 ⇒ 那一片的大纲）；点会话外那一行或［登录…］⇒ 登录抽屉（目标 ＝ 那一项的 `fix.args` 原样）。
  */
 @Composable
 fun OverviewScreen(
     current: String,
     onOpen: (hostId: String, sid: String) -> Unit,
-    onPlan: (hostId: String, workspace: String, slice: String) -> Unit,
+    onPlan: (hostId: String, workspace: String, slice: String, cell: String?) -> Unit,
     onBack: () -> Unit,
 ) {
     val board = koinInject<NeedsBoard>()
@@ -138,7 +138,7 @@ fun OverviewScreen(
             items(ov.needs) { line ->
                 when (line) {
                     is NeedsLine.Session -> SessionLine(line) { onOpen(line.host.id, line.row.sid) }
-                    is NeedsLine.Plan -> PlanLine(line) { onPlan(line.host.id, line.workspace, line.slice) }
+                    is NeedsLine.Plan -> PlanLine(line) { onPlan(line.host.id, line.workspace, line.slice, line.cell?.id) }
                     is NeedsLine.Manual ->
                         ManualLine(line, ov.manyHosts) { item ->
                             item.fix?.let { fix -> login = line.host to LoginFlow(backends.of(line.host.id), line.host.label, fix.args, scope).also { it.start() } }
@@ -221,10 +221,11 @@ private fun PlanLine(
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         PhIcon(Ph.CheckSquare, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Column(Modifier.weight(1f)) {
-            Text(line.slice, style = MaterialTheme.typography.bodyMedium)
-            Text(line.workspace, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(line.title, style = MaterialTheme.typography.bodyMedium)
+            // 有格 ⇒ 第二行带片名；没有 ⇒ 片名已在第一行。
+            val second = listOfNotNull(line.slice.takeIf { line.cell != null }, line.workspace).joinToString(copyText("kit.text.sep"))
+            Text(second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (line.n > 1) Text(line.n.toString(), style = MaterialTheme.typography.labelLarge, color = LocalAppTokens.current.warn)
     }
 }
 
