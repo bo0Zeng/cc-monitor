@@ -1,6 +1,7 @@
 //! 只读查询走长连接的判据（monitor 侧）。
 
 use super::*;
+use serde_json::json;
 
 /// 搬上帧面的 CLI 子命令 → 帧命令。左列那几条已从后端删掉（下面钉着「它们不再是子命令」），右列是今天的帧命令。
 const MOVED: &[(&str, &str)] = &[

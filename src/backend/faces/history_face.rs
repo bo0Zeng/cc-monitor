@@ -13,12 +13,12 @@ use crate::observe::query::locate::{self, RecordProbe};
 use crate::observe::query::tail::TailPlan;
 use crate::observe::query::turns::{HistoryTurns, HistoryTurnsReq};
 use crate::observe::query::{body, jlen, tail, ENVELOPE_BYTES};
-use crate::wire::typed::{codes, of_pair, Command, NoArgs};
+use crate::wire::typed::{self, codes, of_pair, Command, NoArgs};
 use crate::wire::SessionFaceExt as _;
 pub(crate) use cmd_wire::needs::{AnsweredRow, NeedsList};
 /// 这两条的回包住 `cmd-wire`（手机按同一份解，记录那一格按完整记录）；后端写的那一份记录是原样的一团（缺省 `Value`）。
-pub(crate) use cmd_wire::record::{HistoryImage, HistoryLines, HistoryRead};
-pub(crate) use cmd_wire::session::{Held, HistoryTail, TailHow};
+pub(crate) use cmd_wire::record::{HistoryImage, HistoryLines, HistoryRead, HistoryReadReq};
+pub(crate) use cmd_wire::session::{Held, HistoryTail, HistoryTailReq, TailHow};
 use std::path::Path;
 
 use super::read_face::{
@@ -57,24 +57,6 @@ macro_rules! page_codes {
 
 // ───────────────────────── history-read ─────────────────────────
 
-/// `history-read` 的入参：读 `[offset, until)` 那一页（切在行尾）。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct HistoryReadReq {
-    /// jsonl 路径（围栏：记录树里）。
-    pub(crate) path: String,
-    /// 从这个字节起（缺 ⇒ 0）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) offset: Option<u64>,
-    /// 可选右端（半开区间）；缺 ⇒ 读到文件尾。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) until: Option<u64>,
-}
-
 page_codes!(
     /// `history-read` 的码。
     HistoryReadErr
@@ -84,9 +66,7 @@ page_codes!(
 pub(crate) struct HistoryReadCmd;
 
 impl Command for HistoryReadCmd {
-    const NAME: &'static str = "history-read";
-    type Req = HistoryReadReq;
-    type Reply = HistoryRead;
+    typed::by_call!(HistoryReadReq);
     type Err = HistoryReadErr;
 }
 
@@ -646,23 +626,6 @@ pub(crate) fn branch_at(home: &Path, req: BranchReq) -> Result<Branch, HistoryBr
 
 // ───────────────────────── history-tail ─────────────────────────
 
-/// `history-tail` 的入参：要最新几行 ＋ 手上那一份（上一次回的 `held`，之后实时行推过的）。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct HistoryTailReq {
-    /// jsonl 路径（围栏同 `history-read`）。
-    pub(crate) path: String,
-    /// 要最新几行（也是「缺得比这还多就不读那一截」的那条线）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) n: u64,
-    /// 上一次回的那一份（缺 ⇒ 手上什么都没有）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) held: Option<Held>,
-}
-
 codes! {
     /// `history-tail` 的码。
     pub(crate) enum HistoryTailErr {
@@ -675,9 +638,7 @@ codes! {
 pub(crate) struct HistoryTailCmd;
 
 impl Command for HistoryTailCmd {
-    const NAME: &'static str = "history-tail";
-    type Req = HistoryTailReq;
-    type Reply = HistoryTail;
+    typed::by_call!(HistoryTailReq);
     type Err = HistoryTailErr;
 }
 

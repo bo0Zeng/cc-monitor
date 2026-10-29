@@ -703,6 +703,27 @@ pub struct RecordLine<R = Value> {
     pub record: R,
 }
 
+/// `history-read` 的入参：读 `[offset, until)` 那一页（切在行尾）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct HistoryReadReq {
+    /// jsonl 路径（围栏：记录树里）。
+    pub path: String,
+    /// 从这个字节起（缺 ⇒ 0）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
+    pub offset: Option<u64>,
+    /// 可选右端（半开区间）；缺 ⇒ 读到文件尾。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
+    pub until: Option<u64>,
+}
+
 /// `history-read` 的回包（带 `view` 时 `rows[]` 那几格可缺）。
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
