@@ -6,6 +6,7 @@ import markedKatex from "marked-katex-extension";
 import "highlight.js/styles/github-dark-dimmed.css";
 import "katex/dist/katex.min.css";
 import { copyText } from "./copy-table";
+import { fillImage } from "./cards/attach-strip";
 
 /**
  * 两种渲染：
@@ -278,22 +279,27 @@ function escapeHtml(s: string): string {
 }
 
 /**
- * 补卡片里惰路留下的占位：代码块（`.code-block.code-pending`）跑高亮，数学（`[data-math-pending]`）算 KaTeX、过同一道清洗、原位替换。
+ * 补卡片里惰路留下的占位：代码块（`.code-block.code-pending`）跑高亮，数学（`[data-math-pending]`）算 KaTeX、过同一道清洗、原位替换，
+ * 图（`[data-image-pending]`）这时才去取（`cards/attach-strip.ts::fillImage`）。
  * 幂等：标 `data-enhanced`；没有占位时一次 querySelector 就返回。
  */
-/** 惰路留下的占位：等着高亮的代码块 · 等着排版的公式。 */
-const PENDING = ".code-block.code-pending, [data-math-pending]";
+/** 惰路留下的占位：等着高亮的代码块 · 等着排版的公式 · 等着取的图。 */
+const PENDING = ".code-block.code-pending, [data-math-pending], [data-image-pending]";
 
 export function enhanceCard(el: HTMLElement): void {
   if (el.dataset.enhanced === "1") return;
   el.dataset.enhanced = "1";
 
   const pendings = el.querySelectorAll<HTMLElement>(PENDING);
-  if (pendings.length === 0) return; // fast path: 该卡片没代码块、没公式
+  if (pendings.length === 0) return; // fast path: 该卡片没代码块、没公式、没图
 
   for (const block of pendings) {
     if (block.hasAttribute("data-math-pending")) {
       enhanceMath(block);
+      continue;
+    }
+    if (block.hasAttribute("data-image-pending")) {
+      fillImage(block);
       continue;
     }
     const lang = block.dataset.lang ?? "";

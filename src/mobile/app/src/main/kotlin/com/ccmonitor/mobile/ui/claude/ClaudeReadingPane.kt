@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.ui.claude
 
 import android.graphics.BitmapFactory
-import android.util.Base64
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -35,15 +34,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -54,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.diff.structuredPatchToDiff
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
+import com.ccmonitor.mobile.core.claude.model.SaidImage
 import com.ccmonitor.mobile.core.claude.model.StreamItem
 import com.ccmonitor.mobile.core.claude.model.extractCodeBlocks
 import com.ccmonitor.mobile.core.copy.copyText
@@ -427,29 +430,30 @@ private fun UserTextCard(
     }
 }
 
+/**
+ * 人说的那一句里的图怎么取字节（聊天屏给，见 `ChatSession.image`）：记录里只带引用，那一格组合起来才问 —— LazyColumn 只组合看得见的那几项，
+ * 就是滚进视口再取。没给 ⇒ 只画占位。
+ */
+val LocalSaidImages = staticCompositionLocalOf<suspend (SaidImage) -> ByteArray?> { { null } }
+
 /** 人说的那一句带的图片（小图一排）与附件（chip：类别字 · 名字 · 大小；那台已清理 ⇒ 淡着写「已清理」）。 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SaidAttachments(unit: RenderUnit.UserText) {
     val tokens = LocalAppTokens.current
     val gap = Arrangement.spacedBy(tokens.spacing.xs, Alignment.End)
+    val load = LocalSaidImages.current
     if (unit.images.isNotEmpty()) {
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = gap, verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
             for (img in unit.images) {
-                val bitmap =
-                    remember(img) {
-                        runCatching { Base64.decode(img.base64, Base64.DEFAULT) }
-                            .getOrNull()
-                            ?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
-                    }
-                if (bitmap != null) {
-                    Image(
-                        bitmap,
-                        contentDescription = copyText("attach.msg.image"),
-                        modifier = Modifier.size(width = 160.dp, height = 110.dp).clip(RoundedCornerShape(tokens.radius.l)),
-                        contentScale = ContentScale.Crop,
-                    )
+                val bitmap by produceState<ImageBitmap?>(null, img) {
+                    value = load(img)?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
                 }
+                val frame = Modifier.size(width = 160.dp, height = 110.dp).clip(RoundedCornerShape(tokens.radius.l))
+                // 取回之前 · 取不到：定尺寸的占位（不跳版）。
+                bitmap?.let {
+                    Image(it, contentDescription = copyText("attach.msg.image"), modifier = frame, contentScale = ContentScale.Crop)
+                } ?: Box(frame.background(MaterialTheme.colorScheme.surfaceVariant))
             }
         }
     }

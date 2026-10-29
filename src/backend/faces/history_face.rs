@@ -17,7 +17,7 @@ use crate::wire::typed::{codes, of_pair, Command, NoArgs};
 use crate::wire::SessionFaceExt as _;
 pub(crate) use cmd_wire::needs::{AnsweredRow, NeedsList};
 /// 这两条的回包住 `cmd-wire`（手机按同一份解，记录那一格按完整记录）；后端写的那一份记录是原样的一团（缺省 `Value`）。
-pub(crate) use cmd_wire::record::{HistoryLines, HistoryRead};
+pub(crate) use cmd_wire::record::{HistoryImage, HistoryLines, HistoryRead};
 pub(crate) use cmd_wire::session::{Held, HistoryTail, TailHow};
 use std::path::Path;
 
@@ -381,6 +381,101 @@ pub(crate) fn lines_at(
         end: page.end,
         lines,
     })
+}
+
+// ───────────────────────── history-image ─────────────────────────
+
+/// `history-image` 的入参：记录行里那一张图的引用（[`cmd_wire::record::Block::Image`] 的 `at` · `n`）＋ 那一条的身份。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HistoryImageReq {
+    /// jsonl 路径（围栏同 `history-read`）。
+    pub(crate) path: String,
+    /// 那一行的起点字节（引用里的 `at`）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) at: u64,
+    /// 这一行里第几张（引用里的 `n`）。
+    pub(crate) n: u32,
+    /// 那一条记录的 `id`：起点上读出来的不是它 ⇒ `not_found`（记录被改写过也不给错的图）。
+    pub(crate) id: String,
+}
+
+codes! {
+    /// `history-image` 的码。
+    pub(crate) enum HistoryImageErr {
+        /// 读不动（打不开 · 没有一家认得这份记录）。
+        Failed = "failed",
+        /// 那一行比续读上限还长。
+        OversizedLine = "oversized_line",
+        /// 路径在记录树的围栏外。
+        Refused = "refused",
+        /// 起点上不是那一条 · 那一条里没有第 `n` 张。
+        NotFound = "not_found",
+    }
+}
+
+/// `history-image`：按引用取回一张图（界面 · 手机画到它那一格时才问）。
+pub(crate) struct HistoryImageCmd;
+
+impl Command for HistoryImageCmd {
+    const NAME: &'static str = "history-image";
+    type Req = HistoryImageReq;
+    type Reply = HistoryImage;
+    type Err = HistoryImageErr;
+}
+
+impl crate::wire::typed::Handle for HistoryImageCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: HistoryImageReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<HistoryImage, HistoryImageErr>> + Send + 'static
+    {
+        async move { image_at(&home(), req) }
+    }
+}
+
+/// [`HistoryImageCmd`] 的本体，家目录是参数。读 `at` 起的那一行、走同一份翻译（与 `history-lines` · 流上的 `line` 同一个口），
+/// 认身份，按块的先后深度优先找第 `n` 张。
+pub(crate) fn image_at(home: &Path, req: HistoryImageReq) -> Result<HistoryImage, HistoryImageErr> {
+    use cmd_wire::record::{Block, Body};
+    let lower = of_pair(HistoryImageErr::Failed);
+    let missing = || {
+        HistoryImageErr::NotFound(format!(
+            "no image {} in record {} at byte {}",
+            req.n, req.id, req.at
+        ))
+    };
+    let (_, face) = record_face(home, &req.path).map_err(&lower)?;
+    // 一页只要一个字节：续读到那一行的行尾为止（不多读后面的行）。
+    let page = body::read_page(home, &req.path, req.at, None, 1, LINE_CAP_BYTES).map_err(&lower)?;
+    let line = page.bytes.split(|&b| b == b'\n').next().unwrap_or_default();
+    let line = String::from_utf8_lossy(line.strip_suffix(b"\r").unwrap_or(line));
+    let record = (face.parse)(&crate::agents::Line::new(&line, req.at))
+        .ok()
+        .flatten()
+        .and_then(|t| t.record)
+        .filter(|r| r.id == req.id)
+        .ok_or_else(missing)?;
+    let blocks = match record.body {
+        Body::Said { blocks, .. } | Body::Reply { blocks, .. } => blocks,
+        _ => return Err(missing()),
+    };
+    fn nth(blocks: Vec<Block>, n: u32) -> Option<HistoryImage> {
+        blocks.into_iter().find_map(|b| match b {
+            Block::Image {
+                n: k,
+                media_type,
+                data,
+                ..
+            } if k == n => Some(HistoryImage { media_type, data }),
+            Block::ToolResult { content, .. } => nth(content, n),
+            _ => None,
+        })
+    }
+    nth(blocks, req.n).ok_or_else(missing)
 }
 
 // ───────────────────────── history-run ─────────────────────────
@@ -1513,3 +1608,7 @@ mod read_cap_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/history/facts_by_sid_tests.rs"]
 mod facts_by_sid_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/faces/history_image_tests.rs"]
+mod image_tests;

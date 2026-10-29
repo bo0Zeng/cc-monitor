@@ -22,6 +22,7 @@ import com.ccmonitor.mobile.core.wire.gen.RewindOptions
 import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SentResult
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
+import com.ccmonitor.mobile.core.wire.gen.HistoryImage as HistoryImageReply
 import com.ccmonitor.mobile.core.wire.gen.HistoryLines as HistoryLinesPage
 import com.ccmonitor.mobile.core.wire.gen.HistoryRead as HistoryReadPage
 import com.ccmonitor.mobile.core.wire.gen.HistoryRun as HistoryRunPage
@@ -422,6 +423,21 @@ object HistoryRead {
         end: Long?,
         record: Any?,
     ): Map<String, Any?> = mapOf("end" to end, "record" to record)
+}
+
+/** `history-image`：按引用取回一张图（记录里的图片块只带引用：哪一行 `at` · 第几张 `n` ＋ 那一条的 `id`）。 */
+object HistoryImage {
+    const val COMMAND: String = "history-image"
+
+    fun args(
+        path: String,
+        at: Long,
+        n: Int,
+        id: String,
+    ): Map<String, Any?> = mapOf("path" to path, "at" to at, "n" to n, "id" to id)
+
+    /** 回包里那张图的 base64；解不开 ⇒ `null`。 */
+    fun of(data: Any?): String? = Wire.bind<HistoryImageReply>(data)?.data
 }
 
 /** `history-lines`：按行号取 `[from, until)` 那一段（不进界面的行照占号、不出）。 */
