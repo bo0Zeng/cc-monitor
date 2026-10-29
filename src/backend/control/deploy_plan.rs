@@ -243,6 +243,15 @@ pub(crate) async fn answer_install(req: DeployInstallReq) -> Result<Installed, D
     if !req.machine.trim().is_empty() {
         let os = got.as_ref().ok().map(|i| i.os.clone());
         crate::control::machine_state::note(&req.machine, deploy::machine::Fact::Deployed { os });
+        // 没换上那一句记进那台的成品（机器条那一行照它说，不另弹 toast）。
+        if let Err(f) = &got {
+            crate::control::machine_state::note(
+                &req.machine,
+                deploy::machine::Fact::UpdateFailed {
+                    said: f.message.clone(),
+                },
+            );
+        }
     }
     got.map_err(|f| crate::wire::typed::of_fail(f, DeployInstallErr::IoFailed))
 }

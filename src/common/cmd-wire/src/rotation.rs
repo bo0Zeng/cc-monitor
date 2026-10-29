@@ -95,12 +95,11 @@ pub struct Fact {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
     ts(
-        rename = "RotFormKind",
         export,
         export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
-pub enum FormKind {
+pub enum RotFormKind {
     /// 0–100 的数。
     Percent,
     /// 分钟数（整数）。
@@ -158,7 +157,7 @@ pub struct FormShowIf {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FormCell {
     pub key: String,
-    pub kind: FormKind,
+    pub kind: RotFormKind,
     pub scope: FormScope,
     /// 只对 `scope: each`：号没另设就跟总体（总体那一份在 `settings[key]`）。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -210,7 +209,7 @@ pub enum StrategyText {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
-    ts(rename = "RotLog", export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct RotLog {
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
@@ -229,7 +228,6 @@ pub struct RotLog {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
     ts(
-        rename = "RotLogCause",
         export,
         export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
@@ -773,7 +771,7 @@ pub struct RotChoice {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct RotCell {
     pub key: String,
-    pub kind: FormKind,
+    pub kind: RotFormKind,
     /// 24 小时条那一格是哪一窗（`5h` · `7d`）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]

@@ -13,8 +13,9 @@
 //!
 //! 收到 Hello 之前，握手那一步手里只有一个 [`ParkedWriter`]，它没有可调的写（比「注释 + 扫文本的机检」强一档）。
 //! 切分与停放是同一个函数（[`split_and_park`]）⇒ 生产代码里不存在可写的裸 `WriteHalf` 窗口。
-//! 剩下的绕过方式：自己造一个假的 `frame::Hello` 去换见证（调用点显眼的胡来），或绕开本模块直接拿 `tokio::io::split` ——
-//! 后者由 `stream_source` 的 `write_half_guard::stream_source_never_splits_a_stream_itself` 拦（零命中型判据，尾随注释绕不动）。
+//! 剩下的绕过方式：自己造一个假的 `frame::Hello` 去换见证（调用点显眼的胡来），或手里本来就有一条双工流、自己去切。
+//! 后者在 monitor 那一侧没有着手处：`stream_source` 手里只有通道里的行与 [`InboundClient`]（没有写方法），一条流都拿不到；
+//! [`split_and_park`] 只开给本 crate（握手那一步）。
 //!
 //! # 超时归客户端
 //!
@@ -92,8 +93,8 @@ pub struct ParkedWriter<W> {
 
 /// 把流切成两半，并且在同一个表达式里把写半边停住。`split()` 与 `park()` 分开的话，两者之间有一个可写的裸 `WriteHalf` 窗口，
 /// 类型系统保护不了，文本机检也能被尾随注释或一句 `w.write(..)` 绕过 ⇒ 让那个窗口根本不存在：调用方拿不到裸 `WriteHalf`，只能拿到 [`ParkedWriter`]；
-/// 护栏是「生产段里不许出现 `tokio::io::split(`」（零命中型判据）。
-pub fn split_and_park<S>(
+/// 只开给本 crate：全仓只有握手那一步（`attach::handshake`）切流。
+pub(crate) fn split_and_park<S>(
     stream: S,
 ) -> (
     tokio::io::ReadHalf<S>,
@@ -111,7 +112,7 @@ where
 /// **只在测试期存在**（本 crate 的测试档，与给别的 crate 判据用的 `test-support`）—— 生产代码一律走 [`split_and_park`]。
 /// 留它是因为 `tokio::io::duplex` 造的内存管道两端本来就是分开的，没有可切的双工流；
 /// 把它 gate 在 test 下，等于让「生产代码里有可写的裸 WriteHalf」这件事**编译期不可表示**，
-/// 不用再靠 `write_half_guard` 去扫（那条护栏留着挡 `tokio::io::split` 直接调用）。
+/// 不靠扫源码去拦。
 #[cfg(any(test, feature = "test-support"))]
 pub fn park<W>(w: W) -> ParkedWriter<W>
 where

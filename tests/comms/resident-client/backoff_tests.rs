@@ -1,4 +1,5 @@
 //! 退避的数（两端同一份）：首次只等下界 · 翻倍封顶 · 活过 30 s 才清零（只握上手不算）。
+//! 挂在 `feed` 底下：退避是那个模块私有的，子模块看得见。
 use super::*;
 
 #[test]
@@ -66,7 +67,7 @@ fn rounds_that_never_reached_the_far_side_stay_at_the_floor() {
     );
 }
 
-/// 两端同一份阈值：退避的数只在本文件定义一次；用它的循环全仓只一条（`feed.rs`，monitor `one_loop_guard` 守着），
+/// 两端同一份阈值：退避的数只在本文件定义一次；用它的循环全仓只一条（`feed.rs`，退避是那个模块私有的），
 /// 手机（嵌的 Rust 核心 `src/mobile/core-rs`）与桌面（本机后端 `control/feeds.rs`，各台的常驻流归它）都经本 crate 的 `Feed` 跑；Kotlin 那一侧一个退避的数都没有。
 #[test]
 fn both_ends_take_the_backoff_from_here() {

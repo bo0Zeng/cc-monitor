@@ -1,4 +1,4 @@
-//! **一台的常驻流，断了自己接回去** —— 桌面与手机同一条重连循环（全仓只这一处，`one_loop_guard`）。宿主只接几根线：
+//! **一台的常驻流，断了自己接回去** —— 桌面与手机同一条重连循环（全仓只这一处：退避是本模块私有的，别处造不出一份）。宿主只接几根线：
 //! 下面那条 SSH（[`Transport`]）· 往外交的事（[`Sink`]）· 装不装后端（[`Transport::installs`]）。
 //!
 //! 接一台只有一条路：先直接接常驻流（`--resident-attach`，平时一条 exec 就接上）；没接上 ⇒ `--resident-ensure`（常驻不在就起）
@@ -23,7 +23,9 @@
 //! 在看名单住这一台的名单台（[`Desk`]）：attach 行带它此刻那份（那台从第一帧起照它发），接上之后把这条连接交给它（[`Desk::up`]）。
 
 use crate::attach::{self, AttachFail, RELAY_ABSENT, RELAY_TRIES, RELAY_WAIT};
-use crate::backoff::{should_reset_backoff, Backoff, DIAL_WITHIN, HEARTBEAT_IDLE, PING_WITHIN};
+use crate::backoff::{
+    DIAL_WITHIN, HEARTBEAT_IDLE, MIN_HEALTHY_UPTIME, PING_WITHIN, RECONNECT_MAX, RECONNECT_MIN,
+};
 use crate::client::{deliver_answer, InboundClient};
 use crate::frames::Admit;
 use crate::line::{read_capped_line, CappedLine, BACKEND_FRAME_LINE_CAP};
@@ -1072,6 +1074,56 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// 这一轮连接结束后，退避该不该重置回 [`RECONNECT_MIN`]。
+///
+/// 两个条件**都要满足**：握手成功过（`saw_hello`）**且**这条连接活过 [`MIN_HEALTHY_UPTIME`]。
+/// 只看前者就是 I-1 那个自激循环；只看后者会把「连了很久但从没握手成功」也当健康。
+fn should_reset_backoff(saw_hello: bool, lived: Duration) -> bool {
+    saw_hello && lived >= MIN_HEALTHY_UPTIME
+}
+
+/// 把当前退避翻倍并封顶到 [`RECONNECT_MAX`]。[`Backoff::after_wait`] 在这一轮没站住时调用。
+fn next_backoff(cur: Duration) -> Duration {
+    (cur * 2).min(RECONNECT_MAX)
+}
+
+/// 重连循环手里的那一份退避，模块私有：别处造不出一份（第二条重连循环写不出来）。两段式：
+/// 一轮结束先 [`Backoff::before_wait`]（这一轮站住了 ⇒ 回下界）按它睡，睡完 [`Backoff::after_wait`]：
+/// 被叫醒（［重新连接］· 换了一条 SSH）⇒ 回下界；这一轮没站住（没握上手，或握上手却活不过 [`MIN_HEALTHY_UPTIME`]）⇒ 翻倍。
+/// 「握上手却活不过」也要翻倍：对端发完 hello 就死的话，每一轮都「连上过」，只看握手退避就永远停在下界（F05 / I-1 的自激循环）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Backoff {
+    cur: Duration,
+}
+
+impl Backoff {
+    fn new() -> Self {
+        Backoff { cur: RECONNECT_MIN }
+    }
+
+    /// 这一轮结束：`healthy` = [`should_reset_backoff`] 的结论。回这一次要睡多久。
+    fn before_wait(&mut self, healthy: bool) -> Duration {
+        if healthy {
+            self.cur = RECONNECT_MIN;
+        }
+        self.cur
+    }
+
+    /// 睡完（或被叫醒）之后。`reached` = 这一轮够到了那一台（拨出去有回话）；拨到 [`DIAL_WITHIN`] 都没回话 ⇒ `false`：
+    /// 没有一次登录落到那台身上，涨退避护不了谁，只会让网回来之后多等 ⇒ 下一轮照样从下界来。
+    fn after_wait(&mut self, kicked: bool, healthy: bool, reached: bool) {
+        if kicked || !reached {
+            self.cur = RECONNECT_MIN;
+        } else if !healthy {
+            self.cur = next_backoff(self.cur);
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../tests/comms/resident-client/feed_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/comms/resident-client/backoff_tests.rs"]
+mod backoff_tests;
