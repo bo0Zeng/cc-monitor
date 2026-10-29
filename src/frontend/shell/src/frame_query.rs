@@ -266,11 +266,10 @@ pub(crate) async fn read_page(
     upto: Option<u64>,
     deadline: Deadline,
 ) -> Result<Page, String> {
-    let until = upto;
     let req = cmd_wire::record::HistoryReadReq {
         path: path.to_string(),
         offset: Some(offset),
-        until,
+        until: upto,
     };
     let p = ask(origin, &req, Some(folded_view()), deadline)
         .await
