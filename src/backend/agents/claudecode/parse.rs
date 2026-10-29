@@ -74,7 +74,7 @@ pub(crate) fn translated(
         return Ok(None);
     };
     let cwd = rec.cwd().map(str::to_string);
-    let record = super::record_of::record_of(rec, &crate::agents::line_id(start));
+    let record = super::record_of::record_of(rec, start);
     Ok(Some(crate::agents::Translated { record, cwd }))
 }
 

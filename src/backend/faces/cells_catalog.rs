@@ -796,7 +796,11 @@ mod specimens {
 
     pub(super) fn record() -> Vec<Specimen> {
         let image = Block::Image {
-            source: serde_json::json!({}),
+            media_type: s("image/png"),
+            bytes: 1,
+            at: 0,
+            n: 0,
+            data: String::new(),
         };
         let mut out: Vec<Record> = vec![
             rec(Body::Said {

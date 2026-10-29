@@ -23,10 +23,15 @@ enum class DeliveryState {
     FAILED_PERMANENT,
 }
 
-/** 人说的那一句里的一张图：图片类型 ＋ base64（记录里那一块照抄）。 */
+/**
+ * 人说的那一句里的一张图：记录里只带引用（类型 · 哪一行 [at] · 这一行里第几张 [n]），字节画到它那一格时按 [record]（那一条的 `id`）
+ * 另取（`history-image`）。
+ */
 data class SaidImage(
     val mediaType: String,
-    val base64: String,
+    val at: Long,
+    val n: Int,
+    val record: String,
 )
 
 /**

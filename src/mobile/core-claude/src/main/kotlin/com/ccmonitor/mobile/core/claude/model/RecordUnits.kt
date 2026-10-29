@@ -148,7 +148,7 @@ class RecordUnits {
         val id = r.id
         val text = r.who.text
         return when (val s = r.who.speaker) {
-            Speaker.Human -> RenderUnit.UserText(id, text, id, images = imagesOf(r.blocks), attachments = r.attachments.orEmpty())
+            Speaker.Human -> RenderUnit.UserText(id, text, id, images = imagesOf(r.blocks, id), attachments = r.attachments.orEmpty())
             is Speaker.SlashCommand -> RenderUnit.SlashCommand(id, s.name, s.args, id)
             is Speaker.BashInput -> RenderUnit.BashInput(id, s.command, id)
             is Speaker.BashOutput -> RenderUnit.BashOutput(id, s.stdout, s.stderr, id)
@@ -200,14 +200,11 @@ class RecordUnits {
         )
     }
 
-    /** 人说的那一句里的图片块：来源认得出的那一形（base64 ＋ 图片类型）才收，别的画不出、不收（同桌面）。 */
-    private fun imagesOf(blocks: List<Block>): List<SaidImage> =
-        blocks.filterIsInstance<Block.Image>().mapNotNull { b ->
-            val m = inputOf(b.source).takeIf { it["type"] == "base64" }
-            val type = (m?.get("media_type") as? String)?.takeIf { it.startsWith("image/") }
-            val data = m?.get("data") as? String
-            if (type != null && data != null) SaidImage(type, data) else null
-        }
+    /** 人说的那一句里的图片块（画不出的来源那台已经不出块）：引用照收，记下是哪一条的。 */
+    private fun imagesOf(
+        blocks: List<Block>,
+        record: String,
+    ): List<SaidImage> = blocks.filterIsInstance<Block.Image>().map { SaidImage(it.mediaType, it.at, it.n, record) }
 
     /** 工具入参原样（形状照那一家，不解）：是一团键值 ⇒ 交卡片；别的 ⇒ 空。 */
     private fun inputOf(raw: Raw): Map<String, Any?> {
