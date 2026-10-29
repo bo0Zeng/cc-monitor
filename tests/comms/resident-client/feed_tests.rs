@@ -106,6 +106,8 @@ struct Fake {
     reply_without_ok: std::sync::atomic::AtomicBool,
     /// 有 ⇒ 下一条 attach 行收到之后、回话之前等它放行一次（握手中改名单）。
     reply_hold: Mutex<Option<Arc<tokio::sync::Notify>>>,
+    /// 置位 ⇒ 这一跳近（回环 · 局域网：拨号核心的判准答不压）。
+    near: std::sync::atomic::AtomicBool,
 }
 
 struct T(Arc<Fake>);
@@ -151,6 +153,9 @@ impl Transport for T {
             Ok(mine)
         })
     }
+    fn far(&self) -> bool {
+        !self.0.near.load(Ordering::SeqCst)
+    }
     fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>> {
         let f = Arc::clone(&self.0);
         Box::pin(async move {
@@ -181,6 +186,9 @@ impl Transport for D {
     ) -> Boxed<'_, Result<Self::Stream, Problem>> {
         let t = T(Arc::clone(&self.0));
         Box::pin(async move { t.stream(command, progress).await })
+    }
+    fn far(&self) -> bool {
+        T(Arc::clone(&self.0)).far()
     }
     fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>> {
         self.0.steps.lock().unwrap().push(command.clone());
@@ -463,6 +471,34 @@ async fn the_relation_comes_back_in_the_attach_reply_and_the_phone_attaches_eith
         assert!(
             ask(&feed, "ping", Duration::from_secs(5)).await.is_ok(),
             "{theirs}：照用对得上的那几条"
+        );
+    }
+}
+
+/// 这一跳近（拨号核心的判准答不压：回环 · 往返不到门槛）⇒ attach 行不带 `deflate`、照不压接上；远（缺省）⇒ 带。
+/// 近的那一跳上认不得这一格的老后端一次就接上（不用不压再接那一趟）。
+#[tokio::test(start_paused = true)]
+async fn a_near_hop_attaches_without_deflate_and_a_far_one_with_it() {
+    for (near, build) in [(true, MINE), (false, MINE), (true, PRE_DEFLATE)] {
+        let f = Arc::new(Fake::default());
+        f.near.store(near, Ordering::SeqCst);
+        f.attaches.lock().unwrap().push_back(upp(build));
+        let (feed, _) = start(&f);
+        until("流接上了", || up(&feed)).await;
+        let lines = f.attach_lines.lock().unwrap().clone();
+        assert_eq!(lines.len(), 1, "{build} 近={near}：一次接上 {lines:?}");
+        assert_eq!(
+            lines[0].contains("\"deflate\":true"),
+            !near,
+            "{build} 近={near}：{}",
+            lines[0]
+        );
+        assert!(
+            matches!(
+                ask(&feed, "ping", Duration::from_secs(5)).await,
+                Ok(Some(_))
+            ),
+            "{build} 近={near}：接上照答"
         );
     }
 }

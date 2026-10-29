@@ -104,6 +104,10 @@ impl Ssh for Fake {
         self.words.lock().unwrap().push("install".into());
         Box::pin(async {})
     }
+
+    fn far(&self, _machine: &str) -> bool {
+        true
+    }
 }
 
 async fn serve(peer: Peer, up: DuplexStream, mut down: DuplexStream) {
