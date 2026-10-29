@@ -5,7 +5,7 @@
 //! `t` 的闭集：`said` · `reply` · `retry` · `title` · `unread`；内容块 [`Block`] 是两家共有的词。
 //!
 //! 回包里的那一份记录后端照原样的一团写（出口的声明可能去过格），所以 [`ReadRow`] · [`RecordLine`] 及其回包对记录那一格是泛型：
-//! 后端写 `Value`（缺省），手机按完整记录 [`Record`] 一条一条地解（`replies` 表里登记的是 `HistoryRead<OrUnread>`：解不开的那一条成认不出那一条，整份不失败）；TS 一侧照 `Record` 出（`ts(concrete)`）。
+//! 后端写 `Value`（缺省），手机按完整记录 [`Record`] 一条一条地解（`calls!` 表里那几条 `reads` 写的是 `HistoryRead<OrUnread>`：解不开的那一条成认不出那一条，整份不失败；核心交 Kotlin 之前照同一判法改那一格，[`mend_records`]）；TS 一侧照 `Record` 出（`ts(concrete)`）。
 
 use crate::cells::{Tone, Words};
 use serde::{Deserialize, Serialize};
@@ -739,6 +739,27 @@ pub struct HistoryRead<R = Value> {
     pub eof: bool,
 }
 
+/// `history-lines` 的入参：按行号取 `[from, until)`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct HistoryLinesReq {
+    /// jsonl 路径（围栏同 `history-read`）。
+    pub path: String,
+    /// 第一行的行号（缺 ⇒ 0）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
+    pub from: Option<u64>,
+    /// 可选右端（半开区间）；缺 ⇒ 到最后一个完整行为止。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number | null"))]
+    pub until: Option<u64>,
+}
+
 /// `history-lines` 的回包。
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -900,6 +921,26 @@ impl OrUnread {
 impl<'de> Deserialize<'de> for OrUnread {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         Value::deserialize(d).map(Self::of)
+    }
+}
+
+/// 带记录的那几条回包（`history-read` · `history-tail` 的 `rows[].record`，`history-lines` 的 `lines[].record`）：
+/// 记录那一格解不开完整记录的，换成认不出那一条（[`OrUnread::of`]：带原样的类名与摘录，同桌面那几句）；解得开的、别的格都原样不动。
+/// 后端照原样的一团写记录、记录的形状不进形状指纹：那一家新出一种记录不该让整页读不出，这一条判定只在这里（手机核心交 Kotlin 之前）。
+pub fn mend_records(cmd: &str, data: &mut Value) {
+    let list = match cmd {
+        "history-read" | "history-tail" => "rows",
+        "history-lines" => "lines",
+        _ => return,
+    };
+    let Some(items) = data.get_mut(list).and_then(Value::as_array_mut) else {
+        return;
+    };
+    for rec in items.iter_mut().filter_map(|i| i.get_mut("record")) {
+        if Record::deserialize(&*rec).is_err() {
+            let mended = OrUnread::of(std::mem::take(rec));
+            *rec = serde_json::to_value(&mended).unwrap_or_default();
+        }
     }
 }
 

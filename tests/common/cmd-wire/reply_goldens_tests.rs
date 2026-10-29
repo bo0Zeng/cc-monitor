@@ -1,7 +1,7 @@
 //! 手机读的那几条回包的跨语言金样（`tests/__fixtures__/wire-replies.golden.json`）。
 //!
 //! 每条命令一份结构夹具（`sample`：每格都填、并集取第一形，`node tests/scripts/gen-kotlin-wire.mjs --samples` 现出，不放真正文），
-//! 这里按 `replies` 那张表里的类型解、照类型写成一行（`rust`）。手机那一侧（`RepliesGoldenTest`）拿生成的 Kotlin 类解 `rust`
+//! 这里按 `calls!` 那张表里的类型（写了 `reads` 的照那一形）解、照类型写成一行（`rust`）。手机那一侧（`RepliesGoldenTest`）拿生成的 Kotlin 类解 `rust`
 //! 再写回，要与它逐字节同 —— 生成的类与 Rust 那一份类型对不上（少一格 · 型不对 · 顺序不同 · null 与缺席分不清）就红在那边。
 //! 判据只比不写：现打的与仓里那份不一样 ⇒ 现打的落在本树 `.build/golden/` 下、红；对过之后跑 `tests/scripts/bless-golden.sh` 拷回。
 
@@ -43,7 +43,7 @@ fn every_phone_reply_has_a_golden_line_written_by_its_type() {
         "说明": [
             "手机读的那几条回包的跨语言金样。",
             "sample：结构夹具（每格都填、并集取第一形；node tests/scripts/gen-kotlin-wire.mjs --samples 现出，不放真正文）。",
-            "rust：cmd-wire 的 replies 表按类型解 sample、照类型写成的那一行（tests/common/cmd-wire/reply_goldens_tests.rs）。",
+            "rust：cmd-wire 的 calls! 表按类型解 sample、照类型写成的那一行（tests/common/cmd-wire/reply_goldens_tests.rs）。",
             "Kotlin：core-wire 的 RepliesGoldenTest 拿生成的类解 rust、再写回，逐字节同。"
         ],
         "cases": fresh,

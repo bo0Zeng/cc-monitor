@@ -15,127 +15,16 @@ use super::session_batch::{
 pub(crate) mod new;
 use crate::platform::child::{Child, Deadline};
 pub use cmd_wire::session::{ArriveAsk, ArriveBy, Landed, Opened, Run};
-pub(crate) use new::{
-    dir_answer, DirChecked, ForkFrom, ForkWrite, OpenDirErr, OpenDirReq, PreRotation,
-};
-use new::{
-    expand_home, first_prompt_refused, OpenField as Field, OpenRefusal as Refusal, RotationPick,
-};
-use serde::Deserialize;
+pub(crate) use new::{dir_answer, DirChecked, ForkWrite, OpenDirErr, OpenDirReq, PreRotation};
+use new::{expand_home, first_prompt_refused, OpenField as Field, OpenRefusal as Refusal};
 use serde_json::Value;
 
 /// 失败：码 ＋ 那一句 ＋ `data`（[`Refusal`]：哪一格 · 选不了号那一形）＋ 下层原话（不进那一句，进复制详情；没有 ⇒ `None`）。
 pub(crate) type Failed = (&'static str, String, Option<Value>, Option<String>);
 
-/// `session-open` 的入参（`deny_unknown_fields`：多送一格 ⇒ 拒）。
-#[derive(Debug, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct SessionOpenReq {
-    /// 起新的 · 恢复某条 · 接回 · 开一个 shell。
-    pub(crate) what: Open,
-    /// 缺 ＝ 跟随：恢复 ⇒ 这条会话上次的号；新起 ⇒ 这台的默认号；分叉 ⇒ 源会话的号。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) account: Option<AccountAsk>,
-    /// 放在哪；缺 ＝ 这台定（新起：有 tmux 就 tmux、分叉照源会话那一种；恢复：照这台的偏好）。接回不收。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) run: Option<Run>,
-    /// 开窗的那台就是这台（本机 Windows 渲 PowerShell；本机直路不带工作目录）。
-    pub(crate) local: bool,
-    /// 这一趟的票（每次点一下一张；期限到了带同一张再问 ⇒ 认出同一趟，不起第二个）。缺 ⇒ 不认。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) ticket: Option<String>,
-    /// 自报的前端（就地键入过身份门，同 `kill`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) client: Option<String>,
-}
-
-/// 意图。
-#[derive(Debug, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        rename = "OpenWhat",
-        export_to = "../../frontend/ui/generated/"
-    )
-)]
-#[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
-pub(crate) enum Open {
-    /// 起一个新会话（可分叉、可带第一句）。
-    New(NewOpen),
-    /// 恢复某条：哪一家 · 目录 · 模型 · 权限档这台从记录里读。
-    Resume { sid: cmd_wire::Sid },
-    /// 接回 / 看一眼，不起 agent：按会话（找挂着它的终端：tmux 会话 · 托管终端）或按终端名，两格给一格。
-    Look {
-        #[serde(default)]
-        #[cfg_attr(test, ts(optional))]
-        sid: Option<String>,
-        #[serde(default)]
-        #[cfg_attr(test, ts(optional))]
-        session: Option<String>,
-    },
-    /// 开一个 shell，不起 agent：给了 `session` ⇒ 这台 tmux 里那个会话（不在就在 `cwd` 里建一个空的）；
-    /// 只给 `cwd` ⇒ 这台 shell 里进那个目录那一行。`cwd` 只在建的那一刻生效（已在的会话不往里敲 `cd`）。
-    Shell {
-        #[serde(default)]
-        #[cfg_attr(test, ts(optional))]
-        session: Option<String>,
-        #[serde(default)]
-        #[cfg_attr(test, ts(optional))]
-        cwd: Option<String>,
-    },
-}
-
-/// 新起那一形的几格。
-#[derive(Debug, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct NewOpen {
-    /// 哪一家（线上的 kind）。必填。
-    pub(crate) agent: crate::agents::AgentKind,
-    /// 工作目录（开头的 `~` 按这台的家目录读）。
-    pub(crate) cwd: String,
-    /// 用户改过的终端名（只跟 tmux）；缺 ⇒ 这台铸（分叉不收：名字从源会话的终端名铸）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) tmux_name: Option<String>,
-    /// 这一趟手填的启动命令（空 / 缺 ⇒ 这台偏好里那一家的启动命令）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) command: Option<String>,
-    /// 分叉自哪一条（只在这一步写分支记录）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) fork: Option<ForkFrom>,
-    /// 第一句：起的时候交给那一家；只跟 tmux。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) prompt: Option<String>,
-    /// 这一趟用的模型（压过偏好表）；缺 ＝ 跟随。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) model: Option<String>,
-    /// 起在哪一个权限档（那一家声明的档之一）；缺 ＝ 这台偏好里那一家的那一档，没设 ⇒ 那一家自己的默认。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) permission_mode: Option<String>,
-    /// 轮换：缺 ＝ 用「新会话用」的那份策略 · `{strategy: id}` ＝ 起之前按定好的 sid 写成用那一份。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) rotation: Option<RotationPick>,
-    /// 经哪条别名起（一类 ＝ 一条别名：那一行 `ccm @别名`，别名合下来的几格在 ccm 那一侧合、这一趟给的盖过它）；缺 ⇒ 不经别名。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) alias: Option<String>,
-}
+use cmd_wire::open::RotationPick;
+/// `session-open` 的入参与它引到的几样：线上形住 `cmd-wire::open`（名字与回包挂在 `cmd_wire::Call` 上）。
+pub(crate) use cmd_wire::open::{NewOpen, OpenWhat as Open, SessionOpenReq};
 
 /// `session-open` 会回的码（`bad_args` 打头）。
 pub(crate) const OPEN_CODES: &[&str] = &[
