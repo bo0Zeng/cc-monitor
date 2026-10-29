@@ -63,6 +63,21 @@ pub(crate) fn judged(
 
 /// 会话的顺序：第一格 ＝ 在用的号，往下照拖出来的 · 策略交的先后，此刻用不了的与先不用的沉底（各照号的先后）。
 pub(crate) fn lineup_of(s: &Session, d: &Decision, facts: &[Acct], now: u64) -> Vec<String> {
+    lineup_by(s, d.sigma.temp.iter().chain(&d.order), facts, now)
+}
+
+/// 不轮换的会话的顺序：第一格 ＝ 在用的号，往下照号的先后，此刻用不了的与先不用的沉底（没有策略交的先后）。
+pub(crate) fn plain_lineup(s: &Session, facts: &[Acct], now: u64) -> Vec<String> {
+    lineup_by(s, std::iter::empty(), facts, now)
+}
+
+/// 第一格在用的号，往下 `prefer` 里发得出去的，再照号的先后：发得出去的在前，余下的沉底。
+fn lineup_by<'a>(
+    s: &Session,
+    prefer: impl Iterator<Item = &'a String>,
+    facts: &'a [Acct],
+    now: u64,
+) -> Vec<String> {
     let ok = |a: &str| {
         !s.off.iter().any(|x| x == a)
             && facts
@@ -72,12 +87,7 @@ pub(crate) fn lineup_of(s: &Session, d: &Decision, facts: &[Acct], now: u64) -> 
     };
     let mut out = vec![s.current.clone()];
     let ids: Vec<&String> = facts.iter().map(|x| &x.id).collect();
-    let usable = d
-        .sigma
-        .temp
-        .iter()
-        .chain(&d.order)
-        .chain(ids.iter().copied());
+    let usable = prefer.chain(ids.iter().copied());
     for a in usable.filter(|a| ok(a)).chain(ids.iter().copied()) {
         if !out.contains(a) {
             out.push(a.clone());

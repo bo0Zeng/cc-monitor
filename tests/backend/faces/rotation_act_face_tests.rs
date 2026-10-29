@@ -113,6 +113,31 @@ fn use_now_is_stopped_only_by_facts() {
     go("a").expect("策略的上限不拦");
 }
 
+/// ★ 不轮换的会话「现在用」照常：换过去、记一条手动换号，视图第一格跟着是它。
+#[test]
+fn use_now_works_without_a_strategy() {
+    let home = Home::new("usenow-none");
+    let ctx = home.ctx();
+    home.saw(&ctx, S1);
+    home.load(&ctx, S1, None);
+    use_now_with(
+        &ctx,
+        &home.own(),
+        &RotationUseNowReq {
+            sid: S1.into(),
+            account: "b".into(),
+        },
+        now(),
+    )
+    .expect("不轮换也换得了");
+    let s = ctx.hop.store.now().sessions[S1].clone();
+    assert!(s.uses.is_none(), "换号没给会话装上策略");
+    assert_eq!(s.current, "b");
+    assert_eq!(s.log.last().map(|l| &l.cause), Some(&book::Cause::UseNow));
+    let v = crate::faces::rotation_view_face::tests::session_view(&ctx, &home, S1);
+    assert_eq!(v.lineup.first().map(|l| l.account.as_str()), Some("b"));
+}
+
 /// ★ 去掉一个号的勾 ⇒ 一判当它用不了（a 用满也不换到它）、
 /// 「现在用」它被拦、顺序里沉底、推演那一行整行「不用」；再勾上就恢复。
 #[test]

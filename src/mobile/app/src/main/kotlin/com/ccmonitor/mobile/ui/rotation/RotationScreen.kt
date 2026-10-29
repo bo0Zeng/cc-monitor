@@ -118,7 +118,7 @@ fun RotationScreen(
     RotAsks(ui, board)
 }
 
-/** 读到了才画；不轮换 ⇒ 只剩第一行和一行灰字。会话 ⇒ 顺序；设置页 ⇒ 号牌 · 总体设置（说明写在开关旁边）。 */
+/** 读到了才画。会话 ⇒ 顺序（不轮换也画：号照那台排、点开照样立即用）；设置页 ⇒ 号牌 · 总体设置（说明写在开关旁边），不轮换 ⇒ 只剩第一行和一行灰字。 */
 @Composable
 private fun BoardBody(
     ui: RotationUi,
@@ -131,11 +131,10 @@ private fun BoardBody(
     FirstRow(ui, board, sid, titles, onEditStrategy)
     val view = ui.view ?: return
     Hints(ui, view, board, onOpenFile)
-    if (view.strategy == null) return
     if (sid != null) {
         // 读不出 ⇒ 上次所知的照画、拿不起（红条在上面）。
         Order(ui, view, board, offline = ui.readFailed != null, onEditStrategy)
-    } else {
+    } else if (view.strategy != null) {
         Cards(ui, view, board)
         val all = view.board.all
         if (all.isNotEmpty()) {
