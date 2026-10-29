@@ -131,3 +131,23 @@ fn a_session_is_own_upstream_only_when_its_bound_origin_carries_a_base() {
     assert!(!own_upstream_of(&data, "s-other"), "没绑来处的会话说成自设");
     std::fs::remove_dir_all(&data).ok();
 }
+
+/// 落盘那一份顶层带声明的版本，读回照常。
+#[test]
+fn a_left_description_carries_its_version() {
+    let data = sandbox("ver");
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    leave(&own, "0123abcd", &desc(7, &[]), &|_| true).expect("写得下");
+    let dir = data.join(NOTES_DIR).join(SUB);
+    let files: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().collect();
+    assert_eq!(files.len(), 1);
+    let v: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(files[0].path()).unwrap()).unwrap();
+    assert_eq!(v["version"], serde_json::json!(1), "没带版本：{v}");
+    assert_eq!(
+        of(&data, "0123abcd").map(|d| d.pid),
+        Some(7),
+        "带版本的那一份读不回"
+    );
+    std::fs::remove_dir_all(&data).ok();
+}

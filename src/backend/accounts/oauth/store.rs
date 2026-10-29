@@ -22,12 +22,9 @@ use std::time::Duration;
 /// 读一次凭据文件。三态：不在 / 是个 JSON 对象 / 读不出来或不是 JSON 对象（只给一句原因，不带内容）。
 pub(crate) type Read = crate::common::own_state::Read<Map<String, Value>>;
 
-/// 读盘的上限（一份令牌）。
-const MAX_BYTES: u64 = 1 << 20;
-
-/// 一个号的凭据文件（住那个号的配置目录，那一家登记的文件名）：状态（读不出来就不续、不覆盖）。
+/// 一个号的凭据文件（住那个号的配置目录，那一家登记的文件名）：状态（读不出来就不续、不覆盖；那一家的格式，读上限照表）。
 const DOC: crate::common::own_state::Doc<Map<String, Value>> =
-    crate::common::own_state::Doc::state("<account-config-dir>/<credentials-file>", MAX_BYTES);
+    crate::common::own_state::Doc::of(&relay_route_core::ACCOUNT_CREDS_FILE);
 
 pub(crate) fn creds_path(dir: &Path, face: &LoginFace) -> PathBuf {
     dir.join(face.creds_file)

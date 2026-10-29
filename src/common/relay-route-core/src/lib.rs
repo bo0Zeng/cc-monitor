@@ -645,6 +645,43 @@ pub const REMOTE_LISTING_FILE: Decl<Cache> = Decl::<Cache>::foreign(
 );
 /// 一台远端清单副本的读上限。
 const REMOTE_LISTING_MAX_BYTES: u64 = 64 << 20;
+/// API key 表（住数据目录根上；人手改的那一份，未知键原样留）。
+pub const APIKEY_CREDENTIALS_FILE: Decl<State> = Decl::<State>::json(
+    ".cc-monitor/apikey-credentials.json",
+    1,
+    1,
+    APIKEY_CREDENTIALS_MAX_BYTES,
+);
+/// API key 表的读上限（一个号一格 key）。
+const APIKEY_CREDENTIALS_MAX_BYTES: u64 = 4 << 20;
+/// 订阅号的凭据文件（一个号一份，住那个号的配置目录、文件名由那一家登记；那一家的格式）。
+pub const ACCOUNT_CREDS_FILE: Decl<State> = Decl::<State>::foreign(
+    "<account-config-dir>/<credentials-file>",
+    ACCOUNT_CREDS_MAX_BYTES,
+);
+/// 订阅号凭据文件的读上限。
+const ACCOUNT_CREDS_MAX_BYTES: u64 = 1 << 20;
+/// 一条会话一份的上游描述（起会话便条那个目录底下，按来处存）。
+pub const SESSION_UPSTREAM_FILE: Decl<State> = Decl::<State>::json(
+    ".cc-monitor/launch-pending/upstream/<origin>.json",
+    1,
+    1,
+    SESSION_UPSTREAM_MAX_BYTES,
+);
+/// 一份上游描述的读上限。
+const SESSION_UPSTREAM_MAX_BYTES: u64 = 16 << 20;
+/// 一个托管终端一份的事实。
+pub const HOST_FACTS_FILE: Decl<State> = Decl::<State>::json(
+    ".cc-monitor/hosts/<id>/facts.json",
+    1,
+    1,
+    HOST_FACTS_MAX_BYTES,
+);
+/// 事实文件的读上限（几百字节的东西，大了就不是我们写的）。
+const HOST_FACTS_MAX_BYTES: u64 = 64 * 1024;
+/// 托管进程跑的那份按版本的程序副本（后端不读它，只交给系统去跑；没有 · 坏了照自己再复制一份）。
+pub const HOST_PROGRAM_FILE: Decl<Cache> =
+    Decl::<Cache>::foreign(".cc-monitor/hosts/.bin/<version>/ccm.exe", 0);
 
 /// 〔「一份落盘文件一行」〕上面那几份排成一张（判据逐行查自洽、查家里那几样与声明对得上）。
 #[cfg(test)]
@@ -671,6 +708,11 @@ const OWN_FILES: &[Row] = &[
     LAUNCH_NOTE_FILE.row,
     SKELETON_FILE.row,
     REMOTE_LISTING_FILE.row,
+    APIKEY_CREDENTIALS_FILE.row,
+    ACCOUNT_CREDS_FILE.row,
+    SESSION_UPSTREAM_FILE.row,
+    HOST_FACTS_FILE.row,
+    HOST_PROGRAM_FILE.row,
 ];
 
 /// 家里那几样的一格，照声明取落点与「删了会丢」。

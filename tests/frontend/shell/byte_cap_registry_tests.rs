@@ -574,12 +574,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "截断+说清",
     ),
     // 托管终端（A3-3-1/2）那三道：照各自调用点的真实处置登记。
-    // 事实文件超了当读不出来：`read_facts` 那句 `warn!` 带目录，这个终端不列 ⇒ 跳过+说清。
+    // 事实文件超了：读写口回读不出来（状态那一形）；`read_facts` 再 `warn!` 带目录、这个终端不列。
     (
-        "src/backend/host/managed/home.rs",
-        "FACTS_CAP",
-        "托管终端的事实文件 `hosts/<id>/facts.json` 读多少（几百字节的东西）；超了 ⇒ `warn!` 带目录，这个终端不列",
-        "跳过+说清",
+        "src/common/relay-route-core/src/lib.rs",
+        "HOST_FACTS_MAX_BYTES",
+        "托管终端的事实文件 `hosts/<id>/facts.json` 读多少（几百字节的东西）；超了 ⇒ 读口回读不出来，`read_facts` 照它 `warn!` 带目录、这个终端不列",
+        "拒收+回错",
     ),
     // 一端排着的放不下：丢掉排着的、换成一帧 `resync` 整屏，那一端照它重来 ⇒ 截掉的是积压，被告知的是那一端。
     (
@@ -1144,8 +1144,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // 后端自有状态文件的读上限（`common/own_state::read_bytes` 收它）：超了当读不出来 ⇒ 不覆盖、照实回错。
     (
-        "src/backend/accounts/oauth/store.rs",
-        "MAX_BYTES",
+        "src/common/relay-route-core/src/lib.rs",
+        "ACCOUNT_CREDS_MAX_BYTES",
         "订阅号的凭据文件 `.credentials.json`（续令牌前读；读不出来就不续、不覆盖）",
         "拒收+回错",
     ),
@@ -1174,9 +1174,15 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/accounts/upstream_select/file_face.rs",
-        "KEY_FILE_READ_CAP",
+        "src/common/relay-route-core/src/lib.rs",
+        "APIKEY_CREDENTIALS_MAX_BYTES",
         "上游选择的凭据文件 `apikey-credentials.json`（写 key 前读；读不出来就 `io_failed`、不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/common/relay-route-core/src/lib.rs",
+        "SESSION_UPSTREAM_MAX_BYTES",
+        "一条会话的上游描述 `~/.cc-monitor/launch-pending/upstream/<来处>.json`（读不出来 ⇒ 这条会话照这台的出网走；写那一下当陈旧清掉）",
         "拒收+回错",
     ),
     (

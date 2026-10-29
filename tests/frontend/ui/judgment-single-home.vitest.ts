@@ -1141,10 +1141,14 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   },
   "relay-route-core": {
     // 落盘文件的声明表：每份一行（落点 · 状态还是缓存 · 格式与版本 · 读上限），后端读写口按它读写；TS 侧没有孪生。
+    ACCOUNT_CREDS_FILE: NONE,
+    APIKEY_CREDENTIALS_FILE: NONE,
     ASSET_CATALOG_FILE: NONE,
     BACKEND_POLICY_FILE: NONE,
     BOOKMARKS_FILE: NONE,
     CHORES_FILE: NONE,
+    HOST_FACTS_FILE: NONE,
+    HOST_PROGRAM_FILE: NONE,
     KEY_FILE: NONE,
     KNOWN_HOSTS_FILE: NONE,
     LAST_SEEN_FILE: NONE,
@@ -1160,6 +1164,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ROTATION_FILE: NONE,
     ROTATION_USES_FILE: NONE,
     SESSION_QUEUE_FILE: NONE,
+    SESSION_UPSTREAM_FILE: NONE,
     SKELETON_FILE: NONE,
     SKILL_LEDGER_FILE: NONE,
     SSH_CONFIG_FILE: NONE,
