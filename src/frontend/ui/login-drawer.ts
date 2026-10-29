@@ -25,6 +25,9 @@ import { machineName } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { subscribeTopics } from "./events";
 import type { PasteKind } from "./generated/PasteKind";
+import { accountsLoginCmd } from "./account-ops";
+import { NoTerminalWindow, openTerminal, sayNoTerminal } from "./terminal-open";
+import { detailOf, saidOf } from "./kit/detail";
 import { LoginFailed, loginCancel, loginFinish, loginStart, type LoginAgainHow, type LoginStartReq, type LoginStarted, type SignInState } from "./login-reads";
 import s from "./login-drawer.module.css";
 
@@ -92,7 +95,7 @@ export interface LoginDrawerSpec {
 type Step =
   | { t: "starting" }
   | { t: "ready"; started: LoginStarted; submitting: boolean; pasteError: string | null }
-  | { t: "failed"; said: string; detail: string; again: Exclude<LoginAgainHow, "paste"> };
+  | { t: "failed"; said: string; detail: string; again: Exclude<LoginAgainHow, "paste">; terminal: boolean };
 
 /** 开登录抽屉（开着另一个 ⇒ 先关那一个）。 */
 export function openLoginDrawer(spec: LoginDrawerSpec): DrawerHandle {
@@ -150,7 +153,7 @@ class LoginDrawer {
       if (my !== this.round || this.closed) return;
       const f = e instanceof LoginFailed ? e : new LoginFailed(String(e), "", "restart");
       // 起都没起成：没有作业，接着粘无从谈起 ⇒ 照「重新开始」画。
-      this.step = { t: "failed", said: f.said, detail: f.detail, again: f.again === "none" ? "none" : "restart" };
+      this.step = { t: "failed", said: f.said, detail: f.detail, again: f.again === "none" ? "none" : "restart", terminal: f.terminal };
       this.paint();
       return;
     }
@@ -175,7 +178,7 @@ class LoginDrawer {
       return;
     }
     // 作业自己收了：怎么办照那一帧的 `again`（作业没了，接着粘无从谈起 ⇒ 当重新开始画）。
-    this.step = { t: "failed", said: st.said, detail: st.detail ?? "", again: st.again === "none" ? "none" : "restart" };
+    this.step = { t: "failed", said: st.said, detail: st.detail ?? "", again: st.again === "none" ? "none" : "restart", terminal: false };
     this.paint();
   }
 
@@ -197,7 +200,7 @@ class LoginDrawer {
         this.step = { ...step, submitting: false, pasteError: f.said };
       } else {
         this.dropJob();
-        this.step = { t: "failed", said: f.said, detail: f.detail, again: f.again };
+        this.step = { t: "failed", said: f.said, detail: f.detail, again: f.again, terminal: f.terminal };
       }
       this.paint();
       return;
@@ -211,6 +214,25 @@ class LoginDrawer {
   private finished(): void {
     void this.handle.close();
     this.spec.onDone?.();
+  }
+
+  /** ［在终端窗口里登录］：问那台登录那一行、开终端窗口跑它；开了 ⇒ 抽屉关（登成了那一行随推送自己变）。
+   * 这台开不了终端窗口 ⇒ 同起会话那一条（［设置］·［复制命令］）；别的没成 ⇒ 红条换成那一句。 */
+  private async inTerminal(account: string): Promise<void> {
+    const step = this.step;
+    try {
+      await openTerminal(this.spec.origin, await accountsLoginCmd(this.spec.origin, account));
+    } catch (e) {
+      if (e instanceof NoTerminalWindow) {
+        sayNoTerminal(e);
+        return;
+      }
+      if (this.closed || step.t !== "failed") return;
+      this.step = { ...step, said: saidOf(e), detail: detailOf(e), terminal: false };
+      this.paint();
+      return;
+    }
+    void this.handle.close();
   }
 
   /** 作业不再归这个抽屉（收了 · 没了 · 要换一趟）。 */
@@ -235,6 +257,9 @@ class LoginDrawer {
     const parts: HTMLElement[] = [this.who()];
     if (step.t === "failed") {
       const acts = step.again === "restart" ? [button({ label: copyText("login.act.restart"), kind: "primary", onClick: () => void this.start() })] : [];
+      // 抽屉这一趟起不来、后端说终端窗口那条路在 ⇒ 多一颗（不按码猜）。
+      const t = this.spec.target;
+      if (step.terminal && t.kind === "account") acts.push(button({ label: copyText("login.act.terminal"), onClick: () => void this.inTerminal(t.account) }));
       const b = banner("error", step.said, acts, step.detail);
       b.dataset.again = step.again;
       parts.push(b);

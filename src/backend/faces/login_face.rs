@@ -65,34 +65,44 @@ pub(crate) struct LoginStarted {
 /// 登录失败之后还能怎么办（线上形住 cmd-wire：登录推送的体也带它）。
 pub(crate) use cmd_wire::quota::LoginAgainHow;
 
-/// 登录失败的 `data`：还能怎么办。每个码一个定值，写在码表那一行上（`bad_args` 不带：入参形状不对，不是一条能走的路）。
+/// 登录失败的 `data`：还能怎么办（每个码一个定值，写在码表那一行上；`bad_args` 不带：入参形状不对，不是一条能走的路）·
+/// 在终端窗口里登这条路在不在（只有号那一种目标、抽屉那一趟起不来时在：开终端窗口跑那台答的登录那一行）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct LoginAgain {
     pub(crate) again: LoginAgainHow,
+    pub(crate) terminal: bool,
 }
 
 impl LoginAgain {
     const PASTE: LoginAgain = LoginAgain {
         again: LoginAgainHow::Paste,
+        terminal: false,
     };
     const RESTART: LoginAgain = LoginAgain {
         again: LoginAgainHow::Restart,
+        terminal: false,
     };
     const NONE: LoginAgain = LoginAgain {
         again: LoginAgainHow::None,
+        terminal: false,
     };
 }
 
+/// 抽屉起不来时还有没有终端窗口那条路：号那一种有（那台答得出登录那一行），MCP 那一种没有。
+pub(crate) fn terminal_way(target: &LoginStartReq) -> bool {
+    matches!(target, LoginStartReq::Account { .. })
+}
+
 typed::codes! {
-    /// `login-start` 可能回的码（每个码带 `data: {again}`，值写在各码那一行）。
+    /// `login-start` 可能回的码（每个码带 `data: {again, terminal}`，值写在各码那一行）。
     pub(crate) enum LoginStartErr {
         /// 账号库里没有这个号 · 那一份配置里没有这个 MCP 服务器。`again: none`。
         NotFound = "not_found" => LoginAgain,
         /// 这一家不在 app 里登（号 · MCP）· 这个号是 API 号（不用登录）。`again: none`。
         Unsupported = "unsupported" => LoginAgain,
-        /// 起不来 · 没给出登录链接就退了 · 等不到链接（原话里是它最后说的几行）。`again: restart`。
+        /// 起不来 · 没给出登录链接就退了 · 等不到链接（原话里是它最后说的几行）。`again: restart`；号那一种 `terminal: true`。
         Failed = "failed" => LoginAgain,
     }
 }
@@ -104,8 +114,14 @@ impl LoginStartErr {
     fn unsupported(said: String) -> Self {
         LoginStartErr::Unsupported(said, LoginAgain::NONE)
     }
-    fn failed(said: String) -> Self {
-        LoginStartErr::Failed(said, LoginAgain::RESTART)
+    fn failed(said: String, terminal: bool) -> Self {
+        LoginStartErr::Failed(
+            said,
+            LoginAgain {
+                terminal,
+                ..LoginAgain::RESTART
+            },
+        )
     }
 }
 
@@ -212,7 +228,9 @@ pub(crate) fn start(
         path: None,
     };
     let s = sign_in::start(&ask, on_end)
-        .map_err(|s| LoginStartErr::failed(Fail::from(("failed", s)).into_said()))?;
+        .map_err(|s| {
+            LoginStartErr::failed(Fail::from(("failed", s)).into_said(), terminal_way(req))
+        })?;
     Ok(started(s, face, args))
 }
 

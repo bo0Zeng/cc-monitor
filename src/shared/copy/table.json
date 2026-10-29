@@ -13020,6 +13020,12 @@
       "zh": "重新开始",
       "args": []
     },
+    "login.act.terminal": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "在终端里登录",
+      "args": []
+    },
     "login.sheet.auto": {
       "kind": "body",
       "role": "进度",
@@ -24740,12 +24746,6 @@
       "zh": "API key · {host}",
       "args": ["host"]
     },
-    "acctPage.row.waiting": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "订阅 · 等待终端登录…",
-      "args": []
-    },
     "acctPage.row.notLoggedIn": {
       "kind": "body",
       "role": "片段",
@@ -24783,12 +24783,6 @@
       "kind": "action",
       "role": "菜单项",
       "zh": "重新登录…",
-      "args": []
-    },
-    "acctPage.menu.loginTerminal": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "在终端里登录…",
       "args": []
     },
     "acctPage.menu.copyCommands": {
@@ -25133,31 +25127,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "删除账号失败 · {name}",
-      "args": ["name"]
-    },
-    "acctPage.login.noWindow": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机无法开终端窗口",
-      "args": []
-    },
-    "acctPage.login.inTmux": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "tmux 里登录",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "acctPage.login.reopen": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "重开登录窗口",
-      "args": []
-    },
-    "acctPage.login.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "打开登录窗口失败 · {name}",
       "args": ["name"]
     },
     "acctPage.new.done": {

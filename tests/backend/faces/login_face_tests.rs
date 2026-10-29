@@ -284,7 +284,7 @@ fn each_failure_says_what_can_be_done_next() {
     let start = [
         LoginStartErr::not_found("x".into()),
         LoginStartErr::unsupported("x".into()),
-        LoginStartErr::failed("x".into()),
+        LoginStartErr::failed("x".into(), false),
     ]
     .map(|e| again(e.into_fail()));
     assert_eq!(
@@ -333,6 +333,47 @@ fn each_failure_says_what_can_be_done_next() {
         (refused.message.as_str(), refused.raw.as_deref()),
         ("x", Some("tail"))
     );
+}
+
+/// 抽屉那一趟起不来时，失败的 `data` 说在终端窗口里登这条路在不在：只有号那一种目标起不来（`failed`）才在；
+/// 没这个号 · 不在 app 里登 · 换码那几样一律不在（界面照它亮不亮那一颗，不按码猜）。
+#[test]
+fn only_a_failed_account_start_offers_the_terminal_window() {
+    let terminal = |f: Fail| f.data.map(|d| d["terminal"].clone());
+    assert_eq!(
+        terminal(LoginStartErr::failed("x".into(), true).into_fail()),
+        Some(json!(true))
+    );
+    assert_eq!(
+        terminal(LoginStartErr::failed("x".into(), false).into_fail()),
+        Some(json!(false))
+    );
+    for e in [
+        LoginStartErr::not_found("x".into()),
+        LoginStartErr::unsupported("x".into()),
+    ] {
+        assert_eq!(terminal(e.into_fail()), Some(json!(false)));
+    }
+    for e in [
+        LoginFinishErr::of(FinishFail::BadPaste),
+        LoginFinishErr::of(FinishFail::NoJob),
+        LoginFinishErr::of(FinishFail::Slow),
+    ] {
+        assert_eq!(terminal(e.into_fail()), Some(json!(false)));
+    }
+    // 号那一种起不来才算：目标形状 ⇒ 这一格。
+    let account = LoginStartReq::Account {
+        agent: "claude".into(),
+        account: "t1".into(),
+    };
+    let mcp = LoginStartReq::Mcp {
+        agent: "claude".into(),
+        account: None,
+        server: "s1".into(),
+        project_dir: None,
+    };
+    assert!(terminal_way(&account));
+    assert!(!terminal_way(&mcp));
 }
 
 /// MCP 那一种：名字以 `-` 开头（会被子命令当成旗标）· 空名一律不认，配置读都不读。
