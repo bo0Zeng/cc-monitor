@@ -29,6 +29,8 @@ pub struct Entry {
     listed: bool,
     /// 上一趟更新没换上那一句（再起一趟部署 · 换上了 ⇒ 摘掉）。
     update_failed: Option<String>,
+    /// 接上过那台（有过一轮 `Up`）：之后再在接常驻 ⇒ 说「正在重新连接」。
+    was_up: bool,
 }
 
 /// 一件事实。
@@ -69,6 +71,7 @@ pub fn fold(e: &mut Entry, fact: Fact) {
                 e.version = version.filter(|_| relation == Relation::Same);
                 e.problem = None;
                 e.blocker = None;
+                e.was_up = true;
             }
             Round::Down { problem, blocker } => {
                 e.state = Some(match blocker {
@@ -207,6 +210,10 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
         said: match (state, blocker, problem) {
             // 没有后端：是哪一种（没装 · 起不了 · 不是我们的）只有通信层那一句说得清。
             (K::Down, Some(Blocker::NoBackend), Some(p)) => p.text.clone(),
+            // 接上过、又在接常驻（不是部署那一步）⇒ 重连那一句。
+            (K::Connecting, _, _) if e.was_up && e.stage != Some(Stage::Deploy) => {
+                copy_text("machineState.busy.reconnecting", &[("machine", machine)])
+            }
             // 还旧、上一趟更新没换上 ⇒ 说那一趟为什么没成（不另弹 toast）。
             (K::NeedsUpdate, _, _) if e.update_failed.is_some() => copy_text(
                 "machineState.problem.updateFailed",

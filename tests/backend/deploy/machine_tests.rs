@@ -789,3 +789,48 @@ fn listed_is_dropped_when_the_machine_reconnects_or_goes_down() {
     kept.push(up(Relation::Same, &[]));
     assert!(folded(kept).listed());
 }
+
+/// 接上过的那台又在连 ⇒ 「正在重新连接 X」、不带修法（两端机器条照摆）；头一回连照旧是连接那一句；部署那一步照部署那一句。
+#[test]
+fn a_machine_that_was_up_and_is_connecting_again_says_reconnecting() {
+    let first = of(vec![round(Round::Connecting)], true);
+    assert_eq!(
+        first.said,
+        said(K::Connecting, Some(Stage::Attach), None, M),
+        "头一回连就说了重连"
+    );
+    let again = of(
+        vec![up(Relation::Same, &[]), round(Round::Connecting)],
+        true,
+    );
+    assert_eq!(
+        (again.state, again.said.as_str(), again.fixes.len()),
+        (
+            K::Connecting,
+            text("machineState.busy.reconnecting").as_str(),
+            0
+        )
+    );
+    let after_drop = of(
+        vec![
+            up(Relation::Same, &[]),
+            down_(Some(Why::Timeout)),
+            round(Round::Connecting),
+        ],
+        true,
+    );
+    assert_eq!(
+        after_drop.said,
+        text("machineState.busy.reconnecting"),
+        "断过一轮再连也是重连"
+    );
+    let deploying = of(
+        vec![up(Relation::Same, &[]), Fact::Step(Step::Plan)],
+        true,
+    );
+    assert_ne!(
+        deploying.said,
+        text("machineState.busy.reconnecting"),
+        "部署那一步说成了重连"
+    );
+}

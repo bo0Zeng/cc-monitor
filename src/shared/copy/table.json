@@ -24245,6 +24245,13 @@
       "args": ["machine", "stage"],
       "limited": ["连接"]
     },
+    "machineState.busy.reconnecting": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "重新连接 {machine}",
+      "args": ["machine"],
+      "limited": ["连接"]
+    },
     "machineState.busy.installing": {
       "kind": "body",
       "role": "片段",
