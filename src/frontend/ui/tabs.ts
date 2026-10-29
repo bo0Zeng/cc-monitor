@@ -228,12 +228,13 @@ export class TabManager {
   loadOrder(): Promise<void> {
     return this.prefs.loadOrder();
   }
-  /** 固定 / 取消固定。取消固定撤得回 ⇒ 不确认：直接做 ＋ 8 秒撤销。 */
+  /** 固定 / 取消固定。取消固定撤得回 ⇒ 不确认：直接做，那台收下了才给 8 秒撤销（拒了 ⇒ 只有没成那一句、行回去）。 */
   togglePin(sid: string): void {
     const t = this.store.tabs.get(sid);
     const wasPinned = t?.pinned === true;
-    this.prefs.togglePin(sid);
-    if (t && wasPinned) undoToast(copyText("tabBar.unpinned.toast", { title: fullTitle(t) }), () => this.prefs.togglePin(sid), () => {});
+    void this.prefs.togglePin(sid).then((ok) => {
+      if (ok && t && wasPinned) undoToast(copyText("tabBar.unpinned.toast", { title: fullTitle(t) }), () => void this.prefs.togglePin(sid), () => {});
+    });
   }
 
   /** 按下 / 焦点的这一个在多选里（≥2）⇒ 选中的全部（按栏里的顺序）；否则只有它。 */
