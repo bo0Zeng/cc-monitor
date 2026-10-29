@@ -243,3 +243,22 @@ fn a_knock_that_cannot_be_queued_still_keeps_the_letter() {
     assert_eq!(deliver(&own(&d), &tier1(B, "t", "m1"), 1_000), Ok(false));
     assert_eq!(unread(&bus(&d), B).unwrap(), 1);
 }
+
+#[test]
+fn the_state_file_version_is_kept_by_the_declaration() {
+    let d = tmp("version");
+    std::fs::create_dir_all(bus(&d)).unwrap();
+    let state = bus(&d).join("state.json");
+    // 没写 `version` 的一份当第 1 版读。
+    std::fs::write(&state, br#"{"pos":{}}"#).unwrap();
+    assert_eq!(deliver(&own(&d), &env(B, "t", "m1"), 1_000), Ok(false));
+    let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&state).unwrap()).unwrap();
+    assert_eq!(v["version"], 1, "写回的那一份带声明表那一版");
+    // 比声明新 ⇒ 不投、盘上字节不动。
+    let newer = br#"{"version":2,"pos":{}}"#;
+    std::fs::write(&state, newer).unwrap();
+    let inbox = std::fs::read(bus(&d).join(format!("{B}.jsonl"))).unwrap();
+    assert!(deliver(&own(&d), &env(B, "t", "m2"), 2_000).is_err());
+    assert_eq!(std::fs::read(&state).unwrap(), newer);
+    assert_eq!(std::fs::read(bus(&d).join(format!("{B}.jsonl"))).unwrap(), inbox);
+}

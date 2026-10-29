@@ -566,12 +566,17 @@ pub const fn upgradable<K: Upgradable>(d: &Decl<K>) -> &Decl<K> {
     d
 }
 
+/// 退出行为那一份的读上限（只有一格布尔）。
+const BACKEND_POLICY_MAX_BYTES: u64 = 4096;
 /// 退出行为设置。
-pub const BACKEND_POLICY_FILE: Decl<State> = Decl::<State>::json(BACKEND_POLICY_REL, 1, 1, 4096);
+pub const BACKEND_POLICY_FILE: Decl<State> =
+    Decl::<State>::json(BACKEND_POLICY_REL, 1, 1, BACKEND_POLICY_MAX_BYTES);
 /// 这台的偏好。
 pub const PREFS_FILE: Decl<State> = Decl::<State>::json(PREFS_REL, 2, 2, 256 * 1024);
+/// 机器表那一份的读上限（至多 256 台）。
+const MACHINES_MAX_BYTES: u64 = 1024 * 1024;
 /// 机器表。
-pub const MACHINES_FILE: Decl<State> = Decl::<State>::json(MACHINES_REL, 1, 1, 1024 * 1024);
+pub const MACHINES_FILE: Decl<State> = Decl::<State>::json(MACHINES_REL, 1, 1, MACHINES_MAX_BYTES);
 /// monitor 设置那一份的读上限（超了当读不懂：读那一口报错、写口一个字节不写）。
 const CONFIG_MAX_BYTES: u64 = 4 * 1024 * 1024;
 /// monitor 的设置（不带版本，定了的；monitor 在自己的数据目录里按 [`file_name_of`] 取名）。
@@ -589,8 +594,11 @@ pub const PLAN_REVIEW_FILE: Decl<State> =
 const LAST_SEEN_MAX_BYTES: u64 = 32 * 1024 * 1024;
 /// 离线那台的上次值（第 2 版：各台住 `origins` 底下，不和顶层 `version` 同一层）。
 pub const LAST_SEEN_FILE: Decl<Cache> = Decl::<Cache>::json(LAST_SEEN_REL, 2, LAST_SEEN_MAX_BYTES);
+/// 书签那一份的读上限。
+const BOOKMARKS_MAX_BYTES: u64 = 256 * 1024;
 /// 书签。
-pub const BOOKMARKS_FILE: Decl<State> = Decl::<State>::json(BOOKMARKS_REL, 1, 1, 256 * 1024);
+pub const BOOKMARKS_FILE: Decl<State> =
+    Decl::<State>::json(BOOKMARKS_REL, 1, 1, BOOKMARKS_MAX_BYTES);
 /// skill 装记录（第 1 版写在 `"v"` 里，第 2 版换成顶层 `version`）。
 pub const SKILL_LEDGER_FILE: Decl<State> =
     Decl::<State>::json(SKILL_LEDGER_REL, 2, 1, 4 * 1024 * 1024);
@@ -690,6 +698,31 @@ const HOST_FACTS_MAX_BYTES: u64 = 64 * 1024;
 /// 托管进程跑的那份按版本的程序副本（后端不读它，只交给系统去跑；没有 · 坏了照自己再复制一份）。
 pub const HOST_PROGRAM_FILE: Decl<Cache> =
     Decl::<Cache>::foreign(".cc-monitor/hosts/.bin/<version>/ccm.exe", 0);
+/// cc-bus 的状态（[`CC_BUS_DIR_REL`] 底下：各会话已读位置 ＋ 发信规矩的账）。
+pub const CC_BUS_STATE_FILE: Decl<State> =
+    Decl::<State>::json(".cc-monitor/cc-bus/state.json", 1, 1, CC_BUS_STATE_MAX_BYTES);
+/// cc-bus 状态那一份的读上限。
+const CC_BUS_STATE_MAX_BYTES: u64 = 4 << 20;
+/// 一条会话的 cc-bus 收件箱（[`CC_BUS_DIR_REL`] 底下一条会话一份；一封一行，只往后加）。
+pub const CC_BUS_INBOX_FILE: Decl<State> =
+    Decl::<State>::foreign(".cc-monitor/cc-bus/<sid>.jsonl", CC_BUS_INBOX_MAX_BYTES);
+/// 一份 cc-bus 收件箱的读上限：一封最多千来字节，64 MiB 装得下几万封。
+const CC_BUS_INBOX_MAX_BYTES: u64 = 64 << 20;
+/// 答题插件的一份文件（[`ANSWER_PLUGIN_DIR_REL`] 底下；照这一版现写，读回只为比内容一样不一样）。
+pub const ANSWER_PLUGIN_FILE: Decl<Cache> =
+    Decl::<Cache>::foreign(".cc-monitor/answer-plugin/<file>", ANSWER_PLUGIN_MAX_BYTES);
+/// 答题插件一份文件的读上限（几份小脚本与清单）。
+const ANSWER_PLUGIN_MAX_BYTES: u64 = 1 << 20;
+/// 套组名 ⇒ 为它建的那一组的 id（顶层键是组名，带 `version` 会撞名 ⇒ 不带版本）。
+pub const SET_GROUPS_FILE: Decl<State> =
+    Decl::<State>::foreign(".cc-monitor/set-groups.json", SET_GROUPS_MAX_BYTES);
+/// 套组绑定那一份的读上限。
+const SET_GROUPS_MAX_BYTES: u64 = 1 << 20;
+/// 一份轮换策略（`strategies/` 底下一份一个 `.rhai`，用户自己的源码）。
+pub const STRATEGY_SOURCE_FILE: Decl<State> =
+    Decl::<State>::foreign(".cc-monitor/strategies/<id>.rhai", STRATEGY_SOURCE_MAX_BYTES);
+/// 一份轮换策略的读上限（超了不加载，列表里照实写读不懂）。
+const STRATEGY_SOURCE_MAX_BYTES: u64 = 64 * 1024;
 
 /// 〔「一份落盘文件一行」〕上面那几份排成一张（判据逐行查自洽、查家里那几样与声明对得上）。
 #[cfg(test)]
@@ -722,6 +755,11 @@ const OWN_FILES: &[Row] = &[
     SESSION_UPSTREAM_FILE.row,
     HOST_FACTS_FILE.row,
     HOST_PROGRAM_FILE.row,
+    CC_BUS_STATE_FILE.row,
+    CC_BUS_INBOX_FILE.row,
+    ANSWER_PLUGIN_FILE.row,
+    SET_GROUPS_FILE.row,
+    STRATEGY_SOURCE_FILE.row,
 ];
 
 /// 家里那几样的一格，照声明取落点与「删了会丢」。
