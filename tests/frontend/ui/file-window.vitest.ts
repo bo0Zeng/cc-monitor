@@ -106,7 +106,7 @@ function entryCensus(): string[] {
  * 入口全表。**改入口就改这张表**，理由写在行尾。
  */
 const ENTRIES: readonly string[] = [
-  "src/frontend/ui/cards/index.ts · 定位文件", // 会话工具卡上的文件链接（老面板 revealPath，F54）
+  "src/frontend/ui/cards/index.ts · 定位文件", // 会话工具卡上的文件链接（定位到文件，F54）
   `src/frontend/ui/settings/ext-section.ts · ${copyText("gridMonitor.fact.dir")}`, // 扩展页抽屉：远端那台上一个 skill 的目录「在文件窗口里打开」
   "src/frontend/ui/settings/data-page.ts · 定位文件", // 「待办」点开一件：远端那台上要改的那份文件「打开这份文件」
   `src/frontend/ui/settings/accounts-section.ts · ${copyText("gridMonitor.fact.dir")}`, // 账号页：远端那台一个号的账号目录「在文件窗口里打开」
@@ -116,7 +116,7 @@ const ENTRIES: readonly string[] = [
   "src/frontend/ui/sftp-host-picker.ts · home", // 顶栏 / 命令面板：只有一台远端时直开
   "src/frontend/ui/sftp-host-picker.ts · home", // 顶栏 / 命令面板：多台时选单里点一台
   // 住址随会话动作从 `src/frontend/ui/tabs.ts` 搬到 `src/frontend/ui/tab-session-actions.ts`（openTabCwd 逐字随行）。
-  `src/frontend/ui/tab-session-actions.ts · ${copyText("gridMonitor.fact.dir")}`, // 远端会话「打开工作目录」（老面板 initialDir，F78）
+  `src/frontend/ui/tab-session-actions.ts · ${copyText("gridMonitor.fact.dir")}`, // 远端会话「打开工作目录」（直接进目录，F78）
   `src/frontend/ui/machine-commands.ts · ${copyText("gridMonitor.fact.dir")}`, // 命令面板打中一台 ›「文件」：落在那台主目录（`dir` 空）
 ];
 

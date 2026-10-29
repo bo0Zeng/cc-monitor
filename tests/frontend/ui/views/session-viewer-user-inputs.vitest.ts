@@ -1,5 +1,5 @@
 /**
- * K-R45 · `KR45D1`（甲 · 历史查看器）：列出你说过的每一句，点一下跳过去。
+ * 历史查看器：列出说过的每一句，点一下跳过去。
  *
  * 〔用 09-10 逐字〕「**要的就是跳过去就行**」。
  *
@@ -16,7 +16,7 @@
  * IPC / `ResizeObserver` / `CSS` / `scrollIntoView` / rAF 那一套桩与
  * `session-viewer-scroll.vitest.ts` **共用一份**，住 `session-viewer-rig.ts`
  * （保真边界写在那份的头注里：真渲染管线，只有 IPC 那层是假的）。
- * 本套件不叫 `flushRaf` ⇒ 双 rAF 那一格归 `KR45D0`，这里不重复量。
+ * 本套件不叫 `flushRaf` ⇒ 双 rAF 那一格归 `session-viewer-scroll.vitest.ts`，这里不重复量。
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -220,7 +220,7 @@ describe("KR45D1 点一下跳过去", () => {
 
   // ★ 活体夹具：清单里有、渲染不建卡的一条（后端清单今天已按同一条规则排掉剥空的项，
   //   这一形只剩「清单与渲染之间别的原因」—— 夹具用替身清单造出它）。
-  //   `KR45D3` / `§0c` 的红线是「**不许静默产出那一形**」——这里断的就是「它没静默」。
+  //   `§0c` 的红线是「**不许静默产出那一形**」——这里断的就是「它没静默」。
   it("跳不过去的那一条不许静默：标出来（这条不等价是自陈的，这里给它一个活体）", async () => {
     const v = await mount([
       userLine(1, "u1", "第一句"),

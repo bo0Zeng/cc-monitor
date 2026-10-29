@@ -227,7 +227,7 @@ const CLASS_MIN_EST: Record<string, { min: number; why: string }> = {
   },
   "card-user": {
     min: 21.7,
-    why: "LH_BASE = 14 × 1.55（一行正文）；⚠ 今天语料实测 min 21.7 ⇒ **这一条是紧的**。正文为空时 textHeight 返回 0 ⇒ 本判据会红 —— 那正是地板从前抹平的那一形",
+    why: "LH_BASE = 14 × 1.55（一行正文）；⚠ 今天语料实测 min 21.7 ⇒ **这一条是紧的**。正文为空时 textHeight 返回 0 ⇒ 本判据会红 —— 那正是加一层地板会抹平的那一形",
   },
   "card-assistant": {
     min: 22,
@@ -576,7 +576,7 @@ describe("秤 2 · 读数（不做判据，只产表）", () => {
       .filter((x) => x.raw !== null && x.row && Math.round(x.raw) < 24);
     console.log(
       [
-        `[秤2] 旧地板（24px）从前顶起过的卡：${rows.length}/${corpus.length} 张 —— 现在它们原样出货`,
+        `[秤2] 24px 地板会顶起的卡：${rows.length}/${corpus.length} 张 —— 现在它们原样出货`,
         ...rows.map(
           (x) =>
             `  ${x.c.id}（${x.c.cls}）估值 ${x.raw!.toFixed(1)} → 写进 style 的是 ${appliedIntrinsicPx(x.raw!)}（旧地板下是 24）`,

@@ -1,9 +1,9 @@
 /**
- * 〔拆 `tabs.ts` ①〕**一个实时 tab 长什么样** ＋ 它的标题怎么算。
+ * **一个实时 tab 长什么样** ＋ 它的标题怎么算。
  *
  * 纯形状与纯函数：零 DOM 操作、零 IPC。`Tab` 上挂着的那几样运行期对象（流 / 时间线 / 折叠层 /
  * 尾部窗口 / 骨架 / 大纲）只以**类型**出现在这里，谁建它们住 `tab-stream-view.ts`。
- * 原住 `tabs.ts`（`TabManager` 同文件），逐字搬出；`tabs.ts` 原样 re-export，既有 import 面零改动。
+ * `tabs.ts` 原样 re-export，从 `tabs.ts` 引的照旧引得到。
  */
 import type { MessageStream } from "./stream";
 import type { BranchFolder } from "./branch-fold";

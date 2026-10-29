@@ -21,11 +21,11 @@ pub mod proc;
 // 只开一个 cc-monitor（Linux 自己占会话总线上的名字、转交激活令牌；别处经插件）。
 pub mod single_instance;
 pub mod spawn;
-// 开终端窗口的平台那一半，原住 `launch.rs`。
+// 开终端窗口的平台那一半（另一半在 `launch.rs`）。
 pub mod terminal;
 // Windows Terminal 窗口里的标签页（UI Automation：列名字 · 选中一个；只给借控制台的小助手用）。
 pub mod wt_tabs;
-// 窗口那一族（单实例 · WebView2 错位修复 · 主窗口拉前），原住 `lib.rs`。
+// 窗口那一族（单实例 · WebView2 错位修复 · 主窗口拉前）。
 pub mod window;
 
 #[cfg(test)]

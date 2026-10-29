@@ -98,7 +98,7 @@ path = "src/main.rs"
 # ── 文件窗口程序**不在本包**（size2 10-11）────────────────────────────────────
 # `tauri-cli::get_binaries` 把本包**每一个** `[[bin]]` 都交给打包器，nsis/msi/deb 都把非主 bin 装在主程序旁；
 # 而开窗只用 monitor 内嵌的那一份（`build.rs::embed_native_filewin`，放到 `~/.cc-monitor/bin/` 再起）
-# ⇒ 它从前住这里时安装包里多一份逐字节相同的 10 MB。现在它是文件窗口包自己的 `[[bin]]`（`src/frontend/filewin/Cargo.toml`）。
+# ⇒ 它若住这里，安装包里就多一份逐字节相同的 10 MB。它是文件窗口包自己的 `[[bin]]`（`src/frontend/filewin/Cargo.toml`）。
 # 🔴 判据：`tests/evidence/K-R124-ruler.py` 的 ⑭ —— 本包每个 `[[bin]]` ↔ 入包路线登记（两向集合相等，今天只有主二进制）·
 #   主二进制恰好一个 · `required-features` 零命中 · `externalBin` 零命中 · 以及那把工具的版本。
 
@@ -146,8 +146,8 @@ uuid = { version = "1", features = ["v4"] }
 # `acct-core` 挪到 dev 侧（见下）：monitor 生产段零引用，只有生成器（`AUTH_KINDS` → `judgment-rules.ts`）用它。
 # 对外文案表的 Rust 取文口（唯一一份实现，调用方直接调）。常驻后端与 creds-core 也链它。
 copy-core = { path = "../../common/copy-core" }
-# K-H2a：第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端后端共用。
-# **不开 `harden`**：monitor 既不写（GP1 起本机那一份的写者是本机常驻后端）也不读（本机那份的状态
+# 第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端后端共用。
+# **不开 `harden`**：monitor 既不写（本机那一份的写者是本机常驻后端）也不读（本机那份的状态
 #   由本机常驻后端并进账号清单）这份文件，只用 `store::FILE_NAME` 算「本 monitor 认的那一份在哪」（`creds_store::resolve_path`）。
 #   「monitor 写不了这份文件」从判据兜换回**编译器兜**：写半边（`perm::create_private`）只在 `harden` 下存在。
 creds-core = { path = "../../common/creds-core" }
@@ -205,7 +205,7 @@ test-home = { path = "../../common/test-home" }
 
 # 文件窗口包（`src/frontend/filewin/`）：monitor 生产段一行都不引它（`contract_crate_guard` 的「前端包」那一类钉住），
 #   只有跨两半对拍的判据（`tests/frontend/shell/filewin/cross_half_tests.rs`）读它的常量 ⇒ dev 侧。
-#   从前它挂在正式依赖上，只为本包第二个 `[[bin]] cc-monitor-filewin`；那个 bin 搬进了文件窗口包自己名下（size2 10-11）。
+#   本包没有第二个 `[[bin]]`：`cc-monitor-filewin` 那个 bin 在文件窗口包自己名下。
 cc-monitor-filewin = { path = "../filewin" }
 # C01（rust-ts-boundary）：**故意只在 dev 侧**。`ts-rs` 是 codegen 工具，
 # 导出本来就走 `cargo test`（`#[ts(export)]` 生成的是一个测试），
@@ -264,9 +264,9 @@ windows = { version = "0.56", features = [
     #   编译器自己指出「the item is gated behind the `Win32_System_JobObjects` feature」。
     "Win32_System_JobObjects",
     # `CreateJobObjectW` 的签名收 `Option<*const SECURITY_ATTRIBUTES>` ⇒ 要 `Win32_Security`。
-    #   先前它是从 `creds-core` 的 `harden` 那边 feature 合并**顺带**开的（下面那段 `KS5` 注释说的「事实上是开的」）；
-    #   monitor 不开 `harden` 之后那条顺带没了，`cargo check -p monitor --target x86_64-pc-windows-gnu` 现打
-    #   `E0432 unresolved import …CreateJobObjectW` ⇒ 在真用它的这一侧显式声明。
+    #   monitor 不开 `creds-core` 的 `harden`，没有 feature 合并顺带开它；不写这一行，
+    #   `cargo check -p monitor --target x86_64-pc-windows-gnu` 报 `E0432 unresolved import …CreateJobObjectW`
+    #   ⇒ 在真用它的这一侧显式声明。
     "Win32_Security",
     "Win32_UI_WindowsAndMessaging",
     # v2.4.2 issue #2: keybd_event 模拟 Alt 按键让 OS 视当前进程为
@@ -277,7 +277,7 @@ windows = { version = "0.56", features = [
     "Win32_UI_Accessibility",
     "Win32_System_Com",
 ] }
-# K-H2a `KS5`：`Win32_Security_Authorization` **不加在这里** —— 设 / 读凭据文件 DACL 的 Win32 调用住 `crates/creds-core`
+# `Win32_Security_Authorization` **不加在这里** —— 设 / 读凭据文件 DACL 的 Win32 调用住 `src/common/creds-core`
 # （「一个安全性质只许有一个实现」）。monitor 今天既不读也不写那份文件、不开 `harden`；`Win32_Security` 上面那一条是
 # Job Object 的签名要的，与凭据文件无关。
 # F12 nudge 加固：resize 稳定后直接调 WebView2 controller COM 接口

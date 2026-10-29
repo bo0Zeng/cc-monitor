@@ -377,7 +377,7 @@ export class KeybindingsEditor implements OverlayHandle {
       this.onChange?.();
     } catch (e) {
       console.warn("[keybindings] persist failed:", e);
-      // 从前只记日志：这次改的键位眼下生效、重启就回去，界面一句不说（E §3.3）。
+      // 不能只记日志：这次改的键位眼下生效、重启就回去，界面得说一句（E §3.3）。
       failToast(copyText("keybindings.persist.failed"), e);
     }
   }

@@ -5,7 +5,7 @@
  * - `from` / `to` 按字符计（后端按 Unicode 标量数列）⇒ 这边按码点切，不按 UTF-16 下标。
  * - 16 色名（`red` · `bright-black` …）走 `data-fg` / `data-bg`，CSS 映射到 `--term-*`；`#rrggbb` 原样写进内联颜色；认不出的不画。
  * - 反显 ＝ 前景背景对调，缺的那一边用画面的默认色（`default-fg` · `default-bg`）。
- * - 段越界截到行尾；重叠的后一段从前一段结束处起（字一个不丢不重）。
+ * - 段越界截到行尾；重叠的后一段从上一段结束处起（字一个不丢不重）。
  */
 import css from "./terminal-screen.module.css";
 

@@ -427,7 +427,7 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
     Ok((pid, n))
 }
 
-// 原住窗口那一侧 `shell.rs`：判的是 monitor 起的那个进程，随「起进程那一侧」留在这里。
+// 判的是 monitor 起的那个进程，所以住「起进程那一侧」。
 /// 那件事是不是当场就失败了 —— 是（＝预算内就结束了）回 `true`。「当场就死了」不许被报成成功。
 /// 「结束了没有」是入参：线程那一侧问 `is_finished()`、进程那一侧问 `try_wait()`，轮询只此一份（`rust_timer_registry` 里登记的那个 `wait-for-condition`）。
 ///

@@ -72,7 +72,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "tests/backend/footprint/registry_tests.rs",
         "src/frontend/shell/src/deploy.rs",
         "申报表 `backend` / `ccm` 那几行的装 / 卸口在 monitor 放字节那一侧（部署远端后端 · 卸载）：申报的「可装 / 可卸」\
-         必须与那两个真有的口逐字签名一致（`KR63D1`，搬家前是 monitor→backend 读 `assets/*` 的那一族，方向跟着申报表翻过来）",
+         必须与那两个真有的口逐字签名一致（读 `assets/*` 的那一族，方向照申报表）",
     ),
     (
         "backend→monitor",

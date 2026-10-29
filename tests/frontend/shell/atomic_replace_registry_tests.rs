@@ -23,12 +23,11 @@ const SITES: &[(&str, &str, &str, &str, &str)] = &[
         "local_backend.rs",
         "rename",
 "rename_into_place",
-        "monitor 自己的缓存（自释放出来的后端二进制 · `K-R69` 起还有本机那条 `ccm` 入口 · 文件窗口程序）",
+        "monitor 自己的缓存（自释放出来的后端二进制 · 本机那条 `ccm` 入口 · 文件窗口程序）",
         "P2z 的自释放：先写 `.partial` 再 rename，防的是**半截文件被当成可执行的后端起起来**。\
              §4 把 `ReplaceFileW` 的要求限定在**用户文件**（要保 ACL/ADS），这里写的是 monitor 自己\
              刚建的新文件、dst 通常压根不存在 ⇒ 没有要保留的 ACL，`rename` 的语义正合适。\
-             🔴 〔`K-R69` 09-12 从 1 处涨到 2 处，而这张表逼着重判了一次语义 —— 结论不变，理由要写清〕\
-             第二处是 `install_local_ccm_entry`（本机那条 `ccm` 入口 = 后端二进制的改名副本）。\
+             🔴 第二处是 `install_local_ccm_entry`（本机那条 `ccm` 入口 = 后端二进制的改名副本）。\
              它**同属 monitor 自己的文件**：落点是 `~/.cc-monitor/bin/`，不是用户的 `~/.local/bin/ccm`。\
              ⚠ **那个区别正是要害**：往用户那份上写就要保 ACL、更要先问用户 —— 而 `K34` 逐字\
              「原本的配置**要手动删除**」⇒ 产品根本不往那儿写。所以这一处仍落 monitor 自己那一档。\
@@ -63,7 +62,7 @@ const SITES: &[(&str, &str, &str, &str, &str)] = &[
         "rename",
 "atomic_replace_path",
         "**用户文件**（`atomic_replace_path` 的第二份副本）",
-        "与从前 profile_installer 那两处逐行同形（Windows 首装分支 + POSIX 分支；那两处今天已删）。\
+        "Windows 首装分支 + POSIX 分支同一形。\
              ⚠ 副本是**刻意**的（模块头注论证过不建统一写入器：两类文件的正确行为本来就不同），\
              但刻意复制的代价就是**两处都得被看住** —— 这正是登记表存在的理由。",
     ),

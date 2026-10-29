@@ -5,7 +5,7 @@
  * |---|---|---|
  * | L1 | 界面起会话 · 恢复 · 接回只有一个家 | 生产段发 `session-open`（`callTyped(…, "session-open", …)`）的文件集合 == `{session-open.ts}`（两向；菜单置灰按命令名查能力那一处不是发送点） |
  * | L2 | 「这个会话在哪个 tmux 会话里」只问那台、一个问口 | 发 `sessions-where` 的文件 == `{sessions-where.ts}`；界面零处拿 tmux 名单自己判 |
- * | L3 | 起会话挑号界面零处判 | 先前那四个挑号函数名零命中（带正控）；线上 `named` 只从 `launch-account.ts` 出 |
+ * | L3 | 起会话挑号界面零处判 | 界面那四个挑号函数名零命中（带正控）；线上 `named` 只从 `launch-account.ts` 出 |
  */
 import { describe, it, expect } from "vitest";
 

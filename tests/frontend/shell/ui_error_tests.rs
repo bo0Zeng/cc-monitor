@@ -275,7 +275,7 @@ fn the_remote_kinds_are_copy_keyed_sentences_too() {
 }
 
 /// 推给界面的出错只有一个出口：事件名只在定义它的两处与 `logging.rs` 装出口那一处出现，
-/// 且壳里没有任何 tracing Layer（那是从前把整行错误日志推上屏的那条路）。
+/// 且壳里没有任何 tracing Layer（有了它，整行错误日志就会被推上屏）。
 #[test]
 fn the_ui_error_event_has_one_exit_and_no_log_layer_feeds_it() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");

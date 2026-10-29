@@ -165,7 +165,7 @@ async function fakePatch(edits: readonly Edit[]): Promise<Record<string, never>>
     fakeCfg.patches([...edits]);
     const base = ((await fakeCfg.load()) ?? {}) as Record<string, unknown>;
     const doc = JSON.parse(applyConfigEdits(JSON.stringify(base), edits)) as Record<string, unknown>;
-    // 写完之后再读，读到的是写完的那份（真盘就是这样）。从前旧测试靠的是生产代码**原地改了**
+    // 写完之后再读，读到的是写完的那份（真盘就是这样）。别靠生产代码**原地改了**
     // `loadConfig` 摆出来的那个对象 —— 那是替身的巧合，不是盘的语义。
     fakeCfg.load.mockResolvedValue(JSON.parse(JSON.stringify(doc)));
     fakeCfg.saved(doc);
