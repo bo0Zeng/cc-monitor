@@ -25,3 +25,7 @@ guard-core = { path = "../../common/guard-core" }
 default = []
 # 后端那几条组合判据（真中转 ＋ 上游选择 / tap / 内存探针）要够到的内部件；只由后端的测试档开，发布构建不开。
 test-support = []
+
+[lints.clippy]
+# 出站 TCP 不在这里开（禁的路径与理由住同目录 `clippy.toml`）：去上游经宿主交进来的那一口（后端交的是出网口）。
+disallowed_methods = "deny"

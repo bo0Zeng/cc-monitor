@@ -49,13 +49,48 @@ const CLI_REQUEST_ID: &str = "cli";
 /// 要 `replies` 通道与在飞表才能跑，而**一次性 exec 里两样都不存在**。
 ///
 /// 另一条：派生出来的名字是 ccm 自己的诊断口（`--ccm-print` 这类）⇒ 不上。二进制叫 `ccm` 时
-/// 按 `SUBCOMMANDS` 分流（`control::ccm::intercept`），占了 ccm 的词就把 `ccm --ccm-print` 抢进后端。
+/// 按子命令集合分流（`control::ccm::route`），占了 ccm 的词就把 `ccm --ccm-print` 抢进后端。
 /// 第三条：[`STREAM_ONLY`] 那几条能跑，但在一次性进程里结构上答不了 ⇒ 不上；[`UI_ONLY`] 那几条答得了、只是除了界面没人用 ⇒ 暂不上。
 pub(crate) fn cli_exposed(spec: &CommandSpec) -> bool {
-    !spec.run.on_frame_arm()
-        && !crate::ccm_line::argv::is_ccm_word(&flag_of(spec.name))
-        && !STREAM_ONLY.contains(&spec.name)
-        && !UI_ONLY.contains(&spec.name)
+    runs_once(spec) && !crate::ccm_line::argv::is_ccm_word(&flag_of(spec.name))
+}
+
+/// [`cli_exposed`] 除掉「是不是 ccm 的词」那一问：一次性进程里跑得了、也不是只给界面的。
+fn runs_once(spec: &CommandSpec) -> bool {
+    !spec.run.on_frame_arm() && !STREAM_ONLY.contains(&spec.name) && !UI_ONLY.contains(&spec.name)
+}
+
+/// 手写的那几条一次性子命令（不从 `REGISTRY` 派生的）：名字照 `inbound::CLI_ONLY_DOCS`，实现在 `stream::oneshot::ONESHOTS`
+/// （两向相等由测试钉）。本模块只认名字、不引用实现那一份：帧面命令经本模块不连到那几条实现的依赖上。
+fn cli_only(word: &str) -> bool {
+    word.strip_prefix("--").is_some_and(|n| {
+        crate::stream::inbound::CLI_ONLY_DOCS
+            .iter()
+            .any(|(c, ..)| *c == n)
+    })
+}
+
+/// 这个词是不是一条子命令（手写的那几条 ∪ 派生的 CLI 面）。闸门 [`is_query_mode`] 与分派认的都是它。
+pub fn is_subcommand(word: &str) -> bool {
+    cli_only(word) || handles(word)
+}
+
+/// 子命令全集：手写的那几条在前，派生的那一面照 `REGISTRY` 的先后。进程里头一次问时算一次（派生名拼一次、留到进程结束）。
+pub fn subcommands() -> &'static [&'static str] {
+    static ALL: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    ALL.get_or_init(|| {
+        crate::stream::inbound::CLI_ONLY_DOCS
+            .iter()
+            .map(|(n, ..)| format!("--{n}"))
+            .chain(
+                REGISTRY
+                    .iter()
+                    .filter(|s| cli_exposed(s))
+                    .map(|s| flag_of(s.name)),
+            )
+            .map(|f| &*f.leak())
+            .collect()
+    })
 }
 
 /// **一次性进程里结构上答不了**的命令：答出来是假话（读的是常驻进程才有的状态：watcher · 中转监听 · 转发账 · 可达表），
@@ -350,9 +385,7 @@ pub fn split_stream_flags(mut args: Vec<String>) -> Result<(Vec<String>, StreamW
         args.drain(i..i + 1 + usize::from(v.is_some()));
         wants.tz = v.as_deref().and_then(crate::Tz::named).unwrap_or_default();
     }
-    let subcommand = args
-        .first()
-        .is_some_and(|a| crate::SUBCOMMANDS.contains(&a.as_str()));
+    let subcommand = args.first().is_some_and(|a| is_subcommand(a));
     if !subcommand && args.iter().any(|a| a == crate::wire::cli_words::VIEW_FLAG) {
         let decl = view_of(&args).map_err(|(_, why)| why)?;
         wants.view = StreamView::parse(&decl)?;
@@ -382,7 +415,7 @@ pub fn is_query_mode(args: &[String]) -> bool {
     match args.first() {
         None => false,
         Some(first) => {
-            if crate::SUBCOMMANDS.contains(&first.as_str()) {
+            if is_subcommand(first) {
                 return true;
             }
             // 不是子命令：这两种都算**明确的调用错误**，交给查询分支报 unknown argument + exit 2。

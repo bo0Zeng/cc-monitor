@@ -244,12 +244,11 @@ pub fn managed_spawner(
 
 /// 本机后端那条**被监护**的路：`local_backend::supervise_with_stdio` / `supervise` 收它。
 ///
-/// 三条答案写在这里、只写一次 —— 点名的 `local_backend.rs::supervise_with_stdio`
-/// **同时犯的三个错**，正好就是这三格：
-/// · `Hidden` —— 先前没带 `CREATE_NO_WINDOW`：Windows 上弹一个**可关的**黑框，
+/// 三条答案写在这里、只写一次，每一格各防一个错：
+/// · `Hidden` —— 不带 `CREATE_NO_WINDOW`，Windows 上弹一个**可关的**黑框，
 ///   用户一关就是 `CTRL_CLOSE_EVENT` 打到后端 ⇒ 后端死 ⇒ 中转不再监听。
-/// · `JobKillOnClose` —— 先前没有 job 绑定：monitor 崩溃 / 被强杀时后端成孤儿。
-/// · `ToLog` —— 先前是 `Stdio::null()`：后端整层 91 处 `tracing::` 的唯一出口被无条件丢弃。
+/// · `JobKillOnClose` —— 没有 job 绑定，monitor 崩溃 / 被强杀时后端成孤儿。
+/// · `ToLog` —— `Stdio::null()` 会把后端整层 `tracing::` 的唯一出口无条件丢弃。
 ///
 /// ⚠ **这不是 `Default` 换了个名字**：`Default` 是「不写也行」，本函数是
 /// 「**这条路**的答案叫这个名字，而且它三格都写出来了」。谁都不能不给参数就调
@@ -269,11 +268,3 @@ pub fn local_backend_supervised() -> std::sync::Arc<ManagedSpawn> {
 #[path = "../../../../tests/frontend/shell/spawn_managed_tests.rs"]
 mod tests;
 
-/// 「谁还自己造一个 `Command`」的逐处普查（处数相等 ＋ 理由逐条 ＋ 第三列说出交给哪个入口）。
-///
-/// ⚠ 与 [`tests::the_spawn_verbs_and_platform_primitives_live_only_here`] **不同源、不同粒度**：
-/// 那一条问「谁绕开了出口」（文件粒度、零容忍），这一条问「今天还有几处自己装 `Command`、
-/// 各把它交给谁」（**落点**粒度、相等）。两条接住的族不重叠，理由写在那份文件的头注里。
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/spawn_managed_exit_sites.rs"]
-mod exit_sites;

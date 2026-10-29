@@ -6,6 +6,8 @@
  * - 时区：浏览器的环境里 `TZ` 是 `SHOTS_TZ`（同各台后端）。
  * - 减少动画（只截图台架）：`prefers-reduced-motion: reduce`，界面那一侧什么都不动（判据 `tests/frontend/ui/reduced-motion.vitest.ts`），
  *   截下来的那一帧不落在动画半途。性能台架不开：它量的是用户默认看到的那一份。
+ * - 家目录：假壳 `footprint_client_facts` 交的家就是各台后端沙箱里的家（`real/pool.mjs` 挂成的那一个）；界面把它原样带进本机后端的
+ *   足迹 · 数据报告，对不上 ⇒ 报告里的路径与沙箱里的盘对不上。那一口的形状（必填格）由 tsc 守：返回值注解为 `FootprintClient`。
  *
  * 人群：`tests/shots/` 下每一份起无头浏览器的脚本（认 `"--headless=new"`）—— 新加一份台架也自动进来。
  * 买不到：读的是源码文本（脚本有顶层副作用，不能 import 起来真跑）；参数拼得更绕时认不出。
@@ -14,6 +16,8 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { nonEmpty } from "../test-support/non-empty";
+import { machineCommands } from "./fake/machine";
+import { defaultWorld } from "./fake/world";
 
 const root = path.resolve(__dirname);
 
@@ -58,6 +62,14 @@ describe("台架开的每一页：时区 · 现在给死，截图另按减少动
     const pool = readFileSync(path.join(root, "real/pool.mjs"), "utf8");
     expect(pool, "后端从页交来的那一刻接着走").toContain("CCM_SHOTS_NOW_MS: String(Math.round(now))");
     expect(readFileSync(path.join(root, "fake/backend.ts"), "utf8"), "页里起世界时交那一刻").toContain("now: Date.now()");
+  });
+
+  it("假壳交的家目录就是各台后端沙箱里的家", async () => {
+    const pool = readFileSync(path.join(root, "real/pool.mjs"), "utf8");
+    const box = /const H = "([^"]+)";[\s\S]*?\bHOME: H,/.exec(pool)?.[1];
+    expect(box, "real/pool.mjs 里认不出沙箱的家（`const H = \"…\"` 交给 `HOME: H`）").toBeTruthy();
+    const facts = (await machineCommands().footprint_client_facts({}, defaultWorld())) as { home?: unknown };
+    expect(facts.home).toBe(box);
   });
 
   for (const file of launchers) {

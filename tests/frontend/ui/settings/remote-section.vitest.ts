@@ -113,7 +113,7 @@ import {
 } from "../../../../src/frontend/ui/remote-config";
 import type { RemoteConfig } from "../../../../src/frontend/ui/remote-config";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
-// `KR59D3`：那条**有名字**的告知 —— 名字的家只有一个（`readiness.ts`），
+// 那条**有名字**的告知 —— 名字的家只有一个（`readiness.ts`），
 // 判据与 DOM 上那个 `data-code` 断的是同一个串，不在这里另抄一份字面量。
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -556,12 +556,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
 
 
-  // 「★ S9：本机的 ccm 条目跟着 monitor 的 OS 走」那一条删了：它钉的是 monitor 跑在哪个 OS 传进 `computeGaps` 的接线，
-  //   那个入参随 Windows 豁免一起删了（`readiness.ts::notApplicable` 头注第 3 条），没有被测对象。
-
-  // 🔴 **`KR59D3` 的产品面那条也退役了。**
-  //    它断的是「喂一份带旧 `daemonless: true` 的 config ⇒ 清单上真有一条带名字的告知」，
-  //    而那条告知整块删了 ⇒ 没有被测对象。⚠ 用例数 −1。
+  // `computeGaps` 不收 monitor 跑在哪个 OS（`readiness.ts::notApplicable` 头注第 3 条）；
+  //   旧 `daemonless: true` 的 config 不产出告知 ⇒ 这两件都没有被测对象。
 
   it("★ 渲染机器列表不按台数发后端请求", async () => {
     // §1-2：状态灯绝不引入轮询。这块是「新用户第一眼看到的东西」，
@@ -640,7 +636,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   /**
    * 🔴：**机器卡上只有三个动作**。
    *
-   * 从前「组件」栏那一行挤着 8 颗按钮。今天两向钉：
+   * 「组件」栏不许挤成一排按钮。两向钉：
    * · 「组件」栏的按钮**恰好**是 ① 部署后端（部署 · 卸载）与 ② 别名（装别名块 · 卸载别名块）那四颗；
    * · 「连接」栏的按钮**恰好**是动这条连接的那四颗（测试连接 · 推送公钥 · 文件 · 开新 Claude）
    *   ——（外加指纹那一格原有的「重置为 TOFU」）；

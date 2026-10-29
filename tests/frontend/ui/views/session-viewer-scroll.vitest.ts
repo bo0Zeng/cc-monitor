@@ -1,14 +1,11 @@
 /**
- * K-R45 · `KR45D0`：给 `SessionViewer.scrollToMessage` 立哨。
+ * 给 `SessionViewer.scrollToMessage` 立哨。
  *
- * ## 为什么这个文件今天才有
+ * ## 为什么要这个文件
  *
- * `scrollToMessage`（`session-viewer.ts`，issue #6 起就在）与它的高亮样式 `search-hit-flash`
- * 在**全部 119 个 `*.vitest.ts` 里零命中**（09-10 现打，分母 = `find src -name '*.vitest.ts'`
- * 的 119 份；命中数 = `grep -l` 的 0 份）。而 `K-R45` 要把它的调用方**从 1 个变成 2 个**
- * （今天唯一调用方是搜索命中：`history.ts` 传 `scrollTo: {uuid, line}`）。
- * ⇒ **先立哨，再加调用方** —— 反过来做的话，哨立起来时已经罩着新代码，
- * 它证不了「原来那条路今天还好使」，只证得了「我刚写的东西自洽」。
+ * `scrollToMessage`（`session-viewer.ts`）与它的高亮样式 `search-hit-flash` 有两个调用方：
+ * 搜索命中（`history.ts` 传 `scrollTo: {uuid, line}`）与「我说过的 N 句」清单。
+ * 这里只量搜索命中那条老路 —— 只罩着新调用方的哨证不了「原来那条路还好使」，只证得了「新写的东西自洽」。
  *
  * ## 判据故意不改被测函数的形状
  *

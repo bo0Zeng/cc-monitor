@@ -35,8 +35,8 @@
 //! 1. `bind.rs` 每 10s 扫一遍死 shell 的窗口登记 —— 无限、周期、无上限。〔已退役：换成内核的进程退出事件（`pidwatch-core`）。〕
 //! 2. ★★ `stream_source/` 的 **daemonless 数据轮询**（`BACKENDLESS_POLL_INTERVAL = 2s`）——
 //!    **它与定框 C7（没有 daemonless）和 C8（不许轮询）直接冲突**，而且是本工作区的正题。
-//!    〔`K-R59` 09-11：**这一条已经退役** —— 定框 `K35` 把那一档整个取消。本段记的是
-//!     「它一上岗抓到了什么」，不是今天的清单；今天的清单以 `REGISTERED` 与
+//!    〔**这一条不在了** —— 定框 `K35` 把那一档整个取消。本段记的是
+//!     「这张表抓得到什么」，不是清单；今天的清单以 `REGISTERED` 与
 //!     `every_ticker_names_its_event_source_and_owner` 里那个 `tickers` 数为准。〕
 //!
 //! **两个都此前完全没有被任何账本记过**：`polling_registry` 按设计不管 Rust 侧，

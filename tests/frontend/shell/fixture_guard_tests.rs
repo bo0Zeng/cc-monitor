@@ -56,7 +56,7 @@ fn live_reference_corpus() -> Vec<(String, String)> {
 /// `fixture_guard.rs`。**这里不抄第二份。**
 #[test]
 fn every_fixture_has_a_live_reference() {
-    // 没有豁免表（从前那张一直是空的、数到 0 删了）：孤儿夹具一份都不许有。
+    // 没有豁免表：孤儿夹具一份都不许有。
     let root = fg_repo_root();
     let fixtures = files_under(&root.join(FIXTURE_DIR), &root);
 
@@ -123,7 +123,7 @@ fn every_fixture_has_a_live_reference() {
 /// 而一条只有空表的判据说不出「反向那半还在不在」。
 #[test]
 fn every_fixture_address_in_the_live_tree_still_exists() {
-    // 没有悬空登记表（从前那张一直是空的、数到 0 删了）。`tests/evidence/` 里点着已删夹具的是历史记录，
+    // 没有悬空登记表。`tests/evidence/` 里点着已删夹具的是历史记录，
     // 按构造不在人群里（`counts_as_live_reference_site` 头注）。
     let root = fg_repo_root();
     let on_disk: std::collections::BTreeSet<String> = files_under(&root.join(FIXTURE_DIR), &root)

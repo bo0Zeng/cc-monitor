@@ -6,7 +6,7 @@
  *    Windows · Linux 列、macOS 不列、测不出 OS 照常列（失败方向照 `terminal-front.ts` 头注）。
  * 2. **接线**：`main.ts` 的命令表里 `term-front` 恰好一处，而且就是经这道门展开进去的那一处。
  *    ⚠ 这一格是**文本**判据 —— `main.ts` 是入口模块、一个 export 都没有，命令表在闭包里，
- *    行为判据够不着它（`commands.vitest.ts` 的 `K-P5h` 那条为同一个理由也是文本判据）。
+ *    行为判据够不着它（`commands.vitest.ts` 里也有一条为同一个理由写成文本判据）。
  *    它只买「那一项还接在门后面、没有第二份绕过门的副本」，买不到「面板真的少了一行」。
  */
 import { readFileSync } from "node:fs";

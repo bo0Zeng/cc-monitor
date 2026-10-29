@@ -669,7 +669,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     (
         "history-forget",
-        "删会话之后连带删那一条注解（界面删成功之后交；从前是 monitor 删完顺手清）",
+        "删会话之后连带删那一条注解（界面删成功之后交，monitor 不顺手清）",
     ),
     // `creds.apikey` 写：界面经 `src/frontend/ui/apikey-reads.ts::writeApikeyKey` 直接交那台后端（账号 id 由后端推）。
     (

@@ -1,7 +1,7 @@
 /**
  * **桌面旧的分组三格迁进各台**（一次性；5.0.3 之后的第一版带它，再下一版整份删，连同 `config.ts` 里登记给本文件的那两格）。
  *
- * 组从前住这台 `config.json`：组表 `tabCollections`（`{id, name, collapsed?}`）· 每个标签自己的组 `tabBar.groupOf.<sid>` ·
+ * 旧的三格住这台 `config.json`：组表 `tabCollections`（`{id, name, collapsed?}`）· 每个标签自己的组 `tabBar.groupOf.<sid>` ·
  * 固定表 `tabBar.pinned`（`{sid, origin, …}`）。如今组是后端的数据（`history/groups.rs`）：组跟着组员走（每台只存自己有组员的那一片）、组员与固定是会话注解。
  * 迁法：各台的标签都到齐以后（`TabManager` 那一刻），每组向本机要一个 id、组员照标签所在那台 `move` 进组（记录跟着抄进那一片）、固定照记录里那台写 `pinned`；
  * **每一条都写成才删那三格**，有一条没成 ⇒ 原样留着、下次起来再迁（下次另起一个 id；这次写成的那几条留在这次那一组里）。

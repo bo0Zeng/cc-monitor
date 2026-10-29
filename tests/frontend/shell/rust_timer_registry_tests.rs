@@ -123,7 +123,7 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
              ⚠ 为什么非问不可：`connect` 在没人在听的口上拿到 `ECONNREFUSED` 是内核立刻返回的，不会替我们等；通道登记上那一刻也没有可等的事件。",
     ),
     (
-        // `early_failure` 随「起进程那一侧」留在 monitor（从前住窗口的 `shell.rs`）。
+        // `early_failure` 住「起进程那一侧」，也就是 monitor。
         "src/filewin/proc.rs",
         "early_failure",
         "wait-for-condition",
@@ -143,17 +143,10 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
     //   「请它收尾 → 等 → 强杀」搬进那台机器上的一次性子命令 `--resident-stop`（等在 pidfd 上，不轮询），monitor 只拿回结局。
     // `src/search.rs` 那一行（`startup-delay` 1 处：`build_blocking` 起头让路 1.5 s）随本机内存索引删了 ——
     //   本机全文搜索改问本机后端（`history-search`），monitor 不再建索引。
-    // `src/port_forward.rs` 那一行（accept 瞬时错误 100ms 退避）**删了**：accept 循环整个搬进了
-    //   后端的拨号代理（`src/backend/ssh-dial/uses.rs::forward`），而后端不许睡 ⇒ 那一侧改成「accept 失败就收工并出声」。
-    // ★★ 🔴 `K-R59`（09-11）：**这里原来是本表抓到的第二个真节拍器，那一条今天退役了。**
-    //    它是 `src/stream_source/` 的 `BACKENDLESS_POLL_INTERVAL = 2s`（`loop { …; sleep(2s) }`），
-    //    登记里逐字写着它「与**定框 C7 直接冲突**」「也与 **C8**（不许轮询）冲突」，
-    //    而退役条件当时写的是「**远端自动部署可靠到可以删掉这个开关**……今天无人认领，
-    //    如实记未排期」。
-    //    ⇒ 要求（「不要有 daemonless。没有没有后端的情况。」）—— **认领人来了，
-    //      而且不是走「自动部署可靠了」那条路，是直接取消那一档。**
-    //    ★ 这一条与 `watcher.rs` 那条（F11）同形：**退役的验收证据就是本表先红在
-    //      「少一处 = 退役了」上，删掉登记才绿。** 不是靠人说「我改好了」。
+    // accept 循环在后端的拨号代理（`src/backend/ssh-dial/uses.rs::forward`），后端不许睡 ⇒ 「accept 失败就收工并出声」，
+    //   monitor 这一侧没有 accept 退避。
+    // ★★ 🔴 没有 daemonless 数据轮询（「不要有 daemonless。没有没有后端的情况。」，定框 C7 · C8）。
+    //    少一处登记 ⇒ 本表先红，删掉登记才绿 —— 撤掉一个节拍器的证据是这张表，不是人说「我改好了」。
     // `src/inproc_dial.rs` 那一行（`RACE_STAGGER * i`：进程内多端点竞速的错开起拨，C2 从 `stream_source/`
     //   原样搬去的那一份）摘了 —— 那份文件整份删了（界面进程零 SSH）。竞速今天住本机后端 `ssh-dial/connect.rs`（同时起拨：后端零定时器）。
     (
@@ -530,7 +523,7 @@ fn the_shell_wake_scan_is_neither_too_narrow_nor_too_wide() {
 /// 「一组同类东西都必须满足 X」的判据，清单只能用来**表态**（F12 在另一个守卫脚下逮到过我）。
 #[test]
 fn every_shell_shaped_periodic_wake_is_registered() {
-    // ★ 反向自检先跑（`K-R104`）：表空了之后，「扫不到」必须与「扫描器坏了」分得开。
+    // ★ 反向自检先跑：表空了之后，「扫不到」必须与「扫描器坏了」分得开。
     //   合成一条 shell 轮询喂给同一把尺子，它必须数出 ≥1。
     let synthetic = format!(
         "let s = format!(\"while {} $i -lt 3 ]; do {} 0.5; done\");",

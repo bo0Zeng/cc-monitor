@@ -248,7 +248,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/filewin/src/extract.rs", "tx.send(fresh).ok();", Why::PeerGone, "解压撞名那一问的答复；等答的那一趟已收场就没人要"),
     // `history.rs` 那一处（读整份会话末块交前端、前端已走）随那条命令退役。
     ("src/frontend/shell/src/platform/terminal.rs", "let _ = child.wait();", Why::Reap, ""), // 原 `launch.rs`
-    // 下面九行原住 `lib.rs`（主窗口拉前 · 单实例回调）：随两个平台臂搬进 `platform/window.rs`，处数不变。
+    // 下面九行是主窗口拉前 · 单实例回调那两个平台臂（`platform/window.rs`）。
     ("src/frontend/shell/src/platform/window.rs", "let _ = AttachThreadInput(fg_thread, cur_thread, false);", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = BringWindowToTop(h);", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);", Why::WindowBestEffort, ""),

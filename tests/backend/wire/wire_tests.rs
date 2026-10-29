@@ -1486,7 +1486,10 @@ const SECOND_FRONTEND_SUBCOMMANDS: &[&str] = &["--resident-ensure", "--resident-
 #[test]
 fn the_subcommands_the_second_frontend_calls_stay_put() {
     for flag in SECOND_FRONTEND_SUBCOMMANDS {
-        assert!(crate::SUBCOMMANDS.contains(flag), "{flag} 不在子命令表里了");
+        assert!(
+            crate::stream::cli::is_subcommand(flag),
+            "{flag} 不是子命令了"
+        );
         assert!(
             crate::stream::cli::is_query_mode(&[flag.to_string()]),
             "{flag} 不进一次性模式了"

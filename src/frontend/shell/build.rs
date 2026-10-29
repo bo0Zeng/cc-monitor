@@ -49,7 +49,7 @@ fn emit_target_triple() {
     }
 }
 
-/// 🔴 `K-R70`：**读一份二进制并问它是谁** —— 不看它旁边任何文件。
+/// 🔴 **读一份二进制并问它是谁** —— 不看它旁边任何文件。
 ///
 /// 扫法只有一份：`deploy_contract::identity_of_bytes`（界标 `STAMP_OPEN` / `STAMP_CLOSE`，恰好一个戳才是身份；
 /// 运行期推字节之前的见证、后端看落点那一份都是它）。后端那段 `CC_MONITOR_BUILD_STAMP` 是一个 `#[used]` 的
@@ -103,7 +103,7 @@ fn emit_embedded_id(carried: &[(String, String)]) {
 ///
 /// 🔴 **这两份字节从哪来，只有两个地方**：发版那趟是 `release.yml` 的
 /// `Cross-compile backend for both musl targets`，本机那趟是 [`REEMBED_CMD`]，
-/// 两者是**同一条配方**：发版那一步只调 `re-embed.sh --build-only`（`K-R124` ⑬i）。
+/// 两者是**同一条配方**：发版那一步只调 `re-embed.sh --build-only`（入包量具 ⑬i）。
 fn embed_backends(carried: &mut Vec<(String, String)>) {
     // 允许自定义 cfg（Rust 1.80+ unexpected_cfgs 检查）。
     println!("cargo:rustc-check-cfg=cfg(embedded_backends)");
@@ -121,7 +121,7 @@ fn embed_backends(carried: &mut Vec<(String, String)>) {
             );
             continue;
         }
-        // 🔴 `K-R70`：身份从这份字节自己里读，旁边任何文件都没有话语权。
+        // 🔴 身份从这份字节自己里读，旁边任何文件都没有话语权。
         // 问不出身份不能只是 warning —— 有人手工塞了个陈旧 / 别处来的二进制，恰好就是这一形。
         let Some(embedded_id) = file_build_id(&src) else {
             panic!(
@@ -190,7 +190,7 @@ fn target_exe_suffix(target: &str) -> &'static str {
 const NATIVE_BACKEND_DIR: &str = "native-backend";
 const NATIVE_BACKEND_FILE: &str = "cc-monitor-native";
 
-/// `K-R42`：**把「本机后端」也内嵌进 exe**，让裸 `cc-monitor.exe` 自己带得上一份。
+/// **把「本机后端」也内嵌进 exe**，让裸 `cc-monitor.exe` 自己带得上一份。
 ///
 /// # 它与 `embed_backends` 是两件事，别合并
 ///

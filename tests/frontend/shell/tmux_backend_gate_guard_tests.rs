@@ -63,20 +63,19 @@ fn enclosing_fn(src: &str, at: usize) -> (String, String) {
 ///
 /// # 人群与判准（先量后定，量到的都写在这）
 ///
-/// 人群 = monitor 生产段里每一处 `tmux <动词>` 字符串（从前只量 `tmux.rs` 一份，那份文件删了）。
+/// 人群 = monitor 生产段里每一处 `tmux <动词>` 字符串（整棵生产段，不是一份文件）。
 ///
-/// # ★★ `K-R72`（09-12）：判准**收紧了一格**，而且是**变强**不是变弱
+/// # ★★ 判准只有一条，没有「或」
 ///
-/// 原判准是「动词 ∈ [`READ_ONLY_VERBS`] **或**所在函数含 `build_guarded_tmux_cmd`」。
-/// 今天 monitor 侧那条会拼破坏性 tmux 命令的路整个删了（送键与杀会话只走后端）
-/// ⇒ 那个「或」的右半**没有成员了**，而**留着一个空的或分支是危险的**：
+/// monitor 侧没有会拼破坏性 tmux 命令的路（送键与杀会话只走后端）。
+/// 「动词只读 **或**所在函数含 `build_guarded_tmux_cmd`」这种判准里，右半是空的或分支，**留着是危险的**：
 /// 它给「重新长出一个受托者、然后把破坏性动词挂上去」留着一条合法路。
-/// ⇒ 判准收成一条：**monitor 侧发出的每一条远端 tmux 命令都必须是只读动词。**
-/// 这比原来严格 —— 原来允许「走 Gate 的破坏性动词」，今天一个都不允许。
+/// ⇒ 判准是：**monitor 侧发出的每一条远端 tmux 命令都必须是只读动词**（[`READ_ONLY_VERBS`]），
+/// 「走 Gate 的破坏性动词」一个都不允许。
 ///
 /// ⚠ **人群里仍可能混进错误消息串**（`format!("tmux …: {..}")` 这种）。
 /// 刻意不去区分「命令串」与「消息串」—— 文本上分不干净。⚠ 但**代价随判准收紧变了**：
-/// 原先多算没有代价（那些函数本来就走 Gate），今天多算一处含破坏性动词的**消息串**
+/// 多算一处含破坏性动词的**消息串**
 /// 就是一次**误红**。⇒ 现打：monitor 生产段里这样的消息串**零处**
 /// （那两处 `tmux kill-session: {..}` / `tmux send-keys: {..}` 随回落一起走了）。
 /// 哪天又长出来，正确处置是把那句消息改得不含裸动词，**不是**把动词塞进只读表。
@@ -117,19 +116,19 @@ fn verb_after_tmux_skips_placeholders_and_global_flags() {
 
 #[test]
 fn every_remote_tmux_verb_is_either_read_only_or_routed_through_the_gate() {
-    // 人群从 `tmux.rs` 一份扩到整棵 monitor 生产段（那份文件删了；比原来大，不是小）。
+    // 人群是整棵 monitor 生产段。
     let (_, prod) = monitor_production_corpus();
-    // ★ `K-R72`：受托者不许再出现。这一句就是「那个空的或分支」的回潮闸 ——
+    // ★ 受托者不许出现。这一句就是「那个空的或分支」的回潮闸 ——
     //   有人重新拼一个 `build_guarded_tmux_cmd` 出来，本条当场红。
     assert!(
         !prod.contains(GATE_BUILDER),
         "monitor 生产段里又出现了 `{GATE_BUILDER}` —— 那是 monitor 自己拼\n\
-             「原子 verify+act 远端 shell 串」的受托者，`K-R72` 把它连同它唯一的两个消费者\n\
-             （kill / send-keys 的一次性 SSH 回落）一起删了。要恢复它先回 `K-R54` 重新裁定。"
+             「原子 verify+act 远端 shell 串」的受托者；kill / send-keys 只走后端，\n\
+             没有一次性 SSH 回落。要恢复它先重新裁定。"
     );
     let (seen_read_only, bad) = scan_verbs(&prod);
     // 人群归零：`list_remote_tmux` 改问那台后端的 `tmux-list`，monitor 侧**零处**远端 tmux 命令串。
-    //   照 `K-R112` 那段留下的话办：不把地板改成 0 了事，而是**人群恒等 0 ＋ 一份合成坏语料承重**（正控，扫描器认得出违规）。
+    //   不把地板改成 0 了事，而是**人群恒等 0 ＋ 一份合成坏语料承重**（正控，扫描器认得出违规）。
     assert_eq!(
         seen_read_only, 0,
         "monitor 侧又长出了远端 tmux 只读命令串 —— 列会话今天问那台后端 `tmux-list`"
@@ -144,7 +143,7 @@ fn every_remote_tmux_verb_is_either_read_only_or_routed_through_the_gate() {
     assert!(
         bad.is_empty(),
         "monitor 侧有**不是只读动词**的远端 tmux 命令：\n{}\n\
-             `K-R72` 起 monitor 只许对远端 tmux 下**只读**命令 —— 改状态的一律走后端\n\
+             monitor 只许对远端 tmux 下**只读**命令 —— 改状态的一律走后端\n\
              （`C5` 逐字：任何改状态的 tmux 命令一律归 `control/`）。\n\
              ⚠ **别把动词加进 `READ_ONLY_VERBS` 来消红** —— 那张表只收真正不改变远端状态的动词。\n\
              正确动作：把这条命令搬进后端的 `control/`，让它过 `admit` / `admit_destructive`。",
@@ -172,12 +171,9 @@ fn scan_verbs(prod: &str) -> (usize, Vec<String>) {
         }
     }
     // 抽取器自检：一处都没数到 ⇒ 剥生产段或扫描坏了，本条此刻量不到东西。
-    // 🔴 `K-R112`（09-13）：地板 2 → **1**。`tmux capture-pane` 那一处随抓屏改走
-    //    backend 帧面而不存在了 ⇒ monitor 侧只剩 `tmux … ls`（`list_remote_tmux`）一处。
-    //    ⚠ **这一格快到头了**：`list_remote_tmux` 也改走后端的那天，这个人群会归零，
-    //    而**归零之后本条就是空真**（`bad` 恒空）—— 到那时该做的不是把地板改成 0，
-    //    是给它换一份**会漂的活体语料**（同本文件 `every_target_placeholder_comes_from_exact_target`
-    //    今天的做法：人群 0 + 一份合成坏语料承重）。
+    // 🔴 人群归零之后本条就是空真（`bad` 恒空）—— 该做的不是把地板改成 0，
+    //    是给它一份**会漂的活体语料**（同本文件 `every_target_placeholder_comes_from_exact_target`
+    //    的做法：人群 0 + 一份合成坏语料承重）。
     (seen_read_only, bad)
 }
 
@@ -201,7 +197,7 @@ fn monitor_production_corpus() -> (usize, String) {
 /// 守的要求：`INVARIANTS §34`（破坏性动作过三道门，门只住后端 `control/gate.rs`）与定框 `C5`
 /// 「任何改状态的 tmux 命令一律归 `control/`」—— 杀会话今天只剩一条路：界面 · 手机经通道说后端的 `terminal-end`，
 /// 后端先 `admit_destructive` 拿**句柄**再杀。monitor 里再长出一处自己拼 `kill-session` 的 shell 串，
-/// 就是 `K-R72` 删掉的那条对**名字**下手的回落回来了（TOCTOU 窗口）。
+/// 就是对**名字**下手的回落回来了（TOCTOU 窗口）。
 /// 正控：同一识别器在后端 `control/kill.rs` 的生产段上认得出那个动词。
 #[test]
 fn the_monitor_has_no_second_path_that_kills_a_session() {
@@ -365,7 +361,7 @@ fn every_target_placeholder_comes_from_exact_target() {
     );
 }
 
-/// ★★ K-R12（09-04）「同一个口径只有一个家」—— tmux 打印通道的 UTF-8 口径（`INVARIANTS §49`）只住后端
+/// ★★ 「同一个口径只有一个家」—— tmux 打印通道的 UTF-8 口径（`INVARIANTS §49`）只住后端
 /// `src/backend/common/tmux_utf8.rs`，monitor 这一侧零份（monitor 零处跨 SSH 的 tmux 读）。
 ///
 /// 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。

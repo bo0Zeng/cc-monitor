@@ -1,0 +1,10 @@
+# 出站 TCP 不在中转里开：去上游经宿主交进来的那一口（`upstream::connect`；后端交的是出网口 `egress::open`），
+# 中转自己开一条就绕过了代理。经第三方 crate 间接开的连接认不出。后端那棵另有一份同组的 `clippy.toml`。
+# 测试段放开（库根头上那一行 `cfg_attr(test, …)`）。
+disallowed-methods = [
+  { path = "std::net::TcpStream::connect", reason = "出站 TCP 只在出网口开：去上游走宿主交进来的那一口" },
+  { path = "std::net::TcpStream::connect_timeout", reason = "出站 TCP 只在出网口开：去上游走宿主交进来的那一口" },
+  { path = "tokio::net::TcpStream::connect", reason = "出站 TCP 只在出网口开：去上游走宿主交进来的那一口", allow-invalid = true },
+  { path = "tokio::net::TcpSocket::new_v4", reason = "出站 TCP 只在出网口开：去上游走宿主交进来的那一口", allow-invalid = true },
+  { path = "tokio::net::TcpSocket::new_v6", reason = "出站 TCP 只在出网口开：去上游走宿主交进来的那一口", allow-invalid = true },
+]

@@ -182,7 +182,7 @@ fn faces_on(t: Target) -> BTreeSet<(&'static str, &'static str)> {
         .map(|s| s.name)
         .filter(|n| !off(n))
         .map(|n| ("wire-commands", n));
-    let cli = crate::SUBCOMMANDS
+    let cli = crate::stream::cli::subcommands()
         .iter()
         .copied()
         .filter(|f| crate::stream::cli::spec_for(f).is_none_or(|s| !off(s.name)))

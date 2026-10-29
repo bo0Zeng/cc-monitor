@@ -1,9 +1,9 @@
 //! F08a：backend 只读机器护栏（红线 I7 的机器化守护）。
 //!
-//! # `K-G6` `KG62`：性质与人群，两行逐字（**这两行各自只许有一句**，`g6_scope_pins` 钉着）
+//! # 性质与人群，两行逐字
 //!
 //! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 碰盘只经 `platform/fs/` 交出去的句柄：读经 `Ro`（没有写方法）· 改用户文件只经文件管理面的 `Face`（写方法只收已过路径解析的 `Resolved`，只递给命令表文件管理那一族）· 分叉只经只会 `O_EXCL` 新建的 `NewFile` · 后端自家状态只经 `Own`（只写家目录的 `.cc-monitor` 与数据目录底下）。
-//! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段源码文本里点名文件系统命名空间的地方（`platform/fs/` 之外一处都不许）与造写句柄的地方（只许登记的那几处），外加另一张表：`Child::new` 的起进程点（生产段 `Command::new` 只许住起子进程原语 `platform/child.rs`）。
+//! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段源码文本里点名文件系统命名空间的地方（`platform/fs/` 之外一处都不许）与造写句柄的地方（只许登记的那几处），外加另一张表：`Child::new` 的起进程点（`Command::new` 只许住起子进程原语 `platform/child.rs`，后端 `clippy.toml` 守）。
 //!
 //! # 怎么挡：一处实现，四种句柄
 //!
@@ -19,7 +19,7 @@
 //!
 //! 今后加一处读，不用改护栏；加一处写，只要拿到对的句柄。只有新开一种写能力、或者多一个造句柄的地方，才回来改这里。
 //!
-//! ⚠ **这两行今天仍不是同一件事，而「它们是同一件事」这一格钉不住 —— 靠纪律**（`KG62` 如实登记）：
+//! ⚠ **这两行今天仍不是同一件事，而「它们是同一件事」这一格钉不住 —— 靠纪律**：
 //! 「用户既有数据」是**语义**命题，人群是**文本形状 ＋ 类型**，两者之间没有可机检的桥。
 //! 人群比性质**小**：不含依赖 crate 的写（见下：签字表守）· 不含被起进程的写面（`spawn_registry` 逐条登记）·
 //! 不含不经那几个命名空间的写（裸系统调用：`platform/fs/` 外今天一处没有，但没有一条判据钉它）。
@@ -40,25 +40,10 @@
 //! 而它们今天进不了发布二进制靠的是**一个 feature 没开**。
 //! 从前盘上没有任何东西钉着那件事。
 //!
-//! # 收窄前那句绝对话今天是假的，**两处一次改完**
-//!
-//! `D1` 之后 `src/doc/INVARIANTS.md` §41.6 已经把铁律改成上面那句，并把收窄前那句绝对话
-//! 逐字标成**原措辞**（要看原文去那里 —— 本文件刻意**不再抄一遍**：抄一遍就等于把那句假话
-//! 留在这里，而这正是这里要治的病）。
-//! 而这个文件里**同时**留着收窄前的绝对句两处（本头注一处 + 只读白名单那条的报错文案一处），
-//! 判据兑现的却是收窄后那句 ⇒ 典型的「**只修一半**」，且盘上至少两件逐字引用了这句假话。
-//! ⇒ 两处一并改，并由 `platform/fallback_guard.rs::g6_scope_pins` 立一条**反向棘轮**
-//! 钉住那两个承重词从此不许回来。
+//! 性质那一句的来历与原措辞住 `src/doc/INVARIANTS.md` §41.6。
 //!
 //! 本护栏遍历后端生产源码，剥掉 `#[cfg(test)]` 块（测试夹具可用 temp 目录）后，断言 `platform/fs/` 之外不点名文件系统命名空间、
 //! 写句柄只在登记的那几处造。加只读测试是红线 I7 明确允许的（「backend 只准加只读测试/门禁」）。
-//!
-//! # ⚠ 本文件底部三个 `g6_*` 模块的住址是**当时改动范围限制的结果**，不是设计
-//!
-//! [`g6_doctrine`]（`§0a` 四情形表）与 [`g6_staged_zero`]（「今天零使用」那一族的指路判据）
-//! 都是**跨护栏**的东西，正确落点是新立一份 `guard_doctrine.rs`；
-//! 当时只许改三份护栏文件，新建文件与改 `main.rs` 都不在范围内。
-//! ⇒ 暂住这里，**已上报 PM**。搬家那天把这段一起删掉。
 //!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空、零运行期开销、不改后端行为。
 
@@ -897,6 +882,25 @@ mod tests {
     }
 }
 
+/// 一条护栏的人群与性质对不上时的处置：恰好这四格。「加白名单」不是其中一格 ——
+/// 白名单被反复放宽说明它没有真实消费者，该删；这四格治的是方向相反的病（性质还要、人群画错了）。
+/// 受管例外（[`spawn_registry::ALLOWED`] 的第四栏）必须说得出自己走的是哪一格。
+#[cfg(test)]
+#[allow(
+    dead_code,
+    reason = "四格是闭集：今天的登记都落在「缩性质」，另三格留给下一条登记挑"
+)]
+enum Cell {
+    /// 收窄人群：性质还要，人群画大了（扫到了不该扫的）⇒ 把人群收窄到性质上。收完判据说的话变少，说的每一句都是真的。
+    NarrowPopulation,
+    /// 补齐人群：性质还要，人群画小了（漏了该扫的）⇒ 补齐，并在同一次改动里确认新人群不误红。
+    CompletePopulation,
+    /// 重做或删：盘上有一个形状相同、未经放宽就通过了的反例 ⇒ 先判它今天守住了什么，再定重做还是删。
+    RedoOrDelete,
+    /// 缩性质：性质本身是一个更小性质的粗近似 ⇒ 单独论证，并写清缩掉的那一半从此归谁。
+    ShrinkProperty,
+}
+
 /// U8a-2 / **D1 裁决的代码强制**：backend 起进程的**受管例外清单**。
 ///
 /// # 为什么要这条
@@ -924,27 +928,18 @@ mod tests {
 mod spawn_registry {
     /// 生产段允许起的进程，**逐条登记**。
     ///
-    /// # 三元组扩成**五元组**：多出来的两栏是「走的是哪一格」与「解锁条件」
+    /// `(文件, 起什么, why——做什么、为什么不算违反「backend 进程自身不写用户既有数据」, 格——护栏处置四格里的哪一格, unlock——什么条件满足之后这一条就能删)`
     ///
-    /// `(文件, 起什么, why——做什么、为什么不算违反收窄后的铁律, 格——`§0a` 四情形表里的哪一格, unlock——什么条件满足之后这一条就能删)`
-    ///
-    /// 形状照 `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS`（本仓已有的活体：四元组 + 长度地板）。
-    /// 第四栏由 [`super::g6_doctrine::is_cell`] 做**枚举比对**（不是子串），
-    /// ⇒ **加一条登记却说不出它走的是哪一格，当场红** —— 那正是 `KG64` 要的那个时刻。
-    ///
-    /// ⚠ 本表**每一条**今天都落在同一格（`缩性质`）：`D1` 把铁律从收窄前那句绝对话缩成
-    /// 〔`K-R79` 09-12 订正：这一行原文逐字写的是「**本表七条**」，而现打 `ALLOWED.len()` 是 **9** ——
-    ///  那是一处**写死的基数**（派工单固定项 13b：报一个基数也是复述，要现算）。
-    ///  今天要那个数就让机器印：`readonly_guard::remote_write_layer` 的盲区读数里 `L2` 那一行现算它。〕
-    /// 「backend **进程自身**不许改动用户既有数据」，而「缩掉的那一半从此归谁」的答案就是本表 ——
-    /// 归**被起的那个程序**。这不是巧合，是这张表存在的理由。
-    pub(super) const ALLOWED: &[(&str, &str, &str, &str, &str)] = &[
+    /// 第四栏是 [`super::Cell`]：加一条登记却说不出它走的是哪一格，编不过。
+    /// 本表每一条都落在 [`super::Cell::ShrinkProperty`]：性质缩成「backend **进程自身**不许改动用户既有数据」，
+    /// 缩掉的那一半（间接写）归**被起的那个程序**，这张表就是「归谁」的落点。
+    pub(super) const ALLOWED: &[(&str, &str, &str, super::Cell, &str)] = &[
         (
             "dial/ssh_config.rs",
             "ssh",
             "`ssh -G <别名>`：OpenSSH 客户端**只解析** `~/.ssh/config` 打出有效参数、不建连接、不写任何文件。\
              别名先过 allowlist、`-` 开头另挡，argv 直传不过 shell。从 monitor 搬来（解读与拨号同一个家）。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "自己解析 ssh_config（Include / Match / 通配 / 默认值）的那天 —— 今天交给 `ssh -G` 是因为它最准。",
         ),
         (
@@ -956,7 +951,7 @@ mod spawn_registry {
              做的是用户这一趟本来就要做的事（D1 裁决的正例，同 `control/launch.rs` 那条）。\
              ⚠ **backend 常驻那条路走不到这里**：入口在 `main()` 最前面按 `argv[0]` / 子命令词分出去，\
              常驻模式一个字节都不经过本模块。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "把收尾那几段（兜底轮询 / attach / cc-bus 登记）逐条做成原生动作、不再经 shell 的那天。\
              ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第二种用途。",
         ),
@@ -967,7 +962,7 @@ mod spawn_registry {
              （`claude` / `codex` / `--launcher` 指定的任意命令），argv 直传**不过 shell**。\
              被起的程序名来自用户这一趟的参数，**按设计就不是字面量**。\
              它就是「用户敲 `cc` 想要发生的那件事」本身。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "同上那条：一次性模式整个搬走、或起 agent 不再由本进程 `exec` 的那天。",
         ),
         (
@@ -978,7 +973,7 @@ mod spawn_registry {
              它持一个伪终端、在里面直接起同送进 tmux 容器的那一跳（不经 shell）；起好之后同一跳加 `--ccm-print` 原生跑一次自检\
              （只算计划、不起 agent）。与 tmux 那一形起 tmux 会话同一个角色；里面的程序写什么归它自己，\
              **不是**后端进程自身写用户既有数据。键与上一条同为 `<非字面量>` ⇒ 加这一条不会红，是人读了才写下的。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "托管终端改由别的入口起（或不再由本二进制持伪终端）的那天摘掉。⚠ 起的只许是 `--host-run` 那一串。",
         ),
         (
@@ -986,7 +981,7 @@ mod spawn_registry {
             "tmux",
             "装 tmux hook（`set-hook -g`）。改的是 **tmux server 的运行期状态**，\
              不是用户既有数据；P4b 的零轮询判活靠它",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "判活不再需要后端自己去装 hook 的那天（换成别的内核事件源，\
              或 hook 由用户侧一次性装好而后端只读）——那时这一条摘掉。",
         ),
@@ -997,7 +992,7 @@ mod spawn_registry {
              改的是 **tmux server 的运行期状态** + 起一个用户自己要起的 claude 进程，\
              **不是后端进程自身写用户既有数据** —— 载荷落盘由那个 claude 进程负责，\
              与用户在终端里手敲同一条命令没有区别（D1 裁决的正例）",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "「起会话」这条路整个搬出后端（或改成由 monitor 侧起、backend 只观测）的那天。\
              ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第二种被起的程序。",
         ),
@@ -1007,7 +1002,7 @@ mod spawn_registry {
             "F04a：`kill-session` / `kill-pane`（argv 直传；会话里还有别的 claude 窗格时只结束挂着那个 sid 的窗格）。\
              **破坏性**，但改的是 **tmux server 的运行期状态**，不是后端自己写用户既有数据；且必须先过 §34 三道门（Gate 3 = 单窗口）。\
              本文件只这一处起进程",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "§34 那三道门有任何一道被拆掉、或「杀会话」不再由后端发起的那天，\
              这一条要回来重判（它是本表里唯一**破坏性**的 tmux 动作）。",
         ),
@@ -1023,7 +1018,7 @@ mod spawn_registry {
              ⇒ 那处调用点搬去了那边。\
              今天两条子命令共用本文件**一处**起进程：探测那条 `display-message`，以及按 sid 找窗格那条只读的 \
              `list-panes -s -F '#{pane_id}…#{@ccm_sid}…'`（一个 tmux 会话里可以有几个 claude 窗格；`kill.rs` 杀之前读 pane pid 也走它）。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "这一条是**只读 tmux**，本来就落在收窄后的性质之内；\
              等哪天有一条判据能机检「这个起进程点只读」，它就该从受管例外里摘出去、不再占一格。",
         ),
@@ -1042,7 +1037,7 @@ mod spawn_registry {
              ⚠ **它只抓一次就返回**，轮询归 `K-R87`（`KR86D3`）—— 同一个模块里\
              「抓一次」被改成「循环抓」时，`no_timer_guard` 与 `the_capture_site_is_one_shot` \
              各红一条。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "这一条是**只读 tmux**，本来就落在收窄后的性质之内 —— 同 `control/gate.rs` 那条：\
              等哪天有一条**通用**判据能机检「这个起进程点只读」，它就该从受管例外里摘出去。\
              ⚠ [`super::capture_is_read_only`] **不是**那条通用判据：它只盖本文件这一处 \
@@ -1058,7 +1053,7 @@ mod spawn_registry {
              外加经同一个命令构造器交给 `control/launch.rs` 的送字送键（`send-keys` / 粘贴）与 `control/gate.rs` 的身份探测 \
              —— 写的那一半只改 **tmux server 的运行期状态**（往用户明确要送的那个终端里打字），\
              不写任何文件；送之前过身份门（同 `launch` 的 `send-into`），只认名单里的终端。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "终端管理换成托管终端（宿主不再是 tmux）的那天，这一条随实现一起换掉。",
         ),
         (
@@ -1067,7 +1062,7 @@ mod spawn_registry {
             "终端实时预览：起一个 tmux **控制模式**客户端（`-C attach-session -f read-only,ignore-size`）挂在那个终端所在的会话上，\
              只读它报的输出事件当「画面变了」的信号（画面本身照旧经 `control/terminals.rs` 抓）；只读客户端不能往窗格里打字、\
              不改窗格尺寸，不写任何文件。订阅一停（退订 · 连接走 · 终端没了）就杀组收尸（`Child::stream` 放手即收）。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "终端管理换成托管终端（宿主不再是 tmux）的那天，这一条随实现一起换掉（托管进程自己推画面）。",
         ),
         (
@@ -1080,7 +1075,7 @@ mod spawn_registry {
              **全 crate 唯一一处「一次列全部 tmux 会话」**（`list-sessions`，会话快照的探测器：\
              `R52` 裁定一「向快照发一次询问, 快照更新一次」那「一次询问」；一次调用列全部，不是每个成员探一次）。\
              **只读 tmux**，不改任何状态。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "tmux 那一形宿主整个删掉（托管成为唯一宿主）的那一版。\
              ⚠ 在那之前**不许**往本文件自己发的那几样底下加会改 tmux 状态的子命令 —— 写面归调用方、各自登记。",
         ),
@@ -1095,7 +1090,7 @@ mod spawn_registry {
              运行期状态**，不是后端自己写用户既有数据（同 `tmux_hook`）。\
              ⚠ **探测不在这里**：它复用 `control/gate.rs` 那一处 `display-message`，\
              所以本文件只有这一处起进程 —— 刻意不让面变大",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "会话身份不再靠 tmux 变量承载的那天（`K-P5` 若把身份脱离 tmux，这一条随之消失）。\
              ⚠ 那一件要来动本护栏时，先读 `K-G6` 立的这套做法，别顺手加白名单。",
         ),
@@ -1104,7 +1099,7 @@ mod spawn_registry {
             "tmux",
             "点 ↗ 时答「此刻谁在显示这个会话」：`list-clients -t <pane> -F '#{client_pid} #{client_activity}'`（argv 直传，\
              socket 取自那个进程自己的 `TMUX`）。**只读 tmux**，不改任何状态、不读不设标题；只在被问时起一次。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "「谁连着这个会话」改由别的事实源答（不再问 tmux）的那天。",
         ),
         (
@@ -1137,7 +1132,7 @@ mod spawn_registry {
              写面：**只读**。今天这个使用者已不在：账号库改由后端自己建，那份外部脚本与 `accounts/iso.rs` 一起删了。\
              ⚠ 同样**加这一条不会红**（键仍是 `<非字面量>`）—— 是人回来读了这一段才写下的。\
              今天经它起的是计划读面那一条（`plan/mod.rs` 起 pb）。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "键能分得出「哪个插件、哪条被调命令」的那天（今天是 `<非字面量>`，几条命令共用一个键）。\
              ⚠ 在那之前，本条的覆盖面没有机检：加一种被调命令时回来重读这一段。",
         ),
@@ -1156,7 +1151,7 @@ mod spawn_registry {
              将来经它起的每一条脚本，写面都落在这条理由底下，而加一个新用户**不会红**。\
              ⇒ 加新用户时必须回来重读这一段，没有任何机检会替你想起。\
              今天经它送出去的**恰好两处**，两处都在 `observe/watcher.rs`。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "同 `control/gate.rs` 那条：今天经它送的两处都是只读，\
              等有判据能机检「这个起进程点只读」时就该摘出受管例外。\
              ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第三种用途 —— \
@@ -1175,7 +1170,7 @@ mod spawn_registry {
              只由 `powershell-policy-set` 跑 —— 界面在用户点了、确认了之后才发（「只在用户点击并确认后执行，不代改」）；\
              ③ 现问连接表与进程表（`Get-NetTCPConnection -State Established` ＋ `Win32_Process` 只取进程号 · 父进程号 · 名字 · 启动时刻四格，\
              只读、不吃入参；`session-window`，点 ↗ 时问一次）。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "有别的办法读到那台 PowerShell 的内建别名表与执行策略（不起进程）的那天摘掉只读那两种。\
              ⚠ 写的那一种只许是上面那一句固定脚本，不许收界面给的策略值。",
         ),
@@ -1184,7 +1179,7 @@ mod spawn_registry {
             "pwsh.exe",
             "PowerShell 7 那一代（它的 `$PROFILE` 在 `Documents/PowerShell/`，执行策略与 5.1 分开存）：\
              同上一条的 ① ② 两种固定脚本（现问执行策略 · 用户确认后设当前用户 `RemoteSigned`），只在 7 的 profile 目录在时问。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "有别的办法不起进程就读到 PowerShell 7 的执行策略的那天摘掉只读那一种；\
              ⚠ 写的那一种只许是上一条那一句固定脚本，不许收界面给的策略值。",
         ),
@@ -1195,7 +1190,7 @@ mod spawn_registry {
              不吃任何输入、有期限。被起的是用户自己的登录 shell，它读不读 / 写不写什么由用户的 rc 文件定；后端进程自身不写用户数据。\
              按后端生命周期只问一次（缓存）；只从足迹报告（`footprint-report` · `data-report`）判 agent 命令行装没装、起新会话框（`session-open-facts`）判这台能起哪几家、\
              后端自己起 agent 程序（`login-start` 登录子命令 · `quota-probe` 用量探针，经 `platform::shell::agent_launch`）找程序时进来。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "有别的办法拿到用户登录环境的 `PATH` 而不起他的 shell 的那天摘掉。⚠ 脚本只许是打出 `PATH` 那一句。",
         ),
         (
@@ -1204,7 +1199,7 @@ mod spawn_registry {
             "托管终端（`--host-run <id> … -- <argv>`）：在它自己的伪终端里起 ccm 交来的那一行（同送进 tmux 容器的那一行，argv 直传不过 shell），\
              与 tmux 在窗格里起它同一个角色：里面的程序写什么归它自己（agent 照它自己的样子用它自己的目录），托管进程只读它的输出、按持有者送键。\
              **不是**后端进程自身写用户既有数据。只从 `ccm -- --host-run` 进来。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "托管终端改由别的宿主（或不再由本二进制持伪终端）的那天摘掉。⚠ 起的只许是 `--host-run` 那一串 `--` 之后的 argv。",
         ),
         // `relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里，那一处起法随之删。
@@ -1214,7 +1209,7 @@ mod spawn_registry {
             "在 tmux 里后台起会话：**本后端这个二进制自己**（`current_exe`）当 ccm 跑界面那一行（同一个渲染器、只多 `--detach`），\
              argv 不过 shell、stdin 空、等它退出收话。被起的是 ccm 那一趟，它自己的起法（建 tmux 会话、键入、收尾）由本护栏照样管；\
              **不是**后端进程自身写用户既有数据。只从 `session-open`（tmux 那一形、要新建会话）· 换号重启 · 说一句恢复进来。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "起会话改由别的入口在后端起的那天摘掉。⚠ 不许往这一处底下加第二种用途 —— 它起的永远是本二进制的 ccm 那一趟。",
         ),
         (
@@ -1223,7 +1218,7 @@ mod spawn_registry {
             "在 app 里登录一个号：起那一家的官方登录子命令（Claude：`claude auth login --claudeai`），程序名与参数来自适配层登记的那一形\
              （`AccountsFace::sign_in`）、argv 直传不过 shell；stdin 只写人从登录页粘回来的那一段码。令牌由官方客户端自己换、自己写进\
              **那个号自己的**配置目录（照它自己的样子用它自己的文件），后端一个字节不写。**不是**后端进程自身写用户既有数据。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "官方客户端改成别的登录方式（或后端改走别的路登录）的那天摘掉。",
         ),
         (
@@ -1232,7 +1227,7 @@ mod spawn_registry {
             "`quota-probe`：起那一家的官方客户端报一次某个号的用量（Claude：`claude -p /usage`），程序名与参数来自适配层登记的那一形\
              （`agents::usage_of`）、argv 直传不过 shell、stdin 空、期限 30 秒。它只读那个号的登录、问一次上游的用量，不发模型请求；\
              工作目录是家里不出会话的那一个。**不是**后端进程自身写用户既有数据（官方客户端照它自己的样子用它自己的配置目录）。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "用量改由别的来源（如回包头里已经带着按模型的那几档）读得全、不再需要问官方客户端的那天摘掉。\
              ⚠ 不许往这一处底下加第二种用途 —— 它起的永远是适配层登记的那一条报用量的命令。",
         ),
@@ -1242,7 +1237,7 @@ mod spawn_registry {
             "远端那台的常驻后端由那台的 `--resident-ensure` 起：**本后端这个二进制自己**（`current_exe`）\
              以常驻载体起（stdio 全空、自成进程组、钥匙经文件交）。被起的就是流模式那一臂，它自己的写面由本护栏照样管；\
              **不是**后端进程自身写用户既有数据。只从 CLI 子命令 `--resident-ensure` 一条进来（monitor 经链路 capture 跑）。",
-            "缩性质",
+            super::Cell::ShrinkProperty,
             "远端常驻后端改由别的东西起的那天摘掉。⚠ 在那之前**不许**往这一处底下加第二种用途 —— 它起的永远是本二进制的常驻载体。",
         ),
     ];
@@ -1333,57 +1328,22 @@ mod spawn_registry {
         );
     }
 
-    /// ★ 生产段 `Command::new(` **只许**出现在起子进程原语里（期限必填 · 杀整组 · 自有环境无条件摘都在那里做）。
-    /// 别处零命中；正控：原语那一份恰好一处（抽取没坏）。
-    #[test]
-    fn command_new_lives_only_in_the_spawn_primitive() {
-        let src = guard_core::addr::backend_src_root();
-        let mut hits: Vec<(String, usize)> = Vec::new();
-        for (p, raw) in guard_core::scan_tree_excluding(&src, &["rs"], &[]) {
-            let rel = p
-                .strip_prefix(&src)
-                .unwrap_or(&p)
-                .to_string_lossy()
-                .replace('\\', "/");
-            let n = guard_core::production_code(&raw)
-                .matches("Command::new(")
-                .count();
-            if n > 0 {
-                hits.push((rel, n));
-            }
-        }
-        assert_eq!(
-            hits,
-            vec![("platform/child.rs".to_string(), 1)],
-            "生产段 `Command::new(` 只许住 `platform/child.rs`（恰好一处）。别处起子进程改走 `Child::new(…).run(期限)` / `detach` / `exec_replace`。"
-        );
-    }
-
     /// ★ 清单里不许有**幽灵条目**（登记了但生产段已经没有了）。
     ///
     /// 否则清单会越攒越松，上面那条的判据跟着变松。
     #[test]
     fn the_registry_has_no_ghost_entries() {
-        for (f, p, why, cell, unlock) in ALLOWED {
+        // 第四栏是 [`Cell`]：说不出走的是哪一格就编不过。
+        for (f, p, why, _cell, unlock) in ALLOWED {
             assert!(
                 !why.is_empty(),
                 "{f} 起 {p} 没写理由 —— 「逐条列举」列的是写面与理由，不是文件名清单"
-            );
-            // **枚举比对**（判据规范规则 3：闭集比对，不是子串）。
-            assert!(
-                super::g6_doctrine::is_cell(cell),
-                "{f} 起 {p} 的第四栏是 `{cell}` —— 它不在 `§0a` 四情形表的闭集里。\n\
-                 加一条受管例外**必须说得出它走的是哪一格**（`{}`）。\n\
-                 ⚠ 「加白名单」**不是**那四格里的任何一格 —— 这条判据存在的全部理由\n\
-                 就是那句承重的话：**放宽 ≠ 加白名单**。",
-                super::g6_doctrine::cell_names().join(" / ")
             );
             assert!(
                 unlock.trim().chars().count() >= 20,
                 "{f} 起 {p} 没写**解锁条件**（实得 {} 字）—— 要写的是「什么条件满足之后\
                  这一条就能删」，不是「为什么现在不能删」。\
-                 没有解锁条件的受管例外只是「永久豁免」的好听说法\
-                 （形状照 `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS`）。",
+                 没有解锁条件的受管例外只是「永久豁免」的好听说法。",
                 unlock.trim().chars().count()
             );
         }
@@ -1707,398 +1667,6 @@ mod capture_is_read_only {
             "抓屏那一处的生产段里出现了循环构件：{loops:?}\n\
              ⇒ 「抓几次」是**调用方**的事（`KR86D3` 逐字：只出原语，不出轮询）。"
         );
-    }
-}
-
-// **这段话原先给的那个理由，今天已经不成立了**。原文逐字留档
-// （它下过一次结论、被引过，所以留着）：
-//   「这条再导出**不是为了好看**：`g6_doctrine` 的声明行必须逐字是 `mod g6_doctrine {`，
-//    不许写成 `pub(crate) mod` —— `guard_core::test_module_ranges` 认「测试模块」的判据是
-//    「属性的下一行以 `mod ` 打头、以 `{` 收尾」，写成 `pub(crate) mod` 就**认不出来**，
-//    整段测试代码会留在生产段里被别的守卫扫。〔实测：写成 `pub(crate) mod` 时
-//    `every_backend_file_strips_clean` 当场红，逐字「剥完仍残留 2 个测试属性」。〕
-//    ⇒ 跨模块可见性只能走这条再导出。」
-//
-// **那个前提被 `K-R75`（09-12）拆掉了**：剥法不再按字面前缀认 `mod `，改成**按形状**
-// 先剥可见性修饰（`guard_core::strip_visibility`）⇒ `pub(crate) mod` 今天认得出来，
-// 上面那句「只能走这条再导出」**是假的**。
-// ⇒ 今天这条再导出**不是被逼出来的**，它只是一个写法；`mod g6_doctrine {` 那一行
-//   **也不再必须逐字长成那样**。
-//
-// 🔴 **`K-R77`（09-12）把那道再导出拆了**（——
-//   `K-R76` 当时刻意不自批，`§0d` 写死「只改那段过期的话」）。
-//   今天盘上：`g6_doctrine` 直接写成 `pub(crate) mod`，跨模块的取名走
-//   `crate::readonly_guard::g6_doctrine::{cell_names, is_cell}`（唯一的跨模块消费者是
-//   `no_timer_guard`），**顶层那一行再导出没有了**。
-//   ⚠ **别再写回来**：这一族今天有闸了 —— monitor 侧
-//   `structural_scan.rs::the_cfg_test_reexport_detour_stays_extinct` 是一条**恒零棘轮**，
-//   语料面含本文件所在的这棵树，写回一行当场红并点名这份文件。
-
-/// **`§0a` 四情形表的代码形态** —— 一条护栏的人群与性质对不上时该怎么处置。
-///
-/// # 承重的那句话：**放宽 ≠ 加白名单**
-///
-/// 本仓铁律 16 写着「一条判据的白名单被反复放宽 ⇒ 它没有真实消费者，删掉它」。
-/// 而护栏这一族的常见情形**方向相反**：性质仍然要，只是人群画错了。
-/// 两者必须分开处置，而分开的判准就是这张表。
-/// ⇒ 判据 [`adding_a_whitelist_entry_is_not_one_of_the_four_cells`] 钉的正是这一点：
-/// **「加白名单」不是这四格里的任何一格。**
-///
-/// # 它落在这里、而不是注释里，是刻意的
-///
-/// 派工单原写「落进护栏头注」，`Bx` 顶回来了：「写在**源码注释**里的
-/// 自证等于埋掉了」，而 `ratchet_guard.rs` 头注另有一条 ——
-/// 判据不许在自己的文本里找到自己。⇒ 四情形表必须是**可被判据读的结构**，
-/// 形状照 `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS`（四元组 + 长度地板）。
-///
-/// # 它挡不住什么（如实登记，别读成证明）
-///
-/// - 挡不住**抄一个格名过关**：它钉的是「说得出走的是哪一格」，不是「真的想过」。
-/// - 挡不住**既有条目的覆盖面悄悄变大**：`ALLOWED` 里 `plugin/invoke.rs` 那个
-///   `<非字面量>` 键覆盖三条命令、第三条漏登 13 天而三条判据全绿 —— 本条逮不到它，
-///   逮它的是 [`g6_reach`] 的反例表（那一格钉的是「恰好三条」）。
-#[cfg(test)]
-pub(crate) mod g6_doctrine {
-    /// 四情形**闭集**。五元组：
-    /// `(格, 什么时候落在这一格, 正确处置, why——为什么是这个处置, unlock——这一格自己什么时候要被重新裁定)`
-    pub(crate) const CELLS: &[(&str, &str, &str, &str, &str)] = &[
-        (
-            "收窄人群",
-            "性质还要，而人群画大了 —— 判据扫到了不该扫的",
-            "把人群收窄到性质上",
-            "这是**收紧**不是放宽：收完之后判据说的话变少了，而它说的每一句都是真的。\
-             `K-G2` 已有先例。误红消失换来的不是「护栏变松」，是「护栏不再撒谎」。",
-            "哪天性质本身扩了（真的要管更大那一片），这一格就不适用，改走 `补齐人群`。",
-        ),
-        (
-            "补齐人群",
-            "性质还要，而人群画小了 —— 判据漏了该扫的",
-            "补齐人群，**同一刀做完**",
-            "`K-G2` 的教训逐字：分开做必漏。补人群那一刀必须与「确认新人群不误红」同轮，\
-             否则第二刀永远排在后面，而第一刀已经把护栏的名声用掉了。",
-            "补到「人群 == 性质」那天这一格就关了；在那之前每补一次都要重新量误红面。",
-        ),
-        (
-            "重做或删",
-            "性质今天已经守不住 —— 盘上有一个形状相同、未经放宽就通过了的反例",
-            "★★ **先判它今天守住了什么**，再裁重做还是删掉",
-            "这一格是本表最要紧的一格：**不许在一个拦不住的东西上讨论怎么放宽它**。\
-             「放宽之后没红」既可能是放宽对了，也可能是它本来就不响 —— \
-             两者在终端上一模一样，而只有先摆出反例才分得开。",
-            "反例被修掉、或人群补齐到能覆盖它之后，这一条回到 `收窄人群` / `补齐人群`。",
-        ),
-        (
-            "缩性质",
-            "性质本身该缩 —— 它当初是一个更小性质的**粗近似**",
-            "**单独论证**，并写清**缩掉的那一半从此归谁**",
-            "`D1` 把后端那条写盘铁律从收窄前那句绝对话（原文见 `src/doc/INVARIANTS.md` §41.6 的\
-             「原措辞」，本文件刻意不抄）缩成「backend 进程自身不许改动用户既有数据」就是这一格：\
-             缩掉的那一半（间接写）归**被起的那个程序**，而代价是那条路必须逐条登记 —— \
-             登记表就是「归谁」的落点。**只缩不写归属 = 把那一半丢了。**",
-            "缩掉的那一半有了自己的判据（或那条路整个消失）之后，登记表随之摘掉。",
-        ),
-    ];
-
-    /// 闭集比对（**枚举，不是子串** —— 判据规范规则 3）。
-    pub(crate) fn is_cell(tag: &str) -> bool {
-        CELLS.iter().any(|(c, ..)| *c == tag)
-    }
-
-    /// 报错文案要印出闭集全体，否则撞上的人得回来翻源码。
-    pub(crate) fn cell_names() -> Vec<&'static str> {
-        CELLS.iter().map(|(c, ..)| *c).collect()
-    }
-
-    /// ★ 闭集是**恰好四格**，每格的 why / unlock 都有长度地板。
-    #[test]
-    fn the_doctrine_is_a_closed_set_of_exactly_four_cells() {
-        assert_eq!(
-            CELLS.len(),
-            4,
-            "四情形表变成 {} 格了 —— **相等断言，不是地板**。\n\
-             加一格 = `§0a` 那张表被改了，那是件计划级的事，不是顺手能加的；\n\
-             少一格 = 有人把某一种处置从判准里拿掉了，那正是要有人看一眼的时刻。",
-            CELLS.len()
-        );
-        let mut names = cell_names();
-        let before = names.len();
-        names.sort_unstable();
-        names.dedup();
-        assert_eq!(before, names.len(), "四情形表里有重名的格：{names:?}");
-        for (cell, when, how, _, unlock) in CELLS {
-            assert!(
-                !when.trim().is_empty() && !how.trim().is_empty(),
-                "`{cell}` 这一格没写「什么时候落在这一格」或「正确处置」"
-            );
-            assert!(
-                unlock.trim().chars().count() >= 20,
-                "`{cell}` 没写**这一格自己什么时候要被重新裁定**（实得 {} 字）—— \
-                 一张没有解锁条件的判准表，用不了几轮就会变成装饰",
-                unlock.trim().chars().count()
-            );
-        }
-    }
-
-    /// ★★ 承重的那一条：**「加白名单」不是四格里的任何一格。**
-    ///
-    /// 这条是本模块存在的理由的机器形态。它今天绿，而它的牙在**将来**：
-    /// 谁想把「加白名单」当成一种合法处置塞进闭集，这一条当场红。
-    #[test]
-    fn adding_a_whitelist_entry_is_not_one_of_the_four_cells() {
-        for forbidden in [
-            format!("加{}", "白名单"),
-            format!("白名单{}", "放宽"),
-            format!("{}{}", "放", "宽"),
-        ] {
-            assert!(
-                !is_cell(&forbidden),
-                "`{forbidden}` 被当成了四情形表里的一格。\n\
-                 ★★ **放宽 ≠ 加白名单**：铁律 16 说的是「白名单被反复放宽 ⇒ 删掉它」，\n\
-                 而这四格治的是**方向相反**的病（性质还要、人群画错了）。\n\
-                 把「加白名单」写成一种处置，等于把这张表要分开的两件事又合回去了。"
-            );
-        }
-        // 反向：闭集里那四个名字必须**真的**被认出来，否则上面那条靠「什么都不是格」恒真。
-        for (cell, ..) in CELLS {
-            assert!(
-                is_cell(cell),
-                "闭集自己的 `{cell}` 都认不出来 —— `is_cell` 坏了，上面那条在空转"
-            );
-        }
-    }
-}
-
-/// **「这个能力今天在生产里零使用，而『零』本身要被钉住、接线那天要故意变红」这一族的指路判据。**
-///
-/// # 族名是重新起的（`§0c 裁二`）
-///
-/// 派工单原叫它「某符号**生产调用数** = 0」，照那个名字在盘上找不到成员：
-/// 现有那两条钉的一条是「生产段不发某个 mode 串」、一条是「赋值处逐字是空构造 + 反向能力锚」，
-/// **都不是符号调用数**。按它们真正断言的东西重新命名之后，这一族才找得到。
-///
-/// # 为什么它与 `*_guard.rs` 家族是两个不相交的人群
-///
-/// 守卫家族（现打 15 份）里的零断言**全部**是「违规列表为空」（fail-closed，**永远**该是 0）；
-/// 而这一族是「**今天**是 0，接线那天该红」（fail-open-once-wired）。
-/// 两者结构长得一模一样（都是某个 `is_empty()`），**语义相反** ——
-/// 这就是为什么来找的人翻遍守卫文件一无所获。
-///
-/// # 走「指路判据」，不搬家（`Bx` 的建议，`§0c 裁二` 采纳）
-///
-/// 搬家要同轮改上百处硬编码的路径字面量 —— 那是**用封装换编译单元**。
-/// 这里只留一张表：把成员与**两笔今天连判据都没有的欠账**收在一处，让找的人搜得到。
-#[cfg(test)]
-mod g6_staged_zero {
-    /// `(住址, 符号或判据名, 被钉的那个「零」逐字是什么, 今天钉它的判据（`—` = 今天没有）)`。
-    /// 住址与名字都要在本 crate 扫得到的那几棵树上（幽灵检查不跳过任何一条）。
-    const STAGED_ZERO: &[(&str, &str, &str, &str)] = &[
-        // 🔴 **这一条是刚刚变成零的，不是一直是零。**
-        //
-        // 「文件管理器该不该能改 `~/.claude` 里的东西. **可以.**」
-        // ⇒ 那道「两道栅栏宽窄不同」按丙（统一）裁，统一到**窄的那一档**
-        // ⇒ `control/files_write.rs` 的两道围栏从 `is_inside_tree`（拒**整棵 `~/.claude*` 树**）
-        //   换成 `is_session_record_path`（只拒那几份具体的会话文件），
-        //   而 `is_inside_tree` 的**唯一生产消费者**就是那两处。
-        //
-        // ⚠ **为什么不删它**（本仓「不为旧配置留兼容」那条纪律这里不适用）：
-        //   它是「`~/.claude*` 那个星号包含哪些树」这条知识的**唯一住址**，
-        //   而那条知识本身没有过期 —— 过期的是「写侧要不要用它」这个**产品裁决**。
-        //   删掉它等于把一条仍然正确的布局知识连同那次裁决一起丢掉，
-        //   下一次有人要「整棵树」那一档（比如给另一家 agent 立围栏）就得重写一遍。
-        // ⚠ 而它留着**必须有人数着**：一个零消费者的 `pub fn` 与一个「已经接上的」
-        //   长得一模一样，这条登记就是那个数。谁把它接回生产路径，
-        //   下面那条判据当场红 —— 而那一红正是「有人重新裁了这一格」该出现的地方。
-        (
-            "agents/claudecode/paths.rs",
-            "is_inside_tree",
-            "backend 生产段里**跨文件消费者 0 个**（09-23 之前是 `control/files_write.rs` 两处）",
-            "—",
-        ),
-    ];
-
-    /// `(相对路径, 原文, 生产段)`。
-    ///
-    /// 🔴 **两件一起改。**
-    ///
-    /// · **射程**：人群从「只有 `src/backend`」扩到**两棵树**。理由：`STAGED_ZERO` 那张表
-    ///   第二栏登记的是**判据的名字**，而判据这一轮整批搬进了 `<repo>/tests/backend/`
-    ///   ⇒ 只扫生产树时「那条判据还在不在」这一格必然报「找不到」
-    ///   （现打红：`wire.rs` 里已经找不到 `the_backend_can_already_discover_homes_…`）。
-    /// · **自摘**：原来靠 `scan_tree!` 的 `file!()`。本文件住 `tests/backend/`，
-    ///   在旧射程（生产树）里本来就不在人群中，所以自摘失效一直**无害**；
-    ///   射程一扩到 `tests/backend` 就**立刻有害**了 ——
-    ///   本表里逐字写着那些名字，不摘就人人都「有人指向它」（记过五次的恒绿形状）。
-    ///   ⇒ 排除明写成名单，`scan_tree_excluding` 摘不到就 panic。
-    ///
-    /// ⚠ 住址口径：生产树的文件相对 `src/backend`（表里旧行**一个字没改**），
-    ///   测试树的文件写成 `tests/backend/…`（仓根相对）—— 两种靠前缀就分得开。
-    fn backend_files() -> Vec<(String, String, String)> {
-        let src_root = guard_core::addr::backend_src_root();
-        let tests_root = guard_core::addr::backend_tests_root();
-        // 中转 crate 的单测住 `tests/comms/outward/`（生产那一半经后端的人群声明收进 `src_root` 的人群）。
-        let comms_tests = guard_core::addr::comms_tests_root();
-        let mut out = Vec::new();
-        for (root, excluded, prefix) in [
-            (&src_root, &[] as &[&str], ""),
-            (&tests_root, &["readonly_guard.rs"], "tests/backend/"),
-            (&comms_tests, &[], "tests/comms/outward/"),
-        ] {
-            for (path, src) in guard_core::scan_tree_excluding(root, &["rs"], excluded) {
-                let rel = format!(
-                    "{prefix}{}",
-                    path.strip_prefix(root)
-                        .unwrap_or(&path)
-                        .to_string_lossy()
-                        .replace('\\', "/")
-                );
-                // 生产段按「住哪棵树」分流：测试树的文件贡献 0 字节生产代码
-                // （否则下面那条「跨文件生产消费者为 0」会把判据夹具算成消费者）。
-                let prod = guard_core::addr::production_side_of(&path, &src);
-                out.push((rel, src, prod));
-            }
-        }
-        out.sort();
-        out
-    }
-
-    /// ★ 正题一：表里每条的住址今天真的在，且那个名字真的还在那份文件里（**幽灵检查**）。
-    #[test]
-    fn the_staged_zero_registry_has_no_ghost_entries() {
-        assert_eq!(
-            STAGED_ZERO.len(),
-            1,
-            "这一族的登记表从 1 条变成 {} 条了 —— 加成员是好事，\
-             但每加一条都要说清「被钉的那个零逐字是什么」与「接线那天为什么该红」",
-            STAGED_ZERO.len()
-        );
-        let files = backend_files();
-        assert!(
-            files.len() >= 60,
-            "只扫到 {} 个后端源文件 —— **遍历坏了**，本条此刻在空转",
-            files.len()
-        );
-        for (rel, name, zero, pinned_by) in STAGED_ZERO {
-            assert!(
-                zero.trim().chars().count() >= 10 && !pinned_by.trim().is_empty(),
-                "`{rel}` / `{name}` 没写清被钉的那个「零」，或没写今天有没有判据钉它"
-            );
-            let owner = files
-                .iter()
-                .find(|(f, ..)| f.as_str() == *rel)
-                .unwrap_or_else(|| panic!("登记的住址 `{rel}` 今天不在后端树上了 —— 幽灵条目"));
-            assert!(
-                owner.1.contains(name),
-                "`{rel}` 里已经找不到 `{name}` 了 —— 删掉了就**同轮摘登记**"
-            );
-        }
-    }
-
-    /// ★ 正题二：**那个「零」今天真的是零** —— 标着「今天没有判据」的那几条，由本条替它们钉住。
-    ///
-    /// ★★ 这一条**接线那天会故意变红**，那正是它存在的理由：
-    /// 谁把登记着的符号接回生产路径，就必须回到这里把那一条摘掉，
-    /// 而不是让一个「本来说好是零」的事实悄悄变成非零。
-    #[test]
-    fn the_symbols_registered_as_zero_have_no_cross_file_production_consumer() {
-        let files = backend_files();
-        let mut checked = 0usize;
-        let mut offenders: Vec<String> = Vec::new();
-        for (rel, name, _zero, pinned_by) in STAGED_ZERO {
-            if *pinned_by != "—" {
-                continue;
-            }
-            checked += 1;
-            for (f, _raw, prod) in &files {
-                if f.as_str() == *rel {
-                    continue;
-                }
-                if prod.contains(name) {
-                    offenders.push(format!("  {f} 里出现了 {name}"));
-                }
-            }
-        }
-        assert_eq!(
-            checked, 1,
-            "只核了 {checked} 条「今天没有判据」的欠账（该是 `is_inside_tree` 那 1 条）—— \
-             筛选条件与登记表脱节了，本条在空转"
-        );
-        assert!(
-            offenders.is_empty(),
-            "下面这些符号**已经有跨文件的生产消费者了**，而它们还登记在「今天零使用」这一族里：\n{}\n\n\
-             ⇒ 这不是坏事，这是**接线发生了**。处置：把它从 `STAGED_ZERO` 里摘掉，\n\
-             并给它补一条真正的判据（它现在承载生产行为了）。\n\
-             ★ 本条红在「说好是零的东西变成非零」那一刻 —— 那正是这一族要买的东西。",
-            offenders.join("\n")
-        );
-    }
-}
-
-/// **钉住另外两道护栏的「性质行 / 人群行」各自只有一句。**
-///
-/// # 为什么钉在这里，而不是各自的文件里
-///
-/// `ratchet_guard.rs` 头注逐字给过理由：判据**不许与被扫的文本同住一个文件**
-/// （它会在自己的注释里找到自己 ⇒ 恒绿）。
-/// ⇒ 本模块钉 `platform/fallback_guard.rs`；本文件自己那两行由 `platform/fallback_guard.rs::g6_scope_pins` 钉 —— 两道互钉
-/// （零定时器那一道换成了 clippy，没有性质行可钉了）。
-///
-/// # 它挡的是哪一种事故
-///
-/// `readonly_guard` 与 `no_timer_guard` 今天各有**两句**性质声明，一宽一窄，
-/// 而判据只兑现窄的那句 ⇒ 宽的那句是假话，且下游件在逐字引用它。
-/// 钉「只有一句」挡的正是这个：想再写一句更好听的，就得先把旧的那句处理掉。
-///
-/// ⚠ **它钉不住的**：换个措辞说同一件事它看不见（`ratchet_guard` 登记过这条同族边界）。
-/// 它也**不检查那一句说得对不对** —— 那是语义判断，机器认不了。
-#[cfg(test)]
-mod g6_scope_pins {
-    /// 两行的标记。**运行时拼**，免得本文件被自己数进去。
-    fn marks() -> (String, String) {
-        (
-            format!("//! - **它守的{}**", "性质是"),
-            format!("//! - **它扫的{}**", "人群是"),
-        )
-    }
-
-    /// `(住址, 语料, 收窄前那句假话的承重词——今天必须零命中, why_empty)`
-    fn pinned() -> Vec<(&'static str, &'static str, Vec<String>, &'static str)> {
-        vec![(
-            "platform/fallback_guard.rs",
-            include_str!("platform/fallback_guard.rs"),
-            Vec::new(),
-            "这一道的性质行今天**只有一句**、也没有收窄史 —— 它自曝的是射程\
-                 （只看 `platform/`、等价改写绕得过），那是诚实登记，不是过期的绝对话。\
-                 ⇒ 没有承重词要钉，如实写在这里而不是留一个空表。",
-        )]
-    }
-
-    /// ★ 正题：每份文件里，性质行与人群行**各自恰好一行**，且各自有内容。
-    #[test]
-    fn each_guard_states_its_property_and_its_population_exactly_once() {
-        let (prop, popu) = marks();
-        for (rel, src, _forbidden, _why_empty) in pinned() {
-            for (what, mark) in [("性质行", &prop), ("人群行", &popu)] {
-                let hits: Vec<&str> = src
-                    .lines()
-                    .filter(|l| l.starts_with(mark.as_str()))
-                    .collect();
-                assert_eq!(
-                    hits.len(),
-                    1,
-                    "`{rel}` 里以 `{mark}` 打头的{what}有 {} 行（应恰好 1 行）。\n\
-                     **少了**：`KG62` 要的两行不在场，读的人没有一句可引的话；\n\
-                     **多了**：同一道护栏有两句性质声明 —— 这正是这里逮到的那个病\n\
-                     （一宽一窄，判据只兑现窄的那句，而宽的那句被下游逐字引用）。",
-                    hits.len()
-                );
-                let body = hits[0].trim_start_matches(mark.as_str());
-                assert!(
-                    body.trim().chars().count() >= 20,
-                    "`{rel}` 的{what}只有 {} 字 —— 一句写不下去的性质声明等于没写",
-                    body.trim().chars().count()
-                );
-            }
-        }
     }
 }
 

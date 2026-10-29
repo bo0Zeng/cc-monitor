@@ -4,36 +4,150 @@
 //! 闸门与分派同源、帧命令要么上 CLI 要么写明理由、CLI 入口只经注册表、探测口报的就是它能派发的，判的正是这件事。
 //! 「CLI 入口不借用帧入口的安全理由」那一条没有设计原文，守的是生产头注里那段散文。〔JA1 点址 2026-09-24〕
 
-/// ★★**CLI 面的闸门与分派臂必须来自同一个源**。
-///
-/// # 它逮的是一条实测到的静默失效
-///
-/// 分派臂是派生的（`Some(f) if stream::cli::handles(f)`），可 `main::is_query_mode`
-/// 这道**闸门**读的是手写的 `SUBCOMMANDS`。于是往 `inbound::REGISTRY` 加一条命令：
-/// 帧面立刻有了、`hello.commands` 也报了，而 CLI 面 —— 一行 warn
-/// 「未知 flag，已忽略并照常进流模式」，然后 backend **进了流模式**。
-///
-/// 调用方看到的是：命令"存在"（能力探测报了它），调它却拿到一堆 jsonl 行。
-/// P4d 的表里那段注释本来就写着「登记在这张表里是因为 `is_query_mode` 也读它」——
-/// 是一条**要人记得**的纪律，而没有任何判据钉着。08-13 我就忘了，实测撞上。
+/// 子命令集合 ＝ 手写的一次性表 ∪ 帧命令派生的 CLI 面，两半不交、没有重名；闸门（`is_query_mode`）认的就是这一份。
+/// 手写那几条的名字（`CLI_ONLY_DOCS`，闸门照它认）与实现表（`stream::oneshot::ONESHOTS`，`main` 照它分派）两向相等。
 #[test]
-fn every_cli_exposed_command_is_in_the_query_mode_gate() {
-    let missing: Vec<String> = REGISTRY
+fn the_subcommands_are_the_oneshot_table_plus_the_derived_cli_face() {
+    let oneshots: Vec<String> = crate::stream::oneshot::ONESHOTS
+        .iter()
+        .map(|(t, _)| t.to_string())
+        .collect();
+    let mut named: Vec<String> = crate::stream::inbound::CLI_ONLY_DOCS
+        .iter()
+        .map(|(n, ..)| format!("--{n}"))
+        .collect();
+    named.sort();
+    let mut table = oneshots.clone();
+    table.sort();
+    assert_eq!(
+        table, named,
+        "手写子命令的实现表（`ONESHOTS`）与名字表（`CLI_ONLY_DOCS`）对不上：闸门认了却分派不到，或者分派得到闸门却不放"
+    );
+    let derived: Vec<String> = REGISTRY
         .iter()
         .filter(|s| cli_exposed(s))
         .map(|s| flag_of(s.name))
-        .filter(|f| !crate::SUBCOMMANDS.contains(&f.as_str()))
         .collect();
     assert!(
-        missing.is_empty(),
-        "这些命令上了 CLI 面（分派臂认得），却不在 `main::SUBCOMMANDS` 这道闸门里：{missing:?}\n\
-             后果是**静默的**：`is_query_mode` 把它当未知 flag ⇒ 打一行 warn 之后照常进流模式\n\
-             ⇒ 调用方拿到的是一堆 jsonl 行，而不是它要的应答。把它加进 `SUBCOMMANDS`。"
+        oneshots.len() >= 5 && derived.len() >= 5,
+        "一次性表 {} 条 · 派生 {} 条 —— 本断言在空转",
+        oneshots.len(),
+        derived.len()
     );
+    let both: Vec<&String> = oneshots.iter().filter(|t| derived.contains(t)).collect();
     assert!(
-        REGISTRY.iter().filter(|s| cli_exposed(s)).count() >= 5,
-        "CLI 面上不足 5 条 —— 本断言在空转"
+        both.is_empty(),
+        "这几条同时在一次性表与派生的 CLI 面上：{both:?} —— 谁先谁后决定了调用方拿到哪一种信封，删掉表里那一行"
     );
+    let mut want: Vec<String> = oneshots.into_iter().chain(derived).collect();
+    want.sort();
+    let mut got: Vec<String> = subcommands().iter().map(|s| s.to_string()).collect();
+    got.sort();
+    assert_eq!(got, want, "`subcommands()` 不是一次性表 ∪ 派生的 CLI 面");
+    let mut dedup = got.clone();
+    dedup.dedup();
+    assert_eq!(dedup.len(), got.len(), "子命令里有重名");
+    for t in &got {
+        assert!(is_subcommand(t), "`{t}` 在集合里，`is_subcommand` 却不认");
+        assert!(
+            is_query_mode(&[t.clone()]),
+            "`{t}` 不进一次性查询 —— 它会静默变成起了个流"
+        );
+    }
+    assert!(!is_subcommand("--some-future-flag"));
+    // `lib.rs::SUBCOMMANDS` 还是手写的一份（ccm 那一侧认后端词读它）：与派生的这一份两向相等。
+    let mut mirror: Vec<String> = crate::SUBCOMMANDS.iter().map(|s| s.to_string()).collect();
+    mirror.sort();
+    assert_eq!(
+        mirror, got,
+        "`lib.rs::SUBCOMMANDS` 与派生的子命令集合对不上"
+    );
+}
+
+/// 未知 `--flag` 不许把后端踢出流模式（新版 monitor 发给旧版后端的那种）：踢进查询模式 ⇒ exit 2、无 hello ⇒ monitor 重连死循环。
+#[test]
+fn an_unknown_flag_does_not_kick_the_backend_out_of_stream_mode() {
+    let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert!(!is_query_mode(&v(&["--some-future-flag"])));
+    assert!(!is_query_mode(&v(&["--a", "--b"])), "多个未知 flag 同理");
+}
+
+/// 未知**裸参数**仍进查询那一支报错 —— 那是明确的调用错误。
+#[test]
+fn an_unknown_bare_argument_still_goes_to_the_error_path() {
+    let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert!(is_query_mode(&v(&["/some/path"])));
+    assert!(is_query_mode(&v(&["--future", "bare"])));
+}
+
+/// 删掉的一次性子命令（帧面早有同义的帧命令）。**异源**：手抄的名单，不从任何生产表派生。
+const RETIRED_ONESHOTS: &[&str] = &[
+    "--read-session",
+    "--read-session-tail",
+    "--read-session-from-offset",
+    "--search",
+    "--list-accounts",
+    "--session-accounts",
+    "--list-user-inputs",
+    "--find-in-session",
+    "--account-trust",
+    "--account-trust-zero",
+    "--list-projects",
+    "--list-sessions",
+    "--fork-session",
+];
+
+/// 删掉的那几条不再是子命令：单敲照「不认识的 flag」进流模式；带裸参数敲 ⇒ stderr 一行 `unknown_command`、退出 2。
+#[test]
+fn retired_oneshot_subcommands_answer_unknown_command() {
+    let docs: Vec<String> = crate::stream::inbound::CLI_ONLY_DOCS
+        .iter()
+        .map(|(n, _, _)| format!("--{n}"))
+        .collect();
+    for f in RETIRED_ONESHOTS {
+        assert!(!is_subcommand(f), "`{f}` 还是子命令");
+        assert!(
+            !docs.contains(&f.to_string()),
+            "`{f}` 还在 CLI_ONLY_DOCS 里"
+        );
+        assert!(!is_query_mode(&[f.to_string()]), "`{f}` 单敲还进查询模式");
+        let args = vec![f.to_string(), "/x.jsonl".to_string()];
+        assert!(is_query_mode(&args));
+        let mut err: Vec<u8> = Vec::new();
+        let rc = refuse_unknown_to(&args, &mut err, &crate::Tz::default());
+        let line = String::from_utf8(err).unwrap();
+        let v: serde_json::Value = serde_json::from_str(line.trim())
+            .unwrap_or_else(|e| panic!("`{f}` 的失败不是一行 JSON（{e}）：{line}"));
+        assert_eq!(
+            (rc, v["code"].as_str()),
+            (2, Some("unknown_command")),
+            "`{f}`：{line}"
+        );
+    }
+}
+
+/// 留下的那几条照旧是子命令（一次性表或派生的 CLI 面）。异源：手抄。
+#[test]
+fn kept_oneshot_subcommands_are_still_subcommands() {
+    for f in [
+        "--resident-ensure",
+        "--resident-attach",
+        "--resident-stop",
+        "--tmux-notify",
+        "--place-verdict",
+        "--assets-catalog",
+        "--assets-catalog-merge",
+        "--quota-read",
+        "--quota-probe",
+        "--rotation-view",
+        "--rotation-use-now",
+        "--history-branch",
+    ] {
+        assert!(
+            crate::stream::oneshot::oneshot(f).is_some() || handles(f),
+            "`{f}` 没有落点"
+        );
+    }
 }
 use super::*;
 use crate::control::cli_args::{

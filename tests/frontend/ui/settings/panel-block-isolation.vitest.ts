@@ -150,8 +150,7 @@ import { copyPattern } from "../../../test-support/copy-pattern";
 import { factsOn } from "../../../test-support/host-facts";
 import { nonEmpty } from "../../../test-support/non-empty";
 
-// S9：jsdom 的 UA 含 `linux`。从前非 Windows 上「终端集成」那块**根本不构造**，钉成 windows 为的是守完整那组；
-// 那块并进了「别名」、两个平台都构造 ⇒ 这一钉只是沿用本文件一直以来的 Windows 形态。
+// S9：jsdom 的 UA 含 `linux`。「终端集成」在「别名」里、两个平台都构造 ⇒ 这里钉成 Windows 形态，不影响构造出哪几块。
 beforeEach(() => __setHostFactsForTests(factsOn("windows")));
 afterEach(() => __setHostFactsForTests(null));
 
