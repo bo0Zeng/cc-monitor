@@ -65,7 +65,7 @@ fn normalize_agrees_with_the_two_step_rewrite_on_a_generated_corpus() {
 
 #[test]
 fn the_two_commands_have_the_wire_shape_both_ends_share() {
-    use crate::files::Call;
+    use crate::Call;
     assert_eq!(BookmarksReadReq::NAME, "bookmarks-read");
     assert_eq!(BookmarksEditReq::NAME, "bookmarks-edit");
     let edit = BookmarksEditReq {

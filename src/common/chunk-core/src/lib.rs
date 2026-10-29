@@ -5,7 +5,8 @@
 //! - 下载 [`pull`]：`files-read-chunk` 从 0 起逐块读回（按字节寻址），每块交调用方的 [`Sink`]，读到头为止；交回总字节。
 //! - 问那台的那一下是 [`Ask`]（桌面经通道、手机经常驻流）；撤 · 进度 · 本机读不动怎么说都由调用方给，这里不写字。
 
-use cmd_wire::files::{Call, ChunkBytes, FilesStageChunkReq, ReadChunkReq, WirePath};
+use cmd_wire::files::{ChunkBytes, FilesStageChunkReq, ReadChunkReq, WirePath};
+use cmd_wire::Call;
 use sha2::Digest as _;
 use std::future::Future;
 

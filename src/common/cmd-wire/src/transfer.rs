@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::files::{Call, WirePath};
+use crate::files::WirePath;
 
 /// 上传的一项：本机一份普通文件的路径。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -262,11 +262,6 @@ impl TransferCopyAsk {
     }
 }
 
-impl Call for TransferCopyAsk {
-    const NAME: &'static str = "transfer-copy";
-    type Reply = crate::batch::BatchReply;
-}
-
 /// 跨机复制的一项：源那台上的路径。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -306,23 +301,3 @@ impl TransferDownloadAsk {
     }
 }
 
-impl Call for TransferUploadAsk {
-    const NAME: &'static str = "transfer-upload";
-    type Reply = TransferOpened;
-}
-impl Call for TransferUploadReq {
-    const NAME: &'static str = "transfer-upload";
-    type Reply = TransferOpened;
-}
-impl Call for TransferDownloadAsk {
-    const NAME: &'static str = "transfer-download";
-    type Reply = TransferOpened;
-}
-impl Call for TransferDownloadReq {
-    const NAME: &'static str = "transfer-download";
-    type Reply = TransferOpened;
-}
-impl Call for TransferCopyReq {
-    const NAME: &'static str = "transfer-copy";
-    type Reply = crate::batch::BatchReply;
-}

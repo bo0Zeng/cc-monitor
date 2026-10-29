@@ -1,6 +1,7 @@
 //! 帧命令两端必须对上的那几样（契约类：只放形状，不放判定）。
 //!
 //! - [`bookmarks`]：书签那两条（`bookmarks-read` · `-edit`）的入参与回包 · 目录归一的唯一一份；
+//! - [`call`]：一条命令的身份（[`Call`]：名字 · 回包挂在入参类型上）与那一张 `calls!` 表 —— 命令身份唯一的声明；
 //! - [`files`]：文件管理那一族（`files-*`）的入参与回包，路径走原始字节（[`files::WirePath`]）；
 //! - [`front`]：↗ 切到终端的结局与浮层那一张（壳 · 本机后端 `session-window` 两个写家都调它，句子只在这一处取）；
 //! - [`frame`]：后端发给客户端的帧（每种一个具名结构，记录那一格是类型参数）与一行解一帧的 [`frame::decode`]；
@@ -38,6 +39,7 @@ pub mod batch;
 pub mod board;
 pub mod bookmarks;
 pub mod bus;
+pub mod call;
 pub mod cells;
 pub mod dial;
 pub mod file_class;
@@ -70,6 +72,7 @@ pub mod transfer;
 pub mod watch;
 
 pub use agent::AgentKind;
+pub use call::Call;
 pub use machine::{Machine, Route, LOCAL};
 pub use sid::Sid;
 

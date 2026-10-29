@@ -447,7 +447,7 @@ where
 pub const PROBE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// 开单那一条（窗口说给 monitor，monitor 补拨号请求转给本机后端的传输台）。
-pub const CMD_UPLOAD: &str = <cmd_wire::transfer::TransferUploadAsk as cmd_wire::files::Call>::NAME;
+pub const CMD_UPLOAD: &str = <cmd_wire::transfer::TransferUploadAsk as cmd_wire::Call>::NAME;
 /// 进度流的 `kind` 前缀（传输台那一侧 `transfer_relay::TRANSFER_KIND_PREFIX`，判据钉两份相等）。
 pub const KIND_PREFIX: &str = "transfer/";
 /// 提交：后端文件管理那一条（后端 `control/files_commit.rs::COMMIT_COMMANDS`）。

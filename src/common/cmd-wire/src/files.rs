@@ -1556,50 +1556,6 @@ pub struct FilesCommitUploadReq {
     pub single: Option<bool>,
 }
 
-// ── 命令名 · 入参 · 回包连成一张表 ───────────────────
-
-/// 一条命令的入参类型就选中了那条命令：名字与回包类型都挂在它上面（后端登记那一行照它取名，文件窗口照它发、照它解）。
-pub trait Call: Serialize {
-    /// 线上命令名。
-    const NAME: &'static str;
-    type Reply: Serialize + serde::de::DeserializeOwned;
-}
-
-macro_rules! calls {
-    ($($req:ty => $name:literal, $reply:ty;)*) => {
-        $(impl Call for $req {
-            const NAME: &'static str = $name;
-            type Reply = $reply;
-        })*
-    };
-}
-
-calls! {
-    LsReq => "files-ls", LsReply;
-    StatReq => "files-stat", StatReply;
-    HomeReq => "files-home", FilesPathReply;
-    SizeReq => "files-size", SizeReply;
-    ReadTextReq => "files-read-text", ReadTextReply;
-    ReadChunkReq => "files-read-chunk", ReadChunkReply;
-    GrepReq => "files-grep", GrepReply;
-    FindReq => "files-find", FindReply;
-    IndexStatusReq => "files-index-status", IndexStatusReply;
-    RebuildReq => "files-index-rebuild", RebuildReply;
-    BrowseReq => "files-browse", BrowseReply;
-    FilesCreateReq => "files-create", FilesPathBytesReply;
-    FilesMkdirReq => "files-mkdir", FilesPathReply;
-    FilesRenameReq => "files-rename", FilesPathReply;
-    FilesDeleteReq => "files-delete", crate::batch::BatchReply;
-    FilesChmodReq => "files-chmod", crate::batch::BatchReply;
-    FilesCopyReq => "files-copy", crate::batch::BatchReply;
-    FilesExtractReq => "files-extract", FilesTreeReply;
-    FilesWriteTextReq => "files-write-text", FilesWrittenReply;
-    FilesDeleteSessionReq => "files-delete-session", FilesPathReply;
-    FilesStageChunkReq => "files-stage-chunk", FilesStageChunkReply;
-    FilesCommitTextReq => "files-commit-text", FilesWrittenReply;
-    FilesCommitUploadReq => "files-commit-upload", FilesPathBytesReply;
-}
-
 #[cfg(test)]
 #[path = "../../../../tests/common/cmd-wire/files_tests.rs"]
 mod tests;

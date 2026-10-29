@@ -8,7 +8,8 @@
 use crate::resident::{self, OnEvent};
 use batch_core::{Board, Failed, Phase, Plan, Rebuff, Tick, Verb};
 use cmd_wire::batch::{BatchReply, Conflict, Decide, ItemState};
-use cmd_wire::files::{Call, WirePath};
+use cmd_wire::files::WirePath;
+use cmd_wire::Call;
 use cmd_wire::phone::{BatchAnswer, BatchKeep, BatchLine, ClashRow};
 use resident_client::client::CallError;
 use std::collections::{BTreeMap, HashMap};
