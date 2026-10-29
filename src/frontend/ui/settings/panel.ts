@@ -38,7 +38,8 @@ import { failToast } from "../kit/toast";
 import { toggleSwitch } from "../kit/switch";
 
 type SwitchHandle = ReturnType<typeof toggleSwitch>;
-import { localBackendFace, machineFace, type MachineFix, type MachineState } from "./machine-state";
+import { machineFace, type MachineFix, type MachineState } from "./machine-state";
+import { localBackendFace } from "../local-backend-face";
 import {
   LOCAL_MACHINE_PAGE_ID,
   MACHINE_PAGE_PREFIX,

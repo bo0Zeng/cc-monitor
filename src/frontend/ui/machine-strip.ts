@@ -10,9 +10,9 @@ import type { MachineFixButton } from "./generated/MachineFixButton";
 import type { LocalBackend } from "./generated/LocalBackend";
 import { machineDot } from "./machine-dot";
 import { statusDot, type MachineDotState } from "./kit/status-dot";
-import { localBackendFace } from "./settings/machine-state";
+import { localBackendFace } from "./local-backend-face";
 import { machineName } from "./ipc/chan-caller";
-import { LOCAL_ORIGIN } from "./ipc/origin";
+import { isLocalOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { attachTooltip } from "./kit/tooltip";
 import { copyText } from "./copy-table";
 
@@ -71,7 +71,7 @@ export class MachineStrip {
   private paint(): void {
     const list: [string, Line][] = [
       ...(this.localDown ? [[LOCAL_ORIGIN, this.localDown] as [string, Line]] : []),
-      ...[...this.machines].filter(([o]) => !(this.localDown && o === LOCAL_ORIGIN)).map(([o, m]): [string, Line] => [o, lineOf(m)]),
+      ...[...this.machines].filter(([o]) => !(this.localDown && isLocalOrigin(o))).map(([o, m]): [string, Line] => [o, lineOf(m)]),
     ];
     if (list.length > MAX_ROWS && !this.open) {
       const more = document.createElement("button");

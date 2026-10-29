@@ -94,7 +94,7 @@ describe("机器条：本机后端没起来那一行（A2-17-15-1-1）", () => {
     const fix = vi.fn();
     const s = new MachineStrip({ fix });
     s.set("gpu-01", m("gpu-01"));
-    s.set(LOCAL_ORIGIN, m("本机", { said: "核心·旧的那一句" }));
+    s.set(LOCAL_ORIGIN, m("核心·本机名", { said: "核心·旧的那一句" }));
     s.local(down("壳·没带本机后端"));
     expect(rows(s)).toEqual([LOCAL_ORIGIN, "gpu-01"]);
     const row = s.el.querySelector<HTMLElement>(".machine-strip-row")!;

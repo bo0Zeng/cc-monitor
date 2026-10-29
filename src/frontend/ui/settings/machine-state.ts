@@ -2,7 +2,6 @@
  * 每台机器的状态成品：排成「点 · 名字旁那个词 · 问题行一句 · 修法按钮」。
  * 哪一态、那一句、给哪几颗修法、按钮上的字都是后端定的（`deploy::machine`）；这里只按那一态挑样子（点 · 语气 · 进度条）。
  */
-import type { LocalBackend } from "../generated/LocalBackend";
 import type { MachineState } from "../generated/MachineState";
 import type { MachineFix } from "../generated/MachineFix";
 import type { MachineFixButton } from "../generated/MachineFixButton";
@@ -55,26 +54,6 @@ export function paintRoute(el: HTMLElement, face: MachineFace): void {
   el.hidden = face.route === "";
 }
 
-/** 本机后端没起来那一格怎么画（壳的 `local-backend`；连着 ⇒ `null`，看本机后端那一台的成品）。字与修法照壳那一格，样子按那一样挑。 */
-export function localBackendFace(l: LocalBackend): MachineFace | null {
-  if (l.state === "up") return null;
-  const look = {
-    starting: { dot: "unknown", tone: "busy" },
-    down: { dot: "failed", tone: "error" },
-    older: { dot: "needs-you", tone: "warn" },
-    newer: { dot: "up", tone: "error" },
-  } as const;
-  return {
-    ...look[l.state],
-    word: l.word,
-    problem: l.said,
-    bar: false,
-    fixes: l.state === "starting" ? [] : l.fixes,
-    detail: "",
-    next: l.state === "starting" ? "" : (l.next ?? ""),
-    route: "",
-  };
-}
 
 /**
  * 问题行（列表那一行与卡头同一个画法）：一句话 ＋ 修法按钮，壳写了下一步就另起一行跟在下面；正在连 / 装 / 更新时转圈（装 / 更新另有一条走动的进度条）。
