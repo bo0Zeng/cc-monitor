@@ -4056,7 +4056,7 @@ notes: Array<string>, };
 
 ```ts
 type AgentKind = string;
-type LoginAgain = { again: LoginAgainHow, };
+type LoginAgain = { again: LoginAgainHow, terminal: boolean, };
 type LoginAgainHow = "paste" | "restart" | "none";
 type LoginStartArgs = { 
 /**
@@ -4086,7 +4086,7 @@ type PasteKind = "code" | "redirectUrl";
 
 ```ts
 type AgentKind = string;
-type LoginAgain = { again: LoginAgainHow, };
+type LoginAgain = { again: LoginAgainHow, terminal: boolean, };
 type LoginAgainHow = "paste" | "restart" | "none";
 type LoginDone = { target: LoginStartReq, };
 type LoginFinishReq = { job: string, 

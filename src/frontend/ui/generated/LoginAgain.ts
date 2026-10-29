@@ -2,6 +2,7 @@
 import type { LoginAgainHow } from "./LoginAgainHow";
 
 /**
- * 登录失败的 `data`：还能怎么办。每个码一个定值，写在码表那一行上（`bad_args` 不带：入参形状不对，不是一条能走的路）。
+ * 登录失败的 `data`：还能怎么办（每个码一个定值，写在码表那一行上；`bad_args` 不带：入参形状不对，不是一条能走的路）·
+ * 在终端窗口里登这条路在不在（只有号那一种目标、抽屉那一趟起不来时在：开终端窗口跑那台答的登录那一行）。
  */
-export type LoginAgain = { again: LoginAgainHow, };
+export type LoginAgain = { again: LoginAgainHow, terminal: boolean, };
