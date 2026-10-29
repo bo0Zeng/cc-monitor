@@ -37,6 +37,7 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
         "history-read" => via::<h::HistoryReadCmd>(args, |r| h::read_at(home, r, tz)),
         "history-page" => via::<h::HistoryPageCmd>(args, |r| h::page_at(home, r, tz)),
         "history-lines" => via::<h::HistoryLinesCmd>(args, |r| h::lines_at(home, r, tz)),
+        "history-image" => via::<h::HistoryImageCmd>(args, |r| h::image_at(home, r)),
         "history-run" => via::<h::HistoryRunCmd>(args, |r| h::run_at(home, r, tz)),
         "history-branch" => via::<h::HistoryBranchCmd>(args, |r| h::branch_at(home, r)),
         "history-tail" => via::<h::HistoryTailCmd>(args, |r| h::tail_at(home, r, tz)),
@@ -98,6 +99,8 @@ const FAMILY: &[&str] = &[
     "history-user-inputs",
     // 按行号取回（异源是手抄的要求「后端给『从第 N 行起 k 行』的读口」，不是 `stream/inbound/`）。
     "history-lines",
+    // 按引用取回一张图（记录行上线只带引用，画到那一格才问）。
+    "history-image",
     // 会话内查找。
     "history-find",
     // 会话事实出成品（异源是手抄的要求「三样由后端出成品」，不是 `stream/inbound/`）。
