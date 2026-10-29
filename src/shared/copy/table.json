@@ -11194,12 +11194,6 @@
       "zh": "{what} 行 {line} 有 cc-monitor BEGIN 标记 · 后面无配对 END · 已中止\n手动修好该文件后重试",
       "args": ["what", "line"]
     },
-    "rsAssetSync.call.emptyReply": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "本机后端回答为空",
-      "args": []
-    },
     "rsAssetSync.call.failed": {
       "kind": "error",
       "role": "原因格",
