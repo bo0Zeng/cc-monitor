@@ -102,6 +102,10 @@ path = "src/main.rs"
 # 🔴 判据：`tests/evidence/K-R124-ruler.py` 的 ⑭ —— 本包每个 `[[bin]]` ↔ 入包路线登记（两向集合相等，今天只有主二进制）·
 #   主二进制恰好一个 · `required-features` 零命中 · `externalBin` 零命中 · 以及那把工具的版本。
 
+[lints.rust]
+# 一个函数上叠两个 `#[test]`，另一个函数就悄悄不是测试了：编译期挡。
+duplicate_macro_attributes = "deny"
+
 # 截图台架的无头壳（`src/shots_shell.rs`）：只在这个特性下编，发版构建（`tauri build` · `cargo build --release`）不开它。
 # 台架那一处（`tests/shots/real/pool.mjs`）按 `cargo build --features shots --example ccm-shots-shell` 编；判据 `shots_feature_guard_tests.rs` 钉着。
 [features]
@@ -183,7 +187,7 @@ notify = "8"
 # **`russh` / `russh-sftp` / `primefield` 三行出了本清单：界面进程零 SSH**（用户
 # 「SFTP 进本机常驻后端」；SR1a 已把其余拨号搬进本机常驻后端）。那三行的来历（ring 后端 · 3.0.0 选型 ·
 # primefield rc.9 的解析杠杆）逐字搬进了 `../backend/Cargo.toml` 那两行的注释旁边 —— 那一侧今天是唯一的 SSH 客户端。
-# 判据：`dial_home_registry` 的二值旗（`russh` 不在界面 manifest 里）。
+# 判据：`stream_source/dial_move_judge.rs::the_interface_manifest_has_no_ssh_dependency`（`russh` 一族不在界面 manifest 里）。
 
 tokio = { version = "1", features = ["full"] }
 # 远端 fan-out 并发（R9）：join_all 同时查所有已配置远端，借用不需 'static/Send。
