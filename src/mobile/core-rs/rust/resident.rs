@@ -104,8 +104,9 @@ impl Transport for PhoneLink {
 
     /// 照 Kotlin 交的拨号请求问这台手机那个池里那几条连接的读数（`ssh_dial::pool::far_of`，同桌面一处判）；请求读不动 ⇒ 远（宁可压）。
     fn far(&self) -> bool {
-        self.request(serde_json::json!({}))
-            .map_or(true, |req| ssh_dial::pool::far_of(&ssh_dial::pool::ssh().links(), &req))
+        self.request(serde_json::json!({})).map_or(true, |req| {
+            ssh_dial::pool::far_of(&ssh_dial::pool::ssh().links(), &req)
+        })
     }
 }
 

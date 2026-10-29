@@ -1193,8 +1193,7 @@ pub async fn establish_via(
                 Vec::new(),
             )
         } else {
-            let (tunnel, far_inner, jumps, jump_wires) =
-                through_hops(req, stages, out).await?;
+            let (tunnel, far_inner, jumps, jump_wires) = through_hops(req, stages, out).await?;
             let observed: Seen = Arc::default();
             let ep_label = copy_text(
                 "beConnect.jump.target",
@@ -1227,15 +1226,9 @@ pub async fn establish_via(
                 port: req.port,
             };
             (
-                session,
-                observed,
-                winner,
-                jumps,
-                heard,
-                far_inner,
+                session, observed, winner, jumps, heard, far_inner,
                 // 目标那条在跳板里头开（direct-tcpip）：它自己的 TCP 不经代理，经没经记在最外那台跳板那一条上。
-                false,
-                jump_wires,
+                false, jump_wires,
             )
         };
     let fingerprint = fingerprint_in(&observed);

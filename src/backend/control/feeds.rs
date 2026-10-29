@@ -528,8 +528,9 @@ impl Ssh for Pool {
 
     /// 照这台的拨号请求问池里那几条连接的读数；请求组不成 ⇒ 远（宁可压）。
     fn far(&self, machine: &str) -> bool {
-        Self::request(machine, "stream", serde_json::json!({}))
-            .map_or(true, |req| ssh_dial::pool::far_of(&ssh_dial::pool::ssh().links(), &req))
+        Self::request(machine, "stream", serde_json::json!({})).map_or(true, |req| {
+            ssh_dial::pool::far_of(&ssh_dial::pool::ssh().links(), &req)
+        })
     }
 }
 
