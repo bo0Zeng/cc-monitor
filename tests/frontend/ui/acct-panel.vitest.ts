@@ -37,6 +37,7 @@ beforeEach(() => {
   document.body.replaceChildren();
   appStore.quota.set(new Map());
   appStore.sessionRotation.set(new Map());
+  appStore.sessionAccount.set(new Map());
 });
 
 describe("账号面板", () => {
@@ -48,6 +49,22 @@ describe("账号面板", () => {
     expect(host.openSettings).toHaveBeenCalledWith("<local>");
     expect(panel().textContent).toContain(copyText("acct.foot.default"));
     expect(btn(copyText("acct.foot.manage"))).toBeDefined();
+  });
+
+  it("★ 上游是自设的（session-account 带那一句）⇒ 头下照抄那一句；不说中转没见过、不出接入…，也不画轮换那几块", () => {
+    appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: null }]]));
+    const own = { account: "work", name: "work", when: "now" as const, from: null, accountLine: "自设那一句", fromLine: null, usage: null, stale: false, hover: [], sampled: null, differs: false, badge: null, queryable: true, ownUpstream: "自设那一句" };
+    appStore.sessionAccount.set(new Map([["s1", { origin: "<local>", read: own }]]));
+    openAccountPanel("s1", "<local>", host);
+    expect(panel().textContent).toContain("自设那一句");
+    expect(panel().textContent).not.toContain(copyText("acct.now.noRelay"));
+    expect(btn(copyText("acct.now.connect"))).toBeUndefined();
+    expect(panel().querySelector("[data-rot-cfg], [data-rc-row], [data-rot-switch]")).toBeNull();
+    // 轮换那一格后来到了（中转账本里有它）也不画：上游是自设的，换号不适用 ⇒ 面板里只有那一条与底栏。
+    appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: view }]]));
+    expect(panel().textContent).toContain("自设那一句");
+    const body = btn(copyText("acct.foot.manage"))!.parentElement!.parentElement!;
+    expect(body.children.length).toBe(2);
   });
 
   it("★ quota-read 整问失败 ⇒ 一条红的写出错那一层那一句 ＋ 重试；读到了、会话也见过 ⇒ 头下不出提示，也不画任何轮换的东西", () => {
