@@ -203,18 +203,29 @@ return true;
 def boot(v, url, result):
     b0 = time.monotonic()
     v.load(url)
-    v.js("for (;;) { if (window.__shots && window.__shots.state !== 'booting') return window.__shots.state; await new Promise((r) => setTimeout(r, 100)); }")
+    # 起世界（真后端池起四台、伺服造盘）在机器忙时要一分多钟：等条件，兜底 5 分钟（同真后端池的上限）
+    v.js("for (;;) { if (window.__shots && window.__shots.state !== 'booting') return window.__shots.state; await new Promise((r) => setTimeout(r, 100)); }", 300_000)
     st = v.js("return window.__shots.state")
     if st != "done":
         raise RuntimeError(v.js("return window.__shots.error"))
     v.js("return await __perf.quiet(1000, 60000)")
+    # 安静了 ⇒ 收开窗那条帧链（不让它的 rAF 算进空闲 CPU）：产品那一段从第一张卡（或离开 booting）起到安静
+    b = v.js("return __perf.bootEnd()")
     c0 = cpu_ms()
     pump(1500)
     idle = cpu_ms() - c0
     if args.profile:
         v.js(open(args.profile, encoding="utf8").read())
-    boot_frames = v.js("return __perf.bootFrames.slice(1)")
-    result["boot"].append({"ms": (time.monotonic() - b0) * 1000, "idleCpu": idle, "rss": rss_mb(), "bootJankN": len([d for d in boot_frames if d > 50]), "bootJankMs": sum(d - 16.7 for d in boot_frames if d > 50), "bootFrameMax": max(boot_frames or [0]), "nodes": v.js("return document.getElementsByTagName('*').length")})
+    janks = [d for d in b["frames"] if d > 50]
+    result["boot"].append({
+        "ms": (time.monotonic() - b0) * 1000, "idleCpu": idle, "rss": rss_mb(),
+        # 台架起世界：导航起到世界握上手；产品那一段：握上手到安静；第一张卡 → 安静：开窗卡不卡量的就是这一截
+        "worldMs": b["world"], "productMs": None if b["world"] is None else b["quietAt"] - b["world"],
+        "cardMs": None if b["start"] is None else b["quietAt"] - b["start"],
+        "cardFirst": b["firstCard"] is not None and (b["booted"] is None or b["firstCard"] <= b["booted"]),
+        "bootJankN": len(janks), "bootJankMs": sum(d - 16.7 for d in janks), "bootFrameMax": max(b["frames"] or [0]),
+        "nodes": v.js("return document.getElementsByTagName('*').length"),
+    })
 
 
 def measured_click(v, i, watch_ms=1500):
@@ -417,9 +428,8 @@ def bench_settings(v, url, run, result):
         raise RuntimeError(v.js("return window.__shots.error"))
     ready = (time.monotonic() - b0) * 1000
     v.js("return await __perf.quiet(1000, 60000)")
-    boot_frames = v.js("return __perf.bootFrames.slice(1)")
-    # 探针开窗那 15 s 自己起着一条 rAF 链 ⇒ 空闲 CPU 等它停了再量
-    v.js("const dcl = performance.getEntriesByType('navigation')[0]?.domContentLoadedEventStart ?? 0; await new Promise((r) => setTimeout(r, Math.max(0, 15500 - (performance.now() - dcl)))); return 0")
+    # 收开窗那条帧链（离开 booting 起到安静；设置窗没有消息流），空闲 CPU 在链停了之后量
+    boot_frames = v.js("return __perf.bootEnd()")["frames"]
     c0 = cpu_ms()
     pump(3000)
     opened = {"run": run, "ready": ready, "idleCpu": cpu_ms() - c0, "rss": rss_mb(), "nodes": v.js("return document.getElementsByTagName('*').length"),
@@ -474,7 +484,7 @@ def summarize_settings(r):
     if r.get("sopen"):
         L.append("## 设置窗 · 开窗")
         L.append("")
-        L.append("| 趟 | 开好（ms） | 开窗 15 s 里 >50ms 帧 | 最长帧 | 空闲 3 s CPU | 常驻内存 MB（WebKit 全部进程） | 节点 |")
+        L.append("| 趟 | 开好（ms） | 开窗到安静 >50ms 帧 | 最长帧 | 空闲 3 s CPU | 常驻内存 MB（WebKit 全部进程） | 节点 |")
         L.append("|---|---|---|---|---|---|---|")
         for x in r["sopen"]:
             L.append(f"| {x['run'] + 1} | {x['ready']:.0f} | {x['bootJankN']} | {x['bootFrameMax']:.0f} | {x['idleCpu']:.0f} | {x['rss']:.0f} | {x['nodes']} |")
@@ -548,8 +558,12 @@ def shots(v, url, result):
 def summarize(r):
     L = [f"# WebKitGTK 读数（{r['when']} · WebKitGTK {r['webkit']} · {r['runs']} 趟 · loadavg 开头 {'/'.join('%.1f' % x for x in r['load']['start'])} 结尾 {'/'.join('%.1f' % x for x in r['load']['end'])}）", ""]
     if r["boot"]:
-        L.append(f"开页到安静：p50 {pct([b['ms'] for b in r['boot']], 0.5):.0f} ms · 安静时 1.5 s 的 CPU p50 {pct([b.get('idleCpu', 0) for b in r['boot']], 0.5):.0f} ms · DOM 节点 p50 {pct([b['nodes'] for b in r['boot']], 0.5)} · 常驻内存 p50 {pct([b.get('rss', 0) for b in r['boot']], 0.5):.0f} MB")
-        L.append(f"开窗 15 s 里 >50ms 的帧 p50 {pct([b.get('bootJankN', 0) for b in r['boot']], 0.5):.0f} 个 · 超出合计 p50 {pct([b.get('bootJankMs', 0) for b in r['boot']], 0.5):.0f} ms · 最长一帧 p50 {pct([b.get('bootFrameMax', 0) for b in r['boot']], 0.5):.0f} ms")
+        # 缺的那几趟（没见到第一张卡 / 世界握手那一刻）不进分位数；一趟都没有 ⇒ 「—」
+        def p50(k):
+            xs = [b[k] for b in r["boot"] if isinstance(b.get(k), (int, float)) and not isinstance(b.get(k), bool)]
+            return "—" if not xs else f"{pct(xs, 0.5):.0f}"
+        L.append(f"开页：台架起世界 p50 {p50('worldMs')} ms · 产品那一段（握上手 → 安静）p50 {p50('productMs')} ms · 安静时 1.5 s 的 CPU p50 {p50('idleCpu')} ms · DOM 节点 p50 {p50('nodes')} · 常驻内存 p50 {p50('rss')} MB")
+        L.append(f"第一张卡 → 安静：p50 {p50('cardMs')} ms · 这一段 >50ms 的帧 p50 {p50('bootJankN')} 个 · 超出合计 p50 {p50('bootJankMs')} ms · 最长一帧 p50 {p50('bootFrameMax')} ms（起点是第一张卡的 {sum(1 for b in r['boot'] if b.get('cardFirst'))}/{len(r['boot'])} 趟）")
         L.append("")
     if r["switch"]:
         L.append("## 切一下（p50 / p95，ms）")

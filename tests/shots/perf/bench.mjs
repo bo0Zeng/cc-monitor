@@ -7,6 +7,8 @@
  * 不起后端、不起 claude、不碰 tmux）。世界：`world.ts`（24 个 tab，四条几千条记录的长会话）。
  *
  * 量法（每一项都在一个新开的页里，开页后先等主线程安静）：
+ * - **开页**（每次开页都记，`--only boot` 只量它）：台架起世界（导航 → 世界握上手：真后端池起各台、伺服照配方造盘，`disks.ts`）·
+ *   产品那一段（握上手 → 安静）· 第一张卡 → 安静（起点取流里第一张卡与 `__shots` 离开 booting 早的那个）这一段 >50 ms 的帧个数 · 超出合计 · 最长 · 长任务。
  * - **切一下**（switch）：按 tab 栏顺序逐个真点（CDP 鼠标事件，打到 tab 中心）。第一遍 ＝ 冷切（那个 tab 还没建过卡），
  *   第二遍 ＝ 热切（建过、DOM 留着）。每次点前等安静（300 ms 无长任务 / 无新建节点，最多 5 s），点后看 1.5 s：
  *   · 按下到画出：Event Timing 里那次 click 的 duration（输入 → 处理 → 下一帧画出；< 16 ms 的不报，记 16）；
@@ -200,13 +202,16 @@ async function openPage() {
   const boot = async () => {
     // 开页最多等 2 分钟（load 事件不来时 `goto` 自己不会超时）
     await Promise.race([page.goto(`${base}/index.html?scene=perf-tabs`), sleep(120_000).then(() => Promise.reject(new Error("开页 2 分钟没等到 load")))]);
-    await page.waitFor("window.__shots && window.__shots.state !== 'booting'", 120_000);
+    // 起世界（真后端池起四台、伺服造盘）在机器忙时要一分多钟：等条件，兜底 5 分钟（同真后端池的上限）
+    await page.waitFor("window.__shots && window.__shots.state !== 'booting'", 300_000);
     const st = await page.eval("window.__shots.state");
     if (st !== "done") throw new Error(`场景没起来：${await page.eval("window.__shots.error")}`);
     return page.eval("__perf.quiet(1000, 60000)");
   };
   // `--trace boot`：开页到安静这一段录一份轨迹（只录第一次开页）
   const quiet = args.trace === "boot" && !globalThis.__bootTraced ? ((globalThis.__bootTraced = true), await traced(page, "trace-boot.json", boot)) : await boot();
+  // 安静了 ⇒ 收开窗那条帧链（不让它的 rAF 算进下面的空闲 CPU）：产品那一段从第一张卡（或离开 booting）起到安静
+  const b = await page.eval("__perf.bootEnd()");
   if (args.profile) {
     // `--dev --profile tests/shots/perf/profile.js`：给切换路上的方法挂计时（开发服务器下模块按源码路径 import 到的就是界面那一份）
     await page.eval(`(async () => { ${readFileSync(path.resolve(String(args.profile)), "utf8")} })()`);
@@ -216,12 +221,28 @@ async function openPage() {
   const idleCpu = cpuMs(browser.pid) - c0;
   // 开页安静之后还一张卡都没建的 tab（后台空闲物化没轮到 / 没进队）
   const virgin = await page.eval("[...document.querySelectorAll('#message-stream > .stream')].filter((s) => !s.querySelector('.card')).length");
-  // 开页到安静这一段的长任务（探针在页面任何脚本之前就在记）：人一开窗就去点，碰上的就是它们
-  // 只数 DOMContentLoaded 之后的：之前那一段是假后端在页里造合成世界（几万条记录），不是产品
-  const bootLt = await page.eval("(() => { const dcl = performance.getEntriesByType('navigation')[0]?.domContentLoadedEventStart ?? 0; const lt = __perf.lt.filter((x) => x.s >= dcl); return { n: lt.length, ms: lt.reduce((a, x) => a + x.d, 0), max: lt.reduce((a, x) => Math.max(a, x.d), 0), list: __perf.lt.slice(0, 40).map((x) => [Math.round(x.s), Math.round(x.d)]), dcl: Math.round(dcl) }; })()");
-  if (args.shot) console.log(`开页长任务（起点 ms, 时长 ms；DOMContentLoaded ${bootLt.dcl}）：${bootLt.list.map(([a, b]) => `${a}+${b}`).join(" ")}`);
-  const bootFrames = await page.eval("__perf.bootFrames.slice(1)");
-  result.boot.push({ ms: Date.now() - b0, quietWait: quiet, idleCpu, virgin, bootJankN: bootFrames.filter((d) => d > 50).length, bootFrameMax: Math.max(0, ...bootFrames), bootLtN: bootLt.n, bootLtMs: bootLt.ms, bootLtMax: bootLt.max, ...(await metrics(page)) });
+  // 产品那一段（第一张卡起到安静）的长任务（探针在页面任何脚本之前就在记）：人一开窗就去点，碰上的就是它们
+  const bootLt = await page.eval(`(() => { const lt = __perf.lt.filter((x) => x.s + x.d >= ${b.start ?? 0} && x.s <= ${b.quietAt}); return { n: lt.length, ms: lt.reduce((a, x) => a + x.d, 0), max: lt.reduce((a, x) => Math.max(a, x.d), 0), list: __perf.lt.slice(0, 40).map((x) => [Math.round(x.s), Math.round(x.d)]) }; })()`);
+  if (args.shot) console.log(`开页长任务（起点 ms, 时长 ms；第一张卡 ${Math.round(b.firstCard ?? -1)}）：${bootLt.list.map(([a, d]) => `${a}+${d}`).join(" ")}`);
+  const janks = b.frames.filter((d) => d > 50);
+  result.boot.push({
+    ms: Date.now() - b0,
+    quietWait: quiet,
+    idleCpu,
+    virgin,
+    // 台架起世界：导航起到世界握上手（真后端池起各台、造盘）；产品那一段：握上手到安静；第一张卡 → 安静：开窗卡不卡量的就是这一截
+    worldMs: b.world,
+    productMs: b.world === null ? null : b.quietAt - b.world,
+    cardMs: b.start === null ? null : b.quietAt - b.start,
+    cardFirst: b.firstCard !== null && (b.booted === null || b.firstCard <= b.booted),
+    bootJankN: janks.length,
+    bootJankMs: janks.reduce((a, d) => a + d - 16.7, 0),
+    bootFrameMax: Math.max(0, ...b.frames),
+    bootLtN: bootLt.n,
+    bootLtMs: bootLt.ms,
+    bootLtMax: bootLt.max,
+    ...(await metrics(page)),
+  });
   return page;
 }
 
@@ -686,7 +707,13 @@ function summarize(r) {
   L.push(`# 性能读数（${r.when} · ${r.mode === "build" ? "生产构建" : "开发服务器"} · ${r.runs} 趟 · loadavg 开头 ${r.load.start.map((x) => x.toFixed(1)).join("/")} 结尾 ${r.load.end.map((x) => x.toFixed(1)).join("/")}）`);
   L.push("");
   if (r.boot.length) {
-    L.push(`开页到安静：p50 ${f0(pct(r.boot.map((b) => b.ms), 0.5))} ms · 这一段长任务 p50 ${f0(pct(r.boot.map((b) => b.bootLtN ?? 0), 0.5))} 个 / 合计 ${f0(pct(r.boot.map((b) => b.bootLtMs ?? 0), 0.5))} ms / 最长 ${f0(pct(r.boot.map((b) => b.bootLtMax ?? 0), 0.5))} ms · 开窗 15 s 里 >50ms 的帧 p50 ${f0(pct(r.boot.map((b) => b.bootJankN ?? 0), 0.5))} 个 / 最长 ${f0(pct(r.boot.map((b) => b.bootFrameMax ?? 0), 0.5))} ms · 安静时 1.5 s 的 CPU p50 ${f0(pct(r.boot.map((b) => b.idleCpu ?? 0), 0.5))} ms`);
+    // 缺的那几趟（没见到第一张卡 / 世界握手那一刻）不进分位数；一趟都没有 ⇒ 「—」
+    const p50 = (k) => {
+      const xs = r.boot.map((b) => b[k]).filter((x) => typeof x === "number");
+      return xs.length ? pct(xs, 0.5) : null;
+    };
+    L.push(`开页：台架起世界 p50 ${f0(p50("worldMs"))} ms · 产品那一段（握上手 → 安静）p50 ${f0(p50("productMs"))} ms · 安静时 1.5 s 的 CPU p50 ${f0(p50("idleCpu"))} ms`);
+    L.push(`第一张卡 → 安静：p50 ${f0(p50("cardMs"))} ms · 这一段 >50ms 的帧 p50 ${f0(p50("bootJankN"))} 个 / 超出合计 ${f0(p50("bootJankMs"))} ms / 最长 ${f0(p50("bootFrameMax"))} ms · 长任务 p50 ${f0(p50("bootLtN"))} 个 / 合计 ${f0(p50("bootLtMs"))} ms / 最长 ${f0(p50("bootLtMax"))} ms（起点是第一张卡的 ${r.boot.filter((b) => b.cardFirst).length}/${r.boot.length} 趟）`);
     L.push(`开页安静后还没建卡的 tab p50 ${f0(pct(r.boot.map((b) => b.virgin ?? 0), 0.5))} 个 · DOM 节点 p50 ${f0(pct(r.boot.map((b) => b.Nodes), 0.5))} · JS 堆 p50 ${mb(pct(r.boot.map((b) => b.JSHeapUsedSize), 0.5))} MB`);
     L.push("");
   }
