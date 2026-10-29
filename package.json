@@ -54,7 +54,7 @@
     "shots": "node tests/shots/run.mjs"
   },
   "dependencies": {
-    "@chenglou/pretext": "0.0.9",
+    "@chenglou/pretext": "1.0.0",
     "@phosphor-icons/core": "2.1.1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",

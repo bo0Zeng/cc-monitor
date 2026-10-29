@@ -3,8 +3,9 @@
  *
  * 估值只是初值：`auto <h>px` 渲染过一次后浏览器记住真高，估值只影响没渲染过的卡对滚动条的贡献 ⇒ 求够准、绝不抛错，不求像素真值。
  *
- * 文本估高用 pretext（精确钉版 0.0.9：0.0.x 的折行语义可能不打招呼地变，常数是对着这一版标定的）：
- * prepare() 一次分词 ＋ canvas 测宽，layout() 纯算术出高度，不触 DOM。pretext 不可用（没有 canvas、字体未就绪）时退回字符宽度算术。
+ * 文本估高用 pretext（精确钉版 1.0.0；换版前后同一份语料逐条量高对拍，判据在 `height-estimate.vitest.ts` 末尾）：
+ * prepare() 一次分词 ＋ canvas 测宽，layout() 纯算术出高度，不触 DOM。pretext 不可用（没有 canvas、字体未就绪、
+ * 字体串 canvas 不收 ⇒ 1.0 起 prepare 抛 RangeError）时退回字符宽度算术。主线程与 Worker 排高只走 `pretextHeight` 这一句。
  * 宽度 / 字体常数镜像 styles.css 的 token（`--stream-max-width` / `--font-*`）。
  * 改这里任何一个常数都要跑 `npx vitest run tests/frontend/ui/scale2-height-truth.vitest.ts`（两个真引擎的金标准）。
  */
@@ -84,6 +85,21 @@ async function loadPretext(): Promise<void> {
 void loadPretext();
 
 /**
+ * pretext 排一段正文的高：主线程（`textHeight`）与估高 Worker（`height-worker.ts`）共用这一句。
+ * pre-wrap：保留 \n 硬断行（默认 normal 会折叠成空格，与 fallback 语义相反），顺带由库归一 CRLF。
+ * 每次现 prepare、不留 handle（1.0 不认 0.0.9 造的 handle，这里本来就不留）。
+ */
+export function pretextHeight(
+  p: Pick<PretextModule, "prepare" | "layout">,
+  text: string,
+  font: string,
+  widthPx: number,
+  lineHeightPx: number,
+): number {
+  return p.layout(p.prepare(text, font, { whiteSpace: "pre-wrap" }), widthPx, lineHeightPx).height;
+}
+
+/**
  * 算术降级:CJK 全宽、其余按 0.52em 均宽,逐硬行折行计数。
  * 导出仅为单测(拍住估算不漂移)。
  */
@@ -118,10 +134,7 @@ function textHeight(
   let h: number | null = null;
   if (pretextMod) {
     try {
-      // pre-wrap:保留 \n 硬断行(默认 normal 会折叠成空格,与 fallback 语义相反),
-      // 顺带由库归一 CRLF
-      const prepared = pretextMod.prepare(sample, font, { whiteSpace: "pre-wrap" });
-      h = pretextMod.layout(prepared, widthPx, lineHeightPx).height;
+      h = pretextHeight(pretextMod, sample, font, widthPx, lineHeightPx);
     } catch (e) {
       pretextFailures++;
       if (pretextFailures >= PRETEXT_MAX_FAILURES) {
