@@ -2278,6 +2278,18 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     await clickUpdate();
     expect(pop(), "取消了：浮层不再出").toBeNull();
   });
+
+  it("★ 机器条那一行的［更新］与 ↗ 浮层 · 机器卡同一个动作（共用部署模块，先问会打断什么），不开设置窗", async () => {
+    const tm = makeTM();
+    vi.mocked(updateBackendOf).mockReset();
+    vi.mocked(updateBackendOf).mockResolvedValue("已部署 Z");
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue([]);
+    tm.fixMachine("devbox", "update");
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(updateBackendOf).mock.calls.map((c) => [c[0], c[1]])).toEqual([["devbox", "devbox"]]);
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "open_settings_window"), "不开设置窗").toEqual([]);
+  });
 });
 
 /**
