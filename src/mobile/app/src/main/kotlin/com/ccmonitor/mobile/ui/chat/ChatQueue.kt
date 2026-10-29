@@ -116,4 +116,7 @@ fun queueRows(
     queue.map { QueueRowFace(it.id, it.said, it.from, headOf(it.text), error = it.undelivered, retry = false, listed = true) } +
         outbox.map { QueueRowFace(it.id, it.said, null, headOf(it.text), error = it.failed, retry = it.retry, listed = false) }
 
-private fun headOf(text: String): String = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+private fun headOf(text: String): String {
+    val first = text.lineSequence().firstOrNull { it.isNotBlank() } ?: return ""
+    return first.trim()
+}

@@ -76,8 +76,9 @@ fun AgentScreen(
     val ui by body.state.collectAsState()
     // 在跑的那一个记录在长（运行表里它最近动的时刻变了 · 收场了）⇒ 往下接着读。
     LaunchedEffect(info?.activeMs, info?.state) { if (!ui.loading) body.newer() }
-    val kids = runs?.runs?.filter { it.parent == run }.orEmpty()
-    val from = info?.parent?.let { p -> runs?.runs?.firstOrNull { it.run == p }?.labelText }
+    val all = runs?.runs.orEmpty()
+    val kids = all.filter { it.parent == run }
+    val from = info?.parent?.let { p -> all.firstOrNull { it.run == p }?.labelText }
     Scaffold(
         topBar = { AgentsTopBar(info?.labelText.orEmpty(), info?.let(::secondLine).orEmpty(), onBack) },
     ) { inner ->

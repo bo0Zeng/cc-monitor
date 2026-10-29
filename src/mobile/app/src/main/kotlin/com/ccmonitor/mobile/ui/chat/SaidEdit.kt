@@ -375,15 +375,7 @@ internal fun RewindSheet(
     var whn by remember(got) { mutableStateOf(first?.second) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = tokens.card, tonalElevation = 0.dp) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.md), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-            Column {
-                Text(copyText("mobSaidEdit.sheet.title"), style = MaterialTheme.typography.titleMedium)
-                // 「退到此句之前：」＋ 那句原文（截一行）：两截各摆，不拼进一句。
-                Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
-                    val faint = MaterialTheme.colorScheme.onSurfaceVariant
-                    Text(copyText("mobSaidEdit.sheet.to"), style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1)
-                    Text(target.lineSequence().firstOrNull().orEmpty(), style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
+            SheetHead(target)
             when (pick) {
                 RewindPick.Asking -> Skeleton()
                 is RewindPick.Failed ->
@@ -391,31 +383,67 @@ internal fun RewindSheet(
                         ErrorLine(pick.why, Modifier.weight(1f))
                         SecondaryButton(onClick = onRetry) { Text(copyText("front.act.retry")) }
                     }
-                is RewindPick.Got -> {
-                    val o = pick.options
-                    if (o.how.isNotEmpty()) Text(copyText("mobSaidEdit.pick.how"), style = MaterialTheme.typography.labelMedium)
-                    o.how.forEach { r -> Choice(r.text, first != null && how == r.how, enabled = first != null && r.enabled, why = r.why) { how = r.how } }
-                    if (first != null && o.`when`.isNotEmpty()) {
-                        Text(copyText("mobSaidEdit.pick.when"), style = MaterialTheme.typography.labelMedium)
-                        o.`when`.forEach { r -> Choice(r.text, whn == r.`when`) { whn = r.`when` } }
-                    }
-                    o.said?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                }
+                is RewindPick.Got -> Choices(pick.options, first != null, how, whn, { how = it }) { whn = it }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
-                face.acts.forEach { a ->
-                    when (a) {
-                        SheetAct.CANCEL -> SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) }
-                        SheetAct.CLOSE -> SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) }
-                        SheetAct.RETRY -> Unit
-                        SheetAct.CONFIRM ->
-                            Button(
-                                onClick = { if (how != null && whn != null) onConfirm(how!!, whn!!) },
-                                enabled = face.confirm,
-                                modifier = Modifier.testTag(ChatTestTags.SAID_EDIT_CONFIRM),
-                            ) { Text(copyText("mobSaidEdit.pick.confirm")) }
+            SheetButtons(face.acts, face.confirm, onDismiss) {
+                val h = how
+                val w = whn
+                if (h != null && w != null) onConfirm(h, w)
+            }
+        }
+    }
+}
+
+/** 抽屉抬头：标题 ＋「退到此句之前：」与那句原文（截一行）两截各摆，不拼进一句。 */
+@Composable
+private fun SheetHead(target: String) {
+    val faint = MaterialTheme.colorScheme.onSurfaceVariant
+    Column {
+        Text(copyText("mobSaidEdit.sheet.title"), style = MaterialTheme.typography.titleMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(LocalAppTokens.current.spacing.xs)) {
+            Text(copyText("mobSaidEdit.sheet.to"), style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1)
+            Text(target.lineSequence().firstOrNull().orEmpty(), style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** 照那台交的选项摆「怎么退」·「什么时候退」；[pickable] 假（一项都不能选）⇒ 各项灰、不出「什么时候退」。 */
+@Composable
+private fun Choices(
+    o: RewindOptions,
+    pickable: Boolean,
+    how: RewindHow?,
+    whn: RewindWhen?,
+    onHow: (RewindHow) -> Unit,
+    onWhen: (RewindWhen) -> Unit,
+) {
+    if (o.how.isNotEmpty()) Text(copyText("mobSaidEdit.pick.how"), style = MaterialTheme.typography.labelMedium)
+    o.how.forEach { r -> Choice(r.text, pickable && how == r.how, enabled = pickable && r.enabled, why = r.why) { onHow(r.how) } }
+    if (pickable && o.`when`.isNotEmpty()) {
+        Text(copyText("mobSaidEdit.pick.when"), style = MaterialTheme.typography.labelMedium)
+        o.`when`.forEach { r -> Choice(r.text, whn == r.`when`) { onWhen(r.`when`) } }
+    }
+    o.said?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+}
+
+/** 抽屉底下那几颗（[sheetFace] 给的先后）；［重试］贴在问不到那一句右边，不在这一排。 */
+@Composable
+private fun SheetButtons(
+    acts: List<SheetAct>,
+    confirmOn: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LocalAppTokens.current.spacing.sm, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+        acts.forEach { a ->
+            when (a) {
+                SheetAct.CANCEL -> SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) }
+                SheetAct.CLOSE -> SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) }
+                SheetAct.RETRY -> Unit
+                SheetAct.CONFIRM ->
+                    Button(onClick = onConfirm, enabled = confirmOn, modifier = Modifier.testTag(ChatTestTags.SAID_EDIT_CONFIRM)) {
+                        Text(copyText("mobSaidEdit.pick.confirm"))
                     }
-                }
             }
         }
     }
@@ -427,7 +455,13 @@ private fun Skeleton() {
     val tokens = LocalAppTokens.current
     Text(copyText("mobSaidEdit.pick.loading"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     repeat(SKELETON_ROWS) {
-        Box(Modifier.fillMaxWidth().height(Touch.rowSingle).clip(RoundedCornerShape(tokens.radius.m)).background(MaterialTheme.colorScheme.surfaceVariant))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(Touch.rowSingle)
+                .clip(RoundedCornerShape(tokens.radius.m))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
     }
 }
 
