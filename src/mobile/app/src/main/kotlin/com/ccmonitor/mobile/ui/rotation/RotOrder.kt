@@ -53,6 +53,7 @@ import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
  * 长按拿起（`RotDrag.kt` 那张表，同桌面）：跟手 · 别的行让位 · 悬停第一格写「松手换到」· 放下交一次 move、回包才定（拒 ⇒ 滑回；
  * 没回包 ⇒ 留在放下处标「没确认」）。拿着 · 等回包时那台推来的新顺序先不换上（手上正在改的不被盖掉）。离线不拿起。
  * 点一行从底下拉出那个号：只看 ＋［立即用］·［编辑策略］。都只这个会话、不改策略。
+ * 会话不轮换（`strategy` 空）⇒ 同一张表，没有拖动那句 · 勾 ·［编辑策略］；底单里照样［立即用］。
  */
 
 /** 状态机此刻的样子（重组照它摆）：每行让开多少 · 拿着第几行 · 悬停第一格时拿的是谁。 */
@@ -137,7 +138,13 @@ internal fun Order(
     offline: Boolean,
     onEditStrategy: (String?) -> Unit,
 ) {
-    RotHeader(copyText("rot.h.order"), if (view.manual) copyText("rot.order.manual") else copyText("rot.h.orderHint")) {
+    val note =
+        when {
+            view.manual -> copyText("rot.order.manual")
+            view.strategy != null -> copyText("rot.h.orderHint")
+            else -> null
+        }
+    RotHeader(copyText("rot.h.order"), note) {
         if (view.manual) SecondaryButton(onClick = board::clearTemp) { Text(copyText("rot.order.reset")) }
     }
     ui.refused?.let { (_, t) -> Text(t, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
@@ -246,11 +253,14 @@ private fun OrderRow(
                 f?.let { Meters(it) }
             }
             StateCell(line.state, unconfirmed)
-            Checkbox(
-                checked = line.group != RotGroup.OFF,
-                onCheckedChange = { on -> board.off(account, !on) },
-                modifier = Modifier.semantics { contentDescription = board.label(account) },
-            )
+            // 「先不用」只对自动换号有意义：不轮换 ⇒ 不出勾。
+            if (view.strategy != null) {
+                Checkbox(
+                    checked = line.group != RotGroup.OFF,
+                    onCheckedChange = { on -> board.off(account, !on) },
+                    modifier = Modifier.semantics { contentDescription = board.label(account) },
+                )
+            }
         }
     }
 }
@@ -288,10 +298,12 @@ private fun OrderSheet(
             row?.let { Text(it.line, style = MaterialTheme.typography.bodySmall, color = muted) }
             row?.rules?.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = muted) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-                SecondaryButton(onClick = {
-                    board.open(null)
-                    onEditStrategy(account)
-                }) { Text(copyText("rot.top.edit")) }
+                if (view.strategy != null) {
+                    SecondaryButton(onClick = {
+                        board.open(null)
+                        onEditStrategy(account)
+                    }) { Text(copyText("rot.top.edit")) }
+                }
                 if (account != view.current) {
                     OutlinedButton(onClick = {
                         board.open(null)

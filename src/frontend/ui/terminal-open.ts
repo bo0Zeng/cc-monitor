@@ -89,17 +89,21 @@ export async function openLocalTerminal(cmd: string, cwd: string | null): Promis
   await opened(cmd, commands.open_local_terminal({ cmd, cwd }));
 }
 
-/** 在用户面前这台机器上开一个终端跑 `command`（`origin` = 命令要在哪台跑）。 */
+/**
+ * 在用户面前这台机器上开一个终端跑 `command`（`origin` = 命令要在哪台跑）。
+ * `sid`：这个终端显示的那条会话（`session-open` 的成品带它）⇒ 本机后端在那一行前面接一段，开的那个 shell 记下自己的窗口标签，↗ 先照它在本机找。
+ */
 export async function openTerminal(
   origin: Origin,
   command: string,
+  sid: string | null = null,
 ): Promise<void> {
   if (isLocalOrigin(origin)) {
     await openWindow(command);
     return;
   }
   // 只交名字：地址 · 跳板 · 先试哪条都照本机后端的机器表。
-  await openWindow(await lineOf({ machine: origin, command }));
+  await openWindow(await lineOf({ machine: origin, command, ...(sid !== null ? { sid } : {}) }));
 }
 
 /** 在用户面前这台机器上开一个终端，进 `origin` 那台的登录 shell（本机 ⇒ 本机 shell；那一行是本机后端 `terminal-ssh` 渲的）。 */

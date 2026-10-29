@@ -159,7 +159,7 @@ fn the_backend_policy_copy_has_exactly_one_home() {
     }
 }
 
-// ── `K-P3` `KP3B`：四件事分得开 ──────────────────────────────────────
+// ── 四件事分得开 ──────────────────────────────────────
 
 /// 四种死法各造一形。**用证据造，不用变体名造** —— 这是 `KP3B` 的承重点：
 /// 「不许是「源码里出现了四个枚举名」（有名字 ≠ 接上了）」。
@@ -350,7 +350,7 @@ fn the_start_failure_reason_is_passed_through_verbatim() {
     );
 }
 
-// ── `K-P3` `KP3A`：一本真的会被写下来的账 ────────────────────────────
+// ── 一本真的会被写下来的账 ────────────────────────────
 
 /// 记下每一行的落点（**只在测试里**）—— 让「那一行真的交给了落点」可判。
 #[derive(Default)]
@@ -710,7 +710,7 @@ fn the_health_face_matches_the_cross_language_golden() {
     }
 }
 
-// ── `K-P3b`：接了几处就是几处 ────────────────────────────────────────
+// ── 接了几处就是几处 ────────────────────────────────────────
 
 /// 把一段（函数体）从生产段里切出来：从 `head` 那一行的下一行起，
 /// 到第一行**恰好是右花括号**为止。形状抄 `local_backend_host_tests.rs::body_of`。
@@ -730,7 +730,7 @@ fn body_after(prod: &str, head: &str) -> String {
 }
 
 /// 只有本判据读这张表 ⇒ 它住判据旁边，不住产品代码（住在那边时它是生产段里的一条死常量）。
-/// ★★ `K-P3b KP3W3`：[`record_death`] 的**生产调用点逐处点名**。
+/// ★★ [`record_death`] 的**生产调用点逐处点名**。
 ///
 /// 形状照 `src/backend/readonly_guard.rs::ALLOWED` 那种
 /// 「**逐处点名 + 相等**」，不是地板 —— 地板在变大方向上是瞎的
@@ -738,9 +738,8 @@ fn body_after(prod: &str, head: &str) -> String {
 ///
 /// # 它守的是什么
 ///
-/// `K-P3` 第一档交付时这个数是 **0**：判据、账、文案全买了，**一个消费者都没有**
-/// （`K-P3` `§3-5` 第一行如实登记）。后来接成 3 处；
-/// [`the_death_ledger_is_wired_at_exactly_these_sites`] 让「接了几处就是几处」
+/// 判据、账、文案都在，却**一个消费者都没有**，这个数就是 0 —— 那一形最容易绿着说假话。
+/// 今天接了 3 处；[`the_death_ledger_is_wired_at_exactly_these_sites`] 让「接了几处就是几处」
 /// 变成一条相等断言 —— 摘掉任何一处**都会点名是哪一处少了**。
 ///
 /// `(文件, 那一处的宿主函数头, 它记的是哪条路)`
@@ -779,11 +778,8 @@ const DEATH_RECORD_SITES: &[(&str, &str, &str)] = &[
 ///    只数总数的话，「某一处塌了、另一处多记了一次」会互相抵消
 ///    （`backend_control.rs` 那条「逐口切体，不数全局」为同一形栽过一次）。
 ///
-/// ⚠ **这两行先前是纯旧话，而且与它下面 20 几行的注释互相矛盾**：
-/// 原文是「人群里**没有本文件自己**：`scan_tree!` 按 `file!()` 摘掉调用者那一份，
-/// 而 [`record_death`] 的定义与它自己的单测都住这儿 —— 不摘就恒有命中」。
-/// 那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的折返路径
-/// ⇒ 后缀比不命中）；而剖分之后 [`record_death`] 的**定义**住 `backend_policy.rs`、
+/// ⚠ 「`scan_tree!` 按 `file!()` 摘掉调用者那一份」**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的折返路径
+/// ⇒ 后缀比不命中）；而 [`record_death`] 的**定义**住 `backend_policy.rs`、
 /// 它自己的单测住本判据文件，**两者已经不同住一份**。
 /// ⇒ 今天的真实口径：人群 = `src/frontend/shell/src` 整棵树（`backend_policy.rs` **在里面**），
 /// 而「定义不算调用点」是下面那个 `call_sites` 闭包按语法排掉的 —— 不是靠摘文件。
@@ -879,7 +875,7 @@ fn the_death_ledger_is_wired_at_exactly_these_sites() {
         DEATH_RECORD_SITES.len(),
         "`record_death` 的生产调用点是 {total} 处（登记 {} 处）。实得：{hits:?}\n\
              ★ **接了几处就是几处**。变少 = 某一条观测路又回到了「看得见它没了、却没人记」，\n\
-             那正是 `K-P3` `§3-5` 第一行登记的那一格（当时这个数是 0）；\n\
+             这个数掉到 0 就是「判据、账、文案都在，一个消费者都没有」；\n\
              变多 = 有第四条路开始记账（上面逐处那一圈只看登记过的三处，\n\
              **第四处它一个字都不会说**）⇒ 回来把它写进 `DEATH_RECORD_SITES`，\n\
              并说清它记的是哪条路。",
@@ -916,7 +912,7 @@ fn the_supervisor_itself_never_records_a_death() {
              ★ 它同时监护后端与中转 ⇒ 中转的死会被记进「这台机的后端」那本账。\n\
              ⇒ 记账落在客户那一侧的 `on_event`（`local_backend_host::backend_supervise_events`）。"
     );
-    // 整组「调后端的客户端 ＋ 监护」（从前的 `backend/` 目录，今天逐个点名：`backend_client_guard_tests.rs::GUARDED`）也是 0 ——
+    // 整组「调后端的客户端 ＋ 监护」（逐个点名：`backend_client_guard_tests.rs::GUARDED`）也是 0 ——
     //   判与记都不在那一半（`B1` 那次误诊正是判断落在 backend 层的产物）。
     let files: Vec<(std::path::PathBuf, String)> = crate::backend_client_guard::guarded_sources();
     assert!(
@@ -938,7 +934,7 @@ fn the_supervisor_itself_never_records_a_death() {
     );
 }
 
-/// ★ `K-P3b`：**「根本没有读端」不是一次干净 EOF，也永远不是「读坏了」。**
+/// ★ **「根本没有读端」不是一次干净 EOF，也永远不是「读坏了」。**
 ///
 /// 死值验：把 `verdict` 里 `ReaderEnd::NotObserved` 那一臂改成
 /// `return Some(Death::Misread { .. })` ⇒ 下面两格一起红。

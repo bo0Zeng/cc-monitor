@@ -24,11 +24,8 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   `bus-*` 原语转一手、走分流器；现在界面经通道直接说（`src/frontend/ui/cc-bus-control.ts`），
     //   monitor 的 `cc_bus.rs` 只剩读名单 / 读收件箱两条 shell 读，不再是走后端的发送端 —— 从登记表删，不留过渡格。
     //   「monitor 里写面一条路都不剩」由 `cc_bus_one_home.rs::the_monitor_has_no_cc_bus_write_path_any_more` 两向判。
-    // ★ `K-R112` 09-13：**第七个发送端** —— 抓屏（monitor 里那个发送端，已删）
-    //   改走帧面 `capture-pane`。它**没有第二条路可回落**（那条一次性 SSH 已删净），
+    // ★ 抓屏走帧面 `capture-pane`。它**没有第二条路可回落**（没有一次性 SSH），
     //   但**照样走分流器**，理由与 `cc_bus.rs` 那条逐字相同：
-    //   〔：原话还并列了 `account_usage.rs`（`K-R104` 的第六个发送端）——
-    //    用量 ③ 轴整轴退役，那个发送端不存在了，发送端从七个变回六个。〕
     //   本模块的三态是从 `Routed` 搬过来的，不是它自己 match 一遍错误枚举。
     //   ⚠ 它回的是 `Result<String, Routed>` —— 「拿到了那一屏」与「三态里的另外两态」
     //   在类型上分得开，怎么对用户说由调用方决定。
@@ -63,7 +60,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     ("router.rs", Verdict::PureRouterNoFallbackDecision),
     // ★ **主界面那一跳的宿主**（`chan/webview.rs`）。发现阶段看见它，是因为
     //   它生产段里有 `.call(` —— 那是**注入的** `Backends` 句柄（生产注入 `chan::host::InboundBackends`，
-    //   从前与 `entry.rs` 同一个〔09-28 裁 3 起它不再问〕），期限与撤单交给路由器那一份 `settle`。它不碰 inbound、不做回落判断，
+    //   `entry.rs` 不经它问），期限与撤单交给路由器那一份 `settle`。它不碰 inbound、不做回落判断，
     //   牙与纯路由器那一档同一套。
     ("webview.rs", Verdict::PureRouterNoFallbackDecision),
     // ★ 〔面 A 通道，2026-09-24〕**第八个发送端** —— 通道的生产句柄（`chan/host.rs`），
@@ -87,7 +84,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     // ★ 资产目录同步：把「怎么够到那台」交给**本机**后端 `assets-sync`，经
     //   `asset_sync.rs::ResidentBackend::call` 这一口；失败经共用分流器翻成人话。形状与理由同上几条。
     ("asset_sync.rs", Verdict::UsesRouter),
-    // skill「装到这台」那一行（原住 `skill_install.rs`）摘了：装 / 卸的编排进了被写那台后端，界面经通道直问。
+    // skill「装到这台」不在这里：装 / 卸的编排在被写那台后端，界面经通道直问。
     // ★ 传输台的中继（`transfer_relay.rs`）：窗口的开单 / 订阅经它转给**本机**常驻后端
     //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
     //   后端说的码原样带回窗口；**照样走分流器**，理由与 `frame_query.rs` 那一行逐字相同。

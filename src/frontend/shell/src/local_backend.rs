@@ -24,7 +24,7 @@
 //! 换成**窗口内计数上限**：崩溃时刻记进一个账，`window_ms` 内崩了 `max_crashes` 次
 //! ⇒ [`Decision::GiveUp`]，否则**立刻**重起。天花板是「`max_crashes` 次立即重试」，
 //! 不会无限自旋，而且**一个定时器都不需要**。
-//! ⇒ 🔴 **这一格有人量过**（`K-R30` 09-06，**沙箱读数、真机未验**）：读数与量具住址住下面 [`SPAWN_ETXTBSY_TRIES`] 头注的出处那一节 —— 它只买下「这条取舍在**这一格**上还有一个此前没写过的好处」，**不是**「`C12` 处处成立」。
+//! ⇒ 🔴 **这一格有人量过**（**沙箱读数、真机未验**）：读数与量具住址住下面 [`SPAWN_ETXTBSY_TRIES`] 头注的出处那一节 —— 它只说明「这条取舍在**这一格**上还有一个好处」，**不是**「`C12` 处处成立」。
 //!
 //! # ★ 等它死：读 stdout 到 EOF，不是 `wait()`、更不是 `try_wait()` 轮询
 //!
@@ -56,9 +56,7 @@
 //! 放到 `~/.cc-monitor/bin/ccm` 再起；这一份没带时是 [`Resolved::Missing`] 的**诚实降级**
 //! （定框 §5：tagged + `reason`，不是 `Err`），零副作用。
 //!
-//! 来历：v3.7.0 起安装包经 Tauri `externalBin` 在 exe 旁边另放一份（F05b），
-//! 裸 exe 那时 0 个本机后端进程；`K-R42` 起 exe 自己内嵌一份、旁边没有就释放这一份；
-//! size2（10-11）撤掉了旁边那份 —— 它与内嵌那份逐字节相同、只是字节来源，而旧安装包留下的那一份可能是旧版本。
+//! exe 自己内嵌一份、释放这一份；安装包不在 exe 旁边另放一份（它与内嵌那份逐字节相同，而旧安装包留下的那一份可能是旧版本）。
 //! ⚠ 两句话别混：① 这份产物带没带（宿主交进来的 `embedded`）· ② 放不放得下来（[`extraction_failure_reason`]）。
 //!
 //! 真进程行为由 `tests/e2e/local-backend-supervise.sh` 验：它**显式**把二进制路径喂给
@@ -205,7 +203,7 @@ pub enum SuperviseEvent {
     Exited {
         code: Option<i32>,
         attempt: u32,
-        /// ★ `K-P3b`：收尸拿到的**原样退出状态**。
+        /// ★ 收尸拿到的**原样退出状态**。
         ///
         /// `code` 在**被信号打死**时是 `None`，**信号号已经丢了** —— 而
         /// 「崩了」那一格恰恰要它（`backend_policy::exit_status` 逐字打 `signal N`）。
@@ -214,7 +212,7 @@ pub enum SuperviseEvent {
         /// ⇒ **这一层只能原样把它交上去**，由宿主层取。
         /// `None` = 连 `wait()` 都没成功（子进程句柄已被别处摘走）。
         status: Option<std::process::ExitStatus>,
-        /// ★ `K-P3b`：消费者这一侧观测到的两维。见 [`StreamWitness`]。
+        /// ★ 消费者这一侧观测到的两维。见 [`StreamWitness`]。
         witness: StreamWitness,
         /// 这一命结束之后监护器怎么办（停是被叫停的 · 重起 · 放弃）。
         next: AfterExit,
@@ -315,8 +313,8 @@ pub type StdioSink = Arc<
 >;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ★★ `K-R28`：起后端那一跳，**「这台机器上它就是起不来」与「这一刻恰好撞上了」
-//    先前装在同一个值里** —— 同一句话、同一个结局（放弃）。这一段把它们分开。
+// ★★ 起后端那一跳，**「这台机器上它就是起不来」与「这一刻恰好撞上了」分成两个值** ——
+//    装在同一个值里就是同一句话、同一个结局（放弃）。
 //
 // # 为什么这两件事必须分开
 //
@@ -332,8 +330,8 @@ pub type StdioSink = Arc<
 // 一个握着我们刚写这个文件的写 fd 的进程。此刻 execve 它 = `ETXTBSY`。
 //
 // ★ 同一个成因在别的工具链上是有名的：go 与 cargo 都是靠**对 `ETXTBSY` 有上限地重试**收的。
-//   本仓的**测试台**先前已经分开过一次（`launch.rs` 那一族），而生产段没有 ——
-//   这一段就是把那个分类**抬进生产段**，两个落点（`supervise_with_stdio` 与
+//   本仓的**测试台**（`launch.rs` 那一族）与生产段各分一次：
+//   生产段这一份由两个落点（`supervise_with_stdio` 与
 //   `local_backend_host::spawn_detached`）共用这一份，不各写一份。
 //
 // ⚠ **诚实边界（`§4`）**：这一段买的是「撞上了认得出、说得对、会重试」，
@@ -393,17 +391,16 @@ pub enum SpawnFailure {
 /// 而且**远远小于**测试台那条路的 1 秒。
 /// ⇒ 撞上一次几乎必然被头一两次重试吸收；连撞到上限都没让开，那已经不是「等一下就好」，
 /// 该换一句话说给用户听。
-/// ⚠ **这一句被读数订正过一次**：`K-R28` 立它时逐字写的是「跨过那个窗口**一个数量级**」，
-/// 而 `K-R30` 实测是 **4.9 倍**（空闲）/ **3.6 倍**（满载）—— 方向对，倍数写大了。
-/// 订正的依据在下一节；**这一段是理由，下一节才是读数**，两者别读成一件事。
+/// ⚠ 它盖过那个窗口多少倍看下一节的读数：**4.9 倍**（空闲）/ **3.6 倍**（满载），不是一个数量级。
+/// **这一段是理由，下一节才是读数**，两者别读成一件事。
 ///
 /// 🔴 **上界的另一半理由是「不许把它变成一个定时器」**：见 [`spawn_with_etxtbsy_retry`]
 /// 头注那条 `C12` —— 本模块生产段一个 `sleep` 都不许有，所以这个数不能靠「睡久一点」兜底，
 /// 只能靠「次数够，但每次都是一次真的尝试」。
 ///
-/// # 这个数的**出处**（`K-R30`，09-06 沙箱实测）
+/// # 这个数的**出处**（沙箱实测）
 ///
-/// 〔出处〕上面几节是**理由**，不是读数。`K-R30` 去把读数打了出来：
+/// 〔出处〕上面几节是**理由**，不是读数。读数是这样打出来的：
 /// 量具 `tests/evidence/K-R30-etxtbsy-window.py`（读数落在同名 `.out`）。
 /// 台架 = 真造那个竞态：一个进程攥着目标文件的写 fd（`fork` 继承来的 —— `CLOEXEC` 要到它
 /// `execve` 那一刻才生效），我们自己那把立刻关掉，然后**立即重试**到 `execve` 成功，
@@ -429,7 +426,7 @@ pub enum SpawnFailure {
 /// ③ 泄漏方那个孩子若在 `fork` 与 `execve` 之间**还要干活**（量具的臂 B：一个 CPython 子进程，
 ///    窗口 ≈ 1.2 ms），这个上限**盖不住** —— 空闲实测只有 4.7% 落在预算内（n=300）。
 ///    那一档今天靠的是**本仓一处 `pre_exec` 都没有** ⇒ 孩子在 fork 与 exec 之间不干活，
-///    **不是**靠这个数。口径写死（`K-R30` 09-06 现打，`grep -rn "pre_exec" --include=*.rs`，
+///    **不是**靠这个数。口径写死（`grep -rn "pre_exec" --include=*.rs`，
 ///    分母 = 整棵仓、含测试段）：在 `39ae7fd` 上 **0 命中**；改之后是 **1 处，
 ///    而那一处就是这句话自己** —— 剥掉注释行仍是 0。
 ///    ⚠ **这个前提今天没有判据守着**：有人加一处 `pre_exec` 不会红，而这个数就得重量。
@@ -650,8 +647,7 @@ pub(crate) fn backend_stderr_level(line: &str) -> tracing::Level {
 }
 
 /// 见 [`StdioSink`]。`stdio` 为 `None` ⇒ 不接消费者（stdin 恒 `null`）。
-/// 先前还有一个 `stdio=None` 的薄壳入口，它唯一的生产客户是 monitor 另起的本机中转；
-/// 中转并进本机常驻后端之后那个薄壳没了客户，随之删掉 —— 生产上只剩这一个入口。
+/// 生产上只有这一个入口（中转在本机常驻后端里，没有另起的中转要一个不接消费者的薄壳）。
 #[allow(clippy::too_many_arguments)]
 pub fn supervise_with_stdio(
     bin: PathBuf,
@@ -689,13 +685,8 @@ pub fn supervise_with_stdio(
             // ⇒ 这里无条件清掉：backend 该按自己的 `TMUX_TMPDIR`（或默认 socket）解析，
             // 而不是继承「monitor 恰好从哪个 tmux 里被启动」这个偶然。
             cmd.env_remove("TMUX");
-            // ★★ （不开控制台窗口）与（stderr 接进滚动日志）
-            //    **都已经不在这一层了**〔A3 落地，09-18〕。
-            //
-            // 先前这里有两段平台/宿主知识：一句「不开控制台窗口」的宿主调用
-            // （那是 A3 之前的止血，它自己的头注逐字写着「A3 落地时它会被换成注入参数，
-            // 和 `make_executable` 一样」），加一句 `.stderr(Stdio::piped())` ＋ 下面一条泵。
-            // ⇒ 今天两样都是 `spawn` 这个注入参数说了算：宿主那侧声明
+            // ★★ （不开控制台窗口）与（stderr 接进滚动日志）**都不在这一层**：
+            //    两样都是 `spawn` 这个注入参数说了算：宿主那侧声明
             // `ConsolePolicy::Hidden` ＋ `StderrSink::ToLog`，本层一个平台原语都不认识。
             //
             // ⚠ 剩下的 `stdin` / `stdout` **仍归本层**：那两根管子是本模块的协议
@@ -714,10 +705,9 @@ pub fn supervise_with_stdio(
             for (k, v) in &envs {
                 cmd.env(k, v);
             }
-            // ★★ `K-R28`：这一跳**分得开两件事**（见 `spawn_error_is_etxtbsy` 上方那一段）。
-            //    先前这里是一句裸 `cmd.spawn()` + 一个桶装所有失败 + 当场 `return`，
-            //    于是「这台机器上它就是起不来」与「这一刻恰好撞上了一个会自己过去的竞态」
-            //    同一句话、同一个结局。**分类那一份是共用的，不在这里再写一遍。**
+            // ★★ 这一跳**分得开两件事**（见 `spawn_error_is_etxtbsy` 上方那一段）：
+            //    「这台机器上它就是起不来」与「这一刻恰好撞上了一个会自己过去的竞态」
+            //    不是同一句话、同一个结局。**分类那一份是共用的，不在这里再写一遍。**
             let mut spawned = match spawn_with_etxtbsy_retry(&mut cmd, &*spawn) {
                 Ok(c) => c,
                 // 这一刻恰好撞上了 —— 而且试到了上限。换一句话，别说成「起不来」。
@@ -790,10 +780,10 @@ pub fn supervise_with_stdio(
             let report = match (&stdio, out, in_) {
                 // P2：消费者**负责把 stdout 读到底** —— 它返回就等于流结束。
                 // B4 之后它还要说清**为什么**返回（EOF 还是早退），见 `ConsumerExit`。
-                // `K-P3b` 之后它还要交回**观测到的两维证据**，见 `StreamWitness`。
+                // 它还要交回**观测到的两维证据**，见 `StreamWitness`。
                 (Some(f), Some(o), Some(i)) => f(i, o),
                 // 缺省：F16 那条 —— EOF 语义不变，一个字节都不留。`copy` 返回即 EOF。
-                // ⚠ `K-P3b`：这一支**没有消费者** ⇒ 「它说过话没有」一次都没被观测过。
+                // ⚠ 这一支**没有消费者** ⇒ 「它说过话没有」一次都没被观测过。
                 //   如实报 `NoConsumer`，不拿「观测到它没说话」去顶（见 `StreamWitness` 头注）。
                 (_, Some(mut o), _) => {
                     let _ = std::io::copy(&mut o, &mut std::io::sink());
@@ -841,7 +831,7 @@ pub fn supervise_with_stdio(
                 }
                 g.take()
             };
-            // ★ `K-P3b`：`status` **原样**留着交上去 —— `code()` 在被信号打死时是 `None`，
+            // ★ `status` **原样**留着交上去 —— `code()` 在被信号打死时是 `None`，
             //   而信号号只有宿主层取得到（`ExitStatusExt` 在本层的禁针里）。
             let status = reaped.as_mut().and_then(|c| c.wait().ok());
             let code = status.and_then(|s| s.code());
@@ -922,10 +912,9 @@ pub(crate) fn backend_bin_env_for_window(
 
 /// **本机后端的落点：`dir/ccm(.exe)` —— 它就是后端本身**（文件名 = [`local_ccm_entry_name`]）。
 ///
-/// 从前释放成 `cc-monitor-backend-<build_id>`、再逐字节拷一份叫 `ccm`（「第二份拷贝」）；今天只有这一个文件，
-/// 本机常驻后端跑的就是它，终端里敲的 `ccm` 也是它。名字不带 build_id 之后「两个版本的 monitor 互相换掉对方」那一形
+/// 只有这一个文件，不另拷第二份：本机常驻后端跑的就是它，终端里敲的 `ccm` 也是它。名字不带 build_id，「两个版本的 monitor 互相换掉对方」那一形
 /// 由换版规则挡：照 HX2 D-b「盘上的比我旧才换」（判在后端 `control/deploy_plan.rs::place_verdict`，与远端部署同一条 `identity_decision`；手上那份字节自己答），见 [`extract_embedded_to`]。
-/// 名字的后缀由 `build.rs` 从 `TARGET` 算好（`CCM_TARGET_EXE_SUFFIX`，`K-R42`），本层不现算平台原语。
+/// 名字的后缀由 `build.rs` 从 `TARGET` 算好（`CCM_TARGET_EXE_SUFFIX`），本层不现算平台原语。
 
 /// 陈旧 `.partial` 的年龄阈值。
 ///
@@ -1185,10 +1174,9 @@ pub fn place_local_program(
     Ok(dest)
 }
 
-// ── `K-R69`（09-12）：**本机的 `ccm` 入口** ──────────────────────────────
+// ── **本机的 `ccm` 入口** ──────────────────────────────
 //
-// 🔴 **它不是第二个 `ccm`**。`K33` 逐字「不要有什么单独的 ccm，所有命令只许有一处」，
-//    而 `K-R48` 花两拍删掉的正是那份 1592 行的 bash。本机这条落点是**后端二进制自己**，
+// 🔴 **它不是第二个 `ccm`**。`K33` 逐字「不要有什么单独的 ccm，所有命令只许有一处」。本机这条落点是**后端二进制自己**，
 //    只是换了个名字：`control::ccm::intercept` 的入口①逐字写着「`argv[0]` 的 basename
 //    是 `ccm`（别名 / 软链 / **改名拷贝**指过来）」。⇒ 零新增实现、零新增 argv 解析。
 
@@ -1218,7 +1206,7 @@ pub fn local_ccm_entry_name() -> String {
 static EXTRACTION_REFUSED_MARKER: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsLocalBackend.extraction.refusedMarker", &[]));
 
-/// 🔴 `K-R42` 硬要求①：**权限写不进去时响亮失败，不许静默退回「没有后端」。**
+/// 🔴 **权限写不进去时响亮失败，不许静默退回「没有后端」。**
 ///
 /// # 为什么这不是「换个措辞」
 ///
@@ -1229,11 +1217,10 @@ static EXTRACTION_REFUSED_MARKER: std::sync::LazyLock<String> =
 /// | 这份产物**没带**本机后端 | 去装一次安装包 |
 /// | 带了，但**这台机器不让放** | 去看那个目录的权限 / 杀毒软件；或者装安装包绕开它 |
 ///
-/// 把后者说成前者，就是 09-10 一整天在治的那一形（读面把「读不到」说成「你没有」）。
+/// 把后者说成前者，就是读面把「读不到」说成「没有」的那一形。
 /// ⇒ 这一支自己拼一句**结构上分得开**的话（[`EXTRACTION_REFUSED_MARKER`]），
 /// 并由 [`resolve_or_extract`] 在返回之前 `tracing::error!` 吼一声 ——
-/// 〔`K-R43` 订正住址：那一声原先在 [`start_or_extract`] 体内，抽进共用那份之后
-///  **两条生产路共用这一声** —— 常驻那条（`local_backend_host.rs`）从此也吼得出来〕
+/// **两条生产路共用这一声**（监护那条与常驻那条 `local_backend_host.rs`）。
 /// 光靠返回值不够：调用方可能只把它记进 `info`。
 ///
 /// # 纯函数
@@ -1431,7 +1418,7 @@ pub(crate) fn local_stdio_consumer(
                 tracing::warn!("本机 stdin 转 tokio 失败（{e}）；入方向通道不登记，仍读完 stdout");
                 let mut o = stdout;
                 let copied = std::io::copy(&mut o, &mut std::io::sink());
-                // ⚠ `K-P3b`：这一支两维都**观测得到**，如实交 ——
+                // ⚠ 这一支两维都**观测得到**，如实交 ——
                 //   「一句 hello 都没解过」是真的（这条路根本没进解帧循环），
                 //   而读端怎么结束的就是 `copy` 的返回值。
                 return ConsumerReport {
@@ -1450,7 +1437,7 @@ pub(crate) fn local_stdio_consumer(
     // 留一份副本给 `unregister` —— 它要 `&Arc` 比对身份（「不摘别人的 client」）。
     let mut registered: Option<std::sync::Arc<crate::inbound_client::InboundClient>> = None;
     let mut early = false;
-    // ★ `K-P3b`：**我们这一侧的读端怎么结束的** —— 观测在这里，判在宿主层。
+    // ★ **我们这一侧的读端怎么结束的** —— 观测在这里，判在宿主层。
     //   初值是「干净 EOF」，而它**只在真的读到 EOF 时才成立**：下面那条 `Err` 支
     //   会把它换成 `Broken`，两个出口各写各的，没有第三条路能带着初值出去。
     let mut reader_end = crate::backend_policy::ReaderEnd::CleanEof;
@@ -1482,7 +1469,7 @@ pub(crate) fn local_stdio_consumer(
                     // 真读错误（不是坏字节 —— 那条已被 `from_utf8_lossy` 吸收）。
                     // ⚠ **子进程可能还活着** ⇒ 报 `Early`，让 `supervise` 补一刀（B4）。
                     tracing::warn!("本机后端 stdout 读错误（{e}）；按早退处理");
-                    // ★ `K-P3b`：那句错**原样**带上去 —— 账上那一行要它
+                    // ★ 那句错**原样**带上去 —— 账上那一行要它
                     //   （`B1` 逐字：「读坏了」说的是我们这一侧，**不算它崩了一次**）。
                     reader_end = crate::backend_policy::ReaderEnd::Broken(e.to_string());
                     early = true;
@@ -1522,7 +1509,6 @@ pub(crate) fn local_stdio_consumer(
         // stdio 载体没有 attach 行 ⇒ 接上即在它上面报名单（名单台那一处）。
         crate::stream_watch::desk(&route.origin).up(&client, None);
         registered = Some(client);
-        crate::prefs_migration::after_local_ready();
         crate::bookmarks_migration::after_ready(crate::origin::Origin::local());
         crate::machine_table::refresh();
         tracing::info!(
@@ -1537,7 +1523,7 @@ pub(crate) fn local_stdio_consumer(
     }
     // 告诉本机内容消费者这条流结束了（冲掉残批、下一条流换新的收口）。
     route.out.stream_ended();
-    // ★ `K-P3b`：**「它跟我们说过话没有」的唯一变真处就是上面那一行 `registered = Some(client)`**
+    // ★ **「它跟我们说过话没有」的唯一变真处就是上面那一行 `registered = Some(client)`**
     //   —— 而那一行只在 `inbound_client::witness_of` 给出见证之后才跑得到。
     //   ⇒ 这一维是**观测**，不是默认值：把它在这里读一次，别在别处猜。
     let handshake = if registered.is_some() {
@@ -1595,7 +1581,7 @@ fn local_stdio_consumer_guarded(
          backend 还活着但没人读它的 stdout ⇒ 管道填满冻死，而 UI 显示一切正常。"
     );
     // panic 时**子进程多半还活着** ⇒ 报 `Early`，让 `supervise` 补一刀（B4）。
-    // ★ `K-P3b`：那两维**随 panic 一起没了** —— `catch_unwind` 拿不回它体内的局部状态。
+    // ★ 那两维**随 panic 一起没了** —— `catch_unwind` 拿不回它体内的局部状态。
     //   如实报 `ConsumerGone`，不替它编一个 handshake：编出来的那个值会被
     //   `verdict` 当成 2026-07-09 判别式的第二个条件用。**如实登记的降级，不是漏洞。**
     ConsumerReport {
@@ -1616,16 +1602,15 @@ fn local_stdio_consumer_guarded(
 /// 今天宿主按这台机器的 (OS, arch) 从 `byte_table` 那一张表里取（那张表里本机原生那一槽挂在这一份产物的 `TARGET` 上），
 /// 取不到时交进来的是**那句拒绝的话**（`Err`），本层原样交出 —— 不再自己问第二处。
 ///
-/// # 🔴 `K-R43`：本函数**为什么是从 [`start_or_extract`] 里抽出来的**
+/// # 🔴 本函数**为什么独立于 [`start_or_extract`]**
 ///
-/// 抽出来之前，「找那个二进制」有**两份手写实现**：本模块的 [`start_or_extract`]
-/// 与 `local_backend_host.rs::resolve_backend_bin`（常驻那条路不要监护那半，用不了前者）。
-/// 两份之间只有一条 `the_two_resolution_paths_still_agree_on_the_order` 盯着，而它**只对拍顺序**。
+/// 「找那个二进制」只有这一份实现：监护那条（[`start_or_extract`]）与常驻那条
+/// （`local_backend_host.rs::resolve_backend_bin`，不要监护那半）都调它。两份手写实现之间只对拍顺序的判据拦不住漂移。
 ///
 /// # 它不做什么
 ///
 /// **不监护**。监护是 [`start_or_extract`] 那一半 —— 常驻那条路（`local_backend_host.rs`）
-/// 起完就脱离，它要的只是这个答案。**「找」与「监护」焊在一起，正是当初逼出第二份实现的那颗钉子。**
+/// 起完就脱离，它要的只是这个答案。**「找」与「监护」焊在一起，常驻那条就只能另写一份。**
 pub fn resolve_or_extract(
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
@@ -1662,7 +1647,7 @@ pub fn resolve_or_extract(
         ) {
             Ok(p) => Resolved::Found(p),
             Err(e) => {
-                // 🔴 `K-R42` 硬要求①：**这一支不许被读成「这份产物没带后端」。**
+                // 🔴 **这一支不许被读成「这份产物没带后端」。**
                 //    它是「带了，但这台机器不让我把它放下来」——两件事的下一步完全不同。
                 // 手上那份字节自己说「不」/ 问它没问成 ⇒ 那句话已经说全，原样交出（不套「写不进去」那一句）。
                 let reason = match e {
@@ -1685,7 +1670,7 @@ pub fn resolve_or_extract(
 /// 这就是「单 exe 也能起后端进程」那句话的落点。
 ///
 /// ⚠ 本函数 = **那一份共用的解析 + 监护**。「在哪找、找不到说什么」一个字都不住这里
-/// （`K-R43` 抽走了，理由住 [`resolve_or_extract`] 的头注）。
+/// （住 [`resolve_or_extract`]，理由在它的头注）。
 pub fn start_or_extract(
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,

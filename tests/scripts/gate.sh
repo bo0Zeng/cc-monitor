@@ -776,11 +776,12 @@ run_gate comm-boundary '判过的条数 = 通信层那一族这一趟真跑过�
 run_gate test-tiers '判过的条数 = 测试层分级那一族这一趟真跑过的条数；声明的名字集合 == 真跑过的集合' \
          gate_family test-tiers tests/common/guard-core/test_tiers_tests.rs guard-core test_tiers::
 
-# ── `deadcode` / `deadcode-backend`：非 test 构建里的死代码，零容忍 ───────────────────────────────────
+# ── `deadcode` / `deadcode-backend`：死代码，零容忍 ───────────────────────────────────
 # `cargo test` 看不见它（test 构建里测试就是调用方）⇒ 单开一趟 `cargo check`：`dead_code` 诊断一条都不许有，有就逐条列。
 # 只在别的平台上才有调用方的项，用 `#[cfg(…)]` 和调用方放在同一个平台上；只有测试读的，删掉或收进 `#[cfg(test)]`。
-# 反空真：JSON 里必须有那个包的 lib artifact。射程：monitor 那一格 = `-p monitor` 编到的包的非 test 段；
-#   后端那一格 = `src/backend` 一个包的 lib ＋ bin 非 test 段（它在后端那条道里，同一把 target 锁）。`#[cfg(test)]` 两格都盖不到。
+# 反空真：JSON 里必须有那个包的 lib artifact。射程：monitor 那一格 = `-p monitor` 编到的包的生产段 ＋ test 档
+#   （test 档里没人调的函数 —— 测试段的孤儿、掉了 `#[test]` 的判据 —— 也红）；
+#   后端那一格 = `src/backend` 一个包的 lib ＋ bin 非 test 段（它在后端那条道里，同一把 target 锁），test 档盖不到。
 # `gate_deadcode <格名> <目录> <lib artifact 名> <cargo check 的参数…>`
 gate_deadcode() {
   local label="$1" dir="$2" lib="$3" out rc
@@ -815,13 +816,13 @@ if not seen_lib:
 if dead:
     for d in sorted(set(dead)):
         print("  dead_code  " + d)
-    print("%s: 非 test 构建里有 %d 条死代码（上面逐条）—— 删掉，或用 #[cfg(…)] 收到它真有调用方的那个平台" % (label, len(set(dead))))
+    print("%s: 这一趟 cargo check 里有 %d 条死代码（上面逐条）—— 删掉，或用 #[cfg(…)] 收到它真有调用方的那个平台" % (label, len(set(dead))))
     sys.exit(1)
-print("%s: 1 passed（%s 非 test 构建零条 dead_code）" % (label, lib))
+print("%s: 1 passed（%s 这一趟零条 dead_code）" % (label, lib))
 ' "$rc" "$label" "$lib"
 }
-run_gate deadcode '不是数出来的数：`cargo check -p monitor`（非 test）的 `dead_code` 诊断零条才绿，有就逐条列出来' \
-         gate_deadcode deadcode src/frontend/shell monitor_lib -p monitor
+run_gate deadcode '不是数出来的数：`cargo check -p monitor --lib --bins --tests`（生产段 ＋ test 档）的 `dead_code` 诊断零条才绿，有就逐条列出来' \
+         gate_deadcode deadcode src/frontend/shell monitor_lib -p monitor --lib --bins --tests
 
 # ── `clippy` / `appbuild`：`ci.yml` 里 `rust` job 的 `cargo clippy --workspace --all-targets` 与 `linux-app-build` job 的 `cargo build` ──
 # clippy 不带 `-D warnings`（deny 档的 lint 与编译错照样红）；appbuild 真编真链 Linux 上的两个二进制（`cargo` 那格带 `--lib`、`deadcode` 只 check）。

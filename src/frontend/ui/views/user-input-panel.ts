@@ -170,7 +170,7 @@ export class UserInputPanel {
   /**
    * 点一行 → 交给宿主去跳 → **回头核一次落点**。
    *
-   * 落空不许静默（件 `§0c` / `KR45D3`）：用户看见的会是「点了一下，跳到了会话最后」
+   * 落空不许静默（件 `§0c`）：用户看见的会是「点了一下，跳到了会话最后」
    * 或者「点了一下什么都没发生」，而没有任何东西说一句话。
    */
   private jump(entry: UserInputEntry, row: HTMLButtonElement): void {

@@ -2,7 +2,7 @@
 //! 住拨号那一端的本机后端（`~/.cc-monitor/machines.json`，[`relay_route_core::MACHINES_REL`]）：钥匙路径是这台上的文件，
 //! 手机有自己的一张（同一形、不共用一份）。
 //!
-//! - 谁写：只有本模块的 [`answer_set_in`]（帧面 `machines-set` ＋ 派生的 CLI 面）与第 7 批换形那一次（[`super::prefs_migration`]，下一版删）。
+//! - 谁写：只有本模块的 [`answer_set_in`]（帧面 `machines-set` ＋ 派生的 CLI 面）。
 //!   补丁全按键认元素（[`MachineEdit`]），锁内现读现判 ⇒ 设置页改一格、另一扇窗口同写都不会互相盖掉。
 //! - 一台的那一形（[`Host`]）、名字、判准、组拨号请求都住拨号核心（`ssh_dial::machine`），手机核心链同一份；
 //!   判准没过的那一处说成界面那一句也在那里（[`table_fault`]，手机编辑页同读）。`machines-try` 与写口同一份。
@@ -15,9 +15,6 @@ use crate::platform::Own;
 use copy_core::copy_text;
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
-
-/// 那份文件名（字面量只住契约 crate）。
-pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::MACHINES_REL);
 
 /// 机器表：状态（读不懂 · 比这一版新 ⇒ 不覆盖；落点 · 上限 · 版本照声明表）。
 pub(crate) const DOC: crate::common::own_state::Doc<OnDisk> =
@@ -126,18 +123,6 @@ fn mkdir_said(dir: &Path, e: std::io::Error) -> Said {
         ),
         &e,
     )
-}
-
-/// 整份写（自己拿 `~/.cc-monitor` 那把目录锁）：换形那一次用。写完响一下。
-pub(crate) fn write(own: &Own, hosts: &[Host]) -> Result<(), Said> {
-    let dir = own.home_dir()?;
-    own.ensure_dir(&dir)
-        .map_err(|e| mkdir_said(dir.as_path(), e))?;
-    let held = own.lock(&dir)?;
-    put(own, &dir, &held, hosts)?;
-    drop(held);
-    ring();
-    Ok(())
 }
 
 // ───────────────────────────── 补丁 ─────────────────────────────

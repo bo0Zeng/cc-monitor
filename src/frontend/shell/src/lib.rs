@@ -66,10 +66,9 @@ mod backend_control;
 mod frame_query;
 mod inbound_client;
 mod local_backend;
-// 第 7 批换形的壳那一半：本机后端那一份偏好写成了 ⇒ 删 `config.json` 里搬走的那几个键（下一版删）。
+// 机器表的最近一份（本机后端 `machines-read` 答的，`changed {machines}` 每帧重问）
 mod machine_table;
-mod prefs_migration; // 机器表的最近一份（本机后端 `machines-read` 答的，`changed {machines}` 每帧重问）
-                     // 账号种类取值集的生成物（`src/frontend/ui/generated/judgment-rules.ts`）与标识符 · 上游地址的金样：只读共享 crate。
+// 账号种类取值集的生成物（`src/frontend/ui/generated/judgment-rules.ts`）与标识符 · 上游地址的金样：只读共享 crate。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/payload_judgment_rules.rs"]
 mod judgment_rules;
@@ -80,7 +79,7 @@ pub(crate) mod creation_detect;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/backend_kill_tests.rs"]
 mod kill_name_tests;
-// 从前 `backend/` 目录那两道判据（宿主无关 · 平台无关）改看上面那一组文件（逐个点名，不再按目录）。
+// 宿主无关 · 平台无关那两道判据看上面那一组文件（逐个点名，不按目录）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/backend_client_guard_tests.rs"]
 mod backend_client_guard;
@@ -160,10 +159,7 @@ mod byte_cap_registry; // audit-0805 F06：字节上限登记表（管什么量 
 mod capability_registry;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/comm_boundary_registry.rs"]
-mod comm_boundary_registry; // 通信层的边界判据：成员 ＝ 通信层那两个 crate（`cargo metadata` 现取）＋ C1–C5 / X1–X6
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/dial_home_registry.rs"]
-mod dial_home_registry; // K-R74：「解耦干净」改述成三样可判的东西 —— 终点二值旗（russh 在不在界面 manifest 里）+ 过程递减棘轮（还没搬走的拨号处数）+ 拨号锚点的唯一住址（整体 #[cfg(test)]）
+mod comm_boundary_registry; // 通信层的边界判据：成员 ＝ 通信层那两个 crate（`cargo metadata` 现取）＋ C1–C5 · X1 · X2 · X4–X6
 #[cfg(test)]
 // audit-0805 08-08：每一套 e2e 要么进门禁要么登记为什么不进。
 #[path = "../../../../tests/frontend/shell/e2e_gate_registry.rs"]
@@ -283,7 +279,7 @@ fn scrub_env_vars(keys: &[&str]) -> Vec<String> {
 const AGENT_PROFILE_TABLE_TS: &str = include_str!("../../ui/generated/agent-profile-table.ts");
 
 /// 起前要清的嵌套会话标记：画像表生成物里**每一家**的 `nestedEnvVars`（并集，按出现序去重）。
-/// 从前取 monitor `adapter::active()` 那一家（恒是 Claude）；今天不认 agent，每一家的都清（Codex 那一格今天是空的，结果与从前逐字相同）。
+/// 不认 agent，每一家的都清（Codex 那一格是空的）。
 /// 只认生成器写出的那一形（`    nestedEnvVars: ["A", "B"],` 一行一格）；认不出一格就少清一格 —— 判据按金样两向钉住它读全了。
 fn nested_env_markers() -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();
@@ -409,9 +405,7 @@ pub(crate) fn center_window_in_work_area(w: &tauri::WebviewWindow) {
     }
 }
 
-// 这里先前是 `D7 阻-3` 那条缝（`ExitShutdownSinks` ＋ 它的收口点）：退出臂按现问的「退出行为」
-// 收掉 monitor 另起的那个本机中转。中转并进本机常驻后端之后，本机固定两个进程（monitor ＋ 常驻后端），
-// 中转随后端按「退出行为」留或退⇒ 退出臂里不再有第三个进程要收，那条缝连同它的判据一起删掉。
+// 本机固定两个进程（monitor ＋ 常驻后端）：中转在常驻后端里，随后端按「退出行为」留或退 ⇒ 退出臂里没有第三个进程要收。
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -649,7 +643,7 @@ pub fn run() {
                         );
                         // 就绪点：主界面在发 `frontend-ready` 之前已经订好了各台机器的会话流（`chan.subscribe`），
                         //   这里按 credit 交完留存；起停的成品（骨架在行前、终局在行后，`session_book::Book::replay`）在同一条流里原位交，
-                        //   没 credit 也照交。〔从前这一段在就绪点前后各发一轮 Tauri 事件：重宣告 · 容器 · 可重连 · 对账补发已结束 / 说不清 · 清单。〕
+                        //   没 credit 也照交；就绪点前后不另发 Tauri 事件。
                         replay.ready_point(priority_sid.as_deref()).await;
                     });
                 });
@@ -681,7 +675,7 @@ pub fn run() {
             backend_control::backend_stop,
             config::load_config,
             config::patch_config,
-            // K-H2a：apikey 表那把 key 的写（`KS10`）走通道（`apikey-key-set`）；「表里有没有行」并进账号清单的徽章（`accounts-list`）。
+            // apikey 表那把 key 的写走通道（`apikey-key-set`）；「表里有没有行」并进账号清单的徽章（`accounts-list`）。
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱的两条读命令退役 —— 界面经通道直接问那台后端 `bus-list` / `bus-inbox`
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
@@ -743,12 +737,11 @@ pub fn run() {
             // 设置页「终端」那一行的事实（挑终端的判定住平台层）。
             launch::terminal_choices,
             // 最后一条（零流量复制）随门禁那一格退役一起删了 ⇒ 池子零条 Tauri 命令。
-            // 🔴 `24e` 第二刀（第三段）：**原生文件管理窗口的入口。**
+            // 🔴 **原生文件管理窗口的入口。**
             //    它不是「又一条 sftp 命令」—— 它开的是那个 egui 窗口（同进程、次线程，
             //    进程形态见 `filewin/mod.rs` 头注）。先真的列一趟目录，列不出来就带原文报错，
             //    **不静默开一个空窗**（理由逐条住 `filewin/entry.rs` 头注）。
-            //    ⚠ 界面上点得到它的地方是旧 SFTP 面板的表头 —— 那块面板按 `§6.6 C`
-            //    要退役，而在这个窗口真能替代它之前删掉旧的等于把功能拿走 ⇒ 这一刀不删。
+            //    界面上点得到它的地方：顶栏入口 · 工具卡的「定位文件」· 远端会话「打开工作目录」· 机器页。
             filewin::entry::open_file_window,
             // 退出 / 重启 cc-monitor 之前现读各文件窗口说的「会打断什么」（`chan/host.rs::busy`）。
             chan::host::filewin_interrupts,
@@ -1433,8 +1426,7 @@ fn open_with(bin: &str, args: &[String]) -> Result<(), Said> {
     //   `spawn_managed_cmd` —— 这一跳**真的只有「一个二进制 ＋ 一串 argv」**：不设 env、不设 cwd、三根 stdio 一根都不碰。
     //   ⚠ 别把这读成「别处偷懒了」：别处要 env / cwd / stdin / stdout，那些不属于那三条策略。
     // 三条策略：
-    // · `Hidden` —— 这一跳只是转交给系统默认 opener，**先前那个 `CREATE_NO_WINDOW`
-    //   就是这一条**（它是「仓里有、却用在最不需要的那处」的那一份）；
+    // · `Hidden` —— 这一跳只是转交给系统默认 opener，不该弹控制台窗口（`CREATE_NO_WINDOW`）；
     // · `Detached` —— fire-and-forget：我们不等它，也不该在自己退出时把用户刚打开的
     //   文件管理器一起收掉 ⇒ **绝不能是 `JobKillOnClose`**（那会在本函数返回、
     //   句柄一丢的瞬间把它杀掉）；

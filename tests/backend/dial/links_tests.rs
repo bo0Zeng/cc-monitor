@@ -10,10 +10,11 @@ fn host(v: serde_json::Value) -> Host {
     ssh_dial::machine::loose(&v).expect("机器表那一行读不动")
 }
 
+/// `compressed` ⇒ 这一跳远（闸开着：远的那一跳 SSH 层压）。
 fn wire(endpoint: &str, compressed: bool, bytes_in: u64, bytes_out: u64) -> Wire {
     Wire {
         endpoint: endpoint.to_string(),
-        compressed,
+        far: compressed,
         via_proxy: false,
         bytes_in,
         bytes_out,
@@ -144,6 +145,49 @@ fn each_machine_gets_how_it_is_reached_and_one_line_per_link() {
     .into_iter()
     .collect();
     assert_eq!(got, want);
+}
+
+/// ★ 常驻流要不要那台压（`ssh_dial::pool::far_of`）：那台在池里的连接全近 ⇒ 近；有一条远 ⇒ 远；
+/// 一条都没有 · 身份对不上 ⇒ 远（答不上来宁可压）。跳板那几条不算（只运隧道）。
+#[test]
+fn the_resident_feed_asks_the_pool_whether_the_hop_is_far() {
+    use ssh_dial::pool::far_of;
+    let hosts = table();
+    let req = |name: &str| {
+        crate::dial::dial_named(&hosts, name, "stream", serde_json::json!({})).expect("组请求")
+    };
+    let one = |link: Wire, jumps: Vec<Wire>| LinkFacts { link, jumps };
+    let snap = vec![
+        (
+            key_of(&hosts, "box"),
+            vec![
+                one(wire("box.lan:2222", false, 1, 1), vec![]),
+                one(wire("box.test:22", false, 1, 1), vec![]),
+            ],
+        ),
+        (
+            key_of(&hosts, "deep"),
+            vec![
+                one(wire("deep.test:22", false, 1, 1), vec![]),
+                one(
+                    wire("deep.test:22", true, 1, 1),
+                    vec![wire("edge.test:22", false, 1, 1)],
+                ),
+            ],
+        ),
+        (
+            key_of(&hosts, "edge"),
+            vec![one(
+                wire("edge.test:22", false, 1, 1),
+                vec![wire("x.test:22", true, 1, 1)],
+            )],
+        ),
+    ];
+    assert!(!far_of(&snap, &req("box")), "全近 ⇒ 近");
+    assert!(far_of(&snap, &req("deep")), "有一条远 ⇒ 远");
+    assert!(!far_of(&snap, &req("edge")), "跳板那几条不算");
+    assert!(far_of(&snap, &req("idle")), "没连接 ⇒ 远");
+    assert!(far_of(&[], &req("box")), "空快照 ⇒ 远");
 }
 
 /// ★ 经代理只有连上了才知道：那几条里有一条经代理 ⇒ `route` 说经代理（直连 ⇒ 只这一句；经跳板 ⇒ 接在跳板后面）；

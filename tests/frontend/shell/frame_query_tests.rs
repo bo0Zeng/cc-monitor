@@ -669,7 +669,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     (
         "history-forget",
-        "删会话之后连带删那一条注解（界面删成功之后交；从前是 monitor 删完顺手清）",
+        "删会话之后连带删那一条注解（界面删成功之后交，monitor 不顺手清）",
     ),
     // `creds.apikey` 写：界面经 `src/frontend/ui/apikey-reads.ts::writeApikeyKey` 直接交那台后端（账号 id 由后端推）。
     (
@@ -811,12 +811,6 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         1,
         "流握手那一刻（`asset_sync.rs::on_remote_ready`）交「怎么够到那台」并顺手同步一趟 —— 宿主交事实，\
          应答只记日志、不给界面（界面那一问经通道直问本机后端）",
-    ),
-    (
-        "prefs-read",
-        1,
-        "第 7 批换形的壳那一半（`prefs_migration.rs::after_local_ready`，下一版删）：本机通道登记上那一刻问一次本机那一份写成没有，\
-         说 `ok` 才删 `config.json` 里搬走的那几个键 —— 它的答案不给界面",
     ),
     (
         "machines-read",
@@ -1469,12 +1463,6 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "fetch_snapshot",
         2,
         "快照是两件事：先问（一问，连第一页正文，`PAGE_BUDGET`）· 剩下的正文（分页，问过之后按还差的字节数给 `read_budget`）",
-    ),
-    (
-        "prefs_migration.rs",
-        "after_local_ready",
-        1,
-        "第 7 批换形（下一版删）：本机通道登记上那一刻问一次本机的偏好写成没有（一问，10 秒）",
     ),
     (
         "bookmarks_migration.rs",

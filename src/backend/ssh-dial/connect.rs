@@ -62,8 +62,8 @@ pub struct Linked {
     pub idle_sftp: Mutex<Option<crate::sftp::Parked>>,
     /// 最后一次收到对端字节的时刻 ＋ 线上进出字节（[`Hearing`] 在 SSH 底下那条字节流上记）。
     pub heard: Arc<crate::pool::Heard>,
-    /// 这一条上的字节压没压（协商时交出去的那一份偏好序）。
-    pub compressed: bool,
+    /// 这一跳远不远（判准的答案）：SSH 层压没压是它过了闸（[`RUSSH_ZLIB_SOUND`]）；常驻流照它定要不要那台压。
+    pub far: bool,
     /// 这一条的 TCP 经没经代理（出网口说的；经跳板时目标那条在跳板里头开 ⇒ 恒不经）。
     pub via_proxy: bool,
     /// 经跳板时各台跳板那一条（外在先，与 `_jumps` 一一对应）；跳板那几条不压（只运隧道，里面是已加密的字节）。
@@ -87,18 +87,18 @@ impl Drop for Linked {
 impl Linked {
     /// 此刻的读数：这一条 ＋ 经过的各台跳板（[`crate::pool::LinkFacts`]）。
     pub fn facts(&self) -> crate::pool::LinkFacts {
-        let wire = |endpoint: &str, compressed: bool, via_proxy: bool, h: &crate::pool::Heard| {
+        let wire = |endpoint: &str, far: bool, via_proxy: bool, h: &crate::pool::Heard| {
             let (bytes_in, bytes_out) = h.bytes();
             crate::pool::Wire {
                 endpoint: endpoint.to_string(),
-                compressed,
+                far,
                 via_proxy,
                 bytes_in,
                 bytes_out,
             }
         };
         crate::pool::LinkFacts {
-            link: wire(&self.endpoint, self.compressed, self.via_proxy, &self.heard),
+            link: wire(&self.endpoint, self.far, self.via_proxy, &self.heard),
             jumps: self
                 .jump_wires
                 .iter()
@@ -203,8 +203,6 @@ pub struct Trust {
     /// 这台记过的 host key（可多种类型）。非空 ⇒ 协商时这几种类型排前，握手时按协商出的类型严格比；
     /// 那一种没记过（而别的记过）⇒ 拒，同「钥匙变了」。
     pub known: Vec<PublicKey>,
-    /// 待核的指纹（桌面机器表那一格换形来的，只活这一版）：没记过钥匙时按它严格比。
-    pub pending: Option<String>,
 }
 
 impl Trust {
@@ -213,17 +211,15 @@ impl Trust {
         let text = env::get().host_keys.read()?;
         Ok(Trust {
             known: crate::known_hosts::known(&text, addrs),
-            pending: crate::known_hosts::pending(&text, addrs),
         })
     }
 
-    /// 拒了这一把时「钥匙变了」那一句要说的期望指纹：库里同类型那一把（没有 ⇒ 待核的那一个，再没有 ⇒ 空串）。
+    /// 拒了这一把时「钥匙变了」那一句要说的期望指纹：库里同类型那一把（没有 ⇒ 空串）。
     fn expected_for(&self, offered: &PublicKey) -> String {
         self.known
             .iter()
             .find(|k| k.algorithm() == offered.algorithm())
             .map(crate::known_hosts::fingerprint)
-            .or_else(|| self.pending.clone())
             .unwrap_or_default()
     }
 
@@ -361,8 +357,6 @@ impl client::Handler for Checker {
             .note_key_type(server_public_key.algorithm().as_str());
         let pass = if !self.trust.known.is_empty() {
             self.trust.judge_known(server_public_key).is_ok()
-        } else if let Some(fp) = &self.trust.pending {
-            actual == fp.trim()
         } else {
             tracing::warn!("dial: 首见的 host key {actual}：鉴权过了记进库");
             return Ok(true);
@@ -492,8 +486,9 @@ pub fn config_with(probe: bool, compress: bool, keepalive: Duration) -> Arc<clie
 )]
 const PROXY_HANDSHAKE: Duration = Duration::from_millis(30_000);
 
-/// 拨 TCP，拨通后问内核这一跳的往返时间、过一遍判准。回 `(socket, 跨这一跳的字节压不压, 经没经代理)` ——
-/// 判准的答案过了闸（[`RUSSH_ZLIB_SOUND`]）才算数；经没经代理是出网口开它那一刻说的，照原样带出去（进连接的读数）。
+/// 拨 TCP，拨通后问内核这一跳的往返时间、过一遍判准。回 `(socket, 这一跳远不远（判准的答案）, 经没经代理)` ——
+/// SSH 层压不压是这个答案过了闸（[`RUSSH_ZLIB_SOUND`]），由开 SSH 的那一处现算；答案本身进连接的读数（常驻流照它定要不要那台压）。
+/// 经没经代理是出网口开它那一刻说的，照原样带出去（进连接的读数）。
 ///
 /// TCP 经出网口开（`out`：生产是这台的那一份 `egress::here()`）：直连，或经代理（握手完了交回的就是到那台的隧道）。
 /// 跳板那一形不走这里的是目标那一跳（它走跳板的 direct-tcpip）；最外那一台跳板的 TCP 照样经这里。
@@ -530,29 +525,28 @@ async fn tcp_hop(
     let tcp = to_async(std_tcp).map_err(|e| (stage_of_io(&e), e))?;
     let rtt = crate::tcp_rtt::rtt_us(&tcp);
     // 经代理 ⇒ 这条 socket 的对端是代理：量到的往返不是到那台的 ⇒ 照「读不到」那一格（压）。
-    let judged =
+    let far =
         via_proxy || compression_for(tcp.peer_addr().map_err(|e| (stage_of_io(&e), e))?.ip(), rtt);
-    let compress = judged && RUSSH_ZLIB_SOUND;
     tracing::info!(
         "dial: {} 往返 {} ⇒ 判准：{}{}",
         label(ep),
         rtt.map_or_else(|| "读不到".to_string(), |us| format!("{us} µs")),
-        if judged { "压" } else { "不压" },
-        if judged && !compress {
-            "（russh 的 zlib 解压有缺陷，闸关着 ⇒ 这一条不压）"
+        if far { "压" } else { "不压" },
+        if far && !RUSSH_ZLIB_SOUND {
+            "（russh 的 zlib 解压有缺陷，闸关着 ⇒ 这一条 SSH 层不压）"
         } else {
             ""
         }
     );
-    Ok((tcp, compress, via_proxy))
+    Ok((tcp, far, via_proxy))
 }
 
-/// 竞速的胜者：句柄 · 指纹格 · 胜出的那个地址 · 跨这一跳的字节该不该压 · 它的 TCP 经没经代理 · 它那条字节流的记账。
+/// 竞速的胜者：句柄 · 指纹格 · 胜出的那个地址 · 这一跳远不远（判准的答案）· 它的 TCP 经没经代理 · 它那条字节流的记账。
 struct Won {
     session: client::Handle<Checker>,
     seen: Seen,
     winner: Endpoint,
-    compress: bool,
+    far: bool,
     via_proxy: bool,
     heard: Arc<crate::pool::Heard>,
 }
@@ -601,16 +595,16 @@ async fn race(
                     heard: Arc::clone(&heard),
                 };
                 let r = match tcp_hop(&ep, &out).await {
-                    Ok((tcp, compress, via_proxy)) => {
+                    Ok((tcp, far, via_proxy)) => {
                         stages.step(crate::step::TCP);
-                        let config = config(apply && compress);
+                        let config = config(apply && far && RUSSH_ZLIB_SOUND);
                         client::connect_stream(
                             config,
                             Hearing::new(tcp, Arc::clone(&heard)).telling(&stages),
                             checker,
                         )
                         .await
-                        .map(|h| (h, compress, via_proxy))
+                        .map(|h| (h, far, via_proxy))
                         .map_err(|e| (stage_of_russh(&e), e.to_string()))
                     }
                     Err((stage, e)) => Err((stage, e.to_string())),
@@ -621,11 +615,11 @@ async fn race(
                     }
                 }
                 match r {
-                    Ok((session, compress, via_proxy)) => Ok(Won {
+                    Ok((session, far, via_proxy)) => Ok(Won {
                         session,
                         seen: observed,
                         winner: ep,
-                        compress,
+                        far,
                         via_proxy,
                         heard,
                     }),
@@ -1020,7 +1014,7 @@ fn hop_dial_failed(hop: &str) -> String {
 
 /// 经跳板链开到 `host:port` 的那条隧道。最外一台竞速（只它一个地址，判准答案拿回来给目标那条用 —— 跳板只运隧道、
 /// 里面是已加密的字节，压不动）；其余逐台经上一台的 direct-tcpip 握手 ＋ 鉴权。
-/// 回 `(隧道, 跨本机那一跳的字节该不该压, 各台跳板的句柄（外在先）, 各台跳板那一条（外在先）)`；句柄**必须与目标连接同生命周期**。
+/// 回 `(隧道, 跨本机那一跳远不远（判准的答案）, 各台跳板的句柄（外在先）, 各台跳板那一条（外在先）)`；句柄**必须与目标连接同生命周期**。
 /// 最外一台的 TCP 经 `out` 开（经没经代理记在它那一条上）；里头那几台在上一台的隧道里开，不经。
 async fn through_hops(
     req: &DialRequest,
@@ -1038,7 +1032,7 @@ async fn through_hops(
     let chain = hop_chain(req);
     let mut held: Vec<client::Handle<Checker>> = Vec::new();
     let mut wires: Vec<JumpWire> = Vec::new();
-    let mut compress = false;
+    let mut far = false;
     for hop in chain {
         let name = hop_name(hop);
         stages.emit(Stage::Dialing {
@@ -1054,7 +1048,7 @@ async fn through_hops(
                 let won = race(req.probe, false, hop_trust, hop_addrs.to_vec(), stages, out)
                     .await
                     .map_err(|(e, fp)| jump_failed(stages, hop_dial_failed(&name), e, fp))?;
-                compress = won.compress;
+                far = won.far;
                 (won.session, won.seen, won.heard, won.via_proxy)
             }
             Some(prev) => {
@@ -1120,7 +1114,7 @@ async fn through_hops(
             stages.note_why(Why::Jump);
             (e, None)
         })?;
-    Ok((tunnel, compress, held, wires))
+    Ok((tunnel, far, held, wires))
 }
 
 /// 经一条已鉴权的连接开 direct-tcpip 到 `host:port`。
@@ -1178,7 +1172,7 @@ pub async fn establish_via(
     // 目标那一台的全部地址：库里按它们认这台、记也写它们（经跳板时也一样，同一台机器）。
     let addrs = req.race_order();
     let target_trust = Trust::of(&addrs).map_err(|e| unreadable(stages, e))?;
-    let (mut session, observed, winner, jumps, heard, compressed, via_proxy, jump_wires) =
+    let (mut session, observed, winner, jumps, heard, far, via_proxy, jump_wires) =
         if req.jump.is_none() {
             // `apply = true` ⇒ 竞速交回的那一格就是落在这条上的答案。
             let w = race(req.probe, true, target_trust, addrs.clone(), stages, out).await?;
@@ -1188,13 +1182,12 @@ pub async fn establish_via(
                 w.winner,
                 Vec::new(),
                 w.heard,
-                w.compress,
+                w.far,
                 w.via_proxy,
                 Vec::new(),
             )
         } else {
-            let (tunnel, compress_inner, jumps, jump_wires) =
-                through_hops(req, stages, out).await?;
+            let (tunnel, far_inner, jumps, jump_wires) = through_hops(req, stages, out).await?;
             let observed: Seen = Arc::default();
             let ep_label = copy_text(
                 "beConnect.jump.target",
@@ -1210,7 +1203,7 @@ pub async fn establish_via(
                 heard: Arc::clone(&heard),
             };
             let session = client::connect_stream(
-                config_for(req.probe, compress_inner, &target_trust),
+                config_for(req.probe, far_inner && RUSSH_ZLIB_SOUND, &target_trust),
                 Hearing::new(tunnel, Arc::clone(&heard)).telling(stages),
                 checker,
             )
@@ -1227,15 +1220,9 @@ pub async fn establish_via(
                 port: req.port,
             };
             (
-                session,
-                observed,
-                winner,
-                jumps,
-                heard,
-                compress_inner,
+                session, observed, winner, jumps, heard, far_inner,
                 // 目标那条在跳板里头开（direct-tcpip）：它自己的 TCP 不经代理，经没经记在最外那台跳板那一条上。
-                false,
-                jump_wires,
+                false, jump_wires,
             )
         };
     let fingerprint = fingerprint_in(&observed);
@@ -1272,7 +1259,7 @@ pub async fn establish_via(
         held: Mutex::new(Vec::new()),
         idle_sftp: Mutex::new(None),
         heard,
-        compressed,
+        far,
         via_proxy,
         jump_wires,
     })

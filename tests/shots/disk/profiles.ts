@@ -1,10 +1,10 @@
 /**
  * 配置文件那一页的盘上原文（`~/.cc-monitor/profiles.toml` 与它旁边那两份记录）：一台典型机器的清单（cc · cct 两条根，各号基于它们），
- * 按样子换（写错一段 · TOML 写坏 · 没有配置文件 · 刚迁移过 · 手改过）。读法与成品全在真后端（`assets/aliases/`），这里只写原文。
+ * 按样子换（写错一段 · TOML 写坏 · 没有配置文件 · 手改过）。读法与成品全在真后端（`assets/aliases/`），这里只写原文。
  */
-import { HOME, putAccounts, type MachineDisk } from "./index";
+import { putAccounts, type MachineDisk } from "./index";
 
-export type ProfilesLook = "normal" | "broken" | "syntax" | "empty" | "migrated" | "edited" | "stale";
+export type ProfilesLook = "normal" | "broken" | "syntax" | "empty" | "edited" | "stale";
 
 /** 那台账号库里的号（表单账号那一格的分段按钮照这张排）。 */
 export const PROFILE_ACCOUNTS = ["a", "lab", "team", "work"];
@@ -73,5 +73,4 @@ export function putProfiles(d: MachineDisk, look: ProfilesLook): void {
   if (look === "empty") return;
   d.files[PROFILES_FILE] = look === "syntax" ? BOOK(false).replace("[pcc]", "[pcc") : BOOK(look === "broken");
   if (look === "edited") d.files[".cc-monitor/profiles-written.json"] = JSON.stringify({ rev: "0-0000000000000000" }) + "\n";
-  if (look === "migrated") d.files[".cc-monitor/profiles-migrated.json"] = JSON.stringify({ count: 11, path: `${HOME}/.cc-monitor/profiles.toml`, skipped: [] }) + "\n";
 }

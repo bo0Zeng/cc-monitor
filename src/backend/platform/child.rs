@@ -371,6 +371,10 @@ impl Child {
     }
 
     fn command(&self) -> Command {
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "起子进程原语：后端生产段起子进程只在这一处造 `Command`（期限 · 杀整组 · 环境都在这一层做）"
+        )]
         let mut c = Command::new(&self.program);
         c.args(&self.args);
         if let Some(keys) = &self.inherit_only {

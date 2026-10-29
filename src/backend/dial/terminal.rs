@@ -244,45 +244,59 @@ impl crate::wire::typed::Command for TerminalSsh {
 }
 
 impl crate::wire::typed::Handle for TerminalSsh {
-    type Needs = crate::wire::typed::needs::Nothing;
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: TerminalSshReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<SshCommand, TerminalSshErr>> + Send + 'static
     {
         async move {
+            // 带了 sid ⇒ 记录那一层目录先建好（前奏只写文件）。
+            let opened = req
+                .sid
+                .as_ref()
+                .and_then(|_| super::opened_windows::dir(&cx.needs));
             answer_with(
                 &req,
                 &super::machines_now(),
                 &super::ssh_config::list_aliases(),
                 crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
                 &crate::platform::ssh_client::locate(),
+                opened.as_deref(),
             )
             .map_err(crate::wire::typed::of_pair(TerminalSshErr::Refused))
         }
     }
 }
 
-/// 按给定的本机终端方言与找 ssh 客户端的结果渲（判据各种都量）；`~/.ssh/config` 的别名按没有算。
+/// 按给定的本机终端方言与找 ssh 客户端的结果渲（判据各种都量）；`~/.ssh/config` 的别名按没有算，不记窗口标签。
 pub(crate) fn answer_in(
     req: &TerminalSshReq,
     hosts: &[Host],
     powershell: bool,
     ssh: &SshClient,
 ) -> Result<SshCommand, CmdErr> {
-    answer_with(req, hosts, &[], powershell, ssh)
+    answer_with(req, hosts, &[], powershell, ssh, None)
 }
 
 /// 同 [`answer_in`]，另给这台 `~/.ssh/config` 里非通配的别名。`command` · `cwd` 都不给 ⇒ 登录 shell 那一形：
 /// 本机 ⇒ 本机方言的登录 shell（不走 ssh）；机器表里那台 ⇒ `ssh -t …` 外壳、`--` 后面不跟命令；
 /// 机器表里没有、别名里恰好有（过别名白名单）⇒ `ssh -t[ -F …] <别名>`，照用户的 ssh 配置连。
+/// `sid` 只跟 `command`；给了、`opened` 那一层目录也在 ⇒ 那一行前面接前奏（`opened_windows::prelude`），开的那个 shell 记下窗口标签。
 pub(crate) fn answer_with(
     req: &TerminalSshReq,
     hosts: &[Host],
     aliases: &[String],
     powershell: bool,
     ssh: &SshClient,
+    opened: Option<&std::path::Path>,
 ) -> Result<SshCommand, CmdErr> {
+    if req.sid.is_some() && req.command.is_none() {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed("`sid` only goes with `command`"),
+        ));
+    }
     let command = match (&req.command, &req.cwd) {
         (Some(c), None) => c.clone(),
         (None, Some(cwd)) => command_for_cwd(cwd)?,
@@ -302,8 +316,17 @@ pub(crate) fn answer_with(
         "stream",
         serde_json::json!({ "command": command }),
     )?;
+    let line = render(&dial, powershell, ssh_path(ssh, powershell)?, true)?;
+    let prelude = match (&req.sid, opened) {
+        (Some(sid), Some(dir)) => super::opened_windows::prelude(
+            powershell,
+            &dir.join(sid.as_str()),
+            &req.machine.to_string(),
+        ),
+        _ => String::new(),
+    };
     Ok(SshCommand {
-        command: render(&dial, powershell, ssh_path(ssh, powershell)?, true)?,
+        command: format!("{prelude}{line}"),
     })
 }
 

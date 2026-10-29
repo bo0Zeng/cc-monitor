@@ -328,7 +328,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "LIMIT_MAX",
-        "**条数**不是体量：`search-core` 里 `--limit` / IPC `limit`              能取的最大值 = 一次搜索最多构造多少条 **snippet**，不是任何字节量。             它「超了怎么办」有答案、但不在本表的语义里 —— `clamp_limit` 直接把它夹住，             而被夹掉的那部分由 `SnippetBudget::starved()` ⇒ `SessionHits::hits_truncated`              ⇒ `SearchResponse::truncated` 一路说出来（那正是 `KR100D3` 治的东西）。",
+        "**条数**不是体量：`search-core` 里 `--limit` / IPC `limit`              能取的最大值 = 一次搜索最多构造多少条 **snippet**，不是任何字节量。             它「超了怎么办」有答案、但不在本表的语义里 —— `clamp_limit` 直接把它夹住，             而被夹掉的那部分由 `SnippetBudget::starved()` ⇒ `SessionHits::hits_truncated`              ⇒ `SearchResponse::truncated` 一路说出来（截断要说出口）。",
     ),
     (
         "BUILD_STAMP_LEN",
@@ -644,7 +644,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "文件窗口通道上一帧的帧头 / 帧体（一屏目录的 JSON 在兆字节级）",
         "拒收+回错",
     ),
-    // ── `K-P1`：常驻监听口的握手（**两侧各一条，方向不同**）───────────
+    // ── 常驻监听口的握手（**两侧各一条，方向不同**）───────────
     // 接常驻流那两行（hello · attach 回话）在 `resident-client` 里的上限（手机那一侧整段握手走它；值同下一行）。
     (
         "src/comms/resident-client/attach.rs",
@@ -707,8 +707,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // ──：**本机后端的 stderr 接进滚动日志**那一格 ───────
     //
-    // 那一行先前是 `Stdio::null()`（后端整层 91 处诊断的唯一出口被无条件丢弃）。
-    // 接出来就多了一个量：**一条子进程一生往日志里搬多少字节**。
+    // 那一行不是 `Stdio::null()`（那样后端整层诊断的唯一出口被无条件丢弃）。
+    // 接出来就有一个量：**一条子进程一生往日志里搬多少字节**。
     //
     // 🔴 这两条的超限语义都**只砍「记」，不砍「读」** —— 读的一侧停下来，
     //    管道写满之后子进程下一次 `write(2)` 就阻塞，那会把「诊断没人看」
@@ -740,11 +740,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
              没有那句标记，日志里会出现一条**看起来完整、其实是半句**的诊断",
         "截断+说清",
     ),
-    // 🔴 `K-R59`（09-11，定框 `K35`）：这里原来有**两条** ——
-    //    `BACKENDLESS_READ_CAP`（8 MiB，单文件单轮读，超了分轮续读）与
-    //    `BACKENDLESS_DISCOVER_CAP`（4 MiB，`find` 发现命令的 stdout，超了截断+说清）。
-    //    它们随 `stream_source/` 那一整段 `daemonless` 轮询读一起退役 ——
-    //    **不是「上限放宽了」，是被它们限住的那条读根本不存在了。**
+    // 🔴 没有 `daemonless` 轮询读（定框 `K35`）⇒ 没有它的读上限 ——
+    //    **不是「上限放宽了」，是被限住的那条读根本不存在。**
     (
         "src/frontend/shell/src/launch.rs",
         "MAX_REMOTE_CMD",
@@ -779,11 +776,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "开终端那一行里要在远端跑的命令串长度（字节）",
         "拒收+回错",
     ),
-    // 🔴 `K-R100`：这两条**原本两侧各登记一份**（`src/frontend/shell/src/search.rs` 与
-    // `src/backend/observe/search_query.rs`），靠下面「对 D」那条判据
-    // 钉住它们相等。收口之后它们只有一个家 ⇒ **「两侧漂开」这件事在结构上没了**，
-    // 那条对拍随之删掉（见 `the_cross_crate_twins_are_machine_checked_not_hand_copied`）。
-    // `search-core` 拆进后端：两条封顶随通用口径住 `history/search_rules.rs`（仍只此一份）。
+    // 🔴 这两条只有一个家：两条封顶随通用口径住 `history/search_rules.rs`（只此一份）
+    // ⇒ **「两侧漂开」这件事在结构上不存在**，不用对拍（见 `the_cross_crate_twins_are_machine_checked_not_hand_copied`）。
     (
         "src/backend/history/search_rules.rs",
         "MAIN_CAP",
@@ -815,11 +809,10 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     // 读满就停、缓冲区里是半份数据，而调用方拿它当完整的用。那正是本表这个封闭集合
     // **刻意排除**的那一种。⇒ 六处一律改成「多读一个字节 + 超了就回错」
     // （形态照抄 `src/backend/common/fs.rs` 那条既有注释）。
-    // 🔴 `K-R112`（09-13）：**cc-bus 查在线那条读上限删了，不是「忘了」。**
-    //    它是老那条按名字探在线的 shell 串（`tmux has-session`）的读上限，
-    //    而查在线整条改走后端的 `bus-list` 帧之后**没有一条流要读** ——
+    // 🔴 **cc-bus 查在线没有读上限，不是「忘了」。**
+    //    查在线走后端的 `bus-list` 帧，**没有一条流要读** ——
     //    帧应答是结构化的，上限由入方向通道自己那一层管。
-    //    ⇒ 常量不存在了，留着这一行就是**僵尸账**（本表自己那条反向锚点会当场逮住）。
+    //    ⇒ 没有这个常量；登记一条就是**僵尸账**（本表自己那条反向锚点会当场逮住）。
     (
         "src/backend/control/cc_bus.rs",
         "INBOX_CAP",
@@ -848,8 +841,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "一封 cc-bus 信的正文（`bus-send` 核信封那一处）",
         "拒收+回错",
     ),
-    // 这里原先登记着 `cc_bus.rs` 的控制类回显上限（发消息 / spawn 的回显，64 KiB，截断+说清）。
-    //   发消息 `K-R98`、派生 BS1b 先后改走后端原语，那两条回显不再经 SSH 读 ⇒ 常量随最后一个用户删了。
+    // `cc_bus.rs` 没有控制类回显上限：发消息与派生走后端原语，回显不经 SSH 读。
     //   「截断没毒、回 Err 有毒（用户会重试、再起一个 agent）」那条理由今天住在 `OnOverflow::Truncate` 的头注里。
     // 第七条不是内联字面量，是**压根没有上限**：backend 出方向单行此前走无界 `read_line`。
     // ⚠ 它的数**刻意不等于** backend 侧的 `MAX_LINE_BYTES`（1 MiB，入方向命令信封）——
@@ -1323,7 +1315,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/backend/history/history_annotations.rs",
         "MAX_BYTES",
-        "读一份历史注解文件（星标 / 改名 / 隐藏 / 上次账号；monitor 从前读写的那一份，路径由它交）",
+        "读一份历史注解文件（星标 / 改名 / 隐藏 / 上次账号；路径由 monitor 交）",
         "拒收+回错",
     ),
     // 〔第二问〕全文搜索常驻索引的上界：按最近优先留，留不下的那几份照搜、只是不留（下一问再读）。
@@ -1436,8 +1428,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "一次 HTTP 请求/响应的**头部**字节数（不是体）",
         "拒收+回错",
     ),
-    // ⚠〔`K-H1` 回修轮之五 08-25，D3 `阻-1(D3)`〕**这一处是补一个真缺陷，不是补一条登记**：
-    // 先前请求体的长度来自 `Content-Length`，值域是 `usize` 全域、**没有任何上界**
+    // ⚠ **这一处守的是一个真缺陷，不只是一条登记**：
+    // 请求体的长度来自 `Content-Length` 的话，值域是 `usize` 全域、**没有任何上界**
     // （`HEAD_CAP` 只管头字节数，管不到它）。一条 `Content-Length: 1000000000000`
     // ⇒ `vec![0u8; n]` 分配失败 ⇒ `std::alloc::handle_alloc_error` ⇒ **abort（SIGABRT）**，
     // 不走 unwind ⇒ `catch_unwind` 接不住；而中转是「一个进程服务 N 个会话」
@@ -1529,11 +1521,9 @@ fn eval_cap(expr: &str) -> Option<u64> {
 /// 扫两棵树，抠出所有「像字节上限」的常量：名字含 MAX/CAP/LIMIT/BYTES 且值里有 1024 或 `<<`。
 ///
 /// ⚠ 走 `guard_core::scan_tree!` 而不是自己 `read_dir`（`scanning_guard_registry` 逼的）。
-/// ⚠ 先前这里写着「它**按构造摘除调用者自己那份**…本文件的 `CAPS`
-/// 表里就写着一堆 `MAX_*` 名字；今天它们的类型不是 `u64/usize` 所以扫不中，
-/// 但那是**运气**不是设计」。那一刀**在这一处不生效**（判据由 `#[path]` 挂载
+/// ⚠ 「它**按构造摘除调用者自己那份**」**在这一处不生效**（判据由 `#[path]` 挂载
 /// ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中）。
-/// 今天挡住那张 `CAPS` 表自匹配的是**住址**：本文件住 `tests/frontend/shell/`，而下面三棵根是
+/// 挡住那张 `CAPS` 表（一堆 `MAX_*` 名字）自匹配的是**住址**：本文件住 `tests/frontend/shell/`，而下面三棵根是
 /// `src/frontend/shell/src` · `src/backend` · `src/common` —— 它一份都不在里面。
 /// 〔audit-0805 **F23**：这一族已实测栽过五次〕
 /// 生产段里**全部**尺寸类 const：`const NAME: u64|usize|u32 = <expr>`。
@@ -1638,8 +1628,7 @@ fn every_size_typed_constant_is_either_a_cap_or_registered_as_not_one() {
 fn scan() -> Vec<(String, String, Option<u64>)> {
     let root = repo_root();
     let mut out = Vec::new();
-    // 🔴 `K-R100` 09-13：`src/common` 这一条与 `size_typed_consts()` 那边同源同理
-    // ——搜索的两条封顶已收进共享 crate `search-core`。
+    // 🔴 `src/common` 这一条与 `size_typed_consts()` 那边同源同理：共享 crate 里也会有封顶。
     // ⚠ 上面 `size_typed_consts` 的头注说「两者共用同一份遍历」，**盘上不是**：
     // 这里自己又走了一遍。⇒ **改扫描面要两处一起改**（就是漏过这一处才红的）。
     for sub in ["src/frontend/shell/src", "src/backend", "src/common"] {
@@ -1793,7 +1782,7 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
 fn the_exclusion_list_is_not_dead_wood() {
     let root = repo_root();
     let mut all = String::new();
-    // 🔴 `K-R100` 09-13 加 `src/common`：排除表的语料面必须与**产生上限的那个语料面**
+    // 🔴 含 `src/common`：排除表的语料面必须与**产生上限的那个语料面**
     // 一致（`size_typed_consts()` / `scan()` 都已含它）。不一致的话，一条针对共享 crate
     // 里常量的排除会被本条判成「死木」—— 而它其实活着，只是本条看不见它。
     for sub in ["src/frontend/shell/src", "src/backend", "src/common"] {
@@ -2028,7 +2017,7 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
              调用方给的是声明表那一行的读上限（`relay_route_core::CONFIG_FILE` ⇒ `CONFIG_MAX_BYTES`，已在 `CAPS` 里）；\
              多读一个字节只为分辨读满与其实还有，超了回 `TooBig`、不当完整的用。",
     ),
-    // ⚠〔`K-H1` 回修轮之五 08-25，D3 `阻-1(D3)`〕这一处的 `n` 与上面两条**不同族**，
+    // ⚠ 这一处的 `n` 与上面两条**不同族**，
     //    差别要写清楚，否则下一个人会以为它也是「调用方给具名常量」那一档：
     //    `n` 是**下游 `Content-Length` 给的、敌手可控的**值，**不是**任何具名常量。
     //    真正的上限是**它旁边那个 `cap` 参数**，而调用点给的 `cap` 是具名常量 `BODY_CAP`

@@ -1,9 +1,10 @@
 /**
- * **输入行上方那一排附件**（终端面板）：一颗颗 chip ＋ 输入框左边那颗［＋］，三个入口进同一排（［＋］系统文件框可多选 · 拖到面板上 · 输入框里粘贴文件 / 图片）。
+ * **输入行上方那一排附件**（消息流底下的输入框）：一颗颗 chip ＋ 输入框左边那颗［＋］，三个入口进同一排（［＋］系统文件框可多选 · 拖到主区上 · 输入框里粘贴文件 / 图片）。
  *
  * - chip：图片画本机那份的小图，别的画类别字（那台写好的 `class_text`）· 名字 · 状态（排队 · 传输中带一条细进度 · 已完成 · 失败带那台那一句）· ✕。
  *   离线那几颗画虚线、跟连接层写好的离线那一句；失败可重试的带［重试］；悬停看复制详情。
- * - 拖：面板上整块画目标框（放进哪条会话、哪台）；面板上没有可送的会话 ⇒ 不画、光标禁止。拖进来的目录照样进这一排，由那台判不收。
+ * - 拖：宿主交来的落点（主区：消息流 ＋ 输入框）整块描边、半透明，中间一张卡写放进哪条会话 · 哪台（不写几份，松手就看见那一排）；
+ *   此刻没有可送的会话 ⇒ 不画、光标禁止。拖进来的目录照样进这一排，由那台判不收。
  * - 粘贴：剪贴板里只有文件 / 图片、没有字 ⇒ 进这一排（图片名 `image-<n>.<扩展名>`）；有字照旧贴字。
  *
  * 草稿与传都在 [`AttachDraft`]；这里只画、只接三个入口。宿主说此刻的草稿（没有 ⇒ 这一排与［＋］都收起）与送往哪里。
@@ -97,14 +98,17 @@ export class AttachRow {
     return true;
   }
 
-  /** 面板 `zone` 收拖进来的文件：拖着时整块画目标框（盖在上面），松手进这一排。 */
-  dropOn(zone: HTMLElement): void {
+  /** `zone` 收拖进来的文件：拖着时整块画目标框（盖在上面，中间一张卡），松手进这一排、再叫 `landed`。 */
+  dropOn(zone: HTMLElement, landed: () => void): void {
     const overlay = el("div", s.attachDrop);
     overlay.dataset.role = "attach-drop";
     overlay.hidden = true;
-    const title = el("div", s.attachDropTitle, copyText("attach.drop.title"));
-    const where = el("div", s.attachDropSub);
-    overlay.append(title, where);
+    const card = el("div", s.attachDropCard);
+    card.dataset.role = "attach-drop-card";
+    // 第一行是成品照抄（标签页名 · 机器名），第二行是骨架字：出口取的键不带插值。
+    const into = el("div", s.attachDropTitle);
+    card.append(into, el("div", s.attachDropSub, copyText("attach.drop.title")));
+    overlay.append(card);
     zone.appendChild(overlay);
     const carriesFiles = (ev: DragEvent): boolean => Array.from(ev.dataTransfer?.types ?? []).includes("Files");
     const can = (): boolean => this.host.draft() !== null && this.host.blocked() === null;
@@ -115,7 +119,7 @@ export class AttachRow {
       depth++;
       if (!can()) return;
       const t = this.host.target();
-      where.textContent = [t.title, t.machine].filter((x) => x !== "").join(copyText("kit.text.sep"));
+      into.textContent = [t.title, t.machine].filter((x) => x !== "").join(copyText("kit.text.sep"));
       overlay.hidden = false;
     });
     zone.addEventListener("dragover", (ev) => {
@@ -144,6 +148,7 @@ export class AttachRow {
       });
       if (items.length === 0) for (const f of Array.from(ev.dataTransfer.files)) files.push({ name: f.name, blob: f });
       this.add(files);
+      landed();
     });
   }
 

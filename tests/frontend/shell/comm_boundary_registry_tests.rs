@@ -356,11 +356,6 @@ const CRITERIA: &[(&str, &str, &str)] = &[
         "生产段零期限字面量（期限的值归后端）",
     ),
     (
-        "X3",
-        "x3_every_hop_construction_names_its_reach",
-        "`Hop` 的每一个构造点都显式给 `reach`，无默认值",
-    ),
-    (
         "X4",
         "x4_the_only_way_to_drop_is_to_say_gap",
         "丢弃只能经 `Item::Gap` 表达 —— 零 `try_send`、零静默 drop",
@@ -1573,7 +1568,7 @@ fn c5_nothing_inside_the_boundary_spawns_a_process_or_binds_a_port() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  七、X1–X6：签名判据（与 C1–C5 共用上面那张表）
+//  七、X1 · X2 · X4–X6：签名判据（与 C1–C5 共用上面那张表）
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 从 `at` 起第一对配平花括号里的内容。
@@ -1736,70 +1731,6 @@ fn x2_no_deadline_literal_lives_inside_the_boundary() {
     assert!(
         deadline_literals("pub fn call(budget: Budget) -> Reach { budget.until }\n").is_empty(),
         "一段**只收 `Budget`** 的干净代码被判成写死期限 —— 假红比不查更坏"
-    );
-}
-
-/// `Hop` 的构造点里**没给 `reach`** 的那些。
-fn hop_sites_without_reach(prod: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let hop = format!("{} {{", "Hop");
-    for (at, _) in prod.match_indices(hop.as_str()) {
-        let Some(block) = braced_block(prod, at) else {
-            continue;
-        };
-        let defaulted = block.contains(concat!("..Default::", "default()"));
-        if !guard_core::contains_word(block, "reach") || defaulted {
-            out.push(block.trim().chars().take(120).collect::<String>());
-        }
-    }
-    out
-}
-
-/// ★ `X3` —— `CallError::Hop` 的每一个构造点都**显式给 `reach`**。
-///
-/// 错误分三层（传输错 · 对端错 · 我们自己错），
-/// 而 `reach`（这一跳到底走到哪儿了）是调用方唯一能据以决定"要不要重试"的东西。
-/// 给它默认值 = 把"不知道"伪装成"知道"。
-///
-/// **买不到**：① 构造点写成 `Hop::new(...)` 那种函数形（本条只认结构体字面量）；
-/// ② `reach` 填得**对不对** —— `§3.3.6` 逐字：那一格「只能靠真机实验」。
-#[test]
-fn x3_every_hop_construction_names_its_reach() {
-    let pop = boundary();
-    let offenders: Vec<String> = pop
-        .iter()
-        .flat_map(|m| {
-            hop_sites_without_reach(&m.prod)
-                .into_iter()
-                .map(|s| format!("  {} —— `{s}`", m.rel))
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    assert!(
-        offenders.is_empty(),
-        "这几处 `Hop` 构造点没有显式给 `reach`：\n{}\n\n\
-`X3`：**无默认值、无 `..Default::default()`**。\n\
-         ⇒ `reach` 是调用方判断「能不能重试」的唯一依据；给它默认值 =\n\
-         把「不知道走到哪儿了」伪装成「知道」。",
-        offenders.join("\n")
-    );
-    assert_eq!(
-        hop_sites_without_reach("let e = Hop { code: 1 };\n").len(),
-        1,
-        "识别器认不出缺 `reach` 的构造点 —— `X3` 此刻在空转"
-    );
-    assert_eq!(
-        hop_sites_without_reach(&format!(
-            "let e = Hop {{ reach: r, {} }};\n",
-            concat!("..Default::", "default()")
-        ))
-        .len(),
-        1,
-        "带默认填充的构造点没被逮住 —— 那正是 `X3` 点名禁的写法"
-    );
-    assert!(
-        hop_sites_without_reach("let e = Hop { reach: Reach::Sent, code: 1 };\n").is_empty(),
-        "显式给了 `reach` 的构造点被判成违例 —— 假红比不查更坏"
     );
 }
 
@@ -2194,9 +2125,6 @@ fn criteria_biting(rel: &str, prod: &str) -> BTreeSet<&'static str> {
     if !deadline_literals(prod).is_empty() {
         out.insert("X2");
     }
-    if !hop_sites_without_reach(prod).is_empty() {
-        out.insert("X3");
-    }
     if !silent_drop_sites(prod).is_empty() {
         out.insert("X4");
     }
@@ -2473,12 +2401,15 @@ fn every_criterion_is_on_the_execution_chain() {
     );
     let ids: BTreeSet<&str> = CRITERIA.iter().map(|(id, _, _)| *id).collect();
     let want_c: BTreeSet<&str> = ["C1", "C2", "C3", "C4", "C5"].into_iter().collect();
-    let want_x: BTreeSet<&str> = ["X1", "X2", "X3", "X4", "X5", "X6"].into_iter().collect();
+    let want_x: BTreeSet<&str> = ["X1", "X2", "X4", "X5", "X6"].into_iter().collect();
     let got_c: BTreeSet<&str> = ids.iter().filter(|i| i.starts_with('C')).copied().collect();
     let got_x: BTreeSet<&str> = ids.iter().filter(|i| i.starts_with('X')).copied().collect();
     assert_eq!(
         got_c, want_c,
         "通信层的铁律恰好五条（C1–C5），盘上是 {got_c:?}"
     );
-    assert_eq!(got_x, want_x, "签名判据恰好六条（X1–X6），盘上是 {got_x:?}");
+    assert_eq!(
+        got_x, want_x,
+        "签名判据恰好五条（X1 · X2 · X4–X6），盘上是 {got_x:?}"
+    );
 }

@@ -117,26 +117,6 @@ mod tests {
         "stream/inbound/registry/terminals.rs",
     ];
 
-    /// **冻结兼容**（`文件`, `行内容片段`, 为什么清不掉, **解锁条件**）。
-    ///
-    /// 「还不了，且知道为什么、什么时候能还」。从前旁边还有一张要清零的欠账表，`S4` 清到 0 删了；
-    /// 别把要还的欠账塞进本表 —— 新冒出一处 agent 字面量就该直接红。
-    ///
-    /// ⚠ 但本表与 `NOT_AGENT_KNOWLEDGE` 仍有一处关键不同，别照抄：
-    /// 那张装的是**假阳**（判据看走眼了，那本来就不是 agent 知识）⇒ 永远留着；
-    /// 本表装的是**真阳**（`claude_dir` 确实把 agent 名焊进了字段名，`D3` 说得没错）⇒
-    /// 只是**今天动不了**。所以它**必须带解锁条件** ——
-    /// 没有解锁条件的「冻结」只是「永久豁免」的好听说法
-    /// （`every_frozen_compat_entry_states_how_it_gets_unfrozen` 钉住这条）。
-    ///
-    /// ⚠本表与 `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS` **在 `wire.rs` 这一行
-    /// 重叠，但不是重复登记，别合并**：本表的作用域是「**已宣称通用的文件**（[`CORE_FILES`]）里的
-    /// agent **字面量**」，那张是「**整棵 `src/`** 里 `<名>_dir` 这一形的**标识符**」。
-    /// 证据是：那张表逼出了 `control/resolve_query.rs`（已删）里 `ResumeSpec` 的 `claude_dir`（同样是冻结的
-    /// 线上字段名），而**本表看不见它** —— 那个文件不在 `CORE_FILES` 里。
-    /// ⇒ 两个不同的问题各问了一次同一个事实，删掉任一张都会漏掉另一张管的那一半。
-    const FROZEN_COMPAT: &[(&str, &str, &str, &str)] = &[];
-
     /// **整棵进表的子树**（相对 `src/`，按前缀认）：其下每一份 `.rs` 都是通用层，**新长出来的文件从第一天就在扫**
     ///（[`CORE_FILES`] 是逐条的，新文件不进表就不扫 —— `KY6` 那个洞；整棵进表把它堵上）。
     ///
@@ -254,24 +234,7 @@ mod tests {
              取法坏了（路径写错？文件挪走了？），本断言此刻有一部分在**空转**",
             files.len()
         );
-        // 冻结兼容 `FROZEN_COMPAT` 登记过的挑出来；剩下的才是**新增违规**（欠账表数到 0 删了，新冒出一处直接红）。
-        let (known, unknown): (Vec<String>, Vec<String>) = hits.into_iter().partition(|h| {
-            FROZEN_COMPAT
-                .iter()
-                .any(|(f, frag, _, _)| h.contains(f) && h.contains(frag))
-        });
-        // ★ 棘轮的第二条：**修好了必须摘登记**。否则表会攒成幽灵，
-        //   而幽灵条目会让下一个人以为"这里还欠着 / 这里还冻着"，进而不敢动。
-        let ghosts: Vec<String> = FROZEN_COMPAT
-            .iter()
-            .filter(|(f, frag, _, _)| !known.iter().any(|h| h.contains(f) && h.contains(frag)))
-            .map(|(f, frag, _, _)| format!("FROZEN_COMPAT {f}:{frag}"))
-            .collect();
-        assert!(
-            ghosts.is_empty(),
-            "这些登记条目**已经不再命中**了：{ghosts:?}\n\
-             ⇒ 修好了就把它从表里摘掉（棘轮只许缩短）。留着 = 让下一个人以为这儿还欠着。"
-        );
+        let unknown = hits;
         assert!(
             unknown.is_empty(),
             "通用层里出现了**新的** agent 专属字面量（{} 处）：\n{}\n\n\
@@ -291,8 +254,7 @@ mod tests {
     fn the_core_file_list_only_grows() {
         // **曾经被宣称为通用层的每一个文件**。加进 `CORE_FILES` 的同一轮要追加到这里。
         //
-        // ⚠ 写两遍是**刻意的**：它让"把某个文件移出通用层"必须是一个**显式动作**
-        //（同 `FROZEN_COMPAT` 要手动摘登记）。
+        // ⚠ 写两遍是**刻意的**：它让"把某个文件移出通用层"必须是一个**显式动作**。
         //
         // ★ 这张表原名 `AT_BIRTH`，只装 `S1` 立表当天那 6 个 —— 于是 `S3` 后来加进
         // `CORE_FILES` 的 5 个**可以被静默删掉**（6 个元老还在、长度也够，两条断言全绿）。
@@ -371,39 +333,6 @@ mod tests {
             CORE_FILES.len(),
             EVER_DECLARED_CORE.len()
         );
-    }
-
-    /// ★ 冻结兼容**必须带解锁条件**，而且**只许缩短**。
-    ///
-    /// 没有这一条的话，`FROZEN_COMPAT` 就是一个逃生舱：
-    /// 新冒出的违规往里一放就绿，而问题原封不动。
-    ///
-    /// 两条纪律：
-    /// ① 每条都要有**非空的解锁条件**（没有解锁条件的「冻结」= 「永久豁免」的好听说法）；
-    /// ② 往里加一条就是多欠一笔：加第二个 `<名>_dir` 字段正是 `D3` 排除掉的那条路
-    ///    （往 `homes` 里加一项，不要加字段）。
-    #[test]
-    fn every_frozen_compat_entry_states_how_it_gets_unfrozen() {
-        // 只许那一个历史字段（`claude_dir`）冻结着：加第二个 `<名>_dir` 字段正是 `D3` 排除掉的那条路。
-        for (file, frag, ..) in FROZEN_COMPAT {
-            assert!(
-                frag.contains("claude_dir"),
-                "`FROZEN_COMPAT` 登记了 `{file}` 的 `{frag}` —— 只许 `claude_dir` 那一个历史字段，往 `homes` 里加一项，不要加字段"
-            );
-        }
-        for (file, frag, why, unlock) in FROZEN_COMPAT {
-            assert!(
-                !why.trim().is_empty(),
-                "`FROZEN_COMPAT` 的 {file}:{frag} 没写「为什么清不掉」"
-            );
-            assert!(
-                unlock.trim().len() >= 20,
-                "`FROZEN_COMPAT` 的 {file}:{frag} 没写**解锁条件**（实得 {} 字节）。\n\
-                 没有解锁条件的冻结就是永久豁免 —— 那把这张表和白名单变成同一个东西。\n\
-                 要写的是「什么条件满足之后这一条就能删」，不是「为什么现在不能删」。",
-                unlock.trim().len()
-            );
-        }
     }
 
     /// ★ 反向夹具：**这条判据真的会红**。

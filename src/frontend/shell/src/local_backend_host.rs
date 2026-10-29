@@ -79,7 +79,7 @@ pub enum StartOutcome {
 impl StartOutcome {
     /// 起不来那一支的两个字段。`None` = 这一次不是「从来没起来」。
     ///
-    /// # ⚠ 这里为什么写 `Self::` 而不是把类型名写全〔`K-P3b`，别改回去〕
+    /// # ⚠ 这里为什么写 `Self::` 而不是把类型名写全（别改回去）
     ///
     /// 同文件那条 [`tests::the_user_actionable_start_failures_all_reach_the_user`] 的第 ① 格
     /// 数的是**字面** `StartOutcome::Failed {`，它的分母自称是「**失败的构造点**」——
@@ -99,7 +99,7 @@ impl StartOutcome {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// `K-P1`：常驻那条路 —— **真脱离 · 一个监听口 · 起时认得出已有实例**
+// 常驻那条路 —— **真脱离 · 一个监听口 · 起时认得出已有实例**
 //
 // 这一段全部住在**宿主知识层**，理由是硬的（现打）：
 // `process_group(0)` 来自 `std::os::unix::process::CommandExt`，而 `std::os::unix`
@@ -141,7 +141,7 @@ pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 64 * 1024;
 pub(crate) const RESIDENT_ENV: &str = "CCM_RESIDENT";
 
 /// 关掉「脱离」的逃生口。**存在的理由不是好心，是判据**：
-/// `KPY5` 要一格「起的时候**没走**脱离那条路 ⇒ `detached` 必须为假」的**负例**，
+/// 要有一格「起的时候**没走**脱离那条路 ⇒ `detached` 必须为假」的**负例**，
 /// 而没有这个开关，那一支在 Linux 上永远走不到 —— 那正是「只有正例的测试永远绿」那一形。
 pub const NO_DETACH_ENV: &str = "CCM_NO_DETACH";
 
@@ -485,17 +485,17 @@ fn spawn_detached(
     // ★★ 三条策略—— 「三样一起才叫脱离」里的两样现在写在这儿：
     // · `Hidden` —— 脱离起来的后端**绝不该**在用户桌面上留一个黑框（那个框可关，
     //   一关就是 `CTRL_CLOSE_EVENT` ⇒ 常驻当场没了，而它的全部意义就是「常驻」）。
-    //   🔴 这一格**先前没人回答过**：这条路上一个 creation flag 都没有。
-    // · `Detached` —— 先前那句 `process_group(0)` 就是它：否则终端里 Ctrl-C 的 SIGINT
+    //   🔴 这条路上没有别的 creation flag，这一格只由这条策略答。
+    // · `Detached` —— 即 `process_group(0)`：否则终端里 Ctrl-C 的 SIGINT
     //   会打到整个前台进程组，monitor 和这个常驻实例一起走。
     //   ⚠ 它**不改变父子关系** ⇒ 不 `wait` 就留僵尸，收尸仍走 `reap_detached`。
     // · `Null` —— stdio 全 null 是**刻意**的：`Stdio::piped()` 之后宿主一退读端就断，
     //   它在 **153 毫秒**内 broken-pipe 退出（`backend_policy.rs` 头注实测）。
     //   stdin/stdout 那两根在上面一行，stderr 这一根由策略说了算。
     let spawn = managed_spawner(ConsolePolicy::Hidden, Lifetime::Detached, StderrSink::Null);
-    // ★★ `K-R28`：与 `supervise_with_stdio` **同一份分类**（住 `local_backend`，不各写一份）。
+    // ★★ 与 `supervise_with_stdio` **同一份分类**（住 `local_backend`，不各写一份）。
     //    这条路 exec 的正是 `resolve_backend_bin` 刚拿到的那个文件 —— 而它可能是
-    //    `extract_embedded_to` 刚写出来的那一份（`K-R43` 之后经 `resolve_or_extract` 走）
+    //    `extract_embedded_to` 刚写出来的那一份（经 `resolve_or_extract` 走）
     //    ⇒ 它是本仓两处「写了一个文件、随后 exec 它」的落点之一。
     local_backend::spawn_with_etxtbsy_retry(&mut cmd, &*spawn).map_err(|f| match f {
         // 这一刻恰好撞上了会自己过去的竞态 —— 那句话也是共用的那一份。
@@ -528,7 +528,7 @@ pub struct DetachedHandle {
     bin: std::path::PathBuf,
 }
 
-/// `K-P1`：**常驻那条路的句柄**。
+/// **常驻那条路的句柄**。
 ///
 /// ⚠ **锁序**：要同时拿 [`LOCAL_BACKEND`] 时先拿它、再拿本表；两表都只在读写那一下拿。
 /// 「查」与「存」之间那个窗口（`start_local_backend` 头注花了一整段治的双起）由 [`LIFECYCLE`] 关：
@@ -562,7 +562,7 @@ pub(crate) fn running_backend_bin() -> Option<std::path::PathBuf> {
         .clone()
 }
 
-/// `KPY5` 的源头：**起它的时候走没走脱离那条路**。
+/// `detached` 的源头：**起它的时候走没走脱离那条路**。
 ///
 /// ⚠ **不许拿 `channel` 或 `pid` 反推** —— 那正是 `P2d §0a` 翻掉的 `SSH_CONNECTION` 那一形
 /// （假信号不会报错，它只是**一直说是**，而在只有正例的测试里永远绿）。
@@ -572,7 +572,7 @@ pub fn is_detached() -> bool {
 }
 
 /// 这台机今天走不走脱离那条路。**纯函数**，两个入参都是外面喂进来的 ——
-/// 否则「关掉了」那一支在 Linux 上永远走不到（`KPY5` 要的负例就没了）。
+/// 否则「关掉了」那一支在 Linux 上永远走不到（那条负例就没了）。
 pub(crate) fn detach_wanted(can_detach: bool, no_detach_env: Option<&str>) -> bool {
     // 空串按「没设」算：shell 里 `export CCM_NO_DETACH=` 是常态。
     can_detach && !no_detach_env.is_some_and(|v| !v.trim().is_empty())
@@ -582,16 +582,15 @@ pub(crate) fn detach_wanted(can_detach: bool, no_detach_env: Option<&str>) -> bo
 ///
 /// `process_group` 不改变父子关系 ⇒ 我们起的那个进程死掉之后会变成 `Z`，
 /// 直到有人 `wait` 它。断言必须落在**进程表**上而不是落在我们自己的事件上
-/// —— `KPY3` 钉的就是这一格。
+/// —— 判据钉的就是这一格。
 /// ⚠⚠ **先把 `Child` 从锁里 `take()` 出来，再在锁外等** —— 这不是讲究，是一次实测死锁。
 ///
-/// 〔`K-P1` e2e 08-26 实测〕第一版是「持着 `DETACHED` 的锁调 `c.wait()`」，
-/// 而「流断了」**不等于**「那个进程死了」：backend 现在也会在**它自己**读到 EOF 时主动收掉
-/// 这一条流（那是上一格修的东西）。于是 `wait()` 会等一个**还活着**的进程，
-/// **一直持着那把锁** ⇒ 下一次 `backend_status` / `backend_start` / `backend_stop` 全部卡死。
-/// 实测形状：测试线程停在内核的 futex 等待、一个 tokio worker 停在 `do_wait`，200 秒不动。
-/// ⇒ 与 `supervise_with_stdio` 头注记的是**同一条**（那边逐字写过「guard 活在闭包里
-/// ⇒ `wait()` 整段都持着锁，而 `stop()` 第一件事就是取那把锁」）—— 本仓第二次。
+/// 持着 `DETACHED` 的锁调 `c.wait()` 会死锁：「流断了」**不等于**「那个进程死了」
+/// （backend 也会在**它自己**读到 EOF 时主动收掉这一条流），`wait()` 会等一个**还活着**的进程、
+/// **一直持着那把锁** ⇒ 下一次 `backend_status` / `backend_start` / `backend_stop` 全部卡死
+/// （e2e 实测：测试线程停在内核的 futex 等待、一个 tokio worker 停在 `do_wait`，200 秒不动）。
+/// ⇒ 与 `supervise_with_stdio` 头注记的是**同一条**（「guard 活在闭包里
+/// ⇒ `wait()` 整段都持着锁，而 `stop()` 第一件事就是取那把锁」）。
 ///
 /// 收尸落在一条**专用线程**上（形状抄 `platform/terminal.rs::launch_local_posix_via` 里那条），
 /// 它随子进程结束而结束；`Child` 被取走之后句柄里只剩 pid + 二进制路径，
@@ -609,7 +608,7 @@ fn reap_detached(
         .name("ccm-detached-reaper".into())
         .spawn(move || {
             // `process_group` 不改变父子关系 ⇒ 不 `wait` 就留僵尸（`spawn_managed.rs::Lifetime` 逐字）。
-            // ★ `K-P3b`：**`wait()` 回来那一刻就是这条路上唯一拿得到退出状态的时刻** ——
+            // ★ **`wait()` 回来那一刻就是这条路上唯一拿得到退出状态的时刻** ——
             //   在这里记账，不在别处猜。
             match c.wait() {
                 Ok(status) => note_detached_death(status, handshake, reader),
@@ -739,7 +738,7 @@ fn attach_stream(
         .map_err(|_| Said::of("rsLocalBackendHost.stream.badFirstLine", &[]))?;
     let witness = crate::local_backend::local_witness(&frame)
         .ok_or_else(|| Said::of("rsLocalBackendHost.stream.notHello", &[]))?;
-    // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
+    // ★ **「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
     //   下面把它一路带到收尸那一刻，而不是在那边写一个 `Handshake::Spoke` 字面量。
     let handshake = handshake_from_hello(&witness);
     // 期限只属于**握手**那一段；进了流之后这条连接是长连接，装着期限反而会把它掐断（`into_async` 摘掉）。
@@ -755,14 +754,13 @@ fn attach_stream(
         "本机入方向通道已登记（常驻载体）：origin={}",
         crate::inbound_client::LOCAL_ORIGIN
     );
-    crate::prefs_migration::after_local_ready();
     crate::bookmarks_migration::after_ready(crate::origin::Origin::local());
     crate::machine_table::refresh();
     tauri::async_runtime::spawn(async move {
         use crate::stream_source::{CappedLine, BACKEND_FRAME_LINE_CAP};
         let mut reader = tokio::io::BufReader::new(rd);
         let mut buf: Vec<u8> = Vec::new();
-        // ★ `K-P3b`：**我们这一侧的读端怎么结束的**。初值只在真读到 EOF 时才成立 ——
+        // ★ **我们这一侧的读端怎么结束的**。初值只在真读到 EOF 时才成立 ——
         //   下面那条 `Err` 支会把它换掉，两个出口各写各的。
         let mut reader_end = crate::backend_policy::ReaderEnd::CleanEof;
         // 这条载体上丢了几行 / 几帧 —— 原先两处裸 `continue` 一声不吭；记账，流结束出总账。
@@ -790,7 +788,7 @@ fn attach_stream(
                 Ok(CappedLine::Line) => {}
                 Err(e) => {
                     tracing::warn!("本机常驻后端读错误（{e}）；按流结束处理");
-                    // ★ `K-P3b`：那句错**原样**带到账上 —— 「读坏了」说的是我们这一侧，
+                    // ★ 那句错**原样**带到账上 —— 「读坏了」说的是我们这一侧，
                     //   而它**不算它崩了一次**（`B1` 那条错误诊断的全部内容）。
                     reader_end = crate::backend_policy::ReaderEnd::Broken(e.to_string());
                     break;
@@ -820,7 +818,7 @@ fn attach_stream(
         // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。monitor 不再存 tmux 原文（没有要清的陈旧证据了）。
         crate::inbound_client::unregister(&client);
         // 收尸：`process_group` 不改父子关系，不 `wait` 就留 `Z`。**事件驱动，不是轮询。**
-        // ★ `K-P3b`：两维证据一起交下去 —— 收尸那一刻才拿得到第三维（退出状态）。
+        // ★ 两维证据一起交下去 —— 收尸那一刻才拿得到第三维（退出状态）。
         reap_detached(handshake, reader_end);
         tracing::info!("本机常驻后端的流结束（EOF）");
     });
@@ -1092,15 +1090,11 @@ fn detached_exit() -> Option<String> {
 /// 找那个二进制 —— **这一层只做适配，答案取自那一份共用的解析**
 /// （`local_backend::resolve_or_extract`：用这一份产物内嵌的那份、放到落点）。
 ///
-/// # 🔴 `K-R43`：本函数**曾经是第二份手写实现**，今天不是了
+/// # 🔴 本函数**不是第二份手写实现**，是适配器
 ///
-/// 原来这里自己走一遍「找旁边 → 释放内嵌」，与 `local_backend::start_or_extract` 并列两份，
-/// 中间只有 `the_two_resolution_paths_still_agree_on_the_order` **对拍顺序**。
-/// ⚠ **那条判据眼皮底下真的漂过一次，而它全程绿**：`K-R42` 只给那一份接上了
-/// 「问产物自己带没带」与「释放失败说一句分得开的话」，本函数一个字没动 ——
-/// 顺序没变 ⇒ 判据没红，而同一台机上两条路对同一个失败给出了两句性质不同的话
-/// （本函数那一句逐字是 `K-R42` 从对面删掉的那一句）。读数住件文件。
-/// ⇒ 处置是**只留一份**，本函数降为适配器：把 `Resolved` 换成这条路要的 `Result`，
+/// 「找旁边 → 释放内嵌」只有 `local_backend::resolve_or_extract` 一份：两份并列时，只对拍顺序的判据拦不住
+/// 「一份改了失败说法、另一份没改」⇒ 同一台机上两条路对同一个失败给出两句性质不同的话。
+/// ⇒ **只留一份**，本函数只做适配：把 `Resolved` 换成这条路要的 `Result`，
 /// 并补上**宿主知识**（`make_executable` · 建目录 · 问放不放）。
 ///
 /// ⚠ **本层不许再自己拼失败串** —— 拼了就是第二份说法。由
@@ -1253,8 +1247,7 @@ fn run_resident_stop_within(
 ///
 /// 死亡账是「**这台机的 backend**」的账，监护器本身是通用的（收 `bin` / `args` / `envs`）⇒ 落进监护器体内，
 /// 它就得多一个「你在监护谁」的概念。⇒ 接线落在**客户这一侧**。
-/// 这条理由先前还有一半是「监护器有两种客户（后端与中转）」—— 中转并进常驻后端之后，
-/// 生产上的客户只剩这一条；理由的另一半（监护器不认识客户）照旧成立。
+/// 生产上的客户只有这一条（中转在常驻后端里）；理由是监护器不认识客户。
 /// 由 `backend_policy::tests::the_supervisor_itself_never_records_a_death` 钉着。
 ///
 /// # 为什么是一个**返回闭包的函数**，而不是内联在下面那个调用里
@@ -1399,7 +1392,7 @@ pub fn start_local_backend() -> StartOutcome {
     // **句柄在表里 = 在跑**（`stop_local_backend` 会把它 `take` 走）⇒ 判据不再问 pid。
     // 并且**起停串行锁（[`LIFECYCLE`]）横跨整个起的过程**，把「检查」与「存句柄」之间那个窗口关掉；
     // 句柄表本身只在读写那一下拿 ⇒ 这一趟里释放 ~10MB、等绑口、握手的那几秒，查状态与退出那一臂不被挡住
-    // （从前锁的就是句柄表，`backend_status` 跟着等）。
+    // （锁句柄表的话，`backend_status` 就得跟着等）。
     let _life = LIFECYCLE.lock().unwrap_or_else(|e| e.into_inner());
     // 上一次被拒的那句下一步作废：这一趟被拒会重新写下。
     note_local_refused(None);
@@ -1411,7 +1404,7 @@ pub fn start_local_backend() -> StartOutcome {
     }
     // 句柄表只拿这一下：起的那几秒里不攥着它（查状态与退出那一臂要读它）；「查」与「存」之间由上面那把串行锁关窗。
     drop(g);
-    // ★ `K-P1`：常驻那条路也算「在跑」。
+    // ★ 常驻那条路也算「在跑」。
     //
     // ⚠ 写 `DETACHED` 的只有起 / 停，都在 [`LIFECYCLE`] 里 ⇒ 这里**没有**第二个窗口。
     // 上面那一段头注花了一整段讲的就是「检查」与「存句柄」之间那个窗口，
@@ -1445,7 +1438,7 @@ pub fn start_local_backend() -> StartOutcome {
                 .map(|id| (id, p.bytes))
                 .ok_or_else(|| copy_text("rsLocalBackendHost.local.noStamp", &[]))
         });
-    // ★★ `K-P1`：**先走常驻那条路** —— 认得出已有实例就接上它，没有就起一个脱离的。
+    // ★★ **先走常驻那条路** —— 认得出已有实例就接上它，没有就起一个脱离的。
     //
     // 这就是「怎么起」那个注入点：`start_detached` 是**这一层**（宿主知识层）的东西，
     // 它认识 `process_group(0)` / `/proc` / `~/.cc-monitor`，而 `backend/` 那半一样都不许认识
@@ -1459,7 +1452,7 @@ pub fn start_local_backend() -> StartOutcome {
     let resolve = || resolve_backend_bin(&extract_dir, embedded.clone());
     let landing = extract_dir.join(local_backend::local_ccm_entry_name());
     match start_detached(&resolve, &landing, &handed) {
-        // ★ `K-P3b`：这是本函数**两个**返回 `Failed` 的出口之一 —— 都从 `note_never_started` 过。
+        // ★ 这是本函数**两个**返回 `Failed` 的出口之一 —— 都从 `note_never_started` 过。
         DetachOutcome::Done(out) => return note_never_started(out),
         DetachOutcome::NotTaken => {}
     }
@@ -1471,7 +1464,7 @@ pub fn start_local_backend() -> StartOutcome {
             // `backend-split` 的 C10：平台知识由宿主注入，backend 那半不认识 `#[cfg(unix)]`。
             &crate::platform::fs::make_executable,
             &crate::platform::fs::ensure_private_dir,
-            // ★ `K-P3b`：backend 这条监护路的死亡账**就记在这个闭包里**（`backend_supervise_events` 的头注）。
+            // ★ backend 这条监护路的死亡账**就记在这个闭包里**（`backend_supervise_events` 的头注）。
             events,
             // ★：起进程那一下的三条答案由**宿主**给（backend 那半不认识平台）。
             crate::spawn_managed::local_backend_supervised(),
@@ -1490,7 +1483,7 @@ pub fn start_local_backend() -> StartOutcome {
         }
         resolved
     });
-    // ★ `K-P3b`：另一个返回 `Failed` 的出口，同样从 `note_never_started` 过。
+    // ★ 另一个返回 `Failed` 的出口，同样从 `note_never_started` 过。
     note_never_started(match resolved {
         Resolved::Found(p) => StartOutcome::Started(p),
         Resolved::Missing { reason, looked_at } => StartOutcome::Failed { reason, looked_at },
@@ -1561,7 +1554,7 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), Said> {
     if let Some(h) = g.as_ref() {
         return Ok((h.current_pid(), Some(h.attempts())));
     }
-    // ★ `K-P1`：常驻那条路。`attempts` 这里**恒 `None`** 而不是 0 ——
+    // ★ 常驻那条路。`attempts` 这里**恒 `None`** 而不是 0 ——
     // 那一格的含义是「监护器起过它几次」，而常驻这条路**没有监护器**（`K14` 裁的第一档）。
     // 报 0 会让 UI 显示一个看起来正常的数，而它背后没有任何东西在数。**空值 ≠ 0。**
     let d = DETACHED
@@ -1578,11 +1571,8 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), Said> {
 // **本机中转住本机常驻后端进程里** —— monitor 只交端口与凭据路径
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 先前这里是 `K-H2b` 那一族：monitor 起本机后端那一刻**另监护一个** `--relay` 子进程（第三个进程），
-// 「停」按钮与退出臂各收它一次，「中转在不在」问的是 monitor 自己内存里那张句柄表
-// （跨 monitor 重启认不出上一次那一个 ⇒ 孤儿必然，「孤儿总是中转」）。
-// 「中转 ＋ 上游选择住本机常驻后端进程，对外端口由它绑；
-// monitor 不再单独起 / 收中转（本机固定两个进程）」⇒ 那一族整个删掉：
+// 中转 ＋ 上游选择住本机常驻后端进程，对外端口由它绑；monitor 不单独起 / 收中转（本机固定两个进程）。
+// monitor 若另监护一个中转子进程，跨 monitor 重启就认不出上一次那一个 ⇒ 孤儿必然。
 // - 起：后端流模式进程被交了端口就在本进程里起（`src/backend/relay/listen.rs::host`）；
 // - 收：随常驻后端按「退出行为」留或退，monitor 一行都不管；
 // - 在不在：起会话那一发由那台的 `ccm` 在最终 exec 那一处判；界面上那几格由本机常驻后端自己答（`accounts-list` 每号的徽章）；
@@ -1618,7 +1608,7 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> 
         .lock()
         .map_err(|e| Said::with_raw(copy_text("reason.code.bug", &[]), &e))?;
     // 中转住本机后端进程里 ⇒ 停后端就是停中转，这里不再另收一个。
-    // ★ `K-P1`：常驻那条路的「停」。
+    // ★ 常驻那条路的「停」。
     if let Some(r) = stop_detached() {
         return r;
     }
@@ -1644,20 +1634,12 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> 
     }
 }
 
-// ══ 取 shim 那个唯一入口的**跨文件出口**〔`K-R7` 09-01，`§0q` 裁一 · 出路乙〕════
+// ══ 取 shim 那个唯一入口的**跨文件出口** ════
 //
 // `local_backend.rs` 的三个落点也要走这个口 ⇒ 这个测试模块必须 `pub(crate)`，
 // 它们按 `crate::local_backend_host::tests::demand_tmux_shim(..)` 取。
-//
-// **这里原先多一道绕道，现在拆掉了**：模块写成私有 `mod tests`，再在
-// 文件末尾补一行 `pub(crate) use tests::demand_tmux_shim;` 重导出一次。那道绕道**不是随手写的**，
-// 它当时有一个真理由 —— 09-01 实打，直接写成 `pub(crate) mod tests` **当场打红 17 条**
-// （`cargo test -p monitor --lib`：`1194 passed; 17 failed; 13 ignored`；`guard-core` 的反向
-// 自检逐字「剥完仍残留 23 个测试属性 —— 剥法坏了」）：当时 `guard_core::test_module_ranges`
-// 按**字面前缀**认 `mod `，`pub(crate) mod tests {` 过不了那一关 ⇒ 整段测试代码被当成
-// 生产段，各条扫生产段的守卫跟着去扫测试代码。
-// `K-R75`（09-12）把那一步换成**按形状**剥可见性修饰（`guard_core::strip_visibility`）之后
-// **那个理由不再成立** ⇒ 绕道拆掉，模块写回它本来的样子。
+// `guard_core::test_module_ranges` 按**形状**剥可见性修饰（`guard_core::strip_visibility`），
+// `pub(crate) mod tests {` 照样认成测试段，不用私有模块 ＋ 重导出绕一道。
 // ─── 本机后端起没起来 ───────────────────────────────────────────────────────────
 // 各台（含本机）的状态成品由本机后端定（`deploy::machine`）；本机后端没起来时没人能替它说话，
 // 起没起 · 口上占着谁 · 起的时候被拒是这台电脑上的进程的事实，由这里说（[`LocalBackend`]）。

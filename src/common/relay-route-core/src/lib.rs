@@ -63,6 +63,11 @@ pub const SANDBOX_ENV: &str = "CCM_SANDBOX";
 /// 远端的 `backendPath`（可填的格）删了，monitor 与后端往那台拼命令、推字节都只认这一处。
 pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";
 
+/// 换版本时被盖掉的那几份落点住的那一层的名字：在落点那层 `bin` 底下（[`BACKEND_LANDING_REL`] 的父目录；同一块盘），
+/// 里面一份一个 `ccm-<那一份自报的身份>`。后端 `control/place_self.rs` 在盖落点那一下之前留，有上限、过期删；
+/// 数据页同落点一样由 `bin` 那一行代表。
+pub const BACKEND_KEPT_DIR_NAME: &str = "kept";
+
 /// 同一个落点在远端 POSIX shell 里的写法（远端今天只承诺 POSIX）：`$HOME` 在那台上展开，其余字节都是安全字符。
 pub const BACKEND_LANDING_SHELL: &str = "\"$HOME\"/.cc-monitor/bin/ccm";
 
@@ -83,7 +88,7 @@ pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
 /// 传完由那台后端提交、挪进目标。后端按它落盘（`control/files_commit.rs::STAGING_DIR`），monitor 的数据位置页按它列出。
 pub const STAGING_DIR_REL: &str = ".cc-monitor/staging";
 
-/// monitor 的设置（monitor `config.rs::patch_config_at` 是唯一写者；后端第 7 批换形只读它，`control/prefs_migration.rs`）。
+/// monitor 的设置（monitor `config.rs::patch_config_at` 是唯一写者）。
 /// 住 monitor 的数据目录（默认就是 `~/.cc-monitor/`），不在家里那几样（[`OWN_HOME_ENTRIES`]）里。
 pub const CONFIG_REL: &str = ".cc-monitor/config.json";
 
@@ -93,11 +98,7 @@ pub const BACKEND_POLICY_REL: &str = ".cc-monitor/backend.json";
 /// 〔同上〕这台的偏好：每一家的启动命令 · 恢复进不进 tmux · 每个号的模型 · 上下文上限表（只有后端写，`control/machine_prefs.rs`）。
 pub const PREFS_REL: &str = ".cc-monitor/prefs.json";
 
-/// 〔同上〕第 7 批换形那一次的「待交」：本机 `config.json` 里远端每台那几格，连上那台、它还没有偏好时交过去，交完删那一条
-/// （只有本机常驻后端写，`control/prefs_migration.rs`；下一版删迁移时一起删）。
-pub const PREFS_HANDOFF_REL: &str = ".cc-monitor/prefs-handoff.json";
-
-/// 〔同上〕这一端连各台用的机器表：每台的名字 · 地址 · 端口 · 用户 · 钥匙路径 · 指纹 · 备用地址 · 跳板 · 连不连
+/// 〔同上〕这一端连各台用的机器表：每台的名字 · 地址 · 端口 · 用户 · 钥匙路径 · 备用地址 · 跳板 · 连不连
 /// （只有本机后端写，`control/machines.rs`；桌面的 monitor 只经 `machines-read` 读）。
 pub const MACHINES_REL: &str = ".cc-monitor/machines.json";
 
@@ -109,9 +110,6 @@ pub const PS_ALIASES_REL: &str = ".cc-monitor/aliases.ps1";
 
 /// 〔同上〕配置文件：一段一组 ccm 选项、可「基于」另一段（后端 `assets/aliases/profile.rs` 读写；用户也可以手改）。
 pub const PROFILES_REL: &str = ".cc-monitor/profiles.toml";
-
-/// 〔同上〕旧别名清单一次性转进配置文件之后那张说明（转了几条 · 转不进去的几条；设置窗页首说一次，「知道了」后删）。
-pub const PROFILES_MIGRATED_REL: &str = ".cc-monitor/profiles-migrated.json";
 
 /// 〔同上〕配置文件上次经 cc-monitor 写出去的那一份的指纹（后端读配置文件时拿它比 ⇒「之后有人手改过」；删了只是不再说那一句）。
 pub const PROFILES_WRITTEN_REL: &str = ".cc-monitor/profiles-written.json";
@@ -787,10 +785,8 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("listenDir", LISTEN_DIR_REL, true, true),
     declared("policy", &BACKEND_POLICY_FILE),
     declared("prefs", &PREFS_FILE),
-    ("prefsHandoff", PREFS_HANDOFF_REL, false, true),
     declared("machines", &MACHINES_FILE),
     ("profiles", PROFILES_REL, false, true),
-    ("profilesMigrated", PROFILES_MIGRATED_REL, false, true),
     ("profilesWritten", PROFILES_WRITTEN_REL, false, false),
     ("aliasesPosix", POSIX_ALIASES_REL, false, true),
     ("aliasesPs", PS_ALIASES_REL, false, true),

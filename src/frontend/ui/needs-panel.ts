@@ -2,7 +2,7 @@
  * 侧栏顶上「需手动 n」点开的那个浮层（400 宽）：在等的会话 · 计划项 · 一条分隔线 · 会话外的每一项（各台 `sessions-needs` 本机合好的那一份，照它的序）；
  * 底部断开 / 清单无法读取的那几台各一条虚线。没有小标题：会话行是琥珀点 ＋ 标题，会话外那几行是号 / MCP 图标，靠形就分得开。
  *
- * 这里只排版：会话行的字照会话事实那一份（`session-face.ts`）；会话外那一行第一行是后端写好的 `said`、第二行是问来那台的机器名
+ * 这里只排版：会话行的字照会话事实那一份（`session-face.ts`），agent 发的多一行谁要批（`needs.ask.run.text`）；会话外那一行第一行是后端写好的 `said`、第二行是问来那台的机器名
  * （`fix` 为空 ⇒ 后端给的 `why`：为什么没有解法 / 怎么手动修，不画按钮）。点会话行 ⇒ 切过去；点会话外那一行或它的［登录…］⇒ 开登录抽屉。↑↓ 选行 · Enter ＝ 点 · Esc 收起（浮层那一套）。
  */
 import { copyText } from "./copy-table";
@@ -30,8 +30,10 @@ export interface PanelSession {
   title: string;
   /** `等批准 · 已等 4 分钟` 那一句。 */
   state: string;
-  /** 在等的那一件（命令 · 问题）；没有 ⇒ `null`。 */
+  /** 在等的那一件（命令里说得出用意的那一段 · 问题）；没有 ⇒ `null`。 */
   what: string | null;
+  /** 谁要批（agent 发的那一条，后端写好的 `needs.ask.run.text`）；主会话 ⇒ `null`。 */
+  by: string | null;
 }
 
 /** 计划那一侧的一条（`NeedsBook.plans()` 第 `i` 条）：落在哪一格（没有 ⇒ `null`）· 哪一片 · 哪个工作区 · 哪台。 */
@@ -89,6 +91,13 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
     l2.appendChild(plain(t.state));
     if (t.what) l2.append(plain(SEP), coded(t.what));
     r.main.append(l1, l2);
+    if (t.by) {
+      // agent 发的那一条：谁要批单起一行（长标签只截它自己，不挤第二行的命令）。
+      const l3 = lineTwo();
+      l3.dataset.part = "by";
+      l3.textContent = t.by;
+      r.main.append(l3);
+    }
     add(r.el, () => acts.answer(t.sid));
   }
   for (const p of f.plans) {

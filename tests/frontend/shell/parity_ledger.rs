@@ -47,4 +47,4 @@
 
 #[cfg(test)]
 #[path = "parity_ledger_tests.rs"]
-mod tests;
+pub(crate) mod tests;

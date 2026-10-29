@@ -4,7 +4,9 @@
 //! 它读自己的字节、自报的身份是这一版才往下，再 `rename(2)` 盖掉落点（`~/.cc-monitor/bin/ccm`；同在 `~/.cc-monitor` 下、同一块盘
 //! ⇒ 原子，落点在换的全程都在）。回一行 `{"placed":true,"build_id":…}`；不对 ⇒ 失败信封（`not_self` · `outside_staging` · `place_failed`），
 //! 自报不是这一版的那份暂存件当场删。
-//! 卸载同一条路（SFTP 只写暂存区）：暂存件删落点那一份（不认身份：卸载就是明确授权）再删自己，回一行 `{"removed":true|false}`。
+//! 盖落点之前，落点上原来那一份整份原子写进留存区（`~/.cc-monitor/bin/kept/ccm-<它自报的身份>`，字节原样、0600）；留不成就不换。
+//! 留存区最多 [`KEPT_MAX`] 份、过 [`KEPT_MAX_AGE_SECS`] 删，每趟换完收拾。换回一份留下的 ＝ 把它当新的一份传进暂存区、照常跑这条子命令。
+//! 卸载同一条路（SFTP 只写暂存区）：暂存件删落点那一份（不认身份：卸载就是明确授权）、连留存区里那几份，再删自己，回一行 `{"removed":true|false}`。
 
 use crate::platform::fs::{Own, OwnPath, Ro};
 use copy_core::copy_text;
@@ -16,6 +18,12 @@ const CMD: &str = "place-self";
 
 /// 复制详情「命令」那一项里卸载那一条的名字。
 const UNPLACE_CMD: &str = "unplace-self";
+
+/// 留存区（落点那层 `bin` 底下的 `relay_route_core::BACKEND_KEPT_DIR_NAME`）最多留几份被盖掉的落点。
+pub(crate) const KEPT_MAX: usize = 3;
+
+/// 留下的那一份过多久删（从留下的那一刻算）。
+pub(crate) const KEPT_MAX_AGE_SECS: u64 = 30 * 24 * 3600;
 
 /// 失败：码 ＋ 那一句。
 type Failed = (&'static str, Said);
@@ -96,6 +104,9 @@ pub(crate) fn unplace(own: &Own, exe: &Path) -> Result<bool, Failed> {
     let removed = own
         .clear_landing()
         .map_err(|e| io_failed(relay_route_core::BACKEND_LANDING_REL, e))?;
+    for (name, _) in own.kept_backends() {
+        drop_kept(own, &name);
+    }
     if let Ok(p) = staging.join(name) {
         let _ = own.delete_file(&p);
     }
@@ -124,7 +135,58 @@ pub(crate) fn place(own: &Own, exe: &Path, mine: &str) -> Result<(), Failed> {
             .into(),
         ));
     }
-    own.place_staged(name).map_err(io)
+    keep_old(own)?;
+    own.place_staged(name).map_err(io)?;
+    prune_kept(own, crate::common::time::now());
+    Ok(())
+}
+
+/// 落点上那一份的字节与留下时叫什么：`ccm-<它自报的身份>`；身份读不出 · 不止一个 ⇒ `ccm-unstamped`。落点不在 ⇒ `None`（头一回装，没有可留的）。
+fn old_copy(own: &Own) -> Result<Option<(Vec<u8>, String)>, Failed> {
+    let at = own
+        .at_home(relay_route_core::BACKEND_LANDING_REL)
+        .map_err(|s| ("place_failed", s))?;
+    let bytes = match Ro::read(at.as_path()) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(io_failed(relay_route_core::BACKEND_LANDING_REL, e)),
+    };
+    let name = match deploy_contract::identity_of_bytes(&bytes, deploy::MARKS) {
+        deploy_contract::RemoteIdentity::Stamp(id) if !id.starts_with('.') => format!("ccm-{id}"),
+        _ => "ccm-unstamped".to_string(),
+    };
+    Ok(Some((bytes, name)))
+}
+
+/// 盖落点之前把旧的那一份整份写进留存区（原子写；同名已在 ⇒ 盖掉）；留不成 ⇒ `place_failed`（不换，落点一个字节不动）。
+fn keep_old(own: &Own) -> Result<(), Failed> {
+    let Some((bytes, name)) = old_copy(own)? else {
+        return Ok(());
+    };
+    own.keep_backend(&name, &bytes)
+        .map_err(|s| ("place_failed", s))
+}
+
+/// 删留存区里的一份；删不掉只进日志（不挡这一趟，下一趟再来）。
+fn drop_kept(own: &Own, name: &str) {
+    if let Err(e) = own.drop_kept_backend(name) {
+        tracing::warn!("留存区那一份 {name} 没删掉：{e}");
+    }
+}
+
+/// 留存区收拾：过了 [`KEPT_MAX_AGE_SECS`] 的删，余下按留下的先后只剩最新的 [`KEPT_MAX`] 份。
+fn prune_kept(own: &Own, now: std::time::SystemTime) {
+    let mut all = own.kept_backends();
+    all.sort_by(|a, b| b.1.cmp(&a.1));
+    for (i, (name, when)) in all.iter().enumerate() {
+        // 比年纪，不是等待：秒数直接比，不造会让谁醒来的期限。
+        let expired = now
+            .duration_since(*when)
+            .is_ok_and(|d| d.as_secs() > KEPT_MAX_AGE_SECS);
+        if i >= KEPT_MAX || expired {
+            drop_kept(own, name);
+        }
+    }
 }
 
 #[cfg(test)]

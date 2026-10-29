@@ -267,7 +267,7 @@ describe("S2 设置面板分页结构", () => {
    * ⚠ 它买的是**接线**，不是那一块的行为（后者归 `machine-aliases.vitest.ts`）——
    * 那一块的单测直接 `buildAliasManager()`，结构上绕过了「它有没有被挂上去」。
    * 两向：本机页上**有**（`.machine-aliases`），「应用」页上**没有**任何一块别名
-   * （从前那两块的类名 `.ccm-acct-alias` / `.ccm-alias-gen` 一个都不许剩在那一页）。
+   * （`.ccm-acct-alias` / `.ccm-alias-gen` 这两个类名一个都不许出现在那一页）。
    */
   it("通用页只有「行为」一组：「终端」那一行挂在两个开关下面，不另起一组", async () => {
     document.body.replaceChildren();
@@ -373,7 +373,7 @@ describe("S2 设置面板分页结构", () => {
     const visibleTitles = [...local.querySelectorAll<HTMLElement>(".settings-group")]
       .filter((g) => !g.hidden)
       .map((g) => g.querySelector(".settings-group-title")?.textContent ?? "");
-    // 「别名」（含从前的「终端集成」，PowerShell $PROFILE 那一块）只对本机有意义 ⇒ 显示。
+    // 「别名」（含「终端集成」，PowerShell $PROFILE 那一块）只对本机有意义 ⇒ 显示。
     expect(visibleTitles).toContain(copyText("settingsPanel.group.aliases"));
     // 🔴 **`N-F1b`（09-05）改了这一格的事实，PM 落**。
     //
@@ -570,7 +570,7 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
     ["windows", "powershell"],
     ["linux", "posix"],
     ["macos", "posix"],
-    // 认不出 OS ⇒ **不猜方言**：那一格明说、装的入口置灰（先前取 POSIX）。
+    // 认不出 OS ⇒ **不猜方言**：那一格明说、装的入口置灰（不默认取 POSIX）。
     ["unknown", "unknown"],
   ] as const) {
     it(`★ ${os} ⇒ 别名那一块是 ${shell}；单独的「终端集成」一块不再有`, async () => {

@@ -1,5 +1,5 @@
 /**
- * K-A1 `KAY4`：**没有第二条只看 `loggedIn` 就下可用性结论的路。**
+ * **没有第二条只看 `loggedIn` 就下可用性结论的路。**
  *
  * 判定（零命中守卫）：生产 `.ts`（`*.vitest.ts` / `*.test.ts` / `src/frontend/ui/generated/` 之外）
  * 里，`loggedIn` / `authReady` / `authKind` 只许出现在**登记过的那几个文件**里；
@@ -20,35 +20,25 @@
  *    （针只有一根，多了会把大量正常代码判红）。
  * 5. **它扫不到测试侧的第二份实现。** 扫描面（`productionTsFiles`）**按构造**排掉
  *    `.vitest.` / `.test.` —— 那一行正是「让判据读不到自己」的机制，代价是一份**手抄进
- *    测试文件里的** `isSelectable` 结构上看不见（K-A1 第四轮 `R4` 就是这一形：
- *    `tests/frontend/ui/views/cc-bus-section.vitest.ts` 那份 `vi.mock` 替身当时已与真身语义相反）。
+ *    测试文件里的** `isSelectable` 结构上看不见（`vi.mock` 替身可以与真身语义相反）。
  *    ⇒ 那一维靠「测试侧不许手抄纯函数，要么 `vi.importActual` 要么不 mock 它」这条纪律，
  *    本文件不钉。
  *
  * # 阴性对照（这条守卫真的有牙吗）
  *
- * K-A1 `KAM5` 实测：往 `src/frontend/ui/account-reads.ts` 加一句 `const ok = a.loggedIn;`
- * ⇒ 本文件第 2 条当场红（实测输出贴在件计划 `§3`）。撤掉即绿。
+ * 往 `src/frontend/ui/account-reads.ts` 加一句 `const ok = a.loggedIn;` ⇒ 本文件第 2 条当场红。撤掉即绿。
  *
- * # ⚠ 第四轮（`R2`）：阳性对照**曾经是半空真**，两处收紧各治一把刀
+ * # ⚠ 阳性对照与登记表各治一把刀
  *
- * 第三轮的阳性对照逐字是
- * `expect(acc).toMatch(/export function isSelectable\(a: Account\): boolean \{[\s\S]*?authReady\(a\)/)`
- * —— `[\s\S]*?` **无界**，只保证「开花括号**之后某处**有 `authReady(a)`」；再配上当时
- * `ALLOWED` 把 `authReady`/`authKind` 登记成 `null`（不钉次数），D 阶段审计**一刀就绕过去了**。
- * 第四轮逐字复现了那一刀（读数在件计划 `§3c`）：
- * 把 `authReady(a)` 挪进一个**定义在 `isSelectable` 之后**的包装、并让那个包装第二次直接读
- * `a.authReady` ⇒ 本文件 **3 passed**、vitest 全量 **117 文件 / 1467 passed**，`tsc` **0 错**，全绿。
- *
- * ⇒ 收紧两处，**一处治一把刀**（收紧后同一刀实测，读数同在 `§3c`）：
- *   · 阳性对照的窗口从「文件尾」收成「`isSelectable` 的函数体」（切到第一个行首 `}`）
- *     ⇒ 刀①（挪进包装）**1 红 / 4**；
- *   · `ALLOWED` 每一格钉死次数、`null` 那一档连类型一起删，并新增一条**登记表自检**
- *     ⇒ 刀①+②（再加第二处读 `a.authReady`）**2 红 / 4**，报文逐字
- *     `src/frontend/ui/accounts.ts: authReady 出现 6 次（登记 5）`。
+ * 刀①：把 `authReady(a)` 挪进一个**定义在 `isSelectable` 之后**的包装 —— 阳性对照要是只看
+ * 「开花括号**之后某处**有 `authReady(a)`」（`[\s\S]*?` 无界）就看不见它。
+ * ⇒ 阳性对照的窗口是「`isSelectable` 的函数体」（切到第一个行首 `}`）。
+ * 刀②：再让那个包装第二次直接读 `a.authReady` —— 登记表要是允许「不钉次数」就看不见它。
+ * ⇒ `ALLOWED` 每一格钉死次数，并有一条**登记表自检**
+ *   （报文形如 `src/frontend/ui/accounts.ts: authReady 出现 6 次（登记 5）`）。
  * ⚠ 登记表自检为什么要在**运行时**再判一次（类型已经是 `number` 了）：
- * `authReady: null as unknown as number` 这种写法 `tsc` **不红**（实测 0 错），
- * 而它就是「把判据放宽回去」最省事的走法。实测那一刀 ⇒ 本文件 **2 红 / 4**。
+ * `authReady: null as unknown as number` 这种写法 `tsc` **不红**，
+ * 而它就是「把判据放宽回去」最省事的走法。
  */
 import { describe, it, expect } from "vitest";
 
@@ -66,22 +56,16 @@ function hits(code: string, ident: string): number {
  *
  * 每一格都是**钉死的次数**（加一处、少一处都红）。
  *
- * ⚠ **「允许出现但不钉次数」这一档（第三轮写成 `null`）第四轮整个删掉了，连类型一起。**
- * 那不是洁癖：`authReady`/`authKind` 登记成 `null` 时，`src/frontend/ui/accounts.ts` 文件**内部**
- * 可以长出第二条直接读 `a.authReady` 的路而本文件全绿 —— D 阶段审计一刀就走通了
- * （复现读数在件计划 `§3c`）。留着那个档，等于给「再开一条」留了一扇不响的门。
+ * ⚠ **没有「允许出现但不钉次数」这一档，类型里也没有。**
+ * 有那一档时，`src/frontend/ui/accounts.ts` 文件**内部**可以长出第二条直接读 `a.authReady` 的路而本文件全绿
+ * —— 等于给「再开一条」留了一扇不响的门。
  * ⇒ 谁要改这三个数，先回答「这一处凭什么不能走 成品 `selectable` / `accountStatusBadge`」；
  * **把数字调大就是在放宽判据**，不是在修测试。
  *
- * ⚠ **`src/frontend/ui/account-chip.ts` 那一格已经没了（K-A1 第二轮落的），别再加回来。**
- * 它曾经登记 `loggedIn: 1` —— 那是设置里那张账号表（`settings/accounts-section.ts`）的
- * **同职第二处**：状态栏 chip 的账号菜单渲染同一个三态，而第一轮只改了设置那侧
- * ⇒ api-key 号在 chip 菜单里仍显示「已登录」，`KA6a` 那段文案只堵了一半。
- * 第二轮把 `accountRow` 里那段 `if (a.mode === "in-place") … else if (!a.loggedIn) …
- * else "已登录"` 整段换成 `accountStatusBadge(a)`，本文件那一整行**连键一起删**
- * ⇒ 今天 `account-chip.ts` 的 `loggedIn` 命中数是 **0**（不是被豁免成 0，是真的没有）。
- * 阴性对照实测（第二轮 `M1`）：只删这一行、`account-chip.ts` 一字不动 ⇒ 下面第 2 条当场红，
- * 报文逐字 `src/frontend/ui/account-chip.ts: loggedIn 出现 1 次（登记 0）`，`offenders` 长度 1。
+ * ⚠ **`src/frontend/ui/account-chip.ts` 不在登记表里，别加进来。**
+ * 状态栏 chip 的账号菜单与设置里那张账号表（`settings/accounts-section.ts`）渲染同一个三态，
+ * 两处都走 `accountStatusBadge(a)` ⇒ `account-chip.ts` 的 `loggedIn` 命中数是 **0**（不是被豁免成 0，是真的没有）。
+ * 那里冒出一处 ⇒ 下面第 2 条当场红，报文形如 `src/frontend/ui/account-chip.ts: loggedIn 出现 1 次（登记 0）`。
  *
  * ⇒ **登记表今天只剩 `src/frontend/ui/accounts.ts` 一格。** 谁要往这张表加第二格，先回答一句：
  * 「这个新落点凭什么不能走 成品 `selectable` / `accountStatusBadge`」——
@@ -124,7 +108,7 @@ describe("KAY4 账号可用性只有一个出口", () => {
       "export function selectableAccounts",
     );
     // 而且**注释真的被剥掉了** —— 否则下面的次数全是散文。
-    // `accounts.ts` 的注释里逐字出现过 `a.loggedIn`（讲 K-A1 换了哪一项）。
+    // `accounts.ts` 的注释里逐字出现过 `a.loggedIn`（讲换了哪一项）。
     expect(hits(acc, "loggedIn"), "注释没被剥掉：次数把散文也数进来了").toBeLessThan(4);
   });
 

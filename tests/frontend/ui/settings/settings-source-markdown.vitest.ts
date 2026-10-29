@@ -124,8 +124,7 @@ function starsInTree(file: string, sf: ts.SourceFile): string[] {
  * 两向相等：谁改掉了它，这里就得删一行；谁新加一处，这里就红。
  */
 const REGISTERED: Readonly<Record<string, string>> = {
-  // 从前这里登着 `machine-card.ts` 的「**是同一套实现**」一行（机器页归 MC1+AL1）。
-  // 那段「安装位置」长说明随 8 颗按钮 → 3 个动作一起重写掉了 ⇒ 这一行删掉，表空了。
+  // 表是空的：设置页源码里没有要登记的 markdown 说法。
 };
 
 describe("ST1：设置窗屏幕上的字符串里零 markdown 星号", () => {

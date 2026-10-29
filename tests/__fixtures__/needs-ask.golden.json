@@ -216,7 +216,7 @@
     "questions": [],
     "run": {
       "id": "a1",
-      "kind": "general-purpose"
+      "text": "agent · general-purpose"
     },
     "sinceMs": 1000,
     "tool": "Bash",

@@ -48,6 +48,10 @@ pub mod uses;
 
 /// 拨了必被拒、又不会被别人捡走的本机口（测试用）：本 crate 的判据与后端的测试档（经 `test-support`）共用这一份。
 #[cfg(any(test, feature = "test-support"))]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "测试档的夹具：只在本机回环上绑一个口占着、不连出去"
+)]
 #[path = "../../../tests/backend/refusing_port.rs"]
 pub mod refusing_port;
 

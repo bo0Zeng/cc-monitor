@@ -150,7 +150,7 @@ export async function openSession(origin: Origin, req: SessionOpenReq, how: Open
 export async function landOpened(origin: Origin, req: SessionOpenReq, o: Opened, how: OpenHow = {}): Promise<boolean> {
   if (o.note !== null) toast(o.note, "", { level: "info" });
   const open = o.line !== null && ((req.what.kind !== "new" && req.what.kind !== "resume") || BACKGROUND_OPENS.has(o.landed));
-  if (open && !(await openLine(origin, o.line!, o.cwd))) return false;
+  if (open && !(await openLine(origin, o.line!, o.cwd, o.sid))) return false;
   if (o.arrival !== null) {
     const done = how.onArrived;
     awaitArrival(origin, o.arrival, o.cwd, copyText("sessionOpen.arrived.title"), done && ((sid) => done(sid, o)));
@@ -206,12 +206,12 @@ function sayEnd(origin: Origin, req: SessionOpenReq, how: OpenHow, end: Exclude<
 
 /**
  * 开那一行：本机带起始目录（`null` ⇒ 壳照家目录开）、远端经 ssh。开不了 ⇒「终端未打开」＋ 在哪跑 ＋ 那一行 ＋［复制命令］
- * （不自动写剪贴板）；找不到终端 ⇒ 照实说、给设置入口。
+ * （不自动写剪贴板）；找不到终端 ⇒ 照实说、给设置入口。`sid` ＝ 这个终端显示的那条会话（远端那一行带上它，↗ 先在本机找）。
  */
-async function openLine(origin: Origin, line: string, cwd: string | null): Promise<boolean> {
+async function openLine(origin: Origin, line: string, cwd: string | null, sid: string | null): Promise<boolean> {
   try {
     if (isLocalOrigin(origin)) await openLocalTerminal(line, cwd);
-    else await openTerminal(origin, line);
+    else await openTerminal(origin, line, sid);
     return true;
   } catch (err) {
     if (err instanceof NoTerminalWindow) {

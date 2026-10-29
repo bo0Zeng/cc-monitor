@@ -187,7 +187,7 @@ fn window_crate_dir() -> PathBuf {
     repo_root().join("src/frontend/filewin/src")
 }
 
-/// 窗口包够到自己之外的**通道与文案**那两条前缀（从前是 `crate::chan::…` / 壳里那层文案转发）。
+/// 窗口包够到自己之外的**通道与文案**那两条前缀（`comms_inward::chan::…` / `copy_core::copy_text`）。
 /// 别的共享 crate（开窗契约 · 宿主原语 · 家目录与暂存区两条常量）由 `contract_crate_guard` 按类钉，不进这张表。
 const WINDOW_REACH: &[&str] = &["comms_inward", "copy_core"];
 
@@ -228,8 +228,8 @@ fn rel(root: &Path, p: &Path) -> String {
 // ① 正向：`filewin/` 只许够到两张明写的清单 —— **窗口进程一张 · monitor 那一侧一张，各自逐格相等**
 // ═══════════════════════════════════════════════════════════════════
 //
-// 🔴从前这里是**一张**表（整棵 `filewin/` 够到 app 侧的 30 条边）。
-// 窗口成了独立进程、只经通道说 `call` 之后，「整棵树」这个人群不再对应任何一个进程：
+// 🔴 这里不是**一张**「整棵 `filewin/` 够到 app 侧」的表。
+// 窗口是独立进程、只经通道说 `call`，「整棵树」这个人群不对应任何一个进程：
 // 同一棵树编进两个二进制，一部分代码只在 monitor 里跑（入口那条 Tauri 命令、起窗口进程、
 // 开窗前解 home），其余只在窗口进程里跑。那句判据逐字是「**窗口进程的依赖面** ==
 // {通道客户端, 线上类型, 界面库…}，两向相等」⇒ 人群按**进程**切：
@@ -297,7 +297,7 @@ enum Kind {
 ///
 /// 🔴 那句判据的可判形态：`Channel` ＋ `Wire` 两类是「只说 call/subscribe」本身；
 /// 其余三类每一条都是一笔带住址的欠账（见 [`Kind`]；「后端缺命令」那一类清零删了）。
-/// 路径带共享 crate 前缀（[`WINDOW_REACH`]）：从前的 `crate::chan::…` → `comms_inward::chan::…`，壳里那层文案转发 → `copy_core::copy_text`。
+/// 路径带共享 crate 前缀（[`WINDOW_REACH`]）：通道是 `comms_inward::chan::…`，文案是 `copy_core::copy_text`。
 const WINDOW_SIDE: &[(&str, Kind)] = &[
     // ── 通道客户端 ──
     ("comms_inward::chan::client::Client", Kind::Channel),
@@ -397,7 +397,7 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("machine_table::rows_now", Kind::Config),
     // 左栏「其他机器」点一台：那台在不在机器表里（只要名字，怎么连照本机后端的机器表）。
     ("machine_table::has", Kind::Config),
-    // 名单里本机那一项的名字：从前借窗口那一侧 `cross_copy::LOCAL_ORIGIN`，窗口独立成包之后引 monitor 自己那一份哨兵值。
+    // 名单里本机那一项的名字：引 monitor 自己那一份哨兵值（不借窗口包的）。
     ("inbound_client::LOCAL_ORIGIN", Kind::Config),
     ("config::resolve_monitor_data_dir", Kind::DataDir), // 原 `paths::`（`paths.rs` 并进 `config.rs`）
     // 视图文件（整窗缩放）的名字：全路径在这一侧拼好随种子交过去（窗口那一侧不引它）。
@@ -456,7 +456,7 @@ fn edges_by_process() -> (
     let (inside, _) = both_halves();
     let window_files = guard_core::scan_tree_excluding(&window_crate_dir(), &["rs"], &[]);
     // 🔴 两侧人群都现数（恒等，不是地板）：塌成空集时下面那两条相等**照样成立**。
-    // 壳里 `filewin/` 现打 3 份（mod · entry · proc；`win_main` 那个 bin 入口 size2 10-11 搬进窗口包成了 `main.rs`）；窗口包现打 29 份（搬家前那 31 份里 27 份整份搬来 ＋ 新 `proc.rs`（窗口进程那一半）＋ `guard_support.rs`）。
+    // 壳里 `filewin/` 现打 3 份（mod · entry · proc；bin 入口是窗口包的 `main.rs`）；窗口包现打 29 份（含 `proc.rs`（窗口进程那一半）与 `guard_support.rs`）。
     // 29 → 30：窗口包的平台层 `platform.rs`。30 → 34：样子 `theme.rs` · 窗口的框 `chrome.rs` · 文件种类 `kind.rs` · 属性框 `props.rs`。34 → 35：窗口的通用件 `kit.rs`。35 → 36：「进度」表 `progress.rs`。36 → 37：帧日志 `frame_log.rs`（窗口那一侧）。37 → 38：计划反查 `plan.rs`。38 → 40：图片查看页 `imgview.rs` ＋ 一张图读一次解一次 `picture.rs`。40 → 41：bin 入口 `main.rs`（size2 从壳里搬来）。41 → 42：渲染器挑哪块显卡 `render.rs`（fwgpu）。42 → 43：一组一条命令那一层 `batch.rs`（票 · 冲突框 · 断了带票再问 · 撤）。43 → 42：判据住址 `guard_support.rs` 并进共享的 `guard_core::addr`。42 → 40：只在测试档编的语料 `corpus.rs` 与秤 `scale.rs` 挪进 `tests/frontend/filewin/`。40 → 41：一趟 `trip.rs`（各看板共用的那一格与落地那一个结局）。41 → 50：目录视图 `shell.rs` 按职责拆进 `shell/` 底下九份（cross · edit · frame · keys · listing · search · trips · window · writes）。
     assert_eq!(
         (inside.len(), window_files.len()),

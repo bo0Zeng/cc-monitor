@@ -1078,7 +1078,7 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
   });
 
   // 切进一个没在看的会话：那台从上流点起交，之下那一截整份重来、按行号从老到新取回（`catchUpTo`）。
-  // 从前当前 tab 按「批里首条钉 floor、之后直渲」把取回的 600 行整段建出来（台架冷切长会话 489 个条目就是这一条路）。
+  // 不按「批里首条钉 floor、之后直渲」把取回的 600 行整段建出来（台架冷切长会话 489 个条目走的就是这一条路）。
   it("切进来补上流前那一截（按行号从老到新取回 600 行）：取回的只进账本，取完只建视口那一截", async () => {
     const r = await rig();
     // 这一形手上一行都没有（台子默认收着重放推来的尾段）
@@ -1107,7 +1107,7 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
   });
 
   // 〔A17-45-3-3〕收起的 tab 只留视口那一截：冷开建的那一截尾巴与接骨架之后建的都要交得回去
-  //（骨架索引从前只要 `[0, floor)`，冷开建的尾巴落在账本外，`release` 认不到它的切点 ⇒ 一条都不交）。
+  //（骨架索引只要 `[0, floor)` 的话，冷开建的尾巴落在账本外，`release` 认不到它的切点 ⇒ 一条都不交）。
   /** 一屏放得下几张卡，再加切点两头各一张。 */
   const screenCards = Math.ceil(VIEW_H / CARD_H) + 2;
   const settled = async (r: Awaited<ReturnType<typeof rig>>): Promise<void> => {
@@ -1177,13 +1177,13 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
     expect(covered, "切回来视口里空着").toBeGreaterThanOrEqual(VIEW_H - CARD_H);
   });
 
-  // 〔A17-45-3-4〕后台 tab 只进账本：冷切只建一屏之后不值得提前建，看不见的 tab 一张卡都不建（从前批结束后空闲时一截 20 条建满 150 条）。
+  // 〔A17-45-3-4〕后台 tab 只进账本：冷切只建一屏之后不值得提前建，看不见的 tab 一张卡都不建（批结束后空闲时也不一截 20 条地补建）。
   it("〔A17-45-3-4〕重放批结束、过了好一阵：后台 tab（能开终端的活会话、还没建过卡）一张卡都不建", async () => {
     const { goldenFace } = await import("../../test-support/session-faces");
     const { hasTerminal } = await import("../../../src/frontend/ui/face-can");
     const r = await rig();
     (r.tab as { face: unknown }).face = goldenFace("live-idle");
-    expect(hasTerminal(r.tab.face as never), "前置：能开终端（从前进后台物化队列的那一类）").toBe(true);
+    expect(hasTerminal(r.tab.face as never), "前置：能开终端（活会话那一类）").toBe(true);
     r.store.activeId = "other";
     vi.useFakeTimers();
     onTestFinished(() => void vi.useRealTimers());

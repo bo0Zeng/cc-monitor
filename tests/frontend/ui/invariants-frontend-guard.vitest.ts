@@ -14,7 +14,7 @@
  *
  * | 条 | 今天到底有没有人守 | 住址 |
  * |---|---|---|
- * | **12** alert 不算错误反馈 | 🔴 **没人守**（生产侧现打 0 处 `alert(`，但**没有任何东西断言那个 0**） | ⇒ 本文件 ① |
+ * | **12** alert 不算错误反馈 | ✅ **eslint 守**（`eslint.config.js` 的 `singleDoors` 里 alert 那一项：生产 TS 里 `alert(` · `window.alert(` 一处就红） | **不在这里复制** |
  * | **13** portal 必须真挂 body | 🔴 **没人守**（`info-icon.vitest.ts` 断的是 tooltip **零残留**，不是它挂在哪） | ⇒ 本文件 ② |
  * | **14** key 必须前缀 `cc-monitor.` | 🔴 **没人守**（`src/frontend/ui/local-storage.ts` 头注引了 §14，全仓无断言读它） | ⇒ 本文件 ③ |
  * | **21.1/21.2** 守卫式 `snap` · 不手动补偿 | 🔴 **TS 侧没人守**（只有 `tests/e2e/f40-suite.sh` 的密度绊线，而它**手动、不进 CI**） | ⇒ 本文件 ④⑤ |
@@ -32,7 +32,6 @@
  * | 格 | 判什么 | 形态 |
  * |---|---|---|
  * | ⓪ | 量具没坏（人群没缩水 · CSS 切规则那一刀在承重） | 地板 ＋ 恒等 |
- * | ① | 生产 TS 里 `alert(` 的调用处 | **零命中** |
  * | ② | 建 fixed 浮层的模块必须碰 `document.body`；不碰的 == 登记表，且宿主机检无包含块属性 | **恒等** |
  * | ③ | 每个存储 key 都带 `cc-monitor.` 前缀；绕过接入层的直写 key == 登记表 | **零命中 ＋ 恒等** |
  * | ④ | `MessageStream.snap()` 的守卫：已在底部 ⇒ 对 `scrollTop` **零次写入** | **恒等**（写入次数） |
@@ -49,14 +48,13 @@
  *   不是充分条件：同一份文件里既挂 body 又把另一个 fixed 元素挂在组件子树里，本格看不见。
  *   换来的是它对本仓实际的两族写法都判得对（理由逐字在量具 `FixedPortal` 头注里）。
  * - **不管 §12 的正面那半**（「关键失败必须有 toast / banner」）：那要判语义。
- *   ①只钉反面（不许用 alert）。正面那半今天由 `tests/frontend/ui/error-toast.vitest.ts`（合流）与
+ *   反面那半（不许用 alert）由 eslint 守；正面那半今天由 `tests/frontend/ui/error-toast.vitest.ts`（合流）与
  *   `tests/frontend/ui/settings/unknown-keys-notice.vitest.ts`（恒亮的告警等于没有告警，报文逐字引 `INVARIANTS §12`）
  *   各守一角，**同样不在这里复制**。
  */
 import { describe, it, expect } from "vitest";
 
 import {
-  alertCallSites,
   anchorToggles,
   containingBlockProps,
   cssDecl,
@@ -85,11 +83,11 @@ const PORTALS = fixedPortals(SOURCES);
 
 // ═══════════════════════════ ⓪ 量具自检 ═══════════════════════════
 
-describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）", () => {
+describe("P21 ⓪ 量具自检（这几条不过，下面几格全是空转）", () => {
   it("生产 TS 人群没缩水（正控：主窗口入口在人群里）", () => {
     expect(
       SOURCES.some((s) => s.file.endsWith("frontend/ui/main.ts")),
-      `生产 .ts 的人群里没有 \`main.ts\`（扫到 ${SOURCES.length} 份）—— 遍历坏了，①③⑥ 会零命中地绿`,
+      `生产 .ts 的人群里没有 \`main.ts\`（扫到 ${SOURCES.length} 份）—— 遍历坏了，③⑥ 会零命中地绿`,
     ).toBe(true);
   });
 
@@ -108,13 +106,6 @@ describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）",
     expect(fixedSelectors(probe).length, "切规则那一刀在合成样本上漏了 fixed 选择器").toBe(5);
   });
 
-  it("🔴 正控：`alert(` 的量具对合成样本判得出「有」与「没有」两种", () => {
-    const probe = (code: string) => alertCallSites([{ file: "合成.ts", code }]).length;
-    expect(probe(`function f() { alert("失败了"); }`), "真调用没被逮到 —— ① 是死规则").toBe(1);
-    expect(probe(`function f() { window.alert("失败了"); }`), "`window.alert` 没被逮到").toBe(1);
-    expect(probe(`const x = dialog.alert(1); showAlert(2); const alerts = [];`), "误伤了非调用形").toBe(0);
-  });
-
   it("🔴 正控：包含块属性的量具对本仓两个真选择器判得出相反结论", () => {
     // §13 的「为什么」逐字点的就是 `.settings-panel` 的 `transform: translateX(0)`。
     expect(
@@ -124,20 +115,6 @@ describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）",
     expect(
       containingBlockProps("#app"),
       "`#app` 被误判成带包含块属性 —— ② 会假红在两个合法的例外上",
-    ).toEqual([]);
-  });
-});
-
-// ═══════════════════════════ ① §12 ═══════════════════════════
-
-describe("P21 ① 条 12：前端 alert 不算错误反馈 —— 生产侧零 `alert(`", () => {
-  it("★ 生产 TS 里一处 `alert(` 都没有", () => {
-    const sites = alertCallSites(SOURCES);
-    expect(
-      sites.map((s) => `${s.file}:${s.line}  ${s.text}`),
-      "§12：`alert` 弹窗用户可能没看清就关掉（v1.7.9 那次「Permission denied」事故的成因）。\n" +
-        "关键失败要走 `console.error` ＋ 状态栏红色 toast（`src/frontend/ui/error-toast.ts`）／严重的加顶部 banner。\n" +
-        "⚠ 射程只有 `alert` —— `confirm`/`prompt` 问的是「要不要干」，不在 §12 里。",
     ).toEqual([]);
   });
 });

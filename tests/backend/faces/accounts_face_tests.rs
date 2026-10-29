@@ -518,7 +518,7 @@ fn a_fresh_home_without_transcripts_still_gets_them_shared_and_old_libraries_are
         std::fs::remove_dir_all(t.p(&format!(".claude/{d}"))).unwrap();
     }
     t.write(&acct("lab", "sessions/1.json"), "{}");
-    crate::accounts::manage::wire::shared_on_demand_here(&HomeDoor(t.0.clone()));
+    crate::accounts::manage::wire::align_here(&HomeDoor(t.0.clone()));
     assert_eq!(t.read(".claude/sessions/1.json"), "{}");
     for n in ["lab", "x"] {
         for d in ["projects", "sessions"] {
@@ -1040,11 +1040,6 @@ fn verify_fails_on_each_broken_invariant() {
             "755",
         ),
         (
-            "missing",
-            |t| std::fs::remove_file(t.p(".cc-monitor/accounts/x/CLAUDE.md")).unwrap(),
-            "1",
-        ),
-        (
             "entity",
             |t| {
                 std::fs::remove_file(t.p(".cc-monitor/accounts/x/CLAUDE.md")).unwrap();
@@ -1071,6 +1066,15 @@ fn verify_fails_on_each_broken_invariant() {
         let fails = checks(&v, "fail");
         assert!(fails.iter().any(|f| f.contains(needle)), "{tag}：{fails:?}");
     }
+    // 缺一条共享链接补得上 ⇒ 核对那一下先补上（账号库对齐），不报。
+    let t = two_accounts("v-missing");
+    std::fs::remove_file(t.p(".cc-monitor/accounts/x/CLAUDE.md")).unwrap();
+    let v = verify(&t);
+    assert_eq!(v["pass"], true, "{v}");
+    assert_eq!(
+        t.link_of(".cc-monitor/accounts/x/CLAUDE.md"),
+        t.s(".claude/CLAUDE.md")
+    );
 }
 
 /// 空家目录上建的库：共享库里只有建库时建出来的那几个共用目录，号都链上了 ⇒ 不报致命（会话记录照样共用）；
@@ -1293,15 +1297,12 @@ fn a_profiles_file_with_a_mistake_is_left_alone() {
 #[test]
 fn a_user_alias_with_the_same_name_is_not_overwritten() {
     let t = machine("alias-taken");
-    t.write(
-        ".cc-monitor/aliases.sh",
-        "labcc() { ccm \"$@\" -- --ccm-tmux; }\n",
-    );
+    t.write(".cc-monitor/profiles.toml", "[labcc]\nccm-tmux = true\n");
     let got = ok(&t, "accounts-init", json!({ "name": "lab" }));
     assert_eq!(
         own(&t, "labcc"),
         (None, sv(&["--ccm-tmux"])),
-        "用户那一条（迁进配置文件的）没被盖"
+        "用户那一条没被盖"
     );
     assert_eq!(got["aliases"][0]["skipped"], json!(["labcc"]));
     assert_eq!(got["aliases"][0]["added"], json!(["labcct"]));
@@ -1460,7 +1461,6 @@ fn repair_lifts_the_one_account_copy_of_an_on_demand_shared_dir_into_the_shared_
     }
     std::fs::remove_dir_all(t.p(".claude/plans")).unwrap();
     t.write(&acct("lab", "plans/a-plan.md"), "计划（夹具句）");
-    assert_eq!(verify(&t)["pass"], false, "号里那一份实体该报");
     let fixed = ok(&t, "accounts-repair", json!({}));
     assert_eq!(
         t.read(".claude/plans/a-plan.md"),
@@ -1489,7 +1489,7 @@ fn repair_lifts_the_one_account_copy_of_an_on_demand_shared_dir_into_the_shared_
     assert_eq!(t.read(".claude/plans/a-plan.md"), "计划（夹具句）");
 }
 
-/// ★ 升级那一步（常驻那一个起来时，`shared_on_demand_here`）：旧账号库里没有 agents · plans 那两条链接、lab 里留着一份自己的 plans ⇒
+/// ★ 升级那一步（常驻那一个起来时，`align_here`）：旧账号库里没有 agents · plans 那两条链接、lab 里留着一份自己的 plans ⇒
 /// 不等人点修复：plans 挪进共享库、agents 在共享库里建出来，两个号都链上；之后体检一条都不报这两项（不报缺链接、也不提示）。
 /// 接好之后再调不动盘（不另留备份）。两个号各有一份自己的 agents ⇒ 不合并、两个号都不动，体检不报致命，只一条提示点名这两个号。
 #[test]
@@ -1515,7 +1515,7 @@ fn the_upgrade_step_links_the_on_demand_shared_dirs_so_the_checkup_has_nothing_t
     };
     old_layout(&t);
     t.write(&acct("lab", "plans/a-plan.md"), "计划（夹具句）");
-    crate::accounts::manage::wire::shared_on_demand_here(&HomeDoor(t.0.clone()));
+    crate::accounts::manage::wire::align_here(&HomeDoor(t.0.clone()));
     assert_eq!(t.read(".claude/plans/a-plan.md"), "计划（夹具句）");
     for n in ["lab", "x"] {
         for d in ["agents", "plans"] {
@@ -1532,7 +1532,7 @@ fn the_upgrade_step_links_the_on_demand_shared_dirs_so_the_checkup_has_nothing_t
         );
     }
     let settled = tree(&t.0);
-    crate::accounts::manage::wire::shared_on_demand_here(&HomeDoor(t.0.clone()));
+    crate::accounts::manage::wire::align_here(&HomeDoor(t.0.clone()));
     assert_eq!(tree(&t.0), settled, "接好之后再调又动了盘");
 
     // 两个号各有一份自己的 agents：不合并。
@@ -1540,7 +1540,7 @@ fn the_upgrade_step_links_the_on_demand_shared_dirs_so_the_checkup_has_nothing_t
     old_layout(&u);
     u.write(&acct("lab", "agents/a.md"), "甲（夹具句）");
     u.write(&acct("x", "agents/b.md"), "乙（夹具句）");
-    crate::accounts::manage::wire::shared_on_demand_here(&HomeDoor(u.0.clone()));
+    crate::accounts::manage::wire::align_here(&HomeDoor(u.0.clone()));
     for n in ["lab", "x"] {
         assert!(!u.is_link(&acct(n, "agents")), "{n} 那份被动了");
         assert!(u.is_link(&acct(n, "plans")), "{n}/plans 没链上");

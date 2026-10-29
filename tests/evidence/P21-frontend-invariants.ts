@@ -4,11 +4,12 @@
  * `scanning-guard-registry.vitest.ts` 的 `WALKER_CEILING` 不许测试文件再多一个遍历者，
  * 而本文件不是 `*.vitest.ts`/`*.test.ts` ⇒ 不进那条棘轮的人群）。
  *
- * # 它量四件事实
+ * # 它量三件事实
+ *
+ * §12（alert 不算错误反馈）由 eslint 守（`eslint.config.js` 的 `singleDoors` 里 alert 那一项），不在这里量。
  *
  * | 量具 | 服务哪条 | 取什么 |
  * |---|---|---|
- * | [`alertCallSites`] | §12（alert 不算错误反馈） | 生产 TS 里 `alert(` 的调用处 |
  * | [`fixedPortals`] | §13（portal 必须真挂 body） | CSS 里声明 `position: fixed` 的类 × 它的建元素/挂载处 |
  * | [`storageKeys`] | §14（key 必须前缀 `cc-monitor.`） | 生产 TS 里喂给存储访问器的 key 字面量 |
  * | [`cssDecl`] | §21.2（`.stream` 不许 `overflow-anchor: none`） | 某选择器声明了哪些属性 |
@@ -16,8 +17,8 @@
  * # 🔴 三条刻意的取舍（都由调用侧的**等号/零命中**断言兜底，不是无声假设）
  *
  * 1. **一律先剥注释**（`stripComments`）。本仓为「拿注释当代码判据」栽过四次
- *    （住址：`tests/test-support/strip-comments.ts` 头注那四条）。本文件量的四件事实
- *    里有三件是**否定式**（零命中），而否定式断言吃到注释是**假绿**，永远不叫。
+ *    （住址：`tests/test-support/strip-comments.ts` 头注那四条）。本文件量的三件事实
+ *    里有两件是**否定式**（零命中），而否定式断言吃到注释是**假绿**，永远不叫。
  * 2. **[`fixedPortals`] 只认「同一份文件里 `X.className = "cls"` ＋ 同一份文件里挂载 `X`」这一形。**
  *    今天 25 个 fixed 类全是这一形（现打）。有人把建元素与挂载拆到两份文件，
  *    本量具会把它报成「挂载处不明」—— 方向是**假红、会叫**，不是漏红。
@@ -45,32 +46,6 @@ export interface Site {
 /** 生产 TS：`{ file, 剥注释后的代码 }`。**本量具的唯一人群来源。** */
 export function productionCode(): ReadonlyArray<{ file: string; code: string }> {
   return productionTsFiles("src").map((s) => ({ file: s.file, code: stripComments(s.text, "ts") }));
-}
-
-function sitesOf(code: string, file: string, re: RegExp): Site[] {
-  const out: Site[] = [];
-  code.split("\n").forEach((line, i) => {
-    // 每行独立跑：`re` 带 `g` 时 `lastIndex` 会跨行残留。
-    if (new RegExp(re.source, re.flags.replace("g", "")).test(line)) {
-      out.push({ file, line: i + 1, text: line.trim() });
-    }
-  });
-  return out;
-}
-
-// ────────────────────────────── §12 ──────────────────────────────
-
-/**
- * `alert(` 的调用处（整词；认 `window.alert(`，不认 `xx.alert(` / `showAlert(`）。
- *
- * ⚠ 射程**只有 `alert`** —— §12 的标题逐字就是「前端 alert 不算错误反馈」。
- * `confirm` / `prompt` 今天生产里有 25 处，它们问的是「要不要干这件事」而不是
- * 「出错了」⇒ **不在 §12 的射程里**，别顺手一起禁掉（那会把一条真断言变成误红源）。
- */
-export const ALERT_CALL = /(?<![\w.$])(?:window\s*\.\s*)?alert\s*\(/;
-
-export function alertCallSites(sources = productionCode()): Site[] {
-  return sources.flatMap((s) => sitesOf(s.code, s.file, ALERT_CALL));
 }
 
 // ────────────────────────────── CSS 侧 ──────────────────────────────

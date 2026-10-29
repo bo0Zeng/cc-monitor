@@ -4,7 +4,7 @@ use super::*;
 use crate::platform::terminal::*;
 
 /// 开终端这一族今天住两份：`launch.rs`（跑什么 · 两条 Tauri 命令）＋ `platform/terminal.rs`（开窗的两个平台臂）。
-/// 按源码判的那几条读两份的合订本（射程与搬家前那一份 `launch.rs` 相同）。
+/// 按源码判的那几条读两份的合订本（`launch.rs` 与 `platform/terminal.rs`）。
 const LAUNCH_SRC: &str = concat!(
     include_str!("../../../src/frontend/shell/src/launch.rs"),
     "\n",
@@ -41,7 +41,7 @@ fn every_terminal_window_backend_opens_carries_the_backend_path() {
         prod.len()
     );
     // 生产里 3 个，全是开窗点（POSIX 一个 · Windows `wt.exe` 与 conhost 兜底各一个），每个都带 env。
-    // 先前多一个不带 env 的 `where.exe` 探测；找 ssh 客户端挪进本机后端（只查文件）之后它没了 ⇒ 4 → 3，差额归零。
+    // 没有不带 env 的 `where.exe` 探测（找 ssh 客户端在本机后端，只查文件）⇒ 差额为零。
     assert_eq!(
         spawns, 3,
         "`launch.rs` 生产代码里的 `Command::new(` 从 3 变成了 {spawns}。\n\
@@ -521,19 +521,16 @@ fn the_keep_open_script_runs_the_command_verbatim_then_hands_over_a_shell() {
     );
 }
 
-/// ★★★ **第八层，第九拍自查当轮逮到并堵掉**〔`K-H2b` `D6` 回修，08-29〕。
+/// ★★★ **缝的下游第一跳也要判**。
 ///
-/// # 它是怎么长出来的
+/// # 它守什么
 ///
-/// `D6 阻-1` 那一轮把「中转前缀真的拼上去了」从**文本**换成了**行为**：
-/// `history::LaunchSink` 那条缝让判据看得见 `launch_local` **真正交出去的那一串**。
-/// 收工前按铁律 15 问「第八层会怎么绕过这一轮」时，最像的一条是
-/// **在缝的下游动手** —— 本函数正是那条缝的**下游第一跳**。
+/// `history::LaunchSink` 那条缝让判据看得见 `launch_local` **真正交出去的那一串**（行为，不是文本）；
+/// 绕过它最像的一条是**在缝的下游动手** —— 本函数正是那条缝的**下游第一跳**。
 ///
-/// **实打（刀 `Z1`）**：在 [`build_local_posix_argv`] 里把
+/// **实打**：在 [`build_local_posix_argv`] 里把
 /// `export ANTHROPIC_BASE_URL=…; ` 这一段从命令串里剥掉（**只剥这一段，别的一字不动**）
-/// ⇒ **`1228 passed; 0 failed` 全绿。**
-/// 上游那条缝的判据照绿（它量的是**交给**本函数的那一串），
+/// ⇒ 没有本条时**全绿**：上游那条缝的判据照绿（它量的是**交给**本函数的那一串），
 /// 而真正跑起来的 `bash -lic` 里**没有中转注入** —— 与没做完全一样。
 ///
 /// # 为什么隔壁那条判据挡不住
@@ -541,7 +538,7 @@ fn the_keep_open_script_runs_the_command_verbatim_then_hands_over_a_shell() {
 /// `local_posix_sends_the_payload_itself_without_an_ssh_wrap` 断的正是「逐字节透传」，
 /// 而它**只喂一个 payload，且那个 payload 里没有中转前缀**
 /// ⇒ 一把**只针对前缀**的剪刀从它下面走过去。
-/// ★ 这与 `D6 阻-2` 是**同一族病**：**输入域 = 1**（「形状对、恒答其中一张脸」）。
+/// ★ 病名：**输入域 = 1**（「形状对、恒答其中一张脸」）。
 ///
 /// ⇒ 本条把输入域打开：**三个 payload，两个带中转前缀、两个不同的账号**。
 ///
@@ -593,8 +590,8 @@ fn the_local_argv_hands_the_command_through_byte_for_byte_prefix_and_all() {
                  实得 argv：{argv:?}"
         );
         // ★★ **整跳钉住**：命令串 → 真正要 spawn 的 `(program, args)`。
-        //    先前 `launch_local_posix_via` 里 `build_local_posix_argv` 与拼 `Command`
-        //    之间隔着一跳**没有任何判据** ⇒ 在那里剥前缀实测全绿（第八层的下游版本）。
+        //    `launch_local_posix_via` 里 `build_local_posix_argv` 与拼 `Command`
+        //    之间那一跳没判据的话，在那里剥前缀实测全绿。
         let term = vec!["xdg-terminal-exec".to_string(), "--".to_string()];
         let (program, args) = local_posix_spawn_plan(payload, &term).expect("该通过校验");
         assert_eq!(program, "xdg-terminal-exec");
@@ -763,17 +760,17 @@ fn relay_probe_prefix(url: &str) -> String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// ★★ `K-R24`：**exec 一个自己刚写出来的文件，前提是「这一刻没人握着它的写 fd」**
-//    —— 而这条前提，先前**没人建立、也没人检查**。
+// ★★ **exec 一个自己刚写出来的文件，前提是「这一刻没人握着它的写 fd」**
+//    —— 这条前提要有人建立、有人检查。
 //
-// # 病历（PM 09-04 夜实打，同一棵树同一个提交两趟）
+// # 病历（同一棵树同一个提交跑两趟）
 //
-// 第一趟开窗那条判据红，报文逐字
+// 一趟开窗那条判据红，报文
 // `spawn 假终端应成功: "spawn 本地命令失败: Text file busy (os error 26)"`；
-// 第二趟全绿。⇒ 一个读数装着**两件事**：
+// 另一趟全绿。⇒ 一个读数装着**两件事**：
 //   ① 开窗那一支的 spawn 真的坏了（真缺陷）；
 //   ② 这一趟 exec 撞上了 `ETXTBSY`（环境时序，与被测那一半无关）。
-// ★ **这正是 `K-R24` 的正题（一个值装了几件事），长在我自己这条判据上。**
+// ★ **一个值装了几件事 —— 这一病长在判据自己身上。**
 //
 // # 机制：为什么会有别人握着写 fd
 //
@@ -828,7 +825,7 @@ fn spawn_error_is_etxtbsy(err: &LaunchFail) -> bool {
 /// 写一个「只记录、不执行」的假终端脚本，并**把前提真的建立起来**。
 ///
 /// 两半都在这里：
-/// - **写句柄**：具名句柄 + `sync_all` + 显式 drop。先前这里是 `std::fs::write`，
+/// - **写句柄**：具名句柄 + `sync_all` + 显式 drop，不用 `std::fs::write`：
 ///   它也会关，但那是**实现细节** —— 读的人看不出「关掉写 fd」是这条判据的前提之一。
 ///   这里要买的正是「**让前提看得见**」。
 /// - **执行位**：加完当场读回来核一遍（它是确定性的，所以直接断言，不重试）。
@@ -873,7 +870,7 @@ fn spawn_fake_terminal(
                 //    静默的重试会让「这条前提今天被破了几次」变成一个**没人量得到的数**，
                 //    而那正是这里在治的病换个地方长。
                 eprintln!(
-                    "[K-R24] 前提被破了一次：exec 假终端撞上 ETXTBSY（第 {} 次），\
+                    "[ETXTBSY] 前提被破了一次：exec 假终端撞上 ETXTBSY（第 {} 次），\
                          上限 {tries} 次内重试；逐字：{e:?}",
                     i + 1
                 );
@@ -968,8 +965,8 @@ fn the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix() {
         "起手观测文件就在了 —— 本条会读到上一趟的痕"
     );
 
-    // ★★ `K-R24`：这一处先前是 `.expect("spawn 假终端应成功")` —— 一个读数装着
-    //    「spawn 坏了」与「exec 那一刻撞上 `ETXTBSY`」两件事。现在两件各有各的话。
+    // ★★ 这一处不用 `.expect("spawn 假终端应成功")` —— 那是一个读数装着
+    //    「spawn 坏了」与「exec 那一刻撞上 `ETXTBSY`」两件事。这里两件各有各的话。
     match spawn_fake_terminal(
         &payload,
         dir.to_str(),
@@ -1028,7 +1025,7 @@ fn the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix() {
     );
 }
 
-/// ★★★ `K-R24`：**「前提没建立」与「spawn 坏了」真的是两个读数** —— 就地断言出来。
+/// ★★★ **「前提没建立」与「spawn 坏了」真的是两个读数** —— 就地断言出来。
 ///
 /// # 它买的是哪一格
 ///
@@ -1105,7 +1102,7 @@ fn an_open_write_handle_reads_as_an_unmet_premise_not_as_a_broken_spawn() {
         FakeTermSpawn::PremiseUnmet(_) => {}
         other => panic!(
             "\n★★ 有人攥着写 fd 时 execve 必是 `ETXTBSY`，而这条判据把它读成了 {other:?}\n\
-                 ⇒ 「前提没建立」又和别的坏法共用一个读数了 —— 那正是 `K-R24` 的正题。"
+                 ⇒ 「前提没建立」又和别的坏法共用一个读数了 —— 一个值装了两件事。"
         ),
     }
     assert!(

@@ -269,6 +269,41 @@ fn one(w: &Wanted, t: &Tables) -> Found {
     }
 }
 
+/// 本机开过的那个终端（`dial/opened_windows.rs` 记下的标签 `<shell 进程号>-<起始时刻>`）此刻还开着 ssh 吗。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum OpenedHere {
+    /// 那个 shell 还是它，它自己就是 ssh（shell 把 ssh exec 了：进程号与起始时刻不变）或底下开着 ssh ⇒ 从那个 ssh 往上的进程链。
+    Chain(Vec<Link>),
+    /// 那个 shell 还在，底下没有 ssh（ssh 退了、窗口还开着）。
+    NoSsh,
+    /// 那个进程号不在、或起始时刻对不上（shell 退了、进程号被复用了）· 标签认不出。
+    Gone,
+}
+
+/// 标签那个 shell 在这台进程表里的样子（[`OpenedHere`]）。底下几个 ssh ⇒ 最早起的那个（前奏之后起的那一个）。
+pub(crate) fn opened_chain(label: &str, procs: &HashMap<u32, Proc>) -> OpenedHere {
+    let Some((pid, start)) = crate::dial::opened_windows::label_parts(label) else {
+        return OpenedHere::Gone;
+    };
+    let Some(shell) = procs.get(&pid).filter(|p| p.start != 0 && p.start == start) else {
+        return OpenedHere::Gone;
+    };
+    let ssh = |p: &Proc| named(&p.name, crate::platform::SSH_CLIENT_NAMES);
+    let at = if ssh(shell) {
+        Some(pid)
+    } else {
+        procs
+            .iter()
+            .filter(|(c, p)| **c != pid && p.ppid == pid && ssh(p) && p.start >= start)
+            .min_by_key(|(c, p)| (p.start, **c))
+            .map(|(c, _)| *c)
+    };
+    match at.and_then(|at| chain(at, procs)) {
+        Some(c) => OpenedHere::Chain(c),
+        None => OpenedHere::NoSsh,
+    }
+}
+
 /// 进程名是不是这几个之一（不分大小写：Windows 的名字大小写不定）。
 fn named(name: &str, names: &[&str]) -> bool {
     names.iter().any(|n| name.eq_ignore_ascii_case(n))

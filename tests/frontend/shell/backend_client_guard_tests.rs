@@ -7,7 +7,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// 从前 `backend/` 目录那一组（今天都住壳根，通信层成员 `backend_route` 住 `src/comms/inward/`），相对仓根。
+/// 调后端的客户端那一组（都住壳根，通信层成员 `backend_route` 住 `src/comms/inward/`），相对仓根。
 /// 删了的两份（`tmux.rs` · `gate2_parity.rs`，子步 1）不在。**加一份调后端的客户端 / 宿主进来就在这里加一行。**
 const GUARDED: &[&str] = &[
     "src/frontend/shell/src/backend_control.rs",

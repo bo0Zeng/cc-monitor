@@ -68,7 +68,6 @@ describe("buildProfilesList", () => {
       seed: [],
       seedHint: "",
       seedCreate: "",
-      migrated: null,
       binDir: "/h/.cc-monitor/bin",
       accounts: ["team", "work"],
       tmux: true,

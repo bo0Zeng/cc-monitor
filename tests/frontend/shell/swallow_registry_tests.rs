@@ -87,6 +87,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/wire/detail.rs", "let _ = writeln!(err, \"{line}\");", Why::Diag, "CLI 面的失败信封写 stderr（各 CLI 出口都经 `Failed::emit_to` 这一处）：写不进去就没有第二个地方可以说（退出码 2 照样回）"),
     ("src/backend/stream/cli.rs", "let _ = writeln!(out, \"{}\", crate::common::time::fill_at(&line, tz));", Why::Diag, "CLI 面的应答写 stdout（JSON 那一形与 `--text` 那一形同一行）：写不进去 ⇒ 调用方已经走了（管道断），没有第二个地方可以说"),
     ("src/backend/control/launch_account.rs", "let _ = own.delete_file(&f);", Why::CleanupAfterFailure, "清陈旧便条（进程不在 / pid 被复用）：删不掉下次认便条时再清，它对不上进程不会被认"),
+    ("src/backend/dial/opened_windows.rs", "let _ = self.0.delete_file(&f);", Why::CleanupAfterFailure, "清陈旧的窗口标签记录（那个 shell 不在 / 进程号被复用）：删不掉下一次 ↗ 再清，它对不上进程不会被认"),
     ("src/backend/control/files_commit.rs", "let _ = face.delete_file(&at);", Why::CleanupAfterFailure, "写块失败 / 收拾旧块：主错误已在回；删不掉等孤儿扫（7 天）"),
     ("src/backend/control/files_write.rs", "face.delete_file(staged).ok();", Why::CleanupAfterFailure, "内容已落进目标之后删暂存件；删不掉由孤儿扫（`sweep_stale`）按期限收（该处注释原话）"),
     ("src/backend/control/files_write.rs", "face.sync_dir(&dst).ok();", Why::CleanupAfterFailure, "上位之后把目录项落盘：内容已落盘、上位已成，这一步不成只是断电时可能回到旧名；不为它把已成的一趟报成失败"),
@@ -248,7 +249,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/filewin/src/extract.rs", "tx.send(fresh).ok();", Why::PeerGone, "解压撞名那一问的答复；等答的那一趟已收场就没人要"),
     // `history.rs` 那一处（读整份会话末块交前端、前端已走）随那条命令退役。
     ("src/frontend/shell/src/platform/terminal.rs", "let _ = child.wait();", Why::Reap, ""), // 原 `launch.rs`
-    // 下面九行原住 `lib.rs`（主窗口拉前 · 单实例回调）：随两个平台臂搬进 `platform/window.rs`，处数不变。
+    // 下面九行是主窗口拉前 · 单实例回调那两个平台臂（`platform/window.rs`）。
     ("src/frontend/shell/src/platform/window.rs", "let _ = AttachThreadInput(fg_thread, cur_thread, false);", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = BringWindowToTop(h);", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);", Why::WindowBestEffort, ""),

@@ -384,21 +384,29 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
         "兜底：此刻的号发得出去就照用"
     );
 
-    // 不轮换的会话：没有策略、不判不推演，只说开会话的号 · 在用的号。
+    // 不轮换的会话：没有策略、不判不推演；号照样一号一行（手动换号照常），第一格在用，一行都不可拖、不写「下一个」。
     home.load(&ctx, S1, None);
     let v = session_view(&ctx, &home, S1);
     assert!(v.strategy.is_none() && v.decision.is_none() && v.timeline.is_none());
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
-    let only: Vec<_> = v
-        .accounts
-        .iter()
-        .map(|a| (a.fact.account.as_str(), a.plate.text.0.as_str()))
-        .collect();
+    let mut all: Vec<_> = v.accounts.iter().map(|a| a.fact.account.as_str()).collect();
+    all.sort_unstable();
     assert_eq!(
-        (only, v.listed),
-        (vec![("a", "a")], 0),
-        "只带开会话那个号的号牌，不算在号列表里"
+        (all, v.listed),
+        (vec!["a", "api", "b", "c"], 0),
+        "不轮换也带这台全部号的号牌，不算在号列表里"
     );
+    let line: Vec<_> = v.lineup.iter().map(|l| l.account.as_str()).collect();
+    assert_eq!(line.first(), Some(&"a"), "第一格是在用的号：{line:?}");
+    assert_eq!(line.len(), 4, "每个号一行：{line:?}");
+    assert!(v.lineup.iter().all(|l| !l.movable), "不轮换没有先后可拖");
+    let next = copy_text("beRotation.line.next", &[]);
+    assert!(
+        v.lineup.iter().all(|l| !l.state.starts_with(&next)),
+        "不轮换不写「下一个」：{:?}",
+        v.lineup
+    );
+    assert_eq!(v.lineup[0].group, RotGroup::Use);
 
     // 记录树里有它 ⇒ 顶栏写那条会话的名字（第一句），不轮换的那一形也带。写这台的记录树 ⇒ 先拿那把锁。
     let _tree = crate::history::history_list::tests::MACHINE_TREE.blocking_lock();
@@ -700,7 +708,7 @@ fn the_next_line_says_when_from_the_same_simulation() {
             &|_| true,
             &|_| None,
             &[("b".to_string(), "b 余量多".to_string())],
-            next_at,
+            Ahead::Strategy { next_at },
         )
     };
     let at = face(now() + 600);
@@ -728,7 +736,7 @@ fn the_next_line_says_when_from_the_same_simulation() {
         &|_| true,
         &|_| None,
         &[],
-        None,
+        Ahead::Strategy { next_at: None },
     );
     assert_eq!(
         (off_now[0].group, off_now[0].state.as_str()),

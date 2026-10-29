@@ -356,82 +356,37 @@ pub(crate) fn launch_local_posix_via(
 /// CREATE_NEW_CONSOLE 独立控制台。`local_cwd`＝Some 且为本地存在目录时作为窗口
 /// 起始目录（远端拉起传 None——cwd 是远端路径）。
 ///
-/// # 🔴 **登记：这个函数体分两半 —— 文本那一半买得到而且已经买了，行为那一半买不到**
+/// # 🔴 **这个函数体分两半：量文本的判据看得见它，量行为的判据在本机看不见它**
 ///
-/// 〔`K-H2b` `D8 阻-6` 08-29 立 · `D9 阻-2`/`阻-4` 打回 · `C` 第十轮 09-02 重写〕
-///
-/// ## 🔴🔴 先记这段登记自己犯过的病（别删，它就是这一格的病理）
-///
-/// 上一版这 24 行里**同时躺着一条全称和它的反例**：
-/// 一句写「本机门禁**在构造上**看不见这个函数体」＋「**唯一的买法**是 CI 上一条 Windows job，
-/// 落点不在这里」，另一句写「量文本的判据照样看得见它」。
-/// **而被拿去定路由（判成「买不到 / 落点在这里之外」）的是假的那一条。**
-/// ⇒ 要订正的不是措辞，是**这段登记自相矛盾**。〔`D9` 逮到；PM `§17 裁二` 接〕
-///
-/// ## ① 量**文本**的那一类：**看得见，而且今天真的有牙**
+/// ## ① 量**文本**的那一类：看得见
 ///
 /// `#[cfg(windows)]` 是**类型检查**那一层剔的；而 `guard_core::production_code`
-/// 只剥 `#[cfg(test)] mod X { }` 段与注释（整行的与行尾的都剥 —— 行尾那一半是 `K-R3`
-/// 09-01 才补上的），**它不剥任何 `cfg`** ⇒ 本函数体在**文本**这一层原样在场。
-///
-/// 现打（喂的是本工作树的
-/// `src/frontend/shell/src/launch.rs`，09-02；量具先拿本文件那条真判据钉的三个等号自检过
-/// 复刻对不对得上 —— 对不上它就拒绝出读数）：
-///
-/// | 构造 | 剥完全文件几处 | 其中在本函数体内 |
-/// |---|---|---|
-/// | `Command::new(` | 4 | **2** |
-/// | `.env(k, v)` | 3 | **2** |
-/// | `backend_bin_env_for_window(` | 2 | **1** |
-///
-/// ⇒ 本文件那条**普通 `#[test]`**
+/// 只剥 `#[cfg(test)] mod X { }` 段与注释（整行的与行尾的都剥），**它不剥任何 `cfg`**
+/// ⇒ 本函数体在**文本**这一层原样在场。
 /// `launch_tests.rs::every_terminal_window_backend_opens_carries_the_backend_path`
-/// （就在 `cargo` 门里跑）用**三条等号断言**钉着这 5 个构造。
+/// （普通 `#[test]`，在 `cargo` 门里跑）用**三条等号断言**钉着本函数体里的构造
+/// （`Command::new(` · `.env(k, v)` · `backend_bin_env_for_window(`）：把 Plan B 那句
+/// `builder.env(k, v)` 换成 `let _ = backend_env;`（开窗点漏了带 env）⇒ 它红。
 ///
-/// **实打（`C` 第十轮 刀 `R10M1`，沙箱快道 `cargo test -p monitor --lib`，09-02）**：
-/// 把本函数体里 Plan B 那个 `if let Some((k, v)) = backend_env { builder.env(k, v); }`
-/// 换成 `let _ = backend_env;`（＝真实缺陷形状「开窗点漏了带 env」；锚点是那三行，**全文命中 1**）
-/// ⇒ **`1243 passed; 2 failed`**（同树干净分母 **`1245 passed; 0 failed`**），红名单**恰好两条**：
-/// `launch_tests.rs::every_terminal_window_backend_opens_carries_the_backend_path` 与当时那张「谁给 agent 进程定 env」的
-/// 两半人群闭表（那张表数的串级几处随起会话只交一行 `ccm …` 一起没了，表也删了；开窗这一跳的 `.env(k, v)` 由上面那条照旧钉着）。
-///
-/// ⚠ **分母话**：那是**一刀打出来的红名单**，不是「全部判据」的枚举 ——
-/// 我没有逐条去数还有几条判据碰得到这个函数体。⇒ 只能写「**我这一刀量到的是这两条**」。
-///
-/// ## ② 量**行为**的那一类：在本机上**造不出来**，这一半才是真的买不到
+/// ## ② 量**行为**的那一类：在本机上**造不出来**
 ///
 /// 要驱动本函数体，先得有这个 item；而 Linux 上它在类型检查之前就没了
 /// ⇒ 任何「真的调用它、看它干了什么」的判据在本机**不存在**。
-/// **它的 `cfg` 就写在下面那一行** —— 这正是 PM 08-29 那条落法要的凭据：
-/// **标「平台判不了」要给得出 `cfg`；给不出 `cfg` = 它在本平台编译 = 不是判不了。**
-///
-/// **实打（刀 `R10M2`，`D8P35` 同形，第九轮 `R9M9` 的复打，09-02）**：在
-/// `let encoded = powershell_encoded_command(ps_command);`
-/// 之前把当时交进来那一行前面的中转前缀剥掉（锚点是那一行，**全文命中 1**）
-/// ⇒ 🔴 **`1245 passed; 0 failed`**，与同树干净分母逐字相同 —— **零感知**。
-/// 今天交进这个窗口的只是一行 `ccm …`（中转地址由 `ccm` 在最终 exec 那一处定），那段前缀不在了；
-/// 「量行为的判据在本机造不出来」这一半照旧。
-///
-/// ⇒ 买**这一半**要 CI 上一条 Windows job（或交叉编译 ＋ `cargo test --target`），
-/// 落点 `.github/workflows/ci.yml`，**不在这里** ⇒ 另立跟进。
-/// ⚠ `tests/scripts/gate.sh` 头注自陈「本地门禁比 CI 严」，而**这一格恰是反过来的那一格**，
+/// **它的 `cfg` 就写在下面那一行**：标「平台判不了」要给得出 `cfg`；给不出 `cfg` = 它在本平台编译 = 不是判不了。
+/// 买**这一半**要 CI 上一条 Windows job（或交叉编译 ＋ `cargo test --target`），落点 `.github/workflows/ci.yml`。
+/// ⚠ `tests/scripts/gate.sh` 头注说「本地门禁比 CI 严」，而**这一格恰是反过来的那一格**，
 /// 别把那句话读成全称。
 ///
-/// ## 🔴 `阻-4`：这里不许再写全称，要写清是哪一类
+/// ## 口径
 ///
-/// 上一版那句「**本机门禁在构造上看不见这个函数体**」是**全称**（分母＝门禁七格里的
-/// 全部判据），而它在 ① 那一格上当场为假。今天的写法是**两半各自带读数、判据指名点姓**。
-/// ⇒ 这一族今天的口径逐字是：
 /// **「带 `#[cfg(windows)]`」蕴含「量行为的判据看不见它」，不蕴含「所有判据都看不见它」。**
+/// 别把一个准确的局部读数放大成全称。
 ///
-/// ⚠ 同族第三次（`D8` 表里的 `F3` · `D9` 抓的这一处 · PM `§17 裁一` 自陈的那句）——
-/// 三次都是同一个动作：**把一个准确的局部读数放大成全称**。
-///
-/// ## ⚠ 别把这一条读宽（两处邻居，都不属于本族）
+/// ## ⚠ 别把这一条读宽
 ///
 /// - 同一条腿上的 [`powershell_encoded_command`]（本文件末尾）是 `cfg(any(windows, test))`：
-///   Linux 上 test 档真编译、单测在那儿跑 ⇒ 不属于本族（`D8 阻-2`）；第九轮已给它配了
-///   `utils_tests.rs::the_relay_prefix_survives_the_powershell_encoding_byte_for_byte`。
+///   Linux 上 test 档真编译、单测在那儿跑 ⇒ 不属于本族；它由
+///   `utils_tests.rs::the_relay_prefix_survives_the_powershell_encoding_byte_for_byte` 钉着。
 #[cfg(windows)]
 pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Result<(), Said> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
@@ -501,8 +456,8 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     if let Some(d) = start_dir {
         builder.current_dir(d);
     }
-    // ★★ 第一格与 Plan A 不同，也是照着盘面写的：先前那句 `creation_flags(CREATE_NEW_CONSOLE)`
-    // 逐字就是 `ConsolePolicy::NewVisible`。**全仓唯一一处 `NewVisible`，而且是刻意的** ——
+    // ★★ 第一格与 Plan A 不同，也是照着盘面写的：`creation_flags(CREATE_NEW_CONSOLE)`
+    // 就是 `ConsolePolicy::NewVisible`。**全仓唯一一处 `NewVisible`，而且是刻意的** ——
     // 别把 `launch.rs` 的 `CREATE_NEW_CONSOLE` 一起改掉：这正说明为什么要
     // 唯一出口 + 显式声明，而不是全局加一个 flag。后两格与 Plan A 相同。
     spawn_managed_cmd(

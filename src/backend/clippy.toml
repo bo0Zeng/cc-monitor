@@ -6,7 +6,10 @@
 # 后端不拉窗（拉窗只在 monitor 壳 `platform/`）：`windows-sys` · `windows` 两条路的拉窗那一族编不过，只在 Windows 那一支上认
 #   （`allow-invalid`：别的平台上没有那个 crate、路径解不出，不报；门禁 `winchk-backend` 那一格按 Windows target 跑 clippy）。
 #   手写 `extern "system"` 声明的认不出。
-# 测试段放开（两个库根头上那一行 `cfg_attr(test, …)`）。本文件管后端与拨号核心两个包（各自的 `[lints.clippy]` 定成 deny）。
+# 出站 TCP 只在出网口开（`egress/lib.rs` 那一处放行）：中转去上游 · 拨 SSH · 探活都经 `egress::open`，别处自己开一条就绕过了代理。
+#   经第三方 crate 间接开的连接认不出。中转包（`src/comms/outward`）另有一份同组的 `clippy.toml`。
+# 起子进程只在起子进程原语开（`platform/child.rs` 那一处放行）：期限必填 · 杀整组 · 自有环境无条件摘都在那里做。
+# 测试段放开（各库根头上那一行 `cfg_attr(test, …)`）。本文件管后端 · 拨号核心 · 出网口 · 部署四个包（各自的 `[lints.clippy]` 定成 deny）。
 disallowed-methods = [
   { path = "std::time::SystemTime::now", reason = "后端的「现在」只走 `crate::common::time::now`" },
   { path = "jiff::Timestamp::now", reason = "后端的「现在」只走 `crate::common::time::now`" },
@@ -51,4 +54,11 @@ disallowed-methods = [
   { path = "windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow", reason = "后端不拉窗（拉窗只在 monitor 壳 `platform/`）：真要在后端拉 ⇒ 在那一处放行并写理由", allow-invalid = true },
   { path = "windows::Win32::System::Threading::AttachThreadInput", reason = "后端不拉窗（拉窗只在 monitor 壳 `platform/`）：真要在后端拉 ⇒ 在那一处放行并写理由", allow-invalid = true },
   { path = "windows::Win32::UI::Input::KeyboardAndMouse::keybd_event", reason = "后端不拉窗（拉窗只在 monitor 壳 `platform/`）：真要在后端拉 ⇒ 在那一处放行并写理由", allow-invalid = true },
+  { path = "std::net::TcpStream::connect", reason = "出站 TCP 只在出网口开：改走 `egress::open`（照这台或那个会话的出网描述）" },
+  { path = "std::net::TcpStream::connect_timeout", reason = "出站 TCP 只在出网口开：改走 `egress::open`（照这台或那个会话的出网描述）" },
+  { path = "tokio::net::TcpStream::connect", reason = "出站 TCP 只在出网口开：改走 `egress::open`（照这台或那个会话的出网描述）", allow-invalid = true },
+  { path = "tokio::net::TcpSocket::new_v4", reason = "出站 TCP 只在出网口开：改走 `egress::open`（照这台或那个会话的出网描述）", allow-invalid = true },
+  { path = "tokio::net::TcpSocket::new_v6", reason = "出站 TCP 只在出网口开：改走 `egress::open`（照这台或那个会话的出网描述）", allow-invalid = true },
+  { path = "std::process::Command::new", reason = "起子进程只经 `platform::Child`（期限必填 · 杀整组 · 自有环境无条件摘）：`Child::new(…).run(期限)` / `detach` / `exec_replace`" },
+  { path = "tokio::process::Command::new", reason = "起子进程只经 `platform::Child`（期限必填 · 杀整组 · 自有环境无条件摘）：`Child::new(…).run(期限)` / `detach` / `exec_replace`", allow-invalid = true },
 ]

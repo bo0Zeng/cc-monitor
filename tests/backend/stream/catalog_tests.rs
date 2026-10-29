@@ -47,7 +47,7 @@ fn the_catalog_is_the_dispatch_table() {
     let clis: Vec<&str> = rows.iter().filter_map(|e| e.cli.as_deref()).collect();
     let cli_set: BTreeSet<&str> = clis.iter().copied().collect();
     assert_eq!(clis.len(), cli_set.len(), "口里有重名的子命令");
-    let gate: BTreeSet<&str> = crate::SUBCOMMANDS.iter().copied().collect();
+    let gate: BTreeSet<&str> = crate::stream::cli::subcommands().iter().copied().collect();
     let (extra, missing): (Vec<_>, Vec<_>) = (
         cli_set.difference(&gate).collect(),
         gate.difference(&cli_set).collect(),
@@ -229,7 +229,7 @@ fn skill_files() -> Vec<(String, String)> {
 
 /// 一行里提到的子命令（整词）。
 fn flags_in(line: &str) -> Vec<&'static str> {
-    crate::SUBCOMMANDS
+    crate::stream::cli::subcommands()
         .iter()
         .copied()
         .filter(|f| {
@@ -274,7 +274,10 @@ fn the_skill_command_sections_are_what_the_catalog_generates() {
             }
             let t = line.trim_start().trim_start_matches(['-', '*', '|', ' ']);
             let t = t.trim_start_matches('`').trim_start_matches("ccm -- ");
-            if crate::SUBCOMMANDS.iter().any(|f| t.starts_with(f)) {
+            if crate::stream::cli::subcommands()
+                .iter()
+                .any(|f| t.starts_with(f))
+            {
                 red.push(format!(
                     "{rel}：命令段以外手抄了一行命令 —— 删掉，命令段里有：{line}"
                 ));

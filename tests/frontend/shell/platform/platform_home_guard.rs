@@ -1,6 +1,6 @@
 //! 要求：「`platform/` | **操作系统** | 唯一允许平台原语与平台 `cfg`」· 阶段 H「monitor 侧的 `platform/` 层」· 「壳生产段里平台 `cfg` / 平台原语只许在壳的 `platform/` 子模块（与 `src/common/host-core`）」。
 //!
-//! **壳的源码人群里，平台形态只许住在允许区（[`HOMES`]）。**（从前还有一张待收名单，16 行收到 0 删了。）
+//! **壳的源码人群里，平台形态只许住在允许区（[`HOMES`]）。**（没有待收名单。）
 //!
 //! - 人群：壳 `src/` 那棵模块树的生产段（`guard_core::scan_tree_excluding`：顺 `#[path]`，也收 manifest `[package.metadata.guard] population` 声明的兄弟包）。
 //! - 形态：[`platform_forms`] —— 谓词点了操作系统的 `cfg(…)` / `cfg!(…)` / `cfg_attr(谓词, …)`，以及 [`PRIMITIVES`] 里的平台原语。

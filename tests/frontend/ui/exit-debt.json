@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1764,
+  "ceiling": 1760,
   "groups": [
     {
       "kind": "首登",
@@ -75,7 +75,6 @@
         ["src/frontend/shell/src/platform/fs.rs", "key", 6],
         ["src/frontend/shell/src/platform/terminal.rs", "key", 2],
         ["src/frontend/shell/src/platform/window.rs", "key", 2],
-        ["src/frontend/shell/src/prefs_migration.rs", "key", 2],
         ["src/frontend/shell/src/remote_resident.rs", "key", 1],
         ["src/frontend/shell/src/transfer_relay.rs", "key", 8],
         ["src/frontend/shell/src/stream_source/snapshot.rs", "key", 2],
@@ -89,7 +88,7 @@
         ["src/frontend/ui/agent-profile.ts", "key", 1],
         ["src/frontend/ui/agents-panel.ts", "key", 1],
         ["src/frontend/ui/answer-block.ts", "branch", 1],
-        ["src/frontend/ui/answer-block.ts", "key", 5],
+        ["src/frontend/ui/answer-block.ts", "key", 4],
         ["src/frontend/ui/backend-deploy.ts", "key", 2],
         ["src/frontend/ui/behavior-toggle.ts", "branch", 2],
         ["src/frontend/ui/branch-fold.ts", "key", 1],
@@ -207,7 +206,7 @@
         ["src/frontend/ui/settings/pb-dir-row.ts", "key", 3],
         ["src/frontend/ui/settings/port-forward.ts", "key", 3],
         ["src/frontend/ui/settings/profiles-list.ts", "branch", 47],
-        ["src/frontend/ui/settings/profiles-list.ts", "key", 33],
+        ["src/frontend/ui/settings/profiles-list.ts", "key", 32],
         ["src/frontend/ui/settings/remote-section.ts", "key", 17],
         ["src/frontend/ui/settings/restart-notice.ts", "key", 1],
         ["src/frontend/ui/settings/restart-now.ts", "key", 1],

@@ -207,8 +207,8 @@ describe("批量起：逐项问那台（`session-open`），同一台挨个、�
     const out = await startMany([tab("x", "r1"), tab("y", "r1")], "direct");
     expect(calls.map(([, , b]) => b.run)).toEqual(["direct", "direct"]);
     expect(vi.mocked(openTerminal).mock.calls).toEqual([
-      ["r1", "ccm --resume x"],
-      ["r1", "ccm --resume y"],
+      ["r1", "ccm --resume x", "x"],
+      ["r1", "ccm --resume y", "y"],
     ]);
     expect(out).toEqual([
       { sid: "x", outcome: "done", why: "" },

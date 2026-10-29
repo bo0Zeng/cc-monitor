@@ -103,13 +103,33 @@ describe("整屏：提示 · 策略一行 · 顺序（与设置页拆开）", ()
     expect(calls.length).toBe(n);
   });
 
-  it("★ 不轮换 ⇒ 策略一行 ＋「只用开会话的号 work」，没有顺序", async () => {
-    shown.view = { ...VIEW, strategy: null, lineup: [], decision: null };
+  it("★ 不轮换 ⇒ 策略一行 ＋ 那一句 ＋ 号那几行（不可拖、没有勾）；点一行 ⇒［立即用］⇒ rotation-use-now，小窗里没有［编辑策略］", async () => {
+    shown.view = {
+      ...VIEW,
+      strategy: null,
+      decision: null,
+      listed: 0,
+      lineup: [
+        { account: "team", group: "use", state: "夹具·在用", movable: false },
+        { account: "work", group: "next", state: "夹具·备着", movable: false },
+      ],
+    };
     const m = mountSessionRotation("<local>", "s1");
+    document.body.replaceChildren(m.root);
     await m.refresh();
     expect(m.root.textContent).toContain(copyText("rot.none.desc"));
-    expect(m.root.textContent).toContain("work");
-    expect(m.root.querySelector("[data-rot-order]")).toBeNull();
+    expect(m.root.querySelector("[data-rot-order]")).not.toBeNull();
+    expect(m.root.querySelector("[data-rot-handle]"), "不轮换没有把手").toBeNull();
+    expect(m.root.querySelector('input[type="checkbox"]'), "不轮换没有「先不用」的勾").toBeNull();
+    expect(m.root.textContent).not.toContain(copyText("rot.h.orderHint"));
+    boxes(m.root);
+    rows(m.root)[1].dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 10, clientY: 60 }));
+    document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 10, clientY: 60 }));
+    const pop = document.querySelector<HTMLElement>("[data-rot-pop]")!;
+    expect([...pop.querySelectorAll("button")].map((b) => b.textContent)).toEqual([copyText("rot.order.useNow")]);
+    [...pop.querySelectorAll("button")][0].click();
+    await settle();
+    expect(calls.filter((c) => c.name === "rotation-use-now").map((c) => c.req)).toEqual([{ sid: "s1", account: "work" }]);
   });
 
   it("★ 下拉选「不轮换」⇒ rotation-use null；［编辑策略］⇒ 开设置窗那台的「轮换」栏看这一份；策略改过了 ⇒［载入新版］⇒ rotation-use 同一份", async () => {

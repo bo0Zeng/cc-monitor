@@ -70,6 +70,7 @@ async fn remote_answer(
         until(9_000),
         &t,
         &peers,
+        Shelf::empty(),
     )
     .await;
     (got, peers)
@@ -86,6 +87,7 @@ async fn local_answer(
         None,
         &Peers::table(&[]),
         &Peers::new(&[]),
+        Shelf::empty(),
     )
     .await
 }
@@ -160,6 +162,7 @@ async fn that_machine_not_reached_is_that_face_with_the_sentence_as_said() {
         until(9_000),
         &t,
         &peers,
+        Shelf::empty(),
     )
     .await
     .expect("没问到那台是那一张，不是码");
@@ -234,6 +237,7 @@ async fn a_local_session_starts_the_chain_at_the_terminal_showing_it_and_asks_no
         until(9_000),
         &t,
         &peers,
+        Shelf::empty(),
     )
     .await;
     let v = serde_json::to_value(got.expect("答得出")).unwrap();
@@ -287,5 +291,153 @@ async fn a_local_terminal_process_missing_from_the_table_is_query_failed() {
     assert_eq!(
         v,
         json!({"labels": [], "chain": [], "tmux": false, "face": face_of(Unplaced::QueryFailed, &here)})
+    );
+}
+
+// ───── 本机开过的那个终端：先照记下的标签在本机找，对不上才问那台 ─────
+
+use crate::dial::opened_windows::{Opened, Records};
+use std::sync::{Arc, Mutex};
+
+/// 替身记录：至多一份（`sid` 不论），记下删过哪几份。
+#[derive(Clone, Default)]
+struct Shelf {
+    held: Arc<Mutex<Option<Opened>>>,
+    forgot: Arc<Mutex<Vec<String>>>,
+}
+
+impl Shelf {
+    fn empty() -> Shelf {
+        Shelf::default()
+    }
+    fn holding(label: &str, machine: &str) -> Shelf {
+        let s = Shelf::default();
+        *s.held.lock().unwrap() = Some(Opened {
+            label: label.into(),
+            machine: machine.into(),
+        });
+        s
+    }
+    fn forgot(&self) -> Vec<String> {
+        self.forgot.lock().unwrap().clone()
+    }
+}
+
+impl Records for Shelf {
+    fn get(&self, sid: &str) -> Option<Opened> {
+        assert_eq!(sid, SID);
+        self.held.lock().unwrap().clone()
+    }
+    fn forget(&self, sid: &str) {
+        self.forgot.lock().unwrap().push(sid.to_string());
+    }
+}
+
+/// 那台永远不答（问了就一直等）：数问了几次。
+#[derive(Default)]
+struct Silent(Mutex<usize>);
+
+impl crate::dial::remote_ask::Remote for Silent {
+    fn run<'a>(
+        &'a self,
+        _dial: &'a serde_json::Value,
+        _command: String,
+        _stdin: Option<String>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>
+    {
+        unreachable!("问常驻走 run_coded")
+    }
+    fn run_coded<'a>(
+        &'a self,
+        _dial: &'a serde_json::Value,
+        _command: String,
+        _stdin: Option<String>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, Said>> + Send + 'a>>
+    {
+        *self.0.lock().unwrap() += 1;
+        Box::pin(std::future::pending())
+    }
+}
+
+#[tokio::test]
+async fn a_terminal_opened_here_is_found_here_even_when_that_machine_never_answers() {
+    let silent = Silent::default();
+    let got = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        answer_with(
+            &req("devbox"),
+            |_| unreachable!("远端会话不读本机的会话"),
+            tables,
+            &Default::default(),
+            until(9_000),
+            &Peers::table(&["devbox"]),
+            &silent,
+            Shelf::holding("600-20", "devbox"),
+        ),
+    )
+    .await
+    .expect("本机开过的那一个不等那台");
+    let v = serde_json::to_value(got.expect("答得出")).unwrap();
+    assert_eq!(v["labels"], json!(["600-20"]), "{v}");
+    assert_eq!(
+        pids(&v),
+        vec![700, 600, 500],
+        "从那个 shell 底下的 ssh 往上：{v}"
+    );
+    assert!(v.get("face").is_none(), "{v}");
+    assert_eq!(*silent.0.lock().unwrap(), 0, "不问那台");
+}
+
+async fn remote_answer_with(shelf: Shelf) -> (SessionWindow, Peers) {
+    let shown = json!({"terminals": [ssh_terminal(Some("600-20"))], "tmux": true});
+    let peers = Peers::new(&[("devbox", shown.to_string())]);
+    let got = answer_with(
+        &req("devbox"),
+        |_| unreachable!(),
+        tables,
+        &Default::default(),
+        until(9_000),
+        &Peers::table(&["devbox"]),
+        &peers,
+        shelf,
+    )
+    .await
+    .expect("答得出");
+    (got, peers)
+}
+
+#[tokio::test]
+async fn a_record_written_for_another_machine_is_not_used() {
+    let shelf = Shelf::holding("600-20", "elsewhere");
+    let (got, peers) = remote_answer_with(shelf.clone()).await;
+    assert_eq!(peers.asked().len(), 1, "照今天问那台");
+    assert!(got.tmux, "那台的答话照用");
+    assert!(shelf.forgot().is_empty(), "别台的那一份不删");
+}
+
+#[tokio::test]
+async fn a_shell_that_is_gone_is_forgotten_and_that_machine_is_asked() {
+    let shelf = Shelf::holding("600-99", "devbox");
+    let (got, peers) = remote_answer_with(shelf.clone()).await;
+    assert_eq!(peers.asked().len(), 1);
+    assert_eq!(
+        got.chain.iter().map(|l| l.pid).collect::<Vec<_>>(),
+        vec![700, 600, 500]
+    );
+    assert_eq!(
+        shelf.forgot(),
+        vec![SID.to_string()],
+        "起始时刻对不上 ⇒ 那一份删"
+    );
+}
+
+#[tokio::test]
+async fn a_shell_still_open_with_no_ssh_under_it_asks_that_machine_and_keeps_the_record() {
+    let shelf = Shelf::holding("500-10", "devbox");
+    let (_, peers) = remote_answer_with(shelf.clone()).await;
+    assert_eq!(peers.asked().len(), 1);
+    assert!(
+        shelf.forgot().is_empty(),
+        "窗口还开着 ⇒ 留着（下一回也许又开着 ssh）"
     );
 }

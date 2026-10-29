@@ -6378,18 +6378,6 @@
       "zh": "「{name}」合下来 · 继承链 {chain}",
       "args": ["name", "chain"]
     },
-    "profilesPage.migrated.ack": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "不再显示",
-      "args": []
-    },
-    "profilesPage.migrated.line": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "别名已迁入配置文件 · {n} 条 → {path} · 每条一段 · 以后只在此文件写",
-      "args": ["n", "path"]
-    },
     "profilesPage.open.failed": {
       "kind": "error",
       "role": "报错",
@@ -11340,12 +11328,6 @@
       "kind": "body",
       "role": "说明",
       "zh": "机器偏好 · 启动命令 · 每个号的模型 · 上下文上限",
-      "args": []
-    },
-    "rsDataPaths.backend.prefsHandoff": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "待交给远端的机器偏好 · 从旧设置迁来 · 连上后交付",
       "args": []
     },
     "rsDataPaths.backend.machines": {
@@ -26460,12 +26442,6 @@
       "zh": "已存在 · {path}",
       "args": ["path"]
     },
-    "rsDataPaths.backend.profilesMigrated": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "旧别名清单转进配置文件时的说明（设置窗说一次后删）",
-      "args": []
-    },
     "rsDataPaths.backend.profilesWritten": {
       "kind": "body",
       "role": "说明",
@@ -26611,19 +26587,6 @@
       "zh": "{name} · ~/.cc-monitor/bin 已有同名 {kind} · 非 cc-monitor 链接 · 未改动",
       "args": ["kind", "name"]
     },
-    "beProfile.migrate.restToCcm": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{name} 未迁入配置文件 · 接回会话不做别名 · 用 ccm -- --attach <会话名>",
-      "args": ["name"],
-      "limited": ["ccm"]
-    },
-    "beProfile.migrate.unparsed": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "旧别名文件有一行无法识别 · 未迁入 · {line}",
-      "args": ["line"]
-    },
     "beProfile.install.basedOn": {
       "kind": "error",
       "role": "报错",
@@ -26648,18 +26611,6 @@
       "role": "片段",
       "zh": "、",
       "args": []
-    },
-    "beProfile.migrate.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "别名清单已转进配置文件 {path}",
-      "args": ["path"]
-    },
-    "beProfile.migrate.failed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "迁入配置文件失败 · {why}",
-      "args": ["why"]
     },
     "beProfile.named.say": {
       "kind": "body",
@@ -31209,7 +31160,7 @@
     "rot.none.desc": {
       "kind": "body",
       "role": "说明",
-      "zh": "只用开会话的号",
+      "zh": "不自动换号",
       "args": []
     },
     "rot.tag.forNew": {

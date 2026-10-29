@@ -21,7 +21,7 @@ pub fn exit_signal(status: &std::process::ExitStatus) -> Option<i32> {
     }
 }
 
-/// 交给系统默认 opener 打开一个路径 / 目录：`(程序, argv)`。原住 `lib.rs::open_with_os`（选程序那一段，逐字）；起它照旧在调用方走唯一出口。
+/// 交给系统默认 opener 打开一个路径 / 目录：`(程序, argv)`。只选程序；起它在调用方（`lib.rs::open_with_os`）走唯一出口。
 pub fn os_opener(path_or_dir: &str) -> (&'static str, Vec<String>) {
     #[cfg(windows)]
     // `cmd /C start ""` 兜 path 里的空格；第一个空串是 `start` 的窗口标题位。

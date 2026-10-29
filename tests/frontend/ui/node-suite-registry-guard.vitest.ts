@@ -68,7 +68,7 @@ const NODE_SUITES: readonly (readonly [string, string])[] = [
   ["test:diff", "tests/frontend/ui/cards/diff.test.ts"],
   ["test:api-error", "tests/frontend/ui/cards/api-error.test.ts"],
   // F04b +1：`isValidNewTmuxName` 也禁 `=`（别创建一个主路杀不掉的名字）。
-  // `K-R96` +1（`KR96D3`：名字可读、sid 一个片段都不进去 + `@ccm_sid` 必须还在）。
+  // +1（名字可读、sid 一个片段都不进去 + `@ccm_sid` 必须还在）。
   // 🔴 **44 → 37**：五个 builder 删了（生产调用 0），它们的用例改测生产的
   //    `plan*` ＋ `buildLaunchRenderRequest`（字节归 Rust 夹具）；合并掉的几条：直起 cwd 引号并进第一条 ·
   //    tmux cwd 引号并进空 cwd 那条 · `buildEnvPrefix` 三条收成「非法 configDir 在 plan 那一步就拒」一条 ·
