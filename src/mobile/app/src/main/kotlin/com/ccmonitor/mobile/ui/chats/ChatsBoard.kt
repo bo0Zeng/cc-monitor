@@ -2,11 +2,16 @@ package com.ccmonitor.mobile.ui.chats
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ccmonitor.mobile.core.claude.link.ColumnFace
 import com.ccmonitor.mobile.core.claude.link.HistorySearch
 import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.ListSort
 import com.ccmonitor.mobile.core.claude.link.SearchMerge
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.ChatsColumnAsk
+import com.ccmonitor.mobile.core.wire.gen.ColumnAt
+import com.ccmonitor.mobile.core.wire.gen.ColumnHost
+import com.ccmonitor.mobile.core.wire.gen.ColumnRow
 import com.ccmonitor.mobile.core.wire.gen.EmptyFace
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.Merged
@@ -156,8 +161,8 @@ data class ChatsUi(
 }
 
 /**
- * 会话屏：机器表里勾上的每台各一份 [HostChats]，几列按 `at` 并成一列、按目录时各台的组按 `order` 并（各台各自排好，只并、不另判；
- * 同值照机器表先后）。筛选改一项各台马上重问；搜标题停手 [QUERY_DEBOUNCE_MS] 再问。手指按着 / 在滚时对外那一份冻住（[hold]）。
+ * 会话屏：机器表里勾上的每台各一份 [HostChats]，几列并成一列、切段、按目录时各台的组并成一列都由核心做（[ColumnFace]，本机后端并历史页那一份），
+ * 这里照它摆。筛选改一项各台马上重问；搜标题停手 [QUERY_DEBOUNCE_MS] 再问。手指按着 / 在滚时对外那一份冻住（[hold]）。
  */
 @OptIn(FlowPreview::class)
 class ChatsBoard(
@@ -347,12 +352,15 @@ internal fun chatsView(
 ): ChatsUi {
     val multi = parts.size > 1
     val tag = { p: HostPart -> p.machine.takeIf { multi && p.hostId != current } }
-    val rows = mergeBy(parts.map { p -> p.rows.map { it.copy(machineTag = tag(p)) } }) { it.at }
     val (pinned, bands) = if (filters.banded(query)) bandsOf(parts, tag) else emptyList<ChatRow>() to emptyList()
     val placed = (pinned + bands.flatMap { it.rows }).map { it.hostId to it.sessionId }.toSet()
-    val none = rows.isEmpty() && placed.isEmpty()
-    val sections = daySections(rows.filter { (it.hostId to it.sessionId) !in placed })
-    val groups = mergeBy(parts.map { p -> p.groups.map { ChatGroup(p.hostId, it, tag(p)) } }) { it.group.order }
+    val none = parts.all { it.rows.isEmpty() } && placed.isEmpty()
+    // 并 · 切段 · 组的先后都在核心；交回第几台第几项，这里照它摆那台那一行。
+    val ask = ChatsColumnAsk(parts.map { p -> ColumnHost(p.rows.map { ColumnRow(it.at, it.section, (it.hostId to it.sessionId) in placed) }, p.groups.map { it.order }) })
+    val column = ColumnFace.of(ask)
+    val row = { a: ColumnAt -> parts[a.host.toInt()].let { p -> p.rows[a.at.toInt()].copy(machineTag = tag(p)) } }
+    val sections = column.sections.map { s -> ChatSection(s.title, s.rows.map(row)) }
+    val groups = column.groups.map { a -> parts[a.host.toInt()].let { p -> ChatGroup(p.hostId, p.groups[a.at.toInt()], tag(p)) } }
     val down = parts.filter { it.bar?.offline == true }.map { it.hostId }.toSet()
     // 机器表还没读到（一台都没有、又没去勾）也算在读。
     val loading = parts.any { it.loading } || (parts.isEmpty() && !filters.active)
@@ -398,31 +406,3 @@ private fun bandsOf(
 ): Pair<List<ChatRow>, List<GroupBand>> =
     parts.flatMap { p -> p.pinned.map { it.copy(machineTag = tag(p)) } } to
         parts.flatMap { p -> p.bands.map { b -> b.copy(machineTag = tag(p), rows = b.rows.map { it.copy(machineTag = tag(p)) }) } }
-
-/** 并好的一列 ⇒ 按段头（那台写的）连着的几段。 */
-private fun daySections(rows: List<ChatRow>): List<ChatSection> {
-    val sections = mutableListOf<ChatSection>()
-    for (r in rows) {
-        val last = sections.lastOrNull()
-        if (last != null && last.title == r.section) sections[sections.size - 1] = last.copy(rows = last.rows + r) else sections += ChatSection(r.section, listOf(r))
-    }
-    return sections
-}
-
-/** 各台各自按 [key] 倒序排好的几列 ⇒ 一列（同值照台的先后，稳定）。只并、不另判。 */
-internal fun <T> mergeBy(
-    lists: List<List<T>>,
-    key: (T) -> Long,
-): List<T> {
-    val out = ArrayList<T>(lists.sumOf { it.size })
-    val at = IntArray(lists.size)
-    while (true) {
-        var best = -1
-        for (i in lists.indices) {
-            val x = lists[i].getOrNull(at[i]) ?: continue
-            if (best < 0 || key(x) > key(lists[best][at[best]])) best = i
-        }
-        if (best < 0) return out
-        out += lists[best][at[best]++]
-    }
-}

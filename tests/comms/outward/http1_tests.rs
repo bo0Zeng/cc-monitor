@@ -224,9 +224,83 @@ fn an_endless_chunk_size_line_is_dropped_and_counted_instead_of_growing_forever(
 #[test]
 fn body_view_picks_chunked_only_when_the_header_says_so() {
     let plain = vec![("Content-Type".to_string(), "text/event-stream".to_string())];
-    assert!(matches!(BodyView::for_response(&plain), BodyView::Identity));
+    assert!(matches!(
+        BodyView::for_response(&plain),
+        BodyView::UntilClose
+    ));
     let ch = vec![("Transfer-Encoding".to_string(), "chunked".to_string())];
     assert!(matches!(BodyView::for_response(&ch), BodyView::Chunked(_)));
+    let len = vec![("Content-Length".to_string(), "12".to_string())];
+    assert!(matches!(
+        BodyView::for_response(&len),
+        BodyView::Length { left: 12, .. }
+    ));
+    // 读不懂的长度不当成定长（收尾判不出 ⇒ 读到对端关）。
+    let bad = vec![("Content-Length".to_string(), "12abc".to_string())];
+    assert!(matches!(BodyView::for_response(&bad), BodyView::UntilClose));
+}
+
+/// 收尾判得准，连接才敢接着用：分块的要连终止块后面的尾部头一起读完才算收尾，逐字节切开喂也一样；
+/// 收尾之后多来的字节记成「多了」（那条连接不能再用）。分母 = 我列出的这 4 形。
+#[test]
+fn a_chunked_answer_ends_only_after_the_trailers_and_notices_extra_bytes() {
+    // ㈠ 没有尾部头：收在 `0\r\n\r\n` 的最后一个字节上，之前每一个字节都还没收尾。
+    let wire = b"5\r\nhello\r\n0\r\n\r\n";
+    let mut v = BodyView::Chunked(ChunkedView::default());
+    for (i, b) in wire.iter().enumerate() {
+        assert!(!v.ended(), "第 {i} 个字节之前就说收尾了");
+        v.feed(&[*b], NO_CAP);
+    }
+    assert!(v.ended_cleanly(), "整段喂完该收在边上");
+
+    // ㈡ 带尾部头：读到终止块还不算，空行才算。
+    let mut t = BodyView::Chunked(ChunkedView::default());
+    assert_eq!(t.feed(b"5\r\nhello\r\n0\r\nX-T: 1\r\n", NO_CAP), b"hello");
+    assert!(!t.ended(), "尾部头还没读完就说收尾了");
+    t.feed(b"\r\n", NO_CAP);
+    assert!(t.ended_cleanly());
+
+    // ㈢ 收尾之后同一块里多了字节 ⇒ 收尾了，但不在边上。
+    let mut o = BodyView::Chunked(ChunkedView::default());
+    o.feed(b"0\r\n\r\nHTTP/1.1", NO_CAP);
+    assert!(
+        o.ended() && !o.ended_cleanly(),
+        "收尾之后多出来的字节没记下"
+    );
+
+    // ㈣ 长度行读不懂而停下的不算收尾。
+    let mut g = BodyView::Chunked(ChunkedView::default());
+    g.feed(b"zz\r\n", NO_CAP);
+    assert!(!g.ended());
+}
+
+/// 定长的够数就收尾、多了记下；`HEAD` 的应答 · 204 · 304 没有体（带了长度也一样），头读完就收尾。
+#[test]
+fn a_length_answer_ends_at_its_length_and_bodiless_answers_end_at_the_head() {
+    let len = vec![("Content-Length".to_string(), "5".to_string())];
+    let mut v = BodyView::for_answer("POST", 200, &len);
+    assert_eq!(v.feed(b"hel", NO_CAP), b"hel");
+    assert!(!v.ended());
+    assert_eq!(v.feed(b"lo", NO_CAP), b"lo");
+    assert!(v.ended_cleanly());
+
+    let mut o = BodyView::for_answer("POST", 200, &len);
+    assert_eq!(o.feed(b"hello!", NO_CAP), b"hello", "体只到长度为止");
+    assert!(o.ended() && !o.ended_cleanly(), "多出来的那个字节没记下");
+
+    for (method, status) in [("HEAD", 200), ("POST", 204), ("GET", 304)] {
+        let e = BodyView::for_answer(method, status, &len);
+        assert!(
+            e.ended_cleanly(),
+            "{method} {status} 没有体，头读完就该收尾"
+        );
+    }
+    // 非空对照：同样的头、有体的那一形不是一读完头就收尾。
+    assert!(!BodyView::for_answer("GET", 200, &len).ended());
+    // 读到对端关的那一形永远判不出收尾。
+    let mut u = BodyView::for_answer("POST", 200, &[]);
+    u.feed(b"anything", NO_CAP);
+    assert!(!u.ended());
 }
 
 #[test]

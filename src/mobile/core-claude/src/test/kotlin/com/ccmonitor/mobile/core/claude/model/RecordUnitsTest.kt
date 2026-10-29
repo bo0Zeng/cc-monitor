@@ -87,7 +87,7 @@ class RecordUnitsTest {
     @Test
     fun `没定画法的那几类（事件条 · 系统 · 重试 · 标题）不上屏`() {
         val silent =
-            listOf("said-system", "said-task-notification", "said-agent-message", "said-peer-session", "said-coordinator", "said-command-output", "said-agent-task", "retry-full", "title-agent", "said-read")
+            listOf("said-system", "said-task-notification", "said-agent-message", "said-peer-session", "said-coordinator", "said-command-output", "retry-full", "title-agent", "said-read")
         assertEquals(emptyList<RenderUnit>(), units(*silent.toTypedArray()))
     }
 
@@ -175,6 +175,11 @@ class RecordUnitsTest {
         assertEquals(listOf(null, true), u[0].attachments.map { it.gone })
         assertEquals("只有附件也成单元", "", u[1].text)
         assertEquals(2, u[1].attachments.size)
+    }
+
+    @Test
+    fun `子运行记录里派活的那一句（agentTask）排成一张派活卡：字与时刻照记录`() {
+        assertEquals(listOf(RenderUnit.Brief("u-said-agent-task", "go scan", "01:31", "u-said-agent-task")), units("said-agent-task"))
     }
 
     @Test

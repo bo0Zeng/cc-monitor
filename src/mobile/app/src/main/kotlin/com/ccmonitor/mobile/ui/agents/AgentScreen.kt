@@ -1,13 +1,17 @@
 package com.ccmonitor.mobile.ui.agents
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -27,6 +31,8 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
+import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.gen.RunInfo
 import com.ccmonitor.mobile.core.wire.gen.RunLine
 import com.ccmonitor.mobile.core.wire.gen.RunState
@@ -36,12 +42,14 @@ import com.ccmonitor.mobile.ui.chat.ProcessRow
 import com.ccmonitor.mobile.ui.chat.needs.ChatNeeds
 import com.ccmonitor.mobile.ui.chat.needs.rememberChatNeeds
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
+import com.ccmonitor.mobile.ui.claude.LocalBriefFrom
+import com.ccmonitor.mobile.ui.common.MachineBar
 import com.ccmonitor.mobile.ui.common.rememberHostLink
 import kotlinx.coroutines.flow.flowOf
 import org.koin.compose.koinInject
 
 /**
- * agent 屏（只读）：一个子运行。顶栏 ＝ 名字 · 状态（那台写好的）；事实 · 说明照摆；正文同聊天屏那一套卡、过程照分段折（[AgentRun]）；
+ * agent 屏（只读）：一个子运行。顶栏 ＝ 名字 · 类别 · 状态（那台写好的）；顶上机器条；事实（几点起打头）· 说明 · 失败的报错原话照摆；正文同聊天屏那一套卡（派活那段话是一张派活卡）、过程照分段折（[AgentRun]）；
  * 尾巴上是结束线；它派出的那几个点了推屏（同一个运行栈里只出现一次，由导航层照 [AgentStack] 定）。
  * 它在等人（`needs` 有）⇒ 底下同一个需手动钉条（父会话那一条的，答题走同一套）。
  */
@@ -68,14 +76,19 @@ fun AgentScreen(
     val ui by body.state.collectAsState()
     // 在跑的那一个记录在长（运行表里它最近动的时刻变了 · 收场了）⇒ 往下接着读。
     LaunchedEffect(info?.activeMs, info?.state) { if (!ui.loading) body.newer() }
-    val kids = runs?.runs?.filter { it.parent == run }.orEmpty()
+    val all = runs?.runs.orEmpty()
+    val kids = all.filter { it.parent == run }
+    val from = info?.parent?.let { p -> all.firstOrNull { it.run == p }?.labelText }
     Scaffold(
-        topBar = { AgentsTopBar(info?.labelText.orEmpty(), info?.statusText.orEmpty(), onBack) },
+        topBar = { AgentsTopBar(info?.labelText.orEmpty(), info?.let(::secondLine).orEmpty(), onBack) },
     ) { inner ->
         Column(Modifier.fillMaxSize().padding(inner)) {
+            MachineBar(hostId)
             info?.let { Head(it, onRefresh = body::open) }
             ui.failed?.let { ErrorLine(it, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
-            Transcript(body, ui, Modifier.weight(1f), toBottom = running)
+            CompositionLocalProvider(LocalBriefFrom provides from) {
+                Transcript(body, ui, Modifier.weight(1f), toBottom = running)
+            }
             info?.end?.let { e -> Line(listOf(e.head, clock(e.sub)).joinToString(copyText("kit.text.sep"))) }
             if (kids.isNotEmpty()) {
                 Text(
@@ -99,7 +112,8 @@ private fun Head(
     info: RunInfo,
     onRefresh: () -> Unit,
 ) {
-    info.facts?.takeIf { it.isNotEmpty() }?.let { fs -> Line(fs.joinToString(copyText("kit.text.sep")) { clock(it) }) }
+    val facts = listOfNotNull(info.startedText) + info.facts.orEmpty().map(::clock)
+    if (facts.isNotEmpty()) Line(facts.joinToString(copyText("kit.text.sep")))
     info.explain?.let { x ->
         Line(listOfNotNull(x.lead, clock(x.line)).joinToString(copyText("kit.text.sep")))
         x.note?.let { Line(it, small = true) }
@@ -107,7 +121,28 @@ private fun Head(
             SecondaryButton(onClick = onRefresh, modifier = Modifier.padding(horizontal = 8.dp)) { Text(copyText("agentWindow.why.refresh")) }
         }
     }
+    if (info.state == RunState.FAILED) info.error?.takeIf { it.isNotEmpty() }?.let { ErrorRaw(it) }
 }
+
+/** 失败的报错原话（那台交的 `error`，等宽红字、描红框）。 */
+@Composable
+private fun ErrorRaw(text: String) {
+    val tokens = LocalAppTokens.current
+    Text(
+        text,
+        style = monoSmall,
+        color = tokens.errorText,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .border(1.dp, MaterialTheme.colorScheme.error, RoundedCornerShape(tokens.radius.m))
+                .padding(8.dp),
+    )
+}
+
+/** 顶栏第二行：类别 · 状态（字都是那台交的）。 */
+private fun secondLine(info: RunInfo): String = listOfNotNull(info.kind?.takeIf { it.isNotEmpty() }, info.statusText).joinToString(copyText("kit.text.sep"))
 
 @Composable
 private fun Line(

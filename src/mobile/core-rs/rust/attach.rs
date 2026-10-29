@@ -1,7 +1,7 @@
 //! 手机聊天输入框上方那一排附件的字：Kotlin 交此刻每张卡走到哪 ＋ 断着时那台离线那一句 ＋ 手机这边的错，
 //! 这里写好卡上第二行 · ✕ 的读屏名 · 卡下那一条（那一句 ＋ 按钮 ＋ 是不是虚线），Kotlin 照摆。收不收 · 上限 · 那台那一句仍是那台的。
 //!
-//! 入：`{cards: [{name, phase, done?, total?, said?}], offline: "<那台离线那一句>" | null, local: "no_room" | "no_camera" | null}`，
+//! 入：`{cards: [{name, phase, said?}], offline: "<那台离线那一句>" | null, local: "no_room" | "no_camera" | null}`，
 //! `phase` ∈ `queued` · `moving` · `landed` · `refused` · `failed` · `lost`（本机副本开不了）；`offline` 只在有排队的、又断着时给。
 //! 出：`{cards: [{line, remove}], note: {text, act, dashed} | null}`，`act` ∈ `retry` · `repick` · `null`。
 //! 那一条的先后：手机这边的错 › 传 · 落没成的（几份 ⇒ 数 ＋ 第一份的因）› 断着。开传前那台就拒的因写在卡上，不进那一条。
@@ -9,19 +9,10 @@
 use copy_core::copy_text;
 use serde_json::{json, Value};
 
-/// 一张卡上第二行：排队 · 百分比 · 失败 · 那台不收的那一句；落好了 ⇒ 不写。
+/// 一张卡上第二行：排队 · 失败 · 那台不收的那一句；传输中（只转环，不写进度数字）· 落好了 ⇒ 不写。
 fn line(card: &Value) -> Option<String> {
-    let num = |k: &str| card.get(k).and_then(Value::as_u64).unwrap_or(0);
     match card.get("phase").and_then(Value::as_str)? {
         "queued" => Some(copy_text("mobAttach.card.queued", &[])),
-        "moving" => {
-            let total = num("total");
-            let pct = num("done").min(total) * 100 / total.max(1);
-            Some(copy_text(
-                "mobAttach.card.percent",
-                &[("n", &pct.to_string())],
-            ))
-        }
         "failed" | "lost" => Some(copy_text("mobAttach.card.failed", &[])),
         "refused" => card.get("said").and_then(Value::as_str).map(str::to_owned),
         _ => None,
@@ -102,7 +93,7 @@ mod tests {
     use super::*;
 
     fn card(phase: &str, said: Option<&str>) -> Value {
-        json!({ "name": "a.png", "phase": phase, "said": said, "done": 31, "total": 50 })
+        json!({ "name": "a.png", "phase": phase, "said": said })
     }
 
     fn of(want: Value) -> Value {
@@ -110,7 +101,7 @@ mod tests {
     }
 
     #[test]
-    fn each_card_says_where_it_is_and_landed_ones_say_nothing() {
+    fn each_card_says_where_it_is_and_moving_or_landed_ones_say_nothing() {
         let v = of(json!({ "cards": [
             card("queued", None), card("moving", None), card("landed", None),
             card("failed", Some("磁盘满")), card("refused", Some("超上限")),
@@ -125,7 +116,8 @@ mod tests {
             lines,
             vec![
                 json!(copy_text("mobAttach.card.queued", &[])),
-                json!(copy_text("mobAttach.card.percent", &[("n", "62")])),
+                // 传输中只转环，不写进度数字。
+                Value::Null,
                 Value::Null,
                 json!(copy_text("mobAttach.card.failed", &[])),
                 json!("超上限"),

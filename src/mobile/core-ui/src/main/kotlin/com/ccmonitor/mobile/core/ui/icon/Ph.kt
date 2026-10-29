@@ -66,6 +66,8 @@ enum class Ph(
     GitBranch(0xE278),
     MagnifyingGlass(0xE30C),
     SignOut(0xE42A),
+    Camera(0xE10E),
+    Image(0xE2CA),
     ;
 
     val glyph: String get() = String(Character.toChars(codepoint))
