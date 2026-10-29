@@ -1926,13 +1926,13 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
             };
             // 「跳过+说清」那一档的上限交给一份缓存声明（`Doc::cache(…, 它)`）：跳过与那句 `warn!` 住
             //   `common/own_state.rs` 的 `Doc::settle`（缓存读不出来 ⇒ 说是哪一份、当没有），针改去那里认。
-            //   声明折成几行时 `Doc::cache(` 在上面一两行 ⇒ 往上看两行。
-            let declared = lines[i.saturating_sub(2)..=i].join("\n");
-            // 缓存的声明（还没换上表的 `Doc::cache(`，或声明表里的 `Decl::<Cache>`）：读不出来那一臂住读写口。
+            //   缓存的声明有两种写法：还没换上表的 `Doc::cache(`，声明表里的 `Decl::<Cache>`；
+            //   折成几行时它在上面至多三行（声明表那一行：头 · 落点 · 版本 · 上限）⇒ 往上看三行。
+            let declared = lines[i.saturating_sub(3)..=i].join("\n");
             let scope = if *sem == "跳过+说清"
                 && (guard_core::contains_word(&scope, "Doc::cache")
                     || guard_core::contains_word(&declared, "Doc::cache")
-                    || declared.contains("Decl::<Cache>"))
+                    || guard_core::contains_word(&declared, "Decl::<Cache>"))
             {
                 own_state_cache_arm(&root)
             } else {
