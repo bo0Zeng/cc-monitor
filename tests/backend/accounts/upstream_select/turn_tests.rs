@@ -221,6 +221,30 @@ fn without_a_strategy_a_session_keeps_its_start_account() {
     assert!(s.log.is_empty() && s.uses.is_none(), "会话该记下、不带策略");
 }
 
+/// ★ 不轮换 ＝ 不自动换：手动换到 b（会话那一条的在用号写成 b）之后，发照 b 走；b 用满了也不自动换回 a，一次都不叫策略。
+#[test]
+fn without_a_strategy_a_manual_switch_takes_the_send() {
+    let home = Home::new("none-manual", [None, None]);
+    let hop = home.hop();
+    let own = home.own();
+    let t = now();
+    assert_eq!(which(&steer(&hop, &own, t)), "a");
+    rotation::face_change(&hop.store, &own, |b| {
+        if let Some(s) = b.sessions.get_mut(SID) {
+            s.current = "b".into();
+        }
+    })
+    .expect("w");
+    assert_eq!(
+        which(&steer(&hop, &own, t + 1)),
+        "b",
+        "手动换了号，发的还是开会话的号"
+    );
+    home.seen(&hop.quota, None, "b", 1.0, t + 2);
+    assert_eq!(which(&steer(&hop, &own, t + 3)), "b", "不轮换却自动换了号");
+    assert_eq!(runs(&hop), 0, "没选策略也叫了策略");
+}
+
 /// ★ #28：两个节点之间 100 发，策略一次都不重跑（第一发判一次，之后照缓存），结论没变不写盘；过了下一个已知节点（a 的重置）⇒ 重跑。
 #[test]
 fn a_hundred_sends_between_two_nodes_run_the_strategy_once() {

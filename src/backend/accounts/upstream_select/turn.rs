@@ -582,9 +582,9 @@ impl Hop {
             return Go::Start;
         };
         let plan = Adopted::of(s.uses.as_ref());
-        // 这个会话不轮换（没选策略）⇒ 只用开会话的号，不叫策略。
+        // 这个会话不轮换（没选策略）⇒ 不叫策略、不自动换：照会话那一条的在用号走（手动换过 ⇒ 那个号；接不上 ⇒ 开会话的号）。
         if plan.id.is_empty() {
-            return Go::Start;
+            return self.prepare(own, a, &lib, &s.current).unwrap_or(Go::Start);
         }
         if let Some(p) = self.cached(a, &s, &plan) {
             return self.go_for(own, a, &lib, &s, &plan, p, None, Vec::new());
