@@ -16,24 +16,18 @@ use std::path::{Path, PathBuf};
 /// 数据目录底下那一层。
 pub(crate) const DIR: &str = "cc-bus";
 
-/// 状态文件（已读位置 ＋ 账）。
-pub(crate) const STATE_CAP: u64 = 4 * 1024 * 1024;
+/// 状态文件（已读位置 ＋ 账）：版本 · 上限照声明表。
 const STATE: crate::common::own_state::Doc<State> =
-    crate::common::own_state::Doc::state(".cc-monitor/cc-bus/state.json", STATE_CAP);
-const STATE_NAME: &str = "state.json";
+    crate::common::own_state::Doc::of(&relay_route_core::CC_BUS_STATE_FILE);
+const STATE_NAME: &str = relay_route_core::file_name_of(STATE.rel);
 
-/// 一份收件箱的读上限：一封最多千来字节，64 MiB 装得下几万封。
-pub(crate) const INBOX_CAP: u64 = 64 * 1024 * 1024;
+/// 一份收件箱（不带版本，上限照声明表）。
 const INBOX: crate::common::own_state::Doc<Vec<u8>> =
-    crate::common::own_state::Doc::state(".cc-monitor/cc-bus/<sid>.jsonl", INBOX_CAP);
+    crate::common::own_state::Doc::of(&relay_route_core::CC_BUS_INBOX_FILE);
 
-/// 状态文件的版本。
-const VERSION: u32 = 1;
-
-/// 状态文件那一形。
+/// 状态文件那一形（顶层 `version` 归读写口）。
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct State {
-    pub(crate) version: u32,
     /// 各会话读到第几行（行号从 1 起；0 ＝ 一行没读）。
     #[serde(default)]
     pub(crate) pos: BTreeMap<String, u64>,
@@ -93,16 +87,8 @@ fn lines(dir: &Path, sid: &str) -> Result<Vec<String>, String> {
 fn state(dir: &Path) -> Result<State, String> {
     use crate::common::own_state::Read;
     match STATE.read(&dir.join(STATE_NAME)) {
-        Read::Absent => Ok(State {
-            version: VERSION,
-            ..State::default()
-        }),
-        Read::Present(s) if s.version <= VERSION => Ok(s),
-        Read::Present(s) => Err(format!(
-            "{} is version {}, this backend reads up to {VERSION}",
-            dir.join(STATE_NAME).display(),
-            s.version
-        )),
+        Read::Absent => Ok(State::default()),
+        Read::Present(s) => Ok(s),
         Read::Unreadable(why) => Err(why.said),
     }
 }
@@ -152,9 +138,7 @@ fn put_state(
     held: &crate::platform::fs::OwnLock,
     s: &State,
 ) -> Result<(), Refusal> {
-    let path = dir.join(STATE_NAME).map_err(|e| io(e.said))?;
-    let body = crate::common::own_state::json_body(path.as_path(), s).map_err(|e| io(e.said))?;
-    own.write(&path, held, &body).map_err(|e| io(e.said))
+    STATE.write(own, dir, held, s).map_err(|e| io(e.said))
 }
 
 /// 投一封：锁里判规矩，收 ⇒ 收件人的收件箱加一行、记账；规矩说要敲 ⇒ 放锁之后敲门（[`super::knock`]），回敲进去了没有。
@@ -179,7 +163,6 @@ pub(crate) fn deliver(
         .map_err(|e| io(e.said))?;
     own.write(&inbox, &held, body.as_bytes())
         .map_err(|e| io(e.said))?;
-    s.version = VERSION;
     put_state(own, &dir, &held, &s)?;
     drop(held);
     Ok(knock && super::knock(own, env, now_ms))
@@ -227,7 +210,6 @@ pub(crate) fn commit(own: &crate::platform::Own, sid: &str, token: &str) -> Resu
         ));
     }
     s.pos.insert(sid.to_string(), to);
-    s.version = VERSION;
     put_state(own, &dir, &held, &s)?;
     Ok(to)
 }

@@ -7498,7 +7498,7 @@ type TurnSpan = { text: string, from: number | null, to: number | null, };
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-needs`
 
-入参 `NoArgs` · 回包 `NeedsList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `SessionsNeedsReq` · 回包 `NeedsList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type AgentKind = string;
@@ -7677,7 +7677,6 @@ face: SessionFace, needs: Needs,
  * 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ `null`（格恒在）。
  */
 hidden: Hidden | null, };
-type NoArgs = Record<symbol, never>;
 type Run = "managed" | "tmux" | "direct";
 type SessionCan = { 
 /**
@@ -7749,6 +7748,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
+type SessionsNeedsReq = Record<symbol, never>;
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
