@@ -23,7 +23,7 @@ function fakeWs(answers: Record<string, object>) {
     send(raw: string) {
       const msg = JSON.parse(raw) as { id: number; method: string };
       const r = answers[msg.method];
-      if (r) setTimeout(() => listeners.forEach((fn) => fn({ data: JSON.stringify({ id: msg.id, result: r }) })), 1);
+      if (r) queueMicrotask(() => listeners.forEach((fn) => fn({ data: JSON.stringify({ id: msg.id, result: r }) })));
     },
     close() {},
   };

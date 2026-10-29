@@ -132,6 +132,13 @@ describe.skipIf(process.platform === "win32")("按口转发的假 ssh", () => {
     expect(r.stdout.split("\n")).toEqual(['{"hello":{"relation":"same"}}', '{"attach":"ok","relation":"older"}', '{"relation":"same"}', ""]);
   });
 
+  it("旧了的那台、流要压：attach 回话后面带的格照留，之后不带换行的字节当场交（不等换行）", () => {
+    // 常驻认了压缩：回话多一格 `deflate`，之后整条是压过的字节（里面不一定有换行）；替身交完这一截先不退。
+    const deflating = `#!/bin/sh\necho '{"hello":{"relation":"same"}}'\necho '{"attach":"ok","relation":"same","deflate":true}'\nprintf 'x\\001y'\nsleep 3\n`;
+    const r = runWith(fakes, PEER_PORT_BASE + 1, word("--resident-attach"), "", deflating, 1500);
+    expect(r.stdout).toBe('{"hello":{"relation":"same"}}\n{"attach":"ok","relation":"older","deflate":true}\nx\u0001y');
+  });
+
   it("正在连的那台：接常驻那一跳拖住不回", () => {
     const r = runWith(fakes, PEER_PORT_BASE + 2, word("--resident-attach"), "", attaching, 600);
     expect(r.error?.message ?? "").toMatch(/ETIMEDOUT/);

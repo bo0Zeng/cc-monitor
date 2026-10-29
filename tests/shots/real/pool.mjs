@@ -257,7 +257,8 @@ export function forwarderSh(peers, backend = BACKEND_IN_BOX, slowSftp = SLOW_SFT
     `  ${q(`${land}--resident-attach`)})`,
     `    case "$fake" in`,
     `      hang) exec sleep 3600 ;;`,
-    `      older|install) ${peer} ${backend} -- --resident-attach | sed -u '1,2s/^{"attach":"ok","relation":"same"}$/{"attach":"ok","relation":"older"}/'; exit ;;`,
+    // 只动头两行（hello · attach 回话）里的新旧那一格，回话后面带的格（`deflate`）照留；之后那条流可能是压过的字节、不一定有换行 ⇒ 原样对拷，不按行过。
+    `      older|install) ${peer} ${backend} -- --resident-attach | { for _ in 1 2; do IFS= read -r l || exit; printf '%s\\n' "$l" | sed 's/^{"attach":"ok","relation":"same"/{"attach":"ok","relation":"older"/'; done; exec cat; }; exit ;;`,
     `      *) ${peer} exec ${backend} -- --resident-attach ;;`,
     "    esac ;;",
     // 确保常驻要认在听的那一位（`SO_PEERCRED` 的 pid，跨进程命名空间是 0）⇒ 在那台自己的沙箱里跑：交它那个跑腿口（[`DOER_PY`]），换不换由那台照真的判
@@ -759,7 +760,8 @@ export function backendPool({ repo, sandbox, disks = null }) {
           : {}),
       };
       const { argv, doomed, paints, tmux } = start(path.join(dir, `m${i}`), origin, m, now);
-      w.doomed.push(...doomed.map((d) => ({ ...d, origin, act: () => tmux(d.act) })));
+      // 只有起了常驻的那几台（本机 ＋ 问得到的）收得了场：问不到的那台没人起，它的会话等不到宣告。
+      if (m.resident) w.doomed.push(...doomed.map((d) => ({ ...d, origin, act: () => tmux(d.act) })));
       for (const [sid, fifo] of paints) w.paints.set(`${origin}\0${sid}`, fifo);
       return { origin, argv };
     });
