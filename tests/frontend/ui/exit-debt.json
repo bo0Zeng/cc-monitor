@@ -75,7 +75,6 @@
         ["src/frontend/shell/src/platform/fs.rs", "key", 6],
         ["src/frontend/shell/src/platform/terminal.rs", "key", 2],
         ["src/frontend/shell/src/platform/window.rs", "key", 2],
-        ["src/frontend/shell/src/prefs_migration.rs", "key", 2],
         ["src/frontend/shell/src/remote_resident.rs", "key", 1],
         ["src/frontend/shell/src/transfer_relay.rs", "key", 8],
         ["src/frontend/shell/src/stream_source/snapshot.rs", "key", 2],
