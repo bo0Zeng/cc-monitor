@@ -95,7 +95,12 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
     repaint();
     if (open === o) void o.rot.refresh();
   };
-  o.unsub.push(appStore.quota.subscribe(repaint), appStore.sessionRotation.subscribe(onRotation), appStore.accounts.subscribe(repaint));
+  o.unsub.push(
+    appStore.quota.subscribe(repaint),
+    appStore.sessionRotation.subscribe(onRotation),
+    appStore.accounts.subscribe(repaint),
+    appStore.sessionAccount.subscribe(repaint),
+  );
   render(o, host);
   void o.rot.refresh();
   // 打开那一刻再问一次这个会话（推送丢过也能补上）；额度账同理。
@@ -104,6 +109,12 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
 }
 
 function render(o: Open, host: AcctPanelHost): void {
+  // 上游是自设的（那台在 `session-account` 里写好那一句）⇒ 额度看不到、换号不适用：只出那一条，不画轮换。
+  const own = appStore.sessionAccount.get().get(o.sid)?.read.ownUpstream;
+  if (own) {
+    o.body.replaceChildren(banner("info", own), footer(o, host));
+    return;
+  }
   const entry = appStore.sessionRotation.get().get(o.sid);
   const head = stub(o, entry, quotaOf(o.origin), host);
   // 中转没见过这个会话 ⇒ 轮换那几块没得画（头下那一条说清楚了）。

@@ -89,3 +89,45 @@ fn leaving_one_clears_those_whose_process_is_gone() {
     assert!(of(&data, "cccc").is_some());
     std::fs::remove_dir_all(&data).ok();
 }
+
+/// 会话血缘里把来处 `token` 绑给 `sid`（落盘那一份，与中转写的同一形）。
+fn bind(data: &std::path::Path, token: &str, sid: &str) {
+    let mut book = match crate::lineage::read_at(&data.join(crate::lineage::FILE_NAME)) {
+        crate::common::own_state::Read::Present(b) => b,
+        _ => crate::lineage::Book::default(),
+    };
+    book.origins.insert(
+        token.into(),
+        crate::lineage::Bound {
+            sid: sid.into(),
+            at: 1,
+        },
+    );
+    std::fs::write(
+        data.join(crate::lineage::FILE_NAME),
+        serde_json::to_vec(&book).expect("序列化"),
+    )
+    .expect("写血缘");
+}
+
+/// ★ 上游是不是用户自己的：绑给这条会话的来处、那份描述有用户的地址 ⇒ 是；描述只有出网那两格 · 来处没绑给它 · 没有血缘 ⇒ 不是。
+#[test]
+fn a_session_is_own_upstream_only_when_its_bound_origin_carries_a_base() {
+    let data = sandbox("own-of");
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    assert!(!own_upstream_of(&data, "s-own"), "没有血缘也说成自设");
+    let mut d = desc(7, &[]);
+    d.base = Some("https://gw.example/anthropic".into());
+    leave(&own, "tok1", &d, &|_| true).unwrap();
+    let p = [("HTTPS_PROXY", "http://127.0.0.1:3128")];
+    leave(&own, "tok2", &desc(8, &p), &|_| true).unwrap();
+    bind(&data, "tok1", "s-own");
+    bind(&data, "tok2", "s-proxy");
+    assert!(own_upstream_of(&data, "s-own"));
+    assert!(
+        !own_upstream_of(&data, "s-proxy"),
+        "只有出网代理也说成自设上游"
+    );
+    assert!(!own_upstream_of(&data, "s-other"), "没绑来处的会话说成自设");
+    std::fs::remove_dir_all(&data).ok();
+}

@@ -39,10 +39,11 @@ import type { NeedsBook, PlanNeedItem } from "./needs-book";
 import type { ManualItem } from "./login-reads";
 import type { Origin } from "./ipc/origin";
 import { foldCaret } from "./kit/fold";
-import { fmtDur } from "./duration-format";
 import { commitRename, editOver, mountInline, renameTab } from "./tab-rename";
-import { abbrOf, dotOf, fullTitle, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
+import { abbrOf, dotOf, fullTitle, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "./session-face";
 import type { MachineState } from "./generated/MachineState";
+import type { MachineFix } from "./generated/MachineFix";
+import { MachineStrip } from "./machine-strip";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {
@@ -125,8 +126,8 @@ export interface TabBarViewHost {
   rereadAll(): Promise<void>;
   /** 行尾「更多」：开这个 tab 的菜单（锚在那颗按钮上）。 */
   openMenuAt(anchor: HTMLElement, sid: string): void;
-  /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨。 */
-  reconnect(origin: string): void;
+  /** 栏底机器条那一行的修法（重新连接 · 连接设置 · 更新 …）。 */
+  fixMachine(origin: string, fix: MachineFix): void;
   /** 组的菜单「在计划中查看本组接手的块」：开计划页按这一组筛块（组员照栏里的先后）；没挂 ⇒ 菜单里不出这一项。 */
   planForGroup?(gid: string, name: string, members: readonly { origin: string; sid: string }[]): void;
 }
@@ -199,14 +200,12 @@ export class TabBarView {
   private readonly needsCount: HTMLSpanElement;
   /** 「需手动」那一条右端的键帽（按当前键位现拼，出现时才拼）。 */
   private readonly needsKbd: HTMLSpanElement;
-  /** 机器离线条（一台一条）。 */
-  private readonly downEl: HTMLDivElement;
+  /** 栏底机器条（一行一台没连上的，`machine-strip.ts`）：钉在列表下面、往上长，标签页不跳位。 */
+  private readonly strip: MachineStrip;
   /** 列表：分组 ＋ 每个会话一行（滚动的是它）。 */
   readonly listEl: HTMLDivElement;
   /** 起新会话之后的占位标签页那几行（`launch-slot.ts` 往里放）：恒在列表最末。 */
   readonly slotTail: HTMLDivElement;
-  /** 机器 → 离线条那一格：几条状态不明（后端数的，`MachineState.unclear`）· 从何时起这一窗看见它离线（`machineChanged`）；连上了 / 一条都没了摘掉。 */
-  private readonly down = new Map<string, { n: number; since: number }>();
 
   constructor(
     private readonly store: TabStore,
@@ -260,14 +259,13 @@ export class TabBarView {
     this.needsEl.setAttribute("aria-haspopup", "dialog");
     this.needsEl.setAttribute("aria-expanded", "false");
 
-    this.downEl = document.createElement("div");
-    this.downEl.className = "tab-machine-down";
+    this.strip = new MachineStrip({ fix: (origin, fix) => this.host.fixMachine(origin, fix) });
 
     this.listEl = document.createElement("div");
     this.listEl.className = "tab-list";
     this.slotTail = document.createElement("div");
     this.listEl.appendChild(this.slotTail);
-    barEl.prepend(this.headEl, this.needsEl, this.downEl, this.listEl);
+    barEl.prepend(this.headEl, this.needsEl, this.listEl, this.strip.el);
     // 悬停卡与行尾动作的悬停提示都委托在列表上：一行零个监听器（与点击 / 拖拽同一条规矩）。
     delegateTooltip(this.listEl, ".tab", (el) => {
       const sid = this.sidOf.get(el);
@@ -281,12 +279,9 @@ export class TabBarView {
     this.headActs.replaceChildren(...buttons);
   }
 
-  /** 一台的状态成品来了：离线、还有状态不明的会话（几条由后端数）⇒ 记下（从何时起照这一窗第一次看见）；否则摘掉。 */
-  machineChanged(origin: string, m: MachineState, at: number = Date.now()): void {
-    const n = m.unclear ?? 0;
-    if (m.offline && n > 0) this.down.set(origin, { n, since: this.down.get(origin)?.since ?? at });
-    else this.down.delete(origin);
-    this.updateMachineDown();
+  /** 一台的状态成品来了 ⇒ 栏底机器条照它摆（没连上 ⇒ 那一行；连上了 ⇒ 摘掉）。 */
+  machineChanged(origin: string, m: MachineState): void {
+    this.strip.set(origin, m);
   }
 
   /**
@@ -450,14 +445,7 @@ export class TabBarView {
       this.toggleNeedsPanel();
       return;
     }
-    if (e.target instanceof Element && typeof e.target.closest === "function") {
-      const re = e.target.closest<HTMLElement>("[data-reconnect]");
-      if (re && this.downEl.contains(re)) {
-        this.host.reconnect(re.dataset.reconnect ?? "");
-        return;
-      }
-    }
-    // 栏顶那一排、需手动、离线条之外的才算「条上」：点在列表外不清多选。
+    // 栏顶那一排、需手动、栏底机器条之外的才算「条上」：点在列表外不清多选。
     if (!(e.target instanceof Node && this.listEl.contains(e.target))) return;
     const hit = this.hitOf(e);
     if (!hit) {
@@ -772,7 +760,6 @@ export class TabBarView {
     if (hiddenList) place(hiddenList, hiddenIds.flatMap((sid) => this.buttonFor(sid)?.root ?? []));
     this.updateNeedsStrip();
     this.repaintNeedsPanel();
-    this.updateMachineDown();
     // 起步那一批（重放）画完之后，再新长出来的行才淡入。
     if (!this.store.inBatch && this.tabButtons.size > 0) this.painted = true;
 
@@ -821,38 +808,6 @@ export class TabBarView {
       this.needsCount.replaceChildren(...[unreadable ? null : countBadge(n, "warn")].filter((b): b is HTMLSpanElement => b !== null));
     }
     this.needsEl.setAttribute("aria-label", copyText("tabBar.needs.aria", { n }));
-  }
-
-  /** 机器离线条：看不见的那台、还有状态不明的会话 ⇒ 一条（`{machine} 离线 · N 会话状态不明 / 采样 3m 前［重新连接］`）。 */
-  private updateMachineDown(): void {
-    const now = Date.now();
-    const rows: { origin: string; n: number; since: number }[] = [];
-    for (const [origin, { n, since }] of this.down) rows.push({ origin, n, since });
-    const drawn = rows.map((r) => `${r.origin}\u0000${r.n}\u0000${sinceText(r.since, now)}`).join("\u0001");
-    if (this.downEl.dataset.drawn === drawn) return;
-    this.downEl.dataset.drawn = drawn;
-    this.downEl.replaceChildren(
-      ...rows.map((r) => {
-        const row = document.createElement("div");
-        row.className = "tab-machine-down-row";
-        row.appendChild(statusDot("unknown", copyText("sessionState.unseen.name"), "compact"));
-        const body = document.createElement("span");
-        body.className = "tab-machine-down-body";
-        const l1 = document.createElement("span");
-        l1.textContent = copyText("tabBar.machineDown.body", { machine: r.origin, n: r.n });
-        const l2 = document.createElement("span");
-        l2.className = "tab-machine-down-seen";
-        l2.textContent = copyText("tabBar.machineDown.seen", { ago: sinceText(r.since, now) ?? fmtDur(0) });
-        body.append(l1, l2);
-        const re = document.createElement("button");
-        re.type = "button";
-        re.className = "tab-machine-down-act";
-        re.dataset.reconnect = r.origin;
-        re.textContent = copyText("tabBar.machineDown.reconnect");
-        row.append(body, re);
-        return row;
-      }),
-    );
   }
 
   /**

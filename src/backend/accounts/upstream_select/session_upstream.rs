@@ -123,6 +123,25 @@ pub(crate) fn base_of(own: &Own, origin: &str) -> Option<Result<Base, &'static s
     Some(Base::parse(&raw).map_err(|i| i.0))
 }
 
+/// ★ **一条会话的上游是不是用户自己的**（唯一判的地方；`data` ＝ 数据目录）：会话血缘里绑给它的来处、那份描述里有用户的地址。
+/// 是 ⇒ 中转按描述直通、不记额度不换号（[`super::Accounts`] 的 `resolve`）⇒ 界面那几格照实写额度看不到 · 换号不适用。
+/// 没有血缘 · 来处没绑给它（还没发过请求）· 描述已清（进程不在了）⇒ 不是。
+pub(crate) fn own_upstream_of(data: &Path, sid: &str) -> bool {
+    let book = match crate::lineage::read_at(&data.join(crate::lineage::FILE_NAME)) {
+        crate::common::own_state::Read::Present(b) => b,
+        _ => return false,
+    };
+    book.origins
+        .iter()
+        .filter(|(_, b)| b.sid == sid)
+        .any(|(token, _)| of(data, token).is_some_and(|d| d.base.is_some()))
+}
+
+/// [`own_upstream_of`]，数据目录照这台的。
+pub(crate) fn own_upstream_here(sid: &str) -> bool {
+    crate::platform::paths::data_home().is_some_and(|d| own_upstream_of(&d, sid))
+}
+
 /// 来处 ⇒ 文件名；不过段闸 ⇒ 拒（不让一段来处拼出目录外的路径）。
 fn file_name(origin: &str) -> Result<String, Said> {
     if relay_route_core::segment_is_safe(origin) {

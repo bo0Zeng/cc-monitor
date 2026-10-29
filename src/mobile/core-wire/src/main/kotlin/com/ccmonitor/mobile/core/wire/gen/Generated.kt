@@ -21224,6 +21224,7 @@ data class SessionCan(
     val permission: Allow,
     val stop: Allow,
     val say: CanSay,
+    val end: Allow,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -21238,9 +21239,10 @@ data class SessionCan(
             Field("permission", { Allow.ADAPTER }, optional = false, nullable = false),
             Field("stop", { Allow.ADAPTER }, optional = false, nullable = false),
             Field("say", { CanSay.ADAPTER }, optional = false, nullable = false),
+            Field("end", { Allow.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> SessionCan(a[0] as CanClose, a[1] as Allow, a[2] as CanTerm, a[3] as Allow, a[4] as Allow, a[5] as Allow, a[6] as Allow, a[7] as CanSay) },
-            { v -> arrayOf(v.close, v.resume, v.term, v.reattach, v.model, v.permission, v.stop, v.say) },
+            { a -> SessionCan(a[0] as CanClose, a[1] as Allow, a[2] as CanTerm, a[3] as Allow, a[4] as Allow, a[5] as Allow, a[6] as Allow, a[7] as CanSay, a[8] as Allow) },
+            { v -> arrayOf(v.close, v.resume, v.term, v.reattach, v.model, v.permission, v.stop, v.say, v.end) },
         )
     }
 }

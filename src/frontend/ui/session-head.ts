@@ -62,7 +62,6 @@ export interface SessionHeadHost {
   more(anchor: HTMLElement, sid: string, extra: HeadMoreExtra): void;
   resume(anchor: HTMLElement, sid: string): void;
   attach(sid: string): void;
-  reconnect(origin: string): void;
   /** 这个会话是计划里哪一块的接手 ⇒ 那一枚标的字与点了去哪；不是 ⇒ `null`。 */
   planMark(tab: Tab): { slice: string; label: string; open: () => void } | null;
   /** 「⋯」那份菜单里的这一项（这个会话此刻没有这一项 ⇒ `null`）。 */
@@ -341,7 +340,8 @@ export class SessionHead {
     const front = acts.front;
     // 看它的终端：会话还有终端可去才出（已结束的没有）。
     const term = hasTerminal(tab.face);
-    const extra = canResume(tab.face) ? "resume" : acts.attach ? "attach" : d === "unknown" ? "reconnect" : "";
+    // 那台看不见 ⇒ 不另给［重新连接］：栏底机器条那一行说、那一行修（A2-17-15-2）。
+    const extra = canResume(tab.face) ? "resume" : acts.attach ? "attach" : "";
     const mark = this.host.planMark(tab);
     const kin = this.kinKey(tab);
     const drawn = [tab.sessionId, d, fullTitle(tab), machineOf(tab), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra, mark?.label ?? "", tab.pinned ? 1 : 0, kin].join("\u0000");
@@ -361,9 +361,7 @@ export class SessionHead {
         ? button({ label: copyText("sessionHead.act.resume"), size: "compact", icon: "caretDown", onClick: (e) => this.host.resume(e.currentTarget as HTMLElement, sid) })
         : extra === "attach"
           ? button({ label: copyText("sessionHead.act.openTerm"), size: "compact", onClick: () => this.host.attach(sid) })
-          : extra === "reconnect"
-            ? button({ label: copyText("sessionHead.act.reconnect"), size: "compact", onClick: () => this.host.reconnect(tab.origin) })
-            : null;
+          : null;
     this.extra.replaceChildren(...(extraBtn ? [extraBtn] : []));
     // 计划那一枚标：这个会话是哪一片哪一块的接手、在什么阶段；点了开计划页并选中那一块。
     if (mark) {

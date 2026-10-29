@@ -760,6 +760,12 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "children[].face.can.end.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "children[].face.can.model.can",
           "type": "string"
         },
@@ -1342,6 +1348,12 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "startedBy.face.can.end.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "startedBy.face.can.model.can",
           "type": "string"
         },
@@ -1624,6 +1636,12 @@
           "frozen": false,
           "kind": "text",
           "path": "face.can.close.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.end.can",
           "type": "string"
         },
         {
@@ -2176,6 +2194,12 @@
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.end.can",
+          "type": "string"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "face.can.model.can",
@@ -2397,6 +2421,12 @@
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.end.can",
+          "type": "string"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "face.can.model.can",
@@ -2591,6 +2621,18 @@
           "frozen": false,
           "kind": "text",
           "path": "face.can.close.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "face.can.end.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.end.why",
           "type": "string"
         },
         {
@@ -3576,6 +3618,18 @@
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "up.*.face.can.end.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "up.*.face.can.end.why",
+          "type": "string"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "up.*.face.can.model.can",
@@ -3943,6 +3997,18 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "groups[].members[].face.can.end.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "groups[].members[].face.can.end.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "groups[].members[].face.can.model.can",
           "type": "string"
         },
@@ -4196,6 +4262,18 @@
           "frozen": false,
           "kind": "text",
           "path": "pinned[].face.can.close.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "pinned[].face.can.end.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "pinned[].face.can.end.why",
           "type": "string"
         },
         {
