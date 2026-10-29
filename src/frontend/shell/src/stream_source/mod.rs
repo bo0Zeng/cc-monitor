@@ -4,6 +4,8 @@
 //! `exec` 一次性 exec 结果的形状与限长读行 · `frame` 按类型解帧 · `dispatch` 一帧落到哪（本机与各台同一处）· `batch` 攒批与收行 ·
 //! `local` 收的那一头（按那台分收口）。外面一律写 `crate::stream_source::X`。
 //!
+//! 写流 · 切流 · 数退避在这里写不出来：手里只有通道里的行与 `InboundClient`（没有写方法），退避是 `resident_client::feed` 私有的。
+//!
 //! 本模块不拨 SSH，也不开任何到远端的字节流：只读本机后端那一条
 //! （它不登记为通信层成员，理由住 `comm_boundary_registry_tests::TRANSPORT_LEFT_OUTSIDE`）。
 
@@ -31,11 +33,6 @@ mod stream_flag_gate_tests;
 #[path = "../../../../../tests/frontend/shell/stream_source/seam_tests.rs"]
 mod seam_tests;
 
-/// 写半边只许经 `split_and_park` 出手：这里一个字节都不许自己往流里写、不许自己切流。
-#[cfg(test)]
-#[path = "../../../../../tests/frontend/shell/stream_source/write_half_guard.rs"]
-mod write_half_guard;
-
 /// 那台断线 → 重连 → 续上之后，订了这台的那几条订阅各收几格（数格、不看墙钟）。
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/reconnect_cells_tests.rs"]
@@ -45,8 +42,3 @@ mod reconnect_cells_tests;
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/dial_move_judge.rs"]
 pub(crate) mod dial_move_judge;
-
-/// 重连循环只有一个诞生点（`resident-client` 的 `feed.rs`），monitor 不许再长出自己的。
-#[cfg(test)]
-#[path = "../../../../../tests/frontend/shell/stream_source/one_loop_guard.rs"]
-mod one_loop_guard;

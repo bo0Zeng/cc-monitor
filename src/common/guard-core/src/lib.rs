@@ -89,7 +89,7 @@
 //! 它的方法学住址是（地板挡不住静默缩水）那一族。
 //! 而与它配套的**负对照**形状值得推广（＋ `P28`）：
 //! 每条源码扫描型守卫都该有一条「剥法没把我要扫的那一段剥掉」的判据 ——
-//! `stream_source::write_half_guard` 的第一条就是那个样子。
+//! `stream_source::capped_line_tests` 的第一条就是那个样子。
 //! 🔴 **那一形已经抽成原语了**：[`assert_stripper_keeps`]。
 //! 它比活样本多买一件（锚点必须被便宜近似丢掉 ⇒ 对照不许被填成恒真的），
 //! 少买一件（活样本那个字节数倍数刻意没抽上来 —— 那是一份文件的数）。
@@ -1149,9 +1149,9 @@ pub fn assert_no_unstripped_test_module(who: &str, prod: &str) {
 /// 失效形状是现打过的：便宜近似 `src.split("\n#[cfg(test)]").next()` 只在
 /// 「第一个测试模块之后再没有生产代码」时才对。`stream_source/` 的第一个测试模块在
 /// 804 行而 `parse_frame` 在 1771 行 ⇒ 扫描面**归零到前 803 行**，守卫静默变瞎。
-/// ⇒ 每条这样的守卫都该有一条这个形状的判据；活样本是
-/// `stream_source::write_half_guard::the_shared_stripper_keeps_the_part_this_guard_must_scan`，
-/// 本函数是把它**抽成一份**（一条形状出现 N 次就抽一个住址；
+/// ⇒ 每条这样的守卫都该有一条这个形状的判据；用它的活样本是
+/// `stream_source::capped_line_tests::the_shared_stripper_keeps_the_arms_this_guard_must_scan`，
+/// 本函数是把那一形**抽成一份**（一条形状出现 N 次就抽一个住址；
 /// 而这一族原先「八处各写一份」的账，本 crate 头注第一段就记着）。
 ///
 /// # 三件事一起买，缺一件这条对照就退化
