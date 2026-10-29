@@ -117,12 +117,11 @@ export class TabSessionActions {
     );
   }
 
-  /** 说不清（那台暂时看不见）⇒ 不恢复、说一句：会话也许还在跑，再起一份就是同一会话两个 claude。 */
+  /** 说不清（那台暂时看不见）⇒ 不恢复、照脸说一句（为什么不恢复 ＋ 那台离线那一句，都是后端写的）：会话也许还在跑，再起一份就是同一会话两个 claude。 */
   private refuseUnseen(tab: Tab): boolean {
-    if (tab.face?.dot !== "unknown") return false;
-    toast(copyText("sessionState.unseen.noResume"), copyText("sessionState.unseen.tooltip"), {
-      level: "info",
-    });
+    const face = tab.face;
+    if (face?.dot !== "unknown") return false;
+    toast(face.can.resume.can === "no" ? face.can.resume.why : face.name, face.line, { level: "info" });
     return true;
   }
 

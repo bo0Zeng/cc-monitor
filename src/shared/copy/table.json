@@ -2173,12 +2173,6 @@
       "zh": "暂不恢复",
       "args": []
     },
-    "sessionState.unseen.tooltip": {
-      "kind": "body",
-      "role": "悬停",
-      "zh": "状态不明 · 机器离线",
-      "args": []
-    },
     "sessionState.recordFile.gone": {
       "kind": "body",
       "role": "说明",
