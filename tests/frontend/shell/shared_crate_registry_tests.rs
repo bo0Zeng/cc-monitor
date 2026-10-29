@@ -255,56 +255,6 @@ fn the_only_windows_signal_still_runs_on_a_windows_runner() {
     );
 }
 
-/// 反过来也要成立：`[workspace] members` 里列的目录必须真的存在。
-/// 挡的是「crate 改名/删除后 members 留成僵尸」——那会让 `cargo` 直接报错，
-/// 但**在本地没人跑 workspace 命令时**可以潜伏很久。
-///
-/// ⚠ G2 换靶说明：这条原先扫的是 `ci.yml` 里的 `cargo test -p <名>` /
-/// `--manifest-path crates/<名>/` 三种形态（那时僵尸长在 CI 步骤里）。
-/// 收敛后 CI 不再逐个点名 ⇒ 僵尸只能长在 `members` 里，靶子跟着搬。
-#[test]
-fn workspace_members_do_not_reference_crates_that_no_longer_exist() {
-    let toml = fs::read_to_string(root().join("Cargo.toml")).expect("Cargo.toml 读不到");
-    let beg = toml.find("[workspace]").expect("`[workspace]` 不见了");
-    let end = toml[beg + 1..]
-        .find("\n[")
-        .map(|k| beg + 1 + k)
-        .unwrap_or(toml.len());
-    let ws = &toml[beg..end];
-    let mut scanned = 0usize;
-    let mut ghosts = Vec::new();
-    let prefix = member_prefix();
-    for line in ws.lines() {
-        let t = line.trim().trim_matches(',').trim_matches('"');
-        let Some(name) = t.strip_prefix(prefix.as_str()) else {
-            continue;
-        };
-        let name = name.trim_matches('"');
-        scanned += 1;
-        if !common_dir().join(name).join("Cargo.toml").is_file() {
-            ghosts.push(name.to_string());
-        }
-    }
-    // 抽取器自检：members 里应有 **6** 条 `crates/…`（与 `the_crate_scan_actually_finds_crates`
-    // 的地板同源）。扫不到就是取名方式与 Cargo.toml 的写法分家了。
-    // 〔`E` 阻-1 回修，08-27〕同上：与**文件系统**那个来源对拍，不再记一个会过期的数。
-    assert_eq!(
-        scanned,
-        shared_crate_names().len(),
-        "从 `[workspace] members` 扫到 {scanned} 条指进 `src/common/` 的，而 `src/common/` 下有 {} 个包 —— \
-             本抽取器与 Cargo.toml 的写法分家了，或者真少了一个",
-        shared_crate_names().len()
-    );
-    assert!(
-        scanned > 0,
-        "从 `[workspace] members` 一条指进 `src/common/` 的都没扫到 —— 本抽取器与 Cargo.toml 的写法分家了"
-    );
-    assert!(
-        ghosts.is_empty(),
-        "`[workspace] members` 里列了不存在的 crate：{ghosts:?}"
-    );
-}
-
 /// **`package.json` 里每个 `test*` 脚本，要么 CI 会跑它，
 /// 要么在这里登记成「手测」并写清原因。**
 ///

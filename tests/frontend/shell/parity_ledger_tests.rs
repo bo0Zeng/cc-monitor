@@ -1,271 +1,344 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-/// 一条命令服务哪一侧。`Both` = 这条命令自己就把两侧都办了
-/// （例：`search_history` 头注自陈「本地内存索引查询与远端 fan-out **并发**」）。
+/// 一条命令服务哪一侧。`Both` = 这条命令自己就把两侧都办了。
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-enum Side {
+pub(crate) enum Side {
     Local,
     Remote,
     Both,
 }
 
-/// 不对称的三种性质。**`Undecided` 是刻意留的**——本表的价值之一是把没人裁定过的
-/// 缺口摆出来，而不是替产品做主把它塞进白名单。
+/// monitor 自己的事分几类。`may_touch` 那三类碰后端是本分；其余碰了就是没迁干净（`command_home_registry` 判）。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Asym {
-    /// 天然不对称：本地**不需要**这项能力，不是欠账。
-    NaturallyAsymmetric,
-    /// 平价欠账：本地该有而没有（或反过来），已知、有去处。
-    ParityDebt,
-    /// 未裁定：本表新发现，需要产品判断。**不许**因为写起来方便就归进上面两类。
-    Undecided,
+pub(crate) enum Own {
+    /// 开窗 / 拉前 monitor 自己的窗口。
+    Window,
+    /// 拉前 · 绑窗口（把用户桌面上那个终端窗口拉到前面）。
+    Front,
+    /// 本机 monitor 配置（`config.json` · `auto-launch.json` · 机器表）。
+    Config,
+    /// 日志 · 诊断 · 数据位置。
+    Log,
+    /// 重放缓冲（monitor 进程内的界面状态）。
+    Replay,
+    /// 本机后端的起停与引导（含「这台后端通道在不在」）。
+    Lifecycle,
+    /// 通信层面 A 客户端本身。
+    Channel,
+    /// 放字节：照那台后端判好的计划往那台放 / 删 monitor 带着的字节。
+    Place,
+    /// 足迹里 monitor 自己那台那几行的事实（判定在后端）。
+    Footprint,
 }
 
-/// **全部 Tauri 命令 → (能力, 服务哪一侧)**。
+impl Own {
+    pub(crate) fn may_touch(self) -> bool {
+        matches!(self, Own::Lifecycle | Own::Channel | Own::Place)
+    }
+}
+
+/// **壳的全部 Tauri 命令：命令 → 能力 · 服务哪一侧 · monitor 自己的哪一类事 · 理由**（一张表，两份判据读它）。
 ///
-/// 改 `generate_handler!` 就必须来改这张表——这是有意的摩擦。
-const LEDGER: &[(&str, &str, Side)] = &[
+/// 前两列由本模块判（两向等于 `generate_handler!`、不对称要写理由）；后两列由 `command_home_registry` 判
+/// （不许碰后端的那几类，实现传递可达 `local_client` / `BackendDoor` ⇒ 红）。改 `generate_handler!` 就必须来改这张表。
+pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
     (
         "open_session_in_new_window",
         "app.window.session",
         Side::Both,
+        Own::Window,
+        "开窗",
     ),
     (
         "open_terminal_in_new_window",
         "app.window.session",
         Side::Both,
+        Own::Window,
+        "开窗",
     ),
-    // K-H2a：apikey 表那把第三方 API key。读那条**只回掩码**（`KS6`），写那条是「界面」这个第二写者（`KS10`）。
-    // 两条都收 `origin` ⇒ `Both`：本机读写 monitor 自己那一份，远端交那台机器的后端
-    // （`apikey-key-set`）。`creds.apikey` 那条平价欠账（「把 key 送到远端的路」）结清。
-    // 读那条与「表里有没有行」那一条退役：两样事实并进账号清单的徽章（`accounts-list`）。
-    // 写：界面经通道直接发 `apikey-key-set`（`src/frontend/ui/apikey-reads.ts::writeApikeyKey`），写前核路径由常驻后端的身份答。
-    // 这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址 —— 按 origin 取那台的事实
-    // （远端用到才起那台的中转），判断只在 `payload::relay_endpoint_for` 一处 ⇒ `Both`。
-    // 它接替了 RM1a 那条只对远端的 `relay_ensure`（零调用方；能力 `relay.machine` 随之退役）。
-    // 别名只有一类（名字 ＋ 一组 ccm 参数），两跳 ＋ 读回口。
-    // `Local` → `Both`：六条都收 `origin`、事实经那台后端 ⇒ `alias.manage` 的欠账还掉。
-    ("open_settings_window", "app.window.settings", Side::Both),
-    ("bring_monitor_to_front", "app.window.self", Side::Both),
-    // devbench F03：skill 接入面（列出 skill / 读写那个「人手写的注入文件」）。
-    // 三条共用一个能力键 —— 它们是同一件事的三个动作（先例：`app.window.session` 也是两条共键）。
-    // 远端（和本机，同一条路）的 `INBOX.txt` 能编辑 ⇒ 三条都吃 origin、两侧都经那台机器的后端。
-    // 这三条（`skill.inbox`）退役：收件箱那一面进了那台后端（`skill-host-*`），界面经通道直问；对称 ⇒ 不对称数不动。
-    ("cc_get_auto_launch", "app.auto-launch", Side::Both),
-    ("cc_set_auto_launch", "app.auto-launch", Side::Both),
-    ("frontend_perf_log", "app.diagnostics", Side::Both),
-    ("get_diagnostics_config", "app.diagnostics", Side::Both),
-    ("set_diagnostics_config", "app.diagnostics", Side::Both),
-    ("get_log_file_info", "app.logs", Side::Both),
-    // 日志页「复制诊断信息」：一段里每台一行（本机远端同一条路，各台的状态成品与界面交来的记录账）⇒ `Both`，归已有能力 `app.logs`。
-    ("diagnostics_report", "app.logs", Side::Both),
-    ("open_log_file", "app.logs", Side::Both),
-    // 设置窗「现在重启」：重起 cc-monitor 自己（不吃 origin，本机远端无从分）⇒ `Both`，归已有能力 `app.config`（「要重启才生效」那几项改的都是本机配置）。
-    ("restart_app", "app.config", Side::Both),
-    // 退出 / 重启 cc-monitor 之前现读各文件窗口会打断什么：表住 monitor 进程里，不吃 origin ⇒ `Both`，同 `restart_app` 归 `app.config`。
-    ("filewin_interrupts", "app.config", Side::Both),
-    // 写系统剪贴板（全产品的复制）：剪贴板是 monitor 面前这台桌面的，哪台的内容都一样 ⇒ `Both`，归已有能力 `app.window.self`。
-    ("clipboard_write", "app.window.self", Side::Both),
-    // 读系统剪贴板（登录抽屉［粘贴］）：同上，剪贴板是面前这台桌面的 ⇒ `Both`。
-    ("clipboard_read", "app.window.self", Side::Both),
-    ("open_log_dir", "app.logs", Side::Both),
-    // P2s（C8）：backend 策略是 **per-host** 的（入参带 origin，本机 = `<local>`）⇒ `Both`。
-    // 一个命令服务两侧，正是 C1「本地要和远端一样」在命令面上的样子。
-    // 那个值搬到后端所在那台机器上：原来那条「推生效值」的命令退役，换成问 / 交写两条，
-    // 仍是 per-host、入参带 origin ⇒ 仍是 `Both`，仍归 `app.backend-policy`（能力数不动）。
-    // 能力 `app.backend-policy` 那两行（问 / 交写「退出行为」，都 `Both`）退役：设置页经通道直接说
-    //   后端 `exit-policy-read` / `exit-policy-set`。那是这项能力的全部命令 ⇒ 账本上这条能力没有 Tauri 命令了（它原本对称）。
-    // P2s：状态两侧同源 —— 「这台机的后端通道在不在」读的是 `inbound_client` 那**一张**
-    // 登记表（远端 hello 后登记，本机 P2 之后也在 hello 后登记）。⇒ `Both`，且只有一条命令。
-    ("backend_status", "backend.status", Side::Both),
-    // P2s：起/停也是**一条命令管两侧** —— 本机杀子进程、远端断那条 SSH 流。
-    // 两者「结果相同、路径不同」，差别塞在实现里而不是塞成两条命令（`C1`）。
-    // P2s（A5）：开关面该列哪几台机，由**注册表**说了算（前端自己算会与 origin 分叉四处）。
-    ("backend_machines", "backend.lifecycle", Side::Both),
-    ("backend_start", "backend.lifecycle", Side::Both),
-    ("backend_stop", "backend.lifecycle", Side::Both),
-    // 机器表热加载：对的是整张机器表（本机那一行恒在、不归表增删，对它是空操作），归已有能力 `backend.lifecycle`。
-    ("load_config", "app.config", Side::Both),
-    ("patch_config", "app.config", Side::Both), // 按键补丁
-    ("get_data_paths", "app.data-paths", Side::Both),
-    ("forget_session", "session.forget", Side::Both),
-    // 同一件事的另一半：`forget_session` 把一个会话的重放缓冲全丢，这一条丢到只剩尾巴
-    // （接上骨架之后，丢掉的正文按偏移要得回来）。两者都只动 monitor 本机的缓冲、按 sid 找 ⇒ `Both`，
-    // 归已有能力，能力数与不对称数都不动。
-    // `update_history_metadata`（`history.metadata`）· 列上次账号那一条（`accounts.last-used`）两行退役：
-    //   注解的读写者换成本机常驻后端（帧命令 `history-annotate`，界面经通道问 `<local>`；上次的号并进 `session-account`）。
-    // `search_history`（`search.history`，Both）退役：本机远端的全文搜索都经通道说 `history-search`
-    //   （界面 `src/frontend/ui/views/history-search.ts`），不再是 Tauri 命令 ⇒ 能力数 −1（它是这项能力唯一的命令；原本对称 ⇒ 不对称数不动）。
-    // ↗ 本机会话与远端会话同一条命令：本机后端 `session-window` 答它在这台电脑上的哪儿，界面原样交来 ⇒ `Both`。
-    // 本表记的是「本地/远端平价」，不是「平台覆盖」（平台那一维住壳的宿主事实那一格）。
-    ("bring_terminal_to_front", "terminal.focus", Side::Both),
-    // 钩子诊断本机 / 远端那一对退役：本机远端合成一条帧命令 `hooks-diag`，界面经通道直问那台。
-    // 项目清单那一对 Tauri 命令（Local / Remote）退役：清单住本机常驻后端（`history-list {origin?}`，界面每台一问），
-    //   能力 `history.list-projects` 在本表里不再有行。
-    // 🔴 **下面这五行是「一条命令自己办两侧」，不是「两条命令各办一侧」。**
-    //
-    // 「同义双份命令合成一条带 origin 参数的」。合并之后
-    // **能力总数与不对称数都不动** —— 那五条能力从前是 `{Local, Remote}`（各有一条命令
-    // ⇒ 已对称），今天是 `{Both}`（一条命令办两侧 ⇒ 同样对称）。
-    // ⚠ **这一点要读准**：合并**不改善平价**，平价本来就有；它改善的是
-    // 「同一件事有几条路」。两者别混着读。
-    // 展开一个项目那条 Tauri 命令（`history.list-sessions`）退役：清单住本机常驻后端（`history-list`）。
-    // `history.read-session` 那三条（整份读 · 按偏移 · 按行号）退役：那台后端出记录行，界面经通道直问
-    //   （`history-page` / `history-lines`，`src/frontend/ui/record-reads.ts`）⇒ 能力 `history.read-session` 从此不再有 Tauri 命令
-    //   （同 `plugins.marketplaces` 那一先例：今天是通道操作，本机与远端同一条路）。
-    // 〔骨架〕`--read-session-from-offset` 在 monitor 侧的调用点 —— 按偏移取一段正文。
-    // 归**已有**能力 `history.read-session`：读的是同一份会话 jsonl，两侧都走 `subagent::Backend` ⇒ `Both`。
-    // 同能力的另三条（骨架索引 · 大纲清单 · 会话内查找）**退役**：界面经通道直接说帧命令
-    //   `history-index` / `history-user-inputs` / `history-find`（后端出成品，`src/frontend/ui/session-reads.ts`），
-    //   本机与远端同一条路 ⇒ 它们不再是 Tauri 命令；能力数与不对称数都不动（本能力照旧 `{Both}`）。
-    // 按行号取一段正文（不依赖骨架索引）：本机 `<local>` 与远端同一条帧命令 `history-lines`。
-    // 删会话那一行退役：界面经通道直说那台后端 `files-delete-session`（`src/frontend/ui/session-writes.ts`）。
-    // MCP 读写（`mcp.read` · `mcp.list-project-dirs` · `mcp.write` · `mcp.remove`）与推 / 拉（`mcp.sync`）
-    //   八条退役：界面经通道直问那台后端（`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`），
-    //   本机远端同一条路 ⇒ 它们不再是 Tauri 命令；那几格能力都是对称的 ⇒ 不对称数不动。
-    // skill 装 / 卸三条（`skill.install`）退役：判 · 写 · 记进了被写那台后端，界面经通道直问；那项能力对称 ⇒ 不对称数不动。
-    ("open_local_terminal", "session.launch", Side::Local),
-    // U4b 那一行（resume 之前问记录还在不在，`Both`）退役：界面经通道直接问后端 `history-record`
-    //   （`src/frontend/ui/session-reads.ts::probeSessionRecord`）。能力 `history.read-session` 还有别的命令 ⇒ 能力数与不对称数都不动。
-    // 开终端那一问要的机器事实（`terminal_dial`，`Remote`）退役：界面直接交名字给本机后端 `terminal-ssh`。
-    ("open_terminal_window", "terminal.window", Side::Both),
-    // 设置页「终端」那一行的事实（开窗用哪个终端）：开窗本机远端同一条 ⇒ 同一能力，`Both`。
-    ("terminal_choices", "terminal.window", Side::Both),
-    // 别名块那三格能力 id 按改名改归（别名块是「② 别名」，不是装后端）：
-    //   `ccm.install` → `alias.block-install` · `ccm.uninstall` → `alias.block-remove` · `ccm.install-ui` → `alias.block-preview`
-    //   （「ccm 助手」年代的遗名）。安装面的归档表同拍从 ① 挪到 ②。
-    // 远端装 / 卸别名块那两条 `Remote` 命令并进 `aliases_block_install` / `_remove`（`Both`），两行删。
-    // 改了：`alias.block-*`，归档表同拍挪到 ②。〕
-    // 三条 `Local` → `Both`（带 `origin`）；远端卡接上块预览（一并做）。
-    // G6：远端分叉落地 ⇒ `history.branch` 从 ParityDebt 变成两侧都有（该行的
-    // 不对称理由已从 `ASYMMETRY_REASONS` 删除——留着就是宣称一条已经补上的欠账）。
-    // **两条并成一条**（上面那五行的第五条）——
-    // 被并掉的那条命令自己的头注逐字写着「差异今天只剩一处：活儿在远端干」。
-    // 分叉那一行退役：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
-    // 代码全景那一族（能力 `panorama.code-graph`）随代码全景整条摘掉出表：命令 −1（`panorama_place`，Both）· 能力 −1。
-    // 查索引状态 / 重建索引那两条（`search.index`，Local）退役：monitor 内存索引删了
-    //   （本机搜索也问本机后端）⇒ 能力 `search.index` 整项没了（能力数 −1、不对称数 −1、天然不对称 −1）。
-    // P7c-1（08-12）：远端会话的 subagent 展开做出来了 ⇒ 两侧都服务。
-    // `load_subagent`（`subagent.load`）退役：那台后端 `history-subagent` 出成品，界面经通道直问 ⇒ 能力不再有 Tauri 命令。
-    // 按 origin 问那台机器的后端 `tasks-list`（本机也走后端）⇒ 两侧都服务。
-    // 收 `origin` ⇒ `Both`：远端那一栏问那台机器的后端（`footprint-probe`），判定同一份 `build_rows`。
-    ("footprint_client_facts", "audit.monitor-own", Side::Local),
-    // 资产目录同步那一条（`assets.catalog`）退役：界面直问本机后端 `assets-sync`（只报 origin）；对称 ⇒ 不对称数不动。
-    // U-CC1 漂移记账那一条 Tauri 命令随 hello 的 `capabilities` 删了：记录那几面在那台后端（`drift-report`，界面经通道问）。
-    // P8a：插件面只读枚举。按 origin 问那台机器的后端 `plugins-marketplaces` ⇒ 两侧都服务。
-    // 那条 Tauri 命令退役：界面经通道直接说帧命令 `plugins-marketplaces`（后端出成品）⇒
-    //   能力 `plugins.marketplaces` 从此不再有 Tauri 命令（它今天是一条通道操作，本机与远端同一条路）。
-    // U8c-2c-2：`ccm 调用行`的渲染入口。**这一行说的是「有没有一条上线命令」，
-    // 不是「有没有这个能力」** —— 两者 P3t 起分了家，别再合着读。
-    //
-    // ★★ **P3t-Y4 订正**：原文写「本机路径不经 IR 产出命令（§36 + R07 已裁决）」，而 §36 只绑 Windows。
-    // 它整节讲的是 **Windows** 且逐字禁的是「本地渲染器读 `plan.env`」，
-    // 它管不着「POSIX 本机能不能用 ccm 调用行渲染器」。R07 那条补充给的理由
-    // （「接了也拿不到新东西」）在 CLI 渲染器这一侧**已被 P3t-Y2 证伪**：
-    // 接上去拿到的是 `--tmux`，也就是本机旧路结构上产不出来的**会话容器**。
-    //
-    // 本行仍是 `Side::Remote`，但理由换了：**POSIX 本机不需要一条 IPC 命令** ——
-    // 它的渲染器就住在 Rust 里（本机后端 `control/launch_render/mod.rs::line_of`），前端不必绕一圈问自己。
-    // ★★ **P3b 结清（08-12）：这一行从 `Remote` 变 `Both`，不再是不对称。**
-    //
-    // 它原来的注释写「Remote-only 且未裁定 —— 本机该不该也有一个后端进程来收这件事，
-    // 正是 §1.2 今天悬着的问题」。**两半都被证伪了**：
-    // ① 「还没裁定」——`C1`/`C8` 已裁（「本地要和远端一样」）；
-    // ② 「本机没有后端进程」——P2 交付了：`local_backend.rs::local_stdio_consumer` 里逐字
-    //    `inbound_client::register(client)`，`local_client()` 实测通。
-    // ③ 而 **P3 刀 3 让生产段真的用它了**：`runLocalResumeIntoExistingTmux`
-    //    以 `<local>` 交后端就地 resume。
-    //
-    // ⇒ 这条不是「改个分类」，是**这条能力真的两侧都有了**。
-    // 零流量复制那一行（步 23b 加的，Remote）随门禁那一格退役一起走了：
-    //   窗口的复制走后端 `files-copy`。能力 `sftp.file-panel` 仍由下面那条入口撑着 ⇒ 能力数与不对称数都不动。
-    // 改权限位。**归已有能力 `sftp.file-panel`** ⇒
-    // 能力数与不对称数都不动：它不是一件新能力，是那张能力对照表里
-    // 逐字列着的一行（「权限 ✅ `SETSTAT` / `chmod` / **打平**」），此前那一栏写的是
-    // 「❌ 没做（`SETSTAT` 协议里有）」。
-    // ⚠ `Remote` 不是欠账：本机改权限压根不经 SFTP
-    // （本机那一侧是 `std::fs::set_permissions`，而本机根本没有这个面板 ——
-    //  `sftp.file-panel` 那条 `NaturallyAsymmetric` 逐字「本地有操作系统的文件管理器」）。
-    // 〔／`§5` 第三段〕**原生文件管理窗口的入口。**
-    //  **归已有能力 `sftp.file-panel`** ⇒ 能力数与不对称数都不动。归法的理由要说准，
-    //  因为它不是「又一条 sftp 命令」：`§6.6 C` 裁的是「**只能有一个文件管理面板**」，
-    //  而那一个的终局形态就是这个原生窗口 —— 它与旧面板是**同一个能力的两个表面**，
-    //  不是两个能力。给它另起一个能力 id，等于在账本上把「只有一个面板」记成两个。
-    //  ⚠ `Side::Remote` 签的是**实况**：窗口只列远端（经那台后端 `files-ls`），没有本机那一侧
-    //  （本机有操作系统的文件管理器，见 `filewin/source.rs` 头注「只有远端一侧」）。逐条理由住 `filewin/entry.rs` 头注。
-    ("open_file_window", "sftp.file-panel", Side::Remote),
-    // 端口转发那三条（起 · 停 · 列）出表：转发账进了本机常驻后端，帧命令 `forward-*`，界面经通道问。
-    // `~/.ssh/config` 导入那三条（别名 · 解析 · 批量）出表：搬进后端帧命令 `ssh-config-*`，界面经通道问。
-    // 测试连接那一行（`ssh.host-config`）出表：本机后端组请求、拨一次（`remote-probe`），界面经通道问。
-    // 公钥推送那一行（`ssh.host-config`，Remote）出表：本机后端 `pubkey-push`，界面经通道问。
-    ("deploy_remote_backend", "backend.deploy", Side::Remote),
-    ("uninstall_remote_backend", "backend.deploy", Side::Remote),
-    ("list_remote_mcp_origins", "mcp.list-origins", Side::Remote),
-    // 能力 `accounts.list` 那两行（远端 A2 `list_remote_accounts` · 本机 L3a `list_local_accounts`）退役：
-    //   本机与远端收成**同一条路** —— 前端经通道（`chan_call`）直接说帧命令 `accounts-list`，后端出成品（并它自己那份 apikey 表）。
-    //   ⇒ 这项能力不再是一条 Tauri 命令；两侧都有，住到了帧面上（后端 `read_face.rs`）。
-    // 「某会话属哪个账号」那两行（远端 A2 · 本机 E79，能力 `accounts.session-accounts`）退役：
-    //   那台后端在会话宣告里说（`session_added.account`），本机与远端同一形 ⇒ 不再是一条命令。
-    // **主界面说 `call` 的那一跳**（`chan/webview.rs`）：按 `origin` 转给注入的后端句柄，
-    //   本机（`<local>`）与远端同一条路 ⇒ `Both`；它吃 `origin`，理由登记在 `ORIGIN_TAKING_BOTH`。
-    ("chan_call", "comm.face-a.call", Side::Both),
-    // 主界面要那台的能力事实（`Offer`）：本机 `<local>` 与远端同一条路 ⇒ `Both`，归 `comm.face-a.call`（`call` 之前的那一问）。
-    ("chan_offer", "comm.face-a.call", Side::Both),
-    // 主界面说 `subscribe`（会话内容流）：本机 `<local>` 与远端同一条路（句柄按 origin 挑行）⇒ `Both`；
-    //   新能力 `comm.face-a.subscribe`（与 `call` 是面 A 上两个动作）。`want` / `stop` 只认订阅编号。
-    ("chan_subscribe", "comm.face-a.subscribe", Side::Both),
-    // 主窗口在看的会话（与 `session-lines/<sid>` 订阅合成每台的「在看」名单，`stream_watch.rs` 报给那台）：本机远端同一张表、同一条命令。
-    ("watch_sessions", "comm.face-a.subscribe", Side::Both),
-    // 主窗口手上的 tab（随名单报给那台，那台不在说的它答已结束）：同上，本机远端同一张表。
-    ("kept_sessions", "comm.face-a.subscribe", Side::Both),
-    ("chan_want", "comm.face-a.subscribe", Side::Both),
-    ("chan_stop", "comm.face-a.subscribe", Side::Both),
-    // 这两条（`acct-iso.check` · `acct-iso.shellinit`）退役：那台后端出成品（围栏在后端校验），界面经通道直问；两项都对称 ⇒ 不对称数不动。
-    // 列 tmux 会话那两条（远端 `tmux.manage` · 本机 `tmux.local-census`，§40 九对合并「第 10 对」那一注记）出表：
-    //   那台后端的 `tmux-list` 出成品、界面经通道直问，本机远端同一条路 —— 通道上的问法不是 Tauri 命令、不进本表（同上面抓屏 / 杀会话 / 送键）。
-    // 抓屏那一条（远端抓屏，Remote）退役：界面经通道直接问那台机器的后端
-    //   （`src/frontend/ui/terminal-reads.ts::previewShot`，`terminal-preview`），本机与远端同一条路；通道上的问法不是 Tauri 命令、不进本表。
-    // P4a（08-12）：读面三条**已经支持本机**（同一条命令串，只是不包进 ssh）⇒ 转 Both。
-    // 驾驶舱读名单 / 读收件箱两条 Both 退役：驾驶舱读面改由界面经通道问后端 `bus-list` / `bus-inbox`。
+    (
+        "open_settings_window",
+        "app.window.settings",
+        Side::Both,
+        Own::Window,
+        "开窗",
+    ),
+    (
+        "bring_monitor_to_front",
+        "app.window.self",
+        Side::Both,
+        Own::Window,
+        "拉前 monitor 自己",
+    ),
+    (
+        "cc_get_auto_launch",
+        "app.auto-launch",
+        Side::Both,
+        Own::Config,
+        "`auto-launch.json` 是 monitor 自己写的小文件",
+    ),
+    (
+        "cc_set_auto_launch",
+        "app.auto-launch",
+        Side::Both,
+        Own::Config,
+        "`auto-launch.json` 是 monitor 自己写的小文件",
+    ),
+    (
+        "frontend_perf_log",
+        "app.diagnostics",
+        Side::Both,
+        Own::Log,
+        "日志",
+    ),
+    (
+        "get_diagnostics_config",
+        "app.diagnostics",
+        Side::Both,
+        Own::Log,
+        "诊断开关",
+    ),
+    (
+        "set_diagnostics_config",
+        "app.diagnostics",
+        Side::Both,
+        Own::Log,
+        "诊断开关",
+    ),
+    (
+        "get_log_file_info",
+        "app.logs",
+        Side::Both,
+        Own::Log,
+        "日志",
+    ),
+    (
+        "diagnostics_report",
+        "app.logs",
+        Side::Both,
+        Own::Lifecycle,
+        "日志页「复制诊断信息」那一段：各台此刻的状态成品（读这台后端通道在不在，与 `backend_status` 同一个读面）\
+         ＋ 界面交来的记录账 ＋ 日志位置，只读、不经后端发东西",
+    ),
+    (
+        "open_log_file",
+        "app.logs",
+        Side::Both,
+        Own::Log,
+        "日志",
+    ),
+    (
+        "restart_app",
+        "app.config",
+        Side::Both,
+        Own::Lifecycle,
+        "设置窗「现在重启」：重起 cc-monitor 自己（走退出臂，本机后端照它自己那份退出行为去留）",
+    ),
+    (
+        "filewin_interrupts",
+        "app.config",
+        Side::Both,
+        Own::Window,
+        "退出 / 重启 cc-monitor 之前现读各文件窗口说的「会打断什么」（那几扇窗是 monitor 起的子进程，表住 monitor 进程里）",
+    ),
+    (
+        "clipboard_write",
+        "app.window.self",
+        Side::Both,
+        Own::Window,
+        "写系统剪贴板（全产品的复制）：剪贴板是 monitor 面前这台桌面的，经系统接口写、回真成败（`clipboard.rs`）",
+    ),
+    (
+        "clipboard_read",
+        "app.window.self",
+        Side::Both,
+        Own::Window,
+        "读系统剪贴板（登录抽屉［粘贴］）：剪贴板是 monitor 面前这台桌面的，经系统接口读（`clipboard.rs`）",
+    ),
+    (
+        "open_log_dir",
+        "app.logs",
+        Side::Both,
+        Own::Log,
+        "日志",
+    ),
+    (
+        "backend_status",
+        "backend.status",
+        Side::Both,
+        Own::Lifecycle,
+        "这台后端通道在不在 ＋ 本机后端 pid / 重启次数 —— 起停引导那一格的读面",
+    ),
+    (
+        "backend_machines",
+        "backend.lifecycle",
+        Side::Both,
+        Own::Config,
+        "机器表 = monitor 配置里登记的远端 ＋ 本机，读的是 monitor 自己的注册表",
+    ),
+    (
+        "backend_start",
+        "backend.lifecycle",
+        Side::Both,
+        Own::Lifecycle,
+        "起本机后端（自释放 ＋ 监护）/ 起远端常驻",
+    ),
+    (
+        "backend_stop",
+        "backend.lifecycle",
+        Side::Both,
+        Own::Lifecycle,
+        "停后端（SIGTERM → 等 → 超时才 SIGKILL）",
+    ),
+    (
+        "load_config",
+        "app.config",
+        Side::Both,
+        Own::Config,
+        "本机 monitor 配置",
+    ),
+    (
+        "patch_config",
+        "app.config",
+        Side::Both,
+        Own::Config,
+        "本机 monitor 配置",
+    ),
+    (
+        "get_data_paths",
+        "app.data-paths",
+        Side::Both,
+        Own::Log,
+        "设置页「数据」区列 monitor 自己的持久路径",
+    ),
+    (
+        "forget_session",
+        "session.forget",
+        Side::Both,
+        Own::Replay,
+        "只丢 monitor 进程内那条会话的重放缓冲",
+    ),
+    (
+        "bring_terminal_to_front",
+        "terminal.focus",
+        Side::Both,
+        Own::Front,
+        "拉前会话的终端窗口（本机后端答过它在这台电脑上的哪儿）",
+    ),
+    (
+        "open_local_terminal",
+        "session.launch",
+        Side::Local,
+        Own::Window,
+        "开一个本机终端窗口跑那一行（`ccm …` 由本机后端 `session-open` 出成品；这里不判不拼，只开窗）",
+    ),
+    (
+        "open_terminal_window",
+        "terminal.window",
+        Side::Both,
+        Own::Window,
+        "开一个终端窗口跑交来的那一串（Windows：PowerShell 窗口；Linux：挑到的终端）；不拼 ssh、不判命令",
+    ),
+    (
+        "terminal_choices",
+        "terminal.window",
+        Side::Both,
+        Own::Window,
+        "开窗用哪个终端（设置里那一格 · 本机探到的终端）：窗口开在 monitor 面前这台，挑终端是开窗那一侧的事",
+    ),
+    (
+        "footprint_client_facts",
+        "audit.monitor-own",
+        Side::Local,
+        Own::Footprint,
+        "足迹里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 与判定在本机后端 `footprint-report`）",
+    ),
+    (
+        "open_file_window",
+        "sftp.file-panel",
+        Side::Remote,
+        Own::Channel,
+        "起文件窗口进程、把它的 stdin / stdout 接进通道（窗口的 call 经通道到后端）、读它那一行就绪 / 原话（第一屏由窗口进程经通道自己列）",
+    ),
+    (
+        "deploy_remote_backend",
+        "backend.deploy",
+        Side::Remote,
+        Own::Place,
+        "把 monitor 带着的那几格后端字节交本机后端 `deploy-install`（判定 · 放字节 · 换进落点都在后端）",
+    ),
+    (
+        "uninstall_remote_backend",
+        "backend.deploy",
+        Side::Remote,
+        Own::Place,
+        "删落点那一份后端字节（交本机后端 `deploy-uninstall`）",
+    ),
+    (
+        "list_remote_mcp_origins",
+        "mcp.list-origins",
+        Side::Remote,
+        Own::Config,
+        "已配置且启用的远端标签：读的是 monitor 自己的配置（名字里的 mcp 是第一个用户留下的）",
+    ),
+    (
+        "chan_call",
+        "comm.face-a.call",
+        Side::Both,
+        Own::Channel,
+        "通信层面 A：webview 说 `call` 的那一跳",
+    ),
+    (
+        "chan_offer",
+        "comm.face-a.call",
+        Side::Both,
+        Own::Channel,
+        "通信层面 A：`subscribe` 的续订",
+    ),
+    (
+        "chan_subscribe",
+        "comm.face-a.subscribe",
+        Side::Both,
+        Own::Channel,
+        "通信层面 A：`subscribe`",
+    ),
+    (
+        "watch_sessions",
+        "comm.face-a.subscribe",
+        Side::Both,
+        Own::Replay,
+        "主窗口在看的会话记进会话流句柄那张表（与查看窗的订阅合成每台的「在看」名单）",
+    ),
+    (
+        "kept_sessions",
+        "comm.face-a.subscribe",
+        Side::Both,
+        Own::Replay,
+        "主窗口手上的 tab 记进会话流句柄那张表（与留存合成每台手上留着的，随名单报给那台）",
+    ),
+    (
+        "chan_want",
+        "comm.face-a.subscribe",
+        Side::Both,
+        Own::Channel,
+        "通信层面 A：credit",
+    ),
+    (
+        "chan_stop",
+        "comm.face-a.subscribe",
+        Side::Both,
+        Own::Channel,
+        "通信层面 A：撤订",
+    ),
 ];
 
-/// **不对称能力的理由**。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
-const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
-    ("session.launch", Asym::NaturallyAsymmetric, "远端那一侧不是一条 Tauri 命令：界面只交那台的名字、经通道直问本机后端 `terminal-ssh` 渲那一行（`terminal_dial` 退役，A10-2-2），开窗走同一条 `open_terminal_window`；本机这一侧要带起始目录，才有 `open_local_terminal`。"),
-    // `acct-iso.deploy` 那一行摘了：那条 Remote 命令退役，这项能力不再有 Tauri 命令可记账。
-    // `tmux.local-census` · `tmux.manage` 两行随那两条命令出表删：tmux 这一族（列 · 抓屏 · 杀 · 送键）今天全是帧命令、本机远端同一条路，
-    //   不再有 Tauri 命令可记账（`tmux.manage` 那一行三次订正的来历，看 git 历史）。
-    // 这里原来是 `skill.inbox` 那一行（`Undecided`：「远端项目的收件箱要不要能在这里编辑，没人裁定过」）。
-    //   **要**：远端与本机同一条路（经那台机器后端的文件管理那一面读写）⇒ 三条命令 `Both`，这一行摘掉。
-    // `cc-bus.install-state` 那一行摘了：三态进了本机后端（`cc-bus-install-state`，界面经通道问），没有 Tauri 命令了。
-    // `audit.config-surface` 那一行（`ParityDebt`：「本地能答、远端答不出，本页明写不连 SSH」）**结清、删掉**：
-    //   远端那一栏由那台机器的后端答路径事实（`footprint-probe`）：补后端读口，远端也有真栏。
-    // `cc-bus.cockpit` 那一行（`ParityDebt`，三次订正过的「写面欠本机那一侧」）**结清、删掉**：
-    //   写面五条都改由界面经通道直接说那台机器的后端（本机与远端同一条路，`src/frontend/ui/cc-bus-control.ts`），monitor 那几条命令退役；
-    //   这项能力在 `LEDGER` 里只剩读面两条，都是 `Both` ⇒ 不再不对称。
-    // `alias.block-preview` 那一行删：六条 `aliases_*` 都 `Both` 了（裁了、做了）。
-    ("backend.deploy", Asym::NaturallyAsymmetric, "★★ **P3b 结清（08-12）：理由整个换掉 —— 原来那句是假的。** 原文写「§40 天然不对称白名单第 3 条：本地会话由 `watcher.rs` 直接读 jsonl，**根本不需要 backend**」，被 P2z + P2 + P2s 三件直接证伪：本机**需要** backend（入方向通道、每台机开关、tmux 帧都靠它），而且**已经会自部署** —— `local_backend.rs::extract_embedded_to`（exe 旁没有本机后端就把内嵌那份释放到 `~/.cc-monitor/bin`）。真正的不对称只剩一格：**本机那次释放不经一条 IPC 命令**，是宿主启动时自己做的（`lib.rs` 的启动段），所以命令面上没有本机对侧。⇒ 记 `natural` 记的是「不需要一条命令」，不是「不需要后端」。"),
-    ("mcp.list-origins", Asym::NaturallyAsymmetric, "`list_remote_mcp_origins` 答的是「哪几台远端有 MCP 配置」——「有哪些 origin」这个问题在本机侧退化成一台，没有可列的集合。⚠ 注意它与 `backend_machines` 不同：那条**包含**本机（`LOCAL_ORIGIN`），因为它答的是「哪几台有后端」而本机也有。"),
-    // `panorama.code-graph` 那一行（`Undecided`，「远端 repo 的代码图谱既没做、也没在任何计划里登记过」）**摘了**：
-    //   要，`panorama_call`（`Side::Remote`）按 origin 问那台后端 ⇒ 两侧都有。
-    // `panorama.annotate` 那一行（`ParityDebt`：「远端仓的批注写等后端写面」）**结清、删掉**：
-    //   「引擎只算、文件管理来写」，`panorama_edit`（`Side::Both`）本机远端同一条。
-    // `creds.apikey` 那一行（`ParityDebt`：「把 key 送到远端的路」）**结清、删掉**：
-    //   远端那一份由那台机器的后端写（`apikey-key-set`，临时文件出生即只给本人 —— 机密性由拿着那份文件的
-    //   那台机器自己的 `creds_core::perm` 管，不靠 SFTP 的 mode 参数，那一行点名的两条要求都照做了）。
-    // `apikey.routing` 那一行（`NaturallyAsymmetric`：「本机这一侧在结构上答不了远端那台」）**删掉**：
-    //   那一行自己写着出路 ——「远端那台要答同一个问题，得由跑在那台上的 backend 自己答」—— 今天就是这么答的。
-    // `relay.machine` 那一行（`NaturallyAsymmetric`：「只对远端，本机那一个另有住处」）**删掉**：
-    //   那条只对远端的命令退役了，接替它的 `relay_endpoint_for_launch` 两台都答（本机经起会话那一侧的缝）。
-    // `alias.manage` 那一行删：六条 `aliases_*` 都 `Both` 了（欠账还掉）。
-    // `port-forward` 那一行（`NaturallyAsymmetric`：本地没有「转发到自己」）随三条命令出表删：那项能力没有 Tauri 命令了
-    //   （账进了本机常驻后端的帧命令 `forward-*`）。不对称本身没变 —— 后端可达表里没有 `<local>`，本机那一格仍回 `unreachable`。
-    // `search.index` 那一行（`NaturallyAsymmetric`：「远端不建索引，索引是本机侧的实现细节」）删掉：本机也不建了。
-    ("sftp.file-panel", Asym::NaturallyAsymmetric, "§40 天然不对称白名单第 1 条：本地有操作系统的文件管理器，不需要它。"),
-    ("audit.monitor-own", Asym::NaturallyAsymmetric, "足迹里 **monitor 自己那台**那几行（`HostScope::Client`：本机 `ccm` 入口 · 终端 · shell profile …）的事实：monitor 只在一台机器上跑，远端那台没有 monitor，也就没有「它自己那几行」可答 —— 远端那一栏由那台后端自己答（`footprint-report` 不带 `client`，那一族不进人群）。不是欠一条对侧命令。"),
-    // `ssh.host-config` 那一格理由摘了：它最后一条命令（公钥推送）进了本机后端，能力在账本上没有 Tauri 命令了。
-
-
+/// **不对称能力的理由**：每一条都是天然不对称（本地不需要这项能力，不是欠账）。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
+const ASYMMETRY_REASONS: &[(&str, &str)] = &[
+    ("session.launch", "远端那一侧不是一条 Tauri 命令：界面只交那台的名字、经通道直问本机后端 `terminal-ssh` 渲那一行，开窗走同一条 `open_terminal_window`；本机这一侧要带起始目录，才有 `open_local_terminal`。"),
+    ("backend.deploy", "本机也要后端（入方向通道、每台机开关、tmux 帧都靠它），而且会自部署 —— `local_backend.rs::extract_embedded_to`（exe 旁没有本机后端就把内嵌那份释放到 `~/.cc-monitor/bin`）。不对称只在一格：**本机那次释放不经一条 IPC 命令**，是宿主启动时自己做的（`lib.rs` 的启动段），所以命令面上没有本机对侧。天然不对称说的是「不需要一条命令」，不是「不需要后端」。"),
+    ("mcp.list-origins", "`list_remote_mcp_origins` 答的是「哪几台远端有 MCP 配置」——「有哪些 origin」这个问题在本机侧退化成一台，没有可列的集合。⚠ 注意它与 `backend_machines` 不同：那条**包含**本机（`LOCAL_ORIGIN`），因为它答的是「哪几台有后端」而本机也有。"),
+    ("sftp.file-panel", "§40 天然不对称白名单第 1 条：本地有操作系统的文件管理器，不需要它。"),
+    ("audit.monitor-own", "足迹里 **monitor 自己那台**那几行（`HostScope::Client`：本机 `ccm` 入口 · 终端 · shell profile …）的事实：monitor 只在一台机器上跑，远端那台没有 monitor，也就没有「它自己那几行」可答 —— 远端那一栏由那台后端自己答（`footprint-report` 不带 `client`，那一族不进人群）。不是欠一条对侧命令。"),
 ];
 
 /// 读 `lib.rs` 的 `generate_handler!`，取出前端真能调到的命令名。
@@ -377,7 +450,7 @@ fn command_signatures() -> BTreeMap<String, String> {
 
 fn capability_sides() -> BTreeMap<&'static str, BTreeSet<Side>> {
     let mut m: BTreeMap<&str, BTreeSet<Side>> = BTreeMap::new();
-    for (_, cap, side) in LEDGER {
+    for (_, cap, side, ..) in LEDGER {
         m.entry(cap).or_default().insert(*side);
     }
     m
@@ -407,7 +480,7 @@ fn every_tauri_command_is_declared_in_the_ledger() {
         "从 generate_handler! 解析不出 `diagnostics_report`（共解析出 {} 条）—— 解析器坏了（或那条命令真退役了：换一条点名）",
         registered.len()
     );
-    let declared: BTreeSet<String> = LEDGER.iter().map(|(c, _, _)| c.to_string()).collect();
+    let declared: BTreeSet<String> = LEDGER.iter().map(|(c, ..)| c.to_string()).collect();
     assert_eq!(
         declared.len(),
         LEDGER.len(),
@@ -433,7 +506,7 @@ fn every_tauri_command_is_declared_in_the_ledger() {
 #[test]
 fn every_asymmetric_capability_has_a_reason() {
     let asym = asymmetric_capabilities();
-    let reasoned: BTreeSet<&str> = ASYMMETRY_REASONS.iter().map(|(c, _, _)| *c).collect();
+    let reasoned: BTreeSet<&str> = ASYMMETRY_REASONS.iter().map(|(c, _)| *c).collect();
     assert_eq!(
         reasoned.len(),
         ASYMMETRY_REASONS.len(),
@@ -443,15 +516,14 @@ fn every_asymmetric_capability_has_a_reason() {
     assert!(
         no_reason.is_empty(),
         "这些能力只有一侧，却没写为什么：{no_reason:?}\n\
-             要么把缺的那侧补上，要么到 ASYMMETRY_REASONS 里说清它是天然不对称、平价欠账，\n\
-             还是**未裁定**（`Undecided` 是允许的——不许因为写起来方便就归进前两类）。"
+             要么把缺的那侧补上，要么到 ASYMMETRY_REASONS 里说清为什么它天然不对称。"
     );
     let rotten: Vec<_> = reasoned.difference(&asym).collect();
     assert!(
         rotten.is_empty(),
         "这些能力已经两侧都有了，理由却还留在表里（表在腐烂）：{rotten:?}"
     );
-    for (cap, _, why) in ASYMMETRY_REASONS {
+    for (cap, why) in ASYMMETRY_REASONS {
         assert!(
             why.chars().count() > 20,
             "{cap} 的理由太短，说不清为什么它只有一侧"
@@ -544,7 +616,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // 三个数**没有一个**等于当时的 `checked`（88）。
     let mut n_local = 0usize;
     let mut n_both = 0usize;
-    for (cmd, _, side) in LEDGER {
+    for (cmd, _, side, ..) in LEDGER {
         if !matches!(side, Side::Local | Side::Both) {
             continue;
         }
@@ -659,7 +731,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
 fn every_asymmetry_reason_carries_something_you_can_go_check() {
     // 锚的形态：反引号里的标识符（文件/函数/判据名）、`§` 段号、`#` issue 号。
     let mut bare = Vec::new();
-    for (cap, _, why) in ASYMMETRY_REASONS {
+    for (cap, why) in ASYMMETRY_REASONS {
         let has_code_anchor = why.matches('`').count() >= 2;
         let has_section = why.contains('§');
         let has_issue = why.contains('#');
@@ -681,17 +753,6 @@ fn every_asymmetry_reason_carries_something_you_can_go_check() {
              从头到尾没人量过，直到 P3t 顺手跑了一次 `bash -lic` 才发现它比远端还便宜。",
         bare.join("\n")
     );
-}
-
-/// 每一条不对称都裁过（天然 / 平价欠账），没有「还没裁定」的。
-#[test]
-fn every_asymmetry_is_decided() {
-    let undecided: Vec<&str> = ASYMMETRY_REASONS
-        .iter()
-        .filter(|(_, k, _)| matches!(k, Asym::Undecided))
-        .map(|(c, _, _)| *c)
-        .collect();
-    assert!(undecided.is_empty(), "这些不对称还没裁定：{undecided:?}");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -749,8 +810,6 @@ enum Derived {
 /// 一条候选（`Side::Remote` ＋ 派生 `FramePlane`）的**人裁**。闭集。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum FrameVerdict {
-    /// 名副其实：本机那一侧**另有一条命令名**，这一行的 `Remote` 说的是「这个命令名给远端用」。
-    SecondCommandServesLocal,
     /// 🔴 **说假话**：本机没有别的命令名，而这一跳对 `<local>` 也走得通 —— 欠一次订正。
     LiesTodayOwedACorrection,
 }
@@ -1022,8 +1081,8 @@ fn the_remote_side_column_is_signed_off() {
 
     let remote_rows: BTreeSet<&str> = LEDGER
         .iter()
-        .filter(|(_, _, s)| *s == Side::Remote)
-        .map(|(c, _, _)| *c)
+        .filter(|(_, _, s, ..)| *s == Side::Remote)
+        .map(|(c, ..)| *c)
         .collect();
     // 反向自检②：`Side::Remote` 那一栏本身不许塌成空集。
     // 🔴 **地板 50 → 45。** `origin` 归一退役了 5 条 `Side::Remote`
