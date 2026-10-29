@@ -352,3 +352,54 @@ pub struct ResumeWith {
 
 /// sid → 注解。
 pub type Table = BTreeMap<String, Entry>;
+
+/// `history-list` 的排法：按最后活动（缺省）· 按开始。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "lowercase")]
+pub enum HistorySort {
+    #[default]
+    Activity,
+    Created,
+}
+
+/// `history-list` 的入参（全可缺）。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(deny_unknown_fields)]
+pub struct HistoryListReq {
+    /// 那台的名字（行与组都标上它）。缺 ⇒ 这台。问那一台要带期限（请求信封 `within_ms`）：等多久归发起方，没带 ⇒ `bad_args`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
+    pub origin: Option<Machine>,
+    /// 只要这一个会话那一行（独立查看窗；别的筛一概不看、不补父会话）。形状同 `history-record`（`[A-Za-z0-9-]`，1..=64）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub sid: Option<String>,
+    /// 只留显示标题 · 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub query: Option<String>,
+    /// 缺 ⇒ 按最后活动。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub sort: Option<HistorySort>,
+    /// 只留那个键（同 `sort`）落在最近 N 天里的（1–3650）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    pub within_days: Option<u64>,
+    /// `true` ⇒ 隐藏的也出（缺省不出）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub hidden: Option<bool>,
+    /// 上次这一问答的记号（原样交回）：对得上 ⇒ 没变 · 只给变了的那几行；缺 · 对不上（那台重启过 · 换了问法）⇒ 整份。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub held: Option<crate::sync::Held>,
+    /// 只要排好的那一窗（`limit` 1–20000）；缺 ⇒ 头 2000 行。总数在回包的头里。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub range: Option<crate::sync::Range>,
+}

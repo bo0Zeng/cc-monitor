@@ -134,17 +134,15 @@ crate::wire::typed::codes! {
 pub(crate) struct QuotaReadCmd;
 
 impl crate::wire::typed::Command for QuotaReadCmd {
-    const NAME: &'static str = "quota-read";
+    crate::wire::typed::by_call!(cmd_wire::quota::QuotaReadReq);
     const TAKES_INPUT: bool = false;
-    type Req = crate::wire::typed::NoArgs;
-    type Reply = QuotaRead;
     type Err = QuotaReadErr;
 }
 
 impl crate::wire::typed::Handle for QuotaReadCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
-        _req: crate::wire::typed::NoArgs,
+        _req: cmd_wire::quota::QuotaReadReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<QuotaRead, QuotaReadErr>> + Send + 'static {
         async move {

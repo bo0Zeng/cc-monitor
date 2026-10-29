@@ -20,7 +20,7 @@ pub fn body_now(topic: Topic, key: Option<&str>, tz: &crate::Tz) -> Option<Chang
     Some(match topic {
         Topic::Quota => Changed::Quota {
             body: crate::wire::spec::finish(crate::faces::rotation_face::QuotaReadCmd::run(
-                crate::wire::typed::NoArgs {},
+                cmd_wire::quota::QuotaReadReq {},
                 cx(),
             ))
             .ok(),

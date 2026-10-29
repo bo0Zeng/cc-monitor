@@ -16,18 +16,11 @@ use cmd_wire::cells::Tone;
 pub(crate) use cmd_wire::rotation::{
     RotAccount, RotBadCell, RotBoard, RotCell, RotChoice, RotDaySeg, RotGroup, RotHint, RotLine,
     RotLogRow, RotMark, RotNote, RotOldFile, RotPlate, RotRefused, RotRow, RotStrategyError,
-    RotStrategyItem, RotationStrategiesReply, RotationViewReply,
+    RotStrategyItem, RotTarget, RotationStrategiesReply, RotationStrategiesReq, RotationViewReply,
+    RotationViewReq,
 };
 use copy_core::copy_text;
-use serde::Deserialize;
 use serde_json::Value;
-
-/// `rotation-strategies` 的入参。
-#[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationStrategiesReq {}
 
 crate::wire::typed::codes! {
     /// `rotation-strategies` 自己的码（只有入参不对那一种）。
@@ -38,9 +31,7 @@ crate::wire::typed::codes! {
 pub(crate) struct RotationStrategies;
 
 impl Command for RotationStrategies {
-    const NAME: &'static str = "rotation-strategies";
-    type Req = RotationStrategiesReq;
-    type Reply = RotationStrategiesReply;
+    crate::wire::typed::by_call!(RotationStrategiesReq);
     type Err = RotationStrategiesErr;
 }
 
@@ -116,29 +107,6 @@ pub(crate) fn strategies_with(
         for_new,
         old_scripts: shelf::old_count(dir.as_deref()),
     }
-}
-
-/// 看哪一份：一个会话（会话面板，照它载入的副本）· 一份策略（设置页，照文件此刻的）。
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged, deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) enum RotTarget {
-    Session { sid: String },
-    Strategy { strategy: String },
-}
-
-/// `rotation-view` 的入参。
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationViewReq {
-    pub(crate) target: RotTarget,
-    /// 设置页那一形往后推几小时（1–48，缺 ⇒ 12）；会话那一形不画推演，不看它。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) hours: Option<u8>,
 }
 
 /// 一个号的号牌：号色照账号库（库里没有 ⇒ 按名补的那一格）· 号名 · 号牌字（与 `accounts-list` 那一行同一处写法）。
@@ -320,9 +288,7 @@ pub(crate) fn checked(file: Option<&script::File>, settings: &Value) -> Result<(
 pub(crate) struct RotationView;
 
 impl Command for RotationView {
-    const NAME: &'static str = "rotation-view";
-    type Req = RotationViewReq;
-    type Reply = RotationViewReply;
+    crate::wire::typed::by_call!(RotationViewReq);
     type Err = RotationViewErr;
 }
 

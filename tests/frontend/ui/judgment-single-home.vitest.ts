@@ -838,6 +838,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 几台的搜索结果合一份 · 最近优先那一个排序（本机后端扇出完 · 手机核心逐台问完都调它）：界面只照抄合好的那一份，TS 侧没有孪生。
     merge: "J15",
     sort_by_recency: "J15",
+    // `history-search` 入参 `scope` 的那个词（`SearchScope::word`，后端口径那一层读）：界面按生成的 TS 类型发，TS 侧没有孪生。
+    word: NONE,
     // 造一台 · 本机那一个 · 远端名 · 分过本机之后的两态：界面没有孪生（它直接拿串比，判法只在 `ipc/origin.ts`）。
     local: NONE,
     host_name: NONE,

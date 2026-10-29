@@ -647,11 +647,6 @@ mod tests {
             ("control/fork_launch.rs", "AccountFact", "同上，号那一格的值（`null` ＝ 账号 0）"),
             (
                 "observe/accounts_query.rs",
-                "AccountsListReq",
-                "typed 帧命令 `accounts-list` 的入参（形状从类型生成进协议参考与 TS；回包住 `cmd-wire`），命令应答不是流协议帧",
-            ),
-            (
-                "observe/accounts_query.rs",
                 "Interrupts",
                 "typed 帧命令 `machine-interrupts` 的回包（形状从类型生成进协议参考与 TS），命令应答不是流协议帧",
             ),
