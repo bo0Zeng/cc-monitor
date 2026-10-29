@@ -17,11 +17,6 @@ export function sessionItem(sid: string, needs: Needs, label = sid): NeedsItem {
   return { kind: "session", rank: needs.rank, session: { sid, label, face: liveFace("needs_you"), needs, hidden: null } };
 }
 
-/** 计划里一格。 */
-export function planItem(workspace: string, slice: string, k: number): NeedsItem {
-  return { kind: "plan", rank: 1e15, workspace, slice, k };
-}
-
 /** 会话外的一项。 */
 export function manualItem(manual: ManualItem): NeedsItem {
   return { kind: "manual", rank: 2e15, manual };

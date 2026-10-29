@@ -48,7 +48,17 @@ describe("账号面板", () => {
     btn(copyText("acct.now.connect"))!.click();
     expect(host.openSettings).toHaveBeenCalledWith("<local>");
     expect(panel().textContent).toContain(copyText("acct.foot.default"));
-    expect(btn(copyText("acct.foot.manage"))).toBeDefined();
+    expect(btn(copyText("acct.menu.manage"))).toBeDefined();
+  });
+
+  it("★ 没有当前会话 ⇒ 同一个面板，只有底栏（新会话默认 · 管理账号…），不画轮换、不问会话", () => {
+    toggleAccountPanel(null, "<local>", host);
+    expect(panel().textContent).toContain(copyText("acct.foot.default"));
+    expect(btn(copyText("acct.menu.manage"))).toBeDefined();
+    expect(panel().textContent).not.toContain(copyText("acct.now.noRelay"));
+    expect(panel().textContent).not.toContain(copyText("kit.state.reading"));
+    expect(panel().querySelector("[data-rot-cfg], [data-rc-row], [data-rot-switch]")).toBeNull();
+    toggleAccountPanel(null, "<local>", host);
   });
 
   it("★ 上游是自设的（session-account 带那一句）⇒ 头下照抄那一句；不说中转没见过、不出接入…，也不画轮换那几块", () => {
@@ -63,7 +73,7 @@ describe("账号面板", () => {
     // 轮换那一格后来到了（中转账本里有它）也不画：上游是自设的，换号不适用 ⇒ 面板里只有那一条与底栏。
     appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: view }]]));
     expect(panel().textContent).toContain("自设那一句");
-    const body = btn(copyText("acct.foot.manage"))!.parentElement!.parentElement!;
+    const body = btn(copyText("acct.menu.manage"))!.parentElement!.parentElement!;
     expect(body.children.length).toBe(2);
   });
 

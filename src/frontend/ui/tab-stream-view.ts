@@ -178,8 +178,6 @@ export class TabStreamView {
   private readonly indexEnds = new WeakMap<Tab, number>();
   /** 〔骨架〕正文重来时从上一代接过来的账本与它的末字节：要骨架时从这里续，不从 0 再要（`restartTail`）。 */
   private readonly carriedSkeletons = new WeakMap<Tab, { ledger: SkeletonLedger; end: number }>();
-  /** 整份重来、正在按行号取回上流点之下那一截的 tab（`catchUpTo`）：取回的行只进账本，取完照冷开物化视口那一截。 */
-  private readonly coldFills = new WeakSet<Tab>();
   /** 〔骨架〕账本续到末尾那一趟在途的 tab（同一个 tab 同时只续一趟，`extendIndex`）。 */
   private readonly extending = new WeakSet<Tab>();
   /** 每个 tab 的第一趟会话事实 ＋ 轮次什么时候问（当前的先、后台的空闲时一个一个，`tab-cold-reads.ts`）。 */
@@ -689,7 +687,8 @@ export class TabStreamView {
     if (routeMeta(payload) === "consumed") return;
 
     // 门控（单洞后缀不变量，纯按 seq）：
-    // - virgin ＋ 批：active tab 首条 content 钉 floor（尾块直渲）；后台 tab 一律收纳（切进来时冷开只建视口那一截）；
+    // - virgin ＋ 批：一律收纳，当前 tab 也一样 —— 批收尾（`batchEnd`）· 取完（`catchUpTo`）· 切进来（`activate`）只建视口那一截
+    //   （从前当前 tab 首条钉 floor、之后直渲：开页那一批的尾段整段建成卡，A17-45-3-6-2）；
     // - virgin ＋ 实时：新开 tab 直渲并钉 floor；
     // - seq ≥ floor：渲染；seq < floor：收纳（旧块 / 尾部优先回填 / 迟到块，与批哨兵无关）。
     // 账本里收着历史、还没建过卡的 tab 来了实时行：先物化一截尾段（takeTail 顺带钉 floor），再照常收这一行 ——
@@ -700,7 +699,7 @@ export class TabStreamView {
     const floor = tab.window.floorSeq;
     let render: boolean;
     if (floor === null) {
-      render = !this.store.inBatch || (this.store.activeId === tab.sessionId && !this.coldFills.has(tab));
+      render = !this.store.inBatch;
       if (render) tab.window.pinFloor(payload.seq);
     } else {
       render = tab.window.admit(payload.seq);
@@ -1370,12 +1369,9 @@ export class TabStreamView {
       return;
     }
     const fresh = have >= 0 ? this.restartTail(tab) : tab;
-    // 取回来的进的是账本（批语义、不建卡 —— 当前的那一个也不建：`coldFills`）⇒ 取完了它还在眼前，就照切进来那样物化视口那一截、停下来看时接骨架。
-    // 不记的话当前 tab 按「批里首条钉 floor、之后直渲」把从老到新取回的 600 行整段建出来（台架冷切长会话 489 个条目就是它）。
+    // 取回来的按批语义进账本、不建卡（当前的那一个也不建：批里来的一律收纳）⇒ 取完了它还在眼前，就照切进来那样物化视口那一截、停下来看时接骨架。
     // 冷起首个标签页的正文走的就是这一趟（壳冷起不整份重放）⇒ 启动管线那份 timeline 在它落地时落盘（只第一次，`startup-perf.ts`）。
-    this.coldFills.add(fresh);
     this.readForward(fresh, path, Math.max(0, seq - TabStreamView.WATCH_REFILL_MAX), undefined, () => {
-      this.coldFills.delete(fresh);
       if (this.inFront(fresh)) this.activate(fresh);
       noteColdFilled();
     });

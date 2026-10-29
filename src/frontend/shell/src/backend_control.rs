@@ -143,26 +143,27 @@ pub async fn backend_start(origin: String) -> Result<(), Said> {
             ));
         }
         // 那台的常驻流（装 · 版本门 · 状态成品）住本机后端：叫醒它（停过的不再停着、断着的不等退避马上再接）。
-        //   主窗口那条 `{machine} 离线` 的［重新连接］走的就是这里。
-        wake_backend_feed(&origin).await;
-        Ok(())
+        //   各处的［重新连接］走的就是这里；那台拒了（停用着 · 正在连 · 机器表里没有）· 本机后端不在 ⇒ 那一句原样回给界面。
+        wake_backend_feed(&origin).await
     }
     .await;
     r.map_err(|s| s.named("backend_start"))
 }
 
-/// 叫醒本机后端手上那台的常驻流（`machine-wake`）。没交上只记一行：那台的状态成品等本机后端下一轮。
-async fn wake_backend_feed(origin: &str) {
-    const MACHINE_WAKE: &str = "machine-wake";
+/// 叫醒本机后端手上那台的常驻流（`machine-wake`）。拒了 / 没交上 ⇒ 那一句（本机后端写的，或本机没有通道那一句）。
+async fn wake_backend_feed(origin: &str) -> Result<(), Said> {
     const WAKE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
-    let Some(client) = crate::inbound_client::local_client() else {
-        tracing::warn!("[machine] 叫醒 {origin} 那一条：本机后端不在");
-        return;
-    };
     let args = serde_json::json!({ "machine": origin });
-    if let Err(e) = client.call(MACHINE_WAKE, args, WAKE_BUDGET).await {
-        tracing::warn!("[machine] 叫醒 {origin} 那一条没成：{e:?}");
-    }
+    let deadline = crate::frame_query::Deadline::within(WAKE_BUDGET);
+    crate::frame_query::call(
+        &crate::origin::Origin::local(),
+        "machine-wake",
+        args,
+        None,
+        deadline,
+    )
+    .await
+    .map(|_| ())
 }
 
 /// 停这台机的 backend。本机远端同一条：在那台机器上跑一次 `--resident-stop`（同机监督者：请它收尾 → 宽限期内等 → 到点强杀），

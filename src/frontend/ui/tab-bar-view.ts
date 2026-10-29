@@ -33,8 +33,8 @@ import { countBadge, tag, kbd } from "./kit/badge";
 import { attachTooltip, delegateTooltip } from "./kit/tooltip";
 import { openMenu, type MenuAnchor, type MenuItem } from "./kit/menu";
 import { closePopover, openPopover, popoverOpenOn, swapPopoverContent } from "./kit/popover";
-import { renderNeedsPanel, type PanelFacts, type PanelPlan } from "./needs-panel";
-import type { NeedsBook, PlanNeedItem } from "./needs-book";
+import { planRows, renderNeedsPanel, type PanelFacts } from "./needs-panel";
+import type { NeedsBook } from "./needs-book";
 import type { ManualItem } from "./login-reads";
 import type { Origin } from "./ipc/origin";
 import { foldCaret } from "./kit/fold";
@@ -146,24 +146,13 @@ interface GroupEls {
   drawn: string;
 }
 
-/** 栏里的一行（键盘焦点落在哪）：标签页 · 组头。 */
-/** 计划那一侧的「需手动」：此刻站在第几条（`NeedsBook.plans()` 的下标；计划页开着且选着那一条，否则 `null`）· 去第几条。 */
+/** 计划那一侧的「需手动」：此刻站在第几条（`NeedsBook.plans()` 的下标；计划页开着且选着那一条，否则 `null`）· 去第几条（计划页选中它那一格）。 */
 export interface PlanNeeds {
   at: () => number | null;
   open: (i: number) => void;
 }
 
-/** 计划项按片收成浮层那几行（同一片的几条一行、带条数；点它去那一片的第一条）。 */
-export function planSlices(items: readonly PlanNeedItem[]): PanelPlan[] {
-  const out: PanelPlan[] = [];
-  items.forEach((it, i) => {
-    const last = out[out.length - 1];
-    if (last && last.origin === it.origin && last.workspace === it.workspace && last.slice === it.slice) last.n++;
-    else out.push({ origin: it.origin, workspace: it.workspace, slice: it.slice, n: 1, first: i });
-  });
-  return out;
-}
-
+/** 栏里的一行（键盘焦点落在哪）：标签页 · 组头。 */
 export type FocusRow = { kind: "tab"; sid: string } | { kind: "head"; gid: string };
 
 /** 这个事件落在会打字的框里（组头改名的输入框）⇒ 列表键不管。 */
@@ -368,7 +357,7 @@ export class TabBarView {
     });
     return {
       sessions,
-      plans: planSlices(book?.plans() ?? []),
+      plans: planRows(book?.plans() ?? []),
       manual: book?.manual() ?? [],
       offline: book?.offline() ?? [],
       unreadable: book?.unreadable() ?? [],

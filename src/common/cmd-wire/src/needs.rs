@@ -37,13 +37,15 @@ pub enum NeedsItem {
         rank: u64,
         session: NeedsRow,
     },
-    /// 计划里一片要人看的一格：哪个工作区 · 哪一片 · 那一片里第几条（0 起）。
+    /// 计划里要人看的一条：哪个工作区 · 哪一片 · 落在哪一格（没有格可落：顶块没有根格 · 不通过那一条不在哪个权力范围里 ⇒ 缺，进那一片的大纲）。
     Plan {
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         rank: u64,
         workspace: String,
         slice: String,
-        k: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        cell: Option<NeedsCell>,
     },
     /// 会话外的一项（需登录的号 · MCP · 权限太宽的自家秘密文件）。
     Manual {
@@ -51,6 +53,16 @@ pub enum NeedsItem {
         rank: u64,
         manual: ManualItem,
     },
+}
+
+/// 计划那一项落在的那一格：编号（计划页照它选中）· 后端写好的「编号 标题」（行上照抄）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct NeedsCell {
+    pub id: String,
+    pub label: String,
 }
 
 /// 一项需手动怎么解：问哪条命令、交什么入参。

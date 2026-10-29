@@ -190,16 +190,11 @@ fn the_registry_hands_exactly_the_eight_to_this_host() {
                 {
                     continue;
                 }
-                let imp = [
-                    format!("impl Command for {ty} {{"),
-                    format!("impl crate::wire::typed::Command for {ty} {{"),
-                ]
-                .iter()
-                .find_map(|h| face.find(h.as_str()))
-                .unwrap_or_else(|| panic!("`{module}` 里没有 `impl Command for {ty}`"));
-                let key = "const NAME: &'static str = \"";
-                let n = face[imp..].find(key).expect("没有 `const NAME`") + imp + key.len();
-                got.push(face[n..].chars().take_while(|c| *c != '"').collect());
+                // 名字照那一块读（字面量 `const NAME` 或 `by_call!` 那一形，`guard_core::typed_command_name` 一处读）。
+                got.push(
+                    guard_core::typed_command_name(face, ty)
+                        .unwrap_or_else(|| panic!("`{module}` 里没有 `impl Command for {ty}`")),
+                );
             }
         }
     }

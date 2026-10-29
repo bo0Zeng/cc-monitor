@@ -203,18 +203,18 @@ const ELSEWHERE: &[(&str, &str)] = &[(
 
 fn skill_files() -> Vec<(String, String)> {
     let root = guard_core::addr::repo_root();
-    let mut got = Vec::new();
-    for d in std::fs::read_dir(root.join("src/shared")).unwrap() {
-        let p = d.unwrap().path().join("SKILL.md");
-        if let Ok(text) = std::fs::read_to_string(&p) {
-            let rel = p
-                .strip_prefix(&root)
-                .unwrap()
-                .to_string_lossy()
-                .into_owned();
-            got.push((rel, text));
-        }
-    }
+    let shared = root.join("src/shared");
+    let mut got: Vec<(String, String)> = guard_core::scan_tree!(&shared, &["md"])
+        .into_iter()
+        .filter(|(p, _)| {
+            p.file_name().is_some_and(|n| n == "SKILL.md")
+                && p.parent().and_then(|d| d.parent()) == Some(shared.as_path())
+        })
+        .map(|(p, text)| {
+            let rel = p.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/");
+            (rel, text)
+        })
+        .collect();
     got.sort();
     assert!(
         got.len() >= 3,

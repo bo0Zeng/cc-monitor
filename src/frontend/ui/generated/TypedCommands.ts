@@ -201,6 +201,7 @@ import type { MachineMenu } from "./MachineMenu";
 import type { MachineMenuReq } from "./MachineMenuReq";
 import type { MachineName } from "./MachineName";
 import type { MachineRead } from "./MachineRead";
+import type { MachineState } from "./MachineState";
 import type { MachineStopped } from "./MachineStopped";
 import type { MachinesEdits } from "./MachinesEdits";
 import type { MachinesReply } from "./MachinesReply";
@@ -508,7 +509,7 @@ export interface TypedCommands {
   "machine-menu": { req: MachineMenuReq; reply: MachineMenu; code: "bad_args" | "no_such_machine" };
   "machine-read": { req: NoArgs; reply: MachineRead; code: "bad_args" };
   "machine-stop": { req: MachineName; reply: MachineStopped; code: "bad_args" | "stop_failed" };
-  "machine-wake": { req: MachineName; reply: null; code: "bad_args" };
+  "machine-wake": { req: MachineName; reply: MachineState; code: "bad_args" | "unknown_machine" | "disabled" | "busy" };
   "machines-read": { req: NoArgs; reply: MachinesReply; code: "bad_args" };
   "machines-set": { req: MachinesEdits; reply: MachinesSet; code: "bad_args" | "unreadable" | "element_gone" | "element_exists" | "bad_machine" | "io_failed" };
   "machines-try": { req: MachinesEdits; reply: MachinesTried; code: "bad_args" };
@@ -619,6 +620,7 @@ export interface RefusalData {
   "files-copy": { "exists": Conflicts };
   "login-finish": { "bad_paste": LoginAgain; "refused": LoginAgain; "no_job": LoginAgain; "child_timed_out": LoginAgain };
   "login-start": { "not_found": LoginAgain; "unsupported": LoginAgain; "failed": LoginAgain };
+  "machine-wake": { "busy": MachineState };
   "machines-set": { "element_gone": Gone; "bad_machine": MachineFault };
   "rotation-settings": { "refused": RotRefused; "stale": RotStale };
   "rotation-strategy-add": { "bad_strategy": RotBadStrategy };

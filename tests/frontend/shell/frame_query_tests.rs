@@ -1488,6 +1488,12 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         1,
         "本机通道登记上那一刻 · 本机流每来一帧 `changed {machines}`：问一次本机的机器表（一问，10 秒）",
     ),
+    (
+        "backend_control.rs",
+        "wake_backend_feed",
+        1,
+        "［重新连接］一台：请本机后端叫醒那台的常驻流（`machine-wake`，一问，10 秒）；拒了那一句回给界面",
+    ),
     // LOC1a / LOC1b 新长的四个发起点（各自带着自己的值，DL1 只把形状换成 `Deadline`）：
     // acct-iso 两问那两个发起点摘了：界面经通道直问（`src/frontend/ui/acct-iso-reads.ts`），期限在那边造。
     // 在那台分叉一条会话那一行摘了：monitor 不再发（界面经通道直说 `session-fork`，期限在界面那一手造）。

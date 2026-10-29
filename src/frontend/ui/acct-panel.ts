@@ -2,6 +2,7 @@
  * 「账号」面板（右侧抽屉）：状态栏账号按钮 · 右键「账号…」· 会话头 ⋯ 三处开的同一个。
  * 头下一句（中转没见过这个会话 · 额度账读不出时的那一条）＋ 底栏 `新会话默认 [work ▾] … 管理账号…`。
  * 中间是这个会话的轮换（提示 · 策略一行 · 顺序，`rot-session.ts`；与设置窗「轮换」栏只共用策略一行与提示）。
+ * 没有当前会话（`sid` 为 `null`）⇒ 同一个面板只有底栏那半段（状态栏按钮只开这一个，不另给下拉）。
  *
  * - 数据只经 `quota-read` · `rotation-view` 与推送（`acct-center.ts` 收进 `appStore`）。界面不判「能不能换 / 该不该换」。
  */
@@ -34,32 +35,34 @@ export interface AcctPanelHost {
 }
 
 interface Open {
-  sid: string;
+  /** `null` ＝ 没有当前会话：只有底栏。 */
+  sid: string | null;
   origin: Origin;
   drawer: DrawerHandle;
   body: HTMLElement;
-  rot: SessionRot;
+  rot: SessionRot | null;
   unsub: (() => void)[];
 }
 
 let open: Open | null = null;
 
-/** 开 / 关这个会话的面板（再点同一个入口 ＝ 关）。 */
-export function toggleAccountPanel(sid: string, origin: Origin, host: AcctPanelHost): void {
-  if (open?.sid === sid) {
+/** 开 / 关这个会话的面板（再点同一个入口 ＝ 关）；`sid` 为 `null` ＝ 没有当前会话那一形（`origin` 那台的新会话默认）。 */
+export function toggleAccountPanel(sid: string | null, origin: Origin, host: AcctPanelHost): void {
+  if (open !== null && open.sid === sid) {
     void open.drawer.close();
     return;
   }
   openAccountPanel(sid, origin, host);
 }
 
-/** 当前 tab 换了：面板开着就跟着换成那个会话（不关）。 */
-export function followActive(a: { sid: string; origin: Origin } | null, host: AcctPanelHost): void {
-  if (!open || a === null || open.sid === a.sid) return;
-  openAccountPanel(a.sid, a.origin, host);
+/** 当前 tab 换了：面板开着就跟着换成那个会话（不关）；没有会话了 ⇒ 换成本机那一形。 */
+export function followActive(a: { sid: string; origin: Origin } | null, host: AcctPanelHost, idle: Origin): void {
+  if (!open || open.sid === (a?.sid ?? null)) return;
+  if (a === null) openAccountPanel(null, idle, host);
+  else openAccountPanel(a.sid, a.origin, host);
 }
 
-export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHost): void {
+export function openAccountPanel(sid: string | null, origin: Origin, host: AcctPanelHost): void {
   if (open) {
     const was = open;
     open = null;
@@ -71,7 +74,7 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
   const statusBar = document.getElementById("status-bar");
   const drawer = openDrawer({
     title: copyText("acct.panel.title"),
-    sub: copyText("acct.panel.sub", { session: host.sessionTitle(sid), machine: machineLabel(origin) }),
+    sub: sid === null ? machineLabel(origin) : copyText("acct.panel.sub", { session: host.sessionTitle(sid), machine: machineLabel(origin) }),
     body,
     width: 540,
     bottom: statusBar ? Math.round(statusBar.getBoundingClientRect().height) : undefined,
@@ -81,11 +84,18 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
       open = null;
     },
   });
-  const o: Open = { sid, origin, drawer, body, rot: mountSessionRotation(origin, sid), unsub: [] };
+  const o: Open = { sid, origin, drawer, body, rot: null, unsub: [] };
   open = o;
   const repaint = (): void => {
     if (open === o) render(o, host);
   };
+  if (sid === null) {
+    o.unsub.push(appStore.accounts.subscribe(repaint));
+    render(o, host);
+    return;
+  }
+  const rot = mountSessionRotation(origin, sid);
+  o.rot = rot;
   // 这个会话的轮换变了（推送 ⇒ `acct-center` 换了它那一格）⇒ 重读（拖着一行时先记下，静止了再读）。
   let lastEntry = appStore.sessionRotation.get().get(sid);
   const onRotation = (): void => {
@@ -93,7 +103,7 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
     if (e === lastEntry) return;
     lastEntry = e;
     repaint();
-    if (open === o) void o.rot.refresh();
+    if (open === o) void rot.refresh();
   };
   o.unsub.push(
     appStore.quota.subscribe(repaint),
@@ -102,13 +112,17 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
     appStore.sessionAccount.subscribe(repaint),
   );
   render(o, host);
-  void o.rot.refresh();
+  void rot.refresh();
   // 打开那一刻再问一次这个会话（推送丢过也能补上）；额度账同理。
   void refreshSessions(origin, [sid]);
   void refreshQuota(origin);
 }
 
 function render(o: Open, host: AcctPanelHost): void {
+  if (o.sid === null || o.rot === null) {
+    o.body.replaceChildren(footer(o, host));
+    return;
+  }
   // 上游是自设的（那台在 `session-account` 里写好那一句）⇒ 额度看不到、换号不适用：只出那一条，不画轮换。
   const own = appStore.sessionAccount.get().get(o.sid)?.read.ownUpstream;
   if (own) {
@@ -165,7 +179,7 @@ function footer(o: Open, host: AcctPanelHost): HTMLElement {
     b,
     el("span", s.acctSpacer),
     button({
-      label: copyText("acct.foot.manage"),
+      label: copyText("acct.menu.manage"),
       kind: "ghost",
       size: "compact",
       onClick: () => host.openSettings(o.origin),

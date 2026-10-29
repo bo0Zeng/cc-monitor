@@ -19,7 +19,7 @@ description: cc-monitor 的账号轮换（第五版）怎么用、怎么写策�
 
 ## 2. 命令
 
-都经 `~/.cc-monitor/bin/ccm -- --<命令>`：参数从 stdin 读一段 JSON，stdout 一行 JSON。全部命令与一句话随二进制走：`ccm -- --commands`。
+都经 `~/.cc-monitor/bin/ccm -- --<命令>`：参数从 stdin 读一段 JSON，stdout 一行 JSON。
 
 <!-- 命令：rotation-*（生成物：照 `ccm -- --commands` 现打，勿手改；重打见 `tests/backend/stream/catalog_tests.rs`） -->
 - `ccm -- --rotation-facts`：每个号此刻的事实。参数 `RotationFactsReq`
