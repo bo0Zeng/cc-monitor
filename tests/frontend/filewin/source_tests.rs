@@ -78,7 +78,7 @@ fn synth_tree() -> (String, std::collections::BTreeSet<(String, u64, bool)>) {
 /// [`listing_has_no_second_road_when_the_backend_refuses`] 那条行为判据买。
 #[test]
 fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() {
-    // 「整棵 `filewin/`」今天是两棵：本包 ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`（开窗入口 · 起进程），人群与搬家前逐份相同。
+    // 「整棵 `filewin/`」今天是两棵：本包 ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`（开窗入口 · 起进程）。
     let root = guard_core::addr::filewin_src_root();
     let monitor_side = guard_core::addr::repo_root().join("src/frontend/shell/src/filewin");
     let files: Vec<std::path::PathBuf> = guard_core::files_by_extension(&root, "rs")
@@ -378,7 +378,7 @@ fn only_dir_counts_as_a_directory_and_the_rest_are_flattened() {
 
 /// 🔴 **`lossy_name` 这一格当场变准了 —— 而旧那份是一个猜。**
 ///
-/// 旧写法是 `name.contains('\u{FFFD}')`（从前列本机目录那一份里的那一行）：
+/// `name.contains('\u{FFFD}')` 那种写法：
 /// 它把「转换时产生了替换字符」与「这个文件真叫这个名字」混成一件事
 /// ⇒ 一个**真叫** `\u{FFFD}` 的文件会被误判成有损，于是复制/改名/删除三颗按钮
 /// 对它一颗都不画（复制那道门与 `is_writable` 都看这一格）。

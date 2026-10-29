@@ -40,9 +40,9 @@ fn the_outcome_is_visible_before_the_round_counter_moves() {
 
 /// 失败那一支要把**下层那句原话**带着走（后端路径解析的拒绝、连接失败、落地失败）。
 ///
-/// 从前这里指着 `transfer_relay_tests` 里那条「中继真的拒（在转给本机后端之前）」；那道拒绝删了
-/// （用户「文件管理器全部都可以改. 不需要任何围栏」），那条翻成了 `transfer_relay_tests::a_download_onto_a_session_file_is_forwarded_like_any_other`。
-/// 本条钉的仍是「拒的那句话（不管是谁拒的）到得了这一格」；下面那句样本是历史上那道围栏的原话，只当一句字符串用。
+/// 拒绝那一格在中继上没有（用户「文件管理器全部都可以改. 不需要任何围栏」，见
+/// `transfer_relay_tests::a_download_onto_a_session_file_is_forwarded_like_any_other`）。
+/// 本条钉的仍是「拒的那句话（不管是谁拒的）到得了这一格」；下面那句样本只当一句字符串用。
 #[test]
 fn a_failure_carries_the_reason_it_was_given() {
     let b = DownloadBoard::default();

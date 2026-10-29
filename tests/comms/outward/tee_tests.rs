@@ -25,7 +25,7 @@ fn a_half_delivered_line_is_not_emitted_until_it_completes() {
     assert_eq!(s.feed(b"2]\n", NO_CAP), vec!["[1,2]".to_string()]);
 }
 
-/// ★ `TEE_DECODE_CAP` 在 `SseSplitter` 这一侧的那一格〔回修轮之五 08-25，`阻-1(D3)` 同职面〕。
+/// ★ `TEE_DECODE_CAP` 在 `SseSplitter` 这一侧的那一格。
 ///
 /// 分母 = 我列出的这 **3** 形：①超长半行被丢掉且**计数**；②它**不连坐**后面的完整行；
 /// ③没超上限时**一个字节都不丢**（非空对照 —— 没有它，「丢了 N 字节」可能只是它见谁丢谁）。

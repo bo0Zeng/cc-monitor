@@ -9,6 +9,19 @@ pub(crate) mod argv;
 /// 这个二进制在终端里的名字（`~/.cc-monitor/bin/ccm`）。预览语境里「叫的是 `ccm`」就是它（`control::ccm::plan::Env::for_preview`）。
 pub(crate) const SUBCOMMAND_WORD: &str = "ccm";
 
+/// 新会话的 tmux 名从哪来：不给名（从工作目录派生）· `--ccm-tmux=<名>` · `--tmux-base <名>`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TmuxNaming {
+    Auto,
+    Fixed,
+    Base,
+}
+
+/// 撞名时退不退让（`K-R96`）：只有显式名不让。起会话取名（`control::ccm::plan::build`）与别名页那句说明都照这一处。
+pub(crate) const fn tmux_steps_aside(n: TmuxNaming) -> bool {
+    !matches!(n, TmuxNaming::Fixed)
+}
+
 /// 用配置文件里那一段的写法：`@<名>` 打头（[`PROFILE_SIGIL`] ＋ 段名）。
 pub(crate) const PROFILE_SIGIL: char = '@';
 

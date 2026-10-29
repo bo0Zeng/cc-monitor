@@ -261,7 +261,7 @@ impl AuthStyle {
 ///
 /// 「缺席」与「写了一个认不出的词」**必须分开**：合成一态就只能回落成默认，
 /// 而一个打错字母的 `auth_style` 静默走 Bearer 的症状是**一条查不出来的 401**
-/// ——与「key 打错了」同形。〔`K-R21` 那一族逐字：一个 `None` 装了三件事。〕
+/// ——与「key 打错了」同形。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthStyleSetting {
     /// 字段缺席 / 空串 ⇒ 用 [`AuthStyle::DEFAULT`]。

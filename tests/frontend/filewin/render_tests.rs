@@ -108,7 +108,7 @@ fn the_log_line_names_the_pick_and_what_was_seen() {
 
 /// 🔴 **虚拟机判据：没有 OpenGL 2.0 的 Windows 上，走生产开窗那一条，窗口照样画出第一帧。**
 ///
-/// 那一形是没装显卡驱动的虚拟机、多数远程桌面会话：系统只给 OpenGL 1.1，从前的 glow 渲染器在这里开不出窗
+/// 那一形是没装显卡驱动的虚拟机、多数远程桌面会话：系统只给 OpenGL 1.1，glow 渲染器在这里开不出窗
 /// （`egui_glow requires opengl 2.0+`）。Windows 改走 wgpu 之后，这里该落到系统自带的 WARP 软件光栅器，慢但开得了。
 ///
 /// **只在虚拟机上跑**（`#[ignore]`，登记在 `test_tiers_tests.rs` 的真机层，手动）：

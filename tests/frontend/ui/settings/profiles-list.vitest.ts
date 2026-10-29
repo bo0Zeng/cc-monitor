@@ -74,6 +74,8 @@ describe("buildProfilesList", () => {
       tmux: true,
       // 格名是那台后端写好的（`profiles-read` 的 `slots`）；夹具用占位字，判据按它认格名出自成品。
       slots: SLOT_IDS.map((id) => ({ id, label: `L-${id}` })),
+      // 三种 tmux 取名各一句（退不退让后端照 `plan.rs` 写好）；夹具用占位字，判据按它认出自成品。
+      tmuxNaming: (["auto", "fixed", "base"] as const).map((mode) => ({ mode, text: `N-${mode}` })),
       sets: [],
     };
     vi.resetModules();
@@ -224,6 +226,22 @@ describe("buildProfilesList", () => {
       const f = el.querySelector<HTMLElement>('[data-role="profile-form"]')!;
       expect(f.querySelector('[data-role="tmux"]'), "格不藏").not.toBeNull();
       expect(f.querySelector('[data-role="no-tmux"]')?.textContent ?? null).toBe(has ? null : copyText("profilesPage.form.noTmux"));
+    }
+  });
+
+  it("★ tmux 那一格：选哪一种，下面那句与选项的悬停都是后端成品里那一种的说明（界面不另存）", async () => {
+    book.profiles = book.profiles.map((p) => (p.name === "cct" ? { ...p, form: { ...p.form, tmux: { mode: "auto", name: "" } } } : p));
+    const { el } = await mount();
+    [...el.querySelectorAll<HTMLElement>('.prof-trow[data-name="cct"] .cfg-link')][0].click();
+    await flush();
+    const sel = () => el.querySelector<HTMLSelectElement>('[data-role="tmux"]')!;
+    expect(sel(), "找不到 tmux 那个下拉").toBeTruthy();
+    for (const v of ["auto", "fixed", "base"] as const) {
+      expect([...sel().options].find((x) => x.value === v)!.title).toBe(`N-${v}`);
+      sel().value = v;
+      sel().dispatchEvent(new Event("change"));
+      await flush();
+      expect(el.querySelector('[data-role="tmux-naming"]')?.textContent).toBe(`N-${v}`);
     }
   });
 

@@ -40,6 +40,7 @@ class LaunchFromAliasesTest {
             "accounts" to emptyList<String>(),
             "tmux" to true,
             "slots" to emptyList<Any>(),
+            "tmuxNaming" to emptyList<Any>(),
             "sets" to emptyList<Any>(),
         )
 
