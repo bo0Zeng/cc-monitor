@@ -857,11 +857,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     bytes: NONE,
     // 路径字节当集合键 · 推送 `key` 用的那一串（`files-ls` 每行的键、`changed {files_dir}` 的键）。界面不列目录，TS 侧没有孪生。
     key: NONE,
-    // 会话族手机问的那几条：回包类型住这里的那几条命令 · 记录那一格认不认得（手机嵌的 Rust 核心判）· 判据对后端 `impl Command` 用的名字。
+    // `calls!` 表里每条的名字 · 记录那一格认不认得（手机嵌的 Rust 核心判）。
     //   界面按生成的 TS 类型收、不另判，TS 侧没有孪生。
     COMMANDS: NONE,
     mend_records: NONE,
-    reply_names: NONE,
     // 判据用的照类型解再写回（手机生成的类写回要与它逐字节同）；TS 侧没有孪生。
     typed_text: NONE,
     // 拨号那一侧：竞速顺序（没给就只有 host:port）· 「没够着那一台」那几个原因码（ack 带着它，手机照说、不自己判）。界面不拨号，TS 侧没有孪生。

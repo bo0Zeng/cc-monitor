@@ -458,9 +458,7 @@ crate::wire::typed::codes! {
 pub(crate) struct NeedsAnswerCmd;
 
 impl crate::wire::typed::Command for NeedsAnswerCmd {
-    const NAME: &'static str = "needs-answer";
-    type Req = AnswerReq;
-    type Reply = Answered;
+    crate::wire::typed::by_call!(AnswerReq);
     type Err = AnswerErr;
 }
 
