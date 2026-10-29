@@ -207,10 +207,13 @@ fn a_test_process_never_sees_the_outer_session() {
             Some(h) => cmd.env("HOME", h),
             None => cmd.env_remove("HOME"),
         };
-        for k in LEAKS.iter().chain(KEPT) {
+        // 外面会话的值都指向判据自建的那个假账号目录（给了别的家时，摘的是指向家以外的路径）。
+        for k in LEAKS {
+            cmd.env(k, &account);
+        }
+        for k in KEPT {
             cmd.env(k, "outer-session");
         }
-        cmd.env("CLAUDE_CONFIG_DIR", &account);
         let out = cmd.output().expect("起子测试进程");
         let text = format!(
             "{}{}",
@@ -229,6 +232,30 @@ fn a_test_process_never_sees_the_outer_session() {
         );
     }
     let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// 摘哪一格：真家（或没设家）⇒ 表里的都摘；给了别的家 ⇒ 只摘指向那个家以外的绝对路径，家里的路径与不是路径的值（父判据交给
+/// `env_clear()` 子进程的 `CCM_HOST=lne` 之类）照留；表外的一律不碰。路径都是编的，不碰盘。
+#[test]
+fn a_given_home_keeps_inputs_but_not_paths_outside_it() {
+    use std::ffi::OsStr;
+    let real = Path::new("/nowhere/real-home");
+    let given = Path::new("/nowhere/sandbox/home");
+    let strays = |k: &str, v: &str, home: Option<&Path>| {
+        test_home::strays(k, OsStr::new(v), home, Some(real))
+    };
+    for home in [None, Some(real)] {
+        assert!(strays("CLAUDE_CONFIG_DIR", "/nowhere/real-home/.cc-monitor/accounts/z", home));
+        assert!(strays("CCM_HOST", "lne", home));
+    }
+    assert!(strays("CLAUDE_CONFIG_DIR", "/nowhere/real-home/.cc-monitor/accounts/z", Some(given)));
+    assert!(strays("CCM_DATA_DIR", "/nowhere/elsewhere", Some(given)));
+    assert!(strays("TMUX", "/tmp/tmux-1000/default,1,0", Some(given)));
+    assert!(!strays("CCM_DATA_DIR", "/nowhere/sandbox/home/data", Some(given)));
+    assert!(!strays("CCM_HOST", "lne", Some(given)));
+    assert!(!strays("CCM_RELAY_PORT", "4242", Some(given)));
+    assert!(!strays("PATH", "/usr/bin", None));
+    assert!(!strays("CCM_E2E_WORK", "/nowhere/elsewhere", Some(given)));
 }
 
 /// 清单本身：摘的与留的各几样（同一份 `leaked`）。

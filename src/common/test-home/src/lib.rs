@@ -5,10 +5,12 @@
 //! 留一行 `#[cfg(test)] #[used] static TEST_HOME: fn() = test_home::linked;`（让链接器一定把启动段那一节带进测试二进制）。
 //! 于是直接敲 `cargo test`、IDE 里点、quick-check 都一样：测试二进制起来时（`main` 之前，单线程），`HOME` 若是本账号在账号数据库里
 //! 登记的那个真家（或没设），就把 `HOME` · `USERPROFILE` · `XDG_*` 指到这个进程自己的临时目录。给了别的家照用。
-//! 不论家是谁给的，外面那个会话带进来的状态（`CLAUDE_CONFIG_DIR` 指着真账号目录 · `TMUX` / `TMUX_PANE` 指着默认 tmux ·
-//! `CCM_*` / `ANTHROPIC_*` / `CODEX_*` 一族指着真数据目录、真端口、真上游）一律摘掉：清单是仓里那一张会话变量表（见 [`leaked`]）。
-//! 摘掉之后记录树 · 账号库 · 数据目录都退回 `HOME` 底下（10-28 那一次：只换了 `HOME`、没摘 `CLAUDE_CONFIG_DIR`，判据照着真账号的记录树读写）。
-//! 判据起的子测试进程继承沙箱标记，不再摘：父判据给它设的 `CCM_DATA_DIR` · `CCM_RELAY_PORT` 之类照用。
+//! 外面那个会话带进来的状态（`CLAUDE_CONFIG_DIR` 指着真账号目录 · `TMUX` / `TMUX_PANE` 指着默认 tmux ·
+//! `CCM_*` / `ANTHROPIC_*` / `CODEX_*` 一族指着真数据目录、真端口、真上游）按仓里那一张会话变量表摘（见 [`leaked`] · [`strays`]）：
+//! 家是真家（或没设）⇒ 表里的一律摘；给了别的家 ⇒ 表里的值是一条指向那个家以外的绝对路径就摘（10-28 那一次：只换了 `HOME`、
+//! 没摘 `CLAUDE_CONFIG_DIR`，判据照着真账号的记录树读写），别的照用（判据 `env_clear()` 后起的子测试进程，父判据交给它的
+//! `CCM_HOST` 之类是输入）。摘掉之后记录树 · 账号库 · 数据目录都退回 `HOME` 底下。
+//! 判据起的子测试进程继承了沙箱标记的，一样都不摘。
 //!
 //! 判据要真家的只能自己显式去拿账号数据库那一格；本 crate 不给。
 //!
@@ -100,6 +102,25 @@ pub fn must_move(home: Option<&Path>, account_home: Option<&Path>) -> bool {
     }
 }
 
+/// 这一格（名字 ＝ 值）要不要摘：不在表里 ⇒ 不摘；`HOME` 没设或就是真家 ⇒ 摘；给了别的家 ⇒ 值是一条那个家以外的绝对路径才摘。
+pub fn strays(
+    name: &str,
+    value: &std::ffi::OsStr,
+    home: Option<&Path>,
+    account_home: Option<&Path>,
+) -> bool {
+    if !leaked(name) {
+        return false;
+    }
+    match home {
+        Some(h) if Some(h) != account_home => {
+            let p = Path::new(value);
+            p.is_absolute() && !p.starts_with(h)
+        }
+        _ => true,
+    }
+}
+
 #[ctor::ctor]
 fn sandbox_home() {
     if std::env::var_os(SANDBOX_MARK).is_some() {
@@ -115,16 +136,19 @@ fn sandbox_home() {
     for k in TEMP_VARS {
         std::env::set_var(k, &root);
     }
-    // 摘外面会话的状态：不看家是谁给的（只换了 `HOME` 的，`CLAUDE_CONFIG_DIR` 照样指着真账号）。
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let real = account_home();
     let gone: Vec<std::ffi::OsString> = std::env::vars_os()
+        .filter(|(k, v)| {
+            k.to_str()
+                .is_some_and(|k| strays(k, v, home.as_deref(), real.as_deref()))
+        })
         .map(|(k, _)| k)
-        .filter(|k| k.to_str().is_some_and(leaked))
         .collect();
     for k in gone {
         std::env::remove_var(k);
     }
-    let home = std::env::var_os("HOME").map(PathBuf::from);
-    if !must_move(home.as_deref(), account_home().as_deref()) {
+    if !must_move(home.as_deref(), real.as_deref()) {
         return;
     }
     let home = root.join("home");
