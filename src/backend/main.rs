@@ -19,14 +19,13 @@
 //!   inotify reader. This split is the single most-cited Phase-0 accident
 //!   source; keeping it real is the point.
 
-// 🔴 模块声明、身份块（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS`
-//    都搬进了 `lib.rs`，理由逐字写在那份文件的头注里（一句话：**in-process 那条路没有
-//    这个 `main.rs`**，身份与模块跟着它一起消失）。**本文件只留分派**（规格）。
+// 模块声明、身份块（`BUILD_ID` ＋ 戳）住 `lib.rs`（in-process 那条路没有这个 `main.rs`），
+// 子命令表住 `stream::cli`。**本文件只留分派**。
 // ⚠ 用 glob 而不是逐项列 —— 这一段是**纯机械搬家**，逐项列会让 diff 里混进
 //    「哪些项对外可见」这个**语义**决定，那是另一件事（`4b` 定 API 面时再收窄）。
 use cc_monitor_backend::faces::read_face;
-use cc_monitor_backend::stream::cli;
 use cc_monitor_backend::stream::inbound::views::StreamWants;
+use cc_monitor_backend::stream::{cli, oneshot};
 use cc_monitor_backend::stream::{inbound, tap, topic_body};
 use cc_monitor_backend::wire::{self, drain, listen, topic_hook};
 use cc_monitor_backend::*;
@@ -41,9 +40,6 @@ const WATCH_REACTIONS: observe::watcher::Reactions = observe::watcher::Reactions
     session_seen: control::launch_account::adopt_seen,
     tag: control::identity_tag::tag_seen,
 };
-
-/// 答题 hook 判「终端那边答了」读的那一处：活会话表（hook 在 control 层，够不着 history，由这里交进去）。
-const HOOK_STATES: control::asks::hook::StatesOf = history::live_table::states_in;
 
 // 本测块紧邻被测的第四条面（就近可读）、不挪文件尾；显式 allow 让 clippy --all-targets 净
 //（同上面 `stream_flag_tests` 那一块的理由）。
@@ -82,12 +78,10 @@ const HOOK_STATES: control::asks::hook::StatesOf = history::live_table::states_i
 // 和「backend 崩了」无法区分 ⇒ 重连 ⇒ 发同一个 flag ⇒ **死循环**。这正是 2026-07-09
 // 事故的形状。
 //
-// # 这张表**漏一项**的后果比旧行为更糟，所以必须有完备性机检
+// # 闸门与分派同一份
 //
-// 判据改成「`args[0]` ∈ [`SUBCOMMANDS`] ⇒ 查询模式」之后，漏登记一条子命令不再是
-// exit 2（吵，但看得见），而是**那条子命令静默变成「起了个流」**——调用方拿到一堆
-// jsonl 行而不是查询结果。这是 v3.4.0 `--account-trust-zero` 漏登记那次事故的**加强版**。
-// ⇒ `every_dispatched_token_is_classified` 是本组的核心交付，不是附属品。
+// 「`args[0]` 是子命令 ⇒ 查询模式」的那份子命令集合就是分派查的那张表
+// （`stream::oneshot::ONESHOTS` 那几条 ∪ 帧命令派生的 CLI 面）：没有第二份手写的名单可漏。
 
 // 本测块紧邻被测的 split_stream_flags（就近可读）、不挪文件尾；显式 allow 让 clippy
 // --all-targets 净（审计：门槛此前只跑默认 target、漏 test-target lint）。
@@ -128,6 +122,10 @@ async fn main() {
     // argv 只在这里取一次：分流看 `[1..]`，ccm 那一趟要的「我被怎么叫的」由这里交（`ccm::run` 的 `process_argv`）。
     // 起第一个子进程之前：各家「我是哪个会话」的变量一律不往下传（常驻后端若在某个会话里起，它起的会话不许认错父）。
     agents::install_child_env_filter();
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "进程 argv 只在这里取一次，要它的模块由调用方交"
+    )]
     let process_argv: Vec<String> = std::env::args().collect();
     // 写后端自家状态（数据目录底下）的句柄：只在这里造一次，顺着各入口递下去（`readonly_guard` 构造判据钉「只许这里造」）。
     let own = cc_monitor_backend::platform::Own::issue();
@@ -171,40 +169,22 @@ async fn main() {
     if cli::is_query_mode(&args) || bad_view.is_some() {
         // 看的那一台的时区（`--tz`，剥流旗标那一步剥出来的）：一次性回包里的「几点」按它写。
         let z = &wants.tz;
-        // 一次性查询模式：手写的几条（tmux 钩子 · 常驻后端起找停）＋ 从帧命令派生的 CLI 面；别的一律「不认识」。
-        let code = match args.first().map(String::as_str) {
-            _ if bad_view.is_some() => cli::refuse_stream_view(bad_view.as_deref(), z),
-            // P4b：hook 子进程走这条 —— 校验身份后给后端发 SIGUSR1，**不碰文件系统**。
-            Some("--tmux-notify") => control::tmux_hook::notify(&args),
-            // `--relay`（独立的中转进程）那一臂删了：中转只住常驻后端进程里（本机远端同形）。
-            // 远端常驻后端的起 · 找 / 停（`control/resident.rs` 头注）。
-            // 远端中转住进远端常驻后端 —— 起它时交中转口（与本机宿主交的同一个常量）。
-            Some("--resident-ensure") => control::resident::ensure(&args[1..], &own),
-            Some("--resident-attach") => control::resident::attach().await,
-            // 后端问后端：问这台常驻一条帧命令（只问常驻，不在这里起冷的顶上）。
-            Some("--resident-call") => control::resident::call(&args[1..], z).await,
-            // 会话级答题 hook 的客户端：经本机常驻后端问人、把答案交回那一家（`control/asks/hook.rs`）；没答案就空手退 0。
-            Some("--answer-hook") => control::asks::hook::run(&args, HOOK_STATES).await,
-            Some("--resident-stop") => control::resident::run_stop(&args[1..], &own),
-            // 部署那一趟：暂存区里新传上去的那一份自己核字节、换进落点（`control/place_self.rs`）。
-            Some("--place-self") => control::place_self::run(&own),
-            // 卸载那一趟：暂存区里传上去的那一份删掉落点那一份、再删自己。
-            Some("--unplace-self") => control::place_self::run_unplace(&own),
-            // 列全部命令与用途（帧命令 · 子命令 · 一句话；`stream/catalog.rs`）。
-            Some("--commands") => stream::catalog::run(),
-            // `--dial` 那条拨号代理臂**删了**：拨号全在本机那一个常驻后端里（`dial/`），不再每趟起一个进程。
-            // 历史读面 · 搜索 · 账号读面 · 分叉 · `--resolve` 那几条手写臂（第 7 批第二题）删了：帧面早有同义的帧命令、
-            //   生产里没人调（`--resolve` 10-26 连帧命令 `resolve` 一起撤了）。
-            // ★ P4d：控制面的 CLI 入口。**这条臂刻意不写命令字面量** ——
-            // 认哪些 flag 由 `cli::spec_for` 从 `inbound::REGISTRY` 派生，
-            // 于是「帧面加一条命令」不需要回来改这里。
-            // ⚠ **必须写成单行臂**：`argv_table_guard::every_dispatch_arm_actually_calls_an_implementation`
-            // 按**行**取 `=>` 右边的臂体，块体臂会被抽成 `""` 当场红（实测）。
-            // 那条约束是保守的（宁可假红），照它写就是了 —— 单行形式下它钉的
-            // 「臂体是一次真调用」也确实成立。
-            Some(f) if cli::handles(f) => cli::run(&args, z, &own).await,
-            // 不认识的子命令（含删掉的那几条带着裸参数敲）：stderr 一行 `unknown_command` 失败信封、退出 2。
-            _ => cli::refuse_unknown(&args, z),
+        // 一次性查询模式：查手写的那张表（`stream::oneshot::ONESHOTS`）→ 从帧命令派生的 CLI 面 → 别的一律「不认识」
+        // （含删掉的那几条带着裸参数敲：stderr 一行 `unknown_command` 失败信封、退出 2）。
+        let first = args.first().map(String::as_str).unwrap_or_default();
+        let code = if bad_view.is_some() {
+            cli::refuse_stream_view(bad_view.as_deref(), z)
+        } else if let Some(run) = oneshot::oneshot(first) {
+            run(oneshot::Call {
+                args: &args,
+                tz: z,
+                own: &own,
+            })
+            .await
+        } else if cli::handles(first) {
+            cli::run(&args, z, &own).await
+        } else {
+            cli::refuse_unknown(&args, z)
         };
         std::process::exit(code);
     }
@@ -294,7 +274,7 @@ async fn main() {
     // 在两条载体上逐字成立；`inbound::spawn<R: AsyncRead>` 与 `writer_task<W: AsyncWrite>`
     // 本来就是泛型的，喂 socket 的两半与喂 stdin/stdout **在类型上无差别**。
     //
-    // ⚠ **由环境决定，不由 argv 决定**：`SUBCOMMANDS` 那张表一动就要 bump `BUILD_ID`
+    // ⚠ **由环境决定，不由 argv 决定**：子命令集合一动就要 bump `BUILD_ID`
     // 并进 `IPC-PROTOCOL.md` 的对拍面（`build_id_guard` / `protocol_doc_guard` 各钉一半），
     // 而这里**一条子命令都没加** —— 它换的是同一个流模式的载体。
     // 判定住 [`listen::mode_from`]（**纯函数**，所以「只写了一半」那两条错误支都测得到），在 [`claim_then_log`] 里定、抢口。
