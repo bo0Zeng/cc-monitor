@@ -133,7 +133,7 @@ pub fn deliver_queues(own: &crate::platform::fs::Own) {
 }
 
 /// 这台的账号库补号色（一次，写经 [`LocalFiles`]，与帧命令同一扇门）：只由占着常驻的那一个进程起来时调
-/// （`main.rs` 接中转那一刻，与 `rotation.json` 换形写回同一处、同一个写的人）。
+/// （`main.rs` 接中转那一刻）。
 pub fn fill_account_colors() {
     crate::accounts::manage::wire::colors_here(&LocalFiles);
 }
@@ -143,7 +143,7 @@ pub fn share_on_demand_dirs() {
     crate::accounts::manage::wire::shared_on_demand_here(&LocalFiles);
 }
 
-/// 后端起来时那一次别名清单迁移（经本进程自己的文件管理面，写经 [`LocalFiles`]，与帧命令同一扇门）：只由 `main.rs` 调。
-pub fn migrate_aliases() {
-    crate::assets::aliases::migrate_here(&LocalFiles);
+/// 后端起来时那一次照配置文件对齐别名文件与链接（经本进程自己的文件管理面，写经 [`LocalFiles`]，与帧命令同一扇门）：只由 `main.rs` 调。
+pub fn align_aliases() {
+    crate::assets::aliases::align_here(&LocalFiles);
 }

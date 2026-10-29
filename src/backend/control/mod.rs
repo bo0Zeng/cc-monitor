@@ -38,8 +38,7 @@ pub use machine_prefs::apply_agent_homes;
 pub(crate) mod machine_menu; // 命令面板打机器名：`machine-find` 认那台 · `machine-menu` 那台能做的几样
 pub(crate) mod machine_state;
 pub(crate) mod machines;
-// 第 7 批那一次换形（`config.json` 那几格 ⇒ 各台 `prefs.json`；下一版删）。
-pub mod host_key_migration;
+// `prefs.json` 第 1 ⇒ 2 版那一次换形（常驻那一位起来时）。
 pub mod prefs_migration;
 // 解压（`files-extract`）＋ 「建链接」那一个动词的调用方（复制链接本身 · 解压包里的链接）。
 pub mod files_extract;

@@ -897,9 +897,9 @@ async fn an_unstored_key_type_or_another_key_is_refused() {
     assert_eq!(ack["ok"], true, "{ack}");
 }
 
-/// ★ 待核的指纹（机器表那一格换形来的，只活这一版）：对不上 ⇒ 拒；对得上 ⇒ 过、记下整把、待核那一行去掉。
+/// 库里只剩一行旧的待核指纹注释（`#cc-monitor-pending-fingerprint`）、对不上这把：不认它，这台照首见办 —— 过、记下整把。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_pending_fingerprint_is_checked_then_replaced_by_the_whole_key() {
+async fn a_leftover_pending_fingerprint_line_is_only_a_comment() {
     let host = ed25519_key(21);
     let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![host.clone()])).await;
     let names = crate::known_hosts::host_pattern("127.0.0.1", port);
@@ -907,23 +907,10 @@ async fn a_pending_fingerprint_is_checked_then_replaced_by_the_whole_key() {
         "#cc-monitor-pending-fingerprint {names} SHA256:not-this-one"
     ));
     let ack = dial_with_known(port).await;
-    assert_eq!(ack["ok"], false, "{ack}");
-    assert_eq!(ack["reason"], "host_key", "{ack}");
-    assert_eq!(ack["expected_fingerprint"], "SHA256:not-this-one", "{ack}");
-    let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![host.clone()])).await;
-    let names = crate::known_hosts::host_pattern("127.0.0.1", port);
-    let fp = crate::known_hosts::fingerprint(host.public_key());
-    seed_library(&format!("#cc-monitor-pending-fingerprint {names} {fp}"));
-    let ack = dial_with_known(port).await;
     assert_eq!(ack["ok"], true, "{ack}");
     assert_eq!(
         remembered(port),
         vec![format!("{names} {}", key_line(&host))]
-    );
-    let lib = crate::env::get().host_keys.read().unwrap();
-    assert!(
-        !lib.contains(&format!("{names} {fp}")),
-        "待核那一行该随之去掉：{lib}"
     );
 }
 

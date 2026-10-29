@@ -267,4 +267,3 @@ pub fn local_backend_supervised() -> std::sync::Arc<ManagedSpawn> {
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/spawn_managed_tests.rs"]
 mod tests;
-
