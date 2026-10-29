@@ -7,13 +7,13 @@ use crate::accounts::quota::rules::decide::{
 use crate::accounts::quota::rules::Acct;
 use crate::accounts::quota::strategy::FailKind;
 
-/// 判据用的几份策略：三份升级材料（材料只编进升级那一处，判据照原文跑）。
+/// 判据用的几份策略：三份样例（[`super::super::samples`]，只在测试里）。
 fn fixtures() -> Vec<(String, String)> {
     (0..3)
         .map(|n| {
             (
-                format!("material-{}", n + 1),
-                super::super::upgrade::material(n).to_string(),
+                format!("sample-{}", n + 1),
+                super::super::samples::of(n).to_string(),
             )
         })
         .collect()
@@ -62,9 +62,9 @@ fn ctx_of(now: u64) -> Ctx<'static> {
     }
 }
 
-/// ★ 三份升级材料都读得懂、跑得通（只有一个号 ⇒ 就用它）。
+/// ★ 三份样例都读得懂、跑得通（只有一个号 ⇒ 就用它）。
 #[test]
-fn every_upgrade_material_reads() {
+fn every_sample_reads() {
     for (id, src) in &fixtures() {
         let f = parse(src).unwrap_or_else(|e| panic!("{id} 读不懂：{e:?}"));
         let v = f
@@ -332,8 +332,8 @@ fn returns_are_shape_checked_and_deterministic() {
     let f = parse(
         &fixtures()
             .into_iter()
-            .find(|(i, _)| i == "material-2")
-            .expect("material-2")
+            .find(|(i, _)| i == "sample-2")
+            .expect("sample-2")
             .1,
     )
     .expect("读");
@@ -353,7 +353,7 @@ fn unreadable_files_say_why_and_where() {
     assert!(parse(&with_code("fn other(ctx) { #{} }")).is_err());
 }
 
-/// ★ 后端不认任何一份策略：生产源码里搜不到判据用的那几份的文件名（一次性的升级那两份除外）；说明全部换掉，判出来一个不变。
+/// ★ 后端不认任何一份策略：生产源码里搜不到判据用的那几份的文件名；说明全部换掉，判出来一个不变。
 /// 积木库里那几项设置的名字（`capKind`）也不在后端源码里（`row` · `delay` 这种常见词别处另有用处，不搜）。
 #[test]
 fn the_backend_knows_no_strategy_and_no_rule() {
@@ -365,10 +365,6 @@ fn the_backend_knows_no_strategy_and_no_rule() {
     }
     let hits: Vec<String> = guard_core::scan_tree!(&root, &["rs"])
         .into_iter()
-        .filter(|(p, _)| {
-            // 一次性的升级那两份（认第二版的编号 1 2 3、写出升级材料认的设置）。
-            !p.ends_with("setup/migrate.rs") && !p.ends_with("setup/upgrade.rs")
-        })
         .flat_map(|(p, t)| {
             let t = guard_core::production_code(&t);
             needles
@@ -417,7 +413,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
             others: None,
         },
     ];
-    assert_eq!(fixtures().len(), 3, "材料没读到");
+    assert_eq!(fixtures().len(), 3, "样例没读到");
     for (_, src) in fixtures() {
         let mut head = parse(&src).expect("读").head;
         head.settings["accounts"] = serde_json::json!([{"id": "a"}, {"id": "b"}, {"id": "c"}]);
@@ -500,8 +496,6 @@ fn saving_settings_leaves_the_about_text_and_the_code_byte_for_byte() {
     };
     assert_eq!(cut(&out), cut(&src));
     assert_eq!(parse(&out).expect("读回").head, h);
-    assert!(has_head(&src));
-    assert!(!has_head("// 第三版\nfn decide(ctx) { [] }"));
 }
 
 /// ★ 头里带 `name` · `line`（旧格式）⇒ 形状不对，报出来（标题是文件名、说明是开头的注释）。

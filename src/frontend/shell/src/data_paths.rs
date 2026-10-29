@@ -109,11 +109,12 @@ pub const FILEWIN_VIEW_FILE: &str = "filewin-view.json";
 /// 从 [`collect`] 里抽出来，只为让「每一项是哪一类」能不带 `AppHandle` 地被判据逐项对拍。
 fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
     vec![
+        // 设置：落点、名字与真相 / 缓存都照声明表那一行（`relay_route_core::CONFIG_FILE`）。
         probe_file(
-            monitor_data_dir.join("config.json"),
-            "config.json",
+            crate::config::config_path_in(monitor_data_dir),
+            relay_route_core::file_name_of(relay_route_core::CONFIG_FILE.row.rel),
             &copy_text("rsDataPaths.monitor.config", &[]),
-            DataClass::Truth,
+            class_of(relay_route_core::CONFIG_FILE.row.kind),
         ),
         probe_file(
             monitor_data_dir.join("auto-launch.json"),
@@ -188,6 +189,14 @@ fn backend_stderr_dir(monitor_data_dir: &Path) -> DataPathInfo {
         &copy_text("rsDataPaths.monitor.backendLogs", &[]),
         DataClass::Cache,
     )
+}
+
+/// 声明表的种类 ⇒ 这一页的两类：状态（删了会丢）是真相，缓存是缓存。
+fn class_of(kind: relay_route_core::Kind) -> DataClass {
+    match kind {
+        relay_route_core::Kind::State => DataClass::Truth,
+        relay_route_core::Kind::Cache => DataClass::Cache,
+    }
 }
 
 fn probe_file(path: PathBuf, label: &str, description: &str, class: DataClass) -> DataPathInfo {

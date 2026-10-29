@@ -70,7 +70,7 @@ impl Home {
             root,
             live: Arc::default(),
         };
-        let m = crate::accounts::quota::setup::upgrade::material;
+        let m = crate::accounts::quota::setup::samples::of;
         let (list, third, reset) = (m(0).to_string(), m(0).to_string(), m(1).to_string());
         for (id, text) in [("by-list", list), ("by-reset", reset), ("third", third)] {
             shelf::write_file(&h.own(), id, &text).expect("写策略");

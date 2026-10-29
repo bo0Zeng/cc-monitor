@@ -464,7 +464,7 @@ impl Home {
                 .map(|a| serde_json::json!({"id": a})),
         );
         let kind = if at_limit == "stop" { "hard" } else { "soft" };
-        let src = crate::accounts::quota::setup::upgrade::material(0);
+        let src = crate::accounts::quota::setup::samples::of(0);
         let mut head = script::parse(src).expect("读得懂").head;
         head.settings = serde_json::json!({"caps": caps, "capKind": kind, "accounts": accounts});
         head.tz = Some("UTC".into());

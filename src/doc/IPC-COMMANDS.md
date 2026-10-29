@@ -280,6 +280,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `running` | [string] |  |
 | `recent` | [string] |  |
 | `older` | [string] |  |
+| `older_text` | Words? | 更早那一组的组头字（「更早 ×n」），两端照抄；那一组空 ⇒ 不上线 |
 
 #### `RunLine`
 

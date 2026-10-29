@@ -1,6 +1,6 @@
 //! 备料（换到别的号时这一发怎么走）：照模块头逐条钉 —— 起会话的号照原样（[`Go::Start`]）；订阅号换上那个号的访问令牌、请求体里账号身份那一格
 //! 一起换；按量号照它在 key 表里那一行发、身份格换成空串；拿不到登录 / key / 认不准身份格只回原因码。
-//! 还有：认出 `_` 那一发在用哪个号（[`Hop::recognize`]）· 「其余的订阅号」（[`rest_members`]）。
+//! 还有：认出 `_` 那一发在用哪个号（[`Hop::recognize`]）。
 //! 临时家目录、假凭据、假身份、续令牌发到本机一个绑着不听的口；不起中转。
 
 use super::*;
@@ -408,17 +408,6 @@ fn an_undeclared_send_is_recognized_only_by_a_single_identity_match() {
     );
     let bare = serde_json::to_vec(&serde_json::json!({"model": "m"})).expect("json");
     assert_eq!(one.recognize(AGENT, &bare), None);
-}
-
-/// ★ 「其余的订阅号」：库里没点名的、名字过得了路由段的订阅号（`_` 不算），按名字排。
-#[test]
-fn the_rest_members_are_the_unnamed_subscriptions_by_name() {
-    let ids = ["z", "b", "_", "a", "k", "bad/seg", "c"];
-    let named = vec!["c".to_string()];
-    assert_eq!(
-        rest_members(ids, &named, |x| x != "k"),
-        vec!["a".to_string(), "b".to_string(), "z".to_string()]
-    );
 }
 
 /// 判据夹具：号表里的一行（`id` 是路由段，`dir` 的末段要与它一致；`dir: None` ＝ 账号 0）。换号那几族的判据共用。
