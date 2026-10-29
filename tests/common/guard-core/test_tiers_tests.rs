@@ -88,7 +88,6 @@ const SUPPORT: &[&str] = &[
     "tests/frontend/filewin/corpus.rs",         // 合成路径语料（采结构不采内容）
     "tests/frontend/filewin/scale.rs",          // 秤：首屏 · 滚动帧 · 内存
     "tests/frontend/shell/shared_crate_registry_ci_yaml.rs",
-    "tests/frontend/shell/write_site_registry_writers.rs",
     // 壳的判据模块头（头注 ＋ 挂测试段那一行）：10-10 从 `src/frontend/shell/src/` 搬来，测试在各自的 `*_tests.rs` 里。
     "tests/frontend/shell/atomic_replace_registry.rs",
     "tests/frontend/shell/bus_identity_registry.rs",
@@ -97,7 +96,6 @@ const SUPPORT: &[&str] = &[
     "tests/frontend/shell/comm_boundary_registry.rs",
     "tests/frontend/shell/command_home_registry.rs",
     "tests/frontend/shell/cross_half_edge_registry.rs",
-    "tests/frontend/shell/dial_home_registry.rs",
     "tests/frontend/shell/doc_claim_registry.rs",
     "tests/frontend/shell/e2e_gate_registry.rs",
     "tests/frontend/shell/fixture_guard.rs",
