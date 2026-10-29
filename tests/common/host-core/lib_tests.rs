@@ -227,7 +227,10 @@ fn a_capped_read_says_absent_whole_or_too_big_at_the_exact_boundary() {
     assert_eq!(read_capped(&f, 8).unwrap(), Capped::Text("12345678".into()));
     std::fs::write(&f, "123456789").unwrap();
     assert_eq!(read_capped(&f, 8).unwrap(), Capped::TooBig);
-    assert_eq!(read_capped(&f, 9).unwrap(), Capped::Text("123456789".into()));
+    assert_eq!(
+        read_capped(&f, 9).unwrap(),
+        Capped::Text("123456789".into())
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
