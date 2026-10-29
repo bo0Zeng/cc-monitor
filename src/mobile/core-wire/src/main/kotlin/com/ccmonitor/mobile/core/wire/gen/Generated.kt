@@ -17515,7 +17515,6 @@ data class QueueItem(
     val seq: Long? = null,
     val id: String,
     val end: String,
-    val atMs: Long,
     val text: String,
     val attachments: List<String>? = null,
     val rewind: Rewind? = null,
@@ -17531,7 +17530,6 @@ data class QueueItem(
             Field("seq", { opt(U64) }, optional = true, nullable = true),
             Field("id", { Str }, optional = false, nullable = false),
             Field("end", { Str }, optional = false, nullable = false),
-            Field("atMs", { Lng }, optional = false, nullable = false),
             Field("text", { Str }, optional = false, nullable = false),
             Field("attachments", { opt(arr(Str)) }, optional = true, nullable = true),
             Field("rewind", { opt(Rewind.ADAPTER) }, optional = true, nullable = true),
@@ -17539,8 +17537,8 @@ data class QueueItem(
             Field("said", { Str }, optional = false, nullable = false),
             Field("from", { Str }, optional = false, nullable = false),
             ),
-            { a -> QueueItem(a[0] as Long?, a[1] as String, a[2] as String, a[3] as Long, a[4] as String, a[5] as List<String>?, a[6] as Rewind?, a[7] as QueueState, a[8] as String, a[9] as String) },
-            { v -> arrayOf(v.seq, v.id, v.end, v.atMs, v.text, v.attachments, v.rewind, v.state, v.said, v.from) },
+            { a -> QueueItem(a[0] as Long?, a[1] as String, a[2] as String, a[3] as String, a[4] as List<String>?, a[5] as Rewind?, a[6] as QueueState, a[7] as String, a[8] as String) },
+            { v -> arrayOf(v.seq, v.id, v.end, v.text, v.attachments, v.rewind, v.state, v.said, v.from) },
         )
     }
 }

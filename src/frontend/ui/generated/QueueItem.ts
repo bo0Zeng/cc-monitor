@@ -18,10 +18,6 @@ id: string,
  */
 end: string, 
 /**
- * 发件端说的几点发的（unix 毫秒；只给人看，不参与排序）。
- */
-atMs: number, 
-/**
  * 那一句。
  */
 text: string, 

@@ -24,7 +24,7 @@ end: string,
  */
 n?: number, 
 /**
- * 几点发的（发件端的 unix 毫秒，只给人看）。
+ * 几点发的（发件端的 unix 毫秒）：会话那台只照记在盘上，名单不带、不参与排序。
  */
 atMs: number, text: string, 
 /**
