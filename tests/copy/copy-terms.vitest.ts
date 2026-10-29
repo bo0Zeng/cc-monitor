@@ -5,15 +5,10 @@
  *
  * R1 禁词表说**不许出现什么**，术语表说**该说什么**；「今天只有前者 ⇒
  * 判据红了之后人只能自己编一个词」。这张表要是只靠人记着维护，会和散文一起腐 ——
- * 所以它的人群**不是本文件自己定的**，而是从两份别人写的东西里借来、两向对拍：
- *
- * | 对拍 | 另一侧住哪 | 挡什么 |
- * |---|---|---|
- * | 表里 `census` 的集合 == 普查量具的 `R1_WORDS ∪ R1_CANDIDATES` | `tests/evidence/K-T68-A1-outward-copy-census.py` | 普查加了一个禁词 / 候选词，术语表没给换法 |
- * | 表里 `ledger` 的并集 == CP1 台账依据列里的全部 `新词:` 标记 | `tests/evidence/CP1-copy-verdicts.tsv` | 裁文案的人标出一个新内部词，术语表没收 |
- *
- * 两侧是**异源**的：普查那张表是照抄的，台账标记是 6 路裁文案时逐条手标的，
- * 都不是从本表生成的 ⇒ 相等不是恒真。
+ * 所以它的人群**不是本文件自己定的**：表里 `census` 的集合 == 普查量具
+ * `tests/evidence/K-T68-A1-outward-copy-census.py` 的 `R1_WORDS ∪ R1_CANDIDATES`（两向）——
+ * 普查加了一个禁词 / 候选词，术语表没给换法就红。新的内部词一律先进普查那两张表。
+ * 普查那张表不是从本表生成的 ⇒ 相等不是恒真。
  *
  * # 它**不**判什么（诚实段）
  *
@@ -30,18 +25,6 @@ import { censusList, limitedHits, limitedMismatches, loadTable, loadTerms, r1Hit
 import { nonEmpty } from "../test-support/non-empty.ts";
 
 const CENSUS = resolve(REPO_ROOT, "tests", "evidence", "K-T68-A1-outward-copy-census.py");
-const LEDGER = resolve(REPO_ROOT, "tests", "evidence", "CP1-copy-verdicts.tsv");
-
-/** 台账依据列里的 `新词:` 标记。标记止于空白或中文标点 / 括号（与 CP1 头注第五段同口径）。 */
-export function ledgerMarkers(tsv: string): Set<string> {
-  const out = new Set<string>();
-  for (const line of tsv.split("\n").slice(1)) {
-    const basis = line.split("\t")[3];
-    if (!basis) continue;
-    for (const m of basis.matchAll(/新词:([^\s（(，。；、)）]+)/g)) out.add(m[1]);
-  }
-  return out;
-}
 
 function diff(a: Iterable<string>, b: Set<string>): string[] {
   return [...new Set(a)].filter((x) => !b.has(x)).sort();
@@ -97,7 +80,6 @@ export function shapeProblems(terms: Term[]): string[] {
 describe("CP2a · 术语对照表", () => {
   const terms = loadTerms();
   const py = readFileSync(CENSUS, "utf8");
-  const tsv = readFileSync(LEDGER, "utf8");
 
   it("表的形状：三档 · 禁词有换法且换法指向登记过的词 · 扫描正则不死、不误中反例", () => {
     nonEmpty(terms);
@@ -133,17 +115,6 @@ describe("CP2a · 术语对照表", () => {
     const byCensus = new Map(terms.map((t) => [t.census, t]));
     const notBanned = r1.filter((w) => byCensus.get(w)?.tier !== "禁");
     expect(notBanned, "R1 禁词表里的词在术语表里不是禁档").toEqual([]);
-  });
-
-  it("★ 表里 ledger 的并集 == CP1 台账的全部「新词:」标记（两向）", () => {
-    const marks = ledgerMarkers(tsv);
-    // 台账里已经一个「新词:」标记都不剩（最后那个 C8① 随 backend_start 那两句硬编码中文删了）⇒ 两向相等在空集上成立；
-    // 抽取器有没有牙由下面「两个抽取器在合成语料上各抽得出东西」那条兜。
-    const ours = terms.flatMap((t) => t.ledger ?? []);
-    expect(diff(marks, new Set(ours)), "台账标了新词，术语表没收（去 terms.json 给它一个处置）").toEqual([]);
-    expect(diff(ours, marks), "术语表认领了一个台账里已经没有的标记").toEqual([]);
-    const dup = ours.filter((m, i) => ours.indexOf(m) !== i);
-    expect(dup, "同一个台账标记被两条术语认领").toEqual([]);
   });
 
   it("CP1 判不了的两条都有了答案（ccm · in-place 都是限用，并写明语境）", () => {
@@ -197,10 +168,8 @@ describe("CP2a · 术语表判据自己会不会死（正控）", () => {
     expect(limitedMismatches([t], { "a.b.c": { kind: "body", zh: "会话", args: [], limited: ["daemon"] } }).join()).toMatch(/不是限用词/);
   });
 
-  it("两个抽取器在合成语料上各抽得出东西", () => {
+  it("普查抽取器在合成语料上抽得出东西", () => {
     const py = 'X = 1\nR1_WORDS = [\n    ("daemon", re.compile(r"daemon")),\n]\n';
     expect(censusList(py, "R1_WORDS")).toEqual(["daemon"]);
-    const tsv = "住址\t原文\t裁词\t依据\na:1\tx\t保留\t[对外] 新词:拉前 新词:C8①（设计条目号\n";
-    expect([...ledgerMarkers(tsv)].sort()).toEqual(["C8①", "拉前"]);
   });
 });
