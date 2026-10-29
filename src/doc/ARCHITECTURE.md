@@ -358,7 +358,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 线上类型只在 Rust 写一份，经 ts-rs 导出成 TS：界面那份在 `src/frontend/ui/generated/`。`npm run gen:types` 重生成（两棵 Rust 树各跑一次 `export_bindings`），`npm run check:types` 要求重生成后零差异；生成物勿手改。
 
-手机的 Kotlin 类也从这一份来：`tests/scripts/gen-kotlin-wire.mjs` 读那份 TS 声明，出生成的类与各自的编解码（不经反射；写回与 Rust 逐字节同，金样 `tests/__fixtures__/wire-replies.golden.json` 钉），`generated-drift.sh` 要求重生成后零差异。手机嵌的 Rust 核心与 Kotlin 之间那一层（JNI 交上来的几样事 · 几个口的回值 · Kotlin 交进去的拨号请求与同名那一答）形状住 `cmd-wire` 的 `phone` · `dial`，同一个生成器出 Kotlin：缺一格就是两端契约对不上（报一次、不补默认值）。核心不先解再转：回包原样交 Kotlin，由生成的类解那一次；只有记录那一格在核心里一条一条判认不认得（`replies::mend_records`，认不出的成「认不出的记录」那一条，文案在核心）。
+手机的 Kotlin 类也从这一份来：`tests/scripts/gen-kotlin-wire.mjs` 读那份 TS 声明，出生成的类与各自的编解码，手机按类型读回包的命令就是 `cmd-wire` 那张 `calls!` 表（不经反射；写回与 Rust 逐字节同，金样 `tests/__fixtures__/wire-replies.golden.json` 钉），`generated-drift.sh` 要求重生成后零差异。手机嵌的 Rust 核心与 Kotlin 之间那一层（JNI 交上来的几样事 · 几个口的回值 · Kotlin 交进去的拨号请求与同名那一答）形状住 `cmd-wire` 的 `phone` · `dial`，同一个生成器出 Kotlin：缺一格就是两端契约对不上（报一次、不补默认值）。核心不先解再转：回包原样交 Kotlin，由生成的类解那一次；只有记录那一格在核心里一条一条判认不认得（`record::mend_records`，认不出的成「认不出的记录」那一条，文案在核心）。
 
 ### 3.8 格目录与 `BUILD_ID`
 
