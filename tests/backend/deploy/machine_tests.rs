@@ -824,10 +824,7 @@ fn a_machine_that_was_up_and_is_connecting_again_says_reconnecting() {
         text("machineState.busy.reconnecting"),
         "断过一轮再连也是重连"
     );
-    let deploying = of(
-        vec![up(Relation::Same, &[]), Fact::Step(Step::Plan)],
-        true,
-    );
+    let deploying = of(vec![up(Relation::Same, &[]), Fact::Step(Step::Plan)], true);
     assert_ne!(
         deploying.said,
         text("machineState.busy.reconnecting"),
