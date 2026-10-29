@@ -18,7 +18,7 @@ const flush = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
-const item = (n: number): QueueItem => ({ seq: n, id: `q-${n}`, end: "mobile", atMs: 1_700_000_000_000, text: `text ${n}`, state: "queued", said: `place-${n}`, from: "phone-word" });
+const item = (n: number): QueueItem => ({ seq: n, id: `q-${n}`, end: "mobile", text: `text ${n}`, state: "queued", said: `place-${n}`, from: "phone-word" });
 const five = (): QueueList => ({ items: [1, 2, 3, 4, 5].map(item), sent: [] });
 const head = (root: HTMLElement): string | null => root.querySelector<HTMLElement>('[data-role="queue-head"]')?.textContent ?? null;
 

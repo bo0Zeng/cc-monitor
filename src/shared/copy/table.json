@@ -23222,6 +23222,12 @@
       "zh": "发送中",
       "args": []
     },
+    "terminal.queue.stale": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "名单为上次所知",
+      "args": []
+    },
     "beQueue.from.desktop": {
       "kind": "body",
       "role": "片段",
@@ -31062,12 +31068,6 @@
       "zh": "在用的会话 {n} · 先换掉再删",
       "args": ["n"]
     },
-    "beRotation.migrate.oldSeedName": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "默认",
-      "args": []
-    },
     "beRotation.edit.badTz": {
       "kind": "error",
       "role": "报错",
@@ -31163,12 +31163,6 @@
       "role": "片段",
       "zh": "先不用",
       "args": []
-    },
-    "beRotation.write.v1Pending": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "轮换文件是旧格式 · 后端更新前不写 · {path}",
-      "args": ["path"]
     },
     "rot.top.pick": {
       "kind": "control",

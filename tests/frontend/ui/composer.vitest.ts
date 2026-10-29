@@ -22,7 +22,7 @@ const flush = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
-const item = (id: string, place: number): QueueItem => ({ seq: place, id, end: "mobile", atMs: 1_700_000_000_000, text: `text of ${id}`, state: "queued", said: `place-${place}`, from: "phone-word" });
+const item = (id: string, place: number): QueueItem => ({ seq: place, id, end: "mobile", text: `text of ${id}`, state: "queued", said: `place-${place}`, from: "phone-word" });
 const list = (...items: QueueItem[]): QueueList => ({ items, sent: [] });
 const tabOf = (face: SessionFace, sid = "s-1"): Tab => ({ origin: "devbox", sessionId: sid, face, label: "t", labelProject: null, background: false, forkedFromSessionId: null }) as unknown as Tab;
 const down = (): ChanError => new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "no-answer");
