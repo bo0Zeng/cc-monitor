@@ -4,8 +4,8 @@
 
 use cmd_wire::attach::Relation;
 use cmd_wire::machine::{
-    Blocker, EmptyFace, FixButton, MachineFix, MachineState, MachineStateKind as K, Round, RoundProblem,
-    Stage, Why,
+    Blocker, EmptyFace, FixButton, MachineFix, MachineState, MachineStateKind as K, Round,
+    RoundProblem, Stage, Why,
 };
 use copy_core::copy_text;
 use copy_core::detail::{Detail, Label, Target};

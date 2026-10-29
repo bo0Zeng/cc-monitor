@@ -162,11 +162,7 @@ pub(crate) fn empty_in(hosts: &[(String, bool)], links: &Links) -> EmptyFace {
 }
 
 /// [`empty_in`] 照给的那一张表算（不碰进程里那一张）。
-fn empty_over(
-    t: &BTreeMap<String, Entry>,
-    hosts: &[(String, bool)],
-    links: &Links,
-) -> EmptyFace {
+fn empty_over(t: &BTreeMap<String, Entry>, hosts: &[(String, bool)], links: &Links) -> EmptyFace {
     let local = local_row();
     let rows: Vec<(MachineState, bool)> = hosts
         .iter()
