@@ -497,7 +497,7 @@ impl UpstreamFailure {
 }
 
 /// 这一发怎么够到上游：期限 · 开 TCP 的那一口（已带上这一发的来处）· 连接池 · 来处本身（池分格要用）。
-struct UpHop<'a> {
+struct UpLeg<'a> {
     deadline: std::time::Duration,
     open: &'a Open<'a>,
     pool: &'a upstream::Pool,
@@ -525,7 +525,7 @@ fn send_upstream(
     head: &RequestHead,
     rest: &str,
     body: &[u8],
-    reach: &UpHop<'_>,
+    reach: &UpLeg<'_>,
 ) -> Answered {
     let lane = upstream::Lane::new(reach.origin, tag, base);
     let pooled = reach.pool.take(&lane, reach.deadline);
@@ -649,7 +649,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     // 开上游那一口带上这一发的来处（不透明，宿主按它取那条会话的出网描述）；被拒后重发也是同一发、同一个来处。
     let token = r.origin.as_ref().map(|o| o.token.as_str());
     let open = |h: &str, p: u16, d: std::time::Duration| (relay.open)(token, h, p, d);
-    let reach = UpHop {
+    let reach = UpLeg {
         deadline: relay.upstream_deadline,
         open: &open,
         pool: &relay.pool,
@@ -803,7 +803,7 @@ fn dispatch(
     head: &RequestHead,
     rest: &str,
     body: &[u8],
-    reach: &UpHop<'_>,
+    reach: &UpLeg<'_>,
     tag_out: &mut String,
 ) -> Answered {
     match d {
