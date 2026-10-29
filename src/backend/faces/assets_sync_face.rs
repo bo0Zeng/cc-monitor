@@ -19,9 +19,7 @@ codes! {
 pub(crate) struct AssetsSyncCmd;
 
 impl Command for AssetsSyncCmd {
-    const NAME: &'static str = "assets-sync";
-    type Req = AssetsSyncReq;
-    type Reply = AssetsSynced;
+    typed::by_call!(AssetsSyncReq);
     type Err = AssetsSyncErr;
 }
 

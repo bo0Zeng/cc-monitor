@@ -42,11 +42,6 @@ pub const TRANSFER_COPY: &str = <cmd_wire::transfer::TransferCopyAsk as cmd_wire
 /// 进度流的 `kind`：`transfer/<id>`。
 pub const TRANSFER_KIND_PREFIX: &str = "transfer/";
 
-/// 起跑（后端命令名；窗口那一侧没有这条 —— 订阅即起跑）。
-const TRANSFER_START: &str = "transfer-start";
-/// 撤（后端命令名；窗口那一侧没有这条 —— 停订即撤）。
-const TRANSFER_STOP: &str = "transfer-stop";
-
 /// 开单 / 起跑 / 撤这几条等本机后端应答的上限。它们都是后端**就地记账**的命令（不等拨号、不等传输），
 /// 本机那条流上毫秒级回；给 60 s，与 `frame_query` 一页的期限同值（流被别的大应答占着时也不误判）。
 const CALL_BUDGET: Duration = Duration::from_secs(60);
@@ -302,10 +297,9 @@ impl Drop for WatchGuard {
         };
         let id = self.id.clone();
         rt.spawn(async move {
-            if let Err(e) = client
-                .call(TRANSFER_STOP, serde_json::json!({ "id": id }), CALL_BUDGET)
-                .await
-            {
+            let req = cmd_wire::transfer::TransferStopReq { id: id.clone() };
+            let deadline = tokio::time::Instant::now() + CALL_BUDGET;
+            if let Err(e) = client.ask(None, &req, None, deadline).await {
                 tracing::warn!("传输：撤 {id} 没送到本机后端（{}）", said(&e).1);
             }
         });
@@ -344,16 +338,14 @@ pub fn watch_ticket(
     {
         let state = Arc::clone(&state);
         let owner = owner.clone();
-        let id = id.to_string();
+        let req = cmd_wire::transfer::TransferStartReq { id: id.to_string() };
         tokio::spawn(async move {
             let Some(client) = owner.upgrade() else {
                 end_here(&state, copy_text("reason.local.linkLost", &[]));
                 return;
             };
-            if let Err(e) = client
-                .call(TRANSFER_START, serde_json::json!({ "id": id }), CALL_BUDGET)
-                .await
-            {
+            let deadline = tokio::time::Instant::now() + CALL_BUDGET;
+            if let Err(e) = client.ask(None, &req, None, deadline).await {
                 end_here(&state, said(&e).1);
             }
         });

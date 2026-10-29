@@ -156,23 +156,12 @@ impl Table {
     }
 }
 
-/// 那几台的一行（线上形）：`machine` = 对面的资产目录 id，没拉过 ⇒ `null`。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct ReachRow {
-    /// 那台的名字。
-    pub(crate) origin: cmd_wire::Machine,
-    /// 对面的资产目录 id。
-    pub(crate) machine: Option<String>,
-}
-
-/// 「连这台」的那几台此刻：`[{origin, machine}]`。
-pub(crate) fn reach_rows(table: &Table) -> Vec<ReachRow> {
+/// 「连这台」的那几台此刻：`[{origin, machine}]`（线上那一行住 cmd-wire，`assets-sync` 的回包带它）。
+pub(crate) fn reach_rows(table: &Table) -> Vec<cmd_wire::assets::ReachRow> {
     table
         .connected()
         .into_iter()
-        .map(|o| ReachRow {
+        .map(|o| cmd_wire::assets::ReachRow {
             machine: table.peer(&o),
             origin: cmd_wire::Machine::named(o),
         })

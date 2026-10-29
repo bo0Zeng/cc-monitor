@@ -2097,14 +2097,60 @@ pub fn typed_command_name(src: &str, ty: &str) -> Option<String> {
     let req = &body[b + "by_call!(".len()..];
     let req = &req[..req.find(')').expect("by_call! 没收尾")];
     let seg = req.rsplit("::").next().unwrap_or(req).trim();
-    let table_path = addr::repo_root().join("src/common/cmd-wire/src/call.rs");
-    let table = std::fs::read_to_string(&table_path)
-        .unwrap_or_else(|e| panic!("读不到 {}：{e}", table_path.display()));
-    let row = format!("\n    {seg} => \"");
-    let n = table
-        .find(&row)
-        .unwrap_or_else(|| panic!("`calls!` 表里没有 `{seg}` 那一行"));
-    Some(until_quote(&table[n + row.len()..]))
+    let name = call_rows()
+        .into_iter()
+        .find(|(r, _)| r == seg)
+        .unwrap_or_else(|| panic!("`calls!` 表里没有 `{seg}` 那一行"))
+        .1;
+    Some(name)
+}
+
+/// cmd-wire `calls!` 那张表（`src/common/cmd-wire/src/call.rs`）的每一行：`(入参类型名, 命令名)`。
+pub fn call_rows() -> Vec<(String, String)> {
+    let path = addr::repo_root().join("src/common/cmd-wire/src/call.rs");
+    let table =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {}：{e}", path.display()));
+    let body = table
+        .split_once("\ncalls! {")
+        .and_then(|(_, rest)| rest.split_once("\n}"))
+        .map(|(b, _)| b)
+        .expect("call.rs 里找不到 `calls! { … }` 那张表");
+    let rows: Vec<(String, String)> = body
+        .lines()
+        .filter_map(|l| {
+            let (req, rest) = l.trim().split_once(" => \"")?;
+            Some((req.to_string(), rest.split_once('"')?.0.to_string()))
+        })
+        .collect();
+    assert!(
+        rows.len() > 10,
+        "`calls!` 表只读到 {} 行 —— 读法坏了",
+        rows.len()
+    );
+    rows
+}
+
+/// `calls!` 表里名字是 `op` 的那几个入参类型（一条命令可有两层入参，如传输台的 `*Ask` · `*Req`）。
+pub fn call_reqs_named(op: &str) -> Vec<String> {
+    call_rows()
+        .into_iter()
+        .filter(|(_, n)| n == op)
+        .map(|(r, _)| r)
+        .collect()
+}
+
+/// `word` 在 `hay` 里作为一个完整标识符出现几次（两侧都不是标识符字符）。
+pub fn word_count(hay: &str, word: &str) -> usize {
+    let ident = |c: char| c.is_alphanumeric() || c == '_';
+    hay.match_indices(word)
+        .filter(|(i, _)| {
+            hay[..*i].chars().next_back().is_none_or(|c| !ident(c))
+                && hay[i + word.len()..]
+                    .chars()
+                    .next()
+                    .is_none_or(|c| !ident(c))
+        })
+        .count()
 }
 
 pub fn find_pinned(hay: &str, needle: &str) -> Result<usize, String> {

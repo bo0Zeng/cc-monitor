@@ -451,7 +451,7 @@ pub const CMD_UPLOAD: &str = <cmd_wire::transfer::TransferUploadAsk as cmd_wire:
 /// 进度流的 `kind` 前缀（传输台那一侧 `transfer_relay::TRANSFER_KIND_PREFIX`，判据钉两份相等）。
 pub const KIND_PREFIX: &str = "transfer/";
 /// 提交：后端文件管理那一条（后端 `control/files_commit.rs::COMMIT_COMMANDS`）。
-pub const CMD_COMMIT: &str = "files-commit-upload";
+pub const CMD_COMMIT: &str = <cmd_wire::files::FilesCommitUploadReq as cmd_wire::Call>::NAME;
 /// 开单那一趟往返的上限（调用方给的期限）：开单不搬字节，但整组的同名要在远端落点那台逐项探一遍。
 pub const OPEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(60);
 /// 提交那一趟往返的上限：后端那一侧是围栏的几次 `canonicalize` ＋ 一次同盘改名。

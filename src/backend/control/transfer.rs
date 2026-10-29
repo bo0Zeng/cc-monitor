@@ -58,7 +58,8 @@ use crate::wire::{Frame, TransferEnd};
 use cmd_wire::batch::{Conflict, Conflicts, Decide};
 use cmd_wire::files as cwf;
 use cmd_wire::transfer::{
-    OpenState, OpenedItem, TransferDownloadReq, TransferOpened, TransferUploadReq,
+    OpenState, OpenedItem, TransferDownloadReq, TransferOpened, TransferStartReq, TransferStopReq,
+    TransferUploadReq,
 };
 
 /// 开单：上传。
@@ -86,16 +87,6 @@ impl typed::Command for TransferUpload {
     type Err = UploadErr;
 }
 
-/// 起跑 · 撤那两条的入参：那张票。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct TransferIdReq {
-    /// 传输单 id（开单那一条回的）。
-    pub(crate) id: String,
-}
-
 codes! {
     /// `transfer-start` 会回的码。
     pub(crate) enum StartErr {
@@ -115,9 +106,7 @@ codes! {
 pub(crate) struct TransferStart;
 
 impl typed::Command for TransferStart {
-    const NAME: &'static str = "transfer-start";
-    type Req = TransferIdReq;
-    type Reply = ();
+    typed::by_call!(TransferStartReq);
     type Err = StartErr;
 }
 
@@ -125,9 +114,7 @@ impl typed::Command for TransferStart {
 pub(crate) struct TransferStop;
 
 impl typed::Command for TransferStop {
-    const NAME: &'static str = "transfer-stop";
-    type Req = TransferIdReq;
-    type Reply = ();
+    typed::by_call!(TransferStopReq);
     type Err = StopErr;
 }
 
@@ -993,7 +980,7 @@ impl Desk {
     }
 
     /// `transfer-stop`：撤。没起跑的票当场摘掉；起跑了的由它自己收场（撤删 / 撤留）后摘掉。
-    fn stop(&self, r: TransferIdReq) {
+    fn stop(&self, r: TransferStopReq) {
         let tid = r.id;
         let mut g = lock(&self.tickets);
         if let Some(t) = g.get(&tid) {
@@ -1005,7 +992,7 @@ impl Desk {
     }
 
     /// `transfer-start`：起跑。两个任务：传输本体 · 进度转发（`watch` 合并）。
-    fn start(&self, r: TransferIdReq) -> Result<(), StartErr> {
+    fn start(&self, r: TransferStartReq) -> Result<(), StartErr> {
         let tid = r.id;
         let (dial, job, cancel) = {
             let mut g = lock(&self.tickets);

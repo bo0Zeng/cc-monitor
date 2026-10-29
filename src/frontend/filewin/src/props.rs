@@ -206,7 +206,7 @@ impl FileWindow {
 }
 
 /// 问一个路径的元数据（与改权限那个框问现值同一条命令）。
-pub const CMD_STAT: &str = "files-stat";
+pub const CMD_STAT: &str = <cmd_wire::files::StatReq as cmd_wire::Call>::NAME;
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/filewin/props_tests.rs"]

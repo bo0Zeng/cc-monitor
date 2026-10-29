@@ -38,7 +38,7 @@ use super::source::{Line, Origin};
 use super::writeops::WRITE_BUDGET;
 
 /// 后端那条命令（`files-create`）。
-pub const CMD_CREATE: &str = "files-create";
+pub const CMD_CREATE: &str = <cmd_wire::files::FilesCreateReq as cmd_wire::Call>::NAME;
 
 /// 真建一份 —— 经通道说 `files-create`，参数切成 `(root, rel)`，**不带 `content`**
 /// （契约逐字：不给 `content` ⇒ 新建一份空文件）。

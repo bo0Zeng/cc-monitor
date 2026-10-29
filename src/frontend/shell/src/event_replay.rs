@@ -210,34 +210,28 @@ struct Inner {
     live: HashMap<String, resident_client::live::Board>,
 }
 
-/// 替界面向那台退订终端画面的那条帧命令（后端 `control/terminal_follow.rs::UNFOLLOW`）。
-const UNFOLLOW: &str = "terminal-unfollow";
-
 /// 退订那一问的期限（就地做完的记账；远端多一趟往返）。
 const UNFOLLOW_BUDGET: std::time::Duration = std::time::Duration::from_secs(15);
 
-/// 向那台退订那张票，不等结局：那台没连着 ⇒ 连接走时后端整张票表本来就收了；
+/// 向那台退订那张票（`terminal-unfollow`，后端 `control/terminal_follow.rs`），不等结局：那台没连着 ⇒ 连接走时后端整张票表本来就收了；
 /// 那张票早已停了 / 退订先于订阅到了 ⇒ 后端都回 `ok`（退订先到的那张票，之后的订阅那一问不起）。
 fn unfollow(origin: &crate::origin::Origin, ticket: String) {
+    use cmd_wire::{terminal::UnfollowReq, Call};
     // 那台认不认这一条看它此刻那条连接的能力事实（本机 · 本机后端转来的那台 hello 同一问）。
-    if !crate::inbound_client::offer_of(origin).is_some_and(|o| o.admits(UNFOLLOW)) {
+    if !crate::inbound_client::offer_of(origin).is_some_and(|o| o.admits(UnfollowReq::NAME)) {
         return;
     }
     let Some(client) = crate::inbound_client::local_client() else {
         return;
     };
-    let local = origin.is_local();
+    let at = (!origin.is_local()).then(|| origin.to_string());
     let origin = origin.to_string();
     tauri::async_runtime::spawn(async move {
-        let args = serde_json::json!({ "ticket": ticket });
-        let got = if local {
-            client.call(UNFOLLOW, args, UNFOLLOW_BUDGET).await
-        } else {
-            let deadline = tokio::time::Instant::now() + UNFOLLOW_BUDGET;
-            client
-                .call_at(&origin, UNFOLLOW, args, None, deadline)
-                .await
+        let req = UnfollowReq {
+            ticket: ticket.clone(),
         };
+        let deadline = tokio::time::Instant::now() + UNFOLLOW_BUDGET;
+        let got = client.ask(at.as_deref(), &req, None, deadline).await;
         if let Err(e) = got {
             tracing::debug!("替界面退订 [{origin}] 的终端画面票 {ticket} 没成（{e}）—— 连接走时那台整张票表会收");
         }

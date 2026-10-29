@@ -542,7 +542,7 @@ pub fn home_from_reply(r: cmd_wire::files::FilesPathReply) -> Result<String, Str
 
 /// 那条线上命令的名字。⚠ 能力名是 `files.ls`，线上名是 `files-ls`
 /// （两者刻意不同形，同 `find.rs` 头注那条）。
-pub const CMD_LS: &str = "files-ls";
+pub const CMD_LS: &str = <cmd_wire::files::LsReq as cmd_wire::Call>::NAME;
 
 /// 一趟 `files-ls` 回来的 `entries` 里的**一条** → [`Listed`]。
 ///

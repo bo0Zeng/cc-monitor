@@ -40,7 +40,6 @@ use crate::backend_route::{no_channel, route_call_error, Routed};
 use crate::inbound_client;
 use crate::origin::Origin;
 use copy_core::copy_text;
-use serde_json::{json, Value};
 
 // 这里原来有退出行为的四句（`EXIT_*`）、崩溃读数的四句（`HEALTH_*`）与它们的两张对拍表
 //   （`EXIT_COPY` / `HEALTH_COPY`）和表的清单（`CROSS_LANGUAGE_COPY`）—— Rust 这一份「只为与 TS 那份逐字对拍而存在」，
@@ -56,29 +55,24 @@ const EXIT_ASK_BUDGET: std::time::Duration = std::time::Duration::from_millis(15
 /// 发送口（形状照 `frame_query::call`）：没通道 / 旧后端不认 / 调用失败，各说各的话。
 /// 今天只剩一个调用方 —— 退出臂那一问（[`kill_on_exit_now`]，**monitor 自己的事**，不是替界面转）；
 /// 界面那两条（问 / 改）改走通道了。
-async fn exit_policy_call(
+async fn exit_policy_call<C: cmd_wire::Call>(
     origin: &Origin,
-    cmd: &str,
-    args: Value,
+    req: &C,
     budget: std::time::Duration,
-) -> Result<Value, String> {
-    let at = origin;
+) -> Result<C::Reply, String> {
+    let local = origin.is_local();
     let origin_s = origin.to_string();
     let origin = origin_s.as_str();
     let Some(client) = inbound_client::local_client() else {
         return Err(said(no_channel(origin)));
     };
     // 本机：这条连接的命令表先拦；别台：经本机后端转过去（认不认由那一端连那台的客户端判）。
-    let got = if at.is_local() {
-        if !client.accepts(cmd) {
-            return Err(copy_core::backend_old(&machine_label(origin)));
-        }
-        client.call(cmd, args, budget).await
-    } else {
-        let deadline = tokio::time::Instant::now() + budget;
-        client.call_at(origin, cmd, args, None, deadline).await
-    };
-    let data = got.map_err(|e| {
+    if local && !client.accepts(C::NAME) {
+        return Err(copy_core::backend_old(&machine_label(origin)));
+    }
+    let at = (!local).then_some(origin);
+    let deadline = tokio::time::Instant::now() + budget;
+    let got = client.ask(at, req, None, deadline).await.map_err(|e| {
         said(route_call_error(
             &e,
             &machine_label(origin),
@@ -94,7 +88,7 @@ async fn exit_policy_call(
             },
         ))
     })?;
-    data.ok_or_else(|| copy_core::reply_unreadable(&machine_label(origin)))
+    got.map_err(|_| copy_core::reply_unreadable(&machine_label(origin)))
 }
 
 /// 三态里给人看的那句话（同 `frame_query::said`）。`Done` 在本族走不到。
@@ -104,31 +98,18 @@ fn said(r: Routed) -> String {
     }
 }
 
-/// 从后端那份应答里取生效值。形状不对 ⇒ `None`（调用方按缺省办并出声）。
-pub(crate) fn kill_from_answer(data: &Value) -> Option<bool> {
-    data.get("killOnExit").and_then(Value::as_bool)
-}
-
 /// 〔`§3.3b ④`〕**monitor 退出臂在决定那一刻现问一次**：这台机器要不要跟着结束。
 ///
 /// 只问、不记：每次调用都真发一条 `exit-policy-read`，本模块没有任何地方存它的答案。
-/// 问不到（没通道 / 超时 / 旧后端）⇒ **按缺省（不结束）办，并出声** —— 那不等于有人这么选过。
+/// 问不到（没通道 / 超时 / 旧后端 · 应答形状不对）⇒ **按缺省（不结束）办，并出声** —— 那不等于有人这么选过。
 pub fn kill_on_exit_now(origin: &Origin) -> bool {
     let asked = tauri::async_runtime::block_on(exit_policy_call(
         origin,
-        "exit-policy-read",
-        json!({}),
+        &cmd_wire::exit_policy::ExitPolicyReadReq {},
         EXIT_ASK_BUDGET,
     ));
-    match asked.as_ref().map(kill_from_answer) {
-        Ok(Some(k)) => k,
-        Ok(None) => {
-            tracing::warn!(
-                "退出：[{}] 的退出策略应答形状不对 ⇒ 按缺省（不结束）办",
-                origin
-            );
-            false
-        }
+    match asked {
+        Ok(p) => p.kill_on_exit,
         Err(e) => {
             tracing::warn!(
                 "退出：问不到 [{}] 的退出策略（{e}）⇒ 按缺省（不结束）办 —— 这不等于有人这么选过",
