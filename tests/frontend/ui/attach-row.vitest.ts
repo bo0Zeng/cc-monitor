@@ -21,7 +21,7 @@ const flush = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
-function rig(opts: { hold?: boolean; put?: () => Promise<QueuePut> } = {}) {
+function rig(opts: { hold?: boolean; put?: () => Promise<QueuePut>; tab?: Tab } = {}) {
   let release: () => void = () => {};
   const held = new Promise<void>((r) => (release = r));
   let n = 0;
@@ -45,10 +45,15 @@ function rig(opts: { hold?: boolean; put?: () => Promise<QueuePut> } = {}) {
     watch: () => () => {},
   };
   const outbox = new Outbox(say);
-  const page = new Composer({ active: () => TAB, resume: async () => true, front: () => {}, focusStream: () => {} }, outbox, reads);
-  document.body.replaceChildren(page.el);
+  const page = new Composer({ active: () => opts.tab ?? TAB, resume: async () => true, front: () => {}, focusStream: () => {} }, outbox, reads);
+  // 主区：消息流 ＋ 底下的输入框，整块交给输入框当拖放落点（同 main.ts）。
+  const zone = document.createElement("div");
+  const stream = document.createElement("div");
+  zone.append(stream, page.el);
+  document.body.replaceChildren(zone);
+  page.takeDrops(zone);
   page.render(); // 第一次画由宿主叫（构造里不画，A2-17-10-1-2）
-  return { page, say, release, outbox };
+  return { page, say, release, outbox, zone, stream };
 }
 
 async function opened(opts?: Parameters<typeof rig>[0]) {
@@ -112,22 +117,48 @@ describe("输入框的附件", () => {
     expect(chips(page).map((c) => c.textContent)).toEqual([expect.stringContaining("image-1.png")]);
   });
 
-  it("拖到面板上 ⇒ 整块画目标框（放进哪条会话 · 哪台 · 几份），松手进这一排；目录照样进、由那台判", async () => {
-    const { page } = await opened();
+  /** 一个带着这份 DataTransfer 的拖放事件（冒泡：从消息流那一块往上到主区）。 */
+  const dragEv = (type: string, dt: DataTransfer): DragEvent => {
+    const e = new Event(type, { cancelable: true, bubbles: true }) as DragEvent;
+    Object.defineProperty(e, "dataTransfer", { value: dt });
+    return e;
+  };
+
+  it("★ 拖到消息流上 ⇒ 整个主区画目标框，卡上写放进哪条会话 · 哪台、不写份数；松手进输入框那一排、焦点进输入框；目录照样进、由那台判", async () => {
+    const { page, zone, stream } = await opened();
     const dt = transfer([file("a.css"), file("assets", 0)], "", ["assets"]);
-    const enter = new Event("dragenter", { cancelable: true }) as DragEvent;
-    Object.defineProperty(enter, "dataTransfer", { value: dt });
-    page.el.dispatchEvent(enter);
-    const overlay = q<HTMLElement>(page, '[data-role="attach-drop"]');
+    stream.dispatchEvent(dragEv("dragenter", dt));
+    const overlay = zone.querySelector<HTMLElement>('[data-role="attach-drop"]')!;
+    expect(overlay.parentElement, "框盖整个主区，不只输入框").toBe(zone);
     expect(overlay.hidden).toBe(false);
-    expect(overlay.textContent).toContain(copyText("attach.drop.title"));
-    expect(overlay.textContent).toContain(["web-console", "devbox"].join(copyText("kit.text.sep")));
-    const drop = new Event("drop", { cancelable: true }) as DragEvent;
-    Object.defineProperty(drop, "dataTransfer", { value: dt });
-    page.el.dispatchEvent(drop);
+    const card = overlay.querySelector<HTMLElement>('[data-role="attach-drop-card"]')!;
+    expect(Array.from(card.children, (c) => c.textContent)).toEqual([
+      copyText("attach.drop.into", { title: "web-console" }) + copyText("kit.text.sep") + "devbox",
+      copyText("attach.drop.where"),
+    ]);
+    expect(card.textContent, "不写几份").not.toMatch(/\d/);
+    const over = dragEv("dragover", dt);
+    stream.dispatchEvent(over);
+    expect(over.defaultPrevented).toBe(true);
+    expect(dt.dropEffect).toBe("copy");
+    stream.dispatchEvent(dragEv("drop", dt));
     expect(overlay.hidden).toBe(true);
     await flush();
     expect(chips(page).length).toBe(2);
+    expect(document.activeElement).toBe(q(page, "textarea"));
+  });
+
+  it("此刻说不了的会话（只读）⇒ 拖到消息流上不画框、光标禁止、松手不收", async () => {
+    const ro = { ...TAB, face: { ...TAB.face, can: { ...TAB.face!.can, say: { can: "no", why: "ro-why" } } } } as unknown as Tab;
+    const { page, zone, stream } = await opened({ tab: ro });
+    const dt = transfer([file("a.css")]);
+    stream.dispatchEvent(dragEv("dragenter", dt));
+    expect(zone.querySelector<HTMLElement>('[data-role="attach-drop"]')!.hidden).toBe(true);
+    stream.dispatchEvent(dragEv("dragover", dt));
+    expect(dt.dropEffect).toBe("none");
+    stream.dispatchEvent(dragEv("drop", dt));
+    await flush();
+    expect(chips(page)).toEqual([]);
   });
 
   it("★ 带附件那一句投进输入队（编号按先后 · 不走送字）；回执到了 ⇒ 字与 chip 一起清", async () => {

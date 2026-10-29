@@ -385,6 +385,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     room: (px) => streamRoot.style.setProperty("--composer-room", `${px}px`),
   });
   streamRoot.appendChild(composer.el);
+  // 拖进来的文件：整个主区（消息流 ＋ 输入框）都收，进输入框那一排。
+  composer.takeDrops(streamRoot);
   const needsTitle = new NeedsTitle((title) => {
     document.title = title;
     void getCurrentWindow().setTitle(title).catch((e: unknown) => console.warn("set title failed:", e));
