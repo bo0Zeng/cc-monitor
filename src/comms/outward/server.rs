@@ -8,7 +8,7 @@
 //!
 //! | 登记 | 它钉着什么 |
 //! |---|---|
-//! | `tests/common/guard-core/rules/creds_store_exits.rs::PLAINTEXT_EXIT_SITES` | **今天已不钉本文件**：`expose_for_auth_header(` 恰好 1 处、住 `src/backend/accounts/upstream_select/mod.rs`（上游选择算好头材料交下来，本层碰不到明文）|
+//! | `tests/common/guard-core/rules/creds_store_exits.rs`（照 `INNER_FIELD_USERS` 的 `HandsOut`） | **今天已不钉本文件**：`expose_for_auth_header(` 恰好 1 处、住 `src/backend/accounts/upstream_select/mod.rs`（上游选择算好头材料交下来，本层碰不到明文）|
 //! | `tests/frontend/shell/byte_cap_registry_tests.rs` | `HEAD_CAP` / `BODY_CAP` / `TEE_DECODE_CAP` 三条的住址栏都是这个路径 |
 //!
 //! 那几处都在 `tests/frontend/shell/` 下，**这里没改它们**（改动范围逐字是
@@ -1047,7 +1047,7 @@ pub fn render_upstream_request(
     }
     // ★★ **中转只照写。** 头名与**完整**头值都是上游选择算好的（`AuthSwap::write`）——
     //    中转不知道那个串里有没有前缀、是不是一把 key，它只看见一个串。
-    //    把明文取出来的那一句住上游选择（`accounts::upstream_select::header_value`，`PLAINTEXT_EXIT_SITES` 钉着恰好 1 处）
+    //    把明文取出来的那一句住上游选择（`accounts::upstream_select::header_value`，`creds_store_exits` 钉着恰好 1 处）
     //      ⇒ 中转**碰不到明文**。
     if let Some((name, value)) = auth.and_then(|a| a.write) {
         out.push_str(&format!("{name}: {value}\r\n"));
