@@ -149,6 +149,21 @@ describe("本会话那一形照会话那台写好的那一份（`session-account
     expect(chip.element.querySelector("[class*=acctChipSwap]")).toBeNull();
   });
 
+  it("★ 点账号按钮永远开账号面板：没有当前会话 ⇒ 本机那一形（sid null）；有会话但号还没问到 ⇒ 那个会话；都不开下拉", async () => {
+    fetchAccountsMock.mockResolvedValue(state({ origin: LOCAL_ORIGIN, accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"));
+    const togglePanel = vi.fn();
+    const chip = new AccountChip({ openSettings: () => {}, togglePanel });
+    await chip.refresh();
+    chip.element.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(togglePanel).toHaveBeenLastCalledWith(null, LOCAL_ORIGIN);
+    chip.setActive({ sid: "s9", origin: "b" });
+    chip.element.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(togglePanel).toHaveBeenLastCalledWith("s9", "b");
+    expect(document.querySelectorAll('[role="menu"]').length).toBe(0);
+  });
+
   it("★ 没有会话 ⇒ 看本机那台的默认号", async () => {
     fetchAccountsMock.mockResolvedValue(state({ origin: LOCAL_ORIGIN, accounts: [acct({ name: "wei", isDefault: true })] }, "wei"));
     const chip = new AccountChip({ openSettings: () => {} });
@@ -215,8 +230,9 @@ describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
   });
 });
 
-// 选单的关法：点外面 · 再点 chip · Esc（Esc 走快捷键的弹层栈，一下只关最上面那一层）。
-describe("账号选单：再点 chip 收起；Esc 只关选单", () => {
+// 选单的关法：点外面 · 再点那一颗 · Esc（Esc 走快捷键的弹层栈，一下只关最上面那一层）。
+// 那一颗 ＝ 面板底栏「新会话默认」（`openDefaultMenu` 锚在它上面）。
+describe("新会话默认选单：再点那一颗收起；Esc 只关选单", () => {
   const menus = (): number => document.querySelectorAll('[role="menu"]').length;
   const press = (el: Element): void => void el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
   const tap = async (el: HTMLElement): Promise<void> => {
@@ -224,41 +240,43 @@ describe("账号选单：再点 chip 收起；Esc 只关选单", () => {
     el.click();
     await new Promise((r) => setTimeout(r, 0));
   };
-  async function mounted(): Promise<AccountChip> {
+  async function mounted(): Promise<HTMLButtonElement> {
     fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"));
     const chip = new AccountChip({ openSettings: () => {} });
-    document.body.appendChild(chip.element);
     await chip.refresh();
+    const pick = document.createElement("button");
+    pick.addEventListener("click", () => void chip.openDefaultMenu(pick, LOCAL_ORIGIN));
+    document.body.appendChild(pick);
     dispatcher.applyOverrides({});
     dispatcher.start();
-    return chip;
+    return pick;
   }
 
-  it("开着时再点 chip ⇒ 收起（不是先关又开）；点外面也收起", async () => {
-    const chip = await mounted();
-    await tap(chip.element);
+  it("开着时再点那一颗 ⇒ 收起（不是先关又开）；点外面也收起", async () => {
+    const pick = await mounted();
+    await tap(pick);
     expect(menus()).toBe(1);
-    await tap(chip.element);
+    await tap(pick);
     expect(menus()).toBe(0);
-    await tap(chip.element);
+    await tap(pick);
     press(document.body);
     expect(menus()).toBe(0);
-    chip.element.remove();
+    pick.remove();
   });
 
   it("Esc 只关选单：下面那层（多选 / 查找）这一下收不到", async () => {
-    const chip = await mounted();
+    const pick = await mounted();
     let below = 0;
     const floor: OverlayHandle = { handleEsc: () => void below++ };
     dispatcher.pushOverlay(floor);
-    await tap(chip.element);
+    await tap(pick);
     const esc = (): boolean => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
     esc();
     expect([menus(), below]).toEqual([0, 0]);
     esc();
     expect(below).toBe(1);
     dispatcher.popOverlay(floor);
-    chip.element.remove();
+    pick.remove();
   });
 });
 
@@ -404,7 +422,7 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
     await chip.openMenu();
     const labels = [...document.querySelectorAll('[role="menu"] *')].map((e) => e.textContent);
     // 非空对照：菜单确实渲染出来了（否则下面那条 not.toContain 是空真）。
-    expect(labels).toContain(copyText("accountChip.menu.manage"));
+    expect(labels).toContain(copyText("acct.menu.manage"));
     // 正题：那个按钮在本机那一档是死的（`loadCurrentAccountUsage` 首行就 return）。
     expect(labels).not.toContain(`${copyText("accountChip.menu.refresh")}${copyText("acct.hover.usage")}`);
   });

@@ -4697,12 +4697,6 @@
       "zh": "刷新",
       "args": []
     },
-    "accountChip.menu.manage": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "管理账号…",
-      "args": []
-    },
     "accountChip.menu.manageDeploy": {
       "kind": "action",
       "role": "菜单项",
@@ -4756,12 +4750,6 @@
       "kind": "body",
       "role": "说明",
       "zh": "account 账号 管理 manage 设置",
-      "args": []
-    },
-    "accountCommands.manage.title": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "管理账号…",
       "args": []
     },
     "accountCommands.setDefault.keywords": {
@@ -21694,7 +21682,7 @@
       "zh": "新会话默认",
       "args": []
     },
-    "acct.foot.manage": {
+    "acct.menu.manage": {
       "kind": "action",
       "role": "按钮",
       "zh": "管理账号…",

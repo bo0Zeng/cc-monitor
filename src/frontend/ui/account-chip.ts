@@ -1,8 +1,9 @@
-// 状态栏「当前账号」：全局默认账号的常驻显示 ＋ 一键切换入口；有当前会话时画本会话那个号。
+// 状态栏「当前账号」：有当前会话时画本会话那个号，没有 ⇒ 本机的默认号；点了一律开账号面板（`acct-panel.ts`）。
 //
 // 有当前会话 ⇒ 照会话那台写好的那一份（`session-account`，`appStore.sessionAccount`）画，这里不判、不比、不合；
 // 没有会话 ⇒ 本机的默认号。
-// 点选账号只改那台的默认账号（非破坏），已有会话不受影响。每一行的徽章带上「这个号走不走 apikey 端点改写」的三态。
+// 「新会话默认」下拉（面板底栏 · 命令面板 · 快捷键开它）：点选账号只改那台的默认账号（非破坏），已有会话不受影响。
+// 每一行的徽章带上「这个号走不走 apikey 端点改写」的三态。
 import { accountLabel } from "./acct-words";
 import { deriveUi, defaultAccount, accountColorsActive, type AccountsState, type Account } from "./accounts";
 import { fetchAccounts } from "./account-reads";
@@ -46,8 +47,8 @@ export function chipLabel(state: AccountsState | null): string {
 export interface AccountChipDeps {
   /** 打开设置窗口的账号组。 */
   openSettings: () => void;
-  /** 有当前会话时点按钮：开 / 关本会话的「账号」面板。 */
-  togglePanel?: (sid: string, origin: Origin) => void;
+  /** 点按钮：开 / 关「账号」面板（没有当前会话 ⇒ `sid` 为 `null`、那台是本机）。 */
+  togglePanel?: (sid: string | null, origin: Origin) => void;
   /** 切完当前账号后回调：让 main.ts 立刻重问那几台的默认号（徽章「不一致」照它比）。 */
   onDefaultChanged?: (origin: Origin) => void;
 }
@@ -95,11 +96,8 @@ export class AccountChip {
     this.sessionEl = document.createElement("span");
     this.sessionEl.className = s.acctChipSession;
     btn.appendChild(this.sessionEl);
-    btn.addEventListener("click", () => {
-      if (this.active && this.chipModel && this.deps.togglePanel) this.deps.togglePanel(this.active.sid, this.active.origin);
-      else void this.toggleMenu();
-    });
-    // 本会话那一形才有悬停卡（表格，无可点项）；默认那一形点开就是下拉，不另给提示。
+    btn.addEventListener("click", () => this.deps.togglePanel?.(this.active?.sid ?? null, this.active?.origin ?? this.origin));
+    // 本会话那一形才有悬停卡（表格，无可点项）；默认那一形只有一个名字，不另给提示。
     attachTooltip(btn, () => this.hoverCard());
     this.element = btn;
     this.element.style.display = "none"; // 拿到数据前先藏
@@ -270,7 +268,7 @@ export class AccountChip {
       for (const a of ui.accounts) items.push(this.accountItem(a, def?.name === a.name, origin));
       items.push(
         { label: "", divider: true },
-        { label: copyText("accountChip.menu.manage"), onClick: () => this.deps.openSettings() },
+        { label: copyText("acct.menu.manage"), onClick: () => this.deps.openSettings() },
         {
           label: copyText("accountChip.menu.refresh"),
           onClick: () => void this.refresh(),
