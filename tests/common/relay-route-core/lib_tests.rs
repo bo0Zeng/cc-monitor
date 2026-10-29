@@ -262,3 +262,53 @@ fn bad_origin_tails_are_refused_on_every_side() {
         "不紧跟在第 2 段之后的不是来处，原样交上游"
     );
 }
+
+/// 声明表每一行自洽：落点不重名 · 版本从 1 起 · 缓存不升级（下限等于版本）· 状态的下限不高于版本。
+#[test]
+fn every_declared_file_is_consistent_and_declared_once() {
+    assert!(
+        OWN_FILES.len() >= 15,
+        "声明表只有 {} 行：登漏了",
+        OWN_FILES.len()
+    );
+    let mut seen = std::collections::BTreeSet::new();
+    for r in OWN_FILES {
+        assert!(seen.insert(r.rel), "落点登了两行：{}", r.rel);
+        if let Format::Json { version, floor } = r.format {
+            assert!(
+                floor >= 1 && floor <= version,
+                "{}：下限 {floor} · 版本 {version}",
+                r.rel
+            );
+            if r.kind == Kind::Cache {
+                assert_eq!(floor, version, "{}：缓存不升级，下限要等于版本", r.rel);
+            }
+        }
+    }
+}
+
+/// 家里那几样里有声明的那几份，「删了会丢」照声明的种类（一处事实）；定下的那两处：中转钥匙是缓存、资产目录是状态。
+#[test]
+fn home_entries_with_a_declaration_take_their_class_from_it() {
+    let mut checked = 0;
+    for &(id, rel, dir, kept) in OWN_HOME_ENTRIES {
+        if let Some(r) = OWN_FILES.iter().find(|r| r.rel == rel) {
+            assert!(!dir, "{id}：声明的是文件，家里那一格写成了目录");
+            assert_eq!(
+                kept,
+                r.kind == Kind::State,
+                "{id}：家里那一格与声明的种类对不上"
+            );
+            checked += 1;
+        }
+    }
+    assert!(
+        checked >= 15,
+        "家里那几样只对上 {checked} 份声明：下面的比较是空真"
+    );
+    let kept_of = |id: &str| OWN_HOME_ENTRIES.iter().find(|e| e.0 == id).map(|e| e.3);
+    assert_eq!(kept_of("relayKey"), Some(false));
+    assert_eq!(kept_of("assetCatalog"), Some(true));
+    assert_eq!(KEY_FILE.row.format, Format::Foreign);
+    assert_eq!(KNOWN_HOSTS_FILE.row.format, Format::Foreign);
+}
