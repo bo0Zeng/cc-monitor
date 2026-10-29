@@ -38,7 +38,7 @@ impl Home {
         std::fs::read_link(self.0.join(rel)).ok()
     }
     fn entries(&self, rel: &str) -> usize {
-        std::fs::read_dir(self.0.join(rel)).map_or(0, Iterator::count)
+        crate::platform::acct_view::names(&self.0.join(rel)).map_or(0, |n| n.len())
     }
 }
 
@@ -100,14 +100,18 @@ fn the_checkup_links_a_new_shared_item_instead_of_reporting_it_missing() {
             "{n} 没链上新冒出来的项"
         );
         assert_eq!(
-            h.link_of(&format!(".cc-monitor/accounts/{n}/.oauth_refresh.lock.owner")),
+            h.link_of(&format!(
+                ".cc-monitor/accounts/{n}/.oauth_refresh.lock.owner"
+            )),
             None,
             "{n}：锁文件被链给了号"
         );
     }
     let missing = copy_text("beAcctVerify.acct.linkMissing", &[("n", "")]);
     assert!(
-        !fails.iter().any(|f| f.contains(missing.trim_end_matches(|c| c != '×'))),
+        !fails
+            .iter()
+            .any(|f| f.contains(missing.trim_end_matches(|c| c != '×'))),
         "还在报缺：{fails:?}"
     );
     assert!(
@@ -118,11 +122,21 @@ fn the_checkup_links_a_new_shared_item_instead_of_reporting_it_missing() {
         v.checks
     );
     assert!(h.link_of(".cc-monitor/accounts/x/skills").is_none());
-    assert_eq!(h.read(".cc-monitor/accounts/x/skills/own.md"), "x 自己的（夹具句）");
-    assert_eq!(h.read(".claude/bridge-spawn/one"), "共享库里那一份（夹具句）");
+    assert_eq!(
+        h.read(".cc-monitor/accounts/x/skills/own.md"),
+        "x 自己的（夹具句）"
+    );
+    assert_eq!(
+        h.read(".claude/bridge-spawn/one"),
+        "共享库里那一份（夹具句）"
+    );
     let before = h.entries(".cc-monitor/accounts");
     run_verify(&d).unwrap();
-    assert_eq!(h.entries(".cc-monitor/accounts"), before, "接好之后再核又动了盘");
+    assert_eq!(
+        h.entries(".cc-monitor/accounts"),
+        before,
+        "接好之后再核又动了盘"
+    );
 }
 
 /// 别名事件只跟着账号表之差：消失的按删号、新出现的按建号；没变 ⇒ 空。

@@ -506,7 +506,9 @@ fn link_missing(
     let shared = &s.roots().shared;
     let d = s.dir(c);
     for it in items {
-        let moved = lifted.iter().any(|(from, n)| from == c && *n == it.as_str());
+        let moved = lifted
+            .iter()
+            .any(|(from, n)| from == c && *n == it.as_str());
         match d.get(it) {
             Item::Absent => {}
             _ if moved => {}
