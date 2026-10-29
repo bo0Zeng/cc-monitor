@@ -35,7 +35,7 @@ export class IdleSlot {
       if (!this.stoppedFlag) run(deadline);
     };
     if (typeof window.requestIdleCallback === "function") {
-      // 调度：自链 —— 主人的空闲队列（后台 tab 的第一趟读 · 后台 tab 的空闲物化）：处理一个再排自己，队空或主人拆掉即停
+      // 调度：自链 —— 主人的空闲队列（后台 tab 的第一趟读 · 改列宽之后的补估）：处理一个再排自己，队空或主人拆掉即停
       const id = window.requestIdleCallback(go, { timeout: 2000 });
       const off = window.cancelIdleCallback;
       this.cancel = () => off?.call(window, id);

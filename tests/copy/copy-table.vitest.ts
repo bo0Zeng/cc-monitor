@@ -19,7 +19,7 @@
  *
  * # 不判什么（诚实段）
  *
- * - **Rust 读口已落地**（`src/frontend/shell/src/copy_table.rs::copy_text`，与 TS 读同一份 JSON）⇒
+ * - **Rust 读口已落地**（`src/common/copy-core` 的 `copy_text`，与 TS 读同一份 JSON）⇒
  *   `src/frontend/shell/src/**.rs` 的 `copy_text("…", &[("名", 值), …])` 调用点也收进「引用」一侧（[`rustRefsIn`]）。
  *   ⚠ Rust 那一侧不是编译器解析：按调用形状读（剥掉 `//` 注释后找 `copy_text(`），key 必须是紧跟的字符串字面量、
  *   参数必须是 `&[…]` 数组字面量、每一项 `("名", …)` 的名是字符串字面量 —— 其余写法一律报「绕过」，不放过。
@@ -286,7 +286,7 @@ describe("CP2a · 文案表判据自己会不会死（正控）", () => {
     expect(rustRefsIn("x.rs", 'copy_text("a.b.c", args);').problems.join()).toMatch(/数组字面量/);
     expect(rustRefsIn("x.rs", "let f = copy_text;").problems.join()).toMatch(/当值用了/);
     expect(rustRefsIn("x.rs", 'copy_text("a.b.c", &[(name, n)]);').problems.join()).toMatch(/参数项/);
-    expect(rustRefsIn("x.rs", "use crate::copy_table::copy_text;").problems).toEqual([]);
+    expect(rustRefsIn("x.rs", "use copy_core::copy_text;").problems).toEqual([]);
     expect(rustRefsIn("x.rs", "ui.ctx().copy_text(s.to_string());").refs).toEqual([]);
     // 行里前面有个以 use 结尾的标识符（Misuse）不是 `use` 导入 —— 这个调用点照样得认出来。
     expect(rustRefsIn("x.rs", 'Fault::Misuse => copy_text("a.b.c", &[]),').refs.map((r) => r.key)).toEqual(["a.b.c"]);
