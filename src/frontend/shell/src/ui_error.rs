@@ -63,6 +63,50 @@ pub enum UiError {
     },
     /// 设置里的机器表认不出 ⇒ 远端一台都不连。
     MachinesUnreadable { path: String, why: String },
+    /// 那台一条连接上来了解不开的一种帧（每条连接每种一次；帧门拦下的只进日志）。`why` 只进复制详情。
+    FrameUnreadable {
+        host: String,
+        kind: String,
+        why: String,
+    },
+    /// 那台拥塞丢过帧：`said` 是那台写好的那一句，前面排机器名。
+    Overflow { host: String, said: String },
+    /// 一个会话的历史快照两次都没拉下（那个标签页只有实时消息）。`raw` 是最后一次的原话。
+    HistoryUnfetched { sid: String, raw: String },
+    /// 文件窗口开出来之后又不体面地退了：退出状态 ＋ 错误输出末几行（没有 ⇒ `None`），都只进复制详情。
+    FileWindowExited {
+        code: Option<String>,
+        raw: Option<String>,
+    },
+}
+
+/// 复制详情的头两行（时刻 · 本机）。
+fn detail_head() -> Detail {
+    Detail::new()
+        .item(Label::At, crate::detail::now())
+        .item(Label::Local, crate::detail::local_line())
+}
+
+/// 没有［重新连接］的一条：`said` 是照 `key` 与 `args` 从文案表取出来的那一句（调用处写字面量的键）。
+fn notice(
+    code: &str,
+    key: &str,
+    args: &[(&str, &str)],
+    said: String,
+    detail: Detail,
+) -> UiErrorPayload {
+    UiErrorPayload {
+        code: code.into(),
+        key: key.into(),
+        args: args
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+        said,
+        detail: detail.render(),
+        reconnect: None,
+        at: now_ms(),
+    }
 }
 
 impl UiError {
@@ -112,9 +156,7 @@ impl UiError {
                     key: key.into(),
                     args: BTreeMap::new(),
                     said,
-                    detail: Detail::new()
-                        .item(Label::At, crate::detail::now())
-                        .item(Label::Local, crate::detail::local_line())
+                    detail: detail_head()
                         .maybe(
                             Label::Code,
                             crate::backend_policy::exit_code(death).as_deref(),
@@ -125,20 +167,49 @@ impl UiError {
                     at: now_ms(),
                 })
             }
-            UiError::MachinesUnreadable { path, why } => Some(UiErrorPayload {
-                code: "machines-unreadable".into(),
-                key: "rsUiError.machines.unreadable".into(),
-                args: BTreeMap::new(),
-                said: copy_text("rsUiError.machines.unreadable", &[]),
-                detail: Detail::new()
-                    .item(Label::At, crate::detail::now())
-                    .item(Label::Local, crate::detail::local_line())
-                    .item(Label::Path, path)
-                    .item(Label::Raw, why)
-                    .render(),
-                reconnect: None,
-                at: now_ms(),
-            }),
+            UiError::MachinesUnreadable { path, why } => Some(notice(
+                "machines-unreadable",
+                "rsUiError.machines.unreadable",
+                &[],
+                copy_text("rsUiError.machines.unreadable", &[]),
+                detail_head().item(Label::Path, path).item(Label::Raw, why),
+            )),
+            UiError::FrameUnreadable { host, kind, why } => Some(notice(
+                "frame-shape",
+                "rsSshSource.health.badFrame",
+                &[("host", host.as_str()), ("kind", kind.as_str())],
+                copy_text(
+                    "rsSshSource.health.badFrame",
+                    &[("host", host.as_str()), ("kind", kind.as_str())],
+                ),
+                detail_head().item(Label::Raw, why),
+            )),
+            UiError::Overflow { host, said } => Some(notice(
+                "overflow",
+                "rsUiError.overflow.said",
+                &[("host", host.as_str()), ("said", said.as_str())],
+                copy_text(
+                    "rsUiError.overflow.said",
+                    &[("host", host.as_str()), ("said", said.as_str())],
+                ),
+                detail_head(),
+            )),
+            UiError::HistoryUnfetched { sid, raw } => Some(notice(
+                "snapshot",
+                "rsSshSource.snapshot.failed",
+                &[("sid", sid.as_str())],
+                copy_text("rsSshSource.snapshot.failed", &[("sid", sid.as_str())]),
+                detail_head().item(Label::Raw, raw),
+            )),
+            UiError::FileWindowExited { code, raw } => Some(notice(
+                "filewin-exit",
+                "rsFilewinProc.late.exited",
+                &[],
+                copy_text("rsFilewinProc.late.exited", &[]),
+                detail_head()
+                    .maybe(Label::Code, code.as_deref())
+                    .maybe(Label::Raw, raw.as_deref()),
+            )),
         }
     }
 }

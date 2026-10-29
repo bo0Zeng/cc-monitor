@@ -60,19 +60,20 @@ async fn every_golden_row_passes_the_gate_and_decodes_as_its_kind() {
     let mut notes = UnreadNotes::new("台架-origin", "台架");
     let mut tally = crate::frame_tally::FrameTally::new("台架");
     let mut n = 0;
-    for line in GOLDEN.lines() {
-        let want = serde_json::from_str::<Value>(line).unwrap()["kind"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let f = notes
-            .take(line, Some(&gate), &mut tally, &|p| {
-                panic!("金样这一行进不来：{line}：{p:?}")
-            })
-            .unwrap();
-        assert_eq!(kind_of(&f), want, "金样这一行解成了别的种类：{line}");
-        n += 1;
-    }
+    let said = crate::ui_error::tests::during(|| {
+        for line in GOLDEN.lines() {
+            let want = serde_json::from_str::<Value>(line).unwrap()["kind"]
+                .as_str()
+                .unwrap()
+                .to_string();
+            let f = notes
+                .take(line, Some(&gate), &mut tally)
+                .unwrap_or_else(|| panic!("金样这一行进不来：{line}"));
+            assert_eq!(kind_of(&f), want, "金样这一行解成了别的种类：{line}");
+            n += 1;
+        }
+    });
+    assert_eq!(said, Vec::<Value>::new(), "金样上推了出错");
     std::mem::forget(tally);
     assert!(n >= 44, "金样只读到 {n} 行 —— 读空了");
 }
@@ -137,36 +138,42 @@ async fn an_unread_frame_is_said_once_per_kind_per_connection() {
         .with_ansi(false)
         .with_max_level(tracing::Level::WARN)
         .finish();
-    let said = std::cell::RefCell::new(Vec::<crate::ui_contract::RemoteHealthPayload>::new());
-    let took: Vec<String> = tracing::subscriber::with_default(subscriber, || {
+    let mut took: Vec<String> = Vec::new();
+    let said = tracing::subscriber::with_default(subscriber, || {
         tracing::callsite::rebuild_interest_cache();
-        let mut notes = UnreadNotes::new("台架-origin", "台架");
-        let mut tally = crate::frame_tally::FrameTally::new("台架");
-        let took = stream
-            .iter()
-            .filter_map(|l| notes.take(l, Some(&gate), &mut tally, &|p| said.borrow_mut().push(p)))
-            .map(|f| kind_of(&f))
-            .collect();
-        std::mem::forget(tally);
-        took
+        crate::ui_error::tests::during(|| {
+            let mut notes = UnreadNotes::new("台架-origin", "台架");
+            let mut tally = crate::frame_tally::FrameTally::new("台架");
+            took = stream
+                .iter()
+                .filter_map(|l| notes.take(l, Some(&gate), &mut tally))
+                .map(|f| kind_of(&f))
+                .collect();
+            std::mem::forget(tally);
+        })
     });
     assert_eq!(took, ["hello", "line"], "好帧没照收 / 拦下的漏进来了");
 
-    let said = said.into_inner();
-    let got: Vec<(&str, &str, &str)> = said
-        .iter()
-        .map(|p| (p.kind.as_str(), p.origin.as_str(), p.detail.as_str()))
-        .collect();
-    // 帧门拦下的（那台那一版形状不同 · 不认）只记日志：版本对不上由栏底机器条照那台的成品说（A2-17-15-2），不另弹「远端提示」。
+    // 帧门拦下的（那台那一版形状不同 · 不认）只记日志：版本对不上由栏底机器条照那台的成品说，不另弹提示。
+    let codes: Vec<&str> = said.iter().filter_map(|e| e["code"].as_str()).collect();
     assert_eq!(
-        got,
-        [("frame-shape", "台架-origin", "")],
-        "健康信息不是只有解不开的那一种恰好一句：{said:?}"
+        codes,
+        ["frame-shape"],
+        "推给界面的不是只有解不开的那一种恰好一条：{said:?}"
+    );
+    crate::ui_error::tests::assert_is_copy_not_log(&said[0]);
+    let line = said[0]["said"].as_str().unwrap_or_default();
+    assert!(
+        line.contains("台架") && line.contains("line"),
+        "解不开那一句没点名那台与那一种：{line}"
     );
     assert!(
-        said[0].message.contains("台架") && said[0].message.contains("line"),
-        "解不开那一句没点名那台与那一种：{}",
-        said[0].message
+        said[0]["detail"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("malformed"),
+        "解不开的原因没进复制详情：{}",
+        said[0]
     );
     let log = String::from_utf8(warns.0.lock().unwrap().clone()).unwrap();
     for (needle, what) in [
@@ -182,12 +189,11 @@ async fn an_unread_frame_is_said_once_per_kind_per_connection() {
     }
 
     // 换一条连接：重新说。
-    let again = std::cell::RefCell::new(0usize);
-    let mut notes = UnreadNotes::new("台架-origin", "台架");
-    let mut tally = crate::frame_tally::FrameTally::new("台架");
-    let _ = notes.take(&line_bad, Some(&gate), &mut tally, &|_| {
-        *again.borrow_mut() += 1
+    let again = crate::ui_error::tests::during(|| {
+        let mut notes = UnreadNotes::new("台架-origin", "台架");
+        let mut tally = crate::frame_tally::FrameTally::new("台架");
+        let _ = notes.take(&line_bad, Some(&gate), &mut tally);
+        std::mem::forget(tally);
     });
-    std::mem::forget(tally);
-    assert_eq!(again.into_inner(), 1, "新连接上第一次见到也要说");
+    assert_eq!(again.len(), 1, "新连接上第一次见到也要说");
 }

@@ -142,9 +142,7 @@ impl Home {
 
     /// 整份写事实。
     pub(crate) fn write_facts(&self, f: &Facts) -> Result<(), Said> {
-        let path = self.dir.join(FACTS)?;
-        let body = crate::common::own_state::json_body(path.as_path(), f)?;
-        self.own.write(&path, &self.lock, &body)
+        FACTS_DOC.write_named(&self.own, &self.dir, FACTS, &self.lock, f)
     }
 
     /// 收尾：删整个目录（锁随之放）。
@@ -158,11 +156,10 @@ impl Home {
     }
 }
 
-/// 事实文件读的上限（几百字节的东西，大了就不是我们写的）：超了当读不出来 ⇒ [`read_facts`] 说是哪一个、这个终端不列。
-const FACTS_CAP: u64 = 64 * 1024;
-/// `facts.json` 的声明：状态（托管进程活着时它是那个终端的事实；读不出来 ⇒ 这个终端不列，不覆盖）。只有紧跟着的 [`read_facts`] 读它。
+/// `facts.json` 的声明：状态（托管进程活着时它是那个终端的事实；读不出来 · 超了读上限 ⇒ [`read_facts`] 说是哪一个、
+/// 这个终端不列，不覆盖）。落点 · 版本 · 读上限照表；只有紧跟着的 [`read_facts`] 读它。
 const FACTS_DOC: crate::common::own_state::Doc<Facts> =
-    crate::common::own_state::Doc::state(".cc-monitor/hosts/<id>/facts.json", FACTS_CAP);
+    crate::common::own_state::Doc::of(&relay_route_core::HOST_FACTS_FILE);
 
 /// 读一个托管终端目录里的事实（读不懂 ⇒ `None`，`warn!` 带目录）。
 pub(crate) fn read_facts(dir: &Path) -> Option<Facts> {

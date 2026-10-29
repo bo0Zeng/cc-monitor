@@ -59,7 +59,7 @@ pub(crate) fn run_as(
 /// 起了一次 pb ⇒ 回包或拒（纯函数）：起不来 ⇒ `failed`；过了期限 ⇒ 「pb <动词> 超时」（等了多久照原语说的）；跑完了 ⇒ [`classify`]。
 pub(crate) fn answer(verb: &str, r: Result<Done, Said>) -> Result<PlanCmdReply, Refused> {
     match r {
-        Err(Said { said, raw }) => Err(("failed", said, raw)),
+        Err(Said { said, raw, .. }) => Err(("failed", said, raw)),
         Ok(Done {
             waited_secs: Some(secs),
             ..

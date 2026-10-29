@@ -142,13 +142,12 @@ impl SnapshotQueue {
 }
 
 /// 分发器：每连接一个 task。并发 ≤SNAPSHOT_CONCURRENCY 地把队列里的会话交给
-/// [`fetch_snapshot`]；每项失败重试 1 次（间隔 1s），仍败 → remote-health toast
+/// [`fetch_snapshot`]；每项失败重试 1 次（间隔 1s），仍败 → 告诉用户（`ui_error`）
 /// （该 tab 只有实时行，历史浏览器兜底可看全量）。取消（会话 removed/断连）
 /// 不算失败、不重试不 toast。
 pub(super) async fn snapshot_dispatcher(
     q: std::sync::Arc<SnapshotQueue>,
     replay: Arc<EventReplay>,
-    health: HealthOut,
     host_label: String,
 ) {
     let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(SNAPSHOT_CONCURRENCY));
@@ -168,7 +167,6 @@ pub(super) async fn snapshot_dispatcher(
         }
         let q = q.clone();
         let replay = replay.clone();
-        let health = health.clone();
         let host_label = host_label.clone();
         // incr 在 spawn 之前（审计 D：上一 task 归零与下一 task 起跑之间的
         // 瞬时 0 窗口会让 300ms 定时器恰好放行 batch）
@@ -211,23 +209,11 @@ pub(super) async fn snapshot_dispatcher(
                     }
                 }
             }
-            // 那一句不夹下层原话；最后一次的原话进复制详情（remote-health 的 detail 格）。
-            let said = crate::detail::Said::with_raw(
-                copy_text(
-                    "rsSshSource.snapshot.failed",
-                    &[("sid", &sid_short.to_string())],
-                ),
-                &last_err,
-            );
-            let payload = crate::ui_contract::RemoteHealthPayload {
-                origin: host_label.clone(),
-                kind: "snapshot".to_string(),
-                message: said.said,
-                detail: said.detail,
-            };
-            if let Err(e) = health(payload) {
-                tracing::warn!("snapshot remote-health emit failed: {e}");
-            }
+            // 那一句不夹下层原话；最后一次的原话进复制详情。
+            crate::ui_error::tell(crate::ui_error::UiError::HistoryUnfetched {
+                sid: sid_short,
+                raw: last_err,
+            });
         });
     }
 }

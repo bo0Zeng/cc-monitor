@@ -646,6 +646,12 @@ fn a_restart_takes_the_listing_from_disk() {
         analyze_session_cached(q);
     }
     save_to(&own);
+    let saved: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(tmp.join("data").join("cache").join("listing.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(saved["version"], serde_json::json!(3), "顶层没带声明的版本");
+    assert!(saved.get("v").is_none(), "版本还写在 `v` 里");
     forget();
     load_from(&own);
     for q in [&p, &title] {

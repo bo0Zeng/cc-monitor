@@ -336,14 +336,11 @@ pub(crate) fn key_facts_at(path: &Path) -> Vec<KeyFact> {
         .collect()
 }
 
-/// 读一次、解析一次。`Ok(None)` = 文件不在（还没配）；空文件 = 空对象。
-/// 读盘的上限（一个号一格 key）。
-const KEY_FILE_READ_CAP: u64 = 4 << 20;
-
-/// 上游选择的凭据表：状态（读不出来 ⇒ `io_failed`、不覆盖）。读成原文，解析那一步自己的话照说（`bad_file`）。
+/// 上游选择的凭据表：状态（读不出来 ⇒ `io_failed`、不覆盖；落点 · 读上限照表）。读成原文，解析那一步自己的话照说（`bad_file`）。
 const KEY_FILE: crate::common::own_state::Doc<String> =
-    crate::common::own_state::Doc::state(".cc-monitor/apikey-credentials.json", KEY_FILE_READ_CAP);
+    crate::common::own_state::Doc::of(&relay_route_core::APIKEY_CREDENTIALS_FILE);
 
+/// 读一次、解析一次。`Ok(None)` = 文件不在（还没配）；空文件 = 空对象。
 fn read_doc(path: &Path) -> Result<Option<Map<String, Value>>, Fail> {
     use crate::common::own_state::Read;
     let raw = match KEY_FILE.read_with(path, |b| Ok(String::from_utf8_lossy(&b).into_owned())) {

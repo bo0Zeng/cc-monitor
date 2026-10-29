@@ -67,8 +67,6 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
 const NODE_SUITES: readonly (readonly [string, string])[] = [
   ["test:diff", "tests/frontend/ui/cards/diff.test.ts"],
   ["test:api-error", "tests/frontend/ui/cards/api-error.test.ts"],
-  // `test:bash` 整份删了：斜杠命令与 `!` 输入 / 输出的解析随「谁说的」进了后端（`text_tests.rs::slash_and_bash_forms`）。
-  ["test:remote-health", "tests/frontend/ui/remote-health.test.ts"],
   // F04b +1：`isValidNewTmuxName` 也禁 `=`（别创建一个主路杀不掉的名字）。
   // `K-R96` +1（`KR96D3`：名字可读、sid 一个片段都不进去 + `@ccm_sid` 必须还在）。
   // 🔴 **44 → 37**：五个 builder 删了（生产调用 0），它们的用例改测生产的

@@ -68,9 +68,15 @@ fn a_stored_skeleton_reads_back_and_a_foreign_one_does_not() {
         .join("skeleton")
         .join(format!("{}.json", digest(&rec)));
     assert!(f.is_file(), "没落在数据目录的 cache/skeleton 底下");
-    // 版本对不上 ⇒ 当没有（整份重扫）。
+    // 顶层带表里声明的那一版；对不上 ⇒ 当没有（整份重扫）。
     let raw = std::fs::read_to_string(&f).unwrap();
-    std::fs::write(&f, raw.replace(&format!("\"v\":{VERSION}"), "\"v\":999")).unwrap();
+    let top: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(top["version"], serde_json::json!(7), "顶层没带声明的版本");
+    std::fs::write(
+        &f,
+        raw.replace(&format!("\"version\":{VERSION}"), "\"version\":999"),
+    )
+    .unwrap();
     assert!(s.load::<Vec<u32>>(&rec).is_none(), "认不出的版本也读进来了");
     // 路径对不上（摘要撞了）⇒ 当没有。
     std::fs::write(&f, raw.replace("a.jsonl", "c.jsonl")).unwrap();

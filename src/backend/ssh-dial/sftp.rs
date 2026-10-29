@@ -5,7 +5,7 @@
 //!
 //! 「SFTP 怎么进单一常驻后端」一题选「**进本机常驻后端，只写暂存区**」：SFTP 连接由本机常驻后端管、
 //! 与其它 SSH 复用；只往远端暂存区写，落进用户目录仍只经远端后端文件管理提交（`files-commit-upload`）；
-//! 界面进程零 SSH。F08（自部署后端）也只往暂存区放字节：换进 `~/.cc-monitor/bin/`、卸载都由传上去的那一份在那台上自己做
+//! 界面进程零 SSH。自部署后端也只往暂存区放字节：换进 `~/.cc-monitor/bin/`、卸载都由传上去的那一份在那台上自己做
 //! （`--place-self` · `--unplace-self`）⇒ 写根只有暂存区一处。
 //!
 //! # 🔴 本文件是后端里**唯一**一份能改远端文件系统的代码（红线 `I7`，`INVARIANTS §41.6`）
@@ -343,10 +343,7 @@ fn io_raw(said: String, raw: impl std::fmt::Display) -> Refusal {
 
 impl From<Refusal> for Said {
     fn from(r: Refusal) -> Said {
-        Said {
-            said: r.message().to_string(),
-            raw: r.raw().map(str::to_string),
-        }
+        Said::from(r.message().to_string()).and_raw(r.raw())
     }
 }
 
@@ -571,9 +568,9 @@ pub async fn fenced_remote(s: &Session, path: &str, intent: Intent) -> Result<St
 
 /// 原子上传 `bytes` 到 `path`，权限 `mode`（只在 open-create 的属性里设一次）。
 ///
-/// 搬自 monitor `sftp.rs` 的 F08 原子上传（那一份随界面进程零 SFTP 删了），序列逐步相同：
-/// 写 `<path>.<这一趟独有的后缀>.tmp`（从前是固定 `<path>.tmp` ＋ 先删残留；**EXCLUDE** 创建：临时件是一条预置的链接也不会跟过去 —— F89a 审计）
-/// → 旧目标**改名成 `.<后缀>.bak`**（不是删：「先删旧」一旦后续改名失败就丢原件，DN-7 订正过那句注释）
+/// 序列：
+/// 写 `<path>.<这一趟独有的后缀>.tmp`（**EXCLUDE** 创建：临时件是一条预置的链接也不会跟过去）
+/// → 旧目标**改名成 `.<后缀>.bak`**（不是删：先删旧一旦后续改名失败就丢原件）
 /// → 临时件上位 → 删 `.bak`。临时件与 `.bak` 都在目标**同一个父目录**里，那个父目录已经过了围栏。
 /// 标准 SFTP 的改名不覆盖（`russh-sftp` 没有 `posix-rename@openssh.com`）⇒ 只能这样近似原子。两个部署者交错时临时件 / 备份件各是各的（唯一名）；`rel → .bak` 与 `tmp → rel` 之间 `rel` 有一瞬不在 ⇒ 部署不经它换落点（只放进暂存区，落点由那一份自己 `--place-self` 原子换进去）。
 ///

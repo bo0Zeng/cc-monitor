@@ -18,7 +18,7 @@
 //! `{"t":"offer","n","origin"}`（那台握上手没有；台架按它等各台起好，等法住台架那一侧）·
 //! `{"t":"watch","sessions":[{"origin","sessionId"}]}`（主窗口在看哪几个，同 Tauri 命令 `watch_sessions`：各台的「在看」名单经产品那条 `stream_watch` 报给那台后端）·
 //! `{"t":"kept","sessions":[…]}`（主窗口手上的 tab，同 Tauri 命令 `kept_sessions`：随名单报给那台）。
-//! 发：`{"t":"items","sub","items"}`（同 `chan-items` 事件体）· `{"t":"reply","n","ok","body"|"fail"}` · `{"t":"offer","n","up"}` · `{"t":"health",…}`。
+//! 发：`{"t":"items","sub","items"}`（同 `chan-items` 事件体）· `{"t":"reply","n","ok","body"|"fail"}` · `{"t":"offer","n","up"}` · `{"t":"error","payload"}`（同 `monitor-error` 事件体）。
 
 use crate::chan::host::InboundBackends;
 use crate::chan::router::Backends as _;
@@ -123,11 +123,10 @@ pub fn main() {
     crate::wire_replay_outlets(&replay);
     // 各台的「在看」名单：主窗口报过（`watch`）才报给那台，没报过 ＝ 全看（产品那一份）。
     crate::stream_watch::spawn(replay.clone());
-    let health: crate::stream_source::HealthOut = Arc::new(|p| {
-        say(serde_json::json!({ "t": "health", "payload": p }));
-        Ok(())
-    });
-    crate::stream_source::install_local_health(health.clone());
+    // 告诉用户的出错（同 `monitor-error` 事件体）。
+    crate::ui_error::install(Box::new(|p| {
+        say(serde_json::json!({ "t": "error", "payload": p }))
+    }));
     let children: Arc<Mutex<HashMap<cmd_wire::Machine, crate::spawn_managed::ManagedChild>>> =
         Arc::default();
 
@@ -150,7 +149,7 @@ pub fn main() {
                 );
                 // 只起本机那一台：别台的常驻流归本机后端（台架那份假 ssh 由它自己去接），那台流上的事经本机这一条转来。
                 for m in machines.iter().filter(|m| m.origin.is_local()) {
-                    start(m, &replay, &health, &children);
+                    start(m, &replay, &children);
                 }
             }
             Cmd::Offer { n, origin } => {
@@ -237,7 +236,6 @@ pub fn main() {
 fn start(
     m: &Machine,
     replay: &Arc<EventReplay>,
-    health: &crate::stream_source::HealthOut,
     children: &Arc<Mutex<HashMap<cmd_wire::Machine, crate::spawn_managed::ManagedChild>>>,
 ) {
     let Some((prog, args)) = m.argv.split_first() else {
@@ -265,11 +263,7 @@ fn start(
         return;
     };
     let (tx, rx) = tokio::sync::mpsc::channel(crate::local_lines::LOCAL_LINES_CAPACITY);
-    tauri::async_runtime::spawn(crate::stream_source::consume(
-        rx,
-        replay.clone(),
-        health.clone(),
-    ));
+    tauri::async_runtime::spawn(crate::stream_source::consume(rx, replay.clone()));
     let route = StdioRoute {
         out: StdioOut::Own(tx),
         ..StdioRoute::local()

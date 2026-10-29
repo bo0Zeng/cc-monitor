@@ -6,12 +6,9 @@ use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// 那份文件最大多少字节（超了当读不懂）。
-pub(crate) const MAX_BYTES: u64 = 64 * 1024;
-
-/// 那一份：状态（读不懂不覆盖）。
+/// 那一份：状态（读不懂不覆盖；落点 · 版本 · 读上限照表）。
 const DOC: crate::common::own_state::Doc<Marks> =
-    crate::common::own_state::Doc::state(relay_route_core::CHORES_REL, MAX_BYTES);
+    crate::common::own_state::Doc::of(&relay_route_core::CHORES_FILE);
 
 /// 记下的那几样（盘上那一份，也是 `chores-mark` 的回包：改完记着的整份）。
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -142,8 +139,7 @@ pub(crate) fn mark_at(
         ChoresMarkReq::SkipStart {} => m.start_skipped = true,
         ChoresMarkReq::UnskipStart {} => m.start_skipped = false,
     }
-    let body = crate::common::own_state::json_body(path, &m).map_err(io)?;
-    own.write(&file, &held, &body).map_err(io)?;
+    DOC.write(own, &dir, &held, &m).map_err(io)?;
     Ok(m)
 }
 

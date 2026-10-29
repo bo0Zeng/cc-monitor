@@ -73,10 +73,7 @@ pub(crate) fn pb_fed(
             crate::plugin::invoke::NotRun::ArgListTooLong => None,
             crate::plugin::invoke::NotRun::Failed(s) => s.raw.or(Some(s.said)),
         };
-        copy_core::said::Said {
-            said: copy_text("bePlan.dump.notRun", &[]),
-            raw,
-        }
+        copy_core::said::Said::from((copy_text("bePlan.dump.notRun", &[]), raw))
     })
 }
 

@@ -52,37 +52,45 @@ fn a_local_only_frame_from_a_remote_is_said_and_dropped() {
     );
 }
 
-/// 本机那条流上来一帧 `overflow` ⇒ 健康信息原样交那台写的那一句（与远端同一处；壳不另写句子、不点名）。
+/// 本机那条流上来一帧 `overflow` ⇒ 告诉用户一条：那台写的那一句原样带上、前面排「本机」（与远端同一处）。
 #[tokio::test]
 async fn an_overflow_on_the_local_stream_is_said() {
-    let said = std::sync::Arc::new(std::sync::Mutex::new(Vec::<(String, String, String)>::new()));
-    let s2 = said.clone();
-    let health: super::HealthOut = std::sync::Arc::new(move |p| {
-        s2.lock().unwrap().push((p.origin, p.kind, p.message));
-        Ok(())
-    });
     let (tx, rx) = tokio::sync::mpsc::channel(4);
     let consumer = tokio::spawn(super::consume(
         rx,
         std::sync::Arc::new(crate::event_replay::EventReplay::new()),
-        health,
     ));
     let f = super::decode(r#"{"kind":"overflow","said":"那台写的一句"}"#).unwrap();
     let item =
         super::route(&crate::origin::Origin::local(), None, f).expect("overflow 是有序的那几种");
-    tx.send(super::LocalItem::Frame(item)).await.unwrap();
-    drop(tx);
-    tokio::time::timeout(guard_core::wall::CEILING, consumer)
-        .await
-        .expect("本机消费者没收摊")
-        .unwrap();
+    let said = crate::ui_error::tests::during_async(async {
+        tx.send(super::LocalItem::Frame(item)).await.unwrap();
+        drop(tx);
+        tokio::time::timeout(guard_core::wall::CEILING, consumer)
+            .await
+            .expect("本机消费者没收摊")
+            .unwrap();
+    })
+    .await;
     assert_eq!(
-        *said.lock().unwrap(),
-        [(
-            crate::origin::LOCAL.to_string(),
-            "overflow".to_string(),
-            "那台写的一句".to_string()
-        )],
+        said.len(),
+        1,
+        "本机那条流上的拥塞丢帧没说、或说了不止一条：{said:?}"
+    );
+    crate::ui_error::tests::assert_is_copy_not_log(&said[0]);
+    assert_eq!(said[0]["code"], "overflow");
+    assert_eq!(
+        said[0]["said"],
+        copy_core::copy_text(
+            "rsUiError.overflow.said",
+            &[
+                (
+                    "host",
+                    &copy_core::copy_text("rsLocalBackend.place.thisMachine", &[])
+                ),
+                ("said", "那台写的一句")
+            ]
+        ),
         "本机那条流上的拥塞丢帧没原样说出来"
     );
 }

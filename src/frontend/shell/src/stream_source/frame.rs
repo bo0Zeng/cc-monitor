@@ -1,8 +1,5 @@
 //! 后端→monitor 的帧：按 `cmd-wire` 的类型解（[`decode`]）· 进不来的每种说一次（[`UnreadNotes`]）。
 
-use super::*;
-use copy_core::copy_text;
-
 /// 一行会话记录的成品 ＋ 它在那份文件里的行号（`seq`）—— 进 [`flush_lines`] 之前的形状。所有行都从后端的帧来（远端流 · 本机流 · 旁路快照）；
 /// `seq` 是后端给的行号（流不重放历史，与快照同处一个行号空间），前端按 `(session_id, seq)` 去重、按 `seq` 排序（`INVARIANTS §5` / `§9`）。
 #[derive(Debug, Clone)]
@@ -53,10 +50,10 @@ pub(crate) fn decode(line: &str) -> Result<Frame, Unread> {
     })
 }
 
-/// 一条连接上进不来的帧：日志与健康信息都**每种说一次**（形状不同 · 解不开分开算），
+/// 一条连接上进不来的帧：日志与告诉用户的那一条都**每种说一次**（形状不同 · 解不开分开算），
 /// 之后只记账（[`crate::frame_tally::FrameTally`] 按 2 的幂次出一行、流结束出总账）。
 pub(crate) struct UnreadNotes {
-    /// 健康信息归哪台（`RemoteHealthPayload::origin`）。
+    /// 日志里那台的名字。
     origin: String,
     /// 文案里那台叫什么。
     label: String,
@@ -73,13 +70,14 @@ impl UnreadNotes {
     }
 
     /// 一行：先过帧门（`gate` ＝ 这条连接的客户端；远端那条流的门在循环里、交来的都已过门 ⇒ `None`），再按类型解。
-    /// 进不来 ⇒ 记账；这一种在这条连接上第一次 ⇒ 日志一条（带原因）＋ 经 `health` 说一句。回 `None` ＝ 这一行不用（不断连）。
+    /// 进不来 ⇒ 记账；这一种在这条连接上第一次 ⇒ 日志一条（带原因），解不开的那一种另告诉用户一条。
+    /// 帧门拦下的（那台那一版形状不同 · 不认）只进日志：版本对不上由栏底机器条照那台的成品说（`MachineState.versionRelation`）。
+    /// 回 `None` ＝ 这一行不用（不断连）。
     pub(crate) fn take(
         &mut self,
         line: &str,
         gate: Option<&crate::inbound_client::InboundClient>,
         tally: &mut crate::frame_tally::FrameTally,
-        health: &dyn Fn(crate::ui_contract::RemoteHealthPayload),
     ) -> Option<Frame> {
         use resident_client::frames::Admit;
         let why = match gate.map(|c| c.admit(line)) {
@@ -98,55 +96,19 @@ impl UnreadNotes {
         };
         if self.said.insert(key) {
             tracing::warn!("[{}] {why}", self.origin);
-            if let Some(p) = unread_health(&self.origin, &self.label, &why) {
-                health(p);
+            if let Unread::BadShape { kind, .. } = &why {
+                crate::ui_error::tell(crate::ui_error::UiError::FrameUnreadable {
+                    host: self.label.clone(),
+                    kind: if kind.is_empty() {
+                        "?".to_string()
+                    } else {
+                        kind.clone()
+                    },
+                    why: why.to_string(),
+                });
             }
         }
         None
-    }
-}
-
-/// 进不来那一帧的健康信息（每条连接每种一次）：只有解不开的那一种说；帧门拦下的（那台那一版形状不同 · 不认）只进日志 ——
-/// 版本对不上由栏底机器条照那台的成品说（`MachineState.versionRelation` · 要更新），不另弹「远端提示」。
-pub(crate) fn unread_health(
-    origin: &str,
-    label: &str,
-    why: &Unread,
-) -> Option<crate::ui_contract::RemoteHealthPayload> {
-    let Unread::BadShape { kind: k, .. } = why else {
-        return None;
-    };
-    let kind = if k.is_empty() {
-        "?".to_string()
-    } else {
-        k.clone()
-    };
-    Some(crate::ui_contract::RemoteHealthPayload {
-        origin: origin.to_string(),
-        kind: "frame-shape".to_string(),
-        message: copy_text(
-            "rsSshSource.health.badFrame",
-            &[("host", &label.to_string()), ("kind", &kind)],
-        ),
-        detail: String::new(),
-    })
-}
-
-/// 本机那两条载体（stdio · 脱离）的健康出口：窗口把手只在宿主层，`lib.rs` setup 装一次。
-static LOCAL_HEALTH: std::sync::OnceLock<HealthOut> = std::sync::OnceLock::new();
-
-pub(crate) fn install_local_health(out: HealthOut) {
-    if LOCAL_HEALTH.set(out).is_err() {
-        tracing::warn!("本机健康信息的出口装了第二次 —— 忽略");
-    }
-}
-
-/// 本机载体说一句健康信息（出口没装 ⇒ 只有日志那一条）。
-pub(crate) fn local_health(payload: crate::ui_contract::RemoteHealthPayload) {
-    if let Some(out) = LOCAL_HEALTH.get() {
-        if let Err(e) = out(payload) {
-            tracing::warn!("local remote-health emit failed: {e}");
-        }
     }
 }
 

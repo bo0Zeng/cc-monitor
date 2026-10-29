@@ -32,18 +32,29 @@ impl From<(&'static str, String)> for Fail {
 }
 
 impl From<(&'static str, crate::common::said::Said)> for Fail {
-    /// 码 ＋ 那一句与它的原话（原话进复制详情）。
+    /// 外层定的码 ＋ 那一句与它的原话（原话进复制详情）· `data`。
     fn from((code, s): (&'static str, crate::common::said::Said)) -> Self {
-        Fail::new(code, s.said).with_raw(s.raw.as_deref())
+        Fail::from(s.coded(code))
+    }
+}
+
+impl From<crate::common::said::Said> for Fail {
+    /// 投成应答：码缺着 ⇒ 兜底码（[`copy_core::said::FALLBACK_CODE`]）。
+    fn from(s: crate::common::said::Said) -> Self {
+        let code = s.code_or_fallback().to_string();
+        let mut f = Fail::new(&code, s.said).with_raw(s.raw.as_deref());
+        f.data = s.data;
+        f
     }
 }
 
 impl From<Fail> for crate::common::said::Said {
-    /// 失败不成应答、往下交给只认「一句 ＋ 原话」的那一层（日志 · 拼进别的句子）：码不跟着走。
+    /// 失败不成应答、往下交给只认 [`crate::common::said::Said`] 的那一层（日志 · 拼进别的句子）：码 · 原话 · `data` 跟着走。
     fn from(f: Fail) -> Self {
-        crate::common::said::Said {
-            said: f.message,
-            raw: f.raw,
+        let s = crate::common::said::Said::from((f.message, f.raw)).coded(&f.code);
+        match f.data {
+            Some(d) => s.with_data(d),
+            None => s,
         }
     }
 }
