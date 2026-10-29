@@ -7,12 +7,14 @@
  */
 import { copyText } from "./copy-table";
 import { button } from "./kit/button";
-import { tag, countBadge } from "./kit/badge";
+import { tag } from "./kit/badge";
 import { icon, type IconName } from "./kit/icon";
 import { statusDot } from "./kit/status-dot";
 import { machineName } from "./ipc/chan-caller";
 import { isRemoteOrigin, type Origin } from "./ipc/origin";
 import type { ManualItem } from "./login-reads";
+import type { PlanNeedItem } from "./needs-book";
+import type { NeedsCell } from "./generated/NeedsCell";
 import s from "./needs-panel.module.css";
 
 /** 会话外那一行的图标：号 · MCP · 权限太宽的秘密文件。 */
@@ -32,13 +34,18 @@ export interface PanelSession {
   what: string | null;
 }
 
-/** 计划那一侧的一片（几条需手动 · 去那一片的第一条）。 */
+/** 计划那一侧的一条（`NeedsBook.plans()` 第 `i` 条）：落在哪一格（没有 ⇒ `null`）· 哪一片 · 哪个工作区 · 哪台。 */
 export interface PanelPlan {
   origin: Origin;
   workspace: string;
   slice: string;
-  n: number;
-  first: number;
+  cell: NeedsCell | null;
+  i: number;
+}
+
+/** 计划项 ⇒ 浮层那几行：一条一行（点它去那一条的格）。 */
+export function planRows(items: readonly PlanNeedItem[]): PanelPlan[] {
+  return items.map((it, i) => ({ origin: it.origin, workspace: it.workspace, slice: it.slice, cell: it.cell, i }));
 }
 
 export interface PanelFacts {
@@ -87,14 +94,13 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
   for (const p of f.plans) {
     const r = row(icon("plan", "compact"));
     r.dataset.row = "plan";
+    // 第一行是那一格的「编号 标题」（后端写好）；没有格可落 ⇒ 片名，第二行就不再写片名。
     const l1 = lineOne();
-    l1.appendChild(titled(p.slice));
-    const badge = p.n > 1 ? countBadge(p.n, "warn") : null;
-    if (badge) l1.appendChild(badge);
+    l1.appendChild(titled(p.cell?.label ?? p.slice));
     const l2 = lineTwo();
-    l2.textContent = isRemoteOrigin(p.origin) ? [p.workspace, p.origin].join(SEP) : p.workspace;
+    l2.textContent = [...(p.cell ? [p.slice] : []), p.workspace, ...(isRemoteOrigin(p.origin) ? [p.origin] : [])].join(SEP);
     r.main.append(l1, l2);
-    add(r.el, () => acts.plan(p.first));
+    add(r.el, () => acts.plan(p.i));
   }
 
   const items = f.manual;

@@ -10,6 +10,7 @@ import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import type { NeedsMerged } from "./generated/NeedsMerged";
 import type { NeedsRow } from "./generated/NeedsRow";
 import type { ManualItem } from "./generated/ManualItem";
+import type { NeedsCell } from "./generated/NeedsCell";
 
 /** 本机后端问到各台（各台读内存与几份小文件 ＋ 回程）再合：等这么久。 */
 const ASK_BUDGET_MS = 20_000;
@@ -25,12 +26,18 @@ export function mergeNeeds(machines: Origin[]): Promise<NeedsMerged> {
   return callTyped(LOCAL_ORIGIN, "sessions-needs-merge", { machines }, budgetWithin(ASK_BUDGET_MS));
 }
 
-/** 计划里要人看的一格：哪台 · 哪个工作区 · 哪一片 · 那一片里第几条。 */
+/** 计划里要人看的一条：哪台 · 哪个工作区 · 哪一片 · 落在哪一格（后端给的编号与「编号 标题」；没有格可落 ⇒ `null`，进那一片的概览）。 */
 export interface PlanNeedItem {
   origin: Origin;
   workspace: string;
   slice: string;
-  k: number;
+  cell: NeedsCell | null;
+}
+
+/** 计划页开了那一片之后选中哪一格：那一条的格在这一片上 ⇒ 它的编号；没有格 · 这一片上已没有那一格 ⇒ `null`（概览）。 */
+export function planCellIn(slice: { cells: readonly { id: string }[] }, it: PlanNeedItem): string | null {
+  const id = it.cell?.id ?? null;
+  return id !== null && slice.cells.some((c) => c.id === id) ? id : null;
 }
 
 const EMPTY: NeedsMerged = { items: [], total: 0, unreadable: [], down: [] };
@@ -124,10 +131,10 @@ export class NeedsBook {
     return out;
   }
 
-  /** 计划里要人看的那几格，照合好的先后。 */
+  /** 计划里要人看的那几条，照合好的先后。 */
   plans(): PlanNeedItem[] {
     const out: PlanNeedItem[] = [];
-    for (const { origin, item } of this.merged.items) if (item.kind === "plan") out.push({ origin, workspace: item.workspace, slice: item.slice, k: item.k });
+    for (const { origin, item } of this.merged.items) if (item.kind === "plan") out.push({ origin, workspace: item.workspace, slice: item.slice, cell: item.cell ?? null });
     return out;
   }
 

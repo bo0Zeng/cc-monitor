@@ -44,10 +44,13 @@ class NeedsBoardTest {
                 ),
         )
 
+    /** 计划里一条：落在 `cell` 那一格（标签照后端写好的「编号 标题」）；`null` ⇒ 没有格可落、不带那一键。 */
     private fun plan(
         slice: String,
-        k: Int,
-    ): Map<String, Any?> = mapOf("kind" to "plan", "rank" to 1.0, "workspace" to "/w", "slice" to slice, "k" to k.toDouble())
+        cell: String?,
+    ): Map<String, Any?> =
+        mapOf("kind" to "plan", "rank" to 1.0, "workspace" to "/w", "slice" to slice) +
+            (cell?.let { mapOf("cell" to mapOf("id" to it, "label" to "$it 标题")) } ?: emptyMap())
 
     private fun manual(account: String): Map<String, Any?> =
         mapOf(
@@ -95,13 +98,13 @@ class NeedsBoardTest {
     private val hosts = listOf(HostName("a", "devbox"), HostName("b", "gpu-01"))
 
     @Test
-    fun `两台各回一份 ⇒ 当前那台在前、每台照回包先后（计划同一片收一行）、总数相加；每台只问 sessions-needs、零次 manual-list`() =
+    fun `两台各回一份 ⇒ 当前那台在前、每台照回包先后（计划一条一行）、总数相加；每台只问 sessions-needs、零次 manual-list`() =
         runTest {
-            val a = Machine(listOf(session("a1"), plan("x", 0), plan("x", 1), manual("t")))
+            val a = Machine(listOf(session("a1"), plan("x", "A2-1"), plan("x", null), manual("t")))
             val b = Machine(listOf(session("b1")))
             val board = boardOf("a" to a, "b" to b)
             val ov = overviewOf(board.state.value, hosts, current = "b")
-            assertEquals(listOf("b1", "a1", "x×2", "@t"), ov.needs.map(::name))
+            assertEquals(listOf("b1", "a1", "x@A2-1", "x@-", "@t"), ov.needs.map(::name))
             assertEquals(5, ov.total)
             assertEquals(5, board.total())
             for (m in listOf(a, b)) {
@@ -109,6 +112,16 @@ class NeedsBoardTest {
                 assertEquals("会外那几项在整份里，不另问", 0, m.asked("manual-list"))
             }
             assertTrue("列表里不止一台 ⇒ 会外那一行写机器名", ov.manyHosts)
+        }
+
+    @Test
+    fun `计划那一行写后端给的「编号 标题」、点了进那一格；没有格 ⇒ 写片名、进那一片的大纲`() =
+        runTest {
+            val a = Machine(listOf(plan("x", "A2-1"), plan("x", null)))
+            val board = boardOf("a" to a)
+            val lines = overviewOf(board.state.value, hosts, current = "a").needs.filterIsInstance<NeedsLine.Plan>()
+            assertEquals(listOf("A2-1 标题", "x"), lines.map { it.title })
+            assertEquals(listOf("A2-1", null), lines.map { it.cell?.id })
         }
 
     @Test
@@ -251,7 +264,7 @@ class NeedsBoardTest {
     private fun name(l: NeedsLine): String =
         when (l) {
             is NeedsLine.Session -> l.row.sid
-            is NeedsLine.Plan -> "${l.slice}×${l.n}"
+            is NeedsLine.Plan -> "${l.slice}@${l.cell?.id ?: "-"}"
             is NeedsLine.Manual -> "@${(l.item as ManualItem.AccountLogin).account}"
         }
 }

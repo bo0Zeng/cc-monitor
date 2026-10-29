@@ -579,6 +579,7 @@ object Commands {
             NeedsAsk::class.java to NeedsAsk.ADAPTER,
             NeedsAskRun::class.java to NeedsAskRun.ADAPTER,
             NeedsAt::class.java to NeedsAt.ADAPTER,
+            NeedsCell::class.java to NeedsCell.ADAPTER,
             NeedsChoice::class.java to NeedsChoice.ADAPTER,
             NeedsChoiceRow::class.java to NeedsChoiceRow.ADAPTER,
             NeedsDown::class.java to NeedsDown.ADAPTER,

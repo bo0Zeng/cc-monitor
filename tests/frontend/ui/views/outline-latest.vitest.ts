@@ -92,8 +92,8 @@ afterEach(() => {
 
 describe("A2-15 大纲含到此刻为止人说的每一句", () => {
   it("🔴 首屏索引要到末尾 ⇒ 尾段里那句人说的就在种子里、排在最末，不另要清单", async () => {
-    // 400 行：第 1 行与第 390 行是人说的，其余是回复。重放尾块先到（同 live）：第 390 行钉 floor；索引不照 floor 截，
-    // 尾段里那一句在种子里。
+    // 400 行：第 1 行与第 390 行是人说的，其余是回复。重放尾块先到（同 live）：批里只进账本，批收尾物化尾巴那一截、钉 floor
+    // （第 1 行在 floor 之下）；索引不照 floor 截，尾段里那一句在种子里。
     const N = 400;
     const said: Record<number, string> = { 1: "很久以前那一句", 390: "最新那一句" };
     indexStub.rows = Array.from({ length: N }, (_, k) => ({
@@ -113,7 +113,8 @@ describe("A2-15 大纲含到此刻为止人说的每一句", () => {
     for (const k of order.slice(1)) feed(lineAt(k));
     tm.onBatchEnd();
     const floor = peek("s1").window.floorSeq ?? -1;
-    expect(floor, "前置：尾块的第一行钉 floor").toBe(390);
+    expect(floor, "前置：批收尾物化了尾巴、钉了 floor").toBeGreaterThan(1);
+    expect(floor, "前置：批收尾物化了尾巴、钉了 floor").toBeLessThanOrEqual(390);
     // 清单替身：问到哪一份都是假的那几条（不该被问到）。
     outlineBackend.entries = Array.from({ length: N }, (_, k) => outlineEntry(`never-${k}`));
     await vi.waitFor(async () => {

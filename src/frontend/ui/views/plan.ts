@@ -55,7 +55,7 @@ import {
 import { CellDetail, handoffBox, takeoverCell, takeoverSpec, unbuiltTakeoverCell } from "./plan-cell";
 import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
 import type { PlanNeedsBook } from "../plan-needs";
-import type { PlanNeedItem } from "../needs-book";
+import { planCellIn, type PlanNeedItem } from "../needs-book";
 import { freshPane, phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
 import { blocksOfGroup, groupsCell, sliceForGroup } from "./plan-groups";
 import { openNewPlan } from "./plan-new";
@@ -113,8 +113,8 @@ export class PlanView {
   needItems: () => readonly PlanNeedItem[] = () => [];
   /** 经 Ctrl J 打开时站在第几条计划项（`needItems()` 的下标）；用户自己点别处 ⇒ 清掉。 */
   private atItem: number | null = null;
-  /** 打开某一条计划项之后、读回来之前：要选中那一片里第几条需手动。 */
-  private pendingNeed: number | null = null;
+  /** 打开某一条计划项之后、读回来之前：那一条（读回来照它的格选中）。 */
+  private pendingNeed: PlanNeedItem | null = null;
   private readonly review: ReviewHost;
 
   private readonly root: HTMLElement;
@@ -232,7 +232,7 @@ export class PlanView {
     const it = this.needItems()[i];
     if (!it) return;
     this.atItem = i;
-    this.pendingNeed = it.k;
+    this.pendingNeed = it;
     this.current = { origin: it.origin, workspace: it.workspace, name: it.slice };
     this.selected = null;
     if (this.isOpen) this.afterList();
@@ -401,15 +401,13 @@ export class PlanView {
     this.render();
   }
 
-  /** 经 Ctrl J 开的那一条：读回来了 ⇒ 选中它所在的格（顶块那一种没有格 ⇒ 概览）。 */
+  /** 经 Ctrl J · 需手动开的那一条：读回来了 ⇒ 选中后端给的那一格（没有格 ⇒ 概览）。 */
   private takePending(): void {
-    const k = this.pendingNeed;
+    const it = this.pendingNeed;
     const slice = this.currentSlice();
-    if (k === null || !slice) return;
+    if (it === null || !slice) return;
     this.pendingNeed = null;
-    const n = openNeeds(slice).filter((x) => x.kind !== "ask")[k];
-    const id = n?.cell ?? null;
-    this.selected = id !== null && cellIndex(slice).has(id) ? id : null;
+    this.selected = planCellIn(slice, it);
   }
 
   /** 这一片里下一条需手动（绕回第一条）。 */
