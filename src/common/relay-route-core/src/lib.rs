@@ -8,6 +8,8 @@
 //! - **家**（相对家目录，`.cc-monitor/` 开头的每一个常量）：后端落点 [`BACKEND_LANDING_REL`] · 暂存区 ·
 //!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 账号库 [`ACCOUNTS_DIR_REL`] 与它的清单。
 //!   后端各写者引它们落盘；后端「文件与数据」那一份成品（`footprint/data.rs::own_rows`，经 [`OWN_HOME_ENTRIES`]）按它们列出，界面照抄；判据两向对着这一族。
+//! - **声明表** [`OWN_FILES`]：每份落盘文件一行 [`Decl`]（落点 · 状态 / 缓存 · 格式与版本 · 读上限），后端读写口
+//!   `common/own_state.rs` 从它取；家里那几样有声明的，「删了会丢」照声明。
 //! - crate 名还是「relay-route」—— 它最早只装中转门牌。
 //!
 //! # 它为什么是一个共享 crate
@@ -442,45 +444,234 @@ pub fn parse_target(target: &str) -> Option<Parsed<'_>> {
 #[path = "../../../../tests/common/relay-route-core/lib_tests.rs"]
 mod tests;
 
+/// 一份落盘文件丢了怎么办：状态（丢了就没了）读不出来 ⇒ 不覆盖、照实说；缓存（照别的东西能重建）读不出来 ⇒ 当没有。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    State,
+    Cache,
+}
+
+/// 一份落盘文件的格式：我们的 JSON（顶层整数 `version`，缺了当 1；读得懂 `floor..=version`，低于 `version` 的经升级步）·
+/// 不是我们的格式（`Foreign`：不带版本、不查版本，如 OpenSSH 的主机钥匙）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Format {
+    Json { version: u32, floor: u32 },
+    Foreign,
+}
+
+/// 声明表的一行：落点（家目录底下 `.cc-monitor/` 那一层起）· 种类 · 格式 · 读上限（字节，超了当读不出来）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Row {
+    pub rel: &'static str,
+    pub kind: Kind,
+    pub format: Format,
+    pub cap: u64,
+}
+
+/// 种类那一格的类型形：[`State`] · [`Cache`]。
+pub trait Class {
+    const KIND: Kind;
+}
+
+/// 状态（[`Kind::State`]）。
+pub struct State;
+/// 缓存（[`Kind::Cache`]）。
+pub struct Cache;
+
+impl Class for State {
+    const KIND: Kind = Kind::State;
+}
+impl Class for Cache {
+    const KIND: Kind = Kind::Cache;
+}
+
+/// 挂得了升级步的种类：只有状态（缓存读到旧版就当没有、照别的东西重建）。
+///
+/// ```compile_fail,E0277
+/// use relay_route_core::{upgradable, Cache, Decl};
+/// const C: Decl<Cache> = Decl::<Cache>::json(".cc-monitor/c.json", 2, 1024);
+/// let _ = upgradable(&C);
+/// ```
+///
+/// ```
+/// use relay_route_core::{upgradable, Decl, State};
+/// const S: Decl<State> = Decl::<State>::json(".cc-monitor/s.json", 2, 1, 1024);
+/// let _ = upgradable(&S);
+/// ```
+pub trait Upgradable: Class {}
+impl Upgradable for State {}
+
+/// 一份落盘文件的声明（种类写在类型上：升级步只挂得上 `Decl<State>`，见 [`upgradable`]）。
+pub struct Decl<K: Class> {
+    pub row: Row,
+    of: core::marker::PhantomData<K>,
+}
+
+impl<K: Class> Decl<K> {
+    const fn new(rel: &'static str, format: Format, cap: u64) -> Self {
+        Decl {
+            row: Row {
+                rel,
+                kind: K::KIND,
+                format,
+                cap,
+            },
+            of: core::marker::PhantomData,
+        }
+    }
+
+    /// 不是我们的格式。
+    pub const fn foreign(rel: &'static str, cap: u64) -> Self {
+        Self::new(rel, Format::Foreign, cap)
+    }
+
+    /// 删了会丢（家里那几样那一格）。
+    pub const fn kept(&self) -> bool {
+        matches!(self.row.kind, Kind::State)
+    }
+}
+
+impl Decl<State> {
+    /// 我们的 JSON：此刻写 `version`，读得懂 `floor..=version`（低于 `version` 的经升级步）。
+    pub const fn json(rel: &'static str, version: u32, floor: u32, cap: u64) -> Self {
+        assert!(
+            floor >= 1 && floor <= version,
+            "版本从 1 起，下限不高于版本"
+        );
+        Self::new(rel, Format::Json { version, floor }, cap)
+    }
+}
+
+impl Decl<Cache> {
+    /// 我们的 JSON：缓存不升级，只读得懂这一版。
+    pub const fn json(rel: &'static str, version: u32, cap: u64) -> Self {
+        assert!(version >= 1, "版本从 1 起");
+        Self::new(
+            rel,
+            Format::Json {
+                version,
+                floor: version,
+            },
+            cap,
+        )
+    }
+}
+
+/// 升级步挂得上的那一份（只收 [`Upgradable`]，即状态）。后端 `own_state::upgrade!` 经它。
+pub const fn upgradable<K: Upgradable>(d: &Decl<K>) -> &Decl<K> {
+    d
+}
+
+/// 退出行为设置。
+pub const BACKEND_POLICY_FILE: Decl<State> = Decl::<State>::json(BACKEND_POLICY_REL, 1, 1, 4096);
+/// 这台的偏好。
+pub const PREFS_FILE: Decl<State> = Decl::<State>::json(PREFS_REL, 2, 2, 256 * 1024);
+/// 机器表。
+pub const MACHINES_FILE: Decl<State> = Decl::<State>::json(MACHINES_REL, 1, 1, 1024 * 1024);
+/// 「待办」里记下的选择。
+pub const CHORES_FILE: Decl<State> = Decl::<State>::json(CHORES_REL, 1, 1, 64 * 1024);
+/// 计划的认可与退回。
+pub const PLAN_REVIEW_FILE: Decl<State> = Decl::<State>::json(PLAN_REVIEW_REL, 1, 1, 1024 * 1024);
+/// 离线那台的上次值。
+pub const LAST_SEEN_FILE: Decl<Cache> = Decl::<Cache>::json(LAST_SEEN_REL, 1, 32 * 1024 * 1024);
+/// 书签。
+pub const BOOKMARKS_FILE: Decl<State> = Decl::<State>::json(BOOKMARKS_REL, 1, 1, 256 * 1024);
+/// skill 装记录（第 1 版写在 `"v"` 里，第 2 版换成顶层 `version`）。
+pub const SKILL_LEDGER_FILE: Decl<State> =
+    Decl::<State>::json(SKILL_LEDGER_REL, 2, 1, 4 * 1024 * 1024);
+/// 资产目录。
+pub const ASSET_CATALOG_FILE: Decl<State> =
+    Decl::<State>::json(ASSET_CATALOG_REL, 1, 1, 16 * 1024 * 1024);
+/// 额度账。
+pub const QUOTA_FILE: Decl<State> = Decl::<State>::json(QUOTA_LEDGER_REL, 1, 1, 16 << 20);
+/// 账号轮换。
+pub const ROTATION_FILE: Decl<State> = Decl::<State>::json(ROTATION_REL, 3, 3, 16 << 20);
+/// 轮换用哪份策略。
+pub const ROTATION_USES_FILE: Decl<State> = Decl::<State>::json(ROTATION_USES_REL, 1, 1, 16 << 20);
+/// 会话血缘。
+pub const LINEAGE_FILE: Decl<State> = Decl::<State>::json(LINEAGE_REL, 1, 1, 16 << 20);
+/// 起会话用的号。
+pub const LAUNCH_ACCOUNTS_FILE: Decl<State> =
+    Decl::<State>::json(LAUNCH_ACCOUNTS_REL, 1, 1, 16 << 20);
+/// 主机钥匙（OpenSSH 格式）。
+pub const KNOWN_HOSTS_FILE: Decl<State> = Decl::<State>::foreign(KNOWN_HOSTS_REL, 4 << 20);
+/// 开终端那一行的 ssh 配置（`ssh -F` 的格式；照机器表重写）。
+pub const SSH_CONFIG_FILE: Decl<Cache> = Decl::<Cache>::foreign(SSH_CONFIG_REL, 4 << 20);
+/// 中转钥匙（一行十六进制；丢了重铸）。
+pub const KEY_FILE: Decl<Cache> = Decl::<Cache>::foreign(KEY_FILE_REL, 4096);
+/// 历史清单缓存。
+pub const LISTING_CACHE_FILE: Decl<Cache> = Decl::<Cache>::json(LISTING_CACHE_REL, 3, 256 << 20);
+
+/// 〔「一份落盘文件一行」〕声明表：后端读写口（`common/own_state.rs` 的 `Doc::of`）取它。
+pub const OWN_FILES: &[Row] = &[
+    BACKEND_POLICY_FILE.row,
+    PREFS_FILE.row,
+    MACHINES_FILE.row,
+    CHORES_FILE.row,
+    PLAN_REVIEW_FILE.row,
+    LAST_SEEN_FILE.row,
+    BOOKMARKS_FILE.row,
+    SKILL_LEDGER_FILE.row,
+    ASSET_CATALOG_FILE.row,
+    QUOTA_FILE.row,
+    ROTATION_FILE.row,
+    ROTATION_USES_FILE.row,
+    LINEAGE_FILE.row,
+    LAUNCH_ACCOUNTS_FILE.row,
+    KNOWN_HOSTS_FILE.row,
+    SSH_CONFIG_FILE.row,
+    KEY_FILE.row,
+    LISTING_CACHE_FILE.row,
+];
+
+/// 家里那几样的一格，照声明取落点与「删了会丢」。
+const fn declared<K: Class>(
+    id: &'static str,
+    d: &Decl<K>,
+) -> (&'static str, &'static str, bool, bool) {
+    (id, d.row.rel, false, d.kept())
+}
+
 /// 〔「家里的都进这一份」〕后端在这台自己家里放的每一样：`(名字, 相对家目录, 是目录, 删了会丢)`。名字是闭集（界面按它取说法）；
 /// 后端落点由它所在的 `bin` 那一行代表；只住 monitor 那一侧的（API key 表 · 后端错误输出）不在这里。
+/// 有声明（[`OWN_FILES`]）的那几份经 `declared` 照声明取，「删了会丢」不另写。
 /// 后端「文件与数据」那一份成品逐样 stat 它（`footprint/data.rs::own_rows`）。
 pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("bin", ".cc-monitor/bin", true, false),
     ("staging", STAGING_DIR_REL, true, false),
-    ("relayKey", KEY_FILE_REL, false, true),
+    declared("relayKey", &KEY_FILE),
     ("listenDir", LISTEN_DIR_REL, true, true),
-    ("policy", BACKEND_POLICY_REL, false, true),
-    ("prefs", PREFS_REL, false, true),
+    declared("policy", &BACKEND_POLICY_FILE),
+    declared("prefs", &PREFS_FILE),
     ("prefsHandoff", PREFS_HANDOFF_REL, false, true),
-    ("machines", MACHINES_REL, false, true),
+    declared("machines", &MACHINES_FILE),
     ("profiles", PROFILES_REL, false, true),
     ("profilesMigrated", PROFILES_MIGRATED_REL, false, true),
     ("profilesWritten", PROFILES_WRITTEN_REL, false, false),
     ("aliasesPosix", POSIX_ALIASES_REL, false, true),
     ("aliasesPs", PS_ALIASES_REL, false, true),
-    ("skillLedger", SKILL_LEDGER_REL, false, true),
-    ("chores", CHORES_REL, false, true),
-    ("planReview", PLAN_REVIEW_REL, false, true),
-    ("lastSeen", LAST_SEEN_REL, false, false),
-    ("bookmarks", BOOKMARKS_REL, false, true),
-    ("assetCatalog", ASSET_CATALOG_REL, false, false),
-    ("quota", QUOTA_LEDGER_REL, false, true),
-    ("rotation", ROTATION_REL, false, true),
-    ("rotationUses", ROTATION_USES_REL, false, true),
-    ("lineage", LINEAGE_REL, false, true),
-    ("launchAccounts", LAUNCH_ACCOUNTS_REL, false, true),
+    declared("skillLedger", &SKILL_LEDGER_FILE),
+    declared("chores", &CHORES_FILE),
+    declared("planReview", &PLAN_REVIEW_FILE),
+    declared("lastSeen", &LAST_SEEN_FILE),
+    declared("bookmarks", &BOOKMARKS_FILE),
+    declared("assetCatalog", &ASSET_CATALOG_FILE),
+    declared("quota", &QUOTA_FILE),
+    declared("rotation", &ROTATION_FILE),
+    declared("rotationUses", &ROTATION_USES_FILE),
+    declared("lineage", &LINEAGE_FILE),
+    declared("launchAccounts", &LAUNCH_ACCOUNTS_FILE),
     ("sessionQueue", SESSION_QUEUE_DIR_REL, true, true),
     ("ccBus", CC_BUS_DIR_REL, true, true),
     ("launchNotes", LAUNCH_NOTES_DIR_REL, true, false),
     ("answerPlugin", ANSWER_PLUGIN_DIR_REL, true, false),
-    ("knownHosts", KNOWN_HOSTS_REL, false, true),
-    ("sshConfig", SSH_CONFIG_REL, false, false),
+    declared("knownHosts", &KNOWN_HOSTS_FILE),
+    declared("sshConfig", &SSH_CONFIG_FILE),
     ("accounts", ACCOUNTS_DIR_REL, true, true),
     ("accountsMcp", ACCOUNTS_MCP_REL, false, true),
     ("extBackups", EXT_BACKUPS_DIR_REL, true, true),
     ("skeleton", SKELETON_DIR_REL, true, false),
-    ("listingCache", LISTING_CACHE_REL, false, false),
+    declared("listingCache", &LISTING_CACHE_FILE),
     ("remoteListing", REMOTE_LISTING_DIR_REL, true, false),
 ];
 
