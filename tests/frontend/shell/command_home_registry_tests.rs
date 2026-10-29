@@ -3,11 +3,11 @@
 //! 分母只数「前端对后端」的 IPC（产物来自某台后端的）；窗口 · 本机 monitor 配置 · 日志 · 拉前 · 本机后端的起停与引导
 //! 是 monitor 自己的事，外加通信层面 A 客户端本身与「放字节」。
 //!
-//! 三条判据：
-//! 1. 「monitor 自己的事」== `lib.rs` 的 `generate_handler!`（两向）。
-//! 2. 「monitor 自己的事」里不许碰后端的那几类（窗口 / 开终端 / 拉前 / 配置 / 日志 / 重放缓冲），
+//! 命令表只有一张：`parity_ledger` 的 `LEDGER`（命令 → 能力 · 侧 · 哪一类 · 理由），它与 `generate_handler!` 两向相等由那边判。
+//! 这里两条判据：
+//! 1. 「monitor 自己的事」里不许碰后端的那几类（窗口 / 开终端 / 拉前 / 配置 / 日志 / 重放缓冲），
 //!    实现传递可达 `local_client` / `BackendDoor` ⇒ 红（判定该进后端）。通道 · 起停 · 放字节三类碰后端就是它们的本分。
-//! 3. 可达性量得出：真树上 `chan_call`（经 `chan::host` 跨文件到 `local_client`）必须被量到、`load_config` 必须量不到；
+//! 2. 可达性量得出：真树上 `chan_call`（经 `chan::host` 跨文件到 `local_client`）必须被量到、`load_config` 必须量不到；
 //!    合成夹具上「`use` 进来的函数 → 别的文件 → 类型的方法 → `BackendDoor`」必须量到。
 //!
 //! 可达性是**静态近似**：函数级，边按「同文件自由函数 · `use` 进来的名字 · `模块::函数` · `类型::方法` · 提到同文件 /
@@ -15,186 +15,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-/// monitor 自己的事分几类。`may_touch` 那三类碰后端是本分；其余碰了就是没迁干净。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Own {
-    /// 开窗 / 拉前 monitor 自己的窗口。
-    Window,
-    /// 拉前 · 绑窗口（把用户桌面上那个终端窗口拉到前面）。
-    Front,
-    /// 本机 monitor 配置（`config.json` · `auto-launch.json` · 机器表）。
-    Config,
-    /// 日志 · 诊断 · 数据位置。
-    Log,
-    /// 重放缓冲（monitor 进程内的界面状态）。
-    Replay,
-    /// 本机后端的起停与引导（含「这台后端通道在不在」）。
-    Lifecycle,
-    /// 通信层面 A 客户端本身。
-    Channel,
-    /// 放字节：照那台后端判好的计划往那台放 / 删 monitor 带着的字节（「monitor 只放字节」）。
-    Place,
-    /// 足迹里 monitor 自己那台那几行的**事实**（判定在后端）。
-    Footprint,
-}
-
-impl Own {
-    fn may_touch(self) -> bool {
-        matches!(self, Own::Lifecycle | Own::Channel | Own::Place)
-    }
-}
-
-/// 「monitor 自己的事」：命令 · 哪一类 · 理由。
-const MONITOR_OWN: &[(&str, Own, &str)] = &[
-    (
-        "backend_machines",
-        Own::Config,
-        "机器表 = monitor 配置里登记的远端 ＋ 本机，读的是 monitor 自己的注册表",
-    ),
-    (
-        "backend_status",
-        Own::Lifecycle,
-        "这台后端通道在不在 ＋ 本机后端 pid / 重启次数 —— 起停引导那一格的读面",
-    ),
-    (
-        "backend_start",
-        Own::Lifecycle,
-        "起本机后端（自释放 ＋ 监护）/ 起远端常驻",
-    ),
-    (
-        "backend_stop",
-        Own::Lifecycle,
-        "停后端（SIGTERM → 等 → 超时才 SIGKILL）",
-    ),
-    // 开终端：monitor 只开窗，交来的是成品（远端那一行由本机后端 `terminal-ssh` 渲）。
-    (
-        "open_terminal_window",
-        Own::Window,
-        "开一个终端窗口跑交来的那一串（Windows：PowerShell 窗口；Linux：挑到的终端）；不拼 ssh、不判命令",
-    ),
-    (
-        "terminal_choices",
-        Own::Window,
-        "开窗用哪个终端（设置里那一格 · 本机探到的终端）：窗口开在 monitor 面前这台，挑终端是开窗那一侧的事",
-    ),
-    ("load_config", Own::Config, "本机 monitor 配置"),
-    ("patch_config", Own::Config, "本机 monitor 配置"),
-    (
-        "cc_get_auto_launch",
-        Own::Config,
-        "`auto-launch.json` 是 monitor 自己写的小文件",
-    ),
-    (
-        "cc_set_auto_launch",
-        Own::Config,
-        "`auto-launch.json` 是 monitor 自己写的小文件",
-    ),
-    ("open_session_in_new_window", Own::Window, "开窗"),
-    ("open_terminal_in_new_window", Own::Window, "开窗"),
-    ("open_settings_window", Own::Window, "开窗"),
-    (
-        "open_file_window",
-        Own::Channel,
-        "起文件窗口进程、把它的 stdin / stdout 接进通道（窗口的 call 经通道到后端）、读它那一行就绪 / 原话（第一屏由窗口进程经通道自己列）",
-    ),
-    ("bring_monitor_to_front", Own::Window, "拉前 monitor 自己"),
-    (
-        "bring_terminal_to_front",
-        Own::Front,
-        "拉前会话的终端窗口（本机后端答过它在这台电脑上的哪儿）",
-    ),
-    (
-        "forget_session",
-        Own::Replay,
-        "只丢 monitor 进程内那条会话的重放缓冲",
-    ),
-    ("frontend_perf_log", Own::Log, "日志"),
-    ("get_diagnostics_config", Own::Log, "诊断开关"),
-    ("set_diagnostics_config", Own::Log, "诊断开关"),
-    ("get_log_file_info", Own::Log, "日志"),
-    (
-        "diagnostics_report",
-        Own::Lifecycle,
-        "日志页「复制诊断信息」那一段：各台此刻的状态成品（读这台后端通道在不在，与 `backend_status` 同一个读面）\
-         ＋ 界面交来的记录账 ＋ 日志位置，只读、不经后端发东西",
-    ),
-    ("open_log_file", Own::Log, "日志"),
-    (
-        "clipboard_write",
-        Own::Window,
-        "写系统剪贴板（全产品的复制）：剪贴板是 monitor 面前这台桌面的，经系统接口写、回真成败（`clipboard.rs`）",
-    ),
-    (
-        "clipboard_read",
-        Own::Window,
-        "读系统剪贴板（登录抽屉［粘贴］）：剪贴板是 monitor 面前这台桌面的，经系统接口读（`clipboard.rs`）",
-    ),
-    (
-        "restart_app",
-        Own::Lifecycle,
-        "设置窗「现在重启」：重起 cc-monitor 自己（走退出臂，本机后端照它自己那份退出行为去留）",
-    ),
-    (
-        "filewin_interrupts",
-        Own::Window,
-        "退出 / 重启 cc-monitor 之前现读各文件窗口说的「会打断什么」（那几扇窗是 monitor 起的子进程，表住 monitor 进程里）",
-    ),
-    ("open_log_dir", Own::Log, "日志"),
-    (
-        "list_remote_mcp_origins",
-        Own::Config,
-        "已配置且启用的远端标签：读的是 monitor 自己的配置（名字里的 mcp 是第一个用户留下的）",
-    ),
-    (
-        "get_data_paths",
-        Own::Log,
-        "设置页「数据」区列 monitor 自己的持久路径",
-    ),
-    (
-        "chan_call",
-        Own::Channel,
-        "通信层面 A：webview 说 `call` 的那一跳",
-    ),
-    ("chan_offer", Own::Channel, "通信层面 A：`subscribe` 的续订"),
-    ("chan_subscribe", Own::Channel, "通信层面 A：`subscribe`"),
-    (
-        "watch_sessions",
-        Own::Replay,
-        "主窗口在看的会话记进会话流句柄那张表（与查看窗的订阅合成每台的「在看」名单）",
-    ),
-    (
-        "kept_sessions",
-        Own::Replay,
-        "主窗口手上的 tab 记进会话流句柄那张表（与留存合成每台手上留着的，随名单报给那台）",
-    ),
-    ("chan_want", Own::Channel, "通信层面 A：credit"),
-    ("chan_stop", Own::Channel, "通信层面 A：撤订"),
-    // 起会话的那一行进了后端之后，monitor 在这件事上只剩开窗这一格。
-    (
-        "open_local_terminal",
-        Own::Window,
-        "开一个本机终端窗口跑那一行（`ccm …` 由本机后端 `session-open` 出成品；这里不判不拼，只开窗）",
-    ),
-    // 放字节：判定（该不该换 · 换成哪一格 · 落点那一份是谁）住本机常驻后端 `deploy-plan`。
-    (
-        "deploy_remote_backend",
-        Own::Place,
-        "把 monitor 带着的那几格后端字节交本机后端 `deploy-install`（判定 · 放字节 · 换进落点都在后端）",
-    ),
-    (
-        "uninstall_remote_backend",
-        Own::Place,
-        "删落点那一份后端字节（交本机后端 `deploy-uninstall`）",
-    ),
-    (
-        "footprint_client_facts",
-        Own::Footprint,
-        "足迹里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 与判定在本机后端 `footprint-report`）",
-    ),
-];
+use crate::parity_ledger::tests::{Own, LEDGER};
 
 /// 通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op（`chan/host.rs::HOST_OPS`）：
-/// op · 哪一类 · 理由。它们不是 Tauri 命令，却是同一个问题（是不是「monitor 自己的事」），照 `MONITOR_OWN` 的写法两向登记。
+/// op · 哪一类 · 理由。它们不是 Tauri 命令，却是同一个问题（是不是「monitor 自己的事」），照 `parity_ledger` 那张命令表的写法两向登记。
 const CHANNEL_OWN: &[(&str, Own, &str)] = &[
     (
         "transfer-upload",
@@ -749,32 +573,14 @@ fn monitor_tree() -> BTreeMap<String, String> {
 // ---------------------------------------------------------------- 判据
 
 #[test]
-fn every_tauri_command_is_a_monitor_own_command() {
-    let files = monitor_tree();
-    let reg: BTreeSet<String> = registered(&files["lib.rs"], &files).into_keys().collect();
-    let own: BTreeSet<String> = MONITOR_OWN.iter().map(|(c, _, _)| c.to_string()).collect();
-    assert_eq!(own.len(), MONITOR_OWN.len(), "「monitor 自己的事」有重行");
-    let missing: Vec<_> = reg.difference(&own).collect();
-    let stale: Vec<_> = own.difference(&reg).collect();
-    assert!(
-        missing.is_empty() && stale.is_empty(),
-        "`generate_handler!` 与「monitor 自己的事」不等：注册了没登记 {missing:?} · 登记了已不在 {stale:?}\n\
-         新加一条 ⇒ 判定进后端、monitor 只留开窗 / 起停 / 放字节这一类，写进表里并写理由"
-    );
-    for (c, _, why) in MONITOR_OWN {
-        assert!(!why.trim().is_empty(), "`{c}` 那一行没写理由");
-    }
-}
-
-#[test]
 fn a_monitor_own_command_of_a_local_kind_does_not_reach_a_backend() {
     let files = monitor_tree();
     let reg = registered(&files["lib.rs"], &files);
     let touching = Graph::build(&files).touching(&reg);
-    let wrong: Vec<String> = MONITOR_OWN
+    let wrong: Vec<String> = LEDGER
         .iter()
-        .filter(|(_, kind, _)| !kind.may_touch())
-        .filter_map(|(c, kind, _)| {
+        .filter(|(_, _, _, kind, _)| !kind.may_touch())
+        .filter_map(|(c, _, _, kind, _)| {
             touching
                 .get(*c)
                 .map(|chain| format!("{c}（{kind:?}）：{}", chain.join(" → ")))

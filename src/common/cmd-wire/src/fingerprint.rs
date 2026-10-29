@@ -43,7 +43,8 @@ pub fn fnv32(text: &str) -> String {
     format!("{:08x}", crate::fnv::fnv1a32(text.as_bytes()))
 }
 
-/// 一个类型的形状指纹：名 ＋ 每份声明逐行拼起来。
+/// 一个类型的形状指纹：名 ＋ 每份声明逐行拼起来（只有本包的测试在用）。
+#[cfg(test)]
 pub(crate) fn of_ty(ty: &Ty) -> String {
     let mut text = format!("{}\n", ty.name);
     for (name, decl) in &ty.decls {

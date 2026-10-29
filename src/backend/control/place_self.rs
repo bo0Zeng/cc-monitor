@@ -137,7 +137,7 @@ pub(crate) fn place(own: &Own, exe: &Path, mine: &str) -> Result<(), Failed> {
     }
     keep_old(own)?;
     own.place_staged(name).map_err(io)?;
-    prune_kept(own, std::time::SystemTime::now());
+    prune_kept(own, crate::common::time::now());
     Ok(())
 }
 
@@ -178,9 +178,11 @@ fn drop_kept(own: &Own, name: &str) {
 fn prune_kept(own: &Own, now: std::time::SystemTime) {
     let mut all = own.kept_backends();
     all.sort_by(|a, b| b.1.cmp(&a.1));
-    let max_age = std::time::Duration::from_secs(KEPT_MAX_AGE_SECS);
     for (i, (name, when)) in all.iter().enumerate() {
-        let expired = now.duration_since(*when).is_ok_and(|d| d > max_age);
+        // 比年纪，不是等待：秒数直接比，不造会让谁醒来的期限。
+        let expired = now
+            .duration_since(*when)
+            .is_ok_and(|d| d.as_secs() > KEPT_MAX_AGE_SECS);
         if i >= KEPT_MAX || expired {
             drop_kept(own, name);
         }

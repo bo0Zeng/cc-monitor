@@ -206,14 +206,10 @@ tests/frontend/shell/capability_registry_tests.rs	46
 tests/frontend/shell/comm_boundary_registry_tests.rs	4
 tests/frontend/shell/local_backend_host_tests.rs	84
 tests/frontend/shell/local_backend_tests.rs	47
-tests/frontend/shell/local_read_surface_registry.rs	3
 tests/frontend/shell/parity_ledger_tests.rs	20
-tests/frontend/shell/plugin_class_registry_tests.rs	2
 tests/frontend/shell/polling_registry_tests.rs	2
 tests/frontend/shell/scanning_guard_registry_tests.rs	39
 tests/frontend/shell/shared_crate_registry_tests.rs	4
-tests/frontend/shell/stream_source/dial_move_judge.rs	2
-tests/frontend/shell/write_site_registry_spawn_sites.rs	9
 tests/frontend/shell/write_site_registry_tests.rs	3
 tests/scripts/gate-affected/map	1
 tests/scripts/gate.sh	7

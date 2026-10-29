@@ -1,176 +1,322 @@
+//! 本机起进程的落点：一处一行，每一处写清起的是什么、为什么必须起进程、交给唯一出口
+//! （`spawn_managed.rs`）的哪个入口、选了哪三条策略。人群从源码现扫，两向按处相等。
+//!
+//! 一处落点 ＝ 生产段里一句 `Command::new(`，或一次调用出口最简那一形 `spawn_managed(`（出口替它造 `Command`）。
+//! 同一个函数里两句 `Command::new` 是两处、两行；往已登记的函数里再加一句，处数就对不上。
+//! 后端那一半起进程由它自己的 `readonly_guard::spawn_registry` 登记，这里只扫壳。
+
 use std::path::{Path, PathBuf};
 
-/// `(文件, 函数, 起的是什么, 为什么必须起进程, 三条策略)`。**默认拒绝**：人群从源码派生。
+/// `(相对壳源码根的路径, 外层函数, 交给出口的哪个入口, 起的是什么, 为什么必须起进程, 三条策略)`。
 ///
-/// # ★ 第五列是同拍加的：**每个落点选了哪三个策略**
+/// 第三列是 `spawn_managed.rs` 的入口名，逐字（名单由 [`exit_entry_points`] 从签名派生）；
+/// 出口自己那一行写 `——`。
 ///
-/// 格式两种，二选一：
-/// - `"<Console> · <Lifetime> · <Stderr>"` —— 三个枚举变体名，逐字。
-///   带 `（宿主注入：<构造器>）` 后缀的，说明这一处**自己不写策略**（它在 `backend/`，
-///   平台原语进不去），答案由宿主那侧那个具名构造器给。
-/// - `"—— …"` 开头 —— **这一处刻意不进那个出口**，后面写清为什么（今天三处：
-///   `build.rs` 两处是构建期，加出口本身那一处）。
-///
-/// ⚠ 它**不是散文**：[`the_three_policies_each_site_declares_match_the_code`]
-/// 把这一列与盘面对拍（变体名从 `spawn_managed.rs` 的枚举派生，写错一个字母就红）。
-/// ⚠ **射程边界，写下来**：对拍的粒度是**文件**，不是「这一行」——
-/// 同一个文件里两个落点互换策略，本条看不出来（`launch.rs` 今天就有三个落点、
-/// 两种三元组）。它接得住的是「某个落点改了策略而账本没跟」「策略名被改掉」
-/// 这两族，接不住同文件内的对调。别把它读成更强的东西。
-const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
-    ("shots_shell.rs", "start", "截图台架给的整条命令（bwrap 沙箱里的真后端）",
-     "截图台架的无头壳：只在特性 `shots` 下编（例子 `ccm-shots-shell`，不进安装包，判据 `shots_feature_guard_tests.rs`），\
-          不在用户机器上跑。每台机器起一个真后端、两根管子交产品那条本机读循环 —— 台架要的就是壳的真代码接真后端。",
-     "Hidden · JobKillOnClose · Inherit（台架看后端的 stderr）"),
-    // 构建期（`build.rs`）那一行（vendor 新鲜度自检起 `git`）随 vendored 引擎整棵删了。
-    // ── 〔判定只在后端〕问我们自己放下去的那一份后端一次（帧命令的 CLI 面）。
-    ("console.rs", "run_helper", "`<本二进制> --ccm-console <件> <进程号…>`（不经 shell）",
-     "↗ 认窗口要借别人的控制台（`AttachConsole`），而挂控制台是整个进程的状态：monitor 自己挂着控制台时恒被拒（开发构建是控制台程序）\
-          ⇒ 交给一个自己没有控制台、用完即退的小助手借（本二进制的隐藏子命令，`platform/console.rs::helper_main`）。\
-          参数只有子命令名与进程号 / 窗口句柄（数），不吃用户输入；一个字节都不写
-          ★ 三条策略为什么是这三格：`Hidden` —— 不闪窗口（开发构建是控制台程序，小助手起来自己先摘掉那个隐藏控制台）；          `Detached` —— 到点不掐、也不随 monitor 死：切标签页那一件挂着记号标题，掐断它记号就留在终端标题上，小助手自己有 2 秒预算、到点写回标题再退（`ask_helper` 只是不再等）；答话只在 stdout 上。",
-     "Hidden · Detached · Null"),
-    ("backend_once.rs", "ask_once", "`<我们那份 ccm / 要放的那份暂存件> -- --<帧命令>`（不经 shell；入参 JSON 走 stdin）",
-     "本机后端放下去之前要它自己判放不放（`place-verdict`，那一刻还没有常驻后端可连）\
-          ⇒ 只能直接跑那份字节问一次；参数是路径与常量命令名，入参只经 stdin 交（不进 argv），一个字节都不写
-          ★ 三条策略为什么是这三格：`Hidden` —— Windows 上问的是控制台子系统的 `ccm.exe`，不带 flag 每问一次闪一次黑框；超时收整棵；stderr 是答话的一半（错信封 `{code, message}`）⇒ `Captured`。",
-     "Hidden · JobKillOnClose · Captured"),
-    // 拨号代理子进程（`--dial`）那一行早摘了：拨号全在本机那一个常驻后端里，界面进程不起它也不开链路。
-    // 🔴 **`K-R104`（09-13）：`account_usage.rs` 那一行（本机执行面）删了。**
-    //    那个函数不存在了 —— 本机用量探针不再在界面进程里 `sh -c <载荷>`，
-    //    它与远端那条**是同一条路**：往那台机器的后端发几条帧命令。
-    //    ⇒ 界面进程这一侧起进程的面**净少一处**（这是好事，也是本表存在的理由）。
-    ("terminal.rs", "launch_local_posix_via", // 原 `launch.rs`：开窗的两个平台臂搬进 `platform/terminal.rs`
-     "用户配置的终端 argv[0]",
-     "在用户的终端里起会话 —— 承接 C13「最后那次 exec 在用户终端里」，这是本产品的主用途
-          ★ 三条策略为什么是这三格：`Detached` 就是先前那句 `process_group(0)`。`Hidden` 在 POSIX 上是空的 —— **窗口是终端出口自己开的**，不是 `CreateProcess` 开的，别读成「这条路不开窗」。",
-     "Hidden · Detached · Null"),
-    ("terminal.rs", "launch_powershell_window", // 原 `launch.rs`：开窗的两个平台臂搬进 `platform/terminal.rs`
-     "`wt.exe` / `powershell.exe`",
-     "Windows 侧同上；两个名字都是常量，不吃用户输入
-          ★ 三条策略为什么是这三格：🔴 **全仓唯一一处 `NewVisible`**（Plan B 那一跳），而且是刻意的（点名「别把它一起改掉」）。\
-          `Detached`：用户的终端不该随 monitor 一起死，关掉界面 ≠ 关掉他正在敲字的会话。\
-          ⚠ **这个函数里有两跳，第一格不一样**：Plan A（`wt.exe`）是 `Inherit · Detached · Inherit` —— \
-          它今天一个 creation flag 都没带，而且多半只是把请求转交给已在跑的 Windows Terminal 进程。\
-          **照盘面写、不顺手改**（没有任何 Windows 读数支持那个改动，而这是主用途那条路）。\
-          第五列记的是 Plan B 那一跳；本表的对拍粒度是文件，盖不到同函数内两跳的差别 —— 如实记。",
-     "NewVisible · Detached · Inherit"),
-    // `dialect.rs::ask_get_alias` 那一行（从前住 monitor 的方言模块）随方言进了那台后端（`platform/shell/mod.rs::powershell_command`，目录模块，后端 `readonly_guard::spawn_registry` 登记）。
-    ("lib.rs", "open_with", "`cmd` / `open` / `xdg-open`",
-     "按平台打开日志目录：三个名字都是常量，路径是 monitor 自己的目录
-          ★ 三条策略为什么是这三格：`Detached` 是承重的：fire-and-forget，**绝不能是 `JobKillOnClose`** —— 那会在本函数返回、句柄一丢的瞬间把刚打开的文件管理器杀掉。",
-     "Hidden · Detached · Inherit"),
-    ("local_backend.rs", "supervise_with_stdio", "被监护的后端二进制",
-     "本机后端监护：二进制路径来自 `candidates`（有 `candidates_never_point_into_a_build_tree` 守着）。\
-          ⚠ P2 起它的 stdin 可能是 `piped()` 而不再恒为 `null` —— 那是本机入方向通道的管子\
-          （`local_stdio_consumer`）。先前那个 `stdio=None` 的薄壳随本机中转并进常驻后端删了，spawn 只剩这一个入口
-          ★ 三条策略为什么是这三格：🔴 点名的那一处：它先前**同时**犯三个错（无 `CREATE_NO_WINDOW` · 无 job 绑定 · `stderr(Stdio::null())`），三格各对应一条策略。本层收注入参数，一个平台原语都不认识。",
-     "Hidden · JobKillOnClose · ToLog（宿主注入：local_backend_supervised）"),
-    // `ssh -G` 那一行出表：解析 ssh config 搬进后端（`dial/ssh_config.rs::resolve`），monitor 不再起 `ssh`。
-    // ── `K-P1`：常驻那条路 ──────────────────────────────────────────────
-    ("local_backend_host.rs", "spawn_detached", "被脱离起来的后端二进制",
-     "本机后端**脱离宿主**起：`process_group(0)` + stdio 全 null + 协议改走回环监听口。\
-          二进制路径来自 `resolve_backend_bin`，而**它今天只是个适配器** —— 真正的答案\
-          （exe 旁的 local_backend → 这份产物自己带的那份 → 释放出来）出自\
-          `local_backend::resolve_or_extract` 那**一份共用的解析**，\
-          `local_backend::start_or_extract` 走的也是同一份。\
-          〔`K-R43` 订正：本行原先写「与 `start_or_extract` 同一个顺序，由一条对拍判据钉着」——\
-           那时是**两份手写实现**，而那条判据只对拍顺序，`K-R42` 在它眼皮底下漂过一次仍全程绿。\
-           今天钉的不是「两份同序」，是「**两条路都走那一份，且旁边不许再长出第二份取法**」\
-           （`local_backend_host::the_two_resolution_paths_still_agree_on_the_order`，名字没改、机制换了）。〕\
-          ⚠ 它必须住在**宿主知识层**而不是 `backend/`：`process_group` 来自 \
-          `std::os::unix::process::CommandExt`，而 `std::os::unix` 在 \
-          `platform_home_guard.rs::platform_forms_live_only_at_home` 的禁针里 —— 写进去当场红（没有平台例外表）。
-          ★ 三条策略为什么是这三格：「三样一起才叫脱离」里的两样：`Detached` 就是 `process_group(0)`，`Null` 是 stderr 那一根（stdin/stdout 仍在函数体里）。`Hidden` 那格**先前没人回答过** —— 常驻实例在 Windows 上留一个可关的黑框，等于常驻当场没了。",
-     "Hidden · Detached · Null"),
-    // ── 🔴 （09-18）：**出口本身**。它是唯一一处「起进程」不在上面那些
-    //    落点里的 —— 因为上面那些落点今天全都把那一下交给了它。
-    ("spawn_managed.rs", "spawn_managed", "调用方给的那个二进制 ＋ argv",
-     "唯一出口。它起进程不是为了做某件事，而是**为了让别人不用自己起** ——\
-          三条策略（要不要窗口 · 要不要随我死 · 错误往哪去）在这里落成平台原语\
-          （`creation_flags` / `process_group(0)` / Job Object / stderr 的四种去处），\
-          全仓只此一份。\
-          ⚠ 本行与上面那些**不是同一类**：上面每一行回答的是「这件事为什么非起进程不可」，\
-          这一行回答的是「起进程这件事为什么只许有一个出口」。\
-          由 `spawn_managed::tests::the_spawn_verbs_and_platform_primitives_live_only_here`\
-          按源码派生地钉住（`.spawn()` / `creation_flags` / `process_group` / `kill_on_drop`\
-          在别处出现一次就红）。",
-     "—— **它就是那个出口本身**，没有「它选了哪三条」这回事"),
-    // 🔴 **文件管理窗口的独立进程。** 这一行是新的**一整面**，
-    //    不是搬家：此前那个窗口跑在 monitor 自己的进程里（次线程 ＋ `run_native`）。
-    ("proc.rs", "spawn_window", "`cc-monitor-filewin`（文件窗口包的 `[[bin]]`，monitor 内嵌、放到 `~/.cc-monitor/bin/` 再起；一个窗口一个）",
-     "「**窗口生命周期就是销毁**」，而 winit **一个进程只许一个事件循环** \
-          ⇒ 「关掉就销毁」与「关掉之后还能再打开」在同进程形态下**不可同时成立** \
-          ⇒ 只剩「一个窗口一个进程」这条路。必须起进程的理由就是这一条，**它不是为了隔离**。\
-          顺带解掉的两条（第二趟开窗必然失败 · 那 165 MiB 关掉就真还给系统）逐条住 `filewin/proc.rs` 头注 §二。\
-          〔反订正 · 2026-09-24 · X1：上一版这里还有「关窗的拆卸竞态可能 abort 整个 app」一条 —— \
-          那条读数来自台架的 `xdotool windowclose`（`XDestroyWindow`，产品里不存在）〕\
-          ⚠ **argv 上一个字都没有**：种子（那一屏行 ＋ 源 ＋ cwd ＋ reveal）走 **stdin**。\
-          两条硬理由 —— ① 环境变量装不下（一屏上限 5 万条，JSON 是兆字节级，\
-          而 Linux 一条环境变量的上限是 32 页 ⇒ `execve` 直接 `E2BIG`）；\
-          ② argv 是世界可读的（`/proc/<pid>/cmdline`），而种子里带着 `RemoteConfig`\
-          （主机名 · 用户名 · 私钥**路径**）—— C2 那一版的拨号代理宿主也用过同一条理由（SR1a 起它不再起进程）。\
-          ⚠ 二进制的来路只有两处（环境变量 `CCM_FILEWIN_BIN` · monitor 自带那份），\
-          都不在就**出声**（`D11`：不留退路），由 `filewin::proc::tests` 那一摞钉住。\
-          ⚠ 收尸归本落点自己（`Detached` 不改父子关系）：一条阻塞在 `waitpid` 上的线程，\
-          零 CPU、零唤醒 —— 刻意**不**用「隔一会儿看一眼」，那是一个新节拍
-          ★ 三条策略为什么是这三格：`Hidden` —— Windows 上不带它系统会**替子进程新开一个可关的控制台**，\
-          用户一关 `CTRL_CLOSE_EVENT` 就把文件窗口杀了；egui 那个窗口自己会出来，它不需要控制台。\
-          `Detached` 是**承重的**，与 `lib.rs::open_with` 逐字同形：这条 Tauri 命令一返回句柄就丢，\
-          `JobKillOnClose` 会在那一瞬间把刚开出来的窗口收掉；顺带买到「关掉 monitor 不带走已开的文件窗口」。\
-          `Captured`：它 stderr 上是「窗口为什么没立起来」那几句（例如缺 OpenGL 2.0），双击起的 GUI app 没有 stderr 可跟 \
-          ⇒ 接出来，一条线程读到 EOF、逐行记进 monitor 日志、留最后几行给开窗没成 / 开了又退那一句话。",
-     "Hidden · Detached · Captured"),
-    ("local_backend_host.rs", "run_resident_stop_within", "`<本机后端> --resident-stop`（不经 shell）",
-     "停本机常驻后端：本机远端同一条 —— 在这台机器上跑一次那个一次性子命令，\
-          由它做「请它收尾 → 宽限期内按 pidfd 等 → 到点强杀」（同机监督者，k8s / systemd 同形），monitor 只拿回结局。\
-          必须起进程的理由：等与强杀住后端那一份（`control/resident.rs::stop_pid`），monitor 不再自己发信号、自己等；\
-          参数是**我们自己记下的那个二进制**与一个常量 flag，零用户输入
-          ★ 三条策略为什么是这三格：一次性子命令不该闪窗；就地等它退（别留后代）；失败那句 `{code,message}` 在 stderr 上，要读回来说给人听。",
-     "Hidden · JobKillOnClose · Captured"),
+/// 第六列两种写法：
+/// - `"<Console> · <Lifetime> · <Stderr>"` —— 三个枚举变体名，逐字，与这一处的源码对拍；
+///   带 `（宿主注入：<构造器>）` 后缀的，这一处自己不写策略（它在 `backend/`，平台原语进不去），
+///   答案由 `spawn_managed.rs` 里那个具名构造器给。
+/// - `"—— …"` 开头 —— 出口自己，没有「它选了哪三条」这回事。
+const SPAWNS: &[(&str, &str, &str, &str, &str, &str)] = &[
+    (
+        "shots_shell.rs",
+        "start",
+        "spawn_managed_cmd",
+        "截图台架给的整条命令（沙箱里的真后端）",
+        "截图台架的无头壳：只在特性 `shots` 下编（例子 `ccm-shots-shell`，不进安装包），不在用户机器上跑。\
+         每台机器起一个真后端，stdin / stdout 两根管子交产品那条本机读循环（`local_backend::local_stdio_consumer`）。",
+        "Hidden · JobKillOnClose · Inherit",
+    ),
+    (
+        "platform/console.rs",
+        "run_helper",
+        "spawn_managed_cmd",
+        "`<本二进制> --ccm-console <件> <进程号…>`（不经 shell）",
+        "认窗口要借别人的控制台（`AttachConsole`），而挂控制台是整个进程的状态 ⇒ 交给一个自己没有控制台、\
+         用完即退的小助手借（本二进制的隐藏子命令）。参数只有子命令名与进程号 / 窗口句柄，答话在 stdout 上。\
+         `Detached`：到点不掐，小助手自己有 2 秒预算、写回标题再退。",
+        "Hidden · Detached · Null",
+    ),
+    (
+        "backend_once.rs",
+        "ask_once",
+        "spawn_managed_cmd",
+        "`<我们那份 ccm / 要放的那份暂存件> -- --<帧命令>`（不经 shell；入参 JSON 走 stdin）",
+        "本机后端放下去之前要它自己判放不放（`place-verdict`，那一刻还没有常驻后端可连）⇒ 直接跑那份字节问一次。\
+         stderr 是答话的一半（错信封 `{code, message}`）⇒ `Captured`。",
+        "Hidden · JobKillOnClose · Captured",
+    ),
+    (
+        "platform/terminal.rs",
+        "launch_local_posix_via",
+        "spawn_managed_cmd",
+        "用户配置的终端 argv[0]",
+        "在用户的终端里起会话，这是本产品的主用途。argv 来自 `local_posix_spawn_plan`，cwd 只在真是目录时设，\
+         env 带上 `backend_bin_env_for_window` 那一对。`Hidden` 在 POSIX 上是空的：窗口是终端出口自己开的。",
+        "Hidden · Detached · Null",
+    ),
+    (
+        "platform/terminal.rs",
+        "launch_powershell_window",
+        "spawn_managed_cmd",
+        "`wt.exe`（常量名）",
+        "Windows 上开会话窗口的第一跳：把请求转交给 Windows Terminal。argv 是「`-d <目录>` ＋ `powershell.exe` ＋ 那三个参数」，\
+         一个 creation flag 都不带（`Inherit`）。用户的终端不随 monitor 一起死（`Detached`）。",
+        "Inherit · Detached · Inherit",
+    ),
+    (
+        "platform/terminal.rs",
+        "launch_powershell_window",
+        "spawn_managed_cmd",
+        "`powershell.exe`（常量名）",
+        "`wt.exe` 起不来时的第二跳：直接起 `powershell.exe`，全仓唯一一处 `NewVisible`，刻意要一个用户看得见的新控制台。\
+         argv 是那三个参数本身，env 一定继承。",
+        "NewVisible · Detached · Inherit",
+    ),
+    (
+        "lib.rs",
+        "open_with",
+        "spawn_managed",
+        "`cmd` / `open` / `xdg-open`",
+        "按平台打开日志目录：三个名字都是常量，路径是 monitor 自己的目录。`Detached` 是承重的：\
+         fire-and-forget，`JobKillOnClose` 会在本函数返回、句柄一丢的瞬间把刚打开的文件管理器杀掉。",
+        "Hidden · Detached · Inherit",
+    ),
+    (
+        "local_backend.rs",
+        "supervise_with_stdio",
+        "ManagedSpawn",
+        "被监护的后端二进制",
+        "本机后端监护：二进制路径来自 `candidates`。本层住 `backend/`，平台原语进不去 ⇒ 起那一下由宿主注进来的 \
+         `ManagedSpawn` 做；留在本层的是协议：`env_remove(\"TMUX\")`、argv、stdin / stdout 两根管子\
+         （stdout 的 EOF 是「进程死了」这个事件的唯一来源）。",
+        "Hidden · JobKillOnClose · ToLog（宿主注入：local_backend_supervised）",
+    ),
+    (
+        "local_backend_host.rs",
+        "spawn_detached",
+        "managed_spawner",
+        "被脱离起来的后端二进制",
+        "本机后端脱离宿主起：stdio 全 null、协议走回环监听口；二进制路径来自 `local_backend::resolve_or_extract` 那一份解析。\
+         住宿主知识层不住 `backend/`：`process_group` 来自 `std::os::unix`，在 `platform_home_guard` 的禁针里。\
+         `Hidden`：常驻实例在 Windows 上留一个可关的黑框，等于常驻当场没了。",
+        "Hidden · Detached · Null",
+    ),
+    (
+        "local_backend_host.rs",
+        "run_resident_stop_within",
+        "spawn_managed_cmd",
+        "`<本机后端> --resident-stop`（不经 shell）",
+        "停本机常驻后端：在这台机器上跑一次那个一次性子命令，由它做「请它收尾 → 宽限期内等 → 到点强杀」，\
+         monitor 只拿回结局。参数是我们自己记下的那个二进制与一个常量 flag；失败那句 `{code,message}` 在 stderr 上。",
+        "Hidden · JobKillOnClose · Captured",
+    ),
+    (
+        "filewin/proc.rs",
+        "spawn_window",
+        "spawn_managed_cmd",
+        "`cc-monitor-filewin`（文件窗口包的 `[[bin]]`；一个窗口一个进程）",
+        "winit 一个进程只许一个事件循环，「关掉就销毁」与「关掉之后还能再打开」在同进程形态下不可同时成立 ⇒ 一个窗口一个进程。\
+         种子走 stdin：环境变量装不下（一屏上限 5 万条），argv 世界可读而种子里带主机名 / 用户名 / 私钥路径。\
+         `Detached`：Tauri 命令一返回句柄就丢；`Captured`：「窗口为什么没立起来」那几句在 stderr 上。",
+        "Hidden · Detached · Captured",
+    ),
+    (
+        "spawn_managed.rs",
+        "spawn_managed",
+        "——",
+        "调用方给的那个二进制 ＋ argv",
+        "唯一出口：三条策略（要不要窗口 · 要不要随我死 · 错误往哪去）在这里落成平台原语，全仓只此一份；\
+         `.spawn()` 与那几条平台原语只许长在这里由 `spawn_managed::tests` 钉。",
+        "—— 它就是那个出口本身",
+    ),
 ];
 
+/// 出口自己那份源码（相对壳源码根）。
+const THE_EXIT: &str = "spawn_managed.rs";
+
 fn src_root() -> PathBuf {
-    // 住址唯一源：`guard_core::addr`。
     guard_core::addr::shell_src_root()
 }
 
-/// 语料 = `src/` 整棵树 **+ `build.rs`**。
-///
-/// ★ 为什么非把 `build.rs` 并进来：本表问的是「**谁能碰这台机器**」，
-/// 而构建脚本每次 `cargo build`／`cargo check` 都在开发者机器上真跑
-/// （它起 `sh` 与 `git`、往 `OUT_DIR` 复制内嵌后端）。
-/// 08-08 实测：全仓所有登记表/守卫的扫描根都是 `src/frontend/shell/src` · `src/backend`
-/// · `src/common` · `src` · `doc` —— **`src/frontend/shell/build.rs` 一张表都没扫到**，
-/// 它是这些扫描面共同的盲点（与 F65「三张表共享同一个没写下来的前提」同族）。
-fn corpus() -> Vec<(PathBuf, String)> {
-    let mut files = guard_core::scan_tree!(&src_root(), &["rs"]);
+/// 语料 = 壳源码根那一棵（连 manifest 明写的兄弟包）＋ `build.rs`，`(模块住址, 生产段)`。
+/// `build.rs` 每次 `cargo build` 都在开发者机器上真跑，也算「谁能碰这台机器」。
+fn corpus() -> Vec<(String, String)> {
+    let root = src_root();
+    let mut out: Vec<(String, String)> = guard_core::scan_tree!(&root, &["rs"])
+        .into_iter()
+        .map(|(p, raw)| {
+            (
+                guard_core::module_address(&root, &p),
+                guard_core::production_code(&raw),
+            )
+        })
+        .collect();
     let bs = Path::new(env!("CARGO_MANIFEST_DIR")).join("build.rs");
-    let src = std::fs::read_to_string(&bs).expect("读不到 build.rs —— 它是本表的一部分");
-    files.push((bs, src));
-    files
+    let raw = std::fs::read_to_string(&bs).expect("读不到 build.rs —— 它在本表的人群里");
+    out.push(("build.rs".to_string(), guard_core::production_code(&raw)));
+    out.sort();
+    out
 }
 
-/// 某一行所在的函数名（往回找最近的 `fn`）。
-fn enclosing_fn(lines: &[&str], at: usize) -> String {
-    for l in lines[..=at].iter().rev() {
-        if let Some(rest) = l.split(" fn ").nth(1).or_else(|| l.strip_prefix("fn ")) {
-            let n: String = rest
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-            if !n.is_empty() {
-                return n;
+/// 这一行上声明的函数名（小写 `fn ` ＋ 词边界；`dyn Fn(` 不算）。
+fn fn_name_on(line: &str) -> Option<String> {
+    let rest = line
+        .split(" fn ")
+        .nth(1)
+        .or_else(|| line.trim_start().strip_prefix("fn "))?;
+    let n: String = rest
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .collect();
+    (!n.is_empty()).then_some(n)
+}
+
+/// 某一行往回找到的最近那个 `fn` 项：`(函数名, 起始行下标, 收口行下标)`。
+fn enclosing_fn_item(lines: &[&str], at: usize) -> Option<(String, usize, usize)> {
+    let start = (0..=at).rev().find(|i| fn_name_on(lines[*i]).is_some())?;
+    let name = fn_name_on(lines[start])?;
+    let (mut depth, mut opened) = (0i32, false);
+    let mut end = lines.len() - 1;
+    for (k, l) in lines.iter().enumerate().skip(start) {
+        for c in l.chars() {
+            match c {
+                '{' => {
+                    depth += 1;
+                    opened = true;
+                }
+                '}' => depth -= 1,
+                _ => {}
             }
         }
+        if opened && depth <= 0 {
+            end = k;
+            break;
+        }
     }
-    "<找不到外层函数>".to_string()
+    Some((name, start, end))
 }
 
-/// `spawn_managed.rs` 里某个枚举的变体名 —— **从源码派生，不手写**。
-///
-/// 手写一份的话，枚举改名之后这张表会安静地继续「通过」，
-/// 而它声称对拍的那件事已经不存在了。
+/// 一处落点：`(文件, 外层函数, 外层函数整段, 从这一处到同一函数里下一处之前的那一段)`。
+type Site = (String, String, String, String);
+
+/// 现扫：一处一条、不去重。针运行时拼，免得命中本文件自己。
+fn sites(files: &[(String, String)]) -> Vec<Site> {
+    let build = concat!("Command::", "new(");
+    let call = concat!("spawn_", "managed(");
+    let mut out: Vec<Site> = Vec::new();
+    for (file, prod) in files {
+        let lines: Vec<&str> = prod.lines().collect();
+        let is_the_exit = file == THE_EXIT;
+        let hits: Vec<usize> = (0..lines.len())
+            .filter(|&i| {
+                let l = lines[i];
+                // 出口自己那份只按 `Command::new` 数：`spawn_managed(` 在那里是它的签名与实现。
+                l.contains(build) || (!is_the_exit && l.contains(call) && fn_name_on(l).is_none())
+            })
+            .collect();
+        for (n, &i) in hits.iter().enumerate() {
+            let (name, start, end) = enclosing_fn_item(&lines, i).unwrap_or_else(|| {
+                panic!(
+                    "{file} 第 {} 行的落点不在任何 `fn` 项里 —— 抽取器看不懂它了",
+                    i + 1
+                )
+            });
+            let stop = hits
+                .get(n + 1)
+                .copied()
+                .filter(|&j| j <= end)
+                .unwrap_or(end + 1);
+            out.push((
+                file.clone(),
+                name,
+                lines[start..=end].join("\n"),
+                lines[i..stop].join("\n"),
+            ));
+        }
+    }
+    out
+}
+
+/// 多重集差：`a` 里比 `b` 多出来的那几个键。
+fn only_in(a: &[(String, String)], b: &[(String, String)]) -> Vec<String> {
+    let mut rest = b.to_vec();
+    let mut only = Vec::new();
+    for k in a {
+        match rest.iter().position(|x| x == k) {
+            Some(i) => {
+                rest.remove(i);
+            }
+            None => only.push(format!("  {}::{}", k.0, k.1)),
+        }
+    }
+    only
+}
+
+fn keys(found: &[Site]) -> Vec<(String, String)> {
+    let mut v: Vec<(String, String)> = found
+        .iter()
+        .map(|(f, n, ..)| (f.clone(), n.clone()))
+        .collect();
+    v.sort();
+    v
+}
+
+fn ledger() -> Vec<(String, String)> {
+    let mut v: Vec<(String, String)> = SPAWNS
+        .iter()
+        .map(|(f, n, ..)| (f.to_string(), n.to_string()))
+        .collect();
+    v.sort();
+    v
+}
+
+/// 出口的入口名单：`spawn_managed.rs` 里 `pub fn` / `pub type` 中返回类型带 `Managed` 的那些。
+/// 不是「所有 `pub`」：`wait_for_status` 是等那一下、不是起那一下。
+fn exit_entry_points() -> Vec<String> {
+    let src = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/spawn_managed.rs"
+    ));
+    let lines: Vec<&str> = src.lines().collect();
+    let mut out: Vec<String> = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        let t = l.trim_start();
+        let (kind, rest) = if let Some(r) = t.strip_prefix("pub fn ") {
+            ("fn", r)
+        } else if let Some(r) = t.strip_prefix("pub type ") {
+            ("type", r)
+        } else {
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            continue;
+        }
+        // 签名可能跨行 ⇒ 收到收口那一行为止。
+        let mut sig = String::new();
+        for l2 in lines[i..].iter().take(16) {
+            sig.push_str(l2);
+            sig.push('\n');
+            if (kind == "fn" && l2.contains('{')) || (kind == "type" && l2.contains(';')) {
+                break;
+            }
+        }
+        if sig
+            .rsplit_once("->")
+            .is_some_and(|(_, t)| t.contains("Managed"))
+        {
+            out.push(name);
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// `spawn_managed.rs` 里某个枚举的变体名（从源码派生）。
 fn variants_of(enum_name: &str) -> Vec<String> {
     let src = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/spawn_managed.rs"
@@ -192,58 +338,154 @@ fn variants_of(enum_name: &str) -> Vec<String> {
         .collect()
 }
 
-/// ★★ **第五列与盘面对拍**。
-///
-/// # 它守什么
-///
-/// 「这个落点选了哪三条策略」这句话，在本表里**是可判的**，不是散文：
-/// ① 三个变体名必须真的是 `spawn_managed.rs` 那三个枚举里的（名单从源码派生）；
-/// ② 那三个 `X::Variant` 必须真的出现在**声明它们的那份源码**里
-///    （默认是落点自己那个文件；带「宿主注入」后缀的，是 `spawn_managed.rs`）；
-/// ③ 「不进那个出口」的三处要明说（`——` 开头），而且**只许是那三处**。
-///
-/// # ⚠ 射程（写下来，别读成更强）
-///
-/// 对拍粒度是**文件**不是行：同一个文件里两个落点把三元组互换，本条看不出来
-/// （`launch.rs` 今天就是三个落点两种三元组）。它接得住的是
-/// 「某处改了策略而账本没跟」「策略名被改掉」「新落点没申报策略」这三族。
+/// →**起进程的落点与本表按处相等**（多重集，两向）。
+#[test]
+fn every_local_spawn_is_declared() {
+    let files = corpus();
+    assert!(
+        files.iter().any(|(f, _)| f == "lib.rs") && files.iter().any(|(f, _)| f == THE_EXIT),
+        "语料里没有 `lib.rs` / `{THE_EXIT}`（{} 份）—— 遍历坏了，本条在空转",
+        files.len()
+    );
+    let found = sites(&files);
+    let (disk, table) = (keys(&found), ledger());
+    let missing = only_in(&disk, &table);
+    assert!(
+        missing.is_empty(),
+        "这些地方会在用户机器上起一个进程，但本表没有那一行（一处一行）：\n{}\n\
+         ⇒ 往 `SPAWNS` 加一行：起的是什么 · 为什么必须起进程 · 交给出口哪个入口 · 选了哪三条策略。\
+         答不出第三列 ⇒ 它绕开了出口，改成走 `spawn_managed_cmd`（`backend/` 那一半收一个 `ManagedSpawn`）。",
+        missing.join("\n")
+    );
+    let stale = only_in(&table, &disk);
+    assert!(
+        stale.is_empty(),
+        "本表这几行在盘面上找不到了：\n{}\n\
+         ⇒ 那一处真走了 ⇒ 删这一行；改名 / 搬家 ⇒ 改这一行。本趟语料 {} 份、现扫 {} 处。",
+        stale.join("\n"),
+        files.len(),
+        disk.len()
+    );
+}
+
+/// 正控：往已登记的函数里再加一句裸 `Command::new`，处数就对不上；`spawn_managed(` 那一形也算一处。
+#[test]
+fn a_second_bare_command_in_one_function_is_a_second_site() {
+    let one = "fn f() {\n    let mut c = std::process::Command::new(a);\n    spawn_managed_cmd(&mut c);\n}\n";
+    let two = "fn f() {\n    let mut c = std::process::Command::new(a);\n    spawn_managed_cmd(&mut c);\n\
+               let mut d = std::process::Command::new(b);\n    spawn_managed_cmd(&mut d);\n}\n\
+               fn g() {\n    crate::spawn_managed::spawn_managed(p, &[], X, Y, Z);\n}\n";
+    let at = |src: &str| sites(&[("x.rs".to_string(), src.to_string())]);
+    assert_eq!(keys(&at(one)), vec![("x.rs".into(), "f".into())]);
+    let k = keys(&at(two));
+    assert_eq!(
+        k,
+        vec![
+            ("x.rs".to_string(), "f".to_string()),
+            ("x.rs".to_string(), "f".to_string()),
+            ("x.rs".to_string(), "g".to_string()),
+        ],
+        "同一个函数里第二句 `Command::new` 没被数成第二处 —— 本表此刻按函数去重了"
+    );
+    assert_eq!(
+        only_in(&k, &keys(&at(one))).len(),
+        2,
+        "多重集差没数出多出来的那两处"
+    );
+}
+
+/// →**第三列可判**：入口名在派生名单里，且真出现在那一处的外层函数项里。
+#[test]
+fn every_site_names_the_exit_entry_it_hands_off_to() {
+    let entries = exit_entry_points();
+    let found = sites(&corpus());
+    let mut bad: Vec<String> = Vec::new();
+    let mut seen: Vec<(String, String)> = Vec::new();
+    for (file, func, entry, ..) in SPAWNS {
+        let key = (file.to_string(), func.to_string());
+        let nth = seen.iter().filter(|k| **k == key).count();
+        seen.push(key.clone());
+        if *entry == "——" {
+            if *file != THE_EXIT {
+                bad.push(format!(
+                    "  {file}::{func} 第三列写 `——`，只有出口自己那一行许这么写"
+                ));
+            }
+            continue;
+        }
+        if !entries.iter().any(|e| e == entry) {
+            bad.push(format!(
+                "  {file}::{func} 第三列写的是 `{entry}`，而 `spawn_managed.rs` 今天的入口是 {entries:?}"
+            ));
+            continue;
+        }
+        let item = found
+            .iter()
+            .filter(|(f, n, ..)| *f == key.0 && *n == key.1)
+            .nth(nth)
+            .map(|(_, _, item, _)| item.clone());
+        match item {
+            None => bad.push(format!(
+                "  {file}::{func} —— 盘面上没有这一处（上一条先说这件事）"
+            )),
+            Some(s) if !s.contains(entry) => bad.push(format!(
+                "  {file}::{func} 写着交给 `{entry}`，那个函数项里找不到这个名字"
+            )),
+            Some(_) => {}
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "第三列与盘面对不上：\n{}\n⇒ 那一处真的改了交接方式 ⇒ 改第三列；交接挪进了同文件的辅助函数 ⇒ 这里会假红，改回在原处交接。",
+        bad.join("\n")
+    );
+}
+
+/// 入口名单的阴性对照：它不是「所有 `pub fn`」。
+#[test]
+fn the_exit_entry_point_list_is_derived_and_does_not_say_yes_to_every_pub_fn() {
+    let entries = exit_entry_points();
+    for must in ["spawn_managed", "spawn_managed_cmd", "ManagedSpawn"] {
+        assert!(
+            entries.iter().any(|e| e == must),
+            "派生出来的入口名单里没有 `{must}`：搬家 / 改名了就改 `SPAWNS` 第三列，否则派生法坏了。现打：{entries:?}"
+        );
+    }
+    assert!(
+        !entries.iter().any(|e| e == "wait_for_status"),
+        "`wait_for_status` 混进入口名单了 —— 派生法松成了「凡 `pub fn` 皆入口」，上一条会恒真。现打：{entries:?}"
+    );
+}
+
+/// →**第六列与盘面对拍**：三个变体名从枚举派生，且写在那一处的那一段里（宿主注入的写在 `spawn_managed.rs`）。
 #[test]
 fn the_three_policies_each_site_declares_match_the_code() {
     let consoles = variants_of("ConsolePolicy");
     let lifetimes = variants_of("Lifetime");
     let sinks = variants_of("StderrSink");
-    // 反向自检：名单塌了 ⇒ 下面全成了「随便写什么都不在名单里」的假红／或恒绿。
     assert_eq!(
         (consoles.len(), lifetimes.len(), sinks.len()),
         (3, 2, 4),
-        "三个枚举的变体数变了（现打 {consoles:?} / {lifetimes:?} / {sinks:?}）——\n\
-             变体增减本身不是错，但**它一定要经过这张表**：每一个落点都得回答\
-             「新那格算不算我」。改完这一行，再逐条看第五列。"
+        "三个枚举的变体数变了（现打 {consoles:?} / {lifetimes:?} / {sinks:?}）—— 改完这一行，逐条看第六列"
     );
-
     let files = corpus();
-    // 语料含壳那棵根的人群声明带进来的兄弟包（`comms-inward` · 文件窗口 …）：它们也有 `lib.rs` / `proc.rs`，
-    //   而账本第一列写的是壳里那一份 ⇒ 按名字取时只在壳自己的 `src/` 与 `build.rs` 里取（兄弟包一处都不起进程：上一条判据现数）。
-    let own = |p: &Path| p.starts_with(src_root()) || p.ends_with("build.rs");
-    let src_of = |stem: &str| -> String {
-        files
-            .iter()
-            .filter(|(p, _)| own(p))
-            .find(|(p, _)| p.file_name().and_then(|s| s.to_str()) == Some(stem))
-            .map(|(_, raw)| guard_core::production_code(raw))
-            .unwrap_or_else(|| panic!("语料里找不到 {stem} —— 它搬家了，第五列也就无从对拍"))
-    };
-
-    let mut opted_out = 0usize;
+    let found = sites(&files);
+    let exit_src = &files
+        .iter()
+        .find(|(f, _)| f == THE_EXIT)
+        .expect("语料里没有出口那份")
+        .1;
+    let mut seen: Vec<(String, String)> = Vec::new();
     let mut checked = 0usize;
-    for (file, func, _, _, policy) in SPAWNS {
-        if let Some(why) = policy.strip_prefix("——") {
-            assert!(
-                why.trim().len() > 10,
-                "{file}::{func} 说自己不进那个出口，却没写清为什么 —— \
-                     「刻意不做」也会过期，没有理由的豁免下一轮没人判得了真伪"
+    for (file, func, _, _, _, policy) in SPAWNS {
+        let key = (file.to_string(), func.to_string());
+        let nth = seen.iter().filter(|k| **k == key).count();
+        seen.push(key.clone());
+        if policy.starts_with("——") {
+            assert_eq!(
+                *file, THE_EXIT,
+                "{file}::{func} 说自己不进那个出口 —— 只许出口自己那一行"
             );
-            opted_out += 1;
             continue;
         }
         let triple: Vec<&str> = policy
@@ -256,10 +498,18 @@ fn the_three_policies_each_site_declares_match_the_code() {
         assert_eq!(
             triple.len(),
             3,
-            "{file}::{func} 的第五列不是三格：{policy:?}\n\
-                 ⇒ 格式是 `\"<Console> · <Lifetime> · <Stderr>\"`，\
-                 或者 `\"—— <为什么不进那个出口>\"`。"
+            "{file}::{func} 的第六列不是三格：{policy:?}"
         );
+        let seg = if policy.contains("宿主注入") {
+            exit_src.clone()
+        } else {
+            found
+                .iter()
+                .filter(|(f, n, ..)| *f == key.0 && *n == key.1)
+                .nth(nth)
+                .map(|(.., s)| s.clone())
+                .unwrap_or_else(|| panic!("{file}::{func} 盘面上没有这一处"))
+        };
         for (i, (name, allowed)) in [
             ("ConsolePolicy", &consoles),
             ("Lifetime", &lifetimes),
@@ -274,123 +524,15 @@ fn the_three_policies_each_site_declares_match_the_code() {
                 "{file}::{func} 第 {} 格写的是 `{v}`，而 `{name}` 今天的变体是 {allowed:?}",
                 i + 1
             );
-        }
-        // ② 那三个名字得真的写在**声明它们的那份源码**里。
-        let home = if policy.contains("宿主注入") {
-            "spawn_managed.rs"
-        } else {
-            *file
-        };
-        let src = src_of(home);
-        for (i, name) in ["ConsolePolicy", "Lifetime", "StderrSink"]
-            .iter()
-            .enumerate()
-        {
-            let needle = format!("{name}::{}", triple[i]);
+            let needle = format!("{name}::{v}");
             assert!(
-                src.contains(&needle),
-                "{file}::{func} 的账本写着 `{needle}`，而 `{home}` 的生产段里找不到它。\n\
-                     ★ 两种来路，先分清：\n\
-                     ① 那一处真的改了策略 ⇒ **回来改第五列**（改了行为不回来改理由，\
-                        账本当天就开始撒谎）；\n\
-                     ② 这一行的「住哪」判错了 —— `backend/` 那两处自己不写策略，\
-                        它们的第五列要带「（宿主注入：…）」后缀。"
+                seg.contains(&needle),
+                "{file}::{func}（同函数第 {} 处）的账本写着 `{needle}`，那一段源码里找不到它 —— \
+                 那一处改了策略 ⇒ 改第六列；`backend/` 那两处自己不写策略 ⇒ 第六列带「（宿主注入：…）」",
+                nth + 1
             );
         }
         checked += 1;
     }
-    // 「不进那个出口」只许出口自己那一处（多一处 = 有人给自己开了豁免）。
-    assert_eq!(
-        opted_out, 1,
-        "「不进那个出口」的落点有 {opted_out} 处 —— 只许出口自己那一处，多一处 = 有人给自己开了豁免。"
-    );
-    // 申报表与盘上两向相等由下一条（`every_local_spawn_is_declared`）钉；这里只挡「一处都没对拍到」的空转。
     assert!(checked > 0, "一个带策略的落点都没对拍到 —— 本条此刻在空转");
-}
-
-#[test]
-fn every_local_spawn_is_declared() {
-    let files = corpus();
-    let mut found: Vec<(String, String)> = Vec::new();
-    for (path, src) in &files {
-        let prod = guard_core::production_code(src);
-        let lines: Vec<&str> = prod.lines().collect();
-        let stem = path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap()
-            .to_string();
-        // 🔴 **人群的锚点从一个变成两个。**
-        //
-        // A3 之前「起进程」与「造一个 `Command`」是同一件事，所以数后者就够了。
-        // 今天不是了：走 [`crate::spawn_managed::spawn_managed`] 那个五参数形态的落点
-        // **自己不造 `Command`**（出口替它造）⇒ 只数 `Command::new(` 的话，
-        // 那种落点会**悄悄从人群里消失**，而它一样在用户机器上起进程
-        //（现打：`lib.rs::open_with` 就是这一形）。
-        // ⇒ 第二个锚点 = **调用那个唯一出口**。两个锚点是并集，落点只要沾一个就得申报。
-        //
-        // ⚠ **出口自己那份源码只按第一个锚点数**：在 `spawn_managed.rs` 里面，
-        //   这几个名字是它的**实现与签名**，不是「又一个起进程的地方」——
-        //   连签名行都会命中（`pub fn spawn_managed_cmd(`），那会给这张表添几行
-        //   只描述出口内部结构的噪声。出口自己在表里**恰好占一行**，那一行已经写清了
-        //   「它就是那个出口本身」。
-        let is_the_exit = stem == "spawn_managed.rs";
-        for (i, l) in lines.iter().enumerate() {
-            let hit = l.contains(concat!("Command::", "new("))
-                || (!is_the_exit
-                    && ["spawn_managed(", "spawn_managed_cmd("]
-                        .iter()
-                        .any(|n| l.contains(n)));
-            if hit {
-                found.push((stem.clone(), enclosing_fn(&lines, i)));
-            }
-        }
-    }
-    found.sort();
-    found.dedup();
-    // 抽取器坏了扫不到东西 ⇒ 下面反向那一条（申报的落点必须真在）红。
-
-    let missing: Vec<String> = found
-        .iter()
-        .filter(|(f, n)| !SPAWNS.iter().any(|(sf, sn, ..)| sf == f && sn == n))
-        .map(|(f, n)| format!("  {f}::{n}"))
-        .collect();
-    assert!(
-        missing.is_empty(),
-        "这些地方**会在用户机器上起一个进程，但没人申报**：\n{}\n\n\
-             ⚠ 08-08 实测：往生产段加一句 `Command::new(\"sh\").arg(\"-c\")`，全仓判据一条不红。\n\
-             登记进 `SPAWNS`：写清**起的是什么**、**为什么必须起进程**、\
-             以及〔A3 之后〕**它选了哪三条策略**。\n\
-             backend 侧同类表在 `readonly_guard`（`ALLOWED` + `SPAWN_SITES_TODAY`）。",
-        missing.join("\n")
-    );
-
-    let stale: Vec<String> = SPAWNS
-        .iter()
-        .filter(|(f, n, ..)| !found.iter().any(|(ff, nn)| ff == f && nn == n))
-        .map(|(f, n, ..)| format!("  {f}::{n}"))
-        .collect();
-    // ⚠ **红了还要讲对成因**：死行有两种完全不同的来路 ——
-    // ① 那处代码真的改名/删了；② **扫描面缩了**（语料不再包含那个文件）。
-    // 实测把 `build.rs` 从语料里拿掉，旧诊断说「已经不起进程了（改名或删了）」，
-    // 而 `build.rs` 里那两处一个字没动 —— 照它去查会查错方向。
-    // 本区反复吃过这个亏（「讲错成因的红灯比不红更坏」），所以这里先分辨再说话。
-    let scanned: Vec<String> = files
-        .iter()
-        .filter_map(|(p, _)| p.file_name().and_then(|s| s.to_str()).map(str::to_string))
-        .collect();
-    let out_of_corpus: Vec<&str> = SPAWNS
-        .iter()
-        .map(|(f, ..)| *f)
-        .filter(|f| !scanned.iter().any(|s| s == f))
-        .collect();
-    assert!(
-        stale.is_empty(),
-        "申报表里这些落点在语料里找不到了：\n{}\n\
-             ★ 两种来路，先分清再动手：\n\
-             ① 那处代码真的改名/删了 ⇒ 更新登记（改名也要红 —— 名字变了就该有人重新看一眼它起的是什么）；\n\
-             ② **扫描面缩了** —— 这些文件压根不在本次语料里：{out_of_corpus:?}\n\
-                （非空就说明是这一种：去看 `corpus()` 少扫了什么，别去改登记表）",
-        stale.join("\n")
-    );
 }
