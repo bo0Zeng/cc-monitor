@@ -3,14 +3,14 @@
 //! 再带 `scope: each` 的那几格。号牌不分排（§2.5），号列表的先后就是号牌的先后。
 
 use super::script::Text;
-/// 设置声明那几格（策略文件头里写的 · `rotation-view` 带的同一形）：线上形住 `cmd-wire`。
-pub(crate) use cmd_wire::rotation::{
-    FormCell as Cell, FormKind as Kind, FormScope as Scope, RotFrom,
-};
 /// 改设置的意图（`rotation-settings` 的 `edit`）：线上形住 `cmd-wire`。
 pub(crate) use cmd_wire::rotation::RotEdit;
 #[cfg(test)]
 pub(crate) use cmd_wire::rotation::RotSeg;
+/// 设置声明那几格（策略文件头里写的 · `rotation-view` 带的同一形）：线上形住 `cmd-wire`。
+pub(crate) use cmd_wire::rotation::{
+    FormCell as Cell, FormKind as Kind, FormScope as Scope, RotFrom,
+};
 use serde::Deserialize;
 use serde_json::Value;
 

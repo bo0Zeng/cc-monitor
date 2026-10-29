@@ -8,10 +8,9 @@ use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_view_face::{checked, RotRefused};
 use crate::wire::typed::Command;
 pub(crate) use cmd_wire::rotation::{
-    RotBadStrategy, RotDone, RotInUse, RotStale, RotStrategyId, RotStrategyRev,
-    RotationForNewReq, RotationReloadReq, RotationSettingsReq, RotationStrategyAddReq,
-    RotationStrategyCopyReq, RotationStrategyDeleteReq, RotationStrategyRenameReq,
-    RotationStrategyTzReq, RotationUseReq,
+    RotBadStrategy, RotDone, RotInUse, RotStale, RotStrategyId, RotStrategyRev, RotationForNewReq,
+    RotationReloadReq, RotationSettingsReq, RotationStrategyAddReq, RotationStrategyCopyReq,
+    RotationStrategyDeleteReq, RotationStrategyRenameReq, RotationStrategyTzReq, RotationUseReq,
 };
 use copy_core::copy_text;
 #[cfg(test)]

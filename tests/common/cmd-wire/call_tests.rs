@@ -19,7 +19,11 @@ fn quota_and_rotation_requests_are_the_ones_the_backend_takes() {
     use crate::quota::QuotaReadReq;
     use crate::rotation::*;
     sent(QuotaReadReq {}, "quota-read", json!({}));
-    sent(RotationFactsReq { agent: None }, "rotation-facts", json!({}));
+    sent(
+        RotationFactsReq { agent: None },
+        "rotation-facts",
+        json!({}),
+    );
     sent(
         RotationFactsReq {
             agent: Some(crate::AgentKind::new("codex")),

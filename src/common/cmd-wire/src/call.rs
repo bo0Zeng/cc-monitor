@@ -2,25 +2,24 @@
 //! 下面那一张 `calls!` 表是命令身份唯一的声明：后端登记那一行照它取名、取回包，
 //! 有 Rust 客户端的那几端（壳 · 文件窗口 · 手机核心）照它发、照它解。
 
+use crate::accounts::{AccountsList, AccountsListReq};
 use crate::assets::{AssetsSyncReq, AssetsSynced};
 use crate::batch::{BatchReply, FilesBatchStopReply, FilesBatchStopReq};
 use crate::bookmarks::{Bookmarks, BookmarksEditReq, BookmarksReadReq};
 use crate::deploy::{DeployInstallReq, DeployUninstallReq, Installed, Uninstalled};
 use crate::exit_policy::{ExitPolicy, ExitPolicyReadReq};
 use crate::files::*;
+use crate::listing::{HistoryHead, HistoryListReq, HistoryRow};
 use crate::plan::{PlanFiles, PlanFilesReq};
 use crate::quota::{QuotaRead, QuotaReadReq};
-use crate::rotation::*;
 use crate::record::{HistoryRead, HistoryReadReq};
-use crate::session::{HistoryTail, HistoryTailReq};
-use crate::accounts::{AccountsList, AccountsListReq};
-use crate::listing::{HistoryHead, HistoryListReq, HistoryRow};
+use crate::rotation::*;
 use crate::search::{HistorySearchReply, HistorySearchReq};
+use crate::session::{HistoryTail, HistoryTailReq};
 use crate::session::{Preview, Sent, TerminalsList};
 use crate::sync::Patch;
 use crate::terminal::{
-    SshCommand, TerminalInputReq, TerminalPreviewReq, TerminalSshReq, TerminalsListReq,
-    UnfollowReq,
+    SshCommand, TerminalInputReq, TerminalPreviewReq, TerminalSshReq, TerminalsListReq, UnfollowReq,
 };
 use crate::transfer::{
     TransferCopyAsk, TransferCopyReq, TransferDownloadAsk, TransferDownloadReq, TransferOpened,
