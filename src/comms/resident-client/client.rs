@@ -346,6 +346,24 @@ impl InboundClient {
         self.send(Some(machine), cmd, args, view, deadline).await
     }
 
+    /// **照类型问一条**：名字取 `C::NAME`（`cmd_wire::Call` 那张表），入参照类型写，回包照 `C::Reply` 解。
+    /// `at` ＝ 问这条连接通往的后端持有的哪一台（同 [`Self::call_at`]）；`None` ＝ 问它自己（照它的命令表与形状指纹先拦）。
+    /// 外层 `Err` ＝ 这一问没成；里层 `Err` ＝ 问成了、回包（或入参）对不上那个类型（解码器那一句，调用方说「读不懂那台的回包」）。
+    pub async fn ask<C: cmd_wire::Call>(
+        &self,
+        at: Option<&str>,
+        req: &C,
+        view: Option<&Value>,
+        deadline: tokio::time::Instant,
+    ) -> Result<Result<C::Reply, serde_json::Error>, CallError> {
+        let args = match serde_json::to_value(req) {
+            Ok(a) => a,
+            Err(e) => return Ok(Err(e)),
+        };
+        let got = self.send(at, C::NAME, args, view, deadline).await?;
+        Ok(serde_json::from_value(got.unwrap_or(Value::Null)))
+    }
+
     /// [`Self::call`] · [`Self::call_until`] · [`Self::call_until_viewed`] 共用的那一份：发一条命令、在 `deadline` 之前等它的结局。
     async fn send_until(
         &self,
