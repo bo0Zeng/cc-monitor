@@ -405,8 +405,7 @@ fn the_cfg_test_reexport_detour_stays_extinct() {
                  按形状剥可见性修饰，测试模块直接写成 `pub(crate) mod X` 就认得出来，\n\
                  跨模块的取名走 `crate::<文件>::X::…`，不需要在顶层再导出一次。\n\
                  修法：把 `mod X` 写成 `pub(crate) mod X`，删掉这一行，引用者改走全路径。\n\
-                 （照这样写的先例：`stream_source/` 的 `dial_move_judge` · `local_backend_host.rs` 的\n\
-                  `tests` · `readonly_guard.rs` 的 `g6_doctrine`。）\n\
+                 （照这样写的先例：`stream_source/` 的 `dial_move_judge` · `local_backend_host.rs` 的 `tests`。）\n\
                  ⚠ 真有正当理由要开口子 ⇒ 先立裁定，**不许**在这里抬 \
                  `DETOUR_CEILING`。",
             sites.len(),
