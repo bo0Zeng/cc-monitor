@@ -7,8 +7,10 @@
 //!
 //! # 文件（`~/.cc-monitor/skill-installs.json`，与资产目录同一个家、同一族写法）
 //!
-//! `{"v":1,"installs":{"<skill 目录绝对路径>":{"name":"demo","files":{"<相对路径>":{"digest":"<16 位十六进制>","created":true}}}}}`
+//! `{"version":2,"installs":{"<skill 目录绝对路径>":{"name":"demo","files":{"<相对路径>":{"digest":"<16 位十六进制>","created":true}}}}}`
 //!
+//! - 版本照声明表（`relay_route_core::SKILL_LEDGER_FILE`，读写口 `common/own_state.rs` 管）：第 1 版把版本写在 `"v"` 里，读的时候经
+//!   [`v1_to_v2`] 摘掉；盖第 1 版那一下原文照字节留成 `skill-installs.json.v1`。
 //! - **键是目录的绝对路径**：记的是「装时写进了哪几个文件」—— 落点是事实，名字只给人看。
 //! - `digest`：**装时写进去的那一份原文**的摘要（`common::digest::Fnv`，只答相同 / 不同，**不防篡改**）。
 //! - `created`：装之前这个路径不在 ⇒ `true`；装时盖掉了这台原有的一份 ⇒ `false`（卸它回不到装之前那一份 ⇒ 卸时要问）。
@@ -31,7 +33,7 @@
 //!
 //! - 两个后端**进程**同时写（常驻那一个 ＋ 一次性 CLI）：进程内那把锁挡不住，后写的整份盖掉先写的那一次（同 `asset_catalog` 登记的那一条）。
 
-use crate::platform::fs::{Own, OwnLock, OwnPath};
+use crate::platform::fs::Own;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -41,14 +43,34 @@ use serde_json::Value;
 
 /// 文件名（与 `backend.json` / `assets-catalog.json` 同一个家）。字面量只住契约 crate（`relay_route_core::SKILL_LEDGER_REL`，数据位置页按它列），写者只有本模块（判据钉）。
 pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::SKILL_LEDGER_REL);
-/// 格式版本。读到更大的 ⇒ 不覆盖。
-pub const FORMAT_V: u64 = 1;
 /// 读一份记录的上限。一个文件一条约 100 字节 ⇒ 4 MiB 装得下四万个文件；超了当读不懂（不拿截断的当完整的）。
+/// 读的那一口照声明表的那一格；这里的名字给字节上限登记表认，两处须相等（下一行编译期查）。
 pub const MAX_BYTES: u64 = 4 * 1024 * 1024;
+const _: () = assert!(MAX_BYTES == relay_route_core::SKILL_LEDGER_FILE.row.cap);
 
-/// 装记录：状态（读不懂不覆盖；更新的格式也算读不懂）。
+/// 装记录：状态（读不懂不覆盖；更新的格式也算读不懂）。第 1 版经 [`v1_to_v2`] 读成这一版。
 const DOC: crate::common::own_state::Doc<Ledger> =
-    crate::common::own_state::Doc::state(relay_route_core::SKILL_LEDGER_REL, MAX_BYTES);
+    crate::common::own_state::upgrade!(relay_route_core::SKILL_LEDGER_FILE, [v1_to_v2]);
+
+/// 第 1 版 ⇒ 第 2 版：版本从 `"v"` 挪到顶层 `version`（读写口管），别的格子不变。`"v"` 不是 1 ⇒ 读不懂（不认的格式不覆盖）。
+fn v1_to_v2(mut v: Value) -> Result<Value, crate::common::said::Said> {
+    let Some(o) = v.as_object_mut() else {
+        return Ok(v);
+    };
+    match o.remove("v") {
+        None => Ok(v),
+        Some(n) if n.as_u64() == Some(1) => Ok(v),
+        Some(n) => Err(copy_text(
+            "beSkillLedger.read.otherVersion",
+            &[
+                ("path", relay_route_core::SKILL_LEDGER_REL),
+                ("mine", "1"),
+                ("theirs", &n.to_string()),
+            ],
+        )
+        .into()),
+    }
+}
 /// 一趟 `add` 最多收这么多个文件（与 skill 读 / 装同一个上限，不另起一份）。
 use crate::assets::asset_catalog::SKILL_MAX_FILES as MAX_FILES;
 
@@ -78,25 +100,14 @@ pub struct Install {
 }
 
 /// 整份文件。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Ledger {
-    pub v: u64,
     pub installs: BTreeMap<String, Install>,
     /// MCP 装记录：配置文件的绝对路径 → server 名 → 装进去的那一条的摘要（[`mcp_digest`]）。
     /// 没有一条时不写这一格（旧文件与新文件同形）。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub mcp: BTreeMap<String, BTreeMap<String, String>>,
-}
-
-impl Default for Ledger {
-    fn default() -> Self {
-        Ledger {
-            v: FORMAT_V,
-            installs: BTreeMap::new(),
-            mcp: BTreeMap::new(),
-        }
-    }
 }
 
 /// 一条 MCP 定义的摘要（键序无关：按规范写法算）。装的时候记、卸的时候比。
@@ -118,32 +129,18 @@ pub fn ledger_path() -> Option<PathBuf> {
 pub type Read = crate::common::own_state::Read<Ledger>;
 
 pub fn read_at(path: &Path) -> Read {
-    DOC.read_with(path, |bytes| {
-        // 先只看版本：更新的格式整份不认（它可能多了这一版不认得的格子），也不覆盖。
-        let v = serde_json::from_slice::<Value>(&bytes)
-            .ok()
-            .and_then(|j| j.get("v").and_then(Value::as_u64));
-        if let Some(v) = v.filter(|v| *v != FORMAT_V) {
-            return Err(copy_text(
-                "beSkillLedger.read.otherVersion",
-                &[
-                    ("path", &path.display().to_string()),
-                    ("mine", &FORMAT_V.to_string()),
-                    ("theirs", &v.to_string()),
-                ],
-            )
-            .into());
-        }
-        serde_json::from_slice::<Ledger>(&bytes).map_err(|e| {
-            crate::common::said::Said::with_raw(
+    // 版本由读写口先过（更新的格式整份不认、也不覆盖；第 1 版经升级步），这里只把这一版的原文解成记录。
+    DOC.read_as::<Value>(path)
+        .and_then(|v| match serde_json::from_value::<Ledger>(v) {
+            Ok(l) => Read::Present(l),
+            Err(e) => Read::Unreadable(crate::common::said::Said::with_raw(
                 copy_text(
                     "beSkillLedger.read.unknown",
                     &[("path", &path.display().to_string())],
                 ),
                 e,
-            )
+            )),
         })
-    })
 }
 
 /// 读成一份可用的记录：没有 ⇒ 空的；读不懂 ⇒ `ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
@@ -155,17 +152,7 @@ pub fn load_at(path: &Path) -> Result<Ledger, crate::wire::spec::Fail> {
     }
 }
 
-/// **全仓唯一的写者**（经 `Own` 原子写；那一层目录由 [`record_at`] 在拿锁之前建）。
-fn write_at(
-    own: &Own,
-    file: &OwnPath,
-    held: &OwnLock,
-    ledger: &Ledger,
-) -> Result<(), crate::common::said::Said> {
-    let body = crate::common::own_state::json_body(file.as_path(), ledger)?;
-    own.write(file, held, &body)
-}
-
+// **全仓唯一的写者**在 [`record_at`] 末尾：经读写口整份原子写（带版本）；那一层目录由它在拿锁之前建。
 //
 // 读—改—写整段在那个目录的跨进程锁里（`platform/lock.rs`，[`record_at`] 开头拿）：两个后端进程同时记装记录时，
 // 后写的整份会盖掉先写的一条 ⇒ 那一趟装的文件从此卸不掉。
@@ -423,7 +410,7 @@ pub(crate) fn record_at(
         }
     };
     if changed {
-        write_at(own, &file, &held, &ledger)
+        DOC.write(own, &lock_dir, &held, &ledger)
             .map_err(|e| crate::wire::spec::Fail::from(("io_failed", e)))?;
     }
     Ok(RecordReply {

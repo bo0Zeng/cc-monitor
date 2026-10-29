@@ -409,7 +409,7 @@ fn an_unreadable_or_newer_catalog_is_never_overwritten() {
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     for body in [
         "{not json".to_string(),
-        serde_json::to_string(&json!({"v": 2, "self": "x", "machines": {}})).unwrap(),
+        serde_json::to_string(&json!({"version": 2, "self": "x", "machines": {}})).unwrap(),
     ] {
         std::fs::write(&f, &body).unwrap();
         let e = update_at(&own_at(&f), scan_of(&["a"]), "u@h", None).expect_err("读不懂也写了");
@@ -420,6 +420,27 @@ fn an_unreadable_or_newer_catalog_is_never_overwritten() {
             "读不懂的那份被改了"
         );
     }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 版本照声明表写在顶层 `version`：旧文件里的 `"v":1` 读得懂、id 照旧；落盘之后是 `version: 1`、没有 `"v"`。
+#[test]
+fn the_catalog_carries_the_declared_version_and_drops_the_old_v() {
+    let d = temp_dir("version");
+    let f = d.join(".cc-monitor").join(FILE_NAME);
+    std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+    std::fs::write(
+        &f,
+        serde_json::to_string(&json!({"v": 1, "self": "0123456789abcdef", "machines": {}}))
+            .unwrap(),
+    )
+    .unwrap();
+    let r = serde_json::to_value(update_at(&own_at(&f), scan_of(&["a"]), "u@h", None).expect("记"))
+        .unwrap();
+    assert_eq!(r["self"], json!("0123456789abcdef"), "旧文件的 id 丢了");
+    let on_disk: Value = serde_json::from_slice(&std::fs::read(&f).unwrap()).unwrap();
+    assert_eq!(on_disk["version"], json!(1), "没带声明的版本：{on_disk}");
+    assert!(on_disk.get("v").is_none(), "还写着旧的 `v`：{on_disk}");
     let _ = std::fs::remove_dir_all(&d);
 }
 
