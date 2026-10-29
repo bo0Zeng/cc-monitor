@@ -7,7 +7,9 @@
 //!   **状态**读不出来 ⇒ `Unreadable`（调用方不覆盖、照实说出来）；**缓存**读不出来 ⇒ 当没有（`Absent`，记一行日志）。
 //! - 版本（从表取的、格式是 JSON 的那几份；[`Doc::read`] · [`Doc::read_as`]）：顶层整数 `version`，缺了当 1。
 //!   比声明新 ⇒ 读不出来（状态不覆盖、缓存当没有）；比下限老 ⇒ 当没有；中间的依次过升级步；`version` 那一格摘掉再交给 `T`。
+//!   流式读写的大缓存不经 `Value`：自己核顶层 `version`，值取 [`Doc::version`]。
 //! - 写：[`Doc::write`] 整份写、顶层自动带 `version`；盖新版状态 ⇒ 拒；盖旧版 ⇒ 原文先照字节留成 `<名>.v<N>`。
+//!   一类多份的那几样文件名另给：[`Doc::write_named`]。
 //!   还没换上表的那几处用 [`json_body`]（紧凑 JSON ＋ 收尾换行），由调用方在那个目录的锁里经 `Own::write` 落盘。
 
 use crate::common::said::Said;
@@ -95,6 +97,14 @@ impl<T> Doc<T> {
             format: Some(d.row.format),
             steps,
             of: PhantomData,
+        }
+    }
+
+    /// 声明的版本（从表取的、格式是 JSON 的那几份；别的在编译期就拒）。流式读写的那几份大缓存自己核这一格，值只从这里来。
+    pub(crate) const fn version(&self) -> u32 {
+        match self.format {
+            Some(Format::Json { version, .. }) => version,
+            _ => panic!("只有从表取的 JSON 那几份有版本"),
         }
     }
 
@@ -220,12 +230,23 @@ impl<T: serde::Serialize> Doc<T> {
         held: &OwnLock,
         v: &T,
     ) -> Result<(), Said> {
-        let name = relay_route_core::file_name_of(self.rel);
+        self.write_named(own, dir, relay_route_core::file_name_of(self.rel), held, v)
+    }
+
+    /// 同 [`Doc::write`]，文件名另给：一类多份的那几样（落点只写得出那一类的样子，如 `…/<sid>.json`）。
+    pub(crate) fn write_named(
+        &self,
+        own: &Own,
+        dir: &OwnPath,
+        name: &str,
+        held: &OwnLock,
+        v: &T,
+    ) -> Result<(), Said> {
         let at = dir.join(name)?;
         let body = match self.format {
             Some(Format::Json { version, .. }) => {
                 if self.kind == Kind::State {
-                    self.keep_older(own, dir, &at, held, version)?;
+                    self.keep_older(own, dir, name, &at, held, version)?;
                 }
                 versioned_body(at.as_path(), v, version)?
             }
@@ -239,6 +260,7 @@ impl<T: serde::Serialize> Doc<T> {
         &self,
         own: &Own,
         dir: &OwnPath,
+        name: &str,
         at: &OwnPath,
         held: &OwnLock,
         version: u32,
@@ -256,7 +278,6 @@ impl<T: serde::Serialize> Doc<T> {
             return Err(newer(at.as_path(), found, version));
         }
         if found < u64::from(version) {
-            let name = relay_route_core::file_name_of(self.rel);
             let keep = dir.join(&format!("{name}.v{found}"))?;
             if matches!(read_bytes(keep.as_path(), self.cap), Read::Absent) {
                 own.write(&keep, held, &bytes)?;

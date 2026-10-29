@@ -18,12 +18,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// 那份文件最大多少字节（超了当读不懂）。
-pub(crate) const MAX_BYTES: u64 = 1024 * 1024;
-
-/// 那一份：状态（读不懂不覆盖）。
+/// 那一份：状态（读不懂不覆盖；落点 · 版本 · 读上限照表）。
 const DOC: crate::common::own_state::Doc<Review> =
-    crate::common::own_state::Doc::state(relay_route_core::PLAN_REVIEW_REL, MAX_BYTES);
+    crate::common::own_state::Doc::of(&relay_route_core::PLAN_REVIEW_FILE);
 
 /// 记下的两样。
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -154,9 +151,7 @@ fn edit_at(own: &Own, f: impl FnOnce(&mut Review)) -> Result<(), Err> {
         }
     };
     f(&mut r);
-    let body = crate::common::own_state::json_body(file.as_path(), &r)
-        .map_err(|e| Err::from(("io_failed", e)))?;
-    own.write(&file, &held, &body)
+    DOC.write(own, &dir, &held, &r)
         .map_err(|e| Err::from(("io_failed", e)))
 }
 

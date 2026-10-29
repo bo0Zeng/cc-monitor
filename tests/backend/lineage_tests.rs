@@ -134,3 +134,29 @@ fn the_store_round_trips_and_does_not_overwrite_an_unreadable_file() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// 盘上那一份没有 `version`（换上表之前写的）⇒ 读成第 1 版；写回那一份顶层带 `version: 1`。比声明新的那一份 ⇒ 读不懂、不覆盖。
+#[test]
+fn a_file_without_version_reads_as_format_1_and_is_written_back_with_it() {
+    let dir = std::env::temp_dir().join(format!("ccm-lineage-v-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(FILE_NAME);
+    std::fs::write(
+        &path,
+        br#"{"origins":{},"parents":{"s-old":{"parent":"s-p","agent":"claude-code","at":100}}}"#,
+    )
+    .unwrap();
+    let own = crate::platform::fs::Own::issue_data_at(&dir);
+    let store = LineageStore::at(Some(path.clone()));
+    assert_eq!(store.now().parent_of("s-old"), Some("s-p"), "没有版本那一份没读成第 1 版");
+    store.saw(&own, o(T, Some("s-q")), "s-new", "claude-code", 200);
+    let back: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(back["version"], serde_json::json!(1), "写回没带版本");
+    assert_eq!(back["parents"]["s-old"]["parent"], "s-p");
+    let newer = br#"{"version":2,"origins":{},"parents":{}}"#;
+    std::fs::write(&path, newer).unwrap();
+    LineageStore::at(Some(path.clone())).saw(&own, o("ffff000011112222", None), "s-b", "claude-code", 300);
+    assert_eq!(std::fs::read(&path).unwrap(), newer, "比声明新的那一份被盖了");
+    let _ = std::fs::remove_dir_all(&dir);
+}
