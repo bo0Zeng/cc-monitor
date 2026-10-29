@@ -141,9 +141,7 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
     };
     let mut from = None;
     let mut from_line = None;
-    let own_upstream = f
-        .own_upstream
-        .then(|| copy_text("acct.own.line", &[]));
+    let own_upstream = f.own_upstream.then(|| copy_text("acct.own.line", &[]));
     let (usage, stale, hover, sampled) = match (rot, &account) {
         // 上游是自设的：鉴权是用户网关的，说不出是哪个号的额度 ⇒ 不画那个号的用量（账上有也不画）；换号不适用。
         _ if own_upstream.is_some() => {
@@ -221,8 +219,8 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
         ),
     };
     // 自设上游：与默认号比没有意义（用的不是那个号的额度）⇒ 不比、不出徽章；标签页悬停卡那一行写那一句。
-    let differs = own_upstream.is_none()
-        && matches!((&account, &f.default), (Some(a), Some(d)) if a != d);
+    let differs =
+        own_upstream.is_none() && matches!((&account, &f.default), (Some(a), Some(d)) if a != d);
     let account_line = own_upstream.clone().or_else(|| {
         account
             .as_deref()

@@ -124,7 +124,10 @@ fn a_session_is_own_upstream_only_when_its_bound_origin_carries_a_base() {
     bind(&data, "tok1", "s-own");
     bind(&data, "tok2", "s-proxy");
     assert!(own_upstream_of(&data, "s-own"));
-    assert!(!own_upstream_of(&data, "s-proxy"), "只有出网代理也说成自设上游");
+    assert!(
+        !own_upstream_of(&data, "s-proxy"),
+        "只有出网代理也说成自设上游"
+    );
     assert!(!own_upstream_of(&data, "s-other"), "没绑来处的会话说成自设");
     std::fs::remove_dir_all(&data).ok();
 }
