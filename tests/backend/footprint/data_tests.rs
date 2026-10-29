@@ -297,7 +297,7 @@ fn 自己家里的每一样一行_文件给大小_目录不给_不在的照实�
 }
 
 /// 〔家里的都进这一份，判据两向，异源〕契约 crate 里 `~/.cc-monitor/` 下的每一个相对路径常量 == 这一份覆盖的路径
-/// （后端落点由它所在的 `bin/` 那一行覆盖；只住 monitor 那一侧的进程记录与 API key 表不在这台后端的家里算）。
+/// （后端落点由它所在的 `bin/` 那一行覆盖；只住 monitor 那一侧的设置 `CONFIG_REL`、进程记录与 API key 表不在这台后端的家里算）。
 #[test]
 fn 契约里家里的每个路径都有一行() {
     let src = include_str!("../../../src/common/relay-route-core/src/lib.rs");
@@ -336,6 +336,7 @@ fn 契约里家里的每个路径都有一行() {
         .collect();
     let mut want = declared;
     want.remove(relay_route_core::BACKEND_LANDING_REL);
+    want.remove(relay_route_core::CONFIG_REL);
     want.insert(".cc-monitor/bin".to_string());
     assert_eq!(covered, want);
 }
