@@ -25,6 +25,8 @@ const BORN_ON_FRAME: &[&str] = &[
     "history-record",
     // 按行号取回一段（没接骨架的会话丢掉的正文从这里要回来）。
     "history-lines",
+    // 按引用取回一张图（记录里的图片块只带引用，画到那一格才问）。
+    "history-image",
     // 会话事实出成品（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）。
     //   此前是前端 `onLine` 旁路自己攒的，没有被替掉的拨号子命令；monitor 这一侧从不发它（界面经通道直接问）。
     "history-facts",
@@ -329,6 +331,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "history-lines",
         "按行号取回一段：后端出记录行（原先回原文、monitor 解析）",
+    ),
+    (
+        "history-image",
+        "按引用取回一张图：记录行上线只带引用（类型 · 字节数 · 哪一行 · 第几张），人贴的图画到那一格时界面直问",
     ),
     (
         "drift-report",
