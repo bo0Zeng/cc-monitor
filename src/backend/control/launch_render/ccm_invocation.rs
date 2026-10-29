@@ -238,7 +238,13 @@ const DIMENSION_ORDER: &[Dim] = &[
     Dim {
         id: "identity",
         applies: |s| s.ccm_sid.is_some(),
-        cli_flags: |s| Some(vec![format!("{}={}", flag::CCM_SID, s.ccm_sid.unwrap_or_default())]),
+        cli_flags: |s| {
+            Some(vec![format!(
+                "{}={}",
+                flag::CCM_SID,
+                s.ccm_sid.unwrap_or_default()
+            )])
+        },
         caps: &["ccm-sid"],
     },
     Dim {

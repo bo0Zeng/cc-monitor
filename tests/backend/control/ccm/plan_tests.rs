@@ -262,9 +262,21 @@ fn only_two_of_the_three_naming_paths_step_aside_on_a_collision() {
     assert_eq!(path(&["--ccm-tmux", "--cwd", "/x/proj"]), "proj-cc-2");
     // 真取到的名字与 `tmux_steps_aside` 那一处说的一致（别名页那句说明照的就是它）。
     for (naming, args, base) in [
-        (TmuxNaming::Fixed, &["--ccm-tmux=n1", "--cwd", "/p"][..], "n1"),
-        (TmuxNaming::Base, &["--tmux-base", "n1", "--cwd", "/p"][..], "n1"),
-        (TmuxNaming::Auto, &["--ccm-tmux", "--cwd", "/x/proj"][..], "proj-cc"),
+        (
+            TmuxNaming::Fixed,
+            &["--ccm-tmux=n1", "--cwd", "/p"][..],
+            "n1",
+        ),
+        (
+            TmuxNaming::Base,
+            &["--tmux-base", "n1", "--cwd", "/p"][..],
+            "n1",
+        ),
+        (
+            TmuxNaming::Auto,
+            &["--ccm-tmux", "--cwd", "/x/proj"][..],
+            "proj-cc",
+        ),
     ] {
         assert_eq!(path(args) != base, tmux_steps_aside(naming), "{naming:?}");
     }
