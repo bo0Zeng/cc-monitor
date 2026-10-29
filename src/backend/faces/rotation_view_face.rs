@@ -346,6 +346,13 @@ impl crate::wire::typed::Handle for RotationView {
                 &cx.tz,
                 &|sid| live.contains(sid),
             )
+            .map_err(|e| match (e, &req.target) {
+                // 账本里没有它：上游是自设的那种（中转直通、不进账本）⇒ 照实写那一句。
+                (RotationViewErr::NoSession(_), RotTarget::Session { sid }) => session_gone(
+                    crate::accounts::upstream_select::session_upstream::own_upstream_here(sid),
+                ),
+                (e, _) => e,
+            })
         }
     }
 }
@@ -412,6 +419,15 @@ pub(crate) fn lines_of(
         .collect()
 }
 
+/// 中转账本里没有这个会话（`no_session`）那一句：上游是自设的 ⇒ 额度看不到 · 换号不适用；不是 ⇒ 后端没见过它。
+pub(crate) fn session_gone(own_upstream: bool) -> RotationViewErr {
+    RotationViewErr::NoSession(if own_upstream {
+        copy_core::copy_text("acct.own.line", &[])
+    } else {
+        copy_core::copy_text("beRotation.session.gone", &[])
+    })
+}
+
 /// 本体（测试给假的账本 · 额度账 · 钟 · 判活）。
 pub(crate) fn view_with(
     ctx: &Ctx,
@@ -427,9 +443,11 @@ pub(crate) fn view_with(
     // 会话 ⇒ 照它载入的副本；设置页 ⇒ 照文件此刻的。
     let (session, plan, shelved, form, agent) = match &req.target {
         RotTarget::Session { sid } => {
-            let s = base.sessions.get(sid).cloned().ok_or_else(|| {
-                RotationViewErr::NoSession(copy_core::copy_text("beRotation.session.gone", &[]))
-            })?;
+            let s = base
+                .sessions
+                .get(sid)
+                .cloned()
+                .ok_or_else(|| session_gone(false))?;
             let shelved = s.uses.as_ref().and_then(|c| shelf::find(&all, &c.id));
             let form = s.uses.as_ref().map(setup::form_of).unwrap_or_default();
             let agent = s.agent.clone();
