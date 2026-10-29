@@ -726,3 +726,10 @@ pub enum SignInState {
         again: LoginAgainHow,
     },
 }
+
+/// `quota-read` 的入参（没有格）。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct QuotaReadReq {}

@@ -7,6 +7,10 @@ use super::script::Text;
 pub(crate) use cmd_wire::rotation::{
     FormCell as Cell, FormKind as Kind, FormScope as Scope, RotFrom,
 };
+/// 改设置的意图（`rotation-settings` 的 `edit`）：线上形住 `cmd-wire`。
+pub(crate) use cmd_wire::rotation::RotEdit;
+#[cfg(test)]
+pub(crate) use cmd_wire::rotation::RotSeg;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -358,17 +362,6 @@ pub(crate) fn day_of(
     (whole.unwrap_or_default(), RotFrom::Default)
 }
 
-/// 分段里的一段（[`RotEdit::Seg`]）：`[from, to)` 是一段一行里打的钟点原样的字（照 [`day_minute`] 认）· 上限。
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotSeg {
-    pub(crate) from: String,
-    pub(crate) to: String,
-    pub(crate) v: f64,
-}
-
 /// 一段一行里打的钟点 ⇒ 一天里的分钟：`20:30` · `2030` · `20` 都认（前后空白不算），`24:00` ⇒ 一整天的末尾；写得不对 ⇒ 缺。
 /// 两端交来的都照这一处认。
 pub(crate) fn day_minute(text: &str) -> Option<u64> {
@@ -388,52 +381,6 @@ pub(crate) fn day_minute(text: &str) -> Option<u64> {
     let m: u64 = m.map_or(Some(0), |m| m.parse().ok())?;
     let v = h * 60 + m;
     (m < 60 && v <= DAY_MIN).then_some(v)
-}
-
-/// 改设置的一个意图（`rotation-settings` 的 `edit`）：设一格 · 分段里改 / 加 / 删一段 · 同第一窗与否 · 拖号牌 · 加号 · 移出。
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) enum RotEdit {
-    /// 设一格（`row` 缺 ⇒ 总体那一格）。
-    Set {
-        key: String,
-        #[serde(default)]
-        #[cfg_attr(test, ts(optional))]
-        row: Option<usize>,
-        #[cfg_attr(test, ts(type = "unknown"))]
-        v: Value,
-    },
-    /// 分段那一窗此刻生效的段里：`at` ＋ `seg` ⇒ 第 `at` 段换成 `seg`；只 `at` ⇒ 删第 `at` 段；只 `seg` ⇒ 加一段（压过它盖住的）。写成那一行自己的。
-    Seg {
-        key: String,
-        #[serde(default)]
-        #[cfg_attr(test, ts(optional))]
-        row: Option<usize>,
-        window: String,
-        #[serde(default)]
-        #[cfg_attr(test, ts(optional))]
-        at: Option<usize>,
-        #[serde(default)]
-        #[cfg_attr(test, ts(optional))]
-        seg: Option<RotSeg>,
-    },
-    /// 分段后面那一窗：`same` ⇒ 删掉自己的、同第一窗；否则把此刻生效的写成自己的（「另设」）。
-    Same {
-        key: String,
-        #[serde(default)]
-        #[cfg_attr(test, ts(optional))]
-        row: Option<usize>,
-        window: String,
-        same: bool,
-    },
-    /// 拖号牌：第 `from` 行松在第 `to` 行上 ⇒ 排到它前头。
-    Move { from: usize, to: usize },
-    /// 加一个号（排在最后）。
-    Add { account: String },
-    /// 移出一行。
-    Remove { row: usize },
 }
 
 /// 数照它的样子落盘：整数写成整数（同界面交来的、文件里写的那一形）。

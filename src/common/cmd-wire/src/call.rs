@@ -9,6 +9,8 @@ use crate::deploy::{DeployInstallReq, DeployUninstallReq, Installed, Uninstalled
 use crate::exit_policy::{ExitPolicy, ExitPolicyReadReq};
 use crate::files::*;
 use crate::plan::{PlanFiles, PlanFilesReq};
+use crate::quota::{QuotaRead, QuotaReadReq};
+use crate::rotation::*;
 use crate::record::{HistoryRead, HistoryReadReq};
 use crate::session::{HistoryTail, HistoryTailReq};
 use crate::terminal::{SshCommand, TerminalSshReq, UnfollowReq};
@@ -80,4 +82,24 @@ calls! {
     TransferCopyReq => "transfer-copy", BatchReply;
     TransferStartReq => "transfer-start", ();
     TransferStopReq => "transfer-stop", ();
+    QuotaReadReq => "quota-read", QuotaRead;
+    RotationFactsReq => "rotation-facts", RotationFactsReply;
+    RotationStrategiesReq => "rotation-strategies", RotationStrategiesReply;
+    RotationViewReq => "rotation-view", RotationViewReply;
+    RotationSettingsReq => "rotation-settings", RotStrategyRev;
+    RotationUseReq => "rotation-use", RotDone;
+    RotationReloadReq => "rotation-reload", RotDone;
+    RotationForNewReq => "rotation-for-new", RotDone;
+    RotationStrategyAddReq => "rotation-strategy-add", RotStrategyId;
+    RotationStrategyCopyReq => "rotation-strategy-copy", RotStrategyId;
+    RotationStrategyRenameReq => "rotation-strategy-rename", RotStrategyId;
+    RotationStrategyTzReq => "rotation-strategy-tz", RotStrategyRev;
+    RotationStrategyDeleteReq => "rotation-strategy-delete", RotDone;
+    RotationTempReq => "rotation-temp", RotationTempReply;
+    RotationUseNowReq => "rotation-use-now", RotDone;
+    RotationTryReq => "rotation-try", RotationTryReply;
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/common/cmd-wire/call_tests.rs"]
+mod tests;

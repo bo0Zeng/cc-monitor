@@ -9,10 +9,13 @@ use crate::faces::rotation_view_face::{checked, RotRefused};
 use crate::wire::typed::Command;
 pub(crate) use cmd_wire::rotation::{
     RotBadStrategy, RotDone, RotInUse, RotStale, RotStrategyId, RotStrategyRev,
+    RotationForNewReq, RotationReloadReq, RotationSettingsReq, RotationStrategyAddReq,
+    RotationStrategyCopyReq, RotationStrategyDeleteReq, RotationStrategyRenameReq,
+    RotationStrategyTzReq, RotationUseReq,
 };
 use copy_core::copy_text;
+#[cfg(test)]
 pub(crate) use form::RotEdit;
-use serde::Deserialize;
 use std::sync::Arc;
 
 fn gone(id: &str) -> String {
@@ -62,17 +65,6 @@ fn fresh_name(ctx: &Ctx, name: &str) -> Result<String, String> {
 
 // ── rotation-settings ─────────────────────────────────────────────────────────────────────
 
-/// `rotation-settings` 的入参：哪一份 · 改什么 · 改之前读到的版本（对不上 ⇒ `stale`）。
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationSettingsReq {
-    pub(crate) strategy: String,
-    pub(crate) edit: RotEdit,
-    pub(crate) if_rev: String,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-settings` 自己的码。
     pub(crate) enum RotationSettingsErr {
@@ -87,9 +79,7 @@ crate::wire::typed::codes! {
 pub(crate) struct RotationSettings;
 
 impl Command for RotationSettings {
-    const NAME: &'static str = "rotation-settings";
-    type Req = RotationSettingsReq;
-    type Reply = RotStrategyRev;
+    crate::wire::typed::by_call!(RotationSettingsReq);
     type Err = RotationSettingsErr;
 }
 
@@ -148,18 +138,6 @@ pub(crate) fn settings_with(
 
 // ── rotation-use ──────────────────────────────────────────────────────────────────────────
 
-/// `rotation-use` 的入参。
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationUseReq {
-    pub(crate) sid: String,
-    /// `null` ⇒ 这个会话不再轮换（只用开会话的号）。
-    #[cfg_attr(test, ts(type = "string | null"))]
-    pub(crate) strategy: Option<String>,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-use` 自己的码。
     pub(crate) enum RotationUseErr {
@@ -174,9 +152,7 @@ crate::wire::typed::codes! {
 pub(crate) struct RotationUse;
 
 impl Command for RotationUse {
-    const NAME: &'static str = "rotation-use";
-    type Req = RotationUseReq;
-    type Reply = RotDone;
+    crate::wire::typed::by_call!(RotationUseReq);
     type Err = RotationUseErr;
 }
 
@@ -223,15 +199,6 @@ pub(crate) fn use_with(
 
 // ── rotation-reload ───────────────────────────────────────────────────────────────────────
 
-/// `rotation-reload` 的入参。
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationReloadReq {
-    pub(crate) strategy: String,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-reload` 自己的码。
     pub(crate) enum RotationReloadErr {
@@ -244,9 +211,7 @@ crate::wire::typed::codes! {
 pub(crate) struct RotationReload;
 
 impl Command for RotationReload {
-    const NAME: &'static str = "rotation-reload";
-    type Req = RotationReloadReq;
-    type Reply = RotDone;
+    crate::wire::typed::by_call!(RotationReloadReq);
     type Err = RotationReloadErr;
 }
 
@@ -289,17 +254,6 @@ pub(crate) fn reload_with(
 
 // ── rotation-for-new ──────────────────────────────────────────────────────────────────────
 
-/// `rotation-for-new` 的入参。
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationForNewReq {
-    /// `null` ⇒ 新会话不轮换（只用开会话的号）。
-    #[cfg_attr(test, ts(type = "string | null"))]
-    pub(crate) strategy: Option<String>,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-for-new` 自己的码。
     pub(crate) enum RotationForNewErr {
@@ -312,9 +266,7 @@ crate::wire::typed::codes! {
 pub(crate) struct RotationForNew;
 
 impl Command for RotationForNew {
-    const NAME: &'static str = "rotation-for-new";
-    type Req = RotationForNewReq;
-    type Reply = RotDone;
+    crate::wire::typed::by_call!(RotationForNewReq);
     type Err = RotationForNewErr;
 }
 
@@ -351,20 +303,6 @@ pub(crate) fn for_new_with(
 
 // ── 策略文件：加 · 复制 · 改名 · 删 ─────────────────────────────────────────────────────────
 
-/// `rotation-strategy-add` 的入参。
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationStrategyAddReq {
-    /// 一份策略文件的原文（说明 ＋ 头 ＋ 代码）：从文件添加；缺 ⇒ 新建（照编辑器那一份，号列表 ＝ 账号库全部号，时区 ＝ 这台的）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) source: Option<String>,
-    /// 存成的文件名（＝ 标题）。
-    pub(crate) name: String,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-strategy-add` 自己的码。
     pub(crate) enum RotationStrategyAddErr {
@@ -378,9 +316,7 @@ crate::wire::typed::codes! {
 pub(crate) struct RotationStrategyAdd;
 
 impl Command for RotationStrategyAdd {
-    const NAME: &'static str = "rotation-strategy-add";
-    type Req = RotationStrategyAddReq;
-    type Reply = RotStrategyId;
+    crate::wire::typed::by_call!(RotationStrategyAddReq);
     type Err = RotationStrategyAddErr;
 }
 
@@ -430,16 +366,6 @@ pub(crate) fn add_with(
     Ok(RotStrategyId { id })
 }
 
-/// `rotation-strategy-copy` 的入参。
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationStrategyCopyReq {
-    pub(crate) id: String,
-    pub(crate) name: String,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-strategy-copy` 自己的码。
     pub(crate) enum RotationStrategyCopyErr {
@@ -452,9 +378,7 @@ crate::wire::typed::codes! {
 pub(crate) struct RotationStrategyCopy;
 
 impl Command for RotationStrategyCopy {
-    const NAME: &'static str = "rotation-strategy-copy";
-    type Req = RotationStrategyCopyReq;
-    type Reply = RotStrategyId;
+    crate::wire::typed::by_call!(RotationStrategyCopyReq);
     type Err = RotationStrategyCopyErr;
 }
 
@@ -487,17 +411,6 @@ pub(crate) fn copy_with(
     Ok(RotStrategyId { id })
 }
 
-/// `rotation-strategy-rename` 的入参。
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationStrategyRenameReq {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) if_rev: String,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-strategy-rename` 自己的码。
     pub(crate) enum RotationStrategyRenameErr {
@@ -511,9 +424,7 @@ crate::wire::typed::codes! {
 pub(crate) struct RotationStrategyRename;
 
 impl Command for RotationStrategyRename {
-    const NAME: &'static str = "rotation-strategy-rename";
-    type Req = RotationStrategyRenameReq;
-    type Reply = RotStrategyId;
+    crate::wire::typed::by_call!(RotationStrategyRenameReq);
     type Err = RotationStrategyRenameErr;
 }
 
@@ -575,17 +486,6 @@ pub(crate) fn rename_with(
     Ok(RotStrategyId { id })
 }
 
-/// `rotation-strategy-tz` 的入参：那一份 · 设成哪个时区（IANA 名）· 改之前读到的版本。
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationStrategyTzReq {
-    pub(crate) id: String,
-    pub(crate) tz: String,
-    pub(crate) if_rev: String,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-strategy-tz` 自己的码。
     pub(crate) enum RotationStrategyTzErr {
@@ -599,9 +499,7 @@ crate::wire::typed::codes! {
 pub(crate) struct RotationStrategyTz;
 
 impl Command for RotationStrategyTz {
-    const NAME: &'static str = "rotation-strategy-tz";
-    type Req = RotationStrategyTzReq;
-    type Reply = RotStrategyRev;
+    crate::wire::typed::by_call!(RotationStrategyTzReq);
     type Err = RotationStrategyTzErr;
 }
 
@@ -655,15 +553,6 @@ pub(crate) fn tz_with(
     })
 }
 
-/// `rotation-strategy-delete` 的入参。
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationStrategyDeleteReq {
-    pub(crate) id: String,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-strategy-delete` 自己的码。
     pub(crate) enum RotationStrategyDeleteErr {
@@ -678,9 +567,7 @@ crate::wire::typed::codes! {
 pub(crate) struct RotationStrategyDelete;
 
 impl Command for RotationStrategyDelete {
-    const NAME: &'static str = "rotation-strategy-delete";
-    type Req = RotationStrategyDeleteReq;
-    type Reply = RotDone;
+    crate::wire::typed::by_call!(RotationStrategyDeleteReq);
     type Err = RotationStrategyDeleteErr;
 }
 
