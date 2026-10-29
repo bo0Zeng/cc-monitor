@@ -13,7 +13,7 @@ import { copyText } from "./copy-table";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { TerminalSshReq } from "./generated/TerminalSshReq";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { toast } from "./kit/toast";
+import { toast, type ToastAction } from "./kit/toast";
 import { writeClipboard } from "./clipboard";
 import { detailOf, failSaid, saidOf } from "./kit/detail";
 import { openSettingsWindow } from "./open-settings";
@@ -58,17 +58,19 @@ export function sayNoTerminal(err: NoTerminalWindow): void {
       : [copyText("terminalOpen.noTerminal.title"), copyText("terminalOpen.noTerminal.detail")];
   toast(title, detail, {
     level: "error",
-    action: [
-      { label: copyText("terminalOpen.noTerminal.settings"), run: () => void openSettingsWindow(null, TERMINAL_SETTING) },
-      {
-        label: copyText("terminalOpen.noTerminal.copy"),
-        run: () =>
-          void writeClipboard(err.command).catch((e: unknown) => {
-            toast(failSaid(copyText("terminalOpen.noTerminal.copyFailed"), e), err.command, { level: "error", detail: detailOf(e) });
-          }),
-      },
-    ],
+    action: [{ label: copyText("terminalOpen.noTerminal.settings"), run: () => void openSettingsWindow(null, TERMINAL_SETTING) }, copyCommand(err.command)],
   });
+}
+
+/** ［复制命令］：点了才把那一行写进剪贴板；写不进 ⇒ 说一句、那一行照列。终端没开成的各处都用它。 */
+export function copyCommand(command: string): ToastAction {
+  return {
+    label: copyText("terminalOpen.noTerminal.copy"),
+    run: () =>
+      void writeClipboard(command).catch((e: unknown) => {
+        toast(failSaid(copyText("terminalOpen.noTerminal.copyFailed"), e), command, { level: "error", detail: detailOf(e) });
+      }),
+  };
 }
 
 /** 壳回的结局：`"noWindow"` / `"setMissing"` ⇒ 抛 {@link NoTerminalWindow}；真失败壳那边抛一句人话，原样往上走。 */
