@@ -225,7 +225,6 @@ tests/evidence/RT1-lib.ps1	1
 tests/evidence/RT1-relay-bench.rs	1
 tests/evidence/RT1-winwatch.ps1	1
 tests/evidence/S25-class-ledger.ts	1
-tests/evidence/S27-cache-manifest.md	1
 tests/evidence/S27-offline-cache-check.py	1
 tests/evidence/S27-prove-offline.py	1
 tests/evidence/S30-css-conventions.ts	1
@@ -295,7 +294,6 @@ tests/frontend/ui/account-chip.vitest.ts	3
 tests/frontend/ui/accounts.vitest.ts	7
 tests/frontend/ui/agent-profile-parity.vitest.ts	10
 tests/frontend/ui/backend-policy.vitest.ts	2
-tests/frontend/ui/base-flag-contract-guard.vitest.ts	6
 tests/frontend/ui/boot-active-viewport.vitest.ts	1
 tests/frontend/ui/cards/diff.test.ts	1
 tests/frontend/ui/config-patch-fake.ts	1
@@ -314,7 +312,6 @@ tests/frontend/ui/node-suite-registry-guard.vitest.ts	1
 tests/frontend/ui/scale1-render-cost.vitest.ts	2
 tests/frontend/ui/scale2-height-truth.vitest.ts	2
 tests/frontend/ui/settings/backend-section.vitest.ts	5
-tests/frontend/ui/settings/machine-aliases-naming.vitest.ts	1
 tests/frontend/ui/settings/machine-aliases-no-ccm-grammar.vitest.ts	1
 tests/frontend/ui/settings/panel-block-isolation.vitest.ts	1
 tests/frontend/ui/settings/panel-deferred-io.vitest.ts	1

@@ -16975,6 +16975,25 @@ enum class ProfileTmuxMode(val wire: String) {
 }
 
 @Suppress("UNCHECKED_CAST")
+data class ProfileTmuxNaming(
+    val mode: ProfileTmuxMode,
+    val text: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ProfileTmuxNaming> = obj(
+            listOf(
+            Field("mode", { ProfileTmuxMode.ADAPTER }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            ),
+            { a -> ProfileTmuxNaming(a[0] as ProfileTmuxMode, a[1] as String) },
+            { v -> arrayOf(v.mode, v.text) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class ProfileTmuxPick(
     val mode: ProfileTmuxMode,
     val name: String,
@@ -17045,6 +17064,7 @@ data class ProfilesBook(
     val accounts: List<String>,
     val tmux: Boolean?,
     val slots: List<ProfileSlot>,
+    val tmuxNaming: List<ProfileTmuxNaming>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -17067,9 +17087,10 @@ data class ProfilesBook(
             Field("accounts", { arr(Str) }, optional = false, nullable = false),
             Field("tmux", { opt(Bool) }, optional = false, nullable = true),
             Field("slots", { arr(ProfileSlot.ADAPTER) }, optional = false, nullable = false),
+            Field("tmuxNaming", { arr(ProfileTmuxNaming.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> ProfilesBook(a[0] as String, a[1] as String, a[2] as Boolean, a[3] as String?, a[4] as String?, a[5] as ProfileProblem?, a[6] as List<ProfileRow>, a[7] as List<SetOut>, a[8] as List<ProfileRow>, a[9] as String, a[10] as String, a[11] as ProfilesMigrated?, a[12] as String, a[13] as List<String>, a[14] as Boolean?, a[15] as List<ProfileSlot>) },
-            { v -> arrayOf(v.path, v.pathShown, v.exists, v.rev, v.editedAt, v.fileProblem, v.profiles, v.sets, v.seed, v.seedHint, v.seedCreate, v.migrated, v.binDir, v.accounts, v.tmux, v.slots) },
+            { a -> ProfilesBook(a[0] as String, a[1] as String, a[2] as Boolean, a[3] as String?, a[4] as String?, a[5] as ProfileProblem?, a[6] as List<ProfileRow>, a[7] as List<SetOut>, a[8] as List<ProfileRow>, a[9] as String, a[10] as String, a[11] as ProfilesMigrated?, a[12] as String, a[13] as List<String>, a[14] as Boolean?, a[15] as List<ProfileSlot>, a[16] as List<ProfileTmuxNaming>) },
+            { v -> arrayOf(v.path, v.pathShown, v.exists, v.rev, v.editedAt, v.fileProblem, v.profiles, v.sets, v.seed, v.seedHint, v.seedCreate, v.migrated, v.binDir, v.accounts, v.tmux, v.slots, v.tmuxNaming) },
         )
     }
 }

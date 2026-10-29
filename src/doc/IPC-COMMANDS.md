@@ -625,7 +625,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `from` | [WatchFrom] | 刚进名单的会话每份记录一格（先前就在名单里的不回） |
+| `from` | [WatchFrom] | 刚进名单的会话每份记录一格（已在名单里的不回） |
 
 #### `Request`
 
@@ -721,7 +721,7 @@ path: string,
 seq: number, };
 type WatchReply = { 
 /**
- * 刚进名单的会话每份记录一格（先前就在名单里的不回）。
+ * 刚进名单的会话每份记录一格（已在名单里的不回）。
  */
 from: Array<WatchFrom>, };
 ```
@@ -11159,6 +11159,7 @@ start: string, };
 type ProfileSlot = { id: ProfileSlotId, label: string, };
 type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab" | "tabGroup" | "say";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
+type ProfileTmuxNaming = { mode: ProfileTmuxMode, text: string, };
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesBook = { 
 /**
@@ -11216,7 +11217,11 @@ tmux: boolean | null,
 /**
  * 表单各格的标签，按表单从上到下的顺序（表单 · 删一段时「会丢哪几项」那一句照它写格名）。
  */
-slots: Array<ProfileSlot>, };
+slots: Array<ProfileSlot>, 
+/**
+ * 「在哪起」那三种 tmux 取名各一句（怎么取名 ＋ 撞名时怎样），按 auto · fixed · base。
+ */
+tmuxNaming: Array<ProfileTmuxNaming>, };
 type ProfilesMigrated = { 
 /**
  * 转进来几段。
