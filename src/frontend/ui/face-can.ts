@@ -20,8 +20,10 @@ type Face = SessionFace | null;
 
 /** 进程在（「活跃 N」· 最后活动时刻 · 几个进程在写）。 */
 export const isLive = (f: Face): boolean => f?.life.is === "live";
-/** 还有终端可去（拉前 · 停 · 杀 · 终端页 · 自动跟随 · 后台物化）。 */
+/** 还有终端可去（拉前 · 停 · 终端页 · 自动跟随 · 后台物化）。 */
 export const hasTerminal = (f: Face): boolean => f?.can.term.can === "yes";
+/** 结束得了（右键 · 多选同一个确认框，交 `sessions-stop`）。 */
+export const canEnd = (f: Face): boolean => f?.can.end.can === "yes";
 /** 能恢复（Resume / 在 tmux 里起）。 */
 export const canResume = (f: Face): boolean => f?.can.resume.can === "yes";
 /** × · 中键 · W · 批量都关得掉。 */

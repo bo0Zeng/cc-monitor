@@ -4,11 +4,10 @@
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { settleTyped } from "./control-said";
+import { ControlError, settleTyped } from "./control-said";
 import { endTerminal } from "./terminal-reads";
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
-import { toast } from "./kit/toast";
-import { copyText } from "./copy-table";
+import { askEnd, sayEnded, type EndRow } from "./end-confirm";
 import type { TerminalsBoard } from "./generated/TerminalsBoard";
 import type { BoardRow } from "./generated/BoardRow";
 
@@ -27,23 +26,21 @@ export interface BoardPick {
   row: BoardRow;
 }
 
-/** 结束这几行：先确认（同一种确认框），再逐行交 `terminal-end`；有一行没结束 ⇒ 说没结束。 */
+/** 结束这几行：先确认（结束会话那一个框），再逐行交 `terminal-end`；结局照结束那一种说（没成的各写那台那一句）。 */
 export async function endRows(items: readonly BoardPick[], ask: ConfirmFn = confirmDialog): Promise<void> {
-  const ok = await ask({
-    title: copyText("terminalsView.end.title"),
-    rows: [{ label: copyText("kit.interrupts.cut"), items: items.map((i) => i.row.title) }],
-    action: copyText("terminalsView.select.end"),
-    danger: true,
-  });
-  if (!ok) return;
-  const each = await Promise.all(
-    items.map((i) =>
+  if (!(await askEnd(items.map((i) => i.row.title), ask))) return;
+  const rows = await Promise.all(
+    items.map((i): Promise<EndRow> =>
       endTerminal(i.origin, { terminal: i.row.terminal }, i.row.title).then(
-        () => true,
-        () => false,
+        () => ({ title: i.row.title, outcome: "done", why: "" }),
+        (e: unknown) => ({
+          title: i.row.title,
+          outcome: "failed",
+          why: e instanceof Error ? e.message : String(e),
+          ...(e instanceof ControlError && e.detail !== "" ? { detail: e.detail } : {}),
+        }),
       ),
     ),
   );
-  if (each.every(Boolean)) toast(copyText("terminalsView.end.done"), "", { level: "success" });
-  else toast(copyText("terminalsView.end.failed"), "");
+  sayEnded(rows);
 }
