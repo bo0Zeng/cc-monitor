@@ -50,12 +50,16 @@ fn write_all(own: &Own, home: &Path) {
     let req = serde_json::from_value(json!({"op": "selfPaste", "rc": "/x/.bashrc"})).expect("req");
     crate::footprint::chores::marks::mark_at(own, &req).expect("marks");
     crate::plan::review::answer_ack(own, "/w", "s1", "k1", &["k1".to_string()]).expect("review");
-    let host = serde_json::from_value(json!({
-        "label": "box", "host": "box.lan", "port": 2222, "user": "u", "keyPath": "",
-        "addresses": ["box-2.example"], "jump": "", "connect": true
-    }))
-    .expect("host");
-    crate::control::machines::write(own, &[host]).expect("machines");
+    let edits = serde_json::from_value(json!({"edits": [{
+        "op": "insertin",
+        "where": [{"fields": ["label", "host"], "equals": "box"}],
+        "value": {
+            "label": "box", "host": "box.lan", "port": 2222, "user": "u", "keyPath": "",
+            "addresses": ["box-2.example"], "jump": "", "connect": true
+        }
+    }]}))
+    .expect("edits");
+    crate::control::machines::answer_set_in(Some(home), own, &edits).expect("machines");
     crate::common::machine_prefs::write(own, &Default::default()).expect("prefs");
     crate::control::launch_account::leave_note(own, 4242, Some("work"), true, None, 1_700_000_000)
         .expect("note");

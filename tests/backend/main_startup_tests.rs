@@ -31,3 +31,27 @@ fn the_machine_table_is_installed_before_anything_is_dispatched() {
         "`main` 分流之前恰好装一次机器表（`faces::install_machines`）"
     );
 }
+
+/// 常驻那一位起来那一段（各台常驻流起来之前那几步）：只剩这一版当桥的那一次（`prefs.json` 第 1 ⇒ 2 版）；
+/// 已发过的那几次换形（第 7 批 · 主机指纹 · 注解第 0 版）不再调。
+#[test]
+fn the_resident_startup_runs_only_the_bridged_reshape() {
+    let src = include_str!("../../src/backend/main.rs");
+    let feeds = src
+        .find("control::feeds::start(")
+        .expect("找不到各台常驻流起来那一步 —— 本条要跟着改");
+    let at = src[..feeds]
+        .rfind("if resident {")
+        .expect("找不到常驻那一段 —— 本条要跟着改");
+    let calls: Vec<&str> = src[at..feeds]
+        .lines()
+        .skip(1)
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with("//"))
+        .collect();
+    assert_eq!(
+        calls,
+        vec!["control::prefs_migration::migrate_here(&own);"],
+        "常驻起来那一段多调了别的"
+    );
+}

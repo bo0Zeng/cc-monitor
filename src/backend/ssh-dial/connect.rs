@@ -203,8 +203,6 @@ pub struct Trust {
     /// 这台记过的 host key（可多种类型）。非空 ⇒ 协商时这几种类型排前，握手时按协商出的类型严格比；
     /// 那一种没记过（而别的记过）⇒ 拒，同「钥匙变了」。
     pub known: Vec<PublicKey>,
-    /// 待核的指纹（桌面机器表那一格换形来的，只活这一版）：没记过钥匙时按它严格比。
-    pub pending: Option<String>,
 }
 
 impl Trust {
@@ -213,17 +211,15 @@ impl Trust {
         let text = env::get().host_keys.read()?;
         Ok(Trust {
             known: crate::known_hosts::known(&text, addrs),
-            pending: crate::known_hosts::pending(&text, addrs),
         })
     }
 
-    /// 拒了这一把时「钥匙变了」那一句要说的期望指纹：库里同类型那一把（没有 ⇒ 待核的那一个，再没有 ⇒ 空串）。
+    /// 拒了这一把时「钥匙变了」那一句要说的期望指纹：库里同类型那一把（没有 ⇒ 空串）。
     fn expected_for(&self, offered: &PublicKey) -> String {
         self.known
             .iter()
             .find(|k| k.algorithm() == offered.algorithm())
             .map(crate::known_hosts::fingerprint)
-            .or_else(|| self.pending.clone())
             .unwrap_or_default()
     }
 
@@ -361,8 +357,6 @@ impl client::Handler for Checker {
             .note_key_type(server_public_key.algorithm().as_str());
         let pass = if !self.trust.known.is_empty() {
             self.trust.judge_known(server_public_key).is_ok()
-        } else if let Some(fp) = &self.trust.pending {
-            actual == fp.trim()
         } else {
             tracing::warn!("dial: 首见的 host key {actual}：鉴权过了记进库");
             return Ok(true);

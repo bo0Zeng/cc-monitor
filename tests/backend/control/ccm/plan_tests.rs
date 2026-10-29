@@ -2021,7 +2021,6 @@ fn the_relay_is_injected_the_way_that_family_declares() {
         kind,
         home,
         account_env: None,
-        old_home_pref: None,
         assets: None,
         history: None,
         upstream: Some(DefaultUpstream {
