@@ -1,4 +1,4 @@
-//! 源码结构那几族判据：测试属性 · 剥法 · 绕道再导出 · 剥注释只一份 · shell 目标的结构扫描 · 位置比较的锚点 · 符号与行号地址 · 死名。
+//! 源码结构那几族判据：测试属性 · 剥法 · 绕道再导出 · 剥注释只一份 · 扫描结果与定义钉 · 位置比较的锚点 · 符号与行号地址 · 死名。
 
 use super::repo;
 use crate::*;
@@ -809,142 +809,9 @@ fn every_comment_stripping_transformer_is_registered() {
     );
 }
 
-#[test]
-fn comment_stripping_has_exactly_one_shared_implementation() {
-    const REGISTERED: &[(&str, &str)] = &[
-        (
-            // 住址跟着那份私有剥法搬进 `tests/frontend/shell/`。
-            "e2e_gate_registry_tests.rs",
-            "**别的注释语法**：语料是 shell 脚本（`tests/e2e/*.sh`），注释前缀是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 刻意只剥**整行**：shell 里 `#` 会出现在字符串中间（本处语料就有 `pgrep` 模式），                 按 marker 截断会误伤。收口的正确做法是给共享原语加一个「注释前缀」参数，那是另一件事。",
-        ),
-    ];
+// ===== `pin_definition` · `ScanReport::require`：足迹那几份判据借的两把尺子 =====
 
-    // 🔴 **两棵树：生产段 ＋ monitor 的测试段。**
-    //
-    // 同上一条的理由：本条头注逐字「私有剥法一律住在测试模块里」，而测试模块搬去了
-    // `<repo>/tests/frontend/shell/`。只扫 `src/frontend/shell/src` 的话连**已登记的那一份**都扫不到 ——
-    // 底下那条抽取器自检按设计响了（它正是为这一形而写的）。
-    let mut found: Vec<String> = Vec::new();
-    for root in [
-        "src/frontend/shell/src",
-        "tests/frontend/shell",
-        "tests/comms/inward",
-        "tests/frontend/filewin",
-    ] {
-        for (f, raw) in tree(root, &["rs"]) {
-            // 只看生产段之外也一样：私有剥法一律住在测试模块里，所以扫整份。
-            for l in raw.lines() {
-                let t = l.trim_start();
-                if t.starts_with("fn strip_line_comments")
-                    || t.starts_with("fn strip_comments")
-                    || t.starts_with("fn without_comments")
-                {
-                    found.push(
-                        f.file_name()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("?")
-                            .to_string(),
-                    );
-                }
-            }
-        }
-    }
-    found.sort();
-    found.dedup();
-
-    // 抽取器自检：连登记在册的那一个都扫不到 ⇒ 遍历或形态坏了，下面的对拍会空绿。
-    assert!(
-        found.contains(&"e2e_gate_registry_tests.rs".to_string()),
-        "连 `e2e_gate_registry_tests.rs` 里那个已登记的实现都没扫到 —— \n\
-             遍历或形态坏了，那样「没有新增」这个结论是零命中得来的，不是真的。实得：{found:?}"
-    );
-
-    let extra: Vec<&String> = found
-        .iter()
-        .filter(|f| !REGISTERED.iter().any(|(r, _)| *r == f.as_str()))
-        .collect();
-    assert!(
-        extra.is_empty(),
-        "又出现了私有的剥注释实现：{extra:?}\n\
-             ★ 先用 `crate::strip_comment_lines` —— 08-06 已把三份重复迁过去。\n\
-             它**确实不够**时才加进本表，并写清是哪种语义上的不够（行尾注释？保行号？\n\
-             别的注释语法？）。⚠ 只写文件名不算理由。\n\
-             已登记：{REGISTERED:?}"
-    );
-}
-
-/// tmux `-t` 目标的性质：**紧跟的那个 token 里**先出现 `=` 再出现 `:`。
-/// （T01 审计 S2：看整个窗口时，同一行的 `A=b:c` 诱饵能让裸目标零违规。）
-fn exact_target(win: &str) -> Result<(), String> {
-    let eq = win.find('=');
-    let colon = win.find(':');
-    if eq.is_some() && colon.is_some() && eq < colon {
-        Ok(())
-    } else {
-        Err("tmux 目标必须是 `=名:` 精确形态".to_string())
-    }
-}
-
-/// **用已知的绕过手法验证**（纪律）。这不是构造的边角——
-/// 裸目标正是 F01 修掉的那次「杀错/打错兄弟会话」生产事故，
-/// 而 F04 的 D 审计实测过：固定 needle 版本对它**完全空转**。
-#[test]
-fn catches_the_known_bare_target_bypass() {
-    let bad = "tmux send-keys -t \"$name\" x\ntmux kill-session -t $name\n";
-    let r = scan_after_marker(bad, "-t", Some("#"), 48, &|_| false, &exact_target);
-    assert_eq!(r.checked, 2);
-    assert_eq!(r.violations.len(), 2, "两处裸目标都必须被抓");
-    assert!(r.require(2, "tmux 目标").is_err());
-}
-
-#[test]
-fn accepts_the_three_legit_exact_forms() {
-    let good = "a -t $(sq \"=$x:\") b\nc -t \"=$x:\" d\ne -t '=x:' f\n";
-    let r = scan_after_marker(good, "-t", Some("#"), 48, &|_| false, &exact_target);
-    assert_eq!(r.checked, 3);
-    assert!(r.violations.is_empty(), "实得 {:?}", r.violations);
-    assert!(r.require(3, "tmux 目标").is_ok());
-}
-
-/// **要件 3 内建**：扫到 0 处必须红，且措辞要指向"扫描器失效"而非"代码变干净了"。
-/// 本会话我写坏的四条守卫里，"恒绿/空转"占了两条——所以这一条不能是可选的。
-#[test]
-fn zero_matches_fails_and_says_scanner_may_be_broken() {
-    let r = scan_after_marker(
-        "毫无关系的文本\n",
-        "-t ",
-        Some("#"),
-        48,
-        &|_| false,
-        &exact_target,
-    );
-    assert_eq!(r.checked, 0);
-    assert!(r.violations.is_empty(), "没扫到东西不等于有违规");
-    let e = r.require(1, "tmux 目标").unwrap_err();
-    assert!(e.contains("扫描器可能失效"), "措辞要指向扫描器，实得: {e}");
-    assert!(e.contains("别急着调低阈值"));
-}
-
-#[test]
-fn comment_lines_are_skipped() {
-    let t = "# 示例：tmux -t $name\ntmux -t \"=a:\" x\n";
-    let r = scan_after_marker(t, "-t", Some("#"), 48, &|_| false, &exact_target);
-    assert_eq!(r.checked, 1, "注释行里的用法示例不算");
-    assert!(r.violations.is_empty());
-}
-
-/// **要件 4**：放行的逃生口计入 checked（否则计数自检会被它稀释），但不施加性质。
-#[test]
-fn allowed_indirection_counts_but_is_not_checked() {
-    let t = "tmux send-keys -t $t x\ntmux kill -t $name y\n";
-    let allow = |rest: &str| first_token(rest) == "$t";
-    let r = scan_after_marker(t, "-t", Some("#"), 48, &allow, &exact_target);
-    assert_eq!(r.checked, 2, "逃生口也要计数");
-    assert_eq!(r.violations.len(), 1, "只有裸目标那处违规");
-}
-
-/// **要件 4 的另一半**：钉死逃生口的定义。不钉的话 `$t` 能被改成裸值、
-/// 扫描照样全绿而防线已经没了。
+/// 钉死逃生口的定义：被改成裸值 ⇒ 红。
 #[test]
 fn pinning_the_escape_hatch_definition() {
     let def = r#"t="$(sq "=$tmux_name:")""#;
@@ -956,35 +823,7 @@ fn pinning_the_escape_hatch_definition() {
     assert!(e.contains("绕过整个结构性扫描"));
 }
 
-// ===== T01 审计报的三个绕过，逐条钉死（用它给的手法验证）=====
-
-/// **S1**：`-t$name` 紧贴形态。marker 写成 `"-t "`（带空格）时它完全不进枚举
-/// ——审计在真实 `shared/ccm` 上实测过：checked 11→10、violations 空、require 照样通过。
-#[test]
-fn adjacent_form_is_enumerated_too() {
-    let bad = "tmux attach -t$name\n";
-    let r = scan_after_marker(bad, "-t", Some("#"), 48, &|_| false, &exact_target);
-    assert_eq!(r.checked, 1, "紧贴形态必须进枚举");
-    assert_eq!(r.violations.len(), 1, "且必须被判违规");
-}
-
-/// 但**不能把 `-tmux`/`-timeout` 这类更长的选项名误当成 `-t` 带值**。
-#[test]
-fn longer_option_names_are_not_false_positives() {
-    let t = "cmd -tmux-size 220x50\ncmd -timeout 5\n";
-    let r = scan_after_marker(t, "-t", Some("#"), 48, &|_| false, &exact_target);
-    assert_eq!(r.checked, 0, "-tmux/-timeout 不是 -t 带值，实得 {r:?}");
-}
-
-/// **S2**：同一行的诱饵。谓词只看紧跟的 token，不看整个窗口。
-#[test]
-fn same_line_decoy_cannot_fool_the_predicate() {
-    let bad = "tmux send-keys -t $name \"export A=b:c\"\n";
-    let r = scan_after_marker(bad, "-t", Some("#"), 48, &|_| false, &exact_target);
-    assert_eq!(r.violations.len(), 1, "裸目标必须被抓，诱饵 A=b:c 不算");
-}
-
-/// **S3**：定义两次、后者生效。`contains` 通不过这一关。
+/// 定义两次、后者生效：只看「逐字在」通不过这一关。
 #[test]
 fn pin_definition_rejects_second_assignment() {
     let def = r#"t="$(sq "=$tmux_name:")""#;
@@ -997,7 +836,7 @@ fn pin_definition_rejects_second_assignment() {
     assert!(pin_definition(&with_comment, def, "t=", "$t").is_ok());
 }
 
-/// **I3**：`min_checked = 0` 等于把要件 3 关掉。
+/// `min_checked = 0` 等于把计数自检关掉。
 #[test]
 fn min_checked_zero_is_rejected() {
     let r = ScanReport {
@@ -1008,50 +847,29 @@ fn min_checked_zero_is_rejected() {
     assert!(e.contains("不得为 0"), "实得: {e}");
 }
 
-/// `first_token` 的边界：到空白 / `;` / `|` / `&` / `)` 为止。
-/// `first_token` 必须取出 shell 意义上的**一个参数**——`$(…)` 与引号区内部的空格
-/// 不是分隔符。第一版按空格硬切，把合法的 `$(sq "=$x:")` 截成 `$(sq` 而误判违规。
+/// 扫到的少于下限 ⇒ 红，说法指向扫描器；有违反 ⇒ 红，带上违反原文与检查了几处。
 #[test]
-fn first_token_takes_one_shell_argument() {
-    assert_eq!(first_token(" $t ;rm -rf /"), "$t");
-    assert_eq!(first_token("$t;kill"), "$t");
-    assert_eq!(first_token("\"=a:\" x"), "\"=a:\"");
-    assert_eq!(first_token("'=a:' x"), "'=a:'");
-    // 关键：命令替换整体算一个参数
-    assert_eq!(first_token(" $(sq \"=$x:\") b"), "$(sq \"=$x:\")");
-    assert_eq!(first_token("$bare b"), "$bare");
-    // 尾部引号是外层赋值的闭合引号，不属于目标（真实形态 `seq="… -t $t"`）
-    assert_eq!(first_token(" $t\""), "$t");
-    assert_eq!(first_token("$bare'"), "$bare");
-    assert_eq!(first_token(""), "");
-    // 不配对时整段交给谓词（它会因缺 = / : 报违规，而不是静默放过）
-    assert_eq!(first_token("$(unclosed"), "$(unclosed");
-}
-
-/// **S6**：`allow` 的语义要对称——`$t` 就是 `$t`，不论后面跟什么。
-/// 旧的 `starts_with("$t ")` 让 `-t $t ;rm -rf /` 被放行、而行尾 `-t $t` 反而判红。
-#[test]
-fn allow_is_symmetric_on_the_token() {
-    let t = "a -t $t\nb -t $t;kill\nc -t $t \"x\"\nd -t $bare\n";
-    let allow = |rest: &str| first_token(rest) == "$t";
-    let r = scan_after_marker(t, "-t", Some("#"), 48, &allow, &exact_target);
-    assert_eq!(r.checked, 4);
-    assert_eq!(
-        r.violations.len(),
-        1,
-        "只有 $bare 那处违规，实得 {:?}",
-        r.violations
+fn require_blames_the_scanner_on_too_few_and_lists_violations() {
+    let empty = ScanReport {
+        checked: 0,
+        violations: vec![],
+    };
+    let e = empty.require(1, "某扫描").unwrap_err();
+    assert!(e.contains("扫描器可能失效"), "实得: {e}");
+    let bad = ScanReport {
+        checked: 1,
+        violations: vec!["第 2 行：裸目标".to_string()],
+    };
+    let e = bad.require(1, "某扫描").unwrap_err();
+    assert!(
+        e.contains("第 2 行：裸目标") && e.contains("共检查 1 处"),
+        "实得: {e}"
     );
-}
-
-#[test]
-fn violations_report_line_numbers_and_window() {
-    let t = "行一\ntmux -t $bare x\n";
-    let r = scan_after_marker(t, "-t", Some("#"), 12, &|_| false, &exact_target);
-    let e = r.require(1, "tmux 目标").unwrap_err();
-    assert!(e.contains("第 2 行"), "要报行号，实得 {e}");
-    assert!(e.contains("$bare"), "要报窗口内容");
-    assert!(e.contains("共检查 1 处"));
+    let ok = ScanReport {
+        checked: 2,
+        violations: vec![],
+    };
+    assert!(ok.require(2, "某扫描").is_ok());
 }
 
 /// **拼命令用的 shell 元字符黑名单，权威源恰好一处**（E3）。

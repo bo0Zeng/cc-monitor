@@ -198,14 +198,21 @@ fn stir(m: &tokio::sync::watch::Sender<u64>) {
 pub struct Wire {
     /// 连的是哪（`主机:口`；跳板那几条是那台跳板）。
     pub endpoint: String,
-    /// 这一条上的字节压没压（协商时交出去的偏好序：判准 ＋ 闸都答压才压）。
-    pub compressed: bool,
+    /// 这一跳远不远：拨号核心那一跳判准的答案（`connect.rs::compression_for`；经代理 ⇒ 远）。跳板那几条恒 `false`（只运隧道，判准不落在它们上面）。
+    pub far: bool,
     /// 这一条的 TCP 经没经代理（出网口开它那一刻说的，`egress::Opened::via_proxy`；在跳板里头开的那几条恒不经）。
     pub via_proxy: bool,
     /// 线上收到的字节。
     pub bytes_in: u64,
     /// 线上发出的字节。
     pub bytes_out: u64,
+}
+
+impl Wire {
+    /// 这一条上的字节 SSH 层压没压（协商时交出去的偏好序：判准答远 ＋ 闸开着才压）。
+    pub fn compressed(&self) -> bool {
+        self.far && crate::connect::RUSSH_ZLIB_SOUND
+    }
 }
 
 /// 池里一条连接的读数：它自己那一条，外加经过的跳板（外在先）。
@@ -230,7 +237,7 @@ impl LinkFacts {
 /// 一条的读数 ⇒ 那一句（照文案表写好：〔跳板〕地址〔· 经代理〕· 压没压 · 收 · 发）。
 fn line(w: &Wire, jump: bool) -> String {
     use copy_core::{copy_text, size_text};
-    let packing = if w.compressed {
+    let packing = if w.compressed() {
         copy_text("beLinks.pack.compressed", &[])
     } else {
         copy_text("beLinks.pack.plain", &[])
@@ -289,14 +296,25 @@ impl Way {
     }
 }
 
+/// 一份快照里 `req` 那一台的连接（照 [`identity`] 归，对不上 ⇒ 没连接）。
+fn links_of<'a>(snap: &'a [(String, Vec<LinkFacts>)], req: &DialRequest) -> &'a [LinkFacts] {
+    let key = identity(req);
+    snap.iter()
+        .find(|(k, _)| *k == key)
+        .map_or(&[], |(_, l)| l.as_slice())
+}
+
+/// 一份快照里到 `req` 那一台的这一跳远不远（**纯函数**；常驻流照它定 attach 要不要那台压）：那台的连接有一条远 ⇒ 远；
+/// 一条都没有 ⇒ 远（答不上来宁可压）。只看连接自己那一条（[`Wire::far`]），跳板那几条不算。
+pub fn far_of(snap: &[(String, Vec<LinkFacts>)], req: &DialRequest) -> bool {
+    let links = links_of(snap, req);
+    links.is_empty() || links.iter().any(|l| l.link.far)
+}
+
 /// 一份快照里 `req` 那一台怎么连过去的（**纯函数**；连接照 [`identity`] 归，对不上 ⇒ 没连接）。
 pub fn way_of(snap: &[(String, Vec<LinkFacts>)], req: &DialRequest) -> Way {
     use copy_core::copy_text;
-    let key = identity(req);
-    let links: &[LinkFacts] = snap
-        .iter()
-        .find(|(k, _)| *k == key)
-        .map_or(&[], |(_, l)| l.as_slice());
+    let links = links_of(snap, req);
     let chain: Vec<String> = crate::connect::hop_chain(req)
         .into_iter()
         .map(crate::connect::hop_name)

@@ -2372,7 +2372,7 @@ impl ScanReport {
 
 /// 钉死一个逃生口的定义（要件 4）。
 ///
-/// 凡是 [`scan_after_marker`] 的 `allow` 放行的间接变量，它的定义必须逐字出现在文本里。
+/// 一条扫描放行的间接变量（或签名），它的定义必须逐字出现在文本里、且只赋值一次。
 /// 不钉的话，`$t` 这类变量可以被改成裸值——**扫描照样全绿，而防线已经没了**。
 pub fn pin_definition(
     text: &str,
@@ -2503,98 +2503,6 @@ pub fn fn_names_starting_with(text: &str, verbs: &[&str]) -> Vec<String> {
     out.sort_unstable();
     out.dedup();
     out
-}
-
-/// 紧跟 marker 的那一个 shell 参数（`$(…)` 配平、引号配对，否则到第一个 shell 分隔符或引号）。
-/// 谓词只看它，不看整个窗口：窗口里放一个诱饵（`"export A=b:c"`）就能骗过看窗口的谓词。
-pub fn first_token(rest: &str) -> &str {
-    let t = rest.trim_start();
-    let b = t.as_bytes();
-    if b.is_empty() {
-        return t;
-    }
-    let mut i = 0usize;
-    if t.starts_with("$(") {
-        let mut depth = 0i32;
-        for (j, c) in t.char_indices() {
-            match c {
-                '(' => depth += 1,
-                ')' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return &t[..j + 1];
-                    }
-                }
-                _ => {}
-            }
-        }
-        return t; // 不配对 → 整段交给谓词判（它会因缺 `=`/`:` 而报违规）
-    }
-    if b[0] == b'"' || b[0] == b'\'' {
-        let q = b[0];
-        if let Some(j) = t[1..].find(q as char) {
-            return &t[..j + 2];
-        }
-        return t;
-    }
-    while i < b.len() {
-        let c = b[i] as char;
-        if c.is_whitespace() || matches!(c, ';' | '|' | '&' | ')' | '"' | '\'') {
-            break;
-        }
-        i += 1;
-    }
-    &t[..i]
-}
-
-/// 枚举 `text` 里每一处 `marker`（空白与紧贴两种写法都认，更长的选项名不算），对紧跟的那一个参数施加 `check`。
-///
-/// - `comment_prefix`：trim 后以它开头的行整行跳过。只认行首 ⇒ 只用于没有 heredoc、没有跨行字符串的文本；
-///   不成立就传 `None`（注释里的示例也进枚举，宁可假红）。
-/// - `allow`：放行已钉死的逃生口（计入 `checked`、不施加 `check`）；用它的地方同时调 [`pin_definition`] 钉住逃生口的定义。
-pub fn scan_after_marker(
-    text: &str,
-    marker: &str,
-    comment_prefix: Option<&str>,
-    window: usize,
-    allow: &dyn Fn(&str) -> bool,
-    check: &dyn Fn(&str) -> Result<(), String>,
-) -> ScanReport {
-    let mut checked = 0usize;
-    let mut violations = Vec::new();
-    for (lineno, line) in text.lines().enumerate() {
-        if let Some(cp) = comment_prefix {
-            if line.trim_start().starts_with(cp) {
-                continue;
-            }
-        }
-        for (i, _) in line.match_indices(marker) {
-            let rest = &line[i + marker.len()..];
-            if let Some(c) = rest.chars().next() {
-                if c.is_alphanumeric() || c == '-' || c == '_' {
-                    continue;
-                }
-            } else {
-                continue; // 行尾就是 marker，没有目标
-            }
-            let tok = first_token(rest);
-            let win: String = rest.chars().take(window).collect();
-            checked += 1;
-            if allow(rest) {
-                continue;
-            }
-            if let Err(e) = check(tok) {
-                violations.push(format!(
-                    "第 {} 行：{e}（token {tok:?}，窗口 {win:?}）",
-                    lineno + 1
-                ));
-            }
-        }
-    }
-    ScanReport {
-        checked,
-        violations,
-    }
 }
 
 /// 一处行号地址：`(引用点行号, 被引路径原样, 被引行号)`。
