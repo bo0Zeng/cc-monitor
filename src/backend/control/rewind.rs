@@ -29,7 +29,7 @@ pub(crate) const READ_BACKS: usize = 8;
 
 /// 记录主线上人说过的一句（读回 · 核对列表用）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SaidLine {
+pub(crate) struct UserLine {
     /// 记录里那一句的 id。
     pub(crate) uuid: String,
     /// 那一句的字（可能是截短的摘要）。
@@ -49,7 +49,7 @@ pub(crate) trait RewindIo {
     /// 送进一句（字面字 ＋ 回车）。
     fn say(&mut self, text: &str) -> Result<Sent, CmdErr>;
     /// 记录主线上人说过的那几句（先说的在前）。
-    fn said(&mut self) -> Result<Vec<SaidLine>, CmdErr>;
+    fn lines(&mut self) -> Result<Vec<UserLine>, CmdErr>;
 }
 
 /// 这一趟要做的：退到哪一句之前 · 怎么退 · 什么时候退 · 改好的那一句。
@@ -262,7 +262,7 @@ pub(crate) fn walk(
     let Some(choice) = face.choices.iter().find(|c| c.how == plan.rewind.how) else {
         return Ok(Walked::No(Why::Unsupported));
     };
-    let before = io.said()?;
+    let before = io.lines()?;
     let Some(at) = before.iter().position(|s| s.uuid == plan.rewind.to) else {
         return Ok(Walked::No(Why::NoSuchLine));
     };
@@ -393,7 +393,7 @@ pub(crate) fn walk(
 
     // 7 读回：主线 ＝ 被编辑那一句之前的那几句 ＋ 改好的那一句。
     for _ in 0..READ_BACKS {
-        let now = w.io.said()?;
+        let now = w.io.lines()?;
         if read_back_ok(&before[..at], plan.text, &now) {
             return Ok(Walked::Done);
         }
@@ -403,7 +403,7 @@ pub(crate) fn walk(
 }
 
 /// 主线读回对不对：前面那几句一句不差、接着恰好是改好的那一句。
-pub(crate) fn read_back_ok(kept: &[SaidLine], text: &str, now: &[SaidLine]) -> bool {
+pub(crate) fn read_back_ok(kept: &[UserLine], text: &str, now: &[UserLine]) -> bool {
     now.len() == kept.len() + 1
         && now.iter().zip(kept).all(|(a, b)| a.uuid == b.uuid)
         && now.last().is_some_and(|l| same_line(&l.text, text))
