@@ -583,8 +583,8 @@ pub async fn fenced_remote(s: &Session, path: &str, intent: Intent) -> Result<St
 pub async fn put_atomic(s: &Session, path: &str, bytes: &[u8], mode: u32) -> Result<(), Refusal> {
     let rel = fenced_remote(s, path, Intent::File).await?;
     // 〔临时件名唯一〕临时件与备份件都带**这一趟独有**的后缀：两个部署者（两台 monitor 各自的常驻后端）
-    //   同时往同一个落点放字节时，谁也不删谁的那一份（从前是固定的 `<rel>.tmp` / `<rel>.bak` ＋「先删残留」—— 那一删删的可能是
-    //   别人正在写的那一份，审计 E3 子形 2）。仍 `EXCLUDE` 新建：真撞了名 ⇒ 当场失败，不会写进别人的那一份。
+    //   同时往同一个落点放字节时，谁也不删谁的那一份（不用固定的 `<rel>.tmp` / `<rel>.bak`、也不「先删残留」：
+    //   那一删删的可能是别人正在写的那一份）。仍 `EXCLUDE` 新建：真撞了名 ⇒ 当场失败，不会写进别人的那一份。
     let tmp = format!("{rel}.{}.tmp", trip_tag());
     // 失败那几支删**自己这一趟**的临时件；连接已经断了（`sender dropped`）⇒ 删不掉：说一句，
     //   留下的那一份由下次连上的部署计划认领（`deploy::stale_leftovers`）。
