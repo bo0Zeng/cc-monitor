@@ -1141,22 +1141,33 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   },
   "relay-route-core": {
     // 落盘文件的声明表：每份一行（落点 · 状态还是缓存 · 格式与版本 · 读上限），后端读写口按它读写；TS 侧没有孪生。
+    ACCOUNT_CREDS_FILE: NONE,
+    APIKEY_CREDENTIALS_FILE: NONE,
     ASSET_CATALOG_FILE: NONE,
     BACKEND_POLICY_FILE: NONE,
     BOOKMARKS_FILE: NONE,
     CHORES_FILE: NONE,
+    // monitor 的设置那一行（monitor `config.rs` 读写都取它的落点与读上限）；TS 侧没有孪生。
+    CONFIG_FILE: NONE,
+    HOST_FACTS_FILE: NONE,
+    HOST_PROGRAM_FILE: NONE,
     KEY_FILE: NONE,
     KNOWN_HOSTS_FILE: NONE,
     LAST_SEEN_FILE: NONE,
     LAUNCH_ACCOUNTS_FILE: NONE,
+    LAUNCH_NOTE_FILE: NONE,
     LINEAGE_FILE: NONE,
     LISTING_CACHE_FILE: NONE,
     MACHINES_FILE: NONE,
     PLAN_REVIEW_FILE: NONE,
     PREFS_FILE: NONE,
     QUOTA_FILE: NONE,
+    REMOTE_LISTING_FILE: NONE,
     ROTATION_FILE: NONE,
     ROTATION_USES_FILE: NONE,
+    SESSION_QUEUE_FILE: NONE,
+    SESSION_UPSTREAM_FILE: NONE,
+    SKELETON_FILE: NONE,
     SKILL_LEDGER_FILE: NONE,
     SSH_CONFIG_FILE: NONE,
     foreign: NONE,
@@ -1192,6 +1203,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     PS_ALIASES_REL: NONE,
     SKILL_LEDGER_REL: NONE,
     CHORES_REL: NONE,
+    // monitor 的设置（monitor 写；后端换形只读；数据位置页按它列）。
+    CONFIG_REL: NONE,
     // 计划要你看的认可与退回记录（后端 `plan/review.rs` 写；数据位置页按它列）。
     PLAN_REVIEW_REL: NONE,
     // 离线那台的上次值（后端写；数据位置页按它列）· 后端自己家里那一份清单（后端「文件与数据」逐样 stat 它）。

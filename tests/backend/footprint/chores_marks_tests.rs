@@ -114,3 +114,25 @@ fn 读不出来的那份_原话进详情不上句子() {
     assert!(!e.message.contains(raw), "原话上了句子：{e:?}");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+#[test]
+fn 写回带版本_没有版本的旧份照第1版读() {
+    let d = tmp("ver");
+    let own = crate::platform::fs::Own::issue_at(&d);
+    std::fs::create_dir_all(d.join(".cc-monitor")).unwrap();
+    let f = d.join(relay_route_core::CHORES_REL);
+    std::fs::write(&f, r#"{"declined":["relay"]}"#).unwrap();
+    mark_at(&own, &json!({"op": "skipStart"})).unwrap();
+    let back: serde_json::Value = serde_json::from_slice(&std::fs::read(&f).unwrap()).unwrap();
+    assert_eq!(back["version"], json!(1), "写回没带版本");
+    assert_eq!(
+        current(Some(&f)),
+        Marks {
+            declined: vec!["relay".into()],
+            self_paste: None,
+            start_skipped: true,
+        },
+        "带版本的那一份读不回"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}

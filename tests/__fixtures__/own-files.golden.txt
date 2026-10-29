@@ -1,19 +1,19 @@
 == cache/skeleton/<digest>.json
-{"v":7,"path":"<home>/rec.jsonl","body":{"rows":[1,2,3],"tail":"x"}}
+{"version":7,"path":"<home>/rec.jsonl","body":{"rows":[1,2,3],"tail":"x"}}
 == chores.json
-{"declined":["agents"],"selfPaste":"/x/.bashrc","startSkipped":false}
+{"declined":["agents"],"selfPaste":"/x/.bashrc","startSkipped":false,"version":1}
 
 == known_hosts
 box.lan ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA
 
 == launch-pending/4242.json
-{"account":"work","at":1700000000,"plugin":true}
+{"account":"work","at":1700000000,"plugin":true,"version":1}
 
 == machines.json
 {"version":1,"hosts":[{"label":"box","host":"box.lan","port":2222,"user":"u","keyPath":"","addresses":["box-2.example"],"jump":"","connect":true}]}
 
 == plan-review.json
-{"acks":{"/w":{"s1":["k1"]}},"returns":{}}
+{"acks":{"/w":{"s1":["k1"]}},"returns":{},"version":1}
 
 == prefs.json
 {"version":2,"launchers":{},"resumeWhere":"managed","models":{},"permissionModes":{},"contextLimits":{},"agentHomes":{},"pbDir":null,"childTab":"hide","bgTab":"show"}

@@ -16,7 +16,7 @@ const BIN: &str = ".bin";
 
 /// 副本那一份的声明：缓存（没有 · 坏了 ⇒ 起托管时照自己再复制一份；后端不读它，只交给系统去跑）。
 const PROGRAM_DOC: crate::common::own_state::Doc<Vec<u8>> =
-    crate::common::own_state::Doc::cache(".cc-monitor/hosts/.bin/<版本>/ccm.exe", 0);
+    crate::common::own_state::Doc::of(&relay_route_core::HOST_PROGRAM_FILE);
 
 /// 副本的文件名（Windows `ccm.exe`）。
 fn program_name() -> String {

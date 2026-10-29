@@ -7,7 +7,7 @@
 //!   `launch-accounts.json`（启动台账：只有观测侧写，锁里原子写；形状与读住 `history/launch_book.rs`）。
 //!   便条留到那个 pid 不在了才清（`/clear` 原地换 sid 也记得到）。
 
-use crate::history::launch_book::{read_book, Book, FILE_NAME};
+use crate::history::launch_book::{read_book, Book};
 use crate::platform::fs::{Own, OwnPath};
 use cmd_wire::accounts::{AccountRow, AccountsList};
 use copy_core::copy_text;
@@ -228,11 +228,9 @@ pub(crate) struct Note {
     pub(crate) host: Option<cmd_wire::frame::TerminalHost>,
 }
 
-/// 一个进程一张便条：状态（写的那一下不读它；读不懂的那张不作数）。读盘上限与启动台账同一个。
-const NOTE: crate::common::own_state::Doc<Note> = crate::common::own_state::Doc::state(
-    ".cc-monitor/launch-pending/<pid>.json",
-    crate::history::launch_book::MAX_BYTES,
-);
+/// 一个进程一张便条：缓存（丢了只是那一次起会话没记上号；读不懂 · 版本对不上 ⇒ 当没有）。落点 · 版本 · 读上限照表。
+const NOTE: crate::common::own_state::Doc<Note> =
+    crate::common::own_state::Doc::of(&relay_route_core::LAUNCH_NOTE_FILE);
 
 /// `ccm` 最终那一跳：给将要跑 agent 的那个进程（`pid`）留便条（号说得出名字才记 · 答题插件是不是经环境交下去的 · `--tab` · 别名）。
 /// 失败只出声（不挡起会话）。落点：写句柄的数据目录那一根（`home`）底下的便条目录。
@@ -278,11 +276,9 @@ fn write_note(own: &Own, pid: u32, note: &Note) -> Result<(), crate::common::sai
     for d in [&home, &dir] {
         own.ensure_dir(d).map_err(|e| failed(d.as_path(), &e))?;
     }
-    let file = dir.join(&format!("{pid}.json"))?;
-    let body = crate::common::own_state::json_body(file.as_path(), note)?;
     // 一个进程一张、各写各的：拿便条目录那一把锁（原子写要它），不跨便条串。
     let held = own.lock(&dir)?;
-    own.write(&file, &held, &body)
+    NOTE.write_named(own, &dir, &format!("{pid}.json"), &held, note)
 }
 
 /// 数据目录本身（记录住这里）与它底下的便条目录。没有数据目录 ⇒ 拒。
@@ -400,9 +396,7 @@ fn record(
     let Some(book) = entered(read_book(home.as_path())?, sid, note) else {
         return Ok(());
     };
-    let file = home.join(FILE_NAME)?;
-    let body = crate::common::own_state::json_body(file.as_path(), &book)?;
-    own.write(&file, &held, &body)
+    crate::history::launch_book::write_book(own, home, &held, &book)
 }
 
 fn failed(path: &Path, e: &std::io::Error) -> crate::common::said::Said {
