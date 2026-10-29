@@ -2,9 +2,33 @@
 //!
 //! 入参是两层：文件窗口经通道说给 monitor 的那一份（`*Ask`），monitor 补上那台远端的名字（`machine`；怎么拨由本机后端照它的机器表组）
 //! 再转给本机常驻后端的那一份（`*Req`）。两层各是一个类型，多一个键都拒；回包两层同一份。
-//! 起跑 · 撤（`transfer-start` / `-stop`）不经窗口（订阅即起跑、停订即撤），不在这里。
+//! 起跑 · 撤（`transfer-start` / `-stop`）不经窗口（订阅即起跑、停订即撤）：monitor 问本机后端，入参是那张票（[`TransferStartReq`] · [`TransferStopReq`]）。
 
 use serde::{Deserialize, Serialize};
+
+/// `transfer-start` 的入参：那张票（开单那一条回的传输单 id）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct TransferStartReq {
+    pub id: String,
+}
+
+/// `transfer-stop` 的入参：那张票（同 [`TransferStartReq`]；撤不在册的也回成功）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct TransferStopReq {
+    pub id: String,
+}
 
 use crate::files::WirePath;
 

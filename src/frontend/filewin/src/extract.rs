@@ -16,7 +16,7 @@ pub static EXTRACT_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinExtract.label.extract", &[]));
 
 /// 那条线上命令。
-pub const CMD_EXTRACT: &str = "files-extract";
+pub const CMD_EXTRACT: &str = <cmd_wire::files::FilesExtractReq as cmd_wire::Call>::NAME;
 
 /// 一趟的往返上限：与递归删 / 复制目录同一个上界（取消不掉 ⇒ 期限是它唯一的上界）。
 pub const EXTRACT_BUDGET: std::time::Duration = super::writeops::TREE_BUDGET;

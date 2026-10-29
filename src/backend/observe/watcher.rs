@@ -4364,7 +4364,7 @@ fn prime_file_cursor(
     if let Some(scans) = scans.filter(|_| fresh) {
         let lent = scans.lend(&path, |map| {
             if let Some(r) = runs.as_ref() {
-                r.prime(session_id, &said_lines(map.runs()));
+                r.prime_said(session_id, map.runs());
             }
             let read = FileRead {
                 cursor: ReadCursor {
@@ -4652,16 +4652,6 @@ impl PrimePool {
             in_flight: 0,
         }
     }
-}
-
-/// 骨架里那几行子运行原文接成一块（每行一个 `\n`），喂 [`crate::observe::runs::RunTrack::prime`]。
-fn said_lines(lines: &[String]) -> Vec<u8> {
-    let mut b = Vec::with_capacity(lines.iter().map(|l| l.len() + 1).sum());
-    for l in lines {
-        b.extend_from_slice(l.as_bytes());
-        b.push(b'\n');
-    }
-    b
 }
 
 /// 冷接宣告那一趟每次至多读多少字节（一行比它长就接着读，直到那一行读完）。

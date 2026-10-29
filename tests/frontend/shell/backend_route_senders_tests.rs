@@ -197,6 +197,28 @@ fn pure_router_violations(prod: &str) -> Vec<String> {
     out
 }
 
+/// 生产段里有没有一处 `.ask(…)` 恰好带四个实参（`InboundClient::ask` 那一形；括号 · 方括号 · 花括号里的逗号不算）。
+#[cfg(test)]
+fn asks_typed(prod: &str) -> bool {
+    prod.match_indices(".ask(").any(|(i, _)| {
+        let (mut depth, mut commas, mut last) = (0usize, 0usize, ' ');
+        for c in prod[i + ".ask(".len()..].chars() {
+            match c {
+                // 收尾前那个逗号是排版留的（多行调用），不算一个实参。
+                ')' | ']' | '}' if depth == 0 => return commas - usize::from(last == ',') == 3,
+                '(' | '[' | '{' => depth += 1,
+                ')' | ']' | '}' => depth -= 1,
+                ',' if depth == 0 => commas += 1,
+                _ => {}
+            }
+            if !c.is_whitespace() {
+                last = c;
+            }
+        }
+        false
+    })
+}
+
 /// ★★ **零命中守卫：分流规则不许有第二份实现 —— 而发现机制是遍历，不是手写清单。**
 #[test]
 fn every_backend_sender_is_registered_and_uses_the_one_router() {
@@ -209,11 +231,10 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
     // 目录里所有「走后端」的文件：生产段出现 `.call(` 的。
     // 另一个动词 `.call_until(`（`InboundClient::call_until`：截止时刻由调用方给的那一形）同样是发送 ——
     //   只认 `.call(` 的话，改用它的发送端会整个逃出扫描面（`frame_query.rs` 改成它的那一刻当场从人群里消失，本条因此红过）。
-    //   照类型问的那一形（`InboundClient::ask`，头一格是问哪台 `None` / `Some(..)`）也是发送：改用它的发送端同样不许逃出人群
-    //   （`deploy.rs` 改成它那一刻当场红过）。只认 `.ask(` 会把别的 crate 里同名的 `Ask::ask(req)` 一并收进来。
+    //   照类型问的那一形（`InboundClient::ask(at, req, view, deadline)`，四个实参）也是发送：改用它的发送端同样不许逃出人群
+    //   （`deploy.rs` 改成它那一刻当场红过）。按实参个数认 —— 只认 `.ask(` 会把别的 crate 里同名的 `Ask::ask(req)`（一个实参）一并收进来。
     let verb = format!(".call({}", "");
     let verb_until = format!(".call_until({}", "");
-    let verb_ask = [format!(".ask(None{}", ""), format!(".ask(Some({}", "")];
     let mut senders: Vec<String> = Vec::new();
     // ⚠ 发现阶段就把生产段留下：下面按名字取时**不能再用 `dir.join(name)`**，
     //   扩面之后 `dir` 是整棵 `src/`，而发送端散在子目录里（第一版就栽在这，
@@ -225,10 +246,7 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
     for (p, src) in guard_core::scan_tree!(&dir, &["rs"]) {
         let prod = guard_core::production_code(&src);
         all_prod.push((p.to_string_lossy().replace('\\', "/"), prod.clone()));
-        if prod.contains(verb.as_str())
-            || prod.contains(verb_until.as_str())
-            || verb_ask.iter().any(|v| prod.contains(v.as_str()))
-        {
+        if prod.contains(verb.as_str()) || prod.contains(verb_until.as_str()) || asks_typed(&prod) {
             senders.push(p.file_name().unwrap().to_string_lossy().to_string());
             by_name.insert(
                 p.file_name().unwrap().to_string_lossy().to_string(),

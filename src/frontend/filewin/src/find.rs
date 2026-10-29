@@ -44,13 +44,13 @@ use super::source::{Line, Origin};
 // ═══════════════════════════════════════════════════════════════════
 
 /// 在常驻索引里查。**整族的存在理由**。
-pub const CMD_FIND: &str = "files-find";
+pub const CMD_FIND: &str = <cmd_wire::files::FindReq as cmd_wire::Call>::NAME;
 /// 索引的新鲜度 ／ 条目数 ／ 常驻字节 ／ **后端声明的重走周期**。
-pub const CMD_INDEX_STATUS: &str = "files-index-status";
+pub const CMD_INDEX_STATUS: &str = <cmd_wire::files::IndexStatusReq as cmd_wire::Call>::NAME;
 /// 走一遍，就一遍，做完返回（那条裁决里的「机制」那一格）。
-pub const CMD_INDEX_REBUILD: &str = "files-index-rebuild";
+pub const CMD_INDEX_REBUILD: &str = <cmd_wire::files::RebuildReq as cmd_wire::Call>::NAME;
 /// 告诉后端「用户现在在看哪几个目录」（保鲜的另一半）。
-pub const CMD_BROWSE: &str = "files-browse";
+pub const CMD_BROWSE: &str = <cmd_wire::files::BrowseReq as cmd_wire::Call>::NAME;
 
 /// 这一侧用到的**全部**线上名。**唯一住址** —— 判据按它对拍协议文档。
 pub const COMMANDS: &[&str] = &[CMD_FIND, CMD_INDEX_STATUS, CMD_INDEX_REBUILD, CMD_BROWSE];

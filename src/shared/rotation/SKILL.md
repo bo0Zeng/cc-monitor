@@ -7,11 +7,11 @@ description: cc-monitor 的账号轮换（第五版）怎么用、怎么写策�
 
 一句话：**后端没有任何换号的想法。** 权重、权重容差、强制切换阈值、用量上限、耗尽后启用、启用延迟、单次用量上限，都是策略文件里的设置，由策略自己的代码解释（积木库 `lib` 只给算上限 · 余量 · 排先后 · 推演这类只算不决定的函数）。没有随包策略：策略文件都是用户自己的（自己写的 · 让 AI 照这份 skill 写的 · 升级时从旧配置换出来的）；没选策略的会话不轮换，只用开会话的号。
 
-本 skill 不存策略、不替用户存草稿、不常驻跑任何东西；动 `rotation.json` 与策略目录只经下面的命令。命令都经 `~/.cc-monitor/bin/ccm -- --<命令>`，参数从 stdin 读一段 JSON，stdout 一行 JSON；形状全表见 `src/doc/IPC-COMMANDS.md`。
+本 skill 不存策略、不替用户存草稿、不常驻跑任何东西；动 `rotation.json` 与策略目录只经 §2 的命令。
 
 ## 1. 后端给什么
 
-- **事实**（`--rotation-facts`）：每个号两窗（5 小时 · 7 天）的用量 · 重置时刻 · 用量涨得多快（额度账里量出来的，量不到就空）· 被拒到几点 · 登录 · 超额。
+- **事实**：每个号两窗（5 小时 · 7 天）的用量 · 重置时刻 · 用量涨得多快（额度账里量出来的，量不到就空）· 被拒到几点 · 登录 · 超额。
 - **一判**：策略交回「此刻照什么先后用号」，后端取第一个事实上发得出去的号；跟此刻用的不同就热换；一个都没有就停发（回那一家的「用满」回包）到策略说的时刻。
 - **什么时候判**：只在节点上判，结论缓存到下一个节点：被拒 · 重置 · 外来的事实变了 · 设置改了 · 策略约的时刻（`wake.at`）· 策略约的读数（`wake.when`）。节点之间一发都不叫策略。
 - **用户拖出来的顺序**：到策略说该换的那一刻先用它（策略此刻不列的跳过）。
@@ -19,11 +19,112 @@ description: cc-monitor 的账号轮换（第五版）怎么用、怎么写策�
 
 ## 2. 命令
 
-- 读：`--rotation-strategies`（策略目录：每份的 `id`（＝ 文件名 ＝ 标题）· 说明 `description`（文件开头的注释）· 版本 `rev` · 读不懂的原因 · 哪几个活会话在用 · 新会话用哪份 · `hand`（代码或声明跟编辑器那一份不一样））· `--rotation-view {target: {sid} | {strategy}, hours?}`（会话 ⇒ 照它载入的那份副本：顺序 `lineup` 一号一行（`account` · `group`：`use` 在用 · `next` 接下来 · `out` 此刻用不了 · `off` 先不用；`state` 那一行此刻怎样，第二格推得出就带「约 HH:MM」· `why` 策略写的那一句 · `movable` 能不能拖 · `stay` 不能拖的那一句）· `manual` 拖过没有 · 先不用的号 `off` · 这一判 · 提示，不带推演；策略 ⇒ 照文件此刻的：每一格此刻的值与从哪来（自己设的 · 跟总体 · 默认）· 每个号的事实 · 这一判 · 推演 `timeline`（`hours` 只对它）· 提示）。
-- 会话用自己的副本：会话选一份策略那一刻载入它（代码 ＋ 设置 ＋ 版本），之后文件再改不跟；载入新版才换（`--rotation-use` 选同一份 · `--rotation-reload`）。
-- 写：`--rotation-settings {strategy, edit, ifRev}`（一个意图：`{set: {key, row?, v}}` · `{seg: {key, row?, window, at?, seg?: {from, to, v}}}`（分段里改第 `at` 段 · 只给 `at` 删那一段 · 只给 `seg` 加一段）· `{same: {key, row?, window, same}}`（后面那一窗同第一窗 / 另设）· `{move: {from, to}}` · `{add: {account}}` · `{remove: {row}}`；照声明改完、校验，当场存成那份的新版（只重写头那一块，说明和代码一个字不动），回新版本）· `--rotation-use {sid, strategy | null}`（载入那份此刻的版本；`null` ⇒ 这个会话不再轮换）· `--rotation-reload {strategy}`（在用这份旧版的活会话都载入新版）· `--rotation-for-new {strategy | null}`（`null` ⇒ 新会话不轮换，这是默认） · `--rotation-temp {sid, op: {move: {account, to}} | "clear" | {off: {account, off}}}`（这个会话的临时动作：顺序里把一行挪到第 `to` 格（第 0 格 ＝ 现在用它）· 清掉拖出来的先后 · 先不用的号，不改策略）· `--rotation-use-now {sid, account}`。
-- 策略文件：`--rotation-strategy-add {source?, name}`（存成 `name.rhai`；不给 `source` ⇒ 新建：照随后端带的编辑器那一份 `src/shared/rotation/editor.rhai`，号列表 ＝ 账号库全部号，时区 ＝ 那台的）· `--rotation-strategy-copy {id, name}`（另起一个文件名，内容不改）· `--rotation-strategy-rename {id, name, ifRev}`（换文件名，指它的会话与「新会话用」跟着改）· `--rotation-strategy-delete {id}`（有活会话在用 · 是新会话用的那份 ⇒ 不删） · `--rotation-strategy-tz {id, tz, ifRev}`（只把设置块里的 `tz` 换成这个 IANA 名，说明与代码不动）。名字：1–32 字，字母数字（含中文）与 ` -_·()（）+`；同名已有 ⇒ `bad_args`。
-- 试跑：`--rotation-try {source, settings?, start?, current?, temp?, hours?, useNow?}`：拿一份原文照此刻的事实判一次、往后推演，不写盘不换号。
+都经 `~/.cc-monitor/bin/ccm -- --<命令>`：参数从 stdin 读一段 JSON，stdout 一行 JSON。全部命令与一句话随二进制走：`ccm -- --commands`。
+
+<!-- 命令：rotation-*（生成物：照 `ccm -- --commands` 现打，勿手改；重打见 `tests/backend/stream/catalog_tests.rs`） -->
+- `ccm -- --rotation-facts`：每个号此刻的事实。参数 `RotationFactsReq`
+- `ccm -- --rotation-try`：试跑一份策略。参数 `RotationTryReq`
+- `ccm -- --rotation-strategies`：策略目录。参数 `RotationStrategiesReq`
+- `ccm -- --rotation-view`：一个会话或一份策略此刻的轮换。参数 `RotationViewReq`
+- `ccm -- --rotation-settings`：改一份策略的设置。参数 `RotationSettingsReq`
+- `ccm -- --rotation-use`：会话载入一份策略。参数 `RotationUseReq`
+- `ccm -- --rotation-reload`：在用旧版的会话都载入新版。参数 `RotationReloadReq`
+- `ccm -- --rotation-for-new`：新会话用哪份策略。参数 `RotationForNewReq`
+- `ccm -- --rotation-temp`：会话侧的临时动作。参数 `RotationTempReq`
+- `ccm -- --rotation-use-now`：现在用这个号。参数 `RotationUseNowReq`
+- `ccm -- --rotation-strategy-add`：加一份策略。参数 `RotationStrategyAddReq`
+- `ccm -- --rotation-strategy-copy`：复制一份策略。参数 `RotationStrategyCopyReq`
+- `ccm -- --rotation-strategy-rename`：给策略改名。参数 `RotationStrategyRenameReq`
+- `ccm -- --rotation-strategy-delete`：删一份策略。参数 `RotationStrategyDeleteReq`
+- `ccm -- --rotation-strategy-tz`：给策略设时区。参数 `RotationStrategyTzReq`
+
+```ts
+type AgentKind = string;
+type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "seg": { key: string, row?: number, window: string, at?: number, seg?: RotSeg, } } | { "same": { key: string, row?: number, window: string, same: boolean, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } };
+type RotSeg = { from: string, to: string, v: number, };
+type RotTarget = { sid: string, } | { strategy: string, };
+type RotTempOp = { "move": { account: string, to: number, } } | "clear" | { "off": { account: string, off: boolean, } };
+type RotationFactsReq = { 
+/**
+ * 哪一家（线上的 kind）；缺 ⇒ 有账号库的那一家。
+ */
+agent?: AgentKind, };
+type RotationForNewReq = { 
+/**
+ * `null` ⇒ 新会话不轮换（只用开会话的号）。
+ */
+strategy: string | null, };
+type RotationReloadReq = { strategy: string, };
+type RotationSettingsReq = { strategy: string, edit: RotEdit, ifRev: string, };
+type RotationStrategiesReq = Record<symbol, never>;
+type RotationStrategyAddReq = { 
+/**
+ * 一份策略文件的原文（说明 ＋ 头 ＋ 代码）：从文件添加；缺 ⇒ 新建（照编辑器那一份，号列表 ＝ 账号库全部号，时区 ＝ 这台的）。
+ */
+source?: string, 
+/**
+ * 存成的文件名（＝ 标题）。
+ */
+name: string, };
+type RotationStrategyCopyReq = { id: string, name: string, };
+type RotationStrategyDeleteReq = { id: string, };
+type RotationStrategyRenameReq = { id: string, name: string, ifRev: string, };
+type RotationStrategyTzReq = { id: string, tz: string, ifRev: string, };
+type RotationTempReq = { sid: string, op: RotTempOp, };
+type RotationTryReq = { 
+/**
+ * 一份策略文件的原文（头 ＋ 代码）。
+ */
+source: string, 
+/**
+ * 换掉头里的设置（形状由这份策略自己定；缺 ⇒ 用头里的）。
+ */
+settings?: unknown, 
+/**
+ * 开会话用的号（缺 ⇒ 事实里第一个号）。
+ */
+start?: string, 
+/**
+ * 在用的号（缺 ⇒ 开会话用的号）。
+ */
+current?: string, 
+/**
+ * 临时条目。
+ */
+temp: Array<string>, 
+/**
+ * 往后推几小时（1–48，缺 ⇒ 12）。
+ */
+hours?: number, 
+/**
+ * 试跑「现在用这个号」：事实上发得出去 ⇒ 判的是换过去、放进拖出来的顺序最前之后的那一判；发不出去 ⇒ `useNowRefused` 带几点恢复。
+ */
+useNow?: string, 
+/**
+ * 哪一家（缺 ⇒ 有账号库的那一家）。
+ */
+agent?: AgentKind, };
+type RotationUseNowReq = { sid: string, account: string, };
+type RotationUseReq = { sid: string, 
+/**
+ * `null` ⇒ 这个会话不再轮换（只用开会话的号）。
+ */
+strategy: string | null, };
+type RotationViewReq = { target: RotTarget, 
+/**
+ * 设置页那一形往后推几小时（1–48，缺 ⇒ 12）；会话那一形不画推演，不看它。
+ */
+hours?: number, };
+```
+<!-- /命令 -->
+
+几样从形状上看不出来的：
+- 会话用自己的副本：会话选一份策略那一刻载入它（代码 ＋ 设置 ＋ 版本），之后文件再改不跟；载入新版才换（选同一份 · 或 `--rotation-reload`）。新会话默认不轮换。
+- 看会话（`target: {sid}`）⇒ 照它载入的那份副本，不带推演；顺序 `lineup` 一号一行，`group`：`use` 在用 · `next` 接下来 · `out` 此刻用不了 · `off` 先不用；`state` 第二格推得出就带「约 HH:MM」。看策略（`target: {strategy}`）⇒ 照文件此刻的：每一格的值与从哪来（自己设的 · 跟总体 · 默认）· 每个号的事实 · 这一判 · 推演 `timeline`（`hours` 只对它）。
+- 改设置一次一个意图：`seg` 里给 `at` 和 `seg` ⇒ 改第 `at` 段，只给 `at` ⇒ 删那一段，只给 `seg` ⇒ 加一段；`same` ⇒ 后面那一窗同第一窗 / 另设。照声明改完、校验，当场存成新版（只重写头那一块，说明和代码一个字不动）。
+- 临时动作只动这个会话、不改策略：`move` 把一行挪到第 `to` 格（第 0 格 ＝ 现在用它）· `"clear"` 清掉拖出来的先后 · `off` 先不用某个号。现在就换号只拿事实拦（被拒 · 没登录 · 没 key · 用满）。
+- 策略文件：改名时指它的会话与「新会话用」跟着改；有活会话在用 · 是新会话用的那份 ⇒ 不删；改时区只换设置块里的 `tz`。名字：1–32 字，字母数字（含中文）与 ` -_·()（）+`；同名已有 ⇒ `bad_args`。
+- 试跑拿一份原文照此刻的事实判一次、往后推演，不写盘不换号。
 
 ## 3. 策略文件
 

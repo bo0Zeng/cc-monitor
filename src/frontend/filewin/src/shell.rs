@@ -740,19 +740,15 @@ impl FileWindow {
         }
         let l = self.listing.clone();
         let origin = self.source.origin();
-        let args = serde_json::json!({ "dir": self.cwd });
+        let req = cmd_wire::plan::PlanFilesReq {
+            dir: self.cwd.clone(),
+        };
         h.spawn(async move {
-            let got = super::source::ask(
-                &line,
-                &origin,
-                super::plan::CMD_PLAN_FILES,
-                &args,
-                std::time::Duration::from_secs(10),
-            )
-            .await
-            .ok()
-            .and_then(|d| serde_json::from_value::<cmd_wire::plan::PlanFiles>(d).ok())
-            .and_then(super::plan::PlanDir::of);
+            let got =
+                super::source::ask_typed(&line, &origin, &req, std::time::Duration::from_secs(10))
+                    .await
+                    .ok()
+                    .and_then(super::plan::PlanDir::of);
             if l.epoch.load(Ordering::SeqCst) == mine {
                 *l.plan.lock().unwrap() = got;
             }

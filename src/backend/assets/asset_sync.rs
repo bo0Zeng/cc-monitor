@@ -35,7 +35,7 @@ use std::collections::BTreeMap;
 use serde_json::{json, Value};
 
 // 问远端那一跳与「那几台」住 `remote_ask`；这里只取用。
-use crate::dial::remote_ask::{ReachRow, Remote, Table, REACH};
+use crate::dial::remote_ask::{Remote, Table, REACH};
 
 /// 一块推的载荷（JSON 本身）的上限。
 /// 原理由是「`sh -c` 那一个参数 128 KiB，留出引号转义的余量」—— 载荷改走 stdin 之后那条上限不在了，
@@ -49,49 +49,8 @@ pub const PUSH_FLAG: &str = "--assets-catalog-merge";
 /// 本机写口（`asset_catalog::answer_merge`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（`Own` 由分派那一层递）。
 pub type Fold = std::sync::Arc<dyn Fn(CatalogMergeReq) -> Result<CatalogReply, Fail> + Send + Sync>;
 
-/// `assets-sync` 的入参：缺 ⇒ 对机器表里「连这台」的每一台各一趟；给 `origin` ⇒ 先对那一台（机器表里要有）。
-/// 怎么够到那台只看这一端的机器表：线上不交拨号（带 `dial` ⇒ `bad_args`）。
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct AssetsSyncReq {
-    /// 那台的名字。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
-    pub(crate) origin: Option<cmd_wire::Machine>,
-}
-
-/// 一趟对一台的结局（`synced[]` 的一行）。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct AssetsSyncRow {
-    /// 那台的名字。
-    pub(crate) origin: cmd_wire::Machine,
-    /// 那台目录的 `self`（没拉成 ⇒ `null`）。
-    pub(crate) peer: Option<String>,
-    /// 本机目录因这一趟变了没有。
-    pub(crate) changed: bool,
-    /// 推过去几台快照。
-    pub(crate) pushed: usize,
-    /// 那一趟哪里没办成（`null` ＝ 全办成了）。
-    pub(crate) error: Option<String>,
-}
-
-/// `assets-sync` 的回包。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct AssetsSynced {
-    /// 本机目录的 id（开头那一次现扫拿到的）—— 界面据它把目录里本机那一格对回 `<local>`。
-    #[serde(rename = "self")]
-    #[cfg_attr(test, ts(rename = "self"))]
-    pub(crate) self_id: String,
-    pub(crate) synced: Vec<AssetsSyncRow>,
-    /// 「连这台」的那几台 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）。
-    pub(crate) reach: Vec<ReachRow>,
-}
+/// `assets-sync` 的入参与回包住 cmd-wire（壳连上一台时照同一份交、照同一份收）。
+pub(crate) use cmd_wire::assets::{AssetsSyncReq, AssetsSyncRow, AssetsSynced};
 
 /// 远端上那两条命令的完整字面（**只此一处拼**）。
 pub fn pull_command() -> String {

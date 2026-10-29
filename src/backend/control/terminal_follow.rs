@@ -191,15 +191,8 @@ pub(crate) struct AckReq {
     pub(crate) seq: u64,
 }
 
-/// `terminal-unfollow` 的入参。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct UnfollowReq {
-    /// 退不在册的也回 `ok`（记下它：订阅那一问若还在路上，到了也不起）。
-    pub(crate) ticket: String,
-}
+/// `terminal-unfollow` 的入参住 cmd-wire（壳替界面照同一份发）。
+use cmd_wire::terminal::UnfollowReq;
 
 /// `terminal-follow` 的码表：`bad_args` 打头；订不上的每一种都带 `data: {live}`（[`FollowErr`]）。
 const FOLLOW_CODES: &[&str] = &[
@@ -296,9 +289,7 @@ impl crate::wire::typed::Command for TerminalFollowAck {
 pub(crate) struct TerminalUnfollow;
 
 impl crate::wire::typed::Command for TerminalUnfollow {
-    const NAME: &'static str = "terminal-unfollow";
-    type Req = UnfollowReq;
-    type Reply = ();
+    crate::wire::typed::by_call!(UnfollowReq);
     type Err = UnfollowErr;
 }
 

@@ -36,13 +36,13 @@ const LINE_ENVELOPE_ROOM: usize = 1024;
 const WORST_ESCAPE: usize = 6;
 
 /// 存盘那条线上命令的名字（装得进一行的那一支）。
-pub const CMD_WRITE_TEXT: &str = "files-write-text";
+pub const CMD_WRITE_TEXT: &str = <cmd_wire::files::FilesWriteTextReq as cmd_wire::Call>::NAME;
 
 /// 装不进一行的那一支：逐块进暂存区（后端 `control/files_commit.rs`）。
-pub const CMD_STAGE_CHUNK: &str = "files-stage-chunk";
+pub const CMD_STAGE_CHUNK: &str = <cmd_wire::files::FilesStageChunkReq as cmd_wire::Call>::NAME;
 
 /// 装不进一行的那一支：读回拼起来、原地覆盖（与 `files-write-text` 同一个原语）。
-pub const CMD_COMMIT_TEXT: &str = "files-commit-text";
+pub const CMD_COMMIT_TEXT: &str = <cmd_wire::files::FilesCommitTextReq as cmd_wire::Call>::NAME;
 
 /// 存盘那一趟的参数（路径切成 `(root, rel)` 与写面其余四条同形）。
 ///
@@ -553,7 +553,7 @@ impl EditBoard {
 }
 
 /// 读文本那条线上命令的名字（后端 `files-read` 族第七条）。
-pub const CMD_READ_TEXT: &str = "files-read-text";
+pub const CMD_READ_TEXT: &str = <cmd_wire::files::ReadTextReq as cmd_wire::Call>::NAME;
 
 /// 读一份文本那一趟的往返上限（调用方给的期限）。
 pub const READ_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);

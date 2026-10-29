@@ -19,15 +19,12 @@
 //! - 🔴 真远端：本模块的判据只到「交出去的是什么」「答回来的认不认得」；本机后端那一趟在后端判据里用替身对面验。
 //! - 本机后端不在 ⇒ 报（`D11`，不回落）；连上那一刻它不在 ⇒ 这一次就没同步（下次连上 / 看机器页再来），只记一行 warn。
 
+use cmd_wire::assets::{AssetsSyncReq, AssetsSynced};
+use cmd_wire::Call;
 use copy_core::copy_text;
 use std::time::Duration;
 
-use serde_json::{json, Value};
-
 use crate::backend_route::{route_call_error, Routed};
-
-/// 本机后端那条命令的名字（与 `src/backend/stream/inbound/mod.rs::REGISTRY` 同名，判据现抠对拍）。
-pub(crate) const CMD: &str = "assets-sync";
 
 /// 远端那台要认得的命令（它不认 ⇒ 那台后端太旧，连上时不去碰它）。
 pub(crate) const REMOTE_NEEDS: &str = "assets-catalog-merge";
@@ -35,35 +32,40 @@ pub(crate) const REMOTE_NEEDS: &str = "assets-catalog-merge";
 /// 一趟的上限：拉 ＋ 推（每台几条 exec）＋ 扇出到其余各台。给足余量同时防卡死（后端零定时器，期限归调用方）。
 const BUDGET: Duration = Duration::from_secs(180);
 
-/// 一台远端的入参：那台的名字（怎么够到它由本机后端照机器表组）。
-pub(crate) fn args_for(origin: &str) -> Value {
-    json!({ "origin": origin })
-}
-
 /// 本机后端那一跳（生产 = 本机常驻后端那条流；判据用替身）。
 pub(crate) trait LocalBackend {
-    async fn call(&self, args: Value) -> Result<Value, String>;
+    async fn call(&self, req: &AssetsSyncReq) -> Result<AssetsSynced, String>;
 }
 
 pub(crate) struct ResidentBackend;
 
 impl LocalBackend for ResidentBackend {
-    async fn call(&self, args: Value) -> Result<Value, String> {
-        let client = crate::inbound_client::local_backend_accepting(CMD).await?;
-        let data = client.call(CMD, args, BUDGET).await.map_err(|e| {
-            match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
-                copy_text("rsAssetSync.call.failed", &[("said", &message.to_string())])
-            }) {
-                Routed::NoChannel(s) | Routed::Refused(s) => s,
-            }
-        })?;
-        data.ok_or_else(|| copy_text("rsAssetSync.call.emptyReply", &[]))
+    async fn call(&self, req: &AssetsSyncReq) -> Result<AssetsSynced, String> {
+        let client = crate::inbound_client::local_backend_accepting(AssetsSyncReq::NAME).await?;
+        let deadline = tokio::time::Instant::now() + BUDGET;
+        let got =
+            client.ask(None, req, None, deadline).await.map_err(|e| {
+                match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
+                    copy_text("rsAssetSync.call.failed", &[("said", &message.to_string())])
+                }) {
+                    Routed::NoChannel(s) | Routed::Refused(s) => s,
+                }
+            })?;
+        got.map_err(|_| copy_core::reply_unreadable(&copy_core::local_machine()))
     }
 }
 
-/// 可测的那一半：那一台（流握手那一刻）→ 入参 → 本机后端；应答原样交回（只记日志，monitor 不解释它）。
-pub(crate) async fn sync_with(origin: &str, local: &impl LocalBackend) -> Result<Value, String> {
-    local.call(args_for(origin)).await
+/// 可测的那一半：那一台（流握手那一刻）→ 入参（只交那台的名字，怎么够到它由本机后端照机器表组）→ 本机后端；
+/// 回包交回（只记日志，monitor 不解释它）。
+pub(crate) async fn sync_with(
+    origin: &str,
+    local: &impl LocalBackend,
+) -> Result<AssetsSynced, String> {
+    local
+        .call(&AssetsSyncReq {
+            origin: Some(cmd_wire::Machine::named(origin)),
+        })
+        .await
 }
 
 /// 远端那条流握手成功那一刻（本机后端转来那台的 hello，`stream_source/local.rs::attached`）：那台认得资产目录 ⇒ 后台让本机后端对它做一趟同步；
@@ -76,7 +78,7 @@ pub(crate) fn on_remote_ready(origin: &str, remote_accepts: bool) {
     }
     tauri::async_runtime::spawn(async move {
         match sync_with(&label, &ResidentBackend).await {
-            Ok(r) => tracing::info!("资产目录：[{label}] 连上即同步 {}", r["synced"]),
+            Ok(r) => tracing::info!("资产目录：[{label}] 连上即同步 {:?}", r.synced),
             Err(e) => tracing::warn!("资产目录：[{label}] 连上即同步没办成：{e}"),
         }
     });

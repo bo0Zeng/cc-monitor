@@ -877,46 +877,25 @@ fn total_families(names: &[&str], name: &str) -> usize {
 
 fn cli(out: &mut String) {
     out.push_str("## 5. CLI 子命令\n\n一次性调用：`ccm -- --子命令 …`（打头的 `--` 之后才归后端）；收 `args` 的那一段 JSON 从 stdin 读，或经 `--args-b64 <base64>` 走 argv（二选一，上限与码见 `IPC-PROTOCOL.md` §8），回一行 JSON 到 stdout。\n\
-「＝ 帧命令」的那几条与流上同名命令是同一个处理器。\n\n| 子命令 | 说明 |\n|---|---|\n");
-    let mut flags: Vec<&str> = crate::SUBCOMMANDS.to_vec();
-    flags.sort_unstable();
-    flags.dedup();
-    let mut documented = Vec::new();
-    for flag in flags {
-        if let Some(spec) = crate::stream::cli::spec_for(flag) {
-            let _ = writeln!(
-                out,
-                "| `{flag}` | ＝ 帧命令 `{}`：{} |",
-                spec.name,
-                spec.summary.trim_end_matches('。')
-            );
-            continue;
-        }
-        let (_, usage, what) = crate::stream::inbound::CLI_ONLY_DOCS
-            .iter()
-            .find(|(f, _, _)| crate::wire::cli_words::cli_flag(f) == flag)
-            .unwrap_or_else(|| {
-                panic!(
-                    "CLI 子命令 `{flag}` 在 `CLI_ONLY_DOCS` 里没有说明 —— 加一行（用法 ＋ 一句话）"
-                )
-            });
-        documented.push(flag);
-        let usage = if usage.is_empty() {
-            String::new()
-        } else {
-            format!(" `{usage}`")
-        };
-        let _ = writeln!(out, "| `{flag}`{usage} | {} |", what.replace('|', "\\|"));
-    }
-    let ghosts: Vec<String> = crate::stream::inbound::CLI_ONLY_DOCS
-        .iter()
-        .map(|(f, _, _)| crate::wire::cli_words::cli_flag(f))
-        .filter(|f| !documented.contains(&f.as_str()))
+「＝ 帧命令」的那几条与流上同名命令是同一个处理器。本表随二进制走的那一份：`ccm -- --commands`（同一个口，`stream/catalog.rs`）。\n\n| 子命令 | 说明 |\n|---|---|\n");
+    // 逐行照口写；口列的子命令 ＝ `SUBCOMMANDS` 两向相等由口自己的判据钉（`tests/backend/stream/catalog_tests.rs`）。
+    let mut rows: Vec<_> = crate::stream::catalog::catalog()
+        .into_iter()
+        .filter(|e| e.cli.is_some())
         .collect();
-    assert!(
-        ghosts.is_empty(),
-        "`CLI_ONLY_DOCS` 里这几行已经不是 CLI 独有的子命令：{ghosts:?}"
-    );
+    rows.sort_by(|a, b| a.cli.cmp(&b.cli));
+    for e in rows {
+        let flag = e.cli.as_deref().unwrap_or_default();
+        match e.cmd {
+            Some(name) => {
+                let _ = writeln!(out, "| `{flag}` | ＝ 帧命令 `{name}`：{} |", e.what);
+            }
+            None => {
+                let usage = e.usage.map(|u| format!(" `{u}`")).unwrap_or_default();
+                let _ = writeln!(out, "| `{flag}`{usage} | {} |", e.what.replace('|', "\\|"));
+            }
+        }
+    }
     out.push('\n');
 }
 

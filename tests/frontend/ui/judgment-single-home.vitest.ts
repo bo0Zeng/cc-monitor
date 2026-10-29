@@ -1134,6 +1134,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     account_home: NONE,
     must_move: NONE,
     leaked: NONE,
+    // 测试档那几格环境变量要不要摘（只判测试进程自己的环境）；TS 侧没有孪生。
+    strays: NONE,
   },
   "relay-route-core": {
     // 后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。

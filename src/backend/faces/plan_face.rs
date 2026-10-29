@@ -511,16 +511,6 @@ pub(crate) struct PlanPbCheckReq {
     pub(crate) dir: String,
 }
 
-/// `plan-files` 的入参。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct PlanFilesReq {
-    /// 那台机器上的绝对路径。
-    pub(crate) dir: String,
-}
-
 typed::codes! {
     /// `plan-list` · `plan-files` · `plan-pb-check` · `plan-refs` · `plan-new` 的码：只有入参不对那一种（读不成的工作区 · pb 不在都写在回包里）。
     pub(crate) enum PlanListErr {}
@@ -697,16 +687,14 @@ impl Handle for PlanNewCmd {
 pub(crate) struct PlanFilesCmd;
 
 impl Command for PlanFilesCmd {
-    const NAME: &'static str = "plan-files";
-    type Req = PlanFilesReq;
-    type Reply = wire::PlanFiles;
+    typed::by_call!(cmd_wire::plan::PlanFilesReq);
     type Err = PlanListErr;
 }
 
 impl Handle for PlanFilesCmd {
     type Needs = typed::needs::Nothing;
     fn run(
-        req: PlanFilesReq,
+        req: cmd_wire::plan::PlanFilesReq,
         cx: Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<wire::PlanFiles, PlanListErr>> + Send + 'static
     {
