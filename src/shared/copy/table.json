@@ -11457,6 +11457,12 @@
       "zh": "最外层不是一个对象",
       "args": []
     },
+    "rsConfig.read.tooBig": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "超出上限 {cap}",
+      "args": ["cap"]
+    },
     "rsWindow.front.failed": {
       "kind": "error",
       "role": "报错",
