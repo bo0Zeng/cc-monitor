@@ -89,7 +89,7 @@ scripts/quota-warm run         先跑一趟，之后按最早的醒点自己醒�
 
 ## AI 自己管额度：cc-monitor 的后端命令
 
-都经 `~/.cc-monitor/bin/ccm -- --<命令>`：要参数的从 stdin 读一段 JSON（＝ 参数对象），stdout 一行 JSON。全部命令与一句话随二进制走：`ccm -- --commands`。轮换（策略文件 · 会话用哪份 · 拖出来的顺序 · 推演）另一份 skill `rotation` 讲全，这里只选最常用的两条。
+都经 `~/.cc-monitor/bin/ccm -- --<命令>`：要参数的从 stdin 读一段 JSON（＝ 参数对象），stdout 一行 JSON。轮换（策略文件 · 会话用哪份 · 拖出来的顺序 · 推演）另一份 skill `rotation` 讲全，这里只选最常用的两条。
 
 <!-- 命令：quota-read rotation-view rotation-use-now（生成物：照 `ccm -- --commands` 现打，勿手改；重打见 `tests/backend/stream/catalog_tests.rs`） -->
 - `ccm -- --quota-read`：这台的额度账。不收参数
