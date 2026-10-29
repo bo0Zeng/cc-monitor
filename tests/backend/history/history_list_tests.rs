@@ -31,6 +31,10 @@ use crate::history::history_annotations::{Entry, Table};
 use serde_json::json;
 use std::path::PathBuf;
 
+/// 这台的记录树（测试档沙箱家里那一棵）：往里写夹具记录的判据与要它一问一问之间不变的判据都先拿这把锁，错开跑。
+/// 不拿 ⇒ 并行时一边写进夹具、另一边第二问就「变了」。
+pub(crate) static MACHINE_TREE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 // 判据照线上的样子读（成品与清单都过一遍真序列化器）：下面四个把有类型的那几个口包成 JSON 进出，盖住 `super::*` 里的同名口。
 
 fn listing_from(
@@ -1052,7 +1056,8 @@ fn asking_again_with_the_mark_answers_only_what_changed() {
 /// ★ 判据 11（帧面那一臂）：带着上次的 `held` 来问 ⇒ 没变就 `same`；入参里的 `held` 形状不对 ⇒ `bad_args`。
 #[tokio::test]
 async fn the_frame_arm_takes_the_mark() {
-    // 问这台（远端那份怎么来归 `remote_listing_tests`）：判据环境里这台的记录树不动 ⇒ 第二问没变。
+    // 问这台（远端那份怎么来归 `remote_listing_tests`）：拿着 [`MACHINE_TREE`]，这台的记录树不动 ⇒ 第二问没变。
+    let _tree = MACHINE_TREE.lock().await;
     let first = answer_wire(json!({})).await.unwrap();
     assert_eq!(first["whole"], true);
     let again = answer_wire(json!({"held": first["held"]})).await.unwrap();
@@ -1065,6 +1070,7 @@ async fn the_frame_arm_takes_the_mark() {
 /// 记录放在测试档的沙箱家里（两份夹具记录，答完删掉）。
 #[test]
 fn answering_the_listing_lets_a_session_ring_again() {
+    let _tree = MACHINE_TREE.blocking_lock();
     let dir = crate::history::listing::records_root(&crate::history::listing::agent_home())
         .expect("有记录树")
         .join(format!("-w-listnode-{}", std::process::id()));
