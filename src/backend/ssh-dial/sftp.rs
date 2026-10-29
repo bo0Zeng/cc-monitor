@@ -343,7 +343,7 @@ fn io_raw(said: String, raw: impl std::fmt::Display) -> Refusal {
 
 impl From<Refusal> for Said {
     fn from(r: Refusal) -> Said {
-        Said::from((r.message().to_string(), r.raw().map(str::to_string)))
+        Said::from(r.message().to_string()).and_raw(r.raw())
     }
 }
 

@@ -25,7 +25,10 @@ fn an_outer_layer_names_the_code_and_adds_the_raw_text() {
     assert_eq!(s.code.as_deref(), Some("bad_args"));
     assert_eq!(s.said, "x");
     assert_eq!(s.raw.as_deref(), Some("原话"));
-    assert_eq!(s.clone().coded("io_failed").code.as_deref(), Some("io_failed"));
+    assert_eq!(
+        s.clone().coded("io_failed").code.as_deref(),
+        Some("io_failed")
+    );
     assert_eq!(s.clone().and_raw(Some("  ")).raw.as_deref(), Some("原话"));
     assert_eq!(
         s.and_raw(Some("再一层")).raw.as_deref(),
@@ -36,7 +39,10 @@ fn an_outer_layer_names_the_code_and_adds_the_raw_text() {
 #[test]
 fn a_missing_code_answers_as_the_fallback() {
     assert_eq!(Said::from("x").code_or_fallback(), "failed");
-    assert_eq!(Said::new("bad_args", "x".into()).code_or_fallback(), "bad_args");
+    assert_eq!(
+        Said::new("bad_args", "x".into()).code_or_fallback(),
+        "bad_args"
+    );
 }
 
 #[test]
