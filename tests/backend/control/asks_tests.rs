@@ -172,7 +172,9 @@ fn a_sub_agent_request_lands_in_needs_carries_its_id_and_is_answered() {
     assert_eq!(needs.tool.as_deref(), Some("Bash"));
     assert_eq!(ask.run.as_ref().map(|r| r.id.as_str()), Some("agent-7"));
     assert_eq!(
-        ask.run.as_ref().map(|r| r.text.0.contains("general-purpose")),
+        ask.run
+            .as_ref()
+            .map(|r| r.text.0.contains("general-purpose")),
         Some(true),
         "谁要批那一句带着类别"
     );

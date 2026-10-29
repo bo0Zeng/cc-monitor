@@ -231,7 +231,8 @@ fn intent_in(seg: &str) -> Option<usize> {
 fn is_assignment(word: &str) -> bool {
     word.split_once('=').is_some_and(|(name, _)| {
         let mut cs = name.chars();
-        cs.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        cs.next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
             && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
     })
 }
