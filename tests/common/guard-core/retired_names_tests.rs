@@ -165,7 +165,8 @@ fn the_retired_name_match_is_whole_word() {
 /// 合成夹具：「删于」空 ⇒ 到期；≤ 当前版本 ⇒ 到期；> 当前版本 ⇒ 还在当桥；写坏了 ⇒ 表读不进来。
 #[test]
 fn a_removed_in_version_is_due_from_that_version_on() {
-    let table = "# 说明\nnow_gone\nbridge_a\t5.0.4\nbridge_b\t5.1\nold_bridge\t5.0.3\nspaced name\t\n";
+    let table =
+        "# 说明\nnow_gone\nbridge_a\t5.0.4\nbridge_b\t5.1\nold_bridge\t5.0.3\nspaced name\t\n";
     let rows = retired_rows(table).expect("合成表读不进来");
     assert_eq!(
         due_names(&rows, (5, 0, 3)),

@@ -372,3 +372,12 @@ no_platform_cfg_in_the_dial_core_silently_drops_android
 the_android_judge_sees_both_shapes
 test_home_guard
 every_rust_test_binary_pulls_in_the_sandboxed_home
+# 当桥的一次性迁移：书签归各台后端（桌面 · 手机）· 标签组迁进各台。到期由打版本号的那一路连迁移代码与它的测试一起删。
+bookmarks_migration	5.0.4
+OLD_FILE	5.0.4
+filewin-bookmarks.json	5.0.4
+BookmarkRepository	5.0.4
+adoptOldBookmarks	5.0.4
+tab-groups-migrate	5.0.4
+migrateTabGroups	5.0.4
+oldTabGroups	5.0.4

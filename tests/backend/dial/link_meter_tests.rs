@@ -264,13 +264,14 @@ async fn a_link_reports_the_wire_bytes_both_ways() {
     );
 }
 
-/// ★ 压没压：回环那一跳判准答「不压」⇒ 这条连接报不压；地址是胜出的那一条。直连没有跳板那几项。
+/// ★ 压没压：回环那一跳判准答「不压」⇒ 这条连接报近、不压（常驻流照它不要那台压）；地址是胜出的那一条。直连没有跳板那几项。
 #[tokio::test(flavor = "multi_thread")]
 async fn a_loopback_link_says_it_does_not_compress() {
     let (port, _) = peer().await;
     let l = link(port).await;
     let f = l.facts();
-    assert!(!f.link.compressed, "回环那一跳不压，连接却报压");
+    assert!(!f.link.far, "回环那一跳近，连接却报远");
+    assert!(!f.link.compressed(), "回环那一跳不压，连接却报压");
     assert_eq!(f.link.endpoint, format!("127.0.0.1:{port}"));
     assert!(f.jumps.is_empty(), "直连那一条不该报跳板");
 }
@@ -330,7 +331,7 @@ async fn a_jumped_link_reports_its_jump_hop_too() {
     assert_eq!(f.jumps.len(), 1, "一台跳板一项");
     let j = &f.jumps[0];
     assert_eq!(j.endpoint, format!("127.0.0.1:{jump_port}"));
-    assert!(!j.compressed, "跳板那一条只运隧道，不压");
+    assert!(!j.compressed(), "跳板那一条只运隧道，不压");
     assert!(
         j.bytes_in >= f.link.bytes_in && f.link.bytes_in >= REPLY_LEN as u64,
         "跳板那条进 {} · 目标那条进 {}：跳板运着整条隧道，不该比目标少",

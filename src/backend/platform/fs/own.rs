@@ -4,7 +4,8 @@
 //!   别处拿不到这个值，也就写不出来。谁许造它由 `readonly_guard` 的构造判据钉（只许启动入口）。
 //! - [`OwnPath`] 只能由 [`Own`] 从根往下拼（相对名、不许 `..`、不许绝对路径）⇒ 方法收的路径落不到根外。
 //! - 方法只有这几件：建一层目录（0700，已在不动）· 拿目录的跨进程锁 · 原子写（要那个目录的锁）· 删文件 ·
-//!   把暂存区里的一份后端换进落点（[`Own::place_staged`]，部署那一趟由新传上去的那一份自己做）· 删落点那一份（[`Own::clear_landing`]，卸载那一趟）。
+//!   把暂存区里的一份后端换进落点（[`Own::place_staged`]，部署那一趟由新传上去的那一份自己做）· 删落点那一份（[`Own::clear_landing`]，卸载那一趟）·
+//!   留存区（落点旁边那层 `kept`）里留一份被盖掉的后端 · 列 · 删（[`Own::keep_backend`] · [`Own::kept_backends`] · [`Own::drop_kept_backend`]）。
 //!   原子写：旁名出生即只给本人（`O_EXCL` ＋ 0600）→ 写满 → `sync_all` → 原子挪过去；挪不过去就删掉自己建的旁名。
 //!   旁名带 pid ＋ 线程 ＋ 进程内序号，同一进程几个线程同时写同一份也不撞。
 
@@ -233,6 +234,56 @@ impl Own {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    /// 留存区那一层：落点那层 `bin` 底下的 [`relay_route_core::BACKEND_KEPT_DIR_NAME`]。
+    fn kept_dir(&self) -> Result<OwnPath, Said> {
+        let bin = Path::new(relay_route_core::BACKEND_LANDING_REL)
+            .parent()
+            .and_then(Path::to_str)
+            .unwrap_or_default();
+        self.at_home(bin)?
+            .join(relay_route_core::BACKEND_KEPT_DIR_NAME)
+    }
+
+    /// 把一份被盖掉的后端字节整份原子写进留存区的 `name`（一段名字；已在 ⇒ 盖掉；0600，修改时间就是留下的那一刻）。
+    /// 留存区那层目录照自家目录建 / 核（[`Self::own_dir`]）；落点那层 `bin` 要先在。
+    pub(crate) fn keep_backend(&self, name: &str, bytes: &[u8]) -> Result<(), Said> {
+        if !one_name(name) {
+            return Err(copy_text("beOwnState.path.notRelative", &[("rel", name)]).into());
+        }
+        let dir = self.kept_dir()?;
+        self.own_dir(&dir)?;
+        let held = self.lock(&dir).map_err(Said::from)?;
+        self.write(&dir.join(name)?, &held, bytes)
+    }
+
+    /// 留存区里那几份：`(名字, 修改时间)`；留存区不在 · 列不出 ⇒ 空。只认普通文件。
+    pub(crate) fn kept_backends(&self) -> Vec<(String, std::time::SystemTime)> {
+        let Ok(dir) = self.kept_dir() else {
+            return Vec::new();
+        };
+        let Ok(entries) = Ro::read_dir(dir.as_path()) else {
+            return Vec::new();
+        };
+        entries
+            .filter_map(|e| {
+                let e = e.ok()?;
+                let m = e.metadata().ok().filter(|m| m.is_file())?;
+                Some((e.file_name().into_string().ok()?, m.modified().ok()?))
+            })
+            .collect()
+    }
+
+    /// 删留存区里的一份（`name` 只许一段名字）。
+    pub(crate) fn drop_kept_backend(&self, name: &str) -> std::io::Result<()> {
+        if !one_name(name) {
+            return Err(std::io::ErrorKind::InvalidInput.into());
+        }
+        let dir = self
+            .kept_dir()
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
+        self.delete_file(&OwnPath(dir.0.join(name)))
     }
 }
 
