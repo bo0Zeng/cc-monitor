@@ -95,8 +95,9 @@ fn d1_every_file_written_through_own_declares_its_doc() {
         .iter()
         .filter(|(_, s)| squeezed(s).contains("own.write"))
         .count();
+    // 下限只防扫法坏：整份经 `Doc::write` 写的那几份不再直接 `own.write`，不在这群里。
     assert!(
-        writers >= 19,
+        writers >= 12,
         "经 Own 写的文件只扫到 {writers} 份：扫法坏了"
     );
     let missing = writers_without_doc(&files);
