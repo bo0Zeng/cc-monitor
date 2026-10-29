@@ -160,7 +160,8 @@ fn child_gives_freed_pages_back() {
     if mode == THP_MODE {
         return_freed_pages_at_once();
         let held = alloc_blocks(THP_TOTAL / BLOCK, 0);
-        let rollup = std::fs::read_to_string("/proc/self/smaps_rollup").expect("读 /proc/self/smaps_rollup");
+        let rollup =
+            std::fs::read_to_string("/proc/self/smaps_rollup").expect("读 /proc/self/smaps_rollup");
         let thp_kb: u64 = rollup
             .lines()
             .find_map(|l| l.strip_prefix("AnonHugePages:"))
@@ -173,7 +174,10 @@ fn child_gives_freed_pages_back() {
             .filter_map(|l| l.strip_prefix("VmFlags:"))
             .filter(|f| f.split_whitespace().any(|x| x == "hg"))
             .count();
-        println!("start={} thp_kb={thp_kb} hg_maps={flagged} kB", rss_anon_kb());
+        println!(
+            "start={} thp_kb={thp_kb} hg_maps={flagged} kB",
+            rss_anon_kb()
+        );
         free_blocks(held);
         return;
     }
@@ -267,7 +271,8 @@ fn the_option_indices_are_the_two_options() {
 #[cfg(target_env = "musl")]
 #[test]
 fn the_heap_takes_no_huge_pages() {
-    let tier = std::fs::read_to_string("/sys/kernel/mm/transparent_hugepage/enabled").unwrap_or_default();
+    let tier =
+        std::fs::read_to_string("/sys/kernel/mm/transparent_hugepage/enabled").unwrap_or_default();
     let Some(now) = tier.split_whitespace().find(|w| w.starts_with('[')) else {
         println!("判不了：读不到透明大页的档（/sys/kernel/mm/transparent_hugepage/enabled）");
         return;
