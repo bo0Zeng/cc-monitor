@@ -142,18 +142,24 @@ describe.skipIf(!boxWorks)("截图台架起带远端的世界", () => {
     WALL_CEILING_MS,
   );
 
-  it(
-    "问不到的那台（没起常驻）盘上已结束的会话不记成要收场的：它那一问当场答完",
-    () =>
-      withPool(async ({ serve }) => {
-        // gpu-01 不在 reach 里（场景演「看不见」）：它的沙箱没人起，那条会话永远等不到宣告。
-        const ended = { sid: "5e550006-0000-4000-8000-000000000006", cwd: "/home/user/proj", fate: "ended" };
-        const machines = { "<local>": { files: localFiles }, devbox: { files: {} }, "gpu-01": { files: {}, live: [ended] } };
-        const got = await post(serve, "/__ccm/world", { key: "unseen", machines, reach: { devbox: { refuse: [] } }, scene: "unseen" });
-        expect(got.status, got.text).toBe(200);
-        const end = await post(serve, "/__ccm/end", { key: "unseen", origin: "gpu-01" });
-        expect(end, end.text).toEqual({ status: 200, text: '{"ok":true}' });
-      }),
-    WALL_CEILING_MS,
-  );
+  // gpu-01 的会话流到不了本机后端：那条会话永远等不到宣告。
+  //   看不见 ⇒ 不在 reach 里，沙箱没人起；指纹变了 ⇒ 起了常驻，本机后端见钥匙对不上就拒。
+  for (const [what, reach] of [
+    ["问不到的那台（没起常驻）", { devbox: { refuse: [] } }],
+    ["握不上手的那台（指纹变了）", { devbox: { refuse: [] }, "gpu-01": { refuse: [], handshake: false } }],
+  ] as const) {
+    it(
+      `${what}盘上已结束的会话不记成要收场的：它那一问当场答完`,
+      () =>
+        withPool(async ({ serve }) => {
+          const ended = { sid: "5e550006-0000-4000-8000-000000000006", cwd: "/home/user/proj", fate: "ended" };
+          const machines = { "<local>": { files: localFiles }, devbox: { files: {} }, "gpu-01": { files: {}, live: [ended] } };
+          const got = await post(serve, "/__ccm/world", { key: "gone", machines, reach, scene: "gone" });
+          expect(got.status, got.text).toBe(200);
+          const end = await post(serve, "/__ccm/end", { key: "gone", origin: "gpu-01" });
+          expect(end, end.text).toEqual({ status: 200, text: '{"ok":true}' });
+        }),
+      WALL_CEILING_MS,
+    );
+  }
 });

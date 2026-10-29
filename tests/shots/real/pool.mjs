@@ -760,8 +760,8 @@ export function backendPool({ repo, sandbox, disks = null }) {
           : {}),
       };
       const { argv, doomed, paints, tmux } = start(path.join(dir, `m${i}`), origin, m, now);
-      // 只有起了常驻的那几台（本机 ＋ 问得到的）收得了场：问不到的那台没人起，它的会话等不到宣告。
-      if (m.resident) w.doomed.push(...doomed.map((d) => ({ ...d, origin, act: () => tmux(d.act) })));
+      // 只有会话流到得了本机后端的那几台收得了场：问不到的那台没人起常驻、握不上手的那台（指纹变了）本机后端拒，它们的会话等不到宣告。
+      if (m.resident && !peers.some((p) => p.origin === origin && p.handshake === false)) w.doomed.push(...doomed.map((d) => ({ ...d, origin, act: () => tmux(d.act) })));
       for (const [sid, fifo] of paints) w.paints.set(`${origin}\0${sid}`, fifo);
       return { origin, argv };
     });
