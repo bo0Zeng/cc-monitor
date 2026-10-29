@@ -84,7 +84,6 @@ const WALK_FORMS = ["readdirSync", "globSync", "readdir("];
  */
 const WALKERS: Record<string, string> = {
   "tests/frontend/ui/generated-boundary-guard.vitest.ts": "扫的是 Rust 源码（`.rs`），读不到自己",
-  "tests/frontend/ui/import-cycle-guard.vitest.ts": "扫的是 `src/` 里的产品 TS，自己住 `tests/`",
   "tests/frontend/ui/ipc/commands.vitest.ts": "扫的是 `src/` 里的产品 TS，自己住 `tests/`",
   "tests/frontend/ui/node-suite-registry-guard.vitest.ts": "只列文件名对登记，不在文本里找字",
   "tests/frontend/ui/said-object-registry.vitest.ts": "扫的是 `src/frontend/ui` 里的产品 TS，自己住 `tests/`",
