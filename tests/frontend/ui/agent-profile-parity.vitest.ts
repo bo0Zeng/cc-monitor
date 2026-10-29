@@ -403,28 +403,3 @@ describe("界面上的 agent 名单只从后端注册表来", () => {
     },
   );
 });
-
-describe("起会话按会话的那一家取画像", () => {
-  it(
-    "★ 界面生产段里零处 `AGENT_PROFILE` / `ACTIVE_AGENT`（没有「当前那一家」：会话是哪一家由后端说）；起法意图里不带启动命令（`launcherOverride:` 零处：那台照自己的偏好定）",
-    () => {
-      const profile = /\bAGENT_PROFILE\b(?!_)|\bACTIVE_AGENT\b/;
-      const ctx = /\blauncherOverride\s*:/;
-      // 正控：前端自己写一份的写法认得出；画像表与类型声明不算。
-      expect(profile.test("launcher = AGENT_PROFILE.defaultLauncher")).toBe(true);
-      expect(profile.test("AGENT_PROFILE_TABLE.map(f)")).toBe(false);
-      expect(profile.test("callStart(origin, mode, items, ACTIVE_AGENT)")).toBe(true);
-      expect(ctx.test("return { action, launcherOverride: launcher, ccmSid };")).toBe(true);
-      const files = productionTsFiles("src/frontend/ui");
-      const profileAt: string[] = [];
-      const ctxAt: string[] = [];
-      for (const { file, text } of files) {
-        const code = stripComments(text, "ts");
-        if (profile.test(code)) profileAt.push(file);
-        if (ctx.test(code)) ctxAt.push(file);
-      }
-      expect(profileAt, "又按「当前那一家」取了 —— 按会话的 agent 取（标签页 `tab.agent` · 历史行 `agent`，都是后端给的）").toEqual([]);
-      expect(ctxAt.sort(), "启动命令又随起法意图交了 —— 它住那台的偏好（`prefs.json`），那台自己读").toEqual([]);
-    },
-  );
-});

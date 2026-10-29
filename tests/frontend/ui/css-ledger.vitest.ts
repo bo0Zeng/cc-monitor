@@ -16,7 +16,7 @@
  *
  * | 格 | 判什么 | 形态 | 分母 |
  * |---|---|---|---|
- * | ① | `z-index` 只许写 `var(--z-*)` | **恒等**（一处裸数字都不许） | 判过的 `z-index` 声明条数 |
+ * | ① | `z-index` 只许写 `var(--z-*)`：stylelint 的 allowed-list 报、④ 接；这里钉那条规则还开着 | **恒等**（规则在、一正一反） | 白名单模式条数 |
  * | ② | CSS 里的类名有人用（CSS → 代码） | **恒等**（未解释集合 == 登记的已知死规则） | 判过的 CSS 类名个数 |
  * | ③ | 代码挂的类名 CSS 里有规则（代码 → CSS） | **递减棘轮** | 判过的代码侧类名引用个数 |
  * | ④ | `npx stylelint` 的报错总数（`no-descending-specificity` 除外） | **递减棘轮** | 被 lint 的 CSS 文件份数 |
@@ -79,15 +79,10 @@ import {
   explain,
   scanStrings,
   stripCodeComments,
-  zIndexDeclsOf,
   type Ledger,
 } from "../../evidence/S25-class-ledger.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { nonEmpty } from "../../test-support/non-empty.ts";
-
-/** `z-index` 唯一准写的形状。与 `.stylelintrc.json` 里那条 allowed-list 是同一个意思。 */
-const Z_OK = /^var\(--z-[a-z0-9-]+\)$/;
-
 
 /**
  * ★ **准拿来解释类名的模板前缀**（那份白名单的落点）。
@@ -384,46 +379,20 @@ describe("S25 ⓪ 量具自检（这些不过，下面四格全是空转）", ()
 });
 
 describe("S25 ① z-index 只许写 var(--z-*)（件 4）", () => {
-  it("一处裸数字都没有", () => {
-    const led = ledger();
-    const decls = led.zIndexDecls;
-    // 反空真：扫到 0 条 ⇒ 失败，不是静默绿。
-    nonEmpty(decls);
-
-    const bare = decls.filter((d) => !Z_OK.test(d.value)).map((d) => `${d.file}:${d.line}  z-index: ${d.value}`);
-    expect(
-      bare,
-      "这些 `z-index` 没走刻度：\n  " +
-        bare.join("\n  ") +
-        "\n★ 十档刻度定义在 `src/shared/theme/tokens.css`（`--z-base` … `--z-drag`），\n" +
-        "  **别机械按数值映射** —— 要求逐条判语义。\n" +
-        "★ 这一格同时钉在 `.stylelintrc.json` 的 `declaration-property-value-allowed-list` 上，\n" +
-        "  所以 `npm run lint:css` 也看得见它（那条是 advisory，本条才是会红的那个）。",
-    ).toEqual([]);
-    denom("①", decls.length, "条 z-index 声明（全部走刻度）");
-  });
-
-  it("`.stylelintrc.json` 里那条规则还在（散文与判据是两处副本，必须同调）", () => {
+  // 裸数字由 stylelint 的 `declaration-property-value-allowed-list` 报，④ 那一格的报错 == 登记 ⇒ 写一处就红。
+  //   这里只钉那条规则还开着：「规则没开」与「0 命中」在 ④ 的报错数上一模一样。
+  it("`.stylelintrc.json` 里那条规则还在，且只放过 var(--z-*)", () => {
     const raw = readFileSync(resolve(REPO_ROOT, ".stylelintrc.json"), "utf8");
     const rules = (JSON.parse(raw) as { rules: Record<string, unknown> }).rules;
     const allow = rules["declaration-property-value-allowed-list"] as Record<string, string[]> | undefined;
     expect(allow, "`.stylelintrc.json` 里没有 `declaration-property-value-allowed-list` —— 那 `npm run lint:css` 就看不见这一格了").toBeTruthy();
     const pats = allow?.["z-index"] ?? [];
     nonEmpty(pats);
-    // 规则里写的正则与本文件的 `Z_OK` 必须是同一个意思：拿两个真实值对拍，一正一反。
+    // 拿两个真实值对拍，一正一反。
     const asRe = new RegExp(pats[0].replace(/^\/|\/$/g, ""));
     expect(asRe.test("var(--z-modal)"), "stylelint 那条正则连合法值都不认").toBe(true);
     expect(asRe.test("99"), "stylelint 那条正则把裸数字也放过了 —— 它等于没写").toBe(false);
-    denom("①", pats.length, "条 stylelint 侧的 z-index 白名单模式（与判据对拍过一正一反）");
-  });
-
-  /** 死值验：给量具喂一段**带裸数字**的 CSS，它必须逮到。逮不到 ⇒ 上面那条是空的。 */
-  it("死值验：塞一个裸 `z-index: 99`，量具必须逮到", () => {
-    const mutant = ".s25-mutant { z-index: 99; }\n.s25-ok { z-index: var(--z-modal); }";
-    const decls = zIndexDeclsOf(mutant, "<内存里的变异体>");
-    expect(decls.length, "连变异体里的两条都没扫到 —— 抽取器坏了").toBe(2);
-    expect(decls.filter((d) => !Z_OK.test(d.value)).map((d) => d.value)).toEqual(["99"]);
-    denom("①", 2, "条变异体声明（1 条该红、1 条该绿，都判对了）");
+    denom("①", pats.length, "条 stylelint 侧的 z-index 白名单模式（对拍过一正一反）");
   });
 });
 
@@ -598,7 +567,7 @@ describe("S25 ④ stylelint 报错 == 登记", () => {
     // 在报错总数上一模一样 ⇒ 上面那条 `.stylelintrc.json` 的对拍是它的另一条腿。
     expect(
       byRule.get("declaration-property-value-allowed-list") ?? 0,
-      "z-index 白名单在真 stylelint 下报出了命中 —— 与格 ① 的读数矛盾，两把尺子有一把坏了",
+      "z-index 白名单在真 stylelint 下报出了命中 —— 有 `z-index` 没走刻度（十档刻度在 `src/shared/theme/tokens.css`，逐条判语义，别按数值映射）",
     ).toBe(0);
 
     denom("④", linted.length, `份 CSS 文件（报错 ${warnings.length} 条 == 登记；另 ${all.length - warnings.length} 条 ${NDS} 归 ④b）`);
