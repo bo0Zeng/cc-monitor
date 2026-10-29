@@ -260,5 +260,8 @@ fn the_state_file_version_is_kept_by_the_declaration() {
     let inbox = std::fs::read(bus(&d).join(format!("{B}.jsonl"))).unwrap();
     assert!(deliver(&own(&d), &env(B, "t", "m2"), 2_000).is_err());
     assert_eq!(std::fs::read(&state).unwrap(), newer);
-    assert_eq!(std::fs::read(bus(&d).join(format!("{B}.jsonl"))).unwrap(), inbox);
+    assert_eq!(
+        std::fs::read(bus(&d).join(format!("{B}.jsonl"))).unwrap(),
+        inbox
+    );
 }

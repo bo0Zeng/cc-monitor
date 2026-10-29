@@ -155,7 +155,11 @@ fn an_unreadable_table_is_reported_and_never_overwritten() {
 #[test]
 fn the_version_is_kept_by_the_declaration() {
     let home = scratch("version");
-    std::fs::write(path_in(&home), r#"{"hosts": [{"host": "h.lan", "user": "pi"}]}"#).unwrap();
+    std::fs::write(
+        path_in(&home),
+        r#"{"hosts": [{"host": "h.lan", "user": "pi"}]}"#,
+    )
+    .unwrap();
     let r = answer_read_in(Some(&home));
     assert_eq!((r.state, r.hosts.len()), (cmd_wire::FileState::Ok, 1));
     set(&home, json!([insert("gpu", "g.lan")])).unwrap();

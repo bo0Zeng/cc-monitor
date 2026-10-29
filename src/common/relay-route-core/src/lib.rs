@@ -699,8 +699,12 @@ const HOST_FACTS_MAX_BYTES: u64 = 64 * 1024;
 pub const HOST_PROGRAM_FILE: Decl<Cache> =
     Decl::<Cache>::foreign(".cc-monitor/hosts/.bin/<version>/ccm.exe", 0);
 /// cc-bus 的状态（[`CC_BUS_DIR_REL`] 底下：各会话已读位置 ＋ 发信规矩的账）。
-pub const CC_BUS_STATE_FILE: Decl<State> =
-    Decl::<State>::json(".cc-monitor/cc-bus/state.json", 1, 1, CC_BUS_STATE_MAX_BYTES);
+pub const CC_BUS_STATE_FILE: Decl<State> = Decl::<State>::json(
+    ".cc-monitor/cc-bus/state.json",
+    1,
+    1,
+    CC_BUS_STATE_MAX_BYTES,
+);
 /// cc-bus 状态那一份的读上限。
 const CC_BUS_STATE_MAX_BYTES: u64 = 4 << 20;
 /// 一条会话的 cc-bus 收件箱（[`CC_BUS_DIR_REL`] 底下一条会话一份；一封一行，只往后加）。
@@ -719,8 +723,10 @@ pub const SET_GROUPS_FILE: Decl<State> =
 /// 套组绑定那一份的读上限。
 const SET_GROUPS_MAX_BYTES: u64 = 1 << 20;
 /// 一份轮换策略（`strategies/` 底下一份一个 `.rhai`，用户自己的源码）。
-pub const STRATEGY_SOURCE_FILE: Decl<State> =
-    Decl::<State>::foreign(".cc-monitor/strategies/<id>.rhai", STRATEGY_SOURCE_MAX_BYTES);
+pub const STRATEGY_SOURCE_FILE: Decl<State> = Decl::<State>::foreign(
+    ".cc-monitor/strategies/<id>.rhai",
+    STRATEGY_SOURCE_MAX_BYTES,
+);
 /// 一份轮换策略的读上限（超了不加载，列表里照实写读不懂）。
 const STRATEGY_SOURCE_MAX_BYTES: u64 = 64 * 1024;
 
