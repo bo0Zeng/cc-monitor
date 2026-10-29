@@ -25,7 +25,7 @@ async fn ask(
 const MINE: &str = "p10g-mine";
 
 /// 那台握手那一行：交它认的命令与那几条的形状指纹 ＋ 帧表（跟本侧编进来的同一份）。
-/// [`ANCIENT`] 比 attach 行带 `mine` 那一形还早（见了就拒）；[`SKEWED`] 的 `session_status` 帧形状不同；[`HEAD_ONLY`] 的 hello 只解得出头。
+/// [`ANCIENT`] 比 attach 行带 `mine` 那一形还早（见了就拒）；[`PRE_DEFLATE`] 认得 `mine`、认不得 `deflate` 那一格；[`SKEWED`] 的 `session_status` 帧形状不同；[`HEAD_ONLY`] 的 hello 只解得出头。
 fn hello(build: &str) -> String {
     if build == HEAD_ONLY {
         return format!(r#"{{"kind":"hello","build_id":"{build}"}}"#);
@@ -59,6 +59,7 @@ fn hello(build: &str) -> String {
 
 const SKEWED: &str = "p10h-skewed";
 const ANCIENT: &str = "p0a-ancient";
+const PRE_DEFLATE: &str = "p10g-pre-deflate";
 const HEAD_ONLY: &str = "p10h-head-only";
 
 /// 对端那一台怎么回一条 `--resident-attach`。
@@ -258,8 +259,10 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
     }
     // 新旧照后端同一个函数算；比带 `mine` 那一形还早的那台认不得这一格 ⇒ 拒（同它当年的 `attach_flags`）。
     let attach: serde_json::Value = serde_json::from_str(&line).unwrap();
+    let too_new = (build == ANCIENT && attach["mine"].is_string())
+        || (build == PRE_DEFLATE && attach["deflate"] == true);
     let reply = match attach["mine"].as_str() {
-        Some(_) if build == ANCIENT => {
+        Some(_) if too_new => {
             let _ = r
                 .get_mut()
                 .write_all(b"{\"attach\":\"refused\",\"reason\":\"malformed-attach\"}\n")
@@ -453,9 +456,9 @@ async fn the_relation_comes_back_in_the_attach_reply_and_the_phone_attaches_eith
         assert_eq!(
             *f.attach_lines.lock().unwrap(),
             [format!(
-                r#"{{"attach":true,"tz":"Asia/Shanghai","mine":"{MINE}","watch":{{"sids":[],"branch":[]}}}}"#
+                r#"{{"attach":true,"tz":"Asia/Shanghai","mine":"{MINE}","deflate":true,"watch":{{"sids":[],"branch":[]}}}}"#
             )],
-            "attach 行带手上这一版（名单从空开始）"
+            "attach 行带手上这一版、要那台压（名单从空开始）"
         );
         assert!(
             ask(&feed, "ping", Duration::from_secs(5)).await.is_ok(),
@@ -491,7 +494,7 @@ async fn without_its_own_build_the_relation_is_incomparable() {
     ));
     assert_eq!(
         *f.attach_lines.lock().unwrap(),
-        [r#"{"attach":true,"tz":"Asia/Shanghai","watch":{"sids":[],"branch":[]}}"#]
+        [r#"{"attach":true,"tz":"Asia/Shanghai","deflate":true,"watch":{"sids":[],"branch":[]}}"#]
     );
 }
 
@@ -499,6 +502,8 @@ async fn without_its_own_build_the_relation_is_incomparable() {
 #[tokio::test(start_paused = true)]
 async fn a_backend_that_refuses_the_new_attach_line_is_old() {
     let f = Arc::new(Fake::default());
+    // 带 `deflate` 那一条 ＋ 不带的那一条：两条它都不认。
+    f.attaches.lock().unwrap().push_back(upp(ANCIENT));
     f.attaches.lock().unwrap().push_back(upp(ANCIENT));
     let (feed, _) = start(&f);
     until("断在要人动手的那一步", || {
@@ -524,6 +529,25 @@ async fn a_backend_that_refuses_the_new_attach_line_is_old() {
         f.ensured.load(Ordering::SeqCst),
         0,
         "旧的不是没起来：不 ensure"
+    );
+}
+
+/// 那台认得带 `mine` 的这一形、认不得 `deflate` 那一格（回 `malformed-attach`）⇒ 装不了后端的宿主（手机）不带这一格再接一次，照不压接上。
+#[tokio::test(start_paused = true)]
+async fn a_backend_older_than_deflate_is_attached_again_plain() {
+    let f = Arc::new(Fake::default());
+    f.attaches.lock().unwrap().push_back(upp(PRE_DEFLATE));
+    f.attaches.lock().unwrap().push_back(upp(PRE_DEFLATE));
+    let (feed, _) = start(&f);
+    until("不压接上", || up(&feed)).await;
+    let lines = f.attach_lines.lock().unwrap().clone();
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(lines[0].contains("\"deflate\":true"), "先要 deflate：{}", lines[0]);
+    assert!(!lines[1].contains("deflate"), "再接不带这一格：{}", lines[1]);
+    assert_eq!(f.ensured.load(Ordering::SeqCst), 0, "在跑，不 ensure");
+    assert!(
+        matches!(ask(&feed, "ping", Duration::from_secs(5)).await, Ok(Some(_))),
+        "不压那一条照常一问一答"
     );
 }
 

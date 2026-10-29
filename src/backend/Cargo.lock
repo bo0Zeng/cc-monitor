@@ -2061,6 +2061,7 @@ dependencies = [
  "cmd-wire",
  "comms-inward",
  "copy-core",
+ "flate2",
  "relay-route-core",
  "serde",
  "serde_json",
