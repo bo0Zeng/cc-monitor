@@ -143,21 +143,23 @@ internal class ChatChips(
 
     /**
      * 两颗 chip 此刻能不能换：照那台给的这条会话的脸（`can.model` · `can.permission`）；那台离线 ⇒ 两颗都灰、写那台成品的离线那一句
-     * （成品还没到 ⇒ 状态不明：未知不当离线）。流上还没有它的脸 ⇒ 不灰（由两条命令自己照实回）。
+     * （成品还没到 ⇒ 状态不明：未知不当离线）。流上还没有它的脸 ⇒ 不灰（由两条命令自己照实回）。输入框照同一张脸的 `can.say`（[sayLook]）。
      */
     fun CoroutineScope.watch(s: String) {
         launch {
             combine(link.state, link.table, link.offline) { st, t, off -> Triple(st, t, off) }.collect { (st, t, off) ->
+                val down = st is LinkLine.Down
+                val can = t.face(s)?.can
                 val (model, permission) =
-                    if (st is LinkLine.Down) {
+                    if (down) {
                         (off ?: copyText("sessionState.unseen.name")).let { it to it }
                     } else {
-                        val can = t.face(s)?.can
                         can?.model?.blocked() to can?.permission?.blocked()
                     }
+                val say = sayLook(down, can)
                 val now = state.value
-                if (now.model.blocked != model || now.permission.blocked != permission) {
-                    state.value = now.copy(model = now.model.copy(blocked = model), permission = now.permission.copy(blocked = permission))
+                if (now.model.blocked != model || now.permission.blocked != permission || now.say != say) {
+                    state.value = now.copy(model = now.model.copy(blocked = model), permission = now.permission.copy(blocked = permission), say = say)
                 }
             }
         }

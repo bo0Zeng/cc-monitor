@@ -10,6 +10,7 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.Can
 import com.ccmonitor.mobile.core.wire.gen.CanDelete
 import com.ccmonitor.mobile.core.wire.gen.CanResume
+import com.ccmonitor.mobile.core.wire.gen.EmptyFace
 import com.ccmonitor.mobile.core.wire.gen.ForkedFrom
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.HistoryRow
@@ -119,7 +120,11 @@ class ChatsViewTest {
         current: String = "h1",
         filters: Filters = Filters(),
         query: String? = null,
-    ) = chatsView(parts.toList(), current, parts.map { HostName(it.hostId, it.machine) }, filters, query)
+        face: EmptyFace? = allListed,
+    ) = chatsView(parts.toList(), current, parts.map { HostName(it.hostId, it.machine) }, filters, query, face)
+
+    /** 核心交的首屏那一句：各台都报完了的那一形。 */
+    private val allListed = EmptyFace(copyText("beEmpty.line.none"), copyText("beEmpty.hint.none"))
 
     @Test
     fun `装一次会好的那一颗照成品带上（断着 · 通着旧了），别的修法不挑；正在装或更新照成品那一句带上，结局在条上没画时单独一行`() {
@@ -262,9 +267,16 @@ class ChatsViewTest {
     }
 
     @Test
-    fun `空：没筛选 ⇒ 无会话记录；带筛选 · 在搜 ⇒ 无匹配；还有台在读 ⇒ 骨架`() {
+    fun `空：没筛选 ⇒ 照核心那一句；核心还没交 ⇒ 骨架、不说无会话；带筛选 · 在搜 ⇒ 无匹配；还有台在读 ⇒ 骨架`() {
         val none = hostPart(snap(got = Fetched.Got(page())))
         assertEquals(Empty.NO_SESSIONS, view(none).empty)
+        assertEquals(allListed, view(none).emptyFace)
+        // 各台没报完：核心那一句不是「无会话」，屏上照它写。
+        val waiting = EmptyFace(copyText("beEmpty.line.waiting"), "gpu 连接中")
+        assertEquals(waiting, view(none, face = waiting).emptyFace)
+        val unknown = view(none, face = null)
+        assertTrue("核心还没交 ⇒ 骨架", unknown.skeleton)
+        assertEquals(Empty.NONE, unknown.empty)
         assertEquals(Empty.NO_MATCH, view(none, filters = Filters(hidden = true)).empty)
         assertEquals(Empty.NO_MATCH, view(none, query = "q").empty)
         val reading = view(none, hostPart(snap(got = Fetched.Loading, id = "h2")))

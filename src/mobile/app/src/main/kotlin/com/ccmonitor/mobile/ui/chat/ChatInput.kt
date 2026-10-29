@@ -53,7 +53,10 @@ import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
+import com.ccmonitor.mobile.core.wire.gen.CanSay
+import com.ccmonitor.mobile.core.wire.gen.CanTerm
 import com.ccmonitor.mobile.core.wire.gen.SessionAct
+import com.ccmonitor.mobile.core.wire.gen.SessionCan
 import com.ccmonitor.mobile.core.wire.gen.SessionCommand
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
 import com.ccmonitor.mobile.ui.chat.attach.AttachActions
@@ -84,6 +87,8 @@ data class ChatInputActions(
     val attach: AttachActions? = null,
     /** 流里自己那句的长按与就地编辑（[SaidEdit]）；新建会话还没起成 ⇒ `null`（没有可编辑的）。 */
     val said: SaidActions? = null,
+    /** 说不了时框旁［切到终端］（同 ⋯「在终端里打开」那一个去处）。 */
+    val toTerminal: () -> Unit = {},
 )
 
 /**
@@ -116,11 +121,16 @@ internal fun ChatInputArea(
                     sheet = InputSheet.Plus
                 }
             }
+            val say = state.say
+            if (say?.toTerminal == true) {
+                SecondaryButton(onClick = actions.toTerminal) { Text(copyText("terminal.head.front")) }
+            }
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = edited(draft, it, actions.editDraft) },
                 modifier = Modifier.fillMaxWidth().testTag(ChatTestTags.INPUT),
-                placeholder = { Text(copyText("chat.input.placeholder"), color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                enabled = say?.open != false,
+                placeholder = { Text(say?.placeholder ?: copyText("chat.input.placeholder"), color = MaterialTheme.colorScheme.onSurfaceVariant) },
                 singleLine = false,
                 maxLines = INPUT_MAX_LINES,
                 textStyle = MaterialTheme.typography.bodyLarge,
@@ -140,7 +150,7 @@ internal fun ChatInputArea(
             ) {
                 if (open) OpenChips(state, actions) { sheet = it }
                 Spacer(Modifier.weight(1f))
-                SendOrStop(state.running, sendable(draft.text, attach), actions, { actions.send(draft.text) }) { draft = TextFieldValue("") }
+                SendOrStop(state.running, if (say?.open == false) Sendable.EMPTY else sendable(draft.text, attach), actions, { actions.send(draft.text) }) { draft = TextFieldValue("") }
             }
         }
     }
@@ -359,6 +369,27 @@ internal fun chipText(
     label: String,
 ): String = chip.pending?.text ?: chip.text ?: label
 
+/** 输入框照脸上 `can.say` 的样子：占位那一句（那台写好的）· 框能不能写 · 框旁给不给［切到终端］。 */
+data class SayLook(
+    val placeholder: String,
+    val open: Boolean,
+    val toTerminal: Boolean,
+)
+
+/**
+ * 纯函数，判据读：脸上 `can.say` 是 yes ⇒ 占位是 `hint`；no ⇒ 框与 ➤ 灰着、占位是 `why`，`can.term` 是 yes 才给［切到终端］（同桌面）。
+ * 流断着 · 还没收到脸 ⇒ `null`（照常：断着发的成待发，A2-18-8）。只照那台判好的画，不另判。
+ */
+internal fun sayLook(
+    down: Boolean,
+    can: SessionCan?,
+): SayLook? =
+    when (val say = can?.say?.takeIf { !down }) {
+        null -> null
+        is CanSay.Yes -> SayLook(say.hint, open = true, toTerminal = false)
+        is CanSay.No -> SayLook(say.why, open = false, toTerminal = can.term is CanTerm.Yes)
+    }
+
 /** ➤ 此刻怎样：框里没字也没附件 · 附件还没全落好（灰）· 能发。 */
 internal enum class Sendable { EMPTY, WAITING, READY }
 
@@ -381,7 +412,7 @@ private fun SendOrStop(
     send: () -> Unit,
     clear: () -> Unit,
 ) {
-    // 运行中且框里没字、没附件 ⇒ 停止；二选一，不并存。输入框永远不锁。
+    // 运行中且框里没字、没附件 ⇒ 停止；二选一，不并存。输入框只在那台说说不了时锁（[sayLook]）。
     if (running && can == Sendable.EMPTY) {
         SendButton(Ph.Stop, copyText("mobChat.input.stop"), enabled = true, onClick = actions.stop, modifier = Modifier.testTag(ChatTestTags.STOP))
     } else {

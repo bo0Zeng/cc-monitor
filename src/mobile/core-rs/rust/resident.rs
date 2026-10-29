@@ -2,7 +2,7 @@
 //! 这里只接两根线 —— 下面那条 SSH（[`PhoneLink`]：拨号核心在这台手机上开的链路，拨号请求由 Kotlin 交那一份）· 往 Kotlin 交的事（一个回调，走消息）。
 //!
 //! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通 ＋ 那台的状态成品，JSON：[`Facts`]；SSH 那层跟着它换连接）·
-//! `book`（这台的会话簿整份）· `live`（某会话某运行此刻整份的活卡）—— 两样都照端核心那一份折法折好（[`Folds`]），Kotlin 不折 ·
+//! `empty`（首屏那一句，跟着 `state` 交：手上每台合的，[`empty_of`]）· `book`（这台的会话簿整份）· `live`（某会话某运行此刻整份的活卡）—— 两样都照端核心那一份折法折好（[`Folds`]），Kotlin 不折 ·
 //! `frame`（流上别的一帧，按类型写一行；`line` 帧里解不开的那条记录换成认不出那一条）·
 //! `watch_from`（JSON 数组）· `ssh`（SSH 够没够着那一台：`true` / `false`，与流通不通分开；SSH 那层跟它走）· `reply`（一问一答的结局，JSON，带 `call` 编号）·
 //! `moved`（分块传走到哪，`transfer.rs`）。
@@ -212,6 +212,11 @@ impl Folds {
         }
     }
 
+    /// 那台在这一条流上说过活会话清单报完了（簿里那一格）。
+    pub fn listed(&self) -> bool {
+        self.book.listed
+    }
+
     /// 换了一条流（正在连）：簿与板随旧连接作废 ⇒ 每一处有卡的交一份空的，再交空簿（新连接那台整份重报）。
     pub fn reset(&mut self) -> Vec<(&'static str, String)> {
         let mut out: Vec<(&'static str, String)> = self
@@ -246,11 +251,26 @@ fn live_line(c: &LiveCards) -> String {
 pub struct Facts {
     /// 这台的编号（[`open`] 发的那个）：成品里的连接按这台交的拨号请求（[`ssh`]）在本进程池里找。
     id: i64,
+    /// 这台叫什么（首屏那一句里点名用，[`empty_of`]）。
+    name: String,
     entry: Entry,
     last: Option<State>,
 }
 
 impl Facts {
+    /// 叫 `name` 的那台、还什么都没收的一份。
+    pub fn named(name: &str) -> Self {
+        Facts {
+            name: name.to_string(),
+            ..Facts::default()
+        }
+    }
+
+    /// 那台在这一条连接上说活会话清单报完了（又在连 · 断了 ⇒ 由 [`fold`] 作废）。
+    pub fn listed(&mut self) {
+        fold(&mut self.entry, Fact::Listed);
+    }
+
     /// 那条流交来一轮 ⇒ `state` 那一行。
     pub fn round(&mut self, s: State, machine: &str) -> String {
         self.fold_round(&s);
@@ -319,15 +339,47 @@ fn facts() -> &'static Mutex<HashMap<i64, Arc<Mutex<Facts>>>> {
     F.get_or_init(Default::default)
 }
 
-/// 在编号 `h` 那台手上的事实里收一件、出那一行（那台不在 ⇒ `None`）。
-pub(crate) fn note(h: i64, f: impl FnOnce(&mut Facts) -> String) -> Option<String> {
-    let got = facts()
+/// 在编号 `h` 那台手上的事实里收一件 ⇒ 交 Kotlin 的那两行：`state`（那台的）· `empty`（首屏那一句，[`empty_line`]）；那台不在 ⇒ 空。
+pub(crate) fn note(h: i64, f: impl FnOnce(&mut Facts) -> String) -> Vec<(&'static str, String)> {
+    let Some(got) = facts()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .get(&h)
-        .cloned()?;
-    let mut got = got.lock().unwrap_or_else(|e| e.into_inner());
-    Some(f(&mut got))
+        .cloned()
+    else {
+        return Vec::new();
+    };
+    let line = f(&mut got.lock().unwrap_or_else(|e| e.into_inner()));
+    vec![("state", line), ("empty", empty_line())]
+}
+
+/// 首屏那一句（[`cmd_wire::machine::EmptyFace`]）：这台手机看着的每台，照打开的先后，同桌面那一份合（`deploy::machine::empty`）。
+/// 手机不自己装后端、没有停用那一说 ⇒ 每台照「连着这台」读成品。
+pub fn empty_of(all: &[&Facts]) -> cmd_wire::machine::EmptyFace {
+    let rows: Vec<(cmd_wire::machine::MachineState, bool)> = all
+        .iter()
+        .map(|f| (product(&f.entry, &f.name, true, false), f.entry.listed()))
+        .collect();
+    let rows: Vec<(&cmd_wire::machine::MachineState, bool)> =
+        rows.iter().map(|(m, l)| (m, *l)).collect();
+    deploy::machine::empty(&rows)
+}
+
+/// [`empty_of`] 照此刻手上的每台写成一行（交 Kotlin 的 `empty`）。
+fn empty_line() -> String {
+    let mut all: Vec<(i64, Arc<Mutex<Facts>>)> = facts()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .map(|(h, f)| (*h, Arc::clone(f)))
+        .collect();
+    all.sort_by_key(|(h, _)| *h);
+    let held: Vec<std::sync::MutexGuard<'_, Facts>> = all
+        .iter()
+        .map(|(_, f)| f.lock().unwrap_or_else(|e| e.into_inner()))
+        .collect();
+    let refs: Vec<&Facts> = held.iter().map(|g| &**g).collect();
+    serde_json::to_string(&empty_of(&refs)).unwrap_or_default()
 }
 
 /// 看一台（在当前运行时上起它的循环）。`mine` = 手上这一版的身份（版本门的对照物）。回编号。
@@ -355,7 +407,7 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
     );
     let mine = Arc::new(Mutex::new(Facts {
         id,
-        ..Facts::default()
+        ..Facts::named(&name)
     }));
     let folds = Mutex::new(Folds::default());
     facts()
@@ -390,11 +442,23 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
                         }
                         _ => Vec::new(),
                     };
-                    let mut facts = mine.lock().unwrap_or_else(|e| e.into_inner());
-                    out.push(("state", facts.round(s.clone(), &name)));
+                    out.extend(note(id, |f| f.round(s.clone(), &name)));
                     out
                 }
-                Event::Frame(line) => folds.lock().unwrap_or_else(|e| e.into_inner()).frame(line),
+                Event::Frame(line) => {
+                    let (mut out, listed) = {
+                        let mut folds = folds.lock().unwrap_or_else(|e| e.into_inner());
+                        (folds.frame(line), folds.listed())
+                    };
+                    // 簿里「清单报完了」刚翻真 ⇒ 记进那台的事实，首屏那一句跟着换。
+                    if listed && !mine.lock().unwrap_or_else(|e| e.into_inner()).entry.listed() {
+                        out.extend(note(id, |f| {
+                            f.listed();
+                            f.line(&name)
+                        }));
+                    }
+                    out
+                }
                 _ => event_of(&e).into_iter().collect(),
             };
             for (kind, body) in got {
@@ -1078,5 +1142,30 @@ mod tests {
         }
         assert_eq!(stranger.route, None, "没交过拨号请求的那台带上了 route");
         assert_eq!(stranger.detail, None, "没交过拨号请求的那台带上了连接");
+    }
+
+    /// 首屏那一句：手上看着的每台照桌面那一份合（`deploy::machine::empty`）—— 一台报完、一台还在连 ⇒ 不说「无会话」；
+    /// 都报完了才说；报完了的那台又在连 ⇒ 作废。
+    #[test]
+    fn the_empty_line_says_no_sessions_only_once_every_machine_has_listed() {
+        let up = || State::Up {
+            epoch: 1,
+            relation: cmd_wire::attach::Relation::Same,
+            differs: Vec::new(),
+        };
+        let none = copy_core::copy_text("beEmpty.line.none", &[]);
+        let (mut a, mut b) = (Facts::named("a"), Facts::named("b"));
+        a.round(up(), "a");
+        b.round(State::Connecting, "b");
+        a.listed();
+        let face = empty_of(&[&a, &b]);
+        assert_ne!(face.line, none, "b 还在连就说了无会话");
+        assert!(face.hint.contains('b'), "没说 b 还在连：{}", face.hint);
+        b.round(up(), "b");
+        assert_ne!(empty_of(&[&a, &b]).line, none, "b 连上了、还没报完就说了无会话");
+        b.listed();
+        assert_eq!(empty_of(&[&a, &b]).line, none);
+        a.round(State::Connecting, "a");
+        assert_ne!(empty_of(&[&a, &b]).line, none, "a 又在连，报完的那一次没作废");
     }
 }

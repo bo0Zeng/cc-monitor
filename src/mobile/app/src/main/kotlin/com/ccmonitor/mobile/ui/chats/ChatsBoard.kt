@@ -7,6 +7,7 @@ import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.ListSort
 import com.ccmonitor.mobile.core.claude.link.SearchMerge
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.EmptyFace
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.Merged
 import com.ccmonitor.mobile.core.wire.gen.MergedRow
@@ -140,9 +141,11 @@ data class ChatsUi(
     val deploying: List<HostPart> = emptyList(),
     val notices: List<String> = emptyList(),
     val truncated: Boolean = false,
-    /** 一行都还没有、又有台在读 ⇒ 骨架。 */
+    /** 一行都还没有、又有台在读（或首屏那一句核心还没交）⇒ 骨架。 */
     val skeleton: Boolean = true,
     val empty: Empty = Empty.NONE,
+    /** [Empty.NO_SESSIONS] 时写的那一句（核心照各台的成品与报完了没有合的，桌面首屏同一份）：各台都报完才是「无会话」。 */
+    val emptyFace: EmptyFace? = null,
     /** 搜内容那一份（点了「搜内容「{q}」」之后；换词就收掉）。 */
     val content: ContentUi? = null,
 ) {
@@ -165,6 +168,8 @@ class ChatsBoard(
     /** 几台搜内容的结果合成一份（嵌的 Rust 核心那一步，[SearchMerge]）。 */
     private val merge: (String) -> String,
     scope: CoroutineScope? = null,
+    /** 首屏那一句（`HostBackends.empty`）；还没交 ⇒ `null`。 */
+    private val empty: Flow<EmptyFace?> = flowOf(null),
 ) : ViewModel() {
     private val scope = scope ?: viewModelScope
     private val filters = MutableStateFlow(Filters())
@@ -195,8 +200,8 @@ class ChatsBoard(
             boards
                 .map { bs -> if (bs.isEmpty()) flowOf(emptyList()) else combine(bs.map { it.state }) { it.toList() } }
                 .collectLatest { snaps ->
-                    combine(snaps, ssh, filters, combine(query, content, ::Pair), table) { s, l, f, (q, c), t ->
-                        chatsView(s.map { hostPart(it, l[it.hostId]) }, current, t, f, q).copy(content = c)
+                    combine(snaps, ssh, filters, combine(query, content, ::Pair), combine(table, empty, ::Pair)) { s, l, f, (q, c), (t, e) ->
+                        chatsView(s.map { hostPart(it, l[it.hostId]) }, current, t, f, q, e).copy(content = c)
                     }.collect { v ->
                         latest = v
                         if (!held.value) _ui.value = v
@@ -337,6 +342,8 @@ internal fun chatsView(
     table: List<HostName>,
     filters: Filters,
     query: String?,
+    /** 首屏那一句（核心交的；还没交 ⇒ `null`：不说「无会话」，照在读画骨架）。 */
+    face: EmptyFace?,
 ): ChatsUi {
     val multi = parts.size > 1
     val tag = { p: HostPart -> p.machine.takeIf { multi && p.hostId != current } }
@@ -349,6 +356,7 @@ internal fun chatsView(
     val down = parts.filter { it.bar?.offline == true }.map { it.hostId }.toSet()
     // 机器表还没读到（一台都没有、又没去勾）也算在读。
     val loading = parts.any { it.loading } || (parts.isEmpty() && !filters.active)
+    val empty = emptyOf(none, loading, filters.active || query != null, face)
     return ChatsUi(
         filters = filters,
         query = query,
@@ -361,15 +369,27 @@ internal fun chatsView(
         deploying = parts.filter { it.bar == null && it.deploying != null },
         notices = parts.flatMap { listOfNotNull(it.notice) + it.groupLines }.distinct(),
         truncated = parts.any { it.truncated },
-        skeleton = none && loading,
-        empty =
-            when {
-                !none || loading -> Empty.NONE
-                filters.active || query != null -> Empty.NO_MATCH
-                else -> Empty.NO_SESSIONS
-            },
+        skeleton = none && empty == Empty.NONE,
+        empty = empty,
+        emptyFace = face,
     )
 }
+
+/**
+ * 空着时说哪一句：有行 · 在读 ⇒ 不说；带筛选 · 在搜 ⇒ 无匹配；没筛选 ⇒ 照核心那一句（各台报完才是「无会话」），它还没交 ⇒ 不说（当在读）。
+ */
+private fun emptyOf(
+    none: Boolean,
+    loading: Boolean,
+    asked: Boolean,
+    face: EmptyFace?,
+): Empty =
+    when {
+        !none || loading -> Empty.NONE
+        asked -> Empty.NO_MATCH
+        face == null -> Empty.NONE
+        else -> Empty.NO_SESSIONS
+    }
 
 /** 固定那一段与各组那几段（各台照机器表先后接）：段与行带上那台的机器小标签。 */
 private fun bandsOf(
