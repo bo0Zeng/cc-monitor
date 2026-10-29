@@ -77,8 +77,6 @@ const SUPPORT: &[&str] = &[
     "tests/backend/sftp_rig.rs",
     "tests/backend/dial_sftp_rig_host.rs", // 后端测试档的 SFTP 台架：先装本后端那一套再起会话
     "tests/backend/ssh_dial_support.rs", // 拨号核心判据共用的几样（人群的根 · 测试档装的那一套 · 登记的钥匙）
-    "tests/backend/dial_sftp_rig_host.rs", // 后端测试档的 SFTP 台架：先装本后端那一套再起会话
-    "tests/backend/ssh_dial_support.rs", // 拨号核心判据共用的几样（人群的根 · 测试档装的那一套 · 登记的钥匙）
     "tests/backend/accounts/upstream_select/upstreams_testing.rs", // 把一家的默认上游换成假上游
     "tests/frontend/shell/backend_kill_creation_detect.rs",
     "tests/frontend/shell/frame_fixtures.rs", // 壳判据用的几帧（同一版后端的 hello · 帧去向 · 活会话宣告）

@@ -7,6 +7,10 @@
 //! | P3 | 不在暂存区里（落点上那一份自己跑了这条）⇒ `outside_staging`、那份文件不删、落点不动 | 真目录 |
 //! | P4 | 部署起的那个暂存名被叫成这条子命令 ⇒ 进后端（不被当成一段配置） | 纯函数 |
 //! | P5 | `--unplace-self`：暂存区里那一份删掉落点那一份（不认身份）、再删自己；落点本来不在 ⇒ `false`；不在暂存区里 ⇒ `outside_staging`、什么都不删 | 真目录 |
+//! | P6 | 换版本：落点上原来那一份留进 `bin/kept/ccm-<它自报的身份>`、字节一个不变、只给本人；头一回装（落点不在）不留；身份读不出 ⇒ `ccm-unstamped` | 真目录 |
+//! | P7 | 留存区最多 [`KEPT_MAX`] 份、过 [`KEPT_MAX_AGE_SECS`] 删：留完收拾，只剩最新的那几份 | 真目录 |
+//! | P8 | 留不成（那一格被一个目录占着）⇒ `place_failed`、不换、落点一个字节不动 | 真目录 |
+//! | P9 | 卸载那一趟连留存区里那几份一起删 | 真目录 |
 
 use super::*;
 use std::path::{Path, PathBuf};
@@ -165,4 +169,136 @@ fn p5_a_staged_copy_removes_the_landing_and_itself() {
     let (code, _) = unplace(&own, &at_landing).unwrap_err();
     assert_eq!(code, "outside_staging");
     assert!(at_landing.exists());
+}
+
+/// 留存区（相对家目录）：落点那层 `bin` 底下的那一层。
+fn kept_rel() -> String {
+    let bin = Path::new(relay_route_core::BACKEND_LANDING_REL)
+        .parent()
+        .unwrap();
+    format!(
+        "{}/{}",
+        bin.display(),
+        relay_route_core::BACKEND_KEPT_DIR_NAME
+    )
+}
+
+fn kept(home: &Path, name: &str) -> PathBuf {
+    home.join(kept_rel()).join(name)
+}
+
+fn kept_names(home: &Path) -> Vec<String> {
+    let mut n: Vec<String> = std::fs::read_dir(home.join(kept_rel()))
+        .map(|d| {
+            d.filter_map(|e| e.ok()?.file_name().into_string().ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    n.sort();
+    n
+}
+
+fn staged_at(home: &Path, bytes: &[u8]) -> PathBuf {
+    put(
+        home,
+        &format!(
+            "{}/cc-monitor-backend.1-2-3.new",
+            relay_route_core::STAGING_DIR_REL
+        ),
+        bytes,
+    )
+}
+
+fn age(p: &Path, secs_ago: u64) {
+    let t = std::time::SystemTime::now() - std::time::Duration::from_secs(secs_ago);
+    std::fs::File::open(p).unwrap().set_modified(t).unwrap();
+}
+
+#[test]
+fn p6_the_copy_it_replaces_is_kept_byte_for_byte() {
+    let home = sandbox("p6");
+    let own = Own::issue_at(&home);
+    // 头一回装：落点不在 ⇒ 不留。
+    place(&own, &staged_at(&home, &backend("old")), "old").expect("该换进落点");
+    assert!(kept_names(&home).is_empty(), "头一回装不该留");
+    // 落点上那一份有身份；换上新的一份 ⇒ 那一份原样留着、只给本人。
+    place(&own, &staged_at(&home, &backend("mine")), "mine").expect("该换进落点");
+    assert_eq!(landing(&home), Some(backend("mine")));
+    assert_eq!(kept_names(&home), vec!["ccm-old".to_string()]);
+    assert_eq!(
+        std::fs::read(kept(&home, "ccm-old")).ok(),
+        Some(backend("old"))
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let m = std::fs::metadata(kept(&home, "ccm-old")).unwrap();
+        assert_eq!(m.permissions().mode() & 0o077, 0, "留下的那一份只给本人");
+    }
+    // 身份读不出的那一份 ⇒ `ccm-unstamped`。
+    put(
+        &home,
+        relay_route_core::BACKEND_LANDING_REL,
+        b"no stamp at all",
+    );
+    place(&own, &staged_at(&home, &backend("mine")), "mine").expect("该换进落点");
+    assert_eq!(
+        std::fs::read(kept(&home, "ccm-unstamped")).ok(),
+        Some(b"no stamp at all".to_vec())
+    );
+}
+
+#[test]
+fn p7_kept_copies_are_capped_and_expire() {
+    let home = sandbox("p7");
+    let own = Own::issue_at(&home);
+    // 留存区里已有：一份过期的 · 几份没过期的（越往后越新）。
+    put(&home, &format!("{}/ccm-ancient", kept_rel()), b"a");
+    age(&kept(&home, "ccm-ancient"), KEPT_MAX_AGE_SECS + 3600);
+    let fresh: Vec<String> = (0..KEPT_MAX).map(|i| format!("ccm-v{i}")).collect();
+    for (i, n) in fresh.iter().enumerate() {
+        put(&home, &format!("{}/{n}", kept_rel()), b"v");
+        age(&kept(&home, n), 1000 * (KEPT_MAX - i) as u64);
+    }
+    put(
+        &home,
+        relay_route_core::BACKEND_LANDING_REL,
+        &backend("prev"),
+    );
+    place(&own, &staged_at(&home, &backend("mine")), "mine").expect("该换进落点");
+    let mut want: Vec<String> = fresh[1..].to_vec();
+    want.push("ccm-prev".into());
+    want.sort();
+    assert_eq!(kept_names(&home), want, "过期的删、最旧的那一份让位");
+}
+
+#[test]
+fn p8_no_swap_when_the_old_copy_cannot_be_kept() {
+    let home = sandbox("p8");
+    let own = Own::issue_at(&home);
+    put(
+        &home,
+        relay_route_core::BACKEND_LANDING_REL,
+        &backend("old"),
+    );
+    std::fs::create_dir_all(kept(&home, "ccm-old").join("x")).unwrap();
+    let staged = staged_at(&home, &backend("mine"));
+    let (code, _) = place(&own, &staged, "mine").unwrap_err();
+    assert_eq!(code, "place_failed");
+    assert_eq!(landing(&home), Some(backend("old")), "落点该一个字节不动");
+}
+
+#[test]
+fn p9_uninstall_clears_the_kept_copies() {
+    let home = sandbox("p9");
+    let own = Own::issue_at(&home);
+    put(
+        &home,
+        relay_route_core::BACKEND_LANDING_REL,
+        &backend("old"),
+    );
+    put(&home, &format!("{}/ccm-older", kept_rel()), b"o");
+    let staged = staged_at(&home, &backend("any"));
+    assert_eq!(unplace(&own, &staged), Ok(true));
+    assert!(kept_names(&home).is_empty(), "卸载该连留存区一起删");
 }
