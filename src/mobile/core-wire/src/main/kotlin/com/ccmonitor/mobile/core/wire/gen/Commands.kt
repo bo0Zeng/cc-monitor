@@ -1049,7 +1049,6 @@ object Commands {
             TransferCopyReq::class.java to TransferCopyReq.ADAPTER,
             TransferDownloadAsk::class.java to TransferDownloadAsk.ADAPTER,
             TransferDownloadReq::class.java to TransferDownloadReq.ADAPTER,
-            TransferIdReq::class.java to TransferIdReq.ADAPTER,
             TransferOpened::class.java to TransferOpened.ADAPTER,
             TransferStartReq::class.java to TransferStartReq.ADAPTER,
             TransferStopReq::class.java to TransferStopReq.ADAPTER,

@@ -1,6 +1,7 @@
 //! 只读查询走长连接的判据（monitor 侧）。
 
 use super::*;
+use serde_json::json;
 
 /// 搬上帧面的 CLI 子命令 → 帧命令。左列那几条已从后端删掉（下面钉着「它们不再是子命令」），右列是今天的帧命令。
 const MOVED: &[(&str, &str)] = &[
@@ -1417,8 +1418,9 @@ fn this_module_uses_the_deadline_it_is_given_and_never_makes_one() {
         "../../../src/frontend/shell/src/frame_query.rs"
     )));
     let adds = |code: &str| code.matches("Instant::now() +").count();
-    // 字段是私有的 ⇒ 结构体字面量只可能写在本文件里；`until:` 恰好两处 = 字段定义一处 ＋ 构造一处。
-    let builds = |code: &str| code.matches("until:").count();
+    // 字段是私有的 ⇒ 结构体字面量只可能写在本文件里；`until: tokio` 恰好两处 = 字段定义一处 ＋ 构造一处
+    //   （`history-read` 入参那一格也叫 `until`，是字节偏移，不是这一个）。
+    let builds = |code: &str| code.matches("until: tokio").count();
     let duration_params = |code: &str| -> Vec<String> {
         code.split("pub(crate) async fn ")
             .skip(1)
