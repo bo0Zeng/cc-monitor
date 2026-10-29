@@ -8,46 +8,8 @@ use crate::accounts::quota::setup::{self, script};
 use crate::wire::typed::Command;
 pub(crate) use cmd_wire::rotation::{
     RotTryDecision, RotTryLane, RotTryRow, RotTrySeg, RotTrySwitch, RotTryTick, RotTryTimeline,
-    RotTryUse, RotationTryReply,
+    RotTryUse, RotationTryReply, RotationTryReq,
 };
-
-/// `rotation-try` 的入参。
-#[derive(Debug, Default, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationTryReq {
-    /// 一份策略文件的原文（头 ＋ 代码）。
-    pub(crate) source: String,
-    /// 换掉头里的设置（形状由这份策略自己定；缺 ⇒ 用头里的）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    #[cfg_attr(test, ts(type = "unknown"))]
-    pub(crate) settings: Option<serde_json::Value>,
-    /// 开会话用的号（缺 ⇒ 事实里第一个号）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) start: Option<String>,
-    /// 在用的号（缺 ⇒ 开会话用的号）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) current: Option<String>,
-    /// 临时条目。
-    #[serde(default)]
-    pub(crate) temp: Vec<String>,
-    /// 往后推几小时（1–48，缺 ⇒ 12）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) hours: Option<u8>,
-    /// 试跑「现在用这个号」：事实上发得出去 ⇒ 判的是换过去、放进拖出来的顺序最前之后的那一判；发不出去 ⇒ `useNowRefused` 带几点恢复。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) use_now: Option<String>,
-    /// 哪一家（缺 ⇒ 有账号库的那一家）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) agent: Option<crate::agents::AgentKind>,
-}
 
 crate::wire::typed::codes! {
     /// `rotation-try` 自己的码。
@@ -61,9 +23,7 @@ crate::wire::typed::codes! {
 pub(crate) struct RotationTry;
 
 impl Command for RotationTry {
-    const NAME: &'static str = "rotation-try";
-    type Req = RotationTryReq;
-    type Reply = RotationTryReply;
+    crate::wire::typed::by_call!(RotationTryReq);
     type Err = RotationTryErr;
 }
 

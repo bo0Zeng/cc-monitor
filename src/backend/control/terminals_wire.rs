@@ -8,81 +8,8 @@ use serde::Deserialize;
 
 // ── 入参 ──────────────────────────────────────────────────────────────
 
-/// `terminals-list` 的入参。
-#[derive(Debug, Clone, Default, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct TerminalsListReq {
-    /// 自报的前端（1–32 个 `[a-z0-9-]`）：决定每行的 `can` 与 `started_by.mine`。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) client: Option<String>,
-}
-
-/// `terminal-preview` 的入参。目标恰给一个：`terminal`（名单里的句柄）· `sid`（会话 id）。
-#[derive(Debug, Clone, Default, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct TerminalPreviewReq {
-    /// 目标：名单里的句柄（与 `sid` 恰给一个）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) terminal: Option<String>,
-    /// 目标：会话 id（与 `terminal` 恰给一个）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) sid: Option<String>,
-    /// 要不要颜色；缺省 `true`。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) color: Option<bool>,
-    /// 往回多要几行；缺省 0、上限 2000（超了截到上限、回包 `capped: true`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub(crate) scrollback: Option<u64>,
-}
-
-/// `terminal-input` 的入参。目标同 [`TerminalPreviewReq`]；送什么恰给一个：`text`（＋ `enter`）· `key`。
-#[derive(Debug, Clone, Default, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct TerminalInputReq {
-    /// 目标：名单里的不透明句柄（前端不拼、不解析）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) terminal: Option<String>,
-    /// 目标：会话 id（与 `terminal` 恰给一个）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) sid: Option<String>,
-    /// 送字：字面字，原样送、不解释成键名；多行按粘贴送（与 `key` 恰给一个）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) text: Option<String>,
-    /// `text` 之后补一个回车；缺省 `true`（只跟 `text`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) enter: Option<bool>,
-    /// 送键：`esc` · `ctrl-c` · `ctrl-d` · `up` · `down` · `left` · `right` · `tab` · `shift-tab` · `enter` · `backspace` · `page-up` · `page-down`。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) key: Option<String>,
-    /// 送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen_changed`。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) seen_screen: Option<String>,
-    /// 自报的前端（过「哪个前端的会话」那一维）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) client: Option<String>,
-    /// `text` 之前各单独粘一次的那几段（投递带附件那一句时的图片绝对路径，由那台按附件编号写好）。不上线：入参里写了它 ⇒ `bad_args`（`deny_unknown_fields`）。
-    #[serde(skip)]
-    #[cfg_attr(test, ts(skip))]
-    pub(crate) pastes: Vec<String>,
-}
+// L1 三条的入参住 `cmd-wire::terminal`（名字与回包挂在 `cmd_wire::Call` 上）。
+pub(crate) use cmd_wire::terminal::{TerminalInputReq, TerminalPreviewReq, TerminalsListReq};
 
 /// `terminal-take-input` · `terminal-release-input` 的入参：名单里的句柄 ＋ 自报的前端（替它接管 / 交还）。
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -266,9 +193,7 @@ fn hold(req: &TerminalHoldReq, take: bool) -> Result<cmd_wire::session::InputNow
 pub(crate) struct TerminalsListCmd;
 
 impl Command for TerminalsListCmd {
-    const NAME: &'static str = "terminals-list";
-    type Req = TerminalsListReq;
-    type Reply = TerminalsList;
+    typed::by_call!(TerminalsListReq);
     type Err = TerminalsListErr;
 }
 
@@ -294,9 +219,7 @@ impl crate::wire::typed::Handle for TerminalsListCmd {
 pub(crate) struct TerminalPreviewCmd;
 
 impl Command for TerminalPreviewCmd {
-    const NAME: &'static str = "terminal-preview";
-    type Req = TerminalPreviewReq;
-    type Reply = Preview;
+    typed::by_call!(TerminalPreviewReq);
     type Err = TerminalPreviewErr;
 }
 
@@ -324,9 +247,7 @@ impl crate::wire::typed::Handle for TerminalPreviewCmd {
 pub(crate) struct TerminalInputCmd;
 
 impl Command for TerminalInputCmd {
-    const NAME: &'static str = "terminal-input";
-    type Req = TerminalInputReq;
-    type Reply = Sent;
+    typed::by_call!(TerminalInputReq);
     type Err = TerminalInputErr;
 }
 

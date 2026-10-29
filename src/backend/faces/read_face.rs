@@ -306,9 +306,7 @@ crate::wire::typed::codes! {
 pub(crate) struct AccountsListCmd;
 
 impl crate::wire::typed::Command for AccountsListCmd {
-    const NAME: &'static str = "accounts-list";
-    type Req = crate::observe::accounts_query::AccountsListReq;
-    type Reply = crate::observe::accounts_query::AccountsList;
+    crate::wire::typed::by_call!(cmd_wire::accounts::AccountsListReq);
     type Err = AccountsListErr;
 }
 
