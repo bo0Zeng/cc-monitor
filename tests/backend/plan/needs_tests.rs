@@ -320,7 +320,12 @@ fn each_need_still_open_lands_on_its_cell_labelled_by_the_backend() {
         x.acked = x.key == "red:又一条@A2";
     }
     let got = open_cells(&sl);
-    assert_eq!(got, vec![a2.clone(), None, None, a2.clone()], "{:?}", sl.needs);
+    assert_eq!(
+        got,
+        vec![a2.clone(), None, None, a2.clone()],
+        "{:?}",
+        sl.needs
+    );
     assert_eq!(usize::try_from(count_slice(&sl)).unwrap(), got.len());
     // 在等人：问人那两条不在里头（由会话那一侧数）。
     let mut sl = slice_with(&d, &all_working);

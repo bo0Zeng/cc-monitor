@@ -814,10 +814,10 @@ impl crate::wire::typed::Handle for SessionsNeedsCmd {
     }
 }
 
-/// [`SessionsNeedsCmd`] 的本体：家目录 · 这台计划里要人看的那几片（工作区 · 片名 · 几格）· 会话外的清单（读不出 ⇒ 那一句）是参数。
+/// [`SessionsNeedsCmd`] 的本体：家目录 · 这台计划里要人看的每一条（工作区 · 片名 · 落在哪一格）· 会话外的清单（读不出 ⇒ 那一句）是参数。
 pub(crate) fn needs_at(
     home: &Path,
-    plan: &[(String, String, u32)],
+    plan: &[crate::plan::needs::NeedAt],
     manual: Result<Vec<cmd_wire::needs::ManualItem>, String>,
 ) -> NeedsList {
     let annotations = match crate::history::history_annotations::load() {
@@ -838,7 +838,7 @@ pub(crate) fn needs_with(
     home: &Path,
     here: &crate::history::session_hidden::Here,
     annotations: &crate::history::history_annotations::Table,
-    plan: &[(String, String, u32)],
+    plan: &[crate::plan::needs::NeedAt],
     manual: Result<Vec<cmd_wire::needs::ManualItem>, String>,
 ) -> NeedsList {
     crate::observe::recognize::facts::needs_list(

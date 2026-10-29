@@ -314,19 +314,20 @@ fn files(dir: &str, tz: &crate::Tz) -> wire::PlanFiles {
 }
 
 fn list(req: &PlanListReq, tz: &crate::Tz) -> wire::PlanList {
+    let (pb, docs) = reads(req, tz);
+    list_of(pb, &docs)
+}
+
+/// `plan-list` 那一路读到的几份成品（标过认可的，照工作区排）· pb 的结局：[`list`] 与 [`need_slices`] 同一处取。
+fn reads(req: &PlanListReq, tz: &crate::Tz) -> (wire::PlanPb, Vec<wire::PlanRead>) {
     let mut dirs: Vec<String> =
         crate::history::live_table::now(&crate::history::listing::agent_home()).cwds();
     dirs.extend(req.dirs.iter().flatten().cloned());
     let entry = match entry() {
         Ok(e) => e,
-        Err(f) => {
-            return wire::PlanList {
-                pb: pb_state("missing", Some(f.message)),
-                workspaces: Vec::new(),
-            }
-        }
+        Err(f) => return (pb_state("missing", Some(f.message)), Vec::new()),
     };
-    list_in(
+    reads_in(
         book::book(),
         dirs,
         req.fresh.unwrap_or(false),
@@ -335,15 +336,34 @@ fn list(req: &PlanListReq, tz: &crate::Tz) -> wire::PlanList {
     )
 }
 
-/// [`list`] 的本体：本子 · 要问的目录 · 认过的也重问不重问 · 起 pb 读一个目录的那一下（判据换成替身数次数）。
-/// 不重问时：认过的目录照本子里那一份；认不出的（不是工作区 · 读不成）也照本子里记的那一个结局，不再起 pb。
+fn list_of(pb: wire::PlanPb, docs: &[wire::PlanRead]) -> wire::PlanList {
+    wire::PlanList {
+        pb,
+        workspaces: docs.iter().map(crate::plan::product::list_row).collect(),
+    }
+}
+
+/// [`list`] 的本体（判据换成替身数次数）：见 [`reads_in`]。
 pub(crate) fn list_in(
+    b: &book::Book,
+    dirs: Vec<String>,
+    fresh: bool,
+    read: &dyn Fn(&Path) -> Result<wire::PlanRead, book::Miss>,
+    tz: &crate::Tz,
+) -> wire::PlanList {
+    let (pb, docs) = reads_in(b, dirs, fresh, read, tz);
+    list_of(pb, &docs)
+}
+
+/// [`reads`] 的本体：本子 · 要问的目录 · 认过的也重问不重问 · 起 pb 读一个目录的那一下。
+/// 不重问时：认过的目录照本子里那一份；认不出的（不是工作区 · 读不成）也照本子里记的那一个结局，不再起 pb。
+fn reads_in(
     b: &book::Book,
     mut dirs: Vec<String>,
     fresh: bool,
     read: &dyn Fn(&Path) -> Result<wire::PlanRead, book::Miss>,
     tz: &crate::Tz,
-) -> wire::PlanList {
+) -> (wire::PlanPb, Vec<wire::PlanRead>) {
     dirs.sort();
     dirs.dedup();
     let mut seen: BTreeMap<String, wire::PlanRead> = BTreeMap::new();
@@ -379,13 +399,10 @@ pub(crate) fn list_in(
     if let Some(v) = seen.values().next() {
         pb.version = v.pb.clone();
     }
-    wire::PlanList {
-        pb,
-        workspaces: seen.values().map(crate::plan::product::list_row).collect(),
-    }
+    (pb, seen.into_values().collect())
 }
 
-/// pb 装没装、认不认得它的输出（版本由 [`list_in`] 照读到的那一份填）。
+/// pb 装没装、认不认得它的输出（版本由 [`reads_in`] 照读到的那一份填）。
 fn pb_state(state: &str, said: Option<String>) -> wire::PlanPb {
     wire::PlanPb {
         state: state.to_string(),
@@ -394,19 +411,10 @@ fn pb_state(state: &str, said: Option<String>) -> wire::PlanPb {
     }
 }
 
-/// 这台计划里要人看的那几片（工作区 · 片名 · 几格，照 `plan-list` 的先后）：同 `plan-list {}` 那一路取（认过的目录照本子里那一份，不重问 pb）。
-/// 读不出的工作区不在里头（计划那一截空着，不挡会话那几项）。
-pub(crate) fn need_slices(tz: &crate::Tz) -> Vec<(String, String, u32)> {
-    list(&PlanListReq::default(), tz)
-        .workspaces
-        .iter()
-        .flat_map(|ws| {
-            ws.slices
-                .iter()
-                .filter(|sl| sl.need_count > 0)
-                .map(|sl| (ws.workspace.clone(), sl.name.clone(), sl.need_count))
-        })
-        .collect()
+/// 这台计划里要人看的每一条（工作区 · 片名 · 落在哪一格，照 `plan-list` 的先后；[`crate::plan::needs::need_items`] 摊开）：
+/// 同 `plan-list {}` 那一路取（认过的目录照本子里那一份，不重问 pb）。读不出的工作区不在里头（计划那一截空着，不挡会话那几项）。
+pub(crate) fn need_slices(tz: &crate::Tz) -> Vec<crate::plan::needs::NeedAt> {
+    crate::plan::needs::need_items(&reads(&PlanListReq::default(), tz).1)
 }
 
 /// `plan-list` 的入参。
