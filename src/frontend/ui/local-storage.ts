@@ -46,6 +46,8 @@ export const LS_KEYS = {
   queuePending: "cc-monitor.queue.pending",
   /** 编辑已发的一句时改到一半的字（`{"<那台>\u0000<sid>\u0000<那一句的 id>": "字"}`）：重开还在，回执到了删。读写者只有 `said-edit.ts`。 */
   saidEditDrafts: "cc-monitor.said-edit.drafts",
+  /** 消息流底下输入框打到一半的字（`{"<那台>\u0000<sid>": "字"}`）：重开还在，回执到了 · 清空了删。读写者只有 `composer.ts`。 */
+  composerDrafts: "cc-monitor.composer.drafts",
 } as const;
 
 export function safeGet(key: string): string | null {
