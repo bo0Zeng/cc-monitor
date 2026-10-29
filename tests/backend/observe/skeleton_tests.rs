@@ -142,6 +142,43 @@ fn a_skeleton_is_written_in_lines_and_read_back_block_by_block() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// 读回一份骨架往下读的次数是按块算的，不是按字节：解析器从流里逐字节取，直接读那个 `dyn Read` 就是每个字节一次往下读
+/// （587 MB 那份的 15 MB 骨架读回 176 ms，其中 110 ms 花在这上面）。
+#[test]
+fn a_skeleton_is_parsed_from_the_stream_block_by_block_not_byte_by_byte() {
+    struct Counted<'a> {
+        inner: &'a [u8],
+        reads: usize,
+    }
+    impl std::io::Read for Counted<'_> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            self.reads += 1;
+            std::io::Read::read(&mut self.inner, buf)
+        }
+    }
+    let body: Vec<String> = (0..20_000)
+        .map(|i| format!("{i:06}{}", "z".repeat(40)))
+        .collect();
+    let raw = serde_json::to_vec(&File {
+        version: VERSION,
+        path: "/r.jsonl".into(),
+        body: &body,
+    })
+    .unwrap();
+    let mut r = Counted {
+        inner: &raw,
+        reads: 0,
+    };
+    let got = decode::<Vec<String>>(&mut r).expect("解得出");
+    assert_eq!(got.body, body);
+    assert!(
+        r.reads <= raw.len() / 16_384 + 4,
+        "{} 字节往下读了 {} 次：逐字节读的",
+        raw.len(),
+        r.reads
+    );
+}
+
 /// 骨架的键是规范路径：经符号链接走出来的路径与规范路径落 / 读的是同一份。
 #[cfg(unix)]
 #[test]
