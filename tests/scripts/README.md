@@ -47,7 +47,7 @@
 判据 `tests/common/guard-core/wall_ceiling_tests.rs` 扫门禁跑的测试源，别处写数字期限就红，例外逐条登记理由。
 
 **会话变量**：在 Claude Code 会话或 tmux 里起的 shell 继承着 `CLAUDE_CONFIG_DIR` · `TMUX` · `TMUX_PANE` · `CCM_*` 等，单跑测试只换 HOME 时会读到真号的状态。
-表只在 `session-vars` 一处，枚举环境的只有 `session-scrub.sh`：经 `heavy.sh` / `quick-check.sh` 起的命令先经它摘掉；`gate.sh` · e2e 的 `sandbox-env.sh` · 手机台架的登录口照它的 `--list` 摘；测试二进制起来时 `src/common/test-home` 再按同一张表摘一次（`HOME` 是真家时）。
+表只在 `session-vars` 一处，枚举环境的只有 `session-scrub.sh`：经 `heavy.sh` / `quick-check.sh` 起的命令先经它摘掉；`gate.sh` · e2e 的 `sandbox-env.sh` · 手机台架的登录口照它的 `--list` 摘；测试二进制起来时 `src/common/test-home` 再按同一张表摘一次（`HOME` 是真家或没设 ⇒ 都摘；给了别的家 ⇒ 摘指向那个家以外的绝对路径，只换了 `HOME` 的手工跑也摘得掉 `CLAUDE_CONFIG_DIR`）。
 `TMUX_TMPDIR` 不在表里：摘掉只是回到默认那台，私有的那个由调用方给（quick-check 的沙箱；门禁换掉 `/tmp/tmux-<uid>`，并自己 unset 它）。
 抓依赖用的代理走各工具自己的配置（`CARGO_HOME` 下的 cargo 配置 · `npm_config_proxy` · `gradle.properties`），通用的 `HTTP(S)_PROXY` 一族照摘。
 

@@ -162,6 +162,12 @@ fn child_sees_no_outer_session() {
     if std::env::var_os(CHILD).is_none() {
         return;
     }
+    // 像历史判据那样照环境解出记录树、往里写一条：写到哪儿，父判据在外面看。
+    let tree = crate::agents::claudecode::paths::projects_root(
+        &crate::agents::claudecode::paths::resolve_home(),
+    );
+    std::fs::create_dir_all(tree.join("-p")).expect("建记录树");
+    std::fs::write(tree.join("-p/s.jsonl"), b"{}\n").expect("写一条记录");
     let left: Vec<&str> = LEAKS
         .iter()
         .copied()
@@ -174,38 +180,84 @@ fn child_sees_no_outer_session() {
 }
 
 /// ★ 测试进程里没有外面会话的状态：带着 `CLAUDE_CONFIG_DIR` · `TMUX` · `TMUX_PANE` · `CCM_RELAY_PORT` · `CCM_*` · `ANTHROPIC_*` · 代理 等
-/// 把本测试二进制当一次新进程拉起（摘掉换家标记、`HOME` 给真家，像在会话里直接敲 `cargo test` 那样），子进程里一样都看不见；
-/// 判据的输入照留。
+/// 把本测试二进制当一次新进程拉起（摘掉换家标记），子进程里一样都看不见；判据的输入照留。`HOME` 两形各起一回：给真家（会话里直接敲
+/// `cargo test`）· 给一个别的家（跑的人只换了 `HOME`、没摘会话变量）。`CLAUDE_CONFIG_DIR` 指向本判据在自己临时目录里新建的假账号目录
+/// （子进程的沙箱之外，从不指向真账号）；子进程照环境往记录树里写一条，那个假账号目录底下不许冒出记录树。
 #[test]
 fn a_test_process_never_sees_the_outer_session() {
     let exe = std::env::current_exe().expect("拿不到测试二进制自己的路径");
-    let mut cmd = std::process::Command::new(exe);
-    cmd.args([
-        "--exact",
-        "test_home_guard::child_sees_no_outer_session",
-        "--ignored",
-        "--test-threads=1",
-    ])
-    .env_remove(test_home::SANDBOX_MARK)
-    .env(CHILD, "1");
+    let scratch = std::env::temp_dir().join(format!("outer-session-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let account = scratch.join("fake-account");
+    let given = scratch.join("given-home");
+    std::fs::create_dir_all(&account).unwrap();
+    std::fs::create_dir_all(&given).unwrap();
     // 真家查得到 ⇒ 给真家（子进程起来那一刻就换走）；查不到（非 unix）⇒ 不给（没设一样换）。
-    match test_home::account_home() {
-        Some(h) => cmd.env("HOME", h),
-        None => cmd.env_remove("HOME"),
-    };
-    for k in LEAKS.iter().chain(KEPT) {
-        cmd.env(k, "outer-session");
+    for home in [test_home::account_home(), Some(given.clone())] {
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.args([
+            "--exact",
+            "test_home_guard::child_sees_no_outer_session",
+            "--ignored",
+            "--test-threads=1",
+        ])
+        .env_remove(test_home::SANDBOX_MARK)
+        .env(CHILD, "1");
+        match &home {
+            Some(h) => cmd.env("HOME", h),
+            None => cmd.env_remove("HOME"),
+        };
+        // 外面会话的值都指向判据自建的那个假账号目录（给了别的家时，摘的是指向家以外的路径）。
+        for k in LEAKS {
+            cmd.env(k, &account);
+        }
+        for k in KEPT {
+            cmd.env(k, "outer-session");
+        }
+        let out = cmd.output().expect("起子测试进程");
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let wrote = account.join("projects").exists();
+        let _ = std::fs::remove_dir_all(account.join("projects"));
+        assert!(
+            !wrote,
+            "HOME={home:?}：子测试进程照外面的 CLAUDE_CONFIG_DIR 把记录写进了沙箱外的账号目录\n{text}"
+        );
+        assert!(
+            out.status.success() && text.contains("1 passed"),
+            "HOME={home:?}：子测试进程里看见了外面会话的变量：\n{text}"
+        );
     }
-    let out = cmd.output().expect("起子测试进程");
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-    assert!(
-        out.status.success() && text.contains("1 passed"),
-        "子测试进程里看见了外面会话的变量：\n{text}"
-    );
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// 摘哪一格：真家（或没设家）⇒ 表里的都摘；给了别的家 ⇒ 只摘指向那个家以外的绝对路径，家里的路径与不是路径的值（父判据交给
+/// `env_clear()` 子进程的 `CCM_HOST=lne` 之类）照留；表外的一律不碰。路径都是编的，不碰盘。
+#[test]
+fn a_given_home_keeps_inputs_but_not_paths_outside_it() {
+    use std::ffi::OsStr;
+    let real = Path::new("/nowhere/real-home");
+    let given = Path::new("/nowhere/sandbox/home");
+    let strays = |k: &str, v: &str, home: Option<&Path>| {
+        test_home::strays(k, OsStr::new(v), home, Some(real))
+    };
+    let acct = "/nowhere/real-home/.cc-monitor/accounts/z";
+    for home in [None, Some(real)] {
+        assert!(strays("CLAUDE_CONFIG_DIR", acct, home));
+        assert!(strays("CCM_HOST", "lne", home));
+    }
+    assert!(strays("CLAUDE_CONFIG_DIR", acct, Some(given)));
+    assert!(strays("CCM_DATA_DIR", "/nowhere/elsewhere", Some(given)));
+    assert!(strays("TMUX", "/tmp/tmux-1000/default,1,0", Some(given)));
+    let inside = "/nowhere/sandbox/home/data";
+    assert!(!strays("CCM_DATA_DIR", inside, Some(given)));
+    assert!(!strays("CCM_HOST", "lne", Some(given)));
+    assert!(!strays("CCM_RELAY_PORT", "4242", Some(given)));
+    assert!(!strays("PATH", "/usr/bin", None));
+    assert!(!strays("CCM_E2E_WORK", "/nowhere/elsewhere", Some(given)));
 }
 
 /// 清单本身：摘的与留的各几样（同一份 `leaked`）。
