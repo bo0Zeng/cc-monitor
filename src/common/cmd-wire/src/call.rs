@@ -2,16 +2,25 @@
 //! 下面那一张 `calls!` 表是命令身份唯一的声明：后端登记那一行照它取名、取回包，
 //! 有 Rust 客户端的那几端（壳 · 文件窗口 · 手机核心）照它发、照它解。
 
+use crate::accounts::{AccountsList, AccountsListReq};
 use crate::assets::{AssetsSyncReq, AssetsSynced};
 use crate::batch::{BatchReply, FilesBatchStopReply, FilesBatchStopReq};
 use crate::bookmarks::{Bookmarks, BookmarksEditReq, BookmarksReadReq};
 use crate::deploy::{DeployInstallReq, DeployUninstallReq, Installed, Uninstalled};
 use crate::exit_policy::{ExitPolicy, ExitPolicyReadReq};
 use crate::files::*;
+use crate::listing::{HistoryHead, HistoryListReq, HistoryRow};
 use crate::plan::{PlanFiles, PlanFilesReq};
+use crate::quota::{QuotaRead, QuotaReadReq};
 use crate::record::{HistoryRead, HistoryReadReq};
+use crate::rotation::*;
+use crate::search::{HistorySearchReply, HistorySearchReq};
 use crate::session::{HistoryTail, HistoryTailReq};
-use crate::terminal::{SshCommand, TerminalSshReq, UnfollowReq};
+use crate::session::{Preview, Sent, TerminalsList};
+use crate::sync::Patch;
+use crate::terminal::{
+    SshCommand, TerminalInputReq, TerminalPreviewReq, TerminalSshReq, TerminalsListReq, UnfollowReq,
+};
 use crate::transfer::{
     TransferCopyAsk, TransferCopyReq, TransferDownloadAsk, TransferDownloadReq, TransferOpened,
     TransferStartReq, TransferStopReq, TransferUploadAsk, TransferUploadReq,
@@ -80,4 +89,30 @@ calls! {
     TransferCopyReq => "transfer-copy", BatchReply;
     TransferStartReq => "transfer-start", ();
     TransferStopReq => "transfer-stop", ();
+    QuotaReadReq => "quota-read", QuotaRead;
+    RotationFactsReq => "rotation-facts", RotationFactsReply;
+    RotationStrategiesReq => "rotation-strategies", RotationStrategiesReply;
+    RotationViewReq => "rotation-view", RotationViewReply;
+    RotationSettingsReq => "rotation-settings", RotStrategyRev;
+    RotationUseReq => "rotation-use", RotDone;
+    RotationReloadReq => "rotation-reload", RotDone;
+    RotationForNewReq => "rotation-for-new", RotDone;
+    RotationStrategyAddReq => "rotation-strategy-add", RotStrategyId;
+    RotationStrategyCopyReq => "rotation-strategy-copy", RotStrategyId;
+    RotationStrategyRenameReq => "rotation-strategy-rename", RotStrategyId;
+    RotationStrategyTzReq => "rotation-strategy-tz", RotStrategyRev;
+    RotationStrategyDeleteReq => "rotation-strategy-delete", RotDone;
+    RotationTempReq => "rotation-temp", RotationTempReply;
+    RotationUseNowReq => "rotation-use-now", RotDone;
+    RotationTryReq => "rotation-try", RotationTryReply;
+    TerminalsListReq => "terminals-list", TerminalsList;
+    TerminalPreviewReq => "terminal-preview", Preview;
+    TerminalInputReq => "terminal-input", Sent;
+    HistorySearchReq => "history-search", HistorySearchReply;
+    HistoryListReq => "history-list", Patch<HistoryHead, HistoryRow>;
+    AccountsListReq => "accounts-list", AccountsList;
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/common/cmd-wire/call_tests.rs"]
+mod tests;

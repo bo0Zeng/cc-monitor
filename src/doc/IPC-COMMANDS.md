@@ -2049,12 +2049,11 @@ dirs: Array<string>, };
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --quota-read`
 
-入参 `NoArgs` · 回包 `QuotaRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `QuotaReadReq` · 回包 `QuotaRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type AgentKind = string;
 type LoginState = "ok" | "needsLogin" | "needsKey";
-type NoArgs = Record<symbol, never>;
 type QuotaAccount = { rows: Array<Array<QuotaCell>>, 
 /**
  * 「5h 那一格」（恢复菜单 · 新会话框每个号后面那一格）；按量号 ⇒ `null`。
@@ -2162,6 +2161,7 @@ names: QuotaNames,
  * 「现在还能不能发」那两行写好的字（用量页的结论 · 全满时那一句）；读不出 / 一个号都没有 ⇒ `null`（那时看 `text`）。
  */
 verdict: QuotaVerdict | null, };
+type QuotaReadReq = Record<symbol, never>;
 type QuotaReadState = "present" | "absent" | "unreadable";
 type QuotaReadingShown = { 
 /**

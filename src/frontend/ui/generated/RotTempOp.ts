@@ -2,6 +2,6 @@
 
 /**
  * 会话侧的临时动作：顺序里把一行拖到第 `to` 格（0 起，第 0 格是在用的号）· 清掉 · 这个会话先不用 / 再用一个号。
- * 第几格由这里照这个会话此刻的顺序认（界面只交松手的那一格）。
+ * 第几格由后端照这个会话此刻的顺序认（界面只交松手的那一格）。
  */
 export type RotTempOp = { "move": { account: string, to: number, } } | "clear" | { "off": { account: string, off: boolean, } };

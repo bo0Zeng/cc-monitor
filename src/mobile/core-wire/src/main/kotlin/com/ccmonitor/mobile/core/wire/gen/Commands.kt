@@ -766,6 +766,7 @@ object Commands {
             QuotaOverageShown::class.java to QuotaOverageShown.ADAPTER,
             QuotaProbeReq::class.java to QuotaProbeReq.ADAPTER,
             QuotaRead::class.java to QuotaRead.ADAPTER,
+            QuotaReadReq::class.java to QuotaReadReq.ADAPTER,
             QuotaReadState::class.java to QuotaReadState.ADAPTER,
             QuotaReadingShown::class.java to QuotaReadingShown.ADAPTER,
             QuotaResetsAt::class.java to QuotaResetsAt.ADAPTER,

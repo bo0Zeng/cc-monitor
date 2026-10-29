@@ -5,58 +5,8 @@
 use crate::observe::search_query::{self, SearchOpts};
 use crate::wire::typed::{codes, Command};
 use cmd_wire::search::{HistorySearchReply, Merged, SearchDown, SearchRow};
-
-/// `history-search` 的入参。
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct HistorySearchReq {
-    /// 搜索词（不分大小写，子串）。
-    pub(crate) query: String,
-    /// 工具调用与结果也搜。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) include_tools: Option<bool>,
-    /// 只搜哪一种：人说的话 · agent 的回答 · agent 回报；缺 ⇒ 全部。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) scope: Option<SearchScope>,
-    /// 只要这一刻（毫秒）之后的。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub(crate) after_ms: Option<u64>,
-    /// 全局片段上限（没给的照样记进 `moreHits`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub(crate) limit: Option<u64>,
-    /// 只比会话标题与第一句（不搜内容）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) titles: Option<bool>,
-}
-
-/// [`HistorySearchReq::scope`] 的三个词。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum SearchScope {
-    User,
-    Assistant,
-    Report,
-}
-
-impl SearchScope {
-    /// 口径那一层（`search_query::in_scope`）认的那个词。
-    pub(crate) fn word(self) -> &'static str {
-        match self {
-            SearchScope::User => "user",
-            SearchScope::Assistant => "assistant",
-            SearchScope::Report => "report",
-        }
-    }
-}
+/// `history-search` 的入参住 `cmd-wire::search`（名字与回包挂在 `cmd_wire::Call` 上）。
+pub(crate) use cmd_wire::search::{HistorySearchReq, SearchScope};
 
 codes! {
     /// `history-search` 自己的码。
@@ -72,9 +22,7 @@ codes! {
 pub(crate) struct HistorySearch;
 
 impl Command for HistorySearch {
-    const NAME: &'static str = "history-search";
-    type Req = HistorySearchReq;
-    type Reply = HistorySearchReply;
+    crate::wire::typed::by_call!(HistorySearchReq);
     type Err = HistorySearchErr;
 }
 

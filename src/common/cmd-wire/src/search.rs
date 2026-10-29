@@ -200,6 +200,58 @@ pub fn merge(answered: Vec<(Machine, HistorySearchReply)>, down: Vec<SearchDown>
     }
 }
 
+/// `history-search` 的入参。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(deny_unknown_fields)]
+pub struct HistorySearchReq {
+    /// 搜索词（不分大小写，子串）。
+    pub query: String,
+    /// 工具调用与结果也搜。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub include_tools: Option<bool>,
+    /// 只搜哪一种：人说的话 · agent 的回答 · agent 回报；缺 ⇒ 全部。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub scope: Option<SearchScope>,
+    /// 只要这一刻（毫秒）之后的。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    pub after_ms: Option<u64>,
+    /// 全局片段上限（没给的照样记进 `moreHits`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    pub limit: Option<u64>,
+    /// 只比会话标题与第一句（不搜内容）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub titles: Option<bool>,
+}
+
+/// [`HistorySearchReq::scope`] 的三个词。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "lowercase")]
+pub enum SearchScope {
+    User,
+    Assistant,
+    Report,
+}
+
+impl SearchScope {
+    /// 口径那一层（后端 `search_query::in_scope`）认的那个词。
+    pub fn word(self) -> &'static str {
+        match self {
+            SearchScope::User => "user",
+            SearchScope::Assistant => "assistant",
+            SearchScope::Report => "report",
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/common/cmd-wire/search_tests.rs"]
 mod tests;

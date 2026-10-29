@@ -230,10 +230,12 @@ private fun EmptyView(
 ) {
     Column(Modifier.padding(16.dp).testTag(ChatsTags.EMPTY)) {
         when (ui.empty) {
-            Empty.NO_SESSIONS -> {
-                Text(copyText("history.list.empty"), style = MaterialTheme.typography.bodyMedium)
-                Text(copyText("history.list.emptyHint"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            // 核心合好的那一句（各台报完才是「无会话」；还在连 · 未计入的那几台在下一行）。
+            Empty.NO_SESSIONS ->
+                ui.emptyFace?.let { face ->
+                    Text(face.line, style = MaterialTheme.typography.bodyMedium)
+                    if (face.hint.isNotEmpty()) Text(face.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             Empty.NO_MATCH -> {
                 Text(ui.query?.let { copyText("history.search.noMatch", "q" to it) } ?: copyText("history.list.noMatch"), style = MaterialTheme.typography.bodyMedium)
                 if (ui.filters.active) {

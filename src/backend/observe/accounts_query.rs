@@ -268,15 +268,8 @@ fn scan_accounts(
     }
 }
 
-/// `accounts-list` 的入参。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct AccountsListReq {
-    /// 这次起会话的是哪一家（线上的 kind，同 `session-open-facts` 给的那一格；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。
-    pub(crate) agent: crate::agents::AgentKind,
-}
+/// `accounts-list` 的入参住 `cmd-wire::accounts`（名字与回包挂在 `cmd_wire::Call` 上）。
+pub(crate) use cmd_wire::accounts::AccountsListReq;
 
 /// ★ 选不了的那一句（唯一一处；判定本身是 `acct_core::account_selectable`，这里只说是四条里的哪一条没过）。
 /// 账号 0 不经选号 ⇒ 没有这一句。

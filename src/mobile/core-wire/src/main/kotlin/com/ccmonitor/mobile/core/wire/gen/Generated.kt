@@ -8861,7 +8861,7 @@ data class HistoryListReq(
             Field("sid", { opt(Str) }, optional = true, nullable = true),
             Field("query", { opt(Str) }, optional = true, nullable = true),
             Field("sort", { opt(HistorySort.ADAPTER) }, optional = true, nullable = true),
-            Field("within_days", { opt(Lng) }, optional = true, nullable = true),
+            Field("within_days", { opt(U64) }, optional = true, nullable = true),
             Field("hidden", { opt(Bool) }, optional = true, nullable = true),
             Field("held", { opt(Str) }, optional = true, nullable = true),
             Field("range", { opt(SyncRange.ADAPTER) }, optional = true, nullable = true),
@@ -9380,8 +9380,8 @@ data class HistorySearchReq(
             Field("query", { Str }, optional = false, nullable = false),
             Field("include_tools", { opt(Bool) }, optional = true, nullable = true),
             Field("scope", { opt(SearchScope.ADAPTER) }, optional = true, nullable = true),
-            Field("after_ms", { opt(Lng) }, optional = true, nullable = true),
-            Field("limit", { opt(Lng) }, optional = true, nullable = true),
+            Field("after_ms", { opt(U64) }, optional = true, nullable = true),
+            Field("limit", { opt(U64) }, optional = true, nullable = true),
             Field("titles", { opt(Bool) }, optional = true, nullable = true),
             ),
             { a -> HistorySearchReq(a[0] as String, a[1] as Boolean?, a[2] as SearchScope?, a[3] as Long?, a[4] as Long?, a[5] as Boolean?) },
@@ -17722,6 +17722,10 @@ data class QuotaRead(
     }
 }
 
+data object QuotaReadReq {
+    val ADAPTER: JsonAdapter<QuotaReadReq> = obj(emptyList(), { QuotaReadReq }, { emptyArray() })
+}
+
 enum class QuotaReadState(val wire: String) {
     PRESENT("present"),
     ABSENT("absent"),
@@ -19512,7 +19516,7 @@ data class RotRow(
 data class RotSeg(
     val from: String,
     val to: String,
-    val v: Long,
+    val v: Double,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -19521,9 +19525,9 @@ data class RotSeg(
             listOf(
             Field("from", { Str }, optional = false, nullable = false),
             Field("to", { Str }, optional = false, nullable = false),
-            Field("v", { Lng }, optional = false, nullable = false),
+            Field("v", { Dbl }, optional = false, nullable = false),
             ),
-            { a -> RotSeg(a[0] as String, a[1] as String, a[2] as Long) },
+            { a -> RotSeg(a[0] as String, a[1] as String, a[2] as Double) },
             { v -> arrayOf(v.from, v.to, v.v) },
         )
     }
@@ -20166,7 +20170,7 @@ data class RotationTryReq(
     val start: String? = null,
     val current: String? = null,
     val temp: List<String>,
-    val hours: Long? = null,
+    val hours: Int? = null,
     val useNow: String? = null,
     val agent: String? = null,
 ) : Ordered {
@@ -20180,11 +20184,11 @@ data class RotationTryReq(
             Field("start", { opt(Str) }, optional = true, nullable = true),
             Field("current", { opt(Str) }, optional = true, nullable = true),
             Field("temp", { arr(Str) }, optional = false, nullable = false),
-            Field("hours", { opt(Lng) }, optional = true, nullable = true),
+            Field("hours", { opt(Int32) }, optional = true, nullable = true),
             Field("useNow", { opt(Str) }, optional = true, nullable = true),
             Field("agent", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> RotationTryReq(a[0] as String, a[1] as Raw?, a[2] as String?, a[3] as String?, a[4] as List<String>, a[5] as Long?, a[6] as String?, a[7] as String?) },
+            { a -> RotationTryReq(a[0] as String, a[1] as Raw?, a[2] as String?, a[3] as String?, a[4] as List<String>, a[5] as Int?, a[6] as String?, a[7] as String?) },
             { v -> arrayOf(v.source, v.settings, v.start, v.current, v.temp, v.hours, v.useNow, v.agent) },
         )
     }
@@ -20278,7 +20282,7 @@ data class RotationViewReply(
 @Suppress("UNCHECKED_CAST")
 data class RotationViewReq(
     val target: RotTarget,
-    val hours: Long? = null,
+    val hours: Int? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -20286,9 +20290,9 @@ data class RotationViewReq(
         val ADAPTER: JsonAdapter<RotationViewReq> = obj(
             listOf(
             Field("target", { RotTarget.ADAPTER }, optional = false, nullable = false),
-            Field("hours", { opt(Lng) }, optional = true, nullable = true),
+            Field("hours", { opt(Int32) }, optional = true, nullable = true),
             ),
-            { a -> RotationViewReq(a[0] as RotTarget, a[1] as Long?) },
+            { a -> RotationViewReq(a[0] as RotTarget, a[1] as Int?) },
             { v -> arrayOf(v.target, v.hours) },
         )
     }
@@ -24309,7 +24313,7 @@ data class TerminalPreviewReq(
             Field("terminal", { opt(Str) }, optional = true, nullable = true),
             Field("sid", { opt(Str) }, optional = true, nullable = true),
             Field("color", { opt(Bool) }, optional = true, nullable = true),
-            Field("scrollback", { opt(Lng) }, optional = true, nullable = true),
+            Field("scrollback", { opt(U64) }, optional = true, nullable = true),
             ),
             { a -> TerminalPreviewReq(a[0] as String?, a[1] as String?, a[2] as Boolean?, a[3] as Long?) },
             { v -> arrayOf(v.terminal, v.sid, v.color, v.scrollback) },
