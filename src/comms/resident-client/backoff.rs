@@ -1,5 +1,6 @@
-//! 重连退避：上下界、「这条连接算不算站住了」、一轮结束之后怎么办。
-//! 两端同一条重连循环（[`crate::feed`]）用它：阈值只在这里。
+//! 重连退避与心跳的数：上下界、站住要活多久、拨号期限、问活。
+//! 两端同一条重连循环（[`crate::feed`]）用它：阈值只在这里。退避本身与「这一轮站住了没有」住循环里、模块私有：
+//! 别处造不出一份退避（第二条重连循环写不出来）。
 
 use std::time::Duration;
 
@@ -16,7 +17,7 @@ pub const RECONNECT_MAX: Duration = Duration::from_secs(30);
 /// 一拨要挂两分钟。网回来时正挂在后半段的那一拨要等到下一次补发才赶上（断 90 秒那一格量出来 56 秒）。
 /// 10 秒放弃：前 7 秒里补发得勤（网回来至多再等 4 秒），之后丢下、隔下界重拨一拨新的，网回来到重拨上至多 5 秒。
 /// 代价：一步要 10 秒以上的链路（单程就要好几秒的那种）接不上。
-/// 到期限都没进展的那一拨没够到那一台（没有一次登录落到它身上），不涨退避（[`Backoff::after_wait`] 的 `reached`）。
+/// 到期限都没进展的那一拨没够到那一台（没有一次登录落到它身上），不涨退避（循环里那份退避的 `reached`）。
 pub const DIAL_WITHIN: Duration = Duration::from_secs(10);
 
 /// **连接自己的心跳**：流上这么久没来一个字节 ⇒ 问一句活（`ping`）。健康的空闲连接每这么久一个来回（与 SSH 保活同一个数，
@@ -42,59 +43,3 @@ pub const PING_WITHIN: Duration = Duration::from_secs(5);
 /// ⚠ 30 秒的取法：要明显长于「起流 + 首批帧」的正常耗时（冷启动实测约 0.9 s @30ms RTT、
 /// 约 6 s @200ms RTT，见），又要短到不至于让一次真实的网络抖动被当成 flapping。
 pub const MIN_HEALTHY_UPTIME: Duration = Duration::from_secs(30);
-
-/// 纯函数：这一轮连接结束后，退避该不该重置回 [`RECONNECT_MIN`]。
-///
-/// 两个条件**都要满足**：握手成功过（`saw_hello`）**且**这条连接活过 [`MIN_HEALTHY_UPTIME`]。
-/// 只看前者就是 I-1 那个自激循环；只看后者会把「连了很久但从没握手成功」也当健康。
-pub fn should_reset_backoff(saw_hello: bool, lived: Duration) -> bool {
-    saw_hello && lived >= MIN_HEALTHY_UPTIME
-}
-
-/// 纯函数：把当前退避翻倍并封顶到 [`RECONNECT_MAX`]。[`Backoff::after_wait`] 在这一轮没站住时调用。
-pub fn next_backoff(cur: Duration) -> Duration {
-    (cur * 2).min(RECONNECT_MAX)
-}
-
-/// 一台重连循环手里的那一份退避（[`crate::feed`] 只经它动）。两段式：
-/// 一轮结束先 [`Backoff::before_wait`]（这一轮站住了 ⇒ 回下界）按它睡，睡完 [`Backoff::after_wait`]：
-/// 被叫醒（［重新连接］· 换了一条 SSH）⇒ 回下界；这一轮没站住（没握上手，或握上手却活不过 [`MIN_HEALTHY_UPTIME`]）⇒ 翻倍。
-/// 「握上手却活不过」也要翻倍：对端发完 hello 就死的话，每一轮都「连上过」，只看握手退避就永远停在下界（F05 / I-1 的自激循环）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Backoff {
-    cur: Duration,
-}
-
-impl Default for Backoff {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Backoff {
-    pub fn new() -> Self {
-        Backoff { cur: RECONNECT_MIN }
-    }
-
-    /// 这一轮结束：`healthy` = [`should_reset_backoff`] 的结论。回这一次要睡多久。
-    pub fn before_wait(&mut self, healthy: bool) -> Duration {
-        if healthy {
-            self.cur = RECONNECT_MIN;
-        }
-        self.cur
-    }
-
-    /// 睡完（或被叫醒）之后。`reached` = 这一轮够到了那一台（拨出去有回话）；拨到 [`DIAL_WITHIN`] 都没回话 ⇒ `false`：
-    /// 没有一次登录落到那台身上，涨退避护不了谁，只会让网回来之后多等 ⇒ 下一轮照样从下界来。
-    pub fn after_wait(&mut self, kicked: bool, healthy: bool, reached: bool) {
-        if kicked || !reached {
-            self.cur = RECONNECT_MIN;
-        } else if !healthy {
-            self.cur = next_backoff(self.cur);
-        }
-    }
-}
-
-#[cfg(test)]
-#[path = "../../../tests/comms/resident-client/backoff_tests.rs"]
-mod tests;
