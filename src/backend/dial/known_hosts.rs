@@ -154,16 +154,18 @@ fn config_word(v: &str) -> String {
     }
 }
 
-/// 读盘的上限（一台一行，远到不了）。
+/// 读盘的上限（一台一行，远到不了）。读的那一口照声明表的那两格；这里的名字给字节上限登记表认，三处须相等（下两行编译期查）。
 const MAX_BYTES: u64 = 4 << 20;
+const _: () = assert!(MAX_BYTES == relay_route_core::KNOWN_HOSTS_FILE.row.cap);
+const _: () = assert!(MAX_BYTES == relay_route_core::SSH_CONFIG_FILE.row.cap);
 
-/// 主机钥匙库：状态（读不懂不覆盖）。
+/// 主机钥匙库：状态、OpenSSH 的格式（读不懂不覆盖）。照声明表取。
 pub(crate) const KNOWN_HOSTS: crate::common::own_state::Doc<String> =
-    crate::common::own_state::Doc::state(relay_route_core::KNOWN_HOSTS_REL, MAX_BYTES);
+    crate::common::own_state::Doc::of(&relay_route_core::KNOWN_HOSTS_FILE);
 
-/// 开终端那一行用的配置：缓存（照钥匙库的路径现写，读不懂 ⇒ 当没有、重写）。
+/// 开终端那一行用的配置：缓存、`ssh -F` 的格式（照钥匙库的路径现写，读不懂 ⇒ 当没有、重写）。照声明表取。
 const SSH_CONFIG: crate::common::own_state::Doc<String> =
-    crate::common::own_state::Doc::cache(relay_route_core::SSH_CONFIG_REL, MAX_BYTES);
+    crate::common::own_state::Doc::of(&relay_route_core::SSH_CONFIG_FILE);
 
 #[cfg(test)]
 #[path = "../../../tests/backend/dial_known_hosts_tests.rs"]
