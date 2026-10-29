@@ -177,11 +177,13 @@ function sayEnd(origin: Origin, req: SessionOpenReq, how: OpenHow, end: Exclude<
   }
   const [title, body] = lines(end.said);
   const again = (r: SessionOpenReq): Promise<void> => openSession(origin, r, how).then(() => undefined);
+  // 那台说了是哪个号选不了 ⇒［登录…］开那个号的登录抽屉（同新建会话框那一颗）。
+  const u = end.unavailable;
+  const agent = req.what.kind === "new" ? req.what.agent : DEFAULT_AGENT;
+  const login = u === null ? [] : [{ label: copyText("newSession.account.login"), run: () => void openLoginDrawer({ origin, target: { kind: "account" as const, agent, account: u.requested } }) }];
   switch (end.code) {
     case "account_unavailable": {
-      const u = end.unavailable;
       const alt = u?.listKnown ? u.alternative : null;
-      const agent = req.what.kind === "new" ? req.what.agent : DEFAULT_AGENT;
       toast(title, body, {
         detail: end.detail,
         action: [
@@ -189,9 +191,7 @@ function sayEnd(origin: Origin, req: SessionOpenReq, how: OpenHow, end: Exclude<
             label: alt === null ? copyText("sessionOpen.account.useBase") : copyText("sessionOpen.account.useAlt", { alt }),
             run: () => void again({ ...req, account: chosenAccount(alt) }),
           },
-          ...(u === null
-            ? []
-            : [{ label: copyText("newSession.account.login"), run: () => void openLoginDrawer({ origin, target: { kind: "account" as const, agent, account: u.requested } }) }]),
+          ...login,
         ],
       });
       return;

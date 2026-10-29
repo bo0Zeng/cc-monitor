@@ -227,10 +227,9 @@ pub(crate) fn start(
         cwd,
         path: None,
     };
-    let s = sign_in::start(&ask, on_end)
-        .map_err(|s| {
-            LoginStartErr::failed(Fail::from(("failed", s)).into_said(), terminal_way(req))
-        })?;
+    let s = sign_in::start(&ask, on_end).map_err(|s| {
+        LoginStartErr::failed(Fail::from(("failed", s)).into_said(), terminal_way(req))
+    })?;
     Ok(started(s, face, args))
 }
 

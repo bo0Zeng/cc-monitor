@@ -285,7 +285,7 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
     expect(r.host.failed.mock.calls[0][0]).toBe(copyText("tabBar.hide.failed", { title: "名-b" }));
   });
 
-  it("★ 批量里有没成的 ⇒ 一条「已隐藏 k 个 · m 个没成」，撤销只撤成了的那几个；不另弹各自那一句", async () => {
+  it("★ 批量里有没成的 ⇒ 撤销那一条只数成了的（「已隐藏 ×k」）、撤销只撤成了的那几个；没成的说它那一句", async () => {
     const r = rig([tab("a"), tab("b"), tab("c")]);
     r.host.setHide.mockImplementation(async (t: Tab, to: HideSet) => {
       if (t.sessionId === "b" && to === "on") throw new Error("拒-乙");
@@ -293,8 +293,8 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
     });
     r.h.hide(["a", "b", "c"]);
     await new Promise((x) => setTimeout(x, 0));
-    expect(r.toasts.map((t) => t.title)).toEqual([copyText("tabBar.hide.doneSome", { n: 2, m: 1 })]);
-    expect(r.host.failed).not.toHaveBeenCalled();
+    expect(r.toasts.map((t) => t.title)).toEqual([copyText("tabBar.hide.doneMany", { n: 2 })]);
+    expect(r.host.failed.mock.calls.map((c) => c[0])).toEqual([copyText("tabBar.hide.failed", { title: "名-b" })]);
     r.toasts[0].undo();
     await new Promise((x) => setTimeout(x, 0));
     expect(r.host.setHide.mock.calls.slice(3).map((c) => (c[0]).sessionId)).toEqual(["a", "c"]);

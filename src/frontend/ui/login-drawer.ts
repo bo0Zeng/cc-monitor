@@ -118,10 +118,13 @@ class LoginDrawer {
   private readonly body = document.createElement("div");
   private readonly foot = document.createElement("div");
   private readonly bottom: HTMLButtonElement;
+  /** ［在终端里登录］（红条上那一颗；后端说这条路在才摆上去）。 */
+  private readonly terminalBtn: HTMLButtonElement;
   private paste: FieldHandle | null = null;
 
   constructor(private readonly spec: LoginDrawerSpec) {
     this.body.className = s.ldBody;
+    this.terminalBtn = button({ label: copyText("login.act.terminal"), onClick: () => void this.inTerminal() });
     this.bottom = button({ label: copyText("kit.dialog.cancel"), onClick: () => void this.handle.close() });
     this.bottom.dataset.action = "login-bottom";
     this.foot.appendChild(this.bottom);
@@ -218,8 +221,11 @@ class LoginDrawer {
 
   /** ［在终端窗口里登录］：问那台登录那一行、开终端窗口跑它；开了 ⇒ 抽屉关（登成了那一行随推送自己变）。
    * 这台开不了终端窗口 ⇒ 同起会话那一条（［设置］·［复制命令］）；别的没成 ⇒ 红条换成那一句。 */
-  private async inTerminal(account: string): Promise<void> {
+  private async inTerminal(): Promise<void> {
     const step = this.step;
+    // 后端只对号那一种目标说这条路在（`terminal_way`），号那一种 `account` 恒有。
+    const account = this.spec.target.account;
+    if (account === null) return;
     try {
       await openTerminal(this.spec.origin, await accountsLoginCmd(this.spec.origin, account));
     } catch (e) {
@@ -258,8 +264,7 @@ class LoginDrawer {
     if (step.t === "failed") {
       const acts = step.again === "restart" ? [button({ label: copyText("login.act.restart"), kind: "primary", onClick: () => void this.start() })] : [];
       // 抽屉这一趟起不来、后端说终端窗口那条路在 ⇒ 多一颗（不按码猜）。
-      const t = this.spec.target;
-      if (step.terminal && t.kind === "account") acts.push(button({ label: copyText("login.act.terminal"), onClick: () => void this.inTerminal(t.account) }));
+      if (step.terminal) acts.push(this.terminalBtn);
       const b = banner("error", step.said, acts, step.detail);
       b.dataset.again = step.again;
       parts.push(b);

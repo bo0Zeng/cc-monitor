@@ -83,8 +83,8 @@ export class TabHide {
   }
 
   /**
-   * 右键 / 批量「隐藏」：交命令；回包成了才给撤销 toast（`已隐藏 orders` · `已隐藏 3 个` · `已隐藏 2 个 · 1 个没成`），
-   * 全没成 ⇒ 只有没成那一句。不弹确认；已经隐藏的跳过。
+   * 右键 / 批量「隐藏」：交命令；回包成了才给撤销 toast，只数成了的那几个（`已隐藏 orders` · `已隐藏 ×3`）；
+   * 没成的各说那一句（全没成 ⇒ 只有那几句）。不弹确认；已经隐藏的跳过。
    */
   hide(sids: readonly string[]): void {
     const tabs = sids.map((s) => this.store.tabs.get(s)).filter((t): t is Tab => t !== undefined && (t.hidden ?? null) === null);
@@ -93,17 +93,10 @@ export class TabHide {
     // 撤销回到隐藏之前那一份单独设置（各个照后端回的改之前那一格，`undoHide`），不一律钉成「单独显示」。
     const prevs = new Map<string, Hide | null>();
     void this.send(tabs, () => "on", (t, prev) => prevs.set(t.sessionId, prev)).then((missed) => {
+      this.sayMissed(missed);
       const done = tabs.filter((t) => prevs.has(t.sessionId));
-      if (done.length === 0) {
-        this.sayMissed(missed);
-        return;
-      }
-      const title =
-        missed.length > 0
-          ? copyText("tabBar.hide.doneSome", { n: done.length, m: missed.length })
-          : done.length === 1
-            ? copyText("tabBar.hide.done", { title: fullTitle(done[0]) })
-            : copyText("tabBar.hide.doneMany", { n: done.length });
+      if (done.length === 0) return;
+      const title = done.length === 1 ? copyText("tabBar.hide.done", { title: fullTitle(done[0]) }) : copyText("tabBar.hide.doneMany", { n: done.length });
       this.host.undoToast(
         title,
         () => void this.send(done, (t) => undoHide(prevs.get(t.sessionId) ?? null)).then((m) => this.sayMissed(m)),

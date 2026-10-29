@@ -26149,12 +26149,6 @@
       "zh": "已隐藏 ×{n}",
       "args": ["n"]
     },
-    "tabBar.hide.doneSome": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已隐藏 ×{n} · 失败 ×{m}",
-      "args": ["n", "m"]
-    },
     "tabBar.hide.failed": {
       "kind": "error",
       "role": "报错",
