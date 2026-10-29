@@ -376,15 +376,27 @@ pub struct MachineState {
     pub expected_host_key: Option<String>,
     /// 复制详情：这一轮没连上 / 做不了时那一份（界面照原样跟在问题行那句后面）；连着时末尾接每条连接那一段（卡头 ⋯ 里复制）。
     pub detail: Option<String>,
-    /// 这台此刻几条会话状态不明（连接断的那一刻本机后端说过说不清、那台还没重报的；没有 ⇒ 省略）。界面照它写「N 会话状态不明」，不自己数。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub unclear: Option<u32>,
     /// 到这台怎么连过去的那一句（「经跳板 devbox · 经代理」；多跳外到内「经跳板 a → b」）：跳板照配置，经代理连上了才知道。
     /// 直连又不经代理 ⇒ 省略。界面有就摆一行，不拼字；每条连接的读数不上卡头，在 `detail` 末尾「连接：」那一段。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub route: Option<String>,
+}
+
+/// **首屏那一句**（一条会话都没有时正文区中央那一块）：拨号那一端照各台的成品与报完了没有合一次写好（`deploy::machine::empty`），
+/// 随机器状态一起推；桌面主窗口与手机会话列表的空态照摆，不数台。各台都报完了才说「无会话」。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct EmptyFace {
+    /// 大字那一句（「无会话」· 「本机无会话」· 一台都没报完那一句）。
+    pub line: String,
+    /// 下面那一行（怎么让它有 · 哪几台还在连 · 哪几台未计入）。
+    pub hint: String,
 }
 
 /// 接常驻那一段的一轮结论（宿主把通信层交出的那一态原样转给后端，只有事实）。

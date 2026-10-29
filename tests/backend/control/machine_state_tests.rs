@@ -224,6 +224,36 @@ fn the_local_row_comes_from_this_backend() {
     assert!(got.contains_key("ms-local-peer"), "远端那台被挤掉了");
 }
 
+/// ★ A2-17-6-2：首屏那一句照表里各台 ＋ 本机那一行合（本机在答就算报完了）；那台报完了 ⇒ 不再说它还在连；
+/// 每推一台的成品，那一刻的这一句跟着走（`changed {machine}` 帧里那一格，`machine-read` 回包同一份）。
+#[test]
+fn the_empty_line_is_over_the_table_and_the_local_row() {
+    let hosts = [("ms-empty".to_string(), true)];
+    let up = || Fact::Round {
+        round: Round::Up {
+            relation: Relation::Same,
+            differs: vec![],
+        },
+        version: Some("9.9.9".into()),
+    };
+    // 照一张自己的表算：进程里那一张别的判据在并行改（`table_moved_in` 会摘掉不在它那张机器表里的）。
+    let mut t = BTreeMap::new();
+    fold(t.entry("ms-empty".to_string()).or_default(), up());
+    let local = copy_core::local_machine();
+    assert_eq!(
+        empty_over(&t, &hosts, &Links::new()),
+        cmd_wire::machine::EmptyFace {
+            line: copy_core::copy_text("beEmpty.line.some", &[("names", &local)]),
+            hint: copy_core::copy_text("beEmpty.hint.pending", &[("names", "ms-empty")]),
+        }
+    );
+    fold(t.entry("ms-empty".to_string()).or_default(), Fact::Listed);
+    assert_eq!(
+        empty_over(&t, &hosts, &Links::new()).line,
+        copy_core::copy_text("beEmpty.line.none", &[])
+    );
+}
+
 /// 这棵树要发的那一版：仓根 `package.json` 的 `version`（发版改的就是它）。
 fn shipped_version() -> String {
     let v: serde_json::Value = serde_json::from_str(include_str!("../../../package.json"))

@@ -3,6 +3,8 @@
  * 连上那一下那一行当场摘掉；多于 3 台收成一行「未连上（n）」，点开再列。
  */
 import { describe, it, expect, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -55,6 +57,21 @@ describe("机器条", () => {
     expect(s.el.querySelectorAll("button")).toHaveLength(0);
     s.set("gpu-01", m("gpu-01", { state: "up", offline: false, word: "", said: "", fixes: [] }));
     expect(rows(s)).toEqual([]);
+  });
+
+  it("A2-17-4：界面里没有一处读成品的 `stage` 挑字（在连到哪一步那一句是后端 `said` 写好的）", () => {
+    const root = path.resolve(__dirname, "../../../src/frontend/ui");
+    const hits: string[] = [];
+    const walk = (dir: string): void => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          if (e.name !== "generated") walk(p);
+        } else if (e.name.endsWith(".ts") && /\.stage\b(?!\s*\()/.test(fs.readFileSync(p, "utf8"))) hits.push(path.relative(root, p));
+      }
+    };
+    walk(root);
+    expect(hits).toEqual([]);
   });
 
   it("连着的 · 比这一版新的 · 停用的不进条", () => {

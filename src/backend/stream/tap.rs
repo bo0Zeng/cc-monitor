@@ -114,6 +114,8 @@ pub struct TapRx {
     machines: Option<tokio::sync::broadcast::Receiver<()>>,
     /// 这一端连的某台远端的状态成品变了的通道（推一帧 `changed {machine, key: 那台, body: 成品}`）；`None` ＝ 不订。
     machine: Option<tokio::sync::broadcast::Receiver<(String, cmd_wire::machine::MachineState)>>,
+    /// 这条连接上回推过的首屏那一句（某台的成品一变就现算一次，与它不同才推 `changed {empty}`）。
+    empty_was: Option<cmd_wire::machine::EmptyFace>,
     /// 正被浏览的某个目录有了动静的通道（推一帧 `changed {files_dir, key: 那个目录}`）；`None` ＝ 不订。
     dirs: Option<tokio::sync::broadcast::Receiver<String>>,
     /// 这台会话清单的节点（[`crate::history::list_node`]，只留最新）：响了推一帧 `changed {history_list}`；`None` ＝ 不订。
@@ -209,10 +211,18 @@ impl TapSource for TapRx {
                     None => self.machines = None,
                 },
                 moved = item_moved(&mut self.machine) => match moved {
-                    Some(Some((name, p))) => self.out.push_back(Frame::changed(Changed::Machine {
-                        key: name,
-                        body: Some(p),
-                    })),
+                    Some(Some((name, p))) => {
+                        self.out.push_back(Frame::changed(Changed::Machine {
+                            key: name,
+                            body: Some(p),
+                        }));
+                        // 哪一台一变首屏那一句就可能变（报完了 · 断了 · 又在连）：现算一次，变了才推。
+                        let now = crate::control::machine_state::empty();
+                        if self.empty_was.as_ref() != Some(&now) {
+                            self.empty_was = Some(now.clone());
+                            self.out.push_back(Frame::changed(Changed::Empty { body: Some(now) }));
+                        }
+                    }
                     // 落后丢了几件：可丢的通道，下一次变化或重问就补上。
                     Some(None) => {}
                     None => self.machine = None,
@@ -331,6 +341,7 @@ pub(crate) fn attach_rx(hub: Arc<TapHub>) -> TapRx {
         plan: None,
         machines: None,
         machine: None,
+        empty_was: None,
         dirs: None,
         list: None,
         bodies: no_bodies,

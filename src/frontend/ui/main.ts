@@ -297,8 +297,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   const needsBook = new NeedsBook();
   // 组的账：本机后端问到各台的组并成一份（标签页栏的分组与固定照它画）。
   const groupBook = new GroupBook();
-  // 各台的状态成品 ⇒ 栏里的机器离线条（离线 · 几条状态不明都是本机后端说的）。
-  onMachineState((origin, m) => tabs.machineChanged(origin, m));
+  // 各台的状态成品 ⇒ 栏底机器条；首屏那一句（各台报完了没有 · 哪几台还在连）也由本机后端合好随它推。
+  onMachineState(
+    (origin, m) => tabs.machineChanged(origin, m),
+    (f) => empty.face(f),
+  );
   // 那台接上了（起来时本机后端还在起 · 断开之后又连上）⇒ 接上之前问过它的那几处再问一次；终端页停在「那台断开」的实时自己重新订上。
   onMachineUp((origin) => {
     outbox.machineUp(origin);

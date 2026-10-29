@@ -4,7 +4,7 @@
 
 use cmd_wire::attach::Relation;
 use cmd_wire::machine::{
-    Blocker, FixButton, MachineFix, MachineState, MachineStateKind as K, Round, RoundProblem,
+    Blocker, EmptyFace, FixButton, MachineFix, MachineState, MachineStateKind as K, Round, RoundProblem,
     Stage, Why,
 };
 use copy_core::copy_text;
@@ -25,8 +25,8 @@ pub struct Entry {
     problem: Option<RoundProblem>,
     /// 这一轮断在那台本身的哪一处。
     blocker: Option<Blocker>,
-    /// 这台几条会话状态不明（[`Fact::Unclear`]）。
-    unclear: u32,
+    /// 这一条连接上那台说过「活会话清单报完了」（[`Fact::Listed`]；又在连 · 断了 ⇒ 作废）。
+    listed: bool,
 }
 
 /// 一件事实。
@@ -41,8 +41,8 @@ pub enum Fact {
     Step(Step),
     /// 部署那一趟收了（成没成都算）；问到了那台的系统就带上。
     Deployed { os: Option<String> },
-    /// 这台此刻几条会话状态不明（本机后端那台的会话簿数的：断的那一刻说过说不清、还没重报的）。
-    Unclear(u32),
+    /// 那台在这一条连接上说活会话清单报完了（`sessions_replayed`）。
+    Listed,
 }
 
 /// 收一件事实。
@@ -80,13 +80,14 @@ pub fn fold(e: &mut Entry, fact: Fact) {
                 e.stage = None;
                 e.problem = Some(problem);
                 e.blocker = blocker;
+                e.listed = false;
             }
         },
         Fact::Step(s) => {
             let (state, stage) = s.kind();
             busy(e, state, stage);
         }
-        Fact::Unclear(n) => e.unclear = n,
+        Fact::Listed => e.listed = true,
         Fact::Deployed { os } => {
             if os.is_some() {
                 e.os = os;
@@ -104,6 +105,62 @@ fn busy(e: &mut Entry, state: K, stage: Option<Stage>) {
     e.stage = stage;
     e.problem = None;
     e.blocker = None;
+    e.listed = false;
+}
+
+impl Entry {
+    /// 这一条连接上那台报完了活会话清单没有。
+    pub fn listed(&self) -> bool {
+        self.listed
+    }
+}
+
+/// **首屏那一句**（[`EmptyFace`]）：各台的成品 ＋ 报完了没有，合一句。停用的不算；报完了的那几台「无会话」；
+/// 在连 · 在装 · 在更新 · 还没结论 · 连上了还没报完 ⇒ 还在连；别的（没连上 · 指纹不对 · 要更新 · 做不了）⇒ 名字 ＋ 那台的词、会话未计入。
+/// 都报完了才说「无会话」。
+pub fn empty(rows: &[(&MachineState, bool)]) -> EmptyFace {
+    let mut listed: Vec<&str> = Vec::new();
+    let mut pending: Vec<&str> = Vec::new();
+    let mut out: Vec<String> = Vec::new();
+    for (m, done) in rows {
+        match m.state {
+            K::Disabled => {}
+            K::Up | K::Newer if *done => listed.push(&m.name),
+            K::Up | K::Newer | K::Connecting | K::Installing | K::Updating | K::Unknown => {
+                pending.push(&m.name)
+            }
+            K::Down | K::HostKeyChanged | K::NeedsUpdate | K::Unsupported => out.push(copy_text(
+                "beEmpty.hint.outOne",
+                &[("name", &m.name), ("word", &m.word)],
+            )),
+        }
+    }
+    if pending.is_empty() && out.is_empty() {
+        return EmptyFace {
+            line: copy_text("beEmpty.line.none", &[]),
+            hint: copy_text("beEmpty.hint.none", &[]),
+        };
+    }
+    let sep = copy_text("beEmpty.list.sep", &[]);
+    let line = if listed.is_empty() {
+        copy_text("beEmpty.line.waiting", &[])
+    } else {
+        copy_text("beEmpty.line.some", &[("names", &listed.join(&sep))])
+    };
+    let mut hint: Vec<String> = Vec::new();
+    if !pending.is_empty() {
+        hint.push(copy_text(
+            "beEmpty.hint.pending",
+            &[("names", &pending.join(&sep))],
+        ));
+    }
+    if !out.is_empty() {
+        hint.push(copy_text("beEmpty.hint.out", &[("names", &out.join(&sep))]));
+    }
+    EmptyFace {
+        line,
+        hint: hint.join(&copy_text("kit.text.sep", &[])),
+    }
 }
 
 /// 读一台的成品。`machine` 是给人看的名字；`enabled = false` ⇒ 「连接这台」关着（停用）；
@@ -158,7 +215,6 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
             .filter(|_| state == K::HostKeyChanged)
             .and_then(|p| p.expected_key.clone()),
         detail: problem.map(|p| detail(machine, p, &code(why, blocker))),
-        unclear: (e.unclear > 0).then_some(e.unclear),
         // 到这台怎么连过去的不是这一轮的事实：宿主照机器表与它自己的连接池填（`ssh_dial::pool::Way::put`）。
         route: None,
     }
