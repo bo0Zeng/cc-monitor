@@ -252,7 +252,8 @@ describe("〔STC〕第五问：会话事实", () => {
     const read = (ask: NeedsAsk | null) => factsOf({ ...wire, needs: { ...needs, ask } }).needs!.ask;
     expect(Object.keys(asks).sort()).toEqual(["approve", "plan", "question", "subAgent"]);
     for (const [name, a] of Object.entries(asks)) expect(read(a), name).toEqual(a);
-    expect(read(asks.subAgent)?.run).toEqual({ id: "a1", kind: "general-purpose" });
+    expect(read(asks.subAgent)?.run?.id).toBe("a1");
+    expect(read(asks.subAgent)?.run?.text, "谁要批：核心写好的那一句").toContain("general-purpose");
     expect(read(asks.question)?.questions[0].options[0].detail).toBe("warm");
     expect(read(null), "没有挂着的").toBeNull();
   });

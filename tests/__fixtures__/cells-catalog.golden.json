@@ -1167,8 +1167,8 @@
         },
         {
           "frozen": false,
-          "kind": "value",
-          "path": "needs.ask.run.kind",
+          "kind": "text",
+          "path": "needs.ask.run.text",
           "type": "string"
         },
         {
@@ -1940,8 +1940,8 @@
         },
         {
           "frozen": false,
-          "kind": "value",
-          "path": "needs.ask.run.kind",
+          "kind": "text",
+          "path": "needs.ask.run.text",
           "type": "string"
         },
         {

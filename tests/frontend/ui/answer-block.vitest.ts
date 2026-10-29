@@ -230,17 +230,17 @@ describe("甲4 批计划 · 甲5 子 agent", () => {
     expect(answers).toEqual([{ ask: ASKS.plan.id, choice: "plan-keep" }]);
   });
 
-  it("★ 子 agent：头上标是哪一种 agent；「改到终端里答」排末尾、幽灵样式", () => {
+  it("★ 子 agent：头上标照抄核心写好的谁要批；「改到终端里答」排末尾、幽灵样式", () => {
     const { b } = rig(tab(needs(ASKS.subAgent)));
-    expect(b.el.querySelector("[data-part=tag]")!.textContent).toBe(copyText("askBlock.tag.run", { kind: "general-purpose" }));
+    expect(b.el.querySelector("[data-part=tag]")!.textContent).toBe(ASKS.subAgent.run!.text);
     const last = [...b.el.querySelectorAll<HTMLButtonElement>("button[data-choice]")].at(-1)!;
     expect([last.dataset.choice, last.dataset.kind, label(last)]).toEqual(["release", "ghost", ASKS.subAgent.choices.at(-1)!.text]);
     expect(b.el.querySelector("[data-row=release]")).not.toBeNull();
   });
 
-  it("子 agent 没说种类 ⇒ 只标 agent", () => {
-    const { b } = rig(tab(needs({ ...ASKS.subAgent, run: { id: "a1", kind: null } })));
-    expect(b.el.querySelector("[data-part=tag]")!.textContent).toBe(copyText("askBlock.tag.runBare"));
+  it("标上的字一个不拼：换一句就照摆那一句", () => {
+    const { b } = rig(tab(needs({ ...ASKS.subAgent, run: { id: "a1", text: "核心·谁要批" } })));
+    expect(b.el.querySelector("[data-part=tag]")!.textContent).toBe("核心·谁要批");
   });
 });
 

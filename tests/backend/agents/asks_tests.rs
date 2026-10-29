@@ -38,7 +38,7 @@ fn each_choice_carries_the_row_it_goes_in() {
         raw: Value::Null,
     }];
     assert_eq!(
-        rows(&product_of("a", &a, 1)),
+        rows(&product_of("a", &a, None, 1)),
         [
             ("allow", Main),
             ("always-0", Main),
@@ -48,11 +48,11 @@ fn each_choice_carries_the_row_it_goes_in() {
             ("release", Release)
         ]
     );
-    let plan = product_of("a", &ask_in(AskKind::Plan), 1);
+    let plan = product_of("a", &ask_in(AskKind::Plan), None, 1);
     assert_eq!(rows(&plan).last(), Some(&("plan-keep", Hold)));
     assert!(rows(&plan)[..3].iter().all(|(_, r)| *r == Main));
     assert_eq!(
-        rows(&product_of("a", &ask_in(AskKind::Question), 1)),
+        rows(&product_of("a", &ask_in(AskKind::Question), None, 1)),
         [("dismiss", Main)],
         "没有题 ⇒ 不回答是唯一那一项"
     );
@@ -64,7 +64,7 @@ fn each_choice_carries_the_row_it_goes_in() {
         options: Vec::new(),
     }];
     assert_eq!(
-        rows(&product_of("a", &q, 1)),
+        rows(&product_of("a", &q, None, 1)),
         [("answer", Main), ("dismiss", Release)]
     );
 }
@@ -83,7 +83,7 @@ fn approve_puts_allow_first_then_the_suggestions_then_the_denials() {
             raw: Value::Null,
         },
     ];
-    let p = product_of("ask-9", &a, 42);
+    let p = product_of("ask-9", &a, None, 42);
     assert_eq!(
         ids(&p),
         [
@@ -126,7 +126,7 @@ fn approve_puts_allow_first_then_the_suggestions_then_the_denials() {
 /// 批计划：四档，最后那档「留在计划里」可附一句话。
 #[test]
 fn plan_offers_the_three_modes_and_keep_planning() {
-    let p = product_of("a", &ask_in(AskKind::Plan), 1);
+    let p = product_of("a", &ask_in(AskKind::Plan), None, 1);
     assert_eq!(
         ids(&p),
         ["plan-auto", "plan-edits", "plan-manual", "plan-keep"]
@@ -138,7 +138,7 @@ fn plan_offers_the_three_modes_and_keep_planning() {
 /// 提问：有题才有「回答」；题目与选项编号 `q<i>` · `q<i>o<j>`，每题都许自由文本。
 #[test]
 fn a_question_numbers_its_questions_and_options() {
-    let p = product_of("a", &ask_in(AskKind::Question), 1);
+    let p = product_of("a", &ask_in(AskKind::Question), None, 1);
     assert_eq!(ids(&p), ["dismiss"], "没有题就没有「回答」");
 
     let mut a = ask_in(AskKind::Question);
@@ -165,7 +165,7 @@ fn a_question_numbers_its_questions_and_options() {
             ],
         },
     ];
-    let p = product_of("a", &a, 1);
+    let p = product_of("a", &a, None, 1);
     assert_eq!(ids(&p), ["answer", "dismiss"]);
     let q = &p.questions[1];
     assert_eq!(
@@ -181,7 +181,7 @@ fn a_question_numbers_its_questions_and_options() {
     assert!(p.questions.iter().all(|q| q.other));
 }
 
-/// 挡着终端的请求每种都多一项「改到终端里答」，排最后；子 agent 发的带上它的 id 与种类。
+/// 挡着终端的请求每种都多一项「改到终端里答」，排最后；子 agent 发的带上它的 id 与写好的「谁要批」。
 #[test]
 fn a_terminal_blocking_ask_gets_release_last_and_a_run_carries_the_agent() {
     for kind in [AskKind::Approve, AskKind::Plan, AskKind::Question] {
@@ -189,17 +189,38 @@ fn a_terminal_blocking_ask_gets_release_last_and_a_run_carries_the_agent() {
         a.blocks_terminal = true;
         a.agent_id = Some("ag".into());
         a.agent_type = Some("general".into());
-        let p = product_of("a", &a, 1);
+        let p = product_of("a", &a, None, 1);
         assert_eq!(ids(&p).last(), Some(&"release"), "{kind:?}");
         assert_eq!(ids(&p).iter().filter(|i| **i == "release").count(), 1);
         assert_eq!(
             p.run,
             Some(AskRun {
                 id: "ag".into(),
-                kind: Some("general".into())
+                text: Words(copy_text("askBlock.tag.run", &[("kind", "general")])),
             })
         );
     }
+}
+
+/// 「谁要批」那一句：名 · 类别缺哪样少哪样，都缺 ⇒ 只写 agent；主会话发的没有这一格。
+#[test]
+fn who_asks_names_the_agent_and_its_kind_with_what_is_known() {
+    let mut a = ask_in(AskKind::Approve);
+    assert_eq!(
+        product_of("a", &a, Some("l"), 1).run,
+        None,
+        "主会话发的不带 run"
+    );
+    a.agent_id = Some("ag".into());
+    let text = |a: &AskIn, label: Option<&str>| product_of("a", a, label, 1).run.unwrap().text.0;
+    let named = copy_text("speaker.agent.title", &[("label", "Audit")]);
+    assert_eq!(text(&a, Some("Audit")), named);
+    assert_eq!(text(&a, None), copy_text("askBlock.tag.runBare", &[]));
+    a.agent_type = Some("Explore".into());
+    assert_eq!(
+        text(&a, Some("Audit")),
+        format!("{named}{}Explore", copy_text("kit.text.sep", &[]))
+    );
 }
 
 /// 成品的线上形状：驼峰、不认识的格拒收（格目录样本往返原样）。

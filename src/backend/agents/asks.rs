@@ -153,8 +153,33 @@ pub(crate) fn row_of(a: &AskIn, id: &str) -> ChoiceRow {
     }
 }
 
-/// 成品：选项按种类写好字。
-pub(crate) fn product_of(id: &str, a: &AskIn, since_ms: u64) -> Ask {
+/// 子运行发的那一条：会话记录 `record` 底下 id 为 `run` 的那个子运行派出时的标签（子运行面 `sources` ＋ `spawned`，哪一家都经它）。
+/// 那一家没有子运行面 · 还没落盘 · 对不上 ⇒ `None`。挂上那一刻查一次（[`product_of`] 的 `label`）。
+pub(crate) fn run_label(record: &std::path::Path, run: &str) -> Option<String> {
+    let ch = super::record_face_of(record)?.children?;
+    (ch.sources)(record)
+        .iter()
+        .filter_map(|p| (ch.spawned)(p))
+        .find(|l| l.run.as_deref() == Some(run))
+        .and_then(|l| l.label)
+}
+
+/// 谁要批那一句（[`AskRun::text`] 的唯一一处）：agent「名」· 类别，缺哪样少哪样。
+fn run_words(label: Option<&str>, kind: Option<&str>) -> Words {
+    Words(match (label, kind) {
+        (Some(l), Some(k)) => format!(
+            "{}{}{k}",
+            copy_text("speaker.agent.title", &[("label", l)]),
+            copy_text("kit.text.sep", &[])
+        ),
+        (Some(l), None) => copy_text("speaker.agent.title", &[("label", l)]),
+        (None, Some(k)) => copy_text("askBlock.tag.run", &[("kind", k)]),
+        (None, None) => copy_text("askBlock.tag.runBare", &[]),
+    })
+}
+
+/// 成品：选项按种类写好字；`label` ＝ 子运行发的那一条派出时的标签（[`run_label`]，主会话 / 查不到 ⇒ `None`）。
+pub(crate) fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64) -> Ask {
     let c = |id: &str, text: String, tone: Tone, note: NoteNeed| Choice {
         id: id.to_string(),
         text: Words(text),
@@ -256,7 +281,7 @@ pub(crate) fn product_of(id: &str, a: &AskIn, since_ms: u64) -> Ask {
         tool: a.tool.clone(),
         run: a.agent_id.clone().map(|id| AskRun {
             id,
-            kind: a.agent_type.clone(),
+            text: run_words(label, a.agent_type.as_deref()),
         }),
         what: a.what.clone(),
         detail: a.detail.clone(),
@@ -312,6 +337,7 @@ pub(crate) fn specimen() -> Ask {
             blocks_terminal: true,
             input: Value::Null,
         },
+        Some("l"),
         1,
     )
 }
