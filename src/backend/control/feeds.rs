@@ -616,7 +616,9 @@ impl crate::wire::typed::Handle for MachineStop {
     ) -> impl std::future::Future<Output = Result<MachineStopped, MachineStopErr>> + Send + 'static
     {
         async move {
-            let machine = named(&req.machine).map_err(MachineStopErr::BadArgs)?.to_string();
+            let machine = named(&req.machine)
+                .map_err(MachineStopErr::BadArgs)?
+                .to_string();
             hold(&machine);
             stop_with(&Pool, &machine)
                 .await
