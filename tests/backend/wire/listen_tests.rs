@@ -74,9 +74,17 @@ fn the_attach_reply_says_how_this_build_stands_against_the_clients() {
         admit(r#"{"attach":true,"tz":"Asia/Shanghai"}"#, own),
         Admit::Stream {
             tz: Some("Asia/Shanghai".into()),
-            reply: cmd_wire::attach::AttachReply::Ok { relation: None },
+            reply: cmd_wire::attach::AttachReply::Ok {
+                relation: None,
+                deflate: false
+            },
             watch: None,
         }
+    );
+    // 要了 deflate ⇒ 这台总认（回话多一格）；没要 ⇒ 不回。
+    assert_eq!(
+        rel(r#"{"attach":true,"deflate":true}"#),
+        "{\"attach\":\"ok\",\"deflate\":true}\n"
     );
     // 带名单 ⇒ 原样交给接流那一步（从第一帧起照它发）。
     assert!(matches!(
@@ -337,4 +345,44 @@ fn the_last_client_is_the_last_of_all_connections_not_the_first_to_leave() {
     );
     assert_eq!(c.leave(a), 1, "同一条走两次扣了两次");
     assert_eq!(c.leave(b), 0);
+}
+
+/// 回认之后那一侧的写半边：每帧写完 flush 一次 ⇒ 对端就地解得出这一帧（sync flush），整串解出来与写进去的逐字节相同、
+/// 远少于原样；不压那一形原样过。
+#[tokio::test]
+async fn a_deflating_writer_flushes_each_frame_so_it_inflates_on_arrival() {
+    use tokio::io::AsyncWriteExt;
+    let frames: Vec<String> = (0..200)
+        .map(|i| {
+            format!(
+                "{{\"kind\":\"line\",\"session_id\":\"s-1\",\"path\":\"/home/u/.claude/projects/-p/s-1.jsonl\",\"seq\":{i},\"record\":{{\"type\":\"assistant\",\"text\":\"read the file then run the test and check the frame {}\"}}}}\n",
+                i % 7
+            )
+        })
+        .collect();
+    let mut w = Down::new(Vec::new(), true);
+    let mut z = flate2::Decompress::new(false);
+    let mut fed = 0usize;
+    let mut back = Vec::new();
+    for f in &frames {
+        w.write_all(f.as_bytes()).await.unwrap();
+        w.flush().await.unwrap();
+        let wire = w.get_ref();
+        let mut out = vec![0u8; 64 * 1024];
+        let before = z.total_out();
+        z.decompress(&wire[fed..], &mut out, flate2::FlushDecompress::Sync)
+            .unwrap();
+        fed = wire.len();
+        let made = (z.total_out() - before) as usize;
+        assert_eq!(&out[..made], f.as_bytes(), "flush 之后这一帧当场解得出来");
+        back.extend_from_slice(&out[..made]);
+    }
+    let raw: usize = frames.iter().map(String::len).sum();
+    assert_eq!(back.len(), raw);
+    assert!(fed * 4 < raw, "线上 {fed} 字节，原样 {raw}：没压下来");
+
+    let mut p = Down::new(Vec::new(), false);
+    p.write_all(frames[0].as_bytes()).await.unwrap();
+    p.flush().await.unwrap();
+    assert_eq!(p.get_ref(), frames[0].as_bytes(), "不压那一形原样过");
 }

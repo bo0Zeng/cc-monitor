@@ -18,34 +18,9 @@ pub(crate) fn adoptions_at() -> crate::accounts::quota::rules::AdoptionsAt {
     std::sync::Arc::new(|store| std::sync::Arc::new(Setup::of(std::sync::Arc::clone(store))))
 }
 
-/// **常驻后端里起中转**（`main.rs` 调）：上游选择的装配口 ＋ 这台的账号库 · 配置编辑层；接上了中转那一刻，
-/// 盘上的轮换若还是旧版，升级写回、播种（全机只这一处写回）。
+/// **常驻后端里起中转**（`main.rs` 调）：上游选择的装配口 ＋ 这台的账号库 · 配置编辑层。
 pub fn host_relay(tap: std::sync::Arc<dyn crate::relay::TapPort>, own: Own) -> String {
-    let up = own.clone();
-    crate::accounts::upstream_select::host_relay(books(), adoptions_at(), tap, own, move || {
-        let lib = crate::platform::paths::home_dir()
-            .and_then(|h| books()(&h))
-            .unwrap_or_default();
-        let ids: Vec<String> = lib
-            .accounts
-            .iter()
-            .filter_map(ManifestAccount::route_id)
-            .collect();
-        let rest = crate::accounts::upstream_select::rotate::rest_members(
-            ids.iter().map(String::as_str),
-            &[],
-            |x| lib.by_route(x).is_some_and(|a| !a.is_api_key()),
-        );
-        let live = crate::history::live_table::live_here();
-        uses::migrate_here(
-            &up,
-            &uses::UpgradeEnv {
-                live: &|sid| live.contains(sid),
-                rest,
-                title: &|_| None,
-            },
-        );
-    })
+    crate::accounts::upstream_select::host_relay(books(), adoptions_at(), tap, own)
 }
 
 /// 交给登录盯防的那一份：账号库里每个号的配置目录（`accounts::quota::nodes::watch_logins_here` 起时递进去）。
@@ -64,7 +39,7 @@ pub(crate) fn account_dirs() -> crate::accounts::quota::nodes::AccountDirs {
 
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::quota::rotation::{self, RotationStore};
-use crate::accounts::quota::setup::uses::{self, Setup};
+use crate::accounts::quota::setup::uses::Setup;
 use crate::accounts::quota::show;
 use crate::accounts::upstream_select::rotate::Hop;
 use crate::common::time::TextClock;

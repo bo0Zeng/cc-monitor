@@ -1080,6 +1080,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区；TS 侧零孪生。
   "host-core": {
     atomic_write_json: NONE,
+    // 前端自有状态文件读回来先过上限（上限从声明表来，monitor 读写 `config.json` 用）；TS 侧没有孪生。
+    read_capped: NONE,
     fit_into_work_area: NONE,
     // 主窗 / 设置窗摆进工作区正中（宿主那一侧用；TS 侧没有孪生）。
     center_in_work_area: NONE,
@@ -1147,10 +1149,13 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "relay-route-core": {
     // 落盘文件的声明表：每份一行（落点 · 状态还是缓存 · 格式与版本 · 读上限），后端读写口按它读写；TS 侧没有孪生。
     ACCOUNT_CREDS_FILE: NONE,
+    ANSWER_PLUGIN_FILE: NONE,
     APIKEY_CREDENTIALS_FILE: NONE,
     ASSET_CATALOG_FILE: NONE,
     BACKEND_POLICY_FILE: NONE,
     BOOKMARKS_FILE: NONE,
+    CC_BUS_INBOX_FILE: NONE,
+    CC_BUS_STATE_FILE: NONE,
     CHORES_FILE: NONE,
     // monitor 的设置那一行（monitor `config.rs` 读写都取它的落点与读上限）；TS 侧没有孪生。
     CONFIG_FILE: NONE,
@@ -1172,9 +1177,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ROTATION_USES_FILE: NONE,
     SESSION_QUEUE_FILE: NONE,
     SESSION_UPSTREAM_FILE: NONE,
+    SET_GROUPS_FILE: NONE,
     SKELETON_FILE: NONE,
     SKILL_LEDGER_FILE: NONE,
     SSH_CONFIG_FILE: NONE,
+    STRATEGY_SOURCE_FILE: NONE,
     foreign: NONE,
     json: NONE,
     kept: NONE,

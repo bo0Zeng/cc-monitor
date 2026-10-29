@@ -1,13 +1,14 @@
 //! ★ 轮换的配置编辑层：管界面与手写的配置 —— 策略文件（[`script`] 读头 · 只重写头那一块 · [`shelf`] 目录 · 新建 / 复制 / 改名 / 删 · 时区）·
-//! 设置声明的校验（[`form`]）· 会话载入哪份（副本存在基础层，载入只在本层）与新会话默认用哪份（[`uses`]）· 旧版账本的升级（[`migrate`] · [`upgrade`]）。
+//! 设置声明的校验（[`form`]）· 会话载入哪份（副本存在基础层，载入只在本层）与新会话默认用哪份（[`uses`]）。
 //! 本层可以问基础功能层（`quota/rules/` 等：一判 · 推演 · 事实），基础层不认本层：它只认会话里存的副本（新会话那一份经 [`uses::Setup`] 实现的 `Adoptions` 给）。
 
 pub(crate) mod editor;
 pub(crate) mod form;
-pub(crate) mod migrate;
+#[cfg(test)]
+#[path = "../../../../../tests/backend/accounts/quota/setup/samples.rs"]
+pub(crate) mod samples;
 pub(crate) mod script;
 pub(crate) mod shelf;
-pub(crate) mod upgrade;
 pub(crate) mod uses;
 
 use crate::accounts::quota::rules::book::Copy;

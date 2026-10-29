@@ -1,4 +1,4 @@
-//! 前端自有状态文件（不是用户文件）的原子覆盖〔原 `src/frontend/shell/src/utils.rs`，逐字搬来〕。
+//! 前端自有状态文件（不是用户文件）的原子覆盖与有上限的读。
 //!
 //! 早期 `bind.rs` / `history.rs` / `auto_launch.rs` 三处各自手写 `write(tmp) + remove + rename` 三步非原子，crash 即丢；
 //! 统一走本 helper 后 Windows 上走 `ReplaceFileW`，非 Windows 走 `std::fs::rename`，全程原子。
@@ -58,6 +58,36 @@ pub fn atomic_write_json<T: serde::Serialize>(
         let _ = std::fs::remove_file(&tmp);
     }
     r
+}
+
+/// 有上限读一份前端自有状态文件的结局。
+#[derive(Debug, PartialEq, Eq)]
+pub enum Capped {
+    /// 不在。
+    Absent,
+    /// 整份原文（不超过上限）。
+    Text(String),
+    /// 超过上限：读的那一口当读不出来（状态不覆盖、照实说）。
+    TooBig,
+}
+
+/// 读一份前端自有状态文件，最多 `cap` 字节（上限从声明表来，如 `relay_route_core::CONFIG_FILE`）。
+/// 只读 `cap + 1` 个字节分辨「刚好读满」与「其实还有」，不按文件大小分配；不是 UTF-8 ⇒ `InvalidData`。
+pub fn read_capped(path: &std::path::Path, cap: u64) -> std::io::Result<Capped> {
+    use std::io::Read as _;
+    let f = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Capped::Absent),
+        Err(e) => return Err(e),
+    };
+    let mut buf = Vec::new();
+    f.take(cap.saturating_add(1)).read_to_end(&mut buf)?;
+    if buf.len() as u64 > cap {
+        return Ok(Capped::TooBig);
+    }
+    String::from_utf8(buf)
+        .map(Capped::Text)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
 #[cfg(windows)]
