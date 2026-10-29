@@ -381,3 +381,13 @@ adoptOldBookmarks	5.0.4
 tab-groups-migrate	5.0.4
 migrateTabGroups	5.0.4
 oldTabGroups	5.0.4
+egress_guard
+only_the_egress_port_opens_outbound_tcp
+command_new_lives_only_in_the_spawn_primitive
+g6_staged_zero
+g6_scope_pins
+is_inside_tree
+frame_variants
+FROZEN_COMPAT
+AGENT_NAMED_WIRE_FIELDS
+every_frozen_compat_entry_states_how_it_gets_unfrozen
