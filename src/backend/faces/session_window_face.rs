@@ -12,8 +12,8 @@
 //!   也是那一张，不是码；码只剩这台自己没查成的 `failed` · `child_timed_out`。
 //! - `tmux`：会话在 tmux 里（窗口关了时壳才给［在终端里打开］，出口原样交壳）。
 
-use crate::dial::remote_ask::{Remote, Said, Table};
 use crate::dial::opened_windows::Records;
+use crate::dial::remote_ask::{Remote, Said, Table};
 use crate::dial::terminal_processes::{Link, OpenedHere, TerminalProcessesReq};
 use crate::observe::session_terminals::{Here, Showing, ShownWhy, SidReq};
 use cmd_wire::front::{FrontFace, Unplaced};
@@ -180,7 +180,12 @@ type TablesOnce = Box<dyn FnOnce() -> Result<String, String> + Send>;
 /// 本机开过的那个终端（`dial/opened_windows.rs`）：记下的那台就是这台 · 标签那个 shell 还是它 · 它自己或底下开着 ssh
 /// ⇒ 从那个 ssh 往上的链（`labels` 就是那个标签；不问那台，说不出在不在 tmux 里 ⇒ `tmux: false`）。
 /// shell 没了 ⇒ 删那一份。没记 · 别台的 · 没开着 ssh ⇒ `None`，问那台。
-fn opened_here<Q, R>(records: &R, sid: &str, machine: &str, tables: Q) -> (Option<SessionWindow>, TablesOnce)
+fn opened_here<Q, R>(
+    records: &R,
+    sid: &str,
+    machine: &str,
+    tables: Q,
+) -> (Option<SessionWindow>, TablesOnce)
 where
     Q: FnOnce() -> Result<String, String> + Send + 'static,
     R: Records,

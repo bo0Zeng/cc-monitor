@@ -180,10 +180,30 @@ fn a_terminal_opened_here_is_read_from_the_shell_its_label_names() {
         OpenedHere::Chain(c) => c.iter().map(|l| l.pid).collect::<Vec<_>>(),
         other => panic!("{other:?}"),
     };
-    assert_eq!(pids(opened_chain("600-3000", &t.procs)), vec![700, 600, 500], "底下三个 ssh ⇒ 最早起的那个");
-    assert_eq!(pids(opened_chain("700-4000", &t.procs)), vec![700, 600, 500], "shell exec 成了 ssh：同一个进程号与起始时刻");
-    assert_eq!(opened_chain("600-3001", &t.procs), OpenedHere::Gone, "起始时刻对不上 ⇒ 进程号被复用了");
-    assert_eq!(opened_chain("601-3000", &t.procs), OpenedHere::Gone, "那个进程不在");
+    assert_eq!(
+        pids(opened_chain("600-3000", &t.procs)),
+        vec![700, 600, 500],
+        "底下三个 ssh ⇒ 最早起的那个"
+    );
+    assert_eq!(
+        pids(opened_chain("700-4000", &t.procs)),
+        vec![700, 600, 500],
+        "shell exec 成了 ssh：同一个进程号与起始时刻"
+    );
+    assert_eq!(
+        opened_chain("600-3001", &t.procs),
+        OpenedHere::Gone,
+        "起始时刻对不上 ⇒ 进程号被复用了"
+    );
+    assert_eq!(
+        opened_chain("601-3000", &t.procs),
+        OpenedHere::Gone,
+        "那个进程不在"
+    );
     assert_eq!(opened_chain("nope", &t.procs), OpenedHere::Gone);
-    assert_eq!(opened_chain("500-2000", &t.procs), OpenedHere::NoSsh, "底下只有 shell、没有 ssh");
+    assert_eq!(
+        opened_chain("500-2000", &t.procs),
+        OpenedHere::NoSsh,
+        "底下只有 shell、没有 ssh"
+    );
 }

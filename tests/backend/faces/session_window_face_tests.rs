@@ -379,7 +379,11 @@ async fn a_terminal_opened_here_is_found_here_even_when_that_machine_never_answe
     .expect("本机开过的那一个不等那台");
     let v = serde_json::to_value(got.expect("答得出")).unwrap();
     assert_eq!(v["labels"], json!(["600-20"]), "{v}");
-    assert_eq!(pids(&v), vec![700, 600, 500], "从那个 shell 底下的 ssh 往上：{v}");
+    assert_eq!(
+        pids(&v),
+        vec![700, 600, 500],
+        "从那个 shell 底下的 ssh 往上：{v}"
+    );
     assert!(v.get("face").is_none(), "{v}");
     assert_eq!(*silent.0.lock().unwrap(), 0, "不问那台");
 }
@@ -420,7 +424,11 @@ async fn a_shell_that_is_gone_is_forgotten_and_that_machine_is_asked() {
         got.chain.iter().map(|l| l.pid).collect::<Vec<_>>(),
         vec![700, 600, 500]
     );
-    assert_eq!(shelf.forgot(), vec![SID.to_string()], "起始时刻对不上 ⇒ 那一份删");
+    assert_eq!(
+        shelf.forgot(),
+        vec![SID.to_string()],
+        "起始时刻对不上 ⇒ 那一份删"
+    );
 }
 
 #[tokio::test]
@@ -428,5 +436,8 @@ async fn a_shell_still_open_with_no_ssh_under_it_asks_that_machine_and_keeps_the
     let shelf = Shelf::holding("500-10", "devbox");
     let (_, peers) = remote_answer_with(shelf.clone()).await;
     assert_eq!(peers.asked().len(), 1);
-    assert!(shelf.forgot().is_empty(), "窗口还开着 ⇒ 留着（下一回也许又开着 ssh）");
+    assert!(
+        shelf.forgot().is_empty(),
+        "窗口还开着 ⇒ 留着（下一回也许又开着 ssh）"
+    );
 }
