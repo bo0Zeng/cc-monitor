@@ -1104,7 +1104,10 @@ fn exec_direct(
     upstream: Option<&egress::Taken>,
     own: &crate::platform::fs::Own,
 ) -> i32 {
-    if d.keeps_user_base_url {
+    if let Some(Err(why)) = upstream.map(|t| leave_upstream(t, own)) {
+        return die(&why);
+    }
+    if d.own_upstream.is_some() {
         eprintln!("{}", copy_text("beCcm.relay.userBaseUrl", &[]));
     }
     // 用的是账号库里一个说得出名字的号 ⇒ 最终那一跳给 agent 那个进程留张便条（观测侧据它记「这条会话用哪个号起的」）。
@@ -1124,7 +1127,6 @@ fn exec_direct(
         tab: d.tab.clone(),
         alias: d.alias.clone(),
         host: host_here(|k| std::env::var(k).ok()),
-        upstream,
     };
     // 非得要 shell 的那几趟（判定与归因都只住 `needs_shell` 一处）⇒ 整条走 `sh -c`（它最后一句 `exec`，pid 不变）。
     if let Some(why) = needs_shell(d) {
@@ -1209,7 +1211,7 @@ fn exec_direct(
 }
 
 /// 最后那一跳给那个进程留的便条里写什么：用的号（说得出名字才有）· 答题插件是不是经环境交下去的 · `--tab` · 经哪条别名起的 ·
-/// 起在哪种宿主里；另给那条会话留它的上游描述（[`egress::Taken`]，按来处存）。
+/// 起在哪种宿主里。
 #[derive(Clone)]
 struct Note<'a> {
     account: Option<&'a str>,
@@ -1217,7 +1219,6 @@ struct Note<'a> {
     tab: Option<crate::control::launch_account::LaunchTab>,
     alias: Option<String>,
     host: Option<crate::wire::TerminalHost>,
-    upstream: Option<&'a egress::Taken>,
 }
 
 impl Note<'_> {
@@ -1228,8 +1229,35 @@ impl Note<'_> {
         tab: None,
         alias: None,
         host: None,
-        upstream: None,
     };
+}
+
+fn unix_now() -> u64 {
+    crate::common::time::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// exec 之前给这条会话留它的上游描述（[`egress::Taken`]，按来处存；中转开上游那一口 · 上游选择按来处读）。
+/// 在 exec 之前写 ⇒ 第一发请求到中转时它已经在盘上。pid 是 ccm 自己的：Unix 上 exec 不换 pid，别处 ccm 等着子进程退。
+/// 写不成：带用户自己的上游地址那一份 ⇒ `Err`（不起：中转找不到描述，agent 就带着用户网关的鉴权发去默认上游）；
+/// 只有出网设置那一份 ⇒ 出声、照常起（中转照这台的出网描述）。
+fn leave_upstream(t: &egress::Taken, own: &crate::platform::fs::Own) -> Result<(), String> {
+    use crate::accounts::upstream_select::session_upstream::{leave, UpstreamDesc};
+    let desc = UpstreamDesc {
+        egress: t.egress.clone(),
+        base: t.base.clone(),
+        pid: std::process::id(),
+        at: unix_now(),
+    };
+    match leave(own, &t.origin, &desc, &crate::platform::proc::pid_alive) {
+        Ok(()) => Ok(()),
+        Err(e) if t.base.is_some() => Err(e.logged()),
+        Err(e) => {
+            eprintln!("ccm: {}", e.logged());
+            Ok(())
+        }
+    }
 }
 
 /// 最终那一跳自己在哪种宿主里（便条那一格，恢复照起时那一种读它）：托管进程给里面设了 `CCM_HOST`（它同时摘掉 `TMUX`）⇒ 托管；
@@ -1354,23 +1382,7 @@ fn exec_or_spawn(
     own: &crate::platform::fs::Own,
 ) -> i32 {
     let note = |pid: u32| {
-        let now = crate::common::time::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs());
-        // 这条会话的上游描述（中转开上游那一口按来处读）；写不成只出声、照常起。
-        if let Some(t) = leave.upstream {
-            use crate::accounts::upstream_select::session_upstream::{
-                leave as left_for, UpstreamDesc,
-            };
-            let desc = UpstreamDesc {
-                egress: t.egress.clone(),
-                pid,
-                at: now,
-            };
-            if let Err(e) = left_for(own, &t.origin, &desc, &crate::platform::proc::pid_alive) {
-                eprintln!("ccm: {}", e.logged());
-            }
-        }
+        let now = unix_now();
         if leave.account.is_none()
             && !leave.plugin
             && leave.tab.is_none()

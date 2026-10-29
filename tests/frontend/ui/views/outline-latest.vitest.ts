@@ -1,7 +1,7 @@
 /**
  * A2-15 · Ctrl+F 大纲缺最新几句人说的 —— 两处根因各一格。
  *
- * - 首屏：骨架索引只要到尾段之上（`[0, floor)`，后端照 `limit` 截），大纲拿它种上之后，尾段里人说的那几句要接着要一截才有。
+ * - 首屏：骨架索引要到记录文件末尾（连尾段，A17-45-3-3：尾段的切点也要在账本里），大纲拿它种上，尾段里人说的那几句就在种子里，不另要。
  * - 按行号补：切进来补上流前那一段（`onSessionWatch` → `catchUpTo`）走批语义、不出「真用户输入上屏」，
  *   补进来的那句人说的也要进大纲（不重开查找）。
  *
@@ -91,9 +91,9 @@ afterEach(() => {
 });
 
 describe("A2-15 大纲含到此刻为止人说的每一句", () => {
-  it("🔴 首屏索引只到尾段之上 ⇒ 种上之后从种子的 end 接着要一截，尾段里那句人说的排在最末", async () => {
-    // 400 行：第 1 行与第 390 行是人说的，其余是回复。重放尾块先到（同 live）：第 390 行钉 floor ⇒ 索引只要前 390 行，
-    // 尾段里那一句不在种子里。
+  it("🔴 首屏索引要到末尾 ⇒ 尾段里那句人说的就在种子里、排在最末，不另要清单", async () => {
+    // 400 行：第 1 行与第 390 行是人说的，其余是回复。重放尾块先到（同 live）：第 390 行钉 floor；索引不照 floor 截，
+    // 尾段里那一句在种子里。
     const N = 400;
     const said: Record<number, string> = { 1: "很久以前那一句", 390: "最新那一句" };
     indexStub.rows = Array.from({ length: N }, (_, k) => ({
@@ -114,16 +114,17 @@ describe("A2-15 大纲含到此刻为止人说的每一句", () => {
     tm.onBatchEnd();
     const floor = peek("s1").window.floorSeq ?? -1;
     expect(floor, "前置：尾块的第一行钉 floor").toBe(390);
-    // 清单替身的字节轴就是下标：从 floor 起只有尾段里那一句（从 0 起的那一份不该被问到）。
-    outlineBackend.entries = [...Array.from({ length: floor }, (_, k) => outlineEntry(`never-${k}`)), outlineEntry("u390", "最新那一句")];
+    // 清单替身：问到哪一份都是假的那几条（不该被问到）。
+    outlineBackend.entries = Array.from({ length: N }, (_, k) => outlineEntry(`never-${k}`));
     await vi.waitFor(async () => {
       await settleOutline();
-      expect(indexStub.limit, "前置：索引那一问照 floor 截").toBe(floor);
+      expect(indexStub.limit, "索引那一问照 floor 截了 ⇒ 尾段不在账本里").toBeNull();
       expect(rowsOf()).toEqual(["u1", "u390"]);
     }, UNTIL_CEILING);
-    expect(outlineCalls(), "只接着种子的 end 要一截，不从 0 再要整份").toEqual([
-      { origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: floor },
-    ]);
+    expect(
+      outlineCalls().filter((a) => (a as { fromOffset: number }).fromOffset < N),
+      "种子已经到末尾：要也只从种子的 end 接着要，不往回要",
+    ).toEqual([]);
   });
 
   it("🔴 已要到过之后，切进来按行号补进一句人说的 ⇒ 不重开查找，大纲里有它、排在最末", async () => {

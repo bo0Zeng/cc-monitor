@@ -1,8 +1,8 @@
 //! **上游描述**：一条会话一份，按来处（`ccm` 起会话时铸、拼在中转地址尾上的那一段）存。
 //!
-//! 这一版只有出网那两格（出网代理 · 免代理表）：`ccm` 起会话那一刻 agent 继承来的、那一家认的出网设置变量原样（名, 值）。
-//! 读回来经 [`egress::Egress::from_env`] 读成出网描述 —— 怎么读代理 URL · 免代理表只在出网口一处。
-//! 上游地址 · 凭据两格（用户自己的上游 · 换号）以后并进同一份。没有描述 ⇒ 调用方照这台的出网描述。
+//! 两样：出网那两格（出网代理 · 免代理表：`ccm` 起会话那一刻 agent 继承来的、那一家认的出网设置变量原样（名, 值），
+//! 读回来经 [`egress::Egress::from_env`] 读成出网描述 —— 怎么读代理 URL · 免代理表只在出网口一处）· 用户自己的上游地址（[`UpstreamDesc::base`]）。
+//! 两者可同时有：agent → 中转 → 出网代理 → 用户的网关。没有描述 ⇒ 调用方照这台的出网描述、这一家的默认上游。
 //!
 //! 住上游选择：写的 `ccm`（control）与读的中转宿主（relay，读的那只手由 [`super::host_relay`] 递进去）都只够得到这一层。
 //!
@@ -11,6 +11,7 @@
 
 use crate::common::said::Said;
 use crate::platform::fs::Own;
+use crate::relay::Base;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -19,6 +20,9 @@ use std::path::Path;
 pub(crate) struct UpstreamDesc {
     /// agent 继承来的出网设置变量（名, 值），原样。可能带代理鉴权：只落在本人 0700 的目录里，不进日志。
     pub(crate) egress: Vec<(String, String)>,
+    /// 用户自己的上游地址（agent 继承来的上游地址变量，不是我们那一形）原样；`None` ＝ 照这一家的默认上游。
+    /// 有它 ⇒ 中转把这条会话的直通请求发到这里，鉴权头原样（[`super::Accounts`] 的 `resolve`）。
+    pub(crate) base: Option<String>,
     /// 起 agent 的那个进程。
     pub(crate) pid: u32,
     /// 写下的时刻（unix 秒）。
@@ -109,6 +113,14 @@ pub(crate) fn egress_of(own: &Own) -> crate::relay::EgressOf {
             .and_then(|d| of(d, origin))
             .map(|d| d.egress())
     })
+}
+
+/// 来处 ⇒ 那条会话自己的上游（用户的地址读成中转的上游基址）。没有描述 · 描述里没有那一格 ⇒ `None`；
+/// 有而认不出 ⇒ `Some(Err(为什么))`（调用方拒，不回落到默认上游：那会把用户网关的鉴权发去别处）。
+pub(crate) fn base_of(own: &Own, origin: &str) -> Option<Result<Base, &'static str>> {
+    let data = own.root()?;
+    let raw = of(data.as_path(), origin)?.base?;
+    Some(Base::parse(&raw).map_err(|i| i.0))
 }
 
 /// 来处 ⇒ 文件名；不过段闸 ⇒ 拒（不让一段来处拼出目录外的路径）。

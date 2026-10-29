@@ -1,8 +1,8 @@
 //! 旁路快照：排队、分发、拉取，以及撤销与两段编号。
 
 use super::*;
-use crate::copy_table::copy_text;
 use crate::event_replay::EventReplay;
+use copy_core::copy_text;
 use std::sync::Arc;
 
 //
@@ -22,7 +22,7 @@ const SNAPSHOT_CHUNK_LINES: usize = 500;
 ///
 /// 为什么不对齐界面账本（`live-window.ts` 的 `PENDING_KEEP` 2000）：多拉的那 1400 行进了留存当场被修回 600（F5 那一屏看不到），
 /// 只在 tab 账本里多占着，往上翻七八次之后才用得上 —— 而往上翻本来就按行号一批 200 行取回（一个往返）。
-/// 600 正是界面开 tab 一次最多物化的条数（`materializeUntilFilled`，等式由 `replay-tail-keep.vitest.ts` 钉着），首屏不用等取回。
+/// 界面冷开只建视口那一截（`tab-stream-view.ts::materializeUntilFilled`），600 行够首屏 ＋ 头几次上翻不用等取回。
 /// 沙箱读数（6 个活会话、原文 32 MB）：600 行 3.4 MB / 15 个往返；2000 行 7.8 MB / 22 个往返；原先整份 16.5 MB / 42 个往返。
 const SNAPSHOT_TAIL_LINES: u64 = crate::event_replay::REPLAY_TAIL_KEEP as u64;
 

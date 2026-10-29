@@ -20,9 +20,25 @@ fn desc(pid: u32, vars: &[(&str, &str)]) -> UpstreamDesc {
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect(),
+        base: None,
         pid,
         at: 1,
     }
+}
+
+/// 用户自己的上游地址那一格落盘读回一致。
+#[test]
+fn the_users_own_upstream_reads_back() {
+    let data = sandbox("base");
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    let mut d = desc(7, &[]);
+    d.base = Some("https://gw.example/anthropic".into());
+    leave(&own, "0123abcd", &d, &|_| true).expect("写得下");
+    assert_eq!(
+        of(&data, "0123abcd").and_then(|d| d.base).as_deref(),
+        Some("https://gw.example/anthropic")
+    );
+    std::fs::remove_dir_all(&data).ok();
 }
 
 #[test]

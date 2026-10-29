@@ -3,7 +3,6 @@
  *
  * 会话状态全在 `TabStore`（同一个实例）；要别处做的事经 `TabStreamHost`：按偏移取回的历史行走 `onLine` 全套 ·
  * 刷 tab 栏（立即 / 帧末合批）· 应用 ai-title · 真用户输入上屏时的自动跟随 · 起分叉出来的新会话。
- * `replay-tail-keep.vitest.ts` 按原文抽 `MATERIALIZE_TAIL_K` 与 `MATERIALIZE_ROUNDS_PER_CALL` 对拍 Rust 侧的 `REPLAY_TAIL_KEEP`。
  */
 import { speakerNameOf } from "./agent-profile";
 import { SPEAKER_SELECTOR } from "./cards/speaker";
@@ -46,7 +45,6 @@ import { budgetWithin } from "./ipc/chan-caller";
 import { findInSession, readSessionIndex } from "./session-reads";
 import { readLines, readRange } from "./record-reads";
 import type { Tab } from "./tab-model";
-import { hasTerminal } from "./face-can";
 import type { TabStore } from "./tab-store";
 import { ColdReads, IdleSlot } from "./tab-cold-reads";
 import { noteColdFilled, noteHistoryArrived, noteHistoryFed } from "./startup-perf";
@@ -125,10 +123,13 @@ export type TabStreamDom = Pick<
 >;
 
 export class TabStreamView {
-  /** 物化 / 后台 tab 尾段条数（与查看器的 TAIL_INITIAL 同义） */
-  private static readonly MATERIALIZE_TAIL_K = 150;
-  /** `materializeUntilFilled` 一次同步调用最多跑几轮（不是「到此为止」：没满就下一帧接着补）。 */
-  private static readonly MATERIALIZE_ROUNDS_PER_CALL = 4;
+  /**
+   * 冷开（没建过卡的 tab）从尾部窗口一截建几条：自下而上一截一截建，建到 [`coldFilled`] 为止 ——
+   * 只建视口那一截，更早的接上骨架之后照账本补可见区（折着的过程扣掉）。
+   */
+  private static readonly COLD_CHUNK = 20;
+  /** `materializeUntilFilled` 一次同步调用最多建几截（不是「到此为止」：没满就下一帧接着补）。 */
+  private static readonly MATERIALIZE_ROUNDS_PER_CALL = 8;
   /** 上翻补批的批量 / 触发距离 */
   private static readonly FILL_BATCH = 200;
   /**
@@ -177,6 +178,10 @@ export class TabStreamView {
   private readonly indexEnds = new WeakMap<Tab, number>();
   /** 〔骨架〕正文重来时从上一代接过来的账本与它的末字节：要骨架时从这里续，不从 0 再要（`restartTail`）。 */
   private readonly carriedSkeletons = new WeakMap<Tab, { ledger: SkeletonLedger; end: number }>();
+  /** 整份重来、正在按行号取回上流点之下那一截的 tab（`catchUpTo`）：取回的行只进账本，取完照冷开物化视口那一截。 */
+  private readonly coldFills = new WeakSet<Tab>();
+  /** 〔骨架〕账本续到末尾那一趟在途的 tab（同一个 tab 同时只续一趟，`extendIndex`）。 */
+  private readonly extending = new WeakSet<Tab>();
   /** 每个 tab 的第一趟会话事实 ＋ 轮次什么时候问（当前的先、后台的空闲时一个一个，`tab-cold-reads.ts`）。 */
   private readonly cold: ColdReads;
 
@@ -350,7 +355,11 @@ export class TabStreamView {
       jump: (to) => void Promise.resolve(this.jumpInTab(sessionId, streamEl, to)).catch(() => undefined),
       inFront: () => this.store.activeId === sessionId,
     });
-    turnFold.onTurns = () => turnRail.render();
+    turnFold.onTurns = () => {
+      turnRail.render();
+      // 轮次落地、过程藏掉之后视口可能露出占位（没有 scroll 事件来叫）⇒ 当前的那一个补一次可见区
+      if (this.store.activeId === sessionId) this.fillSkeleton(this.store.tabs.get(sessionId));
+    };
     this.streamRootEl.appendChild(turnRail.el);
     return {
       streamEl,
@@ -373,6 +382,13 @@ export class TabStreamView {
     };
   }
 
+  /** 〔骨架〕补可见区：建了新卡才交回远处的（建卡这一下本来就要排版；没建的不量卡），视口附近的占位行交第二级精算。 */
+  private fillSkeleton(t: Tab | undefined): void {
+    if (!t?.skeleton) return;
+    if (t.skeleton.fillVisible() > 0) t.skeleton.release();
+    this.refineNearby(t);
+  }
+
   /** 给刚建好的 tab 挂上翻补批的滚动监听与视口变大的补批（原是 `ensureTab` 里的一段，逐字）。 */
   wireTab(tab: Tab): void {
     const sessionId = tab.sessionId;
@@ -385,9 +401,7 @@ export class TabStreamView {
       // 〔骨架〕接上了 ⇒ 占位可能在任何位置（拖滚动条到中部），**每次滚动**都看一眼
       // 视口里有没有占位 —— 不能沿用「离顶 800px 内才补」那道门（那是尾部窗口单洞后缀的假设）
       if (t?.skeleton) {
-        // 建了新卡才交回远处的（建卡这一下本来就要排版；没建的滚动不量卡）
-        if (t.skeleton.fillVisible() > 0) t.skeleton.release();
-        this.refineNearby(t); // 第二级：视口附近的占位行交 Worker 精算
+        this.fillSkeleton(t);
         return;
       }
       if (t && t.streamEl.scrollTop <= TabStreamView.TOP_TRIGGER_PX) this.fillAbove(t);
@@ -494,7 +508,11 @@ export class TabStreamView {
   showOnly(sessionId: string): void {
     for (const [sid, t] of this.store.tabs) {
       // 收起的那一个只留视口那一截（收起之后几何不作数 ⇒ 在翻走之前交）
-      if (sid !== sessionId && t.streamEl.classList.contains("active")) t.skeleton?.release(0);
+      // 账本只到上次索引的末尾：之后来的实时行认不到切点，这一次交不回 ⇒ 顺手续一截，下一次收起时交
+      if (sid !== sessionId && t.streamEl.classList.contains("active") && t.skeleton) {
+        t.skeleton.release(0);
+        this.extendIndex(t);
+      }
       t.streamEl.classList.toggle("active", sid === sessionId);
       t.stream.park(sid !== sessionId); // 收起期间几何不作数（`MessageStream.park`）
       // 面板与它那条流同进同出：漏掉的话所有 tab 的面板一起挂在屏幕上，点下去找的是别人的流。
@@ -582,6 +600,7 @@ export class TabStreamView {
         this.attachSkeleton(next, parked);
       }
       this.requestSkeleton(next); // 上面刚物化过尾段 ⇒ floor 已钉；要过的不重要
+      this.extendIndex(next); // 接过骨架的：收起期间来的实时行进账本（收起时才交得回去）
       this.cold.toFront(next); // 第一趟会话事实与轮次：停住的这一个插到最前（后台排着的等它落地）
       if (next.outline.needsFetch) this.refreshOutline(next); // 大纲：有新行才要
     }, TabStreamView.STAY_MS);
@@ -590,6 +609,13 @@ export class TabStreamView {
     // 刚为 virgin tab 跑过 `materializeUntilFilled`、账本还有余的不再踢：它补不满时自己排了下一帧的接续（一次同步调用要有界）。
     // 「满没满」要读几何 ⇒ 挪到下一帧再问：同步段里一读，浏览器就得当场把刚翻出来的整个 tab 样式与布局算完（点击处理被拖长、这一帧更晚画出来）；
     // 下一帧的回调里读，排的就是那一帧本来要排的那一份。期间又切走（`activeId` 守卫）⇒ 不补。
+    // 〔骨架〕收起时只留了视口那一截（`showOnly`），切回来没有 scroll 事件来叫 ⇒ 下一帧补一次可见区（同上：同步段不读几何）。
+    if (next.skeleton) {
+      // 调度：一次性 —— 切进来的下一帧补一次骨架的可见区
+      requestAnimationFrame(() => {
+        if (this.inFront(next)) this.fillSkeleton(next);
+      });
+    }
     const continuing = virginFill && next.window.pendingCount > 0;
     if (!continuing && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
       // 调度：一次性 —— 切进来的下一帧问一次满没满，没满踢一脚补批（之后由补批自己的 rAF 自链接管）
@@ -603,7 +629,7 @@ export class TabStreamView {
 
   /**
    * 重放批结束：逐 tab 挂批期缓冲、折叠层 flush、孤儿 tool_result 对账；当前 tab 补到一屏，
-   * 其余 virgin 后台 tab 进空闲物化队列（原是 `onBatchEnd` 的主体，逐字）。返回当前 tab。
+   * 后台 tab 只进账本、一张卡不建（切进来时冷开只建视口那一截；看不见的 tab 提前建满只让常驻跟着胀）。返回当前 tab。
    */
   batchEnd(): Tab | undefined {
     for (const t of this.store.tabs.values()) {
@@ -615,7 +641,7 @@ export class TabStreamView {
       // 孤儿卡出 DOM 的同时出账，防悬空锚点
       for (const el of reconcilePendingToolResults(ctx)) t.timeline.removeByElement(el);
     }
-    // active tab 不足一屏（或还是 virgin）→ 立即物化到可见；其余后台 tab 进空闲物化队列（逐个串行，免得并发建卡风暴）。
+    // active tab 不足一屏（或还是 virgin）→ 立即物化到可见。
     const active = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
     if (active && active.window.pendingCount > 0) {
       // 步 3：「够不够一屏」改读**真实布局**（见 `contentReachesBottom` 的头注）。
@@ -625,18 +651,6 @@ export class TabStreamView {
         active.stream.scrollToBottom();
       }
     }
-    // 已结束的会话不进后台物化队列（切过去时有同步物化兜底）。
-    // virgin 的、以及钉过水位而真实布局没满一屏的后台 tab 进队（后台 tab 是 `visibility:hidden`，几何照在）。
-    this.materializeQueue = [...this.store.tabs.entries()]
-      .filter(
-        ([sid, t]) =>
-          sid !== this.store.activeId &&
-          hasTerminal(t.face) &&
-          t.window.pendingCount > 0 &&
-          (t.window.floorSeq === null || !this.contentReachesBottom(t)),
-      )
-      .map(([sid]) => sid);
-    this.scheduleIdleMaterialize();
     // active tab 没走物化分支（尾块已可滚）时也要挂哨兵
     if (active) this.updateSentinel(active);
     // 〔骨架〕active tab 此刻一定有渲染后缀了 ⇒ 要索引（在途/要过就不重复）
@@ -675,18 +689,18 @@ export class TabStreamView {
     if (routeMeta(payload) === "consumed") return;
 
     // 门控（单洞后缀不变量，纯按 seq）：
-    // - virgin ＋ 批：active tab 首条 content 钉 floor（尾块直渲）；后台 tab 一律收纳（批后空闲物化）；
+    // - virgin ＋ 批：active tab 首条 content 钉 floor（尾块直渲）；后台 tab 一律收纳（切进来时冷开只建视口那一截）；
     // - virgin ＋ 实时：新开 tab 直渲并钉 floor；
     // - seq ≥ floor：渲染；seq < floor：收纳（旧块 / 尾部优先回填 / 迟到块，与批哨兵无关）。
-    // 批后空闲物化还没轮到这个 tab 就来了实时行：先物化尾段（takeTail 顺带钉 floor），再照常收这一行 ——
+    // 账本里收着历史、还没建过卡的 tab 来了实时行：先物化一截尾段（takeTail 顺带钉 floor），再照常收这一行 ——
     //   直接按新行钉 floor 会把账本里整段历史钉死在下面。
     if (tab.window.floorSeq === null && !this.store.inBatch && tab.window.pendingCount > 0) {
-      this.materializeTail(tab);
+      this.materializeTail(tab, TabStreamView.COLD_CHUNK);
     }
     const floor = tab.window.floorSeq;
     let render: boolean;
     if (floor === null) {
-      render = !this.store.inBatch || this.store.activeId === tab.sessionId;
+      render = !this.store.inBatch || (this.store.activeId === tab.sessionId && !this.coldFills.has(tab));
       if (render) tab.window.pinFloor(payload.seq);
     } else {
       render = tab.window.admit(payload.seq);
@@ -933,9 +947,10 @@ export class TabStreamView {
   }
 
   /**
-   * 补到一屏填满（`contentReachesBottom`）或账本弹尽：一批 150 条可能只产出几张卡（工具结果注入进调用那一行、skip 记录占配额）。
-   * 一次同步调用只跑 {@link MATERIALIZE_ROUNDS_PER_CALL} 轮（每一下有界）；没满、账本还有 ⇒ 下一帧接着补
+   * 补到 [`coldFilled`] 或账本弹尽：一截 {@link COLD_CHUNK} 条，一截可能只产出几张卡（工具结果注入进调用那一行、skip 记录占配额）。
+   * 一次同步调用至多 {@link MATERIALIZE_ROUNDS_PER_CALL} 截（每一下有界）；没满、账本还有 ⇒ 下一帧接着补
    * （`scheduleFillContinuation`，与上翻补批同一条 rAF 自链）—— 不可滚的元素不产生 scroll，没有别的入口会再补。
+   * 只建视口那一截：从前一截 150 条、至多四截（600 行，一半落在折着的过程里 0 高），WebKit 冷切停住那一帧一秒多。
    */
   private materializeUntilFilled(tab: Tab): void {
     if (tab.skeleton) {
@@ -944,10 +959,19 @@ export class TabStreamView {
     }
     for (let round = 0; round < TabStreamView.MATERIALIZE_ROUNDS_PER_CALL; round++) {
       if (tab.window.pendingCount === 0) return;
-      if (round > 0 && this.contentReachesBottom(tab)) return;
-      this.materializeTail(tab);
+      if (round > 0 && this.coldFilled(tab)) return;
+      this.materializeTail(tab, TabStreamView.COLD_CHUNK);
     }
-    if (tab.window.pendingCount > 0 && !this.contentReachesBottom(tab)) this.scheduleFillContinuation(tab);
+    if (tab.window.pendingCount > 0 && !this.coldFilled(tab)) this.scheduleFillContinuation(tab);
+  }
+
+  /**
+   * 冷开那一截够了没有：够到视口下沿（`contentReachesBottom`），而且贴底时离顶超过上翻补批的触发距离 ——
+   * 不然贴底那一下的 scroll 落在触发区里，上翻补批接着一批 {@link FILL_BATCH} 条往上建（还没接骨架时走的是尾部窗口那一路）。
+   */
+  private coldFilled(tab: Tab): boolean {
+    const el = tab.streamEl;
+    return this.contentReachesBottom(tab) && el.scrollHeight - el.clientHeight > TabStreamView.TOP_TRIGGER_PX;
   }
 
   /**
@@ -988,7 +1012,7 @@ export class TabStreamView {
   }
 
   /** 物化 tab 的尾段：从窗口账本弹出 seq 最高的 ≤ k 条建卡。对象是没有滚动位置要保的 tab，不做滚动补偿（那在 fillAbove）。 */
-  private materializeTail(tab: Tab, k = TabStreamView.MATERIALIZE_TAIL_K): void {
+  private materializeTail(tab: Tab, k: number): void {
     this.renderPayloadsBatch(tab, tab.window.takeTail(k, TabStreamView.BATCH_BUDGET));
     this.updateSentinel(tab);
   }
@@ -1007,6 +1031,7 @@ export class TabStreamView {
     // 瞬时失败的第一次 ⇒ `again`；结构性（老后端）或已经重问过 ⇒ `done`。
     const failed = (transient: boolean): void => {
       tab.skeletonFetch = transient && !retry ? "again" : "done";
+      this.resumeTail(tab);
     };
     tab.skeletonFetch = "pending";
     const jsonlPath = tab.parentPath;
@@ -1017,8 +1042,9 @@ export class TabStreamView {
       this.continueSkeleton(tab, carried.ledger, carried.end);
       return;
     }
-    // 只要尾段之上那一截（`[0, floor)`：floor 往后是尾段，实时行管）—— 正在看的 tab 先取它要的那一截，不等整份。
-    const first = readSessionIndex(origin, jsonlPath, 0, tab.window.floorSeq);
+    // 整份要到末尾（连冷开建的那一截尾巴）：尾巴的切点 · 折叠也得在账本里，收起时才交得回去（`release` 只认账本里的切点）。
+    // 从前只要 `[0, floor)`，冷开那一截与之后的实时行都在账本外，切走一条都不交（A17-45-3-3）。
+    const first = readSessionIndex(origin, jsonlPath, 0);
     // 〔欠账〕大纲**等这一趟**：索引顺带出清单（后端 `IndexRow::x`）⇒ 首屏同一份文件
     // 只读一遍；带不回（老后端 / 零条 / 失败）⇒ 它自己照旧从 0 要一份清单。
     tab.outline.awaitSeed(first.then(outlineSeedFromIndex));
@@ -1060,18 +1086,18 @@ export class TabStreamView {
   }
 
   /**
-   * 〔骨架〕从上一代接过来的账本：只续它没覆盖到、尾段之上的那一截（`[endSeq, floor)`，从它的末字节要），续上了照常接；
-   * 续不上（要不到）⇒ 这一份不用了，下一次触发点从 0 要（同瞬时失败）。
+   * 〔骨架〕从上一代接过来的账本：盖不到新尾段 ⇒ 从它的末字节续到末尾，续上了照常接；盖得到 ⇒ 一问不发、直接接
+   * （尾段之后的那几行接上之后由 `extendIndex` 续）。续不上（要不到）⇒ 这一份不用了，下一次触发点从 0 要（同瞬时失败）。
    */
   private continueSkeleton(tab: Tab, ledger: SkeletonLedger, end: number): void {
-    const floor = tab.window.floorSeq!; // 进来时判过不是 null，之后只会往下钉
-    const want = floor - ledger.endSeq;
-    const more = want > 0 ? readSessionIndex(tab.origin, tab.parentPath!, end, want) : Promise.resolve(null);
+    const short = tab.window.floorSeq! > ledger.endSeq; // 进来时判过 floor 不是 null
+    const more = short ? readSessionIndex(tab.origin, tab.parentPath!, end) : Promise.resolve(null);
     void more
       .then((res) => {
         if (this.store.tabs.get(tab.sessionId) !== tab) return;
         if (res && !res.available) {
           tab.skeletonFetch = "again";
+          this.resumeTail(tab);
           return;
         }
         if (res) ledger.append(res.pages);
@@ -1085,8 +1111,29 @@ export class TabStreamView {
       })
       .catch((e: unknown) => {
         tab.skeletonFetch = "again";
+        this.resumeTail(tab);
         console.warn(`[tabs] 骨架续传失败（${tab.sessionId.slice(0, 8)}）：`, e);
       });
+  }
+
+  /**
+   * 〔骨架〕接上了的账本续到记录文件末尾（从上次索引的末字节要，只读新写的那一截）：已建的卡比账本长（实时行）才续。
+   * 续上的行进了账本，`release` 才认得它们的切点 · 折叠。同一个 tab 同时只续一趟；续不上就算了，下一次再续。
+   */
+  private extendIndex(tab: Tab): void {
+    const sk = tab.skeleton;
+    const end = this.indexEnds.get(tab);
+    if (!sk || end === undefined || !tab.parentPath || this.extending.has(tab)) return;
+    if (tab.timeline.maxSeq < sk.ledger.endSeq) return;
+    this.extending.add(tab);
+    void readSessionIndex(tab.origin, tab.parentPath, end)
+      .then((res) => {
+        if (!res.available || this.store.tabs.get(tab.sessionId) !== tab || tab.skeleton !== sk) return;
+        sk.ledger.append(res.pages);
+        this.indexEnds.set(tab, res.end);
+      })
+      .catch((e: unknown) => console.warn(`[tabs] 骨架续到末尾失败（${tab.sessionId.slice(0, 8)}）：`, e))
+      .finally(() => this.extending.delete(tab));
   }
 
   /**
@@ -1103,6 +1150,7 @@ export class TabStreamView {
         console.warn(
           `[tabs] 骨架未接（${tab.sessionId.slice(0, 8)}）：seq ${p.seq} 是 ${p.record.t}，在索引里是 ${String(at)} —— seq 空间对不上`,
         );
+        this.resumeTail(tab);
         return;
       }
     }
@@ -1189,6 +1237,8 @@ export class TabStreamView {
             tab.seenSeqs.addRange(a, b); // 这一段整段到过（不可显示的也算）
             if (again.length > 0) this.renderPayloadsBatch(tab, again);
           });
+          // 真高换了估高，视口里可能又露出占位（没有 scroll 事件来叫）⇒ 还在眼前就再补一次
+          if (this.inFront(tab) && tab.skeleton === view) this.fillSkeleton(tab);
         })
         .catch((e: unknown) => {
           if (this.store.tabs.get(tab.sessionId) === tab) view.failed(a, b);
@@ -1296,10 +1346,10 @@ export class TabStreamView {
   }
 
   /**
-   * 上流点之下缺得比这还多 ⇒ 不往后接那一整段，tab 整份重来、只取上流点之下这么多行（一次开 tab 最多物化的条数，
-   * 与壳留存每会话留的同值），更早的往上翻时按行号 / 按骨架取回。
+   * 上流点之下缺得比这还多 ⇒ 不往后接那一整段，tab 整份重来、只取上流点之下这么多行（与壳留存每会话留的尾巴
+   * `event_replay.rs::REPLAY_TAIL_KEEP` 同值：重来之后手上的就是 F5 之后重放会推来的那一截），更早的往上翻时按行号 / 按骨架取回。
    */
-  private static readonly WATCH_REFILL_MAX = TabStreamView.MATERIALIZE_TAIL_K * TabStreamView.MATERIALIZE_ROUNDS_PER_CALL;
+  private static readonly WATCH_REFILL_MAX = 600;
 
   /**
    * **这个会话刚进了这条流的「在看」名单**（`TabManager.onSessionWatch`）：这份记录从第 `seq` 行起上流，
@@ -1320,9 +1370,12 @@ export class TabStreamView {
       return;
     }
     const fresh = have >= 0 ? this.restartTail(tab) : tab;
-    // 取回来的进的是账本（批语义、不建卡）⇒ 取完了它还在眼前，就照切进来那样物化尾段、停下来看时接骨架。
+    // 取回来的进的是账本（批语义、不建卡 —— 当前的那一个也不建：`coldFills`）⇒ 取完了它还在眼前，就照切进来那样物化视口那一截、停下来看时接骨架。
+    // 不记的话当前 tab 按「批里首条钉 floor、之后直渲」把从老到新取回的 600 行整段建出来（台架冷切长会话 489 个条目就是它）。
     // 冷起首个标签页的正文走的就是这一趟（壳冷起不整份重放）⇒ 启动管线那份 timeline 在它落地时落盘（只第一次，`startup-perf.ts`）。
+    this.coldFills.add(fresh);
     this.readForward(fresh, path, Math.max(0, seq - TabStreamView.WATCH_REFILL_MAX), undefined, () => {
+      this.coldFills.delete(fresh);
       if (this.inFront(fresh)) this.activate(fresh);
       noteColdFilled();
     });
@@ -1385,12 +1438,30 @@ export class TabStreamView {
    * 补偿：临时关原生锚定（免得与手动补偿叠加），测量 → 渲染 → scrollTop 回写在同一个同步任务里（不许 await / rAF 打断）。
    * rAF 自链：零高批 / 不足一屏时没有 scroll 事件，补完复检直到离开触发区或账尽。
    */
+  /** 〔骨架〕这个 tab 的骨架还会来：有记录路径、索引还没要或在途，或者要到了停着等切回来接（停着的 · 从上一代接过来的）。 */
+  private awaitingSkeleton(tab: Tab): boolean {
+    if (!tab.parentPath) return false;
+    return tab.skeletonFetch === "idle" || tab.skeletonFetch === "pending" || this.parkedSkeletons.has(tab) || this.carriedSkeletons.has(tab);
+  }
+
+  /**
+   * 〔骨架〕骨架来不了（要不到索引 · seq 空间对不上）：等骨架时停着的那一路（轮次已落地 ⇒ `fillAbove` 不补）可能拦下过补批，
+   * 还在眼前就接着走尾部窗口那一路补。轮次没落地 ⇒ 什么都没拦过，照旧等下一次滚动。
+   */
+  private resumeTail(tab: Tab): void {
+    if (tab.turnFold.all.length > 0 && this.inFront(tab)) this.fillAbove(tab);
+  }
+
   private fillAbove(tab: Tab): void {
     // 骨架接上了 ⇒ 不从尾巴往上一批批补，只物化与视口相交的那段占位
     if (tab.skeleton) {
       tab.skeleton.fillVisible();
       return;
     }
+    // 轮次已经落地、骨架还会来 ⇒ 尾部窗口不往上补：它扣不掉折着的过程，过程卡建出来就藏成 0 高、屏总不满，一批批建下去全是看不见的卡
+    // （冷切一条长会话照样建满 600 行）。接上之后照账本补可见区；要不到索引再接着走这一路（`resumeTail`）。
+    // 轮次还没到 ⇒ 照旧补（建出来的过程卡露着、占高，屏一满就停）。
+    if (tab.turnFold.all.length > 0 && this.awaitingSkeleton(tab)) return;
     if (this.renderingFill) return;
     if (tab.window.pendingCount === 0) {
       // 账本空了、渲染窗口最老那一条不是第 0 行 ⇒ 按行号往下问一批（`fetchBelow`）。
@@ -1515,65 +1586,14 @@ export class TabStreamView {
     el.textContent = n > 0 ? copyText("tabStreamView.sentinel.moreCount", { n }) : (belowText ?? "");
   }
 
-  /** 后台 tab 的空闲物化队列（串行；没有 rIC 时 setTimeout 兜底） */
-  materializeQueue: string[] = [];
-  private materializeScheduled = false;
-  /** 空闲物化挂的那个空闲回调（主人拆掉时撤掉，`dispose`）。 */
-  private readonly idleSlot = new IdleSlot();
-
-  /** 后台空闲物化一截建几条（建完一截看一眼空闲期限还剩没剩）。 */
-  private static readonly IDLE_CHUNK = 20;
-  /** 没有 requestIdleCallback 的引擎（WebKitGTK）走 setTimeout 兜底：一次最多连着建这么久（ms）就让出来。 */
-  private static readonly IDLE_SLICE_MS = 8;
-  /** virgin 后台 tab 的尾段这一轮已经建了几条（分截建，凑满 `MATERIALIZE_TAIL_K` 为止）。 */
-  private readonly idleTaken = new WeakMap<Tab, number>();
-
-  private scheduleIdleMaterialize(): void {
-    if (this.materializeScheduled) return;
-    const sid = this.materializeQueue.shift();
-    if (sid === undefined) return;
-    this.materializeScheduled = true;
-    const run = (deadline?: IdleDeadline): void => {
-      this.materializeScheduled = false;
-      const tab = this.store.tabs.get(sid);
-      // virgin 的物化尾段(switchTo 可能已同步物化过);二次 batch 开始则原样跳过,
-      // 账本继续收纳,批结束会重新排队。
-      // 钉过水位、账本有余、真实布局没满一屏的 ⇒ 补一批（`fillAbove`：带选区守卫与滚动补偿，
-      // 后台 tab 不自链 —— 它的 rAF 复检有 `activeId` 守卫；切进来时 `activate` 那一脚接着补）。
-      // virgin 的尾段**分截建**：一截 `IDLE_CHUNK` 条，空闲期限用完（兜底那一路按 `IDLE_SLICE_MS`）就停、这个 tab 排回队首 ——
-      // 一口气建满 150 条就是开窗那几秒里的一串长任务（人一开窗就去点，点下去要等它跑完）。
-      if (tab && !this.store.inBatch && tab.window.pendingCount > 0) {
-        const virgin = tab.window.floorSeq === null || this.idleTaken.has(tab);
-        if (virgin) {
-          const until = performance.now() + (deadline ? deadline.timeRemaining() : TabStreamView.IDLE_SLICE_MS);
-          let taken = this.idleTaken.get(tab) ?? 0;
-          do {
-            const before = tab.window.pendingCount;
-            this.materializeTail(tab, Math.min(TabStreamView.IDLE_CHUNK, TabStreamView.MATERIALIZE_TAIL_K - taken));
-            taken += before - tab.window.pendingCount;
-          } while (taken < TabStreamView.MATERIALIZE_TAIL_K && tab.window.pendingCount > 0 && performance.now() < until);
-          if (taken < TabStreamView.MATERIALIZE_TAIL_K && tab.window.pendingCount > 0) {
-            this.idleTaken.set(tab, taken);
-            this.materializeQueue.unshift(sid); // 没建完：下一个空闲期接着建它
-          } else this.idleTaken.delete(tab);
-        } else if (!this.contentReachesBottom(tab)) this.fillAbove(tab);
-      }
-      this.scheduleIdleMaterialize();
-    };
-    // 后台标签页空闲物化队列：处理一个再排自己，队列空或主人拆掉即停。没有 rIC 时兜底：接着建同一个 tab 的下一截只隔一帧，换下一个 tab 隔 200 ms。
-    this.idleSlot.schedule(run, this.idleTaken.has(this.store.tabs.get(sid) as Tab) ? 16 : 200);
-  }
-
   /**
-   * 主人（`TabManager`）拆掉：冷读排班停、空闲物化撤掉挂着的回调，每个 tab 照关掉那样拆（在途的读回来后不许回写）。
+   * 主人（`TabManager`）拆掉：冷读排班停、改列宽之后的空闲补估撤掉挂着的回调，每个 tab 照关掉那样拆（在途的读回来后不许回写）。
    * 之后回来的读不再排下一趟、不碰 `window`。
    */
   dispose(): void {
     this.cold.stop();
-    this.idleSlot.stop();
-    this.settleSlot.stop(); // 改列宽之后的空闲补估同样撤掉
+    this.settleSlot.stop();
     this.settling = [];
-    this.materializeQueue = [];
     for (const t of [...this.store.tabs.values()]) this.disposeTab(t);
   }
 
