@@ -16,6 +16,11 @@ const THREADS: usize = 4;
 /// 子进程只读一下两个选项的缺省值就走（[`the_option_indices_are_the_two_options`]）。
 #[cfg(target_env = "musl")]
 const INDEX_MODE: &str = "purge-delay-index";
+/// 子进程分 [`THP_TOTAL`] 小块、整块写过，读自己有多少透明大页 ＋ 几段映射要过大页（[`the_heap_takes_no_huge_pages`]）。
+#[cfg(target_env = "musl")]
+const THP_MODE: &str = "thp";
+#[cfg(target_env = "musl")]
+const THP_TOTAL: usize = 64 << 20;
 
 /// 合计分这么多小块（每块 [`BLOCK`] 字节），每 [`KEEP_EVERY`] 块留一块不放（堆里留洞，空页不在堆顶）。
 const TOTAL: usize = 200 << 20;
@@ -151,6 +156,31 @@ fn child_gives_freed_pages_back() {
         println!("start= purge_delay={d} page_full_retain={r}");
         return;
     }
+    #[cfg(target_env = "musl")]
+    if mode == THP_MODE {
+        return_freed_pages_at_once();
+        let held = alloc_blocks(THP_TOTAL / BLOCK, 0);
+        let rollup =
+            std::fs::read_to_string("/proc/self/smaps_rollup").expect("读 /proc/self/smaps_rollup");
+        let thp_kb: u64 = rollup
+            .lines()
+            .find_map(|l| l.strip_prefix("AnonHugePages:"))
+            .and_then(|v| v.trim().trim_end_matches("kB").trim().parse().ok())
+            .expect("AnonHugePages 那一行");
+        // 打过 `MADV_HUGEPAGE` 的映射在 smaps 的 VmFlags 里带 `hg`：内核此刻凑不出 2 MB 连续物理页时大页数可能是 0，标记照样在。
+        let smaps = std::fs::read_to_string("/proc/self/smaps").expect("读 /proc/self/smaps");
+        let flagged = smaps
+            .lines()
+            .filter_map(|l| l.strip_prefix("VmFlags:"))
+            .filter(|f| f.split_whitespace().any(|x| x == "hg"))
+            .count();
+        println!(
+            "start={} thp_kb={thp_kb} hg_maps={flagged} kB",
+            rss_anon_kb()
+        );
+        free_blocks(held);
+        return;
+    }
     let threads = mode == "threads";
     // 照后端起来那一下（`main.rs`）先设好分配器。
     return_freed_pages_at_once();
@@ -232,6 +262,29 @@ fn the_option_indices_are_the_two_options() {
     assert!(
         said.contains("purge_delay=1000 page_full_retain=2"),
         "两个序号读到的不是 purge_delay（缺省 1000 ms）· page_full_retain（缺省 2）（mimalloc 升级后序号挪了？）：\n{said}"
+    );
+}
+
+/// 堆不要透明大页：mimalloc 缺省给 arena 打 `MADV_HUGEPAGE`，`madvise` 档的机器上半满的 2 MB 区段被并成大页，
+/// 空闲常驻每次多出几十 MB、而且每次不一样 ⇒ 清单里编进 `no_thp`。只有 `madvise` 档判得出：`never` 档谁都拿不到大页，
+/// `always` 档不打标记也照样给（那时 glibc 版一样，不归本条）。
+#[cfg(target_env = "musl")]
+#[test]
+fn the_heap_takes_no_huge_pages() {
+    let tier =
+        std::fs::read_to_string("/sys/kernel/mm/transparent_hugepage/enabled").unwrap_or_default();
+    let Some(now) = tier.split_whitespace().find(|w| w.starts_with('[')) else {
+        println!("判不了：读不到透明大页的档（/sys/kernel/mm/transparent_hugepage/enabled）");
+        return;
+    };
+    if now != "[madvise]" {
+        println!("判不了：透明大页的档是 {now}，只有 [madvise] 档判得出分配器要没要大页");
+        return;
+    }
+    let said = run_child(THP_MODE);
+    assert!(
+        said.contains(" thp_kb=0 hg_maps=0 "),
+        "分配器给堆要了透明大页（musl 版 mimalloc 没编进 `no_thp`？）：\n{said}"
     );
 }
 

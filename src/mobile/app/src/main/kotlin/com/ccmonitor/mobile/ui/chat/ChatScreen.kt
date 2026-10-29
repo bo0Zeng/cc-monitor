@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -19,12 +20,14 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.model.SaidImage
 import com.ccmonitor.mobile.core.claude.model.searchableText
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.ui.chat.attach.AttachUi
 import com.ccmonitor.mobile.ui.chat.needs.AwaitingStep
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
+import com.ccmonitor.mobile.ui.claude.LocalSaidImages
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 
@@ -50,12 +53,16 @@ fun ChatScreen(
     attach: AttachUi? = null,
     /** 视口贴不贴着底（变了才报）：会话照它决定丢不丢离视口远的旧页。 */
     onFollow: (Boolean) -> Unit = {},
+    /** 人说的那一句里的图：画到那一格时按引用取字节（取不到 ⇒ `null`，留占位）。 */
+    loadImage: suspend (SaidImage) -> ByteArray? = { null },
 ) {
-    Column(modifier.fillMaxSize()) {
-        ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, process = process, awaiting = awaiting, said = actions.said, onFollow = onFollow)
-        needs()
-        // 送没送到贴在那条消息旁边（`UserText.deliveryText`），这里不另起横幅。
-        ChatInputArea(state = state, actions = actions, attach = attach)
+    CompositionLocalProvider(LocalSaidImages provides loadImage) {
+        Column(modifier.fillMaxSize()) {
+            ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, process = process, awaiting = awaiting, said = actions.said, onFollow = onFollow)
+            needs()
+            // 送没送到贴在那条消息旁边（`UserText.deliveryText`），这里不另起横幅。
+            ChatInputArea(state = state, actions = actions, attach = attach)
+        }
     }
 }
 

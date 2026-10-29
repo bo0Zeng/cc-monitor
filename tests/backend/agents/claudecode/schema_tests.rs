@@ -409,7 +409,7 @@ fn record_classes_equal_the_table_with_a_reader_for_each() {
             .unwrap()
             .unwrap();
         let c = class_of(&r);
-        got.insert(c, super::super::record_of::record_of(r, "@0").is_some());
+        got.insert(c, super::super::record_of::record_of(r, 0).is_some());
     }
     let want: std::collections::BTreeMap<&str, bool> = [
         ("user", true),                   // 建卡

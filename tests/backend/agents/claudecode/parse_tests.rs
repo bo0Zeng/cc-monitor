@@ -327,7 +327,7 @@ fn f63_real_data_ledger() {
                             .or_default() += 1;
                     }
                     Ok(Some(r)) => {
-                        if super::super::record_of::record_of(r, "@0").is_some() {
+                        if super::super::record_of::record_of(r, 0).is_some() {
                             emitted += 1
                         } else {
                             deliberate += 1
