@@ -44,7 +44,7 @@ import { readStrategies } from "./rot-reads";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import { readProfiles, resolveProfile, type Resolved } from "./profiles-reads";
 import type { ProfileMergeRow } from "./generated/ProfileMergeRow";
-import { saidOf } from "./kit/detail";
+import { detailOf, saidOf } from "./kit/detail";
 import { pageTabs, setPage } from "./new-session-set";
 import s from "./new-session.module.css";
 
@@ -646,14 +646,22 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     return login;
   };
 
+  /** ［重新连接］被拒的那一句（那台连上了 ⇒ 框顶整条换掉，它也就不在了）。 */
+  let reconnectRefused: { said: string; detail: string } | null = null;
   const paintTop = (): void => {
     top.replaceChildren();
     if (!up()) {
       const again = button({ label: copyText("newSession.machine.reconnect"), size: "compact" });
       again.addEventListener("click", () => {
-        void commands.backend_start({ origin }).catch(() => {});
+        // 同机器条那一颗（`machine-wake`）：拒了 ⇒ 框顶写那一句；连上了框顶随那台的成品自己换。
+        reconnectRefused = null;
+        void commands.backend_start({ origin }).catch((e: unknown) => {
+          reconnectRefused = { said: saidOf(e), detail: detailOf(e) };
+          paintTop();
+        });
       });
-      top.appendChild(banner("error", offlineLine(), [again]));
+      const r = reconnectRefused;
+      top.appendChild(r ? banner("error", r.said, [again], r.detail) : banner("error", offlineLine(), [again]));
     } else if (factsFailed !== null) {
       top.appendChild(banner("error", factsFailed));
     } else if (pendingTop) {

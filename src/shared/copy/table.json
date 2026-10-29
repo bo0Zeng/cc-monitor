@@ -11847,6 +11847,12 @@
       "zh": "设置 → 机器 → {machine}",
       "args": ["machine"]
     },
+    "beMachineWake.refuse.unknown": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "机器表里没有 {machine}",
+      "args": ["machine"]
+    },
     "beMachineMenu.menu.noSuch": {
       "kind": "error",
       "role": "报错",

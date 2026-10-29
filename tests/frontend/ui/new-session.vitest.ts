@@ -595,6 +595,16 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     expect(commands.backend_start).toHaveBeenCalledWith({ origin: "devbox" });
   });
 
+  it("★ ［重新连接］被那台拒了 ⇒ 框顶换成那一句（不吞）", async () => {
+    replies.set("machine-read", { machines: { ...MACHINES.machines, devbox: machineOf("devbox", "down", "成品写的 devbox 离线那一句") } });
+    vi.mocked(commands.backend_start).mockRejectedValueOnce(new Error("devbox 停用着-甲"));
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.machine.reconnect"))!.click();
+    await flush();
+    expect(top()).toContain("devbox 停用着-甲");
+  });
+
   it("那台问不到能起什么 ⇒ 框顶说原因、［新建］灰着说还在读", async () => {
     refusal = { op: "session-open-facts", code: "boom", message: "读不出", data: null };
     void openNewSession({ origin: "devbox" });

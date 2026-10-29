@@ -272,7 +272,7 @@
 | `known_hosts` | 拨号核心（首见的主机钥匙鉴权过了才记）· `host-keys-forget`（忘掉一台） | 拨号核心（每次握手按这台全部地址认）· 开终端那一行（经 `ssh_config`）· `machines-read`（带出每台的指纹） | OpenSSH 格式；一台一行、主机名段写这台的全部地址。规矩只在 `ssh-dial/known_hosts.rs` |
 | `ssh_config` | 本机常驻后端（开终端那一行之前，内容不对才写） | 终端里的 `ssh -F` | 主机钥匙认 `known_hosts` 那一份，之后照读用户与系统的 ssh 配置 |
 
-设置窗机器列表那一格的成品（`state` · `word` · `said` · `fixes` …）：各台（含本机，键 `<local>`）判定只在后端 `deploy/machine.rs`（本机常驻后端答 `machine-read`、推 `changed {machine}`；各台的常驻流由本机常驻后端自己持有（`control/feeds.rs`），每一轮的结论它自己记，接不上或那台不是这一版时它先 `deploy-install` 再请那台换；机器页「起」·［重试］/「停」是 `machine-wake` / `machine-stop`）。本机后端没起来时没有成品，壳只说它起没起来（`local-backend` 事件 · `backend_status` 的 `local`：`up` · `starting` · `down` · `older` · `newer`）；成品形状以金样 `tests/__fixtures__/machine-state.golden.json` 为准。
+设置窗机器列表那一格的成品（`state` · `word` · `said` · `fixes` …）：各台（含本机，键 `<local>`）判定只在后端 `deploy/machine.rs`（本机常驻后端答 `machine-read`、推 `changed {machine}`；各台的常驻流由本机常驻后端自己持有（`control/feeds.rs`），每一轮的结论它自己记，接不上或那台不是这一版时它先 `deploy-install` 再请那台换；各处［重新连接］与机器页「起」·［重试］是 `machine-wake`（回那台此刻的成品；拒码 `unknown_machine` · `disabled` · `busy`（带那一刻的成品）），「停」是 `machine-stop`）。本机后端没起来时没有成品，壳只说它起没起来（`local-backend` 事件 · `backend_status` 的 `local`：`up` · `starting` · `down` · `older` · `newer`）；成品形状以金样 `tests/__fixtures__/machine-state.golden.json` 为准。
 
 **Claude Code 自己写、后端只读的两份**（集成方要自己写 pidfile 时看这里）：
 

@@ -591,3 +591,58 @@ async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backe
     );
     assert_eq!(unclear.life, crate::wire::WireLife::Unclear);
 }
+
+/// 一台的成品（只填 `wake_in` 读的那几格）。
+fn wake_row(kind: cmd_wire::machine::MachineStateKind, said: &str) -> cmd_wire::machine::MachineState {
+    cmd_wire::machine::MachineState {
+        name: "nas".into(),
+        state: kind,
+        offline: false,
+        reason: None,
+        stage: None,
+        version: None,
+        version_relation: None,
+        os: None,
+        word: String::new(),
+        said: said.into(),
+        offline_said: "nas 离线".into(),
+        fixes: Vec::new(),
+        seen_host_key: None,
+        expected_host_key: None,
+        detail: None,
+        route: None,
+    }
+}
+
+#[test]
+fn reconnecting_a_machine_answers_with_its_state_and_refuses_unknown_disabled_or_busy_ones() {
+    use cmd_wire::machine::MachineStateKind as K;
+    let woke = std::cell::RefCell::new(Vec::<String>::new());
+    let wake = |m: &str| woke.borrow_mut().push(m.to_string());
+    let one = |kind: K| std::collections::BTreeMap::from([("nas".to_string(), wake_row(kind, "nas 那一句"))]);
+    // 断着 ⇒ 叫醒、回那台此刻的成品。
+    let got = wake_in("nas", &one(K::Down), wake).expect("断着的那台照常叫醒");
+    assert_eq!(got.state, K::Down);
+    assert_eq!(*woke.borrow(), ["nas"]);
+    // 机器表里没有 ⇒ unknown_machine，不叫醒。
+    match wake_in("ghost", &one(K::Down), wake) {
+        Err(MachineWakeErr::UnknownMachine(said)) => assert!(said.contains("ghost"), "{said}"),
+        other => panic!("{other:?}"),
+    }
+    // 停用的 ⇒ disabled，那一句是那台成品写的。
+    match wake_in("nas", &one(K::Disabled), wake) {
+        Err(MachineWakeErr::Disabled(said)) => assert_eq!(said, "nas 那一句"),
+        other => panic!("{other:?}"),
+    }
+    // 正在连 / 装 / 更新 ⇒ busy，带那一刻的成品。
+    for k in [K::Connecting, K::Installing, K::Updating] {
+        match wake_in("nas", &one(k), wake) {
+            Err(MachineWakeErr::Busy(said, m)) => {
+                assert_eq!(said, "nas 那一句");
+                assert_eq!(m.state, k);
+            }
+            other => panic!("{k:?}: {other:?}"),
+        }
+    }
+    assert_eq!(*woke.borrow(), ["nas"], "拒了的那几下都没叫醒");
+}

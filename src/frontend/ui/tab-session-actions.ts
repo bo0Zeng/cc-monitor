@@ -7,7 +7,8 @@ import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import type { AccountAsk } from "./launch-account";
 import type { Run } from "./generated/Run";
-import { toast, failToast } from "./kit/toast";
+import { toast, failToast, noteMessage } from "./kit/toast";
+import { detailOf, saidOf } from "./kit/detail";
 import { openSession } from "./session-open";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { ChanError } from "../../comms/inward/chan";
@@ -70,9 +71,12 @@ export class TabSessionActions {
     }
   }
 
-  /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨一次（壳那一侧 `backend_start`：流在跑就是「别等了」）。 */
+  /**
+   * ［重新连接］（机器条 · 会话头 · 新建会话框）：那台断着在退避里等 ⇒ 立刻重拨一次（壳那一侧 `backend_start` ⇒ 本机后端 `machine-wake`）。
+   * 拒了（停用着 · 正在连 · 机器表里没有 · 本机后端不在）⇒ 那一句原样进状态栏消息；连上 · 正在连那一态照常由那台的成品画在那一行上。
+   */
   reconnect(origin: string): void {
-    void this.redial(origin).catch((e: unknown) => console.warn("reconnect failed:", e));
+    void this.redial(origin).catch((e: unknown) => noteMessage(saidOf(e), detailOf(e)));
   }
 
   /** 立刻重拨那台一次；没拨成 ⇒ 抛（↗ 浮层［更新］换上之后要知道拨没拨成）。 */
