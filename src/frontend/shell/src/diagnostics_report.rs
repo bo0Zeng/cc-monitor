@@ -152,20 +152,16 @@ fn wire_word(v: impl serde::Serialize) -> Option<String> {
 
 /// 各台（含本机）此刻的成品（本机后端 `machine-read`）；问不到 ⇒ 空表（那几台照「说不出」写）。
 async fn remote_machines() -> std::collections::BTreeMap<String, cmd_wire::machine::MachineState> {
-    const CMD: &str = "machine-read";
     let Some(c) = crate::inbound_client::local_client() else {
         return Default::default();
     };
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
     match c
-        .call(
-            CMD,
-            serde_json::json!({}),
-            std::time::Duration::from_secs(5),
-        )
+        .ask(None, &cmd_wire::machine::MachineReadReq {}, None, deadline)
         .await
     {
-        Ok(Some(v)) => serde_json::from_value(v["machines"].clone()).unwrap_or_default(),
-        Ok(None) => Default::default(),
+        Ok(Ok(r)) => r.machines,
+        Ok(Err(_)) => Default::default(),
         Err(e) => {
             tracing::warn!("[diag] 问不到远端各台的状态：{e:?}");
             Default::default()

@@ -34,7 +34,7 @@ fn answer_set(
     args: &serde_json::Value,
     own: &Own,
 ) -> Result<serde_json::Value, crate::wire::spec::Fail> {
-    let req: ExitPolicySet = crate::wire::typed::take(args)?;
+    let req: ExitPolicySetReq = crate::wire::typed::take(args)?;
     super::answer_set(&req, own).map(|r| serde_json::to_value(r).unwrap())
 }
 

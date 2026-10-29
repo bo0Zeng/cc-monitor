@@ -404,6 +404,64 @@ fn needs_history_lines_and_session_requests_are_the_ones_the_backend_takes() {
     );
 }
 
+#[test]
+fn machine_and_exit_policy_requests_are_the_ones_the_backend_takes() {
+    use crate::exit_policy::ExitPolicySetReq;
+    use crate::machine::{MachineReadReq, MachineStopReq, MachineWakeReq};
+    sent(MachineReadReq {}, "machine-read", json!({}));
+    sent(
+        MachineWakeReq {
+            machine: "m".into(),
+        },
+        "machine-wake",
+        json!({"machine": "m"}),
+    );
+    sent(
+        MachineStopReq {
+            machine: "m".into(),
+        },
+        "machine-stop",
+        json!({"machine": "m"}),
+    );
+    sent(
+        ExitPolicySetReq { kill_on_exit: true },
+        "exit-policy-set",
+        json!({"killOnExit": true}),
+    );
+}
+
+#[test]
+fn catalog_requests_are_the_ones_the_backend_takes() {
+    use crate::assets::{AssetsCatalogMergeReq, AssetsCatalogReq, CatalogIn};
+    sent(AssetsCatalogReq {}, "assets-catalog", json!({}));
+    sent(
+        AssetsCatalogMergeReq {
+            catalog: CatalogIn { machines: vec![] },
+        },
+        "assets-catalog-merge",
+        json!({"catalog": {"machines": []}}),
+    );
+    // 并进来的那一份是另一台的整份应答：只读 `machines`，别的键照收。
+    let theirs: AssetsCatalogMergeReq =
+        serde_json::from_value(json!({"catalog": {"self": "x", "machines": [], "rows": []}}))
+            .unwrap();
+    assert!(theirs.catalog.machines.is_empty());
+}
+
+/// `machine-stop` 的回包照两端同一个类型解；`machine-read` 的回包是各台成品 ＋ 首屏那一句。
+#[test]
+fn machine_stop_and_read_replies_are_the_shared_types() {
+    let stopped = json!({"stopped": "graceful", "pid": 7});
+    assert_eq!(
+        round_trip("machine-stop", stopped.clone()),
+        Some(Ok(stopped))
+    );
+    assert!(matches!(
+        round_trip("machine-read", json!({"machines": {}})),
+        Some(Err(_))
+    ));
+}
+
 /// 照类型解再写回、读成一份（比 JSON 值，不比键序）。
 fn round_trip(cmd: &str, data: serde_json::Value) -> Option<Result<serde_json::Value, String>> {
     super::typed_text(cmd, data).map(|r| r.map(|t| serde_json::from_str(&t).expect("JSON")))

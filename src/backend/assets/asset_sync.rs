@@ -26,7 +26,9 @@
 //! （对机器表里「连这台」的每一台各一趟）。一趟的期限归调用方。
 //! 「问远端」那一跳（`DialRemote`）与「那几台」（[`Table`]）住 `crate::dial::remote_ask`；本模块只管资产目录拉什么、并什么、推什么、扇不扇出。
 
-use crate::assets::asset_catalog::{CatalogIn, CatalogMachine, CatalogMergeReq, CatalogReply};
+use crate::assets::asset_catalog::{
+    AssetsCatalogMergeReq, CatalogIn, CatalogMachine, CatalogReply,
+};
 use crate::common::said::IntoNote as _;
 use crate::wire::spec::Fail;
 use copy_core::copy_text;
@@ -47,7 +49,8 @@ pub const PULL_FLAG: &str = "--assets-catalog";
 pub const PUSH_FLAG: &str = "--assets-catalog-merge";
 
 /// 本机写口（`asset_catalog::answer_merge`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（`Own` 由分派那一层递）。
-pub type Fold = std::sync::Arc<dyn Fn(CatalogMergeReq) -> Result<CatalogReply, Fail> + Send + Sync>;
+pub type Fold =
+    std::sync::Arc<dyn Fn(AssetsCatalogMergeReq) -> Result<CatalogReply, Fail> + Send + Sync>;
 
 /// `assets-sync` 的入参与回包住 cmd-wire（壳连上一台时照同一份交、照同一份收）。
 pub(crate) use cmd_wire::assets::{AssetsSyncReq, AssetsSyncRow, AssetsSynced};
@@ -144,7 +147,7 @@ fn fold_failed(f: Fail) -> String {
 }
 
 /// 经写口并一次（同步文件 I/O ⇒ 挪到阻塞线程池，不占 tokio worker）。
-async fn fold_blocking(fold: &Fold, req: CatalogMergeReq) -> Result<CatalogReply, String> {
+async fn fold_blocking(fold: &Fold, req: AssetsCatalogMergeReq) -> Result<CatalogReply, String> {
     let f = fold.clone();
     tokio::task::spawn_blocking(move || f(req))
         .await
@@ -199,7 +202,7 @@ async fn sync_one(
         table.set_peer(key, id);
     }
     // ② 并（对面那一份按并的入参收：形状不对 ⇒ 那一句同写口拒的那一形）
-    let req: CatalogMergeReq = match crate::wire::typed::take(&json!({ "catalog": theirs })) {
+    let req: AssetsCatalogMergeReq = match crate::wire::typed::take(&json!({ "catalog": theirs })) {
         Ok(r) => r,
         Err(f) => {
             return (
@@ -287,7 +290,7 @@ pub(crate) async fn answer_with(
     let rows: Vec<String> = table.connected();
     // 这一趟先让本机现扫一次（并一份空的进来 = 只刷新自己那一格）：拿到本机目录的 id，
     // 并且本机自己那份变了（刚装了 / 删了一个 skill）就算「目录变了」—— 下面对「连这台」的每一台都做一趟。
-    let nothing = CatalogMergeReq {
+    let nothing = AssetsCatalogMergeReq {
         catalog: CatalogIn { machines: vec![] },
     };
     let own = fold_blocking(&fold, nothing)

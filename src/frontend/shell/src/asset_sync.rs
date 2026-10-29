@@ -19,7 +19,7 @@
 //! - 🔴 真远端：本模块的判据只到「交出去的是什么」「答回来的认不认得」；本机后端那一趟在后端判据里用替身对面验。
 //! - 本机后端不在 ⇒ 报（`D11`，不回落）；连上那一刻它不在 ⇒ 这一次就没同步（下次连上 / 看机器页再来），只记一行 warn。
 
-use cmd_wire::assets::{AssetsSyncReq, AssetsSynced};
+use cmd_wire::assets::{AssetsCatalogMergeReq, AssetsSyncReq, AssetsSynced};
 use cmd_wire::Call;
 use copy_core::copy_text;
 use std::time::Duration;
@@ -27,7 +27,7 @@ use std::time::Duration;
 use crate::backend_route::{route_call_error, Routed};
 
 /// 远端那台要认得的命令（它不认 ⇒ 那台后端太旧，连上时不去碰它）。
-pub(crate) const REMOTE_NEEDS: &str = "assets-catalog-merge";
+pub(crate) const REMOTE_NEEDS: &str = AssetsCatalogMergeReq::NAME;
 
 /// 一趟的上限：拉 ＋ 推（每台几条 exec）＋ 扇出到其余各台。给足余量同时防卡死（后端零定时器，期限归调用方）。
 const BUDGET: Duration = Duration::from_secs(180);

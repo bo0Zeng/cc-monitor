@@ -515,3 +515,61 @@ impl MachineFault {
         }
     }
 }
+
+/// `machine-read` 的入参：不收参数（缺 · `null` · `{}` 都认，多一个键 ⇒ `bad_args`）。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct MachineReadReq {}
+
+/// `machine-read` 的回包：机器表里每台 → 成品；连同此刻的首屏那一句（主题 `machine` 的重问）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct MachineRead {
+    pub machines: std::collections::BTreeMap<String, MachineState>,
+    pub empty: EmptyFace,
+}
+
+/// `machine-wake` 的入参：那台的名字（空白名由后端拒）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct MachineWakeReq {
+    pub machine: String,
+}
+
+/// `machine-stop` 的入参：那台的名字（空白名由后端拒）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct MachineStopReq {
+    pub machine: String,
+}
+
+/// `machine-stop` 的回包：那台常驻怎么停的（`--resident-stop` 那一行原样的词：`graceful` · `killed` · `not_running`）· 被停的 pid。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct MachineStopped {
+    pub stopped: String,
+    pub pid: Option<u32>,
+}

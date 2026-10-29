@@ -99,7 +99,7 @@ impl Machine {
     }
     fn fold(&self) -> Fold {
         let me = self.clone();
-        Arc::new(move |req: cat::CatalogMergeReq| {
+        Arc::new(move |req: cat::AssetsCatalogMergeReq| {
             let inc = cat::machines_of(req.catalog.machines).expect("载荷形状");
             cat::update_at(&own_at(&me.path), skills(&me.scan), me.label, Some(inc))
         })

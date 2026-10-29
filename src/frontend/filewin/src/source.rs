@@ -1118,17 +1118,15 @@ pub fn machine_seen(origin: &Origin, item: &comms_inward::chan::wire::Item) -> O
 
 /// 别台此刻的样子：问本机后端一次那台的成品（`machine-read`）；问不到 · 表里没有它 ⇒ `None`（窗口当作说不清）。
 async fn machine_now(line: &Line, origin: &Origin) -> Option<LinkSeen> {
-    let got = ask(
+    let got = ask_typed(
         line,
         &Origin::local(),
-        "machine-read",
-        &serde_json::json!({}),
+        &cmd_wire::machine::MachineReadReq {},
         std::time::Duration::from_secs(10),
     )
     .await
     .ok()?;
-    let state = got.get("machines")?.get(origin.to_string())?.get("state")?;
-    Some(seen_of_state(serde_json::from_value(state.clone()).ok()?))
+    Some(seen_of_state(got.machines.get(&origin.to_string())?.state))
 }
 
 /// 订「那台怎么了」那条流，每一格交给 `on`，`on` 回真就停；流关了 ⇒ 停。别台先问一次此刻的成品（那条流只在变了时才来一格）。
@@ -1463,16 +1461,18 @@ pub async fn kick_link(line: &Line, origin: &Origin) {
     if origin.is_local() {
         return;
     }
-    if let Err(why) = ask(
+    let req = cmd_wire::machine::MachineWakeReq {
+        machine: origin.to_string(),
+    };
+    if let Err(why) = ask_typed(
         line,
         &Origin::local(),
-        "machine-wake",
-        &serde_json::json!({ "machine": origin }),
+        &req,
         std::time::Duration::from_secs(5),
     )
     .await
     {
-        tracing::warn!("machine-wake not delivered: {why}");
+        tracing::warn!("machine-wake not delivered: {}", why.said);
     }
 }
 

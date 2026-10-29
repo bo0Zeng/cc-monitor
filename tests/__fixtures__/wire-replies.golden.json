@@ -47,6 +47,116 @@
         "notice": "notice-x"
       }
     },
+    "assets-catalog": {
+      "rust": "{\"self\":\"self-x\",\"machines\":[{\"id\":\"id-x\",\"label\":\"label-x\",\"gen\":7,\"seenAt\":7,\"assets\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"project\":\"project-x\",\"dir\":\"dir-x\",\"digest\":\"digest-x\",\"summary\":{},\"off\":true}],\"projectDirs\":[\"projectDirs-x\"],\"notes\":{\"k\":{\"text\":\"text-x\",\"rev\":7}},\"sharedMcp\":true}],\"rows\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"state\":\"state-x\",\"from\":[{\"machine\":\"machine-x\",\"project\":\"project-x\",\"digest\":\"digest-x\",\"summary\":{}}]}],\"problems\":[\"problems-x\"],\"changed\":true,\"path\":\"path-x\"}",
+      "sample": {
+        "changed": true,
+        "machines": [
+          {
+            "assets": [
+              {
+                "digest": "digest-x",
+                "dir": "dir-x",
+                "kind": "skill",
+                "name": "name-x",
+                "off": true,
+                "project": "project-x",
+                "summary": {}
+              }
+            ],
+            "gen": 7,
+            "id": "id-x",
+            "label": "label-x",
+            "notes": {
+              "k": {
+                "rev": 7,
+                "text": "text-x"
+              }
+            },
+            "projectDirs": [
+              "projectDirs-x"
+            ],
+            "seenAt": 7,
+            "sharedMcp": true
+          }
+        ],
+        "path": "path-x",
+        "problems": [
+          "problems-x"
+        ],
+        "rows": [
+          {
+            "from": [
+              {
+                "digest": "digest-x",
+                "machine": "machine-x",
+                "project": "project-x",
+                "summary": {}
+              }
+            ],
+            "kind": "skill",
+            "name": "name-x",
+            "state": "state-x"
+          }
+        ],
+        "self": "self-x"
+      }
+    },
+    "assets-catalog-merge": {
+      "rust": "{\"self\":\"self-x\",\"machines\":[{\"id\":\"id-x\",\"label\":\"label-x\",\"gen\":7,\"seenAt\":7,\"assets\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"project\":\"project-x\",\"dir\":\"dir-x\",\"digest\":\"digest-x\",\"summary\":{},\"off\":true}],\"projectDirs\":[\"projectDirs-x\"],\"notes\":{\"k\":{\"text\":\"text-x\",\"rev\":7}},\"sharedMcp\":true}],\"rows\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"state\":\"state-x\",\"from\":[{\"machine\":\"machine-x\",\"project\":\"project-x\",\"digest\":\"digest-x\",\"summary\":{}}]}],\"problems\":[\"problems-x\"],\"changed\":true,\"path\":\"path-x\"}",
+      "sample": {
+        "changed": true,
+        "machines": [
+          {
+            "assets": [
+              {
+                "digest": "digest-x",
+                "dir": "dir-x",
+                "kind": "skill",
+                "name": "name-x",
+                "off": true,
+                "project": "project-x",
+                "summary": {}
+              }
+            ],
+            "gen": 7,
+            "id": "id-x",
+            "label": "label-x",
+            "notes": {
+              "k": {
+                "rev": 7,
+                "text": "text-x"
+              }
+            },
+            "projectDirs": [
+              "projectDirs-x"
+            ],
+            "seenAt": 7,
+            "sharedMcp": true
+          }
+        ],
+        "path": "path-x",
+        "problems": [
+          "problems-x"
+        ],
+        "rows": [
+          {
+            "from": [
+              {
+                "digest": "digest-x",
+                "machine": "machine-x",
+                "project": "project-x",
+                "summary": {}
+              }
+            ],
+            "kind": "skill",
+            "name": "name-x",
+            "state": "state-x"
+          }
+        ],
+        "self": "self-x"
+      }
+    },
     "assets-sync": {
       "rust": "{\"self\":\"self-x\",\"synced\":[{\"origin\":\"origin-x\",\"peer\":\"peer-x\",\"changed\":true,\"pushed\":7,\"error\":\"error-x\"}],\"reach\":[{\"origin\":\"origin-x\",\"machine\":\"machine-x\"}]}",
       "sample": {
@@ -101,6 +211,17 @@
       }
     },
     "exit-policy-read": {
+      "rust": "{\"state\":\"absent\",\"killOnExit\":true,\"reason\":\"reason-x\",\"detail\":\"detail-x\",\"path\":\"path-x\",\"said\":\"said-x\"}",
+      "sample": {
+        "detail": "detail-x",
+        "killOnExit": true,
+        "path": "path-x",
+        "reason": "reason-x",
+        "said": "said-x",
+        "state": "absent"
+      }
+    },
+    "exit-policy-set": {
       "rust": "{\"state\":\"absent\",\"killOnExit\":true,\"reason\":\"reason-x\",\"detail\":\"detail-x\",\"path\":\"path-x\",\"said\":\"said-x\"}",
       "sample": {
         "detail": "detail-x",
@@ -953,6 +1074,73 @@
         "split_at": 7,
         "tail_from": 7,
         "total": 7
+      }
+    },
+    "machine-read": {
+      "rust": "{\"machines\":{\"k\":{\"name\":\"name-x\",\"state\":\"up\",\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"versionRelation\":\"same\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\"}},\"empty\":{\"line\":\"line-x\",\"hint\":\"hint-x\"}}",
+      "sample": {
+        "empty": {
+          "hint": "hint-x",
+          "line": "line-x"
+        },
+        "machines": {
+          "k": {
+            "detail": "detail-x",
+            "expectedHostKey": "expectedHostKey-x",
+            "fixes": [
+              {
+                "fix": "retry",
+                "label": "label-x"
+              }
+            ],
+            "name": "name-x",
+            "offline": true,
+            "offlineSaid": "offlineSaid-x",
+            "os": "os-x",
+            "reason": "resolve",
+            "route": "route-x",
+            "said": "said-x",
+            "seenHostKey": "seenHostKey-x",
+            "stage": "deploy",
+            "state": "up",
+            "version": "version-x",
+            "versionRelation": "same",
+            "word": "word-x"
+          }
+        }
+      }
+    },
+    "machine-stop": {
+      "rust": "{\"stopped\":\"stopped-x\",\"pid\":7}",
+      "sample": {
+        "pid": 7,
+        "stopped": "stopped-x"
+      }
+    },
+    "machine-wake": {
+      "rust": "{\"name\":\"name-x\",\"state\":\"up\",\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"versionRelation\":\"same\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\"}",
+      "sample": {
+        "detail": "detail-x",
+        "expectedHostKey": "expectedHostKey-x",
+        "fixes": [
+          {
+            "fix": "retry",
+            "label": "label-x"
+          }
+        ],
+        "name": "name-x",
+        "offline": true,
+        "offlineSaid": "offlineSaid-x",
+        "os": "os-x",
+        "reason": "resolve",
+        "route": "route-x",
+        "said": "said-x",
+        "seenHostKey": "seenHostKey-x",
+        "stage": "deploy",
+        "state": "up",
+        "version": "version-x",
+        "versionRelation": "same",
+        "word": "word-x"
       }
     },
     "needs-answer": {
