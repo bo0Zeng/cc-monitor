@@ -21,7 +21,7 @@ export function isRawValue(v: string): boolean {
 }
 
 /** Rust 取文口自己住的文件：它里头的 `copy_text` 是定义，不是引用。 */
-export const RS_HOME = "src/frontend/shell/src/copy_table.rs";
+export const RS_HOME = "src/common/copy-core/src/lib.rs";
 const RS_FN = "copy_text";
 /** 壳那一句的构造（`shell/src/detail.rs::Said::of`）：参数与 `copy_text` 同形，按同一套读。 */
 const RS_SAID = "Said::of";
@@ -30,12 +30,11 @@ const SAID_HOME = "src/frontend/shell/src/detail.rs";
 /** 同一个取文口的 `&'static str` 形（`copy-core` 的宏）。 */
 const RS_STATIC = "copy_static";
 /**
- * 取文口的**定义**住的两份文件：`copy-core` 的实现，与 monitor 那一层转发（`copy_core::copy_text(key, args)`，
- * key 不是字面量 —— 它是转发，不是引用）。它们不进「引用」一侧。
+ * 取文口的**定义**住的那份文件（`copy-core` 的实现）：它不进「引用」一侧。
  */
 /** 手机核心交 Kotlin 的取文 JNI 口：key 由 Kotlin 交（Kotlin 那一侧的调用点另算），不进 Rust 人群。 */
 const MOBILE_COPY_JNI = "src/mobile/core-rs/rust/copy.rs";
-export const RS_DEFINITIONS = new Set([RS_HOME, "src/common/copy-core/src/lib.rs", MOBILE_COPY_JNI]);
+export const RS_DEFINITIONS = new Set([RS_HOME, MOBILE_COPY_JNI]);
 
 /** 剥掉 `//` 行注释（字符串里的 `//` 不算）。块注释本仓生产段不用来写代码，按行注释剥足够。 */
 function stripRustLineComments(text: string): string {
@@ -69,7 +68,6 @@ export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems:
     const name = m[0];
     const before = code.slice(Math.max(0, at - 3), at);
     const after = code.slice(at + name.length);
-    if (file === RS_HOME && before === "fn ") continue;
     if (file === SAID_HOME && /^\(\s*key\s*,\s*args\s*\)/.test(after)) continue;
     // 别人的同名**方法**（`ui.ctx().copy_text(…)`，egui 的剪贴板）不是我们的取文口。
     if (before.endsWith(".")) continue;

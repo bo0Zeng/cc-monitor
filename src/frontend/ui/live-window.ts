@@ -99,7 +99,7 @@ function lowerBound(arr: JsonlLinePayload[], x: number): number {
  * {@link PENDING_KEEP} 条，其余出账 —— 它们往上翻到时按行号取回（`fetchBelow`；接了骨架的按字节，`fetchMissingRows`）。
  *
  * 订阅侧缓冲都要有上界（没有的话一份 4 万行的会话，后台 tab 里就驻留 4 万个 payload）。
- * 取数：一次物化最多 600 条（`materializeUntilFilled` 150 × 4）、上翻一批 200 条 ⇒ 留 2000 条够首屏 ＋ 七八次上翻不用等 IPC；
+ * 取数：冷开只建视口那一截（`materializeUntilFilled` 一截 20 条）、上翻一批 200 条 ⇒ 留 2000 条够首屏 ＋ 八九次上翻不用等 IPC；
  * 摊还余量 1000（与 monitor 那一侧 `TRIM_SLACK` 同一个道理：每来一条都修会让收纳路付 O(n)）。
  */
 export const PENDING_KEEP = 2000;
