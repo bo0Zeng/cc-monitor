@@ -247,7 +247,7 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
   it("★ 隐藏一个：交 `on`、toast「已隐藏「名」」、栏上先不挪；撤销照后端回的改之前那一格交回去（没有 ⇒ `rule`，不钉成单独显示）", async () => {
     const r = rig([tab("a"), tab("b")]);
     r.h.hide(["b"]);
-    await Promise.resolve();
+    await new Promise((x) => setTimeout(x, 0));
     expect(r.host.setHide.mock.calls.map((c) => [(c[0]).sessionId, c[1]])).toEqual([["b", "on"]]);
     expect(r.toasts.map((t) => t.title)).toEqual([copyText("tabBar.hide.done", { title: "名-b" })]);
     expect(r.store.tabs.get("b")!.hidden, "界面不先挪：等推帧").toBeNull();
@@ -266,16 +266,44 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
     expect(r.host.setHide.mock.calls.slice(2).map((c) => [(c[0]).sessionId, c[1]])).toEqual([["a", "off"], ["b", "rule"]]);
   });
 
-  it("批量隐藏：一条「已隐藏 N 个」；已经隐藏的跳过", () => {
+  it("批量隐藏：一条「已隐藏 N 个」；已经隐藏的跳过", async () => {
     const r = rig([tab("a"), tab("b"), tab("c", { hidden: SELF })]);
     r.h.hide(["a", "b", "c"]);
     expect(r.host.setHide).toHaveBeenCalledTimes(2);
+    await new Promise((x) => setTimeout(x, 0));
     expect(r.toasts[0].title).toBe(copyText("tabBar.hide.doneMany", { n: 2 }));
   });
 
-  it("★ 推帧说隐藏了 ⇒ 摘固定、不画在组里（组员关系不动）；撤销期里推帧说不隐藏了 ⇒ 原位 · 原分组 · 原固定放回", () => {
+  it("★ 回包成了才出［撤销］：那台拒了隐藏 ⇒ 全程没有「已隐藏」那条，只有没成那一句（A2-17-7-3）", async () => {
+    const r = rig([tab("a"), tab("b")]);
+    r.host.setHide.mockRejectedValue(new Error("那台拒了-甲"));
+    r.h.hide(["b"]);
+    expect(r.toasts, "回包之前不出").toEqual([]);
+    await new Promise((x) => setTimeout(x, 0));
+    expect(r.toasts).toEqual([]);
+    expect(r.host.failed).toHaveBeenCalledTimes(1);
+    expect(r.host.failed.mock.calls[0][0]).toBe(copyText("tabBar.hide.failed", { title: "名-b" }));
+  });
+
+  it("★ 批量里有没成的 ⇒ 撤销那一条只数成了的（「已隐藏 ×k」）、撤销只撤成了的那几个；没成的说它那一句", async () => {
+    const r = rig([tab("a"), tab("b"), tab("c")]);
+    r.host.setHide.mockImplementation(async (t: Tab, to: HideSet) => {
+      if (t.sessionId === "b" && to === "on") throw new Error("拒-乙");
+      return null;
+    });
+    r.h.hide(["a", "b", "c"]);
+    await new Promise((x) => setTimeout(x, 0));
+    expect(r.toasts.map((t) => t.title)).toEqual([copyText("tabBar.hide.doneMany", { n: 2 })]);
+    expect(r.host.failed.mock.calls.map((c) => c[0])).toEqual([copyText("tabBar.hide.failed", { title: "名-b" })]);
+    r.toasts[0].undo();
+    await new Promise((x) => setTimeout(x, 0));
+    expect(r.host.setHide.mock.calls.slice(3).map((c) => (c[0]).sessionId)).toEqual(["a", "c"]);
+  });
+
+  it("★ 推帧说隐藏了 ⇒ 摘固定、不画在组里（组员关系不动）；撤销期里推帧说不隐藏了 ⇒ 原位 · 原分组 · 原固定放回", async () => {
     const r = rig([tab("a"), tab("b", { pinned: true, group: "g" }), tab("c")]);
     r.h.hide(["b"]);
+    await new Promise((x) => setTimeout(x, 0));
     expect(r.h.land("b", SELF)).toBe(true);
     const b = r.store.tabs.get("b")!;
     expect([b.hidden, b.pinned, b.group]).toEqual([SELF, false, null]);

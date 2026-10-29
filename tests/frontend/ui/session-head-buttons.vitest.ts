@@ -169,6 +169,15 @@ describe("会话头那一排", () => {
     expect(btn(w.h, "front").hasAttribute("aria-disabled")).toBe(false);
   });
 
+  it("★ 远端会话也有「打开工作目录」那一颗（文件窗口落在那台那个目录，A2-17-7-5）；没有目录 ⇒ 不出", () => {
+    const { h, host } = rig(tab("r", { origin: "devbox" }));
+    expect(heads(h)).toContain("cwd");
+    btn(h, "cwd").click();
+    expect((host as unknown as { openCwd: ReturnType<typeof vi.fn> }).openCwd).toHaveBeenCalledWith("r");
+    const bare = rig(tab("n", { origin: "devbox", projectDir: null }));
+    expect(heads(bare.h)).not.toContain("cwd");
+  });
+
   it("★ 照盘上那一格排（读盘时跳过认不出的）；「⋯」永远在最右", async () => {
     store.cfg = { sessionHead: { buttons: ["find", "pin", "bogus", "cwd"] } };
     const { h } = rig();
@@ -259,7 +268,6 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     expect(box("pin").checked).toBe(false);
     expect(box("more").disabled, "「更多」不能取消").toBe(true);
     expect(pop.querySelector(`[data-row="more"]`)!.textContent).toContain(copyText("sessionHead.edit.fixedMore"));
-    expect(pop.querySelector(`[data-row="cwd"]`)!.textContent).toContain(copyText("sessionHead.edit.onlyLocal"));
     expect(pop.querySelector(`[data-row="front"]`)!.textContent).toContain(copyText("sessionHead.edit.onlyWindows"));
     expect(pop.querySelector(`[data-row="resume"]`)!.textContent).toContain(copyText("sessionState.headEdit.onlyEnded"));
     box("pin").click();

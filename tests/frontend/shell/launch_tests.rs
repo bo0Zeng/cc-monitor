@@ -282,11 +282,11 @@ fn the_no_window_outcome_is_a_code_not_a_phrase_the_frontend_greps_for() {
         serde_json::json!("setMissing")
     );
     const SESSION_OPEN: &str = include_str!("../../../src/frontend/ui/session-open.ts");
-    const LOGIN: &str = include_str!("../../../src/frontend/ui/settings/account-login.ts");
+    const LOGIN: &str = include_str!("../../../src/frontend/ui/login-drawer.ts");
     const OPEN: &str = include_str!("../../../src/frontend/ui/terminal-open.ts");
     for (name, src) in [
         ("session-open.ts", SESSION_OPEN),
-        ("account-login.ts", LOGIN),
+        ("login-drawer.ts", LOGIN),
     ] {
         assert!(
             src.contains("instanceof NoTerminalWindow") && !src.contains(".includes("),

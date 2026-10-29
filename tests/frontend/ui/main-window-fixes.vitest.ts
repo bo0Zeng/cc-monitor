@@ -298,13 +298,13 @@ describe("说不清（那台暂时看不见）的 tab 不给恢复", () => {
     const resume = items.filter((b) => b.querySelector("[data-part=label]")?.textContent === copyText("tabMenu.item.resume"));
     expect(resume.length, "恢复那一项还在（置灰、第二行说为什么）").toBe(1);
     expect(resume[0].disabled).toBe(true);
-    // 那台成品还没到：不说离线（不知道 ≠ 离线），照这一格的样子说状态不明。
-    expect(resume[0].querySelector("[data-part=why]")?.textContent).toBe(copyText("sessionState.unseen.name"));
+    // 为什么灰 ＝ 脸上那一句（后端写的那台离线那一句，A2-17-3-2），界面不另取字。
+    const face = goldenFace("unseen");
+    expect(resume[0].querySelector("[data-part=why]")?.textContent).toBe(face.line);
     const actions = (tm as unknown as { actions: { resume(sid: string): Promise<void> } }).actions;
     await actions.resume("u");
-    const said = [...document.querySelectorAll("#kit-toast-stack > *")].some((t) =>
-      t.textContent?.includes(copyText("sessionState.unseen.noResume")),
-    );
+    const why = face.can.resume.can === "no" ? face.can.resume.why : "";
+    const said = [...document.querySelectorAll("#kit-toast-stack > *")].some((t) => t.textContent?.includes(why) && t.textContent?.includes(face.line));
     expect(said, "点了要有回应：说不清 ⇒ 不起、说一句").toBe(true);
     expect(vi.mocked(invoke).mock.calls.some(([, args]) => (args as { op?: string } | undefined)?.op === "session-open"), "不许交那台起").toBe(false);
   });

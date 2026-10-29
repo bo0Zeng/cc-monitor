@@ -420,10 +420,16 @@ export class TabBarPrefs {
     return this.book.move(tab.origin, tab.sessionId, join, leave).catch((e: unknown) => this.failed(e));
   }
 
-  /** 固定 · 取消固定：会话那台一条注解。 */
-  private pin(origin: Origin, sid: string, on: boolean): Promise<void> {
-    if (!this.book) return Promise.resolve();
-    return this.book.pin(origin, sid, on).catch((e: unknown) => this.failed(e, copyText("tabBar.persist.pinnedFailed")));
+  /** 固定 · 取消固定：会话那台一条注解。回「那台收下了没有」（没收下 ⇒ 已说过、账重读）。 */
+  private pin(origin: Origin, sid: string, on: boolean): Promise<boolean> {
+    if (!this.book) return Promise.resolve(true);
+    return this.book.pin(origin, sid, on).then(
+      () => true,
+      (e: unknown) => {
+        this.failed(e, copyText("tabBar.persist.pinnedFailed"));
+        return false;
+      },
+    );
   }
 
   /** 分组 · 固定没交成：toast ＋ 记日志；账重读一次（栏回到真相）。 */
@@ -470,17 +476,17 @@ export class TabBarPrefs {
     this.pinHintEls.delete(sid);
   }
 
-  /** 右键菜单那一项：翻转固定，先改内存再交会话那台。不自动固定，这是唯一的入口。 */
-  togglePin(sid: string): void {
+  /** 右键菜单那一项：翻转固定，先改内存再交会话那台。不自动固定，这是唯一的入口。回「那台收下了没有」（没翻 ⇒ `false`）。 */
+  togglePin(sid: string): Promise<boolean> {
     const tab = this.store.tabs.get(sid);
-    if (!tab || !this.pinnedLoaded) return;
-    void this.setPinnedMany([sid], !tab.pinned);
+    if (!tab || !this.pinnedLoaded) return Promise.resolve(false);
+    return this.setPinnedMany([sid], !tab.pinned);
   }
 
-  /** 批量「固定 / 取消固定」：每一个翻到 `on`，各交会话那台一条注解。 */
-  setPinnedMany(sids: readonly string[], on: boolean): Promise<void> {
-    if (!this.pinnedLoaded) return Promise.resolve();
-    const work: Array<Promise<void>> = [];
+  /** 批量「固定 / 取消固定」：每一个翻到 `on`，各交会话那台一条注解。回「交了的都收下了」（一个都没交 ⇒ `false`）。 */
+  setPinnedMany(sids: readonly string[], on: boolean): Promise<boolean> {
+    if (!this.pinnedLoaded) return Promise.resolve(false);
+    const work: Array<Promise<boolean>> = [];
     for (const sid of sids) {
       const tab = this.store.tabs.get(sid);
       if (!tab || tab.pinned === on) continue;
@@ -488,7 +494,7 @@ export class TabBarPrefs {
       work.push(this.pin(tab.origin, sid, on));
     }
     if (work.length > 0) this.host.refreshTabBar();
-    return Promise.all(work).then(() => undefined);
+    return Promise.all(work).then((oks) => oks.length > 0 && oks.every(Boolean));
   }
 
   /**

@@ -2173,12 +2173,6 @@
       "zh": "暂不恢复",
       "args": []
     },
-    "sessionState.unseen.tooltip": {
-      "kind": "body",
-      "role": "悬停",
-      "zh": "状态不明 · 机器离线",
-      "args": []
-    },
     "sessionState.recordFile.gone": {
       "kind": "body",
       "role": "说明",
@@ -2929,18 +2923,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "文本",
-      "args": []
-    },
-    "cards.remoteFile.noMachine": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "机器列表里无 {machine}",
-      "args": ["machine"]
-    },
-    "cards.remoteFile.openFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "打开文件失败",
       "args": []
     },
     "cards.remoteFile.openHint": {
@@ -4635,31 +4617,6 @@
       "role": "标题",
       "zh": "切到终端的结果",
       "args": []
-    },
-    "tabSessionActions.openCwd.body": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "会话在远端 [{machine}] · 工作目录 {cwd} 不在本机 · {why}",
-      "args": ["machine", "cwd", "why"]
-    },
-    "tabSessionActions.openCwd.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "远端目录无法在本机打开",
-      "args": []
-    },
-    "tabSessionActions.openCwd.noConfig": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "机器列表无此机器",
-      "args": []
-    },
-    "tabSessionActions.openCwd.incomplete": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "连接配置缺主机或用户名",
-      "args": [],
-      "limited": ["连接"]
     },
     "tabSessionActions.kill.failed": {
       "kind": "error",
@@ -13020,6 +12977,12 @@
       "zh": "重新开始",
       "args": []
     },
+    "login.act.terminal": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "在终端里登录",
+      "args": []
+    },
     "login.sheet.auto": {
       "kind": "body",
       "role": "进度",
@@ -13109,6 +13072,18 @@
       "kind": "title",
       "role": "标题",
       "zh": "未报到",
+      "args": []
+    },
+    "launch.slot.unknownTitle": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "状态不明",
+      "args": []
+    },
+    "launch.slot.again": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "再查一次",
       "args": []
     },
     "launch.slot.tmuxGone": {
@@ -22461,12 +22436,6 @@
       "zh": "固定在最右",
       "args": []
     },
-    "sessionHead.edit.onlyLocal": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "仅本机",
-      "args": []
-    },
     "sessionHead.edit.onlyWindows": {
       "kind": "body",
       "role": "说明",
@@ -24276,6 +24245,13 @@
       "args": ["machine", "stage"],
       "limited": ["连接"]
     },
+    "machineState.busy.reconnecting": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "重新连接 {machine}",
+      "args": ["machine"],
+      "limited": ["连接"]
+    },
     "machineState.busy.installing": {
       "kind": "body",
       "role": "片段",
@@ -24450,6 +24426,12 @@
       "role": "说明",
       "zh": "{machine} 要更新",
       "args": ["machine"]
+    },
+    "machineState.problem.updateFailed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine} 上次更新失败 · {why}",
+      "args": ["machine", "why"]
     },
     "machineState.problem.newer": {
       "kind": "body",
@@ -24740,12 +24722,6 @@
       "zh": "API key · {host}",
       "args": ["host"]
     },
-    "acctPage.row.waiting": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "订阅 · 等待终端登录…",
-      "args": []
-    },
     "acctPage.row.notLoggedIn": {
       "kind": "body",
       "role": "片段",
@@ -24783,12 +24759,6 @@
       "kind": "action",
       "role": "菜单项",
       "zh": "重新登录…",
-      "args": []
-    },
-    "acctPage.menu.loginTerminal": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "在终端里登录…",
       "args": []
     },
     "acctPage.menu.copyCommands": {
@@ -25133,31 +25103,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "删除账号失败 · {name}",
-      "args": ["name"]
-    },
-    "acctPage.login.noWindow": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机无法开终端窗口",
-      "args": []
-    },
-    "acctPage.login.inTmux": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "tmux 里登录",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "acctPage.login.reopen": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "重开登录窗口",
-      "args": []
-    },
-    "acctPage.login.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "打开登录窗口失败 · {name}",
       "args": ["name"]
     },
     "acctPage.new.done": {
