@@ -83,15 +83,28 @@ scripts/quota-warm run         先跑一趟，之后按最早的醒点自己醒�
 
 ## 依赖（cc-monitor 的基本模块）
 
-- `ccm -- --quota-read`：读这台的额度账（只读，不读 stdin）；不给 `--accounts` 时号单也从这里来（`candidates`），脚本不另扫账号库。
+- 这台的额度账（`--quota-read`，见下面的命令段）：不给 `--accounts` 时号单也从这里来（`candidates`），脚本不另扫账号库。
 - ccm `--account <名>` 用某个号起一次 `claude -p`，走这台的中转；`--no-rotation` 让这一发不轮换。
 - 后端藏掉工作目录是 `~/.cc-monitor/autostart/` 的会话（历史页 · 会话列表 · 流上的会话宣告）。
 
 ## AI 自己管额度：cc-monitor 的后端命令
 
-都经 `~/.cc-monitor/bin/ccm -- --<命令>`；要参数的从 stdin 读一段 JSON（＝ 参数对象），stdout 一行 JSON。形状与字段全表见仓里 `src/doc/IPC-COMMANDS.md` 的「4.3 账号」（从代码生成）。
+都经 `~/.cc-monitor/bin/ccm -- --<命令>`：要参数的从 stdin 读一段 JSON（＝ 参数对象），stdout 一行 JSON。全部命令与一句话随二进制走：`ccm -- --commands`。轮换（策略文件 · 会话用哪份 · 拖出来的顺序 · 推演）另一份 skill `rotation` 讲全，这里只选最常用的两条。
 
-- `--quota-read`：这台额度账（每个号的状态 · `5h` / `7d` 用量与重置时刻 · 登录 · 从没出过数的号）；每号带写好的几行 `rows` 与开窗那一判 `warm`。给人看加 `--text`（所有命令通用：回包里写好的格拼成字）；回包里的「几点」按这台的钟写（看的人在别台 ⇒ `--tz <IANA 名>`）。
-- 轮换（策略文件 · 会话用哪份 · 拖出来的顺序 · 推演）：另一份 skill `src/shared/rotation/SKILL.md` 讲全；这里只列最常用的两条。
-- `--rotation-view {target: {sid}}`：一个会话此刻的轮换（这一判 `decision`：用哪个号 · 停发到几点；顺序 `lineup`：一号一行，第二格那一行写下一个、推得出就带「约 HH:MM」）。
-- `--rotation-use-now {sid, account}`：现在就换到这个号（只拿事实拦：被拒 · 没登录 · 没 key · 用满）。
+<!-- 命令：quota-read rotation-view rotation-use-now（生成物：照 `ccm -- --commands` 现打，勿手改；重打见 `tests/backend/stream/catalog_tests.rs`） -->
+- `ccm -- --quota-read`：这台的额度账。不收参数
+- `ccm -- --rotation-view`：一个会话或一份策略此刻的轮换。参数 `RotationViewReq`
+- `ccm -- --rotation-use-now`：现在用这个号。参数 `RotationUseNowReq`
+
+```ts
+type RotTarget = { sid: string, } | { strategy: string, };
+type RotationUseNowReq = { sid: string, account: string, };
+type RotationViewReq = { target: RotTarget, 
+/**
+ * 设置页那一形往后推几小时（1–48，缺 ⇒ 12）；会话那一形不画推演，不看它。
+ */
+hours?: number, };
+```
+<!-- /命令 -->
+
+额度账每号带写好的几行 `rows` 与开窗那一判 `warm`；给人看加 `--text`（所有命令通用：回包里写好的格拼成字）；回包里的「几点」按这台的钟写（看的人在别台 ⇒ `--tz <IANA 名>`）。
