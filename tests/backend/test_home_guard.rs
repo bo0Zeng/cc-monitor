@@ -244,14 +244,16 @@ fn a_given_home_keeps_inputs_but_not_paths_outside_it() {
     let strays = |k: &str, v: &str, home: Option<&Path>| {
         test_home::strays(k, OsStr::new(v), home, Some(real))
     };
+    let acct = "/nowhere/real-home/.cc-monitor/accounts/z";
     for home in [None, Some(real)] {
-        assert!(strays("CLAUDE_CONFIG_DIR", "/nowhere/real-home/.cc-monitor/accounts/z", home));
+        assert!(strays("CLAUDE_CONFIG_DIR", acct, home));
         assert!(strays("CCM_HOST", "lne", home));
     }
-    assert!(strays("CLAUDE_CONFIG_DIR", "/nowhere/real-home/.cc-monitor/accounts/z", Some(given)));
+    assert!(strays("CLAUDE_CONFIG_DIR", acct, Some(given)));
     assert!(strays("CCM_DATA_DIR", "/nowhere/elsewhere", Some(given)));
     assert!(strays("TMUX", "/tmp/tmux-1000/default,1,0", Some(given)));
-    assert!(!strays("CCM_DATA_DIR", "/nowhere/sandbox/home/data", Some(given)));
+    let inside = "/nowhere/sandbox/home/data";
+    assert!(!strays("CCM_DATA_DIR", inside, Some(given)));
     assert!(!strays("CCM_HOST", "lne", Some(given)));
     assert!(!strays("CCM_RELAY_PORT", "4242", Some(given)));
     assert!(!strays("PATH", "/usr/bin", None));
