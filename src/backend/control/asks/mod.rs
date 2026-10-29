@@ -189,6 +189,14 @@ async fn due(min: u32) {
     tokio::time::sleep(std::time::Duration::from_secs(u64::from(min) * 60)).await;
 }
 
+/// 子运行发的那一条：派出它时的标签（会话记录照 sid 在这台的记录树里找，[`crate::agents::asks::run_label`]）；主会话发的 · 找不到 ⇒ `None`。
+fn label_of(asked: &AskIn) -> Option<String> {
+    let run = asked.agent_id.as_deref()?;
+    let at =
+        crate::agents::find_session(&crate::history::listing::agent_home(), &asked.sid).ok()?;
+    crate::agents::asks::run_label(&at.file, run)
+}
+
 /// 挂上一条（`conn` ＝ 它那条连接）：回它的号与等答的那一头。
 fn open_id(
     agent: &str,
@@ -197,7 +205,7 @@ fn open_id(
 ) -> (String, tokio::sync::oneshot::Receiver<Option<Value>>) {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     let id = format!("ask-{}", NEXT.fetch_add(1, Ordering::Relaxed));
-    let product = product_of(&id, &asked, now_ms());
+    let product = product_of(&id, &asked, label_of(&asked).as_deref(), now_ms());
     let (tx, rx) = tokio::sync::oneshot::channel::<Option<Value>>();
     let sid = asked.sid.clone();
     {
