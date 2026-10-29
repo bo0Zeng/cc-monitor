@@ -7,9 +7,10 @@ use crate::bookmarks::{Bookmarks, BookmarksEditReq, BookmarksReadReq};
 use crate::deploy::{DeployInstallReq, DeployUninstallReq, Installed, Uninstalled};
 use crate::files::*;
 use crate::plan::{PlanFiles, PlanFilesReq};
+use crate::terminal::{SshCommand, TerminalSshReq, UnfollowReq};
 use crate::transfer::{
     TransferCopyAsk, TransferCopyReq, TransferDownloadAsk, TransferDownloadReq, TransferOpened,
-    TransferUploadAsk, TransferUploadReq,
+    TransferStartReq, TransferStopReq, TransferUploadAsk, TransferUploadReq,
 };
 use serde::Serialize;
 
@@ -59,6 +60,8 @@ calls! {
     DeployInstallReq => "deploy-install", Installed;
     DeployUninstallReq => "deploy-uninstall", Uninstalled;
     PlanFilesReq => "plan-files", PlanFiles;
+    TerminalSshReq => "terminal-ssh", SshCommand;
+    UnfollowReq => "terminal-unfollow", ();
     // 传输台那三条各两层：窗口说给 monitor 的（`*Ask`）· monitor 补上那台转给本机后端的（`*Req`），名字同一个。
     TransferUploadAsk => "transfer-upload", TransferOpened;
     TransferUploadReq => "transfer-upload", TransferOpened;
@@ -66,4 +69,6 @@ calls! {
     TransferDownloadReq => "transfer-download", TransferOpened;
     TransferCopyAsk => "transfer-copy", BatchReply;
     TransferCopyReq => "transfer-copy", BatchReply;
+    TransferStartReq => "transfer-start", ();
+    TransferStopReq => "transfer-stop", ();
 }

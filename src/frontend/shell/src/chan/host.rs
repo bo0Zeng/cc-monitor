@@ -149,9 +149,6 @@ pub(crate) const HOST_OPS: [&str; 7] = [
 /// 「在计划里看」交给主窗口的事件名（界面 `window-events.ts::PLAN_OPEN_EVENT`，两边逐字相同，`plan-signs.vitest.ts` 比）。
 const PLAN_OPEN_EVENT: &str = "plan-open";
 
-/// 开终端那一行由本机后端渲（`src/backend/dial/terminal.rs`，与主界面 `terminal-open.ts` 问的同一条）。
-const TERMINAL_SSH: &str = "terminal-ssh";
-
 impl Backends for InboundBackends {
     fn call(
         &self,
@@ -408,25 +405,27 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
             ),
         ));
     }
-    let ask = serde_json::json!({ "machine": host, "cwd": cwd.clone() });
+    // 开终端那一行由本机后端渲（`src/backend/dial/terminal.rs`，与主界面 `terminal-open.ts` 问的同一条）。
+    let ask = cmd_wire::terminal::TerminalSshReq {
+        machine: cmd_wire::Machine::named(host),
+        command: None,
+        cwd: Some(cwd.clone()),
+    };
     let Some(local) = inbound_client::local_client() else {
         return Err(backend_route::layer_no_channel(HOP));
     };
-    let reply = match local.call(TERMINAL_SSH, ask, left).await {
-        Ok(v) => v,
+    let deadline = tokio::time::Instant::now() + left;
+    let line = match local.ask(None, &ask, None, deadline).await {
+        Ok(Ok(r)) => r.command,
+        Ok(Err(_)) => {
+            return Err(refused(
+                "bad_reply",
+                copy_text("rsChanHost.terminal.badReply", &[]),
+            ))
+        }
         Err(e) => return Err(backend_route::layer_call_error(&e, HOP).error),
     };
-    let Some(line) = reply
-        .as_ref()
-        .and_then(|v| v.get("command"))
-        .and_then(serde_json::Value::as_str)
-    else {
-        return Err(refused(
-            "bad_reply",
-            copy_text("rsChanHost.terminal.badReply", &[]),
-        ));
-    };
-    match crate::launch::open_terminal_window(line.to_string()).await {
+    match crate::launch::open_terminal_window(line).await {
         Ok(crate::platform::terminal::TerminalOpen::Opened) => Ok(Body(b"{}".to_vec())),
         // 这台找不到终端：窗口那一侧把这句当原话画出来（说去设置里指定）。
         Ok(crate::platform::terminal::TerminalOpen::NoWindow) => Err(refused(

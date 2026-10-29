@@ -2,6 +2,7 @@
 //!
 //! - [`bookmarks`]：书签那两条（`bookmarks-read` · `-edit`）的入参与回包 · 目录归一的唯一一份；
 //! - [`call`]：一条命令的身份（[`Call`]：名字 · 回包挂在入参类型上）与那一张 `calls!` 表 —— 命令身份唯一的声明；
+//! - [`terminal`]：给一台开终端那一条（`terminal-ssh`）的入参与回包；
 //! - [`deploy`]：装 · 卸远端后端那两条（`deploy-install` · `deploy-uninstall`）的入参与回包；
 //! - [`files`]：文件管理那一族（`files-*`）的入参与回包，路径走原始字节（[`files::WirePath`]）；
 //! - [`front`]：↗ 切到终端的结局与浮层那一张（壳 · 本机后端 `session-window` 两个写家都调它，句子只在这一处取）；
@@ -70,6 +71,7 @@ pub mod shapes;
 pub mod sid;
 pub mod sync;
 pub mod tasks;
+pub mod terminal;
 pub mod transfer;
 pub mod watch;
 

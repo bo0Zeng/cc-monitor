@@ -829,11 +829,11 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     // `files-ls` · `files-stat` 不在这里：界面不再问它们（见上表），文件窗口列目录 · 看属性
     //   （`filewin/source.rs::CMD_LS` · `filewin/props.rs::CMD_STAT` …）是另一个前端自己的事。
     // 文件窗口「在此打开终端」。窗口只交意图（经通道 `terminal-open`），
-    //   monitor 接下来补机器事实、问本机后端渲那一行、开窗（`chan/host.rs::TERMINAL_SSH`）—— 与主界面开终端同一条路。
+    //   monitor 接下来补机器事实、问本机后端渲那一行、开窗（`chan/host.rs::terminal_open`，照类型问 `TerminalSshReq`）—— 与主界面开终端同一条路。
     (
         "terminal-ssh",
         1,
-        "文件窗口「在此打开终端」（`chan/host.rs::TERMINAL_SSH`）：monitor 接下窗口交来的意图，问本机后端渲 ssh 那一行",
+        "文件窗口「在此打开终端」（`chan/host.rs::terminal_open`）：monitor 接下窗口交来的意图，问本机后端渲 ssh 那一行",
     ),
 ];
 
@@ -886,16 +886,27 @@ const HELD_BACK: &[(&str, &str)] = &[
     // 挪进了 [`CHANNELED`]（后端出成品）。
 ];
 
-/// monitor 生产段（`src/frontend/shell/src/**/*.rs`，剥注释与 `#[cfg(test)]`）里，一条帧命令的字面量出现几次。
+/// monitor 生产段（`src/frontend/shell/src/**/*.rs`，剥注释与 `#[cfg(test)]`）里，一条帧命令被点名几次：
+/// 它的字面量，加上照类型问时造它入参的那几处（`cmd_wire::Call` 那张表里名字是它的入参类型 `<类型> {` 那一形）。
 fn monitor_literal_count(op: &str) -> usize {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let needle = format!("\"{op}\"");
+    let built: Vec<String> = guard_core::call_reqs_named(op)
+        .into_iter()
+        .map(|r| format!("{r} {{"))
+        .collect();
     guard_core::scan_tree!(&dir, &["rs"])
         .into_iter()
         .map(|(_, src)| {
-            guard_core::production_code(&src)
-                .matches(needle.as_str())
-                .count()
+            let prod = guard_core::production_code(&src);
+            prod.matches(needle.as_str()).count()
+                + built
+                    .iter()
+                    .map(|b| {
+                        guard_core::word_count(&prod, b)
+                            - prod.matches(format!("struct {b}").as_str()).count()
+                    })
+                    .sum::<usize>()
         })
         .sum()
 }

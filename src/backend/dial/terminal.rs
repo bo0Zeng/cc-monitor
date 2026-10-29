@@ -222,24 +222,8 @@ pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
     }
 }
 
-/// `terminal-ssh` 的入参：哪一台（名字；怎么拨照这一端的机器表组）＋ 要在那台跑什么。
-/// `command`（主界面交成品命令）与 `cwd`（文件窗口「在此打开终端」只交意图，命令由后端拼）**至多给一个**；都不给 ⇒ 那台的登录 shell（命令面板「打开终端」）。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct TerminalSshReq {
-    /// 那台的名字。
-    pub(crate) machine: cmd_wire::Machine,
-    /// 要在那台跑的命令。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) command: Option<String>,
-    /// 在那台的这个目录开登录 shell（串，或非 UTF-8 的 `{"b16": "<hex>"}`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, type = "string | { b16: string }"))]
-    pub(crate) cwd: Option<Value>,
-}
+/// `terminal-ssh` 的入参与回包住 cmd-wire（壳经 `ask` 照同一份问）。
+pub(crate) use cmd_wire::terminal::{SshCommand, TerminalSshReq};
 
 crate::wire::typed::codes! {
     /// `terminal-ssh` 的码：跳板查无 / 成环 · 哪一格过不了白名单 · 这台没装 ssh 客户端 · 查的时候出了错（判不了）。
@@ -255,9 +239,7 @@ crate::wire::typed::codes! {
 pub(crate) struct TerminalSsh;
 
 impl crate::wire::typed::Command for TerminalSsh {
-    const NAME: &'static str = "terminal-ssh";
-    type Req = TerminalSshReq;
-    type Reply = SshCommand;
+    crate::wire::typed::by_call!(TerminalSshReq);
     type Err = TerminalSshErr;
 }
 
@@ -397,15 +379,6 @@ pub(crate) fn ssh_path(ssh: &SshClient, powershell: bool) -> Result<&str, CmdErr
             copy_text("beTerminal.ssh.unknown", &[("why", why)]),
         )),
     }
-}
-
-/// `terminal-ssh` 的应答：那一整行命令。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SshCommand {
-    /// 这台电脑终端里跑的那一行（Windows：PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`；别处：同一组参数的 POSIX shell 一行）。
-    pub(crate) command: String,
 }
 
 #[cfg(test)]
