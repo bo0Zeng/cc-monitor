@@ -3,6 +3,6 @@ import type { EmptyFace } from "./EmptyFace";
 import type { MachineState } from "./MachineState";
 
 /**
- * `machine-read` 的回包：机器表里每台 → 成品；连同此刻的首屏那一句。
+ * `machine-read` 的回包：机器表里每台 → 成品；连同此刻的首屏那一句（主题 `machine` 的重问）。
  */
 export type MachineRead = { machines: { [key in string]: MachineState }, empty: EmptyFace, };

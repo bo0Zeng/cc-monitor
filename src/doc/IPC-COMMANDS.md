@@ -10024,9 +10024,10 @@ type AgentHomeState = "ok" | "missing" | "not_dir" | "no_records";
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --assets-catalog`
 
-入参 `NoArgs` · 回包 `CatalogReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `AssetsCatalogReq` · 回包 `CatalogReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AssetsCatalogReq = Record<symbol, never>;
 type CatalogAsset = { kind: ExtKind, name: string, 
 /**
  * 那台上的项目目录（项目级）；`None` = 用户级。
@@ -10074,7 +10075,6 @@ changed: boolean,
 path: string | null, };
 type CatalogRow = { kind: ExtKind, name: string, state: string, from: Array<CatalogFrom>, };
 type ExtKind = "skill" | "mcp" | "plugin";
-type NoArgs = Record<symbol, never>;
 ```
 
 码：`bad_args` · `catalog_unreadable` · `io_failed`
@@ -10085,9 +10085,10 @@ type NoArgs = Record<symbol, never>;
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --assets-catalog-merge`
 
-入参 `CatalogMergeReq` · 回包 `CatalogReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `AssetsCatalogMergeReq` · 回包 `CatalogReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AssetsCatalogMergeReq = { catalog: CatalogIn, };
 type CatalogAsset = { kind: ExtKind, name: string, 
 /**
  * 那台上的项目目录（项目级）；`None` = 用户级。
@@ -10116,7 +10117,6 @@ machine: string,
 project: string | null, digest: string, summary: unknown, };
 type CatalogIn = { machines: Array<CatalogMachine>, };
 type CatalogMachine = { id: string, label: string, gen: number, seenAt: number, assets: Array<CatalogAsset>, projectDirs: Array<string>, notes: { [key in string]: CatalogNote }, sharedMcp: boolean, };
-type CatalogMergeReq = { catalog: CatalogIn, };
 type CatalogNote = { text: string, rev: number, };
 type CatalogReply = { 
 /**
@@ -14045,7 +14045,7 @@ removed: boolean, said: string, };
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-入参 `NoArgs` · 回包 `MachineRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `MachineReadReq` · 回包 `MachineRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
@@ -14061,6 +14061,7 @@ hint: string, };
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
 type MachineRead = { machines: { [key in string]: MachineState }, empty: EmptyFace, };
+type MachineReadReq = Record<symbol, never>;
 type MachineStage = "deploy" | "attach";
 type MachineState = { 
 /**
@@ -14121,7 +14122,6 @@ detail: string | null,
  */
 route?: string, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
-type NoArgs = Record<symbol, never>;
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
@@ -14246,13 +14246,12 @@ type VersionRelation = "same" | "older" | "newer" | "incomparable";
 
 收 `args` · 可撤 · 只在流上
 
-入参 `MachineName` · 回包 `MachineState`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `MachineWakeReq` · 回包 `MachineState`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
-type MachineName = { machine: string, };
 type MachineStage = "deploy" | "attach";
 type MachineState = { 
 /**
@@ -14313,6 +14312,7 @@ detail: string | null,
  */
 route?: string, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
+type MachineWakeReq = { machine: string, };
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
@@ -14326,10 +14326,10 @@ type VersionRelation = "same" | "older" | "newer" | "incomparable";
 
 收 `args` · 可撤 · 只在流上
 
-入参 `MachineName` · 回包 `MachineStopped`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `MachineStopReq` · 回包 `MachineStopped`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type MachineName = { machine: string, };
+type MachineStopReq = { machine: string, };
 type MachineStopped = { stopped: string, pid: number | null, };
 ```
 
@@ -14489,7 +14489,7 @@ type ExitPolicyReadReq = Record<symbol, never>;
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --exit-policy-set`
 
-入参 `ExitPolicySet` · 回包 `ExitPolicy`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `ExitPolicySetReq` · 回包 `ExitPolicy`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type ExitPolicy = { 
@@ -14517,7 +14517,7 @@ path: string | null,
  * 这个值意味着什么的一句话。
  */
 said: string, };
-type ExitPolicySet = { killOnExit: boolean, };
+type ExitPolicySetReq = { killOnExit: boolean, };
 ```
 
 码：`bad_args` · `io_failed`
