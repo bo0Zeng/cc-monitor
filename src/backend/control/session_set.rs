@@ -477,12 +477,12 @@ pub(crate) fn launch_rows(rows: &[RowEdit], plan: &SetPlan, h: &mut Hands) -> Se
 /// 组名 ⇒ 为它建的那一组的 id（「为这一行建过的组还在就进它」：人改了显示名、绑定照旧；组解散了，那个 id 不在了，下次新建）。
 type Bindings = std::collections::BTreeMap<String, String>;
 
-/// 绑定那一份：状态（读不懂不覆盖）。
+/// 绑定那一份：状态（读不懂不覆盖；落点 · 上限照声明表）。
 const BINDINGS: crate::common::own_state::Doc<Bindings> =
-    crate::common::own_state::Doc::state(".cc-monitor/set-groups.json", 1 << 20);
+    crate::common::own_state::Doc::of(&relay_route_core::SET_GROUPS_FILE);
 
 /// 绑定那一份的文件名（数据目录底下）。
-const BINDINGS_FILE: &str = "set-groups.json";
+const BINDINGS_FILE: &str = relay_route_core::file_name_of(BINDINGS.rel);
 
 /// 为组名 `name` 建过的那一组的 id（没有 · 读不出 ⇒ `None`）。
 pub(crate) fn bound(own: &crate::platform::fs::Own, name: &str) -> Option<String> {
@@ -510,8 +510,7 @@ pub(crate) fn bind(
         crate::common::own_state::Read::Unreadable(why) => return Err(why),
     };
     b.insert(name.to_string(), id.to_string());
-    let body = crate::common::own_state::json_body(file.as_path(), &b)?;
-    own.write(&file, &held, &body)
+    BINDINGS.write(own, &home, &held, &b)
 }
 
 /// `set-launch` 的入参：照存好的哪一组补足、立刻起（补足是幂等的：连点两下不多起）。

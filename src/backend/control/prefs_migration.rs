@@ -33,11 +33,8 @@ pub(crate) const CONFIG_NAME: &str = "config.json";
 /// 本机在 `accounts.byMachine` 里的键（界面的 `LOCAL_ORIGIN`）。
 const LOCAL_ORIGIN: &str = "<local>";
 
-/// 读盘的上限（同 `prefs.json`：几张小表；机器表封顶 256 台）。
-const MAX_BYTES: u64 = 4 * 1024 * 1024;
-
-/// monitor 那份设置文件（只读，换形的来源）：状态（读不懂 ⇒ 不搬）。
-const CONFIG: Doc<Value> = Doc::state(".cc-monitor/config.json", MAX_BYTES);
+/// monitor 那份设置文件（只读，换形的来源）：状态（读不懂 ⇒ 不搬；上限照声明表）。
+const CONFIG: Doc<Value> = Doc::of(&relay_route_core::CONFIG_FILE);
 
 /// 拆出来的那一份：本机的。
 #[derive(Debug, Default, PartialEq)]
