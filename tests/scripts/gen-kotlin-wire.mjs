@@ -167,11 +167,15 @@ function loadCommands() {
   return out;
 }
 
-/** 手机按类型读回包的那几条命令（`cmd-wire/src/replies.rs` 那张表）。 */
+/** 手机按类型读回包的那几条命令（`cmd-wire/src/call.rs` 那张 `calls!` 表，一行 `入参 => "名字", 回包;`；两层入参同名的只算一条）。 */
 function phoneCommands() {
-  const text = readFileSync(join(ROOT, "src/common/cmd-wire/src/replies.rs"), "utf8");
-  const body = text.slice(text.indexOf("replies! {"));
-  return [...body.matchAll(/^\s*"([a-z0-9-]+)"\s*=>/gm)].map((m) => m[1]);
+  const text = readFileSync(join(ROOT, "src/common/cmd-wire/src/call.rs"), "utf8");
+  const start = text.indexOf("\ncalls! {");
+  if (start < 0) throw new Error("call.rs 里找不到 `calls! { … }` 那张表");
+  const body = text.slice(start, text.indexOf("\n}", start));
+  const names = [...body.matchAll(/^\s*[\w<>, ]+=>\s*"([a-z0-9-]+)"\s*,/gm)].map((m) => m[1]);
+  if (names.length < 10) throw new Error(`\`calls!\` 表只读到 ${names.length} 行 —— 读法坏了`);
+  return [...new Set(names)];
 }
 
 // ───────────────────── Rust 里哪些格是小数 ─────────────────────
@@ -965,7 +969,7 @@ function main() {
   writeFileSync(join(OUT_DIR, "Generated.kt"), `${header}\n${PREAMBLE}\n${types}`);
   writeFileSync(
     join(OUT_DIR, "Commands.kt"),
-    `${header}\n/** 手机按类型读回包的那几条命令 ⇒ 回包怎么解（\`cmd-wire/src/replies.rs\` 那张表 · 类型照 TypedCommands）。 */\nobject Commands {\n    val REPLIES: Map<String, JsonAdapter<*>> = mapOf(\n${table.join("\n")}\n    )\n\n    /** 每个不带类型参数的类型 ⇒ 它的编解码（按类取，不经反射）。 */\n    val BY_CLASS: Map<Class<*>, JsonAdapter<*>> by lazy {\n        mapOf(\n${byClass.map((k) => `            ${k}::class.java to ${k}.ADAPTER,`).join("\n")}\n        )\n    }\n}\n`,
+    `${header}\n/** 手机按类型读回包的那几条命令 ⇒ 回包怎么解（\`cmd-wire/src/call.rs\` 那张 \`calls!\` 表 · 类型照 TypedCommands）。 */\nobject Commands {\n    val REPLIES: Map<String, JsonAdapter<*>> = mapOf(\n${table.join("\n")}\n    )\n\n    /** 每个不带类型参数的类型 ⇒ 它的编解码（按类取，不经反射）。 */\n    val BY_CLASS: Map<Class<*>, JsonAdapter<*>> by lazy {\n        mapOf(\n${byClass.map((k) => `            ${k}::class.java to ${k}.ADAPTER,`).join("\n")}\n        )\n    }\n}\n`,
   );
   if (g.raw.length) process.stderr.write("原样（认不出的形）：\n  " + g.raw.join("\n  ") + "\n");
 }

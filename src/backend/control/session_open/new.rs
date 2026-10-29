@@ -4,29 +4,6 @@ use super::super::launch_account as la;
 use super::super::session_batch::{carriers, Deps, NameBase, Standing};
 use serde::{Deserialize, Serialize};
 
-/// 分叉自：源会话 ＋ 从哪条消息处。
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct ForkFrom {
-    /// 源会话 id。
-    pub(crate) sid: String,
-    /// 从哪条消息处分叉。
-    pub(crate) uuid: String,
-}
-
-/// 轮换：用哪一份策略。
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct RotationPick {
-    /// 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）；`null` ⇒ 这个会话不轮换（新会话用的那份不管它）。
-    #[cfg_attr(test, ts(type = "string | null"))]
-    pub(crate) strategy: Option<String>,
-}
-
 /// 哪一格不行（`data.field`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
