@@ -121,7 +121,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("machine-menu", "cf383ad3"),
     ("machine-read", "1f295a62"),
     ("machine-stop", "654c6786"),
-    ("machine-wake", "e5a4a45a"),
+    ("machine-wake", "106cb6fd"),
     ("machines-read", "6ca468b5"),
     ("machines-set", "61837fd4"),
     ("machines-try", "5264d7a3"),

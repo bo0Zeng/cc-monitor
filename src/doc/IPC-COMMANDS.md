@@ -14238,13 +14238,79 @@ type VersionRelation = "same" | "older" | "newer" | "incomparable";
 
 收 `args` · 可撤 · 只在流上
 
-入参 `MachineName` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `MachineName` · 回包 `MachineState`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
+type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
+type MachineFixButton = { fix: MachineFix, label: string, };
 type MachineName = { machine: string, };
+type MachineStage = "deploy" | "attach";
+type MachineState = { 
+/**
+ * 给人看的那台的名字（问题行那一句里说的就是它）。
+ */
+name: string, state: MachineStateKind, 
+/**
+ * 算不算离线（页头「N 台离线」数的就是这一格）：没连上 · 指纹不对 · 做不了 ⇒ 是；登录过了、只是拒开会话 ⇒ 不是。
+ */
+offline: boolean, 
+/**
+ * 没连上的原因码（`down` · `host_key_changed` 才有）。
+ */
+reason: DialWhy | null, 
+/**
+ * 正在连时到哪一步。
+ */
+stage: MachineStage | null, 
+/**
+ * 那台 cc-monitor 的产品版本号：与这一版同一份字节时就是这一版的号；别的报不出 ⇒ 空。
+ */
+version: string | null, 
+/**
+ * 与这一版的版本关系（握手过才有）。
+ */
+versionRelation: VersionRelation | null, 
+/**
+ * 那台的系统（部署问到过才有）。
+ */
+os: string | null, 
+/**
+ * 名字旁那个词（连着时空）。
+ */
+word: string, 
+/**
+ * 问题行那一句（空 ⇒ 不出问题行）。
+ */
+said: string, 
+/**
+ * 那台离线那一句（恒有，连接层写的；哪一态都带着）。出口要说那台离线时照摆这一句，不各自取字。
+ */
+offlineSaid: string, fixes: Array<MachineFixButton>, 
+/**
+ * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
+ */
+seenHostKey: string | null, 
+/**
+ * 指纹不对时库里记下的那一枚（`host_key_changed` 才有；库里没有同类型的 ⇒ 空串）。拨号核心说的，不在这里算。
+ */
+expectedHostKey: string | null, 
+/**
+ * 复制详情：这一轮没连上 / 做不了时那一份（界面照原样跟在问题行那句后面）；连着时末尾接每条连接那一段（卡头 ⋯ 里复制）。
+ */
+detail: string | null, 
+/**
+ * 到这台怎么连过去的那一句（「经跳板 devbox · 经代理」；多跳外到内「经跳板 a → b」）：跳板照配置，经代理连上了才知道。
+ * 直连又不经代理 ⇒ 省略。界面有就摆一行，不拼字；每条连接的读数不上卡头，在 `detail` 末尾「连接：」那一段。
+ */
+route?: string, };
+type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
+type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
-码：`bad_args`
+码：`bad_args` · `unknown_machine` · `disabled` · `busy`
+
+失败带 `data` 的码：`busy` ⇒ `MachineState`
 
 #### `machine-stop`
 

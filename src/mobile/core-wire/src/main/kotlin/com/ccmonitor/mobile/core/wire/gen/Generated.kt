@@ -9143,8 +9143,8 @@ data class HistoryReadReq(
         val ADAPTER: JsonAdapter<HistoryReadReq> = obj(
             listOf(
             Field("path", { Str }, optional = false, nullable = false),
-            Field("offset", { opt(Lng) }, optional = true, nullable = true),
-            Field("until", { opt(Lng) }, optional = true, nullable = true),
+            Field("offset", { opt(U64) }, optional = true, nullable = true),
+            Field("until", { opt(U64) }, optional = true, nullable = true),
             ),
             { a -> HistoryReadReq(a[0] as String, a[1] as Long?, a[2] as Long?) },
             { v -> arrayOf(v.path, v.offset, v.until) },
@@ -9466,7 +9466,7 @@ data class HistoryTailReq(
         val ADAPTER: JsonAdapter<HistoryTailReq> = obj(
             listOf(
             Field("path", { Str }, optional = false, nullable = false),
-            Field("n", { Lng }, optional = false, nullable = false),
+            Field("n", { U64 }, optional = false, nullable = false),
             Field("held", { opt(Held.ADAPTER) }, optional = true, nullable = true),
             ),
             { a -> HistoryTailReq(a[0] as String, a[1] as Long, a[2] as Held?) },
