@@ -79,11 +79,11 @@ export async function stopMany(tabs: readonly Tab[]): Promise<BatchOutcome[]> {
   return parts.flat();
 }
 
-/** 开终端那一形：后端渲好的那一行，monitor 开窗（本机带起始目录，远端经 `openTerminal`）。开不了 ⇒ 那一句。 */
-async function openWindow(origin: Origin, cmd: string, cwd: string | null): Promise<string | null> {
+/** 开终端那一形：后端渲好的那一行，monitor 开窗（本机带起始目录，远端经 `openTerminal`，带上那条会话）。开不了 ⇒ 那一句。 */
+async function openWindow(origin: Origin, cmd: string, cwd: string | null, sid: string): Promise<string | null> {
   try {
     if (isLocalOrigin(origin)) await openLocalTerminal(cmd, cwd);
-    else await openTerminal(origin, cmd);
+    else await openTerminal(origin, cmd, sid);
     return null;
   } catch (e) {
     return failSaid(copyText("tabBatch.why.windowFailed"), e);
@@ -99,7 +99,7 @@ async function startOne(origin: Origin, sid: string, run: Run): Promise<BatchOut
   const o = end.opened;
   if (o.landed === "running") return { sid, outcome: "skipped", why: copyText("tabBatch.why.running", { name: o.session ?? "" }) };
   if (BACKGROUND_OPENS.has(o.landed) && o.line !== null) {
-    const failed = await openWindow(origin, o.line, o.cwd);
+    const failed = await openWindow(origin, o.line, o.cwd, o.sid ?? sid);
     if (failed !== null) return { sid, outcome: "failed", why: failed };
   }
   return { sid, outcome: "done", why: "" };

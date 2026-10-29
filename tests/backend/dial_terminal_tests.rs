@@ -558,7 +558,7 @@ fn login(
     let req: TerminalSshReq =
         crate::wire::typed::take(&wire).map_err(|f| ("bad_args", f.message))?;
     let aliases: Vec<String> = aliases.iter().map(|a| a.to_string()).collect();
-    answer_with(&req, &hosts, &aliases, powershell, ssh).map(|r| r.command)
+    answer_with(&req, &hosts, &aliases, powershell, ssh, None).map(|r| r.command)
 }
 
 /// 机器表里那台：ssh 外壳照旧，`--` 后面不跟命令 ⇒ 那台自己的登录 shell（那台是什么系统都成）。
@@ -662,4 +662,142 @@ fn a_login_shell_still_needs_an_ssh_client_and_both_forms_together_are_refused()
     )
     .unwrap_err();
     assert_eq!(e.0, "bad_args");
+}
+
+// ───── 带了 sid：那一行前面接前奏，开的那个 shell 记下自己的窗口标签（`opened_windows.rs`） ─────
+
+fn with_sid(
+    m: Value,
+    cmd: &str,
+    sid: Option<&str>,
+    powershell: bool,
+    ssh: &SshClient,
+    dir: Option<&std::path::Path>,
+) -> Result<String, CmdErr> {
+    let mut wire = json!({ "machine": m["label"], "command": cmd });
+    if let Some(s) = sid {
+        wire["sid"] = json!(s);
+    }
+    let hosts = vec![crate::dial::machine::loose(&m)?];
+    let req: TerminalSshReq =
+        crate::wire::typed::take(&wire).map_err(|f| ("bad_args", f.message))?;
+    answer_with(&req, &hosts, &[], powershell, ssh, dir).map(|r| r.command)
+}
+
+#[test]
+fn a_sid_puts_the_record_step_in_front_of_the_powershell_line_and_nothing_else_changes() {
+    let m = machine("192.0.2.2", "u", 22, None);
+    let dir = std::path::Path::new(r"C:\Users\u\.cc-monitor\opened-windows");
+    let plain = with_sid(
+        m.clone(),
+        "claude --resume s1",
+        None,
+        true,
+        &found(),
+        Some(dir),
+    )
+    .unwrap();
+    let with = with_sid(
+        m.clone(),
+        "claude --resume s1",
+        Some("s1"),
+        true,
+        &found(),
+        Some(dir),
+    )
+    .unwrap();
+    let (front, rest) = with.split_at(with.len() - plain.len());
+    assert_eq!(rest, plain, "后面那一行一字不变");
+    assert!(
+        front.starts_with("try { & {") && front.ends_with("catch {}; "),
+        "{front}"
+    );
+    assert!(
+        front.contains(&ps_literal(&dir.join("s1").to_string_lossy())),
+        "{front}"
+    );
+    assert!(
+        front.contains("$PID") && front.contains("ToFileTime()"),
+        "标签与接入块同一个键：{front}"
+    );
+    assert!(!front.contains('"'), "PowerShell 那一形不带双引号：{front}");
+    assert_eq!(
+        with_sid(
+            m.clone(),
+            "claude --resume s1",
+            Some("s1"),
+            true,
+            &found(),
+            None
+        )
+        .unwrap(),
+        plain,
+        "目录没建成 ⇒ 不带前奏"
+    );
+}
+
+#[test]
+fn a_sid_without_a_command_is_refused() {
+    let m = machine("192.0.2.2", "u", 22, None);
+    let hosts = vec![crate::dial::machine::loose(&m).unwrap()];
+    let req: TerminalSshReq =
+        crate::wire::typed::take(&json!({ "machine": "192.0.2.2", "sid": "s1" })).unwrap();
+    let e = answer_with(&req, &hosts, &[], true, &found(), None).unwrap_err();
+    assert_eq!(e.0, "bad_args");
+}
+
+/// POSIX 那一形交给真 `bash -c` 跑：假 `ssh` 记下自己与父进程的进程号 ⇒ 记录里的标签是跑那一行的 shell（或 exec 成的 ssh）、
+/// 起始时刻是 `/proc` 那一格，第二行是那台的名字；ssh 收到的参数照旧。
+#[cfg(target_os = "linux")]
+#[test]
+fn the_posix_record_step_writes_the_label_of_the_shell_that_runs_the_line() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("ccm-opened-line-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("opened-windows")).unwrap();
+    let pids = dir.join("pids");
+    let fake = dir.join("ssh");
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\necho \"$$ $PPID $(sed 's/.*) //' /proc/$$/stat | cut -d' ' -f20) $(sed 's/.*) //' /proc/$PPID/stat | cut -d' ' -f20)\" > '{}'\n",
+            pids.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let line = with_sid(
+        machine("192.0.2.3", "u", 22, None),
+        "claude --resume s1",
+        Some("s1"),
+        false,
+        &SshClient::At(fake.to_str().unwrap().into()),
+        Some(&dir.join("opened-windows")),
+    )
+    .unwrap();
+    let st = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(&line)
+        .status()
+        .unwrap();
+    assert!(st.success(), "{line}");
+    let rec = std::fs::read_to_string(dir.join("opened-windows/s1")).unwrap();
+    let seen: Vec<String> = std::fs::read_to_string(&pids)
+        .unwrap()
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
+    let _ = std::fs::remove_dir_all(&dir);
+    let got = crate::dial::opened_windows::parse(&rec).expect(&rec);
+    assert_eq!(got.machine, "192.0.2.3", "{rec}");
+    let ours = [
+        format!("{}-{}", seen[0], seen[2]),
+        format!("{}-{}", seen[1], seen[3]),
+    ];
+    assert!(
+        ours.contains(&got.label),
+        "标签 {} 不是跑那一行的 shell（{ours:?}）",
+        got.label
+    );
+    assert!(!dir.join("opened-windows/s1.part").exists());
 }

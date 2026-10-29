@@ -3,15 +3,18 @@
 //!
 //! - 本机会话：显示它的终端进程（在 tmux 里 ⇒ 连着它的 tmux 客户端；不在 ⇒ 它自己，`observe/session_terminals.rs::here_by`）
 //!   往上数进程链（`dial/terminal_processes.rs::chain`，一趟读这台的进程表）。
-//! - 远端会话：经 `--resident-call` 问那台的常驻 `session-terminals`（谁在显示它，那台的原因照搬），
-//!   报来的终端连接拿这台的连接表对（`dial/terminal_processes.rs`，对不上的原因照搬）。
+//! - 远端会话：终端是 cc-monitor 开的 ⇒ 先照开的那一刻记下的标签在这台找（`dial/opened_windows.rs`：那个 shell 还是它、
+//!   它自己或底下开着 ssh ⇒ 从那个 ssh 往上的链），找到就不问那台；
+//!   否则经 `--resident-call` 问那台的常驻 `session-terminals`（谁在显示它，那台的原因照搬），
+//!   报来的终端连接拿这台的连接表对（`dial/terminal_processes.rs`，对不上的原因照搬）。这台的表一趟只读一次。
 //! - `labels`：各终端带的窗口标签（`LC_CCM_WINDOW`，最近动静在前），壳先按它找；`chain` 空 ⇔ `face` 在。
 //! - `face`：用那台的名字写好的那一张（`cmd_wire::front::Unplaced::face`）。会话不在 · 那台旧 · 那台到期 · 那台没问到（那一句是连接层写的，照摆）
 //!   也是那一张，不是码；码只剩这台自己没查成的 `failed` · `child_timed_out`。
 //! - `tmux`：会话在 tmux 里（窗口关了时壳才给［在终端里打开］，出口原样交壳）。
 
+use crate::dial::opened_windows::Records;
 use crate::dial::remote_ask::{Remote, Said, Table};
-use crate::dial::terminal_processes::{Link, TerminalProcessesReq};
+use crate::dial::terminal_processes::{Link, OpenedHere, TerminalProcessesReq};
 use crate::observe::session_terminals::{Here, Showing, ShownWhy, SidReq};
 use cmd_wire::front::{FrontFace, Unplaced};
 use serde::Serialize;
@@ -66,7 +69,7 @@ impl crate::wire::typed::Command for SessionWindowCmd {
 }
 
 impl crate::wire::typed::Handle for SessionWindowCmd {
-    type Needs = crate::wire::typed::needs::Nothing;
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: SessionWindowReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
@@ -81,6 +84,7 @@ impl crate::wire::typed::Handle for SessionWindowCmd {
                 cx.until,
                 &crate::dial::remote_ask::REACH,
                 &crate::dial::remote_ask::DialRemote,
+                crate::dial::opened_windows::OnDisk(cx.needs),
             )
             .await
         }
@@ -106,7 +110,7 @@ fn local_here(sid: String) -> Result<Option<Here>, SessionWindowErr> {
 }
 
 /// 本体（本机那一问 · 这台的两张表 · 可达表 · 对面由调用方给，判据喂替身）。
-pub(crate) async fn answer_with<H, Q>(
+pub(crate) async fn answer_with<H, Q, R>(
     req: &SessionWindowReq,
     here: H,
     tables: Q,
@@ -114,10 +118,12 @@ pub(crate) async fn answer_with<H, Q>(
     until: Option<crate::platform::child::Until>,
     table: &Table,
     remote: &dyn Remote,
+    records: R,
 ) -> Result<SessionWindow, SessionWindowErr>
 where
     H: FnOnce(String) -> Result<Option<Here>, SessionWindowErr> + Send + 'static,
     Q: FnOnce() -> Result<String, String> + Send + 'static,
+    R: Records,
 {
     let sid = req.sid.as_str().to_string();
     if req.machine.is_local() {
@@ -140,6 +146,16 @@ where
             crate::common::contract::malformed("`machine` must name a machine"),
         ));
     };
+    // 本机开过的那个终端：先照开的那一刻记下的标签在这台找，找到就不问那台；这一趟读的这台的表留给下面那一支用。
+    let (hit, tables) = {
+        let (sid, machine) = (sid.clone(), machine.clone());
+        tokio::task::spawn_blocking(move || opened_here(&records, &sid, &machine, tables))
+            .await
+            .map_err(|e| SessionWindowErr::Failed(e.to_string()))?
+    };
+    if let Some(w) = hit {
+        return Ok(w);
+    }
     let shown =
         crate::dial::remote_ask::ask_resident::<crate::faces::feature_face::SessionTerminals>(
             &machine,
@@ -156,6 +172,50 @@ where
         Ok(shown) => blocking(move || remote_window(shown, tables, &machine)).await,
         Err(s) => Ok(reason(Vec::new(), false, not_asked(s)?, &machine)),
     }
+}
+
+/// 这台的连接表与进程表那一趟：没读过 ⇒ 到用的时候读；读过 ⇒ 用读到的那一份。
+type TablesOnce = Box<dyn FnOnce() -> Result<String, String> + Send>;
+
+/// 本机开过的那个终端（`dial/opened_windows.rs`）：记下的那台就是这台 · 标签那个 shell 还是它 · 它自己或底下开着 ssh
+/// ⇒ 从那个 ssh 往上的链（`labels` 就是那个标签；不问那台，说不出在不在 tmux 里 ⇒ `tmux: false`）。
+/// shell 没了 ⇒ 删那一份。没记 · 别台的 · 没开着 ssh ⇒ `None`，问那台。
+fn opened_here<Q, R>(
+    records: &R,
+    sid: &str,
+    machine: &str,
+    tables: Q,
+) -> (Option<SessionWindow>, TablesOnce)
+where
+    Q: FnOnce() -> Result<String, String> + Send + 'static,
+    R: Records,
+{
+    let Some(rec) = records.get(sid).filter(|r| r.machine == machine) else {
+        return (None, Box::new(tables));
+    };
+    let raw = tables();
+    let found = raw
+        .clone()
+        .and_then(|r| crate::dial::terminal_processes::parse_tables(&r))
+        .map(|t| crate::dial::terminal_processes::opened_chain(&rec.label, &t.procs));
+    let hit = match found {
+        Ok(OpenedHere::Chain(chain)) => Some(SessionWindow {
+            labels: vec![rec.label],
+            chain,
+            tmux: false,
+            face: None,
+        }),
+        Ok(OpenedHere::Gone) => {
+            records.forget(sid);
+            None
+        }
+        Ok(OpenedHere::NoSsh) => None,
+        Err(e) => {
+            tracing::warn!("session-window: 进程表没问成：{e}");
+            None
+        }
+    };
+    (hit, Box::new(move || raw))
 }
 
 /// 阻塞的那一段（读 `/proc` · 起 tmux · 读系统表）放到阻塞线程上。
