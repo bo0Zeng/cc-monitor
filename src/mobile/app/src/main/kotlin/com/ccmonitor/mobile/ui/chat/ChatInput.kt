@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -113,8 +115,7 @@ internal fun ChatInputArea(
     Surface(color = tokens.bg2) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs)) {
             chipLine(state)?.let { (text, warn) -> NoteLine(text, warn) }
-            state.queue.forEach { QueueRow(it, actions) }
-            state.outbox.forEach { OutboxRow(it, actions) }
+            QueueRows(queueRows(state.queue, state.outbox), actions)
             if (attach != null && actions.attach != null) {
                 AttachArea(attach, actions.attach) {
                     actions.loadCommands()
@@ -160,46 +161,41 @@ internal fun ChatInputArea(
     }
 }
 
-/** 输入队名单里的一条（会话那台那一份）：那一句 · 那台写好的那一句（排队 · 第 N …）与发自哪一端 ·［撤回］。 */
+/** 输入框上方那一排（名单 ＋ 待发，[queueRows]）：一条一行，限高 [QUEUE_ROWS_MAX] 行、多了框里滚，不往上顶流。没有一条 ⇒ 不画。 */
 @Composable
-private fun QueueRow(
-    line: QueueLine,
+private fun QueueRows(
+    rows: List<QueueRowFace>,
     actions: ChatInputActions,
 ) {
-    val tokens = LocalAppTokens.current
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = tokens.spacing.xs).testTag(ChatTestTags.QUEUE),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(line.text, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(listOf(line.said, line.from).joinToString(copyText("kit.text.sep")), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        SecondaryButton(onClick = { actions.cancelQueued(line.id) }) { Text(copyText("mobChat.outbox.cancel")) }
+    if (rows.isEmpty()) return
+    Column(Modifier.fillMaxWidth().heightIn(max = Touch.rowSingle * QUEUE_ROWS_MAX).verticalScroll(rememberScrollState())) {
+        rows.forEach { QueueRow(it, actions) }
     }
 }
 
-/** 待发里的一句（会话那台还没回执）：那一句 · 「发送中」或那台拒的那一句 ·［撤］（拒了的另有［重试］）。 */
+/** 一行：状态（错误色 ⇐ 没送进会话 · 那台拒了）· 发自哪一端 · 开头 ·［重试］（拒了的待发）·［撤回］字按钮。 */
 @Composable
-private fun OutboxRow(
-    line: OutboxLine,
+private fun QueueRow(
+    row: QueueRowFace,
     actions: ChatInputActions,
 ) {
     val tokens = LocalAppTokens.current
+    val faint = MaterialTheme.colorScheme.onSurfaceVariant
     Row(
-        Modifier.fillMaxWidth().padding(vertical = tokens.spacing.xs).testTag(ChatTestTags.OUTBOX),
+        Modifier.fillMaxWidth().heightIn(min = Touch.rowSingle).testTag(if (row.listed) ChatTestTags.QUEUE else ChatTestTags.OUTBOX),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(line.text, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(line.said, style = MaterialTheme.typography.bodySmall, color = if (line.failed) tokens.errorText else MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        if (line.retry) SecondaryButton(onClick = { actions.retry(line.id) }) { Text(copyText("terminal.input.retry")) }
-        SecondaryButton(onClick = { actions.cancel(line.id) }) { Text(copyText("mobChat.outbox.cancel")) }
+        Text(row.state, style = MaterialTheme.typography.bodySmall, color = if (row.error) tokens.errorText else MaterialTheme.colorScheme.onSurface, maxLines = 1)
+        row.from?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1) }
+        Text(row.head, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (row.retry) SecondaryButton(onClick = { actions.retry(row.id) }) { Text(copyText("terminal.input.retry")) }
+        SecondaryButton(onClick = { if (row.listed) actions.cancelQueued(row.id) else actions.cancel(row.id) }) { Text(copyText("mobChat.outbox.cancel")) }
     }
 }
+
+/** 那一排至多几行高（同桌面）。 */
+private const val QUEUE_ROWS_MAX = 3
 
 /** 已有的那条才有的那几颗：［+］· 模型 · 权限档（点了升起哪一个抽屉经 [open]）。 */
 @Composable

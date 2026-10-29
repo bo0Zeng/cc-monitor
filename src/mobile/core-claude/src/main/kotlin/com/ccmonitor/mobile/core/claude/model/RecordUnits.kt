@@ -154,6 +154,7 @@ class RecordUnits {
             is Speaker.BashOutput -> RenderUnit.BashOutput(id, s.stdout, s.stderr, id)
             is Speaker.CompactSummary -> RenderUnit.CompactSummary(id, text, id)
             Speaker.Interrupt -> RenderUnit.Interrupt(id, r.timeText, id)
+            Speaker.AgentTask -> RenderUnit.Brief(id, text, r.timeText, id)
             else -> null
         }
     }

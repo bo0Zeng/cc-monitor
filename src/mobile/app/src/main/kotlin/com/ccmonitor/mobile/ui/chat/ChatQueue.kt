@@ -6,6 +6,7 @@ import com.ccmonitor.mobile.core.claude.link.SessionQueueCancel
 import com.ccmonitor.mobile.core.claude.link.SessionQueueRead
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.QueueList
+import com.ccmonitor.mobile.core.wire.gen.QueueState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -62,7 +63,7 @@ internal class ChatQueue(
     }
 
     /** 输入框上方那一排：名单里每一条（先后照那台）。 */
-    fun lines(): List<QueueLine> = list?.items.orEmpty().map { QueueLine(it.id, it.said, it.from, it.text) }
+    fun lines(): List<QueueLine> = list?.items.orEmpty().map { QueueLine(it.id, it.said, it.from, it.text, it.state == QueueState.UNDELIVERED) }
 
     /** 那一句此刻在名单里（流里不再另画它）。 */
     fun holds(id: String): Boolean = list?.items.orEmpty().any { it.id == id }
@@ -84,10 +85,35 @@ internal class ChatQueue(
     }
 }
 
-/** 输入框上方那一排里的一条：会话那台写好的那一句（排队 · 第 N …）· 发自哪一端 · 那一句 ·［撤回］。 */
+/** 名单里的一条：会话那台写好的那一句（排队 · 第 N · 未送达 …）· 发自哪一端 · 那一句 · 没送进会话。 */
 data class QueueLine(
     val id: String,
     val said: String,
     val from: String,
     val text: String,
+    val undelivered: Boolean,
 )
+
+/**
+ * 输入框上方那一排的一行（名单与待发同一种，一条一行）：状态（那台那一句）· 发自哪一端（待发没有）· 开头（只取第一行）·
+ * 状态错误色（没送进会话 · 那台拒了）·［重试］（拒了的待发）；[listed] ⇒［撤回］撤名单里那一条，否则撤待发。
+ */
+data class QueueRowFace(
+    val id: String,
+    val state: String,
+    val from: String?,
+    val head: String,
+    val error: Boolean,
+    val retry: Boolean,
+    val listed: Boolean,
+)
+
+/** 名单在前（先后照那台），待发接在后面。 */
+fun queueRows(
+    queue: List<QueueLine>,
+    outbox: List<OutboxLine>,
+): List<QueueRowFace> =
+    queue.map { QueueRowFace(it.id, it.said, it.from, headOf(it.text), error = it.undelivered, retry = false, listed = true) } +
+        outbox.map { QueueRowFace(it.id, it.said, null, headOf(it.text), error = it.failed, retry = it.retry, listed = false) }
+
+private fun headOf(text: String): String = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()

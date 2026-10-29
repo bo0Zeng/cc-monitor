@@ -1,11 +1,16 @@
 package com.ccmonitor.mobile.ui.chat
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -15,13 +20,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.cache.ChatCache
 import com.ccmonitor.mobile.core.claude.link.CoreLink
@@ -31,10 +39,12 @@ import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.sheet.ActionSheet
 import com.ccmonitor.mobile.core.ui.sheet.SheetAction
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.wire.gen.Rewind
 import com.ccmonitor.mobile.core.wire.gen.RewindHow
 import com.ccmonitor.mobile.core.wire.gen.RewindOptions
@@ -48,7 +58,7 @@ import java.util.UUID
 
 /*
  * 编辑已发的一句（手机）：自己那句（记录里的）长按 ⇒「编辑 · 复制」；还在队里、没送进的那一句长按 ⇒「撤回」（同那一排的撤）。
- * 编辑：气泡变编辑框、原文填好，下面的流淡掉；改字落本地草稿。发送 ⇒ 问会话那台 `session-rewind-options`，底部弹层照回包摆
+ * 编辑：气泡变编辑框、原文填好，下面的流淡掉；改字落本地草稿。开框就问会话那台 `session-rewind-options`，发送 ⇒ 底部抽屉照回包摆
  * 「怎么退」几项（缺省先选上）、主 agent 在干活多一行「什么时候退」（缺省等这一轮跑完）；回包没项 ⇒ 只写那一句为什么。
  * 确认 ⇒ 带 `rewind` 的那一句进待发（同编号重交 · 回执才算出去，[ChatSession.sayEdited]）。选项的字都是那台写好的。
  */
@@ -218,6 +228,14 @@ internal fun saidHooks(
     var editing by remember { mutableStateOf<RenderUnit.UserText?>(null) }
     var asking by remember { mutableStateOf<Pair<RenderUnit.UserText, String>?>(null) }
     var pick by remember { mutableStateOf<RewindPick>(RewindPick.Asking) }
+    var asks by remember { mutableIntStateOf(0) }
+    // 开框就问；会话忙闲一变 · 点了［重试］再问，抽屉照新回包重摆（界面不自己判在干活）。
+    editing?.let { u ->
+        LaunchedEffect(u.key, state.running, asks) {
+            pick = RewindPick.Asking
+            u.sourceUuid?.let { pick = said.options(it) }
+        }
+    }
     menu?.let { u ->
         SaidMenu(
             recorded = u.sourceUuid != null && u.delivery == null,
@@ -228,12 +246,10 @@ internal fun saidHooks(
         )
     }
     asking?.let { (u, text) ->
-        LaunchedEffect(u.key, text) {
-            pick = RewindPick.Asking
-            u.sourceUuid?.let { pick = said.options(it) }
-        }
         RewindSheet(
             pick = pick,
+            target = u.text,
+            onRetry = { asks++ },
             onConfirm = { how, whn ->
                 u.sourceUuid?.let { said.send(it, text, how, whn) }
                 asking = null
@@ -315,49 +331,107 @@ sealed interface RewindPick {
     ) : RewindPick
 }
 
-/** 底部弹层：照那台交的选项摆「怎么退」·「什么时候退」，确认 ⇒ [onConfirm]。没项 ⇒ 只写那一句为什么。 */
+/** 退法抽屉底下那几颗：［取消］·［回退并发送］（主按钮）·［重试］（贴在问不到那一句右边）·［关闭］。 */
+internal enum class SheetAct { CANCEL, CONFIRM, RETRY, CLOSE }
+
+/** 退法抽屉此刻摆什么：在问 ⇒ 两行骨架（不跳高）；[acts] 先后照摆；[confirm] 主按钮能不能点。 */
+internal data class SheetFace(
+    val skeleton: Boolean,
+    val acts: List<SheetAct>,
+    val confirm: Boolean,
+)
+
+/** 在问 ⇒ 骨架 ＋［取消］＋ 灰着的主按钮；有能选的 ⇒［取消］＋ 主按钮；一项都不能选 ⇒［关闭］；问不到 ⇒［重试］＋［取消］。 */
+internal fun sheetFace(pick: RewindPick): SheetFace =
+    when (pick) {
+        RewindPick.Asking -> SheetFace(skeleton = true, acts = listOf(SheetAct.CANCEL, SheetAct.CONFIRM), confirm = false)
+        is RewindPick.Failed -> SheetFace(skeleton = false, acts = listOf(SheetAct.RETRY, SheetAct.CANCEL), confirm = false)
+        is RewindPick.Got ->
+            if (defaultsOf(pick.options) == null) {
+                SheetFace(skeleton = false, acts = listOf(SheetAct.CLOSE), confirm = false)
+            } else {
+                SheetFace(skeleton = false, acts = listOf(SheetAct.CANCEL, SheetAct.CONFIRM), confirm = true)
+            }
+    }
+
+/**
+ * 退法抽屉（已有的底部抽屉样式）：标题「回退并发送」＋ 退到哪一句之前（[target] 那句原文，截一行）；照那台交的选项摆「怎么退」·「什么时候退」，
+ * 按钮照 [sheetFace]。确认 ⇒ [onConfirm]；［重试］⇒ [onRetry]；［取消］·［关闭］· 下滑 ⇒ [onDismiss]。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RewindSheet(
     pick: RewindPick,
+    target: String,
+    onRetry: () -> Unit,
     onConfirm: (RewindHow, RewindWhen) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val tokens = LocalAppTokens.current
+    val face = sheetFace(pick)
+    val got = (pick as? RewindPick.Got)?.options
+    val first = got?.let(::defaultsOf)
+    var how by remember(got) { mutableStateOf(first?.first) }
+    var whn by remember(got) { mutableStateOf(first?.second) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = tokens.card, tonalElevation = 0.dp) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.md), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+            Column {
+                Text(copyText("mobSaidEdit.sheet.title"), style = MaterialTheme.typography.titleMedium)
+                // 「退到此句之前：」＋ 那句原文（截一行）：两截各摆，不拼进一句。
+                Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+                    val faint = MaterialTheme.colorScheme.onSurfaceVariant
+                    Text(copyText("mobSaidEdit.sheet.to"), style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1)
+                    Text(target.lineSequence().firstOrNull().orEmpty(), style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
             when (pick) {
-                RewindPick.Asking -> Text(copyText("mobSaidEdit.pick.loading"))
-                is RewindPick.Failed -> Text(pick.why)
-                is RewindPick.Got -> Choices(pick.options, onConfirm)
+                RewindPick.Asking -> Skeleton()
+                is RewindPick.Failed ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        ErrorLine(pick.why, Modifier.weight(1f))
+                        SecondaryButton(onClick = onRetry) { Text(copyText("front.act.retry")) }
+                    }
+                is RewindPick.Got -> {
+                    val o = pick.options
+                    if (o.how.isNotEmpty()) Text(copyText("mobSaidEdit.pick.how"), style = MaterialTheme.typography.labelMedium)
+                    o.how.forEach { r -> Choice(r.text, first != null && how == r.how, enabled = first != null && r.enabled, why = r.why) { how = r.how } }
+                    if (first != null && o.`when`.isNotEmpty()) {
+                        Text(copyText("mobSaidEdit.pick.when"), style = MaterialTheme.typography.labelMedium)
+                        o.`when`.forEach { r -> Choice(r.text, whn == r.`when`) { whn = r.`when` } }
+                    }
+                    o.said?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+                face.acts.forEach { a ->
+                    when (a) {
+                        SheetAct.CANCEL -> SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) }
+                        SheetAct.CLOSE -> SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) }
+                        SheetAct.RETRY -> Unit
+                        SheetAct.CONFIRM ->
+                            Button(
+                                onClick = { if (how != null && whn != null) onConfirm(how!!, whn!!) },
+                                enabled = face.confirm,
+                                modifier = Modifier.testTag(ChatTestTags.SAID_EDIT_CONFIRM),
+                            ) { Text(copyText("mobSaidEdit.pick.confirm")) }
+                    }
+                }
             }
         }
     }
 }
 
+/** 在问时的两行骨架：同选项那一行的高，问到了换上去不跳高。 */
 @Composable
-private fun Choices(
-    o: RewindOptions,
-    onConfirm: (RewindHow, RewindWhen) -> Unit,
-) {
-    val first = defaultsOf(o)
-    if (first == null) {
-        // 一项都不能选：各项为什么照写，不给确认。
-        o.how.forEach { r -> Choice(r.text, false, enabled = false, why = r.why) {} }
-        Text(o.said.orEmpty())
-        return
+private fun Skeleton() {
+    val tokens = LocalAppTokens.current
+    Text(copyText("mobSaidEdit.pick.loading"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    repeat(SKELETON_ROWS) {
+        Box(Modifier.fillMaxWidth().height(Touch.rowSingle).clip(RoundedCornerShape(tokens.radius.m)).background(MaterialTheme.colorScheme.surfaceVariant))
     }
-    var how by remember(o) { mutableStateOf(first.first) }
-    var whn by remember(o) { mutableStateOf(first.second) }
-    Text(copyText("mobSaidEdit.pick.how"), style = MaterialTheme.typography.labelMedium)
-    o.how.forEach { r -> Choice(r.text, how == r.how, enabled = r.enabled, why = r.why) { how = r.how } }
-    if (o.`when`.isNotEmpty()) {
-        Text(copyText("mobSaidEdit.pick.when"), style = MaterialTheme.typography.labelMedium)
-        o.`when`.forEach { r -> Choice(r.text, whn == r.`when`) { whn = r.`when` } }
-    }
-    o.said?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-    SecondaryButton(onClick = { onConfirm(how, whn) }, modifier = Modifier.testTag(ChatTestTags.SAID_EDIT_CONFIRM)) { Text(copyText("mobSaidEdit.pick.confirm")) }
 }
+
+private const val SKELETON_ROWS = 2
 
 @Composable
 private fun Choice(
@@ -367,10 +441,12 @@ private fun Choice(
     why: String? = null,
     onPick: () -> Unit,
 ) {
-    // 不能选：灰着、点不了，下面写那台那一句为什么。
+    // 不能选：灰着、点不了；那台那一句为什么缩在项字下面、淡色。
     Row(Modifier.fillMaxWidth().selectable(selected = selected, enabled = enabled, onClick = onPick), verticalAlignment = Alignment.CenterVertically) {
         RadioButton(selected = selected, onClick = onPick, enabled = enabled)
-        Text(text, color = if (enabled) Color.Unspecified else LocalAppTokens.current.textFaint)
+        Column {
+            Text(text, color = if (enabled) Color.Unspecified else LocalAppTokens.current.textFaint)
+            why?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.textFaint) }
+        }
     }
-    why?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 }
