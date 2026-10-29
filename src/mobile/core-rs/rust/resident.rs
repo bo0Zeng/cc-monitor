@@ -451,7 +451,13 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
                         (folds.frame(line), folds.listed())
                     };
                     // 簿里「清单报完了」刚翻真 ⇒ 记进那台的事实，首屏那一句跟着换。
-                    if listed && !mine.lock().unwrap_or_else(|e| e.into_inner()).entry.listed() {
+                    if listed
+                        && !mine
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .entry
+                            .listed()
+                    {
                         out.extend(note(id, |f| {
                             f.listed();
                             f.line(&name)
@@ -1162,10 +1168,18 @@ mod tests {
         assert_ne!(face.line, none, "b 还在连就说了无会话");
         assert!(face.hint.contains('b'), "没说 b 还在连：{}", face.hint);
         b.round(up(), "b");
-        assert_ne!(empty_of(&[&a, &b]).line, none, "b 连上了、还没报完就说了无会话");
+        assert_ne!(
+            empty_of(&[&a, &b]).line,
+            none,
+            "b 连上了、还没报完就说了无会话"
+        );
         b.listed();
         assert_eq!(empty_of(&[&a, &b]).line, none);
         a.round(State::Connecting, "a");
-        assert_ne!(empty_of(&[&a, &b]).line, none, "a 又在连，报完的那一次没作废");
+        assert_ne!(
+            empty_of(&[&a, &b]).line,
+            none,
+            "a 又在连，报完的那一次没作废"
+        );
     }
 }
