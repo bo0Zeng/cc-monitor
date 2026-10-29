@@ -1453,8 +1453,8 @@ fn account_item(account: &str) -> cmd_wire::needs::ManualItem {
 }
 
 /// 计划里要人看的一条（夹具）：工作区 · 片 · 落在哪一格（编号 · 「编号 标题」；`None` ⇒ 没有格可落）。
-fn plan_at(workspace: &str, slice: &str, cell: Option<(&str, &str)>) -> crate::plan::needs::NeedAt {
-    crate::plan::needs::NeedAt {
+fn plan_at(workspace: &str, slice: &str, cell: Option<(&str, &str)>) -> NeedAt {
+    NeedAt {
         workspace: workspace.into(),
         slice: slice.into(),
         cell: cell.map(|(id, label)| cmd_wire::needs::NeedsCell {

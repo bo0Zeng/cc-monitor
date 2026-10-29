@@ -781,12 +781,20 @@ const PLAN_RANK: u64 = (NEEDS_BY_DANGER.len() as u64 + 1) * NEEDS_TIER_SPAN;
 /// 会话外的（需登录的号 · MCP）排在计划格之后那一档。
 const MANUAL_RANK: u64 = (NEEDS_BY_DANGER.len() as u64 + 2) * NEEDS_TIER_SPAN;
 
+/// 计划里要人看的一条：哪个工作区 · 哪一片 · 落在哪一格（计划那一侧 `plan::needs::need_items` 算好交进来；没有格可落 ⇒ `None`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NeedAt {
+    pub(crate) workspace: String,
+    pub(crate) slice: String,
+    pub(crate) cell: Option<cmd_wire::needs::NeedsCell>,
+}
+
 /// **一台的需手动整份**（`sessions-needs` 的回包，唯一一处拼）：在等的会话（各带 `needs.rank`）· 计划里要人看的每一条
-/// （`plan` ＝ [`crate::plan::needs::need_items`] 摊开的那几条：工作区 · 片名 · 落在哪一格）· 会话外的（`manual`：读不出 ⇒ 那一句，那一截不列）。
+/// （`plan` ＝ [`NeedAt`] 那几条）· 会话外的（`manual`：读不出 ⇒ 那一句，那一截不列）。
 /// 排好：照 `rank`，并列照交进来的先后。纯计算。
 pub(crate) fn needs_list(
     sessions: Vec<cmd_wire::needs::NeedsRow>,
-    plan: &[crate::plan::needs::NeedAt],
+    plan: &[NeedAt],
     manual: Result<Vec<cmd_wire::needs::ManualItem>, String>,
     answered: Vec<cmd_wire::needs::AnsweredRow>,
 ) -> cmd_wire::needs::NeedsList {

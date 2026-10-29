@@ -16,6 +16,7 @@ use super::wire::{
     PlanBlock, PlanCell, PlanNeed, PlanRead, PlanReturned, PlanReturnedChild, PlanSlice,
     PlanStatusCode, PlanTakeover, PlanWho,
 };
+use crate::observe::recognize::facts::NeedAt;
 use copy_core::copy_text;
 
 /// 一个 id 对到的会话（`PlanWho`）此刻活不活：活着 ⇒ `Some(在干什么)`；不活 · 认不出 ⇒ `None`。只读那一格的整份脸。
@@ -225,15 +226,7 @@ pub(crate) fn open_cells(sl: &PlanSlice) -> Vec<Option<cmd_wire::needs::NeedsCel
         .collect()
 }
 
-/// 计划里要人看的一条：哪个工作区 · 哪一片 · 落在哪一格（[`open_cells`]）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct NeedAt {
-    pub(crate) workspace: String,
-    pub(crate) slice: String,
-    pub(crate) cell: Option<cmd_wire::needs::NeedsCell>,
-}
-
-/// 几份（标过认可的）成品里要人看的每一条，照成品 · 片 · [`open_cells`] 的先后摊开（`sessions-needs` 计划那一截）。
+/// 几份（标过认可的）成品里要人看的每一条，照成品 · 片 · [`open_cells`] 的先后摊开（`sessions-needs` 计划那一截，交给拼整份的那一处）。
 pub(crate) fn need_items(docs: &[PlanRead]) -> Vec<NeedAt> {
     docs.iter()
         .flat_map(|doc| {
