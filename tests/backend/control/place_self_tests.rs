@@ -171,12 +171,24 @@ fn p5_a_staged_copy_removes_the_landing_and_itself() {
     assert!(at_landing.exists());
 }
 
+/// 留存区（相对家目录）：落点那层 `bin` 底下的那一层。
+fn kept_rel() -> String {
+    let bin = Path::new(relay_route_core::BACKEND_LANDING_REL)
+        .parent()
+        .unwrap();
+    format!(
+        "{}/{}",
+        bin.display(),
+        relay_route_core::BACKEND_KEPT_DIR_NAME
+    )
+}
+
 fn kept(home: &Path, name: &str) -> PathBuf {
-    home.join(relay_route_core::BACKEND_KEPT_DIR_REL).join(name)
+    home.join(kept_rel()).join(name)
 }
 
 fn kept_names(home: &Path) -> Vec<String> {
-    let mut n: Vec<String> = std::fs::read_dir(home.join(relay_route_core::BACKEND_KEPT_DIR_REL))
+    let mut n: Vec<String> = std::fs::read_dir(home.join(kept_rel()))
         .map(|d| {
             d.filter_map(|e| e.ok()?.file_name().into_string().ok())
                 .collect()
@@ -241,19 +253,11 @@ fn p7_kept_copies_are_capped_and_expire() {
     let home = sandbox("p7");
     let own = Own::issue_at(&home);
     // 留存区里已有：一份过期的 · 几份没过期的（越往后越新）。
-    put(
-        &home,
-        &format!("{}/ccm-ancient", relay_route_core::BACKEND_KEPT_DIR_REL),
-        b"a",
-    );
+    put(&home, &format!("{}/ccm-ancient", kept_rel()), b"a");
     age(&kept(&home, "ccm-ancient"), KEPT_MAX_AGE_SECS + 3600);
     let fresh: Vec<String> = (0..KEPT_MAX).map(|i| format!("ccm-v{i}")).collect();
     for (i, n) in fresh.iter().enumerate() {
-        put(
-            &home,
-            &format!("{}/{n}", relay_route_core::BACKEND_KEPT_DIR_REL),
-            b"v",
-        );
+        put(&home, &format!("{}/{n}", kept_rel()), b"v");
         age(&kept(&home, n), 1000 * (KEPT_MAX - i) as u64);
     }
     put(
@@ -293,11 +297,7 @@ fn p9_uninstall_clears_the_kept_copies() {
         relay_route_core::BACKEND_LANDING_REL,
         &backend("old"),
     );
-    put(
-        &home,
-        &format!("{}/ccm-older", relay_route_core::BACKEND_KEPT_DIR_REL),
-        b"o",
-    );
+    put(&home, &format!("{}/ccm-older", kept_rel()), b"o");
     let staged = staged_at(&home, &backend("any"));
     assert_eq!(unplace(&own, &staged), Ok(true));
     assert!(kept_names(&home).is_empty(), "卸载该连留存区一起删");

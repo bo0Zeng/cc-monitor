@@ -19,7 +19,7 @@ const CMD: &str = "place-self";
 /// 复制详情「命令」那一项里卸载那一条的名字。
 const UNPLACE_CMD: &str = "unplace-self";
 
-/// 留存区（`relay_route_core::BACKEND_KEPT_DIR_REL`）最多留几份被盖掉的落点。
+/// 留存区（落点那层 `bin` 底下的 `relay_route_core::BACKEND_KEPT_DIR_NAME`）最多留几份被盖掉的落点。
 pub(crate) const KEPT_MAX: usize = 3;
 
 /// 留下的那一份过多久删（从留下的那一刻算）。
@@ -104,8 +104,8 @@ pub(crate) fn unplace(own: &Own, exe: &Path) -> Result<bool, Failed> {
     let removed = own
         .clear_landing()
         .map_err(|e| io_failed(relay_route_core::BACKEND_LANDING_REL, e))?;
-    for (at, _) in kept(own) {
-        drop_kept(own, &at);
+    for (name, _) in own.kept_backends() {
+        drop_kept(own, &name);
     }
     if let Ok(p) = staging.join(name) {
         let _ = own.delete_file(&p);
@@ -163,50 +163,26 @@ fn keep_old(own: &Own) -> Result<(), Failed> {
     let Some((bytes, name)) = old_copy(own)? else {
         return Ok(());
     };
-    let failed = |s: Said| ("place_failed", s);
-    let dir = own
-        .at_home(relay_route_core::BACKEND_KEPT_DIR_REL)
-        .map_err(failed)?;
-    own.own_dir(&dir).map_err(failed)?;
-    let held = own.lock(&dir).map_err(|e| failed(Said::from(e)))?;
-    own.write(&dir.join(&name).map_err(failed)?, &held, &bytes)
-        .map_err(failed)
-}
-
-/// 留存区里那几份：`(那一格, 留下的那一刻)`；留存区不在 · 列不出 ⇒ 空。
-fn kept(own: &Own) -> Vec<(OwnPath, std::time::SystemTime)> {
-    let Ok(dir) = own.at_home(relay_route_core::BACKEND_KEPT_DIR_REL) else {
-        return Vec::new();
-    };
-    let Ok(entries) = Ro::read_dir(dir.as_path()) else {
-        return Vec::new();
-    };
-    entries
-        .filter_map(|e| {
-            let e = e.ok()?;
-            let m = e.metadata().ok().filter(|m| m.is_file())?;
-            let at = dir.join(e.file_name().to_str()?).ok()?;
-            Some((at, m.modified().ok()?))
-        })
-        .collect()
+    own.keep_backend(&name, &bytes)
+        .map_err(|s| ("place_failed", s))
 }
 
 /// 删留存区里的一份；删不掉只进日志（不挡这一趟，下一趟再来）。
-fn drop_kept(own: &Own, at: &OwnPath) {
-    if let Err(e) = own.delete_file(at) {
-        tracing::warn!("留存区那一份 {} 没删掉：{e}", at.as_path().display());
+fn drop_kept(own: &Own, name: &str) {
+    if let Err(e) = own.drop_kept_backend(name) {
+        tracing::warn!("留存区那一份 {name} 没删掉：{e}");
     }
 }
 
 /// 留存区收拾：过了 [`KEPT_MAX_AGE_SECS`] 的删，余下按留下的先后只剩最新的 [`KEPT_MAX`] 份。
 fn prune_kept(own: &Own, now: std::time::SystemTime) {
-    let mut all = kept(own);
+    let mut all = own.kept_backends();
     all.sort_by(|a, b| b.1.cmp(&a.1));
     let max_age = std::time::Duration::from_secs(KEPT_MAX_AGE_SECS);
-    for (i, (at, when)) in all.iter().enumerate() {
+    for (i, (name, when)) in all.iter().enumerate() {
         let expired = now.duration_since(*when).is_ok_and(|d| d > max_age);
         if i >= KEPT_MAX || expired {
-            drop_kept(own, at);
+            drop_kept(own, name);
         }
     }
 }
