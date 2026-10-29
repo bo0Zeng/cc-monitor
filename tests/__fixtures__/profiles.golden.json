@@ -390,7 +390,21 @@
         "label": "第一句话"
       }
     ],
-    "tmux": true
+    "tmux": true,
+    "tmuxNaming": [
+      {
+        "mode": "auto",
+        "text": "名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n在会话窗格里敲则就地启动"
+      },
+      {
+        "mode": "fixed",
+        "text": "用填的名字 · 被占用则报错退出 · 不改名"
+      },
+      {
+        "mode": "base",
+        "text": "先用填的名字 · 被占用依次试 -2 -3…"
+      }
+    ]
   },
   "resolveReply": {
     "chain": [

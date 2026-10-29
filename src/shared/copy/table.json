@@ -12438,24 +12438,6 @@
       "zh": "查询中",
       "args": []
     },
-    "machineAliases.tmuxNaming.auto": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n在会话窗格里敲则就地启动",
-      "args": []
-    },
-    "machineAliases.tmuxNaming.named": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "用填的名字 · 被占用则报错退出 · 不改名",
-      "args": []
-    },
-    "machineAliases.tmuxNaming.base": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "先用填的名字 · 被占用依次 -2 -3",
-      "args": []
-    },
     "rsCcmInvocation.refusal.idSid": {
       "kind": "error",
       "role": "命令行",
@@ -26185,6 +26167,36 @@
       "role": "报错",
       "zh": "取消隐藏失败 · {title}",
       "args": ["title"]
+    },
+    "beProfile.tmuxNaming.auto": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "名字取自工作目录（目录名-cc） · {clash}\n在会话窗格里敲则就地启动",
+      "args": ["clash"]
+    },
+    "beProfile.tmuxNaming.fixed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "用填的名字 · {clash}",
+      "args": ["clash"]
+    },
+    "beProfile.tmuxNaming.base": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "先用填的名字 · {clash}",
+      "args": ["clash"]
+    },
+    "beProfile.tmuxNaming.stepAside": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "被占用依次试 -2 -3…",
+      "args": []
+    },
+    "beProfile.tmuxNaming.keep": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "被占用则报错退出 · 不改名",
+      "args": []
     },
     "beProfile.seedHint.two": {
       "kind": "body",
