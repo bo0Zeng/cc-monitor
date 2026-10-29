@@ -3,6 +3,7 @@ declare const classes: {
   readonly attachBar: string;
   readonly attachChip: string;
   readonly attachDrop: string;
+  readonly attachDropCard: string;
   readonly attachDropSub: string;
   readonly attachDropTitle: string;
   readonly attachName: string;

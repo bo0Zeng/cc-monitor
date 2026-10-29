@@ -1,4 +1,4 @@
-/* 终端面板输入行上方那一排附件：chip（小图 / 类别字 · 名字 · 状态 · ✕ · 细进度）与拖进来时的目标框。 */
+/* 输入框上方那一排附件：chip（小图 / 类别字 · 名字 · 状态 · ✕ · 细进度）与拖进主区时的目标框（半透明描边 ＋ 中间一张卡）。 */
 @layer components {
   .attachRow {
     display: flex;
@@ -83,11 +83,10 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: var(--space-2);
     border: 2px solid var(--accent);
     border-radius: var(--radius-m);
-    background: var(--bg-2);
-    opacity: 0.94;
+    /* 半透明：看得见底下的消息流，卡另有实底。 */
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
     inset: 0;
     pointer-events: none;
   }
@@ -96,7 +95,20 @@
     display: none;
   }
 
+  .attachDropCard {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-width: min(480px, calc(100% - 32px));
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    box-shadow: var(--shadow-float);
+  }
+
   .attachDropTitle {
+    composes: one-line from global;
     color: var(--text);
   }
 
