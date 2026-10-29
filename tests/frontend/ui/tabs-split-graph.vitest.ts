@@ -100,6 +100,8 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/detail.ts", // ↗ 浮层更新没成：［复制详情］复制壳带回的那份详情（`detailOf`）
     "src/frontend/ui/kit/toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
     "src/frontend/ui/new-session.ts", // forkFrom：消息流「从这里分叉」开起新会话框（分叉随起会话那一个请求写）
+    "src/frontend/ui/open-settings.ts", // 栏底机器条那一行的修法（重新连接以外）开那台的机器页
+    "src/frontend/ui/settings-dest.ts", // 同上：那台机器页那个目的地
     "src/frontend/ui/launch-slot.ts", // 起新会话之后的占位标签页：栏末那几行与盖在消息流上的那一页（报到了换成真的）
     "src/frontend/ui/front-pop.ts", // ↗ 的回执：「查找终端…」· 对勾 · 结局浮层
     "src/frontend/ui/front-result.ts", // ↗ 结局族 ⇒ 浮层的标题 · 正文 · 按钮
@@ -193,7 +195,7 @@ const DEPS: Record<string, readonly string[]> = {
   "src/frontend/ui/tab-bar-view.ts": [
     "src/frontend/ui/account-color.ts",
     "src/frontend/ui/tab-rename.ts", // 标签页就地改名：双击标题 · 登记给菜单 / 命令面板用的那一口
-    "src/frontend/ui/duration-format.ts", // 机器掉线那一行「多久前」没有起点时的 0（那一个读口写，单位不写死）
+    "src/frontend/ui/machine-strip.ts", // 栏底机器条：一行一台没连上的（照那台的状态成品摆）
     "src/frontend/ui/app-store.ts", // 号徽章 · 悬停那两行照会话那台写好的 `session-account`；停发那一句照 `rotation-view`：都从 store 读
     "src/frontend/ui/copy-table.ts", // 按钮上的图标 · 悬停提示 · 集合名提示进了文案表
     "src/frontend/ui/ipc/origin.ts", // 远端 tab 才挂 `.remote` / 走远端那条 ↗
@@ -268,6 +270,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/session-open.ts", // 恢复交那台（`session-open`：判号 · 放在哪 · 问记录都在那台，记录在不在随整份脸回来）
     "src/frontend/ui/session-reads.ts", // 那台重新对齐过 ⇒ 固定条逐条问记录还在不在（经通道问 `history-record`）
     "src/frontend/ui/tab-batch-run.ts", // 杀交那台（`sessions-stop`，与批量同一条）
+    "src/frontend/ui/end-confirm.ts", // 结束会话那一个确认框与那一种结局（右键 · 多选 · 终端名单 · 占位同一份）
   ],
 };
 

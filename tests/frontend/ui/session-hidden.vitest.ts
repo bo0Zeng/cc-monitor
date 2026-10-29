@@ -115,7 +115,7 @@ function bar(tabs: Tab[], prefs: Partial<TabBarPrefs> = {}) {
     toggleSelect: vi.fn(),
     openMenuAt: vi.fn(),
     rereadAll: vi.fn().mockResolvedValue(undefined),
-    reconnect: vi.fn(),
+    fixMachine: vi.fn(),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
   document.body.appendChild(el);
@@ -404,7 +404,7 @@ describe("会话头：「由 X 启动」「子会话 N」读会话事实那两�
 
   it("没有血缘、不隐藏 ⇒ 一颗都不出", () => {
     const t = tab("a");
-    const h = new SessionHead({ active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING });
+    const h = new SessionHead({ active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING });
     h.render(NOW);
     expect(h.el.querySelectorAll("[data-head=hidden], [data-head=parent], [data-head=children]").length).toBe(0);
   });

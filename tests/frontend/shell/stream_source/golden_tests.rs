@@ -110,8 +110,8 @@ impl std::io::Write for Warns {
     }
 }
 
-/// ③ 一条流里混进帧门拦下的（那台那一版形状不同 · 这一侧不认）与解不开的：好帧照收；每种第一次 ⇒ 健康信息一句、日志一条；
-/// 同一条连接上再来只记账；换一条连接重新说。
+/// ③ 一条流里混进帧门拦下的（那台那一版形状不同 · 这一侧不认）与解不开的：好帧照收；每种第一次 ⇒ 日志一条，解不开的另有健康信息一句
+/// （帧门拦下的不说：版本对不上是机器条那一行的事）；同一条连接上再来只记账；换一条连接重新说。
 #[tokio::test]
 async fn an_unread_frame_is_said_once_per_kind_per_connection() {
     let hello = Value::Object(golden_row("hello")).to_string();
@@ -157,23 +157,16 @@ async fn an_unread_frame_is_said_once_per_kind_per_connection() {
         .iter()
         .map(|p| (p.kind.as_str(), p.origin.as_str(), p.detail.as_str()))
         .collect();
+    // 帧门拦下的（那台那一版形状不同 · 不认）只记日志：版本对不上由栏底机器条照那台的成品说（A2-17-15-2），不另弹「远端提示」。
     assert_eq!(
         got,
-        [
-            ("frame-differs", "台架-origin", "frames: future_thing"),
-            ("frame-shape", "台架-origin", ""),
-            ("frame-differs", "台架-origin", "frames: session_status"),
-        ],
-        "健康信息不是每种恰好一句：{said:?}"
-    );
-    assert_eq!(
-        said[0].message,
-        copy_core::copy_text("peerVersion.said.framesDiffer", &[("machine", "台架")])
+        [("frame-shape", "台架-origin", "")],
+        "健康信息不是只有解不开的那一种恰好一句：{said:?}"
     );
     assert!(
-        said[1].message.contains("台架") && said[1].message.contains("line"),
+        said[0].message.contains("台架") && said[0].message.contains("line"),
         "解不开那一句没点名那台与那一种：{}",
-        said[1].message
+        said[0].message
     );
     let log = String::from_utf8(warns.0.lock().unwrap().clone()).unwrap();
     for (needle, what) in [
@@ -192,7 +185,7 @@ async fn an_unread_frame_is_said_once_per_kind_per_connection() {
     let again = std::cell::RefCell::new(0usize);
     let mut notes = UnreadNotes::new("台架-origin", "台架");
     let mut tally = crate::frame_tally::FrameTally::new("台架");
-    let _ = notes.take(stream[1], Some(&gate), &mut tally, &|_| {
+    let _ = notes.take(&line_bad, Some(&gate), &mut tally, &|_| {
         *again.borrow_mut() += 1
     });
     std::mem::forget(tally);

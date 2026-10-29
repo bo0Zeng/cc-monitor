@@ -1,10 +1,7 @@
 import { makeYieldToMain } from "./yield-to-main";
 import type { SessionHidden } from "./session-hidden";
-import { chan, type HopFault, type HopTag, type Item, type Sub } from "../../comms/inward/chan";
+import { chan, type Item, type Sub } from "../../comms/inward/chan";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { copyText } from "./copy-table";
-import { machineName, offlineSaid } from "./ipc/chan-caller";
-import { toast } from "./kit/toast";
 import { CHANGED_WINDOW, changedItems, changedStream, type Changed, type Topic } from "./changed-stream";
 import { tryDecodeJson } from "./ipc/decode";
 import { emitPerfSummary, noteFirstBatch } from "./startup-perf";
@@ -90,8 +87,6 @@ export interface EventHandlers {
    * 会话流里的一格（`{"file_notice": …}`），与行同序：重读之后的尾段由壳照宣告那样重取，排在它后面。
    */
   onSessionFileNotice?: (sessionId: string, change: string) => void;
-  /** 一台机器一直看不见时，那条提示里「打开设置」按它开（没给 ⇒ 提示里不带按钮）。 */
-  openMachineSettings?: (origin: Origin) => void;
   /**
    * 启动重放的第一块到达时调一次：TabManager 进批模式、开惰性高亮。
    * 整个重放期间只调一次（多块在 300ms grace 续期下视作连续的一批）。
@@ -269,21 +264,6 @@ function makeInputPendingProbe(): (() => boolean) | null {
  * 300ms 远大于积压涌出来的那一波（几十 ms），又小到不影响真实的新消息（间隔 ≥ 几秒）。
  */
 const BATCH_END_GRACE_MS = 300;
-
-/** 会话流看不见了多久才说（起步那几秒常是「那台还在连」，不算）。 */
-const UNSEEN_SAY_MS = 20_000;
-
-/**
- * 一台机器一直看不见：哪台 · 为什么（从没看见过 ⇒ 只说还没连上）· 能做什么。标题照那台成品写的离线那一句；
- * 看见过、断在超时那一跳 · 成品还没到（未知不当离线）⇒ 只说那台无应答。
- */
-function sayUnseen(origin: Origin, ever: boolean, why: HopFault, openSettings: (() => void) | undefined): void {
-  const machine = machineName(origin);
-  const off = ever && why === "Overrun" ? null : offlineSaid(origin);
-  const title = off ?? copyText("events.unseen.overrunTitle", { machine });
-  const body = ever ? copyText("events.unseen.lostBody", { machine }) : copyText("events.unseen.neverBody", { machine });
-  toast(title, body, openSettings ? { action: { label: copyText("main.cmd.openSettings"), run: openSettings } } : {});
-}
 
 /** bindEvents 选项。 */
 export interface BindEventsOptions {
@@ -523,32 +503,7 @@ export async function bindEvents(
 
   // 会话内容走通道的 `subscribe`（本函数末尾按 `opts.streams` 订）。一格 = 一行（`{"line": …}`）或成批那一段的边界（`{"batch": …}`）；
   //   进 queue：行 ⇒ payload，批边界 ⇒ batch-start / batch-end 哨兵。
-  // 一台机器的会话流看不见了：起步那几秒（那台还在连）不吵；过了 `UNSEEN_SAY_MS` 还没看见 ⇒ 说是哪台、能做什么。
-  //   从没看见过 ⇒「还没连上」（不猜原因）；看见过之后断了 ⇒ 照流里那一跳的原因说。
-  //   断在「读」那一跳 ＝ 订的时候它看得见（那时流里不先来一格「看不见」），也算看见过。
-  const sight = new Map<Origin, { ever: boolean; timer: ReturnType<typeof setTimeout> | null }>();
-  const sightOf = (origin: Origin): { ever: boolean; timer: ReturnType<typeof setTimeout> | null } => {
-    let s = sight.get(origin);
-    if (!s) sight.set(origin, (s = { ever: false, timer: null }));
-    return s;
-  };
-  const onUnseen = (origin: Origin, at: HopTag, why: HopFault): void => {
-    const s = sightOf(origin);
-    if (at !== "open") s.ever = true;
-    if (s.timer !== null) return;
-    const ever = s.ever;
-    // 调度：一次性 —— 一台机器看不见满 20s 才说一句；又看见了当场清
-    s.timer = setTimeout(() => {
-      s.timer = null;
-      sayUnseen(origin, ever, why, handlers.openMachineSettings ? () => handlers.openMachineSettings?.(origin) : undefined);
-    }, UNSEEN_SAY_MS);
-  };
-  const onSeenAgain = (origin: Origin): void => {
-    const s = sightOf(origin);
-    s.ever = true;
-    if (s.timer !== null) clearTimeout(s.timer);
-    s.timer = null;
-  };
+  // 一台的会话流看不见了 · 关了：不在这里出声 —— 那台连没连上、为什么、怎么修由栏底机器条那一行照那台的成品说（A2-17-15-2）。
 
   const onStreamItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
     // 每一格都占过一格 credit：进队的处理掉再还，不进队的 · 读不懂的当场记还。
@@ -639,22 +594,11 @@ export async function bindEvents(
         );
         queue.push({ kind: "gap", origin });
       } else if (it.t === "unseen") {
-        console.info(`[events] 会话流 [${origin}]：那台机器现在看不见（${it.why}）`);
-        onUnseen(origin, it.at.tag, it.why);
+        console.info(`[events] 会话流 [${origin}]：那台机器现在看不见（${it.at.tag} · ${it.why}）`);
       } else if (it.t === "seen") {
         console.info(`[events] 会话流 [${origin}]：又看得见了`);
-        onSeenAgain(origin);
       } else {
         console.warn(`[events] 会话流 [${origin}] 关了：`, it.by);
-        onSeenAgain(origin); // 关了另有一句（下面），不说「看不见」
-        // 这条流是这台机器会话更新的唯一来源：关了之后什么都不会再来 ⇒ 必须让人知道（光打 console 看起来只是「没动静」）。
-        //   句柄只在拒绝 / 出错时关，正常收尾不走这里。
-        toast(
-          copyText("events.stream.closedTitle"),
-          isLocalOrigin(origin)
-            ? copyText("events.stream.closedLocal")
-            : copyText("events.stream.closedRemote", { machine: origin }),
-        );
       }
     }
     ensureScheduled();

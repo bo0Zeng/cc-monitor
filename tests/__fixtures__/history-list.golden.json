@@ -111,6 +111,9 @@
             "can": "no",
             "why": "运行中"
           },
+          "end": {
+            "can": "yes"
+          },
           "model": {
             "can": "no",
             "why": "本轮结束后可换模型"
@@ -189,6 +192,10 @@
           "close": {
             "can": "quiet"
           },
+          "end": {
+            "can": "no",
+            "why": "会话已结束"
+          },
           "model": {
             "can": "yes"
           },
@@ -265,6 +272,10 @@
         "can": {
           "close": {
             "can": "quiet"
+          },
+          "end": {
+            "can": "no",
+            "why": "会话已结束"
           },
           "model": {
             "can": "yes"
@@ -344,6 +355,10 @@
           "close": {
             "can": "quiet"
           },
+          "end": {
+            "can": "no",
+            "why": "会话已结束"
+          },
           "model": {
             "can": "yes"
           },
@@ -422,6 +437,10 @@
       "face": {
         "can": {
           "close": {
+            "can": "no",
+            "why": "状态不明"
+          },
+          "end": {
             "can": "no",
             "why": "状态不明"
           },
