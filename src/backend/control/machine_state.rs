@@ -7,7 +7,7 @@
 //! （[`crate::dial::links`]）；池里成员动了（放进一条 · 断了 · 没人用了）⇒ 每台重推一份（[`follow_pool`]，零定时器）。
 
 use crate::dial::links::Links;
-use cmd_wire::machine::{MachineState, Round};
+use cmd_wire::machine::{EmptyFace, MachineState, Round};
 use deploy::machine::{fold, product, Entry, Fact};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -149,6 +149,33 @@ pub(crate) fn read_in(hosts: &[(String, bool)], links: &Links) -> BTreeMap<Strin
     out
 }
 
+/// 此刻的首屏那一句（[`deploy::machine::empty`]）：本机那一行（这个后端在答 ⇒ 报完了）＋ 机器表里每台与它这一条连接上报完了没有。
+pub(crate) fn empty() -> EmptyFace {
+    let (hosts, links) = hosts();
+    empty_in(&hosts, &links)
+}
+
+/// [`empty`] 的本体（机器表与连接由调用方给）。
+pub(crate) fn empty_in(hosts: &[(String, bool)], links: &Links) -> EmptyFace {
+    let t = table().clone();
+    empty_over(&t, hosts, links)
+}
+
+/// [`empty_in`] 照给的那一张表算（不碰进程里那一张）。
+fn empty_over(t: &BTreeMap<String, Entry>, hosts: &[(String, bool)], links: &Links) -> EmptyFace {
+    let local = local_row();
+    let rows: Vec<(MachineState, bool)> = hosts
+        .iter()
+        .map(|(n, c)| {
+            let e = t.get(n).cloned().unwrap_or_default();
+            (product_in(&e, n, *c, links), e.listed())
+        })
+        .collect();
+    let mut all: Vec<(&MachineState, bool)> = vec![(&local, true)];
+    all.extend(rows.iter().map(|(m, l)| (m, *l)));
+    deploy::machine::empty(&all)
+}
+
 /// 本机那一行：问得到这个后端 ⇒ 连着、与手上同一份字节；版本号是这份二进制出自的那一版（`build.rs` 交的）。
 /// 不经 SSH ⇒ 没有连接那一格。
 fn local_row() -> MachineState {
@@ -166,12 +193,13 @@ fn local_row() -> MachineState {
     product(&e, &copy_core::local_machine(), true, true)
 }
 
-/// `machine-read` 的回包：机器表里每台 → 成品。
+/// `machine-read` 的回包：机器表里每台 → 成品；连同此刻的首屏那一句。
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct MachineRead {
     pub(crate) machines: BTreeMap<String, MachineState>,
+    pub(crate) empty: EmptyFace,
 }
 
 crate::wire::typed::codes! {
@@ -197,7 +225,12 @@ impl crate::wire::typed::Handle for MachineReadCmd {
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<MachineRead, MachineReadErr>> + Send + 'static
     {
-        async move { Ok(MachineRead { machines: read() }) }
+        async move {
+            Ok(MachineRead {
+                machines: read(),
+                empty: empty(),
+            })
+        }
     }
 }
 

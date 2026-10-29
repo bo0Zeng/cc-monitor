@@ -136,7 +136,7 @@ vi.mock("../../../src/frontend/ui/cards", () => ({
 }));
 vi.mock("../../../src/frontend/ui/cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn(), failToast: vi.fn(), silentUndo: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn(), failToast: vi.fn(), silentUndo: vi.fn(), noteMessage: vi.fn() }));
 // 恢复交那台（`session-open`）：这里换成 spy，判的是交了什么；那台怎么判住后端判据，发 · 说 · 开窗住 `session-open.vitest.ts`。
 vi.mock("../../../src/frontend/ui/session-open", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/session-open")>()),
@@ -171,7 +171,7 @@ import {
   recordReadCalls,
 } from "../../test-support/chan-fake";
 import type { SessionFacts, UsageFact } from "../../../src/frontend/ui/session-reads";
-import { silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
+import { noteMessage, silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
 import { __setHostFactsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
 import { openSession } from "../../../src/frontend/ui/session-open";
 import { pickAsk } from "../../../src/frontend/ui/resume-menu";
@@ -2343,7 +2343,7 @@ describe("新出现的一行淡入（起步那一批不算）", () => {
   });
 });
 
-describe("LF1：↗ 只在 Windows · Linux 上出现", () => {
+describe("LF1 · A2-17-12-1：↗ 在哪都画；做不了只灰着写原因", () => {
   const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
   beforeEach(() => {
     vi.clearAllMocks();
@@ -2355,25 +2355,29 @@ describe("LF1：↗ 只在 Windows · Linux 上出现", () => {
   const focusBtnOf = (tm: TabManager, sid: string) =>
     home(tm).bar.tabButtons.get(sid)?.root.querySelector(".tab-focus") ?? null;
 
-  it("★★ 两向：macos 不渲 ↗，windows / linux / unknown 渲（本地 tab 与远端 tab 同一道门）", () => {
+  it("★★ 两向：四种系统都渲 ↗；macos 上灰着（本地 tab 与远端 tab 同一道门）", () => {
     const want: [HostOs, boolean][] = [
-      ["windows", true],
-      ["unknown", true],
-      ["linux", true],
-      ["macos", false],
+      ["windows", false],
+      ["unknown", false],
+      ["linux", false],
+      ["macos", true],
     ];
-    for (const [os, shown] of want) {
+    for (const [os, grey] of want) {
       __setHostFactsForTests(factsOn(os));
       const tm = makeTM();
       tm.ensureTab("l1", "/w", "p", LOCAL_ORIGIN);
       tm.createSkeletonTab("r1", "/p", "devbox", false);
       expect(home(tm).bar.tabButtons.get("l1"), `${os}：量具自检，tab 按钮本身得在`).toBeDefined();
-      expect(focusBtnOf(tm, "l1") !== null, `${os} 本地 tab 的 ↗`).toBe(shown);
-      expect(focusBtnOf(tm, "r1") !== null, `${os} 远端 tab 的 ↗`).toBe(shown);
+      for (const sid of ["l1", "r1"]) {
+        tm.onFace(sid, liveFace("idle"));
+        const b = focusBtnOf(tm, sid);
+        expect(b, `${os} ${sid} 的 ↗ 在`).not.toBeNull();
+        expect(b!.getAttribute("aria-disabled") === "true", `${os} ${sid} 的 ↗ 灰不灰`).toBe(grey);
+      }
     }
   });
 
-  it("★ 快捷键 / 命令面板在 macos 上走到 ↗ ⇒ 说实话、**不发 IPC**", async () => {
+  it("★ 快捷键 / 命令面板在 macos 上走到 ↗ ⇒ 那一句进状态栏消息、不弹 toast、**不发 IPC**", async () => {
     __setHostFactsForTests(factsOn("macos"));
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false);
@@ -2387,11 +2391,8 @@ describe("LF1：↗ 只在 Windows · Linux 上出现", () => {
       )
       .map(([c]) => c);
     expect(sent, "macos 上照样发了 ↗ 的 IPC —— 那是装作试过").toEqual([]);
-    expect(showActionFailureToast).toHaveBeenCalledWith(
-      copyText("terminalFront.unavailable.title"),
-      expect.stringContaining("Windows"),
-      expect.objectContaining({ level: "info" }),
-    );
+    expect(showActionFailureToast, "做不了不弹 toast").not.toHaveBeenCalled();
+    expect(noteMessage).toHaveBeenCalledWith(copyText("tabBarView.tab.terminalHint"), copyText("terminalFront.unavailable.short"));
   });
 
   it("★ 对照：windows / linux 上快捷键照常发 IPC（上一条不是因为别的原因没发）", async () => {
@@ -4405,7 +4406,7 @@ describe("〔U4b〕main.ts 接线", () => {
     const n = (file: string, needle: string): number =>
       readFileSync(resolve(REPO_ROOT, file), "utf8").split(needle).length - 1;
     expect([
-      n("src/frontend/ui/main.ts", "onMachineState((origin, m) => tabs.machineChanged(origin, m));"),
+      n("src/frontend/ui/main.ts", "(origin, m) => tabs.machineChanged(origin, m),"),
       n("src/frontend/ui/entry-viewer.ts", "TabManager"),
     ]).toEqual([1, 0]);
   });

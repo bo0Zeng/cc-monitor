@@ -3951,25 +3951,54 @@
       "zh": "拖动调宽",
       "args": []
     },
-    "main.empty.title": {
+    "beEmpty.line.none": {
       "kind": "body",
       "role": "空态",
       "zh": "无会话",
       "args": []
     },
-    "main.empty.hint": {
+    "beEmpty.line.some": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "{names}无会话",
+      "args": ["names"]
+    },
+    "beEmpty.line.waiting": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "会话清单未报完",
+      "args": []
+    },
+    "beEmpty.hint.none": {
       "kind": "body",
       "role": "空态",
       "zh": "终端里 ccm（或别名）启动后自动出现",
       "args": [],
       "limited": ["ccm"]
     },
-    "main.empty.hintUnhooked": {
+    "beEmpty.hint.pending": {
       "kind": "body",
       "role": "空态",
-      "zh": "终端里 ccm（或别名）启动后自动出现 · 本机终端未接上",
-      "args": [],
-      "limited": ["ccm"]
+      "zh": "{names} 还在连，会话连上后出现",
+      "args": ["names"]
+    },
+    "beEmpty.hint.out": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "{names}，会话未计入",
+      "args": ["names"]
+    },
+    "beEmpty.hint.outOne": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{name} {word}",
+      "args": ["name", "word"]
+    },
+    "beEmpty.list.sep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "、",
+      "args": []
     },
     "main.empty.connect": {
       "kind": "action",
@@ -5310,18 +5339,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "未开始",
-      "args": []
-    },
-    "terminalFront.unavailable.detail": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "仅 Windows · Linux 可切到终端窗口",
-      "args": []
-    },
-    "terminalFront.unavailable.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机不支持切到终端",
       "args": []
     },
     "machineAliases.ps.saveFailed": {
@@ -8766,13 +8783,7 @@
     "rsSftp.plan.badProduct": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取部署计划失败 · 内容无法解析 · 未安装后端 · {v}",
-      "args": ["v"]
-    },
-    "rsSftp.plan.internal": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "安装失败 · 程序出错",
+      "zh": "读取部署计划失败 · 内容无法解析 · 未安装后端",
       "args": []
     },
     "rsSftp.plan.notThisSlot": {
@@ -21363,6 +21374,24 @@
       "kind": "body",
       "role": "悬停",
       "zh": "仅重启切换",
+      "args": []
+    },
+    "acct.own.line": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "自设上游 · 额度不可见 · 换号不适用",
+      "args": []
+    },
+    "acct.own.usage": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "不可见（自设上游）",
+      "args": []
+    },
+    "acct.own.switch": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "不适用",
       "args": []
     },
     "acct.panel.title": {

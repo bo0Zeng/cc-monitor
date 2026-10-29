@@ -297,8 +297,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   const needsBook = new NeedsBook();
   // 组的账：本机后端问到各台的组并成一份（标签页栏的分组与固定照它画）。
   const groupBook = new GroupBook();
-  // 各台的状态成品 ⇒ 栏里的机器离线条（离线 · 几条状态不明都是本机后端说的）。
-  onMachineState((origin, m) => tabs.machineChanged(origin, m));
+  // 各台的状态成品 ⇒ 栏底机器条；首屏那一句（各台报完了没有 · 哪几台还在连）也由本机后端合好随它推。
+  onMachineState(
+    (origin, m) => tabs.machineChanged(origin, m),
+    (f) => empty.face(f),
+  );
   // 那台接上了（起来时本机后端还在起 · 断开之后又连上）⇒ 接上之前问过它的那几处再问一次；终端页停在「那台断开」的实时自己重新订上。
   onMachineUp((origin) => {
     outbox.machineUp(origin);
@@ -694,8 +697,8 @@ window.addEventListener("DOMContentLoaded", async () => {
         { id: "toggle-terminal", group: "current", icon: "terminal", title: copyText("main.cmd.terminal"), keywords: copyText("main.cmd.terminalKeywords"), hint: chordHint("panel.toggle-terminal"), run: () => mainDrawer.toggle("terminal") },
         { id: "pop-out", group: "current", icon: "popOut", title: copyText("main.cmd.popOut"), keywords: copyText("main.cmd.popOutKeywords"), hint: chordHint("tab.pop-out"), run: () => tabs.openActiveInNewWindow() },
         { id: "open-cwd", group: "current", icon: "folder", title: copyText("main.cmd.openCwd"), keywords: copyText("main.cmd.openCwdKeywords"), hint: chordHint("tab.open-cwd"), run: () => tabs.openActiveTabCwd() },
-        // ↗：只有 cc-monitor 跑在 Windows 上才能用；别的系统上灰着（门与 tab 上那颗按钮是同一道，见 `terminal-front-command.ts`）。
-        ...terminalFrontCommand({ id: "term-front", group: "current" as const, icon: "front" as const, title: copyText("main.cmd.terminalFront"), keywords: copyText("main.cmd.terminalFrontKeywords"), hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }),
+        // ↗：一直列着，做不了灰着写那一句（与 tab 上那颗按钮是同一道，见 `terminal-front-command.ts`）。
+        ...terminalFrontCommand({ id: "term-front", group: "current" as const, icon: "front" as const, title: copyText("main.cmd.terminalFront"), keywords: copyText("main.cmd.terminalFrontKeywords"), hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }, tabs.activeTab()?.face ?? null),
         tabs.isPinned(cur)
           ? { id: "unpin", group: "current", icon: "pin", title: copyText("main.cmd.unpin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) }
           : { id: "pin", group: "current", icon: "pin", title: copyText("main.cmd.pin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) },

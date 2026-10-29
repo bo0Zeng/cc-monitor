@@ -19,7 +19,7 @@
  */
 import type { Tab } from "./tab-model";
 import { isRemoteOrigin } from "./ipc/origin";
-import { canResume, hasTerminal, machineOf } from "./face-can";
+import { canResume, frontWhy, hasTerminal, machineOf } from "./face-can";
 import { terminalFrontAvailable } from "./terminal-front";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { copyText } from "./copy-table";
@@ -290,8 +290,11 @@ export class SessionHead {
       case "cwd":
         return !isRemoteOrigin(tab.origin) && tab.projectDir ? plain(copyText("tabBarView.tab.cwdHint"), "tab.open-cwd", () => this.host.openCwd(sid), copyText("tabMenu.open.cwd")) : null;
       case "front": {
-        if (!terminalActsOf(tab).front) return null;
-        const b = plain(copyText("tabBarView.tab.terminalHint"), "terminal.bring-front", () => this.host.front(sid), copyText("tabMenu.open.front"));
+        // 做不了也画、灰着，悬停写那一句（A2-17-12-1）：壳说这台 ↗ 不是真的 · 那台说没有终端可去。
+        const why = frontWhy(tab.face);
+        const label = copyText("tabBarView.tab.terminalHint");
+        const item: MenuItem = { label: copyText("tabMenu.open.front"), detail: chordOf("terminal.bring-front"), enabled: why === null, why: why || undefined, onClick: () => this.host.front(sid) };
+        const b = this.fromItem(id, item, label, "terminal.bring-front");
         // ↗ 的结果浮层锚在这一颗上（按会话找）。
         b.el.dataset.role = "head-front";
         b.el.dataset.sid = sid;

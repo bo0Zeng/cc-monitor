@@ -281,8 +281,26 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=said}.blocks[type=image].source",
-          "type": "object"
+          "path": "{t=said}.blocks[type=image].at",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.blocks[type=image].bytes",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.blocks[type=image].mediaType",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.blocks[type=image].n",
+          "type": "number"
         },
         {
           "frozen": true,
@@ -299,8 +317,26 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=said}.blocks[type=tool_result].content[type=image].source",
-          "type": "object"
+          "path": "{t=said}.blocks[type=tool_result].content[type=image].at",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.blocks[type=tool_result].content[type=image].bytes",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.blocks[type=tool_result].content[type=image].mediaType",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.blocks[type=tool_result].content[type=image].n",
+          "type": "number"
         },
         {
           "frozen": true,

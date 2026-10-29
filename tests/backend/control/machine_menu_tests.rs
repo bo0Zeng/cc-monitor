@@ -92,7 +92,6 @@ fn state(kind: MachineStateKind, offline: bool, word: &str) -> MachineState {
         seen_host_key: None,
         expected_host_key: None,
         detail: None,
-        unclear: None,
         route: None,
     }
 }
