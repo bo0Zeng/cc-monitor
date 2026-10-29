@@ -23411,6 +23411,18 @@
       "zh": "回退并发送",
       "args": []
     },
+    "mobSaidEdit.sheet.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "回退并发送",
+      "args": []
+    },
+    "mobSaidEdit.sheet.to": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "退到此句之前：",
+      "args": []
+    },
     "mobChat.history.retry": {
       "kind": "body",
       "role": "说明",
@@ -32118,14 +32130,6 @@
       "role": "状态",
       "zh": "失败",
       "args": []
-    },
-    "mobAttach.card.percent": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "{n}%",
-      "args": [
-        "n"
-      ]
     },
     "mobAttach.card.remove": {
       "kind": "action",

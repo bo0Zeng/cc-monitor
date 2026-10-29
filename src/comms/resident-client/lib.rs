@@ -10,7 +10,8 @@
 //! - [`feed`]：一台的常驻流断了自己接回去（两端同一条重连循环；退避住它里面、模块私有 ⇒ 全仓写不出第二条）；
 //! - [`book`]：一台的会话簿（会话帧折成整份；两端只调这一份折法）；
 //! - [`live`]：一台的活卡板（`live_card` 帧折成某会话某运行整份的卡；两端只调这一份折法）；
-//! - [`listing_copy`]：远端那几台的会话清单副本（副本表 · 照答换 · 落盘那一形；两端同一份）。
+//! - [`listing_copy`]：远端那几台的会话清单副本（副本表 · 照答换 · 落盘那一形；两端同一份）；
+//! - [`column`]：几台的会话清单并成一列（本机后端历史页与手机会话屏同一份并法）。
 //!
 //! 有计时器（期限 · 退避），属客户端那一侧：不进后端的判据人群（`no_timer_guard`）。
 
@@ -18,6 +19,7 @@ pub mod attach;
 pub mod backoff;
 pub mod book;
 pub mod client;
+pub mod column;
 pub mod feed;
 pub mod frames;
 pub mod line;

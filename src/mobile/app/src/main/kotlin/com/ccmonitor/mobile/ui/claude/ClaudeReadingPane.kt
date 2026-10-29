@@ -162,11 +162,65 @@ private fun UnitCard(
         is RenderUnit.SlashCommand -> SlashCommandCard(unit, matched)
         is RenderUnit.BashInput -> BashInputCard(unit, matched)
         is RenderUnit.BashOutput -> BashOutputCard(unit, matched)
+        is RenderUnit.Brief -> BriefCard(unit, matched)
         is RenderUnit.CompactSummary -> CompactSummaryCard(unit, matched)
         is RenderUnit.Interrupt -> InterruptLine(unit)
         is RenderUnit.Unread -> UnreadLine(unit, matched)
     }
 }
+
+/** 派活卡抬头里写谁派的：派出它的那个 agent 的名字（agent 屏给）；主会话派的 ⇒ `null`。 */
+val LocalBriefFrom = staticCompositionLocalOf<String?> { null }
+
+/**
+ * 派活的那段话（同桌面那张卡）：整宽、靠左、左边一道竖线、底色深一档；抬头「主会话派给它的话」（别的 agent 派的 ⇒ 它的名字）＋ 派出的时刻；
+ * 正文小一号、次一级颜色，超过 [BRIEF_LINES] 行收起，［展开全部］·［收起］。搜索命中自动展开。
+ */
+@Composable
+private fun BriefCard(
+    unit: RenderUnit.Brief,
+    matched: Boolean,
+) {
+    val tokens = LocalAppTokens.current
+    val from = LocalBriefFrom.current
+    var open by rememberExpandable(matched)
+    val long = unit.text.lines().size > BRIEF_LINES
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(tokens.radius.m))
+            .background(tokens.bg2)
+            .matchHighlight(matched)
+            .foldRail()
+            .padding(tokens.spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+            // 别的 agent 派的 ⇒ 抬头写派它的那个 agent 的名字（「「x」派给它的话」那一句要那台写好，界面不拼）。
+            Text(
+                from ?: copyText("agentWindow.brief.fromMain"),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            unit.timeText?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        Text(
+            unit.text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = if (long && !open) BRIEF_LINES else Int.MAX_VALUE,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (long) {
+            SecondaryButton(onClick = { open = !open }) {
+                Text(if (open) copyText("agentWindow.brief.less") else copyText("agentWindow.brief.more"))
+            }
+        }
+    }
+}
+
+/** 派活卡正文超过几行收起（同桌面）。 */
+private const val BRIEF_LINES = 4
 
 /** 「已中断本轮 · {time}」一道细线；字照文案表，钟面照核心。 */
 @Composable

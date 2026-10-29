@@ -122,6 +122,17 @@ sealed interface RenderUnit {
         override val sourceUuid: String?,
     ) : RenderUnit
 
+    /**
+     * 派活的那段话（子运行记录里派出它的那一方交给它的活，`speaker.agentTask`）：不是人说的，画成整宽靠左的派活卡，
+     * 抬头写谁派的 ＋ [timeText]（核心写好的钟面）；超过四行收起。
+     */
+    data class Brief(
+        override val key: String,
+        val text: String,
+        val timeText: String?,
+        override val sourceUuid: String?,
+    ) : RenderUnit
+
     /** `/compact` 续接摘要，默认折叠（超长，点开看全文）。 */
     data class CompactSummary(
         override val key: String,
@@ -159,6 +170,7 @@ fun RenderUnit.searchableText(): String =
         is RenderUnit.SlashCommand -> if (args.isEmpty()) name else "$name $args"
         is RenderUnit.BashInput -> command
         is RenderUnit.BashOutput -> if (stderr.isEmpty()) stdout else "$stdout\n$stderr"
+        is RenderUnit.Brief -> text
         is RenderUnit.CompactSummary -> text
         is RenderUnit.Interrupt -> ""
         is RenderUnit.Unread -> text

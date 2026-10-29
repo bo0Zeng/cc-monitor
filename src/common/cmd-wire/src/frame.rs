@@ -726,6 +726,10 @@ pub struct RunGroups {
     pub running: Vec<String>,
     pub recent: Vec<String>,
     pub older: Vec<String>,
+    /// 更早那一组的组头字（「更早 ×n」），两端照抄；那一组空 ⇒ 不上线。开合归界面。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub older_text: Option<Words>,
 }
 
 /// 写好的一截字。随时钟变的那一截是会走的钟：`text` 里的 `{dur}` 是空位，出口照（此刻 − `from`）用共用的时长格式填；

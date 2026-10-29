@@ -571,6 +571,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     running: vec![],
                     recent: vec![s("a1")],
                     older: vec![s("a2")],
+                    older_text: None,
                 },
                 summary: Some(w("核心·agent 1")),
             }),
@@ -952,6 +953,7 @@ fn session_runs_frames_have_exactly_these_bytes() {
             running: vec!["a1".into()],
             recent: vec!["a2".into()],
             older: vec!["a3".into()],
+            older_text: None,
         },
         summary: Some(crate::common::cells::Words("核心·agent 3".into())),
     });
