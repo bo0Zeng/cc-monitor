@@ -1,7 +1,8 @@
 //! 会话族那几条帧命令的**回包**线上形（`terminal-input` · `session-open` · `session-open-facts` · `session-model` ·
 //! `session-permission` · `session-commands` · `terminals-list` · `terminal-preview` · `kill` · `history-tail`）—— 两侧同一份：后端按这里的类型回，
 //! 手机按这里生成的 Kotlin 类解（`gen-kotlin-wire.mjs`），界面用从这里导出的类型（`src/frontend/ui/generated/`）。
-//! 入参与码还住后端（`control/terminals_wire.rs` 等）：手机交的入参不经这里。
+//! 入参：`session-model` · `session-permission` · `session-commands` · `history-tail` 的住这里，起会话那两条的住 [`crate::open`]，
+//! 终端那几条的住 [`crate::terminal`]（名字与回包挂在 [`crate::Call`] 上）；码住后端。
 
 use serde::{Deserialize, Serialize};
 
@@ -902,6 +903,57 @@ pub enum SwitchResult {
     Unsure,
     /// 没按（`why` 说为什么）。
     Refused,
+}
+
+/// `session-model` 的入参。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct SessionModelReq {
+    /// 会话 id。
+    pub sid: crate::Sid,
+    /// 要换成的模型（原值；必须是 `session-open-facts` 那一家 `models` 里的一个）。
+    pub model: String,
+    /// 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub client: Option<String>,
+}
+
+/// `session-permission` 的入参。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct SessionPermissionReq {
+    /// 会话 id。
+    pub sid: crate::Sid,
+    /// 要切到的档（原值；必须是 `session-open-facts` 那一家 `permissionModes` 里的一个）。
+    pub mode: String,
+    /// 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub client: Option<String>,
+}
+
+/// `session-commands` 的入参。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct SessionCommandsReq {
+    /// 会话 id。
+    pub sid: crate::Sid,
 }
 
 /// `session-model` 的回包。

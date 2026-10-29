@@ -6,18 +6,10 @@ use crate::common::contract::malformed;
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
-use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
-/// `session-commands` 的入参。
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct SessionCommandsReq {
-    /// 会话 id。
-    pub(crate) sid: cmd_wire::Sid,
-}
+/// `session-commands` 的入参：线上形住 `cmd-wire::session`（名字与回包挂在 `cmd_wire::Call` 上）。
+pub(crate) use cmd_wire::session::SessionCommandsReq;
 
 /// `session-commands` 的回包与它引到的几样：线上形住 `cmd-wire::session`。
 pub(crate) use cmd_wire::session::{
@@ -36,9 +28,7 @@ typed::codes! {
 pub(crate) struct SessionCommandsCmd;
 
 impl Command for SessionCommandsCmd {
-    const NAME: &'static str = "session-commands";
-    type Req = SessionCommandsReq;
-    type Reply = SessionCommands;
+    typed::by_call!(SessionCommandsReq);
     type Err = SessionCommandsErr;
 }
 
