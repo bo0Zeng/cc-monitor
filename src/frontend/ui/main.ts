@@ -298,9 +298,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   const groupBook = new GroupBook();
   // 本机后端起没起来（壳那一格）⇒ 机器条本机那一行：本机后端不在时没有成品可推，起不来那一句只有壳说得出。
   onLocalBackend((l) => tabs.localBackendChanged(l));
-  // 各台的状态成品 ⇒ 栏底机器条；首屏那一句（各台报完了没有 · 哪几台还在连）也由本机后端合好随它推。
+  // 各台的状态成品 ⇒ 栏底机器条 · 输入框（那台离线时名单淡着）；首屏那一句（各台报完了没有 · 哪几台还在连）也由本机后端合好随它推。
   onMachineState(
-    (origin, m) => tabs.machineChanged(origin, m),
+    (origin, m) => {
+      tabs.machineChanged(origin, m);
+      composer.machineChanged(origin, m);
+    },
     (f) => empty.face(f),
   );
   // 那台接上了（起来时本机后端还在起 · 断开之后又连上）⇒ 接上之前问过它的那几处再问一次；终端页停在「那台断开」的实时自己重新订上。

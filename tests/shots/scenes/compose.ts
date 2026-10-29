@@ -162,6 +162,42 @@ const ATTACH_SCENES: Scene[] = [
   }, STORAGE),
 ];
 
+// ---------- 输入队 ----------
+
+/** 每条活会话那台盘上一份队（五条排着；会话都在跑 ⇒ 投递那一边等着，不送）：名单由真后端照它答。 */
+function queueWorld(): World {
+  const w = liveWorld();
+  const heads = ["跑完测试先别提交，等我看一眼 diff", "顺手把 CHANGELOG 补上，按模块分三段写", "README 里的端口也改一下", "重试那段抽成一个函数", "超时改成可配"];
+  const ends = ["mobile", "monitor", "cc-bus", "mobile", "monitor"];
+  const items = heads.map((text, i) => ({ seq: i + 1, id: `q-${i + 1}`, end: ends[i], atMs: 1_761_650_000_000 + i, arrivedMs: 1_761_650_000_000 + i, text, state: "queued" }));
+  const book = JSON.stringify({ version: 1, nextSeq: items.length + 1, ends: {}, seen: items.map((it) => it.id), items, sent: [] });
+  for (const s of w.sessions) {
+    const d = w.disk[s.origin];
+    if (s.ended || d === undefined) continue;
+    w.disk[s.origin] = { ...d, files: { ...d.files, [`.cc-monitor/session-queue/${s.sid}.json`]: book } };
+  }
+  return w;
+}
+
+const QUEUE_SCENES: Scene[] = [
+  {
+    id: "compose-queue-many",
+    page: "index",
+    dir: "输入队",
+    title: "输入队 · 五条",
+    desc: "那台名单五条：那一排最多露三行、多的框里滚，不往上顶消息流；每条一行不写几点",
+    width: W,
+    height: H,
+    storage: STORAGE,
+    world: queueWorld,
+    act: async () => {
+      await mainReady(7);
+      await waitFor('[data-role="queue-line"]');
+      await sleep(1200);
+    },
+  },
+];
+
 // ---------- 一组起会话 ----------
 
 const EXTRA = [
@@ -312,4 +348,4 @@ const RENAME_SCENES: Scene[] = [
   }),
 ];
 
-export const COMPOSE_SCENES: Scene[] = [...ATTACH_SCENES, ...SET_SCENES, ...RENAME_SCENES];
+export const COMPOSE_SCENES: Scene[] = [...ATTACH_SCENES, ...QUEUE_SCENES, ...SET_SCENES, ...RENAME_SCENES];

@@ -14,6 +14,7 @@
  * 4. 账号面板轮换列表一行：每段字一行不折（重置时刻那种）；状态标签（在用 · 起始 …）全字可见、不被省略
  *    （号名可以省略，只读的封顶标签可以省略）；兜底开关开着 ⇒ 看得见、有底色；关着 ⇒ 所在行没悬停、没焦点时看不见。
  * 8. 鼠标停着的人说的那一句：「编辑」看得见、整颗不伸出任何会裁它的祖先（绘制隔离 `content-visibility: auto` · 溢出裁切）、中心点命中它自己。
+ * 9. 输入框上方那一排输入队：多于三条时那一排最多三行高（头上那一行另算），多的在框里滚，不往上顶消息流。
  *
  * 回一串「哪里不对」；空 ＝ 都对。
  */
@@ -304,8 +305,24 @@ function hoveredEdit(): string[] {
   return out;
 }
 
+function queueRows(): string[] {
+  const out: string[] = [];
+  for (const row of document.querySelectorAll<HTMLElement>('[data-role="queue-row"]')) {
+    if (!visible(row)) continue;
+    const lines = [...row.querySelectorAll<HTMLElement>('[data-role="queue-line"]')];
+    if (lines.length <= 3) continue;
+    // 三行占的高：头一行顶到第三行底（滚过也一样，几行一起挪）；头上那一行（离线时）连它底下那道缝另算。
+    const three = lines[2].getBoundingClientRect().bottom - lines[0].getBoundingClientRect().top;
+    const head = row.querySelector<HTMLElement>('[data-role="queue-head"]');
+    const headH = head && visible(head) ? head.getBoundingClientRect().height + (parseFloat(getComputedStyle(row).rowGap) || 0) : 0;
+    const rr = row.getBoundingClientRect();
+    if (rr.height > three + headH + EPS) out.push(`输入队：${lines.length} 条那一排 ${fmt(rr)} 高过三行（三行 ${Math.round(three)}px）`);
+  }
+  return out;
+}
+
 export function layoutProblems(): string[] {
-  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...chartRows(), ...messageRows(), ...overStream(), ...hoveredEdit()];
+  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...chartRows(), ...messageRows(), ...overStream(), ...hoveredEdit(), ...queueRows()];
   // 也写进页里的控制台（截图工具每张存一份），整趟被打断时还查得到。
   for (const p of out) console.warn(`[layout] ${p}`);
   return out;

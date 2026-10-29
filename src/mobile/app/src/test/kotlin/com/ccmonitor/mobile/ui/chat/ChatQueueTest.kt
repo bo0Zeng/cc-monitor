@@ -17,7 +17,7 @@ class ChatQueueTest {
     private fun item(
         id: String,
         said: String,
-    ) = mapOf("seq" to 1, "id" to id, "end" to "monitor", "atMs" to 1L, "text" to "text of $id", "state" to "queued", "said" to said, "from" to "from-word")
+    ) = mapOf("seq" to 1, "id" to id, "end" to "monitor", "text" to "text of $id", "state" to "queued", "said" to said, "from" to "from-word")
 
     private fun list(vararg items: Map<String, Any?>) = mapOf("items" to items.toList(), "sent" to emptyList<String>())
 

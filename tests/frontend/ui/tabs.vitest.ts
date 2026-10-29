@@ -4469,7 +4469,7 @@ describe("〔U4b〕main.ts 接线", () => {
     const n = (file: string, needle: string): number =>
       readFileSync(resolve(REPO_ROOT, file), "utf8").split(needle).length - 1;
     expect([
-      n("src/frontend/ui/main.ts", "(origin, m) => tabs.machineChanged(origin, m),"),
+      n("src/frontend/ui/main.ts", "tabs.machineChanged(origin, m);"),
       n("src/frontend/ui/entry-viewer.ts", "TabManager"),
     ]).toEqual([1, 0]);
   });

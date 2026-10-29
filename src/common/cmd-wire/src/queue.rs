@@ -33,9 +33,6 @@ pub struct QueueItem {
     pub id: String,
     /// 发自哪一端。
     pub end: String,
-    /// 发件端说的几点发的（unix 毫秒；只给人看，不参与排序）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub at_ms: i64,
     /// 那一句。
     pub text: String,
     /// 随这一句发的附件编号（`session-attachment-commit` 回的，按先后）；没有 ⇒ 不在。
@@ -82,7 +79,7 @@ pub struct SessionQueuePutReq {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub n: Option<u64>,
-    /// 几点发的（发件端的 unix 毫秒，只给人看）。
+    /// 几点发的（发件端的 unix 毫秒）：会话那台只照记在盘上，名单不带、不参与排序。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub at_ms: i64,
     pub text: String,

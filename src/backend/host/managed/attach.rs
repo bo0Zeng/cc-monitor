@@ -402,12 +402,18 @@ impl Client {
         }
     }
 
-    /// 底行那一句换了：没别的盖着 ⇒ 盖上新的；清了 ⇒ 整屏重画（那一行照里面）。盖着的那一层收掉时照此刻的画。
+    /// 底行那一句换了：没别的盖着 ⇒ 盖上新的；清了 ⇒ 整屏重画（那一行照里面）。提示那一层盖着 ⇒ 照新的整句重盖；
+    /// 别的那几层盖着 ⇒ 收掉时照此刻的画。
     fn queued_now(&mut self, line: Option<String>) {
         if line == self.queued {
             return;
         }
         self.queued = line;
+        if self.over == Over::Hint {
+            let said = self.holder_said();
+            self.bottom_line(&said);
+            return;
+        }
         if self.over != Over::None {
             return;
         }
@@ -596,8 +602,13 @@ impl Client {
         }
     }
 
+    /// 不持有时底行那一句：持有者那一句（[`held_line`]）；队里有东西 ⇒ 接上队那一句，两句并一行，谁也不盖掉谁。
     fn holder_said(&self) -> String {
-        held_line(self.holder.as_ref())
+        let held = held_line(self.holder.as_ref());
+        match &self.queued {
+            Some(q) => [held, q.clone()].join(&copy_text("kit.text.sep", &[])),
+            None => held,
+        }
     }
 
     /// 托管那边来了一帧；交回 `Some` ⇒ 这一趟收了。
@@ -1101,3 +1112,7 @@ pub(crate) async fn attach(own: &crate::platform::fs::Own, first: &str, ears: Qu
 #[cfg(test)]
 #[path = "../../../../tests/backend/host/attach_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/host/attach_bottom_tests.rs"]
+mod bottom_tests;
