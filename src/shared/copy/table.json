@@ -8795,13 +8795,7 @@
     "rsSftp.plan.badProduct": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取部署计划失败 · 内容无法解析 · 未安装后端 · {v}",
-      "args": ["v"]
-    },
-    "rsSftp.plan.internal": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "安装失败 · 程序出错",
+      "zh": "读取部署计划失败 · 内容无法解析 · 未安装后端",
       "args": []
     },
     "rsSftp.plan.notThisSlot": {
