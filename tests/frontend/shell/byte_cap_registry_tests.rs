@@ -1166,12 +1166,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/accounts/quota/setup/shelf.rs",
-        "MAX_SOURCE_BYTES",
-        "一份轮换策略文件 `~/.cc-monitor/strategies/<id>.rhai`（超了不加载，列表里照实写读不懂）",
-        "拒收+回错",
-    ),
-    (
         "src/common/relay-route-core/src/lib.rs",
         "LINEAGE_MAX_BYTES",
         "后端自有的会话血缘 `~/.cc-monitor/lineage.json`（读不出来就不覆盖）",
