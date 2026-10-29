@@ -400,7 +400,8 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
         "只带开会话那个号的号牌，不算在号列表里"
     );
 
-    // 记录树里有它 ⇒ 顶栏写那条会话的名字（第一句），不轮换的那一形也带。
+    // 记录树里有它 ⇒ 顶栏写那条会话的名字（第一句），不轮换的那一形也带。写这台的记录树 ⇒ 先拿那把锁。
+    let _tree = crate::history::history_list::tests::MACHINE_TREE.blocking_lock();
     let dir = crate::history::listing::records_root(&crate::history::listing::agent_home())
         .expect("有记录树")
         .join("-p");
@@ -1244,7 +1245,7 @@ fn the_editor_board_shows_cells_by_their_conditions_and_marks_by_the_choice() {
 }
 
 /// ★ 号列表里有这台账号库没有的号（kun）⇒ 设置行照号列表逐个出、各带它在列表里的真行号：c 那一行画的是 c 的设置（不是 kun 的）；
-/// kun 照实出一行、头一句写「这台没有这个号」；不在策略里的号（b）不出设置格；`accounts` 前 `listed` 个与设置行一一对应。
+/// kun 照实出一行、头一句写「账号库里无此号」；不在策略里的号（b）不出设置格；`accounts` 前 `listed` 个与设置行一一对应。
 #[test]
 fn a_listed_account_missing_here_keeps_every_row_on_its_own_settings() {
     let home = Home::new("missing-row");
@@ -1296,5 +1297,19 @@ fn a_listed_account_missing_here_keeps_every_row_on_its_own_settings() {
     assert_eq!(
         v.board.rows[1].line,
         copy_core::copy_text("rot.acct.missing", &[])
+    );
+}
+
+/// ★ 中转账本里没有的会话：上游是自设的 ⇒ 照实写额度看不到 · 换号不适用（手机照抄这一句）；不是 ⇒ 照旧「后端未见过该会话」。码都是 `no_session`。
+#[test]
+fn an_unseen_session_with_its_own_upstream_says_so() {
+    let said = |own: bool| match session_gone(own) {
+        RotationViewErr::NoSession(s) => s,
+        _ => panic!("不是 no_session"),
+    };
+    assert_eq!(said(true), copy_core::copy_text("acct.own.line", &[]));
+    assert_eq!(
+        said(false),
+        copy_core::copy_text("beRotation.session.gone", &[])
     );
 }

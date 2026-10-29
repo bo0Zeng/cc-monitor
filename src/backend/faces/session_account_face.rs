@@ -66,6 +66,8 @@ pub(crate) struct Facts {
     pub(crate) default: Option<String>,
     /// 这台的号查得了。
     pub(crate) queryable: bool,
+    /// 上游是用户自己的（[`crate::accounts::upstream_select::session_upstream::own_upstream_of`] 判的）。
+    pub(crate) own_upstream: bool,
 }
 
 /// 这台的生产那一份。
@@ -102,6 +104,7 @@ fn facts_here(ctx: &crate::faces::rotation_face::Ctx, sid: &str) -> Facts {
         last: crate::faces::launch_account_face::last_of(sid),
         default,
         queryable: list.meta.enabled,
+        own_upstream: crate::accounts::upstream_select::session_upstream::own_upstream_here(sid),
     }
 }
 
@@ -138,7 +141,29 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
     };
     let mut from = None;
     let mut from_line = None;
+    let own_upstream = f.own_upstream.then(|| copy_text("acct.own.line", &[]));
     let (usage, stale, hover, sampled) = match (rot, &account) {
+        // 上游是自设的：鉴权是用户网关的，说不出是哪个号的额度 ⇒ 不画那个号的用量（账上有也不画）；换号不适用。
+        _ if own_upstream.is_some() => {
+            let mut head = Vec::new();
+            head.extend(account.as_deref().map(label));
+            (
+                None,
+                false,
+                vec![
+                    head,
+                    vec![
+                        copy_text("acct.hover.usage", &[]),
+                        copy_text("acct.own.usage", &[]),
+                    ],
+                    vec![
+                        copy_text("acct.hover.switch", &[]),
+                        copy_text("acct.own.switch", &[]),
+                    ],
+                ],
+                None,
+            )
+        }
         // 走中转：用量 · 悬停照额度账里在用那个号那一段；换过号 ⇒ 末尾一行从哪个号换来。
         (Some((start, cur)), _) => {
             let led = seen(cur);
@@ -193,10 +218,14 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
             None,
         ),
     };
-    let differs = matches!((&account, &f.default), (Some(a), Some(d)) if a != d);
-    let account_line = account
-        .as_deref()
-        .map(|a| copy_text("tabBar.hover.account", &[("name", a)]));
+    // 自设上游：与默认号比没有意义（用的不是那个号的额度）⇒ 不比、不出徽章；标签页悬停卡那一行写那一句。
+    let differs =
+        own_upstream.is_none() && matches!((&account, &f.default), (Some(a), Some(d)) if a != d);
+    let account_line = own_upstream.clone().or_else(|| {
+        account
+            .as_deref()
+            .map(|a| copy_text("tabBar.hover.account", &[("name", a)]))
+    });
     let badge = (differs && f.queryable).then(|| SessionAccountBadge {
         ghost: when == SessionAccountWhen::Last,
         title: account_line.clone().unwrap_or_default(),
@@ -217,6 +246,7 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
         differs,
         badge,
         queryable: f.queryable,
+        own_upstream,
     }
 }
 

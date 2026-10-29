@@ -162,7 +162,6 @@
     "tests/frontend/ui/kit/menu.vitest.ts": [
       { "text": "在新窗口打开", "use": "输入" },
       { "text": "预览", "use": "输入" },
-      { "text": "结束会话", "use": "输入" },
       { "text": "恢复", "use": "输入" },
       { "text": "账号", "use": "输入" },
       { "text": "运行于", "use": "输入" },

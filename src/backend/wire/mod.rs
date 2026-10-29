@@ -149,6 +149,7 @@ impl SessionFaceExt for SessionFace {
                 model: no(tip.clone()),
                 permission: no(tip.clone()),
                 stop: no(tip.clone()),
+                end: no(tip.clone()),
                 // 离线照常可写可发：成待发，那台接上照原编号重交。
                 say: say_yes(copy_core::copy_text("composer.input.offline", &[])),
             },
@@ -196,6 +197,8 @@ impl SessionFaceExt for SessionFace {
                         model: Allow::Yes,
                         permission: Allow::Yes,
                         stop: no(tip.clone()),
+                        // 程序退了、tmux 会话还在：结束的是那个 tmux 会话。
+                        end: Allow::Yes,
                         // 程序退了：先接回（tmux 会话还在），再说。
                         say: CanSay::No { why: tip.clone() },
                     },
@@ -232,7 +235,8 @@ impl SessionFaceExt for SessionFace {
                         resume: if gone { no(tip.clone()) } else { Allow::Yes },
                         term: CanTerm::No { why: why.clone() },
                         reattach: no(why.clone()),
-                        stop: no(why),
+                        stop: no(why.clone()),
+                        end: no(why),
                         // 已结束：记在注解上、下次恢复用上；记录已不在 ⇒ 恢复不了，换了也用不上（同恢复那一句）。
                         model: if gone { no(tip.clone()) } else { Allow::Yes },
                         permission: if gone { no(tip.clone()) } else { Allow::Yes },
@@ -271,6 +275,7 @@ impl SessionFaceExt for SessionFace {
                         model: no(name.clone()),
                         permission: no(name.clone()),
                         stop: no(name.clone()),
+                        end: no(name.clone()),
                         say: CanSay::No { why: name.clone() },
                     },
                     name,
@@ -391,6 +396,13 @@ fn live_face(
             model,
             permission,
             stop,
+            // 不在任何宿主里（非 cc-monitor 起的）⇒ 没有终端可结束；住哪判不了 ⇒ 交了由那台认。
+            end: match host {
+                Some(Housed::Bare) => {
+                    no(Words(copy_core::copy_text("terminal.empty.notOurs", &[])))
+                }
+                _ => Allow::Yes,
+            },
             // 不在任何宿主里（非 cc-monitor 起的）⇒ 投不进去；住哪判不了 ⇒ 交了由那台说。
             say: match host {
                 Some(Housed::Bare) => CanSay::No {

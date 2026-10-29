@@ -26,6 +26,7 @@ import { callStop, type Reply } from "./tab-batch-run";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
+import { askEnd, sayEnded } from "./end-confirm";
 import { offerResyncRetry, resyncMachines, resyncMachinesSaid } from "./resync";
 
 /** DEV 断言出口：把状态转移写成可 grep 的 `[e2e]` 行。`import.meta.env.DEV` 门控，生产构建整支消除。 */
@@ -136,29 +137,10 @@ export class TabSessionActions {
   }
 
   /**
-   * 结束这个会话所在的终端：二次确认后交那台（`sessions-stop`，与批量同一条：那台按 sid 认出名单里那一行、交 `terminal-end`，过三道门、杀句柄）。
-   * `name` 只用来在确认框里说清是哪个（菜单就绪时那台答的）。变已结束由会话流兜（不主动改状态）。
-   * `idle` = 只剩空 shell 的那个（文案别说「正在运行的 Claude」；杀掉它 ⇒ tab 变已结束 ⇒ 可 Resume）。
+   * 结束这个会话：结束会话那一个确认框（`end-confirm.ts`）答了之后交那台（`sessions-stop`，与批量同一条：那台按 sid 认出名单里那一行、
+   * 交 `terminal-end`，过三道门、杀句柄；命中几个 · 不在终端里都是那台判、那台说）。变已结束由会话流兜（不主动改状态）。
    */
-  endSession(origin: string, sid: string, name: string, opts?: { confirm?: ConfirmFn; idle?: boolean; title?: string }): void {
-    const isLocal = isLocalOrigin(origin);
-    const confirmFn: ConfirmFn = opts?.confirm ?? confirmDialog;
-    const machine = isLocal ? copyText("tabSessionActions.who.local") : origin;
-    const title = opts?.title ?? name;
-    const keep = { label: copyText("kit.interrupts.keep"), items: [copyText("tabSessionActions.kill.keeps")] };
-    // tmux 会话名放在正文，不放菜单。Claude 已退出、只剩 tmux 会话的：标题点名 tmux 会话。
-    const spec = opts?.idle
-      ? {
-          title: copyText("sessionState.killIdle.title", { name }),
-          body: copyText("sessionState.reconnectable.name"),
-          rows: [keep],
-          action: copyText("sessionState.killIdle.action"),
-        }
-      : {
-          title: copyText("tabSessionActions.kill.title", { title }),
-          rows: [{ label: copyText("kit.interrupts.cut"), items: [copyText("tabSessionActions.kill.cuts", { machine, name })] }, keep],
-          action: copyText("tabSessionActions.kill.action"),
-        };
+  endSession(origin: string, sid: string, title: string, opts?: { confirm?: ConfirmFn }): void {
     const kill = async (): Promise<void> => {
       let r: Reply;
       try {
@@ -171,13 +153,13 @@ export class TabSessionActions {
         const said = r.said ?? "";
         // 关卡 2 拒的 ⇒ 提示带「对齐后重试」（只对这个会话重验 ＋ 重打，再过一次关卡）。
         if (r.why === "wrong_owner") offerResyncRetry(origin, sid, copyText("tabSessionActions.kill.failed", { title }), said, kill);
-        else toast(copyText("tabSessionActions.kill.failed", { title }), said, { detail: r.copyDetail });
+        else sayEnded([{ title, outcome: "failed", why: said, detail: r.copyDetail }]);
         return;
       }
-      toast(copyText("sessionState.kill.done", { title }), "", { level: "success" });
+      sayEnded([{ title, outcome: "done", why: "" }]);
     };
     void (async () => {
-      if (!(await confirmFn({ ...spec, danger: true }))) return;
+      if (!(await askEnd([title], opts?.confirm ?? confirmDialog))) return;
       await kill();
     })();
   }
