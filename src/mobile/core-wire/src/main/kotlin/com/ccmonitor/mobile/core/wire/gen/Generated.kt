@@ -3889,6 +3889,42 @@ data class ChangedFile(
     }
 }
 
+@Suppress("UNCHECKED_CAST")
+data class ChatsColumn(
+    val sections: List<ColumnSection>,
+    val groups: List<ColumnAt>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ChatsColumn> = obj(
+            listOf(
+            Field("sections", { arr(ColumnSection.ADAPTER) }, optional = false, nullable = false),
+            Field("groups", { arr(ColumnAt.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> ChatsColumn(a[0] as List<ColumnSection>, a[1] as List<ColumnAt>) },
+            { v -> arrayOf(v.sections, v.groups) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class ChatsColumnAsk(
+    val hosts: List<ColumnHost>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ChatsColumnAsk> = obj(
+            listOf(
+            Field("hosts", { arr(ColumnHost.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> ChatsColumnAsk(a[0] as List<ColumnHost>) },
+            { v -> arrayOf(v.hosts) },
+        )
+    }
+}
+
 enum class CheckLevel(val wire: String) {
     OK("ok"),
     WARN("warn"),
@@ -4280,6 +4316,84 @@ data class ClashRow(
             ),
             { a -> ClashRow(a[0] as String, a[1] as String, a[2] as String, a[3] as List<Decide>, a[4] as String?) },
             { v -> arrayOf(v.key, v.name, v.meta, v.answers, v.there) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class ColumnAt(
+    val host: Long,
+    val at: Long,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ColumnAt> = obj(
+            listOf(
+            Field("host", { Lng }, optional = false, nullable = false),
+            Field("at", { Lng }, optional = false, nullable = false),
+            ),
+            { a -> ColumnAt(a[0] as Long, a[1] as Long) },
+            { v -> arrayOf(v.host, v.at) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class ColumnHost(
+    val rows: List<ColumnRow>,
+    val groups: List<Long>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ColumnHost> = obj(
+            listOf(
+            Field("rows", { arr(ColumnRow.ADAPTER) }, optional = false, nullable = false),
+            Field("groups", { arr(Lng) }, optional = false, nullable = false),
+            ),
+            { a -> ColumnHost(a[0] as List<ColumnRow>, a[1] as List<Long>) },
+            { v -> arrayOf(v.rows, v.groups) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class ColumnRow(
+    val at: Long,
+    val section: String?,
+    val placed: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ColumnRow> = obj(
+            listOf(
+            Field("at", { Lng }, optional = false, nullable = false),
+            Field("section", { opt(Str) }, optional = false, nullable = true),
+            Field("placed", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> ColumnRow(a[0] as Long, a[1] as String?, a[2] as Boolean) },
+            { v -> arrayOf(v.at, v.section, v.placed) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class ColumnSection(
+    val title: String?,
+    val rows: List<ColumnAt>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ColumnSection> = obj(
+            listOf(
+            Field("title", { opt(Str) }, optional = false, nullable = true),
+            Field("rows", { arr(ColumnAt.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> ColumnSection(a[0] as String?, a[1] as List<ColumnAt>) },
+            { v -> arrayOf(v.title, v.rows) },
         )
     }
 }
@@ -20537,6 +20651,7 @@ data class RunGroups(
     val running: List<String>,
     val recent: List<String>,
     val older: List<String>,
+    val olderText: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -20546,9 +20661,10 @@ data class RunGroups(
             Field("running", { arr(Str) }, optional = false, nullable = false),
             Field("recent", { arr(Str) }, optional = false, nullable = false),
             Field("older", { arr(Str) }, optional = false, nullable = false),
+            Field("older_text", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> RunGroups(a[0] as List<String>, a[1] as List<String>, a[2] as List<String>) },
-            { v -> arrayOf(v.running, v.recent, v.older) },
+            { a -> RunGroups(a[0] as List<String>, a[1] as List<String>, a[2] as List<String>, a[3] as String?) },
+            { v -> arrayOf(v.running, v.recent, v.older, v.olderText) },
         )
     }
 }

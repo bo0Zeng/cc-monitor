@@ -1,22 +1,22 @@
 //! 用户配置 R/W —— `~/.cc-monitor/config.json`。
 //!
 //! Rust 端不解释配置内容（schema 在前端定义，顶层键的主人登记在 `src/frontend/ui/config.ts::CONFIG_KEY_OWNERS`），
-//! 只负责读、**按键补丁**写 ＋ 文件缺失时给出最小骨架。
+//! 只负责读、**按键补丁**写 ＋ 文件缺失时给出最小骨架。落点的名字与读上限照声明表 `relay_route_core::CONFIG_FILE`
+//! （状态 · 不带版本）：超了上限当读不出来，读那一口照实说、写口一个字节不写。
 //!
 //! 配置文件位置走 [`resolve_config_path`] —— monitor 自己的设置永远在
 //! 默认 `~/.cc-monitor/` 下（一台机器一个家，与后端同一个），不跟随 Claude 数据目录变化。
 //!
-//! 从前每个前端模块「读整份 → 改自己的键 → 整份写回」，主窗（tab 栏的分组 / 固定 / 顺序）与设置窗
-//! （行为 / 主题 / 快捷键 / 账号 / 远端）是同一进程里的两个 webview，两次读-改-写一交错，
-//! 后写的整份就把先写的键盖掉（E §E1：拖放同拍发分组 ＋ 顺序，分组那次没落盘）。
+//! 主窗（tab 栏的分组 / 固定 / 顺序）与设置窗（行为 / 主题 / 快捷键 / 账号 / 远端）是同一进程里的两个 webview：
+//! 各自「读整份 → 改自己的键 → 整份写回」的话，两次读-改-写一交错，后写的整份就把先写的键盖掉。
 //! 守的要求：「各自只写自己那个键」· 红线 ④「读不懂的 `config.json` 不写」。
 //!
-//! 现在前端只交「改哪几条路径」（[`ConfigEdit`]），这里在**一把进程级锁里现读盘、逐条应用、原子替换** ——
+//! 所以前端只交「改哪几条路径」（[`ConfigEdit`]），这里在**一把进程级锁里现读盘、逐条应用、原子替换** ——
 //! 主窗 / 设置窗 / `logging.rs` 的诊断写口都走这一个函数，谁写的键谁的值留在盘上。
 //! 两个 monitor 进程同写（单实例拦不住的那几形：Linux 上没有会话总线 · 两个登录会话）也串起来了：进程内那把锁里面、现读之前，
 //! 再拿 `config.json` 所在目录的**跨进程**锁（`platform::fs::hold_dir_lock`：unix 对目录 `flock` · Windows 命名互斥量，与后端第四层同一种锁）。
 //!
-//! # 〔「`config` ＋ `paths` → 一处」〕数据目录与配置文件路径（原 `paths.rs`，整份并进本文件、只挪住址）
+//! # 数据目录与配置文件路径
 //!
 //! monitor 自己配置文件的路径解析。
 //!
@@ -48,26 +48,44 @@ pub fn load_config() -> Result<Value, Said> {
     let r: Result<Value, Said> = (move || -> Result<Value, Said> {
         let path =
             resolve_config_path().ok_or_else(|| Said::of("rsShellCmd.config.noHome", &[]))?;
-        if !path.exists() {
-            return Ok(default_config());
-        }
-        let raw = std::fs::read_to_string(&path).map_err(|e| {
-            Said::with_raw(
-                copy_text(
-                    "rsShellCmd.config.readFailed",
-                    &[("why", &copy_core::reason::io_reason(e.kind()))],
-                ),
-                format!("{}\n{e}", path.display()),
-            )
-        })?;
-        Ok(serde_json::from_str(&raw).map_err(|e| {
-            Said::with_raw(
-                copy_text("rsShellCmd.config.unparsable", &[]),
-                format!("{}\n{e}", path.display()),
-            )
-        })?)
+        load_config_at(&path)
     })();
     r.map_err(|s| s.named("load_config"))
+}
+
+/// 读一份 `config.json`：不在 ⇒ 最小骨架；读上限照声明表（`relay_route_core::CONFIG_FILE`），超了 ⇒ 读不出来、照实说。
+pub(crate) fn load_config_at(path: &Path) -> Result<Value, Said> {
+    let Some(raw) = read_config_text(path)? else {
+        return Ok(default_config());
+    };
+    serde_json::from_str(&raw).map_err(|e| {
+        Said::with_raw(
+            copy_text("rsShellCmd.config.unparsable", &[]),
+            format!("{}\n{e}", path.display()),
+        )
+    })
+}
+
+/// 读 `config.json` 的原文，上限照声明表：不在 ⇒ `None`；读不出来（超了上限 · 盘上那一步）⇒ 那一句，原话进复制详情。
+/// 读设置与写口现读都经它（同一句「读取设置失败 · 原因」）。
+fn read_config_text(path: &Path) -> Result<Option<String>, Said> {
+    let cap = relay_route_core::CONFIG_FILE.row.cap;
+    let (why, raw) = match host_core::read_capped(path, cap) {
+        Ok(host_core::Capped::Text(raw)) => return Ok(Some(raw)),
+        Ok(host_core::Capped::Absent) => return Ok(None),
+        Ok(host_core::Capped::TooBig) => (
+            copy_text(
+                "rsConfig.read.tooBig",
+                &[("cap", &copy_core::size_text(cap))],
+            ),
+            format!("> {cap} bytes"),
+        ),
+        Err(e) => (copy_core::reason::io_reason(e.kind()), e.to_string()),
+    };
+    Err(Said::with_raw(
+        copy_text("rsShellCmd.config.readFailed", &[("why", &why)]),
+        format!("{}\n{raw}", path.display()),
+    ))
 }
 
 /// 一条配置补丁。`path[0]` 是顶层键，其后是逐层子键。
@@ -190,19 +208,9 @@ pub(crate) fn patch_config_at(
     let _cross = crate::platform::fs::hold_dir_lock(dir).map_err(ConfigWriteError::Io)?;
 
     // ③ 锁内现读。不存在 ⇒ 空对象；读不懂 / 根不是对象 ⇒ 不写。
-    let mut root: Map<String, Value> = if path.exists() {
-        let raw = std::fs::read_to_string(path).map_err(|e| {
-            ConfigWriteError::Io(Said::with_raw(
-                copy_text(
-                    "reason.fs.readFailed",
-                    &[
-                        ("path", &path.display().to_string()),
-                        ("why", &copy_core::io_reason(e.kind())),
-                    ],
-                ),
-                &e,
-            ))
-        })?;
+    //     读上限照声明表：超了 ⇒ 读不出来，同样一个字节不写。
+    let read = read_config_text(path).map_err(ConfigWriteError::Io)?;
+    let mut root: Map<String, Value> = if let Some(raw) = read {
         match serde_json::from_str::<Value>(&raw) {
             Ok(Value::Object(m)) => m,
             Ok(_) => {
@@ -306,8 +314,8 @@ fn default_config() -> Value {
     serde_json::json!({})
 }
 
-/// F87b③ 起：**已配置且启用**的远端 origin（本机后端机器表里算好的名字，`machine_table`）。今天它是通用的「列远端配置标签」（历史清单 · 搜索 ·
-/// cc-bus 两块 · MCP 推 / 拉面板都用它）：读的是 monitor 自己的配置 —— 从 `mcp.rs` 挪来（MCP 读写进了那台后端，`mcp.rs` 删了）。
+/// **已配置且启用**的远端 origin（本机后端机器表里算好的名字，`machine_table`）：通用的「列远端配置标签」（历史清单 · 搜索 ·
+/// cc-bus 两块 · MCP 推 / 拉面板都用它）。MCP 读写在那台后端。
 #[tauri::command]
 pub async fn list_remote_mcp_origins() -> Result<Vec<String>, Said> {
     let r: Result<Vec<String>, Said> = async move {
@@ -322,7 +330,7 @@ pub async fn list_remote_mcp_origins() -> Result<Vec<String>, Said> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 原 `paths.rs` 的正文：Claude 数据目录 · monitor 数据目录 · 配置文件路径（头注见本文件顶上那一节）。
+// 数据目录与配置文件路径：Claude 数据目录 · monitor 数据目录 · 配置文件路径（头注见本文件顶上那一节）。
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 那个 env 出口的名字。
@@ -397,14 +405,22 @@ pub fn monitor_data_dir_from(env_val: Option<&str>, home: Option<PathBuf>) -> Op
 
 /// Monitor 配置文件：`<monitor_data_dir>/config.json`
 pub fn resolve_config_path() -> Option<PathBuf> {
-    Some(resolve_monitor_data_dir()?.join("config.json"))
+    Some(config_path_in(&resolve_monitor_data_dir()?))
+}
+
+/// 一个数据目录里的 `config.json`：名字是声明表那一行（`relay_route_core::CONFIG_FILE`，从家目录 `.cc-monitor/` 那一层起）的最后一截 ——
+/// 数据目录默认就是那一层，`CCM_DATA_DIR` 整体挪走时名字跟着走。
+pub fn config_path_in(monitor_data_dir: &Path) -> PathBuf {
+    monitor_data_dir.join(relay_route_core::file_name_of(
+        relay_route_core::CONFIG_FILE.row.rel,
+    ))
 }
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/config_tests.rs"]
 mod tests;
 
-// 原 `paths.rs` 那份单测（文件不改名，挂在本模块下；`use super::*` 照旧够到这些项）。
+// 数据目录与配置文件路径那一节的单测（挂在本模块下，`use super::*` 够到这些项）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/paths_tests.rs"]
 mod paths_tests;

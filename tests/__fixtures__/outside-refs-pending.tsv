@@ -62,13 +62,11 @@ src/frontend/shell/.gitignore	5
 src/frontend/shell/Cargo.toml	6
 src/frontend/shell/build.rs	5
 src/frontend/shell/src/backend_policy.rs	10
-src/frontend/shell/src/config.rs	1
 src/frontend/shell/src/filewin/entry.rs	12
 src/frontend/shell/src/filewin/proc.rs	1
 src/frontend/shell/src/lib.rs	8
 src/frontend/shell/src/local_backend.rs	34
 src/frontend/shell/src/local_backend_host.rs	32
-src/frontend/shell/src/logging.rs	1
 src/frontend/shell/src/platform/hwnd.rs	1
 src/frontend/shell/src/platform/mod.rs	2
 src/frontend/shell/src/platform/pid.rs	1

@@ -2027,6 +2027,13 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
         "`read_file_capped` 是后端侧共用的有界读助手，上限是入参；\
              调用方给的是 `MAX_CONFIG_BYTES` / `MAX_MANIFEST_BYTES` 等具名常量。",
     ),
+    (
+        "src/common/host-core/src/atomic.rs",
+        "cap.saturating_add(1)",
+        "`read_capped` 是两个前端共用的有界读助手，上限是入参；\
+             调用方给的是声明表那一行的读上限（`relay_route_core::CONFIG_FILE` ⇒ `CONFIG_MAX_BYTES`，已在 `CAPS` 里）；\
+             多读一个字节只为分辨读满与其实还有，超了回 `TooBig`、不当完整的用。",
+    ),
     // ⚠〔`K-H1` 回修轮之五 08-25，D3 `阻-1(D3)`〕这一处的 `n` 与上面两条**不同族**，
     //    差别要写清楚，否则下一个人会以为它也是「调用方给具名常量」那一档：
     //    `n` 是**下游 `Content-Length` 给的、敌手可控的**值，**不是**任何具名常量。

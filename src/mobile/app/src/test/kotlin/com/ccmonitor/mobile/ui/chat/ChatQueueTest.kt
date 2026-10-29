@@ -77,4 +77,23 @@ class ChatQueueTest {
             assertEquals(false, q.gone("never-seen"))
             assertEquals(true, q.holds("b"))
         }
+
+    @Test
+    fun `名单与待发排成同一种行：一条一行只摆开头那一行；没送到 · 拒了 ⇒ 状态错误色；拒了的才有［重试］`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val link = FakeCoreLink()
+            val gone = item("b", "未送达") + ("state" to "undelivered") + ("text" to "第一行\n第二行")
+            link.answer = { cmd, _ -> if (cmd == "session-queue-read") Reply.Ok(list(item("a", "排第 1"), gone)) else Reply.LinkDown }
+            val q = ChatQueue(link, backgroundScope) {}
+            q.read("s1")
+            val outbox = listOf(OutboxLine("o1", "发着的", "发送中", failed = false, retry = false), OutboxLine("o2", "被拒的", "队满", failed = true, retry = true))
+            val rows = queueRows(q.lines(), outbox)
+            assertEquals(listOf("a", "b", "o1", "o2"), rows.map { it.id })
+            assertEquals(listOf("排第 1", "未送达", "发送中", "队满"), rows.map { it.state })
+            assertEquals(listOf("from-word", "from-word", null, null), rows.map { it.from })
+            assertEquals("一条只占一行：开头只取第一行", "第一行", rows[1].head)
+            assertEquals(listOf(false, true, false, true), rows.map { it.error })
+            assertEquals(listOf(false, false, false, true), rows.map { it.retry })
+            assertEquals(listOf(true, true, false, false), rows.map { it.listed })
+        }
 }

@@ -125,7 +125,7 @@ export class AgentsPanel {
       this.table.summary,
       this.olderOpen,
       shown.map((r) => (sid !== null && this.host?.isOpen(sid, r.run)) === true),
-      g.older.length,
+      this.table.groups.older_text,
       shown.map((r) => [r.run, r.state, r.label, r.kind, this.lastOf(r)]),
     ]);
     if (!force && sig === this.drawn) return;
@@ -140,7 +140,7 @@ export class AgentsPanel {
     if (g.running.length > 0) items.push(this.head("running", copyText("agentsPanel.group.running")), ...g.running.flatMap((r) => this.row(r)));
     if (g.recent.length > 0) items.push(this.head("recent", copyText("agentsPanel.group.recent")), ...g.recent.flatMap((r) => this.row(r)));
     if (g.older.length > 0) {
-      items.push(this.olderToggle(g.older.length));
+      items.push(this.olderToggle(this.table.groups.older_text ?? ""));
       if (this.olderOpen) items.push(...g.older.flatMap((r) => this.row(r)));
     }
     place(this.list, items);
@@ -168,7 +168,8 @@ export class AgentsPanel {
     return li;
   }
 
-  private olderToggle(n: number): HTMLElement {
+  /** 更早那一组的组头：字照那台写好的 `groups.older_text`，点了开合（开合是这一端记的）。 */
+  private olderToggle(text: string): HTMLElement {
     const li = this.node("older", () => {
       const el = document.createElement("li");
       el.className = "agent-group agent-older";
@@ -184,7 +185,7 @@ export class AgentsPanel {
     });
     const b = li.firstElementChild as HTMLButtonElement;
     b.setAttribute("aria-expanded", this.olderOpen ? "true" : "false");
-    b.textContent = copyText("agentsPanel.group.older", { n });
+    b.textContent = text;
     return li;
   }
 

@@ -364,7 +364,7 @@ class AttachTray(
         mapOf("name" to c.name) +
             when (val p = c.phase) {
                 AttachPhase.Queued -> mapOf("phase" to "queued")
-                is AttachPhase.Moving -> mapOf("phase" to "moving", "done" to p.done, "total" to p.total)
+                is AttachPhase.Moving -> mapOf("phase" to "moving")
                 is AttachPhase.Landed -> mapOf("phase" to "landed")
                 is AttachPhase.Refused -> mapOf("phase" to "refused", "said" to p.said)
                 is AttachPhase.Failed -> mapOf("phase" to "failed", "said" to p.said)

@@ -212,21 +212,16 @@ pub(crate) fn host_relay(
     adoptions: crate::accounts::quota::rules::AdoptionsAt,
     tap: std::sync::Arc<dyn crate::relay::TapPort>,
     own: crate::platform::fs::Own,
-    on_listening: impl FnOnce(),
 ) -> String {
-    let hosted = crate::relay::host(
+    crate::relay::host(
         &|k| std::env::var(k).ok(),
         &Rotating(library, own.clone(), adoptions),
         tap,
         &own,
         // 中转开上游那一口按来处取那条会话的出网描述（`ccm` 起会话时留的那一份）。
         session_upstream::egress_of(&own),
-    );
-    // 接上了中转 ⇒ 旧版的中转已经让出了口：宿主在这一刻做它的事（盘上的轮换若还是旧版，升级写回）。
-    if hosted.listening() {
-        on_listening();
-    }
-    hosted.to_string()
+    )
+    .to_string()
 }
 
 /// 上游选择在中转启动路径上交给中转的那一只手（[`Startup`]）。

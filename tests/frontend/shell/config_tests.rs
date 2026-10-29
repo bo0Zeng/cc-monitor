@@ -321,8 +321,8 @@ fn hx2_the_config_writer_takes_the_cross_process_lock_before_it_reads() {
     let body = &body[..body.find("\nfn ").unwrap_or(body.len())];
     let lock = guard_core::find_pinned(body, "crate::platform::fs::hold_dir_lock(dir)")
         .expect("写口里拿跨进程锁不是恰好一处");
-    let read_at = guard_core::find_pinned(body, "std::fs::read_to_string(path)")
-        .expect("写口里现读不是恰好一处");
+    let read_at =
+        guard_core::find_pinned(body, "read_config_text(path)").expect("写口里现读不是恰好一处");
     assert!(
         lock < read_at,
         "跨进程锁排在现读之后 —— 读到的可能是别人写到一半之前的那一份"
@@ -451,4 +451,59 @@ fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
     );
     // 正控：这个字段名在凭据模板里认得出。
     assert!(store::template().contains(store::KEY_FIELD));
+}
+
+/// 读上限与落点从声明表来（`relay_route_core::CONFIG_FILE`）：刚好上限那么大的一份读得出、写得进；多一个字节 ⇒
+/// 读那一口报「超出上限」、写口拒写且盘上字节不变。表里改上限，这里的边界跟着变（期望只从表取，不另写数）。
+#[test]
+fn the_config_read_cap_comes_from_the_declaration_table() {
+    let cap = relay_route_core::CONFIG_FILE.row.cap as usize;
+    // 一份合法 JSON 对象，整份恰好 `n` 字节。
+    let sized = |n: usize| {
+        let shell = r#"{"pad":""}"#.len();
+        format!(r#"{{"pad":"{}"}}"#, "x".repeat(n - shell))
+    };
+    let dir = tmpdir("cap");
+    let file = dir.join("config.json");
+
+    std::fs::write(&file, sized(cap)).unwrap();
+    assert_eq!(
+        load_config_at(&file).unwrap()["pad"].as_str().map(str::len),
+        Some(cap - 10)
+    );
+    patch_config_at(&file, &[set(&["a"], json!(1))]).expect("刚好上限那一份写不进");
+
+    let over = sized(cap + 1);
+    std::fs::write(&file, &over).unwrap();
+    // 不用 `expect_err`：读出来的那份有几 MB，整份进 panic 原话没用。
+    let Err(said) = load_config_at(&file) else {
+        panic!("超了上限的读出来了")
+    };
+    assert!(
+        copy_core::copy_matches("rsShellCmd.config.readFailed", &said.said),
+        "{}",
+        said.said
+    );
+    let Err(err) = patch_config_at(&file, &[set(&["a"], json!(2))]) else {
+        panic!("超了上限的被写了")
+    };
+    assert!(matches!(err, ConfigWriteError::Io(_)), "{err:?}");
+    assert!(
+        std::fs::read_to_string(&file).unwrap() == over,
+        "盘上字节变了"
+    );
+    assert!(!tmp_of(&file).exists(), "留下了临时件");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 落点照表：数据目录里的那个名字是表里那一行的最后一截。
+#[test]
+fn the_config_path_is_the_declared_name_inside_the_data_dir() {
+    let dir = PathBuf::from("/data");
+    assert_eq!(config_path_in(&dir), dir.join("config.json"));
+    assert_eq!(
+        relay_route_core::CONFIG_FILE.row.rel,
+        ".cc-monitor/config.json",
+        "表里那一行该在家目录 `.cc-monitor/` 那一层（数据目录默认就是它）"
+    );
 }

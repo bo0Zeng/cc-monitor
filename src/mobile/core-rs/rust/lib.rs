@@ -404,6 +404,13 @@ pub fn search_merge_json(data: &str) -> String {
     serde_json::to_string(&cmd_wire::search::merge(answered, down)).unwrap_or_default()
 }
 
+/// 会话屏勾上的那几台 ⇒ 并好的一列（`ChatsColumnAsk` ⇒ `ChatsColumn`；本机后端并历史页那一份并法，`resident_client::column`）；读不动 ⇒ 空串。
+pub fn chats_column_json(ask: &str) -> String {
+    serde_json::from_str::<resident_client::column::ChatsColumnAsk>(ask)
+        .map(|a| serde_json::to_string(&resident_client::column::column(&a)).unwrap_or_default())
+        .unwrap_or_default()
+}
+
 /// 下载一组那几格（[`batch::download_event`]）；读不动 ⇒ 空串。
 pub fn download_event_json(want: &str) -> String {
     serde_json::from_str::<serde_json::Value>(want)
@@ -917,6 +924,21 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_claude_link_PlanFace_face<
     guarded(std::ptr::null_mut(), || {
         let text = string(&mut env, &want).unwrap_or_default();
         env.new_string(plan::face_json(&text))
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
+/// `ColumnFace.column(ask)`：会话屏几台并成一列（[`chats_column_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_claude_link_ColumnFace_column<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    ask: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let text = string(&mut env, &ask).unwrap_or_default();
+        env.new_string(chats_column_json(&text))
             .map(|s| s.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })

@@ -117,14 +117,12 @@ pub(super) mod tests {
         "quota/rules/standing.rs",
         // 两份账本共用的存取（rotation.json 与配置编辑层那一份）。
         "quota/rotation.rs",
-        // 轮换的配置编辑层：策略文件与目录 · 设置的声明 · 会话用哪份（rotation-uses.json）· 两份账本的升级链。不认识上游选择与账号库管理。
+        // 轮换的配置编辑层：策略文件与目录 · 设置的声明 · 会话用哪份（rotation-uses.json）。不认识上游选择与账号库管理。
         "quota/setup/editor.rs",
         "quota/setup/form.rs",
-        "quota/setup/migrate.rs",
         "quota/setup/mod.rs",
         "quota/setup/script.rs",
         "quota/setup/shelf.rs",
-        "quota/setup/upgrade.rs",
         "quota/setup/uses.rs",
         // 额度显示态（纯）：帧面宿主与上游选择出显示态时问它；它不认识上游选择与账号库管理。
         "quota/show.rs",
