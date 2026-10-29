@@ -160,6 +160,34 @@ fn the_stop_answer_is_one_of_three_words_or_an_error() {
     assert_eq!(wire, ["graceful", "killed", "not_running"]);
 }
 
+/// `machine-stop` 的回包照类型（`cmd_wire::machine::MachineStopped`）收，三个词之外的同样是错。
+#[test]
+fn the_machine_stop_reply_is_read_by_its_type() {
+    use cmd_wire::machine::MachineStopped;
+    let got = |stopped: &str, pid| {
+        answer_of_stopped(&MachineStopped {
+            stopped: stopped.into(),
+            pid,
+        })
+    };
+    assert_eq!(
+        got("killed", Some(3)),
+        Ok(StopAnswer {
+            stopped: StopWord::Killed,
+            pid: Some(3),
+        })
+    );
+    assert_eq!(
+        got("not_running", None),
+        Ok(StopAnswer {
+            stopped: StopWord::NotRunning,
+            pid: None,
+        })
+    );
+    assert!(got("stopped", None).is_err());
+    assert!(got("", Some(1)).is_err());
+}
+
 /// **monitor 等那一趟的期限 > 那台停它的最长时间**（宽限期 ＋ 强杀后再等的那一段）：否则 monitor 先放弃、
 /// 那台其实停成了，界面却说「超时」。跨半边：现抠后端 `control/resident.rs` 两个毫秒字面量（各恰好一处），与 [`STOP_BUDGET`] 比。
 /// 要求：「远端控制方只发一次『停』并拿回结局，不远程轮询」。

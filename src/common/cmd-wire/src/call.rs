@@ -7,9 +7,12 @@ use crate::assets::{AssetsSyncReq, AssetsSynced};
 use crate::batch::{BatchReply, FilesBatchStopReply, FilesBatchStopReq};
 use crate::bookmarks::{Bookmarks, BookmarksEditReq, BookmarksReadReq};
 use crate::deploy::{DeployInstallReq, DeployUninstallReq, Installed, Uninstalled};
-use crate::exit_policy::{ExitPolicy, ExitPolicyReadReq};
+use crate::exit_policy::{ExitPolicy, ExitPolicyReadReq, ExitPolicySetReq};
 use crate::files::*;
 use crate::listing::{HistoryHead, HistoryListReq, HistoryRow};
+use crate::machine::{
+    MachineRead, MachineReadReq, MachineState, MachineStopReq, MachineStopped, MachineWakeReq,
+};
 use crate::needs::{AnswerReq, Answered, NeedsList, SessionsNeedsReq};
 use crate::open::{OpenFactsReq, SessionOpenReq};
 use crate::plan::{PlanFiles, PlanFilesReq};
@@ -115,7 +118,11 @@ calls! {
     TerminalSshReq => "terminal-ssh", SshCommand;
     UnfollowReq => "terminal-unfollow", ();
     ExitPolicyReadReq => "exit-policy-read", ExitPolicy;
+    ExitPolicySetReq => "exit-policy-set", ExitPolicy;
     AssetsSyncReq => "assets-sync", AssetsSynced;
+    MachineReadReq => "machine-read", MachineRead;
+    MachineWakeReq => "machine-wake", MachineState;
+    MachineStopReq => "machine-stop", MachineStopped;
     // 记录那一格是原样的一团（`Value`）：各端照自己的读法再判（手机核心 `record::mend_records` · 壳搬成品）。
     HistoryReadReq => "history-read", HistoryRead, reads HistoryRead<OrUnread>;
     HistoryTailReq => "history-tail", HistoryTail, reads HistoryTail<OrUnread>;

@@ -153,17 +153,13 @@ pub async fn backend_start(origin: String) -> Result<(), Said> {
 /// 叫醒本机后端手上那台的常驻流（`machine-wake`）。拒了 / 没交上 ⇒ 那一句（本机后端写的，或本机没有通道那一句）。
 async fn wake_backend_feed(origin: &str) -> Result<(), Said> {
     const WAKE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
-    let args = serde_json::json!({ "machine": origin });
+    let req = cmd_wire::machine::MachineWakeReq {
+        machine: origin.to_string(),
+    };
     let deadline = crate::frame_query::Deadline::within(WAKE_BUDGET);
-    crate::frame_query::call(
-        &crate::origin::Origin::local(),
-        "machine-wake",
-        args,
-        None,
-        deadline,
-    )
-    .await
-    .map(|_| ())
+    crate::frame_query::ask(&crate::origin::Origin::local(), &req, None, deadline)
+        .await
+        .map(|_| ())
 }
 
 /// 停这台机的 backend。本机远端同一条：在那台机器上跑一次 `--resident-stop`（同机监督者：请它收尾 → 宽限期内等 → 到点强杀），

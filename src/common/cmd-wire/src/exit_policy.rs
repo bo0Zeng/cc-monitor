@@ -1,5 +1,5 @@
-//! 「退出行为」那个值（值住后端所在那台）有 Rust 客户端的那一条：`exit-policy-read`（monitor 退出臂在决定那一刻现问）。
-//! 回包与 `exit-policy-set` 共用。
+//! 「退出行为」那个值（值住后端所在那台）的两条：`exit-policy-read`（monitor 退出臂在决定那一刻现问）· `exit-policy-set`（设置页经通道写）。
+//! 两条回包同一个形状。
 
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +12,18 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(deny_unknown_fields)]
 pub struct ExitPolicyReadReq {}
+
+/// `exit-policy-set` 的入参：要写的值。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ExitPolicySetReq {
+    pub kill_on_exit: bool,
+}
 
 /// 一次读数的线上形状（`exit-policy-read` 与 `exit-policy-set` 共用）。`said` 是成品，界面原样摆。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

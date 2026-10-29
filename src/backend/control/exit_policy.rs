@@ -183,8 +183,8 @@ fn said(r: &Read, resident: bool) -> String {
     }
 }
 
-/// 一次读数的线上形状与 `exit-policy-read` 的入参住 cmd-wire（monitor 退出臂照同一份问、照同一份收）。
-pub(crate) use cmd_wire::exit_policy::{ExitPolicy, ExitPolicyReadReq};
+/// 一次读数的线上形状与两条的入参住 cmd-wire（monitor 退出臂照同一份问、照同一份收）。
+pub(crate) use cmd_wire::exit_policy::{ExitPolicy, ExitPolicyReadReq, ExitPolicySetReq};
 
 fn wire(r: &Read, path: Option<&Path>) -> ExitPolicy {
     wire_as(r, path, resident_now())
@@ -212,18 +212,9 @@ pub(crate) fn answer_read() -> ExitPolicy {
     wire(&read_now(), path.as_deref())
 }
 
-/// `exit-policy-set` 的入参：要写的值。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct ExitPolicySet {
-    pub(crate) kill_on_exit: bool,
-}
-
 /// `exit-policy-set`：写 `killOnExit`，**写完再读一遍**，回读到的那份（回的是盘上的事实，不是「我以为写进去了」）。
 pub(crate) fn answer_set(
-    req: &ExitPolicySet,
+    req: &ExitPolicySetReq,
     own: &Own,
 ) -> Result<ExitPolicy, crate::wire::spec::Fail> {
     let path = policy_path().ok_or_else(|| {
@@ -268,16 +259,14 @@ crate::wire::typed::codes! {
 pub(crate) struct ExitPolicySetCmd;
 
 impl crate::wire::typed::Command for ExitPolicySetCmd {
-    const NAME: &'static str = "exit-policy-set";
-    type Req = ExitPolicySet;
-    type Reply = ExitPolicy;
+    crate::wire::typed::by_call!(ExitPolicySetReq);
     type Err = ExitSetErr;
 }
 
 impl crate::wire::typed::Handle for ExitPolicySetCmd {
     type Needs = crate::wire::typed::needs::Own;
     fn run(
-        req: ExitPolicySet,
+        req: ExitPolicySetReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<ExitPolicy, ExitSetErr>> + Send + 'static {
         let (_cx, needs) = cx.split();
