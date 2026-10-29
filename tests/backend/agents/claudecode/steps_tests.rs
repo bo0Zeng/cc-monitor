@@ -400,8 +400,8 @@ fn questions_and_plans_come_out_as_their_own_cell() {
     assert!(
         t.kept
             .0
-            .starts_with(&copy_core::copy_text("interactive.done.rejected", &[])),
-        "没批：「未批准」打头"
+            .starts_with(&copy_core::copy_text("stream.step.rejected", &[])),
+        "没批：「未批准」打头（同过程那一步拒了的那一句）"
     );
     // 形状不对 ⇒ 没有这一格（界面退成普通工具卡），别的工具也没有
     assert_eq!(

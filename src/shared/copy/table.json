@@ -3363,12 +3363,6 @@
       "zh": "已选「{option}」",
       "args": ["option"]
     },
-    "interactive.done.rejected": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "未批准",
-      "args": []
-    },
     "interactive.ask.multi": {
       "kind": "body",
       "role": "说明",
@@ -4697,12 +4691,6 @@
       "zh": "刷新",
       "args": []
     },
-    "accountChip.menu.manage": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "管理账号…",
-      "args": []
-    },
     "accountChip.menu.manageDeploy": {
       "kind": "action",
       "role": "菜单项",
@@ -4756,12 +4744,6 @@
       "kind": "body",
       "role": "说明",
       "zh": "account 账号 管理 manage 设置",
-      "args": []
-    },
-    "accountCommands.manage.title": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "管理账号…",
       "args": []
     },
     "accountCommands.setDefault.keywords": {
@@ -11863,6 +11845,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "设置 → 机器 → {machine}",
+      "args": ["machine"]
+    },
+    "beMachineWake.refuse.unknown": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "机器表里没有 {machine}",
       "args": ["machine"]
     },
     "beMachineMenu.menu.noSuch": {
@@ -21694,7 +21682,7 @@
       "zh": "新会话默认",
       "args": []
     },
-    "acct.foot.manage": {
+    "acct.menu.manage": {
       "kind": "action",
       "role": "按钮",
       "zh": "管理账号…",

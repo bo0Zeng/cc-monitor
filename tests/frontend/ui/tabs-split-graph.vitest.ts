@@ -268,6 +268,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/session-reads.ts", // 那台重新对齐过 ⇒ 固定条逐条问记录还在不在（经通道问 `history-record`）
     "src/frontend/ui/tab-batch-run.ts", // 杀交那台（`sessions-stop`，与批量同一条）
     "src/frontend/ui/end-confirm.ts", // 结束会话那一个确认框与那一种结局（右键 · 多选 · 终端名单 · 占位同一份）
+    "src/frontend/ui/kit/detail.ts", // ［重新连接］被拒 ⇒ 那一句与复制详情（`saidOf` · `detailOf`）进状态栏消息
   ],
 };
 

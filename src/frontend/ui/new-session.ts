@@ -32,7 +32,7 @@ import { accountLabel } from "./acct-words";
 import { readPrefs } from "./machine-prefs";
 import { chosenAccount, type AccountAsk } from "./launch-account";
 import { askOpen, landOpened, openSession, type OpenEnd, type OpenHow, type Opened, type SessionOpenReq } from "./session-open";
-import { accountsOf } from "./settings-dest";
+import { openLoginDrawer } from "./login-drawer";
 import { askDir, askFacts, type OpenFacts } from "./new-session-reads";
 import type { AccountUnavailable } from "./generated/AccountUnavailable";
 import type { NewOpen } from "./generated/NewOpen";
@@ -44,7 +44,7 @@ import { readStrategies } from "./rot-reads";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import { readProfiles, resolveProfile, type Resolved } from "./profiles-reads";
 import type { ProfileMergeRow } from "./generated/ProfileMergeRow";
-import { saidOf } from "./kit/detail";
+import { detailOf, saidOf } from "./kit/detail";
 import { pageTabs, setPage } from "./new-session-set";
 import s from "./new-session.module.css";
 
@@ -637,20 +637,31 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const offlineLine = (): string => offlineSaid(origin) ?? copyText("settingsNav.dot.unknown", { machine: machineName(origin) });
   const chosenAccountOpt = (): AccountOpt | null =>
     accounts?.find((a) => a.name === accountSel.value()) ?? null;
-  const loginBtn = (): HTMLButtonElement => {
+  /** ［登录…］：框不关，就地开登录抽屉（同需手动 · 账号页那一个）；登成了重读号那一格。 */
+  const loginBtn = (account: string): HTMLButtonElement => {
     const login = button({ label: copyText("newSession.account.login"), kind: "ghost", size: "compact" });
-    login.addEventListener("click", () => void openLogin(origin));
+    login.addEventListener("click", () => {
+      openLoginDrawer({ origin, target: { kind: "account", agent, account }, onDone: () => void paintAccounts() });
+    });
     return login;
   };
 
+  /** ［重新连接］被拒的那一句（那台连上了 ⇒ 框顶整条换掉，它也就不在了）。 */
+  let reconnectRefused: { said: string; detail: string } | null = null;
   const paintTop = (): void => {
     top.replaceChildren();
     if (!up()) {
       const again = button({ label: copyText("newSession.machine.reconnect"), size: "compact" });
       again.addEventListener("click", () => {
-        void commands.backend_start({ origin }).catch(() => {});
+        // 同机器条那一颗（`machine-wake`）：拒了 ⇒ 框顶写那一句；连上了框顶随那台的成品自己换。
+        reconnectRefused = null;
+        void commands.backend_start({ origin }).catch((e: unknown) => {
+          reconnectRefused = { said: saidOf(e), detail: detailOf(e) };
+          paintTop();
+        });
       });
-      top.appendChild(banner("error", offlineLine(), [again]));
+      const r = reconnectRefused;
+      top.appendChild(r ? banner("error", r.said, [again], r.detail) : banner("error", offlineLine(), [again]));
     } else if (factsFailed !== null) {
       top.appendChild(banner("error", factsFailed));
     } else if (pendingTop) {
@@ -666,7 +677,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const paintAccountNote = (): void => {
     const a = chosenAccountOpt();
     if (a && !a.ready) {
-      accountRow.setNote(a.why ?? "", "error", a.login ? [loginBtn()] : []);
+      accountRow.setNote(a.why ?? "", "error", a.login ? [loginBtn(a.name)] : []);
     } else {
       accountRow.setNote("");
     }
@@ -832,7 +843,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       });
       acts.push(use);
     }
-    acts.push(loginBtn());
+    acts.push(loginBtn(u.requested));
     accountRow.setNote(said, "error", acts);
   };
 
@@ -982,12 +993,6 @@ async function configuredCommand(origin: Origin, agent: string): Promise<string>
   } catch {
     return "";
   }
-}
-
-/** ［登录…］：开设置的账号页那一台（登录在那里做）。 */
-async function openLogin(origin: Origin): Promise<void> {
-  const { openSettingsWindow } = await import("./open-settings");
-  await openSettingsWindow(undefined, accountsOf(origin));
 }
 
 /** 不在主窗口里起的：报到了说一句「已启动」＋［切过去］（主窗口里起的由占位标签页接着）。 */

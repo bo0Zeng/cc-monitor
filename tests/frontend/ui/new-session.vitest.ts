@@ -64,6 +64,10 @@ vi.mock("../../../src/frontend/ui/machine-prefs", () => ({ readPrefs: vi.fn(asyn
 const term = vi.hoisted(() => ({ openTerminal: vi.fn(async () => {}), openLocalTerminal: vi.fn(async () => {}) }));
 vi.mock("../../../src/frontend/ui/terminal-open", async (importOriginal) => ({ ...(await importOriginal<object>()), ...term }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
+const login = vi.hoisted(() => ({ openLoginDrawer: vi.fn() }));
+vi.mock("../../../src/frontend/ui/login-drawer", () => login);
+const settings = vi.hoisted(() => ({ openSettingsWindow: vi.fn(async () => {}) }));
+vi.mock("../../../src/frontend/ui/open-settings", async (importOriginal) => ({ ...(await importOriginal<object>()), ...settings }));
 
 import { openNewSession } from "../../../src/frontend/ui/new-session";
 import { setLaunchSlots } from "../../../src/frontend/ui/session-open";
@@ -199,6 +203,18 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     expect(rowOf(acct).textContent).toContain(copyText("acct.tag.login"));
     expect(rowOf(acct).textContent).toContain(copyText("newSession.account.login"));
     expect(createBtn().getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("★ 点［登录…］⇒ 框不关、开登录抽屉（那台 · 那一家 · 那个号），不开设置窗", async () => {
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    const acct = sel(copyText("newSession.label.account"));
+    choose(acct, "personal");
+    [...rowOf(acct).querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.account.login"))!.click();
+    await flush();
+    expect(login.openLoginDrawer).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "personal" } }));
+    expect(settings.openSettingsWindow).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]'), "框还开着").not.toBeNull();
   });
 
   it("★ 那台说登不了（`login: false`）⇒ 只写那一句、不给［登录…］", async () => {
@@ -577,6 +593,16 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     expect(sent.filter((x) => x.op.startsWith("session-")), "断开还去问那台").toEqual([]);
     [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.machine.reconnect"))!.click();
     expect(commands.backend_start).toHaveBeenCalledWith({ origin: "devbox" });
+  });
+
+  it("★ ［重新连接］被那台拒了 ⇒ 框顶换成那一句（不吞）", async () => {
+    replies.set("machine-read", { machines: { ...MACHINES.machines, devbox: machineOf("devbox", "down", "成品写的 devbox 离线那一句") } });
+    vi.mocked(commands.backend_start).mockRejectedValueOnce(new Error("devbox 停用着-甲"));
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.machine.reconnect"))!.click();
+    await flush();
+    expect(top()).toContain("devbox 停用着-甲");
   });
 
   it("那台问不到能起什么 ⇒ 框顶说原因、［新建］灰着说还在读", async () => {

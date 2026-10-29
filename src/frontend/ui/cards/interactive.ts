@@ -135,8 +135,8 @@ export function settleInteractive(host: HTMLElement, res: StepResult): void {
       if (chosen.has(li.dataset.optionLabel ?? "")) li.classList.add("is-chosen");
     });
   }
-  // 答了什么那一句是核心写的（`StepResult.text`：已选「…」· 已批准）；没成 ⇒ 未批准（卡片这一形的叫法）。
-  const done = failed ? copyText("interactive.done.rejected") : res.text;
+  // 答了什么那一句是核心写的（`StepResult.text`：已选「…」· 已批准 · 未批准 · 失败），与过程那一步同一句。
+  const done = res.text;
   let line = host.querySelector<HTMLElement>(":scope > .block-interactive-done");
   if (!done) {
     line?.remove();
@@ -147,6 +147,6 @@ export function settleInteractive(host: HTMLElement, res: StepResult): void {
     line.className = "block-interactive-done";
     host.appendChild(line);
   }
-  line.dataset.rejected = String(res.rejected || !res.ok);
+  line.dataset.rejected = String(failed);
   line.textContent = done;
 }

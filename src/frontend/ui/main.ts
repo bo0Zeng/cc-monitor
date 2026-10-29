@@ -427,7 +427,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // `finally` 不是 `then`：看法读失败也得让顺序照常回来。
   void tabs.loadCollections().finally(() => void tabs.loadOrder());
 
-  // 状态栏「当前账号」chip：有当前会话 ⇒ 画会话那台写好的那一份；没有 ⇒ 本机的默认号（未启用多账号安静降级）。点击弹选单切默认账号。
+  // 状态栏「当前账号」chip：有当前会话 ⇒ 画会话那台写好的那一份；没有 ⇒ 本机的默认号（未启用多账号安静降级）。点了一律开账号面板。
   // 「账号」面板（右侧抽屉）：状态栏按钮 · 右键「账号…」· 会话头 ⋯ 开同一个。
   // 会话里停发提示的重画（接线在下面 `acctSessionWiring`）。
   let noticeRepaint = (_sid: string): void => {};
@@ -437,7 +437,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     openDefaultMenu: (anchor, origin) => void accountChip.openDefaultMenu(anchor, origin),
     defaultOf: (origin) => accountChip.defaultOf(origin),
   };
-  const openAcctPanel = (sid: string, origin: string): void => toggleAccountPanel(sid, origin, panelHost);
+  const openAcctPanel = (sid: string | null, origin: string): void => toggleAccountPanel(sid, origin, panelHost);
   tabs.onOpenAccountPanel = openAcctPanel;
   // ↗ 浮层的［接上终端］直达设置那一节（［更新］就地做，住 `tabs.ts`）。
   tabs.onConnectTerminal = () => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN));
@@ -522,7 +522,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     accountChip.setActive(cur);
     if (cur !== null) statusDivider.before(accountChip.element);
     else statusDivider.after(accountChip.element);
-    followActive(cur, panelHost);
+    followActive(cur, panelHost, LOCAL_ORIGIN);
     if (a.sid !== null) noticeRepaint(a.sid); // 「还有多久」只在画的那一刻算：切到这个 tab 那一刻重算
   });
 
