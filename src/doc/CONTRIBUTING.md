@@ -35,7 +35,7 @@
 
 1. `#[tauri::command]` 写在它那一域的模块里（窗口类进 `lib.rs`，开终端进 `launch.rs` …）；要调 Win32 同步 API 的走 `spawn_blocking`。
 2. 注册进 `lib.rs::run` 里的 `generate_handler!`。
-3. 登记进 `tests/frontend/shell/command_home_registry_tests.rs` 的 `MONITOR_OWN`（命令名 · 类 · 理由）；没登记、或实现碰到了后端，都会红。
+3. 登记进 `tests/frontend/shell/parity_ledger_tests.rs` 的 `LEDGER`（命令名 · 能力 · 侧 · 类 · 理由）；没登记、或实现碰到了后端，都会红。
 4. 前端只经 `src/frontend/ui/ipc/commands.ts` 的包装调它（全仓只有这一份直接调 `invoke`，`tests/frontend/ui/ipc/commands.vitest.ts` 对拍名字与键名）。
 5. 用了 `State<…>` ⇒ 确认那个类型在 `lib.rs` 的 `setup()` 里 `app.manage` 过（消费者从代码 grep：`State<.*Arc<类型>>`）。
 6. **检查**：`cargo test --workspace`（在 `src/frontend/shell`）· `npx tsc --noEmit` · dev 模式里真点一次那个入口——State 漏了 `manage` 是运行时 panic，`cargo check` 抓不住。
@@ -130,7 +130,7 @@ grep -rln 'bring_terminal_to_front' src/ ../ui/ ../../../tests/  # 注册 · 包
 cargo test --workspace
 ```
 
-再同拍改 `command_home_registry_tests.rs` 的 `MONITOR_OWN` 与 `src/frontend/ui/ipc/commands.ts` 的包装。撤一个 State 类型时还要找 `.clone()` 交给线程 / 闭包的那几处（`grep -rn '<变量>.clone()' src/`）。漏 `manage` 是运行时 panic，删完要在 dev 模式里把每个会消费它的入口真点一次。
+再同拍改 `parity_ledger_tests.rs` 的 `LEDGER` 与 `src/frontend/ui/ipc/commands.ts` 的包装。撤一个 State 类型时还要找 `.clone()` 交给线程 / 闭包的那几处（`grep -rn '<变量>.clone()' src/`）。漏 `manage` 是运行时 panic，删完要在 dev 模式里把每个会消费它的入口真点一次。
 
 ### 3.2 撤一条后端帧命令
 
