@@ -1118,6 +1118,26 @@ pub enum TailHow {
     Rewritten,
 }
 
+/// `history-tail` 的入参：要最新几行 ＋ 手上那一份（上一次回的 `held`，之后实时行推过的）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct HistoryTailReq {
+    /// jsonl 路径（围栏同 `history-read`）。
+    pub path: String,
+    /// 要最新几行（也是「缺得比这还多就不读那一截」的那条线）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub n: u64,
+    /// 上一次回的那一份（缺 ⇒ 手上什么都没有）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub held: Option<Held>,
+}
+
 /// `history-tail` 的回包：尾段那张图 ＋ 这一次怎么接 ＋ 那一段（`[起点, end)`）的第一页正文 ＋ 读完之后要存的 `held`。
 /// 一页装不下的从 `next` 起接着走 `history-read` 分页。
 #[derive(Debug, Serialize, Deserialize)]
