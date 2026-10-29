@@ -12,7 +12,7 @@ fn plan(rank: u64, slice: &str) -> NeedsList {
             rank,
             workspace: "/w".into(),
             slice: slice.into(),
-            k: 0,
+            cell: None,
         }],
         answered: vec![],
         manual_unreadable: None,

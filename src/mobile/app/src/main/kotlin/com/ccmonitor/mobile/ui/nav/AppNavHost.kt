@@ -542,7 +542,7 @@ private fun NavGraphBuilder.chatRoutes(
         OverviewScreen(
             current = entry.arguments?.getString("hostId").orEmpty(),
             onOpen = { host, sid -> nav.navigate(Screen.Chat.of(host, sid)) },
-            onPlan = { host, ws, slice -> nav.navigate(Screen.PlanSlice.of(host, ws, slice, null)) },
+            onPlan = { host, ws, slice, cell -> nav.navigate(cell?.let { Screen.PlanCell.of(host, ws, slice, it) } ?: Screen.PlanSlice.of(host, ws, slice, null)) },
             onBack = { nav.popBackStack() },
         )
     }
