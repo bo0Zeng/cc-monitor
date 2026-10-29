@@ -47,7 +47,10 @@ fn the_catalog_is_the_dispatch_table() {
     let clis: Vec<&str> = rows.iter().filter_map(|e| e.cli.as_deref()).collect();
     let cli_set: BTreeSet<&str> = clis.iter().copied().collect();
     assert_eq!(clis.len(), cli_set.len(), "口里有重名的子命令");
-    let gate: BTreeSet<&str> = crate::stream::cli::tests::subcommands().iter().copied().collect();
+    let gate: BTreeSet<&str> = crate::stream::cli::tests::subcommands()
+        .iter()
+        .copied()
+        .collect();
     let (extra, missing): (Vec<_>, Vec<_>) = (
         cli_set.difference(&gate).collect(),
         gate.difference(&cli_set).collect(),
