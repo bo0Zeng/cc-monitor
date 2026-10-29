@@ -275,3 +275,73 @@ async fn the_frame_arm_reads_what_is_held_and_syncs_only_fresh_ones() {
         assert_eq!(e.0, "bad_args", "{bad} 应是 bad_args：{e:?}");
     }
 }
+
+/// ★ 判据 5：手机会话屏那一列与本机后端并的同一份 —— 金样那三台（同一刻的行跨台都有）去掉分叉挂父，交端核心 ⇒
+/// 段与行的先后、组的先后与这里摊出的逐条相同。
+#[test]
+fn the_phone_column_merges_like_the_backend() {
+    use resident_client::column::{column, ChatsColumn, ChatsColumnAsk, ColumnHost, ColumnRow};
+    let g = golden();
+    let mut a = answered(&g);
+    for m in &mut a {
+        for r in &mut m.rows {
+            r.forked_from_session_id = None;
+        }
+    }
+    let ask = |placed: &dyn Fn(&HistoryRow) -> bool| ChatsColumnAsk {
+        hosts: a
+            .iter()
+            .map(|m| ColumnHost {
+                rows: m
+                    .rows
+                    .iter()
+                    .map(|r| ColumnRow {
+                        at: r.at,
+                        section: Some(r.section_text.0.clone()),
+                        placed: placed(r),
+                    })
+                    .collect(),
+                groups: m.head.groups.iter().map(|g| g.order).collect(),
+            })
+            .collect(),
+    };
+    let o = |m: &Option<cmd_wire::Machine>| m.as_ref().map_or(String::new(), ToString::to_string);
+    let phone = |c: &ChatsColumn| -> Vec<String> {
+        c.sections
+            .iter()
+            .flat_map(|s| {
+                let head = format!("sec:{}", s.title.clone().unwrap_or_default());
+                std::iter::once(head).chain(s.rows.iter().map(|p| {
+                    let r = &a[p.host as usize].rows[p.at as usize];
+                    format!("r:{}|{}", o(&r.origin), r.session_id)
+                }))
+            })
+            .collect()
+    };
+    let shape = |by| Shape {
+        by,
+        all_open: false,
+        fold: Fold::default(),
+        forks: BTreeSet::new(),
+    };
+    let got = column(&ask(&|_| false));
+    let want = tokens(&lay(&a, &shape(By::Time)), By::Time);
+    assert!(want.len() > 10, "金样那几台的行少了：{want:?}");
+    assert_eq!(phone(&got), want, "按天那几段的先后");
+    let groups: Vec<String> = got
+        .groups
+        .iter()
+        .map(|p| {
+            let g = &a[p.host as usize].head.groups[p.at as usize];
+            format!("g:{}|{}:false", o(&g.origin), g.key)
+        })
+        .collect();
+    assert_eq!(groups, tokens(&lay(&a, &shape(By::Project)), By::Project), "组的先后");
+    // 已摆进固定 · 组那几段的不再进按天那几段。
+    let placed = column(&ask(&|r| r.session_id == "k1" || r.session_id == "b1"));
+    let without: Vec<String> = want
+        .into_iter()
+        .filter(|t| !t.ends_with("|k1") && !t.ends_with("|b1"))
+        .collect();
+    assert_eq!(phone(&placed), without, "去掉摆进组的");
+}
