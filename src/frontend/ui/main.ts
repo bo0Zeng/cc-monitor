@@ -328,7 +328,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       switchTo: (sid) => tabs.switchTo(sid),
       resume: (anchor, sid) => tabs.openResumeFor(anchor, sid),
       attach: (sid) => tabs.attachInTerminal(sid),
-      reconnect: (origin) => tabs.reconnect(origin),
       switching: {
         active: () => tabs.activeTab(),
         facts: (origin) => askFacts(origin, null),
@@ -935,8 +934,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.onRecordFileReread(sessionId, change); // 从头重读 ⇒ tab 整份重来（先重来、再在新的流容器上说那一句）
       recordFile.onSessionFileNotice(sessionId, change);
     },
-    // 一台机器一直看不见 ⇒ 提示里「打开设置」（那台连不连得上在机器页里看得到）。
-    openMachineSettings: (origin) => void openSettingsWindow(undefined, dest.machineOf(origin)),
     // 本机会话宣告：没有 Tab（运行中途新出现的本地会话）→ 建骨架：bg 会话的 kind / name 只从这里来（首行建的 tab 不带 kind）。
     onSessionStarted: (sessionId, meta) => {
       // 没有就建骨架；已有（固定的 / 已结束的）就对齐后端给的项目目录（又活了那张脸随宣告紧跟着到）。

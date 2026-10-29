@@ -9,7 +9,8 @@
  * 认不认得出 · 那一句 · 那一屏都是那台的；这里只照回包排版。
  */
 import { copyText } from "./copy-table";
-import { machineName } from "./control-said";
+import { ControlError, machineName } from "./control-said";
+import { askEnd, sayEnded } from "./end-confirm";
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
 import { button } from "./kit/button";
 import { tag } from "./kit/badge";
@@ -17,7 +18,6 @@ import { icon } from "./kit/icon";
 import { spinner } from "./kit/progress";
 import { statusDot } from "./kit/status-dot";
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
-import { toast, failToast } from "./kit/toast";
 import { askArrive, openSession, type ArriveSaid, type SlotSpec } from "./session-open";
 import type { ArriveAsk } from "./generated/ArriveAsk";
 import { endTerminal } from "./terminal-reads";
@@ -260,7 +260,7 @@ export class LaunchSlots {
         att.dataset.act = "attach";
         acts.push(att);
       }
-      const end = button({ label: copyText("sessionState.killIdle.action"), size: "compact", onClick: () => void this.endIn(sl.id) });
+      const end = button({ label: copyText("tabMenu.kill.label"), size: "compact", onClick: () => void this.endIn(sl.id) });
       end.dataset.act = "end";
       acts.push(end);
     }
@@ -281,21 +281,14 @@ export class LaunchSlots {
     const name = sl?.spec.tmuxName;
     const terminal = sl?.missed?.terminal;
     if (!sl || name === null || name === undefined || terminal === null || terminal === undefined) return;
-    const machine = machineName(sl.spec.origin);
-    const ok = await this.acts.confirm({
-      title: copyText("sessionState.killIdle.title", { name }),
-      action: copyText("sessionState.killIdle.action"),
-      danger: true,
-      rows: [{ label: copyText("kit.interrupts.cut"), items: [copyText("launch.slot.killCuts", { machine, name })] }],
-    });
-    if (!ok) return;
+    if (!(await askEnd([name], this.acts.confirm))) return;
     try {
       await this.acts.end(sl.spec.origin, terminal, name);
     } catch (e) {
-      failToast(copyText("tabSessionActions.kill.failed", { title: name }), e);
+      sayEnded([{ title: name, outcome: "failed", why: e instanceof Error ? e.message : String(e), ...(e instanceof ControlError && e.detail !== "" ? { detail: e.detail } : {}) }]);
       return;
     }
-    toast(copyText("sessionState.kill.done", { title: name }), "", { level: "success" });
+    sayEnded([{ title: name, outcome: "done", why: "" }]);
     this.close(id);
   }
 }

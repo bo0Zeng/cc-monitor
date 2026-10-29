@@ -12,10 +12,10 @@
       "want": "刷新"
     },
     {
-      "key": "events.unseen.lostBody",
-      "zh": "{machine} 的会话运行状态不明 · 自动重试中\n连上后自动接上 · 连接状态见设置",
+      "key": "extPage.error.noHostConfig",
+      "zh": "未找到 {machine} 的连接设置 · 无法打开文件窗口\n到「机器」里查它是否还在",
       "args": { "machine": "a b'c" },
-      "want": "a b'c 的会话运行状态不明 · 自动重试中\n连上后自动接上 · 连接状态见设置"
+      "want": "未找到 a b'c 的连接设置 · 无法打开文件窗口\n到「机器」里查它是否还在"
     },
     {
       "key": "sessionOpen.attached.body",

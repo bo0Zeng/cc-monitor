@@ -200,7 +200,7 @@ async function bar(tabs: Tab[], ranked?: string[]) {
     toggleSelect: vi.fn(),
     openMenuAt: vi.fn(),
     rereadAll: vi.fn().mockResolvedValue(undefined),
-    reconnect: vi.fn(),
+    fixMachine: vi.fn(),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
   document.body.appendChild(el);
@@ -294,25 +294,20 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     expect(seen.length, "换成只能在终端里答").toBe(n0 + 2);
   });
 
-  it("★ 机器离线：那台的成品说离线、还有几条状态不明（后端数的）⇒ 一条（离线 · 几个状态不明 · 采样多久前）＋［重新连接］；连上了自己消失", async () => {
-    const r = await bar([tab("a"), tab("g1", { origin: "gpu-01" as never, face: goldenFace("unseen") }), tab("g2", { origin: "gpu-01" as never, face: goldenFace("unseen") })]);
-    const machine = (offline: boolean, unclear?: number): MachineState => ({ offline, unclear }) as MachineState;
-    r.view.machineChanged("gpu-01", machine(true, 5), Date.now() - 180_000);
-    r.view.refresh();
-    const row = r.el.querySelector<HTMLElement>(".tab-machine-down-row")!;
-    // N 照后端那一格（5），不是界面数手上几颗说不清（2）。
-    expect(row.textContent).toContain(copyText("tabBar.machineDown.body", { machine: "gpu-01", n: 5 }));
-    expect(row.textContent).toContain(copyText("tabBar.machineDown.seen", { ago: "3m" }));
-    row.querySelector<HTMLElement>("[data-reconnect]")!.click();
-    expect(r.host.reconnect).toHaveBeenCalledWith("gpu-01");
-    expect(r.host.pick, "点离线条不算点在列表空白上").not.toHaveBeenCalled();
-    r.view.machineChanged("gpu-01", machine(false));
-    r.view.refresh();
-    expect(r.el.querySelector(".tab-machine-down-row")).toBeNull();
-    // 离线、但后端说那台一条状态不明都没有 ⇒ 不出条（手上那两颗说不清也不数）。
-    r.view.machineChanged("gpu-01", machine(true));
-    r.view.refresh();
-    expect(r.el.querySelector(".tab-machine-down-row")).toBeNull();
+  it("★ 一台离线、它上面一条会话都没有 ⇒ 栏底（列表下面）出那一行，带［重新连接］；第一个标签页不挪；连上了当场摘掉", async () => {
+    const r = await bar([tab("a"), tab("b")]);
+    const list = r.el.querySelector<HTMLElement>(".tab-list")!;
+    const first = list.firstElementChild;
+    const down = { name: "gpu-01", state: "down", offline: true, word: "核心·未连上", said: "核心·gpu-01 无应答", fixes: [{ fix: "retry", label: "核心·重新连接" }] } as unknown as MachineState;
+    r.view.machineChanged("gpu-01", down);
+    const row = r.el.querySelector<HTMLElement>(".machine-strip-row")!;
+    expect(row.closest(".machine-strip")?.previousElementSibling, "机器条钉在列表下面").toBe(list);
+    expect(list.firstElementChild, "第一个标签页的位置不变").toBe(first);
+    row.querySelector<HTMLButtonElement>("button")!.click();
+    expect(r.host.fixMachine).toHaveBeenCalledWith("gpu-01", "retry");
+    expect(r.host.pick, "点机器条不算点在列表空白上").not.toHaveBeenCalled();
+    r.view.machineChanged("gpu-01", { ...down, state: "up", offline: false, word: "", said: "", fixes: [] });
+    expect(r.el.querySelector(".machine-strip-row")).toBeNull();
   });
 
   it("状态不明的行不当已结束画：虚线环、标题常色、行尾没有 ×（只右键能关）", async () => {
@@ -361,18 +356,16 @@ describe("会话头", () => {
     expect(host.find).toHaveBeenCalled();
   });
 
-  it("★ 按状态多一颗：已结束［恢复］· Claude 已退出（远端）［在终端里打开］· 状态不明［重新连接］；活着不多", () => {
+  it("★ 按状态多一颗：已结束［恢复］· Claude 已退出（远端）［在终端里打开］；状态不明不多（那台由栏底机器条说、在那一行修）；活着不多", () => {
     expect(labels(head(tab("a", { face: goldenFace("ended") })).h.el)).toContain(copyText("sessionHead.act.resume"));
     const exited = head(tab("b", { origin: "devbox" as never, face: goldenFace("reconnectable") }));
     expect(labels(exited.h.el)).toContain(copyText("sessionHead.act.openTerm"));
     expect(labels(head(tab("b2", { face: goldenFace("reconnectable") })).h.el), "本机：没有接回终端的那条路，不画点了没反应的按钮").not.toContain(copyText("sessionHead.act.openTerm"));
-    const unseen = head(tab("c", { origin: "gpu-01" as never, face: goldenFace("unseen") }));
-    const re = [...unseen.h.el.querySelectorAll("button")].find((b) => b.textContent === copyText("sessionHead.act.reconnect"))!;
-    re.click();
-    expect(unseen.host.reconnect).toHaveBeenCalledWith("gpu-01");
+    const unseen = labels(head(tab("c", { origin: "gpu-01" as never, face: goldenFace("unseen") })).h.el);
+    for (const x of ["sessionHead.act.resume", "sessionHead.act.openTerm"] as const) expect(unseen).not.toContain(copyText(x));
     expect(labels(head(tab("e", { face: goldenFace("ended") })).h.el), "已结束：没有终端可去，不出「看它的终端」").not.toContain(copyText("sessionHead.act.terminal"));
     const live = labels(head(tab("d")).h.el);
-    for (const x of ["sessionHead.act.resume", "sessionHead.act.openTerm", "sessionHead.act.reconnect"] as const) expect(live).not.toContain(copyText(x));
+    for (const x of ["sessionHead.act.resume", "sessionHead.act.openTerm"] as const) expect(live).not.toContain(copyText(x));
   });
 
   it("没有当前会话 ⇒ 不显示", () => {

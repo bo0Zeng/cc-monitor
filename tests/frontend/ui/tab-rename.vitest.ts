@@ -92,7 +92,7 @@ function bar(tabs: Tab[]) {
     toggleSelect: vi.fn(),
     openMenuAt: vi.fn(),
     rereadAll: vi.fn().mockResolvedValue(undefined),
-    reconnect: vi.fn(),
+    fixMachine: vi.fn(),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
   document.body.appendChild(el);
