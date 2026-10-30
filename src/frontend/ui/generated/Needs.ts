@@ -17,7 +17,7 @@ tool: string | null,
  */
 call: string | null, 
 /**
- * 批准：那一步的主参数；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
+ * 批准：那一步的主参数（命令取说得出用意的那一段）；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
  */
 what: string | null, 
 /**

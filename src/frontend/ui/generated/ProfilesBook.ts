@@ -3,7 +3,6 @@ import type { ProfileProblem } from "./ProfileProblem";
 import type { ProfileRow } from "./ProfileRow";
 import type { ProfileSlot } from "./ProfileSlot";
 import type { ProfileTmuxNaming } from "./ProfileTmuxNaming";
-import type { ProfilesMigrated } from "./ProfilesMigrated";
 import type { SetOut } from "./SetOut";
 
 /**
@@ -46,10 +45,6 @@ seed: Array<ProfileRow>,
  * 空态那一块的说明与按钮字，随 `seed` 的条数（没有 tmux 的那台只建一条）；`seed` 空 ⇒ 空串。
  */
 seedHint: string, seedCreate: string, 
-/**
- * 旧别名清单一次性转进来之后那张说明（「知道了」之后 `null`）。
- */
-migrated: ProfilesMigrated | null, 
 /**
  * 链接住的目录（`~/.cc-monitor/bin`）。
  */

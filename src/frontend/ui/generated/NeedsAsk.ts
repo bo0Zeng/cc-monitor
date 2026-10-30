@@ -21,11 +21,11 @@ kind: AskKind,
  */
 tool: string, 
 /**
- * 子运行（子 agent）发的 ⇒ 是哪一趟 `{id, kind}`（那一家原样）；主会话 ⇒ `null`。
+ * 子运行（agent）发的 ⇒ 是哪一趟 ＋ 写好的那一句；主会话 ⇒ `null`。
  */
 run: NeedsAskRun | null, 
 /**
- * 一行摘要（命令头一行 · 路径 · 第一道题）；说不出 ⇒ `null`。
+ * 一行摘要（命令里说得出用意的那一段 · 路径 · 第一道题）；说不出 ⇒ `null`。
  */
 what: string | null, 
 /**
