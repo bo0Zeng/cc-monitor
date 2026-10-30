@@ -15,13 +15,41 @@ const HEADER: &str = "\
 
 /// `(TS 里的名字, 值, 一句说明)`：名字与 Rust 常量同名。
 const NAMES: &[(&str, &str, &str)] = &[
-    ("CHANGED_KIND", CHANGED_KIND, "「某样东西变了」那条流（`event_replay.rs::CHANGED_KIND`）；流名是 `changed/<主题>`。"),
-    ("PROBE_PROGRESS_KIND", PROBE_PROGRESS_KIND, "测试连接的进度流（`event_replay.rs::PROBE_PROGRESS_KIND`）；后面跟 `/<票>`。"),
-    ("TERMINAL_SCREEN_KIND", TERMINAL_SCREEN_KIND, "终端订阅的画面流（`event_replay.rs::TERMINAL_SCREEN_KIND`）；后面跟 `/<票>`。"),
-    ("LOGS_DIR_LABEL", LOGS_DIR_LABEL, "数据路径里日志目录那一行的名字（`data_paths.rs::LOGS_DIR_LABEL`）。"),
-    ("FRONTEND_READY", FRONTEND_READY, "前端 emit、壳收的就绪事件（`ui_contract::events::FRONTEND_READY`）。"),
-    ("LOCAL_BACKEND", LOCAL_BACKEND, "本机后端起没起来变了（`ui_contract::events::LOCAL_BACKEND`）。"),
-    ("UI_ERROR", UI_ERROR, "要让用户知道的出错（`ui_contract::events::UI_ERROR`）。"),
+    (
+        "CHANGED_KIND",
+        CHANGED_KIND,
+        "「某样东西变了」那条流（`event_replay.rs::CHANGED_KIND`）；流名是 `changed/<主题>`。",
+    ),
+    (
+        "PROBE_PROGRESS_KIND",
+        PROBE_PROGRESS_KIND,
+        "测试连接的进度流（`event_replay.rs::PROBE_PROGRESS_KIND`）；后面跟 `/<票>`。",
+    ),
+    (
+        "TERMINAL_SCREEN_KIND",
+        TERMINAL_SCREEN_KIND,
+        "终端订阅的画面流（`event_replay.rs::TERMINAL_SCREEN_KIND`）；后面跟 `/<票>`。",
+    ),
+    (
+        "LOGS_DIR_LABEL",
+        LOGS_DIR_LABEL,
+        "数据路径里日志目录那一行的名字（`data_paths.rs::LOGS_DIR_LABEL`）。",
+    ),
+    (
+        "FRONTEND_READY",
+        FRONTEND_READY,
+        "前端 emit、壳收的就绪事件（`ui_contract::events::FRONTEND_READY`）。",
+    ),
+    (
+        "LOCAL_BACKEND",
+        LOCAL_BACKEND,
+        "本机后端起没起来变了（`ui_contract::events::LOCAL_BACKEND`）。",
+    ),
+    (
+        "UI_ERROR",
+        UI_ERROR,
+        "要让用户知道的出错（`ui_contract::events::UI_ERROR`）。",
+    ),
 ];
 
 fn render_shell_names() -> String {
