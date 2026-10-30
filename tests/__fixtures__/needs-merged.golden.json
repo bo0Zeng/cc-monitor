@@ -1545,6 +1545,1075 @@
         "total": 2,
         "unreadable": []
       }
+    },
+    {
+      "answers": {
+        "<local>": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "b",
+                "needs": {
+                  "ask": null,
+                  "call": "toolu_b",
+                  "head": "核心·等批准 · Bash",
+                  "headCode": "rm -rf build/",
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": 1791201590000,
+                  "text": "等批准",
+                  "tone": "need",
+                  "tool": "Bash",
+                  "waitedMs": 10000,
+                  "waitedText": "10s",
+                  "what": "rm -rf build/"
+                },
+                "sid": "b"
+              }
+            }
+          ]
+        }
+      },
+      "asked": [
+        "<local>"
+      ],
+      "merged": {
+        "down": [],
+        "items": [
+          {
+            "item": {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "b",
+                "needs": {
+                  "ask": null,
+                  "call": "toolu_b",
+                  "head": "核心·等批准 · Bash",
+                  "headCode": "rm -rf build/",
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": 1791201590000,
+                  "text": "等批准",
+                  "tone": "need",
+                  "tool": "Bash",
+                  "waitedMs": 10000,
+                  "waitedText": "10s",
+                  "what": "rm -rf build/"
+                },
+                "sid": "b"
+              }
+            },
+            "origin": "<local>"
+          }
+        ],
+        "total": 1,
+        "unreadable": []
+      }
+    },
+    {
+      "answers": {
+        "<local>": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "b",
+                "needs": {
+                  "ask": null,
+                  "call": "toolu_b",
+                  "head": "核心·等批准 · Bash",
+                  "headCode": "rm -rf build/",
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": 1791201540000,
+                  "text": "等批准",
+                  "tone": "need",
+                  "tool": "Bash",
+                  "waitedMs": 60000,
+                  "waitedText": "1m",
+                  "what": "rm -rf build/"
+                },
+                "sid": "b"
+              }
+            },
+            {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": null,
+                  "call": "toolu_b",
+                  "head": "核心·等批准 · Bash",
+                  "headCode": "rm -rf build/",
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": 1791201590000,
+                  "text": "等批准",
+                  "tone": "need",
+                  "tool": "Bash",
+                  "waitedMs": 10000,
+                  "waitedText": "10s",
+                  "what": "rm -rf build/"
+                },
+                "sid": "a"
+              }
+            }
+          ]
+        }
+      },
+      "asked": [
+        "<local>"
+      ],
+      "merged": {
+        "down": [],
+        "items": [
+          {
+            "item": {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "b",
+                "needs": {
+                  "ask": null,
+                  "call": "toolu_b",
+                  "head": "核心·等批准 · Bash",
+                  "headCode": "rm -rf build/",
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": 1791201540000,
+                  "text": "等批准",
+                  "tone": "need",
+                  "tool": "Bash",
+                  "waitedMs": 60000,
+                  "waitedText": "1m",
+                  "what": "rm -rf build/"
+                },
+                "sid": "b"
+              }
+            },
+            "origin": "<local>"
+          },
+          {
+            "item": {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": null,
+                  "call": "toolu_b",
+                  "head": "核心·等批准 · Bash",
+                  "headCode": "rm -rf build/",
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": 1791201590000,
+                  "text": "等批准",
+                  "tone": "need",
+                  "tool": "Bash",
+                  "waitedMs": 10000,
+                  "waitedText": "10s",
+                  "what": "rm -rf build/"
+                },
+                "sid": "a"
+              }
+            },
+            "origin": "<local>"
+          }
+        ],
+        "total": 2,
+        "unreadable": []
+      }
+    },
+    {
+      "answers": {
+        "<local>": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": null,
+                  "call": "toolu_b",
+                  "head": "核心·等批准 · Bash",
+                  "headCode": "rm -rf build/",
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": 1791201590000,
+                  "text": "等批准",
+                  "tone": "need",
+                  "tool": "Bash",
+                  "waitedMs": 10000,
+                  "waitedText": "10s",
+                  "what": "rm -rf build/"
+                },
+                "sid": "a"
+              }
+            }
+          ]
+        }
+      },
+      "asked": [
+        "<local>"
+      ],
+      "merged": {
+        "down": [],
+        "items": [
+          {
+            "item": {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": null,
+                  "call": "toolu_b",
+                  "head": "核心·等批准 · Bash",
+                  "headCode": "rm -rf build/",
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": 1791201590000,
+                  "text": "等批准",
+                  "tone": "need",
+                  "tool": "Bash",
+                  "waitedMs": 10000,
+                  "waitedText": "10s",
+                  "what": "rm -rf build/"
+                },
+                "sid": "a"
+              }
+            },
+            "origin": "<local>"
+          }
+        ],
+        "total": 1,
+        "unreadable": []
+      }
+    },
+    {
+      "answers": {
+        "<local>": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "b",
+                "needs": {
+                  "ask": null,
+                  "call": "toolu_b",
+                  "head": "核心·等批准",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": 1791979140000,
+                  "text": "等批准",
+                  "tone": "need",
+                  "tool": "Bash",
+                  "waitedMs": 60000,
+                  "waitedText": "1m",
+                  "what": "占位命令"
+                },
+                "sid": "b"
+              }
+            }
+          ]
+        }
+      },
+      "asked": [
+        "<local>"
+      ],
+      "merged": {
+        "down": [],
+        "items": [
+          {
+            "item": {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "b",
+                "needs": {
+                  "ask": null,
+                  "call": "toolu_b",
+                  "head": "核心·等批准",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": 1791979140000,
+                  "text": "等批准",
+                  "tone": "need",
+                  "tool": "Bash",
+                  "waitedMs": 60000,
+                  "waitedText": "1m",
+                  "what": "占位命令"
+                },
+                "sid": "b"
+              }
+            },
+            "origin": "<local>"
+          }
+        ],
+        "total": 1,
+        "unreadable": []
+      }
+    },
+    {
+      "answers": {
+        "<local>": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": null,
+                  "call": null,
+                  "head": "核心·需手动",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": null,
+                  "text": "核心·需手动",
+                  "tone": "need",
+                  "tool": null,
+                  "waitedMs": null,
+                  "waitedText": null,
+                  "what": null
+                },
+                "sid": "a"
+              }
+            },
+            {
+              "kind": "manual",
+              "manual": {
+                "account": "t1",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t1",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t1 需登录"
+              },
+              "rank": 2000000000000000
+            }
+          ]
+        },
+        "gpu-01": {
+          "answered": [],
+          "items": [],
+          "manualUnreadable": "核心·账号库无法解析"
+        }
+      },
+      "asked": [
+        "<local>",
+        "devbox",
+        "gpu-01"
+      ],
+      "merged": {
+        "down": [
+          {
+            "origin": "devbox",
+            "said": "devbox 后端未在运行"
+          }
+        ],
+        "items": [
+          {
+            "item": {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": null,
+                  "call": null,
+                  "head": "核心·需手动",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": null,
+                  "text": "核心·需手动",
+                  "tone": "need",
+                  "tool": null,
+                  "waitedMs": null,
+                  "waitedText": null,
+                  "what": null
+                },
+                "sid": "a"
+              }
+            },
+            "origin": "<local>"
+          },
+          {
+            "item": {
+              "kind": "manual",
+              "manual": {
+                "account": "t1",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t1",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t1 需登录"
+              },
+              "rank": 2000000000000000
+            },
+            "origin": "<local>"
+          }
+        ],
+        "total": 2,
+        "unreadable": [
+          {
+            "origin": "gpu-01",
+            "said": "核心·账号库无法解析"
+          }
+        ]
+      }
     }
   ],
   "读法": [
