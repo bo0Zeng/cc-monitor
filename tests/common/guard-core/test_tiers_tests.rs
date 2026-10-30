@@ -31,8 +31,8 @@
 //!
 //! - 「e2e 要么进门禁要么登记理由」：`e2e_gate_registry_tests.rs::every_e2e_suite_is_either_gated_or_registered_as_exempt`
 //!   —— 本文件只按名字钉住它在（它被删 / 改名，e2e 层那条自检红）。
-//! - 「壳那两棵树里的 `#[ignore]` 有触发者」：`shared_crate_registry_tests.rs::every_ignored_test_still_has_someone_who_triggers_it`。
-//!   它**只扫壳那一侧**；后端那几条子进程入口今天不在任何触发表里 —— 真机层把两棵树与 TS 一起圈进来。
+//!
+//! 每一条 `#[ignore]`（两棵 Rust 测试树）与 TS 的 `skipIf` / `runIf` / `.skip(` 谁来跑，只登在真机层 `REAL_MACHINE` 这一张表里。
 //!
 //! # 买不到什么（逐条）
 //!
@@ -148,6 +148,7 @@ const E2E: &[&str] = &[
 /// e2e 的辅助件：`tests/e2e/` 下其余的 shell（桩 · 台架 · 判法）。每一份都得有人引用它。
 const E2E_SUPPORT: &[&str] = &[
     "tests/e2e/assert-pass-floor.sh",
+    "tests/e2e/assert.sh", // 各套 source：共用的 ok · bad · ck · skip 计数与 `finish` 那一行收尾
     "tests/e2e/backend-wrapper.sh",
     "tests/e2e/ccm-shim.sh", // 把编出来的后端二进制以 `ccm` 之名放上 PATH ＋ 沙箱 HOME（真跑那一行 `ccm …` 的几套 source 它）
     "tests/e2e/f40-lib.sh", // f40-suite 与 f40-pick.test 共用：找主窗 · 取快照字段 · 取 tab 行点击点
