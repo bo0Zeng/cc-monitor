@@ -14,10 +14,10 @@ use crate::faces::rotation_try_face::{decision_of, timeline_of};
 use crate::wire::typed::Command;
 use cmd_wire::cells::Tone;
 pub(crate) use cmd_wire::rotation::{
-    RotAccount, RotBadCell, RotBoard, RotCell, RotChoice, RotDaySeg, RotGroup, RotHint, RotLine,
-    RotLogRow, RotMark, RotNote, RotOldFile, RotPlate, RotRefused, RotRow, RotStrategyError,
-    RotStrategyItem, RotTarget, RotationStrategiesReply, RotationStrategiesReq, RotationViewReply,
-    RotationViewReq,
+    RotAccount, RotBadCell, RotBoard, RotCan, RotCell, RotChoice, RotDaySeg, RotGroup, RotHint,
+    RotLine, RotLogRow, RotMark, RotNote, RotOldFile, RotPlate, RotRefused, RotRow,
+    RotStrategyError, RotStrategyItem, RotTarget, RotationStrategiesReply, RotationStrategiesReq,
+    RotationViewReply, RotationViewReq,
 };
 use copy_core::copy_text;
 use serde_json::Value;
@@ -524,6 +524,7 @@ pub(crate) fn view_with(
             timeline: None,
             log: log_rows(&session.log),
             hints,
+            can: can_of(&req.target, false),
         });
     }
     let row = ctx.row(&agent);
@@ -724,7 +725,20 @@ pub(crate) fn view_with(
         timeline,
         log,
         hints: hints.into_iter().map(|h| note_of(h, &name, why)).collect(),
+        can: can_of(&req.target, true),
     })
+}
+
+/// 会话那一形能做的几样：轮换的会话才有先后可拖、才有「先不用」、才有策略可编辑（不轮换只用开会话的号，手动换号照常）；设置页 ⇒ 缺。
+fn can_of(target: &RotTarget, rotating: bool) -> Option<RotCan> {
+    match target {
+        RotTarget::Session { .. } => Some(RotCan {
+            reorder: rotating,
+            off: rotating,
+            edit: rotating,
+        }),
+        RotTarget::Strategy { .. } => None,
+    }
 }
 
 /// 策略写的字（界面只有中文 ⇒ 取 `zh`）。
