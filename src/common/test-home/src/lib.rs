@@ -95,14 +95,24 @@ pub fn account_home() -> Option<PathBuf> {
 }
 
 /// 要不要换：`HOME` 是真家（或没设）⇒ 换；判据（或它起的子进程）自己给了别的家 ⇒ 用它给的。查不到真家 ⇒ 一律换。
+/// 比的是规范化之后的路径（符号链接 · `..` 写法的真家也是真家）；哪一边规范化不了 ⇒ 照字面比。
 pub fn must_move(home: Option<&Path>, account_home: Option<&Path>) -> bool {
     match (home, account_home) {
         (None, _) | (_, None) => true,
-        (Some(h), Some(a)) => h == a,
+        (Some(h), Some(a)) => same_dir(h, a),
     }
 }
 
-/// 这一格（名字 ＝ 值）要不要摘：不在表里 ⇒ 不摘；`HOME` 没设或就是真家 ⇒ 摘；给了别的家 ⇒ 值是一条那个家以外的绝对路径才摘。
+/// 两条路径指的是不是同一个目录：字面相同，或两边都规范化得了、规范化之后相同。
+fn same_dir(a: &Path, b: &Path) -> bool {
+    a == b
+        || matches!(
+            (std::fs::canonicalize(a), std::fs::canonicalize(b)),
+            (Ok(x), Ok(y)) if x == y
+        )
+}
+
+/// 这一格（名字 ＝ 值）要不要摘：不在表里 ⇒ 不摘；`HOME` 没设或就是真家（规范化之后比，同 [`must_move`]）⇒ 摘；给了别的家 ⇒ 值是一条那个家以外的绝对路径才摘。
 pub fn strays(
     name: &str,
     value: &std::ffi::OsStr,
@@ -113,7 +123,7 @@ pub fn strays(
         return false;
     }
     match home {
-        Some(h) if Some(h) != account_home => {
+        Some(h) if !account_home.is_some_and(|a| same_dir(h, a)) => {
             let p = Path::new(value);
             p.is_absolute() && !p.starts_with(h)
         }

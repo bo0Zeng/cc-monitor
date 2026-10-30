@@ -417,7 +417,7 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
     };
     let deadline = tokio::time::Instant::now() + left;
     let line = match local.ask(None, &ask, None, deadline).await {
-        Ok(Ok(r)) => r.command,
+        Ok(Ok(r)) => r.prelude + &r.line,
         Ok(Err(_)) => {
             return Err(refused(
                 "bad_reply",
