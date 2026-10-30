@@ -145,7 +145,7 @@ pub struct ClashRow {
     pub there: Option<String>,
 }
 
-/// `batch` 那一件（下载一组那几格同形）：一组一条命令走到哪。字全由核心写好；`kept` ＝ 落过盘、进程没了再开时接回来的那一组。
+/// `batch` 那一件：一组走到哪（删 · 改权限 · 复制 · 下到本机同一形）。字全由核心写好；`kept` ＝ 落过盘、进程没了再开时接回来的那一组。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -173,14 +173,13 @@ pub enum BatchLine {
         conflicts: Vec<ClashRow>,
         go: String,
     },
-    /// 断开：那一行；`resume` ⇒ 停在那里等［继续］（下载一组：没下完的那几项整份重下）。
+    /// 断开：那一行（连回来核心同一张票接着做）。
     Cut {
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         id: i64,
         title: String,
         kept: bool,
         line: String,
-        resume: bool,
     },
     /// 收场：结局句 · 没成的那几行（看它们那一屏的标题）· 复制详情 · 给不给［重试］［撤销］。
     Ended {
@@ -224,6 +223,51 @@ pub enum BatchLine {
 pub struct BatchKeep {
     pub ticket: String,
     pub plan: Option<String>,
+}
+
+/// `batch_local` 那一件：下到本机那一组要 Kotlin 在本机那一侧做的（`id` ＝ 那一组的编号，`key` ＝ 那一项的键）。
+/// `folder` 是起这一组时 Kotlin 交的那一棵（原样一串，核心不认里面的格）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(tag = "ask", rename_all = "snake_case")]
+pub enum LocalAsk {
+    /// 开一份写进去：`over` ＝ 盖那棵里叫这个名的那一份（同名答了覆盖）；`null` ⇒ 新建（同名时系统另起名）。
+    /// 答经 `batchAnswer`（[`LocalOpened`]）。
+    Open {
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        id: i64,
+        key: String,
+        folder: String,
+        name: String,
+        over: Option<String>,
+    },
+    /// 那一项没下成（失败 · 撤了 · 断了）：删掉开给它的那一份。
+    Drop {
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        id: i64,
+        key: String,
+    },
+}
+
+/// [`LocalAsk::Open`] 的答：开好的描述符（所有权交给核心）· 开不了（系统原话；那一句核心写）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(tag = "opened", rename_all = "snake_case")]
+pub enum LocalOpened {
+    Fd {
+        key: String,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        fd: i64,
+    },
+    Refused { key: String, detail: String },
 }
 
 /// 现生成的一把钥匙：私钥 PEM（openssh-key-v1，无口令）· 公钥那一行。

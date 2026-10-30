@@ -30,10 +30,9 @@ class FileOps(
     private val feed: CoreLink,
     private val machine: suspend () -> String,
 ) {
-    /** 没做成：那台写好的那一句（或走不通时那一句）＋ 复制详情；[cut] ＝ 通道那一跳没走通（断了 · 到点），不是那台拒的。 */
+    /** 没做成：那台写好的那一句（或走不通时那一句）＋ 复制详情。 */
     class Failed(
         val problem: Problem,
-        val cut: Boolean = false,
     ) : Exception(problem.text)
 
     /** 那台这个用户的家（起点）。 */
@@ -176,16 +175,18 @@ class FileOps(
         }
     }
 
-    /** 下载：核心按块读回、写进 [fd] 现开的本机那一份（[shown] 是它在句子里的名字）；回总字节。 */
+    /**
+     * 把这几项下到本机 [folder] 那一棵（[here] ＝ 那里已有的名字，同名核心照它问一次）：一组，全过程在核心（同 [delete]）；
+     * 每项要本机那一份时核心经 [com.ccmonitor.mobile.core.claude.link.LocalSaves] 开。
+     */
     suspend fun download(
-        path: RemotePath,
-        fd: () -> Int,
-        shown: String,
-        progress: (Long, Long) -> Unit,
-    ): Result<Long> =
-        transfer(Transfer.Pull(path, shown), fd, progress, { d -> ((d as? Map<*, *>)?.get("bytes") as? Number)?.toLong() }) {
-            copyText("mobFiles.local.writeFailed", "path" to shown)
-        }
+        entries: List<FilesLs.Entry>,
+        folder: String,
+        here: List<String>,
+    ): Long =
+        feed.batch(
+            mapOf("download" to mapOf("folder" to folder, "here" to here, "items" to entries.map { mapOf("path" to it.path.wire, "name" to it.name) })),
+        )
 
     /** 分块传一趟：本机那一份开不了 ⇒ [local] 那一句（系统原话进详情）；别的同一问一答。 */
     private suspend fun <T : Any> transfer(
@@ -201,7 +202,7 @@ class FileOps(
             } catch (e: IOException) {
                 return Result.failure(Failed(Problem(local(), e.toString())))
             }
-        return reply(r, if (how is Transfer.Stage) STAGE else PULL, decode)
+        return reply(r, STAGE, decode)
     }
 
     private suspend fun done(
@@ -225,7 +226,7 @@ class FileOps(
         val m = machine()
         return when (r) {
             is Reply.Ok -> decode(r.data)?.let { Result.success(it) } ?: Result.failure(Failed(unreadableReply(m, command, r.data.toString())))
-            else -> Result.failure(Failed(r.problem(m, command, feed.offline.value) ?: Problem("", ""), cut = r is Reply.LinkDown || r is Reply.TimedOut || r is Reply.Cancelled))
+            else -> Result.failure(Failed(r.problem(m, command, feed.offline.value) ?: Problem("", "")))
         }
     }
 
@@ -233,14 +234,13 @@ class FileOps(
         /** 写的一问等多久（同桌面写面一趟）。 */
         const val WRITE_MS: Long = 20_000L
 
-        /** 一块（上传 · 下载）· 提交等多久。 */
+        /** 一块（上传）· 提交等多久。 */
         const val CHUNK_MS: Long = 20_000L
 
         /** 提交撞了同名的码。 */
         private const val EXISTS = "exists"
 
-        /** 分块传两半出错时详情里点名的命令。 */
+        /** 分块传出错时详情里点名的命令。 */
         private const val STAGE = "files-stage-chunk"
-        private const val PULL = "files-read-chunk"
     }
 }

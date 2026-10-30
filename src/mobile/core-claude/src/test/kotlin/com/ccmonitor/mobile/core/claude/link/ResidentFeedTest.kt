@@ -24,6 +24,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -113,8 +114,6 @@ class ResidentFeedTest {
 
         override fun searchMerge(data: String): String = ""
 
-        override fun downloadEvent(want: String): String = """{"id":-1,"phase":"cut","title":"t","kept":false,"line":"l","resume":true}"""
-
         override fun answerOf(
             keys: String,
             answer: String?,
@@ -151,17 +150,6 @@ class ResidentFeedTest {
             return 40L + transfers.size
         }
 
-        override fun pull(
-            handle: Long,
-            fd: Int,
-            args: String,
-            shown: String,
-            withinMs: Long,
-        ): Long {
-            transfers += listOf("pull", fd, args, shown, withinMs)
-            return 40L + transfers.size
-        }
-
         override fun deploy(
             handle: Long,
             slots: String,
@@ -194,11 +182,32 @@ class ResidentFeedTest {
         }
     }
 
+    /** 本机那一侧的替身：`refuse` 里的名字开不了；记下开了哪几份（那一棵 · 名字 · 盖哪一份）、删了哪几份。 */
+    private class Saves(
+        val refuse: Set<String> = emptySet(),
+    ) : LocalSaves {
+        val made = mutableListOf<Triple<String, String, String?>>()
+        val dropped = mutableListOf<String>()
+
+        override fun names(folder: String): List<String> = emptyList()
+
+        override fun create(
+            folder: String,
+            name: String,
+            over: String?,
+        ): LocalFile {
+            if (name in refuse) throw java.io.IOException("EACCES $name")
+            made += Triple(folder, name, over)
+            return LocalFile(fd = { 30 + made.size }, drop = { dropped += name })
+        }
+    }
+
     private fun TestScope.feed(
         core: FakeCore,
         ssh: Flow<String?> = MutableStateFlow("""{"host":"h"}"""),
         onBreak: (String) -> Unit = {},
         disk: KeptBatches = Disk(),
+        saves: LocalSaves = Saves(),
     ): ResidentFeed =
         ResidentFeed(
             scope = backgroundScope,
@@ -208,6 +217,7 @@ class ResidentFeedTest {
             mine = "p10g-mine",
             tz = "Asia/Shanghai",
             kept = disk,
+            saves = saves,
             onBreak = onBreak,
         ).also { it.ensure() }
 
@@ -328,6 +338,7 @@ class ResidentFeedTest {
                 mine = "p10g-mine",
                 tz = "Asia/Shanghai",
                 kept = Disk(),
+                saves = Saves(),
                 onBreak = { breaks += it },
                 onEmpty = { got += it },
             ).ensure()
@@ -406,10 +417,6 @@ class ResidentFeedTest {
             core.emit("reply", """{"call":41,"end":"ok","data":{"key":"k"}}""")
             assertEquals(Reply.Ok(mapOf("key" to "k")), up.await())
             assertEquals("别的那一趟的不算；总数不知道 ⇒ -1", listOf(5L to 10L, 10L to -1L), seen)
-            val down = async { f.transfer(Transfer.Pull(RemotePath.of("/w/f"), "/sd/f"), { 18 }, 9_000) { _, _ -> } }
-            assertEquals(listOf<Any>("pull", 18, """{"path":"/w/f"}""", "/sd/f", 9_000L), core.transfers.last())
-            core.emit("reply", """{"call":42,"end":"down"}""")
-            assertEquals(Reply.LinkDown, down.await())
         }
 
     @Test
@@ -417,10 +424,42 @@ class ResidentFeedTest {
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
             val f = feed(core)
-            val down = async { f.transfer(Transfer.Pull(RemotePath.of("/w/f"), "/sd/f"), { 18 }, 9_000) { _, _ -> } }
+            val down = async { f.transfer(Transfer.Stage("up.bin"), { 18 }, 9_000) { _, _ -> } }
             down.cancel()
             assertEquals(listOf<Any>("stop", 41L), core.transfers.last())
             assertEquals(2, core.transfers.size)
+        }
+
+    /** 🔴 下到本机那一组只要 Kotlin 开 · 删本机那一份：开好 ⇒ 描述符交回核心；开不了 ⇒ 系统原话交回（那一句核心写）；删 ⇒ 删开给那一项的那一份。 */
+    @Test
+    fun `下到本机：核心要本机那一份时开好交回描述符、开不了交回原话、要删就删`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val saves = Saves(refuse = setOf("b.md"))
+            feed(core, saves = saves)
+            core.emit("batch_local", """{"ask":"open","id":7,"key":"0","folder":"content://tree/x","name":"a.txt","over":"A.TXT"}""")
+            assertEquals(listOf(Triple("content://tree/x", "a.txt", "A.TXT")), saves.made)
+            assertEquals(7L to """{"opened":"fd","key":"0","fd":31}""", core.answers.last())
+            core.emit("batch_local", """{"ask":"open","id":7,"key":"1","folder":"content://tree/x","name":"b.md","over":null}""")
+            val (id, refused) = core.answers.last()
+            assertEquals(7L, id)
+            assertTrue(refused!!.startsWith("""{"opened":"refused","key":"1","detail":"""") && "EACCES b.md" in refused)
+            core.emit("batch_local", """{"ask":"drop","id":7,"key":"0"}""")
+            core.emit("batch_local", """{"ask":"drop","id":7,"key":"0"}""")
+            assertEquals("删一次；再来一次没东西可删", listOf("a.txt"), saves.dropped)
+        }
+
+    /** 🔴 核心里有活在走（`busy`）⇒ [ResidentFeed.working] 跟着翻（保活服务照它判）。 */
+    @Test
+    fun `核心交的 busy 落进 working`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            assertFalse(f.working.value)
+            core.emit("busy", "true")
+            assertTrue(f.working.value)
+            core.emit("busy", "false")
+            assertFalse(f.working.value)
         }
 
     @Test
@@ -531,7 +570,7 @@ class ResidentFeedTest {
             assertEquals("核心读不动的那一份不留", listOf("t-1"), disk.rows.keys.toList())
 
             // 接回来的那一组：屏后开也照最后那一格画；收场的那一格只交一次（屏上没人看着时交给后开的那一屏）。
-            after.emit("batch", """{"id":41,"phase":"cut","title":"删除 1 项","kept":true,"line":"box 连接已断开","resume":false}""")
+            after.emit("batch", """{"id":41,"phase":"cut","title":"删除 1 项","kept":true,"line":"box 连接已断开"}""")
             after.emit("batch", """{"id":7,"phase":"running","title":"复制 2 项","kept":false,"current":null,"frac":null}""")
             val phases = { f.resumed().map { it.id to it.phase } }
             assertEquals("只记接回来的那几组", listOf(41L to "cut"), phases())
@@ -560,6 +599,7 @@ class ResidentFeedTest {
                     mine = "p10g-mine",
                     tz = "Asia/Shanghai",
                     kept = Disk(),
+                    saves = Saves(),
                     onBreak = { broken += it },
                 ).also { it.ensure() }
             val got = mutableListOf<LiveCards>()

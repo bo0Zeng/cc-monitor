@@ -269,7 +269,7 @@ private fun rememberDownloadLauncher(vm: FilesViewModel): (List<FilesLs.Entry>) 
             if (tree == null || es.isEmpty()) return@rememberLauncherForActivityResult
             val r = context.contentResolver
             runCatching { r.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
-            vm.download(es, TreeFolder(r, tree))
+            vm.download(es, tree.toString())
         }
     return remember(launcher) {
         { es ->

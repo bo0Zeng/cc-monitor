@@ -86,19 +86,6 @@ class FileOpsTest {
         }
 
     @Test
-    fun downloadHandsTheTargetToTheCoreAndSaysHowManyBytesLanded() =
-        runTest {
-            val link = FakeCoreLink().apply { transferred = { Reply.Ok(mapOf("bytes" to 3.0)) } }
-            assertEquals(3L, FileOps(link) { "box" }.download(RemotePath.of("/w/f"), { 18 }, "/sd/f") { _, _ -> }.getOrThrow())
-            assertEquals(listOf(Transfer.Pull(RemotePath.of("/w/f"), "/sd/f") to 18), link.transfers)
-            val e = FileOps(link) { "box" }.download(RemotePath.of("/w/f"), { throw java.io.IOException("EROFS") }, "/sd/f") { _, _ -> }.exceptionOrNull() as FileOps.Failed
-            assertEquals(copyText("mobFiles.local.writeFailed", "path" to "/sd/f"), e.problem.text)
-            assertTrue("本机那一份开不了不是断了", !e.cut)
-            val down = FakeCoreLink().apply { transferred = { Reply.LinkDown } }
-            assertTrue("通道断了 ⇒ 断了（下载一组停在那里等继续）", (FileOps(down) { "box" }.download(RemotePath.of("/w/f"), { 18 }, "f") { _, _ -> }.exceptionOrNull() as FileOps.Failed).cut)
-        }
-
-    @Test
     fun aGroupHandsTheCoreWhatToDoAndTheCoreBuildsTheArgs() =
         runTest {
             val link = FakeCoreLink()
@@ -109,12 +96,14 @@ class FileOpsTest {
             assertEquals(2L, ops.chmod(dir, listOf(f), "644"))
             assertEquals(3L, ops.again(1L, undo = true))
             assertEquals(4L, ops.copy(dir, listOf(d, f), RemotePath.of("/w/sub")))
+            assertEquals(5L, ops.download(listOf(f), "content://tree/x", listOf("F")))
             assertEquals(
                 listOf(
                     mapOf("delete" to mapOf("root" to "/w", "items" to listOf(mapOf("rel" to "d", "name" to "d", "dir" to true), mapOf("rel" to "f", "name" to "f", "dir" to false)))),
                     mapOf("chmod" to mapOf("root" to "/w", "items" to listOf(mapOf("rel" to "f", "name" to "f")), "mode" to "644")),
                     mapOf("undo" to 1L),
                     mapOf("copy" to mapOf("from" to "/w", "names" to listOf("d", "f"), "to" to "/w/sub")),
+                    mapOf("download" to mapOf("folder" to "content://tree/x", "here" to listOf("F"), "items" to listOf(mapOf("path" to "/w/f", "name" to "f")))),
                 ),
                 link.wants,
             )

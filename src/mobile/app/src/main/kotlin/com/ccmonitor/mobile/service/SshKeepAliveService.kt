@@ -18,7 +18,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.ccmonitor.mobile.MainActivity
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ui.chat.ChatController
 import kotlinx.coroutines.CoroutineScope
@@ -26,22 +25,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 
 /**
- * SSH 保活前台服务。会话连上时启动，挂一条常驻通知降低后台被杀的概率（部分 ROM 仍会杀，靠重连兜底）。
- * 没有活动会话也没有在飞轮次时自停。网回来 · 网变了的回调不在这里（App 一起来就挂上，见 `CcMonitorApp`）。
+ * SSH 保活前台服务。「有活」那一下由应用起（[KeepAliveWork.startOnWork]），挂一条常驻通知降低后台被杀的概率（部分 ROM 仍会杀，靠重连兜底）。
+ * 没活（没有活动会话 · 没有在飞轮次 · 核心里没有在传的）时自停。网回来 · 网变了的回调不在这里（App 一起来就挂上，见 `CcMonitorApp`）。
  */
 class SshKeepAliveService : Service() {
-    private val manager: SshConnectionManager by inject() // 只用会话计数，不管连接生死
 
     /** 断连接经网关：[onTaskRemoved] 走 [HostConnector.disconnectAll]。 */
     private val connector: HostConnector by inject()
 
-    /** 存活判据要问它有没有在飞轮次，见 [onCreate]。 */
+    /** [onTaskRemoved] 收掉全部对话。 */
     private val chatController: ChatController by inject()
+
+    /** 存活判据（会话 · 在飞轮次 · 核心里在传的），见 [onCreate]。 */
+    private val work: KeepAliveWork by inject()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @Volatile private var started = false // startForeground 成功前不许 stopSelf，否则会崩
@@ -62,18 +62,16 @@ class SshKeepAliveService : Service() {
         super.onCreate()
         createChannel()
         scope.launch {
-            // 存活判据是「有活动会话或有在飞轮次」。连接是惰性的，活动会话为 0 是常态（重连那一段也是 0）；只看会话数的话
-            // 离开 app 等回复时服务会当场自停、进程跟着可能被收走。在飞轮次由应用级的 `ChatController` 持有。
-            combine(manager.sessions, chatController.hasInFlightTurn) { _, inFlight ->
-                manager.activeCount() to inFlight
-            }.collectLatest { (n, inFlight) ->
+            // 存活判据是「有活动会话 · 有在飞轮次 · 核心里有在传的」。连接是惰性的，活动会话为 0 是常态（重连那一段也是 0）；只看会话数的话
+            // 离开 app 等回复 · 下一组文件 · 附件还在传时服务会当场自停、进程跟着可能被收走。
+            work.work.collectLatest { w ->
                 // 判决在 [KeepAlivePolicy]，和 [onTimeout] 走同一道闸。
-                val reason = KeepAlivePolicy.stopReasonFor(KeepAliveStopReason.NoWork, hasWork = n > 0 || inFlight)
+                val reason = KeepAlivePolicy.stopReasonFor(KeepAliveStopReason.NoWork, hasWork = w.any)
                 if (reason != null) {
                     // startForeground 之后才许自停，否则会 "did not call startForeground" 崩溃。
                     if (started) stopFor(reason)
                 } else {
-                    notify(n)
+                    notify(w.sessions)
                 }
             }
         }
@@ -92,7 +90,7 @@ class SshKeepAliveService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
-        val notification = buildNotification(manager.activeCount().coerceAtLeast(1))
+        val notification = buildNotification(work.now().sessions.coerceAtLeast(1))
         try {
             ServiceCompat.startForeground(
                 this,
@@ -136,8 +134,8 @@ class SshKeepAliveService : Service() {
         stopFor(KeepAlivePolicy.stopReasonFor(KeepAliveStopReason.SystemTimeout, hasWork = hasWork()))
     }
 
-    /** 有活 = 有活动会话或有在飞轮次，与 [onCreate] 里的判据相同。 */
-    private fun hasWork(): Boolean = manager.activeCount() > 0 || chatController.hasInFlightTurn.value
+    /** 此刻有没有活，与 [onCreate] 里的判据同一份（[KeepAliveWork.now]）。 */
+    private fun hasWork(): Boolean = work.now().any
 
     /** 停服务的唯一出口：先把为什么停记下来，再停。`reason == null` 表示这回不该停，什么也不做。 */
     private fun stopFor(reason: KeepAliveStopReason?) {
@@ -190,7 +188,7 @@ class SshKeepAliveService : Service() {
  * 顺序有意义：前两档是我们自己决定停的，后两档是系统逼停的。
  */
 enum class KeepAliveStopReason {
-    /** 没有活动会话，也没有在飞轮次。 */
+    /** 没有活动会话 · 没有在飞轮次 · 核心里没有在传的（[KeepAlivePolicy.hasWork]）。 */
     NoWork,
 
     /** 任务从最近任务里被划走了。 */
@@ -229,6 +227,15 @@ object KeepAliveStopFact {
  * 判断住在 `Service` 的系统回调里，那些回调在 JVM 单测里碰不到，所以把会写错的那部分搬到这里。
  */
 internal object KeepAlivePolicy {
+    /**
+     * 有没有活：有活动会话 · 有在飞轮次 · 核心里有在传的（一组删 / 复制 / 下到本机 · 一趟分块传：切到后台时那一趟不该跟着进程没了）。
+     */
+    fun hasWork(
+        sessions: Int,
+        inFlight: Boolean,
+        moving: Boolean,
+    ): Boolean = sessions > 0 || inFlight || moving
+
     /**
      * 这个因由当下该不该停；返回 `null` = 不停。
      * 只有 [KeepAliveStopReason.NoWork] 看 `hasWork`（没活才停）；其余三档不看，照停：

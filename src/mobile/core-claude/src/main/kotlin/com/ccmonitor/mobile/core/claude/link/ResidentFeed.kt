@@ -12,6 +12,8 @@ import com.ccmonitor.mobile.core.wire.gen.DeployEnd
 import com.ccmonitor.mobile.core.wire.gen.EmptyFace
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCards
+import com.ccmonitor.mobile.core.wire.gen.LocalAsk
+import com.ccmonitor.mobile.core.wire.gen.LocalOpened
 import com.ccmonitor.mobile.core.wire.gen.Moved
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
@@ -34,12 +36,13 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 嵌的 Rust 核心里那一台常驻流的几个口（`Core.resident*`，手写 JNI、走消息）。生产上直通 JNI；JVM 单测给假的。
- * 交回来的事经 [open] 时给的 `events` 回（`state` · `empty` · `book` · `live` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy` · `batch` · `batch_keep`）：
+ * 交回来的事经 [open] 时给的 `events` 回（`state` · `empty` · `book` · `live` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy` · `batch` · `batch_keep` · `batch_local` · `busy`）：
  * 每一样的形状是 `cmd-wire` 的 `phone` 那一份（会话簿 · 活卡是端核心 `resident-client` 那一份）—— 生成的类照它解，缺一格就是两端契约对不上，不补默认值。
  */
 interface ResidentCore {
@@ -81,16 +84,7 @@ interface ResidentCore {
         withinMs: Long,
     ): Long
 
-    /** 下载那一半（[args] 是 `{path}`）：同 [stage]。 */
-    fun pull(
-        handle: Long,
-        fd: Int,
-        args: String,
-        shown: String,
-        withinMs: Long,
-    ): Long
-
-    /** 撤那一趟（[stage] · [pull] 回的编号）：本机那一份当场不再读写。 */
+    /** 撤那一趟（[stage] 回的编号）：本机那一份当场不再读。 */
     fun transferStop(id: Long)
 
     /** 起一组（[want] 是 JSON；`{kept}` ⇒ 接回落盘那一份）：回编号，事经 `batch` 那一种交回、落盘那一份经 `batch_keep`；这台不在 · 读不动 ⇒ 0。 */
@@ -117,9 +111,6 @@ interface ResidentCore {
 
     /** 几台搜内容的结果（`[{origin, reply}]`，JSON）⇒ 合好的那一份（[SearchMerge.of]）；读不动 ⇒ 空串。 */
     fun searchMerge(data: String): String
-
-    /** 下载一组那几格（JSON）⇒ `batch` 那一形的一行（[BatchLine]）；读不动 ⇒ 空串。 */
-    fun downloadEvent(want: String): String
 
     /** 手机这一侧问的同名那一答（JSON；`null` ＝ 取消）⇒ [keys]（JSON 数组）每个键一格（键 ⇒ [Decide] 的 JSON）。 */
     fun answerOf(
@@ -154,6 +145,8 @@ class ResidentFeed(
     private val tz: String,
     /** 这一台在做的几组落盘的那一份（核心交 `batch_keep` 时写 · 删；开起来交回核心再问）。 */
     private val kept: KeptBatches,
+    /** 下到本机那一侧（核心经 `batch_local` 要本机那一份时在这里开 · 删）。 */
+    private val saves: LocalSaves,
     private val onBreak: (String) -> Unit = {},
     /** 核心跟着 `state` 交的首屏那一句（手上看着的每台合的一份，不只这一台；最新那一行算数）。 */
     private val onEmpty: (EmptyFace) -> Unit = {},
@@ -277,7 +270,6 @@ class ResidentFeed(
         val id =
             when (how) {
                 is Transfer.Stage -> core.stage(h, fd(), how.name, withinMs)
-                is Transfer.Pull -> core.pull(h, fd(), Json.args(mapOf("path" to how.path.wire)), how.shown, withinMs)
             }
         if (id == 0L) return Reply.LinkDown
         moving[id] = moved
@@ -295,6 +287,12 @@ class ResidentFeed(
 
     private val batchFlow = MutableSharedFlow<BatchLine>(extraBufferCapacity = BUFFER)
     override val batches: SharedFlow<BatchLine> = batchFlow.asSharedFlow()
+
+    private val workingFlow = MutableStateFlow(false)
+    override val working: StateFlow<Boolean> = workingFlow.asStateFlow()
+
+    /** 下到本机那几组开给各项的那一份（组编号 · 键 ⇒ 那一份），没下成时照它删。 */
+    private val saved = ConcurrentHashMap<Pair<Long, String>, LocalFile>()
 
     /** 接回来的那几组各自最后那一格（[resumed]）。 */
     private val resumedLast = LinkedHashMap<Long, BatchLine>()
@@ -338,11 +336,6 @@ class ResidentFeed(
         return Wire.read(dict(Decide.ADAPTER), line) ?: null.also { broke("answer_of", line) }
     }
 
-    override fun downloadEvent(want: Map<String, Any?>): BatchLine? {
-        val line = core.downloadEvent(Json.args(want))
-        return Wire.read<BatchLine>(line) ?: null.also { broke("download", line) }
-    }
-
     override fun hold(sid: String): AutoCloseable {
         ensure()
         scope.launch { core.watch(opened.await(), sid, true) }
@@ -373,6 +366,8 @@ class ResidentFeed(
             "deploy" -> onDeployLine(body)
             "batch" -> onBatchLine(body)
             "batch_keep" -> onKeepLine(body)
+            "batch_local" -> onLocalLine(body)
+            "busy" -> workingFlow.value = body == "true"
             else -> broke(kind, body)
         }
     }
@@ -415,6 +410,8 @@ class ResidentFeed(
     /** `batch` 那一行落进 [batches]（接回来的那几组另记最后那一格：收场时有人在看 ⇒ 算交过）；认不出 ⇒ 报一次契约对不上。 */
     private suspend fun onBatchLine(body: String) {
         val e = Wire.read<BatchLine>(body) ?: return broke("batch", body)
+        // 收场了：开给那几项的那几份不再要删（下成的留着）。
+        if (e.over) saved.keys.removeIf { it.first == e.id }
         if (e.kept) {
             synchronized(resumedLast) {
                 if (e.over && batchFlow.subscriptionCount.value > 0) resumedLast.remove(e.id) else resumedLast[e.id] = e
@@ -429,6 +426,34 @@ class ResidentFeed(
         when (val plan = k.plan) {
             null -> kept.drop(k.ticket)
             else -> kept.put(k.ticket, plan)
+        }
+    }
+
+    /**
+     * `batch_local`：下到本机那一组要本机那一侧做的 —— 开一份（开好的描述符 · 开不了的系统原话经 `batchAnswer` 交回，那一句核心写）·
+     * 删开给那一项的那一份。照到达先后一件一件做：撤在开的路上时，删那一件排在开那一件后面，删得到。
+     */
+    private fun onLocalLine(body: String) {
+        when (val a = Wire.read<LocalAsk>(body) ?: return broke("batch_local", body)) {
+            is LocalAsk.Open -> {
+                val answer =
+                    try {
+                        val f = saves.create(a.folder, a.name, a.over)
+                        val fd =
+                            try {
+                                f.fd()
+                            } catch (e: IOException) {
+                                f.drop()
+                                throw e
+                            }
+                        saved[a.id to a.key] = f
+                        LocalOpened.Fd(a.key, fd.toLong())
+                    } catch (e: IOException) {
+                        LocalOpened.Refused(a.key, e.toString())
+                    }
+                core.batchAnswer(a.id, Wire.line(answer))
+            }
+            is LocalAsk.Drop -> saved.remove(a.id to a.key)?.drop?.invoke()
         }
     }
 

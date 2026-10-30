@@ -44,7 +44,7 @@ impl PhoneLink {
         PhoneLink { base }
     }
 
-    /// 在 `base` 上填这一趟的用法与命令，组成拨号请求（读不动 ⇒ 这条连接用不了）。
+    /// 在 `base` 上填这一趟的用法与命令，组成拨号请求；拼不成 ⇒ 契约错那一句（两端对不上，不冒充断线）。
     fn request(&self, uses: serde_json::Value) -> Result<ssh_dial::DialRequest, Problem> {
         let mut req = self.base.clone();
         if let (Some(r), Some(u)) = (req.as_object_mut(), uses.as_object()) {
@@ -53,8 +53,12 @@ impl PhoneLink {
             }
             r.insert("stages".into(), false.into());
         }
-        serde_json::from_value(req)
-            .map_err(|e| Problem::new(copy_core::copy_text("reason.link.lost", &[]), e.to_string()))
+        serde_json::from_value(req).map_err(|e| {
+            Problem::new(
+                ssh_dial::malformed(&format!("dial request: {e}")),
+                e.to_string(),
+            )
+        })
     }
 }
 
@@ -519,11 +523,28 @@ pub(crate) fn next_call() -> i64 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
-/// 一问一答：回问答编号；结局经 `reply` 那一种交回（`{call, …}`，[`reply_json`]）。这台不在 ⇒ 0。
+/// 一问一答的入参（JSON）；读不动 ⇒ 交 Kotlin 的那一行（契约错：照读不动交，不发）。
+fn args_of(id: i64, cmd: &str, args: &str) -> Result<serde_json::Value, String> {
+    serde_json::from_str(args).map_err(|e| {
+        serde_json::to_string(&CallEnd::Unreadable {
+            call: id,
+            detail: format!("{cmd} args: {e}"),
+        })
+        .unwrap_or_default()
+    })
+}
+
+/// 一问一答：回问答编号；结局经 `reply` 那一种交回（`{call, …}`，[`reply_json`]）。这台不在 ⇒ 0；入参读不动 ⇒ 不发，当场交读不动那一行。
 pub fn call(h: i64, cmd: String, args: &str, within_ms: u64, on_event: OnEvent) -> i64 {
     let Some(f) = feed(h) else { return 0 };
     let id = next_call();
-    let args: serde_json::Value = serde_json::from_str(args).unwrap_or(serde_json::Value::Null);
+    let args = match args_of(id, &cmd, args) {
+        Ok(a) => a,
+        Err(line) => {
+            on_event(h, "reply", line);
+            return id;
+        }
+    };
     let machine = f.machine().to_string();
     tokio::spawn(async move {
         let deadline = tokio::time::Instant::now() + Duration::from_millis(within_ms.max(1));
@@ -673,6 +694,25 @@ pub fn reply_json(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 🔴 两端契约对不上时说契约错：一问一答的入参读不动 ⇒ 读不动那一行（不当 `null` 照发）；拨号请求拼不成 ⇒ 契约错那一句（不说「连接断了」）。
+    #[test]
+    fn a_contract_break_is_said_as_one_not_as_a_lost_link() {
+        let line: serde_json::Value =
+            serde_json::from_str(&args_of(5, "history-facts", "{").unwrap_err()).unwrap();
+        assert_eq!((line["call"].as_i64(), line["end"].as_str()), (Some(5), Some("unreadable")));
+        assert_eq!(args_of(5, "x", "{\"a\":1}").unwrap(), serde_json::json!({"a": 1}));
+        let p = PhoneLink::new(serde_json::json!({}))
+            .request(serde_json::json!({}))
+            .unwrap_err();
+        assert_ne!(p.text, copy_core::copy_text("reason.link.lost", &[]));
+        assert!(
+            p.text
+                .starts_with(&copy_core::copy_text("beContract.malformed.say", &[])),
+            "{}",
+            p.text
+        );
+    }
 
     /// 一问一答的结局逐种落到 Kotlin 认的那一行；事前就拒的那几种照失败交、带码与一句话。
     #[test]

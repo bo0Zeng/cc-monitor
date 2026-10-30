@@ -66,6 +66,7 @@ class FilesViewModel(
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     private val feed = backends.of(hostId)
+    private val saves = backends.saves
     private val ops = FileOps(feed, ::machine)
 
     private val _ui = MutableStateFlow<FilesUi>(FilesUi.Connecting)
@@ -303,16 +304,11 @@ class FilesViewModel(
         }
     }
 
-    private val downloads = Downloads(feed, ops, viewModelScope, io, ::machine, ::show)
-
-    /** 把选中的那几项（或点的那一份）下到本机 [folder]（系统「选文件夹」给的那一棵）：一组，见 [Downloads]。 */
+    /** 把选中的那几项（或点的那一份）下到本机 [folder]（系统「选文件夹」给的那一棵，原样一串）：一组，全过程在核心（同删 · 复制）。 */
     fun download(
         entries: List<FilesLs.Entry>,
-        folder: LocalFolder,
-    ) {
-        unpick()
-        downloads.start(entries, folder)
-    }
+        folder: String,
+    ) = group { ops.download(entries, folder, withContext(io) { saves.names(folder) }) }
 
     /** 起一组（[start] 回编号；0 ＝ 这台不在 ⇒ 那一句）；起了就退出选择模式。 */
     private fun group(start: suspend (RemotePath) -> Long) {
@@ -349,7 +345,7 @@ class FilesViewModel(
         id: Long,
         undo: Boolean,
     ) {
-        if (!downloads.again(id)) group { ops.again(id, undo) }
+        group { ops.again(id, undo) }
     }
 
     /** 同名那一问的答（`null` ＝ 取消）。 */
@@ -357,12 +353,12 @@ class FilesViewModel(
         id: Long,
         answer: BatchAnswer?,
     ) {
-        if (!downloads.answer(id, answer)) feed.batchAnswer(id, answer)
+        feed.batchAnswer(id, answer)
     }
 
     /** 浮卡上的［停］。 */
     fun stopBatch(id: Long) {
-        if (!downloads.stop(id)) feed.batchStop(id)
+        feed.batchStop(id)
     }
 
     /** 收场了还留着的那张卡收起。 */
