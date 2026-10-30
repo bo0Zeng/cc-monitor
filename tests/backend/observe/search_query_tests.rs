@@ -450,3 +450,141 @@ fn a_hit_carries_this_machines_face_and_can() {
         "命中行形状变了：TS 解码器读的是同一份金样，两边一起改",
     );
 }
+
+// ───────────────────────── 常驻索引的锁只管取放 ─────────────────────────
+// 守的要求：一问全文搜索在手里攥着那一棵索引时（读盘 · 逐份搜 · 交行），同时来的会话内查找与第二问全文搜索不排在它后面，
+// 答案与独自问时逐字相同；它答完，那一棵回到常驻表上（下一问照旧增量）；它半路 panic，表不卡在「借出去了」。
+// 卡住前一问的替身：交行的回调停在一个通道上，测试放行它才往下走（不靠时钟抖，期限只用来判「没等它」）。
+
+/// 起一问全文搜索，停在它交第一行的那一刻；回（放行它的开关 · 那一问的线程）。
+fn a_search_held_open(
+    home: &Path,
+) -> (
+    std::sync::mpsc::Sender<()>,
+    std::thread::JoinHandle<Result<usize, String>>,
+) {
+    let (inside, entered) = std::sync::mpsc::channel::<()>();
+    let (go, wait) = std::sync::mpsc::channel::<()>();
+    let home = home.to_path_buf();
+    let searcher = std::thread::spawn(move || {
+        let opts = opts_from_words(&[]);
+        search_counting(&home, "docker", &opts, &mut |_row| {
+            inside.send(()).ok();
+            wait.recv().ok();
+            Ok(())
+        })
+    });
+    entered
+        .recv_timeout(std::time::Duration::from_secs(30))
+        .expect("前一问没走到交行那一刻");
+    (go, searcher)
+}
+
+/// 在另一条线程上跑 `ask`，期限内答回 ⇒ `Some(答案)`；过了期限还没答 ⇒ `None`（它在等前一问）。
+fn answers_in_time<T: Send + 'static>(ask: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    let (done, got) = std::sync::mpsc::channel();
+    std::thread::spawn(move || done.send(ask()).ok());
+    got.recv_timeout(std::time::Duration::from_secs(5)).ok()
+}
+
+/// 会话内查找照帧面那一臂问（索引不收 ⇒ 现扫），回命中的 uuid。
+fn find_uuids(home: &Path, target: &Path) -> Vec<String> {
+    let mut uuids = Vec::new();
+    let page = || FindPage { skip: 0, limit: 50 };
+    let mut push = |h: &FindHit| {
+        uuids.push(h.uuid.clone());
+        Ok(())
+    };
+    let scanned = match find_indexed(home, target, "docker", false, None, page(), &mut push) {
+        Some(r) => r,
+        None => {
+            let file = std::fs::File::open(target).expect("打开夹具");
+            scan_session_find(
+                crate::agents::claudecode::AGENT_KIND,
+                std::io::BufReader::new(file),
+                "docker",
+                false,
+                None,
+                page(),
+                &mut push,
+            )
+        }
+    };
+    scanned.expect("查找读得动");
+    uuids
+}
+
+#[test]
+fn lock_a_find_does_not_wait_for_a_search_in_flight() {
+    let home = corpus("lock-find", &[("s1", 2000, 2)]);
+    let target = home.join("projects/p-s1/s1.jsonl");
+    let alone = find_uuids(&home, &target);
+    assert!(!alone.is_empty(), "夹具：独自问该有命中");
+
+    let (go, searcher) = a_search_held_open(&home);
+    let (h, t) = (home.clone(), target.clone());
+    let during = answers_in_time(move || find_uuids(&h, &t));
+    go.send(()).ok();
+    searcher.join().expect("前一问 panic").expect("前一问出错");
+    std::fs::remove_dir_all(&home).ok();
+    assert_eq!(
+        during.as_deref(),
+        Some(&alone[..]),
+        "全文搜索攥着常驻索引时，会话内查找排在它后面（或答得不一样）"
+    );
+}
+
+#[test]
+fn lock_a_second_search_does_not_wait_and_the_index_comes_back() {
+    let home = corpus("lock-second", &[("s1", 2000, 1)]);
+    let alone = run_search(&home, "docker", 50);
+    assert_eq!(alone.len(), 1, "夹具：独自问该命中一个会话");
+
+    let (go, searcher) = a_search_held_open(&home);
+    let h = home.clone();
+    let during = answers_in_time(move || run_search(&h, "docker", 50));
+    go.send(()).ok();
+    searcher.join().expect("前一问 panic").expect("前一问出错");
+    assert_eq!(
+        during.as_ref(),
+        Some(&alone),
+        "第二问全文搜索排在前一问后面（或答得不一样）"
+    );
+
+    // 前一问答完，那一棵回到常驻表上：会话内查找走索引（不退回现扫），且这一份没变 ⇒ 一个字节不读。
+    let target = home.join("projects/p-s1/s1.jsonl");
+    let page = FindPage { skip: 0, limit: 50 };
+    let back = find_indexed(&home, &target, "docker", false, None, page, |_| Ok(()));
+    let root = home.join("projects").canonicalize().expect("规范化");
+    let last = RESIDENT.lock().expect("锁").get(&root).map(|i| i.last);
+    std::fs::remove_dir_all(&home).ok();
+    assert!(
+        matches!(back, Some(Ok(_))),
+        "前一问答完，常驻表上没有那一棵：{back:?}"
+    );
+    assert_eq!(
+        last.map(|r| (r.full, r.reused, r.bytes)),
+        Some((0, 1, 0)),
+        "放回的不是前一问读好的那一棵"
+    );
+}
+
+#[test]
+fn lock_a_search_that_panics_midway_does_not_leave_the_index_lent() {
+    let home = corpus("lock-panic", &[("s1", 2000, 1)]);
+    let h = home.clone();
+    let died = std::thread::spawn(move || {
+        let opts = opts_from_words(&[]);
+        search_counting(&h, "docker", &opts, &mut |_row| panic!("交行那一刻 panic"))
+    })
+    .join();
+    assert!(died.is_err(), "夹具：那一问该 panic");
+    let target = home.join("projects/p-s1/s1.jsonl");
+    let page = FindPage { skip: 0, limit: 50 };
+    let after = find_indexed(&home, &target, "docker", false, None, page, |_| Ok(()));
+    std::fs::remove_dir_all(&home).ok();
+    assert!(
+        matches!(after, Some(Ok(_))),
+        "半路 panic 的那一问把常驻索引留在「借出去了」：{after:?}"
+    );
+}

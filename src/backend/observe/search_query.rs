@@ -98,8 +98,12 @@ pub(crate) fn search_counting(
     }
     // 路径白名单根（read 的文件必须在其下，挡 symlink 逃逸）：observe 唯一那道围栏（`common/fence.rs`）。
     let fence = Fence::at(&root)?;
-    let mut resident = resident();
-    let index = resident.entry(fence.root().to_path_buf()).or_default();
+    // 锁只管取放：借出那一棵就放锁，读盘 · 逐份搜 · 交行都在锁外，同时来的会话内查找不排在这一问后面。
+    // 那一棵已被前一问借走 ⇒ 这一问拿一棵空的现扫（答案逐字相同，只是整份读、不留），不等它。
+    let root = fence.root().to_path_buf();
+    let borrowed = lend(&mut resident(), &root);
+    let mut held = Lent::of(borrowed, |back| hand_back(&mut resident(), &root, back));
+    let index = &mut held.index;
     let live = crate::history::live_table::now(agent_home);
     let unreadable = index.search(&fence, &q, opts, &live, push)?;
     let r = index.last;
@@ -133,9 +137,58 @@ pub(crate) fn find_indexed(
     }
     let fence = Fence::at(&crate::agents::records_root(agent_home)?).ok()?;
     let path = fence.admit(target).ok()?;
+    // 只读这一份：在锁里读（短）。那一棵正借给一问全文搜索 ⇒ 不等它，交调用方现扫。
     let mut resident = resident();
     let index = resident.entry(fence.root().to_path_buf()).or_default();
+    if index.lent {
+        return None;
+    }
     index.find(&path, &q, include_tools, scope, page, on_hit)
+}
+
+/// 从常驻表借出 `root` 那一棵：表上留一格「借出去了」，借的人在锁外用；已借出 ⇒ `None`。
+fn lend(table: &mut BTreeMap<PathBuf, SearchIndex>, root: &Path) -> Option<SearchIndex> {
+    let slot = table.entry(root.to_path_buf()).or_default();
+    (!slot.lent).then(|| {
+        let away = SearchIndex {
+            lent: true,
+            ..SearchIndex::with_budget(slot.budget)
+        };
+        std::mem::replace(slot, away)
+    })
+}
+
+/// 借出的那一棵还回表上；`None`（借的那一问半路 panic）⇒ 那一格丢掉，下一问重建，不带着半截状态答。
+fn hand_back(table: &mut BTreeMap<PathBuf, SearchIndex>, root: &Path, back: Option<SearchIndex>) {
+    match back {
+        Some(index) => table.insert(root.to_path_buf(), index),
+        None => table.remove(root),
+    };
+}
+
+/// 一问手里的那一棵：借来的落下时交给 `back`（正常 ⇒ 那一棵，panic 中 ⇒ `None`）；没借到的是一棵空的，用完就丢。
+struct Lent<B: FnMut(Option<SearchIndex>)> {
+    index: SearchIndex,
+    back: Option<B>,
+}
+
+impl<B: FnMut(Option<SearchIndex>)> Lent<B> {
+    fn of(borrowed: Option<SearchIndex>, back: B) -> Self {
+        Self {
+            back: borrowed.is_some().then_some(back),
+            index: borrowed.unwrap_or_default(),
+        }
+    }
+}
+
+impl<B: FnMut(Option<SearchIndex>)> Drop for Lent<B> {
+    fn drop(&mut self) {
+        if std::thread::panicking() { return; }
+        if let Some(back) = self.back.as_mut() {
+            let index = std::mem::take(&mut self.index);
+            back((!std::thread::panicking()).then_some(index));
+        }
+    }
 }
 
 /// 进程级常驻索引：规范化的 projects 根 → 那一棵的索引。第一问来时建、建好留着；没人问的那台不占这份内存、不为它读盘。
@@ -184,6 +237,8 @@ pub(crate) struct SearchIndex {
     last: Refresh,
     /// 常驻上界（生产恒为 [`RESIDENT_MAX_BYTES`]；判据用小的量「留不下」那一格）。
     budget: usize,
+    /// 表上这一格是空位：真那一棵正借给一问全文搜索（[`lend`]），还回来之前别处不用它。
+    lent: bool,
 }
 
 impl Default for SearchIndex {
@@ -464,6 +519,7 @@ impl SearchIndex {
             files: BTreeMap::new(),
             last: Refresh::default(),
             budget,
+            lent: false,
         }
     }
 
