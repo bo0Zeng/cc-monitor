@@ -58,9 +58,6 @@
     "tests/backend/platform/cfgless_guard.rs": [
       { "text": "路径", "use": "非文案" }
     ],
-    "tests/backend/platform/fallback_guard.rs": [
-      { "text": "只读", "use": "非文案" }
-    ],
     "tests/backend/platform/shell/dialect_tests.rs": [
       { "text": "名字", "use": "输入" }
     ],

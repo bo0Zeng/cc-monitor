@@ -331,7 +331,6 @@ pub(crate) fn align_here(d: &dyn Door) {
     }
 }
 
-
 fn rollback(
     d: &dyn Door,
     snap: &Snapshot,

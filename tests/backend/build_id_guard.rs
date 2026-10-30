@@ -126,9 +126,9 @@ mod tests {
         // 反向自检之二：**测试段真的剥掉了**。旧的 `len` 自检光靠剥注释就满足，
         // 与测试段有没有剥掉毫无关系 —— 那正是本护栏扫了几个月测试代码没人发现的原因。
         assert_no_test_code("build_id_guard/main.rs", &prod);
-        // 子命令那一面取子命令全集（`stream::cli::subcommands`：手写的一次性表 ∪ 帧命令派生的 CLI 面），不自己抠 `Some("--`：
+        // 子命令那一面取子命令全集（`stream::cli::tests::subcommands`：手写的一次性表 ∪ 帧命令派生的 CLI 面），不自己抠 `Some("--`：
         // 分派查的就是这一份，加一条子命令不进它就分派不到。
-        let mut subs: Vec<String> = crate::stream::cli::subcommands()
+        let mut subs: Vec<String> = crate::stream::cli::tests::subcommands()
             .iter()
             .map(|s| s.to_string())
             .collect();

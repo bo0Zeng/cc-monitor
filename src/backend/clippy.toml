@@ -9,6 +9,7 @@
 # 出站 TCP 只在出网口开（`egress/lib.rs` 那一处放行）：中转去上游 · 拨 SSH · 探活都经 `egress::open`，别处自己开一条就绕过了代理。
 #   经第三方 crate 间接开的连接认不出。中转包（`src/comms/outward`）另有一份同组的 `clippy.toml`。
 # 起子进程只在起子进程原语开（`platform/child.rs` 那一处放行）：期限必填 · 杀整组 · 自有环境无条件摘都在那里做。
+# 进程 argv 只在 `main` 取一次（`main.rs` 那一处放行）：要它的模块由调用方交。
 # 测试段放开（各库根头上那一行 `cfg_attr(test, …)`）。本文件管后端 · 拨号核心 · 出网口 · 部署四个包（各自的 `[lints.clippy]` 定成 deny）。
 disallowed-methods = [
   { path = "std::time::SystemTime::now", reason = "后端的「现在」只走 `crate::common::time::now`" },
@@ -61,4 +62,6 @@ disallowed-methods = [
   { path = "tokio::net::TcpSocket::new_v6", reason = "出站 TCP 只在出网口开：改走 `egress::open`（照这台或那个会话的出网描述）", allow-invalid = true },
   { path = "std::process::Command::new", reason = "起子进程只经 `platform::Child`（期限必填 · 杀整组 · 自有环境无条件摘）：`Child::new(…).run(期限)` / `detach` / `exec_replace`" },
   { path = "tokio::process::Command::new", reason = "起子进程只经 `platform::Child`（期限必填 · 杀整组 · 自有环境无条件摘）：`Child::new(…).run(期限)` / `detach` / `exec_replace`", allow-invalid = true },
+  { path = "std::env::args", reason = "进程 argv 只在 `main` 取一次：要它的模块由调用方交" },
+  { path = "std::env::args_os", reason = "进程 argv 只在 `main` 取一次：要它的模块由调用方交" },
 ]

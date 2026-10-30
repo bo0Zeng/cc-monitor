@@ -99,9 +99,10 @@ impl OnDisk {
 impl Records for OnDisk {
     fn get(&self, sid: &str) -> Option<Opened> {
         let f = self.file(sid)?;
-        if Ro::metadata(f.as_path()).ok()?.len() > MAX_BYTES {
+        let len = Ro::metadata(f.as_path()).ok()?.len();
+        if len > MAX_BYTES {
             tracing::warn!(
-                "opened-windows：{} 超过 {MAX_BYTES} 字节，当没有（照问那台）",
+                "opened-windows：{} 有 {len} 字节、超过上限，当没有（照问那台）",
                 f.as_path().display()
             );
             return None;

@@ -188,7 +188,7 @@ fn kept(home: &Path, name: &str) -> PathBuf {
 }
 
 fn kept_names(home: &Path) -> Vec<String> {
-    let mut n: Vec<String> = std::fs::read_dir(home.join(kept_rel()))
+    let mut n: Vec<String> = Ro::read_dir(home.join(kept_rel()))
         .map(|d| {
             d.filter_map(|e| e.ok()?.file_name().into_string().ok())
                 .collect()
