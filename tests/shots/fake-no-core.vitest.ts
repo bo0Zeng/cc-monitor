@@ -17,26 +17,20 @@
  * 处数只许降 —— 换掉一处就得同拍改小（多了红、少了也红，死条目红），不许空放。
  * 买不到：读的是源码文本；键经变量传进 `copyText`、核心那一侧不经 `copy_text` 字面量取文、把钟面拆进别的帮手里，都认不出。
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { nonEmpty } from "../test-support/non-empty";
+import { filePaths } from "../test-support/production-sources";
 
 const repo = path.resolve(__dirname, "../..");
 const fakeDir = path.join(__dirname, "fake");
-/** 界面测试的替身住的两个目录（只认 `*-fake.ts`）。 */
-const unitFakeDirs = ["tests/frontend/ui", "tests/test-support"].map((d) => path.join(repo, d));
+/** 界面测试的替身住的两个目录（只认这一层的 `*-fake.ts`）。 */
+const unitFakeDirs = ["tests/frontend/ui", "tests/test-support"];
 
+/** `dir` 底下某种后缀的文件（绝对路径）。读目录只经 `test-support/production-sources.ts`。 */
 function walk(dir: string, ext: string): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const p = path.join(dir, name);
-    if (statSync(p).isDirectory()) {
-      if (name === "target" || name === "node_modules" || name === "generated") continue;
-      out.push(...walk(p, ext));
-    } else if (name.endsWith(ext)) out.push(p);
-  }
-  return out;
+  return filePaths(dir, { ext, tests: true }).map((f) => path.resolve(repo, f));
 }
 
 /** 核心自己写的那些键。 */
@@ -97,7 +91,7 @@ const ALLOW: Record<string, Partial<Record<Form, [number, string]>>> = {
 const keys = coreKeys();
 const files = [
   ...walk(fakeDir, ".ts").filter((p) => !p.endsWith(".vitest.ts")),
-  ...unitFakeDirs.flatMap((d) => readdirSync(d).filter((n) => n.endsWith("-fake.ts")).map((n) => path.join(d, n))),
+  ...unitFakeDirs.flatMap((d) => filePaths(d, { ext: "-fake.ts", shallow: true }).map((f) => path.resolve(repo, f))),
 ];
 /** 名单里的键：台架那几份写 `fake/` 下的相对路径，界面测试的替身写仓相对路径。 */
 const keyOf = (f: string) => (f.startsWith(fakeDir + path.sep) ? path.relative(fakeDir, f) : path.relative(repo, f));
