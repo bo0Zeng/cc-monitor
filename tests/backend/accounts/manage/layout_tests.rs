@@ -488,8 +488,10 @@ fn align_drops_old_links_to_the_shared_lock_files() {
         ]
     );
     let mut z = healthy();
-    z.entries
-        .insert(".oauth_refresh.lock".into(), Item::Dir { mode: Some(0o700) });
+    z.entries.insert(
+        ".oauth_refresh.lock".into(),
+        Item::Dir { mode: Some(0o700) },
+    );
     z.entries
         .insert(".oauth_refresh.lock.owner".into(), link("/elsewhere/owner"));
     assert_eq!(plan_align(&snap(z)).unwrap(), Plan::default());

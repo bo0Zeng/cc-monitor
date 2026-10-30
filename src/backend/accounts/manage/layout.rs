@@ -99,7 +99,13 @@ pub(crate) fn is_excluded(name: &str) -> bool {
 pub(crate) fn is_secret_like(name: &str, item: &Item) -> bool {
     !is_identity(name)
         && !is_excluded(name)
-        && matches!(item, Item::File { mode: Some(0o600), .. })
+        && matches!(
+            item,
+            Item::File {
+                mode: Some(0o600),
+                ..
+            }
+        )
 }
 
 /// 那一家按需才建、各号该共用的那几个目录：共享库里还没有也照样链（计划里先在共享库建出来）。
