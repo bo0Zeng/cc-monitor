@@ -10,7 +10,7 @@
 
 | 载体 | 谁用 | 怎么接 |
 |---|---|---|
-| SSH exec | 远端（monitor 经本机常驻后端的连接池 · 第二个前端直连） | `ccm -- --stream …`：后端写 stdout、读 stdin |
+| stdio | 本机：Windows 上 monitor 监护的子进程（管道） | `ccm -- --stream …`：后端写 stdout、读 stdin。脱离起的常驻后端（monitor 在 Linux 上起它 · `--resident-ensure`）也以这一行起，但只在下一行的套接字上说话 |
 | 常驻套接字 | 本机常驻后端 · 远端常驻后端（本机后端经池里那条 SSH 在那台跑 `ccm -- --resident-attach` 小中继，原样对拷） | Unix 套接字 `<家>/run/backend.sock`（家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；目录只给本人，收连接时核对端 uid，没有钥匙）；连上就交一行 `{"attach":true}`（可带 `"tz"` · `"mine"` · `"deflate"` · `"watch"`，见 §2；别的键一律当 malformed；不必等 hello，hello 写在分档之前），再读 hello、读回话：`{"attach":"ok"}`（带了 `mine` ⇒ 多一格 `"relation":"same"|"older"|"newer"|"incomparable"`，这台相对 `mine`，序键是 `BUILD_ID` 的；带了 `"deflate":true` ⇒ 多一格 `"deflate":true`，这一行之后这台写过去的字节整条是一个 raw deflate 流、每帧 sync flush，客户端 → 这台照原样；远端那条流都要、本机的不要）或 `{"attach":"refused","reason":"malformed-attach"}`（认不得这一形的就是比这一形早的：桌面当旧、装上这一版再接；手机不带 `deflate` 再接一次，接上了照不压走）；中继找不到或够不着那台常驻时第一行就是 `{"attach":"refused","reason":"absent"|"unreachable"}`；这台一份 watcher（会话账本 · 记录读者 · 运行簿整台一份，记录整台只预读一次），每条连接各一份投影（出方向通道 · 名单 · 丢帧账）/ 入方向 / writer |
 | 一次性 exec | CLI 子命令（脚本 · skill · 第二个前端的查询） | `ccm -- --子命令 …`，干完即退、不进流 |
 
@@ -26,7 +26,7 @@
 
 | 载体 | 怎么交 |
 |---|---|
-| SSH exec / stdio（CLI 那一臂） | `ccm -- --stream [--tz <IANA 名>] [--view <声明>]`。`--stream` 是「我是流模式」的显式词；`--view` 的值同 §8 CLI 面那一格（JSON 原样或 base64）。声明认不出 ⇒ 不起流：stderr 一行失败信封（`bad_args`）、退出 2 |
+| stdio（CLI 那一臂） | `ccm -- --stream [--tz <IANA 名>] [--view <声明>]`。`--stream` 是「我是流模式」的显式词；`--view` 的值同 §8 CLI 面那一格（JSON 原样或 base64）。声明认不出 ⇒ 不起流：stderr 一行失败信封（`bad_args`）、退出 2 |
 | 常驻那条连接 | attach 行 `{"attach":true,"tz":"Asia/Shanghai","mine":"<BUILD_ID>","deflate":true,"watch":{"sids":[…],"branch":[…],"kept":[…]}}`：四格都可缺；`deflate` 见上表「常驻套接字」；`watch` 与 `stream-watch` 的入参同形，这条流从第一帧起照它发；别的键 ⇒ `{"attach":"refused","reason":"malformed-attach"}` |
 
 - **`tz`**：这条流**推**出去的钟面（`line.record.timeText` · `session_runs.runs[].startedText`）按它写。缺 · 认不得 ⇒ UTC。见 §4「时刻按谁的钟」。
@@ -258,19 +258,15 @@
 全在 `~/.cc-monitor/` 下（路径越界一律不许）。共同约束：**UTF-8 无 BOM**（PowerShell 5.1 的 `Out-File -Encoding utf8` 会写 BOM；写端用 `[IO.File]::WriteAllText(…, UTF8Encoding($false))`，读端也剥一次）·
 **原子写**（Rust：临时文件 → 原子替换；PowerShell：单次 `WriteAllText`）· 目录不在就建 · 未知字段忽略。
 
-| 文件 | 写 | 读 | 是什么 |
-|---|---|---|---|
-| `config.json` | monitor（唯一写口 `config.rs::patch_config_at`：交「改哪几条路径」，进程级锁里现读、逐条应用、原子替换；盘上读不懂就拒写） | monitor 前端 · `logging` | 主题 · 字体 · 诊断（Claude 数据目录住本机后端 `prefs.json` 的 `agentHomes`） |
-| `ps-await/<PID>.tty` | Linux bash / zsh 接入块（`src/shared/ccm-aliases.sh`，本机桌面上开的 shell） | monitor `bind.rs` | `{shell_pid, proc_start, tty}`：「去认这个终端的窗口」；认上 / 认不出就删 |
-| `ps-registry/<PID>.json` | monitor `bind.rs` | monitor 拉前 | `{ps_pid, hwnd, owner_pid, owner_proc_start, ps_proc_start, title_at_bind, registered_at}`：那个 shell 显示在哪个窗口；与 shell 进程同寿 |
-| `auto-launch.json` | monitor 设置 · 启动时写自己的路径 | PowerShell 接入块 `__ccm_bind` | `{auto_launch_enabled, monitor_exe_path}`：用 `cc` 起 claude 时要不要顺手开 monitor |
-| `history-metadata.json` | 本机常驻后端（`history-annotate` / `history-forget`；读不懂就拒写、只改那一条） | 本机常驻后端（`history-list` 并进成品） | `{version: 1, entries: {<sid>: {starred, customTitle, hide?, updatedAt}}}`（`hide`：`on` · `off`，缺 ＝ 照规则；第 0 版的 `hidden: bool` 起来时换一次、原文留 `.v1`） |
-| `logs/monitor/` · `logs/backend/` | monitor · 常驻后端 | 人 · `backend-log` | 诊断日志（按天滚 · 有上限） |
-| `backend.json` | `exit-policy-set` | `exit-policy-read` · monitor 退出时 | 「退出行为」：monitor 退出时结束不结束本机常驻后端 |
-| `prefs.json` | `prefs-set` | `prefs-read` · 起会话那几条 · `history-facts` · 隐藏的判定 | 这台的偏好：每一家的启动命令 · 恢复进不进 tmux · 每个号的模型 · 上下文上限表 · Claude 数据目录 · 子会话 / 分身会话进不进标签页（`childTab` · `bgTab`） |
-| `machines.json` | `machines-set`（按键认那一台；写完整张表要成立：`ssh-dial/machine.rs::table_fault`） | `machines-read` · monitor（照它起停远端流） | 这一端连各台用的机器表：名字 · 地址 · 端口 · 用户 · 钥匙路径 · 备用地址 · 跳板 · 连不连 |
-| `known_hosts` | 拨号核心（首见的主机钥匙鉴权过了才记）· `host-keys-forget`（忘掉一台） | 拨号核心（每次握手按这台全部地址认）· 开终端那一行（经 `ssh_config`）· `machines-read`（带出每台的指纹） | OpenSSH 格式；一台一行、主机名段写这台的全部地址。规矩只在 `ssh-dial/known_hosts.rs` |
-| `ssh_config` | 本机常驻后端（开终端那一行之前，内容不对才写） | 终端里的 `ssh -F` | 主机钥匙认 `known_hosts` 那一份，之后照读用户与系统的 ssh 配置 |
+`~/.cc-monitor/` 下有哪些文件、谁写、删了会不会丢，只看 [INVARIANTS.md](INVARIANTS.md) §2.1 那一张（判据两向对拍）；后端自己那几份的形状写在写它的模块头注里（历史注解：`src/backend/history/history_annotations.rs`），版本与读法见 INVARIANTS §2.2；`config.json` 的顶层键全集是 `src/frontend/ui/config.ts` 的 `CONFIG_KEY_OWNERS`。
+这里只写几个进程之间交接的那几份的格式：
+
+| 文件 | 格式 |
+|---|---|
+| `ps-await/<PID>.tty` | `{shell_pid, proc_start, tty}`：Linux bash / zsh 接入块（`src/shared/ccm-aliases.sh`）请 monitor 去认这个终端的窗口；认上 / 认不出就删 |
+| `ps-registry/<PID>.json` | `{ps_pid, hwnd, owner_pid, owner_proc_start, ps_proc_start, title_at_bind, registered_at}`：那个 shell 显示在哪个窗口；与 shell 进程同寿 |
+| `auto-launch.json` | `{auto_launch_enabled, monitor_exe_path}`：PowerShell 接入块 `__ccm_bind` 读，用 `cc` 起 claude 时要不要顺手开 monitor |
+| `opened-windows/<sid>` | 两行：开那个终端的 shell 的标签 `<进程号>-<起始时刻>`、那台的名字（下面「切到终端」） |
 
 设置窗机器列表那一格的成品（`state` · `word` · `said` · `fixes` …）：各台（含本机，键 `<local>`）判定只在后端 `deploy/machine.rs`（本机常驻后端答 `machine-read`、推 `changed {machine}`；各台的常驻流由本机常驻后端自己持有（`control/feeds.rs`），每一轮的结论它自己记，接不上或那台不是这一版时它先 `deploy-install` 再请那台换；各处［重新连接］与机器页「起」·［重试］是 `machine-wake`（回那台此刻的成品；拒码 `unknown_machine` · `disabled` · `busy`（带那一刻的成品）），「停」是 `machine-stop`）。本机后端没起来时没有成品，壳只说它起没起来（`local-backend` 事件 · `backend_status` 的 `local`：`up` · `starting` · `down` · `older` · `newer`）；成品形状以金样 `tests/__fixtures__/machine-state.golden.json` 为准。
 
@@ -305,4 +301,4 @@
 - **线上命令**：在 `src/backend/stream/inbound/registry/` 对应那一族加一条 `CommandSpec`（名字 · 一句话 · 码 · 字段 ＋ 向 ＋ 一句话 · 收不收载荷 · 怎么跑），CLI 面自动派生（还要进 `lib.rs` 的 `SUBCOMMANDS`）；重生成 `IPC-COMMANDS.md`。
 - **帧字段**：加在 `wire/mod.rs` 的 `Frame` 上，写一句 `///`；只加不改；进金样；重生成。
 - **CLI 独有子命令**：进 `SUBCOMMANDS` 与 `stream/inbound/cli_only.rs` 的 `CLI_ONLY_DOCS`（用法 ＋ 一句话）。
-- **文件**：只许在 `~/.cc-monitor/` 下；UTF-8 无 BOM、原子写、未知字段忽略；写明短暂还是持久，短暂的写明超时；在上面那张表里加一行。
+- **文件**：只许在 `~/.cc-monitor/` 下；UTF-8 无 BOM、原子写、未知字段忽略；写明短暂还是持久，短暂的写明超时；在 INVARIANTS §2.1 那张表里登它是真相还是缓存。后端自己的那份先在 `relay_route_core` 加一个 `Decl` 常量、排进 `OWN_FILES`，读写经 `Doc::of` 取的那一个（INVARIANTS §2.2）；几个进程之间交接的，再在 §9 那张表里写它的格式。

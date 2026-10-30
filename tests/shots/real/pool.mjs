@@ -257,7 +257,8 @@ export function forwarderSh(peers, backend = BACKEND_IN_BOX, slowSftp = SLOW_SFT
     `  ${q(`${land}--resident-attach`)})`,
     `    case "$fake" in`,
     `      hang) exec sleep 3600 ;;`,
-    `      older|install) ${peer} ${backend} -- --resident-attach | sed -u '1,2s/^{"attach":"ok","relation":"same"}$/{"attach":"ok","relation":"older"}/'; exit ;;`,
+    // 只动头两行（hello · attach 回话）里的新旧那一格，回话后面带的格（`deflate`）照留；之后那条流可能是压过的字节、不一定有换行 ⇒ 原样对拷，不按行过。
+    `      older|install) ${peer} ${backend} -- --resident-attach | { for _ in 1 2; do IFS= read -r l || exit; printf '%s\\n' "$l" | sed 's/^{"attach":"ok","relation":"same"/{"attach":"ok","relation":"older"/'; done; exec cat; }; exit ;;`,
     `      *) ${peer} exec ${backend} -- --resident-attach ;;`,
     "    esac ;;",
     // 确保常驻要认在听的那一位（`SO_PEERCRED` 的 pid，跨进程命名空间是 0）⇒ 在那台自己的沙箱里跑：交它那个跑腿口（[`DOER_PY`]），换不换由那台照真的判
@@ -330,7 +331,7 @@ export function reachTable(table, reach) {
     const row = hosts.find((h) => h.label === origin);
     if (!row) throw new Error(`问得到的 ${origin} 在场景那张机器表里没有那一行`);
     if (row.host !== "127.0.0.1" || !Number.isInteger(row.port)) throw new Error(`${origin} 在场景表里不是回环上的一个口：${row.host}:${row.port}`);
-    return { origin, k, port: row.port, refuse: r.refuse ?? [], ...(r.fake ? { fake: r.fake } : {}) };
+    return { origin, k, port: row.port, refuse: r.refuse ?? [], ...(r.fake ? { fake: r.fake } : {}), ...(r.handshake === false ? { handshake: false } : {}) };
   });
   return { hosts: hosts.map((h) => (peers.some((p) => p.origin === h.label) ? { ...h, keyPath: `${SSH_DIR}/client` } : h)), peers };
 }
@@ -762,7 +763,8 @@ export function backendPool({ repo, sandbox, disks = null }) {
           : {}),
       };
       const { argv, doomed, paints, tmux } = start(path.join(dir, `m${i}`), origin, m, now);
-      w.doomed.push(...doomed.map((d) => ({ ...d, origin, act: () => tmux(d.act) })));
+      // 只有会话流到得了本机后端的那几台收得了场：问不到的那台没人起常驻、握不上手的那台（指纹变了）本机后端拒，它们的会话等不到宣告。
+      if (m.resident && !peers.some((p) => p.origin === origin && p.handshake === false)) w.doomed.push(...doomed.map((d) => ({ ...d, origin, act: () => tmux(d.act) })));
       for (const [sid, fifo] of paints) w.paints.set(`${origin}\0${sid}`, fifo);
       return { origin, argv };
     });
@@ -772,8 +774,8 @@ export function backendPool({ repo, sandbox, disks = null }) {
     w.shell = sh.child;
     w.sh = sh;
     sh.send({ t: "machines", machines: list.filter((m) => m.origin === LOCAL) });
-    // 握上手：本机那一台，和本机后端照常接得上的那几台（演旧了 · 拖住 · 正在装的那几台由场景自己等它那一态）。
-    await sh.up(list.filter((m) => m.origin === LOCAL || peers.some((p) => p.origin === m.origin && !p.fake)).map((m) => m.origin));
+    // 握上手：本机那一台，和本机后端照常接得上的那几台（演旧了 · 拖住 · 正在装 · 指纹变了的那几台由场景自己等它那一态）。
+    await sh.up(list.filter((m) => m.origin === LOCAL || peers.some((p) => p.origin === m.origin && !p.fake && p.handshake !== false)).map((m) => m.origin));
     while (worlds.size > KEEP) kill(worlds.keys().next().value);
     w.trace("世界起好了，答页里");
     return made.tails === undefined ? { ok: true } : { ok: true, tails: made.tails };

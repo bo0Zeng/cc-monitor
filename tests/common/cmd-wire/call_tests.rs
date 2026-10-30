@@ -278,7 +278,7 @@ fn needs_history_lines_and_session_requests_are_the_ones_the_backend_takes() {
         AccountAsk, ForkFrom, NewOpen, OpenFactsReq, OpenWhat, RotationPick, SessionOpenReq,
     };
     use crate::record::HistoryLinesReq;
-    use crate::session::{Run, SessionCommandsReq, SessionModelReq, SessionPermissionReq};
+    use crate::session::{Launch, SessionCommandsReq, SessionModelReq, SessionPermissionReq};
     let sid = || "s1".parse::<crate::Sid>().unwrap();
     sent(
         AnswerReq {
@@ -336,7 +336,7 @@ fn needs_history_lines_and_session_requests_are_the_ones_the_backend_takes() {
         SessionOpenReq {
             what: OpenWhat::Resume { sid: sid() },
             account: Some(AccountAsk::Named { name: "x".into() }),
-            run: Some(Run::Tmux),
+            run: Some(Launch::Tmux),
             local: false,
             ticket: None,
             client: None,

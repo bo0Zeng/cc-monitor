@@ -246,7 +246,7 @@ fn new(extra: Value) -> Value {
 #[test]
 fn default_run_is_the_whole_table() {
     use Intent::*;
-    use Run::*;
+    use Launch::*;
     let intents = [
         New { fork_tmux: None },
         New {
@@ -1106,8 +1106,8 @@ fn the_facts_run_is_where_a_new_session_without_run_lands() {
                         .unwrap_or_else(|e| panic!("没起：{e:?}"));
                     let run = crate::faces::session_open_face::facts_run(fork_tmux, tmux, hosts);
                     let landed = match run {
-                        Run::Tmux | Run::Managed => Landed::Started,
-                        Run::Direct => Landed::Window,
+                        Launch::Tmux | Launch::Managed => Landed::Started,
+                        Launch::Direct => Landed::Window,
                     };
                     assert_eq!(
                         got.landed, landed,
@@ -1118,7 +1118,7 @@ fn the_facts_run_is_where_a_new_session_without_run_lands() {
                         .borrow()
                         .first()
                         .is_some_and(|a| a.iter().any(|w| w == "--hosted"));
-                    assert_eq!(hosted, run == Run::Managed, "{run:?}");
+                    assert_eq!(hosted, run == Launch::Managed, "{run:?}");
                 }
             }
         }

@@ -8,13 +8,13 @@
 //! 要动 tmux / 读记录 / 起 ccm 的几样由入口经 [`Deps`] 交进来（control 不引用 observe），判据交替身。
 
 use super::launch_account::{self as la, AccountAsk, LaunchedAccount, Settled};
-use super::launch_render::{self as lr, Act, Here, Launch};
+use super::launch_render::{self as lr, Act, Here};
 use super::session_batch::{
     carriers, listed, pids_said, pretrust, CmdErr, Deps, Listed, NameBase, Standing, TermEntry,
 };
 pub(crate) mod new;
 use crate::platform::child::{Child, Deadline};
-pub use cmd_wire::session::{ArriveAsk, ArriveBy, Landed, Opened, Run};
+pub use cmd_wire::session::{ArriveAsk, ArriveBy, Landed, Launch, Opened};
 pub(crate) use new::{dir_answer, DirChecked, ForkWrite, OpenDirErr, OpenDirReq, PreRotation};
 use new::{expand_home, first_prompt_refused, OpenField as Field, OpenRefusal as Refusal};
 use serde_json::Value;
@@ -125,17 +125,17 @@ pub(crate) fn default_run(
     resume_wants_tmux: bool,
     tmux: bool,
     managed: bool,
-) -> Run {
+) -> Launch {
     let want_tmux = match intent {
         Intent::New { fork_tmux } => fork_tmux.unwrap_or(!managed),
         Intent::Resume => resume_wants_tmux,
     };
     if want_tmux && tmux {
-        Run::Tmux
+        Launch::Tmux
     } else if managed {
-        Run::Managed
+        Launch::Managed
     } else {
-        Run::Direct
+        Launch::Direct
     }
 }
 
@@ -179,7 +179,7 @@ struct Batch {
 
 impl Batch {
     fn of(agent: &str, prefs: &crate::common::machine_prefs::Prefs) -> Batch {
-        let (launcher, default_launcher) = Launch::launchers(agent, prefs);
+        let (launcher, default_launcher) = lr::Launch::launchers(agent, prefs);
         Batch {
             agent: agent.to_string(),
             launcher,
@@ -309,7 +309,7 @@ fn dispatch(
 }
 
 /// 恢复没说放在哪 ⇒ 照这台的偏好 × 那条起在哪 × 有没有 tmux。
-fn resume_default(sid: &str, deps: &Deps) -> Result<Run, Failed> {
+fn resume_default(sid: &str, deps: &Deps) -> Result<Launch, Failed> {
     let listed = listed(deps).map_err(lower)?;
     Ok(default_run(
         Intent::Resume,
@@ -334,7 +334,12 @@ fn managed_ok(listed: &Listed) -> Result<(), Failed> {
 
 /// 交那一行 ccm 起一个托管终端（`--hosted --detach`：名字由 ccm 铸、避让这台的 tmux 会话名与托管终端），读回它报的名字。
 /// 后端替人起 ⇒ 工作目录随行（[`lr::hosted_argv_of`]）。
-fn start_hosted(l: &Launch, account: &Settled, here: Here, deps: &Deps) -> Result<String, Failed> {
+fn start_hosted(
+    l: &lr::Launch,
+    account: &Settled,
+    here: Here,
+    deps: &Deps,
+) -> Result<String, Failed> {
     let argv = own_entry(deps)
         .and_then(|entry| lr::hosted_argv_of(l, account, here, deps.caps, &entry))
         .map_err(|m| fail("refused", m, None))?;
@@ -410,7 +415,7 @@ fn tmux_rows(deps: &Deps) -> Result<Vec<TermEntry>, Failed> {
 
 /// 接进 `name` 那个终端那一行（tmux 会话名 · 托管终端的句柄；`ccm --attach` 先认托管名单，再落 tmux）。
 fn attach_line(name: &str, here: Here, deps: &Deps) -> Result<String, Failed> {
-    let l = Launch {
+    let l = lr::Launch {
         agent: String::new(),
         act: Act::Attach(name.to_string()),
         tmux: Some(name.to_string()),
@@ -598,8 +603,8 @@ fn tail_args(it: &Item, b: &Batch) -> Vec<String> {
 }
 
 /// 恢复那一项的那一行：`tmux` ＝ 要新建的会话名（`None` ＝ 直路）。
-fn resume_launch(it: &Item, b: &Batch, tmux: Option<&str>) -> Launch {
-    Launch {
+fn resume_launch(it: &Item, b: &Batch, tmux: Option<&str>) -> lr::Launch {
+    lr::Launch {
         agent: b.agent.clone(),
         act: Act::Resume(it.sid.clone()),
         tmux: tmux.map(str::to_string),
@@ -645,7 +650,7 @@ fn unavailable(u: la::AccountUnavailable) -> Failed {
 }
 
 /// **恢复一个**：先判号（选不了 ⇒ 不起），再问记录在不在（查这个号那棵树），已有进程在写 ⇒ 不起（直路也一样），再按放在哪做。
-fn start_one(it: &Item, b: &Batch, run: Run, here: Here, deps: &Deps) -> Result<Opened, Failed> {
+fn start_one(it: &Item, b: &Batch, run: Launch, here: Here, deps: &Deps) -> Result<Opened, Failed> {
     let account =
         la::settle(&it.account, Some(&it.sid), &b.models, deps.accounts).map_err(unavailable)?;
     let root = match &account {
@@ -666,13 +671,13 @@ fn start_one(it: &Item, b: &Batch, run: Run, here: Here, deps: &Deps) -> Result<
     }
     let live = (deps.writers)(&it.sid);
     let out = match run {
-        Run::Tmux => start_in_tmux(it, b, &account, &tmux_rows(deps)?, here, &live, deps)?,
-        Run::Managed => {
+        Launch::Tmux => start_in_tmux(it, b, &account, &tmux_rows(deps)?, here, &live, deps)?,
+        Launch::Managed => {
             let listed = listed(deps).map_err(lower)?;
             managed_ok(&listed)?;
             start_in_hosted(it, b, &account, &listed.rows, here, &live, deps)?
         }
-        Run::Direct => {
+        Launch::Direct => {
             if !live.is_empty() {
                 return Err(already_live(&live));
             }
@@ -737,7 +742,7 @@ fn start_in_tmux(
         Standing::Idle(e) => {
             let entry = own_entry(deps).map_err(|m| fail("refused", m, None))?;
             // 键进那个窗格的直路那一行：窗格里已经在那个目录，不带 `--cwd`。
-            let l = Launch {
+            let l = lr::Launch {
                 cwd: None,
                 ..resume_launch(it, b, None)
             };
@@ -869,7 +874,7 @@ pub(crate) fn resume_saying(it: &Item, agent: &str, deps: &Deps) -> Result<Opene
     }
     // 这台后端自己起、不开窗 ⇒ 落在容器里：照恢复的缺省（偏好 × 有没有 tmux × 能不能托管），直路那一形改 tmux（没有 tmux 照拒）。
     let run = match resume_default(&it.sid, deps)? {
-        Run::Direct => Run::Tmux,
+        Launch::Direct => Launch::Tmux,
         r => r,
     };
     start_one(it, &b, run, Here::Remote, deps)
@@ -899,7 +904,7 @@ pub(crate) fn relaunch_in(
 fn start_new(
     req: NewOpen,
     asked: &AccountAsk,
-    run: Option<Run>,
+    run: Option<Launch>,
     here: Here,
     fork_tmux: Option<bool>,
     deps: &Deps,
@@ -933,7 +938,7 @@ fn start_new(
             listed.managed,
         )
     });
-    if run == Run::Managed {
+    if run == Launch::Managed {
         managed_ok(&listed)?;
         if req.tmux_name.is_some() {
             return Err(malformed("`tmuxName` goes only with `run: tmux`"));
@@ -943,7 +948,7 @@ fn start_new(
     let prompt = match req.prompt.as_deref().map(str::trim) {
         None => None,
         Some("") => return Err(malformed("`prompt` must not be empty")),
-        Some(_) if run == Run::Direct => {
+        Some(_) if run == Launch::Direct => {
             return Err(malformed(
                 "`prompt` goes only with `run: tmux` or `run: managed`",
             ))
@@ -1028,8 +1033,8 @@ fn start_new(
         la::settle(asked, source, &deps.prefs.models, deps.accounts).map_err(unavailable)?;
     // tmux 那一形这台先铸名；托管那一形名字由 ccm 铸（起好之后读回）。
     let name = match run {
-        Run::Direct | Run::Managed => None,
-        Run::Tmux => {
+        Launch::Direct | Launch::Managed => None,
+        Launch::Tmux => {
             let Listed {
                 tmux: true, rows, ..
             } = listed
@@ -1075,7 +1080,7 @@ fn start_new(
         }
         e
     };
-    let l = Launch {
+    let l = lr::Launch {
         agent: kind.to_string(),
         act: match &forked {
             Some(s) => Act::Resume(s.clone()),
@@ -1102,7 +1107,7 @@ fn start_new(
                 let line = attach_line(name, here, deps)?;
                 opened(Landed::Started, Some(name.clone()), Some(line))
             }
-            None if run == Run::Managed => {
+            None if run == Launch::Managed => {
                 let name = start_hosted(&l, &account, here, deps)?;
                 let line = attach_line(&name, here, deps)?;
                 opened(Landed::Started, Some(name), Some(line))

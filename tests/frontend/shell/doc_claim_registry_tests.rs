@@ -1437,3 +1437,139 @@ fn every_frame_command_named_in_the_durable_docs_is_registered() {
         bad.join("\n  ")
     );
 }
+
+/// 一行里有没有手写的 `env -u …`（摘环境变量的手抄名单）。
+fn hand_unset_in(line: &str) -> bool {
+    guard_core::contains_word(line, "env -u")
+}
+
+/// **文档教的手工跑法不手抄要摘的环境变量**：要摘的名单只住 `tests/scripts/session-vars`，
+/// 摘它的口只有 `tests/scripts/session-scrub.sh`；文档里写 `env -u …` 就是另抄一份、且比真表少
+/// （会话继承来的 `CLAUDE_CONFIG_DIR` 之类漏摘 ⇒ 判据读写真账号的记录树）。
+///
+/// 人群：耐久文档（`src/doc/` ＋ 各入口 README）；`INVARIANTS.md` 不在内 —— 它写的是测试代码与脚本自己
+/// 怎么摘（那几种写法由 `e2e_gate_registry_tests` 认），不是人怎么跑。删的时机：文档不再教手工跑测试。
+#[test]
+fn the_docs_scrub_the_session_through_the_one_script() {
+    // 正控：手写的那一形认得出，经脚本的那一形不算。
+    assert!(hand_unset_in(
+        "单跑前缀 `env -u TMUX -u TMUX_PANE cargo test`"
+    ));
+    assert!(!hand_unset_in(
+        "手工跑测试前缀 `bash tests/scripts/session-scrub.sh`"
+    ));
+    let mut bad = Vec::new();
+    let mut read = 0usize;
+    for (rel, text) in durable_docs() {
+        if rel == "src/doc/INVARIANTS.md" {
+            continue;
+        }
+        read += 1;
+        for (i, line) in text.lines().enumerate() {
+            if hand_unset_in(line) {
+                bad.push(format!("{rel}:{}", i + 1));
+            }
+        }
+    }
+    assert!(read > 10, "只读了 {read} 份文档 —— 人群坏了");
+    assert!(
+        bad.is_empty(),
+        "这几处文档手写了 `env -u …`：改成前缀 `bash tests/scripts/session-scrub.sh`（名单在 `tests/scripts/session-vars`）：\n  {}",
+        bad.join("\n  ")
+    );
+}
+
+/// `ARCHITECTURE.md` 里 `### <id>` 那一节的正文（到下一个 `##` / `###` 标题为止）。
+fn architecture_section(id: &str) -> String {
+    let text = read_repo_file("src/doc/ARCHITECTURE.md");
+    let mut out = String::new();
+    let mut inside = false;
+    for line in text.lines() {
+        let level = line.chars().take_while(|&c| c == '#').count();
+        if (level == 2 || level == 3) && line[level..].starts_with(' ') {
+            inside = level == 3 && line[level..].trim_start().split(' ').next() == Some(id);
+            continue;
+        }
+        if inside {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    assert!(!out.is_empty(), "ARCHITECTURE.md 里没有 §{id}");
+    out
+}
+
+/// 模块地图里的条目：列表行开头或「；」之后、紧跟全角冒号的、只有一段的 `` `X/` `` · `` `X.rs` ``。
+fn map_entries_in(section: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for line in section
+        .lines()
+        .filter(|l| l.starts_with('-') && l[1..].starts_with(' '))
+    {
+        let parts: Vec<&str> = line.split('`').collect();
+        // 奇数下标是反引号里的；前一段是行头或以「；」收尾、后一段以「：」开头才是条目。
+        for i in (1..parts.len().saturating_sub(1)).step_by(2) {
+            let name = parts[i];
+            let one_seg = (name.ends_with(".rs") && !name.contains('/'))
+                || (name.ends_with('/') && !name[..name.len() - 1].contains('/'));
+            let head = (i == 1 && parts[0] == "- ") || parts[i - 1].ends_with('；');
+            if one_seg && head && parts[i + 1].starts_with('：') {
+                out.insert(name.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// `src/backend/` 底下的每一块：`lib.rs` 的每个 `pub mod X`（目录 ⇒ `X/`，文件 ⇒ `X.rs`）＋ 住在这一层的 workspace 成员 crate（`X/`）。
+fn backend_blocks() -> std::collections::BTreeSet<String> {
+    let root = repo_root().join("src/backend");
+    let mut out = std::collections::BTreeSet::new();
+    for line in read_repo_file("src/backend/lib.rs").lines() {
+        if let Some(rest) = line.trim_start().strip_prefix("pub mod ") {
+            let name = rest.split(';').next().unwrap_or("").trim();
+            if root.join(name).is_dir() {
+                out.insert(format!("{name}/"));
+            } else {
+                out.insert(format!("{name}.rs"));
+            }
+        }
+    }
+    let manifest = read_repo_file("src/backend/Cargo.toml");
+    let members = manifest
+        .lines()
+        .find(|l| l.trim_start().starts_with("members"))
+        .expect("src/backend/Cargo.toml 里没有 `members`");
+    for m in members.split('"').skip(1).step_by(2) {
+        if m != "." && !m.starts_with("..") {
+            out.insert(format!("{m}/"));
+        }
+    }
+    out
+}
+
+/// **ARCHITECTURE §2.2 的后端模块地图与 `src/backend/` 两向相等**：`lib.rs` 的每个 `pub mod` 与住在
+/// `src/backend/` 这一层的每个 workspace 成员都有一条，地图里每一条也都真在。`src/backend/README.md` 不另抄地图，
+/// 漏在这里的块哪份文档都找不到。删的时机：模块地图改由代码生成。
+#[test]
+fn the_backend_module_map_matches_the_backend_tree() {
+    let blocks = backend_blocks();
+    // 正控：两种来路都认得出。
+    for must in ["stream/", "lineage.rs", "ssh-dial/"] {
+        assert!(blocks.contains(must), "没认出 `{must}`：{blocks:?}");
+    }
+    let probe = map_entries_in(
+        "- `a/`：x（`b/`：y · `b/c.rs`：y）；`d.rs`：z\n- `e/` 是 w\n不在列表里 `f/`：v\n",
+    );
+    assert_eq!(
+        probe.into_iter().collect::<Vec<_>>(),
+        vec!["a/".to_string(), "d.rs".to_string()]
+    );
+    let map = map_entries_in(&architecture_section("2.2"));
+    let missing: Vec<&String> = blocks.difference(&map).collect();
+    let ghost: Vec<&String> = map.difference(&blocks).collect();
+    assert!(
+        missing.is_empty() && ghost.is_empty(),
+        "ARCHITECTURE §2.2 的模块地图与 `src/backend/` 对不上：\n  地图里缺：{missing:?}\n  地图里有、后端没有：{ghost:?}"
+    );
+}

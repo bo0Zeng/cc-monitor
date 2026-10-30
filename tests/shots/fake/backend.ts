@@ -538,8 +538,9 @@ export function downOf(
  * （壳只在远端流握手那一刻登记，这两种握不上手）；`hopDown` 里那几条 ⇒ 那一台转发时照「那一跳断开」拒。
  * 本机后端那条常驻流接那几台时，场景要的那一样由假 ssh 在那一跳上真长成那样（`fake`，`real/pool.mjs::forwarderSh`）：
  * 旧了 ⇒ `older` · 正在连 ⇒ `hang` · 正在装 ⇒ `install`。
+ * 指纹变了的那几台（`hostKeyChanged`）照样问得到，但本机后端见钥匙对不上就拒、握不上手 ⇒ `handshake: false`（造世界不等它）。
  */
-export function reachOf(w: World): Record<string, { refuse: string[]; fake?: "older" | "hang" | "install" }> {
+export function reachOf(w: World): Record<string, { refuse: string[]; fake?: "older" | "hang" | "install"; handshake?: false }> {
   const fake = (m: string) =>
     w.installingMachines?.includes(m) ? "install" : w.connectingMachines?.includes(m) ? "hang" : w.staleMachines.includes(m) ? "older" : undefined;
   return Object.fromEntries(
@@ -547,7 +548,7 @@ export function reachOf(w: World): Record<string, { refuse: string[]; fake?: "ol
       .filter((m) => m !== LOCAL && !w.unseenMachines.includes(m) && !w.closedMachines.includes(m))
       .map((m) => {
         const f = fake(m);
-        return [m, { refuse: w.hopDown?.[m] ?? [], ...(f ? { fake: f } : {}) }];
+        return [m, { refuse: w.hopDown?.[m] ?? [], ...(f ? { fake: f } : {}), ...(w.hostKeyChanged?.includes(m) ? { handshake: false as const } : {}) }];
       }),
   );
 }

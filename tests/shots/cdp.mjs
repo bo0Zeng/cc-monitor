@@ -1,6 +1,8 @@
 /**
  * 截图工具用的 Chrome DevTools 协议小客户端：只够「开页 · 求值 · 截屏」，零依赖（Node 22 自带 WebSocket）。
+ * 每一问都带上限（兜底的那一个数 `WALL_CEILING_MS`，调用方可另给）：浏览器哪一问不回话，到了就抛、说清是哪一问，不把整趟挂住。
  */
+import { WALL_CEILING_MS } from "./real/pool.mjs";
 
 export class Cdp {
   /** @param {string} wsUrl 浏览器级的调试地址（DevToolsActivePort 里读出来的那一条）。 */
@@ -32,13 +34,21 @@ export class Cdp {
     });
   }
 
-  /** 发一条命令；`sessionId` 给了 ⇒ 发到那一页（flatten 模式）。 */
-  send(method, params = {}, sessionId = undefined) {
+  /** 发一条命令；`sessionId` 给了 ⇒ 发到那一页（flatten 模式）。`ms` 内没回话 ⇒ 抛（带方法名）。 */
+  send(method, params = {}, sessionId = undefined, ms = WALL_CEILING_MS) {
     const id = this.nextId++;
     const msg = { id, method, params };
     if (sessionId) msg.sessionId = sessionId;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, method });
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`${method}：等了 ${ms / 1000} 秒没回话`));
+      }, ms);
+      const done = (f) => (v) => {
+        clearTimeout(timer);
+        f(v);
+      };
+      this.pending.set(id, { resolve: done(resolve), reject: done(reject), method });
       this.ws.send(JSON.stringify(msg));
     });
   }
@@ -90,8 +100,8 @@ export class Page {
     });
   }
 
-  send(method, params = {}) {
-    return this.cdp.send(method, params, this.sessionId);
+  send(method, params = {}, ms = WALL_CEILING_MS) {
+    return this.cdp.send(method, params, this.sessionId, ms);
   }
 
   /**
@@ -126,23 +136,31 @@ export class Page {
     return this.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: scale, mobile: false });
   }
 
-  async goto(url) {
+  /** 开到 `url`，等它的 load；`ms` 内没等到 ⇒ 抛。 */
+  async goto(url, ms = WALL_CEILING_MS) {
     this.consoleLines = [];
-    const loaded = new Promise((resolve) => {
-      const off = this.cdp.on((msg) => {
-        if (msg.sessionId === this.sessionId && msg.method === "Page.loadEventFired") {
-          off();
-          resolve();
-        }
+    let off = () => {};
+    let timer;
+    const loaded = new Promise((resolve, reject) => {
+      off = this.cdp.on((msg) => {
+        if (msg.sessionId === this.sessionId && msg.method === "Page.loadEventFired") resolve();
       });
+      timer = setTimeout(() => reject(new Error(`开 ${url}：等了 ${ms / 1000} 秒没等到 load`)), ms);
     });
-    await this.send("Page.navigate", { url });
-    await loaded;
+    // 开页那一问自己先抛时，这一份没人等：别让它落成未处理的拒绝。
+    loaded.catch(() => {});
+    try {
+      await this.send("Page.navigate", { url }, ms);
+      await loaded;
+    } finally {
+      off();
+      clearTimeout(timer);
+    }
   }
 
-  /** 页里求一个表达式的值（可以是 Promise）。 */
-  async eval(expression) {
-    const r = await this.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+  /** 页里求一个表达式的值（可以是 Promise）；`ms` 内没回 ⇒ 抛。 */
+  async eval(expression, ms = WALL_CEILING_MS) {
+    const r = await this.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, ms);
     if (r.exceptionDetails) {
       throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
     }
