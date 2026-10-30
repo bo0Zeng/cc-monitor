@@ -1,4 +1,4 @@
-//! 一份 `pb dump`（形状 6，pb 0.5）⇒ 界面直接排版的成品（[`super::wire`] 里的类型）。纯函数：不读盘、不起进程。
+//! 一份 `pb dump`（形状 6，pb 0.5）⇒ 界面直接排版的成品（契约 [`cmd_wire::plan`] 里的类型）。纯函数：不读盘、不起进程。
 //!
 //! 换个方向排、换个名字，再把界面要的数与先后算好（界面照画、不数不排）：
 //! - 每格「指着它的」边：把全片的边倒过来排；每份文件还挂在哪几格：把全片的文件声明倒过来查；
@@ -13,7 +13,7 @@
 //! 整份 dump 里不带 agent 看到的那一段（点到一格再 `pb dump --node` 取，见帧面 `plan-cell-view`）。
 //! 只读 pb 认得的那几个键，造的是线上类型：pb 那边多出来的键不带过来。
 
-use super::wire::{
+use cmd_wire::plan::{
     PlanArchived, PlanBlock, PlanCell, PlanCheck, PlanDomain, PlanEdgeWords, PlanEdges, PlanFile,
     PlanFileState, PlanKids, PlanKind, PlanLook, PlanListSlice, PlanListWorkspace, PlanPendingSet, PlanPhase,
     PlanProgress, PlanRead, PlanReadError, PlanRed, PlanRef, PlanRefs, PlanSessionBlock,
@@ -773,7 +773,7 @@ pub(crate) fn with_time_texts(v: &mut PlanRead, now_ms: i64, tz: &crate::Tz) {
         |ms: i64| crate::common::time::fmt_at(ms.div_euclid(1000), now_ms.div_euclid(1000), tz);
     let ms = |n: u64| i64::try_from(n).unwrap_or(i64::MAX);
     v.read_at_text = Some(text(ms(v.read_at)));
-    v.seen = Some(crate::footprint::last_seen::SeenAt::at(
+    v.seen = Some(crate::footprint::last_seen::seen_at(
         v.read_at,
         &crate::common::time::TextClock::new(
             u64::try_from(now_ms.div_euclid(1000)).unwrap_or(0),

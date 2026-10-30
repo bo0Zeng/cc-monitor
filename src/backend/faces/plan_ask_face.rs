@@ -10,7 +10,7 @@
 use crate::assets::aliases::profile::{self, Book};
 use crate::ccm_line::argv::{flag, Parsed};
 use crate::plan::needs;
-use crate::plan::wire::PlanRead;
+use cmd_wire::plan::PlanRead;
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use copy_core::copy_text;

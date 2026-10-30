@@ -5,7 +5,7 @@
 //! 之后 `plan-read` 里那一格带落没落地（[`crate::plan::needs::landing`]）。
 
 use crate::plan::needs::{self, Returned};
-use crate::plan::wire::{PlanRead, PlanReturnReply, PlanWho};
+use cmd_wire::plan::{PlanRead, PlanReturnReply, PlanWho};
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use cmd_wire::queue::{QueuePut, SessionQueuePutReq};
@@ -194,7 +194,7 @@ pub(crate) struct PlanReturnCmd;
 impl Command for PlanReturnCmd {
     const NAME: &'static str = "plan-return";
     type Req = PlanReturnReq;
-    type Reply = crate::plan::wire::PlanReturnReply;
+    type Reply = cmd_wire::plan::PlanReturnReply;
     type Err = PlanReturnErr;
 }
 
@@ -203,7 +203,7 @@ impl Handle for PlanReturnCmd {
     fn run(
         req: PlanReturnReq,
         cx: Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<crate::plan::wire::PlanReturnReply, PlanReturnErr>>
+    ) -> impl std::future::Future<Output = Result<cmd_wire::plan::PlanReturnReply, PlanReturnErr>>
            + std::marker::Send
            + 'static {
         async move {

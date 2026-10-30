@@ -12,7 +12,7 @@
 //! 另有「另开会话接手」那一格（[`takeover`]，与 `ended` 读同一处 [`owner_now`]）· 「退回」落地的判法（[`landing`]）·
 //! 送进会话的那一行（[`line`]）· 退回的对象（[`target`]：一格，或 `project`）。
 
-use super::wire::{
+use cmd_wire::plan::{
     PlanBlock, PlanCell, PlanNeed, PlanRead, PlanReturned, PlanReturnedChild, PlanSlice,
     PlanStatusCode, PlanTakeover, PlanWho,
 };

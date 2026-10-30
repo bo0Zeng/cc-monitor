@@ -3,7 +3,7 @@
 //!
 //! 组会变而计划没变 ⇒ 不进本子、不进 `rev`：帧面每次答 `plan-read` 之前现标一次。
 
-use super::wire::{PlanBlock, PlanBlockGroups, PlanGroup, PlanRead};
+use cmd_wire::plan::{PlanBlock, PlanBlockGroups, PlanGroup, PlanRead};
 use crate::history::groups::GroupsRead;
 
 /// 问组模块的口：生产是这台那一半并好的那一份（[`here_ties`]），判据喂一份合成的。

@@ -562,13 +562,13 @@ fn time_fields_get_their_text_beside_them_and_cell_ids_do_not() {
     let now = 1_767_323_400_000_i64; // 2026-01-02T03:10:00Z
     let ms = |d: i64| u64::try_from(now - d).unwrap();
     let mut r = super::make(&dump("/w"), &who, "r0".into(), ms(60_000));
-    r.stale = Some(crate::plan::wire::PlanStale {
+    r.stale = Some(cmd_wire::plan::PlanStale {
         said: Some("x".into()),
         raw: None,
         since: ms(86_400_000),
         since_text: None,
     });
-    r.slices[0].cells[1].returned = Some(crate::plan::wire::PlanReturned {
+    r.slices[0].cells[1].returned = Some(cmd_wire::plan::PlanReturned {
         at: ms(3_600_000),
         at_text: None,
         to: None,

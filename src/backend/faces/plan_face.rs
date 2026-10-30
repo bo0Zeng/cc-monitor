@@ -15,7 +15,8 @@
 //!
 //! 读过的工作区就开始盯（[`crate::plan::watch`]），变了推 `changed {plan}`。
 
-use crate::plan::{book, locate, watch, wire, Live, Whose};
+use crate::plan::{book, locate, watch, Live, Whose};
+use cmd_wire::plan as wire;
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use copy_core::copy_text;

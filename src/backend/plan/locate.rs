@@ -55,9 +55,9 @@ pub(crate) fn pick(set: Option<&Path>, plugins: &[(PathBuf, String)]) -> Result<
 
 /// 校验一个路径：`{state: ok | missing | no_entry | not_runnable, said}`（以人的身份起一次 `pb help`：入口在、解释器在、
 /// pb 自己的几个模块都载得进来才算能用）。不写盘。
-pub(crate) fn check(dir: &Path) -> super::wire::PlanPbCheck {
+pub(crate) fn check(dir: &Path) -> cmd_wire::plan::PlanPbCheck {
     let shown = dir.display().to_string();
-    let out = |state: &str, said: String| super::wire::PlanPbCheck {
+    let out = |state: &str, said: String| cmd_wire::plan::PlanPbCheck {
         state: state.to_string(),
         said,
     };
