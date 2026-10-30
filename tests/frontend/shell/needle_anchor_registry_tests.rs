@@ -32,11 +32,7 @@ fn repo_root() -> PathBuf {
 ///   而它的人群比上面那一个大一个量级（现打：`tests/frontend/shell` 362 处 · `tests/backend` 158 处）。
 ///   🔴 **刻意不补**：补它要连着逐处处置，那是另一件；读数与处置建议
 ///   写在 `P28` 的交付报告里，**别把这一行读成「那条路安全」**。
-const CORPUS_SEEDS: &[&str] = &[
-    "read_to_string(",
-    "scan_tree!",
-    "scan_tree_excluding(",
-];
+const CORPUS_SEEDS: &[&str] = &["read_to_string(", "scan_tree!", "scan_tree_excluding("];
 
 /// 「匹配单位比事实小」这一族的**全部**原语：语料变量上拿字符串字面量去够的这几种，风险一模一样
 /// （needle 被撑大 ⇒ 判据照样绿）。
