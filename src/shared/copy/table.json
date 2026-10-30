@@ -26589,6 +26589,30 @@
       "zh": "复制下面一行 · 到该机终端里运行",
       "args": []
     },
+    "beChore.secretLike.name": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "共享库里的 {item} 像按号的密钥",
+      "args": ["item"]
+    },
+    "beChore.secretLike.said": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "权限 600 · 不在身份文件里 · 不链给各账号",
+      "args": []
+    },
+    "beChore.secretLike.why": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{path} 权限 600 却不在身份文件里 · 若是按号的凭据或状态，各账号共用会串号 · 所以不自动链给各账号",
+      "args": ["path"]
+    },
+    "beChore.secretLike.step": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "属于某个账号 ⇒ 挪进那个账号的目录 · 要各账号共用 ⇒ 放宽权限，下次对齐自动链上",
+      "args": []
+    },
     "beChore.selfPaste.name": {
       "kind": "title",
       "role": "标题",
