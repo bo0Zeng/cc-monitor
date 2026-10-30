@@ -12,11 +12,11 @@
 //! 另有「另开会话接手」那一格（[`takeover`]，与 `ended` 读同一处 [`owner_now`]）· 「退回」落地的判法（[`landing`]）·
 //! 送进会话的那一行（[`line`]）· 退回的对象（[`target`]：一格，或 `project`）。
 
+use crate::observe::recognize::facts::NeedAt;
 use cmd_wire::plan::{
     PlanBlock, PlanCell, PlanNeed, PlanRead, PlanReturned, PlanReturnedChild, PlanSlice,
     PlanStatusCode, PlanTakeover, PlanWho,
 };
-use crate::observe::recognize::facts::NeedAt;
 use copy_core::copy_text;
 
 /// 一个 id 对到的会话（`PlanWho`）此刻活不活：活着 ⇒ `Some(在干什么)`；不活 · 认不出 ⇒ `None`。只读那一格的整份脸。
@@ -140,7 +140,10 @@ fn write_texts(sl: &PlanSlice, n: &mut PlanNeed) {
             n.lines = vec![copy_text(
                 "plan.review.topDoneWhat",
                 &[
-                    ("phase", blk.and_then(|b| b.phase.as_deref()).unwrap_or_default()),
+                    (
+                        "phase",
+                        blk.and_then(|b| b.phase.as_deref()).unwrap_or_default(),
+                    ),
                     ("done", &num(done)),
                     ("of", &num(of)),
                 ],
@@ -158,7 +161,10 @@ fn write_texts(sl: &PlanSlice, n: &mut PlanNeed) {
             n.title = copy_text(
                 "plan.review.red",
                 &[
-                    ("rule", red.and_then(|r| r.rule.as_deref()).unwrap_or_default()),
+                    (
+                        "rule",
+                        red.and_then(|r| r.rule.as_deref()).unwrap_or_default(),
+                    ),
                     ("block", what),
                 ],
             );

@@ -451,8 +451,16 @@ fn every_cell_carries_its_look_and_end_line() {
         cell(&m.doc, "A1-2")["end"],
         short("plan.whyShort.nosign", &[])
     );
-    assert_eq!(cell(&m.doc, "A5")["look"], "undecided", "待定没人定另画一种");
-    assert_eq!(cell(&m.doc, "A6")["look"], "none", "类不许记收的值 ⇒ 不算活");
+    assert_eq!(
+        cell(&m.doc, "A5")["look"],
+        "undecided",
+        "待定没人定另画一种"
+    );
+    assert_eq!(
+        cell(&m.doc, "A6")["look"],
+        "none",
+        "类不许记收的值 ⇒ 不算活"
+    );
     assert_eq!(cell(&m.doc, "A1-3")["look"], "none");
     let mut d = dump("/w");
     node_mut(&mut d, "A1")["state"] = json!([{"value": "decided", "count": 1}]);
@@ -474,7 +482,11 @@ fn a_cell_with_nothing_in_its_state_says_why() {
     let m = made();
     let t = |k: &str| copy_core::copy_text(k, &[]);
     assert_eq!(cell(&m.doc, "A1")["quiet"], t("plan.state.inner"));
-    assert_eq!(cell(&m.doc, "A3")["quiet"], t("plan.state.none"), "不算活的");
+    assert_eq!(
+        cell(&m.doc, "A3")["quiet"],
+        t("plan.state.none"),
+        "不算活的"
+    );
     assert_eq!(cell(&m.doc, "A1-1")["quiet"], Value::Null, "记着值");
     assert_eq!(cell(&m.doc, "A1-2")["stateLine"], Value::Null);
     assert_eq!(

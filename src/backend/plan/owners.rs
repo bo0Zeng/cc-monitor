@@ -9,8 +9,8 @@
 //! - 那一片读不成（没读好过 ⇒ `error`；读好过 ⇒ `stale`）⇒ `unreadable` 是那一句、条目空（文件窗口整列写「—」）。
 
 use super::needs::TOP_BLOCK;
-use cmd_wire::plan::{PlanFiles, PlanRead, PlanSlice};
 use cmd_wire::plan::{PlanFileDup, PlanFileOwner};
+use cmd_wire::plan::{PlanFiles, PlanRead, PlanSlice};
 use std::collections::BTreeMap;
 
 /// 目录相对一片仓库的那一段（`""` ＝ 仓库根）；不在 ⇒ `None`。按段比，不按字符前缀比。

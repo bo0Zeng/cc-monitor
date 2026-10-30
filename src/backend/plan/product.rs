@@ -13,15 +13,15 @@
 //! 整份 dump 里不带 agent 看到的那一段（点到一格再 `pb dump --node` 取，见帧面 `plan-cell-view`）。
 //! 只读 pb 认得的那几个键，造的是线上类型：pb 那边多出来的键不带过来。
 
+use super::{Live, WhoPort, Whose};
+use crate::wire::SessionFaceExt as _;
 use cmd_wire::plan::{
     PlanArchived, PlanBlock, PlanCell, PlanCheck, PlanDomain, PlanEdgeWords, PlanEdges, PlanFile,
-    PlanFileState, PlanKids, PlanKind, PlanLook, PlanListSlice, PlanListWorkspace, PlanPendingSet, PlanPhase,
-    PlanProgress, PlanRead, PlanReadError, PlanRed, PlanRef, PlanRefs, PlanSessionBlock,
+    PlanFileState, PlanKids, PlanKind, PlanListSlice, PlanListWorkspace, PlanLook, PlanPendingSet,
+    PlanPhase, PlanProgress, PlanRead, PlanReadError, PlanRed, PlanRef, PlanRefs, PlanSessionBlock,
     PlanSetsTo, PlanSlice, PlanState, PlanStatusCode, PlanTakeover, PlanUnbuilt, PlanUndecidable,
     PlanUnowned, PlanWho, PlanWhyCode, PlanWhyShort,
 };
-use super::{Live, WhoPort, Whose};
-use crate::wire::SessionFaceExt as _;
 use copy_core::copy_text;
 use serde_json::Value;
 use std::collections::BTreeMap;

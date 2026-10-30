@@ -7,8 +7,8 @@
 //! 这几条写盘的是 pb 自己（`continue` / `pause` 改 `auto_continue`，`repo` / `adopt` 改工作区配置，`render` 往系统临时目录写一页）；
 //! 本族照旧一个字节都不写。拆 pb 原话只在 [`classify`] 这一处。
 
-use cmd_wire::plan::{PlanAdopted, PlanCmdReply};
 use crate::plugin::invoke::Done;
+use cmd_wire::plan::{PlanAdopted, PlanCmdReply};
 use copy_core::copy_text;
 use copy_core::said::Said;
 use std::path::Path;

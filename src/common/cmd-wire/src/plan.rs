@@ -120,7 +120,10 @@ pub struct PlanFiles {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct PlanWho {
     pub id: String,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "\"session\" | \"subagent\" | \"unknown\""))]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(type = "\"session\" | \"subagent\" | \"unknown\"")
+    )]
     pub kind: String,
     /// 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
     pub sid: Option<String>,
@@ -304,7 +307,10 @@ pub struct PlanReturned {
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub at_text: Option<String>,
     pub to: Option<PlanWho>,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "\"returned\" | \"unsure\" | \"landed\""))]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(type = "\"returned\" | \"unsure\" | \"landed\"")
+    )]
     pub state: String,
     /// 落地的那一种：底下多出新格 · 正文改了。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "\"child\" | \"body\" | null"))]
@@ -373,7 +379,10 @@ pub struct PlanCell {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct PlanNeed {
     pub key: String,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "\"top\" | \"red\" | \"ended\" | \"ask\""))]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(type = "\"top\" | \"red\" | \"ended\" | \"ask\"")
+    )]
     pub kind: String,
     pub block: Option<String>,
     pub cell: Option<String>,
@@ -709,7 +718,10 @@ pub struct PlanListWorkspace {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct PlanPb {
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "\"ok\" | \"missing\" | \"unsupported\""))]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(type = "\"ok\" | \"missing\" | \"unsupported\"")
+    )]
     pub state: String,
     pub said: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

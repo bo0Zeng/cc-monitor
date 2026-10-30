@@ -393,7 +393,11 @@ fn each_need_carries_its_written_title_lines_and_position() {
             t("plan.review.redFix", &[("fix", r.fix.as_deref().unwrap())])
         ]
     );
-    assert!(red.title.contains(r.rule.as_deref().unwrap()), "{}", red.title);
+    assert!(
+        red.title.contains(r.rule.as_deref().unwrap()),
+        "{}",
+        red.title
+    );
     // 问人：标题；负责人那一枚由出口挂，不进几行。
     let ask = sl.needs.iter().find(|x| x.kind == "ask").unwrap();
     assert_eq!(ask.title, t("plan.review.ask", &[]));
@@ -420,9 +424,15 @@ fn each_need_carries_its_written_title_lines_and_position() {
     d["repos"][0]["check"]["failures"] = json!([]);
     let sl = slice_with(&d, &all_ended);
     let ended = of_slice(&sl, None, &nobody_waits);
-    let sub = ended.iter().find(|x| x.block.as_deref() == Some("A2")).unwrap();
+    let sub = ended
+        .iter()
+        .find(|x| x.block.as_deref() == Some("A2"))
+        .unwrap();
     assert_eq!(sub.title, t("sessionState.planReview.ended", &[]));
     assert_eq!(sub.lines.last(), Some(&t("plan.review.endedSub", &[])));
-    let main = ended.iter().find(|x| x.block.as_deref() == Some("project")).unwrap();
+    let main = ended
+        .iter()
+        .find(|x| x.block.as_deref() == Some("project"))
+        .unwrap();
     assert!(!main.lines.contains(&t("plan.review.endedSub", &[])));
 }
