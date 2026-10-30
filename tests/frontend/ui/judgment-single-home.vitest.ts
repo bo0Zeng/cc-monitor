@@ -735,7 +735,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "chunk-core": {
     CHUNK: NONE,
     key_of: NONE,
-    hex: NONE,
     new: NONE,
     sent: NONE,
     finish: NONE,
@@ -854,6 +853,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     UNCANCELLABLE: NONE,
     // 文件管理那一族的线上类型：路径字节的那一形（`{"b16"}` 的键 · 取字节）。界面只发 `files-delete-session`，不解路径字节。
     HEX_KEY: NONE,
+    // 那一形的十六进制编解码（后端 · 分块传 · 文件窗口同一份）：界面不解路径字节，TS 侧没有孪生。
+    to_hex: NONE,
+    from_hex: NONE,
     bytes: NONE,
     // 路径字节当集合键 · 推送 `key` 用的那一串（`files-ls` 每行的键、`changed {files_dir}` 的键）。界面不列目录，TS 侧没有孪生。
     key: NONE,
