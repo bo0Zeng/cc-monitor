@@ -1195,13 +1195,19 @@ fn every_symbol_address_in_the_sources_still_resolves() {
         decl.len()
     );
 
-    let refs: usize = corpus.iter().map(|(_, raw)| symbol_addresses(raw).len()).sum();
+    let refs: usize = corpus
+        .iter()
+        .map(|(_, raw)| symbol_addresses(raw).len())
+        .sum();
     // ★ 抽取器自检 2：这一族本来就有两百来处 —— 抽到个位数就是剥法坏了。
     assert!(
         refs >= 150,
         "只抽到 {refs} 处符号地址 —— 剥法坏了（09-02 现打 213 处，量于当时的尖）"
     );
-    let bare: usize = corpus.iter().map(|(_, raw)| path_addresses(raw).len()).sum();
+    let bare: usize = corpus
+        .iter()
+        .map(|(_, raw)| path_addresses(raw).len())
+        .sum();
     // ★ 抽取器自检 3：头注里的裸路径本来就有几百处。
     assert!(
         bare >= 200,
@@ -1240,8 +1246,10 @@ fn every_symbol_address_in_the_sources_still_resolves() {
     if let Some(base) = crate::baseline_text(&addr_repo_root(), ADDR_STOCK)
         .unwrap_or_else(|e| panic!("存量名单 `{ADDR_STOCK}` 读不到基线：{e}"))
     {
-        let grown =
-            crate::stock_list_grown_past_baseline(&stock, &crate::parse_stock_list(ADDR_STOCK, &base));
+        let grown = crate::stock_list_grown_past_baseline(
+            &stock,
+            &crate::parse_stock_list(ADDR_STOCK, &base),
+        );
         assert!(
             grown.is_empty(),
             "存量名单 `{ADDR_STOCK}` 比基线长了 —— 新写的地址改对，名单只许删行、数只许变小：\n{}",
@@ -1379,7 +1387,12 @@ fn the_address_extractors_really_see_each_shape() {
     let syms = symbol_addresses(&t);
     assert_eq!(
         syms,
-        vec![(1, "relay/server.rs".to_string(), "handle".to_string(), false)],
+        vec![(
+            1,
+            "relay/server.rs".to_string(),
+            "handle".to_string(),
+            false
+        )],
         "符号地址抽取器认错了（路径要原样交出，不是只交基名）：{syms:?}"
     );
 
