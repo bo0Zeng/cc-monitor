@@ -55,6 +55,14 @@ describe("工具卡展开照 `steps[id]` 画", () => {
     expect(d.querySelector(".block-body-show-full")).toBeNull();
   });
 
+  it("★ 后端说没逐行比（`notice`）⇒ 行差顶上照摆那一句；没带 ⇒ 没有那一行", () => {
+    const diff = { ...lineDiff([row("del", "a"), row("add", "b")]), notice: "NOTICE-FROM-BACKEND" };
+    const d = opened({}, step({ body: { kind: "changes", diff } }));
+    expect(d.querySelector(".block-diff-notice")?.textContent).toBe("NOTICE-FROM-BACKEND");
+    expect(drawn(d)).toEqual(["-a", "+b"]);
+    expect(opened({}, step({ body: { kind: "changes", diff: lineDiff([row("add", "x")]) } })).querySelector(".block-diff-notice")).toBeNull();
+  });
+
   it("★ 结果带着行差 ⇒ 改画结果那一份（已画了调用那一份的当场换掉）", () => {
     const ctx = newCtx();
     const d = opened({}, step({ body: { kind: "changes", diff: lineDiff([row("add", "FROM-CALL")]) } }), LOCAL_ORIGIN, ctx);

@@ -8,21 +8,32 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlansTest {
-    /** 回包照帧客户端读进来的样子（数是 `Double`）：一片两格，一条没认可的需手动。 */
+    /** 回包照帧客户端读进来的样子（数是 `Double`，契约要的每一格都在）：一片两格，一条没认可的需手动。 */
     private val read: Any? =
         RawJson.read(
             """
-            {"workspace":"/w","readAtText":"02:11","stale":null,"bySession":{},
-             "slices":[{"name":"ledger","domain":"x","error":null,"stale":null,"docsOnly":false,
+            {"pb":null,"workspace":"/w","repo":null,"auto":false,"domains":[],"rev":"r0","readAt":0,"readAtText":"02:11",
+             "stale":null,"needCount":1,"bySession":{},
+             "slices":[{"name":"ledger","domain":"x","path":null,"current":true,"docsOnly":false,"error":null,"stale":null,
+               "bare":false,"kinds":[],"phases":[],"doneValue":"done","openCells":1,
                "progress":{"done":1,"of":2},"top":["A1","A2"],"labels":{"A1":"A1 t1","A2":"A2 t2"},
                "cells":[
-                 {"id":"A1","title":"t1","kind":"k","body":"b","parent":null,"children":[],"statusCode":"done","undecided":false,
-                  "stateLine":"s","whyShort":null,"whyCode":null,"files":[]},
-                 {"id":"A2","title":"t2","kind":"k","body":"","parent":null,"children":[],"statusCode":"open","undecided":true,
-                  "stateLine":null,"whyShort":null,"whyCode":null,"files":[]}],
-               "blocks":[{"id":"project","cells":[],"phase":"p","owner":null,"inside":null}],
-               "check":{"red":[]},
-               "needs":[{"key":"k","kind":"top","block":"project","cell":null,"sid":null,"acked":false}]}]}
+                 {"id":"A1","title":"t1","kind":"k","body":"b","parent":null,"children":[],
+                  "edges":{"to":[],"with":[],"after":[],"replaces":[]},"pointedBy":{"to":[],"with":[],"after":[],"replaces":[]},
+                  "files":[],"state":[{"value":"done","count":1}],"stateLine":"s","evidencedBy":[],"statusCode":"done",
+                  "undecided":false,"look":"done","end":"s","whyShort":null,"whyCode":null,"sets":[],"block":null,
+                  "owner":null,"signer":null,"covers":[],"coveredBy":[],"refs":{"title":[],"body":[]}},
+                 {"id":"A2","title":"t2","kind":"k","body":"","parent":null,"children":[],
+                  "edges":{"to":[],"with":[],"after":[],"replaces":[]},"pointedBy":{"to":[],"with":[],"after":[],"replaces":[]},
+                  "files":[],"state":[],"stateLine":null,"evidencedBy":[],"statusCode":"open",
+                  "undecided":true,"look":"undecided","end":null,"whyShort":null,"whyCode":null,"sets":[],"block":null,
+                  "owner":null,"signer":null,"covers":[],"coveredBy":[],"refs":{"title":[],"body":[]}}],
+               "blocks":[{"id":"project","cells":[],"inside":null,"dir":null,"owner":null,"phase":"p","at":null,"listed":true,
+                 "handoff":null,"handoffError":null,"takeover":"open","groups":{"groups":[],"text":"","unread":null}}],
+               "unbuiltBlocks":[],"unowned":{"paths":null,"why":null},"pendingSets":[],
+               "check":{"unreadable":[],"unparsed":[],"red":[],"undecidable":[]},"archived":[],"needCount":1,
+               "needs":[{"key":"k","kind":"top","block":"project","cell":null,"sid":null,"acked":false,
+                 "title":"top","lines":["l"],"pos":"1/1"}]}]}
             """.trimIndent(),
         )
 

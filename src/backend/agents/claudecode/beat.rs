@@ -63,8 +63,7 @@ pub(crate) fn what_of(name: &str, input: Option<&Value>) -> Option<String> {
     input
         .get(key)
         .and_then(Value::as_str)
-        .map(|s| super::steps::main_text(name, s))
-        .and_then(one_line)
+        .and_then(|s| one_line(&super::steps::main_text(name, s)))
 }
 
 fn edits_of<'a>(name: &str, input: Option<&'a Value>) -> Option<Cow<'a, str>> {
