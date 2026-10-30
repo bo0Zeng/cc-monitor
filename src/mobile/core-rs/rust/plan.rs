@@ -11,7 +11,7 @@
 //! 一行（大纲顶层 · 一格的里面）：`{id, label, look, end, kids}`，`look` ∈ `done` · `open` · `undecided` · `none`（图标照它挑）。
 
 use cmd_wire::plan::{
-    PlanBlock, PlanCell, PlanList, PlanNeed, PlanRead, PlanSlice, PlanStale, PlanWho, PlanWhyCode,
+    PlanBlock, PlanCell, PlanList, PlanNeed, PlanRead, PlanSlice, PlanStale, PlanWho,
 };
 use copy_core::copy_text;
 use serde_json::{json, Value};
@@ -141,78 +141,24 @@ fn who_name(w: &PlanWho) -> String {
     w.face.name.0.clone()
 }
 
-/// 一条需手动（照桌面那一套键）。
-fn need(sl: &Slice, nd: &PlanNeed, i: usize, total: usize) -> Value {
-    let blk = nd.block.as_deref().and_then(|b| sl.block(b));
-    let root = nd.cell.as_deref().and_then(|c| sl.cell(c));
-    let owner = blk.and_then(|b| b.owner.as_ref());
-    let mut lines: Vec<String> = Vec::new();
-    let title = match nd.kind.as_str() {
-        "top" => {
-            let (done, of) = sl.v.progress.as_ref().map_or((0, 0), |p| (p.done, p.of));
-            lines.push(copy_text(
-                "plan.review.topDoneWhat",
-                &[
-                    ("done", &done.to_string()),
-                    ("of", &of.to_string()),
-                    (
-                        "phase",
-                        blk.and_then(|b| b.phase.as_deref()).unwrap_or_default(),
-                    ),
-                ],
-            ));
-            copy_text("plan.review.topDone", &[])
-        }
-        "red" => {
-            let red = nd
-                .red
-                .and_then(|k| usize::try_from(k).ok())
-                .and_then(|k| sl.v.check.red.get(k));
-            if let Some(w) = red.and_then(|r| r.what.as_deref()) {
-                lines.push(w.to_owned());
-            }
-            if let Some(f) = red.and_then(|r| r.fix.as_deref()) {
-                lines.push(copy_text("plan.review.redFix", &[("fix", f)]));
-            }
-            let block = root
-                .and_then(|r| r.title.as_deref())
-                .or(nd.block.as_deref())
-                .unwrap_or_default();
-            copy_text(
-                "plan.review.red",
-                &[
-                    (
-                        "rule",
-                        red.and_then(|r| r.rule.as_deref()).unwrap_or_default(),
-                    ),
-                    ("block", block),
-                ],
-            )
-        }
-        "ask" => {
-            lines.extend(owner.map(who_name));
-            copy_text("plan.review.ask", &[])
-        }
-        _ => {
-            lines.extend(owner.map(who_name));
-            lines.push(match root.and_then(|r| r.why_code.as_ref()) {
-                Some(PlanWhyCode::Inside { done, of }) => copy_text(
-                    "plan.review.endedWhat",
-                    &[("done", &done.to_string()), ("of", &of.to_string())],
-                ),
-                _ => copy_text("plan.review.endedOpen", &[]),
-            });
-            if owner.is_some_and(|o| o.kind == "subagent") {
-                lines.push(copy_text("plan.review.endedSub", &[]));
-            }
-            copy_text("sessionState.planReview.ended", &[])
-        }
-    };
+/// 一条需手动：标题 · 底下那几行 · 第几条都是后端写好的；问人 · 负责人停了那两种在最前面挂负责人的名字（桌面那一枚的位置）。
+fn need(sl: &Slice, nd: &PlanNeed) -> Value {
+    let owner = nd
+        .block
+        .as_deref()
+        .and_then(|b| sl.block(b))
+        .and_then(|b| b.owner.as_ref())
+        .filter(|_| matches!(nd.kind.as_str(), "ask" | "ended"));
+    let lines: Vec<String> = owner
+        .map(who_name)
+        .into_iter()
+        .chain(nd.lines.iter().cloned())
+        .collect();
     json!({
         "kind": nd.kind,
-        "title": title,
+        "title": nd.title,
         "lines": lines,
-        "pos": copy_text("plan.review.pos", &[("i", &(i + 1).to_string()), ("n", &total.to_string())]),
+        "pos": nd.pos.as_deref().unwrap_or_default(),
     })
 }
 
@@ -264,11 +210,12 @@ pub fn outline(read: &PlanRead, slice: &str, sid: Option<&str>) -> Option<Value>
     if sl.v.docs_only {
         meta.push(copy_text("plan.sub.docsOnly", &[]));
     }
-    let open: Vec<&PlanNeed> = sl.v.needs.iter().filter(|x| !x.acked).collect();
-    let needs: Vec<Value> = open
+    let needs: Vec<Value> = sl
+        .v
+        .needs
         .iter()
-        .enumerate()
-        .map(|(i, x)| need(&sl, x, i, open.len()))
+        .filter(|x| !x.acked)
+        .map(|x| need(&sl, x))
         .collect();
     let rows: Vec<Value> = sl.v.top.iter().filter_map(|t| sl.row(t)).collect();
     Some(json!({
@@ -300,7 +247,8 @@ pub fn cell(read: &PlanRead, slice: &str, id: &str) -> Option<Value> {
     let state = c
         .end
         .clone()
-        .unwrap_or_else(|| copy_text("plan.state.none", &[]));
+        .or_else(|| c.quiet.clone())
+        .unwrap_or_default();
     let block = sl
         .v
         .blocks
@@ -434,10 +382,14 @@ mod tests {
         ]);
         let check = json!({ "unreadable": [], "unparsed": [], "undecidable": [],
                             "red": [{ "rule": "R1", "what": "缺文件", "fix": "补上", "block": "B1", "refs": [] }] });
+        // 标题 · 几行 · 第几条是后端写好的（夹具里写成可认的字，看它原样摆出来）。
         let needs = json!([
-            { "key": "k0", "kind": "top", "block": "project", "cell": null, "sid": null, "acked": true },
-            { "key": "k1", "kind": "red", "block": "B1", "cell": "A2", "sid": null, "red": 0, "acked": false },
-            { "key": "k2", "kind": "ended", "block": "B1", "cell": "A2", "sid": "s1", "acked": false },
+            { "key": "k0", "kind": "top", "block": "project", "cell": null, "sid": null, "acked": true,
+              "title": "后端·顶层", "lines": ["后端·签了几格"], "pos": null },
+            { "key": "k1", "kind": "red", "block": "B1", "cell": "A2", "sid": null, "red": 0, "acked": false,
+              "title": "后端·不通过", "lines": ["缺文件", "后端·修法"], "pos": "后端·1/2" },
+            { "key": "k2", "kind": "ended", "block": "B1", "cell": "A2", "sid": "s1", "acked": false,
+              "title": "后端·停了", "lines": ["后端·底下 1/3", "后端·父会话收"], "pos": "后端·2/2" },
         ]);
         let slice = json!({
             "name": "ledger", "domain": "软件", "path": null, "current": true, "docsOnly": false, "error": null,
@@ -466,37 +418,21 @@ mod tests {
     }
 
     #[test]
-    fn outline_puts_open_needs_first_with_the_desk_keys() {
+    fn outline_puts_open_needs_as_the_backend_wrote_them() {
         let o = outline(&read(), "ledger", None).expect("一片");
         let needs = o["needs"].as_array().expect("needs");
         assert_eq!(needs.len(), 2, "认可过的那条不出");
         assert_eq!(
-            needs[0]["title"],
-            copy_text("plan.review.red", &[("rule", "R1"), ("block", "标题A2")])
+            needs[0],
+            json!({ "kind": "red", "title": "后端·不通过", "lines": ["缺文件", "后端·修法"], "pos": "后端·1/2" })
         );
-        assert_eq!(
-            needs[0]["lines"],
-            json!([
-                "缺文件",
-                copy_text("plan.review.redFix", &[("fix", "补上")])
-            ])
-        );
-        assert_eq!(
-            needs[0]["pos"],
-            copy_text("plan.review.pos", &[("i", "1"), ("n", "2")])
-        );
-        assert_eq!(
-            needs[1]["title"],
-            copy_text("sessionState.planReview.ended", &[])
-        );
+        assert_eq!(needs[1]["title"], "后端·停了");
         assert_eq!(
             needs[1]["lines"],
-            json!([
-                "会话甲 的 agent",
-                copy_text("plan.review.endedWhat", &[("done", "1"), ("of", "3")]),
-                copy_text("plan.review.endedSub", &[]),
-            ])
+            json!(["会话甲 的 agent", "后端·底下 1/3", "后端·父会话收"]),
+            "负责人停了那一种：最前面挂负责人的名字，其余照后端"
         );
+        assert_eq!(needs[1]["pos"], "后端·2/2");
     }
 
     #[test]
@@ -530,6 +466,16 @@ mod tests {
         let o = outline(&serde_json::from_value(v).expect("形状"), "ledger", None).expect("一片");
         assert_eq!(o["rows"][1]["look"], "undecided");
         assert_eq!(o["rows"][1]["end"], "后端写的那一句");
+    }
+
+    /// 一格的状态那一句：右端那一句没有 ⇒ 后端写的「为什么没有」那一句。
+    #[test]
+    fn a_cell_with_no_end_says_the_backends_quiet_line() {
+        let mut v = read_json();
+        v["slices"][0]["cells"][1]["end"] = json!(null);
+        v["slices"][0]["cells"][1]["quiet"] = json!("后端·没记状态");
+        let c = cell(&serde_json::from_value(v).expect("形状"), "ledger", "A1-1").expect("一格");
+        assert_eq!(c["state"], "后端·没记状态");
     }
 
     #[test]

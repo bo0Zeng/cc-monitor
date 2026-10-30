@@ -467,6 +467,30 @@ fn every_cell_carries_its_look_and_end_line() {
     assert_eq!(cell_in(&m.doc, 1, "B1-1")["end"], "支持");
 }
 
+/// 状态那一节什么都没有时那一句（`quiet`）：算活、底下有格 ⇒ 状态跟着底下走；别的 ⇒ 没记状态。
+/// 记着值 · 有指着它没执行的 sets ⇒ 不出（那一节有东西可摆）。
+#[test]
+fn a_cell_with_nothing_in_its_state_says_why() {
+    let m = made();
+    let t = |k: &str| copy_core::copy_text(k, &[]);
+    assert_eq!(cell(&m.doc, "A1")["quiet"], t("plan.state.inner"));
+    assert_eq!(cell(&m.doc, "A3")["quiet"], t("plan.state.none"), "不算活的");
+    assert_eq!(cell(&m.doc, "A1-1")["quiet"], Value::Null, "记着值");
+    assert_eq!(cell(&m.doc, "A1-2")["stateLine"], Value::Null);
+    assert_eq!(
+        cell(&m.doc, "A1-2")["quiet"],
+        Value::Null,
+        "有指着它没执行的 sets"
+    );
+    // 同一格把那一条 sets 拿掉 ⇒ 没记状态。
+    let mut d = dump("/w");
+    d["repos"][0]["pending_sets"] = json!([]);
+    assert_eq!(
+        cell(&make(&d, &who).doc, "A1-2")["quiet"],
+        t("plan.state.none")
+    );
+}
+
 /// covers：写的照给，coveredBy 是 pb 算的（只留图上的格）。
 #[test]
 fn every_cell_carries_its_covers() {

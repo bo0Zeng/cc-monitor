@@ -370,10 +370,7 @@ export class CellDetail {
       if (p.blockedReason) row.appendChild(span(p.blockedReason, s.cdSetWhy));
       sec.appendChild(row);
     }
-    if (!cell.stateLine && pending.length === 0) {
-      const line = cell.children.length > 0 && cell.statusCode !== null ? copyText("plan.state.inner") : copyText("plan.state.none");
-      sec.appendChild(span(line, s.cdMuted));
-    }
+    if (cell.quiet) sec.appendChild(span(cell.quiet, s.cdMuted));
     return sec;
   }
 

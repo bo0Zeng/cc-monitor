@@ -121,6 +121,77 @@ fn need(kind: &str, key: String, block: Option<String>, cell: Option<String>) ->
         sid: None,
         red: None,
         acked: false,
+        title: String::new(),
+        lines: Vec::new(),
+        pos: None,
+    }
+}
+
+/// 一条的标题与底下那几行（两端照摆）：顶层全签收 ⇒ 阶段与签了几格；校验不通过 ⇒ 规则 ＋ 那一块，pb 那一句与修法；
+/// 问人 ⇒ 只有标题；负责人停了 ⇒ 底下签了几格（不是「底下」那一种原因 ⇒ 还没签），子 agent 那一块再说由父会话收。负责人那一枚由出口挂。
+fn write_texts(sl: &PlanSlice, n: &mut PlanNeed) {
+    let blk = n.block.as_deref().and_then(|b| block(sl, b));
+    let root = n.cell.as_deref().and_then(|c| cell(sl, c));
+    let num = |x: u32| x.to_string();
+    match n.kind.as_str() {
+        "top" => {
+            let (done, of) = sl.progress.as_ref().map_or((0, 0), |p| (p.done, p.of));
+            n.title = copy_text("plan.review.topDone", &[]);
+            n.lines = vec![copy_text(
+                "plan.review.topDoneWhat",
+                &[
+                    ("phase", blk.and_then(|b| b.phase.as_deref()).unwrap_or_default()),
+                    ("done", &num(done)),
+                    ("of", &num(of)),
+                ],
+            )];
+        }
+        "red" => {
+            let red = n
+                .red
+                .and_then(|k| usize::try_from(k).ok())
+                .and_then(|k| sl.check.red.get(k));
+            let what = root
+                .and_then(|r| r.title.as_deref())
+                .or(n.block.as_deref())
+                .unwrap_or_default();
+            n.title = copy_text(
+                "plan.review.red",
+                &[
+                    ("rule", red.and_then(|r| r.rule.as_deref()).unwrap_or_default()),
+                    ("block", what),
+                ],
+            );
+            n.lines = red
+                .into_iter()
+                .flat_map(|r| {
+                    [
+                        r.what.clone(),
+                        r.fix
+                            .as_deref()
+                            .map(|f| copy_text("plan.review.redFix", &[("fix", f)])),
+                    ]
+                })
+                .flatten()
+                .collect();
+        }
+        ASK => n.title = copy_text("plan.review.ask", &[]),
+        _ => {
+            n.title = copy_text("sessionState.planReview.ended", &[]);
+            n.lines = vec![match root.and_then(|r| r.why_code.as_ref()) {
+                Some(cmd_wire::plan::PlanWhyCode::Inside { done, of }) => copy_text(
+                    "plan.review.endedWhat",
+                    &[("done", &num(*done)), ("of", &num(*of))],
+                ),
+                _ => copy_text("plan.review.endedOpen", &[]),
+            }];
+            if blk
+                .and_then(|b| b.owner.as_ref())
+                .is_some_and(|o| o.kind == "subagent")
+            {
+                n.lines.push(copy_text("plan.review.endedSub", &[]));
+            }
+        }
     }
 }
 
@@ -180,6 +251,9 @@ pub(crate) fn of_slice(
             }
         }
     }
+    for n in &mut out {
+        write_texts(sl, n);
+    }
     out
 }
 
@@ -188,6 +262,15 @@ pub(crate) fn mark_acked(doc: &mut PlanRead, acked: &dyn Fn(&str, &str) -> bool)
     for sl in &mut doc.slices {
         for x in &mut sl.needs {
             x.acked = x.kind != ASK && acked(&sl.name, &x.key);
+        }
+        // 没认可的那几条照先后写「第几条 / 共几条」（概览与详情同一个次序）。
+        let total = sl.needs.iter().filter(|x| !x.acked).count().to_string();
+        let mut i = 0usize;
+        for x in &mut sl.needs {
+            x.pos = (!x.acked).then(|| {
+                i += 1;
+                copy_text("plan.review.pos", &[("i", &i.to_string()), ("n", &total)])
+            });
         }
     }
 }

@@ -601,11 +601,23 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
             let body = c.get("body").and_then(Value::as_str);
             let line = state_line(&state);
             let short = why_code.as_ref().map(why_short);
+            let pending = out
+                .pending_sets
+                .iter()
+                .any(|p| p.target.as_deref() == Some(id.as_str()));
+            let quiet = (line.is_none() && !pending).then(|| {
+                if !children.is_empty() && status_code.is_some() {
+                    copy_text("plan.state.inner", &[])
+                } else {
+                    copy_text("plan.state.none", &[])
+                }
+            });
             PlanCell {
                 edges: edges_of(|k| strs(c.get("edges").and_then(|e| e.get(k)))),
                 pointed_by: edges_of(|k| back.and_then(|b| b.get(k)).cloned().unwrap_or_default()),
                 files,
                 end: end_of(line.as_deref(), short.as_ref()),
+                quiet,
                 state_line: line,
                 state,
                 evidenced_by: strs(c.get("evidenced_by")),

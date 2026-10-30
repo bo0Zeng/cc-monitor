@@ -342,6 +342,9 @@ pub struct PlanCell {
     pub look: PlanLook,
     /// 行右端那一句：状态那一行 ＋ 原因短词，用分隔连好；都没有 ⇒ `null`。
     pub end: Option<String>,
+    /// 状态那一节什么都没有（没记值、也没有指着它没执行的 sets）时那一句：算活、底下有格 ⇒ 跟着底下走；别的 ⇒ 没记状态。
+    /// 有东西可摆 ⇒ `null`。
+    pub quiet: Option<String>,
     /// 没签收（或待定没人定）的原因；签收了 · 不算活 ⇒ `null`。
     pub why_code: Option<PlanWhyCode>,
     /// 行尾那一个原因短词；没有原因 ⇒ `null`。
@@ -381,6 +384,12 @@ pub struct PlanNeed {
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub red: Option<u32>,
     pub acked: bool,
+    /// 那一条的标题（后端照种类写好）。
+    pub title: String,
+    /// 标题底下那几行（顶层签了几格 · pb 那一句与修法 · 底下签了几格 · 子 agent 由父会话收）；负责人那一枚由出口挂，不在这里。
+    pub lines: Vec<String>,
+    /// 「第几条 / 共几条」（照认可记录标过之后、没认可的那几条照先后写）；认可过的 ⇒ `null`。
+    pub pos: Option<String>,
 }
 
 /// 建了的一个权力范围（pb 的 `scopes[]`）。

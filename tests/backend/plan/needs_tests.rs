@@ -354,3 +354,75 @@ fn need_items_spread_every_open_need_with_its_workspace_slice_and_cell() {
     );
     assert!(need_items(&[]).is_empty());
 }
+
+/// ★ 每一条带写好的标题与底下那几行（两端照摆，不按种类自己取字）；认可之后没认可的那几条照先后带「第几条 / 共几条」，认可过的不带。
+#[test]
+fn each_need_carries_its_written_title_lines_and_position() {
+    let t = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
+    // 顶层全签收：标题 · 「阶段 · 签了几格」那一行。
+    let mut doc = made_with(&dump_top_signed("/w"), &all_working);
+    doc.slices[0].needs = of_slice(&doc.slices[0], Some("r1"), &main_waits);
+    let sl = &doc.slices[0];
+    let top = sl.needs.iter().find(|x| x.kind == "top").unwrap();
+    let p = sl.progress.clone().unwrap();
+    let phase = sl
+        .blocks
+        .iter()
+        .find(|b| b.id == "project")
+        .and_then(|b| b.phase.clone())
+        .unwrap_or_default();
+    assert_eq!(top.title, t("plan.review.topDone", &[]));
+    assert_eq!(
+        top.lines,
+        vec![t(
+            "plan.review.topDoneWhat",
+            &[
+                ("phase", &phase),
+                ("done", &p.done.to_string()),
+                ("of", &p.of.to_string())
+            ]
+        )]
+    );
+    // 校验不通过：标题带规则与那一块的标题；底下是 pb 那一句与修法。
+    let red = sl.needs.iter().find(|x| x.kind == "red").unwrap();
+    let r = &sl.check.red[0];
+    assert_eq!(
+        red.lines,
+        vec![
+            r.what.clone().unwrap(),
+            t("plan.review.redFix", &[("fix", r.fix.as_deref().unwrap())])
+        ]
+    );
+    assert!(red.title.contains(r.rule.as_deref().unwrap()), "{}", red.title);
+    // 问人：标题；负责人那一枚由出口挂，不进几行。
+    let ask = sl.needs.iter().find(|x| x.kind == "ask").unwrap();
+    assert_eq!(ask.title, t("plan.review.ask", &[]));
+    assert!(ask.lines.is_empty());
+    // 位置：认可之后照先后写，认可过的不带；问人那一种照样带。
+    mark_acked(&mut doc, &|_, key| key == "top:r1");
+    let n = &doc.slices[0].needs;
+    let open: Vec<&PlanNeed> = n.iter().filter(|x| !x.acked).collect();
+    for (i, x) in open.iter().enumerate() {
+        assert_eq!(
+            x.pos.as_deref(),
+            Some(
+                t(
+                    "plan.review.pos",
+                    &[("i", &(i + 1).to_string()), ("n", &open.len().to_string())]
+                )
+                .as_str()
+            )
+        );
+    }
+    assert_eq!(n.iter().find(|x| x.kind == "top").unwrap().pos, None);
+    // 负责人的会话停了：子 agent 那一块多一句「子 agent 由父会话收」。
+    let mut d = dump("/w");
+    d["repos"][0]["check"]["failures"] = json!([]);
+    let sl = slice_with(&d, &all_ended);
+    let ended = of_slice(&sl, None, &nobody_waits);
+    let sub = ended.iter().find(|x| x.block.as_deref() == Some("A2")).unwrap();
+    assert_eq!(sub.title, t("sessionState.planReview.ended", &[]));
+    assert_eq!(sub.lines.last(), Some(&t("plan.review.endedSub", &[])));
+    let main = ended.iter().find(|x| x.block.as_deref() == Some("project")).unwrap();
+    assert!(!main.lines.contains(&t("plan.review.endedSub", &[])));
+}
