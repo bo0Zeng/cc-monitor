@@ -309,7 +309,9 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
         .collect();
     // ★ 抽取器自检：剥法坏了 ⇒ 下面会零命中地绿（正控：`test` 与 `test:f40` 两条必在）。
     assert!(
-        ["test", "test:f40"].iter().all(|want| scripts.iter().any(|(n, _)| n == want)),
+        ["test", "test:f40"]
+            .iter()
+            .all(|want| scripts.iter().any(|(n, _)| n == want)),
         "从 `package.json` 剥到的 {} 个 `test*` 脚本里缺 `test` 或 `test:f40` —— 剥法坏了",
         scripts.len()
     );
