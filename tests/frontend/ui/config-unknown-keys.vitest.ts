@@ -28,21 +28,16 @@ import { readFileSync, existsSync } from "node:fs";
 
 const store = vi.hoisted(() => ({
   cfg: {} as Record<string, unknown>,
-  /** 每次写完之后盘上的整份。 */
-  saved: [] as Record<string, unknown>[],
-  /** 每次写交来的补丁（写只交「改哪几条路径」）。 */
+  /** 每次写交来的补丁（写只交「改哪几条路径」；落盘语义归 Rust 写口，替身不应用）。 */
   edits: [] as (readonly { op: string; path: string[] }[])[],
 }));
 
 vi.mock("../../../src/frontend/ui/ipc/commands", async () => {
-  const { applyConfigEdits } = await import("./config-patch-fake");
   return {
     commands: {
       load_config: vi.fn(async () => store.cfg),
-      patch_config: vi.fn(async ({ edits }: { edits: Parameters<typeof applyConfigEdits>[1] }) => {
+      patch_config: vi.fn(async ({ edits }: { edits: readonly { op: string; path: string[] }[] }) => {
         store.edits.push(edits);
-        store.cfg = JSON.parse(applyConfigEdits(JSON.stringify(store.cfg), edits)) as Record<string, unknown>;
-        store.saved.push(store.cfg);
       }),
     },
   };
@@ -96,7 +91,6 @@ const CENSUS: readonly string[] = [
 
 beforeEach(() => {
   store.cfg = {};
-  store.saved = [];
   store.edits = [];
   __resetUnknownConfigKeysForTests();
 });
@@ -134,11 +128,15 @@ describe("P12 ① 那个逃生口的两代落盘键都退役了（`forceLegacyLa
   it("写盘**不吞掉**用户手写的未知键（未知 ≠ 该删）", async () => {
     store.cfg = { [RETIRED_KEY]: true, 某个错字: 1 };
     await setBehavior(await getBehavior());
-    expect(
-      Object.keys(store.saved[0]),
-      "保存设置时把认不出的键顺手删了 —— 用户手写的东西被我们悄悄吃掉，" +
-        "这比静默忽略更糟：连让他自己发现的机会都没有了",
-    ).toContain(RETIRED_KEY);
+    const touched = store.edits.flat().map((e) => e.path[0]);
+    expect(touched.length, "`setBehavior` 根本没写盘").toBeGreaterThan(0);
+    for (const k of [RETIRED_KEY, "某个错字"]) {
+      expect(
+        touched,
+        "保存设置时的补丁碰了认不出的键 —— 用户手写的东西被我们悄悄吃掉，" +
+          "这比静默忽略更糟：连让他自己发现的机会都没有了",
+      ).not.toContain(k);
+    }
   });
 });
 
