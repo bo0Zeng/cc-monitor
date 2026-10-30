@@ -45,7 +45,8 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (actual) => ({
 }));
 
 import { machineName } from "../../../src/frontend/ui/ipc/chan-caller";
-import { LOCAL_BACKEND_EVENT, onLocalBackend, onMachineState, onMachineUp } from "../../../src/frontend/ui/machine-feed";
+import { onLocalBackend, onMachineState, onMachineUp } from "../../../src/frontend/ui/machine-feed";
+import { LOCAL_BACKEND } from "../../../src/frontend/ui/generated/shell-names";
 import type { LocalBackend } from "../../../src/frontend/ui/generated/LocalBackend";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { KEYS_NOT_NAMES } from "../../../src/frontend/ui/generated/judgment-rules.ts";
@@ -94,7 +95,7 @@ describe("机器状态成品的推送", () => {
     onLocalBackend((l) => got.push(l));
     onMachineState((o) => states.push(o));
     const down: LocalBackend = { state: "down", look: "down", tone: "fail", word: "w", said: "s", fixes: [], next: null };
-    listeners.get(LOCAL_BACKEND_EVENT)!({ payload: down });
+    listeners.get(LOCAL_BACKEND)!({ payload: down });
     expect(got).toEqual([down]);
     expect(states).toEqual([]);
   });
@@ -120,7 +121,7 @@ describe("机器状态成品的推送", () => {
     const got: LocalBackend[] = [];
     const off = onLocalBackend((l) => got.push(l));
     await flush();
-    listeners.get(LOCAL_BACKEND_EVENT)!({ payload: pushed });
+    listeners.get(LOCAL_BACKEND)!({ payload: pushed });
     answer({ local: { state: "down", look: "down", tone: "fail", word: "w", said: "旧的", fixes: [], next: null } });
     await flush();
     status.reply = null;
