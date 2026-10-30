@@ -831,7 +831,7 @@ fn idle_ledger(home: &Home, t: u64, b_weekly: bool) {
             "five_hour".to_string(),
             ledger::Trend {
                 since: t - 3_600,
-                prev: None,
+                steps: Vec::new(),
             },
         )]
         .into_iter()
