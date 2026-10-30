@@ -10,6 +10,7 @@
 //! | [`the_chunk_is_the_backend_cap`] | 两端共用那一块（`chunk_core::CHUNK`）== 后端 `files::READ_CHUNK_MAX_BYTES` | 读两侧源码 |
 
 use super::*;
+use cmd_wire::files::{from_hex, to_hex};
 
 #[test]
 #[cfg(unix)]
@@ -62,7 +63,7 @@ impl comms_inward::chan::router::Backends for Two {
             let end = (off + len).min(self.body.len());
             let part = &self.body[off.min(end)..end];
             serde_json::json!({ "path": a["path"], "offset": off, "size": self.body.len(),
-                "eof": end >= self.body.len(), "content": { "b16": chunk_core::hex(part) } })
+                "eof": end >= self.body.len(), "content": { "b16": to_hex(part) } })
         } else if op.0 == "files-stage-chunk" {
             serde_json::json!({ "bytes": 1 })
         } else {
@@ -140,7 +141,7 @@ async fn a_lossy_pull_reads_the_remote_by_bytes_and_lands_it_through_the_local_b
     let mut rebuilt = Vec::new();
     for (i, a) in stages.iter().enumerate() {
         assert_eq!(a["seq"], i);
-        rebuilt.extend(unhex(a["content"]["b16"].as_str().unwrap()).unwrap());
+        rebuilt.extend(from_hex(a["content"]["b16"].as_str().unwrap()).unwrap());
     }
     assert_eq!(rebuilt, body, "进本机暂存的块拼回来不是远端那份");
     let commit = &mine.last().expect("本机没收到提交").2;
