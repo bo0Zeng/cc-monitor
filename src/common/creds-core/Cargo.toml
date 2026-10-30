@@ -13,15 +13,12 @@ description = "第三方 API key 的**唯一**住址——装它的类型、它�
 #   · 两个 crate 各写一份 ⇒ **一个安全性质两个实现**，什么时候漂开没有任何东西会说。
 # ⇒ 落这里，两边都 depend 它。
 #
-# # ⚠ 本 crate 是这一层里**第一个带平台 cfg 的**——那条约束的原文与代价，逐字记这里
+# # ⚠ 本 crate 带平台 cfg——这一层的约束怎么守住
 #
-# `acct-core/Cargo.toml` 头注逐字写着这一层的约束：「**零依赖**。同 branch-core / usage-core
-# 的约束：backend 是 Linux-only 的静态 musl 二进制、且刻意不在 monitor 的 workspace 里；
-# **一旦引入平台相关的东西，共享就破了**。」
-# 现打（08-27）：`crates/` 下 6 个 crate 的 `[dependencies]` 条数 = 0/1/0/0/0/1，
-# 平台 cfg（`cfg(windows)` / `cfg(unix)` / `cfg(target_os`）全树 **0 处**。⇒ 本 crate 是第一个。
+# 这一层共享 crate 的约束：backend 是 Linux-only 的静态 musl 二进制、且刻意不在 monitor 的 workspace 里；
+# **一旦引入平台相关的东西，共享就破了**。
 #
-# **化解办法是把平台那半做成可选 feature，默认不开**：
+# **办法是把平台那半做成可选 feature，默认不开**：
 #   · backend 开 `harden`（每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端账号域，`apikey-key-set`）；
 #   · `src/frontend/shell` **不开**（monitor 既不写也不读这份文件 —— 写半边在它那一侧连编都编不进来）。
 # ⇒ 默认构建下本 crate **零依赖、零平台 cfg**，那条共享约束原样成立；
@@ -31,8 +28,7 @@ description = "第三方 API key 的**唯一**住址——装它的类型、它�
 # 可选依赖在不在里面要**单独量**。读数与量法见件文件 `§0e`（两份 lock 分开量、分开报）。
 
 [dependencies]
-# 与 `branch-core` / `usage-core` 逐字同形（两者都是 `serde_json = "1"`）。
-# 现打（08-27）：`serde_json` 在**两份** lock 里各已有 1 条
+# `serde_json` 在**两份** lock 里各已有 1 条
 # （`grep -c '^name = "serde_json"'`：`src/frontend/shell/Cargo.lock` ⇒ 1 · `src/backend/Cargo.lock` ⇒ 1）
 # ⇒ 本条**不给任何一份 lock 新增条目**。
 # 对外文案表的取文口（`perm.rs` 的判定出的那几句话 —— 本 crate 被 monitor 与后端同时链接，
