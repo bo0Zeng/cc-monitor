@@ -35,16 +35,12 @@ unset CCM_RELAY_PORT CCM_RELAY_ALL_SESSIONS ANTHROPIC_BASE_URL
 
 # 本文件不用 `jq` 也不用 `npx`：账号表由后端自己读那份 manifest，会话名派生那一节是手写期望。
 
-PASS=0; FAIL=0
+. "$HERE/assert.sh"
 # ccm 起的会话（启动器就是这一家默认的那一个）在启动器后面垫答题 hook：会话级 `--settings <只含那一个 hook 的 JSON>`，
 #   入口是那个家里的 ccm。`hk <家>` 是打印那一行里的样子（单引号包着），`hkraw <家>` 是 claude 收到的那两个词（空格连）。
 hook_json() { printf '{"hooks":{"PermissionRequest":[{"hooks":[{"args":["--","--answer-hook","claude"],"command":"%s/.cc-monitor/bin/ccm","timeout":3600,"type":"command"}]}]}}' "$1"; }
 hk() { printf " --settings '%s'" "$(hook_json "$1")"; }
 hkraw() { printf -- "--settings %s" "$(hook_json "$1")"; }
-ck() { # ck <描述> <期望> <实得>
-  if [ "$2" = "$3" ]; then printf 'PASS | %s\n' "$1"; PASS=$((PASS+1))
-  else printf 'FAIL | %s\n      期望: %s\n      实得: %s\n' "$1" "$2" "$3"; FAIL=$((FAIL+1)); fi
-}
 # **全文件恒隔离家目录与 CLAUDE_CONFIG_DIR**：账号库跟着家目录走（`<家>/.cc-monitor/accounts/`），
 # 每一次调用都把 `HOME` 换成本套件自己的临时目录 —— 不换的话本机账号库的默认号会被注入每条黄金串
 # （"零修饰 = 今天的 ccm()" 是**基座**语义，不带账号），写账号库的那一组更会写到真数据上。
@@ -478,5 +474,4 @@ ck "@ 后面当不了配置名（@文件 那种提问）：整行原样交 claud
    "$UNSET; cd '/p' && exec claude$(hk "$PHOME") '@README.md 讲讲'" \
    "$(pccm "$PHOME" "$CCM" '@README.md 讲讲' -- --cwd /p --ccm-print)"
 
-echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
-[ "$FAIL" -eq 0 ]
+finish

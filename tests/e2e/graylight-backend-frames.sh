@@ -69,9 +69,7 @@ SID8="${SID:0:8}"
 SESSION="cc-$SID8"
 KEEP="cc-e2ekeep-$$"   # 无关 cc-* 会话:kill 掉 fixture 后 backend 仍非空(空 backend 守卫)
 
-pass=0; fail=0
-ok()  { echo "  PASS $1"; pass=$((pass+1)); }
-bad() { echo "  FAIL $1"; fail=$((fail+1)); }
+. "$E2E_DIR/assert.sh"
 
 cleanup() {
   set +e
@@ -301,7 +299,4 @@ else
 fi
 tmux kill-session -t "=$OTHER:" 2>/dev/null || true
 
-echo "== 结果:$pass 过 / $fail 败 =="
-# G-C：与另外 8 套逐字一致的收尾格式，好让 `tests/e2e/assert-pass-floor.sh` 用同一条正则抓。
-echo "===== 合计 PASS=$pass FAIL=$fail ====="
-[ "$fail" -eq 0 ]
+finish

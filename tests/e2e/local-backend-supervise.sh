@@ -102,17 +102,12 @@ OUT="$WORK/rust.log"
 # ★★ **两趟，两个过滤串**：真进程判据今天住**两个**模块 ——
 #    `local_backend`（F05a：监护那条路）与 `local_backend_host`（K-P1：常驻那条路）。
 #
-# ⚠⚠ **为什么不是一趟写两个过滤串**（`… --nocapture … local_backend local_backend_host`）：
-#    libtest 确实取并集，**但那样第二个过滤串没有任何东西钉着**。
-#    monitor 侧那条断链判据（`shared_crate_registry::every_ignored_test_still_has_someone_who_triggers_it`）
-#    的抽取器是「`--nocapture` 之后的**第一个**非 flag token，取完就 `break`」
-#    ⇒ 一行只登记得到一个过滤串。写成一行的话，**改掉 `local_backend_host` 那族的测试名不会有任何东西红**，
-#    而 `cargo test` 跑零条测试**退出码是 0** —— 两边都绿，测试其实再没执行过。
-#    ⇒ 一族一趟，每趟自己那一行都带着自己的过滤串。
+# ⚠⚠ 两个过滤串各在本文件里钉着：真机层那张表（`test_tiers_tests.rs` 的 `REAL_MACHINE`）逐条登记
+#    「触发者 = 本文件、过滤串 = `local_backend` / `local_backend_host`」，剥注释后找不到、或不再是测试全名的子串 ⇒ 红
+#    （`cargo test` 跑零条测试**退出码是 0**，不钉住就是两边都绿、测试再没执行过）。
 # ⚠⚠ **第一趟的过滤串是 `local_backend::`（带 `::`），不是 `local_backend`**：libtest 按子串认，
 #    `local_backend` 同时命中 `local_backend_host::…` ⇒ 常驻那族被跑了**两遍**，第一遍接上的后端还活着，
-#    第二遍的「第一个宿主」当场报「已经在跑」（主线本来就红的那一格）。带 `::` 只命中监护那一族。
-#    （`shared_crate_registry` 的抽取器截到 `:` 为止，登记到的仍是 `local_backend`，与原来同一个串。）
+#    第二遍的「第一个宿主」当场报「已经在跑」。带 `::` 只命中监护那一族 ⇒ 一族一趟。
 # ⚠ `--test-threads=1` 是**承重的**：`local_backend_host` 那两条要 `set_var("HOME")`，
 #    那是进程级的事实，并发跑会互相踩。
 : > "$OUT"
@@ -135,9 +130,7 @@ RC=0
 ) >>"$OUT" 2>&1 || RC=$?
 sed -n '/^test /p;/^E2E-OK/p;/^test result/p' "$OUT"
 
-pass=0; fail=0
-ok()  { printf '  PASS %s\n' "$1"; pass=$((pass+1)); }
-bad() { printf '  FAIL %s\n' "$1"; fail=$((fail+1)); }
+. "$E2E_DIR/assert.sh"
 
 echo
 # ── 抽取器自检：Rust 那一路真的跑起来了吗 ──────────────────────────────────
@@ -192,7 +185,6 @@ EMB_TESTS=(
   local_backend_host::tests::the_local_backend_host_can_be_stopped_and_started_again
 )
 EMB_MARKS=9
-skip=0
 emb_ran=0
 for t in "${EMB_TESTS[@]}"; do grep -qF "test $t " "$OUT" && emb_ran=$((emb_ran + 1)); done
 emb_ready=0
@@ -201,8 +193,7 @@ if [ -f "$REPO/src/frontend/shell/embedded-backends/cc-monitor-backend-x86_64" ]
    && [ "$(uname -s) $(uname -m)" = "Linux x86_64" ]; then emb_ready=1; fi
 if [ "$emb_ran" -eq "${#EMB_TESTS[@]}" ]; then :
 elif [ "$emb_ran" -eq 0 ] && [ "$emb_ready" -eq 0 ]; then
-  skip=$EMB_MARKS
-  printf '  SKIP %s 条断言（%s 条起真后端的判据）：本树没铺 src/frontend/shell/embedded-backends/ 两个 arch（或本机不是 Linux x86_64）—— build.rs 不置 cfg(embedded_backends)，它们不编译进来\n' "$EMB_MARKS" "${#EMB_TESTS[@]}"
+  skip "$EMB_MARKS 条断言（${#EMB_TESTS[@]} 条起真后端的判据）：本树没铺 src/frontend/shell/embedded-backends/ 两个 arch（或本机不是 Linux x86_64）—— build.rs 不置 cfg(embedded_backends)，它们不编译进来" "$EMB_MARKS"
 elif [ "$emb_ran" -eq 0 ]; then
   bad "落点齐了、本机也是 Linux x86_64，那 ${#EMB_TESTS[@]} 条却一条都没跑 —— build.rs 没重跑？（touch src/frontend/shell/build.rs）"
 else
@@ -325,5 +316,4 @@ else bad "没人在听时小中继答的不是 absent：$(relay '{"attach":true}
 kill "$UPID" 2>/dev/null
 
 echo
-echo "===== 合计 PASS=$pass FAIL=$fail SKIP=$skip ====="
-[ "$fail" -eq 0 ]
+finish
