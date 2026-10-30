@@ -222,7 +222,11 @@ fn the_tls_client_config_is_built_once_per_process() {
 /// 回环上的一个假上游：接一条连接，读完请求头，回一段写好的字节，然后**连接留着不关**，直到放行。
 fn answer_and_hold(
     reply: &'static [u8],
-) -> (Base, std::sync::mpsc::Sender<()>, std::thread::JoinHandle<()>) {
+) -> (
+    Base,
+    std::sync::mpsc::Sender<()>,
+    std::thread::JoinHandle<()>,
+) {
     let l = std::net::TcpListener::bind("127.0.0.1:0").expect("绑回环");
     let port = l.local_addr().expect("地址").port();
     let (release, held) = std::sync::mpsc::channel::<()>();
@@ -287,7 +291,10 @@ fn fetch_returns_once_a_chunked_or_empty_answer_ends_without_waiting_for_the_pee
         b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n",
     );
     assert_eq!(got.expect("该拿到回包").body, b"ok");
-    assert!(took < Duration::from_secs(1), "分块回包已收尾，却等了 {took:?}");
+    assert!(
+        took < Duration::from_secs(1),
+        "分块回包已收尾，却等了 {took:?}"
+    );
     let (got, took) = fetch_from_holder(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n");
     assert_eq!(got.expect("该拿到回包").body, b"");
     assert!(took < Duration::from_secs(1), "空体回包，却等了 {took:?}");

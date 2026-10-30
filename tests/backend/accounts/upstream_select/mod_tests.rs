@@ -44,12 +44,8 @@ fn a_request_stuck_inside_act_does_not_hold_up_a_reload_or_the_next_request() {
         upstreams.of_credentials_file(),
     );
     let accounts = std::sync::Arc::new(
-        Accounts::new(
-            empty,
-            upstreams,
-            crate::platform::fs::Own::for_tests(),
-        )
-        .reloading_from(Reload::new(path.clone(), None)),
+        Accounts::new(empty, upstreams, crate::platform::fs::Own::for_tests())
+            .reloading_from(Reload::new(path.clone(), None)),
     );
     let key = RouteKey {
         seg1: CREDENTIALS_FILE_AGENT.to_string(),

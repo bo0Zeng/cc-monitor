@@ -188,7 +188,14 @@ fn an_unreadable_file_is_reported_once_and_not_retried_on_every_request() {
     let store = LineageStore::at(Some(path.clone()));
     let said = crate::stream::run_route::tests::heard(|| {
         for n in 0..3 {
-            relay_saw(&store, &own, o(T, None), &format!("s-{n}"), "claude-code", 100);
+            relay_saw(
+                &store,
+                &own,
+                o(T, None),
+                &format!("s-{n}"),
+                "claude-code",
+                100,
+            );
         }
     });
     let lineage: Vec<&String> = said.iter().filter(|l| l.contains("[lineage]")).collect();
@@ -197,7 +204,11 @@ fn an_unreadable_file_is_reported_once_and_not_retried_on_every_request() {
         1,
         "读不懂的那一份每发都报一行（每发都拿锁读盘）：{lineage:?}"
     );
-    assert_eq!(std::fs::read(&path).unwrap(), b"{not json", "读不懂的被覆盖了");
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        b"{not json",
+        "读不懂的被覆盖了"
+    );
     // 非空对照：印记变了之后照常记下、写回（不是从此不写）。
     std::fs::remove_file(&path).unwrap();
     relay_saw(&store, &own, o(T, None), "s-fixed", "claude-code", 200);
