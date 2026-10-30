@@ -10,7 +10,7 @@ const EXEMPT: &[(&str, &str)] = &[
     (
         "f40",
         "渲染/滚动管线级：同 `graylight-suite` 的规格（要跑着的 dev app + Xvfb），\
-             且它**不打印「合计 PASS=」**、断言数随环境分支变 ⇒ 连 `assert-pass-floor` 的判法都用不上；\
+             且它断言数随环境分支变（多组 `ok`/`bad` 互斥）⇒ `assert-pass-floor` 只判得了 `PASS > 0`，钉不了条数；\
              论证写在 `tests/e2e/README.md`（U0 2026-08-01 补写那两段）",
     ),
 ];
