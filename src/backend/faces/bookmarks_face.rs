@@ -20,6 +20,7 @@ pub(crate) struct BookmarksReadCmd;
 
 impl Command for BookmarksReadCmd {
     typed::by_call!(BookmarksReadReq);
+    // 命令行那一问不带此刻的目录（不读标准输入；`at` 只有窗口与手机带）。
     const TAKES_INPUT: bool = false;
     type Err = BookmarksReadErr;
 }
@@ -27,13 +28,13 @@ impl Command for BookmarksReadCmd {
 impl crate::wire::typed::Handle for BookmarksReadCmd {
     type Needs = crate::wire::typed::needs::Own;
     fn run(
-        _req: BookmarksReadReq,
+        req: BookmarksReadReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<Bookmarks, BookmarksReadErr>> + Send + 'static
     {
         let (_cx, needs) = cx.split();
         async move {
-            bookmarks::answer_read(&needs)
+            bookmarks::answer_read(&needs, &req)
                 .map_err(|f| typed::of_fail(f, BookmarksReadErr::IoFailed))
         }
     }

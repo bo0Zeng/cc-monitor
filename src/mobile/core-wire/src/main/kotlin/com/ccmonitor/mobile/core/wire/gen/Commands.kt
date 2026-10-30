@@ -652,7 +652,6 @@ object Commands {
             Opened::class.java to Opened.ADAPTER,
             OpenedItem::class.java to OpenedItem.ADAPTER,
             OriginSessionsListedPayload::class.java to OriginSessionsListedPayload.ADAPTER,
-            Outcome::class.java to Outcome.ADAPTER,
             OwnClass::class.java to OwnClass.ADAPTER,
             OwnItem::class.java to OwnItem.ADAPTER,
             PasteKind::class.java to PasteKind.ADAPTER,

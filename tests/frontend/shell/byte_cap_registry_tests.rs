@@ -52,6 +52,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "WEEK",
+        "**时长**不是体量：一周的秒数（`accounts/quota/facts.rs`），周窗不在计时时照上次重置往后推整周用。",
+    ),
+    (
         "DEFLATE_CHUNK",
         "**步长**不是体量：常驻流压缩器一次往外攒多少字节就先往下写（`wire/listen.rs::Down`），流本身多长不受它限。",
     ),
