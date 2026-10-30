@@ -20,6 +20,7 @@
           "at": "t1",
           "blocks": [
             {
+              "bytes": 1,
               "text": "q",
               "type": "text"
             }
@@ -49,6 +50,7 @@
           "autoReply": false,
           "blocks": [
             {
+              "bytes": 1,
               "text": "a",
               "type": "text"
             }
@@ -76,6 +78,7 @@
           "at": "t1",
           "blocks": [
             {
+              "bytes": 1,
               "text": "q",
               "type": "text"
             }
@@ -105,6 +108,7 @@
           "autoReply": false,
           "blocks": [
             {
+              "bytes": 1,
               "text": "a",
               "type": "text"
             }
@@ -138,6 +142,7 @@
           "at": "t1",
           "blocks": [
             {
+              "bytes": 1,
               "text": "q",
               "type": "text"
             }
@@ -164,6 +169,7 @@
           "autoReply": false,
           "blocks": [
             {
+              "bytes": 1,
               "text": "a",
               "type": "text"
             }
@@ -188,6 +194,7 @@
           "at": "t3",
           "blocks": [
             {
+              "bytes": 2,
               "text": "go",
               "type": "text"
             }
@@ -211,6 +218,7 @@
           "autoReply": false,
           "blocks": [
             {
+              "bytes": 2,
               "text": "ok",
               "type": "text"
             }

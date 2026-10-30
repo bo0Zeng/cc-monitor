@@ -26604,13 +26604,13 @@
     "beChore.secretLike.why": {
       "kind": "body",
       "role": "说明",
-      "zh": "{path} 权限 600 却不在身份文件里 · 若是按号的凭据或状态，各账号共用会串号 · 所以不自动链给各账号",
+      "zh": "{path} 权限 600，不在身份文件里；按号的凭据或状态各账号共用会串号，不自动链给各账号",
       "args": ["path"]
     },
     "beChore.secretLike.step": {
       "kind": "body",
       "role": "片段",
-      "zh": "属于某个账号 ⇒ 挪进那个账号的目录 · 要各账号共用 ⇒ 放宽权限，下次对齐自动链上",
+      "zh": "按号的挪进该账号目录 · 共用的放宽权限，下次对齐链接",
       "args": []
     },
     "beChore.selfPaste.name": {
