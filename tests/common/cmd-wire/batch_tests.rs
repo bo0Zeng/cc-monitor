@@ -49,8 +49,14 @@ fn sessions_batch_reply_wire_shape_keeps_null_keys_and_reads_back() {
     let done = &v["results"][0];
     assert_eq!(done["machine"], "<local>");
     assert_eq!(done["outcome"], "done");
-    assert!(done["why"].is_null() && done.get("why").is_some(), "可缺的出 null：{done}");
-    assert!(done["said"].is_null() && done.get("said").is_some(), "{done}");
+    assert!(
+        done["why"].is_null() && done.get("why").is_some(),
+        "可缺的出 null：{done}"
+    );
+    assert!(
+        done["said"].is_null() && done.get("said").is_some(),
+        "{done}"
+    );
     assert_eq!(done["copyDetail"], "");
     assert_eq!(done["title"], "proj 起头");
     assert_eq!(v["results"][1]["outcome"], "failed");
@@ -93,15 +99,22 @@ fn sessions_batch_req_ops_on_the_wire() {
     };
     let v = serde_json::to_value(&start).unwrap();
     assert_eq!(v["op"], serde_json::json!({"start": {"run": "tmux"}}));
-    assert_eq!(serde_json::from_value::<SessionsBatchReq>(v).unwrap(), start);
+    assert_eq!(
+        serde_json::from_value::<SessionsBatchReq>(v).unwrap(),
+        start
+    );
 
     // 坏 sid 在解入参时就拒；多出的键拒。
-    assert!(serde_json::from_value::<SessionsBatchReq>(serde_json::json!({
-        "op": "stop", "items": [{"machine": "<local>", "sid": "坏 id"}],
-    }))
-    .is_err());
-    assert!(serde_json::from_value::<SessionsBatchReq>(serde_json::json!({
-        "op": "stop", "items": [], "extra": 1,
-    }))
-    .is_err());
+    assert!(
+        serde_json::from_value::<SessionsBatchReq>(serde_json::json!({
+            "op": "stop", "items": [{"machine": "<local>", "sid": "坏 id"}],
+        }))
+        .is_err()
+    );
+    assert!(
+        serde_json::from_value::<SessionsBatchReq>(serde_json::json!({
+            "op": "stop", "items": [], "extra": 1,
+        }))
+        .is_err()
+    );
 }
