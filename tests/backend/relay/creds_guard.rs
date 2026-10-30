@@ -229,6 +229,11 @@ mod tests {
         ),
         (
             "relay/listen.rs",
+            "[relay] cannot finish a refused connection",
+            "fd 用尽时回过 503 的那条关不上写半边（对端已走）。只带 io 错误文本",
+        ),
+        (
+            "relay/listen.rs",
             "[relay] 中转住本进程，听",
             "`Hosted` 的说法（`Display`）：进程内中转在听哪个地址 —— 宿主（`main.rs` 流模式那一处）记进它的日志",
         ),

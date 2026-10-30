@@ -19,10 +19,9 @@ fn get() -> (u64, u64) {
     (r.rlim_cur as u64, r.rlim_max as u64)
 }
 
-/// 子进程入口（不是判据 ⇒ `#[ignore]`）：压低 → 调 → 印读回来的两个数。
+/// 子进程入口：没被父判据用 [`CHILD_MARK`] 拉起时当场返回；拉起时压低 → 调 → 印读回来的两个数。
 #[cfg(unix)]
 #[test]
-#[ignore = "子进程入口：只在被父判据用 CCM_FD_LIMIT_CHILD 拉起时才跑"]
 fn child_raises_its_soft_limit() {
     if std::env::var(CHILD_MARK).is_err() {
         return;
@@ -39,12 +38,12 @@ fn child_raises_its_soft_limit() {
     println!("FD-LIMIT {soft} {hard} {hard_after} {said}");
 }
 
-/// 软上限从 [`LOW`] 抬到硬上限（硬上限是「不限」⇒ 抬到 [`OPEN_FILES_WHEN_UNLIMITED`]），硬上限不动；说的那句里有起止两个数。
+/// 软上限从 [`LOW`] 抬到硬上限（硬上限是「不限」⇒ 抬到 [`OPEN_FILES_WHEN_HARD_IS_INFINITE`]），硬上限不动；说的那句里有起止两个数。
 #[cfg(unix)]
 #[test]
 fn the_soft_open_files_limit_goes_up_to_the_hard_one() {
     let out = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
-        .args([CHILD_TEST, "--exact", "--ignored", "--nocapture", "--test-threads=1"])
+        .args([CHILD_TEST, "--exact", "--nocapture", "--test-threads=1"])
         .env(CHILD_MARK, "1")
         .stdin(std::process::Stdio::null())
         .output()
@@ -65,7 +64,7 @@ fn the_soft_open_files_limit_goes_up_to_the_hard_one() {
     let (soft, hard, hard_after) = (num(), num(), num());
     let said = it.next().unwrap_or_default().to_string();
     let want = if hard == libc::RLIM_INFINITY as u64 {
-        OPEN_FILES_WHEN_UNLIMITED
+        OPEN_FILES_WHEN_HARD_IS_INFINITE
     } else {
         hard
     };

@@ -11,49 +11,13 @@ const CHILD_TEST: &str = "relay::listen::exhaust_tests::child_relay_runs_out_of_
 const TARGET: &str = "/t/claude-code/q/v1/messages";
 const HEADERS: &str = "authorization: Bearer from-the-agent\r\nx-claude-code-session-id: s-1\r\n";
 
-/// 本进程开着的 socket 里，不在听的还有几条（读 `/proc/net/tcp` 的状态列：`0A` 是在听）。
+/// 软上限压到这么低再占满（子进程此刻开着的远少于它；占满只要几百次 `open`）。
 #[cfg(unix)]
-fn sockets_not_listening() -> usize {
-    let mut listening = std::collections::BTreeSet::new();
-    for table in ["/proc/net/tcp", "/proc/net/tcp6"] {
-        for line in std::fs::read_to_string(table)
-            .unwrap_or_default()
-            .lines()
-            .skip(1)
-        {
-            let cols: Vec<&str> = line.split_whitespace().collect();
-            if cols.get(3) == Some(&"0A") {
-                if let Some(inode) = cols.get(9) {
-                    listening.insert(format!("socket:[{inode}]"));
-                }
-            }
-        }
-    }
-    std::fs::read_dir("/proc/self/fd").map_or(0, |d| {
-        d.flatten()
-            .filter_map(|e| std::fs::read_link(e.path()).ok())
-            .map(|t| t.to_string_lossy().into_owned())
-            .filter(|t| t.starts_with("socket:") && !listening.contains(t))
-            .count()
-    })
-}
+const SOFT_FOR_HOGGING: u64 = 256;
 
-/// 热身那一发的几条连接（打压这一侧 · 中转两半 · 假上游）各在自己的线程上关：等它们都关了再占 fd，
-/// 不然占满之后才放出来的那几个会让中转「接得上」，量的就不是 fd 用尽了。
-#[cfg(unix)]
-fn wait_for_connections_to_close() {
-    let until = std::time::Instant::now() + guard_core::wall::CEILING;
-    while sockets_not_listening() > 0 {
-        assert!(std::time::Instant::now() < until, "热身那一发的连接一直没关");
-        std::thread::yield_now();
-    }
-}
-
-/// 把软上限压到「此刻开着的 ＋ 一点」，再用 `/dev/null` 占到一个都不剩。回占着的那些。
+/// 把软上限压到 [`SOFT_FOR_HOGGING`]，再用 `/dev/null` 占到一个都不剩。回占着的那些。
 #[cfg(unix)]
 fn hog_every_fd() -> Vec<std::fs::File> {
-    wait_for_connections_to_close();
-    let open = std::fs::read_dir("/proc/self/fd").map_or(64, |d| d.count()) as u64;
     let mut r = libc::rlimit {
         rlim_cur: 0,
         rlim_max: 0,
@@ -61,7 +25,7 @@ fn hog_every_fd() -> Vec<std::fs::File> {
     // SAFETY: 只读、只动这个子进程自己的软上限。
     unsafe {
         assert_eq!(libc::getrlimit(libc::RLIMIT_NOFILE, &mut r), 0);
-        r.rlim_cur = (open + 32) as libc::rlim_t;
+        r.rlim_cur = SOFT_FOR_HOGGING as libc::rlim_t;
         assert_eq!(libc::setrlimit(libc::RLIMIT_NOFILE, &r), 0);
     }
     let mut hogs = Vec::new();
@@ -69,7 +33,7 @@ fn hog_every_fd() -> Vec<std::fs::File> {
     hogs
 }
 
-/// 再占一遍：这之间别的线程放出来的（热身那一发写完的账之类）也占上。
+/// 再占一遍：这之间别的线程放出来的也占上。
 #[cfg(unix)]
 fn hog_the_rest(hogs: &mut Vec<std::fs::File>) {
     loop {
@@ -81,10 +45,9 @@ fn hog_the_rest(hogs: &mut Vec<std::fs::File>) {
     }
 }
 
-/// 子进程入口（不是判据 ⇒ `#[ignore]`）。每一步印一行 `EXHAUST <步> <回包状态行>`。
+/// 子进程入口：没被父判据用 [`CHILD_MARK`] 拉起时当场返回。每一步印一行 `EXHAUST <步> <回包状态行>`。
 #[cfg(unix)]
 #[test]
-#[ignore = "子进程入口：只在被父判据用 CCM_RELAY_EXHAUST_CHILD 拉起时才跑"]
 fn child_relay_runs_out_of_fds() {
     if std::env::var(CHILD_MARK).is_err() {
         return;
@@ -103,16 +66,21 @@ fn child_relay_runs_out_of_fds() {
     for step in ["full-1", "full-2"] {
         hog_the_rest(&mut hogs);
         hogs.pop();
-        println!("EXHAUST {step} {}", status(&shoot(relay, TARGET, HEADERS, "{}")));
+        println!(
+            "EXHAUST {step} {}",
+            status(&shoot(relay, TARGET, HEADERS, "{}"))
+        );
     }
     drop(hogs);
-    println!("EXHAUST after {}", status(&shoot(relay, TARGET, HEADERS, "{}")));
+    println!(
+        "EXHAUST after {}",
+        status(&shoot(relay, TARGET, HEADERS, "{}"))
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 子进程入口（不是判据 ⇒ `#[ignore]`）：在途数顶到上限时连打三发，放回 0 再打一发。
+/// 子进程入口：没被父判据拉起时当场返回；拉起时在途数顶到上限连打三发，放回 0 再打一发。
 #[test]
-#[ignore = "子进程入口：只在被父判据用 CCM_RELAY_EXHAUST_CHILD 拉起时才跑"]
 fn child_relay_refuses_over_the_cap() {
     if std::env::var(CHILD_MARK).is_err() {
         return;
@@ -141,10 +109,16 @@ fn child_relay_refuses_over_the_cap() {
     std::thread::spawn(move || super::serve(listener, relay, counted));
     let status = |resp: &str| resp.lines().next().unwrap_or("（没有回包）").to_string();
     for step in ["full-1", "full-2", "full-3"] {
-        println!("EXHAUST {step} {}", status(&shoot(addr, TARGET, HEADERS, "{}")));
+        println!(
+            "EXHAUST {step} {}",
+            status(&shoot(addr, TARGET, HEADERS, "{}"))
+        );
     }
     inflight.store(0, std::sync::atomic::Ordering::SeqCst);
-    println!("EXHAUST after {}", status(&shoot(addr, TARGET, HEADERS, "{}")));
+    println!(
+        "EXHAUST after {}",
+        status(&shoot(addr, TARGET, HEADERS, "{}"))
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -159,7 +133,8 @@ impl comms_outward::TapPort for Mute {
 /// 压测 400 路时那一行 15 秒印了一万多遍，全进常驻后端的日志文件）；放回之后照常 200。
 #[test]
 fn over_the_cap_every_connection_gets_503_and_the_relay_says_so_once() {
-    let (steps, stderr) = run_child("relay::listen::exhaust_tests::child_relay_refuses_over_the_cap");
+    let (steps, stderr) =
+        run_child("relay::listen::exhaust_tests::child_relay_refuses_over_the_cap");
     assert_eq!(
         steps,
         [
@@ -172,7 +147,10 @@ fn over_the_cap_every_connection_gets_503_and_the_relay_says_so_once() {
     );
     let said = |needle: &str| stderr.lines().filter(|l| l.contains(needle)).count();
     assert_eq!(
-        (said("[relay] refusing"), said("[relay] in flight back under")),
+        (
+            said("[relay] refusing"),
+            said("[relay] in flight back under")
+        ),
         (1, 1),
         "顶满这一阵只说一次、回到上限之下说一次：\n{stderr}"
     );
@@ -207,7 +185,7 @@ fn a_relay_out_of_fds_answers_503_says_so_once_and_recovers() {
 /// 起子进程跑 `test`，回它每一步的（步名 · 状态码）与整段 stderr。
 fn run_child(test: &str) -> (Vec<(String, String)>, String) {
     let child = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
-        .args([test, "--exact", "--ignored", "--nocapture", "--test-threads=1"])
+        .args([test, "--exact", "--nocapture", "--test-threads=1"])
         .env(CHILD_MARK, "1")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())

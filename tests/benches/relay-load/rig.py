@@ -1,6 +1,6 @@
-"""中转压测台架（load.sh 调它）：本机假上游 ＋ 沙箱里的真后端 ＋ 一档档并发的流式请求，量后端进程。读数不进判据。
+"""中转压测台架：本机假上游 ＋ 沙箱里的真后端 ＋ 一档档并发的流式请求，量后端进程。读数不进判据。
 
-  rig.py run <后端二进制> <工作目录> [--levels 100,200,400] [--seconds 20] [--events 20] [--gap-ms 100]
+  python3 -I tests/benches/relay-load/rig.py run <后端二进制> <工作目录> [--levels 100,200,400] [--seconds 20] [--events 20] [--gap-ms 100]
              [--nofile 1024] [--nofile-hard <n>] [--min-avail-mb 4096] [--max-load <核数×3>] [--answer sse|429-bare]
   rig.py upstream <端口文件> <事件数> <间隔毫秒> <答法>     （run 自己起它，单独一个进程）
 
@@ -9,7 +9,8 @@
 每档：起 N 个并发的「会话」，每个会话一条连接一发请求、读完整条流再开下一条，跑满 --seconds 秒。
 量：首字节延迟（发完请求 → 回包第一个字节）· 首个事件延迟（→ 第一行 `data:`）· 整条完成 · 每秒完成条数 · 回包状态各几条 ·
 后端进程（/proc/<pid>，每 100 ms 采一次）fd · 线程 · RSS 的峰值与 CPU 占用。机器余量不够（可用内存低于 --min-avail-mb、
-一分钟负载高于 --max-load）⇒ 这一档不开、后面的也不开，照实印出来。起的两个进程按 PID 收。
+一分钟负载高于 --max-load）⇒ 这一档不开、后面的也不开，照实印出来。先小档再大档、看着机器往上加。
+起的两个进程按 PID 收；沙箱家目录（<工作目录>/home 等）现建、跑完删，工作目录里只留后端的 stderr。
 """
 
 import asyncio
@@ -205,7 +206,7 @@ async def level(port, key, n, seconds):
             before = len(total)
             await one_request(port, key, i, ttfb, tfe, total, statuses)
             if len(total) == before:
-                # 没拿到一条完整的 200（503 · 连不上 · 断了）：像真客户端那样退一下再来，不原地猛打。
+                # 没拿到一条完整的 200（503 · 连不上 · 断了）：退 0.2 s 再来（拿到 503 的客户端本来就退避）。
                 await asyncio.sleep(0.2)
 
     t0 = time.monotonic()
@@ -268,8 +269,11 @@ def run(argv):
 
     work = os.path.abspath(a.work)
     home = os.path.join(work, "home")
-    for d in ("home", "tmux", "run"):
-        os.makedirs(os.path.join(work, d), exist_ok=True)
+    sandbox = [os.path.join(work, d) for d in ("home", "tmux", "run")]
+    if any(os.path.exists(d) for d in sandbox):
+        sys.exit(f"{work} 里已经有沙箱目录（上一趟没收干净？）—— 换一个工作目录")
+    for d in sandbox:
+        os.makedirs(d)
     os.chmod(os.path.join(work, "run"), 0o700)
     # 打压那一侧自己也要几百个 fd（每条会话一条连接）：抬到自己的硬上限。
     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
@@ -383,6 +387,13 @@ def run(argv):
                 print(f"  {c:>6} × {line}")
     finally:
         reap()
+        import shutil
+
+        for d in sandbox + [os.path.join(work, "upstream.port")]:
+            if os.path.isdir(d):
+                shutil.rmtree(d, ignore_errors=True)
+            elif os.path.exists(d):
+                os.remove(d)
 
 
 def main():

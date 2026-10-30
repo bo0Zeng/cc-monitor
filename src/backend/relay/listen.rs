@@ -188,10 +188,12 @@ fn dup_listener(listener: &TcpListener) -> Option<Spare> {
 
 /// fd 用尽时接上的那条：回 503、关写半边，留下当新的备用（它的号不放回 ⇒ 别的线程抢不走）。
 fn refuse_and_keep(mut s: std::net::TcpStream) -> Spare {
-    let _ = comms_outward::apply_downstream_deadline(&s, DOWNSTREAM_DEADLINE);
+    // 不装期限：刚接上的 socket 往空的发送缓冲里写 ~90 字节，阻塞不了。
     let _ = comms_outward::refuse_busy(&mut s);
     // 只关写半边（发 FIN）：读半边一关，晚到的请求字节会招来 RST，下游那头已经收着的 503 跟着被丢掉。
-    let _ = s.shutdown(std::net::Shutdown::Write);
+    if let Err(e) = s.shutdown(std::net::Shutdown::Write) {
+        eprintln!("[relay] cannot finish a refused connection: {e}");
+    }
     Spare::Answered { _held: s }
 }
 
@@ -395,8 +397,8 @@ pub(crate) fn host(
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/relay/host_tests.rs"]
-mod host_tests; // 进程内中转：`host` 的四种结局 ＋ 生产接线在真子进程里 stdout 零 tee
-#[cfg(test)]
 #[path = "../../../tests/backend/relay/exhaust_tests.rs"]
-mod exhaust_tests; // fd 用尽时接受循环回 503、只说一次、缓过来照常
+mod exhaust_tests;
+#[cfg(test)]
+#[path = "../../../tests/backend/relay/host_tests.rs"]
+mod host_tests; // 进程内中转：`host` 的四种结局 ＋ 生产接线在真子进程里 stdout 零 tee // fd 用尽时接受循环回 503、只说一次、缓过来照常
