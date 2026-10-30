@@ -157,3 +157,55 @@ fn dropping_a_session_or_clearing_says_which_places_changed() {
     assert_eq!(b.clear(), [("s2".to_string(), None)]);
     assert!(b.clear().is_empty(), "空板再清 ⇒ 没有哪处变了");
 }
+
+/// 板交出来的每张卡带写好的头一行 · 正文 · 「最近：…」那一截（两端照摆、不按块的种类取字）。
+#[test]
+fn each_card_comes_with_its_head_body_and_last_line_written() {
+    use copy_core::copy_text;
+    let mut b = Board::default();
+    let fs = card("s1", 3, "m1", &["你好"], None);
+    for x in &fs[..2] {
+        b.apply(x);
+    }
+    let c = b.cards_of("s1", None).cards.remove(0);
+    assert_eq!(c.head, copy_text("liveCard.state.streaming", &[]));
+    assert_eq!(
+        c.body,
+        [
+            copy_text("liveCard.block.thinking", &[]),
+            "你好".to_string()
+        ]
+        .join("\n"),
+        "空的文字块不出、思考块一句、文字原样"
+    );
+    assert_eq!(c.last, Some(copy_text("runs.last.say", &[])));
+    b.apply(&fs[2]);
+    let c = b.cards_of("s1", None).cards.remove(0);
+    assert_eq!(
+        c.last,
+        Some(copy_text("liveCard.block.toolUse", &[("tool", "Read")])),
+        "最后一块是工具 ⇒ 准备调用那一句"
+    );
+    assert!(c
+        .body
+        .ends_with(&copy_text("liveCard.block.toolUse", &[("tool", "Read")])));
+    b.apply(&fs[3]);
+    let c = b.cards_of("s1", None).cards.remove(0);
+    assert_eq!(c.head, copy_text("liveCard.state.awaitingRecord", &[]));
+    assert_eq!(c.last, None, "说完了 ⇒ 不再是「最近：…」那一截");
+
+    let mut b = Board::default();
+    b.apply(&f(serde_json::json!({ "sid": "s2", "card": 1, "n": 0, "op": "open", "rid": "m",
+        "phase": "streaming", "clipped": true, "blocks": [{ "kind": "tool" }, { "kind": "other" }] })));
+    let c = b.cards_of("s2", None).cards.remove(0);
+    assert_eq!(
+        c.body,
+        [
+            copy_text("liveCard.body.clipped", &[]),
+            copy_text("liveCard.block.toolUse", &[("tool", "?")])
+        ]
+        .join("\n"),
+        "截过头先说一句；工具没名字 ⇒ 「?」"
+    );
+    assert_eq!(c.last, None, "最后一块认不出 ⇒ 没有那一截");
+}

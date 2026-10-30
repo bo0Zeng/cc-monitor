@@ -16,13 +16,6 @@ import type { RunInfo } from "./generated/RunInfo";
 import type { RunLine } from "./generated/RunLine";
 import type { RunState } from "./generated/RunState";
 import type { SessionRuns } from "./generated/SessionRuns";
-import type { BlockKind } from "./generated/BlockKind";
-
-/** 一个子运行此刻在生成的那一块（活卡状态机给的，只取「最近：…」要用的两格）。 */
-export interface LiveBlockView {
-  kind: BlockKind;
-  tool?: string;
-}
 
 /** 一个会话的运行表那一份里界面要留的：表 · 三组 · chip 的字。 */
 export type RunTable = Pick<SessionRuns, "runs" | "groups" | "summary">;
@@ -90,14 +83,9 @@ export function runLabel(r: RunInfo): string {
   return r.label_text;
 }
 
-/** 「最近：…」那一截：在生成的那一块优先（流上的活卡，界面自己的态），其次记录给的最近一件事（后端写好）；都没有 ⇒ `null`。 */
-export function runLastText(r: RunInfo, live: LiveBlockView | null): string | null {
-  if (live) {
-    if (live.kind === "tool") return copyText("liveCard.block.toolUse", { tool: live.tool ?? "?" });
-    if (live.kind === "thinking") return copyText("runs.last.think");
-    if (live.kind === "text") return copyText("runs.last.say");
-  }
-  return r.last_text ?? null;
+/** 「最近：…」那一截：流上活卡那一句优先（端核心的活卡板写好），其次记录给的最近一件事（后端写好）；都没有 ⇒ `null`。 */
+export function runLastText(r: RunInfo, live: string | null): string | null {
+  return live ?? r.last_text ?? null;
 }
 
 /** 写好的一截此刻的字：会走的钟（带 `from`）按此刻填 `{dur}`，整句照抄。 */

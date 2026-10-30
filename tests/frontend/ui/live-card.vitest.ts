@@ -28,8 +28,7 @@ vi.mock("../../../src/frontend/ui/behavior", () => ({
 }));
 vi.mock("../../../src/frontend/ui/fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
 
-import { LiveCards, renderCardText } from "../../../src/frontend/ui/live-card";
-import { copyText } from "../../../src/frontend/ui/copy-table";
+import { LiveCards } from "../../../src/frontend/ui/live-card";
 import { installViewerRig, line, userLine, type RigPayload } from "../../test-support/session-viewer-rig";
 import { TabManager } from "../../../src/frontend/ui/tabs";
 import { livePainter } from "../../../src/frontend/ui/live-card-view";
@@ -41,7 +40,7 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
 
 const O = "<local>";
 
-/** 一张卡此刻的样子：思考块 ＋ 正文块（＋ 工具块）。 */
+/** 一张卡此刻的样子：思考块 ＋ 正文块（＋ 工具块）；头一行 · 正文 · 「最近」那一截是核心写好的（这里是结构占位）。 */
 function now(card: number, rid: string, text: string, phase: "streaming" | "awaiting" = "streaming", tool?: string): LiveCardNow {
   return {
     card,
@@ -49,6 +48,9 @@ function now(card: number, rid: string, text: string, phase: "streaming" | "awai
     phase,
     clipped: false,
     blocks: [{ kind: "thinking" }, { kind: "text", text }, ...(tool ? [{ kind: "tool" as const, tool }] : [])],
+    head: `核心·头·${phase}`,
+    body: `核心·正文·${text}`,
+    ...(phase === "streaming" ? { last: `核心·最近·${rid}` } : {}),
   };
 }
 
@@ -61,28 +63,20 @@ const pay = (sid: string, cards: LiveCardNow[], origin = O, run?: string): Sessi
 const board = (route: (origin: string, sid: string) => boolean = () => true): LiveCards => new LiveCards(route, () => null);
 
 describe("活卡照画（期望手写）", () => {
-  it("一张卡：正文照那一份；思考只显示一行、工具显示名字；说完之前是「生成中」，说完是「等待写入记录」", () => {
+  it("★ 一张卡：头一行 · 正文照核心写好的摆（不按块的种类取字）", () => {
     const b = board();
-    b.onCards(pay("s1", [now(7, "m1", "你好")]));
-    const [mid] = b.cardsOf("s1");
-    expect(renderCardText(mid!)).toEqual({
-      head: copyText("liveCard.state.streaming"),
-      body: [copyText("liveCard.block.thinking"), "你好"].join("\n"),
-    });
     b.onCards(pay("s1", [now(7, "m1", "你好", "awaiting", "Read")]));
-    const [end] = b.cardsOf("s1");
-    expect(renderCardText(end!)).toEqual({
-      head: copyText("liveCard.state.awaitingRecord"),
-      body: [copyText("liveCard.block.thinking"), "你好", copyText("liveCard.block.toolUse", { tool: "Read" })].join("\n"),
-    });
-    expect(end!.messageId).toBe("m1");
+    const host = document.createElement("div");
+    livePainter.cards(host, b.cardsOf("s1"));
+    expect(host.textContent).toBe("核心·头·awaiting核心·正文·你好");
+    expect(b.cardsOf("s1")[0]!.messageId).toBe("m1");
   });
 
   it("每一格换掉那一处手上那一份；空的一格 ⇒ 那一处不画", () => {
     const b = board();
     b.onCards(pay("s1", [now(7, "m1", "a")]));
-    b.onCards(pay("s1", [{ ...now(7, "m1", ""), clipped: true, blocks: [{ kind: "text", text: "尾巴" }] }]));
-    expect(b.cardsOf("s1").map((c) => [c.clipped, c.blocks[0]!.text])).toEqual([[true, "尾巴"]]);
+    b.onCards(pay("s1", [now(7, "m1", "尾巴")]));
+    expect(b.cardsOf("s1").map((c) => c.body)).toEqual(["核心·正文·尾巴"]);
     b.onCards(pay("s1", []));
     expect(b.size).toBe(0);
   });
@@ -95,7 +89,9 @@ describe("活卡照画（期望手写）", () => {
     b.onCards(pay("s1", [now(3, "r", "子")], O, "a1"));
     expect(b.cardsOf("s1")).toEqual([]);
     expect(b.cardsOf("s1", "a1")).toHaveLength(1);
-    expect(b.liveBlockOf("s1", "a1")).toEqual({ kind: "text", text: "子", tool: undefined });
+    expect(b.liveLastOf("s1", "a1")).toBe("核心·最近·r");
+    b.onCards(pay("s1", [now(3, "r", "子", "awaiting")], O, "a1"));
+    expect(b.liveLastOf("s1", "a1"), "说完了 ⇒ 没有那一截").toBeNull();
   });
 
   it("那台看不见了 ⇒ 那台的卡全撤；tab 没了 ⇒ 它的卡不留", () => {
