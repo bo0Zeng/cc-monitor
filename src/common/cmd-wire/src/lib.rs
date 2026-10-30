@@ -25,7 +25,7 @@
 //!   记录那一格的认不认得 [`record::mend_records`]）；
 //! - [`open`]：起会话那两条（`session-open` · `session-open-facts`）的入参；
 //! - [`phone`]：手机嵌的 Rust 核心与 Kotlin 之间那一层（JNI 交上来的几样事 · 几个口的回值；Kotlin 读从这里生成的类）；
-//! - [`plan`]：计划反查 `plan-files` 的回包（文件窗口按它解）；
+//! - [`plan`]：计划读面那一族（`plan-*`）的回包与计划反查 `plan-files` 的回包（界面 · 文件窗口 · 手机核心都按它解）；
 //! - [`transfer`]：传输台开单那两条（`transfer-upload` · `-download`）：窗口说给 monitor 的 · monitor 补上拨号转给本机后端的，两层入参各一个类型；
 //! - [`shapes`]：每条 typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹。
 //!   后端在 hello 里交出它自己那一份，客户端拿自己编进来的这一份比：对得上就直接按类型用，对不上就说「那台后端版本不同」。

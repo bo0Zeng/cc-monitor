@@ -31,7 +31,7 @@ pub(crate) struct Spots {
 }
 
 /// 从一份成品算出 [`Spots`]：每片的仓库照 [`super::owners::repo_dir`]（与文件窗口反查同一处），每格的文件声明相对它。
-pub(crate) fn spots(doc: &super::wire::PlanRead) -> Spots {
+pub(crate) fn spots(doc: &cmd_wire::plan::PlanRead) -> Spots {
     let mut out = Spots::default();
     let ws = doc.workspace.as_str();
     if ws.is_empty() {

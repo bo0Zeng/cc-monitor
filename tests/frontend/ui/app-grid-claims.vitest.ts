@@ -82,6 +82,7 @@ import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { nonEmpty } from "../../test-support/non-empty.ts";
+import { stripComments } from "../../test-support/strip-comments.ts";
 
 // ── 0. 人群表（`住址` 由尺 A 机械对账，`选择器` 由尺 B 机械对账）───────────────
 
@@ -197,51 +198,9 @@ function appBindings(src: string): Set<string> {
   return names;
 }
 
-/**
- * 去掉 TS 的注释再扫。
- *
- * ⚠ 这一步是**踩出来的**：`tabs.ts` 的注释里逐字引用了它自己改之前的写法
- * （`?.insertBefore(...)`），不去注释的话尺子会把那段**说明文字**当成一个插入点，
- * 报出一个根本不存在的成员。注释里写代码在这个仓里很常见，所以这条得留着。
- */
-function stripTsComments(src: string): string {
-  let out = "";
-  let quote: string | null = null;
-  for (let i = 0; i < src.length; i++) {
-    const c = src[i];
-    if (quote) {
-      out += c;
-      if (c === "\\") {
-        out += src[i + 1] ?? "";
-        i += 1;
-        continue;
-      }
-      if (c === quote) quote = null;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") {
-      quote = c;
-      out += c;
-      continue;
-    }
-    if (c === "/" && src[i + 1] === "/") {
-      const nl = src.indexOf("\n", i);
-      i = nl === -1 ? src.length : nl - 1;
-      continue;
-    }
-    if (c === "/" && src[i + 1] === "*") {
-      const end = src.indexOf("*/", i + 2);
-      i = end === -1 ? src.length : end + 1;
-      continue;
-    }
-    out += c;
-  }
-  return out;
-}
-
 /** 扫一份源码，返回它往 `#app` 里插的所有节点表达式。 */
 export function censusAppInserts(raw: string, file: string): Site[] {
-  const src = stripTsComments(raw);
+  const src = stripComments(raw, "ts");
   const out: Site[] = [];
   const push = (expr: string): void => {
     const e = expr.trim();
@@ -325,44 +284,8 @@ interface CssRule {
   readonly order: number;
 }
 
-/** 去注释（尊重字符串，`url("…/*…")` 不会被误伤）。 */
-function stripComments(css: string): string {
-  let out = "";
-  let i = 0;
-  let quote: string | null = null;
-  while (i < css.length) {
-    const c = css[i];
-    if (quote) {
-      out += c;
-      if (c === "\\") {
-        out += css[i + 1] ?? "";
-        i += 2;
-        continue;
-      }
-      if (c === quote) quote = null;
-      i += 1;
-      continue;
-    }
-    if (c === '"' || c === "'") {
-      quote = c;
-      out += c;
-      i += 1;
-      continue;
-    }
-    if (c === "/" && css[i + 1] === "*") {
-      const end = css.indexOf("*/", i + 2);
-      i = end === -1 ? css.length : end + 2;
-      out += " ";
-      continue;
-    }
-    out += c;
-    i += 1;
-  }
-  return out;
-}
-
 export function parseCss(rawCss: string): CssRule[] {
-  const css = stripComments(rawCss);
+  const css = stripComments(rawCss, "css");
   const rules: CssRule[] = [];
   const stack: string[] = [];
   const layerNames: string[] = [];

@@ -84,7 +84,7 @@ pub struct DataPathsResponse {
 
 /// 日志目录那一行的名字。设置面板认它：那一行不自带 [打开]，改成指向「日志」那一块
 /// （越界是界面层的重复，修在界面层 —— **不许**从这份枚举里删掉它，`INVARIANTS §2.1` 的唯一权威枚举点）。
-/// ⚠ 跨语言常量：TS 那侧 `settings/data-section.ts::LOGS_DIR_LABEL` 同名同值，由那边的 vitest 读本文件对拍。
+/// 界面读生成物 `generated/shell-names.ts` 里同名那一格（`shell_names_export.rs` 生成）。
 pub const LOGS_DIR_LABEL: &str = "logs/";
 
 /// 收集所有 monitor 写到磁盘的数据路径。需要 AppHandle 才能拿 LocalAppData 推断 WebView2 路径。

@@ -27,7 +27,7 @@ vi.mock("../../../src/frontend/ui/ipc/commands", () => ({ commands: new Proxy({}
 vi.mock("../../../src/comms/inward/chan", async () => (await import("../../test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents, LIVE_CARD_WINDOW, SUBSCRIBE_COALESCE_MS, subscribeTopics } from "../../../src/frontend/ui/events";
-import { CHANGED_KIND, CHANGED_WINDOW, type Changed, type Topic } from "../../../src/frontend/ui/changed-stream";
+import { CHANGED_WINDOW, type Changed, type Topic } from "../../../src/frontend/ui/changed-stream";
 import { chanStreamModule, streamFake } from "../../test-support/chan-stream-fake.ts";
 
 const tap = (n: number): unknown => ({
@@ -141,11 +141,6 @@ describe("〔DL1 · MIG-3b〕changed/<topic> 走 subscribe（不是裸事件）"
     expect(got[3]?.[2].all, "读不懂的格 ⇒ 整份重问").toBe(true);
     expect(acc.wants, "别台那条没动").toEqual([]);
   });
-
-  it("两侧同一个串：Rust `event_replay.rs::CHANGED_KIND` == TS `CHANGED_KIND`", () => {
-    const rs = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/event_replay.rs"), "utf8");
-    expect(rs).toContain(`pub const CHANGED_KIND: &str = "${CHANGED_KIND}";`);
-  });
 });
 
 // 主窗口之外那几页只调 `subscribeTopics`：同一台在合批窗口里连着来的几批（跨主题、跨批）合成一次交，各页不各合各的。
@@ -196,7 +191,3 @@ describe("subscribeTopics：一台一窗合一次", () => {
     }
   });
 });
-
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { REPO_ROOT } from "../../test-support/repo-root";

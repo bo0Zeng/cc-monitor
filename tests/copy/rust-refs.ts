@@ -5,6 +5,7 @@
  */
 import { productionRsFiles } from "../test-support/production-sources.ts";
 import type { Ref } from "./copy-support.ts";
+import { stripComments } from "../test-support/strip-comments.ts";
 
 /**
  * 一个参数的值是不是下层原话：`&e.to_string()` · `&err.to_string()` · `&format!("{e}")` 一类（错误值直接变成字串），
@@ -36,31 +37,11 @@ const RS_STATIC = "copy_static";
 const MOBILE_COPY_JNI = "src/mobile/core-rs/rust/copy.rs";
 export const RS_DEFINITIONS = new Set([RS_HOME, MOBILE_COPY_JNI]);
 
-/** 剥掉 `//` 行注释（字符串里的 `//` 不算）。块注释本仓生产段不用来写代码，按行注释剥足够。 */
-function stripRustLineComments(text: string): string {
-  return text
-    .split("\n")
-    .map((line) => {
-      let inStr = false;
-      for (let i = 0; i < line.length; i++) {
-        const c = line[i];
-        if (c === "\\" && inStr) {
-          i++;
-          continue;
-        }
-        if (c === '"') inStr = !inStr;
-        if (!inStr && c === "/" && line[i + 1] === "/") return line.slice(0, i);
-      }
-      return line;
-    })
-    .join("\n");
-}
-
 /** 读一份 `.rs` 里的全部 `copy_text` 调用点（按调用形状，见头注「不判什么」）。 */
 export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems: string[] } {
   const refs: Ref[] = [];
   const problems: string[] = [];
-  const code = stripRustLineComments(text);
+  const code = stripComments(text, "rust");
   const lineOf = (at: number): number => code.slice(0, at).split("\n").length;
   const re = new RegExp(`\\b(?:${RS_FN}|${RS_SAID})\\b`, "g");
   for (const m of code.matchAll(re)) {
@@ -152,7 +133,7 @@ export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems:
 export function rustRefsOfTree(): { files: { file: string; text: string }[]; refs: Ref[]; problems: string[] } {
   const files = [
     ...productionRsFiles("src/frontend/shell/src"),
-    ...productionRsFiles("src/frontend/filewin/src"), // 文件窗口独立成包（它的取文口调用点从前住上一棵）
+    ...productionRsFiles("src/frontend/filewin/src"), // 文件窗口独立成包
     ...productionRsFiles("src/backend"),
     ...productionRsFiles("src/common"),
     ...productionRsFiles("src/comms"), // 通信层那两个 crate（面 A · 面 B）

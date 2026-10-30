@@ -5,6 +5,7 @@
 //! 种类闭集 [`KINDS`]；每份封顶 [`MAX_VALUE_BYTES`]、台数封顶 [`MAX_ORIGINS`]（超了先丢最久没更新的那台）。
 
 use crate::platform::fs::{Own, OwnPath};
+use cmd_wire::cells::SeenAt;
 use copy_core::copy_text;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -77,31 +78,15 @@ pub(crate) struct LastSeenWriteReq {
     pub(crate) forget: Option<bool>,
 }
 
-/// 上次读数那一格：记下的时刻 ＋ 后端按看的那一台的时区写好的那一句（「采样于 12:03」）。
-/// 离线时画上次读数的那几处（账号页 · 「文件与数据」页 · 计划条）照摆，不自己算时长、不自己写时刻。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SeenAt {
-    /// 记下的时刻（毫秒）。
-    #[serde(rename = "atMs")]
-    #[cfg_attr(test, ts(rename = "atMs", type = "number"))]
-    pub(crate) at_ms: u64,
-    /// 「采样于 12:03」（`beLastSeen.said.sampled`，时刻经 [`crate::common::time::fmt_at`]）。
-    pub(crate) said: crate::common::cells::Words,
-}
-
-impl SeenAt {
-    /// `at_ms` 那一刻按这把钟写成那一句。
-    pub(crate) fn at(at_ms: u64, clock: &crate::common::time::TextClock) -> SeenAt {
-        let time = clock.text(at_ms / 1000);
-        SeenAt {
-            at_ms,
-            said: crate::common::cells::Words(copy_text(
-                "beLastSeen.said.sampled",
-                &[("time", &time.0)],
-            )),
-        }
+/// 上次读数那一格（[`SeenAt`]）：`at_ms` 那一刻按这把钟写成「采样于 12:03」（`beLastSeen.said.sampled`，时刻经 [`crate::common::time::fmt_at`]）。
+pub(crate) fn seen_at(at_ms: u64, clock: &crate::common::time::TextClock) -> SeenAt {
+    let time = clock.text(at_ms / 1000);
+    SeenAt {
+        at_ms,
+        said: crate::common::cells::Words(copy_text(
+            "beLastSeen.said.sampled",
+            &[("time", &time.0)],
+        )),
     }
 }
 
@@ -209,7 +194,7 @@ fn seen_of<T: DeserializeOwned + Serialize>(
     clock: &crate::common::time::TextClock,
 ) -> Option<Seen<T>> {
     let e = mine?.get(kind.key())?;
-    let seen = SeenAt::at(e.get("atMs")?.as_u64()?, clock);
+    let seen = seen_at(e.get("atMs")?.as_u64()?, clock);
     let this_version =
         e.get("shape").and_then(Value::as_str) == cmd_wire::shapes::shape_of(kind.cmd());
     Some(
