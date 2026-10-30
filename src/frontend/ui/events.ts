@@ -4,6 +4,7 @@ import { chan, type Item, type Sub } from "../../comms/inward/chan";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { CHANGED_WINDOW, changedItems, changedStream, type Changed, type Topic } from "./changed-stream";
 import { tryDecodeJson } from "./ipc/decode";
+import { isLive, isUnclear } from "./face-can";
 import { emitPerfSummary, noteFirstBatch } from "./startup-perf";
 // 这几个 payload 类型从生成物 re-export（源：`src/frontend/shell/src/ui_contract.rs` 的 ts-rs 派生）。
 // 仍然 `export`：不缩小已经导出的表面（要用的话从这个枢纽拿）。
@@ -824,12 +825,12 @@ export async function followSession(origin: Origin, sid: string, sink: (e: Follo
         if ("line" in f) {
           if (f.line.session_id === sid) lines.push(f.line);
         } else if ("left" in f) {
-          // 说不清（断线那一刻本机后端说的）⇒ 看不见，不是走了；可重连 ⇒ 不算走了。
-          const life = f.left.sid === sid ? f.left.face.life.is : "reconnectable";
-          if (life === "unclear") out.push({ t: "sight", seen: false });
-          else if (life !== "reconnectable") out.push({ t: "live", live: false });
+          // 说不清（断线那一刻本机后端说的）⇒ 看不见，不是走了；其余照帧里那张脸在不在跑（与打开那一刻同一读法）。
+          if (f.left.sid !== sid) continue;
+          if (isUnclear(f.left.face)) out.push({ t: "sight", seen: false });
+          else out.push({ t: "live", live: isLive(f.left.face) });
         } else if ("added" in f) {
-          if (f.added.sid === sid) out.push({ t: "live", live: true });
+          if (f.added.sid === sid) out.push({ t: "live", live: isLive(f.added.face) });
         } else if ("runs" in f) {
           if (f.runs.sid === sid) out.push({ t: "runs", payload: f.runs });
         } else if ("branch" in f) {

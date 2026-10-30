@@ -26,6 +26,7 @@ import { toast, undoToast, failToast } from "../kit/toast";
 import { confirmDialog } from "../kit/dialog";
 import { dispatcher } from "../keybindings/registry";
 import { copyText } from "../copy-table";
+import { isLive } from "../face-can";
 import { commands } from "../ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
@@ -949,7 +950,7 @@ export class HistoryView {
       ...(jumpTo?.tool !== undefined ? { scrollToTool: jumpTo.tool } : {}),
       suppressBranch: !r.can.fork,
       // 在跑的跟着长（与独立查看窗同一条订阅）；起了 / 结束了那台推「清单变了」（[`onListMoved`]），这里不另问。
-      follow: r.face.life.is === "live" ? { sid: r.sessionId, live: true } : undefined,
+      follow: isLive(r.face) ? { sid: r.sessionId, live: true } : undefined,
     });
   }
 
