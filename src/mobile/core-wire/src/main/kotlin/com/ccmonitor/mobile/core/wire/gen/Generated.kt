@@ -3241,7 +3241,7 @@ sealed interface CanTerm {
 
     @Suppress("UNCHECKED_CAST")
     data class Yes(
-        val host: Run,
+        val host: Launch,
     ) : CanTerm, Ordered {
         override val can: String get() = "yes"
         override var wireOrder: IntArray? = null
@@ -3262,9 +3262,9 @@ sealed interface CanTerm {
                 Variant("yes", CanTerm.Yes::class.java, obj(
                         listOf(
                         Field("can", { tag("yes") }, optional = false, nullable = false),
-                        Field("host", { Run.ADAPTER }, optional = false, nullable = false),
+                        Field("host", { Launch.ADAPTER }, optional = false, nullable = false),
                         ),
-                        { a -> CanTerm.Yes(a[1] as Run) },
+                        { a -> CanTerm.Yes(a[1] as Launch) },
                         { v -> arrayOf("yes", v.host) },
                     )),
                 Variant("no", CanTerm.No::class.java, obj(
@@ -10490,6 +10490,17 @@ data class LastSeenWritten(
     }
 }
 
+enum class Launch(val wire: String) {
+    MANAGED("managed"),
+    TMUX("tmux"),
+    DIRECT("direct"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<Launch> = enumOf(entries) { it.wire }
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class LaunchFail(
     val code: String,
@@ -14013,8 +14024,8 @@ data class OpenDirReq(
 @Suppress("UNCHECKED_CAST")
 data class OpenFacts(
     val recent: List<RecentDir>,
-    val hosts: List<Run>,
-    val run: Run,
+    val hosts: List<Launch>,
+    val run: Launch,
     val agents: List<AgentFacts>,
     val fork: ForkFacts?,
 ) : Ordered {
@@ -14024,12 +14035,12 @@ data class OpenFacts(
         val ADAPTER: JsonAdapter<OpenFacts> = obj(
             listOf(
             Field("recent", { arr(RecentDir.ADAPTER) }, optional = false, nullable = false),
-            Field("hosts", { arr(Run.ADAPTER) }, optional = false, nullable = false),
-            Field("run", { Run.ADAPTER }, optional = false, nullable = false),
+            Field("hosts", { arr(Launch.ADAPTER) }, optional = false, nullable = false),
+            Field("run", { Launch.ADAPTER }, optional = false, nullable = false),
             Field("agents", { arr(AgentFacts.ADAPTER) }, optional = false, nullable = false),
             Field("fork", { opt(ForkFacts.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> OpenFacts(a[0] as List<RecentDir>, a[1] as List<Run>, a[2] as Run, a[3] as List<AgentFacts>, a[4] as ForkFacts?) },
+            { a -> OpenFacts(a[0] as List<RecentDir>, a[1] as List<Launch>, a[2] as Launch, a[3] as List<AgentFacts>, a[4] as ForkFacts?) },
             { v -> arrayOf(v.recent, v.hosts, v.run, v.agents, v.fork) },
         )
     }
@@ -20508,17 +20519,6 @@ data class Rules(
     }
 }
 
-enum class Run(val wire: String) {
-    MANAGED("managed"),
-    TMUX("tmux"),
-    DIRECT("direct"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<Run> = enumOf(entries) { it.wire }
-    }
-}
-
 sealed interface RunDid {
     /** 判别格（`t`）那个词。 */
     val t: String
@@ -21837,7 +21837,7 @@ data class SessionModelReq(
 data class SessionOpenReq(
     val what: OpenWhat,
     val account: AccountAsk? = null,
-    val run: Run? = null,
+    val run: Launch? = null,
     val local: Boolean,
     val ticket: String? = null,
     val client: String? = null,
@@ -21849,12 +21849,12 @@ data class SessionOpenReq(
             listOf(
             Field("what", { OpenWhat.ADAPTER }, optional = false, nullable = false),
             Field("account", { opt(AccountAsk.ADAPTER) }, optional = true, nullable = true),
-            Field("run", { opt(Run.ADAPTER) }, optional = true, nullable = true),
+            Field("run", { opt(Launch.ADAPTER) }, optional = true, nullable = true),
             Field("local", { Bool }, optional = false, nullable = false),
             Field("ticket", { opt(Str) }, optional = true, nullable = true),
             Field("client", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> SessionOpenReq(a[0] as OpenWhat, a[1] as AccountAsk?, a[2] as Run?, a[3] as Boolean, a[4] as String?, a[5] as String?) },
+            { a -> SessionOpenReq(a[0] as OpenWhat, a[1] as AccountAsk?, a[2] as Launch?, a[3] as Boolean, a[4] as String?, a[5] as String?) },
             { v -> arrayOf(v.what, v.account, v.run, v.local, v.ticket, v.client) },
         )
     }
@@ -25540,7 +25540,7 @@ data class Whereabout(
     val standing: StandingWord,
     val names: List<String>,
     val terminals: List<TerminalAt>,
-    val run: Run,
+    val run: Launch,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -25551,9 +25551,9 @@ data class Whereabout(
             Field("standing", { StandingWord.ADAPTER }, optional = false, nullable = false),
             Field("names", { arr(Str) }, optional = false, nullable = false),
             Field("terminals", { arr(TerminalAt.ADAPTER) }, optional = false, nullable = false),
-            Field("run", { Run.ADAPTER }, optional = false, nullable = false),
+            Field("run", { Launch.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> Whereabout(a[0] as String, a[1] as StandingWord, a[2] as List<String>, a[3] as List<TerminalAt>, a[4] as Run) },
+            { a -> Whereabout(a[0] as String, a[1] as StandingWord, a[2] as List<String>, a[3] as List<TerminalAt>, a[4] as Launch) },
             { v -> arrayOf(v.sid, v.standing, v.names, v.terminals, v.run) },
         )
     }
