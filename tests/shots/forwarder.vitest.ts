@@ -84,6 +84,15 @@ describe.skipIf(process.platform === "win32")("按口转发的假 ssh", () => {
     expect(run(peers, PEER_PORT_BASE, line, ask("sessions-needs")).stdout).toContain("dir=/tmp/shots-peers/0");
   });
 
+  it("资产目录拉 · 推（`asset_sync::pull_command` · `push_command` 那一形）：交那台的后端，推的载荷经 stdin 原样过去", () => {
+    const pull = run(peers, PEER_PORT_BASE, productLine("--assets-catalog"), "");
+    expect(pull.status).toBe(0);
+    expect(pull.stdout.trim().split("\n")).toEqual(["dir=/tmp/shots-peers/0", "arg=--", "arg=--assets-catalog", "in="]);
+    const push = run(peers, PEER_PORT_BASE + 1, productLine("--assets-catalog-merge", "--stdin-line"), '{"catalog":{}}\n');
+    expect(push.status).toBe(0);
+    expect(push.stdout.trim().split("\n")).toEqual(["dir=/tmp/shots-peers/1", "arg=--", "arg=--assets-catalog-merge", "arg=--stdin-line", 'in={"catalog":{}}']);
+  });
+
   /** 常驻那几问的产品写法（`resident_client::feed::backend_command`：落点 ＋ 一个常量词，不加引号）。 */
   const word = (w: string): string => `"$HOME"/.cc-monitor/bin/ccm -- ${w}`;
   /** 接常驻那一跳的替身：同常驻那一形，先 hello、再 attach 回话（同一版），再把 stdin 原样回过去。 */

@@ -266,6 +266,9 @@ export function forwarderSh(peers, backend = BACKEND_IN_BOX, slowSftp = SLOW_SFT
     `  ${q(`${land}--resident-ensure --replace`)}) exec ${doer} ask ${PEERS}/$k/run/${DOER_SOCK} --resident-ensure --replace ;;`,
     `  'uname -s -m') [ "$fake" = install ] && exec uname -s -m ;;`,
     `  shots-sftp) [ "$fake" = install ] && exec ${slowSftp} /tmp/shots-install/$k ;;`,
+    // 资产目录拉 · 推（`assets/asset_sync.rs` 的两条一次性子命令）：交那台的后端照真的答，推那一趟的载荷经 stdin 原样过去。
+    `  ${q(`${land}'--assets-catalog'`)}) ${peer} exec ${backend} -- --assets-catalog ;;`,
+    `  ${q(`${land}'--assets-catalog-merge' '--stdin-line'`)}) ${peer} exec ${backend} -- --assets-catalog-merge --stdin-line ;;`,
     "esac",
     `pre=${q(`${land}'--resident-call' `)}`,
     'case "$SSH_ORIGINAL_COMMAND" in "$pre"*) ;; *) echo "shots: 只转连常驻的那几形：$SSH_ORIGINAL_COMMAND" >&2; exit 127 ;; esac',
