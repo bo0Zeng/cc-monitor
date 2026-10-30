@@ -24,18 +24,16 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const store = vi.hoisted(() => ({ cfg: {} as Record<string, unknown>, saved: [] as unknown[] }));
+const store = vi.hoisted(() => ({ cfg: {} as Record<string, unknown>, edits: [] as unknown[] }));
 
-// 写只交补丁（`patchConfig`）；这里按与 Rust 写口同一份金样的语义（`tests/frontend/ui/config-patch-fake.ts`）应用到 `store.cfg`。
+// 写只交补丁（`patchConfig`）；替身只记下交出去的补丁，落盘语义归 Rust 写口（金样 `config-patch.golden.json`）。
 vi.mock("../../../src/frontend/ui/config", async (orig) => {
   const actual = await orig<Record<string, unknown>>();
-  const { applyConfigEdits } = await import("./config-patch-fake");
   return {
     ...actual,
     loadConfig: vi.fn(async () => store.cfg),
-    patchConfig: vi.fn(async (edits: Parameters<typeof applyConfigEdits>[1]) => {
-      store.cfg = JSON.parse(applyConfigEdits(JSON.stringify(store.cfg), edits)) as Record<string, unknown>;
-      store.saved.push(store.cfg);
+    patchConfig: vi.fn(async (edits: unknown[]) => {
+      store.edits.push(...edits);
     }),
   };
 });
@@ -62,7 +60,7 @@ const loadMock = loadConfig as unknown as ReturnType<typeof vi.fn>;
 describe("config.json 顶层字段的读写契约（§5 2c：挑「错了会静默」的那两个）", () => {
   beforeEach(() => {
     store.cfg = {};
-    store.saved = [];
+    store.edits = [];
     loadMock.mockImplementation(async () => store.cfg);
   });
 
@@ -75,7 +73,7 @@ describe("config.json 顶层字段的读写契约（§5 2c：挑「错了会静�
       [LOCAL_ORIGIN, { agentHomes: { [DEFAULT_AGENT]: "" } }],
       [LOCAL_ORIGIN, { agentHomes: { [DEFAULT_AGENT]: "/b" } }],
     ]);
-    expect(store.saved, "数据目录还写进了 config.json").toEqual([]);
+    expect(store.edits, "数据目录还写进了 config.json").toEqual([]);
     prefs.homes = {};
     expect(await readClaudeDir()).toBeNull();
     prefs.homes = { [DEFAULT_AGENT]: "/srv/c" };
@@ -106,9 +104,9 @@ describe("config.json 顶层字段的读写契约（§5 2c：挑「错了会静�
     store.cfg = { theme: { bg: "#000" }, other: 1 };
     await setKeybindings({ "tab.next": "Ctrl+Tab" });
     expect(
-      store.cfg,
-      "写 keybindings 时把 config 顶层别的字段冲掉了 —— 主题与数据目录会一起没，" +
+      store.edits,
+      "写 keybindings 的补丁碰了 config 顶层别的字段 —— 主题与数据目录会一起没，" +
         "而且**是静默的**：用户下次启动才发现设置回到了默认。",
-    ).toEqual({ theme: { bg: "#000" }, other: 1, keybindings: { "tab.next": "Ctrl+Tab" } });
+    ).toEqual([{ op: "set", path: ["keybindings"], value: { "tab.next": "Ctrl+Tab" } }]);
   });
 });
