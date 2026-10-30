@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Host } from "../../../src/frontend/ui/generated/Host";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-// config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
+// config 写只交补丁；替身记下交出去的补丁（`fakeCfg.patches`）。机器表那三条的替身还在现算，写完的整份交 `fakeCfg.saved`。
 vi.mock("../../../src/frontend/ui/config", async (orig) => (await import("./config-patch-fake")).mockedConfigModule(orig));
 // 机器表住本机后端：`machines-read` / `-try` / `-set` 的替身把表摆在同一块假盘的 `remote.hosts` 里。
 vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => (await import("./config-patch-fake")).mockedChanCaller(orig));
@@ -42,7 +42,7 @@ const C = mk({ label: "", host: "192.0.2.3", user: "uc" }); // label 空 ⇒ key
 
 
 // 设置页增删机器也按键认元素：「固化那一写与设置页同写 `remote.hosts` 有毫秒级丢更新窗口」。
-//   假盘与 Rust 写口跑同一份金样（`config-patch-fake.vitest.ts`）⇒ 这里看到的盘上终态就是 Rust 会落的那份。
+//   这一组看的盘上终态是机器表替身现算的（`config-patch-fake.ts` 机器表那一半，还没换成后端现打的回包）。
 describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整段写 remote", () => {
   beforeEach(() => vi.resetAllMocks());
   const pinnedB = { ...B, keyPath: "/k/disk" }; // 加载之后别处刚改的

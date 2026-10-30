@@ -247,7 +247,7 @@ const usageOf = (promptTokens: number, model: string | null): UsageFact => ({
   limitText: "核心·1M",
   limitFromText: null,
 });
-import { applyConfigEdits, type Edit } from "./config-patch-fake";
+import type { Edit } from "./config-patch-fake";
 import { dispatcher } from "../../../src/frontend/ui/keybindings/registry";
 import { copyPattern } from "../../test-support/copy-pattern";
 import { factsOn } from "../../test-support/host-facts";
@@ -3587,9 +3587,12 @@ describe("步 17·D ⑤ 中间一半停 400ms 才成组（假手势打真事件�
 describe("步 17·C 顺序落盘：读回来那一半", () => {
   let tm: TabManager;
   let disk: Record<string, unknown>;
-  /** 落盘是 fire-and-forget（`先改内存再落盘`）⇒ 读盘前把那条链子跑完。 */
+  /** 交出去的补丁（替身只记、不应用：落盘语义归 Rust 写口）。 */
+  let sent: Edit[];
+  /** 落盘是 fire-and-forget（`先改内存再落盘`）⇒ 看补丁前把那条链子跑完。 */
   const flushDisk = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-  const orderOnDisk = (): unknown => (disk.tabBar as Record<string, unknown> | undefined)?.order;
+  /** 最后一次交给 `tabBar.order` 的那一份。 */
+  const orderSent = (): unknown => sent.filter((e) => e.op === "set" && e.path.join(".") === "tabBar.order").map((e) => (e as { value: unknown }).value).at(-1);
 
   /** 往「盘」上摆一份顺序（模拟上次关 app 前落下的那份）。 */
   const putOrderOnDisk = (order: string[]): void => {
@@ -3614,11 +3617,12 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     vi.clearAllMocks();
     localStorage.clear();
     disk = {};
+    sent = [];
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
       if (cmd === "patch_config") {
-        // 写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/frontend/ui/config-patch-fake.ts`）。
-        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
+        // 写只交补丁；替身只记下来。
+        sent.push(...(args as { edits: Edit[] }).edits);
         return Promise.resolve(undefined);
       }
       return Promise.resolve(undefined);
@@ -3739,7 +3743,7 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     home(tm).dragger.applyDrop("a", before("c"));
     expect(home(tm).store.orderedIds, "拖动本身没生效，这一格后面就没意义了").toEqual(["a", "c", "b"]);
     await flushDisk();
-    expect(orderOnDisk(), "拖完要落盘（`§C.3`：applyReorder 之后提交）").toEqual(["a", "c", "b"]);
+    expect(orderSent(), "拖完要落盘（`§C.3`：applyReorder 之后提交）").toEqual(["a", "c", "b"]);
 
     // 又来一条新会话。
     tm.ensureTab("d", "/proj/d", "/p/d.jsonl", LOCAL_ORIGIN, false);
@@ -4296,13 +4300,9 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     localStorage.clear();
     disk = {};
     probe = { present: true, root: "/h/.claude/projects" };
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(launchRenderShim((cmd: string, args?: unknown) => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(launchRenderShim((cmd: string) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
-      if (cmd === "patch_config") {
-        // 写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/frontend/ui/config-patch-fake.ts`）。
-        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
-        return Promise.resolve(undefined);
-      }
+      // 写只交补丁（`patch_config`）：这一组不看，照默认回空。
       if (cmd === "probe_session_record")
         return probe ? Promise.resolve(probe) : Promise.reject(new Error("没有控制通道"));
       return Promise.resolve(undefined);
@@ -5215,6 +5215,8 @@ describe("组是后端的数据：栏照账画 · 写到会话那台 · 点 × �
   let tm: TabManager;
   let be: ReturnType<typeof groupBackend>;
   let disk: Record<string, unknown>;
+  /** 交给这台 `config.json` 的补丁。 */
+  let sent: Edit[];
   const colsOf = (): TabGroup[] => home(tm).prefs.collections;
   const add = (...sids: string[]): void => {
     for (const sid of sids) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
@@ -5234,11 +5236,11 @@ describe("组是后端的数据：栏照账画 · 写到会话那台 · 点 × �
     vi.clearAllMocks();
     localStorage.clear();
     disk = {};
+    sent = [];
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
-      if (cmd === "patch_config") {
-        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
-      }
+      // 写只交补丁；替身只记下来（落盘语义归 Rust 写口）。
+      if (cmd === "patch_config") sent.push(...(args as { edits: Edit[] }).edits);
       return Promise.resolve(undefined);
     }));
     tm = makeTM();
@@ -5265,8 +5267,7 @@ describe("组是后端的数据：栏照账画 · 写到会话那台 · 点 × �
     await settleGroups();
     expect(be.note(LOCAL_ORIGIN, "d").groups).toEqual(["g1"]);
     expect(be.calls).toContainEqual([LOCAL_ORIGIN, "groups-write", { op: "rename", id: "g1", name: "改", machines: [LOCAL_ORIGIN] }]);
-    expect(Object.keys(disk).sort(), "顶层只有 tab 栏那一段").toEqual(["tabBar"]);
-    expect(Object.keys(disk.tabBar as object).sort(), "段里只有这扇窗的看法").toEqual(["collapsed", "order"]);
+    expect([...new Set(sent.map((e) => e.path.join(".")))].sort(), "只写 tab 栏那一段里这扇窗的看法（顺序 · 收着的组）").toEqual(["tabBar.collapsed", "tabBar.order"]);
     void home(tm).prefs.dissolveGroup(g);
     await settleGroups();
     expect(be.calls).toContainEqual([LOCAL_ORIGIN, "groups-write", { op: "dissolve", id: "g1", machines: [LOCAL_ORIGIN] }]);

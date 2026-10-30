@@ -262,8 +262,7 @@ mod tests {
     ///
     /// ⚠ 先前这一行写着「`scan_tree!` **按构造摘掉调用者自己**」——
     /// 那一刀**在这一处不生效**：判据一律由 `#[path]` 挂进生产树，`file!()` 给的是
-    /// 带 `..` 的折返路径，后缀比不命中
-    /// （`the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split` 守着这件事）。
+    /// 带 `..` 的折返路径，后缀比不命中。
     /// 本条的人群里没有本文件，靠的是**住址**：判据住 `tests/backend/`，不在被扫的 `src/` 下。
     fn sources() -> Vec<(String, String)> {
         let src_dir = guard_core::addr::backend_src_root();
