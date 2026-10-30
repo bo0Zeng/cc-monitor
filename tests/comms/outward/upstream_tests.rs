@@ -218,3 +218,109 @@ fn the_tls_client_config_is_built_once_per_process() {
         "每取一次都新建了一份 ClientConfig ⇒ 会话缓存跨发不起作用"
     );
 }
+
+/// 回环上的一个假上游：接一条连接，读完请求头，回一段写好的字节，然后**连接留着不关**，直到放行。
+fn answer_and_hold(
+    reply: &'static [u8],
+) -> (Base, std::sync::mpsc::Sender<()>, std::thread::JoinHandle<()>) {
+    let l = std::net::TcpListener::bind("127.0.0.1:0").expect("绑回环");
+    let port = l.local_addr().expect("地址").port();
+    let (release, held) = std::sync::mpsc::channel::<()>();
+    let t = std::thread::spawn(move || {
+        let (mut s, _) = l.accept().expect("接");
+        let mut got = Vec::new();
+        let mut b = [0u8; 1];
+        while !got.ends_with(b"\r\n\r\n") {
+            match s.read(&mut b) {
+                Ok(1) => got.push(b[0]),
+                _ => return,
+            }
+        }
+        s.write_all(reply).expect("回包");
+        let _ = held.recv_timeout(Duration::from_secs(30));
+    });
+    let base = Base::parse(&format!("http://127.0.0.1:{port}")).expect("基址");
+    (base, release, t)
+}
+
+fn open_loopback(host: &str, port: u16, _d: Duration) -> std::io::Result<TcpStream> {
+    TcpStream::connect((host, port))
+}
+
+/// 对着 [`answer_and_hold`] 发一问一答（期限 5 秒），回 (结果, 用时)。
+fn fetch_from_holder(reply: &'static [u8]) -> (std::io::Result<Fetched>, Duration) {
+    let (base, release, t) = answer_and_hold(reply);
+    let started = std::time::Instant::now();
+    let got = fetch(
+        &open_loopback,
+        &base,
+        "GET",
+        "/x",
+        &[],
+        b"",
+        Duration::from_secs(5),
+        1024,
+    );
+    let took = started.elapsed();
+    let _ = release.send(());
+    t.join().expect("假上游");
+    (got, took)
+}
+
+/// 一问一答：回包按 `Content-Length` 收全就返回，不等对端关（对端不理 `Connection: close` 时不干等到期限）。
+#[test]
+fn fetch_returns_once_the_answer_is_complete_without_waiting_for_the_peer_to_close() {
+    let (got, took) = fetch_from_holder(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok");
+    let got = got.expect("该拿到回包");
+    assert_eq!(got.status, 200);
+    assert_eq!(got.body, b"ok", "回包体不对（多收或少收）");
+    assert!(
+        took < Duration::from_secs(1),
+        "回包早已收全，却等了 {took:?}（在等对端关连接）"
+    );
+}
+
+/// 分块的回包同理：终止块到了就返回；空体（`Content-Length: 0`）一个字节都不等。
+#[test]
+fn fetch_returns_once_a_chunked_or_empty_answer_ends_without_waiting_for_the_peer_to_close() {
+    let (got, took) = fetch_from_holder(
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n",
+    );
+    assert_eq!(got.expect("该拿到回包").body, b"ok");
+    assert!(took < Duration::from_secs(1), "分块回包已收尾，却等了 {took:?}");
+    let (got, took) = fetch_from_holder(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n");
+    assert_eq!(got.expect("该拿到回包").body, b"");
+    assert!(took < Duration::from_secs(1), "空体回包，却等了 {took:?}");
+}
+
+/// 一条连上回环的空闲连接（对端一直开着、什么都不发）。
+fn idle_conn() -> (Conn, std::net::TcpStream) {
+    let l = std::net::TcpListener::bind("127.0.0.1:0").expect("绑回环");
+    let c = TcpStream::connect(l.local_addr().expect("地址")).expect("连");
+    let (peer, _) = l.accept().expect("接");
+    (Conn::Plain(c), peer)
+}
+
+/// 空闲太久的连接不再复用（对端或路上的设备可能已经悄悄丢了它，探活看不出）：取的时候比一下还回来的时刻，
+/// 过了期限就扔、由调用方新连。期限之内的照常复用（非空对照：不是一律不复用）。
+#[test]
+fn a_pooled_connection_idle_past_the_reuse_limit_is_not_handed_out() {
+    let base = Base::parse("http://127.0.0.1:1").expect("基址");
+    let lane = Lane::new(None, "t", &base);
+    let pool = Pool::reusing_within(Duration::from_millis(300));
+
+    let (fresh, _p1) = idle_conn();
+    pool.put(lane.clone(), fresh);
+    assert!(
+        pool.take(&lane, Duration::from_secs(5)).is_some(),
+        "期限之内的空闲连接该复用"
+    );
+
+    let (stale, _p2) = idle_conn();
+    pool.put(lane.clone(), stale);
+    std::thread::sleep(Duration::from_millis(600));
+    assert!(
+        pool.take(&lane, Duration::from_secs(5)).is_none(),
+        "空闲超过期限的连接被拿去复用了：对端可能已悄悄丢了它，这一发会 502 / 挂到期限"
+    );
+}

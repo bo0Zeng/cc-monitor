@@ -69,6 +69,10 @@ pub(crate) use policy::Reload;
 #[path = "../../../../tests/backend/accounts/upstream_select/upstreams_testing.rs"]
 pub(crate) mod upstreams_testing;
 
+#[cfg(test)]
+#[path = "../../../../tests/backend/accounts/upstream_select/mod_tests.rs"]
+mod tests;
+
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::relay::{
     Ask, AuthSwap, Base, Destination, Destinations, Heard, Mode, Ready, RouteKey, Startup,
@@ -320,7 +324,10 @@ pub(crate) struct Accounts {
     ///
     /// ⚠ 它**不进任何 `Debug`**：`SecretKey` 手写的 `Debug` 恒为遮蔽形，
     /// 而本结构体**整个没有** `derive(Debug)`（`KS1` 的第二道）。
-    table: std::sync::RwLock<RoutingTable>,
+    ///
+    /// 锁里只放一个 `Arc`：读者克隆出指针就放锁，拿着那一份去连上游、写请求体；重载只换指针。
+    /// ⇒ 一发卡在连上游时改凭据文件，重载那一下的写锁不排在它后面，别的请求照常答。
+    table: std::sync::RwLock<std::sync::Arc<RoutingTable>>,
     /// 每 agent 一行的默认上游。`/t/` 无行时按 `seg1` 查它；重载时给没写 `base_url` 的行取值。
     upstreams: Upstreams,
     /// 重载源。`None` = 判据自己造的表（不从文件来）⇒ 永不重载。
@@ -348,7 +355,7 @@ impl Accounts {
         own: crate::platform::fs::Own,
     ) -> Self {
         Self {
-            table: std::sync::RwLock::new(table),
+            table: std::sync::RwLock::new(std::sync::Arc::new(table)),
             upstreams,
             reload: None,
             quota: std::sync::Arc::new(Ledger::at(None)),
@@ -381,9 +388,10 @@ impl Accounts {
         self
     }
 
-    /// 那张表的读锁 —— 上游选择取它**只在这一处**；守卫活到调用方用完（`resolve` / `retry` 里活到 `act` 返回）。
-    fn table(&self) -> std::sync::RwLockReadGuard<'_, RoutingTable> {
-        self.table.read().expect("lock")
+    /// 此刻那张表 —— 上游选择取读锁**只在这一处**，只为克隆出指针，返回前就放了：
+    /// `resolve` / `retry` 拿着这一份跑到 `act` 返回（连上游 · 写请求体都在里面），锁不跟着。
+    fn table(&self) -> std::sync::Arc<RoutingTable> {
+        std::sync::Arc::clone(&self.table.read().expect("lock"))
     }
 
     /// 换号那一侧要的这一发事实（按量号那几格现问表）。
@@ -497,7 +505,7 @@ impl Accounts {
             &notes,
             &mut std::io::stderr(),
         );
-        *self.table.write().expect("lock") = table;
+        *self.table.write().expect("lock") = std::sync::Arc::new(table);
         r.remember(now);
     }
 }
@@ -555,9 +563,9 @@ impl Destinations for Accounts {
                 None => {}
             }
         }
-        // ⚠ 这个读锁活到本函数返回为止 —— 而 `resolve` 的契约禁止调用方在 `act` 里做
-        //   流式转发（见 `Destinations::resolve` 头注第 2 条硬约束）⇒ 锁不跨 `pump`。
-        // 换号那一问（可能要续令牌 ⇒ 有网络 IO）在取读锁**之前**做完，锁里只照备好的去处交给中转。
+        // 表是克隆出来的一份指针，读锁在 `table()` 里就放了 ⇒ `act` 里连上游、写请求体都不按着它
+        // （`resolve` 的契约另外禁止在 `act` 里做流式转发，见 `Destinations::resolve` 头注第 2 条硬约束）。
+        // 换号那一问（可能要续令牌 ⇒ 有网络 IO）在取表**之前**做完，取表之后只照备好的去处交给中转。
         let key = &self.recognized(mode, key, ask);
         let row = |a: &str| self.row_of(&key.seg1, a);
         let go = match &self.hop {
@@ -579,7 +587,7 @@ impl Destinations for Accounts {
     }
 
     /// 回包头 → 这一家的读法 → 额度账（记在答这一发的那个号名下：`tag` 就是那个号）。
-    /// 回包被拒（读法同 `observe`）⇒ 问轮换要下一个号；要到了就按它备好的去处重发（锁外备料、锁里交）。
+    /// 回包被拒（读法同 `observe`）⇒ 问轮换要下一个号；要到了就按它备好的去处重发（先备料，再取表交给中转）。
     fn retry(
         &self,
         mode: Mode,
@@ -695,7 +703,7 @@ fn names_of<'a>(ask: &Ask<'a>) -> Vec<&'a str> {
 /// 那张决策表**本身**，从「谁持锁、什么时候重载」里剥出来。
 ///
 /// ★ 剥出来只为一件事：判据要能**拿生产段这一份**去问，而不是自己再写一份同构的
-/// 「这一行该不该换头」。[`Accounts::resolve`] 自己也只是「重载 → 取读锁 → 调它」
+/// 「这一行该不该换头」。[`Accounts::resolve`] 自己也只是「重载 → 取表 → 调它」
 /// ⇒ **实现只有这一份**，没有第二本账。
 pub(crate) fn decide(
     table: &RoutingTable,
