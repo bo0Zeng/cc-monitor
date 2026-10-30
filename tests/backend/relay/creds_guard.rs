@@ -133,7 +133,12 @@ mod tests {
         (
             "relay/listen.rs",
             "[relay] refusing",
-            "在途连接顶满，回 503",
+            "在途连接顶满，这一阵回 503（一阵只说一次）",
+        ),
+        (
+            "relay/listen.rs",
+            "[relay] in flight back under",
+            "在途连接顶满那一阵过去了，照常接",
         ),
         (
             "relay/listen.rs",

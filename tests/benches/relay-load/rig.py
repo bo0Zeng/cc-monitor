@@ -312,7 +312,8 @@ def run(argv):
             "TMUX_TMPDIR": os.path.join(work, "tmux"),
             "XDG_RUNTIME_DIR": os.path.join(work, "run"),
             "CLAUDE_CONFIG_DIR": os.path.join(home, ".claude"),
-            "RUST_LOG": "warn",
+            # 中转那几行 `[relay]` 在 warn 档下印不出来（「在听」那一句台架要等它）。
+            "RUST_LOG": "info",
             "CCM_RELAY_PORT": str(relay_port),
             "CCM_AGENT_UPSTREAM_CLAUDE_CODE": f"http://127.0.0.1:{up_port}",
         }
@@ -339,7 +340,8 @@ def run(argv):
         t = time.monotonic() + 60
         while b"[relay] listening on" not in open(err_path, "rb").read():
             if be.poll() is not None or time.monotonic() > t:
-                sys.exit("后端的中转没起来：\n" + open(err_path, errors="replace").read()[-2000:])
+                why = f"退出码 {be.returncode}" if be.poll() is not None else "60 s 内没说在听"
+                sys.exit(f"后端的中转没起来（{why}）：\n" + open(err_path, errors="replace").read()[-2000:])
             time.sleep(0.05)
         # 沙箱里后端现铸的那一把（不是任何号的凭据）：中转门上认它。
         with open(key_path) as f:

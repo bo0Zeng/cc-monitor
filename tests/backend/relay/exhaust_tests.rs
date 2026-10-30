@@ -1,5 +1,5 @@
-//! fd 用尽时中转的接受循环：排着队的那条连接拿到 503（不是干等到下游自己超时），这一阵只说一次，缓过来照常转发。
-//! 要把整个进程的 fd 占满 ⇒ 在自己起的子进程里跑（压低软上限、用 `/dev/null` 占满），父进程看它的 stdout 与 stderr。
+//! 中转吃不下的两种时候（fd 用尽 · 在途顶满）：来的连接拿到 503（不是干等到下游自己超时），这一阵只说一次，缓过来说一次、照常转发。
+//! 要把整个进程的 fd 占满、要数中转往 stderr 说了几句 ⇒ 在自己起的子进程里跑，父进程看它的 stdout 与 stderr。
 
 use crate::accounts::upstream_select::{table::RoutingTable, Accounts};
 use crate::relay::observe_retry_tests::{
@@ -110,38 +110,88 @@ fn child_relay_runs_out_of_fds() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// 子进程入口（不是判据 ⇒ `#[ignore]`）：在途数顶到上限时连打三发，放回 0 再打一发。
+#[test]
+#[ignore = "子进程入口：只在被父判据用 CCM_RELAY_EXHAUST_CHILD 拉起时才跑"]
+fn child_relay_refuses_over_the_cap() {
+    if std::env::var(CHILD_MARK).is_err() {
+        return;
+    }
+    let (up, _got) = spawn_judging_upstream(|_| sse_200(""));
+    let d = temp_dir("over-cap");
+    let accounts = Accounts::new(
+        RoutingTable::build(std::iter::empty()),
+        upstreams_at(up),
+        crate::platform::fs::Own::issue_data_at(&d),
+    );
+    let relay = std::sync::Arc::new(comms_outward::Relay::new(
+        std::sync::Arc::new(accounts),
+        crate::relay::key::key_tests::test_keys(),
+        comms_outward::TeeSink::to_port(std::sync::Arc::new(Mute)),
+        crate::relay::open_for(std::sync::Arc::new(|_| None)),
+        super::DOWNSTREAM_DEADLINE,
+        super::UPSTREAM_DEADLINE,
+    ));
+    let listener = super::listen(0).expect("listen");
+    let addr = listener.local_addr().expect("addr");
+    let inflight = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(
+        super::INFLIGHT_CONNECTIONS,
+    ));
+    let counted = std::sync::Arc::clone(&inflight);
+    std::thread::spawn(move || super::serve(listener, relay, counted));
+    let status = |resp: &str| resp.lines().next().unwrap_or("（没有回包）").to_string();
+    for step in ["full-1", "full-2", "full-3"] {
+        println!("EXHAUST {step} {}", status(&shoot(addr, TARGET, HEADERS, "{}")));
+    }
+    inflight.store(0, std::sync::atomic::Ordering::SeqCst);
+    println!("EXHAUST after {}", status(&shoot(addr, TARGET, HEADERS, "{}")));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+struct Mute;
+impl comms_outward::TapPort for Mute {
+    fn offer(&self, _ev: comms_outward::TapEvent) -> bool {
+        false
+    }
+}
+
+/// 在途顶满的那一阵：每一条都拿到 503，`[relay]` 只说一次顶满、回到上限之下说一次（不是每拒一条印一行 ——
+/// 压测 400 路时那一行 15 秒印了一万多遍，全进常驻后端的日志文件）；放回之后照常 200。
+#[test]
+fn over_the_cap_every_connection_gets_503_and_the_relay_says_so_once() {
+    let (steps, stderr) = run_child("relay::listen::exhaust_tests::child_relay_refuses_over_the_cap");
+    assert_eq!(
+        steps,
+        [
+            ("full-1".to_string(), "503".to_string()),
+            ("full-2".to_string(), "503".to_string()),
+            ("full-3".to_string(), "503".to_string()),
+            ("after".to_string(), "200".to_string()),
+        ],
+        "stderr：\n{stderr}"
+    );
+    let said = |needle: &str| stderr.lines().filter(|l| l.contains(needle)).count();
+    assert_eq!(
+        (said("[relay] refusing"), said("[relay] in flight back under")),
+        (1, 1),
+        "顶满这一阵只说一次、回到上限之下说一次：\n{stderr}"
+    );
+}
+
 /// fd 用尽时排着的连接拿到 503；连着两条都拿到（备用的那一个接回来了）；这一阵 `[relay]` 只说一次 fd 用尽、缓过来说一次；
 /// 放出 fd 之后下一条照常 200。
 #[cfg(unix)]
 #[test]
 fn a_relay_out_of_fds_answers_503_says_so_once_and_recovers() {
-    let mut child = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
-        .args([CHILD_TEST, "--exact", "--ignored", "--nocapture", "--test-threads=1"])
-        .env(CHILD_MARK, "1")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("起子进程");
-    // 子进程里每一发都带读期限（`shoot`），挂住会变成「没有回包」那一行，不会把这里挂死。
-    let out = child.wait_with_output().expect("等子进程");
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    let steps: Vec<(&str, &str)> = stdout
-        .lines()
-        // libtest 的「test … 」前缀与第一行印在同一行上 ⇒ 按记号所在处切。
-        .filter_map(|l| l.find("EXHAUST ").map(|at| &l[at + "EXHAUST ".len()..]))
-        .filter_map(|l| l.split_once(' '))
-        .collect();
-    let code = |s: &str| s.split(' ').nth(1).unwrap_or("").to_string();
+    let (steps, stderr) = run_child(CHILD_TEST);
     assert_eq!(
-        steps.iter().map(|(k, v)| (*k, code(v))).collect::<Vec<_>>(),
+        steps,
         [
-            ("full-1", "503".to_string()),
-            ("full-2", "503".to_string()),
-            ("after", "200".to_string()),
+            ("full-1".to_string(), "503".to_string()),
+            ("full-2".to_string(), "503".to_string()),
+            ("after".to_string(), "200".to_string()),
         ],
-        "子进程的 stdout：\n{stdout}\nstderr：\n{stderr}"
+        "stderr：\n{stderr}"
     );
     let said = |needle: &str| stderr.lines().filter(|l| l.contains(needle)).count();
     assert_eq!(
@@ -152,4 +202,28 @@ fn a_relay_out_of_fds_answers_503_says_so_once_and_recovers() {
         (1, 1),
         "fd 用尽这一阵只说一次、缓过来说一次：\n{stderr}"
     );
+}
+
+/// 起子进程跑 `test`，回它每一步的（步名 · 状态码）与整段 stderr。
+fn run_child(test: &str) -> (Vec<(String, String)>, String) {
+    let child = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
+        .args([test, "--exact", "--ignored", "--nocapture", "--test-threads=1"])
+        .env(CHILD_MARK, "1")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("起子进程");
+    // 子进程里每一发都带读期限（`shoot`），挂住会变成「没有回包」那一行，不会把这里挂死。
+    let out = child.wait_with_output().expect("等子进程");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let steps = stdout
+        .lines()
+        // libtest 的「test … 」前缀与第一行印在同一行上 ⇒ 按记号所在处切。
+        .filter_map(|l| l.find("EXHAUST ").map(|at| &l[at + "EXHAUST ".len()..]))
+        .filter_map(|l| l.split_once(' '))
+        .map(|(k, v)| (k.to_string(), v.split(' ').nth(1).unwrap_or("").to_string()))
+        .collect();
+    (steps, format!("{stdout}\n{stderr}"))
 }

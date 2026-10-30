@@ -14,7 +14,9 @@ use std::sync::Arc;
 
 /// 同时在途的下游连接数上限。住宿主不住中转：上界与绑口同是策略值。
 /// 是条数不是体量（名字里刻意不带 `MAX`/`CAP`/`LIMIT`/`BYTES`：那是 `byte_cap_registry` 的钩子）。超了回 `503` 并关连接，不是静默 FIN。
-pub(super) const INFLIGHT_CONNECTIONS: usize = 256;
+/// 1024：每条在途约占 3 个 fd（下游 · 下游的 dup · 上游）、1 条线程 ⇒ 约 3000 个 fd、1000 条线程，常驻后端起来时软上限已抬到硬上限
+/// （`platform::raise_open_files_limit`）。要够 100 多个 agent 各开两三条流：顶满时每秒完成的条数就卡在「上界 ÷ 每条时长」。
+pub(super) const INFLIGHT_CONNECTIONS: usize = 1024;
 
 pub(crate) const ENV_PORT: &str = "CCM_RELAY_PORT";
 
@@ -28,7 +30,7 @@ pub(crate) const ENV_PORT: &str = "CCM_RELAY_PORT";
 // 两个值各在声明处就地放行 `clippy::disallowed_methods`（`clippy.toml`）并写理由；不许搬回中转 crate（那边生产段零期限字面量）。
 
 /// 下游那条 socket 的读写期限。`INFLIGHT_CONNECTIONS` 买「顶不满、拒绝有声」，这一条买「顶住的那些会自己散」：
-/// 没有它，256 条半开连接能把中转永久钉死，而它会礼貌地回 503，读起来像正常限流。
+/// 没有它，顶满上界的半开连接能把中转永久钉死，而它会礼貌地回 503，读起来像正常限流。
 ///
 /// 它不是定时器：`SO_RCVTIMEO` / `SO_SNDTIMEO` 只管这一次阻塞的读写最多等多久，不让任何线程自己醒来。
 /// 配套硬约束：期限到了就把这条连接结掉，任何一层都不许重试（`pump` 与 `http1` 的读循环只对 `Interrupted` `continue`）——
@@ -80,6 +82,8 @@ pub(crate) fn listen(port: u16) -> std::io::Result<TcpListener> {
 pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<AtomicUsize>) {
     let mut spare = dup_listener(&listener);
     let mut short = false;
+    // 在途顶满的这一阵（只说一次 · 回到上限之下再说一次）。
+    let mut full = false;
     let say_short = |short: &mut bool, e: &std::io::Error| {
         if !std::mem::replace(short, true) {
             eprintln!("[relay] out of file descriptors: answering 503 until one frees up ({e})");
@@ -131,10 +135,15 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
             continue;
         }
         if inflight.load(SeqCst) >= INFLIGHT_CONNECTIONS {
-            // 只印数字与上限，永不印请求头（这一支连一个字节都还没读）。
-            eprintln!("[relay] refusing: {INFLIGHT_CONNECTIONS} connections already in flight");
+            // 只印上限，永不印请求头（这一支连一个字节都还没读）。这一阵只说一次：顶满时来得最密，一条一行会把日志文件灌满。
+            if !std::mem::replace(&mut full, true) {
+                eprintln!("[relay] refusing: {INFLIGHT_CONNECTIONS} connections already in flight (answering 503 until one ends)");
+            }
             let _ = comms_outward::refuse_busy(&mut stream);
             continue;
+        }
+        if std::mem::take(&mut full) {
+            eprintln!("[relay] in flight back under {INFLIGHT_CONNECTIONS}");
         }
         // 先留一份 fd 副本：`spawn` 失败时 `stream` 已经被 move 进闭包，没有副本就只能看着它 drop 成一个没有任何 HTTP 响应的 FIN。
         // `try_clone` 是一次 `dup`，成功那条路上它立刻 drop（关 dup 出来的 fd 不关 socket）。
