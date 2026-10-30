@@ -6,6 +6,8 @@
  * - 交互：点一项即答；要附话的原地换输入框（Enter 交 · Esc 回）；数字键只在焦点在块里时生效；出现不抢焦点；
  * - 别处先答了（回包 `result: "gone"`）⇒ 块淡出、留核心那一句、重读；
  * - 只能在终端里答（`ask: null`）⇒ 核心那一句 ＋［看终端］。
+ * - 收起：头一行常驻 ＋［收起］；收着只记在这个块里（每个会话收着的是哪一条请求），换上来新的一条 ⇒ 展开；
+ * - 多题：只展开正在答的那一题，别的收成一行；题目长了折三行 ＋［展开全文］。
  *
  * 夹具只造结构；字一律取自金样或文案表。
  */
@@ -47,6 +49,7 @@ function rig(t: Tab | null, outcome: AnswerOutcome = { kind: "answered" }) {
     }),
     reread: vi.fn<(sid: string) => void>(),
     toast: vi.fn<(title: string, detail?: string) => void>(),
+    room: vi.fn<(px: number) => void>(),
   } satisfies AnswerHost;
   const b = new AnswerBlock(host);
   document.body.append(b.el);
@@ -152,7 +155,7 @@ describe("甲2 拒绝并说明（note: required）", () => {
     expect(input).not.toBeNull();
     expect(document.activeElement).toBe(input);
     expect(b.el.querySelector("[data-row=main]"), "选项那两行收起").toBeNull();
-    expect([...b.el.querySelectorAll("button")].map(label)).toEqual([ASKS.approve.choices[4].text, copyText("askBlock.note.cancel")]);
+    expect([...b.el.querySelectorAll("[data-part=scroll] button")].map(label), "头一行那颗［收起］不算").toEqual([ASKS.approve.choices[4].text, copyText("askBlock.note.cancel")]);
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await flush();
     expect(answers, "必附话的空着不交").toEqual([]);
@@ -373,5 +376,159 @@ describe("每一种需手动都有地方出（钉条删了以后）", () => {
     vi.mocked(terminalFrontAvailable).mockReturnValue(true);
     expect(rig(tab(needs(null))).b.el.querySelectorAll("button").length).toBe(0);
     vi.mocked(terminalFrontAvailable).mockReturnValue(false);
+  });
+});
+
+/** 块的高：收着 40、展开 300（jsdom 不排版，量高打桩）。 */
+function stubHeight(b: AnswerBlock): void {
+  Object.defineProperty(b.el, "offsetHeight", { configurable: true, get: () => (b.el.dataset.folded === "true" ? 40 : 300) });
+}
+const folded = (b: AnswerBlock) => b.el.dataset.folded === "true";
+const foldBtn = (b: AnswerBlock) => b.el.querySelector<HTMLButtonElement>("[data-part=head] button[data-fold]")!;
+
+describe("甲8 收起：头一行常驻", () => {
+  it("★ 挂着请求 ⇒ 头一行末尾一颗［收起］；点了块只剩头一行、消息流让出的高跟着报成收起后的高", () => {
+    const r = rig(tab(needs(ASKS.approve)));
+    stubHeight(r.b);
+    expect(label(foldBtn(r.b))).toBe(copyText("askBlock.fold.collapse"));
+    foldBtn(r.b).click();
+    expect(folded(r.b)).toBe(true);
+    expect(label(foldBtn(r.b))).toBe(copyText("askBlock.fold.expand"));
+    expect(r.b.el.querySelector("[data-part=head]")!.textContent, "头一行仍是核心那一句 ＋ 已等").toContain("核心·等批准 · Bash");
+    expect(r.b.el.querySelector("[data-part=since]")!.textContent).toBe(copyText("askBlock.head.since", { waited: waitedNow(needs(ASKS.approve), NOW)! }));
+    expect(r.host.room).toHaveBeenLastCalledWith(40);
+    foldBtn(r.b).click();
+    expect(folded(r.b)).toBe(false);
+    expect(r.host.room).toHaveBeenLastCalledWith(300);
+  });
+
+  it("★ 收着时点头一行任一处 ⇒ 展开", () => {
+    const r = rig(tab(needs(ASKS.question, { kind: "answer" })));
+    foldBtn(r.b).click();
+    r.b.el.querySelector<HTMLElement>("[data-part=head]")!.click();
+    expect(folded(r.b)).toBe(false);
+  });
+
+  it("★ 同一条请求：切走再回来仍收着；重画（已等多久变了）不展开", () => {
+    const r = rig(tab(needs(ASKS.question, { kind: "answer" })));
+    foldBtn(r.b).click();
+    r.b.render(NOW + 5_000);
+    expect(folded(r.b)).toBe(true);
+    r.set(tab(needs(ASKS.approve), "s2"));
+    r.b.render(NOW);
+    expect(folded(r.b), "别的会话的请求照常展开").toBe(false);
+    r.set(tab(needs(ASKS.question, { kind: "answer" })));
+    r.b.render(NOW);
+    expect(folded(r.b)).toBe(true);
+  });
+
+  it("★ 那个会话换上来新的一条请求 ⇒ 展开一次（之后收不收由人）", () => {
+    const r = rig(tab(needs(ASKS.question, { kind: "answer" })));
+    foldBtn(r.b).click();
+    r.set(tab(needs(ASKS.approve)));
+    r.b.render(NOW);
+    expect(folded(r.b)).toBe(false);
+    foldBtn(r.b).click();
+    r.b.render(NOW + 1_000);
+    expect(folded(r.b)).toBe(true);
+  });
+
+  it("★ 从「需手动」入口跳过来（focusFor）⇒ 收着的展开，焦点落在第一颗选项（不是［收起］）", () => {
+    const r = rig(tab(needs(ASKS.approve)));
+    foldBtn(r.b).click();
+    r.b.focusFor("s1");
+    expect(folded(r.b)).toBe(false);
+    expect(document.activeElement).toBe(btn(r.b, ASKS.approve.choices[0].text));
+  });
+
+  it("★ 收着时数字键不答（选项看不见，不许盲点）", async () => {
+    const r = rig(tab(needs(ASKS.approve)));
+    foldBtn(r.b).click();
+    foldBtn(r.b).focus();
+    foldBtn(r.b).dispatchEvent(new KeyboardEvent("keydown", { key: "1", bubbles: true }));
+    await flush();
+    expect(r.answers).toEqual([]);
+  });
+
+  it("没挂上请求（只能在终端里答那一句）没有［收起］：只一行，不用收", () => {
+    const r = rig(tab(needs(null)));
+    expect(r.b.el.querySelector("button[data-fold]")).toBeNull();
+  });
+});
+
+describe("甲9 多题：只展开正在答的那一题", () => {
+  const q = () => rig(tab(needs(ASKS.question, { kind: "answer", head: "核心·等回答" })));
+  const boxes = (b: AnswerBlock) => [...b.el.querySelectorAll<HTMLElement>("[data-question]")];
+  const open = (b: AnswerBlock) => boxes(b).map((x) => x.dataset.answering === "true");
+  const line = (x: HTMLElement) => x.querySelector<HTMLElement>("[data-part=qline]")!;
+  const sep = copyText("kit.text.sep");
+  const [Q0, Q1] = ASKS.question.questions;
+  const q1head = copyText("askBlock.question.multi", { header: Q1.header! });
+
+  it("★ 开头展开第一道；没轮到的收成一行：题头 ＋ 题目", () => {
+    const { b } = q();
+    expect(open(b)).toEqual([true, false]);
+    expect(line(boxes(b)[1]).textContent).toBe([q1head, Q1.text].join(sep));
+  });
+
+  it("★ 单选点了 ⇒ 这一题收成一行（题头 ＋ 选了什么），跳到下一道没答的；多选点了不跳", () => {
+    const { b } = q();
+    boxes(b)[0].querySelectorAll<HTMLElement>("[data-option]")[0].click();
+    expect(open(b)).toEqual([false, true]);
+    expect(line(boxes(b)[0]).textContent).toBe([Q0.header, Q0.options[0].text].join(sep));
+    boxes(b)[1].querySelectorAll<HTMLElement>("[data-option]")[1].click();
+    expect(open(b)).toEqual([false, true]);
+  });
+
+  it("★ 点收着的那一行 ⇒ 它成了正在答的那一题（可改），别的收起；选了什么照旧", () => {
+    const { b } = q();
+    boxes(b)[0].querySelectorAll<HTMLElement>("[data-option]")[0].click();
+    line(boxes(b)[0]).click();
+    expect(open(b)).toEqual([true, false]);
+    expect(boxes(b)[0].querySelectorAll("[data-option][aria-checked=true]").length).toBe(1);
+  });
+
+  it("★ 收行里自由文本也写上（多选连选项一起）", () => {
+    const { b } = q();
+    line(boxes(b)[1]).click();
+    boxes(b)[1].querySelectorAll<HTMLElement>("[data-option]")[0].click();
+    const other = boxes(b)[1].querySelector<HTMLInputElement>("input[data-other]")!;
+    other.value = "Kiwi";
+    other.dispatchEvent(new Event("input", { bubbles: true }));
+    line(boxes(b)[0]).click();
+    expect(line(boxes(b)[1]).textContent).toBe([q1head, Q1.options[0].text, "Kiwi"].join(sep));
+  });
+
+  it("★ 题目排出来超过三行 ⇒ 折着、有［展开全文］，点了全显、那颗没了；没超 ⇒ 没有那颗", () => {
+    const proto = HTMLElement.prototype;
+    const sh = Object.getOwnPropertyDescriptor(proto, "scrollHeight");
+    const ch = Object.getOwnPropertyDescriptor(proto, "clientHeight");
+    Object.defineProperty(proto, "scrollHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.dataset.part === "qtext" && this.closest("[data-question=q0]") ? 400 : 0;
+      },
+    });
+    Object.defineProperty(proto, "clientHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.dataset.part === "qtext" ? 60 : 0;
+      },
+    });
+    try {
+      const { b } = q();
+      const text = boxes(b)[0].querySelector<HTMLElement>("[data-part=qtext]")!;
+      expect(text.dataset.clamped).toBe("true");
+      const full = boxes(b)[0].querySelector<HTMLButtonElement>("button[data-part=qfull]")!;
+      expect(label(full)).toBe(copyText("askBlock.question.full"));
+      full.click();
+      expect(text.dataset.clamped).toBeUndefined();
+      expect(boxes(b)[0].querySelector("button[data-part=qfull]")).toBeNull();
+      line(boxes(b)[1]).click();
+      expect(boxes(b)[1].querySelector("button[data-part=qfull]"), "没超三行的不出那颗").toBeNull();
+    } finally {
+      if (sh) Object.defineProperty(proto, "scrollHeight", sh);
+      if (ch) Object.defineProperty(proto, "clientHeight", ch);
+    }
   });
 });
