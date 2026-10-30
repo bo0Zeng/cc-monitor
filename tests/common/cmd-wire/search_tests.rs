@@ -4,6 +4,7 @@
 //!    远端的行带那台的名字、本机的不带；没答上的那几台原样带上。
 //! 2. 真回包那一形（那台扫出来的行，金样 `history-search-row.golden.json`）照类型解得开、合完整数格原样是整数；
 //!    整数格写成 `3000.0` ⇒ 解不开（交进来的一侧得原样写整数）。
+//! 3. 结果头那一句在这里写好（搜的词 · 命中数 · 会话数；截过 ⇒ 截过那一句），两端照摆。
 
 use super::*;
 use serde_json::{json, Value};
@@ -60,6 +61,7 @@ fn merging_sorts_newest_first_stably_and_sums_what_each_machine_said() {
         said: "那台没在跑".into(),
     }];
     let m = merge(
+        "q",
         vec![
             (
                 local.clone(),
@@ -111,7 +113,7 @@ fn merging_sorts_newest_first_stably_and_sums_what_each_machine_said() {
         m.sessions[0].row.at_text, "at-rem-new",
         "那台写好的字原样带过来"
     );
-    let empty = merge(vec![], vec![]);
+    let empty = merge("q", vec![], vec![]);
     assert_eq!(
         (empty.total_hits, empty.session_count, empty.truncated),
         (0, 0, false)
@@ -121,6 +123,7 @@ fn merging_sorts_newest_first_stably_and_sums_what_each_machine_said() {
 #[test]
 fn integer_cells_of_a_real_reply_pass_through_as_integers() {
     let m = merge(
+        "q",
         vec![(
             Machine::named("pi"),
             reply(&[("s1", 1_767_225_600_123, 3, false)], 0, &[]),
@@ -145,4 +148,40 @@ fn integer_cells_of_a_real_reply_pass_through_as_integers() {
         .replace("\"updatedAt\":3000", "\"updatedAt\":3000.0");
     assert!(floaty.contains("3000.0"));
     assert!(serde_json::from_str::<HistorySearchReply>(&floaty).is_err());
+}
+
+#[test]
+fn the_head_line_is_written_here_once_with_the_word_and_the_counts() {
+    let plain = merge(
+        "报表",
+        vec![(
+            Machine::local(),
+            reply(&[("s1", 10, 1, false), ("s2", 9, 0, false)], 0, &[]),
+        )],
+        vec![],
+    );
+    let args = |m: &Merged| (m.total_hits.to_string(), m.session_count.to_string());
+    let (n, m) = args(&plain);
+    assert_eq!(
+        plain.summary,
+        copy_core::copy_text(
+            "history.search.summary",
+            &[("q", "报表"), ("n", &n), ("m", &m)]
+        )
+    );
+    let cut = merge(
+        "报表",
+        vec![(Machine::local(), reply(&[("s1", 10, 2, true)], 0, &[]))],
+        vec![],
+    );
+    let (n, m) = args(&cut);
+    assert!(cut.truncated);
+    assert_eq!(
+        cut.summary,
+        copy_core::copy_text(
+            "history.search.summaryTruncated",
+            &[("q", "报表"), ("n", &n), ("m", &m)]
+        ),
+        "截过 ⇒ 截过那一句"
+    );
 }

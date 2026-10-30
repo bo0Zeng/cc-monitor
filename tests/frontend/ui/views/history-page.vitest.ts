@@ -259,6 +259,7 @@ beforeEach(() => {
         unreadable: got.reduce((n, [, r]) => n + r.unreadable, 0),
         skipped: [...new Set(got.flatMap(([, r]) => r.skipped))],
         down: per.filter((p) => p[1] === "down").map(([o]) => ({ origin: o, said: `${o} 问不到` })),
+        summary: `核心·「${String((args.search as { query: string }).query)}」的结果头`,
       });
     }
     // 这一条恢复默认放在哪（那台答的；勾画在它上面）。
@@ -468,6 +469,7 @@ describe("内容搜索", () => {
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await flush();
     const body = document.body.textContent ?? "";
+    expect(body, "结果头照核心写好的那一句摆").toContain("核心·「词」的结果头");
     expect(body).toContain("改过的名");
     expect(body).toContain(copyText("history.row.hidden"));
     expect(document.querySelector('[role="option"] svg[data-icon="star"]'), "星标那一枚没画").not.toBeNull();

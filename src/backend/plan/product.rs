@@ -1,4 +1,4 @@
-//! 一份 `pb dump`（形状 6，pb 0.5）⇒ 界面直接排版的成品（[`super::wire`] 里的类型）。纯函数：不读盘、不起进程。
+//! 一份 `pb dump`（形状 6，pb 0.5）⇒ 界面直接排版的成品（契约 [`cmd_wire::plan`] 里的类型）。纯函数：不读盘、不起进程。
 //!
 //! 换个方向排、换个名字，再把界面要的数与先后算好（界面照画、不数不排）：
 //! - 每格「指着它的」边：把全片的边倒过来排；每份文件还挂在哪几格：把全片的文件声明倒过来查；
@@ -13,15 +13,15 @@
 //! 整份 dump 里不带 agent 看到的那一段（点到一格再 `pb dump --node` 取，见帧面 `plan-cell-view`）。
 //! 只读 pb 认得的那几个键，造的是线上类型：pb 那边多出来的键不带过来。
 
-use super::wire::{
+use super::{Live, WhoPort, Whose};
+use crate::wire::SessionFaceExt as _;
+use cmd_wire::plan::{
     PlanArchived, PlanBlock, PlanCell, PlanCheck, PlanDomain, PlanEdgeWords, PlanEdges, PlanFile,
-    PlanFileState, PlanKids, PlanKind, PlanListSlice, PlanListWorkspace, PlanPendingSet, PlanPhase,
-    PlanProgress, PlanRead, PlanReadError, PlanRed, PlanRef, PlanRefs, PlanSessionBlock,
+    PlanFileState, PlanKids, PlanKind, PlanListSlice, PlanListWorkspace, PlanLook, PlanPendingSet,
+    PlanPhase, PlanProgress, PlanRead, PlanReadError, PlanRed, PlanRef, PlanRefs, PlanSessionBlock,
     PlanSetsTo, PlanSlice, PlanState, PlanStatusCode, PlanTakeover, PlanUnbuilt, PlanUndecidable,
     PlanUnowned, PlanWho, PlanWhyCode, PlanWhyShort,
 };
-use super::{Live, WhoPort, Whose};
-use crate::wire::SessionFaceExt as _;
 use copy_core::copy_text;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -101,6 +101,26 @@ fn why_short(code: &PlanWhyCode) -> PlanWhyShort {
         ),
     };
     PlanWhyShort { text, wait }
+}
+
+/// 一格画哪一种：待定没人定另画一种；否则照状态码；类不许记收的值 ⇒ 不算活。
+fn look_of(status: Option<PlanStatusCode>, undecided: bool) -> PlanLook {
+    match (undecided, status) {
+        (true, _) => PlanLook::Undecided,
+        (false, Some(PlanStatusCode::Done)) => PlanLook::Done,
+        (false, Some(PlanStatusCode::Open)) => PlanLook::Open,
+        (false, None) => PlanLook::None,
+    }
+}
+
+/// 行右端那一句：状态那一行与原因短词，有几段连几段（文案表的分隔）；都没有 ⇒ `None`。
+fn end_of(state_line: Option<&str>, why: Option<&PlanWhyShort>) -> Option<String> {
+    let parts: Vec<&str> = [state_line, why.map(|w| w.text.as_str())]
+        .into_iter()
+        .flatten()
+        .filter(|p| !p.is_empty())
+        .collect();
+    (!parts.is_empty()).then(|| parts.join(&copy_text("kit.text.sep", &[])))
 }
 
 fn s(v: &Value, k: &str) -> Option<String> {
@@ -579,16 +599,32 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
             let refs = c.get("refs");
             let title = c.get("title").and_then(Value::as_str);
             let body = c.get("body").and_then(Value::as_str);
+            let line = state_line(&state);
+            let short = why_code.as_ref().map(why_short);
+            let pending = out
+                .pending_sets
+                .iter()
+                .any(|p| p.target.as_deref() == Some(id.as_str()));
+            let quiet = (line.is_none() && !pending).then(|| {
+                if !children.is_empty() && status_code.is_some() {
+                    copy_text("plan.state.inner", &[])
+                } else {
+                    copy_text("plan.state.none", &[])
+                }
+            });
             PlanCell {
                 edges: edges_of(|k| strs(c.get("edges").and_then(|e| e.get(k)))),
                 pointed_by: edges_of(|k| back.and_then(|b| b.get(k)).cloned().unwrap_or_default()),
                 files,
-                state_line: state_line(&state),
+                end: end_of(line.as_deref(), short.as_ref()),
+                quiet,
+                state_line: line,
                 state,
                 evidenced_by: strs(c.get("evidenced_by")),
+                look: look_of(status_code, undecided),
                 status_code,
                 undecided,
-                why_short: why_code.as_ref().map(why_short),
+                why_short: short,
                 why_code,
                 sets,
                 block: s(c, "children_in"),
@@ -749,7 +785,7 @@ pub(crate) fn with_time_texts(v: &mut PlanRead, now_ms: i64, tz: &crate::Tz) {
         |ms: i64| crate::common::time::fmt_at(ms.div_euclid(1000), now_ms.div_euclid(1000), tz);
     let ms = |n: u64| i64::try_from(n).unwrap_or(i64::MAX);
     v.read_at_text = Some(text(ms(v.read_at)));
-    v.seen = Some(crate::footprint::last_seen::SeenAt::at(
+    v.seen = Some(crate::footprint::last_seen::seen_at(
         v.read_at,
         &crate::common::time::TextClock::new(
             u64::try_from(now_ms.div_euclid(1000)).unwrap_or(0),

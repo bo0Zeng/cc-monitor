@@ -44,17 +44,13 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         runs: BTreeMap::new(),
         error: None,
     };
-    let text = |s: &str| Block::Text { text: s.into() };
+    let text = |s: &str| Block::text(s.into());
     let call = |id: &str| Block::ToolUse {
         id: id.into(),
         name: "X".into(),
         input: serde_json::json!({}),
     };
-    let result = || Block::ToolResult {
-        of: "c".into(),
-        content: vec![],
-        is_error: false,
-    };
+    let result = || Block::tool_result("c".into(), vec![], false);
     let image = || Block::Image {
         media_type: "image/png".into(),
         bytes: 1,

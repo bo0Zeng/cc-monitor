@@ -22,28 +22,28 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
-import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
+import com.ccmonitor.mobile.core.wire.gen.StripTone
 import com.ccmonitor.mobile.link.HostBackends
 import org.koin.compose.koinInject
 
 /** 机器条的判据按它找。 */
 const val MACHINE_BAR_TAG = "machine-bar"
 
-/** 条的样子：正在连 · 装（灰，装那一段带进度）· 断着（灰虚线框）· 那台旧了 · 较新（琥珀）· 做不了 · 装没装上（红）。 */
-enum class BarTone { BUSY, OFFLINE, WARN, FAULT }
-
-/** 机器条那一条要画的：那一句 · 样子 · 核心点名的那一颗修法（没有 ⇒ `null`）· 进度条 · 复制详情。 */
+/**
+ * 机器条那一条要画的：那一句 · 样子 · 核心点名的那一颗修法（没有 ⇒ `null`）· 进度条 · 复制详情。
+ * 样子就是核心给的那一格语气（`deploy::machine::strip`）：忙（灰，装那一段带进度）· 离线（灰虚线框）· 警示（琥珀）· 故障（红）。
+ */
 data class BarLook(
     val text: String,
-    val tone: BarTone,
+    val tone: StripTone,
     val fix: MachineFixButton? = null,
     val progress: Boolean = false,
     val detail: String = "",
 )
 
 /**
- * 核心交的那一行（那台的状态成品，`deploy::machine` 定，桌面同一份）⇒ 机器条；通着且无事 ⇒ `null`（不画、不占位）；核心还没交 ⇒ `null`（不猜）。
- * 字 · 按钮字都是成品的；手机只挑格，不按 SSH 层的通没通自己推，也不自己去抖。[deploying] 装没装上那一趟的结局（失败那一句盖过成品那一句）。
+ * 核心交的那一行（那台的状态成品，`deploy::machine` 定，桌面同一份）⇒ 机器条：成品不带条上那一格（`strip`）⇒ `null`（不画、不占位）；核心还没交 ⇒ `null`（不猜）。
+ * 字 · 按钮字 · 语气都是成品的；手机只照抄，不按态挑样子、不按 SSH 层的通没通自己推，也不自己去抖。[deploying] 装没装上那一趟的结局（失败那一句盖过成品那一句）。
  */
 fun barOf(
     line: LinkLine?,
@@ -51,16 +51,9 @@ fun barOf(
 ): BarLook? {
     val m = line?.machine ?: return null
     val fix = m.fixes.firstOrNull()
-    val detail = m.detail.orEmpty()
-    (deploying as? Deploying.Failed)?.let { return BarLook(it.said.text, BarTone.FAULT, fix, detail = it.said.detail) }
-    return when (m.state) {
-        MachineStateKind.CONNECTING -> BarLook(m.said, BarTone.BUSY)
-        MachineStateKind.INSTALLING, MachineStateKind.UPDATING -> BarLook(m.said, BarTone.BUSY, progress = true)
-        MachineStateKind.UP, MachineStateKind.UNKNOWN -> null
-        MachineStateKind.NEEDS_UPDATE, MachineStateKind.NEWER -> BarLook(m.said, BarTone.WARN, fix, detail = detail)
-        MachineStateKind.DOWN -> BarLook(m.said, if (fix?.fix == MachineFix.INSTALL) BarTone.FAULT else BarTone.OFFLINE, fix, detail = detail)
-        MachineStateKind.HOST_KEY_CHANGED, MachineStateKind.UNSUPPORTED, MachineStateKind.DISABLED -> BarLook(m.said, BarTone.FAULT, fix, detail = detail)
-    }?.takeIf { it.text.isNotEmpty() }
+    (deploying as? Deploying.Failed)?.let { return BarLook(it.said.text, StripTone.FAULT, fix, detail = it.said.detail) }
+    val strip = m.strip ?: return null
+    return BarLook(m.said, strip.tone, fix, strip.progress, m.detail.orEmpty())
 }
 
 /**
@@ -98,18 +91,18 @@ fun MachineBarView(
 ) {
     val m = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).testTag(MACHINE_BAR_TAG)
     val line = MaterialTheme.colorScheme.outline
-    Column(if (look.tone == BarTone.OFFLINE) m.dashedFrame(line).padding(horizontal = 14.dp, vertical = 8.dp) else m) {
+    Column(if (look.tone == StripTone.OFFLINE) m.dashedFrame(line).padding(horizontal = 14.dp, vertical = 8.dp) else m) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 when (look.tone) {
-                    BarTone.FAULT -> ErrorLine(look.text)
-                    BarTone.WARN -> Text(look.text, style = MaterialTheme.typography.bodyMedium, color = LocalAppTokens.current.warn)
-                    BarTone.BUSY, BarTone.OFFLINE -> Text(look.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    StripTone.FAULT -> ErrorLine(look.text)
+                    StripTone.WARN -> Text(look.text, style = MaterialTheme.typography.bodyMedium, color = LocalAppTokens.current.warn)
+                    StripTone.BUSY, StripTone.OFFLINE -> Text(look.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             val fix = look.fix
             // 正在装 ⇒ 按钮灰着不消失。
-            if (fix != null && onFix != null) SecondaryButton(onClick = onFix, enabled = look.tone != BarTone.BUSY) { Text(fix.label) }
+            if (fix != null && onFix != null) SecondaryButton(onClick = onFix, enabled = look.tone != StripTone.BUSY) { Text(fix.label) }
             CopyDetailButton(look.text, look.detail)
         }
         if (look.progress) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))

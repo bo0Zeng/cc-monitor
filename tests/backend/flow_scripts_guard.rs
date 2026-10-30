@@ -8,6 +8,7 @@
 //! - 挑格那一半拿仓里这张表对仓里这份 `gate.sh` 出得了计划（表过期它退 2，这条就红）；
 //! - `heavy.sh` 在没有 `systemd-run --user` 的机器上（CI · Windows · 没有 user session）退成直接跑，并说一声；起的命令看不见外面会话的变量
 //!   （表 `session-vars`；枚举环境的只有 `session-scrub.sh`，e2e 的 `sandbox-env.sh` 照它摘）；
+//! - e2e 各套共用的计数 `tests/e2e/assert.sh`：两过一败 ⇒ 收尾那一行照实、退非零，全过退 0；
 //! - 「这棵树自己改了哪些」的起点（`base.sh`）先认分支上游；没提交的生成物（`generated-drift.sh`）逐份印出；
 //!   金样判据落下的现打那份由 `bless-golden.sh` 逐份拷回原处；
 //! - `quick-check.sh` 重的那四段（后端 · 壳 · vitest · 手机）照挑格那张表挑：前三段恒跑，手机那一段改到它读的东西才跑，没改到说一声；
@@ -491,6 +492,61 @@ mod tests {
             );
         }
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// ★ e2e 各套共用的 `assert.sh`：计数只有它一份，收尾只印一行 `===== 合计 PASS=n FAIL=m SKIP=k =====`
+    /// （`assert-pass-floor.sh` 与门禁 `run_e2e` 抓的就是这一行），有败退非零，全过退 0；`ck` 是「描述 期望 实得」。
+    #[test]
+    fn the_shared_e2e_assert_counts_once_and_ends_with_one_tally_line() {
+        let run = |body: &str| {
+            Command::new("bash")
+                .args(["-c", &format!(". tests/e2e/assert.sh\n{body}\nfinish")])
+                .current_dir(root())
+                .output()
+                .unwrap()
+        };
+        let tally = |said: &str| -> Vec<String> {
+            said.lines()
+                .filter(|l| l.contains("合计"))
+                .map(str::to_string)
+                .collect()
+        };
+
+        let out = run("ok 一\nck 二 x x\nck 三 要的 来的\nskip 四 2");
+        let said = String::from_utf8_lossy(&out.stdout);
+        assert_eq!(
+            tally(&said),
+            ["===== 合计 PASS=2 FAIL=1 SKIP=2 ====="],
+            "两过一败两跳过，收尾行不对：\n{said}{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(
+            said.lines().last(),
+            Some("===== 合计 PASS=2 FAIL=1 SKIP=2 ====="),
+            "收尾行不在最后：\n{said}"
+        );
+        assert!(!out.status.success(), "有一条败，finish 却退 0：\n{said}");
+        assert!(
+            said.contains("FAIL 三") && said.contains("期望 [要的] · 实得 [来的]"),
+            "ck 败的那条没照「期望 实得」印出两边：\n{said}"
+        );
+
+        let out = run("ok 一\nbad 二 细节\nok 三");
+        let said = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            said.contains("FAIL 二") && said.contains("细节"),
+            "bad 的细节没印：\n{said}"
+        );
+        assert!(!out.status.success(), "bad 了一条，finish 却退 0：\n{said}");
+
+        let out = run("ok 一\nck 二 y y");
+        let said = String::from_utf8_lossy(&out.stdout);
+        assert_eq!(
+            tally(&said),
+            ["===== 合计 PASS=2 FAIL=0 SKIP=0 ====="],
+            "全过的收尾行不对：\n{said}"
+        );
+        assert!(out.status.success(), "全过，finish 却退非零：\n{said}");
     }
 
     /// 枚举环境变量的（`compgen -e` · 读 `env` 的输出）全仓只有 `session-scrub.sh`：别处要摘照它的 `--list`，不另抄一份前缀。

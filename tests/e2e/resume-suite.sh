@@ -47,9 +47,7 @@ REMOTE_DIR="${CCM_E2E_REMOTE_DIR:-/tmp/e2e-resume-remote}"
 ACCT_A="${CCM_E2E_ACCT_A:-/tmp/e2e-resume-acctA}"
 ACCT_B="${CCM_E2E_ACCT_B:-/tmp/e2e-resume-acctB}"
 
-pass=0; fail=0
-ok()  { echo "  PASS $1"; pass=$((pass+1)); }
-bad() { echo "  FAIL $1"; fail=$((fail+1)); }
+. "$REPO/tests/e2e/assert.sh"
 SESSIONS=()  # 建过的 tmux 会话名,cleanup 兜底
 
 cleanup() {
@@ -261,7 +259,4 @@ N8_2="$(grep -cE "sid=$SID8 .*argv=--resume" "$ACCT_A/argv.log" 2>/dev/null || t
 echo "   resume 行数 起始=$N8_1 再触发后=$N8_2  orphan=$(orphan_count "$S8")"
 [ "$N8_1" = 1 ] && [ "$N8_2" = 1 ] && [ "$(orphan_count "$S8")" = 0 ] && ok "B6c live 时再 resume 被守卫短路(行数仍=1)、0 孤儿" || bad "B6c 守卫误动(行数 $N8_1→$N8_2 或有孤儿)"
 
-echo "== 结果:$pass 过 / $fail 败 =="
-# G-C：与另外 8 套逐字一致的收尾格式，好让 `tests/e2e/assert-pass-floor.sh` 用同一条正则抓。
-echo "===== 合计 PASS=$pass FAIL=$fail ====="
-[ "$fail" -eq 0 ]
+finish

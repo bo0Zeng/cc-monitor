@@ -53,7 +53,7 @@ import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
  * 长按拿起（`RotDrag.kt` 那张表，同桌面）：跟手 · 别的行让位 · 悬停第一格写「松手换到」· 放下交一次 move、回包才定（拒 ⇒ 滑回；
  * 没回包 ⇒ 留在放下处标「没确认」）。拿着 · 等回包时那台推来的新顺序先不换上（手上正在改的不被盖掉）。离线不拿起。
  * 点一行从底下拉出那个号：只看 ＋［立即用］·［编辑策略］。都只这个会话、不改策略。
- * 会话不轮换（`strategy` 空）⇒ 同一张表，没有拖动那句 · 勾 ·［编辑策略］；底单里照样［立即用］。
+ * 能不能拖（拖动那句跟着）· 能不能「先不用」· 能不能编辑策略只照那台的 `can`（不轮换的会话三样都不能）；底单里照样［立即用］。
  */
 
 /** 状态机此刻的样子（重组照它摆）：每行让开多少 · 拿着第几行 · 悬停第一格时拿的是谁。 */
@@ -129,6 +129,14 @@ private class Hand(
     }
 }
 
+/** 顺序小标题右边那一句：手动排过 ⇒ 那一句；那台说能拖 ⇒ 拖动那句；都不 ⇒ 不出。 */
+internal fun orderNote(view: RotationViewReply): String? =
+    when {
+        view.manual -> copyText("rot.order.manual")
+        view.can?.reorder == true -> copyText("rot.h.orderHint")
+        else -> null
+    }
+
 /** 顺序这一块：小标题（手动排过 ·［照策略排］）＋ 被拦下那一句 ＋ 一号一行 ＋ 点开的那个号（底下拉出）。 */
 @Composable
 internal fun Order(
@@ -138,13 +146,7 @@ internal fun Order(
     offline: Boolean,
     onEditStrategy: (String?) -> Unit,
 ) {
-    val note =
-        when {
-            view.manual -> copyText("rot.order.manual")
-            view.strategy != null -> copyText("rot.h.orderHint")
-            else -> null
-        }
-    RotHeader(copyText("rot.h.order"), note) {
+    RotHeader(copyText("rot.h.order"), orderNote(view)) {
         if (view.manual) SecondaryButton(onClick = board::clearTemp) { Text(copyText("rot.order.reset")) }
     }
     ui.refused?.let { (_, t) -> Text(t, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
@@ -253,8 +255,8 @@ private fun OrderRow(
                 f?.let { Meters(it) }
             }
             StateCell(line.state, unconfirmed)
-            // 「先不用」只对自动换号有意义：不轮换 ⇒ 不出勾。
-            if (view.strategy != null) {
+            // 「先不用」那一勾：那台说这个会话能先不用一个号才出（`can.off`）。
+            if (view.can?.off == true) {
                 Checkbox(
                     checked = line.group != RotGroup.OFF,
                     onCheckedChange = { on -> board.off(account, !on) },
@@ -298,7 +300,7 @@ private fun OrderSheet(
             row?.let { Text(it.line, style = MaterialTheme.typography.bodySmall, color = muted) }
             row?.rules?.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = muted) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-                if (view.strategy != null) {
+                if (view.can?.edit == true) {
                     SecondaryButton(onClick = {
                         board.open(null)
                         onEditStrategy(account)

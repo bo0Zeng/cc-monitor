@@ -57,7 +57,8 @@ fn a_sub_agent_request_carries_its_id_and_blocks_the_terminal() {
     assert!(a.blocks_terminal, "后台子 agent：hook 先跑完框才出");
 }
 
-/// 命令里说得出用意的那一段：准备段（赋值 · cd · export · 注释）跳过，引号里的分号 · `2>&1` 不切，段首环境赋值跳过；全是准备段 ⇒ 原文。
+/// 命令里说得出用意的那一段：准备段（赋值 · cd · export · 注释）跳过，引号 · `$(…)` · 反引号里的分号与 `2>&1` 不切，段首环境赋值跳过；
+/// 全是准备段 ⇒ 原文。
 #[test]
 fn the_command_shows_from_the_part_that_says_what_it_does() {
     use crate::agents::beat::command_intent as at;
@@ -76,6 +77,15 @@ fn the_command_shows_from_the_part_that_says_what_it_does() {
         ),
         ("F=1; cd /w", "F=1; cd /w"),
         ("  touch a  ", "touch a"),
+        // `$(…)` 与反引号当引号：里面的 `;` · `|` · `&` 不切，带着它们的赋值词整个跳过。
+        ("X=$(cd /tmp; pwd) rm -rf \"$X\"", "rm -rf \"$X\""),
+        ("X=`cd /tmp; pwd` rm -rf \"$X\"", "rm -rf \"$X\""),
+        (
+            "D=$(dirname \"$(pwd; true)\" | tr a b); ls \"$D\"",
+            "ls \"$D\"",
+        ),
+        ("N=$((1 + 2)); echo $N", "echo $N"),
+        ("echo \"$(date; id)\" && ls", "echo \"$(date; id)\" && ls"),
     ] {
         assert_eq!(at(cmd), want, "{cmd}");
     }

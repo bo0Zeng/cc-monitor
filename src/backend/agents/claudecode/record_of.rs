@@ -342,7 +342,7 @@ fn attachment_at(cwd: Option<&str>, id: &str, name: &str) -> cmd_wire::attachmen
 /// `message.content`（字符串 · 块数组）⇒ 通用内容块；认不出的块跳过。
 pub(crate) fn blocks_of(content: &Value, images: &mut Images) -> Vec<Block> {
     match content {
-        Value::String(s) => vec![Block::Text { text: s.clone() }],
+        Value::String(s) => vec![Block::text(s.clone())],
         Value::Array(a) => a.iter().filter_map(|b| block_of(b, images)).collect(),
         _ => Vec::new(),
     }
@@ -357,7 +357,7 @@ pub(crate) struct Images {
 fn block_of(b: &Value, images: &mut Images) -> Option<Block> {
     let s = |k: &str| b.get(k).and_then(Value::as_str).map(str::to_string);
     Some(match b.get("type").and_then(Value::as_str)? {
-        "text" => Block::Text { text: s("text")? },
+        "text" => Block::text(s("text")?),
         // 近来的思考块几乎都只有签名、`thinking` 是空的：空 / 只剩空白 ⇒ `""`（线上约定：空 ＝ 没写进记录，两端照它画、不各自判）。
         "thinking" => Block::Thinking {
             text: s("thinking")
@@ -369,14 +369,13 @@ fn block_of(b: &Value, images: &mut Images) -> Option<Block> {
             name: s("name")?,
             input: b.get("input").cloned().unwrap_or(Value::Null),
         },
-        "tool_result" => Block::ToolResult {
-            of: s("tool_use_id")?,
-            content: b
-                .get("content")
+        "tool_result" => Block::tool_result(
+            s("tool_use_id")?,
+            b.get("content")
                 .map(|c| blocks_of(c, images))
                 .unwrap_or_default(),
-            is_error: b.get("is_error").and_then(Value::as_bool) == Some(true),
-        },
+            b.get("is_error").and_then(Value::as_bool) == Some(true),
+        ),
         "image" => image_of(b.get("source")?, images)?,
         _ => return None,
     })

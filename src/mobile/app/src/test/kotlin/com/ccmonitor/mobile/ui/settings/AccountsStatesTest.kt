@@ -1,10 +1,10 @@
 package com.ccmonitor.mobile.ui.settings
 
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.StripTone
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.ui.chat.linkDown
 import com.ccmonitor.mobile.ui.chat.linkUp
-import com.ccmonitor.mobile.ui.common.BarTone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -36,7 +36,7 @@ class AccountsStatesTest {
         val bad = accountsLook(MachineSettingsUi(accountsFailed = Problem("s-bad", "d-bad")), linkUp())
         val bar = bad.failed!!
         assertEquals("s-bad", bar.text)
-        assertEquals(BarTone.FAULT, bar.tone)
+        assertEquals(StripTone.FAULT, bar.tone)
         assertEquals(copyText("front.act.retry"), bar.fix?.label)
         assertEquals("d-bad", bar.detail)
         assertFalse(bad.loading)

@@ -526,11 +526,11 @@ pub fn record_of(v: &Value, start: u64) -> Option<Record> {
         // output 真机恒数组 ⇒ 拍平（守丢文本坑）。
         K::ToolResult => said(
             UserText::of(Speaker::ToolResult),
-            vec![Block::ToolResult {
-                of: call_id(v).unwrap_or("").to_string(),
-                content: text_blocks(flatten_text(payload.get("output").unwrap_or(&Value::Null))),
-                is_error: false,
-            }],
+            vec![Block::tool_result(
+                call_id(v).unwrap_or("").to_string(),
+                text_blocks(flatten_text(payload.get("output").unwrap_or(&Value::Null))),
+                false,
+            )],
         ),
         // 认不出的顶层类型 · 认不出的 response_item 子型：每行一条 `unread`（相邻同类由出记录页那一遍并）。
         K::Other => {
@@ -561,7 +561,7 @@ fn text_blocks(text: String) -> Vec<Block> {
     if text.is_empty() {
         Vec::new()
     } else {
-        vec![Block::Text { text }]
+        vec![Block::text(text)]
     }
 }
 

@@ -244,7 +244,7 @@ class ChatSessionMidTest {
         "sid" to sid,
         "cards" to
             texts.mapIndexed { i, t ->
-                mapOf("card" to i.toDouble(), "rid" to "r$i", "phase" to "streaming", "clipped" to false, "blocks" to listOf(mapOf("kind" to "text", "text" to t)))
+                mapOf("card" to i.toDouble(), "rid" to "r$i", "phase" to "streaming", "clipped" to false, "blocks" to listOf(mapOf("kind" to "text", "text" to t)), "head" to "核心·头", "body" to t)
             },
     ) + (run?.let { mapOf("run" to it) } ?: emptyMap())
 

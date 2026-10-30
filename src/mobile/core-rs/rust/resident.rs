@@ -866,11 +866,19 @@ mod tests {
         let text = r#"{"kind":"live_card","sid":"s1","run":"a1","card":3,"n":1,"op":"text","i":0,"s":"好"}"#;
         folds.frame(open);
         let got = folds.frame(text);
+        let card = serde_json::json!({"card": 3, "rid": "m", "phase": "streaming", "clipped": false,
+            "blocks": [{"kind": "text", "text": "你好"}],
+            "head": copy_core::copy_text("liveCard.state.streaming", &[]), "body": "你好",
+            "last": copy_core::copy_text("runs.last.say", &[])});
+        let got: Vec<(&str, serde_json::Value)> = got
+            .into_iter()
+            .map(|(k, b)| (k, serde_json::from_str(&b).expect("交的是 JSON")))
+            .collect();
         assert_eq!(
             got,
             vec![(
                 "live",
-                r#"{"sid":"s1","run":"a1","cards":[{"card":3,"rid":"m","phase":"streaming","clipped":false,"blocks":[{"kind":"text","text":"你好"}]}]}"#.to_string()
+                serde_json::json!({"sid": "s1", "run": "a1", "cards": [card]})
             )]
         );
         let stray = r#"{"kind":"live_card","sid":"s1","card":9,"n":4,"op":"awaiting"}"#;

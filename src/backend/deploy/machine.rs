@@ -4,8 +4,8 @@
 
 use cmd_wire::attach::Relation;
 use cmd_wire::machine::{
-    Blocker, EmptyFace, FixButton, MachineFix, MachineState, MachineStateKind as K, Round,
-    RoundProblem, Stage, Why,
+    Blocker, EmptyFace, FixButton, MachineFix, MachineState, MachineStateKind as K,
+    MachineStripLine, Round, RoundProblem, Stage, StripTone, Why,
 };
 use copy_core::copy_text;
 use copy_core::detail::{Detail, Label, Target};
@@ -241,7 +241,23 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
         detail: problem.map(|p| detail(machine, p, &code(why, blocker))),
         // 到这台怎么连过去的不是这一轮的事实：宿主照机器表与它自己的连接池填（`ssh_dial::pool::Way::put`）。
         route: None,
+        strip: strip(state, blocker, installs),
     }
+}
+
+/// 机器条上那一行：进不进条 · 语气 · 带不带进度。连着的 · 比这一版新的（也连着）· 用户停用的 · 还不知道的不进条；
+/// 缺后端又得这一端去装 ⇒ 故障（修法是［安装］）。
+pub fn strip(state: K, blocker: Option<Blocker>, installs: bool) -> Option<MachineStripLine> {
+    let (tone, progress) = match state {
+        K::Up | K::Newer | K::Disabled | K::Unknown => return None,
+        K::Connecting => (StripTone::Busy, false),
+        K::Installing | K::Updating => (StripTone::Busy, true),
+        K::NeedsUpdate => (StripTone::Warn, false),
+        K::Down if blocker == Some(Blocker::NoBackend) && !installs => (StripTone::Fault, false),
+        K::Down => (StripTone::Offline, false),
+        K::HostKeyChanged | K::Unsupported => (StripTone::Fault, false),
+    };
+    Some(MachineStripLine { tone, progress })
 }
 
 /// 复制详情里「码」那一项（线上那个名字）：断在那台本身 ⇒ 是哪一处；别的 ⇒ 原因码。

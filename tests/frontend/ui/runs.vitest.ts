@@ -49,7 +49,7 @@ const SID = "s1";
 
 /** 壳交来的一格：那一处（这个会话 · 某个运行）此刻只有这一张卡。 */
 function opened(no: number, rid: string, blocks: LiveCardNow["blocks"], run?: string): SessionLiveCardsPayload {
-  return { origin: O, live: { sid: SID, ...(run ? { run } : {}), cards: [{ card: no, rid, phase: "streaming", clipped: false, blocks }] } };
+  return { origin: O, live: { sid: SID, ...(run ? { run } : {}), cards: [{ card: no, rid, phase: "streaming", clipped: false, blocks, head: "核心·头", body: `核心·正文·${rid}`, last: `核心·最近·${rid}` }] } };
 }
 
 /** 后端写好的状态字（夹具用记号，界面照抄才对得上：不许按 `state` 自己挑）。 */
@@ -106,9 +106,9 @@ describe("运行表 × 活卡", () => {
 
     const main = live.cardsOf(SID);
     expect(main.map((c) => c.messageId)).toEqual(["r0"]);
-    expect(main.flatMap((c) => c.blocks.map((b) => b.tool ?? b.kind))).toEqual(["text"]);
+    expect(main.map((c) => c.body)).toEqual(["核心·正文·r0"]);
     expect(live.cardsOf(SID, "w1").map((c) => c.messageId)).toEqual(["r1"]);
-    expect(live.liveBlockOf(SID, "w2")?.kind).toBe("thinking");
+    expect(live.liveLastOf(SID, "w2"), "「最近」那一截照核心写好的").toBe("核心·最近·r2");
 
     const finished = live.onRuns(SID, table([run("w1", "stopped", "扫目录", "t1"), run("w2", "running", "写报告", "t2")]));
     expect(finished.map((r) => r.run)).toEqual(["w1"]);

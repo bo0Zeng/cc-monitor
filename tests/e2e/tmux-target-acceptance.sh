@@ -55,11 +55,7 @@ landed() { wall_until "pane $1 | grep -q CCMPROBE"; }
 sessions() { T ls -F '#{session_name}' 2>/dev/null | sort | tr '\n' ' '; }
 pane() { T capture-pane -p -t "=$1:" 2>/dev/null; }
 
-PASS=0; FAIL=0
-ck() { # ck <描述> <期望> <实得>
-  if [ "$2" = "$3" ]; then printf 'PASS | %-56s | %s\n' "$1" "$3"; PASS=$((PASS+1));
-  else printf 'FAIL | %-56s | 期望=%s 实得=%s\n' "$1" "$2" "$3"; FAIL=$((FAIL+1)); fi
-}
+. "$HERE/assert.sh"
 
 echo "===== 场景 A：只有兄弟会话 cc-p1-2（cc-p1 不存在）====="
 # 键入：那台后端按名字精确键进那个会话（`launch send-into` 的 `=名:` 形），这里照做。
@@ -135,16 +131,15 @@ else
   # 而它的判词是「断言数缩水」—— **真因是环境缺 `script(1)`，报的是套件被削弱**。
   # 早把这两处并列记成「静默 SKIP 分支」（第三处
   # 当年那份派生 e2e 的 `:22` 已在 Phase G 修掉）。诊断说真话，别让人去翻这套件最近改了什么。
-  FAIL=$((FAIL + 2))
   # 诊断一律**单引号**：双引号里的反引号会被 bash 当命令替换执行（这里就踩过一次，
   # `=名:` 被当成命令跑，输出里冒出「未找到命令」）。
-  echo 'FAIL | pty attach 正反例无法运行：**找不到 script(1)** —— 环境缺工具，不是套件退化'
-  echo '     | 这 2 条守的是 INVARIANTS §31a：`=名:` 精确目标在**有 tty** 时确实能接上真名、'
-  echo '     | 且不存在的名会如实 can'"'"'t find。无 pty 就只剩「无 tty 必失败」那种伪证据。'
-  echo '     | 装 util-linux 的 script(1) 再跑。'
+  bad 'pty 下 attach 真名：无法运行，**找不到 script(1)** —— 环境缺工具，不是套件退化'
+  bad 'pty 下 attach 不存在名：无法运行，**找不到 script(1)** —— 环境缺工具，不是套件退化'
+  echo '       这 2 条守的是 INVARIANTS §31a：`=名:` 精确目标在**有 tty** 时确实能接上真名、'
+  echo '       且不存在的名会如实 can'"'"'t find。无 pty 就只剩「无 tty 必失败」那种伪证据。'
+  echo '       装 util-linux 的 script(1) 再跑。'
 fi
 
 reset; rm -rf "$SHIM"
 echo
-echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
-[ "$FAIL" -eq 0 ]
+finish

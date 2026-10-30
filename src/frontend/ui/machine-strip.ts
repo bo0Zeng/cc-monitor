@@ -1,14 +1,14 @@
 /**
  * **机器条**（A2-17-6-1）：钉在标签页栏底、往上长（标签页不跳位），一行一台、只列没连上的那几台。
- * 行上照那台的状态成品摆（`MachineState`：后端 `deploy::machine` 判的态 · 名字旁那个词 · 那一句 · 修法），界面不按 SSH 层自推、不去抖；
+ * 行上照那台的状态成品摆（`MachineState`：后端 `deploy::machine` 判的进不进条与语气 `strip` · 名字旁那个词 · 那一句 · 修法），界面不按 SSH 层自推、不去抖；
  * 连上那一下那一行当场摘掉，不弹提示。多于 3 台收成一行「未连上（n）」，点开逐台列。窄栏只剩点（悬停是那一句）。
  */
 import type { MachineState } from "./generated/MachineState";
-import type { MachineStateKind } from "./generated/MachineStateKind";
+import type { MachineStripLine } from "./generated/MachineStripLine";
+import type { StripTone } from "./generated/StripTone";
 import type { MachineFix } from "./generated/MachineFix";
 import type { MachineFixButton } from "./generated/MachineFixButton";
 import type { LocalBackend } from "./generated/LocalBackend";
-import { machineDot } from "./machine-dot";
 import { statusDot, type MachineDotState } from "./kit/status-dot";
 import { localBackendFace } from "./local-backend-face";
 import { machineName } from "./ipc/chan-caller";
@@ -21,8 +21,13 @@ export interface StripHost {
   fix(origin: string, fix: MachineFix): void;
 }
 
-/** 不进条的几态：连着的 · 比这一版新的（也连着）· 用户停用的（不是没连上，是不连）· 还不知道的。 */
-const NOT_LISTED: ReadonlySet<MachineStateKind> = new Set(["up", "newer", "disabled", "unknown"]);
+/** 条上那一行的语气画哪种点（进不进条 · 语气由后端 `deploy::machine::strip` 定，这里只挑样子）。 */
+const DOT: Record<StripTone, MachineDotState> = {
+  busy: "unknown",
+  offline: "failed",
+  warn: "needs-you",
+  fault: "failed",
+};
 
 /** 多于这几台收成一行。 */
 const MAX_ROWS = 3;
@@ -36,11 +41,11 @@ interface Line {
   fixes: readonly MachineFixButton[];
 }
 
-const lineOf = (m: MachineState): Line => ({ name: m.name, dot: machineDot(m.state), word: m.word, said: m.said, fixes: m.fixes });
+const lineOf = (m: MachineState, strip: MachineStripLine): Line => ({ name: m.name, dot: DOT[strip.tone], word: m.word, said: m.said, fixes: m.fixes });
 
 export class MachineStrip {
   readonly el: HTMLDivElement;
-  private readonly machines = new Map<string, MachineState>();
+  private readonly machines = new Map<string, Line>();
   /** 本机后端没起来那一格（壳的 `local-backend`）；连着 ⇒ `null`，本机那一台照本机后端的成品。 */
   private localDown: Line | null = null;
   /** 收起那一行点开过。 */
@@ -51,10 +56,10 @@ export class MachineStrip {
     this.el.className = "machine-strip";
   }
 
-  /** 一台的成品来了：没连上 ⇒ 记下、画；连上了 ⇒ 摘掉。 */
+  /** 一台的成品来了：带条上那一行 ⇒ 记下、画；不带 ⇒ 摘掉。 */
   set(origin: string, m: MachineState): void {
-    if (NOT_LISTED.has(m.state)) this.machines.delete(origin);
-    else this.machines.set(origin, m);
+    if (m.strip) this.machines.set(origin, lineOf(m, m.strip));
+    else this.machines.delete(origin);
     this.paint();
   }
 
@@ -71,7 +76,7 @@ export class MachineStrip {
   private paint(): void {
     const list: [string, Line][] = [
       ...(this.localDown ? [[LOCAL_ORIGIN, this.localDown] as [string, Line]] : []),
-      ...[...this.machines].filter(([o]) => !(this.localDown && isLocalOrigin(o))).map(([o, m]): [string, Line] => [o, lineOf(m)]),
+      ...[...this.machines].filter(([o]) => !(this.localDown && isLocalOrigin(o))),
     ];
     if (list.length > MAX_ROWS && !this.open) {
       const more = document.createElement("button");
