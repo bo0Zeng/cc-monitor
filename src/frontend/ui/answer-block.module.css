@@ -11,8 +11,9 @@
     flex-direction: column;
     gap: var(--space-5);
     width: min(var(--stream-max-width), calc(100% - 80px));
-    max-height: calc(100% - 2 * var(--space-5));
-    overflow-y: auto;
+    /* 最高约会话区（输入框以上）的四成，至少放得下头一行 ＋ 一行选项；再高也不出输入框以上那一截。超了底下那一截块内滚。 */
+    max-height: min(calc(100% - var(--composer-room, 0px) - 2 * var(--space-5)), max(calc((100% - var(--composer-room, 0px)) * 0.4), 160px));
+    overflow: hidden;
     padding: var(--space-5) var(--space-6);
     border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
     border-radius: var(--radius-l);
@@ -53,10 +54,34 @@
 
   .abHead {
     display: flex;
+    flex: none;
     gap: var(--space-4);
     align-items: baseline;
     font-weight: var(--font-weight-strong);
     line-height: var(--line-height-ui);
+  }
+
+  /* 头一行底下那一截：全文 · 题 · 选项；块封顶了就在这里滚，头一行不跟着滚走。 */
+  .abScroll {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--space-5);
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /* 收着：只剩头一行，点它任一处展开。 */
+  .abBlock[data-folded="true"] {
+    padding-block: var(--space-3);
+  }
+
+  .abBlock[data-folded="true"] > .abHead {
+    cursor: pointer;
+  }
+
+  .abBlock[data-folded="true"] > .abScroll {
+    display: none;
   }
 
   .abTitle {
@@ -152,6 +177,35 @@
 
   .abQText {
     font-weight: var(--font-weight-strong);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* 题目长：先折三行，排出来超了才有［展开全部］。 */
+  .abQText[data-clamped="true"] {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+
+  .abQFull {
+    align-self: flex-start;
+  }
+
+  .abQLine {
+    composes: one-line from global;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+    color: var(--text-2);
+    cursor: pointer;
+  }
+
+  /* 不是正在答的那一题：只剩一行（题头 ＋ 选了什么）；正在答的那一题不画这一行。 */
+  .abQuestion[data-answering="false"] > :not(.abQLine),
+  .abQuestion[data-answering="true"] > .abQLine {
+    display: none;
   }
 
   .abOption {

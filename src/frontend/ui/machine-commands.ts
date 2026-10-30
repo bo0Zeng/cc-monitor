@@ -19,7 +19,7 @@ import { NoTerminalWindow, openLoginShell, sayNoTerminal } from "./terminal-open
 import { openNewSession } from "./new-session";
 import { openOnMachine } from "./file-window";
 import { openSettingsWindow } from "./open-settings";
-import { addMachineOf, machineOf } from "./settings-dest";
+import { addMachineOf, machinePageOf } from "./settings-dest";
 import { toast } from "./kit/toast";
 import { detailOf, saidOf } from "./kit/detail";
 
@@ -126,7 +126,7 @@ export const machineActions: MachineActions = {
   newSession: (origin) => void openNewSession({ origin }),
   // 落在那台的主目录（`dir` 空）。
   files: (origin) => void openOnMachine(origin, { dir: "" }).catch(sayFailed),
-  status: (origin) => void openSettingsWindow(undefined, machineOf(origin)),
+  status: (origin) => void openSettingsWindow(undefined, machinePageOf(origin)),
   addMachine: (origin) => void openSettingsWindow(undefined, addMachineOf(origin)),
 };
 

@@ -188,7 +188,7 @@ pub(crate) fn render(
 /// **不拒 shell 元字符**，交给唯一那一处 quote，`INVARIANTS §47` ②）；非 UTF-8 的目录走字节形（`posix_quote_bytes`，`$'…'`）。
 /// ⚠ **不用双引号**：[`check_command`] 会拒掉含双引号的命令（PowerShell 原生传参畸变那道防线）。
 pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
-    let Some(bytes) = crate::common::path_wire::from_json(cwd) else {
+    let Ok(cmd_wire::files::WirePath(bytes)) = serde_json::from_value(cwd.clone()) else {
         return Err((
             "bad_args",
             crate::common::contract::malformed("`cwd` must be a string or {\"b16\": \"<hex>\"}"),

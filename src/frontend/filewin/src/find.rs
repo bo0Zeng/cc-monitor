@@ -55,9 +55,6 @@ pub const CMD_BROWSE: &str = <cmd_wire::files::BrowseReq as cmd_wire::Call>::NAM
 /// 这一侧用到的**全部**线上名。**唯一住址** —— 判据按它对拍协议文档。
 pub const COMMANDS: &[&str] = &[CMD_FIND, CMD_INDEX_STATUS, CMD_INDEX_REBUILD, CMD_BROWSE];
 
-/// 非 UTF-8 路径在线上的那个键名（`src/doc/IPC-PROTOCOL.md §10` 逐字）。
-pub const HEX_KEY: &str = "b16";
-
 /// 一趟查询 ／ 一趟状态 ／ 一趟浏览名单的往返上限。
 ///
 /// 同 `backend_kill::CALL_TIMEOUT_SECS` 的理由：后端那条零定时器铁律管的是
