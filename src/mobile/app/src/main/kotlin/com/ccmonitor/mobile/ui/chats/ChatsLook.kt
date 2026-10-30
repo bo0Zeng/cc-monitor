@@ -41,6 +41,9 @@ fun KeepChatsLook(
         val back = kept
         board.filters { back }
         typed?.let(board::query)
-        board.ui.map { it.filters }.dropWhile { it != back }.collect { kept = it }
+        board.ui
+            .map { it.filters }
+            .dropWhile { it != back }
+            .collect { kept = it }
     }
 }

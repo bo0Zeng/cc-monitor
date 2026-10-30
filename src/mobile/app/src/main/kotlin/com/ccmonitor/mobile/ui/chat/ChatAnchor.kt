@@ -57,8 +57,9 @@ internal fun KeepChatScroll(
     var back by remember { mutableStateOf(anchor.takeIf { !following.value }) }
     LaunchedEffect(listState) {
         snapshotFlow {
-            val top = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.key as? String
-            top?.takeIf { !following.value }?.let { ChatAnchor(it, listState.firstVisibleItemScrollOffset) }
+            val first = listState.layoutInfo.visibleItemsInfo.firstOrNull()
+            val top = first?.key as? String
+            if (top == null || following.value) null else ChatAnchor(top, listState.firstVisibleItemScrollOffset)
         }.collect { if (back == null) anchor = it }
     }
     LaunchedEffect(back, keys) {
