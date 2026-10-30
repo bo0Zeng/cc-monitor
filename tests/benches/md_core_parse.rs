@@ -150,9 +150,37 @@ fn smoke() {
     println!("md_core_parse smoke：30 段都解析出了块");
 }
 
+/// 高亮各语言的快慢：每种一块约 8 KB 的代码单独解析（里面只有这一块），热过一遍再量 5 趟取中位。
+fn per_lang() {
+    for (lang, body) in CODES {
+        let mut code = String::new();
+        while code.len() < 8_000 {
+            code.push_str(body);
+        }
+        let src = format!("```{lang}\n{code}```\n");
+        std::hint::black_box(md_core::parse(&src));
+        let mut ts: Vec<Duration> = (0..5)
+            .map(|_| {
+                let t = Instant::now();
+                std::hint::black_box(md_core::parse(&src));
+                t.elapsed()
+            })
+            .collect();
+        ts.sort();
+        let d = ts[2];
+        println!(
+            "高亮 {lang:<6} {} 字节：{:.2} ms（{:.2} MB/s）",
+            code.len(),
+            d.as_secs_f64() * 1e3,
+            code.len() as f64 / d.as_secs_f64() / 1e6
+        );
+    }
+}
+
 fn main() {
     if std::env::args().any(|a| a == "--bench") {
         report();
+        per_lang();
     } else {
         smoke();
     }
