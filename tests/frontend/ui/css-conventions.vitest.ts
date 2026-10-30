@@ -43,8 +43,8 @@
  *
  * ## 在不在门禁的执行链上
  *
- * 在。`tests/scripts/gate.sh` 的 `npm` 那一格跑 `npm test`，链末是
- * `test:dom` ＝ `vitest run`，而 `vitest.config.ts` 的 `include` 是
+ * 在。`tests/scripts/gate.sh` 的 `npm` 那一格跑 `npm test`
+ * ＝ `vitest run`，而 `vitest.config.ts` 的 `include` 是
  * `tests/**\/*.vitest.ts` ⇒ 本文件自动在里面。**不需要往 `gate.sh` 里加行**，
  * 加了反而成了第二处登记。现打验过：故意弄红本文件 ⇒ `npm test` 退出码非零。
  */

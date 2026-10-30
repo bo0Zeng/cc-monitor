@@ -194,7 +194,9 @@ describe("浮层", () => {
     expect(r.strip.querySelector(".tab-needs-count")?.textContent).toBe("2");
     r.strip.click();
     expect(panel()!.querySelector('[data-note="offline"]')?.textContent).toBe(copyText("needs.panel.offline", { machine: "devbox" }));
-    expect(panel()!.querySelector<HTMLElement>('[data-note="offline"]')?.title, "后端那一句在悬停里").toBe("devbox 没问到");
+    const said = r.book.offline().find((d) => d.origin === "devbox")?.said;
+    expect(said, "回包里那台带着后端写的那一句").toBeTruthy();
+    expect(panel()!.querySelector<HTMLElement>('[data-note="offline"]')?.title, "后端那一句原样在悬停里").toBe(said);
     r.strip.click();
     r.answers["gpu-01"] = machine([], [], "核心·账号库无法解析");
     await r.book.refresh("gpu-01" as Origin);

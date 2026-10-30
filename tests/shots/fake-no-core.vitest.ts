@@ -1,5 +1,5 @@
 /**
- * 截图台架的假适配层（`tests/shots/fake/`）不写核心的成品：核心写的字（额度行 · 距今 · 需手动 · 状态字 …）与时刻字一律由真后端算，
+ * 测试替身（截图台架的假适配层 `tests/shots/fake/` · 界面测试的 `tests/frontend/ui/*-fake.ts` · `tests/test-support/*-fake.ts`）不写核心的成品：核心写的字（额度行 · 距今 · 需手动 · 状态字 …）与时刻字一律由真后端算，
  * 台架只造盘上原始格式的输入（`tests/shots/disk/`）交给真后端（`tests/shots/real/pool.mjs`）。
  *
  * 为什么有这一格：额度行收进核心（`faces/quota_rows.rs`）的同一批，截图假后端又抄了一份行模型与距今（`quota-face.ts` ·
@@ -12,29 +12,25 @@
  * - 自己拼距今：模板串里 `+${`（`+1h50m` 那一形）；
  * - 自己照出口声明裁回包：读 `omit`（声明里「不要哪几格」那一半是核心 `faces/project.rs` 的活；台架只把页里带的 `view` 原样转给真后端）。
  *
- * 人群：`tests/shots/fake/` 下全部 `.ts`（新加一份也自动进来）。
+ * 人群：`tests/shots/fake/` 下全部 `.ts`，加上 `tests/frontend/ui/` 与 `tests/test-support/` 下名字以 `-fake.ts` 结尾的那几份（新加一份也自动进来）。
  * 允许名单：还没换成真后端的那几份，**按文件 × 写法记确切的处数**，每条带理由（它在替核心的哪一格、为什么还没换）；
  * 处数只许降 —— 换掉一处就得同拍改小（多了红、少了也红，死条目红），不许空放。
  * 买不到：读的是源码文本；键经变量传进 `copyText`、核心那一侧不经 `copy_text` 字面量取文、把钟面拆进别的帮手里，都认不出。
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { nonEmpty } from "../test-support/non-empty";
+import { filePaths } from "../test-support/production-sources";
 
 const repo = path.resolve(__dirname, "../..");
 const fakeDir = path.join(__dirname, "fake");
+/** 界面测试的替身住的两个目录（只认这一层的 `*-fake.ts`）。 */
+const unitFakeDirs = ["tests/frontend/ui", "tests/test-support"];
 
+/** `dir` 底下某种后缀的文件（绝对路径）。读目录只经 `test-support/production-sources.ts`。 */
 function walk(dir: string, ext: string): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const p = path.join(dir, name);
-    if (statSync(p).isDirectory()) {
-      if (name === "target" || name === "node_modules" || name === "generated") continue;
-      out.push(...walk(p, ext));
-    } else if (name.endsWith(ext)) out.push(p);
-  }
-  return out;
+  return filePaths(dir, { ext, tests: true }).map((f) => path.resolve(repo, f));
 }
 
 /** 核心自己写的那些键。 */
@@ -75,17 +71,35 @@ const ALLOW: Record<string, Partial<Record<Form, [number, string]>>> = {
       "合成拒答的复制详情（`detail.value.backend`：场景演「那台拒了」的那几条帧命令还是合成的，机器页那一族）· Windows 那台账号清单的 `meta.unsupported`（台架只有 Linux 编的后端，`cfg(windows)` 那一句演不出来，回包其余照真后端）",
     ],
   },
+  "tests/frontend/ui/config-patch-fake.ts": {
+    coreKey: [
+      4,
+      "机器表那三条的替身（`faultOf` 按码挑 `addMachine.err.*`，同 `fakeMachineTableTry` 照抄的 `check_table` 一起）：要换成后端现打的 `machines-try` / `-set` 回包金样，用到它的 `settings/remote-section.vitest.ts` 与 `settings/data-page.vitest.ts` 跟着改（图上 A17-60-7-1-4）",
+    ],
+  },
+  "tests/test-support/chan-fake.ts": {
+    coreKey: [
+      3,
+      "包装层那一跳回的拒答形里，壳 · 后端写好的那几句（本机后端不在 · 对面版本旧 · 详情里码那一行）是照抄的；换法是壳那一侧现打这几形的金样、替身照金样交（五十份界面测试经它，另起一块做）",
+    ],
+  },
   "machine.ts": {
-    coreKey: [26, "机器页那一族帧命令（扩展 · 别名 · 数据报告 …）还是合成的，回包里的后端那几句是照抄的；要先给每条造好盘上的输入（多数还要假的 ssh / 终端在边界上替身）"],
+    coreKey: [26,"机器页那一族帧命令（扩展 · 别名 · 数据报告 …）还是合成的，回包里的后端那几句是照抄的；要先给每条造好盘上的输入（多数还要假的 ssh / 终端在边界上替身）"],
   },
 };
 
 const keys = coreKeys();
-const files = walk(fakeDir, ".ts").filter((p) => !p.endsWith(".vitest.ts"));
+const files = [
+  ...walk(fakeDir, ".ts").filter((p) => !p.endsWith(".vitest.ts")),
+  ...unitFakeDirs.flatMap((d) => filePaths(d, { ext: "-fake.ts", shallow: true }).map((f) => path.resolve(repo, f))),
+];
+/** 名单里的键：台架那几份写 `fake/` 下的相对路径，界面测试的替身写仓相对路径。 */
+const keyOf = (f: string) => (f.startsWith(fakeDir + path.sep) ? path.relative(fakeDir, f) : path.relative(repo, f));
 
-describe("截图台架的假适配层不写核心成品", () => {
+describe("测试替身不写核心成品", () => {
   it("人群不空：fake/ 下有那几份，核心的键也读到了", () => {
     expect(files.map((p) => path.basename(p))).toContain("backend.ts");
+    expect(files.map(keyOf)).toEqual(expect.arrayContaining(["tests/test-support/needs-fake.ts", "tests/frontend/ui/config-patch-fake.ts"]));
     nonEmpty(keys);
     // 判据认得出这几种写法（自检：拿一段写着成品的样本过一遍）。
     const sample = 'copyText("history.section.today"); d.getHours(); fmtDur(3); `+${m}m`; view.omit?.record';
@@ -97,7 +111,7 @@ describe("截图台架的假适配层不写核心成品", () => {
     for (const f of files) {
       const n = hitsIn(readFileSync(f, "utf8"), keys);
       const nz = Object.fromEntries(Object.entries(n).filter(([, v]) => v > 0)) as Partial<Record<Form, number>>;
-      if (Object.keys(nz).length > 0) got[path.relative(fakeDir, f)] = nz;
+      if (Object.keys(nz).length > 0) got[keyOf(f)] = nz;
     }
     const want = Object.fromEntries(Object.entries(ALLOW).map(([f, forms]) => [f, Object.fromEntries(Object.entries(forms).map(([k, v]) => [k, v![0]]))]));
     expect(got, "核心的成品由真后端算：改成造 disk/ 里的原始文件、把那条帧命令放进 backend.ts::REAL_OPS").toEqual(want);

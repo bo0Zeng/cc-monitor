@@ -360,7 +360,7 @@ fn repo_root() -> std::path::PathBuf {
 /// ★ **未登记的 skip 仍然让 `backend-gate2` 整套红**：
 /// ① `waiver_reason` 的兜底分支整行还是 `*) echo "" ;;` —— 兜底一回非空串，每一条未登记的 skip
 ///    都会被当成豁免，收尾那道门当场静默失效；
-/// ② 收尾那道门还在：`[ "$skip" -eq 0 ] ||` 之后 `exit 1`。
+/// ② `skipped()` 没登记豁免的那一支记的是一条败（`bad`，共用计数 `tests/e2e/assert.sh`）：有败 ⇒ `finish` 退 1。
 #[test]
 fn an_unregistered_skip_still_fails_the_gate2_suite() {
     let sh = std::fs::read_to_string(repo_root().join("tests/e2e/backend-gate2-acceptance.sh"))
@@ -382,19 +382,23 @@ fn an_unregistered_skip_still_fails_the_gate2_suite() {
                  🔴 兜底回非空串 ⇒ 每一条**未登记**的 skip 都会被当成豁免 ⇒ 收尾那道门静默失效。"
         )
     }
-    let gate_line = sh
-        .lines()
-        .filter(|l| l.trim_start().starts_with("[ \"$skip\" -eq 0 ] ||"))
-        .collect::<Vec<_>>();
-    assert_eq!(
-        gate_line.len(),
-        1,
-        "收尾那道「未登记的 skip ⇒ 整套红」不是恰好一行：{gate_line:?}"
+    let s_at = guard_core::find_pinned(&sh, "skipped() {")
+        .unwrap_or_else(|e| panic!("e2e 脚本里的 `skipped()` 定义钉不住：{e}"));
+    let s_rel = sh[s_at..]
+        .find("\n}")
+        .expect("`skipped()` 找不到收尾的 `}` —— 函数形状变了，切不出函数体");
+    let s_body = &sh[s_at..s_at + s_rel];
+    let (registered, unregistered) = s_body
+        .split_once("\n  else\n")
+        .expect("`skipped()` 里没有 `else` 那一支 —— 「登记了 ⇒ 跳过 · 没登记 ⇒ 败」切不出两支");
+    assert!(
+        registered.contains("skip \"") && !guard_core::contains_word(registered, "bad"),
+        "`skipped()` 登记了豁免的那一支不再记跳过：{registered}"
     );
     assert!(
-        gate_line[0].contains("exit 1"),
-        "收尾那道门不再 `exit 1`：{} —— skip 会被当成通过",
-        gate_line[0]
+        unregistered.trim_start().starts_with("bad \""),
+        "`skipped()` 没登记豁免的那一支不再记一条败：{unregistered}\n\
+             🔴 记成跳过 ⇒ 未登记的 skip 被当成通过，整套照绿。"
     );
 }
 

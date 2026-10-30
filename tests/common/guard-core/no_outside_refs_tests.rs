@@ -37,6 +37,7 @@
 use regex::Regex;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 /// 锁文件：工具生成的依赖清单。
 const LOCK_FILES: &[&str] = &["Cargo.lock", "package-lock.json"];
@@ -278,8 +279,16 @@ fn first_outside_pointer(
     })
 }
 
-/// 人群：`(仓根相对路径, 正文)`。跟踪着的符号链接按 git 存的那样取链接目标的文字。
-pub(super) fn tracked_texts(root: &Path) -> Vec<(String, String)> {
+/// 人群：`(仓根相对路径, 正文)`。一个测试进程里只读一遍，各条判据共用；只认头一回给的那个仓根。
+pub(super) fn tracked_texts(root: &Path) -> &'static [(String, String)] {
+    static TEXTS: OnceLock<(PathBuf, Vec<(String, String)>)> = OnceLock::new();
+    let (at, texts) = TEXTS.get_or_init(|| (root.to_path_buf(), read_tracked_texts(root)));
+    assert_eq!(at, root, "人群只认一个仓根");
+    texts
+}
+
+/// 跟踪着的符号链接按 git 存的那样取链接目标的文字。
+fn read_tracked_texts(root: &Path) -> Vec<(String, String)> {
     let out = std::process::Command::new("git")
         .args(["ls-files", "-z"])
         .current_dir(root)
@@ -349,10 +358,10 @@ fn no_tracked_text_points_at_the_outside_dev_docs() {
         texts.len()
     );
     let net = net();
-    let docs = in_repo_docs(&texts);
+    let docs = in_repo_docs(texts);
     let mut hits = Vec::new();
     let mut files = BTreeSet::new();
-    for (rel, text) in &texts {
+    for (rel, text) in texts {
         for (i, line) in text.lines().enumerate() {
             if let Some(at) = first_outside_pointer(&net, &docs, line) {
                 hits.push(format!("{rel}:{}: {}", i + 1, snippet(line, at)));
@@ -449,7 +458,7 @@ fn no_tracked_text_names_a_dev_process_wave() {
     );
     let (net, decl) = (process_net(), test_declaration());
     let mut hits = Vec::new();
-    for (rel, text) in &texts {
+    for (rel, text) in texts {
         for (i, line) in text.lines().enumerate() {
             if decl.is_match(line) {
                 continue;
@@ -502,7 +511,7 @@ fn no_tracked_text_uses_the_build_process_names() {
     let (net, words, decl) = (process_names_net(), process_words_net(), test_declaration());
     let colloquial = colloquial_net();
     let mut hits = Vec::new();
-    for (rel, text) in &texts {
+    for (rel, text) in texts {
         if PROCESS_NAMES_EXEMPT.contains(&rel.as_str()) {
             continue;
         }
@@ -683,7 +692,7 @@ fn unblocked_outside_pointers_are_reported_not_blocked() {
         let mut lines = Vec::new();
         let mut by_area: std::collections::BTreeMap<&str, usize> = Default::default();
         let mut files = BTreeSet::new();
-        for (rel, text) in &texts {
+        for (rel, text) in texts {
             for (n, line) in text.lines().enumerate() {
                 if let Some(at) = first_unblocked_hit(i, rx, line) {
                     lines.push(format!("{rel}:{}: {}", n + 1, snippet(line, at)));
@@ -803,8 +812,10 @@ fn coded_evidence_name() -> Regex {
     .expect("文件名网眼")
 }
 
-/// 存量名单：`路径<TAB>命中行数`，一份一行。只许变短：名单外的命中 ⇒ 红；名单里的一份命中行数比记下的多 ⇒ 红；
-/// 名单里的一份已经零命中（或不在了）⇒ 红，删掉那一行。名单清空的那个提交连它和本段读名单的那几行一起删。
+/// 存量名单：`路径<TAB>命中行数`，一份一行，记实数。名单外的命中 ⇒ 红；名单里的一份命中行数与记下的不等 ⇒ 红
+/// （变少了就把那一行改成实数）；名单里的一份已经零命中（或不在了）⇒ 红，删掉那一行。
+/// 只许变短对着基线判（`guard_core::baseline_text`，与 main 分叉点上那一版）：基线上没有的行 · 比基线大的数 ⇒ 红。
+/// 名单清空的那个提交连它和本段读名单的那几行一起删。
 const HISTORY_STOCK: &str = "tests/__fixtures__/outside-refs-pending.tsv";
 
 /// 界面那份生成物的目录：第六张网不扫它。
@@ -851,8 +862,8 @@ fn history_stock_violations(
                 hits[0].0,
                 hits[0].1
             )),
-            Some(&n) if hits.len() > n => out.push(format!(
-                "{rel}：命中 {} 行，名单记的是 {n}（只许变少），例：{}:{}",
+            Some(&n) if hits.len() != n => out.push(format!(
+                "{rel}：命中 {} 行，名单记的是 {n}（名单记实数：变少了就改成实数），例：{}:{}",
                 hits.len(),
                 hits[0].0,
                 hits[0].1
@@ -866,10 +877,28 @@ fn history_stock_violations(
     out
 }
 
+/// 名单比基线长出来的那几行（空 ⇒ 过）：基线上没有的行，或数比基线上大的行。
+fn stock_grown_past_baseline(
+    now: &std::collections::BTreeMap<String, usize>,
+    base: &std::collections::BTreeMap<String, usize>,
+) -> Vec<String> {
+    now.iter()
+        .filter_map(|(rel, &n)| match base.get(rel) {
+            None => Some(format!("{rel}：基线上没有这一行（名单只许删行）")),
+            Some(&b) if n > b => Some(format!("{rel}：记 {n}，基线上是 {b}（只许变少）")),
+            _ => None,
+        })
+        .collect()
+}
+
 fn read_history_stock(root: &Path) -> std::collections::BTreeMap<String, usize> {
     let p = root.join(HISTORY_STOCK);
     let text =
         std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{HISTORY_STOCK} 读不动：{e}"));
+    parse_history_stock(&text)
+}
+
+fn parse_history_stock(text: &str) -> std::collections::BTreeMap<String, usize> {
     text.lines()
         .filter(|l| !l.trim().is_empty())
         .map(|l| {
@@ -896,7 +925,7 @@ fn no_build_history_or_codes_beyond_the_shrinking_stock_list() {
     );
     let (eyes, decl) = (history_eyes(), test_declaration());
     let mut found = std::collections::BTreeMap::new();
-    for (rel, text) in &texts {
+    for (rel, text) in texts {
         let in_scope = ["src/", "tests/", ".github/"]
             .iter()
             .any(|d| rel.starts_with(d));
@@ -914,6 +943,16 @@ fn no_build_history_or_codes_beyond_the_shrinking_stock_list() {
         println!("{rel}\t{}", hits.len());
     }
     let stock = read_history_stock(&root);
+    if let Some(base) = crate::baseline_text(&root, HISTORY_STOCK)
+        .unwrap_or_else(|e| panic!("存量名单 `{HISTORY_STOCK}` 读不到基线：{e}"))
+    {
+        let grown = stock_grown_past_baseline(&stock, &parse_history_stock(&base));
+        assert!(
+            grown.is_empty(),
+            "存量名单 `{HISTORY_STOCK}` 比基线长了 —— 新写的删掉，名单只许删行、数只许变小：\n{}",
+            grown.join("\n")
+        );
+    }
     let bad = history_stock_violations(&stock, &found);
     assert!(
         bad.is_empty(),
@@ -984,8 +1023,22 @@ fn the_history_net_catches_its_shapes_and_the_stock_list_only_shrinks() {
     let who: Vec<&str> = bad.iter().map(|b| b.split('：').next().unwrap()).collect();
     assert_eq!(
         who,
-        ["a.rs", "new.rs", "gone.rs"],
-        "名单对账判错了（a.rs 变多 · new.rs 名单外 · gone.rs 已清该删行，三样都该红；b.rs 变少放过）：{bad:?}"
+        ["a.rs", "b.rs", "new.rs", "gone.rs"],
+        "名单对账判错了（a.rs 变多 · b.rs 变少没改实数 · new.rs 名单外 · gone.rs 已清该删行，四样都该红）：{bad:?}"
+    );
+    let now: std::collections::BTreeMap<String, usize> = [("a.rs", 2), ("b.rs", 1), ("new.rs", 1)]
+        .into_iter()
+        .map(|(r, n)| (r.to_string(), n))
+        .collect();
+    let grown = stock_grown_past_baseline(&now, &stock);
+    let who: Vec<&str> = grown
+        .iter()
+        .map(|b| b.split('：').next().unwrap())
+        .collect();
+    assert_eq!(
+        who,
+        ["a.rs", "new.rs"],
+        "对基线判错了（a.rs 比基线大 · new.rs 基线上没有，该红；b.rs 变少放过）：{grown:?}"
     );
 }
 
@@ -1056,7 +1109,7 @@ fn every_named_evidence_file_is_in_the_repo() {
         .collect();
     let eyes = evidence_pointer_eyes();
     let mut hits = Vec::new();
-    for (rel, text) in &texts {
+    for (rel, text) in texts {
         let in_evidence = rel.starts_with(EVIDENCE_DIR);
         for (i, line) in text.lines().enumerate() {
             for name in dangling_evidence_names(&eyes, &evidence, &basenames, in_evidence, line) {

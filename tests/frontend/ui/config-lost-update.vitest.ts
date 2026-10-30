@@ -10,11 +10,10 @@
  * # 形状
  *
  * 两个 realm（主窗 / 设置窗 —— 同一个 monitor 进程里的两个 webview，各自一份模块实例）× 全部写者，**同一拍一起发**，
- * `await` 全部，然后看盘：每个写者写的值都在，且盘上没有期望之外的键（**两向相等**，期望手写）。
+ * `await` 全部，然后看交出去的补丁：每个写者只交自己那几条路径、值逐字对得上，没有期望之外的路径（**两向相等**，期望手写）。
  *
- * ⚠ 射程：假盘的 `patch_config` 用 `tests/frontend/ui/config-patch-fake.ts::applyConfigEdits`（与 Rust 写口跑同一份金样）。本条**只**证明
- * 「前端每个写者只交自己那几条路径」；Rust 写口本身在并发下合并得对不对，归
- * `tests/frontend/shell/config_tests.rs`（真文件、真线程）。
+ * ⚠ 射程：替身的 `patch_config` 只记下补丁、不应用。本条**只**证明「前端每个写者只交自己那几条路径」与「后发的后到」；
+ * 补丁落到盘上、Rust 写口在并发下合并得对不对，归 `tests/frontend/shell/config_tests.rs`（真文件、真线程）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -22,15 +21,13 @@ import type { Edit } from "./config-patch-fake";
 
 const disk = vi.hoisted(() => ({
   text: "{}",
-  /** 每一次 `patch_config` 收到的 edits（J5：写者只交自己的键）。 */
+  /** 每一次 `patch_config` 收到的 edits，按到达的先后（J5：写者只交自己的键）。 */
   patches: [] as unknown[][],
   /** 依次给每一跳 IPC 多让几拍（宏任务），用完为 0。用来造「先发的后到」：同时在飞的两跳，多让的那一跳必然后落。 */
   delays: [] as number[],
 }));
 
 vi.mock("@tauri-apps/api/core", async () => {
-  // 补丁语义用金样钉住的那一份（`tests/frontend/ui/config-patch-fake.ts`，与 Rust 写口跑同一份金样）。
-  const { applyConfigEdits } = await import("./config-patch-fake");
   const hop = async (): Promise<void> => {
     for (let n = disk.delays.shift() ?? 0; n >= 0; n--) await new Promise((r) => setTimeout(r, 0));
   };
@@ -46,7 +43,6 @@ vi.mock("@tauri-apps/api/core", async () => {
         case "patch_config": {
           const edits = args!.edits as Edit[];
           disk.patches.push(edits);
-          disk.text = applyConfigEdits(disk.text, edits);
           return undefined;
         }
         default:
@@ -68,14 +64,17 @@ const BEHAVIOR = {
 };
 const KEYS = { "open-settings": "Ctrl+,", "kill-session": null };
 
-/** 手写期望：全部写者一起发之后，盘上**恰好**是这一份。 */
-const EXPECTED: Record<string, unknown> = {
-  tabBar: { order: ["sid-b", "sid-a"], collapsed: ["g1"], hiddenOpen: true },
-  ...BEHAVIOR,
-  theme: { bg: "#010203" },
-  keybindings: KEYS,
+/** 手写期望：全部写者一起发之后，交出去的补丁**恰好**是这几条（不论先后）。 */
+const EXPECTED: Edit[] = [
+  { op: "set", path: ["tabBar", "order"], value: ["sid-b", "sid-a"] },
+  { op: "set", path: ["tabBar", "collapsed"], value: ["g1"] },
+  { op: "set", path: ["tabBar", "hiddenOpen"], value: true },
+  ...Object.entries(BEHAVIOR).map(([k, value]): Edit => ({ op: "set", path: [k], value })),
+  { op: "set", path: ["theme"], value: { bg: "#010203" } },
+  { op: "set", path: ["keybindings"], value: KEYS },
   // 机器表 · Claude 数据目录不在这份文件里了（住本机后端 `machines.json` / `prefs.json`，写口是 `machines-set` / `prefs-set`），不在本条的写者里。
-};
+];
+const byPath = (a: Edit, b: Edit) => a.path.join(".").localeCompare(b.path.join("."));
 
 /** 一个 realm 的全部写者（一份模块实例）。 */
 async function realm(): Promise<{
@@ -106,30 +105,16 @@ describe("CFG1 J1 · 两个 realm × 全部写者同时写，谁写的键谁的�
     disk.delays = [];
   });
 
-  it("盘上终态 == 手写期望（两向：期望的键都在，没有期望外的键）", async () => {
+  it("交出去的补丁 == 手写期望（两向：每个写者只交自己那几条路径、值逐字对得上；多一条 = 有人在动别人的键）", async () => {
     vi.resetModules();
     const a = await realm(); // 主窗那份模块实例
     vi.resetModules();
     const b = await realm(); // 设置窗那份模块实例（独立的队列 / 快照）
     await Promise.all([...a.main(), ...b.settings()]);
-    const onDisk = JSON.parse(disk.text) as Record<string, unknown>;
-    expect(Object.keys(onDisk).sort()).toEqual(Object.keys(EXPECTED).sort());
-    expect(onDisk).toEqual(EXPECTED);
-    // J5：每个写者只交自己那几条路径 —— 全部补丁的路径多重集 == 手写清单（两向；多一条 = 有人在动别人的键）。
-    const sent = (disk.patches.flat() as Edit[]).map((e) => `${e.op} ${e.path.join(".")}`).sort();
-    expect(sent).toEqual(
-      [
-        "set tabBar.order",
-        "set tabBar.collapsed",
-        "set tabBar.hiddenOpen",
-        ...Object.keys(BEHAVIOR).map((k) => `set ${k}`),
-        "set theme",
-        "set keybindings",
-      ].sort(),
-    );
+    expect((disk.patches.flat() as Edit[]).sort(byPath)).toEqual([...EXPECTED].sort(byPath));
   });
 
-  it("同一 realm 连发同一个键两次：盘上是后发的那次（不靠 IPC 到达顺序）", async () => {
+  it("同一 realm 连发同一个键两次：后发的那次后到（不靠 IPC 在路上的快慢）", async () => {
     vi.resetModules();
     const cfg = await import("../../../src/frontend/ui/config");
     const v1 = ["旧"];
@@ -137,6 +122,6 @@ describe("CFG1 J1 · 两个 realm × 全部写者同时写，谁写的键谁的�
     // 第一跳（v1 那次写）多让三拍才被处理 ⇒ 两次若同时在飞，v1 必然后落盘、盖掉 v2。
     disk.delays = [3];
     await Promise.all([cfg.patchConfig([cfg.setAt(["tabBar", "collapsed"], v1)]), cfg.patchConfig([cfg.setAt(["tabBar", "collapsed"], v2)])]);
-    expect(((JSON.parse(disk.text) as Record<string, unknown>).tabBar as Record<string, unknown>).collapsed).toEqual(v2);
+    expect(disk.patches, "写口照到达的先后落盘 ⇒ 后发的要后到").toEqual([[{ op: "set", path: ["tabBar", "collapsed"], value: v1 }], [{ op: "set", path: ["tabBar", "collapsed"], value: v2 }]]);
   });
 });

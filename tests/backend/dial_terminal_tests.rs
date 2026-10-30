@@ -59,7 +59,7 @@ fn kh() -> String {
 
 fn run(m: Value, cmd: &str) -> Result<String, CmdErr> {
     answer(&json!({ "machine": m, "command": cmd }))
-        .map(|v| v["command"].as_str().unwrap().to_string())
+        .map(|v| v["line"].as_str().unwrap().to_string())
 }
 
 /// 剥 PowerShell 单引号那一层（`'…'`，内部 `''` → `'`）。
@@ -125,7 +125,7 @@ fn single_quotes_in_the_payload_survive_both_layers() {
 fn the_address_is_the_first_in_race_order() {
     let m = json!({ "host": "lan.example", "user": "u", "port": 22, "label": "m-race", "addresses": ["192.0.2.9:2200"] });
     let plain = answer(&json!({ "machine": m, "command": "x" })).unwrap();
-    assert!(plain["command"].as_str().unwrap().starts_with(&format!(
+    assert!(plain["line"].as_str().unwrap().starts_with(&format!(
         "{}-t -p 22{} u@lan.example -- ",
         call(),
         kh()
@@ -139,7 +139,7 @@ fn the_jump_hop_renders_as_dash_j_and_a_missing_or_looping_jump_is_refused() {
         |port: u16| json!({ "host": "jump.local", "user": "pi", "port": port, "label": "bastion" });
     let got = answer(&json!({ "machine": m, "jump": j(22), "command": "x" })).unwrap();
     assert!(
-        got["command"].as_str().unwrap().starts_with(&format!(
+        got["line"].as_str().unwrap().starts_with(&format!(
             "{}-t -J pi@jump.local -p 22{} u@t -- ",
             call(),
             kh()
@@ -148,7 +148,7 @@ fn the_jump_hop_renders_as_dash_j_and_a_missing_or_looping_jump_is_refused() {
     );
     let got = answer(&json!({ "machine": m, "jump": j(2222), "command": "x" })).unwrap();
     assert!(
-        got["command"].as_str().unwrap().starts_with(&format!(
+        got["line"].as_str().unwrap().starts_with(&format!(
             "{}-t -J pi@jump.local:2222 -p 22{} u@t -- ",
             call(),
             kh()
@@ -463,7 +463,7 @@ fn the_posix_line_hands_ssh_the_same_arguments_a_real_shell_would() {
         false,
         &SshClient::At(fake.to_str().unwrap().into()),
     )
-    .unwrap()["command"]
+    .unwrap()["line"]
         .as_str()
         .unwrap()
         .to_string();
@@ -558,7 +558,10 @@ fn login(
     let req: TerminalSshReq =
         crate::wire::typed::take(&wire).map_err(|f| ("bad_args", f.message))?;
     let aliases: Vec<String> = aliases.iter().map(|a| a.to_string()).collect();
-    answer_with(&req, &hosts, &aliases, powershell, ssh, None).map(|r| r.command)
+    answer_with(&req, &hosts, &aliases, powershell, ssh, None).map(|r| {
+        assert_eq!(r.prelude, "", "不给 sid ⇒ 没有前奏");
+        r.line
+    })
 }
 
 /// 机器表里那台：ssh 外壳照旧，`--` 后面不跟命令 ⇒ 那台自己的登录 shell（那台是什么系统都成）。
@@ -666,6 +669,7 @@ fn a_login_shell_still_needs_an_ssh_client_and_both_forms_together_are_refused()
 
 // ───── 带了 sid：那一行前面接前奏，开的那个 shell 记下自己的窗口标签（`opened_windows.rs`） ─────
 
+/// 开窗那一下跑的那一串：前奏 ＋ 那一行。
 fn with_sid(
     m: Value,
     cmd: &str,
@@ -674,6 +678,17 @@ fn with_sid(
     ssh: &SshClient,
     dir: Option<&std::path::Path>,
 ) -> Result<String, CmdErr> {
+    parts_with_sid(m, cmd, sid, powershell, ssh, dir).map(|r| format!("{}{}", r.prelude, r.line))
+}
+
+fn parts_with_sid(
+    m: Value,
+    cmd: &str,
+    sid: Option<&str>,
+    powershell: bool,
+    ssh: &SshClient,
+    dir: Option<&std::path::Path>,
+) -> Result<SshCommand, CmdErr> {
     let mut wire = json!({ "machine": m["label"], "command": cmd });
     if let Some(s) = sid {
         wire["sid"] = json!(s);
@@ -681,7 +696,40 @@ fn with_sid(
     let hosts = vec![crate::dial::machine::loose(&m)?];
     let req: TerminalSshReq =
         crate::wire::typed::take(&wire).map_err(|f| ("bad_args", f.message))?;
-    answer_with(&req, &hosts, &[], powershell, ssh, dir).map(|r| r.command)
+    answer_with(&req, &hosts, &[], powershell, ssh, dir)
+}
+
+/// 前奏与那一行分两格：开不了窗时复制出去的只有那一行（不带本机数据目录的路径与 shell 写法），两种方言一样。
+#[test]
+fn the_record_step_rides_in_its_own_cell_and_the_line_stays_plain() {
+    let m = machine("192.0.2.2", "u", 22, None);
+    for (powershell, dir) in [
+        (
+            true,
+            std::path::Path::new(r"C:\Users\u\.cc-monitor\opened-windows"),
+        ),
+        (
+            false,
+            std::path::Path::new("/home/u/.cc-monitor/opened-windows"),
+        ),
+    ] {
+        let ask = |sid| {
+            parts_with_sid(
+                m.clone(),
+                "claude --resume s1",
+                sid,
+                powershell,
+                &found(),
+                Some(dir),
+            )
+            .unwrap()
+        };
+        let (plain, with) = (ask(None), ask(Some("s1")));
+        assert_eq!(with.line, plain.line, "那一行一字不变");
+        assert!(!with.line.contains("opened-windows"), "{}", with.line);
+        assert!(with.prelude.contains("opened-windows"), "{}", with.prelude);
+        assert_eq!(plain.prelude, "", "不给 sid ⇒ 没有前奏");
+    }
 }
 
 #[test]

@@ -44,9 +44,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-fail=0
-pass=0
-chk() { if [ "$2" = "$3" ]; then echo "  PASS $1"; pass=$((pass+1)); else echo "  FAIL $1: 期望[$3] 实得[$2]"; fail=$((fail+1)); fi; }
+. "$REPO/tests/e2e/assert.sh"
 
 # $1=label $2=late|early
 #
@@ -89,10 +87,10 @@ run_case() {
 
 echo "[1] 量具自检：server **先于** backend 存在时，帧里带 @ccm_sid"
 # 它绿不了，下面两格的读数一个字都不能信（本仓一路在收的空真）。
-chk "early：帧里有 sid-early" "$(run_case early early)" "1"
+ck "early：帧里有 sid-early" "1" "$(run_case early early)"
 
 echo "[2] ★ 正题：backend **先起**、tmux server 后起（#60 的根因形状）"
-chk "late：帧里有 sid-late" "$(run_case late late)" "1"
+ck "late：帧里有 sid-late" "1" "$(run_case late late)"
 
 
 # ⚠⚠ **「socket 目录被删掉再重建」那一格不在这里** —— 它需要一个**私有 socket 目录**，
@@ -103,6 +101,4 @@ chk "late：帧里有 sid-late" "$(run_case late late)" "1"
 #   并**如实记下损失**：运行期行为只在 08-13 手工验过一次（读数记在 `P0b §1w`），
 #   **没有进 CI**。红线与覆盖面冲突时，本仓选红线。
 echo
-echo "===== 合计 PASS=$pass FAIL=$fail ====="
-if [ "$fail" -eq 0 ]; then echo "===== 迟到 server 验收全部通过 ====="; fi
-exit "$fail"
+finish

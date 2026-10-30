@@ -57,7 +57,6 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     quiet_unread: None,
     skim: None,
     beats: Some(beat::BEATS),
-    fork: None,
 };
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**。

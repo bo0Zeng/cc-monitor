@@ -2889,12 +2889,6 @@
       "zh": "会话索引未就绪",
       "args": []
     },
-    "cards.markdown.showRest": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "展开 {size}",
-      "args": ["size"]
-    },
     "cards.text.showAll": {
       "kind": "action",
       "role": "按钮",
@@ -3365,12 +3359,6 @@
       "waive": {
         "C-W15": "压了换事实：「全部改动」与增删两个计数都是事实，去掉「改动」就不知道显示的是什么"
       }
-    },
-    "diff.capLine.ellipsis": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{text}…",
-      "args": ["text"]
     },
     "compact.summary.title": {
       "kind": "title",
@@ -26599,6 +26587,30 @@
       "kind": "body",
       "role": "片段",
       "zh": "复制下面一行 · 到该机终端里运行",
+      "args": []
+    },
+    "beChore.secretLike.name": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "共享库里的 {item} 像按号的密钥",
+      "args": ["item"]
+    },
+    "beChore.secretLike.said": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "权限 600 · 不在身份文件里 · 不链给各账号",
+      "args": []
+    },
+    "beChore.secretLike.why": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{path} 权限 600，不在身份文件里；按号的凭据或状态各账号共用会串号，不自动链给各账号",
+      "args": ["path"]
+    },
+    "beChore.secretLike.step": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "按号的挪进该账号目录 · 共用的放宽权限，下次对齐链接",
       "args": []
     },
     "beChore.selfPaste.name": {

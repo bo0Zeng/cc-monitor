@@ -128,6 +128,7 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 
 真机套件每一套在门禁 `tests/scripts/gate.sh` 里一行 `run_e2e <套件>`，经 `tests/e2e/assert-pass-floor.sh <套件>` 跑：
 退出码 0、收尾 `合计 PASS=<n> FAIL=0`、`n > 0` 才算过（抓不到那行也判红，见该脚本头注）。
+各套的计数与那一行收尾只有一份：`tests/e2e/assert.sh`（`ok` · `bad` · `ck 描述 期望 实得` · `skip` · `finish`），各套 source 它。
 CI 的 e2e job 就是调门禁（`GATE_ONLY=e2e`），不另记一份名单。
 
 > ★ **套数与地板值一律不抄在这里** —— 套件名单的唯一住址是门禁里那些 `run_e2e` 行；
@@ -156,10 +157,7 @@ CI 的 e2e job 就是调门禁（`GATE_ONLY=e2e`），不另记一份名单。
 它要 Xvfb + 一个**正在跑的 `tauri dev`**（见本文件开头「跑法」），断言的是整机渲染行为
 （启动门控 / 贴底 / 上翻补批 / fork 折叠 / 抖动密度绊线）。GUI runner 的投入
 与 `graylight-suite` 是同一笔账。
->
-> **它也喂不进 `assert-pass-floor.sh`**：该脚本抓的是 `合计 PASS=<n>` 那行，而 f40 不打印这行
-> （`grep -n '合计 PASS' tests/e2e/f40-suite.sh` 无命中）。它的断言数还随环境分支变（多组 `ok`/`bad`
-> 互斥），**所以这里刻意不写一个具体条数**。
+> 它的断言数随环境分支变（多组 `ok`/`bad` 互斥），**所以这里刻意不写一个具体条数**。
 
 > 手跑：`npm run test:f40`（手动套件，不进 CI；`src/doc/RELEASING.md` 发版清单里「动过滚动 / 渲染管线就跑一遍」指的就是它）。
 

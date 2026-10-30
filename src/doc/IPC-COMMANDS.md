@@ -2758,6 +2758,7 @@ seenAt?: number,
  */
 blocked?: FactBlocked, };
 type RotBoard = { all: Array<RotCell>, rows: Array<RotRow>, };
+type RotCan = { reorder: boolean, off: boolean, edit: boolean, };
 type RotCell = { key: string, kind: RotFormKind, 
 /**
  * 24 小时条那一格是哪一窗（`5h` · `7d`）。
@@ -2944,7 +2945,11 @@ timeline?: RotTryTimeline,
 /**
  * 换号记录（会话才有）。
  */
-log: Array<RotLogRow>, hints: Array<RotNote>, };
+log: Array<RotLogRow>, hints: Array<RotNote>, 
+/**
+ * 会话那一形此刻能做的几样（设置页 ⇒ 缺）。
+ */
+can?: RotCan, };
 type RotationViewReq = { target: RotTarget, 
 /**
  * 设置页那一形往后推几小时（1–48，缺 ⇒ 12）；会话那一形不画推演，不看它。
@@ -5548,7 +5553,11 @@ skipped: Array<string>,
 /**
  * 没答上的那几台（它们的会话没搜到）：哪台 · 那一句。
  */
-down: Array<SearchDown>, };
+down: Array<SearchDown>, 
+/**
+ * 结果头那一句（搜的词 · 命中几处 · 几个会话；截过 ⇒ 截过那一句）：两端照摆。
+ */
+summary: string, };
 type MergedRow = { 
 /**
  * 那台远端的名字；本机 ⇒ 缺。
@@ -5762,7 +5771,11 @@ sizeText?: string,
  * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
  */
 gone?: boolean, };
-type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+type Block = { "type": "text", text: string, 
+/**
+ * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
+ */
+bytes: number, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
  */
@@ -5770,7 +5783,11 @@ for: string,
 /**
  * 结果内容（正文 / 图片块；原文是一个字符串时已归成一个正文块）。
  */
-content: Array<Block>, isError: boolean, } | { "type": "image", 
+content: Array<Block>, isError: boolean, 
+/**
+ * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有，界面写大小照它。
+ */
+bytes: number, } | { "type": "image", 
 /**
  * 图片类型（`image/png` …）。
  */
@@ -5840,6 +5857,33 @@ tail?: boolean | null,
  * 往前再读一页：读到这个字节为止（拿上一页的 `from`）；给了就是往前读，与 `from` 都给以它为准。
  */
 before?: number | null, };
+type LineDiff = { rows: Array<LineDiffRow>, 
+/**
+ * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
+ */
+shown: number, 
+/**
+ * 行没给全（超了字数上界，在段的边界停下）；`added` / `removed` 仍是整份的数。
+ */
+truncated: boolean, 
+/**
+ * 整份加了几行 · 删了几行。
+ */
+added: number, removed: number, 
+/**
+ * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
+ */
+stat: string, };
+type LineDiffKind = "add" | "del" | "ctx" | "head";
+type LineDiffRow = { kind: LineDiffKind, 
+/**
+ * 行正文（不带头字；过长的一行截了以「…」收尾）。段头 ⇒ 写好的那一格。
+ */
+text: string, 
+/**
+ * 改之前 · 改之后的行号（1 起）：加的行没有改前，删的行没有改后；段头 · 从入参算的那一份（不知道在文件第几行）⇒ 缺。
+ */
+oldNo?: number, newNo?: number, };
 type LineRecord = { 
 /**
  * 哪一家（注册表里那一家的 `kind`）。
@@ -5934,11 +5978,6 @@ type Pasted = { id?: string, start: number, end: number, bodyStart: number, body
  * 正文的行数（两头的空行不算）。
  */
 lines: number, };
-type PatchHunk = { 
-/**
- * 改之前这段从第几行起（1 起）· 占几行；改之后同。
- */
-oldStart: number, oldLines: number, newStart: number, newLines: number, lines: Array<string>, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -5989,7 +6028,7 @@ body?: string, } | { "kind": "compactSummary",
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
 type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
-type StepBody = { "kind": "changes", changes: Array<TextChange>, } | { "kind": "command", line: string, };
+type StepBody = { "kind": "changes", diff: LineDiff, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
  * 成功（`false` ＝ 失败或被拒）。
@@ -6024,13 +6063,10 @@ exitCode?: number,
  */
 file?: string, 
 /**
- * 逐段的改动本身（[`PatchHunk`]）。新建整份文件 / 没有改动 ⇒ 缺。
+ * 这次改动算好的行差（照结果里的逐段改动，带真行号；[`LineDiff`]）。新建整份文件 · 没有改动 · 一段也放不下 ⇒ 缺，
+ * 两端画调用那一份（[`StepBody::Changes`]）。
  */
-patch?: Array<PatchHunk>, 
-/**
- * diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
- */
-patchTruncated?: boolean, 
+patch?: LineDiff, 
 /**
  * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
  * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
@@ -6052,7 +6088,6 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
-type TextChange = { old: string, new: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -6189,7 +6224,11 @@ sizeText?: string,
  * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
  */
 gone?: boolean, };
-type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+type Block = { "type": "text", text: string, 
+/**
+ * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
+ */
+bytes: number, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
  */
@@ -6197,7 +6236,11 @@ for: string,
 /**
  * 结果内容（正文 / 图片块；原文是一个字符串时已归成一个正文块）。
  */
-content: Array<Block>, isError: boolean, } | { "type": "image", 
+content: Array<Block>, isError: boolean, 
+/**
+ * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有，界面写大小照它。
+ */
+bytes: number, } | { "type": "image", 
 /**
  * 图片类型（`image/png` …）。
  */
@@ -6251,6 +6294,33 @@ from?: number | null,
  * 可选右端（半开区间）；缺 ⇒ 到最后一个完整行为止。
  */
 until?: number | null, };
+type LineDiff = { rows: Array<LineDiffRow>, 
+/**
+ * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
+ */
+shown: number, 
+/**
+ * 行没给全（超了字数上界，在段的边界停下）；`added` / `removed` 仍是整份的数。
+ */
+truncated: boolean, 
+/**
+ * 整份加了几行 · 删了几行。
+ */
+added: number, removed: number, 
+/**
+ * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
+ */
+stat: string, };
+type LineDiffKind = "add" | "del" | "ctx" | "head";
+type LineDiffRow = { kind: LineDiffKind, 
+/**
+ * 行正文（不带头字；过长的一行截了以「…」收尾）。段头 ⇒ 写好的那一格。
+ */
+text: string, 
+/**
+ * 改之前 · 改之后的行号（1 起）：加的行没有改前，删的行没有改后；段头 · 从入参算的那一份（不知道在文件第几行）⇒ 缺。
+ */
+oldNo?: number, newNo?: number, };
 type LineRecord = { 
 /**
  * 哪一家（注册表里那一家的 `kind`）。
@@ -6345,11 +6415,6 @@ type Pasted = { id?: string, start: number, end: number, bodyStart: number, body
  * 正文的行数（两头的空行不算）。
  */
 lines: number, };
-type PatchHunk = { 
-/**
- * 改之前这段从第几行起（1 起）· 占几行；改之后同。
- */
-oldStart: number, oldLines: number, newStart: number, newLines: number, lines: Array<string>, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -6416,7 +6481,7 @@ body?: string, } | { "kind": "compactSummary",
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
 type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
-type StepBody = { "kind": "changes", changes: Array<TextChange>, } | { "kind": "command", line: string, };
+type StepBody = { "kind": "changes", diff: LineDiff, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
  * 成功（`false` ＝ 失败或被拒）。
@@ -6451,13 +6516,10 @@ exitCode?: number,
  */
 file?: string, 
 /**
- * 逐段的改动本身（[`PatchHunk`]）。新建整份文件 / 没有改动 ⇒ 缺。
+ * 这次改动算好的行差（照结果里的逐段改动，带真行号；[`LineDiff`]）。新建整份文件 · 没有改动 · 一段也放不下 ⇒ 缺，
+ * 两端画调用那一份（[`StepBody::Changes`]）。
  */
-patch?: Array<PatchHunk>, 
-/**
- * diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
- */
-patchTruncated?: boolean, 
+patch?: LineDiff, 
 /**
  * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
  * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
@@ -6479,7 +6541,6 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
-type TextChange = { old: string, new: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -6624,7 +6685,11 @@ sizeText?: string,
  * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
  */
 gone?: boolean, };
-type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+type Block = { "type": "text", text: string, 
+/**
+ * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
+ */
+bytes: number, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
  */
@@ -6632,7 +6697,11 @@ for: string,
 /**
  * 结果内容（正文 / 图片块；原文是一个字符串时已归成一个正文块）。
  */
-content: Array<Block>, isError: boolean, } | { "type": "image", 
+content: Array<Block>, isError: boolean, 
+/**
+ * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有，界面写大小照它。
+ */
+bytes: number, } | { "type": "image", 
 /**
  * 图片类型（`image/png` …）。
  */
@@ -6678,6 +6747,33 @@ offset?: number | null,
  * 可选右端（半开区间）；缺 ⇒ 读到文件尾。
  */
 until?: number | null, };
+type LineDiff = { rows: Array<LineDiffRow>, 
+/**
+ * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
+ */
+shown: number, 
+/**
+ * 行没给全（超了字数上界，在段的边界停下）；`added` / `removed` 仍是整份的数。
+ */
+truncated: boolean, 
+/**
+ * 整份加了几行 · 删了几行。
+ */
+added: number, removed: number, 
+/**
+ * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
+ */
+stat: string, };
+type LineDiffKind = "add" | "del" | "ctx" | "head";
+type LineDiffRow = { kind: LineDiffKind, 
+/**
+ * 行正文（不带头字；过长的一行截了以「…」收尾）。段头 ⇒ 写好的那一格。
+ */
+text: string, 
+/**
+ * 改之前 · 改之后的行号（1 起）：加的行没有改前，删的行没有改后；段头 · 从入参算的那一份（不知道在文件第几行）⇒ 缺。
+ */
+oldNo?: number, newNo?: number, };
 type LineRecord = { 
 /**
  * 哪一家（注册表里那一家的 `kind`）。
@@ -6772,11 +6868,6 @@ type Pasted = { id?: string, start: number, end: number, bodyStart: number, body
  * 正文的行数（两头的空行不算）。
  */
 lines: number, };
-type PatchHunk = { 
-/**
- * 改之前这段从第几行起（1 起）· 占几行；改之后同。
- */
-oldStart: number, oldLines: number, newStart: number, newLines: number, lines: Array<string>, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -6835,7 +6926,7 @@ body?: string, } | { "kind": "compactSummary",
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
 type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
-type StepBody = { "kind": "changes", changes: Array<TextChange>, } | { "kind": "command", line: string, };
+type StepBody = { "kind": "changes", diff: LineDiff, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
  * 成功（`false` ＝ 失败或被拒）。
@@ -6870,13 +6961,10 @@ exitCode?: number,
  */
 file?: string, 
 /**
- * 逐段的改动本身（[`PatchHunk`]）。新建整份文件 / 没有改动 ⇒ 缺。
+ * 这次改动算好的行差（照结果里的逐段改动，带真行号；[`LineDiff`]）。新建整份文件 · 没有改动 · 一段也放不下 ⇒ 缺，
+ * 两端画调用那一份（[`StepBody::Changes`]）。
  */
-patch?: Array<PatchHunk>, 
-/**
- * diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
- */
-patchTruncated?: boolean, 
+patch?: LineDiff, 
 /**
  * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
  * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
@@ -6898,7 +6986,6 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
-type TextChange = { old: string, new: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -7004,7 +7091,11 @@ sizeText?: string,
  * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
  */
 gone?: boolean, };
-type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+type Block = { "type": "text", text: string, 
+/**
+ * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
+ */
+bytes: number, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
  */
@@ -7012,7 +7103,11 @@ for: string,
 /**
  * 结果内容（正文 / 图片块；原文是一个字符串时已归成一个正文块）。
  */
-content: Array<Block>, isError: boolean, } | { "type": "image", 
+content: Array<Block>, isError: boolean, 
+/**
+ * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有，界面写大小照它。
+ */
+bytes: number, } | { "type": "image", 
 /**
  * 图片类型（`image/png` …）。
  */
@@ -7066,6 +7161,33 @@ until?: number | null,
  * `offset` 那一行的行号（缺 ⇒ 0）；续页交上一页的 `nextSeq`。
  */
 seq?: number | null, };
+type LineDiff = { rows: Array<LineDiffRow>, 
+/**
+ * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
+ */
+shown: number, 
+/**
+ * 行没给全（超了字数上界，在段的边界停下）；`added` / `removed` 仍是整份的数。
+ */
+truncated: boolean, 
+/**
+ * 整份加了几行 · 删了几行。
+ */
+added: number, removed: number, 
+/**
+ * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
+ */
+stat: string, };
+type LineDiffKind = "add" | "del" | "ctx" | "head";
+type LineDiffRow = { kind: LineDiffKind, 
+/**
+ * 行正文（不带头字；过长的一行截了以「…」收尾）。段头 ⇒ 写好的那一格。
+ */
+text: string, 
+/**
+ * 改之前 · 改之后的行号（1 起）：加的行没有改前，删的行没有改后；段头 · 从入参算的那一份（不知道在文件第几行）⇒ 缺。
+ */
+oldNo?: number, newNo?: number, };
 type LineRecord = { 
 /**
  * 哪一家（注册表里那一家的 `kind`）。
@@ -7160,11 +7282,6 @@ type Pasted = { id?: string, start: number, end: number, bodyStart: number, body
  * 正文的行数（两头的空行不算）。
  */
 lines: number, };
-type PatchHunk = { 
-/**
- * 改之前这段从第几行起（1 起）· 占几行；改之后同。
- */
-oldStart: number, oldLines: number, newStart: number, newLines: number, lines: Array<string>, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -7231,7 +7348,7 @@ body?: string, } | { "kind": "compactSummary",
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
 type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
-type StepBody = { "kind": "changes", changes: Array<TextChange>, } | { "kind": "command", line: string, };
+type StepBody = { "kind": "changes", diff: LineDiff, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
  * 成功（`false` ＝ 失败或被拒）。
@@ -7266,13 +7383,10 @@ exitCode?: number,
  */
 file?: string, 
 /**
- * 逐段的改动本身（[`PatchHunk`]）。新建整份文件 / 没有改动 ⇒ 缺。
+ * 这次改动算好的行差（照结果里的逐段改动，带真行号；[`LineDiff`]）。新建整份文件 · 没有改动 · 一段也放不下 ⇒ 缺，
+ * 两端画调用那一份（[`StepBody::Changes`]）。
  */
-patch?: Array<PatchHunk>, 
-/**
- * diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
- */
-patchTruncated?: boolean, 
+patch?: LineDiff, 
 /**
  * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
  * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
@@ -7294,7 +7408,6 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
-type TextChange = { old: string, new: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -8925,7 +9038,11 @@ sizeText?: string,
  * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
  */
 gone?: boolean, };
-type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+type Block = { "type": "text", text: string, 
+/**
+ * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
+ */
+bytes: number, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
  */
@@ -8933,7 +9050,11 @@ for: string,
 /**
  * 结果内容（正文 / 图片块；原文是一个字符串时已归成一个正文块）。
  */
-content: Array<Block>, isError: boolean, } | { "type": "image", 
+content: Array<Block>, isError: boolean, 
+/**
+ * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有，界面写大小照它。
+ */
+bytes: number, } | { "type": "image", 
 /**
  * 图片类型（`image/png` …）。
  */
@@ -9024,6 +9145,33 @@ n: number,
  * 上一次回的那一份（缺 ⇒ 手上什么都没有）。
  */
 held?: Held, };
+type LineDiff = { rows: Array<LineDiffRow>, 
+/**
+ * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
+ */
+shown: number, 
+/**
+ * 行没给全（超了字数上界，在段的边界停下）；`added` / `removed` 仍是整份的数。
+ */
+truncated: boolean, 
+/**
+ * 整份加了几行 · 删了几行。
+ */
+added: number, removed: number, 
+/**
+ * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
+ */
+stat: string, };
+type LineDiffKind = "add" | "del" | "ctx" | "head";
+type LineDiffRow = { kind: LineDiffKind, 
+/**
+ * 行正文（不带头字；过长的一行截了以「…」收尾）。段头 ⇒ 写好的那一格。
+ */
+text: string, 
+/**
+ * 改之前 · 改之后的行号（1 起）：加的行没有改前，删的行没有改后；段头 · 从入参算的那一份（不知道在文件第几行）⇒ 缺。
+ */
+oldNo?: number, newNo?: number, };
 type LineRecord = { 
 /**
  * 哪一家（注册表里那一家的 `kind`）。
@@ -9118,11 +9266,6 @@ type Pasted = { id?: string, start: number, end: number, bodyStart: number, body
  * 正文的行数（两头的空行不算）。
  */
 lines: number, };
-type PatchHunk = { 
-/**
- * 改之前这段从第几行起（1 起）· 占几行；改之后同。
- */
-oldStart: number, oldLines: number, newStart: number, newLines: number, lines: Array<string>, };
 type PlanTitle = { 
 /**
  * 等着批。
@@ -9181,7 +9324,7 @@ body?: string, } | { "kind": "compactSummary",
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
 type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
-type StepBody = { "kind": "changes", changes: Array<TextChange>, } | { "kind": "command", line: string, };
+type StepBody = { "kind": "changes", diff: LineDiff, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
  * 成功（`false` ＝ 失败或被拒）。
@@ -9216,13 +9359,10 @@ exitCode?: number,
  */
 file?: string, 
 /**
- * 逐段的改动本身（[`PatchHunk`]）。新建整份文件 / 没有改动 ⇒ 缺。
+ * 这次改动算好的行差（照结果里的逐段改动，带真行号；[`LineDiff`]）。新建整份文件 · 没有改动 · 一段也放不下 ⇒ 缺，
+ * 两端画调用那一份（[`StepBody::Changes`]）。
  */
-patch?: Array<PatchHunk>, 
-/**
- * diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
- */
-patchTruncated?: boolean, 
+patch?: LineDiff, 
 /**
  * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
  * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
@@ -9245,7 +9385,6 @@ chars?: number,
  */
 kind?: ResultKind, };
 type TailHow = "tail" | "resume" | "handoff" | "truncated" | "rewritten";
-type TextChange = { old: string, new: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -11970,9 +12109,14 @@ type Origin = string;
 type Sid = string;
 type SshCommand = { 
 /**
+ * 只给 cc-monitor 自己开的窗、接在 `line` 前面跑的一段（跑它的 shell 把窗口标签记进本机后端的家；里面是本机数据目录的
+ * 绝对路径与这台终端方言的写法）。入参没给 `sid` · 记录目录不在 ⇒ 空串。
+ */
+prelude: string, 
+/**
  * 这台电脑终端里跑的那一行（Windows：PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`；别处：同一组参数的 POSIX shell 一行）。
  */
-command: string, };
+line: string, };
 type TerminalSshReq = { 
 /**
  * 那台的名字。
@@ -14108,8 +14252,14 @@ detail: string | null,
  * 到这台怎么连过去的那一句（「经跳板 devbox · 经代理」；多跳外到内「经跳板 a → b」）：跳板照配置，经代理连上了才知道。
  * 直连又不经代理 ⇒ 省略。界面有就摆一行，不拼字；每条连接的读数不上卡头，在 `detail` 末尾「连接：」那一段。
  */
-route?: string, };
+route?: string, 
+/**
+ * 机器条上那一行（缺 ⇒ 不进条：连着的 · 比这一版新的 · 停用的 · 还不知道的）。桌面与手机的条都只照这一格画。
+ */
+strip?: MachineStripLine, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
+type MachineStripLine = { tone: StripTone, progress: boolean, };
+type StripTone = "busy" | "offline" | "warn" | "fault";
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
@@ -14218,11 +14368,17 @@ detail: string | null,
  * 到这台怎么连过去的那一句（「经跳板 devbox · 经代理」；多跳外到内「经跳板 a → b」）：跳板照配置，经代理连上了才知道。
  * 直连又不经代理 ⇒ 省略。界面有就摆一行，不拼字；每条连接的读数不上卡头，在 `detail` 末尾「连接：」那一段。
  */
-route?: string, };
+route?: string, 
+/**
+ * 机器条上那一行（缺 ⇒ 不进条：连着的 · 比这一版新的 · 停用的 · 还不知道的）。桌面与手机的条都只照这一格画。
+ */
+strip?: MachineStripLine, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
+type MachineStripLine = { tone: StripTone, progress: boolean, };
 type MenuAct = "open_terminal" | "new_session" | "files" | "machine_status" | "add_machine";
 type MenuAction = { act: MenuAct, sub: string | null, blocked: string | null, note: string | null, };
 type Origin = string;
+type StripTone = "busy" | "offline" | "warn" | "fault";
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
@@ -14298,9 +14454,15 @@ detail: string | null,
  * 到这台怎么连过去的那一句（「经跳板 devbox · 经代理」；多跳外到内「经跳板 a → b」）：跳板照配置，经代理连上了才知道。
  * 直连又不经代理 ⇒ 省略。界面有就摆一行，不拼字；每条连接的读数不上卡头，在 `detail` 末尾「连接：」那一段。
  */
-route?: string, };
+route?: string, 
+/**
+ * 机器条上那一行（缺 ⇒ 不进条：连着的 · 比这一版新的 · 停用的 · 还不知道的）。桌面与手机的条都只照这一格画。
+ */
+strip?: MachineStripLine, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
+type MachineStripLine = { tone: StripTone, progress: boolean, };
 type MachineWakeReq = { machine: string, };
+type StripTone = "busy" | "offline" | "warn" | "fault";
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 

@@ -187,8 +187,8 @@ export default tseslint.config(
     },
   },
   {
-    // 测试文件（tsx node 的 *.test.ts / jsdom 的 *.vitest.ts）：补 node 全局。
-    files: ["tests/**/*.test.ts", "tests/**/*.vitest.ts"],
+    // 测试文件（*.vitest.ts）：补 node 全局。
+    files: ["tests/**/*.vitest.ts"],
     languageOptions: {
       globals: { ...globals.node },
     },
@@ -196,7 +196,7 @@ export default tseslint.config(
   {
     // 判据里不睡定时长：睡一会儿再判，机器一慢就红、一快就漏。等一件事 ⇒ `vi.waitFor` 等它本身；判到点前后 ⇒ 假时钟拨到界上两侧；
     //   让别的先走 ⇒ `setTimeout(…, 0)` 让一拍。
-    files: ["tests/**/*.test.ts", "tests/**/*.vitest.ts", "tests/test-support/**/*.ts"],
+    files: ["tests/**/*.vitest.ts", "tests/test-support/**/*.ts"],
     rules: {
       "no-restricted-syntax": [
         "error",

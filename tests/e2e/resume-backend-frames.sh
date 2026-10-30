@@ -63,9 +63,7 @@ SID8="${SID:0:8}"
 SESSION="cc-$SID8"
 KEEP="cc-e2ekeep-$$"   # 无关 cc-* 会话:空 backend 守卫,防最后会话卡灰
 
-pass=0; fail=0
-ok()  { echo "  PASS $1"; pass=$((pass+1)); }
-bad() { echo "  FAIL $1"; fail=$((fail+1)); }
+. "$E2E_DIR/assert.sh"
 
 cleanup() {
   set +e
@@ -170,7 +168,4 @@ CNT="$(tmux list-sessions -F '#{session_name}' 2>/dev/null | { grep -cE "^$SESSI
 echo "-- tmux ls: $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^$SESSION" | paste -sd, -)  (孤儿=$ORPH)"
 [ "$ORPH" = 0 ] && [ "$CNT" = 1 ] && ok "复活后仍单会话 $SESSION、孤儿数=0(治 #76)" || bad "孤儿数=$ORPH / 会话数=$CNT(不该)"
 
-echo "== 结果:$pass 过 / $fail 败 =="
-# G-C：与另外 8 套逐字一致的收尾格式，好让 `tests/e2e/assert-pass-floor.sh` 用同一条正则抓。
-echo "===== 合计 PASS=$pass FAIL=$fail ====="
-[ "$fail" -eq 0 ]
+finish
