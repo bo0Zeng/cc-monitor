@@ -93,14 +93,14 @@ describe("机器状态成品的推送", () => {
     const states: string[] = [];
     onLocalBackend((l) => got.push(l));
     onMachineState((o) => states.push(o));
-    const down: LocalBackend = { state: "down", word: "w", said: "s", fixes: [], next: null };
+    const down: LocalBackend = { state: "down", look: "down", tone: "fail", word: "w", said: "s", fixes: [], next: null };
     listeners.get(LOCAL_BACKEND_EVENT)!({ payload: down });
     expect(got).toEqual([down]);
     expect(states).toEqual([]);
   });
 
   it("★ 订上就问一次壳那一格（`backend_status` 本机的 `local`）：订上之前起不来的那几帧收不到，问回来的照交（A2-17-15-1-1）", async () => {
-    const down: LocalBackend = { state: "down", word: "w", said: "起不来那一句", fixes: [], next: null };
+    const down: LocalBackend = { state: "down", look: "down", tone: "fail", word: "w", said: "起不来那一句", fixes: [], next: null };
     status.asked.length = 0;
     status.reply = Promise.resolve({ local: down });
     const got: LocalBackend[] = [];
@@ -121,7 +121,7 @@ describe("机器状态成品的推送", () => {
     const off = onLocalBackend((l) => got.push(l));
     await flush();
     listeners.get(LOCAL_BACKEND_EVENT)!({ payload: pushed });
-    answer({ local: { state: "down", word: "w", said: "旧的", fixes: [], next: null } });
+    answer({ local: { state: "down", look: "down", tone: "fail", word: "w", said: "旧的", fixes: [], next: null } });
     await flush();
     status.reply = null;
     expect(got).toEqual([pushed]);
