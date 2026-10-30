@@ -57,7 +57,8 @@ export function paintLiveCards(host: HTMLElement, cards: LiveCardState[]): void 
   }
   const order = cards.map((c) => {
     const els = had.get(c.key) ?? build(c.key);
-    els.el.classList.toggle(s.awaiting, c.phase !== "streaming");
+    const awaiting = c.phase !== "streaming";
+    els.el.classList.toggle(s.awaiting, awaiting);
     if (els.head.textContent !== c.head) els.head.textContent = c.head;
     setBody(els, c.body);
     return els.el;
