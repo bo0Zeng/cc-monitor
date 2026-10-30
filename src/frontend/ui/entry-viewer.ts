@@ -33,7 +33,7 @@ import { splitButton } from "./kit/split-button";
 import { defaultPick, pickAsk, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
 import { openSession } from "./session-open";
 import { standingOf } from "./sessions-where";
-import type { Run } from "./generated/Run";
+import type { Launch } from "./generated/Launch";
 import { openNewSession } from "./new-session";
 import { revealInFolder } from "./reveal-in-folder";
 import { terminalFrontAvailable } from "./terminal-front";
@@ -46,6 +46,7 @@ import { openSettingsWindow } from "./open-settings";
 import { connectTerminalOf } from "./settings-dest";
 import { SWITCH_TO_SESSION_EVENT } from "./window-events";
 import { windowStatus, windowTitle } from "./viewer-window-text";
+import { isLive, isUnclear } from "./face-can";
 import { bootstrapAgentWindow } from "./views/agent-window";
 
 // Vite HMR：任何热更新一律整页重载（理由见 `main.ts` 同名那段）。
@@ -154,7 +155,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
     return;
   }
   const r = row;
-  let live: boolean | null = r.face.dot === "unknown" ? null : r.face.life.is === "live";
+  let live: boolean | null = isUnclear(r.face) ? null : isLive(r.face);
   const win = getCurrentWindow();
   const paint = (): void => {
     void win.setTitle(windowTitle(r, live)).catch(() => {});
@@ -261,7 +262,7 @@ function resumeControl(r: HistoryRow): HTMLElement {
     : r.lastAccount
       ? { kind: "list", items: [{ name: r.lastAccount, label: r.lastAccount, quota: null, last: true }] }
       : { kind: "off" };
-  let machineRun: Run | undefined;
+  let machineRun: Launch | undefined;
   const go = async (): Promise<void> => {
     setBusy(sb.main, copyText("history.resume.busy"));
     try {

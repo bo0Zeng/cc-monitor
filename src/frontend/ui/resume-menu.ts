@@ -17,7 +17,7 @@ import { accountAvatarEl } from "./account-color";
 import { fiveHourCell, accountLabel } from "./acct-words";
 import { lookupAgentProfile } from "./agent-profile";
 import type { Origin } from "./ipc/origin";
-import type { Run } from "./generated/Run";
+import type { Launch } from "./generated/Launch";
 import type { AccountAsk } from "./generated/AccountAsk";
 import { chosenAccount } from "./launch-account";
 import type { MenuItem } from "./kit/menu";
@@ -27,7 +27,7 @@ const NEW_IN_DIR_ICON: IconName = "plus";
 
 /** 勾着的那一组：`run` = 放在哪（`null` ＝ 照这台的设置）· `account` = 点名的号（缺 = 跟随上次的号）· `useBase` = 基座（不隔离）。 */
 export interface ResumePick {
-  run: Run | null;
+  run: Launch | null;
   account: string | undefined;
   useBase: boolean;
 }
@@ -49,7 +49,7 @@ export interface ResumeMenuSpec {
   /** 勾着的那一组（点单选时就地改它）。 */
   pick: ResumePick;
   /** 这台恢复默认放在哪（`sessions-where` 答的）；`run` 没动过时勾画在它上面。没问到 ⇒ 两项都不勾。 */
-  machineRun?: Run;
+  machineRun?: Launch;
   onChange?: (p: ResumePick) => void;
   /** 有它 ⇒ 最上面一行「恢复」，按勾着的那一组起（标签页右键：没有主按钮）。 */
   run?: (p: ResumePick) => void;
@@ -63,7 +63,7 @@ export function defaultPick(): ResumePick {
 }
 
 /** 勾着的那一组 ⇒ 请求里那两格：人没动过的不带（那台照跟随 · 照这台的设置）。 */
-export function pickAsk(p: ResumePick): { account?: AccountAsk; run?: Run } {
+export function pickAsk(p: ResumePick): { account?: AccountAsk; run?: Launch } {
   const account = p.useBase ? chosenAccount(null) : p.account !== undefined ? chosenAccount(p.account) : undefined;
   return { ...(account ? { account } : {}), ...(p.run !== null ? { run: p.run } : {}) };
 }
@@ -78,7 +78,7 @@ function pickedAccountLabel(accounts: ResumeAccounts, p: ResumePick): string | n
 }
 
 /** 勾着的那一组怎么说：`personal · tmux 里` / 没有号可说时 `tmux 里`；放在哪没动过、也没问到这台 ⇒ 照这台的设置。 */
-export function pickWords(accounts: ResumeAccounts, p: ResumePick, machineRun?: Run): string {
+export function pickWords(accounts: ResumeAccounts, p: ResumePick, machineRun?: Launch): string {
   const r = p.run ?? machineRun;
   const run =
     r === undefined
@@ -93,7 +93,7 @@ export function pickWords(accounts: ResumeAccounts, p: ResumePick, machineRun?: 
 }
 
 /** 主按钮的悬停：`恢复 · personal · tmux 里`。 */
-export function resumeHint(accounts: ResumeAccounts, p: ResumePick, machineRun?: Run): string {
+export function resumeHint(accounts: ResumeAccounts, p: ResumePick, machineRun?: Launch): string {
   return copyText("resumeMenu.hint.pick", { pick: pickWords(accounts, p, machineRun) });
 }
 

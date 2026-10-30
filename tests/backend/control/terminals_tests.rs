@@ -1009,6 +1009,34 @@ fn every_refusal_reason_has_its_sentence() {
     assert_eq!(r["said"], no_said("not_yours"));
 }
 
+/// 接管 · 交还被拒：投出去的那一句照码说（终端没了就说没了），不落契约错那一句、不空着；下层那句进原话。
+#[test]
+fn a_refused_take_or_release_says_why_by_its_code() {
+    use crate::wire::typed::Codes;
+    let told = |code: &str| {
+        crate::control::terminals_wire::hold_refused(CmdErr::new(
+            code,
+            crate::common::contract::malformed("lower"),
+        ))
+        .into_fail()
+    };
+    for (code, why) in [
+        ("not_known", "not_known"),
+        ("no_such_session", "ended"),
+        ("not_yours", "not_yours"),
+        ("ambiguous", "ambiguous"),
+    ] {
+        let f = told(code);
+        assert_eq!(f.code, code);
+        assert_eq!(f.message, no_said(why), "{code} 那一句");
+        assert!(
+            f.raw.as_deref().unwrap_or("").contains("lower"),
+            "{code} 下层那句进原话：{:?}",
+            f.raw
+        );
+    }
+}
+
 /// 送完之后的下一步由这一处判（出口照 `acts` 摆，不按 `why` 自己挑）：改得了的拒因给［再发一次］，终端可能换了 ⇒ 重读名单，
 /// 画面可能变了 ⇒ 重抓一屏；已经没了 · 不归这里管的 ⇒ 不给重发。
 #[test]

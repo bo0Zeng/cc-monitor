@@ -11,7 +11,7 @@ import type { StandingWord } from "./generated/StandingWord";
 import type { TerminalAt } from "./generated/TerminalAt";
 import type { Whereabouts } from "./generated/Whereabouts";
 import type { Origin } from "./ipc/origin";
-import type { Run } from "./generated/Run";
+import type { Launch } from "./generated/Launch";
 import { copyText } from "./copy-table";
 
 /**
@@ -23,7 +23,7 @@ export interface Standing {
   kind: StandingWord;
   names: string[];
   terminals: TerminalAt[];
-  run: Run;
+  run: Launch;
 }
 
 /** 带着它的第一个终端是不是 tmux 会话（就地恢复只往 tmux 会话里键入；本机［在终端里打开］只给托管终端那一行）。 */
