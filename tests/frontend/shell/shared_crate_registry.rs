@@ -1,22 +1,13 @@
-//! U8c-1：把「新增共享 crate 时别漏跑」从**散文**变成机检。
+//! 「新增共享 crate 时别漏跑」的机检。
 //!
-//! ⚠⚠ **G2（2026-08-04）换了机制，本模块整体改写** —— 原来的形态是「每个 crate 必须在
-//! `ci.yml` 里出现在 test / fmt / clippy **三处**」。那条纪律存在的唯一原因是
-//! **`src/frontend/shell/Cargo.toml` 当时没有 `[workspace]` 表**：六个 crate 只是 path 依赖，
-//! `--all` 覆不到，只能一个个手工列。
-//! **现在它们是真 workspace member**，`cargo fmt --all` / `--workspace` 自动覆盖 ⇒
-//! 「补三处」这条纪律**消失了**，取而代之的是「**必须在 members 里**」。
-//! ⇒ 判据跟着换靶：不再数 CI 步骤，改钉 `[workspace] members`。
-//! ★ 这两条**不是被删的**（铁律 13：删判据前先证明它恒绿）——它们是**被改写成继任者**的：
-//! 同一个失效模式（「静默少跑」），换了一个载体。
+//! `src/common/` 下的共享 crate 都是 `src/frontend/shell/Cargo.toml` `[workspace]` 的 member，
+//! CI 的 `cargo fmt --all` / `clippy --workspace` / `test --workspace` 各一条就覆盖全部 ⇒
+//! 要守的只有一件事：**每个共享 crate 都在 `members` 里**。
 //!
 //! # 为什么这条值得一个判据
 //!
-//! `ci.yml` 里那句纪律已经被违反过**两次**，而且都是事后补账发现的：
-//! `branch-core` 当初漏了 fmt/clippy；`usage-core`/`acct-core` 三样**全漏**、漏了两轮
-//! ——那段补账注释自己写着「它们的测试在 CI 里等于不存在」。
-//!
-//! 违反它不会红，只会**静默少跑**。这正是本工作区在治的那个病的形状。
+//! 漏进 `members` 不会红，只会**静默少跑**：`--workspace` 覆不到非成员，那个 crate 的测试、
+//! fmt、clippy 就此从门禁里消失（不是失败，是不存在）。
 //!
 //! # 它服务哪条要求：`INVARIANTS §46`〔D0b 2026-09-24 升格〕
 //!
@@ -26,10 +17,8 @@
 //!
 //! # 判据形态
 //!
-//! 遍历 `crates/*/Cargo.toml` 拿包名（**不是手写清单** —— 手写清单本身就是下一个漂移源），
-//! 然后要求每个包名在 `ci.yml` 里同时出现在 `cargo test -p <名>`、
-//! `cargo fmt --check --manifest-path crates/<名>/Cargo.toml`、
-//! `cargo clippy --manifest-path crates/<名>/Cargo.toml` 三处。
+//! 遍历 `src/common/*/Cargo.toml` 拿包名（**不是手写清单** —— 手写清单本身就是下一个漂移源），
+//! 然后要求每个包都在 `src/frontend/shell/Cargo.toml` 的 `[workspace] members` 里。
 //!
 //! ⚠ **`vendor/` 下的不算** —— 那是 vendored 第三方（`code-picture-core`），
 //! 有自己的一套（`ci.yml` 单独一步），不受本约定管。
