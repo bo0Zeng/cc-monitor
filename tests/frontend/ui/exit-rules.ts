@@ -7,7 +7,9 @@
  *   不带插值的 body（空态 · 提示）是界面固定的字，不随数据变；error 是结局，由后端交成品，不算骨架。
  *   键不是字面量、表里没有这把键，也算一处。
  * - `branch`：条件读了线上值的分支里不许取文。「读了线上值」＝ 条件拿一个值去比字面的码：`x.code === "dup"` 一类的比较、
- *   `case "dup":`（连同那个 `switch` 的 `default:`）、`CODES.has(x)` / `CODES.includes(x)`（`CODES` 是本文件里一组字面码）。
+ *   `case "dup":`（连同那个 `switch` 的 `default:`）、`CODES.has(x)` / `CODES.includes(x)`（`CODES` 是本文件里一组字面码）；
+ *   按本机 / 远端分也算：条件调 `isRemoteOrigin(…)` / `isLocalOrigin(…)`，或拿一个值比 `LOCAL_ORIGIN`（`===` · `!==` · `case LOCAL_ORIGIN:`）——
+ *   机器的叫法照那台机器的名字摆，不在出口按本机 / 远端挑字。
  *   管到的分支：`if` 的两头 · 三元的两头 · `&&` / `||` / `??` 的右侧 · `case` / `default` 底下；进到里面再定义的具名函数 · 方法 · 类就不算，
  *   箭头函数跟着外面的分支算（按码挂上去的回调取的字，也是按码挑的字）。
  *   分支里调本文件里取文的函数（具名函数 · 绑在 `const` 上的箭头函数 · 函数表达式，体里取文或再调这样的函数）也算一处：
@@ -17,6 +19,8 @@
  *
  * 买不到：分支里调的是别的文件里的函数或类的方法，取文在那边，认不出；比的码不是字面量（从别处拿来的常量、枚举）就认不出是在按码判；先 `if (…) return` 再在后面取文，后面那一句不在分支里，也认不出；
  * 不经文案表、直接写在代码里的字归文案表那几条判据管，不在这里。
+ * 按本机 / 远端分的那一形只在 TS 这一半认；Kotlin 与 Rust 那两半不认，「三门判同样两句」在这一形上只对 TS 成立。
+ * 判法换了名字或从别处转一手（`const r = isRemoteOrigin(o); if (r) …`）也认不出。
  */
 import ts from "typescript";
 
@@ -93,12 +97,23 @@ function codeLists(sf: ts.SourceFile): Set<string> {
   return out;
 }
 
-/** 条件里拿一个值去比字面的码（不进里面再定义的函数）。 */
+/** 分本机 / 远端的那两个判法（`ipc/origin.ts`）与本机那个码的名字。 */
+const ORIGIN_TESTS: ReadonlySet<string> = new Set(["isRemoteOrigin", "isLocalOrigin"]);
+const LOCAL_CODE = "LOCAL_ORIGIN";
+
+function isLocalCode(n: ts.Expression): boolean {
+  const e = unwrap(n);
+  return ts.isIdentifier(e) && e.text === LOCAL_CODE;
+}
+
+/** 条件里拿一个值去比字面的码，或按本机 / 远端分（不进里面再定义的函数）。 */
 function readsCode(cond: ts.Node, lists: Set<string>): boolean {
   let found = false;
   const walk = (n: ts.Node): void => {
     if (found || isFunctionLike(n)) return;
     if (ts.isBinaryExpression(n) && EQ.has(n.operatorToken.kind) && isStr(unwrap(n.left)) !== isStr(unwrap(n.right))) found = true;
+    else if (ts.isBinaryExpression(n) && EQ.has(n.operatorToken.kind) && isLocalCode(n.left) !== isLocalCode(n.right)) found = true;
+    else if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && ORIGIN_TESTS.has(n.expression.text)) found = true;
     else if (
       ts.isCallExpression(n) &&
       ts.isPropertyAccessExpression(n.expression) &&
@@ -116,7 +131,7 @@ function readsCode(cond: ts.Node, lists: Set<string>): boolean {
 }
 
 function caseOnCode(c: ts.CaseClause, lists: Set<string>): boolean {
-  return isStr(unwrap(c.expression)) || readsCode(c.expression, lists);
+  return isStr(unwrap(c.expression)) || isLocalCode(c.expression) || readsCode(c.expression, lists);
 }
 
 /** `child` 是不是 `parent` 那个按码判的分支底下（`child` 是 `parent` 的直接子节点）。 */
@@ -229,6 +244,12 @@ export const TS_SAMPLES: { code: string; want: Record<RuleId, number> }[] = [
   // 取文挪进同文件的小函数：按码判的分支里调它，算一处（连它再调的同文件函数一起看）。
   { code: 'function none() { return span(copyText("s.k.x")); }\nif (b.takeover === "no_line") box.append(none());', want: { key: 0, branch: 1 } },
   { code: 'const word = () => copyText("s.k.x");\nfunction none() { return word(); }\nconst t = x.code === "dup" ? none() : null;', want: { key: 0, branch: 1 } },
+  // 按本机 / 远端挑字：条件调 `isRemoteOrigin` / `isLocalOrigin`，或拿一个值比 `LOCAL_ORIGIN`。
+  { code: 'const t = isRemoteOrigin(o) ? o : copyText("s.k.x");', want: { key: 0, branch: 1 } },
+  { code: 'if (!isLocalOrigin(o)) el.textContent = copyText("s.k.x");', want: { key: 0, branch: 1 } },
+  { code: 'if (x.origin === LOCAL_ORIGIN) el.textContent = copyText("s.k.x");', want: { key: 0, branch: 1 } },
+  { code: 'const t = LOCAL_ORIGIN !== x.origin && copyText("s.k.x");', want: { key: 0, branch: 1 } },
+  { code: 'function f(o: O) { switch (o) { case LOCAL_ORIGIN: return copyText("s.k.x"); default: return o; } }', want: { key: 0, branch: 1 } },
   // 阴性：骨架字照摆；条件不比码；分支里再定义的具名函数不算；比码的那一侧在条件里不算；两侧都是字面量不算。
   { code: 'el.textContent = copyText("s.k.x");', want: { key: 0, branch: 0 } },
   { code: 'empty.textContent = copyText("p.k.x");', want: { key: 0, branch: 0 } },
@@ -239,4 +260,7 @@ export const TS_SAMPLES: { code: string; want: Record<RuleId, number> }[] = [
   // 阴性：同一个取文的小函数在分支外调不算；分支里调的同文件函数不取文不算。
   { code: 'function none() { return copyText("s.k.x"); }\nbox.append(none());', want: { key: 0, branch: 0 } },
   { code: 'function plain() { return 1; }\nif (x.code === "dup") go(plain());', want: { key: 0, branch: 0 } },
+  // 阴性：按本机 / 远端分了支、分支里不取文不算；`LOCAL_ORIGIN` 当值用、不在比较里不算。
+  { code: 'const f = isRemoteOrigin(o) ? open() : null;', want: { key: 0, branch: 0 } },
+  { code: 'const t = go(LOCAL_ORIGIN) ? copyText("s.k.x") : null;', want: { key: 0, branch: 0 } },
 ];
