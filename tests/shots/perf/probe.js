@@ -19,6 +19,47 @@
     frames: null,
   };
   window.__perf = P;
+  // 进出后端的那几下：`invoke`（问 · 答回来的那一刻）与通道 / 事件回调（后端推来的那一包，记时刻与大小）。
+  // 假适配层（`@tauri-apps/api/mocks`）往 `window.__TAURI_INTERNALS__` 上挂 `invoke` / `transformCallback`：先放一个空对象，挂上那一下就包一层。
+  P.ipc = [];
+  {
+    const internals = {};
+    let invoke;
+    let transform;
+    Object.defineProperty(internals, "invoke", {
+      configurable: true,
+      get: () => invoke,
+      set: (f) => {
+        invoke = (cmd, a, o) => {
+          // 帧命令都走 `chan_call`：记上它问的是哪一条（`op`）
+          const row = { k: "call", cmd: typeof a?.op === "string" ? `${cmd}:${a.op}` : String(cmd), t: performance.now() };
+          P.ipc.push(row);
+          const p = f(cmd, a, o);
+          Promise.resolve(p).then(
+            () => (row.done = performance.now()),
+            () => (row.done = performance.now()),
+          );
+          return p;
+        };
+      },
+    });
+    Object.defineProperty(internals, "transformCallback", {
+      configurable: true,
+      get: () => transform,
+      set: (f) => {
+        transform = (cb, once) =>
+          f((data) => {
+            const t = performance.now();
+            const out = cb?.(data);
+            const body = data?.message ?? data;
+            const bytes = typeof body === "string" ? body.length : Array.isArray(body?.items) ? body.items.reduce((n, it) => n + (typeof it?.body === "string" ? it.body.length : 0), 0) : 0;
+            P.ipc.push({ k: "push", t, run: performance.now() - t, bytes });
+            return out;
+          }, once);
+      },
+    });
+    window.__TAURI_INTERNALS__ = internals;
+  }
   // 页里建过的每个 IntersectionObserver 都记下来（试验项「摘掉 IO 再量空闲」用）
   P.ios = [];
   if (typeof IntersectionObserver === "function") {
@@ -209,6 +250,72 @@
     for (let k = 1; k < f.d.length; k++) if (f.at[k] > g) return f.d[k];
     return null;
   };
+  /**
+   * 点开一个 tab 之后的时间线：每一帧（rAF）看一眼当前那条流的视口 —— 已建条目几个、视口里有字的卡几张、
+   * 视口被已建条目盖住多少像素、被骨架占位（没建的那几行）盖住多少；另记那一刻建过卡 / 收进账本的记录数，与进出后端的那几下（`ipc`）。
+   * 读几何要排版：读在 rAF 里，排的是那一帧本来就要排的那一份（同一帧里之后再改 DOM 才多排一次）。
+   * 记到安静（`quietMs` 里没有新建节点、没有长任务）或 `maxMs` 为止；交回 `{ samples, ipc, quietAt }`，时刻都从 `t0` 起算。
+   */
+  P.timeline = (t0, quietMs, maxMs) =>
+    new Promise((resolve) => {
+      const samples = [];
+      const step = (now) => {
+        const s = document.querySelector("#message-stream .stream.active");
+        const perf = window.__ccmPerf ?? {};
+        const row = { t: now - t0, items: 0, textCards: 0, coverPx: 0, gapPx: 0, viewPx: 0, rendered: perf.recordsRendered ?? 0, deferred: perf.recordsDeferred ?? 0 };
+        if (s) {
+          const v = s.getBoundingClientRect();
+          row.viewPx = Math.round(v.height);
+          row.scrollTop = Math.round(s.scrollTop);
+          row.scrollHeight = s.scrollHeight;
+          // 视口里自上而下扫一遍流里的顶层条目（`.stream-content` 的孩子：卡 · 折叠的包 · 骨架占位；各条不重叠，按先后取并集）
+          let reached = v.top;
+          let first = null;
+          const content = s.querySelector(":scope > .stream-content");
+          for (const el of content ? content.children : []) {
+            row.items += 1;
+            const r = el.getBoundingClientRect();
+            const top = Math.max(r.top, reached);
+            const bottom = Math.min(r.bottom, v.bottom);
+            if (bottom <= top) continue;
+            if (first === null) first = top;
+            reached = bottom;
+            if (el.classList.contains("stream-skeleton-gap")) row.gapPx += bottom - top;
+            else {
+              row.coverPx += bottom - top;
+              if ((el.textContent ?? "").trim()) row.textCards += 1;
+            }
+          }
+          // 视口与流内容框相交的那一段里，最上一条之上、最下一条之下空着的像素（条与条之间的外边距、流的内边距不算）：没东西可画
+          const c = content ? content.getBoundingClientRect() : v;
+          const lo = Math.max(c.top, v.top);
+          const hi = Math.min(c.bottom, v.bottom);
+          row.holePx = hi <= lo ? 0 : first === null ? Math.round(hi - lo) : Math.round(Math.max(0, first - lo) + Math.max(0, hi - reached));
+          row.coverPx = Math.round(row.coverPx);
+          row.gapPx = Math.round(row.gapPx);
+        }
+        samples.push(row);
+        const busy = Math.max(lastBusy(), t0);
+        if (now - busy >= quietMs || now - t0 > maxMs) {
+          const ipc = P.ipc.filter((x) => x.t >= t0).map((x) => ({ ...x, t: x.t - t0, ...(x.done !== undefined ? { done: x.done - t0 } : {}) }));
+          // 安静那一刻视口里的样子：视口框 · 流的内边距 · 与视口相交的每一条（类名 · 上下沿相对视口顶）
+          let layout = null;
+          if (s) {
+            const v = s.getBoundingClientRect();
+            const cs = getComputedStyle(s);
+            const content = s.querySelector(":scope > .stream-content");
+            const at = (el) => [String(el.className).slice(0, 40), Math.round(el.getBoundingClientRect().top - v.top), Math.round(el.getBoundingClientRect().bottom - v.top)];
+            layout = {
+              pad: [cs.paddingTop, cs.paddingBottom],
+              rows: [...(content ? content.children : [])].map(at).filter(([, a, b]) => b > -50 && a < v.height + 50),
+              other: [...s.children].filter((el) => el !== content).map(at),
+            };
+          }
+          resolve({ samples, ipc, quietAt: busy - t0, layout });
+        } else requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
   P.frameAfter = (t0, fromMs) => {
     const f = P.frames;
     if (!f) return 0;

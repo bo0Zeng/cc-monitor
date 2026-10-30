@@ -1,102 +1,109 @@
 use super::*;
 
-/// 🔴 **`scan_tree!` 这个宏的自摘，在本 crate 这棵树上不生效** ——
-/// 剖分之后没有一个调用者能在这里让那一刀落下。
-///
-/// # 它换掉了谁、为什么〔**D 类**〕
-///
-/// 换掉的那条断言是「本 crate 的 `src/` 里只有 `lib.rs`（= **调用者自己**），摘除生效 ⇒ 结果为空」。
-/// 那条断言的前提是**判据与被测代码同住一份文件** —— 判据搬进
-/// `tests/common/guard-core/lib_tests.rs` 之后，「调用者」不再是 `lib.rs`，
-/// 前提**恒假**，它当场红。这正是 `§6.2` D 类那一形（`§6.3` 记过两条同形的）。
-///
-/// # 换成今天真的成立、而且仍然会红的那句话
-///
-/// `scan_tree!` 展开成 `scan_tree_excluding_self($root, $exts, file!())`，
-/// 而本仓**所有**测试模块今天都是 `#[path]` 引进来的 ⇒ `file!()` 一律是带 `..`
-/// 的折返路径；本 crate 这棵树的根（`CARGO_MANIFEST_DIR/src`）里**没有** `..`
-/// ⇒ 后缀比不命中 ⇒ **自摘在这一处恒空转**。本条就断言这件事，因此：
-///
-/// 🔴 **⚠ 别把本条读成「自摘在本仓一处都不生效」**。
-/// **那句话是过宽的**：后缀比命不命中只取决于
-/// 扫描根的字符串里有没有和 `file!()` 同一段 `..`：哪天有人拼出一个带 `..` 的根，那棵树上自摘就会真的落刀。
-/// **本条钉的是本 crate 这一棵，钉不住别的根。**
-/// 逐侧读数见 [`scan_tree_excluding_self`] 头注那张表。
-///
-/// · 它是 [`a_path_attribute_caller_file_silently_fails_to_exclude`] 的**加强版** ——
-///   那条喂的是手写的折返串（依赖「我猜 `file!()` 长这样」），
-///   本条喂的是**真的 `file!()`**，不依赖任何猜测；
-/// · 哪天有人给 `scan_tree!` 加上路径规范化（让自摘重新生效），**本条当场红**，
-///   而红了该干什么写在下面的文案里 —— 那时要回去重读 `§5.4b` 纪律 4：
-///   自摘一旦在**这一棵**上重新生效（它今天在这里**不生效**），
-///   几十处 `scan_tree!` 的语料面会**静默缩小一份**。
-///   〔`tests/` 下 `scan_tree!(` 的**调用点**现打 **81** 处
-///   （口径：去掉注释行与字符串里的那几处）—— 数的是**调用点**、不是注释行；
-///   注释行那个数不写在这里：它一改注释就变，
-///   写下来就是又下一个会腐的数。
-///   而真正会缩一份的只有「语料根含判据自己那棵树」的那些判据，现打 **6 份**；
-///   其中 `plugin_walk_fixture` 那一趟 `P4` 已改成明写名单，余下 5 份仍走 `scan_tree!`。〕
+/// `scan_tree!` 收整棵树：在带 `..` 的根上（串里那一段与 `file!()` 同形）结果也与 [`walk_tree`] 相等。
 #[test]
-fn the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    // 对照组先行：遍历本身必须是活的（否则下面的「非空」也读不出信息）。
-    let all = scan_tree_excluding(&root, &["rs"], &[]);
+fn scan_tree_returns_the_whole_tree_even_on_a_root_spelled_with_dotdot() {
+    let here = std::path::Path::new(file!());
+    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .find(|a| a.join(here).is_file())
+        .expect("从包目录往上找得到 `file!()` 指的那份文件");
+    let root = base.join(here.parent().expect("file!() 有父目录"));
+    let want: Vec<_> = walk_tree(&root, &["rs"])
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect();
+    let got: Vec<_> = scan_tree!(&root, &["rs"])
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect();
     assert!(
-        all.iter().any(|(p, _)| p.ends_with("lib.rs")),
-        "明写空名单时 `lib.rs` 都不在结果里 —— 遍历坏了，本条此刻不携带信息"
+        want.iter().any(|p| p.ends_with("lib_tests.rs")),
+        "遍历没收到 lib_tests.rs，本条此刻不携带信息：{want:?}"
     );
-    let files = scan_tree!(&root, &["rs"]);
-    assert!(
-        files.iter().any(|(p, _)| p.ends_with("lib.rs")),
-        "🟢 `scan_tree!` 的自摘**重新生效了**（`lib.rs` 被摘掉了）——\n\
-         而它在本仓本来是**不生效**的，本条就是钉住那件事的。\n\
-         \n\
-         本条不是在报故障，是在报一个**纪律要重读**的信号：\n\
-纪律 4 说「摘掉我自己」不许靠 `file!()`，理由之一是\n\
-         它失效时**安静**。它一旦重新生效，本仓那 80 余处 `scan_tree!(` 调用点的语料面会\n\
-         各自**静默少一份文件**，而少扫不会红。\n\
-         ⇒ 先去核那些调用点里有几处的语料根含判据自己那棵树（`tests/`）——\n\
-         `P4` 2026-09-21 现打是 **6 处**（`scanning_guard_registry_tests` ·\n\
-         `structural_scan_tests` · `doc_claim_registry_tests` ·\n\
-         `shared_crate_registry_tests` · `tool_registry_tests` · `plugin_walk_fixture`），\n\
-         再决定是把它们改成 `scan_tree_excluding` 的明写名单，还是收掉本条。"
+    assert_eq!(
+        got, want,
+        "`scan_tree!` 与 `walk_tree` 在根 {root:?} 上收到的文件不同"
     );
 }
 
-/// ★ 对照组：把摘除条件换成一个匹配不上的名字 ⇒ `lib.rs` 必须回来。
-///
-/// 没有这一条，上面那条「结果为空」可能只是**遍历本来就坏了**。
+/// 读内容的遍历与只列路径的遍历跳过同一批目录：依赖目录（按名字认）与构建目录（按 `CACHEDIR.TAG` 认）两边都不进。
 #[test]
-fn without_the_exclusion_the_caller_would_be_included() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let files = scan_tree_excluding_self(&root, &["rs"], "does-not-match-anything.rs");
-    assert!(
-        files.iter().any(|(p, _)| p.ends_with("lib.rs")),
-        "换成匹配不上的摘除名之后 `lib.rs` **仍然**不在结果里 —— \
-             说明遍历本来就坏了，上一条的「为空」是假信号（零命中地绿）"
+fn both_walkers_skip_the_same_directories() {
+    let d = std::env::temp_dir().join(format!("gcore-skip-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    for sub in ["keep", "node_modules", "build-out"] {
+        std::fs::create_dir_all(d.join(sub)).expect("建临时目录");
+        std::fs::write(d.join(sub).join("x.rs"), "fn x() {}\n").expect("写夹具");
+    }
+    std::fs::write(
+        d.join("build-out").join("CACHEDIR.TAG"),
+        "Signature: 8a477f597d28d172789f06886806bc55\n",
+    )
+    .expect("写夹具");
+    let read: Vec<String> = walk_tree(&d, &["rs"])
+        .into_iter()
+        .map(|(p, _)| {
+            p.strip_prefix(&d)
+                .expect("在根下")
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
+    let listed = files_by_extension(&d, "rs");
+    let _ = std::fs::remove_dir_all(&d);
+    assert_eq!(
+        read,
+        vec!["keep/x.rs".to_string()],
+        "读内容的遍历进了不该进的目录"
     );
+    assert_eq!(listed, read, "两种遍历跳过的目录不同");
 }
 
-/// 🔴 **`file!()` 自摘在「判据被 `#[path]` 引进来」时是空转的** —— 「明写名单、不靠自摘」那条纪律的成因钉。
-///
-/// 仓库重组之后，测试模块长这样：
-/// `#[cfg(test)] #[path = "../../../../src/bridge/tests/bridge/X_tests.rs"] mod tests;`
-/// 被引进来的那份文件里 `file!()` 给的是 `src/../../../tests/bridge/X_tests.rs` ——
-/// **带 `..` 的折返路径**，而草垛是规范化过的绝对路径 ⇒ 后缀比**恒不命中**。
-///
-/// ⚠ 这一条**不是**在要求把它修好（修好之后它仍然只是「看起来像在工作」）；
-/// 它是把那个失效**钉成一条读得出来的事实**，好让那条纪律有据可依：
-/// 靠 `file!()` 自摘的判据，一搬树就安静地把自己收进了自己的语料。
+/// [`baseline_text`]：临时仓里 main 上名单 3 行、分支上提交成 5 行 ⇒ 读回 3 行那一版；基线上没有的路径 ⇒ `None`；
+/// 没有 main ⇒ `Err`（读不到基线不许当成过）。
 #[test]
-fn a_path_attribute_caller_file_silently_fails_to_exclude() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let folded = "src/../../../common/guard-core/src/lib.rs";
-    let files = scan_tree_excluding_self(&root, &["rs"], folded);
-    assert!(
-        files.iter().any(|(p, _)| p.ends_with("lib.rs")),
-        "折返形的 `caller_file` 居然摘掉了调用者 —— 那说明后缀比的口径变了，\
-             「明写名单、不靠自摘」那条纪律的成因描述要跟着重写"
+fn baseline_text_reads_the_fork_point_version() {
+    let d = std::env::temp_dir().join(format!("gcore-base-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).expect("建临时目录");
+    let git = |args: &[&str]| {
+        let ok = std::process::Command::new("git")
+            .current_dir(&d)
+            .args([
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(args)
+            .output()
+            .expect("起 git")
+            .status
+            .success();
+        assert!(ok, "git {args:?} 失败");
+    };
+    git(&["init", "-q", "-b", "main"]);
+    std::fs::write(d.join("list.tsv"), "a\nb\nc\n").expect("写夹具");
+    git(&["add", "list.tsv"]);
+    git(&["commit", "-q", "-m", "base"]);
+    git(&["checkout", "-q", "-b", "work"]);
+    std::fs::write(d.join("list.tsv"), "a\nb\nc\nd\ne\n").expect("写夹具");
+    git(&["commit", "-q", "-am", "grow"]);
+    let got = baseline_text(&d, "list.tsv");
+    let absent = baseline_text(&d, "new.tsv");
+    git(&["branch", "-q", "-m", "main", "old"]);
+    let no_main = baseline_text(&d, "list.tsv");
+    let _ = std::fs::remove_dir_all(&d);
+    assert_eq!(
+        got,
+        Ok(Some("a\nb\nc\n".to_string())),
+        "读回的不是分叉点那一版"
     );
+    assert_eq!(absent, Ok(None), "基线上没有的路径要回 None");
+    assert!(no_main.is_err(), "没有 main 时要回 Err，实得 {no_main:?}");
 }
 
 /// ★ 明写名单**真的摘得掉** —— [`scan_tree_excluding`] 的正控。
@@ -118,7 +125,7 @@ fn a_named_exclusion_actually_drops_that_file() {
     );
 }
 
-/// 🔴 **名单摘不到东西就当场红** —— 这正是 `file!()` 那条路从来没有过的那一格。
+/// 🔴 **名单摘不到东西就当场红。**
 ///
 /// 排除悄悄失效之后，被排除的那份会**回到人群里**，而判据在自己的登记表或散文里
 /// 找到自己 ⇒ 恒绿，读起来和「真的没有违规」一模一样。
@@ -131,27 +138,7 @@ fn an_exclusion_that_matches_nothing_is_a_hard_error() {
     assert!(
         err.is_err(),
         "名单上写了一个盘上没有的文件，本函数却一声不吭 —— \
-             那就退回成了 `file!()` 那条「关掉之后看起来和没关一模一样」的路"
-    );
-}
-
-/// ★ 回归钉〔09-09 Windows CI 现打〕：`file!()` 在 Windows 上给的是**反斜杠**形。
-///
-/// 云端 windows-latest 的 panic 位置逐字是 `crates\guard-core\src\lib.rs`。
-/// 归一化此前只做在扫出来的那一边 ⇒ 针和草垛不同形 ⇒ 后缀比不命中、摘除空转。
-///
-/// ⚠ **为什么不能只靠上面那条**：上面那条只在 Windows 上红，而本仓的 `cargo test`
-/// 在 Windows 上今天才第一次跑起来（此前先卡 fmt、再卡 clippy）——
-/// 也就是说「Linux 全绿」这件事**证明不了摘除是活的**。这一条把那个平台差
-/// 拉成一个**两个平台都跑**的输入：直接喂反斜杠形的 `caller_file`，摘除必须照样生效。
-#[test]
-fn a_windows_shaped_caller_file_still_excludes_the_caller() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let files = scan_tree_excluding_self(&root, &["rs"], r"common\guard-core\src\lib.rs");
-    assert!(
-        !files.iter().any(|(p, _)| p.ends_with("lib.rs")) && !files.is_empty(),
-        "反斜杠形的 `caller_file` 没摘掉调用者 —— 摘除在 Windows 上是空转的，实得 {:?}",
-        files.iter().map(|(p, _)| p).collect::<Vec<_>>()
+             排除悄悄失效时看起来和没排除一模一样"
     );
 }
 
@@ -166,14 +153,6 @@ fn the_exclusion_suffix_is_anchored_at_a_path_component_boundary() {
         !path_suffix_matches("/repo/x/a-src/lib.rs", "src/lib.rs"),
         "松匹配把 `a-src/lib.rs` 也认成了 `src/lib.rs` —— 那会摘掉一份不是调用者的源码"
     );
-}
-
-/// 空 `caller_file` 会退化成「摘除一切」⇒ 必须拒绝，不许静默给空集。
-#[test]
-#[should_panic(expected = "caller_file 为空")]
-fn an_empty_caller_file_is_rejected_not_silently_swallowed() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let _ = scan_tree_excluding_self(&root, &["rs"], "");
 }
 
 /// 坑 2 的回归钉：测试模块在**文件中段**时，它后面的生产代码必须留下。

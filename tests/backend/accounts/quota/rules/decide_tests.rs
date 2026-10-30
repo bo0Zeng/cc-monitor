@@ -851,6 +851,100 @@ fn s31_a_wake_on_reading_becomes_a_time_in_the_simulation() {
     assert!(tl.nodes.contains(&(T + 600)), "{:?}", tl.nodes);
 }
 
+/// 本会话量出来的用速（折合输入 token / 分）。
+fn pacing(current: &str, pace: f64) -> Sigma {
+    Sigma {
+        me: Me {
+            pace: Some(pace),
+            ..Me::default()
+        },
+        ..sig(current, &[])
+    }
+}
+
+/// ★ 推演里在用的号量不到用速（刚换过来）、本会话的用速与这个号 1% ≈ 多少量得到 ⇒ 照本会话那一份涨：
+/// 50% · 1% ≈ 10 万 · 本会话每分 20 万 ⇒ 2 点 / 分 ⇒ 25 分钟后到 100、换到下一个号；不再一格不涨、一直用下去。
+#[test]
+fn s32_the_simulation_charges_this_session_to_the_account_it_is_on() {
+    let p = Fixed {
+        order: vec!["A", "B"],
+        ..Fixed::default()
+    };
+    let open = |id: &str, used: f64| Acct {
+        resets: [Some(T + 4 * 3600), None],
+        per_pct: [Some(100_000), None],
+        others: Some(0.0),
+        ..acct(id, used)
+    };
+    let f = [open("A", 50.0), open("B", 0.0)];
+    let tl = simulate(
+        &pacing("A", 200_000.0),
+        &f,
+        &base(),
+        &p,
+        &clock,
+        T,
+        T + 3600,
+    );
+    let sw = tl.switches();
+    assert!(
+        sw.first()
+            .is_some_and(|(at, a)| a == "B" && at.abs_diff(T + 25 * MIN) <= TOL),
+        "{sw:?}"
+    );
+    assert!(!tl.uses[0].cap_unknown, "{:?}", tl.uses[0]);
+}
+
+/// ★ 推演里换走以后，那个号只照别的会话压在它上面的涨：A 每分 3 点里别的会话占 1 点、本会话 2 点；
+/// 10 分钟后策略换到 B ⇒ A（80%）之后每分 1 点，20 分钟后才到 100（照旧的 3 点 ⇒ 7 分钟）。
+#[test]
+fn s33_an_account_left_behind_keeps_only_the_others_load() {
+    struct Then;
+    impl Strategy for Then {
+        fn decide(&self, c: &Ctx<'_>) -> Result<Verdict, Fail> {
+            let order = if c.now < T + 10 * MIN {
+                ["A", "B"]
+            } else {
+                ["B", "A"]
+            };
+            Fixed {
+                order: order.to_vec(),
+                wake_at: (c.now < T + 10 * MIN).then_some(T + 10 * MIN),
+                ..Fixed::default()
+            }
+            .decide(c)
+        }
+    }
+    let a = Acct {
+        resets: [Some(T + 4 * 3600), None],
+        rate: [Some(3.0), None],
+        per_pct: [Some(100_000), None],
+        others: Some(1.0),
+        ..acct("A", 50.0)
+    };
+    let b = Acct {
+        resets: [Some(T + 4 * 3600), None],
+        per_pct: [Some(1_000_000), None],
+        others: Some(0.0),
+        ..acct("B", 0.0)
+    };
+    let tl = simulate(
+        &pacing("A", 200_000.0),
+        &[a, b],
+        &base(),
+        &Then,
+        &clock,
+        T,
+        T + 3600,
+    );
+    let lane = &tl.lanes.iter().find(|(id, _)| id == "A").expect("A").1;
+    let full = lane.iter().find(|s| !s.sendable).map(|s| s.from);
+    assert!(
+        full.is_some_and(|at| at.abs_diff(T + 30 * MIN) <= TOL),
+        "{lane:?}"
+    );
+}
+
 // ── #22 一致性：推演说的下一次换号 ＝ 逐发判出来的那一次（照列表先后 ＋ 积木库） ─────────
 
 /// 一个请求间隔（每分钟一发）＋ 推演里到点时刻向上取整的那一秒。

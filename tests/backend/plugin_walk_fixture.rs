@@ -930,21 +930,8 @@ mod tests {
             guard_core::scan_tree!(&src_root(), &["rs"])
                 .into_iter()
                 .collect();
-        // 🔴 〔`P4` 2026-09-21 现打〕**这一趟原来是 `scan_tree!`，而它的自摘在这儿
-        //    是全仓唯一一处真的会落下的刀**（别处一律**不生效**）—— 现在换成明写名单。
-        //
-        //    成因（别处推不出来，所以记在这里）：`scan_tree_excluding_self` 拿 `file!()`
-        //    做**后缀比**。本文件的 `file!()` 逐字是 `../../tests/backend/plugin_walk_fixture.rs`，
-        //    而后端测试树那个根当时逐字是 `CARGO_MANIFEST_DIR.join("../../tests/backend")` —— **自己带着同一段 `..`**
-        //    ⇒ 后缀比**命中** ⇒ 自摘真的把本文件摘走了。今天的住址（`guard_core::addr`）从仓根往下拼、不带 `..` ⇒ 自摘在这里也不生效。
-        //
-        //    ⇒ 两个后果：① 原先那句「宏认不出它是调用者 ⇒ 把本文件也收了进来」**是假的**；
-        //    ② 它下面那把 `retain` 今天**一份都摘不到**（死值验 `K8`：整刀拿掉，本条照样绿）。
-        //    ⇒ 不留一把摘不到东西的刀，也不把「摘掉我自己」压在那个字符串的巧合上：
-        //    改走 `scan_tree_excluding` 的明写名单 —— 它**摘不到就 panic**，
-        //    所以「`tests_root()` 哪天被规范化、自摘随之不再命中」会当场出声，
-        //    而不是安静地把本文件收进自己的语料（上面第一条断言刚刚证明过
-        //    「本文件的测试段含这个 needle」⇒ 真收进来就会多出一项）。
+        // 后端测试树含本文件：走 `scan_tree_excluding` 的明写名单，摘不到就 panic
+        //   （上面第一条断言证明过本文件的测试段含这个 needle ⇒ 收进来就会多出一项）。
         pop.extend(guard_core::scan_tree_excluding(
             &guard_core::addr::backend_tests_root(),
             &["rs"],

@@ -18,6 +18,7 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => {
   const real = await orig<typeof import("../../../src/frontend/ui/ipc/chan-caller")>();
   return { ...real, callTyped: (...a: unknown[]) => (typed.fake ? typed.fake(...a) : (real.callTyped as (...b: unknown[]) => Promise<unknown>)(...a)) };
 });
+import { noteMachine } from "../../../src/frontend/ui/ipc/chan-caller";
 import { TabBarView, type TabBarViewHost } from "../../../src/frontend/ui/tab-bar-view";
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
@@ -83,8 +84,12 @@ const approve = (sinceMs: number | null = NOW - 120_000): Needs => {
   return { kind: "approve", tool: "Bash", call: "toolu_b", what: "rm -rf build/", sinceMs, text: copyText("beSession.needs.approve"), head: "核心·等批准 · Bash", headCode: "rm -rf build/", tone: "need", rank: 1, waitedMs, waitedText: waitedMs === null ? null : fmtDur(waitedMs / 1000), ask: null, manualText: null, receivedAt: NOW };
 };
 
+/** 本机那台的成品（`machine-read` 那一份里的名字）：界面上「这台叫什么」照它。 */
+const LOCAL_NAME = "workstation";
+
 beforeEach(() => {
   document.body.innerHTML = "";
+  noteMachine(LOCAL_ORIGIN, { name: LOCAL_NAME, offlineSaid: "" });
   vi.mocked(terminalFrontAvailable).mockReturnValue(false);
 });
 
@@ -343,10 +348,10 @@ describe("会话头", () => {
   // 右边那一排（换模型 · 切权限档那两颗另有判据：`session-switch.vitest.ts`）。
   const labels = (el: HTMLElement): string[] => [...el.querySelectorAll("button:not([data-switch])")].map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
 
-  it("★ 标题全名 · 机器 · 目录 · 状态一句；在等你时状态那一句琥珀；右边：目录（本机）· 切到终端（这台认不出终端窗口 ⇒ 灰着）· 看它的终端 · 显示 · 查找 · 更多", () => {
+  it("★ 标题全名 · 机器（那台成品里的名字）· 目录 · 状态一句；在等你时状态那一句琥珀；右边：目录（本机）· 切到终端（这台认不出终端窗口 ⇒ 灰着）· 看它的终端 · 显示 · 查找 · 更多", () => {
     const { h, host } = head(tab("a", { label: "加重试", labelProject: "orders", projectDir: "/w/orders", ...waiting, needs: approve() }));
     expect(h.el.textContent).toContain("orders 加重试");
-    expect(h.el.textContent).toContain(copyText("sessionFace.machine.local"));
+    expect(h.el.textContent).toContain(LOCAL_NAME);
     expect(h.el.textContent).toContain("/w/orders");
     // 默认那一排（ui3 · `session-head-buttons.vitest.ts`）；这台宿主不给「⋯」里的项 ⇒ 借那份菜单的几颗（在新窗口打开 · 账号）不出。
     expect(labels(h.el)).toEqual([copyText("tabBarView.tab.cwdHint"), copyText("tabBarView.tab.terminalHint"), copyText("sessionHead.act.terminal"), copyText("sessionHead.act.display"), copyText("sessionHead.act.find"), copyText("tabBarView.tab.moreHint")]);
@@ -427,7 +432,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       expect(r.page.el.querySelector("pre")?.textContent).toBe("屏 1");
       expect(r.page.el.textContent).toContain(copyText("terminal.tag.tmux", { name: "a-cc" }));
       expect(r.page.el.textContent).toContain(copyText("terminal.input.nobody"));
-      expect(r.page.el.textContent).toContain(copyText("terminal.input.to", { title: "a", machine: copyText("sessionFace.machine.local") }));
+      expect(r.page.el.textContent).toContain(copyText("terminal.input.to", { title: "a", machine: LOCAL_NAME }));
       vi.advanceTimersByTime(60_000);
       await flush();
       expect([vi.mocked(r.reads.list).mock.calls.length, r.shotCount()]).toEqual([1, 1]);
@@ -531,7 +536,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     r.setReply(async () => ({ result: "unsure", acts: [] }));
     key(b, "Enter", { ctrlKey: true });
     await flush();
-    expect(r.page.el.textContent).toContain(copyText("terminal.input.unsure", { machine: copyText("control.machine.unsure") }));
+    expect(r.page.el.textContent).toContain(copyText("terminal.input.unsure", { machine: LOCAL_NAME }));
     expect([r.sent.length, b.value]).toEqual([2, "1"]);
     r.setReply(async () => {
       throw new Error(copyText("beServer.words.cantConnect"));

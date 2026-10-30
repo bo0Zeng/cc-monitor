@@ -110,8 +110,7 @@ fn dial_locality(corpus: &[(String, String)]) -> Result<usize, String> {
 /// 先前逐字：「`scan_tree!` 按构造摘除调用者自己那一份 —— 也就是 `dial/mod.rs`
 /// 不在它返回的人群里」。两处都假：
 /// ① 自摘那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..`
-///    的折返路径 ⇒ 后缀比不命中，
-///    `the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split` 守着这件事）；
+///    的折返路径 ⇒ 后缀比不命中）；
 /// ② 今天的调用者是 `tests/backend/dial_tests.rs`，**根本不是** `dial/mod.rs` ——
 ///    后者走普通遍历本来就在人群里。
 /// ⇒ 下面那句 `include_str!` 的补回**今天是冗余的**（同一份被数两遍，靠尾部那句

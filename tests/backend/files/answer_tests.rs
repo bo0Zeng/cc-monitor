@@ -799,7 +799,7 @@ fn no_lossy_decode_anywhere_in_the_family() {
          「寻址不到」不是显示难看 —— 解过一次之后，回程拿着那串替换字符去找的\n\
          是一个**不存在的名字**。\n\
          ⇒ 要把路径变成人话，那件事归**界面**；后端这一侧一路走字节\n\
-           （`files::raw::to_json` 给的两种形都是双向无损的）。",
+           （`cmd_wire::files::WirePath` 给的两种形都是双向无损的）。",
         bad.join("\n")
     );
 }
@@ -1215,7 +1215,7 @@ fn a_non_utf8_file_is_read_back_chunk_by_chunk_byte_for_byte() {
     let f = dir.join(std::ffi::OsStr::from_bytes(b"f\xfe.bin"));
     let body: Vec<u8> = (0..10_000u32).map(|i| (i % 253) as u8).collect();
     std::fs::write(&f, &body).expect("铺");
-    let at = raw::to_json(raw::path_bytes(&f));
+    let at = serde_json::json!(w::WirePath::from(raw::path_bytes(&f)));
     let (mut got, mut off) = (Vec::new(), 0u64);
     // 有界：10 000 字节 / 4096 一块 ⇒ 三块读完；多转一圈就是 `eof` 没说实话。
     for round in 0.. {
@@ -1256,7 +1256,7 @@ fn a_non_utf8_file_is_read_back_chunk_by_chunk_byte_for_byte() {
     assert_eq!(e.code, "bad_args");
     let e = answer_wire(
         "files-read-chunk",
-        &serde_json::json!({ "path": raw::to_json(raw::path_bytes(&dir)), "offset": 0, "len": 1 }),
+        &serde_json::json!({ "path": w::WirePath::from(raw::path_bytes(&dir)), "offset": 0, "len": 1 }),
         &Default::default(),
     )
     .unwrap_err();

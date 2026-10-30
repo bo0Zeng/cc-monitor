@@ -42,7 +42,7 @@ const stateOf = (origin: string, c: LiveCardNow): LiveCardState => ({
 export type TrailerOf = (sid: string) => HTMLElement | null;
 
 /**
- * 把一个 tab 此刻的活卡画进它流尾巴上那一块（整块重画）。实现住 `live-card-view.ts`（带 `.module.css`），
+ * 把一个 tab 此刻的活卡画进它流尾巴上那一块（同一张卡沿用节点、正文只追加）。实现住 `live-card-view.ts`（带 `.module.css`），
  * **由主窗口的入口装进来**（`TabManager.setLivePainter`）：本文件被主窗口与独立查看器两个入口共用（进共享块），
  * 而 `.module.css` 进共享块会让它的规则排在主窗口全局样式之前（`entry-graphs` 的次序判据）—— 画法只有主窗口要
  * （只有它订 `session-live-card`），所以样式跟着画法住主窗口独有的那一块。
@@ -54,7 +54,7 @@ export interface LivePainter {
 
 /**
  * 视图：手上每一处最新那一份整份（`route(origin, sid)` 由宿主给：这台上有这个 tab ⇒ 留，没有就没处画）；
- * 主运行那一处变了 ⇒ 它流尾巴上那一块整块重画。没装画法（独立查看器那一形）⇒ 只记不画。
+ * 主运行那一处变了 ⇒ 重画它流尾巴上那一块（同一张卡沿用节点、正文只追加）。没装画法（独立查看器那一形）⇒ 只记不画。
  */
 export class LiveCards {
   private readonly held = new Map<string, Held>();

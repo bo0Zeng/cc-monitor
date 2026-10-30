@@ -58,13 +58,17 @@ pub(crate) struct PerPct {
 /// 量出来的「1% ≈ 多少」过了这么多秒就不作数（套餐可能换了；再量到就换新的）。
 pub(crate) const PER_PCT_KEPT: u64 = 7 * 86_400;
 
-/// 一个窗口用量的走势：此刻这个值头一次看到的时刻 ＋ 同一窗口里上一个**不同**的值（又看到一次同一个值不算新采样：说不出涨多快）。
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// 一个窗口用量的走势：此刻这个值头一次看到的时刻 ＋ 同一窗口里此前**变过**的那几个值（旧的在前；只留离此刻这个值
+/// [`EST_FRESH`] 以内的，至少留上一个；又看到一次同一个值不算新采样：说不出涨多快）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Trend {
     pub(crate) since: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) prev: Option<Sample>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) steps: Vec<Sample>,
 }
+
+/// 一个窗口至多留这么多个变过的值（读数一跳一点，30 分钟里涨得再快也够用）。
+const STEPS_KEPT: usize = 64;
 
 /// 一次采样：用量（比例）与它头一次看到的时刻。
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -88,8 +92,8 @@ pub(crate) fn same_reset(a: Option<u64>, b: Option<u64>) -> bool {
     matches!((a, b), (Some(x), Some(y)) if x.abs_diff(y) <= SAME_WINDOW_SLACK)
 }
 
-/// 新读数 `new`（`at` 看到的）进来之后这个窗口的走势：值没变 ⇒ 照旧；同一窗口里值变了 ⇒ 旧值成了上一次；
-/// 窗口换了 · 头一次看到 · 说不出用量 ⇒ 从这一刻重新记。
+/// 新读数 `new`（`at` 看到的）进来之后这个窗口的走势：值没变 ⇒ 照旧；同一窗口里值变了 ⇒ 旧值记进变过的那几个，
+/// 离 `at` 超过 [`EST_FRESH`] 的丢掉（至少留上一个）；窗口换了 · 头一次看到 · 说不出用量 ⇒ 从这一刻重新记。
 fn step(
     old: Option<(&crate::agents::QuotaWindow, Option<Trend>, u64)>,
     new: &crate::agents::QuotaWindow,
@@ -97,22 +101,30 @@ fn step(
 ) -> Trend {
     let fresh = Trend {
         since: at,
-        prev: None,
+        steps: Vec::new(),
     };
     let Some((o, t, old_at)) = old else {
         return fresh;
     };
-    let since = t.map_or(old_at, |t| t.since);
+    let since = t.as_ref().map_or(old_at, |t| t.since);
     match (o.used, new.used) {
         (Some(u0), Some(u1)) if same_window(o, new) => {
             if (u0 - u1).abs() < 1e-9 {
-                t.unwrap_or(Trend { since, prev: None })
-            } else {
-                Trend {
-                    since: at,
-                    prev: Some(Sample { used: u0, since }),
-                }
+                return t.unwrap_or(Trend {
+                    since,
+                    steps: Vec::new(),
+                });
             }
+            let mut steps = t.map(|t| t.steps).unwrap_or_default();
+            steps.push(Sample { used: u0, since });
+            let stale = steps
+                .iter()
+                .take_while(|s| at.saturating_sub(s.since) > EST_FRESH)
+                .count()
+                .min(steps.len() - 1)
+                .max(steps.len().saturating_sub(STEPS_KEPT));
+            steps.drain(..stale);
+            Trend { since: at, steps }
         }
         _ => fresh,
     }
@@ -129,13 +141,14 @@ pub(crate) struct WindowSeen {
 }
 
 impl Observed {
-    /// ★ 用速（E2）：这个窗口最近 [`EST_FRESH`] 秒里两次不同采样的斜率，点 / 分（用量 0–100 那一种点）。
-    /// 只有一次采样 · 不涨 · 过了 30 分 ⇒ `None`（没根据就不给，推演不外推）。
+    /// ★ 用速（E2）：这个窗口里留着的最早那个变过的值（离此刻这个值至多 [`EST_FRESH`]）到此刻这个值的斜率，点 / 分
+    /// （用量 0–100 那一种点）。读数按整点走、一跳常是几点，只看最后两次会把几秒里的一跳量成每分几十点。
+    /// 只有一次采样 · 不涨 · 最近 30 分没变过 ⇒ `None`（没根据就不给，推演不外推）。
     pub(crate) fn rate(&self, name: &str, now: u64) -> Option<f64> {
         let w = self.reading.windows.iter().find(|w| w.name == name)?;
         let u1 = w.used?;
         let t = self.trend.get(name)?;
-        let p = t.prev?;
+        let p = t.steps.first()?;
         if now.saturating_sub(t.since) > EST_FRESH || u1 <= p.used || t.since <= p.since {
             return None;
         }
@@ -186,14 +199,14 @@ pub(crate) fn merge(into: &mut Observed, add: &Observed, headers: bool) {
         let trend = |old: Option<(&crate::agents::QuotaWindow, Option<Trend>, u64)>| {
             add.trend
                 .get(&w.name)
-                .copied()
+                .cloned()
                 .unwrap_or_else(|| step(old, w, m.at))
         };
         match into.reading.windows.iter_mut().find(|x| x.name == w.name) {
             Some(_) if meta.get(&w.name).is_some_and(|old| old.at > m.at) => {}
             Some(x) => {
                 let old_at = meta.get(&w.name).map_or(into.seen_at, |o| o.at);
-                let t = trend(Some((x, into.trend.get(&w.name).copied(), old_at)));
+                let t = trend(Some((x, into.trend.get(&w.name).cloned(), old_at)));
                 into.trend.insert(w.name.clone(), t);
                 *x = w.clone();
                 meta.insert(w.name.clone(), m);
@@ -593,7 +606,7 @@ fn merge_trend_fresh(o: &mut Observed) {
         let at = o.window_seen(&w.name).at;
         o.trend.entry(w.name.clone()).or_insert(Trend {
             since: at,
-            prev: None,
+            steps: Vec::new(),
         });
     }
 }

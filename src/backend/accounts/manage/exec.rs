@@ -17,6 +17,7 @@ use super::model::Manifest;
 use super::scan::{is_under, item_at, join, Roots, BACKUP_PREFIX, ROLLED_BACK_NAME, UNDO_NAME};
 use crate::common::door::{self, Door, Refused};
 use crate::platform::acct_view::{is_absolute, under_root, Item};
+use crate::platform::fs::side_name;
 use copy_core::copy_text;
 
 /// 一趟执行的结局。
@@ -148,7 +149,7 @@ impl Run<'_> {
             }
             Op::Isolate { from, at } => self.isolate(from, at),
             Op::Copy { from, to } => {
-                let tmp = format!("{to}.ccm-tmp-{}", std::process::id());
+                let tmp = side_name::exec_tmp(to, std::process::id());
                 door::copy(d, &home, &self.rel(from)?, &self.rel(&tmp)?)?;
                 let landed = self
                     .chmod(&tmp, 0o600)
@@ -217,7 +218,7 @@ impl Run<'_> {
         }
         let was = item_at(at);
         self.backup(at)?;
-        let tmp = format!("{at}.ccm-tmp-{}", std::process::id());
+        let tmp = side_name::exec_tmp(at, std::process::id());
         let dir = matches!(src, Item::Dir { .. });
         door::copy(d, &home, &self.rel(from)?, &self.rel(&tmp)?)?;
         let drop_tmp = |r: &Run| {
