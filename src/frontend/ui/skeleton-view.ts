@@ -81,19 +81,29 @@ export class SkeletonView {
   private disposed = false;
   /** 列宽变了、在新列宽下作废、还没重交第二级的精算行。 */
   private stale = new Set<number>();
+  /**
+   * 账本只接了尾段那一截时，它之上那一截 `[0, head)`：不在账本里、不画占位，算「还在占位里」（迟到的行收纳、不建卡），
+   * 也不交给宿主物化；整份到了（[`rebase`]）才画成普通占位。
+   */
+  private head = 0;
 
   constructor(
-    readonly ledger: SkeletonLedger,
+    private led: SkeletonLedger,
     private scrollEl: HTMLElement,
     private timeline: RecordTimeline,
     private host: SkeletonHost,
   ) {}
 
+  get ledger(): SkeletonLedger {
+    return this.led;
+  }
+
   /**
-   * 骨架接上：`[0, renderedFrom)` 画成一块占位（`renderedFrom` = 已渲染后缀的最低 seq）。
+   * 骨架接上：`[base, renderedFrom)` 画成一块占位（`renderedFrom` = 已渲染后缀的最低 seq；账本从 `base` 起，之上那一截见 `head`）。
    * 返回占位的像素高（0 ⇒ 没什么要顶的，本视图保持空）。
    */
   attach(renderedFrom: number): number {
+    this.head = Math.min(renderedFrom, this.ledger.base);
     if (renderedFrom <= this.ledger.base) return 0;
     this.addGap(this.ledger.base, renderedFrom);
     return this.pendingHeight;
@@ -127,7 +137,7 @@ export class SkeletonView {
 
   /** 这个 seq 还在占位里（没物化）吗 —— 宿主据此决定迟到的行直接建卡还是收纳。取回中的不算（已经交出去了，到了就建）。 */
   isPending(seq: number): boolean {
-    return this.gaps.some((g) => !g.fetching && seq >= g.lo && seq < g.hi);
+    return seq < this.head || this.gaps.some((g) => !g.fetching && seq >= g.lo && seq < g.hi);
   }
 
   /**
@@ -143,6 +153,23 @@ export class SkeletonView {
     this.pinned(() => {
       for (const g of this.gaps.filter((x) => x.fetching && x.lo < hi && x.hi > lo)) this.dropGap(g);
       draw();
+    });
+  }
+
+  /**
+   * 整份账本到了（同一个 seq 空间、盖得住这一份的每一行）：换上它，各块占位按它改高，账本之上那一截（`head`）画成普通占位。
+   * 视口钉法同 [`pinned`]。
+   */
+  rebase(ledger: SkeletonLedger): void {
+    if (this.disposed) {
+      this.led = ledger;
+      return;
+    }
+    this.pinned(() => {
+      this.led = ledger;
+      this.refreshHeights();
+      if (this.head > 0) this.cover(0, this.head);
+      this.head = 0;
     });
   }
 
