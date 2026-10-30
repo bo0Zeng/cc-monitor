@@ -99,6 +99,9 @@ export const REAL_OPS = new Set([
   "groups-read",
   // 改名 · 解散组：本机后端发给组员所在的各片、回没送到的那几台。
   "groups-write",
+  // 离线那台的上次值（账号清单 · 「文件与数据」那一份）：本机后端记在台架盘上它自己那份 `last-seen.json`、读回时照回包类型核过、写好「采样于 …」。
+  "last-seen-read",
+  "last-seen-write",
   // 会话输入队此刻的名单（输入行底下那一行 · 排队名单）：真后端照台架盘上那份队答。
   "session-queue-read",
   // 命令面板打机器名（是不是恰好一台）：真后端读台架盘上的机器表与 `~/.ssh/config`。

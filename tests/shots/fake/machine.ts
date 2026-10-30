@@ -6,20 +6,12 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
 import type { BackendStatus } from "../../../src/frontend/ui/generated/BackendStatus";
 import type { FootprintClient } from "../../../src/frontend/ui/generated/FootprintClient";
-import type { SeenAt } from "../../../src/frontend/ui/generated/SeenAt";
 import type { CommandHandler } from "./commands";
 import type { OpHandler, World } from "./types";
 
 const HOME = "/home/user";
 
 const pidOf = (origin: string, w: World): number => 3200 + w.machines.indexOf(origin) * 17;
-
-/** 上次读数那一格（`SeenAt`）：时刻 ＋ 后端那一句「采样于 …」（不是今天 ⇒ 「月-日 时:分」，同 `common::time::fmt_at`）。 */
-function sampledAt(atMs: number): SeenAt {
-  const d = new Date(atMs);
-  const two = (n: number): string => String(n).padStart(2, "0");
-  return { atMs, said: copyText("beLastSeen.said.sampled", { time: `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}` }) };
-}
 
 /** 那台的漂移账（`drift-report` 那一形）：devbox 上记下了三种认不出的会话流（结构夹具：键名是造的）。 */
 const driftOf = (origin: string) => ({
@@ -172,30 +164,6 @@ export function machineOps(): Record<string, OpHandler> {
       ];
       return { steps, left: steps.filter((s) => s.required && !s.done).length, skipped: false };
     },
-    "last-seen-write": () => ({ atMs: Date.now() }),
-    "last-seen-read": (_o, r) => ({
-      accounts: null,
-      data:
-        r.origin === "gpu-01"
-          ? {
-              state: "kept",
-              seen: sampledAt(Date.now() - 2 * 24 * 3600 * 1000),
-              value: {
-                home: HOME,
-                changedFiles: [BASHRC_CHANGED],
-                todo: [],
-                tmux: true,
-                counts: choreCounts([]),
-                rank: 2,
-                own: [
-                  { id: "bin", what: "台架编的一句 · bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size_text: null },
-                  { id: "profiles", what: "台架编的一句 · profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size_text: "920 B" },
-                  { id: "accounts", what: "台架编的一句 · accounts", path: "~/.cc-monitor/accounts", dir: true, class: "truth", exists: true, size_text: null },
-                ],
-              },
-            }
-          : null,
-    }),
     "data-report": (o, _r, w) => {
       if (w.unseenMachines.includes(o)) throw new Error(`${o} unreachable`);
       const todo = o === "devbox" ? DEVBOX_CHORES : o === "<local>" ? LOCAL_CHORES : [];
