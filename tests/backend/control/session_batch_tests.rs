@@ -437,7 +437,7 @@ fn stop_skips_what_the_session_face_says_cannot_end_and_titles_every_item() {
         asked.borrow_mut().push((sid.to_string(), c.clone()));
         if sid == B {
             Allow::No {
-                why: crate::common::cells::Words("已结束".into()),
+                why: crate::common::cells::Words("脸上那一句".into()),
             }
         } else {
             Allow::Yes
@@ -455,7 +455,7 @@ fn stop_skips_what_the_session_face_says_cannot_end_and_titles_every_item() {
             (C.into(), "done".into(), Value::Null),
         ]
     );
-    assert_eq!(out["results"][1]["said"], "已结束");
+    assert_eq!(out["results"][1]["said"], "脸上那一句");
     assert_eq!(out["results"][1]["copyDetail"], "");
     assert_eq!(
         *rig.calls.borrow(),
