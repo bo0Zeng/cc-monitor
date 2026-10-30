@@ -59,7 +59,7 @@ cargo fmt --check
 cargo clippy --all-targets
 ```
 
-两处要分别跑：在 `src/frontend/shell` 里跑的任何 cargo 命令都覆不到后端（理由见 [ARCHITECTURE.md § 2.7](ARCHITECTURE.md#27-共享-crate-与-workspace)）。每条 cargo 命令前带 `CARGO_BUILD_JOBS=4` 可以压住并行编译的内存；跑会碰 tmux 的测试前摘掉 `TMUX` / `TMUX_PANE`（`env -u TMUX -u TMUX_PANE …`），测试起的 tmux 与后端一律隔离，不碰用户那一个。
+两处要分别跑：在 `src/frontend/shell` 里跑的任何 cargo 命令都覆不到后端（理由见 [ARCHITECTURE.md § 2.7](ARCHITECTURE.md#27-共享-crate-与-workspace)）。每条 cargo 命令前带 `CARGO_BUILD_JOBS=4` 可以压住并行编译的内存。手工跑测试（cargo test · vitest · e2e 套件）一律前缀 `bash tests/scripts/session-scrub.sh`：它摘掉会话继承来的环境变量（Claude Code 的配置目录 · tmux · 真端口 · 上游，名单只在 `tests/scripts/session-vars`），不摘的话判据会读写真账号的记录树、碰用户的 tmux。测试起的 tmux 与后端一律隔离，不碰用户那一个。
 
 ### 前端
 

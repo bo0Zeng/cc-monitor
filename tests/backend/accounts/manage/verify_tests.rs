@@ -274,3 +274,53 @@ fn an_own_copy_of_an_on_demand_shared_dir_is_a_note_not_a_fail() {
     z.insert("skills".into(), Item::Dir { mode: Some(0o700) });
     assert!(!verify(&snap(z), &[]).pass);
 }
+
+fn warns(r: &VerifyReport) -> Vec<&str> {
+    r.checks
+        .iter()
+        .filter(|c| c.level == CheckLevel::Warn)
+        .map(|c| c.text.as_str())
+        .collect()
+}
+
+/// 共享库顶层一份像密钥的文件：核对提示它，不当成号里缺的共享链。
+#[test]
+fn a_secret_like_shared_file_is_a_note_and_not_a_missing_link() {
+    let mut s = snap(all_linked());
+    s.shared.entries.insert(
+        "x.json".into(),
+        Item::File {
+            mode: Some(0o600),
+            size: 2,
+            mtime: None,
+        },
+    );
+    let r = verify(&s, &[]);
+    assert!(r.pass, "{:?}", r.checks);
+    let want = copy_text("beAcctVerify.drift.secretLike", &[("item", "x.json")]);
+    assert!(warns(&r).contains(&want.as_str()), "{:?}", r.checks);
+}
+
+/// 原子写的旁名（共享库里 `0600` 的临时件 · 号里 cc-monitor 留下的备份件）走排除名：既不算像密钥，也不算意料之外。
+#[test]
+fn atomic_write_side_names_are_neither_secret_like_nor_unexpected() {
+    let own = Item::File {
+        mode: Some(0o600),
+        size: 2,
+        mtime: None,
+    };
+    let mut z = all_linked();
+    z.insert("settings.json.ccm-backup-1-0".into(), own.clone());
+    z.insert("settings.json.ccm-tmp-1-2-3".into(), own.clone());
+    let mut s = snap(z);
+    s.shared
+        .entries
+        .insert(".credentials.json.1.ThreadId(2).0.tmp".into(), own);
+    let r = verify(&s, &[]);
+    assert!(r.pass, "{:?}", r.checks);
+    let named: Vec<&str> = warns(&r)
+        .into_iter()
+        .filter(|w| w.contains(".ccm-") || w.contains(".tmp"))
+        .collect();
+    assert!(named.is_empty(), "{named:?}");
+}

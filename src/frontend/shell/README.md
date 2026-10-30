@@ -28,7 +28,7 @@ monitor 的 Rust 半：Tauri 2 应用，crate `monitor`（lib 名 `monitor_lib`�
 
 | 要加 | 去哪 |
 |---|---|
-| Tauri 命令 | 写在归属的模块里，`lib.rs` 的 `invoke_handler!` 注册，并登记进 `command_home_registry`（碰后端的进不了这张表：那一类做成后端帧命令）；界面只经 `src/frontend/ui/ipc/commands.ts` 调 |
+| Tauri 命令 | 只限 monitor 自己的事，步骤见 [CONTRIBUTING.md](../../doc/CONTRIBUTING.md) §2.2；碰后端的做成后端帧命令 |
 | 事件 | `ui_contract.rs` 的 `events` 加常量与载荷 |
 | 起子进程 | 只经 `spawn_managed.rs` |
 | 平台相关代码 | 只在 `platform/` |
