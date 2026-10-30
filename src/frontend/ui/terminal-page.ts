@@ -23,7 +23,7 @@ import { countText } from "./format";
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { machineName } from "./control-said";
-import { canResume, hasTerminal, machineOf } from "./face-can";
+import { canResume, hasTerminal } from "./face-can";
 import { terminalFrontAvailable } from "./terminal-front";
 import { dotOf, fullTitle, stateWord } from "./session-face";
 import { renderScreen, screenPre } from "./terminal-screen";
@@ -92,7 +92,7 @@ function keyOf(w: Watched): string {
 }
 const originOf = (w: Watched): Origin => (w.kind === "tab" ? w.tab.origin : w.origin);
 const labelOf = (w: Watched): string => (w.kind === "tab" ? fullTitle(w.tab) : w.title);
-const machineWord = (w: Watched): string => (w.kind === "tab" ? machineOf(w.tab) : machineName(w.origin));
+const machineWord = (w: Watched): string => machineName(originOf(w));
 
 export interface TerminalPageHost {
   active(): Watched | null;
@@ -676,7 +676,7 @@ export class TerminalPage {
     if (tab) setDot(this.dot, dotOf(tab), stateWord(tab));
     else setDot(this.dot, "unknown", copyText("launch.placeholder.title"));
     this.title.textContent = labelOf(w);
-    this.where.textContent = tab?.projectDir ? copyText("terminal.head.where", { dir: tab.projectDir, machine: machineOf(tab) }) : machineWord(w);
+    this.where.textContent = tab?.projectDir ? copyText("terminal.head.where", { dir: tab.projectDir, machine: machineWord(w) }) : machineWord(w);
     this.tag.textContent = row.name !== "" ? copyText("terminal.tag.tmux", { name: row.name }) : "";
     this.tag.style.display = row.name !== "" ? "" : "none";
     this.tag2.textContent = row.clients > 0 ? copyText("terminal.tag.windows", { n: row.clients }) : copyText("terminal.tag.background");
