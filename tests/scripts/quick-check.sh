@@ -17,6 +17,12 @@
 #   手机工具链：外面给了 JAVA_HOME 与 ANDROID_HOME 就用；没给就照 src/mobile/scripts/env.sh 探真家目录下的 android-dev。
 # 红了：每条失败测试的 panic 原话印出来；整趟输出存 `.build/quick-check/<时刻>.log`。
 # 逐条耗时：cargo 那几段存 `.build/quick-check/cargo-times.tsv`（从慢到快，收尾印最慢三条），vitest 存 `vitest-times.json`。
+# 编译锁：外面给了 `CCM_BUILD_LOCK`（一份仓外的锁脚本，`<脚本> <命令…>` 排上队再起命令）⇒ 编译那几段（后端 · clippy · 壳 ·
+#   creds-harden 的 cargo，手机那一段的 gradle）各经它起，排队只排这几段；cargo fmt · tsc · 静态格 · vitest 不经它。没给 ⇒ 不套锁照跑。
+#   整趟 quick-check 别再套在锁里（锁只一个位时里外互等）。
+# 收尾修剪 `.build`：每棵 cargo 树每一档的 `incremental/` 下同一个 crate 的会话目录、`deps/` 下同名的测试二进制（无扩展名的可执行文件，
+#   连同它的 `.d`）按名字成组，比同组最新那一份旧出 6 小时的删掉。同一个 crate 同时有几种现役变体（lib · lib 测试 · clippy · 各 bin），
+#   同一趟编出来、时刻挨着，所以按窗口留、不只留最新一份；锁或特性集一变换了哈希的旧变体落在窗口外。`.fingerprint` · `build/` · rlib 不碰。
 set -uo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 root=$(git rev-parse --show-toplevel) || exit 2
@@ -84,13 +90,19 @@ mkdir -p "$box/home" "$box/tmux"
 #   都拿「核数 ÷ heavy 槽位数」那一份（槽位数照 HEAVY_SLOTS，默认与 heavy.sh 同一个数）。外面设了 RUST_TEST_THREADS /
 #   GATE_VITEST_WORKERS 就听外面的。
 share=$(( $(nproc) / ${HEAVY_SLOTS:-3} )); [ "$share" -ge 1 ] || share=1
-run() { bash "$HERE/session-scrub.sh" env HOME="$box/home" TMUX_TMPDIR="$box/tmux" \
-  CARGO_HOME="$cargo_home" RUSTUP_HOME="$rustup_home" \
-  CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}" \
-  RUST_TEST_THREADS="${RUST_TEST_THREADS:-$share}" GATE_VITEST_WORKERS="${GATE_VITEST_WORKERS:-$share}" "$@"; }
+box_env=(env HOME="$box/home" TMUX_TMPDIR="$box/tmux"
+  CARGO_HOME="$cargo_home" RUSTUP_HOME="$rustup_home"
+  CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
+  RUST_TEST_THREADS="${RUST_TEST_THREADS:-$share}" GATE_VITEST_WORKERS="${GATE_VITEST_WORKERS:-$share}")
+run() { bash "$HERE/session-scrub.sh" "${box_env[@]}" "$@"; }
+# 编译那几段：锁脚本在沙箱外起（它照真家找锁文件），它起的命令再进沙箱（见头注）。
+build_lock=(); [ -n "${CCM_BUILD_LOCK:-}" ] && build_lock=(bash "$CCM_BUILD_LOCK")
+locked() { "${build_lock[@]}" bash "$HERE/session-scrub.sh" "${box_env[@]}" "$@"; }
 # 每路 cargo 并行数默认 4。要改就在外面设 CARGO_BUILD_JOBS。
 # cargo 那几步不按墙钟判 ⇒ 降到 nice 10，机器忙时给别处按墙钟判的测试让路（vitest / tsc 不降）。
+# runcargo：不编译的（fmt）；buildcargo：编译的，经锁。
 runcargo() { run env TMPDIR="$ctmp" nice -n 10 "$@"; }
+buildcargo() { locked env TMPDIR="$ctmp" nice -n 10 "$@"; }
 fails=(); notes=()
 t_all=$SECONDS
 # 失败测试的 panic 原话：`panicked at` 那一行起、到空行为止（cargo 的格式）。
@@ -132,7 +144,7 @@ seg_go() {
 # 手机那一段：条数读这一趟 .build/mobile/*/test-results（先清掉旧的）。手机读的仓外路径由判据 flow_scripts_guard 对着手机树里字面写到的核表。
 mobile_step() {
   seg_go mobile || return 0
-  step mobile run env REAL_HOME="$real_home" bash "$HERE/heavy.sh" bash -c '
+  step mobile locked env REAL_HOME="$real_home" bash "$HERE/heavy.sh" bash -c '
     out="$PWD/.build/mobile"; cd src/mobile || exit 1
     if [ -z "${JAVA_HOME:-}" ] || [ -z "${ANDROID_HOME:-}" ]; then
       export CCM_ANDROID_DEV="${CCM_ANDROID_DEV:-$REAL_HOME/android-dev}"
@@ -152,9 +164,24 @@ clippy_step() {
     [ -n "$(touched "${paths[@]}")" ] && pkgs+=(-p "${spec%%:*}")
   done
   if [ ${#pkgs[@]} -eq 0 ]; then printf '  --   %-16s 不跑：相对 %s 没改到后端那棵的包\n' clippy-backend "$base_ref"; return; fi
-  step clippy-backend runcargo bash -c 'cd src/backend && cargo clippy --all-targets "$@"' _ "${pkgs[@]}"
+  step clippy-backend buildcargo bash -c 'cd src/backend && cargo clippy --all-targets "$@"' _ "${pkgs[@]}"
+}
+# 修剪（见头注）：同组（路径去掉末尾 `-<哈希>`）最新那一份往前 6 小时之外的删掉
+prune_step() {
+  local t0=$SECONDS victims=() p kb
+  mapfile -t victims < <(find .build -mindepth 3 -maxdepth 4 -type d -name incremental 2>/dev/null | while IFS= read -r inc; do
+      find "$inc" -mindepth 1 -maxdepth 1 -type d -printf '%T@\t%p\n'
+      [ -d "${inc%/incremental}/deps" ] && find "${inc%/incremental}/deps" -maxdepth 1 -type f -perm -u+x ! -name '*.*' -printf '%T@\t%p\n'
+    done | awk -F '\t' -v win=$((6 * 3600)) '
+      { k = $2; sub(/-[^-\/]+$/, "", k); t[NR] = $1; p[NR] = $2; g[NR] = k; if (!(k in m) || $1 > m[k]) m[k] = $1 }
+      END { for (i = 1; i <= NR; i++) if (t[i] < m[g[i]] - win) print p[i] }')
+  if [ ${#victims[@]} -eq 0 ]; then printf '  ok   %-16s 没有同组旧出 6 小时的增量会话与测试二进制\n' prune; return; fi
+  kb=$(du -csk "${victims[@]}" 2>/dev/null | tail -1 | cut -f1)
+  for p in "${victims[@]}"; do rm -rf -- "$p"; [ -f "$p.d" ] && rm -f -- "$p.d"; done
+  printf '  ok   %-16s %ss · 删了 %s 份同组旧出 6 小时的增量会话与测试二进制 · 腾出 %s\n' prune $((SECONDS-t0)) ${#victims[@]} "$(numfmt --to=iec $((${kb:-0} * 1024)))"
 }
 verdict() {
+  prune_step
   times_line
   left=$(ls -A "$ctmp")
   if [ -z "$left" ]; then printf '  ok   %-16s cargo 那几步跑完临时目录是空的\n' tmp-left
@@ -172,7 +199,7 @@ backend_step() {
   seg_go backend || return 0
   t0=$SECONDS
   # lib ＋ bin ＋ bench 冒烟（bench 那几个目标 `test = true`，CI 的 `cargo test --workspace` 跑它们）
-  out=$(runcargo "${timed[@]}" bash -c 'cd src/backend && cargo test --workspace --lib --bins --benches --no-fail-fast -- -Z unstable-options --report-time' 2>&1); rc=$?
+  out=$(buildcargo "${timed[@]}" bash -c 'cd src/backend && cargo test --workspace --lib --bins --benches --no-fail-fast -- -Z unstable-options --report-time' 2>&1); rc=$?
   { echo "════ backend（rc=$rc）"; printf '%s\n' "$out"; } >> "$log"
   printf '%s\n' "$out" | cargo_times backend
   n=$(printf '%s' "$out" | grep -oE '([0-9]+) passed' | grep -oE '[0-9]+' | paste -sd+ | bc 2>/dev/null)
@@ -188,7 +215,7 @@ backend_step() {
 }
 shell_step() {
   seg_go shell || return 0
-  step shell runcargo "${timed[@]}" bash -c 'cd src/frontend/shell && cargo test --workspace --lib --no-fail-fast -- -Z unstable-options --report-time'
+  step shell buildcargo "${timed[@]}" bash -c 'cd src/frontend/shell && cargo test --workspace --lib --no-fail-fast -- -Z unstable-options --report-time'
 }
 vitest_step() {
   seg_go vitest || return 0
@@ -211,7 +238,7 @@ backend_step
 clippy_step
 shell_step
 # 凭据那份共享 crate 开 `harden` 那一档（壳那棵不开它，后端那棵不跑它的测试）
-step creds-harden runcargo bash -c 'cd src/frontend/shell && cargo test -p creds-core --features harden --lib -q'
+step creds-harden buildcargo bash -c 'cd src/frontend/shell && cargo test -p creds-core --features harden --lib -q'
 vitest_step
 mobile_step
 # 生成物：上面几步现写过的 generated/ 与 HEAD 比，逐份印出
