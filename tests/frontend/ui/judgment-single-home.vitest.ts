@@ -1252,6 +1252,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 后端落点（`~/.cc-monitor/bin/ccm`，两半同一份）；TS 侧没有孪生（界面那句话里的路径在文案表里）。
     BACKEND_LANDING_REL: NONE,
     BACKEND_LANDING_SHELL: NONE,
+    // 留存区那一层的名字（落点那层 `bin` 底下；后端换版本前留住原来那一份、卸载一起删）；TS 侧没有孪生。
+    BACKEND_KEPT_DIR_NAME: NONE,
     base_url: NONE,
     base_url_shape_ok: NONE,
     // 一行里插好钥匙的地址把钥匙段换成 `…`（「待办」摘出的原文行）；界面照画，TS 侧没有孪生。

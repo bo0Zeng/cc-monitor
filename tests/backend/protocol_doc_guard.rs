@@ -1,7 +1,6 @@
 //! 协议面本身的几条判据（不是文档对拍：协议文档的逐格那一半从代码生成，见 `protocol_doc_gen`）。
 //!
-//! - 子命令分派的文件名单（[`DISPATCH_FILES`]）与「`--` 字面量」取词器 [`dispatched_subcommands`]：
-//!   `main_argv_table_guard` 拿它核 argv 表；`dispatch_registry_is_complete` 反向核对名单没漏文件。
+//! - 子命令分派的文件名单（[`DISPATCH_FILES`]）：`dispatch_registry_is_complete` 反向核对名单没漏文件。
 //! - 子进程旗标：发的与子进程收的恰好一致。
 //! - `control/` · `observe/` 里每个 serde 类型都登记（上线类型该进 `wire.rs`）。
 //! - 协议级错误码只有 `stream/inbound/` 发得出（R4）。
@@ -23,7 +22,6 @@
 /// 「抽取面画小了」是比「少写一条」更隐蔽的失效：护栏照常报绿，而它压根没看那片地方。
 /// 所以下面 `dispatch_registry_is_complete` 会**反向核对**这份名单没漏文件。
 const DISPATCH_FILES: &[(&str, &str)] = &[
-    ("main.rs", include_str!("../../src/backend/main.rs")),
     // 🔴 `lib.rs`：`SUBCOMMANDS` 那张表按前置 1
     //    搬进了库面 ⇒ 按本名单的口径（「生产段里出现 `"--`」）它现在就是一份。
     //    ⚠ **不是我判断它该进来，是下面 `dispatch_registry_is_complete` 自己算出来的** ——
@@ -153,8 +151,7 @@ const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
 ///
 /// # 为什么要有这一类
 ///
-/// [`dispatched_subcommands`] 把 [`DISPATCH_FILES`] 里**每一个** `"--x"` 字面量都当成
-/// 「后端自己认的 token」，于是要求它进 `lib.rs` 的 argv 三分表、进 `IPC-PROTOCOL.md §10`。
+/// [`DISPATCH_FILES`] 里**每一个** `"--x"` 字面量都算「后端自己认的 token」，要进 `IPC-PROTOCOL.md §10`。
 /// 而后端转调 `cc-bus list` 时要发 `--tsv` —— 那是**cc-bus list 的**旗标：塞进 `SUBCOMMAND_OPTIONS`
 /// 会改 `is_query_mode` 的行为（`--tsv` 打头的 argv 从此被当成「子命令选项脱离了子命令」），
 /// 写进 §10 会让冻结契约描述一件它不负责的事。
@@ -170,7 +167,7 @@ const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
 ///    发了一个它不认的 ⇒ 红，它新认了一个而这边没表态 ⇒ 红）。
 /// 两侧**异源**：①读 Rust 生产段的字面量，②读 shell 脚本的 `case` 臂。
 ///
-/// 🔴 **不许**把旗标拼成运行期字符串（`format!("--{}", "tool")`）来躲 [`dispatched_subcommands`] ——
+/// 🔴 **不许**把旗标拼成运行期字符串（`format!("--{}", "tool")`）来躲 [`dashdash_literals`] ——
 /// 那是把扫描面静默挖空；正路就是登记在这里、让 ①② 接住。
 pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
     // 一份文件发给几个子进程的旗标（一份文件可以登记几行，① 按文件取并集）。
@@ -220,7 +217,7 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
 /// 子进程认、而后端**刻意不发**的旗标 —— 每条带理由（②那一向的另一半）。
 pub(crate) const CHILD_FLAGS_NOT_SENT: &[(&str, &str, &str)] = &[];
 
-/// 一份源码生产段里的 `"--x"` 字面量（按出现序去重）—— [`dispatched_subcommands`] 与
+/// 一份源码生产段里的 `"--x"` 字面量（按出现序去重）—— 分派名单反向核对与
 /// 子进程旗标那条接盘判据**共用这一处取法**（两处各写一份的话，一处放宽、一处没跟，就会各说各话）。
 pub(crate) fn dashdash_literals(raw: &str) -> Vec<String> {
     let src = guard_core::production_code(raw);
@@ -249,28 +246,6 @@ pub(crate) fn dashdash_literals(raw: &str) -> Vec<String> {
             from = i + 2;
         }
     }
-    out
-}
-
-/// 分派里出现的所有 `--子命令` / `--选项`（跨 [`DISPATCH_FILES`] 全部文件）。
-///
-/// ⚠ [`CHILD_PROCESS_FLAGS`] 里登记的那几个**按文件**摘掉 —— 同一个 token 出现在
-/// 别的分派文件里照样算（摘的是「这份文件发给子进程的那几个」，不是这个字串）。
-pub(crate) fn dispatched_subcommands() -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for (name, raw) in DISPATCH_FILES {
-        let child: Vec<&str> = CHILD_PROCESS_FLAGS
-            .iter()
-            .filter(|(f, ..)| f == name)
-            .flat_map(|(_, _, flags, _)| flags.iter().copied())
-            .collect();
-        for s in dashdash_literals(raw) {
-            if !child.contains(&s.as_str()) && !out.contains(&s) {
-                out.push(s);
-            }
-        }
-    }
-    out.sort();
     out
 }
 
@@ -368,7 +343,7 @@ mod tests {
     fn child_process_flags_are_exactly_what_the_file_sends_and_what_the_child_accepts() {
         assert!(
             !CHILD_PROCESS_FLAGS.is_empty(),
-            "登记表空了 —— 要么真没有子进程旗标了（那就连同 `dispatched_subcommands` 里那段摘除一起删），\
+            "登记表空了 —— 要么真没有子进程旗标了（那就把这张表连同本条一起删），\
              要么是被人掏空了"
         );
         let repo = guard_core::addr::backend_src_root()

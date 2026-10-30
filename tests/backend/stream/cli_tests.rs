@@ -4,6 +4,25 @@
 //! 闸门与分派同源、帧命令要么上 CLI 要么写明理由、CLI 入口只经注册表、探测口报的就是它能派发的，判的正是这件事。
 //! 「CLI 入口不借用帧入口的安全理由」那一条没有设计原文，守的是生产头注里那段散文。〔JA1 点址 2026-09-24〕
 
+/// 子命令全集：手写的那几条（名字照 `CLI_ONLY_DOCS`）在前，派生的那一面照 `REGISTRY` 的先后。进程里头一次问时算一次。
+/// 读者都是判据（版本号指纹 · 命令目录 · ccm 旗标对拍）；产品里的闸门逐个词问 [`is_subcommand`]。
+pub(crate) fn subcommands() -> &'static [&'static str] {
+    static ALL: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    ALL.get_or_init(|| {
+        crate::stream::inbound::CLI_ONLY_DOCS
+            .iter()
+            .map(|(n, ..)| format!("--{n}"))
+            .chain(
+                REGISTRY
+                    .iter()
+                    .filter(|s| cli_exposed(s))
+                    .map(|s| flag_of(s.name)),
+            )
+            .map(|f| &*f.leak())
+            .collect()
+    })
+}
+
 /// 子命令集合 ＝ 手写的一次性表 ∪ 帧命令派生的 CLI 面，两半不交、没有重名；闸门（`is_query_mode`）认的就是这一份。
 /// 手写那几条的名字（`CLI_ONLY_DOCS`，闸门照它认）与实现表（`stream::oneshot::ONESHOTS`，`main` 照它分派）两向相等。
 #[test]

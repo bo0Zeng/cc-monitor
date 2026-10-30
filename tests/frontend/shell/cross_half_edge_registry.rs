@@ -85,18 +85,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //   不再是「两半之间」的边（共享 crate 两侧都依赖，本表只登记半边对半边）。
     (
         "monitor→backend",
-        "tests/frontend/shell/write_site_registry_tests.rs",
-        "src/backend/footprint/registry.rs",
-        "写点表里申报成「安装动作」的每一格，点名的工具 id 必须真在足迹申报表里（本表那一半）",
-    ),
-    (
-        "monitor→backend",
-        "tests/frontend/shell/write_site_registry_tests.rs",
-        "src/backend/agents/claudecode/footprint.rs",
-        "同上一条，申报表落在 Claude 布局里的那一半（适配层）",
-    ),
-    (
-        "monitor→backend",
         "tests/frontend/shell/deploy_tests.rs",
         "src/backend/assets/aliases/block.rs",
         "「别名块的真相不住 `deploy.rs`」的正控：同一把尺子量真相今天的住处（那台后端的别名块模块），量不出 ⇒ 尺子瞎了",
@@ -120,17 +108,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     // `tests/frontend/shell/inbound_client_tests.rs → src/backend/stream/inbound/mod.rs` 那一条摘了：手抄的命令名单删了、
     //   命令名只住命令表各族，那条对拍改成运行时逐族读（`guard_core::addr::backend_registry_sources`），不再是编译期边。
-    (
-        "monitor→backend",
-        // 住址跟着判据搬：
-        // 那条 `include_str!` 一直长在 `polling_registry` 的**测试段**里，
-        // 而测试段这一轮搬进了 `tests/frontend/shell/polling_registry_tests.rs`。
-        // **边的条数一格没变**（16 → 16），只是左端的住址换了。
-        "tests/frontend/shell/polling_registry_tests.rs",
-        "src/backend/control/tmux_hook.rs",
-        "前端那几条「今天不能退役」的轮询理由建立在「后端只装那三条会话 hook」之上 —— \
-         hook 覆盖面一变就要回来重新裁定",
-    ),
     // 🔴 **`tool_registry.rs → sidecars/codepicture/acquire.rs`
     //    这条跨半边删了** —— 右边那份源码随 `sidecars/` 整棵走了（2 008 行）。
     //    ⚠ 它当初记的那条道理别丢：「光在闭集里加一行是**申报**，申报会在那一层被掏空之后
