@@ -2120,6 +2120,7 @@ sealed interface Block {
     @Suppress("UNCHECKED_CAST")
     data class Text(
         val text: String,
+        val bytes: Long,
     ) : Block, Ordered {
         override val `type`: String get() = "text"
         override var wireOrder: IntArray? = null
@@ -2145,6 +2146,7 @@ sealed interface Block {
         val `for`: String,
         val content: List<Block>,
         val isError: Boolean,
+        val bytes: Long,
     ) : Block, Ordered {
         override val `type`: String get() = "tool_result"
         override var wireOrder: IntArray? = null
@@ -2169,9 +2171,10 @@ sealed interface Block {
                         listOf(
                         Field("type", { tag("text") }, optional = false, nullable = false),
                         Field("text", { Str }, optional = false, nullable = false),
+                        Field("bytes", { U64 }, optional = false, nullable = false),
                         ),
-                        { a -> Block.Text(a[1] as String) },
-                        { v -> arrayOf("text", v.text) },
+                        { a -> Block.Text(a[1] as String, a[2] as Long) },
+                        { v -> arrayOf("text", v.text, v.bytes) },
                     )),
                 Variant("thinking", Block.Thinking::class.java, obj(
                         listOf(
@@ -2197,9 +2200,10 @@ sealed interface Block {
                         Field("for", { Str }, optional = false, nullable = false),
                         Field("content", { arr(Block.ADAPTER) }, optional = false, nullable = false),
                         Field("isError", { Bool }, optional = false, nullable = false),
+                        Field("bytes", { U64 }, optional = false, nullable = false),
                         ),
-                        { a -> Block.ToolResult(a[1] as String, a[2] as List<Block>, a[3] as Boolean) },
-                        { v -> arrayOf("tool_result", v.`for`, v.content, v.isError) },
+                        { a -> Block.ToolResult(a[1] as String, a[2] as List<Block>, a[3] as Boolean, a[4] as Long) },
+                        { v -> arrayOf("tool_result", v.`for`, v.content, v.isError, v.bytes) },
                     )),
                 Variant("image", Block.Image::class.java, obj(
                         listOf(
@@ -10696,6 +10700,68 @@ data class Line<R>(
     }
 }
 
+@Suppress("UNCHECKED_CAST")
+data class LineDiff(
+    val rows: List<LineDiffRow>,
+    val shown: Int,
+    val truncated: Boolean,
+    val added: Int,
+    val removed: Int,
+    val stat: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<LineDiff> = obj(
+            listOf(
+            Field("rows", { arr(LineDiffRow.ADAPTER) }, optional = false, nullable = false),
+            Field("shown", { Int32 }, optional = false, nullable = false),
+            Field("truncated", { Bool }, optional = false, nullable = false),
+            Field("added", { Int32 }, optional = false, nullable = false),
+            Field("removed", { Int32 }, optional = false, nullable = false),
+            Field("stat", { Str }, optional = false, nullable = false),
+            ),
+            { a -> LineDiff(a[0] as List<LineDiffRow>, a[1] as Int, a[2] as Boolean, a[3] as Int, a[4] as Int, a[5] as String) },
+            { v -> arrayOf(v.rows, v.shown, v.truncated, v.added, v.removed, v.stat) },
+        )
+    }
+}
+
+enum class LineDiffKind(val wire: String) {
+    ADD("add"),
+    DEL("del"),
+    CTX("ctx"),
+    HEAD("head"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<LineDiffKind> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class LineDiffRow(
+    val kind: LineDiffKind,
+    val text: String,
+    val oldNo: Int? = null,
+    val newNo: Int? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<LineDiffRow> = obj(
+            listOf(
+            Field("kind", { LineDiffKind.ADAPTER }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            Field("oldNo", { opt(Int32) }, optional = true, nullable = true),
+            Field("newNo", { opt(Int32) }, optional = true, nullable = true),
+            ),
+            { a -> LineDiffRow(a[0] as LineDiffKind, a[1] as String, a[2] as Int?, a[3] as Int?) },
+            { v -> arrayOf(v.kind, v.text, v.oldNo, v.newNo) },
+        )
+    }
+}
+
 sealed interface LineRecord {
     /** 判别格（`t`）那个词。 */
     val t: String
@@ -11357,6 +11423,9 @@ data class LiveCardNow(
     val phase: LivePhase,
     val clipped: Boolean,
     val blocks: List<LiveBlock>,
+    val head: String,
+    val body: String,
+    val last: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -11368,9 +11437,12 @@ data class LiveCardNow(
             Field("phase", { LivePhase.ADAPTER }, optional = false, nullable = false),
             Field("clipped", { Bool }, optional = false, nullable = false),
             Field("blocks", { arr(LiveBlock.ADAPTER) }, optional = false, nullable = false),
+            Field("head", { Str }, optional = false, nullable = false),
+            Field("body", { Str }, optional = false, nullable = false),
+            Field("last", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> LiveCardNow(a[0] as Long, a[1] as String, a[2] as LivePhase, a[3] as Boolean, a[4] as List<LiveBlock>) },
-            { v -> arrayOf(v.card, v.rid, v.phase, v.clipped, v.blocks) },
+            { a -> LiveCardNow(a[0] as Long, a[1] as String, a[2] as LivePhase, a[3] as Boolean, a[4] as List<LiveBlock>, a[5] as String, a[6] as String, a[7] as String?) },
+            { v -> arrayOf(v.card, v.rid, v.phase, v.clipped, v.blocks, v.head, v.body, v.last) },
         )
     }
 }
@@ -12576,6 +12648,7 @@ data class MachineState(
     val expectedHostKey: String?,
     val detail: String?,
     val route: String? = null,
+    val strip: MachineStripLine? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -12598,9 +12671,10 @@ data class MachineState(
             Field("expectedHostKey", { opt(Str) }, optional = false, nullable = true),
             Field("detail", { opt(Str) }, optional = false, nullable = true),
             Field("route", { opt(Str) }, optional = true, nullable = true),
+            Field("strip", { opt(MachineStripLine.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as Boolean, a[3] as DialWhy?, a[4] as MachineStage?, a[5] as String?, a[6] as VersionRelation?, a[7] as String?, a[8] as String, a[9] as String, a[10] as String, a[11] as List<MachineFixButton>, a[12] as String?, a[13] as String?, a[14] as String?, a[15] as String?) },
-            { v -> arrayOf(v.name, v.state, v.offline, v.reason, v.stage, v.version, v.versionRelation, v.os, v.word, v.said, v.offlineSaid, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail, v.route) },
+            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as Boolean, a[3] as DialWhy?, a[4] as MachineStage?, a[5] as String?, a[6] as VersionRelation?, a[7] as String?, a[8] as String, a[9] as String, a[10] as String, a[11] as List<MachineFixButton>, a[12] as String?, a[13] as String?, a[14] as String?, a[15] as String?, a[16] as MachineStripLine?) },
+            { v -> arrayOf(v.name, v.state, v.offline, v.reason, v.stage, v.version, v.versionRelation, v.os, v.word, v.said, v.offlineSaid, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail, v.route, v.strip) },
         )
     }
 }
@@ -12656,6 +12730,25 @@ data class MachineStopped(
             ),
             { a -> MachineStopped(a[0] as String, a[1] as Int?) },
             { v -> arrayOf(v.stopped, v.pid) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MachineStripLine(
+    val tone: StripTone,
+    val progress: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MachineStripLine> = obj(
+            listOf(
+            Field("tone", { StripTone.ADAPTER }, optional = false, nullable = false),
+            Field("progress", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> MachineStripLine(a[0] as StripTone, a[1] as Boolean) },
+            { v -> arrayOf(v.tone, v.progress) },
         )
     }
 }
@@ -13335,6 +13428,7 @@ data class Merged(
     val unreadable: Long,
     val skipped: List<String>,
     val down: List<SearchDown>,
+    val summary: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13348,9 +13442,10 @@ data class Merged(
             Field("unreadable", { Lng }, optional = false, nullable = false),
             Field("skipped", { arr(Str) }, optional = false, nullable = false),
             Field("down", { arr(SearchDown.ADAPTER) }, optional = false, nullable = false),
+            Field("summary", { Str }, optional = false, nullable = false),
             ),
-            { a -> Merged(a[0] as Long, a[1] as Long, a[2] as Boolean, a[3] as List<MergedRow>, a[4] as Long, a[5] as List<String>, a[6] as List<SearchDown>) },
-            { v -> arrayOf(v.totalHits, v.sessionCount, v.truncated, v.sessions, v.unreadable, v.skipped, v.down) },
+            { a -> Merged(a[0] as Long, a[1] as Long, a[2] as Boolean, a[3] as List<MergedRow>, a[4] as Long, a[5] as List<String>, a[6] as List<SearchDown>, a[7] as String) },
+            { v -> arrayOf(v.totalHits, v.sessionCount, v.truncated, v.sessions, v.unreadable, v.skipped, v.down, v.summary) },
         )
     }
 }
@@ -14454,10 +14549,10 @@ data class Patch(
 
 @Suppress("UNCHECKED_CAST")
 data class PatchHunk(
-    val oldStart: Int,
-    val oldLines: Int,
-    val newStart: Int,
-    val newLines: Int,
+    val oldStart: Long,
+    val oldLines: Long,
+    val newStart: Long,
+    val newLines: Long,
     val lines: List<String>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -14465,13 +14560,13 @@ data class PatchHunk(
     companion object {
         val ADAPTER: JsonAdapter<PatchHunk> = obj(
             listOf(
-            Field("oldStart", { Int32 }, optional = false, nullable = false),
-            Field("oldLines", { Int32 }, optional = false, nullable = false),
-            Field("newStart", { Int32 }, optional = false, nullable = false),
-            Field("newLines", { Int32 }, optional = false, nullable = false),
+            Field("oldStart", { Lng }, optional = false, nullable = false),
+            Field("oldLines", { Lng }, optional = false, nullable = false),
+            Field("newStart", { Lng }, optional = false, nullable = false),
+            Field("newLines", { Lng }, optional = false, nullable = false),
             Field("lines", { arr(Str) }, optional = false, nullable = false),
             ),
-            { a -> PatchHunk(a[0] as Int, a[1] as Int, a[2] as Int, a[3] as Int, a[4] as List<String>) },
+            { a -> PatchHunk(a[0] as Long, a[1] as Long, a[2] as Long, a[3] as Long, a[4] as List<String>) },
             { v -> arrayOf(v.oldStart, v.oldLines, v.newStart, v.newLines, v.lines) },
         )
     }
@@ -18934,6 +19029,27 @@ data class RotBoard(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class RotCan(
+    val reorder: Boolean,
+    val off: Boolean,
+    val edit: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<RotCan> = obj(
+            listOf(
+            Field("reorder", { Bool }, optional = false, nullable = false),
+            Field("off", { Bool }, optional = false, nullable = false),
+            Field("edit", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> RotCan(a[0] as Boolean, a[1] as Boolean, a[2] as Boolean) },
+            { v -> arrayOf(v.reorder, v.off, v.edit) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class RotCell(
     val key: String,
     val kind: RotFormKind,
@@ -20403,6 +20519,7 @@ data class RotationViewReply(
     val timeline: RotTryTimeline? = null,
     val log: List<RotLogRow>,
     val hints: List<RotNote>,
+    val can: RotCan? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -20425,9 +20542,10 @@ data class RotationViewReply(
             Field("timeline", { opt(RotTryTimeline.ADAPTER) }, optional = true, nullable = true),
             Field("log", { arr(RotLogRow.ADAPTER) }, optional = false, nullable = false),
             Field("hints", { arr(RotNote.ADAPTER) }, optional = false, nullable = false),
+            Field("can", { opt(RotCan.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> RotationViewReply(a[0] as Long, a[1] as String, a[2] as String?, a[3] as RotStrategyItem?, a[4] as RotBoard, a[5] as String, a[6] as String, a[7] as List<RotLine>, a[8] as Boolean, a[9] as List<String>, a[10] as List<RotAccount>, a[11] as Long, a[12] as RotTryDecision?, a[13] as RotTryTimeline?, a[14] as List<RotLogRow>, a[15] as List<RotNote>) },
-            { v -> arrayOf(v.now, v.nowText, v.title, v.strategy, v.board, v.start, v.current, v.lineup, v.manual, v.off, v.accounts, v.listed, v.decision, v.timeline, v.log, v.hints) },
+            { a -> RotationViewReply(a[0] as Long, a[1] as String, a[2] as String?, a[3] as RotStrategyItem?, a[4] as RotBoard, a[5] as String, a[6] as String, a[7] as List<RotLine>, a[8] as Boolean, a[9] as List<String>, a[10] as List<RotAccount>, a[11] as Long, a[12] as RotTryDecision?, a[13] as RotTryTimeline?, a[14] as List<RotLogRow>, a[15] as List<RotNote>, a[16] as RotCan?) },
+            { v -> arrayOf(v.now, v.nowText, v.title, v.strategy, v.board, v.start, v.current, v.lineup, v.manual, v.off, v.accounts, v.listed, v.decision, v.timeline, v.log, v.hints, v.can) },
         )
     }
 }
@@ -23558,7 +23676,7 @@ sealed interface StepBody {
 
     @Suppress("UNCHECKED_CAST")
     data class Changes(
-        val changes: List<TextChange>,
+        val diff: LineDiff,
     ) : StepBody, Ordered {
         override val kind: String get() = "changes"
         override var wireOrder: IntArray? = null
@@ -23579,10 +23697,10 @@ sealed interface StepBody {
                 Variant("changes", StepBody.Changes::class.java, obj(
                         listOf(
                         Field("kind", { tag("changes") }, optional = false, nullable = false),
-                        Field("changes", { arr(TextChange.ADAPTER) }, optional = false, nullable = false),
+                        Field("diff", { LineDiff.ADAPTER }, optional = false, nullable = false),
                         ),
-                        { a -> StepBody.Changes(a[1] as List<TextChange>) },
-                        { v -> arrayOf("changes", v.changes) },
+                        { a -> StepBody.Changes(a[1] as LineDiff) },
+                        { v -> arrayOf("changes", v.diff) },
                     )),
                 Variant("command", StepBody.Command::class.java, obj(
                         listOf(
@@ -23608,8 +23726,7 @@ data class StepResult(
     val answer: Answer? = null,
     val exitCode: Int? = null,
     val file: String? = null,
-    val patch: List<PatchHunk>? = null,
-    val patchTruncated: Boolean? = null,
+    val patch: LineDiff? = null,
     val text: String,
     val timed: String? = null,
     val preview: String? = null,
@@ -23630,16 +23747,15 @@ data class StepResult(
             Field("answer", { opt(Answer.ADAPTER) }, optional = true, nullable = true),
             Field("exitCode", { opt(Int32) }, optional = true, nullable = true),
             Field("file", { opt(Str) }, optional = true, nullable = true),
-            Field("patch", { opt(arr(PatchHunk.ADAPTER)) }, optional = true, nullable = true),
-            Field("patchTruncated", { opt(Bool) }, optional = true, nullable = true),
+            Field("patch", { opt(LineDiff.ADAPTER) }, optional = true, nullable = true),
             Field("text", { Str }, optional = false, nullable = false),
             Field("timed", { opt(Str) }, optional = true, nullable = true),
             Field("preview", { opt(Str) }, optional = true, nullable = true),
             Field("chars", { opt(Int32) }, optional = true, nullable = true),
             Field("kind", { opt(ResultKind.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> StepResult(a[0] as Boolean, a[1] as Boolean?, a[2] as Int?, a[3] as Int?, a[4] as Int?, a[5] as Int?, a[6] as Answer?, a[7] as Int?, a[8] as String?, a[9] as List<PatchHunk>?, a[10] as Boolean?, a[11] as String, a[12] as String?, a[13] as String?, a[14] as Int?, a[15] as ResultKind?) },
-            { v -> arrayOf(v.ok, v.rejected, v.lines, v.added, v.removed, v.files, v.answer, v.exitCode, v.file, v.patch, v.patchTruncated, v.text, v.timed, v.preview, v.chars, v.kind) },
+            { a -> StepResult(a[0] as Boolean, a[1] as Boolean?, a[2] as Int?, a[3] as Int?, a[4] as Int?, a[5] as Int?, a[6] as Answer?, a[7] as Int?, a[8] as String?, a[9] as LineDiff?, a[10] as String, a[11] as String?, a[12] as String?, a[13] as Int?, a[14] as ResultKind?) },
+            { v -> arrayOf(v.ok, v.rejected, v.lines, v.added, v.removed, v.files, v.answer, v.exitCode, v.file, v.patch, v.text, v.timed, v.preview, v.chars, v.kind) },
         )
     }
 }
@@ -23768,6 +23884,18 @@ sealed interface StreamEv {
                     )),
                 ),
             )
+    }
+}
+
+enum class StripTone(val wire: String) {
+    BUSY("busy"),
+    OFFLINE("offline"),
+    WARN("warn"),
+    FAULT("fault"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<StripTone> = enumOf(entries) { it.wire }
     }
 }
 
