@@ -275,7 +275,10 @@ fn prose_mentioning_the_test_attribute_does_not_truncate_the_scan() {
 #[test]
 fn a_double_slash_inside_a_string_does_not_cut_the_line() {
     let code = production_code("pub const U: &str = \"https://x\"; pub struct After;\n");
-    assert!(code.contains("pub struct After;"), "字符串里的 `//` 把后半行剥掉了：{code:?}");
+    assert!(
+        code.contains("pub struct After;"),
+        "字符串里的 `//` 把后半行剥掉了：{code:?}"
+    );
 }
 
 /// **防上帝结构的门禁**（计划 §5 P2）。不是形式主义：本会话四次拒绝提前抽象

@@ -9,13 +9,22 @@ fn scan_tree_returns_the_whole_tree_even_on_a_root_spelled_with_dotdot() {
         .find(|a| a.join(here).is_file())
         .expect("从包目录往上找得到 `file!()` 指的那份文件");
     let root = base.join(here.parent().expect("file!() 有父目录"));
-    let want: Vec<_> = walk_tree(&root, &["rs"]).into_iter().map(|(p, _)| p).collect();
-    let got: Vec<_> = scan_tree!(&root, &["rs"]).into_iter().map(|(p, _)| p).collect();
+    let want: Vec<_> = walk_tree(&root, &["rs"])
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect();
+    let got: Vec<_> = scan_tree!(&root, &["rs"])
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect();
     assert!(
         want.iter().any(|p| p.ends_with("lib_tests.rs")),
         "遍历没收到 lib_tests.rs，本条此刻不携带信息：{want:?}"
     );
-    assert_eq!(got, want, "`scan_tree!` 与 `walk_tree` 在根 {root:?} 上收到的文件不同");
+    assert_eq!(
+        got, want,
+        "`scan_tree!` 与 `walk_tree` 在根 {root:?} 上收到的文件不同"
+    );
 }
 
 /// 读内容的遍历与只列路径的遍历跳过同一批目录：依赖目录（按名字认）与构建目录（按 `CACHEDIR.TAG` 认）两边都不进。
@@ -27,15 +36,27 @@ fn both_walkers_skip_the_same_directories() {
         std::fs::create_dir_all(d.join(sub)).expect("建临时目录");
         std::fs::write(d.join(sub).join("x.rs"), "fn x() {}\n").expect("写夹具");
     }
-    std::fs::write(d.join("build-out").join("CACHEDIR.TAG"), "Signature: 8a477f597d28d172789f06886806bc55\n")
-        .expect("写夹具");
+    std::fs::write(
+        d.join("build-out").join("CACHEDIR.TAG"),
+        "Signature: 8a477f597d28d172789f06886806bc55\n",
+    )
+    .expect("写夹具");
     let read: Vec<String> = walk_tree(&d, &["rs"])
         .into_iter()
-        .map(|(p, _)| p.strip_prefix(&d).expect("在根下").to_string_lossy().replace('\\', "/"))
+        .map(|(p, _)| {
+            p.strip_prefix(&d)
+                .expect("在根下")
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
         .collect();
     let listed = files_by_extension(&d, "rs");
     let _ = std::fs::remove_dir_all(&d);
-    assert_eq!(read, vec!["keep/x.rs".to_string()], "读内容的遍历进了不该进的目录");
+    assert_eq!(
+        read,
+        vec!["keep/x.rs".to_string()],
+        "读内容的遍历进了不该进的目录"
+    );
     assert_eq!(listed, read, "两种遍历跳过的目录不同");
 }
 
@@ -49,7 +70,14 @@ fn baseline_text_reads_the_fork_point_version() {
     let git = |args: &[&str]| {
         let ok = std::process::Command::new("git")
             .current_dir(&d)
-            .args(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"])
+            .args([
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+            ])
             .args(args)
             .output()
             .expect("起 git")
@@ -69,7 +97,11 @@ fn baseline_text_reads_the_fork_point_version() {
     git(&["branch", "-q", "-m", "main", "old"]);
     let no_main = baseline_text(&d, "list.tsv");
     let _ = std::fs::remove_dir_all(&d);
-    assert_eq!(got, Ok(Some("a\nb\nc\n".to_string())), "读回的不是分叉点那一版");
+    assert_eq!(
+        got,
+        Ok(Some("a\nb\nc\n".to_string())),
+        "读回的不是分叉点那一版"
+    );
     assert_eq!(absent, Ok(None), "基线上没有的路径要回 None");
     assert!(no_main.is_err(), "没有 main 时要回 Err，实得 {no_main:?}");
 }

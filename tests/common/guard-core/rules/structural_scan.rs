@@ -635,14 +635,6 @@ fn every_comment_stripping_transformer_is_registered() {
         // `cc_bus_tests` 那份本地剥法那一行摘了：用它的零命中守卫随驾驶舱 shell 读一起退役（收口了，不是搬家）。
         // 钩子诊断那份本地剥法那一行摘了：它的判据随模块进后端退役（后端 `readonly_guard` 管只读，收口了，不是搬家）。
         (
-            // 两种方言的读回口（同名两份 `impl`，按文件名去重成一行）。
-            // 随方言进了那台后端（今天住 `src/backend/platform/shell/dialect.rs`）。
-            "dialect.rs::parse_file",
-            "**别的注释语法，而且语料是我们自己生成的那份别名文件**：POSIX sh 与 PowerShell 的注释都是 `#`，\
-                 共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS）。只跳**整行** `#`（生成文件的头注），\
-                 行里的 `#` 是参数值的一部分、原样保留（共享的 `strip_hash_comment_lines` 只剥整行，口径相同；这一份读的是解析结果，不只是剥）",
-        ),
-        (
             "tmux_hook_tests.rs::prod_code",
             "backend 侧本地剥法（跨 crate 够不着 monitor 的 `guard_core`）",
         ),

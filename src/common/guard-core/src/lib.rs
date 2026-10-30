@@ -1852,6 +1852,47 @@ pub fn shell_scripts(root: &std::path::Path) -> Vec<String> {
     })
 }
 
+/// 「只许变短」的名单对着基线判：`rel`（相对仓根 `root`）在基线上的正文。
+///
+/// 基线 ＝ HEAD 与 main 的分叉点（`git merge-base HEAD main`，本地没有 `main` 就用 `origin/main`）。
+/// 名单与上限住同一个改动面，同一次提交就能一起放大；对着分叉点判，放大的那一次在这条分支上一直红，提交了也不变绿。
+/// 读不到基线（没有 git · 没有 main · 浅克隆）⇒ `Err`，调用方当红报，不当成过。路径在基线上还没有 ⇒ `Ok(None)`。
+/// TS 侧同口径的一份是 `tests/test-support/ledger-base.ts`。
+pub fn baseline_text(root: &std::path::Path, rel: &str) -> Result<Option<String>, String> {
+    let git = |args: &[&str]| -> Result<Option<String>, String> {
+        let out = std::process::Command::new("git")
+            .current_dir(root)
+            .args(args)
+            .output()
+            .map_err(|e| format!("起不来 git：{e}"))?;
+        Ok(out
+            .status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).into_owned()))
+    };
+    let mut base_ref = None;
+    for r in ["main", "origin/main"] {
+        if git(&["rev-parse", "--verify", "-q", &format!("{r}^{{commit}}")])?.is_some() {
+            base_ref = Some(r);
+            break;
+        }
+    }
+    let r = base_ref.ok_or_else(|| {
+        format!("读不到基线：{root:?} 里 main · origin/main 都不在（CI 的检出要 fetch-depth: 0）")
+    })?;
+    let base = git(&["merge-base", "HEAD", r])?
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| format!("读不到基线：HEAD 与 {r} 找不到分叉点（浅克隆把历史截掉了？）"))?;
+    let spec = format!("{base}:{rel}");
+    if git(&["cat-file", "-e", &spec])?.is_none() {
+        return Ok(None);
+    }
+    git(&["show", &spec])?
+        .map(Some)
+        .ok_or_else(|| format!("读不到基线：git show {spec} 失败"))
+}
+
 /// 遍历一棵源码树，整棵都收（[`walk_tree`]）。要排除某几份，走 [`scan_tree_excluding`] 的明写名单（摘不到就 panic）。
 #[macro_export]
 macro_rules! scan_tree {
