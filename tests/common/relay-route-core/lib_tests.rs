@@ -287,6 +287,53 @@ fn every_declared_file_is_consistent_and_declared_once() {
     }
 }
 
+/// `X.Y.Z` ⇒ 三个数；不是这一形 ⇒ 没有。
+fn release_of(s: &str) -> Option<(u32, u32, u32)> {
+    let mut it = s.trim().split('.').map(|p| p.parse::<u32>().ok());
+    let v = (it.next()??, it.next()??, it.next()??);
+    it.next().is_none().then_some(v)
+}
+
+/// `package.json` 的 version（打版本号改的就是它）。
+fn current_release() -> (u32, u32, u32) {
+    let pkg = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../package.json");
+    let text = std::fs::read_to_string(&pkg).expect("package.json 读不动");
+    let line = text
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("\"version\":"))
+        .expect("package.json 里没有 version");
+    release_of(line.trim().trim_end_matches(',').trim_matches('"')).expect("version 不是 X.Y.Z")
+}
+
+/// 升级步都有到期那一版：下限低于版本的每一行写着「下限抬于 X.Y.Z」；`package.json` 的 version 到了那一版还没抬 ⇒ 红
+/// （红了的那一路删这份的升级步与它们的测试、下限抬成版本、去掉这一格）。
+#[test]
+fn every_upgrade_step_has_a_release_that_drops_it() {
+    let now = current_release();
+    for r in OWN_FILES {
+        let Format::Json { version, floor } = r.format else {
+            assert_eq!(r.floor_raised_in, None, "{}：不带版本的行没有下限可抬", r.rel);
+            continue;
+        };
+        if floor == version {
+            assert_eq!(r.floor_raised_in, None, "{}：下限已等于版本，抬于那一格要去掉", r.rel);
+            continue;
+        }
+        let Some(at) = r.floor_raised_in else {
+            panic!("{}：下限 {floor} 低于版本 {version}，没写下限抬于哪一版（`.floor_raised_in(\"X.Y.Z\")`）", r.rel);
+        };
+        let due = release_of(at).unwrap_or_else(|| panic!("{}：抬于 `{at}` 不是 X.Y.Z", r.rel));
+        assert!(
+            now < due,
+            "{}：版本已到 {}.{}.{}，下限抬于 {at} 到期：删第 {floor} 版起的升级步与它们的测试，下限抬成 {version}",
+            r.rel,
+            now.0,
+            now.1,
+            now.2
+        );
+    }
+}
+
 /// 家里那几样里有声明的那几份，「删了会丢」照声明的种类（一处事实）；定下的那两处：中转钥匙是缓存、资产目录是状态。
 #[test]
 fn home_entries_with_a_declaration_take_their_class_from_it() {
