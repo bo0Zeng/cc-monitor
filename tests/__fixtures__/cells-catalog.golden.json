@@ -472,12 +472,6 @@
         },
         {
           "frozen": true,
-          "kind": "text",
-          "path": "{t=said}.results.*.patch.notice",
-          "type": "string"
-        },
-        {
-          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.patch.removed",
           "type": "number"
