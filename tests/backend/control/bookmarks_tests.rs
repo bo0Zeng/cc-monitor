@@ -35,9 +35,14 @@ fn read(o: &crate::platform::fs::Own) -> Result<Bookmarks, Fail> {
 }
 
 fn read_at(o: &crate::platform::fs::Own, at: &str) -> Option<u32> {
-    answer_read(o, &BookmarksReadReq { at: Some(at.into()) })
-        .expect("读")
-        .here
+    answer_read(
+        o,
+        &BookmarksReadReq {
+            at: Some(at.into()),
+        },
+    )
+    .expect("读")
+    .here
 }
 
 fn edit_at(o: &crate::platform::fs::Own, op: BookmarkOp, dir: &str, at: &str) -> Bookmarks {
@@ -84,10 +89,7 @@ fn an_edit_with_the_current_dir_answers_where_it_sits_after_the_edit() {
 fn absent_reads_as_empty_and_writes_land_where_the_contract_says() {
     let h = home("absent");
     let o = own(&h);
-    assert!(
-        read(&o).unwrap().dirs.is_empty(),
-        "文件不在 ⇒ 空的一份"
-    );
+    assert!(read(&o).unwrap().dirs.is_empty(), "文件不在 ⇒ 空的一份");
     edit(&o, BookmarkOp::Add, &["/srv/"]);
     let raw = std::fs::read_to_string(h.join(relay_route_core::BOOKMARKS_REL)).unwrap();
     let v: serde_json::Value = serde_json::from_str(&raw).unwrap();

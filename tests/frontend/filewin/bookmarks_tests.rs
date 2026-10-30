@@ -73,8 +73,7 @@ impl comms_inward::chan::router::Backends for Books {
         }
         let mut dirs = self.dirs.lock().unwrap();
         if op.0 == "bookmarks-edit" {
-            let req: BookmarksEditReq =
-                serde_json::from_value(args.clone()).expect("入参照类型");
+            let req: BookmarksEditReq = serde_json::from_value(args.clone()).expect("入参照类型");
             for d in &req.dirs {
                 let d = normalize_dir(d);
                 let at = dirs.iter().position(|x| *x == d);
@@ -356,7 +355,10 @@ async fn another_writers_bookmark_shows_up_after_a_navigation() {
         .collect();
     assert_eq!(
         reads,
-        vec![serde_json::json!({ "at": "/" }), serde_json::json!({ "at": a })],
+        vec![
+            serde_json::json!({ "at": "/" }),
+            serde_json::json!({ "at": a })
+        ],
         "开窗一次 ＋ 换目录一次，别的时候不问；每一问带上那一刻的目录"
     );
     until("换目录那一问", || {

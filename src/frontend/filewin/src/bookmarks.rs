@@ -92,7 +92,12 @@ impl Shelf {
 
     /// 现问一次（换目录时调，`at` ＝ 换到的那个目录）。
     pub fn refresh(&self, at: &str) {
-        self.send(at, Ask::Read(BookmarksReadReq { at: Some(at.to_string()) }));
+        self.send(
+            at,
+            Ask::Read(BookmarksReadReq {
+                at: Some(at.to_string()),
+            }),
+        );
     }
 
     /// 切换 `dir`（★：切的就是此刻这个目录）。

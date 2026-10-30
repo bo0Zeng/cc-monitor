@@ -11,7 +11,9 @@ use crate::common::own_state::{Doc, Read};
 use crate::common::said::Said;
 use crate::platform::fs::Own;
 use crate::wire::spec::Fail;
-use cmd_wire::bookmarks::{normalize_dir, BookmarkOp, Bookmarks, BookmarksEditReq, BookmarksReadReq};
+use cmd_wire::bookmarks::{
+    normalize_dir, BookmarkOp, Bookmarks, BookmarksEditReq, BookmarksReadReq,
+};
 use copy_core::copy_text;
 
 /// 那一份：状态（读不懂 · 比这一版新 ⇒ 不覆盖；落点 · 上限 · 版本照声明表）。
