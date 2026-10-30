@@ -5,10 +5,9 @@ edition = "2021"
 workspace = "../../frontend/shell"
 description = "POSIX 单引号 quote 的唯一 Rust 实现。monitor 5 处 + backend 1 处都调它（收口前是五份逐字节相同的副本，靠巧合保持一致）。P4c 起名副其实（P4b 之前叫 launch-core，那时它还持有决策内核）。"
 
-# **只依赖同族共享 crate**。同 branch-core / usage-core / acct-core / guard-core 的约束：
+# **零依赖、无 IO、无平台依赖**（本 crate 只有 `posix_quote`）：
 # backend 是 Linux-only 的静态 musl 二进制、且刻意不在 monitor 的 workspace 里；
 # 一旦引入平台相关的东西，共享就破了。
-# **零依赖**：本 crate 只有 `posix_quote`。
 [dependencies]
 
 [dev-dependencies]

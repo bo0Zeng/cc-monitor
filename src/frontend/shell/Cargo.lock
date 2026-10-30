@@ -814,7 +814,6 @@ dependencies = [
  "host-core",
  "image",
  "pick-core",
- "relay-route-core",
  "rfd",
  "serde",
  "serde_json",
@@ -966,7 +965,6 @@ dependencies = [
  "test-home",
  "tokio",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -4230,7 +4228,6 @@ version = "0.1.0"
 dependencies = [
  "cmd-wire",
  "copy-core",
- "serde",
  "serde_json",
  "test-home",
 ]

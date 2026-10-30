@@ -1,25 +1,7 @@
-# F06：**agent 适配表的唯一源头**（起会话那几格事实：默认启动器 · resume 形态与字面量 · 嵌套标记）。
+# 后端适配层注册表（`src/backend/agents/<名>/resume.rs` 的 `Adapter.launch`）起会话那几格的期望值：默认启动器 · resume 形态与字面量 · 嵌套标记 · 垫在前面的参数。
+# 值的家是注册表；这张表只是测试的期望值。读它的：`tests/backend/agents_tests.rs`（注册表 == 本表）· `tests/frontend/shell/lib_env_scrub_tests.rs`（起前清洗名单 == 本表）。
 #
-# 值今天只有**一个家**：后端适配层 `src/backend/agents/<名>/resume.rs`（注册表 `Adapter.launch`）；
-#   `ccm` 按注册表读，界面与 monitor 读它生成的 `src/frontend/ui/generated/agent-profile-table.ts`。
-#   从前是三份副本（monitor 那份适配表 · ccm 的 per-agent 分支 · 前端手写常量），本表当时为「搬之前先证明一致」而立。
-#
-# ⚠ 为什么要这张表：**C4 要 ccm 变零决策执行臂** —— 而「搬决策」的前置是
-#   「**先证明两侧今天逐字一致**」。不一致的话搬完不知道搬没搬对，
-#   而且那种不一致**今天不会红**（三份各自的测试都过）。
-#
-# ⚠⚠ **本表刻意描述「语义」而不是「某一侧的表示」**（首版栽在这上面）：
-#   首版有一列 `resume_flag`，直接拿 ccm 的 `agent_resume_flag` 与 Rust 的 `resume_flag()` 对拍
-#   —— 判据当场红，而**那不是漂移，是我把两个不同语义的字段当成了一个**：
-#     · Rust 存的是「resume 的**调用形态**」：claude 用 flag `--resume`，codex 用**子命令** `resume`；
-#     · ccm 存的是「resume **flag**」，且**拿空值当「不支持 resume」的哨兵**（`ccm:250` 会 `die`）。
-#   ⇒ 拆成 `resume_kind`（flag/subcommand）+ `resume_token`（那个字面量），两侧各自映射。
-#   **「同名不同物」在本工作区是第三次**（daemon `--usage` vs 用量探针 · 远端 claude_dir vs 本机读面）。
-#
-# 读它的（各自独立读，绝不一侧运行时调另一侧）：
-#   · Rust  后端 `tests/backend/agents_tests.rs`（注册表 == 本表）· monitor `tests/frontend/shell/lib_env_scrub_tests.rs`（起前清洗名单 == 本表）
-#   · TS    `tests/frontend/ui/agent-profile-parity.vitest.ts`（生成物 == 本表）
-#
+# `resume_kind` 是 resume 的调用形态（flag：`claude --resume <sid>` · subcommand：`codex resume <sid>`），`resume_token` 是那个字面量。
 # `launch_args`：ccm 起这一家时垫在交给它的那一串最前面的参数（空格分隔）。
 # 列：agent <TAB> key <TAB> value（value 为空写 `<empty>`）
 claude	default_launcher	claude

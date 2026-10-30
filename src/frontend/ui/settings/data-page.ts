@@ -52,8 +52,16 @@ type Reading = { ok: true; report: DataReport } | { ok: false; why: string; last
 
 interface Machine {
   origin: Origin;
-  name: string;
+  /** 叫什么：每次读都现问（那台的成品可能晚到，先叫「机器不明」、到了就换），不抄一份。 */
+  readonly name: string;
 }
+
+const machineOf = (origin: Origin): Machine => ({
+  origin,
+  get name() {
+    return machineName(origin);
+  },
+});
 
 export class DataPage {
   readonly element: HTMLElement;
@@ -71,7 +79,7 @@ export class DataPage {
   /** 「cc-monitor 的文件」段头 ＋ 那台后端家里那一块（照那台 `data-report` 的 `own` 排，本机远端都是）。 */
   private readonly ownFiles: HTMLElement;
   private readonly ownBody: HTMLElement;
-  private machines: Machine[] = [{ origin: LOCAL_ORIGIN, name: machineName(LOCAL_ORIGIN) }];
+  private machines: Machine[] = [machineOf(LOCAL_ORIGIN)];
   private readings = new Map<Origin, Reading>();
   /** 读成的那几台合起来的件数（本机后端合的；没合成 ⇒ `null`，顶上不出数）。 */
   private total: ChoreCounts | null = null;
@@ -186,7 +194,7 @@ export class DataPage {
     const gen = ++this.generation;
     try {
       const hosts = (await readRemoteConfig()).hosts.map((r) => r.name);
-      this.machines = [LOCAL_ORIGIN, ...hosts].map((origin) => ({ origin, name: machineName(origin) }));
+      this.machines = [LOCAL_ORIGIN, ...hosts].map(machineOf);
     } catch {
       // 读不到机器表 ⇒ 只问本机（远端那几台这一趟不列，不猜）。
     }

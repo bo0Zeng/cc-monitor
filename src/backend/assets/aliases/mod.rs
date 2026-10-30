@@ -70,12 +70,11 @@ pub(crate) const POLICY_SET_CAP: Deadline = Deadline::secs(28);
 pub(crate) const CALL: dialect::Call<'static> = dialect::Call {
     word: crate::ccm_line::SUBCOMMAND_WORD,
     end: flag::END,
-    landing: Some(relay_route_core::BACKEND_LANDING_REL),
+    landing: relay_route_core::BACKEND_LANDING_REL,
 };
 
 /// 生成文件自己的围栏（整份重写，所以它只是给人看的边界；两种方言共用，理由同上）。
 /// v1 → v2：`71` 逐字「不要有 account alias 这种东西」—— 文件里只有**一类**别名。
-/// 读回（[`read_in`]）不认这两行（注释行一律跳过），所以盘上那份 v1 照样读得回来。
 const FILE_BEGIN: &str = "# === cc-monitor aliases BEGIN v2 ===";
 const FILE_END: &str = "# === cc-monitor aliases END ===";
 
@@ -159,7 +158,6 @@ pub(crate) fn render_file(shell: Shell, lines: &[String]) -> String {
 //      可选地往用户选的启动文件里装一行 `source`。它收的是**清单**不是代码 —— 写进 shell 的文本
 //      只由 `shell_dialect` 产出（审计 S-1：绝不让前端注入可执行的 shell），而「写的就是预览的那一份」
 //      由两跳调同一个 [`render`] 保证。
-// 读回口：[`read_in`] 把盘上那份解析回清单（那张「没有的」表第一条）。
 
 /// 一条别名。`args` 是原样的 ccm argv（`["--ccm-tmux", "--account", "z"]`），渲染时由方言逐个按需加引号。
 /// `rest_to`：调用时跟的词交给谁（缺省 claude；交给 ccm 只许接回会话那一形，见 [`check_alias`]）。

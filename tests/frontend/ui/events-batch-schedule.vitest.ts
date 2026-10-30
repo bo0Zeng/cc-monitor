@@ -473,7 +473,7 @@ describe("启动接线：记忆与骨架的先后", () => {
   //   抑制写回那一对随之删了（它罩的那批骨架不在这里建了）⇒ 那条判据换成「两处骨架入口都按 pending 补切」。
   it("读 last-active 记忆排在就绪点（骨架从那里才来）之前", () => {
     const read = at("safeGet(LS_KEYS.lastActiveSid)", 1);
-    const ready = at('void emit("frontend-ready"', 1);
+    const ready = at("void emit(FRONTEND_READY", 1);
     expect(
       read < ready,
       "读记忆排到就绪点之后了 —— 骨架一到就可能经 switchTo 写回，记忆会被覆写成先到的那个 sid。",

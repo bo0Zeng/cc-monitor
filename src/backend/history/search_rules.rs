@@ -1,7 +1,7 @@
 //! 要求：「通用搜索口径与多机合并排序 → 后端 `observe/`」· `INVARIANTS §42`（`--search` 条：
 //! 「① **行序 = snippet 预算顺序 = 最近优先**」）· 口径只有一个家。
 //!
-//! 原共享 crate `search-core` 的**通用那一半**：口径常量 · snippet 预算（「全局预算用完」与「单会话满」拆成两个值）·
+//! 搜索口径的**通用那一半**：口径常量 · snippet 预算（「全局预算用完」与「单会话满」拆成两个值）·
 //! 预算顺序（最近优先）· 片段 / 找词 / 截断 · 标题三选一。与哪一家 agent 无关；记录里正文 / 工具内容怎么抽、
 //! CLI 注入的包装怎么剥是 Claude 记录格式的知识，住适配层 `agents/claudecode/text.rs`（通用层经注册表 `agents::TextFace` 够）。
 //! 全仓只有这一份，由 `search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home` 钉。

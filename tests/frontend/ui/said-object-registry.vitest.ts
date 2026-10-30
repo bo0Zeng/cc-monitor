@@ -4,11 +4,9 @@
  * 本条把调用点一处不漏列进登记表，每处写清对象在哪；新长一处调用 / 调用点没了 ⇒ 两向红。
  */
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { productionTsFiles } from "../../test-support/production-sources";
 import { nonEmpty } from "../../test-support/non-empty";
 
-const ROOT = resolve(__dirname, "../../..");
 const CALLS = ["previewShot", "sendToTerminal", "agentOnline", "readState", "readInbox", "spawnAgent", "broadcast"];
 /** 不算调用点的家：定义它们的那两份。 */
 const HOMES = new Set(["src/frontend/ui/terminal-reads.ts", "src/frontend/ui/cc-bus-control.ts"]);
@@ -21,26 +19,14 @@ const WHERE: Record<string, string> = {
   "src/frontend/ui/views/cc-bus-section.ts::readInbox": "设置 → cc-bus：结果写在那个 agent 那一行展开的收件箱里",
 };
 
-function walk(dir: string, out: string[] = []): string[] {
-  for (const e of readdirSync(dir)) {
-    const p = join(dir, e);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (p.endsWith(".ts")) out.push(p);
-  }
-  return out;
-}
 
 describe("不带对象的那几句：每个出处对象都看得见（登记两向）", () => {
   it("★ 调用点 == 登记表", () => {
     const got = new Set<string>();
-    for (const f of walk(resolve(ROOT, "src/frontend/ui"))) {
-      // 登记表写正斜杠；Windows 上 join 出来是反斜杠，先归一（不然「家」认不出、键也对不上）。
-      const rel = f.slice(ROOT.length + 1).split(sep).join("/");
+    for (const { file: rel, text } of productionTsFiles("src/frontend/ui")) {
       if (HOMES.has(rel)) continue;
-      // 后端类型生成的声明（`generated/`）里只有类型与说明，没有调用点（`broadcast` 之类的词出现在说明 · 格名里）。
-      if (rel.startsWith("src/frontend/ui/generated/")) continue;
       // 去掉 import 那几行再找（当值传的 `send: sendToTerminal` 也算一处）。
-      const code = readFileSync(f, "utf8").replace(/^import [^;]*;$/gms, "");
+      const code = text.replace(/^import [^;]*;$/gms, "");
       for (const c of CALLS) if (new RegExp(`(?<![A-Za-z0-9_$.])${c}\\b`).test(code)) got.add(`${rel}::${c}`);
     }
     nonEmpty(got);

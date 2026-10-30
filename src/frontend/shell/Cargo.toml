@@ -1,9 +1,3 @@
-# G2（Phase G 代码工程审计）：**这六个 crate 此前不是真 workspace member。**
-# 实测 `cargo metadata` 的 `workspace_members` 只有 `monitor` 一项 —— `cargo test -p branch-core`
-# 之所以能跑，靠的是 cargo 允许 `-p` 选中**依赖图里的非 member 包**，不是 workspace 机制。
-# 代价：门禁得在八个地方分别跑（~17 条 `--manifest-path`/`-p`），且每个 crate 单独 test 时
-# 会各落一个游离 `Cargo.lock`（`.gitignore` 为此打过补丁）。
-#
 # ⚠ `src/backend` **不在这里** —— 它有自己独立的 `Cargo.lock`，
 # 那条隔离是真架构约束（Linux/Windows CI runner），见它自己的 `Cargo.toml` 头注。
 [workspace]
@@ -144,8 +138,6 @@ serde_json = { version = "1", features = ["raw_value"] }
 # uuid 1.x 已在 Cargo.lock（tauri 传递依赖）+ 本地 registry 缓存，加 v4 feature 离线可编。
 uuid = { version = "1", features = ["v4"] }
 
-# `branch-core` 删了：monitor 零引用（本机分叉也问本机后端），它收进后端适配层 `agents/claudecode/branch.rs`。
-# `codex-token-core` 删了：monitor 零引用，它搬进后端 `agents/codex/token.rs`。
 # `agent-tools-core` 删了：画像表里那几张判卡型的词表进了后端适配层（`agents/claudecode/cards.rs`），monitor 零引用。
 # `acct-core` 挪到 dev 侧（见下）：monitor 生产段零引用，只有生成器（`AUTH_KINDS` → `judgment-rules.ts`）用它。
 # 对外文案表的 Rust 取文口（唯一一份实现，调用方直接调）。常驻后端与 creds-core 也链它。
@@ -178,9 +170,6 @@ host-core = { path = "../../common/host-core" }
 # monitor 与文件窗口进程两边对上的形状（种子 · 就绪行 · 开终端那一问）。
 filewin-contract = { path = "../../common/filewin-contract" }
 # `gate-core` 删了：monitor 侧的 Gate 1 前检与转调壳（只剩跨轨对拍锚点在用）删掉之后它只剩后端用，收成后端模块 `control/gate_rules.rs`。
-
-# `search-core` 删了：monitor 零引用（搜索与记录解释都在后端；`messages.rs` 那一处随记录解释进了后端，MOD）。
-# workspace 成员也出列、crate 删了：通用口径进后端 `observe/search_rules.rs`（今住 `history/search_rules.rs`），Claude 记录文本那一半进 `agents/claudecode/text.rs`。
 
 notify = "8"
 
