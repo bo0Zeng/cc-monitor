@@ -395,7 +395,6 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         Kind::Platform,
         "unix 权限位（`files-stat` 的 `mode` 那一格）：读元数据的平台扩展只住 `platform/fs/`，非 unix ⇒ 缺席",
     ),
-    // 路径字节的线上两种形搬进 `common/path_wire.rs`（原生那一块的「在此打开终端」也读它），本族经 `raw` 的再导出照旧用。
     (
         "common::batch_book::Run",
         Kind::Common,
@@ -445,21 +444,6 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "common::batch_book::ticketed",
         Kind::Common,
         "一组一条那几条共用的票 · 进度 · 撤：带票做一组（断开照常做完、再问回同一份）",
-    ),
-    (
-        "common::path_wire::from_json",
-        Kind::Common,
-        "入方向路径参数的两种形（字符串 / `{\"b16\"}`）→ 字节",
-    ),
-    (
-        "common::path_wire::to_json",
-        Kind::Common,
-        "回送路径的两种形（字节 → 字符串 / `{\"b16\"}`，双向无损）",
-    ),
-    (
-        "common::path_wire::HEX_KEY",
-        Kind::Common,
-        "线上那个键名 `b16`（本族判据按它对拍）",
     ),
     (
         "common::path_wire::to_path_buf",
@@ -820,7 +804,7 @@ fn the_edge_extractors_see_what_they_should_and_nothing_else() {
     assert_eq!(paths_from(&format!("my_{w}::a"), w), want(&[]));
     // 外向：成员之间的引用不算边，别人的算。
     let src = format!(
-        "{w}::files::raw::to_json(x); {w}::control::files_write::answer_wire(); {w}::observe::fs::x();"
+        "{w}::files::raw::path_bytes(x); {w}::control::files_write::answer_wire(); {w}::observe::fs::x();"
     );
     assert_eq!(outward_edges(&src), want(&["observe::fs::x"]));
     // 内向：两种写法都认，带模块前缀回。
