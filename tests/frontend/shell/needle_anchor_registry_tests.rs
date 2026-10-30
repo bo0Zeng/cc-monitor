@@ -14,11 +14,7 @@ fn repo_root() -> PathBuf {
 ///
 /// # 🔴 这张表**漏掉了剖分之后本仓钦定的那个遍历原语**
 ///
-/// 原文逐字只有 `["read_to_string(", "scan_tree!"]`。而 `scan_tree!` 只是一个宏，
-/// 它展开成 `scan_tree_excluding_self(` —— 那个函数**号称**按 `file!()` 摘掉调用者自己，
-/// 而那一刀在本仓的判据上**一处都不生效**（判据一律由 `#[path]` 挂载 ⇒ `file!()` 给的是
-/// 带 `..` 的折返路径 ⇒ 后缀比**恒不命中**；逐字读数住 `scanning_guard_registry` 头注）。
-/// **因此「摘掉自己」换成了明写名单**，于是新写的遍历一律是
+/// 原文逐字只有 `["read_to_string(", "scan_tree!"]`。`scan_tree!` 今天收整棵树，要跳过的文件写成明写名单，新写的遍历一律是
 /// `guard_core::scan_tree_excluding(`（现打：`tests/frontend/shell` 29 处 · `tests/backend` 12 处 ·
 /// `src/common` 1 处），而那个字面量**这张表一个都不含** ——
 /// `scan_tree_excluding(` 里没有 `scan_tree!`，也没有 `read_to_string(`。
@@ -40,7 +36,6 @@ const CORPUS_SEEDS: &[&str] = &[
     "read_to_string(",
     "scan_tree!",
     "scan_tree_excluding(",
-    "scan_tree_excluding_self(",
 ];
 
 /// 「匹配单位比事实小」这一族的**全部**原语：语料变量上拿字符串字面量去够的这几种，风险一模一样
