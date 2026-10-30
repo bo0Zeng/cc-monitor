@@ -25,6 +25,7 @@ const drawn = new WeakMap<Element, CardEls>();
 
 function build(key: string): CardEls {
   const el = document.createElement("div");
+  el.className = s.card;
   el.dataset.liveKey = key;
   const head = document.createElement("div");
   head.className = s.head;
@@ -56,8 +57,7 @@ export function paintLiveCards(host: HTMLElement, cards: LiveCardState[]): void 
   }
   const order = cards.map((c) => {
     const els = had.get(c.key) ?? build(c.key);
-    const cls = c.phase === "streaming" ? s.card : `${s.card} ${s.awaiting}`;
-    if (els.el.className !== cls) els.el.className = cls;
+    els.el.classList.toggle(s.awaiting, c.phase !== "streaming");
     if (els.head.textContent !== c.head) els.head.textContent = c.head;
     setBody(els, c.body);
     return els.el;
