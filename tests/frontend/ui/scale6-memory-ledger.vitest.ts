@@ -140,7 +140,7 @@ function toolResultRec(toolUseId: string, text: string, recId: string): LineReco
     id: recId,
     at: "2026-09-18T12:00:01.000Z",
     who: { speaker: { kind: "toolResult" }, text: "" },
-    blocks: [{ type: "tool_result", for: toolUseId, content: [{ type: "text", text }], isError: false }],
+    blocks: [{ type: "tool_result", for: toolUseId, content: [{ type: "text", text, bytes: 0 }], isError: false, bytes: 0 }],
     draw: "steps",
     human: false,
   };
@@ -372,7 +372,7 @@ describe("🔴 秤 6 乙：核对 `tabs.ts` 那句「一条记录的文本在前
     const kept = ctx.pendingToolResults.get("never-came");
     expect(kept, "表里没有它 ⇒ 这一格量错了住址").toBeTruthy();
     // 相等断言：留的是**原文**，不是摘要
-    expect((kept!.block as { content?: unknown }).content).toEqual([{ type: "text", text: LONG_TEXT }]);
+    expect((kept!.block as { content?: unknown }).content).toEqual([{ type: "text", text: LONG_TEXT, bytes: 0 }]);
   });
 
   /**
@@ -392,7 +392,7 @@ describe("🔴 秤 6 乙：核对 `tabs.ts` 那句「一条记录的文本在前
         id: "u1",
         at: "2026-09-18T12:00:00.000Z",
         who: { speaker: { kind: "human" }, text: LONG_TEXT.trim() }, // 后端那一格成品
-        blocks: [{ type: "text", text: LONG_TEXT }],
+        blocks: [{ type: "text", text: LONG_TEXT, bytes: 0 }],
         draw: "card",
         human: true,
       },

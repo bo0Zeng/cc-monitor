@@ -310,10 +310,10 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
             Some((name.to_string(), cmd.to_string()))
         })
         .collect();
-    // ★ 抽取器自检：剥法坏了 ⇒ 下面会零命中地绿（正控：`test:diff` 那一条必在）。
+    // ★ 抽取器自检：剥法坏了 ⇒ 下面会零命中地绿（正控：`test:api-error` 那一条必在）。
     assert!(
-        scripts.iter().any(|(n, _)| n == "test:diff"),
-        "从 `package.json` 剥到的 {} 个 `test*` 脚本里没有 `test:diff` —— 剥法坏了",
+        scripts.iter().any(|(n, _)| n == "test:api-error"),
+        "从 `package.json` 剥到的 {} 个 `test*` 脚本里没有 `test:api-error` —— 剥法坏了",
         scripts.len()
     );
 
