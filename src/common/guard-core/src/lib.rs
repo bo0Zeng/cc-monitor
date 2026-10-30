@@ -1326,99 +1326,6 @@ fn path_suffix_matches(hay: &str, needle: &str) -> bool {
     at == 0 || hay.as_bytes()[at - 1] == b'/'
 }
 
-/// 遍历源码树，按 `caller_file` 做**后缀比**、摘除调用者自己那一份。
-///
-/// # 🔴 它在本仓**几乎处处不生效，而「几乎」那两个字是量出来的**〔`P4` 2026-09-21 现打〕
-///
-/// 本仓所有判据都由 `#[path]` 挂进生产树 ⇒ `file!()` 给的是
-/// `../../tests/backend/X.rs` / `../../../tests/frontend/shell/X.rs` 这种**带 `..` 的折返路径**。
-/// 而后缀比的草垛是 `root.join(相对路径)` 拼出来的**字符串** ——
-/// ⇒ **它命不命中，只取决于那个 `root` 自己的字符串里有没有同一段 `..`。**
-///
-/// | 那一侧 | 根怎么来的 | 串里有 `..` 吗 | 自摘 |
-/// |---|---|---|---|
-/// | 住址 | 根怎么来的 | 串里有 `..` 吗 | 自摘 |
-/// |---|---|---|---|
-/// | [`addr`] 的每一个 | 从仓根往下拼（`ancestors()`，词法上不带 `..`） | 没有 | **一处都命不中** |
-///
-/// ⇒ 这一刀**一份都摘不到**，而「摘不到」与「摘到了」在输出上一模一样。要摘掉自己走 [`scan_tree_excluding`] 的明写名单。
-///
-/// ⚠ **别把上面那张表读成一条性质** —— 它是住址今天长什么样的读数：
-/// 有人拼出一个带 `..` 的根，自摘就可能重新落刀，而**不会有任何东西变红**（那正是本函数最危险的地方）。
-/// 半条绊线在 `the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split`：
-/// 它钉的是 **guard-core 自己这棵树**上自摘不命中；它**钉不住**上面第三行。
-///
-/// ⇒ **别拿它当「摘掉我自己」的办法**：写新判据要摘掉自己就走
-/// [`scan_tree_excluding`] 的明写名单，
-/// 那条路**摘不到就 panic**，而这条路摘不到时**一个字都不说**。
-///
-/// # 它本来防的是本 crate 头注那一族的**兄弟病**
-///
-/// 头注治的是「**抽取面画小了**」（剥法把扫描面砍没）。这里治的是反过来那半：
-/// **抽取面画大了 —— 把判据自己也扫进去了**。
-///
-/// 症状永远一样：判据在**自己的**登记表 / 注释 / 常量里找到了自己要找的东西 ⇒ **恒绿**。
-/// audit-0805 实测**五次**：
-///
-/// | 何处 | 判据在自己的什么东西里找到了自己 |
-/// |---|---|
-/// | F12 | 跨语言对拍匹配到自己的**注释** |
-/// | F13 | 原子替换登记表匹配到自己的 `RULE` **常量**（里面写着两个符号的调用示例） |
-/// | F18 | 文档副本判据匹配到自己的**登记表**（`HAS_A_GUARD` 里写着那些判据名） |
-/// | F05 | 函数体抽取的**锚点**命中了自己 `PHASES` 表里的字符串 |
-/// | F05 | 棘轮 `matches()` **数到自己**：6 vs 真实 4 |
-///
-/// ★ **五次没有一次是被「判据变红」发现的** —— 四次靠变异、一次靠 clippy。
-/// 也就是说这一类缺陷的**默认结局是恒绿**。⇒ 修法不是「再检测一遍」，
-/// 是**让它写不出来**：调用方拿不到「包含自己」的那份语料。
-///
-/// # 用法
-///
-/// ```ignore
-/// let files = guard_core::scan_tree!(&root, &["rs"]);   // 自称摘除调用者所在文件
-/// // ⚠ 在本仓那一刀**不生效**（见上面那一节）——今天它等于「一份都不摘」。
-/// ```
-///
-/// ⚠ 直接调本函数也行，但**别手写 `file!()` 以外的东西**当 `caller_file` ——
-/// 那等于把摘除关掉，而关掉之后看起来和没关一模一样。
-/// ⚠⚠ 而在本仓，`file!()` 本身就已经让它**不生效**了（见上面那一节）——
-/// 所以这一段讲的是**这个函数的设计意图**，不是它今天在本仓的行为。
-///
-/// # Panics
-///
-/// 目录读不了 / 文件读不了时 panic（守卫语义，只在测试里调）。
-pub fn scan_tree_excluding_self(
-    root: &std::path::Path,
-    exts: &[&str],
-    caller_file: &str,
-) -> Vec<(std::path::PathBuf, String)> {
-    // `file!()` 给的是相对编译单元根的路径（如 `src/byte_cap_registry.rs`，
-    // workspace member 则是 `crates/guard-core/src/lib.rs`）；扫到的是绝对路径
-    // ⇒ 用**后缀**比对。空串会退化成「摘除一切」，直接拒绝。
-    assert!(
-        !caller_file.is_empty(),
-        "caller_file 为空 —— 摘除会退化成把整棵树都摘掉，那比不摘更坏（静默空集）"
-    );
-    // ★ **归一化要做在两边，不能只做在草垛那边**〔09-09 Windows CI 现打〕。
-    //
-    // Windows 上 `file!()` 给的是**反斜杠**形：云端 windows-latest 的 panic 位置
-    // 逐字是 `crates\guard-core\src\lib.rs`。而下面比对的草垛早就 `\` → `/` 归一过了
-    // ⇒ 针和草垛不同形，后缀比**恒不命中** ⇒ 摘除在 Windows 上整个是空转的。
-    //
-    // ⚠ 这正是本函数头注说的「关掉之后看起来和没关一模一样」那一形，
-    // 只不过关掉它的不是人、是平台：Linux 一路绿，Windows 上判据默默地
-    // 把自己那一份也读进了自己的语料。
-    // ⚠ 修法**不是**给 Windows 开特判：归一成同一种分隔符之后，两个平台走的是同一条路。
-    let caller_norm = caller_file.replace('\\', "/");
-    walk_tree(root, exts)
-        .into_iter()
-        .filter(|(path, _)| {
-            // ← 就是这一行：调用者自己那份进不来
-            !path_suffix_matches(&path.to_string_lossy().replace('\\', "/"), &caller_norm)
-        })
-        .collect()
-}
-
 /// 逐分量消掉 `.` 与 `..`，不碰文件系统（两侧都是拼出来的路径时，词法消解就够）。
 pub fn lexically_normalized(p: &std::path::Path) -> std::path::PathBuf {
     let mut o = std::path::PathBuf::new();
@@ -1548,7 +1455,7 @@ pub fn population_trees(root: &std::path::Path) -> Vec<(String, std::path::PathB
 ///
 /// 同一条理由的第二形：根是一个包（或它的 `src/`）而那个包的 manifest 明写了兄弟源码树（[`population_trees`]），
 /// 那几棵也算这棵根的人群 —— 代码从包里搬进只有它链的兄弟包（通道 · 宿主原语 · 文件窗口），「这个包的源码」这一问的人群不变。
-fn walk_tree(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, String)> {
+pub fn walk_tree(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, String)> {
     let mut out = walk_dir(root, exts);
     for (_, tree) in population_trees(root) {
         out.extend(walk_dir(&tree, exts));
@@ -1721,22 +1628,9 @@ fn walk_dir(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, S
         for entry in rd {
             let path = entry.expect("dir entry").path();
             if path.is_dir() {
-                // ★ **不下到构建产物目录里**〔09-15 现打逮到〕。
-                //
-                // 上面那条「空 `exts` = 整棵树」的能力有个没写出来的前提：**树里全是文本**。
-                // 一旦某个 crate 目录里躺着 `target/`（谁在 crate 里直接跑过一次 cargo 就会有），
-                // 遍历就会走进 `.fingerprint/dep-lib-*` 这种二进制，下面那个 `read_to_string`
-                // 当场 panic：`stream did not contain valid UTF-8`。
-                // 失败长得**像判据自己坏了**，而真相是「它扫到了不该扫的东西」——
-                // 而且它**只在那些目录存在的机器上红**，CI 干净树上一路绿。
-                //
-                // ⚠ 判据用的是 `CACHEDIR.TAG` 而不是「目录名叫 target」：那是 cargo
-                // 自己往每个构建目录里写的标记（`std::fs` 看得见），
-                // 按名字判会误伤真叫 `target` 的源码目录，按标记判不会。
-                if path.join("CACHEDIR.TAG").is_file() {
-                    continue;
+                if !skipped_dir(&path) {
+                    stack.push(path);
                 }
-                stack.push(path);
                 continue;
             }
             // ★ **空列表 = 不按扩展名筛**〔`PS1` 08-13 补的能力〕。
@@ -1767,7 +1661,7 @@ fn walk_dir(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, S
             //
             // 拆开之后语义是准的：本函数收的是**文本**语料，
             // 而一个非 UTF-8 的字节流**不可能**含调用方要找的那些标识符 ⇒ 跳过它零损失。
-            // ⚠ 刻意**不**按目录名拉黑单（`target` / `__pycache__` / `node_modules` …）：
+            // ⚠ 非文本靠这一格跳，不靠往 [`skipped_dir`] 的名字表里加目录名（`__pycache__` …）：
             // 那种名单只会越拉越长，而且每漏一个就复现一次同样的假失败。
             let bytes = match std::fs::read(&path) {
                 Ok(b) => b,
@@ -1785,37 +1679,12 @@ fn walk_dir(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, S
 
 /// 遍历源码树，**按一张明写的名单摘除**，并且**摘不到就当场红**。
 ///
-/// # 🔴 它是「明写名单、不靠自摘」那条纪律的落点
-///
-/// 纪律逐字：**「摘掉我自己」不许靠 `file!()`** —— 在本仓那条路**不生效**。
-///
-/// [`scan_tree_excluding_self`] 用 `file!()` 当针去做后缀比。那在「判据与被扫的树
-/// 同住一棵」的年代是对的；**仓库重组把判据搬进 `tests/` 之后它就塌了**：
-/// 被 `#[path]` 引进来的文件，`file!()` 给的是
-/// `src/../../../tests/bridge/X_tests.rs` 这种**带 `..` 的折返路径**，
-/// 而草垛是规范化过的绝对路径 ⇒ **后缀比不命中 ⇒ 摘除整个是空转**。
-///
-/// 两种后果，**方向相反而症状相同**：
-///
-/// | 方向 | 症状 |
-/// |---|---|
-/// | 判据手工把被测那份补回来过 | 补回来的那份**变成重复** ⇒ 「恰好 1 处」读成 2 处 ⇒ **红** |
-/// | 判据没补过、指望摘除挡住自己 | 自己那份**进了人群** ⇒ 判据在自己的登记表/散文里找到自己 ⇒ **静默全绿** |
-///
-/// ⇒ 本函数把排除变成**调用方明写的一张名单**（纪律 2：
-/// 「把靠位置的排除换成明写的排除 —— 位置会变，那一行不会」），
-/// 并加一条 `file!()` 那条路**从来没有过**的自检：
-///
-/// ★ **名单上每一条都必须真的摘到东西**，摘到 0 份就 panic。
-///   这正是上面那张表两行的共同前提 ——「摘除悄悄失效」—— 的机检形态：
-///   路径写错、文件改名、被排除的那份搬走，都当场变红，而不是安静地多扫一份。
-///
-/// # 名单的匹配口径
-///
-/// 与 [`scan_tree_excluding_self`] 同一把尺（[`path_suffix_matches`]）：
+/// 排除是调用方明写的一张名单（仓根相对路径，如 `tests/frontend/shell/structural_scan_tests.rs`；
+/// 别写裸基名 —— 两棵树里同名文件是常态）。匹配口径是 [`path_suffix_matches`]：
 /// 「整串相等」**或**「匹配点前面恰好是 `/`」，只会摘得更严、绝不多摘。
-/// 名单里写**仓根相对路径**（如 `tests/frontend/shell/structural_scan_tests.rs`），
-/// 别写裸基名 —— `K-R75` 逐字：两棵树里同名文件是常态。
+///
+/// ★ **名单上每一条都必须真的摘到东西**，摘到 0 份就 panic：路径写错、文件改名、被排除的那份搬走，
+/// 都当场变红，而不是安静地多扫一份（判据在自己的登记表或散文里找到自己 ⇒ 恒绿）。
 ///
 /// # Panics
 ///
@@ -1878,40 +1747,38 @@ pub fn strip_hash_comment_lines(src: &str) -> String {
         .join("\n")
 }
 
-/// 列出整棵树里的 **shell 脚本**（相对 `root` 的路径，已排序）。
+/// 遍历时不进的目录：不是本仓源码的那几类（构建产物 · 依赖 · 版本库自己）。全 crate 的遍历只认这一份。
 ///
-/// 判「是不是 shell 脚本」按**两种真实形态**取，不按后缀一种取：
-/// `*.sh`，**或**「没有扩展名 + 首行 shebang 里带 `sh`」。后者不是边角料 ——
-/// `shared/ccm`、`tests/e2e/fake-claude`、`src/shared/cc-bus/scripts/` 里那些命令都是这一形，
-/// 而 CI 的 shellcheck 列表里逐个手写着它们。
-///
-/// ⚠ **本函数不摘除调用者**：调用者是 `.rs`，扫的树里没有它 —— 属「扫的树不含自己」
-/// 那一类（`scanning_guard_registry` 头注的第四类），自匹配这个概念对它不成立。
-/// （和 [`scan_tree_excluding_self`] 的差别今天只在**意图**上：那个函数自称会摘，
-/// 而它那一刀在这一处不生效 —— 见它自己的头注。）
-///
-/// 跳过的目录是构建与依赖产物；它们里面的脚本不是本仓的产物，扫进来只会制造噪音。
-///
-/// # Panics
-///
-/// 目录读不了时 panic（守卫语义，只在测试里调）。
-/// 走整棵树、按谓词收文件（相对 `root` 的路径，已排序）。
-///
-/// 跳过的目录是构建与依赖产物；它们里面的东西不是本仓的产物，扫进来只会制造噪音。
-fn walk_repo(root: &std::path::Path, keep: &dyn Fn(&std::path::Path, &str) -> bool) -> Vec<String> {
-    const SKIP: &[&str] = &[
+/// 两条认法并起来：
+/// - 带 `CACHEDIR.TAG` 的目录：cargo 往每个构建目录里写的标记。按标记认，不按「名字叫 `target`」认 ——
+///   真叫 `target` 的源码目录不误伤。构建目录里是指纹这类二进制，走进去读会把判据弄得只在那台机器上红。
+/// - 名字在下表里的目录：没有标记可认的依赖与产物目录。
+fn skipped_dir(path: &std::path::Path) -> bool {
+    const NAMES: &[&str] = &[
         ".git",
-        "target",
         // 本仓的编译产物目录（各 workspace 的 CARGO_TARGET_DIR 落在这里）：并行门禁里别的道正往里编，临时目录随建随删，扫到会读一半就没了。
         ".build",
         "node_modules",
         "dist",
         "coverage",
         ".vite",
-        // 施工纪律第 21 条的各路编译产物 / 临时脚本目录（仓内不提交，`info/exclude` 挡着）：
+        // 各路的编译产物 / 临时脚本目录（仓内不提交，`info/exclude` 挡着）：
         //   放一个 `.sh` 进去，`shell_lint_registry` 就红一条「没被 lint 也没登记」。
         ".scratch",
     ];
+    path.join("CACHEDIR.TAG").is_file()
+        || path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| NAMES.contains(&n))
+}
+
+/// 走整棵树、按谓词收文件（相对 `root` 的路径，已排序；跳过 [`skipped_dir`] 那几类目录）。
+///
+/// # Panics
+///
+/// 目录读不了时 panic（守卫语义，只在测试里调）。
+fn walk_repo(root: &std::path::Path, keep: &dyn Fn(&std::path::Path, &str) -> bool) -> Vec<String> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(d) = stack.pop() {
@@ -1926,7 +1793,7 @@ fn walk_repo(root: &std::path::Path, keep: &dyn Fn(&std::path::Path, &str) -> bo
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
             if path.is_dir() {
-                if !SKIP.contains(&name.as_str()) {
+                if !skipped_dir(&path) {
                     stack.push(path);
                 }
                 continue;
@@ -1945,22 +1812,27 @@ fn walk_repo(root: &std::path::Path, keep: &dyn Fn(&std::path::Path, &str) -> bo
     out
 }
 
-/// 整棵树里所有 `<ext>` 后缀的文件（相对 `root`，已排序）。
-///
-/// ⚠ 与 [`scan_tree_excluding_self`] 的区别：那个**读文件内容**、按扩展名筛、
-/// 并自称摘除调用者自己（防自匹配 —— 而那一刀在这一处不生效，见它自己的头注）；
-/// 这个只要路径，用于「这一类文件今天有哪些」的清点。
 /// 一个目录里**住着谁**：全部文件（任何后缀），相对 `root`，只按目录走、**不顺 `#[path]`**。
 /// 「这个目录里住着哪些文件」这一问用它（例：`src/comms/` 下的文件集合 == 通信层登记表）。
 pub fn files_under(root: &std::path::Path) -> Vec<String> {
     walk_repo(root, &|_, _| true)
 }
 
+/// 整棵树里所有 `<ext>` 后缀的文件（相对 `root`，已排序）。
+///
+/// 与 [`walk_tree`] 的区别：那个读文件内容、顺 `#[path]`；这个只要路径，只按目录走，
+/// 用于「这一类文件今天有哪些」的清点。两个跳过的目录同一份（[`skipped_dir`]）。
 pub fn files_by_extension(root: &std::path::Path, ext: &str) -> Vec<String> {
     let suffix = format!(".{ext}");
     walk_repo(root, &|_, name| name.ends_with(&suffix))
 }
 
+/// 列出整棵树里的 **shell 脚本**（相对 `root` 的路径，已排序）。
+///
+/// 判「是不是 shell 脚本」按**两种真实形态**取，不按后缀一种取：
+/// `*.sh`，**或**「没有扩展名 + 首行 shebang 里带 `sh`」。后者不是边角料 ——
+/// `shared/ccm`、`tests/e2e/fake-claude`、`src/shared/cc-bus/scripts/` 里那些命令都是这一形，
+/// 而 CI 的 shellcheck 列表里逐个手写着它们。
 pub fn shell_scripts(root: &std::path::Path) -> Vec<String> {
     walk_repo(root, &|path, name| {
         if name.ends_with(".sh") {
@@ -1980,23 +1852,11 @@ pub fn shell_scripts(root: &std::path::Path) -> Vec<String> {
     })
 }
 
-/// 遍历源码树。🔴 **它自称摘除调用者自己，而那一刀在本仓几乎处处不生效** ——
-/// 命中与否只取决于扫描根的字符串里有没有和 `file!()` 同一段 `..`；
-/// 逐侧读数、唯一那一处真会落刀的调用点、以及为什么这件事没人守着，
-/// 逐字住 [`scan_tree_excluding_self`] 头注那张表。
-///
-/// ⇒ 今天它在绝大多数调用点等于「遍历一棵树，一份都不摘」。
-/// **要摘掉自己就走 [`scan_tree_excluding`] 的明写名单**（摘不到就 panic），别指望本宏。
-/// ⚠ 它的调用点散布在判据树里，而那些抬头里「自摘生效」这句话已经逐份清过一遍
-/// （`P4` 2026-09-21）；`no_guard_prose_still_claims_the_scan_tree_self_exclusion_works`
-/// 是那一轮留下的相等断言，新写一句就红。
-///
-/// ⚠ 用宏而不是让调用方自己传 `file!()`：传参那种写法**允许写错**，
-/// 而写错之后判据看起来照样绿 —— 这一族的全部危险就在「错了看不出来」。
+/// 遍历一棵源码树，整棵都收（[`walk_tree`]）。要排除某几份，走 [`scan_tree_excluding`] 的明写名单（摘不到就 panic）。
 #[macro_export]
 macro_rules! scan_tree {
     ($root:expr, $exts:expr) => {
-        $crate::scan_tree_excluding_self($root, $exts, file!())
+        $crate::walk_tree($root, $exts)
     };
 }
 

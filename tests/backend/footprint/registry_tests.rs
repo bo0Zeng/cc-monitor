@@ -1,5 +1,5 @@
 use super::*;
-use guard_core::ScanReport;
+use guard_core::{production_code, ScanReport};
 use std::collections::HashSet;
 
 /// 受管工具**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 下面的判据按全集判，与搬家前同一个人群。
@@ -24,43 +24,9 @@ fn tools_code() -> String {
 
 // ===== 从源码枚举结构（要件 1），而不是硬编码现有字段 =====
 //
-// 前置条件（与 structural_scan 的 comment_prefix 同类，如实写明）：本模块的字符串
-// 字面量里**不含 `//`、也不含花括号/方括号**，否则朴素的注释剥离与括号配对会算错。
-// 这条由下面 parser_actually_sees_the_real_source 的反向自检兜底：真算错了，
-// 字段集合就对不上，测试会红在那里而不是静默放过。
-
-/// 剥掉 `//` 行注释与整个 `#[cfg(test)]` 段，只留生产代码文本。
-///
-/// **顺序不能反：先剥注释，再切测试段。** 第一版是反的，于是本模块文档里那句
-/// 「已在 `lib.rs` 标 `#[cfg(test)]`」——一句**散文**——把切点提到了结构声明**之前**，
-/// `production_code` 只返回前 50 行文档注释，5 条测试全红。
-/// 是 `parser_actually_sees_the_real_source` 的反向自检（`assert!(code.contains(
-/// "pub struct ToolSpec {"), "剥过头了")`）报出来的——**要件 3 又救了一次**。
-/// 附带教训：我提交 `a6d4b63` 前改了这句文档却**没重跑 cargo test**，
-/// 于是那个 commit 的 message 写着「cargo test 474」而实际是 469+5 红。
-fn production_code(src: &str) -> String {
-    let no_comments: String = src
-        .lines()
-        .map(|l| match l.find("//") {
-            Some(i) => &l[..i],
-            None => l,
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    // 切点还要求 `#[cfg(test)]` **顶格**（模块级属性），免得将来被缩进的同名属性骗到
-    let code = no_comments
-        .split(concat!("\n#[cfg", "(test)]"))
-        .next()
-        .unwrap_or(&no_comments)
-        .to_string();
-    code.lines()
-        .map(|l| match l.find("//") {
-            Some(i) => &l[..i],
-            None => l,
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
+// 剥法借共享原语 `guard_core::production_code`（注释 · 测试段 · 字符串里的 `//` 照规矩认）。
+// 括号配对是朴素的：前置条件是本模块的字符串字面量里不含花括号 / 方括号；
+// 真算错了，下面 parser_actually_sees_the_real_source 的字段集合就对不上，红在那里。
 
 /// 从 `from` 起找 `opener`，返回它**配对括号内**那段在 `text` 里的下标区间。
 /// 括号种类取 `opener` 的最后一个字符（`{` / `[` / `(`）。
@@ -303,6 +269,13 @@ fn prose_mentioning_the_test_attribute_does_not_truncate_the_scan() {
     let code = production_code(src);
     assert!(code.contains("pub struct ToolSpec {"), "散文把切点提前了");
     assert!(!code.contains("fn helper"), "测试段没被切掉");
+}
+
+/// 字符串里的 `//`（网址）不是注释：剥完那一行后半截要还在。
+#[test]
+fn a_double_slash_inside_a_string_does_not_cut_the_line() {
+    let code = production_code("pub const U: &str = \"https://x\"; pub struct After;\n");
+    assert!(code.contains("pub struct After;"), "字符串里的 `//` 把后半行剥掉了：{code:?}");
 }
 
 /// **防上帝结构的门禁**（计划 §5 P2）。不是形式主义：本会话四次拒绝提前抽象
