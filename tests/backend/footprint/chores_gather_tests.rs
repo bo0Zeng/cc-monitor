@@ -241,7 +241,10 @@ fn secret_like_items_in_the_shared_store_are_collected_with_their_path() {
         .into_iter()
         .map(|x| (x.name, x.path))
         .collect();
-    assert_eq!(got, vec![("x.json".to_string(), "/h/.claude/x.json".to_string())]);
+    assert_eq!(
+        got,
+        vec![("x.json".to_string(), "/h/.claude/x.json".to_string())]
+    );
     s.manifest = None;
     assert!(secret_like_in(&s).is_empty(), "账号库没设 ⇒ 不收");
 }

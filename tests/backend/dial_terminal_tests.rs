@@ -704,12 +704,25 @@ fn parts_with_sid(
 fn the_record_step_rides_in_its_own_cell_and_the_line_stays_plain() {
     let m = machine("192.0.2.2", "u", 22, None);
     for (powershell, dir) in [
-        (true, std::path::Path::new(r"C:\Users\u\.cc-monitor\opened-windows")),
-        (false, std::path::Path::new("/home/u/.cc-monitor/opened-windows")),
+        (
+            true,
+            std::path::Path::new(r"C:\Users\u\.cc-monitor\opened-windows"),
+        ),
+        (
+            false,
+            std::path::Path::new("/home/u/.cc-monitor/opened-windows"),
+        ),
     ] {
         let ask = |sid| {
-            parts_with_sid(m.clone(), "claude --resume s1", sid, powershell, &found(), Some(dir))
-                .unwrap()
+            parts_with_sid(
+                m.clone(),
+                "claude --resume s1",
+                sid,
+                powershell,
+                &found(),
+                Some(dir),
+            )
+            .unwrap()
         };
         let (plain, with) = (ask(None), ask(Some("s1")));
         assert_eq!(with.line, plain.line, "那一行一字不变");
