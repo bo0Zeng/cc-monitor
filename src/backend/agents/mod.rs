@@ -2046,6 +2046,8 @@ pub(crate) struct DefaultUpstream {
     pub(crate) window_key: Option<fn(&str) -> Option<String>>,
     /// 让这一家的官方客户端报一次某个号的用量（不花模型额度）：怎么起 · 怎么把输出读成窗口。`None` ＝ 这一家没有这一形。
     pub(crate) usage: Option<UsageFace>,
+    /// 用一个号发一句最短的话、让它的 5 小时窗开始计时：交给 ccm 的那几个参数 · 起它时设上的环境。`None` ＝ 这一家没有这一形。
+    pub(crate) warm: Option<WarmFace>,
     /// 订阅号登录那一格：令牌住哪、什么格式、怎么续、锁叫什么。`None` ＝ 这一家没有可换的订阅号登录。
     pub(crate) login: Option<LoginFace>,
     /// 这一家自己认得的「用满」回包（轮换的硬上限用它：这一发不发上游、回这一份）。`None` ＝ 给不出 ⇒ 对它硬上限不成立、按软阈值办。
@@ -2105,6 +2107,20 @@ pub(crate) struct UsageFace {
     pub(crate) env_set: &'static [(&'static str, &'static str)],
     /// （标准输出, 此刻 unix 秒）→ 窗口；读不懂 ⇒ `Err(哪一处读不懂)`（不猜）。
     pub(crate) read: fn(&str, u64) -> Result<Vec<QuotaWindow>, String>,
+}
+
+/// 一家「开窗那一句」那一形：通用层（`accounts::quota::warm`）让本二进制当 ccm 跑 `ccm <args> -- --account <号> …`，
+/// `args` 是交给那一家程序的参数（模型 · 关掉工具与 MCP · 不落会话记录 · 换系统提示 · 那一句），只住适配层。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WarmFace {
+    pub(crate) args: &'static [&'static str],
+    /// 起它时设上的（关掉思考 · 不发非必要的请求）。
+    pub(crate) env_set: &'static [(&'static str, &'static str)],
+}
+
+/// 路由第 1 段 → 那一家的「开窗那一句」那一形。
+pub(crate) fn warm_of(route: RouteId) -> Option<WarmFace> {
+    upstream_of(route).and_then(|u| u.warm)
 }
 
 /// 路由第 1 段 → 那一家的「报用量」那一形。

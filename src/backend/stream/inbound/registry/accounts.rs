@@ -1,4 +1,4 @@
-//! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read` · `quota-probe` · `rotation-*` · `login-*`。
+//! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read` · `quota-probe` · `quota-warm` · `rotation-*` · `login-*`。
 
 use crate::wire::spec::CommandSpec;
 
@@ -8,6 +8,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::quota_probe_face::QuotaProbe>(
         "用某个号查一次额度",
     ),
+    // 用某个号发一句、让它的 5 小时窗开始计时（宿主 `accounts/quota/warm.rs`，与轮换判完开窗同一处）：等那一发说完 ⇒ 阻塞档，总期限登记在 `caps.rs`。
+    crate::wire::typed::blocking::<crate::accounts::quota::warm::QuotaWarm>("给一个号开窗"),
     // 轮换第五版：每个号此刻的事实（typed）。只读。
     crate::wire::typed::blocking::<crate::faces::rotation_facts_face::RotationFacts>(
         "每个号此刻的事实",

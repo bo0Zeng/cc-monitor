@@ -36,6 +36,7 @@ pub(crate) const UPSTREAM: crate::agents::DefaultUpstream = crate::agents::Defau
     window_slot: None,
     window_key: None,
     usage: None,
+    warm: None,
     login: None,
     // 没有这一家认得的「用满」回包 ⇒ 硬上限对它不成立。
     limit_reply: None,
