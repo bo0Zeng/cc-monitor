@@ -590,9 +590,10 @@ export class AnswerBlock {
     }
   }
 
-  /** 数字键：只在焦点在块里时生效（输入框里打字不算）。 */
+  /** 数字键：只在焦点在块里时生效（输入框里打字不算；收着时选项看不见，不答）。 */
   private onKey(e: KeyboardEvent): void {
     if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+    if (this.el.dataset.folded === "true") return;
     const t = e.target as HTMLElement | null;
     if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
     if (!/^[1-9]$/.test(e.key)) return;
