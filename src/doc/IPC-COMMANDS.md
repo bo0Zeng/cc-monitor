@@ -2017,8 +2017,16 @@ type WirePath = string | { b16: string };
 入参 `BookmarksReadReq` · 回包 `Bookmarks`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Bookmarks = { dirs: Array<string>, };
-type BookmarksReadReq = Record<symbol, never>;
+type Bookmarks = { dirs: Array<string>, 
+/**
+ * 入参 `at` 里的每一串（原样作键）⇒ 它按归一之后的形在 `dirs` 里的下标；不在的不列，没问 ⇒ 空。
+ */
+here?: { [key in string]: number }, };
+type BookmarksReadReq = { 
+/**
+ * 各栏此刻的目录（这台的绝对路径）：回包的 `here` 答每一个是第几条。
+ */
+at?: Array<string>, };
 ```
 
 码：`bad_args` · `io_failed` · `bookmarks_unreadable`
@@ -2032,12 +2040,20 @@ type BookmarksReadReq = Record<symbol, never>;
 入参 `BookmarksEditReq` · 回包 `Bookmarks`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Bookmarks = { dirs: Array<string>, };
+type Bookmarks = { dirs: Array<string>, 
+/**
+ * 入参 `at` 里的每一串（原样作键）⇒ 它按归一之后的形在 `dirs` 里的下标；不在的不列，没问 ⇒ 空。
+ */
+here?: { [key in string]: number }, };
 type BookmarksEditReq = { op: "toggle" | "remove" | "add", 
 /**
  * 那几个目录（这台的绝对路径；按归一之后的形比、存）。
  */
-dirs: Array<string>, };
+dirs: Array<string>, 
+/**
+ * 各栏此刻的目录：回包的 `here` 答每一个在改完的那一份里是第几条。
+ */
+at?: Array<string>, };
 ```
 
 码：`bad_args` · `io_failed` · `bookmarks_unreadable`
