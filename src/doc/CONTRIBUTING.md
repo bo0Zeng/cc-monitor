@@ -35,7 +35,7 @@
 
 1. `#[tauri::command]` 写在它那一域的模块里（窗口类进 `lib.rs`，开终端进 `launch.rs` …）；要调 Win32 同步 API 的走 `spawn_blocking`。
 2. 注册进 `lib.rs::run` 里的 `generate_handler!`。
-3. 登记进 `tests/frontend/shell/parity_ledger_tests.rs` 的 `LEDGER`（命令名 · 能力 · 侧 · 类 · 理由）；没登记、或实现碰到了后端，都会红。
+3. 登记进 `tests/frontend/shell/parity_ledger_tests.rs` 的 `LEDGER`（命令名 · 能力 · 侧 · 类 · 理由）—— Tauri 命令只有这一张表。没登记 ⇒ `parity_ledger` 红（与 `generate_handler!` 两向相等）；登成窗口 · 开终端 · 拉前 · 配置 · 日志 · 重放缓冲这几类、实现却碰到了后端 ⇒ `command_home_registry` 红。
 4. 前端只经 `src/frontend/ui/ipc/commands.ts` 的包装调它（全仓只有这一份直接调 `invoke`，`tests/frontend/ui/ipc/commands.vitest.ts` 对拍名字与键名）。
 5. 用了 `State<…>` ⇒ 确认那个类型在 `lib.rs` 的 `setup()` 里 `app.manage` 过（消费者从代码 grep：`State<.*Arc<类型>>`）。
 6. **检查**：`cargo test --workspace`（在 `src/frontend/shell`）· `npx tsc --noEmit` · dev 模式里真点一次那个入口——State 漏了 `manage` 是运行时 panic，`cargo check` 抓不住。
@@ -103,7 +103,7 @@
 
 1. 改后端那一份渲染（缺的选项先在 `ccm` 里加：`ccm_line/argv.rs` 那张表）；
 2. 改那一行的字节表（手写期望）：`tests/backend/control/launch_render/ccm_invocation_tests.rs::cells` —— `every_launch_renders_byte_for_byte` 逐字节比，`every_rendered_ccm_line_is_accepted_by_the_ccm_argv` 断每一行都是 `ccm` 自己认的一行；
-3. 回归：后端 `cargo test --lib launch_render ccm`（在 `src/backend`）＋ 改了 `ccm` 的行为就跑 `tests/e2e/restart-suite.sh` · `resume-suite.sh` · `tmux-target-acceptance.sh`（单跑前缀 `env -u CLAUDE_CONFIG_DIR -u TMUX -u TMUX_PANE`；这几套用真后端二进制当 `ccm`，先 `cargo build`）。
+3. 回归：后端 `cargo test --lib launch_render ccm`（在 `src/backend`）＋ 改了 `ccm` 的行为就跑 `tests/e2e/restart-suite.sh` · `resume-suite.sh` · `tmux-target-acceptance.sh`（单跑前缀 `bash tests/scripts/session-scrub.sh`，见 [DEVELOPMENT.md](DEVELOPMENT.md) §Rust；这几套用真后端二进制当 `ccm`，先 `cargo build`）。
 
 ### 2.8 界面文字
 
@@ -112,7 +112,7 @@
 
 ### 2.9 加跨进程文件
 
-做法见 [IPC-PROTOCOL.md § 加一条协议](IPC-PROTOCOL.md#加一条协议)。要点：放在 `~/.cc-monitor/` 下 · UTF-8 无 BOM · 原子写（临时件 ＋ 改名） · 反序列化容错（`#[serde(default)]`） · 先答它是「真相」还是「缓存」，登记并写清（后端家里的进 `relay_route_core::OWN_HOME_ENTRIES`，界面这一侧的进 `data_paths.rs`；INVARIANTS §2.1）。后端自己的状态文件只经写句柄 `platform::fs::Own` 写（启动时造一次、顺着入口递下去；`readonly_guard.rs` 的构造判据钉「只许启动入口造」）。
+做法见 [IPC-PROTOCOL.md § 加一条协议](IPC-PROTOCOL.md#加一条协议)。要点：放在 `~/.cc-monitor/` 下 · UTF-8 无 BOM · 原子写（临时件 ＋ 改名） · 反序列化容错（`#[serde(default)]`） · 先答它是「真相」还是「缓存」，登记并写清（后端家里的进 `relay_route_core::OWN_HOME_ENTRIES`，界面这一侧的进 `data_paths.rs`；INVARIANTS §2.1）。后端自己的文件：在 `relay_route_core` 加一个 `Decl` 常量（落点 · 状态还是缓存 · 版本与下限 · 读上限）并排进 `OWN_FILES`，写它的模块里用 `Doc::of` 取一个 `const`（读得懂旧版的挂 `upgrade!`），读写都经它（INVARIANTS §2.2）；只经写句柄 `platform::fs::Own` 写（启动时造一次、顺着入口递下去；`readonly_guard.rs` 的构造判据钉「只许启动入口造」）。
 
 ---
 

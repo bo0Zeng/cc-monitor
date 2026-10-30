@@ -1,16 +1,14 @@
 //! 后端自有落盘文件的声明、读三态与编码。写经 `platform::fs::Own`（原子写的本体只住那里）；读只经这里。
 //!
-//! - 声明：每份落盘文件一处 [`Doc`]（落点 `rel` · 读上限 `cap` · 它是哪一种 [`Kind`]）。从声明表取（[`Doc::of`] ·
-//!   挂升级步的 [`upgrade!`]，表住 `relay_route_core::OWN_FILES`）；还没换上表的写者用 [`Doc::state`] / [`Doc::cache`]
-//!   （不管版本），住写它的那个模块；经 `Own` 写的模块都得有（判据扫）。
+//! - 声明：每份落盘文件一处 [`Doc`]（落点 `rel` · 读上限 `cap` · 它是哪一种 [`Kind`] · 格式与版本），只从声明表取
+//!   （[`Doc::of`] · 挂升级步的 [`upgrade!`]，表住 `relay_route_core::OWN_FILES`），住写它的那个模块；经 `Own` 写的模块都得有（判据扫）。
 //! - 读：[`Doc::read`] / [`Doc::read_with`] / [`Doc::read_stream`] 交三态 —— 不在 / 读得到 / 读不出来。只读常规文件、限量读。
 //!   **状态**读不出来 ⇒ `Unreadable`（调用方不覆盖、照实说出来）；**缓存**读不出来 ⇒ 当没有（`Absent`，记一行日志）。
 //! - 版本（从表取的、格式是 JSON 的那几份；[`Doc::read`] · [`Doc::read_as`]）：顶层整数 `version`，缺了当 1。
 //!   比声明新 ⇒ 读不出来（状态不覆盖、缓存当没有）；比下限老 ⇒ 当没有；中间的依次过升级步；`version` 那一格摘掉再交给 `T`。
 //!   流式读写的大缓存不经 `Value`：自己核顶层 `version`，值取 [`Doc::version`]。
 //! - 写：[`Doc::write`] 整份写、顶层自动带 `version`；盖新版状态 ⇒ 拒；盖旧版 ⇒ 原文先照字节留成 `<名>.v<N>`。
-//!   一类多份的那几样文件名另给：[`Doc::write_named`]。
-//!   还没换上表的那几处用 [`json_body`]（紧凑 JSON ＋ 收尾换行），由调用方在那个目录的锁里经 `Own::write` 落盘。
+//!   一类多份的那几样文件名另给：[`Doc::write_named`]。字节是 [`json_body`]（紧凑 JSON ＋ 收尾换行）。
 
 use crate::common::said::Said;
 use crate::platform::fs::{Own, OwnLock, OwnPath};
@@ -33,8 +31,8 @@ pub(crate) struct Doc<T> {
     /// 读上限（字节）：超了当读不出来。
     pub(crate) cap: u64,
     pub(crate) kind: Kind,
-    /// 从表取的那几份：格式与版本；还没换上表的 ⇒ `None`（不管版本）。
-    format: Option<Format>,
+    /// 格式与版本（声明表那一格）。
+    format: Format,
     /// 升级步：第 `floor + i` 版 ⇒ 下一版。
     steps: &'static [Step],
     of: PhantomData<fn() -> T>,
@@ -52,28 +50,6 @@ macro_rules! upgrade {
 pub(crate) use upgrade;
 
 impl<T> Doc<T> {
-    pub(crate) const fn state(rel: &'static str, cap: u64) -> Self {
-        Doc {
-            rel,
-            cap,
-            kind: Kind::State,
-            format: None,
-            steps: &[],
-            of: PhantomData,
-        }
-    }
-
-    pub(crate) const fn cache(rel: &'static str, cap: u64) -> Self {
-        Doc {
-            rel,
-            cap,
-            kind: Kind::Cache,
-            format: None,
-            steps: &[],
-            of: PhantomData,
-        }
-    }
-
     /// 从声明表的一行取。读得懂的不止这一版（下限低于版本）⇒ 要挂升级步，用 [`upgrade!`]。
     pub(crate) const fn of<K: Class>(d: &Decl<K>) -> Self {
         Self::upgraded_any(d, &[])
@@ -94,17 +70,17 @@ impl<T> Doc<T> {
             rel: d.row.rel,
             cap: d.row.cap,
             kind: d.row.kind,
-            format: Some(d.row.format),
+            format: d.row.format,
             steps,
             of: PhantomData,
         }
     }
 
-    /// 声明的版本（从表取的、格式是 JSON 的那几份；别的在编译期就拒）。流式读写的那几份大缓存自己核这一格，值只从这里来。
+    /// 声明的版本（格式是 JSON 的那几份；别的在编译期就拒）。流式读写的那几份大缓存自己核这一格，值只从这里来。
     pub(crate) const fn version(&self) -> u32 {
         match self.format {
-            Some(Format::Json { version, .. }) => version,
-            _ => panic!("只有从表取的 JSON 那几份有版本"),
+            Format::Json { version, .. } => version,
+            Format::Foreign => panic!("只有 JSON 那几份有版本"),
         }
     }
 
@@ -205,16 +181,16 @@ impl<T> Doc<T> {
 }
 
 impl<T: serde::de::DeserializeOwned> Doc<T> {
-    /// 读整份并按 JSON 解成 `T`（从表取的照版本，见模块头）。
+    /// 读整份并按 JSON 解成 `T`（JSON 那几份照版本，见模块头）。
     pub(crate) fn read(&self, path: &Path) -> Read<T> {
         let got = match self.format {
-            Some(Format::Json { version, floor }) => read_json::<serde_json::Value>(path, self.cap)
+            Format::Json { version, floor } => read_json::<serde_json::Value>(path, self.cap)
                 .and_then(|v| self.current(path, v, version, floor))
                 .and_then(|v| match serde_json::from_value::<T>(v) {
                     Ok(t) => Read::Present(t),
                     Err(e) => Read::Unreadable(not_json(path, e)),
                 }),
-            _ => read_json(path, self.cap),
+            Format::Foreign => read_json(path, self.cap),
         };
         self.settle(path, got)
     }
@@ -244,13 +220,13 @@ impl<T: serde::Serialize> Doc<T> {
     ) -> Result<(), Said> {
         let at = dir.join(name)?;
         let body = match self.format {
-            Some(Format::Json { version, .. }) => {
+            Format::Json { version, .. } => {
                 if self.kind == Kind::State {
                     self.keep_older(own, dir, name, &at, held, version)?;
                 }
                 versioned_body(at.as_path(), v, version)?
             }
-            _ => json_body(at.as_path(), v)?,
+            Format::Foreign => json_body(at.as_path(), v)?,
         };
         own.write(&at, held, &body)
     }

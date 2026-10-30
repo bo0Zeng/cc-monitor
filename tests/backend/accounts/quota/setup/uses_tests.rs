@@ -38,7 +38,7 @@ impl Home {
     }
 }
 
-/// ★ 没有随包策略：策略目录空着、没有 `rotation-uses.json` ⇒ 新会话不轮换。
+/// ★ 没有随包策略：策略目录空着、账本里没有 `forNew` ⇒ 新会话不轮换。
 #[test]
 fn no_strategy_ships_and_new_sessions_do_not_rotate() {
     let home = Home::new("none");

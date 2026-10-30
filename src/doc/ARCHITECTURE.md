@@ -117,7 +117,7 @@ subscribe(origin, kind)    → 流
 
 - `origin` 是唯一寻址键，本机也有值（`<local>`）。判定只住 `src/frontend/ui/ipc/origin.ts`，别处一律 `isLocalOrigin` / `isRemoteOrigin`。
 - webview 那一侧的通道客户端是 `chan.ts`（通信层面 A 成员）；握手时那台在 hello 里交出它接受的命令（`commands`）与这台做不到的（`unavailable`），做不到的命令界面事前置灰。
-- Tauri 命令只剩「monitor 自己的事」：窗口 · 拉前 · 本机 monitor 配置 · 日志与数据位置 · 重放缓冲 · 本机后端起停与引导 · 通道本身 · 放字节 · 足迹里 monitor 自己的事实。它们逐条登记在 `command_home_registry`，碰后端的新 Tauri 命令进不了这张表；全仓只有 `src/frontend/ui/ipc/commands.ts` 直接调 `invoke`。
+- Tauri 命令只剩「monitor 自己的事」：窗口 · 拉前 · 本机 monitor 配置 · 日志与数据位置 · 重放缓冲 · 本机后端起停与引导 · 通道本身 · 放字节 · 足迹里 monitor 自己的事实。它们逐条登记在 `parity_ledger` 的 `LEDGER`，实现碰到后端的由 `command_home_registry` 判红（加一条的步骤只在 [CONTRIBUTING.md](CONTRIBUTING.md) §2.2）；全仓只有 `src/frontend/ui/ipc/commands.ts` 直接调 `invoke`。
 
 ---
 
@@ -147,13 +147,17 @@ subscribe(origin, kind)    → 流
 - `plugin/`：调外部程序的口（找 · 问 · 起 · 收），cc-bus 那一族命令经它起。
 - `relay/`：中转的宿主（门 · 监听 · 根钥匙）；中转本体是通信层面 B。
 - `dial/`：SSH（连接池 · 链路 · SFTP · 问远端后端 · `~/.ssh/config` 解读 · 端口转发 · 开终端那一行）。
+- `ssh-dial/`：拨号核心（独立 crate，后端与手机同一份）：竞速 · 跳板 · 主机钥匙判定 · 鉴权 · 保活 · 按身份复用 · 开 channel 之后的几种用法 · SFTP 客户端；`dial/` 在它上面。
+- `deploy/`：装 / 升级远端后端的判定与编排（独立 crate，桌面后端答 `deploy-plan` 与手机 `mobcore` 同一份）：那台要哪一格 · 落点那一份是谁 · 只升不降 · 残件 · 常驻那一份旧不旧。
+- `egress/`：出网口（独立 crate）：这台所有出站 TCP 只在这里开，按一份出网描述直连或经代理（HTTP CONNECT · SOCKS5）；中转与拨号核心链同一份。
+- `ccm_line/`：`ccm` 这一行的词与解析（旗标 · 默认值 · 自己叫什么 · 配置那一段的记号）；起会话 · 账号域 · 别名那一族都引它，做事那一半住 `control/ccm/`。
 - `assets/`：skill / MCP / 别名的计算、判定与写，资产目录与同步，两台之间的装由本机后端当枢纽。
-- `history/`：历史跨机 join 与注解（星标 / 改名 / 隐藏 / 上次账号）。
+- `history/`：历史跨机 join 与注解（星标 / 改名 / 隐藏 / 在哪几组 / 固定）与组（§3.10）。
 - `plan/`：计划页的读面（这台机器上的计划工作区、每片的图与状态）。
 - `faces/`：只读面与功能侧的帧面宿主（本体在 `observe/` / `control/` / `accounts/`），格目录与通用投影也在这里。
 - `wire/`：帧面的协议零件，最底下那一层（帧定义 · typed 命令 · 登记形状 · 复制详情 · 码 → 句 · 主题表 · 监听判定 · 收场闸），只引 `platform/` · `common/` · `agents/` · `relay/`，各功能都引它。
-- `stream/`：进后端的口，最上面那一层（命令表 · 帧面的信封与分派 · CLI 面的分派 · 对后端其余部分开的门 · 总期限 · 出口声明 · tee 消费侧与活卡），引所有功能，除 `main.rs` / `lib.rs` 谁都不引它（判据 `layering_guard`）。本机后端问远端后端经那台的常驻流（`control/feeds.rs`：`forward` 转界面带 `machine` 的那一问，`call` 是本机后端并好再答时自己问的有类型口）；`dial/remote_ask.rs` 那一路（`--resident-call` 冷 exec）还剩几条跨台合并（`chores-merge` · `history-search-merge` · `sessions-needs-merge` · 组的读写），挪到 `call` 之后它只剩部署与装钥匙。
-- `footprint/`：足迹（这台机器上 cc-monitor 写过什么、能不能撤）；`common/`：共用判定与成品的格类型；`lineage.rs`：会话血缘（谁起的谁）。
+- `stream/`：进后端的口，最上面那一层（命令表 · 帧面的信封与分派 · CLI 面的分派 · 对后端其余部分开的门 · 总期限 · 出口声明 · tee 消费侧与活卡），引所有功能，除 `main.rs` / `lib.rs` 谁都不引它（判据 `layering_guard`）。本机后端问别台：转界面带 `machine` 的那一问与本机后端自己的有类型那一问走那台的常驻流（`control/feeds.rs` 的 `forward` · `call`），其余经 `dial/remote_ask.rs` 的 `--resident-call`。
+- `footprint/`：足迹（这台机器上 cc-monitor 写过什么、能不能撤）；`common/`：共用判定与成品的格类型；`lineage.rs`：会话血缘（谁起的谁）；`stderr_log.rs`：脱离起的常驻后端把 stderr 落进一份有上限、滚动的文件（设置页「日志」里看得到）。
 
 后端分两块、零互相依赖：**原生后端**（会话 · tmux · 账号 · SSH 与两台之间的传输 · 资产 · 历史 · 中转宿主）与**文件管理后端**（只管本机的读和写：列 · 读 · 搜 · 写用户的文件 · 上传块 · 解压 · 提交，即 `files/` 与 `control/files_write.rs` · `files_upload_chunks.rs` · `files_extract.rs` · `files_commit.rs`），两块只共用 `platform/` · `common/` 与 `lib.rs` 的能力声明轴；原生那一块够到文件管理那一块只经帧面分派（命令表文件管理那一族）。传输台 `control/transfer.rs` 归原生那一块（拨号拿会话、搬字节），它要的路径解析 · 暂存件命名 · 摘要住 `common/`。判据 `tests/backend/files/module_boundary_guard.rs`。
 
@@ -298,7 +302,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 块 | 住址 | 做什么 |
 |---|---|---|
 | 额度账 | `accounts/quota/ledger.rs`（`~/.cc-monitor/quota.json`） | 每号每窗口的用量、重置时刻、被拒 · 超额。两个来源：中转经手的回包头（读法在适配层 `agents::quota_read_of`）· `quota-probe` 起官方客户端报的用量（`agents::usage_of`）。另记每窗口「1% ≈ 多少用量」：中转从应答流里数到的每发用量（`accounts/quota/spend.rs`，读法在流面 `spent`）÷ 读数涨的点数，量不到就空着 |
-| 轮换存储 | 存取一处 `accounts/quota/rotation.rs`；基础层那份 `~/.cc-monitor/rotation.json` 第三版（`rules/book.rs`）· 配置层那份 `~/.cc-monitor/rotation-uses.json`（`setup/uses.rs`）· 策略目录 `~/.cc-monitor/strategies/`（`setup/shelf.rs`） | `rotation.json` 按会话 id 存在用的号 · 它载入的那份策略副本（代码 · 设置 · 版本；缺 ⇒ 不轮换，文件再改不跟，「载入新版」才换）· 会话侧的临时动作（拖出来的顺序 · 先不用的号）· 策略交的 memo 与叫醒 · 换号记录；`rotation-uses.json` 只存新会话用哪份（`forNew`，默认空）。策略文件都是用户自己的，没有随包策略 |
+| 轮换存储 | 存取一处 `accounts/quota/rotation.rs`；账本 `~/.cc-monitor/rotation.json` 第三版（`rules/book.rs`，配置那一侧经 `setup/uses.rs`）· 策略目录 `~/.cc-monitor/strategies/`（`setup/shelf.rs`） | `rotation.json` 按会话 id 存在用的号 · 它载入的那份策略副本（代码 · 设置 · 版本；缺 ⇒ 不轮换，文件再改不跟，「载入新版」才换）· 会话侧的临时动作（拖出来的顺序 · 先不用的号）· 策略交的 memo 与叫醒 · 换号记录 · 新会话用哪份（`forNew`，默认空）。策略文件都是用户自己的，没有随包策略 |
 | 事实 | `accounts/quota/facts.rs`（拼装在 `upstream_select/rotate.rs` 的 `Hop::facts`） | 每个号的用量 · 重置 · 用速 · 1% ≈ 多少用量 · 被拒 · 超额 · 登录；只读额度账 ＋ 账号库 ＋ 登录，换一份策略不变 |
 | 节点 | `accounts/quota/nodes.rs` | 事实或设置变了的那一刻（读数 · 被拒 · 续期失败 · `quota.json` · 账号库 · 策略目录 · 会话那一条）；全进程一条通道，判的缓存与推送只订它。重置这类已知时刻不走它，判的那一侧记成下一个节点时刻 |
 | 判 | `accounts/quota/rules/decide.rs`（`turn`，纯函数）· `rules/standing.rs` · 策略文件里的 `decide(ctx)` · 积木库 `src/shared/rotation/lib.rhai` | 「换不换、换谁」全在策略里；后端只照策略交的先后取第一个事实上发得出去的号（`standing`）、停发、兜底 |
@@ -310,7 +314,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 谁调谁：agent → 中转 → 上游选择（问轮换、拿令牌）→ 上游；回包头 → 额度账；界面 / 手机 / skill 经 `quota-read` · `rotation-*` 读写，不自己判。
 
-**去向**：后端已是第五版的分层（上表：事实 · 节点 · 判 · 推演 · 策略文件 · 两份账本，第一版 / 第二版由接上中转的那个进程一次升级写回两份、原文留 `.v1` / `.v2`，写回之前读的一侧当没有）。桌面设置页与会话面板、手机都照第五版的 `rotation-*` 命令读写。
+两份账本的版本照声明（`relay_route_core::QUOTA_FILE` · `ROTATION_FILE`）：轮换账本只读得懂第 3 版，盘上是更老的那一版 ⇒ 当没有（不升级），读法见 INVARIANTS §2.2。桌面设置页与会话面板、手机都经 `rotation-*` 命令读写。
 
 ### 3.4 文件
 
@@ -394,30 +398,19 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 组员关系 · 固定 | 会话那一台的注解，条目上的 `groups` · `pinned` 两格 | 组员关系：那台后端 `groups-write move`（与那一片同一把锁里改）；固定：`history-annotate`（`pinned`） |
 
 谁调谁：
-- 读：出口问本机后端 `groups-read {machines}` → 本机后端经 `remote_ask::ask_each` 问各台 `groups-here`（本机同进程，别的台经 `--resident-call` 问它的常驻）→ 在这里合一次（`groups::merge`，纯函数，手机核心以后调同一份）：名字取 `named` 最新的那一片、组员照各台、组头计数（需手动 · 在跑 · 后台）在这里数。组 id 全局不重，注解上只记 id；某台这一问没答 ⇒ 用它上一次答的那份（只在本机后端内存里）、那台的组员画成看不见、名字取自它的标「上次所知」；哪一片都没有记录、只有组员指着它 ⇒ 名字缺、组员照出。够不着的那台照实看不全，不经别台转问。
-- 写：建组只向本机要一个 id（`make`，不写盘：一个组员都没有的组不住任何一台）；进出组问组员那一台（`move`，带整份记录）；改名 · 解散交本机、带上组员所在的那几台（`rename` · `dissolve` `{machines}`），本机经 `ask_each` 发给各片、转过去的那一问只写那台自己，回包 `sent {missed}` 照实列出没送到的那几台与为什么。没送到的下次连上补发还没做：要在发问那台记一份待补（组 id · 哪台 · 改成什么），那台再答 `groups-here` 时补发。
+- 读：出口问本机后端 `groups-read {machines}` → 本机后端经 `remote_ask::ask_each` 问各台 `groups-here`（本机同进程，别的台经 `--resident-call` 问它的常驻）→ 在这里合一次（`groups::merge`，纯函数）：名字取 `named` 最新的那一片、组员照各台、组头计数（需手动 · 在跑 · 后台）在这里数。组 id 全局不重，注解上只记 id；某台这一问没答 ⇒ 用它上一次答的那份（只在本机后端内存里）、那台的组员画成看不见、名字取自它的标「上次所知」；哪一片都没有记录、只有组员指着它 ⇒ 名字缺、组员照出。够不着的那台照实看不全，不经别台转问。
+- 写：建组只向本机要一个 id（`make`，不写盘：一个组员都没有的组不住任何一台）；进出组问组员那一台（`move`，带整份记录）；改名 · 解散交本机、带上组员所在的那几台（`rename` · `dissolve` `{machines}`），本机经 `ask_each` 发给各片、转过去的那一问只写那台自己，回包 `sent {missed}` 照实列出没送到的那几台与为什么，不补发。
 - 哪台的组那一片变了，那台 watcher 推 `changed {groups}`，出口照它重问。跨台只走 `ask_each` 这一条，不另开问法。
 
 ---
 
 ## 4. 数据放在哪
 
-monitor 自己的文件在 `~/.cc-monitor/`：
-
-| 路径 | 写入方 | 读取方 | 用途 |
-|---|---|---|---|
-| `config.json` | monitor 设置 | monitor | 主题 · 字体 · 行为开关 · 机器表 · 诊断 |
-| `ps-await/<PID>.tty` | Linux bash / zsh 接入块（本机桌面上开的 shell） | monitor `bind.rs` | 那个 shell 的进程号 · 起始时刻 · 终端设备，monitor 据它认窗口（认上 / 认不出就删） |
-| `ps-registry/<PID>.json` | monitor（Linux） | monitor（↗ 沿进程链时先查它） | 那个 shell 显示在哪个窗口（与 shell 进程同寿） |
-| `auto-launch.json` | monitor 设置 | PowerShell 接入块（`__ccm_bind`） | 「用 `cc` 起 claude 时自动开 monitor」开关 ＋ monitor 路径 |
-| `history-metadata.json` | 本机后端 | 本机后端 | 历史注解（星标 · 改名 · 隐藏 · 上次账号 · 在哪几组 · 固定）＋ 这台有组员的那几组那一片（§3.10） |
-| `logs/monitor/` | monitor | 用户 | 按天滚动的诊断日志 |
-
-后端自己的状态（`backend.json` · 中转根钥匙 `relay-key` · 额度账 `quota.json` · 轮换 `rotation.json` · 血缘 `lineage.json` · 资产目录 · skill 装记录 · API 号凭据 · 后端日志 · `bin/`）由那台后端写，都经写句柄 `platform::fs::Own`（订阅号凭据与诊断文件各一个窄句柄）；每一项是「删了会丢」还是「可随手删」见 INVARIANTS §2.1。
+monitor 与每台后端自己的文件都在那台的 `~/.cc-monitor/`。有哪些、谁写、删了会不会丢只看 [INVARIANTS.md](INVARIANTS.md) §2.1 那一张（判据两向对拍）；后端自己那几份的声明、版本与读写口见 INVARIANTS §2.2。
 
 只读的外部数据源：`<agent 家>/projects/**/*.jsonl`（会话内容）· `<agent 家>/sessions/<PID>.json`（活跃会话，PID ＋ `procStart` 双校验）· `<agent 家>/tasks/<sid>/`（Task 面板），都由那台后端读。
 
-字段定义、编码约束（UTF-8 无 BOM）、原子性与切到终端那一套 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md)。每个文件的完整路径在设置的「数据位置」页。
+几个进程之间交接的那几份的格式、编码约束（UTF-8 无 BOM）、原子性与切到终端那一套 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md) §9。每个文件的完整路径在设置的「数据位置」页。
 
 ---
 

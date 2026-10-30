@@ -148,7 +148,7 @@ fn open_req(
             alias: Some(r.alias.clone()),
         }),
         account,
-        run: Some(open::Run::Tmux),
+        run: Some(open::Launch::Tmux),
         local: false,
         ticket: None,
         client: None,

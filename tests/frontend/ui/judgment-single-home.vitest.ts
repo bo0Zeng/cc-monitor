@@ -1158,6 +1158,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     CHORES_FILE: NONE,
     // monitor 的设置那一行（monitor `config.rs` 读写都取它的落点与读上限）；TS 侧没有孪生。
     CONFIG_FILE: NONE,
+    HISTORY_ANNOTATIONS_FILE: NONE,
     HOST_FACTS_FILE: NONE,
     HOST_PROGRAM_FILE: NONE,
     KEY_FILE: NONE,
@@ -1173,7 +1174,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     QUOTA_FILE: NONE,
     REMOTE_LISTING_FILE: NONE,
     ROTATION_FILE: NONE,
-    ROTATION_USES_FILE: NONE,
     SESSION_QUEUE_FILE: NONE,
     SESSION_UPSTREAM_FILE: NONE,
     SET_GROUPS_FILE: NONE,
@@ -1224,7 +1224,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 额度账 · 账号轮换（后端账号域写；数据位置页按它列）。
     QUOTA_LEDGER_REL: NONE,
     ROTATION_REL: NONE,
-    ROTATION_USES_REL: NONE,
     // 会话血缘（后端 `lineage.rs` 写；数据位置页按它列）。
     LINEAGE_REL: NONE,
     // 起会话地址尾上的来处段（会话血缘：ccm 拼 · 中转切 · 门牌那几个函数认）；TS 侧没有孪生。

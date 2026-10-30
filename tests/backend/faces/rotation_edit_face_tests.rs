@@ -177,9 +177,9 @@ fn use_and_for_new() {
         },
     )
     .expect("设");
-    assert_eq!(ctx.setup.uses.now().for_new, "by-reset");
+    assert_eq!(ctx.setup.for_new_id(), "by-reset");
     for_new_with(&ctx, &home.own(), &RotationForNewReq { strategy: None }).expect("设回不轮换");
-    assert_eq!(ctx.setup.uses.now().for_new, "");
+    assert_eq!(ctx.setup.for_new_id(), "");
     assert!(matches!(
         for_new_with(
             &ctx,
@@ -340,7 +340,7 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
     assert_eq!(
         (
             crate::faces::rotation_view_face::tests::used(&ctx, S1).as_deref(),
-            ctx.setup.uses.now().for_new.as_str()
+            ctx.setup.for_new_id().as_str()
         ),
         (Some("改了"), "改了"),
         "载入它的副本与「新会话用」跟着改"

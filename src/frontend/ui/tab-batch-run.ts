@@ -11,7 +11,7 @@ import { batchRefused } from "./sessions-where";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import type { Tab } from "./tab-model";
-import type { Run } from "./generated/Run";
+import type { Launch } from "./generated/Launch";
 import { askOpen, BACKGROUND_OPENS } from "./session-open";
 import type { Outcome } from "./generated/Outcome";
 import { openLocalTerminal, openTerminal } from "./terminal-open";
@@ -91,7 +91,7 @@ async function openWindow(origin: Origin, cmd: string, cwd: string | null, sid: 
 }
 
 /** 起这一项：问那台；落在窗口里的开那一行（批量只开这一种）；本来就在跑的记跳过。 */
-async function startOne(origin: Origin, sid: string, run: Run): Promise<BatchOutcome> {
+async function startOne(origin: Origin, sid: string, run: Launch): Promise<BatchOutcome> {
   const end = await askOpen(origin, { what: { kind: "resume", sid }, run, local: isLocalOrigin(origin) });
   if (end.kind !== "opened") {
     return { sid, outcome: "failed", why: end.said, ...(end.detail !== "" ? { detail: end.detail } : {}) };
@@ -106,7 +106,7 @@ async function startOne(origin: Origin, sid: string, run: Run): Promise<BatchOut
 }
 
 /** 起：`run` = `tmux`（在那台 tmux 里后台起，不开窗）· `direct`（各开一个终端）。同一台逐项挨个，各台并发。 */
-export async function startMany(tabs: readonly Tab[], run: Run): Promise<BatchOutcome[]> {
+export async function startMany(tabs: readonly Tab[], run: Launch): Promise<BatchOutcome[]> {
   const parts = await Promise.all(
     Array.from(groupByOrigin(tabs), async ([origin, list]): Promise<BatchOutcome[]> => {
       const no = offered(origin, "session-open", list.map((t) => t.sessionId));
