@@ -195,7 +195,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J5: {
     what: "session id 形状",
     // 唯一住址 `shell-quote-core::session_id_ok`（今天各处规则的交集）：
-    //   `branch_core::is_plain_sid` 成它的再导出（那个再导出随 branch-core 收进后端删了，调用方直呼这一条）；monitor 载荷 `@ccm_sid` · 载荷线 `resumeSid` · `ccm …` 调用行 · 本机拉起 ·
+    //   调用方直呼这一条；monitor 载荷 `@ccm_sid` · 载荷线 `resumeSid` · `ccm …` 调用行 · 本机拉起 ·
     //   分叉 id，后端 ccm argv 都调它。
     //   TS：`isValidSessionId` 与只剩那一格的 `validateLocalLaunch` 删。
     homes: ["shell-quote-core::session_id_ok"],
@@ -330,7 +330,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     // 翻 `zero`：界面只问本机后端 `history-search-merge`，它自己问到各台（各台常驻索引保热）、合并排序再答
     //   （`cmd_wire::search::merge` → `sort_by_recency`，手机核心合几台也调这一份）；前端 `mergeSearchResults` 删。
     //   条数上限：界面不交 `limit` ⇒ 每台用 `search_rules::DEFAULT_LIMIT`（`history.ts` 那份 300 的副本删了）。
-    // `search-core` 拆进后端：通用口径住 `history/search_rules.rs`（`DEFAULT_LIMIT` 与收 limit 的 `clamp_limit` 同一份文件；住址格只认 `fn`）；
+    // 通用口径住 `history/search_rules.rs`（`DEFAULT_LIMIT` 与收 limit 的 `clamp_limit` 同一份文件；住址格只认 `fn`）；
     //   排序那一个与合并同住线上形那一份（`cmd-wire/src/search.rs`），口径的家只转出它。
     homes: ["cmd-wire::sort_by_recency", "cmd-wire::merge", "src/backend/history/search_rules.rs::clamp_limit"],
     status: "zero",
@@ -729,8 +729,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     with_bare_first: NONE,
   },
   // `agent-tools-core` 那一格删了：它收进后端适配层（`agents/claudecode/cards.rs`），不再是共享 crate。
-  // `branch-core` 那一格删了：它收进后端适配层（`agents/claudecode/branch.rs`），不再是共享 crate。
-  // `codex-token-core` 那一格删了：它搬进后端成模块（`agents/codex/token.rs`），不再是共享 crate，不在本表人群里。
   // `chan-core` 那一格删了：通道成了通信层 crate `comms-inward`（住 `src/comms/inward/`，不在 `src/common/` 的人群里）。
   // 帧命令两端对上的形状（第 8 批）：机器名 `Machine`（从 `comms-inward` 的 `Origin` 挪来）· typed 命令的形状指纹表。
   // 分块传那一圈（上传进暂存区 ＋ 整份摘要 · 下载逐块读回）：文件窗口与手机嵌的核心共用；界面不分块传，没有孪生。
@@ -1269,7 +1267,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     split_keyed_base_url: NONE,
     STAGING_DIR_REL: NONE,
   },
-  // `search-core` 出列：crate 删了（通用口径 → 后端 `history/search_rules.rs` · Claude 记录文本 → `agents/claudecode/text.rs`），J10 / J15 的住址改成路径形。
   "shell-quote-core": {
     // 〔合并 TL3 续做〕`INVARIANTS §47` ② 自由文本那一层（拒绝集只收 NUL / CR / LF）进了本 crate：TS 侧零处拼 shell、零处判它 ⇒ NONE。
     FREE_TEXT_REFUSED: NONE,
