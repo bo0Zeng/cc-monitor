@@ -36,10 +36,23 @@ describe("跟着一个会话", () => {
     ]);
     expect(got).toEqual([{ t: "lines", lines: [line("s1", 3), line("s1", 5)] }, { t: "live", live: false }]);
     got.length = 0;
-    rec.sink([frame(5, { added: { sid: "s1" } }), { t: "gap", fromSeq: 6, toSeq: 9 }]);
+    rec.sink([frame(5, { added: { sid: "s1", face: { life: { is: "live" } } } }), { t: "gap", fromSeq: 6, toSeq: 9 }]);
     rec.sink([{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }]);
     rec.sink([{ t: "seen", from: null }]);
     expect(got).toEqual([{ t: "live", live: true }, { t: "gap" }, { t: "sight", seen: false }, { t: "sight", seen: true }]);
+    h.stop();
+  });
+
+  it("离开「活」那一帧照脸上的一生：可重连 ⇒ 不在跑（与打开那一刻同一读法）· 说不清 ⇒ 看不见 · 别的会话的不交", async () => {
+    const got: FollowEvent[] = [];
+    const h = await followSession("devbox", "s1", (e) => got.push(e));
+    const rec = streamFake.subscriptions[0]!;
+    rec.sink([
+      frame(0, { left: { sid: "s9", face: { life: { is: "ended" } } } }),
+      frame(1, { left: { sid: "s1", face: { life: { is: "reconnectable" } } } }),
+      frame(2, { left: { sid: "s1", face: { life: { is: "unclear" } } } }),
+    ]);
+    expect(got).toEqual([{ t: "live", live: false }, { t: "sight", seen: false }]);
     h.stop();
   });
 

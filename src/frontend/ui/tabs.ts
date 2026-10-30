@@ -29,7 +29,7 @@ import type { AgentsPanel } from "./agents-panel";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
 import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
 import type { SessionFace } from "./generated/SessionFace";
-import { closesFromMenu, closesQuietly, frontWhy, isEnded, isLive } from "./face-can";
+import { activityOf, closesFromMenu, closesQuietly, frontWhy, isEnded, isLive } from "./face-can";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 // `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
@@ -843,7 +843,7 @@ export class TabManager {
    * 再要一份会话事实；又活了 ⇒ 空态提示收掉。
    */
   onFace(sessionId: string, face: SessionFace): void {
-    if (face.life.is !== "live") this.live.dropTab(sessionId);
+    if (!isLive(face)) this.live.dropTab(sessionId);
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
       this.store.pendingFace.set(sessionId, face);
@@ -853,14 +853,14 @@ export class TabManager {
     if (JSON.stringify(was) === JSON.stringify(face)) return;
     tab.face = face;
     if (sessionId === this.store.activeId) this.publishActive();
-    const doing = face.life.is === "live" ? face.life.activity : undefined;
-    const before = was?.life.is === "live" ? was.life.activity : undefined;
+    const doing = activityOf(face);
+    const before = activityOf(was);
     if (doing !== before) {
       if (doing !== "needs_you") tab.needs = null;
       if (doing !== "background_work") tab.backgroundWork = null;
       if (doing !== undefined) this.view.wantFacts(tab);
     }
-    if (face.life.is === "live" && was?.life.is !== "live") this.prefs.clearPinHint(sessionId);
+    if (isLive(face) && !isLive(was)) this.prefs.clearPinHint(sessionId);
     this.refreshTabBar();
     if (was?.dot !== face.dot) this.emitTabStateProbe(tab);
     if (isEnded(face) && !(was !== null && isEnded(was))) this.hider.reap();

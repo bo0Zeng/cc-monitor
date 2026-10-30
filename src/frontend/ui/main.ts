@@ -22,6 +22,7 @@ import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { StartupActive } from "./startup-active";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
+import { activityOf } from "./face-can";
 import { TabManager } from "./tabs";
 import { livePainter } from "./live-card-view";
 import { mountTabBarResizer } from "./tab-bar-width";
@@ -923,7 +924,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionFace: (sessionId, face) => {
       tabs.onFace(sessionId, face);
       // 开着编辑框的那条会话忙闲一变 ⇒ 它再问一次退法（只交脸上那一格，在不在干活归那台判）。
-      saidEdit.activity(sessionId, face.life.is === "live" ? face.life.activity : undefined);
+      saidEdit.activity(sessionId, activityOf(face));
     },
     onSessionName: (sessionId, label, labelProject) => tabs.updateName(sessionId, label, labelProject),
     // 某台机器的活会话清单报完了。
