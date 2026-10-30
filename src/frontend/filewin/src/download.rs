@@ -179,6 +179,7 @@ impl DownloadBoard {
         self.lane.finish(o);
     }
 
+    #[cfg(test)]
     pub fn in_flight(&self) -> Option<String> {
         self.lane.running()
     }
