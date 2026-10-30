@@ -51,9 +51,10 @@ function tab(sid: string, origin: string, over: Partial<Tab> = {}): Tab {
   } as unknown as Tab;
 }
 
+/** `key`：成品没到时会上屏的那个键（远端）；本机的键是哨兵、不上屏，只判写成品名字。sid 不含名字（免得名字从标题 · 目录混进来）。 */
 const CASES = [
-  { origin: "devbox", name: "工作站 B", key: "devbox" },
-  { origin: LOCAL_ORIGIN, name: "box-b", key: "本机" },
+  { sid: "s1", origin: "devbox", name: "工作站 B", key: "devbox" },
+  { sid: "s2", origin: LOCAL_ORIGIN, name: "box-b", key: null },
 ] as const;
 
 beforeAll(() => {
@@ -99,13 +100,14 @@ async function terminalText(t: Tab): Promise<string> {
 
 describe("机器叫法只读那台成品里的名字", () => {
   for (const c of CASES) {
-    it(`★ ${c.origin}：会话头 · 悬停卡 · 终端页头 · 「发给 …」写成品名字「${c.name}」，不写「${c.key}」`, async () => {
-      const t = tab(`s-${c.name}`, c.origin);
+    it(`★ ${c.origin}：会话头 · 悬停卡 · 终端页头 · 「发给 …」写成品名字「${c.name}」`, async () => {
+      const t = tab(c.sid, c.origin);
       const texts = { head: headText(t), hover: hoverText(t), terminal: await terminalText(t) };
       for (const [where, text] of Object.entries(texts)) {
         expect(text, `${where} 写成品名字`).toContain(c.name);
-        expect(text, `${where} 不写键或按本机 / 远端挑的字`).not.toContain(c.key);
+        if (c.key !== null) expect(text, `${where} 不写键`).not.toContain(c.key);
       }
+      expect(texts.terminal.split(c.name).length - 1, "终端页头与「发给 …」两处都写").toBeGreaterThanOrEqual(2);
     });
   }
 
