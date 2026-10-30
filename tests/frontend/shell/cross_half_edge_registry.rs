@@ -165,9 +165,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // `tests/frontend/shell/sftp_tests.rs` → `tests/backend/build_id_guard.rs` 那一行摘了：序键随部署判定搬进共享 crate（序键今天住契约 crate `deploy-contract`，只升不降那条判定住后端 `control/deploy_plan.rs`），
     //   读历史表的那一格（`hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs`）挪到后端 `deploy_plan_tests.rs` ——
     //   序键实现（后端依赖的共享 crate）与历史表同在后端那一半，这条边不再跨。
-    // `tests/frontend/shell/search_kou_jing_guard.rs` → `src/backend/observe/search_query.rs` 那一行摘了：口径的家从共享 crate
-    //   `search-core` 拆进后端（`history/search_rules.rs` · `agents/claudecode/text.rs`），「恰一份 · 搜索那一侧只调它」那两道随家搬进
-    //   后端 `search_rules_tests.rs`，monitor 那一侧只剩「自己零处」—— 这条边不再跨。
     // 这里原有四条边（`session_outline_tests.rs` / `session_find_tests.rs` 各两条：
     //   大纲清单与会话内查找的**线上词**、monitor 造的 **argv** 两侧同形）。monitor 那一侧的读者（核头尾、造 argv）
     //   随两条命令改走通道一起删了 ⇒ 四条边没有读者了。两侧同形的牙换到了**帧面成品**上：
