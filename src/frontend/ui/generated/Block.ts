@@ -3,7 +3,11 @@
 /**
  * 内容块（两家共有的词）。
  */
-export type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+export type Block = { "type": "text", text: string, 
+/**
+ * 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
+ */
+bytes: number, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
  */
@@ -11,7 +15,11 @@ for: string,
 /**
  * 结果内容（正文 / 图片块；原文是一个字符串时已归成一个正文块）。
  */
-content: Array<Block>, isError: boolean, } | { "type": "image", 
+content: Array<Block>, isError: boolean, 
+/**
+ * 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有，界面写大小照它。
+ */
+bytes: number, } | { "type": "image", 
 /**
  * 图片类型（`image/png` …）。
  */
