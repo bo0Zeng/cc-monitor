@@ -1679,7 +1679,7 @@ fn walk_dir(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, S
 
 /// 遍历源码树，**按一张明写的名单摘除**，并且**摘不到就当场红**。
 ///
-/// 排除是调用方明写的一张名单（仓根相对路径，如 `tests/frontend/shell/structural_scan_tests.rs`；
+/// 排除是调用方明写的一张名单（仓根相对路径，如 `tests/backend/plugin_walk_fixture.rs`；
 /// 别写裸基名 —— 两棵树里同名文件是常态）。匹配口径是 [`path_suffix_matches`]：
 /// 「整串相等」**或**「匹配点前面恰好是 `/`」，只会摘得更严、绝不多摘。
 ///

@@ -264,7 +264,7 @@ fn prose_mentioning_the_test_attribute_does_not_truncate_the_scan() {
         "(test)]`，不占这笔债。\n",
         "pub struct ToolSpec {\n    pub id: &'static str,\n}\n",
         "\n#[cfg",
-        "(test)]\nmod tests { fn helper() {} }\n"
+        "(test)]\nmod tests {\n    fn helper() {}\n}\n"
     );
     let code = production_code(src);
     assert!(code.contains("pub struct ToolSpec {"), "散文把切点提前了");
