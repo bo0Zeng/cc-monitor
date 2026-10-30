@@ -6,6 +6,10 @@ use crate::accounts::{AccountsList, AccountsListReq};
 use crate::assets::{
     AssetsCatalogMergeReq, AssetsCatalogReq, AssetsSyncReq, AssetsSynced, CatalogReply,
 };
+use crate::attachment::{
+    SessionAttachmentCheckReply, SessionAttachmentCheckReq, SessionAttachmentCommitReply,
+    SessionAttachmentCommitReq, SessionAttachmentDropReply, SessionAttachmentDropReq,
+};
 use crate::batch::{BatchReply, FilesBatchStopReply, FilesBatchStopReq};
 use crate::bookmarks::{Bookmarks, BookmarksEditReq, BookmarksReadReq};
 use crate::deploy::{DeployInstallReq, DeployUninstallReq, Installed, Uninstalled};
@@ -18,16 +22,21 @@ use crate::machine::{
 use crate::needs::{AnswerReq, Answered, NeedsList, SessionsNeedsReq};
 use crate::open::{OpenFactsReq, SessionOpenReq};
 use crate::plan::{PlanFiles, PlanFilesReq};
+use crate::queue::{
+    QueueCancelled, QueueList, QueuePut, SessionQueueCancelReq, SessionQueuePutReq,
+    SessionQueueReadReq,
+};
 use crate::quota::{QuotaRead, QuotaReadReq};
 #[cfg(any(test, feature = "ts"))]
 use crate::record::OrUnread;
 use crate::record::{HistoryLines, HistoryLinesReq, HistoryRead, HistoryReadReq};
+use crate::rewind::{RewindOptions, SessionRewindOptionsReq};
 use crate::rotation::*;
 use crate::search::{HistorySearchReply, HistorySearchReq};
 use crate::session::{HistoryTail, HistoryTailReq};
 use crate::session::{
-    ModeSwitched, ModelSwitched, OpenFacts, Opened, Preview, Sent, SessionCommands,
-    SessionCommandsReq, SessionModelReq, SessionPermissionReq, TerminalsList,
+    ArriveAsk, ArriveEnd, ModeSwitched, ModelSwitched, OpenFacts, Opened, Preview, Sent,
+    SessionCommands, SessionCommandsReq, SessionModelReq, SessionPermissionReq, TerminalsList,
 };
 use crate::sync::Patch;
 use crate::terminal::{
@@ -169,6 +178,14 @@ calls! {
     SessionPermissionReq => "session-permission", ModeSwitched;
     SessionOpenReq => "session-open", Opened;
     OpenFactsReq => "session-open-facts", OpenFacts;
+    ArriveAsk => "session-arrive", ArriveEnd;
+    SessionQueuePutReq => "session-queue-put", QueuePut;
+    SessionQueueCancelReq => "session-queue-cancel", QueueCancelled;
+    SessionQueueReadReq => "session-queue-read", QueueList;
+    SessionRewindOptionsReq => "session-rewind-options", RewindOptions;
+    SessionAttachmentCheckReq => "session-attachment-check", SessionAttachmentCheckReply;
+    SessionAttachmentCommitReq => "session-attachment-commit", SessionAttachmentCommitReply;
+    SessionAttachmentDropReq => "session-attachment-drop", SessionAttachmentDropReply;
 }
 
 #[cfg(test)]
