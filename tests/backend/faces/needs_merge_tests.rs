@@ -73,7 +73,10 @@ const REPLAYED: &str = "tests/__fixtures__/needs-merged.golden.json";
 const MISSING: &str = ".build/golden-missing/needs-merged.jsonl";
 
 /// 一组输入跑真的扇出与合并：`asked` 问了哪几台，`answers` 答了的那几台各自的整份；问了没答的那台 ⇒ 常驻不在。
-async fn merged_for(asked: &[String], answers: &serde_json::Map<String, serde_json::Value>) -> serde_json::Value {
+async fn merged_for(
+    asked: &[String],
+    answers: &serde_json::Map<String, serde_json::Value>,
+) -> serde_json::Value {
     let list = |m: &str, v: &serde_json::Value| -> NeedsList {
         serde_json::from_value(v.clone())
             .unwrap_or_else(|e| panic!("{REPLAYED}：{m} 那一份不是线上的 NeedsList（{e}）"))
@@ -116,19 +119,25 @@ async fn merged_for(asked: &[String], answers: &serde_json::Map<String, serde_js
 #[tokio::test]
 async fn the_needs_fake_replays_merges_made_here() {
     let root = guard_core::addr::repo_root();
-    let text = std::fs::read_to_string(root.join(REPLAYED)).unwrap_or_else(|e| panic!("读不到 {REPLAYED}：{e}"));
+    let text = std::fs::read_to_string(root.join(REPLAYED))
+        .unwrap_or_else(|e| panic!("读不到 {REPLAYED}：{e}"));
     let golden: serde_json::Value = serde_json::from_str(&text).expect("金样不是 JSON");
-    let mut inputs: Vec<serde_json::Value> = golden["cases"].as_array().expect("金样没有 cases").clone();
+    let mut inputs: Vec<serde_json::Value> =
+        golden["cases"].as_array().expect("金样没有 cases").clone();
     if let Ok(missing) = std::fs::read_to_string(root.join(MISSING)) {
         for line in missing.lines().filter(|l| !l.trim().is_empty()) {
             let c: serde_json::Value = serde_json::from_str(line).expect("没录的那一行不是 JSON");
-            let same = |x: &serde_json::Value| x["asked"] == c["asked"] && x["answers"] == c["answers"];
+            let same =
+                |x: &serde_json::Value| x["asked"] == c["asked"] && x["answers"] == c["answers"];
             if !inputs.iter().any(same) {
                 inputs.push(c);
             }
         }
     }
-    assert!(!inputs.is_empty(), "{REPLAYED} 一条都没有（空集上的回放恒真）");
+    assert!(
+        !inputs.is_empty(),
+        "{REPLAYED} 一条都没有（空集上的回放恒真）"
+    );
     let mut cases = Vec::new();
     for c in &inputs {
         let asked: Vec<String> = serde_json::from_value(c["asked"].clone()).expect("asked");
