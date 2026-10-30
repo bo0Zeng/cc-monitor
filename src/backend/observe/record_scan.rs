@@ -106,6 +106,35 @@ struct SkelView<'a> {
     scan: ScanView<'a>,
 }
 
+/// 这一家那条把一行翻成通用记录的函数（[`crate::agents::RecordFace::parse`]）。
+type Translate = fn(&crate::agents::Line<'_>) -> Result<Option<crate::agents::Translated>, String>;
+
+/// 一行的骨架索引行（扫描图 · 从中间起的那一截同一处）：类 · 画法 · 人说的取自整条翻译出的那条通用记录（吃同一份解析）。
+/// 不算一行（[`super::lines::counts`] 口径）⇒ `None`。
+fn index_row(
+    kind: &str,
+    translate: Option<Translate>,
+    line: &crate::agents::Line<'_>,
+    beat: Option<&crate::agents::beat::Beat<'_>>,
+    body: &[u8],
+    read: u64,
+) -> Option<IndexRow> {
+    if !super::lines::counts(body) {
+        return None;
+    }
+    let rec = translate
+        .and_then(|parse| parse(line).ok().flatten())
+        .and_then(|t| t.record);
+    Some(super::recognize::index_row::index_row_of(
+        kind,
+        line.value(),
+        beat,
+        rec.as_ref(),
+        line.start(),
+        read,
+    ))
+}
+
 impl Scan {
     /// 从 `self.end` 接着读 `r`（`r` 已定位在那里），读到 `upto` 为止（之后的不读；残尾不计）。
     fn feed<R: std::io::BufRead>(
@@ -146,24 +175,12 @@ impl Scan {
             }
             // 一拍也只算一次：骨架索引 · 用户输入 · 轮次 · 事实吃同一拍。
             let beat = v.and_then(|v| crate::agents::beat_of(kind, v));
-            let counted = super::lines::counts(body);
-            // 骨架行的类 · 画法 · 人说的取自整条翻译出的那条通用记录（吃同一份解析）。
-            let rec = translate
-                .filter(|_| counted)
-                .and_then(|parse| parse(&line).ok().flatten())
-                .and_then(|t| t.record);
+            let row = index_row(kind, translate, &line, beat.as_ref(), body, read as u64);
             // 这一行的行号（不算一行的那几行与下一行同号，它们解析不出记录、用不上）。
             let line = self.starts.len() as u64;
-            if counted {
+            if let Some(row) = row {
                 self.starts.push(start);
-                self.index.push(super::recognize::index_row::index_row_of(
-                    kind,
-                    v,
-                    beat.as_ref(),
-                    rec.as_ref(),
-                    start,
-                    read as u64,
-                ));
+                self.index.push(row);
             }
             let (Some(v), Some(beat)) = (v, beat) else {
                 continue;
@@ -500,6 +517,53 @@ impl RecordScans {
             .find(|s| s.path == path && s.stamp == stamp)?;
         s.used = tick;
         Some(s.map.clone())
+    }
+
+    /// `path` 从字节 `from`（行首）起的骨架索引行，逐行交给 `take`，它回 `false` 就停（那一行不算收下）。
+    /// 回：停在的那一行的起点；没停 ⇒ 最后一个完整行之后（残尾不计）。
+    ///
+    /// - `from == 0`，或进程里留着这一份的图（没变 · 变长了都算）⇒ 照图切（[`Self::get`]：没变不读、变长了只读追加的那一截）。
+    /// - 别的（界面冷开先要尾段那一截）⇒ 不为它扫整份、不留图：只读 `[from, 末尾)`，逐行那一步与扫描图同一处（[`index_row`]）。
+    ///   同一份的整份扫描正在跑也不等它（几百 MB 的记录要几十秒，尾段那一截不该排在它后面）。
+    pub(crate) fn index_rows(
+        &self,
+        path: &Path,
+        from: u64,
+        mut take: impl FnMut(&IndexRow) -> bool,
+    ) -> std::io::Result<u64> {
+        let held = from == 0 || self.lock().slots.iter().any(|s| s.path == path);
+        if held {
+            let map = self.get(path)?;
+            let start = map.index.partition_point(|r| r.o < from);
+            for r in &map.index[start..] {
+                if !take(r) {
+                    return Ok(r.o);
+                }
+            }
+            return Ok(map.end);
+        }
+        use std::io::{Seek, SeekFrom};
+        let mut file = Ro::open(path)?;
+        let len = file.metadata()?.len();
+        file.seek(SeekFrom::Start(from))?;
+        self.read
+            .fetch_add(len.saturating_sub(from), Ordering::Relaxed);
+        let kind = crate::agents::record_kind_of(path).unwrap_or_default();
+        let translate = crate::agents::record_face(kind).map(|f| f.parse);
+        let mut lines = super::lines::Lines::new(std::io::BufReader::new(file), from).upto(len);
+        while let Some(row) = lines.next()? {
+            let (start, read) = (row.at, row.whole.len() as u64);
+            let body = row.body();
+            let text = String::from_utf8_lossy(body);
+            let line = crate::agents::Line::of(kind, &text, start);
+            let beat = line.value().and_then(|v| crate::agents::beat_of(kind, v));
+            if let Some(r) = index_row(kind, translate, &line, beat.as_ref(), body, read) {
+                if !take(&r) {
+                    return Ok(start);
+                }
+            }
+        }
+        Ok(lines.end())
     }
 
     /// `path` 那一份此刻的扫描图（同 [`Self::get`]）借给 `f` 用一下：用完就放，缓存里不为它添一张 —— 只留事实尾巴
