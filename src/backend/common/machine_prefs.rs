@@ -16,15 +16,25 @@ use std::path::{Path, PathBuf};
 /// 那份文件名（字面量只住契约 crate：数据位置页按它列出）。
 pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::PREFS_REL);
 
-/// 盘上那一版（2：恢复那一格从开关 `resumeInTmux` 换成三选 `resumeWhere`；第 1 版由常驻那一位起来时换形，`control/prefs_migration.rs`）。
-pub(crate) const VERSION: u32 = 2;
+/// 这台偏好：状态（读不懂不覆盖）。第 1 版经 [`v1_to_v2`] 读成这一版。
+pub(crate) const DOC: crate::common::own_state::Doc<Prefs> =
+    crate::common::own_state::upgrade!(relay_route_core::PREFS_FILE, [v1_to_v2]);
 
-/// 读盘的上限：几张小表。
-const MAX_BYTES: u64 = 256 * 1024;
-
-/// 这台偏好：状态（读不懂不覆盖）。
-pub(crate) const DOC: crate::common::own_state::Doc<OnDisk> =
-    crate::common::own_state::Doc::state(relay_route_core::PREFS_REL, MAX_BYTES);
+/// 第 1 版 ⇒ 第 2 版：恢复那一格从开关 `resumeInTmux` 换成三选 `resumeWhere`（开 ⇒ tmux，关 / 缺 ⇒ 托管），别的几格原样。
+fn v1_to_v2(mut v: serde_json::Value) -> Result<serde_json::Value, Said> {
+    use cmd_wire::session::ResumeWhere;
+    let Some(o) = v.as_object_mut() else {
+        return Ok(v);
+    };
+    let tmux = o.remove("resumeInTmux").and_then(|b| b.as_bool()) == Some(true);
+    let w = if tmux {
+        ResumeWhere::Tmux
+    } else {
+        ResumeWhere::Managed
+    };
+    o.insert("resumeWhere".into(), serde_json::json!(w));
+    Ok(v)
+}
 
 /// 一张表至多几条（启动命令按家 · 模型按号 · 上限按子串）。
 pub(crate) const PREFS_ROWS_MAX: usize = 256;
@@ -72,15 +82,6 @@ impl Default for Prefs {
             bg_tab: rules.bg_tab,
         }
     }
-}
-
-/// 盘上整份（多一格版本）。
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct OnDisk {
-    pub(crate) version: u32,
-    #[serde(flatten)]
-    pub(crate) prefs: Prefs,
 }
 
 impl Prefs {
@@ -166,15 +167,8 @@ pub(crate) fn read_at(path: &Path) -> Loaded {
     match DOC.read(path) {
         Read::Absent => Loaded::Absent,
         Read::Unreadable(why) => Loaded::Unreadable(why),
-        Read::Present(d) if d.version != VERSION => Loaded::Unreadable(Said::with_raw(
-            copy_text(
-                "beOwnState.read.notJson",
-                &[("path", &path.display().to_string())],
-            ),
-            format!("version {} (this backend reads {VERSION})", d.version),
-        )),
-        Read::Present(d) => match check(&d.prefs) {
-            Ok(()) => Loaded::Present(d.prefs),
+        Read::Present(p) => match check(&p) {
+            Ok(()) => Loaded::Present(p),
             Err(why) => Loaded::Unreadable(Said::with_raw(
                 copy_text(
                     "beOwnState.read.notJson",
@@ -234,7 +228,7 @@ pub(crate) fn check(p: &Prefs) -> Result<(), String> {
     Ok(())
 }
 
-/// 整份写（经 `Own` 原子写、拿 `~/.cc-monitor` 那把目录锁）。什么时候写由调用方定（`prefs-set` · 换形那一次）。
+/// 整份写（经 `Own` 原子写、拿 `~/.cc-monitor` 那把目录锁；盖第 1 版先把原文留成 `prefs.json.v1`）。只有 `prefs-set` 写。
 pub(crate) fn write(own: &crate::platform::Own, p: &Prefs) -> Result<(), Said> {
     let dir = own.home_dir()?;
     own.ensure_dir(&dir).map_err(|e| {
@@ -250,15 +244,7 @@ pub(crate) fn write(own: &crate::platform::Own, p: &Prefs) -> Result<(), Said> {
         )
     })?;
     let held = own.lock(&dir)?;
-    let path = dir.join(FILE_NAME)?;
-    let body = crate::common::own_state::json_body(
-        path.as_path(),
-        &OnDisk {
-            version: VERSION,
-            prefs: p.clone(),
-        },
-    )?;
-    own.write(&path, &held, &body)
+    DOC.write(own, &dir, &held, p)
 }
 
 /// 数据目录 · pb 路径那两格的值域：非空、绝对路径。

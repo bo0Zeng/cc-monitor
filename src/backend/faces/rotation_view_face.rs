@@ -97,7 +97,7 @@ pub(crate) fn strategies_with(
     live: &dyn Fn(&str) -> bool,
 ) -> RotationStrategiesReply {
     let book = ctx.hop.store.now();
-    let for_new = ctx.setup.uses.now().for_new;
+    let for_new = ctx.setup.for_new_id();
     let dir = ctx.setup.dir();
     RotationStrategiesReply {
         strategies: shelf::all(dir.as_deref())
@@ -414,7 +414,7 @@ pub(crate) fn view_with(
     live: &dyn Fn(&str) -> bool,
 ) -> Result<RotationViewReply, RotationViewErr> {
     let base = ctx.hop.store.now();
-    let for_new = ctx.setup.uses.now().for_new;
+    let for_new = ctx.setup.for_new_id();
     let dir = ctx.setup.dir();
     let all = shelf::all(dir.as_deref());
     // 会话 ⇒ 照它载入的副本；设置页 ⇒ 照文件此刻的。
@@ -459,12 +459,7 @@ pub(crate) fn view_with(
             (s, plan, Some(shelved), form, agent)
         }
     };
-    let unreadable = || {
-        ctx.hop
-            .store
-            .unreadable()
-            .or_else(|| ctx.setup.uses.unreadable())
-    };
+    let unreadable = || ctx.hop.store.unreadable();
     if plan.id.is_empty() {
         let mut hints = Vec::new();
         if let Some(e) = unreadable() {

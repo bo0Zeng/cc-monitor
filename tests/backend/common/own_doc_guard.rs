@@ -2,13 +2,13 @@
 //!
 //! | # | 判据 | 正控 |
 //! |---|---|---|
-//! | D1 | 经 `Own` 写（`own.write(` · `own.write_streamed(`，空白不计）的生产文件里都有 `Doc` 声明（从声明表取的 `Doc::of(` · `upgrade!(`，还没换上表的 `Doc::state(` / `Doc::cache(`） | 写了没声明的一份 ⇒ 红 |
+//! | D1 | 经 `Own` 写（`own.write(` · `own.write_streamed(`，空白不计）的生产文件里都有 `Doc` 声明（从声明表取的 `Doc::of(` · 挂升级步的 `upgrade!(`） | 写了没声明的一份 ⇒ 红 |
 //! | D2 | 声明只住 `const` 条目（`const X: Doc<…> = Doc::…(`），落点 `rel` 全仓不重名 | 声明写在调用里 · 两份同名 ⇒ 红 |
 //!
 //! 盲区：写句柄不叫 `own` 的那一处 D1 看不见（今天全仓写句柄都叫 `own` / `self.own`）。
 
-/// 声明的写法：从表取（`Doc::of(` · 挂升级步的 `upgrade!(`）· 还没换上表的两种。
-const CTORS: [&str; 4] = ["Doc::of(", "upgrade!(", "Doc::state(", "Doc::cache("];
+/// 声明的写法：从表取（`Doc::of(` · 挂升级步的 `upgrade!(`）。
+const CTORS: [&str; 2] = ["Doc::of(", "upgrade!("];
 
 fn production_files() -> Vec<(String, String)> {
     let root = guard_core::addr::backend_src_root();
@@ -112,7 +112,7 @@ fn d1_positive_control_a_writer_without_doc_is_caught() {
     let fake = |src: &str| vec![("x/y.rs".to_string(), src.to_string())];
     let bare = "fn f(own: &Own) { self.own\n    .write_streamed(&file, &held, |f| Ok(())); }";
     assert_eq!(writers_without_doc(&fake(bare)), vec!["x/y.rs".to_string()]);
-    let declared = "const D: Doc<X> = Doc::cache(R, 1);\nfn f() { own.write(&f, &h, &b); }";
+    let declared = "const D: Doc<X> = Doc::of(&R);\nfn f() { own.write(&f, &h, &b); }";
     assert!(writers_without_doc(&fake(declared)).is_empty());
 }
 
@@ -128,10 +128,10 @@ fn d2_docs_are_const_items_and_their_places_are_unique() {
 #[test]
 fn d2_positive_control_loose_and_duplicated_docs_are_caught() {
     let fake = |src: &str| vec![("x/y.rs".to_string(), src.to_string())];
-    let (_, loose) = declarations(&fake("fn f() { let d: Doc<X> = Doc::state(R, 1); }"));
+    let (_, loose) = declarations(&fake("fn f() { let d: Doc<X> = Doc::of(&R); }"));
     assert_eq!(loose.len(), 1, "写在调用里的那一份没认出来");
     let (decls, loose) = declarations(&fake(
-        "pub(crate) const A: Doc<X> = Doc::state(R, 1);\nconst B: Doc<Y> = Doc::cache(R, 2);",
+        "pub(crate) const A: Doc<X> = upgrade!(R, [s]);\nconst B: Doc<Y> = upgrade!(R, [t]);",
     ));
     assert!(loose.is_empty(), "{loose:?}");
     assert_eq!(duplicated(&decls).len(), 1, "同名落点没认出来");
