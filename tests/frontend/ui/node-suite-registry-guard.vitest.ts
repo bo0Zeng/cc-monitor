@@ -54,12 +54,13 @@
  * - `d` 只看收尾**在不在**，不看它是否真的能被触达（比如被 `if (false)` 包住）。
  */
 import { execFile } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 import { nonEmpty } from "../../test-support/non-empty.ts";
+import { filePaths } from "../../test-support/production-sources.ts";
 
 /**
  * `(npm 脚本名, 文件)`。
@@ -363,21 +364,10 @@ describe("覆盖率地板表的自洽", () => {
 // ⇒ 补一条**本地**判据：`node --check` 是语法层的最小闸门（与 CI 里那条
 // `python3 -m py_compile tests/e2e/*.py` 是同一族的先例）。人群从文件系统派生，不手写清单。
 describe("`.mjs` 与 `.mts` 的最小闸门", () => {
-  const mjsFiles = (() => {
-    const skip = new Set([".git", "node_modules", "target", "dist", "coverage", ".vite"]);
-    const out: string[] = [];
-    const walk = (dir: string) => {
-      for (const e of readdirSync(dir, { withFileTypes: true })) {
-        if (e.isDirectory()) {
-          if (!skip.has(e.name) && !dir.includes("vendor")) walk(`${dir}/${e.name}`);
-        } else if (e.name.endsWith(".mjs")) {
-          out.push(`${dir}/${e.name}`);
-        }
-      }
-    };
-    walk(REPO_ROOT);
-    return out.sort();
-  })();
+  // 读目录只经 `test-support/production-sources.ts`；`vendor` 底下的不算（三方带进来的脚本）。
+  const mjsFiles = filePaths(".", { ext: ".mjs", tests: true, generated: true })
+    .filter((f) => !f.split("/").slice(0, -1).some((d) => d.includes("vendor")))
+    .map((f) => resolve(REPO_ROOT, f));
 
   it("每个 .mjs 都过 `node --check`（tsc 整类看不见它们）", async () => {
     // 抽取器自检：遍历塌了的话下面那条就是零命中地绿。
