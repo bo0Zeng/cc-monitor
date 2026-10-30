@@ -1,5 +1,6 @@
 //! 「终端」视图那张名单的线上形（`terminals-board-here` 每台一份 · `terminals-board` 各台合成一份）：
 //! 名单与状态全在后端写好，出口照摆（按 `key` 认行 · 按 `tags` 筛 · 按 `find` 找）。
+//! 监控板那一对（`monitor-board-here` 每台一份 · `monitor-board` 各台合成）也住这里：分组 · 组内先后 · 组头 · 汇总那一句后端写好。
 
 use crate::cells::Words;
 use crate::frame::SessionDot;
@@ -141,4 +142,65 @@ pub struct BoardFilter {
 pub struct TerminalsBoard {
     pub filters: Vec<BoardFilter>,
     pub groups: Vec<BoardGroup>,
+}
+
+/// `monitor-board-here` 每台一行：这台那一条会话此刻的序 · 活不活 · 几个 agent 在跑。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct MonitorHereRow {
+    pub sid: String,
+    /// 这台发出去的那张脸上的序（`face.order`）。
+    pub order: u8,
+    /// 那张脸的一生是「活」。
+    pub live: bool,
+    /// 这台运行簿里这条会话此刻在跑的子 agent 数。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub running: u32,
+}
+
+/// `monitor-board-here` 的回包：问到的那几条里这台认得的（不认得的不进）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct MonitorHere {
+    pub rows: Vec<MonitorHereRow>,
+}
+
+/// 监控板的一组（一台）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct MonitorGroup {
+    pub machine: Machine,
+    /// 组头那一句（那台的名字 ＋ 几条）。
+    pub title: Words,
+    /// 组内的先后（排好了）。
+    pub sids: Vec<String>,
+    /// 这台没答 ⇒ 那台离线那一句（`sids` 照请求先后）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub down: Option<Words>,
+}
+
+/// `monitor-board` 的回包：顶上那一句 ＋ 各台一组（排好了）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct MonitorBoard {
+    /// 几台 · 几条活会话 · 几个 agent 在跑；一组都没有 ⇒ 空。
+    pub summary: Words,
+    pub groups: Vec<MonitorGroup>,
 }

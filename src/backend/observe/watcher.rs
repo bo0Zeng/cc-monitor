@@ -64,6 +64,7 @@ use crate::platform::fs::{Ro, RoFile};
 use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
 use crate::wire::{FrameMake as _, FrameRules as _, SessionFaceExt as _, TopicExt as _};
 use cmd_wire::frame::{HiddenNow, Relayed};
+use resident_client::book::SessionBook;
 use notify::{RecursiveMode, Watcher as _};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -1086,6 +1087,15 @@ pub(crate) fn run_book() -> Option<std::sync::Arc<crate::observe::runs::RunBook>
 }
 
 static RUN_BOOK: std::sync::OnceLock<std::sync::Arc<crate::observe::runs::RunBook>> =
+    std::sync::OnceLock::new();
+
+/// 这台发出去的会话成品折成的那一本（[`FrameSink`] 扇出那一个出口折，与客户端同一折法 `SessionBook::fold`；没起过发帧口 ⇒ `None`）。
+/// 只读着用：`monitor-board-here` 照它答这台那几条会话的序与活不活。
+pub(crate) fn faces_here() -> Option<std::sync::Arc<std::sync::Mutex<SessionBook>>> {
+    FACES.get().cloned()
+}
+
+static FACES: std::sync::OnceLock<std::sync::Arc<std::sync::Mutex<SessionBook>>> =
     std::sync::OnceLock::new();
 
 /// 起这台的 watcher（**一个进程一份**：本机远端、stdio 与常驻都只起这一份；各条流连接经 [`WatcherPoke::attach`] 接上来）。
@@ -4880,6 +4890,8 @@ struct FrameSink {
     arrivals: crate::observe::arrivals::Arrivals,
     /// 这台会话清单的节点（`history::list_node`）：扇出去的帧说的事让清单里某一行变了 ⇒ 响它（生产 ＝ 本进程那一份；夹具各一份）。
     list: std::sync::Arc<crate::history::list_node::ListNode>,
+    /// 扇出去的会话帧折成的那一本（生产 ＝ 本进程那一份，[`faces_here`] 读它；夹具各一份）。
+    faces: std::sync::Arc<std::sync::Mutex<SessionBook>>,
 }
 
 /// 一条流连接在这台 watcher 上的投影：它的有界通道 · 它的名单 · 它欠的丢帧账。
@@ -4926,6 +4938,7 @@ impl FrameSink {
             priming: HashSet::new(),
             arrivals: crate::observe::arrivals::Arrivals::default(),
             list: crate::history::list_node::node().clone(),
+            faces: FACES.get_or_init(std::sync::Arc::default).clone(),
         }
     }
 
@@ -5050,11 +5063,16 @@ impl FrameSink {
         }
     }
 
-    /// 逐条连接按名单投（最后一条拿原帧，前面的拿副本）；通道关了的连接顺手摘掉。说的事让清单里那一行变了 ⇒ 先响清单的节点（没人连着也响）。
+    /// 逐条连接按名单投（最后一条拿原帧，前面的拿副本）；通道关了的连接顺手摘掉。说的事让清单里那一行变了 ⇒ 先响清单的节点（没人连着也响）；
+    /// 会话那几帧折进这台那一本（[`faces_here`]，没人连着也折）。
     fn fan(&mut self, frame: Frame) {
         if let Some(sid) = row_moved_by(&frame) {
             self.list.moved(Some(sid));
         }
+        self.faces
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .fold(&frame);
         let to: Vec<usize> = (0..self.subs.len())
             .filter(|&i| self.subs[i].wants(&frame))
             .collect();

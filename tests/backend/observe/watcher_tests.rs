@@ -121,6 +121,7 @@ impl FrameSink {
             priming: HashSet::new(),
             arrivals: crate::observe::arrivals::Arrivals::default(),
             list: std::sync::Arc::default(),
+            faces: std::sync::Arc::default(),
         }
     }
 
@@ -184,6 +185,37 @@ fn frames_that_move_a_row_ring_the_list_node_once_per_session() {
         ..Default::default()
     }));
     assert!(!list_rang(&mut list), "运行表与清单无关");
+}
+
+/// ★ 这台发出去的会话帧折进这台那一本（[`faces_here`]）：宣告之后的状态帧换上脸，`order` 是脸上那一格。
+#[test]
+fn frames_fanned_out_fold_into_the_book_read_by_faces_here() {
+    const SID: &str = "faces-here-fold";
+    let face = |activity| {
+        crate::wire::SessionFace::of(crate::wire::Life::Live {
+            activity,
+            host: None,
+        })
+    };
+    let idle = face(None);
+    let needs = face(Some(crate::agents::SessionActivity::NeedsYou));
+    assert_ne!(idle.order, needs.order, "两张脸的序要不同才看得出换没换");
+    let mut sink = FrameSink::hub();
+    let frame = |v: serde_json::Value| crate::wire::decode(&v.to_string()).expect("一帧");
+    sink.send(frame(serde_json::json!({
+        "kind": "session_added", "sid": SID, "agent_kind": "claude",
+        "face": idle, "label": SID, "pid": 1,
+    })));
+    sink.send(frame(serde_json::json!({
+        "kind": "session_status", "sid": SID, "face": needs, "label": SID,
+    })));
+    let book = faces_here().expect("起过发帧口 ⇒ 有那一本");
+    let order = book
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .face(SID)
+        .map(|f| f.order);
+    assert_eq!(order, Some(needs.order));
 }
 
 /// ★ 注解动了（改名 · 星标 · 隐藏 · 别的进程写的也算）⇒ 重判隐藏那一处响清单的节点（不分会话：不在跟的那几行也可能变）。
