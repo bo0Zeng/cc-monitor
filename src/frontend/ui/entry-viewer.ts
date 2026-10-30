@@ -33,7 +33,7 @@ import { splitButton } from "./kit/split-button";
 import { defaultPick, pickAsk, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
 import { openSession } from "./session-open";
 import { standingOf } from "./sessions-where";
-import type { Run } from "./generated/Run";
+import type { Launch } from "./generated/Launch";
 import { openNewSession } from "./new-session";
 import { revealInFolder } from "./reveal-in-folder";
 import { terminalFrontAvailable } from "./terminal-front";
@@ -261,7 +261,7 @@ function resumeControl(r: HistoryRow): HTMLElement {
     : r.lastAccount
       ? { kind: "list", items: [{ name: r.lastAccount, label: r.lastAccount, quota: null, last: true }] }
       : { kind: "off" };
-  let machineRun: Run | undefined;
+  let machineRun: Launch | undefined;
   const go = async (): Promise<void> => {
     setBusy(sb.main, copyText("history.resume.busy"));
     try {

@@ -2,7 +2,7 @@
 //! 有 Rust 客户端的那几端照这里的类型发；回包住 [`crate::session`]（[`crate::session::Opened`] · [`crate::session::OpenFacts`]），
 //! 名字与回包挂在 [`crate::Call`] 上。判定（用哪个号 · 放在哪 · 起不起）全在后端 `control/session_open`。
 
-use crate::session::Run;
+use crate::session::Launch;
 use serde::{Deserialize, Serialize};
 
 /// `session-open` 的入参（`deny_unknown_fields`：多送一格 ⇒ 拒）。
@@ -23,7 +23,7 @@ pub struct SessionOpenReq {
     /// 放在哪；缺 ＝ 这台定（新起：有 tmux 就 tmux、分叉照源会话那一种；恢复：照这台的偏好）。接回不收。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub run: Option<Run>,
+    pub run: Option<Launch>,
     /// 开窗的那台就是这台（本机 Windows 渲 PowerShell；本机直路不带工作目录）。
     pub local: bool,
     /// 这一趟的票（每次点一下一张；期限到了带同一张再问 ⇒ 认出同一趟，不起第二个）。缺 ⇒ 不认。

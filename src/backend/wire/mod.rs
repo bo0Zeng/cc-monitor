@@ -38,7 +38,7 @@ pub use cmd_wire::frame::{RunDid, RunEnded, RunInfo, RunState, RunWhy};
 pub use cmd_wire::frame::{SessionBranch, SessionRuns, TerminalFollowEnd, TerminalScreen};
 pub use cmd_wire::frame::{SessionFileGone, SessionFileReread};
 pub use cmd_wire::frame::{Topic, Unavailable};
-use cmd_wire::session::Run;
+use cmd_wire::session::Launch;
 
 /// 一条会话此刻处在哪一段（[`SessionFaceExt::of`] 的入参）：比线上那一格 [`WireLife`] 多带写字要的几样
 /// （住在哪种宿主里 · 记录读没读完 · 那台看不见）。
@@ -191,7 +191,7 @@ impl SessionFaceExt for SessionFace {
                     can: SessionCan {
                         close: CanClose::No { why: running() },
                         resume: no(running()),
-                        term: CanTerm::Yes { host: Run::Tmux },
+                        term: CanTerm::Yes { host: Launch::Tmux },
                         reattach: Allow::Yes,
                         // 离开「活」两样都能换：记在注解上、下次恢复用上（没有终端也收）。
                         model: Allow::Yes,
@@ -387,9 +387,9 @@ fn live_face(
             resume: no(running()),
             term: CanTerm::Yes {
                 host: match host {
-                    Some(Housed::In(TerminalHost::Tmux)) => Run::Tmux,
-                    Some(Housed::In(TerminalHost::Managed)) => Run::Managed,
-                    Some(Housed::Bare) | None => Run::Direct,
+                    Some(Housed::In(TerminalHost::Tmux)) => Launch::Tmux,
+                    Some(Housed::In(TerminalHost::Managed)) => Launch::Managed,
+                    Some(Housed::Bare) | None => Launch::Direct,
                 },
             },
             reattach: no(running()),

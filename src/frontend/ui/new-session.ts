@@ -37,7 +37,7 @@ import { askDir, askFacts, type OpenFacts } from "./new-session-reads";
 import type { AccountUnavailable } from "./generated/AccountUnavailable";
 import type { NewOpen } from "./generated/NewOpen";
 import type { ForkSlot } from "./generated/ForkSlot";
-import type { Run } from "./generated/Run";
+import type { Launch } from "./generated/Launch";
 import { readMachines } from "./machine-feed";
 import type { MachineState } from "./generated/MachineState";
 import { readStrategies } from "./rot-reads";
@@ -267,7 +267,7 @@ interface PlaceRadio {
 type Place = "managed" | "tmux" | "window";
 
 /** 勾的那一张 ⇒ 线上 `run` 那一格。 */
-const PLACE_RUN: Record<Place, Run> = { managed: "managed", tmux: "tmux", window: "direct" };
+const PLACE_RUN: Record<Place, Launch> = { managed: "managed", tmux: "tmux", window: "direct" };
 
 /** 「运行于」那一张：单选 ＋ 名字 ＋ 灰字。 */
 function placeRadio(places: HTMLElement, value: Place, title: string): PlaceRadio {
