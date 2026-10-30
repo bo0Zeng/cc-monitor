@@ -37,7 +37,10 @@ fn a_jump_hop_is_named_in_the_sentence_and_structured_in_the_endpoint() {
     let v = line(StageRow {
         stage: stage::failed(h22(), &named, "[tcp] refused"),
     });
-    assert_eq!(v["stage"]["endpoint"], serde_json::json!({ "host": "h", "port": 22 }));
+    assert_eq!(
+        v["stage"]["endpoint"],
+        serde_json::json!({ "host": "h", "port": 22 })
+    );
     assert_eq!(
         v["stage"]["said"],
         copy_text(

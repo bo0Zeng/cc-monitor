@@ -47,10 +47,9 @@ fn note(want: &AttachWant) -> Option<AttachFaceNote> {
         .filter_map(|c| match &c.phase {
             AttachCardPhase::Failed { said } => Some(said.clone()),
             // 本机那一份副本开不了：照分块那一半读不动本机文件的那一句。
-            AttachCardPhase::Lost => Some(copy_text(
-                "mobFiles.local.readFailed",
-                &[("name", &c.name)],
-            )),
+            AttachCardPhase::Lost => {
+                Some(copy_text("mobFiles.local.readFailed", &[("name", &c.name)]))
+            }
             _ => None,
         })
         .collect();
@@ -173,7 +172,9 @@ mod tests {
 
     #[test]
     fn a_lost_local_copy_reads_like_the_chunk_loop_s_own_read_failure() {
-        let v = face(&want(vec![card(AttachCardPhase::Lost)])).note.expect("有那一条");
+        let v = face(&want(vec![card(AttachCardPhase::Lost)]))
+            .note
+            .expect("有那一条");
         assert_eq!(
             v.text,
             copy_text(
@@ -202,11 +203,11 @@ mod tests {
                 false
             ))
         );
-        let no_local = AttachWant {
-            local: None,
-            ..all
-        };
-        assert_eq!(face(&no_local).note.and_then(|n| n.act), Some(AttachAct::Retry));
+        let no_local = AttachWant { local: None, ..all };
+        assert_eq!(
+            face(&no_local).note.and_then(|n| n.act),
+            Some(AttachAct::Retry)
+        );
         let off = AttachWant {
             offline: Some("devbox 离线".into()),
             ..want(vec![card(AttachCardPhase::Queued)])

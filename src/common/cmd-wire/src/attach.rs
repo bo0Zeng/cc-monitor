@@ -142,9 +142,13 @@ pub enum AttachCardPhase {
     Moving,
     Landed,
     /// 开传前那台就不收：那台写好的那一句（写在卡上）。
-    Refused { said: String },
+    Refused {
+        said: String,
+    },
     /// 传 · 落没成：那台那一句（进卡下那一条）。
-    Failed { said: String },
+    Failed {
+        said: String,
+    },
     /// 本机那一份副本开不了。
     Lost,
 }

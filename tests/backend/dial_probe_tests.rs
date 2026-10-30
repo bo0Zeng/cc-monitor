@@ -398,10 +398,7 @@ async fn every_handshake_stage_is_a_written_line() {
 #[tokio::test(start_paused = true)]
 async fn a_passed_login_lights_three_segments() {
     let fake = Fake::new(vec![Open::Refused(
-        vec![
-            stage::auth_ok(),
-            stage::established(),
-        ],
+        vec![stage::auth_ok(), stage::established()],
         refused("e", None, None),
     )]);
     let (_, cells) = cells_of(&args(), &fake).await;
