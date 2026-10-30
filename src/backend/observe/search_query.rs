@@ -183,7 +183,6 @@ impl<B: FnMut(Option<SearchIndex>)> Lent<B> {
 
 impl<B: FnMut(Option<SearchIndex>)> Drop for Lent<B> {
     fn drop(&mut self) {
-        if std::thread::panicking() { return; }
         if let Some(back) = self.back.as_mut() {
             let index = std::mem::take(&mut self.index);
             back((!std::thread::panicking()).then_some(index));
