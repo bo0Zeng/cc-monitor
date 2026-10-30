@@ -2,13 +2,14 @@ package com.ccmonitor.mobile.core.claude.model
 
 import com.ccmonitor.mobile.core.wire.gen.Block
 import com.ccmonitor.mobile.core.wire.gen.Draw
+import com.ccmonitor.mobile.core.wire.gen.LineDiff
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.Raw
 import com.ccmonitor.mobile.core.wire.gen.Speaker
+import com.ccmonitor.mobile.core.wire.gen.StepBody
 import com.ccmonitor.mobile.core.wire.gen.ToolCard
 import com.squareup.moshi.JsonReader
 import okio.Buffer
-import com.ccmonitor.mobile.core.wire.gen.PatchHunk as WirePatchHunk
 
 /**
  * 核心的通用记录（`IPC-PROTOCOL.md`「通用记录」，线上类 [LineRecord]）⇒ 渲染单元。只按记录 · 说话人 · 块是哪一形排，
@@ -98,11 +99,11 @@ class RecordUnits {
         fun of(records: List<LineRecord>): List<RenderUnit> = RecordUnits().also { it.append(records) }.units()
     }
 
-    /** 一个工具调用配上的结果：正文 · 出错 · 核心给的 patch · 结果那一句（`StepResult.text`）。 */
+    /** 一个工具调用配上的结果：正文 · 出错 · 核心算好的行差（`StepResult.patch`）· 结果那一句（`StepResult.text`）。 */
     private class Result(
         val text: String,
         val isError: Boolean,
-        val patch: List<PatchHunk>?,
+        val patch: LineDiff?,
         val file: String?,
         val line: String?,
     )
@@ -114,13 +115,9 @@ class RecordUnits {
             val id = b.`for`
             val text = b.content.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
             val one = said[id]
-            id to Result(text, b.isError, one?.patch?.map(::hunk), one?.file, one?.text?.takeIf { it.isNotEmpty() })
+            id to Result(text, b.isError, one?.patch, one?.file, one?.text?.takeIf { it.isNotEmpty() })
         }
     }
-
-    /** 线上那一块 diff ⇒ 渲染用的那一块。 */
-    private fun hunk(h: WirePatchHunk): PatchHunk =
-        PatchHunk(h.oldStart.toInt(), h.oldLines.toInt(), h.newStart.toInt(), h.newLines.toInt(), h.lines)
 
     private fun unitsOf(
         r: LineRecord,
@@ -193,7 +190,8 @@ class RecordUnits {
             isError = res?.isError == true,
             pending = res == null,
             sourceUuid = r.id,
-            structuredPatch = res?.patch,
+            // 结果带着行差（真行号）就画结果那份，否则画调用那份（与桌面同一条）。
+            diff = res?.patch ?: (step?.body as? StepBody.Changes)?.diff,
             patchFilePath = res?.file,
             summary = (step?.arg ?: step?.text).orEmpty(),
             resultLine = res?.line,

@@ -46,8 +46,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { owned } from "../../test-support/owned-tab-manager.ts";
 import { announced } from "../../test-support/session-faces";
-import { readdirSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { sourceFiles } from "../../test-support/production-sources";
 import { estimateStreamNodeHeight, __resetUnknownCardWarnings } from "../../../src/frontend/ui/height-estimate";
 import { buildApiRetryCard } from "../../../src/frontend/ui/cards/api-error";
 import { buildBashInputCard, buildBashOutputCard } from "../../../src/frontend/ui/cards/bash";
@@ -261,15 +260,12 @@ describe("秤 3 · 卡型覆盖：没有一个卡型还在落 120px 兜底", () 
    * 射程（要写清，别让人当成"全仓卡型都覆盖了"）：只扫 `src/frontend/ui/cards/*.ts` 里
    * 形如 `"card card-xxx"` 的字面量。动态拼 class 名的、别处建的卡，**扫不到**。
    */
-  // `__dirname` 在 vitest 里指向 `tests/`（同 `account-base-semantics.vitest.ts:36` 的用法）
-  const CARD_SRC_DIR = resolve(__dirname, "../../../src/frontend/ui/cards");
   /** 这个是 `<details>`，估高走「折叠态 summary 一行」那一支 */
   const DETAILS_CLASSES = new Set(["card-compact"]);
 
   function cardClassesFromSource(): string[] {
     const found = new Set<string>();
-    for (const f of readdirSync(CARD_SRC_DIR).filter((n) => n.endsWith(".ts"))) {
-      const src = readFileSync(resolve(CARD_SRC_DIR, f), "utf8");
+    for (const { text: src } of sourceFiles("src/frontend/ui/cards", { ext: ".ts", shallow: true })) {
       for (const m of src.matchAll(/"card (card-[a-z0-9-]+)"/g)) found.add(m[1]);
     }
     return [...found].sort();

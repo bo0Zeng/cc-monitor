@@ -70,7 +70,7 @@ pub struct JsonlLinePayload {
     #[cfg_attr(test, ts(optional))]
     #[serde(rename = "origin", skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
-    /// 这一行的通用记录 —— 那台后端的成品（`agents/record.rs::Record`，ts-rs 从后端导出），
+    /// 这一行的通用记录 —— 那台后端的成品（`cmd-wire/src/record.rs::Record`，ts-rs 从共享 crate 导出），
     /// monitor **原样转交、一个字段都不读**。
     #[cfg_attr(test, ts(type = "import(\"./LineRecord\").LineRecord"))]
     pub record: RecordBody,
@@ -286,6 +286,7 @@ pub struct FrontendReadyPayload {
 /// 本机后端此刻起没起来（壳自己的事实：这台电脑上的进程）。[`events::LOCAL_BACKEND`] 那一帧与 `backend_status` 的 `local` 那一格。
 /// 连着 ⇒ 本机那一台的状态成品由本机后端出，这里只说连着；没连着的几样各带名字旁那个词 · 问题行那一句 · 修法
 /// （壳写好的；起不来那几样只有［重试］＝ 再起一次本机后端），被拒时再带一句下一步。
+/// 没连着的几样还各带画成机器的哪一态（`look`：点照机器那一张表挑）与问题行的语气（`tone`），界面不按 `state` 另判。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
@@ -294,9 +295,16 @@ pub enum LocalBackend {
     /// 通道在：本机那一行看本机后端的成品。
     Up,
     /// 起本机后端那一趟正在走。
-    Starting { word: String, said: String },
+    Starting {
+        look: cmd_wire::machine::MachineStateKind,
+        tone: cmd_wire::cells::Tone,
+        word: String,
+        said: String,
+    },
     /// 没起来、接不上。
     Down {
+        look: cmd_wire::machine::MachineStateKind,
+        tone: cmd_wire::cells::Tone,
         word: String,
         said: String,
         fixes: Vec<cmd_wire::machine::FixButton>,
@@ -304,6 +312,8 @@ pub enum LocalBackend {
     },
     /// 口上占着的那一份比这一版旧（终端里先起的旧版）。
     Older {
+        look: cmd_wire::machine::MachineStateKind,
+        tone: cmd_wire::cells::Tone,
         word: String,
         said: String,
         fixes: Vec<cmd_wire::machine::FixButton>,
@@ -311,6 +321,8 @@ pub enum LocalBackend {
     },
     /// 口上占着的那一份比这一版新。
     Newer {
+        look: cmd_wire::machine::MachineStateKind,
+        tone: cmd_wire::cells::Tone,
         word: String,
         said: String,
         fixes: Vec<cmd_wire::machine::FixButton>,

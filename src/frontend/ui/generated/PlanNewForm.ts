@@ -4,7 +4,7 @@ import type { PlanNewExisting } from "./PlanNewExisting";
 import type { PlanPb } from "./PlanPb";
 
 /**
- * `plan-new` 的回包：在那个目录开一片能选哪几档 · 落在哪 · 撞没撞上 · 要敲的那一行（[`super::new_slice`]）。
+ * `plan-new` 的回包：在那个目录开一片能选哪几档 · 落在哪 · 撞没撞上 · 要敲的那一行（后端 `plan::new_slice`）。
  */
 export type PlanNewForm = { 
 /**

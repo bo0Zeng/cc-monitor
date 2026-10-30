@@ -204,8 +204,11 @@ object HistorySearch {
  * 不交哪一台当信差。每台原样交它的回包（核心按类型解，整数照整数写）。
  */
 object SearchMerge {
-    /** [answered]：每台 `(hostId, 它 history-search 回包原样)` ⇒ 交核心的那一行。 */
-    fun input(answered: List<Pair<String, Any?>>): String = Json.line(answered.map { (origin, reply) -> mapOf("origin" to origin, "reply" to reply) })
+    /** [q] 搜的词（结果头那一句由核心写）；[answered]：每台 `(hostId, 它 history-search 回包原样)` ⇒ 交核心的那一行。 */
+    fun input(
+        q: String,
+        answered: List<Pair<String, Any?>>,
+    ): String = Json.line(mapOf("q" to q, "answered" to answered.map { (origin, reply) -> mapOf("origin" to origin, "reply" to reply) }))
 
     /** 核心合好的那一行；读不动 ⇒ `null`。 */
     fun of(text: String): Merged? = Json.value(text)?.let { Wire.bind<Merged>(it) }

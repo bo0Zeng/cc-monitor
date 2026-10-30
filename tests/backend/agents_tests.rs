@@ -216,6 +216,16 @@ fn an_agent_name_left_out_is_the_default_and_a_misspelled_one_is_refused() {
         .map(|a| row(a.kind, a.home, a.launch))
         .collect();
     reg.push(row(fake::AGENT_KIND, synth_home_absent, Some(fake::LAUNCH)));
+    // 起会话事实按注册表那一行取（`ccm` 的规划只问这一格）：夹具家拿到夹具那一格，注册表外的名字没有，不落到哪一家。
+    let face_of = |n: &str| launch_face_among(&reg, n).map(|f| f.adapter_id);
+    assert_eq!(face_of(fake::AGENT_KIND), Some(fake::LAUNCH.adapter_id));
+    assert_ne!(
+        face_of(fake::AGENT_KIND),
+        face_of(crate::agents::claudecode::AGENT_KIND)
+    );
+    for stray in ["gemini", "Claude", ""] {
+        assert_eq!(face_of(stray), None, "{stray:?} 拿到了某一家的起会话事实");
+    }
     let kind = |n: Option<&str>| pick_kind_among(&reg, n).map(|(k, _)| k);
     // 没写 / 写空 / 只有空白 ⇒ 默认那一家。
     for n in [None, Some(""), Some("  ")] {
@@ -646,7 +656,6 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         quiet_unread: None,
         skim: None,
         beats: None,
-        fork: None,
     }
 }
 

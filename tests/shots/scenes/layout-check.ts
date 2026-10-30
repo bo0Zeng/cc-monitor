@@ -15,6 +15,7 @@
  *    （号名可以省略，只读的封顶标签可以省略）；兜底开关开着 ⇒ 看得见、有底色；关着 ⇒ 所在行没悬停、没焦点时看不见。
  * 8. 鼠标停着的人说的那一句：「编辑」看得见、整颗不伸出任何会裁它的祖先（绘制隔离 `content-visibility: auto` · 溢出裁切）、中心点命中它自己。
  * 9. 输入框上方那一排输入队：多于三条时那一排最多三行高（头上那一行另算），多的在框里滚，不往上顶消息流。
+ * 10. 答题块：最高约会话区四成（下限 160px）；收着只剩头一行；消息流贴着底时最后一条露在块上面。
  *
  * 回一串「哪里不对」；空 ＝ 都对。
  */
@@ -264,7 +265,8 @@ function overStream(): string[] {
     ];
     for (const [x, y] of pts) {
       const hit = document.elementFromPoint(x, y);
-      if (hit && !f.contains(hit) && hit.closest(".stream")) {
+      // 只认这一格消息流里的流：全屏视图（历史页的预览流 …）压在整格上面时盖住的是整格，不是流盖住块。
+      if (hit && !f.contains(hit) && root.contains(hit) && hit.closest(".stream")) {
         out.push(`浮在流上的 ${name(f)} ${fmt(r)} 在 (${Math.round(x)},${Math.round(y)}) 被流里的 ${name(hit)} 盖住`);
         break;
       }
@@ -321,8 +323,29 @@ function queueRows(): string[] {
   return out;
 }
 
+/** 10. 答题块：最高约会话区（输入框以上）四成（至少 160px 那一格下限）；收着 ⇒ 底下那一截不画；消息流贴着底时最后一条露在块上面。 */
+function answerBlock(): string[] {
+  const out: string[] = [];
+  const root = document.getElementById("message-stream");
+  const block = root?.querySelector<HTMLElement>(':scope > [role="group"]');
+  if (!root || !block || !visible(block) || block.dataset.goneOnly === "true") return out;
+  const br = block.getBoundingClientRect();
+  const composer = parseFloat(getComputedStyle(root).getPropertyValue("--composer-room")) || 0;
+  const cap = Math.max((root.getBoundingClientRect().height - composer) * 0.4, 160);
+  if (br.height > cap + EPS) out.push(`答题块 ${fmt(br)} 高过会话区四成（${Math.round(cap)}px）`);
+  const scroll = block.querySelector<HTMLElement>('[data-part="scroll"]');
+  if (block.dataset.folded === "true" && scroll && visible(scroll)) out.push(`答题块收着，底下那一截 ${fmt(scroll.getBoundingClientRect())} 还画着`);
+  const sc = root.querySelector<HTMLElement>(".stream.active");
+  if (sc && sc.scrollHeight - sc.scrollTop - sc.clientHeight < 8) {
+    const last = [...sc.children].reverse().find((c) => visible(c));
+    const lr = last?.getBoundingClientRect();
+    if (last && lr && lr.bottom > br.top + EPS) out.push(`消息流贴着底，最后一条 ${name(last)} ${fmt(lr)} 被答题块 ${fmt(br)} 盖住`);
+  }
+  return out;
+}
+
 export function layoutProblems(): string[] {
-  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...chartRows(), ...messageRows(), ...overStream(), ...hoveredEdit(), ...queueRows()];
+  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...chartRows(), ...messageRows(), ...overStream(), ...hoveredEdit(), ...queueRows(), ...answerBlock()];
   // 也写进页里的控制台（截图工具每张存一份），整趟被打断时还查得到。
   for (const p of out) console.warn(`[layout] ${p}`);
   return out;

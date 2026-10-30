@@ -48,9 +48,7 @@ ERR="$WORK/backend.stderr"
 
 [ -x "$BACKEND" ] || { echo "backend 二进制不存在/不可执行：$BACKEND"; exit 1; }
 
-pass=0; fail=0
-ok()  { echo "  PASS $1"; pass=$((pass+1)); }
-bad() { echo "  FAIL $1"; fail=$((fail+1)); }
+. "$E2E_DIR/assert.sh"
 
 cleanup() {
   set +e
@@ -219,5 +217,4 @@ if [ "$gone" = 1 ]; then ok "stdin 开着时 SIGTERM 仍能立刻收掉 backend"
   kill -9 "$P2" 2>/dev/null || true
 fi
 
-echo "===== 合计 PASS=$pass FAIL=$fail ====="
-[ "$fail" -eq 0 ]
+finish

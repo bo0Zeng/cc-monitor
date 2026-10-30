@@ -1,5 +1,5 @@
 /**
- * 活卡的判据（界面那一半：照壳交来的整份画）。
+ * 活卡的判据（界面那一半：照壳交来的整份画；同一张卡逐帧复用节点、正文只追加新的那一截）。
  *
  * 对账 · 缺口 · 记录到了整轮覆盖 · 子运行归位 · 截头 · 挤谁都在后端（`src/backend/stream/live.rs`，判据 `tests/backend/stream/live_tests.rs`）；
  * 一帧一帧折成整份在端核心（`src/comms/resident-client/live.rs`，判据 `tests/comms/resident-client/live_tests.rs`）。
@@ -28,8 +28,7 @@ vi.mock("../../../src/frontend/ui/behavior", () => ({
 }));
 vi.mock("../../../src/frontend/ui/fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
 
-import { LiveCards, renderCardText } from "../../../src/frontend/ui/live-card";
-import { copyText } from "../../../src/frontend/ui/copy-table";
+import { LiveCards, type LiveCardState } from "../../../src/frontend/ui/live-card";
 import { installViewerRig, line, userLine, type RigPayload } from "../../test-support/session-viewer-rig";
 import { TabManager } from "../../../src/frontend/ui/tabs";
 import { livePainter } from "../../../src/frontend/ui/live-card-view";
@@ -41,7 +40,7 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
 
 const O = "<local>";
 
-/** 一张卡此刻的样子：思考块 ＋ 正文块（＋ 工具块）。 */
+/** 一张卡此刻的样子：思考块 ＋ 正文块（＋ 工具块）；头一行 · 正文 · 「最近」那一截是核心写好的（这里是结构占位）。 */
 function now(card: number, rid: string, text: string, phase: "streaming" | "awaiting" = "streaming", tool?: string): LiveCardNow {
   return {
     card,
@@ -49,6 +48,9 @@ function now(card: number, rid: string, text: string, phase: "streaming" | "awai
     phase,
     clipped: false,
     blocks: [{ kind: "thinking" }, { kind: "text", text }, ...(tool ? [{ kind: "tool" as const, tool }] : [])],
+    head: `核心·头·${phase}`,
+    body: `核心·正文·${text}`,
+    ...(phase === "streaming" ? { last: `核心·最近·${rid}` } : {}),
   };
 }
 
@@ -61,28 +63,20 @@ const pay = (sid: string, cards: LiveCardNow[], origin = O, run?: string): Sessi
 const board = (route: (origin: string, sid: string) => boolean = () => true): LiveCards => new LiveCards(route, () => null);
 
 describe("活卡照画（期望手写）", () => {
-  it("一张卡：正文照那一份；思考只显示一行、工具显示名字；说完之前是「生成中」，说完是「等待写入记录」", () => {
+  it("★ 一张卡：头一行 · 正文照核心写好的摆（不按块的种类取字）", () => {
     const b = board();
-    b.onCards(pay("s1", [now(7, "m1", "你好")]));
-    const [mid] = b.cardsOf("s1");
-    expect(renderCardText(mid!)).toEqual({
-      head: copyText("liveCard.state.streaming"),
-      body: [copyText("liveCard.block.thinking"), "你好"].join("\n"),
-    });
     b.onCards(pay("s1", [now(7, "m1", "你好", "awaiting", "Read")]));
-    const [end] = b.cardsOf("s1");
-    expect(renderCardText(end!)).toEqual({
-      head: copyText("liveCard.state.awaitingRecord"),
-      body: [copyText("liveCard.block.thinking"), "你好", copyText("liveCard.block.toolUse", { tool: "Read" })].join("\n"),
-    });
-    expect(end!.messageId).toBe("m1");
+    const host = document.createElement("div");
+    livePainter.cards(host, b.cardsOf("s1"));
+    expect(host.textContent).toBe("核心·头·awaiting核心·正文·你好");
+    expect(b.cardsOf("s1")[0]!.messageId).toBe("m1");
   });
 
   it("每一格换掉那一处手上那一份；空的一格 ⇒ 那一处不画", () => {
     const b = board();
     b.onCards(pay("s1", [now(7, "m1", "a")]));
-    b.onCards(pay("s1", [{ ...now(7, "m1", ""), clipped: true, blocks: [{ kind: "text", text: "尾巴" }] }]));
-    expect(b.cardsOf("s1").map((c) => [c.clipped, c.blocks[0]!.text])).toEqual([[true, "尾巴"]]);
+    b.onCards(pay("s1", [now(7, "m1", "尾巴")]));
+    expect(b.cardsOf("s1").map((c) => c.body)).toEqual(["核心·正文·尾巴"]);
     b.onCards(pay("s1", []));
     expect(b.size).toBe(0);
   });
@@ -95,7 +89,9 @@ describe("活卡照画（期望手写）", () => {
     b.onCards(pay("s1", [now(3, "r", "子")], O, "a1"));
     expect(b.cardsOf("s1")).toEqual([]);
     expect(b.cardsOf("s1", "a1")).toHaveLength(1);
-    expect(b.liveBlockOf("s1", "a1")).toEqual({ kind: "text", text: "子", tool: undefined });
+    expect(b.liveLastOf("s1", "a1")).toBe("核心·最近·r");
+    b.onCards(pay("s1", [now(3, "r", "子", "awaiting")], O, "a1"));
+    expect(b.liveLastOf("s1", "a1"), "说完了 ⇒ 没有那一截").toBeNull();
   });
 
   it("那台看不见了 ⇒ 那台的卡全撤；tab 没了 ⇒ 它的卡不留", () => {
@@ -106,6 +102,100 @@ describe("活卡照画（期望手写）", () => {
     expect(b.cardsOf("s2")).toEqual([]);
     b.dropTab("s1");
     expect(b.size).toBe(0);
+  });
+});
+
+describe("活卡增量画（同一张卡的节点复用，正文只追加新的那一截）", () => {
+  const st = (key: string, body: string, phase: "streaming" | "awaiting" = "streaming", head = "头"): LiveCardState => ({
+    key,
+    messageId: "m",
+    phase,
+    head,
+    body,
+  });
+  const bodyText = (host: HTMLElement, key: string): Text => {
+    const t = host.querySelector(`[data-live-key="${key}"]`)?.lastElementChild?.firstChild;
+    expect(t, `卡 ${key} 的正文文本节点`).toBeInstanceOf(Text);
+    return t as Text;
+  };
+
+  it("★ 连来两帧、第二帧正文接着第一帧往下说 ⇒ 卡 · 正文文本节点都是同一个，只多了新的那一截", () => {
+    const host = document.createElement("div");
+    livePainter.cards(host, [st("k1", "一二三")]);
+    const card = host.firstElementChild;
+    const text = bodyText(host, "k1");
+    const appended: string[] = [];
+    const orig = Text.prototype.appendData;
+    const spy = vi.spyOn(Text.prototype, "appendData").mockImplementation(function (this: Text, d: string) {
+      appended.push(d);
+      orig.call(this, d);
+    });
+    try {
+      livePainter.cards(host, [st("k1", "一二三四五")]);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(host.firstElementChild).toBe(card);
+    expect(bodyText(host, "k1")).toBe(text);
+    expect(text.data).toBe("一二三四五");
+    expect(appended).toEqual(["四五"]);
+    expect(host.textContent).toBe("头一二三四五");
+  });
+
+  it("一张卡连喂 500 段（每段 40 字）⇒ 头一帧之后不再新建节点、正文一直是同一个文本节点", () => {
+    const host = document.createElement("div");
+    const seg = "字".repeat(40);
+    let body = seg;
+    livePainter.cards(host, [st("k1", body)]);
+    const text = bodyText(host, "k1");
+    const create = vi.spyOn(document, "createElement");
+    const createText = vi.spyOn(document, "createTextNode");
+    try {
+      for (let i = 1; i < 500; i++) {
+        body += seg;
+        livePainter.cards(host, [st("k1", body)]);
+      }
+      expect(create).not.toHaveBeenCalled();
+      expect(createText).not.toHaveBeenCalled();
+    } finally {
+      create.mockRestore();
+      createText.mockRestore();
+    }
+    expect(bodyText(host, "k1")).toBe(text);
+    expect(text.data).toBe(body);
+  });
+
+  it("正文不以旧值开头（核心截了头）⇒ 整段换成新值；样子 · 头一行跟着这一帧", () => {
+    const host = document.createElement("div");
+    livePainter.cards(host, [st("k1", "abcdef")]);
+    const card = host.firstElementChild as HTMLElement;
+    const streamingClass = card.className;
+    livePainter.cards(host, [st("k1", "cdefgh", "awaiting", "头2")]);
+    expect(host.firstElementChild).toBe(card);
+    expect(bodyText(host, "k1").data).toBe("cdefgh");
+    expect(card.firstElementChild?.textContent).toBe("头2");
+    expect(card.className).not.toBe(streamingClass);
+    livePainter.cards(host, [st("k1", "cdefgh", "streaming", "头2")]);
+    expect(card.className).toBe(streamingClass);
+    livePainter.cards(host, [st("k1", "", "streaming", "头2")]);
+    expect(host.textContent).toBe("头2");
+    livePainter.cards(host, [st("k1", "再来", "streaming", "头2")]);
+    expect(host.textContent).toBe("头2再来");
+  });
+
+  it("卡的增减与先后照这一帧：留下的那张节点复用，撤掉的不留，新来的排在后面", () => {
+    const host = document.createElement("div");
+    livePainter.cards(host, [st("k1", "a"), st("k2", "b")]);
+    const k2 = host.querySelector('[data-live-key="k2"]');
+    livePainter.cards(host, [st("k2", "bc"), st("k3", "x")]);
+    expect([...host.children].map((c) => (c as HTMLElement).dataset.liveKey)).toEqual(["k2", "k3"]);
+    expect(host.firstElementChild).toBe(k2);
+    expect(host.textContent).toBe("头bc头x");
+    livePainter.cards(host, [st("k3", "xy"), st("k2", "bc")]);
+    expect([...host.children].map((c) => (c as HTMLElement).dataset.liveKey)).toEqual(["k3", "k2"]);
+    expect(host.lastElementChild).toBe(k2);
+    livePainter.cards(host, []);
+    expect(host.childElementCount).toBe(0);
   });
 });
 

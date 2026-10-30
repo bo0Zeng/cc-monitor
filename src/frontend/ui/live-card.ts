@@ -6,32 +6,20 @@
  * {@link LiveCards} 把每个 tab 此刻的卡画到它流尾巴上的那一块（`MessageStream.trailerElement`）。活卡**不进时间线**：
  * 不占 seq、不进去重集、不进大纲 / 查找 / 改动集 —— 全会话事实只读 json。主 tab 只画主运行的卡（`run` 缺）。
  */
-import { copyText } from "./copy-table";
 import type { LiveCardNow } from "./generated/LiveCardNow";
 import type { SessionLiveCardsPayload } from "./generated/SessionLiveCardsPayload";
 import type { RunInfo } from "./generated/RunInfo";
 import { RunBoard, type RunTable } from "./runs";
 
-type BlockKind = import("./generated/BlockKind").BlockKind;
-
-/** 活卡里的一块。 */
-export interface LiveBlock {
-  kind: BlockKind;
-  /** `text` 块已到的正文；其余块没有正文（思考不展开、工具入参不显示）。 */
-  text: string;
-  /** 工具块的工具名。 */
-  tool?: string;
-}
-
-/** 一张活卡此刻的样子（给视图 / 判据读）。 */
+/** 一张活卡此刻的样子（给视图 / 判据读）：头一行与正文是端核心折卡时写好的（`resident-client` 的活卡板），这里照摆、不按块的种类取字。 */
 export interface LiveCardState {
   key: string;
   messageId: string;
-  /** `streaming` = 上游还在说；`awaiting` = 上游说完了、那一轮的记录还没到。 */
+  /** `streaming` = 上游还在说；`awaiting` = 上游说完了、那一轮的记录还没到（只挑样子）。 */
   phase: "streaming" | "awaiting";
-  blocks: LiveBlock[];
-  /** 正文被截过头（后端只留了尾巴）。 */
-  clipped: boolean;
+  head: string;
+  /** 纯文字，一块一行（不走 Markdown / 高亮 —— 定稿那一张卡才走渲染管线）。 */
+  body: string;
 }
 
 /** 手上那一处（某台某会话某运行）最新那一份。 */
@@ -46,31 +34,15 @@ const stateOf = (origin: string, c: LiveCardNow): LiveCardState => ({
   key: `${origin}\u0000${c.card}`,
   messageId: c.rid,
   phase: c.phase,
-  blocks: c.blocks.map((b) => ({ kind: b.kind, text: b.text ?? "", tool: b.tool })),
-  clipped: c.clipped,
+  head: c.head,
+  body: c.body,
 });
-
-/** 把一张活卡画成纯文本行（视图与判据共用；不走 Markdown / 高亮 —— 定稿那一张卡才走渲染管线）。 */
-export function renderCardText(card: LiveCardState): { head: string; body: string } {
-  const head =
-    card.phase === "streaming"
-      ? copyText("liveCard.state.streaming")
-      : copyText("liveCard.state.awaitingRecord");
-  const parts: string[] = [];
-  if (card.clipped) parts.push(copyText("liveCard.body.clipped"));
-  for (const b of card.blocks) {
-    if (b.kind === "text") parts.push(b.text);
-    else if (b.kind === "thinking") parts.push(copyText("liveCard.block.thinking"));
-    else if (b.kind === "tool") parts.push(copyText("liveCard.block.toolUse", { tool: b.tool ?? "?" }));
-  }
-  return { head, body: parts.filter((x) => x.length > 0).join("\n") };
-}
 
 /** 宿主给视图的口：某个 tab 流尾巴上的那一块（没有这个 tab ⇒ `null`）。 */
 export type TrailerOf = (sid: string) => HTMLElement | null;
 
 /**
- * 把一个 tab 此刻的活卡画进它流尾巴上那一块（整块重画）。实现住 `live-card-view.ts`（带 `.module.css`），
+ * 把一个 tab 此刻的活卡画进它流尾巴上那一块（同一张卡沿用节点、正文只追加）。实现住 `live-card-view.ts`（带 `.module.css`），
  * **由主窗口的入口装进来**（`TabManager.setLivePainter`）：本文件被主窗口与独立查看器两个入口共用（进共享块），
  * 而 `.module.css` 进共享块会让它的规则排在主窗口全局样式之前（`entry-graphs` 的次序判据）—— 画法只有主窗口要
  * （只有它订 `session-live-card`），所以样式跟着画法住主窗口独有的那一块。
@@ -82,7 +54,7 @@ export interface LivePainter {
 
 /**
  * 视图：手上每一处最新那一份整份（`route(origin, sid)` 由宿主给：这台上有这个 tab ⇒ 留，没有就没处画）；
- * 主运行那一处变了 ⇒ 它流尾巴上那一块整块重画。没装画法（独立查看器那一形）⇒ 只记不画。
+ * 主运行那一处变了 ⇒ 重画它流尾巴上那一块（同一张卡沿用节点、正文只追加）。没装画法（独立查看器那一形）⇒ 只记不画。
  */
 export class LiveCards {
   private readonly held = new Map<string, Held>();
@@ -119,11 +91,10 @@ export class LiveCards {
     return h ? h.cards.map((c) => stateOf(h.origin, c)) : [];
   }
 
-  /** 某个子运行此刻在生成的那一块（给它那一行的「最近：…」）：最新那张正在说的卡的最后一块；没有 ⇒ `null`。 */
-  liveBlockOf(sid: string, run: string): LiveBlock | null {
-    const speaking = this.cardsOf(sid, run).filter((c) => c.phase === "streaming");
-    const last = speaking[speaking.length - 1];
-    return last?.blocks[last.blocks.length - 1] ?? null;
+  /** 某个子运行那一行的「最近：…」那一截：最新一张带着它的卡上核心写好的那一句；没有 ⇒ `null`。 */
+  liveLastOf(sid: string, run: string): string | null {
+    const cards = this.held.get(`${sid}\u0000${run}`)?.cards ?? [];
+    return [...cards].reverse().find((c) => c.last !== undefined)?.last ?? null;
   }
 
   /** 一个会话的运行表到了。回：这一次收场的那几个（卡由后端撤）。 */

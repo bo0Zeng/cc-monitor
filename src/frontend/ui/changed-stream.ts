@@ -10,6 +10,7 @@ import type { Item } from "../../comms/inward/chan";
 import { tryDecodeJson } from "./ipc/decode";
 import type { Changed as ChangedFrame } from "./generated/Changed";
 import type { Topic } from "./generated/Topic";
+import { CHANGED_KIND } from "./generated/shell-names";
 
 export type { Topic };
 
@@ -19,8 +20,6 @@ export type TopicBody<T extends Topic> = Extract<ChangedFrame, { topic: T }> ext
 /** 带体的那几个主题。 */
 export type BodiedTopic = { [T in Topic]: [TopicBody<T>] extends [never] ? never : T }[Topic];
 
-/** 与 Rust `event_replay.rs::CHANGED_KIND` 同一个串；流名是 `changed/<topic>`。 */
-export const CHANGED_KIND = "changed";
 /** 每条订阅一开始给多少格 credit（每一次变化至多一格），用完一格还一格。 */
 export const CHANGED_WINDOW = 32;
 

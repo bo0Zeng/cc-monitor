@@ -3,6 +3,7 @@ import type { DialWhy } from "./DialWhy";
 import type { MachineFixButton } from "./MachineFixButton";
 import type { MachineStage } from "./MachineStage";
 import type { MachineStateKind } from "./MachineStateKind";
+import type { MachineStripLine } from "./MachineStripLine";
 import type { VersionRelation } from "./VersionRelation";
 
 /**
@@ -65,4 +66,8 @@ detail: string | null,
  * 到这台怎么连过去的那一句（「经跳板 devbox · 经代理」；多跳外到内「经跳板 a → b」）：跳板照配置，经代理连上了才知道。
  * 直连又不经代理 ⇒ 省略。界面有就摆一行，不拼字；每条连接的读数不上卡头，在 `detail` 末尾「连接：」那一段。
  */
-route?: string, };
+route?: string, 
+/**
+ * 机器条上那一行（缺 ⇒ 不进条：连着的 · 比这一版新的 · 停用的 · 还不知道的）。桌面与手机的条都只照这一格画。
+ */
+strip?: MachineStripLine, };

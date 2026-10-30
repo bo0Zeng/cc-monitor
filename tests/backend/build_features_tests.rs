@@ -87,6 +87,32 @@ fn the_backend_release_profile_is_optimized_for_speed_and_keeps_unwinding() {
     );
 }
 
+/// 测试档的调试信息只留行号表：cargo 缺省的全量 DWARF 让后端 lib 测试二进制一份近 1 GB、壳的一份 0.75 GB，
+/// 每改一行再 `cargo test` 都要重链这么大的产物、增量缓存里也存一份。行号表够 panic 回溯印出文件与行号；
+/// 发布档不继承 dev，不受影响。判法：两棵 workspace 的 `[profile.dev] debug` 都是 `"line-tables-only"`。
+#[test]
+fn the_test_build_keeps_only_line_tables_for_debug_info() {
+    let backend = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    for dir in [backend.to_path_buf(), backend.join("../frontend/shell")] {
+        let p = dir.join("Cargo.toml");
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {}：{e}", p.display()));
+        let doc: toml_edit::DocumentMut = text.parse().expect("Cargo.toml 解不动");
+        let debug = doc
+            .get("profile")
+            .and_then(|p| p.get("dev"))
+            .and_then(|d| d.get("debug"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        assert_eq!(
+            debug.as_deref(),
+            Some("line-tables-only"),
+            "{}：`[profile.dev] debug` 要 \"line-tables-only\"（缺省带全量调试信息，测试二进制近 1 GB）",
+            dir.display()
+        );
+    }
+}
+
 /// 测试档里给几样依赖开优化（10-15 量过）：快检的测试段，每个测试二进制的墙钟 ＝ 它最慢的那一条，而最慢的那几条
 /// 慢在**依赖**不开优化 —— 后端轮换一致性的推演（s22 · s26 · s36）跑在沙箱里的 Rhai 上，壳那棵文件窗口的 hover 扫读与滚动区跑在 egui 上。
 /// - 后端：rhai（＋ 它热路径上的 smartstring · ahash）开 3 ⇒ 后端测试二进制 89–93 s → 30–36 s、CPU 少四成六；冷编多一成。

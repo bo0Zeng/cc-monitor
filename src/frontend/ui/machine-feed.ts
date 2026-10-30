@@ -13,9 +13,7 @@ import { commands } from "./ipc/commands";
 import type { LocalBackend } from "./generated/LocalBackend";
 import type { MachineState } from "./generated/MachineState";
 import type { EmptyFace } from "./generated/EmptyFace";
-
-/** 壳那一侧的事件名（`ui_contract::events::LOCAL_BACKEND`）。 */
-export const LOCAL_BACKEND_EVENT = "local-backend";
+import { LOCAL_BACKEND } from "./generated/shell-names";
 
 /** `machine-read` 等多久。 */
 const READ_BUDGET_MS = 5_000;
@@ -29,7 +27,7 @@ export function onLocalBackend(cb: (local: LocalBackend) => void): () => void {
   let dropped = false;
   let pushed = false;
   try {
-    listen<LocalBackend>(LOCAL_BACKEND_EVENT, (e) => {
+    listen<LocalBackend>(LOCAL_BACKEND, (e) => {
       pushed = true;
       cb(e.payload);
     }).then(

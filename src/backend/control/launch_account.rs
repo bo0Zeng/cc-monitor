@@ -151,20 +151,6 @@ pub(crate) fn settle(
     })
 }
 
-/// 判据用：号照请求原样当已判好（判定本身由 `launch_account_tests.rs` 钉；渲染那几族只看映射）。点名的号的目录取 `/h/.cc/<名>`。
-#[cfg(test)]
-pub(crate) fn settled_as_asked(a: &AccountAsk, models: &BTreeMap<String, String>) -> Settled {
-    match a {
-        AccountAsk::Follow => Settled::Unsaid,
-        AccountAsk::Base => Settled::Base,
-        AccountAsk::Named { name } => Settled::Account(LaunchedAccount {
-            name: name.clone(),
-            config_dir: format!("/h/.cc/{name}"),
-            model: models.get(name).cloned(),
-        }),
-    }
-}
-
 /// `account_unavailable` 那一句（界面照 `data` 自己说，这一句给命令行面与日志）。
 pub(crate) fn unavailable_said(u: &AccountUnavailable) -> String {
     let name = u.requested.as_str();

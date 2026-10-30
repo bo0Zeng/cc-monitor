@@ -112,7 +112,7 @@ export class TabManager {
       agentsPanel.host = {
         open: (sid, run) => void this.openRunWindow(sid, { run }),
         isOpen: (sid, run) => this.runWindows.has(`${sid}\u0000${run}`),
-        liveOf: (sid, run) => this.live.liveBlockOf(sid, run),
+        liveOf: (sid, run) => this.live.liveLastOf(sid, run),
       };
     }
     if (onTabsChanged) this.store.subscribe(onTabsChanged);

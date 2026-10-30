@@ -76,17 +76,17 @@ pub const SESSION_LINES_KIND: &str = "session-lines";
 pub const SESSION_LIVE_CARD_KIND: &str = "session-live-card";
 
 /// 又一种流：那台机器上「某样东西变了」（`changed/<主题>`，格体是后端 `changed` 帧去掉 `kind` / `topic` 的那一份 `{key?, rev?, body?}`，没有留存）。
-/// 主题不在这里认：后端主题表（`wire/topic.rs`）是唯一一处，这里原样按主题扇出。TS 那一侧的同一个串住 `src/frontend/ui/changed-stream.ts::CHANGED_KIND`。
+/// 主题不在这里认：后端主题表（`wire/topic.rs`）是唯一一处，这里原样按主题扇出。界面读生成物 `generated/shell-names.ts` 里同名那一格。
 pub const CHANGED_KIND: &str = "changed";
 
 /// 〔「测试连接的进度不许倒退」〕又一种流：本机后端里那一趟测试连接的进度（`probe-progress/<票>`，
 /// 格体是后端原样那一格 `{stage}` / `{reached}` / `{end}`，没有留存；只在 `<local>` 上有）。
-/// TS 那一侧的同一个串住 `src/frontend/ui/remote-probe.ts::PROBE_PROGRESS_KIND`（两侧对拍在 `tests/frontend/ui/remote-probe.vitest.ts`）。
+/// 界面读生成物 `generated/shell-names.ts` 里同名那一格。
 /// 流名刻意不叫命令名（命令是那台后端的 `remote-probe`，monitor 生产段不许有它的字面量 —— 发送点只在界面）。
 pub const PROBE_PROGRESS_KIND: &str = "probe-progress";
 
 /// 又一种流：那台机器上一条终端订阅的画面（`terminal-screen/<票>`，格体是 `{"seq", "view"}` 或 `{"end"}`，没有留存）。
-/// 本机远端都有（订了哪台就是哪台推）。TS 那一侧的同一个串住 `src/frontend/ui/terminal-follow.ts::TERMINAL_SCREEN_KIND`。
+/// 本机远端都有（订了哪台就是哪台推）。界面读生成物 `generated/shell-names.ts` 里同名那一格。
 /// 流名不叫命令名（命令是那台后端的 `terminal-follow`，monitor 生产段不许有它的字面量 —— 发送点只在界面）。
 pub const TERMINAL_SCREEN_KIND: &str = "terminal-screen";
 
@@ -1707,3 +1707,8 @@ fn build_chunks(snapshot: &[JsonlLinePayload]) -> Vec<Vec<JsonlLinePayload>> {
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/event_replay_tests.rs"]
 mod tests;
+
+// 本文件那几个流名，连同 `ui_contract::events` 的事件名与 `data_paths::LOGS_DIR_LABEL`，生成进 `src/frontend/ui/generated/shell-names.ts`（界面读那一份）。
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/shell_names_export.rs"]
+mod shell_names_export;

@@ -1974,7 +1974,6 @@ mod g6_dependency_signoff {
             "通信层（仓内 crate）：本后端只取它那一句（`chan::said::offline`，那台离线那一句由连接层写）；\
              现打 0 处写面（`std::fs` · `tokio::fs` · 起进程一处都没有）",
         ),
-        // `branch-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/branch.rs`；IO 只有一处只读的目录枚举，0 处写面）。
         (
             GATED_CRATE,
             DEPS,
@@ -2103,7 +2102,6 @@ mod g6_dependency_signoff {
              谁划边界：只许 `ssh-dial/sftp.rs` 一份文件持有它的会话、写根 == 暂存区与部署目录、每处先过 `fenced_remote`。\
              边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging`",
         ),
-        // `search-core` 那一行出列：crate 删了（通用口径收成 `history/search_rules.rs`，记录文本进 `agents/claudecode/text.rs`）。
         (
             "serde",
             DEPS,
@@ -2217,9 +2215,6 @@ mod g6_dependency_signoff {
             "只开 `env-filter`。日志去向由本 crate 自己给的 writer 定（今天是标准错误）——\
              落盘那一形要另一条 crate，而本清单上没有",
         ),
-        // `codex-token-core` 那一行删了：它搬进本 crate（`agents/codex/token.rs`），不再是依赖 ——
-        //   它那几行从此是本 crate 的生产段，由上面的写面分层照常扫（纯数据映射，0 处写面）。
-        // `agent-tools-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/cards.rs`，纯数据映射，0 处写面）。
         (
             "mimalloc",
             MUSL_DEPS,
@@ -2327,12 +2322,8 @@ mod g6_dependency_signoff {
     //
     // # 它治的那一格
     //
-    // `MEASURED_CLEAN` 那一档的解锁条件**自己写着**它没有守卫（逐字，改掉之前）：
-    // 「⚠ 如实写明：**没有任何判据会在那一刻自动红** —— 这一档的尺子是签字那一刻现打的，
-    //   不是常驻的」。⇒ 那个判决只在签字那一秒为真，之后无人再问。
-    // `D1②` 现打过一刀确认这条读数：给 `branch-core` 加一处货真价实的 `fs::write`，
-    // **门禁九格一格没红**（cargo 1450 · backend 587 · npm 1590 · e2e 12/8/264/72 · pb check 0，
-    // 量于 `b4e289f` + 那一刀、未铺 `embedded-backends`）。
+    // `MEASURED_CLEAN` 那一档的判决若只在签字那一刻量，就只在那一秒为真：之后给本档哪棵仓内 crate
+    // 加一处货真价实的 `fs::write`，别的门禁一格都不红。⇒ 下面这几条每趟照树重量。
     //
     // # 为什么这一档做得起来，而 `UNMEASURED` 那一档做不起来
     //

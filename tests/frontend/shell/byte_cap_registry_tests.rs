@@ -333,7 +333,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "LIMIT_MAX",
-        "**条数**不是体量：`search-core` 里 `--limit` / IPC `limit`              能取的最大值 = 一次搜索最多构造多少条 **snippet**，不是任何字节量。             它「超了怎么办」有答案、但不在本表的语义里 —— `clamp_limit` 直接把它夹住，             而被夹掉的那部分由 `SnippetBudget::starved()` ⇒ `SessionHits::hits_truncated`              ⇒ `SearchResponse::truncated` 一路说出来（截断要说出口）。",
+        "**条数**不是体量：`history/search_rules.rs` 里 `--limit` / IPC `limit`              能取的最大值 = 一次搜索最多构造多少条 **snippet**，不是任何字节量。             它「超了怎么办」有答案、但不在本表的语义里 —— `clamp_limit` 直接把它夹住，             而被夹掉的那部分由 `SnippetBudget::starved()` ⇒ `SessionHits::hits_truncated`              ⇒ `SearchResponse::truncated` 一路说出来（截断要说出口）。",
     ),
     (
         "BUILD_STAMP_LEN",
@@ -1073,12 +1073,26 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "「待办」里「直接敲的也走中转」那一件读那台 `~/.claude/settings.json` 多大",
         "降级+说清",
     ),
-    // 一次改动的结果里随记录带出的逐段 diff 至多多少字；超了在段的边界停下、立 `patchTruncated`（数照整份）。
+    // 一次改动的行差（调用那一份 · 结果那一份）至多带多少字；超了在段的边界停下、立 `truncated`（数照整份）。
     (
         "src/backend/agents/claudecode/steps.rs",
         "PATCH_MAX",
-        "一次改动结果里逐段 diff 的行正文总字数",
+        "一次改动的行差里各行正文的总字数",
         "截断+说清",
+    ),
+    // 行差里一行正文至多留多少字；截了以「…」收尾。
+    (
+        "src/backend/agents/claudecode/steps.rs",
+        "DIFF_LINE_MAX",
+        "行差里一行正文至多留多少字（按字符）",
+        "截断+说清",
+    ),
+    // 改前改后逐行比的格数上界；超了不比、出整删 ＋ 整增，数照这一形。
+    (
+        "src/backend/agents/claudecode/steps.rs",
+        "DIFF_CELLS_MAX",
+        "从改前改后逐行比的格数（改前行数 × 改后行数）",
+        "降级+说清",
     ),
     // 前台派出、还在跑的子 agent：读子记录旁边派出那一刻落盘的 `agent-<id>.meta.json` 多大；超了不认它、记一笔（卡等父侧结果再对上）。
     (
@@ -1754,7 +1768,7 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     //
     // 原文：`src/frontend/shell/src/search.rs` 与 `src/backend/observe/search_query.rs`
     // 各写一个 `MAIN_CAP`/`TOOL_CAP`，本条钉它们相等。收口后两个字面量只剩一份
-    // （`search-core`；今天住后端 `history/search_rules.rs`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
+    // （住后端 `history/search_rules.rs`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
     // （它会变成「同一个数等于它自己」，恒绿）。
     // 把这件事焊住的判据换了个形状，住（随家搬进后端）
     // `tests/backend/history/search_rules_tests.rs` 的 `the_search_kou_jing_has_exactly_one_home`：

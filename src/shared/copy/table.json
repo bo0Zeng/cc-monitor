@@ -2889,12 +2889,6 @@
       "zh": "会话索引未就绪",
       "args": []
     },
-    "cards.markdown.showRest": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "展开 {size}",
-      "args": ["size"]
-    },
     "cards.text.showAll": {
       "kind": "action",
       "role": "按钮",
@@ -3365,12 +3359,6 @@
       "waive": {
         "C-W15": "压了换事实：「全部改动」与增删两个计数都是事实，去掉「改动」就不知道显示的是什么"
       }
-    },
-    "diff.capLine.ellipsis": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{text}…",
-      "args": ["text"]
     },
     "compact.summary.title": {
       "kind": "title",
@@ -10974,61 +10962,12 @@
       "zh": "{name} 与 cc-monitor 终端集成块里的函数同名 · $PROFILE 里排后面的生效",
       "args": ["name"]
     },
-    "rsShellDialect.ps.handEdited": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "function {name} 非 cc-monitor 写的形状",
-      "args": ["name"]
-    },
-    "rsShellDialect.ps.noCcmCall": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "函数无调用 ccm 的行",
-      "args": [],
-      "limited": ["ccm"]
-    },
-    "rsShellDialect.ps.noClose": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{line} · 函数没有收尾",
-      "args": ["line"]
-    },
-    "rsShellDialect.ps.outsideFn": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{line} · 不在任何函数内",
-      "args": ["line"]
-    },
     "rsShellDialect.ps.header": {
       "kind": "body",
       "role": "说明",
       "zh": "# 由配置文件 ~/.cc-monitor/profiles.toml 生成 · 下次整份重写 · 勿手改\n# 每个函数一条别名 · 调用交给 ccm @名字 · 规则在配置文件\n# PowerShell 函数 · 5.1 与 7 均可 dot-source\n",
       "args": [],
       "limited": ["PowerShell", "ccm"]
-    },
-    "rsShellDialect.ps.badCall": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "调用行不是 & {word} … $RemainingArgs 的形状",
-      "args": ["word"]
-    },
-    "rsShellDialect.ps.missingSpace": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "两个参数之间缺空格",
-      "args": []
-    },
-    "rsShellDialect.quote.unbalanced": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "单引号未配对",
-      "args": []
-    },
-    "rsShellDialect.ps.notQuoted": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "参数未用单引号括起",
-      "args": []
     },
     "rsShellDialect.posix.nameTakenPath": {
       "kind": "body",
@@ -11048,30 +10987,6 @@
       "zh": "# 由配置文件 ~/.cc-monitor/profiles.toml 生成 · 下次整份重写 · 勿手改\n# 只含与系统命令同名的别名（如 cc） · 每条一行 · 调用交给 ccm @名字 · 规则在配置文件\n# 其余别名是 ~/.cc-monitor/bin 里指向 ccm 的链接 · POSIX sh 函数 · bash / zsh 可 source · fish 不行\n",
       "args": [],
       "limited": ["ccm"]
-    },
-    "rsShellDialect.posix.notCcm": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "调用的不是 {word}",
-      "args": ["word"]
-    },
-    "rsShellDialect.posix.badShape": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "非 cc-monitor 写的函数形状",
-      "args": []
-    },
-    "rsShellDialect.posix.badTail": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "结尾非 cc-monitor 写的形状",
-      "args": []
-    },
-    "rsShellDialect.posix.backslash": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "反斜杠只能用在 '\\'' 里",
-      "args": []
     },
     "rsProfileInstaller.ps.noDataDir": {
       "kind": "error",
@@ -14287,7 +14202,7 @@
     "beCcm.usage.body": {
       "kind": "body",
       "role": "命令行",
-      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，无法识别就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --hosted           在 cc-monitor 托管的终端里跑（不在 tmux 窗格里敲时缺省就是它；Linux）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建终端的宽高（要带 --ccm-tmux 或 --hosted）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux 或 --hosted）\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（不知道账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --no-rotation      这一发不轮换，只用起它的那个号（不管「新会话用」设的哪一份；只管起新会话）\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是主目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条匹配的算；\n                     两边都可用 ~，链接解开再比；都不匹配才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是主目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话或托管终端（先在托管终端里认名字或句柄）\n  --host-run <句柄> [键=值…] -- <命令…>\n                     托管终端的托管进程：持一个伪终端跑那条命令（只许紧跟打头的 --：ccm -- --host-run …；由 cc-monitor 起）\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --tab show|hide    进不进标签页（不给就照这台的偏好：子会话 · 分身会话各一格）\n  --tab-from <别名>  --tab 是哪个别名写的（ccm 往 tmux 里交下去时带）\n  --ccm-alias <别名> 这一发是哪个别名起的（ccm 往 tmux 里交下去时带）\n  --tab-group <名>   起出来的会话进哪个标签页分组（一组会话那一行没写组名时取它）\n  --say <那句>       第一句话：在 tmux 里起新会话时交给 agent（-- 左边自己写了第一句话就用那句）\n  --ccm-print        不跑，印出等价的一行 shell 命令，另起几行注释写每一项来自哪里\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（已手动设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
+      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，无法识别就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --hosted           在 cc-monitor 托管的终端里跑（不在 tmux 窗格里敲时缺省就是它；Linux · Windows）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建终端的宽高（要带 --ccm-tmux 或 --hosted）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux 或 --hosted）\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（不知道账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --no-rotation      这一发不轮换，只用起它的那个号（不管「新会话用」设的哪一份；只管起新会话）\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是主目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条匹配的算；\n                     两边都可用 ~，链接解开再比；都不匹配才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是主目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话或托管终端（先在托管终端里认名字或句柄）\n  --host-run <句柄> [键=值…] -- <命令…>\n                     托管终端的托管进程：持一个伪终端跑那条命令（只许紧跟打头的 --：ccm -- --host-run …；由 cc-monitor 起）\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --tab show|hide    进不进标签页（不给就照这台的偏好：子会话 · 分身会话各一格）\n  --tab-from <别名>  --tab 是哪个别名写的（ccm 往 tmux 里交下去时带）\n  --ccm-alias <别名> 这一发是哪个别名起的（ccm 往 tmux 里交下去时带）\n  --tab-group <名>   起出来的会话进哪个标签页分组（一组会话那一行没写组名时取它）\n  --say <那句>       第一句话：在 tmux 里起新会话时交给 agent（-- 左边自己写了第一句话就用那句）\n  --ccm-print        不跑，印出等价的一行 shell 命令，另起几行注释写每一项来自哪里\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（手动设过的也指过去，中转再转给手动设的那个地址）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
       "args": [],
       "limited": ["tmux", "ccm"],
       "waive": {
@@ -26672,6 +26587,30 @@
       "kind": "body",
       "role": "片段",
       "zh": "复制下面一行 · 到该机终端里运行",
+      "args": []
+    },
+    "beChore.secretLike.name": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "共享库里的 {item} 像按号的密钥",
+      "args": ["item"]
+    },
+    "beChore.secretLike.said": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "权限 600 · 不在身份文件里 · 不链给各账号",
+      "args": []
+    },
+    "beChore.secretLike.why": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{path} 权限 600，不在身份文件里；按号的凭据或状态各账号共用会串号，不自动链给各账号",
+      "args": ["path"]
+    },
+    "beChore.secretLike.step": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "按号的挪进该账号目录 · 共用的放宽权限，下次对齐链接",
       "args": []
     },
     "beChore.selfPaste.name": {

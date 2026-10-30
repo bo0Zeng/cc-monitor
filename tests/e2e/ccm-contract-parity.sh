@@ -64,9 +64,7 @@ CCM="$CCMDIR/ccm"
 #   而那个函数与它服务的那几组断言也一起删了（同一个进程之下没有「帧」这回事）。
 #   留着它就是一句假话：本文件今天**一处都不用 `jq`**（现打 `grep -c jq` 自己看）。
 
-PASS=0; FAIL=0
-ck() { if [ "$2" = "$3" ]; then printf 'PASS | %s\n' "$1"; PASS=$((PASS+1))
-       else printf 'FAIL | %s\n      期望: %s\n      实得: %s\n' "$1" "$2" "$3"; FAIL=$((FAIL+1)); fi; }
+. "$HERE/assert.sh"
 
 W="$(mktemp -d)"; trap 'rm -rf "$W" "$CCMDIR"; tmux_shim_cleanup' EXIT
 mkdir -p "$W/bin" "$W/proj" "$W/acct-z" "$W/acct-b" "$W/home"
@@ -364,5 +362,4 @@ ck "反空真：不设中转地址时那一串里没有 ANTHROPIC_BASE_URL" "0" 
 #   · `A′h`：`$CCM_BACKEND_BIN` → 部署落点 → PATH 的查找次序 —— `K-R48` `§0h` 逐字
 #     「这道题消失了，不是被挑了边」。
 echo
-echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
-[ "$FAIL" -eq 0 ]
+finish

@@ -9,12 +9,13 @@
  * 人群：`tests/shots/scenes/` 下全部场景源码（新加一份场景也自动进来）。
  * 买不到：读的是源码文本；绕着写（把构造器存进别名再 new）认不出。
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
+import { filePaths } from "../test-support/production-sources";
 
 const dir = path.join(__dirname, "scenes");
-const files = readdirSync(dir).filter((n) => n.endsWith(".ts"));
+const files = filePaths("tests/shots/scenes", { ext: ".ts", tests: true, shallow: true }).map((f) => path.basename(f));
 
 describe("截图场景的按键是真按键", () => {
   it("场景里不合成 KeyboardEvent（按键一律走 helpers 的 key()）", () => {

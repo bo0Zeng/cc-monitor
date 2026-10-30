@@ -4,9 +4,9 @@
 /// `(kind, 形状指纹)`，按 kind 排。
 pub const FRAMES: &[(&str, &str)] = &[
     ("cancelled", "59eb66d7"),
-    ("changed", "79c286e8"),
+    ("changed", "bfd4597d"),
     ("files_batch", "b343f828"),
-    ("line", "2a7200d8"),
+    ("line", "f30ca02e"),
     ("live_card", "4320b506"),
     ("overflow", "6c57a5a8"),
     ("probe", "9b42ff05"),

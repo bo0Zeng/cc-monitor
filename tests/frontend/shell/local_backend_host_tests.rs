@@ -2950,8 +2950,8 @@ fn the_host_never_writes_the_resident_dir_and_carries_no_key() {
 ///  不再是别人普查出来的一个快照。〕
 ///
 /// ⚠ **覆盖面另有缺口，一并登记**：本条 105 ＋ backend 侧 73 ＋ guard-core 自检 1 = **179 份**，
-/// 而排掉 vendor 的全仓是 **188 份**。差的 9 份里，`crates/usage-core/src/lib.rs`
-/// 的生产段也经 `guard_core::production_code` 剥 ⇒ 它掉进兜底的话，这几条判据一条都不会响。
+/// 而排掉 vendor 的全仓是 **188 份**。差的 9 份里有共享 crate 的源文件，
+/// 生产段也经 `guard_core::production_code` 剥 ⇒ 它掉进兜底的话，这几条判据一条都不会响。
 /// 〔那时只许改本文件，收口要动 guard-core / 那两条守卫的切法 ⇒ 只登记，没动手。
 ///  **`K-R25`（09-04）答清了那 9 份各是什么**，逐份带住址与「要不要拉进来」的裁定 —— 那一件是**只答不改**。〕
 ///
@@ -4528,6 +4528,8 @@ fn the_local_backend_words_come_from_the_words_table() {
     assert_eq!(
         got,
         L::Down {
+            look: cmd_wire::machine::MachineStateKind::Down,
+            tone: cmd_wire::cells::Tone::Fail,
             word: copy_text("machinePage.state.down", &[]),
             said: copy_text("machineState.down.local", &[]),
             fixes: vec![cmd_wire::machine::FixButton {
@@ -4537,6 +4539,43 @@ fn the_local_backend_words_come_from_the_words_table() {
             next: Some("结束口上那个进程再重开（结构夹具）".to_string()),
         }
     );
+}
+
+/// 没起来那几样各带画成哪一态（点照机器那一张表挑）与问题行的语气：壳写好，界面不按 `state` 另判。
+#[test]
+fn the_local_backend_says_its_look_and_tone() {
+    use crate::ui_contract::LocalBackend as L;
+    use cmd_wire::cells::Tone;
+    use cmd_wire::machine::MachineStateKind as K;
+    let _g = crate::inbound_client::local_origin_test_lock();
+    let look = |l: &L| match l {
+        L::Up => None,
+        L::Starting { look, tone, .. }
+        | L::Down { look, tone, .. }
+        | L::Older { look, tone, .. }
+        | L::Newer { look, tone, .. } => Some((*look, *tone)),
+    };
+    note_local_foreign(None);
+    note_local_starting(true);
+    let starting = local_backend(false, Some("p8c-mine"));
+    note_local_starting(false);
+    assert_eq!(look(&starting), Some((K::Connecting, Tone::Busy)));
+    assert_eq!(
+        look(&local_backend(false, Some("p8c-mine"))),
+        Some((K::Down, Tone::Fail))
+    );
+    note_local_foreign(Some("p7a-old"));
+    assert_eq!(
+        look(&local_backend(false, Some("p8c-mine"))),
+        Some((K::NeedsUpdate, Tone::Warn))
+    );
+    note_local_foreign(Some("p9a-new"));
+    assert_eq!(
+        look(&local_backend(false, Some("p8c-mine"))),
+        Some((K::Newer, Tone::Fail))
+    );
+    note_local_foreign(None);
+    assert_eq!(look(&local_backend(true, Some("p8c-mine"))), None);
 }
 
 /// 起本机后端被拒（口上有东西、接不上）：下一步那一句跟着走，直到再起一次把它清掉；接上了不说。

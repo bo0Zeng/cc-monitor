@@ -20,14 +20,10 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import { copyText } from "../copy-table";
 import { sayFailure } from "../kit/detail";
 import { icon } from "../kit/icon";
+// 日志目录那一行的名字（壳 `data_paths.rs::LOGS_DIR_LABEL` 生成过来）：这一行不自带［打开］，指向「日志」那一页。
+import { LOGS_DIR_LABEL } from "../generated/shell-names";
 
 /** 每一行那一格「删了会怎样」（后端 `DataPathInfo.class`）：看得出哪个删了会丢东西。后端加了第三类不许整页炸、原样说出来。 */
-/**
- * 日志目录那一行的名字：这一行不自带［打开］，指向「日志」那一页（那一页自己有「打开日志目录」）。
- * 跨语言常量：Rust 侧 `data_paths.rs::LOGS_DIR_LABEL` 同名同值，`data-section.vitest.ts` 读源码对拍。
- */
-export const LOGS_DIR_LABEL = "logs/";
-
 export function describeDataClass(c: DataClass): string {
   switch (c) {
     case "truth":

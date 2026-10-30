@@ -398,17 +398,8 @@ fn command_signatures() -> BTreeMap<String, String> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let attr = format!("#[tauri::{}]", "command");
     let mut out = BTreeMap::new();
-    // ★ F23 第二刀：改用 `scan_tree!`（不再裸 `read_dir`）。
-    // ⚠ 先前这一行写着「它**按构造**摘除调用者自己（拿 `file!()`）」——
-    //   那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的
-    //   折返路径 ⇒ 后缀比不命中）。本文件不在人群里靠的是**住址**：它住
-    //   `tests/frontend/shell/`，而这里扫的是 `src/frontend/shell/src`。
-    //
-    // 原来这里是裸 `read_dir` + 下面一句写死文件名的跳过（`== Some("parity_ledger.rs")`）。
-    // 那种摘除**改名即静默失效**，而失效之后看起来和没失效一模一样 ——
-    // `scan_tree!` 的头注逐字警告过这个形态（「别手写 `file!()` 以外的东西当 caller_file」）。
-    // 本文件的说明文字里必然含 `#[tauri::command]` 这些子串，摘除一旦失效就会把
-    // 自己的散文当成命令签名读进来。
+    // 扫的是 `src/frontend/shell/src`（`scan_tree!` 收整棵树）；判据住 `tests/frontend/shell/`，两棵树不相交，
+    // 判据散文里的 `#[tauri::command]` 字样读不进来。
     let mut files: Vec<std::path::PathBuf> = guard_core::scan_tree!(&root, &["rs"])
         .into_iter()
         .map(|(p, _)| p)
