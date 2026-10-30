@@ -18,7 +18,7 @@ import { renderMarkdown } from "../render";
 import type { Origin } from "../ipc/origin";
 import type { NewSessionSpec } from "../new-session";
 import { fetchCellView, PLAN_EDGE_KINDS, type PlanBlock, type PlanCell, type PlanEdgeKind, type PlanRef, type PlanSlice, type PlanWho } from "../plan-reads";
-import { ancestry, blockRoots, cellIndex, kindSlot, labelOf, refSpans, statusLook } from "./plan-model";
+import { ancestry, blockRoots, cellIndex, kindSlot, labelOf, refSpans } from "./plan-model";
 import { phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
 import s from "./plan-cell.module.css";
 
@@ -93,7 +93,7 @@ export class CellDetail {
   private head(slice: PlanSlice, cell: PlanCell): HTMLElement {
     const h = document.createElement("div");
     h.className = s.cdHead;
-    const look = statusLook(cell);
+    const look = cell.look;
     const st = document.createElement("span");
     st.className = s.cdSt;
     st.dataset.look = look;
@@ -242,7 +242,7 @@ export class CellDetail {
     const row = document.createElement("div");
     row.className = s.cdLine;
     setKindColor(row, kindSlot(slice, c.kind));
-    const look = statusLook(c);
+    const look = c.look;
     const st = document.createElement("span");
     st.className = s.cdSt;
     st.dataset.look = look;

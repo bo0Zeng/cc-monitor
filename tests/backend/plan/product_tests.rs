@@ -438,6 +438,35 @@ fn kinds_and_phases_take_the_shape_six_keys() {
     }
 }
 
+/// 每格带画哪一种（`look`）与右端那一句（`end`：状态那一行 ＋ 原因短词，用分隔连好）：两端照摆，不另判。
+#[test]
+fn every_cell_carries_its_look_and_end_line() {
+    let m = made();
+    let sep = copy_core::copy_text("kit.text.sep", &[]);
+    let short = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
+    assert_eq!(cell(&m.doc, "A1-1")["look"], "done");
+    assert_eq!(cell(&m.doc, "A1-1")["end"], "已签收 2");
+    assert_eq!(cell(&m.doc, "A1-2")["look"], "open");
+    assert_eq!(
+        cell(&m.doc, "A1-2")["end"],
+        short("plan.whyShort.nosign", &[])
+    );
+    assert_eq!(cell(&m.doc, "A5")["look"], "undecided", "待定没人定另画一种");
+    assert_eq!(cell(&m.doc, "A6")["look"], "none", "类不许记收的值 ⇒ 不算活");
+    assert_eq!(cell(&m.doc, "A1-3")["look"], "none");
+    let mut d = dump("/w");
+    node_mut(&mut d, "A1")["state"] = json!([{"value": "decided", "count": 1}]);
+    assert_eq!(
+        cell(&make(&d, &who).doc, "A1")["end"],
+        format!(
+            "decided{sep}{}",
+            short("plan.whyShort.inside", &[("done", "1"), ("of", "2")])
+        ),
+        "状态那一行与原因都有 ⇒ 用分隔连"
+    );
+    assert_eq!(cell_in(&m.doc, 1, "B1-1")["end"], "支持");
+}
+
 /// covers：写的照给，coveredBy 是 pb 算的（只留图上的格）。
 #[test]
 fn every_cell_carries_its_covers() {

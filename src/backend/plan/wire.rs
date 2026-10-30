@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 /// 节点的状态码 · 文件的对账码与 `plan-files` 同一份（住 `cmd-wire`）。
-pub(crate) use cmd_wire::plan::{PlanFileState, PlanStatusCode};
+pub(crate) use cmd_wire::plan::{PlanFileState, PlanLook, PlanStatusCode};
 
 /// 一个 id（权力范围的负责人 · 节点的负责人 · 签它的）对到的会话。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -235,6 +235,10 @@ pub(crate) struct PlanCell {
     pub status_code: Option<PlanStatusCode>,
     /// 类是待定、还没记 decided。
     pub undecided: bool,
+    /// 画哪一种（图标 · 颜色）：照上面两格判好，两端照它挑。
+    pub look: PlanLook,
+    /// 行右端那一句：状态那一行 ＋ 原因短词，用分隔连好；都没有 ⇒ `null`。
+    pub end: Option<String>,
     /// 没签收（或待定没人定）的原因；签收了 · 不算活 ⇒ `null`。
     pub why_code: Option<PlanWhyCode>,
     /// 行尾那一个原因短词；没有原因 ⇒ `null`。

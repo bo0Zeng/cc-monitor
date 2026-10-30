@@ -13,6 +13,19 @@ pub enum PlanStatusCode {
     Open,
 }
 
+/// 一格画哪一种（图标 · 颜色），后端照状态码与待定判好：`Done` · `Open` 同 [`PlanStatusCode`]；
+/// 待定还没人定 ⇒ `Undecided`；类不许记收的值 ⇒ `None`（不算活，画淡的）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum PlanLook {
+    Done,
+    Open,
+    Undecided,
+    None,
+}
+
 /// 一份文件的对账码（pb 的 `file_check`：present · missing · empty · invalid）。TS 那一侧同上，写在字段上。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

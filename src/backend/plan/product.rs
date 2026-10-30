@@ -15,7 +15,7 @@
 
 use super::wire::{
     PlanArchived, PlanBlock, PlanCell, PlanCheck, PlanDomain, PlanEdgeWords, PlanEdges, PlanFile,
-    PlanFileState, PlanKids, PlanKind, PlanListSlice, PlanListWorkspace, PlanPendingSet, PlanPhase,
+    PlanFileState, PlanKids, PlanKind, PlanLook, PlanListSlice, PlanListWorkspace, PlanPendingSet, PlanPhase,
     PlanProgress, PlanRead, PlanReadError, PlanRed, PlanRef, PlanRefs, PlanSessionBlock,
     PlanSetsTo, PlanSlice, PlanState, PlanStatusCode, PlanTakeover, PlanUnbuilt, PlanUndecidable,
     PlanUnowned, PlanWho, PlanWhyCode, PlanWhyShort,
@@ -101,6 +101,26 @@ fn why_short(code: &PlanWhyCode) -> PlanWhyShort {
         ),
     };
     PlanWhyShort { text, wait }
+}
+
+/// 一格画哪一种：待定没人定另画一种；否则照状态码；类不许记收的值 ⇒ 不算活。
+fn look_of(status: Option<PlanStatusCode>, undecided: bool) -> PlanLook {
+    match (undecided, status) {
+        (true, _) => PlanLook::Undecided,
+        (false, Some(PlanStatusCode::Done)) => PlanLook::Done,
+        (false, Some(PlanStatusCode::Open)) => PlanLook::Open,
+        (false, None) => PlanLook::None,
+    }
+}
+
+/// 行右端那一句：状态那一行与原因短词，有几段连几段（文案表的分隔）；都没有 ⇒ `None`。
+fn end_of(state_line: Option<&str>, why: Option<&PlanWhyShort>) -> Option<String> {
+    let parts: Vec<&str> = [state_line, why.map(|w| w.text.as_str())]
+        .into_iter()
+        .flatten()
+        .filter(|p| !p.is_empty())
+        .collect();
+    (!parts.is_empty()).then(|| parts.join(&copy_text("kit.text.sep", &[])))
 }
 
 fn s(v: &Value, k: &str) -> Option<String> {
@@ -579,16 +599,20 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
             let refs = c.get("refs");
             let title = c.get("title").and_then(Value::as_str);
             let body = c.get("body").and_then(Value::as_str);
+            let line = state_line(&state);
+            let short = why_code.as_ref().map(why_short);
             PlanCell {
                 edges: edges_of(|k| strs(c.get("edges").and_then(|e| e.get(k)))),
                 pointed_by: edges_of(|k| back.and_then(|b| b.get(k)).cloned().unwrap_or_default()),
                 files,
-                state_line: state_line(&state),
+                end: end_of(line.as_deref(), short.as_ref()),
+                state_line: line,
                 state,
                 evidenced_by: strs(c.get("evidenced_by")),
+                look: look_of(status_code, undecided),
                 status_code,
                 undecided,
-                why_short: why_code.as_ref().map(why_short),
+                why_short: short,
                 why_code,
                 sets,
                 block: s(c, "children_in"),
