@@ -5,15 +5,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const store = vi.hoisted(() => ({ cfg: {} as Record<string, unknown> }));
-// 写只交补丁（`patchConfig`）；按与 Rust 写口同一份金样的语义（`tests/frontend/ui/config-patch-fake.ts`）应用到 `store.cfg`。
+// 只读盘：盘上那份是测试摆的；这里不写。
 vi.mock("../../../src/frontend/ui/config", async (orig) => {
   const actual = await orig<Record<string, unknown>>();
-  const { applyConfigEdits } = await import("./config-patch-fake");
   return {
     ...actual,
     loadConfig: vi.fn(async () => store.cfg),
-    patchConfig: vi.fn(async (edits: Parameters<typeof applyConfigEdits>[1]) => {
-      store.cfg = JSON.parse(applyConfigEdits(JSON.stringify(store.cfg), edits)) as Record<string, unknown>;
+    patchConfig: vi.fn(async () => {
+      throw new Error("这一份只读盘");
     }),
   };
 });
