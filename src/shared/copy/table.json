@@ -22225,12 +22225,6 @@
       "zh": "需手动",
       "args": []
     },
-    "sessionFace.machine.local": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机",
-      "args": []
-    },
     "sessionFace.state.waiting": {
       "kind": "body",
       "role": "片段",
