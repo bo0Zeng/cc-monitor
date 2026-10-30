@@ -441,6 +441,15 @@ describe("甲8 收起：头一行常驻", () => {
     expect(document.activeElement).toBe(btn(r.b, ASKS.approve.choices[0].text));
   });
 
+  it("★ 收着时数字键不答（选项看不见，不许盲点）", async () => {
+    const r = rig(tab(needs(ASKS.approve)));
+    foldBtn(r.b).click();
+    foldBtn(r.b).focus();
+    foldBtn(r.b).dispatchEvent(new KeyboardEvent("keydown", { key: "1", bubbles: true }));
+    await flush();
+    expect(r.answers).toEqual([]);
+  });
+
   it("没挂上请求（只能在终端里答那一句）没有［收起］：只一行，不用收", () => {
     const r = rig(tab(needs(null)));
     expect(r.b.el.querySelector("button[data-fold]")).toBeNull();
