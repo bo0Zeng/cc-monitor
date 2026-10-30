@@ -10,9 +10,10 @@
 //! | `<窗口>-utilization` · `<窗口>-reset` · `<窗口>-surpassed-threshold` | 小数 · unix 秒 · 小数 | 一个 [`QuotaWindow`]；窗口见 [`WINDOWS`] |
 //! | `overage-status` · `overage-reset` · `overage-disabled-reason` · `overage-in-use` | 三值 · unix 秒 · 原值 · `true` | `overage` |
 //!
-//! 被拒以状态码为准（429）：有这一族头时卡在哪、几点重置照头说；没有（API key 号的回包永远没有这一族）⇒
-//! 几点能再用看 `retry-after`（秒）；两样都没说 ⇒ [`REFUSED_BRIEFLY`] 秒之后（多是短时限流，不是用满）。
-//! 被拒的快照恒带回来的时刻。`status = rejected` 但回的是 200（超额兜着）不算被拒。
+//! 被拒 ＝ 429 且限流器明说 `rejected`：卡在哪、几点重置照头说；没有 `reset` ⇒ 看 `retry-after`（秒）；两样都没说 ⇒
+//! [`REFUSED_BRIEFLY`] 秒之后。被拒的快照恒带回来的时刻。
+//! 限流器没说话的 429（短时限流；API key 号的回包永远没有这一族）不是用满 ⇒ 什么都不读：不记被拒、不换号、不停发，
+//! 上游那一发原样交下去（claude 自己退避）。429 而限流器说没拒 ⇒ 照常读数。`status = rejected` 但回的是 200（超额兜着）不算被拒。
 
 use crate::agents::{LimitReply, QuotaOverage, QuotaReading, QuotaStatus, QuotaWindow};
 
@@ -100,22 +101,13 @@ fn status_of(v: Option<&str>) -> Option<QuotaStatus> {
 
 /// 注册表 `DefaultUpstream.quota` 那一格。
 pub(crate) fn read(status: u16, headers: &[(String, String)], now: u64) -> Option<QuotaReading> {
-    let refused = status == REFUSED;
+    // 限流器没说话（短时限流的 429 也是这样）⇒ 什么都不记：不是用满，上游那一发原样交下去、claude 自己退避。
+    let said = status_of(Some(unified(headers, "status")?));
+    let refused = status == REFUSED && said == Some(QuotaStatus::Rejected);
     let retry_at = || {
         refused.then(|| {
             now.saturating_add(instant(header(headers, "retry-after")).unwrap_or(REFUSED_BRIEFLY))
         })
-    };
-    let Some(said) = unified(headers, "status") else {
-        // 限流器没说话：只有被拒时才有一件事可记（这个号此刻用不了、`retry-after` 秒之后再试，没说就 [`REFUSED_BRIEFLY`] 秒）。
-        return refused.then(|| QuotaReading {
-            status: None,
-            refused: true,
-            limiting: None,
-            resets_at: retry_at(),
-            windows: Vec::new(),
-            overage: None,
-        });
     };
     let windows = WINDOWS
         .iter()
@@ -141,7 +133,7 @@ pub(crate) fn read(status: u16, headers: &[(String, String)], now: u64) -> Optio
     };
     let resets_at = instant(unified(headers, "reset")).or_else(retry_at);
     Some(QuotaReading {
-        status: status_of(Some(said)),
+        status: said,
         refused,
         limiting: unified(headers, "representative-claim").map(str::to_string),
         resets_at,
