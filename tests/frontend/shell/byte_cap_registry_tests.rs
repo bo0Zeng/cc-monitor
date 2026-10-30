@@ -1944,7 +1944,8 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
             //   `common/own_state.rs` 的 `Doc::settle`（缓存读不出来 ⇒ 说是哪一份、当没有），针改去那里认。
             //   折成几行时它在上面至多三行（声明表那一行：头 · 落点 · 版本 · 上限）⇒ 往上看三行。
             let declared = lines[i.saturating_sub(3)..=i].join("\n");
-            let scope = if *sem == "跳过+说清" && guard_core::contains_word(&declared, "Decl::<Cache>")
+            let scope = if *sem == "跳过+说清"
+                && guard_core::contains_word(&declared, "Decl::<Cache>")
             {
                 own_state_cache_arm(&root)
             } else {
