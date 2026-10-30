@@ -521,11 +521,7 @@ fn repair_lifts_the_one_entity_over_the_empty_dir_align_seeded() {
         target: "/h/.claude/plans".into(),
         at: format!("{}/plans", acct("z")),
     };
-    assert!(
-        p.ops.iter().position(|o| *o == relinked) > m,
-        "{:?}",
-        p.ops
-    );
+    assert!(p.ops.iter().position(|o| *o == relinked) > m, "{:?}", p.ops);
     let a = plan_align(&s).unwrap();
     assert!(
         !a.ops
