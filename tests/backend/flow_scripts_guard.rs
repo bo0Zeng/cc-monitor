@@ -1179,7 +1179,11 @@ mod tests {
         write(&d, "src/backend/lib.rs", "\n");
         // 壳那棵只要目录在（几步先 cd 进去）
         write(&d, "src/frontend/shell/.keep", "");
-        write(&d, ".gitignore", ".build/\nbin/\nnode_modules/\ncalls\nlock-calls\nhome/\n");
+        write(
+            &d,
+            ".gitignore",
+            ".build/\nbin/\nnode_modules/\ncalls\nlock-calls\nhome/\n",
+        );
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "base"]);
         git(&d, &["checkout", "-q", "-b", "work"]);
@@ -1202,8 +1206,16 @@ mod tests {
                 rec("cargo")
             ),
         );
-        exe(&d, "node_modules/.bin/tsc", &format!("#!/bin/sh\n{}", rec("tsc")));
-        exe(&d, "node_modules/.bin/vitest", &format!("#!/bin/sh\n{}", rec("vitest")));
+        exe(
+            &d,
+            "node_modules/.bin/tsc",
+            &format!("#!/bin/sh\n{}", rec("tsc")),
+        );
+        exe(
+            &d,
+            "node_modules/.bin/vitest",
+            &format!("#!/bin/sh\n{}", rec("vitest")),
+        );
         exe(
             &d,
             "src/mobile/gradlew",
@@ -1295,7 +1307,10 @@ mod tests {
         let calls = std::fs::read_to_string(d.join("calls")).unwrap_or_default();
         let _ = std::fs::remove_dir_all(&d);
         assert_eq!(calls.lines().count(), 9, "{said}");
-        assert!(calls.lines().all(|l| l.ends_with("held=0")), "{calls}\n{said}");
+        assert!(
+            calls.lines().all(|l| l.ends_with("held=0")),
+            "{calls}\n{said}"
+        );
     }
 
     /// ★ 收尾修剪 `.build`：每棵 cargo 树每一档的 `incremental/` 下同一个 crate 的会话目录、`deps/` 下同名的测试二进制
@@ -1356,15 +1371,51 @@ mod tests {
         mk(&format!("{inc}/bar-1only"), true, "10 days ago");
         mk(&format!("{deps}/foo-0123456789abcdef"), false, "now");
         mk(&format!("{deps}/foo-fedcba9876543210"), false, "3 days ago");
-        mk(&format!("{deps}/foo-fedcba9876543210.d"), false, "3 days ago");
-        mk(&format!("{deps}/libfoo-fedcba9876543210.rlib"), false, "3 days ago");
-        mk(&format!("{deps}/libfoo-0123456789abcdef.rlib"), false, "now");
-        mk(".build/backend/debug/.fingerprint/foo-fedcba9876543210", true, "3 days ago");
-        mk(".build/backend/debug/build/foo-fedcba9876543210", true, "3 days ago");
-        mk(".build/shell/debug/incremental/baz-1new", true, "1 hour ago");
-        mk(".build/shell/debug/incremental/baz-2old", true, "8 hours ago");
-        mk(".build/shell/x86_64-pc-windows-gnu/debug/incremental/win-1new", true, "now");
-        mk(".build/shell/x86_64-pc-windows-gnu/debug/incremental/win-2old", true, "2 days ago");
+        mk(
+            &format!("{deps}/foo-fedcba9876543210.d"),
+            false,
+            "3 days ago",
+        );
+        mk(
+            &format!("{deps}/libfoo-fedcba9876543210.rlib"),
+            false,
+            "3 days ago",
+        );
+        mk(
+            &format!("{deps}/libfoo-0123456789abcdef.rlib"),
+            false,
+            "now",
+        );
+        mk(
+            ".build/backend/debug/.fingerprint/foo-fedcba9876543210",
+            true,
+            "3 days ago",
+        );
+        mk(
+            ".build/backend/debug/build/foo-fedcba9876543210",
+            true,
+            "3 days ago",
+        );
+        mk(
+            ".build/shell/debug/incremental/baz-1new",
+            true,
+            "1 hour ago",
+        );
+        mk(
+            ".build/shell/debug/incremental/baz-2old",
+            true,
+            "8 hours ago",
+        );
+        mk(
+            ".build/shell/x86_64-pc-windows-gnu/debug/incremental/win-1new",
+            true,
+            "now",
+        );
+        mk(
+            ".build/shell/x86_64-pc-windows-gnu/debug/incremental/win-2old",
+            true,
+            "2 days ago",
+        );
         let said = run_fake_quick(&d, &["--only", "vitest"], None);
         let left: Vec<&String> = gone.iter().filter(|p| d.join(p).exists()).collect();
         let lost: Vec<&String> = kept.iter().filter(|p| !d.join(p).exists()).collect();
