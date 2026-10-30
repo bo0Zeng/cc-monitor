@@ -241,7 +241,9 @@ fn answer_and_hold(
             }
         }
         s.write_all(reply).expect("回包");
-        let _ = held.recv_timeout(Duration::from_secs(30));
+        // 不设期限：调用方在 `fetch` 返回之后才放行（出错 · panic 时放行的那一头被丢掉，这里也就醒了）。
+        // 这一头若给了期限，到点先关了连接，`fetch` 读到关就照样拿到回包 ⇒ 等对端关的那一形也绿。
+        let _ = held.recv();
     });
     let base = Base::parse(&format!("http://127.0.0.1:{port}")).expect("基址");
     (base, release, t)
@@ -251,10 +253,10 @@ fn open_loopback(host: &str, port: u16, _d: Duration) -> std::io::Result<TcpStre
     TcpStream::connect((host, port))
 }
 
-/// 对着 [`answer_and_hold`] 发一问一答（期限 5 秒），回 (结果, 用时)。
-fn fetch_from_holder(reply: &'static [u8]) -> (std::io::Result<Fetched>, Duration) {
+/// 对着 [`answer_and_hold`] 发一问一答。假上游在 `fetch` 返回之后才放行、才关连接 ⇒
+/// `fetch` 要是等对端关，只能等到读期限（兜底的墙钟上限）报错；收尾就停的才拿得到回包。不量快慢。
+fn fetch_from_holder(reply: &'static [u8]) -> std::io::Result<Fetched> {
     let (base, release, t) = answer_and_hold(reply);
-    let started = std::time::Instant::now();
     let got = fetch(
         &open_loopback,
         &base,
@@ -262,42 +264,34 @@ fn fetch_from_holder(reply: &'static [u8]) -> (std::io::Result<Fetched>, Duratio
         "/x",
         &[],
         b"",
-        Duration::from_secs(5),
+        guard_core::wall::CEILING,
         1024,
     );
-    let took = started.elapsed();
     let _ = release.send(());
     t.join().expect("假上游");
-    (got, took)
+    got
 }
 
 /// 一问一答：回包按 `Content-Length` 收全就返回，不等对端关（对端不理 `Connection: close` 时不干等到期限）。
 #[test]
 fn fetch_returns_once_the_answer_is_complete_without_waiting_for_the_peer_to_close() {
-    let (got, took) = fetch_from_holder(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok");
-    let got = got.expect("该拿到回包");
+    let got = fetch_from_holder(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+        .expect("回包早已收全，却在等对端关连接，等到期限报错");
     assert_eq!(got.status, 200);
     assert_eq!(got.body, b"ok", "回包体不对（多收或少收）");
-    assert!(
-        took < Duration::from_secs(1),
-        "回包早已收全，却等了 {took:?}（在等对端关连接）"
-    );
 }
 
 /// 分块的回包同理：终止块到了就返回；空体（`Content-Length: 0`）一个字节都不等。
 #[test]
 fn fetch_returns_once_a_chunked_or_empty_answer_ends_without_waiting_for_the_peer_to_close() {
-    let (got, took) = fetch_from_holder(
+    let got = fetch_from_holder(
         b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n",
-    );
-    assert_eq!(got.expect("该拿到回包").body, b"ok");
-    assert!(
-        took < Duration::from_secs(1),
-        "分块回包已收尾，却等了 {took:?}"
-    );
-    let (got, took) = fetch_from_holder(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n");
-    assert_eq!(got.expect("该拿到回包").body, b"");
-    assert!(took < Duration::from_secs(1), "空体回包，却等了 {took:?}");
+    )
+    .expect("分块回包已收尾，却在等对端关连接");
+    assert_eq!(got.body, b"ok");
+    let got = fetch_from_holder(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
+        .expect("空体回包，却在等对端关连接");
+    assert_eq!(got.body, b"");
 }
 
 /// 一条连上回环的空闲连接（对端一直开着、什么都不发）。
@@ -310,24 +304,25 @@ fn idle_conn() -> (Conn, std::net::TcpStream) {
 
 /// 空闲太久的连接不再复用（对端或路上的设备可能已经悄悄丢了它，探活看不出）：取的时候比一下还回来的时刻，
 /// 过了期限就扔、由调用方新连。期限之内的照常复用（非空对照：不是一律不复用）。
+/// 不睡：期限给零 ⇒ 还回来之后哪怕过了一纳秒也算过了期限；期限给墙钟上限 ⇒ 这几步之内一定没过。
 #[test]
 fn a_pooled_connection_idle_past_the_reuse_limit_is_not_handed_out() {
     let base = Base::parse("http://127.0.0.1:1").expect("基址");
     let lane = Lane::new(None, "t", &base);
-    let pool = Pool::reusing_within(Duration::from_millis(300));
 
+    let roomy = Pool::reusing_within(guard_core::wall::CEILING);
     let (fresh, _p1) = idle_conn();
-    pool.put(lane.clone(), fresh);
+    roomy.put(lane.clone(), fresh);
     assert!(
-        pool.take(&lane, Duration::from_secs(5)).is_some(),
+        roomy.take(&lane, guard_core::wall::CEILING).is_some(),
         "期限之内的空闲连接该复用"
     );
 
+    let strict = Pool::reusing_within(Duration::ZERO);
     let (stale, _p2) = idle_conn();
-    pool.put(lane.clone(), stale);
-    std::thread::sleep(Duration::from_millis(600));
+    strict.put(lane.clone(), stale);
     assert!(
-        pool.take(&lane, Duration::from_secs(5)).is_none(),
+        strict.take(&lane, guard_core::wall::CEILING).is_none(),
         "空闲超过期限的连接被拿去复用了：对端可能已悄悄丢了它，这一发会 502 / 挂到期限"
     );
 }

@@ -196,7 +196,7 @@ impl Default for Pool {
 }
 
 impl Pool {
-    /// 空闲 `within` 以内的连接才复用的一个池（产品走 [`Pool::default`]；判据给短的期限）。
+    /// 空闲不到 `within` 的连接才复用的一个池（产品走 [`Pool::default`]；判据给零或墙钟上限）。
     pub fn reusing_within(within: Duration) -> Self {
         Pool {
             idle: std::sync::Mutex::new(std::collections::VecDeque::new()),
@@ -212,7 +212,7 @@ impl Pool {
                 let at = idle.iter().rposition(|(l, _, _)| l == lane)?;
                 idle.remove(at)?
             };
-            if back_at.elapsed() <= self.within
+            if back_at.elapsed() < self.within
                 && conn.idle_and_open()
                 && conn.set_deadline(deadline).is_ok()
             {

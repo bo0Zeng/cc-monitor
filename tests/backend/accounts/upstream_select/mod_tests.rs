@@ -3,7 +3,6 @@
 use super::*;
 use crate::relay::{Ask, Mode, RouteKey};
 use std::sync::mpsc;
-use std::time::Duration;
 
 /// 只属于本判据的临时目录。
 fn tmpdir(tag: &str) -> std::path::PathBuf {
@@ -52,21 +51,24 @@ fn a_request_stuck_inside_act_does_not_hold_up_a_reload_or_the_next_request() {
         seg2: "acct".to_string(),
     };
 
-    // 第一发：在 `act` 里停住，直到放行。
+    // 第一发：进了 `act` 就停住，等第二发拿到去处才出来（兜底等到墙钟上限）。
+    // ⇒ 不量快慢，只看先后：第二发是不是在第一发还卡在 `act` 里的时候就答到了。
     let (entered_tx, entered_rx) = mpsc::channel::<()>();
-    let (release_tx, release_rx) = mpsc::channel::<()>();
+    let (done_tx, done_rx) = mpsc::channel::<()>();
     let first = {
         let accounts = std::sync::Arc::clone(&accounts);
         let key = key.clone();
         std::thread::spawn(move || {
+            let mut answered_meanwhile = false;
             accounts.resolve(Mode::Substitute, &key, &ask(b"{}"), &mut |_| {
                 let _ = entered_tx.send(());
-                let _ = release_rx.recv_timeout(Duration::from_secs(30));
+                answered_meanwhile = done_rx.recv_timeout(guard_core::wall::CEILING).is_ok();
             });
+            answered_meanwhile
         })
     };
     entered_rx
-        .recv_timeout(Duration::from_secs(10))
+        .recv_timeout(guard_core::wall::CEILING)
         .expect("第一发没进到 act");
 
     // 改凭据文件（人手写一份 · 只给属主读写）。
@@ -77,8 +79,7 @@ fn a_request_stuck_inside_act_does_not_hold_up_a_reload_or_the_next_request() {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).expect("改权限");
     }
 
-    // 第二发：另一线程发，1 秒内要拿到去处。
-    let (done_tx, done_rx) = mpsc::channel::<()>();
+    // 第二发：另一线程发。
     let second = {
         let accounts = std::sync::Arc::clone(&accounts);
         let key = key.clone();
@@ -88,14 +89,11 @@ fn a_request_stuck_inside_act_does_not_hold_up_a_reload_or_the_next_request() {
             });
         })
     };
-    let answered = done_rx.recv_timeout(Duration::from_secs(1));
-    // 先放行第一发，再断言（红了也不留挂着的线程）。
-    let _ = release_tx.send(());
-    first.join().expect("第一发");
+    let answered_meanwhile = first.join().expect("第一发");
     second.join().expect("第二发");
     assert!(
-        answered.is_ok(),
-        "第一发卡在 act 里时，第二发 1 秒内没拿到去处：重载排在卡住那一发的读锁后面"
+        answered_meanwhile,
+        "第一发卡在 act 里时，第二发拿不到去处：重载排在卡住那一发的读锁后面"
     );
     // 非空对照：第二发确实重载了（看到的是新表，不是靠没重载才快）。
     assert_eq!(accounts.table().len(), 1, "第二发没换上新表");
