@@ -17,8 +17,18 @@ fn wired<R: serde::de::DeserializeOwned, T: serde::Serialize>(
 fn where_(args: &Value, d: &Deps) -> Result<Value, CmdErr> {
     wired(args, |r| super::where_(r, d))
 }
+/// 停（会话脸都说结束得了，称呼是 sid 的头八位）。
 fn stop(args: &Value, d: &Deps) -> Result<Value, CmdErr> {
-    wired(args, |r| super::stop(r, d))
+    let title = |sid: &str| sid.chars().take(8).collect::<String>();
+    stop_with(args, d, &|_, _| crate::wire::Allow::Yes, &title)
+}
+fn stop_with(
+    args: &Value,
+    d: &Deps,
+    can_end: &dyn Fn(&str, &crate::wire::SessionContainer) -> crate::wire::Allow,
+    title: &dyn Fn(&str) -> String,
+) -> Result<Value, CmdErr> {
+    wired(args, |r| super::stop(r, d, &StopFaces { can_end, title }))
 }
 /// 判号要的事实：这台只有一个号 `work`（能用）、没有谁的上次记录。
 fn with_accounts<T>(f: impl FnOnce(&la::Facts) -> T) -> T {
@@ -410,6 +420,69 @@ fn every_stop_item_not_done_carries_its_sentence() {
     let done = Rig::new(Some(vec![row("a-cc", Some(A), true)]));
     let out = done.run(|d| stop(&json!({ "sids": [A] }), d)).unwrap();
     assert_eq!(out["results"][0]["said"], Value::Null);
+}
+
+/// ★ 跳不跳过由这台照会话脸的 `can.end` 判（界面不先筛）：结束不了的那一项 `skipped`、那一句就是脸上那一句、不碰名单句柄；
+/// 每一项带这台写的称呼；容器那一格照这台名单（带着它的那一行 ⇒ 那种宿主；哪行都不带着 ⇒ 不在任何宿主里）。
+#[test]
+fn stop_skips_what_the_session_face_says_cannot_end_and_titles_every_item() {
+    use crate::wire::{Allow, SessionContainer};
+    let rig = Rig::new(Some(vec![
+        row("a-cc", Some(A), true),
+        row("b-cc", Some(B), true),
+        row("c-cc", Some(C), true),
+    ]));
+    let asked = RefCell::new(Vec::<(String, SessionContainer)>::new());
+    let can_end = |sid: &str, c: &SessionContainer| {
+        asked.borrow_mut().push((sid.to_string(), c.clone()));
+        if sid == B {
+            Allow::No {
+                why: crate::common::cells::Words("已结束".into()),
+            }
+        } else {
+            Allow::Yes
+        }
+    };
+    let title = |sid: &str| format!("proj 标题-{}", &sid[..1]);
+    let out = rig
+        .run(|d| stop_with(&json!({ "sids": [A, B, C] }), d, &can_end, &title))
+        .unwrap();
+    assert_eq!(
+        outcomes(&out),
+        vec![
+            (A.into(), "done".into(), Value::Null),
+            (B.into(), "skipped".into(), json!("not_endable")),
+            (C.into(), "done".into(), Value::Null),
+        ]
+    );
+    assert_eq!(out["results"][1]["said"], "已结束");
+    assert_eq!(out["results"][1]["copyDetail"], "");
+    assert_eq!(
+        *rig.calls.borrow(),
+        vec!["end tmux-a-cc".to_string(), "end tmux-c-cc".to_string()]
+    );
+    let titles: Vec<&str> = out["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(titles, ["proj 标题-a", "proj 标题-b", "proj 标题-c"]);
+    for r in out["results"].as_array().unwrap() {
+        assert_eq!(r["machine"], "<local>", "每台那一跳答的是它自己");
+    }
+    assert_eq!(
+        asked.borrow()[0].1,
+        SessionContainer::Tmux {
+            terminal: Some("tmux-a-cc".into())
+        }
+    );
+    // 哪行都不带着 ⇒ 交给脸的容器是「不在任何宿主里」。
+    let bare = Rig::new(Some(vec![]));
+    asked.borrow_mut().clear();
+    bare.run(|d| stop_with(&json!({ "sids": [A] }), d, &can_end, &title))
+        .unwrap();
+    assert_eq!(asked.borrow()[0].1, SessionContainer::None);
 }
 
 #[test]

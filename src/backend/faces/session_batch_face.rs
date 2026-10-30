@@ -3,7 +3,8 @@
 //! 本体住 `control/`，而 tmux 名单与记录在不在住观测层（`control → observe` 是反向边）⇒ 由这层顶层壳补上，与 `fork_face` 同形。
 //! 名单 = 终端名单那一趟（`batch::listed_on`，挂着 sid 的窗格各一行；问样子 · 停两种宿主都认，起会话 · 分叉 · 就地键入只认 tmux）· 记录在不在 = `history-record` 那一问 · 结束 = `terminal-end` 那一条（按名单句柄）·
 //! 就地键入 = `launch send-into`（带 sid ⇒ 落在挂着它的那个窗格）· 铸名 = `control::ccm::terminal_name_mint_with` · 起会话 = 这台后端自己当 ccm 跑那一行 ·
-//! 谁在写 = 这台 pidfile 里持着那个 sid 的活进程（活会话表 `history::live_table::LiveTable::writers`）。
+//! 谁在写 = 这台 pidfile 里持着那个 sid 的活进程（活会话表 `history::live_table::LiveTable::writers`）·
+//! 停之前问的会话脸与称呼 = [`with_stop_faces`]（活会话表 ＋ 名单那一格 ⇒ `SessionFaceExt::of`；称呼照 `search_rules::name_face`）。
 
 use crate::control::session_batch::{self as batch, Deps, Listed};
 use crate::faces::launch_account_face::{pretrust_with, Files};
@@ -199,6 +200,54 @@ impl crate::wire::typed::Handle for SessionsStop {
         req: batch::SidsReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<batch::Batched, BatchErr>> + Send + 'static {
-        async move { with_deps(req.client.as_deref(), |d| batch::stop(&req, d)) }
+        async move {
+            with_deps(req.client.as_deref(), |d| {
+                with_stop_faces(|faces| batch::stop(&req, d, faces))
+            })
+        }
     }
+}
+
+/// 停之前问的会话脸与称呼（生产那一份）：活不活照这台的活会话表（`live_table::life_of`），容器照这台名单 ⇒ 会话脸（`SessionFaceExt::of`）上 `can.end` 那一格；
+/// 称呼 ＝ 这条会话叫什么那两格（`search_rules::name_face`）拼成一行（项目在前）。活会话表与注解一趟各读一次。
+fn with_stop_faces<T>(f: impl FnOnce(&batch::StopFaces) -> T) -> T {
+    use crate::wire::{Life, SessionFace, SessionFaceExt as _, WireLife};
+    let home = crate::history::listing::agent_home();
+    let live = crate::history::live_table::now(&home);
+    let annotations = match crate::history::history_annotations::load() {
+        crate::history::history_annotations::Loaded::Read(t) => t,
+        _ => Default::default(),
+    };
+    let can_end = |sid: &str, c: &crate::wire::SessionContainer| {
+        let life = match live.life_of(sid) {
+            WireLife::Live { activity } => Life::live(activity, Some(c)),
+            other => Life::of_wire(&other),
+        };
+        SessionFace::of(life).can.end
+    };
+    let title = |sid: &str| {
+        use crate::history::search_rules::LabelFacts;
+        let custom = annotations.get(sid).and_then(|e| e.custom_title.clone());
+        let facts = match crate::agents::find_session(&home, sid) {
+            Ok(at) => LabelFacts {
+                custom,
+                ..crate::history::listing::label_facts_of(&at.file)
+            },
+            // 记录找不到、也没改过名 ⇒ 会话号的头八位（同标签页还没报过名字时那一形）。
+            Err(_) if custom.is_none() => return sid.chars().take(8).collect(),
+            Err(_) => LabelFacts {
+                custom,
+                ..Default::default()
+            },
+        };
+        let name = crate::history::search_rules::name_face(&facts);
+        match name.label_project {
+            Some(p) => format!("{} {}", p.0, name.label.0),
+            None => name.label.0,
+        }
+    };
+    f(&batch::StopFaces {
+        can_end: &can_end,
+        title: &title,
+    })
 }
