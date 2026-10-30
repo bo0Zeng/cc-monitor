@@ -10,8 +10,8 @@ use super::asks::{ASK_TOOL, INTERACTIVE_TOOLS, PLAN_TOOL};
 use crate::agents::PlanTitleExt as _;
 use crate::agents::StepResultExt as _;
 use crate::agents::{
-    Answer, ApiReason, AskOption, AskQuestion, DiffKind, DiffRow, LineDiff, StepAsk, StepBody,
-    StepResult, ToolStep,
+    Answer, ApiReason, AskOption, AskQuestion, LineDiff, LineDiffKind, LineDiffRow, StepAsk,
+    StepBody, StepResult, ToolStep,
 };
 use serde_json::Value;
 
@@ -34,8 +34,13 @@ fn diff_cell(text: &str) -> String {
     }
 }
 
-fn diff_row(kind: DiffKind, text: String, old_no: Option<u32>, new_no: Option<u32>) -> DiffRow {
-    DiffRow {
+fn diff_row(
+    kind: LineDiffKind,
+    text: String,
+    old_no: Option<u32>,
+    new_no: Option<u32>,
+) -> LineDiffRow {
+    LineDiffRow {
         kind,
         text,
         old_no,
@@ -44,7 +49,7 @@ fn diff_row(kind: DiffKind, text: String, old_no: Option<u32>, new_no: Option<u3
 }
 
 /// 攒好的行 ＋ 整份的增删数 ⇒ 行差：收着画几行、「+N −M」那一句（与过程那一行右侧那一句同一处写，[`StepResult::written`]）。
-fn line_diff(rows: Vec<DiffRow>, added: u32, removed: u32, truncated: bool) -> LineDiff {
+fn line_diff(rows: Vec<LineDiffRow>, added: u32, removed: u32, truncated: bool) -> LineDiff {
     let stat = StepResult {
         ok: true,
         added: Some(added),
@@ -102,7 +107,7 @@ fn patch_of(hunks: &[Value]) -> (u32, u32, Option<LineDiff>) {
         used += cost;
         if multi {
             rows.push(diff_row(
-                DiffKind::Head,
+                LineDiffKind::Head,
                 format!("@@ -{old_start},{old_lines} +{new_start},{new_lines} @@"),
                 None,
                 None,
@@ -113,21 +118,36 @@ fn patch_of(hunks: &[Value]) -> (u32, u32, Option<LineDiff>) {
             let mut chars = l.chars();
             match chars.next() {
                 Some('+') => {
-                    rows.push(diff_row(DiffKind::Add, diff_cell(chars.as_str()), None, Some(n)));
+                    rows.push(diff_row(
+                        LineDiffKind::Add,
+                        diff_cell(chars.as_str()),
+                        None,
+                        Some(n),
+                    ));
                     n += 1;
                 }
                 Some('-') => {
-                    rows.push(diff_row(DiffKind::Del, diff_cell(chars.as_str()), Some(o), None));
+                    rows.push(diff_row(
+                        LineDiffKind::Del,
+                        diff_cell(chars.as_str()),
+                        Some(o),
+                        None,
+                    ));
                     o += 1;
                 }
                 Some('\\') => {}
                 Some(' ') => {
-                    rows.push(diff_row(DiffKind::Ctx, diff_cell(chars.as_str()), Some(o), Some(n)));
+                    rows.push(diff_row(
+                        LineDiffKind::Ctx,
+                        diff_cell(chars.as_str()),
+                        Some(o),
+                        Some(n),
+                    ));
                     o += 1;
                     n += 1;
                 }
                 _ => {
-                    rows.push(diff_row(DiffKind::Ctx, diff_cell(l), Some(o), Some(n)));
+                    rows.push(diff_row(LineDiffKind::Ctx, diff_cell(l), Some(o), Some(n)));
                     o += 1;
                     n += 1;
                 }
@@ -141,7 +161,7 @@ fn patch_of(hunks: &[Value]) -> (u32, u32, Option<LineDiff>) {
 /// 改前改后的原文 ⇒ 逐行的种类（行尾风格不算差别：`\r\n` · `\r` 当 `\n`，末尾恰好一个换行不成行）。
 /// 一样 ⇒ 全是没变；改前空 ⇒ 全是加的；改后空 ⇒ 全是删的；行数之积超了 [`DIFF_CELLS_MAX`] ⇒ 整删 ＋ 整增；
 /// 余下按最长公共子序列（迭代的表 ＋ 迭代回溯，上千行不靠调用栈），同长时删的排在加的前面。
-fn line_ops(old: &str, new: &str) -> Vec<(DiffKind, String)> {
+fn line_ops(old: &str, new: &str) -> Vec<(LineDiffKind, String)> {
     let norm = |s: &str| {
         let t = s.replace("\r\n", "\n").replace('\r', "\n");
         match t.strip_suffix('\n') {
@@ -158,13 +178,15 @@ fn line_ops(old: &str, new: &str) -> Vec<(DiffKind, String)> {
         }
     };
     let (a, b) = (split(&o), split(&n));
-    let all = |v: Vec<String>, k: DiffKind| v.into_iter().map(move |l| (k, l));
+    let all = |v: Vec<String>, k: LineDiffKind| v.into_iter().map(move |l| (k, l));
     if o == n {
-        return all(a, DiffKind::Ctx).collect();
+        return all(a, LineDiffKind::Ctx).collect();
     }
     let (m, w) = (a.len(), b.len());
     if m == 0 || w == 0 || m.saturating_mul(w) > DIFF_CELLS_MAX {
-        return all(a, DiffKind::Del).chain(all(b, DiffKind::Add)).collect();
+        return all(a, LineDiffKind::Del)
+            .chain(all(b, LineDiffKind::Add))
+            .collect();
     }
     let width = w + 1;
     let mut c = vec![0u32; (m + 1) * width];
@@ -181,19 +203,19 @@ fn line_ops(old: &str, new: &str) -> Vec<(DiffKind, String)> {
     let (mut i, mut j) = (m, w);
     while i > 0 && j > 0 {
         if a[i - 1] == b[j - 1] {
-            ops.push((DiffKind::Ctx, a[i - 1].clone()));
+            ops.push((LineDiffKind::Ctx, a[i - 1].clone()));
             i -= 1;
             j -= 1;
         } else if c[i * width + j - 1] >= c[(i - 1) * width + j] {
-            ops.push((DiffKind::Add, b[j - 1].clone()));
+            ops.push((LineDiffKind::Add, b[j - 1].clone()));
             j -= 1;
         } else {
-            ops.push((DiffKind::Del, a[i - 1].clone()));
+            ops.push((LineDiffKind::Del, a[i - 1].clone()));
             i -= 1;
         }
     }
-    ops.extend(a[..i].iter().rev().map(|l| (DiffKind::Del, l.clone())));
-    ops.extend(b[..j].iter().rev().map(|l| (DiffKind::Add, l.clone())));
+    ops.extend(a[..i].iter().rev().map(|l| (LineDiffKind::Del, l.clone())));
+    ops.extend(b[..j].iter().rev().map(|l| (LineDiffKind::Add, l.clone())));
     ops.reverse();
     ops
 }
@@ -207,8 +229,8 @@ fn changes_of(changes: &[(String, String)]) -> LineDiff {
     let mut truncated = false;
     for (i, (old, new)) in changes.iter().enumerate() {
         let ops = line_ops(old, new);
-        added += ops.iter().filter(|(k, _)| *k == DiffKind::Add).count() as u32;
-        removed += ops.iter().filter(|(k, _)| *k == DiffKind::Del).count() as u32;
+        added += ops.iter().filter(|(k, _)| *k == LineDiffKind::Add).count() as u32;
+        removed += ops.iter().filter(|(k, _)| *k == LineDiffKind::Del).count() as u32;
         let cost = ops.iter().map(|(_, l)| l.len()).sum::<usize>();
         if truncated || used + cost > PATCH_MAX {
             truncated = true;
@@ -218,13 +240,16 @@ fn changes_of(changes: &[(String, String)]) -> LineDiff {
         if multi {
             let n = (i + 1).to_string();
             rows.push(diff_row(
-                DiffKind::Head,
+                LineDiffKind::Head,
                 copy_core::copy_text("cards.diff.segment", &[("n", &n)]),
                 None,
                 None,
             ));
         }
-        rows.extend(ops.into_iter().map(|(k, l)| diff_row(k, diff_cell(&l), None, None)));
+        rows.extend(
+            ops.into_iter()
+                .map(|(k, l)| diff_row(k, diff_cell(&l), None, None)),
+        );
     }
     line_diff(rows, added, removed, truncated)
 }

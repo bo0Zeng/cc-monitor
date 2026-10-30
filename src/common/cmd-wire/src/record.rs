@@ -285,7 +285,9 @@ impl Block {
     /// 这一块多少字节（正文 · 工具结果 · 图有；别的 0）。
     fn bytes(&self) -> u64 {
         match self {
-            Block::Text { bytes, .. } | Block::ToolResult { bytes, .. } | Block::Image { bytes, .. } => *bytes,
+            Block::Text { bytes, .. }
+            | Block::ToolResult { bytes, .. }
+            | Block::Image { bytes, .. } => *bytes,
             Block::Thinking { .. } | Block::ToolUse { .. } => 0,
         }
     }
@@ -394,7 +396,7 @@ pub enum StepBody {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct LineDiff {
-    pub rows: Vec<DiffRow>,
+    pub rows: Vec<LineDiffRow>,
     /// 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
     pub shown: u32,
     /// 行没给全（超了字数上界，在段的边界停下）；`added` / `removed` 仍是整份的数。
@@ -412,8 +414,8 @@ pub struct LineDiff {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct DiffRow {
-    pub kind: DiffKind,
+pub struct LineDiffRow {
+    pub kind: LineDiffKind,
     /// 行正文（不带头字；过长的一行截了以「…」收尾）。段头 ⇒ 写好的那一格。
     pub text: String,
     /// 改之前 · 改之后的行号（1 起）：加的行没有改前，删的行没有改后；段头 · 从入参算的那一份（不知道在文件第几行）⇒ 缺。
@@ -425,12 +427,12 @@ pub struct DiffRow {
     pub new_no: Option<u32>,
 }
 
-/// 一行是哪一种（[`DiffRow::kind`]）。
+/// 一行是哪一种（[`LineDiffRow::kind`]）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub enum DiffKind {
+pub enum LineDiffKind {
     Add,
     Del,
     Ctx,

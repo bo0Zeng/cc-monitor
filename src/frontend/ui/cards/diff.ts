@@ -6,17 +6,17 @@
  */
 
 import { copyText } from "../copy-table";
-import type { DiffKind } from "../generated/DiffKind";
-import type { DiffRow } from "../generated/DiffRow";
+import type { LineDiffKind } from "../generated/LineDiffKind";
+import type { LineDiffRow } from "../generated/LineDiffRow";
 import type { LineDiff } from "../generated/LineDiff";
 
-function gutterMark(kind: DiffKind): string {
+function gutterMark(kind: LineDiffKind): string {
   if (kind === "add") return "+";
   if (kind === "del") return "-";
   return "";
 }
 
-function rowEl(row: DiffRow): HTMLElement {
+function rowEl(row: LineDiffRow): HTMLElement {
   if (row.kind === "head") {
     const label = document.createElement("div");
     label.className = "block-diff-edit-label";

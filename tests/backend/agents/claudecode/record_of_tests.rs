@@ -271,10 +271,7 @@ fn a_mid_turn_line_from_the_person_is_said_where_the_record_puts_it() {
         "{who:?}"
     );
     assert_eq!(who.text, "also do this");
-    assert_eq!(
-        blocks,
-        &vec![Block::text("also do this".into())]
-    );
+    assert_eq!(blocks, &vec![Block::text("also do this".into())]);
     // 旧版：没有 `origin`，原话不是哪种框 ⇒ 人说的。
     let old = r#"{"type":"attachment","parentUuid":"a1","attachment":{"type":"queued_command","prompt":"later please","commandMode":"prompt"},"uuid":"q-3","timestamp":"2026-10-09T01:30:09.000Z"}"#;
     assert!(matches!(one(old).map(|r| r.body), Some(Body::Said { .. })));
@@ -738,12 +735,24 @@ fn text_and_result_blocks_carry_their_utf8_bytes() {
         r#"{{"type":"assistant","uuid":"b-1","timestamp":"2026-10-09T01:30:08.000Z","message":{{"role":"assistant","model":"m","content":[{{"type":"text","text":"{han}"}}]}}}}"#
     );
     let r = one(&reply).expect("出一条回复");
-    let Body::Reply { blocks, .. } = &r.body else { panic!("{r:?}") };
-    assert!(matches!(blocks[0], Block::Text { bytes: 3000, .. }), "{:?}", blocks[0]);
+    let Body::Reply { blocks, .. } = &r.body else {
+        panic!("{r:?}")
+    };
+    assert!(
+        matches!(blocks[0], Block::Text { bytes: 3000, .. }),
+        "{:?}",
+        blocks[0]
+    );
     let said = format!(
         r#"{{"type":"user","uuid":"b-2","timestamp":"2026-10-09T01:30:09.000Z","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"c","content":[{{"type":"text","text":"{han}"}},{{"type":"text","text":"ab"}}]}}]}}}}"#
     );
     let r = one(&said).expect("出一条结果");
-    let Body::Said { blocks, .. } = &r.body else { panic!("{r:?}") };
-    assert!(matches!(blocks[0], Block::ToolResult { bytes: 3002, .. }), "{:?}", blocks[0]);
+    let Body::Said { blocks, .. } = &r.body else {
+        panic!("{r:?}")
+    };
+    assert!(
+        matches!(blocks[0], Block::ToolResult { bytes: 3002, .. }),
+        "{:?}",
+        blocks[0]
+    );
 }

@@ -1,22 +1,22 @@
 package com.ccmonitor.mobile.ui.claude
 
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
-import com.ccmonitor.mobile.core.wire.gen.DiffKind
-import com.ccmonitor.mobile.core.wire.gen.DiffRow
 import com.ccmonitor.mobile.core.wire.gen.LineDiff
+import com.ccmonitor.mobile.core.wire.gen.LineDiffKind
+import com.ccmonitor.mobile.core.wire.gen.LineDiffRow
 
 private fun row(
-    kind: DiffKind,
+    kind: LineDiffKind,
     text: String,
     oldNo: Int?,
     newNo: Int?,
-) = DiffRow(kind = kind, text = text, oldNo = oldNo, newNo = newNo)
+) = LineDiffRow(kind = kind, text = text, oldNo = oldNo, newNo = newNo)
 
 /** 样本里的行差（真的行差由核心算，这里照那一形摆几行）。 */
 private fun sampleDiff(
     stat: String,
-    vararg rows: DiffRow,
-) = LineDiff(rows = rows.toList(), shown = rows.size, truncated = false, added = rows.count { it.kind == DiffKind.ADD }, removed = rows.count { it.kind == DiffKind.DEL }, stat = stat)
+    vararg rows: LineDiffRow,
+) = LineDiff(rows = rows.toList(), shown = rows.size, truncated = false, added = rows.count { it.kind == LineDiffKind.ADD }, removed = rows.count { it.kind == LineDiffKind.DEL }, stat = stat)
 
 /** debug 预览用样本，覆盖 4 种 RenderUnit + diff / pending / error 工具态。 */
 fun sampleRenderUnits(): List<RenderUnit> =
@@ -67,9 +67,9 @@ fun sampleRenderUnits(): List<RenderUnit> =
             diff =
                 sampleDiff(
                     "+1",
-                    row(DiffKind.ADD, "if (m.toLong() * n > cellBudget) return degraded(oldLines, newLines)", null, 1),
-                    row(DiffKind.CTX, "val c = IntArray((m + 1) * width)", 1, 2),
-                    row(DiffKind.CTX, "for (i in 1..m) {", 2, 3),
+                    row(LineDiffKind.ADD, "if (m.toLong() * n > cellBudget) return degraded(oldLines, newLines)", null, 1),
+                    row(LineDiffKind.CTX, "val c = IntArray((m + 1) * width)", 1, 2),
+                    row(LineDiffKind.CTX, "for (i in 1..m) {", 2, 3),
                 ),
             patchFilePath = "core-claude/src/main/kotlin/.../LineDiff.kt",
             resultText = "已应用编辑。",
@@ -86,12 +86,12 @@ fun sampleRenderUnits(): List<RenderUnit> =
             diff =
                 sampleDiff(
                     "+2 −2",
-                    row(DiffKind.HEAD, "@@ -1,1 +1,1 @@", null, null),
-                    row(DiffKind.DEL, "fun resolve(records) = records", 1, null),
-                    row(DiffKind.ADD, "fun resolve(records) = computeMainBranch(records)", null, 1),
-                    row(DiffKind.HEAD, "@@ -9,1 +9,1 @@", null, null),
-                    row(DiffKind.DEL, "// TODO dedup", 9, null),
-                    row(DiffKind.ADD, "val seen = HashSet<String>()", null, 9),
+                    row(LineDiffKind.HEAD, "@@ -1,1 +1,1 @@", null, null),
+                    row(LineDiffKind.DEL, "fun resolve(records) = records", 1, null),
+                    row(LineDiffKind.ADD, "fun resolve(records) = computeMainBranch(records)", null, 1),
+                    row(LineDiffKind.HEAD, "@@ -9,1 +9,1 @@", null, null),
+                    row(LineDiffKind.DEL, "// TODO dedup", 9, null),
+                    row(LineDiffKind.ADD, "val seen = HashSet<String>()", null, 9),
                 ),
             patchFilePath = "core-claude/.../MainBranch.kt",
             resultText = "已应用 2 处编辑。",

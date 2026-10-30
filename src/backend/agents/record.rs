@@ -100,7 +100,8 @@ fn draw_of(body: &Body) -> Draw {
             if *auto_reply {
                 return Draw::None;
             }
-            let shown = |b: &&Block| !matches!(b, Block::Text { text, .. } if text.trim().is_empty());
+            let shown =
+                |b: &&Block| !matches!(b, Block::Text { text, .. } if text.trim().is_empty());
             let mut any = false;
             for b in blocks.iter().filter(shown) {
                 any = true;

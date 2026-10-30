@@ -5,12 +5,12 @@ import { renderMessage, type RenderContext } from "../../../../src/frontend/ui/c
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 import type { ToolStep } from "../../../../src/frontend/ui/generated/ToolStep";
-import type { DiffRow } from "../../../../src/frontend/ui/generated/DiffRow";
+import type { LineDiffRow } from "../../../../src/frontend/ui/generated/LineDiffRow";
 import type { LineDiff } from "../../../../src/frontend/ui/generated/LineDiff";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
-const row = (kind: DiffRow["kind"], text: string): DiffRow => ({ kind, text });
-const lineDiff = (rows: DiffRow[]): LineDiff => ({ rows, shown: rows.length, truncated: false, added: 0, removed: 0, stat: "" });
+const row = (kind: LineDiffRow["kind"], text: string): LineDiffRow => ({ kind, text });
+const lineDiff = (rows: LineDiffRow[]): LineDiff => ({ rows, shown: rows.length, truncated: false, added: 0, removed: 0, stat: "" });
 const drawn = (d: HTMLElement): string[] =>
   [...d.querySelectorAll(".block-diff-line")].map((l) => `${l.querySelector(".block-diff-gutter")?.textContent}${l.querySelector(".block-diff-code")?.textContent}`);
 const newCtx = () => ({ parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map() });

@@ -3,7 +3,7 @@
 use super::*;
 use crate::agents::claudecode::parse::parse_line;
 use crate::agents::claudecode::schema::JsonlRecord;
-use crate::agents::{DiffKind, DiffRow, LineDiff, ResultKind, StepBody};
+use crate::agents::{LineDiff, LineDiffKind, LineDiffRow, ResultKind, StepBody};
 use crate::common::cells::Words;
 use serde_json::json;
 use serde_json::Value;
@@ -271,9 +271,12 @@ fn an_edit_result_carries_its_hunks_and_file_within_a_bound() {
     let hunk = |n: usize| json!({"oldStart": 1, "oldLines": 1, "newStart": 1, "newLines": 1, "lines": [format!("-{}", "a".repeat(n)), "+b"]});
     let block = json!({"type": "tool_result", "tool_use_id": "c", "content": "ok"});
     let heads = |r: &StepResult| {
-        r.patch
-            .as_ref()
-            .map_or(0, |d| d.rows.iter().filter(|x| x.kind == DiffKind::Head).count())
+        r.patch.as_ref().map_or(0, |d| {
+            d.rows
+                .iter()
+                .filter(|x| x.kind == LineDiffKind::Head)
+                .count()
+        })
     };
     let small = json!({"filePath": "/w/a.rs", "structuredPatch": [hunk(3), hunk(3)]});
     let r = result_of(&block, Some(&small));
@@ -326,7 +329,11 @@ fn the_right_hand_sentence_is_written_by_the_core() {
         ),
     );
     assert_eq!(t(&r), ("+2 −1".to_string(), None));
-    assert_eq!(r.patch.as_ref().map(|d| d.stat.0.as_str()), Some("+2 −1"), "行差那一格与右侧那一句同一处写");
+    assert_eq!(
+        r.patch.as_ref().map(|d| d.stat.0.as_str()),
+        Some("+2 −1"),
+        "行差那一格与右侧那一句同一处写"
+    );
     // 几个文件。
     let r = result_of(&ok("…"), Some(&json!({"numFiles": 4, "filenames": []})));
     assert_eq!(
@@ -503,7 +510,7 @@ fn a_dispatch_result_says_whether_it_is_a_launch_receipt_or_a_handback() {
 /// 写类那几个工具展开画的改动（`body`）：一处改 · 新写整份（改前为空）· 一次改几处；入参形状不对 ⇒ 缺（界面照原文画入参）。
 #[test]
 fn a_write_step_carries_what_changed() {
-    let row = |kind: DiffKind, text: &str| DiffRow {
+    let row = |kind: LineDiffKind, text: &str| LineDiffRow {
         kind,
         text: text.into(),
         old_no: None,
@@ -514,7 +521,7 @@ fn a_write_step_carries_what_changed() {
         Some(StepBody::Changes { diff }) => diff.rows,
         other => panic!("{name} 没出改动：{other:?}"),
     };
-    use DiffKind::{Add, Ctx, Del, Head};
+    use LineDiffKind::{Add, Ctx, Del, Head};
     assert_eq!(
         rows(
             "Edit",
@@ -524,7 +531,10 @@ fn a_write_step_carries_what_changed() {
         "从入参算的那一份不知道在文件第几行 ⇒ 行号缺"
     );
     assert_eq!(
-        rows("Write", json!({"file_path": "/w/a", "content": "l1\r\nl2\n"})),
+        rows(
+            "Write",
+            json!({"file_path": "/w/a", "content": "l1\r\nl2\n"})
+        ),
         vec![row(Add, "l1"), row(Add, "l2")],
         "新写整份：整份都是加的；行尾 CRLF 与末尾一个换行不成行"
     );
@@ -681,13 +691,19 @@ fn one_edit_has_one_line_diff_written_by_the_core() {
     ]});
     let r = result_of(&block, Some(&tur));
     let d: &LineDiff = r.patch.as_ref().expect("结果带行差");
-    let count = |k: DiffKind| d.rows.iter().filter(|x| x.kind == k).count() as u32;
-    assert_eq!((count(DiffKind::Add), count(DiffKind::Del)), (r.added.unwrap(), r.removed.unwrap()));
+    let count = |k: LineDiffKind| d.rows.iter().filter(|x| x.kind == k).count() as u32;
+    assert_eq!(
+        (count(LineDiffKind::Add), count(LineDiffKind::Del)),
+        (r.added.unwrap(), r.removed.unwrap())
+    );
     assert_eq!((d.added, d.removed), (3, 2));
     assert_eq!(d.stat, r.text);
-    let nos: Vec<(DiffKind, &str, Option<u32>, Option<u32>)> =
-        d.rows.iter().map(|x| (x.kind, x.text.as_str(), x.old_no, x.new_no)).collect();
-    use DiffKind::{Add, Ctx, Del, Head};
+    let nos: Vec<(LineDiffKind, &str, Option<u32>, Option<u32>)> = d
+        .rows
+        .iter()
+        .map(|x| (x.kind, x.text.as_str(), x.old_no, x.new_no))
+        .collect();
+    use LineDiffKind::{Add, Ctx, Del, Head};
     assert_eq!(
         nos,
         vec![
@@ -705,9 +721,17 @@ fn one_edit_has_one_line_diff_written_by_the_core() {
     );
     assert_eq!((d.shown, d.truncated), (9, false));
     // 调用那一份：同一处改动、增删数一样，「+N −M」同一处写。
-    let s = step_of("Edit", &json!({"file_path": "/w/a.rs", "old_string": "k\nx\nk2", "new_string": "k\ny\nk2"}));
-    let Some(StepBody::Changes { diff }) = s.body else { panic!("没出改动") };
-    assert_eq!((diff.added, diff.removed, diff.stat.0.as_str()), (1, 1, "+1 −1"));
+    let s = step_of(
+        "Edit",
+        &json!({"file_path": "/w/a.rs", "old_string": "k\nx\nk2", "new_string": "k\ny\nk2"}),
+    );
+    let Some(StepBody::Changes { diff }) = s.body else {
+        panic!("没出改动")
+    };
+    assert_eq!(
+        (diff.added, diff.removed, diff.stat.0.as_str()),
+        (1, 1, "+1 −1")
+    );
 }
 
 /// 行多了先画前几行（其余等展开）；改前改后都很长、逐行比的格数超了预算 ⇒ 仍出整删 ＋ 整增，数照这一形。
@@ -715,13 +739,17 @@ fn one_edit_has_one_line_diff_written_by_the_core() {
 fn a_long_diff_shows_its_head_and_keeps_whole_counts() {
     let many: String = (0..1000).map(|i| format!("l{i}\n")).collect();
     let s = step_of("Write", &json!({"file_path": "/w/a", "content": many}));
-    let Some(StepBody::Changes { diff }) = s.body else { panic!("没出改动") };
+    let Some(StepBody::Changes { diff }) = s.body else {
+        panic!("没出改动")
+    };
     assert_eq!((diff.rows.len(), diff.added, diff.removed), (1000, 1000, 0));
     assert!((diff.shown as usize) < diff.rows.len(), "收着时只画前几行");
     assert!(!diff.truncated);
     let old: String = (0..3000).map(|i| format!("o{i}\n")).collect();
     let new: String = (0..3000).map(|i| format!("n{i}\n")).collect();
     let s = step_of("Edit", &json!({"old_string": old, "new_string": new}));
-    let Some(StepBody::Changes { diff }) = s.body else { panic!("没出改动") };
+    let Some(StepBody::Changes { diff }) = s.body else {
+        panic!("没出改动")
+    };
     assert_eq!((diff.added, diff.removed), (3000, 3000));
 }

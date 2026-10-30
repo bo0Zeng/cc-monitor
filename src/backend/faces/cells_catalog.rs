@@ -677,9 +677,9 @@ mod specimens {
     use super::{node_of, Specimen};
     use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy};
     use crate::agents::{
-        Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, DiffKind, DiffRow, LineDiff,
-        McpStatus, Pasted, ResultKind, SessionActivity, Speaker, StepAsk, StepBody, StepResult,
-        ToolCard, ToolStep, UserText,
+        Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, LineDiff, LineDiffKind,
+        LineDiffRow, McpStatus, Pasted, ResultKind, SessionActivity, Speaker, StepAsk, StepBody,
+        StepResult, ToolCard, ToolStep, UserText,
     };
     use crate::agents::{PlanTitleExt as _, SpeakerExt as _};
     use crate::common::cells::Words;
@@ -758,8 +758,8 @@ mod specimens {
     /// 行差：结果那一份带真行号；调用那一份从入参算，不知道在文件第几行（行号恒缺，`NEVER_WRITTEN` 登记）。
     fn diff(numbered: bool) -> LineDiff {
         LineDiff {
-            rows: vec![DiffRow {
-                kind: DiffKind::Add,
+            rows: vec![LineDiffRow {
+                kind: LineDiffKind::Add,
                 text: s("a"),
                 old_no: numbered.then_some(1),
                 new_no: numbered.then_some(1),

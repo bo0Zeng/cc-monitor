@@ -24,9 +24,9 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
-import com.ccmonitor.mobile.core.wire.gen.DiffKind
-import com.ccmonitor.mobile.core.wire.gen.DiffRow
 import com.ccmonitor.mobile.core.wire.gen.LineDiff
+import com.ccmonitor.mobile.core.wire.gen.LineDiffKind
+import com.ccmonitor.mobile.core.wire.gen.LineDiffRow
 
 /** 行级 diff 渲染（行 · 行号 · 「+N −M」都是核心算好的，照画）：add/del 实心左边框为主信号，底色为辅。 */
 @Composable
@@ -61,7 +61,7 @@ fun DiffView(
 
 @Composable
 private fun DiffRowView(
-    row: DiffRow,
+    row: LineDiffRow,
     addBorder: Color,
     delBorder: Color,
     addBg: Color,
@@ -70,9 +70,9 @@ private fun DiffRowView(
 ) {
     val (border, bg, sigil) =
         when (row.kind) {
-            DiffKind.ADD -> Triple(addBorder, addBg, "+")
-            DiffKind.DEL -> Triple(delBorder, delBg, "−")
-            DiffKind.CTX, DiffKind.HEAD -> Triple(Color.Transparent, Color.Transparent, " ")
+            LineDiffKind.ADD -> Triple(addBorder, addBg, "+")
+            LineDiffKind.DEL -> Triple(delBorder, delBg, "−")
+            LineDiffKind.CTX, LineDiffKind.HEAD -> Triple(Color.Transparent, Color.Transparent, " ")
         }
     val lineNo = row.newNo ?: row.oldNo
     Row(
