@@ -1,3 +1,1555 @@
 {
-  "cases": []
+  "cases": [
+    {
+      "answers": {
+        "<local>": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "manual",
+              "manual": {
+                "account": "w1",
+                "fix": null,
+                "kind": "mcpLogin",
+                "said": "核心·MCP s1 需登录",
+                "scope": "user",
+                "server": "s1",
+                "why": "核心·不支持在 app 里登录"
+              },
+              "rank": 2000000000000000
+            },
+            {
+              "kind": "manual",
+              "manual": {
+                "account": "t1",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t1",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t1 需登录"
+              },
+              "rank": 2000000000000000
+            }
+          ]
+        }
+      },
+      "asked": [
+        "<local>"
+      ],
+      "merged": {
+        "down": [],
+        "items": [
+          {
+            "item": {
+              "kind": "manual",
+              "manual": {
+                "account": "w1",
+                "fix": null,
+                "kind": "mcpLogin",
+                "said": "核心·MCP s1 需登录",
+                "scope": "user",
+                "server": "s1",
+                "why": "核心·不支持在 app 里登录"
+              },
+              "rank": 2000000000000000
+            },
+            "origin": "<local>"
+          },
+          {
+            "item": {
+              "kind": "manual",
+              "manual": {
+                "account": "t1",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t1",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t1 需登录"
+              },
+              "rank": 2000000000000000
+            },
+            "origin": "<local>"
+          }
+        ],
+        "total": 2,
+        "unreadable": []
+      }
+    },
+    {
+      "answers": {
+        "<local>": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "manual",
+              "manual": {
+                "fix": null,
+                "kind": "secretFile",
+                "said": "核心·钥匙文件 /h/k：太宽",
+                "why": "核心·只给本人"
+              },
+              "rank": 2000000000000000
+            }
+          ]
+        }
+      },
+      "asked": [
+        "<local>"
+      ],
+      "merged": {
+        "down": [],
+        "items": [
+          {
+            "item": {
+              "kind": "manual",
+              "manual": {
+                "fix": null,
+                "kind": "secretFile",
+                "said": "核心·钥匙文件 /h/k：太宽",
+                "why": "核心·只给本人"
+              },
+              "rank": 2000000000000000
+            },
+            "origin": "<local>"
+          }
+        ],
+        "total": 1,
+        "unreadable": []
+      }
+    },
+    {
+      "answers": {
+        "<local>": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "manual",
+              "manual": {
+                "account": "t1",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t1",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t1 需登录"
+              },
+              "rank": 2000000000000000
+            }
+          ]
+        }
+      },
+      "asked": [
+        "<local>"
+      ],
+      "merged": {
+        "down": [],
+        "items": [
+          {
+            "item": {
+              "kind": "manual",
+              "manual": {
+                "account": "t1",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t1",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t1 需登录"
+              },
+              "rank": 2000000000000000
+            },
+            "origin": "<local>"
+          }
+        ],
+        "total": 1,
+        "unreadable": []
+      }
+    },
+    {
+      "answers": {
+        "<local>": {
+          "answered": [],
+          "items": []
+        }
+      },
+      "asked": [
+        "<local>"
+      ],
+      "merged": {
+        "down": [],
+        "items": [],
+        "total": 0,
+        "unreadable": []
+      }
+    },
+    {
+      "answers": {
+        "<local>": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": null,
+                  "call": null,
+                  "head": "核心·需手动",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": null,
+                  "text": "核心·需手动",
+                  "tone": "need",
+                  "tool": null,
+                  "waitedMs": null,
+                  "waitedText": null,
+                  "what": null
+                },
+                "sid": "a"
+              }
+            },
+            {
+              "kind": "manual",
+              "manual": {
+                "account": "t1",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t1",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t1 需登录"
+              },
+              "rank": 2000000000000000
+            },
+            {
+              "kind": "manual",
+              "manual": {
+                "account": "w1",
+                "fix": {
+                  "args": {
+                    "account": "w1",
+                    "agent": "claude",
+                    "kind": "mcp",
+                    "projectDir": null,
+                    "server": "s1"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "mcpLogin",
+                "said": "核心·MCP s1 需登录",
+                "scope": "user",
+                "server": "s1"
+              },
+              "rank": 2000000000000000
+            }
+          ]
+        },
+        "gpu-01": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "manual",
+              "manual": {
+                "account": "t2",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t2",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t2 需登录"
+              },
+              "rank": 2000000000000000
+            }
+          ]
+        }
+      },
+      "asked": [
+        "<local>",
+        "gpu-01"
+      ],
+      "merged": {
+        "down": [],
+        "items": [
+          {
+            "item": {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": null,
+                  "call": null,
+                  "head": "核心·需手动",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": null,
+                  "text": "核心·需手动",
+                  "tone": "need",
+                  "tool": null,
+                  "waitedMs": null,
+                  "waitedText": null,
+                  "what": null
+                },
+                "sid": "a"
+              }
+            },
+            "origin": "<local>"
+          },
+          {
+            "item": {
+              "kind": "manual",
+              "manual": {
+                "account": "t1",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t1",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t1 需登录"
+              },
+              "rank": 2000000000000000
+            },
+            "origin": "<local>"
+          },
+          {
+            "item": {
+              "kind": "manual",
+              "manual": {
+                "account": "w1",
+                "fix": {
+                  "args": {
+                    "account": "w1",
+                    "agent": "claude",
+                    "kind": "mcp",
+                    "projectDir": null,
+                    "server": "s1"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "mcpLogin",
+                "said": "核心·MCP s1 需登录",
+                "scope": "user",
+                "server": "s1"
+              },
+              "rank": 2000000000000000
+            },
+            "origin": "<local>"
+          },
+          {
+            "item": {
+              "kind": "manual",
+              "manual": {
+                "account": "t2",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t2",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t2 需登录"
+              },
+              "rank": 2000000000000000
+            },
+            "origin": "gpu-01"
+          }
+        ],
+        "total": 4,
+        "unreadable": []
+      }
+    },
+    {
+      "answers": {
+        "<local>": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": {
+                    "choices": [],
+                    "detail": "",
+                    "id": "ask-1",
+                    "kind": "approve",
+                    "questions": [],
+                    "run": {
+                      "id": "a1",
+                      "text": "核心·agent「Audit」 · Explore"
+                    },
+                    "sinceMs": 0,
+                    "tool": "Bash",
+                    "what": "核心·sed -n 1,40p"
+                  },
+                  "call": null,
+                  "head": "核心·需手动",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": null,
+                  "text": "核心·需手动",
+                  "tone": "need",
+                  "tool": null,
+                  "waitedMs": null,
+                  "waitedText": null,
+                  "what": "核心·sed -n 1,40p"
+                },
+                "sid": "a"
+              }
+            },
+            {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "b",
+                "needs": {
+                  "ask": null,
+                  "call": null,
+                  "head": "核心·需手动",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": null,
+                  "text": "核心·需手动",
+                  "tone": "need",
+                  "tool": null,
+                  "waitedMs": null,
+                  "waitedText": null,
+                  "what": null
+                },
+                "sid": "b"
+              }
+            }
+          ]
+        }
+      },
+      "asked": [
+        "<local>"
+      ],
+      "merged": {
+        "down": [],
+        "items": [
+          {
+            "item": {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": {
+                    "choices": [],
+                    "detail": "",
+                    "id": "ask-1",
+                    "kind": "approve",
+                    "questions": [],
+                    "run": {
+                      "id": "a1",
+                      "text": "核心·agent「Audit」 · Explore"
+                    },
+                    "sinceMs": 0,
+                    "tool": "Bash",
+                    "what": "核心·sed -n 1,40p"
+                  },
+                  "call": null,
+                  "head": "核心·需手动",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": null,
+                  "text": "核心·需手动",
+                  "tone": "need",
+                  "tool": null,
+                  "waitedMs": null,
+                  "waitedText": null,
+                  "what": "核心·sed -n 1,40p"
+                },
+                "sid": "a"
+              }
+            },
+            "origin": "<local>"
+          },
+          {
+            "item": {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "b",
+                "needs": {
+                  "ask": null,
+                  "call": null,
+                  "head": "核心·需手动",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": null,
+                  "text": "核心·需手动",
+                  "tone": "need",
+                  "tool": null,
+                  "waitedMs": null,
+                  "waitedText": null,
+                  "what": null
+                },
+                "sid": "b"
+              }
+            },
+            "origin": "<local>"
+          }
+        ],
+        "total": 2,
+        "unreadable": []
+      }
+    },
+    {
+      "answers": {
+        "<local>": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": null,
+                  "call": null,
+                  "head": "核心·需手动",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": null,
+                  "text": "核心·需手动",
+                  "tone": "need",
+                  "tool": null,
+                  "waitedMs": null,
+                  "waitedText": null,
+                  "what": null
+                },
+                "sid": "a"
+              }
+            },
+            {
+              "kind": "manual",
+              "manual": {
+                "account": "t1",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t1",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t1 需登录"
+              },
+              "rank": 2000000000000000
+            }
+          ]
+        },
+        "gpu-01": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "manual",
+              "manual": {
+                "account": "w1",
+                "fix": {
+                  "args": {
+                    "account": "w1",
+                    "agent": "claude",
+                    "kind": "mcp",
+                    "projectDir": null,
+                    "server": "s1"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "mcpLogin",
+                "said": "核心·MCP s1 需登录",
+                "scope": "user",
+                "server": "s1"
+              },
+              "rank": 2000000000000000
+            }
+          ]
+        }
+      },
+      "asked": [
+        "<local>",
+        "gpu-01"
+      ],
+      "merged": {
+        "down": [],
+        "items": [
+          {
+            "item": {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": null,
+                  "call": null,
+                  "head": "核心·需手动",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": null,
+                  "text": "核心·需手动",
+                  "tone": "need",
+                  "tool": null,
+                  "waitedMs": null,
+                  "waitedText": null,
+                  "what": null
+                },
+                "sid": "a"
+              }
+            },
+            "origin": "<local>"
+          },
+          {
+            "item": {
+              "kind": "manual",
+              "manual": {
+                "account": "t1",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t1",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t1 需登录"
+              },
+              "rank": 2000000000000000
+            },
+            "origin": "<local>"
+          },
+          {
+            "item": {
+              "kind": "manual",
+              "manual": {
+                "account": "w1",
+                "fix": {
+                  "args": {
+                    "account": "w1",
+                    "agent": "claude",
+                    "kind": "mcp",
+                    "projectDir": null,
+                    "server": "s1"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "mcpLogin",
+                "said": "核心·MCP s1 需登录",
+                "scope": "user",
+                "server": "s1"
+              },
+              "rank": 2000000000000000
+            },
+            "origin": "gpu-01"
+          }
+        ],
+        "total": 3,
+        "unreadable": []
+      }
+    },
+    {
+      "answers": {
+        "<local>": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": null,
+                  "call": null,
+                  "head": "核心·需手动",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": null,
+                  "text": "核心·需手动",
+                  "tone": "need",
+                  "tool": null,
+                  "waitedMs": null,
+                  "waitedText": null,
+                  "what": null
+                },
+                "sid": "a"
+              }
+            },
+            {
+              "kind": "manual",
+              "manual": {
+                "account": "t1",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t1",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t1 需登录"
+              },
+              "rank": 2000000000000000
+            }
+          ]
+        }
+      },
+      "asked": [
+        "<local>",
+        "devbox"
+      ],
+      "merged": {
+        "down": [
+          {
+            "origin": "devbox",
+            "said": "devbox 后端未在运行"
+          }
+        ],
+        "items": [
+          {
+            "item": {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": null,
+                  "call": null,
+                  "head": "核心·需手动",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": null,
+                  "text": "核心·需手动",
+                  "tone": "need",
+                  "tool": null,
+                  "waitedMs": null,
+                  "waitedText": null,
+                  "what": null
+                },
+                "sid": "a"
+              }
+            },
+            "origin": "<local>"
+          },
+          {
+            "item": {
+              "kind": "manual",
+              "manual": {
+                "account": "t1",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t1",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t1 需登录"
+              },
+              "rank": 2000000000000000
+            },
+            "origin": "<local>"
+          }
+        ],
+        "total": 2,
+        "unreadable": []
+      }
+    },
+    {
+      "answers": {
+        "<local>": {
+          "answered": [],
+          "items": [
+            {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": null,
+                  "call": null,
+                  "head": "核心·需手动",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": null,
+                  "text": "核心·需手动",
+                  "tone": "need",
+                  "tool": null,
+                  "waitedMs": null,
+                  "waitedText": null,
+                  "what": null
+                },
+                "sid": "a"
+              }
+            },
+            {
+              "kind": "manual",
+              "manual": {
+                "account": "t1",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t1",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t1 需登录"
+              },
+              "rank": 2000000000000000
+            }
+          ]
+        }
+      },
+      "asked": [
+        "<local>"
+      ],
+      "merged": {
+        "down": [],
+        "items": [
+          {
+            "item": {
+              "kind": "session",
+              "rank": 1,
+              "session": {
+                "face": {
+                  "can": {
+                    "close": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "end": {
+                      "can": "yes"
+                    },
+                    "model": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "permission": {
+                      "can": "no",
+                      "why": "先答完需手动"
+                    },
+                    "reattach": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "resume": {
+                      "can": "no",
+                      "why": "运行中"
+                    },
+                    "say": {
+                      "can": "yes",
+                      "hint": "发消息…"
+                    },
+                    "stop": {
+                      "can": "no",
+                      "why": "需手动"
+                    },
+                    "term": {
+                      "can": "yes",
+                      "host": "tmux"
+                    }
+                  },
+                  "dot": "needs-you",
+                  "life": {
+                    "activity": "needs_you",
+                    "is": "live"
+                  },
+                  "line": "需手动",
+                  "name": "需手动",
+                  "order": 0,
+                  "settled": false,
+                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
+                  "tone": "need"
+                },
+                "hidden": null,
+                "label": "a",
+                "needs": {
+                  "ask": null,
+                  "call": null,
+                  "head": "核心·需手动",
+                  "headCode": null,
+                  "kind": "approve",
+                  "manualText": null,
+                  "rank": 1,
+                  "sinceMs": null,
+                  "text": "核心·需手动",
+                  "tone": "need",
+                  "tool": null,
+                  "waitedMs": null,
+                  "waitedText": null,
+                  "what": null
+                },
+                "sid": "a"
+              }
+            },
+            "origin": "<local>"
+          },
+          {
+            "item": {
+              "kind": "manual",
+              "manual": {
+                "account": "t1",
+                "agent": "claude",
+                "fix": {
+                  "args": {
+                    "account": "t1",
+                    "agent": "claude",
+                    "kind": "account"
+                  },
+                  "command": "login-start"
+                },
+                "kind": "accountLogin",
+                "said": "核心·t1 需登录"
+              },
+              "rank": 2000000000000000
+            },
+            "origin": "<local>"
+          }
+        ],
+        "total": 2,
+        "unreadable": []
+      }
+    }
+  ],
+  "读法": [
+    "界面测试的需手动替身（tests/test-support/needs-fake.ts）只照这份回：按输入（asked 问了哪几台 · answers 答了的那几台各自的整份）找到那一条、交它的 merged。",
+    "merged 由后端判据 tests/backend/faces/needs_merge_tests.rs 跑真的 needs_merge_with 现打（问了没答的那台 ⇒ 常驻不在）；只比不写，对过后 bless 拷回。",
+    "替身遇到没录的输入记进本树 .build/golden-missing/needs-merged.jsonl，那条判据一并收进现打的那份。"
+  ]
 }
