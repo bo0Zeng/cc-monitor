@@ -141,11 +141,9 @@ pub const ACCOUNTS_MCP_REL: &str = ".cc-monitor/accounts-mcp.json";
 /// 〔「一台机器一个家」〕**额度账**（后端账号域写）：这台各号最近一次从回包头看到的额度快照 ＋ 看到的时刻。
 pub const QUOTA_LEDGER_REL: &str = ".cc-monitor/quota.json";
 
-/// 〔同上〕**账号轮换**（后端账号域写）：每个会话此刻在用哪个号 · 拖出来的先后 · 策略交的 memo 与叫醒 · 换号记录。
+/// 〔同上〕**账号轮换**（后端账号域写）：每个会话此刻在用哪个号 · 它载入的那份策略副本 · 拖出来的先后 · 策略交的 memo 与叫醒 ·
+/// 换号记录 · 新会话默认用哪份策略（`forNew`）。
 pub const ROTATION_REL: &str = ".cc-monitor/rotation.json";
-
-/// 〔同上〕**轮换用哪份策略**（后端账号域写）：每个会话用哪份策略与改过的设置 · 新会话默认用哪份。
-pub const ROTATION_USES_REL: &str = ".cc-monitor/rotation-uses.json";
 
 /// 〔同上〕**会话血缘**（后端 `lineage.rs` 写，唯一写者是中转那一路）：谁起的谁 ＋ 起会话地址里每个来处绑给了哪个会话。
 pub const LINEAGE_REL: &str = ".cc-monitor/lineage.json";
@@ -569,8 +567,10 @@ const BACKEND_POLICY_MAX_BYTES: u64 = 4096;
 /// 退出行为设置。
 pub const BACKEND_POLICY_FILE: Decl<State> =
     Decl::<State>::json(BACKEND_POLICY_REL, 1, 1, BACKEND_POLICY_MAX_BYTES);
-/// 这台的偏好。
-pub const PREFS_FILE: Decl<State> = Decl::<State>::json(PREFS_REL, 2, 2, 256 * 1024);
+/// 这台偏好那一份的读上限（几张小表）。
+const PREFS_MAX_BYTES: u64 = 256 * 1024;
+/// 这台的偏好（第 2 版：恢复那一格从开关 `resumeInTmux` 换成三选 `resumeWhere`；第 1 版经一步升级读）。
+pub const PREFS_FILE: Decl<State> = Decl::<State>::json(PREFS_REL, 2, 1, PREFS_MAX_BYTES);
 /// 机器表那一份的读上限（至多 256 台）。
 const MACHINES_MAX_BYTES: u64 = 1024 * 1024;
 /// 机器表。
@@ -605,10 +605,19 @@ pub const ASSET_CATALOG_FILE: Decl<State> =
     Decl::<State>::json(ASSET_CATALOG_REL, 1, 1, 16 * 1024 * 1024);
 /// 额度账。
 pub const QUOTA_FILE: Decl<State> = Decl::<State>::json(QUOTA_LEDGER_REL, 1, 1, 16 << 20);
-/// 账号轮换。
-pub const ROTATION_FILE: Decl<State> = Decl::<State>::json(ROTATION_REL, 3, 3, 16 << 20);
-/// 轮换用哪份策略。
-pub const ROTATION_USES_FILE: Decl<State> = Decl::<State>::json(ROTATION_USES_REL, 1, 1, 16 << 20);
+/// 轮换账本那一份的读上限。
+const ROTATION_MAX_BYTES: u64 = 16 << 20;
+/// 账号轮换（第 1 版 · 第 2 版不升级）。
+pub const ROTATION_FILE: Decl<State> = Decl::<State>::json(ROTATION_REL, 3, 3, ROTATION_MAX_BYTES);
+/// 历史注解那一份的读上限：一条约 150 字节 ⇒ 四十万条；真撞上说明那份文件不对劲，不拿截断的当完整的用。
+const HISTORY_ANNOTATIONS_MAX_BYTES: u64 = 64 * 1024 * 1024;
+/// 历史注解（星标 · 改名 · 隐藏 · 组 …；住这台的数据目录，名字同 `creds_core::store::HISTORY_METADATA_FILE`）。
+pub const HISTORY_ANNOTATIONS_FILE: Decl<State> = Decl::<State>::json(
+    ".cc-monitor/history-metadata.json",
+    1,
+    1,
+    HISTORY_ANNOTATIONS_MAX_BYTES,
+);
 /// 血缘那一份的读上限（90 天清一次，远到不了）。
 const LINEAGE_MAX_BYTES: u64 = 16 << 20;
 /// 会话血缘。
@@ -742,7 +751,7 @@ const OWN_FILES: &[Row] = &[
     ASSET_CATALOG_FILE.row,
     QUOTA_FILE.row,
     ROTATION_FILE.row,
-    ROTATION_USES_FILE.row,
+    HISTORY_ANNOTATIONS_FILE.row,
     LINEAGE_FILE.row,
     LAUNCH_ACCOUNTS_FILE.row,
     KNOWN_HOSTS_FILE.row,
@@ -798,7 +807,6 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     declared("assetCatalog", &ASSET_CATALOG_FILE),
     declared("quota", &QUOTA_FILE),
     declared("rotation", &ROTATION_FILE),
-    declared("rotationUses", &ROTATION_USES_FILE),
     declared("lineage", &LINEAGE_FILE),
     declared("launchAccounts", &LAUNCH_ACCOUNTS_FILE),
     ("sessionQueue", SESSION_QUEUE_DIR_REL, true, true),

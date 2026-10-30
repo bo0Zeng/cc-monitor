@@ -16,7 +16,7 @@ box.lan ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA
 {"acks":{"/w":{"s1":["k1"]}},"returns":{},"version":1}
 
 == prefs.json
-{"version":2,"launchers":{},"resumeWhere":"managed","models":{},"permissionModes":{},"contextLimits":{},"agentHomes":{},"pbDir":null,"childTab":"hide","bgTab":"show"}
+{"agentHomes":{},"bgTab":"show","childTab":"hide","contextLimits":{},"launchers":{},"models":{},"pbDir":null,"permissionModes":{},"resumeWhere":"managed","version":2}
 
 == ssh_config
 UserKnownHostsFile <home>/.cc-monitor/known_hosts

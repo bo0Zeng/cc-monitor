@@ -1,14 +1,12 @@
-//! `rotation.json` 第三版（基础功能层那一份）：每个会话在用哪个号 · 它载入的那份策略副本 · 会话侧的临时动作（拖出来的顺序 · 先不用的号）·
-//! 策略上一判交的 `memo` 与叫醒 · 换号记录（[`Book::saw`] 记新会话 · [`Session::push_log`] 记换号）。
+//! `rotation.json` 第三版：每个会话在用哪个号 · 它载入的那份策略副本 · 会话侧的临时动作（拖出来的顺序 · 先不用的号）·
+//! 策略上一判交的 `memo` 与叫醒 · 换号记录（[`Book::saw`] 记新会话 · [`Session::push_log`] 记换号）· 新会话默认载入哪份（`forNew`）。
+//! 版本那一格归读写口（声明 `relay_route_core::ROTATION_FILE`）。
 
 /// 换号记录（盘上那一份 · `rotation-view` 带的同一形）：线上形住 `cmd-wire`。
 pub(crate) use cmd_wire::rotation::{RotLog as Log, RotLogCause as Cause};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
-
-/// 这一版的版本号。
-pub(crate) const BOOK_VERSION: u64 = 3;
 
 /// 换号记录至多几条（照第二版）。
 pub(crate) const LOG_KEPT: usize = 32;
@@ -17,9 +15,11 @@ pub(crate) const LOG_KEPT: usize = 32;
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Book {
-    pub(crate) version: u64,
     #[serde(default)]
     pub(crate) sessions: BTreeMap<String, Session>,
+    /// 新会话载入哪份（策略目录里的文件名去掉 `.rhai`）；空 ⇒ 新会话不轮换，只用开会话的号。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) for_new: String,
 }
 
 /// 一个会话。
@@ -135,10 +135,7 @@ impl Session {
 impl Book {
     /// 没有文件时那一份：新会话不轮换。
     pub(crate) fn fresh() -> Self {
-        Self {
-            version: BOOK_VERSION,
-            ..Self::default()
-        }
+        Self::default()
     }
 
     /// 中转第一次看见这个会话 ⇒ 记下、载入 `for_new` 那份副本（缺 ⇒ 不轮换）；会话换了开它的号 ⇒ 在用的号 · 临时动作 · memo · 叫醒清掉（副本照留）。

@@ -1,6 +1,6 @@
 //! **这台的偏好**帧面那两条命令（`prefs-read` · `prefs-set`）与起会话要的那几样。那份文件的形状、值域、读与整份写住 `common/machine_prefs.rs`。
 //!
-//! - 谁决定写：只有本模块的 [`answer_set`]（帧面 `prefs-set` ＋ 派生的 CLI 面）与第 1 ⇒ 2 版那一次换形（[`super::prefs_migration`]）；前端从不碰这个文件。
+//! - 谁决定写：只有本模块的 [`answer_set`]（帧面 `prefs-set` ＋ 派生的 CLI 面）；前端从不碰这个文件。
 //! - 读不懂：不写回，`prefs-set` 也拒（不拿空的盖掉原文）。
 
 use crate::common::machine_prefs::{check, path_in, read_at, read_now, write, Loaded, Prefs};
