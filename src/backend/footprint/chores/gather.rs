@@ -1,4 +1,4 @@
-//! 从这台收「待办」要的事实（[`super::Facts`]）：别名块的候选 · PATH 上先找到的 ccm · 设置文件 · 记下的选择。
+//! 从这台收「待办」要的事实（[`super::Facts`]）：别名块的候选 · PATH 上先找到的 ccm · 设置文件 · 账号库共享库里像密钥的项 · 记下的选择。
 //! 只读（读用户的启动文件与设置文件、stat）；判定在 [`super::chores`]。
 
 use super::{Clash, DeadLines, Facts, Hooks, Relay, SelfPaste, StaleCcm};
@@ -119,8 +119,30 @@ pub(crate) fn facts(door: &dyn Door, needs_install: Vec<crate::footprint::data::
         hooks: hooks(),
         mcp_login: mcp_login(),
         sshd: sshd_config_path().and_then(|p| sshd_at(&p)),
+        secret_like: crate::accounts::manage::scan::home(door)
+            .map(|h| secret_like_in(&crate::accounts::manage::scan::scan(&h, &[], &[])))
+            .unwrap_or_default(),
         declined: marks.declined,
     }
+}
+
+/// 账号库快照里共享库顶层像按号密钥的那几项（判据只在 `layout::is_secret_like`）；账号库没设（没清单）⇒ 空。
+pub(crate) fn secret_like_in(
+    s: &crate::accounts::manage::scan::Snapshot,
+) -> Vec<super::SecretLike> {
+    if s.manifest().is_none() {
+        return Vec::new();
+    }
+    let root = &s.roots().shared;
+    s.shared
+        .entries
+        .iter()
+        .filter(|(n, it)| crate::accounts::manage::layout::is_secret_like(n, it))
+        .map(|(n, _)| super::SecretLike {
+            name: n.clone(),
+            path: crate::accounts::manage::scan::join(root, n),
+        })
+        .collect()
 }
 
 /// 这台 sshd 的主配置住哪。

@@ -1,208 +1,33 @@
 /**
- * U0（2026-08-01）：**给 16 个 tsx node 套件补上机检地板。**
- *
- * # 洞在哪
- *
- * `npm test`（`ci.yml:136` 前端 job 跑的就是它）把 16 个 `*.test.ts` 用 `&&` 串起来跑
- * （tsx，非 vitest）。它们各自是这个形状：
- *
- * ```
- * let failed = 0;
- * function test(name, fn) { try { fn(); } catch { failed++; console.error(`✗ …`); } }
- * …
- * if (failed > 0) { throw new Error(`… ${failed} failed`); }
- * ```
- *
- * 这个形状有**两条**都能导致「退出码 0 但什么都没验」的路：
- * ① **把测试删光** ⇒ `failed` 恒 0 ⇒ 静默绿。
- * ② **把收尾的 `if (failed > 0) … throw` 删掉** ⇒ 测试还在跑、还在打 `✗`，退出码照样 0。
- *
- * ②比①更重（表面上一切正常），而且**一行编辑就能重开**。Phase D 审计实测：
- * 删掉 `context-limit.test.ts`（当时叫 `pricing.test.ts`）的收尾 + 让一条断言必然失败 ⇒
- * `npm run test:context-limit` **RC=0**。
- * e2e 那几套由 `assert-pass-floor.sh` 兜这一类（收尾 `合计 PASS=<n> FAIL=0` 抓不到 ⇒ 红），这 16 套 **242 条**一直没有。
- *
- * > 把它记成「既无断言地板又被 `coverage.exclude` 排掉，双重不设防」——
- * > **「双重」那半不成立**：`coverage.exclude` 里的 `src/**\/*.test.ts` 排的是测试文件自身
- * > （标准做法），被测的生产代码仍在 `include` 里；且 `vitest.config.ts:21` 另有一条
- * > `src/**\/*.vitest.ts`，所以「放不放 `test-support/`」在覆盖率上没有差别。
- * > 真洞只有「无地板」这一条，本守卫只补这一条。
- *
- * # 判据（六条，互相咬）
- *
- * - **a 不空**：每个套件**行首** `test(` 至少一条（补上面那条①：测试删光 ⇒ 红）。条数本身不登记 —— 删一条测试是常事，
- *   被测对象还在、测试被悄悄删掉，那是逐条的 review 管的，不是一个会腐的数管得住的。
- * - **b 集合**：登记集合 == `package.json` 里所有「跑 `.test.ts` 的 tsx 脚本」。
- *   **匹配 `tsx` 用的是词边界正则而不是 `startsWith("tsx ")`** —— Phase D 审计实测
- *   `"npx tsx …"` 能从 `startsWith` 版本里**静默逃逸**（加个不登记不进链的套件，守卫全绿）。
- * - **b2 路径**：登记的文件路径与 `package.json` 的命令逐字相符。
- * - **c 链路**：每个登记脚本都出现在 `npm test` 的链里，且链上不许有跑 `.test.ts` 却没登记的。
- *   **这条是关键** —— 套件文件还在、登记还在，但从链里被摘掉，a/b 都发现不了，
- *   而后果就是它再也不跑。另外**链的连接符必须是 `&&`**：换成 `;` 的话前面任何一套失败
- *   都会被最后一条的退出码盖掉，与「静默绿」同一类。
- * - **d 收尾**：每个套件都必须留着 `if (failed > 0)` + `throw` 的失败收尾。补上面那条②。
- *
- * # 它挡不住什么（诚实段；在一条专治安慰剂的守卫里，这段不完整本身就是缺陷）
- *
- * - **`test()` 还在但断言被掏空。** 运行期 PASS 计数同样挡不住（空 body 照样计一次 PASS），
- *   所以这不是选静态计数的损失。那一类归伪测试扫荡（R02）管。
- * - **非行首的 `test(` 不在计数里** —— 缩进的、`await test(`、循环里生成的，a 条看不见。
- *   Phase D 审计实测：给某套件加一条缩进两格的 `test(` ⇒ 守卫全绿。
- *   今天 16 个套件里**0 处**非行首写法（非行首命中全是 `function test(` 定义、
- *   `/re/.test(x)` 方法调用、模板串里的 `test(s) failed`），所以是**潜伏不是现患**。
- * - **不以 `test:` 开头的脚本名**（`unit:foo`）整个绕过 b。
- * - `d` 只看收尾**在不在**，不看它是否真的能被触达（比如被 `if (false)` 包住）。
+ * 前端测试的几样跑法前提：`npm test` 只有 vitest 一套 · 覆盖率那两步真在执行 · `.mjs` 的最小闸门。
  */
 import { execFile } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
-import { stripComments } from "../../test-support/strip-comments.ts";
 import { nonEmpty } from "../../test-support/non-empty.ts";
+import { filePaths } from "../../test-support/production-sources.ts";
 
-/**
- * `(npm 脚本名, 文件)`。
- */
-const NODE_SUITES: readonly (readonly [string, string])[] = [
-  ["test:diff", "tests/frontend/ui/cards/diff.test.ts"],
-  ["test:api-error", "tests/frontend/ui/cards/api-error.test.ts"],
-  // F04b +1：`isValidNewTmuxName` 也禁 `=`（别创建一个主路杀不掉的名字）。
-  // +1（名字可读、sid 一个片段都不进去 + `@ccm_sid` 必须还在）。
-  // 🔴 **44 → 37**：五个 builder 删了（生产调用 0），它们的用例改测生产的
-  //    `plan*` ＋ `buildLaunchRenderRequest`（字节归 Rust 夹具）；合并掉的几条：直起 cwd 引号并进第一条 ·
-  //    tmux cwd 引号并进空 cwd 那条 · `buildEnvPrefix` 三条收成「非法 configDir 在 plan 那一步就拒」一条 ·
-  //    `posixQuote` 一条随函数删 · `buildOpenTerminalCmd` 一条随函数删（期望搬进 Rust `shell_tests`）。
-  //    **37 → 39**：`session-backend.test.ts` 里两条与座无关的搬进来（F01 shim 漂移守卫 · P3s-Y2 铸名口数据流）。
-  // **39 → 38**（被测对象没了）：`sanitizeRemoteLauncher` 一条 · `isValidConfigDir` 一条随函数删；
-  //    加一条「launcher 空白 ⇒ 默认、注入字符原样上线」（前端只剩缺省那一格）；「非法 configDir 拒」那条改测「前端不判、原样上线」（条数不变）。
-  // **38 → 37**：`isValidSessionId` 那条随函数删；三条「非法 sid ⇒ throw」改测「前端不判、resumeSid 单报」（条数不变）。
-  ["test:format", "tests/frontend/ui/format.test.ts"],
-  // 🔴 〔删用量 09-18〕原先这里有 `["test:usage-pivot", "tests/frontend/ui/views/usage-pivot.test.ts", 14]`。
-  // 用量 ② 轴整轴退役 ⇒ 套件文件整删（**被测对象没了**，不是把测试删光了）。
-  // ⚠ **`package.json` 那一半这里不改**：`test:usage-pivot` 与 `test:usage-probe`
-  //    两条 script、以及 `test` 那条 `&&` 链里的 `npm run test:usage-pivot`，要由
-  //    改 `package.json` 的那一路同拍摘掉 —— 在那之前本文件的 b/c 两条会红，已上报。
-  // §5 步 12：`views/pricing.ts` → `views/context-limit.ts`（只剩 context 上限那半，
-  // 名字名不副实），套件与脚本名同拍改。条数 6 → 5：`equivalentInputTokens` 那一例随 ② 轴
-  // 退役（`RELATIVE_COST` 的唯一消费者是用量视图）。
-  // 条数 5 → 3：上下文上限的判定搬进后端（`observe/recognize/facts.rs::context_limit`，逐格归 `recognize/facts_tests.rs`），
-  // `contextLimit` 三条与 `contextPercent` 一条随函数删；前端只剩排版（`contextPercentOf`）与读设置表（`readContextLimits`）各一条。
-  // 3 → 4：上限判不出时只写用了多少（`contextTokensText`）。
-  // 读设置表那一条随 `readContextLimits` 删（上限表住各台后端 `prefs.json`，界面经 `prefs-read` 问）。
-  // 🔴 原先这里有 `["test:context-limit", "tests/frontend/ui/views/context-limit.test.ts"]`。最后剩的 `normalizeModel`
-  // （界面自己剥模型名的后缀）换成照抄后端的 `modelText` ⇒ 模块与套件整删（**被测对象没了**）。
-  // 🔴 原先这里有 `["test:session-backend", "tests/session-backend.test.ts", 10]`。TS 座
-  // `session-backend.ts` 零生产调用、删了 ⇒ 套件整删（**被测对象没了**，8 条测座本身）；外层 tmux 三格的字节由
-  // 入库夹具 `tmux-outer-golden.json` ＋ Rust `payload_tests.rs` 接着（对照见）。
-  // 🔴 原先这里有 `["test:panorama-session-files", "tests/frontend/ui/panorama/session-files.test.ts", 7]`。
-  // 写类工具那张表与它的口径搬进了后端（会话事实由后端出成品）⇒ 被测对象 `collectEditedFiles` 删了、套件整删
-  // （**被测对象没了**，不是把测试删光了）；七条逐条搬进 `tests/backend/observe/recognize/facts_tests.rs::edit_tools_rules_moved_from_the_frontend_suite`。
-  // 🔴 原先这里有 `["test:launch-dimensions", "tests/frontend/ui/launch-dimensions.test.ts", 31]`。
-  // 维度表只为载荷渲染那条存在，起会话只剩那一行 `ccm …` ⇒ 维度表与套件整删（**被测对象没了**）。
-  // 🔴 原先这里有 `["test:launch-render-cli", "tests/launch-render-cli.test.ts", 30]`。
-  // TS 那份 `ccm …` 调用行渲染器删了 ⇒ 套件整删（**被测对象没了**）；它测的行为逐条由
-  // Rust `ccm_invocation_tests.rs` 接着（对照见）。
-];
-
-
-/** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
-const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;
-
-function scripts(): Record<string, string> {
-  const pkg = JSON.parse(readFileSync(resolve(REPO_ROOT, "package.json"), "utf8")) as {
-    scripts: Record<string, string>;
-  };
-  return pkg.scripts;
-}
-
-/** 行首 `test(` 的条数。先剥注释，免得注释里写了 `test(` 也被数进去。 */
-function lineStartTestCount(src: string): number {
-  return (stripComments(src, "ts").match(/^test\(/gm) ?? []).length;
-}
-
-function readSuite(file: string): string {
-  return readFileSync(resolve(REPO_ROOT, file), "utf8");
-}
-
-describe("U0：tsx node 套件的机检地板", () => {
-  it("a · 每个套件的行首 test() 至少一条（测试删光 ⇒ 退出码 0 却什么都没验）", () => {
-    const empty = NODE_SUITES.filter(([, file]) => lineStartTestCount(readSuite(file)) === 0).map(
-      ([script, file]) => `${script} (${file})`,
-    );
-    expect(empty, `这些套件一条行首 test() 都没有了：\n  ${empty.join("\n  ")}`).toEqual([]);
+// 手写跑器（自定义 `test()` ＋ `failed` 计数 ＋ 收尾 throw，由 tsx 跑）与 vitest 是两套跑法：
+// 那一套删光测试或删掉收尾都退 0，`npm` 那一格也数不到它跑了几条 ⇒ 只许 vitest 一套。
+describe("前端测试只有 vitest 一套跑法", () => {
+  it("仓里零份 `*.test.ts`（`vitest.config.ts` 只收 `*.vitest.ts`，别的名字没人跑）", () => {
+    // 正控：遍历塌了 ⇒ 下面零命中地绿。
+    nonEmpty(filePaths("tests", { ext: ".vitest.ts", tests: true }));
+    const stray = filePaths(".", { ext: ".test.ts", tests: true, generated: true, allowEmpty: true });
+    expect(stray, "这些文件不归 vitest 收，要改名 `*.vitest.ts`、用 vitest 的 test/expect").toEqual([]);
   });
 
-  it("b · 登记表覆盖 package.json 里全部 tsx 套件，不多不少", () => {
-    const declared = Object.entries(scripts())
-      .filter(([k, v]) => k.startsWith("test:") && TSX_SUITE_CMD.test(v))
-      .map(([k]) => k)
-      .sort();
-    const registered = NODE_SUITES.map(([s]) => s).sort();
-    expect(
-      registered,
-      "登记表与 package.json 的 tsx 套件集合不一致 —— 新加套件要登记，删套件要清登记。\n" +
-        `package.json: ${declared.join(", ")}\n登记表: ${registered.join(", ")}`,
-    ).toEqual(declared);
-  });
-
-  it("b2 · 登记的文件路径与 package.json 的命令逐字相符", () => {
-    const sc = scripts();
-    for (const [script, file] of NODE_SUITES) {
-      expect(sc[script], `${script} 在 package.json 里不存在`).toBeTruthy();
-      expect(sc[script].trim(), `${script} 的命令与登记的文件对不上（登记 ${file}）`).toBe(
-        `tsx ${file}`,
-      );
-    }
-  });
-
-  it("c · 每个套件都真的挂在 `npm test` 链上，且链是 && 串的", () => {
-    const chain = scripts()["test"];
-    expect(chain, "package.json 里没有 `test` 脚本").toBeTruthy();
-    expect(
-      chain,
-      "`npm test` 的链必须全用 `&&` 串：换成 `;` 或 `||` 之后，前面任何一套失败" +
-        "都会被最后一条的退出码盖掉 —— 与「静默绿」同一类。",
-    ).not.toMatch(/;|\|\|/);
-    const missing = NODE_SUITES.map(([s]) => s).filter(
-      // 用后随的分隔符钉住，免得 `test:history-cache` 被 `test:history-cache-extra` 误判成命中。
-      (s) => !new RegExp(`npm run ${s}(\\s|$)`).test(chain),
-    );
-    expect(
-      missing,
-      `这些套件登记了、文件也在，但**没挂在 \`npm test\` 链上**⇒ 它们根本不跑：${missing.join(", ")}`,
-    ).toEqual([]);
-    // 反向：链上凡是「跑 .test.ts 的 tsx 脚本」都必须登记。
-    // **按命令形态判，不按名字白名单** —— 白名单版本会让 `test:f40`（bash e2e）这类
-    // 正当地挂进链时以「不在登记表里」误红，把人指向错误方向。
-    const sc = scripts();
-    for (const ref of chain.match(/npm run (test:[a-z0-9-]+)/g) ?? []) {
-      const name = ref.replace("npm run ", "");
-      if (!TSX_SUITE_CMD.test(sc[name] ?? "")) continue; // 非 tsx 套件（test:dom 等）不归本表管
-      expect(
-        NODE_SUITES.some(([s]) => s === name),
-        `\`npm test\` 链上的 ${name} 跑的是 .test.ts 却不在登记表里`,
-      ).toBe(true);
-    }
-  });
-
-  it("d · 每个套件都留着 `if (failed > 0)` + throw 的失败收尾", () => {
-    const broken = NODE_SUITES.flatMap(([script, file]) => {
-      const src = stripComments(readSuite(file), "ts");
-      const i = src.indexOf("if (failed > 0)");
-      if (i < 0) return [`${script} (${file}): 找不到 \`if (failed > 0)\` 收尾`];
-      // 收尾之后必须真的抛。窗口给宽些，容得下 `{ …console… throw … }` 的写法。
-      return src.slice(i, i + 400).includes("throw")
-        ? []
-        : [`${script} (${file}): 有 \`if (failed > 0)\` 但其后 400 字符内没有 throw`];
-    });
-    expect(
-      broken,
-      "有套件丢了失败收尾：\n  " +
-        broken.join("\n  ") +
-        "\n没有它，测试照样跑、照样打 ✗，而**退出码是 0** —— `npm test` 全绿、CI 全绿。\n" +
-        "这是本守卫要挡的第二条静默绿路（Phase D 审计实测复现过）。",
-    ).toEqual([]);
+  it("`package.json` 的 `test` 就是 `vitest run`，没有脚本用 tsx 跑测试文件", () => {
+    const scripts = (
+      JSON.parse(readFileSync(resolve(REPO_ROOT, "package.json"), "utf8")) as { scripts: Record<string, string> }
+    ).scripts;
+    expect(scripts["test"]).toBe("vitest run");
+    const tsx = Object.entries(scripts)
+      .filter(([, cmd]) => /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*\S+\.(test|vitest)\.ts\b/.test(cmd))
+      .map(([name]) => name);
+    expect(tsx, "这些脚本用 tsx 跑测试文件：另一套跑法").toEqual([]);
   });
 });
 
@@ -211,8 +36,7 @@ describe("U0：tsx node 套件的机检地板", () => {
 //
 // `ci.yml` 有两步：`coverage floor (vitest jsdom)` → `npm run coverage`，
 // 随后 `coverage per-file floors + zero-coverage ratchet` → 读覆盖率产物。
-// `shared_crate_registry` 已经钉住「这两步在 CI 里还在」，
-// 隔壁那条也钉住「每个套件都真的挂在 `npm test` 链上」。
+// `shared_crate_registry` 已经钉住「这两步在 CI 里还在」。
 //
 // **但没人读 `coverage` 脚本本身**。08-08 实测：把它从 `vitest run --coverage`
 // 改成 `vitest run`，**monitor 993 + vitest 1290 全绿** ——
@@ -364,21 +188,10 @@ describe("覆盖率地板表的自洽", () => {
 // ⇒ 补一条**本地**判据：`node --check` 是语法层的最小闸门（与 CI 里那条
 // `python3 -m py_compile tests/e2e/*.py` 是同一族的先例）。人群从文件系统派生，不手写清单。
 describe("`.mjs` 与 `.mts` 的最小闸门", () => {
-  const mjsFiles = (() => {
-    const skip = new Set([".git", "node_modules", "target", "dist", "coverage", ".vite"]);
-    const out: string[] = [];
-    const walk = (dir: string) => {
-      for (const e of readdirSync(dir, { withFileTypes: true })) {
-        if (e.isDirectory()) {
-          if (!skip.has(e.name) && !dir.includes("vendor")) walk(`${dir}/${e.name}`);
-        } else if (e.name.endsWith(".mjs")) {
-          out.push(`${dir}/${e.name}`);
-        }
-      }
-    };
-    walk(REPO_ROOT);
-    return out.sort();
-  })();
+  // 读目录只经 `test-support/production-sources.ts`；`vendor` 底下的不算（三方带进来的脚本）。
+  const mjsFiles = filePaths(".", { ext: ".mjs", tests: true, generated: true })
+    .filter((f) => !f.split("/").slice(0, -1).some((d) => d.includes("vendor")))
+    .map((f) => resolve(REPO_ROOT, f));
 
   it("每个 .mjs 都过 `node --check`（tsc 整类看不见它们）", async () => {
     // 抽取器自检：遍历塌了的话下面那条就是零命中地绿。

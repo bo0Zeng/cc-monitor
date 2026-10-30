@@ -384,8 +384,10 @@ fn deploy_decisions_live_only_in_the_backend() {
         .filter(|(_, b)| b.contains("deploy_contract::"))
         .collect();
     assert!(
-        users.iter().any(|(r, _)| r.ends_with("byte_table.rs")),
-        "monitor 里用部署契约的人群没扫到 `byte_table.rs` —— 量法瞎了"
+        users
+            .iter()
+            .any(|(r, _)| r == "src/frontend/shell/src/byte_table.rs"),
+        "monitor 里用部署契约的人群没扫到 `src/frontend/shell/src/byte_table.rs` —— 量法瞎了"
     );
     for (rel, body) in contract.iter().chain(users) {
         for (name, home) in DEPLOY_DECISIONS {

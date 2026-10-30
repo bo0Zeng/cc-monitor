@@ -53,7 +53,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-pass=0; fail=0; skip=0; waived=0
+. "$E2E_DIR/assert.sh"
 
 # ★★ **造不出的名字：登记豁免**〔`P0e` 08-13，执行的是本套件自己开的方子〕。
 #
@@ -66,7 +66,7 @@ pass=0; fail=0; skip=0; waived=0
 #   前两轨照常验它 —— 那两轨不依赖 tmux 怎么给会话命名。本轨欠的只是「真会话」这一层。
 # ⚠ 只豁免**登记在册**的：没登记的 skip 仍然让整套 RC=1（原纪律一个字没松）。
 #
-# 登记一条豁免：它走 `skipped()` 里 `waived=$((waived+1))` 那一支 —— 既不进 `pass` 也不进 `skip`。
+# 登记一条豁免：它走 `skipped()` 里记跳过（带理由）那一支 —— 不进 PASS，进 SKIP；没登记的记一条败。
 #   门禁不钉本套件的断言条数，只判退出码 ＋ `FAIL=0` ＋ `PASS > 0`；兜底那一行 `*) echo "" ;;` 由
 #   `tests/backend/control/gate_tests.rs::an_unregistered_skip_still_fails_the_gate2_suite` 钉着（兜底一回非空串，未登记的 skip 就成了豁免）。
 #
@@ -100,19 +100,14 @@ TMUX_VER="$("$TMUX_BIN" -V 2>/dev/null | awk '{print $2}')"
 TMUX_VER="${TMUX_VER#next-}"; TMUX_VER="${TMUX_VER%%[!0-9.]*}"
 [ -n "$TMUX_VER" ] || { echo "读不出 tmux 版本（$("$TMUX_BIN" -V 2>&1)）—— 版本门判不了，不猜"; exit 1; }
 tmux_at_least() { [ "$(printf '%s\n%s\n' "$1" "$TMUX_VER" | sort -V | head -1)" = "$1" ]; }
-skip_ver=0
-
-ok()   { printf '  PASS %s\n' "$1"; pass=$((pass+1)); }
-bad()  { printf '  FAIL %s\n' "$1"; fail=$((fail+1)); }
+# 造不出的名字：登记了豁免 ⇒ 记一条跳过（带理由）；没登记 ⇒ 败一条（本套件不接受未登记的跳过）。
 skipped() {
   local id="${1%%：*}"
   local why; why="$(waiver_reason "$id")"
   if [ -n "$why" ]; then
-    printf '  waive %s\n        理由：%s\n' "$1" "$why"
-    waived=$((waived+1))
+    skip "$1（登记豁免：$why）"
   else
-    printf '  skip %s\n' "$1"
-    skip=$((skip+1))
+    bad "$1 —— 未登记的跳过（造不出的名字要进 waiver_reason 并写明纯函数轨怎么覆盖它）"
   fi
 }
 
@@ -188,8 +183,7 @@ while IFS=$'\t' read -r id name sid expect; do
     if [ "$created" = yes ] && "$TMUX_BIN" has-session -t "=$name:" 2>/dev/null; then
       bad "$id：版本门说 tmux $TMUX_VER < ${need%% *} 造不出「$name」，可它造出来了 —— 版本门过时（改 min_tmux_for）"
     else
-      printf '  SKIP %s：本机 tmux %s < %s —— %s\n' "$id" "$TMUX_VER" "${need%% *}" "${need#* }"
-      skip_ver=$((skip_ver+1))
+      skip "$id：本机 tmux $TMUX_VER < ${need%% *} —— ${need#* }"
     fi
     continue
   fi
@@ -450,11 +444,9 @@ if printf '%s' "$R" | grep -qF '"terminal":' && ! pane_alive "$PE" && pane_alive
 else bad "按 sid 结束：实得 $R（E 在=$(pane_alive "$PE" && echo 是 || echo 否) G 在=$(pane_alive "$PG" && echo 是 || echo 否)）"; fi
 
 echo
-echo "===== 合计 PASS=$pass FAIL=$fail SKIP=$((skip_ver + skip)) WAIVED=$waived ====="
-# 这一趟跑在哪个 tmux 上、用掉几条豁免、版本门跳过几条，收尾打出来（换机器时 PASS/SKIP 怎么分的，一眼看得出）。
-echo "（这一趟 tmux：$("$TMUX_BIN" -V 2>/dev/null || echo 未知)；用掉登记豁免 $waived 条；版本不够跳过 $skip_ver 条）"
+# 这一趟跑在哪个 tmux 上（换机器时 PASS/SKIP 怎么分的，对着上面逐条的 SKIP 理由一眼看得出）。
+echo "（这一趟 tmux：$("$TMUX_BIN" -V 2>/dev/null || echo 未知)）"
 # ⚠ **这里刻意不写数字地板**，门禁与 CI 也都不钉本套件的断言条数（只判退出码 ＋ `FAIL=0` ＋ `PASS > 0`）。
 #   这里是**导出式自检**：判定表有几行、就必须尝试过几行。加一行用例不用改这里，而它照样挡得住「静默跳过」。
-[ "$skip" -eq 0 ] || { echo "有 $skip 条被跳过 —— 本套件不接受**未登记**的 skip（造不出的名字要进 waiver_reason 并写明纯函数轨怎么覆盖它）"; exit 1; }
-[ "$n" -eq "$ROWS" ] || { echo "判定表 $ROWS 行，只尝试了 $n 行 —— 循环被提前中断了"; exit 1; }
-[ "$fail" -eq 0 ]
+[ "$n" -eq "$ROWS" ] || bad "判定表 $ROWS 行，只尝试了 $n 行 —— 循环被提前中断了"
+finish

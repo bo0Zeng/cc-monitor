@@ -795,7 +795,85 @@ fn nothing_to_swap_to_hands_down_the_refusal_as_is() {
     );
 }
 
-/// ★ 真换号与「下一个」同一处判：b 刚吃了一发不带限额头、也没说几点再试的 429（额度账上被拒着，短期限内）⇒
+/// 上游短时限流的那一形：429、限流器那一族头一个都没有、体是 `rate_limit_error`。
+fn throttled_429() -> String {
+    let body = r#"{"type":"error","error":{"type":"rate_limit_error","message":"Number of concurrent connections has exceeded your rate limit."}}"#;
+    format!(
+        "HTTP/1.1 429 Too Many Requests\r\nretry-after: 7\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+}
+
+/// a 吃短时限流、b 接得住。
+fn a_throttled_b_serves(auth: Option<&str>) -> String {
+    if auth == Some(&format!("Bearer {B_TOKEN}")) {
+        sse_200("x-from: b\r\n")
+    } else {
+        throttled_429()
+    }
+}
+
+/// ★ 限流器没说话的 429 不是用满：上游那一发逐字节原样交下去（claude 自己退避），不换号、不记被拒；
+/// 同一会话下一发照旧走 a（a 没被记成用不了）。
+#[test]
+fn a_throttled_answer_is_handed_down_as_is_and_the_account_stays_usable() {
+    let home = Home::new("throttled");
+    home.set_default(&["b"], None);
+    let (up, got) = spawn_judging_upstream(a_throttled_b_serves);
+    let relay = home.relay(up);
+    assert_eq!(send_as_a(relay), throttled_429());
+    assert_eq!(
+        got.lock().expect("lock").len(),
+        1,
+        "短时限流那一发被换号重发了"
+    );
+    assert_eq!(home.session("s-1").current, "a");
+    let quota = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
+    assert!(
+        !quota
+            .entry("claude-code", "a")
+            .is_some_and(|e| e.reading.refused),
+        "短时限流把 a 记成了被拒"
+    );
+    assert_eq!(send_as_a(relay), throttled_429());
+    let got = got.lock().expect("lock");
+    assert_eq!(got.len(), 2);
+    assert_eq!(
+        got[1].auth.as_deref(),
+        Some(AGENT_TOKEN),
+        "下一发没照旧走 a"
+    );
+}
+
+/// ★ 硬上限、别的号都过了上限：a 吃短时限流 ⇒ 不停发、不回我们那份「用满」（claude 会显示「hit your 5-hour limit」），
+/// 上游那一发原样交下去。
+#[test]
+fn a_throttled_answer_under_a_hard_limit_is_not_turned_into_a_limit_reply() {
+    let home = Home::new("throttled-hold");
+    home.set_default_at(&["b"], Some(90), "stop");
+    let now = crate::accounts::quota::now_unix();
+    let side = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
+    let b_at_95: Vec<(String, String)> = [
+        ("anthropic-ratelimit-unified-status", "allowed_warning"),
+        (
+            "anthropic-ratelimit-unified-representative-claim",
+            "five_hour",
+        ),
+        ("anthropic-ratelimit-unified-5h-utilization", "0.95"),
+        ("anthropic-ratelimit-unified-5h-reset", "4000000000"),
+    ]
+    .iter()
+    .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+    .collect();
+    let r = crate::agents::claudecode::quota::read(200, &b_at_95, now).expect("读数");
+    ledger::record_seen(&side, &home.own(), None, "claude-code", "b", r, now);
+    let (up, got) = spawn_judging_upstream(a_throttled_b_serves);
+    let resp = send_as_a(home.relay(up));
+    assert_eq!(resp, throttled_429(), "短时限流被换成了别的回包");
+    assert_eq!(got.lock().expect("lock").len(), 1);
+}
+
+/// ★ 真换号与「下一个」同一处判：b 刚被限流器明说拒了、却没说几点再试（额度账上被拒着，短期限内）⇒
 /// a 被拒时不换到 b，原样交回 a 的拒绝（上游只收到一发）。
 #[test]
 fn a_refused_account_is_not_swapped_onto_one_refused_without_a_reset() {
@@ -803,7 +881,11 @@ fn a_refused_account_is_not_swapped_onto_one_refused_without_a_reset() {
     home.set_default(&["b"], None);
     let now = crate::accounts::quota::now_unix();
     let side = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
-    let r = crate::agents::claudecode::quota::read(429, &[], now).expect("被拒");
+    let rejected = [(
+        "anthropic-ratelimit-unified-status".to_string(),
+        "rejected".to_string(),
+    )];
+    let r = crate::agents::claudecode::quota::read(429, &rejected, now).expect("被拒");
     ledger::record_seen(&side, &home.own(), None, "claude-code", "b", r, now);
     let (up, got) = spawn_judging_upstream(a_refused_b_serves);
     let resp = send_as_a(home.relay(up));
@@ -1020,7 +1102,7 @@ fn in_tests_a_request_to_a_real_host_panics_before_any_connection() {
     assert_eq!(said, "测试档不许出网：platform.claude.com");
 }
 
-/// ★ 被拒那一行日志：号名 · 状态码 · 有没有限额头 · 代表窗 · retry-after；两种 429 各一形；只用这几格 ⇒ 令牌与回包体无从进来。
+/// ★ 被拒那一行日志：号名 · 状态码 · 有没有限额头 · 代表窗 · retry-after；说没说卡在哪个窗各一形；只用这几格 ⇒ 令牌与回包体无从进来。
 #[test]
 fn a_refusal_logs_one_line_of_who_and_how() {
     use crate::accounts::upstream_select::refusal_line;
@@ -1031,10 +1113,15 @@ fn a_refusal_logs_one_line_of_who_and_how() {
             .collect()
     };
     let now = 1_800_000_000;
-    let bare = crate::agents::claudecode::quota::read(429, &h(&[]), now).expect("被拒");
+    let bare = crate::agents::claudecode::quota::read(
+        429,
+        &h(&[("anthropic-ratelimit-unified-status", "rejected")]),
+        now,
+    )
+    .expect("被拒");
     assert_eq!(
         refusal_line("y", 429, &bare, None),
-        "[quota] 被拒：号 y · 状态码 429 · 限额头 无 · 代表窗 — · retry-after —"
+        "[quota] 被拒：号 y · 状态码 429 · 限额头 有 · 代表窗 — · retry-after —"
     );
     let full = crate::agents::claudecode::quota::read(
         429,

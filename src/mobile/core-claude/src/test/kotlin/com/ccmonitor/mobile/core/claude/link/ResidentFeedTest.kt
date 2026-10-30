@@ -566,7 +566,7 @@ class ResidentFeedTest {
             backgroundScope.launch { f.live.collect { got += it } }
             core.emit(
                 "live",
-                """{"sid":"s1","cards":[{"card":4,"rid":"m","phase":"streaming","clipped":false,"blocks":[{"kind":"text","text":"字"}]}]}""",
+                """{"sid":"s1","cards":[{"card":4,"rid":"m","phase":"streaming","clipped":false,"blocks":[{"kind":"text","text":"字"}],"head":"核心·头","body":"字"}]}""",
             )
             core.emit("live", """{"sid":"s1","cards":[{"card":4}]}""")
             assertEquals(

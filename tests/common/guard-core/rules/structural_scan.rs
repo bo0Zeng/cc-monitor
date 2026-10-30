@@ -53,11 +53,8 @@ fn no_two_test_attributes_land_on_the_same_function() {
     //   ⇒ 语料改成**四棵互不包含的根**：两棵生产树 ＋ 两棵测试树。
     //   两棵生产树今天该是 0 个 `#[test]`，但**仍然要扫** —— 哪天有人在 `src/` 里写一个，
     //   本条要看得见它（少扫不会红，只会零命中地绿）。
-    // · **A 类**：原来靠 `scan_tree_excluding_self(.., file!())` 摘掉自己。本文件被
-    //   `#[path]` 引进来 ⇒ `file!()` 是折返路径 ⇒ 摘除恒空转（`§5.4b` 纪律 4）。
-    //   而语料里现在**含 `tests/frontend/shell/` 这棵树，也就是含本文件自己** ⇒ 摘除失效不再无害：
-    //   本条会数到自己头注里那些讲形状的 `#[test]` 字样。
-    //   ⇒ 改成 `scan_tree_excluding` 的**明写名单**，摘不到就 panic。
+    // · **A 类**：语料里含本文件住的那棵测试树，不摘就会数到头注里那些讲形状的 `#[test]` 字样
+    //   ⇒ 走 `scan_tree_excluding` 的**明写名单**，摘不到就 panic。
     //
     // 🔴 本条这一轮真的咬到东西了：`src/backend` 从来不在它的射程里，
     // 而那棵树上**有 3 处**「一个 fn 两个 `#[test]`」（libtest 因此把它们各注册两遍：
@@ -620,11 +617,6 @@ fn the_detour_scanner_sees_every_visibility() {
 /// 第二轮收紧成「**返回 String / Vec 的转换器**」⇒ **14 处**，其中确实混着
 /// 四个非剥法（表格解析、CI 段落抽取、host 别名解析、字段解析）——
 /// 于是不猜，**逐个登记**：是剥法的写明「共享原语为什么不够」，不是的写明它在做什么。
-///
-/// ⚠ 登记时读出一处**真事**：`tool_registry::production_code` 用的是
-/// **按 `//` 截断整行**的语义，而共享原语头注逐字写着刻意不这么做
-///（会砍坏 `"http://host"` 这类字面量）。今天那个文件里没有 `://` 字面量所以没事，
-/// 但那是**运气**，不是设计 —— 现在它至少被登记着。
 #[test]
 fn every_comment_stripping_transformer_is_registered() {
     /// `(文件::函数, 它是什么 / 共享原语为什么不够)`。
@@ -640,28 +632,11 @@ fn every_comment_stripping_transformer_is_registered() {
         // 一路吃进了它的邻居 `production_code`（那个才剥）。⇒ **这一行是误登记**，
         // 而误登记的害处是具体的：登记表是「已知的第二份剥法」清单，
         // 混进一条不是剥法的，下一个人会照它去找一份并不存在的实现。
-        (
-            "e2e_gate_registry_tests.rs::strip_comments",
-            "**别的注释语法**：语料是 shell 脚本（`tests/e2e/*.sh`），注释是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 语义上刻意只剥**整行注释**、不碰行尾注释（shell 里 `#` 可以出现在字符串中间，                 按 marker 截断会误伤 `pgrep` 模式里的 `#`）。要收口的正确做法是给共享原语加一个                 「注释前缀」参数，那是另一件事。",
-        ),
         // `cc_bus_tests` 那份本地剥法那一行摘了：用它的零命中守卫随驾驶舱 shell 读一起退役（收口了，不是搬家）。
         // 钩子诊断那份本地剥法那一行摘了：它的判据随模块进后端退役（后端 `readonly_guard` 管只读，收口了，不是搬家）。
         (
-            // 两种方言的读回口（同名两份 `impl`，按文件名去重成一行）。
-            // 随方言进了那台后端（今天住 `src/backend/platform/shell/dialect.rs`）。
-            "dialect.rs::parse_file",
-            "**别的注释语法，而且语料是我们自己生成的那份别名文件**：POSIX sh 与 PowerShell 的注释都是 `#`，\
-                 共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS）。只跳**整行** `#`（生成文件的头注），\
-                 行里的 `#` 是参数值的一部分、原样保留。与 `e2e_gate_registry_tests.rs::strip_comments` 同一个缺口（共享原语没有「注释前缀」参数）",
-        ),
-        (
             "tmux_hook_tests.rs::prod_code",
             "backend 侧本地剥法（跨 crate 够不着 monitor 的 `guard_core`）",
-        ),
-        (
-            "registry_tests.rs::production_code",
-            "⚠ **按 `//` 截断整行**——共享原语刻意不这么做（会砍坏 `\"http://host\"`）。\
-                 本文件今天没有 `://` 字面量所以没事，但那是运气不是设计。登记为待收口",
         ),
         (
             "session_name_registry_tests.rs::production",

@@ -10,7 +10,7 @@ src/backend/agents/footprint_decl.rs	21
 src/backend/agents/mainline.rs	1
 src/backend/agents/mod.rs	3
 src/backend/assets/aliases/accounts.rs	1
-src/backend/assets/aliases/block.rs	16
+src/backend/assets/aliases/block.rs	15
 src/backend/assets/aliases/fence.rs	3
 src/backend/assets/aliases/mod.rs	9
 src/backend/assets/pubkey.rs	1
@@ -51,10 +51,10 @@ src/backend/stream/inbound/registry/file_manager.rs	1
 src/backend/wire/listen.rs	1
 src/backend/wire/mod.rs	2
 src/common/cmd-wire/src/frame.rs	1
-src/common/guard-core/src/lib.rs	43
+src/common/guard-core/src/lib.rs	41
 src/comms/resident-client/client.rs	2
 src/doc/INVARIANTS.md	2
-src/doc/IPC-COMMANDS.md	3
+src/doc/IPC-COMMANDS.md	1
 src/doc/IPC-PROTOCOL.md	1
 src/frontend/filewin/Cargo.toml	1
 src/frontend/filewin/src/source.rs	2
@@ -203,10 +203,10 @@ tests/frontend/shell/capability_registry_tests.rs	46
 tests/frontend/shell/comm_boundary_registry_tests.rs	4
 tests/frontend/shell/local_backend_host_tests.rs	84
 tests/frontend/shell/local_backend_tests.rs	47
-tests/frontend/shell/parity_ledger_tests.rs	20
+tests/frontend/shell/parity_ledger_tests.rs	17
 tests/frontend/shell/polling_registry_tests.rs	2
 tests/frontend/shell/scanning_guard_registry_tests.rs	39
-tests/frontend/shell/shared_crate_registry_tests.rs	4
+tests/frontend/shell/shared_crate_registry_tests.rs	3
 tests/frontend/shell/write_site_registry_tests.rs	3
 tests/scripts/gate-affected/map	1
 tests/scripts/gate.sh	7

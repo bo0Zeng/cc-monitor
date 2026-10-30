@@ -17,16 +17,16 @@
  * # 🔴 那条承重不变量：**不写没别人的键**
  *
  * 几个键住同一段。任何一侧整段覆盖 ⇒ 别的当场被清空，而且是**静默**的（下次启动才看得见）。
- * `②` 钉「写的时候有没有带上对方」，`⑤` 用一份**真的在内存里的 config** 走一遍几条路轮流写。
+ * `②` 钉「交出去的补丁只有自己那一格」，`⑤` 几条路轮流写、每一趟都只交自己那一格，写的那一格就是读的那一格。
+ * 补丁落到盘上段里别的键留不留，是 Rust 写口的事（金样 `config-patch.golden.json`，`config_tests.rs` 判）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`
-// （补丁语义与 Rust 写口同一份金样，见 `tests/frontend/ui/config-patch-fake.ts`）。
+// config 写只交补丁；替身记下交出去的补丁（`sentEdits()`），不应用。
 vi.mock("../../../src/frontend/ui/config", async (orig) => (await import("./config-patch-fake")).mockedConfigModule(orig));
 
 import { loadConfig } from "../../../src/frontend/ui/config";
-import { fakeCfg } from "./config-patch-fake";
+import { sentEdits } from "./config-patch-fake";
 import {
   sanitizeOrder,
   getTabOrder,
@@ -40,7 +40,6 @@ import {
 } from "../../../src/frontend/ui/tab-bar-state";
 
 const mockLoad = vi.mocked(loadConfig);
-const mockSave = fakeCfg.saved;
 
 describe("⓪ 量具自检：清洗真的在清（不过这格，下面全是空转）", () => {
   it("四种脏输入各被清掉一种，且**每一种单独可见**", () => {
@@ -89,38 +88,14 @@ describe("① 读：坏配置不许阻断启动（`§4` 逐字）", () => {
 describe("② 写：只动自己那个键（`B` 落地时不许互相写没）", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("🔴 段里别的键原样留着 —— 这是几个键能共用这个段的前提", async () => {
-    mockLoad.mockResolvedValueOnce({ tabBar: { collapsed: ["g1"], 别人的键: 1 } } as never);
+  it("🔴 只交 `tabBar.order` 那一格 —— 段里别的键 · 段外的键都不在补丁里（这是几个键能共用这个段的前提）", async () => {
     await setTabOrder(["a"]);
-    const written = mockSave.mock.calls[0][0] as Record<string, unknown>;
-    const seg = written.tabBar as Record<string, unknown>;
-    expect(seg.order, "顺序没写进去").toEqual(["a"]);
-    expect(seg.collapsed, "🔴 把收着的组写没了 —— 两条路会互相清空对方").toEqual(["g1"]);
-    expect(seg.别人的键, "段里不认识的键也不许动").toBe(1);
-  });
-
-  it("段原本不存在 / 不是对象 ⇒ 新建一个，不抛", async () => {
-    for (const prev of [undefined, "坏", ["坏"]]) {
-      vi.clearAllMocks();
-      mockLoad.mockResolvedValueOnce({ tabBar: prev } as never);
-      await setTabOrder(["a"]);
-      const seg = (mockSave.mock.calls[0][0] as Record<string, unknown>).tabBar as Record<string, unknown>;
-      expect(seg.order).toEqual(["a"]);
-    }
-  });
-
-  it("段外的顶层键一个字节不碰", async () => {
-    mockLoad.mockResolvedValueOnce({ sessionHead: { buttons: ["x"] } } as never);
-    await setTabOrder(["a"]);
-    const written = mockSave.mock.calls[0][0] as Record<string, unknown>;
-    expect(written.sessionHead, "顺序落盘把别的顶层键改了").toEqual({ buttons: ["x"] });
+    expect(sentEdits(), "🔴 补丁带上了别的键 ⇒ 两条路会互相写没对方").toEqual([{ op: "set", path: ["tabBar", "order"], value: ["a"] }]);
   });
 
   it("写进去的也过一遍清洗（脏值不许经这条路落盘）", async () => {
-    mockLoad.mockResolvedValueOnce({} as never);
     await setTabOrder(["a", "a", "", "b"]);
-    const seg = (mockSave.mock.calls[0][0] as Record<string, unknown>).tabBar as Record<string, unknown>;
-    expect(seg.order).toEqual(["a", "b"]);
+    expect(sentEdits()).toEqual([{ op: "set", path: ["tabBar", "order"], value: ["a", "b"] }]);
   });
 });
 
@@ -149,34 +124,28 @@ describe("④ 读收着的组：坏配置不许阻断启动", () => {
   });
 });
 
-describe("⑤ 🔴 几条路交替写一份**真的在内存里**的 config —— 谁都不许把对方写没", () => {
-  // 让几条路**轮流真跑**，中间不重置 —— 「整段覆盖」那种写法在这里会当场露馅（把 `writeSegKey` 改成整段覆盖 ⇒ 这一格红）。
-  let disk: Record<string, unknown>;
-  beforeEach(() => {
-    vi.clearAllMocks();
-    disk = { 别人的: { 留着: true }, tabBar: { 不认识的: 1 } };
-    mockLoad.mockImplementation(async () => JSON.parse(JSON.stringify(disk)) as never);
-    mockSave.mockImplementation(async (v: unknown) => {
-      disk = JSON.parse(JSON.stringify(v)) as Record<string, unknown>;
-    });
-  });
+describe("⑤ 🔴 几条路轮流写 —— 每一趟都只交自己那一格，谁都不许把对方写没", () => {
+  // 让几条路**轮流真跑**，中间不重置 —— 「整段覆盖」那种写法在这里会当场露馅（补丁成了整段 `tabBar` ⇒ 这一格红）。
+  beforeEach(() => vi.clearAllMocks());
 
-  it("order → collapsed → hiddenOpen → order，几样东西都在，且值逐字对得上", async () => {
+  it("order → collapsed → hiddenOpen → order，每一趟一格，值逐字对得上", async () => {
     await setTabOrder(["a", "b"]);
     await setCollapsed(["g1"]);
     await setHiddenOpen(true);
     await setTabOrder(["b", "a"]);
-    const seg = disk.tabBar as Record<string, unknown>;
-    expect(seg.order, "最后一趟的顺序没落上").toEqual(["b", "a"]);
-    expect(seg.collapsed, "🔴 写 order 把收着的组冲掉了").toEqual(["g1"]);
-    expect(seg.hiddenOpen).toBe(true);
-    expect(seg.不认识的, "段里不认识的键也不许动").toBe(1);
-    expect(disk.别人的).toEqual({ 留着: true });
+    expect(sentEdits(), "🔴 有一趟交了整段 ⇒ 别的键被冲掉").toEqual([
+      { op: "set", path: ["tabBar", "order"], value: ["a", "b"] },
+      { op: "set", path: ["tabBar", "collapsed"], value: ["g1"] },
+      { op: "set", path: ["tabBar", "hiddenOpen"], value: true },
+      { op: "set", path: ["tabBar", "order"], value: ["b", "a"] },
+    ]);
   });
 
-  it("读回来的与写进去的**是同一份**", async () => {
+  it("写的那一格就是读的那一格：照补丁的路径摆回盘上，读回来是同一份", async () => {
     await setTabOrder(["x", "y"]);
     await setCollapsed(["g2", "g3"]);
+    expect(sentEdits().map((e) => e.path)).toEqual([["tabBar", "order"], ["tabBar", "collapsed"]]);
+    mockLoad.mockResolvedValue({ tabBar: { order: ["x", "y"], collapsed: ["g2", "g3"] } } as never);
     await expect(getTabOrder(new Set(["x", "y"]))).resolves.toEqual(["x", "y"]);
     await expect(getCollapsed()).resolves.toEqual(["g2", "g3"]);
   });

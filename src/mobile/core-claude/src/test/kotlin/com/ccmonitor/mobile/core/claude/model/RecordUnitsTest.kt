@@ -50,13 +50,16 @@ class RecordUnitsTest {
     }
 
     @Test
-    fun `工具结果：正文 · 出错 · 核心给的 patch 原样带上`() {
+    fun `工具结果：正文 · 出错 · 核心算好的行差原样带上`() {
         val reply = mapOf("agent" to "claude", "id" to "a", "t" to "reply", "autoReply" to false, "draw" to "steps", "human" to false, "blocks" to listOf(mapOf("type" to "tool_use", "id" to "call-1", "name" to "Edit", "input" to mapOf("file_path" to "/w/a.txt"))))
         val call = RecordUnits.of(listOf(requireNotNull(Wire.bind<LineRecord>(reply)), cases.getValue("said-full"))).first() as RenderUnit.ToolCall
         assertEquals("line a\nline b", call.resultText)
         assertEquals(false, call.pending)
         assertEquals(false, call.isError)
-        assertEquals(listOf(PatchHunk(1, 1, 1, 2, listOf("-a", "+b", "+c"))), call.structuredPatch)
+        // 行差照核心算好的原样带上（行 · 行号 · 「+N −M」），不另判行。
+        val diff = requireNotNull(call.diff) { "结果带着行差" }
+        assertEquals(listOf(Triple("a", 1, null), Triple("b", null, 1), Triple("c", null, 2)), diff.rows.map { Triple(it.text, it.oldNo, it.newNo) })
+        assertEquals("+2 −1", diff.stat)
         assertEquals("/w/a.txt", call.patchFilePath)
     }
 

@@ -43,9 +43,7 @@ mkdir -p "$HOME"
 cleanup() { rm -rf -- "$W"; tmux_shim_cleanup; }
 trap cleanup EXIT
 
-fail=0
-pass=0
-chk() { if [ "$2" = "$3" ]; then echo "  PASS $1"; pass=$((pass+1)); else echo "  FAIL $1: 期望[$3] 实得[$2]"; fail=$((fail+1)); fi; }
+. "$REPO/tests/e2e/assert.sh"
 
 # 等后端自己说出某件事（它的 stderr 里那句话出现到第 n 次），不睡固定秒数：`said <文件> <原文> [n]`。
 said() { local _f="$1" _w="$2" _n="${3:-1}"; wall_until '[ "$(grep -cF -- "$_w" "$_f" 2>/dev/null)" -ge "$_n" ]'; }
@@ -88,21 +86,21 @@ probe() {
 }
 
 echo "[1] 量具自检：不动 sessions/ 时必须有 session_added"
-chk "control 有 session_added" "$(probe control none)" "1"
+ck "control 有 session_added" "1" "$(probe control none)"
 
 echo "[2] backend 起来后 sessions/ 被 rm -rf 再 mkdir（inode 换了）"
-chk "recreate 仍有 session_added" "$(probe recreate recreate)" "1"
+ck "recreate 仍有 session_added" "1" "$(probe recreate recreate)"
 
 echo "[3] sessions/ 起初不存在，backend 起来后才被创建"
 # ★ 这一格是**生产里的洞**：`<claude_dir>/sessions/` 是用户第一次跑 claude 时才建的，
 #   backend 起得比它早，修之前就永远不宣告会话（watcher.rs 里那条 warn 逐字记着）。
-chk "late 仍有 session_added" "$(probe late late)" "1"
+ck "late 仍有 session_added" "1" "$(probe late late)"
 
 echo "[4] 重建之后**立刻**写 pidfile（重挂前的窗口期）"
 # ★ 这一格是 D 阶段变异 M23 逼出来的：把「重挂时顺带重扫」删掉，前三格**全绿** ——
 #   因为它们都在重建与写文件之间等后端重新挂上（10-11 前是睡 0.5s），事件驱动那条路够用。
 #   而真实台架/真实用户不会替我们等这一下。
-chk "racy 仍有 session_added" "$(probe racy racy)" "1"
+ck "racy 仍有 session_added" "1" "$(probe racy racy)"
 
 echo "[5] ★ projects/ **被换 inode** 之后，新 inode 上那份照样读到（同族第三个）"
 # ★ 08-13：`sessions/`（第十拍）· tmux socket 目录（第二十二拍）· 本格 —— 同一个形状踩了三次。
@@ -138,9 +136,7 @@ _proj_recreate() {
   grep -F '"kind":"session_file_reread"' "$out" 2>/dev/null | grep -o '"lines":[0-9]*' | tail -n 1 | grep -o '[0-9]*' || true
 }
 _pl="$(_proj_recreate)"
-chk "projects 换 inode 后新 inode 上那份读到 ${_pl:-0} 行（== 2）" "$([ "${_pl:-0}" -eq 2 ] && echo yes || echo no)" "yes"
+ck "projects 换 inode 后新 inode 上那份读到 ${_pl:-0} 行（== 2）" "yes" "$([ "${_pl:-0}" -eq 2 ] && echo yes || echo no)"
 
 echo
-echo "===== 合计 PASS=$pass FAIL=$fail ====="
-if [ "$fail" -eq 0 ]; then echo "===== sessions 重挂验收全部通过 ====="; fi
-exit "$fail"
+finish

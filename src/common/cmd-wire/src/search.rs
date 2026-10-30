@@ -2,10 +2,11 @@
 //! 两侧调同一份：本机后端扇出问完各台（`faces/search_face.rs`）· 手机嵌的 Rust 核心逐台直连问完（`mobcore::search_merge_json`）。
 //!
 //! 只并不判：每台的行由那台排好（最近优先）、写好时刻字（按问的那一方的时区）；这里只把几列按 `updatedAt` 并成一列（同一刻照台的先后）、
-//! 命中数 · 读不动的份数相加、不覆盖的那几家去重、远端的行添上那台的名字。
+//! 命中数 · 读不动的份数相加、不覆盖的那几家去重、远端的行添上那台的名字；结果头那一句（搜的词 · 命中几处 · 几个会话 · 截没截）也在这里写一次。
 
 use crate::listing::{Can, ForkedFrom};
 use crate::Machine;
+use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 
 /// 一个命中会话的那一行（那台扫出来的；`history-search` 回包里一行的主体）。
@@ -129,6 +130,8 @@ pub struct Merged {
     pub skipped: Vec<String>,
     /// 没答上的那几台（它们的会话没搜到）：哪台 · 那一句。
     pub down: Vec<SearchDown>,
+    /// 结果头那一句（搜的词 · 命中几处 · 几个会话；截过 ⇒ 截过那一句）：两端照摆。
+    pub summary: String,
 }
 
 /// 合好的一行：那台答的那一行 ＋ 哪台（本机缺）。
@@ -161,9 +164,13 @@ pub fn sort_by_recency<T>(items: &mut [T], key: impl Fn(&T) -> i64) {
     items.sort_by(|a, b| key(b).cmp(&key(a)));
 }
 
-/// **几台的搜索结果合成一份**：`answered` 照台的先后（每台 `(名字, 它答回来的那一份)`），`down` 是没答上的那几台（原样带上）。
-/// 纯计算：不读盘、不起进程、不看钟。
-pub fn merge(answered: Vec<(Machine, HistorySearchReply)>, down: Vec<SearchDown>) -> Merged {
+/// **几台的搜索结果合成一份**：`q` 是搜的那个词（结果头那一句里说它），`answered` 照台的先后（每台 `(名字, 它答回来的那一份)`），
+/// `down` 是没答上的那几台（原样带上）。纯计算：不读盘、不起进程、不看钟。
+pub fn merge(
+    q: &str,
+    answered: Vec<(Machine, HistorySearchReply)>,
+    down: Vec<SearchDown>,
+) -> Merged {
     let mut sessions: Vec<MergedRow> = Vec::new();
     let mut total_hits: u64 = 0;
     let mut truncated = false;
@@ -189,9 +196,20 @@ pub fn merge(answered: Vec<(Machine, HistorySearchReply)>, down: Vec<SearchDown>
         }
     }
     sort_by_recency(&mut sessions, |r| r.row.row.updated_at);
+    let session_count = sessions.len();
+    let (n, m) = (total_hits.to_string(), session_count.to_string());
+    let summary = if truncated {
+        copy_text(
+            "history.search.summaryTruncated",
+            &[("q", q), ("n", &n), ("m", &m)],
+        )
+    } else {
+        copy_text("history.search.summary", &[("q", q), ("n", &n), ("m", &m)])
+    };
     Merged {
+        summary,
         total_hits,
-        session_count: sessions.len(),
+        session_count,
         truncated,
         sessions,
         unreadable,

@@ -20,6 +20,8 @@ vi.mock("../../../../src/frontend/ui/render", async (orig) => {
 });
 
 import { LONG_REPLY_HEAD_CHARS, markdownPieces, renderMessage } from "../../../../src/frontend/ui/cards/index";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { sizeText } from "../../../../src/frontend/ui/format";
 
 const fenceCount = (s: string): number => s.split("\n").filter((l) => /^\s*(```|~~~)/.test(l)).length;
 
@@ -81,13 +83,13 @@ describe("长回复建卡", () => {
     pendingToolResults: new Map(),
     lazy: false,
   });
-  const asst = (text: string): LineRecord =>
+  const asst = (text: string, bytes = 0): LineRecord =>
     ({
       agent: "claude",
       t: "reply",
       id: "a",
       at: "2026-01-01T00:00:00.000Z",
-      blocks: [{ type: "text", text }],
+      blocks: [{ type: "text", text, bytes }],
       autoReply: false,
       draw: "card",
       human: false,
@@ -113,6 +115,13 @@ describe("长回复建卡", () => {
     }
     expect(rendered).toEqual(pieces.slice(1).map((p) => p.length));
     expect(el.querySelector(".block-body-show-full")).toBeNull();
+  });
+
+  it("★ 按钮上的大小是后端交的整块字节数（中文一字三字节），界面不拿字符数当字节", () => {
+    const md = "字".repeat(LONG_REPLY_HEAD_CHARS + 1000);
+    const bytes = 3 * md.length;
+    const el = (renderMessage(asst(md, bytes), ctx()) as { element: HTMLElement }).element;
+    expect(el.querySelector(".block-body-show-full")?.textContent).toBe(copyText("cards.text.showAll", { size: sizeText(bytes) }));
   });
 
   it("阈值以内：整段一次排完，没有按钮", () => {

@@ -2950,8 +2950,8 @@ fn the_host_never_writes_the_resident_dir_and_carries_no_key() {
 ///  不再是别人普查出来的一个快照。〕
 ///
 /// ⚠ **覆盖面另有缺口，一并登记**：本条 105 ＋ backend 侧 73 ＋ guard-core 自检 1 = **179 份**，
-/// 而排掉 vendor 的全仓是 **188 份**。差的 9 份里，`crates/usage-core/src/lib.rs`
-/// 的生产段也经 `guard_core::production_code` 剥 ⇒ 它掉进兜底的话，这几条判据一条都不会响。
+/// 而排掉 vendor 的全仓是 **188 份**。差的 9 份里有共享 crate 的源文件，
+/// 生产段也经 `guard_core::production_code` 剥 ⇒ 它掉进兜底的话，这几条判据一条都不会响。
 /// 〔那时只许改本文件，收口要动 guard-core / 那两条守卫的切法 ⇒ 只登记，没动手。
 ///  **`K-R25`（09-04）答清了那 9 份各是什么**，逐份带住址与「要不要拉进来」的裁定 —— 那一件是**只答不改**。〕
 ///

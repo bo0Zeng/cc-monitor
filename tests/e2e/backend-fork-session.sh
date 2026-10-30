@@ -16,9 +16,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PASS=0; FAIL=0
-ok()   { PASS=$((PASS+1)); printf '  ok   %s\n' "$1"; }
-bad()  { FAIL=$((FAIL+1)); printf '  FAIL %s\n     %s\n' "$1" "${2:-}"; }
+. "$ROOT/tests/e2e/assert.sh"
 
 WORK="$(mktemp -d /tmp/e2e-fork.XXXXXX)"
 # 家目录换成本趟沙箱：后端会读 / 写的 `~/.cc-monitor/` 那一族（账号库 · 中转钥匙 · 凭据表 …）都跟着家走，
@@ -110,5 +108,4 @@ if [ -n "${NEW_PATH:-}" ]; then
 fi
 
 echo
-echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
-[ "$FAIL" -eq 0 ]
+finish

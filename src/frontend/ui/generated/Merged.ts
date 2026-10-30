@@ -29,4 +29,8 @@ skipped: Array<string>,
 /**
  * 没答上的那几台（它们的会话没搜到）：哪台 · 那一句。
  */
-down: Array<SearchDown>, };
+down: Array<SearchDown>, 
+/**
+ * 结果头那一句（搜的词 · 命中几处 · 几个会话；截过 ⇒ 截过那一句）：两端照摆。
+ */
+summary: string, };

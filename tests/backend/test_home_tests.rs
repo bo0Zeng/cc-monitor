@@ -16,6 +16,44 @@ fn only_the_real_home_is_moved() {
     assert!(test_home::must_move(Some(real), None));
 }
 
+/// 真家的另一种写法（指向它的符号链接 · 带 `..` 的那一形）也是真家：照样换家，表里的会话变量一律摘（连落在那个家底下的也摘）。
+#[cfg(unix)]
+#[test]
+fn another_spelling_of_the_real_home_is_still_the_real_home() {
+    let d = std::env::temp_dir().join(format!("home-spelling-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    let real = d.join("real");
+    std::fs::create_dir_all(&real).unwrap();
+    let link = d.join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    std::fs::create_dir_all(d.join("x")).unwrap();
+    let dotted = d.join("x/../real");
+    for home in [&link, &dotted] {
+        assert!(
+            test_home::must_move(Some(home), Some(&real)),
+            "{} 就是真家",
+            home.display()
+        );
+        let inside = home.join(".claude");
+        assert!(
+            test_home::strays(
+                "CLAUDE_CONFIG_DIR",
+                inside.as_os_str(),
+                Some(home),
+                Some(&real)
+            ),
+            "家是真家 ⇒ 表里的一律摘：{}",
+            inside.display()
+        );
+    }
+    let other = d.join("x");
+    assert!(
+        !test_home::must_move(Some(&other), Some(&real)),
+        "别的家照用"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
 /// 外面那个会话漏进来、子测试进程里要看见「都不在」的那几样（名字 ＝ 值随便；真值是什么不要紧，要紧的是进不来）。
 const LEAKS: &[&str] = &[
     "CLAUDE_CONFIG_DIR",

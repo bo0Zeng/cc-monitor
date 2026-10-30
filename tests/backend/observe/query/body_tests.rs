@@ -224,7 +224,7 @@ const FOLD_PAGE: &[&str] = &[
 /// 「折起那一行」那份声明（出口交的 `omit`）：正文住的那几格。
 fn folded_view() -> crate::faces::project::View {
     crate::faces::project::parse_view(&serde_json::json!({"omit": {"record": [
-        "blocks", "results.*.patch", "results.*.patchTruncated",
+        "blocks", "results.*.patch",
     ]}}))
     .unwrap()
     .unwrap()
