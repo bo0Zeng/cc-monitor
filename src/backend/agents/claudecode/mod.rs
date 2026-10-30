@@ -6,11 +6,11 @@
 //! | [`records`] | 会话记录的后缀与命名（`<sid>.jsonl`） |
 //! | [`liveness`] | 判活时"这个 cmdline 看起来像不像 Claude" |
 //! | [`cards`] | 工具名 → 卡型 · tmux 前台命令哪几个算它（界面不认工具名，卡型随记录成品带出） |
-//! | [`branch`] | 按 sid 找那份会话文件 · 分叉的记录变换（原共享 crate `branch-core`） |
+//! | [`branch`] | 按 sid 找那份会话文件 · 分叉的记录变换 |
 //! | [`accounts`] | `.claude.json` 的信任判定（`projects[cwd].hasTrustDialogAccepted`） |
 //! | [`resume`] | resume 的命令形状与会话名前缀（与 [`super::codex::resume`] 对称） |
 //! | [`assets`] | 资产布局：`skills/<名>/` · `SKILL.md` 的 `description:` · `.claude.json` 的 `projects` × `<项目>/.mcp.json` |
-//! | [`text`] | 记录文本：`message.content` 的正文块 / 工具内容怎么抽 · user 正文里 CLI 注入的包装与样板怎么剥（原共享 crate `search-core` 的这一半） |
+//! | [`text`] | 记录文本：`message.content` 的正文块 / 工具内容怎么抽 · user 正文里 CLI 注入的包装与样板怎么剥 |
 //! | [`schema`] · [`parse`] · [`turn`] · [`drift`] | **记录解释**：一行 jsonl 的线上形状（界面收到的就是它）· 抢救与记账 · 轮次边沿 · 漂移账（从 monitor 搬来） |
 //!
 //! # ⚠ 搬进来的是**知识**，不是**机器**
@@ -34,7 +34,7 @@ pub(crate) mod assets;
 // 后台命令在记录里的样子（起 · 任务号 · 收场通知）。
 pub(crate) mod background;
 pub(crate) mod beat;
-// 分叉的记录变换 ＋ 按 sid 找那份会话文件（原共享 crate `branch-core`，只剩后端用）。
+// 分叉的记录变换 ＋ 按 sid 找那份会话文件。
 pub(crate) mod branch;
 // 工具词表（卡型 · 判活进程名）：从 monitor `adapter.rs` 画像表与共享 crate `agent-tools-core` 收进来。
 pub(crate) mod cards;
@@ -65,7 +65,7 @@ pub(crate) mod schema;
 pub(crate) mod session_line;
 pub(crate) mod sign_in;
 pub(crate) mod steps;
-// 记录文本：正文 / 工具内容怎么抽 · CLI 注入怎么剥（原共享 crate `search-core` 的 Claude 那一半）。
+// 记录文本：正文 / 工具内容怎么抽 · CLI 注入怎么剥。
 pub(crate) mod text;
 // skill 接入面的声明（收件箱那几个人要改的文件 ＋ Claude 数据文件的纵深围栏）：从 monitor 搬来。
 
@@ -317,10 +317,6 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     quiet_unread: Some(record_of::quiet_unread_of),
     skim: Some(skim),
     beats: Some(beat::BEATS),
-    fork: Some(super::ForkFace {
-        of_record: branch::fork_origin,
-        of_field: branch::forked_pair,
-    }),
 };
 
 /// 注册表 `RecordFace.skim`：行首就写着类型（簿记行都这么写）、而那一类翻译表不认得 ⇒ 只留身份那几格

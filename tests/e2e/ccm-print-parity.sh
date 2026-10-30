@@ -16,9 +16,7 @@ REPO="$(cd "$HERE/../.." && pwd)"
 # shellcheck source=tests/e2e/tmux-shim.sh
 . "$HERE/tmux-shim.sh" e2ePrintParity
 
-PASS=0; FAIL=0
-ck() { if [ "$2" = "$3" ]; then printf 'PASS | %s\n' "$1"; PASS=$((PASS+1))
-       else printf 'FAIL | %s\n      期望含: %s\n      实得: %s\n' "$1" "$2" "$3"; FAIL=$((FAIL+1)); fi; }
+. "$HERE/assert.sh"
 contains() { case "$2" in *"$1"*) echo yes ;; *) echo no ;; esac; }
 
 # 那几行以裸 `ccm` 开头（上面换过），所以下面 `bash -c` 执行它时
@@ -114,5 +112,4 @@ ck "--model flag 真的传进了内层调用" yes "$(contains "'--model'" "$OUT"
 ck "opus 值真的传进了内层调用" yes "$(contains "'opus'" "$OUT")"
 
 echo
-echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
-[ "$FAIL" -eq 0 ]
+finish

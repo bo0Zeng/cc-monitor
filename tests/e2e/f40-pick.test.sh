@@ -8,9 +8,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=tests/e2e/f40-lib.sh
 . "$HERE/f40-lib.sh"
 
-pass=0; fail=0
-ok()  { echo "  ✓ $1"; pass=$((pass+1)); }
-bad() { echo "  ✗ $1"; fail=$((fail+1)); }
+. "$HERE/assert.sh"
 
 FAKE="$(mktemp -d)"; trap 'rm -rf "$FAKE"' EXIT
 # 假 xdotool：2097153 是 leader 窗（未映射），2097156 是主窗；`--onlyvisible` 只回映射了的那个。
@@ -44,5 +42,4 @@ if got=$(rowxy 0 <<<'{"active":null}'); then bad "快照没有 rows 该非零退
 got=$(jget activeRow <<<"$SNAP")
 [ "$got" = 0 ] && ok "activeRow 取得到 0" || bad "activeRow：得 ${got:-<空>}"
 
-echo "合计 PASS=$pass FAIL=$fail"
-[ "$fail" -eq 0 ]
+finish

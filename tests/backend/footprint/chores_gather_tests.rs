@@ -132,6 +132,7 @@ fn 待办里的钥匙只有只许直通那一把() {
             }),
             mcp_login: vec![],
             sshd: None,
+            secret_like: vec![],
             declined: vec![],
         };
         let wire = serde_json::to_string(&super::super::chores(&f)).unwrap();
@@ -199,4 +200,51 @@ fn 中转_项目里自己写了地址_记下盖住它的那一份() {
         "没写的项目不算盖住"
     );
     let _ = std::fs::remove_dir_all(&h);
+}
+
+/// 共享库顶层像按号密钥的那几项（判据是账号库那一处 `is_secret_like`）：600 的普通文件收进、带全路径；
+/// 身份文件 · 644 的 · 目录不收；账号库没设（没清单）⇒ 一项都不收。快照是手搭的，不读任何真目录。
+#[test]
+fn secret_like_items_in_the_shared_store_are_collected_with_their_path() {
+    use crate::accounts::manage::model::Manifest;
+    use crate::accounts::manage::scan::{DirState, Roots, Snapshot};
+    use crate::platform::acct_view::Item;
+    let file = |mode| Item::File {
+        mode: Some(mode),
+        size: 2,
+        mtime: None,
+    };
+    let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[{"name":"z","email":"","configDir":"/h/.cc-monitor/accounts/z","isDefault":true}]}"#;
+    let mut s = Snapshot {
+        roots: Some(Roots {
+            home: "/h".into(),
+            shared: "/h/.claude".into(),
+            accts: "/h/.cc-monitor/accounts".into(),
+        }),
+        manifest_text: Some(text.into()),
+        manifest: Some(Manifest::parse(text)),
+        shared: DirState {
+            me: Some(Item::Dir { mode: Some(0o700) }),
+            entries: [
+                ("x.json", file(0o600)),
+                ("settings.json", file(0o644)),
+                (acct_core::CREDENTIALS_NAME, file(0o600)),
+                ("projects", Item::Dir { mode: Some(0o700) }),
+            ]
+            .into_iter()
+            .map(|(n, i)| (n.to_string(), i))
+            .collect(),
+        },
+        ..Default::default()
+    };
+    let got: Vec<(String, String)> = secret_like_in(&s)
+        .into_iter()
+        .map(|x| (x.name, x.path))
+        .collect();
+    assert_eq!(
+        got,
+        vec![("x.json".to_string(), "/h/.claude/x.json".to_string())]
+    );
+    s.manifest = None;
+    assert!(secret_like_in(&s).is_empty(), "账号库没设 ⇒ 不收");
 }
