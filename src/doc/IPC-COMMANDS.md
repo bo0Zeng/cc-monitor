@@ -9842,7 +9842,7 @@ type SeenAt = {
  */
 atMs: number, 
 /**
- * 「采样于 12:03」（`beLastSeen.said.sampled`，时刻经 [`crate::common::time::fmt_at`]）。
+ * 「采样于 12:03」（后端照文案表与那一台的钟写）。
  */
 said: Words, };
 type UndoAt = { page: string, tab?: string, anchor?: string, };
@@ -15424,7 +15424,7 @@ handoffError: string | null,
  */
 takeover: PlanTakeover, 
 /**
- * 接手的会话此刻在哪几组（帧面答之前现标，见 [`super::groups`]；pb 不知道有组）。
+ * 接手的会话此刻在哪几组（帧面答之前现标，见 后端 `plan::groups`；pb 不知道有组）。
  */
 groups: PlanBlockGroups, };
 type PlanBlockGroups = { 
@@ -15461,6 +15461,19 @@ statusCode: "done" | "open" | null,
  * 类是待定、还没记 decided。
  */
 undecided: boolean, 
+/**
+ * 画哪一种（图标 · 颜色）：照上面两格判好，两端照它挑。
+ */
+look: PlanLook, 
+/**
+ * 行右端那一句：状态那一行 ＋ 原因短词，用分隔连好；都没有 ⇒ `null`。
+ */
+end: string | null, 
+/**
+ * 状态那一节什么都没有（没记值、也没有指着它没执行的 sets）时那一句：算活、底下有格 ⇒ 跟着底下走；别的 ⇒ 没记状态。
+ * 有东西可摆 ⇒ `null`。
+ */
+quiet: string | null, 
 /**
  * 没签收（或待定没人定）的原因；签收了 · 不算活 ⇒ `null`。
  */
@@ -15529,6 +15542,7 @@ type PlanKind = { name: string | null, edgeWords: PlanEdgeWords,
  * 这一类许记的状态值（照表里的先后）。
  */
 values: Array<string>, };
+type PlanLook = "done" | "open" | "undecided" | "none";
 type PlanNeed = { key: string, kind: "top" | "red" | "ended" | "ask", block: string | null, cell: string | null, 
 /**
  * 那一条牵着的会话（问人 · 停了的那一个）。
@@ -15537,7 +15551,19 @@ sid: string | null,
 /**
  * 不通过那一条在 `check.red` 里的位置。
  */
-red?: number, acked: boolean, };
+red?: number, acked: boolean, 
+/**
+ * 那一条的标题（后端照种类写好）。
+ */
+title: string, 
+/**
+ * 标题底下那几行（顶层签了几格 · pb 那一句与修法 · 底下签了几格 · 子 agent 由父会话收）；负责人那一枚由出口挂，不在这里。
+ */
+lines: Array<string>, 
+/**
+ * 「第几条 / 共几条」（照认可记录标过之后、没认可的那几条照先后写）；认可过的 ⇒ `null`。
+ */
+pos: string | null, };
 type PlanPendingSet = { source: string | null, target: string | null, value: string | null, op: "add" | "remove", 
 /**
  * pb 那一句。
@@ -15691,7 +15717,7 @@ type SeenAt = {
  */
 atMs: number, 
 /**
- * 「采样于 12:03」（`beLastSeen.said.sampled`，时刻经 [`crate::common::time::fmt_at`]）。
+ * 「采样于 12:03」（后端照文案表与那一台的钟写）。
  */
 said: Words, };
 type SessionCan = { 
