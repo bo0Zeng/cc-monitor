@@ -395,3 +395,102 @@ fn transcripts_and_live_session_records_are_linked_even_when_the_shared_store_ha
         assert!(p.ops.contains(&ln("c", n)), "{n}：{:?}", p.ops);
     }
 }
+
+/// 共享库顶层一份不在身份表、`0600` 的普通文件（像密钥）：不进共享集，对齐不给任何号建指向它的链。
+#[test]
+fn a_secret_like_file_in_the_shared_store_is_never_linked_by_align() {
+    let mut s = snap(healthy());
+    s.shared.entries.insert("x.json".into(), file(0o600));
+    assert!(is_secret_like("x.json", &file(0o600)));
+    assert!(!is_secret_like("x.json", &file(0o644)));
+    assert!(!share_items(&s.shared).contains(&"x.json".to_string()));
+    let p = plan_align(&s).unwrap();
+    assert!(
+        !p.ops
+            .iter()
+            .any(|o| matches!(o, Op::Link { target, .. } if target.ends_with("/x.json"))),
+        "{:?}",
+        p.ops
+    );
+    let p = plan_repair(&s).unwrap();
+    assert!(
+        !p.ops
+            .iter()
+            .any(|o| matches!(o, Op::Link { target, .. } if target.ends_with("/x.json"))),
+        "{:?}",
+        p.ops
+    );
+}
+
+/// 原子写与编辑器的旁名不进共享集；号里一条 cc-monitor 建的链（`<号>/foo → 共享库/foo`）共享库那头已不在 ⇒ 对齐摘掉它；
+/// 指向别处的悬空链 · 号里自己的实体不动。
+#[test]
+fn side_names_are_not_shared_and_align_drops_its_own_dangling_links() {
+    let sides = [
+        "settings.json.ccm-backup-1-0",
+        ".credentials.json.1.ThreadId(2).0.tmp",
+        "settings.json.ccm-swap-1-0.part",
+        "x.part",
+        "settings.json.ccm-tmp-1-2-3",
+        ".settings.json.swp",
+        "settings.json~",
+    ];
+    let mut z = healthy();
+    z.entries.insert(
+        "foo".into(),
+        Item::Link {
+            target: "/h/.claude/foo".into(),
+            dangling: true,
+        },
+    );
+    z.entries.insert(
+        "bar".into(),
+        Item::Link {
+            target: "/elsewhere/bar".into(),
+            dangling: true,
+        },
+    );
+    z.entries.insert("mine".into(), file(0o644));
+    let mut s = snap(z);
+    for n in sides {
+        s.shared.entries.insert(n.into(), file(0o600));
+        assert!(is_excluded(n), "{n}");
+    }
+    let items = share_items(&s.shared);
+    for n in sides {
+        assert!(!items.contains(&n.to_string()), "{n}");
+    }
+    let p = plan_align(&s).unwrap();
+    assert_eq!(
+        p.ops,
+        vec![Op::Remove("/h/.cc-monitor/accounts/z/foo".into())]
+    );
+}
+
+/// 号里指向共享库锁文件的旧链（旧版「修复」链过的）：对齐摘掉这条链；号里自己的锁文件 · 指向别处的同名链不动。
+#[test]
+fn align_drops_old_links_to_the_shared_lock_files() {
+    let mut z = healthy();
+    z.entries.insert(
+        ".oauth_refresh.lock".into(),
+        link("/h/.claude/.oauth_refresh.lock"),
+    );
+    z.entries.insert(
+        ".oauth_refresh.lock.owner".into(),
+        link("/h/.claude/.oauth_refresh.lock.owner"),
+    );
+    let p = plan_align(&snap(z)).unwrap();
+    assert_eq!(
+        p.ops,
+        vec![
+            Op::Remove("/h/.cc-monitor/accounts/z/.oauth_refresh.lock".into()),
+            Op::Remove("/h/.cc-monitor/accounts/z/.oauth_refresh.lock.owner".into()),
+        ]
+    );
+    let mut z = healthy();
+    z.entries
+        .insert(".oauth_refresh.lock".into(), Item::Dir { mode: Some(0o700) });
+    z.entries
+        .insert(".oauth_refresh.lock.owner".into(), link("/elsewhere/owner"));
+    assert_eq!(plan_align(&snap(z)).unwrap(), Plan::default());
+}
