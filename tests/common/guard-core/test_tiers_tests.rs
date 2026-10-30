@@ -11,7 +11,7 @@
 //!
 //! | 层 | 静默变空的方式 | 自检（相等 / 零命中带正控） |
 //! |---|---|---|
-//! | 单元 | 文件在盘上、没有 `#[path]` 把它挂进编译单元 ⇒ 零条被编译、`cargo test` 照绿；`.test.ts` 不在 `npm test` 链上 | [`unit_tier_every_file_is_reached_by_its_runner`] |
+//! | 单元 | 文件在盘上、没有 `#[path]` 把它挂进编译单元 ⇒ 零条被编译、`cargo test` 照绿；TS 测试不是 `.vitest.ts`、或 `npm test` 不是 `vitest run` | [`unit_tier_every_file_is_reached_by_its_runner`] |
 //! | 源码扫描 | 路径断了 ⇒ 扫空集 ⇒ 恒绿 | [`scan_tier_every_root_anchored_path_literal_resolves`] |
 //! | 集成 | 缺环境时裸 `return` ⇒ 没跑也算过 | [`integration_tier_never_skips_silently`] |
 //! | e2e | 写了套件没人跑 | [`e2e_tier_is_what_package_json_runs_and_no_helper_is_orphaned`] |
@@ -1189,17 +1189,18 @@ fn the_tiers_partition_the_test_files_on_disk() {
 
 // ───────────────────────────── T1 单元层：可达 ─────────────────────────────
 
-/// 一张表里每一份都被它的跑者够得着：Rust 恰好一处 `#[path]` 挂它；`.vitest.ts` 落在 vitest 的 include 里；
-/// `.test.ts` 被 `npm test` 链上某个 `test:*` 脚本点名。返回违例。
+/// 一张表里每一份都被它的跑者够得着：Rust 恰好一处 `#[path]` 挂它；TS 只认 `.vitest.ts`，落在 vitest 的 include 里、
+/// `npm test` 就是 `vitest run`。返回违例。
 fn reach_violations(root: &Path, files: &[&str]) -> Vec<String> {
     let m = mounts(root);
     let pkg = std::fs::read_to_string(root.join("package.json")).expect("读 package.json");
-    let chain = npm_test_chain(&pkg);
     let vitest_cfg =
         std::fs::read_to_string(root.join("vitest.config.ts")).expect("读 vitest.config.ts");
     let include_pinned =
         crate::pin_line(&vitest_cfg, r#"include: ["tests/**/*.vitest.ts"],"#).is_ok();
-    let vitest_in_chain = chain.iter().any(|(_, v)| v == "vitest run");
+    let vitest_is_npm_test = npm_scripts(&pkg)
+        .iter()
+        .any(|(n, v)| n == "test" && v == "vitest run");
     let mut bad = Vec::new();
     for f in files {
         match lang_of(f) {
@@ -1220,19 +1221,14 @@ fn reach_violations(root: &Path, files: &[&str]) -> Vec<String> {
                 }
             }
             Lang::Ts => {
-                if f.ends_with(".vitest.ts") {
-                    if !(include_pinned && vitest_in_chain) {
-                        bad.push(format!(
-                            "  `{f}`：vitest 的 include 不再是 `tests/**/*.vitest.ts` 一整行，或 `npm test` 链上没有 `vitest run` \
-                             ⇒ 这一份不再被 `npm test` 跑到"
-                        ));
-                    }
-                } else if !chain
-                    .iter()
-                    .any(|(_, v)| tsx_target(v).as_deref() == Some(*f))
-                {
+                if !f.ends_with(".vitest.ts") {
                     bad.push(format!(
-                        "  `{f}` 不在 `npm test` 那条 `&&` 链上的任何一个 `tsx` 脚本里 ⇒ 没人跑它"
+                        "  `{f}` 不是 `.vitest.ts` ⇒ vitest 不收它、没人跑它（前端测试只有 vitest 一套跑法：改名 `.vitest.ts`）"
+                    ));
+                } else if !(include_pinned && vitest_is_npm_test) {
+                    bad.push(format!(
+                        "  `{f}`：vitest 的 include 不再是 `tests/**/*.vitest.ts` 一整行，或 `npm test` 不再是 `vitest run` \
+                         ⇒ 这一份不再被 `npm test` 跑到"
                     ));
                 }
             }
@@ -1258,29 +1254,6 @@ fn npm_scripts(manifest: &str) -> Vec<(String, String)> {
         out.push((name.to_string(), val.replace("\\\"", "\"")));
     }
     out
-}
-
-/// `npm test` 那条链真的会跑的脚本：`"test"` 的值按 `&&` 切、每段 `npm run <名>` ⇒ 那个脚本。
-fn npm_test_chain(manifest: &str) -> Vec<(String, String)> {
-    let scripts = npm_scripts(manifest);
-    let Some((_, test)) = scripts.iter().find(|(n, _)| n == "test") else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for step in test.split("&&") {
-        let Some(name) = step.trim().strip_prefix("npm run ") else {
-            continue;
-        };
-        if let Some(hit) = scripts.iter().find(|(n, _)| n == name.trim()) {
-            out.push(hit.clone());
-        }
-    }
-    out
-}
-
-fn tsx_target(val: &str) -> Option<String> {
-    let rest = val.trim().strip_prefix("tsx ")?;
-    Some(rest.trim().to_string())
 }
 
 /// T1：单元层每一份都被它的跑者够得着。
