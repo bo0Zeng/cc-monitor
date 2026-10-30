@@ -158,10 +158,7 @@ fn body_on_demand_drops_exactly_the_tool_bodies_and_keeps_the_rest() {
             .into_iter()
             .flat_map(|o| o.values())
         {
-            assert!(
-                res.get("patch").is_none(),
-                "{res}"
-            );
+            assert!(res.get("patch").is_none(), "{res}");
         }
         // 别的一格不动：把去掉的几格从原样里也删掉，两边逐字相等
         let mut want = r.clone();
