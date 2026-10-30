@@ -19,4 +19,4 @@ cargo check --workspace --all-targets --target x86_64-pc-windows-msvc   # 平台
 bash ../../tests/scripts/bless-golden.sh   # 金样判据（协议参考 · 跨语言金样）红了、对过 .build/golden/ 下现打的那份之后拷回
 ```
 
-测试一律在沙箱里跑：起 tmux 的测试显式 `-S` / `-L` 私有 socket 并摘掉 `$TMUX`，起真后端的测试经唯一的隔离口拿私有 tmux（INVARIANTS §48.3）。
+手工跑上面的测试一律前缀 `bash ../../tests/scripts/session-scrub.sh`（摘会话继承来的环境变量，见 [DEVELOPMENT.md](../doc/DEVELOPMENT.md) §Rust）。测试自己在沙箱里跑：起 tmux 的显式 `-S` / `-L` 私有 socket，起真后端的经唯一的隔离口拿私有 tmux（INVARIANTS §48.3）。
