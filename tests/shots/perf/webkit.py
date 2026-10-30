@@ -34,11 +34,14 @@ ap.add_argument("--runs", type=int, default=3)
 ap.add_argument("--out", default=os.path.join(REPO, ".build/perf-webkit"))
 ap.add_argument("--css", default=None)
 ap.add_argument("--port", type=int, default=None)
-ap.add_argument("--only", default="switch,rapid,keys,long", help="switch,rapid,keys,long,boot 量主窗口；settings 量设置窗")
+ap.add_argument("--only", default="switch,rapid,keys,long", help="switch,rapid,keys,long,newtab,mem,wheel,clickpx,boot 量主窗口；settings 量设置窗")
 ap.add_argument("--shot", action="store_true", help="只截几张图看样子（开页 · 切到最长那条 · 往上滚一段 · 切到一条短的）")
 ap.add_argument("--merge", default=None, help="几次分开跑的读数合成一张：目录1,目录2,…")
 ap.add_argument("--dev", action="store_true", help="开发服务器（模块按源码路径可 import ⇒ 能给方法挂计时）")
 ap.add_argument("--profile-pass", default="warm", help="计时记哪一遍：cold（第一次进每个 tab）/ warm")
+ap.add_argument("--scene", default="perf-tabs", help="主窗口那几项开哪个世界（perf-tabs · perf-huge：最长那条 9 600 轮）")
+ap.add_argument("--index-ms", type=int, default=0, help="骨架索引那一问拖这么久（毫秒；几百 MB 的真记录后端要扫几十秒，合成会话演不出来）")
+ap.add_argument("--short-tail", type=int, default=0, help="长会话最后几轮收尾只一句话（过程折起来以后尾巴不足一屏，真会话常见的那一形）")
 ap.add_argument("--profile", default=None, help="开页安静后在页里跑的一段函数体（挂计时）；切一下那一项末尾把 window.__prof 存进 prof.json")
 args = ap.parse_args()
 only = set(args.only.split(","))
@@ -166,6 +169,35 @@ def rss_mb(root=None):
         try:
             for line in open(f"/proc/{pid}/status"):
                 if line.startswith("VmRSS:"):
+                    kb += int(line.split()[1])
+        except OSError:
+            pass
+    return kb / 1024
+
+
+def web_pss_mb(root=None):
+    """这一棵进程树里 WebKit 网页进程（`WebKitWebProcess`）的 Pss 合计（MB；`smaps_rollup`，共享页按份摊）。"""
+    root = root or os.getpid()
+    kids = {}
+    for d in os.listdir("/proc"):
+        if not d.isdigit():
+            continue
+        try:
+            st = open(f"/proc/{d}/stat").read()
+            kids.setdefault(int(st[st.rindex(")") + 2:].split()[1]), []).append(int(d))
+        except OSError:
+            pass
+    kb = 0
+    stack = [root]
+    while stack:
+        pid = stack.pop()
+        stack.extend(kids.get(pid, []))
+        try:
+            # comm 截到 15 个字符：「WebKitWebProces」
+            if not open(f"/proc/{pid}/comm").read().startswith("WebKitWebProces"):
+                continue
+            for line in open(f"/proc/{pid}/smaps_rollup"):
+                if line.startswith("Pss:"):
                     kb += int(line.split()[1])
         except OSError:
             pass
@@ -385,6 +417,76 @@ def bench_long(v, url, run, result):
             "jankN": len(over), "jankMs": sum(d - 16.7 for d in over), "scrollTop": v.js("return document.querySelector('.stream.active').scrollTop")}
 
 
+def newtab_row(tl, turns, run, tab, frame2):
+    """一次点开的时间线收成一行：首帧有字 · 视口画满 · 安静，与之前那几帧是空白的、画满之前停在半截的。"""
+    ss = [s for s in tl["samples"] if s["viewPx"] > 0]
+    first_text = next((s["t"] for s in ss if s["textCards"] > 0), None)
+    # 画满：视口里有字、没有骨架占位、内容框里最上一条之上与最下一条之下都不空（差 4 px 以内；流的内边距 · 条间外边距不算空）
+    full = lambda s: s["textCards"] > 0 and s["gapPx"] == 0 and s.get("holePx", 0) <= 4  # noqa: E731
+    filled = next((s["t"] for s in ss if full(s)), None)
+    upto = filled if filled is not None else (ss[-1]["t"] if ss else 0)
+    pre = [s for s in ss if s["t"] <= upto]
+    last = ss[-1] if ss else {}
+    calls = [x for x in tl["ipc"] if x["k"] == "call"]
+    pushes = [x for x in tl["ipc"] if x["k"] == "push"]
+    return {
+        "run": run, "tab": tab, "turns": turns, "frame2": frame2,
+        "firstText": first_text, "filled": filled, "quiet": tl["quietAt"],
+        # 首帧有字之前的帧（空白）· 有字之后、画满之前视口里还露着空 / 骨架占位的帧（画到一半）
+        "blankFrames": sum(1 for s in pre if s["textCards"] == 0),
+        "halfFrames": sum(1 for s in pre if s["textCards"] > 0 and not full(s)),
+        "endCover": last.get("coverPx", 0), "endGap": last.get("gapPx", 0), "endHole": last.get("holePx", 0), "viewPx": last.get("viewPx", 0),
+        "items": last.get("items", 0), "rendered": last.get("rendered", 0) - (ss[0]["rendered"] if ss else 0),
+        "calls": [[x["cmd"], round(x["t"]), round(x["done"]) if x.get("done") is not None else None] for x in calls],
+        "pushN": len(pushes), "pushBytes": sum(x["bytes"] for x in pushes), "pushRunMs": sum(x["run"] for x in pushes),
+        "pushLast": round(max([x["t"] for x in pushes] or [0])),
+        "samples": tl["samples"], "layout": tl.get("layout"),
+    }
+
+
+def bench_newtab(v, url, run, result):
+    """点开一个没建过卡的 tab（长会话，≥200 轮）：每一帧看视口 —— 首帧有字、视口画满、安静，安静之后视口里还有没有没建的行。"""
+    boot(v, url, result)
+    n = v.js("return document.querySelectorAll('#tab-bar .tab').length")
+    rows = []
+    for i in range(n):
+        t = v.js(TAB_AT % i)
+        if t["active"] or (t["turns"] or 0) < 200:
+            continue
+        v.js("return await __perf.quiet(500, 8000)")
+        # 点下去与起时间线在同一段里：点完到第一帧之间不漏帧
+        click = (CLICK % i).replace("return true;", "")
+        tl = v.js(click + "const c = __perf.clicks[__perf.clicks.length - 1]; return await __perf.timeline(c.t0, 1000, %d);" % (15000 + args.index_ms))
+        c = v.js("const c = __perf.clicks[__perf.clicks.length - 1]; return c ? c.frame2 : null")
+        rows.append(newtab_row(tl, t["turns"], run, i, c))
+        if args.shot:
+            snapshot(v, os.path.join(args.out, f"newtab-{run + 1}-{i}.png"))
+    print(f"  WebKit 点开新 tab 第 {run + 1} 趟：{len(rows)} 次", flush=True)
+    return rows
+
+
+KEPT = """
+return [...document.querySelectorAll('#message-stream .stream')].map((s) => s.querySelector(':scope > .stream-content')?.children.length ?? 0);
+"""
+
+
+def bench_mem(v, url, run, result):
+    """只留眼前（与 `bench.mjs` 的 mem 同口径的那一截）：开页安静 → 24 个 tab 逐个切一遍（每个等到流里出了卡，至多 10 s）→ 网页进程 Pss · DOM 元素 · 每条流留着几个顶层条目。"""
+    boot(v, url, result)
+    n = v.js("return document.querySelectorAll('#tab-bar .tab').length")
+    open_pss = web_pss_mb()
+    open_els = v.js("return document.getElementsByTagName('*').length")
+    for i in range(n):
+        if v.js(TAB_AT % i)["active"]:
+            continue
+        v.js(CLICK % i)
+        v.js("const t0 = performance.now(); while (performance.now() - t0 < 10000 && !document.querySelector('#message-stream .stream.active .card')) await new Promise((r) => setTimeout(r, 50)); return 0")
+    v.js("return await __perf.quiet(1000, 15000)")
+    kept = v.js(KEPT)
+    print(f"  WebKit 只留眼前 第 {run + 1} 趟", flush=True)
+    return {"run": run, "openPss": open_pss, "pss": web_pss_mb(), "openEls": open_els, "els": v.js("return document.getElementsByTagName('*').length"), "keptMax": max(kept or [0]), "keptSum": sum(kept), "empty": sum(1 for k in kept if k == 0)}
+
+
 SCLICK = """
 const t = document.querySelector(%s);
 if (!t) return false;
@@ -531,6 +633,108 @@ def snapshot(v, path):
     pb.savev(path, "png", [], [])
 
 
+def pixels(v):
+    """整窗此刻的像素（RGB 行列），不经页里的任何读法（不逼排版）。"""
+    from gi.repository import Gdk  # noqa: PLC0415
+
+    win = v.win.get_window()
+    pb = Gdk.pixbuf_get_from_window(win, 0, 0, win.get_width(), win.get_height())
+    return pb.get_pixels(), pb.get_rowstride(), pb.get_n_channels()
+
+
+def blank_band(px, box, bg):
+    """`box`（x0, y0, x1, y1）里最长的一段「整行都是底色」的连续行数（每 6 px 取一个点）。卡与卡之间的外边距几十 px，几百 px 的一段是没画出来的。"""
+    data, stride, nch = px
+    x0, y0, x1, y1 = box
+    best = run = 0
+    for y in range(y0, y1):
+        o = y * stride
+        if all(data[o + x * nch:o + x * nch + 3] == bg for x in range(x0, x1, 6)):
+            run += 1
+            best = max(best, run)
+        else:
+            run = 0
+    return best
+
+
+def bench_clickpx(v, url, run, result):
+    """真点（`xdotool` 点 tab 栏）冷切进每一条长会话，之后 3 s 里每 100 ms 截一帧看流那一栏最长一段底色 —— 全程页里不读几何（读了会逼排版、把空着的那一形盖掉）。
+    tab 的位置与流的框在点之前读。"""
+    boot(v, url, result)
+    n = v.js("return document.querySelectorAll('#tab-bar .tab').length")
+    b = v.js("const s = document.querySelector('#message-stream').getBoundingClientRect(); return [Math.round(s.left), Math.round(s.top), Math.round(s.right), Math.round(s.bottom)]")
+    rows = []
+    for i in range(n):
+        t = v.js(TAB_AT % i)
+        if t["active"] or (t["turns"] or 0) < 200:
+            continue
+        v.js("return await __perf.quiet(500, 8000)")
+        c = v.js("const r = document.querySelectorAll('#tab-bar .tab')[%d].getBoundingClientRect(); return [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)]" % i)
+        data, stride, nch = pixels(v)
+        o = (b[1] + 6) * stride + (b[0] + 6) * nch
+        bg = data[o:o + 3]
+        box = (b[0] + 120, b[1] + 6, b[2] - 120, b[3] - 90)
+        # 点完把指针挪开（停在 tab 上会弹悬浮卡，盖住流的一角）
+        subprocess.call(["xdotool", "mousemove", str(c[0]), str(c[1]), "click", "1", "mousemove", "2", str(b[3] + 8)])
+        t0 = time.monotonic()
+        bands = []
+        while time.monotonic() - t0 < 3.0:
+            pump(100)
+            bands.append(blank_band(pixels(v), box, bg))
+        # 3 s 时流里已经有几张卡（只数节点，不读几何）；再逼一次排版（读一次流的高）之后再截一帧：空着的那一块这时才画出来 ⇒ 是引擎没画，不是没建
+        cards = v.js("return document.querySelectorAll('#message-stream .stream.active .stream-content > .card').length")
+        snapshot(v, os.path.join(args.out, f"clickpx-{run + 1}-{i}.png"))
+        v.js("return document.querySelector('#message-stream .stream.active').scrollHeight")
+        pump(300)
+        forced = blank_band(pixels(v), box, bg)
+        rows.append({"run": run, "tab": i, "turns": t["turns"], "bands": bands, "end": bands[-1] if bands else 0, "cards": cards, "forced": forced,
+                     "firstLow": next((k * 100 for k, x in enumerate(bands) if x < 200), None)})
+    print(f"  WebKit 真点冷切 第 {run + 1} 趟：{len(rows)} 次", flush=True)
+    return rows
+
+
+WHEEL_STEPS = 60
+WHEEL_NOTCHES = 6
+
+
+def bench_wheel(v, url, run, result):
+    """真滚轮（`xdotool` 往这台私有 Xvfb 发滚轮键）在最长那条流上往上滚：每下滚 `WHEEL_NOTCHES` 格、停 600 ms 截一帧，
+    看流的那一栏里最长一段底色有多高（没画出来的那一块）；滚的那一段另记帧间隔（rAF 链，不读几何）。
+    页里只在滚之前读一次流的框（之后的读法会逼排版、把要看的那一形盖掉）。`--css` 换掉 `content-visibility` 就是 A/B 的另一组。"""
+    boot(v, url, result)
+    n = v.js("return document.querySelectorAll('#tab-bar .tab').length")
+    turns = [v.js(TAB_AT % i)["turns"] or 0 for i in range(n)]
+    longest = turns.index(max(turns))
+    v.js(CLICK % longest)
+    v.js("return await __perf.quiet(1000, 20000)")
+    b = v.js("const r = document.querySelector('#message-stream .stream.active .stream-content').getBoundingClientRect(); const s = document.querySelector('#message-stream .stream.active').getBoundingClientRect(); return [Math.round(r.left), Math.round(s.top), Math.round(r.right), Math.round(s.bottom)]")
+    box = (b[0] + 4, b[1] + 4, b[2] - 4, b[3] - 4)
+    pump(300)
+    data, stride, nch = pixels(v)
+    # 底色：流那一栏最上一行最左那一点（流的内边距里，不会落在卡上）
+    o = (b[1] + 2) * stride + (b[0] + 2) * nch
+    bg = data[o:o + 3]
+    cx, cy = (b[0] + b[2]) // 2, (b[1] + b[3]) // 2
+    subprocess.call(["xdotool", "mousemove", str(cx), str(cy)])
+    bands = []
+    v.js("__perf.frameStart(); return 0")
+    for _ in range(WHEEL_STEPS):
+        subprocess.call(["xdotool", "click", "--repeat", str(WHEEL_NOTCHES), "--delay", "30", "4"])
+        pump(600)
+        bands.append(blank_band(pixels(v), box, bg))
+        if bands[-1] >= 200 and sum(1 for x in bands if x >= 200) == 1:
+            snapshot(v, os.path.join(args.out, f"wheel-{run + 1}-blank-{len(bands)}.png"))  # 第一次露出一大段底色那一刻（再停 300 ms 截，空着不补的话照样空着）
+    frames = v.js("return __perf.frameStop()")
+    shot = os.path.join(args.out, f"wheel-{run + 1}.png")
+    snapshot(v, shot)
+    top = v.js("return document.querySelector('#message-stream .stream.active').scrollTop")
+    print(f"  WebKit 真滚轮 第 {run + 1} 趟", flush=True)
+    over = [d for d in frames if d > 50]
+    return {"run": run, "bands": bands, "bandMax": max(bands or [0]), "bandSteps": sum(1 for x in bands if x >= 200), "scrollTop": top,
+            "frameP50": pct(frames, 0.5), "frameP95": pct(frames, 0.95), "frameMax": max(frames or [0]), "jankN": len(over),
+            "items": v.js("return document.querySelector('#message-stream .stream.active .stream-content').children.length")}
+
+
 def shots(v, url, result):
     boot(v, url, result)
     snapshot(v, os.path.join(args.out, "wk-boot.png"))
@@ -625,6 +829,43 @@ def summarize(r):
         for x in r["long"]:
             L.append(f"| {x['run'] + 1} | {x['first']['cpu']:.0f} | {x['cpu']:.0f} | {x['first']['sync'] or 0:.0f} | {x['first']['frame2'] or 0:.0f} | {x['frameP50']:.0f} | {x['frameP95']:.0f} | {x['frameMax']:.0f} | {x['jankN']} | {x['jankMs']:.0f} |")
         L.append("")
+    if r.get("clickpx"):
+        L.append("## 真点冷切（每 100 ms 截一帧，3 s；页里不读几何）")
+        L.append("")
+        L.append("| 趟 | tab | 轮 | 底色段 < 200 px 的第一帧（ms） | 3 s 时最长一段底色 px · 流里已建的卡 | 逼一次排版之后 | 各帧最长底色段 |")
+        L.append("|---|---|---|---|---|---|---|")
+        for x in r["clickpx"]:
+            L.append(f"| {x['run'] + 1} | {x['tab']} | {x['turns']} | {x['firstLow'] if x['firstLow'] is not None else '—'} | {x['end']} · {x.get('cards')} | {x.get('forced')} | {' '.join(str(y) for y in x['bands'][:12])} … |")
+        L.append("")
+    if r.get("wheel"):
+        L.append(f"## 真滚轮（最长那条冷切进去，往上 {WHEEL_STEPS} 下 × {WHEEL_NOTCHES} 格，每下停 600 ms 截一帧）")
+        L.append("")
+        L.append("| 趟 | 截帧里最长一段底色 px | ≥200 px 的帧 | 帧 p50 | 帧 p95 | 最长帧 | >50ms 的帧 | 滚到 scrollTop | 流里顶层条目 |")
+        L.append("|---|---|---|---|---|---|---|---|---|")
+        for x in r["wheel"]:
+            L.append(f"| {x['run'] + 1} | {x['bandMax']} | {x['bandSteps']}/{len(x['bands'])} | {x['frameP50']:.0f} | {x['frameP95']:.0f} | {x['frameMax']:.0f} | {x['jankN']} | {x['scrollTop']} | {x['items']} |")
+        L.append("")
+    if r.get("mem"):
+        L.append("## 只留眼前（开页 → 24 个 tab 逐个切一遍）")
+        L.append("")
+        L.append("| 趟 | 网页进程 Pss MB：开 · 切完 | DOM 元素：开 · 切完 | 切完每条流的顶层条目：最多 · 合计 · 空着的流 |")
+        L.append("|---|---|---|---|")
+        for x in r["mem"]:
+            L.append(f"| {x['run'] + 1} | {x['openPss']:.0f} · {x['pss']:.0f} | {x['openEls']} · {x['els']} | {x['keptMax']} · {x['keptSum']} · {x['empty']} |")
+        L.append("")
+    if r.get("newtab"):
+        L.append("## 点开新 tab（长会话 ≥200 轮，冷：点下去起每一帧看视口；ms 从点下去起）")
+        L.append("")
+        L.append("| 趟 | tab | 轮 | 首帧有字 | 视口画满 | 安静 | 有字之前的帧 | 画到一半的帧 | 安静后视口：已建 / 骨架占位 / 空着 / 视口 px | 建的卡 | 问后端几下 · 最慢一下 |")
+        L.append("|---|---|---|---|---|---|---|---|---|---|---|")
+
+        def f(x):
+            return "—" if x is None else f"{x:.0f}"
+
+        for x in r["newtab"]:
+            took = [c[2] - c[1] for c in x["calls"] if c[2] is not None]
+            L.append(f"| {x['run'] + 1} | {x['tab']} | {x['turns']} | {f(x['firstText'])} | {f(x['filled'])} | {f(x['quiet'])} | {x['blankFrames']} | {x['halfFrames']} | {x['endCover']} / {x['endGap']} / {x.get('endHole', 0)} / {x['viewPx']} | {x['rendered']} | {len(x['calls'])} · {max(took or [0]):.0f} |")
+        L.append("")
     return "\n".join(L)
 
 
@@ -652,10 +893,10 @@ def main():
             for line in srv.stdout:
                 if f"READY {port}" in line:
                     break
-        url = f"http://127.0.0.1:{port}/index.html?scene=perf-tabs"
+        url = f"http://127.0.0.1:{port}/index.html?scene={args.scene}" + (f"&indexMs={args.index_ms}" if args.index_ms else "") + (f"&shortTail={args.short_tail}" if args.short_tail else "")
         surl = f"http://127.0.0.1:{port}/settings.html?scene=perf-settings"
         load0 = os.getloadavg()
-        result = {"when": time.strftime("%Y-%m-%dT%H:%M:%S"), "webkit": f"{WebKit2.get_major_version()}.{WebKit2.get_minor_version()}.{WebKit2.get_micro_version()}", "runs": args.runs, "load": {"start": load0}, "boot": [], "switch": [], "rapid": [], "keys": [], "long": [], "sopen": [], "spages": [], "sfilter": [], "sreopen": []}
+        result = {"when": time.strftime("%Y-%m-%dT%H:%M:%S"), "webkit": f"{WebKit2.get_major_version()}.{WebKit2.get_minor_version()}.{WebKit2.get_micro_version()}", "runs": args.runs, "load": {"start": load0}, "boot": [], "switch": [], "rapid": [], "keys": [], "long": [], "newtab": [], "mem": [], "wheel": [], "clickpx": [], "sopen": [], "spages": [], "sfilter": [], "sreopen": []}
         if args.shot:
             v = View()
             try:
@@ -663,7 +904,7 @@ def main():
             finally:
                 v.close()
         for run in range(args.runs):
-            for name, fn in (("switch", bench_switch), ("rapid", bench_rapid), ("keys", bench_keys), ("long", bench_long), ("boot", lambda v, url, run, result: boot(v, url, result) or [])):
+            for name, fn in (("switch", bench_switch), ("rapid", bench_rapid), ("keys", bench_keys), ("long", bench_long), ("newtab", bench_newtab), ("mem", bench_mem), ("wheel", bench_wheel), ("clickpx", bench_clickpx), ("boot", lambda v, url, run, result: boot(v, url, result) or [])):
                 if name not in only:
                     continue
                 v = View()
@@ -696,7 +937,7 @@ def main():
 def merge():
     parts = [json.load(open(os.path.join(d, "perf-webkit.json"))) for d in args.merge.split(",")]
     m = {**parts[0], "runs": sum(p["runs"] for p in parts), "load": {"start": parts[0]["load"]["start"], "end": parts[-1]["load"]["end"]}}
-    for key in ("boot", "switch", "rapid", "keys", "long"):
+    for key in ("boot", "switch", "rapid", "keys", "long", "newtab", "mem", "wheel", "clickpx"):
         m[key] = [{**x, "part": k} for k, p in enumerate(parts) for x in p.get(key, [])]
     with open(os.path.join(args.out, "perf-webkit.json"), "w") as f:
         json.dump(m, f, indent=1)

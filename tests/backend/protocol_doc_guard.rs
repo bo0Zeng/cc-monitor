@@ -278,42 +278,23 @@ mod tests {
     /// 永远不受文档对拍约束，而护栏**照常报绿**。U6a 之前就正是这个状态。
     #[test]
     fn dispatch_registry_is_complete() {
-        fn walk(dir: &std::path::Path, hits: &mut Vec<String>, root: &std::path::Path) {
-            for e in std::fs::read_dir(dir).expect("读 src/ 失败").flatten() {
-                let p = e.path();
-                if p.is_dir() {
-                    walk(&p, hits, root);
-                } else if p.extension().is_some_and(|x| x == "rs") {
-                    let raw = std::fs::read_to_string(&p).unwrap_or_default();
-                    // 整份文件都是 `#![cfg(test)]` 的（护栏自己就是）：release 构建里
-                    // 根本不存在，不可能分派任何东西。`production_code` 只剥
-                    // `#[cfg(test)] mod` 块，剥不掉文件级的内层属性 —— 得在这里跳。
-                    if raw.contains("#![cfg(test)]") {
-                        continue;
-                    }
-                    // 判据放宽到「生产段里出现 `"--` 字面量」。
-                    //
-                    // 前两版按**分派语法**探测（`Some("--x") =>` / 裸 `"--x" =>`），
-                    // D 审计一击即破：把 `pub const CTRL_FLAG: &str = "--ccm-hidden-ctrl";`
-                    // 放进 `control/tmux_hook.rs`（那文件两种语法都没有）⇒ 两条护栏全绿。
-                    //
-                    // 现在只要**提到**一个 `--token` 就得登记。宁可多登记几个文件，
-                    // 也不要让一个 token 因为「写法不是 match 臂」而隐形。
-                    let prod = guard_core::production_code(&raw);
-                    if prod.contains("\"--") {
-                        hits.push(
-                            p.strip_prefix(root)
-                                .unwrap()
-                                .to_string_lossy()
-                                .replace('\\', "/"),
-                        );
-                    }
-                }
-            }
-        }
         let root = guard_core::addr::backend_src_root();
         let mut found = Vec::new();
-        walk(&root, &mut found, &root);
+        for rel in guard_core::files_by_extension(&root, "rs") {
+            let raw = std::fs::read_to_string(root.join(&rel)).unwrap_or_default();
+            // 整份文件都是 `#![cfg(test)]` 的（护栏自己就是）：release 构建里
+            // 根本不存在，不可能分派任何东西。`production_code` 只剥
+            // `#[cfg(test)] mod` 块，剥不掉文件级的内层属性 —— 得在这里跳。
+            if raw.contains("#![cfg(test)]") {
+                continue;
+            }
+            // 判据是「生产段里出现 `"--` 字面量」，不按分派语法探测：
+            // 把 `pub const CTRL_FLAG: &str = "--ccm-hidden-ctrl";` 放进一份没有 match 臂的文件，
+            // 按语法探测的两条护栏会全绿。只要**提到**一个 `--token` 就得登记。
+            if guard_core::production_code(&raw).contains("\"--") {
+                found.push(rel);
+            }
+        }
         found.sort();
 
         assert!(

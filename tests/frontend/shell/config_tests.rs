@@ -229,17 +229,13 @@ fn the_wire_shape_deserializes() {
 }
 
 /// 金样 `tests/__fixtures__/config-patch.golden.json`（手写）逐条跑真写口：`after` 逐值相等；
-/// `refused` ⇒ 错误种类对得上、盘上字节不变。前端测试用的假盘跑同一份（`tests/frontend/ui/config-patch-fake.vitest.ts`）。
+/// `refused` ⇒ 错误种类对得上、盘上字节不变。补丁的落盘语义只在这里判：前端测试的替身只记下交出去的补丁、不应用。
 #[test]
 fn the_golden_cases_hold() {
     let golden: Value =
         serde_json::from_str(include_str!("../../__fixtures__/config-patch.golden.json")).unwrap();
     let cases = golden["cases"].as_array().unwrap();
-    assert_eq!(
-        cases.len(),
-        9, // 按键认元素那几条随机器表搬进本机后端（`control/machines.rs`，判据在 `machines_tests.rs`）
-        "金样条数变了 —— 两边（这里与 vitest 那边）一起改"
-    );
+    assert!(!cases.is_empty(), "金样是空的（空集上的逐条相等恒真）");
     for (i, c) in cases.iter().enumerate() {
         let name = c["name"].as_str().unwrap();
         let dir = tmpdir(&format!("golden{i}"));

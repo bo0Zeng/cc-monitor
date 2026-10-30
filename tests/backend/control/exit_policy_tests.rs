@@ -134,6 +134,19 @@ fn the_written_file_carries_the_declared_version_and_a_newer_one_reads_unreadabl
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// 盘上那份读不懂 ⇒ 设的时候拒，原字节不动（删掉或改好那份再设）。
+#[test]
+fn setting_over_an_unreadable_file_is_refused_and_keeps_its_bytes() {
+    let d = temp_dir("over-bad");
+    let f = d.join(DIR_NAME).join(FILE_NAME);
+    let own = crate::platform::fs::Own::issue_at(&d);
+    std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+    std::fs::write(&f, "{").unwrap();
+    assert!(write_at(&own, true).is_err(), "盖掉了一份读不懂的退出策略");
+    assert_eq!(std::fs::read(&f).unwrap(), b"{", "原字节被动了");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
 #[test]
 fn set_rejects_a_non_boolean_and_writes_nothing() {
     for bad in [

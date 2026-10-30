@@ -138,9 +138,7 @@ pub fn is_writable(r: &Listed) -> bool {
 /// 这一条由 [`is_writable`] 在上游挡（有损而没有字节 ⇒ 不许写），这里不再兜第二份判定。
 pub fn rel_json(shown: &str, raw: Option<&[u8]>) -> serde_json::Value {
     match raw {
-        Some(b) => {
-            serde_json::json!({ super::find::HEX_KEY: b.iter().map(|x| format!("{x:02x}")).collect::<String>() })
-        }
+        Some(b) => serde_json::json!(cmd_wire::files::HexBytes(b.to_vec())),
         None => serde_json::Value::String(shown.to_string()),
     }
 }
