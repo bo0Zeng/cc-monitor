@@ -106,7 +106,10 @@ fn a_week_refused_at_97_stays_refused_until_its_own_reset() {
             ("anthropic-ratelimit-unified-5h-status", "allowed".into()),
             ("anthropic-ratelimit-unified-7d-status", "rejected".into()),
             ("anthropic-ratelimit-unified-7d-utilization", "0.97".into()),
-            ("anthropic-ratelimit-unified-7d-reset", week_reset.to_string()),
+            (
+                "anthropic-ratelimit-unified-7d-reset",
+                week_reset.to_string(),
+            ),
         ]),
         NOW,
     )
