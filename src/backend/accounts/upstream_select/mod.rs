@@ -1,7 +1,7 @@
 //! **上游选择**（apikey 端点改写那一块）：`resolve` 那张决策表的**唯一住址**。
 //!
 //! 从 `accounts/` 挪进子目录 `accounts/upstream_select/`：`accounts/` 是账号**域**，
-//! 它下面「挂在中转上当上游选择的这一块」与「账号隔离工具的查询」（`accounts/iso.rs`）是两件事，
+//! 它下面「挂在中转上当上游选择的这一块」与账号域别的几块（`accounts/manage/` · `accounts/oauth/` · `accounts/quota/`）是两件事，
 //! 不共用一张登记表（用户「账号就账号, 中转就中转」）。两块互不引用，由
 //! `upstream_selection_guard::the_two_halves_of_the_account_domain_do_not_reference_each_other` 钉着。
 //!
@@ -43,7 +43,7 @@
 //! 而且**不许回落到某一个写死的常量**。
 //! 先前两句在「每 agent 一行的默认上游」那张表落地之前不可能同时成立，本层取了后者（恒拒）。
 //! 那张表今天落了 ⇒ **两句同时成立**：登记过的 agent 走**它自己那一行**（不是某一个进程级常量），
-//! 未登记的仍是拒（今天 404 ＋ 原因头 `agent-not-registered`）。两格的判据住 `tests/backend/relay/table_tests.rs`
+//! 未登记的仍是拒（今天 404 ＋ 原因头 `agent-not-registered`）。两格的判据住 `tests/backend/accounts/upstream_select/table_tests.rs`
 //! （`decide` 被直接问，不经网络）；`wire_golden` 那一格用的 `seg1` 是一个**未登记**的名字，
 //! 仍钉着「拒」那一半。
 
