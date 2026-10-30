@@ -1,5 +1,5 @@
 //! ★ 推演（算法 §5）：离散事件模拟，状态是 (Σ, F) 的一份拷贝；每个事件点调的是和真用时同一个 [`turn`]。
-//! 每个号照它自己在额度账里量出来的用速涨（所有会话的用量都在那个号的读数里）；量不到的不涨、不换算时刻。
+//! 每个号照 [`rate_of`] 涨：别的会话压在它上面的 ＋ 本会话在它上面时本会话那一份（本会话换到哪，它那一份跟到哪）；量不到的不涨、不换算时刻。
 //! 事件只有事实（重置 · 被拒到期 · 用到 100）和策略约的叫醒（时刻 · 读数 —— 量得到用速的号按用速换算成时刻，量不到不编数）。
 
 use super::decide::{turn, Pick, Sigma, Strategy};
@@ -9,6 +9,23 @@ use serde_json::Value;
 
 /// 一次推演最多几个事件。
 pub(crate) const MAX_EVENTS: usize = 200;
+
+/// 推演里号 `x` 第 `w` 窗每分钟涨几点。`pace` ＝ 本会话的用速（折合输入 token / 分），按这一窗「1% ≈ 多少」折成点：
+/// - 量得到别的会话压在它上面的（`others`，只有 5 小时窗）⇒ 它，本会话在它上面再加本会话那一份；
+/// - 量不到 ⇒ 号自己在额度账里量出来的用速（本会话在它上面时量的已含本会话，不再加）；在用的号这也量不到 ⇒ 只算本会话那一份；
+/// - 都量不到 ⇒ 空（不编数）。
+fn rate_of(x: &Acct, w: usize, in_use: bool, pace: Option<f64>) -> Option<f64> {
+    let mine = pace
+        .zip(x.per_pct[w].filter(|t| *t > 0))
+        .map(|(p, t)| p / t as f64);
+    let others = if w == 0 { x.others } else { None };
+    match (others, in_use, mine) {
+        (Some(o), true, Some(m)) => Some(o + m),
+        (Some(o), false, _) => Some(o),
+        (_, true, Some(m)) if x.rate[w].is_none() => Some(m),
+        _ => x.rate[w],
+    }
+}
 
 /// 「用哪个号」那一条的一段。
 #[derive(Debug, Clone, PartialEq)]
@@ -110,7 +127,7 @@ pub(crate) fn simulate(
         // 下一个事件：已知节点 · 用到 100 · 读数叫醒（按用速换算成时刻）· 视窗末尾。
         let mut ev: Vec<u64> = vec![t1];
         ev.extend(d.tn);
-        // 用速是每个号自己在额度账里量出来的（别的会话在用的号也量得到）：量得到的号照它涨、照它换算用到 100 · 读数叫醒的时刻；
+        // 用速照 [`rate_of`]：量得到的号照它涨、照它换算用到 100 · 读数叫醒的时刻；
         // 量不到 ⇒ 不编数，那一窗的这几个时刻不换算，只排确定的事件。在用的号量不到 ⇒ 这一段标「用到上限的时刻还不知道」。
         let mut unknown = false;
         for x in f.iter().filter(|x| !x.api) {
@@ -131,7 +148,7 @@ pub(crate) fn simulate(
                 if ns.is_empty() {
                     continue;
                 }
-                match x.rate[w] {
+                match rate_of(x, w, in_use, sigma.me.pace) {
                     Some(r) if open && r > 0.0 => {
                         for n in ns {
                             let room = n - standing::used_at(x, w, t);
@@ -141,7 +158,8 @@ pub(crate) fn simulate(
                         }
                     }
                     Some(_) => {}
-                    None => unknown |= in_use,
+                    // 没有周上限的号周窗用不满，量不到它的用速不算「还不知道」。
+                    None => unknown |= in_use && (w == 0 || x.weekly),
                 }
             }
         }
@@ -162,8 +180,10 @@ pub(crate) fn simulate(
         });
         // 推进到 te：量得到用速的号照它涨（窗口开着的；在用的号上面已经开窗）。
         for x in f.iter_mut().filter(|x| !x.api) {
+            let in_use = using.as_deref() == Some(x.id.as_str());
             for w in 0..2 {
-                if let (Some(r), true) = (x.rate[w], x.resets[w].is_some_and(|r| r > t)) {
+                let r = rate_of(x, w, in_use, sigma.me.pace);
+                if let (Some(r), true) = (r, x.resets[w].is_some_and(|r| r > t)) {
                     x.used[w] = standing::used_at(x, w, t) + r * (te - t) as f64 / 60.0;
                 }
             }
