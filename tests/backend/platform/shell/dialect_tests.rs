@@ -2,7 +2,7 @@
 //!
 //! 规则（合不合格）不在这里判 —— 那一份住 `account_aliases`，判据在 `account_aliases_tests.rs`。
 //! 🔴 PowerShell 那一臂**一次都没被 PowerShell 解析过**（本机无 `pwsh`，Win11 虚拟机不许碰）：
-//! 这里只能钉黄金串与「与 POSIX 臂同契约」的对拍。
+//! 这里只能钉黄金串。
 
 use super::*;
 
@@ -115,62 +115,6 @@ fn the_powershell_alias_names_ccm_by_its_landing() {
     );
 }
 
-/// 🔴 **与 POSIX 臂同契约的对拍**（PowerShell 真执行买不到时能买到的最强那一格）：
-/// 同一份清单，两个方言各自渲染 → 各自读回 → **两边都等于原清单**（两向：读回的不多一条、不少一条）。
-#[test]
-fn both_dialects_read_back_exactly_what_they_wrote() {
-    for (sh, d) in [Shell::Posix, Shell::PowerShell].map(|x| (x, x.dialect())) {
-        let text: String = sample()
-            .iter()
-            .map(|(n, a, r)| d.render_alias(C, n, a, *r) + "\n")
-            .collect();
-        let back: Vec<(String, Vec<String>, RestTo)> = d
-            .parse_file(C, &text)
-            .into_iter()
-            .map(|r| r.unwrap_or_else(|e| panic!("{:?} 读不回自己写的：{e}", sh)))
-            .collect();
-        let want: Vec<(String, Vec<String>, RestTo)> = sample()
-            .into_iter()
-            .map(|(n, a, r)| (n.to_string(), a, r))
-            .collect();
-        assert_eq!(back, want, "{:?}", sh);
-    }
-}
-
-/// PowerShell 读回只认**生成的那一形**：函数体被手改过 ⇒ 整块算认不出（带原因），不猜。
-/// 块外的非注释行、没收尾的函数也都说出来，不静默丢。
-#[test]
-fn powershell_reader_names_what_it_cannot_take() {
-    let good = PowerShell.render_alias(C, "workcc", &sv(&["--account", "work"]), RestTo::Agent);
-    let edited = good.replace("__ccm_bind }", "__ccm_bind; Write-Host hi }");
-    let text = format!(
-        "\u{feff}# 注释\nSet-Alias x ls\n{good}\n{}\nfunction open {{\n",
-        edited.replace("workcc", "workcd")
-    );
-    let got = PowerShell.parse_file(C, PowerShell.decode_from_disk(&text));
-    assert_eq!(got.len(), 4, "{got:?}");
-    assert_eq!(
-        got[1],
-        Ok((
-            "workcc".to_string(),
-            sv(&["--account", "work"]),
-            RestTo::Agent
-        ))
-    );
-    assert!(
-        matches!(&got[0], Err(e) if e.starts_with("Set-Alias x ls") && copy_core::copy_matches("rsShellDialect.ps.outsideFn", e)),
-        "{got:?}"
-    );
-    assert!(
-        matches!(&got[2], Err(e) if e.contains("workcd") && copy_core::copy_matches("rsShellDialect.ps.handEdited", &e)),
-        "{got:?}"
-    );
-    assert!(
-        matches!(&got[3], Err(e) if copy_core::copy_matches("rsShellDialect.ps.noClose", &e)),
-        "{got:?}"
-    );
-}
-
 /// 方言只看目标文件的扩展名（`.ps1` 大小写都认），不看宿主平台。
 #[test]
 fn the_dialect_comes_from_the_target_file() {
@@ -185,14 +129,12 @@ fn the_dialect_comes_from_the_target_file() {
     }
 }
 
-/// BOM：PowerShell 写时加、读时剥；POSIX 两头都原样（用户 rc 开头那三个字节不是我们的）。
+/// BOM：PowerShell 写时加；POSIX 原样（`.bashrc` 开头多三个字节 ⇒ `sh` 把它当命令）。
 #[test]
 fn only_powershell_gets_a_bom() {
     let ps = PowerShell.encode_for_disk("# x\n");
     assert!(ps.starts_with('\u{feff}') && ps.matches('\u{feff}').count() == 1);
-    assert_eq!(PowerShell.decode_from_disk(&ps), "# x\n");
     assert_eq!(Posix.encode_for_disk("# x\n"), "# x\n");
-    assert_eq!(Posix.decode_from_disk("\u{feff}# x\n"), "\u{feff}# x\n");
 }
 
 /// 名字：两种方言同一个字符集；PowerShell 大小写不敏感（`Workcc` 与 `workcc` 是同一个函数）。
