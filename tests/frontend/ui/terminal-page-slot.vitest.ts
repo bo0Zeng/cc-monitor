@@ -89,6 +89,20 @@ describe("托管那一形：谁在输入 · 接管 · 交还", () => {
     expect(button(page, copyText("terminal.input.take"))).toBeDefined();
   });
 
+  it("★［接管输入］/［交还］是描边紧凑那一档（接管不是主操作，也不是一行字）", async () => {
+    const { page, holds } = rig([row({ terminal: "%7", name: "billing-2", input: "held", holder: { said: "S-in-window", mine: false } })]);
+    holds.take.mockResolvedValue({ kind: "held", holder: { who: "desktop", mine: true, said: "S-here" } });
+    page.sessionChanged();
+    page.setVisible(true);
+    await flush();
+    const take = button(page, copyText("terminal.input.take"));
+    expect(take?.dataset.kind).toBe("secondary");
+    expect(take?.dataset.size).toBe("compact");
+    take?.click();
+    await flush();
+    expect(button(page, copyText("terminal.input.release"))?.dataset.kind).toBe("secondary");
+  });
+
   it("★ tmux 那一形不出［接管输入］/［交还］", async () => {
     const { page } = rig([row({ terminal: "%7", name:"billing-2" })]);
     page.sessionChanged();
