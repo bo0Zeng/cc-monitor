@@ -695,6 +695,7 @@ object Commands {
             PlanListReq::class.java to PlanListReq.ADAPTER,
             PlanListSlice::class.java to PlanListSlice.ADAPTER,
             PlanListWorkspace::class.java to PlanListWorkspace.ADAPTER,
+            PlanLook::class.java to PlanLook.ADAPTER,
             PlanMsgRef::class.java to PlanMsgRef.ADAPTER,
             PlanMsgRefs::class.java to PlanMsgRefs.ADAPTER,
             PlanNeed::class.java to PlanNeed.ADAPTER,

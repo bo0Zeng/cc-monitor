@@ -23,6 +23,7 @@ import { ExtSection } from "../../../../src/frontend/ui/settings/ext-section";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { chanArgsJson, chanReply, type ChanCallArgs } from "../../../test-support/chan-fake";
 import { REPO_ROOT } from "../../../test-support/repo-root";
+import { stripComments } from "../../../test-support/strip-comments";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const ops = () => invokeMock.mock.calls.filter(([c]) => c === "chan_call").map(([, a]) => [(a as ChanCallArgs).origin, (a as ChanCallArgs).op, chanArgsJson(a as ChanCallArgs)]);
@@ -506,7 +507,7 @@ describe("备注 · cc-bus 那一行", () => {
 
 /** 一份源码里「比较指纹」的痕迹：出现摘要这个词，或拿记号去比。注释先剥掉。 */
 export function comparesFingerprints(src: string): string[] {
-  const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  const code = stripComments(src, "ts");
   const hits: string[] = [];
   for (const m of code.matchAll(/[^\n]*\bdigest\b[^\n]*/gi)) hits.push(m[0].trim());
   for (const m of code.matchAll(/[^\n]*\btokens?\b[^\n]*(===|!==|==|!=)[^\n]*/g)) hits.push(m[0].trim());
@@ -726,7 +727,7 @@ describe("一次装到几台：要填的值只填一次", () => {
 
 describe("几百行 × 十几台的表：滚出视口的行不排（读数住 `tests/shots/perf/settings-bench.mjs`）", () => {
   it("表行（表头除外）content-visibility: auto；估的内容高是一行字（内边距与底线另算，估错了滚动条长短会跳）", () => {
-    const css = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles/settings.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const css = stripComments(readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles/settings.css"), "utf8"), "css");
     const body = /\.ext-row:not\(\.ext-head\)\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(body, "那一条规则在").not.toBe("");
     expect(body).toMatch(/content-visibility:\s*auto;/);

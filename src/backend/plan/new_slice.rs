@@ -7,7 +7,7 @@
 //! - 名字合不合 pb 的规矩这里不判：提交即起 `pb repo`，照它的退出码与那一句（[`super::command`]）。
 
 use super::locate::Missing;
-use super::wire::{PlanNewExisting, PlanNewForm, PlanPb};
+use cmd_wire::plan::{PlanNewExisting, PlanNewForm, PlanPb};
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 

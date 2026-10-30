@@ -47,38 +47,28 @@ export function needBar(host: ReviewHost, slice: PlanSlice, need: PlanNeed, pos:
   const title = document.createElement("span");
   title.className = s.rvTitle;
   title.append(icon(need.kind === "red" ? "warning" : "success", "compact"));
-  const body: string[] = [];
+  // 标题与底下那几行是后端写好的（`need.title` · `need.lines`）；这里只按种类挂按钮、挂负责人那一枚。
+  title.append(need.title);
+  const body = need.lines;
   const acts: HTMLElement[] = [];
   const blk = slice.blocks.find((b) => b.id === need.block) ?? null;
   const byId = cellIndex(slice);
   const root = need.cell ? (byId.get(need.cell) ?? null) : null;
   const ackBtn = (): HTMLButtonElement => button({ label: copyText("plan.review.ack"), kind: "primary", size: "compact", onClick: () => host.ack(need) });
   if (need.kind === "top") {
-    title.append(copyText("plan.review.topDone"));
-    const p = slice.progress;
-    body.push(copyText("plan.review.topDoneWhat", { phase: blk?.phase ?? "", done: p?.done ?? 0, of: p?.of ?? 0 }));
     acts.push(ackBtn());
     // project 在 pb 里与节点同样可寻址 ⇒ 退回它 ＝ 送给 project 的负责人（后端拼那一行、判落地）。
     const top = topTarget(slice, need);
     if (top) acts.push(button({ label: copyText("plan.review.return"), icon: "send", size: "compact", onClick: () => openReturn(host, slice, top) }));
   } else if (need.kind === "red") {
-    const red = need.red !== undefined ? slice.check.red[need.red] : undefined;
-    title.append(copyText("plan.review.red", { rule: red?.rule ?? "", block: (root?.title ?? need.block) ?? "" }));
-    if (red?.what) body.push(red.what);
-    if (red?.fix) body.push(copyText("plan.review.redFix", { fix: red.fix }));
     acts.push(ackBtn());
     if (root) acts.push(button({ label: copyText("plan.review.tell"), icon: "send", size: "compact", onClick: () => openReturn(host, slice, cellTarget(slice, root)) }));
   } else if (need.kind === "ask") {
-    title.append(copyText("plan.review.ask"));
     if (blk?.owner) title.appendChild(host.who(blk.owner));
     const sid = need.sid;
     if (sid) acts.push(button({ label: copyText("plan.review.askGo"), kind: "primary", size: "compact", onClick: () => host.switchTo(sid) }));
   } else {
-    title.append(copyText("sessionState.planReview.ended"));
     if (blk?.owner) title.appendChild(host.who(blk.owner));
-    const w = root?.whyCode;
-    body.push(w?.kind === "inside" ? copyText("plan.review.endedWhat", { done: w.done, of: w.of }) : copyText("plan.review.endedOpen"));
-    if (blk?.owner?.kind === "subagent") body.push(copyText("plan.review.endedSub"));
     const sid = need.sid;
     if (sid) {
       const r = button({ label: copyText("plan.review.resume"), kind: "primary", size: "compact", onClick: () => host.resume(r, sid) });
@@ -88,7 +78,7 @@ export function needBar(host: ReviewHost, slice: PlanSlice, need: PlanNeed, pos:
   }
   const side = document.createElement("span");
   side.className = s.rvSide;
-  side.append(copyText("plan.review.pos", { i: pos.i + 1, n: pos.n }));
+  side.append(need.pos ?? "");
   const next = host.next;
   if (next && pos.n > 1) side.appendChild(button({ label: copyText("plan.review.next"), kind: "ghost", size: "compact", onClick: () => next() }));
   head.append(title, side);

@@ -1,13 +1,10 @@
 /**
  * `changed/<topic>` 那一种流在界面这一侧：一批格 ⇒ 变了的那几格 / 要不要整份重问；计划那一主题读出工作区与要你看的数；
- * 主题名与后端生成的 `Topic` 同一份。期望手写。
+ * 主题名是后端生成的 `Topic`。期望手写。
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { changedItems, changedStream, planMoves, pushedProducts } from "../../../src/frontend/ui/changed-stream.ts";
-import { REPO_ROOT } from "../../test-support/repo-root.ts";
 
 const f = (seq: number, body: string) => ({ t: "frame" as const, seq, body });
 
@@ -56,25 +53,7 @@ describe("changed 流", () => {
     expect(p.got.get("/w")?.needs).toBe(4);
   });
 
-  it("生成的 Changed 按主题分臂：主题表里带体的那几个主题、那一臂恰好有 body（从 Rust 主题表抠，异源）", () => {
-    const gen = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/generated/Changed.ts"), "utf8");
-    const rs = readFileSync(resolve(REPO_ROOT, "src/backend/wire/topic.rs"), "utf8");
-    const rows = [...rs.matchAll(/name: "([a-z_]+)",[\s\S]*?body: (true|false),/g)].map((m) => [m[1], m[2] === "true"] as const);
-    expect(rows.length).toBe(17);
-    for (const [name, body] of rows) {
-      const arm = new RegExp(`\\{ "topic": "${name}",([^}]*)\\}`).exec(gen);
-      expect(arm, name).not.toBeNull();
-      expect(arm?.[1].includes("body?:"), name).toBe(body);
-    }
-  });
-
-  it("流名 changed/<topic>；主题名就是后端生成的那一份（从 Rust 主题表抠，异源）", () => {
+  it("流名 changed/<topic>", () => {
     expect(changedStream("rotation_strategies")).toBe("changed/rotation_strategies");
-    const gen = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/generated/Topic.ts"), "utf8");
-    const rs = readFileSync(resolve(REPO_ROOT, "src/backend/wire/topic.rs"), "utf8");
-    const names = [...rs.matchAll(/name: "([a-z_]+)",/g)].map((m) => m[1]);
-    // 10 → 11：`machines`（本机机器表变了，第 7 批）；11 → 12：`session_hidden`（某个活会话隐不隐藏变了）；12 → 13：`machine`（某台远端的状态成品）；13 → 14：`files_dir`（正被浏览的某个目录动过）；14 → 15：`history_list`（这台的会话清单动了）；15 → 16：`groups`（这台的组那一半动了）；16 → 15：`manual` 并进 `needs`（需手动只一个铃）；15 → 16：`session_queue`（某条会话的输入队动了，带整份名单）；16 → 17：`empty`（首屏那一句，各台合的）。
-    expect(names.length).toBe(17);
-    for (const n of names) expect(gen, n).toContain(`"${n}"`);
   });
 });

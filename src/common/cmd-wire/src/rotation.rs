@@ -597,6 +597,22 @@ pub struct RotationViewReply {
     /// 换号记录（会话才有）。
     pub log: Vec<RotLogRow>,
     pub hints: Vec<RotNote>,
+    /// 会话那一形此刻能做的几样（设置页 ⇒ 缺）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub can: Option<RotCan>,
+}
+
+/// 一个会话在顺序那一块能做的几样：拖着排先后（「拖动排序」那一句跟着它）· 勾掉「先不用」一个号 · 编辑它载入的那份策略。
+/// 后端照这个会话轮不轮换判一次（`rotation_view_face`）；界面只照它摆，不看 `strategy` 空不空。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(deny_unknown_fields)]
+pub struct RotCan {
+    pub reorder: bool,
+    pub off: bool,
+    pub edit: bool,
 }
 
 /// 收不下的那几格（`rotation-settings`）。

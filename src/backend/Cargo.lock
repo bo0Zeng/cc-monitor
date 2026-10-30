@@ -407,7 +407,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -1546,7 +1545,6 @@ dependencies = [
  "guard-core",
  "jni",
  "pick-core",
- "relay-route-core",
  "resident-client",
  "ring",
  "russh",
@@ -1831,7 +1829,6 @@ version = "0.1.0"
 dependencies = [
  "cmd-wire",
  "copy-core",
- "serde",
 ]
 
 [[package]]
@@ -3023,17 +3020,6 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 [[package]]
 name = "upstream-url-core"
 version = "0.1.0"
-
-[[package]]
-name = "uuid"
-version = "1.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76"
-dependencies = [
- "getrandom 0.4.2",
- "js-sys",
- "wasm-bindgen",
-]
 
 [[package]]
 name = "valuable"

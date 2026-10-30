@@ -400,6 +400,15 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     assert_eq!(line.first(), Some(&"a"), "第一格是在用的号：{line:?}");
     assert_eq!(line.len(), 4, "每个号一行：{line:?}");
     assert!(v.lineup.iter().all(|l| !l.movable), "不轮换没有先后可拖");
+    assert_eq!(
+        v.can,
+        Some(RotCan {
+            reorder: false,
+            off: false,
+            edit: false
+        }),
+        "不轮换：不拖 · 不出「先不用」· 没有策略可编辑（后端判，界面照摆）"
+    );
     let next = copy_text("beRotation.line.next", &[]);
     assert!(
         v.lineup.iter().all(|l| !l.state.starts_with(&next)),
@@ -660,6 +669,15 @@ fn a_session_view_hands_the_order_as_lines_without_a_timeline() {
         Some(copy_text("beRotation.edit.unusable", &[("acct", "b")]).as_str())
     );
     assert!(!v.manual, "没拖过");
+    assert_eq!(
+        v.can,
+        Some(RotCan {
+            reorder: true,
+            off: true,
+            edit: true
+        }),
+        "轮换的会话：能拖 · 能「先不用」· 能编辑策略"
+    );
 
     // 先不用的号落进「先不用」那一组、不能拖，悬停那一句是后端写的。
     crate::faces::rotation_act_face::temp_with(
@@ -694,6 +712,7 @@ fn a_session_view_hands_the_order_as_lines_without_a_timeline() {
     // 设置页：推演照旧，没有顺序。
     let s = strategy_view(&ctx, &home, "by-list");
     assert!(s.timeline.is_some() && s.lineup.is_empty() && !s.manual);
+    assert_eq!(s.can, None, "设置页那一形没有会话能做的那几样");
 }
 
 /// ★ 「下一个」那一格的钟点由同一份推演出：在用的号推得出几点到上限、换到的正是第二格 ⇒「下一个 · 约 HH:MM」；

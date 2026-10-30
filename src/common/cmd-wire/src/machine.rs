@@ -339,6 +339,34 @@ pub struct FixButton {
     pub label: String,
 }
 
+/// 机器条上那一行的语气：正在连 · 装 · 更新（忙）· 没连上（离线）· 那台旧了（警示）· 指纹不对 · 做不了 · 缺后端（故障）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum StripTone {
+    Busy,
+    Offline,
+    Warn,
+    Fault,
+}
+
+/// 机器条上那一台那一行怎么画（进条才有）：语气 · 带不带进度条。字照成品的 `said` · `fixes`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct MachineStripLine {
+    pub tone: StripTone,
+    pub progress: bool,
+}
+
 /// 一台的状态成品（判定在后端 `deploy::machine`，本机远端同一份）。界面照画：字取 `word` · `said` · `fixes[].label`。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -381,6 +409,10 @@ pub struct MachineState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub route: Option<String>,
+    /// 机器条上那一行（缺 ⇒ 不进条：连着的 · 比这一版新的 · 停用的 · 还不知道的）。桌面与手机的条都只照这一格画。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub strip: Option<MachineStripLine>,
 }
 
 /// **首屏那一句**（一条会话都没有时正文区中央那一块）：拨号那一端照各台的成品与报完了没有合一次写好（`deploy::machine::empty`），

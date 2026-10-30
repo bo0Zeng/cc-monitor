@@ -21,17 +21,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.diff.DiffResult
-import com.ccmonitor.mobile.core.claude.diff.DiffRow
-import com.ccmonitor.mobile.core.claude.diff.DiffType
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.core.wire.gen.LineDiff
+import com.ccmonitor.mobile.core.wire.gen.LineDiffKind
+import com.ccmonitor.mobile.core.wire.gen.LineDiffRow
 
-/** 行级 diff 渲染：add/del 实心左边框为主信号，底色为辅。 */
+/** 行级 diff 渲染（行 · 行号 · 「+N −M」都是核心算好的，照画）：add/del 实心左边框为主信号，底色为辅。 */
 @Composable
 fun DiffView(
-    result: DiffResult,
+    diff: LineDiff,
     modifier: Modifier = Modifier,
 ) {
     val tokens = LocalAppTokens.current
@@ -41,17 +41,14 @@ fun DiffView(
             .clip(RoundedCornerShape(tokens.radius.l))
             .background(tokens.bg2),
     ) {
-        // 表头：+adds / -dels
-        Row(Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs)) {
-            Text("+${result.addCount}", color = tokens.success, style = monoSmall)
-            Spacer(Modifier.width(tokens.spacing.sm))
-            Text("−${result.delCount}", color = tokens.errorText, style = monoSmall)
+        if (diff.stat.isNotEmpty()) {
+            Text(diff.stat, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs))
         }
         val rows = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
         Column(rows) {
-            result.rows.forEach { row -> DiffRowView(row, tokens.diffAddBorder, tokens.diffDelBorder, tokens.diffAddBg, tokens.diffDelBg, MaterialTheme.colorScheme.onSurfaceVariant) }
+            diff.rows.take(diff.shown).forEach { row -> DiffRowView(row, tokens.diffAddBorder, tokens.diffDelBorder, tokens.diffAddBg, tokens.diffDelBg, MaterialTheme.colorScheme.onSurfaceVariant) }
         }
-        if (result.truncated) {
+        if (diff.rows.size > diff.shown || diff.truncated) {
             Text(
                 copyText("mobReading.diff.truncated"),
                 style = monoSmall,
@@ -64,7 +61,7 @@ fun DiffView(
 
 @Composable
 private fun DiffRowView(
-    row: DiffRow,
+    row: LineDiffRow,
     addBorder: Color,
     delBorder: Color,
     addBg: Color,
@@ -72,10 +69,10 @@ private fun DiffRowView(
     gutterColor: Color,
 ) {
     val (border, bg, sigil) =
-        when (row.type) {
-            DiffType.ADD -> Triple(addBorder, addBg, "+")
-            DiffType.DEL -> Triple(delBorder, delBg, "−")
-            DiffType.CTX -> Triple(Color.Transparent, Color.Transparent, " ")
+        when (row.kind) {
+            LineDiffKind.ADD -> Triple(addBorder, addBg, "+")
+            LineDiffKind.DEL -> Triple(delBorder, delBg, "−")
+            LineDiffKind.CTX, LineDiffKind.HEAD -> Triple(Color.Transparent, Color.Transparent, " ")
         }
     val lineNo = row.newNo ?: row.oldNo
     Row(

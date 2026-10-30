@@ -7,8 +7,8 @@
 use super::dump::{self, Ran};
 use super::needs;
 use super::product;
-use super::wire::{PlanRead, PlanSlice, PlanStale};
 use super::WhoPort;
+use cmd_wire::plan::{PlanRead, PlanSlice, PlanStale};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
