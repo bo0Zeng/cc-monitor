@@ -200,13 +200,13 @@ impl Relay {
         Self {
             stream_headers: dest.stream_label_headers(),
             relay_headers: dest.relay_headers(),
+            pool: upstream::Pool::reusing_within(dest.upstream_idle_reuse()),
             dest,
             door,
             tee,
             downstream_deadline,
             upstream_deadline,
             open,
-            pool: upstream::Pool::default(),
         }
     }
 }

@@ -581,6 +581,11 @@ impl Destinations for Accounts {
         crate::agents::session_headers()
     }
 
+    /// 上游连接空闲多久内还复用：[`UPSTREAM_IDLE_REUSE`]。
+    fn upstream_idle_reuse(&self) -> std::time::Duration {
+        UPSTREAM_IDLE_REUSE
+    }
+
     /// 中转要带回的请求头：同上，只从适配层来（`agents::relay_headers`）。
     fn relay_headers(&self) -> Vec<&'static str> {
         crate::agents::relay_headers()
@@ -668,6 +673,19 @@ const OWN_UPSTREAM_TAG: &str = "~own";
 
 /// HTTP 通用的「几秒后再试」头（不是哪一家的）。
 const RETRY_AFTER: &str = "retry-after";
+
+/// 中转上游那一跳还回来的连接空闲多久以内还拿去复用（过了就扔、新连）。
+///
+/// 探活只看得出对端已经发了 FIN / RST 的那几形；看不出的两形都随空闲时长变多：
+/// 对端（或路上的代理）恰在探活之后才按它自己的空闲期限关；路上的 NAT 表项已过期却没发 RST（这一发写进黑洞，等满期限）。
+/// 两形都落在请求已写出之后，那时照规矩不重发（`POST /v1/messages` 不幂等）⇒ 只能在取的时候不拿它。
+/// 30 秒：短于常见上游与代理的空闲关闭期限（几十秒到十几分钟），又盖得住一轮里紧挨着的几发（agent 连着调工具）；
+/// 隔得更久的那一发多付一次建连 ＋ TLS 握手。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "不是定时器：没有线程按它醒来，连接池在取连接那一下拿它比一下还回来的时刻"
+)]
+const UPSTREAM_IDLE_REUSE: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// HTTP 通用的「请求太多」状态码（不是哪一家的）。
 const TOO_MANY_REQUESTS: u16 = 429;

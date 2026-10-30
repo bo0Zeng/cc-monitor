@@ -170,18 +170,11 @@ impl Lane {
 /// 没有定时器（零定时器护栏）：对端关掉的、空闲太久的，都在下一次取的时候扔掉，在那之前至多占这么多个描述符。
 const POOL_IDLE_MAX: usize = 8;
 
-/// 一条还回来的连接空闲多久以内还拿去复用。过了就扔、新连。
-///
-/// 探活只看得出对端已经发了 FIN / RST 的那几形；看不出的两形都随空闲时长变多：
-/// 对端（或路上的代理）恰在探活之后才按它自己的空闲期限关；路上的 NAT 表项已过期却没发 RST（这一发写进黑洞，等满期限）。
-/// 两形都落在请求已写出之后，那时照规矩不重发（`POST /v1/messages` 不幂等）⇒ 只能在取的时候不拿它。
-/// 30 秒：短于常见上游与代理的空闲关闭期限（几十秒到十几分钟），又盖得住一轮里紧挨着的几发（agent 连着调工具）；
-/// 隔得更久的那一发多付一次建连 ＋ TLS 握手。
-const REUSE_IDLE_WITHIN: Duration = Duration::from_secs(30);
-
 /// 上游连接池：读完一个应答、连接还能用就还回来，同一格的下一发先从这里取。
 ///
 /// 只在写请求头**之前**取：空闲超过期限的扔掉，余下的取出时探活（[`Conn::idle_and_open`]），死的扔掉换下一条，都没有就由调用方新连。
+/// 空闲期限挡的是探活看不出的那两形（对端恰在探活之后才关 · NAT 表项过期却没发 RST）：两形都落在请求已写出之后，
+/// 那时照规矩不重发 ⇒ 只能在取的时候不拿它。期限的值归后端（[`crate::Destinations::upstream_idle_reuse`]）。
 /// 请求头写出去之后出的错一律照旧往下游回码，不在这一层重发（`POST /v1/messages` 不幂等）。
 pub struct Pool {
     /// 每条记着还回来的那一刻（取的时候比，不是定时器）。
@@ -189,14 +182,8 @@ pub struct Pool {
     within: Duration,
 }
 
-impl Default for Pool {
-    fn default() -> Self {
-        Pool::reusing_within(REUSE_IDLE_WITHIN)
-    }
-}
-
 impl Pool {
-    /// 空闲不到 `within` 的连接才复用的一个池（产品走 [`Pool::default`]；判据给零或墙钟上限）。
+    /// 空闲不到 `within` 的连接才复用的一个池（中转构造时按后端交的数起；判据给零或墙钟上限）。
     pub fn reusing_within(within: Duration) -> Self {
         Pool {
             idle: std::sync::Mutex::new(std::collections::VecDeque::new()),
