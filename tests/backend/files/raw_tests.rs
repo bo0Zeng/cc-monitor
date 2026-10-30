@@ -24,7 +24,9 @@ fn to_json(bytes: &[u8]) -> serde_json::Value {
 
 /// 本族解入参的那一下：线上形 → 字节；形状不对 ⇒ `None`。
 fn from_json(v: &serde_json::Value) -> Option<Vec<u8>> {
-    serde_json::from_value::<WirePath>(v.clone()).ok().map(|p| p.0)
+    serde_json::from_value::<WirePath>(v.clone())
+        .ok()
+        .map(|p| p.0)
 }
 
 /// 一串**不是有效 UTF-8** 的字节。
@@ -151,14 +153,21 @@ fn a_fixed_set_of_paths_keeps_its_wire_bytes() {
         // 控制字符走 `\u00XX`；DEL（0x7f）不在 JSON 要转义的那一档，原样。
         (b"/t/\x00\x01\x7f", "\"/t/\\u0000\\u0001\u{7f}\""),
         (b"/srv/d\xff", r#"{"b16":"2f7372762f64ff"}"#),
-        (b"leaf-\xff\xfe-tail", r#"{"b16":"6c6561662dfffe2d7461696c"}"#),
+        (
+            b"leaf-\xff\xfe-tail",
+            r#"{"b16":"6c6561662dfffe2d7461696c"}"#,
+        ),
         (b"\x80\xab\xcd\xef\x10", r#"{"b16":"80abcdef10"}"#),
     ];
     for (bytes, want) in cases {
         let got = serde_json::to_string(&to_json(bytes)).unwrap();
         assert_eq!(&got, want, "{bytes:?} 的线上形变了");
         let v: serde_json::Value = serde_json::from_str(want).unwrap();
-        assert_eq!(from_json(&v).as_deref(), Some(*bytes), "{want} 读回来不是原字节");
+        assert_eq!(
+            from_json(&v).as_deref(),
+            Some(*bytes),
+            "{want} 读回来不是原字节"
+        );
     }
 }
 
@@ -184,8 +193,14 @@ fn the_path_byte_wire_form_lives_only_in_cmd_wire() {
     for (path, src) in &all {
         let at = rel(path);
         let prod = guard_core::production_code(src);
-        decl.extend(std::iter::repeat_n(at.clone(), prod.matches("= \"b16\"").count()));
-        table.extend(std::iter::repeat_n(at.clone(), prod.matches("0123456789abcdef").count()));
+        decl.extend(std::iter::repeat_n(
+            at.clone(),
+            prod.matches("= \"b16\"").count(),
+        ));
+        table.extend(std::iter::repeat_n(
+            at.clone(),
+            prod.matches("0123456789abcdef").count(),
+        ));
         let keyed = prod.matches("HEX_KEY:").count() - prod.matches("HEX_KEY: &str").count();
         if at != HOME {
             spelled.extend(std::iter::repeat_n(at.clone(), keyed));
