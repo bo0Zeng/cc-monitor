@@ -214,6 +214,16 @@ mod tests {
         ),
         (
             "relay/listen.rs",
+            "[relay] out of file descriptors",
+            "接受时 fd 用尽，这一阵回 503（一阵只说一次）。只带 io 错误文本",
+        ),
+        (
+            "relay/listen.rs",
+            "[relay] file descriptors free again",
+            "fd 用尽那一阵过去了，照常接",
+        ),
+        (
+            "relay/listen.rs",
             "[relay] 中转住本进程，听",
             "`Hosted` 的说法（`Display`）：进程内中转在听哪个地址 —— 宿主（`main.rs` 流模式那一处）记进它的日志",
         ),

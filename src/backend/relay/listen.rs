@@ -71,10 +71,58 @@ pub(crate) fn listen(port: u16) -> std::io::Result<TcpListener> {
 /// —— 这里 `accept` 出来那一刻（覆盖 503 那条支）· `handle()` 开头；上游那条 socket 由 `upstream::connect` 装 [`UPSTREAM_DEADLINE`]。
 ///
 /// `inflight` 是在途计数（本函数进出各动一次），由调用方交进来 —— 与上界同住宿主这一侧。
+///
+/// fd 用尽（`EMFILE` / `ENFILE`）时来的连接也要拿到 503，接受线程不许空转：手里攥一个备用 fd（起来时 `dup` 一份监听口）。
+/// `accept` 当场报用尽 ⇒ 放掉备用的那一个、再阻塞着接；接上的每一条都先 `dup` 一下量 fd 还有没有（量完就放）：没有 ⇒ 这条回 503、
+/// 关写半边、留下当新的备用（它的号不放回 ⇒ 别的线程抢不走）。这一阵只说一次，缓过来（接上的那条量得出 fd）再说一次。
+/// 放掉备用之后仍接不上（别的线程抢先占了那个号）⇒ 每一圈重 `dup` 一份当备用，拿到之前这一段会空转 ——
+/// 只在中转之外的代码把 fd 用光、又恰好抢在这两步之间时出现。
 pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<AtomicUsize>) {
-    for stream in listener.incoming() {
-        let Ok(mut stream) = stream else {
-            continue;
+    let mut spare = dup_listener(&listener);
+    let mut short = false;
+    let say_short = |short: &mut bool, e: &std::io::Error| {
+        if !std::mem::replace(short, true) {
+            eprintln!("[relay] out of file descriptors: answering 503 until one frees up ({e})");
+        }
+    };
+    loop {
+        // `accept` 在阻塞之前就先占好一个 fd 号：fd 用尽时它当场报错（不等有没有连接来），
+        // 而用尽之前就阻塞着的那一次照样接得上 —— 两种都要接住。
+        let accepted = match listener.accept() {
+            Ok((s, _)) => s,
+            Err(e) if crate::platform::proc::out_of_fds(&e) => {
+                say_short(&mut short, &e);
+                // 放掉备用的那一个，再阻塞着等下一条（这一次占的就是放出来的那个号，不空转）。
+                drop(spare.take());
+                match listener.accept() {
+                    Ok((s, _)) => s,
+                    Err(_) => {
+                        spare = dup_listener(&listener);
+                        continue;
+                    }
+                }
+            }
+            Err(_) => continue,
+        };
+        // 这条接上了：再 `dup` 一份当备用 / 量 fd 还有没有。没有 ⇒ 这条回 503、留下当备用（它的号不放回）。
+        let mut stream = match accepted.try_clone() {
+            Ok(probe) => {
+                // 这一份不能留：留着它，连接线程那头关了 socket 也不真关，下游等不到 FIN。
+                drop(probe);
+                if spare.is_none() {
+                    spare = dup_listener(&listener);
+                }
+                if std::mem::take(&mut short) {
+                    eprintln!("[relay] file descriptors free again");
+                }
+                accepted
+            }
+            Err(e) if crate::platform::proc::out_of_fds(&e) => {
+                say_short(&mut short, &e);
+                spare = Some(refuse_and_keep(accepted));
+                continue;
+            }
+            Err(_) => accepted,
         };
         // 期限先装上、在分流之前：每条 accept 出来的 socket 从第一刻起就带期限，不管它接下来走哪个分支（纵深；503 那条支
         // 只写 ~90 字节，没构造出它阻塞的形状）。装不上仍然关连接并出声：宁可拒绝，也不放一条来路不明的进来。
@@ -112,6 +160,30 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
             }
         }
     }
+}
+
+/// 接受循环攥着的备用 fd：起来时是监听口的一份 `dup`，用过一次之后是那条回完 503 的连接（写半边已关）。
+/// 两格都只为占着一个 fd，不读。
+enum Spare {
+    Listener { _held: TcpListener },
+    Answered { _held: std::net::TcpStream },
+}
+
+/// 备用的那一个：监听口的一份 `dup`（fd 用尽时拿不到 ⇒ `None`）。
+fn dup_listener(listener: &TcpListener) -> Option<Spare> {
+    listener
+        .try_clone()
+        .ok()
+        .map(|l| Spare::Listener { _held: l })
+}
+
+/// fd 用尽时接上的那条：回 503、关写半边，留下当新的备用（它的号不放回 ⇒ 别的线程抢不走）。
+fn refuse_and_keep(mut s: std::net::TcpStream) -> Spare {
+    let _ = comms_outward::apply_downstream_deadline(&s, DOWNSTREAM_DEADLINE);
+    let _ = comms_outward::refuse_busy(&mut s);
+    // 只关写半边（发 FIN）：读半边一关，晚到的请求字节会招来 RST，下游那头已经收着的 503 跟着被丢掉。
+    let _ = s.shutdown(std::net::Shutdown::Write);
+    Spare::Answered { _held: s }
 }
 
 /// 起中转那一段：上游选择认启动配置 → 绑回环 → 报地址 → 装表 → 造 `Relay`。失败时**该说的那一句已经说了**。
@@ -316,3 +388,6 @@ pub(crate) fn host(
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/host_tests.rs"]
 mod host_tests; // 进程内中转：`host` 的四种结局 ＋ 生产接线在真子进程里 stdout 零 tee
+#[cfg(test)]
+#[path = "../../../tests/backend/relay/exhaust_tests.rs"]
+mod exhaust_tests; // fd 用尽时接受循环回 503、只说一次、缓过来照常
