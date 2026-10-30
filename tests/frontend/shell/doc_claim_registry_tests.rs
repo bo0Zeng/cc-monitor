@@ -1440,7 +1440,7 @@ fn every_frame_command_named_in_the_durable_docs_is_registered() {
 
 /// 一行里有没有手写的 `env -u …`（摘环境变量的手抄名单）。
 fn hand_unset_in(line: &str) -> bool {
-    line.contains("env -u ")
+    guard_core::contains_word(line, "env -u")
 }
 
 /// **文档教的手工跑法不手抄要摘的环境变量**：要摘的名单只住 `tests/scripts/session-vars`，
@@ -1452,7 +1452,9 @@ fn hand_unset_in(line: &str) -> bool {
 #[test]
 fn the_docs_scrub_the_session_through_the_one_script() {
     // 正控：手写的那一形认得出，经脚本的那一形不算。
-    assert!(hand_unset_in("单跑前缀 `env -u TMUX -u TMUX_PANE cargo test`"));
+    assert!(hand_unset_in(
+        "单跑前缀 `env -u TMUX -u TMUX_PANE cargo test`"
+    ));
     assert!(!hand_unset_in(
         "手工跑测试前缀 `bash tests/scripts/session-scrub.sh`"
     ));
@@ -1480,12 +1482,12 @@ fn the_docs_scrub_the_session_through_the_one_script() {
 /// `ARCHITECTURE.md` 里 `### <id>` 那一节的正文（到下一个 `##` / `###` 标题为止）。
 fn architecture_section(id: &str) -> String {
     let text = read_repo_file("src/doc/ARCHITECTURE.md");
-    let head = format!("### {id} ");
     let mut out = String::new();
     let mut inside = false;
     for line in text.lines() {
-        if line.starts_with("## ") || line.starts_with("### ") {
-            inside = line.starts_with(&head);
+        let level = line.chars().take_while(|&c| c == '#').count();
+        if (level == 2 || level == 3) && line[level..].starts_with(' ') {
+            inside = level == 3 && line[level..].trim_start().split(' ').next() == Some(id);
             continue;
         }
         if inside {
@@ -1500,7 +1502,10 @@ fn architecture_section(id: &str) -> String {
 /// 模块地图里的条目：列表行开头或「；」之后、紧跟全角冒号的、只有一段的 `` `X/` `` · `` `X.rs` ``。
 fn map_entries_in(section: &str) -> std::collections::BTreeSet<String> {
     let mut out = std::collections::BTreeSet::new();
-    for line in section.lines().filter(|l| l.starts_with("- ")) {
+    for line in section
+        .lines()
+        .filter(|l| l.starts_with('-') && l[1..].starts_with(' '))
+    {
         let parts: Vec<&str> = line.split('`').collect();
         // 奇数下标是反引号里的；前一段是行头或以「；」收尾、后一段以「：」开头才是条目。
         for i in (1..parts.len().saturating_sub(1)).step_by(2) {
