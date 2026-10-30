@@ -16,11 +16,12 @@
 use super::{Live, WhoPort, Whose};
 use crate::wire::SessionFaceExt as _;
 use cmd_wire::plan::{
-    PlanArchived, PlanBlock, PlanCell, PlanCheck, PlanDomain, PlanEdgeWords, PlanEdges, PlanFile,
-    PlanFileState, PlanKids, PlanKind, PlanListSlice, PlanListWorkspace, PlanLook, PlanPendingSet,
-    PlanPhase, PlanProgress, PlanRead, PlanReadError, PlanRed, PlanRef, PlanRefs, PlanSessionBlock,
-    PlanSetsTo, PlanSlice, PlanState, PlanStatusCode, PlanTakeover, PlanUnbuilt, PlanUndecidable,
-    PlanUnowned, PlanWho, PlanWhyCode, PlanWhyShort,
+    PlanArchived, PlanBlock, PlanBlockSaid, PlanCell, PlanCellSaid, PlanCheck, PlanDomain,
+    PlanEdgeWords, PlanEdges, PlanFile, PlanFileState, PlanKids, PlanKind, PlanListSlice,
+    PlanListWorkspace, PlanLook, PlanPendingSet, PlanPhase, PlanProgress, PlanRead, PlanReadError,
+    PlanRed, PlanRef, PlanRefs, PlanSessionBlock, PlanSessionSaid, PlanSetsTo, PlanSlice,
+    PlanSliceSaid, PlanStale, PlanState, PlanStatusCode, PlanTakeover, PlanUnbuilt,
+    PlanUndecidable, PlanUnowned, PlanWho, PlanWhyCode, PlanWhyShort,
 };
 use copy_core::copy_text;
 use serde_json::Value;
@@ -224,7 +225,7 @@ pub(crate) fn who_of(id: Option<&str>, who: WhoPort) -> Option<PlanWho> {
             None,
             None,
             crate::wire::SessionFace::of(crate::wire::Life::Unclear),
-            None,
+            Some(copy_text("plan.who.unknown", &[("id", &short_id(id))])),
         ),
     };
     Some(PlanWho {
@@ -292,12 +293,13 @@ pub(crate) fn domains_of(doc: &Value) -> Vec<PlanDomain> {
 
 /// 整份加工。`rev` 是这一份输出的摘要、`read_at` 是读到的时刻（[`super::book`] 给）。
 /// 要你看 · 认可 · 退回 · 时刻的字此刻都空着：本子（[`super::book`]）· 认可记录（[`super::review`]）· [`with_time_texts`] 再填。
+/// 随数据变的那几句（`said`）这里先写一遍；要时刻的那两句由 [`with_time_texts`] 写完时刻再整份重写。
 pub(crate) fn make(doc: &Value, who: WhoPort, rev: String, read_at: u64) -> PlanRead {
     let repo = doc.get("current_repo").and_then(Value::as_str);
     let slices: Vec<PlanSlice> = arr(doc, "repos").map(|r| slice(r, repo, who)).collect();
     let by_session = by_session(&slices);
     let domains = domains_of(doc);
-    PlanRead {
+    let mut v = PlanRead {
         pb: s(doc, "pb"),
         workspace: s(doc, "workspace").unwrap_or_default(),
         repo: repo.map(str::to_string),
@@ -311,7 +313,9 @@ pub(crate) fn make(doc: &Value, who: WhoPort, rev: String, read_at: u64) -> Plan
         seen: None,
         stale: None,
         need_count: 0,
-    }
+    };
+    write_said(&mut v);
+    v
 }
 
 /// 会话 ⇒ 它负责的那个权力范围（会话头那一枚标）：
@@ -354,6 +358,7 @@ pub(crate) fn by_session(slices: &[PlanSlice]) -> BTreeMap<String, PlanSessionBl
                         at: b.at.clone(),
                         at_title: b.at.as_deref().and_then(title_of),
                         via: pass.to_string(),
+                        said: Default::default(),
                     },
                 );
             }
@@ -423,6 +428,7 @@ fn empty_slice(sl: &Value, repo: Option<&str>) -> PlanSlice {
         needs: Vec::new(),
         need_count: 0,
         returned: None,
+        said: Default::default(),
     }
 }
 
@@ -640,6 +646,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
                     body: refs16(body, refs.and_then(|r| r.get("body"))),
                 },
                 returned: None,
+                said: Default::default(),
                 kind: s(c, "kind"),
                 parent: s(c, "parent"),
                 children,
@@ -680,6 +687,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
                 handoff_error: s(b, "handoff_error"),
                 takeover: PlanTakeover::Unsure,
                 groups: super::groups::nobody(),
+                said: Default::default(),
             };
             block.takeover = super::needs::takeover(&block);
             block
@@ -775,6 +783,7 @@ pub(crate) fn slice_summary(sl: &PlanSlice) -> PlanListSlice {
         need_count: sl.need_count,
         error: sl.error.clone(),
         stale: sl.stale.clone(),
+        said: sl.said.clone(),
     }
 }
 
@@ -808,6 +817,157 @@ pub(crate) fn with_time_texts(v: &mut PlanRead, now_ms: i64, tz: &crate::Tz) {
             }
         }
     }
+    write_said(v);
+}
+
+/// 随数据变的那几句（`said`）照这台的文案表写好：两端照摆、不拼。要时刻的字 ⇒ 由 [`with_time_texts`] 写完时刻接着写。
+fn write_said(v: &mut PlanRead) {
+    let sep = copy_text("kit.text.sep", &[]);
+    let strip = |key: &str, st: &PlanStale| {
+        [
+            copy_text(key, &[("reason", st.said.as_deref().unwrap_or_default())]),
+            copy_text(
+                "plan.strip.stale",
+                &[("time", st.since_text.as_deref().unwrap_or_default())],
+            ),
+        ]
+        .join(&sep)
+    };
+    let whole = v
+        .stale
+        .as_ref()
+        .map(|st| strip("plan.strip.unreadable", st));
+    let read_at = v
+        .read_at_text
+        .as_deref()
+        .map(|t| copy_text("plan.overview.readAt", &[("time", t)]));
+    let count = |key: &str, done: u32, of: u32| {
+        copy_text(key, &[("done", &done.to_string()), ("of", &of.to_string())])
+    };
+    for sl in &mut v.slices {
+        let top = sl
+            .progress
+            .as_ref()
+            .map(|p| count("plan.overview.top", p.done, p.of));
+        let root = sl
+            .progress
+            .as_ref()
+            .map(|p| count("plan.outline.rootProgress", p.done, p.of));
+        sl.said = PlanSliceSaid {
+            strip: whole.clone().or_else(|| {
+                sl.stale
+                    .as_ref()
+                    .map(|st| strip("plan.strip.sliceUnreadable", st))
+            }),
+            bare: sl
+                .error
+                .as_deref()
+                .map(|e| copy_text("plan.strip.sliceUnreadable", &[("reason", e)])),
+            read_at: read_at.clone(),
+            top,
+            root,
+        };
+        let title_of = |id: &str| {
+            sl.cells
+                .iter()
+                .find(|c| c.id == id)
+                .and_then(|c| c.title.clone())
+        };
+        let names: Vec<String> = sl
+            .blocks
+            .iter()
+            .map(|b| match b.cells.first() {
+                _ if b.id == super::needs::TOP_BLOCK => copy_text("plan.head.top", &[]),
+                Some(r) => title_of(r).unwrap_or_else(|| r.clone()),
+                None => b.id.clone(),
+            })
+            .collect();
+        for (b, name) in sl.blocks.iter_mut().zip(names) {
+            b.said = PlanBlockSaid {
+                name,
+                inside: b
+                    .inside
+                    .as_ref()
+                    .map(|k| count("plan.whyShort.inside", k.done, k.of)),
+            };
+        }
+        let said = cell_said(sl, &sep);
+        for (c, s) in sl.cells.iter_mut().zip(said) {
+            c.said = s;
+        }
+    }
+    // 会话那一块的名 ＝ 那一块自己的名（同一句只写一处）。
+    let block_name = |slice: &str, block: &str| {
+        v.slices
+            .iter()
+            .find(|s| s.name == slice)
+            .and_then(|s| s.blocks.iter().find(|b| b.id == block))
+            .map(|b| b.said.name.clone())
+    };
+    let names: Vec<Option<String>> = v
+        .by_session
+        .values()
+        .map(|b| block_name(&b.slice, &b.block))
+        .collect();
+    for (b, name) in v.by_session.values_mut().zip(names) {
+        let name = name.unwrap_or_else(|| b.block.clone());
+        let mark = [
+            Some(b.slice.as_str()),
+            Some(name.as_str()),
+            b.phase.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|x| !x.is_empty())
+        .collect::<Vec<_>>()
+        .join(&sep);
+        b.said = PlanSessionSaid { name, mark };
+    }
+}
+
+/// 每一格的上面几层（「编号 标题」从顶层往下连）与块根那一句，照 `sl.cells` 的先后。
+fn cell_said(sl: &PlanSlice, sep: &str) -> Vec<PlanCellSaid> {
+    let roots: std::collections::BTreeSet<&str> = sl
+        .blocks
+        .iter()
+        .filter(|b| b.id != super::needs::TOP_BLOCK)
+        .flat_map(|b| b.cells.iter().map(String::as_str))
+        .collect();
+    let parent: BTreeMap<&str, Option<&str>> = sl
+        .cells
+        .iter()
+        .map(|c| (c.id.as_str(), c.parent.as_deref()))
+        .collect();
+    let label_of = |id: &str| sl.labels.get(id).cloned().unwrap_or_else(|| id.to_string());
+    sl.cells
+        .iter()
+        .map(|c| {
+            let mut up = Vec::new();
+            let mut at = c.parent.as_deref();
+            while let Some(p) = at.filter(|_| up.len() <= parent.len()) {
+                up.push(label_of(p));
+                at = parent.get(p).copied().flatten();
+            }
+            up.reverse();
+            PlanCellSaid {
+                trail: (!up.is_empty()).then(|| up.join(sep)),
+                block_root: roots
+                    .contains(c.id.as_str())
+                    .then(|| copy_text("plan.cell.blockRoot", &[("block", &label_of(&c.id))])),
+            }
+        })
+        .collect()
+}
+
+/// 认不出的 id 写进那一句时截成前六位 ＋ 后四位（整串在复制那一下给）。
+fn short_id(id: &str) -> String {
+    let c: Vec<char> = id.chars().collect();
+    if c.len() <= 12 {
+        return id.to_string();
+    }
+    let head: String = c[..6].iter().collect();
+    let tail: String = c[c.len() - 4..].iter().collect();
+    format!("{head}\u{2026}{tail}")
 }
 
 #[cfg(test)]
