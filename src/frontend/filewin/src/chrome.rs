@@ -1265,7 +1265,7 @@ impl Workspace {
                         ui.colored_label(p.warn, n);
                     }
                     if let Some(d) = drop {
-                        shelf.remove(&d, &cwd);
+                        shelf.remove(&d);
                     }
                 }
                 // ── 这台机器（小标题就写机器名）──

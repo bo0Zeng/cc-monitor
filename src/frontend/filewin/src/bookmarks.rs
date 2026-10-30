@@ -3,12 +3,15 @@
 //!
 //! - 读：开窗时与每次换目录时问一次 `bookmarks-read`（别的窗口 · 手机刚加的那几条从这里进来；不上定时器、不 watch）。
 //! - 写：★ / × 各发一次 `bookmarks-edit`（切换 / 删），回包是改完的整份，照它换。两个写者同时写不丢，锁在那台后端。
-//! - 「此刻这个目录在不在书签里、是第几条」由那台答：每一问都带上窗口此刻的目录（`at`），回包的 `here` 答它；
-//!   窗口不自己比路径。回包答的不是此刻这个目录（换了目录、那一问还没回）⇒ 当没答（[`Shelf::here`] 回 `None`）。
+//! - 「此刻这个目录在不在书签里、是第几条」由那台答：一个窗口的几栏 · 几个标签页共用这一份，它记着各栏到过的目录
+//!   （[`TRACKED`] 个，最近的在前），每一问都把这一串带上（`at`），回包的 `here` 按目录各答一个下标；窗口不自己比路径。
+//!   一栏改了书签 ⇒ 那一问的回包把别的栏一起答了，各栏照各自的答画。
+//!   认下的那一问没问到的目录 ⇒ 当没答（[`Shelf::here`] 回 `None`），并把它记上、现问一次。
 //! - 几问同时在路上：只认最后发出的那一问的回包（先发后到的不盖掉后发的）。
 //! - 问不成 ⇒ 那一句画在书签栏上（[`Shelf::notice`]），手上那一份不动。
 //! - 判据那一形不接通道（`line == None`）：书签栏照画、一条都没有。
 
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -19,6 +22,9 @@ use super::source::{Line, Origin};
 
 /// 一问等多久。
 const ASK: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// 每一问至多带几个目录（各栏到过的，最近的在前）。
+pub const TRACKED: usize = 32;
 
 /// 窗口里的书签 —— **一个窗口一份**，所有标签页 / 两栏共用（克隆便宜）。
 #[derive(Clone)]
@@ -31,6 +37,8 @@ struct Inner {
     origin: Origin,
     /// 发出去的第几问（从 1 起）。
     sent: AtomicU64,
+    /// 每一问带上的那一串目录（各栏到过的，最近的在前，至多 [`TRACKED`] 个）。
+    tracked: Mutex<Vec<String>>,
     state: Mutex<State>,
 }
 
@@ -38,8 +46,10 @@ struct Inner {
 struct State {
     /// 这台上的书签（最近认下的那一份回包）。
     list: Vec<String>,
-    /// 认下的那一份回包答的是哪个目录（那一问带的 `at`）与它在 `list` 里的第几条。
-    here: Option<(String, Option<u32>)>,
+    /// 认下的那一问带的是哪几个目录。
+    asked: Vec<String>,
+    /// 那一问的回包：目录 ⇒ 它在 `list` 里的第几条（不在的不列）。
+    here: BTreeMap<String, u32>,
     /// 最近那一问没问成时那句话（`None` ＝ 没话说）。
     notice: Option<String>,
     /// 认下的是第几问的回包（比它早的不再认）。
@@ -66,6 +76,7 @@ impl Shelf {
             line,
             origin: origin.clone(),
             sent: AtomicU64::new(0),
+            tracked: Mutex::new(Vec::new()),
             state: Mutex::new(State::default()),
         }));
         s.refresh(at);
@@ -82,65 +93,87 @@ impl Shelf {
         self.0.state.lock().unwrap().notice.clone()
     }
 
-    /// 那台答的：目录 `dir` 是 [`Shelf::list`] 里的第几条。不在 · 认下的回包答的不是 `dir` ⇒ `None`。
+    /// 那台答的：目录 `dir` 是 [`Shelf::list`] 里的第几条。不在 ⇒ `None`；
+    /// 认下的那一问没问到 `dir` ⇒ 也是 `None`，并把它记上、现问一次（同一个目录只问这一次）。
     pub fn here(&self, dir: &str) -> Option<usize> {
-        match &self.0.state.lock().unwrap().here {
-            Some((at, i)) if at == dir => i.map(|i| i as usize),
-            _ => None,
+        {
+            let s = self.0.state.lock().unwrap();
+            if s.asked.iter().any(|a| a == dir) {
+                return s.here.get(dir).map(|&i| i as usize);
+            }
         }
+        if self.0.track(dir) {
+            self.send(Ask::Read);
+        }
+        None
     }
 
     /// 现问一次（换目录时调，`at` ＝ 换到的那个目录）。
     pub fn refresh(&self, at: &str) {
-        self.send(
-            at,
-            Ask::Read(BookmarksReadReq {
-                at: Some(at.to_string()),
-            }),
-        );
+        self.0.track(at);
+        self.send(Ask::Read);
     }
 
-    /// 切换 `dir`（★：切的就是此刻这个目录）。
+    /// 切换 `dir`（★：切的就是那一栏此刻这个目录）。
     pub fn toggle(&self, dir: &str) {
-        self.edit(BookmarkOp::Toggle, dir, dir);
+        self.0.track(dir);
+        self.edit(BookmarkOp::Toggle, dir);
     }
 
-    /// 删掉 `dir`（×），此刻在 `at`。
-    pub fn remove(&self, dir: &str, at: &str) {
-        self.edit(BookmarkOp::Remove, dir, at);
+    /// 删掉 `dir`（×）。
+    pub fn remove(&self, dir: &str) {
+        self.edit(BookmarkOp::Remove, dir);
     }
 
-    fn edit(&self, op: BookmarkOp, dir: &str, at: &str) {
-        self.send(
-            at,
-            Ask::Edit(BookmarksEditReq {
-                op,
-                dirs: vec![dir.to_string()],
-                at: Some(at.to_string()),
-            }),
-        );
+    fn edit(&self, op: BookmarkOp, dir: &str) {
+        self.send(Ask::Edit(op, dir.to_string()));
     }
 
-    fn send(&self, at: &str, ask: Ask) {
+    fn send(&self, ask: Ask) {
         let (Some(rt), Some(line)) = (self.0.rt.clone(), self.0.line.clone()) else {
             return;
         };
+        let at = self.0.tracked.lock().unwrap().clone();
         let me = self.0.sent.fetch_add(1, Ordering::SeqCst) + 1;
         let inner = self.0.clone();
-        let at = at.to_string();
         rt.spawn(async move {
-            let got = match &ask {
-                Ask::Read(req) => super::source::ask_typed(&line, &inner.origin, req, ASK).await,
-                Ask::Edit(req) => super::source::ask_typed(&line, &inner.origin, req, ASK).await,
+            let got = match ask {
+                Ask::Read => {
+                    let req = BookmarksReadReq { at: at.clone() };
+                    super::source::ask_typed(&line, &inner.origin, &req, ASK).await
+                }
+                Ask::Edit(op, dir) => {
+                    let req = BookmarksEditReq {
+                        op,
+                        dirs: vec![dir],
+                        at: at.clone(),
+                    };
+                    super::source::ask_typed(&line, &inner.origin, &req, ASK).await
+                }
             };
-            inner.land(me, &at, got.map_err(|f| f.said));
+            inner.land(me, at, got.map_err(|f| f.said));
         });
     }
 }
 
 impl Inner {
-    /// 第 `me` 问（问的时候此刻在 `at`）回来了：比已认下的那一问早 ⇒ 不认。
-    fn land(&self, me: u64, at: &str, got: Result<Bookmarks, String>) {
+    /// 把 `dir` 记进要带上的那一串（挪到最前）；原来没有 ⇒ `true`。
+    fn track(&self, dir: &str) -> bool {
+        let mut w = self.tracked.lock().unwrap();
+        let had = match w.iter().position(|d| d == dir) {
+            Some(i) => {
+                w.remove(i);
+                true
+            }
+            None => false,
+        };
+        w.insert(0, dir.to_string());
+        w.truncate(TRACKED);
+        !had
+    }
+
+    /// 第 `me` 问（带的是 `asked` 那几个目录）回来了：比已认下的那一问早 ⇒ 不认。
+    fn land(&self, me: u64, asked: Vec<String>, got: Result<Bookmarks, String>) {
         let mut s = self.state.lock().unwrap();
         if me < s.took {
             return;
@@ -149,7 +182,8 @@ impl Inner {
         match got {
             Ok(b) => {
                 s.list = b.dirs;
-                s.here = Some((at.to_string(), b.here));
+                s.asked = asked;
+                s.here = b.here;
                 s.notice = None;
             }
             Err(said) => s.notice = Some(said),
@@ -158,8 +192,8 @@ impl Inner {
 }
 
 enum Ask {
-    Read(BookmarksReadReq),
-    Edit(BookmarksEditReq),
+    Read,
+    Edit(BookmarkOp, String),
 }
 
 // 判据里别的模块（工作区 · 悬停扫）借它的合成书签后端与「手上已有几条」的那一形。

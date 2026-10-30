@@ -36,13 +36,18 @@ pub(crate) fn holding(origin: &str, dirs: &[&str]) -> Shelf {
     let s = Shelf::open(None, None, &Origin::named(origin), at);
     s.0.land(
         1,
-        at,
+        vec![at.to_string()],
         Ok(Bookmarks {
             dirs: dirs.iter().map(|d| normalize_dir(d)).collect(),
-            here: (!dirs.is_empty()).then_some(0),
+            here: answers(&[(at, 0)][..dirs.len().min(1)]),
         }),
     );
     s
+}
+
+/// 「目录 ⇒ 第几条」那一份回答。
+fn answers(pairs: &[(&str, u32)]) -> std::collections::BTreeMap<String, u32> {
+    pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect()
 }
 
 impl comms_inward::chan::router::Backends for Books {
@@ -86,11 +91,17 @@ impl comms_inward::chan::router::Backends for Books {
                 }
             }
         }
-        let here = args
+        let at: Vec<String> = args
             .get("at")
-            .and_then(|a| a.as_str())
-            .and_then(|a| dirs.iter().position(|x| *x == normalize_dir(a)))
-            .map(|i| i as u32);
+            .and_then(|a| serde_json::from_value(a.clone()).ok())
+            .unwrap_or_default();
+        let here = at
+            .into_iter()
+            .filter_map(|a| {
+                let i = dirs.iter().position(|x| *x == normalize_dir(&a))?;
+                Some((a, i as u32))
+            })
+            .collect();
         let reply = Bookmarks {
             dirs: dirs.clone(),
             here,
@@ -146,7 +157,7 @@ async fn local_and_remote_ask_their_backend_in_the_same_shape() {
         until("开窗那一问", || be.asked().len() == 1).await;
         s.toggle("/srv/");
         until("切换落地", || s.here("/srv/") == Some(0)).await;
-        s.remove("/srv", "/srv/");
+        s.remove("/srv");
         until("删落地", || s.list().is_empty()).await;
         assert_eq!(s.here("/srv/"), None, "删了还说在");
         let asked = be.asked();
@@ -166,15 +177,15 @@ async fn local_and_remote_ask_their_backend_in_the_same_shape() {
         vec![
             (
                 "bookmarks-read".to_string(),
-                serde_json::json!({ "at": "/srv/" })
+                serde_json::json!({ "at": ["/srv/"] })
             ),
             (
                 "bookmarks-edit".to_string(),
-                serde_json::json!({ "op": "toggle", "dirs": ["/srv/"], "at": "/srv/" })
+                serde_json::json!({ "op": "toggle", "dirs": ["/srv/"], "at": ["/srv/"] })
             ),
             (
                 "bookmarks-edit".to_string(),
-                serde_json::json!({ "op": "remove", "dirs": ["/srv"], "at": "/srv/" })
+                serde_json::json!({ "op": "remove", "dirs": ["/srv"], "at": ["/srv/"] })
             ),
         ]
     );
@@ -187,23 +198,23 @@ fn a_late_reply_of_an_earlier_ask_is_not_taken() {
     let s = Shelf::open(None, None, &Origin::named("x"), "/");
     s.0.land(
         2,
-        "/new",
+        vec!["/new".into()],
         Ok(Bookmarks {
             dirs: vec!["/new".into()],
-            here: Some(0),
+            here: answers(&[("/new", 0)]),
         }),
     );
     s.0.land(
         1,
-        "/old",
+        vec!["/old".into()],
         Ok(Bookmarks {
             dirs: vec!["/old".into()],
-            here: Some(0),
+            here: answers(&[("/old", 0)]),
         }),
     );
     assert_eq!(s.list(), vec!["/new".to_string()]);
     assert_eq!((s.here("/new"), s.here("/old")), (Some(0), None));
-    s.0.land(3, "/new", Err("那一句".into()));
+    s.0.land(3, vec!["/new".into()], Err("那一句".into()));
     assert_eq!(s.notice().as_deref(), Some("那一句"));
     assert_eq!(
         s.list(),
@@ -218,10 +229,10 @@ fn here_is_only_what_the_backend_said_about_this_very_dir() {
     let s = Shelf::open(None, None, &Origin::named("x"), "/");
     s.0.land(
         1,
-        "/a",
+        vec!["/a".into()],
         Ok(Bookmarks {
             dirs: vec!["/a".into(), "/b".into()],
-            here: Some(0),
+            here: answers(&[("/a", 0)]),
         }),
     );
     assert_eq!(s.here("/a"), Some(0));
@@ -323,6 +334,81 @@ async fn the_bar_is_really_clickable_and_the_backend_follows() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// 🔴 两栏共用一份书签、各在一个收藏过的目录 ⇒ 两颗星都亮（各照那台对自己那个目录的答）；
+/// 一栏删了自己那条 ⇒ 另一栏照它自己的答变（下标跟着挪），删掉的那一栏灭。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn two_sides_in_two_bookmarked_dirs_each_read_their_own_answer() {
+    let base = scratch("two");
+    let (a, b) = (base.join("a"), base.join("b"));
+    std::fs::create_dir_all(&a).unwrap();
+    std::fs::create_dir_all(&b).unwrap();
+    let (a, b) = (
+        a.to_string_lossy().to_string(),
+        b.to_string_lossy().to_string(),
+    );
+    let wired = wire_up(
+        "fw-bm-two",
+        FakeBackend::new(&["files-ls"], Declared::default()),
+    )
+    .await;
+    let (be, line) = books();
+    *be.dirs.lock().unwrap() = vec![a.clone(), b.clone()];
+    let mut w = window_on(&wired, &a);
+    w.shelf = Some(shelf_on(&line, "fw-bm-two", &a));
+    let mut ws = Workspace::new(w);
+    assert!(ws.set_split(true));
+    ws.pane_on_mut(1).navigate_to(b.clone());
+    settle_listing(ws.pane_on(1), "右栏换到 b").await;
+    let shelf = ws.pane_on(0).shelf.clone().unwrap();
+    until("两栏各有答", || {
+        shelf.here(&a) == Some(0) && shelf.here(&b) == Some(1)
+    })
+    .await;
+    let ctx = egui::Context::default();
+    let p = crate::theme::palette(&ctx);
+    let star = egui_phosphor::regular::STAR;
+    let lit = |ws: &mut Workspace| {
+        crate::chrome::testing::ws_colors_of(&ctx, ws, star)
+            .into_iter()
+            .filter(|c| *c == p.accent)
+            .count()
+    };
+    // 地址栏画的是焦点那一栏：换栏不再问，两栏各照各的答亮。
+    for side in [0, 1, 0] {
+        ws.focus_side(side);
+        assert_eq!(lit(&mut ws), 1, "第 {side} 栏那颗星该亮");
+    }
+    // 右栏（在 b）删掉 a 那一条 ⇒ 左栏灭、右栏照自己的答挪到第 0 条。
+    ws.pane_on(1).shelf.clone().unwrap().remove(&a);
+    until("删落地", || shelf.list() == vec![b.clone()]).await;
+    assert_eq!((shelf.here(&a), shelf.here(&b)), (None, Some(0)));
+    ws.focus_side(0);
+    assert_eq!(lit(&mut ws), 0, "左栏那一条删了，星该灭");
+    ws.focus_side(1);
+    assert_eq!(lit(&mut ws), 1, "右栏那颗星照自己的答还亮着");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// 认下的那一问没问到的目录（例如一栏从没换过目录、问的那一串里没有它）⇒ 先当没答，记上、现问一次；同一个目录只问这一次。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unasked_dir_is_asked_once_then_answered() {
+    let (be, line) = books();
+    *be.dirs.lock().unwrap() = vec!["/a".into(), "/b".into()];
+    let s = shelf_on(&line, "fw-bm-unasked", "/a");
+    until("开窗那一问", || s.here("/a") == Some(0)).await;
+    assert_eq!(s.here("/b"), None, "还没问到 /b");
+    until("现问那一问", || s.here("/b") == Some(1)).await;
+    let reads: Vec<serde_json::Value> = be.asked().into_iter().map(|(_, _, a)| a).collect();
+    assert_eq!(
+        reads,
+        vec![
+            serde_json::json!({ "at": ["/a"] }),
+            serde_json::json!({ "at": ["/b", "/a"] })
+        ],
+        "同一个目录只现问一次"
+    );
+}
+
 /// 别的写者（另一个窗口 · 手机）刚加的书签，本窗口**换一次目录**就看得见；之前看不见（不是定时去问）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn another_writers_bookmark_shows_up_after_a_navigation() {
@@ -356,10 +442,10 @@ async fn another_writers_bookmark_shows_up_after_a_navigation() {
     assert_eq!(
         reads,
         vec![
-            serde_json::json!({ "at": "/" }),
-            serde_json::json!({ "at": a })
+            serde_json::json!({ "at": ["/"] }),
+            serde_json::json!({ "at": [a, "/"] })
         ],
-        "开窗一次 ＋ 换目录一次，别的时候不问；每一问带上那一刻的目录"
+        "开窗一次 ＋ 换目录一次，别的时候不问；每一问带上到过的目录（最近的在前）"
     );
     until("换目录那一问", || {
         shelf.list() == vec!["/elsewhere".to_string()]

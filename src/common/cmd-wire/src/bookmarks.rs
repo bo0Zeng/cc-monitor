@@ -1,12 +1,14 @@
 //! 书签那两条（`bookmarks-read` · `bookmarks-edit`）的线上类型：书签归那台后端（`~/.cc-monitor/bookmarks.json`，
 //! 后端 `control/bookmarks.rs` 是唯一的写者），文件窗口与手机照机器名问它，本机与远端同一形。
 //!
-//! 「此刻这个目录在不在书签里、是第几条」由后端答：两条入参都可带窗口此刻的目录（`at`），回包的 `here` 是它的下标。
+//! 「此刻这几个目录在不在书签里、各是第几条」由后端答：两条入参都可带窗口各栏此刻的目录（`at`，几栏几个），
+//! 回包的 `here` 按问的那一串各答一个下标（不在的不列）。
 //!
 //! 目录的归一（[`normalize_dir`]）只此一份：后端存之前归一、比较按归一之后的形；文件窗口地址栏手输那一串、
 //! 左栏「家」与「根」判此刻也用它（浏览回包还不带归一后的目录）。
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// 目录路径归一：连续的 `/` 折成一个；只剩 `/` 就是根；否则去掉尾巴上那一个 `/`。
 ///
@@ -43,10 +45,10 @@ pub fn normalize_dir(path: &str) -> String {
 )]
 #[serde(deny_unknown_fields)]
 pub struct BookmarksReadReq {
-    /// 此刻的目录（这台的绝对路径）：带了 ⇒ 回包的 `here` 答它是第几条。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub at: Option<String>,
+    /// 各栏此刻的目录（这台的绝对路径）：回包的 `here` 答每一个是第几条。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<String>>"))]
+    pub at: Vec<String>,
 }
 
 /// `bookmarks-edit` 做哪一样（内联进入参那份生成类型，不单出一份）。
@@ -79,10 +81,10 @@ pub struct BookmarksEditReq {
     pub op: BookmarkOp,
     /// 那几个目录（这台的绝对路径；按归一之后的形比、存）。
     pub dirs: Vec<String>,
-    /// 此刻的目录：带了 ⇒ 回包的 `here` 答它在改完的那一份里是第几条。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub at: Option<String>,
+    /// 各栏此刻的目录：回包的 `here` 答每一个在改完的那一份里是第几条。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<String>>"))]
+    pub at: Vec<String>,
 }
 
 /// 两条的回包：这台此刻的书签（保序、不重样、已归一）。也是盘上那一份的形（盘上不带 `here`）。
@@ -95,10 +97,13 @@ pub struct BookmarksEditReq {
 #[serde(deny_unknown_fields)]
 pub struct Bookmarks {
     pub dirs: Vec<String>,
-    /// 入参的 `at` 按归一之后的形在 `dirs` 里的下标；没问 · 不在 ⇒ 缺。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub here: Option<u32>,
+    /// 入参 `at` 里的每一串（原样作键）⇒ 它按归一之后的形在 `dirs` 里的下标；不在的不列，没问 ⇒ 空。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(optional, as = "Option<BTreeMap<String, u32>>")
+    )]
+    pub here: BTreeMap<String, u32>,
 }
 
 #[cfg(test)]

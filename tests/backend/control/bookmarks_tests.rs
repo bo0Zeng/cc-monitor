@@ -23,7 +23,7 @@ fn edit(o: &crate::platform::fs::Own, op: BookmarkOp, dirs: &[&str]) -> Vec<Stri
         &BookmarksEditReq {
             op,
             dirs: dirs.iter().map(|s| s.to_string()).collect(),
-            at: None,
+            at: Vec::new(),
         },
     )
     .expect("写")
@@ -31,30 +31,36 @@ fn edit(o: &crate::platform::fs::Own, op: BookmarkOp, dirs: &[&str]) -> Vec<Stri
 }
 
 fn read(o: &crate::platform::fs::Own) -> Result<Bookmarks, Fail> {
-    answer_read(o, &BookmarksReadReq { at: None })
+    answer_read(o, &BookmarksReadReq::default())
 }
 
 fn read_at(o: &crate::platform::fs::Own, at: &str) -> Option<u32> {
     answer_read(
         o,
         &BookmarksReadReq {
-            at: Some(at.into()),
+            at: vec![at.into()],
         },
     )
     .expect("读")
     .here
+    .get(at)
+    .copied()
 }
 
-fn edit_at(o: &crate::platform::fs::Own, op: BookmarkOp, dir: &str, at: &str) -> Bookmarks {
+fn edit_at(o: &crate::platform::fs::Own, op: BookmarkOp, dir: &str, at: &[&str]) -> Bookmarks {
     answer_edit(
         o,
         &BookmarksEditReq {
             op,
             dirs: vec![dir.into()],
-            at: Some(at.into()),
+            at: at.iter().map(|s| s.to_string()).collect(),
         },
     )
     .expect("写")
+}
+
+fn here_of(pairs: &[(&str, u32)]) -> std::collections::BTreeMap<String, u32> {
+    pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect()
 }
 
 /// 🔴 先红的那一条：问的时候带上此刻的目录 ⇒ 回包答它在书签里的第几条（按归一之后的形比）。
@@ -66,21 +72,36 @@ fn a_read_with_the_current_dir_answers_where_it_sits() {
     assert_eq!(read_at(&o, "/c/"), Some(1));
     assert_eq!(read_at(&o, "/nope"), None, "不在书签里 ⇒ 缺");
     assert_eq!(read_at(&o, ""), None, "空路径 ⇒ 缺");
-    assert_eq!(read(&o).unwrap().here, None, "没问 ⇒ 缺");
+    assert!(read(&o).unwrap().here.is_empty(), "没问 ⇒ 空");
 }
 
-/// 改完的那一份也答此刻那个目录：★ 加上 ⇒ 有下标；再点一下取消 ⇒ 缺；存盘那一份不带它。
+/// 几栏各在一个目录 ⇒ 一问各答一个下标（原样作键，不在的不列）。
+#[test]
+fn a_read_with_several_dirs_answers_each_of_them() {
+    let o = own(&home("here-many"));
+    edit(&o, BookmarkOp::Add, &["/a", "/b"]);
+    let got = answer_read(
+        &o,
+        &BookmarksReadReq {
+            at: vec!["/b/".into(), "/a".into(), "/nope".into()],
+        },
+    )
+    .unwrap();
+    assert_eq!(got.here, here_of(&[("/a", 0), ("/b/", 1)]));
+}
+
+/// 改完的那一份也答各栏的目录：★ 加上 ⇒ 有下标；删一条 ⇒ 别的那栏照改完那一份挪；存盘那一份不带它。
 #[test]
 fn an_edit_with_the_current_dir_answers_where_it_sits_after_the_edit() {
     let h = home("here-edit");
     let o = own(&h);
     edit(&o, BookmarkOp::Add, &["/first"]);
-    let on = edit_at(&o, BookmarkOp::Toggle, "/srv/", "/srv");
+    let on = edit_at(&o, BookmarkOp::Toggle, "/srv/", &["/srv", "/first"]);
     assert_eq!(on.dirs, ["/first", "/srv"]);
-    assert_eq!(on.here, Some(1));
-    let off = edit_at(&o, BookmarkOp::Toggle, "/srv", "//srv/");
-    assert_eq!(off.dirs, ["/first"]);
-    assert_eq!(off.here, None);
+    assert_eq!(on.here, here_of(&[("/first", 0), ("/srv", 1)]));
+    let off = edit_at(&o, BookmarkOp::Remove, "/first", &["//srv/", "/first"]);
+    assert_eq!(off.dirs, ["/srv"]);
+    assert_eq!(off.here, here_of(&[("//srv/", 0)]));
     let raw = std::fs::read_to_string(h.join(relay_route_core::BOOKMARKS_REL)).unwrap();
     assert!(!raw.contains("here"), "存盘那一份不带「此刻」：{raw}");
 }
@@ -164,7 +185,7 @@ fn an_unreadable_file_is_said_and_never_overwritten() {
         &BookmarksEditReq {
             op: BookmarkOp::Add,
             dirs: vec!["/x".into()],
-            at: None,
+            at: Vec::new(),
         },
     )
     .unwrap_err();
@@ -186,7 +207,7 @@ fn a_newer_file_is_said_and_never_overwritten() {
         &BookmarksEditReq {
             op: BookmarkOp::Add,
             dirs: vec!["/x".into()],
-            at: None,
+            at: Vec::new(),
         },
     )
     .unwrap_err();
