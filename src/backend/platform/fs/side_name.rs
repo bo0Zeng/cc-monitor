@@ -17,8 +17,8 @@ pub(crate) const MARKS: &[&str] = &[SWAP_MARK, BACKUP_MARK, TMP_MARK];
 /// 自家状态原子写的临时件的尾巴：`<名>.<pid>.<线程>.<序>.tmp`（凭据续期也走这一形）。
 pub(crate) const OWN_TMP_SUFFIX: &str = ".tmp";
 
-/// 换名件的尾巴：与暂存区的上传件同一个后缀。
-const SWAP_SUFFIX: &str = crate::common::staging::PART_SUFFIX;
+/// 换名件的尾巴（认名只看 [`SWAP_MARK`]，尾巴不参与）。
+const SWAP_SUFFIX: &str = ".part";
 
 /// 文件管理面写入 `name` 时的换名件名（隐藏件，名字可以不是 UTF-8）。
 pub(crate) fn swap(name: &OsStr, pid: u32, seq: u64) -> OsString {
