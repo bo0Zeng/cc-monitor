@@ -5,6 +5,7 @@
 //! 2. 真回包那一形（那台扫出来的行，金样 `history-search-row.golden.json`）照类型解得开、合完整数格原样是整数；
 //!    整数格写成 `3000.0` ⇒ 解不开（交进来的一侧得原样写整数）。
 //! 3. 结果头那一句在这里写好（搜的词 · 命中数 · 会话数；截过 ⇒ 截过那一句），两端照摆。
+//! 4. 头底下那几句也在这里写好（读不动几份 · 只按标题的那几家），两端照摆。
 
 use super::*;
 use serde_json::{json, Value};
@@ -105,8 +106,13 @@ fn merging_sorts_newest_first_stably_and_sums_what_each_machine_said() {
     // 金样那一行自己摆着 1 处命中：4 行 × 1 ＋ moreHits 2 ＋ 2。
     assert_eq!((m.total_hits, m.session_count, m.truncated), (8, 4, true));
     assert_eq!(
-        (m.unreadable, m.skipped.clone()),
-        (3, vec!["Codex".to_string(), "Gemini".to_string()])
+        m.notes,
+        [
+            copy_core::copy_text("history.search.unreadable", &[("n", "3")]),
+            copy_core::copy_text("history.search.skipped", &[("agent", "Codex")]),
+            copy_core::copy_text("history.search.skipped", &[("agent", "Gemini")]),
+        ],
+        "读不动的份数相加写一句 · 不覆盖的那几家去重、照先说的那台的先后各一句"
     );
     assert_eq!(m.down, down);
     assert_eq!(
@@ -184,4 +190,14 @@ fn the_head_line_is_written_here_once_with_the_word_and_the_counts() {
         ),
         "截过 ⇒ 截过那一句"
     );
+}
+
+#[test]
+fn nothing_unreadable_and_nothing_skipped_writes_no_note() {
+    let m = merge(
+        "q",
+        vec![(Machine::local(), reply(&[("s1", 10, 0, false)], 0, &[]))],
+        vec![],
+    );
+    assert!(m.notes.is_empty(), "读不动 0 份 · 没有只按标题的 ⇒ 一句都不写");
 }
