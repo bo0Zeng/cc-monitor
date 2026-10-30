@@ -19,7 +19,8 @@
  */
 import type { Tab } from "./tab-model";
 import { isRemoteOrigin } from "./ipc/origin";
-import { canResume, frontWhy, hasTerminal, machineOf } from "./face-can";
+import { machineName } from "./ipc/chan-caller";
+import { canResume, frontWhy, hasTerminal } from "./face-can";
 import { terminalFrontAvailable } from "./terminal-front";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { copyText } from "./copy-table";
@@ -347,13 +348,13 @@ export class SessionHead {
     const extra = canResume(tab.face) ? "resume" : acts.attach ? "attach" : "";
     const mark = this.host.planMark(tab);
     const kin = this.kinKey(tab);
-    const drawn = [tab.sessionId, d, fullTitle(tab), machineOf(tab), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra, mark?.label ?? "", tab.pinned ? 1 : 0, kin].join("\u0000");
+    const drawn = [tab.sessionId, d, fullTitle(tab), machineName(tab.origin), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra, mark?.label ?? "", tab.pinned ? 1 : 0, kin].join("\u0000");
     if (drawn === this.drawn) return;
     this.drawn = drawn;
     this.el.style.display = "";
     setDot(this.dot, d, stateWord(tab));
     this.title.textContent = fullTitle(tab);
-    this.where.textContent = machineOf(tab);
+    this.where.textContent = machineName(tab.origin);
     this.dir.textContent = tab.projectDir ?? "";
     this.dir.style.display = tab.projectDir === null ? "none" : "";
     this.state.textContent = st.text;

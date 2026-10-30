@@ -2,12 +2,15 @@
 //!
 //! 「这个 sid 此刻在这台 tmux 里是什么样」只在 [`standing`] 判一次，停 / 菜单就绪 / 起会话（`session-open`）共用：
 //! 停 = 按名单句柄交 `terminal-end` 那一条（`kill::end_terminal`：三道门、杀句柄；托管的挂断）。一个不成不挡下一个。
+//! 停之前先问这台的会话脸（[`StopFaces`]，与界面上 `can.end` 同一个判法）：结束不了的那一项跳过、那一句照脸上的；每一项带这台写的称呼。
+//! 逐条结局是 `cmd_wire::batch::SessionOutcome`（每台那一跳与本机合好的回包同一形）。
 //!
 //! 要动 tmux / 读记录 / 起 ccm 的几样由入口经 [`Deps`] 交进来（control 不引用 observe），判据交替身。
 
 use super::launch_account::Settled;
 use super::session_open as open;
 use crate::platform::child::Deadline;
+use cmd_wire::batch::{SessionOutcome, SessionState};
 use std::collections::BTreeSet;
 
 /// 一批的上界：兜坏输入（一屏 tab 栏放不下这么多），不是兜格式。
@@ -180,9 +183,8 @@ pub(crate) enum NameBase<'a> {
 /// 一个会话的结局。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Answer {
-    pub(crate) sid: String,
-    /// `done` 做成了 · `skipped` 这一个不用做 / 做不了 · `failed` 做了没成。
-    pub(crate) outcome: &'static str,
+    /// 做成了 · 这一个不用做 / 做不了 · 做了没成。
+    pub(crate) outcome: SessionState,
     /// 跳过 / 失败的原因码（做成了 ⇒ `None`）。
     pub(crate) why: Option<String>,
     pub(crate) detail: String,
@@ -195,28 +197,30 @@ pub(crate) struct Answer {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Batched {
-    pub(crate) results: Vec<Outcome>,
+    pub(crate) results: Vec<SessionOutcome>,
 }
 
-/// 一个会话的结局上线那一形（[`Answer`] ＋ 失败那一项多的两格）。可缺的格一律出 `null`，不省键。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Outcome {
-    /// 会话 id（与入参同序）。
-    pub(crate) sid: String,
-    /// `done` 做成了 · `skipped` 这一个不用做 / 做不了 · `failed` 做了没成。
-    #[cfg_attr(test, ts(type = "\"done\" | \"skipped\" | \"failed\""))]
-    pub(crate) outcome: &'static str,
-    /// 跳过 / 失败的原因码（做成了 ⇒ `null`）。
-    pub(crate) why: Option<String>,
-    /// 停的那一项没做成的那一句（失败的与单个结束被拒同一张表）；做成了 ⇒ `null`。
-    pub(crate) said: Option<String>,
-    /// 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
-    pub(crate) copy_detail: String,
-    /// 落在哪个 tmux 会话上。
-    pub(crate) session: Option<String>,
+/// 停之前问这台的会话脸（与界面上那一格同一个判法，`wire::SessionFaceExt::of`）与称呼：生产那一份由入口拼，判据给替身。
+pub(crate) struct StopFaces<'a> {
+    /// `(sid, 这台名单里它的容器)` ⇒ 会话脸上 `can.end` 那一格。
+    pub(crate) can_end: &'a dyn Fn(&str, &crate::wire::SessionContainer) -> crate::wire::Allow,
+    /// sid ⇒ 这台写的称呼（项目 ＋ 名字）。
+    pub(crate) title: &'a dyn Fn(&str) -> String,
+}
+
+/// 这台名单里带着它的那一行 ⇒ 会话脸要的容器那一格（命中多个取第一个；哪行都不带着 ⇒ 不在任何宿主里）。
+pub(crate) fn container_of(rows: &[TermEntry], sid: &str) -> crate::wire::SessionContainer {
+    use crate::wire::{SessionContainer, TerminalHost};
+    let at = match carriers(rows, sid) {
+        Standing::Running(e) | Standing::Idle(e) => e,
+        Standing::Ambiguous(es) => es[0],
+        Standing::None => return SessionContainer::None,
+    };
+    let terminal = Some(at.terminal.clone());
+    match at.host {
+        TerminalHost::Tmux => SessionContainer::Tmux { terminal },
+        TerminalHost::Managed => SessionContainer::Managed { terminal },
+    }
 }
 
 /// `sessions-where` 的应答：逐个结果，与入参同序。
@@ -270,28 +274,27 @@ pub(crate) struct TerminalAt {
 }
 
 impl Answer {
-    fn new(sid: &str, outcome: &'static str, code: Option<&str>, detail: String) -> Self {
+    fn new(outcome: SessionState, code: Option<&str>, detail: String) -> Self {
         Self {
-            sid: sid.to_string(),
             outcome,
             why: code.map(str::to_string),
             detail,
             session: None,
         }
     }
-    fn skipped(sid: &str, code: &str, detail: String) -> Self {
-        Self::new(sid, "skipped", Some(code), detail)
+    fn skipped(code: &str, detail: String) -> Self {
+        Self::new(SessionState::Skipped, Some(code), detail)
     }
-    fn failed(sid: &str, (code, detail): (&str, String)) -> Self {
-        Self::new(sid, "failed", Some(code), detail)
+    fn failed((code, detail): (&str, String)) -> Self {
+        Self::new(SessionState::Failed, Some(code), detail)
     }
-    fn done(sid: &str) -> Self {
-        Self::new(sid, "done", None, String::new())
+    fn done() -> Self {
+        Self::new(SessionState::Done, None, String::new())
     }
     /// 停的每个没做成的那一项带 `said`（失败那几句与单条结束同一张表，[`crate::control::kill::said`]）；
-    /// 失败那一项另带 `copyDetail`（复制详情：码 ＋ 那一项的原话）。
-    fn to_wire(self) -> Outcome {
-        let failed = self.outcome == "failed";
+    /// 失败那一项另带 `copyDetail`（复制详情：码 ＋ 那一项的原话）。每台那一跳答的是它自己 ⇒ `machine` 是本机那一个。
+    fn to_wire(self, sid: cmd_wire::Sid, title: String) -> SessionOutcome {
+        let failed = self.outcome == SessionState::Failed;
         let said = match self.why.as_deref() {
             Some(why) => Some(stop_said(why, &self)),
             _ => None,
@@ -302,12 +305,14 @@ impl Answer {
             }
             _ => String::new(),
         };
-        Outcome {
-            sid: self.sid,
+        SessionOutcome {
+            machine: cmd_wire::Machine::local(),
+            sid,
             outcome: self.outcome,
             why: self.why,
             said,
             copy_detail,
+            title,
             session: self.session,
         }
     }
@@ -433,32 +438,41 @@ fn stop_said(why: &str, a: &Answer) -> String {
         "no_tmux" => copy_core::copy_text("tabBatch.why.noTmux", &[]),
         "not_hosted" => copy_core::copy_text("tabBatch.why.notHosted", &[]),
         "ambiguous" => copy_core::copy_text("tabBatch.why.ambiguous", &[("names", &a.detail)]),
+        // 会话脸上 `can.end` 那一句（那台写好的），原样交出。
+        NOT_ENDABLE => a.detail.clone(),
         _ => crate::control::kill::said(a.session.as_deref().unwrap_or_default(), why),
     }
 }
 
-/// `sessions-stop`：逐个停，与入参同序答。
-pub(crate) fn stop(req: &SidsReq, deps: &Deps) -> Result<Batched, CmdErr> {
-    let sids = sids_of(&req.sids)?;
+/// 会话脸说结束不了（已结束 · 不在任何宿主里 …）：那一项跳过的原因码。
+const NOT_ENDABLE: &str = "not_endable";
+
+/// `sessions-stop`：逐个停，与入参同序答；跳不跳过先照这台的会话脸判，每一项带这台写的称呼。
+pub(crate) fn stop(req: &SidsReq, deps: &Deps, faces: &StopFaces) -> Result<Batched, CmdErr> {
+    sids_of(&req.sids)?;
     let listed = listed(deps)?;
-    let results: Vec<Outcome> = sids
+    let results: Vec<SessionOutcome> = req
+        .sids
         .iter()
-        .map(|sid| stop_one(sid, &listed, deps).to_wire())
+        .map(|sid| stop_one(sid, &listed, deps, faces).to_wire(sid.clone(), (faces.title)(sid)))
         .collect();
     Ok(Batched { results })
 }
 
-fn stop_one(sid: &str, listed: &Listed, deps: &Deps) -> Answer {
+fn stop_one(sid: &str, listed: &Listed, deps: &Deps, faces: &StopFaces) -> Answer {
+    if let crate::wire::Allow::No { why } = (faces.can_end)(sid, &container_of(&listed.rows, sid)) {
+        return Answer::skipped(NOT_ENDABLE, why.0);
+    }
     let at = match carriers(&listed.rows, sid) {
         Standing::Running(e) | Standing::Idle(e) => e,
-        Standing::None if !listed.tmux => return Answer::skipped(sid, "no_tmux", String::new()),
-        Standing::None => return Answer::skipped(sid, "not_hosted", String::new()),
+        Standing::None if !listed.tmux => return Answer::skipped("no_tmux", String::new()),
+        Standing::None => return Answer::skipped("not_hosted", String::new()),
         // 命中多个不结束（选错了不可逆）。
         Standing::Ambiguous(es) => {
             let ns: Vec<String> = es.iter().map(|e| e.name.clone()).collect();
             return Answer {
                 session: ns.first().cloned(),
-                ..Answer::skipped(sid, "ambiguous", ns.join(", "))
+                ..Answer::skipped("ambiguous", ns.join(", "))
             };
         }
     };
@@ -466,13 +480,13 @@ fn stop_one(sid: &str, listed: &Listed, deps: &Deps) -> Answer {
     match (deps.end)(&at.terminal) {
         Ok(()) => Answer {
             session: Some(name),
-            ..Answer::done(sid)
+            ..Answer::done()
         },
         Err(f) => {
             let code = f.code.clone();
             Answer {
                 session: Some(name),
-                ..Answer::failed(sid, (&code, crate::common::said::Said::from(f).logged()))
+                ..Answer::failed((&code, crate::common::said::Said::from(f).logged()))
             }
         }
     }
