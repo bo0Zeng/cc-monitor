@@ -523,6 +523,21 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "聊天附件在会话那台的落点形状（`.ccm-attach/<编号>/<原名>`）：落 · 撤 · 清的一侧与送字 · 认记录的一侧各引各的",
     ),
     (
+        "common::file_class::class_of_name",
+        Kind::Common,
+        "按名字判一项是哪一种：图标 · 「类型」那一列 · 几道门 · 聊天附件回包这一侧与适配层认出的附件那一侧各引各的",
+    ),
+    (
+        "common::file_class::ext_of",
+        Kind::Common,
+        "扩展名：「类型」那一列 · 按类型排 · 几道门判预览 / 看图都按它",
+    ),
+    (
+        "common::file_class::label",
+        Kind::Common,
+        "那一种的词：「类型」那一列与聊天附件 chip 上的类别字同一份（适配层认出的附件也引它）",
+    ),
+    (
         "common::time::Tz::here",
         Kind::Common,
         "聊天附件的编号取这台的钟（月日时分）",
