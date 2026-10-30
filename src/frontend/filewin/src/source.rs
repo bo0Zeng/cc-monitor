@@ -342,12 +342,7 @@ impl RemotePath {
 
 /// 字节 → 发出去的那一形：合法 UTF-8 ⇒ 字符串；否则 ⇒ `{"b16": …}`（小写十六进制）。
 pub fn wire_bytes(b: &[u8]) -> serde_json::Value {
-    match std::str::from_utf8(b) {
-        Ok(s) => serde_json::Value::String(s.to_string()),
-        Err(_) => serde_json::json!({
-            super::find::HEX_KEY: b.iter().map(|x| format!("{x:02x}")).collect::<String>()
-        }),
-    }
+    serde_json::json!(cmd_wire::files::WirePath::from(b))
 }
 
 fn trim_slashes(b: &[u8]) -> &[u8] {

@@ -95,7 +95,7 @@ fn a_reading_lands_under_its_account_on_disk_and_on_the_wire_field_for_field() {
             "five_hour".to_string(),
             Trend {
                 since: 1_800_000_000,
-                prev: None,
+                steps: Vec::new(),
             },
         )]
         .into(),
@@ -482,8 +482,8 @@ fn reading_until(used_5h: f64, resets_at: u64) -> QuotaReading {
     }
 }
 
-/// ★ 每个窗口记上一次不同的采样：值没变只是又看到一次 ⇒ 不动；值变了 ⇒ 旧值与它头一次看到的时刻成了「上一次」；
-/// 窗口重置了（重置时刻换了）⇒ 上一次清掉。落盘的那份同样带着；quota-read 不往外给这一格。
+/// ★ 每个窗口记此前变过的值：值没变只是又看到一次 ⇒ 不动；值变了 ⇒ 旧值与它头一次看到的时刻记进变过的那几个；
+/// 窗口重置了（重置时刻换了）⇒ 清掉。落盘的那份同样带着；quota-read 不往外给这一格。
 #[test]
 fn a_window_keeps_its_last_different_sample_until_it_resets() {
     let d = temp_dir("trend");
@@ -493,7 +493,7 @@ fn a_window_keeps_its_last_different_sample_until_it_resets() {
     let l = Ledger::at(Some(path.clone()));
     let t = 1_800_000_000;
     let reset = t + 18_000;
-    let trend = |l: &Ledger| l.entry("claude-code", "q").expect("entry").trend["five_hour"];
+    let trend = |l: &Ledger| l.entry("claude-code", "q").expect("entry").trend["five_hour"].clone();
     record_seen(
         &l,
         &own,
@@ -507,7 +507,7 @@ fn a_window_keeps_its_last_different_sample_until_it_resets() {
         trend(&l),
         Trend {
             since: t,
-            prev: None
+            steps: Vec::new()
         }
     );
     record_seen(
@@ -523,7 +523,7 @@ fn a_window_keeps_its_last_different_sample_until_it_resets() {
         trend(&l),
         Trend {
             since: t,
-            prev: None
+            steps: Vec::new()
         },
         "又看到一次同一个值不算新采样"
     );
@@ -538,10 +538,10 @@ fn a_window_keeps_its_last_different_sample_until_it_resets() {
     );
     let want = Trend {
         since: t + 600,
-        prev: Some(Sample {
+        steps: vec![Sample {
             used: 0.40,
             since: t,
-        }),
+        }],
     };
     assert_eq!(trend(&l), want);
     assert_eq!(
@@ -562,7 +562,7 @@ fn a_window_keeps_its_last_different_sample_until_it_resets() {
         trend(&l),
         Trend {
             since: t + 700,
-            prev: None
+            steps: Vec::new()
         },
         "窗口重置了还留着上一窗的采样"
     );
@@ -696,4 +696,35 @@ fn the_rate_is_the_slope_of_two_recent_samples_in_points_per_minute() {
     );
     let o = down.entry("claude-code", "q").expect("entry");
     assert_eq!(o.rate("five_hour", t + 700), None, "不涨");
+}
+
+/// ★ 用速照最近 30 分钟里最早一次变的值起算：读数一格一格涨了 25 分钟、最后 3 秒里跳了 3 点（10-30 夜里 y 那一串的样子）
+/// ⇒ 0.4 点 / 分，不是最后两次之间的 60 点 / 分；比 30 分钟还早的那几次不算进来。
+#[test]
+fn the_rate_spans_the_last_half_hour_not_the_last_two_readings() {
+    let l = Ledger::at(None);
+    let own = crate::platform::fs::Own::for_tests();
+    let t = 1_800_000_000;
+    let reset = t + 18_000;
+    let seen = |used: f64, at: u64| {
+        record_seen(
+            &l,
+            &own,
+            None,
+            "claude-code",
+            "q",
+            reading_until(used, reset),
+            at,
+        );
+    };
+    seen(0.70, t - 3_600);
+    seen(0.75, t - 2_400);
+    for (i, u) in [0.80, 0.81, 0.82, 0.83, 0.84, 0.87].into_iter().enumerate() {
+        seen(u, t + 300 * i as u64);
+    }
+    seen(0.90, t + 1_503);
+    let o = l.entry("claude-code", "q").expect("entry");
+    let r = o.rate("five_hour", t + 1_510).expect("有用速");
+    // 0.80（t）→ 0.90（t + 1503）：10 点 / 25.05 分。
+    assert!((r - 10.0 / (1_503.0 / 60.0)).abs() < 1e-6, "{r}");
 }
