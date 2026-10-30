@@ -49,7 +49,7 @@
 3. 链：带 `uuid` ＋ `parentUuid` 的记录由 `chain.rs` 自动进链（不进界面也进），主线外清单才不会在它这里断；别让它在 `parse_line` 里静默丢（未知 type 抢救成 `Unrecognized`，INVARIANTS §18.1）。
 4. 在 `tests/backend/agents/claudecode/parse_tests.rs` 加一条能解析成功的样本、在 `record_of_tests.rs` 加它翻出来的成品。样本只采结构、不采真会话正文。
 5. 通用记录的形状变了才要 `npm run gen:types`（重生成 `src/frontend/ui/generated/LineRecord.ts` 一族；`npm run check:types` 会查它与 Rust 一致）。界面 `src/frontend/ui/cards/index.ts` 的 `renderMessage` 只按 `t` 与格排版。
-6. **检查**：后端 `cargo test`（在 `src/backend`）· `npm run test:dom` · 拿一份含这种记录的 jsonl 看显示与折叠。
+6. **检查**：后端 `cargo test`（在 `src/backend`）· `npm test` · 拿一份含这种记录的 jsonl 看显示与折叠。
 
 ### 2.4 加一个外观设置项
 

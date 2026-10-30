@@ -15,7 +15,6 @@ const PENDING: &[&str] = &[
     "tests/backend/agents/claudecode/parse_tests.rs",
     "tests/frontend/shell/polling_registry_tests.rs",
     "tests/backend/assets/aliases/block_tests.rs",
-    "tests/frontend/shell/quote_singleton_guard_tests.rs",
     "tests/frontend/shell/rust_timer_registry_tests.rs",
     "tests/frontend/shell/session_name_registry_tests.rs",
     "tests/frontend/shell/shared_crate_registry_tests.rs",
@@ -25,7 +24,6 @@ const PENDING: &[&str] = &[
     "src/backend/observe/watcher.rs",
     "tests/backend/observe/watcher_tests.rs",
     "tests/backend/platform/fallback_guard.rs",
-    "tests/backend/protocol_doc_guard.rs",
     "tests/backend/readonly_guard.rs",
 ];
 
@@ -984,11 +982,11 @@ fn the_ratchet_reader_can_tell_a_raise_from_a_drop() {
 
 // ══════════════════════════════════════════════════════════════════════════
 // `P4`（2026-09-21）：**「`scan_tree!` 的自摘生效」这句话，全仓散文里必须是 0 段**
-// （那一刀在这一处不生效 —— 成因逐字住 `guard_core::scan_tree_excluding_self` 头注）
+// （`scan_tree!` 今天收整棵树，自摘不生效；要跳过的写成明写名单）
 // ══════════════════════════════════════════════════════════════════════════
 
 /// 「提到了那个机制」的三个词 —— 一段散文不提机制，就不在本条的人群里。
-const SELF_EXCL_MECHANISM: &[&str] = &["scan_tree!", "scan_tree_excluding_self", "file!()"];
+const SELF_EXCL_MECHANISM: &[&str] = &["scan_tree!", "file!()"];
 
 /// 「说的是**调用者自己那一份**」的那一侧。
 ///
@@ -1169,8 +1167,7 @@ fn live_self_exclusion_claims() -> (Vec<(String, String, String)>, Vec<(&'static
 /// 当现状写着的段落数 == 0。**
 ///
 /// ⚠ 「那一刀不生效」这句话本身**不是全称** —— 它命不命中只取决于扫描根的字符串里
-/// 有没有和 `file!()` 同一段 `..`；逐侧读数与唯一那一处真会落刀的调用点，
-/// 逐字住 `guard_core::scan_tree_excluding_self` 头注那张表。本条判的是**散文**，
+/// 有没有和 `file!()` 同一段 `..`。本条判的是**散文**，
 /// 不是那个事实：它只要求「把自摘当现状写着」的段落**同一段里带上时态标记**。
 ///
 /// # 它治的病逐字是 `every_dead_name_named_in_the_prose_is_declared_dead` 那一条
@@ -1182,10 +1179,6 @@ fn live_self_exclusion_claims() -> (Vec<(String, String, String)>, Vec<(&'static
 /// ⇒ 后缀比不命中 ⇒ 那一刀在那些调用点上**不生效**、什么都没摘掉，
 /// 而几十份判据的抬头把它当前提写着。
 /// `P4`（2026-09-21）逐份清过一遍，本条是那一轮留下的闸。
-///
-/// 反方向那一半（自摘哪天重新生效）由
-/// `the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split` 那条绿绊线接着 ——
-/// 两条合起来才闭合：一条守「话别再说假」，一条守「事实别悄悄变回来」。
 ///
 /// # 匹配单位：**散文段 × 两行窗口**，不是关键词黑名单
 ///
