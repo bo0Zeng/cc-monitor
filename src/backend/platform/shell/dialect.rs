@@ -101,9 +101,9 @@ pub(crate) struct Call<'a> {
     pub(crate) word: &'a str,
     /// 分两半的那个词（`ccm_line::argv::flag::END`）：左边交 claude，右边归 ccm。
     pub(crate) end: &'a str,
-    /// ccm 落在家目录下哪儿（`/` 分隔的相对路径，`relay_route_core::BACKEND_LANDING_REL`）：给了 ⇒ 不靠 `PATH` 的那一臂按它显式叫
-    /// （PowerShell：别名块不动会话 `PATH`）；`None` ＝ 照 `word` 裸叫 —— 早先版本写下的那一形，只给一次性迁移读旧文件。
-    pub(crate) landing: Option<&'a str>,
+    /// ccm 落在家目录下哪儿（`/` 分隔的相对路径，`relay_route_core::BACKEND_LANDING_REL`）：不靠 `PATH` 的那一臂按它显式叫
+    /// （PowerShell：别名块不动会话 `PATH`）。
+    pub(crate) landing: &'a str,
 }
 
 /// 一份启动文件候选：**路径 ＋ 盘上不在时列不列**（「列不列不存在的」是方言的读法，表第一行）。
@@ -487,13 +487,10 @@ pub(crate) fn ps_literal(s: &str) -> String {
 }
 
 impl PowerShell {
-    /// 别名里叫 ccm 的那个词：给了落点 ⇒ `"$HOME\<落点>.exe"`（双引号：`$HOME` 在那台上展开、展开出来的值不再解析；
-    /// 别名块不往会话 `PATH` 里加东西，新机器上 `PATH` 里没有 ccm）；没给 ⇒ 裸 `word`（早先版本写下的那一形）。
+    /// 别名里叫 ccm 的那个词：`"$HOME\<落点>.exe"`（双引号：`$HOME` 在那台上展开、展开出来的值不再解析；
+    /// 别名块不往会话 `PATH` 里加东西，新机器上 `PATH` 里没有 ccm）。
     fn invoked(call: Call) -> String {
-        match call.landing {
-            Some(rel) => format!("\"$HOME\\{}.exe\"", rel.replace('/', "\\")),
-            None => call.word.to_string(),
-        }
+        format!("\"$HOME\\{}.exe\"", call.landing.replace('/', "\\"))
     }
 }
 
