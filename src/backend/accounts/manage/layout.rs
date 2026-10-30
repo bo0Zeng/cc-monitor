@@ -177,6 +177,8 @@ pub(crate) enum Op {
     },
     /// 删（只许在账号库里）。
     Remove(String),
+    /// 删共享库里一个空目录（对齐种下、还没人用过的按需目录），给随后挪进来的那一份让位；不空 ⇒ 门拒。
+    DropEmpty(String),
     Chmod {
         mode: u32,
         at: String,
@@ -488,13 +490,15 @@ pub(crate) fn plan_colors(s: &Snapshot) -> Result<Plan, Refusal> {
     Ok(plan)
 }
 
-/// 按需才建的那几个共享库里还没有 ⇒ 恰好一个号里有一份实体目录：挪进共享库当共用的那一份；否则建一份空的
-/// （两个号以上各有一份 ⇒ 不替人合并，核对照「各有一份」提示）。回挪过来的那几个 `(号的目录, 项)`（那个号随后照样链回去）。
+/// 按需才建的那几个共享库里还没有（或只有对齐种下的一份空目录，[`Snapshot::empty_shared`]）⇒ 恰好一个号里有一份实体目录：
+/// 挪进共享库当共用的那一份（空目录先摘掉）；否则共享库里没有就建一份空的（两个号以上各有一份 ⇒ 不替人合并，核对照「各有一份」提示）。
+/// 回挪过来的那几个 `(号的目录, 项)`（那个号随后照样链回去）。只有「修复」调它。
 fn lift_on_demand<'a>(plan: &mut Plan, s: &Snapshot, m: &Manifest) -> Vec<(String, &'a str)> {
     let r = s.roots();
     let mut lifted = Vec::new();
     for n in shared_on_demand() {
-        if s.shared.get(n).exists() {
+        let seeded = s.empty_shared.contains(*n);
+        if s.shared.get(n).exists() && !seeded {
             continue;
         }
         let holders: Vec<&Account> = own_dirs(s, m)
@@ -502,12 +506,16 @@ fn lift_on_demand<'a>(plan: &mut Plan, s: &Snapshot, m: &Manifest) -> Vec<(Strin
             .collect();
         match holders.as_slice() {
             [one] => {
+                if seeded {
+                    plan.ops.push(Op::DropEmpty(join(&r.shared, n)));
+                }
                 plan.ops.push(Op::Move {
                     from: join(&one.config_dir, n),
                     to: join(&r.shared, n),
                 });
                 lifted.push((one.config_dir.clone(), *n));
             }
+            _ if seeded => {}
             _ => plan.ops.push(Op::MkDir(join(&r.shared, n))),
         }
     }
@@ -553,17 +561,17 @@ fn link_missing(
     }
 }
 
-/// **账号库对齐**（常驻那一个起来时 · 核对之前 · 起会话之前做）：按需才建的那几个共享库里没有 ⇒ 建（恰好一个号里有实体 ⇒ 挪进去）；
-/// 每个号照 [`share_items`] 缺的链补上（挪走的那个号链回去）—— Claude Code 升级后在共享库里新建的项也在内。
-/// 只建目录 · 建链接 · 摘自己建的旧链（[`drop_own_stale`]）：号里已有的别的（指错的链接 · 自己的实体 · 两个号以上各有一份的按需目录）
-/// 不动，那是「修复」与核对的事。接好之后再算 ⇒ 空计划（不写、不留备份）。
+/// **账号库对齐**（常驻那一个起来时 · 核对之前 · 起会话之前做）：按需才建的那几个共享库里没有 ⇒ 建一份空的；
+/// 每个号照 [`share_items`] 缺的链补上 —— Claude Code 升级后在共享库里新建的项也在内。
+/// 只建目录 · 建链接 · 摘自己建的旧链（[`drop_own_stale`]）：号里已有的别的（指错的链接 · 自己的实体，按需目录的实体也算）
+/// 不动，挪实体是「修复」的事。接好之后再算 ⇒ 空计划（不写、不留备份）。
 pub(crate) fn plan_align(s: &Snapshot) -> Result<Plan, Refusal> {
     let m = need_manifest(s)?;
     let items = share_items(&s.shared);
     let mut plan = Plan::default();
-    let lifted = lift_on_demand(&mut plan, s, m);
+    seed_shared(&mut plan, s);
     for a in own_dirs(s, m) {
-        link_missing(&mut plan, s, &a.config_dir, &items, &lifted, |_, _, _| {});
+        link_missing(&mut plan, s, &a.config_dir, &items, &[], |_, _, _| {});
         drop_own_stale(&mut plan, s, &a.config_dir);
     }
     Ok(plan)
@@ -695,7 +703,7 @@ pub(crate) fn describe(op: &Op, manifest_path: &str) -> String {
             copy_text("beAcctPlan.step.isolate", &[("at", at), ("from", from)])
         }
         Op::Copy { from, to } => copy_text("beAcctPlan.step.copy", &[("from", from), ("to", to)]),
-        Op::Remove(p) => copy_text("beAcctPlan.step.remove", &[("path", p)]),
+        Op::Remove(p) | Op::DropEmpty(p) => copy_text("beAcctPlan.step.remove", &[("path", p)]),
         Op::Chmod { mode, at } => copy_text(
             "beAcctPlan.step.chmod",
             &[("at", at), ("mode", &format!("{mode:o}"))],
