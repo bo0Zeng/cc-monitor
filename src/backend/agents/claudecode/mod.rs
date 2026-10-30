@@ -111,6 +111,8 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     warm: Some(WARM),
     login: Some(LOGIN),
     limit_reply: Some(quota::limit_reply),
+    // 收到「用满」后，重置落在 24 小时内才挂「等到重置自动续」（2.1.314 读码核过）。
+    resumes_within: Some(24 * 3600),
     // 认 `ANTHROPIC_BASE_URL`：插上钥匙的整条地址进这个变量。
     inject: super::Inject::Env(paths::BASE_URL_ENV),
     // 官方客户端认的代理与免代理变量（大小写两形；不认 `ALL_PROXY`）。

@@ -2052,6 +2052,8 @@ pub(crate) struct DefaultUpstream {
     pub(crate) login: Option<LoginFace>,
     /// 这一家自己认得的「用满」回包（轮换的硬上限用它：这一发不发上游、回这一份）。`None` ＝ 给不出 ⇒ 对它硬上限不成立、按软阈值办。
     pub(crate) limit_reply: Option<LimitReplyOf>,
+    /// 回了「用满」之后，这一家的客户端自己等到重置再续的最远时长（秒）：重置在这之外 ⇒ 它不续、要人接着。`None` ＝ 它不等、或说不出。
+    pub(crate) resumes_within: Option<u64>,
     /// 起会话时怎么把这一家指到中转（`ccm` 最终 exec 那一处照这一格做）。是 [`Inject::Env`] 的那一家，
     /// 继承来的那一条地址（用户自己的端点 · 别的号的中转）也只看那个变量。
     pub(crate) inject: Inject,
@@ -2131,6 +2133,11 @@ pub(crate) fn usage_of(route: RouteId) -> Option<UsageFace> {
 /// 路由第 1 段 → 那一家的「用满」回包（见 [`DefaultUpstream::limit_reply`]）。
 pub(crate) fn limit_reply_of(route: RouteId) -> Option<LimitReplyOf> {
     upstream_of(route).and_then(|u| u.limit_reply)
+}
+
+/// 路由第 1 段 → 那一家的客户端自己等到重置再续的最远时长（见 [`DefaultUpstream::resumes_within`]）。
+pub(crate) fn resumes_within_of(route: RouteId) -> Option<u64> {
+    upstream_of(route).and_then(|u| u.resumes_within)
 }
 
 /// 怎么把一家指到中转：只管地址放哪。地址由上游选择给（不带钥匙），`ccm` exec 那一刻插钥匙，插哪一把按地址的路由。

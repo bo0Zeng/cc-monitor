@@ -195,7 +195,14 @@ pub(crate) fn apply(
                     from: s.current.clone(),
                     to: s.current.clone(),
                     cause: book::Cause::Hold { until: *until },
-                    why: None,
+                    // 那一家的客户端只在重置落在它等得到的时长内才自己续（适配层登记）：停得更久 ⇒ 照实说它不会自己续。
+                    why: until
+                        .zip(
+                            crate::agents::route_named(&s.agent)
+                                .and_then(crate::agents::resumes_within_of),
+                        )
+                        .filter(|(u, within)| u.saturating_sub(now) > *within)
+                        .map(|_| copy_core::copy_text("beRotation.hold.noAutoResume", &[])),
                 });
             }
         }
