@@ -69,7 +69,7 @@ async fn the_local_backend_asks_each_machine_its_needs_and_merges() {
 
 /// 界面测试的需手动替身交的那几份合并的金样（`tests/test-support/needs-fake.ts` 只照它回）。
 const REPLAYED: &str = "tests/__fixtures__/needs-merged.golden.json";
-/// 替身遇到金样里没有的输入记在这里（本树、不进仓）。
+/// 替身遇到金样里没有的输入记在这里（本树、不进仓）；这条判据读一次就收走（收进现打的那份）。
 const MISSING: &str = ".build/golden-missing/needs-merged.jsonl";
 
 /// 一组输入跑真的扇出与合并：`asked` 问了哪几台，`answers` 答了的那几台各自的整份；问了没答的那台 ⇒ 常驻不在。
@@ -125,8 +125,18 @@ async fn the_needs_fake_replays_merges_made_here() {
     let mut inputs: Vec<serde_json::Value> =
         golden["cases"].as_array().expect("金样没有 cases").clone();
     if let Ok(missing) = std::fs::read_to_string(root.join(MISSING)) {
+        let _ = std::fs::remove_file(root.join(MISSING));
         for line in missing.lines().filter(|l| !l.trim().is_empty()) {
             let c: serde_json::Value = serde_json::from_str(line).expect("没录的那一行不是 JSON");
+            // 夹具不是线上那一形（多一格 · 少一格）⇒ 那一行收不进：印出原因、丢掉（替身那边照旧找不到、照旧抛）。
+            let bad = c["answers"].as_object().and_then(|a| {
+                a.values()
+                    .find_map(|v| serde_json::from_value::<NeedsList>(v.clone()).err())
+            });
+            if let Some(e) = bad {
+                eprintln!("{MISSING}：这一行的整份不是线上的 NeedsList（{e}），没收进");
+                continue;
+            }
             let same =
                 |x: &serde_json::Value| x["asked"] == c["asked"] && x["answers"] == c["answers"];
             if !inputs.iter().any(same) {

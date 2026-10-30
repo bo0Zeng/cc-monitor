@@ -20,9 +20,11 @@ import type { Origin } from "../../src/frontend/ui/ipc/origin";
 import { liveFace } from "./session-faces";
 import { REPO_ROOT } from "./repo-root";
 
-/** 一条在等的会话那一项。 */
+/** 一条在等的会话那一项（线上那一形：界面收到时才盖的 `receivedAt` 不在线上，摘掉）。 */
 export function sessionItem(sid: string, needs: Needs, label = sid): NeedsItem {
-  return { kind: "session", rank: needs.rank, session: { sid, label, face: liveFace("needs_you"), needs, hidden: null } };
+  const wire = { ...needs } as Needs & { receivedAt?: number };
+  delete wire.receivedAt;
+  return { kind: "session", rank: needs.rank, session: { sid, label, face: liveFace("needs_you"), needs: wire, hidden: null } };
 }
 
 /** 会话外的一项。 */
