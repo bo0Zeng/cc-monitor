@@ -13,7 +13,7 @@
 //! | 盯计划仓 · 工作区 `.env` · 各片仓库里声明过的文件，输出摘要或要你看的数变了才推一帧 `changed {plan}` | [`watch`] |
 //! | 要你看的四种（顶层全签收 · 校验不通过 · 负责人的会话停了 · 负责人的会话在等你）· 退回落没落地 · 送进会话的那一行 | [`needs`] |
 //! | 文件窗口反查：一个目录落在哪一片的仓库里、每份文件归哪一格（`plan-files`）| [`owners`] |
-//! | 线上形状（界面的类型由它经 ts-rs 生成；成品从 product 起就是这些类型）| [`wire`] |
+//! | 线上形状住契约 `cmd_wire::plan`（界面的类型由它经 ts-rs 生成；成品从 product 起就是这些类型）| — |
 //! | 认可与退回的记录（后端自己的 `~/.cc-monitor/plan-review.json`）· 照它给成品标认可与退回的状态 | [`review`] |
 //!
 //! # 计划仓一个字节都不写
@@ -34,7 +34,6 @@ pub(crate) mod product;
 pub(crate) mod refs;
 pub(crate) mod review;
 pub(crate) mod watch;
-pub(crate) mod wire;
 
 /// 起 pb 的一条命令最多等多久。量过：252 格的研究盘 `dump` 1.1 秒，`render` 同量级；留一个数量级给慢盘与远端。
 pub(crate) const PB_DEADLINE_SECS: u64 = 20;

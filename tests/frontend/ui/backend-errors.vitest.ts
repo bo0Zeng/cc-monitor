@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { UiErrorPayload } from "../../../src/frontend/ui/generated/UiErrorPayload";
+import { UI_ERROR } from "../../../src/frontend/ui/generated/shell-names";
 
 type Mod = typeof import("../../../src/frontend/ui/backend-errors");
 let mod: Mod;
@@ -55,16 +56,18 @@ describe("壳推来的出错 toast", () => {
 });
 
 describe("界面只有一个出错 listener", () => {
-  it("生产代码里订的壳推出错事件只有 `monitor-error` 一处；`remote-health` 零处（带正控）", async () => {
+  it("生产代码里订的壳推出错事件（生成物的 `UI_ERROR`）只有一处；`remote-health` 零处（带正控）", async () => {
     const { productionTsFiles } = await import("../../test-support/production-sources.ts");
     const { stripComments } = await import("../../test-support/strip-comments.ts");
     const files = productionTsFiles("src/frontend/ui");
     expect(files.length, "一份界面生产代码都没读到").toBeGreaterThan(20);
-    const listened = (event: string): string[] =>
-      files.filter((f) => new RegExp(`\\blisten(<[^>]*>)?\\(\\s*"${event}"`).test(stripComments(f.text, "ts"))).map((f) => f.file);
-    expect(listened("remote-health"), "界面还在订 `remote-health`").toEqual([]);
-    expect(listened("monitor-error"), "订 `monitor-error` 的不是恰好 backend-errors.ts 一处").toEqual(["src/frontend/ui/backend-errors.ts"]);
+    // `first` 是 `listen(` 的第一个实参原样：带引号的事件名，或生成物里那个常量名。
+    const listened = (first: string): string[] =>
+      files.filter((f) => new RegExp(`\\blisten(<[^>]*>)?\\(\\s*${first}\\b`).test(stripComments(f.text, "ts"))).map((f) => f.file);
+    expect(listened(`"remote-health"`), "界面还在订 `remote-health`").toEqual([]);
+    expect(listened("UI_ERROR"), "订壳推出错事件的不是恰好 backend-errors.ts 一处").toEqual(["src/frontend/ui/backend-errors.ts"]);
+    expect(listened(`"${UI_ERROR}"`), "有一处绕过生成物、手写事件名在订出错事件").toEqual([]);
     // 正控：同一个认法认得出带类型参数的那一形。
-    expect(new RegExp(`\\blisten(<[^>]*>)?\\(\\s*"x-y"`).test(`listen<P>("x-y", f)`)).toBe(true);
+    expect(new RegExp(`\\blisten(<[^>]*>)?\\(\\s*UI_ERROR\\b`).test(`listen<P>(UI_ERROR, f)`)).toBe(true);
   });
 });

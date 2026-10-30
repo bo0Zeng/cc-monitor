@@ -47,7 +47,6 @@ import {
   shortId,
   ringLanes,
   ringRules,
-  statusLook,
   topBlock,
   type PlanFilter,
   type RingRow,
@@ -944,7 +943,7 @@ export class PlanView {
 
   private row(slice: PlanSlice, r: ReturnType<typeof outlineRows>[number], rings: RingRow): HTMLElement {
     const c = r.cell;
-    const look = statusLook(c);
+    const look = c.look;
     const el = document.createElement("div");
     el.className = `${s.pvRow} plan-row`;
     el.setAttribute("role", "treeitem");
@@ -1134,11 +1133,10 @@ export class PlanView {
       const bar = document.createElement("span");
       bar.className = s.pvKbar;
       name.append(bar, document.createTextNode(labelOf(slice, c.id)));
-      const look = statusLook(c);
       const stw = document.createElement("span");
       stw.className = s.pvStw;
-      stw.dataset.look = look;
-      stw.append(icon(STATUS_ICON[look], "compact"), document.createTextNode(joinSep(c.stateLine ?? "", c.whyShort?.text ?? "")));
+      stw.dataset.look = c.look;
+      stw.append(icon(STATUS_ICON[c.look], "compact"), document.createTextNode(c.end ?? ""));
       const b = roots.get(c.id);
       const tr = tbl2.row([name, stw, b?.owner ? this.whoChip(b.owner) : text("")]);
       clickRow(tr, () => this.select(c.id));

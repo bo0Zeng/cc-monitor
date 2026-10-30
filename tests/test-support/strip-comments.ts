@@ -1,85 +1,43 @@
 /**
- * 剥注释——**守卫用**（Rust 与 TS 共用一个扫描器，方言差异由 `lang` 参数决定）。
+ * 剥注释——**守卫用**，测试里唯一的一份（Rust · TS · Kotlin · CSS 共用一个扫描器，方言差异由 `lang` 决定）。
+ * 别的测试不再各写一份正则剥法：两份剥法语义一漂，就是静默削弱守卫。
  *
- * ## 为什么抽出来
- *
- * C01/C02/C03 三个功能里，「拿注释当代码判据」这个形状**栽了四次**：
- * ① 生成物的 JSDoc 里含有 Rust doc comment 搬过来的字，被当成类型判据；
- * ② 剥了 TS 侧、忘了剥 Rust 侧，「钉住显式决定」那条断言被自己的注释喂饱；
- * ③ 裸 `grep -c bigint src/frontend/ui/generated/*.ts` 数到 3 个文件，全在 JSDoc 散文里；
- * ④ 数 `#[tauri::command]` 时把**注释里提到**它的地方也计入，报出一个不存在的「7 个命令未注册」。
- *
- * C04a 起有**第二个守卫文件**要用它。两份手抄的剥注释语义一旦漂移，就是**静默削弱守卫**
- * ——而那正是 `rust-ts-boundary` 这个工作区在治的病。所以按 ≥2 那把尺子抽成单一实现。
- *
- * **只被 `*.vitest.ts` 引用 ⇒ 进不了 bundle**：vite 的入口是 `index.html` 里的 `/src/frontend/ui/main.ts`，
- * 没有任何生产文件 import 任何 `.vitest.ts` ⇒ 本文件压根不在入口的模块图里
- * （**不是** tree-shaking 摇掉的——C04a Phase D 审计订正：结论对、原来写的机制不对）。
- * 这一条由 `generated-boundary-guard.vitest.ts` 的「生产代码不许 import test-support」机检。
+ * **只被测试引用 ⇒ 进不了 bundle**：没有任何生产文件 import `tests/test-support/`
+ * （`generated-boundary-guard.vitest.ts` 的「生产代码不许 import test-support」机检）。
  *
  * ## 为什么是个状态机，而不是两条正则
  *
- * 原来的实现是 `src.replace(/\/\*[\s\S]*?\*\//g,"").replace(/(^|[^:])\/\/.*$/gm,"$1")`。
- * **C04a Phase D 审计用变异实测把它打掉了**：`src/frontend/shell/src/config_surface.rs:775` 有一行
- * `"~/.local/*\/bin",` —— 字符串字面量里的 `/*` 被当成块注释开始，非贪婪匹配一路吃到
- * `:1296` 的下一个 `*\/`，**521 行真 Rust 代码对所有守卫隐形**。
+ * `src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")` 那一形认不出字符串：
+ * `"~/.local/*\/bin"` 里的 `/*` 会被当成块注释开始、一路吃到下一个 `*\/`；`"https://…"` 里的 `//` 会把那一行剩下的代码剥掉。
+ * 危险程度按断言方向分两档：对肯定式断言（差集、等号计数）过剥 ⇒ 假红，会叫；
+ * 对否定式断言（`.not.toContain(…)`）过剥 ⇒ 假绿，永远不叫。⇒ 字符串、字符字面量、TS 正则字面量里的注释起始符一律不算。
  *
- * 当时计数还全对纯属运气：该文件唯一的 `#[tauri::command]` 在 596 行，被吞的区间整段
- * 落在 `#[cfg(test)]`（631 行起）里。危险程度按断言方向分两档：
- * - 对**肯定式**断言（差集、等号计数）过剥 ⇒ **假红**，会叫，能发现；
- * - 对**否定式**断言（`.not.toContain("bigint")` · `.not.toMatch(/import .*invoke/)`）
- *   过剥 ⇒ **假绿**，永远不叫。
+ * ## 各方言认什么
  *
- * 全仓另有 20+ 处字符串里含注释起始符（`"//"` · `"~/.local/bin/*-*"` · `"*\/subagents/*"`），
- * 13 个 `.rs` 文件的 `/*` 与 `*\/` 计数不配对。所以这不是理论洞，是**已实测的现存 bug**。
+ * | 方言 | 行注释 | 块注释 | 当不透明字面量跳过的 |
+ * |---|---|---|---|
+ * | `rust` | `//` | `/* *\/`（不认嵌套） | `"…"` · 原始串 `r#"…"#` · 字符字面量 `'x'` / `'\n'`（生命周期 `'a` 不算） |
+ * | `ts` | `//` | `/* *\/` | `"…"` · `'…'` · 模板串 `` `…` ``（整段，不回到 `${…}` 里解析）· 正则字面量 `/…/flags` |
+ * | `kotlin` | `//` | `/* *\/`（认嵌套） | `"…"` · 原始串 `"""…"""` · 字符字面量 `'x'` |
+ * | `css` | 无（`//` 在 CSS 里不是注释） | `/* *\/` | `"…"` · `'…'` |
  *
- * ## 三条刻意的取舍（都由「等号计数」兜底，不是无声的假设）
- *
- * 1. **块注释不认嵌套**（第一个 `*\/` 收尾）。Rust 语法允许嵌套、TS 不允许；
- *    按嵌套处理会让 TS 的 `/** 匹配 src/*.ts *\/` 这种 JSDoc 过剥。选 TS 语义 ⇒
- *    Rust 的嵌套注释会**欠剥**（留下 `*\/` 当代码），方向是假红、会叫。
- * 2. **模板字符串整体当不透明字符串**，不回到代码模式解析 `${…}`。
- *    代价：`` `${await invoke("x")}` `` 里的命令名扫不到。兜底是
- *    `commands.vitest.ts` 把字面量命令名数钉成 `toBe(112)` 等号——真藏掉一个就红。
- * 3. **不处理 TS 正则字面量**。`/[/*]/` 这种字符类里含 `/*` 的写法会被误当注释开始
- *    （本仓今天 0 处）。同样由等号计数兜。
- *
- * **Rust 侧刻意不把 `'` 当字符串定界符**：本仓有 85 处 `&'static`、16 处 `&'a`、13 处 `'a>`，
- * 把 `'` 当定界符会从生命周期一路吃到下一个 `'`，**吃掉真代码**。
- *
- * ## E75（2026-08-01）：上面那句「字符字面量对本函数无害」**是错的**
- *
- * 原文写着「`'/'`、`'*'` 各自被 `'` 隔开，凑不出 `//` 或 `/*` 的相邻」——
- * 它只想到了斜杠，**漏了引号**：`'"'` 里的那个双引号会被下面的普通字符串分支当成
- * 字符串起点，于是**从这里一路吃到文件后面下一个 `"`**，中间的注释全都不再被剥。
- *
- * **实测后果**（G3b-1 当场撞出）：`history.rs` 写了
- * `const SHELL_META: &[char] = &['\'', '"', …]`，此后一段 doc 注释里的
- * `` `#[tauri::command]` `` 字样被 C04a 守卫当成真属性，报出一个**不存在**的命令
- * 「声明了却没注册」。
- *
- * 与本文头注记的那次（`"~/.local/*\/bin"` 吞掉 521 行）**同一个根因、方向相反**：
- * 那次是假阴性（危险、不叫），这次是假阳性（fail-closed、会叫）。
- * 两次都是「状态机不认某类字面量」。
- *
- * ⇒ 现在**认 Rust 字符字面量**，判据窄到不会与生命周期混淆：只有
- * `'<单个字符或一个转义>'`（右引号必须紧跟）才算字符字面量。`'static` / `'a>` 不匹配
- *（`s` 之后不是 `'`），所以那 114 处生命周期一处都不受影响。
+ * 刻意的取舍：
+ * 1. Rust 块注释不认嵌套（第一个 `*\/` 收尾）：嵌套注释会欠剥（留下 `*\/` 当代码），方向是假红、会叫。
+ * 2. TS 模板串整体当不透明字符串：`` `${await invoke("x")}` `` 里的命令名扫不到。
+ * 3. TS 正则字面量按「`/` 前面那个有意义的字符」认：前面是标识符 · 数字 · `)` · `]` ⇒ 除号；
+ *    前面是运算符 · 开括号 · 逗号 · 行首 · `return` 这类关键字 ⇒ 正则开头。正则不跨行，碰到换行就当除号退回。
+ * 4. Rust 的 `'` 只有 `'<单个字符或一个转义>'`（右引号紧跟）才算字符字面量：`&'static` · `'a>` 是生命周期，不当定界符
+ *    （当了就会从生命周期一路吃到下一个 `'`）。字符字面量 `'"'` 必须先于普通字符串认，否则那个双引号会开一个幻影字符串。
  */
 
-/**
- * 源码方言。**必填**：给默认值会让调用方静默拿到错的方言（Rust 的 `'a` vs TS 的 `'…'`）。
- */
-export type SourceLang = "rust" | "ts";
+/** 源码方言。**必填**：给默认值会让调用方静默拿到错的方言（Rust 的 `'a` vs TS 的 `'…'`）。 */
+export type SourceLang = "rust" | "ts" | "kotlin" | "css";
+
+/** 前面是这几个词之一 ⇒ 后面的 `/` 是正则开头（TS）。 */
+const REGEX_AFTER_WORDS = new Set(["return", "typeof", "case", "in", "of", "delete", "void", "throw", "new", "else", "do", "yield", "await", "instanceof"]);
 
 /**
- * 去掉块注释与行注释，**逐字符保留行结构**（注释里的字符换成空格，换行原样留下）。
- *
- * 「保留行结构」是有意的，而且现在是**真的**：C04a Phase D 审计指出旧实现这句是假声称
- * （块注释被连换行一起删，`src/frontend/ui/generated/DataPathInfo.ts` 64 行剥成 16 行），
- * 而 `generated-boundary-guard.vitest.ts` 里「往上收属性要跳空行」那段循环的设计理由
- * 正建立在这个前提上，且那个形状按计划要复制 127 次 ⇒ 不能留一个假前提在根上。
- * 现在改成等量空格替换，行号与相邻关系逐行对齐。
+ * 去掉块注释与行注释，**逐字符保留行结构**（注释里的字符换成空格，换行原样留下）：行号与相邻关系逐行对齐。
  */
 export function stripComments(src: string, lang: SourceLang): string {
   const out = src.split("");
@@ -90,7 +48,7 @@ export function stripComments(src: string, lang: SourceLang): string {
     for (let k = from; k < to && k < n; k++) if (out[k] !== "\n") out[k] = " ";
   };
 
-  const isIdent = (ch: string | undefined): boolean => ch !== undefined && /[A-Za-z0-9_]/.test(ch);
+  const isIdent = (ch: string | undefined): boolean => ch !== undefined && /[A-Za-z0-9_$]/.test(ch);
 
   /** 跳过一个带 `\` 转义的定界字符串，返回结束位置（定界符之后）。 */
   const skipQuoted = (start: number, quote: string): number => {
@@ -103,12 +61,50 @@ export function stripComments(src: string, lang: SourceLang): string {
     return n; // 未闭合：吃到文件尾（源码本身有语法错，守卫会以别的方式叫）
   };
 
+  /** TS：`i` 处的 `/` 是不是正则开头（看它前面那个有意义的字符或词）。 */
+  const regexStartsAt = (i: number): boolean => {
+    let k = i - 1;
+    while (k >= 0 && (src[k] === " " || src[k] === "\t")) k--;
+    if (k < 0 || src[k] === "\n" || src[k] === "\r") return true;
+    const p = src[k];
+    if (p === ")" || p === "]" || p === "}" || p === "'" || p === '"' || p === "`") return false;
+    if (isIdent(p)) {
+      let s = k;
+      while (s > 0 && isIdent(src[s - 1])) s--;
+      return REGEX_AFTER_WORDS.has(src.slice(s, k + 1));
+    }
+    return true; // 运算符 · 开括号 · 逗号 · 分号 …
+  };
+
+  /** TS：跳过从 `i` 起的正则字面量（含 flags）；不是一个完整的单行正则 ⇒ 返回 `-1`。 */
+  const skipRegex = (i: number): number => {
+    let k = i + 1;
+    let inClass = false;
+    while (k < n) {
+      const ch = src[k];
+      if (ch === "\n") return -1;
+      if (ch === "\\") k += 2;
+      else if (inClass) {
+        if (ch === "]") inClass = false;
+        k++;
+      } else if (ch === "[") {
+        inClass = true;
+        k++;
+      } else if (ch === "/") {
+        k++;
+        while (k < n && /[a-z]/.test(src[k])) k++;
+        return k;
+      } else k++;
+    }
+    return -1;
+  };
+
   let i = 0;
   while (i < n) {
     const c = src[i];
 
-    // ---- 行注释 ----
-    if (c === "/" && src[i + 1] === "/") {
+    // ---- 行注释（CSS 没有）----
+    if (lang !== "css" && c === "/" && src[i + 1] === "/") {
       const nl = src.indexOf("\n", i);
       const end = nl < 0 ? n : nl;
       blank(i, end);
@@ -116,13 +112,38 @@ export function stripComments(src: string, lang: SourceLang): string {
       continue;
     }
 
-    // ---- 块注释（不认嵌套，见头注取舍 1）----
+    // ---- 块注释（Kotlin 认嵌套，别的不认）----
     if (c === "/" && src[i + 1] === "*") {
-      const close = src.indexOf("*/", i + 2);
-      const end = close < 0 ? n : close + 2;
+      let end: number;
+      if (lang === "kotlin") {
+        let depth = 1;
+        let k = i + 2;
+        while (k < n && depth > 0) {
+          if (src[k] === "/" && src[k + 1] === "*") {
+            depth++;
+            k += 2;
+          } else if (src[k] === "*" && src[k + 1] === "/") {
+            depth--;
+            k += 2;
+          } else k++;
+        }
+        end = k;
+      } else {
+        const close = src.indexOf("*/", i + 2);
+        end = close < 0 ? n : close + 2;
+      }
       blank(i, end);
       i = end;
       continue;
+    }
+
+    // ---- TS 正则字面量 ----
+    if (lang === "ts" && c === "/" && regexStartsAt(i)) {
+      const end = skipRegex(i);
+      if (end > 0) {
+        i = end;
+        continue;
+      }
     }
 
     // ---- Rust 原始字符串 r"…" / r#"…"# / br##"…"## ----
@@ -130,29 +151,28 @@ export function stripComments(src: string, lang: SourceLang): string {
       const m = /^(?:br|rb|r|b)(#*)"/.exec(src.slice(i, i + 12));
       if (m && (m[1].length > 0 || m[0].startsWith("r") || m[0].startsWith("br"))) {
         const terminator = `"${m[1]}`;
-        const bodyStart = i + m[0].length;
-        const close = src.indexOf(terminator, bodyStart);
+        const close = src.indexOf(terminator, i + m[0].length);
         i = close < 0 ? n : close + terminator.length;
         continue;
       }
     }
 
-    // ---- Rust 字符字面量（E75）----
-    //
-    // **必须在普通字符串分支之前**：`'"'` 里的双引号一旦落进那条分支，就会开一个
-    // 幻影字符串、把后面的注释全带走（见头注 E75 那段的实测后果）。
-    //
-    // 判据刻意窄：右引号必须**紧跟**在一个字符或一个转义之后。于是
-    // `'static` / `'a>` / `&'_` 一概不匹配（下一个字符不是 `'`），生命周期零误伤。
-    if (lang === "rust" && c === "'") {
-      const m = /^'(?:\\(?:x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f]{1,6}\}|[\s\S])|[^\\'])'/.exec(
-        src.slice(i, i + 12),
-      );
+    // ---- Kotlin 原始字符串 """…""" ----
+    if (lang === "kotlin" && src.startsWith('"""', i)) {
+      const close = src.indexOf('"""', i + 3);
+      i = close < 0 ? n : close + 3;
+      while (i < n && src[i] === '"') i++; // `""""` 收尾时多出来的引号属于串
+      continue;
+    }
+
+    // ---- 字符字面量（Rust · Kotlin）：必须先于普通字符串认 ----
+    if ((lang === "rust" || lang === "kotlin") && c === "'") {
+      const m = /^'(?:\\(?:x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f]{1,6}\}|u[0-9A-Fa-f]{4}|[\s\S])|[^\\'])'/.exec(src.slice(i, i + 12));
       if (m) {
         i += m[0].length;
         continue;
       }
-      // 不是字符字面量 ⇒ 是生命周期，当普通字符往下走（**绝不**当定界符）。
+      // Rust：不是字符字面量 ⇒ 是生命周期，当普通字符往下走（**绝不**当定界符）。
     }
 
     // ---- 普通字符串 ----
@@ -160,8 +180,8 @@ export function stripComments(src: string, lang: SourceLang): string {
       i = skipQuoted(i, '"');
       continue;
     }
-    // TS 的 '…' 与 `…`。**Rust 的 ' 不在此列**（生命周期，见头注）。
-    if (lang === "ts" && (c === "'" || c === "`")) {
+    // TS 的 '…' 与 `…`、CSS 的 '…'。Rust · Kotlin 的 ' 上面已认（字符字面量）。
+    if ((lang === "ts" && (c === "'" || c === "`")) || (lang === "css" && c === "'")) {
       i = skipQuoted(i, c);
       continue;
     }

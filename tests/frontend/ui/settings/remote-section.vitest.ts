@@ -741,9 +741,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     sec.setMachine("machine:b", ms({ state: "down", offline: false, said: "s" }));
     sec.setMachine("machine:c", ms({ state: "down", offline: true, said: "s" }));
     expect(count()).toBe(line(1, 1));
-    sec.setLocalBackend({ state: "older", word: "w", said: "s", fixes: [], next: null });
+    sec.setLocalBackend({ state: "older", look: "needs_update", tone: "warn", word: "w", said: "s", fixes: [], next: null });
     expect(count()).toBe(line(1, 2));
-    sec.setLocalBackend({ state: "down", word: "w", said: "s", fixes: [], next: null });
+    sec.setLocalBackend({ state: "down", look: "down", tone: "fail", word: "w", said: "s", fixes: [], next: null });
     expect(count()).toBe(line(2, 1));
     // 本机后端起来了、本机那一台的成品到了 ⇒ 读成品，壳那一格作废。
     sec.setMachine(LOCAL_MACHINE_PAGE_ID, ms({}));

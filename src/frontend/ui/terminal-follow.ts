@@ -19,9 +19,7 @@ import { holderOf, shotOf, type TerminalHolder, type TerminalShot } from "./term
 import type { TerminalFollowEnd } from "./generated/TerminalFollowEnd";
 import type { TerminalScreen } from "./generated/TerminalScreen";
 import type { TermInput } from "./generated/TermInput";
-
-/** 那条画面流（与壳 `event_replay.rs::TERMINAL_SCREEN_KIND` 同一个串；后面跟 `/<票>`）。流名刻意不叫命令名（命令是 `terminal-follow`）。 */
-export const TERMINAL_SCREEN_KIND = "terminal-screen";
+import { TERMINAL_SCREEN_KIND } from "./generated/shell-names";
 
 /** 两次回执之间至少隔多久（ms）：实时画面的节奏上限。 */
 export const ACK_GAP_MS = 100;
