@@ -14408,33 +14408,6 @@ data class OriginSessionsListedPayload(
     }
 }
 
-@Suppress("UNCHECKED_CAST")
-data class Outcome(
-    val sid: String,
-    val outcome: SessionState,
-    val why: String?,
-    val said: String?,
-    val copyDetail: String,
-    val session: String?,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<Outcome> = obj(
-            listOf(
-            Field("sid", { Str }, optional = false, nullable = false),
-            Field("outcome", { SessionState.ADAPTER }, optional = false, nullable = false),
-            Field("why", { opt(Str) }, optional = false, nullable = true),
-            Field("said", { opt(Str) }, optional = false, nullable = true),
-            Field("copyDetail", { Str }, optional = false, nullable = false),
-            Field("session", { opt(Str) }, optional = false, nullable = true),
-            ),
-            { a -> Outcome(a[0] as String, a[1] as SessionState, a[2] as String?, a[3] as String?, a[4] as String, a[5] as String?) },
-            { v -> arrayOf(v.sid, v.outcome, v.why, v.said, v.copyDetail, v.session) },
-        )
-    }
-}
-
 enum class OwnClass(val wire: String) {
     TRUTH("truth"),
     CACHE("cache"),
