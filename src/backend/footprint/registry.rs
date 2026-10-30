@@ -344,7 +344,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         named: "tmux",
         host: HostScope::Either,
         why: Text(|| copy_text("rsToolRegistry.env.tmuxWhy", &[])),
-        site: "backend/control/ccm_invocation.rs::Refusal",
+        site: "backend/control/launch_render/ccm_invocation.rs::Refusal",
     },
     UnmanagedEnv {
         id: "terminal-exit",
