@@ -33,7 +33,7 @@
 //!
 //! 本机没有 `pwsh` / `powershell`，Win11 虚拟机不许碰（未拍）⇒ PowerShell 文本在这里**一次都没被
 //! PowerShell 解析过**。它买到的只有：函数体逐字照 `src/shared/cc.ps1.tpl` 里那个 `cc` 的形状（`K-R132` 真机上
-//! 那一形 `parse-errors=0`）· 黄金串 · 与 POSIX 臂同契约的对拍（同一份清单两边渲染再各自读回，得回同一份清单）。
+//! 那一形 `parse-errors=0`）· 黄金串。
 
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
@@ -83,11 +83,8 @@ impl Shell {
     }
 }
 
-/// 解析回来的一条：`(名字, 参数, 调用时的词交给谁)`，或者一行认不出的原文 ＋ 原因（**不静默丢**）。
-pub(crate) type Parsed = Result<(String, Vec<String>, RestTo), String>;
-
 /// 调用时跟在别名后面的那些词交给谁：缺省交给 agent（接在 `--` 左边）；交给 ccm 时接在右边末尾。
-/// 许不许交给 ccm 是通用层的规则（只有接回会话那一形），方言只照着写与读。
+/// 许不许交给 ccm 是通用层的规则（只有接回会话那一形），方言只照着写。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum RestTo {
@@ -96,7 +93,7 @@ pub(crate) enum RestTo {
     Ccm,
 }
 
-/// 一条别名调的是谁、argv 里哪个词把两半分开。**通用层给**（`control::ccm` 那两个常量），方言只照着写与读：
+/// 一条别名调的是谁、argv 里哪个词把两半分开。**通用层给**（`control::ccm` 那两个常量），方言只照着写：
 /// 适配层不往上依赖。
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Call<'a> {
@@ -104,9 +101,9 @@ pub(crate) struct Call<'a> {
     pub(crate) word: &'a str,
     /// 分两半的那个词（`ccm_line::argv::flag::END`）：左边交 claude，右边归 ccm。
     pub(crate) end: &'a str,
-    /// ccm 落在家目录下哪儿（`/` 分隔的相对路径，`relay_route_core::BACKEND_LANDING_REL`）：给了 ⇒ 不靠 `PATH` 的那一臂按它显式叫
-    /// （PowerShell：别名块不动会话 `PATH`）；`None` ＝ 照 `word` 裸叫 —— 早先版本写下的那一形，只给一次性迁移读旧文件。
-    pub(crate) landing: Option<&'a str>,
+    /// ccm 落在家目录下哪儿（`/` 分隔的相对路径，`relay_route_core::BACKEND_LANDING_REL`）：不靠 `PATH` 的那一臂按它显式叫
+    /// （PowerShell：别名块不动会话 `PATH`）。
+    pub(crate) landing: &'a str,
 }
 
 /// 一份启动文件候选：**路径 ＋ 盘上不在时列不列**（「列不列不存在的」是方言的读法，表第一行）。
@@ -143,10 +140,6 @@ pub(crate) trait ShellDialect: Sync {
     /// 中文注释会吞掉下一行）；POSIX 一个字节都不加（`.bashrc` 开头多三个字节 ⇒ `sh` 把它当命令）。
     fn encode_for_disk(&self, content: &str) -> String;
 
-    /// 读进来的那一份在交给任何**判内容**的东西之前要剥掉什么（[`Self::encode_for_disk`] 的逆）。
-    /// PowerShell 剥 BOM；POSIX 原样（用户 rc 开头那三个字节不是我们的，写回去也原样留着）。
-    fn decode_from_disk<'a>(&self, raw: &'a str) -> &'a str;
-
     /// shell 启动时会执行的那几份文件（界面「别名块装进哪份」的候选），按优先级。
     /// 「列不列一份还不存在的文件」是读法，由实现答（POSIX 只列在的 · PowerShell 的 `$PROFILE` 常常要装时才建）。
     /// `home` 是**那台机器**的 home（后端 `files-home` 答的字符串）；这里一个字节的盘都不读（[`StartupCandidate`]）。
@@ -168,9 +161,6 @@ pub(crate) trait ShellDialect: Sync {
 
     /// 在终端里敲的那一行：按绝对路径叫 `program`（不靠 `PATH`）、带一个词 `word`（通用层判过合格的 `@名`）。
     fn render_start(&self, program: &str, word: &str) -> String;
-
-    /// 把我们那份文件的正文（BOM 已剥）读回成一条条。注释 / 空行跳过；认不出的原文带原因。
-    fn parse_file(&self, call: Call, text: &str) -> Vec<Parsed>;
 
     /// 这一行（已去掉行首空白）声明了哪个函数（原住 `assets/aliases/block.rs` 的两份认法，逐字搬来）。
     fn declared_function(&self, line: &str) -> Option<String>;
@@ -301,8 +291,8 @@ pub(crate) struct Posix;
 /// fish 根本 `source` 不了它。少列一个候选好过让人点一下之后 shell 报一屏语法错。
 const POSIX_RC_CANDIDATES: &[&str] = &[".bashrc", ".zshrc", ".bash_profile", ".profile"];
 
-/// POSIX 函数声明的头与尾（写与读回共用这一对 —— 渲染与解析不许各写一份字面量）。
-/// ⚠ 住常量还有一个理由：`structural_scan` 那把尺子按大括号配平切函数体，字面量里落单的 `{` 会让它切过界。
+/// POSIX 函数声明的头与尾。
+/// ⚠ 住常量的理由：`structural_scan` 那把尺子按大括号配平切函数体，字面量里落单的 `{` 会让它切过界。
 const POSIX_FN_HEAD: &str = "() { ";
 /// `"$@"`（用户敲别名时跟的参数）落在 `--` 左边 —— 交给 claude；别名自己的 ccm 选项在它后面的 `--` 右边。
 const POSIX_ARGS: &str = " \"$@\"";
@@ -327,88 +317,6 @@ impl Posix {
             shell_quote_core::posix_quote(w)
         }
     }
-
-    /// 把中段按 POSIX 单引号规则切成词，顺便证明引号是配平的。
-    ///
-    /// ⚠ 反斜杠**只**在 `'\''`（关引号 + 转义的引号 + 开引号）这一形里放行 ——
-    /// 它是 `shell_quote_core::posix_quote` 唯一会产出的反斜杠；别处出现一律拒。
-    pub(crate) fn split_words(mid: &str) -> Result<Vec<String>, String> {
-        let mut words: Vec<String> = Vec::new();
-        let mut cur = String::new();
-        let mut started = false;
-        let mut in_q = false;
-        let mut it = mid.chars();
-        while let Some(c) = it.next() {
-            match c {
-                '\'' => {
-                    in_q = !in_q;
-                    started = true;
-                }
-                ' ' if !in_q => {
-                    if started {
-                        words.push(std::mem::take(&mut cur));
-                        started = false;
-                    }
-                }
-                '\\' if !in_q => {
-                    // 只认 `'\''`：此刻引号刚被上一个 `'` 关掉，后面必须是 `'` 再 `'`。
-                    if it.next() != Some('\'') || it.next() != Some('\'') {
-                        return Err(copy_text("rsShellDialect.posix.backslash", &[]));
-                    }
-                    cur.push('\'');
-                    in_q = true;
-                    started = true;
-                }
-                _ => {
-                    cur.push(c);
-                    started = true;
-                }
-            }
-        }
-        if in_q {
-            return Err(copy_text("rsShellDialect.quote.unbalanced", &[]));
-        }
-        if started {
-            words.push(cur);
-        }
-        Ok(words)
-    }
-
-    fn parse_line(call: Call, line: &str) -> Parsed {
-        let rest = line
-            .strip_suffix(POSIX_FN_TAIL)
-            .ok_or(&copy_text("rsShellDialect.posix.badTail", &[]))?;
-        let (name, body) = rest
-            .split_once(POSIX_FN_HEAD)
-            .ok_or(&copy_text("rsShellDialect.posix.badShape", &[]))?;
-        // `ccm <左…> "$@"[ -- <右…>]`：`"$@"` 是分界（最后一处；用户的值经 [`Self::word`] 单引号，不会长成它）。
-        let at = body
-            .rfind(POSIX_ARGS)
-            .ok_or(&copy_text("rsShellDialect.posix.badTail", &[]))?;
-        let (lead, tail) = (&body[..at], &body[at + POSIX_ARGS.len()..]);
-        let right: Option<Vec<String>> = match tail.strip_prefix(" --") {
-            None if tail.is_empty() => None,
-            None => return Err(copy_text("rsShellDialect.posix.badShape", &[])),
-            Some(r) => Some(Self::split_words(r.trim_start())?),
-        };
-        let mut words = Self::split_words(lead)?.into_iter();
-        let head = words.next().unwrap_or_default();
-        let word = call.word;
-        if head != word && !head.starts_with("\"${CCM:-") {
-            return Err(copy_text(
-                "rsShellDialect.posix.notCcm",
-                &[("word", &word.to_string())],
-            ));
-        }
-        let lead: Vec<String> = words.collect();
-        // `"$@"` 在最后、前面已有 `--` ⇒ 调用时的词交给 ccm（交给 claude 时 `"$@"` 恒在 `--` 左边，后面跟着 ` --`）。
-        let rest = if right.is_none() && lead.iter().any(|w| w == call.end) {
-            RestTo::Ccm
-        } else {
-            RestTo::Agent
-        };
-        Ok((name.to_string(), join_last_end(call.end, lead, right), rest))
-    }
 }
 
 /// 别名那条 argv 按最后一个 `--` 切成两半（没有 ⇒ 右边 `None`）。两种方言渲染共用。
@@ -419,22 +327,9 @@ fn split_last_end<'a>(end: &str, argv: &'a [String]) -> (&'a [String], Option<&'
     }
 }
 
-/// [`split_last_end`] 的逆：两种方言读回共用。
-fn join_last_end(end: &str, mut left: Vec<String>, right: Option<Vec<String>>) -> Vec<String> {
-    if let Some(r) = right {
-        left.push(end.into());
-        left.extend(r);
-    }
-    left
-}
-
 impl ShellDialect for Posix {
     fn encode_for_disk(&self, content: &str) -> String {
         content.to_string()
-    }
-
-    fn decode_from_disk<'a>(&self, raw: &'a str) -> &'a str {
-        raw
     }
 
     fn startup_candidates(&self, home: &str) -> Vec<StartupCandidate> {
@@ -492,14 +387,6 @@ impl ShellDialect for Posix {
         }
         out.push_str(POSIX_FN_TAIL);
         out
-    }
-
-    fn parse_file(&self, call: Call, text: &str) -> Vec<Parsed> {
-        text.lines()
-            .map(str::trim)
-            .filter(|l| !l.is_empty() && !l.starts_with('#'))
-            .map(|l| Self::parse_line(call, l).map_err(|why| format!("{l}（{why}）")))
-            .collect()
     }
 
     /// `名字() {` ⇒ `Some("名字")`（原住 `assets/aliases/block.rs` 那两份认法，同一形）。
@@ -570,12 +457,12 @@ const PS_PARAM_ARG: &str =
     "        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs";
 const PS_PARAM_CLOSE: &str = "    )";
 /// `__ccm_bind` 是终端集成块里那一下「勾了自动打开就先把 cc-monitor 开起来」（v9 起它只做这件事，名字沿用：
-/// 已生成的别名文件与一次性迁移读旧别名文件都按这一行逐字认），留适配层 —— 通用层一个字不知道它。
+/// 已生成的别名文件按这一行逐字认），留适配层 —— 通用层一个字不知道它。
 /// 带守卫：终端集成块没装时它不存在，这一行就是空操作（与 POSIX 那一侧同效）。
 const PS_BIND: &str =
     "    if (Get-Command __ccm_bind -CommandType Function -ErrorAction SilentlyContinue) { __ccm_bind }";
 /// 函数块的开与收。住常量而不是函数体里的字面量：`structural_scan` 那把「会剥注释的函数」尺子按大括号配平切函数体，
-/// 字面量里落单的一个 `{` 会让它切不准、一路吃进下一个函数（`parse_file`）而误报。
+/// 字面量里落单的一个 `{` 会让它切不准、一路吃进下一个函数而误报。
 const PS_BLOCK_OPEN: &str = "{";
 const PS_BLOCK_CLOSE: &str = "}";
 /// 最后一行的尾巴：调用时再给的参数原样接在后面（与 `cc` 同一写法：数组变量交给原生程序时逐个展开）。
@@ -600,78 +487,16 @@ pub(crate) fn ps_literal(s: &str) -> String {
 }
 
 impl PowerShell {
-    /// `'a' 'b''c'` → `["a", "b'c"]`。只认 [`ps_literal`] 产出的那一形（每个词都是一对单引号）。
-    fn split_words(s: &str) -> Result<Vec<String>, String> {
-        let mut out = Vec::new();
-        let mut it = s.chars().peekable();
-        loop {
-            while it.next_if_eq(&' ').is_some() {}
-            let Some(open) = it.next() else { break };
-            if !PS_QUOTES.contains(&open) {
-                return Err(copy_text("rsShellDialect.ps.notQuoted", &[]));
-            }
-            let mut cur = String::new();
-            loop {
-                match it.next() {
-                    None => return Err(copy_text("rsShellDialect.quote.unbalanced", &[])),
-                    Some(c) if PS_QUOTES.contains(&c) => {
-                        if it.next_if_eq(&c).is_some() {
-                            cur.push(c);
-                        } else {
-                            break;
-                        }
-                    }
-                    Some(c) => cur.push(c),
-                }
-            }
-            if it.clone().next().is_some_and(|x| x != ' ') {
-                return Err(copy_text("rsShellDialect.ps.missingSpace", &[]));
-            }
-            out.push(cur);
-        }
-        Ok(out)
-    }
-
-    /// 别名里叫 ccm 的那个词：给了落点 ⇒ `"$HOME\<落点>.exe"`（双引号：`$HOME` 在那台上展开、展开出来的值不再解析；
-    /// 别名块不往会话 `PATH` 里加东西，新机器上 `PATH` 里没有 ccm）；没给 ⇒ 裸 `word`（早先版本写下的那一形）。
+    /// 别名里叫 ccm 的那个词：`"$HOME\<落点>.exe"`（双引号：`$HOME` 在那台上展开、展开出来的值不再解析；
+    /// 别名块不往会话 `PATH` 里加东西，新机器上 `PATH` 里没有 ccm）。
     fn invoked(call: Call) -> String {
-        match call.landing {
-            Some(rel) => format!("\"$HOME\\{}.exe\"", rel.replace('/', "\\")),
-            None => call.word.to_string(),
-        }
-    }
-
-    /// `& <ccm> '…' $RemainingArgs['--' '…']` → 参数（`$RemainingArgs` 是分界：左边交 claude，右边 `'--'` 之后归 ccm）。
-    fn parse_call(call: Call, line: &str) -> Result<(Vec<String>, RestTo), String> {
-        let word = call.word;
-        let head = format!("    & {}", Self::invoked(call));
-        let bad = || copy_text("rsShellDialect.ps.badCall", &[("word", &word.to_string())]);
-        let body = line.strip_prefix(&head).ok_or_else(bad)?;
-        let at = body.rfind(PS_TAIL).ok_or_else(bad)?;
-        let (lead, tail) = (&body[..at], &body[at + PS_TAIL.len()..]);
-        let right = match tail.strip_prefix(PS_END) {
-            None if tail.is_empty() => None,
-            None => return Err(bad()),
-            Some(r) => Some(Self::split_words(r)?),
-        };
-        let lead = Self::split_words(lead)?;
-        // 同 POSIX 那一臂：`$RemainingArgs` 在最后、前面已有 `'--'` ⇒ 交给 ccm。
-        let rest = if right.is_none() && lead.iter().any(|w| w == call.end) {
-            RestTo::Ccm
-        } else {
-            RestTo::Agent
-        };
-        Ok((join_last_end(call.end, lead, right), rest))
+        format!("\"$HOME\\{}.exe\"", call.landing.replace('/', "\\"))
     }
 }
 
 impl ShellDialect for PowerShell {
     fn encode_for_disk(&self, content: &str) -> String {
         format!("{UTF8_BOM}{content}")
-    }
-
-    fn decode_from_disk<'a>(&self, raw: &'a str) -> &'a str {
-        strip_bom(raw)
     }
 
     /// `$PROFILE` 的四种取值里、这台机器上有意义的那几份：PS 5.1（Windows 自带）两份恒列；
@@ -771,70 +596,6 @@ impl ShellDialect for PowerShell {
             PS_BLOCK_CLOSE.to_string(),
         ]
         .join("\n")
-    }
-
-    /// 按块认：`function 名字 {` 起、`}` 止；块里只认 [`Self::render_alias`] 产出的那一形 ——
-    /// 名字与参数取出来之后**原样再渲染一遍逐字比**，差一个字节就整块算认不出（不猜用户手改了什么）。
-    fn parse_file(&self, call: Call, text: &str) -> Vec<Parsed> {
-        let mut out = Vec::new();
-        let mut lines = text.lines();
-        while let Some(raw) = lines.next() {
-            let l = raw.trim();
-            if l.is_empty() || l.starts_with('#') {
-                continue;
-            }
-            let Some(name) = l
-                .strip_prefix("function ")
-                .and_then(|r| r.strip_suffix(" {"))
-            else {
-                out.push(Err(copy_text(
-                    "rsShellDialect.ps.outsideFn",
-                    &[("line", &l.to_string())],
-                )));
-                continue;
-            };
-            let mut body: Vec<&str> = Vec::new();
-            let mut closed = false;
-            for b in lines.by_ref() {
-                if b.trim_end() == "}" {
-                    closed = true;
-                    break;
-                }
-                body.push(b.trim_end());
-            }
-            if !closed {
-                out.push(Err(copy_text(
-                    "rsShellDialect.ps.noClose",
-                    &[("line", &l.to_string())],
-                )));
-                continue;
-            }
-            let got = body
-                .iter()
-                .find(|b| b.trim_start().starts_with('&'))
-                .ok_or_else(|| copy_text("rsShellDialect.ps.noCcmCall", &[]))
-                .and_then(|line| Self::parse_call(call, line));
-            match got {
-                Ok((argv, rest)) => {
-                    let again = self.render_alias(call, name, &argv, rest);
-                    let seen = std::iter::once(raw.trim_end().to_string())
-                        .chain(body.iter().map(|b| b.to_string()))
-                        .chain(std::iter::once("}".to_string()))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    if again == seen {
-                        out.push(Ok((name.to_string(), argv, rest)));
-                    } else {
-                        out.push(Err(copy_text(
-                            "rsShellDialect.ps.handEdited",
-                            &[("name", &name.to_string())],
-                        )));
-                    }
-                }
-                Err(why) => out.push(Err(format!("function {name}（{why}）"))),
-            }
-        }
-        out
     }
 
     fn name_is_valid(&self, name: &str) -> bool {

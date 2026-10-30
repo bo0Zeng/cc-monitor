@@ -90,6 +90,7 @@ import { DataPage } from "../../../../src/frontend/ui/settings/data-page";
 import { recallDataReport } from "../../../../src/frontend/ui/settings/data-reads";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { noteMachine } from "../../../../src/frontend/ui/ipc/chan-caller";
 
 const settle = async () => {
   for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
@@ -310,6 +311,19 @@ describe("cc-monitor 放了什么", () => {
     expect(block.hidden, "远端那台不该出本机的 Claude 目录").toBe(true);
     chip(copyText("control.machine.unsure")).click();
     expect(block.hidden).toBe(false);
+  });
+
+  it("★ 机器名在画的那一刻取：那台的成品晚到（先画成「机器不明」）⇒ 下一次画换成成品里的名字", async () => {
+    answers.set(LOCAL_ORIGIN, report());
+    const { page } = mount();
+    page.openTab("placed");
+    page.loadNow();
+    await settle();
+    const chips = () => [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].map((b) => b.textContent);
+    expect(chips()[0]).toBe(copyText("control.machine.unsure"));
+    noteMachine(LOCAL_ORIGIN, { name: "workstation", offlineSaid: "" });
+    [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === "gpu")!.click();
+    expect(chips()[0]).toBe("workstation");
   });
 
   it("★ 远端那台的「cc-monitor 的文件」照那台 own 排：名字 · 是什么 · 删了会怎样 · 大小；不在的不给打开；打开 ＝ 在文件窗口里打开那一样", async () => {

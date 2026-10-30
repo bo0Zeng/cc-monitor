@@ -96,6 +96,7 @@ import { acctSessionWiring } from "./acct-session";
 import { buildAccountCommands } from "./account-commands";
 import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
+import { FRONTEND_READY } from "./generated/shell-names";
 import { openSession, setLaunchSlots } from "./session-open";
 import { Composer } from "./composer";
 import { outbox } from "./outbox";
@@ -1083,7 +1084,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // `frontend-ready` 是方向相反的那个 payload（前端发、Rust 收）：类型生成自 `ui_contract.rs::FrontendReadyPayload`
   //   （字段级 `#[serde(rename = "prioritySid")]`，不是容器级 `rename_all`）。
   const frontendReady: FrontendReadyPayload = { prioritySid: lastActive };
-  void emit("frontend-ready", frontendReady);
+  void emit(FRONTEND_READY, frontendReady);
 
   // 红绿灯的初始值随 `live` 成品一起在就绪点交（`activity` 那一格）。
 

@@ -7,9 +7,8 @@
  * 名单 `TMUX_ONLY` 一项一个「文件：词」，各写为什么是 tmux 专有；名单里不在了的那一项也红（删了就从名单删）。
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
-import { resolve } from "node:path";
-import { REPO_ROOT } from "../../test-support/repo-root";
+import { basename } from "node:path";
+import { sourceFiles } from "../../test-support/production-sources";
 import { stripComments } from "../../test-support/strip-comments";
 
 const GENERATED = "src/frontend/ui/generated";
@@ -58,9 +57,9 @@ const words = (s: string): string[] => [...new Set(s.match(/[A-Za-z0-9_-]*tmux[A
 
 function generatedHits(): string[] {
   const out: string[] = [];
-  for (const f of readdirSync(resolve(REPO_ROOT, GENERATED)).sort()) {
-    if (!f.endsWith(".ts")) continue;
-    const code = stripComments(readFileSync(resolve(REPO_ROOT, GENERATED, f), "utf8"), "ts");
+  for (const { file, text } of sourceFiles(GENERATED, { ext: ".ts", shallow: true })) {
+    const f = basename(file);
+    const code = stripComments(text, "ts");
     for (const w of words(code)) out.push(`${f}:${w}`);
   }
   return out;
@@ -70,9 +69,9 @@ function generatedHits(): string[] {
 function saidHits(): { stray: string[]; used: Set<string> } {
   const stray: string[] = [];
   const used = new Set<string>();
-  for (const f of readdirSync(resolve(REPO_ROOT, REGISTRY)).sort()) {
-    if (!f.endsWith(".rs")) continue;
-    const code = stripComments(readFileSync(resolve(REPO_ROOT, REGISTRY, f), "utf8"), "rust");
+  for (const { file, text } of sourceFiles(REGISTRY, { ext: ".rs", shallow: true })) {
+    const f = basename(file);
+    const code = stripComments(text, "rust");
     for (const lit of code.match(/"(?:[^"\\]|\\.)*"/g) ?? []) {
       if (!/tmux/i.test(lit)) continue;
       let rest = lit;

@@ -93,6 +93,8 @@ describe("节点详情的交接说明照 takeover 出", () => {
       evidencedBy: [],
       statusCode: null,
       undecided: false,
+      look: "none",
+      end: null,
       whyCode: null,
       whyShort: null,
       sets: [],

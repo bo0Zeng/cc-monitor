@@ -12,26 +12,21 @@
  * 人群：`tests/shots/` 下每一份起无头浏览器的脚本（认 `"--headless=new"`）—— 新加一份台架也自动进来。
  * 买不到：读的是源码文本（脚本有顶层副作用，不能 import 起来真跑）；参数拼得更绕时认不出。
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
+import { filePaths } from "../test-support/production-sources";
+import { REPO_ROOT } from "../test-support/repo-root";
 import { nonEmpty } from "../test-support/non-empty";
 import { machineCommands } from "./fake/machine";
 import { defaultWorld } from "./fake/world";
 
 const root = path.resolve(__dirname);
 
-function scripts(dir: string): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const p = path.join(dir, name);
-    if (statSync(p).isDirectory()) out.push(...scripts(p));
-    else if (name.endsWith(".mjs")) out.push(p);
-  }
-  return out;
-}
 
-const launchers = scripts(root).filter((p) => readFileSync(p, "utf8").includes('"--headless=new"'));
+const launchers = filePaths("tests/shots", { ext: ".mjs", tests: true, generated: true })
+  .map((f) => path.resolve(REPO_ROOT, f))
+  .filter((p) => readFileSync(p, "utf8").includes('"--headless=new"'));
 
 /** 每一处 `Page.open(…)` 的整段实参（到配对的右括号）。 */
 function opens(src: string): string[] {
