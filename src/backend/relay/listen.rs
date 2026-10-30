@@ -134,7 +134,8 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
             eprintln!("[relay] cannot set connection deadline: {e}");
             continue;
         }
-        if inflight.load(SeqCst) >= INFLIGHT_CONNECTIONS {
+        let now = inflight.load(SeqCst);
+        if now >= INFLIGHT_CONNECTIONS {
             // 只印上限，永不印请求头（这一支连一个字节都还没读）。这一阵只说一次：顶满时来得最密，一条一行会把日志文件灌满。
             if !std::mem::replace(&mut full, true) {
                 eprintln!("[relay] refusing: {INFLIGHT_CONNECTIONS} connections already in flight (answering 503 until one ends)");
@@ -142,7 +143,9 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
             let _ = comms_outward::refuse_busy(&mut stream);
             continue;
         }
-        if std::mem::take(&mut full) {
+        // 顶满那一阵退到上界四分之三以下才算过去：贴着上界时一放一满，按「放进一条」算会一阵一阵地说个不停。
+        if full && now < INFLIGHT_CONNECTIONS / 4 * 3 {
+            full = false;
             eprintln!("[relay] in flight back under {INFLIGHT_CONNECTIONS}");
         }
         // 先留一份 fd 副本：`spawn` 失败时 `stream` 已经被 move 进闭包，没有副本就只能看着它 drop 成一个没有任何 HTTP 响应的 FIN。

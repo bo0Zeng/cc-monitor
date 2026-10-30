@@ -79,7 +79,7 @@ fn child_relay_runs_out_of_fds() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 子进程入口：没被父判据拉起时当场返回；拉起时在途数顶到上限连打三发，放回 0 再打一发。
+/// 子进程入口：没被父判据拉起时当场返回；拉起时在途数顶到上限连打三发，在上限边上放进一条又顶满，放回 0 再打一发。
 #[test]
 fn child_relay_refuses_over_the_cap() {
     if std::env::var(CHILD_MARK).is_err() {
@@ -108,13 +108,31 @@ fn child_relay_refuses_over_the_cap() {
     let counted = std::sync::Arc::clone(&inflight);
     std::thread::spawn(move || super::serve(listener, relay, counted));
     let status = |resp: &str| resp.lines().next().unwrap_or("（没有回包）").to_string();
-    for step in ["full-1", "full-2", "full-3"] {
+    let shot = |step: &str| {
         println!(
             "EXHAUST {step} {}",
             status(&shoot(addr, TARGET, HEADERS, "{}"))
-        );
+        )
+    };
+    use std::sync::atomic::Ordering::SeqCst;
+    for step in ["full-1", "full-2", "full-3"] {
+        shot(step);
     }
-    inflight.store(0, std::sync::atomic::Ordering::SeqCst);
+    // 顶在上限边上来回（放进一条 · 又顶满）：还是同一阵，不再说一遍。
+    inflight.store(super::INFLIGHT_CONNECTIONS - 1, SeqCst);
+    shot("edge");
+    // 那一条的连接线程收工时减一次：等它减完再顶满，不然那一减落在顶满之后。
+    let until = std::time::Instant::now() + guard_core::wall::CEILING;
+    while inflight.load(SeqCst) != super::INFLIGHT_CONNECTIONS - 1 {
+        assert!(
+            std::time::Instant::now() < until,
+            "边上那一条的连接线程没收工"
+        );
+        std::thread::yield_now();
+    }
+    inflight.store(super::INFLIGHT_CONNECTIONS, SeqCst);
+    shot("full-4");
+    inflight.store(0, SeqCst);
     println!(
         "EXHAUST after {}",
         status(&shoot(addr, TARGET, HEADERS, "{}"))
@@ -129,8 +147,9 @@ impl comms_outward::TapPort for Mute {
     }
 }
 
-/// 在途顶满的那一阵：每一条都拿到 503，`[relay]` 只说一次顶满、回到上限之下说一次（不是每拒一条印一行 ——
-/// 压测 400 路时那一行 15 秒印了一万多遍，全进常驻后端的日志文件）；放回之后照常 200。
+/// 在途顶满的那一阵：每一条都拿到 503，`[relay]` 只说一次顶满、退到上限四分之三以下说一次（不是每拒一条印一行 ——
+/// 压测 400 路时那一行 15 秒印了一万多遍，全进常驻后端的日志文件；也不是在上限边上来回一次说一遍 —— 1200 路时那样印了 250 行）；
+/// 放回之后照常 200。
 #[test]
 fn over_the_cap_every_connection_gets_503_and_the_relay_says_so_once() {
     let (steps, stderr) =
@@ -141,6 +160,8 @@ fn over_the_cap_every_connection_gets_503_and_the_relay_says_so_once() {
             ("full-1".to_string(), "503".to_string()),
             ("full-2".to_string(), "503".to_string()),
             ("full-3".to_string(), "503".to_string()),
+            ("edge".to_string(), "200".to_string()),
+            ("full-4".to_string(), "503".to_string()),
             ("after".to_string(), "200".to_string()),
         ],
         "stderr：\n{stderr}"
