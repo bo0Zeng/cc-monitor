@@ -7533,7 +7533,7 @@ tool: string | null,
  */
 call: string | null, 
 /**
- * 批准：那一步的主参数；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
+ * 批准：那一步的主参数（命令取说得出用意的那一段）；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
  */
 what: string | null, 
 /**
@@ -7592,11 +7592,11 @@ kind: AskKind,
  */
 tool: string, 
 /**
- * 子运行（子 agent）发的 ⇒ 是哪一趟 `{id, kind}`（那一家原样）；主会话 ⇒ `null`。
+ * 子运行（agent）发的 ⇒ 是哪一趟 ＋ 写好的那一句；主会话 ⇒ `null`。
  */
 run: NeedsAskRun | null, 
 /**
- * 一行摘要（命令头一行 · 路径 · 第一道题）；说不出 ⇒ `null`。
+ * 一行摘要（命令里说得出用意的那一段 · 路径 · 第一道题）；说不出 ⇒ `null`。
  */
 what: string | null, 
 /**
@@ -7615,11 +7615,15 @@ questions: Array<NeedsQuestion>,
  * 何时挂上的（epoch ms，这台的钟）。
  */
 sinceMs: number, };
-type NeedsAskRun = { id: string, 
+type NeedsAskRun = { 
 /**
- * 它是哪一种（那一家原样，如 `general-purpose`）；没说 ⇒ `null`。
+ * 那一趟的 id（那一家原样）。
  */
-kind: string | null, };
+id: string, 
+/**
+ * 谁要批，写好的那一句：名（派出时的标签）· 类别（那一家原样，如 `general-purpose`），缺哪样少哪样；出口照抄。
+ */
+text: Words, };
 type NeedsCell = { id: string, label: string, };
 type NeedsChoice = { 
 /**
@@ -7796,7 +7800,7 @@ tool: string | null,
  */
 call: string | null, 
 /**
- * 批准：那一步的主参数；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
+ * 批准：那一步的主参数（命令取说得出用意的那一段）；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
  */
 what: string | null, 
 /**
@@ -7855,11 +7859,11 @@ kind: AskKind,
  */
 tool: string, 
 /**
- * 子运行（子 agent）发的 ⇒ 是哪一趟 `{id, kind}`（那一家原样）；主会话 ⇒ `null`。
+ * 子运行（agent）发的 ⇒ 是哪一趟 ＋ 写好的那一句；主会话 ⇒ `null`。
  */
 run: NeedsAskRun | null, 
 /**
- * 一行摘要（命令头一行 · 路径 · 第一道题）；说不出 ⇒ `null`。
+ * 一行摘要（命令里说得出用意的那一段 · 路径 · 第一道题）；说不出 ⇒ `null`。
  */
 what: string | null, 
 /**
@@ -7878,11 +7882,15 @@ questions: Array<NeedsQuestion>,
  * 何时挂上的（epoch ms，这台的钟）。
  */
 sinceMs: number, };
-type NeedsAskRun = { id: string, 
+type NeedsAskRun = { 
 /**
- * 它是哪一种（那一家原样，如 `general-purpose`）；没说 ⇒ `null`。
+ * 那一趟的 id（那一家原样）。
  */
-kind: string | null, };
+id: string, 
+/**
+ * 谁要批，写好的那一句：名（派出时的标签）· 类别（那一家原样，如 `general-purpose`），缺哪样少哪样；出口照抄。
+ */
+text: Words, };
 type NeedsAt = { origin: Origin, item: NeedsItem, };
 type NeedsCell = { id: string, label: string, };
 type NeedsChoice = { 
@@ -8312,7 +8320,7 @@ tool: string | null,
  */
 call: string | null, 
 /**
- * 批准：那一步的主参数；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
+ * 批准：那一步的主参数（命令取说得出用意的那一段）；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
  */
 what: string | null, 
 /**
@@ -8371,11 +8379,11 @@ kind: AskKind,
  */
 tool: string, 
 /**
- * 子运行（子 agent）发的 ⇒ 是哪一趟 `{id, kind}`（那一家原样）；主会话 ⇒ `null`。
+ * 子运行（agent）发的 ⇒ 是哪一趟 ＋ 写好的那一句；主会话 ⇒ `null`。
  */
 run: NeedsAskRun | null, 
 /**
- * 一行摘要（命令头一行 · 路径 · 第一道题）；说不出 ⇒ `null`。
+ * 一行摘要（命令里说得出用意的那一段 · 路径 · 第一道题）；说不出 ⇒ `null`。
  */
 what: string | null, 
 /**
@@ -8394,11 +8402,15 @@ questions: Array<NeedsQuestion>,
  * 何时挂上的（epoch ms，这台的钟）。
  */
 sinceMs: number, };
-type NeedsAskRun = { id: string, 
+type NeedsAskRun = { 
 /**
- * 它是哪一种（那一家原样，如 `general-purpose`）；没说 ⇒ `null`。
+ * 那一趟的 id（那一家原样）。
  */
-kind: string | null, };
+id: string, 
+/**
+ * 谁要批，写好的那一句：名（派出时的标签）· 类别（那一家原样，如 `general-purpose`），缺哪样少哪样；出口照抄。
+ */
+text: Words, };
 type NeedsChoice = { 
 /**
  * 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
@@ -11200,10 +11212,6 @@ seed: Array<ProfileRow>,
  */
 seedHint: string, seedCreate: string, 
 /**
- * 旧别名清单一次性转进来之后那张说明（「知道了」之后 `null`）。
- */
-migrated: ProfilesMigrated | null, 
-/**
  * 链接住的目录（`~/.cc-monitor/bin`）。
  */
 binDir: string, 
@@ -11223,23 +11231,6 @@ slots: Array<ProfileSlot>,
  * 「在哪起」那三种 tmux 取名各一句（怎么取名 ＋ 撞名时怎样），按 auto · fixed · base。
  */
 tmuxNaming: Array<ProfileTmuxNaming>, };
-type ProfilesMigrated = { 
-/**
- * 转进来几段。
- */
-count: number, 
-/**
- * 配置文件的路径。
- */
-path: string, 
-/**
- * `path` 的显示形（读的那一下按这台的家目录写好，界面照抄）；存盘那一份是空串、读的时候盖掉。
- */
-shown: string, 
-/**
- * 没能转的那几行（原样）。
- */
-skipped: Array<string>, };
 type SetOut = { name: string, rows: Array<SetRowOut>, problems: Array<ProfileProblem>, };
 type SetRowOut = { cwd: string, alias: string, n: number, tabGroup: string | null, line: number, };
 type Tab = "show" | "hide";
@@ -11392,7 +11383,7 @@ tabGroup: string | null,
  * 开口那句：落在 tmux 里起新会话时交给 agent（`null` ＝ 继承）。
  */
 say: string | null, };
-type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "ackMigrated", } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
+type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
 type ProfileSlotChange = { slot: ProfileSlotId, label: string, before: string, after: string, };
 type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab" | "tabGroup" | "say";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
@@ -11451,7 +11442,7 @@ tabGroup: string | null,
  * 开口那句：落在 tmux 里起新会话时交给 agent（`null` ＝ 继承）。
  */
 say: string | null, };
-type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "ackMigrated", } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
+type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesWriteDone = { wrote: boolean, rev: string | null, reload: string | null, };
@@ -11976,6 +11967,7 @@ type BusUnreadReq = { id: string, };
 
 ```ts
 type Origin = string;
+type Sid = string;
 type SshCommand = { 
 /**
  * 这台电脑终端里跑的那一行（Windows：PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`；别处：同一组参数的 POSIX shell 一行）。
@@ -11993,7 +11985,11 @@ command?: string,
 /**
  * 在那台的这个目录开登录 shell（串，或非 UTF-8 的 `{"b16": "<hex>"}`）。
  */
-cwd?: string | { b16: string }, };
+cwd?: string | { b16: string }, 
+/**
+ * 这个终端显示的那条会话（只跟 `command`）：给了 ⇒ 那一行前面接一段，跑它的那个 shell 把自己的窗口标签记进本机后端的家，↗ 先照它在本机找。
+ */
+sid?: Sid, };
 ```
 
 码：`bad_args` · `bad_jump` · `refused` · `no_ssh_client` · `unobservable`

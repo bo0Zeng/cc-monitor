@@ -778,7 +778,6 @@ object Commands {
             ProfilesFromLineReq::class.java to ProfilesFromLineReq.ADAPTER,
             ProfilesImpact::class.java to ProfilesImpact.ADAPTER,
             ProfilesImpactReq::class.java to ProfilesImpactReq.ADAPTER,
-            ProfilesMigrated::class.java to ProfilesMigrated.ADAPTER,
             ProfilesResolveReq::class.java to ProfilesResolveReq.ADAPTER,
             ProfilesWriteDone::class.java to ProfilesWriteDone.ADAPTER,
             ProfilesWriteReq::class.java to ProfilesWriteReq.ADAPTER,

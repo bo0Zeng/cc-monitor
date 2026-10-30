@@ -13544,7 +13544,7 @@ data class NeedsAsk(
 @Suppress("UNCHECKED_CAST")
 data class NeedsAskRun(
     val id: String,
-    val kind: String?,
+    val text: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13552,10 +13552,10 @@ data class NeedsAskRun(
         val ADAPTER: JsonAdapter<NeedsAskRun> = obj(
             listOf(
             Field("id", { Str }, optional = false, nullable = false),
-            Field("kind", { opt(Str) }, optional = false, nullable = true),
+            Field("text", { Str }, optional = false, nullable = false),
             ),
-            { a -> NeedsAskRun(a[0] as String, a[1] as String?) },
-            { v -> arrayOf(v.id, v.kind) },
+            { a -> NeedsAskRun(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.id, v.text) },
         )
     }
 }
@@ -16849,9 +16849,6 @@ sealed interface ProfileOp {
         override val op: String get() = "init"
         override var wireOrder: IntArray? = null
     }
-    data object AckMigrated : ProfileOp {
-        override val op: String get() = "ackMigrated"
-    }
     @Suppress("UNCHECKED_CAST")
     data class SaveSet(
         val was: String?,
@@ -16898,13 +16895,6 @@ sealed interface ProfileOp {
                         ),
                         { a -> ProfileOp.Init(a[1] as Boolean) },
                         { v -> arrayOf("init", v.seed) },
-                    )),
-                Variant("ackMigrated", ProfileOp.AckMigrated::class.java, obj(
-                        listOf(
-                        Field("op", { tag("ackMigrated") }, optional = false, nullable = false),
-                        ),
-                        { ProfileOp.AckMigrated },
-                        { arrayOf("ackMigrated") },
                     )),
                 Variant("saveSet", ProfileOp.SaveSet::class.java, obj(
                         listOf(
@@ -17198,7 +17188,6 @@ data class ProfilesBook(
     val seed: List<ProfileRow>,
     val seedHint: String,
     val seedCreate: String,
-    val migrated: ProfilesMigrated?,
     val binDir: String,
     val accounts: List<String>,
     val tmux: Boolean?,
@@ -17221,15 +17210,14 @@ data class ProfilesBook(
             Field("seed", { arr(ProfileRow.ADAPTER) }, optional = false, nullable = false),
             Field("seedHint", { Str }, optional = false, nullable = false),
             Field("seedCreate", { Str }, optional = false, nullable = false),
-            Field("migrated", { opt(ProfilesMigrated.ADAPTER) }, optional = false, nullable = true),
             Field("binDir", { Str }, optional = false, nullable = false),
             Field("accounts", { arr(Str) }, optional = false, nullable = false),
             Field("tmux", { opt(Bool) }, optional = false, nullable = true),
             Field("slots", { arr(ProfileSlot.ADAPTER) }, optional = false, nullable = false),
             Field("tmuxNaming", { arr(ProfileTmuxNaming.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> ProfilesBook(a[0] as String, a[1] as String, a[2] as Boolean, a[3] as String?, a[4] as String?, a[5] as ProfileProblem?, a[6] as List<ProfileRow>, a[7] as List<SetOut>, a[8] as List<ProfileRow>, a[9] as String, a[10] as String, a[11] as ProfilesMigrated?, a[12] as String, a[13] as List<String>, a[14] as Boolean?, a[15] as List<ProfileSlot>, a[16] as List<ProfileTmuxNaming>) },
-            { v -> arrayOf(v.path, v.pathShown, v.exists, v.rev, v.editedAt, v.fileProblem, v.profiles, v.sets, v.seed, v.seedHint, v.seedCreate, v.migrated, v.binDir, v.accounts, v.tmux, v.slots, v.tmuxNaming) },
+            { a -> ProfilesBook(a[0] as String, a[1] as String, a[2] as Boolean, a[3] as String?, a[4] as String?, a[5] as ProfileProblem?, a[6] as List<ProfileRow>, a[7] as List<SetOut>, a[8] as List<ProfileRow>, a[9] as String, a[10] as String, a[11] as String, a[12] as List<String>, a[13] as Boolean?, a[14] as List<ProfileSlot>, a[15] as List<ProfileTmuxNaming>) },
+            { v -> arrayOf(v.path, v.pathShown, v.exists, v.rev, v.editedAt, v.fileProblem, v.profiles, v.sets, v.seed, v.seedHint, v.seedCreate, v.binDir, v.accounts, v.tmux, v.slots, v.tmuxNaming) },
         )
     }
 }
@@ -17287,29 +17275,6 @@ data class ProfilesImpactReq(
             ),
             { a -> ProfilesImpactReq(a[0] as List<ProfileOp>) },
             { v -> arrayOf(v.changes) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class ProfilesMigrated(
-    val count: Long,
-    val path: String,
-    val shown: String,
-    val skipped: List<String>,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<ProfilesMigrated> = obj(
-            listOf(
-            Field("count", { Lng }, optional = false, nullable = false),
-            Field("path", { Str }, optional = false, nullable = false),
-            Field("shown", { Str }, optional = false, nullable = false),
-            Field("skipped", { arr(Str) }, optional = false, nullable = false),
-            ),
-            { a -> ProfilesMigrated(a[0] as Long, a[1] as String, a[2] as String, a[3] as List<String>) },
-            { v -> arrayOf(v.count, v.path, v.shown, v.skipped) },
         )
     }
 }
@@ -24492,6 +24457,7 @@ data class TerminalSshReq(
     val machine: String,
     val command: String? = null,
     val cwd: TerminalSshReqCwd? = null,
+    val sid: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -24501,9 +24467,10 @@ data class TerminalSshReq(
             Field("machine", { Str }, optional = false, nullable = false),
             Field("command", { opt(Str) }, optional = true, nullable = true),
             Field("cwd", { opt(TerminalSshReqCwd.ADAPTER) }, optional = true, nullable = true),
+            Field("sid", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> TerminalSshReq(a[0] as String, a[1] as String?, a[2] as TerminalSshReqCwd?) },
-            { v -> arrayOf(v.machine, v.command, v.cwd) },
+            { a -> TerminalSshReq(a[0] as String, a[1] as String?, a[2] as TerminalSshReqCwd?, a[3] as String?) },
+            { v -> arrayOf(v.machine, v.command, v.cwd, v.sid) },
         )
     }
 }
