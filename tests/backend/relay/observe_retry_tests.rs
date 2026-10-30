@@ -822,17 +822,27 @@ fn a_throttled_answer_is_handed_down_as_is_and_the_account_stays_usable() {
     let (up, got) = spawn_judging_upstream(a_throttled_b_serves);
     let relay = home.relay(up);
     assert_eq!(send_as_a(relay), throttled_429());
-    assert_eq!(got.lock().expect("lock").len(), 1, "短时限流那一发被换号重发了");
+    assert_eq!(
+        got.lock().expect("lock").len(),
+        1,
+        "短时限流那一发被换号重发了"
+    );
     assert_eq!(home.session("s-1").current, "a");
     let quota = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
     assert!(
-        !quota.entry("claude-code", "a").is_some_and(|e| e.reading.refused),
+        !quota
+            .entry("claude-code", "a")
+            .is_some_and(|e| e.reading.refused),
         "短时限流把 a 记成了被拒"
     );
     assert_eq!(send_as_a(relay), throttled_429());
     let got = got.lock().expect("lock");
     assert_eq!(got.len(), 2);
-    assert_eq!(got[1].auth.as_deref(), Some(AGENT_TOKEN), "下一发没照旧走 a");
+    assert_eq!(
+        got[1].auth.as_deref(),
+        Some(AGENT_TOKEN),
+        "下一发没照旧走 a"
+    );
 }
 
 /// ★ 硬上限、别的号都过了上限：a 吃短时限流 ⇒ 不停发、不回我们那份「用满」（claude 会显示「hit your 5-hour limit」），
@@ -845,7 +855,10 @@ fn a_throttled_answer_under_a_hard_limit_is_not_turned_into_a_limit_reply() {
     let side = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
     let b_at_95: Vec<(String, String)> = [
         ("anthropic-ratelimit-unified-status", "allowed_warning"),
-        ("anthropic-ratelimit-unified-representative-claim", "five_hour"),
+        (
+            "anthropic-ratelimit-unified-representative-claim",
+            "five_hour",
+        ),
         ("anthropic-ratelimit-unified-5h-utilization", "0.95"),
         ("anthropic-ratelimit-unified-5h-reset", "4000000000"),
     ]
