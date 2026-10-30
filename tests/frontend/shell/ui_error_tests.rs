@@ -41,36 +41,17 @@ pub(crate) async fn during_async(
         .collect()
 }
 
-/// 一条推给界面的出错事件：带文案键 · 那句话 = 照键与参数取出来的那一句 · 除复制详情外没有一格是日志行的形状。
+/// 一条推给界面的出错事件：那一句是从文案表取出来的（键在表里 · 占位符都填上了）· 除复制详情外没有一格是日志行的形状。
+/// 那一句逐字等于哪一条，由各变体的测试照键与参数比（[`the_remote_kinds_are_copy_keyed_sentences_too`] 等）。
 pub(crate) fn assert_is_copy_not_log(ev: &serde_json::Value) {
-    let key = ev.get("key").and_then(|v| v.as_str()).unwrap_or_default();
-    assert!(!key.is_empty(), "推给界面的出错事件没有文案键：{ev}");
-    let args: Vec<(String, String)> = ev
-        .get("args")
-        .and_then(|v| v.as_object())
-        .map(|m| {
-            m.iter()
-                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_string()))
-                .collect()
-        })
-        .unwrap_or_default();
-    let args_ref: Vec<(&str, &str)> = args.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-    let table: serde_json::Value =
-        serde_json::from_str(copy_core::TABLE_JSON).expect("文案表是 JSON");
-    let entry = &table["entries"][key];
-    assert!(entry.is_object(), "文案键 {key} 不在表里：{ev}");
-    let want: std::collections::BTreeSet<&str> = entry["args"]
-        .as_array()
-        .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
-        .unwrap_or_default();
-    let have: std::collections::BTreeSet<&str> = args.iter().map(|(k, _)| k.as_str()).collect();
-    assert_eq!(have, want, "文案键 {key} 的参数与表里那一条不等：{ev}");
-    let from_table = copy_core::copy_text(key, &args_ref);
-    assert_eq!(
-        ev.get("said").and_then(|v| v.as_str()),
-        Some(from_table.as_str()),
-        "界面那句不是照文案键取出来的：{ev}"
-    );
+    let said = ev.get("said").and_then(|v| v.as_str()).unwrap_or_default();
+    assert!(!said.is_empty(), "推给界面的出错事件没有那一句：{ev}");
+    assert!(!said.starts_with('〔'), "那一句的文案键不在表里：{ev}");
+    let unfilled = said
+        .split('{')
+        .skip(1)
+        .any(|s| s.find('}').is_some_and(|j| j > 0 && s[..j].chars().all(|c| c.is_alphanumeric() || c == '_')));
+    assert!(!unfilled, "那一句里还有没填的占位符：{ev}");
     let Some(obj) = ev.as_object() else {
         panic!("出错事件不是对象：{ev}")
     };
@@ -168,6 +149,19 @@ fn every_kind_of_ui_error_is_a_copy_keyed_sentence_and_the_log_line_stays_in_the
             });
             for ev in &got {
                 assert_is_copy_not_log(ev);
+                let key = match (d, then) {
+                    (Death::Crashed { .. }, Then::Restarted) => "rsUiError.localExited.restarted",
+                    (Death::Crashed { .. }, Then::Down) => "rsUiError.localExited.down",
+                    (Death::Refused { .. }, Then::Restarted) => "rsUiError.localQuit.restarted",
+                    (Death::Refused { .. }, Then::Down) => "rsUiError.localQuit.down",
+                    (Death::Misread { .. }, Then::Down) => "rsUiError.localUnreadable.down",
+                    _ => panic!("只记日志的那一格推出去了：{ev}"),
+                };
+                assert_eq!(
+                    ev["said"],
+                    copy_core::copy_text(key, &[]),
+                    "{d:?}/{then:?} 那一句不是照它的文案键取出来的：{ev}"
+                );
                 let detail = ev["detail"].as_str().unwrap_or_default();
                 assert!(detail.contains(&line), "账行没进复制详情：{ev}");
                 assert_eq!(
@@ -197,15 +191,19 @@ fn every_kind_of_ui_error_is_a_copy_keyed_sentence_and_the_log_line_stays_in_the
     });
     assert_eq!(got.len(), 1);
     assert_is_copy_not_log(&got[0]);
+    assert_eq!(
+        got[0]["said"],
+        copy_core::copy_text("rsUiError.machines.unreadable", &[])
+    );
 }
 
 /// 远端那四种（解不开的帧 · 拥塞丢帧 · 历史快照没拉下 · 文件窗口开了又退）也走这一个出口：
 /// 每种恰好一条、过 [`assert_is_copy_not_log`]，原话只在复制详情里，没有［重新连接］。
 #[test]
 fn the_remote_kinds_are_copy_keyed_sentences_too() {
-    let cases: Vec<(&str, UiError, &str)> = vec![
+    let cases: Vec<(String, UiError, &str)> = vec![
         (
-            "frame-shape",
+            copy_core::copy_text("rsSshSource.health.badFrame", &[("host", "devbox"), ("kind", "line")]),
             UiError::FrameUnreadable {
                 host: "devbox".into(),
                 kind: "line".into(),
@@ -214,7 +212,7 @@ fn the_remote_kinds_are_copy_keyed_sentences_too() {
             "missing field",
         ),
         (
-            "overflow",
+            copy_core::copy_text("rsUiError.overflow.said", &[("host", "devbox"), ("said", "那台写的一句")]),
             UiError::Overflow {
                 host: "devbox".into(),
                 said: "那台写的一句".into(),
@@ -222,7 +220,7 @@ fn the_remote_kinds_are_copy_keyed_sentences_too() {
             "",
         ),
         (
-            "snapshot",
+            copy_core::copy_text("rsSshSource.snapshot.failed", &[("sid", "abcd1234")]),
             UiError::HistoryUnfetched {
                 sid: "abcd1234".into(),
                 raw: "连接断了 · 夹具".into(),
@@ -230,7 +228,7 @@ fn the_remote_kinds_are_copy_keyed_sentences_too() {
             "连接断了 · 夹具",
         ),
         (
-            "filewin-exit",
+            copy_core::copy_text("rsFilewinProc.late.exited", &[]),
             UiError::FileWindowExited {
                 code: Some("exit status: 7".into()),
                 raw: None,
@@ -238,7 +236,7 @@ fn the_remote_kinds_are_copy_keyed_sentences_too() {
             "exit status: 7",
         ),
         (
-            "filewin-exit",
+            copy_core::copy_text("rsFilewinProc.late.exited", &[]),
             UiError::FileWindowExited {
                 code: Some("exit status: 1".into()),
                 raw: Some("夹具 stderr 一行".into()),
@@ -246,12 +244,12 @@ fn the_remote_kinds_are_copy_keyed_sentences_too() {
             "夹具 stderr 一行",
         ),
     ];
-    for (code, e, raw) in cases {
+    for (want, e, raw) in cases {
         let got = during(|| tell(e.clone()));
         assert_eq!(got.len(), 1, "{e:?} 没推、或推了不止一条：{got:?}");
         let ev = &got[0];
         assert_is_copy_not_log(ev);
-        assert_eq!(ev["code"], code, "{e:?} 的码不对：{ev}");
+        assert_eq!(ev["said"], want, "{e:?} 那一句不是照它的文案键取出来的：{ev}");
         assert!(
             ev.get("reconnect").is_none(),
             "远端提示不给［重新连接］：{ev}"
@@ -272,6 +270,47 @@ fn the_remote_kinds_are_copy_keyed_sentences_too() {
         said.contains("devbox") && said.contains("那台写的一句"),
         "拥塞那一句没点名那台、或没原样带那台写的：{said}"
     );
+}
+
+/// 每一种要告诉用户的出错各一例（变体全列；`LocalBackendDied` 列推得出去的那几格）。
+fn every_told_kind() -> Vec<UiError> {
+    use crate::backend_policy::Outcome;
+    let died = |death: Death, then: Then| UiError::LocalBackendDied {
+        death,
+        then,
+        ledger_line: "账行".into(),
+    };
+    vec![
+        died(Death::Crashed { how: Outcome::Exited(1) }, Then::Restarted),
+        died(Death::Crashed { how: Outcome::Exited(1) }, Then::Down),
+        died(Death::Refused { code: 1 }, Then::Restarted),
+        died(Death::Refused { code: 1 }, Then::Down),
+        died(Death::Misread { detail: "x".into() }, Then::Down),
+        UiError::MachinesUnreadable { path: "/x".into(), why: "y".into() },
+        UiError::FrameUnreadable { host: "h".into(), kind: "line".into(), why: "w".into() },
+        UiError::Overflow { host: "h".into(), said: "那台写的一句".into() },
+        UiError::HistoryUnfetched { sid: "s".into(), raw: "r".into() },
+        UiError::FileWindowExited { code: None, raw: None },
+    ]
+}
+
+/// 线上形只带界面读的那几格：每一种推出去的事件，键集合 ＝ {said, detail} ∪ {reconnect}（断开那几格才有）。
+#[test]
+fn the_wire_form_carries_only_what_the_ui_reads() {
+    for e in every_told_kind() {
+        let got = during(|| tell(e.clone()));
+        assert_eq!(got.len(), 1, "{e:?} 没推、或推了不止一条：{got:?}");
+        let keys: Vec<&str> = got[0]
+            .as_object()
+            .map(|m| m.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        let want: Vec<&str> = if got[0].get("reconnect").is_some() {
+            vec!["detail", "reconnect", "said"]
+        } else {
+            vec!["detail", "said"]
+        };
+        assert_eq!(keys, want, "{e:?} 推出去的格子不是界面读的那几格：{}", got[0]);
+    }
 }
 
 /// 推给界面的出错只有一个出口：事件名只在定义它的两处与 `logging.rs` 装出口那一处出现，

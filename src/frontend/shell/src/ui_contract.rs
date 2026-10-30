@@ -25,7 +25,7 @@ pub mod events {
     /// `local_backend_host::local_backend_now`）。通道接上 / 断了 · 正在起 · 口上换了人 · 起的时候被拒就推一帧；
     /// 各台（含本机）的状态成品走本机后端的 `changed {machine}`。
     pub const LOCAL_BACKEND: &str = "local-backend";
-    /// **要让用户知道的出错**（`ui_error::UiErrorPayload`：码 ＋ 文案键 ＋ 那句话 ＋ 复制详情）。
+    /// **要让用户知道的出错**（`ui_error::UiErrorPayload`：照文案键取出的那句话 ＋ 复制详情 ＋ 能重新连接的那一台）。
     /// 壳推给界面的出错只这一种；日志行不上屏。
     pub const UI_ERROR: &str = "monitor-error";
     // 窗到窗的 `open-account-panel`（设置窗账号页指路框 ⇒ 主窗口账号面板）随指路框退役：默认轮换与规则在设置「轮换」栏里管。
