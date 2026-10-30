@@ -33,7 +33,7 @@ use walkdir::WalkDir;
 
 // 🔴 口径常量**一个都不在这里**（`K-R100`）——它们就是口径本身，本文件再写一个同样的
 // 字面量 = 又开了第二份。`MAIN_CAP` / `TOOL_CAP` / `SNIPPET_CTX` / `PER_SESSION_CAP` /
-// `DEFAULT_LIMIT` 住 `search_rules`（原共享 crate `search-core`）。
+// `DEFAULT_LIMIT` 住 `history/search_rules.rs`。
 
 /// 查询选项（帧面 `history-search` 的入参按类型收好以后交进来，`faces/search_face.rs`）。
 pub(crate) struct SearchOpts {
@@ -886,7 +886,7 @@ pub(crate) struct RecordText {
 /// 一条已解析的记录 → 拿去搜的文本；不是 user / assistant ⇒ `None`。
 ///
 /// 🔴 **全局搜索（`history-search`）与会话内查找（`history-find`）的口径只有这一个住址**；
-/// 抽取 / 「谁说的」住适配层（经注册表 `agents::main_text` · `tool_text` · `human_speech`），截断住 `search_rules`（原 `search-core`）。
+/// 抽取 / 「谁说的」住适配层（经注册表 `agents::main_text` · `tool_text` · `human_speech`），截断住 `history/search_rules.rs`。
 pub(crate) fn record_text(kind: &str, v: &Value, include_tools: bool) -> Option<RecordText> {
     let is_assistant = match v.get("type").and_then(Value::as_str) {
         Some("assistant") => true,

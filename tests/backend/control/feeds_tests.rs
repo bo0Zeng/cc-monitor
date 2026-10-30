@@ -618,6 +618,7 @@ fn wake_row(
         expected_host_key: None,
         detail: None,
         route: None,
+        strip: None,
     }
 }
 

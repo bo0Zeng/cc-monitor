@@ -38,6 +38,7 @@ import com.ccmonitor.mobile.core.wire.gen.AccountRow
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.StripTone
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.DefaultTag
@@ -45,7 +46,6 @@ import com.ccmonitor.mobile.ui.chat.newsession.PickRow
 import com.ccmonitor.mobile.ui.chat.newsession.Sheet
 import com.ccmonitor.mobile.ui.chat.newsession.SheetHead
 import com.ccmonitor.mobile.ui.common.BarLook
-import com.ccmonitor.mobile.ui.common.BarTone
 import com.ccmonitor.mobile.ui.common.MachineBar
 import com.ccmonitor.mobile.ui.common.MachineBarView
 import com.ccmonitor.mobile.ui.common.rememberHostLink
@@ -169,7 +169,7 @@ fun accountsLook(
     val down = line is LinkLine.Down
     val failed =
         ui.accountsFailed?.takeIf { !down }?.let {
-            BarLook(it.text, BarTone.FAULT, MachineFixButton(MachineFix.RETRY, copyText("front.act.retry")), detail = it.detail)
+            BarLook(it.text, StripTone.FAULT, MachineFixButton(MachineFix.RETRY, copyText("front.act.retry")), detail = it.detail)
         }
     return AccountsLook(loading = !down && !ui.accountsRead && ui.accountsFailed == null, rows = ui.accounts, stale = down, failed = failed)
 }

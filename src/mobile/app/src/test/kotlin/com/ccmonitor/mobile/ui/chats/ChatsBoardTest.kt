@@ -266,6 +266,7 @@ class ChatsBoardTest {
                 "unreadable" to 4,
                 "skipped" to listOf("Codex"),
                 "down" to emptyList<Any>(),
+                "summary" to "核心·结果头",
                 "sessions" to
                     rows.map { (origin, sid) ->
                         mapOf(
@@ -312,11 +313,12 @@ class ChatsBoardTest {
             assertEquals("哪一台都没被当成信差", emptyList<Any?>(), a.link.calls("history-search-merge") + b.link.calls("history-search-merge"))
             val input = merge.got.single()
             assertEquals(
-                """[{"origin":"h1","reply":{"sessions":[{"sessionId":"s1","updatedAt":1767225600123,"face":{"order":5},"hits":[],"moreHits":1,"spanText":"keep-s1"}],"unreadable":2,"skipped":["Codex"]}},""" +
-                    """{"origin":"h2","reply":{"sessions":[{"sessionId":"s2","updatedAt":1767225600123,"face":{"order":5},"hits":[],"moreHits":1,"spanText":"keep-s2"}],"unreadable":2,"skipped":["Codex"]}}]""",
+                """{"q":"登录","answered":[{"origin":"h1","reply":{"sessions":[{"sessionId":"s1","updatedAt":1767225600123,"face":{"order":5},"hits":[],"moreHits":1,"spanText":"keep-s1"}],"unreadable":2,"skipped":["Codex"]}},""" +
+                    """{"origin":"h2","reply":{"sessions":[{"sessionId":"s2","updatedAt":1767225600123,"face":{"order":5},"hits":[],"moreHits":1,"spanText":"keep-s2"}],"unreadable":2,"skipped":["Codex"]}}]}""",
                 input,
             )
             val c = board.ui.value.content!!
+            assertEquals("结果头照核心写好的那一句", "核心·结果头", c.summary)
             assertEquals(listOf("h2" to "s2", "h1" to "s1"), c.rows.map { it.hostId to it.row.sessionId })
             assertEquals(listOf("gpu", null), c.rows.map { it.machineTag })
             assertEquals(

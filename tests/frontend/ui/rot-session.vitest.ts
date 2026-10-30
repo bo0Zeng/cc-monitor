@@ -60,6 +60,7 @@ const VIEW: RotationViewReply = {
   decision: null,
   log: [],
   hints: [],
+  can: { reorder: true, off: true, edit: true },
 };
 const shown = { view: VIEW };
 
@@ -109,6 +110,7 @@ describe("整屏：提示 · 策略一行 · 顺序（与设置页拆开）", ()
       strategy: null,
       decision: null,
       listed: 0,
+      can: { reorder: false, off: false, edit: false },
       lineup: [
         { account: "team", group: "use", state: "夹具·在用", movable: false },
         { account: "work", group: "next", state: "夹具·备着", movable: false },

@@ -214,7 +214,7 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
     expect(rsFiles.map((f) => f.file)).toContain(RS_HOME);
     nonEmpty(rsRefs);
      // 三棵树各自真的扫到了、也各自读到了调用点（扩根那一步没接上时，下面的两向相等会在缺角的集合上成立）。
-    // `src/common/` 10 → 5：`search-core` 删、`deploy-core` 的判定进后端（契约 `deploy-contract` 只剩一份 lib.rs），盘上现 10 份。
+    // 下限只证「扫到了」，不是份数：`src/common/` 下链文案表的 .rs 不多（契约 crate 大多一份 lib.rs）。
     for (const [root, n] of [["src/backend/", 100], ["src/common/", 5]] as const) {
       expect(rsFiles.filter((f) => f.file.startsWith(root)).length, `${root} 下一个 .rs 都没扫到`).toBeGreaterThan(n);
     }

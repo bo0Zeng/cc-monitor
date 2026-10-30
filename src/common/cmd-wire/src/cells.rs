@@ -1,4 +1,5 @@
-//! **成品格的两种标记类型**：写好的字（[`Words`]）与语气（[`Tone`]）—— 两端同一份（后端写、手机嵌的 Rust 核心按它解）。
+//! **成品格的两种标记类型**：写好的字（[`Words`]）与语气（[`Tone`]）—— 两端同一份（后端写、手机嵌的 Rust 核心按它解）；
+//! 另有上次读数那一格（[`SeenAt`]：时刻 ＋ 写好的那一句）。
 //!
 //! 核心出的每件成品由「值」与「写好的字」组成。哪一格是写好的字、哪一格是语气，不靠格名猜，由这一格的 Rust 类型说：
 //! 后端的格目录（`faces/cells_catalog.rs`）认的是这两个类型名（序列化时交给序列化器的那个名字），所以它俩住这里、不换成 `String`。
@@ -47,4 +48,21 @@ pub enum Tone {
     Need,
     Warn,
     Busy,
+}
+
+/// 上次读数那一格：记下的时刻 ＋ 后端按看的那一台的时区写好的那一句（「采样于 12:03」）。
+/// 离线时画上次读数的那几处（账号页 · 「文件与数据」页 · 计划条）照摆，不自己算时长、不自己写时刻。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct SeenAt {
+    /// 记下的时刻（毫秒）。
+    #[serde(rename = "atMs")]
+    #[cfg_attr(any(test, feature = "ts"), ts(rename = "atMs", type = "number"))]
+    pub at_ms: u64,
+    /// 「采样于 12:03」（后端照文案表与那一台的钟写）。
+    pub said: Words,
 }

@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::plan::fixture::{dump, fake_pb, runs, scratch, workspace};
-use crate::plan::wire::{PlanAdopted, PlanCmdReply};
+use cmd_wire::plan::{PlanAdopted, PlanCmdReply};
 use std::cell::RefCell;
 
 /// 界面能点的只剩 0.5 有的那几条（`repo` 是新计划框的［新建］）；记原话 · 接过仓库的旧名 · 旧的画图命令都不在。

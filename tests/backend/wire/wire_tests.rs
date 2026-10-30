@@ -1092,7 +1092,7 @@ fn said_record(id: &str, text: &str) -> crate::agents::record::Record {
                 text: text.into(),
                 pasted: Vec::new(),
             },
-            blocks: vec![Block::Text { text: text.into() }],
+            blocks: vec![Block::text(text.into())],
             results: Default::default(),
             cwd: None,
             attachments: Vec::new(),
@@ -1296,7 +1296,7 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("line", "path", "string"),
     ("line", "seq", "number"),
     ("line", "byte_offset", "number"),
-    // 〔第二个前端 2026-10-10〕通用记录那一团。里面的格（`said.results` 的 `patch` · `patchTruncated` · `file` …）整件冻结在格目录
+    // 〔第二个前端 2026-10-10〕通用记录那一团。里面的格（`said.results` 的 `patch` · `file` …）整件冻结在格目录
     // （格目录冻结表 `cells_catalog::tests::FROZEN` 的 `record`，`Frozen::All`）；这里只钉「line 帧上有这一格」。
     ("line", "record", "object"),
     ("overflow", "said", "string"),

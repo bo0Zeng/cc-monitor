@@ -496,12 +496,8 @@ fn the_shell_wake_scan_is_neither_too_narrow_nor_too_wide() {
     // ★ **画大了会怎样**：摸底时 `for i in` 误命中了 `find_ci` 里那个 Rust `for i in 0..n`。
     //   这条把那次教训钉住 —— 模式面不许收到 Rust 的循环写法。
     //
-    // ⚠ **标的搬家了，本条跟着搬**：那个循环原先住 `src/search.rs`，
-    //   收口后随 `find_ci` 搬进共享 crate `src/common/search-core/src/lib.rs`
-    //   （`rust_files()` 只走 `src/`，够不着）。⇒ 直接按住址读，别让本条以
-    //   「`search.rs` 里那个循环不见了」的形态红 —— **报的方向是错的**，
-    //   它不见了不是因为有人删了它，是因为它搬走了。
-    // 又搬一次：`search-core` 拆进后端，`find_ci` 随通用口径住 `src/backend/history/search_rules.rs`。
+    // 标的按住址读：`find_ci` 住 `src/backend/history/search_rules.rs`；它搬走时本条要跟着改住址，
+    //   不然会以「那个循环不见了」的形态红，报的方向是错的。
     let anchor = guard_core::addr::repo_src_root().join("backend/history/search_rules.rs");
     let search = production(&fs::read_to_string(&anchor).unwrap_or_default());
     assert!(

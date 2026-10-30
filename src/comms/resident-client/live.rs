@@ -7,6 +7,7 @@
 use std::collections::BTreeMap;
 
 use cmd_wire::live::{BlockKind, LiveBlock, LiveCard, LiveOp, LivePhase};
+use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 
 /// 一张活卡此刻的样子。
@@ -27,6 +28,55 @@ pub struct LiveCardNow {
     pub clipped: bool,
     /// 各块，按块号。
     pub blocks: Vec<LiveBlock>,
+    /// 头一行（生成中 · 已生成等写入记录）：板写好，两端照摆。
+    pub head: String,
+    /// 正文（截过头先说一句；思考 · 工具块各一句；文字块原样；空的不出），一块一行：两端照摆、不走 Markdown。
+    pub body: String,
+    /// 运行那一行「最近：…」那一截（还在说、最后一块是文字 · 思考 · 工具时才有）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub last: Option<String>,
+}
+
+impl LiveCardNow {
+    /// 照此刻的相 · 截头 · 各块写好 [`Self::head`] · [`Self::body`] · [`Self::last`]（每一帧折完都写一次）。
+    fn write(&mut self) {
+        self.head = match self.phase {
+            LivePhase::Streaming => copy_text("liveCard.state.streaming", &[]),
+            LivePhase::Awaiting => copy_text("liveCard.state.awaitingRecord", &[]),
+        };
+        let clipped = self
+            .clipped
+            .then(|| copy_text("liveCard.body.clipped", &[]));
+        self.body = clipped
+            .into_iter()
+            .chain(self.blocks.iter().filter_map(|b| match b.kind {
+                BlockKind::Text => b.text.clone(),
+                BlockKind::Thinking => Some(copy_text("liveCard.block.thinking", &[])),
+                BlockKind::Tool => Some(tool_use(b)),
+                BlockKind::Other => None,
+            }))
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        self.last = match (self.phase, self.blocks.last()) {
+            (LivePhase::Streaming, Some(b)) => match b.kind {
+                BlockKind::Text => Some(copy_text("runs.last.say", &[])),
+                BlockKind::Thinking => Some(copy_text("runs.last.think", &[])),
+                BlockKind::Tool => Some(tool_use(b)),
+                BlockKind::Other => None,
+            },
+            _ => None,
+        };
+    }
+}
+
+/// 工具块那一句（那台没报工具名 ⇒ `?`）。
+fn tool_use(b: &LiveBlock) -> String {
+    copy_text(
+        "liveCard.block.toolUse",
+        &[("tool", b.tool.as_deref().unwrap_or("?"))],
+    )
 }
 
 /// 某会话某运行此刻的活卡（整份，先来的在前）：交给界面 / Kotlin 的就是它；空 ⇒ 那里此刻没有卡。
@@ -83,13 +133,17 @@ impl Board {
                     self.born
                 }
             };
-            let now = LiveCardNow {
+            let mut now = LiveCardNow {
                 card: f.card,
                 rid: rid.clone(),
                 phase: *phase,
                 clipped: *clipped,
                 blocks: blocks.clone(),
+                head: String::new(),
+                body: String::new(),
+                last: None,
             };
+            now.write();
             let card = Card {
                 sid: f.sid.clone(),
                 run: f.run.clone(),
@@ -132,6 +186,7 @@ impl Board {
             LiveOp::Awaiting => c.now.phase = LivePhase::Awaiting,
             LiveOp::Open { .. } | LiveOp::Close { .. } => {}
         }
+        c.now.write();
         Some(at)
     }
 

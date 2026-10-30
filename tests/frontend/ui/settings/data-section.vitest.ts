@@ -31,9 +31,11 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 
-import { DataSection, LOGS_DIR_LABEL, describeDataClass } from "../../../../src/frontend/ui/settings/data-section";
+import { DataSection, describeDataClass } from "../../../../src/frontend/ui/settings/data-section";
+import { LOGS_DIR_LABEL } from "../../../../src/frontend/ui/generated/shell-names";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { nonEmpty } from "../../../test-support/non-empty";
+import { stripComments } from "../../../test-support/strip-comments";
 
 const SRC = "src/frontend/ui/settings/data-section.ts";
 
@@ -95,6 +97,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       "./skeleton": ["holdSkeletonHeight", "makeSkeleton"],
       "../copy-table": ["copyText"], // 取文口：只读一张表，不是效应
       "../kit/icon": ["icon"], // 画图标：不是效应
+      "../generated/shell-names": ["LOGS_DIR_LABEL"], // 壳生成过来的一个串：不是效应
     });
     expect(face.storageWrites).toEqual([]);
   });
@@ -192,15 +195,6 @@ describe("数据位置「真相 / 缓存」那一格", () => {
 describe("〔ST2 · 步 15〕logs/ 那一行指向「日志」、不再自带 [打开]", () => {
   beforeEach(() => document.body.replaceChildren());
 
-  it("★ 跨语言常量对拍：TS 的 LOGS_DIR_LABEL == Rust 的 data_paths.rs::LOGS_DIR_LABEL", () => {
-    const rs = readFileSync("src/frontend/shell/src/data_paths.rs", "utf8");
-    const m = /pub const LOGS_DIR_LABEL: &str = "([^"]*)";/.exec(rs);
-    expect(m, "Rust 那侧找不到 LOGS_DIR_LABEL —— 名字改了就来改这条").not.toBeNull();
-    expect(LOGS_DIR_LABEL).toBe(m![1]);
-    // 那一行真的还在后端枚举里（修在界面层，**不许**从唯一权威枚举点删掉它）。
-    expect(rs).toContain("LOGS_DIR_LABEL,");
-  });
-
   it("★★ logs/ 那一行：路径照给、没有 [打开]、说去「日志」页；别的行照旧有 [打开]（两向）", async () => {
     const mk = (label: string) => ({
       label,
@@ -282,7 +276,7 @@ describe("每一行的每一格都在网格里认领了一个区（本机后端�
 
   /** `settings.css` 里 `.settings-data-item` 的模板声明的区名 ＋「类名 → 它认领的区」。 */
   function gridOf(): { areas: Set<string>; claims: Map<string, string> } {
-    const css = readFileSync("src/frontend/ui/styles/settings.css", "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const css = stripComments(readFileSync("src/frontend/ui/styles/settings.css", "utf8"), "css");
     const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim(), body: m[2] }));
     const tpl = rules.find((r) => r.sel === ".settings-data-item")?.body.match(/grid-template-areas:([^;]+);/)?.[1] ?? "";
     const areas = new Set([...tpl.matchAll(/"([^"]+)"/g)].flatMap((m) => m[1].trim().split(/\s+/)));

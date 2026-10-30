@@ -11,4 +11,16 @@ sid: string | null,
 /**
  * 不通过那一条在 `check.red` 里的位置。
  */
-red?: number, acked: boolean, };
+red?: number, acked: boolean, 
+/**
+ * 那一条的标题（后端照种类写好）。
+ */
+title: string, 
+/**
+ * 标题底下那几行（顶层签了几格 · pb 那一句与修法 · 底下签了几格 · 子 agent 由父会话收）；负责人那一枚由出口挂，不在这里。
+ */
+lines: Array<string>, 
+/**
+ * 「第几条 / 共几条」（照认可记录标过之后、没认可的那几条照先后写）；认可过的 ⇒ `null`。
+ */
+pos: string | null, };

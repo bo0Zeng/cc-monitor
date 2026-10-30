@@ -2,18 +2,16 @@
 // 藏不藏只靠这个类的 `display: none`。卡自己的样式（如 `.card-steps { display: flex }`）写在它后面、同一权重时会把它盖掉 ⇒
 // 过程行显示折着、底下的卡照样露着。这里把真样式表交给 jsdom，对 cards/ 里每一种卡各造一张、挂上类再量。
 import { describe, it, expect, beforeAll } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { nonEmpty } from "../../test-support/non-empty";
+import { sourceFiles } from "../../test-support/production-sources";
 
-const cardsDir = resolve(REPO_ROOT, "src/frontend/ui/cards");
 /** cards/ 里每一种卡的根类（`className = "card card-…"` 那一串）。 */
 const cardClasses = [
   ...new Set(
-    readdirSync(cardsDir)
-      .filter((f) => f.endsWith(".ts"))
-      .flatMap((f) => [...readFileSync(resolve(cardsDir, f), "utf8").matchAll(/className = "(card card-[^"]+)"/g)].map((m) => m[1])),
+    sourceFiles("src/frontend/ui/cards", { ext: ".ts", shallow: true }).flatMap((f) => [...f.text.matchAll(/className = "(card card-[^"]+)"/g)].map((m) => m[1])),
   ),
 ].sort();
 

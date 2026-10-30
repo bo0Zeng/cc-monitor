@@ -8,7 +8,7 @@
 //! 一段一条记进 [`Memo`]（键 ＝ 工作区 ＋ 片 ＋ 成品摘要 ＋ 正文散列）：一批全中 ⇒ 不起 pb。pb 起不来 · 读不成 · 回了 `error` ⇒ 那一批每段空、不记。
 //! 已知边界：某段有没合上的代码围栏 ⇒ 同批排在它后面的几段 pb 当代码、认不出；不在这里数围栏（那是 pb 的认法）。
 
-use super::wire::{PlanMsgRef, PlanMsgRefs, PlanRead};
+use cmd_wire::plan::{PlanMsgRef, PlanMsgRefs, PlanRead};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Mutex;

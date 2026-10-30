@@ -754,6 +754,9 @@ const NEVER_WRITTEN: &[(&str, &str)] = &[
     // 组员那张脸是各台照清单那一行冷读出来的，同上。
     ("groups_read", "groups[].members[].face.account"),
     ("groups_read", "pinned[].face.account"),
+    // 调用那一份行差从入参算，不知道在文件第几行：行号恒缺（结果那一份才带真行号）。
+    ("record", "{t=reply}.steps.*.body.diff.rows[].oldNo"),
+    ("record", "{t=reply}.steps.*.body.diff.rows[].newNo"),
 ];
 
 /// ★ 样本把每一格都露出来了：没有 `None`、没有空列表（不然那一格在目录里就漏了）；空着的只许是 [`NEVER_WRITTEN`] 登记的，登记的也确实空着。

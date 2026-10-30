@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { productionCssFiles, productionTsFiles } from "../../../test-support/production-sources.ts";
-import { stripCodeComments } from "../../../evidence/S25-class-ledger.ts";
+import { stripComments } from "../../../test-support/strip-comments.ts";
 
 const NEEDLES: { what: string; re: RegExp }[] = [
   { what: "对话框角色", re: /setAttribute\(\s*"role"\s*,\s*"(?:alert)?dialog"/ },
@@ -21,7 +21,7 @@ const NEEDLES: { what: string; re: RegExp }[] = [
 ];
 
 function hitsOf(file: string, text: string): string[] {
-  const code = stripCodeComments(text);
+  const code = stripComments(text, "ts");
   return NEEDLES.filter((n) => n.re.test(code)).map((n) => `${file}：${n.what}`);
 }
 
@@ -53,13 +53,13 @@ const PIECE_NEEDLES: { what: string; re: RegExp }[] = [
 ];
 
 function pieceHitsOf(file: string, text: string): string[] {
-  const code = stripCodeComments(text);
+  const code = stripComments(text, "ts");
   return PIECE_NEEDLES.filter((n) => n.re.test(code)).map((n) => `${file}：${n.what}`);
 }
 
 /** CSS 里只认选择器里写的那个类（注释去掉）。 */
 function cssHitsOf(file: string, text: string): string[] {
-  const code = text.replace(/\/\*[\s\S]*?\*\//g, "");
+  const code = stripComments(text, "css");
   return new RegExp(`\\.${OLD_BTN}\\b`).test(code) ? [`${file}：设置页按钮类`] : [];
 }
 

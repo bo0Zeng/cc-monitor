@@ -51,20 +51,19 @@
  * - **`transition` 的属性名只认静态字面量**：值里写 `var(--something)` 当属性名的话看不见。
  *   现打 0 处，属潜伏不是现患。
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 
-const SKIP_DIRS = new Set(["node_modules", ".git", ".build", "coverage", "dist", "target"]);
+import { filePaths } from "../test-support/production-sources.ts";
+import { REPO_ROOT } from "../test-support/repo-root.ts";
 
-function walk(dir: string, keep: (p: string) => boolean, out: string[] = []): string[] {
-  for (const e of readdirSync(dir)) {
-    if (SKIP_DIRS.has(e)) continue;
-    const p = join(dir, e);
-    if (statSync(p).isDirectory()) walk(p, keep, out);
-    else if (keep(p)) out.push(p);
-  }
-  return out;
+/** `dir` 底下挑中的文件（绝对路径；连生成物与测试文件一起，`.build` 不进）。读目录只经 `test-support/production-sources.ts`。 */
+function walk(dir: string, keep: (p: string) => boolean): string[] {
+  return filePaths(dir, { ext: "", tests: true, generated: true, skipDirs: [".build"], allowEmpty: true })
+    .map((f) => resolve(REPO_ROOT, f))
+    .filter(keep);
 }
+
 
 const relOf = (root: string, p: string): string => relative(root, p).split("\\").join("/");
 

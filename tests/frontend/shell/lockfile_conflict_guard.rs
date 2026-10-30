@@ -15,7 +15,7 @@
 //! ⇒ 那条**跨 target Windows check** 走的是 **backend 的 lock**；
 //! 而 monitor 真编在 `src/frontend/shell` 下 ⇒ 走**它自己的 lock**。
 //!
-//! 而 `branch-core` / `usage-core` 都写 `serde_json = "1"`，两者**既是后端的生产依赖、
+//! 而 `copy-core` / `creds-core` 都写 `serde_json = "1"`，两者**既是后端的生产依赖、
 //! 又是 monitor 的 workspace member** ⇒ **同一份源码分别编进两个版本**。
 //!
 //! ⚠ 别读成小事：那条跨 target check 是 `ci.yml` 自称的「平台线**唯一真判据**」，

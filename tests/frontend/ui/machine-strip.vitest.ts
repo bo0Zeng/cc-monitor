@@ -29,8 +29,12 @@ const m = (name: string, over: Partial<MachineState> = {}): MachineState =>
     seenHostKey: null,
     expectedHostKey: null,
     detail: null,
+    strip: { tone: "offline", progress: false },
     ...over,
   }) as MachineState;
+
+/** 连着那一份（核心不给 `strip`）。 */
+const UP: Partial<MachineState> = { state: "up", offline: false, word: "", said: "", fixes: [], strip: undefined };
 
 const rows = (s: MachineStrip): string[] => [...s.el.querySelectorAll<HTMLElement>(".machine-strip-row")].map((r) => r.dataset.machine ?? "");
 
@@ -51,20 +55,24 @@ describe("机器条", () => {
 
   it("★ 连上那一下当场摘掉；在连的照那台的词与那一句摆（不按 stage 自己取字）", () => {
     const s = new MachineStrip({ fix: vi.fn() });
-    s.set("gpu-01", m("gpu-01", { state: "connecting", offline: false, stage: "deploy", word: "核心·连接中", said: "核心·核对版本", fixes: [] }));
+    s.set("gpu-01", m("gpu-01", { state: "connecting", offline: false, stage: "deploy", word: "核心·连接中", said: "核心·核对版本", fixes: [], strip: { tone: "busy", progress: false } }));
     expect(s.el.querySelector(".machine-strip-word")?.textContent).toBe("核心·连接中");
     expect(s.el.querySelector(".machine-strip-said")?.textContent).toBe("核心·核对版本");
     expect(s.el.querySelectorAll("button")).toHaveLength(0);
-    s.set("gpu-01", m("gpu-01", { state: "up", offline: false, word: "", said: "", fixes: [] }));
+    s.set("gpu-01", m("gpu-01", UP));
     expect(rows(s)).toEqual([]);
   });
 
-  it("连着的 · 比这一版新的 · 停用的不进条", () => {
+  it("★ 进不进条只照成品的 `strip`：缺 ⇒ 不进（哪一态都一样）；有 ⇒ 进，点照它的语气", () => {
     const s = new MachineStrip({ fix: vi.fn() });
-    s.set("a", m("a", { state: "up", word: "", said: "", fixes: [] }));
-    s.set("b", m("b", { state: "newer", word: "核心·较新", said: "核心·那台较新" }));
-    s.set("c", m("c", { state: "disabled", word: "核心·已停用", said: "核心·已停用" }));
+    s.set("a", m("a", UP));
+    s.set("b", m("b", { said: "核心·没进条", strip: undefined }));
     expect(rows(s)).toEqual([]);
+    s.set("c", m("c", { state: "newer", word: "核心·较新", said: "核心·那台较新", strip: { tone: "warn", progress: false } }));
+    s.set("d", m("d", { state: "connecting", word: "核心·连接中", said: "核心·在连", fixes: [], strip: { tone: "busy", progress: false } }));
+    expect(rows(s)).toEqual(["c", "d"]);
+    const dot = (o: string): string => s.el.querySelector<HTMLElement>(`[data-machine="${o}"] > :first-child`)?.dataset.state ?? "";
+    expect([dot("c"), dot("d")], "点照语气挑，不照态").toEqual(["needs-you", "unknown"]);
   });
 
   it("★ 多于 3 台 ⇒ 收成一行「未连上（n）」，点开逐台列；少回 3 台以内又逐台列", () => {
@@ -75,7 +83,7 @@ describe("机器条", () => {
     expect(more.textContent).toContain(copyText("tabBar.strip.more", { n: 4 }));
     more.click();
     expect(rows(s)).toEqual(["a", "b", "c", "d"]);
-    s.set("d", m("d", { state: "up", word: "", said: "", fixes: [] }));
+    s.set("d", m("d", UP));
     expect(rows(s)).toEqual(["a", "b", "c"]);
     expect(s.el.querySelector(".machine-strip-more")).toBeNull();
   });

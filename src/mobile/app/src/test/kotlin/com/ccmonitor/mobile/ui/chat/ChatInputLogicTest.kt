@@ -2,11 +2,7 @@ package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
-import com.ccmonitor.mobile.core.wire.gen.BlockKind
 import com.ccmonitor.mobile.core.wire.gen.CommandScope
-import com.ccmonitor.mobile.core.wire.gen.LiveBlock
-import com.ccmonitor.mobile.core.wire.gen.LiveCardNow
-import com.ccmonitor.mobile.core.wire.gen.LivePhase
 import com.ccmonitor.mobile.core.wire.gen.SessionAct
 import com.ccmonitor.mobile.core.wire.gen.SessionCommand
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
@@ -14,7 +10,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** 输入那一圈的几处纯判定：chip 写什么 · ［+］面板下面两行在不在 · 点命令填进去的字 · 分组 · 活卡画成的字。 */
+/** 输入那一圈的几处纯判定：chip 写什么 · ［+］面板下面两行在不在 · 点命令填进去的字 · 分组。 */
 class ChatInputLogicTest {
     private fun cmd(
         name: String,
@@ -56,28 +52,5 @@ class ChatInputLogicTest {
         assertEquals("/deploy ", commandDraft(cmd("deploy")))
         val groups = groupsOf(listOf(cmd("a"), cmd("d", CommandScope.PROJECT, "本项目"), cmd("b")))
         assertEquals(listOf("内置" to listOf("a", "b"), "本项目" to listOf("d")), groups.map { (h, rows) -> h to rows.map { it.name } })
-    }
-
-    @Test
-    fun `活卡画成纯文字：头一行照相取字；截过头先说一句；思考 · 工具块各一句；空的文字块不出`() {
-        val card =
-            LiveCardNow(
-                1,
-                "r",
-                LivePhase.STREAMING,
-                clipped = true,
-                blocks =
-                    listOf(
-                        LiveBlock(BlockKind.THINKING),
-                        LiveBlock(BlockKind.TEXT, "正文"),
-                        LiveBlock(BlockKind.TOOL, tool = "Bash"),
-                        LiveBlock(BlockKind.TEXT, ""),
-                        LiveBlock(BlockKind.OTHER),
-                    ),
-            )
-        val (head, body) = liveCardText(card)
-        assertEquals(copyText("liveCard.state.streaming"), head)
-        assertEquals(listOf(copyText("liveCard.body.clipped"), copyText("liveCard.block.thinking"), "正文", copyText("liveCard.block.toolUse", "tool" to "Bash")).joinToString("\n"), body)
-        assertEquals(copyText("liveCard.state.awaitingRecord"), liveCardText(card.copy(phase = LivePhase.AWAITING)).first)
     }
 }

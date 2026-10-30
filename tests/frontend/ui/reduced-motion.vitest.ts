@@ -10,26 +10,14 @@
  * 人群：`src/frontend/ui/` 下全部 `.css`（新加一份也自动进来）。
  * 买不到：读的是 CSS 文本；TS 里直接改 `style.transition`、`element.animate()`、按帧手写的动画认不出（今天一处都没有）。
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { nonEmpty } from "../../test-support/non-empty";
+import { productionCssFiles } from "../../test-support/production-sources";
+import { stripComments as strip } from "../../test-support/strip-comments";
 
-const ui = path.resolve(__dirname, "../../../src/frontend/ui");
-
-function walk(dir: string): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const p = path.join(dir, name);
-    if (statSync(p).isDirectory()) {
-      if (name === "generated" || name === "node_modules") continue;
-      out.push(...walk(p));
-    } else if (name.endsWith(".css")) out.push(p);
-  }
-  return out;
-}
-
-const stripComments = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, "");
+const stripComments = (s: string): string => strip(s, "css");
 
 /** 一份 CSS 里写了字面时长的动效声明（`属性: 值`）。 */
 function literalDurations(css: string): string[] {
@@ -58,7 +46,7 @@ function durTokens(css: string): { defined: string[]; zeroed: string[]; notZero:
   };
 }
 
-const files = walk(ui);
+const files = productionCssFiles("src/frontend/ui");
 
 describe("减少动画时界面上什么都不动", () => {
   it("人群不空，量具认得出那几形", () => {
@@ -74,7 +62,7 @@ describe("减少动画时界面上什么都不动", () => {
 
   it("动效的时长一律写 --dur-*（不写字面时长）", () => {
     const bad: string[] = [];
-    for (const f of files) for (const d of literalDurations(readFileSync(f, "utf8"))) bad.push(`${path.relative(ui, f)}: ${d}`);
+    for (const f of files) for (const d of literalDurations(f.text)) bad.push(`${f.file}: ${d}`);
     expect(bad, "改写成 var(--dur-*)（tokens.css 里没有合适的就加一个，减少动画那一段同拍置 0）").toEqual([]);
   });
 

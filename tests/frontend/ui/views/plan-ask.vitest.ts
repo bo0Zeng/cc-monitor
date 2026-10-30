@@ -37,6 +37,8 @@ const cell = (): PlanCell =>
     evidencedBy: [],
     statusCode: null,
     undecided: false,
+    look: "none",
+    end: null,
     whyCode: null,
     whyShort: null,
     sets: [],
