@@ -610,7 +610,7 @@ pub(crate) fn delete_with(
             RotInUse { sids },
         ));
     }
-    if ctx.setup.uses.now().for_new == req.id {
+    if ctx.setup.for_new_id() == req.id {
         return Err(RotationStrategyDeleteErr::InUse(
             copy_text("beRotation.edit.forNew", &[]),
             RotInUse { sids: Vec::new() },

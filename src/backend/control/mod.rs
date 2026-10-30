@@ -38,8 +38,6 @@ pub use machine_prefs::apply_agent_homes;
 pub(crate) mod machine_menu; // 命令面板打机器名：`machine-find` 认那台 · `machine-menu` 那台能做的几样
 pub(crate) mod machine_state;
 pub(crate) mod machines;
-// `prefs.json` 第 1 ⇒ 2 版那一次换形（常驻那一位起来时）。
-pub mod prefs_migration;
 // 解压（`files-extract`）＋ 「建链接」那一个动词的调用方（复制链接本身 · 解压包里的链接）。
 pub mod files_extract;
 // 上传的块形：把送进暂存区的块拼成暂存件（SFTP 起始目录不是后端 home 时走这条）。

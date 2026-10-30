@@ -475,7 +475,7 @@ fn a_missing_file_reads_empty_and_the_first_write_creates_it() {
     )
     .unwrap();
     let raw: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
-    assert_eq!(raw["version"], VERSION);
+    assert_eq!(raw["version"], 1);
     assert_eq!(raw["entries"]["s"]["starred"], true);
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -576,38 +576,47 @@ fn the_resume_pick_is_kept_merged_on_one_end_and_replaced_past_it() {
     let _ = std::fs::remove_dir_all(p.parent().unwrap());
 }
 
-/// 第 0 版（没有 `version` · `0`，条目带 `hidden: bool`）与比这一版新的：读不懂 —— 读回那一句、写一律拒、原文一个字节不动、不留 `.v1`。
+/// 比这一版新的：读不懂 —— 读回那一句、写一律拒、原文一个字节不动。
+/// 比这一版老的（`version: 0`）：当没有；写一回 ⇒ 盖成这一版，原文照字节留成 `history-metadata.json.v0`。
 #[test]
-fn a_file_of_another_version_is_unreadable_and_left_as_is() {
-    let d = std::env::temp_dir().join(format!("ccm-annot-v0-{}", std::process::id()));
+fn a_newer_file_is_left_as_is_and_an_older_one_is_kept_beside() {
+    let d = std::env::temp_dir().join(format!("ccm-annot-ver-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     let p = d.join("history-metadata.json");
-    for old in [
-        r#"{"entries": {"s": {"hidden": true}}}"#,
-        r#"{"version": 0, "entries": {"s": {"hidden": false}}}"#,
-        r#"{"entries": {}}"#,
-        r#"{"version": 2, "entries": {}}"#,
-    ] {
-        std::fs::write(&p, old).unwrap();
-        assert!(
-            matches!(load_at(&p), Loaded::Unreadable(_)),
-            "别的版本读成了表：{old}"
-        );
-        let e = answer_annotate_at(
-            &own_of(&p),
-            &json!({"sid": "s", "patch": {"starred": true}}),
-            1,
-        )
-        .expect_err("别的版本也写了");
-        assert_eq!(e.code, "annotations_unreadable", "{old}：{e:?}");
-        let e = answer_forget_at(&own_of(&p), &json!({"sid": "s"})).expect_err("别的版本也删了");
-        assert_eq!(e.code, "annotations_unreadable");
-        assert_eq!(std::fs::read_to_string(&p).unwrap(), old, "原文被动了");
-        assert!(
-            !p.with_file_name("history-metadata.json.v1").exists(),
-            "留了 .v1：{old}"
-        );
-    }
+    let newer = r#"{"version": 2, "entries": {}}"#;
+    std::fs::write(&p, newer).unwrap();
+    assert!(
+        matches!(load_at(&p), Loaded::Unreadable(_)),
+        "新版读成了表"
+    );
+    let e = answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": "s", "patch": {"starred": true}}),
+        1,
+    )
+    .expect_err("新版也写了");
+    assert_eq!(e.code, "annotations_unreadable", "{e:?}");
+    let e = answer_forget_at(&own_of(&p), &json!({"sid": "s"})).expect_err("新版也删了");
+    assert_eq!(e.code, "annotations_unreadable");
+    assert_eq!(std::fs::read_to_string(&p).unwrap(), newer, "原文被动了");
+
+    let older = r#"{"version": 0, "entries": {"s": {"hidden": false}}}"#;
+    std::fs::write(&p, older).unwrap();
+    assert_eq!(load_at(&p), Loaded::Read(Table::new()), "老版该当没有");
+    answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": "s2", "patch": {"starred": true}}),
+        1,
+    )
+    .expect("老版当没有、照写");
+    assert_eq!(
+        std::fs::read_to_string(p.with_file_name("history-metadata.json.v0")).unwrap(),
+        older,
+        "老版原文没留"
+    );
+    let raw: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+    assert_eq!(raw["version"], 1);
+    assert!(raw["entries"].get("s").is_none() && raw["entries"]["s2"]["starred"] == true);
     let _ = std::fs::remove_dir_all(&d);
 }

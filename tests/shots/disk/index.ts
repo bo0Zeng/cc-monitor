@@ -192,7 +192,7 @@ export function putBrokenQuota(d: MachineDisk): void {
   d.files[".cc-monitor/quota.json"] = "";
 }
 
-// ── 轮换账本（`<家>/.cc-monitor/rotation.json` 第三版：每个会话各一条，带它载入的那份策略副本 ＋ `rotation-uses.json` 的 forNew）──
+// ── 轮换账本（`<家>/.cc-monitor/rotation.json` 第三版：每个会话各一条，带它载入的那份策略副本 ＋ 新会话默认用哪份 `forNew`）──
 
 export interface RotationSessionSpec {
   agent?: string;
@@ -291,8 +291,8 @@ export function putRotation(
         ];
       }),
     ),
+    ...(book.forNew ? { forNew: book.forNew } : {}),
   });
-  d.files[".cc-monitor/rotation-uses.json"] = json({ version: 1, forNew: book.forNew ?? "" });
 }
 
 // ── 策略文件（`<家>/.cc-monitor/strategies/<文件名>.rhai`：标题 ＝ 文件名）──

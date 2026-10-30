@@ -15,14 +15,15 @@
 //!
 //! # 版本
 //!
-//! 只认 [`VERSION`]：别的（没有 `version` · `0` · 比它新的）一律读不懂 —— 读回「不知道」、拒写、原文一个字节不动。
+//! 照声明（`relay_route_core::HISTORY_ANNOTATIONS_FILE`，第 1 版、不升级）：顶层 `version` 归读写口（缺了当 1）；
+//! 比这一版新的读不懂 —— 读回「不知道」、拒写、原文一个字节不动。
 //!
 //! # 写：一条不丢
 //!
 //! - 先严格读一遍：读不懂（坏 JSON / 类型不对 / 同一格驼峰与蛇形都在）⇒ 拒写，原文件一个字节不动（「读失败当空、只带这一条写回」会覆盖掉其余注解）。
 //! - 再在原文 JSON 上只改那一条：其余条目、条目里认不出的键、顶层认不出的键原样留着；被改那一条按驼峰规范写回
 //!   （它身上的蛇形别名摘掉 —— 不摘的话两个名字同时在，下一次严格读就读不懂了）。
-//! - 原子写（`Own::write`）：`O_EXCL` 建临时文件 → 写满 → `sync` → 原子挪过去；目录不在只建那一层；失败删自己的临时文件。读—改—写在那个目录的跨进程锁里。
+//! - 原子写（经读写口 `Doc::write` ⇒ `Own::write`）：`O_EXCL` 建临时文件 → 写满 → `sync` → 原子挪过去；目录不在只建那一层；失败删自己的临时文件。读—改—写在那个目录的跨进程锁里。
 //!
 //! 买不到：Windows 上「原子挪过去」是覆盖既有文件的那一下改名（`Own::write`），没在真 Windows 上跑过。
 
@@ -37,13 +38,9 @@ use crate::common::said::IntoNote as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-/// 读一份注解文件的上限。超了 ⇒ 当读不懂：读回「不知道」、拒写（一个字节不动）。
-/// 一条注解约 150 字节 ⇒ 64 MiB 装得下四十万条；真撞上说明那份文件不对劲，不拿截断的当完整的用。
-pub const MAX_BYTES: u64 = 64 * 1024 * 1024;
-
-/// 注解文件：状态（读不懂 ⇒ 读回「不知道」、拒写）。读成原文字节再严格解。
-const FILE: crate::common::own_state::Doc<Vec<u8>> =
-    crate::common::own_state::Doc::state(".cc-monitor/history-metadata.json", MAX_BYTES);
+/// 注解文件：状态（读不懂 ⇒ 读回「不知道」、拒写；超了读上限同此）。读成原文 JSON 再严格解，写回原文（认不出的键照留）。
+const FILE: crate::common::own_state::Doc<Value> =
+    crate::common::own_state::Doc::of(&relay_route_core::HISTORY_ANNOTATIONS_FILE);
 
 /// 单个那一格（[`Entry::hide`]；线上形住 `cmd-wire`，隐藏的判定在控制面也读它）。
 pub use cmd_wire::session::Hide;
@@ -59,15 +56,9 @@ pub(crate) enum HideAsk {
     Rule,
 }
 
-/// 这一版的号（头注「版本」）。
-pub(crate) const VERSION: u32 = 1;
-
-/// 整份文件。
+/// 整份文件（`version` 那一格读写口已摘）。
 #[derive(Debug, Default, Deserialize)]
 struct Doc {
-    /// 缺 ⇒ 0：不是 [`VERSION`] 的一律读不懂（[`parse`]）。
-    #[serde(default)]
-    version: u32,
     #[serde(default)]
     entries: BTreeMap<String, Entry>,
     /// 这台那一片：这台有组员的那几组（组 id ⇒ 那一组）；组员关系不在这里，在各条会话的注解上（[`Entry::groups`]）。
@@ -188,19 +179,19 @@ pub fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
     monitor_data_dir(get(DATA_DIR_ENV).as_deref(), home).map(|d| d.join(HISTORY_METADATA_FILE))
 }
 
-/// 读原文（带上限）。`Ok(None)` = 文件不在。
-fn read_raw(path: &Path) -> Result<Option<Vec<u8>>, crate::common::said::Said> {
+/// 读原文 JSON（带上限、照声明核版本）。`Ok(None)` = 文件不在。
+fn read_raw(path: &Path) -> Result<Option<Value>, crate::common::said::Said> {
     use crate::common::own_state::Read;
-    match FILE.read_with(path, Ok) {
+    match FILE.read(path) {
         Read::Absent => Ok(None),
-        Read::Present(b) => Ok(Some(b)),
+        Read::Present(v) => Ok(Some(v)),
         Read::Unreadable(why) => Err(why),
     }
 }
 
-/// 严格读：只认这一版（[`VERSION`]）。
-fn parse(bytes: &[u8], path: &Path) -> Result<Doc, String> {
-    let unparsable = |e: &dyn std::fmt::Display| {
+/// 严格读（类型不对 · 同一格驼峰与蛇形都在 ⇒ 读不懂）。
+fn parse(raw: &Value, path: &Path) -> Result<Doc, String> {
+    Doc::deserialize(raw).map_err(|e| {
         crate::common::said::Said::with_raw(
             copy_text(
                 "beHistoryAnnotations.parse.unparsable",
@@ -209,15 +200,7 @@ fn parse(bytes: &[u8], path: &Path) -> Result<Doc, String> {
             e,
         )
         .into_note()
-    };
-    let doc = serde_json::from_slice::<Doc>(bytes).map_err(|e| unparsable(&e))?;
-    if doc.version != VERSION {
-        return Err(unparsable(&format!(
-            "version {} (this build reads {VERSION})",
-            doc.version
-        )));
-    }
-    Ok(doc)
+    })
 }
 
 /// 读一份（给 join 那一层）。
@@ -232,7 +215,7 @@ pub fn load_at(path: &Path) -> Loaded {
 pub(crate) fn load_all_at(path: &Path) -> Result<(Table, Book), String> {
     match read_raw(path) {
         Ok(None) => Ok((Table::new(), Book::new())),
-        Ok(Some(b)) => parse(&b, path).map(|d| (d.entries, d.groups)),
+        Ok(Some(v)) => parse(&v, path).map(|d| (d.entries, d.groups)),
         Err(e) => Err(e.into_note()),
     }
 }
@@ -311,16 +294,14 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// 读原文成「严格读过的结构 ＋ 原文 JSON」。文件不在 ⇒ 缺省形状（这一版）。
+/// 读原文成「严格读过的结构 ＋ 原文 JSON」（`version` 那一格读写口摘了、写时再带上）。文件不在 ⇒ 缺省形状。
 fn read_for_write(path: &Path) -> Result<(Doc, Value), crate::wire::spec::Fail> {
     match read_raw(path)
         .map_err(|e| crate::wire::spec::Fail::from(("annotations_unreadable", e)))?
     {
-        None => Ok((Doc::default(), json!({ "version": VERSION, "entries": {} }))),
-        Some(b) => {
-            let doc = parse(&b, path).map_err(|e| ("annotations_unreadable", e))?;
-            let raw: Value = serde_json::from_slice(&b)
-                .map_err(|e| ("annotations_unreadable", format!("{e}")))?;
+        None => Ok((Doc::default(), json!({ "entries": {} }))),
+        Some(raw) => {
+            let doc = parse(&raw, path).map_err(|e| ("annotations_unreadable", e))?;
             if !raw.is_object() {
                 return Err(crate::wire::spec::Fail::from((
                     "annotations_unreadable",
@@ -373,23 +354,14 @@ fn put_entry(raw: &mut Value, sid: &str, entry: Option<&Entry>) {
     }
 }
 
-/// 唯一的写者（经 `Own` 原子写；目录由 [`lock_for_write`] 建）。序列化用 `to_string_pretty`。
+/// 唯一的写者：`dir` 底下那一份整份写（经读写口，顶层带 `version`；目录由 [`lock_for_write`] 建）。
 fn write_at(
     own: &Own,
-    path: &OwnPath,
+    dir: &OwnPath,
     held: &OwnLock,
     raw: &Value,
 ) -> Result<(), crate::common::said::Said> {
-    let body = serde_json::to_string_pretty(raw).map_err(|e| {
-        // 契约错那一句后面跟着的诊断拆进原话（同失败信封那一处，`contract::parts`）：句子里不带它。
-        crate::common::said::Said::from(crate::common::contract::parts(
-            &crate::common::contract::malformed(&format!(
-                "serializing the annotations failed: {e}"
-            )),
-            None,
-        ))
-    })?;
-    own.write(path, held, body.as_bytes())
+    FILE.write_named(own, dir, creds_core::store::HISTORY_METADATA_FILE, held, raw)
 }
 
 /// 那份文件所在的目录（数据目录）与它本身。推不出家 ⇒ `no_annotations`。
@@ -549,7 +521,7 @@ pub(crate) fn annotate_at(
     }
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
-    write_at(own, &file, &held, &raw)
+    write_at(own, &dir, &held, &raw)
         .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
     // 会话事实里那一格（`autoAnswer`）跟着变：出口照推帧重读，不自己去问。
     if auto_changed {
@@ -587,7 +559,7 @@ pub(crate) fn keep_resume_at(
     });
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
-    write_at(own, &file, &held, &raw).map_err(io)
+    write_at(own, &dir, &held, &raw).map_err(io)
 }
 
 /// 终端没了时换的那一项（注解 `resumeWith`）此刻还算不算数：记录还是记下那一刻那么长 ⇒ 算；长了（恢复过 · 又写过）· 读不到记录 ⇒ 作废。
@@ -678,7 +650,7 @@ pub(crate) fn edit_slice_at<T>(
     if !section.is_empty() {
         root.insert("groups".into(), Value::Object(section));
     }
-    write_at(own, &file, &held, &raw)
+    write_at(own, &dir, &held, &raw)
         .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
     Ok(out)
 }
@@ -714,7 +686,7 @@ pub(crate) fn forget_at(own: &Own, req: ForgetReq) -> Result<Forgotten, Annotati
         return Ok(Forgotten { removed: false });
     }
     put_entry(&mut raw, sid, None);
-    write_at(own, &file, &held, &raw)
+    write_at(own, &dir, &held, &raw)
         .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
     Ok(Forgotten { removed: true })
 }
