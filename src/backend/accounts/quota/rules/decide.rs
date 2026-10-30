@@ -68,8 +68,14 @@ pub(crate) struct Ctx<'a> {
 /// 本会话此刻量出来的（交给策略的 `session`；量不到的空着）。
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Me {
-    /// 用速：折合输入 token / 分（最近一段的平均）。
+    /// 用速：折合输入 token / 分（最近半小时的平均）。
     pub(crate) pace: Option<f64>,
+    /// 短窗用速：同一口径，最近 5 分钟（会话记满 2 分钟才给）。
+    pub(crate) pace_short: Option<f64>,
+    /// 在途：最近 5 分钟平均几发同时在途（子 agent · 工作流的请求带本会话标识，一并算）。
+    pub(crate) inflight: Option<f64>,
+    /// 最近 6 小时每 10 分钟用了多少（折合输入 token），36 格、旧的在前；会话记到之前的格空着。
+    pub(crate) bins: Vec<Option<f64>>,
     /// 起伏：一段一段比的 σ/μ。
     pub(crate) spread: Option<f64>,
     /// 上下文：最近一发的 输入 ＋ 写缓存 ＋ 读缓存（token）。

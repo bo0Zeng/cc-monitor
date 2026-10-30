@@ -8,8 +8,9 @@
 //!   进程起来时也是从头数（累计只在这个进程里）。
 //! - **偏差照实说**：同一个号别的机器、没走中转的会话也在用时，读数涨得比这台数到的多 ⇒ 量出来偏小；这台看不出来。
 //!   换号那一刻正在说的那一发，收尾那一件可能记到新号名下。
-//! - **按会话记**（[`Spend::me`]）：同一份流按会话再记一本 —— 每件用量（记在哪个号名下）· 每发的上下文 · 写缓存那一档 · 每号最后一发；
-//!   交给判的「本会话的用速与起伏 · 上下文 · 缓存」都从这一本算，「别的会话压在这个号上的」也从它扣（[`Spend::here`] · [`Spend::others`]）。
+//! - **按会话记**（[`Spend::me`]）：同一份流按会话再记一本 —— 每件用量（记在哪个号名下）· 每发的上下文 · 写缓存那一档 · 每号最后一发 ·
+//!   每发的开头与收尾（[`Spend::began`] · [`Spend::ended`]）；交给判的「本会话的用速（半小时 · 5 分钟）与起伏 · 6 小时分段 · 在途 ·
+//!   上下文 · 缓存」都从这一本算，「别的会话压在这个号上的」也从它扣（[`Spend::here`] · [`Spend::others`]）。
 
 use super::rules::decide::{Me, PromptCache};
 use crate::agents::{QuotaWindow, Tier};
@@ -27,17 +28,25 @@ const ROUTES_KEPT: usize = 512;
 use super::ledger::EST_FRESH as PACE_SPAN;
 /// 会话在这个进程里至少记了这么多秒才给用速（刚开的会话量不准）。
 const PACE_FIRST: u64 = 10 * 60;
-/// 起伏按这么长一段一段比（σ/μ），看最近 [`SPREAD_BINS`] 段，记满的段不到 [`SPREAD_MIN`] 段不给。
-const SPREAD_BIN: u64 = 10 * 60;
-const SPREAD_BINS: u64 = 6;
+/// 短窗用速与在途看最近这么多秒；会话记了不到 [`SHORT_FIRST`] 秒不给。
+const SHORT_SPAN: u64 = 5 * 60;
+const SHORT_FIRST: u64 = 2 * 60;
+/// 用量分段：每段这么长，留最近 [`BINS`] 段（6 小时）；会话记到之前就开始的段量不到。
+const BIN: u64 = 10 * 60;
+pub(crate) const BINS: usize = 36;
+/// 每件用量留多久：分段那么长。
+const KEEP: u64 = BIN * BINS as u64;
+/// 起伏（σ/μ）比最近 [`SPREAD_BINS`] 段，量得到的段不到 [`SPREAD_MIN`] 段不给。
+const SPREAD_BINS: usize = 6;
 const SPREAD_MIN: usize = 3;
 /// 记着的会话条数上限（超了先丢最久没动的）。
 const RUNS_KEPT: usize = 256;
 
 type Key = (String, String);
 
-/// 一个会话这一本：哪一家 · 头一次记到 · 每件用量（时刻 · 记在哪个号名下 · 折合输入 token；只留最近一小时）·
-/// 最近的上下文（时刻 · token；变小 ＝ 压缩过，从头记）· 写缓存那一档（最近一次说得出的）· 每号最后一发（时刻 · 上下文 · 档）。
+/// 一个会话这一本：哪一家 · 头一次记到 · 每件用量（时刻 · 记在哪个号名下 · 折合输入 token；只留最近 [`KEEP`]）·
+/// 最近的上下文（时刻 · token；变小 ＝ 压缩过，从头记）· 写缓存那一档（最近一次说得出的）· 每号最后一发（时刻 · 上下文 · 档）·
+/// 每发在途的那一段（还没说完的：响应号 ⇒ 开头；说完的：开头 · 收尾，只留最近 [`SHORT_SPAN`]）。
 #[derive(Debug, Clone, Default)]
 struct Trail {
     agent: String,
@@ -47,6 +56,10 @@ struct Trail {
     prompts: VecDeque<(u64, u64)>,
     tier: Option<Tier>,
     tail: HashMap<String, (u64, u64, Option<Tier>)>,
+    open: HashMap<u64, u64>,
+    flown: VecDeque<(u64, u64)>,
+    /// 记到过一发的开头（没记到过 ⇒ 在途说不出）。
+    flights: bool,
 }
 
 impl Trail {
@@ -55,10 +68,44 @@ impl Trail {
             Some((t, a, u)) if *t == now && a == acct => *u += units,
             _ => self.spent.push_back((now, acct.to_string(), units)),
         }
-        let keep = (SPREAD_BIN * SPREAD_BINS).max(PACE_SPAN);
+        let keep = KEEP.max(PACE_SPAN);
         while self.spent.front().is_some_and(|(t, _, _)| t + keep < now) {
             self.spent.pop_front();
         }
+    }
+
+    /// 一发开头（响应号 `resp`）。开了 [`KEEP`] 还没收尾的当它断了、丢掉。
+    fn began(&mut self, resp: u64, now: u64) {
+        self.flights = true;
+        self.open.insert(resp, now);
+        self.open.retain(|_, t| *t + KEEP >= now);
+    }
+
+    /// 一发收尾（没记到开头的不算）。
+    fn ended(&mut self, resp: u64, now: u64) {
+        if let Some(t) = self.open.remove(&resp) {
+            self.flown.push_back((t, now));
+        }
+        while self.flown.front().is_some_and(|(_, e)| e + SHORT_SPAN < now) {
+            self.flown.pop_front();
+        }
+    }
+
+    /// 最近 [`SHORT_SPAN`] 平均几发同时在途：每发在这一段里在途的秒数加起来 ÷ 这一段长
+    /// （会话记了不到 [`SHORT_FIRST`] · 一发的开头都没记到过 ⇒ 空）。
+    fn inflight(&self, now: u64) -> Option<f64> {
+        if !self.flights || now < self.first + SHORT_FIRST {
+            return None;
+        }
+        let from = now - SHORT_SPAN.min(now - self.first);
+        let on: u64 = self
+            .flown
+            .iter()
+            .copied()
+            .chain(self.open.values().map(|t| (*t, now)))
+            .map(|(b, e)| e.min(now).saturating_sub(b.max(from)))
+            .sum();
+        Some(on as f64 / (now - from) as f64)
     }
 
     /// `[from, to)` 里用了多少（只算记在 `acct` 名下的 ⇒ 给 `acct`）。
@@ -70,24 +117,37 @@ impl Trail {
             .sum()
     }
 
-    /// 本会话的用速（折合输入 token / 分）：记了不到 [`PACE_FIRST`] · 最近 [`PACE_SPAN`] 里一发都没有 · 说不出上下文 ⇒ 空。
-    fn pace(&self, now: u64) -> Option<f64> {
-        if now < self.first + PACE_FIRST || self.prompts.is_empty() {
+    /// 本会话最近 `span` 秒的用速（折合输入 token / 分）：记了不到 `first` 秒 · 这一段里一发都没有 · 说不出上下文 ⇒ 空。
+    /// 会话记了不到 `span` ⇒ 按记了多久算。
+    fn pace_over(&self, now: u64, span: u64, first: u64) -> Option<f64> {
+        if now < self.first + first || self.prompts.is_empty() {
             return None;
         }
-        let from = now.saturating_sub(PACE_SPAN);
-        let u = self.units(from, now + 1, None);
-        let span = PACE_SPAN.min(now - self.first) as f64 / 60.0;
-        (u > 0.0).then(|| u / span)
+        let u = self.units(now.saturating_sub(span), now + 1, None);
+        let minutes = span.min(now - self.first) as f64 / 60.0;
+        (u > 0.0).then(|| u / minutes)
     }
 
-    /// 起伏（σ/μ）：最近几段里、会话记到之后整段都在的那几段。
+    /// 用速：最近 [`PACE_SPAN`]。
+    fn pace(&self, now: u64) -> Option<f64> {
+        self.pace_over(now, PACE_SPAN, PACE_FIRST)
+    }
+
+    /// 最近 [`BINS`] 段每段用了多少（折合输入 token），旧的在前、最后一段到此刻为止；会话记到之前就开始的段 ⇒ 空。
+    fn bins(&self, now: u64) -> Vec<Option<f64>> {
+        (1..=BINS as u64)
+            .rev()
+            .map(|k| {
+                let from = now.checked_sub(BIN * k).filter(|f| *f >= self.first)?;
+                Some(self.units(from, from + BIN, None))
+            })
+            .collect()
+    }
+
+    /// 起伏（σ/μ）：最近 [`SPREAD_BINS`] 段里量得到的那几段。
     fn spread(&self, now: u64) -> Option<f64> {
-        let bins: Vec<f64> = (0..SPREAD_BINS)
-            .map(|k| now.saturating_sub(SPREAD_BIN * (k + 1)))
-            .filter(|from| *from >= self.first && *from > 0)
-            .map(|from| self.units(from, from + SPREAD_BIN, None))
-            .collect();
+        let all = self.bins(now);
+        let bins: Vec<f64> = all[BINS - SPREAD_BINS..].iter().flatten().copied().collect();
         if bins.len() < SPREAD_MIN {
             return None;
         }
@@ -131,6 +191,29 @@ struct Inner {
     tally: HashMap<Key, Tally>,
     base: HashMap<(Key, String), Base>,
     runs: HashMap<String, Trail>,
+}
+
+impl Inner {
+    /// 会话 `sid` 那一本（没有就开一本；记满了先丢最久没动的），记下此刻动过。
+    fn trail(&mut self, sid: &str, agent: &str, now: u64) -> &mut Trail {
+        if !self.runs.contains_key(sid) && self.runs.len() >= RUNS_KEPT {
+            if let Some(old) = self
+                .runs
+                .iter()
+                .min_by_key(|(_, r)| r.last)
+                .map(|(k, _)| k.clone())
+            {
+                self.runs.remove(&old);
+            }
+        }
+        let r = self.runs.entry(sid.to_string()).or_insert_with(|| Trail {
+            agent: agent.to_string(),
+            first: now,
+            ..Trail::default()
+        });
+        r.last = now;
+        r
+    }
 }
 
 /// 一本累计（生产是进程里那一本 [`book`]；判据各开各的）。
@@ -185,22 +268,7 @@ impl Spend {
         let t = g.tally.entry(key.clone()).or_default();
         t.units += s.units;
         t.sends += u64::from(s.prompt.is_some());
-        if !g.runs.contains_key(stream) && g.runs.len() >= RUNS_KEPT {
-            if let Some(old) = g
-                .runs
-                .iter()
-                .min_by_key(|(_, r)| r.last)
-                .map(|(k, _)| k.clone())
-            {
-                g.runs.remove(&old);
-            }
-        }
-        let r = g.runs.entry(stream.to_string()).or_insert_with(|| Trail {
-            agent: key.0.clone(),
-            first: now,
-            ..Trail::default()
-        });
-        r.last = now;
+        let r = g.trail(stream, &key.0, now);
         r.add(&key.1, s.units, now);
         if let Some(p) = s.prompt {
             if r.prompts.back().is_some_and(|(_, k)| p.tokens < *k) {
@@ -212,6 +280,23 @@ impl Spend {
             }
             r.tier = p.tier.or(r.tier);
             r.tail.insert(key.1.clone(), (now, p.tokens, r.tier));
+        }
+    }
+
+    /// 一个响应开了头（流里 0 号那一件：会话标识 · 响应号）：会话此刻在哪个号上说得出 ⇒ 记进它那一本的在途。
+    /// 子 agent · 工作流 · 分叉请求都带本会话的标识 ⇒ 一并记在这个会话名下。
+    pub(crate) fn began(&self, stream: &str, resp: u64, now: u64) {
+        let mut g = self.lock();
+        let Some(agent) = g.routes.get(stream).map(|(k, _)| k.0.clone()) else {
+            return;
+        };
+        g.trail(stream, &agent, now).began(resp, now);
+    }
+
+    /// 那个响应说完了（收尾那一件；断了也算说完）。
+    pub(crate) fn ended(&self, stream: &str, resp: u64, now: u64) {
+        if let Some(r) = self.lock().runs.get_mut(stream) {
+            r.ended(resp, now);
         }
     }
 
@@ -236,6 +321,9 @@ impl Spend {
         cached.sort_by(|a, b| a.account.cmp(&b.account));
         Me {
             pace: r.pace(now),
+            pace_short: r.pace_over(now, SHORT_SPAN, SHORT_FIRST),
+            inflight: r.inflight(now),
+            bins: r.bins(now),
             spread: r.spread(now),
             context: r.prompts.back().map(|(_, k)| *k),
             write_extra: r.tier.map(|t| t.extra),

@@ -153,7 +153,7 @@ fn ctx_dynamic(c: &Ctx<'_>) -> Dynamic {
     Dynamic::from(m)
 }
 
-/// ctx 的 `session`：本会话量出来的，量不到的格是 `()`；`cached` ＝ `#{号: #{until, tokens}}`。
+/// ctx 的 `session`：本会话量出来的，量不到的格是 `()`；`bins` 恒是 36 格（旧的在前）；`cached` ＝ `#{号: #{until, tokens}}`。
 fn session_dynamic(me: &super::decide::Me) -> Dynamic {
     let int = |x: u64| Dynamic::from(i64::try_from(x).unwrap_or(i64::MAX));
     let opt = |v: Option<u64>| v.map_or(Dynamic::UNIT, int);
@@ -167,6 +167,12 @@ fn session_dynamic(me: &super::decide::Me) -> Dynamic {
     }
     let mut m = Map::new();
     m.insert("pace".into(), optf(me.pace));
+    m.insert("paceShort".into(), optf(me.pace_short));
+    m.insert("inflight".into(), optf(me.inflight));
+    let bins: rhai::Array = (0..crate::accounts::quota::spend::BINS)
+        .map(|i| optf(me.bins.get(i).copied().flatten()))
+        .collect();
+    m.insert("bins".into(), Dynamic::from(bins));
     m.insert("spread".into(), optf(me.spread));
     m.insert("context".into(), opt(me.context));
     m.insert("writeExtra".into(), optf(me.write_extra));
