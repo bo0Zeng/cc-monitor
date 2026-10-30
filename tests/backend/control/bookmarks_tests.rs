@@ -103,7 +103,12 @@ fn an_edit_with_the_current_dir_answers_where_it_sits_after_the_edit() {
     assert_eq!(off.dirs, ["/srv"]);
     assert_eq!(off.here, here_of(&[("//srv/", 0)]));
     let raw = std::fs::read_to_string(h.join(relay_route_core::BOOKMARKS_REL)).unwrap();
-    assert!(!raw.contains("here"), "存盘那一份不带「此刻」：{raw}");
+    let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(
+        v,
+        serde_json::json!({ "version": 1, "dirs": ["/srv"] }),
+        "存盘那一份不带「此刻」"
+    );
 }
 
 #[test]
