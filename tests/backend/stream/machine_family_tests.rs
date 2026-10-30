@@ -17,7 +17,7 @@ fn known_hosts_posix() -> String {
     )
 }
 
-/// `terminal-ssh`（壳的「在此打开终端」与主界面都读 `command` 那一格）：只交名字；跳板 · 地址次序 · 钥匙都照这一端的机器表。
+/// `terminal-ssh`（壳的「在此打开终端」与主界面都读 `prelude` · `line` 两格）：只交名字；跳板 · 地址次序 · 钥匙都照这一端的机器表。
 #[test]
 fn the_terminal_line_the_shell_reads_keeps_its_wire_bytes() {
     let hosts: Vec<crate::dial::Host> = [
@@ -40,7 +40,7 @@ fn the_terminal_line_the_shell_reads_keeps_its_wire_bytes() {
     assert_eq!(
         wire_of(&got),
         format!(
-            r#"{{"command":"'/usr/bin/ssh' -t -J j@hop.example -p 2222 -i '/k/id'{} dev@192.0.2.5 -- 'bash -lic '\\''claude --resume abc'\\'''"}}"#,
+            r#"{{"line":"'/usr/bin/ssh' -t -J j@hop.example -p 2222 -i '/k/id'{} dev@192.0.2.5 -- 'bash -lic '\\''claude --resume abc'\\'''","prelude":""}}"#,
             known_hosts_posix()
                 .replace('\\', "\\\\")
                 .replace('"', "\\\"")

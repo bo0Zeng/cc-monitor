@@ -210,13 +210,12 @@ pub fn outline(read: &PlanRead, slice: &str, sid: Option<&str>) -> Option<Value>
     if sl.v.docs_only {
         meta.push(copy_text("plan.sub.docsOnly", &[]));
     }
-    let needs: Vec<Value> = sl
-        .v
-        .needs
-        .iter()
-        .filter(|x| !x.acked)
-        .map(|x| need(&sl, x))
-        .collect();
+    let needs: Vec<Value> =
+        sl.v.needs
+            .iter()
+            .filter(|x| !x.acked)
+            .map(|x| need(&sl, x))
+            .collect();
     let rows: Vec<Value> = sl.v.top.iter().filter_map(|t| sl.row(t)).collect();
     Some(json!({
         "title": slice,
@@ -249,19 +248,18 @@ pub fn cell(read: &PlanRead, slice: &str, id: &str) -> Option<Value> {
         .clone()
         .or_else(|| c.quiet.clone())
         .unwrap_or_default();
-    let block = sl
-        .v
-        .blocks
-        .iter()
-        .find(|b| b.id != "project" && b.cells.iter().any(|x| x == id))
-        .map(|b| {
-            let head = copy_text(
-                "plan.cell.blockRoot",
-                &[("block", c.title.as_deref().unwrap_or(id))],
-            );
-            let owner = b.owner.as_ref().map(who_name);
-            joined([Some(head.as_str()), owner.as_deref(), b.phase.as_deref()])
-        });
+    let block =
+        sl.v.blocks
+            .iter()
+            .find(|b| b.id != "project" && b.cells.iter().any(|x| x == id))
+            .map(|b| {
+                let head = copy_text(
+                    "plan.cell.blockRoot",
+                    &[("block", c.title.as_deref().unwrap_or(id))],
+                );
+                let owner = b.owner.as_ref().map(who_name);
+                joined([Some(head.as_str()), owner.as_deref(), b.phase.as_deref()])
+            });
     let design = c
         .body
         .as_deref()
@@ -360,7 +358,8 @@ mod tests {
     }
 
     fn read_json() -> Value {
-        let done = json!({ "statusCode": "done", "look": "done", "stateLine": "已签收", "end": "已签收" });
+        let done =
+            json!({ "statusCode": "done", "look": "done", "stateLine": "已签收", "end": "已签收" });
         let mut a1 = cell_with("A1", done.clone());
         a1["children"] = json!(["A1-1"]);
         let mut a11 = cell_with("A1-1", done);
@@ -595,8 +594,8 @@ mod tests {
 
     #[test]
     fn face_json_routes_by_layer() {
-        let want =
-            json!({ "layer": "cell", "slice": "ledger", "id": "A1", "reply": read_json() }).to_string();
+        let want = json!({ "layer": "cell", "slice": "ledger", "id": "A1", "reply": read_json() })
+            .to_string();
         let out: Value = serde_json::from_str(&face_json(&want)).expect("JSON");
         assert_eq!(out["label"], "A1 标题A1");
         assert_eq!(face_json("{"), "");

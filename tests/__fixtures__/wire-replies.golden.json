@@ -602,7 +602,7 @@
       }
     },
     "history-lines": {
-      "rust": "{\"from\":7,\"next\":7,\"eof\":true,\"end\":7,\"lines\":[{\"session_id\":\"session_id-x\",\"path\":\"path-x\",\"seq\":7,\"end\":7,\"cwd\":\"cwd-x\",\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"text\",\"text\":\"text-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":[{\"oldStart\":7,\"oldLines\":7,\"newStart\":7,\"newLines\":7,\"lines\":[\"lines-x\"]}],\"patchTruncated\":true,\"text\":\"text-x\",\"timed\":\"timed-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\"}}]}",
+      "rust": "{\"from\":7,\"next\":7,\"eof\":true,\"end\":7,\"lines\":[{\"session_id\":\"session_id-x\",\"path\":\"path-x\",\"seq\":7,\"end\":7,\"cwd\":\"cwd-x\",\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":false,\"t\":\"unread\",\"why\":\"parseFailed\",\"type\":\"said\",\"text\":\"记录格式有变 · said\",\"tone\":\"warn\",\"excerpt\":\"{\\\"agent\\\":\\\"agent-x\\\",\\\"at\\\":\\\"at-x\\\",\\\"atMs\\\":7,\\\"blocks\\\":[{\\\"text\\\":\\\"text-x\\\",\\\"type\\\":\\\"text\\\"}],\\\"cwd\\\":\\\"cwd-x\\\",\\\"draw\\\":\\\"card\\\",\\\"human\\\":true,\\\"id\\\":\\\"id-x\\\",\\\"results\\\":{\\\"k\\\":{\\\"added\\\":7,\\\"answer\\\":{\\\"kind\\\":\\\"approved\\\"},\\\"chars\\\":7,\\\"exitCode\\\":7,\\\"file\\\":\\\"file-x\\\",\\\"files\\\":7,\\\"kind\\\":\\\"launched\\\",\\\"lines\\\":7,\\\"ok\\\":true,\\\"patch\\\":[{\\\"lines\\\":[\\\"lines-x\\\"],\\\"newLines\\\":7,\\\"newStart\\\":7,\\\"oldLines\\\":7,\\\"oldStart\\\":7}],\\\"patchTruncated\\\":true,\\\"preview\\\":\\\"previ\",\"count\":1}}]}",
       "sample": {
         "end": 7,
         "eof": true,
@@ -809,7 +809,7 @@
       }
     },
     "history-read": {
-      "rust": "{\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"text\",\"text\":\"text-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":[{\"oldStart\":7,\"oldLines\":7,\"newStart\":7,\"newLines\":7,\"lines\":[\"lines-x\"]}],\"patchTruncated\":true,\"text\":\"text-x\",\"timed\":\"timed-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\"},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true}",
+      "rust": "{\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":false,\"t\":\"unread\",\"why\":\"parseFailed\",\"type\":\"said\",\"text\":\"记录格式有变 · said\",\"tone\":\"warn\",\"excerpt\":\"{\\\"agent\\\":\\\"agent-x\\\",\\\"at\\\":\\\"at-x\\\",\\\"atMs\\\":7,\\\"blocks\\\":[{\\\"text\\\":\\\"text-x\\\",\\\"type\\\":\\\"text\\\"}],\\\"cwd\\\":\\\"cwd-x\\\",\\\"draw\\\":\\\"card\\\",\\\"human\\\":true,\\\"id\\\":\\\"id-x\\\",\\\"results\\\":{\\\"k\\\":{\\\"added\\\":7,\\\"answer\\\":{\\\"kind\\\":\\\"approved\\\"},\\\"chars\\\":7,\\\"exitCode\\\":7,\\\"file\\\":\\\"file-x\\\",\\\"files\\\":7,\\\"kind\\\":\\\"launched\\\",\\\"lines\\\":7,\\\"ok\\\":true,\\\"patch\\\":[{\\\"lines\\\":[\\\"lines-x\\\"],\\\"newLines\\\":7,\\\"newStart\\\":7,\\\"oldLines\\\":7,\\\"oldStart\\\":7}],\\\"patchTruncated\\\":true,\\\"preview\\\":\\\"previ\",\"count\":1},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true}",
       "sample": {
         "eof": true,
         "next": 7,
@@ -986,7 +986,7 @@
       }
     },
     "history-tail": {
-      "rust": "{\"total\":7,\"tail_from\":7,\"split_at\":7,\"end\":7,\"how\":\"tail\",\"from\":7,\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"pasted\":[{\"id\":\"id-x\",\"start\":7,\"end\":7,\"bodyStart\":7,\"bodyEnd\":7,\"lines\":7}]},\"blocks\":[{\"type\":\"text\",\"text\":\"text-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"file\":\"file-x\",\"patch\":[{\"oldStart\":7,\"oldLines\":7,\"newStart\":7,\"newLines\":7,\"lines\":[\"lines-x\"]}],\"patchTruncated\":true,\"text\":\"text-x\",\"timed\":\"timed-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\"},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true,\"held\":{\"path\":\"path-x\",\"next\":7,\"next_byte\":7,\"mark\":\"mark-x\"}}",
+      "rust": "{\"total\":7,\"tail_from\":7,\"split_at\":7,\"end\":7,\"how\":\"tail\",\"from\":7,\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":false,\"t\":\"unread\",\"why\":\"parseFailed\",\"type\":\"said\",\"text\":\"记录格式有变 · said\",\"tone\":\"warn\",\"excerpt\":\"{\\\"agent\\\":\\\"agent-x\\\",\\\"at\\\":\\\"at-x\\\",\\\"atMs\\\":7,\\\"blocks\\\":[{\\\"text\\\":\\\"text-x\\\",\\\"type\\\":\\\"text\\\"}],\\\"cwd\\\":\\\"cwd-x\\\",\\\"draw\\\":\\\"card\\\",\\\"human\\\":true,\\\"id\\\":\\\"id-x\\\",\\\"results\\\":{\\\"k\\\":{\\\"added\\\":7,\\\"answer\\\":{\\\"kind\\\":\\\"approved\\\"},\\\"chars\\\":7,\\\"exitCode\\\":7,\\\"file\\\":\\\"file-x\\\",\\\"files\\\":7,\\\"kind\\\":\\\"launched\\\",\\\"lines\\\":7,\\\"ok\\\":true,\\\"patch\\\":[{\\\"lines\\\":[\\\"lines-x\\\"],\\\"newLines\\\":7,\\\"newStart\\\":7,\\\"oldLines\\\":7,\\\"oldStart\\\":7}],\\\"patchTruncated\\\":true,\\\"preview\\\":\\\"previ\",\"count\":1},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true,\"held\":{\"path\":\"path-x\",\"next\":7,\"next_byte\":7,\"mark\":\"mark-x\"}}",
       "sample": {
         "end": 7,
         "eof": true,
@@ -2140,9 +2140,10 @@
       }
     },
     "terminal-ssh": {
-      "rust": "{\"command\":\"command-x\"}",
+      "rust": "{\"prelude\":\"prelude-x\",\"line\":\"line-x\"}",
       "sample": {
-        "command": "command-x"
+        "line": "line-x",
+        "prelude": "prelude-x"
       }
     },
     "terminal-unfollow": {

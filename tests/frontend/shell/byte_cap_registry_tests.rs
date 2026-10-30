@@ -1073,12 +1073,26 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "「待办」里「直接敲的也走中转」那一件读那台 `~/.claude/settings.json` 多大",
         "降级+说清",
     ),
-    // 一次改动的结果里随记录带出的逐段 diff 至多多少字；超了在段的边界停下、立 `patchTruncated`（数照整份）。
+    // 一次改动的行差（调用那一份 · 结果那一份）至多带多少字；超了在段的边界停下、立 `truncated`（数照整份）。
     (
         "src/backend/agents/claudecode/steps.rs",
         "PATCH_MAX",
-        "一次改动结果里逐段 diff 的行正文总字数",
+        "一次改动的行差里各行正文的总字数",
         "截断+说清",
+    ),
+    // 行差里一行正文至多留多少字；截了以「…」收尾。
+    (
+        "src/backend/agents/claudecode/steps.rs",
+        "DIFF_LINE_MAX",
+        "行差里一行正文至多留多少字（按字符）",
+        "截断+说清",
+    ),
+    // 改前改后逐行比的格数上界；超了不比、出整删 ＋ 整增，数照这一形。
+    (
+        "src/backend/agents/claudecode/steps.rs",
+        "DIFF_CELLS_MAX",
+        "从改前改后逐行比的格数（改前行数 × 改后行数）",
+        "降级+说清",
     ),
     // 前台派出、还在跑的子 agent：读子记录旁边派出那一刻落盘的 `agent-<id>.meta.json` 多大；超了不认它、记一笔（卡等父侧结果再对上）。
     (

@@ -15,6 +15,10 @@
           "seenHostKey": null,
           "stage": "attach",
           "state": "connecting",
+          "strip": {
+            "progress": false,
+            "tone": "busy"
+          },
           "version": null,
           "versionRelation": null,
           "word": "连接中"
@@ -68,6 +72,10 @@
           "seenHostKey": null,
           "stage": null,
           "state": "needs_update",
+          "strip": {
+            "progress": false,
+            "tone": "warn"
+          },
           "version": null,
           "versionRelation": "older",
           "word": "要更新"
@@ -120,6 +128,10 @@
           "seenHostKey": null,
           "stage": null,
           "state": "down",
+          "strip": {
+            "progress": false,
+            "tone": "fault"
+          },
           "version": null,
           "versionRelation": null,
           "word": "离线"
@@ -148,6 +160,10 @@
           "seenHostKey": null,
           "stage": null,
           "state": "needs_update",
+          "strip": {
+            "progress": false,
+            "tone": "warn"
+          },
           "version": null,
           "versionRelation": null,
           "word": "要更新"
@@ -180,6 +196,10 @@
           "seenHostKey": null,
           "stage": null,
           "state": "down",
+          "strip": {
+            "progress": false,
+            "tone": "offline"
+          },
           "version": null,
           "versionRelation": null,
           "word": "离线"
@@ -212,6 +232,10 @@
           "seenHostKey": null,
           "stage": null,
           "state": "down",
+          "strip": {
+            "progress": false,
+            "tone": "offline"
+          },
           "version": null,
           "versionRelation": null,
           "word": "离线"
@@ -235,6 +259,10 @@
           "seenHostKey": null,
           "stage": null,
           "state": "unsupported",
+          "strip": {
+            "progress": false,
+            "tone": "fault"
+          },
           "version": null,
           "versionRelation": null,
           "word": "不支持"
@@ -258,6 +286,10 @@
           "seenHostKey": null,
           "stage": "deploy",
           "state": "connecting",
+          "strip": {
+            "progress": false,
+            "tone": "busy"
+          },
           "version": null,
           "versionRelation": null,
           "word": "连接中"
@@ -281,6 +313,10 @@
           "seenHostKey": null,
           "stage": null,
           "state": "installing",
+          "strip": {
+            "progress": true,
+            "tone": "busy"
+          },
           "version": null,
           "versionRelation": null,
           "word": "安装中"
@@ -305,6 +341,10 @@
           "seenHostKey": null,
           "stage": null,
           "state": "updating",
+          "strip": {
+            "progress": true,
+            "tone": "busy"
+          },
           "version": null,
           "versionRelation": "older",
           "word": "更新中"

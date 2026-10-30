@@ -754,7 +754,7 @@ pub(crate) struct RecordFace {
     pub(crate) chain: Option<fn(&Line<'_>) -> Option<mainline::ChainFact>>,
     /// 在这一家自己的记录根（[`records_root_of`]）下按 sid 找那份会话文件。每一家都得答：恢复 · 「记录还在不在」· 按 sid 读会话都经它。
     pub(crate) find_session: fn(&Path, &str) -> Result<PathBuf, String>,
-    /// 分叉的记录变换：`(记录, 分叉点 uuid, 源 sid, 新 sid)` ⇒ 新会话的记录（原共享 crate `branch-core`）。`None` ＝ 这一家不分叉。
+    /// 分叉的记录变换：`(记录, 分叉点 uuid, 源 sid, 新 sid)` ⇒ 新会话的记录。`None` ＝ 这一家不分叉。
     pub(crate) branch: Option<BranchFn>,
     /// 这一家的漂移账（看不懂的记录类型记在哪）⇒ 各面的快照（通用形 [`drift::DriftFaceReport`]）；`None` ＝ 这一家不记。
     pub(crate) drift: Option<fn() -> Vec<drift::DriftFaceReport>>,
@@ -784,15 +784,6 @@ pub(crate) struct RecordFace {
     pub(crate) skim: Option<fn(&Line<'_>) -> Option<serde_json::Value>>,
     /// 一条已解析的记录 ⇒ 它的一拍（[`beat::BeatFace`]：轮次 · 会话事实 · 大纲只吃它）。`None` ＝ 这一家不出轮次 · 事实 · 大纲。
     pub(crate) beats: Option<beat::BeatFace>,
-    /// 这份会话是从哪个会话分叉来的（[`ForkFace`]）。`None` ＝ 这一家不分叉。
-    pub(crate) fork: Option<ForkFace>,
-}
-
-/// 一家怎么说分叉来源：一条记录 ⇒ (源 sid, 分叉处的记录 id) · 只拿到那一格本身时 ⇒ 同一对（列表那一路只解了几格）。
-#[derive(Clone, Copy)]
-pub(crate) struct ForkFace {
-    pub(crate) of_record: fn(&serde_json::Value) -> Option<(String, String)>,
-    pub(crate) of_field: fn(&serde_json::Value) -> Option<(String, String)>,
 }
 
 /// `kind` 那一家：这条记录的一拍。那一家不出 ⇒ `None`。
@@ -814,20 +805,6 @@ pub(crate) fn call_ask(kind: &str, tool: &str) -> beat::CallAsk {
     record_face(kind)
         .and_then(|r| r.beats)
         .map_or(beat::CallAsk::Plain, |b| (b.ask)(tool))
-}
-
-/// `kind` 那一家：这条记录说的分叉来源。
-pub(crate) fn fork_origin_of(kind: &str, v: &serde_json::Value) -> Option<(String, String)> {
-    record_face(kind)
-        .and_then(|r| r.fork)
-        .and_then(|f| (f.of_record)(v))
-}
-
-/// `kind` 那一家：分叉来源那一格本身 ⇒ 那一对。
-pub(crate) fn fork_pair_of(kind: &str, field: &serde_json::Value) -> Option<(String, String)> {
-    record_face(kind)
-        .and_then(|r| r.fork)
-        .and_then(|f| (f.of_field)(field))
 }
 
 /// 一家的记录树：会话按项目目录分，住在家目录下的一棵树里。
@@ -1248,7 +1225,7 @@ pub(crate) fn run_of_record(kind: &str, v: &serde_json::Value) -> Option<RunMark
     run_faces(kind).run_of(v)
 }
 
-/// 一家的记录文本面（原共享 crate `search-core` 里 Claude 记录文本那一半）：函数指针（同 [`Adapter::home`]，不立 trait）。
+/// 一家的记录文本面：函数指针（同 [`Adapter::home`]，不立 trait）。
 /// 通用层（全局搜索 · 会话内查找 · 历史摘录 · 用户输入列表 · 骨架索引）经 [`main_text`] · [`tool_text`] · [`user_text_of`] · [`human_speech`] 够它，不按名字够。
 #[derive(Clone, Copy)]
 pub(crate) struct TextFace {

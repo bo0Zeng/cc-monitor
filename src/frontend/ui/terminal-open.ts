@@ -12,6 +12,7 @@ import { commands, type TerminalOpened } from "./ipc/commands";
 import { copyText } from "./copy-table";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { TerminalSshReq } from "./generated/TerminalSshReq";
+import type { SshCommand } from "./generated/SshCommand";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { toast, type ToastAction } from "./kit/toast";
 import { writeClipboard } from "./clipboard";
@@ -21,11 +22,10 @@ import { openSettingsWindow } from "./open-settings";
 /** 期限：`terminal-ssh` 是本机后端里的纯计算（不拨号），给足本机那条流的往返即可。 */
 const RENDER_BUDGET_MS = 10_000;
 
-/** 本机后端那一问（`terminal-ssh`）⇒ 那一串。问不到 ⇒ 抛一句人话。 */
-async function lineOf(req: TerminalSshReq): Promise<string> {
+/** 本机后端那一问（`terminal-ssh`）⇒ 前奏 · 那一行（开窗跑两段接起来的；开不了窗复制的只有那一行）。问不到 ⇒ 抛一句人话。 */
+async function lineOf(req: TerminalSshReq): Promise<SshCommand> {
   try {
-    const { command } = await callTyped(LOCAL_ORIGIN, "terminal-ssh", req, budgetWithin(RENDER_BUDGET_MS));
-    return command;
+    return await callTyped(LOCAL_ORIGIN, "terminal-ssh", req, budgetWithin(RENDER_BUDGET_MS));
   } catch (e) {
     throw new Error(saidOf(e));
   }
@@ -80,8 +80,9 @@ async function opened(command: string, got: Promise<TerminalOpened>): Promise<vo
   if (r === "setMissing") throw new NoTerminalWindow(command, "setMissing");
 }
 
-async function openWindow(command: string): Promise<void> {
-  await opened(command, commands.open_terminal_window({ command }));
+/** 开窗跑 `prelude + line`；开不了窗 ⇒ 交给［复制命令］的只有 `line`。 */
+async function openWindow({ prelude, line }: SshCommand): Promise<void> {
+  await opened(line, commands.open_terminal_window({ command: prelude + line }));
 }
 
 /** 在本机开一个终端窗口、起始目录 `cwd`，跑本机后端渲好的 `cmd`（本机起会话 · 批量各开一个）。 */
@@ -91,7 +92,8 @@ export async function openLocalTerminal(cmd: string, cwd: string | null): Promis
 
 /**
  * 在用户面前这台机器上开一个终端跑 `command`（`origin` = 命令要在哪台跑）。
- * `sid`：这个终端显示的那条会话（`session-open` 的成品带它）⇒ 本机后端在那一行前面接一段，开的那个 shell 记下自己的窗口标签，↗ 先照它在本机找。
+ * `sid`：这个终端显示的那条会话（`session-open` 的成品带它）⇒ 本机后端另回一段前奏，开窗时接在那一行前面，开的那个 shell 记下自己的窗口标签，
+ * ↗ 先照它在本机找；开不了窗时复制出去的只有那一行。
  */
 export async function openTerminal(
   origin: Origin,
@@ -99,7 +101,7 @@ export async function openTerminal(
   sid: string | null = null,
 ): Promise<void> {
   if (isLocalOrigin(origin)) {
-    await openWindow(command);
+    await openWindow({ prelude: "", line: command });
     return;
   }
   // 只交名字：地址 · 跳板 · 先试哪条都照本机后端的机器表。

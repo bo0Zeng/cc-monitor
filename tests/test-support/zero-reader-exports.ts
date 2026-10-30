@@ -4,7 +4,7 @@
  *
  * 两种用法、同一份代码：
  * - 判据里 import 它，在内存里造的小程序上跑正控；
- * - 全仓那一趟由判据另起一个 node 进程（`--import tsx`，同 `npm test` 里那几套 tsx 套件）调 [`zeroReaderExportsOfRepo`]（印一行 JSON）：
+ * - 全仓那一趟由判据另起一个 node 进程（`--import tsx`）调 [`zeroReaderExportsOfRepo`]（印一行 JSON）：
  *   建全仓程序（一千一百多份源 ＋ lib.dom）是纯 CPU 的活，留在 vitest 的 worker 里跑会挨覆盖率插桩
  *   （V8 精确覆盖率把 typescript 自己也拖慢，空机 5 s 的活带覆盖率 25 s，负载下 62–81 s，压着 120 s 期限过半）；
  *   子进程不插桩，读数一样。

@@ -10,7 +10,7 @@ const EXEMPT: &[(&str, &str)] = &[
     (
         "f40",
         "渲染/滚动管线级：同 `graylight-suite` 的规格（要跑着的 dev app + Xvfb），\
-             且它**不打印「合计 PASS=」**、断言数随环境分支变 ⇒ 连 `assert-pass-floor` 的判法都用不上；\
+             且它断言数随环境分支变（多组 `ok`/`bad` 互斥）⇒ `assert-pass-floor` 只判得了 `PASS > 0`，钉不了条数；\
              论证写在 `tests/e2e/README.md`（U0 2026-08-01 补写那两段）",
     ),
 ];
@@ -146,7 +146,7 @@ fn every_exemption_still_points_at_a_real_ungated_suite() {
 #[test]
 fn the_orphan_backend_gate_counts_both_families() {
     let raw = read_e2e("graylight-suite.sh");
-    let src = strip_comments(&raw);
+    let src = guard_core::strip_hash_comment_lines(&raw);
     for expr in [
         "pgrep -fc '.build/backend/[^ ]*/cc-monitor-backend'",
         "pgrep -fc '\\.cc-monitor/bin/cc-monitor-backend'",
@@ -170,7 +170,7 @@ fn the_orphan_backend_gate_counts_both_families() {
 /// 读它的人正处在「台架坏了、想赶紧清干净」的状态 —— 最容易照着敲。
 #[test]
 fn the_harness_no_longer_teaches_a_bare_pattern_kill() {
-    let src = strip_comments(&read_e2e("graylight-suite.sh"));
+    let src = guard_core::strip_hash_comment_lines(&read_e2e("graylight-suite.sh"));
     assert!(
         !guard_core::contains_word(&src, "pkill"),
         "台架的可执行段又出现 `pkill` —— 那是模式杀，打到什么由命令行长相决定"
@@ -683,7 +683,7 @@ fn hardcoded_private_names(files: &[(String, String)]) -> Vec<String> {
             }
             continue;
         }
-        let code = strip_comments(src);
+        let code = guard_core::strip_hash_comment_lines(src);
         let lines: Vec<&str> = code.lines().collect();
         let mut name_vars: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         for line in &lines {
@@ -807,15 +807,6 @@ fn read_e2e(name: &str) -> String {
             .join(name),
     )
     .unwrap_or_else(|e| panic!("读不到 tests/e2e/{name}：{e}"))
-}
-
-/// shell 的「剥生产段」：只留可执行行。
-/// 与 Rust 侧 `guard_core::production_code` 同一个用意 —— 判据不该被**解释它自己的散文**喂饱。
-fn strip_comments(src: &str) -> String {
-    src.lines()
-        .filter(|l| !l.trim_start().starts_with('#'))
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 /// `backend-wrapper.sh` 是夹具：**在仓里直接跑就拒**，一个字节都不交给后端。
@@ -945,7 +936,7 @@ fn no_e2e_script_kills_by_pattern() {
     let bad: Vec<String> = files
         .iter()
         .filter(|(_, src)| {
-            let code = strip_comments(src);
+            let code = guard_core::strip_hash_comment_lines(src);
             guard_core::contains_word(&code, "pkill") || guard_core::contains_word(&code, "killall")
         })
         .map(|(p, _)| p.display().to_string())
@@ -1284,7 +1275,7 @@ fn every_tmux_call_names_its_server_and_drops_the_inherited_tmux() {
 #[test]
 fn every_e2e_suite_gets_a_private_tmux_from_the_sandbox_env() {
     use guard_core::contains_word as has;
-    let env = strip_comments(&read_e2e("sandbox-env.sh"));
+    let env = guard_core::strip_hash_comment_lines(&read_e2e("sandbox-env.sh"));
     assert!(
         env.lines()
             .any(|l| has(l, "tmux-shim.sh") && has(l, "--sandbox-default")),
@@ -1299,7 +1290,7 @@ fn every_e2e_suite_gets_a_private_tmux_from_the_sandbox_env() {
     let dir = guard_core::addr::repo_root().join("tests").join("e2e");
     let mut bad: Vec<String> = Vec::new();
     for (f, src) in guard_core::scan_tree!(&dir, &["sh"]) {
-        let exec = strip_comments(&src);
+        let exec = guard_core::strip_hash_comment_lines(&src);
         if !has(&exec, "sandbox-env.sh") {
             continue;
         }

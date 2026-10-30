@@ -391,3 +391,11 @@ frame_variants
 FROZEN_COMPAT
 AGENT_NAMED_WIRE_FIELDS
 every_frozen_compat_entry_states_how_it_gets_unfrozen
+branch-core
+usage-core
+search-core
+codex-token-core
+LaunchPlan
+LaunchContext
+LAUNCH_DIMENSIONS
+WrapSpec
