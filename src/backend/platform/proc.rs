@@ -387,12 +387,22 @@ pub enum OpenFiles {
 impl std::fmt::Display for OpenFiles {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OpenFiles::Raised { from, to } => write!(f, "fd 软上限 {from} → {to}（抬到硬上限）"),
-            OpenFiles::Already(n) => write!(f, "fd 软上限已在硬上限 {n}"),
-            OpenFiles::Stuck { soft, to, why } => {
-                write!(f, "fd 软上限抬不到 {to}，照旧 {soft}：{why}")
+            // 只进日志（`main.rs` 流模式起来那一行），不上界面 ⇒ 同 `[relay]` 那几行写英文、不进文案表。
+            OpenFiles::Raised { from, to } => {
+                write!(f, "open files soft limit {from} -> {to} (the hard limit)")
             }
-            OpenFiles::NotHere => f.write_str("fd 软上限：这一平台没有这一格"),
+            OpenFiles::Already(n) => {
+                write!(f, "open files soft limit already at the hard limit {n}")
+            }
+            OpenFiles::Stuck { soft, to, why } => {
+                write!(
+                    f,
+                    "open files soft limit stays {soft}, cannot raise to {to}: {why}"
+                )
+            }
+            OpenFiles::NotHere => {
+                f.write_str("open files soft limit: not a thing on this platform")
+            }
         }
     }
 }
