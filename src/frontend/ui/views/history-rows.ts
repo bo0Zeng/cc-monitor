@@ -9,6 +9,7 @@ import { tag } from "../kit/badge";
 import { statusDot } from "../kit/status-dot";
 import { banner } from "../kit/banner";
 import { copyText } from "../copy-table";
+import { isLive } from "../face-can";
 import type { HistoryGroup, HistoryRow } from "../history-list-reads";
 import type { Hit, SessionHits } from "./history-search";
 import { plainSnippet } from "../find-strip";
@@ -46,7 +47,7 @@ function badge(text: string, tone?: "live" | "need"): HTMLElement {
 
 /** 状态点：只画进程在的（那台给这一行的脸，需手动也在脸上）。 */
 function dotOf(r: HistoryRow): HTMLElement | null {
-  if (r.face.life.is === "live") return statusDot(r.face.dot, r.face.name, "compact");
+  if (isLive(r.face)) return statusDot(r.face.dot, r.face.name, "compact");
   return null;
 }
 
@@ -59,8 +60,8 @@ export function rowBadges(r: HistoryRow, live = true): HTMLElement[] {
   if (r.agentTag) badges.push(badge(r.agentTag));
   if (r.isBg) badges.push(badge(copyText("history.row.bg")));
   if (r.hidden) badges.push(badge(copyText("history.row.hidden")));
-  if (r.face.life.is === "live" && r.face.dot === "needs-you") badges.push(badge(r.face.name, "need"));
-  else if (live && r.face.life.is === "live") badges.push(badge(copyText("history.row.live"), "live"));
+  if (isLive(r.face) && r.face.dot === "needs-you") badges.push(badge(r.face.name, "need"));
+  else if (live && isLive(r.face)) badges.push(badge(copyText("history.row.live"), "live"));
   return badges;
 }
 

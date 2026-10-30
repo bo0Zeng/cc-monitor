@@ -31,6 +31,7 @@ import { RunTimeline } from "../run-timeline";
 import { agentWindowTitle, chainOf, kidsOf, runLabel, runLineNow, runStateMark, runStateText } from "../runs";
 import type { RunInfo } from "../generated/RunInfo";
 import { openAgentWindow } from "../agent-window-open";
+import { isLive } from "../face-can";
 import {
   AGENT_WINDOW_EVENT,
   AGENT_WINDOWS_ASK_EVENT,
@@ -182,7 +183,7 @@ export class AgentWindow {
       this.say(copyText("viewerWindow.record.gone"));
       return;
     }
-    this.live = row.face.life.is === "live";
+    this.live = isLive(row.face);
     this.ctx.parentPath = row.jsonlPath;
     this.ctx.speaker = speakerNameOf(row.agent);
     const foot = this.parts.foot.querySelector<HTMLElement>('[data-role="session"]');
