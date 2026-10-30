@@ -212,17 +212,17 @@
 
 | 类 | 格 |
 |---|---|
-| `said`（人那一侧说的：人 · 工具结果 · 派活 · 来话 · 通知 …；人在一轮跑着时插进去的一句也是它，在它自己那一行的位置上） | `who`（`UserText`：`speaker` 谁说的，`kind` 闭集 `human` `slashCommand` `bashInput` `bashOutput` `commandOutput` `taskNotification` `agentMessage` `peerSession` `coordinator` `agentTask` `system` `compactSummary` `interrupt` `toolResult`；`text` 要显示的正文；`pasted?` 粘贴块）· `blocks` · `results?`（工具调用 id ⇒ 结果一句：`ok` `rejected?` `lines?` `added?` `removed?` `files?` `answer?` `exitCode?` `file?` `patch?` `patchTruncated?`；`patch` 至多 32 KiB、整段不劈）· `cwd?` |
-| `reply`（代理的回复） | `blocks` · `model?` · `autoReply`（代理那一侧自动写的应答，不建卡）· `cards?`（工具调用 id ⇒ 卡型 `agent` `interactive` `diff` `md` `command`）· `steps?`（工具调用 id ⇒ 过程一行：`tool` · `arg?` · `path?` · `note?` · `known`；展开画的 `body?`：改动 `{kind: changes, changes: [{old, new}]}` · 命令 `{kind: command, line}`；可在文件窗口定位的绝对路径 `file?`。界面只按这几格画，不读 `tool_use.input` 的键）· `runs?`（工具调用 id ⇒ 派出的子运行 `{label, kind?}`）· `error?`（上游最终失败写的报错：`reason` 闭集 `overloaded` `quota` `network` `auth` `context` `unknown`，`status?` HTTP 状态码；报错正文在 `blocks` 里） |
+| `said`（人那一侧说的：人 · 工具结果 · 派活 · 来话 · 通知 …；人在一轮跑着时插进去的一句也是它，在它自己那一行的位置上） | `who`（`UserText`：`speaker` 谁说的，`kind` 闭集 `human` `slashCommand` `bashInput` `bashOutput` `commandOutput` `taskNotification` `agentMessage` `peerSession` `coordinator` `agentTask` `system` `compactSummary` `interrupt` `toolResult`；`text` 要显示的正文；`pasted?` 粘贴块）· `blocks` · `results?`（工具调用 id ⇒ 结果一句：`ok` `rejected?` `lines?` `added?` `removed?` `files?` `answer?` `exitCode?` `file?` `patch?`（算好的行差 `{rows: [{kind: add|del|ctx|head, text, oldNo?, newNo?}], shown, truncated, added, removed, stat}`：照 structuredPatch、带真行号，至多 32 KiB、整段不劈）· `cwd?` |
+| `reply`（代理的回复） | `blocks` · `model?` · `autoReply`（代理那一侧自动写的应答，不建卡）· `cards?`（工具调用 id ⇒ 卡型 `agent` `interactive` `diff` `md` `command`）· `steps?`（工具调用 id ⇒ 过程一行：`tool` · `arg?` · `path?` · `note?` · `known`；展开画的 `body?`：改动 `{kind: changes, diff: 行差}`（同上形，照入参改前改后算，行号缺；结果带着 `patch` ⇒ 两端改画结果那份） · 命令 `{kind: command, line}`；可在文件窗口定位的绝对路径 `file?`。界面只按这几格画，不读 `tool_use.input` 的键）· `runs?`（工具调用 id ⇒ 派出的子运行 `{label, kind?}`）· `error?`（上游最终失败写的报错：`reason` 闭集 `overloaded` `quota` `network` `auth` `context` `unknown`，`status?` HTTP 状态码；报错正文在 `blocks` 里） |
 | `retry`（上游失败、将重试） | `reason`（同上闭集）· `attempt?` · `max?` |
 | `title`（会话标题） | `text` · `by`（`agent` 代理起的 · `user` 人起的） |
 | `unread`（这一家的这一行认不出：没见过的类型 · 见过的类型形状变了） | `why`（闭集 `unknownType` `parseFailed`）· `type`（那一行自己说的类型原样，只当标签、出口不按它取字；没有 ⇒ `null`）· `text`（写好的一句）· `tone`（恒 `warn`）· `excerpt`（原文截到 400 字节、按字符截，给［复制详情］，出口照抄不解析）· `count`（并了几条：出记录页那一遍把相邻、原因与类型都一样的并成一条；实时 `line` 帧每行一条、恒 1） |
 
-内容块 `blocks[]`（两家共有的词，按 `type`）：`text {text}` · `thinking {text}` · `tool_use {id, name, input}` · `tool_result {for, content: [块], isError}` · `image {source}`。
+内容块 `blocks[]`（两家共有的词，按 `type`）：`text {text, bytes}` · `thinking {text}` · `tool_use {id, name, input}` · `tool_result {for, content: [块], isError, bytes}` · `image {source}`（`bytes` ＝ UTF-8 字节，结果块是内容各块之和）。
 
 - **过程一行的主参数 `steps.*.arg` 是定长一行**：换行与连串空白压成一个空格，至多 200 字（按字符，不切半个字），截了以 `…` 收尾；两个前端都不再截。完整内容照旧在 `blocks` 的入参里。
-- 要哪几格由出口交的声明定（请求信封的 `view`，见 §4）：折起那一行只要 `omit: {record: ["blocks", "results.*.patch", "results.*.patchTruncated"]}`；
-  正文按需（工具卡展开时再取那一行全文）交 `omit: {record: ["blocks[type=tool_use].input", "blocks[type=tool_result].content", "results.*.patch", "results.*.patchTruncated"]}`。`line` 不带原文。
+- 要哪几格由出口交的声明定（请求信封的 `view`，见 §4）：折起那一行只要 `omit: {record: ["blocks", "results.*.patch"]}`；
+  正文按需（工具卡展开时再取那一行全文）交 `omit: {record: ["blocks[type=tool_use].input", "blocks[type=tool_result].content", "results.*.patch"]}`。`line` 不带原文。
 - 主线外清单（ESC 回退掉的那几条记录的 `id`）不在记录上，单独给：实时帧 `session_branch {sid, path, at, off, sum}` ——「这份记录的清单前 `at` 条照旧，其后换成 `off`」，`sum` ＝ 到这一帧末尾那一截的摘要（FNV-1a 64，客户端只记、在 `stream-watch.branch` 里交回）；变了只发变了的那一截；刚订上时照交回的那份补缺的，对不上 · 换了记录 · 这条连接丢过它一帧 ⇒ 从 `at = 0` 起整份，按页切几帧接着发 · 冷读 `history-branch`（同样分页）。没有链的那一家恒空。
 - 分页（`history-index` · `-user-inputs` · `-turns` · `-branch`）：一条应答至多 `REPLY_PAGE_BYTES` 字节（一项单独超了 ⇒ 那一页只有它）；有下一页 ⇒ `next` 是下一页的续点（前三条是字节、`-branch` 是条数），没有 ⇒ `null`；入参可缺的 `limit` 管一页至多几项。写出方向写完一页应答就先让实时帧走 ⇒ 分页取到一半时别的会话来的行至多再等一页。
 

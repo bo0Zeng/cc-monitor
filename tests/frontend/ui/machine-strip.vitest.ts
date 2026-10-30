@@ -92,6 +92,8 @@ describe("机器条", () => {
 describe("机器条：本机后端没起来那一行（A2-17-15-1-1）", () => {
   const down = (said: string): LocalBackend => ({
     state: "down",
+    look: "down",
+    tone: "fail",
     word: "壳·未连上",
     said,
     fixes: [{ fix: "retry", label: "壳·重试" }],
@@ -124,7 +126,7 @@ describe("机器条：本机后端没起来那一行（A2-17-15-1-1）", () => {
 
   it("正在起 ⇒ 那一行写正在起那一句、不给修法", () => {
     const s = new MachineStrip({ fix: vi.fn() });
-    s.local({ state: "starting", word: "壳·连接中", said: "壳·启动 cc-monitor" });
+    s.local({ state: "starting", look: "connecting", tone: "busy", word: "壳·连接中", said: "壳·启动 cc-monitor" });
     expect(s.el.querySelector(".machine-strip-said")?.textContent).toBe("壳·启动 cc-monitor");
     expect(s.el.querySelectorAll("button")).toHaveLength(0);
   });

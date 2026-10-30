@@ -107,6 +107,30 @@ mod tests {
             .collect()
     }
 
+    /// 人群里的一份（`p`）与仓相对全路径 `rel` 是不是同一个文件（两边都规范化后比）。
+    /// 不按文件名尾巴认：同尾巴的文件不止一份时，挑中哪份看目录遍历的次序。
+    fn same_file(p: &str, rel: &str) -> bool {
+        let want = std::fs::canonicalize(guard_core::addr::repo_root().join(rel))
+            .unwrap_or_else(|e| panic!("`{rel}` 盘上没有（{e}）—— 取法坏了，本条按红处理"));
+        std::fs::canonicalize(p).is_ok_and(|c| c == want)
+    }
+
+    /// 人群里按仓相对全路径取一份的生产段：恰好一份，否则红。
+    fn production_at<'a>(files: &'a [(String, String)], rel: &str) -> &'a str {
+        let hits: Vec<&str> = files
+            .iter()
+            .filter(|(p, _)| same_file(p, rel))
+            .map(|(_, prod)| prod.as_str())
+            .collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "人群里 `{rel}` 不是恰好一份（{} 份）—— 取法坏了，本条按红处理",
+            hits.len()
+        );
+        hits[0]
+    }
+
     /// 在整个 crate 的生产段里逐行找一根针，返回 `文件:行号` 的列表。
     ///
     /// ⚠ **那个行号是「剥掉测试段之后」的行号，不是源文件的行号**（`production_code`
@@ -183,11 +207,7 @@ mod tests {
 
     fn table_production() -> String {
         let files = crate_production();
-        let (_, prod) = files
-            .iter()
-            .find(|(p, _)| p.ends_with("table.rs"))
-            .expect("扫不到 `table.rs` —— 取法坏了，本条按红处理");
-        prod.clone()
+        production_at(&files, "src/backend/accounts/upstream_select/table.rs").to_string()
     }
 
     /// ★★★ **㈠ 焊接那一步只有一处**：把「一个上游」与「一把 key」焊成同一个值，
@@ -273,8 +293,7 @@ mod tests {
             welds.len()
         );
         assert!(
-            welds[0].contains("accounts/upstream_select/table.rs")
-                || welds[0].contains("accounts\\upstream\\table.rs"),
+            same_file(&welds[0], "src/backend/accounts/upstream_select/table.rs"),
             "唯一那一处不在 `accounts/upstream_select/table.rs` 而在 {} —— 靶子挪了",
             welds[0]
         );
@@ -362,7 +381,9 @@ mod tests {
             calls.len()
         );
         assert!(
-            calls[0].contains("server.rs"),
+            calls[0]
+                .rsplit_once(':')
+                .is_some_and(|(p, _)| same_file(p, "src/comms/outward/server.rs")),
             "唯一那一处不在交换面（`server.rs`）而在 {} —— 靶子挪了",
             calls[0]
         );
@@ -514,10 +535,7 @@ mod tests {
     #[test]
     fn the_upstream_selection_lock_does_not_outlive_the_streaming_pump() {
         let files = crate_production();
-        let (_, server) = files
-            .iter()
-            .find(|(p, _)| p.ends_with("server.rs"))
-            .expect("扫不到 `server.rs` —— 取法坏了，本条按红处理");
+        let server = production_at(&files, "src/comms/outward/server.rs");
 
         // 两个窗口：交给 `resolve` 与 `retry` 的闭包（两处都在上游选择的锁里调 `act`），以及它们都调的 `dispatch` 本体。
         let window = |needle: &str| {
@@ -570,13 +588,7 @@ mod tests {
         );
 
         // ★ 另一半在上游选择：那把读锁**恰好一处**取，而且就在 `resolve` 里。
-        let (_, accounts) = files
-            .iter()
-            .find(|(p, _)| {
-                p.ends_with("accounts/upstream_select/mod.rs")
-                    || p.ends_with("accounts\\upstream\\mod.rs")
-            })
-            .expect("扫不到 `accounts/upstream_select/mod.rs` —— 取法坏了，本条按红处理");
+        let accounts = production_at(&files, "src/backend/accounts/upstream_select/mod.rs");
         assert_eq!(
             accounts.matches("self.table.read()").count(),
             1,
@@ -604,10 +616,7 @@ mod tests {
     #[test]
     fn the_relay_carries_no_process_wide_upstream_and_no_process_wide_key() {
         let files = crate_production();
-        let (_, server) = files
-            .iter()
-            .find(|(p, _)| p.ends_with("server.rs"))
-            .expect("扫不到 `server.rs` —— 取法坏了，本条按红处理");
+        let server = production_at(&files, "src/comms/outward/server.rs");
 
         let at = guard_core::find_pinned(server, "pub struct Relay {")
             .expect("切不出 `struct Relay` —— 本条按红处理，不是绿");

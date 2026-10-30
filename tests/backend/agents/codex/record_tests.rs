@@ -294,7 +294,10 @@ fn maps_message_to_said_and_reply() {
         }
     ));
     assert_eq!((r.agent.as_str(), r.id.as_str()), ("codex", "m1"));
-    assert_eq!(blocks_of(&r), json!([{"type": "text", "text": "回复"}]));
+    assert_eq!(
+        blocks_of(&r),
+        json!([{"type": "text", "text": "回复", "bytes": 6}])
+    );
 
     let dev = env(
         "response_item",
@@ -398,7 +401,7 @@ fn maps_tool_call_and_output() {
     assert!(who_of(&r).is_some_and(|w| w.speaker == Speaker::ToolResult));
     assert_eq!(
         blocks_of(&r),
-        json!([{"type": "tool_result", "for": "c1", "content": [{"type": "text", "text": "文件列表"}], "isError": false}])
+        json!([{"type": "tool_result", "for": "c1", "content": [{"type": "text", "text": "文件列表", "bytes": 12}], "isError": false, "bytes": 12}])
     );
 }
 

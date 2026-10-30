@@ -14548,31 +14548,6 @@ data class Patch(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class PatchHunk(
-    val oldStart: Long,
-    val oldLines: Long,
-    val newStart: Long,
-    val newLines: Long,
-    val lines: List<String>,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<PatchHunk> = obj(
-            listOf(
-            Field("oldStart", { Lng }, optional = false, nullable = false),
-            Field("oldLines", { Lng }, optional = false, nullable = false),
-            Field("newStart", { Lng }, optional = false, nullable = false),
-            Field("newLines", { Lng }, optional = false, nullable = false),
-            Field("lines", { arr(Str) }, optional = false, nullable = false),
-            ),
-            { a -> PatchHunk(a[0] as Long, a[1] as Long, a[2] as Long, a[3] as Long, a[4] as List<String>) },
-            { v -> arrayOf(v.oldStart, v.oldLines, v.newStart, v.newLines, v.lines) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class PendingCall(
     val id: String,
     val name: String,
@@ -23301,17 +23276,19 @@ sealed interface Speaker {
 
 @Suppress("UNCHECKED_CAST")
 data class SshCommand(
-    val command: String,
+    val prelude: String,
+    val line: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
         val ADAPTER: JsonAdapter<SshCommand> = obj(
             listOf(
-            Field("command", { Str }, optional = false, nullable = false),
+            Field("prelude", { Str }, optional = false, nullable = false),
+            Field("line", { Str }, optional = false, nullable = false),
             ),
-            { a -> SshCommand(a[0] as String) },
-            { v -> arrayOf(v.command) },
+            { a -> SshCommand(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.prelude, v.line) },
         )
     }
 }
@@ -24730,25 +24707,6 @@ data class TerminalsListReq(
             ),
             { a -> TerminalsListReq(a[0] as String?) },
             { v -> arrayOf(v.client) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class TextChange(
-    val old: String,
-    val new: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<TextChange> = obj(
-            listOf(
-            Field("old", { Str }, optional = false, nullable = false),
-            Field("new", { Str }, optional = false, nullable = false),
-            ),
-            { a -> TextChange(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.old, v.new) },
         )
     }
 }
