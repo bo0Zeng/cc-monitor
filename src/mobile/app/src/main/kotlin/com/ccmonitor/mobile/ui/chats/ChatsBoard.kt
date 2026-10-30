@@ -281,16 +281,6 @@ class ChatsBoard(
     }
 }
 
-private fun summaryOf(
-    q: String,
-    r: Merged,
-): String =
-    if (r.truncated) {
-        copyText("history.search.summaryTruncated", "q" to q, "n" to r.totalHits, "m" to r.sessionCount)
-    } else {
-        copyText("history.search.summary", "q" to q, "n" to r.totalHits, "m" to r.sessionCount)
-    }
-
 /** 没答上的那几台各一句 · 合好的那一份里读不动几份 · 只按标题的那几家。 */
 private fun contentLines(
     per: List<Pair<HostChats, Searched>>,
@@ -318,7 +308,7 @@ private fun contentOf(
     val answered = per.mapNotNull { (h, s) -> (s as? Searched.Got)?.let { h.hostId to it.raw } }
     if (answered.isEmpty()) return ContentUi(q, searching = false, lines = contentLines(per, null))
     val byId = per.associate { it.first.hostId to it.first.machine }
-    val input = SearchMerge.input(answered)
+    val input = SearchMerge.input(q, answered)
     val r =
         SearchMerge.of(merge(input))
             ?: return ContentUi(q, searching = false, lines = contentLines(per, null), problem = unreadableReply(byId[current] ?: current, HistorySearch.COMMAND, input))
@@ -326,7 +316,7 @@ private fun contentOf(
     return ContentUi(
         query = q,
         searching = false,
-        summary = summaryOf(q, r),
+        summary = r.summary,
         rows =
             r.sessions.map { row ->
                 val id = row.origin ?: current
