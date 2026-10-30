@@ -14,7 +14,9 @@ fn row(sid: &str, order: u8, live: bool, running: u32) -> MonitorHereRow {
 }
 
 fn asked(v: &[(&Machine, &str)]) -> Vec<(Machine, String)> {
-    v.iter().map(|(m, s)| ((*m).clone(), s.to_string())).collect()
+    v.iter()
+        .map(|(m, s)| ((*m).clone(), s.to_string()))
+        .collect()
 }
 
 fn called() -> BTreeMap<String, Called> {
@@ -114,11 +116,20 @@ fn a_machine_that_did_not_answer_keeps_its_group_with_its_offline_line_and_is_no
 #[test]
 fn ties_keep_request_order_dead_ones_are_not_live_and_unknown_ones_trail() {
     let local = Machine::local();
-    let ask = asked(&[(&local, "x"), (&local, "gone"), (&local, "a"), (&local, "b")]);
+    let ask = asked(&[
+        (&local, "x"),
+        (&local, "gone"),
+        (&local, "a"),
+        (&local, "b"),
+    ]);
     let got = vec![(
         local.clone(),
         Some(MonitorHere {
-            rows: vec![row("b", 1, true, 0), row("a", 1, true, 0), row("gone", 5, false, 0)],
+            rows: vec![
+                row("b", 1, true, 0),
+                row("a", 1, true, 0),
+                row("gone", 5, false, 0),
+            ],
         }),
     )];
     let b = merge(&ask, got, &[], &called());
@@ -141,7 +152,11 @@ fn machines_gone_from_the_table_come_last_in_key_order() {
     let b = merge(&ask, got, &[DEVBOX.to_string()], &called());
     let order: Vec<&Machine> = b.groups.iter().map(|g| &g.machine).collect();
     assert_eq!(order, [&local, &dev, &a, &z]);
-    assert_eq!(b.groups[2].title, title("alpha", 1), "不在成品里 ⇒ 名字照键");
+    assert_eq!(
+        b.groups[2].title,
+        title("alpha", 1),
+        "不在成品里 ⇒ 名字照键"
+    );
 }
 
 /// 一台都没有 ⇒ 汇总空、没有组。

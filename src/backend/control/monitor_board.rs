@@ -80,10 +80,7 @@ pub(crate) fn merge(
                 .collect();
             let (name, offline) = match called.get(&key) {
                 Some(c) => (c.name.clone(), c.offline.clone()),
-                None => (
-                    key.clone(),
-                    comms_inward::chan::said::offline(&key),
-                ),
+                None => (key.clone(), comms_inward::chan::said::offline(&key)),
             };
             let (sids, down): (Vec<String>, Option<Words>) = match got.remove(&key).flatten() {
                 Some(here) => {
@@ -97,7 +94,10 @@ pub(crate) fn merge(
                         seen.push((r.map_or(u8::MAX, |r| r.order), i, sid));
                     }
                     seen.sort();
-                    (seen.into_iter().map(|(_, _, s)| s.to_string()).collect(), None)
+                    (
+                        seen.into_iter().map(|(_, _, s)| s.to_string()).collect(),
+                        None,
+                    )
                 }
                 None => (
                     wanted.iter().map(|s| s.to_string()).collect(),
