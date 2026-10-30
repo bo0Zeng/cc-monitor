@@ -2,16 +2,28 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.FileClass
 import com.ccmonitor.mobile.core.wire.gen.FileKind
-import com.ccmonitor.mobile.core.wire.gen.FilesPathReply
+import com.ccmonitor.mobile.core.wire.gen.FilesCommitUploadReq
+import com.ccmonitor.mobile.core.wire.gen.FilesCreateReq
+import com.ccmonitor.mobile.core.wire.gen.FilesDeleteSessionReq
+import com.ccmonitor.mobile.core.wire.gen.FilesMkdirReq
+import com.ccmonitor.mobile.core.wire.gen.FilesRenameReq
+import com.ccmonitor.mobile.core.wire.gen.FilesWriteTextReq
 import com.ccmonitor.mobile.core.wire.gen.Gate
 import com.ccmonitor.mobile.core.wire.gen.LsEntry
 import com.ccmonitor.mobile.core.wire.gen.LsHead
+import com.ccmonitor.mobile.core.wire.gen.LsReq
+import com.ccmonitor.mobile.core.wire.gen.LsSort
+import com.ccmonitor.mobile.core.wire.gen.LsSortBy
+import com.ccmonitor.mobile.core.wire.gen.OnExists
 import com.ccmonitor.mobile.core.wire.gen.PreviewGate
-import com.ccmonitor.mobile.core.wire.gen.ReadTextReply
-import com.ccmonitor.mobile.core.wire.gen.StatReply
+import com.ccmonitor.mobile.core.wire.gen.ReadTextReq
+import com.ccmonitor.mobile.core.wire.gen.Sha256Expect
+import com.ccmonitor.mobile.core.wire.gen.StatReq
 import com.ccmonitor.mobile.core.wire.gen.WirePath
+import com.ccmonitor.mobile.core.wire.gen.WirePathObjValue
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
@@ -41,6 +53,9 @@ class RemotePath(
 
     /** 上线那一形。 */
     val wire: Any = text ?: mapOf(HEX_KEY to hex(raw))
+
+    /** 上线那一形，生成的线上类型（拼命令入参用）。 */
+    val typed: WirePath get() = text?.let { WirePath.Text(it) } ?: WirePath.Obj(WirePathObjValue(hex(raw)))
 
     override fun equals(other: Any?): Boolean = other is RemotePath && raw.contentEquals(other.raw)
 
@@ -96,9 +111,9 @@ private const val HEX = "0123456789abcdef"
 
 /** `files-home`：那台这个用户的家（文件屏的起点）。 */
 object FilesHome {
-    const val COMMAND: String = "files-home"
+    const val COMMAND: String = Commands.FilesHome.NAME
 
-    fun of(data: Any?): RemotePath? = Wire.bind<FilesPathReply>(data)?.let { RemotePath.of(it.path) }
+    fun of(data: Any?): RemotePath? = Commands.FilesHome.reply(data)?.let { RemotePath.of(it.path) }
 
     /** 新建会话的目录 chip 要的那一串：家目录读不成字 ⇒ `null`。 */
     fun text(data: Any?): String? = of(data)?.text
@@ -106,7 +121,7 @@ object FilesHome {
 
 /** `files-ls`：一个目录的直接子项（那台读目录的顺序；排序是屏上的事）。 */
 object FilesLs {
-    const val COMMAND: String = "files-ls"
+    const val COMMAND: String = Commands.FilesLs.NAME
 
     /** 一屏至多列几条（同那台的缺省）。 */
     const val LIMIT: Long = 1000L
@@ -155,12 +170,7 @@ object FilesLs {
     fun args(
         dir: RemotePath,
         bySize: Boolean = false,
-    ): Map<String, Any?> =
-        buildMap {
-            put("path", dir.wire)
-            put("limit", LIMIT)
-            if (bySize) put("sort", mapOf("by" to "size"))
-        }
+    ): Map<String, Any?> = Commands.FilesLs.args(LsReq(path = dir.typed, limit = LIMIT, sort = LsSort(LsSortBy.SIZE).takeIf { bySize }))
 
     /**
      * 不带记号那一问的回包（整份，带键集合那一形：`order` 是那台排好的先后、`up` 按键给每一行、`head.info` 是这一问的头）
@@ -206,7 +216,7 @@ object FilesLs {
     }
 
     /** 新建会话的目录浏览：只列文件夹（含指向目录的链接）。路径是那台写好的全路径。 */
-    fun dirs(path: String): Map<String, Any?> = mapOf("path" to path, "dirs_only" to true)
+    fun dirs(path: String): Map<String, Any?> = Commands.FilesLs.args(LsReq(path = WirePath.Text(path), dirsOnly = true))
 
     data class Dir(
         val path: String,
@@ -237,16 +247,16 @@ object FilesLs {
 
 /** `files-stat`：一个路径的元数据（改权限那一框要它此刻的权限位 · 打开一个路径要它是不是目录、在哪个目录里）。 */
 object FilesStat {
-    const val COMMAND: String = "files-stat"
+    const val COMMAND: String = Commands.FilesStat.NAME
 
-    fun args(path: RemotePath): Map<String, Any?> = mapOf("path" to path.wire)
+    fun args(path: RemotePath): Map<String, Any?> = Commands.FilesStat.args(StatReq(path.typed))
 
     /** unix 权限位；那台没有这一说 ⇒ `null`；解不出 ⇒ `null`。 */
-    fun modeOf(data: Any?): Int? = Wire.bind<StatReply>(data)?.mode
+    fun modeOf(data: Any?): Int? = Commands.FilesStat.reply(data)?.mode
 
     /** 是什么（跟链接）· 上一级（到顶 ⇒ `null`），都是那台判的；解不出 ⇒ `null`。 */
     fun placeOf(data: Any?): Place? {
-        val r = Wire.bind<StatReply>(data) ?: return null
+        val r = Commands.FilesStat.reply(data) ?: return null
         return Place(r.kind, r.up?.let { RemotePath.of(it) ?: return null })
     }
 
@@ -258,7 +268,7 @@ object FilesStat {
 
 /** `files-read-text`：读一份文本（预览 · 编辑）。 */
 object FilesReadText {
-    const val COMMAND: String = "files-read-text"
+    const val COMMAND: String = Commands.FilesReadText.NAME
 
     data class Text(
         val text: String,
@@ -270,59 +280,60 @@ object FilesReadText {
     fun args(
         path: RemotePath,
         cap: Long,
-    ): Map<String, Any?> = mapOf("path" to path.wire, "max_bytes" to cap)
+    ): Map<String, Any?> = Commands.FilesReadText.args(ReadTextReq(path = path.typed, maxBytes = cap))
 
-    fun of(data: Any?): Text? = Wire.bind<ReadTextReply>(data)?.let { Text(it.text, it.sha256) }
+    fun of(data: Any?): Text? = Commands.FilesReadText.reply(data)?.let { Text(it.text, it.sha256) }
 }
 
 /** `files-write-text`：覆盖写一份已经在的文本（带读时的摘要）。 */
 object FilesWriteText {
-    const val COMMAND: String = "files-write-text"
+    const val COMMAND: String = Commands.FilesWriteText.NAME
 
     fun args(
         dir: RemotePath,
         name: RemotePath,
         text: String,
         sha256: String,
-    ): Map<String, Any?> = mapOf("root" to dir.wire, "rel" to name.wire, "content" to text, "expect" to mapOf("sha256" to sha256))
+    ): Map<String, Any?> =
+        Commands.FilesWriteText.args(FilesWriteTextReq(root = dir.typed, rel = name.typed, content = WirePath.Text(text), expect = Sha256Expect(sha256)))
 }
 
 /** `files-mkdir`：在当前目录新建一个目录（敲的名字）。 */
 object FilesMkdir {
-    const val COMMAND: String = "files-mkdir"
+    const val COMMAND: String = Commands.FilesMkdir.NAME
 
     fun args(
         dir: RemotePath,
         typed: String,
-    ): Map<String, Any?> = mapOf("root" to dir.wire, "rel" to typed, "single" to true)
+    ): Map<String, Any?> = Commands.FilesMkdir.args(FilesMkdirReq(root = dir.typed, rel = WirePath.Text(typed), single = true))
 }
 
 /** `files-create`：在当前目录新建一份空文件（敲的名字）。 */
 object FilesCreate {
-    const val COMMAND: String = "files-create"
+    const val COMMAND: String = Commands.FilesCreate.NAME
 
     fun args(
         dir: RemotePath,
         typed: String,
-    ): Map<String, Any?> = mapOf("root" to dir.wire, "rel" to typed, "single" to true)
+    ): Map<String, Any?> = Commands.FilesCreate.args(FilesCreateReq(root = dir.typed, rel = WirePath.Text(typed), single = true))
 }
 
 /** `files-rename`：同一目录里改名（[from] 是那一项的末段，原样字节）。 */
 object FilesRename {
-    const val COMMAND: String = "files-rename"
+    const val COMMAND: String = Commands.FilesRename.NAME
 
     fun args(
         dir: RemotePath,
         from: RemotePath,
         typed: String,
-    ): Map<String, Any?> = mapOf("root" to dir.wire, "from" to from.wire, "to" to typed, "single" to true)
+    ): Map<String, Any?> = Commands.FilesRename.args(FilesRenameReq(root = dir.typed, from = from.typed, to = WirePath.Text(typed), single = true))
 }
 
 /** `files-delete-session`：删一份历史会话（记录文件连同它的附属）；能不能删那台照行上 `can.delete` 判过。 */
 object FilesDeleteSession {
-    const val COMMAND: String = "files-delete-session"
+    const val COMMAND: String = Commands.FilesDeleteSession.NAME
 
-    fun args(sid: String): Map<String, Any?> = mapOf("sid" to sid)
+    fun args(sid: String): Map<String, Any?> = Commands.FilesDeleteSession.args(FilesDeleteSessionReq(sid))
 }
 
 /**
@@ -330,7 +341,7 @@ object FilesDeleteSession {
  * 块与暂存件都留着）；`overwrite` · `keep_both` ⇒ 同一份暂存件再交一次。
  */
 object FilesCommitUpload {
-    const val COMMAND: String = "files-commit-upload"
+    const val COMMAND: String = Commands.FilesCommitUpload.NAME
 
     fun args(
         dir: RemotePath,
@@ -338,15 +349,18 @@ object FilesCommitUpload {
         staged: Staged,
         onExists: String? = null,
     ): Map<String, Any?> =
-        mapOf(
-            "root" to dir.wire,
-            "rel" to name,
-            "key" to staged.key,
-            "expect" to mapOf("sha256" to staged.sha256),
-            "chunks" to staged.chunks,
-            "bytes" to staged.bytes,
-            "single" to true,
-        ) + listOfNotNull(onExists?.let { "on_exists" to it })
+        Commands.FilesCommitUpload.args(
+            FilesCommitUploadReq(
+                root = dir.typed,
+                rel = WirePath.Text(name),
+                key = staged.key,
+                onExists = onExists?.let { w -> OnExists.entries.first { it.wire == w } },
+                expect = Sha256Expect(staged.sha256),
+                chunks = staged.chunks,
+                bytes = staged.bytes,
+                single = true,
+            ),
+        )
 
     /** 核心送完的那一份（[CoreLink.transfer] 的 [Transfer.Stage] 回的那一形）。 */
     data class Staged(
