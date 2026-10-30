@@ -10974,61 +10974,12 @@
       "zh": "{name} 与 cc-monitor 终端集成块里的函数同名 · $PROFILE 里排后面的生效",
       "args": ["name"]
     },
-    "rsShellDialect.ps.handEdited": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "function {name} 非 cc-monitor 写的形状",
-      "args": ["name"]
-    },
-    "rsShellDialect.ps.noCcmCall": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "函数无调用 ccm 的行",
-      "args": [],
-      "limited": ["ccm"]
-    },
-    "rsShellDialect.ps.noClose": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{line} · 函数没有收尾",
-      "args": ["line"]
-    },
-    "rsShellDialect.ps.outsideFn": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{line} · 不在任何函数内",
-      "args": ["line"]
-    },
     "rsShellDialect.ps.header": {
       "kind": "body",
       "role": "说明",
       "zh": "# 由配置文件 ~/.cc-monitor/profiles.toml 生成 · 下次整份重写 · 勿手改\n# 每个函数一条别名 · 调用交给 ccm @名字 · 规则在配置文件\n# PowerShell 函数 · 5.1 与 7 均可 dot-source\n",
       "args": [],
       "limited": ["PowerShell", "ccm"]
-    },
-    "rsShellDialect.ps.badCall": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "调用行不是 & {word} … $RemainingArgs 的形状",
-      "args": ["word"]
-    },
-    "rsShellDialect.ps.missingSpace": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "两个参数之间缺空格",
-      "args": []
-    },
-    "rsShellDialect.quote.unbalanced": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "单引号未配对",
-      "args": []
-    },
-    "rsShellDialect.ps.notQuoted": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "参数未用单引号括起",
-      "args": []
     },
     "rsShellDialect.posix.nameTakenPath": {
       "kind": "body",
@@ -11048,30 +10999,6 @@
       "zh": "# 由配置文件 ~/.cc-monitor/profiles.toml 生成 · 下次整份重写 · 勿手改\n# 只含与系统命令同名的别名（如 cc） · 每条一行 · 调用交给 ccm @名字 · 规则在配置文件\n# 其余别名是 ~/.cc-monitor/bin 里指向 ccm 的链接 · POSIX sh 函数 · bash / zsh 可 source · fish 不行\n",
       "args": [],
       "limited": ["ccm"]
-    },
-    "rsShellDialect.posix.notCcm": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "调用的不是 {word}",
-      "args": ["word"]
-    },
-    "rsShellDialect.posix.badShape": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "非 cc-monitor 写的函数形状",
-      "args": []
-    },
-    "rsShellDialect.posix.badTail": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "结尾非 cc-monitor 写的形状",
-      "args": []
-    },
-    "rsShellDialect.posix.backslash": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "反斜杠只能用在 '\\'' 里",
-      "args": []
     },
     "rsProfileInstaller.ps.noDataDir": {
       "kind": "error",

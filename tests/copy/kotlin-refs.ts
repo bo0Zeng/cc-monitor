@@ -4,52 +4,17 @@
  */
 import { productionKtFiles } from "../test-support/production-sources.ts";
 import type { Ref } from "./copy-support.ts";
+import { stripComments } from "../test-support/strip-comments.ts";
 
 /** Kotlin 取文口自己住的文件：它里头的 `copyText` 是定义，不是引用。 */
 export const KT_HOME = "src/mobile/core-copy/src/main/kotlin/com/ccmonitor/mobile/core/copy/CopyText.kt";
 const KT_FN = "copyText";
 
-/** 剥掉 `/* … *\/` 块注释（含 KDoc）与 `//` 行注释（字符串里的不算）。 */
-function stripKotlinComments(text: string): string {
-  let out = "";
-  let inStr = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inStr) {
-      out += c;
-      if (c === "\\") {
-        out += text[i + 1] ?? "";
-        i++;
-      } else if (c === '"') inStr = false;
-      continue;
-    }
-    if (c === '"') {
-      inStr = true;
-      out += c;
-      continue;
-    }
-    if (c === "/" && text[i + 1] === "*") {
-      const end = text.indexOf("*/", i + 2);
-      const cut = end < 0 ? text.slice(i) : text.slice(i, end + 2);
-      out += cut.replace(/[^\n]/g, " ");
-      i += cut.length - 1;
-      continue;
-    }
-    if (c === "/" && text[i + 1] === "/") {
-      const end = text.indexOf("\n", i);
-      i = (end < 0 ? text.length : end) - 1;
-      continue;
-    }
-    out += c;
-  }
-  return out;
-}
-
 /** 读一份 `.kt` 里的全部 `copyText` 调用点。 */
 export function kotlinRefsIn(file: string, text: string): { refs: Ref[]; problems: string[] } {
   const refs: Ref[] = [];
   const problems: string[] = [];
-  const code = stripKotlinComments(text);
+  const code = stripComments(text, "kotlin");
   const lineOf = (at: number): number => code.slice(0, at).split("\n").length;
   for (const m of code.matchAll(new RegExp(`\\b${KT_FN}\\b`, "g"))) {
     const at = m.index ?? 0;

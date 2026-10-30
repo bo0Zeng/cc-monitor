@@ -7,21 +7,10 @@
  * 正控：两种样子各一段合成源码要认得出，`kit/morph.ts` 自己那几行不算。
  */
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
-import { nonEmpty } from "../../test-support/non-empty";
+import { productionTsFiles } from "../../test-support/production-sources";
 
-const SRC = resolve(__dirname, "../../../src/frontend");
-const HOME = "ui/kit/morph.ts";
+const HOME = "src/frontend/ui/kit/morph.ts";
 const WINDOW = 12;
-
-function walk(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-    if (e.name === "node_modules" || e.name === "target" || e.name === "generated") return [];
-    const p = join(dir, e.name);
-    return e.isDirectory() ? walk(p) : e.name.endsWith(".ts") && !e.name.endsWith(".d.css.ts") ? [p] : [];
-  });
-}
 
 /** 一份源码里手写的那两种样子：`形 行号`。 */
 function handWritten(text: string): string[] {
@@ -48,9 +37,9 @@ describe("按身份原地画只住 kit/morph.ts", () => {
   });
 
   it("kit/morph.ts 之外零命中", () => {
-    const files = nonEmpty(walk(SRC));
-    expect(files.some((f) => relative(SRC, f) === HOME), "kit/morph.ts 不在扫的那批里 —— 路径变了").toBe(true);
-    const hits = files.filter((f) => relative(SRC, f) !== HOME).flatMap((f) => handWritten(readFileSync(f, "utf8")).map((h) => `${relative(SRC, f)} ${h}`));
+    const files = productionTsFiles("src/frontend").filter((f) => !f.file.endsWith(".d.css.ts"));
+    expect(files.some((f) => f.file === HOME), "kit/morph.ts 不在扫的那批里 —— 路径变了").toBe(true);
+    const hits = files.filter((f) => f.file !== HOME).flatMap((f) => handWritten(f.text).map((h) => `${f.file} ${h}`));
     expect(hits, "又有一处自己写了一份原地画 / 保焦点 —— 换成 kit/morph.ts 的 place / morph").toEqual([]);
   });
 });
