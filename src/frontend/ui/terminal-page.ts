@@ -258,7 +258,8 @@ export class TerminalPage {
     this.owner.className = s.termOwner;
     const toSp = el("span");
     toSp.className = s.termSp;
-    this.holdBtn = button({ label: copyText("terminal.input.take"), kind: "ghost", size: "compact", onClick: () => void this.hold() });
+    // 描边紧凑：接管不是主操作（说一句不必接管），也不是一行说明字。
+    this.holdBtn = button({ label: copyText("terminal.input.take"), kind: "secondary", size: "compact", onClick: () => void this.hold() });
     toRow.append(this.to, toSp, this.owner, this.holdBtn);
     const boxRow = el("div");
     boxRow.className = s.termBoxRow;

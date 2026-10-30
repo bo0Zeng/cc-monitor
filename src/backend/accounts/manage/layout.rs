@@ -11,12 +11,20 @@ use crate::agents::{AccountsFace, IdentityClass, IdentityRoot};
 use crate::platform::acct_view::Item;
 use copy_core::copy_text;
 
-/// 共享库顶层里**不链**给各号的那几项（`accounts` 目录 · 编辑器留的 `*.bak` / `*.bak-*` · 锁文件，见 [`is_excluded`]）。
+/// 共享库顶层里**不链**给各号的那几项（`accounts` 目录 · 编辑器留的 `*.bak` / `*.bak-*` · 锁文件 · 原子写的旁名，见 [`is_excluded`]）。
 const SHARE_EXCLUDE_EXACT: &[&str] = &["accounts"];
 
 /// 锁文件的尾巴：Claude Code 刷新登录时在配置根下建 `.oauth_refresh.lock` 与记着谁持锁的 `.oauth_refresh.lock.owner`。
 /// 链给各号 ⇒ 几个号抢同一把锁、读到别的号的持锁人；每个号用自己配置根下的那一把。
 const LOCK_SUFFIXES: &[&str] = &[".lock", ".lock.owner"];
+
+/// cc-monitor 原子写落在原名旁边的旁名里带的记号：文件写入的换名件 `<名>.ccm-swap-<pid>-<序>.part` 与留下的备份
+/// `<名>.ccm-backup-<毫秒>-<序>`（`control::files_write`）· 换名件 `<名>.ccm-tmp-…`（`host_core::atomic` · 账号库执行）。
+/// 写到一半那一刻被快照拍到 ⇒ 链出去就是一条悬空链，或把备份件链给每个号。
+const SIDE_MARKS: &[&str] = &[".ccm-swap-", ".ccm-backup-", ".ccm-tmp-"];
+
+/// 写到一半的临时件与编辑器旁名的尾巴：`*.tmp`（`platform::fs::own` 的原子写，凭据续期走它）· 暂存件 · vim 的 `*.swp` · `*~`。
+const SIDE_SUFFIXES: &[&str] = &[".tmp", crate::common::staging::PART_SUFFIX, ".swp", "~"];
 
 /// 这台机器上账号库的布局（注册表里那一家的；没有 ⇒ 这台做不了多账号，`wire` 那一层先拒）。
 pub(crate) fn face() -> Option<AccountsFace> {
@@ -76,12 +84,28 @@ pub(crate) fn email_in(dir: &str) -> Option<String> {
     face().and_then(|f| (f.email_in)(std::path::Path::new(dir)))
 }
 
-/// 共享库顶层里不链给各号的那几项。
+/// 共享库顶层里不链给各号的那几项（共享集 · 核对 · 对齐清旧链都只认这一张）。
 pub(crate) fn is_excluded(name: &str) -> bool {
     SHARE_EXCLUDE_EXACT.contains(&name)
         || name.ends_with(".bak")
         || name.contains(".bak-")
         || LOCK_SUFFIXES.iter().any(|s| name.ends_with(s))
+        || SIDE_MARKS.iter().any(|m| name.contains(m))
+        || SIDE_SUFFIXES.iter().any(|s| name.ends_with(s))
+}
+
+/// 共享库顶层一项像密钥：不在身份表、不是排除名、是一份 `0600` 的普通文件。
+/// 它不进共享集（对齐与修复都不链它），只由核对提示，归身份还是归共享由人定。
+pub(crate) fn is_secret_like(name: &str, item: &Item) -> bool {
+    !is_identity(name)
+        && !is_excluded(name)
+        && matches!(
+            item,
+            Item::File {
+                mode: Some(0o600),
+                ..
+            }
+        )
 }
 
 /// 那一家按需才建、各号该共用的那几个目录：共享库里还没有也照样链（计划里先在共享库建出来）。
@@ -89,13 +113,14 @@ pub(crate) fn shared_on_demand() -> &'static [&'static str] {
     face().map_or(&[], |f| f.shared_on_demand)
 }
 
-/// 要链给每个号的那几项（排好序）：共享库顶层此刻有的（减去身份那几项 · 排除的那几项）∪ 按需才建的那几个（[`shared_on_demand`]）。
+/// 要链给每个号的那几项（排好序）：共享库顶层此刻有的（减去身份那几项 · 排除的那几项 · 像密钥的那几项）
+/// ∪ 按需才建的那几个（[`shared_on_demand`]）。
 pub(crate) fn share_items(shared: &DirState) -> Vec<String> {
     let mut items: Vec<String> = shared
         .entries
-        .keys()
-        .filter(|n| !is_identity(n) && !is_excluded(n))
-        .cloned()
+        .iter()
+        .filter(|(n, it)| !is_identity(n) && !is_excluded(n) && !is_secret_like(n, it))
+        .map(|(n, _)| n.clone())
         .collect();
     for n in shared_on_demand() {
         if !items.iter().any(|i| i == n) {
@@ -526,8 +551,8 @@ fn link_missing(
 
 /// **账号库对齐**（常驻那一个起来时 · 核对之前 · 起会话之前做）：按需才建的那几个共享库里没有 ⇒ 建（恰好一个号里有实体 ⇒ 挪进去）；
 /// 每个号照 [`share_items`] 缺的链补上（挪走的那个号链回去）—— Claude Code 升级后在共享库里新建的项也在内。
-/// 只建目录 · 建链接：号里已有的（指错的链接 · 自己的实体 · 两个号以上各有一份的按需目录）不动，那是「修复」与核对的事。
-/// 接好之后再算 ⇒ 空计划（不写、不留备份）。
+/// 只建目录 · 建链接 · 摘自己建的旧链（[`drop_own_stale`]）：号里已有的别的（指错的链接 · 自己的实体 · 两个号以上各有一份的按需目录）
+/// 不动，那是「修复」与核对的事。接好之后再算 ⇒ 空计划（不写、不留备份）。
 pub(crate) fn plan_align(s: &Snapshot) -> Result<Plan, Refusal> {
     let m = need_manifest(s)?;
     let items = share_items(&s.shared);
@@ -535,8 +560,27 @@ pub(crate) fn plan_align(s: &Snapshot) -> Result<Plan, Refusal> {
     let lifted = lift_on_demand(&mut plan, s, m);
     for a in own_dirs(s, m) {
         link_missing(&mut plan, s, &a.config_dir, &items, &lifted, |_, _, _| {});
+        drop_own_stale(&mut plan, s, &a.config_dir);
     }
     Ok(plan)
+}
+
+/// 号的目录 `c` 里 cc-monitor 自己建的那一形链接（`<号>/<名> → 共享库/<名>`）不该再在的 ⇒ 摘掉这条链（链的目标一个字节不动）：
+/// 名字在排除名里（锁文件 · 原子写的旁名）· 共享库那头已不在、又不是按需才建的（悬空）。身份那几项不在此列（修复复制成号自己的一份）。
+fn drop_own_stale(plan: &mut Plan, s: &Snapshot, c: &str) {
+    let shared = &s.roots().shared;
+    for (base, it) in &s.dir(c).entries {
+        let Item::Link { target, .. } = it else {
+            continue;
+        };
+        if *target != join(shared, base) || is_identity(base) {
+            continue;
+        }
+        let gone = !s.shared.get(base).exists() && !shared_on_demand().contains(&base.as_str());
+        if is_excluded(base) || gone {
+            plan.ops.push(Op::Remove(join(c, base)));
+        }
+    }
 }
 
 /// **修复**（幂等）：目录改回 `0700` · 身份本体改回 `0600` · 缺的共享链接补上 · 指错的改指 · 不再属于共享集的残链清掉

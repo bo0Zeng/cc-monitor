@@ -158,7 +158,8 @@
 
   .termOwner {
     flex: none;
-    color: var(--text-2);
+    color: var(--text);
+    font-weight: var(--font-weight-strong);
   }
 
   .termBoxRow {
