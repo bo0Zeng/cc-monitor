@@ -15,6 +15,17 @@
 //!   **机器钉不住** —— 它是协议纪律，模块头注里如实登记过。
 
 use super::*;
+use cmd_wire::files::{WirePath, HEX_KEY};
+
+/// 本族回送路径的那一下：字节 → 线上形（`WirePath`）。
+fn to_json(bytes: &[u8]) -> serde_json::Value {
+    serde_json::json!(WirePath::from(bytes))
+}
+
+/// 本族解入参的那一下：线上形 → 字节；形状不对 ⇒ `None`。
+fn from_json(v: &serde_json::Value) -> Option<Vec<u8>> {
+    serde_json::from_value::<WirePath>(v.clone()).ok().map(|p| p.0)
+}
 
 /// 一串**不是有效 UTF-8** 的字节。
 ///
@@ -125,5 +136,65 @@ fn path_bytes_and_to_path_buf_are_two_sides_of_one_coin() {
         to_path_buf(&bytes),
         p,
         "取字节再还原之后不是同一个路径 —— 那条 `unsafe` 的前提就不成立了"
+    );
+}
+
+/// 一组路径的线上形逐字（期望手写）：字符串那一支照 JSON 字符串转义，`{"b16"}` 那一支小写十六进制；读回来逐字节同。
+/// 编法换住处时这张表不动 —— 前后编出来的线上字节一个不差。
+#[test]
+fn a_fixed_set_of_paths_keeps_its_wire_bytes() {
+    let cases: &[(&[u8], &str)] = &[
+        (b"", r#""""#),
+        (b"/home/u/a.rs", r#""/home/u/a.rs""#),
+        ("/srv/中文/x".as_bytes(), r#""/srv/中文/x""#),
+        (b"/a/\"q\"\\b", r#""/a/\"q\"\\b""#),
+        // 控制字符走 `\u00XX`；DEL（0x7f）不在 JSON 要转义的那一档，原样。
+        (b"/t/\x00\x01\x7f", "\"/t/\\u0000\\u0001\u{7f}\""),
+        (b"/srv/d\xff", r#"{"b16":"2f7372762f64ff"}"#),
+        (b"leaf-\xff\xfe-tail", r#"{"b16":"6c6561662dfffe2d7461696c"}"#),
+        (b"\x80\xab\xcd\xef\x10", r#"{"b16":"80abcdef10"}"#),
+    ];
+    for (bytes, want) in cases {
+        let got = serde_json::to_string(&to_json(bytes)).unwrap();
+        assert_eq!(&got, want, "{bytes:?} 的线上形变了");
+        let v: serde_json::Value = serde_json::from_str(want).unwrap();
+        assert_eq!(from_json(&v).as_deref(), Some(*bytes), "{want} 读回来不是原字节");
+    }
+}
+
+/// 路径字节的线上形（`{"b16": …}` 的键 · 十六进制编解码 · 「UTF-8 ⇒ 字符串，否则 ⇒ `{"b16"}`」）全仓 Rust 源只住
+/// `cmd-wire/src/files.rs` 一处：键名的声明一处、十六进制表一处，别处手拼 `{HEX_KEY: …}` 为零（拼的那一形就是 `WirePath` · `HexBytes`）。
+/// 扫的是 `src/` 整棵（后端 · 契约 crate · 文件窗口 · 手机嵌的核心），剥掉注释与测试段。
+#[test]
+fn the_path_byte_wire_form_lives_only_in_cmd_wire() {
+    const HOME: &str = "common/cmd-wire/src/files.rs";
+    let root = guard_core::addr::repo_src_root();
+    let rel = |p: &std::path::Path| {
+        p.strip_prefix(&root)
+            .unwrap_or(p)
+            .to_string_lossy()
+            .replace('\\', "/")
+    };
+    let all = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
+    assert!(
+        all.iter().any(|(p, _)| rel(p) == HOME),
+        "没扫到 `src/{HOME}` —— 遍历坏了，下面几条零命中会空真"
+    );
+    let (mut decl, mut table, mut spelled) = (Vec::new(), Vec::new(), Vec::new());
+    for (path, src) in &all {
+        let at = rel(path);
+        let prod = guard_core::production_code(src);
+        decl.extend(std::iter::repeat_n(at.clone(), prod.matches("= \"b16\"").count()));
+        table.extend(std::iter::repeat_n(at.clone(), prod.matches("0123456789abcdef").count()));
+        let keyed = prod.matches("HEX_KEY:").count() - prod.matches("HEX_KEY: &str").count();
+        if at != HOME {
+            spelled.extend(std::iter::repeat_n(at.clone(), keyed));
+        }
+    }
+    assert_eq!(decl, vec![HOME.to_string()], "`\"b16\"` 键名的声明不止一处");
+    assert_eq!(table, vec![HOME.to_string()], "十六进制编码表不止一处");
+    assert!(
+        spelled.is_empty(),
+        "手拼 `{{HEX_KEY: …}}` 那一形（该走 `WirePath` · `HexBytes`）：{spelled:?}"
     );
 }

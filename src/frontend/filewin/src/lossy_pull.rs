@@ -35,16 +35,6 @@ pub fn local_path_of(v: &serde_json::Value) -> Option<std::path::PathBuf> {
     Some(crate::platform::path_from_bytes(&b))
 }
 
-/// 十六进制 → 字节（`{"b16": …}` 的内容；形状不对 ⇒ `None`）。
-pub fn unhex(s: &str) -> Option<Vec<u8>> {
-    if s.len() % 2 != 0 {
-        return None;
-    }
-    (0..s.len() / 2)
-        .map(|k| u8::from_str_radix(s.get(2 * k..2 * k + 2)?, 16).ok())
-        .collect()
-}
-
 /// 本机落点（线上那一形）→ `(父目录那一形, 名字那一形)`：解出字节、照本机的路径规矩拆（[`super::download::split_dest`]）。
 pub fn split_local(
     local: &serde_json::Value,

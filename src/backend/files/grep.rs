@@ -205,7 +205,7 @@ fn look_at(path: &Path, len: u64, args: &GrepArgs, caps: Caps, g: &mut Grepped) 
         tracing::warn!(
             "files.grep: skip a file larger than {} bytes ({len} bytes): {}",
             caps.file_max_bytes,
-            super::raw::to_json(super::raw::path_bytes(path))
+            serde_json::json!(cmd_wire::files::WirePath::from(super::raw::path_bytes(path)))
         );
         g.skipped_large += 1;
         return;
