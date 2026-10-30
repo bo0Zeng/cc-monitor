@@ -67,7 +67,6 @@ src/mobile/core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/repo/Reposit
 src/shared/copy/rules.json	1
 src/shared/copy/terms.json	5
 tests/__fixtures__/account-default.golden.json	1
-tests/__fixtures__/agent-profile-golden.tsv	1
 tests/__fixtures__/history-browse.golden.json	1
 tests/__fixtures__/scale1-inflated-line-records.jsonl	1
 tests/__fixtures__/scale2-height-line-records.jsonl	1
@@ -156,7 +155,6 @@ tests/copy/copy-ledgers.vitest.ts	2
 tests/copy/copy-rules.vitest.ts	2
 tests/copy/copy-table.vitest.ts	2
 tests/copy/copy-terms.vitest.ts	2
-tests/copy/rust-refs.ts	1
 tests/e2e/backend-cc-bus.sh	1
 tests/e2e/backend-fork-session.sh	1
 tests/e2e/backend-gate2-acceptance.sh	1
