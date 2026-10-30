@@ -11,7 +11,7 @@ pub(crate) mod listing_scan; // 历史清单那一行的逐行扫描（累计的
 pub mod live_table; // 整台一张活会话表：watcher 写、整份发布；冷路判活 · 在干什么 · 在等什么 · 谁在写都问它
 pub(crate) mod needs_changed; // 需手动变了那一声 · 哪几条会话挂着待答请求（登记表住控制面，开张时把读法交进来）
 pub(crate) mod remote_listing; // 远端那台的清单：那台怎么答（`history-listing`，带键集合）· 本机后端经 `--resident-call` 取来记着副本
-pub(crate) mod search_rules; // 搜索与叫会话什么的通用口径（原共享 crate `search-core` 通用那一半：常量 · snippet 预算 · 最近优先 · 片段 / 截断 · 标题）
+pub(crate) mod search_rules; // 搜索与叫会话什么的通用口径（与哪一家 agent 无关的那一半：常量 · snippet 预算 · 最近优先 · 片段 / 截断 · 标题）
 pub(crate) mod session_hidden; // 隐藏的判定在历史这一层的口（注解里单个那一格 · 叫主会话什么）
 pub(crate) mod session_queue; // 会话输入队：往一条会话说的每一句排这一条（住会话那一台，主人发序号；帧面 `session-queue-*`，自家状态经 `Own`）
 pub(crate) mod session_self; // agent 自问：帧面 `session-self`（调用进程往上找这台的哪一条会话 · 它在哪几组；组转给常驻问到各台）

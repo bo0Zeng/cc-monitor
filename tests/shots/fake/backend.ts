@@ -97,6 +97,11 @@ export const REAL_OPS = new Set([
   "plan-refs",
   // 会话组（标签栏 · 手机按组分段）：本机后端问到各台、合一份。
   "groups-read",
+  // 改名 · 解散组：本机后端发给组员所在的各片、回没送到的那几台。
+  "groups-write",
+  // 离线那台的上次值（账号清单 · 「文件与数据」那一份）：本机后端记在台架盘上它自己那份 `last-seen.json`、读回时照回包类型核过、写好「采样于 …」。
+  "last-seen-read",
+  "last-seen-write",
   // 会话输入队此刻的名单（输入行底下那一行 · 排队名单）：真后端照台架盘上那份队答。
   "session-queue-read",
   // 命令面板打机器名（是不是恰好一台）：真后端读台架盘上的机器表与 `~/.ssh/config`。
@@ -202,6 +207,8 @@ export class FakeBackend {
     this.ready = Promise.all([this.ready, open]).then(() => undefined);
     if (!opts.mainWindow) {
       for (const origin of new Set(world.sessions.map((x) => x.origin))) {
+        // 看不见的那几台没起后端（主窗口那一路也等不到它们的清单），收不了场。
+        if (world.unseenMachines.includes(origin)) continue;
         this.listedOrigins.add(origin);
         this.pending.push(this.tell("end", { origin }));
       }
@@ -534,8 +541,9 @@ export function downOf(
  * （壳只在远端流握手那一刻登记，这两种握不上手）；`hopDown` 里那几条 ⇒ 那一台转发时照「那一跳断开」拒。
  * 本机后端那条常驻流接那几台时，场景要的那一样由假 ssh 在那一跳上真长成那样（`fake`，`real/pool.mjs::forwarderSh`）：
  * 旧了 ⇒ `older` · 正在连 ⇒ `hang` · 正在装 ⇒ `install`。
+ * 指纹变了的那几台（`hostKeyChanged`）照样问得到，但本机后端见钥匙对不上就拒、握不上手 ⇒ `handshake: false`（造世界不等它）。
  */
-export function reachOf(w: World): Record<string, { refuse: string[]; fake?: "older" | "hang" | "install" }> {
+export function reachOf(w: World): Record<string, { refuse: string[]; fake?: "older" | "hang" | "install"; handshake?: false }> {
   const fake = (m: string) =>
     w.installingMachines?.includes(m) ? "install" : w.connectingMachines?.includes(m) ? "hang" : w.staleMachines.includes(m) ? "older" : undefined;
   return Object.fromEntries(
@@ -543,7 +551,7 @@ export function reachOf(w: World): Record<string, { refuse: string[]; fake?: "ol
       .filter((m) => m !== LOCAL && !w.unseenMachines.includes(m) && !w.closedMachines.includes(m))
       .map((m) => {
         const f = fake(m);
-        return [m, { refuse: w.hopDown?.[m] ?? [], ...(f ? { fake: f } : {}) }];
+        return [m, { refuse: w.hopDown?.[m] ?? [], ...(f ? { fake: f } : {}), ...(w.hostKeyChanged?.includes(m) ? { handshake: false as const } : {}) }];
       }),
   );
 }

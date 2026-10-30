@@ -3,4 +3,4 @@
 /**
  * 放在哪：cc-monitor 托管的终端（关终端不断、能预览、能接管输入）· 这台 tmux 里（关终端不断）· 直路（开一个终端直接跑，关了就停）。
  */
-export type Run = "managed" | "tmux" | "direct";
+export type Launch = "managed" | "tmux" | "direct";

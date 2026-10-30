@@ -5,7 +5,7 @@ edition = "2021"
 workspace = "../../frontend/shell"
 description = "账号库清单契约的唯一定义（清单常量）+ 平台无关的名字安全判据——monitor 与后端共用。"
 
-# **零依赖**（账号库命令的线上形状挪去了 `cmd-wire::accounts`）。同 branch-core / usage-core 的约束：
+# **零依赖、无 IO、无平台依赖**（账号库命令的线上形状住 `cmd-wire::accounts`）：
 # backend 是静态 musl 二进制、且刻意不在 monitor 的 workspace 里；一旦引入平台相关的东西，共享就破了。
 [dependencies]
 

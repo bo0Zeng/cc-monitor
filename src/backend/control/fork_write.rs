@@ -17,7 +17,7 @@
 //!
 //! # 变换逻辑不在这里
 //!
-//! 记录变换住适配层 `agents/claudecode/branch.rs`（原共享 crate `branch-core`，只剩后端用），经注册表那一格够它（`agents::build_branch_records`）。
+//! 记录变换住适配层 `agents/claudecode/branch.rs`，经注册表那一格够它（`agents::build_branch_records`）。
 //!
 //! # ★**「找文件」也不在这里了**
 //!
@@ -130,7 +130,7 @@ fn new_session_id(source_sid: &str) -> String {
     )
 }
 
-/// 帧面 `session-fork` 的本体：两个 id 过放行判定 → [`run_inner`]（读 → `branch-core` 变换 → `O_EXCL` 落盘）。
+/// 帧面 `session-fork` 的本体：两个 id 过放行判定 → [`run_inner`]（读 → 适配层变换 → `O_EXCL` 落盘）。
 ///
 /// 本机远端都经那台机器常驻后端的长连接说这一条。家目录由顶层壳 `fork_face` 交进来（本层自己找就得问 `observe::`，反向边）；
 /// 判据直接喂夹具家目录。回包比本体多一格 `launch`：由入口按「源会话那份记录 ＋ 源 sid」收齐交回，本层不读观测层。

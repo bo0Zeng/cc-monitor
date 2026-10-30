@@ -3,10 +3,12 @@
 //!
 //! 致命（`fail`）：身份没隔离开（身份文件是链接 · 两个号邮箱相同 · 共享库里留着原生根在家目录的那份身份）、
 //! 权限不对（号的目录不是 `0700` · 凭据不是 `0600`）、共享没接上（缺链接 · 链错地方 · 断链 · 共享项在号里是实体文件）。
-//! 提示（`warn`）：还没登录 · 号里有意料之外的实体项（排除项 —— 编辑器备份 · 锁文件 —— 不算）· 共享库本身的源头断了 · 身份本体哪儿都找不到 ·
-//! 共享库顶层有一份 `0600` 的文件却不在身份表里（它会被链给每个号）。
+//! 提示（`warn`）：还没登录 · 号里有意料之外的实体项（排除项 —— 编辑器备份 · 锁文件 · 原子写的旁名 —— 不算）· 共享库本身的源头断了 ·
+//! 身份本体哪儿都找不到 · 共享库顶层有一份像密钥的文件（[`is_secret_like`]：不链给各号，归身份还是归共享由人定）。
 
-use super::layout::{identity, is_excluded, is_identity, share_items, shared_on_demand};
+use super::layout::{
+    identity, is_excluded, is_identity, is_secret_like, share_items, shared_on_demand,
+};
 use super::model::Manifest;
 use super::scan::{join, Snapshot};
 use crate::platform::acct_view::Item;
@@ -311,11 +313,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                 );
             }
             for (base, it) in &d.entries {
-                if it.is_link()
-                    || is_identity(base)
-                    || is_excluded(base)
-                    || base.contains(".ccm-tmp-")
-                {
+                if it.is_link() || is_identity(base) || is_excluded(base) {
                     continue;
                 }
                 if items.contains(base) {
@@ -410,13 +408,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
         }
     }
     for (base, it) in &s.shared.entries {
-        if is_identity(base) || is_excluded(base) {
-            continue;
-        }
-        if let Item::File {
-            mode: Some(0o600), ..
-        } = it
-        {
+        if is_secret_like(base, it) {
             o.push(
                 CheckLevel::Warn,
                 None,

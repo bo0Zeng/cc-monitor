@@ -360,13 +360,13 @@ export const ACCT_SCENES: Scene[] = [
   ),
   scene(
     "acct-chip-default",
-    "按钮 · 无会话 ⇒ 默认 work ＋ 默认下拉",
-    "没有 tab：按钮退成 默认 work，点开即新会话默认下拉（每项带用量）",
+    "按钮 · 无会话 ⇒ 默认 work ＋ 账号面板",
+    "没有 tab：按钮退成 默认 work，点开即账号面板（只有底栏「新会话默认」那一形）",
     async () => {
       await waitFor(".status-account");
       await sleep(1200);
       await click(".status-account");
-      await waitFor("[role=menu]");
+      await waitFor('aside[role="dialog"]');
       await sleep(500);
     },
     world(

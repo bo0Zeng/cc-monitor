@@ -21,12 +21,12 @@ import { HOST_KEYS } from "./fake/machine";
 import { UNTIL_CEILING } from "../test-support/wall-ceiling";
 
 const POOL = "./real/pool.mjs";
-type Peer = { port: number; k: number; refuse?: string[]; fake?: "older" | "hang" | "install" };
+type Peer = { port: number; k: number; refuse?: string[]; fake?: "older" | "hang" | "install"; handshake?: false };
 type Row = { label: string; host: string; port: number; user: string; keyPath: string; connect: boolean };
 const { forwarderSh, reachTable, DOER_PY } = (await import(POOL)) as {
   DOER_PY: string;
   forwarderSh: (peers: Peer[], backend?: string, slowSftp?: string, doer?: string) => string;
-  reachTable: (table: string | undefined, reach: [string, { refuse: string[]; fake?: Peer["fake"] }][]) => { hosts: Row[]; peers: (Peer & { origin: string })[] };
+  reachTable: (table: string | undefined, reach: [string, { refuse: string[]; fake?: Peer["fake"]; handshake?: false }][]) => { hosts: Row[]; peers: (Peer & { origin: string })[] };
 };
 /** 转发那几格用的口（任意，只要转发表里写的是它）。 */
 const PEER_PORT_BASE = 2201;
@@ -84,6 +84,15 @@ describe.skipIf(process.platform === "win32")("按口转发的假 ssh", () => {
     expect(run(peers, PEER_PORT_BASE, line, ask("sessions-needs")).stdout).toContain("dir=/tmp/shots-peers/0");
   });
 
+  it("资产目录拉 · 推（`asset_sync::pull_command` · `push_command` 那一形）：交那台的后端，推的载荷经 stdin 原样过去", () => {
+    const pull = run(peers, PEER_PORT_BASE, productLine("--assets-catalog"), "");
+    expect(pull.status).toBe(0);
+    expect(pull.stdout.trim().split("\n")).toEqual(["dir=/tmp/shots-peers/0", "arg=--", "arg=--assets-catalog", "in="]);
+    const push = run(peers, PEER_PORT_BASE + 1, productLine("--assets-catalog-merge", "--stdin-line"), '{"catalog":{}}\n');
+    expect(push.status).toBe(0);
+    expect(push.stdout.trim().split("\n")).toEqual(["dir=/tmp/shots-peers/1", "arg=--", "arg=--assets-catalog-merge", "arg=--stdin-line", 'in={"catalog":{}}']);
+  });
+
   /** 常驻那几问的产品写法（`resident_client::feed::backend_command`：落点 ＋ 一个常量词，不加引号）。 */
   const word = (w: string): string => `"$HOME"/.cc-monitor/bin/ccm -- ${w}`;
   /** 接常驻那一跳的替身：同常驻那一形，先 hello、再 attach 回话（同一版），再把 stdin 原样回过去。 */
@@ -130,6 +139,13 @@ describe.skipIf(process.platform === "win32")("按口转发的假 ssh", () => {
   it("旧了的那台：attach 回话里的新旧换成 older，后面的流一个字不动", () => {
     const r = runWith(fakes, PEER_PORT_BASE + 1, word("--resident-attach"), '{"relation":"same"}\n', attaching);
     expect(r.stdout.split("\n")).toEqual(['{"hello":{"relation":"same"}}', '{"attach":"ok","relation":"older"}', '{"relation":"same"}', ""]);
+  });
+
+  it("旧了的那台、流要压：attach 回话后面带的格照留，之后不带换行的字节当场交（不等换行）", () => {
+    // 常驻认了压缩：回话多一格 `deflate`，之后整条是压过的字节（里面不一定有换行）；替身交完这一截先不退。
+    const deflating = `#!/bin/sh\necho '{"hello":{"relation":"same"}}'\necho '{"attach":"ok","relation":"same","deflate":true}'\nprintf 'x\\001y'\nsleep 3\n`;
+    const r = runWith(fakes, PEER_PORT_BASE + 1, word("--resident-attach"), "", deflating, 1500);
+    expect(r.stdout).toBe('{"hello":{"relation":"same"}}\n{"attach":"ok","relation":"older","deflate":true}\nx\u0001y');
   });
 
   it("正在连的那台：接常驻那一跳拖住不回", () => {
@@ -254,6 +270,8 @@ describe("交本机后端的机器表", () => {
     const row = hosts.find((h) => h.label === "gpu-01");
     expect(files[".cc-monitor/known_hosts"].split("\n")).toContain(`[${row?.host}]:${row?.port} ${HOST_KEYS["gpu-01"].key}`);
     expect(tableOf(defaultWorld()).files[".cc-monitor/known_hosts"]).not.toMatch(/^\[/m);
+    // 那台的钥匙对不上 ⇒ 本机后端拒、握不上手：造世界不等它（别台照等）。
+    expect(Object.fromEntries(tableOf(k).peers.map((p) => [p.origin, p.handshake]))).toEqual({ devbox: undefined, "gpu-01": false, "win-laptop": undefined });
   });
 
   it("问得到的那台在场景表里没有那一行 ⇒ 拒（不现编一台）", () => {

@@ -182,11 +182,21 @@ impl crate::wire::typed::Handle for TerminalReleaseInputCmd {
 fn hold(req: &TerminalHoldReq, take: bool) -> Result<cmd_wire::session::InputNow, TerminalHoldErr> {
     t::hold_on(&req.terminal, req.client.as_deref(), take)
         .map(|input| cmd_wire::session::InputNow { input })
-        .map_err(|f| match f.code.as_str() {
-            // 同 `terminals-list`：tmux 装了却起不来说成「列不出」。
-            "no_tmux" => TerminalHoldErr::Unobservable(f.into_said()),
-            _ => typed::of_fail(f, TerminalHoldErr::Unobservable),
-        })
+        .map_err(hold_refused)
+}
+
+/// 接管 · 交还没做成 ⇒ 这一条的码与那一句：认得出为什么的照送字那一套说（终端没了就说没了），别的照下层那句；下层那句进原话。
+pub(crate) fn hold_refused(f: CmdErr) -> TerminalHoldErr {
+    match f.code.as_str() {
+        // 同 `terminals-list`：tmux 装了却起不来说成「列不出」。
+        "no_tmux" => TerminalHoldErr::Unobservable(f.into_said()),
+        _ => typed::of_fail_said(f, TerminalHoldErr::Unobservable, |c| match c {
+            "not_known" | "no_such_session" => Some(t::no_said(t::Refused::Ended)),
+            "not_yours" => Some(t::no_said(t::Refused::NotYours)),
+            "ambiguous" => Some(t::no_said(t::Refused::Ambiguous)),
+            _ => None,
+        }),
+    }
 }
 
 /// `terminals-list`：这台的终端名单。阻塞档（起 tmux）。

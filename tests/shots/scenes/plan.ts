@@ -29,11 +29,11 @@ async function row(id: string): Promise<void> {
   await sleep(400);
 }
 
-/** 开页之前退回过一次（经真后端，同退回框送出的那一条）；`landed` ⇒ 之后 pb 那一侧在底下加了一个节点。 */
+/** 开页之前退回过一次（经真后端，同退回框送出的那一条：进那条会话的输入队，回 `queued`）；`landed` ⇒ 之后 pb 那一侧在底下加了一个节点。 */
 async function returnedBefore({ backend }: SceneCtx, id: string, text: string, landed?: Landed, o: PlanWorldOpts = {}): Promise<void> {
   await mainReady(TABS);
   const r = await backend.planReturn(LOCAL, { workspace: LEDGER_WS, slice: "ledger", id, text });
-  if (r.result !== "delivered") throw new Error(`退回没送到：${JSON.stringify(r)}`);
+  if (r.result !== "queued") throw new Error(`退回没进输入队：${JSON.stringify(r)}`);
   if (landed) await backend.writeFile(LOCAL, dumpFile(LEDGER_REL), JSON.stringify(ledgerDump(o, landed)));
 }
 

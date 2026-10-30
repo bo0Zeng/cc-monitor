@@ -333,7 +333,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "LIMIT_MAX",
-        "**条数**不是体量：`search-core` 里 `--limit` / IPC `limit`              能取的最大值 = 一次搜索最多构造多少条 **snippet**，不是任何字节量。             它「超了怎么办」有答案、但不在本表的语义里 —— `clamp_limit` 直接把它夹住，             而被夹掉的那部分由 `SnippetBudget::starved()` ⇒ `SessionHits::hits_truncated`              ⇒ `SearchResponse::truncated` 一路说出来（截断要说出口）。",
+        "**条数**不是体量：`history/search_rules.rs` 里 `--limit` / IPC `limit`              能取的最大值 = 一次搜索最多构造多少条 **snippet**，不是任何字节量。             它「超了怎么办」有答案、但不在本表的语义里 —— `clamp_limit` 直接把它夹住，             而被夹掉的那部分由 `SnippetBudget::starved()` ⇒ `SessionHits::hits_truncated`              ⇒ `SearchResponse::truncated` 一路说出来（截断要说出口）。",
     ),
     (
         "BUILD_STAMP_LEN",
@@ -1754,7 +1754,7 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     //
     // 原文：`src/frontend/shell/src/search.rs` 与 `src/backend/observe/search_query.rs`
     // 各写一个 `MAIN_CAP`/`TOOL_CAP`，本条钉它们相等。收口后两个字面量只剩一份
-    // （`search-core`；今天住后端 `history/search_rules.rs`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
+    // （住后端 `history/search_rules.rs`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
     // （它会变成「同一个数等于它自己」，恒绿）。
     // 把这件事焊住的判据换了个形状，住（随家搬进后端）
     // `tests/backend/history/search_rules_tests.rs` 的 `the_search_kou_jing_has_exactly_one_home`：
@@ -1944,7 +1944,8 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
             //   `common/own_state.rs` 的 `Doc::settle`（缓存读不出来 ⇒ 说是哪一份、当没有），针改去那里认。
             //   折成几行时它在上面至多三行（声明表那一行：头 · 落点 · 版本 · 上限）⇒ 往上看三行。
             let declared = lines[i.saturating_sub(3)..=i].join("\n");
-            let scope = if *sem == "跳过+说清" && guard_core::contains_word(&declared, "Decl::<Cache>")
+            let scope = if *sem == "跳过+说清"
+                && guard_core::contains_word(&declared, "Decl::<Cache>")
             {
                 own_state_cache_arm(&root)
             } else {

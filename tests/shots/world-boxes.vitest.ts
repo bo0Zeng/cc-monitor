@@ -89,33 +89,43 @@ function procsUnder(dir: string): string[] {
   return spawnSync("pgrep", ["-f", dir], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
 }
 
+/** 起一个池子（后端 · 无头壳都换成替身），交 `body` 跑完收掉。 */
+async function withPool(body: (o: { serve: Serve; sandbox: string; pool: { current: Pool | null } }) => Promise<void>): Promise<void> {
+  const repo = mkdtempSync(path.join(os.tmpdir(), "shots-boxes-"));
+  const saved = process.env.CCM_SHOTS_BACKEND;
+  const pool: { current: Pool | null } = { current: null };
+  try {
+    const backend = path.join(repo, "backend");
+    writeFileSync(backend, BACKEND);
+    chmodSync(backend, 0o755);
+    const shellDir = path.join(repo, ".build/shell/debug/examples");
+    mkdirSync(shellDir, { recursive: true });
+    writeFileSync(path.join(shellDir, "ccm-shots-shell"), SHELL);
+    chmodSync(path.join(shellDir, "ccm-shots-shell"), 0o755);
+    process.env.CCM_SHOTS_BACKEND = backend;
+    const sandbox = path.join(repo, "sandbox");
+    pool.current = backendPool({ repo, sandbox });
+    let serve: Serve | null = null;
+    pool.current.plugin.configureServer({ middlewares: { use: (f) => (serve = f) } });
+    await body({ serve: serve!, sandbox, pool });
+  } finally {
+    pool.current?.close();
+    if (saved === undefined) delete process.env.CCM_SHOTS_BACKEND;
+    else process.env.CCM_SHOTS_BACKEND = saved;
+    rmSync(repo, { recursive: true, force: true });
+  }
+}
+
+const hosts = ["devbox", "gpu-01"].map((label, k) => ({ label, host: "127.0.0.1", port: 2201 + k, user: "user", keyPath: "/x", connect: true }));
+const localFiles = { ".cc-monitor/machines.json": JSON.stringify({ version: 1, hosts }) };
+
 describe.skipIf(!boxWorks)("截图台架起带远端的世界", () => {
   it(
     "远端各台的常驻由台架起，收场整组收掉",
-    async () => {
-      const repo = mkdtempSync(path.join(os.tmpdir(), "shots-boxes-"));
-      const saved = process.env.CCM_SHOTS_BACKEND;
-      let pool: Pool | null = null;
-      try {
-        const backend = path.join(repo, "backend");
-        writeFileSync(backend, BACKEND);
-        chmodSync(backend, 0o755);
-        const shellDir = path.join(repo, ".build/shell/debug/examples");
-        mkdirSync(shellDir, { recursive: true });
-        writeFileSync(path.join(shellDir, "ccm-shots-shell"), SHELL);
-        chmodSync(path.join(shellDir, "ccm-shots-shell"), 0o755);
-        process.env.CCM_SHOTS_BACKEND = backend;
-        const sandbox = path.join(repo, "sandbox");
-        pool = backendPool({ repo, sandbox });
-        let serve: Serve | null = null;
-        pool.plugin.configureServer({ middlewares: { use: (f) => (serve = f) } });
-        const hosts = ["devbox", "gpu-01"].map((label, k) => ({ label, host: "127.0.0.1", port: 2201 + k, user: "user", keyPath: "/x", connect: true }));
-        const machines = {
-          "<local>": { files: { ".cc-monitor/machines.json": JSON.stringify({ version: 1, hosts }) } },
-          devbox: { files: {} },
-          "gpu-01": { files: {} },
-        };
-        const got = await post(serve!, "/__ccm/world", { key: "boxes", machines, reach: { devbox: { refuse: [] }, "gpu-01": { refuse: [] } }, scene: "boxes" });
+    () =>
+      withPool(async ({ serve, sandbox, pool }) => {
+        const machines = { "<local>": { files: localFiles }, devbox: { files: {} }, "gpu-01": { files: {} } };
+        const got = await post(serve, "/__ccm/world", { key: "boxes", machines, reach: { devbox: { refuse: [] }, "gpu-01": { refuse: [] } }, scene: "boxes" });
         expect(got.status, got.text).toBe(200);
         const world = path.join(sandbox, "worlds", "boxes");
         // 远端两台：常驻都起过（记号落在各自的家里）。
@@ -125,16 +135,31 @@ describe.skipIf(!boxWorks)("截图台架起带远端的世界", () => {
         const handed = JSON.parse(readFileSync(path.join(world, "machines.json"), "utf8")) as { origin: string }[];
         expect(handed.map((m) => m.origin)).toEqual(["<local>"]);
         // 收场：远端各台的沙箱连同里面的常驻一起没了。
-        pool.close();
-        pool = null;
+        pool.current?.close();
+        pool.current = null;
         await vi.waitFor(() => expect(procsUnder(world)).toEqual([]), UNTIL_CEILING);
-      } finally {
-        pool?.close();
-        if (saved === undefined) delete process.env.CCM_SHOTS_BACKEND;
-        else process.env.CCM_SHOTS_BACKEND = saved;
-        rmSync(repo, { recursive: true, force: true });
-      }
-    },
+      }),
     WALL_CEILING_MS,
   );
+
+  // gpu-01 的会话流到不了本机后端：那条会话永远等不到宣告。
+  //   看不见 ⇒ 不在 reach 里，沙箱没人起；指纹变了 ⇒ 起了常驻，本机后端见钥匙对不上就拒。
+  for (const [what, reach] of [
+    ["问不到的那台（没起常驻）", { devbox: { refuse: [] } }],
+    ["握不上手的那台（指纹变了）", { devbox: { refuse: [] }, "gpu-01": { refuse: [], handshake: false } }],
+  ] as const) {
+    it(
+      `${what}盘上已结束的会话不记成要收场的：它那一问当场答完`,
+      () =>
+        withPool(async ({ serve }) => {
+          const ended = { sid: "5e550006-0000-4000-8000-000000000006", cwd: "/home/user/proj", fate: "ended" };
+          const machines = { "<local>": { files: localFiles }, devbox: { files: {} }, "gpu-01": { files: {}, live: [ended] } };
+          const got = await post(serve, "/__ccm/world", { key: "gone", machines, reach, scene: "gone" });
+          expect(got.status, got.text).toBe(200);
+          const end = await post(serve, "/__ccm/end", { key: "gone", origin: "gpu-01" });
+          expect(end, end.text).toEqual({ status: 200, text: '{"ok":true}' });
+        }),
+      WALL_CEILING_MS,
+    );
+  }
 });

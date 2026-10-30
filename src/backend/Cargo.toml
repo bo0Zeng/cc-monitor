@@ -105,9 +105,6 @@ shots = []
 # 两份锁解出同一个版本（`cargo tree -d` 两边都只有一份）。一台从没下过它们的机器，第一次构建仍要联网。
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# `branch-core` 这一行删了：monitor 零引用，它只剩本 crate 用 ⇒ 收进适配层 `agents/claudecode/branch.rs`。
-# `codex-token-core` 那一行删了：它搬进本 crate 成模块 `agents/codex/token.rs`（唯一消费者在那儿）。
-# `agent-tools-core` 这一行删了：界面不再认工具名（卡型随记录成品带出）⇒ 它只剩本 crate 用，收进适配层 `agents/claudecode/cards.rs`。
 # 中转（通信层面 B，搬字节那一层）：本 crate 是它的宿主 —— 绑口、钥匙、期限、上游选择都由这里交进去。
 comms-outward = { path = "../comms/outward" }
 # 上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）；非业务 crate ⇒ 通信层成员可以用它（C2）。
@@ -137,9 +134,6 @@ relay-route-core = { path = "../common/relay-route-core" }
 own-chan = { path = "../common/own-chan" }
 # 等一个进程退出（会话的 claude · tmux server · 写记录的进程：Linux pidfd · Windows 进程句柄，零轮询）；Windows 开进程句柄也从它来。monitor 链同一份。
 pidwatch-core = { path = "../common/pidwatch-core" }
-# `search-core` 这一行删了：它只剩本 crate 用，带 Claude 记录格式知识 ⇒ 通用口径收成 `observe/search_rules.rs`（10-13 随会话清单挪到 `history/search_rules.rs`），
-#   记录文本那一半进适配层 `agents/claudecode/text.rs`（K-R100「口径只有一份」照旧，家换了）。
-# `gate-core` 这一行删了：monitor 那一侧的门删掉之后它只剩本 crate 用 ⇒ 收成模块 `control/gate_rules.rs`。
 # 对外文案表的 Rust 取文口（所有对外文案与报错都从一张表来）。
 # 后端自己出句子、读的是与前端 / monitor 同一份 `src/shared/copy/table.json`。
 # 依赖只有 `serde_json`（本 crate 早就有）⇒ 不引新的第三方包。

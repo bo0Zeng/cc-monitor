@@ -49,7 +49,7 @@
 
 | 文件 | 类 | 写它的 | 说明 |
 |---|---|---|---|
-| `config.json` | **真相** | `config.rs` | 主题 · 字体 · 快捷键 · 诊断开关 —— 全是用户手填 |
+| `config.json` | **真相** | `config.rs` | 界面的设置，顶层键全集是 `src/frontend/ui/config.ts` 的 `CONFIG_KEY_OWNERS` —— 全是用户手填 |
 | `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::annotate_at` · `edit_slice_at` | 按 sid 的星标 · 改名 · 隐藏 · 在哪几组 · 固定；顶层 `groups` 那一节是这台那一片：只记这台有组员的组（名字带 `named` 时刻），最后一位出组那一组就删 |
 | `filewin-view.json` | **真相** | `filewin/src/workspace.rs`（整份原子换，后写者赢） | 文件窗口的整窗缩放 |
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled` 是真相；`monitor_exe_path` 每次启动自愈改写 |
@@ -60,6 +60,14 @@
 
 - **真相** = 用户手写 / 意图，删了丢东西、要备份、要迁移友好；**缓存/派生** = 能从别处重建，随便删。
 - **新增任何 data dir 文件，必须声明它是哪类**：界面这一侧的（monitor 数据目录）在 `data_paths.rs` 的枚举里（`DataPathInfo.class: DataClass` 非可选）；本机后端家里的（`~/.cc-monitor/`）在 `relay_route_core::OWN_HOME_ENTRIES` 里（后端 `data-report` 的 `own` 照它出、界面照抄）。设置页每行据它显示「删了会丢 / 可随手删」。两边拼起来与上表两向相等（`data_paths_tests.rs`，异源判据）；后端自家那几样另与上表逐样对（`footprint/data_tests.rs`）。
+
+### 2.2 后端自有文件：一份一个声明，读只有三态
+
+- **声明**：后端自己落盘的每一份文件在 `relay_route_core` 里一个 `Decl` 常量（`*_FILE`：落点 `rel` · 状态还是缓存 · 格式与版本 · 读上限 `cap`）。状态写 `Decl::<State>::json(rel, version, floor, cap)`，缓存写 `Decl::<Cache>::json(rel, version, cap)`（缓存不升级，下限就是版本），不是我们格式的写 `Decl::foreign(rel, cap)`。这些常量排成一张 `OWN_FILES`（测试档，判据读）；家里那几样有声明的，`OWN_HOME_ENTRIES` 里「删了会丢」照声明取。
+- **读写口**：`src/backend/common/own_state.rs::Doc`，只从声明取（`Doc::of`；读得懂不止一版的挂升级步 `upgrade!`），住写它的那个模块的一个 `const` 里。写只经写句柄 `platform::fs::Own`（订阅号凭据与诊断文件各一个窄句柄）。
+- **读三态**：不在 / 读得到 / 读不出来（`Read::Absent` · `Present` · `Unreadable`）。只读常规文件，超过读上限当读不出来。状态读不出来 ⇒ `Unreadable`，调用方不覆盖、照实说出来；缓存读不出来 ⇒ 当没有。
+- **版本**（格式是 JSON 的那几份）：顶层整数 `version`，缺了当 1。比声明的 `version` 新 ⇒ 读不出来；比下限 `floor` 老 ⇒ 当没有；中间的依次过升级步（步数恰好 `version - floor`，只挂得上状态）。写是整份写、自动带 `version`；盖比自己新的状态 ⇒ 拒；盖旧版 ⇒ 原文先照字节留成 `<名>.v<N>`。
+- **谁在守**：`every_declared_file_is_consistent_and_declared_once`（声明每一行自洽、落点不重）· `home_entries_with_a_declaration_take_their_class_from_it` · `own_doc_guard.rs`（经 `Own` 写的生产文件都有声明、声明只住 `const`、落点全仓不重名）· `own_state_tests.rs`（三态与版本的行为）。
 
 ---
 
@@ -339,9 +347,9 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 `:root` 设 `color-scheme: dark`，全仓没有 `prefers-color-scheme`；`theme.ts` 的 `TOKENS` 只是暗色调色板内的一组可换值，`--overlay-*` / `--border-*` 是固定值。别在文档或宣传里声称覆盖了浅色。
 
-## 33. LaunchPlan 双渲染器——CLI 渲染器对无法诚实表达的维度/容器形态必须放弃，不得近似（F03 / unify-launch）
+## 33. 起会话那一行表达不了就放弃，不得近似
 
-界面那份 IR 与两个渲染器都已删，理由是起会话只剩一处。今天：monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉 · 远端开新会话 · 本机拉起 · cc-bus 派生 · 就地 resume）问那台后端要的都只是一行 `ccm [交给 agent 的…] -- [ccm 自己的…]`；环境、中转地址、身份标记由那台的 `ccm` 在最终 exec 那一处定，外层容器只包这一行。**表达不了就放弃**照旧：渲不出 ⇒ 回码 `refused` 带那一句，调用方不回落、不拼第二条。
+monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉 · 远端开新会话 · 本机拉起 · cc-bus 派生 · 就地 resume）问那台后端要的都只是一行 `ccm [交给 agent 的…] -- [ccm 自己的…]`；环境、中转地址、身份标记由那台的 `ccm` 在最终 exec 那一处定，外层容器只包这一行，没有第二个写者。**表达不了就放弃**：渲不出 ⇒ 回码 `refused` 带那一句，调用方不回落、不拼第二条。
 
 **谁在守**：`ccm_invocation_tests.rs::every_rendered_ccm_line_is_accepted_by_the_ccm_argv` · `ccm_tests.rs::nothing_but_ccm_renders_a_command_that_starts_an_agent`（后端生产段除 `ccm` 自己的最终 exec 外零处渲出直接起 agent 的命令，一个例外都没有）。
 
@@ -355,6 +363,8 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 起会话交给终端的只有一行 `ccm …`，由那台后端渲（`control/launch_render/`，经 `session-open` 回包里的 `line`，本机远端同一条）。界面没有渲染器、不留回落：后端答不出就明说失败。建得出来、主路杀不掉的名字不许被铸出来（`backend_kill_tests`）。
 
+用到的能力缺一项就拒，不近似；一个修饰「不出现」时下游的默认若不等于用户的期望，就恒要求那一项能力（`ccm_invocation_tests.rs::unconditional_caps_are_always_required_and_conditional_ones_only_when_used`）。新的一条轴直接是后端起会话请求里的一格（`control/launch_render/`），界面上「有哪些可选值」现查后端（例：账号 `src/frontend/ui/account-reads.ts::fetchAccounts`）。
+
 ## 34. tmux 破坏性/半破坏性命令三道门 + 原子 verify+act（F04 / unify-launch / R10）
 
 送键与杀会话只走后端（结束：界面 · 手机交 `terminal-end`（按名单句柄或会话 ID，两种宿主同一条），批量停 `sessions-stop` 每一项同它；送字：`terminal-input` · 会话输入队的投递（`faces/session_send.rs`），就地键入在 `session-open` · 换号重启里头；monitor 一道门都没有、生产段一处 `kill-session` 都没有）。三道门都在后端：
@@ -367,33 +377,11 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 **谁在守**：`tests/e2e/backend-gate2-acceptance.sh`（真后端 ＋ 真 tmux、私有 `-L` socket，用例逐行来自判定表 `gate2-golden.tsv`，送字那一路借 `terminal-input` 走 `gate::admit_with`——与就地键入同一道门）· `tmux_backend_gate_guard_tests.rs`（monitor 侧零第二条路）· 类型：送键（`launch::type_literal` · `press_key` · `send-into` 那一臂）只收 `gate::Admitted`；结束会话只有 `kill::end` 一个口，只收 `gate::Doomed` 或 `launch::JustMade`（本趟刚建、启动命令没送进的空壳）。三样字段私有、不能复制：前两样只有 `control/gate.rs` 造得出、只由探测结果 `gate::Probed`（同样私有、不能复制，只有 `probe_with` 造）与门自己按 sid 找到的窗格构造，`JustMade` 只有 `launch.rs` 建会话那一臂造 ⇒ 不过门的送键 / 杀编不过。
 
-## 35. 维度的 `applies` 绝不能条件性跳过 `cliFlags` 的 `null` 安全网（F05 / unify-launch）
-
-已删：维度注册表随界面的 IR 一起删了（§33）。它留下的规矩今天落在后端调用行渲染器上：用到的能力缺一项就拒，不近似（`ccm_invocation_tests.rs::unconditional_caps_are_always_required_and_conditional_ones_only_when_used`）。
-
-## 36. 本地（Windows）路径不经 IR 产出命令——嵌套 env 污染保护已在进程启动期做完，别在本地渲染器里重复实现（F06 / unify-launch；R07 收紧）
+## 36. 本地（Windows）那一行也由本机后端出成品——清嵌套会话标记只归 `ccm` 的最终 exec，本地渲染器不重复实现
 
 本机那几形由本机后端出成品（`session-open`，渲在 `control/launch_render/mod.rs::line_of`）；Windows 那一格也只是一行 `ccm --resume <sid> -- …`（没有 tmux ⇒ 说了进 tmux 的走直路；起会话 · 恢复缺省落托管终端，接回那一行是 `ccm -- --attach <名>`）。**本地渲染器不渲任何清变量的代码**：清 Claude 自己的嵌套会话标记归 `ccm` 在最终 exec 那一处（进程内摘环境，不是一段 PowerShell 语法），本机远端、两个平台同一处。这一形要 `ccm` 在用户的 `PATH` 上。
 
 **谁在守**：`ccm_invocation_tests.rs::windows_launches_go_the_direct_way_and_attach_is_the_thin_client`。
-
-## 37. 新维度的 `applies` 该不该恒真，看这个维度的"沉默"是否等价于用户期望——不是看它是不是账号相关（F07 / unify-launch）
-
-已删：维度注册表随 IR 删了（§33）。同一个问题今天问在调用行渲染器的能力上：一个修饰「不出现」时，下游的默认若不等于用户的期望，就必须恒要求那一项能力（见 §35 的判据）。
-
-## 38. 一条新正交轴该进 `LAUNCH_DIMENSIONS` 注册表，还是该做 `LaunchPlan`/`LaunchContext` 的硬编码一等字段——三条 checklist（F09 / unify-launch，R12）
-
-已删：`LAUNCH_DIMENSIONS` · `LaunchPlan` · `LaunchContext` 随 IR 删了（§33）。新轴今天直接是后端起会话请求里的一格（`control/launch_render/`），界面上「有哪些可选值」现查后端（例：账号 `src/frontend/ui/account-reads.ts::fetchAccounts`）。
-
-## 39. `WrapSpec` 是纯数据 `{ id, order, prelude }`，不是闭包——且 rbind 走不走 wrap 这件事必须先定（R04④ / unify-launch）
-
-已删：`WrapSpec` 随 IR 删了（§33）。外层容器今天只包那一行 `ccm …`，身份由 `ccm` 与后端打标负责（§30），没有第二个写者。
-
----
-
-## 修改本文档
-
-加一条不变量：加到对应位置并编号；在守它的模块头注或判据头注里引 `INVARIANTS §N`（`doc_claim_registry_tests.rs::every_invariants_section_cited_in_code_exists` 核那一节真在）；写清「谁在守」。已由判据钉住的条目正文只留一句规矩加判据名。松动一条：先写清新的约束是什么、为什么旧的可以松，全仓找全受影响处。
 
 ---
 
@@ -581,3 +569,9 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 **为什么不能松动**：tmux 判客户端是不是 UTF-8 只看 `LC_ALL` → `LC_CTYPE` → `LANG` 第一个非空值；一旦不是，输出里的 TAB 与非 ASCII 全被改写成 `_`、退出码仍是 0 ⇒ 会话从列表里静默消失。改写是每客户端全有全无的，所以下溢是完备检测器。
 
 **谁在守**：`gate_tests.rs::both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand` · `tmux_observe_tests.rs::every_sh_call_site_in_this_module_carries_the_utf8_env` · `session_snapshot_tests.rs::the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand` · `gate_tests.rs::the_underflow_predicate_catches_the_real_dirty_bytes` · `tmux_observe_tests.rs::the_underflow_predicate_only_fires_downward` · `session_snapshot_tests.rs::a_tab_starved_line_is_dropped_instead_of_becoming_a_session` · `tmux_utf8_tests.rs::each_kou_jing_has_exactly_one_home_and_it_is_this_file` · `lib_invariant_population_tests.rs::every_tmux_print_site_is_registered_with_how_it_carries_utf8`（人群：每一处「打印子命令 ＋ `-F` / `-p`」== 登记表）· `tmux_backend_gate_guard_tests.rs::utf8_client_kou_jing_has_one_home_and_this_side_has_none`。上溢不管。
+
+---
+
+## 修改本文档
+
+加一条不变量：加到对应位置并编号；在守它的模块头注或判据头注里引 `INVARIANTS §N`（`doc_claim_registry_tests.rs::every_invariants_section_cited_in_code_exists` 核那一节真在）；写清「谁在守」。已由判据钉住的条目正文只留一句规矩加判据名。松动一条：先写清新的约束是什么、为什么旧的可以松，全仓找全受影响处。

@@ -19,7 +19,7 @@ import { machineName } from "./control-said";
 import { fullTitle } from "./session-face";
 import { isRemoteOrigin } from "./ipc/origin";
 import { startMany, stopMany, type BatchOutcome } from "./tab-batch-run";
-import type { Run } from "./generated/Run";
+import type { Launch } from "./generated/Launch";
 
 /** 批量菜单要宿主给的：按 sid 取 tab · 集合 · 固定 · 关闭（都一次改完、落盘一次）。 */
 export interface TabBatchHost {
@@ -41,7 +41,7 @@ export interface TabBatchHost {
 /** 后端那两件（判据换替身）。 */
 export interface TabBatchRun {
   stop(tabs: readonly Tab[]): Promise<BatchOutcome[]>;
-  start(tabs: readonly Tab[], run: Run): Promise<BatchOutcome[]>;
+  start(tabs: readonly Tab[], run: Launch): Promise<BatchOutcome[]>;
   confirm: ConfirmFn;
 }
 

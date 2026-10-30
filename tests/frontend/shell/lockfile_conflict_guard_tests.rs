@@ -151,7 +151,7 @@ fn the_two_lockfiles_have_no_real_version_conflict() {
              ★ 后果不是「多编一遍」：`ci.yml` 的 backend job 有 \
              `defaults.run.working-directory: src/backend` ⇒ 那条**跨 target Windows check** \n\
              走的是 **backend 的 lock**，而 monitor 真编走**它自己的**。\n\
-             而 `branch-core` / `usage-core` 既是后端生产依赖、又是 monitor workspace member \n\
+             而 `copy-core` / `creds-core` 既是后端生产依赖、又是 monitor workspace member \n\
              ⇒ **同一份源码分别编进两个版本**，那条 check 证明的依赖树与真编的不是同一棵。\n\
              ⚠ 它是 `ci.yml` 自称的「平台线**唯一真判据**」。\n\n\
              修法：在 `src/frontend/shell/` 下 `cargo update -p <包>` 把 monitor 抬到后端那一版\n\

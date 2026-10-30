@@ -95,17 +95,10 @@ jobs:
         with:
           workspaces: src/frontend/shell
 
-      # fmt 已经过项目历史校准，强制约束
-      # G2（Phase G 代码工程审计）：这六个共享 crate 现在是**真 workspace member**
-      # （`src/frontend/shell/Cargo.toml` 的 `[workspace]`）。收敛前它们只是 path 依赖 ——
-      # `cargo metadata` 的 `workspace_members` 只有 `monitor` 一项，`-p` 能跑靠的是
-      # cargo 允许选中依赖图里的非 member 包，**不是 workspace 机制**。
-      # ⇒ 原来 ~17 条 `--manifest-path`/`-p` 收敛成下面三条。
-      #
-      # ⚠ 收敛前的教训留在这里，别当成历史：`branch-core` 曾**进了 test 门禁却没进
-      # fmt/clippy**（当时正好有 3 处未格式化）；`usage-core`/`acct-core` 曾**一条 CI
-      # 步骤都没有**，它们的 8+4 条测试在 CI 里等于不存在。根因就是没有 `[workspace]`
-      # —— 每加一个 crate 都要人记得补三处。**现在补不补由 cargo 自己决定。**
+      # fmt 强制约束。
+      # `src/common/` 下的共享 crate 都是 `src/frontend/shell/Cargo.toml` `[workspace]` 的 member
+      # ⇒ 下面 fmt / clippy / test 各一条覆盖整个 workspace。加一个 crate 只要进 `members`，
+      # 这里不用另补步骤（漏进 `members` 的由 `shared_crate_registry_tests.rs` 拦）。
       - name: cargo fmt --check（整个 workspace）
         run: cargo fmt --all --check
 
