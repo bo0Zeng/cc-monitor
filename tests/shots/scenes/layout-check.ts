@@ -264,7 +264,8 @@ function overStream(): string[] {
     ];
     for (const [x, y] of pts) {
       const hit = document.elementFromPoint(x, y);
-      if (hit && !f.contains(hit) && hit.closest(".stream")) {
+      // 只认这一格消息流里的流：全屏视图（历史页的预览流 …）压在整格上面时盖住的是整格，不是流盖住块。
+      if (hit && !f.contains(hit) && root.contains(hit) && hit.closest(".stream")) {
         out.push(`浮在流上的 ${name(f)} ${fmt(r)} 在 (${Math.round(x)},${Math.round(y)}) 被流里的 ${name(hit)} 盖住`);
         break;
       }
