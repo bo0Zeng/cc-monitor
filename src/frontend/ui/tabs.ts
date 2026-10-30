@@ -74,7 +74,7 @@ import { updateBackendOf } from "./backend-deploy";
 import { machineName } from "./control-said";
 import type { MachineFix } from "./generated/MachineFix";
 import { openSettingsWindow } from "./open-settings";
-import { machineOf } from "./settings-dest";
+import { machinePageOf } from "./settings-dest";
 import { closeFrontResult, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
 import type { Watched } from "./terminal-page";
@@ -1236,7 +1236,7 @@ export class TabManager {
   fixMachine(origin: string, fix: MachineFix): void {
     if (fix === "retry") this.reconnect(origin);
     else if (fix === "update") void this.updateFromStrip(origin);
-    else void openSettingsWindow(undefined, machineOf(origin));
+    else void openSettingsWindow(undefined, machinePageOf(origin));
   }
 
   /** 更新没换上那一句（↗ 浮层标题）。 */

@@ -9,6 +9,7 @@ use super::model::{Account, Manifest, ACCOUNT_ZERO};
 use super::scan::{is_under, join, DirState, Snapshot};
 use crate::agents::{AccountsFace, IdentityClass, IdentityRoot};
 use crate::platform::acct_view::Item;
+use crate::platform::fs::side_name;
 use copy_core::copy_text;
 
 /// 共享库顶层里**不链**给各号的那几项（`accounts` 目录 · 编辑器留的 `*.bak` / `*.bak-*` · 锁文件 · 原子写的旁名，见 [`is_excluded`]）。
@@ -18,13 +19,16 @@ const SHARE_EXCLUDE_EXACT: &[&str] = &["accounts"];
 /// 链给各号 ⇒ 几个号抢同一把锁、读到别的号的持锁人；每个号用自己配置根下的那一把。
 const LOCK_SUFFIXES: &[&str] = &[".lock", ".lock.owner"];
 
-/// cc-monitor 原子写落在原名旁边的旁名里带的记号：文件写入的换名件 `<名>.ccm-swap-<pid>-<序>.part` 与留下的备份
-/// `<名>.ccm-backup-<毫秒>-<序>`（`control::files_write`）· 换名件 `<名>.ccm-tmp-…`（`host_core::atomic` · 账号库执行）。
+/// cc-monitor 原子写落在原名旁边的旁名带的记号（换名件 · 留下的备份）住 [`side_name::MARKS`]，造名同一份：
 /// 写到一半那一刻被快照拍到 ⇒ 链出去就是一条悬空链，或把备份件链给每个号。
-const SIDE_MARKS: &[&str] = &[".ccm-swap-", ".ccm-backup-", ".ccm-tmp-"];
-
-/// 写到一半的临时件与编辑器旁名的尾巴：`*.tmp`（`platform::fs::own` 的原子写，凭据续期走它）· 暂存件 · vim 的 `*.swp` · `*~`。
-const SIDE_SUFFIXES: &[&str] = &[".tmp", crate::common::staging::PART_SUFFIX, ".swp", "~"];
+///
+/// 写到一半的临时件与编辑器旁名的尾巴：自家状态原子写的临时件（凭据续期走它）· 暂存件 · vim 的 `*.swp` · `*~`。
+const SIDE_SUFFIXES: &[&str] = &[
+    side_name::OWN_TMP_SUFFIX,
+    crate::common::staging::PART_SUFFIX,
+    ".swp",
+    "~",
+];
 
 /// 这台机器上账号库的布局（注册表里那一家的；没有 ⇒ 这台做不了多账号，`wire` 那一层先拒）。
 pub(crate) fn face() -> Option<AccountsFace> {
@@ -90,7 +94,7 @@ pub(crate) fn is_excluded(name: &str) -> bool {
         || name.ends_with(".bak")
         || name.contains(".bak-")
         || LOCK_SUFFIXES.iter().any(|s| name.ends_with(s))
-        || SIDE_MARKS.iter().any(|m| name.contains(m))
+        || side_name::MARKS.iter().any(|m| name.contains(m))
         || SIDE_SUFFIXES.iter().any(|s| name.ends_with(s))
 }
 

@@ -32,7 +32,7 @@ export function connectTerminalOf(origin: Origin): SettingsTarget {
 }
 
 /** 那台机器的页。 */
-export function machineOf(origin: Origin): SettingsTarget {
+export function machinePageOf(origin: Origin): SettingsTarget {
   return { machine: origin };
 }
 

@@ -16,6 +16,8 @@ use std::path::Path;
 mod face;
 mod own;
 mod ro;
+/// 原子写落在原名旁边的旁名：造名与认名同一份形状。
+pub(crate) mod side_name;
 pub use face::{Face, FaceFile, NewFile, NewFileFail, Resolved};
 pub(crate) use own::{
     inside_own_dir, AccountCreds, CredsLock, DiagFile, OwnPath, RenewLock, PRIVATE_DIR_MODE,

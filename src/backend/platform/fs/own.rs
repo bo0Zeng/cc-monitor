@@ -624,9 +624,8 @@ fn atomic_write_with(
         )
         .into());
     };
-    let tmp = dir.join(format!(
-        "{}.{}.{:?}.{}.tmp",
-        name.to_string_lossy(),
+    let tmp = dir.join(super::side_name::own_tmp(
+        name,
         std::process::id(),
         std::thread::current().id(),
         SEQ.fetch_add(1, Ordering::Relaxed),
