@@ -1,9 +1,9 @@
 .github/workflows/ci.yml	2
 .github/workflows/release.yml	23
-src/backend/Cargo.toml	10
+src/backend/Cargo.toml	9
 src/backend/accounts/manage/mcp_share_exec.rs	1
 src/backend/accounts/upstream_select/mod.rs	21
-src/backend/agents/claudecode/branch.rs	4
+src/backend/agents/claudecode/branch.rs	3
 src/backend/agents/claudecode/footprint.rs	8
 src/backend/agents/claudecode/schema.rs	1
 src/backend/agents/footprint_decl.rs	21
