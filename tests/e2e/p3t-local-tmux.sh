@@ -30,9 +30,7 @@ TMUXNAME=p3te2e01-cc
 LAUNCHER=p3tfakecc
 TMUX_BIN="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
 
-PASS=0; FAIL=0
-ok()  { PASS=$((PASS+1)); echo "  PASS  $1"; }
-bad() { FAIL=$((FAIL+1)); echo "  FAIL  $1"; }
+. "$HERE/assert.sh"
 
 TMP="$(mktemp -d /tmp/p3t-y5.XXXXXX)"
 # 收尾：**只收自己那台**（`-L` 选择器在，绝不裸 kill-server）。
@@ -243,6 +241,4 @@ fi
 
 kill "$LAUNCH_PID" 2>/dev/null
 echo
-# 收尾行换成 `assert-pass-floor.sh` 认的那一形（它只认「合计 PASS=<n> FAIL=<m>」）—— 本套接在执行链上（门禁 `run_e2e`）。
-echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
-[ "$FAIL" -eq 0 ] || exit 1
+finish

@@ -73,14 +73,10 @@ DIR_SNIPPET='.local/bin'        # src/shared/ccm-aliases.sh 那行 PATH 加的�
 FENCE_BEGIN='# === cc-monitor remote ccm BEGIN ==='
 FENCE_END='# === cc-monitor remote ccm END ==='
 
-pass=0
-fail=0
+. "$HERE/../assert.sh"
 SNAP=""
 
 line() { printf '%s\n' "------------------------------------------------------------"; }
-ok()   { echo "  PASS $1"; pass=$((pass + 1)); }
-no()   { echo "  FAIL $1"; fail=$((fail + 1)); }
-chk()  { if [ "$2" = "$3" ]; then ok "$1"; else no "$1: 期望[$3] 实得[$2]"; fi; }
 # `note` = **读数**，不是判定。三选一那类结论事先不知道答案，硬塞进 PASS/FAIL 就是预设结论。
 note() { echo "  读数 $1"; }
 
@@ -95,10 +91,6 @@ on_exit() {
   return 0
 }
 
-finish() { # $1 = 退出码
-  echo "===== 合计 PASS=$pass FAIL=$fail ====="
-  exit "$1"
-}
 
 if [ "${1:-}" = "--clean" ]; then
   # 本棵树、主人那条进程已经不在的趟（崩掉的）留下的；活着的那趟与别棵树的不碰。
@@ -136,24 +128,24 @@ echo "== P0 判据：运行面不许出现宿主网络 / 全权限 / 加能力"
 if bash "$HERE/guard-run-netns.sh"; then
   ok "运行面零命中宿主网络 / 全权限 / 加能力"
 else
-  no "运行面出现宿主网络或全权限 —— 那就不再是「隔离好」了"
-  finish 9
+  bad "运行面出现宿主网络或全权限 —— 那就不再是「隔离好」了"
+  finish
 fi
 line
 
 echo "== P1 前置：镜像 · 产物 · 残留 · 宿主快照"
 if ! docker image inspect "$IMG" >/dev/null 2>&1; then
   echo "::error::没有镜像 $IMG ⇒ 先跑：bash tests/e2e/local-backend-container/build-image.sh" >&2
-  no "镜像 $IMG 不在"
-  finish 2
+  bad "镜像 $IMG 不在"
+  finish
 fi
 ok "镜像在：$IMG"
 
 if [ -z "$ART" ] || [ ! -f "$ART/$DEB" ]; then
   echo "::error::没找到产物 \$LBC_ARTIFACTS/$DEB（LBC_ARTIFACTS=[${ART:-空}]）。" >&2
   echo "::error::本脚本**刻意不联网下载** —— 测的是哪一版必须由调用方点名，见头注用法。" >&2
-  no "产物不在"
-  finish 2
+  bad "产物不在"
+  finish
 fi
 DEB_SHA="$(sha256sum "$ART/$DEB" | awk '{print $1}')"
 ok "产物在：$DEB"
@@ -166,10 +158,10 @@ for c in "$CT" "$CT_BARE"; do
 done
 [ -n "$(docker network ls -q -f "name=^${NET}$")" ] && leftover="$leftover $NET"
 if [ -n "$leftover" ]; then
-  no "盘上已有本趟名字的东西（同一个 pid 的上一趟没清干净）：$leftover"
+  bad "盘上已有本趟名字的东西（同一个 pid 的上一趟没清干净）：$leftover"
   echo "::error::台架不替上一趟擦屁股（那会让「清理」这一步被拆掉也照样绿）。" >&2
   echo "::error::⇒ 先跑 bash tests/e2e/local-backend-container/rig.sh --clean，再重跑。" >&2
-  finish 7
+  finish
 fi
 ok "盘上没有本趟名字的残留"
 
@@ -181,13 +173,13 @@ line
 
 # ══════════════════════════════════════════════════════════════════
 echo "== P2 起台架：一条自建 --internal 网络 + 一个具名容器"
-docker network create --internal "$NET" >/dev/null 2>&1 || { no "建自建网络失败"; finish 3; }
+docker network create --internal "$NET" >/dev/null 2>&1 || { bad "建自建网络失败"; finish; }
 docker run -d --name "$CT" --network "$NET" "$IMG" sleep infinity >/dev/null 2>&1 \
-  || { no "起容器失败"; finish 3; }
+  || { bad "起容器失败"; finish; }
 
 # ★ 正向读数：这一格是下面「跑完都没了」那几条的**分母** —— 第一次就没建出来的话，那几条会恒绿。
-chk "自建网络确实建出来了（$NET）" "$(docker network ls -q -f "name=^${NET}$" | wc -l)" "1"
-chk "容器确实在跑（$CT）" "$(docker inspect -f '{{.State.Running}}' "$CT" 2>/dev/null)" "true"
+ck "自建网络确实建出来了（$NET）" "1" "$(docker network ls -q -f "name=^${NET}$" | wc -l)"
+ck "容器确实在跑（$CT）" "true" "$(docker inspect -f '{{.State.Running}}' "$CT" 2>/dev/null)"
 
 # 🔴 隔离是**量出来的**，不是写在头注里就算数的。
 #   往一个公网地址发一个 TCP SYN，3 秒超时。`--internal` 之下这一定要失败。
@@ -195,7 +187,7 @@ EGRESS="$(docker exec "$CT" timeout 3 bash -c ': >/dev/tcp/1.1.1.1/443' 2>&1; ec
 if printf '%s' "$EGRESS" | grep -q 'rc=0'; then
   # ⚠ 这一句里**不许用反引号写 --internal**：双引号串里的反引号是命令替换，
   #   bash 会真的去执行 `--internal`（SC2215 逮的就是它）。用单引号形的排版代替。
-  no "容器居然出得了网（$EGRESS）—— 自建网络的 --internal 没起作用，这就不是隔离"
+  bad "容器居然出得了网（$EGRESS）—— 自建网络的 --internal 没起作用，这就不是隔离"
 else
   ok "容器出不了网（实得 $EGRESS）—— 隔离是量出来的，不是声称的"
 fi
@@ -204,7 +196,7 @@ line
 # ══════════════════════════════════════════════════════════════════
 echo "== P3 一台**裸** ubuntu:24.04 上 dpkg -i 会怎样（依赖这一格单独量）"
 docker run -d --name "$CT_BARE" --network "$NET" ubuntu:24.04 sleep infinity >/dev/null 2>&1 \
-  || { no "起裸容器失败"; finish 3; }
+  || { bad "起裸容器失败"; finish; }
 docker cp "$ART/$DEB" "$CT_BARE:/tmp/$DEB" >/dev/null 2>&1
 BARE_OUT="$(docker exec -u root "$CT_BARE" dpkg -i "/tmp/$DEB" 2>&1; echo "rc=$?")"
 BARE_RC="$(printf '%s' "$BARE_OUT" | tail -1)"
@@ -220,7 +212,7 @@ docker cp "$ART/$DEB" "$CT:/tmp/$DEB" >/dev/null 2>&1
 INS_OUT="$(rsh "dpkg -i /tmp/$DEB; echo rc=\$?")"
 INS_RC="$(printf '%s' "$INS_OUT" | tail -1)"
 printf '%s\n' "$INS_OUT" | sed 's/^/    | /' | tail -8
-chk ".deb 装上了" "$INS_RC" "rc=0"
+ck ".deb 装上了" "rc=0" "$INS_RC"
 note "装完之后 dpkg -L 落了几个文件：$(rsh 'dpkg -L cc-monitor | wc -l' | tr -d '\r')"
 note "落在 PATH 目录（/usr/bin）下的：$(rsh 'dpkg -L cc-monitor | grep "^/usr/bin/" | tr "\n" " "')"
 # 🔴 这一格是要害之一：**包里有没有一个叫 ccm 的东西**。
@@ -293,7 +285,7 @@ if docker exec "$CT" sh -c '[ -f /tmp/ccm-aliases.sh ]' 2>/dev/null; then
   note "真敲 cc（退出码 + 首行）：$(tsh 'cc --help >/dev/null 2>&1; echo rc=$?')"
   note "真敲 ccm（退出码）：$(tsh 'ccm --help >/dev/null 2>&1; echo rc=$?')"
 else
-  no "本树里没有 src/shared/ccm-aliases.sh（找的是 $SNIPPET）—— P8 整段没跑"
+  bad "本树里没有 src/shared/ccm-aliases.sh（找的是 $SNIPPET）—— P8 整段没跑"
 fi
 line
 
@@ -335,30 +327,29 @@ line
 echo "== P11 收尾：自己清理，宿主逐字复原"
 cleanup_rig
 sleep 1
-chk "容器跑完没了" "$(docker ps -aq -f "name=^${CT}$" | wc -l)" "0"
-chk "裸容器跑完没了" "$(docker ps -aq -f "name=^${CT_BARE}$" | wc -l)" "0"
-chk "自建网络跑完没了" "$(docker network ls -q -f "name=^${NET}$" | wc -l)" "0"
+ck "容器跑完没了" "0" "$(docker ps -aq -f "name=^${CT}$" | wc -l)"
+ck "裸容器跑完没了" "0" "$(docker ps -aq -f "name=^${CT_BARE}$" | wc -l)"
+ck "自建网络跑完没了" "0" "$(docker network ls -q -f "name=^${NET}$" | wc -l)"
 
 e2e_docker_host_snapshot "$NET_PRE" "$NET" "$SNAP/after"
 if diff -q "$SNAP/before.net" "$SNAP/after.net" >/dev/null 2>&1; then
   ok "宿主 docker network ls 跑前跑后逐字相同"
 else
-  no "宿主 docker network ls 变了：$(diff "$SNAP/before.net" "$SNAP/after.net" | tr '\n' ' ')"
+  bad "宿主 docker network ls 变了：$(diff "$SNAP/before.net" "$SNAP/after.net" | tr '\n' ' ')"
 fi
 if diff -q "$SNAP/before.link" "$SNAP/after.link" >/dev/null 2>&1; then
   ok "宿主 ip link 跑前跑后逐字相同"
 else
-  no "宿主 ip link 变了（⚠ 已知假红 K-R136：加速网卡 VF 热插拔）：$(diff "$SNAP/before.link" "$SNAP/after.link" | tr '\n' ' ')"
+  bad "宿主 ip link 变了（⚠ 已知假红 K-R136：加速网卡 VF 热插拔）：$(diff "$SNAP/before.link" "$SNAP/after.link" | tr '\n' ' ')"
 fi
 
 TMPDIR_KEEP="$SNAP"
 rm -rf -- "$SNAP"
 if [ -d "$TMPDIR_KEEP" ]; then
-  no "临时目录没删掉：$TMPDIR_KEEP"
+  bad "临时目录没删掉：$TMPDIR_KEEP"
 else
   ok "临时目录跑完没了"
 fi
 line
 
-[ "$fail" -eq 0 ] && finish 0
-finish 1
+finish

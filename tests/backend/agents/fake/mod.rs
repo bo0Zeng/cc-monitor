@@ -377,7 +377,6 @@ fn records_face(
         quiet_unread: None,
         skim: None,
         beats: None,
-        fork: None,
     }
 }
 

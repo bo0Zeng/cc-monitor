@@ -55,9 +55,7 @@ export CCM_RELAY_PORT
 # 新起的假 claude 收到 `/compact` 就写一条压缩摘要（私有 tmux server 带着这份环境）。
 export CCM_FAKE_COMPACT=answer
 
-pass=0; fail=0
-ok()  { echo "  PASS $1"; pass=$((pass+1)); }
-bad() { echo "  FAIL $1"; fail=$((fail+1)); }
+. "$(cd "$(dirname "$0")" && pwd)/assert.sh"
 
 IN="$WORK/in.fifo"; OUT="$WORK/out.jsonl"; ERR="$WORK/backend.stderr"
 cleanup() {
@@ -192,6 +190,4 @@ else bad "R5 上限内没等到撤单那一帧"; fi
 [ "$(live_pids "$SID5")" = 1 ] && ok "R5 旧进程还活着（没停）" || bad "R5 旧进程数=$(live_pids "$SID5")"
 [ "$(resumed_in "$NEW" "$SID5")" = 0 ] && ok "R5 没起新的" || bad "R5 撤单之后还起了新的"
 
-echo "== 结果:$pass 过 / $fail 败 =="
-echo "===== 合计 PASS=$pass FAIL=$fail ====="
-[ "$fail" -eq 0 ]
+finish

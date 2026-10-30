@@ -16,9 +16,7 @@ export CLAUDE_CONFIG_DIR="$WORK/claude"
 mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR/sessions"
 SOCK="$HOME/.cc-monitor/run/backend.sock"
 SID="0000a5c0-0000-4000-8000-0000000000a1"
-pass=0; fail=0
-ok() { pass=$((pass + 1)); echo "  ok   $1"; }
-bad() { fail=$((fail + 1)); echo "  FAIL $1"; }
+. "$E2E_DIR/assert.sh"
 SLEEPER=""; HOOKPID=""
 cleanup() {
   set +e
@@ -73,7 +71,7 @@ out="$(hook_input | "$BACKEND" -- --answer-hook claude)"; rc=$?
 
 echo "== 起沙箱常驻后端"
 RPID="$(CCM_SANDBOX=1 "$BACKEND" -- --resident-ensure 2>/dev/null | python3 -I -c 'import json,sys; print(json.load(sys.stdin).get("pid") or "")' 2>/dev/null)"
-wall_until '[ -S "$SOCK" ]' && ok "套接字在" || { bad "常驻没起来"; echo "合计 PASS=$pass FAIL=$fail"; exit 1; }
+wall_until '[ -S "$SOCK" ]' && ok "套接字在" || { bad "常驻没起来"; finish; }
 # 常驻后端裸调 `tmux`（会话快照 · 终端那几处）⇒ 它 PATH 上第一个 tmux 必须是这一趟的 shim（钉着本趟私有名），不然连到的是缺省 server。
 rtmux="$(PATH="$(grep -z '^PATH=' "/proc/$RPID/environ" 2>/dev/null | tr -d '\0' | sed 's/^PATH=//')" command -v tmux)"
 [ -n "${TMUX_SHIM_SOCK:-}" ] && grep -qF -- "-L $TMUX_SHIM_SOCK " "$rtmux" 2>/dev/null \
@@ -129,5 +127,4 @@ case "$r" in *'"stopped":"graceful"'*|*'"stopped":"killed"'*) ok "resident-stop 
 left="$(e2e_leftovers "$HOME")"
 [ -z "$left" ] && ok "家目录是 $HOME 的进程一个不剩" || bad "这一趟留下的进程：$left"
 
-echo "合计 PASS=$pass FAIL=$fail"
-[ "$fail" -eq 0 ]
+finish
