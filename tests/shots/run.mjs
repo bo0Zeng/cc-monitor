@@ -13,18 +13,19 @@
  * - 隔离：浏览器与 vite 的 HOME 都在 `.build/shots-sandbox/` 里；真后端各在一个 bwrap 里（家目录挂成 `/home/user`、断网）；
  *   不起 claude、不碰用户的 tmux、不连任何机器。
  *
- * 浏览器：环境变量 `CCM_SHOTS_CHROME` 指定，不给就找 Playwright 缓存里的 Chrome for Testing。
+ * 浏览器：环境变量 `CCM_SHOTS_CHROME` 指定，不给就找 Playwright 缓存里的 Chrome for Testing；HOME 换成了沙箱也找登录用户家目录里那一份，
+ *   编译的工具链同样（`host-tools.mjs`）。
  * 一张网页图没截成：✗ 那一行当场印原因；那一页的世界里台架 ⇄ 无头壳的来往（带毫秒）与各台后端的诊断日志落进 `.build/shots-sandbox/trace/<场景>.*`，
  * 问题表里点名。查偶发没截成先看来往里「哪一刻起没声了」、后端日志里有没有 `stale sessions json ignored` 之类的拒绝。
  */
 import { spawn } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync, writeSync, statSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Cdp, Page, sleep } from "./cdp.mjs";
 import { FILEWIN_SCENES, shootFilewin } from "./filewin.mjs";
+import { findChrome, toolchainEnv } from "./host-tools.mjs";
 import { writeIndex } from "./index-page.mjs";
 import { buildBins, pinDateSource, SHOTS_TZ } from "./real/pool.mjs";
 
@@ -62,13 +63,13 @@ rmSync(sandbox, { recursive: true, force: true });
 mkdirSync(path.join(sandbox, "home"), { recursive: true });
 mkdirSync(out, { recursive: true });
 
-/** 子进程的环境：HOME 换成沙箱，摘掉会把东西引向真环境的那几样。 */
 /**
  * 摘掉会把东西引向真环境的那几族：从 cc-monitor 起的 shell 里跑时，环境里带着常驻后端的监听口、钥匙、
  * 日志与几份真文件的位置（`CCM_*`），还有 claude / Anthropic / tmux 的那几样。工具自己的 `CCM_SHOTS_*` 留着。
+ * 工具链的家钉死（`toolchainEnv`）：编译那几步照它找 cargo / rustup，HOME 换没换都一样。
  */
 function scrubbedEnv(extra = {}) {
-  const env = { ...process.env, ...extra };
+  const env = { ...process.env, ...toolchainEnv(process.env), ...extra };
   for (const k of Object.keys(env)) {
     if (k.startsWith("CCM_SHOTS_")) continue;
     if (/^(CCM_|CLAUDE_|ANTHROPIC_|TMUX)/.test(k)) delete env[k];
@@ -137,7 +138,7 @@ async function shootWeb() {
   });
   const base = `http://127.0.0.1:${port}`;
 
-  const chrome = findChrome();
+  const chrome = findChrome(process.env);
   const profile = path.join(sandbox, "chrome");
   const browser = spawn(
     chrome,
@@ -183,10 +184,21 @@ async function shootWeb() {
 
   // 连拍（`--repeat`）：每个场景第一次拍的 PNG 与流的 scrollTop，后几次拿来比。
   const firstShot = new Map();
-  for (const s of scenes) for (let rep = 0; rep < repeat; rep++) {
+  shooting: for (const s of scenes) for (let rep = 0; rep < repeat; rep++) {
     const file = path.join(out, s.dir, `${s.id}.png`);
     mkdirSync(path.dirname(file), { recursive: true });
-    const page = await Page.open(cdp, s.width, s.height, s.scale ?? 1, { boot: pinDateSource() + NO_CARET, reducedMotion: true });
+    let page;
+    try {
+      page = await Page.open(cdp, s.width, s.height, s.scale ?? 1, { boot: pinDateSource() + NO_CARET, reducedMotion: true });
+    } catch (e) {
+      // 连新页都开不出：浏览器不回话了，余下的每一张都会照样等满上限 ⇒ 这一趟到此为止，说清还剩几张。
+      const why = e instanceof Error ? e.message : String(e);
+      const left = scenes.length - scenes.indexOf(s);
+      problems.push(`${s.id}：开不出新页 —— ${why}；余下 ${left} 张没截`);
+      results.push({ ...s, file: path.relative(out, file), ok: false });
+      console.log(`✗ ${s.dir}/${s.id} —— 开不出新页：${why}`);
+      break shooting;
+    }
     let ok = true;
     let note = "";
     try {
@@ -246,7 +258,7 @@ async function shootWeb() {
     }
     if (!ok && !note.startsWith("排版：")) {
       // 台架与无头壳之间的来往（谁问了什么、壳交了什么、哪一刻起没声了）：查偶发没截成时第一份要看的。
-      const t = await fetch(`${base}/__ccm/trace`, { method: "POST", body: JSON.stringify({ scene: s.id }) })
+      const t = await fetch(`${base}/__ccm/trace`, { method: "POST", body: JSON.stringify({ scene: s.id }), signal: AbortSignal.timeout(WALL_CEILING_MS) })
         .then((r) => r.json())
         .catch(() => null);
       if (t?.files?.length) note = `${note.split("\n")[0]}（来往：${t.files.join("、")}）`;
@@ -255,7 +267,7 @@ async function shootWeb() {
     if (errs.length > 0) problems.push(`${s.id}：页里报错 ${errs.slice(0, 3).join(" | ").slice(0, 400)}`);
     if (!ok) problems.push(`${s.id}：${note.startsWith("排版：") ? note : `没截成 —— ${note.split("\n")[0]}`}`);
     writeFileSync(path.join(sandbox, `${s.id}.console.txt`), page.consoleLines.join("\n"));
-    await page.close();
+    await page.close().catch((e) => problems.push(`${s.id}：关页没回话 —— ${e instanceof Error ? e.message : String(e)}`));
     if (rep > 0) continue;
     results.push({ ...s, file: path.relative(out, file), ok });
     console.log(`${ok ? "✓" : "✗"} ${s.dir}/${s.id}${ok ? "" : ` —— ${note.split("\n")[0].slice(0, 300)}`}`);
@@ -274,7 +286,7 @@ async function pageFinished(page) {
     timer = setTimeout(() => reject(new Error(`等了 ${(2 * WALL_CEILING_MS) / 1000} 秒，场景既没做完也没报错（页里有一处不带上限的等？）`)), 2 * WALL_CEILING_MS);
   });
   try {
-    await Promise.race([page.eval("window.__shots ? window.__shots.finished : Promise.reject(new Error('页里没有 window.__shots：假适配层没装上'))"), cap]);
+    await Promise.race([page.eval("window.__shots ? window.__shots.finished : Promise.reject(new Error('页里没有 window.__shots：假适配层没装上'))", 2 * WALL_CEILING_MS), cap]);
   } finally {
     clearTimeout(timer);
   }
@@ -313,23 +325,6 @@ function holdSandbox() {
     }
     rmSync(lock, { force: true });
   }
-}
-
-function findChrome() {
-  const own = process.env.CCM_SHOTS_CHROME;
-  if (own) return own;
-  const cache = path.join(os.homedir(), ".cache/ms-playwright");
-  const found = existsSync(cache)
-    ? readdirSync(cache)
-        .filter((d) => /^chromium-\d+$/.test(d))
-        .map((d) => path.join(cache, d, "chrome-linux64/chrome"))
-        .filter((p) => existsSync(p))
-        .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
-    : [];
-  if (found.length === 0) {
-    throw new Error("找不到 Chromium：设 CCM_SHOTS_CHROME 指向一个 chrome 可执行文件（例如 Playwright 装的 Chrome for Testing）");
-  }
-  return found[0];
 }
 
 /**

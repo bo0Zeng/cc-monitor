@@ -199,16 +199,16 @@ fn hosted(launch: &cmd_wire::session::ForkLaunch) -> Option<bool> {
 }
 
 /// 新建框默认「运行于」：同 `session-open {what: new}` 不给 `run` 时那一条（[`open::default_run`]）。
-pub(crate) fn facts_run(fork_tmux: Option<bool>, tmux: bool, managed: bool) -> open::Run {
+pub(crate) fn facts_run(fork_tmux: Option<bool>, tmux: bool, managed: bool) -> open::Launch {
     open::default_run(open::Intent::New { fork_tmux }, false, tmux, managed)
 }
 
-/// 这台能放在哪几种（`OpenFacts.hosts`，照 `Run` 的序）：能托管 ⇒ 托管；有 tmux ⇒ tmux；终端窗口（直路）恒在。
-pub(crate) fn facts_hosts(tmux: bool, managed: bool) -> Vec<open::Run> {
+/// 这台能放在哪几种（`OpenFacts.hosts`，照 `Launch` 的序）：能托管 ⇒ 托管；有 tmux ⇒ tmux；终端窗口（直路）恒在。
+pub(crate) fn facts_hosts(tmux: bool, managed: bool) -> Vec<open::Launch> {
     [
-        (managed, open::Run::Managed),
-        (tmux, open::Run::Tmux),
-        (true, open::Run::Direct),
+        (managed, open::Launch::Managed),
+        (tmux, open::Launch::Tmux),
+        (true, open::Launch::Direct),
     ]
     .into_iter()
     .filter_map(|(here, r)| here.then_some(r))

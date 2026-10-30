@@ -6,7 +6,7 @@
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import type { AccountAsk } from "./launch-account";
-import type { Run } from "./generated/Run";
+import type { Launch } from "./generated/Launch";
 import { toast, failToast, noteMessage } from "./kit/toast";
 import { detailOf, saidOf } from "./kit/detail";
 import { openSession } from "./session-open";
@@ -129,7 +129,7 @@ export class TabSessionActions {
    * 恢复这一个：说不清那台在不在跑 ⇒ 不恢复；否则交那台（`session-open`：判号 · 判放在哪 · 问记录 · 活进程门 · 在跑就接上），
    * 记录在不在那台记进账本、随整份脸回来。`ask` 里没有的格 ＝ 跟随 / 照这台。同一个会话在飞时再点不重发（`session-open.ts`）。
    */
-  async resume(sid: string, ask: { account?: AccountAsk; run?: Run } = {}): Promise<void> {
+  async resume(sid: string, ask: { account?: AccountAsk; run?: Launch } = {}): Promise<void> {
     const tab = this.host.tab(sid);
     if (!tab || this.refuseUnseen(tab)) return;
     await openSession(tab.origin, { what: { kind: "resume", sid }, ...ask, local: isLocalOrigin(tab.origin) });
