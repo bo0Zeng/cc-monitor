@@ -245,10 +245,9 @@ echo "  OK   台架自证通过（app 在写日志 · backend 盯 $CLAUDE_DIR ·
 SID="$(cat /proc/sys/kernel/random/uuid)"; SID8="${SID:0:8}"
 SESSION="cc-$SID8"; KEEP="cc-e2ekeep-$$"
 
-pass=0; fail=0
-ok()  { echo "  PASS $1"; pass=$((pass+1)); }
+. "$(cd "$(dirname "$0")" && pwd)/assert.sh"
 # 报 FAIL 之前先再问一次戊：跑到一半后端的监视掉了（套件下面会删了重建 fixture 的 sessions/，后端要重挂）⇒ 那也是台架不成立。
-bad() { _watch_gate; echo "  FAIL $1"; fail=$((fail+1)); }
+E2E_ON_BAD=_watch_gate
 
 cleanup() {
   set +e
@@ -351,7 +350,4 @@ ARCH="$(wait_log "$MARK" "\[e2e\] tab-state sid=$SID8 dot=ended" "$ARCH_WAIT")" 
   && ok "已结束(可重连→已结束):$ARCH" \
   || bad "${ARCH_WAIT}s 内未见已结束 tab-state(sid=$SID8 dot=ended)"
 
-echo "== 结果:$pass 过 / $fail 败 =="
-# G-C：与另外 8 套逐字一致的收尾格式，好让 `tests/e2e/assert-pass-floor.sh` 用同一条正则抓。
-echo "===== 合计 PASS=$pass FAIL=$fail ====="
-[ "$fail" -eq 0 ]
+finish

@@ -502,7 +502,7 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 | 共享 crate 的测试 | `shared_crate_registry_tests.rs::every_shared_crate_is_a_workspace_member` ＋ 门禁 `cargo` 那一格 |
 | CI 的每一步 | Linux 那几个 job 一律调门禁（`GATE_ONLY=<格>`）；Windows 两个 job 自己写命令 |
 | `package.json` 的测试脚本 | `shared_crate_registry_tests.rs::every_test_script_is_either_run_by_ci_or_registered_as_manual` |
-| `#[ignore]` 的判据 | `shared_crate_registry_tests.rs::every_ignored_test_still_has_someone_who_triggers_it` |
+| `#[ignore]` 的判据（两棵 Rust 测试树 ＋ TS 的 skip） | `test_tiers_tests.rs::real_machine_tier_every_ignored_test_is_registered_and_its_trigger_still_reaches_it` |
 
 它不买「进了门禁的那一步真的在跑」（登记的是接线，不是执行）。
 

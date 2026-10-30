@@ -34,13 +34,11 @@ export HOME="$T/home"
 mkdir -p "$HOME"
 FAKE_REPO="$T/repo"
 mkdir -p "$FAKE_REPO/tests/e2e" "$FAKE_REPO/tests/scripts" "$FAKE_REPO/src/frontend/shell"
-for f in graylight-suite.sh tmux-shim.sh gen-idle-tmux.sh fake-claude; do
+for f in graylight-suite.sh assert.sh tmux-shim.sh gen-idle-tmux.sh fake-claude; do
   cp "$E2E_DIR/$f" "$FAKE_REPO/tests/e2e/$f"
 done
 
-pass=0; fail=0
-ok()  { echo "  PASS $1"; pass=$((pass+1)); }
-bad() { echo "  FAIL $1"; fail=$((fail+1)); }
+. "$E2E_DIR/assert.sh"
 
 HTTP_PID=""; BACKEND_PID=""; APP_PID=""
 cleanup() {
@@ -182,5 +180,4 @@ WCALLS="$(grep -c -- '--resident-ensure' "$W/calls" || true)"
   && ok "wrapper 叫一次 ⇒ 后端只跑一趟、stdout 一行" \
   || bad "wrapper 叫一次：后端跑了 ${WCALLS} 趟，stdout $(printf '%s\n' "$WOUT" | grep -c .) 行（要 1 · 1）"
 
-echo "===== 合计 PASS=$pass FAIL=$fail ====="
-[ "$fail" -eq 0 ]
+finish

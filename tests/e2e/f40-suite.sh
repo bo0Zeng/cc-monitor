@@ -19,9 +19,7 @@ DRAIN_MAX_MS="${E2E_DRAIN_MAX_MS:-8000}"
 
 [ -f "$LOG" ] || { echo "日志不存在:$LOG(dev 实例在跑吗?)"; exit 1; }
 
-pass=0; fail=0
-ok()   { echo "  ✓ $1"; pass=$((pass+1)); }
-bad()  { echo "  ✗ $1"; fail=$((fail+1)); }
+. "$REPO/tests/e2e/assert.sh"
 # D 审计 R-1(两家共识):快照读取必须限定在本次触发之后的新增行——全量 grep 会在
 # 触发静默失败(遮挡/焦点漂移)时消费上一轮的陈旧快照,断言假绿。SNAP_MARK 由
 # snap_key 维护;触发后新增行里找不到快照 = 仪器失效,显式硬失败。
@@ -189,5 +187,4 @@ fi
 cleanup_fixture; trap - EXIT
 echo "fixture 已清理($PROJ_DIR + pidfile)"
 
-echo "== 结果:$pass 过 / $fail 败 =="
-[ "$fail" -eq 0 ]
+finish
