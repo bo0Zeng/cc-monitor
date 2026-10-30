@@ -254,7 +254,7 @@ pub(crate) struct Whereabout {
     /// 与 `names` 同序同数：名单里那一行的句柄。
     pub(crate) terminals: Vec<TerminalAt>,
     /// 这一条恢复默认放在哪（这台的偏好「恢复时放在哪」× 那条起在哪 × 有没有 tmux · 能不能托管）。
-    pub(crate) run: open::Run,
+    pub(crate) run: open::Launch,
 }
 
 /// 名单里那一行（词同容器那一格与 `terminals-list`）。

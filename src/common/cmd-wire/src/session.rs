@@ -708,7 +708,7 @@ pub enum ArriveEnd {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(rename_all = "lowercase")]
-pub enum Run {
+pub enum Launch {
     Managed,
     Tmux,
     Direct,
@@ -724,10 +724,10 @@ pub enum Run {
 pub struct OpenFacts {
     /// 这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个）。
     pub recent: Vec<RecentDir>,
-    /// 这台能放在哪几种（`run` 那一格可选的值，照 `Run` 的序；只有 `direct` ⇒ 只能开终端窗口）。
-    pub hosts: Vec<Run>,
+    /// 这台能放在哪几种（`run` 那一格可选的值，照 `Launch` 的序；只有 `direct` ⇒ 只能开终端窗口）。
+    pub hosts: Vec<Launch>,
     /// 新建框默认「运行于」：同 `session-open {what: new}` 不给 `run` 时落的那一形（能托管就托管，分叉的源会话在 tmux 里 ⇒ tmux）。
-    pub run: Run,
+    pub run: Launch,
     /// 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序），各带名字与可选的模型 · 权限档。
     pub agents: Vec<AgentFacts>,
     /// 没给 `forkOf` ⇒ `null`。

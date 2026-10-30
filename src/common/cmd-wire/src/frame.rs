@@ -1011,7 +1011,7 @@ pub enum CanClose {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "can", rename_all = "snake_case")]
 pub enum CanTerm {
-    Yes { host: crate::session::Run },
+    Yes { host: crate::session::Launch },
     No { why: Words },
 }
 

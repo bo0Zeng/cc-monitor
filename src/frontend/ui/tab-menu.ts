@@ -21,7 +21,7 @@ import { agentHasAccounts, displayNameOf } from "./agent-profile";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { inTmux, standingOf, type Standing } from "./sessions-where";
-import type { Run } from "./generated/Run";
+import type { Launch } from "./generated/Launch";
 import {
   menuGeneration,
   removeMenuItem,
@@ -387,7 +387,7 @@ export class TabMenu {
    * 「恢复 ▸」那一层：最上面一行「恢复」按勾着的那一组起（标签页没有主按钮）；账号 · 运行于两组单选；在此目录新建会话。
    * 起法还是标签页这边那几条：tmux ⇒ 那台在 tmux 里起再接进去（本机同一条）；不用 tmux ⇒ 直接恢复。
    */
-  private buildResumeSubmenu(sid: string, accounts: ResumeAccounts, machineRun?: Run): MenuItem[] {
+  private buildResumeSubmenu(sid: string, accounts: ResumeAccounts, machineRun?: Launch): MenuItem[] {
     let pick = this.resumePicks.get(sid);
     const t = this.host.tab(sid);
     if (!pick) this.resumePicks.set(sid, (pick = defaultPick()));

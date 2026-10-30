@@ -289,10 +289,10 @@ fn a_kept_pick_wins_until_the_record_grows() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 起会话框「放在哪」那几张：能托管 ⇒ 托管在前；有 tmux ⇒ tmux；终端窗口恒在（照 `Run` 的序）。缺省勾哪一张同 `session-open` 不给 `run` 时落的那一形。
+/// 起会话框「放在哪」那几张：能托管 ⇒ 托管在前；有 tmux ⇒ tmux；终端窗口恒在（照 `Launch` 的序）。缺省勾哪一张同 `session-open` 不给 `run` 时落的那一形。
 #[test]
 fn the_places_a_new_session_can_go_list_managed_first_where_this_machine_hosts() {
-    use open::Run::*;
+    use open::Launch::*;
     assert_eq!(facts_hosts(true, true), vec![Managed, Tmux, Direct]);
     assert_eq!(facts_hosts(false, true), vec![Managed, Direct]);
     assert_eq!(facts_hosts(true, false), vec![Tmux, Direct]);

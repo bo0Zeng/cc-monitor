@@ -15,10 +15,10 @@ import com.ccmonitor.mobile.core.data.repo.MovedLaunch
 import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.wire.gen.AgentFacts
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
+import com.ccmonitor.mobile.core.wire.gen.Launch
 import com.ccmonitor.mobile.core.wire.gen.ModeSwitchResult
 import com.ccmonitor.mobile.core.wire.gen.OpenFacts
 import com.ccmonitor.mobile.core.wire.gen.PushOutcome
-import com.ccmonitor.mobile.core.wire.gen.Run
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import java.util.UUID
@@ -58,7 +58,7 @@ class TerminalOps(
     /** 那台能做什么（[Reach]）；问不到 ⇒ 那一句（tmux 也当没有）。 */
     suspend fun reach(): Reach =
         facts().fold(
-            onSuccess = { f -> Reach(noTmux = if (Run.TMUX in f.hosts) null else copyText("mobTerm.tmux.none", "host" to machine())) },
+            onSuccess = { f -> Reach(noTmux = if (Launch.TMUX in f.hosts) null else copyText("mobTerm.tmux.none", "host" to machine())) },
             onFailure = { Reach(it.message.orEmpty(), it.message.orEmpty()) },
         )
 
