@@ -381,6 +381,16 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "不覆盖改名那一格：那块盘不认这个旗时退回 `link ＋ unlink`（要问是不是「没有这件原语」）",
     ),
     (
+        "platform::fs::side_name::swap",
+        Kind::Platform,
+        "写入的换名件叫什么：旁名的形状只一处，账号库的排除名认同一份",
+    ),
+    (
+        "platform::fs::side_name::backup",
+        Kind::Platform,
+        "覆盖前另存的备份件叫什么：同上一格",
+    ),
+    (
         "platform::fs::links_creatable",
         Kind::Platform,
         "这台此刻建不建得了符号链接（解压与复制碰到链接时整趟拒还是照建）：Windows 要开发者模式或建链接的特权，只读地判只住 `platform/fs/`",
