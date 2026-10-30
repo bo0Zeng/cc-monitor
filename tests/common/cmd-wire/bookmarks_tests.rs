@@ -71,15 +71,49 @@ fn the_two_commands_have_the_wire_shape_both_ends_share() {
     let edit = BookmarksEditReq {
         op: BookmarkOp::Toggle,
         dirs: vec!["/srv".into()],
+        at: None,
     };
     assert_eq!(
         serde_json::to_value(&edit).unwrap(),
-        serde_json::json!({ "op": "toggle", "dirs": ["/srv"] })
+        serde_json::json!({ "op": "toggle", "dirs": ["/srv"] }),
+        "没带此刻的目录 ⇒ 线上不出那一格"
     );
     assert!(
         serde_json::from_value::<BookmarksReadReq>(serde_json::json!({ "x": 1 })).is_err(),
         "多一个键 ⇒ 拒"
     );
     let r: Bookmarks = serde_json::from_value(serde_json::json!({ "dirs": ["/a"] })).unwrap();
-    assert_eq!(r.dirs, vec!["/a".to_string()]);
+    assert_eq!((r.dirs, r.here), (vec!["/a".to_string()], None));
+}
+
+/// 此刻的目录（`at`）两条都可缺；回包的 `here` 可缺、有就是下标。
+#[test]
+fn the_current_dir_and_its_answer_are_optional_cells() {
+    let read: BookmarksReadReq = serde_json::from_value(serde_json::json!({})).unwrap();
+    assert_eq!(read.at, None);
+    let read: BookmarksReadReq =
+        serde_json::from_value(serde_json::json!({ "at": "/a//b/" })).unwrap();
+    assert_eq!(read.at.as_deref(), Some("/a//b/"));
+    let edit = BookmarksEditReq {
+        op: BookmarkOp::Remove,
+        dirs: vec!["/x".into()],
+        at: Some("/y".into()),
+    };
+    assert_eq!(
+        serde_json::to_value(&edit).unwrap(),
+        serde_json::json!({ "op": "remove", "dirs": ["/x"], "at": "/y" })
+    );
+    let here = Bookmarks {
+        dirs: vec!["/a".into()],
+        here: Some(0),
+    };
+    assert_eq!(
+        serde_json::to_value(&here).unwrap(),
+        serde_json::json!({ "dirs": ["/a"], "here": 0 })
+    );
+    assert_eq!(
+        serde_json::to_value(Bookmarks::default()).unwrap(),
+        serde_json::json!({ "dirs": [] }),
+        "没答 ⇒ 线上不出那一格（存盘那一份也不带它）"
+    );
 }

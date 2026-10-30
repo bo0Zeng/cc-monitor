@@ -9,6 +9,7 @@ use crate::copy::testing::{rects_of, PaintedText};
 use crate::find::testing::{window_on, wire_up, Declared, FakeBackend};
 use crate::shell::FileWindow;
 use crate::workspace::Workspace;
+use cmd_wire::bookmarks::normalize_dir;
 use comms_inward::chan::wire::{Body, CallError, PeerFault};
 
 /// 合成的那台书签后端：一份书签 ＋ 收到过的每一问（机器名 · 命令 · 入参）。
@@ -29,13 +30,16 @@ impl Books {
     }
 }
 
-/// 不接通道、手上已有这几条的一份（判据直接喂画面用：悬停扫 · 截图场景）。
+/// 不接通道、手上已有这几条的一份，那台答过「此刻在第一条」（判据直接喂画面用：悬停扫 · 截图场景；窗口开在 `dirs[0]`）。
 pub(crate) fn holding(origin: &str, dirs: &[&str]) -> Shelf {
-    let s = Shelf::open(None, None, &Origin::named(origin));
+    let at = dirs.first().copied().unwrap_or("/");
+    let s = Shelf::open(None, None, &Origin::named(origin), at);
     s.0.land(
         1,
+        at,
         Ok(Bookmarks {
             dirs: dirs.iter().map(|d| normalize_dir(d)).collect(),
+            here: (!dirs.is_empty()).then_some(0),
         }),
     );
     s
@@ -69,7 +73,8 @@ impl comms_inward::chan::router::Backends for Books {
         }
         let mut dirs = self.dirs.lock().unwrap();
         if op.0 == "bookmarks-edit" {
-            let req: BookmarksEditReq = serde_json::from_value(args).expect("入参照类型");
+            let req: BookmarksEditReq =
+                serde_json::from_value(args.clone()).expect("入参照类型");
             for d in &req.dirs {
                 let d = normalize_dir(d);
                 let at = dirs.iter().position(|x| *x == d);
@@ -82,7 +87,15 @@ impl comms_inward::chan::router::Backends for Books {
                 }
             }
         }
-        let reply = Bookmarks { dirs: dirs.clone() };
+        let here = args
+            .get("at")
+            .and_then(|a| a.as_str())
+            .and_then(|a| dirs.iter().position(|x| *x == normalize_dir(a)))
+            .map(|i| i as u32);
+        let reply = Bookmarks {
+            dirs: dirs.clone(),
+            here,
+        };
         Box::pin(async move { Ok(Body(serde_json::to_vec(&reply).unwrap())) })
     }
 
@@ -103,11 +116,12 @@ pub(crate) fn books() -> (Arc<Books>, Line) {
     (be, line)
 }
 
-pub(crate) fn shelf_on(line: &Line, origin: &str) -> Shelf {
+pub(crate) fn shelf_on(line: &Line, origin: &str, at: &str) -> Shelf {
     Shelf::open(
         tokio::runtime::Handle::try_current().ok(),
         Some(line.clone()),
         &Origin::named(origin),
+        at,
     )
 }
 
@@ -123,18 +137,19 @@ async fn until(who: &str, ok: impl Fn() -> bool) {
 }
 
 /// 🔴 先红的那一条：`<local>` 与远端**同一形** —— 同一串动作，线上发的命令与入参逐字相等，只有机器名不同；
-/// 窗口里没有「本机走文件、远端走命令」两条路。
+/// 窗口里没有「本机走文件、远端走命令」两条路。每一问都带上此刻的目录（`at`），「在不在」照回包的 `here`。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_and_remote_ask_their_backend_in_the_same_shape() {
     let mut seen = Vec::new();
     for origin in [cmd_wire::LOCAL, "devbox"] {
         let (be, line) = books();
-        let s = shelf_on(&line, origin);
+        let s = shelf_on(&line, origin, "/srv/");
         until("开窗那一问", || be.asked().len() == 1).await;
         s.toggle("/srv/");
-        until("切换落地", || s.contains("/srv")).await;
-        s.remove("/srv");
-        until("删落地", || !s.contains("/srv")).await;
+        until("切换落地", || s.here("/srv/") == Some(0)).await;
+        s.remove("/srv", "/srv/");
+        until("删落地", || s.list().is_empty()).await;
+        assert_eq!(s.here("/srv/"), None, "删了还说在");
         let asked = be.asked();
         assert!(
             asked.iter().all(|(o, _, _)| o == origin),
@@ -150,14 +165,17 @@ async fn local_and_remote_ask_their_backend_in_the_same_shape() {
     assert_eq!(
         seen[0],
         vec![
-            ("bookmarks-read".to_string(), serde_json::json!({})),
             (
-                "bookmarks-edit".to_string(),
-                serde_json::json!({ "op": "toggle", "dirs": ["/srv/"] })
+                "bookmarks-read".to_string(),
+                serde_json::json!({ "at": "/srv/" })
             ),
             (
                 "bookmarks-edit".to_string(),
-                serde_json::json!({ "op": "remove", "dirs": ["/srv"] })
+                serde_json::json!({ "op": "toggle", "dirs": ["/srv/"], "at": "/srv/" })
+            ),
+            (
+                "bookmarks-edit".to_string(),
+                serde_json::json!({ "op": "remove", "dirs": ["/srv"], "at": "/srv/" })
             ),
         ]
     );
@@ -167,27 +185,49 @@ async fn local_and_remote_ask_their_backend_in_the_same_shape() {
 /// 先发后到的回包不盖掉后发的那一问（第 1 问晚到 ⇒ 不认）。
 #[test]
 fn a_late_reply_of_an_earlier_ask_is_not_taken() {
-    let s = Shelf::open(None, None, &Origin::named("x"));
+    let s = Shelf::open(None, None, &Origin::named("x"), "/");
     s.0.land(
         2,
+        "/new",
         Ok(Bookmarks {
             dirs: vec!["/new".into()],
+            here: Some(0),
         }),
     );
     s.0.land(
         1,
+        "/old",
         Ok(Bookmarks {
             dirs: vec!["/old".into()],
+            here: Some(0),
         }),
     );
     assert_eq!(s.list(), vec!["/new".to_string()]);
-    s.0.land(3, Err("那一句".into()));
+    assert_eq!((s.here("/new"), s.here("/old")), (Some(0), None));
+    s.0.land(3, "/new", Err("那一句".into()));
     assert_eq!(s.notice().as_deref(), Some("那一句"));
     assert_eq!(
         s.list(),
         vec!["/new".to_string()],
         "问不成 ⇒ 手上那一份不动"
     );
+}
+
+/// 「在不在」只认那台对**此刻这个目录**的回答：答的是别的目录（换了目录、那一问还没回）⇒ 当没答；窗口不自己比路径。
+#[test]
+fn here_is_only_what_the_backend_said_about_this_very_dir() {
+    let s = Shelf::open(None, None, &Origin::named("x"), "/");
+    s.0.land(
+        1,
+        "/a",
+        Ok(Bookmarks {
+            dirs: vec!["/a".into(), "/b".into()],
+            here: Some(0),
+        }),
+    );
+    assert_eq!(s.here("/a"), Some(0));
+    assert_eq!(s.here("/b"), None, "那一问答的是 /a，不是 /b");
+    assert_eq!(s.here("/a/"), None, "窗口不自己归一：那一问带的是 /a");
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -235,7 +275,7 @@ async fn the_bar_is_really_clickable_and_the_backend_follows() {
     .await;
     let (be, line) = books();
     let mut w = window_on(&wired, &a);
-    w.shelf = Some(shelf_on(&line, "fw-bm-ui"));
+    w.shelf = Some(shelf_on(&line, "fw-bm-ui", &a));
     let mut ws = Workspace::new(w);
     let ctx = egui::Context::default();
 
@@ -249,7 +289,7 @@ async fn the_bar_is_really_clickable_and_the_backend_follows() {
     );
     let _ = click_label(&ctx, &mut ws, star);
     let shelf = ws.pane_on(0).shelf.clone().unwrap();
-    until("☆ 落地", || shelf.contains(&a)).await;
+    until("☆ 落地", || shelf.here(&a) == Some(0)).await;
     assert_eq!(be.dirs(), vec![a.clone()]);
     let after = crate::chrome::testing::ws_colors_of(&ctx, &mut ws, star);
     assert_eq!(after.len(), 2, "地址栏一颗 ＋ 左栏那条书签一颗：{after:?}");
@@ -298,7 +338,7 @@ async fn another_writers_bookmark_shows_up_after_a_navigation() {
     .await;
     let (be, line) = books();
     let mut w = window_on(&wired, "/");
-    w.shelf = Some(shelf_on(&line, "fw-bm-other"));
+    w.shelf = Some(shelf_on(&line, "fw-bm-other", "/"));
     until("开窗那一问", || be.asked().len() == 1).await;
     be.dirs.lock().unwrap().push("/elsewhere".into());
     let shelf = w.shelf.clone().unwrap();
@@ -306,15 +346,18 @@ async fn another_writers_bookmark_shows_up_after_a_navigation() {
         shelf.list().is_empty(),
         "还没换目录就看见了 —— 那说明在定时去问"
     );
-    w.navigate_to(a);
+    w.navigate_to(a.clone());
     until("换目录才问第二次", || be.asked().len() == 2).await;
+    let reads: Vec<serde_json::Value> = be
+        .asked()
+        .into_iter()
+        .filter(|(_, c, _)| c == "bookmarks-read")
+        .map(|(_, _, args)| args)
+        .collect();
     assert_eq!(
-        be.asked()
-            .iter()
-            .filter(|(_, c, _)| c == "bookmarks-read")
-            .count(),
-        2,
-        "开窗一次 ＋ 换目录一次，别的时候不问"
+        reads,
+        vec![serde_json::json!({ "at": "/" }), serde_json::json!({ "at": a })],
+        "开窗一次 ＋ 换目录一次，别的时候不问；每一问带上那一刻的目录"
     );
     until("换目录那一问", || {
         shelf.list() == vec!["/elsewhere".to_string()]
@@ -330,7 +373,7 @@ async fn a_refusal_is_said_on_the_bar() {
     let (be, line) = books();
     *be.refuse.lock().unwrap() = Some("书签读不出来".into());
     let mut w = window_on(&wired, "/srv");
-    w.shelf = Some(shelf_on(&line, "fw-bm-refused"));
+    w.shelf = Some(shelf_on(&line, "fw-bm-refused", "/srv"));
     let shelf = w.shelf.clone().unwrap();
     until("那一问回来", || shelf.notice().is_some()).await;
     let said = shelf.notice().unwrap();

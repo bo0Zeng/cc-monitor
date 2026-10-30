@@ -3,7 +3,7 @@
 //! ⚠ 家目录一律是临时目录（`Own::issue_at`），真 `~/.cc-monitor/` 一个字节都不碰。
 
 use super::*;
-use cmd_wire::bookmarks::{BookmarkOp, BookmarksEditReq};
+use cmd_wire::bookmarks::{BookmarkOp, Bookmarks, BookmarksEditReq, BookmarksReadReq};
 use std::collections::BTreeSet;
 
 fn home(tag: &str) -> std::path::PathBuf {
@@ -23,10 +23,61 @@ fn edit(o: &crate::platform::fs::Own, op: BookmarkOp, dirs: &[&str]) -> Vec<Stri
         &BookmarksEditReq {
             op,
             dirs: dirs.iter().map(|s| s.to_string()).collect(),
+            at: None,
         },
     )
     .expect("写")
     .dirs
+}
+
+fn read(o: &crate::platform::fs::Own) -> Result<Bookmarks, Fail> {
+    answer_read(o, &BookmarksReadReq { at: None })
+}
+
+fn read_at(o: &crate::platform::fs::Own, at: &str) -> Option<u32> {
+    answer_read(o, &BookmarksReadReq { at: Some(at.into()) })
+        .expect("读")
+        .here
+}
+
+fn edit_at(o: &crate::platform::fs::Own, op: BookmarkOp, dir: &str, at: &str) -> Bookmarks {
+    answer_edit(
+        o,
+        &BookmarksEditReq {
+            op,
+            dirs: vec![dir.into()],
+            at: Some(at.into()),
+        },
+    )
+    .expect("写")
+}
+
+/// 🔴 先红的那一条：问的时候带上此刻的目录 ⇒ 回包答它在书签里的第几条（按归一之后的形比）。
+#[test]
+fn a_read_with_the_current_dir_answers_where_it_sits() {
+    let o = own(&home("here"));
+    edit(&o, BookmarkOp::Add, &["/a/b", "/c"]);
+    assert_eq!(read_at(&o, "/a//b/"), Some(0));
+    assert_eq!(read_at(&o, "/c/"), Some(1));
+    assert_eq!(read_at(&o, "/nope"), None, "不在书签里 ⇒ 缺");
+    assert_eq!(read_at(&o, ""), None, "空路径 ⇒ 缺");
+    assert_eq!(read(&o).unwrap().here, None, "没问 ⇒ 缺");
+}
+
+/// 改完的那一份也答此刻那个目录：★ 加上 ⇒ 有下标；再点一下取消 ⇒ 缺；存盘那一份不带它。
+#[test]
+fn an_edit_with_the_current_dir_answers_where_it_sits_after_the_edit() {
+    let h = home("here-edit");
+    let o = own(&h);
+    edit(&o, BookmarkOp::Add, &["/first"]);
+    let on = edit_at(&o, BookmarkOp::Toggle, "/srv/", "/srv");
+    assert_eq!(on.dirs, ["/first", "/srv"]);
+    assert_eq!(on.here, Some(1));
+    let off = edit_at(&o, BookmarkOp::Toggle, "/srv", "//srv/");
+    assert_eq!(off.dirs, ["/first"]);
+    assert_eq!(off.here, None);
+    let raw = std::fs::read_to_string(h.join(relay_route_core::BOOKMARKS_REL)).unwrap();
+    assert!(!raw.contains("here"), "存盘那一份不带「此刻」：{raw}");
 }
 
 #[test]
@@ -34,7 +85,7 @@ fn absent_reads_as_empty_and_writes_land_where_the_contract_says() {
     let h = home("absent");
     let o = own(&h);
     assert!(
-        answer_read(&o).unwrap().dirs.is_empty(),
+        read(&o).unwrap().dirs.is_empty(),
         "文件不在 ⇒ 空的一份"
     );
     edit(&o, BookmarkOp::Add, &["/srv/"]);
@@ -45,7 +96,7 @@ fn absent_reads_as_empty_and_writes_land_where_the_contract_says() {
         serde_json::json!({ "version": 1, "dirs": ["/srv"] }),
         "存的是归一之后的形，顶层带声明表那一版"
     );
-    assert_eq!(answer_read(&o).unwrap().dirs, vec!["/srv".to_string()]);
+    assert_eq!(read(&o).unwrap().dirs, vec!["/srv".to_string()]);
 }
 
 #[test]
@@ -90,7 +141,7 @@ fn two_writers_adding_at_once_lose_nothing() {
     let (a, b) = (spawn("a"), spawn("b"));
     a.join().unwrap();
     b.join().unwrap();
-    let got: BTreeSet<String> = answer_read(&own(&h)).unwrap().dirs.into_iter().collect();
+    let got: BTreeSet<String> = read(&own(&h)).unwrap().dirs.into_iter().collect();
     let want: BTreeSet<String> = ["a", "b"]
         .iter()
         .flat_map(|w| (0..n).map(move |i| format!("/{w}/{i}")))
@@ -105,12 +156,13 @@ fn an_unreadable_file_is_said_and_never_overwritten() {
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     std::fs::write(&f, b"{ not json").unwrap();
     let o = own(&h);
-    assert_eq!(answer_read(&o).unwrap_err().code, "bookmarks_unreadable");
+    assert_eq!(read(&o).unwrap_err().code, "bookmarks_unreadable");
     let e = answer_edit(
         &o,
         &BookmarksEditReq {
             op: BookmarkOp::Add,
             dirs: vec!["/x".into()],
+            at: None,
         },
     )
     .unwrap_err();
@@ -126,12 +178,13 @@ fn a_newer_file_is_said_and_never_overwritten() {
     let newer = br#"{"version":2,"dirs":["/a"]}"#;
     std::fs::write(&f, newer).unwrap();
     let o = own(&h);
-    assert_eq!(answer_read(&o).unwrap_err().code, "bookmarks_unreadable");
+    assert_eq!(read(&o).unwrap_err().code, "bookmarks_unreadable");
     let e = answer_edit(
         &o,
         &BookmarksEditReq {
             op: BookmarkOp::Add,
             dirs: vec!["/x".into()],
+            at: None,
         },
     )
     .unwrap_err();
