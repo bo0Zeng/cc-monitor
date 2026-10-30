@@ -898,7 +898,9 @@ async fn live_cards_go_out_folded_whole_and_a_lost_machine_starts_from_an_empty_
     assert_eq!(
         v,
         serde_json::json!({"origin":"<local>","live":{"sid":"sid-t","cards":[
-            {"card":0,"rid":"m","phase":"streaming","clipped":false,"blocks":[{"kind":"text","text":"xx"}]}]}})
+            {"card":0,"rid":"m","phase":"streaming","clipped":false,"blocks":[{"kind":"text","text":"xx"}],
+             "head":copy_core::copy_text("liveCard.state.streaming", &[]),"body":"xx",
+             "last":copy_core::copy_text("runs.last.say", &[])}]}})
     );
     r.origin_seen(&local(), false);
     rec.clear();

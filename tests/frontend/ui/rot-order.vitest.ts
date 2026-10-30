@@ -51,6 +51,7 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
     decision: null,
     log: [],
     hints: [],
+    can: { reorder: true, off: true, edit: true },
     ...over,
   };
 }
@@ -99,6 +100,21 @@ describe("顺序一号一行（字照回包）", () => {
     tick(1).click();
     tick(4).click();
     expect(a.off.mock.calls).toEqual([["lab", true], ["api", false]]);
+  });
+
+  it("★ 勾 · 拖动那句 ·［编辑策略］只照回包的 `can` 出：都不能 ⇒ 三样都不出（`strategy` 在不在不看）；能 ⇒ 都出", () => {
+    const shown = (o: ReturnType<typeof mount>) => {
+      press(rows(o.el)[1], 60);
+      up(60);
+      const pop = document.querySelector<HTMLElement>("[data-rot-pop]")!;
+      return {
+        tick: o.el.querySelector('input[type="checkbox"]') !== null,
+        hint: (o.el.textContent ?? "").includes(copyText("rot.h.orderHint")),
+        edit: [...pop.querySelectorAll("button")].some((b) => b.textContent === copyText("rot.top.edit")),
+      };
+    };
+    expect(shown(mount(acts(), { can: { reorder: false, off: false, edit: false } }))).toEqual({ tick: false, hint: false, edit: false });
+    expect(shown(mount(acts(), { strategy: null }))).toEqual({ tick: true, hint: true, edit: true });
   });
 
   it("★ 手动排过 ⇒ 标题右边「手动排过 ·［照策略排］」⇒ clear；没排过不出", () => {

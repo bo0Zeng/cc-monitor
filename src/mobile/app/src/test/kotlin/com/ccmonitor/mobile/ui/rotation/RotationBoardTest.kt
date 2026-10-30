@@ -252,6 +252,17 @@ class RotationBoardTest {
     }
 
     @Test
+    fun `顺序那一块能做的几样只照那台的 can：都不能 ⇒ 不出拖动那句（strategy 在不在不看）；能拖 ⇒ 出；手动排过 ⇒ 那一句`() {
+        val none = mapOf("reorder" to false, "off" to false, "edit" to false)
+        val all = mapOf("reorder" to true, "off" to true, "edit" to true)
+        val locked = Rotation.ofView(RotFixture.view() + ("can" to none))!!
+        assertNull("有策略、那台说不能拖 ⇒ 不说拖动", orderNote(locked))
+        assertEquals(false to false, locked.can?.off to locked.can?.edit)
+        assertEquals(copyText("rot.h.orderHint"), orderNote(Rotation.ofView(RotFixture.view(strategy = null) + ("can" to all))!!))
+        assertEquals(copyText("rot.order.manual"), orderNote(Rotation.ofView(RotFixture.view(temp = listOf("api")) + ("can" to all) + ("manual" to true))!!))
+    }
+
+    @Test
     fun `编辑小窗底行：改的是哪份 · 在用旧版那一句（那台写的）带［都载入新版］；没人在用写「没有会话在用」`() {
         val older = mapOf("hint" to mapOf("k" to "older", "n" to 2.0), "tone" to "plain", "text" to "夹具·2 个会话还在用旧版")
         val sep = copyText("kit.text.sep")

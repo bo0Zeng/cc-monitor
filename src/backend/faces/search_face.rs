@@ -245,7 +245,7 @@ pub(crate) async fn merge_with(
             }),
         }
     }
-    Ok(cmd_wire::search::merge(answered, down))
+    Ok(cmd_wire::search::merge(&req.search.query, answered, down))
 }
 
 #[cfg(test)]

@@ -380,11 +380,17 @@ pub fn clash_rows_json(data: &str) -> String {
         .unwrap_or_else(|_| "[]".to_string())
 }
 
-/// 几台的搜内容结果合成一份：`[{origin, reply}]`（`reply` ＝ 那台 `history-search` 回包原样）⇒ `Merged`。
+/// 几台的搜内容结果合成一份：`{q, answered: [{origin, reply}]}`（`q` 搜的词；`reply` ＝ 那台 `history-search` 回包原样）⇒ `Merged`。
 /// 合的那一步是本机后端扇出完调的同一份（`cmd_wire::search::merge`）：手机逐台直连问完，在这里合，不经哪一台当信差。
 /// 某台那一份照类型解不开 ⇒ 那台进 `down`（serde 那一句），别台照合；整份读不动 ⇒ 空串。
 pub fn search_merge_json(data: &str) -> String {
-    let Ok(all) = serde_json::from_str::<Vec<serde_json::Value>>(data) else {
+    let Ok(mut ask) = serde_json::from_str::<serde_json::Value>(data) else {
+        return String::new();
+    };
+    let (Some(q), Ok(all)) = (
+        ask["q"].as_str().map(str::to_string),
+        serde_json::from_value::<Vec<serde_json::Value>>(ask["answered"].take()),
+    ) else {
         return String::new();
     };
     let mut answered = Vec::new();
@@ -401,7 +407,7 @@ pub fn search_merge_json(data: &str) -> String {
             }),
         }
     }
-    serde_json::to_string(&cmd_wire::search::merge(answered, down)).unwrap_or_default()
+    serde_json::to_string(&cmd_wire::search::merge(&q, answered, down)).unwrap_or_default()
 }
 
 /// 会话屏勾上的那几台 ⇒ 并好的一列（`ChatsColumnAsk` ⇒ `ChatsColumn`；本机后端并历史页那一份并法，`resident_client::column`）；读不动 ⇒ 空串。
@@ -1652,14 +1658,15 @@ mod tests {
         let a = json!({"sessions": [line("a1", 100)], "unreadable": 1, "skipped": ["Codex"]});
         let b =
             json!({"sessions": [line("b1", 1_767_225_600_123)], "unreadable": 0, "skipped": []});
-        let text = json!([
+        let text = json!({"q": "夹具词", "answered": [
             {"origin": "phone-a", "reply": a},
             {"origin": "phone-b", "reply": b},
             {"origin": "phone-c", "reply": {"sessions": [{"updatedAt": 1.5}], "unreadable": 0, "skipped": []}},
-        ])
+        ]})
         .to_string();
         let got: Value = serde_json::from_str(&super::search_merge_json(&text)).unwrap();
         let want = cmd_wire::search::merge(
+            "夹具词",
             vec![
                 (
                     cmd_wire::Machine::named("phone-a"),

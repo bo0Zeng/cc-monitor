@@ -776,11 +776,7 @@ export class HistoryView {
       return;
     }
     const r = c.r;
-    this.listHead.replaceChildren(
-      r.truncated
-        ? copyText("history.search.summaryTruncated", { q: c.q, n: r.totalHits, m: r.sessionCount })
-        : copyText("history.search.summary", { q: c.q, n: r.totalHits, m: r.sessionCount }),
-    );
+    this.listHead.replaceChildren(r.summary);
     if (r.sessions.length === 0) {
       body.push(this.noHits(c.q));
       return;

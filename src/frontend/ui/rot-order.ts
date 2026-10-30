@@ -259,7 +259,7 @@ export function createOrder(origin: Origin, acts: OrderActs, onIdle: () => void)
       btns.appendChild(use);
     }
     const go = acts.editStrategy;
-    if (go && v.strategy) {
+    if (go && v.can?.edit) {
       btns.appendChild(
         button({
           label: W.edit,
@@ -303,8 +303,8 @@ export function createOrder(origin: Origin, acts: OrderActs, onIdle: () => void)
     state.dataset.rotState = "";
     const end = el("span", s.rotOrderEnd);
     end.append(state);
-    // 「先不用」只对自动换号有意义：不轮换 ⇒ 不出勾。
-    if (v.strategy) {
+    // 「先不用」那一勾：后端说这个会话能先不用一个号才出（`can.off`）。
+    if (v.can?.off) {
       const tick = document.createElement("input");
       tick.type = "checkbox";
       tick.className = s.rotOrderTick;
@@ -329,8 +329,8 @@ export function createOrder(origin: Origin, acts: OrderActs, onIdle: () => void)
     const v = next.view;
     const head = el("div", s.rotOrderHead);
     head.append(el("span", s.rotOrderHeadText, W.order));
-    // 拖动那句只对有策略的会话说（不轮换没有先后可拖）。
-    if (v.strategy) head.append(el("span", s.rotOrderHeadNote, W.hint));
+    // 拖动那句跟着「能不能拖」（`can.reorder`，后端判）。
+    if (v.can?.reorder) head.append(el("span", s.rotOrderHeadNote, W.hint));
     if (v.manual) {
       head.append(
         el("span", s.rotOrderSpacer),
