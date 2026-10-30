@@ -6,8 +6,6 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Host } from "../../../src/frontend/ui/generated/Host";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 
 type Sink = (items: unknown[]) => void;
 const fake = vi.hoisted(() => ({
@@ -36,7 +34,8 @@ vi.mock("../../../src/comms/inward/chan", async (orig) => {
 });
 
 import { ChanError } from "../../../src/comms/inward/chan";
-import { probeMachine, PROBE_PROGRESS_KIND } from "../../../src/frontend/ui/remote-probe";
+import { probeMachine } from "../../../src/frontend/ui/remote-probe";
+import { PROBE_PROGRESS_KIND } from "../../../src/frontend/ui/generated/shell-names";
 import type { ProbeCell } from "../../../src/frontend/ui/generated/ProbeCell";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -125,10 +124,5 @@ describe("请求与进度", () => {
       return Promise.resolve(new TextEncoder().encode("null"));
     };
     await expect(probeMachine(host({}), () => {})).rejects.toThrow();
-  });
-
-  it("进度流名与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 同一个串", () => {
-    const rs = readFileSync(resolve(__dirname, "../../..", "src/frontend/shell/src/event_replay.rs"), "utf8");
-    expect(/pub const PROBE_PROGRESS_KIND: &str = "([^"]+)";/.exec(rs)?.[1]).toBe(PROBE_PROGRESS_KIND);
   });
 });
