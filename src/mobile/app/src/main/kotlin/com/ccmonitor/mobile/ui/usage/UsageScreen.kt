@@ -35,10 +35,13 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.QuotaRead
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.BackButton
@@ -51,6 +54,7 @@ import com.ccmonitor.mobile.core.wire.gen.QuotaCell
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.HostBackends
+import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.DefaultTag
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
@@ -108,9 +112,14 @@ fun UsageScreen(
                 is Fetched.Failed -> if (link !is LinkLine.Down) DashedBar(q.problem.text, copyText("front.act.retry"), board::reloadQuota, Modifier.testTag(UsageTags.DOWN))
                 is Fetched.Got -> {
                     val view = usageView(q.value, ui.accounts, ui.defaultAccount)
-                    Head(view, board::reloadQuota)
-                    view.cards.forEach { c ->
-                        Card(c, c.account in open) { open = if (c.account in open) open - c.account else open + c.account }
+                    if (view == null) {
+                        // 位名对不上同一份回包的 names：两端契约对不上，照「回包读不出」画，不拿码兜。
+                        DashedBar(unreadableReply(here.machine, QuotaRead.COMMAND, "").text, copyText("front.act.retry"), board::reloadQuota, Modifier.testTag(UsageTags.DOWN))
+                    } else {
+                        Head(view, board::reloadQuota)
+                        view.cards.forEach { c ->
+                            Card(c, c.account in open) { open = if (c.account in open) open - c.account else open + c.account }
+                        }
                     }
                 }
             }
@@ -192,7 +201,10 @@ private fun Card(
     }
 }
 
-/** 一条计量条：位名 · 条（长 ＝ pct，色 ＝ 语气，数旧画斜纹）· 右边那一格；下一行 ↻ · 距今 ……「1% ≈ 多少」。 */
+/**
+ * 一条计量条：位名 · 条（长 ＝ pct，色 ＝ 语气，数旧画斜纹）· 右边那一格；下一行 ↻ · 距今 ……「1% ≈ 多少」。
+ * 那台说不出百分比（[UsageBar.fill] 为 `null`）⇒ 轨只画虚线框、不画填充（不读成 0%），右边那一格照回包。
+ */
 @Composable
 private fun Bar(b: UsageBar) {
     val faint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -209,8 +221,14 @@ private fun Bar(b: UsageBar) {
                     .clipToBounds()
                     .drawBehind {
                         val r = CornerRadius(size.height / 2)
+                        val f = b.fill
+                        if (f == null) {
+                            val dash = DASH.dp.toPx()
+                            drawRoundRect(track, cornerRadius = r, style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash))))
+                            return@drawBehind
+                        }
                         drawRoundRect(track, cornerRadius = r)
-                        val w = size.width * b.fill
+                        val w = size.width * f
                         drawRoundRect(fill, size = size.copy(width = w), cornerRadius = r)
                         if (b.stale) {
                             var x = -size.height
@@ -292,4 +310,5 @@ private const val SKELETON_H = 132
 private const val LABEL_W = 36
 private const val BAR_H = 6
 private const val STRIPE = 6
+private const val DASH = 3
 private const val HALF_TURN = 180f
