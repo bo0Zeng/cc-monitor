@@ -7,7 +7,6 @@ use crate::relay::observe_retry_tests::{
 };
 
 const CHILD_MARK: &str = "CCM_RELAY_EXHAUST_CHILD";
-const CHILD_TEST: &str = "relay::listen::exhaust_tests::child_relay_runs_out_of_fds";
 const TARGET: &str = "/t/claude-code/q/v1/messages";
 const HEADERS: &str = "authorization: Bearer from-the-agent\r\nx-claude-code-session-id: s-1\r\n";
 
@@ -45,13 +44,9 @@ fn hog_the_rest(hogs: &mut Vec<std::fs::File>) {
     }
 }
 
-/// 子进程入口：没被父判据用 [`CHILD_MARK`] 拉起时当场返回。每一步印一行 `EXHAUST <步> <回包状态行>`。
+/// 子进程那一半（判据带着 [`CHILD_MARK`] 重起自己时走这里）。每一步印一行 `EXHAUST <步> <回包状态行>`。
 #[cfg(unix)]
-#[test]
-fn child_relay_runs_out_of_fds() {
-    if std::env::var(CHILD_MARK).is_err() {
-        return;
-    }
+fn as_child_out_of_fds() {
     let (up, _got) = spawn_judging_upstream(|_| sse_200(""));
     let d = temp_dir("exhaust");
     let relay = spawn_relay_over(Accounts::new(
@@ -79,12 +74,8 @@ fn child_relay_runs_out_of_fds() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 子进程入口：没被父判据拉起时当场返回；拉起时在途数顶到上限连打三发，在上限边上放进一条又顶满，放回 0 再打一发。
-#[test]
-fn child_relay_refuses_over_the_cap() {
-    if std::env::var(CHILD_MARK).is_err() {
-        return;
-    }
+/// 子进程那一半：在途数顶到上限连打三发，在上限边上放进一条又顶满，放回 0 再打一发。
+fn as_child_over_the_cap() {
     let (up, _got) = spawn_judging_upstream(|_| sse_200(""));
     let d = temp_dir("over-cap");
     let accounts = Accounts::new(
@@ -152,8 +143,17 @@ impl comms_outward::TapPort for Mute {
 /// 放回之后照常 200。
 #[test]
 fn over_the_cap_every_connection_gets_503_and_the_relay_says_so_once() {
-    let (steps, stderr) =
-        run_child("relay::listen::exhaust_tests::child_relay_refuses_over_the_cap");
+    // 带着记号重起的那一趟是子进程（只打、只印）；没带的这一趟是判据（起子进程、看它印的）。
+    match std::env::var_os(CHILD_MARK) {
+        Some(_) => as_child_over_the_cap(),
+        None => judge_over_the_cap(),
+    }
+}
+
+fn judge_over_the_cap() {
+    let (steps, stderr) = run_child(
+        "relay::listen::exhaust_tests::over_the_cap_every_connection_gets_503_and_the_relay_says_so_once",
+    );
     assert_eq!(
         steps,
         [
@@ -182,7 +182,17 @@ fn over_the_cap_every_connection_gets_503_and_the_relay_says_so_once() {
 #[cfg(unix)]
 #[test]
 fn a_relay_out_of_fds_answers_503_says_so_once_and_recovers() {
-    let (steps, stderr) = run_child(CHILD_TEST);
+    match std::env::var_os(CHILD_MARK) {
+        Some(_) => as_child_out_of_fds(),
+        None => judge_out_of_fds(),
+    }
+}
+
+#[cfg(unix)]
+fn judge_out_of_fds() {
+    let (steps, stderr) = run_child(
+        "relay::listen::exhaust_tests::a_relay_out_of_fds_answers_503_says_so_once_and_recovers",
+    );
     assert_eq!(
         steps,
         [

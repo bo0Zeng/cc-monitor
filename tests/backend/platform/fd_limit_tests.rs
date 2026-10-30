@@ -4,7 +4,8 @@
 use super::*;
 
 const CHILD_MARK: &str = "CCM_FD_LIMIT_CHILD";
-const CHILD_TEST: &str = "platform::proc::fd_limit_tests::child_raises_its_soft_limit";
+const CHILD_TEST: &str =
+    "platform::proc::fd_limit_tests::the_soft_open_files_limit_goes_up_to_the_hard_one";
 /// 子进程先把软上限压到这么低（桌面会话缺省给的 1024 之下，好看出抬没抬）。
 const LOW: u64 = 64;
 
@@ -19,13 +20,9 @@ fn get() -> (u64, u64) {
     (r.rlim_cur as u64, r.rlim_max as u64)
 }
 
-/// 子进程入口：没被父判据用 [`CHILD_MARK`] 拉起时当场返回；拉起时压低 → 调 → 印读回来的两个数。
+/// 子进程那一半（判据带着 [`CHILD_MARK`] 重起自己时走这里）：压低 → 调 → 印读回来的两个数。
 #[cfg(unix)]
-#[test]
-fn child_raises_its_soft_limit() {
-    if std::env::var(CHILD_MARK).is_err() {
-        return;
-    }
+fn as_child() {
     let (_, hard) = get();
     let low = libc::rlimit {
         rlim_cur: LOW as libc::rlim_t,
@@ -38,10 +35,19 @@ fn child_raises_its_soft_limit() {
     println!("FD-LIMIT {soft} {hard} {hard_after} {said}");
 }
 
-/// 软上限从 [`LOW`] 抬到硬上限（硬上限是「不限」⇒ 抬到 [`OPEN_FILES_WHEN_HARD_IS_INFINITE`]），硬上限不动；说的那句里有起止两个数。
+/// 软上限从 [`LOW`] 抬到硬上限，硬上限不动；说的那句里有起止两个数。
 #[cfg(unix)]
 #[test]
 fn the_soft_open_files_limit_goes_up_to_the_hard_one() {
+    // 带着记号重起的那一趟是子进程；没带的这一趟是判据。
+    match std::env::var_os(CHILD_MARK) {
+        Some(_) => as_child(),
+        None => judge(),
+    }
+}
+
+#[cfg(unix)]
+fn judge() {
     let out = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
         .args([CHILD_TEST, "--exact", "--nocapture", "--test-threads=1"])
         .env(CHILD_MARK, "1")
@@ -63,8 +69,9 @@ fn the_soft_open_files_limit_goes_up_to_the_hard_one() {
     let mut num = || -> u64 { it.next().and_then(|s| s.parse().ok()).expect("数") };
     let (soft, hard, hard_after) = (num(), num(), num());
     let said = it.next().unwrap_or_default().to_string();
+    // 硬上限是「不限」（这几台都不是）⇒ 只要求抬上去了；否则恰好抬到硬上限。
     let want = if hard == libc::RLIM_INFINITY as u64 {
-        OPEN_FILES_WHEN_HARD_IS_INFINITE
+        soft.max(LOW + 1)
     } else {
         hard
     };

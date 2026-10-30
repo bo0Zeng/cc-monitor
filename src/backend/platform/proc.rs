@@ -371,9 +371,6 @@ pub fn return_freed_pages_at_once() {
 #[path = "../../../tests/backend/platform/freed_memory_tests.rs"]
 mod freed_memory_tests;
 
-/// 硬上限是「不限」时软上限抬到的数：Linux `fs.nr_open` 的缺省值（软上限不许超过它）。
-pub(crate) const OPEN_FILES_WHEN_HARD_IS_INFINITE: u64 = 1 << 20;
-
 /// [`raise_open_files_limit`] 的结局（`Display` 是记进日志的那一句）。
 #[derive(Debug, PartialEq, Eq)]
 pub enum OpenFiles {
@@ -400,7 +397,7 @@ impl std::fmt::Display for OpenFiles {
     }
 }
 
-/// 常驻后端起来那一下把本进程的 fd 软上限抬到硬上限（硬上限是「不限」⇒ [`OPEN_FILES_WHEN_HARD_IS_INFINITE`]）。
+/// 常驻后端起来那一下把本进程的 fd 软上限抬到硬上限（硬上限是「不限」⇒ 抬到 Linux `fs.nr_open` 的缺省值 1<<20：软上限不许超过它）。
 /// 桌面会话起进程缺省给软上限 1024，而中转每条在途连接约占三个 fd、各台常驻流与会话文件另占 ⇒ 不抬就是第一堵墙。
 /// 只动软上限（不要特权）；硬上限不碰。抬不动照旧起，结局交调用方记一行。
 pub fn raise_open_files_limit() -> OpenFiles {
@@ -421,7 +418,7 @@ pub fn raise_open_files_limit() -> OpenFiles {
             }
             let from = r.rlim_cur as u64;
             let to = if r.rlim_max == libc::RLIM_INFINITY {
-                OPEN_FILES_WHEN_HARD_IS_INFINITE
+                1 << 20
             } else {
                 r.rlim_max as u64
             };

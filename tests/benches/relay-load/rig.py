@@ -206,7 +206,7 @@ async def level(port, key, n, seconds):
             before = len(total)
             await one_request(port, key, i, ttfb, tfe, total, statuses)
             if len(total) == before:
-                # 没拿到一条完整的 200（503 · 连不上 · 断了）：退 0.2 s 再来（拿到 503 的客户端本来就退避）。
+                # 没拿到一条完整的 200（503 · 连接失败 · 断了）：退 0.2 s 再来（拿到 503 的客户端本来就退避）。
                 await asyncio.sleep(0.2)
 
     t0 = time.monotonic()
