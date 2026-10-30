@@ -12,7 +12,7 @@
 //! | W3 | 用到 `WALL_CEILING_S` 的 e2e 脚本都 source 了 `sandbox-env.sh`（不然变量是空的，`timeout ""` 当场报错） |
 //! | W4 | 每一形的认法在正反两个样本上判对（文件末尾） |
 //!
-//! 人群（门禁真跑的那些）：`tests/` 下 `*.vitest.ts` · `*.test.ts` · `vitest.config.ts`；
+//! 人群（门禁真跑的那些）：`tests/` 下 `*.vitest.ts` · `vitest.config.ts`；
 //! `tests/` 下 `.rs` ＋ `src/` 下 `.rs` 的测试段（`test_source`）；手机端 `src/test` · `src/androidTest` · `testing/` 的 `.kt`；
 //! `tests/e2e/` 下 `.sh`。不在人群里：`tests/evidence/`（量具与读数）· `tests/benches/`（速度台，手跑）·
 //! 门禁不跑的 e2e 脚本 [`SH_NOT_GATED`] · 手跑的真机台架（`test_tiers` 的 `MANUAL_RIGS`）。
@@ -268,9 +268,7 @@ fn lang_of(rel: &str) -> Option<&'static str> {
     if out_of_gate.iter().any(|p| rel.starts_with(p)) {
         return None;
     }
-    if rel == VITEST_CONFIG
-        || (rel.starts_with("tests/") && (rel.ends_with(".vitest.ts") || rel.ends_with(".test.ts")))
-    {
+    if rel == VITEST_CONFIG || (rel.starts_with("tests/") && rel.ends_with(".vitest.ts")) {
         return Some("ts");
     }
     if rel.ends_with(".rs") && (rel.starts_with("tests/") || rel.starts_with("src/")) {
@@ -1466,7 +1464,7 @@ fn w4_shell_sleep_is_told_apart() {
 #[test]
 fn w4_the_population_is_what_the_gate_runs() {
     assert_eq!(lang_of("tests/frontend/ui/a.vitest.ts"), Some("ts"));
-    assert_eq!(lang_of("tests/frontend/ui/cards/diff.test.ts"), Some("ts"));
+    assert_eq!(lang_of("tests/frontend/ui/cards/diff.test.ts"), None, "门禁只跑 `*.vitest.ts`");
     assert_eq!(lang_of("vitest.config.ts"), Some("ts"));
     assert_eq!(lang_of("tests/backend/x_tests.rs"), Some("rs"));
     assert_eq!(lang_of("src/backend/main.rs"), Some("rs"));

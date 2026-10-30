@@ -515,7 +515,7 @@ fn rust_test_files(root: &Path) -> BTreeMap<String, String> {
     out
 }
 
-/// T：`tests/` 下的 `.vitest.ts` 与 `.test.ts`（按后缀认 —— 跑者认的也是后缀：vitest 的 include
+/// T：`tests/` 下的 `.vitest.ts`（按后缀认 —— 跑者认的也是后缀：vitest 的 include
 /// 是 `tests/**/*.vitest.ts`，连 `tests/evidence/` 里的也会跑，所以这里**不**排除任何一棵）。
 fn ts_test_files(root: &Path) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
@@ -533,9 +533,13 @@ fn under(rel: &str, prefix: &str) -> bool {
 }
 
 fn is_ts_test_name(rel: &str) -> bool {
-    const VITEST: &str = ".vitest.ts";
-    const TSX: &str = ".test.ts";
-    rel.ends_with(VITEST) || rel.ends_with(TSX)
+    rel.ends_with(".vitest.ts")
+}
+
+#[test]
+fn ts_tests_are_only_the_vitest_suffix() {
+    assert!(is_ts_test_name("tests/frontend/ui/a.vitest.ts"));
+    assert!(!is_ts_test_name("tests/frontend/ui/a.test.ts"), "跑者只认 `*.vitest.ts`");
 }
 
 // ───────────────────────────── 词法：剥注释 ＋ 抹字符串 ─────────────────────────────
