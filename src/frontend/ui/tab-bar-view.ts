@@ -19,7 +19,8 @@ import type { GroupCount } from "./generated/GroupCount";
 import { barRows, type BarRow, type RowRect } from "./tab-drop";
 import { lightOf } from "./session-status";
 import { isRemoteOrigin } from "./ipc/origin";
-import { closesQuietly, frontWhy, isEnded, isLive, machineOf } from "./face-can";
+import { machineName } from "./ipc/chan-caller";
+import { closesQuietly, frontWhy, isEnded, isLive } from "./face-can";
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
@@ -1198,7 +1199,7 @@ export class TabBarView {
     // 窄栏看不见组名 ⇒ 组员的悬停卡首行带上（I8：收起后看不见的信息进提示）。
     const col = folded() && tab.group !== null ? this.prefs.collections.find((c) => c.id === tab.group) : undefined;
     card.appendChild(line("tab-hover-title", col ? copyText("tabBar.group.memberHint", { group: col.name, title: fullTitle(tab) }) : fullTitle(tab)));
-    const where = line("tab-hover-row", machineOf(tab));
+    const where = line("tab-hover-row", machineName(tab.origin));
     card.appendChild(where);
     if (tab.projectDir) card.appendChild(line("tab-hover-row tab-hover-mono", tab.projectDir));
     const st = stateLine(tab, now);

@@ -13184,32 +13184,34 @@ ticket: string, };
 入参 `SidsReq` · 回包 `Batched`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Batched = { results: Array<Outcome>, };
-type Outcome = { 
+type Batched = { results: Array<SessionOutcome>, };
+type Origin = string;
+type SessionOutcome = { 
 /**
- * 会话 id（与入参同序）。
+ * 哪台（每台那一跳答的是它自己 ⇒ 本机那一个；本机合好时换成那一项的那台）。
  */
-sid: string, 
+machine: Origin, sid: Sid, outcome: SessionState, 
 /**
- * `done` 做成了 · `skipped` 这一个不用做 / 做不了 · `failed` 做了没成。
- */
-outcome: "done" | "skipped" | "failed", 
-/**
- * 跳过 / 失败的原因码（做成了 ⇒ `null`）。
+ * 跳过 / 失败的原因码（挑按钮用）；做成了 ⇒ `null`。
  */
 why: string | null, 
 /**
- * 停的那一项没做成的那一句（失败的与单个结束被拒同一张表）；做成了 ⇒ `null`。
+ * 那台写好的那一句；做成了 ⇒ `null`。
  */
 said: string | null, 
 /**
- * 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
+ * 失败那一项的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
  */
 copyDetail: string, 
 /**
- * 落在哪个 tmux 会话上。
+ * 那台写的称呼（项目 ＋ 名字）。
+ */
+title: string, 
+/**
+ * 落在哪个终端会话上。
  */
 session: string | null, };
+type SessionState = "done" | "skipped" | "failed";
 type Sid = string;
 type SidsReq = { 
 /**
