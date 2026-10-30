@@ -1317,7 +1317,8 @@ pub fn assert_tree_strips_clean(root: &std::path::Path, min_files: usize) {
 ///
 /// ⇒ 命中的条件是「整串相等」**或**「匹配点前面恰好是 `/`」。
 /// 这一刀只会让摘除**更严**（少摘、绝不多摘）⇒ 各判据的人群只可能变大或不变。
-fn path_suffix_matches(hay: &str, needle: &str) -> bool {
+/// 源码注释里的路径地址（[`symbol_addresses`] · [`path_addresses`]）对哪份仓里文件，也按它认。
+pub fn path_suffix_matches(hay: &str, needle: &str) -> bool {
     if !hay.ends_with(needle) {
         return false;
     }
@@ -1893,6 +1894,67 @@ pub fn baseline_text(root: &std::path::Path, rel: &str) -> Result<Option<String>
         .ok_or_else(|| format!("读不到基线：git show {spec} 失败"))
 }
 
+/// 只许变短的存量名单：`路径<TAB>条数`，一份一行，记实数。`name` 只用在报错里。
+pub fn parse_stock_list(name: &str, text: &str) -> std::collections::BTreeMap<String, usize> {
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let (rel, n) = l
+                .split_once('\t')
+                .unwrap_or_else(|| panic!("{name} 这一行不是 `路径<TAB>条数`：{l}"));
+            let n = n
+                .trim()
+                .parse()
+                .unwrap_or_else(|_| panic!("{name} 这一行的条数不是数：{l}"));
+            (rel.to_string(), n)
+        })
+        .collect()
+}
+
+/// 名单与今天的命中（`路径 → [(行号, 片段)]`）对一遍，返回违规的那几条（空 ⇒ 过）：
+/// 名单外的命中 · 条数与名单记的不等（变少了也红：改成实数）· 名单里已经零命中的一行（删掉）。
+pub fn stock_list_violations(
+    stock: &std::collections::BTreeMap<String, usize>,
+    found: &std::collections::BTreeMap<String, Vec<(usize, String)>>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for (rel, hits) in found {
+        match stock.get(rel) {
+            None => out.push(format!(
+                "{rel}：名单外的新命中 {} 条，例：{}:{}",
+                hits.len(),
+                hits[0].0,
+                hits[0].1
+            )),
+            Some(&n) if hits.len() != n => out.push(format!(
+                "{rel}：命中 {} 条，名单记的是 {n}（名单记实数：变少了就改成实数），例：{}:{}",
+                hits.len(),
+                hits[0].0,
+                hits[0].1
+            )),
+            _ => {}
+        }
+    }
+    for rel in stock.keys().filter(|r| !found.contains_key(*r)) {
+        out.push(format!("{rel}：已经零命中（或不在了），从名单删掉这一行"));
+    }
+    out
+}
+
+/// 名单比基线（[`baseline_text`] 读出来的那一版）长出来的那几行（空 ⇒ 过）：基线上没有的行，或数比基线上大的行。
+pub fn stock_list_grown_past_baseline(
+    now: &std::collections::BTreeMap<String, usize>,
+    base: &std::collections::BTreeMap<String, usize>,
+) -> Vec<String> {
+    now.iter()
+        .filter_map(|(rel, &n)| match base.get(rel) {
+            None => Some(format!("{rel}：基线上没有这一行（名单只许删行）")),
+            Some(&b) if n > b => Some(format!("{rel}：记 {n}，基线上是 {b}（只许变少）")),
+            _ => None,
+        })
+        .collect()
+}
+
 /// 遍历一棵源码树，整棵都收（[`walk_tree`]）。要排除某几份，走 [`scan_tree_excluding`] 的明写名单（摘不到就 panic）。
 #[macro_export]
 macro_rules! scan_tree {
@@ -2302,7 +2364,8 @@ pub fn pin_definition(
     Ok(())
 }
 
-/// 一处**符号地址**：`(引用点行号, 被引文件基名, 符号名, 是不是前缀形)`。
+/// 一处**符号地址**：`(引用点行号, 被引文件的路径原样（如 `relay/route.rs`）, 符号名, 是不是前缀形)`。
+/// 路径对哪份文件，按 [`path_suffix_matches`] 认。
 pub type SymbolAddress = (usize, String, String, bool);
 
 pub fn is_path_char(c: char) -> bool {
@@ -2335,11 +2398,8 @@ pub fn symbol_addresses(text: &str) -> Vec<SymbolAddress> {
         let mut from = 0usize;
         while let Some(k) = line[from..].find(".rs::") {
             let at = from + k;
-            let base = {
-                let p = path_before(line, at);
-                let full = format!("{p}.rs");
-                full.rsplit('/').next().unwrap_or_default().to_string()
-            };
+            let p = path_before(line, at);
+            let p = p.strip_prefix("./").unwrap_or(p);
             let mut e = at + 5;
             while e < b.len() && {
                 let c = b[e] as char;
@@ -2348,11 +2408,74 @@ pub fn symbol_addresses(text: &str) -> Vec<SymbolAddress> {
                 e += 1;
             }
             let sym = line[at + 5..e].to_string();
-            if !sym.is_empty() && base != ".rs" {
+            if !sym.is_empty() && !p.is_empty() && !p.ends_with('/') {
                 let prefix = sym.ends_with('_');
-                out.push((i + 1, base, sym, prefix));
+                out.push((i + 1, format!("{p}.rs"), sym, prefix));
             }
             from = at + 5;
+        }
+    }
+    out
+}
+
+/// 写下的路径 `written` 指不指仓根相对路径 `rel` 那份文件：按 [`path_suffix_matches`] 比；
+/// 包内的写法（`filewin/proc.rs` 指 `src/frontend/filewin/src/proc.rs`，省掉包里那一层 `src/`）也认。
+pub fn names_repo_file(rel: &str, written: &str) -> bool {
+    path_suffix_matches(rel, written)
+        || rel.rfind("/src/").is_some_and(|at| {
+            let flat = format!("{}{}", &rel[..at], &rel[at + 4..]);
+            path_suffix_matches(&flat, written)
+        })
+}
+
+/// 一处**裸路径**：`(引用点行号, 路径原样)`。
+pub type PathAddress = (usize, String);
+
+/// [`path_addresses`] 认的后缀：头注会点名的那几种仓里文件。
+pub const PATH_ADDRESS_EXTS: &[&str] = &[
+    "rs", "ts", "tsx", "js", "mjs", "toml", "md", "sh", "kt", "kts", "py", "json", "tsv", "yml",
+    "yaml", "html", "css",
+];
+
+/// 枚举 `text` 的 `//!` 头注行里每一处**不带** `::符号` 的裸路径（带的那一形归 [`symbol_addresses`]）。
+///
+/// 收：ASCII 路径、含 `/`、以 [`PATH_ADDRESS_EXTS`] 之一收尾。
+/// 不收：运行时盘上的路径（`/…` 起头 · 紧跟在 `~` `$` 后面 · `.claude/` `.build/` 这类点目录起头）、`../` 起头的相对路径、
+/// 通配（前后挨着 `*` `<` `>` `{` `}`）。`.github/` 这类仓里的点目录因此也不核。
+pub fn path_addresses(text: &str) -> Vec<PathAddress> {
+    let mut out = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        if !line.trim_start().starts_with("//!") {
+            continue;
+        }
+        let b = line.as_bytes();
+        let mut k = 0usize;
+        while k < b.len() {
+            if !is_path_char(b[k] as char) {
+                k += 1;
+                continue;
+            }
+            let s = k;
+            while k < b.len() && is_path_char(b[k] as char) {
+                k += 1;
+            }
+            let p = line[s..k].trim_end_matches(['.', '-', '/']);
+            let after = &line[s + p.len()..];
+            let p = p.strip_prefix("./").unwrap_or(p);
+            let lead = if s > 0 { b[s - 1] as char } else { ' ' };
+            let ext_ok = p
+                .rsplit_once('.')
+                .is_some_and(|(stem, e)| !stem.ends_with('/') && PATH_ADDRESS_EXTS.contains(&e));
+            if p.contains('/')
+                && ext_ok
+                && !after.starts_with("::")
+                && !matches!(after.chars().next(), Some('*' | '<' | '>' | '{' | '}'))
+                && !p.starts_with('/')
+                && !p.starts_with('.')
+                && !matches!(lead, '~' | '$' | '*' | '<' | '>' | '{' | '}')
+            {
+                out.push((i + 1, p.to_string()));
+            }
         }
     }
     out
