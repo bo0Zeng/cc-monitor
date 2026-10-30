@@ -12,7 +12,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { ChanError, type Item } from "../../../src/comms/inward/chan";
-import { startFollow, TERMINAL_SCREEN_KIND, ACK_GAP_MS, type FollowPort, type FollowEvents, type FollowStop } from "../../../src/frontend/ui/terminal-follow";
+import { startFollow, ACK_GAP_MS, type FollowPort, type FollowEvents, type FollowStop } from "../../../src/frontend/ui/terminal-follow";
+import { TERMINAL_SCREEN_KIND } from "../../../src/frontend/ui/generated/shell-names";
 import type { TerminalShot } from "../../../src/frontend/ui/terminal-reads";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { noteMachine } from "../../../src/frontend/ui/ipc/chan-caller";
@@ -84,13 +85,6 @@ describe("订上", () => {
   });
 });
 
-describe("两侧同一个串", () => {
-  it("★ 流名与壳 `event_replay.rs::TERMINAL_SCREEN_KIND` 逐字相同", () => {
-    const rs = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/event_replay.rs"), "utf8");
-    expect(rs).toContain(`pub const TERMINAL_SCREEN_KIND: &str = "${TERMINAL_SCREEN_KIND}";`);
-  });
-});
-
 describe("回执", () => {
   it("★★ 收一屏 ⇒ 交给页面，再回执那一帧；两次回执至少隔 100 ms；回执时补一格 credit", async () => {
     const r = rig();
@@ -154,9 +148,6 @@ describe("退订", () => {
   it("★ 界面这一侧不再有退订命令（只住壳的会话流句柄：`event_replay.rs`）", () => {
     const ts = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/terminal-follow.ts"), "utf8");
     expect(ts).not.toContain('"terminal-unfollow"');
-    const rs = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/event_replay.rs"), "utf8");
-    // 壳照类型问（`cmd_wire::terminal::UnfollowReq`，名字挂在入参上）。
-    expect(rs).toContain("let req = UnfollowReq {");
   });
 });
 

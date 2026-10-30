@@ -177,3 +177,41 @@ describe("E75：Rust 字符字面量", () => {
     expect(out).not.toContain("这才是注释");
   });
 });
+
+describe("TS 正则字面量 · Kotlin · CSS", () => {
+  it("★ TS 正则字面量里的引号与 `/*` 不开字符串、不开注释；除号照旧是除号", () => {
+    const src = [
+      `const re = /[\\s'"]/;`,
+      `// 注释一`,
+      `const star = /[/*]/g.test(x);`,
+      `/* 注释二 */ const half = a / 2 / b;`,
+      `if (ok) return /x\\/y/.test(s); // 注释三`,
+      `const tail = 1;`,
+    ].join("\n");
+    const out = stripComments(src, "ts");
+    for (const gone of ["注释一", "注释二", "注释三"]) expect(out, `${gone} 没剥`).not.toContain(gone);
+    for (const kept of [`/[\\s'"]/`, "/[/*]/g", "a / 2 / b", "/x\\/y/", "const tail = 1;"]) expect(out, `${kept} 被剥了`).toContain(kept);
+    expect(out.split("\n")).toHaveLength(6);
+  });
+
+  it("★ Kotlin：字符串 · 原始串 · 字符字面量里的注释起始符不算；块注释认嵌套", () => {
+    const src = [
+      `val u = "https://x/*y"`,
+      `val raw = """a // b /* c"""`,
+      `val q = '"'`,
+      `/* 外 /* 内 */ 还在注释里 */ val after = 1`,
+      `fun f() = 2 // 行尾注释`,
+    ].join("\n");
+    const out = stripComments(src, "kotlin");
+    for (const kept of [`"https://x/*y"`, `"""a // b /* c"""`, `'"'`, "val after = 1", "fun f() = 2"]) expect(out, `${kept} 被剥了`).toContain(kept);
+    for (const gone of ["还在注释里", "行尾注释", "内"]) expect(out, `${gone} 没剥`).not.toContain(gone);
+  });
+
+  it("★ CSS：只认块注释；`//` 不是注释，字符串里的 `/*` 不开注释", () => {
+    const src = `a { background: url("x/*y.png"); } /* 注释 */\nb { background: url(https://h/z.png); }`;
+    const out = stripComments(src, "css");
+    expect(out).toContain(`url("x/*y.png")`);
+    expect(out).toContain("url(https://h/z.png)");
+    expect(out).not.toContain("注释");
+  });
+});
