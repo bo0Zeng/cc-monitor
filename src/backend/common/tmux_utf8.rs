@@ -54,13 +54,10 @@
 //!   与 `platform/fs/ro.rs` 认识 `std::fs` 同型：那是**外部接口知识**，不是本 crate 的域模型。
 //!   这一条是判断，不是实测，写在这里让下一个人能反对。
 //!
-//! # ⚠ 家只有一个，而**镜子有三面**（如实登记边界）
+//! # 家只有一个
 //!
-//! 本 crate 内的两个消费者（`control/gate.rs` · `observe/tmux_observe.rs`）**引用**这里，
-//! 编译器兜住，漂不了。monitor 是**另一个二进制**：两个 crate 不共享源码树，
-//! 而共享 crate 的落点（`src/common/*-core`）没有一个的职责装得下
-//! 「怎么起 tmux」这件事 ⇒ 那一份只能留在 `src/frontend/shell/src/tmux.rs`，
-//! 由它那侧的**跨仓对拍**读本文件把两边焊住（判据名与作用域写在那边的头注里）。
+//! 起 tmux 的都在本 crate 里（`control/` · `observe/` · `host/tmux.rs` · `common/session_snapshot.rs` 等）**引用**这里，
+//! 编译器兜住，漂不了。monitor 不起 tmux（终端画面经那台后端），没有另一份要对拍。
 
 /// **UTF-8 客户端旗（argv 形）** —— 一个口径两种表示里的那个**旗**。
 ///

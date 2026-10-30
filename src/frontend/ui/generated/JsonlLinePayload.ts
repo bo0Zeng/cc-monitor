@@ -20,7 +20,7 @@ export type JsonlLinePayload = { session_id: string, cwd: string | null, path: s
  */
 origin?: string, 
 /**
- * 这一行的通用记录 —— 那台后端的成品（`agents/record.rs::Record`，ts-rs 从后端导出），
+ * 这一行的通用记录 —— 那台后端的成品（`cmd-wire/src/record.rs::Record`，ts-rs 从共享 crate 导出），
  * monitor **原样转交、一个字段都不读**。
  */
 record: import("./LineRecord").LineRecord, 

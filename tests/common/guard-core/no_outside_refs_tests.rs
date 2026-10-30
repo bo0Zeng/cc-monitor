@@ -848,70 +848,11 @@ fn history_hits(
     hits
 }
 
-/// 名单与今天的命中对一遍：返回违规的那几条（空 ⇒ 过）。
-fn history_stock_violations(
-    stock: &std::collections::BTreeMap<String, usize>,
-    found: &std::collections::BTreeMap<String, Vec<(usize, String)>>,
-) -> Vec<String> {
-    let mut out = Vec::new();
-    for (rel, hits) in found {
-        match stock.get(rel) {
-            None => out.push(format!(
-                "{rel}：名单外的新命中 {} 行，例：{}:{}",
-                hits.len(),
-                hits[0].0,
-                hits[0].1
-            )),
-            Some(&n) if hits.len() != n => out.push(format!(
-                "{rel}：命中 {} 行，名单记的是 {n}（名单记实数：变少了就改成实数），例：{}:{}",
-                hits.len(),
-                hits[0].0,
-                hits[0].1
-            )),
-            _ => {}
-        }
-    }
-    for rel in stock.keys().filter(|r| !found.contains_key(*r)) {
-        out.push(format!("{rel}：已经零命中（或不在了），从名单删掉这一行"));
-    }
-    out
-}
-
-/// 名单比基线长出来的那几行（空 ⇒ 过）：基线上没有的行，或数比基线上大的行。
-fn stock_grown_past_baseline(
-    now: &std::collections::BTreeMap<String, usize>,
-    base: &std::collections::BTreeMap<String, usize>,
-) -> Vec<String> {
-    now.iter()
-        .filter_map(|(rel, &n)| match base.get(rel) {
-            None => Some(format!("{rel}：基线上没有这一行（名单只许删行）")),
-            Some(&b) if n > b => Some(format!("{rel}：记 {n}，基线上是 {b}（只许变少）")),
-            _ => None,
-        })
-        .collect()
-}
-
 fn read_history_stock(root: &Path) -> std::collections::BTreeMap<String, usize> {
     let p = root.join(HISTORY_STOCK);
     let text =
         std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{HISTORY_STOCK} 读不动：{e}"));
-    parse_history_stock(&text)
-}
-
-fn parse_history_stock(text: &str) -> std::collections::BTreeMap<String, usize> {
-    text.lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| {
-            let (rel, n) = l
-                .split_once('\t')
-                .unwrap_or_else(|| panic!("{HISTORY_STOCK} 这一行不是 `路径<TAB>行数`：{l}"));
-            let n = n
-                .trim()
-                .parse()
-                .unwrap_or_else(|_| panic!("{HISTORY_STOCK} 这一行的行数不是数：{l}"));
-            (rel.to_string(), n)
-        })
-        .collect()
+    crate::parse_stock_list(HISTORY_STOCK, &text)
 }
 
 #[test]
@@ -946,14 +887,17 @@ fn no_build_history_or_codes_beyond_the_shrinking_stock_list() {
     if let Some(base) = crate::baseline_text(&root, HISTORY_STOCK)
         .unwrap_or_else(|e| panic!("存量名单 `{HISTORY_STOCK}` 读不到基线：{e}"))
     {
-        let grown = stock_grown_past_baseline(&stock, &parse_history_stock(&base));
+        let grown = crate::stock_list_grown_past_baseline(
+            &stock,
+            &crate::parse_stock_list(HISTORY_STOCK, &base),
+        );
         assert!(
             grown.is_empty(),
             "存量名单 `{HISTORY_STOCK}` 比基线长了 —— 新写的删掉，名单只许删行、数只许变小：\n{}",
             grown.join("\n")
         );
     }
-    let bad = history_stock_violations(&stock, &found);
+    let bad = crate::stock_list_violations(&stock, &found);
     assert!(
         bad.is_empty(),
         "施工史 · 施工代号 · 已删的旧面板对不上存量名单 `{HISTORY_STOCK}`（今天命中 {} 份，名单 {} 行）。\
@@ -1019,7 +963,7 @@ fn the_history_net_catches_its_shapes_and_the_stock_list_only_shrinks() {
             .into_iter()
             .map(|(r, n)| (r.to_string(), n))
             .collect();
-    let bad = history_stock_violations(&stock, &found);
+    let bad = crate::stock_list_violations(&stock, &found);
     let who: Vec<&str> = bad.iter().map(|b| b.split('：').next().unwrap()).collect();
     assert_eq!(
         who,
@@ -1030,7 +974,7 @@ fn the_history_net_catches_its_shapes_and_the_stock_list_only_shrinks() {
         .into_iter()
         .map(|(r, n)| (r.to_string(), n))
         .collect();
-    let grown = stock_grown_past_baseline(&now, &stock);
+    let grown = crate::stock_list_grown_past_baseline(&now, &stock);
     let who: Vec<&str> = grown
         .iter()
         .map(|b| b.split('：').next().unwrap())

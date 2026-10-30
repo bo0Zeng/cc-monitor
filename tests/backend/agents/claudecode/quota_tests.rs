@@ -129,32 +129,39 @@ fn rejected_but_served_by_paid_overage_is_not_a_refusal() {
     );
 }
 
+/// ★ 限流器没说话的 429（短时限流；API key 号的 429 同此）不是用满：读成「什么都没说」⇒ 不进额度账、不换号、不停发，
+/// 上游那一发原样交下去（claude 自己退避）。带不带 `retry-after` 都一样。
 #[test]
-fn a_429_without_the_family_is_refused_for_retry_after_seconds() {
-    // API key 号的回包永远没有这一族头。
-    let got = read(429, &h(&[("retry-after", "30")]), NOW);
-    assert_eq!(
-        got,
-        Some(QuotaReading {
-            status: None,
-            refused: true,
-            limiting: None,
-            resets_at: Some(NOW + 30),
-            windows: vec![],
-            overage: None,
-        })
-    );
+fn a_429_without_the_family_says_nothing() {
+    assert_eq!(read(429, &h(&[("retry-after", "30")]), NOW), None);
+    assert_eq!(read(429, &h(&[]), NOW), None);
 }
 
-/// ★ 被拒却没说几点能再用（没有这一族头、也没有 `retry-after`；或有这一族却没有 `reset`）⇒ [`REFUSED_BRIEFLY`] 秒之后回来，
+/// ★ 429 而限流器说没拒（`allowed` · `allowed_warning`）⇒ 照常读数，不算被拒、不编重置时刻。
+#[test]
+fn a_429_with_the_limiter_saying_allowed_is_not_a_refusal() {
+    for said in ["allowed", "allowed_warning"] {
+        let got = read(
+            429,
+            &h(&[
+                ("anthropic-ratelimit-unified-status", said),
+                ("anthropic-ratelimit-unified-5h-utilization", "0.07"),
+                ("retry-after", "30"),
+            ]),
+            NOW,
+        )
+        .expect("读数");
+        assert!(!got.refused, "{said}");
+        assert_eq!(got.resets_at, None, "{said}");
+        assert_eq!(got.windows, vec![win("five_hour", Some(0.07), None, None)]);
+    }
+}
+
+/// ★ 限流器说 `rejected` 却没说几点能再用（没有 `reset`、也没有 `retry-after`）⇒ [`REFUSED_BRIEFLY`] 秒之后回来，
 /// 不一直挂成被拒；这个短期限是 60 秒。
 #[test]
 fn a_429_that_says_nothing_about_when_is_refused_only_briefly() {
     assert_eq!(REFUSED_BRIEFLY, 60);
-    assert_eq!(
-        read(429, &h(&[]), NOW).and_then(|r| r.resets_at),
-        Some(NOW + REFUSED_BRIEFLY)
-    );
     let got = read(
         429,
         &h(&[("anthropic-ratelimit-unified-status", "rejected")]),
@@ -316,4 +323,53 @@ fn the_limit_reply_calls_a_per_model_week_by_its_own_name() {
     ));
     let r = limit_reply(NOW + 60, NOW, Some("weird"));
     assert_eq!(claim_and_retry_after(&r).0, Some("five_hour"));
+}
+
+/// ★ 每窗单独的被拒：总头说 `rejected`，卡着的那一窗另有 `<段>-status: rejected` 与它自己的重置时刻 ⇒ 被拒到那一窗重置，
+/// 用量没到 100 也一样（97% 就被拒的周窗）；没有总的 `reset` 也不退回 `retry-after` · 短期限。说 `allowed` 的窗不算。
+#[test]
+fn a_window_that_says_rejected_holds_the_refusal_until_its_own_reset() {
+    let week = 1_800_400_000;
+    let got = read(
+        429,
+        &h(&[
+            ("anthropic-ratelimit-unified-status", "rejected"),
+            ("anthropic-ratelimit-unified-5h-status", "allowed"),
+            ("anthropic-ratelimit-unified-5h-utilization", "0.4"),
+            ("anthropic-ratelimit-unified-5h-reset", "1800003600"),
+            ("anthropic-ratelimit-unified-7d-status", "rejected"),
+            ("anthropic-ratelimit-unified-7d-utilization", "0.97"),
+            ("anthropic-ratelimit-unified-7d-reset", "1800400000"),
+        ]),
+        NOW,
+    )
+    .expect("被拒");
+    assert!(got.refused);
+    assert_eq!(got.resets_at, Some(week));
+    // 总的 `reset` 早于那一窗自己的重置 ⇒ 取晚的那个（拒到被拒的窗都重置了为止）。
+    let got = read(
+        429,
+        &h(&[
+            ("anthropic-ratelimit-unified-status", "rejected"),
+            ("anthropic-ratelimit-unified-reset", "1800003600"),
+            ("anthropic-ratelimit-unified-7d-status", "rejected"),
+            ("anthropic-ratelimit-unified-7d-reset", "1800400000"),
+        ]),
+        NOW,
+    )
+    .expect("被拒");
+    assert_eq!(got.resets_at, Some(week));
+    // 说 `allowed` 的窗不拉长被拒。
+    let got = read(
+        429,
+        &h(&[
+            ("anthropic-ratelimit-unified-status", "rejected"),
+            ("anthropic-ratelimit-unified-reset", "1800003600"),
+            ("anthropic-ratelimit-unified-7d-status", "allowed"),
+            ("anthropic-ratelimit-unified-7d-reset", "1800400000"),
+        ]),
+        NOW,
+    )
+    .expect("被拒");
+    assert_eq!(got.resets_at, Some(1_800_003_600));
 }
