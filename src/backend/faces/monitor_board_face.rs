@@ -49,7 +49,7 @@ fn here(req: &MonitorHereReq) -> MonitorHere {
     let runs = crate::observe::watcher::run_book();
     let running = |sid: &str| runs.as_ref().map_or(0, |r| r.running(sid));
     let book = book.lock().unwrap_or_else(|e| e.into_inner());
-    b::rows_here(&req.sids, &book, &running)
+    b::rows_here(&req.sids, book.book(), &running)
 }
 
 /// 请求里的一条：在哪台 · 哪条会话。
