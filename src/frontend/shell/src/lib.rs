@@ -1276,7 +1276,7 @@ async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), Said> {
 
 /// ↗ 拉会话的终端窗口（本机会话与远端会话同一条）：本机后端 `session-window` 答的窗口标签 · 进程链原样交来 ⇒
 /// 先按标签、再沿链每一级先问它显示在哪个窗口（Windows 问控制台 · Linux 查握手表）、再看属主的窗口，校验、拉前
-/// （`bind::bring_session_window`），回切过去了或写好的那一张（`cmd_wire::front::FrontOutcome::told`；`tmux` 是 `session-window` 带来的那一格，
+/// （`bind::bring_session_window`），回切过去了或写好的那一张（`face_core::front::FrontOutcome::told`；`tmux` 是 `session-window` 带来的那一格，
 /// 窗口关了时才给［在终端里打开］）。标签没对上、链又空 ⇒ `None`（界面摆后端那一张）。
 ///
 /// **必须 async + spawn_blocking** 隔离 Win32 sync 调用（v1.6.5 的教训）。

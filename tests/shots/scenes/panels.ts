@@ -658,7 +658,7 @@ async function clickHeadFront(): Promise<void> {
   await click("[data-role=head-front]");
 }
 
-/** 壳 · 本机后端交来的 ↗ 那一张（台架替它们写：键与 `cmd_wire::front` 取的同一把）。 */
+/** 壳 · 本机后端交来的 ↗ 那一张（台架替它们写：键与 `face_core::front` 取的同一把）。 */
 function frontFace(title: string, body: string, tone: "plain" | "warn" | "fail", acts: unknown[] = [], hint?: string): Record<string, unknown> {
   return { title, body, tone, acts, ...(hint ? { hint } : {}) };
 }
