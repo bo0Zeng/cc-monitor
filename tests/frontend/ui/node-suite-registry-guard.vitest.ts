@@ -65,7 +65,6 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
  * `(npm 脚本名, 文件)`。
  */
 const NODE_SUITES: readonly (readonly [string, string])[] = [
-  ["test:diff", "tests/frontend/ui/cards/diff.test.ts"],
   ["test:api-error", "tests/frontend/ui/cards/api-error.test.ts"],
   // F04b +1：`isValidNewTmuxName` 也禁 `=`（别创建一个主路杀不掉的名字）。
   // +1（名字可读、sid 一个片段都不进去 + `@ccm_sid` 必须还在）。

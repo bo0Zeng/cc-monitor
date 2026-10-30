@@ -215,8 +215,12 @@ pub enum TitleBy {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub enum Block {
+    /// 一段正文。只经 [`Block::text`] 建（`bytes` 跟着正文算）。
     Text {
         text: String,
+        /// 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        bytes: u64,
     },
     Thinking {
         text: String,
@@ -227,6 +231,7 @@ pub enum Block {
         #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
         input: serde_json::Value,
     },
+    /// 一次工具调用的结果。只经 [`Block::tool_result`] 建（`bytes` 跟着内容算）。
     ToolResult {
         /// 对的是哪次工具调用。
         #[serde(rename = "for")]
@@ -235,6 +240,9 @@ pub enum Block {
         content: Vec<Block>,
         #[serde(rename = "isError")]
         is_error: bool,
+        /// 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有，界面写大小照它。
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        bytes: u64,
     },
     /// 一张内联图（来源认得出的那一形才有这一块）：上线只交引用，图的字节按 `at` · `n` 另取（`history-image`）。
     Image {
@@ -254,6 +262,33 @@ pub enum Block {
         #[cfg_attr(any(test, feature = "ts"), ts(skip))]
         data: String,
     },
+}
+
+impl Block {
+    /// 一段正文块（字节数在这里算，别处不另量）。
+    pub fn text(text: String) -> Block {
+        let bytes = text.len() as u64;
+        Block::Text { text, bytes }
+    }
+
+    /// 一个工具结果块（字节数在这里算：正文块与图块的字节之和）。
+    pub fn tool_result(of: String, content: Vec<Block>, is_error: bool) -> Block {
+        let bytes = content.iter().map(Block::bytes).sum();
+        Block::ToolResult {
+            of,
+            content,
+            is_error,
+            bytes,
+        }
+    }
+
+    /// 这一块多少字节（正文 · 工具结果 · 图有；别的 0）。
+    fn bytes(&self) -> u64 {
+        match self {
+            Block::Text { bytes, .. } | Block::ToolResult { bytes, .. } | Block::Image { bytes, .. } => *bytes,
+            Block::Thinking { .. } | Block::ToolUse { .. } => 0,
+        }
+    }
 }
 
 /// `history-image` 的回包：一张图。
@@ -346,19 +381,61 @@ pub struct ToolStep {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum StepBody {
-    /// 改了一份文件的哪几处（新写整份 ⇒ 一处、改前为空）。
-    Changes { changes: Vec<TextChange> },
+    /// 改了一份文件的哪几处，照入参的改前改后算好的行差（新写整份 ⇒ 整份都是加的；不知道在文件第几行 ⇒ 行号缺）。
+    /// 结果里带着 [`StepResult::patch`] ⇒ 两端改画那一份。
+    Changes { diff: LineDiff },
     /// 跑的那一行命令原样（多行、不截）。
     Command { line: String },
 }
 
-/// 一处改动：改前 · 改后的原文。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// 一次改动画成的行差：行、行号、整份的增删数与「+N −M」那一句都由后端算好写好，两端照画，不判行、不数数。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct TextChange {
-    pub old: String,
-    pub new: String,
+pub struct LineDiff {
+    pub rows: Vec<DiffRow>,
+    /// 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
+    pub shown: u32,
+    /// 行没给全（超了字数上界，在段的边界停下）；`added` / `removed` 仍是整份的数。
+    pub truncated: bool,
+    /// 整份加了几行 · 删了几行。
+    pub added: u32,
+    pub removed: u32,
+    /// 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
+    pub stat: Words,
+}
+
+/// 行差里的一行（[`LineDiff::rows`]）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct DiffRow {
+    pub kind: DiffKind,
+    /// 行正文（不带头字；过长的一行截了以「…」收尾）。段头 ⇒ 写好的那一格。
+    pub text: String,
+    /// 改之前 · 改之后的行号（1 起）：加的行没有改前，删的行没有改后；段头 · 从入参算的那一份（不知道在文件第几行）⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub old_no: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub new_no: Option<u32>,
+}
+
+/// 一行是哪一种（[`DiffRow::kind`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum DiffKind {
+    Add,
+    Del,
+    Ctx,
+    /// 一段的开头（几段时才有）。
+    Head,
 }
 
 /// 提问 / 计划卡的内容（[`ToolStep::ask`]）。
@@ -456,18 +533,11 @@ pub struct StepResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub file: Option<String>,
-    /// 逐段的改动本身（[`PatchHunk`]）。新建整份文件 / 没有改动 ⇒ 缺。
+    /// 这次改动算好的行差（照结果里的逐段改动，带真行号；[`LineDiff`]）。新建整份文件 · 没有改动 · 一段也放不下 ⇒ 缺，
+    /// 两端画调用那一份（[`StepBody::Changes`]）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub patch: Option<Vec<PatchHunk>>,
-    /// diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
-    #[serde(
-        default,
-        rename = "patchTruncated",
-        skip_serializing_if = "std::ops::Not::not"
-    )]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
-    pub patch_truncated: bool,
+    pub patch: Option<LineDiff>,
     /// 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
     /// 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
@@ -500,20 +570,6 @@ pub enum ResultKind {
     Launched,
     /// 子运行交回的结果（前台派出那次调用拿到的结果）。
     Handback,
-}
-
-/// 一段改动（统一 diff 的一个 hunk）。行正文带着头字（` ` 没变 · `+` 加的 · `-` 删的）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct PatchHunk {
-    /// 改之前这段从第几行起（1 起）· 占几行；改之后同。
-    pub old_start: u32,
-    pub old_lines: u32,
-    pub new_start: u32,
-    pub new_lines: u32,
-    pub lines: Vec<String>,
 }
 
 /// 提问 / 计划答了什么（B7）。界面写「已批准」/「已选「{option}」」，不显示 Claude Code 的英文原句。

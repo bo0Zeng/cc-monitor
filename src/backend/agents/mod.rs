@@ -58,8 +58,8 @@ use crate::platform::fs::Ro;
 pub(crate) use cmd_wire::needs::AskKind;
 // 通用记录里那几样的形状住 `cmd-wire`（手机按同一份解）；后端在它们上面写字的那几处是下面的 `*Ext`。
 pub(crate) use cmd_wire::record::{
-    Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, Pasted, PatchHunk, PlanTitle,
-    ResultKind, Speaker, StepAsk, StepBody, StepResult, TextChange, ToolCard, ToolStep, UserText,
+    Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, DiffKind, DiffRow, LineDiff, Pasted,
+    PlanTitle, ResultKind, Speaker, StepAsk, StepBody, StepResult, ToolCard, ToolStep, UserText,
 };
 use std::path::{Path, PathBuf};
 

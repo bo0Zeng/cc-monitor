@@ -53,7 +53,6 @@ describe("记录读面：折起那一行的声明", () => {
           "blocks[type=tool_use].input",
           "blocks[type=tool_result].content",
           "results.*.patch",
-          "results.*.patchTruncated",
           "steps.*.body",
         ],
       },

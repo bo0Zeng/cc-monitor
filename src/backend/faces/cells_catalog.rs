@@ -677,9 +677,9 @@ mod specimens {
     use super::{node_of, Specimen};
     use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy};
     use crate::agents::{
-        Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, McpStatus, Pasted, PatchHunk,
-        ResultKind, SessionActivity, Speaker, StepAsk, StepBody, StepResult, TextChange, ToolCard,
-        ToolStep, UserText,
+        Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, DiffKind, DiffRow, LineDiff,
+        McpStatus, Pasted, ResultKind, SessionActivity, Speaker, StepAsk, StepBody, StepResult,
+        ToolCard, ToolStep, UserText,
     };
     use crate::agents::{PlanTitleExt as _, SpeakerExt as _};
     use crate::common::cells::Words;
@@ -755,6 +755,23 @@ mod specimens {
         }
     }
 
+    /// 行差：结果那一份带真行号；调用那一份从入参算，不知道在文件第几行（行号恒缺，`NEVER_WRITTEN` 登记）。
+    fn diff(numbered: bool) -> LineDiff {
+        LineDiff {
+            rows: vec![DiffRow {
+                kind: DiffKind::Add,
+                text: s("a"),
+                old_no: numbered.then_some(1),
+                new_no: numbered.then_some(1),
+            }],
+            shown: 1,
+            truncated: true,
+            added: 1,
+            removed: 1,
+            stat: Words(s("+1 −1")),
+        }
+    }
+
     fn result(answer: Answer) -> StepResult {
         StepResult {
             ok: true,
@@ -766,14 +783,7 @@ mod specimens {
             answer: Some(answer),
             exit_code: Some(0),
             file: some("/f"),
-            patch: Some(vec![PatchHunk {
-                old_start: 1,
-                old_lines: 1,
-                new_start: 1,
-                new_lines: 1,
-                lines: vec![s("+a")],
-            }]),
-            patch_truncated: true,
+            patch: Some(diff(true)),
             text: Words(s("t")),
             timed: Some(Words(s("{dur}"))),
             preview: some("p"),
@@ -806,12 +816,8 @@ mod specimens {
             rec(Body::Said {
                 who: who(Speaker::Human),
                 blocks: vec![
-                    Block::Text { text: s("t") },
-                    Block::ToolResult {
-                        of: s("c"),
-                        content: vec![Block::Text { text: s("t") }, image.clone()],
-                        is_error: false,
-                    },
+                    Block::text(s("t")),
+                    Block::tool_result(s("c"), vec![Block::text(s("t")), image.clone()], false),
                     image,
                 ],
                 results: one("c", result(Answer::Approved)),
@@ -820,7 +826,7 @@ mod specimens {
             }),
             rec(Body::Said {
                 who: who(Speaker::Human),
-                blocks: vec![Block::Text { text: s("t") }],
+                blocks: vec![Block::text(s("t"))],
                 results: one(
                     "c",
                     result(Answer::Picked {
@@ -832,7 +838,7 @@ mod specimens {
             }),
             rec(Body::Reply {
                 blocks: vec![
-                    Block::Text { text: s("t") },
+                    Block::text(s("t")),
                     Block::Thinking { text: s("t") },
                     Block::ToolUse {
                         id: s("c"),
@@ -876,12 +882,7 @@ mod specimens {
                             path: true,
                             note: some("n"),
                             file: some("/f"),
-                            body: Some(StepBody::Changes {
-                                changes: vec![TextChange {
-                                    old: s("o"),
-                                    new: s("n"),
-                                }],
-                            }),
+                            body: Some(StepBody::Changes { diff: diff(false) }),
                             known: true,
                             text: Some(Words(s("t"))),
                             ask: Some(StepAsk::Plan {
@@ -918,7 +919,7 @@ mod specimens {
         for sp in speakers() {
             out.push(rec(Body::Said {
                 who: who(sp),
-                blocks: vec![Block::Text { text: s("t") }],
+                blocks: vec![Block::text(s("t"))],
                 results: one("c", result(Answer::Approved)),
                 cwd: some("/w"),
                 attachments: Vec::new(),

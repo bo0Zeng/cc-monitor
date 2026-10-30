@@ -29,7 +29,6 @@ fn body_on_demand() -> Value {
         "blocks[type=tool_use].input",
         "blocks[type=tool_result].content",
         "results.*.patch",
-        "results.*.patchTruncated",
     ]}})
 }
 
@@ -160,7 +159,7 @@ fn body_on_demand_drops_exactly_the_tool_bodies_and_keeps_the_rest() {
             .flat_map(|o| o.values())
         {
             assert!(
-                res.get("patch").is_none() && res.get("patchTruncated").is_none(),
+                res.get("patch").is_none(),
                 "{res}"
             );
         }
@@ -180,7 +179,6 @@ fn body_on_demand_drops_exactly_the_tool_bodies_and_keeps_the_rest() {
             for res in rs.values_mut() {
                 let o = res.as_object_mut().unwrap();
                 hit.2 += o.remove("patch").is_some() as usize;
-                o.remove("patchTruncated");
             }
         }
         assert_eq!(got, want);

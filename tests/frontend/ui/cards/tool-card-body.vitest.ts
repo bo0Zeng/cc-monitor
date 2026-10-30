@@ -5,9 +5,17 @@ import { renderMessage, type RenderContext } from "../../../../src/frontend/ui/c
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 import type { ToolStep } from "../../../../src/frontend/ui/generated/ToolStep";
+import type { DiffRow } from "../../../../src/frontend/ui/generated/DiffRow";
+import type { LineDiff } from "../../../../src/frontend/ui/generated/LineDiff";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
-function opened(input: unknown, step: ToolStep | undefined, origin: string = LOCAL_ORIGIN): HTMLDetailsElement {
+const row = (kind: DiffRow["kind"], text: string): DiffRow => ({ kind, text });
+const lineDiff = (rows: DiffRow[]): LineDiff => ({ rows, shown: rows.length, truncated: false, added: 0, removed: 0, stat: "" });
+const drawn = (d: HTMLElement): string[] =>
+  [...d.querySelectorAll(".block-diff-line")].map((l) => `${l.querySelector(".block-diff-gutter")?.textContent}${l.querySelector(".block-diff-code")?.textContent}`);
+const newCtx = () => ({ parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map() });
+
+function opened(input: unknown, step: ToolStep | undefined, origin: string = LOCAL_ORIGIN, given = newCtx()): HTMLDetailsElement {
   const rec = {
     agent: "claude",
     t: "reply",
@@ -17,7 +25,7 @@ function opened(input: unknown, step: ToolStep | undefined, origin: string = LOC
     autoReply: false,
     ...(step ? { steps: { t1: step } } : {}),
   } as unknown as LineRecord;
-  const ctx = { parentPath: "/p/s.jsonl", origin, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map() };
+  const ctx = Object.assign(given, { origin });
   const r = renderMessage(rec, ctx as unknown as RenderContext);
   if (r.kind !== "steps") throw new Error(`期望几步，得到 ${r.kind}`);
   const d = r.units[0] as HTMLDetailsElement;
@@ -28,16 +36,45 @@ function opened(input: unknown, step: ToolStep | undefined, origin: string = LOC
 const step = (extra: Partial<ToolStep>): ToolStep => ({ tool: "Tool", known: true, ...extra });
 
 describe("工具卡展开照 `steps[id]` 画", () => {
-  it("★ 改动 ⇒ 行级 diff（几处各一段）；入参里有什么不看", () => {
-    const d = opened({ zq: "IGNORED" }, step({ body: { kind: "changes", changes: [{ old: "a\nb", new: "a\nx" }, { old: "", new: "n" }] } }));
-    const rows = [...d.querySelectorAll(".block-diff-line")].map((l) => `${l.querySelector(".block-diff-gutter")?.textContent}${l.querySelector(".block-diff-code")?.textContent}`);
-    expect(rows).toEqual(["a", "-b", "+x", "+n"]);
-    expect(d.querySelectorAll(".block-diff-edit-label")).toHaveLength(2);
+  it("★ 改动 ⇒ 照后端给的行画（段头 · 加 · 删 · 没变），不判行、不数数；入参里有什么不看", () => {
+    const diff = lineDiff([row("head", "SEG1"), row("ctx", "a"), row("del", "b"), row("add", "x"), row("head", "SEG2"), row("add", "n")]);
+    const d = opened({ zq: "IGNORED" }, step({ body: { kind: "changes", diff } }));
+    expect(drawn(d)).toEqual(["a", "-b", "+x", "+n"]);
+    expect([...d.querySelectorAll(".block-diff-edit-label")].map((l) => l.textContent)).toEqual(["SEG1", "SEG2"]);
     expect(d.textContent).not.toContain("IGNORED");
   });
 
-  it("★ 空的新写画不出行 ⇒ 照原文画入参", () => {
-    const d = opened({ zq: "RAW" }, step({ body: { kind: "changes", changes: [{ old: "", new: "" }] } }));
+  it("★ 收着先画后端说的前几行，其余点「显示全部改动」补上；按钮上的数照后端给的", () => {
+    const diff = { ...lineDiff([row("add", "1"), row("add", "2"), row("add", "3")]), shown: 2, added: 7, removed: 5 };
+    const d = opened({}, step({ body: { kind: "changes", diff } }));
+    expect(drawn(d)).toEqual(["+1", "+2"]);
+    const btn = d.querySelector<HTMLButtonElement>(".block-body-show-full");
+    expect(btn?.textContent).toBe(copyText("diff.buildDiffBody.showAll", { addCount: 7, delCount: 5 }));
+    btn?.click();
+    expect(drawn(d)).toEqual(["+1", "+2", "+3"]);
+    expect(d.querySelector(".block-body-show-full")).toBeNull();
+  });
+
+  it("★ 结果带着行差 ⇒ 改画结果那一份（已画了调用那一份的当场换掉）", () => {
+    const ctx = newCtx();
+    const d = opened({}, step({ body: { kind: "changes", diff: lineDiff([row("add", "FROM-CALL")]) } }), LOCAL_ORIGIN, ctx);
+    expect(drawn(d)).toEqual(["+FROM-CALL"]);
+    const said = {
+      agent: "claude",
+      t: "said",
+      id: "u",
+      at: "2026-01-01T02:02:01.000Z",
+      draw: "steps",
+      who: { speaker: { kind: "toolResult" }, text: "" },
+      blocks: [{ type: "tool_result", for: "t1", content: [{ type: "text", text: "ok", bytes: 2 }], isError: false, bytes: 2 }],
+      results: { t1: { ok: true, text: "+1", patch: lineDiff([row("add", "FROM-RESULT")]) } },
+    } as unknown as LineRecord;
+    renderMessage(said, ctx as unknown as RenderContext);
+    expect(drawn(d)).toEqual(["+FROM-RESULT"]);
+  });
+
+  it("★ 一行也没有 ⇒ 照原文画入参", () => {
+    const d = opened({ zq: "RAW" }, step({ body: { kind: "changes", diff: lineDiff([]) } }));
     expect(d.querySelector(".block-diff")).toBeNull();
     expect(d.querySelector(".block-body-json")?.textContent).toContain("RAW");
   });

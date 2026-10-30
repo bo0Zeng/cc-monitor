@@ -10,59 +10,224 @@ use super::asks::{ASK_TOOL, INTERACTIVE_TOOLS, PLAN_TOOL};
 use crate::agents::PlanTitleExt as _;
 use crate::agents::StepResultExt as _;
 use crate::agents::{
-    Answer, ApiReason, AskOption, AskQuestion, PatchHunk, StepAsk, StepBody, StepResult,
-    TextChange, ToolStep,
+    Answer, ApiReason, AskOption, AskQuestion, DiffKind, DiffRow, LineDiff, StepAsk, StepBody,
+    StepResult, ToolStep,
 };
+use serde_json::Value;
 
-/// 一次改动的 diff 至多带多少字（各段行正文的字数之和）：超了就只给前几段、立 `patchTruncated`，**整段不劈**；
-/// 放不下的段一律不给（连第一段也不例外 —— 不然它就不是上界）。本机 1,139 份记录实测：32 KiB 让 98.99% 的改动整份给全。
+/// 一次改动的行差至多带多少字（各段行正文的字数之和；调用那一份 · 结果那一份同一个上界）：超了就只给前几段、立 `truncated`，
+/// **整段不劈**；放不下的段一律不给（连第一段也不例外 —— 不然它就不是上界）。本机 1,139 份记录实测：32 KiB 让 98.99% 的改动整份给全。
 const PATCH_MAX: usize = 32 * 1024;
+/// 行差收着时先画几行（两端同一个数）。
+const DIFF_SHOWN: usize = 400;
+/// 行差里一行至多留多少字（按字符），截了以「…」收尾：压缩过的单行几十万字不进界面。
+const DIFF_LINE_MAX: usize = 2000;
+/// 从改前改后逐行比的格数上界（改前行数 × 改后行数）：超了不比，出整删 ＋ 整增（数照这一形）。
+const DIFF_CELLS_MAX: usize = 4_000_000;
 
-/// 原文的逐段改动 ⇒ 段 ＋ 全不全。形状读不出的段跳过，也算「不全」。
-fn patch_of(hunks: &[Value]) -> (Vec<PatchHunk>, bool) {
+/// 一行正文进行差的样子：去掉行尾的 `\r`，过长截到 [`DIFF_LINE_MAX`] 字。
+fn diff_cell(text: &str) -> String {
+    let t = text.strip_suffix('\r').unwrap_or(text);
+    match t.char_indices().nth(DIFF_LINE_MAX) {
+        Some((i, _)) => format!("{}…", &t[..i]),
+        None => t.to_string(),
+    }
+}
+
+fn diff_row(kind: DiffKind, text: String, old_no: Option<u32>, new_no: Option<u32>) -> DiffRow {
+    DiffRow {
+        kind,
+        text,
+        old_no,
+        new_no,
+    }
+}
+
+/// 攒好的行 ＋ 整份的增删数 ⇒ 行差：收着画几行、「+N −M」那一句（与过程那一行右侧那一句同一处写，[`StepResult::written`]）。
+fn line_diff(rows: Vec<DiffRow>, added: u32, removed: u32, truncated: bool) -> LineDiff {
+    let stat = StepResult {
+        ok: true,
+        added: Some(added),
+        removed: Some(removed),
+        ..StepResult::default()
+    }
+    .written(false)
+    .text;
+    LineDiff {
+        shown: u32::try_from(rows.len().min(DIFF_SHOWN)).unwrap_or(u32::MAX),
+        rows,
+        truncated,
+        added,
+        removed,
+        stat,
+    }
+}
+
+/// 结果里的逐段改动（`structuredPatch`）⇒ 整份的增删数 ＋ 行差（真行号从各段的 `oldStart` / `newStart` 起算；
+/// 行头 `+` 加的 · `-` 删的 · ` ` 没变 · `\`（`\ No newline at end of file`）不占行 · 别的当没变原样）。
+/// 数照整份；行到 [`PATCH_MAX`] 在段的边界停下；形状读不出的段跳过，也算「不全」；一段也没放下 ⇒ 行差缺。
+fn patch_of(hunks: &[Value]) -> (u32, u32, Option<LineDiff>) {
     let num = |h: &Value, k: &str| {
         h.get(k)
             .and_then(Value::as_u64)
             .and_then(|n| u32::try_from(n).ok())
     };
-    let mut out = Vec::new();
+    let multi = hunks.len() > 1;
+    let (mut added, mut removed) = (0u32, 0u32);
+    let mut rows = Vec::new();
     let mut used = 0usize;
-    let mut skipped = false;
+    let (mut truncated, mut full) = (false, false);
     for h in hunks {
         let Some(lines) = h.get("lines").and_then(Value::as_array) else {
-            skipped = true;
+            truncated = true;
             continue;
         };
-        let lines: Vec<String> = lines
-            .iter()
-            .filter_map(Value::as_str)
-            .map(str::to_string)
-            .collect();
-        let cost = lines.iter().map(String::len).sum::<usize>();
-        if used + cost > PATCH_MAX {
-            return (out, true);
-        }
-        let (Some(old_start), Some(old_lines), Some(new_start), Some(new_lines)) = (
+        let lines: Vec<&str> = lines.iter().filter_map(Value::as_str).collect();
+        added += lines.iter().filter(|l| l.starts_with('+')).count() as u32;
+        removed += lines.iter().filter(|l| l.starts_with('-')).count() as u32;
+        let cost = lines.iter().map(|l| l.len()).sum::<usize>();
+        full = full || used + cost > PATCH_MAX;
+        let starts = (
             num(h, "oldStart"),
             num(h, "oldLines"),
             num(h, "newStart"),
             num(h, "newLines"),
-        ) else {
-            skipped = true;
+        );
+        let (false, Some(old_start), Some(old_lines), Some(new_start), Some(new_lines)) =
+            (full, starts.0, starts.1, starts.2, starts.3)
+        else {
+            truncated = true;
             continue;
         };
         used += cost;
-        out.push(PatchHunk {
-            old_start,
-            old_lines,
-            new_start,
-            new_lines,
-            lines,
-        });
+        if multi {
+            rows.push(diff_row(
+                DiffKind::Head,
+                format!("@@ -{old_start},{old_lines} +{new_start},{new_lines} @@"),
+                None,
+                None,
+            ));
+        }
+        let (mut o, mut n) = (old_start, new_start);
+        for l in lines {
+            let mut chars = l.chars();
+            match chars.next() {
+                Some('+') => {
+                    rows.push(diff_row(DiffKind::Add, diff_cell(chars.as_str()), None, Some(n)));
+                    n += 1;
+                }
+                Some('-') => {
+                    rows.push(diff_row(DiffKind::Del, diff_cell(chars.as_str()), Some(o), None));
+                    o += 1;
+                }
+                Some('\\') => {}
+                Some(' ') => {
+                    rows.push(diff_row(DiffKind::Ctx, diff_cell(chars.as_str()), Some(o), Some(n)));
+                    o += 1;
+                    n += 1;
+                }
+                _ => {
+                    rows.push(diff_row(DiffKind::Ctx, diff_cell(l), Some(o), Some(n)));
+                    o += 1;
+                    n += 1;
+                }
+            }
+        }
     }
-    (out, skipped)
+    let diff = (!rows.is_empty()).then(|| line_diff(rows, added, removed, truncated));
+    (added, removed, diff)
 }
-use serde_json::Value;
+
+/// 改前改后的原文 ⇒ 逐行的种类（行尾风格不算差别：`\r\n` · `\r` 当 `\n`，末尾恰好一个换行不成行）。
+/// 一样 ⇒ 全是没变；改前空 ⇒ 全是加的；改后空 ⇒ 全是删的；行数之积超了 [`DIFF_CELLS_MAX`] ⇒ 整删 ＋ 整增；
+/// 余下按最长公共子序列（迭代的表 ＋ 迭代回溯，上千行不靠调用栈），同长时删的排在加的前面。
+fn line_ops(old: &str, new: &str) -> Vec<(DiffKind, String)> {
+    let norm = |s: &str| {
+        let t = s.replace("\r\n", "\n").replace('\r', "\n");
+        match t.strip_suffix('\n') {
+            Some(x) => x.to_string(),
+            None => t,
+        }
+    };
+    let (o, n) = (norm(old), norm(new));
+    let split = |s: &str| -> Vec<String> {
+        if s.is_empty() {
+            Vec::new()
+        } else {
+            s.split('\n').map(str::to_string).collect()
+        }
+    };
+    let (a, b) = (split(&o), split(&n));
+    let all = |v: Vec<String>, k: DiffKind| v.into_iter().map(move |l| (k, l));
+    if o == n {
+        return all(a, DiffKind::Ctx).collect();
+    }
+    let (m, w) = (a.len(), b.len());
+    if m == 0 || w == 0 || m.saturating_mul(w) > DIFF_CELLS_MAX {
+        return all(a, DiffKind::Del).chain(all(b, DiffKind::Add)).collect();
+    }
+    let width = w + 1;
+    let mut c = vec![0u32; (m + 1) * width];
+    for i in 1..=m {
+        for j in 1..=w {
+            c[i * width + j] = if a[i - 1] == b[j - 1] {
+                c[(i - 1) * width + j - 1] + 1
+            } else {
+                c[(i - 1) * width + j].max(c[i * width + j - 1])
+            };
+        }
+    }
+    let mut ops = Vec::with_capacity(m + w);
+    let (mut i, mut j) = (m, w);
+    while i > 0 && j > 0 {
+        if a[i - 1] == b[j - 1] {
+            ops.push((DiffKind::Ctx, a[i - 1].clone()));
+            i -= 1;
+            j -= 1;
+        } else if c[i * width + j - 1] >= c[(i - 1) * width + j] {
+            ops.push((DiffKind::Add, b[j - 1].clone()));
+            j -= 1;
+        } else {
+            ops.push((DiffKind::Del, a[i - 1].clone()));
+            i -= 1;
+        }
+    }
+    ops.extend(a[..i].iter().rev().map(|l| (DiffKind::Del, l.clone())));
+    ops.extend(b[..j].iter().rev().map(|l| (DiffKind::Add, l.clone())));
+    ops.reverse();
+    ops
+}
+
+/// 入参里的几处改前改后 ⇒ 行差（不知道在文件第几行 ⇒ 行号缺）。几处时每处前一行段头；数照整份，行到 [`PATCH_MAX`] 在段的边界停下。
+fn changes_of(changes: &[(String, String)]) -> LineDiff {
+    let multi = changes.len() > 1;
+    let (mut added, mut removed) = (0u32, 0u32);
+    let mut rows = Vec::new();
+    let mut used = 0usize;
+    let mut truncated = false;
+    for (i, (old, new)) in changes.iter().enumerate() {
+        let ops = line_ops(old, new);
+        added += ops.iter().filter(|(k, _)| *k == DiffKind::Add).count() as u32;
+        removed += ops.iter().filter(|(k, _)| *k == DiffKind::Del).count() as u32;
+        let cost = ops.iter().map(|(_, l)| l.len()).sum::<usize>();
+        if truncated || used + cost > PATCH_MAX {
+            truncated = true;
+            continue;
+        }
+        used += cost;
+        if multi {
+            let n = (i + 1).to_string();
+            rows.push(diff_row(
+                DiffKind::Head,
+                copy_core::copy_text("cards.diff.segment", &[("n", &n)]),
+                None,
+                None,
+            ));
+        }
+        rows.extend(ops.into_iter().map(|(k, l)| diff_row(k, diff_cell(&l), None, None)));
+    }
+    line_diff(rows, added, removed, truncated)
+}
 
 /// 工具 ⇒ 主参数取哪个入参 · 它是不是路径。**「工具 → 主参数」只此一张**：消息流那一行（[`step_of`]）·
 /// 没结果的调用那一行（`beat::what_of`）· 待答请求的钉条（`asks`）都查它，各按自己的长度截。
@@ -124,18 +289,10 @@ pub(crate) fn step_of(name: &str, input: &Value) -> ToolStep {
 /// 命令的整行（`command`）。形状不对（缺格 · 非字符串 · 改几处那张表空或有一项不对）⇒ `None`。
 fn body_of(name: &str, input: &Value) -> Option<StepBody> {
     let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
-    let change = |v: &Value| {
-        Some(TextChange {
-            old: text(v, "old_string")?,
-            new: text(v, "new_string")?,
-        })
-    };
+    let change = |v: &Value| Some((text(v, "old_string")?, text(v, "new_string")?));
     let changes = match name {
         "Edit" => vec![change(input)?],
-        "Write" => vec![TextChange {
-            old: String::new(),
-            new: text(input, "content")?,
-        }],
+        "Write" => vec![(String::new(), text(input, "content")?)],
         "MultiEdit" => input
             .get("edits")?
             .as_array()
@@ -150,7 +307,10 @@ fn body_of(name: &str, input: &Value) -> Option<StepBody> {
         }
         _ => return None,
     };
-    Some(StepBody::Changes { changes })
+    // 一行也画不出（新写一份空文件 · 改前改后一样且为空）⇒ 缺，界面照原文画入参。
+    Some(changes_of(&changes))
+        .filter(|d| !d.rows.is_empty())
+        .map(|diff| StepBody::Changes { diff })
 }
 
 /// [`step_of`] 的认法那一半（认不出的工具那一句由 [`step_of`] 添）。
@@ -342,24 +502,10 @@ fn counted(block: &Value, tur: Option<&Value>) -> StepResult {
             .and_then(Value::as_array)
             .filter(|h| !h.is_empty());
         if let Some(hunks) = hunks {
-            let (mut add, mut del) = (0u32, 0u32);
-            for l in hunks
-                .iter()
-                .filter_map(|h| h.get("lines").and_then(Value::as_array))
-                .flatten()
-                .filter_map(Value::as_str)
-            {
-                if l.starts_with('+') {
-                    add += 1;
-                } else if l.starts_with('-') {
-                    del += 1;
-                }
-            }
+            let (add, del, diff) = patch_of(hunks);
             r.added = Some(add);
             r.removed = Some(del);
-            let (patch, truncated) = patch_of(hunks);
-            r.patch = (!patch.is_empty()).then_some(patch);
-            r.patch_truncated = truncated;
+            r.patch = diff;
             r.file = t
                 .get("filePath")
                 .and_then(Value::as_str)
