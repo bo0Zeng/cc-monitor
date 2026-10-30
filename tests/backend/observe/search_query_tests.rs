@@ -454,7 +454,7 @@ fn a_hit_carries_this_machines_face_and_can() {
 // ───────────────────────── 常驻索引的锁只管取放 ─────────────────────────
 // 守的要求：一问全文搜索在手里攥着那一棵索引时（读盘 · 逐份搜 · 交行），同时来的会话内查找与第二问全文搜索不排在它后面，
 // 答案与独自问时逐字相同；它答完，那一棵回到常驻表上（下一问照旧增量）；它半路 panic，表不卡在「借出去了」。
-// 卡住前一问的替身：交行的回调停在一个通道上，测试放行它才往下走（不靠时钟抖，期限只用来判「没等它」）。
+// 卡住前一问的替身：交行的回调停在一个通道上，测试等后一问答回了才放行它（不靠时钟抖；期限只是兜底上限）。
 
 /// 起一问全文搜索，停在它交第一行的那一刻；回（放行它的开关 · 那一问的线程）。
 fn a_search_held_open(
@@ -475,16 +475,16 @@ fn a_search_held_open(
         })
     });
     entered
-        .recv_timeout(std::time::Duration::from_secs(30))
+        .recv_timeout(guard_core::wall::CEILING)
         .expect("前一问没走到交行那一刻");
     (go, searcher)
 }
 
-/// 在另一条线程上跑 `ask`，期限内答回 ⇒ `Some(答案)`；过了期限还没答 ⇒ `None`（它在等前一问）。
+/// 在另一条线程上跑 `ask`，前一问还停着就答回 ⇒ `Some(答案)`；它在等前一问 ⇒ 前一问不放行就永远答不回，到兜底上限给 `None`。
 fn answers_in_time<T: Send + 'static>(ask: impl FnOnce() -> T + Send + 'static) -> Option<T> {
     let (done, got) = std::sync::mpsc::channel();
     std::thread::spawn(move || done.send(ask()).ok());
-    got.recv_timeout(std::time::Duration::from_secs(5)).ok()
+    got.recv_timeout(guard_core::wall::CEILING).ok()
 }
 
 /// 会话内查找照帧面那一臂问（索引不收 ⇒ 现扫），回命中的 uuid。
