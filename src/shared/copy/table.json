@@ -16819,6 +16819,24 @@
       "zh": "取消",
       "args": []
     },
+    "askBlock.fold.collapse": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "收起",
+      "args": []
+    },
+    "askBlock.fold.expand": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "展开",
+      "args": []
+    },
+    "askBlock.question.full": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "展开全部",
+      "args": []
+    },
     "askBlock.question.multi": {
       "kind": "body",
       "role": "片段",
@@ -22205,12 +22223,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "需手动",
-      "args": []
-    },
-    "sessionFace.machine.local": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机",
       "args": []
     },
     "sessionFace.state.waiting": {

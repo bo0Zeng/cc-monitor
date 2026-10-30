@@ -324,3 +324,63 @@ fn v5_writes_carry_the_version_refuse_a_newer_state_and_keep_an_older_one() {
     );
     std::fs::remove_dir_all(&base).ok();
 }
+
+/// V6：盘上那份状态在却读不懂（不是 JSON · `version` 不是整数 · 超上限 · 是目录）⇒ 写回错，那句与读那一侧同一句；
+/// 盘上原样、不留 `.v<N>`。缓存同几样 ⇒ 照写（缓存读不懂本来就当没有）。
+#[test]
+fn v6_an_unreadable_state_on_disk_refuses_the_write_with_the_read_sentence() {
+    const SMALL_STATE: relay_route_core::Decl<relay_route_core::State> =
+        relay_route_core::Decl::<relay_route_core::State>::json(".cc-monitor/v.json", 1, 1, 64);
+    const SMALL_CACHE: relay_route_core::Decl<relay_route_core::Cache> =
+        relay_route_core::Decl::<relay_route_core::Cache>::json(".cc-monitor/v.json", 1, 64);
+    let state: Doc<Shape> = Doc::of(&SMALL_STATE);
+    let cache: Doc<Shape> = Doc::of(&SMALL_CACHE);
+    let base = sandbox("v6");
+    let (own, dir) = own_in(&base);
+    let held = own.lock(&dir).expect("lock");
+    let p = dir.as_path().join("v.json");
+    let seeds: [(&str, Option<Vec<u8>>); 4] = [
+        ("not json", Some(b"{".to_vec())),
+        (
+            "version not an integer",
+            Some(b"{\"version\":\"1\"}".to_vec()),
+        ),
+        ("over the cap", Some(vec![b' '; 65])),
+        ("a directory", None),
+    ];
+    for (what, seed) in &seeds {
+        std::fs::remove_dir_all(&p).ok();
+        std::fs::remove_file(&p).ok();
+        match seed {
+            Some(b) => std::fs::write(&p, b).expect("seed"),
+            None => std::fs::create_dir(&p).expect("dir in place"),
+        }
+        let Read::Unreadable(read_said) = state.read(&p) else {
+            panic!("{what}：读那一侧没答读不出");
+        };
+        let Err(write_said) = state.write(&own, &dir, &held, &Shape { a: 1 }) else {
+            panic!("{what}：盖掉了一份读不懂的状态");
+        };
+        assert_eq!(write_said.said, read_said.said, "{what}：写与读说两样");
+        match seed {
+            Some(b) => assert_eq!(
+                &std::fs::read(&p).expect("read back"),
+                b,
+                "{what}：盘上字节被动了"
+            ),
+            None => assert!(p.is_dir(), "{what}：目录被动了"),
+        }
+        assert!(
+            !dir.as_path().join("v.json.v1").exists(),
+            "{what}：留了旁件"
+        );
+    }
+    for (what, seed) in &seeds[..3] {
+        std::fs::remove_dir_all(&p).ok();
+        std::fs::write(&p, seed.as_ref().expect("bytes")).expect("seed");
+        cache
+            .write(&own, &dir, &held, &Shape { a: 2 })
+            .unwrap_or_else(|e| panic!("{what}：缓存没照写：{e:?}"));
+    }
+    std::fs::remove_dir_all(&base).ok();
+}

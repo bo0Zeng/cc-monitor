@@ -2,7 +2,7 @@
 //! （`INVARIANTS §47` 的 ① ② 两层）、启动期令牌的形状（①）与命令片段类（启动器，§47 ③）那一张白名单。
 //!
 //! 两侧（monitor · backend）都要它，而两个二进制不共享源码树 ⇒ 共享 crate 是唯一载体。「只许一个实现」由 monitor 侧的 `quote_singleton_guard` 机检
-//! （它把本文件钉为 `SOLE_HOME`）。与 TS `src/frontend/ui/shell-quote.ts`、`shared/ccm::sq` 同族（跨语言那两份由黄金串夹具对拍）。
+//! （它把本文件钉为 `SOLE_HOME`）。界面那一侧不拼 shell 串，没有别的语言的同族实现。
 //! 「渲染一条 shell 命令串」属于开终端的那一侧：最终 exec 在用户自己的终端进程里，后端的执行面是 argv 直传、不过 shell。
 
 /// 〔`INVARIANTS §47` ②〕**自由文本**值（cwd · 目录 · 远端子命令的 argv · 别名词 …）

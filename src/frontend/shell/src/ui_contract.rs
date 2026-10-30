@@ -70,7 +70,7 @@ pub struct JsonlLinePayload {
     #[cfg_attr(test, ts(optional))]
     #[serde(rename = "origin", skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
-    /// 这一行的通用记录 —— 那台后端的成品（`agents/record.rs::Record`，ts-rs 从后端导出），
+    /// 这一行的通用记录 —— 那台后端的成品（`cmd-wire/src/record.rs::Record`，ts-rs 从共享 crate 导出），
     /// monitor **原样转交、一个字段都不读**。
     #[cfg_attr(test, ts(type = "import(\"./LineRecord\").LineRecord"))]
     pub record: RecordBody,

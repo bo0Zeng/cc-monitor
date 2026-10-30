@@ -98,7 +98,7 @@ unsafe impl Send for Home {}
 
 impl Home {
     /// 占一个家：建 `hosts/` 与 `hosts/<id>/`（0700，本人的真目录），抢它的锁；抢不到 ⇒ 这个 id 有人在用。
-    /// 陈旧的套接字文件（上一个托管进程没收尾就没了）删掉，好让托管口重绑。
+    /// 上一个托管进程没收尾就没了时留下的套接字与事实删掉：锁在这一个手里，那两份只可能是上一个的 ⇒ 托管口重绑、事实照写。
     pub(crate) fn claim(own: &Own, id: &str) -> Result<Home, Said> {
         let hosts = hosts_dir(own)?;
         if let Some(root) = own.root() {
@@ -118,14 +118,16 @@ impl Home {
                 ))
             }
         };
-        let stale = dir.join(SOCK)?;
-        if Ro::symlink_metadata(stale.as_path()).is_ok() {
-            if let Err(e) = own.delete_file(&stale) {
-                // 删不掉 ⇒ 下一步绑托管口那一下照实报起不来。
-                tracing::warn!(
-                    "托管终端：陈旧的套接字 {} 没删掉：{e}",
-                    stale.as_path().display()
-                );
+        for name in [SOCK, FACTS] {
+            let stale = dir.join(name)?;
+            if Ro::symlink_metadata(stale.as_path()).is_ok() {
+                if let Err(e) = own.delete_file(&stale) {
+                    // 删不掉 ⇒ 下一步绑托管口 · 写事实那一下照实报起不来。
+                    tracing::warn!(
+                        "托管终端：上一个留下的 {} 没删掉：{e}",
+                        stale.as_path().display()
+                    );
+                }
             }
         }
         Ok(Home {
@@ -243,3 +245,7 @@ pub(crate) fn find(own: &Own, name_or_id: &str) -> Option<Facts> {
         .or_else(|| all.iter().find(|f| f.name == name_or_id))
         .cloned()
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/host/home_tests.rs"]
+mod tests;
