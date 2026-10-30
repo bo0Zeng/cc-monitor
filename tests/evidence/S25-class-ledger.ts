@@ -2,15 +2,9 @@
  * `S25` —— **CSS 与代码之间那本账的量具**（件 8）。
  *
  * 🔴 **这份文件只是量具，不是判据。** 判据（含"哪些前缀准用、凭什么准用"那张登记表）
- * 住 `tests/frontend/ui/css-ledger.vitest.ts`。把量具与判据分开是**刻意的**，两条理由：
- *
- * 1. `tests/frontend/ui/scanning-guard-registry.vitest.ts` 有一条棘轮（`WALKER_CEILING = 11`）：
- *    **`.vitest.ts` / `.test.ts` 里做目录遍历的文件只许变少**。本量具要走 `src/` 整棵树，
- *    住进 `.vitest.ts` 就会把那条棘轮顶破 —— 而那个文件这里不改。
- *    ⇒ 遍历留在本文件（它既不是 `.vitest.ts` 也不是 `.test.ts`，`IS_TEST` 取不到它），
- *    判据那边一行 `readdirSync` 都不写。**这不是绕过那条棘轮，是满足它给的第二条出路**
- *    （「扫的树不含自己」在这里升级成「扫的人和判的人不是同一个文件」）。
- * 2. 量具可以对着**变异过的副本**跑死值验（`buildLedger(<别的根>)`），不必去动真工作树。
+ * 住 `tests/frontend/ui/css-ledger.vitest.ts`。把量具与判据分开是**刻意的**：
+ * 量具可以对着**变异过的副本**跑死值验（`buildLedger(<别的根>)`），不必去动真工作树。
+ * 读目录经 `tests/test-support/production-sources.ts`（测试里读目录只那一处）。
  *
  * ## 这本账要回答的两个方向
  *
@@ -72,8 +66,11 @@
  *   `cssFiles` 仍是 `src/**\/*.css` 全体（与 stylelint 的 glob 对拍、层与 z-index 两格照样管 module）。
  *   逐文件类型声明 `x.module.d.css.ts` 不是代码，不进 `codeFiles`。
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
+
+import { filePaths } from "../test-support/production-sources.ts";
+import { REPO_ROOT } from "../test-support/repo-root.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 词法器
@@ -361,17 +358,13 @@ export function zIndexDeclsOf(src: string, file: string): ZIndexDecl[] {
 // 遍历
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SKIP_DIRS = new Set(["node_modules", ".git", ".build", "coverage", "dist", "target"]);
-
-function walk(dir: string, keep: (p: string) => boolean, out: string[] = []): string[] {
-  for (const e of readdirSync(dir)) {
-    if (SKIP_DIRS.has(e)) continue;
-    const p = join(dir, e);
-    if (statSync(p).isDirectory()) walk(p, keep, out);
-    else if (keep(p)) out.push(p);
-  }
-  return out;
+/** `dir` 底下挑中的文件（绝对路径；连生成物与测试文件一起，`.build` 不进）。读目录只经 `test-support/production-sources.ts`。 */
+function walk(dir: string, keep: (p: string) => boolean): string[] {
+  return filePaths(dir, { ext: "", tests: true, generated: true, skipDirs: [".build"], allowEmpty: true })
+    .map((f) => resolve(REPO_ROOT, f))
+    .filter(keep);
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 代码侧

@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.core.claude.model
 
 import com.ccmonitor.mobile.core.wire.gen.Attachment
+import com.ccmonitor.mobile.core.wire.gen.LineDiff
 
 /**
  * 手机这边送出去、记录里还没出现的那一句的投递状态（历史记录恒为 `null`）。
@@ -89,8 +90,8 @@ sealed interface RenderUnit {
         val isError: Boolean,
         val pending: Boolean,
         override val sourceUuid: String?,
-        // Edit/Write 的权威 diff（tool_result 的 top-level structuredPatch）+ 文件名。有则渲染保真 diff（优于 input 推导）。
-        val structuredPatch: List<PatchHunk>? = null,
+        // 改文件的行差（核心算好的：结果那一份，没有就调用那一份）＋ 文件名；手机只照行画。
+        val diff: LineDiff? = null,
         val patchFilePath: String? = null,
         // 头那一行的字，核心写好的（`reply.steps` · `said.results`）：这一步的参数（认不出的那一家 ⇒ 核心那一句），结果那一句（还没结果 ⇒ null）。
         val summary: String = "",

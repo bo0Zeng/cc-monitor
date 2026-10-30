@@ -497,7 +497,7 @@ pub(crate) fn dump_broken(workspace: &str) -> Value {
 pub(crate) fn made_with(
     doc: &Value,
     who: &dyn Fn(&str) -> crate::plan::Whose,
-) -> crate::plan::wire::PlanRead {
+) -> cmd_wire::plan::PlanRead {
     crate::plan::product::make(doc, who, "r0".into(), 0)
 }
 

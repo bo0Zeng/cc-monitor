@@ -15,12 +15,10 @@ import { budgetWithin, callTyped, ReplyUnreadable } from "./ipc/chan-caller";
 import { decodeJson } from "./ipc/decode";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import type { ProbeCell } from "./generated/ProbeCell";
+import { PROBE_PROGRESS_KIND } from "./generated/shell-names";
 import { saidOf } from "./kit/detail";
 
 export type { ProbeCell };
-
-/** 那条进度流（与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 同一个串；后面跟 `/<ticket>`）。流名刻意不叫命令名（命令是 `remote-probe`）。 */
-export const PROBE_PROGRESS_KIND = "probe-progress";
 
 function bad(): never {
   throw new ReplyUnreadable(LOCAL_ORIGIN, "remoteProbe reply shape");

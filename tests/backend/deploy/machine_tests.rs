@@ -831,3 +831,64 @@ fn a_machine_that_was_up_and_is_connecting_again_says_reconnecting() {
         "部署那一步说成了重连"
     );
 }
+
+/// 机器条那一行（两端的条都只照它画）：每一态进不进条 · 语气 · 带不带进度，字面表两向相等。
+#[test]
+fn every_state_lands_on_its_strip_line_or_stays_off_the_strip() {
+    use cmd_wire::machine::{MachineStripLine as L, StripTone as T};
+    let line = |tone, progress| Some(L { tone, progress });
+    let cases: Vec<(&str, MachineState, Option<L>)> = vec![
+        ("连着", of(vec![up(Relation::Same, &[])], true), None),
+        ("比这一版新", of(vec![up(Relation::Newer, &[])], true), None),
+        ("停用", of(vec![up(Relation::Same, &[])], false), None),
+        ("还不知道", of(vec![], true), None),
+        (
+            "正在连",
+            of(vec![round(Round::Connecting)], true),
+            line(T::Busy, false),
+        ),
+        (
+            "正在装",
+            of(vec![Fact::Step(Step::Place { updating: false })], true),
+            line(T::Busy, true),
+        ),
+        (
+            "正在更新",
+            of(vec![Fact::Step(Step::Place { updating: true })], true),
+            line(T::Busy, true),
+        ),
+        (
+            "那台旧",
+            of(vec![up(Relation::Older, &[])], true),
+            line(T::Warn, false),
+        ),
+        (
+            "没连上",
+            of(vec![down_(Some(Why::Timeout))], true),
+            line(T::Offline, false),
+        ),
+        (
+            "指纹不对",
+            of(vec![down_(Some(Why::HostKey))], true),
+            line(T::Fault, false),
+        ),
+        (
+            "做不了",
+            of(vec![unsupported()], true),
+            line(T::Fault, false),
+        ),
+        (
+            "缺后端、这一端自己装",
+            of(vec![blocked(Blocker::NoBackend)], true),
+            line(T::Offline, false),
+        ),
+        (
+            "缺后端、这一端不装",
+            phone(vec![blocked(Blocker::NoBackend)]),
+            line(T::Fault, false),
+        ),
+    ];
+    for (name, got, want) in cases {
+        assert_eq!(got.strip, want, "{name}（{:?}）", got.state);
+    }
+}

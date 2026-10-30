@@ -11,8 +11,8 @@
 //! 问图用的别名只从 `faces/plan_ask_face.rs` 进。
 
 use super::needs::{self, Returned};
-use super::wire::{PlanRead, PlanReturned};
 use crate::platform::fs::Own;
+use cmd_wire::plan::{PlanRead, PlanReturned};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

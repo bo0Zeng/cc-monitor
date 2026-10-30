@@ -82,14 +82,15 @@
  */
 import {
   readFileSync,
-  readdirSync,
   statSync,
   writeFileSync,
   mkdirSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+
+import { filePaths } from "../test-support/production-sources.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SRC_DIR = join(
@@ -559,9 +560,7 @@ function linesOf(name: string): string[] {
   return all.slice(0, LIVE_PREFIX_LINES);
 }
 
-const files = readdirSync(SRC_DIR)
-  .filter((n) => n.endsWith(".jsonl"))
-  .sort();
+const files = filePaths(SRC_DIR, { ext: ".jsonl", tests: true, shallow: true, allowEmpty: true }).map((p) => basename(p));
 if (files.length === 0)
   throw new Error(`${SRC_DIR} 下没有 jsonl —— 不许当成"采到了空语料"`);
 

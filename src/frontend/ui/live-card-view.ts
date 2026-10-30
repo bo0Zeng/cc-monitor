@@ -6,14 +6,14 @@
  * 排在主窗口全局样式之前（`tests/frontend/ui/entry-graphs.vitest.ts` 的次序判据）。只有主窗口订 `session-live-card`、要画活卡 ⇒ 画法与样式
  * 住只有主窗口入口够得着的这一块，由 `main.ts` 装进 `TabManager`（`setLivePainter`）。
  */
-import { renderCardText, type LiveCardState, type LivePainter } from "./live-card";
+import type { LiveCardState, LivePainter } from "./live-card";
 import s from "./live-card.module.css";
 
 /** 活卡那一截。 */
 export function paintLiveCards(host: HTMLElement, cards: LiveCardState[]): void {
   host.replaceChildren(
     ...cards.map((c) => {
-      const { head, body } = renderCardText(c);
+      const { head, body } = c;
       const el = document.createElement("div");
       el.className = c.phase === "streaming" ? s.card : `${s.card} ${s.awaiting}`;
       el.dataset.liveKey = c.key;

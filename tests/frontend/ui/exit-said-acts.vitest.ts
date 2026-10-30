@@ -7,33 +7,20 @@
  * 正控：同一把尺在后端那一处量得到它们（没量到 ⇒ 本条在空转）。
  * 只扫生产源：测试与生成物不算；注释照扫（「零出现」就是零出现，免得说明里还留着旧码让人照抄）。
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { sourceFiles, type ProductionSource } from "../../test-support/production-sources";
 
 const ROOT = resolve(__dirname, "../../..");
 
-function walk(dir: string, ext: string[], skip: (p: string) => boolean): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (skip(p)) continue;
-    if (statSync(p).isDirectory()) out.push(...walk(p, ext, skip));
-    else if (ext.some((e) => p.endsWith(e))) out.push(p);
-  }
-  return out;
-}
-
-const rel = (p: string) => relative(ROOT, p).split("\\").join("/");
-const skip = (p: string) => /[\\/](node_modules|generated|build|test|androidTest|testFixtures)([\\/]|$)/.test(p) || /[\\/]gen([\\/]|$)/.test(p);
+/** 手机端那几类不算生产源的目录（构建产物 · 生成的 · 各种测试源）。 */
+const NOT_MOBILE_SOURCE = ["build", "gen", "test", "androidTest", "testFixtures"];
 /** 出口：桌面界面 · 手机端（生产源）。 */
-const EXITS = [...walk(join(ROOT, "src/frontend/ui"), [".ts"], skip), ...walk(join(ROOT, "src/mobile"), [".kt"], skip)];
+const EXITS = [...sourceFiles("src/frontend/ui", { ext: ".ts" }), ...sourceFiles("src/mobile", { ext: ".kt", skipDirs: NOT_MOBILE_SOURCE })];
 
-function hits(files: string[], needles: readonly string[]): string[] {
-  return files.flatMap((f) => {
-    const code = readFileSync(f, "utf8");
-    return needles.filter((n) => code.includes(n)).map((n) => `${rel(f)} · ${n}`);
-  });
+function hits(files: readonly ProductionSource[], needles: readonly string[]): string[] {
+  return files.flatMap((f) => needles.filter((n) => f.text.includes(n)).map((n) => `${f.file} · ${n}`));
 }
 
 /**
@@ -67,7 +54,8 @@ describe("回答与运行表：出口照摆后端写好的成品", () => {
 
   it("★ 运行表的出口不取状态字 · 通称 · 「调用 X」（后端写进那一帧）", () => {
     const needles = ['copyText("runs.state.', 'copyText("runs.label.', 'copyText("runs.last.tool"', "copyText(`runs.state."];
-    expect(hits([join(ROOT, "src/frontend/ui/runs.ts")], needles)).toEqual([]);
+    const runs = "src/frontend/ui/runs.ts";
+    expect(hits([{ file: runs, text: backend(runs) }], needles)).toEqual([]);
     const be = backend("src/backend/observe/runs.rs");
     for (const k of ["runs.state.running", "runs.state.done", "runs.state.failed", "runs.state.stopped", "runs.state.unknown", "runs.label.unnamed", "runs.last.tool"]) {
       expect(be, `正控：${k} 由后端写`).toContain(`"${k}"`);
