@@ -2151,9 +2151,7 @@ pub(crate) fn replace_contents(
     })?;
     let seq = SWAP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     // 名字可以不是 UTF-8 ⇒ 旁名按 `OsString` 拼。
-    let mut side_name = std::ffi::OsString::from(".");
-    side_name.push(name);
-    side_name.push(format!(".ccm-swap-{}-{seq}.part", std::process::id()));
+    let side_name = crate::platform::fs::side_name::swap(name, std::process::id(), seq);
     let side = dst.sibling(&side_name).ok_or_else(|| {
         WriteRefusal::Refused(copy_text(
             "beFilesWrite.path.noName",
@@ -2246,8 +2244,7 @@ fn land_backup(
         .map(|d| d.as_millis())
         .unwrap_or(0);
     let seq = SWAP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let mut bak_name = name.to_os_string();
-    bak_name.push(format!(".ccm-backup-{ms}-{seq}"));
+    let bak_name = crate::platform::fs::side_name::backup(name, ms, seq);
     let bak_rel = rel.with_file_name(bak_name);
     let bak = walk_in_root(Last::Link, root, &bak_rel).map_err(WriteRefusal::Refused)?;
     let mut f = face.create_new(&bak).map_err(|e| {

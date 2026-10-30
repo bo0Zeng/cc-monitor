@@ -10,16 +10,15 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+// 写只交补丁（`patchConfig`）：替身只记下交出去的补丁，盘上那份是测试摆的（落盘语义归 Rust 写口）。
 const store = vi.hoisted(() => ({ cfg: {} as Record<string, unknown>, edits: [] as unknown[] }));
 vi.mock("../../../src/frontend/ui/config", async (orig) => {
   const actual = await orig<Record<string, unknown>>();
-  const { applyConfigEdits } = await import("./config-patch-fake");
   return {
     ...actual,
     loadConfig: vi.fn(async () => store.cfg),
-    patchConfig: vi.fn(async (edits: Parameters<typeof applyConfigEdits>[1]) => {
+    patchConfig: vi.fn(async (edits: unknown) => {
       store.edits.push(edits);
-      store.cfg = JSON.parse(applyConfigEdits(JSON.stringify(store.cfg), edits)) as Record<string, unknown>;
       return { stamped: [] };
     }),
   };
@@ -244,7 +243,7 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     expect(vi.mocked(undoToast).mock.calls[0][0]).toBe(copyText("sessionHead.edit.removed", { name }));
     vi.mocked(undoToast).mock.calls[0][1]();
     await flush();
-    expect(store.cfg, "撤 ＝ 回到原样：原来没设过 ⇒ 这个键又没了").toEqual({});
+    expect(lastButtonsWrite(), "撤 ＝ 回到原样：原来没设过 ⇒ 删掉这个键").toEqual([{ op: "remove", path: ["sessionHead"] }]);
     expect(heads(h)).toContain("terminal");
   });
 
@@ -272,7 +271,7 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     expect(pop.querySelector(`[data-row="resume"]`)!.textContent).toContain(copyText("sessionState.headEdit.onlyEnded"));
     box("pin").click();
     await flush();
-    expect(store.cfg).toEqual({ sessionHead: { buttons: [...DEFAULT_HEAD_BUTTONS, "pin"] } });
+    expect(lastButtonsWrite()).toEqual([{ op: "set", path: ["sessionHead", "buttons"], value: [...DEFAULT_HEAD_BUTTONS, "pin"] }]);
     expect(heads(h)).toEqual(["cwd", "front", "terminal", "popOut", "account", "display", "find", "pin", "more"]);
     expect(rows().map((r) => r.dataset.row).slice(0, 8), "清单跟着重排：勾上的进上段末尾").toEqual([...DEFAULT_HEAD_BUTTONS, "pin"]);
   });
@@ -285,13 +284,14 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     row("cwd").focus();
     row("cwd").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", altKey: true, bubbles: true }));
     await flush();
-    expect((store.cfg.sessionHead as { buttons: string[] }).buttons.slice(0, 2)).toEqual(["front", "cwd"]);
+    const written = (): string[] => (lastButtonsWrite() as { value: string[] }[])[0]!.value;
+    expect(written().slice(0, 2)).toEqual(["front", "cwd"]);
     expect(document.activeElement).toBe(row("cwd"));
     row("cwd").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", bubbles: true }));
     expect(document.activeElement, "↓ 走到下一行").toBe(row("terminal"));
     row("terminal").dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space", bubbles: true }));
     await flush();
-    expect((store.cfg.sessionHead as { buttons: string[] }).buttons).not.toContain("terminal");
+    expect(written()).not.toContain("terminal");
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
     expect(document.body.querySelector("[role=dialog]")).toBeNull();
     expect(document.activeElement).toBe(btn(h, "more"));
@@ -306,12 +306,11 @@ describe("按钮那一排右键 · 编辑浮层", () => {
     reset.click();
     await flush();
     expect(lastButtonsWrite()).toEqual([{ op: "remove", path: ["sessionHead"] }]);
-    expect(store.cfg).toEqual({});
     expect(heads(h)).toEqual(["cwd", "front", "terminal", "popOut", "account", "display", "find", "more"]);
     expect(vi.mocked(undoToast).mock.calls[0][0]).toBe(copyText("sessionHead.edit.resetDone"));
     vi.mocked(undoToast).mock.calls[0][1]();
     await flush();
-    expect(store.cfg).toEqual({ sessionHead: { buttons: ["find"] } });
+    expect(lastButtonsWrite(), "撤 ＝ 写回原来那一份").toEqual([{ op: "set", path: ["sessionHead", "buttons"], value: ["find"] }]);
   });
 });
 

@@ -85,7 +85,7 @@ fn set(xs: &[(&str, &str)]) -> BTreeSet<(String, String)> {
 /// 造通道但**不起消费者**，把收端交给测试（F8 要直接看送进来的东西）。
 /// 与生产的 `install` 共用同一个 `OnceLock` ⇒ 一个测试进程里只许调一次（第二次回 `None`）。
 /// ⚠ 住测试文件里（本模块是 `local_lines` 的子模块，看得见那个私有 `SENDER`）：生产树里的
-/// `#[cfg(test)]` 支撑项有递减棘轮（`structural_scan_tests` 的 P9 那一条）。
+/// `#[cfg(test)]` 支撑项有递减棘轮（`guard_core` 的 `structural_scan` 规则）。
 fn tap() -> Option<tokio::sync::mpsc::Receiver<LocalItem>> {
     let (tx, rx) = tokio::sync::mpsc::channel::<LocalItem>(LOCAL_LINES_CAPACITY);
     SENDER.set(tx).ok()?;

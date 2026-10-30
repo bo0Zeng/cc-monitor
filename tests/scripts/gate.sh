@@ -1105,7 +1105,7 @@ if [ "$rc" -ne 0 ]; then printf "tsc: 退出码 %s —— 类型没编过。它�
 if [ "$got" -ne "$want" ]; then printf "tsc: 真读进程序的 %s 份 != 盘上现打的 %s 份 —— tsconfig 的 include 被掏空或收窄了。空程序上 tsc 退出码也是 0，「一个文件都没检」与「全检过了」在退出码上一模一样，所以一律按红记\n" "$got" "$want"; exit 1; fi; \
 printf "tsc: %s passed（仓内 %s 份 .ts 全部过 tsc --noEmit；两个数同一趟现打）\n" "$got" "$want"'
 
-run_gate npm '`npm test` 串起来的各套件里，只有 vitest（`test:dom`）那一套的数大，取最大值 ⇒ 这个数是 `test:dom` 的；只打「all X tests passed」的 tsx 套件「跑了 0 个」这一格守不住（失败仍由 && 链的退出码守）' \
+run_gate npm '`npm test`（＝ `vitest run`，前端测试只此一套）这一趟真跑过的条数' \
          gate_vitest_share npm test
 
 # ── `coverage`：`ci.yml` 的 `frontend` job 里那两步覆盖率 ─────────────────────
@@ -1125,7 +1125,7 @@ gate_private_vite() {
   return "$rc"
 }
 gate_lane 覆盖率 after cargo backend
-run_gate coverage '这一趟 vitest（带 v8 覆盖率）真跑过的条数：`ci.yml` 的 `coverage floor (vitest jsdom)`（`npm run coverage`，`vitest.config.ts` 里的全局阈值）＋ `coverage per-file floors + zero-coverage ratchet`（逐文件地板与零覆盖棘轮）两步原样跑。⚠ 与 `npm` 那格是同一批 vitest 文件再跑一遍（带插桩，慢一截）；覆盖率只量 `src/**/*.ts`，tsx 套件与 Rust 一概不进分母' \
+run_gate coverage '这一趟 vitest（带 v8 覆盖率）真跑过的条数：`ci.yml` 的 `coverage floor (vitest jsdom)`（`npm run coverage`，`vitest.config.ts` 里的全局阈值）＋ `coverage per-file floors + zero-coverage ratchet`（逐文件地板与零覆盖棘轮）两步原样跑。⚠ 与 `npm` 那格是同一批 vitest 文件再跑一遍（带插桩，慢一截）；覆盖率只量 `src/**/*.ts`，Rust 不进分母' \
          gate_vitest_share gate_private_vite gate_ci_steps coverage "coverage floor (vitest jsdom)" "coverage per-file floors + zero-coverage ratchet"
 
 # 21 套摊成几条道（按热缓存时长大致拉平）；各套各在自己的网络命名空间与 `/tmp` 里，互不相见。
