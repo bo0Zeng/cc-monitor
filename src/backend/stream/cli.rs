@@ -75,24 +75,6 @@ pub fn is_subcommand(word: &str) -> bool {
     cli_only(word) || handles(word)
 }
 
-/// 子命令全集：手写的那几条在前，派生的那一面照 `REGISTRY` 的先后。进程里头一次问时算一次（派生名拼一次、留到进程结束）。
-pub fn subcommands() -> &'static [&'static str] {
-    static ALL: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
-    ALL.get_or_init(|| {
-        crate::stream::inbound::CLI_ONLY_DOCS
-            .iter()
-            .map(|(n, ..)| format!("--{n}"))
-            .chain(
-                REGISTRY
-                    .iter()
-                    .filter(|s| cli_exposed(s))
-                    .map(|s| flag_of(s.name)),
-            )
-            .map(|f| &*f.leak())
-            .collect()
-    })
-}
-
 /// **一次性进程里结构上答不了**的命令：答出来是假话（读的是常驻进程才有的状态：watcher · 中转监听 · 转发账 · 可达表），
 /// 或做的事活不过这个进程（换号重启要拿退出排空的票钉住常驻进程）。逐条理由是数据，住测试那一侧的 `STREAM_ONLY_WHY`（两向相等）。
 ///
@@ -441,4 +423,4 @@ pub fn is_query_mode(args: &[String]) -> bool {
 
 #[cfg(test)]
 #[path = "../../../tests/backend/stream/cli_tests.rs"]
-mod tests;
+pub(crate) mod tests;

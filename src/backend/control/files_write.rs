@@ -2451,12 +2451,10 @@ fn fenced_session_file(
 //   本节兑现的就是那一句：上面那些函数**一个字节没改射程**，
 //   下面加的全是「把参数收进来、把答案交出去」。
 //
-// 🔴 **「窄」不是靠命令面窄 —— 这一条是现打改过来的，原来那句话是假的。**
-//   本节第一版写的是「只上帧面、不上 CLI 面」。**做不到**：
-//   `stream::cli::cli_exposed` 逐字是 `!spec.run.on_frame_arm()` ——
+// 🔴 **「窄」不是靠命令面窄。**
+//   `stream::cli::cli_exposed` 只看 `spec.run.on_frame_arm()` 那一族 ——
 //   一条命令进了 `inbound::REGISTRY` 且不是那个硬臂，CLI 面就**自动**认得它
-//  （现打：加完之后 `every_cli_exposed_command_is_in_the_query_mode_gate` 当场红，
-//   逐字点名 `["--files-create"]`）。⇒ 两个宿主共用同一个 `run`，
+//  （`--files-create` 也在其中）。⇒ 两个宿主共用同一个 `run`，
 //   那正是说的「一份代码两种宿主」。
 //   ⇒ **窄在别的地方**：写要 `Face`，而 `Face` 只递给命令表文件管理那一族（typed 的 `Facing` 那一档），
 //   不是「谁发得出命令」。别把两者混起来读。

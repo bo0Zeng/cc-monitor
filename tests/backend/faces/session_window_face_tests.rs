@@ -363,7 +363,7 @@ impl crate::dial::remote_ask::Remote for Silent {
 async fn a_terminal_opened_here_is_found_here_even_when_that_machine_never_answers() {
     let silent = Silent::default();
     let got = tokio::time::timeout(
-        std::time::Duration::from_secs(3),
+        guard_core::wall::CEILING,
         answer_with(
             &req("devbox"),
             |_| unreachable!("远端会话不读本机的会话"),
