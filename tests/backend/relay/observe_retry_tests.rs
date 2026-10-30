@@ -1102,7 +1102,68 @@ fn in_tests_a_request_to_a_real_host_panics_before_any_connection() {
     assert_eq!(said, "测试档不许出网：platform.claude.com");
 }
 
-/// ★ 被拒那一行日志：号名 · 状态码 · 有没有限额头 · 代表窗 · retry-after；说没说卡在哪个窗各一形；只用这几格 ⇒ 令牌与回包体无从进来。
+/// ★ 短时限流的 429（限流器一个头都没带）不算被拒，但要进后端日志：号 · 状态码 · retry-after 一行；
+/// 只用这几格 ⇒ 令牌与回包体无从进来。非空对照：同一个号答 200 一行都不记。
+/// ⚠ 回包体里的错误类型与那一句还没带上：`observe` 在转回包体之前调（见 `A17-60-4-1-2`）。
+#[test]
+fn a_throttled_answer_logs_one_line_of_who_and_when_to_retry() {
+    use comms_outward::{Ask, Destinations, Heard, Mode, RouteKey};
+    let accounts = Accounts::new(
+        RoutingTable::build(std::iter::empty()),
+        Upstreams::from_env(&|_| None).expect("内置默认必须解析得了"),
+        crate::platform::fs::Own::for_tests(),
+    );
+    let key = RouteKey {
+        seg1: "claude-code".to_string(),
+        seg2: "a".to_string(),
+    };
+    let ask = Ask {
+        label: "s-1",
+        origin: None,
+        body: b"{}",
+        heads: &[],
+    };
+    let said = |status: u16, headers: &[(String, String)]| {
+        crate::stream::run_route::tests::heard(|| {
+            accounts.observe(
+                Mode::Passthrough,
+                &key,
+                &ask,
+                &Heard {
+                    tag: "a",
+                    status,
+                    headers,
+                },
+            )
+        })
+    };
+    let throttled = said(
+        429,
+        &[
+            ("retry-after".to_string(), "7".to_string()),
+            ("content-type".to_string(), "application/json".to_string()),
+        ],
+    );
+    let lines: Vec<&String> = throttled.iter().filter(|l| l.contains("[quota]")).collect();
+    assert_eq!(
+        lines.len(),
+        1,
+        "短时限流那一发没进日志，或记了不止一行：{throttled:?}"
+    );
+    assert!(
+        lines[0].ends_with("[quota] 短时限流：号 a · 状态码 429 · retry-after 7"),
+        "那一行不对：{}",
+        lines[0]
+    );
+    let fine = said(200, &[]);
+    assert!(
+        !fine.iter().any(|l| l.contains("[quota]")),
+        "答 200 也记了一行：{fine:?}"
+    );
+}
+
+/// ★ 被拒那一行日志：号名 · 状态码 · 代表窗 · retry-after；说没说卡在哪个窗各一形；只用这几格 ⇒ 令牌与回包体无从进来。
+/// 被拒要求限流器说了 `rejected` ⇒ 「有没有限额头」恒为有，不再印那一格。
 #[test]
 fn a_refusal_logs_one_line_of_who_and_how() {
     use crate::accounts::upstream_select::refusal_line;
@@ -1121,7 +1182,7 @@ fn a_refusal_logs_one_line_of_who_and_how() {
     .expect("被拒");
     assert_eq!(
         refusal_line("y", 429, &bare, None),
-        "[quota] 被拒：号 y · 状态码 429 · 限额头 有 · 代表窗 — · retry-after —"
+        "[quota] 被拒：号 y · 状态码 429 · 代表窗 — · retry-after —"
     );
     let full = crate::agents::claudecode::quota::read(
         429,
@@ -1138,7 +1199,7 @@ fn a_refusal_logs_one_line_of_who_and_how() {
     .expect("被拒");
     assert_eq!(
         refusal_line("z", 429, &full, Some("3600")),
-        "[quota] 被拒：号 z · 状态码 429 · 限额头 有 · 代表窗 five_hour · retry-after 3600"
+        "[quota] 被拒：号 z · 状态码 429 · 代表窗 five_hour · retry-after 3600"
     );
 }
 

@@ -638,13 +638,18 @@ impl Destinations for Accounts {
             return;
         };
         let now = (self.clock)();
-        if let Some(reading) = read(seen.status, seen.headers, now) {
+        let retry_after = seen
+            .headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(RETRY_AFTER))
+            .map(|(_, v)| v.trim());
+        let reading = read(seen.status, seen.headers, now);
+        // 429 而这一家的读法没读成被拒（限流器没说话的短时限流）⇒ 不换号、不记账，但日志里要看得见它。
+        if seen.status == TOO_MANY_REQUESTS && !reading.as_ref().is_some_and(|r| r.refused) {
+            tracing::warn!("{}", throttle_line(seen.tag, seen.status, retry_after));
+        }
+        if let Some(reading) = reading {
             if reading.refused {
-                let retry_after = seen
-                    .headers
-                    .iter()
-                    .find(|(k, _)| k.eq_ignore_ascii_case(RETRY_AFTER))
-                    .map(|(_, v)| v.trim());
                 tracing::warn!(
                     "{}",
                     refusal_line(seen.tag, seen.status, &reading, retry_after)
@@ -664,7 +669,11 @@ const OWN_UPSTREAM_TAG: &str = "~own";
 /// HTTP 通用的「几秒后再试」头（不是哪一家的）。
 const RETRY_AFTER: &str = "retry-after";
 
-/// 被拒那一发记进后端日志的一行：号名 · 状态码 · 有没有限额头 · 代表窗 · `retry-after`。只用这几格 ⇒ 不带令牌、不带回包体。
+/// HTTP 通用的「请求太多」状态码（不是哪一家的）。
+const TOO_MANY_REQUESTS: u16 = 429;
+
+/// 被拒那一发记进后端日志的一行：号名 · 状态码 · 代表窗 · `retry-after`。只用这几格 ⇒ 不带令牌、不带回包体。
+/// 被拒要求限流器说了被拒（读法那一侧定）⇒ 「有没有限额头」恒为有，不印。
 pub(crate) fn refusal_line(
     account: &str,
     status: u16,
@@ -672,9 +681,16 @@ pub(crate) fn refusal_line(
     retry_after: Option<&str>,
 ) -> String {
     format!(
-        "[quota] 被拒：号 {account} · 状态码 {status} · 限额头 {} · 代表窗 {} · retry-after {}",
-        if r.status.is_some() { "有" } else { "无" },
+        "[quota] 被拒：号 {account} · 状态码 {status} · 代表窗 {} · retry-after {}",
         r.limiting.as_deref().unwrap_or("—"),
+        retry_after.filter(|v| !v.is_empty()).unwrap_or("—"),
+    )
+}
+
+/// 短时限流（429、没读成被拒）那一发记进后端日志的一行：号名 · 状态码 · `retry-after`。只用这几格 ⇒ 不带令牌、不带回包体。
+fn throttle_line(account: &str, status: u16, retry_after: Option<&str>) -> String {
+    format!(
+        "[quota] 短时限流：号 {account} · 状态码 {status} · retry-after {}",
         retry_after.filter(|v| !v.is_empty()).unwrap_or("—"),
     )
 }
