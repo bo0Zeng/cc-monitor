@@ -20,6 +20,16 @@ use std::collections::{BTreeMap, BTreeSet};
 /// 零读者而留着的那几项：`(文件, 项名, 理由)`。
 const EXEMPT: &[(&str, &str, &str)] = &[
     (
+        "src/common/cmd-wire/src/batch.rs",
+        "SessionsBatchReq",
+        "读者是本机合各台的 `sessions-batch` 那条命令（接上之前只有判据读；接上那一刀删这一行）",
+    ),
+    (
+        "src/common/cmd-wire/src/batch.rs",
+        "SessionsBatchReply",
+        "读者是本机合各台的 `sessions-batch` 那条命令（接上之前只有判据读；接上那一刀删这一行）",
+    ),
+    (
         "src/common/cmd-wire/src/record.rs",
         "mend_records",
         "回包里记录那一格一条一条判认不认得：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/resident.rs`，后端那棵 workspace，不在扫描面里）",

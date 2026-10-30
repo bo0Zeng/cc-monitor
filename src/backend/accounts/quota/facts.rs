@@ -66,6 +66,7 @@ pub(crate) struct Measured<'a> {
 }
 
 /// 一个语义位此刻的窗口事实（[`pick`] 挑的那个在计时才算开着；量出来的那两样由调用方按窗口原名问额度账）。
+/// 周窗不在计时 ⇒ 重置时刻照 [`next_week_reset`] 推。
 fn win_of(
     r: Option<&QuotaReading>,
     slot: &str,
@@ -78,14 +79,20 @@ fn win_of(
         .and_then(|r| pick(r, slot, now, slot_of))
         .filter(|x| open(x, now))
     {
-        None => WinFact {
-            open: false,
-            used: 0.0,
-            resets: None,
-            resets_text: None,
-            rate: None,
-            tokens_per_pct: None,
-        },
+        None => {
+            let resets = (slot == WEEK_SLOT)
+                .then(|| r.and_then(|r| pick(r, slot, now, slot_of))?.resets_at)
+                .flatten()
+                .map(|t| next_week_reset(t, now));
+            WinFact {
+                open: false,
+                used: 0.0,
+                resets,
+                resets_text: resets.map(when),
+                rate: None,
+                tokens_per_pct: None,
+            }
+        }
         Some(x) => WinFact {
             open: true,
             used: used_now(x, now) * 100.0,
@@ -94,6 +101,20 @@ fn win_of(
             rate: (m.rate)(&x.name),
             tokens_per_pct: (m.per_pct)(&x.name),
         },
+    }
+}
+
+/// 周窗那一位：每个号有固定的每周重置时刻、跟用不用无关（5 小时窗由用触发，没有这回事）。
+const WEEK_SLOT: &str = "7d";
+const WEEK: u64 = 7 * 86_400;
+
+/// 周窗不在计时时交的重置：读数留着的那一刻还没到 ⇒ 照它；过了 ⇒ 往后推整几周，取第一个在此刻之后的。
+/// 事实里 `open = false` 而 `resets` 有值 ⇒ 这个时刻是推出来的，不是读到的。
+fn next_week_reset(t: u64, now: u64) -> u64 {
+    if t > now {
+        t
+    } else {
+        t + WEEK * ((now - t) / WEEK + 1)
     }
 }
 
@@ -197,3 +218,7 @@ fn blocked_text(why: FactWhy, at: Option<&str>) -> String {
         (FactWhy::Key, _) => copy_text("beRotation.fact.key", &[]),
     }
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/accounts/quota/facts_tests.rs"]
+mod tests;
