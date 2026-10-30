@@ -73,6 +73,16 @@ describe("远端", () => {
       { command: LINE },
     ]);
   });
+
+  it("★ 这个终端显示哪条会话 ⇒ 连 sid 一起交给本机后端（它在那一行前面接一段，开的那个 shell 记下窗口标签）", async () => {
+    serve(() => ({ command: LINE }));
+    await openTerminal("devbox", "claude --resume s1", "s1");
+    expect(chanArgsJson(asked("terminal-ssh")[0])).toEqual({
+      machine: "devbox",
+      command: "claude --resume s1",
+      sid: "s1",
+    });
+  });
 });
 
 describe("本机", () => {

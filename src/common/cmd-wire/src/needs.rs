@@ -216,7 +216,7 @@ pub struct Needs {
     pub tool: Option<String>,
     /// 那个调用的 id（记录里 `tool_use` 的 `id`）：界面据此把过程里那一步画成「在等你批准」；判不出 ⇒ `null`。
     pub call: Option<String>,
-    /// 批准：那一步的主参数；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
+    /// 批准：那一步的主参数（命令取说得出用意的那一段）；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
     pub what: Option<String>,
     /// 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
@@ -264,9 +264,9 @@ pub struct Ask {
     pub kind: AskKind,
     /// 工具名原样。
     pub tool: String,
-    /// 子运行（子 agent）发的 ⇒ 是哪一趟 `{id, kind}`（那一家原样）；主会话 ⇒ `null`。
+    /// 子运行（agent）发的 ⇒ 是哪一趟 ＋ 写好的那一句；主会话 ⇒ `null`。
     pub run: Option<AskRun>,
-    /// 一行摘要（命令头一行 · 路径 · 第一道题）；说不出 ⇒ `null`。
+    /// 一行摘要（命令里说得出用意的那一段 · 路径 · 第一道题）；说不出 ⇒ `null`。
     pub what: Option<String>,
     /// 要批的东西的全文（命令全文 · 写哪个文件写成什么 · 计划原文），不截。
     pub detail: String,
@@ -292,9 +292,10 @@ pub struct Ask {
     )
 )]
 pub struct AskRun {
+    /// 那一趟的 id（那一家原样）。
     pub id: String,
-    /// 它是哪一种（那一家原样，如 `general-purpose`）；没说 ⇒ `null`。
-    pub kind: Option<String>,
+    /// 谁要批，写好的那一句：名（派出时的标签）· 类别（那一家原样，如 `general-purpose`），缺哪样少哪样；出口照抄。
+    pub text: Words,
 }
 
 /// 一个选项。

@@ -26,6 +26,10 @@ pub struct TerminalSshReq {
         ts(optional, type = "string | { b16: string }")
     )]
     pub cwd: Option<serde_json::Value>,
+    /// 这个终端显示的那条会话（只跟 `command`）：给了 ⇒ 那一行前面接一段，跑它的那个 shell 把自己的窗口标签记进本机后端的家，↗ 先照它在本机找。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub sid: Option<crate::Sid>,
 }
 
 /// `terminal-unfollow` 的入参：退订那张终端画面票（monitor 替界面向那台退订）。

@@ -313,7 +313,7 @@ fn dressed_needs(base: Option<crate::observe::recognize::facts::Needs>) -> Vec<V
             "options": [{"label": "l", "description": "d"}]}]}
     });
     let asked = crate::agents::claudecode::asks::read(&hook).unwrap();
-    let ask = crate::agents::asks::product_of("ask-1", &asked, 1);
+    let ask = crate::agents::asks::product_of("ask-1", &asked, None, 1);
     [
         crate::observe::recognize::facts::dress_ask_with(base.clone(), Some(ask), 2),
         crate::observe::recognize::facts::dress_ask_with(base, None, 2),

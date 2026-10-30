@@ -389,7 +389,7 @@ describe("点［新建］：交那台的那一份", () => {
     createBtn().click();
     await flush();
     expect(newRequests()[0].run).toBe("direct");
-    expect(term.openTerminal).toHaveBeenCalledWith("devbox", "ccm -- new");
+    expect(term.openTerminal).toHaveBeenCalledWith("devbox", "ccm -- new", null);
     expect(arriveAsks()).toEqual([arrival]);
   });
 

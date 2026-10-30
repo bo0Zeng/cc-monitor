@@ -57,6 +57,90 @@ fn a_sub_agent_request_carries_its_id_and_blocks_the_terminal() {
     assert!(a.blocks_terminal, "后台子 agent：hook 先跑完框才出");
 }
 
+/// 命令里说得出用意的那一段：准备段（赋值 · cd · export · 注释）跳过，引号里的分号 · `2>&1` 不切，段首环境赋值跳过；全是准备段 ⇒ 原文。
+#[test]
+fn the_command_shows_from_the_part_that_says_what_it_does() {
+    use crate::agents::beat::command_intent as at;
+    for (cmd, want) in [
+        ("F=/a/b.txt; sed -n '1,9p' \"$F\"", "sed -n '1,9p' \"$F\""),
+        (
+            "cd /w && cargo test -q 2>&1 | tail",
+            "cargo test -q 2>&1 | tail",
+        ),
+        ("A=1 B=\"x; y\" && export C=2; LC_ALL=C sort f", "sort f"),
+        ("# 看一眼\nset -e\nls -la /w", "ls -la /w"),
+        ("echo 'a; b' && cd x", "echo 'a; b' && cd x"),
+        (
+            "grep -n x f &> /dev/null || true",
+            "grep -n x f &> /dev/null || true",
+        ),
+        ("F=1; cd /w", "F=1; cd /w"),
+        ("  touch a  ", "touch a"),
+    ] {
+        assert_eq!(at(cmd), want, "{cmd}");
+    }
+    let mut v = bash_req();
+    v["tool_input"]["command"] = json!("cd /w\nmake all\nmake test");
+    assert_eq!(
+        read(&v).unwrap().what.as_deref(),
+        Some("make all"),
+        "从那一段起，仍只摆一行"
+    );
+}
+
+/// 后台子 agent 发的一次 Bash 批准，命令以变量赋值打头：需手动那一条写得出谁要批（派出时的标签 · 类别）、
+/// 批的是什么（说得出用意的那一段，不以 `F=` 开头）。记录树是沙箱里搭的：父记录 · 子记录 · 派出那一刻落的那一份。
+#[test]
+fn a_background_agents_approval_says_who_asks_and_what_the_command_does() {
+    let d = std::env::temp_dir().join(format!("cc-asks-run-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    let parent = d.join("s-1.jsonl");
+    let sub = d.join("s-1").join("subagents");
+    std::fs::create_dir_all(&sub).unwrap();
+    std::fs::write(&parent, "{}\n").unwrap();
+    std::fs::write(sub.join("agent-a1.jsonl"), "{}\n").unwrap();
+    std::fs::write(sub.join("agent-a2.jsonl"), "{}\n").unwrap();
+    std::fs::write(
+        sub.join("agent-a1.meta.json"),
+        json!({"toolUseId": "t1", "description": "Audit: docs", "agentType": "Explore", "requestShape": "background"}).to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        sub.join("agent-a2.meta.json"),
+        json!({"toolUseId": "t2", "description": "other", "agentType": "Plan"}).to_string(),
+    )
+    .unwrap();
+    let mut v = bash_req();
+    v["agent_id"] = json!("a1");
+    v["agent_type"] = json!("Explore");
+    v["tool_input"]["command"] =
+        json!("F=/r/tool-results/b8v1.txt; sed -n '1,40p' \"$F\" | head -5\necho done");
+    let a = read(&v).unwrap();
+    let label = crate::agents::asks::run_label(&parent, "a1");
+    let ask = crate::agents::asks::product_of("ask-1", &a, label.as_deref(), 1);
+    let n = crate::observe::recognize::facts::dress_ask_with(None, Some(ask), 2).unwrap();
+    let run = n
+        .ask
+        .as_ref()
+        .and_then(|x| x.run.as_ref())
+        .expect("子 agent 发的带 run");
+    assert!(
+        run.text.0.contains("Audit: docs") && run.text.0.contains("Explore"),
+        "{}",
+        run.text.0
+    );
+    let want = "sed -n '1,40p' \"$F\" | head -5";
+    assert_eq!(n.what.as_deref(), Some(want));
+    assert_eq!(n.head_code.as_deref(), Some(want));
+    assert_eq!(n.ask.as_ref().and_then(|x| x.what.as_deref()), Some(want));
+    assert_eq!(
+        crate::agents::asks::run_label(&parent, "zz"),
+        None,
+        "对不上 ⇒ 不带名"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
 #[test]
 fn allow_with_a_rule_hands_back_that_suggestion_verbatim() {
     let a = read(&bash_req()).unwrap();
@@ -244,6 +328,7 @@ fn the_products_match_the_cross_language_golden() {
         serde_json::to_value(crate::agents::asks::product_of(
             id,
             &read(v).unwrap(),
+            None,
             1_000,
         ))
         .unwrap()
