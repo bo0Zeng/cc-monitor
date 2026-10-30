@@ -31,6 +31,7 @@ import type { ToolCard } from "../generated/ToolCard";
 import type { ChildRunTag } from "../generated/ChildRunTag";
 import type { ToolStep } from "../generated/ToolStep";
 import type { StepResult } from "../generated/StepResult";
+import type { LineDiff } from "../generated/LineDiff";
 import { buildStepLine, buildThinkingLine, durBetween, paintWaiting, settleStepLine } from "./step-line";
 import { waitedNow } from "../duration-format";
 import type { PendingCall, RetryOutcome } from "../session-reads";
@@ -466,7 +467,7 @@ function renderBlock(
 ): HTMLElement | null {
   switch (block.type) {
     case "text":
-      return buildTextBlock(block.text, ctx.lazy);
+      return buildTextBlock(block.text, sizeText(block.bytes), ctx.lazy);
     case "thinking": {
       // 空串 ＝ 没写进记录 ⇒ 一行不可展开的步骤行（点开是空的，不给点）。
       if (block.text === "") return buildUnrecordedThinking();
@@ -524,6 +525,9 @@ function renderBlock(
     }
   }
 }
+
+/** 结果带来的行差（`results[id].patch`），按那张工具卡记：展开那一下先画它，没有才画调用那一份。 */
+const resultDiffs = new WeakMap<HTMLElement, LineDiff>();
 
 /**
  * tool_use 折叠条结构：
@@ -594,7 +598,9 @@ function buildToolUseCard(
   const buildArgs = (block: Extract<Block, { type: "tool_use" }>, step: ToolStep | undefined): void => {
     const body = step?.body;
     let bodyEl: HTMLElement | null = null;
-    if (body?.kind === "changes") bodyEl = buildDiffBody(body.changes);
+    // 改动：结果带着行差（真行号）就画结果那份，否则画调用那份。
+    const diff = resultDiffs.get(d) ?? (body?.kind === "changes" ? body.diff : undefined);
+    if (diff) bodyEl = buildDiffBody(diff);
     if (body?.kind === "command") {
       const pre = document.createElement("pre");
       pre.className = "block-body block-args";
@@ -697,10 +703,12 @@ function injectOrBuildToolResult(
       resultTextLedger.maxUnits = text.length;
     }
   }
-  const sizeOrNothing = (): string => (block.content ? ` · ${approximateSize(block.content)}` : "");
+  // 大小是后端交的字节数（`bytes`，出口省掉内容之后照样有），界面不量。
+  const size = sizeText(block.bytes);
+  const sizeOrNothing = (): string => (block.bytes > 0 ? ` · ${size}` : "");
   const bodyInto = (el: HTMLElement): void => {
     if (text !== null) {
-      buildResultBody(el, text, toolName, mdByDefault);
+      buildResultBody(el, text, size, toolName, mdByDefault);
       return;
     }
     const host = el.closest("details") ?? el;
@@ -714,7 +722,7 @@ function injectOrBuildToolResult(
         el,
         (rec) =>
           blocksOf(rec).find((b): b is ToolResultBlock => b.type === "tool_result" && b.for === block.for)?.content,
-        (content) => buildResultBody(el, renderResultContent(content), toolName, mdByDefault),
+        (content) => buildResultBody(el, renderResultContent(content), size, toolName, mdByDefault),
       );
     };
     host.addEventListener("toggle", open);
@@ -745,6 +753,14 @@ function injectOrBuildToolResult(
   }
   if (host) {
     const wrap = host.querySelector(".block-body-wrap");
+    // 结果带着行差 ⇒ 记在卡上（展开那一下画它）；已经画了调用那一份的 ⇒ 当场换成结果这一份。
+    const patch = facts.results[block.for]?.patch;
+    if (patch) {
+      resultDiffs.set(host, patch);
+      const drawn = wrap?.querySelector(":scope > .block-diff");
+      const next = drawn && buildDiffBody(patch);
+      if (drawn && next) drawn.replaceWith(next);
+    }
     if (wrap) {
       // result 自己也是 details，默认收起，避免长输出占满
       let resultEl = wrap.querySelector(
@@ -770,11 +786,6 @@ function injectOrBuildToolResult(
         : "Output";
       const summary = document.createElement("summary");
       summary.className = "block-summary one-line";
-      // approximateSize 对 617 KB 的 content 整份 JSON.stringify
-      //（O(len) 时间 + 一份等长字符串分配），而 preview 非空时这个结果 100% 用不上。
-      // 挪进三元的 else 分支 ⇒ 惰性求值。显示结果一字不变。
-      // ⚠ 同节还提了「数组 content 改成累加 text.length」——那个会改动显示出来的数字
-      //（JSON 括号/引号也计在 `N chars` 里），不是零语义风险，**本次没做**。
       summary.textContent = preview ? `${labelPrefix} · ${preview}` : `${labelPrefix}${sizeOrNothing()}`;
       resultEl.appendChild(summary);
 
@@ -883,6 +894,7 @@ export function forgetDetached(ctx: Pick<RenderContext, "toolUseElements" | "run
 function buildResultBody(
   host: HTMLElement,
   text: string,
+  size: string,
   toolName: string,
   mdByDefault: boolean,
 ): void {
@@ -927,10 +939,10 @@ function buildResultBody(
 
     bodyHost.replaceChildren();
     if (mode === "text") {
-      if (!textBodyEl) textBodyEl = buildTextBody(text);
+      if (!textBodyEl) textBodyEl = buildTextBody(text, size);
       bodyHost.appendChild(textBodyEl);
     } else {
-      if (!mdBodyEl) mdBodyEl = buildMarkdownBody(text);
+      if (!mdBodyEl) mdBodyEl = buildMarkdownBody(text, size);
       bodyHost.appendChild(mdBodyEl);
     }
   };
@@ -1032,8 +1044,11 @@ function splitOversizeBlock(lines: string[], max: number): string[] {
   return parts;
 }
 
-/** 一个回复正文块：不长就整段渲染；长了只渲染第一片 ＋「显示全部」（点了余下的一片一跳地补，不卡输入）。 */
-function buildTextBlock(text: string, lazy: boolean | undefined): HTMLElement {
+/**
+ * 一个回复正文块：不长就整段渲染；长了只渲染第一片 ＋「展开 {全文大小}」（点了余下的一片一跳地补，不卡输入）。
+ * `size` 是后端交的整块字节数写成的那一格。
+ */
+function buildTextBlock(text: string, size: string, lazy: boolean | undefined): HTMLElement {
   const div = document.createElement("div");
   div.className = "block-text";
   // 记下原文：进了可视区问一次后端里面提到哪几格（`plan-refs.ts`）；长回复只记已渲的第一片。
@@ -1049,8 +1064,7 @@ function buildTextBlock(text: string, lazy: boolean | undefined): HTMLElement {
   const more = document.createElement("button");
   more.type = "button";
   more.className = "block-body-show-full";
-  const restChars = text.length - pieces[0].length;
-  more.textContent = copyText("cards.markdown.showRest", { size: sizeText(restChars) });
+  more.textContent = copyText("cards.text.showAll", { size });
   more.addEventListener(
     "click",
     () => {
@@ -1073,7 +1087,7 @@ function buildTextBlock(text: string, lazy: boolean | undefined): HTMLElement {
 }
 const LARGE_TEXT_HEAD_LINES = 800;
 
-function buildTextBody(text: string): HTMLElement {
+function buildTextBody(text: string, size: string): HTMLElement {
   const pre = document.createElement("pre");
   pre.className = "block-body block-body-result";
   // 大 output 截断：避免一次性塞几百 K 到 DOM
@@ -1086,7 +1100,7 @@ function buildTextBody(text: string): HTMLElement {
     const expand = document.createElement("button");
     expand.type = "button";
     expand.className = "block-body-show-full";
-    expand.textContent = copyText("cards.text.showAll", { size: sizeText(text.length) });
+    expand.textContent = copyText("cards.text.showAll", { size });
     expand.addEventListener(
       "click",
       () => {
@@ -1102,7 +1116,7 @@ function buildTextBody(text: string): HTMLElement {
   return pre;
 }
 
-function buildMarkdownBody(text: string): HTMLElement {
+function buildMarkdownBody(text: string, size: string): HTMLElement {
   const div = document.createElement("div");
   div.className = "block-body block-body-result block-body-md";
   // Read / Grep 类工具输出带行号前缀（`<n>\t...` 或 `<n>:...`），
@@ -1119,7 +1133,7 @@ function buildMarkdownBody(text: string): HTMLElement {
     const expand = document.createElement("button");
     expand.type = "button";
     expand.className = "block-body-show-full";
-    expand.textContent = copyText("cards.text.showAll", { size: sizeText(cleaned.length) });
+    expand.textContent = copyText("cards.text.showAll", { size });
     expand.addEventListener(
       "click",
       () => {
@@ -1289,15 +1303,4 @@ function textOf(blocks: readonly Block[]): string {
     .map((b) => (b.type === "text" ? b.text : ""))
     .filter(Boolean)
     .join("\n");
-}
-
-function approximateSize(content: readonly Block[]): string {
-  if (content.every((b) => b.type === "text")) {
-    return sizeText(textOf(content).length);
-  }
-  try {
-    return sizeText(JSON.stringify(content).length);
-  } catch {
-    return "";
-  }
 }

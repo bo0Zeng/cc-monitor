@@ -5,14 +5,6 @@
  */
 import type { PlanBlock, PlanCell, PlanRef, PlanSlice } from "../plan-reads";
 
-/** 状态画哪一种（图标 · 颜色）：照后端给的码；待定还没人定另画一种；类不许记收的值（测试 · 规矩 · 验收记录 …）⇒ 不算活，画淡的。 */
-export type StatusLook = "done" | "open" | "undecided" | "none";
-
-export function statusLook(c: Pick<PlanCell, "statusCode" | "undecided">): StatusLook {
-  if (c.undecided) return "undecided";
-  return c.statusCode ?? "none";
-}
-
 /** 一格写成「编号 标题」：后端拼好的那一份（`labels`）；表里没有 ⇒ 只写编号。界面不自己拼。 */
 export function labelOf(slice: Pick<PlanSlice, "labels">, id: string): string {
   return slice.labels[id] ?? id;
@@ -98,7 +90,7 @@ export function outlineRows(slice: PlanSlice, opts: OutlineOpts): OutlineRow[] {
   const narrowing = opts.filter !== "all" || opts.query !== "";
   const keep = (c: PlanCell): boolean => {
     // 「没签收的」：算活没签收的 ＋ 待定还没人定的。
-    if (opts.filter === "open" && statusLook(c) !== "open" && statusLook(c) !== "undecided") return false;
+    if (opts.filter === "open" && c.look !== "open" && c.look !== "undecided") return false;
     if (opts.filter === "needs" && !opts.needsCells.has(c.id)) return false;
     return matches(c, opts.query);
   };

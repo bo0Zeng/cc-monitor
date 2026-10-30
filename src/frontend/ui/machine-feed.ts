@@ -15,9 +15,6 @@ import type { MachineState } from "./generated/MachineState";
 import type { EmptyFace } from "./generated/EmptyFace";
 import { LOCAL_BACKEND } from "./generated/shell-names";
 
-/** 壳那一侧的事件名（`ui_contract::events::LOCAL_BACKEND`，生成过来）。 */
-export { LOCAL_BACKEND as LOCAL_BACKEND_EVENT };
-
 /** `machine-read` 等多久。 */
 const READ_BUDGET_MS = 5_000;
 

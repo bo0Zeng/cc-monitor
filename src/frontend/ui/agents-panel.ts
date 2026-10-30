@@ -18,13 +18,13 @@ import { emptyState } from "./kit/empty";
 import { place } from "./kit/morph";
 import { tag } from "./kit/badge";
 import type { RunInfo } from "./generated/RunInfo";
-import { NO_RUNS, runLabel, runLastText, runStateMark, runStateText, type LiveBlockView, type RunTable } from "./runs";
+import { NO_RUNS, runLabel, runLastText, runStateMark, runStateText, type RunTable } from "./runs";
 
-/** 宿主给面板的口：开某个子运行的窗口 · 它的窗口开着没有 · 它此刻在生成的那一块。 */
+/** 宿主给面板的口：开某个子运行的窗口 · 它的窗口开着没有 · 它此刻活卡上「最近：…」那一句。 */
 export interface AgentsPanelHost {
   open(sid: string, run: string): void;
   isOpen(sid: string, run: string): boolean;
-  liveOf(sid: string, run: string): LiveBlockView | null;
+  liveOf(sid: string, run: string): string | null;
 }
 
 /** chip 前面那颗图标。 */

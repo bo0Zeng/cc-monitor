@@ -93,6 +93,7 @@ fn state(kind: MachineStateKind, offline: bool, word: &str) -> MachineState {
         expected_host_key: None,
         detail: None,
         route: None,
+        strip: None,
     }
 }
 

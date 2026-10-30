@@ -2120,6 +2120,7 @@ sealed interface Block {
     @Suppress("UNCHECKED_CAST")
     data class Text(
         val text: String,
+        val bytes: Long,
     ) : Block, Ordered {
         override val `type`: String get() = "text"
         override var wireOrder: IntArray? = null
@@ -2145,6 +2146,7 @@ sealed interface Block {
         val `for`: String,
         val content: List<Block>,
         val isError: Boolean,
+        val bytes: Long,
     ) : Block, Ordered {
         override val `type`: String get() = "tool_result"
         override var wireOrder: IntArray? = null
@@ -2169,9 +2171,10 @@ sealed interface Block {
                         listOf(
                         Field("type", { tag("text") }, optional = false, nullable = false),
                         Field("text", { Str }, optional = false, nullable = false),
+                        Field("bytes", { U64 }, optional = false, nullable = false),
                         ),
-                        { a -> Block.Text(a[1] as String) },
-                        { v -> arrayOf("text", v.text) },
+                        { a -> Block.Text(a[1] as String, a[2] as Long) },
+                        { v -> arrayOf("text", v.text, v.bytes) },
                     )),
                 Variant("thinking", Block.Thinking::class.java, obj(
                         listOf(
@@ -2197,9 +2200,10 @@ sealed interface Block {
                         Field("for", { Str }, optional = false, nullable = false),
                         Field("content", { arr(Block.ADAPTER) }, optional = false, nullable = false),
                         Field("isError", { Bool }, optional = false, nullable = false),
+                        Field("bytes", { U64 }, optional = false, nullable = false),
                         ),
-                        { a -> Block.ToolResult(a[1] as String, a[2] as List<Block>, a[3] as Boolean) },
-                        { v -> arrayOf("tool_result", v.`for`, v.content, v.isError) },
+                        { a -> Block.ToolResult(a[1] as String, a[2] as List<Block>, a[3] as Boolean, a[4] as Long) },
+                        { v -> arrayOf("tool_result", v.`for`, v.content, v.isError, v.bytes) },
                     )),
                 Variant("image", Block.Image::class.java, obj(
                         listOf(
@@ -10696,6 +10700,68 @@ data class Line<R>(
     }
 }
 
+@Suppress("UNCHECKED_CAST")
+data class LineDiff(
+    val rows: List<LineDiffRow>,
+    val shown: Int,
+    val truncated: Boolean,
+    val added: Int,
+    val removed: Int,
+    val stat: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<LineDiff> = obj(
+            listOf(
+            Field("rows", { arr(LineDiffRow.ADAPTER) }, optional = false, nullable = false),
+            Field("shown", { Int32 }, optional = false, nullable = false),
+            Field("truncated", { Bool }, optional = false, nullable = false),
+            Field("added", { Int32 }, optional = false, nullable = false),
+            Field("removed", { Int32 }, optional = false, nullable = false),
+            Field("stat", { Str }, optional = false, nullable = false),
+            ),
+            { a -> LineDiff(a[0] as List<LineDiffRow>, a[1] as Int, a[2] as Boolean, a[3] as Int, a[4] as Int, a[5] as String) },
+            { v -> arrayOf(v.rows, v.shown, v.truncated, v.added, v.removed, v.stat) },
+        )
+    }
+}
+
+enum class LineDiffKind(val wire: String) {
+    ADD("add"),
+    DEL("del"),
+    CTX("ctx"),
+    HEAD("head"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<LineDiffKind> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class LineDiffRow(
+    val kind: LineDiffKind,
+    val text: String,
+    val oldNo: Int? = null,
+    val newNo: Int? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<LineDiffRow> = obj(
+            listOf(
+            Field("kind", { LineDiffKind.ADAPTER }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            Field("oldNo", { opt(Int32) }, optional = true, nullable = true),
+            Field("newNo", { opt(Int32) }, optional = true, nullable = true),
+            ),
+            { a -> LineDiffRow(a[0] as LineDiffKind, a[1] as String, a[2] as Int?, a[3] as Int?) },
+            { v -> arrayOf(v.kind, v.text, v.oldNo, v.newNo) },
+        )
+    }
+}
+
 sealed interface LineRecord {
     /** 判别格（`t`）那个词。 */
     val t: String
@@ -11357,6 +11423,9 @@ data class LiveCardNow(
     val phase: LivePhase,
     val clipped: Boolean,
     val blocks: List<LiveBlock>,
+    val head: String,
+    val body: String,
+    val last: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -11368,9 +11437,12 @@ data class LiveCardNow(
             Field("phase", { LivePhase.ADAPTER }, optional = false, nullable = false),
             Field("clipped", { Bool }, optional = false, nullable = false),
             Field("blocks", { arr(LiveBlock.ADAPTER) }, optional = false, nullable = false),
+            Field("head", { Str }, optional = false, nullable = false),
+            Field("body", { Str }, optional = false, nullable = false),
+            Field("last", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> LiveCardNow(a[0] as Long, a[1] as String, a[2] as LivePhase, a[3] as Boolean, a[4] as List<LiveBlock>) },
-            { v -> arrayOf(v.card, v.rid, v.phase, v.clipped, v.blocks) },
+            { a -> LiveCardNow(a[0] as Long, a[1] as String, a[2] as LivePhase, a[3] as Boolean, a[4] as List<LiveBlock>, a[5] as String, a[6] as String, a[7] as String?) },
+            { v -> arrayOf(v.card, v.rid, v.phase, v.clipped, v.blocks, v.head, v.body, v.last) },
         )
     }
 }
@@ -11526,6 +11598,8 @@ sealed interface LocalBackend {
     }
     @Suppress("UNCHECKED_CAST")
     data class Starting(
+        val look: MachineStateKind,
+        val tone: Tone,
         val word: String,
         val said: String,
     ) : LocalBackend, Ordered {
@@ -11534,6 +11608,8 @@ sealed interface LocalBackend {
     }
     @Suppress("UNCHECKED_CAST")
     data class Down(
+        val look: MachineStateKind,
+        val tone: Tone,
         val word: String,
         val said: String,
         val fixes: List<MachineFixButton>,
@@ -11544,6 +11620,8 @@ sealed interface LocalBackend {
     }
     @Suppress("UNCHECKED_CAST")
     data class Older(
+        val look: MachineStateKind,
+        val tone: Tone,
         val word: String,
         val said: String,
         val fixes: List<MachineFixButton>,
@@ -11554,6 +11632,8 @@ sealed interface LocalBackend {
     }
     @Suppress("UNCHECKED_CAST")
     data class Newer(
+        val look: MachineStateKind,
+        val tone: Tone,
         val word: String,
         val said: String,
         val fixes: List<MachineFixButton>,
@@ -11578,44 +11658,52 @@ sealed interface LocalBackend {
                 Variant("starting", LocalBackend.Starting::class.java, obj(
                         listOf(
                         Field("state", { tag("starting") }, optional = false, nullable = false),
+                        Field("look", { MachineStateKind.ADAPTER }, optional = false, nullable = false),
+                        Field("tone", { Tone.ADAPTER }, optional = false, nullable = false),
                         Field("word", { Str }, optional = false, nullable = false),
                         Field("said", { Str }, optional = false, nullable = false),
                         ),
-                        { a -> LocalBackend.Starting(a[1] as String, a[2] as String) },
-                        { v -> arrayOf("starting", v.word, v.said) },
+                        { a -> LocalBackend.Starting(a[1] as MachineStateKind, a[2] as Tone, a[3] as String, a[4] as String) },
+                        { v -> arrayOf("starting", v.look, v.tone, v.word, v.said) },
                     )),
                 Variant("down", LocalBackend.Down::class.java, obj(
                         listOf(
                         Field("state", { tag("down") }, optional = false, nullable = false),
+                        Field("look", { MachineStateKind.ADAPTER }, optional = false, nullable = false),
+                        Field("tone", { Tone.ADAPTER }, optional = false, nullable = false),
                         Field("word", { Str }, optional = false, nullable = false),
                         Field("said", { Str }, optional = false, nullable = false),
                         Field("fixes", { arr(MachineFixButton.ADAPTER) }, optional = false, nullable = false),
                         Field("next", { opt(Str) }, optional = false, nullable = true),
                         ),
-                        { a -> LocalBackend.Down(a[1] as String, a[2] as String, a[3] as List<MachineFixButton>, a[4] as String?) },
-                        { v -> arrayOf("down", v.word, v.said, v.fixes, v.next) },
+                        { a -> LocalBackend.Down(a[1] as MachineStateKind, a[2] as Tone, a[3] as String, a[4] as String, a[5] as List<MachineFixButton>, a[6] as String?) },
+                        { v -> arrayOf("down", v.look, v.tone, v.word, v.said, v.fixes, v.next) },
                     )),
                 Variant("older", LocalBackend.Older::class.java, obj(
                         listOf(
                         Field("state", { tag("older") }, optional = false, nullable = false),
+                        Field("look", { MachineStateKind.ADAPTER }, optional = false, nullable = false),
+                        Field("tone", { Tone.ADAPTER }, optional = false, nullable = false),
                         Field("word", { Str }, optional = false, nullable = false),
                         Field("said", { Str }, optional = false, nullable = false),
                         Field("fixes", { arr(MachineFixButton.ADAPTER) }, optional = false, nullable = false),
                         Field("next", { opt(Str) }, optional = false, nullable = true),
                         ),
-                        { a -> LocalBackend.Older(a[1] as String, a[2] as String, a[3] as List<MachineFixButton>, a[4] as String?) },
-                        { v -> arrayOf("older", v.word, v.said, v.fixes, v.next) },
+                        { a -> LocalBackend.Older(a[1] as MachineStateKind, a[2] as Tone, a[3] as String, a[4] as String, a[5] as List<MachineFixButton>, a[6] as String?) },
+                        { v -> arrayOf("older", v.look, v.tone, v.word, v.said, v.fixes, v.next) },
                     )),
                 Variant("newer", LocalBackend.Newer::class.java, obj(
                         listOf(
                         Field("state", { tag("newer") }, optional = false, nullable = false),
+                        Field("look", { MachineStateKind.ADAPTER }, optional = false, nullable = false),
+                        Field("tone", { Tone.ADAPTER }, optional = false, nullable = false),
                         Field("word", { Str }, optional = false, nullable = false),
                         Field("said", { Str }, optional = false, nullable = false),
                         Field("fixes", { arr(MachineFixButton.ADAPTER) }, optional = false, nullable = false),
                         Field("next", { opt(Str) }, optional = false, nullable = true),
                         ),
-                        { a -> LocalBackend.Newer(a[1] as String, a[2] as String, a[3] as List<MachineFixButton>, a[4] as String?) },
-                        { v -> arrayOf("newer", v.word, v.said, v.fixes, v.next) },
+                        { a -> LocalBackend.Newer(a[1] as MachineStateKind, a[2] as Tone, a[3] as String, a[4] as String, a[5] as List<MachineFixButton>, a[6] as String?) },
+                        { v -> arrayOf("newer", v.look, v.tone, v.word, v.said, v.fixes, v.next) },
                     )),
                 ),
             )
@@ -12560,6 +12648,7 @@ data class MachineState(
     val expectedHostKey: String?,
     val detail: String?,
     val route: String? = null,
+    val strip: MachineStripLine? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -12582,9 +12671,10 @@ data class MachineState(
             Field("expectedHostKey", { opt(Str) }, optional = false, nullable = true),
             Field("detail", { opt(Str) }, optional = false, nullable = true),
             Field("route", { opt(Str) }, optional = true, nullable = true),
+            Field("strip", { opt(MachineStripLine.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as Boolean, a[3] as DialWhy?, a[4] as MachineStage?, a[5] as String?, a[6] as VersionRelation?, a[7] as String?, a[8] as String, a[9] as String, a[10] as String, a[11] as List<MachineFixButton>, a[12] as String?, a[13] as String?, a[14] as String?, a[15] as String?) },
-            { v -> arrayOf(v.name, v.state, v.offline, v.reason, v.stage, v.version, v.versionRelation, v.os, v.word, v.said, v.offlineSaid, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail, v.route) },
+            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as Boolean, a[3] as DialWhy?, a[4] as MachineStage?, a[5] as String?, a[6] as VersionRelation?, a[7] as String?, a[8] as String, a[9] as String, a[10] as String, a[11] as List<MachineFixButton>, a[12] as String?, a[13] as String?, a[14] as String?, a[15] as String?, a[16] as MachineStripLine?) },
+            { v -> arrayOf(v.name, v.state, v.offline, v.reason, v.stage, v.version, v.versionRelation, v.os, v.word, v.said, v.offlineSaid, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail, v.route, v.strip) },
         )
     }
 }
@@ -12640,6 +12730,25 @@ data class MachineStopped(
             ),
             { a -> MachineStopped(a[0] as String, a[1] as Int?) },
             { v -> arrayOf(v.stopped, v.pid) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MachineStripLine(
+    val tone: StripTone,
+    val progress: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MachineStripLine> = obj(
+            listOf(
+            Field("tone", { StripTone.ADAPTER }, optional = false, nullable = false),
+            Field("progress", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> MachineStripLine(a[0] as StripTone, a[1] as Boolean) },
+            { v -> arrayOf(v.tone, v.progress) },
         )
     }
 }
@@ -13319,6 +13428,7 @@ data class Merged(
     val unreadable: Long,
     val skipped: List<String>,
     val down: List<SearchDown>,
+    val summary: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13332,9 +13442,10 @@ data class Merged(
             Field("unreadable", { Lng }, optional = false, nullable = false),
             Field("skipped", { arr(Str) }, optional = false, nullable = false),
             Field("down", { arr(SearchDown.ADAPTER) }, optional = false, nullable = false),
+            Field("summary", { Str }, optional = false, nullable = false),
             ),
-            { a -> Merged(a[0] as Long, a[1] as Long, a[2] as Boolean, a[3] as List<MergedRow>, a[4] as Long, a[5] as List<String>, a[6] as List<SearchDown>) },
-            { v -> arrayOf(v.totalHits, v.sessionCount, v.truncated, v.sessions, v.unreadable, v.skipped, v.down) },
+            { a -> Merged(a[0] as Long, a[1] as Long, a[2] as Boolean, a[3] as List<MergedRow>, a[4] as Long, a[5] as List<String>, a[6] as List<SearchDown>, a[7] as String) },
+            { v -> arrayOf(v.totalHits, v.sessionCount, v.truncated, v.sessions, v.unreadable, v.skipped, v.down, v.summary) },
         )
     }
 }
@@ -14438,10 +14549,10 @@ data class Patch(
 
 @Suppress("UNCHECKED_CAST")
 data class PatchHunk(
-    val oldStart: Int,
-    val oldLines: Int,
-    val newStart: Int,
-    val newLines: Int,
+    val oldStart: Long,
+    val oldLines: Long,
+    val newStart: Long,
+    val newLines: Long,
     val lines: List<String>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -14449,13 +14560,13 @@ data class PatchHunk(
     companion object {
         val ADAPTER: JsonAdapter<PatchHunk> = obj(
             listOf(
-            Field("oldStart", { Int32 }, optional = false, nullable = false),
-            Field("oldLines", { Int32 }, optional = false, nullable = false),
-            Field("newStart", { Int32 }, optional = false, nullable = false),
-            Field("newLines", { Int32 }, optional = false, nullable = false),
+            Field("oldStart", { Lng }, optional = false, nullable = false),
+            Field("oldLines", { Lng }, optional = false, nullable = false),
+            Field("newStart", { Lng }, optional = false, nullable = false),
+            Field("newLines", { Lng }, optional = false, nullable = false),
             Field("lines", { arr(Str) }, optional = false, nullable = false),
             ),
-            { a -> PatchHunk(a[0] as Int, a[1] as Int, a[2] as Int, a[3] as Int, a[4] as List<String>) },
+            { a -> PatchHunk(a[0] as Long, a[1] as Long, a[2] as Long, a[3] as Long, a[4] as List<String>) },
             { v -> arrayOf(v.oldStart, v.oldLines, v.newStart, v.newLines, v.lines) },
         )
     }
@@ -14567,7 +14678,7 @@ data class PlaceReq(
 data class PlanAckReply(
     val acked: Boolean,
     val key: String,
-    val needCount: Long,
+    val needCount: Int,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -14576,9 +14687,9 @@ data class PlanAckReply(
             listOf(
             Field("acked", { Bool }, optional = false, nullable = false),
             Field("key", { Str }, optional = false, nullable = false),
-            Field("needCount", { Lng }, optional = false, nullable = false),
+            Field("needCount", { Int32 }, optional = false, nullable = false),
             ),
-            { a -> PlanAckReply(a[0] as Boolean, a[1] as String, a[2] as Long) },
+            { a -> PlanAckReply(a[0] as Boolean, a[1] as String, a[2] as Int) },
             { v -> arrayOf(v.acked, v.key, v.needCount) },
         )
     }
@@ -14771,6 +14882,9 @@ data class PlanCell(
     val evidencedBy: List<String>,
     val statusCode: PlanCellStatusCode?,
     val undecided: Boolean,
+    val look: PlanLook,
+    val end: String?,
+    val quiet: String?,
     val whyCode: PlanWhyCode?,
     val whyShort: PlanWhyShort?,
     val sets: List<PlanSetsTo>,
@@ -14801,6 +14915,9 @@ data class PlanCell(
             Field("evidencedBy", { arr(Str) }, optional = false, nullable = false),
             Field("statusCode", { opt(PlanCellStatusCode.ADAPTER) }, optional = false, nullable = true),
             Field("undecided", { Bool }, optional = false, nullable = false),
+            Field("look", { PlanLook.ADAPTER }, optional = false, nullable = false),
+            Field("end", { opt(Str) }, optional = false, nullable = true),
+            Field("quiet", { opt(Str) }, optional = false, nullable = true),
             Field("whyCode", { opt(PlanWhyCode.ADAPTER) }, optional = false, nullable = true),
             Field("whyShort", { opt(PlanWhyShort.ADAPTER) }, optional = false, nullable = true),
             Field("sets", { arr(PlanSetsTo.ADAPTER) }, optional = false, nullable = false),
@@ -14812,8 +14929,8 @@ data class PlanCell(
             Field("refs", { PlanRefs.ADAPTER }, optional = false, nullable = false),
             Field("returned", { opt(PlanReturned.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> PlanCell(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as List<String>, a[6] as PlanEdges, a[7] as PlanEdges, a[8] as List<PlanFile>, a[9] as List<PlanState>, a[10] as String?, a[11] as List<String>, a[12] as PlanCellStatusCode?, a[13] as Boolean, a[14] as PlanWhyCode?, a[15] as PlanWhyShort?, a[16] as List<PlanSetsTo>, a[17] as String?, a[18] as PlanWho?, a[19] as PlanWho?, a[20] as List<String>, a[21] as List<String>, a[22] as PlanRefs, a[23] as PlanReturned?) },
-            { v -> arrayOf(v.id, v.title, v.kind, v.body, v.parent, v.children, v.edges, v.pointedBy, v.files, v.state, v.stateLine, v.evidencedBy, v.statusCode, v.undecided, v.whyCode, v.whyShort, v.sets, v.block, v.owner, v.signer, v.covers, v.coveredBy, v.refs, v.returned) },
+            { a -> PlanCell(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as List<String>, a[6] as PlanEdges, a[7] as PlanEdges, a[8] as List<PlanFile>, a[9] as List<PlanState>, a[10] as String?, a[11] as List<String>, a[12] as PlanCellStatusCode?, a[13] as Boolean, a[14] as PlanLook, a[15] as String?, a[16] as String?, a[17] as PlanWhyCode?, a[18] as PlanWhyShort?, a[19] as List<PlanSetsTo>, a[20] as String?, a[21] as PlanWho?, a[22] as PlanWho?, a[23] as List<String>, a[24] as List<String>, a[25] as PlanRefs, a[26] as PlanReturned?) },
+            { v -> arrayOf(v.id, v.title, v.kind, v.body, v.parent, v.children, v.edges, v.pointedBy, v.files, v.state, v.stateLine, v.evidencedBy, v.statusCode, v.undecided, v.look, v.end, v.quiet, v.whyCode, v.whyShort, v.sets, v.block, v.owner, v.signer, v.covers, v.coveredBy, v.refs, v.returned) },
         )
     }
 }
@@ -14891,7 +15008,7 @@ data class PlanCheck(
 
 @Suppress("UNCHECKED_CAST")
 data class PlanCmdReply(
-    val rc: Long,
+    val rc: Int,
     val said: String?,
     val path: String?,
     val adopted: PlanAdopted?,
@@ -14901,12 +15018,12 @@ data class PlanCmdReply(
     companion object {
         val ADAPTER: JsonAdapter<PlanCmdReply> = obj(
             listOf(
-            Field("rc", { Lng }, optional = false, nullable = false),
+            Field("rc", { Int32 }, optional = false, nullable = false),
             Field("said", { opt(Str) }, optional = false, nullable = true),
             Field("path", { opt(Str) }, optional = false, nullable = true),
             Field("adopted", { opt(PlanAdopted.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> PlanCmdReply(a[0] as Long, a[1] as String?, a[2] as String?, a[3] as PlanAdopted?) },
+            { a -> PlanCmdReply(a[0] as Int, a[1] as String?, a[2] as String?, a[3] as PlanAdopted?) },
             { v -> arrayOf(v.rc, v.said, v.path, v.adopted) },
         )
     }
@@ -15199,18 +15316,18 @@ data class PlanGroup(
 
 @Suppress("UNCHECKED_CAST")
 data class PlanKids(
-    val done: Long,
-    val of: Long,
+    val done: Int,
+    val of: Int,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
         val ADAPTER: JsonAdapter<PlanKids> = obj(
             listOf(
-            Field("done", { Lng }, optional = false, nullable = false),
-            Field("of", { Lng }, optional = false, nullable = false),
+            Field("done", { Int32 }, optional = false, nullable = false),
+            Field("of", { Int32 }, optional = false, nullable = false),
             ),
-            { a -> PlanKids(a[0] as Long, a[1] as Long) },
+            { a -> PlanKids(a[0] as Int, a[1] as Int) },
             { v -> arrayOf(v.done, v.of) },
         )
     }
@@ -15281,7 +15398,7 @@ data class PlanListSlice(
     val domain: String?,
     val current: Boolean,
     val progress: PlanProgress?,
-    val needCount: Long,
+    val needCount: Int,
     val error: String?,
     val stale: PlanStale?,
 ) : Ordered {
@@ -15294,11 +15411,11 @@ data class PlanListSlice(
             Field("domain", { opt(Str) }, optional = false, nullable = true),
             Field("current", { Bool }, optional = false, nullable = false),
             Field("progress", { opt(PlanProgress.ADAPTER) }, optional = false, nullable = true),
-            Field("needCount", { Lng }, optional = false, nullable = false),
+            Field("needCount", { Int32 }, optional = false, nullable = false),
             Field("error", { opt(Str) }, optional = false, nullable = true),
             Field("stale", { opt(PlanStale.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> PlanListSlice(a[0] as String, a[1] as String?, a[2] as Boolean, a[3] as PlanProgress?, a[4] as Long, a[5] as String?, a[6] as PlanStale?) },
+            { a -> PlanListSlice(a[0] as String, a[1] as String?, a[2] as Boolean, a[3] as PlanProgress?, a[4] as Int, a[5] as String?, a[6] as PlanStale?) },
             { v -> arrayOf(v.name, v.domain, v.current, v.progress, v.needCount, v.error, v.stale) },
         )
     }
@@ -15311,7 +15428,7 @@ data class PlanListWorkspace(
     val auto: Boolean,
     val rev: String,
     val stale: PlanStale?,
-    val needCount: Long,
+    val needCount: Int,
     val bySession: Map<String, PlanSessionBlock>,
     val slices: List<PlanListSlice>,
 ) : Ordered {
@@ -15325,20 +15442,32 @@ data class PlanListWorkspace(
             Field("auto", { Bool }, optional = false, nullable = false),
             Field("rev", { Str }, optional = false, nullable = false),
             Field("stale", { opt(PlanStale.ADAPTER) }, optional = false, nullable = true),
-            Field("needCount", { Lng }, optional = false, nullable = false),
+            Field("needCount", { Int32 }, optional = false, nullable = false),
             Field("bySession", { dict(PlanSessionBlock.ADAPTER) }, optional = false, nullable = false),
             Field("slices", { arr(PlanListSlice.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> PlanListWorkspace(a[0] as String, a[1] as String?, a[2] as Boolean, a[3] as String, a[4] as PlanStale?, a[5] as Long, a[6] as Map<String, PlanSessionBlock>, a[7] as List<PlanListSlice>) },
+            { a -> PlanListWorkspace(a[0] as String, a[1] as String?, a[2] as Boolean, a[3] as String, a[4] as PlanStale?, a[5] as Int, a[6] as Map<String, PlanSessionBlock>, a[7] as List<PlanListSlice>) },
             { v -> arrayOf(v.workspace, v.repo, v.auto, v.rev, v.stale, v.needCount, v.bySession, v.slices) },
         )
     }
 }
 
+enum class PlanLook(val wire: String) {
+    DONE("done"),
+    OPEN("open"),
+    UNDECIDED("undecided"),
+    NONE("none"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanLook> = enumOf(entries) { it.wire }
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class PlanMsgRef(
-    val start: Long,
-    val end: Long,
+    val start: Int,
+    val end: Int,
     val ids: List<String>,
     val label: String,
 ) : Ordered {
@@ -15347,12 +15476,12 @@ data class PlanMsgRef(
     companion object {
         val ADAPTER: JsonAdapter<PlanMsgRef> = obj(
             listOf(
-            Field("start", { Lng }, optional = false, nullable = false),
-            Field("end", { Lng }, optional = false, nullable = false),
+            Field("start", { Int32 }, optional = false, nullable = false),
+            Field("end", { Int32 }, optional = false, nullable = false),
             Field("ids", { arr(Str) }, optional = false, nullable = false),
             Field("label", { Str }, optional = false, nullable = false),
             ),
-            { a -> PlanMsgRef(a[0] as Long, a[1] as Long, a[2] as List<String>, a[3] as String) },
+            { a -> PlanMsgRef(a[0] as Int, a[1] as Int, a[2] as List<String>, a[3] as String) },
             { v -> arrayOf(v.start, v.end, v.ids, v.label) },
         )
     }
@@ -15386,8 +15515,11 @@ data class PlanNeed(
     val block: String?,
     val cell: String?,
     val sid: String?,
-    val red: Long? = null,
+    val red: Int? = null,
     val acked: Boolean,
+    val title: String,
+    val lines: List<String>,
+    val pos: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -15399,11 +15531,14 @@ data class PlanNeed(
             Field("block", { opt(Str) }, optional = false, nullable = true),
             Field("cell", { opt(Str) }, optional = false, nullable = true),
             Field("sid", { opt(Str) }, optional = false, nullable = true),
-            Field("red", { opt(Lng) }, optional = true, nullable = true),
+            Field("red", { opt(Int32) }, optional = true, nullable = true),
             Field("acked", { Bool }, optional = false, nullable = false),
+            Field("title", { Str }, optional = false, nullable = false),
+            Field("lines", { arr(Str) }, optional = false, nullable = false),
+            Field("pos", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> PlanNeed(a[0] as String, a[1] as PlanNeedKind, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as Long?, a[6] as Boolean) },
-            { v -> arrayOf(v.key, v.kind, v.block, v.cell, v.sid, v.red, v.acked) },
+            { a -> PlanNeed(a[0] as String, a[1] as PlanNeedKind, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as Int?, a[6] as Boolean, a[7] as String, a[8] as List<String>, a[9] as String?) },
+            { v -> arrayOf(v.key, v.kind, v.block, v.cell, v.sid, v.red, v.acked, v.title, v.lines, v.pos) },
         )
     }
 }
@@ -15640,18 +15775,18 @@ data class PlanPhase(
 
 @Suppress("UNCHECKED_CAST")
 data class PlanProgress(
-    val done: Long,
-    val of: Long,
+    val done: Int,
+    val of: Int,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
         val ADAPTER: JsonAdapter<PlanProgress> = obj(
             listOf(
-            Field("done", { Lng }, optional = false, nullable = false),
-            Field("of", { Lng }, optional = false, nullable = false),
+            Field("done", { Int32 }, optional = false, nullable = false),
+            Field("of", { Int32 }, optional = false, nullable = false),
             ),
-            { a -> PlanProgress(a[0] as Long, a[1] as Long) },
+            { a -> PlanProgress(a[0] as Int, a[1] as Int) },
             { v -> arrayOf(v.done, v.of) },
         )
     }
@@ -15671,7 +15806,7 @@ data class PlanRead(
     val readAtText: String? = null,
     val seen: SeenAt? = null,
     val stale: PlanStale?,
-    val needCount: Long,
+    val needCount: Int,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -15686,13 +15821,13 @@ data class PlanRead(
             Field("slices", { arr(PlanSlice.ADAPTER) }, optional = false, nullable = false),
             Field("bySession", { dict(PlanSessionBlock.ADAPTER) }, optional = false, nullable = false),
             Field("rev", { Str }, optional = false, nullable = false),
-            Field("readAt", { Lng }, optional = false, nullable = false),
+            Field("readAt", { U64 }, optional = false, nullable = false),
             Field("readAtText", { opt(Str) }, optional = true, nullable = true),
             Field("seen", { opt(SeenAt.ADAPTER) }, optional = true, nullable = true),
             Field("stale", { opt(PlanStale.ADAPTER) }, optional = false, nullable = true),
-            Field("needCount", { Lng }, optional = false, nullable = false),
+            Field("needCount", { Int32 }, optional = false, nullable = false),
             ),
-            { a -> PlanRead(a[0] as String?, a[1] as String, a[2] as String?, a[3] as Boolean, a[4] as List<PlanDomain>, a[5] as List<PlanSlice>, a[6] as Map<String, PlanSessionBlock>, a[7] as String, a[8] as Long, a[9] as String?, a[10] as SeenAt?, a[11] as PlanStale?, a[12] as Long) },
+            { a -> PlanRead(a[0] as String?, a[1] as String, a[2] as String?, a[3] as Boolean, a[4] as List<PlanDomain>, a[5] as List<PlanSlice>, a[6] as Map<String, PlanSessionBlock>, a[7] as String, a[8] as Long, a[9] as String?, a[10] as SeenAt?, a[11] as PlanStale?, a[12] as Int) },
             { v -> arrayOf(v.pb, v.workspace, v.repo, v.auto, v.domains, v.slices, v.bySession, v.rev, v.readAt, v.readAtText, v.seen, v.stale, v.needCount) },
         )
     }
@@ -15710,7 +15845,7 @@ data class PlanReadError(
         val ADAPTER: JsonAdapter<PlanReadError> = obj(
             listOf(
             Field("file", { opt(Str) }, optional = false, nullable = true),
-            Field("line", { opt(Lng) }, optional = false, nullable = true),
+            Field("line", { opt(U64) }, optional = false, nullable = true),
             Field("message", { opt(Str) }, optional = false, nullable = true),
             ),
             { a -> PlanReadError(a[0] as String?, a[1] as Long?, a[2] as String?) },
@@ -15763,8 +15898,8 @@ data class PlanRed(
 
 @Suppress("UNCHECKED_CAST")
 data class PlanRef(
-    val start: Long,
-    val end: Long,
+    val start: Int,
+    val end: Int,
     val ids: List<String>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -15772,11 +15907,11 @@ data class PlanRef(
     companion object {
         val ADAPTER: JsonAdapter<PlanRef> = obj(
             listOf(
-            Field("start", { Lng }, optional = false, nullable = false),
-            Field("end", { Lng }, optional = false, nullable = false),
+            Field("start", { Int32 }, optional = false, nullable = false),
+            Field("end", { Int32 }, optional = false, nullable = false),
             Field("ids", { arr(Str) }, optional = false, nullable = false),
             ),
-            { a -> PlanRef(a[0] as Long, a[1] as Long, a[2] as List<String>) },
+            { a -> PlanRef(a[0] as Int, a[1] as Int, a[2] as List<String>) },
             { v -> arrayOf(v.start, v.end, v.ids) },
         )
     }
@@ -15908,7 +16043,7 @@ data class PlanReturned(
     companion object {
         val ADAPTER: JsonAdapter<PlanReturned> = obj(
             listOf(
-            Field("at", { Lng }, optional = false, nullable = false),
+            Field("at", { U64 }, optional = false, nullable = false),
             Field("atText", { opt(Str) }, optional = true, nullable = true),
             Field("to", { opt(PlanWho.ADAPTER) }, optional = false, nullable = true),
             Field("state", { PlanReturnedState.ADAPTER }, optional = false, nullable = false),
@@ -16040,7 +16175,7 @@ data class PlanSlice(
     val doneValue: String?,
     val top: List<String>,
     val progress: PlanProgress?,
-    val openCells: Long,
+    val openCells: Int,
     val blocks: List<PlanBlock>,
     val unbuiltBlocks: List<PlanUnbuilt>,
     val unowned: PlanUnowned,
@@ -16050,7 +16185,7 @@ data class PlanSlice(
     val cells: List<PlanCell>,
     val archived: List<PlanArchived>,
     val needs: List<PlanNeed>,
-    val needCount: Long,
+    val needCount: Int,
     val returned: PlanReturned?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -16071,7 +16206,7 @@ data class PlanSlice(
             Field("doneValue", { opt(Str) }, optional = false, nullable = true),
             Field("top", { arr(Str) }, optional = false, nullable = false),
             Field("progress", { opt(PlanProgress.ADAPTER) }, optional = false, nullable = true),
-            Field("openCells", { Lng }, optional = false, nullable = false),
+            Field("openCells", { Int32 }, optional = false, nullable = false),
             Field("blocks", { arr(PlanBlock.ADAPTER) }, optional = false, nullable = false),
             Field("unbuiltBlocks", { arr(PlanUnbuilt.ADAPTER) }, optional = false, nullable = false),
             Field("unowned", { PlanUnowned.ADAPTER }, optional = false, nullable = false),
@@ -16081,10 +16216,10 @@ data class PlanSlice(
             Field("cells", { arr(PlanCell.ADAPTER) }, optional = false, nullable = false),
             Field("archived", { arr(PlanArchived.ADAPTER) }, optional = false, nullable = false),
             Field("needs", { arr(PlanNeed.ADAPTER) }, optional = false, nullable = false),
-            Field("needCount", { Lng }, optional = false, nullable = false),
+            Field("needCount", { Int32 }, optional = false, nullable = false),
             Field("returned", { opt(PlanReturned.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> PlanSlice(a[0] as String, a[1] as String?, a[2] as String?, a[3] as Boolean, a[4] as Boolean, a[5] as String?, a[6] as PlanStale?, a[7] as Boolean, a[8] as List<PlanKind>, a[9] as List<PlanPhase>, a[10] as String?, a[11] as List<String>, a[12] as PlanProgress?, a[13] as Long, a[14] as List<PlanBlock>, a[15] as List<PlanUnbuilt>, a[16] as PlanUnowned, a[17] as List<PlanPendingSet>, a[18] as PlanCheck, a[19] as Map<String, String>, a[20] as List<PlanCell>, a[21] as List<PlanArchived>, a[22] as List<PlanNeed>, a[23] as Long, a[24] as PlanReturned?) },
+            { a -> PlanSlice(a[0] as String, a[1] as String?, a[2] as String?, a[3] as Boolean, a[4] as Boolean, a[5] as String?, a[6] as PlanStale?, a[7] as Boolean, a[8] as List<PlanKind>, a[9] as List<PlanPhase>, a[10] as String?, a[11] as List<String>, a[12] as PlanProgress?, a[13] as Int, a[14] as List<PlanBlock>, a[15] as List<PlanUnbuilt>, a[16] as PlanUnowned, a[17] as List<PlanPendingSet>, a[18] as PlanCheck, a[19] as Map<String, String>, a[20] as List<PlanCell>, a[21] as List<PlanArchived>, a[22] as List<PlanNeed>, a[23] as Int, a[24] as PlanReturned?) },
             { v -> arrayOf(v.name, v.domain, v.path, v.current, v.docsOnly, v.error, v.stale, v.bare, v.kinds, v.phases, v.doneValue, v.top, v.progress, v.openCells, v.blocks, v.unbuiltBlocks, v.unowned, v.pendingSets, v.check, v.labels, v.cells, v.archived, v.needs, v.needCount, v.returned) },
         )
     }
@@ -16104,7 +16239,7 @@ data class PlanStale(
             listOf(
             Field("said", { opt(Str) }, optional = false, nullable = true),
             Field("raw", { opt(Str) }, optional = false, nullable = true),
-            Field("since", { Lng }, optional = false, nullable = false),
+            Field("since", { U64 }, optional = false, nullable = false),
             Field("sinceText", { opt(Str) }, optional = true, nullable = true),
             ),
             { a -> PlanStale(a[0] as String?, a[1] as String?, a[2] as Long, a[3] as String?) },
@@ -16116,7 +16251,7 @@ data class PlanStale(
 @Suppress("UNCHECKED_CAST")
 data class PlanState(
     val value: String,
-    val count: Long,
+    val count: Int,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -16124,9 +16259,9 @@ data class PlanState(
         val ADAPTER: JsonAdapter<PlanState> = obj(
             listOf(
             Field("value", { Str }, optional = false, nullable = false),
-            Field("count", { Lng }, optional = false, nullable = false),
+            Field("count", { Int32 }, optional = false, nullable = false),
             ),
-            { a -> PlanState(a[0] as String, a[1] as Long) },
+            { a -> PlanState(a[0] as String, a[1] as Int) },
             { v -> arrayOf(v.value, v.count) },
         )
     }
@@ -16270,8 +16405,8 @@ sealed interface PlanWhyCode {
     }
     @Suppress("UNCHECKED_CAST")
     data class Inside(
-        val done: Long,
-        val of: Long,
+        val done: Int,
+        val of: Int,
     ) : PlanWhyCode, Ordered {
         override val kind: String get() = "inside"
         override var wireOrder: IntArray? = null
@@ -16298,10 +16433,10 @@ sealed interface PlanWhyCode {
                 Variant("inside", PlanWhyCode.Inside::class.java, obj(
                         listOf(
                         Field("kind", { tag("inside") }, optional = false, nullable = false),
-                        Field("done", { Lng }, optional = false, nullable = false),
-                        Field("of", { Lng }, optional = false, nullable = false),
+                        Field("done", { Int32 }, optional = false, nullable = false),
+                        Field("of", { Int32 }, optional = false, nullable = false),
                         ),
-                        { a -> PlanWhyCode.Inside(a[1] as Long, a[2] as Long) },
+                        { a -> PlanWhyCode.Inside(a[1] as Int, a[2] as Int) },
                         { v -> arrayOf("inside", v.done, v.of) },
                     )),
                 Variant("upper", PlanWhyCode.Upper::class.java, obj(
@@ -18894,6 +19029,27 @@ data class RotBoard(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class RotCan(
+    val reorder: Boolean,
+    val off: Boolean,
+    val edit: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<RotCan> = obj(
+            listOf(
+            Field("reorder", { Bool }, optional = false, nullable = false),
+            Field("off", { Bool }, optional = false, nullable = false),
+            Field("edit", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> RotCan(a[0] as Boolean, a[1] as Boolean, a[2] as Boolean) },
+            { v -> arrayOf(v.reorder, v.off, v.edit) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class RotCell(
     val key: String,
     val kind: RotFormKind,
@@ -20363,6 +20519,7 @@ data class RotationViewReply(
     val timeline: RotTryTimeline? = null,
     val log: List<RotLogRow>,
     val hints: List<RotNote>,
+    val can: RotCan? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -20385,9 +20542,10 @@ data class RotationViewReply(
             Field("timeline", { opt(RotTryTimeline.ADAPTER) }, optional = true, nullable = true),
             Field("log", { arr(RotLogRow.ADAPTER) }, optional = false, nullable = false),
             Field("hints", { arr(RotNote.ADAPTER) }, optional = false, nullable = false),
+            Field("can", { opt(RotCan.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> RotationViewReply(a[0] as Long, a[1] as String, a[2] as String?, a[3] as RotStrategyItem?, a[4] as RotBoard, a[5] as String, a[6] as String, a[7] as List<RotLine>, a[8] as Boolean, a[9] as List<String>, a[10] as List<RotAccount>, a[11] as Long, a[12] as RotTryDecision?, a[13] as RotTryTimeline?, a[14] as List<RotLogRow>, a[15] as List<RotNote>) },
-            { v -> arrayOf(v.now, v.nowText, v.title, v.strategy, v.board, v.start, v.current, v.lineup, v.manual, v.off, v.accounts, v.listed, v.decision, v.timeline, v.log, v.hints) },
+            { a -> RotationViewReply(a[0] as Long, a[1] as String, a[2] as String?, a[3] as RotStrategyItem?, a[4] as RotBoard, a[5] as String, a[6] as String, a[7] as List<RotLine>, a[8] as Boolean, a[9] as List<String>, a[10] as List<RotAccount>, a[11] as Long, a[12] as RotTryDecision?, a[13] as RotTryTimeline?, a[14] as List<RotLogRow>, a[15] as List<RotNote>, a[16] as RotCan?) },
+            { v -> arrayOf(v.now, v.nowText, v.title, v.strategy, v.board, v.start, v.current, v.lineup, v.manual, v.off, v.accounts, v.listed, v.decision, v.timeline, v.log, v.hints, v.can) },
         )
     }
 }
@@ -21033,7 +21191,7 @@ data class SeenAt(
     companion object {
         val ADAPTER: JsonAdapter<SeenAt> = obj(
             listOf(
-            Field("atMs", { Lng }, optional = false, nullable = false),
+            Field("atMs", { U64 }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
             ),
             { a -> SeenAt(a[0] as Long, a[1] as String) },
@@ -23518,7 +23676,7 @@ sealed interface StepBody {
 
     @Suppress("UNCHECKED_CAST")
     data class Changes(
-        val changes: List<TextChange>,
+        val diff: LineDiff,
     ) : StepBody, Ordered {
         override val kind: String get() = "changes"
         override var wireOrder: IntArray? = null
@@ -23539,10 +23697,10 @@ sealed interface StepBody {
                 Variant("changes", StepBody.Changes::class.java, obj(
                         listOf(
                         Field("kind", { tag("changes") }, optional = false, nullable = false),
-                        Field("changes", { arr(TextChange.ADAPTER) }, optional = false, nullable = false),
+                        Field("diff", { LineDiff.ADAPTER }, optional = false, nullable = false),
                         ),
-                        { a -> StepBody.Changes(a[1] as List<TextChange>) },
-                        { v -> arrayOf("changes", v.changes) },
+                        { a -> StepBody.Changes(a[1] as LineDiff) },
+                        { v -> arrayOf("changes", v.diff) },
                     )),
                 Variant("command", StepBody.Command::class.java, obj(
                         listOf(
@@ -23568,8 +23726,7 @@ data class StepResult(
     val answer: Answer? = null,
     val exitCode: Int? = null,
     val file: String? = null,
-    val patch: List<PatchHunk>? = null,
-    val patchTruncated: Boolean? = null,
+    val patch: LineDiff? = null,
     val text: String,
     val timed: String? = null,
     val preview: String? = null,
@@ -23590,16 +23747,15 @@ data class StepResult(
             Field("answer", { opt(Answer.ADAPTER) }, optional = true, nullable = true),
             Field("exitCode", { opt(Int32) }, optional = true, nullable = true),
             Field("file", { opt(Str) }, optional = true, nullable = true),
-            Field("patch", { opt(arr(PatchHunk.ADAPTER)) }, optional = true, nullable = true),
-            Field("patchTruncated", { opt(Bool) }, optional = true, nullable = true),
+            Field("patch", { opt(LineDiff.ADAPTER) }, optional = true, nullable = true),
             Field("text", { Str }, optional = false, nullable = false),
             Field("timed", { opt(Str) }, optional = true, nullable = true),
             Field("preview", { opt(Str) }, optional = true, nullable = true),
             Field("chars", { opt(Int32) }, optional = true, nullable = true),
             Field("kind", { opt(ResultKind.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> StepResult(a[0] as Boolean, a[1] as Boolean?, a[2] as Int?, a[3] as Int?, a[4] as Int?, a[5] as Int?, a[6] as Answer?, a[7] as Int?, a[8] as String?, a[9] as List<PatchHunk>?, a[10] as Boolean?, a[11] as String, a[12] as String?, a[13] as String?, a[14] as Int?, a[15] as ResultKind?) },
-            { v -> arrayOf(v.ok, v.rejected, v.lines, v.added, v.removed, v.files, v.answer, v.exitCode, v.file, v.patch, v.patchTruncated, v.text, v.timed, v.preview, v.chars, v.kind) },
+            { a -> StepResult(a[0] as Boolean, a[1] as Boolean?, a[2] as Int?, a[3] as Int?, a[4] as Int?, a[5] as Int?, a[6] as Answer?, a[7] as Int?, a[8] as String?, a[9] as LineDiff?, a[10] as String, a[11] as String?, a[12] as String?, a[13] as Int?, a[14] as ResultKind?) },
+            { v -> arrayOf(v.ok, v.rejected, v.lines, v.added, v.removed, v.files, v.answer, v.exitCode, v.file, v.patch, v.text, v.timed, v.preview, v.chars, v.kind) },
         )
     }
 }
@@ -23728,6 +23884,18 @@ sealed interface StreamEv {
                     )),
                 ),
             )
+    }
+}
+
+enum class StripTone(val wire: String) {
+    BUSY("busy"),
+    OFFLINE("offline"),
+    WARN("warn"),
+    FAULT("fault"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<StripTone> = enumOf(entries) { it.wire }
     }
 }
 

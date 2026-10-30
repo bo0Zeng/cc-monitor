@@ -53,7 +53,6 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.diff.structuredPatchToDiff
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.claude.model.SaidImage
@@ -650,8 +649,8 @@ private fun ToolCallCard(
             unit.isError -> MaterialTheme.colorScheme.error
             else -> tokens.success
         }
-    // 核心给的 patch（真行号、带上下文）就画 diff；没给就不画，手机不自己从入参算 diff。
-    val patchDiff = remember(unit) { unit.structuredPatch?.takeIf { it.isNotEmpty() }?.let { structuredPatchToDiff(it) } }
+    // 核心算好的行差（结果那一份，没有就调用那一份）有行就画；手机不判行、不数数。
+    val patchDiff = unit.diff?.takeIf { it.rows.isNotEmpty() }
     val summary = unit.summary.replace("\n", " ")
 
     Column(
@@ -702,7 +701,7 @@ private fun ToolCallCard(
                 ),
             ) {
                 if (patchDiff != null) {
-                    // structuredPatch 保真 diff（真行号加上下文）。
+                    // 行差（结果那一份带真行号）。
                     unit.patchFilePath?.let { path ->
                         Text(path, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = tokens.spacing.xs))
                     }

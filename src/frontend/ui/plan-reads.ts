@@ -47,7 +47,7 @@ import type { PlanWhyCode } from "./generated/PlanWhyCode";
 /** 起一次 pb（研究盘 252 格 1.1 秒；后端给 pb 的期限 20 秒）＋ 回程；远端再加一段。 */
 const READ_BUDGET_MS = 25_000;
 
-// 线上形状由后端 `plan/wire.rs` 经 ts-rs 生成（不手写），原样交给画的那几处。
+// 线上形状由契约 `cmd_wire::plan` 经 ts-rs 生成（不手写），原样交给画的那几处。
 export type {
   PlanAckReply,
   PlanAsk,

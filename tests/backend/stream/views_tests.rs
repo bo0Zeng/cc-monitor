@@ -213,7 +213,7 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
                 text: "x".into(),
                 pasted: Vec::new(),
             },
-            blocks: vec![Block::Text { text: "x".into() }],
+            blocks: vec![Block::text("x".into())],
             results: Default::default(),
             cwd: None,
             attachments: Vec::new(),

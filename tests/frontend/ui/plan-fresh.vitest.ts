@@ -8,7 +8,7 @@ vi.mock("../../../src/frontend/ui/copy-table", () => ({
   copyText: (k: string, a?: Record<string, unknown>) => (a ? `${k}(${Object.entries(a).map(([x, y]) => `${x}=${String(y)}`).join(",")})` : k),
 }));
 
-import { isFresh, statusLook } from "../../../src/frontend/ui/views/plan-model.ts";
+import { isFresh } from "../../../src/frontend/ui/views/plan-model.ts";
 import { freshPane } from "../../../src/frontend/ui/views/plan-bits.ts";
 import { handoffBox } from "../../../src/frontend/ui/views/plan-cell.ts";
 import type { PlanSlice } from "../../../src/frontend/ui/plan-reads.ts";
@@ -57,14 +57,5 @@ describe("交接说明给不了", () => {
     const el = handoffBox({ handoff: null, handoffError: "project 不在当前仓库：先请人敲 `pb repo invoice`" });
     expect(el.textContent).toContain("plan.handoff.none(reason=project 不在当前仓库：先请人敲 `pb repo invoice`)");
     expect(el.querySelector("button")).toBeNull();
-  });
-});
-
-describe("状态画哪一种", () => {
-  it("待定没人定 ⇒ undecided；类不许记收的值 ⇒ none；其余照码", () => {
-    expect(statusLook({ statusCode: null, undecided: true })).toBe("undecided");
-    expect(statusLook({ statusCode: null, undecided: false })).toBe("none");
-    expect(statusLook({ statusCode: "done", undecided: false })).toBe("done");
-    expect(statusLook({ statusCode: "open", undecided: false })).toBe("open");
   });
 });

@@ -5,9 +5,9 @@
 //! - `plan-unack {workspace, slice, key}`：撤掉（8 秒撤销那一下）；同上推一帧。
 
 use crate::plan::needs;
-use crate::plan::wire;
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command, Cx, Handle};
+use cmd_wire::plan as wire;
 use copy_core::copy_text;
 
 type Answer = Result<wire::PlanAckReply, Fail>;

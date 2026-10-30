@@ -65,6 +65,12 @@
         {
           "frozen": true,
           "kind": "value",
+          "path": "{t=reply}.blocks[type=text].bytes",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
           "path": "{t=reply}.blocks[type=text].text",
           "type": "string"
         },
@@ -197,14 +203,44 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=reply}.steps.*.body.changes[].new",
+          "path": "{t=reply}.steps.*.body.diff.added",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.body.diff.removed",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.body.diff.rows[].kind",
+          "type": "enum"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.body.diff.rows[].text",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=reply}.steps.*.body.changes[].old",
+          "path": "{t=reply}.steps.*.body.diff.shown",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=reply}.steps.*.body.diff.stat",
           "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.body.diff.truncated",
+          "type": "bool"
         },
         {
           "frozen": true,
@@ -275,6 +311,12 @@
         {
           "frozen": true,
           "kind": "value",
+          "path": "{t=said}.blocks[].bytes",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
           "path": "{t=said}.blocks[].type",
           "type": "enum"
         },
@@ -282,12 +324,6 @@
           "frozen": true,
           "kind": "value",
           "path": "{t=said}.blocks[type=image].at",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=said}.blocks[type=image].bytes",
           "type": "number"
         },
         {
@@ -311,6 +347,12 @@
         {
           "frozen": true,
           "kind": "value",
+          "path": "{t=said}.blocks[type=tool_result].content[].bytes",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
           "path": "{t=said}.blocks[type=tool_result].content[].type",
           "type": "enum"
         },
@@ -318,12 +360,6 @@
           "frozen": true,
           "kind": "value",
           "path": "{t=said}.blocks[type=tool_result].content[type=image].at",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=said}.blocks[type=tool_result].content[type=image].bytes",
           "type": "number"
         },
         {
@@ -425,38 +461,56 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=said}.results.*.patchTruncated",
-          "type": "bool"
+          "path": "{t=said}.results.*.patch.added",
+          "type": "number"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=said}.results.*.patch[].lines[]",
+          "path": "{t=said}.results.*.patch.removed",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.results.*.patch.rows[].kind",
+          "type": "enum"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.results.*.patch.rows[].newNo",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.results.*.patch.rows[].oldNo",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=said}.results.*.patch.rows[].text",
           "type": "string"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=said}.results.*.patch[].newLines",
+          "path": "{t=said}.results.*.patch.shown",
           "type": "number"
         },
         {
           "frozen": true,
-          "kind": "value",
-          "path": "{t=said}.results.*.patch[].newStart",
-          "type": "number"
+          "kind": "text",
+          "path": "{t=said}.results.*.patch.stat",
+          "type": "string"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=said}.results.*.patch[].oldLines",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=said}.results.*.patch[].oldStart",
-          "type": "number"
+          "path": "{t=said}.results.*.patch.truncated",
+          "type": "bool"
         },
         {
           "frozen": true,

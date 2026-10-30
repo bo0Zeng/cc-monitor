@@ -11,6 +11,6 @@ export type SeenAt = {
  */
 atMs: number, 
 /**
- * 「采样于 12:03」（`beLastSeen.said.sampled`，时刻经 [`crate::common::time::fmt_at`]）。
+ * 「采样于 12:03」（后端照文案表与那一台的钟写）。
  */
 said: Words, };

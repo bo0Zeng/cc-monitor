@@ -4,7 +4,6 @@
       "blocks[type=tool_use].input",
       "blocks[type=tool_result].content",
       "results.*.patch",
-      "results.*.patchTruncated",
       "steps.*.body"
     ]
   }
