@@ -1464,7 +1464,11 @@ fn w4_shell_sleep_is_told_apart() {
 #[test]
 fn w4_the_population_is_what_the_gate_runs() {
     assert_eq!(lang_of("tests/frontend/ui/a.vitest.ts"), Some("ts"));
-    assert_eq!(lang_of("tests/frontend/ui/cards/diff.test.ts"), None, "门禁只跑 `*.vitest.ts`");
+    assert_eq!(
+        lang_of("tests/frontend/ui/cards/diff.test.ts"),
+        None,
+        "门禁只跑 `*.vitest.ts`"
+    );
     assert_eq!(lang_of("vitest.config.ts"), Some("ts"));
     assert_eq!(lang_of("tests/backend/x_tests.rs"), Some("rs"));
     assert_eq!(lang_of("src/backend/main.rs"), Some("rs"));

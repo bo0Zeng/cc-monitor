@@ -539,7 +539,10 @@ fn is_ts_test_name(rel: &str) -> bool {
 #[test]
 fn ts_tests_are_only_the_vitest_suffix() {
     assert!(is_ts_test_name("tests/frontend/ui/a.vitest.ts"));
-    assert!(!is_ts_test_name("tests/frontend/ui/a.test.ts"), "跑者只认 `*.vitest.ts`");
+    assert!(
+        !is_ts_test_name("tests/frontend/ui/a.test.ts"),
+        "跑者只认 `*.vitest.ts`"
+    );
 }
 
 // ───────────────────────────── 词法：剥注释 ＋ 抹字符串 ─────────────────────────────
