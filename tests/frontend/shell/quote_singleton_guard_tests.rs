@@ -35,7 +35,7 @@ fn repo_root() -> PathBuf {
     guard_core::addr::repo_root()
 }
 
-/// 扫 monitor + backend + 共享 crate 的**所有** `.rs`（`target/` 与 vendor 除外）。
+/// 扫 monitor + backend + 共享 crate 的**所有** `.rs`（跳过哪些目录照 `guard_core::files_by_extension`）。
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     // monitor 那棵根换成它的全部人群根（`guard_core::addr::shell_population_roots`：壳 `src/` ＋ manifest 明写的兄弟包，
@@ -44,26 +44,15 @@ fn rust_sources(root: &Path) -> Vec<PathBuf> {
         .into_iter()
         .chain(["src/common", "src/backend"].iter().map(|b| root.join(b)))
     {
-        walk(&base, &mut out);
+        out.extend(
+            guard_core::files_by_extension(&base, "rs")
+                .into_iter()
+                .map(|r| base.join(r)),
+        );
     }
     out.sort();
     out.dedup();
     out
-}
-
-fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = fs::read_dir(dir) else { return };
-    for e in rd.flatten() {
-        let p = e.path();
-        if p.is_dir() {
-            if p.file_name().is_some_and(|n| n == "target") {
-                continue;
-            }
-            walk(&p, out);
-        } else if p.extension().is_some_and(|x| x == "rs") {
-            out.push(p);
-        }
-    }
 }
 
 /// ★ 抽取器自检：扫不到文件时，下面那条会零命中零失败地绿。
