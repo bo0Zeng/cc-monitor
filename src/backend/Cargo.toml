@@ -339,6 +339,12 @@ opt-level = 3
 [profile.dev.package.ahash]
 opt-level = 3
 
+# ── 测试档的调试信息只留行号表：缺省的全量 DWARF 让 lib 测试二进制一份近 1 GB，每次改一行都要重链这么大。
+#    panic 回溯照旧有文件与行号；发布档（release · perf · mobile）不继承 dev，不受影响；mobile-dev 自己写了 debug = false。
+#    判据：`build_features_tests.rs` 的 `the_test_build_keeps_only_line_tables_for_debug_info`。──
+[profile.dev]
+debug = "line-tables-only"
+
 # ── 手机那份 `.so` 的两份 profile（Gradle 的 `:core-rs` 按构建类型挑一份；后端自己的 `release` 一格不动）──
 # release 那一份：体积优先（opt-level z · 胖 LTO · 一个编译单元 · 去符号）；`panic = "unwind"` 是承重的 ——
 #   嵌在 App 进程里，panic 要在 JNI 边界上接住（`catch_unwind`），abort 会带走整个 App。

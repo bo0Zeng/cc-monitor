@@ -305,6 +305,11 @@ opt-level = 3
 [profile.dev.package.egui_extras]
 opt-level = 3
 
+# 测试档的调试信息只留行号表：缺省的全量 DWARF 让测试二进制一份 0.75 GB；panic 回溯照旧有文件与行号，
+#   发布档不继承 dev。判据：后端 `build_features_tests.rs` 的 `the_test_build_keeps_only_line_tables_for_debug_info`。
+[profile.dev]
+debug = "line-tables-only"
+
 [profile.release]
 opt-level = "z"
 lto = true
