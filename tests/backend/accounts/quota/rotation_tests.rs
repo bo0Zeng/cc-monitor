@@ -1,8 +1,8 @@
 //! `rotation.json` 第三版的存取：读不懂（连比这一版新的）不覆盖、写一律拒 · 第一版 · 第二版当没有 · 新会话 · 清旧会话。临时家目录，不碰真文件。
 
 use super::*;
-use serde_json::{json, Value};
 use crate::accounts::quota::rules::book;
+use serde_json::{json, Value};
 
 struct Home(PathBuf);
 
@@ -70,8 +70,18 @@ fn a_newer_book_is_unreadable_and_left_as_is() {
     assert!(matches!(read_at(&home.file()), Disk::Unreadable(_)));
     let store = home.store();
     assert!(store.unreadable().is_some());
-    assert!(face_change(&store, &home.own(), |b| b.saw("s", "claude-code", "a", 1, || None)).is_err());
-    assert_eq!(std::fs::read_to_string(home.file()).expect("r"), v.to_string());
+    assert!(face_change(&store, &home.own(), |b| b.saw(
+        "s",
+        "claude-code",
+        "a",
+        1,
+        || None
+    ))
+    .is_err());
+    assert_eq!(
+        std::fs::read_to_string(home.file()).expect("r"),
+        v.to_string()
+    );
 }
 
 /// ★ 第一版（没有 `version`）· 第二版不升级：当没有；写一回 ⇒ 盖成这一版，旧原文照字节留成 `rotation.json.v<N>`。
@@ -86,12 +96,17 @@ fn an_old_book_is_absent_and_kept_beside_on_write() {
         assert!(matches!(read_at(&home.file()), Disk::Absent));
         let store = home.store();
         assert!(store.now().sessions.is_empty() && store.unreadable().is_none());
-        face_change(&store, &home.own(), |b| b.saw("s", "claude-code", "a", 1, || None))
-            .expect("盖成这一版");
+        face_change(&store, &home.own(), |b| {
+            b.saw("s", "claude-code", "a", 1, || None)
+        })
+        .expect("盖成这一版");
         let kept = home.0.join(format!("{FILE_NAME}.v{n}"));
-        assert_eq!(std::fs::read_to_string(kept).expect("留了旧原文"), v.to_string());
-        let now: Value = serde_json::from_str(&std::fs::read_to_string(home.file()).expect("r"))
-            .expect("json");
+        assert_eq!(
+            std::fs::read_to_string(kept).expect("留了旧原文"),
+            v.to_string()
+        );
+        let now: Value =
+            serde_json::from_str(&std::fs::read_to_string(home.file()).expect("r")).expect("json");
         assert_eq!(now["version"], 3);
     }
 }
@@ -100,13 +115,20 @@ fn an_old_book_is_absent_and_kept_beside_on_write() {
 #[test]
 fn for_new_lives_in_the_book_and_round_trips() {
     let home = Home::new("fornew");
-    std::fs::write(home.file(), json!({"version": 3, "sessions": {}}).to_string()).expect("w");
+    std::fs::write(
+        home.file(),
+        json!({"version": 3, "sessions": {}}).to_string(),
+    )
+    .expect("w");
     let store = home.store();
     assert_eq!(store.now().for_new, "");
     face_change(&store, &home.own(), |b| b.for_new = "mine".into()).expect("写");
     let raw: Value =
         serde_json::from_str(&std::fs::read_to_string(home.file()).expect("r")).expect("json");
-    assert_eq!((raw["version"].clone(), raw["forNew"].clone()), (json!(3), json!("mine")));
+    assert_eq!(
+        (raw["version"].clone(), raw["forNew"].clone()),
+        (json!(3), json!("mine"))
+    );
     let Disk::Now(b) = read_at(&home.file()) else {
         panic!("读不回")
     };

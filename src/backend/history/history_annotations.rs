@@ -361,7 +361,13 @@ fn write_at(
     held: &OwnLock,
     raw: &Value,
 ) -> Result<(), crate::common::said::Said> {
-    FILE.write_named(own, dir, creds_core::store::HISTORY_METADATA_FILE, held, raw)
+    FILE.write_named(
+        own,
+        dir,
+        creds_core::store::HISTORY_METADATA_FILE,
+        held,
+        raw,
+    )
 }
 
 /// 那份文件所在的目录（数据目录）与它本身。推不出家 ⇒ `no_annotations`。

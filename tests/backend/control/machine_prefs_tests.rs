@@ -120,7 +120,10 @@ fn a_first_version_prefs_file_reads_as_the_second_and_is_kept_beside_on_write() 
     let r = answer_read_in(Some(&home));
     assert_eq!(r.state, FileState::Ok, "{:?}", r.reason);
     assert_eq!(r.prefs.resume_where, ResumeWhere::Tmux);
-    assert_eq!(r.prefs.launchers.get("claude").map(String::as_str), Some("cc"));
+    assert_eq!(
+        r.prefs.launchers.get("claude").map(String::as_str),
+        Some("cc")
+    );
     assert_eq!(r.prefs.models.get("work").map(String::as_str), Some("opus"));
     assert_eq!(r.prefs.child_tab, cmd_wire::session::Tab::Show);
     set(&home, serde_json::json!({"models": {"b": "sonnet"}})).unwrap();
@@ -136,7 +139,11 @@ fn a_first_version_prefs_file_reads_as_the_second_and_is_kept_beside_on_write() 
     );
     for body in [r#"{"version":1,"resumeInTmux":false}"#, r#"{"version":1}"#] {
         std::fs::write(&path, body).unwrap();
-        assert_eq!(read_at(&path).prefs().resume_where, ResumeWhere::Managed, "{body}");
+        assert_eq!(
+            read_at(&path).prefs().resume_where,
+            ResumeWhere::Managed,
+            "{body}"
+        );
     }
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -148,10 +155,7 @@ fn the_two_tab_rules_default_child_hidden_bg_shown_and_patch_one_at_a_time() {
     let d = Prefs::default();
     assert_eq!((d.child_tab, d.bg_tab), (Tab::Hide, Tab::Show));
     let old: Prefs = serde_json::from_value(serde_json::json!({"resumeWhere": "tmux"})).unwrap();
-    assert_eq!(
-        (old.child_tab, old.bg_tab),
-        (Tab::Hide, Tab::Show)
-    );
+    assert_eq!((old.child_tab, old.bg_tab), (Tab::Hide, Tab::Show));
     let set: PrefsSet = serde_json::from_value(serde_json::json!({"bgTab": "hide"})).unwrap();
     let p = patched(d.clone(), &set);
     assert_eq!((p.child_tab, p.bg_tab), (Tab::Hide, Tab::Hide));

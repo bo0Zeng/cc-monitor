@@ -69,12 +69,12 @@ fn s5_the_sentence_carries_the_reason_word_and_the_raw_words_go_to_the_detail() 
 }
 
 // 读三态那几条不看版本：用不带版本的两行。
-const STATE: Doc<serde_json::Value> = Doc::of(&relay_route_core::Decl::<
-    relay_route_core::State,
->::foreign(".cc-monitor/x.json", 16));
-const CACHE: Doc<serde_json::Value> = Doc::of(&relay_route_core::Decl::<
-    relay_route_core::Cache,
->::foreign(".cc-monitor/x.json", 16));
+const STATE: Doc<serde_json::Value> = Doc::of(
+    &relay_route_core::Decl::<relay_route_core::State>::foreign(".cc-monitor/x.json", 16),
+);
+const CACHE: Doc<serde_json::Value> = Doc::of(
+    &relay_route_core::Decl::<relay_route_core::Cache>::foreign(".cc-monitor/x.json", 16),
+);
 
 fn stream_json(r: &mut dyn std::io::Read) -> Result<serde_json::Value, Said> {
     serde_json::from_reader(r).map_err(|e| Said::with_raw("bad".to_string(), e))

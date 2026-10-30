@@ -586,10 +586,7 @@ fn a_newer_file_is_left_as_is_and_an_older_one_is_kept_beside() {
     let p = d.join("history-metadata.json");
     let newer = r#"{"version": 2, "entries": {}}"#;
     std::fs::write(&p, newer).unwrap();
-    assert!(
-        matches!(load_at(&p), Loaded::Unreadable(_)),
-        "新版读成了表"
-    );
+    assert!(matches!(load_at(&p), Loaded::Unreadable(_)), "新版读成了表");
     let e = answer_annotate_at(
         &own_of(&p),
         &json!({"sid": "s", "patch": {"starred": true}}),
