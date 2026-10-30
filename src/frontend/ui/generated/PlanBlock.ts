@@ -37,6 +37,6 @@ handoffError: string | null,
  */
 takeover: PlanTakeover, 
 /**
- * 接手的会话此刻在哪几组（帧面答之前现标，见 [`super::groups`]；pb 不知道有组）。
+ * 接手的会话此刻在哪几组（帧面答之前现标，见 后端 `plan::groups`；pb 不知道有组）。
  */
 groups: PlanBlockGroups, };

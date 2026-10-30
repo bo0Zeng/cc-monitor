@@ -438,6 +438,71 @@ fn kinds_and_phases_take_the_shape_six_keys() {
     }
 }
 
+/// 每格带画哪一种（`look`）与右端那一句（`end`：状态那一行 ＋ 原因短词，用分隔连好）：两端照摆，不另判。
+#[test]
+fn every_cell_carries_its_look_and_end_line() {
+    let m = made();
+    let sep = copy_core::copy_text("kit.text.sep", &[]);
+    let short = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
+    assert_eq!(cell(&m.doc, "A1-1")["look"], "done");
+    assert_eq!(cell(&m.doc, "A1-1")["end"], "已签收 2");
+    assert_eq!(cell(&m.doc, "A1-2")["look"], "open");
+    assert_eq!(
+        cell(&m.doc, "A1-2")["end"],
+        short("plan.whyShort.nosign", &[])
+    );
+    assert_eq!(
+        cell(&m.doc, "A5")["look"],
+        "undecided",
+        "待定没人定另画一种"
+    );
+    assert_eq!(
+        cell(&m.doc, "A6")["look"],
+        "none",
+        "类不许记收的值 ⇒ 不算活"
+    );
+    assert_eq!(cell(&m.doc, "A1-3")["look"], "none");
+    let mut d = dump("/w");
+    node_mut(&mut d, "A1")["state"] = json!([{"value": "decided", "count": 1}]);
+    assert_eq!(
+        cell(&make(&d, &who).doc, "A1")["end"],
+        format!(
+            "decided{sep}{}",
+            short("plan.whyShort.inside", &[("done", "1"), ("of", "2")])
+        ),
+        "状态那一行与原因都有 ⇒ 用分隔连"
+    );
+    assert_eq!(cell_in(&m.doc, 1, "B1-1")["end"], "支持");
+}
+
+/// 状态那一节什么都没有时那一句（`quiet`）：算活、底下有格 ⇒ 状态跟着底下走；别的 ⇒ 没记状态。
+/// 记着值 · 有指着它没执行的 sets ⇒ 不出（那一节有东西可摆）。
+#[test]
+fn a_cell_with_nothing_in_its_state_says_why() {
+    let m = made();
+    let t = |k: &str| copy_core::copy_text(k, &[]);
+    assert_eq!(cell(&m.doc, "A1")["quiet"], t("plan.state.inner"));
+    assert_eq!(
+        cell(&m.doc, "A3")["quiet"],
+        t("plan.state.none"),
+        "不算活的"
+    );
+    assert_eq!(cell(&m.doc, "A1-1")["quiet"], Value::Null, "记着值");
+    assert_eq!(cell(&m.doc, "A1-2")["stateLine"], Value::Null);
+    assert_eq!(
+        cell(&m.doc, "A1-2")["quiet"],
+        Value::Null,
+        "有指着它没执行的 sets"
+    );
+    // 同一格把那一条 sets 拿掉 ⇒ 没记状态。
+    let mut d = dump("/w");
+    d["repos"][0]["pending_sets"] = json!([]);
+    assert_eq!(
+        cell(&make(&d, &who).doc, "A1-2")["quiet"],
+        t("plan.state.none")
+    );
+}
+
 /// covers：写的照给，coveredBy 是 pb 算的（只留图上的格）。
 #[test]
 fn every_cell_carries_its_covers() {
@@ -533,13 +598,13 @@ fn time_fields_get_their_text_beside_them_and_cell_ids_do_not() {
     let now = 1_767_323_400_000_i64; // 2026-01-02T03:10:00Z
     let ms = |d: i64| u64::try_from(now - d).unwrap();
     let mut r = super::make(&dump("/w"), &who, "r0".into(), ms(60_000));
-    r.stale = Some(crate::plan::wire::PlanStale {
+    r.stale = Some(cmd_wire::plan::PlanStale {
         said: Some("x".into()),
         raw: None,
         since: ms(86_400_000),
         since_text: None,
     });
-    r.slices[0].cells[1].returned = Some(crate::plan::wire::PlanReturned {
+    r.slices[0].cells[1].returned = Some(cmd_wire::plan::PlanReturned {
         at: ms(3_600_000),
         at_text: None,
         to: None,
