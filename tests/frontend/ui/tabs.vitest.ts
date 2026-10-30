@@ -169,6 +169,7 @@ import {
   withHistoryReads,
   withSessionReads,
   recordReadCalls,
+  recordReadOf,
 } from "../../test-support/chan-fake";
 import type { SessionFacts, UsageFact } from "../../../src/frontend/ui/session-reads";
 import { failToast, noteMessage, silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
@@ -6194,14 +6195,19 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     expect(turnsAsks(), "补上的那段落了以后没再要划段").toBeGreaterThan(live);
   });
 
-  it("缺得多 ⇒ tab 整份重来，只取上流点之下那一截尾巴、取到末尾（重来时丢掉的实时行也在里面）", async () => {
+  it("缺得多 ⇒ tab 整份重来，只取上流点之下那一截尾巴：先取视口那一截到末尾（重来时丢掉的实时行也在里面），再取更早的那一截", async () => {
     answerLines();
     for (let s = 0; s < 10; s++) tm.onLine(line("wbig", s));
     tm.onLine(line("wbig", 2000));
     const before = home(tm).store.tabs.get("wbig")!;
     tm.onSessionWatch(LOCAL_ORIGIN, { sid: "wbig", path: "/p/wbig.jsonl", seq: 2000 });
-    await settle();
-    expect(lineReads()).toEqual([{ from: 1400, until: undefined }]);
+    for (let k = 0; k < 5; k++) await settle();
+    const reads = lineReads();
+    expect(reads, "先取视口那一截、再取更早那一截，两截接得上、合起来正好是上流点之下 600 行").toEqual([
+      { from: reads[0]!.from, until: undefined },
+      { from: 1400, until: reads[0]!.from },
+    ]);
+    expect(reads[0]!.from, "视口那一截不在上流点之下 600 行里").toBeGreaterThan(1400);
     const t = home(tm).store.tabs.get("wbig")!;
     expect(t, "缺得多却没整份重来").not.toBe(before);
     expect(t.seenSeqs.has(5), "重来之后旧的那段还在账上").toBe(false);
@@ -6261,14 +6267,34 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     tm.switchTo("wcold");
     tm.onSessionWatch(LOCAL_ORIGIN, { sid: "wcold", path: "/p/wcold.jsonl", seq: 2000 });
     for (let k = 0; k < 5; k++) await settle();
-    expect(lineReads()[0], "冷起那一趟：上流点之下那一截取到末尾").toEqual({ from: 1400, until: undefined });
+    const first = lineReads()[0]!;
+    expect(first.until, "冷起那一趟：视口那一截取到末尾").toBeUndefined();
+    expect(first.from, "冷起那一趟先取的那一截不在上流点之下 600 行里").toBeGreaterThan(1400);
     const arrived = vi.mocked(startupPerf.noteHistoryArrived).mock.invocationCallOrder;
     const fed = vi.mocked(startupPerf.noteHistoryFed).mock;
     const filled = vi.mocked(startupPerf.noteColdFilled).mock.invocationCallOrder;
     expect(arrived.length, "取回的行喂进去时没记首批").toBeGreaterThan(0);
-    expect(fed.calls[0]?.[0], "冷起那一趟喂进去的行数").toBe(END - 1400);
-    expect(filled, "取完之后 timeline 该落一次盘").toHaveLength(1);
-    expect(filled[0], "落盘要在那一趟喂完之后").toBeGreaterThan(fed.invocationCallOrder[0]!);
+    expect(fed.calls[0]?.[0], "冷起那一趟先喂进去的是视口那一截").toBe(END - first.from);
+    expect(filled, "视口那一截落地之后 timeline 该落一次盘").toHaveLength(1);
+    expect(filled[0], "落盘要在那一截喂完之后").toBeGreaterThan(fed.invocationCallOrder[0]!);
+  });
+
+  it("★ 冷起那一形：先取上流点之下视口那一截、物化出来，更早的那一截还没回也不等（点开新 tab 不空白着等 600 行）", async () => {
+    answerLines();
+    const lines = vi.mocked(invoke).getMockImplementation()!;
+    // 从最老那一行（上流点之下第 600 行）起的取回一直不回：真记录一行几十 KB，那一截要好几页、后端每页从文件头数行
+    vi.mocked(invoke).mockImplementation(((cmd: string, args?: unknown) => {
+      const read = recordReadOf(cmd, args);
+      return read?.[0] === "read_session_lines" && read[1].from === 1400 ? new Promise(() => {}) : lines(cmd, args as never);
+    }) as never);
+    tm.ensureTab("wfirst", null, "/p/wfirst.jsonl", LOCAL_ORIGIN);
+    tm.switchTo("wfirst");
+    tm.onSessionWatch(LOCAL_ORIGIN, { sid: "wfirst", path: "/p/wfirst.jsonl", seq: 2000 });
+    for (let k = 0; k < 5; k++) await settle();
+    const t = home(tm).store.tabs.get("wfirst")!;
+    expect(t.window.floorSeq, "更早那一截没回，视口那一截也没物化（还在等整份尾段）").not.toBeNull();
+    expect(t.seenSeqs.has(END - 1), "视口那一截没取到末尾").toBe(true);
+    expect(lineReads().some((r) => r.from === 1400), "更早那一截没去取").toBe(true);
   });
 
   it("连着的不取；别的那份记录（路径对不上）· 别的机器上的同名会话不归这个 tab", async () => {

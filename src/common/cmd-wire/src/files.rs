@@ -6,10 +6,11 @@ use serde::de::{Deserializer, Error as DeError, MapAccess, Visitor};
 use serde::ser::{SerializeMap, Serializer};
 use serde::{Deserialize, Serialize};
 
-/// `{"b16": …}` 那一形的键。
+/// `{"b16": …}` 那一形的键。全仓 Rust 只此一处声明（`tests/backend/files/module_boundary_guard.rs` 钉）。
 pub const HEX_KEY: &str = "b16";
 
-fn to_hex(bytes: &[u8]) -> String {
+/// 字节 → 小写十六进制（`{"b16"}` 那一形 · 暂存件的键与摘要都用它）。
+pub fn to_hex(bytes: &[u8]) -> String {
     const DIGITS: &[u8; 16] = b"0123456789abcdef";
     let mut out = String::with_capacity(bytes.len() * 2);
     for b in bytes {
@@ -19,7 +20,8 @@ fn to_hex(bytes: &[u8]) -> String {
     out
 }
 
-fn from_hex(s: &str) -> Option<Vec<u8>> {
+/// [`to_hex`] 的逆：只认小写、偶数长；别的形 ⇒ `None`（不猜：猜错一个字节就是另一个文件）。
+pub fn from_hex(s: &str) -> Option<Vec<u8>> {
     if !s.len().is_multiple_of(2) {
         return None;
     }

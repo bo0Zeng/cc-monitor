@@ -1369,13 +1369,21 @@ export class TabStreamView {
       return;
     }
     const fresh = have >= 0 ? this.restartTail(tab) : tab;
-    // 取回来的按批语义进账本、不建卡（当前的那一个也不建：批里来的一律收纳）⇒ 取完了它还在眼前，就照切进来那样物化视口那一截、停下来看时接骨架。
-    // 冷起首个标签页的正文走的就是这一趟（壳冷起不整份重放）⇒ 启动管线那份 timeline 在它落地时落盘（只第一次，`startup-perf.ts`）。
-    this.readForward(fresh, path, Math.max(0, seq - TabStreamView.WATCH_REFILL_MAX), undefined, () => {
+    // 分两截取：先取上流点之下视口那一截（取到末尾），取完它还在眼前就照切进来那样物化视口那一截、停下来看时接骨架；
+    // 再取更早的那一截，落在已建那一截之下、只进账本（往上翻时从账本补）。一次取整截的话点开新 tab 要空白着等完几页、喂完几百行。
+    // 取回来的按批语义进账本、不建卡（当前的那一个也不建：批里来的一律收纳）。
+    // 冷起首个标签页的正文走的就是这一趟（壳冷起不整份重放）⇒ 启动管线那份 timeline 在视口那一截落地时落盘（只第一次，`startup-perf.ts`）。
+    const from = Math.max(0, seq - TabStreamView.WATCH_REFILL_MAX);
+    const first = Math.max(from, seq - TabStreamView.WATCH_FIRST_ROWS);
+    this.readForward(fresh, path, first, undefined, () => {
       if (this.inFront(fresh)) this.activate(fresh);
       noteColdFilled();
+      if (first > from) this.readForward(fresh, path, from, first, () => this.updateSentinel(fresh));
     });
   }
+
+  /** 冷起补尾段先取的那一截：上流点之下这么多行（一屏多一点：冷开物化一次至多建 `COLD_CHUNK × MATERIALIZE_ROUNDS_PER_CALL` 行）。 */
+  private static readonly WATCH_FIRST_ROWS = 160;
 
   /**
    * **按行号往后读一段**（`[from, until)`，`until` 缺 ＝ 到末尾）喂进这个 tab：一段 ≤ 1 MiB，接着取到头；
