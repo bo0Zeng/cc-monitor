@@ -12,10 +12,13 @@ declare const classes: {
   readonly abOption: string;
   readonly abOptionDetail: string;
   readonly abOther: string;
+  readonly abQFull: string;
   readonly abQHead: string;
+  readonly abQLine: string;
   readonly abQText: string;
   readonly abQuestion: string;
   readonly abRow: string;
+  readonly abScroll: string;
   readonly abSince: string;
   readonly abTag: string;
   readonly abTitle: string;
