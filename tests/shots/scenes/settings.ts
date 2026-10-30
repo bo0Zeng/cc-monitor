@@ -10,6 +10,8 @@ import { ACCOUNTS } from "../fake/ops";
 import { PROFILE_ACCOUNTS, PROFILES_FILE, putProfileAccounts, putProfiles, staleBook, type ProfilesLook } from "../disk/profiles";
 import { emit } from "@tauri-apps/api/event";
 import { byText, click, sleep, until, waitFor } from "./helpers";
+import { budgetWithin, callTyped } from "../../../src/frontend/ui/ipc/chan-caller";
+import { readChores } from "../../../src/frontend/ui/settings/data-reads";
 
 function settings(id: string, title: string, desc: string, act: Scene["act"], world: () => World = defaultWorld, height = 740, width = 960): Scene {
   return { id, page: "settings", dir: "设置", title, desc, width, height, world, act };
@@ -265,6 +267,10 @@ export const SETTINGS_SCENES: Scene[] = [
     "设置 · 文件与数据 · 放了什么 · 断开的那台",
     "gpu-01 断开：照本机后端记着的上次那一份画（改过你的文件 · cc-monitor 的文件）＋ 警告条说多旧 ［重试］",
     async () => {
+      // 本机后端记一份 gpu-01 的上次值（它连着的时候读成过一次）：经产品那条路读回本机那份成品、记成 gpu-01 的。
+      const local = (await readChores([LOCAL])).machines[0]?.report;
+      if (!local) throw new Error("本机那份「文件与数据」没读回来，记不了上次值");
+      await callTyped(LOCAL, "last-seen-write", { origin: "gpu-01", kind: "data", value: local }, budgetWithin(10_000));
       await go("data");
       await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放置的文件"));
       await click(await byText(".settings-page:not([hidden]) .data-chip", "gpu-01"));

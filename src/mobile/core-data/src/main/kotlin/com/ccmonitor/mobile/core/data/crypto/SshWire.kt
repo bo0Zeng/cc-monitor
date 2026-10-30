@@ -44,25 +44,6 @@ object SshWire {
         return buf
     }
 
-    /** Ed25519 公钥 wire blob：string("ssh-ed25519") + string(pub 32B)。 */
-    fun encodeEd25519(pub: ByteArray): ByteArray {
-        val keyType = "ssh-ed25519".toByteArray()
-        val buf = ByteArray(4 + keyType.size + 4 + pub.size)
-        var off = 0
-        off = writeBytes(buf, off, keyType)
-        writeBytes(buf, off, pub)
-        return buf
-    }
-
-    /** Ed25519 公钥 → OpenSSH 一行：`ssh-ed25519 <base64> [comment]`。 */
-    fun ed25519ToOpenSsh(
-        pub: ByteArray,
-        comment: String = "",
-    ): String {
-        val b64 = Base64.getEncoder().encodeToString(encodeEd25519(pub))
-        return "ssh-ed25519 $b64" + if (comment.isNotEmpty()) " $comment" else ""
-    }
-
     /** OpenSSH SHA256 指纹：`SHA256:<base64-no-pad>`，对公钥 wire blob 取 SHA-256。 */
     fun fingerprintSha256(publicKeyBlob: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(publicKeyBlob)
