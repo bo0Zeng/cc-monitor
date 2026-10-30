@@ -1025,7 +1025,7 @@ async fn open_session_in_new_window(
         //   ⇒ 窗口要知道这个会话在哪台机器上；随 URL 交过去（百分号编码：本机那个 `<local>` 有尖括号）。
         origin
             .route("open_session_in_new_window")
-            .map_err(Said::written)?;
+            .map_err(|b| Said::written(chan::said::blank_origin(&b)))?;
         let origin_q = pct_encode(&origin.to_string());
         let run = run.filter(|r| !r.is_empty());
         let label = match &run {
@@ -1097,7 +1097,7 @@ async fn open_terminal_in_new_window(
         use tauri::Manager;
         origin
             .route("open_terminal_in_new_window")
-            .map_err(Said::written)?;
+            .map_err(|b| Said::written(chan::said::blank_origin(&b)))?;
         let origin_s = origin.to_string();
         let label = terminal_window_label(&origin_s, &terminal);
         if let Some(w) = app.get_webview_window(&label) {
