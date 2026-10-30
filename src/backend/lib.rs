@@ -254,6 +254,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--plan-refs",
     // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--quota-probe",
+    // 用某个号发一句、让它的 5 小时窗开始计时（`inbound::REGISTRY` 的 `quota-warm`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    "--quota-warm",
     // 一条会话的号那一份成品（`inbound::REGISTRY` 的 `session-account`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--session-account",
     // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`，轮换第五版，typed）自动派生的 CLI 面；入参从 stdin 读。
