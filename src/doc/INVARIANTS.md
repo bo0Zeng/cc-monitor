@@ -49,7 +49,7 @@
 
 | 文件 | 类 | 写它的 | 说明 |
 |---|---|---|---|
-| `config.json` | **真相** | `config.rs` | 主题 · 字体 · 快捷键 · 诊断开关 —— 全是用户手填 |
+| `config.json` | **真相** | `config.rs` | 界面的设置，顶层键全集是 `src/frontend/ui/config.ts` 的 `CONFIG_KEY_OWNERS` —— 全是用户手填 |
 | `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::annotate_at` · `edit_slice_at` | 按 sid 的星标 · 改名 · 隐藏 · 在哪几组 · 固定；顶层 `groups` 那一节是这台那一片：只记这台有组员的组（名字带 `named` 时刻），最后一位出组那一组就删 |
 | `filewin-view.json` | **真相** | `filewin/src/workspace.rs`（整份原子换，后写者赢） | 文件窗口的整窗缩放 |
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled` 是真相；`monitor_exe_path` 每次启动自愈改写 |
@@ -60,6 +60,14 @@
 
 - **真相** = 用户手写 / 意图，删了丢东西、要备份、要迁移友好；**缓存/派生** = 能从别处重建，随便删。
 - **新增任何 data dir 文件，必须声明它是哪类**：界面这一侧的（monitor 数据目录）在 `data_paths.rs` 的枚举里（`DataPathInfo.class: DataClass` 非可选）；本机后端家里的（`~/.cc-monitor/`）在 `relay_route_core::OWN_HOME_ENTRIES` 里（后端 `data-report` 的 `own` 照它出、界面照抄）。设置页每行据它显示「删了会丢 / 可随手删」。两边拼起来与上表两向相等（`data_paths_tests.rs`，异源判据）；后端自家那几样另与上表逐样对（`footprint/data_tests.rs`）。
+
+### 2.2 后端自有文件：一份一个声明，读只有三态
+
+- **声明**：后端自己落盘的每一份文件在 `relay_route_core` 里一个 `Decl` 常量（`*_FILE`：落点 `rel` · 状态还是缓存 · 格式与版本 · 读上限 `cap`）。状态写 `Decl::<State>::json(rel, version, floor, cap)`，缓存写 `Decl::<Cache>::json(rel, version, cap)`（缓存不升级，下限就是版本），不是我们格式的写 `Decl::foreign(rel, cap)`。这些常量排成一张 `OWN_FILES`（测试档，判据读）；家里那几样有声明的，`OWN_HOME_ENTRIES` 里「删了会丢」照声明取。
+- **读写口**：`src/backend/common/own_state.rs::Doc`，只从声明取（`Doc::of`；读得懂不止一版的挂升级步 `upgrade!`），住写它的那个模块的一个 `const` 里。写只经写句柄 `platform::fs::Own`（订阅号凭据与诊断文件各一个窄句柄）。
+- **读三态**：不在 / 读得到 / 读不出来（`Read::Absent` · `Present` · `Unreadable`）。只读常规文件，超过读上限当读不出来。状态读不出来 ⇒ `Unreadable`，调用方不覆盖、照实说出来；缓存读不出来 ⇒ 当没有。
+- **版本**（格式是 JSON 的那几份）：顶层整数 `version`，缺了当 1。比声明的 `version` 新 ⇒ 读不出来；比下限 `floor` 老 ⇒ 当没有；中间的依次过升级步（步数恰好 `version - floor`，只挂得上状态）。写是整份写、自动带 `version`；盖比自己新的状态 ⇒ 拒；盖旧版 ⇒ 原文先照字节留成 `<名>.v<N>`。
+- **谁在守**：`every_declared_file_is_consistent_and_declared_once`（声明每一行自洽、落点不重）· `home_entries_with_a_declaration_take_their_class_from_it` · `own_doc_guard.rs`（经 `Own` 写的生产文件都有声明、声明只住 `const`、落点全仓不重名）· `own_state_tests.rs`（三态与版本的行为）。
 
 ---
 

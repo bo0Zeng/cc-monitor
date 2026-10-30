@@ -673,7 +673,7 @@
     "beAcctVerify.drift.secretLike": {
       "kind": "body",
       "role": "说明",
-      "zh": "共享库里的 {item} 权限 600 却不在身份文件里\n它会链给每个账号 · 若属身份就会串号",
+      "zh": "共享库里的 {item} 权限 600 却不在身份文件里\n不链给各账号 · 要共享就放宽权限",
       "args": ["item"]
     },
     "beAcctVerify.global.badManifest": {
