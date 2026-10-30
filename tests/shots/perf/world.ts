@@ -47,8 +47,8 @@ function numbered(body: string): string {
     .join("\n");
 }
 
-/** 一轮：你说一句 → 思考 → 一串工具 → 过程中说一两句 → 收尾的回答（带代码块）。 */
-export function turn(c: Convo, cwd: string, i: number, heavy: boolean): void {
+/** 一轮：你说一句 → 思考 → 一串工具 → 过程中说一两句 → 收尾的回答（带代码块；`short` ⇒ 再跑一长串工具、收尾只一句话）。 */
+export function turn(c: Convo, cwd: string, i: number, heavy: boolean, short = false): void {
   const mod = `packages/mod-${i % 23}`;
   c.user(`第 ${i} 轮：把 ${mod} 里的分页逻辑改成游标分页，顺带补测试。`);
   c.think(`先看 ${mod} 现在的分页实现与调用点，再决定游标放在哪一层。第 ${i} 轮。`, `我先看一下 ${mod} 的现状。`);
@@ -80,6 +80,12 @@ export function turn(c: Convo, cwd: string, i: number, heavy: boolean): void {
     );
   }
   if (fail) c.tool("Bash", { command: `npm test -- ${mod}`, description: "重跑" }, "  ✓ all 15 passed");
+  if (short) {
+    // 一长串工具（真会话里一轮几十步常见，每步的输出几 KB）＋ 一句短答：折起来以后整轮只剩一行过程 ＋ 一行话
+    for (let k = 0; k < 40; k++) c.tool("Bash", { command: `npm test -- ${mod} --shard ${k}`, description: "跑一片" }, numbered(code(120, i * 41 + k)));
+    c.say(`第 ${i} 轮完成。`, 40_000 + (i % 60) * 1500, "end_turn");
+    return;
+  }
   c.say(
     [
       `第 ${i} 轮完成：${mod} 改成游标分页。`,
@@ -98,13 +104,16 @@ export function turn(c: Convo, cwd: string, i: number, heavy: boolean): void {
   );
 }
 
-/** 一个 `turns` 轮的会话。 */
-function convo(n: number, cwd: string, turns: number, heavy: boolean): Convo {
+/** 一个 `turns` 轮的会话；最后 `shortTail` 轮收尾只一句话（真会话的尾巴常是一串工具 ＋ 一句短答：过程折起来以后不足一屏）。 */
+function convo(n: number, cwd: string, turns: number, heavy: boolean, shortTail = 0): Convo {
   const c = new Convo(sidOf(n), cwd, "2026-10-01T08:00:00Z");
   c.title(`${turns} 轮 · 游标分页改造 ${n}`);
-  for (let i = 1; i <= turns; i++) turn(c, cwd, i, heavy);
+  for (let i = 1; i <= turns; i++) turn(c, cwd, i, heavy, i > turns - shortTail);
   return c;
 }
+
+/** 页地址上的一个数（伺服那一侧没有页地址 ⇒ 0）。 */
+const pageParam = (name: string): number => (typeof location === "undefined" ? 0 : Number(new URLSearchParams(location.search).get(name) ?? 0));
 
 /** 轮数表：四条长会话（几千条记录）＋ 二十条中短会话。 */
 export const PERF_TURNS: number[] = [420, 30, 12, 260, 8, 45, 18, 300, 6, 22, 60, 10, 380, 15, 9, 35, 14, 28, 7, 50, 11, 20, 16, 40];
@@ -115,6 +124,8 @@ export const PERF_TURNS: number[] = [420, 30, 12, 260, 8, 45, 18, 300, 6, 22, 60
 interface PerfRecipe {
   main: boolean;
   table: number[];
+  /** 长会话最后几轮收尾只一句话（页地址 `shortTail`）；缺 ⇒ 每轮都带表格与代码块。 */
+  shortTail?: number;
 }
 
 /** 照配方出世界；`lines` ⇒ 连记录正文一起造（伺服那份），否则会话只有名单（页里那份）。 */
@@ -125,11 +136,13 @@ function build(r: PerfRecipe, lines: boolean): World {
     const n = 0x100 + k;
     const origin = origins[k % origins.length];
     const cwd = `/home/user/work/w${k}t${turns}-perf`;
-    return session(n, origin, cwd, lines ? convo(n, cwd, turns, turns >= 200) : null, { activity: k % 3 === 0 ? "working" : "idle" });
+    const heavy = turns >= 200;
+    return session(n, origin, cwd, lines ? convo(n, cwd, turns, heavy, heavy ? (r.shortTail ?? 0) : 0) : null, { activity: k % 3 === 0 ? "working" : "idle" });
   });
   // 读整份会话的那几问（真后端读几 MB 的记录文件、远端还隔一跳）：照本机常见的量级给一个延迟 ——
   // 快速连切时「切走之后才回来」的那几问才演得出来（不给延迟，假后端当场答，旧切换的活全在切走之前干完了）。
-  w.opDelayMs = { "history-index": 150, "history-turns": 150, "history-user-inputs": 120, "history-facts": 120, "history-page": 60 };
+  // 页地址的 `indexMs` 把骨架索引那一问拖长：一份几百 MB 的真记录，后端从头扫完要几十秒（491 MB 的一份 23 s），台架的合成会话几百 KB 演不出来。
+  w.opDelayMs = { "history-index": pageParam("indexMs") || 150, "history-turns": 150, "history-user-inputs": 120, "history-facts": 120, "history-page": 60 };
   if (r.main) mainExtras(w, lines);
   return w;
 }
@@ -163,6 +176,8 @@ function mainExtras(w: World, lines: boolean): void {
 
 /** 页里那份：会话名单 ＋ 配方名，记录正文由伺服照配方造（`disks.ts`）。 */
 function pageWorld(r: PerfRecipe): World {
+  const shortTail = pageParam("shortTail");
+  if (shortTail > 0) r.shortTail = shortTail;
   const w = build(r, false);
   w.diskFrom = JSON.stringify(r);
   return w;

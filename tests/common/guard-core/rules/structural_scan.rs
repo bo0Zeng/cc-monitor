@@ -1061,7 +1061,7 @@ fn addr_repo_root() -> std::path::PathBuf {
     crate::addr::repo_root().to_path_buf()
 }
 
-/// 地址判据的语料面：四个根下的全部 `.rs`（含规则目录，判据自己写的地址也守）＋ 壳的 `build.rs`。
+/// 行号地址与绕道再导出那几条的语料面：四个根下的全部 `.rs`（含规则目录，判据自己写的地址也守）＋ 壳的 `build.rs`。
 /// 头注里的形状样例一律用中文文件名（抽取器只收 ASCII 路径），不进人群。
 fn addr_corpus() -> Vec<(std::path::PathBuf, String)> {
     let mut out: Vec<(std::path::PathBuf, String)> = Vec::new();
@@ -1085,7 +1085,30 @@ fn addr_base(p: &std::path::Path) -> String {
         .to_string()
 }
 
-/// 全仓声明：符号名 → 它出现在哪些**文件基名**里。
+/// 符号地址与头注裸路径那一条的语料面：仓里 `src/` · `tests/` 下的全部 `.rs`（含规则目录），`(仓根相对路径, 原文)`。
+fn path_addr_corpus() -> Vec<(String, String)> {
+    repo()
+        .with_rules()
+        .under(&["src", "tests"], &["rs"])
+        .into_iter()
+        .map(|f| (f.rel.clone(), f.text().to_string()))
+        .collect()
+}
+
+/// 裸路径能指的那一群文件：仓里后缀在 [`crate::PATH_ADDRESS_EXTS`] 里的文本文件（仓根相对）。
+fn addr_targets() -> Vec<String> {
+    repo()
+        .with_rules()
+        .under(&[""], crate::PATH_ADDRESS_EXTS)
+        .into_iter()
+        .map(|f| f.rel.clone())
+        .collect()
+}
+
+/// 本族对不上、还没清的存量名单（`路径<TAB>条数`，只许变短，对着基线判）。
+const ADDR_STOCK: &str = "tests/__fixtures__/path-addr-pending.tsv";
+
+/// 全仓声明：符号名 → 它出现在哪些文件里（仓根相对路径）。
 ///
 /// 口径逐字取自本仓已有的同族判据
 /// `doc_claim_registry_tests.rs::every_code_symbol_named_in_the_docs_still_resolves`：
@@ -1094,15 +1117,14 @@ fn addr_base(p: &std::path::Path) -> String {
 /// 注释里的 `fn foo` 不算声明（先过 `strip_comment_lines`），否则「注掉一个函数」
 /// 这种变异会被放过。
 fn addr_declarations(
-    corpus: &[(std::path::PathBuf, String)],
+    corpus: &[(String, String)],
 ) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
     const KW: &[&str] = &[
         "fn", "struct", "enum", "const", "static", "trait", "mod", "type",
     ];
     let mut decl: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
         std::collections::BTreeMap::new();
-    for (p, raw) in corpus {
-        let fname = addr_base(p);
+    for (fname, raw) in corpus {
         for line in crate::strip_comment_lines(raw).lines() {
             let mut it = line.split_whitespace().peekable();
             while let Some(tok) = it.next() {
@@ -1123,7 +1145,12 @@ fn addr_declarations(
     decl
 }
 
-/// ★★ **源码里点名的代码符号必须解析得到，且住在它说的那个文件里。**
+/// ★★ **源码里点名的代码符号必须解析得到，且住在它说的那个文件里；头注里点名的文件必须在。**
+///
+/// 路径按后缀认（[`crate::names_repo_file`]）：`目录/文件·rs::符号` 要求一份仓根相对路径等于 `目录/文件·rs`
+/// 或以 `/目录/文件·rs` 结尾（包里那一层 `src/` 可省）、且声明了那个符号的文件 —— 目录也核，基名撞上别处的同名文件不算数。
+/// `//!` 头注里不带 `::符号` 的裸路径（[`crate::path_addresses`]）要有这样一份文件。
+/// 还没清的那批登在 [`ADDR_STOCK`]，只许变短。
 ///
 /// # 它买的是什么
 ///
@@ -1159,7 +1186,7 @@ fn every_symbol_address_in_the_sources_still_resolves() {
         ("foo", "**示例占位符**：同上，讲口径时举的例子"),
     ];
 
-    let corpus = addr_corpus();
+    let corpus = path_addr_corpus();
     let decl = addr_declarations(&corpus);
     // ★ 抽取器自检 1：收不到足够多的声明 ⇒ 遍历或剥法坏了。
     assert!(
@@ -1168,72 +1195,140 @@ fn every_symbol_address_in_the_sources_still_resolves() {
         decl.len()
     );
 
-    let mut refs: Vec<(String, usize, String, String, bool)> = Vec::new();
-    for (p, raw) in &corpus {
-        let fname = addr_base(p);
-        for (ln, base, sym, prefix) in symbol_addresses(raw) {
-            refs.push((fname.clone(), ln, base, sym, prefix));
-        }
-    }
+    let refs: usize = corpus
+        .iter()
+        .map(|(_, raw)| symbol_addresses(raw).len())
+        .sum();
     // ★ 抽取器自检 2：这一族本来就有两百来处 —— 抽到个位数就是剥法坏了。
     assert!(
-        refs.len() >= 150,
-        "只抽到 {} 处符号地址 —— 剥法坏了（09-02 现打 213 处，量于当时的尖）",
-        refs.len()
+        refs >= 150,
+        "只抽到 {refs} 处符号地址 —— 剥法坏了（09-02 现打 213 处，量于当时的尖）"
     );
+    let bare: usize = corpus
+        .iter()
+        .map(|(_, raw)| path_addresses(raw).len())
+        .sum();
+    // ★ 抽取器自检 3：头注里的裸路径本来就有几百处。
+    assert!(
+        bare >= 200,
+        "只抽到 {bare} 处头注裸路径 —— 抽法坏了（10-30 现打七百来处）"
+    );
+    let targets = addr_targets();
 
-    let resolves = |base: &String, sym: &String, prefix: bool| -> Option<Vec<String>> {
-        if prefix {
-            // 前缀形（通配 / 行折）：那个文件里有**某个**以它打头的声明就算数。
-            let any = decl
-                .iter()
-                .any(|(k, fs)| k.starts_with(sym.as_str()) && fs.contains(base));
-            return if any { None } else { Some(Vec::new()) };
-        }
-        match decl.get(sym) {
-            None => Some(Vec::new()),
-            Some(fs) if !fs.contains(base) => Some(fs.iter().cloned().collect()),
-            _ => None,
-        }
-    };
-
-    // ★ 自检 3：例外表保鲜。例外是**欠账**，不是免检章。
+    // ★ 自检 4：例外表保鲜。例外是**欠账**，不是免检章。
     for (sym, why) in EXCEPTIONS {
-        let used: Vec<&(String, usize, String, String, bool)> =
-            refs.iter().filter(|r| r.3 == *sym).collect();
+        let used: Vec<(String, String, bool)> = corpus
+            .iter()
+            .flat_map(|(_, raw)| symbol_addresses(raw))
+            .filter(|r| r.2 == *sym)
+            .map(|(_, p, s, pre)| (p, s, pre))
+            .collect();
         assert!(
             !used.is_empty(),
             "例外表里的 `{sym}` 在源码里已经没人写了 —— 删掉这一行。（它当初的理由：{why}）"
         );
         assert!(
-            used.iter().any(|r| resolves(&r.2, &r.3, r.4).is_some()),
+            used.iter()
+                .any(|(p, s, pre)| symbol_misses(&decl, p, s, *pre).is_some()),
             "例外 `{sym}` 现在**解析得到了** —— 删掉这条例外，\
                  别让例外表替真判据挡枪。（它当初的理由：{why}）"
         );
     }
 
-    let bad: Vec<String> = refs
-        .iter()
-        .filter(|r| !EXCEPTIONS.iter().any(|(s, _)| *s == r.3))
-        .filter_map(|(f, ln, base, sym, prefix)| {
-            resolves(base, sym, *prefix).map(|homes| {
-                if homes.is_empty() {
-                    format!("  {f}:{ln}  指 {base} 里的 `{sym}` —— **全仓找不到这个符号**（改名或删了）")
-                } else {
-                    format!("  {f}:{ln}  指 {base} 里的 `{sym}` —— 符号还在，但**搬家了**：现住 {homes:?}")
-                }
-            })
-        })
-        .collect();
+    let exempt: Vec<&str> = EXCEPTIONS.iter().map(|(s, _)| *s).collect();
+    let found = addr_findings(&corpus, &decl, &targets, &exempt);
+    // 今天对不上的按名单的形状打到标准输出（`-- --nocapture` 看得见），删行时照它对。
+    println!("== 地址对不上：{} 份", found.len());
+    for (rel, hits) in &found {
+        println!("{rel}\t{}", hits.len());
+    }
+    let stock = crate::parse_stock_list(ADDR_STOCK, repo().file(ADDR_STOCK).text());
+    if let Some(base) = crate::baseline_text(&addr_repo_root(), ADDR_STOCK)
+        .unwrap_or_else(|e| panic!("存量名单 `{ADDR_STOCK}` 读不到基线：{e}"))
+    {
+        let grown = crate::stock_list_grown_past_baseline(
+            &stock,
+            &crate::parse_stock_list(ADDR_STOCK, &base),
+        );
+        assert!(
+            grown.is_empty(),
+            "存量名单 `{ADDR_STOCK}` 比基线长了 —— 新写的地址改对，名单只许删行、数只许变小：\n{}",
+            grown.join("\n")
+        );
+    }
+    let bad = crate::stock_list_violations(&stock, &found);
     assert!(
         bad.is_empty(),
-        "源码里点名了这些代码符号，而它们今天对不上：\n{}\n\n\
-             ⚠ 这是**停滞式腐坏**：改代码的人不会回来改注释，而在本条之前\
-             **源码这一侧没有任何东西会因此变红**（`doc/` 那一侧 08-06 就有人守了）。\n\
-             两条修法：① 把地址改对（点今天真的那个符号）；\
-             ② 那句话若只是历史，就写清「已删 / 已改名」并进本条的例外表，**带理由**。",
+        "源码里点名的地址今天对不上存量名单 `{ADDR_STOCK}`（今天 {} 份，名单 {} 行）：\n{}\n\n\
+             ⚠ 这是**停滞式腐坏**：改代码的人不会回来改注释。\n\
+             修法：① 把地址改成今天的住处（路径要对到目录，不是只对上基名）；\
+             ② 那句话若只是历史，删掉那半句；第三方 crate 里的文件写模块路径；\
+             ③ 名单里那一份清完了，删那一行（变少了改成实数）。",
+        found.len(),
+        stock.len(),
         bad.join("\n")
     );
+}
+
+/// 一处符号地址对不上 ⇒ `Some(它今天住的那几份)`（空 ⇒ 全仓没有这个符号）；对得上 ⇒ `None`。
+fn symbol_misses(
+    decl: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+    written: &str,
+    sym: &str,
+    prefix: bool,
+) -> Option<Vec<String>> {
+    let here = |fs: &std::collections::BTreeSet<String>| {
+        fs.iter().any(|f| crate::names_repo_file(f, written))
+    };
+    if prefix {
+        // 前缀形（通配 / 行折）：那个文件里有**某个**以它打头的声明就算数。
+        let any = decl.iter().any(|(k, fs)| k.starts_with(sym) && here(fs));
+        return if any { None } else { Some(Vec::new()) };
+    }
+    match decl.get(sym) {
+        None => Some(Vec::new()),
+        Some(fs) if !here(fs) => Some(fs.iter().cloned().collect()),
+        _ => None,
+    }
+}
+
+/// 语料里对不上的地址：`文件 → [(行号, 说明)]`。符号地址与头注裸路径两形都收；`exempt` 里的符号名不收。
+fn addr_findings(
+    corpus: &[(String, String)],
+    decl: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+    targets: &[String],
+    exempt: &[&str],
+) -> std::collections::BTreeMap<String, Vec<(usize, String)>> {
+    let mut found: std::collections::BTreeMap<String, Vec<(usize, String)>> =
+        std::collections::BTreeMap::new();
+    for (rel, raw) in corpus {
+        let mut hits = Vec::new();
+        for (ln, written, sym, prefix) in symbol_addresses(raw) {
+            if exempt.contains(&sym.as_str()) {
+                continue;
+            }
+            if let Some(homes) = symbol_misses(decl, &written, &sym, prefix) {
+                hits.push((
+                    ln,
+                    if homes.is_empty() {
+                        format!("指 {written} 里的 `{sym}` —— 全仓找不到这个符号（改名或删了）")
+                    } else {
+                        format!("指 {written} 里的 `{sym}` —— 那个路径上没有它，现住 {homes:?}")
+                    },
+                ));
+            }
+        }
+        for (ln, written) in path_addresses(raw) {
+            if !targets.iter().any(|t| crate::names_repo_file(t, &written)) {
+                hits.push((ln, format!("头注点名的 {written} —— 仓里没有这份文件")));
+            }
+        }
+        if !hits.is_empty() {
+            hits.sort();
+            found.insert(rel.clone(), hits);
+        }
+    }
+    found
 }
 
 /// ★★ **源码里不写行号地址**（`文件·rs:行号` 那一形，零命中，带正控）。
@@ -1292,8 +1387,54 @@ fn the_address_extractors_really_see_each_shape() {
     let syms = symbol_addresses(&t);
     assert_eq!(
         syms,
-        vec![(1, "server.rs".to_string(), "handle".to_string(), false)],
-        "符号地址抽取器认错了：{syms:?}"
+        vec![(
+            1,
+            "relay/server.rs".to_string(),
+            "handle".to_string(),
+            false
+        )],
+        "符号地址抽取器认错了（路径要原样交出，不是只交基名）：{syms:?}"
+    );
+
+    // ③′ 按路径后缀解析：基名撞上另一个目录里的同名文件不算数；裸路径只收 `//!` 头注里的、仓里的那一形。
+    let corpus = vec![(
+        "src/合成/lib.rs".to_string(),
+        [
+            format!("//! 见 relay/route.rs{dcolon}parse"),
+            format!("//! 见 outward/route.rs{dcolon}parse"),
+            "//! 门 relay/door.rs 与 outward/door.rs".to_string(),
+            "//! 落盘 ~/.cc-monitor/state.json · /etc/hosts.json · .claude/settings.json · ../up.rs · src/*/x.rs".to_string(),
+            "// 普通注释里的 relay/door.rs 不收".to_string(),
+            format!("//! 包内写法 filewin/proc.rs{dcolon}child_main 与 filewin/source.rs 省掉包里的 src/"),
+            format!("//! 包内写法也要对到包：shell/proc.rs{dcolon}child_main"),
+        ]
+        .join("\n"),
+    )];
+    let decl = std::collections::BTreeMap::from([
+        (
+            "parse".to_string(),
+            std::collections::BTreeSet::from(["src/comms/outward/route.rs".to_string()]),
+        ),
+        (
+            "child_main".to_string(),
+            std::collections::BTreeSet::from(["src/frontend/filewin/src/proc.rs".to_string()]),
+        ),
+    ]);
+    let targets = vec![
+        "src/comms/outward/route.rs".to_string(),
+        "src/comms/outward/door.rs".to_string(),
+        "src/frontend/filewin/src/source.rs".to_string(),
+    ];
+    let found = addr_findings(&corpus, &decl, &targets, &[]);
+    let lines: Vec<usize> = found
+        .get("src/合成/lib.rs")
+        .map(|h| h.iter().map(|(ln, _)| *ln).collect())
+        .unwrap_or_default();
+    assert_eq!(
+        lines,
+        vec![1, 3, 7],
+        "按后缀解析判错了（第 1 行目录不对该红 · 第 3 行 relay/door.rs 不在该红 · 第 7 行包不对该红；\
+         outward/… 两处与第 6 行包内写法对得上，运行时路径 · 上一级相对路径 · 通配 · 普通注释都不收）：{found:?}"
     );
 
     // ④ 前缀形：以 `_` 收尾 ⇒ 通配或行折，降级成前缀比对而不是报红。
@@ -1313,7 +1454,10 @@ fn the_address_extractors_really_see_each_shape() {
     assert!(
         addr_corpus()
             .iter()
-            .any(|(p, _)| addr_base(p) == "structural_scan.rs"),
+            .any(|(p, _)| addr_base(p) == "structural_scan.rs")
+            && path_addr_corpus()
+                .iter()
+                .any(|(rel, _)| rel == "tests/common/guard-core/rules/structural_scan.rs"),
         "语料面里必须有本文件自己 —— 没有就说明自收那一步掉了"
     );
 }
