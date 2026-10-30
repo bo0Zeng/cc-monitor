@@ -1157,8 +1157,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/accounts/quota/rotation.rs",
-        "MAX_BYTES",
+        "src/common/relay-route-core/src/lib.rs",
+        "ROTATION_MAX_BYTES",
         "后端自有的账号轮换 `~/.cc-monitor/rotation.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
@@ -1187,8 +1187,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/common/machine_prefs.rs",
-        "MAX_BYTES",
+        "src/common/relay-route-core/src/lib.rs",
+        "PREFS_MAX_BYTES",
         "后端自有的这台偏好 `~/.cc-monitor/prefs.json`（几张小表；读不出来 ⇒ `unreadable` 带原因回出去、按缺省办，写口拒、不覆盖）",
         "拒收+回错",
     ),
@@ -1322,11 +1322,11 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "算一个 skill 的摘要时读其中一个文件（超了只记长度，`summary.truncated` 说出来）",
         "降级+说清",
     ),
-    // 历史注解那一份文件（读写者换成本机常驻后端）。超了当读不懂：读回「不知道」、拒写、一个字节不动。
+    // 历史注解那一份文件（本机常驻后端读写）。超了当读不懂：读回「不知道」、拒写、一个字节不动。
     (
-        "src/backend/history/history_annotations.rs",
-        "MAX_BYTES",
-        "读一份历史注解文件（星标 / 改名 / 隐藏 / 上次账号；路径由 monitor 交）",
+        "src/common/relay-route-core/src/lib.rs",
+        "HISTORY_ANNOTATIONS_MAX_BYTES",
+        "读一份历史注解文件 `history-metadata.json`（星标 / 改名 / 隐藏 / 组；住这台的数据目录）",
         "拒收+回错",
     ),
     // 〔第二问〕全文搜索常驻索引的上界：按最近优先留，留不下的那几份照搜、只是不留（下一问再读）。
@@ -1940,15 +1940,11 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
             } else {
                 window.clone()
             };
-            // 「跳过+说清」那一档的上限交给一份缓存声明（`Doc::cache(…, 它)`）：跳过与那句 `warn!` 住
+            // 「跳过+说清」那一档的上限交给声明表里一份缓存（`Decl::<Cache>`）：跳过与那句 `warn!` 住
             //   `common/own_state.rs` 的 `Doc::settle`（缓存读不出来 ⇒ 说是哪一份、当没有），针改去那里认。
-            //   缓存的声明有两种写法：还没换上表的 `Doc::cache(`，声明表里的 `Decl::<Cache>`；
             //   折成几行时它在上面至多三行（声明表那一行：头 · 落点 · 版本 · 上限）⇒ 往上看三行。
             let declared = lines[i.saturating_sub(3)..=i].join("\n");
-            let scope = if *sem == "跳过+说清"
-                && (guard_core::contains_word(&scope, "Doc::cache")
-                    || guard_core::contains_word(&declared, "Doc::cache")
-                    || guard_core::contains_word(&declared, "Decl::<Cache>"))
+            let scope = if *sem == "跳过+说清" && guard_core::contains_word(&declared, "Decl::<Cache>")
             {
                 own_state_cache_arm(&root)
             } else {

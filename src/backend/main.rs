@@ -258,9 +258,7 @@ async fn main() {
     history::listing::warm_listing_in_background(agent_home.clone());
     // 照这台的配置文件 `profiles.toml` 把别名文件与链接对齐一次（写法变了的那一份当场换）。
     stream::inbound::align_aliases();
-    // `prefs.json` 第 1 版 ⇒ 第 2 版：只由常驻那一位换一次。
     if resident {
-        control::prefs_migration::migrate_here(&own);
         // 各台的常驻流归常驻这一位（机器表里要连的那几台各起一条，`control/feeds.rs`）；那台流上的事交每一份 watcher，
         //   投给连着这一位的每条流连接（控制面与观测面互不引用，由这里接上）。
         control::feeds::start(std::sync::Arc::new(observe::watcher::relay));

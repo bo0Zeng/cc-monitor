@@ -1177,7 +1177,7 @@ fn a_session_started_inside_another_opens_the_default_config() {
         .uses
         .clone()
         .map(|c| c.id);
-    assert_eq!(kid.unwrap_or_default(), setup.uses.now().for_new);
+    assert_eq!(kid.unwrap_or_default(), setup.for_new_id());
 }
 
 /// 额度预热那一发（点名一个号、从别的会话的 shell 里起）：主会话已经换到 b，它里面起的、点名 a 的新会话照 a 发 ——

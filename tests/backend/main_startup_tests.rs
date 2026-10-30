@@ -32,10 +32,9 @@ fn the_machine_table_is_installed_before_anything_is_dispatched() {
     );
 }
 
-/// 常驻那一位起来那一段（各台常驻流起来之前那几步）：只剩这一版当桥的那一次（`prefs.json` 第 1 ⇒ 2 版）；
-/// 已发过的那几次换形（第 7 批 · 主机指纹 · 注解第 0 版）不再调。
+/// 常驻那一位起来那一段（各台常驻流起来之前那几步）：不调换形（落盘文件的旧版经声明上挂的升级步读，`common/own_state.rs`）。
 #[test]
-fn the_resident_startup_runs_only_the_bridged_reshape() {
+fn the_resident_startup_runs_no_reshape() {
     let src = include_str!("../../src/backend/main.rs");
     let feeds = src
         .find("control::feeds::start(")
@@ -49,9 +48,5 @@ fn the_resident_startup_runs_only_the_bridged_reshape() {
         .map(str::trim)
         .filter(|l| !l.is_empty() && !l.starts_with("//"))
         .collect();
-    assert_eq!(
-        calls,
-        vec!["control::prefs_migration::migrate_here(&own);"],
-        "常驻起来那一段多调了别的"
-    );
+    assert!(calls.is_empty(), "常驻起来那一段多调了别的：{calls:?}");
 }
