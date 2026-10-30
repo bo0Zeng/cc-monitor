@@ -10,7 +10,10 @@
 //! | `<窗口>-utilization` · `<窗口>-reset` · `<窗口>-surpassed-threshold` | 小数 · unix 秒 · 小数 | 一个 [`QuotaWindow`]；窗口见 [`WINDOWS`] |
 //! | `overage-status` · `overage-reset` · `overage-disabled-reason` · `overage-in-use` | 三值 · unix 秒 · 原值 · `true` | `overage` |
 //!
-//! 被拒 ＝ 429 且限流器明说 `rejected`：卡在哪、几点重置照头说；没有 `reset` ⇒ 看 `retry-after`（秒）；两样都没说 ⇒
+//! | `<窗口>-status`（`overage` 段除外） | 三值 | 不另记：被拒时说 `rejected` 的那几窗拉长被拒（见下） |
+//!
+//! 被拒 ＝ 429 且限流器明说 `rejected`：卡在哪照头说；被拒到 `reset` 与说 `rejected` 的那几窗各自的重置里晚的那个
+//! （某一窗单独被拒、用量没到 100 也一样）；都没有 ⇒ 看 `retry-after`（秒）；也没说 ⇒
 //! [`REFUSED_BRIEFLY`] 秒之后。被拒的快照恒带回来的时刻。
 //! 限流器没说话的 429（短时限流；API key 号的回包永远没有这一族）不是用满 ⇒ 什么都不读：不记被拒、不换号、不停发，
 //! 上游那一发原样交下去（claude 自己退避）。429 而限流器说没拒 ⇒ 照常读数。`status = rejected` 但回的是 200（超额兜着）不算被拒。
@@ -131,7 +134,23 @@ pub(crate) fn read(status: u16, headers: &[(String, String)], now: u64) -> Optio
         (o.status.is_some() || o.resets_at.is_some() || o.disabled.is_some() || o.in_use)
             .then_some(o)
     };
-    let resets_at = instant(unified(headers, "reset")).or_else(retry_at);
+    // 被拒时卡到被拒的那几窗都重置为止：总的 `reset` 与各窗 `<段>-status: rejected` 的重置取晚的。
+    let held = refused
+        .then(|| {
+            WINDOWS
+                .iter()
+                .filter(|(_, tag)| *tag != "overage")
+                .filter(|(_, tag)| {
+                    status_of(unified(headers, &format!("{tag}-status")))
+                        == Some(QuotaStatus::Rejected)
+                })
+                .filter_map(|(_, tag)| instant(unified(headers, &format!("{tag}-reset"))))
+                .max()
+        })
+        .flatten();
+    let resets_at = instant(unified(headers, "reset"))
+        .max(held)
+        .or_else(retry_at);
     Some(QuotaReading {
         status: said,
         refused,
