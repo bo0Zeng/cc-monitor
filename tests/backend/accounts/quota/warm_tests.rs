@@ -134,3 +134,47 @@ fn a_landed_send_keeps_when_it_went_and_the_reset_it_brought() {
         })
     );
 }
+
+/// ★ 交给 ccm 的那一行：适配层那几个参数在 `--` 左边（交那一家），右边点名号 · 工作目录 · 这一发不轮换；
+/// Claude 那一形是 haiku 一句、不给工具、不落会话记录，起它时关掉思考。
+#[test]
+fn the_ccm_line_names_the_account_and_does_not_rotate() {
+    let face = crate::agents::route_named(AGENT)
+        .and_then(crate::agents::warm_of)
+        .expect("Claude 有开窗那一形");
+    let got: Vec<String> = line(
+        &face,
+        "an",
+        std::path::Path::new("/h/.cc-monitor/autostart"),
+    )
+    .into_iter()
+    .map(|s| s.to_string_lossy().into_owned())
+    .collect();
+    let end = got.iter().rposition(|w| w == "--").expect("有 --");
+    assert_eq!(
+        &got[end..],
+        [
+            "--",
+            "--account",
+            "an",
+            "--cwd",
+            "/h/.cc-monitor/autostart",
+            "--no-rotation"
+        ]
+    );
+    let left = &got[..end];
+    for w in [
+        "-p",
+        "haiku",
+        "--no-session-persistence",
+        "--strict-mcp-config",
+    ] {
+        assert!(left.iter().any(|x| x == w), "{w} 不在左边：{left:?}");
+    }
+    let tools = left.iter().position(|x| x == "--tools").expect("--tools");
+    assert_eq!(left[tools + 1], "", "不给工具");
+    assert!(face.env_set.contains(&("MAX_THINKING_TOKENS", "0")));
+    assert!(crate::agents::route_named("codex")
+        .and_then(crate::agents::warm_of)
+        .is_none());
+}
