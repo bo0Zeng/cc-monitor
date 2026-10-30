@@ -129,32 +129,39 @@ fn rejected_but_served_by_paid_overage_is_not_a_refusal() {
     );
 }
 
+/// ★ 限流器没说话的 429（短时限流；API key 号的 429 同此）不是用满：读成「什么都没说」⇒ 不进额度账、不换号、不停发，
+/// 上游那一发原样交下去（claude 自己退避）。带不带 `retry-after` 都一样。
 #[test]
-fn a_429_without_the_family_is_refused_for_retry_after_seconds() {
-    // API key 号的回包永远没有这一族头。
-    let got = read(429, &h(&[("retry-after", "30")]), NOW);
-    assert_eq!(
-        got,
-        Some(QuotaReading {
-            status: None,
-            refused: true,
-            limiting: None,
-            resets_at: Some(NOW + 30),
-            windows: vec![],
-            overage: None,
-        })
-    );
+fn a_429_without_the_family_says_nothing() {
+    assert_eq!(read(429, &h(&[("retry-after", "30")]), NOW), None);
+    assert_eq!(read(429, &h(&[]), NOW), None);
 }
 
-/// ★ 被拒却没说几点能再用（没有这一族头、也没有 `retry-after`；或有这一族却没有 `reset`）⇒ [`REFUSED_BRIEFLY`] 秒之后回来，
+/// ★ 429 而限流器说没拒（`allowed` · `allowed_warning`）⇒ 照常读数，不算被拒、不编重置时刻。
+#[test]
+fn a_429_with_the_limiter_saying_allowed_is_not_a_refusal() {
+    for said in ["allowed", "allowed_warning"] {
+        let got = read(
+            429,
+            &h(&[
+                ("anthropic-ratelimit-unified-status", said),
+                ("anthropic-ratelimit-unified-5h-utilization", "0.07"),
+                ("retry-after", "30"),
+            ]),
+            NOW,
+        )
+        .expect("读数");
+        assert!(!got.refused, "{said}");
+        assert_eq!(got.resets_at, None, "{said}");
+        assert_eq!(got.windows, vec![win("five_hour", Some(0.07), None, None)]);
+    }
+}
+
+/// ★ 限流器说 `rejected` 却没说几点能再用（没有 `reset`、也没有 `retry-after`）⇒ [`REFUSED_BRIEFLY`] 秒之后回来，
 /// 不一直挂成被拒；这个短期限是 60 秒。
 #[test]
 fn a_429_that_says_nothing_about_when_is_refused_only_briefly() {
     assert_eq!(REFUSED_BRIEFLY, 60);
-    assert_eq!(
-        read(429, &h(&[]), NOW).and_then(|r| r.resets_at),
-        Some(NOW + REFUSED_BRIEFLY)
-    );
     let got = read(
         429,
         &h(&[("anthropic-ratelimit-unified-status", "rejected")]),

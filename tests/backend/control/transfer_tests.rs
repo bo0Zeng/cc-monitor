@@ -294,7 +294,7 @@ async fn a_download_lands_under_a_non_utf8_local_name_byte_for_byte() {
     let name = std::ffi::OsStr::from_bytes(b"f\xfe\xff.bin");
     let local = tmp.path("").join(name);
     let args = serde_json::json!({
-        "local_path": crate::files::raw::to_json(crate::files::raw::path_bytes(&local)),
+        "local_path": cmd_wire::files::WirePath::from(crate::files::raw::path_bytes(&local)),
     });
     let landed: cmd_wire::files::WirePath =
         serde_json::from_value(args["local_path"].clone()).expect("b16 落点没认出来");
@@ -622,9 +622,15 @@ fn batched(cmd: &str, a: &serde_json::Value) -> serde_json::Value {
             item.insert("remote_path".into(), r);
         }
         if let Some(l) = o.remove("local_path") {
-            let bytes = crate::common::path_wire::from_json(&l).unwrap_or_default();
+            let bytes = serde_json::from_value::<cmd_wire::files::WirePath>(l)
+                .map(|p| p.0)
+                .unwrap_or_default();
             let p = crate::common::path_wire::to_path_buf(&bytes);
-            let wire = |q: &Path| crate::files::raw::to_json(crate::files::raw::path_bytes(q));
+            let wire = |q: &Path| {
+                serde_json::json!(cmd_wire::files::WirePath::from(
+                    crate::files::raw::path_bytes(q)
+                ))
+            };
             o.insert(
                 "local_dir".into(),
                 wire(p.parent().unwrap_or(Path::new("/"))),

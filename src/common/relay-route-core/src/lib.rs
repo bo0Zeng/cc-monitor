@@ -22,14 +22,15 @@
 //! # 它**不是**业务 crate
 //!
 //! 这里一个账号 / 凭据 / 上游的名字都没有：两个段是**位置**（第 1/2 段），谁是 agent、谁是账号只在后端上游选择那一层
-//! 才有名字。⇒ 通信层成员 `relay/route.rs` 可以 `use` 它（`C2` 禁的是业务 crate）。
+//! 才有名字。⇒ 通信层成员 `outward/route.rs` 可以 `use` 它（`C2` 禁的是业务 crate）。
 //!
 //! # 谁用哪几样
 //!
-//! - 后端：中转 `relay/route.rs::parse`（[`parse_target`]）· 门 `relay/door.rs`（[`KEY_FILE_REL`]）·
-//!   上游选择 `accounts/upstream_select/endpoint.rs`（[`base_url`]：起会话那一发注入哪个地址，**只有它拼**）·
-//!   起会话载荷 `control/launch_render/payload.rs`（[`PORT`] · 钥匙段渲成 `$(cat ~/<钥匙>)` 的 [`KEY_FILE_REL`] ·
-//!   中转地址的 fail-closed 校验 [`base_url_shape_ok`]（[`base_url`] 的逆）· 起会话身份 token 的字符集 [`segment_is_safe`]）。
+//! - 中转：`outward/route.rs::parse`（[`parse_target`] · [`segment_is_safe`]）· 门 `outward/door.rs`（钥匙的形状 [`key_shape_ok`]）。
+//! - 后端：钥匙 `relay/key.rs`（落点 [`KEY_FILE_REL`] · 带钥匙的地址 [`keyed_base_url`] · 中转地址的 fail-closed 校验 [`base_url_shape_ok`]）·
+//!   上游选择 `accounts/upstream_select/endpoint.rs`（[`base_url`]：起会话那一发注入哪个地址，**只有它拼**；[`base_url_shape_ok`] 是它的逆）·
+//!   起会话 `control/ccm/plan.rs`（钥匙段渲成 `$(cat ~/<钥匙>)` 的 [`KEY_FILE_REL`] · 起会话身份 token 的字符集 [`segment_is_safe`]）·
+//!   中转在不在听（[`PORT`]，`faces/read_face.rs` · `faces/launch_account_face.rs`）。
 //! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻后端的套接字（[`listen_socket_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）。
 //!   家那一族由后端列（[`OWN_HOME_ENTRIES`]），monitor 不另列。
 //! - 后端按家那一族落盘：`control/exit_policy` · `control/files_commit` · `control/resident` ·
@@ -205,7 +206,7 @@ pub const fn file_name_of(rel: &'static str) -> &'static str {
     }
 }
 
-/// 钥匙的形状：恰好 64 个小写十六进制字符（32 字节 = 256 位，中转 `relay/door.rs` 铸的就是这一形）。
+/// 钥匙的形状：恰好 64 个小写十六进制字符（32 字节 = 256 位，后端 `relay/key.rs` 铸的就是这一形，中转的门 `outward/door.rs` 照它认）。
 pub fn key_shape_ok(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }

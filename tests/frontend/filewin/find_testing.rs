@@ -1405,20 +1405,9 @@ fn contains(hay: &[u8], needle: &[u8]) -> bool {
     hay.windows(needle.len()).any(|w| w == needle)
 }
 
-/// 路径字节 → 线上那两种形（同 `src/backend/common/path_wire.rs::to_json` 的契约）。
+/// 路径字节 → 线上那两种形（`cmd_wire::files::WirePath`，后端回送用的同一份）。
 fn to_json(bytes: &[u8]) -> serde_json::Value {
-    match std::str::from_utf8(bytes) {
-        Ok(s) => serde_json::Value::String(s.to_string()),
-        Err(_) => {
-            const D: &[u8; 16] = b"0123456789abcdef";
-            let mut h = String::with_capacity(bytes.len() * 2);
-            for b in bytes {
-                h.push(D[(b >> 4) as usize] as char);
-                h.push(D[(b & 0x0f) as usize] as char);
-            }
-            serde_json::json!({ "b16": h })
-        }
-    }
+    serde_json::json!(cmd_wire::files::WirePath::from(bytes))
 }
 
 /// 一台**挂在通道宿主上**的合成后端。
