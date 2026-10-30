@@ -215,3 +215,15 @@ fn the_backend_rows_on_this_side_point_where_they_are_written() {
         ]
     );
 }
+
+/// ★ 日志目录那一行在这份枚举里（设置面板按 `LOGS_DIR_LABEL` 认它、改指「日志」那一页；修在界面层，这一行不从枚举里删）。
+#[test]
+fn the_logs_dir_row_stays_in_the_list() {
+    let data = TestDir::new("logs-row");
+    let got: Vec<(String, PathBuf)> = monitor_entries(data.path())
+        .into_iter()
+        .filter(|e| e.label == crate::data_paths::LOGS_DIR_LABEL)
+        .map(|e| (e.label, PathBuf::from(e.path)))
+        .collect();
+    assert_eq!(got, vec![("logs/".to_string(), data.path().join("logs"))]);
+}

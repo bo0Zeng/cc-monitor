@@ -21,21 +21,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { REPO_ROOT } from "../../../test-support/repo-root";
+import { stripComments } from "../../../test-support/strip-comments";
 
 const FILES = ["src/frontend/ui/settings/machine-aliases.ts", "src/frontend/ui/alias-reads.ts", "src/frontend/ui/settings/profiles-list.ts", "src/frontend/ui/profiles-reads.ts"];
-
-/**
- * 剥注释（块注释 · 整行与行尾的 `//`）。不用 `test-support/strip-comments`：那台状态机不认 TS 的正则字面量，
- * `machine-aliases.ts::describeArgs` 里的 `/[\s'"]/` 会让它把后面一大段读成字符串、注释漏剥（首跑逮到过）。
- * 行尾那一形只认「空白 ＋ //」，网址里的 `://` 不受影响。
- */
-function stripTsComments(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .map((l) => l.replace(/(^|\s)\/\/.*$/, ""))
-    .join("\n");
-}
 
 /** 后端 `argv.rs::flag` 里每一个常量的值。 */
 function ccmWords(): string[] {
@@ -72,11 +60,11 @@ describe("别名页零处自己解析 ccm 参数", () => {
 
   it("正控：埋了旗标、旗标=值、按空白切的样本数得出；注释里提到的不算", () => {
     const planted = 'const a = ["--", "--account"]; // "--cwd"\nconst b = `--ccm-tmux=${n}`; /* "--base" */ s.trim().split(/\\s+/);';
-    expect(hits(stripTsComments(planted), ccmWords()).sort()).toEqual(['"--"', '"--account"', "`--ccm-tmux=", ".split(/\\s"].sort());
+    expect(hits(stripComments(planted, "ts"), ccmWords()).sort()).toEqual(['"--"', '"--account"', "`--ccm-tmux=", ".split(/\\s"].sort());
   });
 
   it.each(FILES)("%s 零命中", (f) => {
-    const code = stripTsComments(readFileSync(resolve(REPO_ROOT, f), "utf8"));
+    const code = stripComments(readFileSync(resolve(REPO_ROOT, f), "utf8"), "ts");
     expect(hits(code, ccmWords()), `${f} 里又在自己认 / 拼 ccm 参数 —— 交后端（aliases-to-form / aliases-from-form）`).toEqual([]);
   });
 });

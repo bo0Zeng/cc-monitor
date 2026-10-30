@@ -5,9 +5,13 @@
 // 要求它落在两张已知名单之一——族 A（待贴配置文本，必须走 `buildPasteBlock`）
 // 或族 B（复制点东西给人看，契约不同，已登记不收）。新增一处两边都不在 → 红。
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, sep } from "node:path";
+import { readFileSync } from "node:fs";
 import { nonEmpty } from "../../test-support/non-empty";
+import { productionTsFiles } from "../../test-support/production-sources";
+import { stripComments } from "../../test-support/strip-comments";
+
+/** 一份界面源码去掉注释之后（注释里提到 `writeClipboard` · `console.warn` 不算代码）。 */
+const codeOf = (f: string): string => stripComments(readFileSync(f, "utf8"), "ts");
 
 /** 族 A：待贴进配置文件才生效。**必须**走统一组件。 */
 const FAMILY_A: string[] = [
@@ -48,37 +52,15 @@ const FAMILY_B = [
   "src/frontend/ui/settings/machine-page.ts", // 机器页卡头 ⋯ ›「复制详情」：那台成品的复制详情（每跳读数），复制给人看
 ];
 
-/**
- * 收集源文件，**路径一律用 `/`**。
- *
- * `join` 在 Windows 上产出 `src\main.ts`，而上面三张名单是手写的 `src/frontend/ui/main.ts`
- * ⇒ 名单查不中 ⇒ **每一个白名单文件都被报成「未登记的 writeText」**，
- * 整条守卫在 Windows runner 上恒红。而这个项目的**主平台就是 Windows**，
- * 也就是说这条守卫在它最该生效的那台机器上从来没绿过。
- *
- * 归一化放在**产出侧**而不是比较侧：名单是给人读的，别让每次比较都记得转一道。
- */
-function walk(dir: string, out: string[] = []): string[] {
-  for (const e of readdirSync(dir)) {
-    const p = join(dir, e);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (p.endsWith(".ts") && !p.endsWith(".vitest.ts")) {
-      out.push(p.split(sep).join("/"));
-    }
-  }
-  return out;
-}
-
 /** 写剪贴板那一口的名字（`src/frontend/ui/clipboard.ts`）。 */
 const WRITE = "writeClipboard";
 
 describe("待贴配置文本只有一个实现", () => {
-  const files = walk("src");
+  // 路径一律正斜杠、相对仓根（`production-sources.ts` 产出侧归一）：名单是手写的 `src/frontend/ui/main.ts`。
+  const files = productionTsFiles("src");
 
   it("枚举全仓写剪贴板（writeClipboard），每一处都必须在两张名单之一（白名单，新增即红）", () => {
-    const hits = files.filter((f) =>
-      readFileSync(f, "utf8").includes(WRITE),
-    );
+    const hits = files.filter((f) => f.text.includes(WRITE)).map((f) => f.file);
     // 反向自检：一处都没扫到 = 守卫失效了，不是代码变干净了。
     nonEmpty(hits);
     const known = new Set([...FAMILY_A, ...FAMILY_B]);
@@ -96,11 +78,7 @@ describe("待贴配置文本只有一个实现", () => {
 
   it("族 A 里不得再出现裸写剪贴板（那意味着又有一处绕开了组件）", () => {
     for (const f of FAMILY_A) {
-      // 剥掉行注释，免得注释里提到 writeText 被当成代码（本会话踩过"把注释当代码"）
-      const code = readFileSync(f, "utf8")
-        .split("\n")
-        .filter((l) => !l.trimStart().startsWith("//"))
-        .join("\n");
+      const code = codeOf(f);
       expect(code.includes(WRITE), `${f} 里仍有裸 writeText`).toBe(false);
     }
   });
@@ -113,10 +91,7 @@ describe("待贴配置文本只有一个实现", () => {
     // （那三句话是族 A 的契约）。真要做待贴块，就得走组件、从族 B 挪进族 A。
     for (const f of FAMILY_B) {
       if (f === "src/frontend/ui/paste-block.ts") continue; // 组件自己就是那套文案的产地
-      const code = readFileSync(f, "utf8")
-        .split("\n")
-        .filter((l) => !l.trimStart().startsWith("//"))
-        .join("\n");
+      const code = codeOf(f);
       // 判据要**精确**：第一版用了 `"贴到 "`，结果打在 `accounts-section.ts:721`
       // 那句"把它贴到 cc-monitor 的 GitHub issue 里"上——那是贴到 issue，不是贴进配置。
       // 现在只认组件独有的两个信号：`import` 了组件，或吐出组件那句专属文案。
@@ -136,12 +111,8 @@ describe("待贴配置文本只有一个实现", () => {
   it("组件本身是唯一持有写剪贴板的地方（族 A 侧），且不吞错误", () => {
     const raw = readFileSync("src/frontend/ui/paste-block.ts", "utf8");
     expect(raw).toContain(WRITE);
-    // **剥注释再查**——第一版没剥，被本文件自己的注释「不许吞进 console」判成违规。
-    // 「把注释当代码」这条本会话已栽过一次，这次栽在断言侧：守卫要剥，断言也要剥。
-    const code = raw
-      .split("\n")
-      .filter((l) => !l.trimStart().startsWith("//"))
-      .join("\n");
+    // 剥注释再查：注释里写着「不许吞进 console」。
+    const code = codeOf("src/frontend/ui/paste-block.ts");
     expect(code).toContain(WRITE); // 反向自检：别剥过头
     expect(code).not.toContain("console.warn"); // 迁移前 A3 的缺陷不许回来
   });

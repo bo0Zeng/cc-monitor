@@ -1,9 +1,8 @@
 //! 各条源码扫描型守卫共用的「只留生产段」剥法。
 //!
-//! # 为什么是一个共享 crate（U8a-2a，2026-08-02）
+//! # 为什么是一个共享 crate
 //!
-//! 这份剥法原先住在后端的 `guard_support`（`cfg(test)` 模块）。monitor 侧够不着它，
-//! 于是 monitor 的守卫各自写了**便宜近似**，最常见的一种是：
+//! 两侧的守卫要同一份剥法；各写各的就会写出**便宜近似**，最常见的一种是：
 //!
 //! ```text
 //! let prod = src.split("\n#[cfg(test)]").next().unwrap_or(src);
@@ -13,12 +12,11 @@
 //! 第一个测试模块在 804 行，而 `parse_frame` 在 1771 行 —— 拿那个近似去扫它，
 //! **扫描面直接归零到前 803 行**，守卫静默变瞎。
 //!
-//! 「抽取面画小了」这一族在 unified-backend 工作区里已经出现过四次。本 crate 是它的收口：
-//! 两侧用**同一份**剥法，backend 的 `guard_support` 改为再导出。
+//! 两侧用**同一份**剥法，backend 的 `guard_support` 是它的再导出。
 //!
-//! # ⚠ 与三个兄弟 crate 的一处**不同**，别照抄错家族不变量
+//! # ⚠ 与别的契约 crate 的一处**不同**
 //!
-//! `branch-core` / `usage-core` / `acct-core` 的头注都写着「无 IO、无平台依赖」。
+//! `acct-core` · `shell-quote-core` 这类契约 crate 的头注写着「无 IO、无平台依赖」。
 //! 本 crate 零依赖、平台无关，但 [`assert_tree_strips_clean`] **做真的 `read_dir` 遍历**，
 //! 而且以 panic 为错误模型 —— 因为它只供 `cfg(test)` 里的守卫调用（两侧都是
 //! `[dev-dependencies]`，不进任何发布二进制）。新增函数请守住这条边界：

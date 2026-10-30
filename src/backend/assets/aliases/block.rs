@@ -358,10 +358,6 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 // ⇒ 分岔点放在**方言**这一层（[`encode_for_disk`] / [`strip_bom`]），与
 // 「写什么」那一处分岔（[`plan_install`]）同一条线。
 
-// 这里原来住着 BOM 常量与「读时剥 / 写时按方言加」那一对（`K-R132`），
-// 它们是**方言**的一格 ⇒ 搬去 `shell_dialect.rs`（`ShellDialect::encode_for_disk` / `::decode_from_disk`，
-// BOM 常量的唯一住址也跟过去了）。分岔点仍在方言这一层，与「写什么」那一处分岔（[`plan_install`]）同一条线。
-
 /// 读进来的那一份：把 BOM 剥掉再交给任何**判内容**的东西。
 ///
 /// 🔴 不剥会坏两件事：① `has_block` 按 `starts_with(BEGIN_MARKER)` 认围栏，
