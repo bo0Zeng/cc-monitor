@@ -3,7 +3,7 @@
 //! 核原文：`--search` 条逐字「① **行序 = snippet 预算顺序 = 最近优先**（按 jsonl mtime 降序）」，并说「本会话超
 //! `PER_SESSION_CAP` 条只列前几条」与「全局 `--limit` 用完」**不是一回事** —— `budget_tells_exhausted_apart_from_session_cap`
 //! 与 `sort_by_recency_is_newest_first` 判的正是这两句。其余助手（找词 · 片段 · 截断 · 标题）的单测挂在 `D1` 下。
-//! 随通用口径从共享 crate `search-core` 搬来（期望一字未改）；Claude 记录文本那几格在 `agents/claudecode/text_tests.rs`。
+//! Claude 记录文本那几格在 `agents/claudecode/text_tests.rs`。
 
 use super::*;
 
@@ -171,9 +171,9 @@ fn heard_takes_agent_titles_and_the_first_said_only() {
     assert_eq!(f.first, "第一句");
 }
 
-// ═══ 搜索口径只有一个家（原 `tests/frontend/shell/search_kou_jing_guard.rs` 的 ①② 两道，随家搬进后端）══════
+// ═══ 搜索口径只有一个家 ══════
 //
-// 要求：「一个判定只有一个家」。家从共享 crate `search-core` 拆成两份：通用口径 = 本文件的被测
+// 要求：「一个判定只有一个家」。家分两份：通用口径 = 本文件的被测
 // `history/search_rules.rs`，Claude 记录文本 = 适配层 `agents/claudecode/text.rs`；搜索那一侧（`observe/search_query.rs`）不许自己再有一份，
 // 且必须真的调到家里那一份。monitor 那一侧零处（③）仍住 `tests/frontend/shell/search_kou_jing_guard.rs`。
 

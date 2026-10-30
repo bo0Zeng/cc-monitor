@@ -119,8 +119,6 @@ fn the_crate_scan_actually_finds_crates() {
 ///
 /// 违反它**不会红，只会静默少跑** —— `cargo test --workspace` 覆不到非成员，
 /// 而那个 crate 的测试就此从门禁里**消失**（不是失败，是不存在）。
-/// 这正是 G2 之前 `branch-core`（漏 fmt/clippy）与 `usage-core`/`acct-core`
-/// （三样全漏、漏了两轮）那两次事故的形状，只是载体从「CI 步骤」变成了「members 列表」。
 ///
 /// ⚠ **必须先切出 `[workspace]` 段再找** —— 直接全文 `contains("crates/gate-core")`
 /// 会匹配到**依赖声明行**（`gate-core = { path = "crates/gate-core" }`），
