@@ -22,6 +22,14 @@ const QUESTIONS = [
   { question: "Which color?", header: "Color", multiSelect: false, options: [{ label: "Red", description: "warm" }, { label: "Blue" }] },
   { question: "Which fruits?", header: "Fruit", multiSelect: true, options: [{ label: "Apple" }, { label: "Pear" }, { label: "Plum" }] },
 ];
+/** 三题、每题题目上千字（编的：一句背景说明重复到一千字出头）。 */
+const LONG = "迁移脚本要先在预发库上跑一遍，再按表分批切到线上；每一批切完都要比对行数与校验和，有一处对不上就整批回滚并保留现场。";
+const longText = (lead: string) => `${lead}${LONG.repeat(Math.ceil(1000 / LONG.length))}`;
+const LONG_QUESTIONS = [
+  { question: longText("第一批先切哪几张表？"), header: "Batch", multiSelect: false, options: [{ label: "订单表", description: "量最大" }, { label: "用户表" }] },
+  { question: longText("回滚时保留哪些现场？"), header: "Keep", multiSelect: true, options: [{ label: "慢日志" }, { label: "binlog 位点" }, { label: "比对结果" }] },
+  { question: longText("切完之后谁来复核？"), header: "Review", multiSelect: false, options: [{ label: "值班的人" }, { label: "写脚本的人" }] },
+];
 
 /** 那一个会话：说完一句、那一步还没有结果，在等人（pidfile 说 waiting）。记录末一条落在它开始等的那一刻。 */
 function world(tool: string, input: Record<string, unknown>, waitingFor: string): () => World {
@@ -107,6 +115,16 @@ export const ANSWER_SCENES: Scene[] = [
     await pick(1, 1);
     await sleep(300);
   }, world("AskUserQuestion", { questions: QUESTIONS }, "permission prompt")),
+  shot("answer-long", "答批准 · 长提问限高（甲10）", "三题、每题题目上千字：块最高约会话区四成，头一行常驻、底下块内滚；只展开正在答的第一题，题目折三行 ＋［展开全部］，别的题收成一行；消息流最后一条仍露在块上面", async ({ backend }) => {
+    await asked(backend, hook("AskUserQuestion", { questions: LONG_QUESTIONS }), "[data-option]");
+    await until(() => document.querySelector("[role=group] [data-part=qfull]"));
+  }, world("AskUserQuestion", { questions: LONG_QUESTIONS }, "permission prompt")),
+  shot("answer-long-folded", "答批准 · 长提问收起（甲10）", "点头一行的［收起］：块只剩头一行（核心那一句「等回答 · 3 题」＋ 已等 ＋［展开］），消息流让出的高跟着缩成这一条", async ({ backend }) => {
+    await asked(backend, hook("AskUserQuestion", { questions: LONG_QUESTIONS }), "[data-option]");
+    await click(await until(() => document.querySelector<HTMLElement>("[role=group] [data-part=head] button[data-fold]")));
+    await until(() => document.querySelector("[role=group][data-folded=true]"));
+    await sleep(300);
+  }, world("AskUserQuestion", { questions: LONG_QUESTIONS }, "permission prompt")),
   shot("answer-plan", "答批准 · 批计划（甲4）", "计划原文进等宽块；四项由核心给：自动模式 · 自动接受编辑 · 逐个确认 · 继续规划…", async ({ backend }) => {
     await asked(backend, hook("ExitPlanMode", { plan: PLAN }, { permission_mode: "plan" }));
   }, world("ExitPlanMode", { plan: PLAN }, "permission prompt")),

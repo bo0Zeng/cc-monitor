@@ -1,4 +1,4 @@
-//! 只往后追加的文件（会话记录）的增量读，observe 与 history 共用（原 `observe/fs.rs`，10-13 下沉）。读盘本身经 `platform::fs::Ro`。
+//! 只往后追加的文件（会话记录）的增量读，observe 与 history 共用。读盘本身经 `platform::fs::Ro`。
 
 use crate::platform::fs::{Ro, RoFile};
 use std::path::Path;
