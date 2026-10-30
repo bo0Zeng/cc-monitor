@@ -12,14 +12,14 @@
  *    TS 里再写 `X.title = <X 自己的正文>` 就红。显示的不是全文、悬停给另一句的是说明，照旧写 title。
  */
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import postcss, { type Rule } from "postcss";
 import { nonEmpty } from "../../test-support/non-empty";
+import { sourceFiles } from "../../test-support/production-sources";
 
-const SRC = resolve(__dirname, "../../../src");
-const UI = resolve(SRC, "frontend/ui");
-const HOME = resolve(UI, "styles/shared.css");
+const UI = resolve(__dirname, "../../../src/frontend/ui");
+const HOME = "src/frontend/ui/styles/shared.css";
 
 /** 一份 CSS 里，选择器恰好是 `sel`（逗号分开的任一段）的规则里各声明的最后取值。 */
 function declsOf(file: string, sel: string): Map<string, string> {
@@ -31,13 +31,6 @@ function declsOf(file: string, sel: string): Map<string, string> {
   return out;
 }
 
-function walk(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-    if (e.name === "node_modules" || e.name === "target") return [];
-    const p = join(dir, e.name);
-    return e.isDirectory() ? walk(p) : [p];
-  });
-}
 
 /** 一段 CSS 里自己写的省略号：`选择器:行号`。`isHome` 时 `.one-line` 那一家不算。 */
 function ownEllipsis(css: string, isHome: boolean): string[] {
@@ -53,8 +46,8 @@ function ownEllipsis(css: string, isHome: boolean): string[] {
 /** 一段 TS 里内联写的省略号（两种写法）。 */
 const TS_ELLIPSIS = /textOverflow|text-overflow/;
 
-const files = walk(SRC);
-const moduleCss = files.filter((f) => f.endsWith(".module.css"));
+const files = sourceFiles("src", { ext: [".ts", ".css"], generated: true });
+const moduleCss = files.filter((f) => f.file.endsWith(".module.css"));
 
 /** ② 右侧按钮组：文件 · 选择器 · 是什么。 */
 const FIXED_BUTTONS: [string, string, string][] = [
@@ -83,20 +76,20 @@ describe("单行文字不压按钮", () => {
   });
 
   it("① 别处的 CSS 里没有自己写的省略号（模块 composes: one-line from global，全局 CSS 由 TS 挂 one-line）", () => {
-    const hits = nonEmpty(files.filter((f) => f.endsWith(".css"))).flatMap((f) => ownEllipsis(readFileSync(f, "utf8"), f === HOME).map((h) => `${relative(SRC, f)} ${h}`));
+    const hits = nonEmpty(files.filter((f) => f.file.endsWith(".css"))).flatMap((f) => ownEllipsis(f.text, f.file === HOME).map((h) => `${f.file} ${h}`));
     expect(hits).toEqual([]);
   });
 
   it("① TS 里没有内联写的省略号", () => {
-    const ts = nonEmpty(files.filter((f) => f.endsWith(".ts") && !f.endsWith(".d.css.ts")));
-    expect(ts.filter((f) => TS_ELLIPSIS.test(readFileSync(f, "utf8"))).map((f) => relative(SRC, f))).toEqual([]);
+    const ts = nonEmpty(files.filter((f) => f.file.endsWith(".ts") && !f.file.endsWith(".d.css.ts")));
+    expect(ts.filter((f) => TS_ELLIPSIS.test(f.text)).map((f) => f.file)).toEqual([]);
   });
 
   it("① 模块里的 one-line 都写成 from global（不是本地同名类）", () => {
     const uses: string[] = [];
     for (const f of moduleCss) {
-      postcss.parse(readFileSync(f, "utf8")).walkDecls("composes", (d) => {
-        if (/\bone-line\b/.test(d.value)) uses.push(`${relative(SRC, f)}:${d.source?.start?.line} ${d.value.trim()}`);
+      postcss.parse(f.text).walkDecls("composes", (d) => {
+        if (/\bone-line\b/.test(d.value)) uses.push(`${f.file}:${d.source?.start?.line} ${d.value.trim()}`);
       });
     }
     nonEmpty(uses);
@@ -146,7 +139,7 @@ describe("悬停给全名只住 kit 一处", () => {
   });
 
   it("④ TS 里没有「title ＝ 自己正文」（单行件截断了，悬停全名由 kit/tooltip 给）", () => {
-    const ts = nonEmpty(files.filter((f) => f.endsWith(".ts") && !f.endsWith(".d.css.ts")));
-    expect(ts.flatMap((f) => ownTextTitles(readFileSync(f, "utf8")).map((h) => `${relative(SRC, f)}:${h}`))).toEqual([]);
+    const ts = nonEmpty(files.filter((f) => f.file.endsWith(".ts") && !f.file.endsWith(".d.css.ts")));
+    expect(ts.flatMap((f) => ownTextTitles(f.text).map((h) => `${f.file}:${h}`))).toEqual([]);
   });
 });

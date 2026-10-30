@@ -30,8 +30,8 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import { owned } from "../../../test-support/owned-tab-manager.ts";
 import { announced, goldenFace } from "../../../test-support/session-faces";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { resolve, join, sep } from "node:path";
+import { readFileSync } from "node:fs";
+import { resolve, sep } from "node:path";
 import ts from "typescript";
 
 // ── 文件末尾那一组是**行为**判据，要驱动真的 `views/history.ts`。
@@ -108,6 +108,7 @@ vi.mock("../../../../src/frontend/ui/behavior", () => ({
 
 import { REPO_ROOT } from "../../../test-support/repo-root";
 import { stripComments } from "../../../test-support/strip-comments";
+import { filePaths } from "../../../test-support/production-sources";
 import { commands } from "../../../../src/frontend/ui/ipc/commands";
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
@@ -144,28 +145,11 @@ const WRAPPER_FILE = "src/frontend/ui/ipc/commands.ts";
 // 加/删一条命令时三处跟着现打，不用回来改数（原先三个手抄的数，每路合并都要对一次）。
 
 /**
- * **吐出来的路径一律用 `/` 分隔，跟这台机器的 `path.sep` 无关。**
- *
- * 🔴 它治的是一条**判据自己的病**，不是产品的病。云端 `Frontend typecheck + build` 那个 job
- * 跑在 **windows runner** 上，`join()` 给回的是 `src\ipc\local-tmux-name.ts`；
- * 而本文件下游三处都拿**正斜杠字面量**去认路
- *（`endsWith("/ipc/commands.ts")` · `endsWith("/ipc/local-tmux-name.ts")` · `endsWith("/remote-launch.ts")`），
- * 反斜杠那一份一条都剔不掉 ⇒ 「铸名只有一个算法口」那条实得
- * `["src\\ipc\\local-tmux-name.ts", "src\\remote-launch.ts", "src\\tabs.ts"]`、期望 `["src/frontend/ui/tabs.ts"]`
- * ⇒ vitest `1 failed | 1725 passed`。**产品一个字节没问题，红的是量它的那把尺子。**
- *
- * ⚠ **规范化落在这一个点上，不写第二份平台分支**：`split(sep).join("/")` 在 Linux 上
- * `sep === "/"` ⇒ 恒等（是 no-op，不是「另一条路」），在 Windows 上把 `\` 换成 `/`。
- * 长度不变 ⇒ 下游那三处 `f.slice(REPO_ROOT.length + 1)` 一个字都不用改。
- * ⚠ 只规范**吐出去的叶子**；递归仍拿本机形态的 `p` 下探（`readdirSync` 两种都吃）。
+ * `dir`（仓根相对）下某种后缀的文件，连生成物一起：绝对路径、分隔符一律 `/`（下游拿正斜杠字面量认路，
+ * 也拿 `f.slice(REPO_ROOT.length + 1)` 取仓根相对路径 —— `split(sep).join("/")` 长度不变）。
  */
-function walk(dir: string, ext: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p, ext, out);
-    else if (name.endsWith(ext)) out.push(p.split(sep).join("/"));
-  }
-  return out;
+function walk(dir: string, ext: string): string[] {
+  return filePaths(dir, { ext, generated: true }).map((f) => resolve(REPO_ROOT, f).split(sep).join("/"));
 }
 
 /**
@@ -181,8 +165,8 @@ function rustCommands(): Set<string> {
   const out = new Set<string>();
   // monitor 链的通信层 crate 住 `src/comms/inward/`。
   for (const f of [
-    ...walk(resolve(REPO_ROOT, "src/frontend/shell/src"), ".rs"),
-    ...walk(resolve(REPO_ROOT, "src/comms/inward"), ".rs"),
+    ...walk("src/frontend/shell/src", ".rs"),
+    ...walk("src/comms/inward", ".rs"),
   ]) {
     const code = stripComments(readFileSync(f, "utf8"), "rust");
     for (const m of code.matchAll(/#\[tauri::command\b[^\]]*\]/g)) {
@@ -227,7 +211,7 @@ function registeredCommands(): Set<string> {
  */
 function tsLiteralCommands(): Map<string, string[]> {
   const out = new Map<string, string[]>();
-  for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
+  for (const f of walk("src", ".ts")) {
     if (f.includes(".test.") || f.includes(".vitest.")) continue;
     const code = stripComments(readFileSync(f, "utf8"), "ts");
     for (const m of code.matchAll(
@@ -682,7 +666,7 @@ function originCorpus(): Decl[] {
   // 解析全树要几秒；本节四条共用一份（每条各解析一遍在负载高时会撞 vitest 的 5 秒上限）。
   if (originCorpusMemo) return originCorpusMemo;
   const all: Decl[] = [];
-  for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
+  for (const f of walk("src", ".ts")) {
     const rel = f.slice(REPO_ROOT.length + 1);
     if (rel.startsWith("src/frontend/shell/") || rel.startsWith("src/backend/")) continue;
     // 名字不带 origin 的声明不进人群 ⇒ 正文里一个 `origin` 都没有的文件不必解析（负载下全树解析会超时）。
@@ -790,7 +774,7 @@ function stringLiteralHits(rel: string, src: string, want: string): number {
 /** 全部前端 TS（含生成物）里，值恰为 `want` 的字符串字面量落在哪几份文件。复用本文件的 `walk`。 */
 function filesWithLiteral(want: string): string[] {
   const out: string[] = [];
-  for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
+  for (const f of walk("src", ".ts")) {
     const rel = f.slice(REPO_ROOT.length + 1);
     if (rel.startsWith("src/frontend/shell/") || rel.startsWith("src/backend/")) continue;
     // 这一份生成物里的哨兵出自 cmd-wire 的常量（`KEYS_NOT_NAMES`，`npm run gen:types` 现生成），不是手抄的第二个家。
@@ -843,7 +827,7 @@ function bareInvokeSites(code: string): number {
 describe("〔C4a〕裸 invoke 只在包装层", () => {
   it("★★ 全仓生产 TS 里直呼 invoke 的文件 == { 包装层 }，且包装层里的处数 == 条目数（正控）", () => {
     const perFile = new Map<string, number>();
-    for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
+    for (const f of walk("src", ".ts")) {
       if (f.includes(".test.") || f.includes(".vitest.")) continue;
       const n = bareInvokeSites(stripComments(readFileSync(f, "utf8"), "ts"));
       if (n > 0) perFile.set(f.slice(REPO_ROOT.length + 1), n);
@@ -861,7 +845,7 @@ describe("〔C4a〕裸 invoke 只在包装层", () => {
 
   it("★ 没有绕开 `invoke` 这个名字的第二条路（命名空间导入 / 全局注入对象）", () => {
     const offenders: string[] = [];
-    for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
+    for (const f of walk("src", ".ts")) {
       if (f.includes(".test.") || f.includes(".vitest.")) continue;
       const code = stripComments(readFileSync(f, "utf8"), "ts");
       if (/import\s*\*\s*as\s+\w+\s+from\s*["']@tauri-apps\/api\/core["']/.test(code)) offenders.push(`${f} · import *`);

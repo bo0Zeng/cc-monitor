@@ -10,6 +10,7 @@ import { commands } from "./ipc/commands";
 import { copyText } from "./copy-table";
 import { toast, type ToastAction } from "./kit/toast";
 import type { UiErrorPayload } from "./generated/UiErrorPayload";
+import { UI_ERROR } from "./generated/shell-names";
 
 /** 一条出错事件的动作：修法在前（重新连接那一台）、看日志在后。 */
 export function uiErrorActions(p: UiErrorPayload): ToastAction[] {
@@ -33,5 +34,5 @@ export function showUiError(p: UiErrorPayload): void {
 }
 
 export function bindErrorToast(): void {
-  void listen<UiErrorPayload>("monitor-error", (e) => showUiError(e.payload));
+  void listen<UiErrorPayload>(UI_ERROR, (e) => showUiError(e.payload));
 }
