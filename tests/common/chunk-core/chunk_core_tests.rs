@@ -86,7 +86,7 @@ fn body(n: usize) -> Vec<u8> {
 }
 
 fn sha(b: &[u8]) -> String {
-    hex(&sha2::Sha256::digest(b))
+    to_hex(&sha2::Sha256::digest(b))
 }
 
 #[test]
@@ -247,7 +247,7 @@ fn a_download_reads_block_by_block_until_the_end_and_hands_each_block_over() {
 fn hex_is_lowercase_and_byte_exact() {
     let b: Vec<u8> = (0u8..=255).collect();
     let want: String = b.iter().map(|x| format!("{x:02x}")).collect();
-    assert_eq!(hex(&b), want);
+    assert_eq!(to_hex(&b), want);
     assert_eq!(
         key_of([0xab; 16]).len(),
         32,
