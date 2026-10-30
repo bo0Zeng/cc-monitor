@@ -14,11 +14,18 @@
  * 答出去之后等那台推 `changed {needs}` 重读（下一条挂着的换上来；没有了块收起）。别处先答了 ⇒ 块淡出收起、留一行（稳定态，
  * 下一条请求来了 / 切走才没）：点了才知道的（回包 `result: "gone"`）那一行照核心那一句；没点、重读里那条请求没了的写「已在别处答过」。
  * 没人答、那台替人答了（会话事实 `autoAnswered`）⇒ 同一行写核心那一句，切走再回来也在，那条会话下一次挂上提问才换掉。
+ *
+ * 限高与收起（只是这个块的视图状态，不进后端）：
+ * - 块最高约会话区四成（CSS），头一行不滚，底下那一截（全文 · 题 · 选项）块内滚；`room` 报的就是封顶后的高；
+ * - 挂着请求时头一行末尾一颗［收起］：收着只剩头一行（核心那一句 ＋ 已等），点头一行任一处展开。每个会话记收着的是哪一条请求：
+ *   切走再回来仍收着；那个会话换上来新的一条 ⇒ 展开；从「需手动」入口跳过来（`focusFor`）⇒ 展开；
+ * - 多题只展开正在答的那一题，别的收成一行（题头 ＋ 选了什么 / 题目），点那一行换过去；单选点了跳到下一道没答的；
+ *   题目排出来超三行先折着 ＋［展开全部］。
  */
 import type { Tab } from "./tab-model";
 import type { Ask, AskChoice, AskQuestionItem, Needs } from "./session-reads";
 import { copyText } from "./copy-table";
-import { button, setBusy, setDisabled } from "./kit/button";
+import { button, setBusy, setButtonLabel, setDisabled } from "./kit/button";
 import { kbd } from "./kit/badge";
 import { needsOf } from "./session-face";
 import { waitedNow } from "./duration-format";
@@ -47,12 +54,31 @@ interface Pick {
   text: string;
 }
 
+/** 画出来的一道题：框 · 收着时那一行 · 题目那一格（折三行）· 题头（核心那一格；没有 ⇒ null）。 */
+interface DrawnQuestion {
+  q: AskQuestionItem;
+  box: HTMLElement;
+  line: HTMLElement;
+  text: HTMLElement;
+  head: string | null;
+}
+
 export class AnswerBlock {
   readonly el: HTMLDivElement;
   /** 画的是哪一份（会话 · 请求 · 那一句）；同一份重画只换已等多久，选到一半的不丢。 */
   private drawn: string | null = null;
   private since: HTMLElement | null = null;
   private body: HTMLElement | null = null;
+  /** 头一行底下会滚的那一截（收着时不画）。 */
+  private scroll: HTMLElement | null = null;
+  private foldBtn: HTMLButtonElement | null = null;
+  /** 每个会话收着的是哪一条请求（会话 id → 请求 id）；那个会话换上来别的一条 ⇒ 对不上 ⇒ 展开。 */
+  private folded = new Map<string, string>();
+  /** 此刻画着的请求（哪个会话 · 哪一条）：收起那颗认它；没挂上请求 ⇒ null（没得收）。 */
+  private foldKey: { sid: string; id: string } | null = null;
+  private questions: DrawnQuestion[] = [];
+  /** 正在答的那一题（题 id）。 */
+  private current: string | null = null;
   private picks = new Map<string, Pick>();
   private pending = false;
   private gone = false;
@@ -71,9 +97,10 @@ export class AnswerBlock {
     this.el.addEventListener("keydown", (e) => this.onKey(e));
   }
 
-  /** 从「需手动」的入口跳到这个会话：块在 ⇒ 焦点落在第一颗；还没画出来 ⇒ 画出来那一刻再落。 */
+  /** 从「需手动」的入口跳到这个会话：收着的展开；块在 ⇒ 焦点落在第一颗；还没画出来 ⇒ 画出来那一刻再落。 */
   focusFor(sid: string): void {
     this.wantFocus = sid;
+    if (this.folded.delete(sid) && this.foldKey?.sid === sid) this.paintFold();
     this.takeFocus();
   }
 
@@ -107,8 +134,10 @@ export class AnswerBlock {
         this.drawn = "";
         this.el.hidden = true;
         this.el.replaceChildren();
+        this.forget();
         delete this.el.dataset.gone;
         delete this.el.dataset.goneOnly;
+        delete this.el.dataset.folded;
         this.host.room?.(0);
       }
       return;
@@ -117,6 +146,7 @@ export class AnswerBlock {
     if (key !== this.drawn) {
       this.drawn = key;
       this.draw(tab, n);
+      this.measureClamp();
     }
     if (n.ask) this.shown ??= { sid: tab.sessionId, id: n.ask.id, ours: false };
     const waited = waitedNow(n, now);
@@ -125,15 +155,27 @@ export class AnswerBlock {
     this.host.room?.(this.el.offsetHeight);
   }
 
+  /** 画着的那几格不再作数（块空了 / 只剩一行）。 */
+  private forget(): void {
+    this.since = null;
+    this.body = null;
+    this.scroll = null;
+    this.foldBtn = null;
+    this.foldKey = null;
+    this.questions = [];
+    this.current = null;
+  }
+
   /** 块收起、只留「已在别处答过」那一行（稳定态：下一条请求来了 / 切走才没）。 */
   private drawGone(said: string): void {
     const key = `gone\u0000${said}`;
     if (this.drawn === key) return;
     this.drawn = key;
-    this.since = null;
+    this.forget();
     this.el.hidden = false;
     this.el.dataset.gone = "true";
     this.el.dataset.goneOnly = "true";
+    delete this.el.dataset.folded;
     this.el.replaceChildren(this.goneRow(said));
     this.host.room?.(this.el.offsetHeight);
   }
@@ -150,14 +192,39 @@ export class AnswerBlock {
   private takeFocus(): void {
     const tab = this.host.active();
     if (this.wantFocus === null || this.el.hidden || tab?.sessionId !== this.wantFocus) return;
-    const first = this.el.querySelector<HTMLElement>("button:not([aria-disabled=true]), input");
+    const first = this.scroll?.querySelector<HTMLElement>("button:not([aria-disabled=true]), input");
     if (!first) return;
     this.wantFocus = null;
     first.focus();
   }
 
+  /** 收着 / 展开照 `folded` 画（头一行那颗换字），再照新高报让出多高。 */
+  private paintFold(): void {
+    const k = this.foldKey;
+    const on = k !== null && this.folded.get(k.sid) === k.id;
+    if (on) this.el.dataset.folded = "true";
+    else delete this.el.dataset.folded;
+    if (this.foldBtn) {
+      setButtonLabel(this.foldBtn, on ? copyText("askBlock.fold.expand") : copyText("askBlock.fold.collapse"));
+      this.foldBtn.dataset.fold = on ? "expand" : "collapse";
+      this.foldBtn.setAttribute("aria-expanded", String(!on));
+    }
+    this.host.room?.(this.el.offsetHeight);
+  }
+
+  private setFolded(on: boolean): void {
+    const k = this.foldKey;
+    if (!k) return;
+    if (on) this.folded.set(k.sid, k.id);
+    else this.folded.delete(k.sid);
+    this.paintFold();
+    if (!on) this.measureClamp();
+  }
+
   private draw(tab: Tab, n: Needs): void {
     this.picks = new Map();
+    this.questions = [];
+    this.current = null;
     this.pending = false;
     this.gone = false;
     delete this.el.dataset.gone;
@@ -183,9 +250,28 @@ export class AnswerBlock {
     this.since.className = s.abSince;
     this.since.dataset.part = "since";
     head.append(this.since);
+    // 收着的那一条：同一个会话换上来别的一条 ⇒ 不再收着（展开一次）。
+    const sid = tab.sessionId;
+    if (ask && this.folded.has(sid) && this.folded.get(sid) !== ask.id) this.folded.delete(sid);
+    this.foldKey = ask ? { sid, id: ask.id } : null;
+    this.foldBtn = null;
+    if (ask) {
+      const fold = button({ label: copyText("askBlock.fold.collapse"), kind: "ghost", size: "compact", onClick: () => this.setFolded(this.el.dataset.folded !== "true") });
+      fold.addEventListener("click", (e) => e.stopPropagation());
+      this.foldBtn = fold;
+      head.append(fold);
+      head.addEventListener("click", () => {
+        if (this.el.dataset.folded === "true") this.setFolded(false);
+      });
+    }
     this.body = document.createElement("div");
     this.body.className = s.abBody;
-    this.el.replaceChildren(head, this.body);
+    this.scroll = document.createElement("div");
+    this.scroll.className = s.abScroll;
+    this.scroll.dataset.part = "scroll";
+    this.scroll.append(this.body);
+    this.el.replaceChildren(head, this.scroll);
+    this.paintFold();
     if (!ask) {
       this.drawManual(n);
       return;
@@ -215,7 +301,9 @@ export class AnswerBlock {
 
   /** 选项那几行（提问那一种先排题）。 */
   private drawChoices(tab: Tab, ask: Ask): void {
+    this.questions = [];
     const parts: HTMLElement[] = ask.questions.map((q) => this.question(q));
+    if (ask.questions.length > 0 && !ask.questions.some((q) => q.id === this.current)) this.current = this.nextOpen(null);
     const rows = new Map<string, HTMLElement>();
     // 段照核心给的 `row`；批计划那几项并成一行，有题时「不回答」与「提交答案」同一行。
     const oneRow = ask.kind === "plan" || ask.questions.length > 0;
@@ -249,8 +337,22 @@ export class AnswerBlock {
     const box = document.createElement("div");
     box.className = s.abQuestion;
     box.dataset.question = q.id;
-    const pick: Pick = { options: new Set(), text: "" };
+    const pick: Pick = this.picks.get(q.id) ?? { options: new Set(), text: "" };
     this.picks.set(q.id, pick);
+    // 收着时那一行：点了这一题成了正在答的那一题。
+    const line = document.createElement("div");
+    line.className = s.abQLine;
+    line.dataset.part = "qline";
+    line.setAttribute("role", "button");
+    line.tabIndex = 0;
+    line.addEventListener("click", () => this.openQuestion(q.id));
+    line.addEventListener("keydown", (e) => {
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        this.openQuestion(q.id);
+      }
+    });
+    box.append(line);
     const qhead = q.multi ? (q.header ? copyText("askBlock.question.multi", { header: q.header }) : copyText("askBlock.question.multiBare")) : q.header;
     if (qhead) {
       const h = document.createElement("span");
@@ -262,8 +364,10 @@ export class AnswerBlock {
     const text = document.createElement("span");
     text.className = s.abQText;
     text.dataset.part = "qtext";
+    text.dataset.clamped = "true";
     text.textContent = q.text;
     box.append(text);
+    this.questions.push({ q, box, line, text, head: qhead ?? null });
     const opts: HTMLElement[] = [];
     const paint = () => {
       for (const o of opts) o.setAttribute("aria-checked", String(pick.options.has(o.dataset.option ?? "")));
@@ -298,6 +402,11 @@ export class AnswerBlock {
         }
         paint();
         this.refreshSubmit();
+        // 单选点定了 ⇒ 往下一道没答的去（多选、自由文本还要接着填，不跳）。
+        if (!q.multi) {
+          const next = this.nextOpen(q.id);
+          if (next !== null && next !== q.id) this.openQuestion(next);
+        }
       };
       row.addEventListener("click", toggle);
       row.addEventListener("keydown", (e) => {
@@ -332,11 +441,71 @@ export class AnswerBlock {
     return box;
   }
 
-  /** 「提交答案」那一颗：每题都答了才可点。 */
+  private answered(id: string): boolean {
+    const p = this.picks.get(id);
+    return p !== undefined && (p.options.size > 0 || p.text.trim() !== "");
+  }
+
+  /** 下一道没答的（从 `after` 后面起，绕回开头）；都答了 ⇒ 留在 `after`（第一次画 ⇒ 第一道）。 */
+  private nextOpen(after: string | null): string | null {
+    const ids = this.questions.map((d) => d.q.id);
+    const from = after === null ? 0 : ids.indexOf(after) + 1;
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[(from + i) % ids.length];
+      if (!this.answered(id)) return id;
+    }
+    return after ?? ids[0] ?? null;
+  }
+
+  private openQuestion(id: string): void {
+    this.current = id;
+    this.paintQuestions();
+    this.measureClamp();
+    this.host.room?.(this.el.offsetHeight);
+  }
+
+  /** 正在答的那一题展开，别的收成一行：题头 ＋ 选了什么（没答的写题目）；字全是核心那几样，拼接只用分隔符。 */
+  private paintQuestions(): void {
+    const sep = copyText("kit.text.sep");
+    for (const d of this.questions) {
+      d.box.dataset.answering = String(d.q.id === this.current);
+      const p = this.picks.get(d.q.id);
+      const chosen = [...d.q.options.filter((o) => p?.options.has(o.id)).map((o) => o.text), ...(p && p.text.trim() !== "" ? [p.text.trim()] : [])];
+      const parts = chosen.length > 0 ? [d.head ?? d.q.text, ...chosen] : [d.head, d.q.text].filter((x): x is string => x !== null && x !== "");
+      d.line.textContent = parts.join(sep);
+    }
+  }
+
+  /** 正在答那一题的题目：排出来超三行（折着的那一格装不下）才出［展开全部］；点了全显、不再收。 */
+  private measureClamp(): void {
+    const d = this.questions.find((x) => x.q.id === this.current);
+    if (!d || this.el.dataset.folded === "true") return;
+    const t = d.text;
+    if (t.dataset.clamped !== "true" || d.box.querySelector("[data-part=qfull]")) return;
+    if (t.scrollHeight <= t.clientHeight + 1) return;
+    const wrap = document.createElement("div");
+    wrap.className = s.abQFull;
+    const full = button({
+      label: copyText("askBlock.question.full"),
+      kind: "ghost",
+      size: "compact",
+      onClick: () => {
+        delete t.dataset.clamped;
+        wrap.remove();
+        this.host.room?.(this.el.offsetHeight);
+      },
+    });
+    full.dataset.part = "qfull";
+    wrap.append(full);
+    t.after(wrap);
+  }
+
+  /** 「提交答案」那一颗：每题都答了才可点；收着的那几行跟着换字。 */
   private refreshSubmit(): void {
+    this.paintQuestions();
     const submit = this.el.querySelector<HTMLButtonElement>("button[data-choice=answer]");
     if (!submit) return;
-    const all = [...this.picks.values()].every((p) => p.options.size > 0 || p.text.trim() !== "");
+    const all = [...this.picks.keys()].every((id) => this.answered(id));
     setDisabled(submit, all ? null : copyText("askBlock.question.needAll"));
   }
 
@@ -410,7 +579,7 @@ export class AnswerBlock {
         for (const x of this.el.querySelectorAll<HTMLButtonElement>("button")) setDisabled(x, out.said);
         for (const x of this.el.querySelectorAll<HTMLInputElement>("input")) x.disabled = true;
         this.goneLine = { sid, ask: req.ask, said: out.said };
-        this.el.append(this.goneRow(out.said));
+        this.scroll?.append(this.goneRow(out.said));
         this.host.reread(sid);
         return;
       case "failed":
@@ -421,9 +590,10 @@ export class AnswerBlock {
     }
   }
 
-  /** 数字键：只在焦点在块里时生效（输入框里打字不算）。 */
+  /** 数字键：只在焦点在块里时生效（输入框里打字不算；收着时选项看不见，不答）。 */
   private onKey(e: KeyboardEvent): void {
     if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+    if (this.el.dataset.folded === "true") return;
     const t = e.target as HTMLElement | null;
     if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
     if (!/^[1-9]$/.test(e.key)) return;

@@ -5,7 +5,7 @@
 //! - 下载 [`pull`]：`files-read-chunk` 从 0 起逐块读回（按字节寻址），每块交调用方的 [`Sink`]，读到头为止；交回总字节。
 //! - 问那台的那一下是 [`Ask`]（桌面经通道、手机经常驻流）；撤 · 进度 · 本机读不动怎么说都由调用方给，这里不写字。
 
-use cmd_wire::files::{ChunkBytes, FilesStageChunkReq, ReadChunkReq, WirePath};
+use cmd_wire::files::{to_hex, ChunkBytes, FilesStageChunkReq, ReadChunkReq, WirePath};
 use cmd_wire::Call;
 use sha2::Digest as _;
 use std::future::Future;
@@ -89,14 +89,14 @@ impl Stager {
             key: self.key,
             chunks: self.chunks,
             bytes: self.bytes,
-            sha256: hex(&self.sha.finalize()),
+            sha256: to_hex(&self.sha.finalize()),
         }
     }
 }
 
 /// 一份暂存件的键（那台只收 32 位小写十六进制）：由调用方现造的 16 个随机字节写成。
 pub fn key_of(random: [u8; 16]) -> String {
-    hex(&random)
+    to_hex(&random)
 }
 
 /// 上传那一半：`src` 逐块读满送进 `key` 那一份暂存件。撤了 ⇒ `stop()`（已送的块交那台的孤儿扫）；本机读不动 ⇒ `local(e)`。
@@ -176,17 +176,6 @@ fn fill<R: std::io::Read>(src: &mut R) -> std::io::Result<Vec<u8>> {
     }
     buf.truncate(n);
     Ok(buf)
-}
-
-/// 字节 → 小写十六进制。
-pub fn hex(b: &[u8]) -> String {
-    const H: &[u8; 16] = b"0123456789abcdef";
-    let mut s = String::with_capacity(b.len() * 2);
-    for x in b {
-        s.push(H[(x >> 4) as usize] as char);
-        s.push(H[(x & 15) as usize] as char);
-    }
-    s
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@
 //! 1. 取字节走 [`std::ffi::OsStr::as_encoded_bytes`]：跨平台、无损、不需要平台条件编译（本族不住 `platform/`，写 `std::os::…` 会让 `cfgless_guard` 红）。
 //! 2. 一处有损解码都不许有：把路径转成人话的那几个调用（连 `Path` 的 `Display`）在本族目录下零命中
 //!    （`tests/backend/files/answer_tests.rs` 的 `no_lossy_decode_anywhere_in_the_family`）。
-//! 3. 回送时 [`to_json`] 对有效 UTF-8 才交字符串，其余一律交 `{"b16": "<十六进制>"}`；两条路都双向无损（往返恒等判据，含非 UTF-8 夹具）。
+//! 3. 回送走 `cmd_wire::files::WirePath`：有效 UTF-8 才交字符串，其余一律交 `{"b16": "<十六进制>"}`；两条路都双向无损（线上形逐字的判据住本族 `raw_tests.rs`）。
 //!
 //! 买不到：Windows 那一侧的字节是 WTF-8，同一个文件名在两个平台上取出来的字节不保证相同 —— 只承诺同一台机器上取出去的字节原样送回来能再指到同一个名字。
 //! 不做归一化（大小写 / NFC-NFD / 分隔符），匹配是字节级的。
@@ -17,10 +17,9 @@ pub fn path_bytes(p: &std::path::Path) -> &[u8] {
     p.as_os_str().as_encoded_bytes()
 }
 
-// 路径字节的线上两种形（字符串 / `{"b16": …}`）与字节还原成 `PathBuf` 住 `common/path_wire.rs`：文件管理与原生那一块
-// （`dial/terminal.rs` · 传输台 `control/transfer.rs`）都要读这一形，
+// 字节还原成 `PathBuf` 住 `common/path_wire.rs`：文件管理与原生那一块（传输台 `control/transfer.rs`）都要它，
 // 两块之间零互相依赖（`files/module_boundary_guard.rs`），共用的只许住 `common/`。
-pub use crate::common::path_wire::{from_json, to_json, to_path_buf, HEX_KEY};
+pub use crate::common::path_wire::to_path_buf;
 
 /// 一个条目是不是 `dir` 的**直接子项**。
 ///

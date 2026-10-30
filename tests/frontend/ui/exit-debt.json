@@ -1,7 +1,7 @@
 {
   "说明": [
     "出口扫描判据的欠账名单：出口取文只许骨架那几档（title · control · action · aria · body）且不带插值（key）、按码判的分支里不许取文（branch）今天的存量，只许删、不许加。判法：tests/frontend/ui/exit-rules.ts（界面）· tests/frontend/filewin/exit_scan_tests.rs（壳 · 文件窗口）· src/mobile/detekt-rules（手机）。",
-    "roots 照分层表（ARCHITECTURE §2.9 输出适配层：界面 · 壳 · 文件窗口 · 手机端）各登一棵。一格 = [文件, 句, 命中数]，各语言的判据逐格恒等；ceiling = 各格之和，只许往下改（exit-judgment-scan.vitest.ts 的 CEILING_AT_MOST 同改）。",
+    "roots 照分层表（ARCHITECTURE §2.9 输出适配层：界面 · 壳 · 文件窗口 · 手机端）各登一棵。一格 = [文件, 句, 命中数]，各语言的判据逐格恒等；ceiling = 各格之和，不许比基线（与 main 分叉点上那一版）大。",
     "按 kind 分组：首登 = 换成两句那一趟第一次跑看见的存量，还没逐格分归哪一批；留 = 不是违例（why 写凭什么）。"
   ],
   "roots": [
@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1739,
+  "ceiling": 1738,
   "groups": [
     {
       "kind": "首登",
@@ -118,7 +118,6 @@
         ["src/frontend/ui/end-confirm.ts", "key", 8],
         ["src/frontend/ui/entry-viewer.ts", "branch", 2],
         ["src/frontend/ui/entry-viewer.ts", "key", 2],
-        ["src/frontend/ui/face-can.ts", "branch", 1],
         ["src/frontend/ui/file-window.ts", "key", 1],
         ["src/frontend/ui/find-strip.ts", "branch", 2],
         ["src/frontend/ui/find-strip.ts", "key", 7],

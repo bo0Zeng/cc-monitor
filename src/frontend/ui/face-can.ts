@@ -7,15 +7,8 @@
  */
 import type { SessionFace } from "./generated/SessionFace";
 import type { WireSessionActivity } from "./generated/WireSessionActivity";
-import type { Origin } from "./generated/Origin";
-import { isRemoteOrigin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { terminalFrontAvailable } from "./terminal-front";
-
-/** 这个会话在哪台：本机写「本机」，远端写机器名。 */
-export function machineOf(t: { origin: Origin }): string {
-  return isRemoteOrigin(t.origin) ? t.origin : copyText("sessionFace.machine.local");
-}
 
 /** 一张脸（还没收到 ⇒ `null`）。 */
 type Face = SessionFace | null;
