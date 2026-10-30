@@ -628,7 +628,7 @@ export function terminalShim(
     if (isChanCall(cmd, args, "terminal-ssh")) {
       const a = chanArgsJson(args) as { machine: string; command: string };
       asked = a.machine;
-      return chanReply({ command: a.command });
+      return chanReply({ prelude: "", line: a.command });
     }
     if (cmd === "open_terminal_window") {
       const a = args as { command: string };

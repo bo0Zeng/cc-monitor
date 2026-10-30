@@ -146,51 +146,90 @@ const SETUP_WORDS: &[&str] = &[
 ];
 
 /// 一条 shell 命令里说得出用意的那一段起到末尾（需手动 · 钉条摆的「批什么」）：按顶层的 `;` · `&&` · `||` · `|` · `&` · 换行切段
-/// （引号里的 · 反斜杠转义的 · `2>&1` `&>` 这类重定向不切），跳过只做准备的段（纯赋值 `F=…` · [`SETUP_WORDS`] 打头 · 注释），
+/// （引号 · `$(…)` · 反引号里的 · 反斜杠转义的 · `2>&1` `&>` 这类重定向不切），跳过只做准备的段（纯赋值 `F=…` · [`SETUP_WORDS`] 打头 · 注释），
 /// 段首的环境赋值（`LC_ALL=C sort`）也跳过。全是准备段 ⇒ 原文。
 pub(crate) fn command_intent(cmd: &str) -> &str {
     let b = cmd.as_bytes();
-    let (mut i, mut start, mut quote) = (0, 0, None::<u8>);
+    let (mut i, mut start) = (0, 0);
     let cut = |from: usize, to: usize| intent_in(&cmd[from..to]).map(|off| &cmd[from + off..]);
     while i < b.len() {
         let c = b[i];
-        match quote {
-            Some(b'\'') => {
-                if c == b'\'' {
-                    quote = None;
+        if let Some(end) = quoted_end(b, i) {
+            i = end;
+            continue;
+        }
+        match c {
+            b'\\' => i += 1,
+            b'#' if i == start || b[i - 1].is_ascii_whitespace() => {
+                // 注释：到行尾都不算。
+                while i < b.len() && b[i] != b'\n' {
+                    i += 1;
                 }
+                continue;
             }
-            Some(_) => match c {
-                b'\\' => i += 1,
-                b'"' => quote = None,
-                _ => {}
-            },
-            None => match c {
-                b'\\' => i += 1,
-                b'\'' | b'"' => quote = Some(c),
-                b'#' if i == start || b[i - 1].is_ascii_whitespace() => {
-                    // 注释：到行尾都不算。
-                    while i < b.len() && b[i] != b'\n' {
-                        i += 1;
-                    }
-                    continue;
+            b'&' if (i > 0 && b[i - 1] == b'>') || b.get(i + 1) == Some(&b'>') => {}
+            b';' | b'\n' | b'|' | b'&' => {
+                if let Some(s) = cut(start, i) {
+                    return s.trim_end();
                 }
-                b'&' if (i > 0 && b[i - 1] == b'>') || b.get(i + 1) == Some(&b'>') => {}
-                b';' | b'\n' | b'|' | b'&' => {
-                    if let Some(s) = cut(start, i) {
-                        return s.trim_end();
-                    }
-                    if matches!(c, b'|' | b'&') && b.get(i + 1) == Some(&c) {
-                        i += 1;
-                    }
-                    start = i + 1;
+                if matches!(c, b'|' | b'&') && b.get(i + 1) == Some(&c) {
+                    i += 1;
                 }
-                _ => {}
-            },
+                start = i + 1;
+            }
+            _ => {}
         }
         i += 1;
     }
     cut(start.min(b.len()), b.len()).map_or(cmd, str::trim_end)
+}
+
+/// `b[i]` 起是一段引起来的（`'…'` · `"…"` · `` `…` `` · `$(…)`，后三样里可以再套，`$(…)` 里认括号的层数）⇒ 它收尾之后的位置
+/// （没收尾 ⇒ 末尾）；不是 ⇒ `None`。单引号里什么都不认；别的里面反斜杠转义下一个字节。
+fn quoted_end(b: &[u8], i: usize) -> Option<usize> {
+    let (close, mut j) = match (b[i], b.get(i + 1)) {
+        (b'\'', _) => {
+            return Some(
+                b[i + 1..]
+                    .iter()
+                    .position(|&c| c == b'\'')
+                    .map_or(b.len(), |p| i + p + 2),
+            )
+        }
+        (b'"' | b'`', _) => (b[i], i + 1),
+        (b'$', Some(b'(')) => (b')', i + 2),
+        _ => return None,
+    };
+    let mut depth = 0usize;
+    while j < b.len() {
+        let c = b[j];
+        if c == b'\\' {
+            j += 2;
+            continue;
+        }
+        if c == close && depth == 0 {
+            return Some(j + 1);
+        }
+        // 双引号里的单引号是字面；反引号里不再套。
+        let nests = match close {
+            b'`' => false,
+            b'"' => c != b'\'',
+            _ => true,
+        };
+        if let Some(end) = nests.then(|| quoted_end(b, j)).flatten() {
+            j = end;
+            continue;
+        }
+        if close == b')' {
+            match c {
+                b'(' => depth += 1,
+                b')' => depth -= 1,
+                _ => {}
+            }
+        }
+        j += 1;
+    }
+    Some(b.len())
 }
 
 /// 一段里用意从哪起（相对这一段的字节位置）：跳过段首的赋值词，剩下第一个词是准备词 · 没有词 ⇒ `None`。
@@ -205,19 +244,12 @@ fn intent_in(seg: &str) -> Option<usize> {
             return None;
         }
         let from = i;
-        let mut quote = None::<u8>;
-        while i < b.len() {
-            let c = b[i];
-            match quote {
-                Some(q) if c == q => quote = None,
-                Some(b'"') if c == b'\\' => i += 1,
-                Some(_) => {}
-                None if c.is_ascii_whitespace() => break,
-                None if c == b'\\' => i += 1,
-                None if c == b'\'' || c == b'"' => quote = Some(c),
-                None => {}
+        while i < b.len() && !b[i].is_ascii_whitespace() {
+            if let Some(end) = quoted_end(b, i) {
+                i = end;
+            } else {
+                i += if b[i] == b'\\' { 2 } else { 1 };
             }
-            i += 1;
         }
         let word = &seg[from..i.min(b.len())];
         if is_assignment(word) {

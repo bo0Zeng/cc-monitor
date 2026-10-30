@@ -282,7 +282,8 @@ pub(crate) fn answer_in(
 /// 同 [`answer_in`]，另给这台 `~/.ssh/config` 里非通配的别名。`command` · `cwd` 都不给 ⇒ 登录 shell 那一形：
 /// 本机 ⇒ 本机方言的登录 shell（不走 ssh）；机器表里那台 ⇒ `ssh -t …` 外壳、`--` 后面不跟命令；
 /// 机器表里没有、别名里恰好有（过别名白名单）⇒ `ssh -t[ -F …] <别名>`，照用户的 ssh 配置连。
-/// `sid` 只跟 `command`；给了、`opened` 那一层目录也在 ⇒ 那一行前面接前奏（`opened_windows::prelude`），开的那个 shell 记下窗口标签。
+/// `sid` 只跟 `command`；给了、`opened` 那一层目录也在 ⇒ 回包另带前奏（`opened_windows::prelude`，开窗时接在那一行前面，开的那个 shell
+/// 记下窗口标签）；那一行本身不带它（开不了窗时复制出去的只有那一行）。
 pub(crate) fn answer_with(
     req: &TerminalSshReq,
     hosts: &[Host],
@@ -325,9 +326,15 @@ pub(crate) fn answer_with(
         ),
         _ => String::new(),
     };
-    Ok(SshCommand {
-        command: format!("{prelude}{line}"),
-    })
+    Ok(SshCommand { prelude, line })
+}
+
+/// 没有前奏的那一形（登录 shell · 本机）。
+fn plain(line: String) -> SshCommand {
+    SshCommand {
+        prelude: String::new(),
+        line,
+    }
 }
 
 /// 登录 shell 那一形（见 [`answer_with`]）。
@@ -339,9 +346,7 @@ fn login_shell(
     ssh: &SshClient,
 ) -> Result<SshCommand, CmdErr> {
     if req.machine.is_local() {
-        return Ok(SshCommand {
-            command: local_login_shell(powershell)?,
-        });
+        return Ok(plain(local_login_shell(powershell)?));
     }
     let name = req.machine.to_string();
     if !hosts.iter().any(|h| h.name() == name)
@@ -351,13 +356,11 @@ fn login_shell(
     {
         let ssh = ssh_path(ssh, powershell)?;
         let known = config_arg(super::known_hosts::terminal_config().as_deref(), powershell);
-        return Ok(SshCommand {
-            command: format!(
-                "{call}{ssh} -t{known} {name}",
-                call = if powershell { "& " } else { "" },
-                ssh = literal(powershell, ssh),
-            ),
-        });
+        return Ok(plain(format!(
+            "{call}{ssh} -t{known} {name}",
+            call = if powershell { "& " } else { "" },
+            ssh = literal(powershell, ssh),
+        )));
     }
     // 机器表里那台：同一组白名单与跳板，只是 `--` 后面不跟命令（载荷那一格不渲，填个占位）。
     let dial = super::dial_named(
@@ -366,9 +369,12 @@ fn login_shell(
         "stream",
         serde_json::json!({ "command": ":" }),
     )?;
-    Ok(SshCommand {
-        command: render(&dial, powershell, ssh_path(ssh, powershell)?, false)?,
-    })
+    Ok(plain(render(
+        &dial,
+        powershell,
+        ssh_path(ssh, powershell)?,
+        false,
+    )?))
 }
 
 /// 本机那一台的登录 shell（不走 ssh）：POSIX `exec ${SHELL:-bash} -l`；PowerShell 窗口本身就是 shell ⇒ 只回家目录。
