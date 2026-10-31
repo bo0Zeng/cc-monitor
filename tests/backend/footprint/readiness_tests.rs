@@ -10,7 +10,7 @@ fn product(terminal: bool, named: bool, remotes: u64, skipped: bool) -> serde_js
 fn remotes_arg(a: &serde_json::Value) -> Result<u64, (String, String)> {
     crate::wire::typed::take::<FirstRunReq>(a)
         .map(|r| r.remotes)
-        .map_err(|f| (f.code, f.message))
+        .map_err(|f| (f.code_or_fallback().to_string(), f.said))
 }
 
 #[test]

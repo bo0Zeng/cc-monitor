@@ -33,6 +33,7 @@
 //! 坏行只回错误、**绝不结束进程**。
 
 use crate::wire::FrameMake as _;
+use crate::wire::spec::Settle as _;
 use crate::wire::{Frame, Request};
 use copy_core::copy_text;
 use std::collections::HashMap;
@@ -374,7 +375,7 @@ async fn handle_line(
                     Ok(res) => res,
                     // 线程没回来（panic / 被取消）：句子说「程序出错」，那条 JoinError 进复制详情。
                     Err(e) => Err(crate::wire::spec::fail(
-                        "handler_panicked".to_string(),
+                        "handler_panicked",
                         copy_text("beInbound.handleLine.internal", &[]),
                     )
                     .and_raw(Some(&e.to_string()))),

@@ -33,17 +33,17 @@ fn every_place_names_a_registered_command_and_a_catalogued_product() {
 fn a_view_naming_a_product_the_command_does_not_carry_is_refused() {
     let v = json!({"omit": {"facts": ["touchedFiles"]}});
     let f = plan_for("history-read", &v).expect_err("history-read 不出 facts");
-    assert_eq!(f.code, "bad_args");
+    assert_eq!(f.code.as_deref(), Some("bad_args"));
     assert!(
         f.raw.as_deref().is_some_and(|r| r.contains("facts")),
         "{f:?}"
     );
     // 没登记住处的命令：带什么都拒（不当没说）
     let f = plan_for("ping", &json!({"omit": {"record": ["id"]}})).expect_err("ping 不出成品");
-    assert_eq!(f.code, "bad_args");
+    assert_eq!(f.code.as_deref(), Some("bad_args"));
     // 认不出的格：拒，那一格写进复制详情
     let f = plan_for("history-page", &json!({"omit": {"record": ["blcoks"]}})).unwrap_err();
-    assert_eq!(f.code, "bad_args");
+    assert_eq!(f.code.as_deref(), Some("bad_args"));
     assert!(
         f.raw.as_deref().is_some_and(|r| r.contains("blcoks")),
         "{f:?}"

@@ -103,7 +103,7 @@ pub(crate) fn mark_at(
     let path = file.as_path();
     // 只建那一层、建的那一下就是 0700。
     own.ensure_dir(&dir).map_err(|e| {
-        (
+        crate::wire::spec::fail(
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
