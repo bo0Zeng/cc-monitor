@@ -279,7 +279,10 @@ pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
     };
     let Some(known) = right_word(a) else {
         // 右边认不得 ⇒ 报错。那一句同时说清后端子命令只能紧跟打头的 `--`：认不认它是不是子命令要问命令表，这一层不问。
-        return die(copy_text("beArgv.parse.unknownRight", &[("w", &a.to_string())]));
+        return die(copy_text(
+            "beArgv.parse.unknownRight",
+            &[("w", &a.to_string())],
+        ));
     };
     // `--flag <值>` / `--flag=<值>`：值与占几个词。
     let one = || -> Result<(String, usize), Die> {

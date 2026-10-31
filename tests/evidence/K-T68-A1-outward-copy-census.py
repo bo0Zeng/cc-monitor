@@ -120,6 +120,7 @@ EXCLUDED_FILE_RE = re.compile(
     r"|/build\.rs$"             # 构建脚本：println!/panic! 只进构建日志
     r"|/guard_support\.rs$"     # 判据支撑，不是生产面
     r"|/stream/oneshot\.rs$"    # 协议参考的料（CLI 独有子命令的用法与说明），同上那条目录
+    r"|/stream/inbound/cli_only\.rs$"  # 同上那一份的旧住处，已没人读；整份删的那一下连这一行删
     r"|/tests?/"
     r"|/fixtures?/"
 )
