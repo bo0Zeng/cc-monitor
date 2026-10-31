@@ -66,6 +66,8 @@ const DRIFT_BUDGET_MS = 30_000;
 function payloadOf(origin: Origin, v: RecordLine): JsonlLinePayload {
   const p: JsonlLinePayload = { session_id: v.session_id, path: v.path, seq: v.seq, cwd: v.cwd, record: v.record };
   if (!isLocalOrigin(origin)) p.origin = origin;
+  // 末字节照抄；认不出的几行并成的那一条，末字节是并进来的最后那一行之后、不是第 `seq` 行之后 ⇒ 不带。
+  if (v.end !== null && v.record.t !== "unread") p.end = v.end;
   return p;
 }
 

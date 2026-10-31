@@ -660,7 +660,7 @@ impl FileWindow {
         self.reload();
         // 换目录时现问一次书签：别的窗口 · 手机刚加的那几条从这里进来（一次问，不是每帧）。
         if let Some(s) = &self.shelf {
-            s.refresh();
+            s.refresh(&self.cwd);
         }
         true
     }

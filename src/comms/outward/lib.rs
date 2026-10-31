@@ -356,6 +356,9 @@ pub trait Destinations: Send + Sync {
     /// 只照这份名单取 —— 会话 id 归 agent 自己，启动器不往地址里塞（路由第 3 段随之退役）。
     fn stream_label_headers(&self) -> Vec<&'static str>;
 
+    /// 上游那一跳还回来的连接空闲多久以内还拿去复用（过了就扔、新连；[`upstream::Pool`]）。值归后端，中转构造时问一次。
+    fn upstream_idle_reuse(&self) -> std::time::Duration;
+
     /// 中转要原样带回的请求头名单（头名比对不分大小写）。中转不知道它们是谁的什么头：出现在请求里、值过闸
     /// （`server.rs` 的 `value_is_safe`：逗号分隔的 token 列表）的，按 (名单上的名字, 值) 交给 [`Self::resolve`] 的 [`Ask::heads`]、
     /// 并随 0 号那一件交给 tap 口（[`TapEvent::heads`]）。缺省 ⇒ 不带。

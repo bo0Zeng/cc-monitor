@@ -4,6 +4,13 @@ import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Transfer
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.rs.Core
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.AttachAct
+import com.ccmonitor.mobile.core.wire.gen.AttachCardPhase
+import com.ccmonitor.mobile.core.wire.gen.AttachFace
+import com.ccmonitor.mobile.core.wire.gen.AttachWant
+import com.ccmonitor.mobile.core.wire.gen.AttachWantCard
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import com.ccmonitor.mobile.ui.chat.linkDown
 import com.ccmonitor.mobile.ui.chat.linkUp
@@ -263,4 +270,19 @@ class AttachTrayTest {
             runCurrent()
             assertNull("下一份进来那一条就收", t.state.value.note)
         }
+
+    /** 进出核心那一排的字是两端同一份类型：交生成的 [AttachWant]，回的照生成的 [AttachFace] 解得开（认不得的一步 ⇒ 核心回空串）。 */
+    @Test
+    fun the_tray_s_words_cross_the_core_as_generated_types() {
+        val want =
+            AttachWant(
+                cards = listOf(AttachWantCard("a.png", AttachCardPhase.Refused("超上限")), AttachWantCard("b.png", AttachCardPhase.Lost)),
+                offline = null,
+                local = null,
+            )
+        val got = Wire.read<AttachFace>(Core.attachFace(Wire.line(want)))
+        assertEquals(listOf("超上限", copyText("mobAttach.card.failed")), got?.cards?.map { it.line })
+        assertEquals(AttachAct.RETRY, got?.note?.act)
+        assertEquals("", Core.attachFace("""{"cards":[{"name":"a.png","phase":{"kind":"nope"}}],"offline":null,"local":null}"""))
+    }
 }

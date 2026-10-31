@@ -72,6 +72,7 @@ impl FileWindow {
     }
 
     /// 搜索范围：`true` ＝ 整台机器，`false` ＝ 当前目录以下（判据用；界面上是状态行那个下拉）。
+    #[cfg(test)]
     pub fn set_search_whole(&mut self, on: bool) {
         self.search_whole = on;
     }
@@ -80,11 +81,6 @@ impl FileWindow {
     pub fn click_hit_header(&mut self, col: find::SortCol, ctx: Option<egui::Context>) -> bool {
         self.hit_sort = self.hit_sort.clicked(col);
         self.fire_search(ctx, false)
-    }
-
-    /// 结果表眼下按哪一列排。
-    pub fn hit_sort(&self) -> find::FindSort {
-        self.hit_sort
     }
 
     /// 打开第 `i` 条文件名命中：文件 ⇒ 进它所在的目录、高亮它；目录 ⇒ 进去。清掉搜索框（屏幕换回目录列表）。
@@ -134,6 +130,7 @@ impl FileWindow {
     }
 
     /// 按内容搜那个框里的字（判据用；生产那一侧直接改字段）。
+    #[cfg(test)]
     pub fn set_grep_query(&mut self, q: &str) {
         self.search_content = true;
         self.grep_query = q.to_string();
@@ -171,6 +168,7 @@ impl FileWindow {
     }
 
     /// 搜索框里现在是什么（判据用；生产那一侧直接改 [`Self::query`]）。
+    #[cfg(test)]
     pub fn query(&self) -> &str {
         &self.query
     }
@@ -394,18 +392,6 @@ impl FileWindow {
         }
         if fire_grep {
             self.fire_grep(Some(ctx));
-        }
-    }
-
-    /// 搜索框在哪一种：`true` ＝ 按内容（判据 · Ctrl+Shift+F 用）。
-    pub fn set_search_content(&mut self, on: bool) {
-        if on != self.search_content {
-            if on {
-                self.grep_query = std::mem::take(&mut self.query);
-            } else {
-                self.query = std::mem::take(&mut self.grep_query);
-            }
-            self.search_content = on;
         }
     }
 }

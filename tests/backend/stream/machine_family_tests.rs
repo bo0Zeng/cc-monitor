@@ -30,11 +30,13 @@ fn the_terminal_line_the_shell_reads_keeps_its_wire_bytes() {
     .collect();
     let args = json!({ "machine": "box-term", "command": "claude --resume abc" });
     let req = crate::wire::typed::take(&args).unwrap();
-    let got = crate::dial::terminal::answer_in(
+    let got = crate::dial::terminal::answer_with(
         &req,
         &hosts,
+        &[],
         false,
         &crate::platform::ssh_client::SshClient::At("/usr/bin/ssh".into()),
+        None,
     )
     .unwrap();
     assert_eq!(

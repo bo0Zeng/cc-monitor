@@ -7,4 +7,8 @@ export type BookmarksEditReq = { op: "toggle" | "remove" | "add",
 /**
  * 那几个目录（这台的绝对路径；按归一之后的形比、存）。
  */
-dirs: Array<string>, };
+dirs: Array<string>, 
+/**
+ * 各栏此刻的目录：回包的 `here` 答每一个在改完的那一份里是第几条。
+ */
+at?: Array<string>, };

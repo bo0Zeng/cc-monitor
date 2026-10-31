@@ -311,10 +311,16 @@ export class TailWindow {
 
   /**
    * 〔骨架〕只读看几条 pending（**不出账**）—— 骨架接上之前用它对拍
-   * 「seq 与索引行号是不是同一个空间」（截断重读换过 seq 的会话对不上，不许硬接）。
+   * 「seq 与索引行号是不是同一个空间」（截断重读换过 seq 的会话对不上，不许硬接）。`from` ＝ 只看 seq 不低于它的（账本从那里起）。
    */
-  peek(n: number): readonly JsonlLinePayload[] {
-    return this.pending.slice(0, Math.max(0, n));
+  peek(n: number, from?: number): readonly JsonlLinePayload[] {
+    if (from === undefined) return this.pending.slice(0, Math.max(0, n));
+    if (this.dirty) {
+      this.pending.sort((a, b) => a.seq - b.seq);
+      this.dirty = false;
+    }
+    const at = lowerBound(this.pending, from);
+    return this.pending.slice(at, at + Math.max(0, n));
   }
 
   /**

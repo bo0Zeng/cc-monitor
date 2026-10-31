@@ -334,9 +334,17 @@ fn route_names_both_wire_values_and_refuses_the_one_that_says_nothing() {
     );
 
     // 🔴 **这一格是本组的全部力气所在。**
-    let err = unsaid
+    let blank = unsaid
         .route("某条命令")
         .expect_err("线上空串被路由出去了 —— 「没给名字」被当成了一台机器");
+    assert_eq!(
+        blank,
+        cmd_wire::machine::Blank {
+            command: "某条命令".into()
+        }
+    );
+    // 那一句由连接层写（`chan::said::blank_origin`），契约只交「哪条命令」这一个事实。
+    let err = crate::chan::said::blank_origin(&blank);
     assert!(
         err.contains("某条命令"),
         "拒绝的那句话没点名是哪条命令，排障时无从下手：{err}"

@@ -154,7 +154,7 @@ fn the_index_does_not_walk_into_another_filesystem() {
     let mounted = t.join("m");
     let has = |snap: &crate::files::index::Snapshot, p: &std::path::Path| {
         let want = crate::files::raw::path_bytes(p).to_vec();
-        snap.iter().any(|e| e == want.as_slice())
+        (0..snap.entries()).any(|i| snap.get(i) == Some(want.as_slice()))
     };
     let snap = crate::files::index::build_with(&t, |p| Some(if p == mounted { 2 } else { 1 }));
     assert_eq!(snap.stats().skipped_mounts, 1);

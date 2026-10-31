@@ -70,7 +70,7 @@ pub enum AttachRefused {
 )]
 pub struct AttachVerdict {
     pub ok: bool,
-    /// 照名字判的那一种（目录 ⇒ 文件夹；[`crate::file_class::class_of_name`]）。
+    /// 照名字判的那一种（目录 ⇒ 文件夹；后端 `common/file_class.rs` 的 `class_of_name`）。
     pub class: FileClass,
     /// 那一种的词（那台写好，同文件管理「类型」那一列的词）：chip 上的类别字。
     pub class_text: String,
@@ -168,7 +168,7 @@ pub struct Attachment {
     pub name: String,
     /// 相对会话工作目录的路径。
     pub rel: String,
-    /// 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+    /// 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
     pub class: FileClass,
     /// 那一种的词（那台写好）：chip 上的类别字。
     pub class_text: String,

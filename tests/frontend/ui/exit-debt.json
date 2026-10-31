@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1738,
+  "ceiling": 1722,
   "groups": [
     {
       "kind": "首登",
@@ -259,11 +259,11 @@
         ["src/frontend/ui/views/outline-source.ts", "key", 2],
         ["src/frontend/ui/views/plan-bits.ts", "key", 2],
         ["src/frontend/ui/views/plan-cell.ts", "branch", 14],
-        ["src/frontend/ui/views/plan-cell.ts", "key", 8],
-        ["src/frontend/ui/views/plan-review.ts", "branch", 25],
+        ["src/frontend/ui/views/plan-cell.ts", "key", 7],
+        ["src/frontend/ui/views/plan-review.ts", "branch", 23],
         ["src/frontend/ui/views/plan-review.ts", "key", 8],
-        ["src/frontend/ui/views/plan.ts", "branch", 8],
-        ["src/frontend/ui/views/plan.ts", "key", 27],
+        ["src/frontend/ui/views/plan.ts", "branch", 7],
+        ["src/frontend/ui/views/plan.ts", "key", 18],
         ["src/frontend/ui/views/session-find.ts", "branch", 5],
         ["src/frontend/ui/views/session-find.ts", "key", 4],
         ["src/frontend/ui/views/session-viewer.ts", "key", 7],
@@ -316,7 +316,7 @@
         ["src/mobile/core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/crypto/SshKeyGenerator.kt", "key", 2],
         ["src/mobile/core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/LegacyButtons.kt", "branch", 9],
         ["src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/HostKeyChangedException.kt", "key", 1],
-        ["src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/RustTransport.kt", "key", 18]
+        ["src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/RustTransport.kt", "key", 15]
       ]
     }
   ]

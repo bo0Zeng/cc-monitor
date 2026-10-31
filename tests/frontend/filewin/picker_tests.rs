@@ -34,7 +34,7 @@ impl Picker for Fake {
 
 async fn settle(w: &mut crate::shell::FileWindow) {
     for _ in guard_core::wall::rounds() {
-        if w.settle_pick() {
+        if w.settle_pick_with(None) {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
@@ -97,7 +97,7 @@ async fn a_pick_that_lands_before_the_next_frame_is_taken_by_that_frame() {
     assert_eq!(uploads(&w), 0, "还没画帧就起了上传");
     crate::find::testing::frame_text(&egui::Context::default(), &mut w, Vec::new());
     assert_eq!(uploads(&w), 1, "结局落下之后的那一帧没把它接上");
-    assert!(!w.settle_pick(), "那一帧取走之后看板上还留着一份");
+    assert!(!w.settle_pick_with(None), "那一帧取走之后看板上还留着一份");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

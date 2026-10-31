@@ -70,7 +70,7 @@ class SessionTabManager {
                 .firstOrNull { it.hostId == hostId && it.target == target }
                 ?.let { existing -> return reuseExisting(existing, label) }
         }
-        val key = "sess-${seq++}"
+        val key = "$KEY_PREFIX${seq++}"
         stores[key] = ViewModelStore()
         _sessions.update { it + OpenSession(key, hostId, target, label) }
         return key
@@ -101,5 +101,30 @@ class SessionTabManager {
     fun close(key: String) {
         stores.remove(key)?.clear()
         _sessions.update { list -> list.filterNot { it.key == key } }
+    }
+
+    /**
+     * 进程被收之前存下的那几个 文件 tab：一个 tab 平铺成三格（key · 机器 · 名字）。
+     * 终端 tab 不存：回来时接回 · 恢复会在那台再敲一次命令。
+     */
+    fun saved(): List<String?> = _sessions.value.filter { it.target == TabTarget.Files }.flatMap { listOf(it.key, it.hostId, it.label) }
+
+    /** 进程重建后交回 [saved] 存下的：不在册的照原 key 补回，之后新开的 key 排在它们后面；已在册的（转屏）不动。 */
+    fun restore(saved: List<String?>) {
+        saved.chunked(TAB_CELLS).forEach { cells ->
+            val key = cells.getOrNull(0) ?: return@forEach
+            val host = cells.getOrNull(1) ?: return@forEach
+            if (get(key) != null) return@forEach
+            stores[key] = ViewModelStore()
+            _sessions.update { it + OpenSession(key, host, TabTarget.Files, cells.getOrNull(2)) }
+            key.removePrefix(KEY_PREFIX).toIntOrNull()?.let { seq = maxOf(seq, it + 1) }
+        }
+    }
+
+    private companion object {
+        const val KEY_PREFIX = "sess-"
+
+        /** [saved] 里一个 tab 占几格。 */
+        const val TAB_CELLS = 3
     }
 }

@@ -24,7 +24,9 @@ pub(crate) const DOC: crate::common::own_state::Doc<OnDisk> =
 pub(crate) const HOSTS_MAX: usize = 256;
 
 /// 一台（盘上那一形，也是线上那一形）：住拨号核心。
-pub(crate) use ssh_dial::machine::{table_fault, Host, MachineFault, MachineFaultCode, MachineRow};
+pub(crate) use ssh_dial::machine::{
+    fault, refused_said, table_fault, Host, MachineFault, MachineFaultCode, MachineRow,
+};
 
 /// 盘上整份（顶层 `version` 归读写口）。
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -327,7 +329,7 @@ pub(crate) fn patched(base: &[Host], edits: &[MachineEdit]) -> Result<Patched, M
         .collect::<Result<Vec<Host>, _>>()?;
     if changed && edits.iter().any(MachineEdit::moves_identity) {
         if let Some(f) = table_fault(&hosts) {
-            return Err(MachinesSetErr::BadMachine(f.refused_said(), f));
+            return Err(MachinesSetErr::BadMachine(refused_said(&f), f));
         }
     }
     Ok(Patched { hosts, changed })
@@ -443,7 +445,7 @@ pub(crate) fn answer_try_in(home: Option<&Path>, req: &MachinesEdits) -> Machine
         Err(MachinesSetErr::BadMachine(_, f)) => Some(f),
         // 往表里加一台、而同名的已经在了 ⇒ 这一道说成同名。
         Err(MachinesSetErr::ElementExists(_)) => req.edits.iter().find_map(|e| match e {
-            MachineEdit::InsertIn { r#where, .. } => Some(MachineFault::new(
+            MachineEdit::InsertIn { r#where, .. } => Some(fault(
                 MachineFaultCode::NameTaken,
                 r#where
                     .first()

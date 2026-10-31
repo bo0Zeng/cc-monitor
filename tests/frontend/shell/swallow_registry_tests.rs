@@ -134,7 +134,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = fs_watch.unwatch(sock_dir);", Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
     ("src/backend/observe/watcher.rs", "let _ = self.tx.send(WatchEvent::Notify);", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.tx.send(WatchEvent::NotifyFailed(e));", Why::PeerGone, ""),
-    ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Poke);", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Shutdown);", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.tx.send(WatchEvent::Watch { sub: self.id, ask, done, });", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = done.send(watch_sessions(sub, ask, &mut state, &mut sink));", Why::PeerGone, ""),
