@@ -4159,6 +4159,7 @@ data class ChatsColumn(
 @Suppress("UNCHECKED_CAST")
 data class ChatsColumnAsk(
     val hosts: List<ColumnHost>,
+    val forks: List<ColumnFork>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -4166,9 +4167,10 @@ data class ChatsColumnAsk(
         val ADAPTER: JsonAdapter<ChatsColumnAsk> = obj(
             listOf(
             Field("hosts", { arr(ColumnHost.ADAPTER) }, optional = false, nullable = false),
+            Field("forks", { arr(ColumnFork.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> ChatsColumnAsk(a[0] as List<ColumnHost>) },
-            { v -> arrayOf(v.hosts) },
+            { a -> ChatsColumnAsk(a[0] as List<ColumnHost>, a[1] as List<ColumnFork>) },
+            { v -> arrayOf(v.hosts, v.forks) },
         )
     }
 }
@@ -4588,6 +4590,25 @@ data class ColumnAt(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class ColumnFork(
+    val host: Long,
+    val sid: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ColumnFork> = obj(
+            listOf(
+            Field("host", { Lng }, optional = false, nullable = false),
+            Field("sid", { Str }, optional = false, nullable = false),
+            ),
+            { a -> ColumnFork(a[0] as Long, a[1] as String) },
+            { v -> arrayOf(v.host, v.sid) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class ColumnHost(
     val rows: List<ColumnRow>,
     val groups: List<Long>,
@@ -4607,10 +4628,39 @@ data class ColumnHost(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class ColumnLine(
+    val host: Long,
+    val at: Long,
+    val child: Boolean,
+    val forks: Long,
+    val forksOpen: Boolean,
+    val orphan: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ColumnLine> = obj(
+            listOf(
+            Field("host", { Lng }, optional = false, nullable = false),
+            Field("at", { Lng }, optional = false, nullable = false),
+            Field("child", { Bool }, optional = false, nullable = false),
+            Field("forks", { Lng }, optional = false, nullable = false),
+            Field("forksOpen", { Bool }, optional = false, nullable = false),
+            Field("orphan", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> ColumnLine(a[0] as Long, a[1] as Long, a[2] as Boolean, a[3] as Long, a[4] as Boolean, a[5] as Boolean) },
+            { v -> arrayOf(v.host, v.at, v.child, v.forks, v.forksOpen, v.orphan) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class ColumnRow(
     val at: Long,
     val section: String?,
     val placed: Boolean,
+    val sid: String,
+    val parent: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -4620,9 +4670,11 @@ data class ColumnRow(
             Field("at", { Lng }, optional = false, nullable = false),
             Field("section", { opt(Str) }, optional = false, nullable = true),
             Field("placed", { Bool }, optional = false, nullable = false),
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("parent", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> ColumnRow(a[0] as Long, a[1] as String?, a[2] as Boolean) },
-            { v -> arrayOf(v.at, v.section, v.placed) },
+            { a -> ColumnRow(a[0] as Long, a[1] as String?, a[2] as Boolean, a[3] as String, a[4] as String?) },
+            { v -> arrayOf(v.at, v.section, v.placed, v.sid, v.parent) },
         )
     }
 }
@@ -4630,7 +4682,7 @@ data class ColumnRow(
 @Suppress("UNCHECKED_CAST")
 data class ColumnSection(
     val title: String?,
-    val rows: List<ColumnAt>,
+    val rows: List<ColumnLine>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -4638,9 +4690,9 @@ data class ColumnSection(
         val ADAPTER: JsonAdapter<ColumnSection> = obj(
             listOf(
             Field("title", { opt(Str) }, optional = false, nullable = true),
-            Field("rows", { arr(ColumnAt.ADAPTER) }, optional = false, nullable = false),
+            Field("rows", { arr(ColumnLine.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> ColumnSection(a[0] as String?, a[1] as List<ColumnAt>) },
+            { a -> ColumnSection(a[0] as String?, a[1] as List<ColumnLine>) },
             { v -> arrayOf(v.title, v.rows) },
         )
     }

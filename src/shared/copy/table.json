@@ -28928,6 +28928,12 @@
       "zh": "发送",
       "args": []
     },
+    "composer.input.stop": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "停止",
+      "args": []
+    },
     "composer.input.ended": {
       "kind": "control",
       "role": "占位",
@@ -29220,12 +29226,6 @@
       "role": "菜单项",
       "zh": "搜内容「{q}」",
       "args": ["q"]
-    },
-    "mobChats.fork.from": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "分叉自「{label}」",
-      "args": ["label"]
     },
     "mobAccounts.list.section": {
       "kind": "title",

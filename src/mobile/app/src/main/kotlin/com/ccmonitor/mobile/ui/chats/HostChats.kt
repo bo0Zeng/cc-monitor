@@ -20,7 +20,6 @@ import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.CanDelete
 import com.ccmonitor.mobile.core.wire.gen.Changed
-import com.ccmonitor.mobile.core.wire.gen.ForkedFrom
 import com.ccmonitor.mobile.core.wire.gen.GroupMember
 import com.ccmonitor.mobile.core.wire.gen.GroupsRead
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
@@ -260,11 +259,24 @@ data class ChatRow(
     val projectPath: String = "",
     /** 按目录那一形里属于哪一组（`groups[].key`）。 */
     val group: String = "",
-    /** 分叉那一句（[forkLine]）；不是分叉来的 ⇒ `null`。 */
-    val fork: String? = null,
+    /** 分叉自哪个会话（那台写的 `forkedFromSessionId`，只交核心挂树）；不是分叉来的 ⇒ `null`。 */
+    val parent: String? = null,
+    /** 它在分叉树里的样子（核心挂好的，[chatsView] 拷进来）。 */
+    val nest: Nest = Nest(),
     val canDelete: CanDelete = CanDelete.YES,
     /** 机器小标签：勾上的不止一台、又不在当前机器上 ⇒ 那台的名字；否则 `null`。 */
     val machineTag: String? = null,
+)
+
+/**
+ * 一行在分叉树里的样子（核心 `nest` 回的，桌面历史页同一套）：[child] 挂在展开了的父下 · [forks] 这一列里有几条分叉自它 ·
+ * [forksOpen] 那几条展开着 · [orphan] 是分叉、父不在这一列。
+ */
+data class Nest(
+    val child: Boolean = false,
+    val forks: Int = 0,
+    val forksOpen: Boolean = false,
+    val orphan: Boolean = false,
 )
 
 /** 一台在屏上要画的：行 · 组 · 顶上那一条 · 注解没并上那一句 · 截断 · 还在读。 */
@@ -419,21 +431,10 @@ private fun rowOf(
         project = r.projectName,
         projectPath = r.projectPath,
         group = r.group,
-        fork = forkLine(r.forkedFrom, r.forkedFromSessionId),
+        parent = r.forkedFromSessionId,
         canDelete = r.can.delete,
     )
 }
-
-/** 分叉那一句：父会话在清单里 ⇒ 带它的标题；只知道是分叉来的 ⇒ 「分叉自其他会话」；不是分叉来的 ⇒ `null`。 */
-internal fun forkLine(
-    from: ForkedFrom?,
-    fromSessionId: String?,
-): String? =
-    when {
-        from != null -> copyText("mobChats.fork.from", "label" to from.label)
-        fromSessionId != null -> copyText("history.row.orphan")
-        else -> null
-    }
 
 /** 一台的清单接到那台的常驻流上（[HostBackends]）、缓存接本地库；会话屏与抽屉「最近」同一种接法。 */
 fun hostChats(
