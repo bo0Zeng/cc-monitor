@@ -2491,6 +2491,7 @@ enum class BoardTag(val wire: String) {
 @Suppress("UNCHECKED_CAST")
 data class Bookmarks(
     val dirs: List<String>,
+    val here: Map<String, Long>? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -2498,9 +2499,10 @@ data class Bookmarks(
         val ADAPTER: JsonAdapter<Bookmarks> = obj(
             listOf(
             Field("dirs", { arr(Str) }, optional = false, nullable = false),
+            Field("here", { opt(dict(Lng)) }, optional = true, nullable = true),
             ),
-            { a -> Bookmarks(a[0] as List<String>) },
-            { v -> arrayOf(v.dirs) },
+            { a -> Bookmarks(a[0] as List<String>, a[1] as Map<String, Long>?) },
+            { v -> arrayOf(v.dirs, v.here) },
         )
     }
 }
@@ -2509,6 +2511,7 @@ data class Bookmarks(
 data class BookmarksEditReq(
     val op: BookmarksEditReqOp,
     val dirs: List<String>,
+    val at: List<String>? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -2517,9 +2520,10 @@ data class BookmarksEditReq(
             listOf(
             Field("op", { BookmarksEditReqOp.ADAPTER }, optional = false, nullable = false),
             Field("dirs", { arr(Str) }, optional = false, nullable = false),
+            Field("at", { opt(arr(Str)) }, optional = true, nullable = true),
             ),
-            { a -> BookmarksEditReq(a[0] as BookmarksEditReqOp, a[1] as List<String>) },
-            { v -> arrayOf(v.op, v.dirs) },
+            { a -> BookmarksEditReq(a[0] as BookmarksEditReqOp, a[1] as List<String>, a[2] as List<String>?) },
+            { v -> arrayOf(v.op, v.dirs, v.at) },
         )
     }
 }
@@ -2535,8 +2539,21 @@ enum class BookmarksEditReqOp(val wire: String) {
     }
 }
 
-data object BookmarksReadReq {
-    val ADAPTER: JsonAdapter<BookmarksReadReq> = obj(emptyList(), { BookmarksReadReq }, { emptyArray() })
+@Suppress("UNCHECKED_CAST")
+data class BookmarksReadReq(
+    val at: List<String>? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BookmarksReadReq> = obj(
+            listOf(
+            Field("at", { opt(arr(Str)) }, optional = true, nullable = true),
+            ),
+            { a -> BookmarksReadReq(a[0] as List<String>?) },
+            { v -> arrayOf(v.at) },
+        )
+    }
 }
 
 @Suppress("UNCHECKED_CAST")

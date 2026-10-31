@@ -13,6 +13,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
@@ -92,10 +93,14 @@ fun ChatTranscript(
 
     // 贴着底（[following]）：一开始是；之后每次滚动停下时看停在哪 —— 停在底 ⇒ 还贴着，停在别处（人往上翻了）⇒ 不贴了。
     // 新内容来了只在贴着底时跟到底，往上翻看历史时不拽回去。
-    var following by remember { mutableStateOf(true) }
+    // 贴不贴着底与往上翻着时停在哪一行跟着进程重建回来（[KeepChatScroll]）。
+    val followState = rememberSaveable { mutableStateOf(true) }
+    var following by followState
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }.drop(1).filter { !it }.collect { following = !listState.canScrollForward }
     }
+    val keys = remember(state.stream) { state.stream.map { it.key } }
+    KeepChatScroll(listState, keys, followState) { listState.scrollToItem((listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0), Int.MAX_VALUE) }
     // 贴着底才丢离视口远的旧页（会话那头判）：变了就报。
     LaunchedEffect(following) { onFollow(following) }
 
