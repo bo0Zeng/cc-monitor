@@ -501,6 +501,16 @@ fn a_malformed_batch_is_refused_whole() {
     assert!(rig.calls.borrow().is_empty());
 }
 
+/// 名单 ⇒ 这个 sid 的样子，带着的那几行换成 tmux 会话名（生产那条是 [`carriers`]）。
+fn standing(rows: &[TermEntry], sid: &str) -> Standing {
+    match carriers(rows, sid) {
+        Standing::Running(e) => Standing::Running(e.name.clone()),
+        Standing::Ambiguous(es) => Standing::Ambiguous(es.iter().map(|e| e.name.clone()).collect()),
+        Standing::Idle(e) => Standing::Idle(e.name.clone()),
+        Standing::None => Standing::None,
+    }
+}
+
 #[test]
 fn the_standing_of_a_sid_is_judged_once_for_menu_and_stop() {
     let rows = vec![

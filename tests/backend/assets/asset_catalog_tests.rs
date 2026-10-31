@@ -19,6 +19,9 @@
 
 use super::*;
 
+/// 目录文件名：字面量只住契约 crate，这里照它现算。
+const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::ASSET_CATALOG_REL);
+
 /// 线上 `catalog`（JSON）→ 各台快照：同 `assets-catalog-merge` 那一跳（解码器管形状，`machines_of` 判 id 与种类）。
 fn machines_from_wire(
     v: &serde_json::Value,
@@ -482,14 +485,15 @@ fn a_malformed_incoming_catalog_is_refused_not_guessed() {
     }
 }
 
-/// 目录文件名在 `src/` 全部生产代码里**谁叫得出它**（字面量或契约常量名）—— 两向相等 ＋ 本模块自己必须命中 = 正控。
-/// 字面量挪进契约 crate（`relay_route_core::ASSET_CATALOG_REL`）：定义那一处 · 写者（本模块）两个家
+/// 目录文件名在 `src/` 全部生产代码里**谁叫得出它**（字面量 · 契约里的相对路径 · 契约里那份文件的声明）—— 两向相等 ＋ 本模块自己必须命中 = 正控。
+/// 字面量住契约 crate（`relay_route_core::ASSET_CATALOG_REL` · `ASSET_CATALOG_FILE`）：定义那一处 · 写者（本模块，经 `ASSET_CATALOG_FILE`）两个家
 /// （数据页那一行由后端照契约那张表 `OWN_HOME_ENTRIES` 列，同一个家）；第三个 ⇒ 红（第二个写者冒出来了）。
 #[test]
 fn the_file_name_has_exactly_one_home_in_all_production_code() {
     let src = guard_core::addr::repo_root().join("src");
     let needle = format!("{}-{}.json", "assets", "catalog");
-    let via_const = format!("{}_{}_REL", "ASSET", "CATALOG");
+    let via_rel = format!("{}_{}_REL", "ASSET", "CATALOG");
+    let via_decl = format!("{}_{}_FILE", "ASSET", "CATALOG");
     let mut scanned = 0usize;
     let mut homes: std::collections::BTreeSet<String> = Default::default();
     for (path, body) in guard_core::scan_tree_excluding(&src, &["rs", "ts", "sh"], &[]) {
@@ -499,7 +503,10 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
             Some("ts") => guard_core::strip_comment_lines(&body),
             _ => guard_core::strip_hash_comment_lines(&body),
         };
-        if code.contains(needle.as_str()) || code.contains(via_const.as_str()) {
+        if [&needle, &via_rel, &via_decl]
+            .iter()
+            .any(|n| code.contains(n.as_str()))
+        {
             homes.insert(
                 path.strip_prefix(&src)
                     .unwrap_or(&path)
