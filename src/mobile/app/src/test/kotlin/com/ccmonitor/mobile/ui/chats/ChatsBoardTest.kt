@@ -225,19 +225,23 @@ class ChatsBoardTest {
             val a = Host(HostName("h1", "a"))
             a.rows = listOf(rowMap("p", 3), rowMap("f", 2, parent = "p"), rowMap("q", 1))
             val board = board(a)
+            val shown = {
+                board.ui.value.rows
+                    .map { it.sessionId }
+            }
             runCurrent()
-            assertEquals(listOf("p", "q"), board.ui.value.rows.map { it.sessionId })
+            assertEquals(listOf("p", "q"), shown())
             val asked = a.link.calls("history-list").size
             board.toggleForks("h1", "p")
             runCurrent()
-            assertEquals(listOf("p", "f", "q"), board.ui.value.rows.map { it.sessionId })
+            assertEquals(listOf("p", "f", "q"), shown())
             assertEquals("开合不重问那台", asked, a.link.calls("history-list").size)
             board.filters { it.copy(sort = ListSort.CREATED) }
             runCurrent()
-            assertEquals("换筛选不清", listOf("p", "f", "q"), board.ui.value.rows.map { it.sessionId })
+            assertEquals("换筛选不清", listOf("p", "f", "q"), shown())
             board.toggleForks("h1", "p")
             runCurrent()
-            assertEquals(listOf("p", "q"), board.ui.value.rows.map { it.sessionId })
+            assertEquals(listOf("p", "q"), shown())
         }
 
     @Test
