@@ -13945,7 +13945,7 @@
     "beArgv.parse.unknownRight": {
       "kind": "error",
       "role": "命令行",
-      "zh": "{w} 不是 -- 右边的 ccm 选项 · claude 的参数放 -- 左边 · ccm 子命令只能紧跟开头的 --（ccm -- --commands 列全部）",
+      "zh": "{w} 不是 -- 右边的 ccm 选项 · claude 参数放左边 · 子命令紧跟开头的 --（ccm -- --commands 看全部）",
       "args": ["w"],
       "limited": ["ccm"]
     },
