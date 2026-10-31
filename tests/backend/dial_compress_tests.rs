@@ -412,7 +412,11 @@ async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
                 trust: Default::default(),
                 observed: Default::default(),
                 stages: StageSink::new(false),
-                endpoint: format!("{host}:{port}"),
+                endpoint: Endpoint {
+                    host: host.to_string(),
+                    port,
+                },
+                label: format!("{host}:{port}"),
                 heard: Default::default(),
             };
             let mut h = russh::client::connect_stream(
@@ -552,7 +556,11 @@ async fn zr_real_sshd_takes_incompressible_puts_when_forced() {
             trust: Default::default(),
             observed: Default::default(),
             stages: StageSink::new(false),
-            endpoint: format!("{host}:{port}"),
+            endpoint: Endpoint {
+                host: host.to_string(),
+                port,
+            },
+            label: format!("{host}:{port}"),
             heard: Default::default(),
         };
         let mut h =
@@ -674,7 +682,11 @@ async fn the_checker_trusts_only_what_the_library_holds() {
             trust,
             observed: Arc::default(),
             stages: stages.clone(),
-            endpoint: "a:22".to_string(),
+            endpoint: Endpoint {
+                host: "a".into(),
+                port: 22,
+            },
+            label: "a:22".to_string(),
             heard: Default::default(),
         };
         (
@@ -883,7 +895,11 @@ async fn a_tunnelled_connection_is_marked_gone_when_its_carrier_dies() {
         trust: Trust::default(),
         observed: Arc::default(),
         stages: StageSink::new(false),
-        endpoint: "t:22".to_string(),
+        endpoint: Endpoint {
+            host: "t".into(),
+            port: 22,
+        },
+        label: "t:22".to_string(),
         heard: Arc::clone(&heard),
     };
     let road = Hearing::new(
