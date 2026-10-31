@@ -176,7 +176,7 @@ fn a_target_is_one_handle_or_one_sid_from_the_list_and_nothing_else() {
     ] {
         assert_eq!(
             target(h, s).map_err(|e| e.code),
-            Err("bad_target".to_string()),
+            Err(Some("bad_target".to_string())),
             "{h:?} {s:?}"
         );
     }
@@ -246,7 +246,7 @@ fn text_and_keys_are_separate_and_keys_come_from_a_closed_table() {
     ] {
         assert_eq!(
             input_of(&bad).map_err(|e| e.code),
-            Err("bad_args".to_string()),
+            Err(Some("bad_args".to_string())),
             "{bad}"
         );
     }
@@ -682,7 +682,7 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
         assert_eq!(
             preview_on(iso.on(), &json!({ "terminal": raw }), &Default::default())
                 .map_err(|e| e.code),
-            Err("not_known".to_string())
+            Err(Some("not_known".to_string()))
         );
     }
 }
@@ -1027,8 +1027,8 @@ fn a_refused_take_or_release_says_why_by_its_code() {
         ("ambiguous", "ambiguous"),
     ] {
         let f = told(code);
-        assert_eq!(f.code, code);
-        assert_eq!(f.message, no_said(why), "{code} 那一句");
+        assert_eq!(f.code.as_deref(), Some(code));
+        assert_eq!(f.said, no_said(why), "{code} 那一句");
         assert!(
             f.raw.as_deref().unwrap_or("").contains("lower"),
             "{code} 下层那句进原话：{:?}",

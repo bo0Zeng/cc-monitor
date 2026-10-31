@@ -91,7 +91,7 @@ fn capturing_a_real_pane_brings_the_screen_back() {
     let miss = capture_with_on(Some(&sock.to_string_lossy()), "=kr86nope:", false, 0)
         .expect_err("不存在的会话不许回成功");
     assert_eq!(
-        miss.code, "no_such_session",
+        miss.code.as_deref(), Some("no_such_session"),
         "server 在、目标不在 ⇒ 该报 `no_such_session`。实得：{miss:?}"
     );
 
@@ -106,9 +106,9 @@ fn a_socket_with_no_server_says_so_in_its_own_words() {
     let e = capture_with_on(Some(&sock.to_string_lossy()), "=whatever:", false, 0)
         .expect_err("没有 server 的 socket 上不许回成功");
     assert_eq!(
-        e.code, "no_server",
+        e.code.as_deref(), Some("no_server"),
         "没有 server 时报的是 `{}` —— 那一档被压进别的码里了。实得：{e:?}",
-        e.code
+        e.code_or_fallback()
     );
 }
 
@@ -127,14 +127,14 @@ fn missing_tmux_and_missing_session_are_two_different_answers() {
         absent.code, gone.code,
         "「这台机没有 tmux」与「会话不存在」共用了同一个码 `{}` —— \
              压成一句之后，拿到这条错的人没法判断该去装 tmux 还是该去看会话名",
-        absent.code
+        absent.code_or_fallback()
     );
     assert_ne!(
-        absent.message, gone.message,
+        absent.said, gone.said,
         "两档的码分开了、话却一模一样 —— 人读的是话，那等于没分开"
     );
-    assert_eq!(absent.code, "no_tmux");
-    assert_eq!(gone.code, "no_such_session");
+    assert_eq!(absent.code.as_deref(), Some("no_tmux"));
+    assert_eq!(gone.code.as_deref(), Some("no_such_session"));
 }
 
 /// ★ **空屏是合法的成功** —— 「抓不到」不许靠「输出是空的」判。
@@ -152,9 +152,9 @@ fn an_empty_screen_is_a_success_and_a_failure_is_never_an_empty_string() {
     ] {
         let e = classify(&raw(code, "", stderr)).expect_err("失败不许回成功");
         assert!(
-            !e.message.trim().is_empty(),
+            !e.said.trim().is_empty(),
             "失败那一档回了一句空话 —— 那与静默空串是同一件事。码：{}",
-            e.code
+            e.code_or_fallback()
         );
     }
 }
@@ -165,7 +165,7 @@ fn an_unrecognised_failure_carries_the_real_words_instead_of_a_guess() {
     let e =
         classify(&raw(Some(3), "", "tmux: 未来某个版本的新措辞")).expect_err("非零退出不许回成功");
     assert_eq!(
-        e.code, "capture_failed",
+        e.code.as_deref(), Some("capture_failed"),
         "认不出来的失败被塞进了一个具体的码 —— 那是拿一个错答案冒充知识"
     );
     let raw_said = e.raw.as_deref().unwrap_or_default();
@@ -187,9 +187,9 @@ fn the_sentence_carries_no_stderr_and_no_exit_code() {
         ("can't find pane: =x:", "no_such_session"),
     ] {
         let e = classify(&raw(Some(7), "", stderr)).expect_err("非零退出不许回成功");
-        assert_eq!(e.code, code);
+        assert_eq!(e.code.as_deref(), Some(code));
         assert!(
-            !e.message.contains(stderr.trim_start_matches("tmux: ")) && !e.message.contains('7'),
+            !e.said.contains(stderr.trim_start_matches("tmux: ")) && !e.said.contains('7'),
             "句子里夹了 stderr 或退出码：{e:?}"
         );
         assert!(
@@ -204,13 +204,13 @@ fn the_sentence_carries_no_stderr_and_no_exit_code() {
 fn tmux_not_installed_says_the_reason_word_and_keeps_the_os_words_aside() {
     let os = std::io::Error::new(std::io::ErrorKind::NotFound, "kr86 os words");
     let e = tmux_unavailable(ChildFail::NotFound(os));
-    assert_eq!(e.code, "no_tmux");
+    assert_eq!(e.code.as_deref(), Some("no_tmux"));
     assert!(
-        e.message
+        e.said
             .contains(&copy_text("reason.spawn.notInstalled", &[])),
         "{e:?}"
     );
-    assert!(!e.message.contains("kr86 os words"), "{e:?}");
+    assert!(!e.said.contains("kr86 os words"), "{e:?}");
     assert_eq!(e.raw.as_deref(), Some("kr86 os words"));
 }
 
@@ -226,13 +226,13 @@ fn every_registered_needle_lands_in_its_own_bucket() {
     for (needle, _) in NO_SERVER_NEEDLES {
         let e = classify(&raw(Some(1), "", &format!("tmux: {needle} blah")))
             .expect_err("非零退出不许回成功");
-        assert_eq!(e.code, "no_server", "针 {needle:?} 没落进 `no_server`");
+        assert_eq!(e.code.as_deref(), Some("no_server"), "针 {needle:?} 没落进 `no_server`");
     }
     for (needle, _) in NO_TARGET_NEEDLES {
         let e = classify(&raw(Some(1), "", &format!("tmux: {needle}: =x:")))
             .expect_err("非零退出不许回成功");
         assert_eq!(
-            e.code, "no_such_session",
+            e.code.as_deref(), Some("no_such_session"),
             "针 {needle:?} 没落进 `no_such_session`"
         );
     }

@@ -139,9 +139,10 @@ fn end_bare(t: &str, tmux: &Tmux<'_>) -> Result<(), Said> {
 
 /// tmux 这个程序起不来：句子只说原因词（未装 / 无权限 …），系统原话进复制详情；超时那一档照旧。
 pub(crate) fn tmux_unavailable(e: crate::platform::child::ChildFail) -> Said {
-    Said::from(e.into_cmd_said("no_tmux", |why| {
+    let (code, said) = e.into_cmd_said("no_tmux", |why| {
         copy_text("reason.tmux.startFailed", &[("why", why)])
-    }))
+    });
+    crate::wire::spec::fail(code, said)
 }
 
 /// tmux 起来了、但没杀成：句子说「tmux 报错」，tmux 自己说的那句进复制详情。
@@ -221,9 +222,9 @@ impl crate::wire::typed::Handle for TerminalEnd {
                 crate::host::managed::installed(),
                 &req,
             )
-            .map_err(|f| match f.code.as_str() {
+            .map_err(|f| match f.code.as_deref() {
                 // 同 `terminals-list`：tmux 装了却起不来 ⇒ 列不出（不另立 `no_tmux`：没 tmux 照样结束托管的）。
-                "no_tmux" => TerminalEndErr::Unobservable(crate::common::contract::joined(f.said, f.raw)),
+                Some("no_tmux") => TerminalEndErr::Unobservable(crate::common::contract::joined(f.said, f.raw)),
                 _ => crate::wire::typed::of_fail(f, TerminalEndErr::KillFailed),
             })
         }
@@ -267,9 +268,9 @@ pub(crate) fn end_terminal(
             // 挂着 sid 的窗格 ⇒ 只结束它（会话里还有别的 claude 窗格时不关整个会话）。
             let sid = row.pane.as_ref().map(|_| row.sid.as_str());
             run_expecting(&row.name, sid, requester.as_deref()).map_err(|f| {
-                if f.code == "no_tmux" {
+                if f.code.as_deref() == Some("no_tmux") {
                     crate::wire::spec::fail("kill_failed", copy_text("beKill.run.failed", &[]))
-                        .and_raw(Some(&f.message))
+                        .and_raw(Some(&f.said))
                 } else {
                     f
                 }

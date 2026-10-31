@@ -632,8 +632,8 @@ fn the_requester_is_optional_and_shaped() {
     let long = "x".repeat(33);
     for bad in ["", "Mobile", "-x", "a b", long.as_str()] {
         assert_eq!(
-            requester(Some(bad)).map_err(|(c, _)| c),
-            Err("bad_args"),
+            requester(Some(bad)).map_err(|s| s.code),
+            Err(Some("bad_args".to_string())),
             "{bad}"
         );
     }
@@ -655,8 +655,9 @@ fn the_gate_puts_the_session_name_in_as_is() {
 #[test]
 fn a_missing_tmux_is_said_with_a_reason_word_not_the_os_words() {
     let dir = std::env::temp_dir().join(format!("ccm-gate-gone-{}", std::process::id()));
-    let (code, said) = probe_with(Child::new(dir.join("gone")), "=x:").unwrap_err();
-    assert_eq!(code, "no_tmux");
+    let failed = probe_with(Child::new(dir.join("gone")), "=x:").unwrap_err();
+    assert_eq!(failed.code.as_deref(), Some("no_tmux"));
+    let said = failed.said;
     assert_eq!(
         said,
         copy_text(

@@ -2,7 +2,7 @@ use super::*;
 
 // 回包写成线上那一份、入参经 typed 那一处收（同分派）：判据照线上形比（盖住 `super::*` 里的同名口）。
 fn answer_print(args: &serde_json::Value) -> Result<serde_json::Value, (&'static str, String)> {
-    let req: CcmPrintReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    let req: CcmPrintReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
     super::answer_print(&req, crate::faces::launch_account_face::list_at)
         .map(|r| serde_json::to_value(r).unwrap())
 }
@@ -892,7 +892,7 @@ fn minting_derives_here_and_steps_aside_on_this_machines_snapshot() {
         mint(NameBase::ForkOf("/home/u/gone")).unwrap(),
         "gone-fork-cc"
     );
-    let no_tmux = SessionSnapshot::with_prober(|| Err(("no_tmux", "tmux: not found".to_string())));
+    let no_tmux = SessionSnapshot::with_prober(|| Err(crate::common::said::Said::new("no_tmux", "tmux: not found".to_string())));
     assert_eq!(
         terminal_name_mint_with(NameBase::Cwd("/home/u/proj"), &no_tmux).unwrap(),
         "proj-cc"

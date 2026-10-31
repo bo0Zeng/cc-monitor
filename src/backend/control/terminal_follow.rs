@@ -238,9 +238,9 @@ impl crate::wire::typed::Codes for FollowErr {
         if code == "bad_args" {
             return f;
         }
-        crate::common::said::Said {
-            data: serde_json::to_value(live_after_refusal(code)).ok(),
-            ..f
+        match serde_json::to_value(live_after_refusal(code)) {
+            Ok(v) => f.with_data(v),
+            Err(_) => f,
         }
     }
     fn of_code(code: &str, said: String) -> Result<Self, String> {
@@ -349,7 +349,7 @@ pub(crate) fn end_said(why: FollowEnd) -> String {
 /// 抓那个终端的一屏失败了（或控制模式客户端退了之后再看一眼）⇒ 停因：终端 / tmux 都没了 ⇒ `gone`；还在 ⇒ `lost`。
 fn end_of<T>(seen: &Result<T, Said>) -> FollowEnd {
     match seen {
-        Err(f) if matches!(f.code.as_str(), "no_such_session" | "no_server") => FollowEnd::Gone,
+        Err(f) if matches!(f.code.as_deref(), Some("no_such_session" | "no_server")) => FollowEnd::Gone,
         _ => FollowEnd::Lost,
     }
 }

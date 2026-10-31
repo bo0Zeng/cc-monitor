@@ -52,7 +52,7 @@ impl Rig {
         }
     }
 
-    fn call(&self, args: Value) -> Result<Value, Failed> {
+    fn call(&self, args: Value) -> Result<Value, Said> {
         let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
             .into_iter()
             .map(str::to_string)
@@ -153,11 +153,9 @@ impl Rig {
         };
         // 解入参同 typed 分派那一步（多一格 · 类型不对 ⇒ `bad_args`），成品照写上线的那一份 JSON 比。
         let req: SessionOpenReq = serde_json::from_value(args).map_err(|e| {
-            (
+            Said::new(
                 "bad_args",
                 crate::common::contract::malformed(&e.to_string()),
-                None,
-                None,
             )
         })?;
         let facts = Facts {
@@ -190,8 +188,8 @@ fn req(extra: Value) -> Value {
     v
 }
 
-fn field_of(e: &Failed) -> Value {
-    e.2.as_ref().map_or(Value::Null, |d| d["field"].clone())
+fn field_of(e: &Said) -> Value {
+    e.data.as_ref().map_or(Value::Null, |d| d["field"].clone())
 }
 
 #[test]
@@ -293,7 +291,7 @@ fn every_slot_that_fails_names_itself_and_nothing_is_started_or_written() {
         }
         let rig = Rig::new(rows);
         let e = rig.call(req(extra.clone())).unwrap_err();
-        assert_eq!(e.0, code, "{extra}");
+        assert_eq!(e.code.as_deref(), Some(code), "{extra}");
         assert_eq!(field_of(&e), field, "{extra}");
         assert!(rig.ccm.borrow().is_empty(), "{extra}：不许起");
         assert!(
@@ -310,8 +308,8 @@ fn an_unavailable_account_carries_the_alternative_and_is_never_swapped_silently(
     let e = rig
         .call(req(json!({ "fork": { "sid": SRC, "uuid": MSG } })))
         .unwrap_err();
-    assert_eq!(e.0, "account_unavailable");
-    let d = e.2.unwrap();
+    assert_eq!(e.code.as_deref(), Some("account_unavailable"));
+    let d = e.data.unwrap();
     assert_eq!(d["field"], "account");
     assert_eq!(d["unavailable"]["requested"], "gone");
     assert_eq!(d["unavailable"]["pinned"], true, "跟随的是源会话上次那个号");
@@ -353,7 +351,7 @@ fn a_fork_does_not_take_a_tmux_name() {
             json!({ "tmuxName": "x", "fork": { "sid": SRC, "uuid": MSG } }),
         ))
         .unwrap_err();
-    assert_eq!(e.0, "bad_args");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
     assert!(rig.forks.borrow().is_empty());
 }
 
@@ -362,19 +360,22 @@ fn a_taken_name_at_start_time_is_reported_on_the_name_slot() {
     let mut rig = Rig::new(Some(vec![]));
     rig.ccm_rc = 3;
     let e = rig.call(req(json!({}))).unwrap_err();
-    assert_eq!((e.0, field_of(&e)), ("tmux_taken", json!("tmuxName")));
+    assert_eq!(
+        (e.code.as_deref(), field_of(&e)),
+        (Some("tmux_taken"), json!("tmuxName"))
+    );
     rig.ccm_rc = 1;
     let e = rig.call(req(json!({}))).unwrap_err();
     // 那一句只说原因（C-W18：句子里不接原话、不带退出码）；退出码与 ccm 的 stderr 进复制详情（`raw`）。
     assert_eq!(
-        (e.0, field_of(&e), e.1.as_str()),
+        (e.code.as_deref(), field_of(&e), e.said.as_str()),
         (
-            "start_failed",
+            Some("start_failed"),
             Value::Null,
             copy_core::copy_text("beSessionNew.start.failed", &[]).as_str()
         )
     );
-    let raw = e.3.as_deref().unwrap_or_default();
+    let raw = e.raw.as_deref().unwrap_or_default();
     assert!(raw.contains("boom") && raw.contains('1'), "{raw}");
 }
 
@@ -408,8 +409,8 @@ fn a_window_launch_hands_back_the_line_and_starts_nothing() {
 fn unknown_fields_are_refused() {
     let rig = Rig::new(Some(vec![]));
     assert_eq!(
-        rig.call(req(json!({ "machine": "devbox" }))).unwrap_err().0,
-        "bad_args"
+        rig.call(req(json!({ "machine": "devbox" }))).unwrap_err().code.as_deref(),
+        Some("bad_args")
     );
 }
 
@@ -549,7 +550,7 @@ fn asking_again_with_the_same_ticket_starts_nothing_more() {
     assert_eq!(first, again);
     assert_eq!(rig.ccm.borrow().len(), 1, "同一张票只起一次");
     let bad = rig.call(req(json!({ "ticket": "a b" }))).unwrap_err();
-    assert_eq!(bad.0, "bad_args");
+    assert_eq!(bad.code.as_deref(), Some("bad_args"));
     assert_eq!(rig.ccm.borrow().len(), 1);
     rig.call(req(json!({ "ticket": format!("{t}-other") })))
         .unwrap();
@@ -633,22 +634,22 @@ fn a_config_at_launch_that_fails_leaves_nothing_behind() {
     let e = rig
         .call(req(json!({"rotation": {"strategy": "c_gone"}})))
         .expect_err("不在");
-    assert_eq!(e.0, "no_strategy");
+    assert_eq!(e.code.as_deref(), Some("no_strategy"));
     assert!(rig.ccm.borrow().is_empty(), "配置不在就不起");
     let mut rig = Rig::new(Some(vec![]));
     rig.ccm_rc = 1;
     let e = rig
         .call(req(json!({"rotation": {"strategy": "c_night"}})))
         .expect_err("起不成");
-    assert_eq!(e.0, "start_failed");
+    assert_eq!(e.code.as_deref(), Some("start_failed"));
     assert_eq!(
         rig.rot.borrow().last().map(String::as_str),
         Some(format!("forget {PRESET}").as_str())
     );
     let rig = Rig::new(Some(vec![]));
     assert_eq!(
-        rig.call(req(json!({"rotation": 3}))).expect_err("形状").0,
-        "bad_args"
+        rig.call(req(json!({"rotation": 3}))).expect_err("形状").code.as_deref(),
+        Some("bad_args")
     );
 }
 
@@ -705,7 +706,7 @@ fn a_first_prompt_that_cannot_be_delivered_is_refused_before_anything_starts() {
     ] {
         let rig = Rig::new(Some(vec![]));
         let e = rig.call(req(extra.clone())).expect_err("不收");
-        assert_eq!(e.0, "bad_args", "{extra}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{extra}");
         assert!(rig.ccm.borrow().is_empty(), "{extra}");
     }
 }
@@ -757,7 +758,7 @@ fn a_launch_carries_the_model_and_the_permission_mode_it_was_asked_for() {
     ] {
         let rig = Rig::new(Some(vec![]));
         let e = rig.call(req(extra.clone())).expect_err("不收");
-        assert_eq!(e.0, "bad_args", "{extra}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{extra}");
         assert!(rig.ccm.borrow().is_empty(), "{extra}");
     }
 }
@@ -773,5 +774,5 @@ fn an_alias_leads_the_ccm_line_and_a_bad_alias_name_is_refused() {
     let e = Rig::new(Some(vec![]))
         .call(req(json!({"alias": "a b"})))
         .unwrap_err();
-    assert_eq!(e.0, "bad_args", "{e:?}");
+    assert_eq!(e.code.as_deref(), Some("bad_args"), "{e:?}");
 }
