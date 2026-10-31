@@ -52,7 +52,8 @@
 //! 「这个面板在真机上流不流畅」**本秤买不到**，那要 release 档 ＋ 真图形会话。
 
 use super::corpus;
-use super::rows::{render_headless, RenderTally};
+use super::rows::testing::render_headless;
+use super::rows::RenderTally;
 use super::source::Listed;
 
 /// 视口：1280×800，与那趟原型同值。
@@ -77,8 +78,27 @@ pub struct F1 {
     pub rss_kib: u64,
 }
 
-// 读进程 RSS（Linux `/proc/self/statm` · 别处 0）住 `platform.rs::rss_kib`。
-pub use crate::platform::rss_kib;
+/// 读进程 RSS。Linux 走 `/proc/self/statm`；别的平台返回 0（**不是假装 0 字节**，
+/// 是「这台机器上量不到」—— 判据那边按 0 跳过，并且把「跳过了」印出来）。
+pub fn rss_kib() -> u64 {
+    #[cfg(target_os = "linux")]
+    {
+        let s = match std::fs::read_to_string("/proc/self/statm") {
+            Ok(s) => s,
+            Err(_) => return 0,
+        };
+        let pages: u64 = s
+            .split_whitespace()
+            .nth(1)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        pages.saturating_mul(4) // 4 KiB/page
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        0
+    }
+}
 
 /// 量一趟。`frames` 帧里每帧把滚动偏移往下推一屏，**真的在滚**。
 pub fn measure(rows: &[Listed], frames: usize) -> F1 {

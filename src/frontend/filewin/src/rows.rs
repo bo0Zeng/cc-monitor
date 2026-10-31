@@ -616,31 +616,6 @@ pub fn show_header(ui: &mut Ui, cols: &mut Columns, sort: Sort) -> Option<SortBy
     picked
 }
 
-/// 判据那一形：[`show_file_rows_with_tail`] 不带尾行 · 就地格 · 计划列。
-#[cfg(test)]
-pub fn show_file_rows(
-    ui: &mut Ui,
-    rows: &[Listed],
-    tally: &mut RenderTally,
-    scroll_offset_y: Option<f32>,
-    reveal: Option<&str>,
-    picked: Option<&super::select::Selection>,
-    cols: &Columns,
-) {
-    show_file_rows_with_tail(
-        ui,
-        rows,
-        tally,
-        scroll_offset_y,
-        reveal,
-        picked,
-        cols,
-        None,
-        None,
-        None,
-    );
-}
-
 /// 就地输入那一格（就地改名 · 就地新建）：第 `row` 行的名字那一格换成一个输入框。
 ///
 /// 填进来的：正在编辑的字 · 出错那一句（红边 ＋ 格子下面挂一句）· 这一帧要不要把焦点给它、选中前几个字（主名）。
@@ -1182,45 +1157,6 @@ pub fn reveal_index(rows: &[Listed], name: &str) -> Option<usize> {
 /// 一行占多高（行间不留缝 ⇒ 就是行高令牌）。「滚到第 i 行」用它算偏移。
 pub fn row_pitch(ui: &Ui) -> f32 {
     metrics(ui.ctx()).row_h
-}
-
-/// Headless 跑一趟 egui 并收 [`RenderTally`]。
-///
-/// ⚠ **这是 CPU 段**：布局 ＋ 生成绘制命令 ＋ 文字整形，不含把三角形交给 GPU。
-/// 理由与射程照（本机 `XDG_SESSION_TYPE=tty`，没有图形会话）。
-/// 那一节的旁证也照抄下来：虚拟滚动那一档三角形数与总行数无关
-/// ⇒ 交给 GPU 的活不随行数涨，**它不是 64 万行的风险点**。
-#[cfg(test)]
-pub fn render_headless(
-    ctx: &egui::Context,
-    rows: &[Listed],
-    screen: egui::Vec2,
-    scroll_offset_y: f32,
-) -> RenderTally {
-    let mut tally = RenderTally::default();
-    let input = egui::RawInput {
-        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, screen)),
-        ..Default::default()
-    };
-    let out = ctx.run_ui(input, |ui| {
-        // 🔴 调的是**生产那个函数**，不是它的副本 —— 见 `show_file_rows_with_tail` 的注释。
-        let mut t = RenderTally::default();
-        show_file_rows_with_tail(
-            ui,
-            rows,
-            &mut t,
-            Some(scroll_offset_y),
-            None,
-            None,
-            &Columns::default(),
-            None,
-            None,
-            None,
-        );
-        tally = t;
-    });
-    out.drop_without_applying_deltas();
-    tally
 }
 
 #[cfg(test)]

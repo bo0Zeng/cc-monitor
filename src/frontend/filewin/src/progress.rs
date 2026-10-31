@@ -160,11 +160,6 @@ impl Progress {
         }
     }
 
-    /// 是不是同一张表（两个目录视图拿的是不是同一份）。
-    pub fn same(&self, other: &Progress) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-
     /// 开一行。回它的号。
     pub fn add(&self, trip: Trip, dir: Option<String>, no_stop: Option<String>) -> u64 {
         let mut g = self.lock();

@@ -2,6 +2,26 @@
 
 use super::*;
 
+/// 判据看的两格 ＋ 记满几帧就停的那一种开法（生产那一份里没有它们；本模块挂在 `frame_log` 底下，读得到私有字段）。
+impl FrameLog {
+    fn is_on(&self) -> bool {
+        self.out.is_some()
+    }
+
+    /// 记过几帧（关着恒 0）。
+    fn frames(&self) -> u64 {
+        self.frames
+    }
+
+    /// 同 [`FrameLog::to_file`]，记满 `cap` 帧就停。
+    fn capped(path: &std::path::Path, cap: u64) -> std::io::Result<Self> {
+        Ok(Self {
+            cap,
+            ..Self::to_file(path)?
+        })
+    }
+}
+
 fn scratch(tag: &str) -> std::path::PathBuf {
     let d = std::env::temp_dir().join(format!(
         "filewin-frame-log-{tag}-{}-{}",
