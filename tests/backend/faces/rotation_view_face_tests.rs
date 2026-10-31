@@ -497,8 +497,8 @@ fn a_preset_session_keeps_its_strategy_when_the_relay_first_sees_it() {
     home.saw(&ctx, S1);
     assert_eq!(used(&ctx, S1).as_deref(), Some("third"));
     assert_eq!(
-        preset_with(&ctx, &home.own(), S2, "claude", "nope", now()).map_err(|e| e.0),
-        Err("no_strategy")
+        preset_with(&ctx, &home.own(), S2, "claude", "nope", now()).map_err(|e| e.code),
+        Err(Some("no_strategy".to_string()))
     );
     forget_preset_with(&ctx, &home.own(), S1);
     assert!(!ctx.hop.store.now().sessions.contains_key(S1));
@@ -512,8 +512,8 @@ fn a_preset_session_does_not_take_a_route_name_as_an_agent() {
     let route = crate::agents::claudecode::UPSTREAM.route_id;
     assert_ne!(route, crate::agents::claudecode::AGENT_KIND);
     assert_eq!(
-        preset_with(&ctx, &home.own(), S1, route, "", now()).map_err(|e| e.0),
-        Err("bad_args")
+        preset_with(&ctx, &home.own(), S1, route, "", now()).map_err(|e| e.code),
+        Err(Some("bad_args".to_string()))
     );
     assert!(!ctx.hop.store.now().sessions.contains_key(S1));
 }

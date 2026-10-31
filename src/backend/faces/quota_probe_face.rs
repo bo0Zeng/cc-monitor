@@ -109,7 +109,7 @@ pub(crate) fn answer_probe_with(
         .filter(|a| account_ok(a))
         .ok_or_else(|| bad("`account` must be an account id"))?;
     let face = crate::agents::usage_of(route).ok_or_else(|| {
-        (
+        crate::common::said::Said::new(
             "unsupported",
             copy_text(
                 "beQuotaProbe.agent.unsupported",
@@ -119,23 +119,22 @@ pub(crate) fn answer_probe_with(
     })?;
     let lib = ctx.hop.library();
     let found = lib.by_route(account).ok_or_else(|| {
-        (
+        crate::common::said::Said::new(
             "not_found",
             copy_text("beQuotaProbe.account.notFound", &[("account", account)]),
         )
     })?;
     if found.is_api_key() {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "unsupported",
             copy_text("beQuotaProbe.account.apiKey", &[("account", account)]),
-        )
-            .into());
+        ));
     }
     let book = ctx.hop.quota.path();
     // 家里那个不出会话的工作目录（数据目录底下一层，没有就建）：经写句柄建。
-    let no_home = || ("io_failed", copy_text("beQuotaLedger.read.noHome", &[]));
+    let no_home = || crate::common::said::Said::new("io_failed", copy_text("beQuotaLedger.read.noHome", &[]));
     if book.is_none() {
-        return Err(no_home().into());
+        return Err(no_home());
     }
     let cwd = own
         .path(crate::common::own_dir::HIDDEN_WORK_DIR)

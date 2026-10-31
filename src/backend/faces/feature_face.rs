@@ -8,7 +8,7 @@
 //!   整份超过 [`crate::faces::read_face::LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
 //! - 不拨号、不起进程、不写盘。
 
-use crate::wire::typed::{codes, of_pair, Command};
+use crate::wire::typed::{codes, of_fail_with, Command};
 use copy_core::copy_text;
 use serde_json::Value;
 
@@ -62,7 +62,7 @@ pub(crate) fn tasks_at(
     home: &std::path::Path,
     req: TasksListReq,
 ) -> Result<TasksList, TasksListErr> {
-    let fail = of_pair(TasksListErr::Failed);
+    let fail = of_fail_with(TasksListErr::Failed);
     let tasks = crate::observe::tasks_query::session_tasks(home, &req.sid).map_err(&fail)?;
     let reply = TasksList { tasks };
     let size = serde_json::to_vec(&reply).map_or(0, |b| b.len());
@@ -422,11 +422,11 @@ impl crate::wire::typed::Handle for SessionTerminals {
                 &crate::history::listing::agent_home(),
                 &req,
             )
-            .map_err(|(code, said)| match code {
-                "bad_args" => SessionTerminalsErr::BadArgs(said),
-                "no_such_session" => SessionTerminalsErr::NoSuchSession(said),
-                crate::platform::child::TIMED_OUT => SessionTerminalsErr::ChildTimedOut(said),
-                _ => SessionTerminalsErr::Failed(said),
+            .map_err(|s| match s.code.as_deref() {
+                Some("bad_args") => SessionTerminalsErr::BadArgs(s.said),
+                Some("no_such_session") => SessionTerminalsErr::NoSuchSession(s.said),
+                Some(crate::platform::child::TIMED_OUT) => SessionTerminalsErr::ChildTimedOut(s.said),
+                _ => SessionTerminalsErr::Failed(s.said),
             })
         }
     }

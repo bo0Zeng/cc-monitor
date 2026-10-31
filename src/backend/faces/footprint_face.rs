@@ -32,7 +32,7 @@ impl crate::wire::typed::Handle for AgentHomeCheckCmd {
            + Send
            + 'static {
         async move {
-            agent_home_check::answer_check(&req).map_err(typed::of_pair(AgentHomeCheckErr::BadArgs))
+            agent_home_check::answer_check(&req).map_err(typed::of_fail_with(AgentHomeCheckErr::BadArgs))
         }
     }
 }

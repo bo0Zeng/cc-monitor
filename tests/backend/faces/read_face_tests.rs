@@ -7,7 +7,7 @@ use crate::wire::SessionFaceExt as _;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-/// 本族的应答：`data` 或 `(code, message)`（判据这一层按登记表那一层的做法走一遍之后的样子）。
+/// 本族的应答：`data` 或失败（码 ＋ 那一句）（判据这一层按登记表那一层的做法走一遍之后的样子）。
 type Answer = Result<Value, crate::common::said::Said>;
 
 /// 读一份会话记录的那几条换成了 typed（`faces/history_face.rs`）：判据照旧按命令名问，这里照登记表那一层的做法走一遍
@@ -26,10 +26,10 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
                 .copied()
                 .unwrap_or_else(|| panic!("码表外的码 `{c}`"))
         };
-        let req = take::<C::Req>(args).map_err(|e| (code(e.code_or_fallback()), e.said))?;
+        let req = take::<C::Req>(args).map_err(|e| crate::common::said::Said::new(code(e.code_or_fallback()), e.said))?;
         let got = f(req).map_err(|e| {
             let fail = e.into_said();
-            (code(fail.code_or_fallback()), fail.said)
+            crate::common::said::Said::new(code(fail.code_or_fallback()), fail.said)
         })?;
         Ok(serde_json::to_value(got).unwrap())
     }
@@ -238,10 +238,11 @@ fn every_member_has_its_own_arm_and_strangers_do_not() {
         )
     });
     match r {
-        Err((c, _)) => {
+        Err(e) => {
             assert!(
-                c == "bad_args" && diag.contains("has no command"),
-                "{c}: {diag}"
+                e.code.as_deref() == Some("bad_args") && diag.contains("has no command"),
+                "{:?}: {diag}",
+                e.code
             )
         }
         Ok(v) => panic!("陌生命令被答了：{v}"),
@@ -307,7 +308,7 @@ fn an_oversized_line_is_refused_not_cut() {
         "应恰好是那一整行"
     );
     match crate::observe::query::body::read_page(&home, &path, 0, None, 100, 1000) {
-        Err((c, _)) => assert_eq!(c, "oversized_line"),
+        Err(e) => assert_eq!(e.code.as_deref(), Some("oversized_line")),
         Ok(pg) => panic!("超长行被交出去了（{} 字节）", pg.bytes.len()),
     }
     let _ = std::fs::remove_dir_all(&home);
@@ -321,7 +322,7 @@ fn the_frame_read_keeps_the_projects_fence() {
     std::fs::write(&outside, "{}\n").unwrap();
     let args = serde_json::json!({"path": outside.to_string_lossy()});
     match answer_at(&home, "history-read", &args, &Default::default()) {
-        Err((c, _)) => assert_eq!(c, "refused"),
+        Err(e) => assert_eq!(e.code.as_deref(), Some("refused")),
         Ok(v) => panic!("围栏外的文件被读了：{v}"),
     }
     let _ = std::fs::remove_dir_all(&home);
@@ -445,7 +446,7 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
         &Default::default(),
     )
     .unwrap_err();
-    assert_eq!(e.0, "failed");
+    assert_eq!(e.code.as_deref(), Some("failed"));
     // 围栏：同一套（围栏外 ⇒ 拒）。
     let outside = home.join("outside.jsonl");
     std::fs::write(&outside, "{}\n").unwrap();
@@ -511,8 +512,8 @@ fn the_find_answer_hits_exactly_the_fixture_hits() {
             &Default::default()
         )
         .unwrap_err()
-        .0,
-        "bad_args",
+        .code.as_deref(),
+        Some("bad_args"),
         "缺 query 该是 bad_args"
     );
     let outside = home.join("outside.jsonl");
@@ -809,8 +810,8 @@ fn history_facts_applies_the_limits_this_machine_keeps() {
     assert_eq!(
         ask(serde_json::json!({ "path": path, "limits": {"m": 1} }))
             .unwrap_err()
-            .0,
-        "bad_args"
+            .code.as_deref(),
+        Some("bad_args")
     );
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -879,8 +880,8 @@ fn history_facts_takes_only_a_path_and_answers_the_file_as_it_is_now() {
     assert_eq!(
         ask(serde_json::json!({ "path": path, "prior": { "end": 1, "rev": 1 } }))
             .unwrap_err()
-            .0,
-        "bad_args"
+            .code.as_deref(),
+        Some("bad_args")
     );
     let more = r#"{"type":"assistant","uuid":"f-5","message":{"content":[{"type":"tool_use","id":"tu-4","name":"Write","input":{"file_path":"/w/b.ts"}}]}}"#;
     let mut f = std::fs::OpenOptions::new()
@@ -898,7 +899,7 @@ fn history_facts_takes_only_a_path_and_answers_the_file_as_it_is_now() {
     std::fs::write(&path, format!("{more}\n")).unwrap();
     let rewritten = ask(serde_json::json!({ "path": path })).unwrap();
     assert_eq!(rewritten["touchedFiles"], serde_json::json!(["/w/b.ts"]));
-    assert_eq!(ask(serde_json::json!({})).unwrap_err().0, "bad_args");
+    assert_eq!(ask(serde_json::json!({})).unwrap_err().code.as_deref(), Some("bad_args"));
     // 围栏同族：`projects` 之外的文件不读。
     let outside = home.join("outside.jsonl");
     std::fs::write(&outside, "{}\n").unwrap();
@@ -934,7 +935,7 @@ fn history_record_answers_present_absent_and_refuses_a_bad_sid() {
     );
     for bad in ["", "../x", "a/b", "a b"] {
         match ask(bad) {
-            Err(crate::common::said::Said::new("bad_args", _)) => {}
+            Err(e) if e.code.as_deref() == Some("bad_args") => {}
             other => panic!("坏 sid {bad:?} 应当 bad_args，实得 {other:?}"),
         }
     }
@@ -946,7 +947,7 @@ fn history_record_answers_present_absent_and_refuses_a_bad_sid() {
             &serde_json::json!({}),
             &Default::default()
         ),
-        Err(crate::common::said::Said::new("bad_args", _))
+        Err(e) if e.code.as_deref() == Some("bad_args")
     ));
     std::fs::remove_dir_all(&home).ok();
 }
@@ -989,7 +990,7 @@ fn gp1_history_record_looks_in_the_account_root_it_is_given() {
         serde_json::json!(7),
     ] {
         match ask(serde_json::json!({ "sid": "cccc-3333", "configDir": bad })) {
-            Err(crate::common::said::Said::new("bad_args", _)) => {}
+            Err(e) if e.code.as_deref() == Some("bad_args") => {}
             other => panic!("坏 configDir {bad} 应当 bad_args，实得 {other:?}"),
         }
     }
@@ -1103,7 +1104,7 @@ fn lines_by_number_refuse_an_oversized_row_but_can_count_past_it() {
         1 << 20,
         cap,
     ) {
-        Err(crate::common::said::Said::new("oversized_line", _)) => {}
+        Err(e) if e.code.as_deref() == Some("oversized_line") => {}
         other => panic!("超长行被交出去了：{other:?}"),
     }
     let after = crate::observe::query::body::read_lines_from(
@@ -1182,7 +1183,7 @@ fn lines_by_number_share_the_seq_space_with_tail_and_index() {
         &serde_json::json!({"path": outside.to_string_lossy()}),
         &Default::default(),
     ) {
-        Err((c, _)) => assert_eq!(c, "refused"),
+        Err(e) => assert_eq!(e.code.as_deref(), Some("refused")),
         Ok(v) => panic!("围栏外的文件被读了：{v}"),
     }
     let _ = std::fs::remove_dir_all(&home);
@@ -1242,7 +1243,7 @@ fn the_account_list_refuses_missing_or_mistyped_arguments() {
         ("accounts-list", serde_json::json!({"agent": "claud-code"})),
     ] {
         match answer_at(&home, cmd, &args, &Default::default()) {
-            Err((c, _)) => assert_eq!(c, "bad_args", "{cmd} {args}"),
+            Err(e) => assert_eq!(e.code.as_deref(), Some("bad_args"), "{cmd} {args}"),
             Ok(v) => panic!("{cmd} {args} 被答了：{v}"),
         }
     }
@@ -1299,8 +1300,8 @@ fn gap1_backend_log_returns_the_tail_cut_at_a_line() {
             &Default::default()
         )
         .unwrap_err()
-        .0,
-        "bad_args"
+        .code.as_deref(),
+        Some("bad_args")
     );
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -1466,7 +1467,7 @@ fn the_three_record_reads_each_honour_the_body_on_demand_view_both_ways() {
     ];
     for (cmd, args, key) in cases {
         let full = answer_at(&home, cmd, &args, &Default::default())
-            .unwrap_or_else(|(c, m)| panic!("`{cmd}` 答错了（{c}）：{m}"));
+            .unwrap_or_else(|e| panic!("`{cmd}` 答错了（{:?}）：{}", e.code, e.said));
         let plan = crate::stream::inbound::views::plan_for(cmd, &view)
             .unwrap_or_else(|f| panic!("`{cmd}` 不收这份声明：{f:?}"));
         let fold = plan.apply(Some(full.clone())).unwrap();
@@ -2166,7 +2167,7 @@ fn the_record_reads_refuse_fields_their_request_types_do_not_have() {
         ("sessions-needs", serde_json::json!({"machine": "m"})),
     ] {
         match answer_at(&home, cmd, &args, &Default::default()) {
-            Err(crate::common::said::Said::new("bad_args", _)) => {}
+            Err(e) if e.code.as_deref() == Some("bad_args") => {}
             other => panic!("{cmd} {args}：该回 bad_args，回的是 {other:?}"),
         }
     }
@@ -2309,7 +2310,7 @@ fn history_facts_refuses_what_its_request_type_does_not_have() {
     ] {
         let got = answer_at(&home, "history-facts", &args, &Default::default());
         assert_eq!(
-            got.as_ref().err().map(|e| e.0),
+            got.as_ref().err().and_then(|e| e.code.as_deref()),
             Some("bad_args"),
             "{args} ⇒ {got:?}"
         );

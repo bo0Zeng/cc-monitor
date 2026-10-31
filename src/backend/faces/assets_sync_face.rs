@@ -37,7 +37,7 @@ impl crate::wire::typed::Handle for AssetsSyncCmd {
             let fold: Fold = std::sync::Arc::new(move |m| asset_catalog::answer_merge(m, &own));
             asset_sync::answer(&req, fold, &crate::dial::remote_ask::DialRemote)
                 .await
-                .map_err(typed::of_pair(AssetsSyncErr::IoFailed))
+                .map_err(typed::of_fail_with(AssetsSyncErr::IoFailed))
         }
     }
 }
