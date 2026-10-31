@@ -10,7 +10,7 @@
 //!
 //! ```text
 //! 上行  stream / shell 时是原样写进 SSH channel 的字节；capture · forward 时不读（读到 EOF ＝ 对面走了）
-//! 下行  ack 之前只有一种行 {"stage":{…}}（[`StageLine`]，契约 `cmd_wire::dial`）：stages=true 时攒下的拨号阶段在 ack 之前一次写出；
+//! 下行  ack 之前只有一种行 {"stage":{…}}（[`StageRow`]，契约 `cmd_wire::dial`；阶段只经 [`stage`] 那几个构造函数造）：stages=true 时攒下的拨号阶段在 ack 之前一次写出；
 //!       progress=true 时每过一步当场一行 {"stage":{"kind":"step","step":"tcp|banner|hostkey|auth|tunnel|channel"}}（[`step`]；不攒）
 //!       然后恰好一行 ack（DialAck，`\n` 结尾）
 //!       其后按用法：stream / shell 原样字节 · capture 一行 Captured 后结束 ·
@@ -63,6 +63,10 @@ mod guard_support;
 #[path = "../../../tests/backend/ssh_dial_features_tests.rs"]
 mod features_tests;
 
+#[cfg(test)]
+#[path = "../../../tests/backend/ssh_dial_stage_tests.rs"]
+mod stage_tests;
+
 /// 契约错的那一句（`detail`：英文诊断，不进表、不上句子，记一行日志）。后端 `common/contract.rs` 转用这一份（全仓只此一处）。
 /// 诊断跟着这一串走（隔一个 [`DIAG_SEP`]），由失败信封那一处（[`parts`]）拆开：句子照旧只有「请求格式不对」，
 /// 诊断进复制详情的「原话」那一行。
@@ -103,7 +107,7 @@ pub fn joined(said: String, raw: Option<String>) -> String {
 /// 拨号请求那几样（[`DialRequest`] · [`JumpHop`] · [`Use`] · [`PtyOpts`] · [`CaptureOpts`] · [`ForwardSpec`]）也住那里：界面 · 手机交的就是那一份。
 pub use cmd_wire::dial::{
     CaptureOpts, Captured, DialAck, DialFail, DialRequest, Endpoint, ForwardSpec, JumpHop, PtyOpts,
-    Stage, StageLine, Use, ACK_V, USES,
+    Stage, StageRow, Use, ACK_V, USES,
 };
 
 /// 没开成：那一句 ＋ 下层原话（进 `detail`，按宿主的 [`env::Facts`] 写成复制详情）＋ 看到的指纹。
@@ -142,7 +146,83 @@ pub fn why_of_stage(stage: &str) -> Why {
     }
 }
 
-/// 拨号过了哪一步（[`StageLine::Step`] 的 `step`）：每过一步报一次，经跳板时跳板那几台与目标那一台各走一遍。
+/// 拨号阶段（[`Stage`]）只在这里造：带地址的那几支收结构化的那一台 ＋ 句子里怎么称呼它（直连 `host:port` · 跳板那一台的名字），
+/// 那一句照阶段写一次（桌面测试连接 · 手机连接日志同一句）。
+pub mod stage {
+    use copy_core::copy_text;
+
+    use crate::{Endpoint, Stage};
+
+    /// 某地址开始拨号。
+    pub fn dialing(endpoint: Endpoint, label: &str) -> Stage {
+        Stage::Dialing {
+            said: copy_text("beProbe.stage.dial", &[("endpoint", label)]),
+            endpoint,
+        }
+    }
+
+    /// 某地址握手到 host key 校验：看到的那一把的指纹。
+    pub fn host_key(endpoint: Endpoint, label: &str, fingerprint: &str) -> Stage {
+        Stage::HostKey {
+            said: copy_text(
+                "beProbe.stage.fingerprint",
+                &[("endpoint", label), ("fingerprint", fingerprint)],
+            ),
+            endpoint,
+        }
+    }
+
+    /// 某地址没连上（`reason` ＝ 粗分类 ＋ 原始错误）。
+    pub fn failed(endpoint: Endpoint, label: &str, reason: &str) -> Stage {
+        Stage::Failed {
+            said: copy_text(
+                "beProbe.stage.failed",
+                &[("endpoint", label), ("reason", reason)],
+            ),
+            endpoint,
+        }
+    }
+
+    /// 竞速胜出的那一台。
+    pub fn won(endpoint: Endpoint, label: &str) -> Stage {
+        Stage::Won {
+            said: copy_text("beProbe.stage.won", &[("endpoint", label)]),
+            endpoint,
+        }
+    }
+
+    /// 登上了。
+    pub fn auth_ok() -> Stage {
+        Stage::Auth {
+            ok: true,
+            said: copy_text("beProbe.stage.authOk", &[]),
+        }
+    }
+
+    /// 没登上：`said` ＝ 鉴权那一层的那一句（已带原因词）。
+    pub fn auth_failed(said: &str) -> Stage {
+        Stage::Auth {
+            ok: false,
+            said: copy_text("beProbe.stage.authFailed", &[("said", said)]),
+        }
+    }
+
+    /// 连接就绪。
+    pub fn established() -> Stage {
+        Stage::Established {
+            said: copy_text("beProbe.stage.ready", &[]),
+        }
+    }
+
+    /// 又过了一步（[`crate::step`] 那几个）。
+    pub fn step(step: &str) -> Stage {
+        Stage::Step {
+            step: step.to_string(),
+        }
+    }
+}
+
+/// 拨号过了哪一步（[`Stage::Step`] 的 `step`）：每过一步报一次，经跳板时跳板那几台与目标那一台各走一遍。
 /// 只报「过了」：没过的那一步由 ack 说。读它的那一侧只拿它重新计时，不按名字分支。
 pub mod step {
     /// 那个口的 TCP 连上了。
@@ -291,8 +371,8 @@ pub async fn write_stages_then_ack<W: tokio::io::AsyncWrite + Unpin>(
     stages: &StageSink,
     ack: &DialAck,
 ) -> std::io::Result<()> {
-    for s in stages.drain() {
-        write_line(w, &serde_json::json!({ "stage": s })).await?;
+    for stage in stages.drain() {
+        write_line(w, &StageRow { stage }).await?;
     }
     write_ack(w, ack).await
 }

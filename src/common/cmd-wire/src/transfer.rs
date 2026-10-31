@@ -298,6 +298,38 @@ pub struct CopyFrom {
     pub remote_path: String,
 }
 
+/// 手机内嵌核心分块上传那一半送完的那一份（`reply` 那一件成了的 `data`）：提交时照交（`chunks` · `bytes` · `expect.sha256`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct Staged {
+    /// 暂存区里那一份的键。
+    pub key: String,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub chunks: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub bytes: u64,
+    /// 整份 SHA-256，小写十六进制。
+    pub sha256: String,
+}
+
+/// 手机内嵌核心分块下载那一半读回的那一份（`reply` 那一件成了的 `data`）：写进本机几个字节。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct Pulled {
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub bytes: u64,
+}
+
 impl TransferUploadAsk {
     /// 补上那台的名字（monitor 转给本机后端的那一份）。
     pub fn on(self, machine: crate::Machine) -> TransferUploadReq {
