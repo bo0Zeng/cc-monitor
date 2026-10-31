@@ -13,13 +13,13 @@ use crate::assets::mcp_sync::There;
 /// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
 fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
     args: &Value,
-    f: impl FnOnce(&R) -> Result<T, crate::wire::spec::Fail>,
-) -> Result<Value, crate::wire::spec::Fail> {
+    f: impl FnOnce(&R) -> Result<T, crate::common::said::Said>,
+) -> Result<Value, crate::common::said::Said> {
     let req = crate::wire::typed::take::<R>(args)?;
     f(&req).map(|t| serde_json::to_value(t).unwrap())
 }
 
-fn answer_read_at(root: Option<&Path>, args: &Value) -> Result<Value, crate::wire::spec::Fail> {
+fn answer_read_at(root: Option<&Path>, args: &Value) -> Result<Value, crate::common::said::Said> {
     via(args, |r| super::answer_read_at(root, r))
 }
 
@@ -27,7 +27,7 @@ fn answer_plan_with(
     facts: &dyn Facts,
     root: Option<&Path>,
     args: &Value,
-) -> Result<Value, crate::wire::spec::Fail> {
+) -> Result<Value, crate::common::said::Said> {
     via(args, |r| super::answer_plan_with(facts, root, r))
 }
 
@@ -115,10 +115,10 @@ fn read_hands_over_every_file_with_its_text_or_a_reason() {
     );
     assert_eq!(v["dir"], json!(d.join("demo").display().to_string()));
     let e = answer_read_at(Some(&d), &json!({"name": "nope"})).expect_err("不存在的 skill");
-    assert_eq!(e.code, "not_found");
+    assert_eq!(e.code.as_deref(), Some("not_found"));
     for bad in ["", "../x", ".hidden", "a/b", "c:\\x"] {
         let e = answer_read_at(Some(&d), &json!({ "name": bad })).expect_err("坏名字被收下");
-        assert_eq!(e.code, "bad_args", "{bad:?}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad:?}");
     }
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -198,7 +198,7 @@ fn the_four_states_and_the_consent_gate_are_as1s_own() {
         )
     };
     let e = ask(json!(["diff.md", "new.md"]), Value::Null).expect_err("不同的没说盖");
-    assert_eq!(e.code, "needs_consent");
+    assert_eq!(e.code.as_deref(), Some("needs_consent"));
     let ok = ask(json!(["diff.md", "new.md", "same.md"]), json!(["diff.md"])).unwrap();
     assert_eq!(
         ok["write"],
@@ -206,9 +206,9 @@ fn the_four_states_and_the_consent_gate_are_as1s_own() {
         "same 不写、new 写、说了盖的 differs 写"
     );
     let e = ask(json!(["only-here.md"]), Value::Null).expect_err("只在这台的不是这一趟拷的");
-    assert_eq!(e.code, "bad_args");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
     let e = ask(json!(["new.md"]), json!(["diff.md"])).expect_err("说了盖却没勾");
-    assert_eq!(e.code, "bad_args");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -241,8 +241,9 @@ fn what_cannot_travel_as_text_cannot_be_taken() {
     assert_eq!(
         answer_plan_with(&no_facts(), Some(&d), &take_bin)
             .unwrap_err()
-            .code,
-        "bad_args"
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
     let mut take_blob = base.clone();
     take_blob["take"] = json!(["blob"]);
@@ -250,8 +251,9 @@ fn what_cannot_travel_as_text_cannot_be_taken() {
     assert_eq!(
         answer_plan_with(&no_facts(), Some(&d), &take_blob)
             .unwrap_err()
-            .code,
-        "bad_file"
+            .code
+            .as_deref(),
+        Some("bad_file")
     );
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -339,7 +341,7 @@ fn paths_in_the_source_are_fenced() {
             &json!({"name": "demo", "source": [{"path": bad, "text": "x", "exec": false}]}),
         )
         .expect_err("坏路径被收下");
-        assert_eq!(e.code, "bad_args", "{bad:?}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad:?}");
     }
     assert!(valid_rel("scripts/run.sh") && valid_rel("SKILL.md"));
     let _ = std::fs::remove_dir_all(&d);
@@ -510,7 +512,7 @@ fn the_uninstall_gate_refuses_the_whole_trip() {
             &json!({"dir": dir, "take": take, "confirm": confirm}),
         )
     };
-    let code = |r: Answer| r.expect_err("该拒的被放行").code;
+    let code = |r: Answer| r.expect_err("该拒的被放行").code_or_fallback().to_string();
     assert_eq!(
         code(ask(json!(["intact.md", "edited.md"]), Value::Null)),
         "needs_consent",

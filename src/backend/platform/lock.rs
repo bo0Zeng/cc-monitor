@@ -27,6 +27,7 @@
 //! 别人放锁是毫秒级的事。⚠ 买不到：一个持锁的后端卡死在读—改—写中间 ⇒ 等它的那一个也跟着等（没有期限）。
 
 use copy_core::copy_text;
+use copy_core::said::Said;
 use std::path::Path;
 
 /// 持着的那把锁。落地即放。
@@ -37,18 +38,15 @@ pub(crate) struct DirLock {
     mutex: std::os::windows::io::RawHandle,
 }
 
-/// 拿不到锁：那一句（带原因词）＋ 系统原话（可缺）。本层在 `common/` 之下、够不到 `common::said::Said`
-/// ⇒ 交一对 std 类型，上面那一层经 `From` 换成 `Said`（`?` 直接过）。
-pub(crate) type LockFail = (String, Option<String>);
-
-fn lock_fail(said: String, raw: &std::io::Error) -> LockFail {
-    (said, Some(raw.to_string()))
+/// 拿不到锁：那一句（带原因词）＋ 系统原话。
+fn lock_fail(said: String, raw: &std::io::Error) -> Said {
+    Said::with_raw(said, raw)
 }
 
 /// 拿 `dir` 那把锁（阻塞到拿到为止）。`dir` 必须已经在（调用方先建那一层 —— 建目录是 `Own` 的方法，
 /// 本层不建：`platform/` 在默认层，一个写动词都不许有）。
 #[cfg(unix)]
-pub(crate) fn hold(dir: &Path) -> Result<DirLock, LockFail> {
+pub(crate) fn hold(dir: &Path) -> Result<DirLock, Said> {
     use std::os::fd::{AsFd as _, AsRawFd as _};
     let f = crate::platform::fs::Ro::open(dir).map_err(|e| {
         lock_fail(
@@ -109,7 +107,7 @@ fn mutex_name(namespace: &str, dir: &Path) -> Vec<u16> {
 }
 
 #[cfg(windows)]
-pub(crate) fn hold(dir: &Path) -> Result<DirLock, LockFail> {
+pub(crate) fn hold(dir: &Path) -> Result<DirLock, Said> {
     /// 「一直等」—— 只等内核那一个事件（同 `win_proc.rs` 那一格）。
     const WAIT_FOREVER: u32 = 0xFFFF_FFFF;
     const WAIT_OBJECT_0: u32 = 0;
@@ -143,12 +141,12 @@ pub(crate) fn hold(dir: &Path) -> Result<DirLock, LockFail> {
         other => {
             // SAFETY: 同上；没拿到就只关句柄。
             unsafe { CloseHandle(handle) };
-            Err((
+            Err(Said::with_raw(
                 copy_text(
                     "bePlatformLock.hold.waitFailed",
                     &[("dir", &dir.display().to_string())],
                 ),
-                Some(format!("WaitForSingleObject {other:#x}")),
+                format!("WaitForSingleObject {other:#x}"),
             ))
         }
     }

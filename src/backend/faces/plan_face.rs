@@ -15,16 +15,16 @@
 //!
 //! 读过的工作区就开始盯（[`crate::plan::watch`]），变了推 `changed {plan}`。
 
+use crate::common::said::Said;
 use crate::plan::{book, locate, watch, Live, Whose};
-use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use cmd_wire::plan as wire;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-fn bad(what: &str) -> Fail {
-    Fail::new("bad_args", crate::common::contract::malformed(what))
+fn bad(what: &str) -> Said {
+    crate::wire::spec::fail("bad_args", crate::common::contract::malformed(what))
 }
 
 fn now_ms() -> u64 {
@@ -51,10 +51,10 @@ fn config_roots() -> Vec<PathBuf> {
 }
 
 /// pb 的入口脚本（这台设了路径只认它，没设认装着的插件）；找不到 ⇒ `no_pb`。
-fn entry() -> Result<PathBuf, Fail> {
+fn entry() -> Result<PathBuf, Said> {
     let set = crate::control::machine_prefs::pb_dir_now();
     locate::pick(set.as_deref(), &crate::agents::plugins(&config_roots()))
-        .map_err(|m| Fail::new("no_pb", m.said()))
+        .map_err(|m| crate::wire::spec::fail("no_pb", m.said()))
 }
 
 /// 生产的「这条会话此刻在不在等人」：活会话表那一判（`LiveTable::waiting`，同 `sessions-needs`），这一次读取取一份表。
@@ -183,7 +183,7 @@ pub(crate) fn seen_of(v: &wire::PlanRead) -> watch::Seen {
 }
 
 /// 现读一个工作区（起 pb）并标好（认可 · 时刻的字 · 每块的接手会话在哪几组）；计划审面送退回之前用它拿此刻的接手与状态。
-pub(crate) fn read_fresh(ws: &str, tz: &crate::Tz) -> Result<wire::PlanRead, Fail> {
+pub(crate) fn read_fresh(ws: &str, tz: &crate::Tz) -> Result<wire::PlanRead, Said> {
     let entry = entry()?;
     let mut doc = read_dir(&entry, Path::new(ws))
         .map(|d| annotated(d, tz))
@@ -192,14 +192,16 @@ pub(crate) fn read_fresh(ws: &str, tz: &crate::Tz) -> Result<wire::PlanRead, Fai
     Ok(doc)
 }
 
-fn miss(m: book::Miss) -> Fail {
+fn miss(m: book::Miss) -> Said {
     match m {
         book::Miss::NotWorkspace(said) => {
-            Fail::new("not_workspace", copy_text("bePlan.face.notWorkspace", &[]))
-                .with_raw(Some(&said))
+            crate::wire::spec::fail("not_workspace", copy_text("bePlan.face.notWorkspace", &[]))
+                .and_raw(Some(&said))
         }
-        book::Miss::Unsupported(said) => Fail::new("pb_unsupported", said),
-        book::Miss::Failed { said, raw } => Fail::new("failed", said).with_raw(raw.as_deref()),
+        book::Miss::Unsupported(said) => crate::wire::spec::fail("pb_unsupported", said),
+        book::Miss::Failed { said, raw } => {
+            crate::wire::spec::fail("failed", said).and_raw(raw.as_deref())
+        }
     }
 }
 
@@ -233,7 +235,7 @@ fn new_form(req: &PlanNewReq) -> wire::PlanNewForm {
 /// 写盘的是 pb；改了工作区配置 ⇒ 盯盘那一路照常推 `changed {plan}`（`auto` · 只做计划 · 当前仓库都在成品里）。
 /// `adopt` 先现读一次（起 pb），按那个仓库此刻是不是只做计划 · 是不是当前仓库定敲哪几条。
 /// `repo` 先照 `plan-new` 同一份判（`workspace` 是新计划框里选的那个目录）：在哪敲、撞上已有的一片 ⇒ 只带名字，敲的就是框里写出的那一行。
-fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, Fail> {
+fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, Said> {
     let cmd = Some(req.cmd.as_str())
         .filter(|c| crate::plan::command::VERBS.contains(c))
         .ok_or_else(|| bad("`cmd` must be one of continue · pause · adopt · render · repo"))?;
@@ -257,7 +259,7 @@ fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, F
                 .filter(|_| f.pb.state != "ok")
                 .or(f.failed)
         {
-            return Err(Fail::new("failed", said));
+            return Err(crate::wire::spec::fail("failed", said));
         }
         let args = crate::plan::new_slice::repo_args(
             path,
@@ -265,8 +267,7 @@ fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, F
             f.existing.as_ref().map(|e| e.slice.as_str()),
         );
         let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-        return crate::plan::command::run(&entry, Path::new(&f.root), &argv)
-            .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()));
+        return crate::plan::command::run(&entry, Path::new(&f.root), &argv);
     }
     let ws = Path::new(&req.workspace);
     let run = |args: &[&str]| crate::plan::command::run(&entry, ws, args);
@@ -274,7 +275,7 @@ fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, F
         Some(name) => {
             let doc = read_fresh(&req.workspace, tz)?;
             let sl = doc.slices.iter().find(|s| s.name == name).ok_or_else(|| {
-                Fail::new(
+                crate::wire::spec::fail(
                     "no_such_slice",
                     copy_text("bePlan.command.noSlice", &[("slice", name)]),
                 )
@@ -289,7 +290,7 @@ fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, F
         }
         None => run(&[cmd]),
     };
-    out.map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
+    out
 }
 
 /// `plan-files {dir}`：文件窗口反查。只看读好过的工作区（主窗口与需手动的账起来就问过 `plan-list`）——
@@ -326,7 +327,7 @@ fn reads(req: &PlanListReq, tz: &crate::Tz) -> (wire::PlanPb, Vec<wire::PlanRead
     dirs.extend(req.dirs.iter().flatten().cloned());
     let entry = match entry() {
         Ok(e) => e,
-        Err(f) => return (pb_state("missing", Some(f.message)), Vec::new()),
+        Err(f) => return (pb_state("missing", Some(f.said)), Vec::new()),
     };
     reads_in(
         book::book(),
@@ -628,18 +629,20 @@ impl Handle for PlanCellViewCmd {
 
 /// `plan-cell-view` 的本体：点到这一格才起 `pb dump --node`（整份 dump 里不带 agent 视角）。
 /// pb 说那个仓库 · 那个节点不在 ⇒ `no_view`（pb 那一句）。
-fn cell_view(req: &PlanCellViewReq) -> Result<String, Fail> {
+fn cell_view(req: &PlanCellViewReq) -> Result<String, Said> {
     use crate::plan::dump::{self, NodeMiss, Ran};
     let entry = entry()?;
     dump::run_node(&entry, Path::new(&req.workspace), &req.slice, &req.id).map_err(|m| match m {
         NodeMiss::Gone(said) if said.trim().is_empty() => {
-            Fail::new("no_view", copy_text("bePlan.face.noView", &[]))
+            crate::wire::spec::fail("no_view", copy_text("bePlan.face.noView", &[]))
         }
-        NodeMiss::Gone(said) => Fail::new("no_view", said),
+        NodeMiss::Gone(said) => crate::wire::spec::fail("no_view", said),
         NodeMiss::Ran(Ran::NotWorkspace(said)) => miss(book::Miss::NotWorkspace(said)),
         NodeMiss::Ran(Ran::Unsupported(said)) => miss(book::Miss::Unsupported(said)),
         NodeMiss::Ran(Ran::Failed { said, raw }) => miss(book::Miss::Failed { said, raw }),
-        NodeMiss::Ran(Ran::Dump { .. }) => Fail::new("failed", copy_text("bePlan.face.shape", &[])),
+        NodeMiss::Ran(Ran::Dump { .. }) => {
+            crate::wire::spec::fail("failed", copy_text("bePlan.face.shape", &[]))
+        }
     })
 }
 

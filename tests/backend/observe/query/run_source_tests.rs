@@ -8,8 +8,8 @@ fn reading_a_run_refuses_parents_outside_projects() {
     std::fs::write(&outside, "{}\n").expect("写文件");
     let got = super::run_source(&tmp, &outside.to_string_lossy(), Some("r1"), None);
     assert_eq!(
-        got.map_err(|(c, _)| c),
-        Err("path_refused"),
+        got.map_err(|s| s.code),
+        Err(Some("path_refused".to_string())),
         "projects/ 之外的父记录必须被围栏拒绝"
     );
     let _ = std::fs::remove_dir_all(&tmp);
@@ -38,8 +38,8 @@ fn reading_a_run_by_its_call_finds_a_foreground_run_still_running() {
     let p = parent.to_string_lossy().into_owned();
     let got = super::run_source(&tmp, &p, None, Some("t1"));
     assert_eq!(
-        got.map_err(|(c, _)| c),
-        Err("not_found"),
+        got.map_err(|s| s.code),
+        Err(Some("not_found".to_string())),
         "那一份没落盘 ⇒ 还对不上"
     );
     std::fs::write(
@@ -49,7 +49,7 @@ fn reading_a_run_by_its_call_finds_a_foreground_run_still_running() {
     .expect("写那一份");
     let got = super::run_source(&tmp, &p, None, Some("t1"));
     assert_eq!(
-        got.map_err(|(c, _)| c),
+        got.map_err(|s| s.code),
         Ok((child, "f1".to_string())),
         "派出那一刻落盘的那一份对上了"
     );

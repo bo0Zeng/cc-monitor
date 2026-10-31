@@ -7,16 +7,16 @@
 use super::*;
 
 // 判据拿 JSON 写样例（多一格 · 缺一格 · 类型不对 ⇒ `bad_args`），再过值域那一道。
-fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, CmdErr> {
+fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, Said> {
     let req: LaunchReq = serde_json::from_value(args.clone()).map_err(|e| {
-        CmdErr::new(
+        crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed(&e.to_string()),
         )
     })?;
     super::parse_request(req)
 }
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 
 fn args(v: serde_json::Value) -> serde_json::Value {
     v
@@ -46,10 +46,10 @@ fn attach_is_not_a_mode_here() {
         })))
         .unwrap_err()
     });
-    assert_eq!(e.code, "bad_args");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
     // 句子只说「请求格式不对」；为什么记在日志那一行诊断里，也跟进复制详情的原话。
     assert_eq!(
-        e.message,
+        e.said,
         copy_core::copy_text("beContract.malformed.say", &[])
     );
     assert!(
@@ -76,21 +76,24 @@ fn shape_validation_rejects_the_things_that_would_break_tmux() {
     ] {
         match parse_request(&base(name, payload)) {
             Ok(_) => panic!("{why} 居然通过了"),
-            Err(e) => assert_eq!(e.code, "bad_args", "{why}"),
+            Err(e) => assert_eq!(e.code.as_deref(), Some("bad_args"), "{why}"),
         }
     }
     // 超长
     let long = "x".repeat(MAX_FIELD_BYTES + 1);
     assert_eq!(
-        parse_request(&base("n", &long)).unwrap_err().code,
-        "bad_args"
+        parse_request(&base("n", &long))
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
     // `ccm_sid` 会被拼进 tmux 格式串，收紧字符集
     let e = parse_request(&serde_json::json!({
         "mode":"create-or-attach","name":"n","payload":"p","ccm_sid":"a b"
     }))
     .unwrap_err();
-    assert_eq!(e.code, "bad_args");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
     // `ccm_sid` 是会话 id（`cmd_wire::Sid`，全仓一个值域）：`_` · `-` 开头 · 超长都不收。
     for bad in [
         "a_b",
@@ -101,7 +104,7 @@ fn shape_validation_rejects_the_things_that_would_break_tmux() {
             "mode":"create-or-attach","name":"n","payload":"p","ccm_sid":bad
         }))
         .unwrap_err();
-        assert_eq!(e.code, "bad_args", "{bad:?}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad:?}");
     }
 }
 
@@ -175,7 +178,7 @@ fn the_create_only_fields_have_their_own_shapes() {
     ] {
         match parse_request(&ok(extra)) {
             Ok(_) => panic!("{why} 居然通过了"),
-            Err(e) => assert_eq!(e.code, "bad_args", "{why}"),
+            Err(e) => assert_eq!(e.code.as_deref(), Some("bad_args"), "{why}"),
         }
     }
 }
@@ -512,7 +515,7 @@ fn the_mode_set_is_exactly_the_two_and_the_raw_one_is_gone() {
         }))
         .expect_err("删掉的 mode 必须被拒")
     });
-    assert_eq!(e.code, "bad_args");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
     let listed = diag
         .split("expected")
         .nth(1)
@@ -724,18 +727,18 @@ fn no_doc_claims_the_payload_really_landed() {
 /// 不起进程的 tmux 替身：按子命令分派结局，并记下每一次被调的 argv（顺序即调用顺序）。
 struct FakeTmux {
     calls: std::cell::RefCell<Vec<Vec<String>>>,
-    answer: Box<dyn Fn(&str) -> Result<Ran, CmdErr>>,
+    answer: Box<dyn Fn(&str) -> Result<Ran, Said>>,
 }
 
 impl FakeTmux {
-    fn new(answer: impl Fn(&str) -> Result<Ran, CmdErr> + 'static) -> Self {
+    fn new(answer: impl Fn(&str) -> Result<Ran, Said> + 'static) -> Self {
         FakeTmux {
             calls: Default::default(),
             answer: Box::new(answer),
         }
     }
     /// 一串命令（`a ; b`）按最后那一条认：送键那一发前面带着退出窗格模式那一条。
-    fn call(&self, a: &[&str]) -> Result<Ran, CmdErr> {
+    fn call(&self, a: &[&str]) -> Result<Ran, Said> {
         self.calls
             .borrow_mut()
             .push(a.iter().map(|s| s.to_string()).collect());
@@ -765,11 +768,16 @@ fn last_cmd<S: AsRef<str>>(a: &[S]) -> &[S] {
     }
 }
 
-fn said(ok: bool, s: &str) -> Result<Ran, CmdErr> {
+fn said(ok: bool, s: &str) -> Result<Ran, Said> {
     Ok(Ran {
         ok,
         stderr: s.to_string(),
     })
+}
+
+/// 起进程那一层报的（码 · 那一句）⇒ 命令级失败。
+fn cmd_said((code, said): (&'static str, Said)) -> Said {
+    crate::wire::spec::fail(code, said)
 }
 
 fn create_req() -> LaunchRequest {
@@ -798,10 +806,10 @@ fn w5vis_s4_s5_the_create_arm_carries_tmux_reasons_and_is_not_blocked_by_seconda
         _ => said(false, "can't find session: cc-w5vis"),
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
-    assert_eq!(e.code, "create_failed");
+    assert_eq!(e.code.as_deref(), Some("create_failed"));
     // 句子只带原因词；tmux 的原话进复制详情（`raw`），不上句子。
     assert_eq!(
-        e.message,
+        e.said,
         copy_text("beLaunch.create.failed", &[("name", "cc-w5vis")])
     );
     assert_eq!(
@@ -837,8 +845,8 @@ fn w5vis_s4_s5_the_create_arm_carries_tmux_reasons_and_is_not_blocked_by_seconda
         _ => said(true, ""),
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
-    assert_eq!(e.code, "typed_unconfirmed");
-    assert!(!e.message.contains("can't find pane"), "{}", e.message);
+    assert_eq!(e.code.as_deref(), Some("typed_unconfirmed"));
+    assert!(!e.said.contains("can't find pane"), "{}", e.said);
     assert_eq!(e.raw.as_deref(), Some("can't find pane: %9"));
 }
 
@@ -859,7 +867,7 @@ fn w5vis_s5_the_secondary_note_speaks_only_when_the_step_failed() {
         let n = secondary_note(
             "cc-x",
             step,
-            &Err(Fail::new("no_tmux", "tmux 启动失败 · 未装".into()).with_raw(Some("w5vis"))),
+            &Err(crate::wire::spec::fail("no_tmux", "tmux 启动失败 · 未装").and_raw(Some("w5vis"))),
         )
         .unwrap_or_else(|| panic!("{step:?} 起不来 tmux 却一个字都没说"));
         // 日志那一行：那一句 ＋ 原话（`Said::logged`）都在。
@@ -903,10 +911,10 @@ fn w5vis_s4_ran_keeps_what_the_real_process_said_on_stderr() {
     let r = ran(sh(), &["has-session"]).expect("起得来");
     assert!(r.ok);
     let e = ran(crate::platform::child::Child::new(dir.join("gone")), &["x"]).unwrap_err();
-    assert_eq!(e.code, "no_tmux");
+    assert_eq!(e.code.as_deref(), Some("no_tmux"));
     // 起不来：句子只说原因词（未装），系统原话进复制详情。
     assert_eq!(
-        e.message,
+        e.said,
         copy_text(
             "reason.tmux.startFailed",
             &[(
@@ -975,9 +983,9 @@ fn the_create_arm_refuses_a_name_the_new_session_rule_refuses_unless_it_already_
     for bad in ["-x", "a.b", "a*b"] {
         let f = FakeTmux::new(|_| said(false, "can't find session"));
         let e = run_with(&with_name(bad), &|a| f.call(a)).unwrap_err();
-        assert_eq!(e.code, "bad_args", "{bad}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad}");
         assert_eq!(
-            Some(e.fail.message),
+            Some(e.fail.said),
             new_tmux_name_said(bad),
             "{bad}：说的不是 ccm 铸名那一句"
         );
@@ -1007,7 +1015,7 @@ fn a_created_session_is_declared_by_whoever_created_it() {
         }
         let req = parse_request(&args).expect("请求应当解析成功");
         let seen = std::cell::RefCell::new(Vec::<String>::new());
-        let fake = |a: &[&str]| -> Result<Ran, CmdErr> {
+        let fake = |a: &[&str]| -> Result<Ran, Said> {
             seen.borrow_mut().push(a.join(" "));
             Ok(Ran {
                 ok: true,
@@ -1102,9 +1110,9 @@ fn busy1_a_start_command_that_did_not_get_through_says_so() {
         _ => said(true, ""),
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
-    assert_eq!(e.code, "typed_unconfirmed");
+    assert_eq!(e.code.as_deref(), Some("typed_unconfirmed"));
     assert_eq!(
-        e.message,
+        e.said,
         copy_text("beLaunch.type.failed", &[("name", "cc-w5vis")])
     );
     assert_eq!(e.raw.as_deref(), Some("can't find pane: %9"));
@@ -1115,7 +1123,7 @@ fn busy1_a_start_command_that_did_not_get_through_says_so() {
     };
     let slow_said = slow.to_string();
     let f = FakeTmux::new(move |verb| match verb {
-        "send-keys" => Err(CmdErr::from(
+        "send-keys" => Err(cmd_said(
             crate::platform::child::ChildFail::TimedOut {
                 program: "tmux".into(),
                 after: crate::platform::child::Deadline::secs(5),
@@ -1125,9 +1133,9 @@ fn busy1_a_start_command_that_did_not_get_through_says_so() {
         _ => said(true, ""),
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
-    assert_eq!(e.code, "typed_unconfirmed", "{}", e.message);
+    assert_eq!(e.code.as_deref(), Some("typed_unconfirmed"), "{}", e.said);
     assert_eq!(
-        e.message,
+        e.said,
         copy_text("beLaunch.type.timedOut", &[("name", "cc-w5vis")])
     );
     assert_eq!(e.raw.as_deref(), Some(slow_said.as_str()));
@@ -1144,7 +1152,7 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
         _ => said(true, ""),
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
-    assert_eq!(e.code, "typed_unconfirmed");
+    assert_eq!(e.code.as_deref(), Some("typed_unconfirmed"));
     assert_eq!(
         e.untyped,
         Some((
@@ -1154,7 +1162,7 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
     );
 
     let f = FakeTmux::new(|verb| match verb {
-        "send-keys" => Err(CmdErr::from(
+        "send-keys" => Err(cmd_said(
             crate::platform::child::ChildFail::TimedOut {
                 program: "tmux".into(),
                 after: crate::platform::child::Deadline::secs(5),
@@ -1164,7 +1172,7 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
         _ => said(true, ""),
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
-    assert_eq!(e.code, "typed_unconfirmed");
+    assert_eq!(e.code.as_deref(), Some("typed_unconfirmed"));
     assert_eq!(
         e.untyped,
         Some((Delivery::Unknown, Some(JustMade(exact_target(&req.name)))))
@@ -1176,7 +1184,7 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
         _ => said(true, ""),
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
-    assert_eq!(e.code, "create_failed");
+    assert_eq!(e.code.as_deref(), Some("create_failed"));
     assert_eq!(e.untyped, None);
 }
 
@@ -1283,12 +1291,12 @@ fn a_shell_session_is_made_bare_or_left_as_it_is() {
 
     let f = FakeTmux::new(|_| said(false, "can't create session"));
     let e = open_shell_with("main", None, None, &|a| f.call(a)).unwrap_err();
-    assert_eq!(e.code, "create_failed");
+    assert_eq!(e.code.as_deref(), Some("create_failed"));
     assert_eq!(e.raw.as_deref(), Some("can't create session"));
 
     let f = FakeTmux::new(|_| said(false, ""));
     let e = open_shell_with("-bad", None, None, &|a| f.call(a)).unwrap_err();
-    assert_eq!(e.code, "bad_args");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
     assert!(!f.verbs().contains(&"new-session".to_string()));
 }
 

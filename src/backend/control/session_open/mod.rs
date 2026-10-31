@@ -10,17 +10,14 @@
 use super::launch_account::{self as la, AccountAsk, LaunchedAccount, Settled};
 use super::launch_render::{self as lr, Act, Here};
 use super::session_batch::{
-    carriers, listed, pids_said, pretrust, CmdErr, Deps, Listed, NameBase, Standing, TermEntry,
+    carriers, listed, pids_said, pretrust, Deps, Listed, NameBase, Standing, TermEntry,
 };
+use crate::common::said::Said;
 pub(crate) mod new;
 use crate::platform::child::{Child, Deadline};
 pub use cmd_wire::session::{ArriveAsk, ArriveBy, Landed, Launch, Opened};
 pub(crate) use new::{dir_answer, DirChecked, ForkWrite, OpenDirErr, OpenDirReq, PreRotation};
 use new::{expand_home, first_prompt_refused, OpenField as Field, OpenRefusal as Refusal};
-use serde_json::Value;
-
-/// 失败：码 ＋ 那一句 ＋ `data`（[`Refusal`]：哪一格 · 选不了号那一形）＋ 下层原话（不进那一句，进复制详情；没有 ⇒ `None`）。
-pub(crate) type Failed = (&'static str, String, Option<Value>, Option<String>);
 
 use cmd_wire::open::RotationPick;
 /// `session-open` 的入参与它引到的几样：线上形住 `cmd-wire::open`（名字与回包挂在 `cmd_wire::Call` 上）。
@@ -51,58 +48,75 @@ pub(crate) const OPEN_CODES: &[&str] = &[
 
 /// `session-open` 的失败（码表封闭：下层交上来的码不在表里 ⇒ 测试档当场红）。
 #[derive(Debug)]
-pub(crate) struct SessionOpenErr(pub(crate) Failed);
+pub(crate) struct SessionOpenErr(pub(crate) Said);
 
 impl crate::wire::typed::Codes for SessionOpenErr {
     const ALL: &'static [&'static str] = OPEN_CODES;
-    fn into_fail(self) -> crate::wire::spec::Fail {
-        let (code, message, data, raw) = self.0;
+    fn into_said(self) -> Said {
+        let code = self.0.code_or_fallback();
         debug_assert!(
             OPEN_CODES.contains(&code),
             "session-open 回了码表里没有的码 `{code}`"
         );
-        crate::wire::spec::Fail {
-            code: code.to_string(),
-            message,
-            data,
-            raw,
-        }
+        self.0
     }
     /// 每一种都带 [`Refusal`]（哪一格 · 选不了号那一形；整体的 `field: null`）。
     const DATA: &'static [&'static str] = OPEN_CODES;
     type Data = crate::wire::typed::Each<Refusal>;
     fn of_code(code: &str, said: String) -> Result<Self, String> {
         match OPEN_CODES.iter().find(|c| **c == code) {
-            Some(c) => Ok(SessionOpenErr((c, said, None, None))),
+            Some(c) => Ok(SessionOpenErr(Said::new(c, said))),
             None => Err(said),
         }
     }
 }
 
-pub(crate) fn fail(code: &'static str, said: String, field: Option<Field>) -> Failed {
-    let data = Refusal {
-        field,
-        unavailable: None,
-    };
-    (code, said, serde_json::to_value(data).ok(), None)
+/// 失败：码 ＋ 那一句 ＋ `data`（[`Refusal`]：哪一格 · 选不了号那一形）；下层原话由调用处接 `.and_raw(…)`（不进那一句，进复制详情）。
+pub(crate) fn fail(code: &'static str, said: String, field: Option<Field>) -> Said {
+    refused(
+        Said::new(code, said),
+        Refusal {
+            field,
+            unavailable: None,
+        },
+    )
 }
 
-fn malformed(m: &str) -> Failed {
+/// 下层交上来的整体失败（不指哪一格：`field: null`）⇒ 带上 `session-open` 的那一份 [`Refusal`]，码与那一句照旧。
+pub(crate) fn whole(s: Said) -> Said {
+    refused(
+        s,
+        Refusal {
+            field: None,
+            unavailable: None,
+        },
+    )
+}
+
+/// 那一份 [`Refusal`] 进 `data`。
+fn refused(s: Said, data: Refusal) -> Said {
+    match serde_json::to_value(data) {
+        Ok(v) => s.with_data(v),
+        Err(_) => s,
+    }
+}
+
+fn malformed(m: &str) -> Said {
     fail("bad_args", crate::common::contract::malformed(m), None)
 }
 
-/// 下层（列名单 · 铸名 · 起 ccm · 就地键入）交上来的 `(码, 原话)` ⇒ 码表里的那一个：认得的照码；别的收成 `start_failed`，原话进复制详情。
-fn lower((code, said): (&str, String)) -> Failed {
+/// 下层（列名单 · 铸名 · 起 ccm · 就地键入）交上来的失败 ⇒ 码表里的那一个：认得的照码，下层原话照带；
+/// 别的收成 `start_failed`，原码与那一句进复制详情。
+fn lower(f: Said) -> Said {
+    let code = f.code_or_fallback();
     match OPEN_CODES.iter().find(|c| **c == code) {
-        Some(c) => fail(c, said, None),
-        None => {
-            let (c, s, d, _) = fail(
-                "start_failed",
-                copy_core::copy_text("beSessionNew.start.failed", &[]),
-                None,
-            );
-            (c, s, d, Some(format!("{code}: {said}")))
-        }
+        Some(c) => fail(c, f.said, None).and_raw(f.raw.as_deref()),
+        None => fail(
+            "start_failed",
+            copy_core::copy_text("beSessionNew.start.failed", &[]),
+            None,
+        )
+        .and_raw(Some(&format!("{code}: {}", f.said))),
     }
 }
 
@@ -211,7 +225,7 @@ pub(crate) fn answer(
     fork: ForkWrite,
     pre: &PreRotation,
     home: Option<&std::path::Path>,
-) -> Result<Opened, Failed> {
+) -> Result<Opened, Said> {
     let ticket = req.ticket.clone();
     if ticket
         .as_deref()
@@ -259,7 +273,7 @@ fn dispatch(
     fork: ForkWrite,
     pre: &PreRotation,
     home: Option<&std::path::Path>,
-) -> Result<Opened, Failed> {
+) -> Result<Opened, Said> {
     let here = here_of(req.local, deps);
     let account = req.account.clone().unwrap_or(AccountAsk::Follow);
     match req.what {
@@ -309,7 +323,7 @@ fn dispatch(
 }
 
 /// 恢复没说放在哪 ⇒ 照这台的偏好 × 那条起在哪 × 有没有 tmux。
-fn resume_default(sid: &str, deps: &Deps) -> Result<Launch, Failed> {
+fn resume_default(sid: &str, deps: &Deps) -> Result<Launch, Said> {
     let listed = listed(deps).map_err(lower)?;
     Ok(default_run(
         Intent::Resume,
@@ -320,7 +334,7 @@ fn resume_default(sid: &str, deps: &Deps) -> Result<Launch, Failed> {
 }
 
 /// 这台不能托管 ⇒ `place_unavailable`（给了托管不悄悄改道）。
-fn managed_ok(listed: &Listed) -> Result<(), Failed> {
+fn managed_ok(listed: &Listed) -> Result<(), Said> {
     if listed.managed {
         Ok(())
     } else {
@@ -339,27 +353,25 @@ fn start_hosted(
     account: &Settled,
     here: Here,
     deps: &Deps,
-) -> Result<String, Failed> {
+) -> Result<String, Said> {
     let argv = own_entry(deps)
         .and_then(|entry| lr::hosted_argv_of(l, account, here, deps.caps, &entry))
         .map_err(|m| fail("refused", m, None))?;
     match (deps.run_ccm)(&argv) {
         Ok((0, out, err)) => crate::control::ccm::session_reported(&out).ok_or_else(|| {
-            let (c, s, d, _) = fail(
+            fail(
                 "start_failed",
                 copy_core::copy_text("beSessionNew.hosted.noName", &[]),
                 None,
-            );
-            (c, s, d, Some(format!("{}\n{}", out.trim(), err.trim())))
+            )
+            .and_raw(Some(&format!("{}\n{}", out.trim(), err.trim())))
         }),
-        Ok((rc, _, err)) => {
-            let (c, s, d, _) = fail(
-                "start_failed",
-                copy_core::copy_text("beSessionNew.start.failed", &[]),
-                None,
-            );
-            Err((c, s, d, Some(format!("exit {rc}\n{}", err.trim()))))
-        }
+        Ok((rc, _, err)) => Err(fail(
+            "start_failed",
+            copy_core::copy_text("beSessionNew.start.failed", &[]),
+            None,
+        )
+        .and_raw(Some(&format!("exit {rc}\n{}", err.trim())))),
         Err(e) => Err(lower(e)),
     }
 }
@@ -374,7 +386,7 @@ fn start_in_hosted(
     here: Here,
     live: &[u32],
     deps: &Deps,
-) -> Result<Opened, Failed> {
+) -> Result<Opened, Said> {
     let (landed, name, note) = match carriers(rows, &it.sid) {
         Standing::Running(e) => (Landed::Running, e.name.clone(), None),
         Standing::Ambiguous(es) => {
@@ -400,7 +412,7 @@ fn start_in_hosted(
 }
 
 /// 这台的名单；没 tmux ⇒ `place_unavailable`（给了 tmux 不悄悄改直路）。
-fn tmux_rows(deps: &Deps) -> Result<Vec<TermEntry>, Failed> {
+fn tmux_rows(deps: &Deps) -> Result<Vec<TermEntry>, Said> {
     match listed(deps).map_err(lower)? {
         Listed {
             tmux: true, rows, ..
@@ -414,7 +426,7 @@ fn tmux_rows(deps: &Deps) -> Result<Vec<TermEntry>, Failed> {
 }
 
 /// 接进 `name` 那个终端那一行（tmux 会话名 · 托管终端的句柄；`ccm --attach` 先认托管名单，再落 tmux）。
-fn attach_line(name: &str, here: Here, deps: &Deps) -> Result<String, Failed> {
+fn attach_line(name: &str, here: Here, deps: &Deps) -> Result<String, Said> {
     let l = lr::Launch {
         agent: String::new(),
         act: Act::Attach(name.to_string()),
@@ -448,16 +460,11 @@ fn opened(landed: Landed, session: Option<String>, line: Option<String>) -> Open
 
 /// 接回：按会话（挂着它的那个；命中多个接第一个、`note` 说一句）或按终端名。两种宿主都认（名单是入口交的那一份）：
 /// tmux 那一行接会话名，托管那一行接句柄（瘦客户端 `--attach <句柄>`）。一个都没认到、这台又没 tmux ⇒ `place_unavailable`。
-fn look(
-    sid: Option<&str>,
-    session: Option<&str>,
-    here: Here,
-    deps: &Deps,
-) -> Result<Opened, Failed> {
+fn look(sid: Option<&str>, session: Option<&str>, here: Here, deps: &Deps) -> Result<Opened, Said> {
     let listed = listed(deps).map_err(lower)?;
     let rows = &listed.rows;
     // 没认到：那一句由调用处取好（这台没 tmux ⇒ 改说放不了）。
-    let missing = |said: String| -> Failed {
+    let missing = |said: String| -> Said {
         if listed.tmux {
             fail("not_hosted", said, None)
         } else {
@@ -531,7 +538,7 @@ fn shell(
     here: Here,
     deps: &Deps,
     home: Option<&std::path::Path>,
-) -> Result<Opened, Failed> {
+) -> Result<Opened, Said> {
     let dir = match cwd.map(str::trim) {
         None => None,
         Some(raw) if !shell_quote_core::free_text_ok(raw) => {
@@ -571,10 +578,7 @@ fn shell(
                     Some(Field::TmuxName),
                 ));
             }
-            (deps.open_shell)(name, dir.as_deref()).map_err(|f| {
-                let (c, s, d, raw) = lower((&f.code, f.message));
-                (c, s, d, raw.or(f.raw))
-            })?;
+            (deps.open_shell)(name, dir.as_deref()).map_err(lower)?;
             (Landed::Idle, dir)
         }
     };
@@ -635,22 +639,17 @@ fn launched(account: &Settled) -> Option<LaunchedAccount> {
 }
 
 /// 选不了号 ⇒ `account_unavailable`，`data` 带要的号与替代。
-fn unavailable(u: la::AccountUnavailable) -> Failed {
+fn unavailable(u: la::AccountUnavailable) -> Said {
     let said = la::unavailable_said(&u);
     let data = Refusal {
         field: Some(Field::Account),
         unavailable: Some(u),
     };
-    (
-        "account_unavailable",
-        said,
-        serde_json::to_value(data).ok(),
-        None,
-    )
+    refused(Said::new("account_unavailable", said), data)
 }
 
 /// **恢复一个**：先判号（选不了 ⇒ 不起），再问记录在不在（查这个号那棵树），已有进程在写 ⇒ 不起（直路也一样），再按放在哪做。
-fn start_one(it: &Item, b: &Batch, run: Launch, here: Here, deps: &Deps) -> Result<Opened, Failed> {
+fn start_one(it: &Item, b: &Batch, run: Launch, here: Here, deps: &Deps) -> Result<Opened, Said> {
     let account =
         la::settle(&it.account, Some(&it.sid), &b.models, deps.accounts).map_err(unavailable)?;
     let root = match &account {
@@ -660,12 +659,12 @@ fn start_one(it: &Item, b: &Batch, run: Launch, here: Here, deps: &Deps) -> Resu
     match (deps.record)(&it.sid, root) {
         Err(e) => return Err(fail("bad_args", e, None)),
         Ok((false, root)) => {
-            let (c, s, d, _) = fail(
+            return Err(fail(
                 "record_gone",
                 copy_core::copy_text("beSessionOpen.record.gone", &[]),
                 None,
-            );
-            return Err((c, s, d, Some(root)));
+            )
+            .and_raw(Some(&root)));
         }
         Ok((true, _)) => {}
     }
@@ -704,17 +703,17 @@ fn start_one(it: &Item, b: &Batch, run: Launch, here: Here, deps: &Deps) -> Resu
 }
 
 /// 已有活进程在写 ⇒ 不起（再起一个就是两个进程同写一份记录）；`raw` 是那几个 pid。
-fn already_live(live: &[u32]) -> Failed {
+fn already_live(live: &[u32]) -> Said {
     let pids = pids_said(live);
-    let (c, s, d, _) = fail(
+    fail(
         "already_live",
         copy_core::copy_text(
             "beSessionOpen.live.writing",
             &[("n", &live.len().to_string()), ("pids", &pids)],
         ),
         None,
-    );
-    (c, s, d, Some(pids))
+    )
+    .and_raw(Some(&pids))
 }
 
 /// 在 tmux 里起：在跑 ⇒ 不另起（接进去那一行）；已有活进程在写（不在这台的 tmux 里）⇒ 不起；
@@ -727,7 +726,7 @@ fn start_in_tmux(
     here: Here,
     live: &[u32],
     deps: &Deps,
-) -> Result<Opened, Failed> {
+) -> Result<Opened, Said> {
     let (landed, name, note) = match carriers(rows, &it.sid) {
         Standing::Running(e) => (Landed::Running, e.name.clone(), None),
         Standing::Ambiguous(es) => {
@@ -749,10 +748,7 @@ fn start_in_tmux(
             let line = lr::line_of(&l, account, Here::Remote, deps.caps, &entry)
                 .map_err(|m| fail("refused", m, None))?;
             pretrust(account, &it.cwd, deps);
-            (deps.send_into)(&e.name, &it.sid, &line).map_err(|f| {
-                let (c, s, d, raw) = lower((&f.code, f.message));
-                (c, s, d, raw.or(f.raw))
-            })?;
+            (deps.send_into)(&e.name, &it.sid, &line).map_err(lower)?;
             (Landed::InPlace, e.name.clone(), None)
         }
         Standing::None => {
@@ -769,7 +765,7 @@ fn start_in_tmux(
 }
 
 /// 必铸新终端名：问这台铸，再核一遍不落在名单里任何一个上（父会话那个名字绝不复用）。落上了 ⇒ `tmux_taken`，不起。
-fn fresh_name(base: NameBase, rows: &[TermEntry], deps: &Deps) -> Result<String, Failed> {
+fn fresh_name(base: NameBase, rows: &[TermEntry], deps: &Deps) -> Result<String, Said> {
     let name = (deps.mint)(base).map_err(lower)?;
     if rows.iter().any(|r| r.name == name) {
         return Err(taken(&name));
@@ -778,13 +774,13 @@ fn fresh_name(base: NameBase, rows: &[TermEntry], deps: &Deps) -> Result<String,
 }
 
 /// 会话名被占 ⇒ `tmux_taken`，原话格是那个名字。
-fn taken(name: &str) -> Failed {
-    let (c, s, d, _) = fail(
+fn taken(name: &str) -> Said {
+    fail(
         "tmux_taken",
         copy_core::copy_text("beSessionNew.tmux.taken", &[("name", name)]),
         Some(Field::TmuxName),
-    );
-    (c, s, d, Some(name.to_string()))
+    )
+    .and_raw(Some(name))
 }
 
 fn source_terminal<'a>(rows: &'a [TermEntry], sid: Option<&str>) -> Option<&'a str> {
@@ -803,7 +799,7 @@ fn start_named(
     name: &str,
     here: Here,
     deps: &Deps,
-) -> Result<(), Failed> {
+) -> Result<(), Said> {
     let argv = own_entry(deps)
         .and_then(|entry| {
             lr::argv_of(
@@ -821,18 +817,16 @@ fn start_named(
 }
 
 /// 交那一行 ccm：退出码 3 ＝ 会话名被占（ccm 响亮失败，不接回别人的会话）；别的非零 ⇒ `start_failed`，退出码与 stderr 进复制详情。
-fn run_ccm(argv: &[String], name: &str, deps: &Deps) -> Result<(), Failed> {
+fn run_ccm(argv: &[String], name: &str, deps: &Deps) -> Result<(), Said> {
     match (deps.run_ccm)(argv) {
         Ok((0, _, _)) => Ok(()),
         Ok((3, _, _)) => Err(taken(name)),
-        Ok((rc, _, err)) => {
-            let (c, s, d, _) = fail(
-                "start_failed",
-                copy_core::copy_text("beSessionNew.start.failed", &[]),
-                None,
-            );
-            Err((c, s, d, Some(format!("exit {rc}\n{}", err.trim()))))
-        }
+        Ok((rc, _, err)) => Err(fail(
+            "start_failed",
+            copy_core::copy_text("beSessionNew.start.failed", &[]),
+            None,
+        )
+        .and_raw(Some(&format!("exit {rc}\n{}", err.trim())))),
         Err(e) => Err(lower(e)),
     }
 }
@@ -846,9 +840,9 @@ pub(crate) const OPEN_CAP: Deadline = Deadline::secs(8 + SELF_AS_CCM_SECS);
 
 /// 交一行 ccm：这台后端自己就是 ccm（同一个二进制，argv 不过 shell）。不接进去（`--detach`），等它退出、收它的话。
 /// 去掉 `TMUX` / `TMUX_PANE`：单个那一项是在一个新开的终端里跑这一行，那里不在 tmux 里。
-/// 失败 ⇒ 单个那一条的 `(码, 原话)`：起不来 ⇒ `start_failed`；过了期限 ⇒ `child_timed_out`。
-pub(crate) fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), CmdErr> {
-    let me = std::env::current_exe().map_err(|e| ("start_failed", e.to_string()))?;
+/// 失败 ⇒ 单个那一条的码 ＋ 原话：起不来 ⇒ `start_failed`；过了期限 ⇒ `child_timed_out`。
+pub(crate) fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), Said> {
+    let me = std::env::current_exe().map_err(|e| Said::new("start_failed", e.to_string()))?;
     let out = Child::new(me)
         .args(argv.iter().skip(1))
         .env_remove("TMUX")
@@ -867,10 +861,10 @@ pub(crate) const NO_FIRST_PROMPT: &str = "no_first_prompt";
 
 /// **恢复再送**（`session-say` 送的时候终端已经没了）：在 tmux 里恢复一项，那一句随行交给那一家；那一家不收第一句 ⇒ 不起。
 /// 起法用远端那一行（这台后端自己当 ccm 跑，工作目录随行）。
-pub(crate) fn resume_saying(it: &Item, agent: &str, deps: &Deps) -> Result<Opened, Failed> {
+pub(crate) fn resume_saying(it: &Item, agent: &str, deps: &Deps) -> Result<Opened, Said> {
     let b = Batch::of(agent, deps.prefs);
     if it.say.is_some() && !b.takes_first_say() {
-        return Err((NO_FIRST_PROMPT, agent.to_string(), None, None));
+        return Err(Said::new(NO_FIRST_PROMPT, agent.to_string()));
     }
     // 这台后端自己起、不开窗 ⇒ 落在容器里：照恢复的缺省（偏好 × 有没有 tmux × 能不能托管），直路那一形改 tmux（没有 tmux 照拒）。
     let run = match resume_default(&it.sid, deps)? {
@@ -888,7 +882,7 @@ pub(crate) fn relaunch_in(
     name: &str,
     local: bool,
     deps: &Deps,
-) -> Result<(), Failed> {
+) -> Result<(), Said> {
     start_named(
         it,
         &Batch::of(agent, deps.prefs),
@@ -911,7 +905,7 @@ fn start_new(
     fork: ForkWrite,
     pre: &PreRotation,
     home: Option<&std::path::Path>,
-) -> Result<Opened, Failed> {
+) -> Result<Opened, Said> {
     if req.agent.as_str().trim().is_empty() {
         return Err(fail(
             "unknown_agent",
@@ -1050,7 +1044,7 @@ fn start_new(
     };
     // 前面几格全过了才写分支记录（某格不行都不留东西）。
     let forked = match &req.fork {
-        Some(f) => Some(fork(&f.sid, &f.uuid).map_err(|(c, m)| fail(c, m, None))?),
+        Some(f) => Some(fork(&f.sid, &f.uuid).map_err(whole)?),
         None => None,
     };
     // 新起的会话：那一家认先定 sid ⇒ 这台先定（交给那一家的那一串里带它），回包就说得出 sid。
@@ -1069,12 +1063,12 @@ fn start_new(
     let sid = forked.clone().or_else(|| preset.clone());
     let wrote = match (&rule, &sid) {
         (Some(r), Some(s)) => {
-            (pre.write)(s, kind, r).map_err(|(c, m)| fail(c, m, None))?;
+            (pre.write)(s, kind, r).map_err(whole)?;
             Some(s.clone())
         }
         _ => None,
     };
-    let undo = |e: Failed| -> Failed {
+    let undo = |e: Said| -> Said {
         if let Some(s) = &wrote {
             (pre.forget)(s);
         }
@@ -1097,7 +1091,7 @@ fn start_new(
         alias,
     };
     pretrust(&account, &cwd, deps);
-    let launch = || -> Result<Opened, Failed> {
+    let launch = || -> Result<Opened, Said> {
         let entry = own_entry(deps).map_err(|m| fail("refused", m, None))?;
         Ok(match &name {
             Some(name) => {
@@ -1138,7 +1132,7 @@ fn start_new(
 }
 
 /// `rotation` 那一格：缺 ⇒ `None`（新会话用的那份）；`{strategy: id}` ⇒ 那一份；`{strategy: null}` ⇒ `Some("")`（不轮换）。
-fn strategy_of(v: Option<&RotationPick>) -> Result<Option<String>, Failed> {
+fn strategy_of(v: Option<&RotationPick>) -> Result<Option<String>, Said> {
     match v.map(|p| p.strategy.as_deref()) {
         None => Ok(None),
         Some(None) => Ok(Some(String::new())),
@@ -1153,7 +1147,7 @@ fn new_tmux_name(
     cwd: &str,
     rows: &[TermEntry],
     deps: &Deps,
-) -> Result<String, Failed> {
+) -> Result<String, Said> {
     if let Some(n) = req
         .tmux_name
         .as_deref()

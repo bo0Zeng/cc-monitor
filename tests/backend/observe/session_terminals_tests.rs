@@ -328,8 +328,9 @@ fn an_unknown_or_malformed_sid_is_said_not_guessed() {
             }
         )
         .unwrap_err()
-        .0,
-        "no_such_session"
+        .code
+        .as_deref(),
+        Some("no_such_session")
     );
     // 形状不对的 sid 解入参那一下就解不开（`cmd_wire::Sid`）。
     assert!(serde_json::from_value::<SidReq>(serde_json::json!({"sid": "-x"})).is_err());

@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 /// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
 fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
     args: &Value,
-    f: impl FnOnce(&R) -> Result<T, crate::wire::spec::Fail>,
-) -> Result<Value, crate::wire::spec::Fail> {
+    f: impl FnOnce(&R) -> Result<T, crate::common::said::Said>,
+) -> Result<Value, crate::common::said::Said> {
     let req = crate::wire::typed::take::<R>(args)?;
     f(&req).map(|t| serde_json::to_value(t).unwrap())
 }
@@ -54,7 +54,7 @@ fn put(root: &Path, rel: &str, body: &str) {
 
 fn ok_record(
     _: &crate::assets::skill_ledger::RecordReq,
-) -> Result<crate::assets::skill_ledger::RecordReply, crate::wire::spec::Fail> {
+) -> Result<crate::assets::skill_ledger::RecordReply, crate::common::said::Said> {
     Ok(crate::assets::skill_ledger::RecordReply {
         changed: true,
         remaining: 1,
@@ -251,6 +251,6 @@ fn an_inner_request_with_an_extra_key_is_bad_args() {
             until: None,
         };
         let got = run(req).map(|_| ()).map_err(|f| f.code);
-        assert_eq!(got, Err("bad_args".to_string()), "{cmd}");
+        assert_eq!(got, Err(Some("bad_args".to_string())), "{cmd}");
     }
 }

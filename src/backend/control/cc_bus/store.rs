@@ -8,7 +8,7 @@
 //! 读：不拿锁（每份都是整份原子换的，读到的总是某一份完整的）。
 
 use super::rules::Ledger;
-use crate::control::cc_bus_envelope::Refusal;
+use crate::common::said::Said;
 use crate::control::cc_bus_wire::BusEnvelope;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -102,14 +102,14 @@ fn start(pos: u64, total: u64) -> u64 {
     }
 }
 
-fn io(why: impl Into<String>) -> Refusal {
-    ("io_failed", why.into())
+fn io(why: impl Into<String>) -> Said {
+    Said::new("io_failed", why.into())
 }
 
 /// 拿 `cc-bus/` 那一把锁（目录不在先建：数据目录 ＋ 这一层）。
 fn locked(
     own: &crate::platform::Own,
-) -> Result<(crate::platform::fs::OwnPath, crate::platform::fs::OwnLock), Refusal> {
+) -> Result<(crate::platform::fs::OwnPath, crate::platform::fs::OwnLock), Said> {
     let root = own
         .root()
         .ok_or_else(|| io(copy_core::copy_text("beOwnState.path.noHome", &[])))?;
@@ -125,9 +125,7 @@ fn locked(
             ))
         })?;
     }
-    let held = own
-        .lock(&dir)
-        .map_err(|e| io(crate::common::said::Said::from(e).said))?;
+    let held = own.lock(&dir).map_err(|e| io(Said::from(e).said))?;
     Ok((dir, held))
 }
 
@@ -137,7 +135,7 @@ fn put_state(
     dir: &crate::platform::fs::OwnPath,
     held: &crate::platform::fs::OwnLock,
     s: &State,
-) -> Result<(), Refusal> {
+) -> Result<(), Said> {
     STATE.write(own, dir, held, s).map_err(|e| io(e.said))
 }
 
@@ -147,7 +145,7 @@ pub(crate) fn deliver(
     own: &crate::platform::Own,
     env: &BusEnvelope,
     now_ms: i64,
-) -> Result<bool, Refusal> {
+) -> Result<bool, Said> {
     let (dir, held) = locked(own)?;
     let mut s = state(dir.as_path()).map_err(io)?;
     let knock = super::rules::admit(&mut s.ledger, env, now_ms)?;
@@ -182,29 +180,29 @@ fn parse_token(t: &str) -> Option<(u64, u64, u64)> {
 
 /// 两阶段读的第二跳：令牌对得上 ⇒ 把那条会话的已读位置推到 `to`，回推到了第几行。
 /// 盘上的位置不是令牌的 from ⇒ `stale`（别人推过了：手上那段照常处理）；第 to 行变了 ⇒ `changed`；令牌坏 ⇒ `bad_token`。
-pub(crate) fn commit(own: &crate::platform::Own, sid: &str, token: &str) -> Result<u64, Refusal> {
-    let (from, to, want) =
-        parse_token(token).ok_or_else(|| ("bad_token", format!("not a peek token: {token:?}")))?;
+pub(crate) fn commit(own: &crate::platform::Own, sid: &str, token: &str) -> Result<u64, Said> {
+    let (from, to, want) = parse_token(token)
+        .ok_or_else(|| Said::new("bad_token", format!("not a peek token: {token:?}")))?;
     let (dir, held) = locked(own)?;
     let mut s = state(dir.as_path()).map_err(io)?;
     let rows = lines(dir.as_path(), sid).map_err(io)?;
     let total = rows.len() as u64;
     let cur = s.pos.get(sid).copied().unwrap_or(0);
     if cur != from {
-        return Err((
+        return Err(Said::new(
             "stale",
             format!("token says from={from}, the position is already {cur}"),
         ));
     }
     let now = rows.get(to as usize - 1).map(|l| anchor(l));
     if now != Some(want) {
-        return Err((
+        return Err(Said::new(
             "changed",
             format!("line {to} is not the one the token saw (inbox has {total} lines)"),
         ));
     }
     if to <= cur && cur <= total {
-        return Err((
+        return Err(Said::new(
             "bad_token",
             format!("to={to} is not past from={cur} and the inbox ({total} lines) was not cut"),
         ));

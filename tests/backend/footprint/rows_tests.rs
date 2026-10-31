@@ -1574,6 +1574,7 @@ fn this_module_only_reads() {
     assert_eq!(
         face_use,
         [
+            "use crate::common::said::Said;",
             "use crate::platform::fs::Ro;",
             "use copy_core::copy_text;",
             "use std::path::{Path, PathBuf};",

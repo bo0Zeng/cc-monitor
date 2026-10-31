@@ -5,7 +5,7 @@
 use crate::assets::aliases::page::{
     answer_resolve, read_with, ProfilesBook, ProfilesErr, ProfilesResolveReq, Resolved,
 };
-use crate::wire::typed::{of_pair, Command, NoArgs};
+use crate::wire::typed::{of_fail_with, Command, NoArgs};
 
 /// `profiles-read`：读回配置文件整份（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
 pub(crate) struct ProfilesRead;
@@ -30,7 +30,7 @@ impl crate::wire::typed::Handle for ProfilesRead {
             let files = needs;
 
             read_with(files, crate::control::terminals::tmux_here(), &cx.tz)
-                .map_err(of_pair(ProfilesErr::Refused))
+                .map_err(of_fail_with(ProfilesErr::Refused))
         }
     }
 }
@@ -56,7 +56,7 @@ impl crate::wire::typed::Handle for ProfilesResolve {
             let files = needs;
 
             answer_resolve(files, &req, crate::faces::profiles_face::preview_resolved)
-                .map_err(of_pair(ProfilesErr::Refused))
+                .map_err(of_fail_with(ProfilesErr::Refused))
         }
     }
 }
@@ -73,7 +73,7 @@ impl crate::wire::typed::Handle for crate::control::ccm::CcmPrint {
            + 'static {
         async move {
             crate::control::ccm::answer_print(&req, crate::faces::launch_account_face::list_at)
-                .map_err(crate::wire::typed::of_pair(
+                .map_err(crate::wire::typed::of_fail_with(
                     crate::control::ccm::PrintErr::Refused,
                 ))
         }

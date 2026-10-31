@@ -133,7 +133,7 @@ impl Own {
     }
 
     /// 拿 `dir` 的跨进程锁（阻塞到拿到为止；`dir` 要先在）。
-    pub(crate) fn lock(&self, dir: &OwnPath) -> Result<OwnLock, crate::platform::lock::LockFail> {
+    pub(crate) fn lock(&self, dir: &OwnPath) -> Result<OwnLock, Said> {
         Ok(OwnLock {
             dir: dir.0.clone(),
             _held: Held::Waited {
@@ -376,7 +376,7 @@ impl AccountCreds {
     }
 
     /// 拿配置目录的跨进程锁（阻塞到拿到为止）。
-    pub(crate) fn lock(&self) -> Result<CredsLock, crate::platform::lock::LockFail> {
+    pub(crate) fn lock(&self) -> Result<CredsLock, Said> {
         Ok(CredsLock {
             _held: hold(&self.dir)?,
         })
@@ -599,7 +599,7 @@ pub(crate) fn inside_own_dir(at: &Path) -> bool {
 }
 
 /// 拿一个目录的跨进程锁（阻塞到拿到为止）：本文件里两种句柄（[`Own::lock`] · [`AccountCreds::lock`]）都经这一处。
-fn hold(dir: &Path) -> Result<crate::platform::lock::DirLock, crate::platform::lock::LockFail> {
+fn hold(dir: &Path) -> Result<crate::platform::lock::DirLock, Said> {
     crate::platform::lock::hold(dir)
 }
 

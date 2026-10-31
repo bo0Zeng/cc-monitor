@@ -1,8 +1,9 @@
 use super::*;
 
 // 回包写成线上那一份、入参经 typed 那一处收（同分派）：判据照线上形比（盖住 `super::*` 里的同名口）。
-fn answer_print(args: &serde_json::Value) -> Result<serde_json::Value, (&'static str, String)> {
-    let req: CcmPrintReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+fn answer_print(args: &serde_json::Value) -> Result<serde_json::Value, crate::common::said::Said> {
+    let req: CcmPrintReq = crate::wire::typed::take(args)
+        .map_err(|f| crate::common::said::Said::new("bad_args", f.said))?;
     super::answer_print(&req, crate::faces::launch_account_face::list_at)
         .map(|r| serde_json::to_value(r).unwrap())
 }
@@ -697,7 +698,10 @@ fn the_alias_preview_speaks_for_a_fresh_terminal_at_home() {
 /// `ccm-print` 的两种拒：形状不对 ⇒ `bad_args`；ccm 自己拒 / 不起会话的那一形 ⇒ `refused`，原话带回。
 #[test]
 fn the_alias_preview_refuses_in_the_words_of_ccm() {
-    let code = |v: serde_json::Value| answer_print(&v).map(|_| "ok").unwrap_or_else(|(c, _)| c);
+    let code = |v: serde_json::Value| match answer_print(&v) {
+        Ok(_) => "ok".to_string(),
+        Err(e) => e.code_or_fallback().to_string(),
+    };
     assert_eq!(code(serde_json::json!({})), "bad_args");
     assert_eq!(code(serde_json::json!({ "args": [1] })), "bad_args");
     assert_eq!(
@@ -709,9 +713,10 @@ fn the_alias_preview_refuses_in_the_words_of_ccm() {
         "refused"
     );
     // 未知旗标交给 claude、不拒 ⇒ 拿一条 ccm 自己的组合规则当「拒」的样本。
-    let (c, said) = answer_print(&serde_json::json!({ "args": ["--", "--detach"] }))
+    let e = answer_print(&serde_json::json!({ "args": ["--", "--detach"] }))
         .expect_err("--detach 不带 --tmux 该被拒");
-    assert_eq!(c, "refused");
+    assert_eq!(e.code.as_deref(), Some("refused"));
+    let said = e.said;
     let want = match argv::parse(&["--".to_string(), "--detach".to_string()]) {
         Err(argv::Die(m)) => m,
         other => panic!("{other:?}"),
@@ -892,7 +897,12 @@ fn minting_derives_here_and_steps_aside_on_this_machines_snapshot() {
         mint(NameBase::ForkOf("/home/u/gone")).unwrap(),
         "gone-fork-cc"
     );
-    let no_tmux = SessionSnapshot::with_prober(|| Err(("no_tmux", "tmux: not found".to_string())));
+    let no_tmux = SessionSnapshot::with_prober(|| {
+        Err(crate::common::said::Said::new(
+            "no_tmux",
+            "tmux: not found".to_string(),
+        ))
+    });
     assert_eq!(
         terminal_name_mint_with(NameBase::Cwd("/home/u/proj"), &no_tmux).unwrap(),
         "proj-cc"

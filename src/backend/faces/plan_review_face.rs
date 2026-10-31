@@ -4,22 +4,22 @@
 //! - `plan-ack {workspace, slice, key}`：认可一条要你看（键此刻在、不是问人那一种才收）；推一帧 `changed {plan}` 带新的数。
 //! - `plan-unack {workspace, slice, key}`：撤掉（8 秒撤销那一下）；同上推一帧。
 
+use crate::common::said::Said;
 use crate::plan::needs;
-use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use cmd_wire::plan as wire;
 use copy_core::copy_text;
 
-type Answer = Result<wire::PlanAckReply, Fail>;
+type Answer = Result<wire::PlanAckReply, Said>;
 
 /// 这个键此刻能不能认可：不在 ⇒ `no_such_need`；问人那一种 ⇒ `not_ackable`。
-pub(crate) fn check_ack(sl: &wire::PlanSlice, key: &str) -> Result<(), Fail> {
+pub(crate) fn check_ack(sl: &wire::PlanSlice, key: &str) -> Result<(), Said> {
     match needs::ackable(sl, key) {
-        None => Err(Fail::new(
+        None => Err(crate::wire::spec::fail(
             "no_such_need",
             copy_text("bePlan.review.noSuchNeed", &[]),
         )),
-        Some(false) => Err(Fail::new(
+        Some(false) => Err(crate::wire::spec::fail(
             "not_ackable",
             copy_text("bePlan.review.notAckable", &[]),
         )),
@@ -28,10 +28,10 @@ pub(crate) fn check_ack(sl: &wire::PlanSlice, key: &str) -> Result<(), Fail> {
 }
 
 /// 这个工作区上一次读好的那一份（没读过 ⇒ `not_read`）。
-fn last(ws: &str) -> Result<wire::PlanRead, Fail> {
+fn last(ws: &str) -> Result<wire::PlanRead, Said> {
     crate::plan::book::book()
         .last(ws)
-        .ok_or_else(|| Fail::new("not_read", copy_text("bePlan.review.notRead", &[])))
+        .ok_or_else(|| crate::wire::spec::fail("not_read", copy_text("bePlan.review.notRead", &[])))
 }
 
 /// 认可改了之后：这个工作区此刻要你看的数，推一帧 `changed {plan}`（别的窗口跟着改数）。
@@ -50,11 +50,9 @@ fn after_ack(ws: &str, key: &str, acked: bool) -> Answer {
 fn ack(req: &PlanAckReq, own: &crate::platform::fs::Own) -> Answer {
     let (ws, slice, key) = (req.workspace.as_str(), req.slice.as_str(), req.key.as_str());
     let doc = last(ws)?;
-    let sl = doc
-        .slices
-        .iter()
-        .find(|s| s.name == slice)
-        .ok_or_else(|| Fail::new("no_such_need", copy_text("bePlan.review.noSuchNeed", &[])))?;
+    let sl = doc.slices.iter().find(|s| s.name == slice).ok_or_else(|| {
+        crate::wire::spec::fail("no_such_need", copy_text("bePlan.review.noSuchNeed", &[]))
+    })?;
     check_ack(sl, key)?;
     crate::plan::review::answer_ack(own, ws, slice, key, &needs::keys_of(sl))?;
     after_ack(ws, key, true)

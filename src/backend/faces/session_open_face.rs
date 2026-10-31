@@ -38,9 +38,8 @@ fn answer(
     files: super::launch_account_face::Files,
     own: &crate::platform::fs::Own,
     nf: &crate::platform::fs::NewFile,
-) -> Result<open::Opened, open::Failed> {
-    let client = crate::control::gate::requester(req.client.as_deref())
-        .map_err(|(c, m)| open::fail(c, m, None))?;
+) -> Result<open::Opened, crate::common::said::Said> {
+    let client = crate::control::gate::requester(req.client.as_deref()).map_err(open::whole)?;
     // 起之前记下这台的报到序号：之后报到的那一条才是它（回包的 `arrival.since`）。
     let since = crate::common::arrival_seq::mark();
     let (agent, facts) = match &req.what {
@@ -401,11 +400,11 @@ impl crate::wire::typed::Handle for SessionOpenFacts {
         async move {
             let cx = &cx;
 
-            facts(&req, &cx.tz).map_err(|(code, said)| match code {
-                "bad_args" => OpenFactsErr::BadArgs(said),
+            facts(&req, &cx.tz).map_err(|s| match s.code.as_deref() {
+                Some("bad_args") => OpenFactsErr::BadArgs(s.said),
                 _ => {
-                    debug_assert_eq!(code, "fork_failed");
-                    OpenFactsErr::ForkFailed(said)
+                    debug_assert_eq!(s.code.as_deref(), Some("fork_failed"));
+                    OpenFactsErr::ForkFailed(s.said)
                 }
             })
         }
@@ -417,12 +416,12 @@ impl crate::wire::typed::Handle for SessionOpenFacts {
 pub(crate) fn facts(
     req: &OpenFactsReq,
     tz: &crate::Tz,
-) -> Result<OpenFacts, (&'static str, String)> {
+) -> Result<OpenFacts, crate::common::said::Said> {
     let fork_of = match req.fork_of.as_deref() {
         None => None,
         Some(s) if shell_quote_core::session_id_ok(s) => Some(s),
         Some(_) => {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "bad_args",
                 crate::common::contract::malformed("`forkOf` must be a session id"),
             ))
@@ -432,7 +431,7 @@ pub(crate) fn facts(
         None => None,
         Some(s) if shell_quote_core::session_id_ok(s) && fork_of.is_some() => Some(s),
         Some(_) => {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "bad_args",
                 crate::common::contract::malformed(
                     "`at` must be a message id, given with `forkOf`",
@@ -445,7 +444,7 @@ pub(crate) fn facts(
         None => None,
         Some(sid) => {
             let source = crate::agents::find_session(&home, sid)
-                .map_err(|m| ("fork_failed", m))?
+                .map_err(|m| crate::common::said::Said::new("fork_failed", m))?
                 .file;
             // 第几轮照那一份的扫描图数（与 `history-turns` 同一张：回退掉的那几句不算一轮）。
             let turn = at.and_then(|uuid| {

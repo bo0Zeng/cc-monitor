@@ -4,6 +4,7 @@
 //! 每一样按它那条命令的回包类型核：写时核过才收、连同形状指纹存，读时不是这一版 ⇒ 说读不懂（[`Seen`]）。
 //! 种类闭集 [`KINDS`]；每份封顶 [`MAX_VALUE_BYTES`]、台数封顶 [`MAX_ORIGINS`]（超了先丢最久没更新的那台）。
 
+use crate::common::said::Said;
 use crate::platform::fs::{Own, OwnPath};
 use cmd_wire::cells::SeenAt;
 use copy_core::copy_text;
@@ -147,10 +148,10 @@ struct Store {
 /// 机器名最长多少字节。
 const MAX_ORIGIN_BYTES: usize = 256;
 
-type Answer<T> = Result<T, crate::wire::spec::Fail>;
+type Answer<T> = Result<T, Said>;
 
-fn bad(d: &str) -> crate::wire::spec::Fail {
-    crate::wire::spec::Fail::new("bad_args", crate::common::contract::malformed(d))
+fn bad(d: &str) -> Said {
+    crate::wire::spec::fail("bad_args", crate::common::contract::malformed(d))
 }
 
 /// 这台机器上那份文件的路径；家目录解析不出来 ⇒ `None`。
@@ -158,7 +159,7 @@ pub(crate) fn store_path() -> Option<PathBuf> {
     Some(crate::platform::paths::home_dir()?.join(DOC.rel))
 }
 
-fn origin_arg(m: &cmd_wire::Machine) -> Result<String, crate::wire::spec::Fail> {
+fn origin_arg(m: &cmd_wire::Machine) -> Result<String, Said> {
     Some(m.to_string())
         .filter(|s| !s.trim().is_empty() && s.len() <= MAX_ORIGIN_BYTES)
         .ok_or_else(|| bad("`origin` missing or not a short non-empty string"))
@@ -225,7 +226,7 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
     );
     let size = value.to_string().len();
     if size > MAX_VALUE_BYTES {
-        return Err(crate::wire::spec::Fail::from((
+        return Err(crate::wire::spec::fail(
             "too_large",
             copy_text(
                 "beLastSeen.value.tooLarge",
@@ -234,7 +235,7 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
                     ("max", &MAX_VALUE_BYTES.to_string()),
                 ],
             ),
-        )));
+        ));
     }
     // 按回包类型核过才收，连同此刻的形状指纹一起存（读回来据此认是不是这一版）。
     if !kind.fits(&value) {
@@ -243,9 +244,9 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
     let shape = cmd_wire::shapes::shape_of(kind.cmd());
     let (dir, file) = place(own)?;
     own.ensure_dir(&dir).map_err(|e| {
-        (
+        Said::new(
             "io_failed",
-            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+            crate::common::said::IntoNote::into_note(Said::with_raw(
                 copy_text(
                     "beLastSeen.store.mkdirFailed",
                     &[
@@ -270,11 +271,9 @@ fn locked_edit(
     dir: &OwnPath,
     file: &OwnPath,
     edit: impl FnOnce(&mut Map<String, Value>) -> bool,
-) -> Result<(), crate::wire::spec::Fail> {
-    let io = |e| crate::wire::spec::Fail::from(("io_failed", e));
-    let held = own
-        .lock(dir)
-        .map_err(|e| io(crate::common::said::Said::from(e)))?;
+) -> Result<(), Said> {
+    let io = |e| crate::wire::spec::fail("io_failed", e);
+    let held = own.lock(dir).map_err(|e| io(Said::from(e)))?;
     let mut origins = load(file.as_path());
     if edit(&mut origins) {
         DOC.write(own, dir, &held, &Store { origins }).map_err(io)?;
@@ -283,9 +282,9 @@ fn locked_edit(
 }
 
 /// 那份文件所在的那一层（`~/.cc-monitor`）与它本身。没有家目录 ⇒ `io_failed`。
-fn place(own: &Own) -> Result<(OwnPath, OwnPath), crate::wire::spec::Fail> {
+fn place(own: &Own) -> Result<(OwnPath, OwnPath), Said> {
     let no_home =
-        |_| crate::wire::spec::Fail::from(("io_failed", copy_text("beLastSeen.store.noHome", &[])));
+        |_| crate::wire::spec::fail("io_failed", copy_text("beLastSeen.store.noHome", &[]));
     Ok((
         own.home_dir().map_err(no_home)?,
         own.at_home(DOC.rel).map_err(no_home)?,
@@ -351,7 +350,8 @@ fn now_ms() -> u64 {
 
 /// `last-seen-read`：帧面入口（只读）；那一句按看的那一台的时区（请求信封的 `tz`）写。
 pub(crate) fn answer_read(req: &LastSeenReadReq, tz: &crate::Tz) -> Answer<LastSeen> {
-    let path = store_path().ok_or(("io_failed", copy_text("beLastSeen.store.noHome", &[])))?;
+    let path = store_path()
+        .ok_or_else(|| Said::new("io_failed", copy_text("beLastSeen.store.noHome", &[])))?;
     read_at(
         &path,
         req,

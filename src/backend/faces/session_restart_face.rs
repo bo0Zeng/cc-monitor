@@ -122,9 +122,8 @@ pub(crate) async fn answer(
     req: restart::RestartReq,
     until: Option<crate::platform::child::Until>,
     files: crate::faces::launch_account_face::Files,
-) -> Result<restart::Restarted, restart::Fault> {
-    let client = crate::control::gate::requester(req.client.as_deref())
-        .map_err(|(c, m)| (c.to_string(), m, None))?;
+) -> Result<restart::Restarted, crate::common::said::Said> {
+    let client = crate::control::gate::requester(req.client.as_deref())?;
     let agent = req.agent.clone();
     restart::run(
         req,

@@ -645,8 +645,8 @@ fn a_resident_call_waits_only_as_long_as_the_asker_said() {
         args(&["--within-ms", "x"]),
     ] {
         let e = deadline_of(&bad).unwrap_err();
-        assert_eq!(e.0, "bad_args", "{bad:?}");
-        assert!(e.1.contains("--within-ms"), "没说缺的是哪一格：{e:?}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad:?}");
+        assert!(e.said.contains("--within-ms"), "没说缺的是哪一格：{e:?}");
     }
     let (ms, total) = deadline_of(&args(&["--stdin-line", "--within-ms", "45000"])).unwrap();
     assert_eq!(ms, 45_000);
