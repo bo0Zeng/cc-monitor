@@ -9,7 +9,8 @@
  * ① 两组恰好叫 node · jsdom，环境各是 node · jsdom；jsdom 组的 include 是 `tests/**\/*.vitest.ts` 一整条。
  * ② node 组名单每一条都在盘上、不重复、照字典序排；vitest 真挑进 node 组的恰好是这份名单。
  * ③ 两组合起来恰好是全部 `tests/**\/*.vitest.ts`，没有一份两组都跑。
- * ④ 文件头的 `@vitest-environment` 与它所在那一组的环境一致（文件头盖过组的设定，不一致就是两处说法）。
+ * ④ 测试文件里不写 vitest 认的环境指令（`@vitest-environment` · `@jest-environment` 及其 `-options`）：指令盖过组的设定，
+ *   写了「在哪个环境跑」就有了第二处说法；环境只由配置那份名单定。认法与 vitest 自己挑环境那一步同一条正则。
  */
 import { existsSync, readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
@@ -86,14 +87,10 @@ describe("vitest 两组：node · jsdom", () => {
     expect([...node, ...jsdom].sort((a, b) => a.localeCompare(b))).toEqual(ALL());
   });
 
-  it("④ 文件头的 `@vitest-environment` 与所在那一组的环境一致", () => {
-    const envOf = new Map<string, string>();
-    for (const [group, files] of byGroup) for (const f of files) envOf.set(f, group);
-    const clash: string[] = [];
-    for (const f of ALL()) {
-      const m = /^\s*(?:\/\/|\/?\*+)\s*@vitest-environment\s+(\S+)/m.exec(readFileSync(resolve(REPO_ROOT, f), "utf8"));
-      if (m && m[1] !== envOf.get(f)) clash.push(`${f}：文件头写 ${m[1]}，所在组是 ${envOf.get(f) ?? "（没有）"}`);
-    }
-    expect(clash, "文件头的环境与组对不上：要 node 就进 node 组名单，文件头删掉").toEqual([]);
+  it("④ 测试文件里不写环境指令：在哪个环境跑只由配置那份名单定", () => {
+    // 与 vitest 挑环境那一步（`detectCodeBlock`）同一个认法：整份文件里找，不只文件头。
+    const pragma = /@(?:vitest|jest)-environment(?:-options)?\s+\S/;
+    const hit = ALL().filter((f) => pragma.test(readFileSync(resolve(REPO_ROOT, f), "utf8")));
+    expect(hit, "这几份写了环境指令：要 node 就把路径加进 `vitest.config.ts` 的 node 组名单，指令删掉").toEqual([]);
   });
 });

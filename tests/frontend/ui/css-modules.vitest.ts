@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * **渐进式 CSS Modules 的判据**（选项 D · `§12` 件 10：「新组件一律 Modules；旧的动到哪个迁哪个」）。
  *

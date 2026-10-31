@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * 产品 TS 里「某件事只一个口」那几条由 eslint 守（`eslint.config.js` 的 `singleDoors` 表：`no-restricted-syntax` ·
  * `no-restricted-imports`，每项带它的家），`eslint .` 基线 0 ⇒ 别处写一处就红（`eslint-baseline.vitest.ts` 与 CI 那一步接）。
