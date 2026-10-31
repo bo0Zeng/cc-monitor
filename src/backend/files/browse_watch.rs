@@ -52,24 +52,6 @@ impl Overlay {
     pub fn iter(&self) -> impl Iterator<Item = (&[u8], u8)> + '_ {
         self.children.iter().map(|(c, k)| (c.as_slice(), *k))
     }
-
-    pub fn dirs(&self) -> usize {
-        self.dirs.len()
-    }
-
-    pub fn entries(&self) -> usize {
-        self.children.len()
-    }
-
-    /// overlay 自己的常驻字节 —— `秤 F2 ②` 要把它算进总数。
-    pub fn resident_bytes(&self) -> usize {
-        self.dirs.iter().map(Vec::len).sum::<usize>()
-            + self
-                .children
-                .iter()
-                .map(|(c, _)| c.len() + 1)
-                .sum::<usize>()
-    }
 }
 
 /// 取一份 overlay 快照。
