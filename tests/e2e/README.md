@@ -4,8 +4,9 @@
 全部走 **DEV 探针 → 后端日志**:
 
 - `src/frontend/ui/e2e-probe.ts`(仅 dev 构建,`import.meta.env.DEV` 门控):
-  - 启动重放抖动探针:batch 窗口内逐 rAF 采样定点卡片 `getBoundingClientRect().top`
-    的方向反转(INVARIANTS §21:scrollTop 单调,只测它发现不了抖动),批末落盘
+  - 冷开抖动探针:冷起补读那一段(首段补读的行要喂进 tab 时起、冷起补读落地时停,
+    `startup-perf.ts` 起停)逐 rAF 采样定点卡片 `getBoundingClientRect().top`
+    的方向反转(INVARIANTS §21:scrollTop 单调,只测它发现不了抖动),落地时落盘
     `[e2e] jitter frames=… reversals=… retargets=…`。
   - 状态快照:`Ctrl+Alt+F9` **或中键点状态栏**(headless 用——xdotool 的 XTEST
     合成键盘进不了 WebKitGTK webview,鼠标事件畅通)→ `[e2e] snapshot
@@ -155,7 +156,7 @@ CI 的 e2e job 就是调门禁（`GATE_ONLY=e2e`），不另记一份名单。
 
 **`f40-suite`（渲染/滚动管线级）同样不在门禁里，理由同规格**（U0 2026-08-01 补写）：
 它要 Xvfb + 一个**正在跑的 `tauri dev`**（见本文件开头「跑法」），断言的是整机渲染行为
-（启动门控 / 贴底 / 上翻补批 / fork 折叠 / 抖动密度绊线）。GUI runner 的投入
+（drain 阈值 / 冷开抖动密度绊线 / 贴底 / 上翻补批 / fork 折叠）。GUI runner 的投入
 与 `graylight-suite` 是同一笔账。
 > 它的断言数随环境分支变（多组 `ok`/`bad` 互斥），**所以这里刻意不写一个具体条数**。
 
@@ -164,7 +165,8 @@ CI 的 e2e job 就是调门禁（`GATE_ONLY=e2e`），不另记一份名单。
 **单实例串行**:fixture 目录/cwd 固定名(`-tmp-e2e-fork`)且 `touch src/frontend/ui/main.ts` 会触发
 全窗口 reload——并发跑两个套件会互删 fixture、互触发重放,结果不可信。
 
-套件场景:①启动门控(rendered≪deferred)+ drain 阈值 + 抖动密度绊线;②贴底快照;
+套件场景:①等冷起补读落地(等不到 ⇒ 退出码 2「台架不成立」)+ drain 阈值 + 冷开抖动密度绊线
+(尾部优先归 `skeleton-view.vitest.ts`);②贴底快照;
 ③上翻补批(active + 厚账 tab 两处,pending 下降断言);④逐 tab 点击切换贴底;
 ⑤合成 fork 会话折叠段断言——**fixture 必须伴生活进程 pidfile 且 pidfile 先落**
 (watcher 只 emit 活跃会话,Batch5-F20;jsonl 先落会被 process_file 抢跑跳过,实测);

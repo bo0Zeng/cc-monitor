@@ -246,7 +246,7 @@ tests/e2e/README.md	4
 tests/e2e/backend-sessions-rewatch.sh	1
 tests/e2e/backend-tmux-late-server.sh	1
 tests/e2e/exec-bit-guard.sh	1
-tests/e2e/f40-suite.sh	3
+tests/e2e/f40-suite.sh	2
 tests/e2e/gen-fork-session.py	1
 tests/e2e/inbound-backend-frames.sh	7
 tests/evidence/CP-copy-judges.py	1
@@ -310,7 +310,6 @@ tests/frontend/ui/accounts.vitest.ts	2
 tests/frontend/ui/attach-row.vitest.ts	1
 tests/frontend/ui/boot-active-viewport.vitest.ts	1
 tests/frontend/ui/composer.vitest.ts	1
-tests/frontend/ui/e2e-probe.vitest.ts	1
 tests/frontend/ui/end-confirm.vitest.ts	1
 tests/frontend/ui/events-batch-schedule.vitest.ts	5
 tests/frontend/ui/events-burst.vitest.ts	1
