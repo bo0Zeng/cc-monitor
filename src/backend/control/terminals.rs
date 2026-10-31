@@ -603,7 +603,7 @@ pub(crate) fn screen_on(on: On<'_>, session: &str) -> crate::control::session_ar
     use crate::control::session_arrive::Screen;
     let rows = match rows_on(on) {
         Ok((rows, _, _)) => rows,
-        Err(e) => return Screen::Unread(e.message),
+        Err(e) => return Screen::Unread(e.said),
     };
     let Some(row) = rows.iter().find(|r| r.name == session) else {
         return Screen::Gone;
@@ -613,7 +613,7 @@ pub(crate) fn screen_on(on: On<'_>, session: &str) -> crate::control::session_ar
             terminal: row.handle(),
             text: v.text,
         },
-        Err(e) => Screen::Unread(e.message),
+        Err(e) => Screen::Unread(e.said),
     }
 }
 

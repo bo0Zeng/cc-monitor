@@ -400,9 +400,12 @@ pub(crate) fn ran(cmd: Child, args: &[&str]) -> Result<Ran, Said> {
             ok: out.status.success(),
             stderr: said_of(&out.stderr),
         }),
-        Err(e) => Err(Said::from(e.into_cmd_said("no_tmux", |why| {
-            copy_text("reason.tmux.startFailed", &[("why", why)])
-        }))),
+        Err(e) => {
+            let (code, said) = e.into_cmd_said("no_tmux", |why| {
+                copy_text("reason.tmux.startFailed", &[("why", why)])
+            });
+            Err(crate::wire::spec::fail(code, said))
+        }
     }
 }
 
@@ -771,8 +774,8 @@ fn type_payload(
     match sent {
         Ok(r) if r.ok => Ok(()),
         Ok(r) => Err(unconfirmed(Delivery::NotDelivered, name, &r.stderr, made)),
-        Err(e) if e.code == crate::platform::child::TIMED_OUT => {
-            Err(unconfirmed(Delivery::Unknown, name, &e.message, made))
+        Err(e) if e.code.as_deref() == Some(crate::platform::child::TIMED_OUT) => {
+            Err(unconfirmed(Delivery::Unknown, name, &e.said, made))
         }
         Err(e) => Err(e.into()),
     }

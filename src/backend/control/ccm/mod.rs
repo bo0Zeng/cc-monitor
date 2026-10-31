@@ -633,7 +633,7 @@ pub(crate) fn preview_resolved(
 pub(crate) fn terminal_name_mint_with(
     base: crate::control::session_batch::NameBase<'_>,
     snap: &crate::common::session_snapshot::SessionSnapshot,
-) -> Result<String, (&'static str, String)> {
+) -> Result<String, crate::common::said::Said> {
     let base = match base {
         crate::control::session_batch::NameBase::Cwd(cwd) => plan::derive_tmux_name(cwd),
         crate::control::session_batch::NameBase::ForkOf(source) => plan::fork_tmux_base(source),
@@ -641,7 +641,7 @@ pub(crate) fn terminal_name_mint_with(
     let name = match snap.taken_names() {
         Ok(taken) => plan::mint_tmux_name(&base, &taken),
         // 这台没装 tmux：没有会话 ⇒ 没有名字可撞。
-        Err(("no_tmux", _)) => base,
+        Err(e) if e.code.as_deref() == Some("no_tmux") => base,
         Err(e) => return Err(e),
     };
     Ok(name)
@@ -748,7 +748,7 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
             // 搬进同一个进程之后**别把门丢了**（迁移是强度悄悄下降的经典时机）。
             let req = match crate::control::launch::parse_request(launch_args(c)) {
                 Ok(r) => r,
-                Err(f) => return die(&format!("{}: {}", f.code, f.message)),
+                Err(f) => return die(&format!("{}: {}", f.code_or_fallback(), f.said)),
             };
             match crate::control::launch::run(&req) {
                 Ok(out) if out.created => {}
@@ -776,7 +776,7 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
                         "{}",
                         copy_text(
                             "beCcm.execute.launchFailed",
-                            &[("kind", &f.code), ("message", &msg)]
+                            &[("kind", f.code_or_fallback()), ("message", &msg)]
                         )
                     );
                     match reaped {

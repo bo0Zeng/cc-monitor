@@ -91,7 +91,7 @@ impl Rig {
     fn run<T>(&self, f: impl FnOnce(&Deps) -> T) -> T {
         let list = || -> Result<Listed, Said> {
             match self.list_err {
-                Some(c) => Err((c, "said".to_string())),
+                Some(c) => Err(Said::new(c, "said".to_string())),
                 None => Ok(Listed::of(self.rows.clone(), self.hosted.clone())),
             }
         };
@@ -496,7 +496,7 @@ fn a_malformed_batch_is_refused_whole() {
         json!({ "sids": (0..=MAX_BATCH).map(|i| format!("s{i}")).collect::<Vec<_>>() }),
     ] {
         let e = rig.run(|d| stop(&bad, d)).unwrap_err();
-        assert_eq!(e.0, "bad_args", "{bad}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad}");
     }
     assert!(rig.calls.borrow().is_empty());
 }
@@ -595,7 +595,7 @@ fn a_listing_that_ran_out_of_time_answers_child_timed_out_not_unobservable() {
     ] {
         let mut rig = Rig::new(Some(vec![row("a-cc", Some(A), true)]));
         rig.list_err = Some(err);
-        let code = |r: Result<Value, Said>| r.expect_err("该整条失败").0;
+        let code = |r: Result<Value, Said>| r.expect_err("该整条失败").code_or_fallback().to_string();
         assert_eq!(
             code(rig.run(|d| where_(&json!({ "sids": [A] }), d))),
             want,

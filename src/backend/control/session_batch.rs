@@ -22,8 +22,7 @@ pub(crate) const SESSIONS_WHERE_CAP: Deadline = Deadline::secs(8);
 /// 整批共用；用完了剩下的各自回超时，不让一个卡住整批。
 pub(crate) const BATCH_CAP: Deadline = Deadline::secs(8 + 6 * MAX_BATCH as u64);
 
-/// 命令级错误：`(code, message)`。
-use crate::common::said::Said;
+use crate::common::said::{IntoNote as _, Said};
 
 /// 终端名单里的一个终端（认会话只要这五格；tmux 与托管同一形）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,12 +119,12 @@ pub(crate) fn listed_on(
     let tmux = crate::host::tmux::rows_found_on(on)
         .map(|got| got.map(|(rows, _, _)| rows))
         .map_err(|f| {
-            let code = if f.code == crate::platform::child::TIMED_OUT {
+            let code = if f.code.as_deref() == Some(crate::platform::child::TIMED_OUT) {
                 crate::platform::child::TIMED_OUT
             } else {
                 "failed"
             };
-            (code, f.into_note())
+            Said::new(code, f.into_note())
         })?;
     // 托管那一臂并在 tmux 那几行后面（同 `terminals-list` 的次序）。
     let hosted = managed
@@ -154,11 +153,11 @@ fn entry_of(r: crate::host::TermRow) -> TermEntry {
 /// 这台的名单（一批一次）：列名单那一发过了期限（总期限用完了）⇒ 整条 `child_timed_out`（同别的装了总期限的命令）；
 /// 别的列不成 ⇒ 看不见（`unobservable`，不是零会话）。
 pub(crate) fn listed(deps: &Deps) -> Result<Listed, Said> {
-    (deps.list)().map_err(|(code, said)| {
-        if code == crate::platform::child::TIMED_OUT {
-            (code, said)
+    (deps.list)().map_err(|f| {
+        if f.code.as_deref() == Some(crate::platform::child::TIMED_OUT) {
+            f
         } else {
-            ("unobservable", said)
+            f.coded("unobservable")
         }
     })
 }
@@ -319,7 +318,7 @@ impl Answer {
 }
 
 pub(crate) fn bad(why: &str) -> Said {
-    ("bad_args", crate::common::contract::malformed(why))
+    Said::new("bad_args", crate::common::contract::malformed(why))
 }
 
 /// 一串 sid（每个的形状解入参时已判，`cmd_wire::Sid`）：非空、不超上界、不重复。
@@ -473,10 +472,10 @@ fn stop_one(sid: &str, listed: &Listed, deps: &Deps, faces: &StopFaces) -> Answe
             ..Answer::done()
         },
         Err(f) => {
-            let code = f.code.clone();
+            let code = f.code_or_fallback().to_string();
             Answer {
                 session: Some(name),
-                ..Answer::failed((&code, crate::common::said::Said::from(f).logged()))
+                ..Answer::failed((&code, f.logged()))
             }
         }
     }
