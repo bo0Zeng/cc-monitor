@@ -147,6 +147,8 @@ fun FilesScreen(
     openPath: String? = null,
 ) {
     val vm = koinViewModel<FilesViewModel> { parametersOf(hostId) }
+    // 目录与排序跟着进程重建回来（[KeepFilesLook]，住 FilesLook.kt）。
+    KeepFilesLook(vm)
     val snackbar = LocalAppSnackbar.current
     val ui by vm.ui.collectAsState()
     var dialog by remember { mutableStateOf<FilesDialog?>(null) }
