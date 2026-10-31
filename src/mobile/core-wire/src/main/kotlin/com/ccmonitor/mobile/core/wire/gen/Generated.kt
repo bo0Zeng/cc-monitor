@@ -25756,29 +25756,21 @@ data class TurnSpan(
 
 @Suppress("UNCHECKED_CAST")
 data class UiErrorPayload(
-    val code: String,
-    val key: String,
-    val args: Map<String, String>,
     val said: String,
     val detail: String,
     val reconnect: String? = null,
-    val at: Long,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
         val ADAPTER: JsonAdapter<UiErrorPayload> = obj(
             listOf(
-            Field("code", { Str }, optional = false, nullable = false),
-            Field("key", { Str }, optional = false, nullable = false),
-            Field("args", { dict(Str) }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
             Field("detail", { Str }, optional = false, nullable = false),
             Field("reconnect", { opt(Str) }, optional = true, nullable = true),
-            Field("at", { Lng }, optional = false, nullable = false),
             ),
-            { a -> UiErrorPayload(a[0] as String, a[1] as String, a[2] as Map<String, String>, a[3] as String, a[4] as String, a[5] as String?, a[6] as Long) },
-            { v -> arrayOf(v.code, v.key, v.args, v.said, v.detail, v.reconnect, v.at) },
+            { a -> UiErrorPayload(a[0] as String, a[1] as String, a[2] as String?) },
+            { v -> arrayOf(v.said, v.detail, v.reconnect) },
         )
     }
 }
