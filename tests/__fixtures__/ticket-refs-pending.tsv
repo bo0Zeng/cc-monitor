@@ -272,7 +272,6 @@ tests/frontend/shell/byte_cap_registry_tests.rs	9
 tests/frontend/shell/byte_table_tests.rs	1
 tests/frontend/shell/capability_registry_tests.rs	23
 tests/frontend/shell/chan/webview_tests.rs	2
-tests/frontend/shell/comm_boundary_registry_tests.rs	1
 tests/frontend/shell/cross_half_edge_registry.rs	2
 tests/frontend/shell/cross_half_edge_registry_tests.rs	1
 tests/frontend/shell/deploy_tests.rs	1
@@ -292,16 +291,12 @@ tests/frontend/shell/lockfile_conflict_guard.rs	1
 tests/frontend/shell/lockfile_conflict_guard_tests.rs	1
 tests/frontend/shell/needle_anchor_registry.rs	7
 tests/frontend/shell/needle_anchor_registry_tests.rs	2
-tests/frontend/shell/parity_ledger_tests.rs	17
 tests/frontend/shell/polling_registry.rs	6
-tests/frontend/shell/polling_registry_tests.rs	11
 tests/frontend/shell/quote_singleton_guard.rs	2
 tests/frontend/shell/rust_timer_registry.rs	4
 tests/frontend/shell/rust_timer_registry_tests.rs	1
-tests/frontend/shell/scanning_guard_registry_tests.rs	41
 tests/frontend/shell/session_name_registry.rs	1
 tests/frontend/shell/session_name_registry_tests.rs	4
-tests/frontend/shell/shared_crate_registry_tests.rs	6
 tests/frontend/shell/tmux_backend_gate_guard_tests.rs	1
 tests/frontend/shell/write_site_registry_tests.rs	3
 tests/frontend/ui/account-chip.vitest.ts	1
