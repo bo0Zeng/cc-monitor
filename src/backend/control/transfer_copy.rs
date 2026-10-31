@@ -486,7 +486,7 @@ impl Ends for Wired {
                             .unwrap_or(0),
                     }]);
                 }
-                return Err((
+                return Err(crate::common::said::Said::new(
                     "io_failed",
                     Said::from(copy_text("beTransferCopy.from.missing", &[("path", path)])),
                 ));

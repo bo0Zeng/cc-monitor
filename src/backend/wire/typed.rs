@@ -145,7 +145,7 @@ pub(crate) trait Here: Send + Sync {
         &self,
         cmd: &str,
         args: serde_json::Value,
-    ) -> Result<serde_json::Value, (String, String)>;
+    ) -> Result<serde_json::Value, crate::common::said::Said>;
     /// 看的人那一台的时区（引起这一趟的那条请求的信封 `tz`）：问别台时原样转过去，那台回的「几点」照它写。
     fn viewer_tz(&self) -> crate::Tz;
 }

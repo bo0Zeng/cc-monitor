@@ -1046,10 +1046,10 @@ impl Desk {
 }
 
 /// 登记一张票。满册 ⇒ `too_many_transfers`；同一个暂存件键已有一张 ⇒ `busy`（下层那一形：码 ＋ 那一句，各条照自己的码表收）。
-fn register(tickets: &Tickets, t: Ticket) -> Result<String, (&'static str, String)> {
+fn register(tickets: &Tickets, t: Ticket) -> Result<String, crate::common::said::Said> {
     let mut g = lock(tickets);
     if g.len() >= MAX_TICKETS_PER_CONNECTION {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "too_many_transfers",
             copy_text(
                 "beTransfer.register.tooMany",
@@ -1059,7 +1059,7 @@ fn register(tickets: &Tickets, t: Ticket) -> Result<String, (&'static str, Strin
     }
     if let Some(k) = &t.key {
         if g.values().any(|o| o.key.as_ref() == Some(k)) {
-            return Err(("busy", copy_text("beTransfer.register.sameFile", &[])));
+            return Err(crate::common::said::Said::new("busy", copy_text("beTransfer.register.sameFile", &[])));
         }
     }
     let tid = next_id();

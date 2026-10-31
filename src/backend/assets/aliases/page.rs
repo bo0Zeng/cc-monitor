@@ -792,7 +792,7 @@ fn chain_problem_line(book: &Book, name: &str) -> Option<usize> {
     }
 }
 
-type Answer<T> = Result<T, (&'static str, String)>;
+type Answer<T> = Result<T, crate::common::said::Said>;
 
 fn refused(said: String) -> (&'static str, String) {
     ("refused", said)
@@ -1674,7 +1674,7 @@ pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<Profi
         });
     }
     if super::rev_of(store.text.as_deref()).as_deref() != if_rev {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "stale",
             copy_text(
                 "rsAccountAliases.install.changedElsewhere",
@@ -1714,7 +1714,7 @@ pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<Profi
     }
     let wrote = match super::write_profiles(d, &store.home, store.text.as_deref(), &text) {
         Ok(w) => w,
-        Err(super::WriteErr::Stale(e)) => return Err(("stale", e)),
+        Err(super::WriteErr::Stale(e)) => return Err(crate::common::said::Said::new("stale", e)),
         Err(super::WriteErr::Refused(e)) => return Err(refused(e)),
     };
     let out = super::sync_outputs(d, &store.home, &profile::parse_book(&text), None);

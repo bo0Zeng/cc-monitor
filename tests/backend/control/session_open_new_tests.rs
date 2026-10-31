@@ -87,7 +87,7 @@ impl Rig {
             })
         };
         let writers = |_: &str| -> Vec<u32> { vec![] };
-        let fork = |sid: &str, uuid: &str| -> Result<String, (&'static str, String)> {
+        let fork = |sid: &str, uuid: &str| -> Result<String, crate::common::said::Said> {
             self.forks.borrow_mut().push((sid.into(), uuid.into()));
             Ok(NEW.into())
         };
@@ -136,9 +136,9 @@ impl Rig {
             started: &|_| None,
         };
         let sid = || PRESET.to_string();
-        let write = |sid: &str, kind: &str, rule: &str| -> Result<(), (&'static str, String)> {
+        let write = |sid: &str, kind: &str, rule: &str| -> Result<(), crate::common::said::Said> {
             if rule == "c_gone" {
-                return Err(("no_strategy", "配置不在".into()));
+                return Err(crate::common::said::Said::new("no_strategy", "配置不在".into()));
             }
             let at = self.ccm.borrow().len();
             self.rot

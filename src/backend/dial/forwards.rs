@@ -73,7 +73,7 @@ fn port_of(text: &str) -> Option<u16> {
 
 /// 读规格并过围栏 —— **在任何查表 / 拨号之前**（`INVARIANTS §47`：外部值交给对端之前本侧先判）。
 /// 没选那台 · 端口不是 1–65535 · 远端 host 空白 ⇒ `bad_spec` 带那一句（界面照抄）；缺格 / 类型不对在解入参那一步就回了（`bad_args`）。
-pub(crate) fn spec_of(req: &ForwardStartReq) -> Result<Spec, (&'static str, String)> {
+pub(crate) fn spec_of(req: &ForwardStartReq) -> Result<Spec, crate::common::said::Said> {
     let bad = |said: String| ("bad_spec", said);
     if req.origin.to_string().trim().is_empty() {
         return Err(bad(copy_text("beForwards.spec.origin", &[])));
@@ -157,7 +157,7 @@ pub(crate) async fn start_with<F, Fut>(
     reach: &remote_ask::Table,
     ledger: &Ledger,
     serve: F,
-) -> Result<ForwardStarted, (&'static str, String)>
+) -> Result<ForwardStarted, crate::common::said::Said>
 where
     F: FnOnce(DialRequest, DuplexStream, DuplexStream) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
@@ -173,7 +173,7 @@ where
             _ => ("bad_args", s.said),
         })?;
     if ledger.rows().len() >= MAX_FORWARDS {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "full",
             copy_text(
                 "beForwards.start.full",
@@ -275,7 +275,7 @@ pub(crate) struct ForwardId {
 pub(crate) fn stop_with(
     req: ForwardId,
     ledger: &Ledger,
-) -> Result<ForwardId, (&'static str, String)> {
+) -> Result<ForwardId, crate::common::said::Said> {
     let entry = id_num(&req.id)
         .and_then(|n| ledger.rows().remove(&n))
         .ok_or_else(|| {

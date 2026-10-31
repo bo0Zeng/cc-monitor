@@ -17,7 +17,7 @@ fn ask(
     root: &Path,
     args: serde_json::Value,
     launch: &dyn Fn(&Path, &str) -> crate::control::fork_launch::Launch,
-) -> Result<serde_json::Value, (String, String)> {
+) -> Result<serde_json::Value, crate::common::said::Said> {
     use crate::wire::typed::Codes;
     let req: ForkReq =
         crate::wire::typed::take(&args).map_err(|f| (f.code_or_fallback().to_string(), f.said))?;

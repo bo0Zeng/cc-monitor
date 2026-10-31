@@ -24,7 +24,7 @@ async fn answer_with(
     fold: Fold,
     remote: &dyn Remote,
     table: &Table,
-) -> Result<Value, (&'static str, String)> {
+) -> Result<Value, crate::common::said::Said> {
     let req: AssetsSyncReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
     super::answer_with(&req, fold, remote, table)
         .await

@@ -47,7 +47,7 @@ pub(crate) fn scope(
         .iter()
         .map(|g| g.name.clone().unwrap_or_else(|| g.id.clone()))
         .collect();
-    Err((
+    Err(crate::common::said::Said::new(
         "not_same_group",
         format!("`to` {to:?} is in none of the sender's groups: {names:?}"),
     ))

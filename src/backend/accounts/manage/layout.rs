@@ -180,14 +180,14 @@ fn refused(said: String) -> Refusal {
 
 fn need_manifest(s: &Snapshot) -> Result<&Manifest, Refusal> {
     match &s.manifest {
-        None => Err((
+        None => Err(crate::common::said::Said::new(
             "not_enabled",
             copy_text(
                 "beAcctPlan.need.noManifest",
                 &[("path", &s.roots().manifest())],
             ),
         )),
-        Some(Err(e)) => Err(("refused", e.clone())),
+        Some(Err(e)) => Err(crate::common::said::Said::new("refused", e.clone())),
         Some(Ok(m)) => Ok(m),
     }
 }

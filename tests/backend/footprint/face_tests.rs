@@ -21,7 +21,7 @@ fn answer_with(
     session_path: &dyn Fn() -> Option<String>,
     agent_home: &Path,
     args: &serde_json::Value,
-) -> Result<serde_json::Value, (&'static str, String)> {
+) -> Result<serde_json::Value, crate::common::said::Said> {
     let req: FootprintReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
     super::answer_with(get, session_path, agent_home, &req)
         .map(|r| serde_json::to_value(r).unwrap())

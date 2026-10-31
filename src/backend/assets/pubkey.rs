@@ -162,7 +162,7 @@ pub(crate) fn plan_authorized_keys(
 pub(crate) fn answer_add(
     d: &dyn Door,
     req: &KeyAddReq,
-) -> Result<KeyAdded, (&'static str, String)> {
+) -> Result<KeyAdded, crate::common::said::Said> {
     let key = sanitize_public_key(&req.key).map_err(|e| ("refused", e.into_said()))?;
     let home = door::home(d).map_err(|e| ("io_failed", e))?;
     let rel = format!("{SSH_DIR}/{AUTH_FILE}");
@@ -400,8 +400,8 @@ impl crate::wire::typed::Handle for PubkeyPush {
 pub(crate) async fn answer_push(
     req: &PubkeyPushReq,
     reach: &dyn Reach,
-    read_pub: &(dyn Fn(&str) -> Result<String, (&'static str, String)> + Send + Sync),
-) -> Result<PubkeyPushed, (&'static str, String)> {
+    read_pub: &(dyn Fn(&str) -> Result<String, crate::common::said::Said> + Send + Sync),
+) -> Result<PubkeyPushed, crate::common::said::Said> {
     let machine = &req.machine;
     let dial =
         crate::dial::request_draft(&reach.hosts(), machine, "capture", serde_json::json!({}))
@@ -418,12 +418,12 @@ pub(crate) async fn answer_push(
     let key = match sanitize_public_key(&read_pub(&path)?) {
         Ok(k) => k,
         Err(SanitizeKeyErr::UnknownType) => {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "refused",
                 copy_text("rsPubkey.pushPublicKey.unknownType", &[("path", &path)]),
             ));
         }
-        Err(e) => return Err(("refused", e.into_said())),
+        Err(e) => return Err(crate::common::said::Said::new("refused", e.into_said())),
     };
     let name = machine.name().to_string();
     let (outcome, via) = if reach.backend_up(&name) {
@@ -450,7 +450,7 @@ pub(crate) async fn answer_push(
 }
 
 /// 生产那一个读口：本机那份 `.pub`（有界，超了就不是公钥）；`~` 按这台家目录展开（[`read_pub_file`]）。
-pub(crate) fn read_local_pub(path: &str) -> Result<String, (&'static str, String)> {
+pub(crate) fn read_local_pub(path: &str) -> Result<String, crate::common::said::Said> {
     read_pub_file(path, crate::platform::paths::home_dir().as_deref())
 }
 
@@ -458,7 +458,7 @@ pub(crate) fn read_local_pub(path: &str) -> Result<String, (&'static str, String
 pub(crate) fn read_pub_file(
     path: &str,
     home: Option<&std::path::Path>,
-) -> Result<String, (&'static str, String)> {
+) -> Result<String, crate::common::said::Said> {
     let at = crate::platform::paths::expand_tilde_from(path, home);
     let said = |why: &str| {
         (

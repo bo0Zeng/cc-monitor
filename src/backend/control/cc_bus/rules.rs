@@ -90,7 +90,7 @@ pub(crate) fn admit(l: &mut Ledger, e: &BusEnvelope, now: i64) -> Result<bool, R
     l.knocked.retain(|_, at| now - *at < KNOCK_DEBOUNCE_MS);
     let key = fingerprint(e);
     if let Some(r) = l.recent.iter().find(|r| r.key == key) {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "duplicate",
             format!(
                 "same letter as {} sent {} ms ago to {:?}",
@@ -103,7 +103,7 @@ pub(crate) fn admit(l: &mut Ledger, e: &BusEnvelope, now: i64) -> Result<bool, R
     let pair = format!("{}>{}", e.from, e.to);
     let pw = l.pairs.get(&pair).copied().unwrap_or_default();
     if !room(&pw, RATE_PAIR, now) {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "throttled",
             format!(
                 "{RATE_PAIR} letters from {:?} to {:?} within {RATE_WINDOW_MS} ms",
@@ -112,7 +112,7 @@ pub(crate) fn admit(l: &mut Ledger, e: &BusEnvelope, now: i64) -> Result<bool, R
         ));
     }
     if !room(&l.global, RATE_GLOBAL, now) {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "throttled",
             format!("{RATE_GLOBAL} letters on this machine within {RATE_WINDOW_MS} ms"),
         ));

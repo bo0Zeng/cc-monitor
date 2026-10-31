@@ -22,7 +22,7 @@ impl Ends for Local {
         Box::pin(async move {
             let p = Path::new(path);
             let Ok(m) = fs::metadata(p) else {
-                return Err(("io_failed", Said::from(format!("missing {path}"))));
+                return Err(crate::common::said::Said::new("io_failed", Said::from(format!("missing {path}"))));
             };
             // 源那台上的树按铺的时候那张清单答（判据不自己遍历目录）。
             let mut out = vec![Entry {
@@ -67,7 +67,7 @@ impl Ends for Local {
         Box::pin(async move {
             let to = Path::new(dir).join(name);
             if to.exists() && !overwrite {
-                return Err(("exists", Said::from("exists".to_string())));
+                return Err(crate::common::said::Said::new("exists", Said::from("exists".to_string())));
             }
             // 走到一半报一次（替身里「一半」＝ 一半字节），传完报整份。
             let len = fs::metadata(from).map(|m| m.len()).unwrap_or(0);
@@ -338,7 +338,7 @@ impl RigBackend {
         &self,
         flag: &str,
         args: &serde_json::Value,
-    ) -> Result<serde_json::Value, (String, String)> {
+    ) -> Result<serde_json::Value, crate::common::said::Said> {
         use crate::wire::typed::take;
         let face = crate::platform::fs::Face::issue();
         let w = |f: crate::control::files_write::WriteFail| (f.code.to_string(), f.said);
@@ -366,7 +366,7 @@ impl RigBackend {
                 .map_err(|e| w(e.flat()))?,
             )
             .unwrap(),
-            other => return Err(("unknown_command".to_string(), other.to_string())),
+            other => return Err(crate::common::said::Said::new("unknown_command".to_string(), other.to_string())),
         };
         Ok(v)
     }

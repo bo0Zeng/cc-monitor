@@ -14,7 +14,7 @@ pub(crate) async fn pv(
     args: &Value,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<Value, (String, String)> {
+) -> Result<Value, crate::common::said::Said> {
     ext_preview(here, args, table, remote)
         .await
         .map(|c| serde_json::to_value(c).unwrap())
@@ -26,7 +26,7 @@ pub(crate) async fn ap(
     args: &Value,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<Value, (String, String)> {
+) -> Result<Value, crate::common::said::Said> {
     let tokens: ExtTokens =
         serde_json::from_value(args["tokens"].clone()).expect("判据给的 tokens");
     let fill: Option<Fill> =
@@ -49,7 +49,7 @@ impl Here for FakeHere {
         self.tz.clone()
     }
 
-    fn ask(&self, cmd: &str, args: Value) -> Result<Value, (String, String)> {
+    fn ask(&self, cmd: &str, args: Value) -> Result<Value, crate::common::said::Said> {
         self.asked.lock().unwrap().push((cmd.to_string(), args));
         self.answers
             .get(cmd)
@@ -345,7 +345,7 @@ impl Here for WindowsHere {
     fn viewer_tz(&self) -> crate::Tz {
         Default::default()
     }
-    fn ask(&self, cmd: &str, args: Value) -> Result<Value, (String, String)> {
+    fn ask(&self, cmd: &str, args: Value) -> Result<Value, crate::common::said::Said> {
         if let Some(p) = args["project"].as_str() {
             crate::assets::mcp_edit::project_root_as(p, crate::assets::mcp_edit::PathForm::Windows)
                 .map_err(|(c, m)| (c.to_string(), m))?;

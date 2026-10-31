@@ -316,7 +316,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
 
 /// 声明口 [`crate::wire::cli_words::VIEW_FLAG`]（位置不限）⇒ 声明那一团（缺 ＝ `null` ＝ 全量）。值以 `{` 打头 ＝ JSON 原样，否则当 base64 解。
 /// 缺值 · 给两次 · 解不出 ⇒ `bad_args`；声明本身认不认得由登记处那一处判（`stream/inbound/views.rs`，同帧面）。
-pub(crate) fn view_of(opts: &[String]) -> Result<serde_json::Value, (&'static str, String)> {
+pub(crate) fn view_of(opts: &[String]) -> Result<serde_json::Value, crate::common::said::Said> {
     let flag = crate::wire::cli_words::VIEW_FLAG;
     let mut seen: Option<&str> = None;
     let mut i = 0;

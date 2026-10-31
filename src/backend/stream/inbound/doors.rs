@@ -76,7 +76,7 @@ impl crate::wire::typed::Here for LocalFrames {
         &self,
         cmd: &str,
         args: serde_json::Value,
-    ) -> Result<serde_json::Value, (String, String)> {
+    ) -> Result<serde_json::Value, crate::common::said::Said> {
         let spec = REGISTRY
             .iter()
             .find(|s| s.name == cmd && HUB_INNER.contains(&s.name))
@@ -92,7 +92,7 @@ impl crate::wire::typed::Here for LocalFrames {
         };
         // 内层那几条都在阻塞档（读 · 带码的读 · 写装记录）；枢纽在阻塞线程上问，异步档不问。
         let Some(Prepared::Blocking(run)) = invoke(spec.run, &super::hands(Some(&self.own))) else {
-            return Err(("unknown_command".to_string(), cmd.to_string()));
+            return Err(crate::common::said::Said::new("unknown_command".to_string(), cmd.to_string()));
         };
         run(req)
             .map(|v| v.unwrap_or(serde_json::Value::Null))

@@ -805,7 +805,7 @@ pub(crate) struct AliasesReadReq {
 pub(crate) fn answer_read(
     d: &dyn Door,
     req: &AliasesReadReq,
-) -> Result<AliasListing, (&'static str, String)> {
+) -> Result<AliasListing, crate::common::said::Said> {
     dialect_here(req.shell).map_err(refused)?;
     read_via(d, req.shell, req.rc_path.as_deref()).map_err(refused)
 }
@@ -820,7 +820,7 @@ pub(crate) struct BlockReq {
 }
 
 /// 别名块那三条：`rcPath` 那份文件过围栏、方言按它的扩展名定、再过方言闸。
-fn block_target(d: &dyn Door, req: &BlockReq) -> Result<(String, String), (&'static str, String)> {
+fn block_target(d: &dyn Door, req: &BlockReq) -> Result<(String, String), crate::common::said::Said> {
     let home = door::home(d).map_err(refused)?;
     let p = block::fence(&home, &req.rc_path).map_err(refused)?;
     dialect_here(Shell::of_target(Path::new(&p))).map_err(refused)?;
@@ -845,7 +845,7 @@ pub(crate) struct BlockDone {}
 pub(crate) fn answer_block_render(
     d: &dyn Door,
     req: &BlockReq,
-) -> Result<BlockText, (&'static str, String)> {
+) -> Result<BlockText, crate::common::said::Said> {
     let shell = Shell::of_target(Path::new(&req.rc_path));
     dialect_here(shell).map_err(refused)?;
     let home = door::home(d).map_err(refused)?;
@@ -857,7 +857,7 @@ pub(crate) fn answer_block_render(
 pub(crate) fn answer_block_install(
     d: &dyn Door,
     req: &BlockReq,
-) -> Result<BlockDone, (&'static str, String)> {
+) -> Result<BlockDone, crate::common::said::Said> {
     let (_, p) = block_target(d, req)?;
     block::install_to_profile(d, Path::new(&p)).map_err(refused)?;
     Ok(BlockDone {})
@@ -867,7 +867,7 @@ pub(crate) fn answer_block_install(
 pub(crate) fn answer_block_remove(
     d: &dyn Door,
     req: &BlockReq,
-) -> Result<BlockDone, (&'static str, String)> {
+) -> Result<BlockDone, crate::common::said::Said> {
     let (_, p) = block_target(d, req)?;
     block::uninstall_from_profile(d, Path::new(&p)).map_err(refused)?;
     Ok(BlockDone {})
@@ -897,7 +897,7 @@ pub(crate) struct PolicySet {
 
 /// `powershell-policy-set {host}` → `{policy, setError}`：那一代 PowerShell 当前用户那一档设成
 /// `RemoteSigned`，再现问一次。只做这一件固定的事（不收策略值）；界面只在用户点了、确认了之后发。这台不说 PowerShell ⇒ 拒。
-pub(crate) fn answer_policy_set(req: &PolicySetReq) -> Result<PolicySet, (&'static str, String)> {
+pub(crate) fn answer_policy_set(req: &PolicySetReq) -> Result<PolicySet, crate::common::said::Said> {
     dialect_here(Shell::PowerShell).map_err(refused)?;
     let (policy, set_error) = crate::platform::shell::powershell::allow_local_scripts(req.host);
     Ok(PolicySet { policy, set_error })

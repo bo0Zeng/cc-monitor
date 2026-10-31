@@ -631,9 +631,9 @@ pub(crate) fn preset_with(
     kind: &str,
     strategy: &str,
     now: u64,
-) -> Result<(), (&'static str, String)> {
+) -> Result<(), crate::common::said::Said> {
     if ctx.hop.store.path().is_none() {
-        return Err(("io_failed", copy_text("beRotation.read.noHome", &[])));
+        return Err(crate::common::said::Said::new("io_failed", copy_text("beRotation.read.noHome", &[])));
     }
     // 空 ⇒ 起成不轮换的会话（新会话框选了「不轮换」），不去目录里找。
     let copy = match strategy {

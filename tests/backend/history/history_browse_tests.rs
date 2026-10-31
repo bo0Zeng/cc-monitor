@@ -217,7 +217,7 @@ fn stale_listing() -> cmd_wire::listing::Listing {
     l
 }
 
-async fn browse(args: Value, until: bool) -> Result<Value, (&'static str, String)> {
+async fn browse(args: Value, until: bool) -> Result<Value, crate::common::said::Said> {
     let req: HistoryBrowseReq =
         crate::wire::typed::take(&args).map_err(|f| ("bad_args", f.said))?;
     let until = until

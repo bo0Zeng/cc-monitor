@@ -10,7 +10,7 @@ async fn start_with<F, Fut>(
     reach: &remote_ask::Table,
     ledger: &Ledger,
     serve: F,
-) -> Result<Value, (&'static str, String)>
+) -> Result<Value, crate::common::said::Said>
 where
     F: FnOnce(DialRequest, DuplexStream, DuplexStream) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
@@ -21,7 +21,7 @@ where
         .map(|r| serde_json::to_value(r).unwrap())
 }
 
-fn parse_spec(args: &Value) -> Result<Spec, (&'static str, String)> {
+fn parse_spec(args: &Value) -> Result<Spec, crate::common::said::Said> {
     let req: ForwardStartReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
     spec_of(&req)
 }
@@ -30,7 +30,7 @@ fn list_with(ledger: &Ledger) -> Value {
     serde_json::to_value(super::list_with(ledger)).unwrap()
 }
 
-fn stop_with(args: &Value, ledger: &Ledger) -> Result<Value, (&'static str, String)> {
+fn stop_with(args: &Value, ledger: &Ledger) -> Result<Value, crate::common::said::Said> {
     let req: ForwardId = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
     super::stop_with(req, ledger).map(|r| serde_json::to_value(r).unwrap())
 }

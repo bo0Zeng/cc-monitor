@@ -198,9 +198,9 @@ pub(crate) async fn listing(
     fresh: bool,
     tz: &crate::Tz,
     until: Option<Until>,
-) -> Result<Listing, (&'static str, String)> {
+) -> Result<Listing, crate::common::said::Said> {
     let Some(until) = until else {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(
                 "`within_ms` is required when asking another machine: how long to wait belongs to the asker",
@@ -229,7 +229,7 @@ pub(crate) async fn listing_with(
     table: &Table,
     remote: &dyn Remote,
     copies: &Copies,
-) -> Result<Listing, (&'static str, String)> {
+) -> Result<Listing, crate::common::said::Said> {
     let held = match copies.to_ask(machine, fresh) {
         Ask::Held(listing) => return Ok(listing),
         Ask::With(held) => held,

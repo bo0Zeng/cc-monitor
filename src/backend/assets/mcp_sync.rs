@@ -268,7 +268,7 @@ pub(crate) fn judge(cands: &[Candidate], facts: &dyn Facts) -> Vec<Suspect> {
 pub(crate) fn servers_of(
     text: Option<&str>,
     side: &str,
-) -> Result<Map<String, Value>, (&'static str, String)> {
+) -> Result<Map<String, Value>, crate::common::said::Said> {
     let Some(t) = text else {
         return Ok(Map::new());
     };
@@ -294,7 +294,7 @@ pub(crate) fn servers_of(
     match root.get(super::mcp_servers_key()) {
         None => Ok(Map::new()),
         Some(Value::Object(m)) => Ok(m.clone()),
-        Some(_) => Err((
+        Some(_) => Err(crate::common::said::Said::new(
             "bad_file",
             copy_text(
                 "beMcpSync.serversOf.serversNotObject",
@@ -340,9 +340,9 @@ pub(crate) fn plan(
     rows: &[(String, State)],
     take: &BTreeSet<String>,
     overwrite: &BTreeSet<String>,
-) -> Result<Vec<String>, (&'static str, String)> {
+) -> Result<Vec<String>, crate::common::said::Said> {
     if let Some(n) = overwrite.iter().find(|n| !take.contains(*n)) {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_args",
             copy_text(
                 "beMcpSync.plan.overwriteUnchecked",
@@ -355,7 +355,7 @@ pub(crate) fn plan(
     for n in take {
         match state_of(n) {
             None | Some(State::OnlyThere) => {
-                return Err((
+                return Err(crate::common::said::Said::new(
                     "bad_args",
                     copy_text("beMcpSync.plan.notInSource", &[("n", &n.to_string())]),
                 ))
@@ -364,7 +364,7 @@ pub(crate) fn plan(
             Some(State::New) => write.push(n.clone()),
             Some(State::Differs) if overwrite.contains(n) => write.push(n.clone()),
             Some(State::Differs) => {
-                return Err((
+                return Err(crate::common::said::Said::new(
                     "needs_consent",
                     copy_text(
                         "beMcpSync.plan.conflictUnconfirmed",
@@ -398,7 +398,7 @@ pub(crate) fn names_arg(
             })
             .collect::<Result<BTreeSet<_>, _>>()
             .map(Some),
-        Some(_) => Err((
+        Some(_) => Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!("`{key}` must be an array of strings")),
         )),

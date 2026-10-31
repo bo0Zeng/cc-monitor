@@ -264,7 +264,7 @@ pub(crate) fn read_page(
     until: Option<u64>,
     page: usize,
     line_cap: usize,
-) -> Result<ReadPage, (&'static str, String)> {
+) -> Result<ReadPage, crate::common::said::Said> {
     use std::io::{Read, Seek, SeekFrom};
     let target = validate_session_path(agent_home, jsonl_path).map_err(|e| ("refused", e))?;
     let mut f = Ro::open(&target).map_err(|e| ("failed", format!("open failed: {e}")))?;
@@ -315,7 +315,7 @@ pub(crate) fn read_page(
                     // ⚠ 上限在**每一次**续读之后判，包括找到行尾的那一次 ——
                     //   只在「没找到」那一支判的话，行尾恰好落在这一块里的超长行会被整行交出去。
                     if bytes.len() > line_cap {
-                        return Err((
+                        return Err(crate::common::said::Said::new(
                             "oversized_line",
                             copy_text(
                                 "beHistoryQuery.readPage.lineTooLong",
@@ -350,7 +350,7 @@ pub(crate) fn read_back(
     before: Option<u64>,
     page: usize,
     line_cap: usize,
-) -> Result<BackPage, (&'static str, String)> {
+) -> Result<BackPage, crate::common::said::Said> {
     use std::io::{Read, Seek, SeekFrom};
     let target = validate_session_path(agent_home, jsonl_path).map_err(|e| ("refused", e))?;
     let mut f = Ro::open(&target).map_err(|e| ("failed", format!("open failed: {e}")))?;
@@ -359,7 +359,7 @@ pub(crate) fn read_back(
         .map_err(|e| ("failed", format!("stat failed: {e}")))?
         .len();
     // 读的都是文件长度以内、已知两头的一整段（多大由调用方的 `page` / `line_cap` 管）：读不满 ⇒ 文件在读的时候变短了，算读失败。
-    let mut grab = |from: u64, to: u64| -> Result<Vec<u8>, (&'static str, String)> {
+    let mut grab = |from: u64, to: u64| -> Result<Vec<u8>, crate::common::said::Said> {
         let mut buf = vec![0u8; (to - from) as usize];
         f.seek(SeekFrom::Start(from))
             .map_err(|e| ("failed", format!("seek failed: {e}")))?;
@@ -494,7 +494,7 @@ pub(crate) fn read_lines(
     until: Option<u64>,
     page: usize,
     line_cap: usize,
-) -> Result<LinesPage, (&'static str, String)> {
+) -> Result<LinesPage, crate::common::said::Said> {
     let target = validate_session_path(agent_home, jsonl_path).map_err(|e| ("refused", e))?;
     let f = Ro::open(&target).map_err(|e| ("failed", format!("open failed: {e}")))?;
     read_lines_from(std::io::BufReader::new(f), from, until, page, line_cap)
@@ -507,7 +507,7 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
     until: Option<u64>,
     page: usize,
     line_cap: usize,
-) -> Result<LinesPage, (&'static str, String)> {
+) -> Result<LinesPage, crate::common::said::Said> {
     let until = until.unwrap_or(u64::MAX);
     let mut lines: Vec<String> = Vec::new();
     let mut starts: Vec<u64> = Vec::new();
@@ -537,7 +537,7 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
             continue;
         }
         if body.len() > line_cap {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "oversized_line",
                 copy_text(
                     "beHistoryQuery.readLinesFrom.lineTooLong",

@@ -64,7 +64,7 @@ fn live_here() -> Vec<Live> {
 }
 
 /// 这台没有 tmux ⇒ `no_tmux`（一组只起在 tmux 里：这台自己当 ccm 起、`--detach`）。探不出 ⇒ 照做，起的那一步再说。
-fn no_tmux() -> Result<(), (&'static str, String)> {
+fn no_tmux() -> Result<(), crate::common::said::Said> {
     match crate::control::terminals::tmux_here() {
         Some(false) => Err((
             crate::NO_TMUX,
@@ -172,7 +172,7 @@ fn launch(
     req: &SetLaunchReq,
     files: super::launch_account_face::Files,
     own: &crate::platform::fs::Own,
-) -> Result<SetLaunched, (&'static str, String)> {
+) -> Result<SetLaunched, crate::common::said::Said> {
     use crate::history::groups::{self as groups, GroupsWriteReq, GroupsWritten, HereGroup};
     no_tmux()?;
     let store = crate::assets::aliases::load(files).map_err(|m| ("refused", m))?;

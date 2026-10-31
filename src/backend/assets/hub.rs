@@ -52,7 +52,7 @@ use crate::dial::remote_ask::{Remote, Table};
 use crate::wire::typed::{Command, Here};
 
 /// 枢纽要问的一台：`None` = 这台自己。
-fn machine_of(args: &Value, k: &str) -> Result<Option<String>, (String, String)> {
+fn machine_of(args: &Value, k: &str) -> Result<Option<String>, crate::common::said::Said> {
     match args.get(k) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) if !s.is_empty() => Ok(Some(s.clone())),
@@ -69,7 +69,7 @@ fn bad(msg: &str) -> (String, String) {
     )
 }
 
-fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, (String, String)> {
+fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, crate::common::said::Said> {
     args.get(k)
         .and_then(Value::as_str)
         .ok_or_else(|| bad(&format!("missing `{k}`")))
@@ -83,7 +83,7 @@ async fn ask_one<C: Command>(
     req: &C::Req,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<C::Reply, (String, String)>
+) -> Result<C::Reply, crate::common::said::Said>
 where
     C::Req: serde::Serialize,
     C::Reply: serde::de::DeserializeOwned,
@@ -114,7 +114,7 @@ fn machine_name(m: Option<&str>) -> String {
 
 /// `scope` 的两头：只认形状。项目目录是不是绝对路径由它所属的那台判（来源 / 被写那台的内层命令各判各的），
 /// 枢纽按自己这台的写法判会把别台的路径错拒（Windows 上的枢纽不认 `/home/…`）。
-fn scope_of(args: &Value) -> Result<(ExtLoc, ExtLoc), (String, String)> {
+fn scope_of(args: &Value) -> Result<(ExtLoc, ExtLoc), crate::common::said::Said> {
     let s = args.get("scope");
     let own = |e: crate::common::said::Said| (e.code_or_fallback().to_string(), e.said);
     Ok((
@@ -154,7 +154,7 @@ fn refused_pair(kind: ExtKind) -> (String, String) {
     (f.code_or_fallback().to_string(), f.said)
 }
 
-fn ask_of(args: &Value) -> Result<Ask<'_>, (String, String)> {
+fn ask_of(args: &Value) -> Result<Ask<'_>, crate::common::said::Said> {
     let own = |e: crate::common::said::Said| (e.code_or_fallback().to_string(), e.said);
     let kind = super::ext::kind_from_arg(args).map_err(own)?;
     let name = str_arg(args, "name")?;
@@ -165,10 +165,10 @@ fn ask_of(args: &Value) -> Result<Ask<'_>, (String, String)> {
     let (from, to) = (machine_of(args, "from")?, machine_of(args, "to")?);
     let (at_from, at_to) = scope_of(args)?;
     if let Some(why) = builtin_refused(kind, name, &at_to) {
-        return Err(("refused".to_string(), why));
+        return Err(crate::common::said::Said::new("refused".to_string(), why));
     }
     if !is_builtin(kind, name) && same_place(from.as_deref(), &at_from, to.as_deref(), &at_to) {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "refused".to_string(),
             copy_text("beExt.card.sameMachine", &[]),
         ));
@@ -229,7 +229,7 @@ async fn mcp_look(
     a: &Ask<'_>,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<(McpSource, McpPreview), (String, String)> {
+) -> Result<(McpSource, McpPreview), crate::common::said::Said> {
     let src = ask_one::<McpSourceCmd>(
         here,
         a.from.as_deref(),
@@ -339,7 +339,7 @@ async fn builtin_look(
     a: &Ask<'_>,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<CcBusState, (String, String)> {
+) -> Result<CcBusState, crate::common::said::Said> {
     ask_one::<CcBusStateCmd>(here, a.to.as_deref(), &NoReq {}, table, remote).await
 }
 
@@ -373,7 +373,7 @@ pub(crate) async fn ext_preview(
     args: &Value,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<ExtCard, (String, String)> {
+) -> Result<ExtCard, crate::common::said::Said> {
     let a = ask_of(args)?;
     if is_builtin(a.kind, a.name) {
         let st = builtin_look(here, &a, table, remote).await?;
@@ -405,7 +405,7 @@ pub(crate) async fn ext_apply(
     fill: Option<&Fill>,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<ExtDone, (String, String)> {
+) -> Result<ExtDone, crate::common::said::Said> {
     let a = ask_of(args)?;
     let done = match a.kind {
         _ if is_builtin(a.kind, a.name) => {
@@ -437,7 +437,7 @@ pub(crate) async fn ext_apply(
                 return Err(changed_since());
             }
             if let Some(why) = card.stop {
-                return Err(("refused".to_string(), why));
+                return Err(crate::common::said::Said::new("refused".to_string(), why));
             }
             let overwrite: Vec<String> = plan
                 .rows
@@ -537,7 +537,7 @@ pub(crate) fn plan_many(
     name: &str,
     to: &[Option<String>],
     want: Option<ExtLoc>,
-) -> Result<Plan, (String, String)> {
+) -> Result<Plan, crate::common::said::Said> {
     if to.is_empty() {
         return Err(bad("`to` must list at least one machine"));
     }
@@ -675,7 +675,7 @@ fn ask_for(kind: ExtKind, name: &str, p: &Pick, b: &ExtBring, place: &ExtLoc) ->
 }
 
 /// 勾上的几台：空的不行、键不许是空串（`null` = 这台自己）。
-fn picked(to: &[Option<String>]) -> Result<(), (String, String)> {
+fn picked(to: &[Option<String>]) -> Result<(), crate::common::said::Said> {
     if to.iter().any(|t| t.as_deref() == Some("")) {
         return Err(bad("`to` entries must be a machine key or null"));
     }
@@ -692,7 +692,7 @@ pub(crate) type CurrentFn<'a> = &'a (dyn Fn(bool) -> Result<(super::asset_catalo
          + Sync);
 
 /// 那张表现拼一次（`ext-list` 同一份目录 ＋ 可达表）；目录那一份由命令表那扇门递进来（同 `ext-list`）。
-fn current_list(table: &Table, current: CurrentFn<'_>) -> Result<ExtList, (String, String)> {
+fn current_list(table: &Table, current: CurrentFn<'_>) -> Result<ExtList, crate::common::said::Said> {
     let (cat, _) = current(false).map_err(|f| (f.code_or_fallback().to_string(), f.into_note()))?;
     Ok(super::ext::table(&cat, &super::ext::reach_of(table)))
 }
@@ -704,7 +704,7 @@ pub(crate) async fn ext_preview_many(
     table: &Table,
     remote: &dyn Remote,
     current: CurrentFn<'_>,
-) -> Result<HubPreview, (String, String)> {
+) -> Result<HubPreview, crate::common::said::Said> {
     let (kind, name) = (req.kind, req.name.as_str());
     picked(&req.to)?;
     let plan = plan_many(
@@ -718,11 +718,11 @@ pub(crate) async fn ext_preview_many(
     let mut cards: Vec<(String, ExtCard)> = Vec::new();
     for p in &plan.picks {
         let got = match (&p.bring, &plan.place) {
-            (None, _) => Err((
+            (None, _) => Err(crate::common::said::Said::new(
                 "refused".to_string(),
                 copy_text("beExt.many.noBring", &[("machine", &p.name)]),
             )),
-            (Some(_), None) => Err(("refused".to_string(), copy_text("beExt.many.noPlace", &[]))),
+            (Some(_), None) => Err(crate::common::said::Said::new("refused".to_string(), copy_text("beExt.many.noPlace", &[]))),
             (Some(b), Some(place)) => {
                 ext_preview(here, &ask_for(kind, name, p, b, place), table, remote).await
             }
@@ -787,7 +787,7 @@ pub(crate) async fn ext_apply_many(
     table: &Table,
     remote: &dyn Remote,
     current: CurrentFn<'_>,
-) -> Result<HubApplied, (String, String)> {
+) -> Result<HubApplied, crate::common::said::Said> {
     let (kind, name, want) = (req.kind, req.name.as_str(), req.place.clone());
     picked(&req.to)?;
     let plan = plan_many(
@@ -816,7 +816,7 @@ pub(crate) async fn ext_apply_many(
                     }
                 }
             }
-            (None, _) => Err((
+            (None, _) => Err(crate::common::said::Said::new(
                 "refused".to_string(),
                 copy_text("beExt.many.noBring", &[("machine", &p.name)]),
             )),

@@ -1,7 +1,7 @@
 use super::*;
 
 // 回包写成线上那一份、入参经 typed 那一处收（同分派）：判据照线上形比（盖住 `super::*` 里的同名口）。
-fn answer_print(args: &serde_json::Value) -> Result<serde_json::Value, (&'static str, String)> {
+fn answer_print(args: &serde_json::Value) -> Result<serde_json::Value, crate::common::said::Said> {
     let req: CcmPrintReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
     super::answer_print(&req, crate::faces::launch_account_face::list_at)
         .map(|r| serde_json::to_value(r).unwrap())

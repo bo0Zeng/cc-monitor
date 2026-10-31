@@ -191,20 +191,20 @@ pub(crate) fn commit(own: &crate::platform::Own, sid: &str, token: &str) -> Resu
     let total = rows.len() as u64;
     let cur = s.pos.get(sid).copied().unwrap_or(0);
     if cur != from {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "stale",
             format!("token says from={from}, the position is already {cur}"),
         ));
     }
     let now = rows.get(to as usize - 1).map(|l| anchor(l));
     if now != Some(want) {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "changed",
             format!("line {to} is not the one the token saw (inbox has {total} lines)"),
         ));
     }
     if to <= cur && cur <= total {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_token",
             format!("to={to} is not past from={cur} and the inbox ({total} lines) was not cut"),
         ));

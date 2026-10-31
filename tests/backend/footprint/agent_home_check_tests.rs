@@ -7,14 +7,14 @@ use serde_json::json;
 fn answer_check_with(
     a: &serde_json::Value,
     home: Option<std::path::PathBuf>,
-) -> Result<serde_json::Value, (String, String)> {
+) -> Result<serde_json::Value, crate::common::said::Said> {
     let req: AgentHomeCheckReq =
         crate::wire::typed::take(a).map_err(|f| (f.code_or_fallback().to_string(), f.said))?;
     super::answer_check_with(&req, home)
         .map(|x| serde_json::to_value(x).unwrap())
         .map_err(|(c, m)| (c.to_string(), m))
 }
-fn answer_check(a: &serde_json::Value) -> Result<serde_json::Value, (String, String)> {
+fn answer_check(a: &serde_json::Value) -> Result<serde_json::Value, crate::common::said::Said> {
     answer_check_with(a, crate::platform::paths::home_dir())
 }
 

@@ -559,12 +559,12 @@ impl crate::wire::typed::Command for CcmPrint {
 pub(crate) fn answer_print(
     req: &CcmPrintReq,
     accounts: AccountsScan,
-) -> Result<CcmLine, (&'static str, String)> {
+) -> Result<CcmLine, crate::common::said::Said> {
     // 前两种拒是**契约错**（调用方是 monitor，用户手敲不出来）⇒ 英文诊断经 `contract::malformed`；
     // 「不起会话的那一形」是用户清单里真能出现的（手写进别名文件的 `--help`）⇒ 进表说人话。
     let words = &req.args;
     if words.len() > PRINT_MAX_WORDS {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "too many args: {} (max {PRINT_MAX_WORDS})",
@@ -573,7 +573,7 @@ pub(crate) fn answer_print(
         ));
     }
     if let Some(w) = words.iter().find(|w| w.len() > PRINT_MAX_WORD_BYTES) {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "an arg is too long: {} bytes (max {PRINT_MAX_WORD_BYTES})",
@@ -587,12 +587,12 @@ pub(crate) fn answer_print(
     }) {
         Ok((Parsed::Opts(o), _)) => o,
         Ok((Parsed::Early(_), _)) => {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "refused",
                 copy_core::copy_text("beCcm.preview.noSession", &[]),
             ))
         }
-        Err(Die(msg)) => return Err(("refused", msg)),
+        Err(Die(msg)) => return Err(crate::common::said::Said::new("refused", msg)),
     };
     let plan = plan_of(&o, Env::for_preview(), false, accounts)
         .map_err(|Die(msg)| ("refused", msg))?

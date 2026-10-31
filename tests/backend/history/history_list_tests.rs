@@ -114,13 +114,13 @@ fn with_own_annotations(listing: &mut Value, loaded: &crate::history::history_an
 }
 
 /// 入参照帧面那一处解（typed：形状不对 ⇒ `bad_args`）再核值域，盖住 `super::*` 里的同名口。
-fn parse_ask(args: &Value) -> Result<Ask, (&'static str, String)> {
+fn parse_ask(args: &Value) -> Result<Ask, crate::common::said::Said> {
     let req: HistoryListReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
     super::parse_ask(&req)
 }
 
 /// 帧面那一臂（入参照 typed 那一处解、回包过一遍真序列化器），盖住 `super::*` 里的同名口。
-async fn answer_wire(args: Value) -> Result<Value, (&'static str, String)> {
+async fn answer_wire(args: Value) -> Result<Value, crate::common::said::Said> {
     let req: HistoryListReq = crate::wire::typed::take(&args).map_err(|f| ("bad_args", f.said))?;
     super::answer(req, Default::default(), None)
         .await
@@ -128,7 +128,7 @@ async fn answer_wire(args: Value) -> Result<Value, (&'static str, String)> {
 }
 
 /// 帧面那一臂的整份那一答摊平（[`flat`]）。
-async fn answer_flat(args: Value) -> Result<Value, (&'static str, String)> {
+async fn answer_flat(args: Value) -> Result<Value, crate::common::said::Said> {
     answer_wire(args).await.map(|v| flat(&v))
 }
 

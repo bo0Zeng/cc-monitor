@@ -188,7 +188,7 @@ fn hooks_in(p: &Path) -> Option<bool> {
 fn client_of(c: &FootprintClient) -> Result<Client, FootprintFail> {
     let home = PathBuf::from(&c.home);
     if !home.is_absolute() {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`client.home`: {:?} is not an absolute path",

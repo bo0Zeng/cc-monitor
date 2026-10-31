@@ -58,7 +58,7 @@ fn check_sid(sid: &str) -> Result<(), Refusal> {
         || sid.contains('\\')
         || sid.contains('\0');
     if bad {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!("`sid` is not a session id: {sid:?}")),
         ));

@@ -64,7 +64,7 @@ pub fn note_backend_log(path: std::path::PathBuf) {
 pub(crate) fn log_tail(
     path: Option<&std::path::Path>,
     max: u64,
-) -> Result<LogTail, (&'static str, String)> {
+) -> Result<LogTail, crate::common::said::Said> {
     use std::io::{Read, Seek, SeekFrom};
     let Some(path) = path else {
         return Ok(LogTail {
@@ -568,7 +568,7 @@ pub(crate) fn interrupts_at(
 pub(crate) fn record_face(
     home: &std::path::Path,
     path: &str,
-) -> Result<(std::path::PathBuf, crate::agents::RecordFace), (&'static str, String)> {
+) -> Result<(std::path::PathBuf, crate::agents::RecordFace), crate::common::said::Said> {
     let target =
         crate::observe::query::locate::session_path_at(home, path).map_err(|e| ("refused", e))?;
     let face = crate::agents::record_face_of(&target).ok_or_else(|| {

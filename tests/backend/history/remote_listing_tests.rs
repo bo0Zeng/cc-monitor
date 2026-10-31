@@ -147,7 +147,7 @@ async fn ask(
     copies: &Copies,
     table: &Table,
     fresh: bool,
-) -> Result<Listing, (&'static str, String)> {
+) -> Result<Listing, crate::common::said::Said> {
     listing_with(
         "devbox",
         fresh,

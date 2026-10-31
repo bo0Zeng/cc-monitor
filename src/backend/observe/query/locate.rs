@@ -17,7 +17,7 @@ pub(crate) fn run_source(
     parent: &str,
     run: Option<&str>,
     tool: Option<&str>,
-) -> Result<(std::path::PathBuf, String), (&'static str, String)> {
+) -> Result<(std::path::PathBuf, String), crate::common::said::Said> {
     let parent_path = validate_session_path(agent_home, parent).map_err(|e| ("path_refused", e))?;
     let faces = crate::agents::record_face_of(&parent_path)
         .map(|f| crate::agents::RunFaces::of(&f))
@@ -27,7 +27,7 @@ pub(crate) fn run_source(
         (_, Some(t)) if !t.is_empty() => run_of_tool(&parent_path, &faces, t)
             .ok_or_else(|| ("not_found", copy_text("rsRun.load.notLinked", &[])))?,
         _ => {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "bad_args",
                 crate::common::contract::malformed("history-run needs run or tool"),
             ))
@@ -38,7 +38,7 @@ pub(crate) fn run_source(
             return Ok((c, run));
         }
     }
-    Err(("not_found", copy_text("rsRun.load.notFound", &[])))
+    Err(crate::common::said::Said::new("not_found", copy_text("rsRun.load.notFound", &[])))
 }
 
 /// 「这次工具调用派出的是哪个子运行」：子运行记录那一侧落了盘的对上 ‖ 父记录里带了子运行的那一条派出链接。

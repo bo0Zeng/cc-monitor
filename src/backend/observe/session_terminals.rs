@@ -54,7 +54,7 @@ pub(crate) struct SidReq {
 pub(crate) fn answer_at(
     home: &std::path::Path,
     req: &SidReq,
-) -> Result<Showing, (&'static str, String)> {
+) -> Result<Showing, crate::common::said::Said> {
     let sid = req.sid.as_str();
     let pid = crate::observe::watcher::running_sessions(home)
         .into_iter()
@@ -134,7 +134,7 @@ fn env(pid: u32, key: &str) -> Result<Option<String>, ()> {
 }
 
 /// `pid`（那个 claude 进程）此刻由谁在显示。tmux 起不来 / 报错 ⇒ `failed`（带它的原话）。
-pub(crate) fn shown_by(pid: u32) -> Result<Shown, (&'static str, String)> {
+pub(crate) fn shown_by(pid: u32) -> Result<Shown, crate::common::said::Said> {
     let Ok(tmux) = env(pid, TMUX_ENV) else {
         return Ok(Shown::Unreadable);
     };
@@ -175,7 +175,7 @@ pub(crate) enum Here {
 
 /// `pid`（本机那个 claude 进程）此刻由哪个终端进程显示：在 tmux 里 ⇒ 连着它的 tmux 客户端（一个都没有 ⇒ `Detached`）；
 /// 不在 tmux 里、或读不出 tmux 那几格（Windows 读不到别的进程的环境）⇒ 它自己（它挂在那个终端上）。
-pub(crate) fn here_by(pid: u32) -> Result<Here, (&'static str, String)> {
+pub(crate) fn here_by(pid: u32) -> Result<Here, crate::common::said::Said> {
     let in_tmux = env(pid, TMUX_ENV);
     if let Ok(Some(tmux)) = &in_tmux {
         match tmux_clients(pid, tmux)? {
@@ -203,7 +203,7 @@ enum Clients {
 }
 
 /// `pid` 的 `TMUX`（`tmux`）⇒ 那个 socket 上连着它所在会话的客户端。tmux 起不来 / 报错 ⇒ `failed`。
-fn tmux_clients(pid: u32, tmux: &str) -> Result<Clients, (&'static str, String)> {
+fn tmux_clients(pid: u32, tmux: &str) -> Result<Clients, crate::common::said::Said> {
     let socket = tmux.split(',').next().unwrap_or_default();
     let Ok(Some(pane)) = env(pid, TMUX_PANE_ENV) else {
         return Ok(Clients::Unreadable);
@@ -278,7 +278,7 @@ const LIST_CLIENTS_WITHIN: Deadline = Deadline::secs(5);
 pub(crate) fn list_clients(
     socket: &str,
     pane: &str,
-) -> Result<Vec<(u32, u64)>, (&'static str, String)> {
+) -> Result<Vec<(u32, u64)>, crate::common::said::Said> {
     let out = crate::host::tmux::child(None)
         .arg(crate::common::tmux_utf8::UTF8_CLIENT_FLAG)
         .args(["-S", socket, "list-clients", "-t", pane, "-F"])
@@ -287,7 +287,7 @@ pub(crate) fn list_clients(
         .run(LIST_CLIENTS_WITHIN)
         .map_err(|e| e.into_cmd_err("failed", |e| format!("tmux: {e}")))?;
     if !out.status.success() {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "failed",
             format!(
                 "tmux list-clients: {}",

@@ -304,7 +304,7 @@ pub(crate) async fn answer(
     req: HistoryBrowseReq,
     tz: crate::Tz,
     until: Option<crate::platform::child::Until>,
-) -> Result<Patch<HistoryBrowseHead, HistoryLine>, (&'static str, String)> {
+) -> Result<Patch<HistoryBrowseHead, HistoryLine>, crate::common::said::Said> {
     let ask = filters(req.query.as_deref(), req.sort, req.within_days, req.hidden)?;
     if !(1..=WINDOW_MAX).contains(&req.range.limit) {
         return Err(bad("`range.limit` must be 1..=2000"));

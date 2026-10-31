@@ -537,7 +537,7 @@ fn find_wire(
     cmd: &str,
     args: &serde_json::Value,
     tz: &crate::Tz,
-) -> Result<serde_json::Value, (String, String)> {
+) -> Result<serde_json::Value, crate::common::said::Said> {
     assert_eq!(cmd, "history-find");
     let req =
         crate::wire::typed::take(args).map_err(|e| (e.code_or_fallback().to_string(), e.said))?;

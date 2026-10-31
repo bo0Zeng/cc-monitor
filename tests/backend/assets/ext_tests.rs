@@ -420,7 +420,7 @@ impl M {
         .0
     }
     /// 这台跑一条内层命令（与生产那几条同一个本体，只是根换成这台的临时家目录）。
-    fn inner(&self, cmd: &str, args: &Value) -> Result<Value, (String, String)> {
+    fn inner(&self, cmd: &str, args: &Value) -> Result<Value, crate::common::said::Said> {
         let skills = self.env.skills.clone().unwrap();
         let ledger = self.env.ledger.clone().unwrap();
         let root = match args.get("project").and_then(Value::as_str) {
@@ -491,7 +491,7 @@ impl Here for HereM {
     fn viewer_tz(&self) -> crate::Tz {
         Default::default()
     }
-    fn ask(&self, cmd: &str, args: Value) -> Result<Value, (String, String)> {
+    fn ask(&self, cmd: &str, args: Value) -> Result<Value, crate::common::said::Said> {
         self.0.inner(cmd, &args)
     }
 }

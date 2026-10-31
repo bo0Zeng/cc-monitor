@@ -73,9 +73,9 @@ fn limit_of(limit: Option<u64>) -> usize {
 }
 
 /// 入参里的一个路径 ⇒ `PathBuf`。形状在解入参那一步就判过了（字符串或 `{"b16": …}`）；这里只拒空的。
-fn path_of(p: &WirePath, which: &str) -> Result<std::path::PathBuf, (&'static str, String)> {
+fn path_of(p: &WirePath, which: &str) -> Result<std::path::PathBuf, crate::common::said::Said> {
     if p.0.is_empty() {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_path",
             crate::common::contract::malformed(&format!("`{which}` is empty")),
         ));
@@ -88,7 +88,7 @@ fn path_of(p: &WirePath, which: &str) -> Result<std::path::PathBuf, (&'static st
 /// ⚠ **空数组是合法的**，语义是「用户现在什么都没在看」⇒ 名单清空。
 /// 「少了 `dirs`」（解入参那一步回 `bad_args`）与「`dirs` 是空的」**是两件事**：前者是调用方漏了参数，
 /// 后者是它真的要卸掉全部 —— 静默地把前者当后者办，就是悄悄把 watch 全拆了。
-fn dirs_of(dirs: &[WirePath]) -> Result<Vec<std::path::PathBuf>, (&'static str, String)> {
+fn dirs_of(dirs: &[WirePath]) -> Result<Vec<std::path::PathBuf>, crate::common::said::Said> {
     dirs.iter()
         .enumerate()
         .map(|(i, d)| path_of(d, &format!("dirs[{i}]")))
@@ -925,11 +925,11 @@ fn home_var() -> Option<std::ffi::OsString> {
 /// 非空、至多 [`grep::NEEDLE_MAX_BYTES`] 字节；`limit` 缺省 [`grep::DEFAULT_LIMIT`]、至多 [`grep::MAX_LIMIT`]。
 fn grep_args(
     req: &wire::GrepReq,
-) -> Result<(std::path::PathBuf, grep::GrepArgs), (&'static str, String)> {
+) -> Result<(std::path::PathBuf, grep::GrepArgs), crate::common::said::Said> {
     let path = path_of(&req.path, "path")?;
     let needle = req.needle.0.clone();
     if needle.is_empty() || needle.len() > grep::NEEDLE_MAX_BYTES {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`needle` must be 1..={} bytes",

@@ -48,20 +48,6 @@ impl From<(String, Option<String>)> for Said {
     }
 }
 
-impl From<(&'static str, String)> for Said {
-    /// 码 ＋ 那一句（码在前）。
-    fn from((code, said): (&'static str, String)) -> Said {
-        Said::new(code, said)
-    }
-}
-
-impl From<(String, String)> for Said {
-    /// 码 ＋ 那一句（码在前）。
-    fn from((code, said): (String, String)) -> Said {
-        Said::new(&code, said)
-    }
-}
-
 impl From<&str> for Said {
     fn from(said: &str) -> Said {
         Said::from(said.to_string())

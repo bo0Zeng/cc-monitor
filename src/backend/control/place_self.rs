@@ -73,7 +73,7 @@ fn staged_self<'a>(own: &Own, exe: &'a Path) -> Result<(OwnPath, &'a str), Faile
         == Ro::canonicalize(staging.as_path()).ok();
     match (inside, exe.file_name().and_then(|n| n.to_str())) {
         (true, Some(name)) => Ok((staging, name)),
-        _ => Err((
+        _ => Err(crate::common::said::Said::new(
             "outside_staging",
             copy_text(
                 "bePlaceSelf.place.outsideStaging",
@@ -126,7 +126,7 @@ pub(crate) fn place(own: &Own, exe: &Path, mine: &str) -> Result<(), Failed> {
         if let Ok(p) = staging.join(name) {
             let _ = own.delete_file(&p);
         }
-        return Err((
+        return Err(crate::common::said::Said::new(
             "not_self",
             copy_text(
                 "bePlaceSelf.place.notSelf",

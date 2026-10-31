@@ -355,7 +355,7 @@ pub(crate) fn apply(
     for (i, op) in plan.ops.iter().enumerate() {
         let m = text.as_deref().map(|t| (t, manifest_before));
         if let Err(e) = run.op(op, m) {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "io_failed",
                 copy_text(
                     "beAcctExec.apply.stopped",

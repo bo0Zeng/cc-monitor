@@ -7,13 +7,13 @@ use std::path::PathBuf;
 
 // 五口经帧面那一跳：入参按类型收（同 `typed::take`），回包成 `Value`（同 `spec::wire`）——下面的判据照线上那一形读。
 // 本地这几个同名函数盖住 `super::*` 里那几个。
-type Wired = Result<Value, (&'static str, String)>;
+type Wired = Result<Value, crate::common::said::Said>;
 
-fn taken<R: serde::de::DeserializeOwned>(args: &Value) -> Result<R, (&'static str, String)> {
+fn taken<R: serde::de::DeserializeOwned>(args: &Value) -> Result<R, crate::common::said::Said> {
     crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))
 }
 
-fn wired<T: serde::Serialize>(got: Result<T, (&'static str, String)>) -> Wired {
+fn wired<T: serde::Serialize>(got: Result<T, crate::common::said::Said>) -> Wired {
     got.map(|v| serde_json::to_value(v).unwrap())
 }
 
@@ -321,7 +321,7 @@ fn bases_lists_only_what_cannot_loop_and_greys_itself() {
     assert_eq!(pick, [("cc", true), ("cct", false), ("pcc", true)]);
 }
 
-fn write(t: &Tmp, changes: Value) -> Result<Value, (&'static str, String)> {
+fn write(t: &Tmp, changes: Value) -> Result<Value, crate::common::said::Said> {
     let rev = read(t)["rev"].clone();
     answer_write(&t.door(), &json!({"changes": changes, "ifRev": rev}))
 }
@@ -835,7 +835,7 @@ fn every_profile_says_the_line_that_starts_it_in_a_terminal_here() {
 /// （ccm 选项进各格、`--` 左边交 agent）；目录 · 会话名照给的填；别的 ⇒ 拒、那一句。
 #[test]
 fn a_free_command_line_folds_into_the_alias_form_on_the_backend() {
-    let form = |v: Value| -> Result<Value, (&'static str, String)> {
+    let form = |v: Value| -> Result<Value, crate::common::said::Said> {
         wired(super::form_of_line(&taken::<ProfilesFromLineReq>(&v)?))
     };
     let plain = form(

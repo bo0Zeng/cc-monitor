@@ -8,7 +8,7 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 /// 本族的应答：`data` 或 `(code, message)`（判据这一层按登记表那一层的做法走一遍之后的样子）。
-type Answer = Result<Value, (&'static str, String)>;
+type Answer = Result<Value, crate::common::said::Said>;
 
 /// 读一份会话记录的那几条换成了 typed（`faces/history_face.rs`）：判据照旧按命令名问，这里照登记表那一层的做法走一遍
 ///   （入参经 typed 那一处解、回包过一遍真序列化器、失败落成码 ＋ 那一句），盖住 `super::*` 里的同名口；别的命令照旧交只读宿主。
@@ -80,7 +80,7 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
                 },
             ))
         }),
-        other => Err((
+        other => Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!("this face has no command `{other}`")),
         )),
@@ -934,7 +934,7 @@ fn history_record_answers_present_absent_and_refuses_a_bad_sid() {
     );
     for bad in ["", "../x", "a/b", "a b"] {
         match ask(bad) {
-            Err(("bad_args", _)) => {}
+            Err(crate::common::said::Said::new("bad_args", _)) => {}
             other => panic!("坏 sid {bad:?} 应当 bad_args，实得 {other:?}"),
         }
     }
@@ -946,7 +946,7 @@ fn history_record_answers_present_absent_and_refuses_a_bad_sid() {
             &serde_json::json!({}),
             &Default::default()
         ),
-        Err(("bad_args", _))
+        Err(crate::common::said::Said::new("bad_args", _))
     ));
     std::fs::remove_dir_all(&home).ok();
 }
@@ -989,7 +989,7 @@ fn gp1_history_record_looks_in_the_account_root_it_is_given() {
         serde_json::json!(7),
     ] {
         match ask(serde_json::json!({ "sid": "cccc-3333", "configDir": bad })) {
-            Err(("bad_args", _)) => {}
+            Err(crate::common::said::Said::new("bad_args", _)) => {}
             other => panic!("坏 configDir {bad} 应当 bad_args，实得 {other:?}"),
         }
     }
@@ -1103,7 +1103,7 @@ fn lines_by_number_refuse_an_oversized_row_but_can_count_past_it() {
         1 << 20,
         cap,
     ) {
-        Err(("oversized_line", _)) => {}
+        Err(crate::common::said::Said::new("oversized_line", _)) => {}
         other => panic!("超长行被交出去了：{other:?}"),
     }
     let after = crate::observe::query::body::read_lines_from(
@@ -2166,7 +2166,7 @@ fn the_record_reads_refuse_fields_their_request_types_do_not_have() {
         ("sessions-needs", serde_json::json!({"machine": "m"})),
     ] {
         match answer_at(&home, cmd, &args, &Default::default()) {
-            Err(("bad_args", _)) => {}
+            Err(crate::common::said::Said::new("bad_args", _)) => {}
             other => panic!("{cmd} {args}：该回 bad_args，回的是 {other:?}"),
         }
     }

@@ -64,11 +64,11 @@ fn data_rides_beside_the_code() {
 }
 
 #[test]
-fn a_code_and_sentence_pair_reads_code_first() {
-    let s = Said::from(("bad_args", "x".to_string()));
+fn new_names_the_code_before_the_sentence() {
+    let s = Said::new("bad_args", "x".to_string());
     assert_eq!(s.code.as_deref(), Some("bad_args"));
     assert_eq!(s.said, "x");
-    let s = Said::from(("io_failed".to_string(), "y".to_string()));
+    let s = Said::new("io_failed", "y".to_string());
     assert_eq!(s.code.as_deref(), Some("io_failed"));
     assert_eq!(s.said, "y");
 }

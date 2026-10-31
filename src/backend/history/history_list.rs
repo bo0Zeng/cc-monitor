@@ -187,7 +187,7 @@ fn group_key(agent: &str, project_path: &str) -> String {
 
 /// 这台的平铺清单（并上这台的注解）：记录树每个目录 ＋ 合成历史各家；判活 ＝ 这台 pidfile；上次的号 ＝ 这台的起会话账号记录。
 /// `last` 读不懂 ⇒ 那一格都不带（界面不说「上次用的」，照样能恢复）。
-pub(crate) fn machine_listing() -> Result<Listing, (&'static str, String)> {
+pub(crate) fn machine_listing() -> Result<Listing, crate::common::said::Said> {
     machine_listing_for(None, crate::history::list_node::node())
 }
 
@@ -197,7 +197,7 @@ pub(crate) fn machine_listing() -> Result<Listing, (&'static str, String)> {
 fn machine_listing_for(
     only: Option<&str>,
     node: &crate::history::list_node::ListNode,
-) -> Result<Listing, (&'static str, String)> {
+) -> Result<Listing, crate::common::said::Said> {
     // 读之前放开清单的节点：此后再变的会话再响一次（这一份里没赶上的由下一帧叫回来重问）。
     node.asked();
     let home = crate::history::listing::agent_home();
@@ -369,7 +369,7 @@ fn bad(what: &str) -> (&'static str, String) {
 }
 
 /// 入参 ⇒ [`Ask`]：值域不对 ⇒ `bad_args`（先于任何 IO）。
-pub(crate) fn parse_ask(req: &HistoryListReq) -> Result<Ask, (&'static str, String)> {
+pub(crate) fn parse_ask(req: &HistoryListReq) -> Result<Ask, crate::common::said::Said> {
     // 会话 ID 的形状与 `history-record` 同一条（`[A-Za-z0-9-]`，1..=64）。
     let sid = match req.sid.as_deref() {
         None => None,
@@ -404,7 +404,7 @@ pub(crate) fn filters(
     sort: Option<Sort>,
     within_days: Option<u64>,
     hidden: Option<bool>,
-) -> Result<Ask, (&'static str, String)> {
+) -> Result<Ask, crate::common::said::Said> {
     let query = query
         .map(|s| s.trim().to_lowercase())
         .filter(|s| !s.is_empty());
@@ -926,8 +926,8 @@ fn now_ms() -> i64 {
 }
 
 pub(crate) async fn blocking<T: Send + 'static>(
-    f: impl FnOnce() -> Result<T, (&'static str, String)> + Send + 'static,
-) -> Result<T, (&'static str, String)> {
+    f: impl FnOnce() -> Result<T, crate::common::said::Said> + Send + 'static,
+) -> Result<T, crate::common::said::Said> {
     tokio::task::spawn_blocking(f).await.map_err(|e| {
         (
             "failed",
@@ -944,7 +944,7 @@ pub(crate) async fn answer(
     req: HistoryListReq,
     tz: crate::Tz,
     until: Option<crate::platform::child::Until>,
-) -> Result<Patch<HistoryHead, HistoryRow>, (&'static str, String)> {
+) -> Result<Patch<HistoryHead, HistoryRow>, crate::common::said::Said> {
     let ask = parse_ask(&req)?;
     let held = req.held;
     let origin = match req.origin {

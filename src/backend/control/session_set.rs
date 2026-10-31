@@ -294,7 +294,7 @@ pub(crate) fn answer(
     live: &[Live],
     home: Option<&std::path::Path>,
     is_dir: &dyn Fn(&str) -> bool,
-) -> Result<SetPlan, (&'static str, String)> {
+) -> Result<SetPlan, crate::common::said::Said> {
     let rows = match (&req.name, &req.rows) {
         (Some(name), None) => {
             let s = book.find_set(name).ok_or_else(|| {
@@ -304,7 +304,7 @@ pub(crate) fn answer(
                 )
             })?;
             if let Some(p) = s.problems.first() {
-                return Err((
+                return Err(crate::common::said::Said::new(
                     "refused",
                     copy_text(
                         "beSessionSet.set.broken",
@@ -316,7 +316,7 @@ pub(crate) fn answer(
         }
         (None, Some(rows)) => rows.clone(),
         _ => {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "bad_args",
                 crate::common::contract::malformed(
                     "`set-plan` takes exactly one of `name` and `rows`",

@@ -416,12 +416,12 @@ impl crate::wire::typed::Handle for SessionOpenFacts {
 pub(crate) fn facts(
     req: &OpenFactsReq,
     tz: &crate::Tz,
-) -> Result<OpenFacts, (&'static str, String)> {
+) -> Result<OpenFacts, crate::common::said::Said> {
     let fork_of = match req.fork_of.as_deref() {
         None => None,
         Some(s) if shell_quote_core::session_id_ok(s) => Some(s),
         Some(_) => {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "bad_args",
                 crate::common::contract::malformed("`forkOf` must be a session id"),
             ))
@@ -431,7 +431,7 @@ pub(crate) fn facts(
         None => None,
         Some(s) if shell_quote_core::session_id_ok(s) && fork_of.is_some() => Some(s),
         Some(_) => {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "bad_args",
                 crate::common::contract::malformed(
                     "`at` must be a message id, given with `forkOf`",

@@ -9,15 +9,15 @@ use std::sync::Mutex;
 async fn answer_push(
     args: &Value,
     reach: &dyn Reach,
-    read_pub: &(dyn Fn(&str) -> Result<String, (&'static str, String)> + Send + Sync),
-) -> Result<Value, (&'static str, String)> {
+    read_pub: &(dyn Fn(&str) -> Result<String, crate::common::said::Said> + Send + Sync),
+) -> Result<Value, crate::common::said::Said> {
     let req: PubkeyPushReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
     super::answer_push(&req, reach, read_pub)
         .await
         .map(|r| serde_json::to_value(r).unwrap())
 }
 
-fn answer_add(d: &dyn Door, args: &Value) -> Result<Value, (&'static str, String)> {
+fn answer_add(d: &dyn Door, args: &Value) -> Result<Value, crate::common::said::Said> {
     let req: KeyAddReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
     super::answer_add(d, &req).map(|r| serde_json::to_value(r).unwrap())
 }
