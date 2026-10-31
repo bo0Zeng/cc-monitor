@@ -182,7 +182,7 @@ fn every_per_account_file_in_an_account_dir_is_on_the_list_and_never_called_a_mi
     got.sort_unstable();
     assert_eq!(got, want);
 
-    // ② 共享库里也有一份时，核对不说「应当是共享链接」，也不提示别的；正控：多一份不在清单上的自己的文件 ⇒ 恰好那一条致命。
+    // ② 共享库里也有一份时，核对不说「应当是共享链接」，也不提示别的；正控：一项已知共享的在号里是自己的实体 ⇒ 恰好那一条致命。
     let r = verify(&shaped(&[]), &[]);
     let loud: Vec<&VerifyCheck> = r
         .checks
@@ -190,9 +190,15 @@ fn every_per_account_file_in_an_account_dir_is_on_the_list_and_never_called_a_mi
         .filter(|c| matches!(c.level, CheckLevel::Fail | CheckLevel::Warn))
         .collect();
     assert!(loud.is_empty(), "{loud:?}");
-    let r = verify(&shaped(&["notes.txt"]), &[]);
+    let mut own = shaped(&[]);
+    own.dirs
+        .get_mut("/h/.cc-monitor/accounts/z")
+        .unwrap()
+        .entries
+        .insert("history.jsonl".into(), own_file(0o600));
+    let r = verify(&own, &[]);
     assert_eq!(r.fails, 1, "{:?}", r.checks);
-    assert!(fails(&r)[0].contains("notes.txt"), "{:?}", fails(&r));
+    assert!(fails(&r)[0].contains("history.jsonl"), "{:?}", fails(&r));
 
     // ③ 修复只补链接那几项：号目录空着时，计划里新建的链接 == 形状里的链接（每号那几份一份都不链）。
     let mut empty = shaped(&[]);
@@ -283,44 +289,52 @@ fn warns(r: &VerifyReport) -> Vec<&str> {
         .collect()
 }
 
-/// 共享库顶层一份像密钥的文件：核对提示它，不当成号里缺的共享链。
+/// 认不得名字的（号里的实体 `bridge-spawn` · 原子写的旁名 · 共享库里 `0600` 的文件）不出 Warn：全报告只有一条 `Ok` 级的
+/// 「没归类」，列出共享库顶层与各号里认不得的名字（去重、排序；号里的链接不列）。
 #[test]
-fn a_secret_like_shared_file_is_a_note_and_not_a_missing_link() {
-    let mut s = snap(all_linked());
-    s.shared.entries.insert(
-        "x.json".into(),
-        Item::File {
-            mode: Some(0o600),
-            size: 2,
-            mtime: None,
-        },
-    );
-    let r = verify(&s, &[]);
-    assert!(r.pass, "{:?}", r.checks);
-    let want = copy_text("beAcctVerify.drift.secretLike", &[("item", "x.json")]);
-    assert!(warns(&r).contains(&want.as_str()), "{:?}", r.checks);
-}
-
-/// 原子写的旁名（共享库里 `0600` 的临时件 · 号里 cc-monitor 留下的备份件）走排除名：既不算像密钥，也不算意料之外。
-#[test]
-fn atomic_write_side_names_are_neither_secret_like_nor_unexpected() {
+fn unknown_names_are_one_quiet_unclassified_line_not_warnings() {
     let own = Item::File {
         mode: Some(0o600),
         size: 2,
         mtime: None,
     };
     let mut z = all_linked();
+    z.insert("bridge-spawn".into(), Item::Dir { mode: Some(0o700) });
     z.insert("settings.json.ccm-backup-1-0".into(), own.clone());
-    z.insert("settings.json.ccm-tmp-1-2-3".into(), own.clone());
+    z.insert(
+        "elsewhere".into(),
+        Item::Link {
+            target: "/x/elsewhere".into(),
+            dangling: false,
+        },
+    );
     let mut s = snap(z);
+    s.shared.entries.insert("x.json".into(), own);
     s.shared
         .entries
-        .insert(".credentials.json.1.ThreadId(2).0.tmp".into(), own);
+        .insert("bridge-spawn".into(), Item::Dir { mode: Some(0o700) });
     let r = verify(&s, &[]);
     assert!(r.pass, "{:?}", r.checks);
+    let names = ["bridge-spawn", "settings.json.ccm-backup-1-0", "x.json"];
     let named: Vec<&str> = warns(&r)
         .into_iter()
-        .filter(|w| w.contains(".ccm-") || w.contains(".tmp"))
+        .filter(|w| names.iter().any(|n| w.contains(n)))
         .collect();
     assert!(named.is_empty(), "{named:?}");
+    let want = copy_text(
+        "beAcctVerify.global.unclassified",
+        &[
+            ("n", &names.len().to_string()),
+            (
+                "items",
+                &names.join(&copy_text("beAcctVerify.global.ownCopiesSep", &[])),
+            ),
+        ],
+    );
+    let said: Vec<&VerifyCheck> = r.checks.iter().filter(|c| c.text == want).collect();
+    assert!(
+        said.len() == 1 && said[0].level == CheckLevel::Ok && said[0].account.is_none(),
+        "{:?}",
+        r.checks
+    );
 }

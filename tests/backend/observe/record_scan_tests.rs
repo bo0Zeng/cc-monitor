@@ -937,7 +937,7 @@ fn r13_the_skeleton_keeps_what_the_prime_takes_not_the_child_run_lines() {
     assert_eq!(got, want, "照骨架补的运行表跟照原文补的不一样");
 }
 
-/// R14（尾段那一截的骨架索引）：这一份的图不在 ⇒ 从中间某一行起只读那一截，出的行与整份扫图上同一截逐格相等、
+/// 尾段那一截的骨架索引：这一份的图不在 ⇒ 从中间某一行起只读那一截，出的行与整份扫图上同一截逐格相等、
 /// 末端是最后一个完整行之后（残尾不计），也不为它留一张整图；`take` 回 false ⇒ 停在那一行的起点；图留着 ⇒ 照图切、不再读盘。
 #[test]
 fn r14_index_rows_from_a_middle_line_read_only_that_stretch() {

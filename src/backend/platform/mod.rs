@@ -48,6 +48,8 @@ pub(crate) mod paths;
 pub(crate) mod proc;
 /// 分配器起来那一下的设置（启动入口 `main.rs` 在另一个 crate 里调 ⇒ 从这里交出去）。
 pub use proc::return_freed_pages_at_once;
+/// 常驻后端起来那一下抬 fd 软上限（同上，`main.rs` 调）。
+pub use proc::{raise_open_files_limit, OpenFiles};
 pub(crate) mod shell;
 pub(crate) mod signal;
 pub(crate) mod ssh_agent;

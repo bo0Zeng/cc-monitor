@@ -603,6 +603,12 @@
       "zh": "{item} 该各号共用 · {names} 各有一份自己的、没有合并\n要共用就把内容并进共享库里的 {item}、删掉号里的，再点「修复」",
       "args": ["item", "names"]
     },
+    "beAcctVerify.global.unclassified": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{n} 项没归类 · 各号各用各的：{items}",
+      "args": ["n", "items"]
+    },
     "beAcctVerify.acct.linkEntity": {
       "kind": "error",
       "role": "报错",
@@ -657,24 +663,12 @@
       "zh": "共享链接 {item} 已断 · 共享库里的 {source} 指向已不在的 {target}\n到共享库修掉或删掉",
       "args": ["item", "source", "target"]
     },
-    "beAcctVerify.acct.unexpected": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{item} 既非身份文件也非共享链接；要共享就挪进共享库 · 要私有就留着",
-      "args": ["item"]
-    },
     "beAcctVerify.drift.nowhere": {
       "kind": "body",
       "role": "说明",
       "zh": "{item} 在共享库 · 主目录 · 各账号里均未找到\n或未用到 · 或 Claude Code 把它挪到别处",
       "args": ["item"],
       "limited": ["Claude Code"]
-    },
-    "beAcctVerify.drift.secretLike": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "共享库里的 {item} 权限 600 却不在身份文件里\n不链给各账号 · 要共享就放宽权限",
-      "args": ["item"]
     },
     "beAcctVerify.global.badManifest": {
       "kind": "error",
@@ -26629,30 +26623,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "复制下面一行 · 到该机终端里运行",
-      "args": []
-    },
-    "beChore.secretLike.name": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "共享库里的 {item} 像按号的密钥",
-      "args": ["item"]
-    },
-    "beChore.secretLike.said": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "权限 600 · 不在身份文件里 · 不链给各账号",
-      "args": []
-    },
-    "beChore.secretLike.why": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{path} 权限 600，不在身份文件里；按号的凭据或状态各账号共用会串号，不自动链给各账号",
-      "args": ["path"]
-    },
-    "beChore.secretLike.step": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "按号的挪进该账号目录 · 共用的放宽权限，下次对齐链接",
       "args": []
     },
     "beChore.selfPaste.name": {

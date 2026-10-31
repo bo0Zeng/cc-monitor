@@ -371,6 +371,110 @@ pub fn return_freed_pages_at_once() {
 #[path = "../../../tests/backend/platform/freed_memory_tests.rs"]
 mod freed_memory_tests;
 
+/// [`raise_open_files_limit`] 的结局（`Display` 是记进日志的那一句）。
+#[derive(Debug, PartialEq, Eq)]
+pub enum OpenFiles {
+    /// 抬了：从多少到多少。
+    Raised { from: u64, to: u64 },
+    /// 本来就在硬上限上。
+    Already(u64),
+    /// 抬不动（系统调用拒了）：此刻的软上限照旧。
+    Stuck { soft: u64, to: u64, why: String },
+    /// 这一平台没有这一格（Windows 的句柄数不按这个限）。
+    NotHere,
+}
+
+impl std::fmt::Display for OpenFiles {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // 只进日志（`main.rs` 流模式起来那一行），不上界面 ⇒ 同 `[relay]` 那几行写英文、不进文案表。
+            OpenFiles::Raised { from, to } => {
+                write!(f, "open files soft limit {from} -> {to} (the hard limit)")
+            }
+            OpenFiles::Already(n) => {
+                write!(f, "open files soft limit already at the hard limit {n}")
+            }
+            OpenFiles::Stuck { soft, to, why } => {
+                write!(
+                    f,
+                    "open files soft limit stays {soft}, cannot raise to {to}: {why}"
+                )
+            }
+            OpenFiles::NotHere => {
+                f.write_str("open files soft limit: not a thing on this platform")
+            }
+        }
+    }
+}
+
+/// 常驻后端起来那一下把本进程的 fd 软上限抬到硬上限（硬上限是「不限」⇒ 抬到 Linux `fs.nr_open` 的缺省值 1<<20：软上限不许超过它）。
+/// 桌面会话起进程缺省给软上限 1024，而中转每条在途连接约占三个 fd、各台常驻流与会话文件另占 ⇒ 不抬就是第一堵墙。
+/// 只动软上限（不要特权）；硬上限不碰。抬不动照旧起，结局交调用方记一行。
+pub fn raise_open_files_limit() -> OpenFiles {
+    #[cfg(unix)]
+    {
+        let mut r = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        // SAFETY: 读本进程的上限进栈上这一格；再按读到的硬上限设软上限，不碰内存别处。
+        unsafe {
+            if libc::getrlimit(libc::RLIMIT_NOFILE, &mut r) != 0 {
+                return OpenFiles::Stuck {
+                    soft: 0,
+                    to: 0,
+                    why: std::io::Error::last_os_error().to_string(),
+                };
+            }
+            let from = r.rlim_cur as u64;
+            let to = if r.rlim_max == libc::RLIM_INFINITY {
+                1 << 20
+            } else {
+                r.rlim_max as u64
+            };
+            if from >= to {
+                return OpenFiles::Already(from);
+            }
+            r.rlim_cur = to as libc::rlim_t;
+            if libc::setrlimit(libc::RLIMIT_NOFILE, &r) != 0 {
+                return OpenFiles::Stuck {
+                    soft: from,
+                    to,
+                    why: std::io::Error::last_os_error().to_string(),
+                };
+            }
+            OpenFiles::Raised { from, to }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        OpenFiles::NotHere
+    }
+}
+
+/// 这个错是不是「fd 用尽」：本进程的（`EMFILE`）或整台的（`ENFILE`）；Windows 上是套接字用尽（`WSAEMFILE`）。
+pub(crate) fn out_of_fds(e: &std::io::Error) -> bool {
+    #[cfg(unix)]
+    {
+        matches!(e.raw_os_error(), Some(libc::EMFILE | libc::ENFILE))
+    }
+    #[cfg(windows)]
+    {
+        /// `WSAEMFILE`（winsock 错误码表）。
+        const WSAEMFILE: i32 = 10024;
+        e.raw_os_error() == Some(WSAEMFILE)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = e;
+        false
+    }
+}
+
+#[cfg(test)]
+#[path = "../../../tests/backend/platform/fd_limit_tests.rs"]
+mod fd_limit_tests;
+
 /// 把**调用它的这条线程**降到低优先级（后台一次性热缓存用：不跟前台的帧命令抢 CPU）。
 /// 回真 ＝ 降成了；降不了 / 这一平台不支持 ⇒ 假（照常跑，只是不让）。它之后由这条线程起的线程随它（Linux 按线程记 nice）。
 pub(crate) fn lower_this_thread() -> bool {

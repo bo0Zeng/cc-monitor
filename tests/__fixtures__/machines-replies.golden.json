@@ -1,0 +1,3179 @@
+{
+  "cases": [
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.1",
+          "jump": "gw",
+          "keyPath": "",
+          "label": "alpha",
+          "port": 22,
+          "user": "ua"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.2",
+          "jump": "gw2",
+          "keyPath": "/k/disk",
+          "label": "beta",
+          "port": 22,
+          "user": "ub"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.3",
+          "jump": "",
+          "keyPath": "",
+          "label": "",
+          "port": 22,
+          "user": "uc"
+        }
+      ],
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [],
+            "connect": true,
+            "host": "192.0.2.4",
+            "jump": "",
+            "keyPath": "",
+            "label": "delta",
+            "port": 22,
+            "user": "pi"
+          },
+          "where": [
+            {
+              "equals": "delta",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.1",
+                "jump": "gw",
+                "keyPath": "",
+                "label": "alpha",
+                "port": 22,
+                "user": "ua"
+              },
+              "name": "alpha"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.2",
+                "jump": "gw2",
+                "keyPath": "/k/disk",
+                "label": "beta",
+                "port": 22,
+                "user": "ub"
+              },
+              "name": "beta"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.3",
+                "jump": "",
+                "keyPath": "",
+                "label": "",
+                "port": 22,
+                "user": "uc"
+              },
+              "name": "192.0.2.3"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.4",
+                "jump": "",
+                "keyPath": "",
+                "label": "delta",
+                "port": 22,
+                "user": "pi"
+              },
+              "name": "delta"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.1",
+          "jump": "gw",
+          "keyPath": "",
+          "label": "alpha",
+          "port": 22,
+          "user": "ua"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.2",
+          "jump": "gw2",
+          "keyPath": "/k/disk",
+          "label": "beta",
+          "port": 22,
+          "user": "ub"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.3",
+          "jump": "",
+          "keyPath": "",
+          "label": "",
+          "port": 22,
+          "user": "uc"
+        }
+      ],
+      "edits": [
+        {
+          "op": "removein",
+          "where": [
+            {
+              "equals": "alpha",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.2",
+                "jump": "gw2",
+                "keyPath": "/k/disk",
+                "label": "beta",
+                "port": 22,
+                "user": "ub"
+              },
+              "name": "beta"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.3",
+                "jump": "",
+                "keyPath": "",
+                "label": "",
+                "port": 22,
+                "user": "uc"
+              },
+              "name": "192.0.2.3"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.1",
+          "jump": "gw",
+          "keyPath": "",
+          "label": "alpha",
+          "port": 22,
+          "user": "ua"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.2",
+          "jump": "gw2",
+          "keyPath": "/k/disk",
+          "label": "beta",
+          "port": 22,
+          "user": "ub"
+        }
+      ],
+      "edits": [
+        {
+          "op": "removein",
+          "where": [
+            {
+              "equals": "alpha",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        },
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [],
+            "connect": true,
+            "host": "203.0.113.1",
+            "jump": "",
+            "keyPath": "",
+            "label": "alpha",
+            "port": 22,
+            "user": "brand-new"
+          },
+          "where": [
+            {
+              "equals": "alpha",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.2",
+                "jump": "gw2",
+                "keyPath": "/k/disk",
+                "label": "beta",
+                "port": 22,
+                "user": "ub"
+              },
+              "name": "beta"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "203.0.113.1",
+                "jump": "",
+                "keyPath": "",
+                "label": "alpha",
+                "port": 22,
+                "user": "brand-new"
+              },
+              "name": "alpha"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.1",
+          "jump": "gw",
+          "keyPath": "",
+          "label": "alpha",
+          "port": 22,
+          "user": "ua"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.2",
+          "jump": "gw2",
+          "keyPath": "/k/disk",
+          "label": "beta",
+          "port": 22,
+          "user": "ub"
+        }
+      ],
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [],
+            "connect": true,
+            "host": "192.0.2.2",
+            "jump": "gw2",
+            "keyPath": "",
+            "label": "beta",
+            "port": 22,
+            "user": "x"
+          },
+          "where": [
+            {
+              "equals": "beta",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "refused": {
+        "code": "element_exists",
+        "message": "已有同名机器 · 未保存 · 关掉设置重开后再改"
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": {
+        "text": "{ 不是 JSON"
+      },
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [],
+            "connect": true,
+            "host": "192.0.2.1",
+            "jump": "gw",
+            "keyPath": "",
+            "label": "alpha",
+            "port": 22,
+            "user": "ua"
+          },
+          "where": [
+            {
+              "equals": "alpha",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "refused": {
+        "code": "unreadable",
+        "message": "读取 ~/.cc-monitor/machines.json 失败 · 内容无法解析"
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.1",
+          "jump": "gw",
+          "keyPath": "/k/disk",
+          "label": "alpha",
+          "port": 22,
+          "user": "ua"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.2",
+          "jump": "gw2",
+          "keyPath": "",
+          "label": "beta",
+          "port": 22,
+          "user": "ub"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.3",
+          "jump": "",
+          "keyPath": "",
+          "label": "",
+          "port": 22,
+          "user": "uc"
+        }
+      ],
+      "edits": [
+        {
+          "field": "label",
+          "op": "setin",
+          "value": "alpha2",
+          "where": [
+            {
+              "equals": "alpha",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        },
+        {
+          "field": "user",
+          "op": "setin",
+          "value": "new",
+          "where": [
+            {
+              "equals": "alpha2",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.1",
+                "jump": "gw",
+                "keyPath": "/k/disk",
+                "label": "alpha2",
+                "port": 22,
+                "user": "new"
+              },
+              "name": "alpha2"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.2",
+                "jump": "gw2",
+                "keyPath": "",
+                "label": "beta",
+                "port": 22,
+                "user": "ub"
+              },
+              "name": "beta"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.3",
+                "jump": "",
+                "keyPath": "",
+                "label": "",
+                "port": 22,
+                "user": "uc"
+              },
+              "name": "192.0.2.3"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-read",
+      "disk": [
+        {
+          "host": "d.lan",
+          "label": "devbox",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "host": "g.lan",
+          "label": "gpu",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "reply": {
+        "detail": null,
+        "hostKeys": {},
+        "hosts": [
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "d.lan",
+              "jump": "",
+              "keyPath": "",
+              "label": "devbox",
+              "port": 22,
+              "user": "u"
+            },
+            "name": "devbox"
+          },
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "g.lan",
+              "jump": "",
+              "keyPath": "",
+              "label": "gpu",
+              "port": 22,
+              "user": "u"
+            },
+            "name": "gpu"
+          }
+        ],
+        "path": "~/.cc-monitor/machines.json",
+        "reason": null,
+        "state": "ok"
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": null,
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [],
+            "connect": true,
+            "host": "192.0.2.2",
+            "jump": "bastion",
+            "keyPath": "",
+            "label": "devbox",
+            "port": 22,
+            "user": "u"
+          },
+          "where": [
+            {
+              "equals": "devbox",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.2",
+                "jump": "bastion",
+                "keyPath": "",
+                "label": "devbox",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "devbox"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": null,
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [],
+            "connect": true,
+            "host": "192.0.2.2",
+            "jump": "",
+            "keyPath": "",
+            "label": "devbox",
+            "port": 22,
+            "user": "u"
+          },
+          "where": [
+            {
+              "equals": "devbox",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.2",
+                "jump": "",
+                "keyPath": "",
+                "label": "devbox",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "devbox"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-read",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "reply": {
+        "detail": null,
+        "hostKeys": {},
+        "hosts": [
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "1.1.1.1",
+              "jump": "",
+              "keyPath": "",
+              "label": "a",
+              "port": 22,
+              "user": "u"
+            },
+            "name": "a"
+          },
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "2.2.2.2",
+              "jump": "",
+              "keyPath": "",
+              "label": "b",
+              "port": 22,
+              "user": "u"
+            },
+            "name": "b"
+          }
+        ],
+        "path": "~/.cc-monitor/machines.json",
+        "reason": null,
+        "state": "ok"
+      }
+    },
+    {
+      "cmd": "machines-read",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "reply": {
+        "detail": null,
+        "hostKeys": {},
+        "hosts": [
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "1.1.1.1",
+              "jump": "",
+              "keyPath": "",
+              "label": "a",
+              "port": 22,
+              "user": "u"
+            },
+            "name": "a"
+          }
+        ],
+        "path": "~/.cc-monitor/machines.json",
+        "reason": null,
+        "state": "ok"
+      }
+    },
+    {
+      "cmd": "machines-read",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "dup",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "dup",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "reply": {
+        "detail": null,
+        "hostKeys": {},
+        "hosts": [
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "1.1.1.1",
+              "jump": "",
+              "keyPath": "",
+              "label": "dup",
+              "port": 22,
+              "user": "u"
+            },
+            "name": "dup"
+          },
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "2.2.2.2",
+              "jump": "",
+              "keyPath": "",
+              "label": "dup",
+              "port": 22,
+              "user": "u"
+            },
+            "name": "dup"
+          }
+        ],
+        "path": "~/.cc-monitor/machines.json",
+        "reason": null,
+        "state": "ok"
+      }
+    },
+    {
+      "cmd": "machines-read",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "3.3.3.3",
+          "jump": "",
+          "keyPath": "",
+          "label": "c",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "reply": {
+        "detail": null,
+        "hostKeys": {},
+        "hosts": [
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "1.1.1.1",
+              "jump": "",
+              "keyPath": "",
+              "label": "a",
+              "port": 22,
+              "user": "u"
+            },
+            "name": "a"
+          },
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "2.2.2.2",
+              "jump": "",
+              "keyPath": "",
+              "label": "b",
+              "port": 22,
+              "user": "u"
+            },
+            "name": "b"
+          },
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "3.3.3.3",
+              "jump": "",
+              "keyPath": "",
+              "label": "c",
+              "port": 22,
+              "user": "u"
+            },
+            "name": "c"
+          }
+        ],
+        "path": "~/.cc-monitor/machines.json",
+        "reason": null,
+        "state": "ok"
+      }
+    },
+    {
+      "cmd": "machines-read",
+      "disk": [],
+      "reply": {
+        "detail": null,
+        "hostKeys": {},
+        "hosts": [],
+        "path": "~/.cc-monitor/machines.json",
+        "reason": null,
+        "state": "ok"
+      }
+    },
+    {
+      "cmd": "machines-read",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 2222,
+          "user": "u"
+        }
+      ],
+      "reply": {
+        "detail": null,
+        "hostKeys": {},
+        "hosts": [
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "1.1.1.1",
+              "jump": "",
+              "keyPath": "",
+              "label": "a",
+              "port": 2222,
+              "user": "u"
+            },
+            "name": "a"
+          }
+        ],
+        "path": "~/.cc-monitor/machines.json",
+        "reason": null,
+        "state": "ok"
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [
+              "9.9.9.8"
+            ],
+            "connect": true,
+            "host": "9.9.9.9",
+            "jump": "",
+            "keyPath": "",
+            "label": "gpu",
+            "port": 22,
+            "user": "u"
+          },
+          "where": [
+            {
+              "equals": "gpu",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": null
+      }
+    },
+    {
+      "cmd": "machines-read",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "5.5.5.5",
+          "jump": "",
+          "keyPath": "",
+          "label": "gpu",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "reply": {
+        "detail": null,
+        "hostKeys": {},
+        "hosts": [
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "5.5.5.5",
+              "jump": "",
+              "keyPath": "",
+              "label": "gpu",
+              "port": 22,
+              "user": "u"
+            },
+            "name": "gpu"
+          }
+        ],
+        "path": "~/.cc-monitor/machines.json",
+        "reason": null,
+        "state": "ok"
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "5.5.5.5",
+          "jump": "",
+          "keyPath": "",
+          "label": "gpu",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [
+              "9.9.9.8"
+            ],
+            "connect": true,
+            "host": "9.9.9.9",
+            "jump": "",
+            "keyPath": "",
+            "label": "gpu",
+            "port": 22,
+            "user": "u"
+          },
+          "where": [
+            {
+              "equals": "gpu",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": {
+          "code": "name_taken",
+          "name": "gpu",
+          "said": "gpu 已存在"
+        }
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [],
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [
+              "9.9.9.8"
+            ],
+            "connect": true,
+            "host": "9.9.9.9",
+            "jump": "",
+            "keyPath": "",
+            "label": "gpu",
+            "port": 22,
+            "user": "u"
+          },
+          "where": [
+            {
+              "equals": "gpu",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": null
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [],
+            "connect": true,
+            "host": "",
+            "jump": "",
+            "keyPath": "",
+            "label": "",
+            "port": 22,
+            "user": ""
+          },
+          "where": [
+            {
+              "equals": "",
+              "fields": [
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": {
+          "code": "no_host",
+          "name": "",
+          "said": "需填地址"
+        }
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [],
+            "connect": true,
+            "host": "7.7.7.7",
+            "jump": "",
+            "keyPath": "",
+            "label": "box",
+            "port": 22,
+            "user": "root"
+          },
+          "where": [
+            {
+              "equals": "box",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": null
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [],
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [],
+            "connect": true,
+            "host": "h",
+            "jump": "",
+            "keyPath": "",
+            "label": "x",
+            "port": 22,
+            "user": "u"
+          },
+          "where": [
+            {
+              "equals": "x",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": null
+      }
+    },
+    {
+      "cmd": "machines-read",
+      "disk": {
+        "text": "{\"enabled\":true,\"host\":\"pi.local\",\"user\":\"pi\",\"backendPath\":\"/x\"}"
+      },
+      "reply": {
+        "detail": "命令：machines-read\n码：unreadable\n原话：unknown field `backendPath`, expected `hosts`",
+        "hostKeys": {},
+        "hosts": [],
+        "path": "~/.cc-monitor/machines.json",
+        "reason": "读取 ~/.cc-monitor/machines.json 失败 · 内容无法解析",
+        "state": "unreadable"
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.1",
+          "jump": "gw",
+          "keyPath": "",
+          "label": "alpha",
+          "port": 22,
+          "user": "ua"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.2",
+          "jump": "gw2",
+          "keyPath": "/k/disk",
+          "label": "beta",
+          "port": 22,
+          "user": "ub"
+        }
+      ],
+      "edits": [
+        {
+          "op": "removein",
+          "where": [
+            {
+              "equals": "gone",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "refused": {
+        "code": "element_gone",
+        "data": {
+          "ambiguous": false
+        },
+        "message": "机器已改名或删除 · 未保存 · 关掉设置重开后再改"
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.1",
+          "jump": "gw",
+          "keyPath": "/k/disk",
+          "label": "alpha2",
+          "port": 22,
+          "user": "new"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.2",
+          "jump": "gw2",
+          "keyPath": "",
+          "label": "beta",
+          "port": 22,
+          "user": "ub"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.3",
+          "jump": "",
+          "keyPath": "",
+          "label": "",
+          "port": 22,
+          "user": "uc"
+        }
+      ],
+      "edits": [
+        {
+          "field": "label",
+          "op": "setin",
+          "value": "192.0.2.3",
+          "where": [
+            {
+              "equals": "192.0.2.3",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        },
+        {
+          "field": "host",
+          "op": "setin",
+          "value": "192.0.2.9",
+          "where": [
+            {
+              "equals": "192.0.2.3",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.1",
+                "jump": "gw",
+                "keyPath": "/k/disk",
+                "label": "alpha2",
+                "port": 22,
+                "user": "new"
+              },
+              "name": "alpha2"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.2",
+                "jump": "gw2",
+                "keyPath": "",
+                "label": "beta",
+                "port": 22,
+                "user": "ub"
+              },
+              "name": "beta"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "192.0.2.9",
+                "jump": "",
+                "keyPath": "",
+                "label": "192.0.2.3",
+                "port": 22,
+                "user": "uc"
+              },
+              "name": "192.0.2.3"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-read",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.2",
+          "jump": "bastion",
+          "keyPath": "",
+          "label": "devbox",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "reply": {
+        "detail": null,
+        "hostKeys": {},
+        "hosts": [
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "192.0.2.2",
+              "jump": "bastion",
+              "keyPath": "",
+              "label": "devbox",
+              "port": 22,
+              "user": "u"
+            },
+            "name": "devbox"
+          }
+        ],
+        "path": "~/.cc-monitor/machines.json",
+        "reason": null,
+        "state": "ok"
+      }
+    },
+    {
+      "cmd": "machines-read",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "devbox",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "reply": {
+        "detail": null,
+        "hostKeys": {},
+        "hosts": [
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "192.0.2.2",
+              "jump": "",
+              "keyPath": "",
+              "label": "devbox",
+              "port": 22,
+              "user": "u"
+            },
+            "name": "devbox"
+          }
+        ],
+        "path": "~/.cc-monitor/machines.json",
+        "reason": null,
+        "state": "ok"
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "op": "removein",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "2.2.2.2",
+                "jump": "",
+                "keyPath": "",
+                "label": "b",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "b"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "op": "removein",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        },
+        {
+          "op": "removein",
+          "where": [
+            {
+              "equals": "b",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "op": "removein",
+          "where": [
+            {
+              "equals": "b",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "1.1.1.1",
+                "jump": "",
+                "keyPath": "",
+                "label": "a",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "a"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "label",
+          "op": "setin",
+          "value": "a-renamed",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": null
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "label",
+          "op": "setin",
+          "value": "a-renamed",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "1.1.1.1",
+                "jump": "",
+                "keyPath": "",
+                "label": "a-renamed",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "a-renamed"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "2.2.2.2",
+                "jump": "",
+                "keyPath": "",
+                "label": "b",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "b"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "/k/disk",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "label",
+          "op": "setin",
+          "value": "a-renamed",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": null
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "/k/disk",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "label",
+          "op": "setin",
+          "value": "a-renamed",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "1.1.1.1",
+                "jump": "",
+                "keyPath": "/k/disk",
+                "label": "a-renamed",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "a-renamed"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "2.2.2.2",
+                "jump": "",
+                "keyPath": "",
+                "label": "b",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "b"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "label",
+          "op": "setin",
+          "value": "lx",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": null
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "label",
+          "op": "setin",
+          "value": "lx",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "1.1.1.1",
+                "jump": "",
+                "keyPath": "",
+                "label": "lx",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "lx"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "dup",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "dup",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "op": "removein",
+          "where": [
+            {
+              "equals": "dup",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        },
+        {
+          "op": "removein",
+          "where": [
+            {
+              "equals": "dup",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        },
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [],
+            "connect": true,
+            "host": "2.2.2.2",
+            "jump": "",
+            "keyPath": "",
+            "label": "dup",
+            "port": 22,
+            "user": "u"
+          },
+          "where": [
+            {
+              "equals": "dup",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "refused": {
+        "code": "element_gone",
+        "data": {
+          "ambiguous": true
+        },
+        "message": "机器已改名或删除 · 未保存 · 关掉设置重开后再改"
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "op": "removein",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-read",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "reply": {
+        "detail": null,
+        "hostKeys": {},
+        "hosts": [
+          {
+            "host": {
+              "addresses": [],
+              "connect": true,
+              "host": "2.2.2.2",
+              "jump": "",
+              "keyPath": "",
+              "label": "b",
+              "port": 22,
+              "user": "u"
+            },
+            "name": "b"
+          }
+        ],
+        "path": "~/.cc-monitor/machines.json",
+        "reason": null,
+        "state": "ok"
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "label",
+          "op": "setin",
+          "value": "a",
+          "where": [
+            {
+              "equals": "b",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": {
+          "code": "name_taken",
+          "name": "a",
+          "said": "a 已存在"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "label",
+          "op": "setin",
+          "value": "a",
+          "where": [
+            {
+              "equals": "b",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "refused": {
+        "code": "bad_machine",
+        "data": {
+          "code": "name_taken",
+          "name": "a",
+          "said": "a 已存在"
+        },
+        "message": "a 已存在 · 未保存"
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 2222,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "port",
+          "op": "setin",
+          "value": 70000,
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": {
+          "code": "port",
+          "name": "a",
+          "said": "端口 1–65535"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 2222,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "port",
+          "op": "setin",
+          "value": 70000,
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "refused": {
+        "code": "bad_machine",
+        "data": {
+          "code": "port",
+          "name": "a",
+          "said": "端口 1–65535"
+        },
+        "message": "a · 端口 1–65535 · 未保存"
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "label",
+          "op": "setin",
+          "value": "c",
+          "where": [
+            {
+              "equals": "b",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": null
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "label",
+          "op": "setin",
+          "value": "c",
+          "where": [
+            {
+              "equals": "b",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "1.1.1.1",
+                "jump": "",
+                "keyPath": "",
+                "label": "a",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "a"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "2.2.2.2",
+                "jump": "",
+                "keyPath": "",
+                "label": "c",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "c"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "5.5.5.5",
+          "jump": "",
+          "keyPath": "",
+          "label": "gpu",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [
+              "9.9.9.8"
+            ],
+            "connect": true,
+            "host": "9.9.9.9",
+            "jump": "",
+            "keyPath": "",
+            "label": "gpu-2",
+            "port": 22,
+            "user": "u"
+          },
+          "where": [
+            {
+              "equals": "gpu-2",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": null
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "5.5.5.5",
+          "jump": "",
+          "keyPath": "",
+          "label": "gpu",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [
+              "9.9.9.8"
+            ],
+            "connect": true,
+            "host": "9.9.9.9",
+            "jump": "",
+            "keyPath": "",
+            "label": "gpu-2",
+            "port": 22,
+            "user": "u"
+          },
+          "where": [
+            {
+              "equals": "gpu-2",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "5.5.5.5",
+                "jump": "",
+                "keyPath": "",
+                "label": "gpu",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "gpu"
+            },
+            {
+              "host": {
+                "addresses": [
+                  "9.9.9.8"
+                ],
+                "connect": true,
+                "host": "9.9.9.9",
+                "jump": "",
+                "keyPath": "",
+                "label": "gpu-2",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "gpu-2"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "connect",
+          "op": "setin",
+          "value": false,
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": false,
+                "host": "1.1.1.1",
+                "jump": "",
+                "keyPath": "",
+                "label": "a",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "a"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "2.2.2.2",
+                "jump": "",
+                "keyPath": "",
+                "label": "b",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "b"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "dup",
+          "port": 22,
+          "user": "pi"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "dup",
+          "port": 22,
+          "user": "pi"
+        }
+      ],
+      "edits": [
+        {
+          "op": "removein",
+          "where": [
+            {
+              "equals": "dup",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        },
+        {
+          "op": "insertin",
+          "value": {
+            "addresses": [],
+            "connect": true,
+            "host": "1.1.1.1",
+            "jump": "",
+            "keyPath": "",
+            "label": "dup",
+            "port": 22,
+            "user": "x"
+          },
+          "where": [
+            {
+              "equals": "dup",
+              "fields": [
+                "label"
+              ]
+            }
+          ]
+        }
+      ],
+      "refused": {
+        "code": "element_gone",
+        "data": {
+          "ambiguous": true
+        },
+        "message": "机器已改名或删除 · 未保存 · 关掉设置重开后再改"
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.1",
+          "jump": "gw",
+          "keyPath": "/k/disk",
+          "label": "alpha2",
+          "port": 22,
+          "user": "new"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.2",
+          "jump": "gw2",
+          "keyPath": "",
+          "label": "beta",
+          "port": 22,
+          "user": "ub"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "192.0.2.9",
+          "jump": "",
+          "keyPath": "",
+          "label": "192.0.2.3",
+          "port": 22,
+          "user": "uc"
+        }
+      ],
+      "edits": [
+        {
+          "field": "user",
+          "op": "setin",
+          "value": "x",
+          "where": [
+            {
+              "equals": "gone",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "refused": {
+        "code": "element_gone",
+        "data": {
+          "ambiguous": false
+        },
+        "message": "机器已改名或删除 · 未保存 · 关掉设置重开后再改"
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [],
+      "edits": [
+        {
+          "op": "removein",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        },
+        {
+          "op": "removein",
+          "where": [
+            {
+              "equals": "b",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "refused": {
+        "code": "element_gone",
+        "data": {
+          "ambiguous": false
+        },
+        "message": "机器已改名或删除 · 未保存 · 关掉设置重开后再改"
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a-renamed",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "op": "removein",
+          "where": [
+            {
+              "equals": "a-renamed",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "2.2.2.2",
+                "jump": "",
+                "keyPath": "",
+                "label": "b",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "b"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "user",
+          "op": "setin",
+          "value": "zz",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "1.1.1.1",
+                "jump": "",
+                "keyPath": "",
+                "label": "a",
+                "port": 22,
+                "user": "zz"
+              },
+              "name": "a"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "2.2.2.2",
+                "jump": "",
+                "keyPath": "",
+                "label": "b",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "b"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 2222,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "user",
+          "op": "setin",
+          "value": "root",
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "1.1.1.1",
+                "jump": "",
+                "keyPath": "",
+                "label": "a",
+                "port": 2222,
+                "user": "root"
+              },
+              "name": "a"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": false,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 22,
+          "user": "u"
+        },
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "2.2.2.2",
+          "jump": "",
+          "keyPath": "",
+          "label": "b",
+          "port": 22,
+          "user": "u"
+        }
+      ],
+      "edits": [
+        {
+          "field": "connect",
+          "op": "setin",
+          "value": true,
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "1.1.1.1",
+                "jump": "",
+                "keyPath": "",
+                "label": "a",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "a"
+            },
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "2.2.2.2",
+                "jump": "",
+                "keyPath": "",
+                "label": "b",
+                "port": 22,
+                "user": "u"
+              },
+              "name": "b"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    },
+    {
+      "cmd": "machines-try",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 2222,
+          "user": "root"
+        }
+      ],
+      "edits": [
+        {
+          "field": "port",
+          "op": "setin",
+          "value": 2200,
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "fault": null
+      }
+    },
+    {
+      "cmd": "machines-set",
+      "disk": [
+        {
+          "addresses": [],
+          "connect": true,
+          "host": "1.1.1.1",
+          "jump": "",
+          "keyPath": "",
+          "label": "a",
+          "port": 2222,
+          "user": "root"
+        }
+      ],
+      "edits": [
+        {
+          "field": "port",
+          "op": "setin",
+          "value": 2200,
+          "where": [
+            {
+              "equals": "a",
+              "fields": [
+                "label",
+                "host"
+              ]
+            }
+          ]
+        }
+      ],
+      "reply": {
+        "machines": {
+          "detail": null,
+          "hostKeys": {},
+          "hosts": [
+            {
+              "host": {
+                "addresses": [],
+                "connect": true,
+                "host": "1.1.1.1",
+                "jump": "",
+                "keyPath": "",
+                "label": "a",
+                "port": 2200,
+                "user": "root"
+              },
+              "name": "a"
+            }
+          ],
+          "path": "~/.cc-monitor/machines.json",
+          "reason": null,
+          "state": "ok"
+        }
+      }
+    }
+  ],
+  "读法": [
+    "界面测试的机器表替身（tests/frontend/ui/machines-fake.ts）只照这份回：按输入（cmd · disk 盘上那一份 · edits 补丁）找到那一条，交它的 reply，或照 refused 拒。",
+    "disk：null ⇒ 没有那份；数组 ⇒ 那几台（写成 {hosts}）；{text} ⇒ 原文照写。",
+    "reply / refused 由后端判据 tests/backend/control/machines_replay_tests.rs 跑真的 answer_read_in · answer_try_in · answer_set_in 现打（临时家目录，路径写成 ~；复制详情摘掉时刻与机器那两行）；只比不写，对过后 bless 拷回。",
+    "替身遇到没录的输入记进本树 .build/golden-missing/machines-replies.jsonl，那条判据一并收进现打的那份。"
+  ]
+}

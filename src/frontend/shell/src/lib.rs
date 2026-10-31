@@ -896,6 +896,7 @@ pub(crate) fn batch_to_payloads(
                     origin: label.clone(),
                     record,
                     skipped_from: skipped,
+                    end: line.end,
                     rid: line.rid,
                     catch_up: line.catch_up,
                 });

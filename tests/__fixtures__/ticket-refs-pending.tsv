@@ -321,7 +321,6 @@ tests/frontend/ui/accounts.vitest.ts	2
 tests/frontend/ui/attach-row.vitest.ts	1
 tests/frontend/ui/boot-active-viewport.vitest.ts	1
 tests/frontend/ui/composer.vitest.ts	1
-tests/frontend/ui/config-patch-fake.ts	1
 tests/frontend/ui/e2e-probe.vitest.ts	1
 tests/frontend/ui/end-confirm.vitest.ts	1
 tests/frontend/ui/events-batch-schedule.vitest.ts	5
@@ -354,7 +353,7 @@ tests/frontend/ui/settings/add-machine-prefill.vitest.ts	1
 tests/frontend/ui/settings/backend-section.vitest.ts	1
 tests/frontend/ui/settings/panel-block-isolation.vitest.ts	3
 tests/frontend/ui/settings/panel-groups.vitest.ts	5
-tests/frontend/ui/settings/remote-section.vitest.ts	3
+tests/frontend/ui/settings/remote-section.vitest.ts	2
 tests/frontend/ui/skeleton-ledger-huge.vitest.ts	1
 tests/frontend/ui/skeleton-view.vitest.ts	3
 tests/frontend/ui/tab-bar-perf.vitest.ts	1
@@ -374,7 +373,6 @@ tests/scripts/gate.sh	2
 tests/scripts/gen-kotlin-wire.mjs	1
 tests/scripts/re-embed.sh	1
 tests/scripts/third-party-notices.py	1
-tests/shots/fake-no-core.vitest.ts	1
 tests/shots/fake/history.ts	1
 tests/shots/fake/plan.ts	44
 tests/shots/filewin.mjs	1
