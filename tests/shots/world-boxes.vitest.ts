@@ -1,7 +1,7 @@
 /**
  * 截图台架起一个带远端的世界：远端各台的沙箱（它们的常驻 · 跑腿口）由台架自己起，交给无头壳的只有本机那一台。
  *
- * 起因（A17-47）：10-26 起无头壳照产品那样只起本机那一台（别台的流归本机后端），台架照旧把各台的整条命令交给壳 ⇒
+ * 为什么台架自己起：无头壳照产品那样只起本机那一台（别台的流归本机后端）。台架要是把各台的整条命令交给壳 ⇒
  * 远端各台没人起，本机沙箱开场等远端常驻问得到等满 30 秒、退出，本机后端从没起，每个带远端的场景都报「<local> 的后端 30 秒没握上手」。
  *
  * 人群：`real/pool.mjs` 的 `/__ccm/world`（造世界）与收场（`close`）。
@@ -25,8 +25,8 @@ const { backendPool, settledAs } = (await import(POOL)) as {
 };
 
 /**
- * 收场那一段（`/__ccm/end`）认的是会话流上裁出来的那一帧：10-26 起离开「活」只一帧 `left`，去向在 `face.life.is`（A1-3-2）；
- * 从前认的 `state` 帧没了 ⇒ 每个带收场的场景等满上限。帧照壳会话簿金样里那几条离开的会话（真线上那一形）。
+ * 收场那一段（`/__ccm/end`）认的是会话流上裁出来的那一帧：离开「活」只一帧 `left`，去向在 `face.life.is`；
+ * 认别的帧（如 `state`）⇒ 永远等不到，每个带收场的场景等满上限。帧照壳会话簿金样里那几条离开的会话（真线上那一形）。
  */
 describe("收场认得出裁出来的那一帧", () => {
   const book = JSON.parse(readFileSync(path.join(__dirname, "../comms/resident-client/book.golden.json"), "utf8")) as { left: Record<string, unknown>; live: Record<string, unknown> };

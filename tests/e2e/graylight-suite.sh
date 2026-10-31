@@ -126,8 +126,8 @@ fi
 # 乙：backend **握手过且盯的是 fixture 目录**（挡 ②③⑤）。
 _hello="$(grep 'backend hello' "$LOG" | tail -1)"
 [ -n "$_hello" ] || _abort "日志里一条 backend hello 都没有 —— 远端没连上，本跑与 #60 无关"
-# 盯哪个目录不在握手里（今天的 hello 只带 build_id · host_arch · 命令表，日志那一行也只印这几格；从前印的 `claude_home=` 随
-#   「协议去 agent 名」那一刀没了，锚在那行文案上的这一格从此恒 ABORT）⇒ 按身份认：那台后端进程环境里的 `CLAUDE_CONFIG_DIR`
+# 盯哪个目录不在握手里（今天的 hello 只带 build_id · host_arch · 命令表，日志那一行也只印这几格，
+#   锚在日志文案上的判法恒 ABORT）⇒ 按身份认：那台后端进程环境里的 `CLAUDE_CONFIG_DIR`
 #   （wrapper 用 `env` 交的那一个），与下面丁那一格同一个判法（`_count_our_backends`）。一个都没有 ⇒ 握手的那个不是 wrapper 起的。
 _count_our_backends() {
   local n=0 pid env_dir

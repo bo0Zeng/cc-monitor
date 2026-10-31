@@ -154,7 +154,7 @@ fun OverviewScreen(
                     is NeedsLine.Plan -> PlanLine(line) { onPlan(line.host.id, line.workspace, line.slice, line.cell?.id) }
                     is NeedsLine.Manual ->
                         ManualLine(line, ov.manyHosts) { item ->
-                            item.fix?.let { fix -> login = line.host to LoginFlow(backends.of(line.host.id), line.host.label, fix.args, scope).also { it.start() } }
+                            item.fix?.let { fix -> login = line.host to LoginFlow(backends.of(line.host.id), line.host.id, line.host.label, fix.args, scope).also { it.start() } }
                         }
                 }
             }

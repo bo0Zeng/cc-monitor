@@ -20,6 +20,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +36,8 @@ import com.ccmonitor.mobile.core.wire.gen.PasteKind
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.Sheet
 import com.ccmonitor.mobile.ui.chat.newsession.SheetHead
+import com.ccmonitor.mobile.ui.session.LocalOpenTerminal
+import kotlinx.coroutines.launch
 
 /**
  * 登录抽屉（底部抽屉，桌面是靠右的抽屉，里面同一套）：标题照目标（号 · MCP）· 目标行（号牌 ＋ 号名 · 机器；MCP 那一形前面多服务器名）·［打开登录页］·［复制链接］·
@@ -56,6 +59,17 @@ fun LoginSheet(
         flow.cancel()
         onClosed()
     }
+    // ［在终端里登录］：取那一行 ⇒ 那台新开终端 tab 敲它 ⇒ 抽屉收起；取不到 ⇒ 红字换成那台那一句（LoginFlow 里），抽屉留着。
+    val openTerminal = LocalOpenTerminal.current
+    val scope = rememberCoroutineScope()
+    val inTerminal: () -> Unit = {
+        scope.launch {
+            flow.terminalLine().onSuccess { line ->
+                openTerminal(flow.host, line)
+                close()
+            }
+        }
+    }
     Sheet(onDismiss = close) {
         SheetHead(titleOf(s.target), null)
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -67,7 +81,7 @@ fun LoginSheet(
             }
             Text(machine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        s.failed?.let { Failed(it, onRestart = flow::start.takeIf { s.canRestart }) } ?: Body(flow, s)
+        s.failed?.let { Failed(it, onRestart = flow::start.takeIf { s.canRestart }, onTerminal = inTerminal.takeIf { s.terminal }) } ?: Body(flow, s)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.End) {
             SecondaryButton(onClick = close) { Text(if (s.failed != null) copyText("kit.drawer.close") else copyText("kit.dialog.cancel")) }
         }
@@ -116,10 +130,15 @@ private fun Failed(
     text: String,
     /** 那台说还能重来 ⇒［重新开始］；不能 ⇒ `null`。 */
     onRestart: (() -> Unit)?,
+    /** 那台说终端那条路在 ⇒［在终端里登录］；不在 ⇒ `null`。 */
+    onTerminal: (() -> Unit)?,
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-        onRestart?.let { OutlinedButton(onClick = it) { Text(copyText("login.act.restart")) } }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            onRestart?.let { OutlinedButton(onClick = it) { Text(copyText("login.act.restart")) } }
+            onTerminal?.let { OutlinedButton(onClick = it) { Text(copyText("login.act.terminal")) } }
+        }
     }
 }
 

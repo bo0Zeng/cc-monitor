@@ -144,7 +144,7 @@ val appModule =
         viewModel { IdentityViewModel(get()) }
         viewModel { KeysEditorViewModel(get(), get()) }
         viewModel { HostViewModel(get(), get(), get(), get()) }
-        // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, tmuxSession, resume)`
+        // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, tmuxSession, resume, run)`
         // 一一对应，空串是 null 的哨兵；按位取值是因为多参解构超过 detekt 上限。
         viewModel { params ->
             SessionViewModel(
@@ -152,6 +152,7 @@ val appModule =
                 cdArg = params.get(1),
                 tmuxArg = params.get(2),
                 resumeArg = params.get(3),
+                runArg = params.get(4),
                 manager = get(),
                 hostRepo = get(),
                 identityRepo = get(),

@@ -216,24 +216,18 @@ echo "   argv resume 行数=$N6  orphan($S6-N)=$(orphan_count "$S6")  session=$(
 
 # ── B6b:tmux 已消失 → 回退新建(铸名口 base 空 → 复用 base 名新建)────────────────
 #
-# **E67③（2026-07-31）：这里是全套件唯一断言「生产侧 tmux 命名形状」的地方，也正是它把
-# CI 红了两个版本。** S4b-3b把命名从 `cc-<X>` 反转成 `<X>-cc`，
-# 前端（当年的铸名口；今天派生只在后端）与 Rust（`tmux::is_ccm_tmux_name`，
-# 新旧两种都认）都同步了，**只有这条 e2e 的期望值没跟上** ⇒ 断言恒假，
-# 而且连带下一条（拿老名字去 `session_exists`）也必然失败。
+# **这里是全套件唯一断言「生产侧 tmux 命名形状」的地方**：命名形状一改，这条期望值得同一处改，
+# 否则断言恒假，连带下一条（拿老名字去 `session_exists`）也必然失败。
 #
 # 注意上面 B1..B6a 用的 `cc-<sid8>` **不是漏改**：那些名字是套件自己造的既存会话
-# （`gen-idle-tmux.sh` 也造 `cc-<sid8>`），代表「S4b-3b 之前建的老会话」——
-# `is_ccm_tmux_name` 刻意保留老前缀正是为了它们，所以那份夹具是**有效覆盖**，别顺手改掉。
+# （`gen-idle-tmux.sh` 也造 `cc-<sid8>`），代表老前缀的会话 ——
+# `tmux::is_ccm_tmux_name` 新旧两种前缀都认正是为了它们，所以那份夹具是**有效覆盖**，别顺手改掉。
 echo "-- B6b tmux 已消失 → 回退新建 --"
 SID7="$(cat /proc/sys/kernel/random/uuid)"
-# 🔴 `K-R96`（`R55` 裁定一：「**要是可读的名字 / 不要id**」）：
-#    名字不再是 `<sid8>-cc`，改成从 **cwd** 派生的 `<项目名>-cc`。
-#    这条 e2e 是全套件唯一断言「生产侧 tmux 命名形状」的地方（见上面 E67③ 那段），
-#    所以它**必须跟着改** —— 上一次没跟上时它红了两个版本。
+# 🔴 名字要可读、不带 id：从 **cwd** 派生的 `<项目名>-cc`。
 # 名字由后端铸（`session-open-dir` 与 `ccm` 同一个 `plan::mint_tmux_name`：`/tmp/e2e-remote` ⇒ `e2e-remote-cc`，派生与避让的逐格归
 #    `tests/backend/control/ccm/plan_tests.rs`）；本套件不碰后端 ⇒ 这里用后端会铸的那个名字，改钉「它在建之前确实没被占」——
-#    否则下面测到的是 create-gate 短路、不是回退新建（原先那一格 `drv mint-name` 调的前端铸名口随 J7 删了）。
+#    否则下面测到的是 create-gate 短路、不是回退新建。
 EXPECT7="e2e-remote-cc"   # basename("/tmp/e2e-remote") + `-cc`；撞名时才追加 `-2/-3`
 FRESH="$EXPECT7"
 [ "$(session_exists "$FRESH")" = 0 ] && ok "B6b 新名 $FRESH 建之前没被占（走的是回退新建，不是 create-gate 短路）" || bad "B6b $FRESH 建之前已存在"

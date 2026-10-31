@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""S27 判据 —— **断网门禁要的那些 `.crate`，今天在不在本机缓存里**。
+"""断网缓存判据 —— **断网门禁要的那些 `.crate`，今天在不在本机缓存里**。
 
 # 它治的病
 
@@ -25,12 +25,12 @@ specified」—— **门禁红在「下不到包」这条与代码对不对毫�
   ⇒ 卷是派生物，种子是源头；要确保两者一致就把卷删掉让它重播种。
 - **index 那一半只在跑真 cargo 时才验**。离线解析除了 `.crate` 还要 registry index
   的本地缓存（`~/.cargo/registry/index/*/.cache/`）。本脚本不解析 index 的二进制缓存格式；
-  真正把这一格买下来的是 `S27-prove-offline.py`（`bwrap --unshare-net` 跑真 `cargo fetch`）。
+  真正把这一格买下来的是 `prove-offline.py`（`bwrap --unshare-net` 跑真 `cargo fetch`）。
 
 # 跑法
 
-    python3 tests/evidence/S27-offline-cache-check.py            # 人读
-    python3 tests/evidence/S27-offline-cache-check.py --json     # 机读
+    python3 tests/evidence/offline-cache-check.py            # 人读
+    python3 tests/evidence/offline-cache-check.py --json     # 机读
 
 退出码：0 = 齐；1 = 缺（缺谁逐条印在 stderr）；2 = 读不到 lock（同样算失败）。
 
@@ -115,7 +115,7 @@ def main() -> int:
     dirs = cargo_cache_dirs()
     for p in LOCKS:
         if not p.is_file():
-            print(f"S27: 读不到 {p} —— 判不了，当失败", file=sys.stderr)
+            print(f"offline-cache-check: 读不到 {p} —— 判不了，当失败", file=sys.stderr)
             return 2
 
     pairs = sorted({pair for lk in LOCKS for pair in lock_pairs(lk)})
@@ -147,13 +147,13 @@ def main() -> int:
     if as_json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
-        print(f"S27 断网缓存判据 · 缓存目录 {', '.join(map(str, dirs)) or '（无）'}")
+        print(f"断网缓存判据 · 缓存目录 {', '.join(map(str, dirs)) or '（无）'}")
         print(f"  今天那几份 lock 的 crates.io 条目 : {len(pairs) - len(gone)}/{len(pairs)} 齐")
         for n, v in gone:
             print(f"  🔴 缺：{n} {v}", file=sys.stderr)
         for f in fail:
             print(f"  🔴 {f}", file=sys.stderr)
-        print("S27: OK" if not fail else "S27: FAIL")
+        print("offline-cache-check: OK" if not fail else "offline-cache-check: FAIL")
 
     return 0 if not fail else 1
 

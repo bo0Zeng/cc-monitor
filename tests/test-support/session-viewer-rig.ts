@@ -1,28 +1,23 @@
 /**
- * K-R45 判据共用的**台子**（第二轮建，还的是第一轮申报的第 1 笔债；第三轮**扩了它**）。
+ * 会话查看器那几套判据共用的**台子**。
  *
- * # 🔴 第三轮：住户从两个变成三个，名字没跟着改 —— 这一句是说明，不是借口
+ * # 住户：三套，名字只说了其中两套
  *
- * 新住户是 `views/live-user-inputs.vitest.ts`（实时窗口那条路，被测对象是
- * `TabManager` 不是 `SessionViewer`）。它用的是本文件里**与 viewer 无关**的那几样：
- * 补 jsdom 缺的四样（`installViewerRig`）＋ 造记录行（`line` / `userLine` /
- * `assistantLine` / `withSession`）。真正 viewer-only 的只有 `tauriCoreMock`
+ * `session-viewer-scroll.vitest.ts` · `session-viewer-user-inputs.vitest.ts` 用整份；
+ * `views/live-user-inputs.vitest.ts`（实时窗口那条路，被测对象是 `TabManager` 不是 `SessionViewer`）
+ * 只用本文件里**与 viewer 无关**的那几样：补 jsdom 缺的四样（`installViewerRig`）＋ 造记录行
+ * （`line` / `userLine` / `assistantLine` / `withSession`）。真正 viewer-only 的只有 `tauriCoreMock`
  * （灌 `Channel`）与 `expectLoaded`（核 viewer 的状态栏），实时那侧一个都不用。
- * ⇒ **没有开第二份台子**（第二轮刚把两份并成一份，当轮长回两份是老债复发）。
- * 文件名没改是因为改名要动三个套件的 import 与两处文档住址，而收益只有「名字更准」；
- * **登记在这里，别当没看见**。
+ * ⇒ **不开第二份台子**。文件名不改：改名要动三个套件的 import 与两处文档住址，收益只有「名字更准」。
  *
  * # 为什么要有这一份
  *
- * `session-viewer-scroll.vitest.ts`（`KR45D0`）与 `session-viewer-user-inputs.vitest.ts`
- * （`KR45D1`）各带过一套**逐字重复**的桩：IPC（`@tauri-apps/api/core` 的 `invoke` /
- * `Channel`）· `ResizeObserver` · `CSS.escape` · `requestAnimationFrame` · `scrollIntoView`。
- * 上一轮 `tests/test-support/` 当时没跟着改，只能各写一份并把它**申报成债**。
- *
- * 债的形状不是「重复代码难看」，是：**两份一旦漂了，两个套件量的就不是同一个台子** ——
+ * 这几套要的桩一样：IPC（`@tauri-apps/api/core` 的 `invoke` / `Channel`）· `ResizeObserver` ·
+ * `CSS.escape` · `requestAnimationFrame` · `scrollIntoView`。各写一份的话，
+ * **两份一旦漂了，两个套件量的就不是同一个台子** ——
  * 而两边都以「我测的是真渲染管线」自居，谁漂了从输出面上看不出来。
  *
- * # 台子的保真边界（搬家不改这一段，只把它挪到一个家）
+ * # 台子的保真边界
  *
  * - 渲染管线是**真的**：真 `cards/renderMessage` → 真 `render-stream-record` → 真
  *   `markCardId` 写 `data-id`。**没有** mock 掉「卡上有没有 `data-id`」这件事。
@@ -33,10 +28,10 @@
  * - 🔴 `SessionViewer.load()` 整段包在 `try/catch` 里 ⇒ 定位段抛任何错都会被**吞成状态栏
  *   一句「加载失败」**，判据只会看见「什么都没发生」。⇒ 每个用例挂载完先 `expectLoaded()`。
  *
- * # 刻意**没有**搬进来的
+ * # 刻意**不**放进来的
  *
  * `mount()`（两边给 `load()` 的参数不同）· `vi.mock()` 调用本身（它按调用文件的相对路径
- * 解析，且会被提升到文件顶）· 只有一边用的 DOM 查询助手。搬「其实不一样的东西」
+ * 解析，且会被提升到文件顶）· 只有一边用的 DOM 查询助手。硬放「其实不一样的东西」
  * 会逼出一个参数越加越多的壳，那是另一种漂。
  */
 import { expect, vi } from "vitest";
