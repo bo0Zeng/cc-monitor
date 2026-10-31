@@ -13,13 +13,12 @@ use super::mcp_share::{self, Seen, Servers, Store};
 use super::model::Manifest;
 use super::scan::{item_at, join, Unread};
 use crate::common::door::{self, Door, Refused};
+use crate::common::said::Said;
 use crate::platform::acct_view::Item;
 use cmd_wire::accounts::{AccountMcpChoice, AccountMcpConflict, AccountMcpView};
 use copy_core::copy_text;
 use serde_json::Value;
 use std::path::Path;
-
-type Refusal = crate::wire::spec::Fail;
 
 /// 共享集合那份小文件的读取上限。
 const MAX_SMALL_BYTES: u64 = 8 * 1024 * 1024;
@@ -60,7 +59,7 @@ pub(crate) fn read_text(p: &str, cap: u64) -> Result<Option<String>, crate::comm
 
 /// 这台的账号库清单（各号之间同步 · 预标信任 · 别名都照它的具名号 `Manifest::managed`：名字与号目录过了写侧那一关）。
 /// `None` = 这台没有账号库 / 做不了多账号。
-pub(crate) fn manifest_in(home: &str) -> Result<Option<Manifest>, Refusal> {
+pub(crate) fn manifest_in(home: &str) -> Result<Option<Manifest>, Said> {
     if layout::face().is_none() || crate::platform::acct_view::multi_account_supported().is_err() {
         return Ok(None);
     }
@@ -69,8 +68,8 @@ pub(crate) fn manifest_in(home: &str) -> Result<Option<Manifest>, Refusal> {
     let m = match super::scan::manifest_at(Path::new(&mpath)) {
         Ok(None) => return Ok(None),
         Ok(Some(m)) => m,
-        Err(Unread::Io(s)) => return Err(("io_failed", s).into()),
-        Err(Unread::Bad(s)) => return Err(("refused", s).into()),
+        Err(Unread::Io(s)) => return Err(crate::wire::spec::fail("io_failed", s)),
+        Err(Unread::Bad(s)) => return Err(crate::wire::spec::fail("refused", s)),
     };
     Ok(Some(m))
 }
@@ -110,7 +109,7 @@ fn servers_in(raw: Option<&str>, key: &str) -> Result<Servers, String> {
 }
 
 /// 共享集合那份文件：解好的 ＋ 原文（落盘时当 `expect`；`None` = 文件不在）。登录那一半（[`super::mcp_logins_exec`]）也读它。
-pub(crate) fn load_store(home: &str) -> Result<(Store, Option<String>), Refusal> {
+pub(crate) fn load_store(home: &str) -> Result<(Store, Option<String>), Said> {
     let key = layout::user_mcp_key();
     let spath = door::join_under(home, relay_route_core::ACCOUNTS_MCP_REL);
     // 那一句只带路径与原因词；原话进复制详情。
@@ -121,10 +120,10 @@ pub(crate) fn load_store(home: &str) -> Result<(Store, Option<String>), Refusal>
         )
     };
     let store_raw = read_text(&spath, MAX_SMALL_BYTES)
-        .map_err(|e| Refusal::from(("io_failed", e.wrap(say))))?;
+        .map_err(|e| crate::wire::spec::fail("io_failed", e.wrap(say)))?;
     let store = match &store_raw {
         Some(t) => Store::parse(t, key).map_err(|e| {
-            (
+            Said::new(
                 "refused",
                 copy_text(
                     "beAcctMcpShare.store.cannotUse",
@@ -137,7 +136,7 @@ pub(crate) fn load_store(home: &str) -> Result<(Store, Option<String>), Refusal>
     Ok((store, store_raw))
 }
 
-fn load(home: &str, m: &Manifest) -> Result<Here, Refusal> {
+fn load(home: &str, m: &Manifest) -> Result<Here, Said> {
     let key = layout::user_mcp_key();
     let file = layout::identity_config_file();
     let (store, store_raw) = load_store(home)?;
@@ -190,10 +189,8 @@ pub(crate) fn put_private(
         return door::put(d, home, rel, text, expect, false, false).map(|_| ());
     }
     door::put(d, home, rel, "", None, false, true)?;
-    super::exec::set_mode(d, home, rel, 0o600).map_err(|said| Refused::Peer {
-        code: "io_failed".to_string(),
-        said,
-    })?;
+    super::exec::set_mode(d, home, rel, 0o600)
+        .map_err(|said| Refused::Peer(Said::new("io_failed", said)))?;
     door::put(d, home, rel, text, Some(""), false, false).map(|_| ())
 }
 
@@ -261,12 +258,12 @@ fn view_of(store: &Store, conflicts: &[mcp_share::Conflict]) -> AccountMcpView {
 
 /// 账号库在就拿它那把锁（与改账号库那几条命令同一把：锁的是账号库目录本身）。
 /// 不借命令那一层的那一份：那一层还认得 `ccm` 的命令行，扩展页读共享集合时会被连带引用进来。
-pub(crate) fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
+pub(crate) fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Said> {
     let accts = super::scan::accts_root(home);
     if item_at(&accts).exists() {
         crate::platform::lock::hold(Path::new(&accts))
             .map(Some)
-            .map_err(|e| Refusal::from(("io_failed", crate::common::said::Said::from(e))))
+            .map_err(|e| crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e)))
     } else {
         Ok(None)
     }
@@ -291,9 +288,9 @@ fn paused_view(h: &Here) -> AccountMcpView {
 fn run(
     d: &dyn Door,
     why: Why,
-    decide: &dyn Fn(&Store, &[Seen]) -> Result<Store, Refusal>,
-) -> Result<AccountMcpView, Refusal> {
-    let home = super::scan::home(d).map_err(|e| ("io_failed", e))?;
+    decide: &dyn Fn(&Store, &[Seen]) -> Result<Store, Said>,
+) -> Result<AccountMcpView, Said> {
+    let home = super::scan::home(d).map_err(|e| Said::new("io_failed", e))?;
     let _held = lock(&home)?;
     let Some(m) = manifest_in(&home)? else {
         return Ok(AccountMcpView::default());
@@ -302,10 +299,10 @@ fn run(
     if h.store.paused {
         return match why {
             Why::Auto => Ok(paused_view(&h)),
-            Why::Asked => Err(Refusal::from((
+            Why::Asked => Err(crate::wire::spec::fail(
                 "refused",
                 copy_text("beAcctMcpShare.sync.paused", &[]),
-            ))),
+            )),
         };
     }
     let seen: Vec<Seen> = h.accounts.iter().map(|a| a.seen.clone()).collect();
@@ -347,7 +344,7 @@ fn run(
             h.store_raw.as_deref(),
         )
         .map_err(|e| {
-            (
+            Said::new(
                 "io_failed",
                 copy_text("beAcctMcpShare.store.writeFailed", &[("why", &e.said())]),
             )
@@ -360,22 +357,22 @@ fn run(
 }
 
 /// 同步一趟（文件事件 · 加号 · 建库之后）。
-pub(crate) fn sync(d: &dyn Door) -> Result<AccountMcpView, Refusal> {
+pub(crate) fn sync(d: &dyn Door) -> Result<AccountMcpView, Said> {
     run(d, Why::Auto, &|s, _| Ok(s.clone()))
 }
 
 /// `accounts-mcp-sync {on}`：停 / 开各号之间的同步。只改共享集合那份文件里那一格。
 /// 停 ⇒ 之后各号各管各的，已经同步过去的一条不删；开 ⇒ 落下那一格之后立刻同步一趟（停着那段时间各号改的照三方对照采纳，
 /// 两边都改了的照常列出来等挑）。已经是那一态 ⇒ 不写，照答。
-pub(crate) fn set_sync(d: &dyn Door, on: bool) -> Result<AccountMcpView, Refusal> {
-    let home = super::scan::home(d).map_err(|e| ("io_failed", e))?;
+pub(crate) fn set_sync(d: &dyn Door, on: bool) -> Result<AccountMcpView, Said> {
+    let home = super::scan::home(d).map_err(|e| Said::new("io_failed", e))?;
     {
         let _held = lock(&home)?;
         let Some(m) = manifest_in(&home)? else {
-            return Err(Refusal::from((
+            return Err(crate::wire::spec::fail(
                 "refused",
                 copy_text("beAcctMcpShare.sync.noLibrary", &[]),
-            )));
+            ));
         };
         let h = load(&home, &m)?;
         if h.store.paused == !on {
@@ -395,7 +392,7 @@ pub(crate) fn set_sync(d: &dyn Door, on: bool) -> Result<AccountMcpView, Refusal
             h.store_raw.as_deref(),
         )
         .map_err(|e| {
-            (
+            Said::new(
                 "io_failed",
                 copy_text("beAcctMcpShare.store.writeFailed", &[("why", &e.said())]),
             )
@@ -419,8 +416,8 @@ fn view_after(h: &Here) -> AccountMcpView {
 }
 
 /// `accounts-mcp-read`：此刻的样子（只算不写；冲突照算）。
-pub(crate) fn read(d: &dyn Door) -> Result<AccountMcpView, Refusal> {
-    let home = super::scan::home(d).map_err(|e| ("io_failed", e))?;
+pub(crate) fn read(d: &dyn Door) -> Result<AccountMcpView, Said> {
+    let home = super::scan::home(d).map_err(|e| Said::new("io_failed", e))?;
     let Some(m) = manifest_in(&home)? else {
         return Ok(AccountMcpView::default());
     };
@@ -432,7 +429,7 @@ pub(crate) fn read(d: &dyn Door) -> Result<AccountMcpView, Refusal> {
     })
 }
 
-fn known(store: &Store, seen: &[Seen], name: &str) -> Result<(), Refusal> {
+fn known(store: &Store, seen: &[Seen], name: &str) -> Result<(), Said> {
     let anywhere = store.servers.contains_key(name)
         || seen
             .iter()
@@ -440,15 +437,15 @@ fn known(store: &Store, seen: &[Seen], name: &str) -> Result<(), Refusal> {
     if anywhere {
         Ok(())
     } else {
-        Err(Refusal::from((
+        Err(crate::wire::spec::fail(
             "not_found",
             copy_text("beAcctMcpShare.name.unknown", &[("name", name)]),
-        )))
+        ))
     }
 }
 
 /// `accounts-mcp-remove`：从共享集合里删一条，所有号一起撤（删除只有这一条路）。
-pub(crate) fn remove(d: &dyn Door, name: &str) -> Result<AccountMcpView, Refusal> {
+pub(crate) fn remove(d: &dyn Door, name: &str) -> Result<AccountMcpView, Said> {
     run(d, Why::Asked, &|s, seen| {
         known(s, seen, name)?;
         Ok(mcp_share::decide(s, seen, name, None))
@@ -456,25 +453,21 @@ pub(crate) fn remove(d: &dyn Door, name: &str) -> Result<AccountMcpView, Refusal
 }
 
 /// `accounts-mcp-pick`：两边都改了的那一条用哪一版（`from` = 那个号里的；`None` = 共享的那一版）。
-pub(crate) fn pick(
-    d: &dyn Door,
-    name: &str,
-    from: Option<&str>,
-) -> Result<AccountMcpView, Refusal> {
+pub(crate) fn pick(d: &dyn Door, name: &str, from: Option<&str>) -> Result<AccountMcpView, Said> {
     run(d, Why::Asked, &|s, seen| {
         known(s, seen, name)?;
-        let to = mcp_share::pick(s, seen, name, from).map_err(|e| ("refused", e))?;
+        let to = mcp_share::pick(s, seen, name, from).map_err(|e| Said::new("refused", e))?;
         Ok(mcp_share::decide(s, seen, name, to))
     })
 }
 
 /// 装到全局：这一条写进共享集合、同步到所有号（名字空 / 定义不是对象 ⇒ 拒）。扩展页的确认卡接它。
-pub(crate) fn put(d: &dyn Door, name: &str, def: &Value) -> Result<AccountMcpView, Refusal> {
+pub(crate) fn put(d: &dyn Door, name: &str, def: &Value) -> Result<AccountMcpView, Said> {
     if name.trim().is_empty() || !def.is_object() {
-        return Err(Refusal::from((
+        return Err(crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed("a server needs a name and an object definition"),
-        )));
+        ));
     }
     run(d, Why::Asked, &|s, seen| {
         Ok(mcp_share::decide(s, seen, name, Some(def.clone())))

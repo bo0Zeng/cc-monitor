@@ -27,9 +27,6 @@ use batch_core::said_of;
 /// 一个要等的结果。
 pub(crate) type Fut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// 一处没成：码 ＋ 那一句（原话另带）。
-pub(crate) type Miss = (&'static str, Said);
-
 /// 源那台上的一格（相对那一项本身；顶上那一格是 `""`）。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Entry {
@@ -42,11 +39,11 @@ pub(crate) struct Entry {
 /// 两头的动作。
 pub(crate) trait Ends: Send + Sync {
     /// 源那台：这一条是目录 ⇒ 整棵（先序，目录在它的内容之前，顶上那一格打头）；是文件 ⇒ 只它自己。
-    fn walk<'a>(&'a self, path: &'a str) -> Fut<'a, Result<Vec<Entry>, Miss>>;
+    fn walk<'a>(&'a self, path: &'a str) -> Fut<'a, Result<Vec<Entry>, Said>>;
     /// 落点那台：这一格在不在（在 ⇒ 是不是目录）。
     fn there<'a>(&'a self, path: &'a str) -> Fut<'a, Option<bool>>;
     /// 落点那台：在 `dir` 底下建一层 `name`。
-    fn mkdir<'a>(&'a self, dir: &'a str, name: &'a str) -> Fut<'a, Result<(), Miss>>;
+    fn mkdir<'a>(&'a self, dir: &'a str, name: &'a str) -> Fut<'a, Result<(), Said>>;
     /// 一份文件：源那台的 `from` → 落点那台的 `dir/name`（经本机中转）；`stop()` 真 ⇒ 当场撤（清两头暂存）。回落了几个字节。
     /// `sent(n)`：这一份走到第几个字节了（两腿合起来折成一份文件的字节，单调不减）。
     fn copy_file<'a>(
@@ -57,7 +54,7 @@ pub(crate) trait Ends: Send + Sync {
         overwrite: bool,
         stop: &'a (dyn Fn() -> bool + Send + Sync),
         sent: &'a (dyn Fn(u64) + Send + Sync),
-    ) -> Fut<'a, Result<u64, Miss>>;
+    ) -> Fut<'a, Result<u64, Said>>;
 }
 
 codes! {
@@ -123,7 +120,8 @@ impl Step {
     }
 }
 
-fn missed(key: &str, (code, s): Miss) -> BatchOutcome {
+fn missed(key: &str, s: Said) -> BatchOutcome {
+    let code = s.code_or_fallback();
     BatchOutcome {
         code: Some(code.to_string()),
         reason: Some(copy_core::code_reason(code, s.raw.as_deref())),
@@ -138,7 +136,7 @@ fn missed(key: &str, (code, s): Miss) -> BatchOutcome {
 /// 一项探过之后的样子。
 struct Probed {
     from: String,
-    walked: Result<Vec<Entry>, Miss>,
+    walked: Result<Vec<Entry>, Said>,
     /// 落点那一格已在 ⇒ 答（`None` ＝ 没答）· 那一格或源是不是目录。
     clash: Option<(Option<Decide>, bool)>,
 }
@@ -285,10 +283,7 @@ fn plan(
                     None => {
                         steps.push(Step::Settled(missed(
                             &key,
-                            (
-                                "exists",
-                                Said::from(copy_text("beFiles.batch.mintSpent", &[])),
-                            ),
+                            Said::new("exists", copy_text("beFiles.batch.mintSpent", &[])),
                         )));
                         continue;
                     }
@@ -389,7 +384,7 @@ pub(crate) struct Wired {
 }
 
 /// 问落点那台后端一条命令（经那条连接的 CLI 面；入参类型选中那条命令）。
-async fn ask_to<C: cmd_wire::Call>(w: &Wired, req: &C) -> Result<C::Reply, Miss> {
+async fn ask_to<C: cmd_wire::Call>(w: &Wired, req: &C) -> Result<C::Reply, Said> {
     crate::dial::remote_ask::ask_dialed(&w.to_dial, req, &w.tz, w.remote.as_ref())
         .await
         .map_err(|s| {
@@ -400,7 +395,7 @@ async fn ask_to<C: cmd_wire::Call>(w: &Wired, req: &C) -> Result<C::Reply, Miss>
                 Some("bad_name") => "bad_name",
                 _ => "io_failed",
             };
-            (code, Said::from(s.message))
+            Said::new(code, s.said)
         })
 }
 
@@ -458,7 +453,7 @@ impl Wired {
         };
         let h = ask_to(&w, &cwf::HomeReq {})
             .await
-            .map_err(|(_, s)| CopyErr::Unreachable(s.said))?;
+            .map_err(|s| CopyErr::Unreachable(s.said))?;
         let bhome = String::from_utf8_lossy(h.path.bytes());
         if let Some(why) = super::transfer::start_dir_mismatch(w.to.home(), &bhome) {
             return Err(CopyErr::SftpHomeMismatch(why));
@@ -473,7 +468,7 @@ async fn listed(s: &crate::dial::sftp::Session, path: &str) -> Option<Vec<(Strin
 }
 
 impl Ends for Wired {
-    fn walk<'a>(&'a self, path: &'a str) -> Fut<'a, Result<Vec<Entry>, Miss>> {
+    fn walk<'a>(&'a self, path: &'a str) -> Fut<'a, Result<Vec<Entry>, Said>> {
         Box::pin(async move {
             let Some(top) = listed(&self.from, path).await else {
                 if crate::dial::sftp::exists(&self.from, path).await == Some(true) {
@@ -486,9 +481,9 @@ impl Ends for Wired {
                             .unwrap_or(0),
                     }]);
                 }
-                return Err((
+                return Err(crate::common::said::Said::new(
                     "io_failed",
-                    Said::from(copy_text("beTransferCopy.from.missing", &[("path", path)])),
+                    copy_text("beTransferCopy.from.missing", &[("path", path)]),
                 ));
             };
             let mut out = vec![Entry {
@@ -533,7 +528,7 @@ impl Ends for Wired {
         })
     }
 
-    fn mkdir<'a>(&'a self, dir: &'a str, name: &'a str) -> Fut<'a, Result<(), Miss>> {
+    fn mkdir<'a>(&'a self, dir: &'a str, name: &'a str) -> Fut<'a, Result<(), Said>> {
         Box::pin(async move {
             let req = cwf::FilesMkdirReq {
                 root: dir.into(),
@@ -552,7 +547,7 @@ impl Ends for Wired {
         overwrite: bool,
         stop: &'a (dyn Fn() -> bool + Send + Sync),
         sent: &'a (dyn Fn(u64) + Send + Sync),
-    ) -> Fut<'a, Result<u64, Miss>> {
+    ) -> Fut<'a, Result<u64, Said>> {
         Box::pin(async move {
             use super::transfer::{
                 download_to_local, staging_key, staging_part, upload_to_staging, Cancel,
@@ -573,8 +568,8 @@ impl Ends for Wired {
                 let up = leg.load(std::sync::atomic::Ordering::Relaxed);
                 sent(if up { (total + got) / 2 } else { got / 2 });
             };
-            let io = |s: Said| ("io_failed", s);
-            let r: Result<u64, Miss> = async {
+            let io = |s: Said| s.coded("io_failed");
+            let r: Result<u64, Said> = async {
                 download_to_local(&self.face, &self.from, from, &local, &cancel, &sink)
                     .await
                     .map_err(io)?;

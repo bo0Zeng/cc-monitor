@@ -559,12 +559,12 @@ impl crate::wire::typed::Command for CcmPrint {
 pub(crate) fn answer_print(
     req: &CcmPrintReq,
     accounts: AccountsScan,
-) -> Result<CcmLine, (&'static str, String)> {
+) -> Result<CcmLine, crate::common::said::Said> {
     // 前两种拒是**契约错**（调用方是 monitor，用户手敲不出来）⇒ 英文诊断经 `contract::malformed`；
     // 「不起会话的那一形」是用户清单里真能出现的（手写进别名文件的 `--help`）⇒ 进表说人话。
     let words = &req.args;
     if words.len() > PRINT_MAX_WORDS {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "too many args: {} (max {PRINT_MAX_WORDS})",
@@ -573,7 +573,7 @@ pub(crate) fn answer_print(
         ));
     }
     if let Some(w) = words.iter().find(|w| w.len() > PRINT_MAX_WORD_BYTES) {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "an arg is too long: {} bytes (max {PRINT_MAX_WORD_BYTES})",
@@ -587,15 +587,15 @@ pub(crate) fn answer_print(
     }) {
         Ok((Parsed::Opts(o), _)) => o,
         Ok((Parsed::Early(_), _)) => {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "refused",
                 copy_core::copy_text("beCcm.preview.noSession", &[]),
             ))
         }
-        Err(Die(msg)) => return Err(("refused", msg)),
+        Err(Die(msg)) => return Err(crate::common::said::Said::new("refused", msg)),
     };
     let plan = plan_of(&o, Env::for_preview(), false, accounts)
-        .map_err(|Die(msg)| ("refused", msg))?
+        .map_err(|Die(msg)| crate::common::said::Said::new("refused", msg))?
         .plan;
     Ok(CcmLine {
         line: plan::render_for(&plan, plan::terminal_shell()),
@@ -633,7 +633,7 @@ pub(crate) fn preview_resolved(
 pub(crate) fn terminal_name_mint_with(
     base: crate::control::session_batch::NameBase<'_>,
     snap: &crate::common::session_snapshot::SessionSnapshot,
-) -> Result<String, (&'static str, String)> {
+) -> Result<String, crate::common::said::Said> {
     let base = match base {
         crate::control::session_batch::NameBase::Cwd(cwd) => plan::derive_tmux_name(cwd),
         crate::control::session_batch::NameBase::ForkOf(source) => plan::fork_tmux_base(source),
@@ -641,7 +641,7 @@ pub(crate) fn terminal_name_mint_with(
     let name = match snap.taken_names() {
         Ok(taken) => plan::mint_tmux_name(&base, &taken),
         // 这台没装 tmux：没有会话 ⇒ 没有名字可撞。
-        Err(("no_tmux", _)) => base,
+        Err(e) if e.code.as_deref() == Some("no_tmux") => base,
         Err(e) => return Err(e),
     };
     Ok(name)
@@ -748,7 +748,7 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
             // 搬进同一个进程之后**别把门丢了**（迁移是强度悄悄下降的经典时机）。
             let req = match crate::control::launch::parse_request(launch_args(c)) {
                 Ok(r) => r,
-                Err(f) => return die(&format!("{}: {}", f.code, f.message)),
+                Err(f) => return die(&format!("{}: {}", f.code_or_fallback(), f.said)),
             };
             match crate::control::launch::run(&req) {
                 Ok(out) if out.created => {}
@@ -776,7 +776,7 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
                         "{}",
                         copy_text(
                             "beCcm.execute.launchFailed",
-                            &[("kind", &f.code), ("message", &msg)]
+                            &[("kind", f.code_or_fallback()), ("message", &msg)]
                         )
                     );
                     match reaped {

@@ -180,10 +180,22 @@ fn set_plan_reads_a_saved_set_or_unsaved_rows_and_refuses_both_or_neither() {
     assert_eq!((saved.rows[0].have, saved.more), (1, 1));
     let unsaved = ask(None, Some(vec![row("/srv/a", "dev", 3)])).expect("框里的几行");
     assert_eq!(unsaved.more, 2);
-    assert_eq!(ask(Some("没有"), None).unwrap_err().0, "no_such_set");
-    assert_eq!(ask(Some("坏"), None).unwrap_err().0, "refused");
-    assert_eq!(ask(None, None).unwrap_err().0, "bad_args");
-    assert_eq!(ask(Some("g"), Some(vec![])).unwrap_err().0, "bad_args");
+    assert_eq!(
+        ask(Some("没有"), None).unwrap_err().code.as_deref(),
+        Some("no_such_set")
+    );
+    assert_eq!(
+        ask(Some("坏"), None).unwrap_err().code.as_deref(),
+        Some("refused")
+    );
+    assert_eq!(
+        ask(None, None).unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
+    assert_eq!(
+        ask(Some("g"), Some(vec![])).unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
 }
 
 fn opened(sid: Option<&str>) -> cmd_wire::session::Opened {

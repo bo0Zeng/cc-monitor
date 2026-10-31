@@ -30,10 +30,10 @@ use crate::platform::ssh_client::SshClient;
 /// 远端命令长度上限（防异常输入；正常 resume 命令 < 300 字节）。与 monitor 本机那条送法的上限同值。
 pub(crate) const MAX_COMMAND: usize = 4096;
 
-type CmdErr = (&'static str, String);
+use crate::common::said::Said;
 
-fn refused(msg: String) -> CmdErr {
-    ("refused", msg)
+fn refused(msg: String) -> Said {
+    Said::new("refused", msg)
 }
 
 /// 用户名：非空，仅 `[A-Za-z0-9._-]`、不以 `-` 打头（拼进命令体的裸词，白名单杜绝注入；打头的 `-` 会被 `ssh` 读成选项）。
@@ -53,7 +53,7 @@ fn host_ok(h: &str) -> bool {
 }
 
 /// 要在那台跑的命令：非空 · 不超长 · 无控制符 · PowerShell 那一形另要无双引号。
-fn check_command(cmd: &str, powershell: bool) -> Result<(), CmdErr> {
+fn check_command(cmd: &str, powershell: bool) -> Result<(), Said> {
     if cmd.trim().is_empty() {
         return Err(refused(copy_text("beTerminal.refuse.empty", &[])));
     }
@@ -76,7 +76,7 @@ fn check_command(cmd: &str, powershell: bool) -> Result<(), CmdErr> {
 }
 
 /// ` -J user@host[:port],…`（口 = 22 不带后缀；多跳从最外一台起，逗号相连，同 `ssh -J`）。
-fn jump_arg(chain: &[&super::JumpHop]) -> Result<String, CmdErr> {
+fn jump_arg(chain: &[&super::JumpHop]) -> Result<String, Said> {
     let mut hops = Vec::new();
     for j in chain {
         if !user_ok(&j.user) {
@@ -126,7 +126,7 @@ pub(crate) fn render(
     powershell: bool,
     ssh: &str,
     run: bool,
-) -> Result<String, CmdErr> {
+) -> Result<String, Said> {
     if run {
         check_command(&req.command, powershell)?;
     }
@@ -187,9 +187,9 @@ pub(crate) fn render(
 /// 拼进 `cd` 之前先过形式 ＋ 拒绝集（`shell_quote_core::posix_free_path_ok`：POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF；
 /// **不拒 shell 元字符**，交给唯一那一处 quote，`INVARIANTS §47` ②）；非 UTF-8 的目录走字节形（`posix_quote_bytes`，`$'…'`）。
 /// ⚠ **不用双引号**：[`check_command`] 会拒掉含双引号的命令（PowerShell 原生传参畸变那道防线）。
-pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
+pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, Said> {
     let Ok(cmd_wire::files::WirePath(bytes)) = serde_json::from_value(cwd.clone()) else {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed("`cwd` must be a string or {\"b16\": \"<hex>\"}"),
         ));
@@ -264,7 +264,7 @@ impl crate::wire::typed::Handle for TerminalSsh {
                 &crate::platform::ssh_client::locate(),
                 opened.as_deref(),
             )
-            .map_err(crate::wire::typed::of_pair(TerminalSshErr::Refused))
+            .map_err(crate::wire::typed::of_fail_with(TerminalSshErr::Refused))
         }
     }
 }
@@ -276,7 +276,7 @@ pub(crate) fn answer_in(
     hosts: &[Host],
     powershell: bool,
     ssh: &SshClient,
-) -> Result<SshCommand, CmdErr> {
+) -> Result<SshCommand, Said> {
     answer_with(req, hosts, &[], powershell, ssh, None)
 }
 
@@ -292,9 +292,9 @@ pub(crate) fn answer_with(
     powershell: bool,
     ssh: &SshClient,
     opened: Option<&std::path::Path>,
-) -> Result<SshCommand, CmdErr> {
+) -> Result<SshCommand, Said> {
     if req.sid.is_some() && req.command.is_none() {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed("`sid` only goes with `command`"),
         ));
@@ -304,7 +304,7 @@ pub(crate) fn answer_with(
         (None, Some(cwd)) => command_for_cwd(cwd)?,
         (None, None) => return login_shell(req, hosts, aliases, powershell, ssh),
         (Some(_), Some(_)) => {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "bad_args",
                 crate::common::contract::malformed(
                     "at most one of `command` (a string) or `cwd` (a path)",
@@ -345,7 +345,7 @@ fn login_shell(
     aliases: &[String],
     powershell: bool,
     ssh: &SshClient,
-) -> Result<SshCommand, CmdErr> {
+) -> Result<SshCommand, Said> {
     if req.machine.is_local() {
         return Ok(plain(local_login_shell(powershell)?));
     }
@@ -380,12 +380,15 @@ fn login_shell(
 
 /// 本机那一台的登录 shell（不走 ssh）：POSIX `exec ${SHELL:-bash} -l`；PowerShell 窗口本身就是 shell ⇒ 只回家目录。
 /// 说不出家目录 ⇒ 判不了，不猜一个。
-pub(crate) fn local_login_shell(powershell: bool) -> Result<String, CmdErr> {
+pub(crate) fn local_login_shell(powershell: bool) -> Result<String, Said> {
     if !powershell {
         return Ok(posix::cd_then_login_shell(None));
     }
     let Some(home) = crate::platform::paths::home_dir() else {
-        return Err(("unobservable", copy_text("beTerminal.login.noHome", &[])));
+        return Err(crate::common::said::Said::new(
+            "unobservable",
+            copy_text("beTerminal.login.noHome", &[]),
+        ));
     };
     let line =
         crate::platform::shell::powershell::set_location(&ps_literal(&home.to_string_lossy()));
@@ -393,7 +396,7 @@ pub(crate) fn local_login_shell(powershell: bool) -> Result<String, CmdErr> {
 }
 
 /// 这台找到的 ssh 客户端全路径；没装 / 判不了 ⇒ 那一句（不说没装）。
-pub(crate) fn ssh_path(ssh: &SshClient, powershell: bool) -> Result<&str, CmdErr> {
+pub(crate) fn ssh_path(ssh: &SshClient, powershell: bool) -> Result<&str, Said> {
     match ssh {
         SshClient::At(p) => Ok(p),
         SshClient::Missing => {
@@ -402,9 +405,9 @@ pub(crate) fn ssh_path(ssh: &SshClient, powershell: bool) -> Result<&str, CmdErr
             } else {
                 copy_text("beTerminal.ssh.missingPosix", &[])
             };
-            Err(("no_ssh_client", said))
+            Err(crate::common::said::Said::new("no_ssh_client", said))
         }
-        SshClient::Unknown(why) => Err((
+        SshClient::Unknown(why) => Err(crate::common::said::Said::new(
             "unobservable",
             copy_text("beTerminal.ssh.unknown", &[("why", why)]),
         )),

@@ -40,7 +40,7 @@ fn run(cmd: &str, args: Value) -> Result<Value, String> {
         None => panic!("`{cmd}` 是内建档"),
     };
     got.map(|v| v.unwrap_or(Value::Null))
-        .map_err(|f| format!("{}: {}", f.code, f.message))
+        .map_err(|f| format!("{}: {}", f.code_or_fallback(), f.said))
 }
 
 fn hex(b: &[u8]) -> String {

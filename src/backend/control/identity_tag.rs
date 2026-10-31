@@ -193,7 +193,7 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
     let probed = match super::gate::probe_with(probe_cmd, &pane) {
         Ok(Some(p)) => p,
         Ok(None) => return Outcome::NoSuchPane,
-        Err((code, msg)) => return Outcome::Failed(format!("{code}: {msg}")),
+        Err(s) => return Outcome::Failed(format!("{}: {}", s.code_or_fallback(), s.said)),
     };
     // 容器那一格报的句柄：与 `terminals-list` 同一个函数、同一个窗格。
     let terminal = super::terminals::handle_of(probed.session_id(), Some(&pane));

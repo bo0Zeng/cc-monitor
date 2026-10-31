@@ -13,8 +13,8 @@
 //! 有字时按 Enter 就把它说出去 —— 通用层哪一步没核对就按，判据当场看得见。
 
 use crate::agents::{RewindChoice, RewindFace, RewindItem, RewindRow, RewindScreen};
+use crate::common::said::Said;
 use crate::control::rewind::{RewindIo, UserLine};
-use crate::control::terminals::CmdErr;
 use crate::control::terminals_wire::{Sent, SentResult};
 use cmd_wire::rewind::RewindHow;
 
@@ -359,10 +359,10 @@ fn delivered() -> Sent {
 }
 
 impl RewindIo for FakeTerm {
-    fn screen(&mut self) -> Result<Vec<String>, CmdErr> {
+    fn screen(&mut self) -> Result<Vec<String>, Said> {
         Ok(self.drawn())
     }
-    fn press(&mut self, key: &str) -> Result<Sent, CmdErr> {
+    fn press(&mut self, key: &str) -> Result<Sent, Said> {
         self.key(key);
         Ok(delivered())
     }
@@ -370,7 +370,7 @@ impl RewindIo for FakeTerm {
         false
     }
     fn pause(&mut self, _ms: u64) {}
-    fn say(&mut self, text: &str) -> Result<Sent, CmdErr> {
+    fn say(&mut self, text: &str) -> Result<Sent, Said> {
         self.typed_in.push(text.to_string());
         if self.mode == Mode::Prompt && !self.busy {
             let t = format!("{}{text}", std::mem::take(&mut self.typed));
@@ -378,7 +378,7 @@ impl RewindIo for FakeTerm {
         }
         Ok(delivered())
     }
-    fn lines(&mut self) -> Result<Vec<UserLine>, CmdErr> {
+    fn lines(&mut self) -> Result<Vec<UserLine>, Said> {
         Ok(self
             .said
             .iter()

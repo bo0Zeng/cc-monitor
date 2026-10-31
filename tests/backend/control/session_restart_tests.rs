@@ -3,7 +3,7 @@
 use super::*;
 use crate::control::session_batch::{Listed, TermEntry};
 use crate::wire::SessionFaceExt as _;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::io::Write as _;
 use std::path::PathBuf;
@@ -119,24 +119,24 @@ impl Rig {
             .map(str::to_string)
             .collect();
         let note = |s: String| self.calls.lock().unwrap().push(s);
-        let list = || -> Result<Listed, crate::control::session_batch::CmdErr> {
+        let list = || -> Result<Listed, crate::common::said::Said> {
             Ok(Listed::of(Some(self.rows.clone()), vec![]))
         };
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
         };
-        let end = |terminal: &str| -> Result<(), crate::wire::spec::Fail> {
+        let end = |terminal: &str| -> Result<(), crate::common::said::Said> {
             note(format!("end {terminal}"));
             if self.end_err.is_none() && !matches!(self.shows, Shows::OverOld) {
                 self.book.lock().unwrap().on_frame(&removed(SID));
             }
             match self.end_err {
-                Some(c) => Err(crate::wire::spec::Fail::new(c, "said".to_string())),
+                Some(c) => Err(crate::wire::spec::fail(c, "said".to_string())),
                 None => Ok(()),
             }
         };
         let send_into =
-            |name: &str, sid: &str, line: &str| -> Result<(), crate::wire::spec::Fail> {
+            |name: &str, sid: &str, line: &str| -> Result<(), crate::common::said::Said> {
                 note(format!("send {name} {sid} {line}"));
                 if self.summarize {
                     let mut f = std::fs::OpenOptions::new()
@@ -147,20 +147,22 @@ impl Rig {
                 }
                 Ok(())
             };
-        let run_ccm = |argv: &[String]| -> Result<(i32, String, String), batch::CmdErr> {
-            note(format!("ccm {}", argv.join(" ")));
-            if self.ccm_exit == 0 {
-                let mut b = self.book.lock().unwrap();
-                match self.shows {
-                    Shows::AfterOld => b.on_frame(&added(SID)),
-                    Shows::OverOld => b.again(SID),
-                    Shows::Never => {}
+        let run_ccm =
+            |argv: &[String]| -> Result<(i32, String, String), crate::common::said::Said> {
+                note(format!("ccm {}", argv.join(" ")));
+                if self.ccm_exit == 0 {
+                    let mut b = self.book.lock().unwrap();
+                    match self.shows {
+                        Shows::AfterOld => b.on_frame(&added(SID)),
+                        Shows::OverOld => b.again(SID),
+                        Shows::Never => {}
+                    }
                 }
-            }
-            Ok((self.ccm_exit, String::new(), "boom".to_string()))
+                Ok((self.ccm_exit, String::new(), "boom".to_string()))
+            };
+        let mint = |_: batch::NameBase| -> Result<String, crate::common::said::Said> {
+            Ok("minted".to_string())
         };
-        let mint =
-            |_: batch::NameBase| -> Result<String, batch::CmdErr> { Ok("minted".to_string()) };
         let library = || {
             crate::observe::accounts_query::test_support::list(vec![
                 crate::observe::accounts_query::test_support::row_with("work", |a| {
@@ -275,7 +277,7 @@ fn req(a: Value) -> RestartReq {
     serde_json::from_value(a).expect("入参类型解得出")
 }
 
-fn go(rig: Rig, a: Value) -> (Result<Value, Fault>, Arc<Rig>) {
+fn go(rig: Rig, a: Value) -> (Result<Value, Said>, Arc<Rig>) {
     let rig = Arc::new(rig);
     let out = rt()
         .block_on(run(req(a), None, Host_(rig.clone())))
@@ -289,8 +291,9 @@ fn a_failed_stop_never_starts_the_new_one() {
     let mut rig = Rig::new("stopfail");
     rig.end_err = Some("wrong_owner");
     let (out, rig) = go(rig, args(false, 0));
-    let (code, _, data) = out.expect_err("停失败却回了成功");
-    assert_eq!(code, "stop_failed");
+    let e = out.expect_err("停失败却回了成功");
+    assert_eq!(e.code.as_deref(), Some("stop_failed"));
+    let data = e.data;
     assert_eq!(data, Some(json!({ "why": "wrong_owner" })));
     assert_eq!(rig.did("end"), 1);
     assert_eq!(rig.did("ccm"), 0, "停失败还起了新的：{:?}", rig.calls());
@@ -341,8 +344,9 @@ fn a_failed_start_says_which_terminal() {
     let mut rig = Rig::new("startfail");
     rig.ccm_exit = 1;
     let (out, _) = go(rig, args(false, 0));
-    let (code, _, data) = out.expect_err("起失败却回了成功");
-    assert_eq!(code, "start_failed");
+    let e = out.expect_err("起失败却回了成功");
+    assert_eq!(e.code.as_deref(), Some("start_failed"));
+    let data = e.data;
     let data = data.unwrap();
     assert_eq!(
         (&data["terminal"], &data["stopped"]),
@@ -356,20 +360,24 @@ fn nothing_moves_when_the_account_or_the_terminal_is_not_there() {
     let mut a = args(true, 1000);
     a["account"] = json!("nope");
     let (out, rig) = go(Rig::new("acct"), a);
-    assert_eq!(out.unwrap_err().0, "account_unavailable");
+    assert_eq!(
+        out.unwrap_err().code.as_deref(),
+        Some("account_unavailable")
+    );
     assert!(rig.calls().is_empty(), "{:?}", rig.calls());
 
     let mut rig = Rig::new("none");
     rig.rows = vec![row("proj-cc", SID, false)];
     let (out, rig) = go(rig, args(true, 1000));
-    assert_eq!(out.unwrap_err().0, "not_in_terminal");
+    assert_eq!(out.unwrap_err().code.as_deref(), Some("not_in_terminal"));
     assert!(rig.calls().is_empty());
 
     let mut rig = Rig::new("two");
     rig.rows = vec![row("a-cc", SID, true), row("b-cc", SID, true)];
     let (out, rig) = go(rig, args(true, 1000));
-    let (code, _, data) = out.unwrap_err();
-    assert_eq!(code, "ambiguous");
+    let e = out.unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("ambiguous"));
+    let data = e.data;
     assert_eq!(data, Some(json!({ "names": ["a-cc", "b-cc"] })));
     assert!(rig.calls().is_empty());
 }
@@ -457,8 +465,9 @@ fn two_live_writers_refuse_the_restart_before_anything_moves() {
     let mut rig = Rig::new("two-writers");
     rig.live_before = vec![11, 12];
     let (out, rig) = go(rig, args(true, 1000));
-    let (code, _, data) = out.unwrap_err();
-    assert_eq!(code, "already_live");
+    let e = out.unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("already_live"));
+    let data = e.data;
     assert_eq!(data, Some(json!({ "pids": [11, 12] })));
     assert_eq!(
         rig.did("end") + rig.did("ccm") + rig.did("send"),
@@ -483,8 +492,9 @@ fn after_the_stop_only_someone_else_still_writing_holds_the_start() {
     rig.live_before = vec![11];
     rig.live_after = vec![11, 13];
     let (out, rig) = go(rig, args(false, 0));
-    let (code, _, data) = out.unwrap_err();
-    assert_eq!(code, "already_live");
+    let e = out.unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("already_live"));
+    let data = e.data;
     assert_eq!(data, Some(json!({ "pids": [13], "stopped": true })));
     assert_eq!(rig.did("end"), 1);
     assert_eq!(

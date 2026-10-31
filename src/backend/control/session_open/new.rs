@@ -32,12 +32,12 @@ pub struct OpenRefusal {
 /// 起之前定 sid 那几下（宿主给）：铸一个 sid（那一家认先定 sid 的新起都铸）· 选了策略（或「不轮换」，id 空）时起之前把那个会话写成用那一份（策略不在 ⇒ `no_strategy`）· 起不成撤掉。
 pub(crate) struct PreRotation<'a> {
     pub(crate) sid: &'a dyn Fn() -> String,
-    pub(crate) write: &'a dyn Fn(&str, &str, &str) -> Result<(), (&'static str, String)>,
+    pub(crate) write: &'a dyn Fn(&str, &str, &str) -> Result<(), crate::common::said::Said>,
     pub(crate) forget: &'a dyn Fn(&str),
 }
 
-/// 写分支记录：`(源 sid, 消息 uuid)` ⇒ 新 sid；不成 ⇒ `(码, 那一句)`。
-pub(crate) type ForkWrite<'a> = &'a dyn Fn(&str, &str) -> Result<String, (&'static str, String)>;
+/// 写分支记录：`(源 sid, 消息 uuid)` ⇒ 新 sid；不成 ⇒ 码 ＋ 那一句。
+pub(crate) type ForkWrite<'a> = &'a dyn Fn(&str, &str) -> Result<String, crate::common::said::Said>;
 
 /// `~` / `~/…` ⇒ 这台的家目录下（界面显示的目录常写成 `~/…`）。家说不出 ⇒ 原样。
 pub(crate) fn expand_home(cwd: &str, home: Option<&std::path::Path>) -> String {

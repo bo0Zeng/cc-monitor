@@ -30,7 +30,8 @@ use serde::{Deserialize, Serialize};
 
 use super::history_annotations::{self as notes, AnnotationErr, Book, GroupRec, Named, Table};
 use super::history_browse::Read;
-use crate::dial::remote_ask::{Remote, Said};
+use crate::common::said::Said;
+use crate::dial::remote_ask::Remote;
 use crate::wire::typed::{codes, Command};
 use crate::wire::SessionFaceExt as _;
 
@@ -365,10 +366,7 @@ impl crate::wire::typed::Handle for GroupsReadCmd {
                     .await
                     .map_err(|e| e.to_string())
                     .and_then(|r| r)
-                    .map_err(|message| Said {
-                        code: None,
-                        message,
-                    })
+                    .map_err(Said::from)
             };
             read_with(
                 &req.machines,
@@ -392,10 +390,7 @@ pub(crate) async fn read_here(tz: crate::common::time::Tz) -> Result<GroupsRead,
             .await
             .map_err(|e| e.to_string())
             .and_then(|r| r)
-            .map_err(|message| Said {
-                code: None,
-                message,
-            })
+            .map_err(Said::from)
     };
     read_with(
         &[Machine::named(cmd_wire::LOCAL)],
@@ -457,10 +452,10 @@ pub(crate) async fn read_with(
                         let at = crate::common::time::history_at_text(*at_ms, now_ms, tz);
                         (
                             Half::Before(h.clone(), at.clone()),
-                            Read::Stale { why: s.message, at },
+                            Read::Stale { why: s.said, at },
                         )
                     }
-                    None => (Half::None, Read::Failed { why: s.message }),
+                    None => (Half::None, Read::Failed { why: s.said }),
                 },
             };
             heads.push(GroupsMachine {
@@ -971,11 +966,7 @@ pub(crate) async fn send_with(
     let local = async move {
         local(mine).map_err(|e| {
             use crate::wire::typed::Codes as _;
-            let f = e.into_fail();
-            Said {
-                code: Some(f.code),
-                message: f.message,
-            }
+            e.into_said()
         })
     };
     let got = crate::dial::remote_ask::ask_each::<GroupsWriteCmd, _>(
@@ -989,7 +980,7 @@ pub(crate) async fn send_with(
         .filter_map(|(origin, r)| match r {
             Err(s) => Some(GroupMissed {
                 origin,
-                why: s.message,
+                why: s.said,
             }),
             Ok(GroupsWritten::Sent { missed, .. }) => missed
                 .into_iter()

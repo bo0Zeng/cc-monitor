@@ -4,7 +4,7 @@
 //! 声明点了这条命令不出的成品 ⇒ `bad_args`（不静默当没说）。没登记的命令带 `view` 一样拒。
 //! 挑格去格的本体在 `faces/project.rs`（只那一处）。
 
-use super::spec::Fail;
+use crate::common::said::Said;
 use crate::faces::project::{parse_view, project_reply, View};
 use crate::wire::Request;
 use serde_json::Value;
@@ -53,18 +53,18 @@ impl Plan {
 }
 
 /// 解这条请求的 `view`：认不出的词 · 成品 · 格，或点了这条命令不出的成品 ⇒ `bad_args`（那几处进复制详情）。
-pub(crate) fn plan_of(req: &Request) -> Result<Plan, Fail> {
+pub(crate) fn plan_of(req: &Request) -> Result<Plan, Said> {
     plan_for(&req.cmd, &req.view)
 }
 
 /// [`plan_of`] 的本体（命令名与声明分开给：CLI 面在建请求之前就要拒）。
-pub(crate) fn plan_for(cmd: &str, view: &Value) -> Result<Plan, Fail> {
+pub(crate) fn plan_for(cmd: &str, view: &Value) -> Result<Plan, Said> {
     let refuse = |detail: String| {
-        Fail::new(
+        crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed(&format!("{cmd}: {detail}")),
         )
-        .with_raw(Some(&detail))
+        .and_raw(Some(&detail))
     };
     let Some(view) = parse_view(view).map_err(refuse)? else {
         return Ok(Plan::default());

@@ -147,7 +147,7 @@ pub(crate) struct LaunchOutcome {
 }
 
 /// 失败：码 ＋ 那一句 ＋ 下层原话（tmux 的 stderr · 起不来时的系统报错，进复制详情）。
-pub(crate) type CmdErr = crate::wire::spec::Fail;
+use crate::common::said::Said;
 
 /// `=name:` —— tmux 的**精确匹配**目标形式（F01）。
 ///
@@ -166,7 +166,7 @@ pub(crate) fn exact_target(name: &str) -> String {
 
 /// 已按类型解好的入参 ⇒ **形状校验**（值域）。见模块头注：这不是安全边界。
 /// 帧面（typed 分派解入参）与 `ccm --tmux` 那条路（[`super::ccm`] 直接造 [`LaunchReq`]）都过这一道。
-pub(crate) fn parse_request(req: LaunchReq) -> Result<LaunchRequest, CmdErr> {
+pub(crate) fn parse_request(req: LaunchReq) -> Result<LaunchRequest, Said> {
     let LaunchReq {
         mode,
         name,
@@ -229,7 +229,7 @@ pub(crate) fn parse_request(req: LaunchReq) -> Result<LaunchRequest, CmdErr> {
         None => None,
         Some(a) => Some(
             crate::agents::pick_kind(Some(a))
-                .map_err(|say| ("bad_args", say))?
+                .map_err(|say| Said::new("bad_args", say))?
                 .0
                 .to_string(),
         ),
@@ -243,11 +243,11 @@ pub(crate) fn parse_request(req: LaunchReq) -> Result<LaunchRequest, CmdErr> {
         }
         (None, None) => {}
         _ => {
-            return Err(CmdErr::from((
+            return Err(Said::new(
                 "bad_args",
                 crate::common::contract::malformed("`width` and `height` must be given together")
                     .to_string(),
-            )))
+            ))
         }
     }
 
@@ -271,45 +271,45 @@ pub(crate) fn parse_request(req: LaunchReq) -> Result<LaunchRequest, CmdErr> {
 /// ⚠ 刻意**不复用** [`check_field`]：那一条是给「一条人能读的启动命令」定的（8 KiB 上限），
 /// 拿它守一个尺寸数等于什么都没守 —— `-x` 后面跟一个 8000 字符的串，tmux 会把它当参数错误，
 /// 而错误信息里看不出是谁给的。
-fn check_size(what: &str, v: &str) -> Result<(), CmdErr> {
+fn check_size(what: &str, v: &str) -> Result<(), Said> {
     if v.is_empty() || v.len() > 4 || !v.chars().all(|c| c.is_ascii_digit()) {
-        return Err(CmdErr::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`{what}` must be 1-4 decimal digits: {v:?}"
             )),
-        )));
+        ));
     }
     Ok(())
 }
 
-fn check_field(what: &str, v: &str) -> Result<(), CmdErr> {
+fn check_field(what: &str, v: &str) -> Result<(), Said> {
     if v.trim().is_empty() {
-        return Err(CmdErr::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!("`{what}` is empty")),
-        )));
+        ));
     }
     check_len(what, v)?;
     // 控制字符会让 send-keys 的语义变掉（`\n` = 多敲一次回车）。形状问题。
     if v.chars().any(char::is_control) {
-        return Err(CmdErr::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!("`{what}` contains a control character")),
-        )));
+        ));
     }
     Ok(())
 }
 
-fn check_len(what: &str, v: &str) -> Result<(), CmdErr> {
+fn check_len(what: &str, v: &str) -> Result<(), Said> {
     if v.len() > MAX_FIELD_BYTES {
-        return Err(CmdErr::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`{what}` is too long ({} > {MAX_FIELD_BYTES})",
                 v.len()
             )),
-        )));
+        ));
     }
     Ok(())
 }
@@ -321,36 +321,36 @@ fn check_len(what: &str, v: &str) -> Result<(), CmdErr> {
 ///
 /// ⚠ **空 / 过长两条一个字不改** —— 复用 [`check_field`] 判它们，
 /// 不在这里抄第二份（抄了就是「同一条规矩两处实现」）。
-fn check_typed_payload(v: &str) -> Result<(), CmdErr> {
+fn check_typed_payload(v: &str) -> Result<(), Said> {
     // 先把两个「有意义的键」抹掉，再交给原来那把尺子 ——
     // 这样「空」「过长」「别的控制字符」三条判法**逐字复用**，且长度判的仍是原串
     // （下面那次 `check_field` 收到的是抹过的串，只用来判控制字符）。
     if v.trim().is_empty() {
-        return Err(CmdErr::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed("`payload` is empty"),
-        )));
+        ));
     }
     if v.len() > MAX_FIELD_BYTES {
-        return Err(CmdErr::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`payload` is too long ({} > {MAX_FIELD_BYTES})",
                 v.len()
             )),
-        )));
+        ));
     }
     if let Some(bad) = v
         .chars()
         .find(|c| c.is_control() && *c != '\n' && *c != '\t')
     {
-        return Err(CmdErr::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`payload` has a control character other than \\n / \\t (U+{:04X})",
                 bad as u32
             )),
-        )));
+        ));
     }
     Ok(())
 }
@@ -388,21 +388,24 @@ pub(crate) fn said_of(stderr: &[u8]) -> String {
 const SAID_CAP: usize = 400;
 
 /// 跑一次 tmux 子命令。**argv 直传，不过 shell。**
-fn tmux(args: &[&str]) -> Result<Ran, CmdErr> {
+fn tmux(args: &[&str]) -> Result<Ran, Said> {
     ran(crate::host::tmux::child(None), args)
 }
 
 /// [`tmux`] 的本体：`cmd` 由调用方造（生产 = `host::tmux::child(None)`；判据换一个假 tmux 的绝对路径，
 /// 不碰进程级 `PATH`）。stdout 照旧不要（这几条子命令本来就不往 stdout 写）。
-pub(crate) fn ran(cmd: Child, args: &[&str]) -> Result<Ran, CmdErr> {
+pub(crate) fn ran(cmd: Child, args: &[&str]) -> Result<Ran, Said> {
     match cmd.args(args).run(LAUNCH_TMUX_WITHIN) {
         Ok(out) => Ok(Ran {
             ok: out.status.success(),
             stderr: said_of(&out.stderr),
         }),
-        Err(e) => Err(CmdErr::from(e.into_cmd_said("no_tmux", |why| {
-            copy_text("reason.tmux.startFailed", &[("why", why)])
-        }))),
+        Err(e) => {
+            let (code, said) = e.into_cmd_said("no_tmux", |why| {
+                copy_text("reason.tmux.startFailed", &[("why", why)])
+            });
+            Err(crate::wire::spec::fail(code, said))
+        }
     }
 }
 
@@ -450,7 +453,7 @@ impl Secondary {
 pub(crate) fn secondary_note(
     session: &str,
     step: Secondary,
-    r: &Result<Ran, CmdErr>,
+    r: &Result<Ran, Said>,
 ) -> Option<String> {
     let why = match r {
         Ok(Ran { ok: true, .. }) => return None,
@@ -466,7 +469,7 @@ pub(crate) fn secondary_note(
 
 /// 跑一步次要动作；没做成 ⇒ 留一行日志、不阻断。
 fn secondary(
-    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
     session: &str,
     step: Secondary,
     args: &[&str],
@@ -512,34 +515,28 @@ pub(crate) enum Delivery {
     Unknown,
 }
 
-/// [`run`] 的失败：线上那一份 [`CmdErr`] ＋ 送键没确认时是哪一种、会话是不是本趟新建的。
+/// [`run`] 的失败：线上那一份 [`Said`] ＋ 送键没确认时是哪一种、会话是不是本趟新建的。
 /// 线上只看 `fail`（两种同码 `typed_unconfirmed`）；`untyped` 给命令行那一处决定接进去还是收掉（`ccm::execute`）。
 #[derive(Debug, PartialEq)]
 pub(crate) struct LaunchFail {
-    pub(crate) fail: CmdErr,
+    pub(crate) fail: Said,
     /// `Some((哪一种, 本趟建的那个会话的令牌))`：只在送键那一发上有。
     pub(crate) untyped: Option<(Delivery, Option<JustMade>)>,
 }
 
 impl std::ops::Deref for LaunchFail {
-    type Target = CmdErr;
-    fn deref(&self) -> &CmdErr {
+    type Target = Said;
+    fn deref(&self) -> &Said {
         &self.fail
     }
 }
 
-impl From<CmdErr> for LaunchFail {
-    fn from(fail: CmdErr) -> Self {
+impl From<Said> for LaunchFail {
+    fn from(fail: Said) -> Self {
         LaunchFail {
             fail,
             untyped: None,
         }
-    }
-}
-
-impl From<(&'static str, String)> for LaunchFail {
-    fn from(e: (&'static str, String)) -> Self {
-        CmdErr::from(e).into()
     }
 }
 
@@ -566,15 +563,15 @@ fn create(
     name: &str,
     cwd: Option<&str>,
     size: Option<(&str, &str)>,
-    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
-) -> Result<bool, CmdErr> {
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
+) -> Result<bool, Said> {
     let t = exact_target(name);
     // 过不了新建那一条、而那个会话已经在 ⇒ 照旧幂等接回（已有会话走的是已有那一条，进门时判过）；不在 ⇒ 拒并说清。
     if let Some(said) = new_tmux_name_said(name) {
         if tmux(&["has-session", "-t", &t])?.ok {
             return Ok(false);
         }
-        return Err(CmdErr::from(("bad_args", said)));
+        return Err(Said::new("bad_args", said));
     }
     let mut new_args: Vec<&str> = vec!["new-session", "-d", "-s", name];
     if let Some(cwd) = cwd {
@@ -593,11 +590,11 @@ fn create(
     if tmux(&["has-session", "-t", &t])?.ok {
         return Ok(false);
     }
-    Err(CmdErr::new(
+    Err(crate::wire::spec::fail(
         "create_failed",
         copy_text("beLaunch.create.failed", &[("name", name)]),
     )
-    .with_raw(Some(&made.stderr)))
+    .and_raw(Some(&made.stderr)))
 }
 
 /// 开一个空 shell 的 tmux 会话（不起 agent、不键入）：不在 ⇒ 建在 `cwd` 里、记下是哪个前端建的；已在 ⇒ 不动它。回「这一趟建的」。
@@ -605,7 +602,7 @@ pub(crate) fn open_shell(
     name: &str,
     cwd: Option<&str>,
     client: Option<&str>,
-) -> Result<bool, CmdErr> {
+) -> Result<bool, Said> {
     open_shell_with(name, cwd, client, &tmux)
 }
 
@@ -614,8 +611,8 @@ pub(crate) fn open_shell_with(
     name: &str,
     cwd: Option<&str>,
     client: Option<&str>,
-    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
-) -> Result<bool, CmdErr> {
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
+) -> Result<bool, Said> {
     let made = create(name, cwd, None, tmux)?;
     if let Some(client) = client.filter(|_| made) {
         let t = exact_target(name);
@@ -633,7 +630,7 @@ pub(crate) fn open_shell_with(
 /// 驱动 `create-or-attach` 那一臂的每一格结局）。`send-into` 那一臂的门（`gate::admit`）照旧起真 tmux。
 fn run_with(
     req: &LaunchRequest,
-    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
 ) -> Result<LaunchOutcome, LaunchFail> {
     let t = exact_target(&req.name);
     match req.mode {
@@ -755,7 +752,7 @@ fn type_payload(
     at: TypeAt<'_>,
     name: &str,
     payload: &str,
-    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
 ) -> Result<(), LaunchFail> {
     let target = match &at {
         TypeAt::Admitted(a) => a.handle(),
@@ -771,8 +768,8 @@ fn type_payload(
     match sent {
         Ok(r) if r.ok => Ok(()),
         Ok(r) => Err(unconfirmed(Delivery::NotDelivered, name, &r.stderr, made)),
-        Err(e) if e.code == crate::platform::child::TIMED_OUT => {
-            Err(unconfirmed(Delivery::Unknown, name, &e.message, made))
+        Err(e) if e.code.as_deref() == Some(crate::platform::child::TIMED_OUT) => {
+            Err(unconfirmed(Delivery::Unknown, name, &e.said, made))
         }
         Err(e) => Err(e.into()),
     }
@@ -785,13 +782,13 @@ fn unconfirmed(delivery: Delivery, name: &str, raw: &str, made: Option<JustMade>
         Delivery::Unknown => copy_text("beLaunch.type.timedOut", &[("name", name)]),
     };
     LaunchFail {
-        fail: CmdErr::new("typed_unconfirmed", said).with_raw(Some(raw)),
+        fail: crate::wire::spec::fail("typed_unconfirmed", said).and_raw(Some(raw)),
         untyped: Some((delivery, made)),
     }
 }
 
 /// 终端管理送字的那一段字面字过不过形状：非空、不超长、除 `\n` / `\t` 外没有控制字符（按键走 [`press_key`]）。
-pub(crate) fn check_input_text(text: &str) -> Result<(), CmdErr> {
+pub(crate) fn check_input_text(text: &str) -> Result<(), Said> {
     check_typed_payload(text)
 }
 
@@ -820,9 +817,9 @@ pub(crate) fn type_literal(
     pastes: &[String],
     text: &str,
     enter: bool,
-    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
     settle: &dyn Fn(),
-) -> Result<Ran, CmdErr> {
+) -> Result<Ran, Said> {
     type_into(at.handle(), pastes, text, enter, tmux, settle)
 }
 
@@ -832,9 +829,9 @@ fn type_into(
     pastes: &[String],
     text: &str,
     enter: bool,
-    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
     settle: &dyn Fn(),
-) -> Result<Ran, CmdErr> {
+) -> Result<Ran, Said> {
     let mut last_pasted = false;
     for p in pastes {
         let r = paste_into(target, p, tmux)?;
@@ -868,8 +865,8 @@ fn type_into(
 fn paste_into(
     target: &str,
     text: &str,
-    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
-) -> Result<Ran, CmdErr> {
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
+) -> Result<Ran, Said> {
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let buf = format!(
         "ccm-input-{}-{}",
@@ -887,8 +884,8 @@ fn paste_into(
 pub(crate) fn press_key(
     at: &super::gate::Admitted,
     key: &str,
-    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
-) -> Result<Ran, CmdErr> {
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
+) -> Result<Ran, Said> {
     tmux(&["send-keys", "-t", at.handle(), key])
 }
 

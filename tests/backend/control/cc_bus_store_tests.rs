@@ -60,8 +60,10 @@ fn a_delivered_letter_is_peeked_then_committed_and_unread_drops_to_zero() {
 fn a_duplicate_is_refused_and_not_written() {
     let d = tmp("dup");
     deliver(&own(&d), &env(B, "same", "m1"), 1_000).unwrap();
-    let (c, _) = deliver(&own(&d), &env(B, "same", "m2"), 1_500).unwrap_err();
-    assert_eq!(c, "duplicate");
+    let c = deliver(&own(&d), &env(B, "same", "m2"), 1_500)
+        .unwrap_err()
+        .code;
+    assert_eq!(c.as_deref(), Some("duplicate"));
     assert_eq!(unread(&bus(&d), B).unwrap(), 1, "收件箱只一行");
 }
 
@@ -72,8 +74,8 @@ fn the_same_token_commits_once_and_a_changed_inbox_is_caught() {
     let tok = token_of(&d, B, None);
     assert_eq!(commit(&own(&d), B, &tok), Ok(1));
     assert_eq!(
-        commit(&own(&d), B, &tok).unwrap_err().0,
-        "stale",
+        commit(&own(&d), B, &tok).unwrap_err().code.as_deref(),
+        Some("stale"),
         "第二个读者照常处理手上那段"
     );
     // 第 to 行在两跳之间换了 ⇒ changed。
@@ -88,12 +90,15 @@ fn the_same_token_commits_once_and_a_changed_inbox_is_caught() {
         ),
     )
     .unwrap();
-    assert_eq!(commit(&own(&d), B, &tok).unwrap_err().0, "changed");
+    assert_eq!(
+        commit(&own(&d), B, &tok).unwrap_err().code.as_deref(),
+        Some("changed")
+    );
     assert_eq!(unread(&bus(&d), B).unwrap(), 1, "没推");
     for bad in ["", "1.2", "a.b.c", "1.2.zz", "0.0.0000000000000000"] {
         assert_eq!(
-            commit(&own(&d), B, bad).unwrap_err().0,
-            "bad_token",
+            commit(&own(&d), B, bad).unwrap_err().code.as_deref(),
+            Some("bad_token"),
             "{bad:?}"
         );
     }

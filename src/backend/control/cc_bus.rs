@@ -46,32 +46,30 @@ pub(crate) fn knock(own: &crate::platform::Own, env: &BusEnvelope, now_ms: i64) 
     match put {
         Ok(_) => true,
         Err(f) => {
-            tracing::info!("cc-bus knock not queued for {}: {}", env.to, f.code);
+            tracing::info!(
+                "cc-bus knock not queued for {}: {}",
+                env.to,
+                f.code_or_fallback()
+            );
             false
         }
     }
 }
 
-/// 命令级错误：`(code, message)`。
-type CmdErr = (String, String);
+use crate::common::said::Said;
 
 /// 读面要的那个目录：这台没有数据目录 ⇒ 照实说。
-fn here() -> Result<std::path::PathBuf, CmdErr> {
-    store::dir_here().ok_or_else(|| {
-        (
-            "failed".to_string(),
-            copy_text("beOwnState.path.noHome", &[]),
-        )
-    })
+fn here() -> Result<std::path::PathBuf, Said> {
+    store::dir_here().ok_or_else(|| Said::new("failed", copy_text("beOwnState.path.noHome", &[])))
 }
 
 /// 〔`INVARIANTS §47` ①〕读面收的 id 先过形状判定（`shell_quote_core::bus_id_ok`：非空 · 不以 `-` 开头 · 只含 `[A-Za-z0-9_-]`，
 /// 全仓唯一一份）：id 要拼进收件箱的路径。判不过 ⇒ `bad_id`。
-fn refuse_bad_bus_id(v: &str, said: impl FnOnce(&str) -> String) -> Result<(), CmdErr> {
+fn refuse_bad_bus_id(v: &str, said: impl FnOnce(&str) -> String) -> Result<(), Said> {
     if shell_quote_core::bus_id_ok(v) {
         return Ok(());
     }
-    Err(("bad_id".to_string(), said(&format!("{v:?}"))))
+    Err(Said::new("bad_id", said(&format!("{v:?}"))))
 }
 
 /// 后端对一条会话判的那两样（判官住能读观测层的帧面宿主，`faces::bus_list_face`）：叫它什么 · 此刻有没有谁持着它。
@@ -83,8 +81,8 @@ pub(crate) struct Seen {
 }
 
 /// 总线名单 —— `bus-list` 读它。行是这台的收件箱（[`store::inboxes`]）；叫它什么 · 在不在问 `seen`（后端那一处）。
-pub(crate) fn list_for_inbound(seen: &dyn Fn(&str) -> Seen) -> Result<BusList, CmdErr> {
-    let mut rows = store::inboxes(&here()?).map_err(|m| ("failed".to_string(), m))?;
+pub(crate) fn list_for_inbound(seen: &dyn Fn(&str) -> Seen) -> Result<BusList, Said> {
+    let mut rows = store::inboxes(&here()?).map_err(|m| Said::new("failed", m))?;
     rows.sort();
     Ok(list_reply(roster_agents(&rows, seen)))
 }
@@ -115,10 +113,10 @@ const INBOX_LINES_MAX: u64 = 2000;
 const INBOX_CAP: usize = 4 * 1024 * 1024;
 
 /// `bus-inbox` 的入参 —— 纯函数。id 先过形状判定（拒码 `bad_id`）。
-pub(crate) fn parse_inbox(req: &BusInboxReq) -> Result<(String, u64), CmdErr> {
+pub(crate) fn parse_inbox(req: &BusInboxReq) -> Result<(String, u64), Said> {
     if req.id.is_empty() {
-        return Err((
-            "bad_args".to_string(),
+        return Err(Said::new(
+            "bad_args",
             crate::common::contract::malformed("missing `id`"),
         ));
     }
@@ -127,8 +125,8 @@ pub(crate) fn parse_inbox(req: &BusInboxReq) -> Result<(String, u64), CmdErr> {
         None => INBOX_LINES_DEFAULT,
         Some(n) if (1..=INBOX_LINES_MAX).contains(&n) => n,
         Some(_) => {
-            return Err((
-                "bad_args".to_string(),
+            return Err(Said::new(
+                "bad_args",
                 crate::common::contract::malformed(&format!(
                     "`lines` must be an integer in 1..={INBOX_LINES_MAX}"
                 )),
@@ -139,9 +137,9 @@ pub(crate) fn parse_inbox(req: &BusInboxReq) -> Result<(String, u64), CmdErr> {
 }
 
 /// `bus-inbox`：只读看一个收件箱的尾巴（不推已读位置）。
-pub(crate) fn inbox_for_inbound(req: &BusInboxReq) -> Result<BusInbox, CmdErr> {
+pub(crate) fn inbox_for_inbound(req: &BusInboxReq) -> Result<BusInbox, Said> {
     let (id, lines) = parse_inbox(req)?;
-    let rows = store::tail(&here()?, &id, lines as usize).map_err(|m| ("failed".to_string(), m))?;
+    let rows = store::tail(&here()?, &id, lines as usize).map_err(|m| Said::new("failed", m))?;
     Ok(inbox_reply(&rows))
 }
 
@@ -178,7 +176,7 @@ pub(crate) fn inbox_reply(rows: &[String]) -> BusInbox {
 }
 
 /// 读面收的会话 id（`bus-peek` · `bus-commit` · `bus-unread`）：同一道形状判定。
-fn checked_id(id: &str) -> Result<(), CmdErr> {
+fn checked_id(id: &str) -> Result<(), Said> {
     refuse_bad_bus_id(id, |v| copy_text("beCcBus.inbox.badId", &[("id", v)]))
 }
 
@@ -225,19 +223,19 @@ pub(crate) fn render(lines: &[String]) -> (String, u64, u64) {
 }
 
 /// `bus-peek`：纯读。没有新的 ⇒ 正文空、令牌 `null`。
-pub(crate) fn peek_for_inbound(req: &BusPeekReq) -> Result<BusPeeked, CmdErr> {
+pub(crate) fn peek_for_inbound(req: &BusPeekReq) -> Result<BusPeeked, Said> {
     checked_id(&req.id)?;
     let max = match req.max_lines {
         None => None,
         Some(n) if n >= 1 => Some(n as usize),
         Some(_) => {
-            return Err((
-                "bad_args".to_string(),
+            return Err(Said::new(
+                "bad_args",
                 crate::common::contract::malformed("`max_lines` must be a positive integer"),
             ))
         }
     };
-    let got = store::peek(&here()?, &req.id, max).map_err(|m| ("failed".to_string(), m))?;
+    let got = store::peek(&here()?, &req.id, max).map_err(|m| Said::new("failed", m))?;
     Ok(match got {
         None => BusPeeked {
             text: String::new(),
@@ -261,19 +259,17 @@ pub(crate) fn peek_for_inbound(req: &BusPeekReq) -> Result<BusPeeked, CmdErr> {
 pub(crate) fn commit_for_inbound(
     own: &crate::platform::Own,
     req: &BusCommitReq,
-) -> Result<BusCommitted, CmdErr> {
+) -> Result<BusCommitted, Said> {
     checked_id(&req.id)?;
-    store::commit(own, &req.id, &req.token)
-        .map(|read| BusCommitted { read })
-        .map_err(|(c, m)| (c.to_string(), m))
+    store::commit(own, &req.id, &req.token).map(|read| BusCommitted { read })
 }
 
 /// `bus-unread`：未读几封（只读）。
-pub(crate) fn unread_for_inbound(req: &BusUnreadReq) -> Result<BusUnread, CmdErr> {
+pub(crate) fn unread_for_inbound(req: &BusUnreadReq) -> Result<BusUnread, Said> {
     checked_id(&req.id)?;
     store::unread(&here()?, &req.id)
         .map(|unread| BusUnread { unread })
-        .map_err(|m| ("failed".to_string(), m))
+        .map_err(|m| Said::new("failed", m))
 }
 
 #[cfg(test)]

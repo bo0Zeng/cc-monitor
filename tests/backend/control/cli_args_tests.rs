@@ -49,3 +49,11 @@ fn the_read_args_codes_are_the_ones_that_section_returns() {
         "读入参那一处回的码 ≠ `READ_ARGS_CODES`（两向）"
     );
 }
+
+/// `bad_args` 造的是一份带码的 `Said`：码 `bad_args`，句子说明哪里不对。
+#[test]
+fn bad_args_is_a_coded_said() {
+    let s = super::bad_args("x");
+    assert_eq!(s.code.as_deref(), Some("bad_args"));
+    assert!(s.said.contains('x'), "句子里没带原因：{}", s.said);
+}

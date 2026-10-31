@@ -6,7 +6,7 @@
 //! - 限流：每一对 [`RATE_PAIR`] 封、全台 [`RATE_GLOBAL`] 封 / [`RATE_WINDOW_MS`]（固定窗）；超了 ⇒ `throttled`。来回不停的两条会话由它挡。
 //! - 敲不敲：tier 1 且收件人那条会话 [`KNOCK_DEBOUNCE_MS`] 内没敲过 ⇒ 敲（记下这一刻）；tier 2 不敲。
 
-use crate::control::cc_bus_envelope::Refusal;
+use crate::common::said::Said;
 use crate::control::cc_bus_wire::BusEnvelope;
 use std::collections::BTreeMap;
 
@@ -84,13 +84,13 @@ fn bump(w: &mut Window, now: i64) {
 }
 
 /// 判一封：收 ⇒ `Ok(敲不敲)`，账照它记上；拒 ⇒ 码 ＋ 原话，账不动。顺手扔掉窗外再也用不着的那几笔。
-pub(crate) fn admit(l: &mut Ledger, e: &BusEnvelope, now: i64) -> Result<bool, Refusal> {
+pub(crate) fn admit(l: &mut Ledger, e: &BusEnvelope, now: i64) -> Result<bool, Said> {
     l.recent.retain(|r| now - r.at < DEDUP_WINDOW_MS);
     l.pairs.retain(|_, w| open(w, now));
     l.knocked.retain(|_, at| now - *at < KNOCK_DEBOUNCE_MS);
     let key = fingerprint(e);
     if let Some(r) = l.recent.iter().find(|r| r.key == key) {
-        return Err((
+        return Err(Said::new(
             "duplicate",
             format!(
                 "same letter as {} sent {} ms ago to {:?}",
@@ -103,7 +103,7 @@ pub(crate) fn admit(l: &mut Ledger, e: &BusEnvelope, now: i64) -> Result<bool, R
     let pair = format!("{}>{}", e.from, e.to);
     let pw = l.pairs.get(&pair).copied().unwrap_or_default();
     if !room(&pw, RATE_PAIR, now) {
-        return Err((
+        return Err(Said::new(
             "throttled",
             format!(
                 "{RATE_PAIR} letters from {:?} to {:?} within {RATE_WINDOW_MS} ms",
@@ -112,7 +112,7 @@ pub(crate) fn admit(l: &mut Ledger, e: &BusEnvelope, now: i64) -> Result<bool, R
         ));
     }
     if !room(&l.global, RATE_GLOBAL, now) {
-        return Err((
+        return Err(Said::new(
             "throttled",
             format!("{RATE_GLOBAL} letters on this machine within {RATE_WINDOW_MS} ms"),
         ));

@@ -15,20 +15,19 @@
 
 use super::launch::LAUNCH_CAP;
 use super::launch_account::{self as la, AccountAsk, Settled};
-use super::session_batch::{self as batch, Deps, Standing, SESSIONS_WHERE_CAP};
+use super::session_batch::{self as batch, bad, Deps, Standing, SESSIONS_WHERE_CAP};
 use super::session_open::{self as open, Item};
+use crate::common::said::{IntoNote as _, Said};
 use crate::platform::child::{Budget, Deadline, Until};
-use serde_json::Value;
 use std::future::Future;
 
 /// 失败：码 ＋ 那一句 ＋ 按码定形的 `data`（`account_unavailable` 带 [`la::AccountUnavailable`]）。
-pub(crate) type Failed = (&'static str, String, Option<Value>);
-
-/// 命令级失败（码 ＋ 那一句 ＋ 按码定形的 `data`），全是自有值：跨阻塞线程交回来。
-pub(crate) type Fault = (String, String, Option<Value>);
-
-fn owned((c, m, d): Failed) -> Fault {
-    (c.to_string(), m, d)
+fn refused(code: &str, said: String, data: impl serde::Serialize) -> Said {
+    let s = Said::new(code, said);
+    match serde_json::to_value(data) {
+        Ok(v) => s.with_data(v),
+        Err(_) => s,
+    }
 }
 
 /// 两个期限的上界（兜坏输入；界面今天给的是几分钟）。
@@ -77,12 +76,7 @@ pub(crate) struct Req {
     until: Option<Until>,
 }
 
-fn bad(why: &str) -> Failed {
-    let (c, m) = batch::bad(why);
-    (c, m, None)
-}
-
-fn ms_of(k: &str, n: u64) -> Result<u64, Failed> {
+fn ms_of(k: &str, n: u64) -> Result<u64, Said> {
     if n <= MAX_WAIT_MS {
         Ok(n)
     } else {
@@ -121,7 +115,7 @@ pub(crate) struct RestartReq {
 }
 
 /// 入参的值域：sid 的形状 · 号非空 · 两个期限有界。
-pub(crate) fn parse(r: &RestartReq) -> Result<Req, Failed> {
+pub(crate) fn parse(r: &RestartReq) -> Result<Req, Said> {
     if r.account.is_empty() {
         return Err(bad("`account` must name an account"));
     }
@@ -176,23 +170,17 @@ pub(crate) enum Refused {
     },
 }
 
-impl Refused {
-    fn data(self) -> Option<Value> {
-        serde_json::to_value(self).ok()
-    }
-}
-
 /// 原因码：这条会话已有活进程在写，没起（再起一个就是两个进程同写一份记录）。
 pub(crate) const ALREADY_LIVE: &str = "already_live";
 
 /// 这条会话另有活进程在写（`pids`）⇒ 不起新的（`data`：`{pids}`；停完旧的之后 ⇒ 多 `stopped: true`）。
-fn already_live(said: String, pids: Vec<u32>, stopped: bool) -> Failed {
-    (ALREADY_LIVE, said, Refused::Live { pids, stopped }.data())
+fn already_live(said: String, pids: Vec<u32>, stopped: bool) -> Said {
+    refused(ALREADY_LIVE, said, Refused::Live { pids, stopped })
 }
 
 /// 开动之前那一步：点名的号选得了 ＋ 这条会话恰好在一个终端里跑着 ＋ 写它的活进程至多一个（就是那个终端里的）
 /// ⇒ `(号, 终端名, 名单句柄, 此刻写它的那几个 pid)`。
-fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, String, Vec<u32>), Failed> {
+fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, String, Vec<u32>), Said> {
     let _total = Budget::capped(SESSIONS_WHERE_CAP, req.until);
     let account = la::settle(
         &req.item.account,
@@ -202,17 +190,16 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, String, Vec<u32>)
     )
     .map_err(|u| {
         let said = la::unavailable_said(&u);
-        ("account_unavailable", said, serde_json::to_value(u).ok())
+        refused("account_unavailable", said, u)
     })?;
-    let rows = batch::listed(deps).map_err(|(code, m)| (code, m, None))?;
+    let rows = batch::listed(deps)?;
     let not_here = || {
-        (
+        Said::new(
             "not_in_terminal",
             copy_core::copy_text(
                 "beSessionRestart.locate.notInTerminal",
                 &[("sid", &req.item.sid)],
             ),
-            None,
         )
     };
     match batch::carriers(&rows.rows, &req.item.sid) {
@@ -232,13 +219,13 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, String, Vec<u32>)
         }
         Standing::Ambiguous(es) => {
             let names: Vec<String> = es.iter().map(|e| e.name.clone()).collect();
-            Err((
+            Err(refused(
                 "ambiguous",
                 copy_core::copy_text(
                     "beSessionRestart.locate.ambiguous",
                     &[("names", &names.join(", "))],
                 ),
-                Refused::Ambiguous { names }.data(),
+                Refused::Ambiguous { names },
             ))
         }
         Standing::Idle(_) | Standing::None => Err(not_here()),
@@ -253,15 +240,15 @@ fn swap(
     (name, terminal): (&str, &str),
     mine: &[u32],
     deps: &Deps,
-) -> Result<(), Failed> {
+) -> Result<(), Said> {
     let _total = Budget::capped(SWAP_CAP, req.until);
     if let Err(f) = (deps.end)(terminal) {
         // 换号重启的失败格没有原话位：tmux 原话记一行日志，句子照旧交出去。
-        let why = f.code.clone();
-        return Err((
+        let why = f.code_or_fallback().to_string();
+        return Err(refused(
             "stop_failed",
             f.into_note(),
-            Refused::StopFailed { why }.data(),
+            Refused::StopFailed { why },
         ));
     }
     let others: Vec<u32> = (deps.writers)(&req.item.sid)
@@ -275,23 +262,21 @@ fn swap(
         );
         return Err(already_live(said, others, true));
     }
-    open::relaunch_in(&req.item, &req.agent, account, name, req.local, deps).map_err(
-        |(code, said, _, raw)| {
-            if let Some(raw) = raw {
-                tracing::warn!("[session-restart] relaunch into {name} failed: {code} {raw}");
-            }
-            (
-                "start_failed",
-                said,
-                Refused::StartFailed {
-                    terminal: name.to_string(),
-                    why: Some(code.to_string()),
-                    stopped: true,
-                }
-                .data(),
-            )
-        },
-    )
+    open::relaunch_in(&req.item, &req.agent, account, name, req.local, deps).map_err(|f| {
+        let code = f.code_or_fallback().to_string();
+        if let Some(raw) = &f.raw {
+            tracing::warn!("[session-restart] relaunch into {name} failed: {code} {raw}");
+        }
+        refused(
+            "start_failed",
+            f.said,
+            Refused::StartFailed {
+                terminal: name.to_string(),
+                why: Some(code),
+                stopped: true,
+            },
+        )
+    })
 }
 
 /// 先压缩那一步的结局（不论哪种都照常往下）。
@@ -366,27 +351,24 @@ pub(crate) async fn run<H: Host>(
     args: RestartReq,
     until: Option<Until>,
     host: H,
-) -> Result<Restarted, Fault> {
-    let mut req = parse(&args).map_err(owned)?;
+) -> Result<Restarted, Said> {
+    let mut req = parse(&args)?;
     req.until = until;
     let req = std::sync::Arc::new(req);
     let r = req.clone();
-    let (account, name, terminal, mine) = host
-        .blocking(move |d| prepare(&r, d).map_err(owned))
-        .await?;
+    let (account, name, terminal, mine) = host.blocking(move |d| prepare(&r, d)).await?;
     let compact = compact(&req, &name, &host).await;
     // 停之前记下报到序号：此刻在跑的那个进程不算。
     let since = crate::common::arrival_seq::mark();
     let (r, a, n, t) = (req.clone(), account.clone(), name.clone(), terminal);
     match host
-        .critical(move |d| swap(&r, &a, (&n, &t), &mine, d).map_err(owned))
+        .critical(move |d| swap(&r, &a, (&n, &t), &mine, d))
         .await
     {
         None => {
-            return Err((
-                SHUTTING_DOWN.to_string(),
+            return Err(Said::new(
+                SHUTTING_DOWN,
                 copy_core::copy_text("beInbound.drain.shuttingDown", &[]),
-                None,
             ))
         }
         Some(done) => done?,
@@ -428,20 +410,17 @@ const SHUTTING_DOWN: &str = "shutting_down";
 
 /// `session-restart` 的失败：码 ＋ 那一句 ＋ 按码定形的 `data`（[`Refused`] · 选不了号那一形）。码表封闭（[`RESTART_CODES`]）。
 #[derive(Debug)]
-pub(crate) struct RestartErr(pub(crate) Fault);
+pub(crate) struct RestartErr(pub(crate) Said);
 
 impl crate::wire::typed::Codes for RestartErr {
     const ALL: &'static [&'static str] = RESTART_CODES;
-    fn into_fail(self) -> crate::wire::spec::Fail {
-        let (code, message, data) = self.0;
+    fn into_said(self) -> Said {
+        let code = self.0.code_or_fallback().to_string();
         debug_assert!(
             RESTART_CODES.contains(&code.as_str()) || code == SHUTTING_DOWN,
             "session-restart 回了码表里没有的码 `{code}`"
         );
-        crate::wire::spec::Fail {
-            data,
-            ..crate::wire::spec::Fail::new(&code, message)
-        }
+        crate::wire::spec::fail(&code, self.0)
     }
     const DATA: &'static [&'static str] = &[
         "account_unavailable",
@@ -453,7 +432,7 @@ impl crate::wire::typed::Codes for RestartErr {
     type Data = (la::AccountUnavailable, Refused, Refused, Refused, Refused);
     fn of_code(code: &str, said: String) -> Result<Self, String> {
         if RESTART_CODES.contains(&code) {
-            Ok(RestartErr((code.to_string(), said, None)))
+            Ok(RestartErr(Said::new(code, said)))
         } else {
             Err(said)
         }

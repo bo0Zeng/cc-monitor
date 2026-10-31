@@ -160,7 +160,10 @@ fn add_plans_dir_links_and_manifest_and_refuses_duplicates() {
         name: "z".into(),
         ..want
     };
-    assert_eq!(plan_add(&s, &dup).unwrap_err().0, "refused");
+    assert_eq!(
+        plan_add(&s, &dup).unwrap_err().code.as_deref(),
+        Some("refused")
+    );
 }
 
 /// Claude Code 按需才在配置根下建、各号该共用的那几个目录（自建的子代理 `agents` · 计划模式写的计划 `plans`：会话记录本来就共用，

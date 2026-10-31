@@ -20,9 +20,9 @@ fn req(sid: &str, text: &str) -> Say {
 fn say_with(
     say: &Say,
     waiting: &dyn Fn(&str) -> bool,
-    send: &dyn Fn(&TerminalInputReq) -> Result<Sent, CmdErr>,
+    send: &dyn Fn(&TerminalInputReq) -> Result<Sent, Said>,
     resume: &dyn Fn(&Say) -> Option<Reopened>,
-) -> Result<Delivery, CmdErr> {
+) -> Result<Delivery, Said> {
     say_typed(say, &plain(&say.text), waiting, send, resume)
 }
 
@@ -60,7 +60,7 @@ fn at(landed: Landed, session: Option<&str>) -> Reopened {
 
 /// 恢复没成，码 `code`。
 fn not(code: &'static str) -> Reopened {
-    Err((code, "那一句".into(), None, Some("stderr".into())))
+    Err(crate::common::said::Said::new(code, "那一句".into()).and_raw(Some("stderr")))
 }
 
 /// ★ 那台说在等人（批准 · 回答）⇒ 一个字都不送，结局「在等人」（照排着）。
