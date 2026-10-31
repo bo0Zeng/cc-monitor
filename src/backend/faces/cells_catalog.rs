@@ -770,7 +770,7 @@ mod specimens {
             added: 1,
             removed: 1,
             stat: Words(s("+1 −1")),
-            notice: (!numbered).then(|| Words(s("没逐行比"))),
+            notice: (!numbered).then(|| Words(s("cells capped"))),
         }
     }
 

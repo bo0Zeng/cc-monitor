@@ -46,7 +46,7 @@ export function buildDiffBody(diff: LineDiff): HTMLElement | null {
   root.className = "block-body block-args block-diff";
   if (diff.notice) {
     const notice = document.createElement("div");
-    notice.className = "block-diff-edit-label block-diff-notice";
+    notice.className = "block-diff-edit-label";
     notice.textContent = diff.notice;
     root.appendChild(notice);
   }

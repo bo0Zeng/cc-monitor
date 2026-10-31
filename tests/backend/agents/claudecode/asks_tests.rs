@@ -102,7 +102,10 @@ fn the_command_shows_from_the_part_that_says_what_it_does() {
     v["tool_input"]["command"] = json!("export GITHUB_TOKEN=ghp_x1\ncd /w");
     let a = read(&v).unwrap();
     assert_eq!(a.what.as_deref(), Some("export …"), "钉条不带值");
-    assert_eq!(a.detail, "export GITHUB_TOKEN=ghp_x1\ncd /w", "答批准那一屏照摆全文");
+    assert_eq!(
+        a.detail, "export GITHUB_TOKEN=ghp_x1\ncd /w",
+        "答批准那一屏照摆全文"
+    );
 }
 
 /// 后台子 agent 发的一次 Bash 批准，命令以变量赋值打头：需手动那一条写得出谁要批（派出时的标签 · 类别）、
