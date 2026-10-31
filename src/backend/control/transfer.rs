@@ -62,8 +62,6 @@ use cmd_wire::transfer::{
     TransferUploadReq,
 };
 
-/// 开单：上传。
-pub const TRANSFER_UPLOAD: &str = <TransferUpload as typed::Command>::NAME;
 /// 开单：下载。
 pub const TRANSFER_DOWNLOAD: &str = <TransferDownload as typed::Command>::NAME;
 /// 起跑。

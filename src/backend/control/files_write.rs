@@ -738,7 +738,7 @@ pub(crate) fn in_place_reason(links: u64, owner: u32, me: u32) -> Option<String>
 //   算法只有一个家：[`crate::files::content_sha256`]（住读族那一侧：读的那一趟要它，而读族不许伸手进写面 ——
 //   `readonly_guard` 「写面只有一扇门」那条钉着）。
 
-pub use crate::files::{content_sha256, SHA256_HEX_LEN};
+pub use crate::files::content_sha256;
 
 /// **带 CAS 的覆盖写**：盘上那份的摘要 == `expect_sha256` 才交给 [`overwrite_text`]，否则一个字节不写。
 ///

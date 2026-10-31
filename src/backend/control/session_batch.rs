@@ -369,16 +369,6 @@ pub(crate) fn carriers<'a>(rows: &'a [TermEntry], sid: &str) -> Standing<&'a Ter
     }
 }
 
-/// 名单 ⇒ 这个 sid 的样子（带着它的 tmux 会话名）。
-pub(crate) fn standing(rows: &[TermEntry], sid: &str) -> Standing {
-    match carriers(rows, sid) {
-        Standing::Running(e) => Standing::Running(e.name.clone()),
-        Standing::Ambiguous(es) => Standing::Ambiguous(es.iter().map(|e| e.name.clone()).collect()),
-        Standing::Idle(e) => Standing::Idle(e.name.clone()),
-        Standing::None => Standing::None,
-    }
-}
-
 /// `sessions-where` / `sessions-stop` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
