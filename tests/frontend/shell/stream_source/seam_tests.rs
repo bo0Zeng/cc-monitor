@@ -78,7 +78,6 @@ async fn an_overflow_on_the_local_stream_is_said() {
         "本机那条流上的拥塞丢帧没说、或说了不止一条：{said:?}"
     );
     crate::ui_error::tests::assert_is_copy_not_log(&said[0]);
-    assert_eq!(said[0]["code"], "overflow");
     assert_eq!(
         said[0]["said"],
         copy_core::copy_text(

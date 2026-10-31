@@ -317,7 +317,7 @@ export interface StateCarriers {
   classNames: Map<string, string[]>;
   /** `data-*` 的名字（去掉 `data-`，驼峰已转回连字符）→ 住址。 */
   dataNames: Map<string, string[]>;
-  /** `classList.*(…)` 的实参里一个字符串字面量都没有的调用点 —— 静态认不出切的是哪个类（`文件 · 调用原文`）。 */
+  /** `classList.*(…)` 的实参里一个字符串字面量都没有、也不全是本文件 CSS 模块成员的调用点 —— 静态认不出切的是哪个类（`文件 · 调用原文`）。 */
   unresolved: string[];
   /** 同一处写两遍：同一接收者、同一值表达式进了两种载体。 */
   sameWrite: string[];
@@ -349,10 +349,20 @@ export function stateCarriersOfTs(
   into: Pick<StateCarriers, "classNames" | "dataNames" | "unresolved" | "sameWrite">,
 ): void {
   const push = (m: Map<string, string[]>, k: string, site: string): void => pushSite(m, k, site);
+  // 本文件 `import x from "….module.css"` 的导入名：`x.<类>` 是构建时哈希过的模块类，不是状态名。
+  const cssModules = new Set(
+    [...text.matchAll(/\bimport\s+([A-Za-z_$][\w$]*)\s+from\s+["'][^"'\n]*\.module\.css["']/g)].map((x) => x[1]),
+  );
+  const isModuleClass = (arg: string): boolean => {
+    const m = /^([A-Za-z_$][\w$]*)\.[A-Za-z_$][\w$]*$/.exec(arg.trim());
+    return m !== null && cssModules.has(m[1]);
+  };
   // ① `classList.add/remove/toggle/replace(…)` 的字符串字面量（`toggle` 只有第一个实参是类名）。
   for (const m of text.matchAll(/\bclassList\.(add|remove|toggle|replace)\(([^)\n]*)\)/g)) {
     const lits = [...m[2].matchAll(/"([^"\n$]*)"|'([^'\n$]*)'|`([^`\n$]*)`/g)].map((x) => x[1] ?? x[2] ?? x[3] ?? "");
     if (lits.length === 0) {
+      const args = m[2].split(",");
+      if ((m[1] === "toggle" ? args.slice(0, 1) : args).every(isModuleClass)) continue;
       into.unresolved.push(`${rel} · ${m[0]}`);
       continue;
     }
