@@ -62,7 +62,7 @@
 
 use crate::platform::fs::{Ro, RoFile};
 use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
-use crate::wire::{FrameMake as _, FrameRules as _, SessionFaceExt as _, TopicExt as _};
+use crate::wire::{FrameMake as _, FrameRules as _, TopicExt as _};
 use cmd_wire::frame::{HiddenNow, Relayed};
 use notify::{RecursiveMode, Watcher as _};
 use resident_client::book::SessionBook;
@@ -454,12 +454,6 @@ impl FrameRx {
         let (frame, n) = self.rx.recv().await?;
         self.held.fetch_sub(n, Ordering::AcqRel);
         Some(frame)
-    }
-
-    pub fn try_recv(&mut self) -> Result<Frame, mpsc::error::TryRecvError> {
-        let (frame, n) = self.rx.try_recv()?;
-        self.held.fetch_sub(n, Ordering::AcqRel);
-        Ok(frame)
     }
 }
 
@@ -996,20 +990,14 @@ fn watch_sock_dir_if_present(
 /// reader watches `<claude_dir>/projects/` recursively and
 /// `<claude_dir>/sessions/`.
 /// **P4：戳一下 watcher 的句柄** —— 故意是个**窄类型**而不是把
-/// `Sender<WatchEvent>` 整个交出去：外部（`main` 的 SIGUSR1 流）只该有「催一次重探」
-/// 这一个权力，不该能伪造 `PidDied` / `TmuxObserved` 这类带载荷的内部事件。
+/// `Sender<WatchEvent>` 整个交出去：外部只拿得到停机与接连接这几样，催重探走 [`poke_all`]
+/// （SIGUSR1 处理器认名单，不认句柄），不能伪造 `PidDied` / `TmuxObserved` 这类带载荷的内部事件。
 ///
 /// 这是账本第 1 行那条「只加事件源、不加定时器」的自然延伸：新来源经**同一个** channel。
 #[derive(Clone)]
 pub struct WatcherPoke(std::sync::mpsc::Sender<WatchEvent>);
 
 impl WatcherPoke {
-    /// 催一次 tmux 重探。watcher 已停（channel 关）时静默无操作 —— 那说明没人在听，
-    /// 不是错误。
-    pub fn poke(&self) {
-        let _ = self.0.send(WatchEvent::Poke);
-    }
-
     /// **P5：显式停机。** 删掉 8s ticker 之后，`sink.is_closed()` 那道复查再没有定期
     /// 醒来的机会 ⇒ 必须由 `main` 在 writer 结束时主动说一声，reader 线程才会退出
     /// `recv()`。**这件事漏做不会红任何测试**（进程退出时线程随之消亡），
@@ -1116,8 +1104,8 @@ impl Faces {
         &self.book
     }
 
-    /// 扇出去的一帧：折进那一本；收场的摘掉；超了 `cap` 挤最久没动静的。
-    fn take(&mut self, frame: &Frame, cap: usize) {
+    /// 扇出去的一帧：折进那一本；收场的摘掉；超了 [`FACES_MAX`] 挤最久没动静的。
+    fn take(&mut self, frame: &Frame) {
         if !self.book.fold(frame) {
             return;
         }
@@ -1139,19 +1127,22 @@ impl Faces {
         }
         self.tick += 1;
         self.touched.insert(sid, self.tick);
-        while self.book.live.len() + self.book.left.len() > cap {
-            let stalest = |m: &mut dyn Iterator<Item = &String>| {
-                m.min_by_key(|s| self.touched.get(*s).copied().unwrap_or(0))
-                    .cloned()
-            };
-            let Some(out) =
-                stalest(&mut self.book.left.keys()).or_else(|| stalest(&mut self.book.live.keys()))
-            else {
+        while self.book.live.len() + self.book.left.len() > FACES_MAX {
+            let Some(out) = self.stalest() else {
                 break;
             };
-            tracing::warn!(sid = %out, cap, "faces book over its cap: dropping the stalest session");
+            tracing::warn!(sid = %out, cap = FACES_MAX, "faces book over its cap: dropping the stalest session");
             self.forget(&out);
         }
+    }
+
+    /// 最久没动静的那一条：收场的在前，再到在场的。
+    fn stalest(&self) -> Option<String> {
+        let stalest = |m: &mut dyn Iterator<Item = &String>| {
+            m.min_by_key(|s| self.touched.get(*s).copied().unwrap_or(0))
+                .cloned()
+        };
+        stalest(&mut self.book.left.keys()).or_else(|| stalest(&mut self.book.live.keys()))
     }
 
     fn forget(&mut self, sid: &str) {
@@ -5136,7 +5127,7 @@ impl FrameSink {
         self.faces
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .take(&frame, FACES_MAX);
+            .take(&frame);
         let to: Vec<usize> = (0..self.subs.len())
             .filter(|&i| self.subs[i].wants(&frame))
             .collect();

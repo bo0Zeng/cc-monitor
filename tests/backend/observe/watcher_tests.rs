@@ -1,3 +1,12 @@
+/// 判据不等地取一帧（取走就把它的字节还回去，同 `recv`）：生产只 `recv`，这一个只给本层判据。
+impl FrameRx {
+    pub(crate) fn try_recv(&mut self) -> Result<Frame, tokio::sync::mpsc::error::TryRecvError> {
+        let (frame, n) = self.rx.try_recv()?;
+        self.held.fetch_sub(n, std::sync::atomic::Ordering::AcqRel);
+        Ok(frame)
+    }
+}
+
 /// ★ **事件分派不许有兜底臂**。
 ///
 /// # 它钉的是一个「没人盯的前提」，不是一个缺陷
@@ -55,6 +64,7 @@ fn the_event_dispatch_has_no_catch_all_arm() {
     );
 }
 use super::*;
+use crate::wire::SessionFaceExt as _;
 use std::time::Duration;
 
 /// 等文件耳朵叫醒一次（[`fs_ears`]），回那一批路径；`wait` 里没叫醒 ⇒ `None`。
@@ -261,14 +271,21 @@ fn a_session_that_left_is_gone_from_faces_here() {
 #[test]
 fn the_faces_book_never_grows_past_its_cap_and_evicts_the_stalest_first() {
     let mut f = Faces::default();
-    for sid in ["a", "b", "c"] {
-        f.take(&added_frame(sid), 3);
+    let sid = |i: usize| format!("a{i}");
+    let count = |f: &Faces| f.book().live.len() + f.book().left.len();
+    for i in 1..=FACES_MAX {
+        f.take(&added_frame(&sid(i)));
     }
-    // a 又有了动静 ⇒ 最久没动静的是 b。
-    f.take(&added_frame("a"), 3);
-    f.take(&added_frame("d"), 3);
-    let live: Vec<&str> = f.book().live.keys().map(String::as_str).collect();
-    assert_eq!(live, ["a", "c", "d"]);
+    assert_eq!(count(&f), FACES_MAX, "上限以内一条都不挤");
+    // a1 又有了动静 ⇒ 最久没动静的是 a2。
+    f.take(&added_frame(&sid(1)));
+    f.take(&added_frame(&sid(FACES_MAX + 1)));
+    assert_eq!(count(&f), FACES_MAX, "长过了上限");
+    assert!(
+        f.book().face(&sid(2)).is_none(),
+        "挤掉的不是最久没动静的 a2"
+    );
+    assert!(f.book().face(&sid(1)).is_some() && f.book().face(&sid(FACES_MAX + 1)).is_some());
 }
 
 /// ★ 注解动了（改名 · 星标 · 隐藏 · 别的进程写的也算）⇒ 重判隐藏那一处响清单的节点（不分会话：不在跟的那几行也可能变）。
@@ -773,24 +790,15 @@ fn tmux_reprobe_triggers_on_sid_drift_not_on_every_json_event() {
     );
 }
 
-/// ★ P4：`WatcherPoke` 是**窄**句柄 —— 外部只能催重探，不能伪造带载荷的内部事件。
+/// ★ P4：`WatcherPoke` 是**窄**句柄 —— 外部拿不到 sender，不能伪造带载荷的内部事件。
 ///
-/// 为什么要钉：`main` 的 SIGUSR1 流拿到的若是 `Sender<WatchEvent>` 本身，它就能发
+/// 为什么要钉：`main` 拿到的若是 `Sender<WatchEvent>` 本身，它就能发
 /// `PidDied{key,pid}` / `TmuxObserved(..)` —— 那等于把「谁能宣布一个会话死了」这件事
 /// 从 watcher 内部漏到了进程边界上（signal 处理器是最不该有这个权力的地方）。
 #[test]
 fn watcher_poke_is_a_narrow_handle() {
     let me = include_str!("../../../src/backend/observe/watcher.rs");
-    // 结构性判据：poke 句柄只暴露一个无参方法，且它只发 Poke 这一个变体。
-    assert!(
-        me.contains("pub fn poke(&self)"),
-        "WatcherPoke 应当只暴露 poke()"
-    );
-    assert!(
-        me.contains("self.0.send(WatchEvent::Poke)"),
-        "poke() 只许发 Poke 变体"
-    );
-    // 反向：句柄字段不许是 pub（否则外部直接拿 sender，窄类型就白设了）。
+    // 句柄字段不许是 pub（否则外部直接拿 sender，窄类型就白设了）。
     //
     // ★ 判据**在运行时拼出来**，绝不把它当字面量写进源码 —— 否则这条 `!contains`
     // 会被**本测试自己的那行字面量**命中而恒红（初版就是这么栽的：源码里字段并不是

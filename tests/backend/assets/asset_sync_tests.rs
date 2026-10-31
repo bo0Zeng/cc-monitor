@@ -84,7 +84,12 @@ impl Machine {
     fn new(dir: &Path, name: &'static str, scan: Vec<&'static str>) -> Self {
         std::fs::create_dir_all(dir.join(name)).expect("那台的家");
         Machine {
-            path: dir.join(name).join(".cc-monitor").join(cat::FILE_NAME),
+            path: dir
+                .join(name)
+                .join(".cc-monitor")
+                .join(relay_route_core::file_name_of(
+                    relay_route_core::ASSET_CATALOG_REL,
+                )),
             scan,
             label: name,
         }

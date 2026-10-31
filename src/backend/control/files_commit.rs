@@ -40,7 +40,7 @@
 
 use crate::control::files_write::{
     content_sha256, overwrite_text_expecting, rel_of, replace_contents, root_of, walk_in_root,
-    wire_of, Act, Content, Last, ManageCommand, Was, WriteFail, WriteRefusal,
+    wire_of, Act, Content, Last, Was, WriteFail, WriteRefusal,
 };
 use crate::platform::fs::{Face, Ro};
 use cmd_wire::files as wire;
@@ -76,38 +76,6 @@ pub fn parse_chunk_name(name: &str) -> Option<(&str, u64)> {
     }
     Some((key, seq.parse().ok()?))
 }
-
-/// 本面的命令表（形状借写面那一个类型：线上契约的数据形态）。
-pub const COMMIT_COMMANDS: &[ManageCommand] = &[
-    ManageCommand {
-        name: "files-commit-upload",
-        purpose:
-            "把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；先核整份摘要 `expect: {sha256}`，\
-             不等 ⇒ 删掉坏暂存件、`stale`；不覆盖时 `O_EXCL` 占位再改名上位）",
-        // +`chunks`（入，可缺席；`bytes` 同时是入）：块形 ⇒ 先把块拼成暂存件（`files_upload_chunks`）再走这同一条提交。
-    },
-    // ── 存盘装不进一行时的两步（头注「第二种件」一节）──────────────
-    ManageCommand {
-        name: "files-stage-chunk",
-        purpose: "把存盘的一块写进暂存区 `<key>.<seq>.chunk`（`O_EXCL` 新建：同一块写第二次就拒；暂存区不在就建）",
-    },
-    ManageCommand {
-        name: "files-commit-text",
-        purpose: "按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再覆盖写目标（原子换，与 \
-               `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；`expect: {sha256}` 必给，\
-               盘上那份对不上 ⇒ `stale`、一个字节不写；不论成败都删掉这些块",
-    },
-    // ── 聊天附件（头注「第三种落点」一节）──────────────
-    ManageCommand {
-        name: "session-attachment-commit",
-        purpose: "把暂存区里传完的一份（或先拼好的块）落进会话工作目录下一个新的附件目录 `.ccm-attach/<编号>/<原名>`\
-                  （判单份与附件目录上限；工作目录不可写 ⇒ 拒；核整份摘要；成了顺手清超过七天的编号目录）",
-    },
-    ManageCommand {
-        name: "session-attachment-drop",
-        purpose: "删掉会话工作目录下的一个附件编号目录（草稿上撤掉那一份；不在 ⇒ `removed: false`）",
-    },
-];
 
 /// 聊天附件那一支（落 · 撤 · 清 · 开传前那一问）。
 pub mod session_attachment;

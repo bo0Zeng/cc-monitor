@@ -215,38 +215,22 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     }
     // 🔴 `files-` 这个线上前缀底下**从此有两族**，而它们**互不相交**：
     //   读那一族的住址是 `files::Ask`（`src/backend/files/`，整族纯读），
-    //   写那一面的住址是 `control::files_write::MANAGE_COMMANDS`（`control/`，会改变世界）。
+    //   写那一面是 `REGISTRY` 上拿写句柄（`run.face`）的那几条（`control/`，会改变世界）。
     //   ⇒ 本条的人群必须**先把写那一面减掉**，否则它会把写那一面当成「读族漏声明了一条」
     //   （现打：不减的话逐字报 `files-create` 在 wired 里而不在 declared 里）。
-    //   ⚠ 减法是**按那张表**减，不是按名字手写一份 —— 手写第二份就是下一个漂移源。
-    // 写那一侧从此是**两张表**：写面 `MANAGE_COMMANDS` ＋ 上传提交
-    //   `files_commit::COMMIT_COMMANDS`（写经 `Face`，同一族）。减法按两张表的并。
-    let write_face: std::collections::BTreeSet<String> =
-        crate::control::files_write::MANAGE_COMMANDS
-            .iter()
-            .map(|c| c.name)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .chain(
-                crate::control::files_commit::COMMIT_COMMANDS
-                    .iter()
-                    .map(|c| c.name)
-                    .collect::<Vec<_>>(),
-            )
-            // 解压（`control/files_extract.rs`，写经 `Face`）。
-            .chain(
-                crate::control::files_extract::EXTRACT_COMMANDS
-                    .iter()
-                    .map(|c| c.name)
-                    .collect::<Vec<_>>(),
-            )
-            // 撤一组复制 · 删除 · 改权限（`control/files_batch.rs`）：写那一族的，只立旗、不碰盘。
-            .chain([<crate::stream::inbound::files_write_face::FilesBatchStop as crate::wire::typed::Command>::NAME])
-            .map(str::to_string)
-            .collect();
+    //   ⚠ 减法按命令表上的档位取，不是按名字手写一份 —— 手写第二份就是下一个漂移源。
+    let write_face: std::collections::BTreeSet<String> = super::REGISTRY
+        .iter()
+        .filter(|s| s.run.face)
+        .map(|s| s.name)
+        // 撤一组复制 · 删除 · 改权限（`control/files_batch.rs`）：写那一族的，只立旗、不碰盘，不拿写句柄。
+        .chain([<crate::stream::inbound::files_write_face::FilesBatchStop as crate::wire::typed::Command>::NAME])
+        .map(str::to_string)
+        .collect();
     assert!(
-        !write_face.is_empty(),
-        "写那一面的登记表是空的 —— 下面那个减法退化成恒等，本条的分家没在钉任何东西"
+        write_face.len() >= 10,
+        "拿写句柄的命令只有 {} 条 —— 下面那个减法差不多退化成恒等，本条的分家没在钉任何东西",
+        write_face.len()
     );
     // 两族**不许有交集**：同一个线上名要是两边都声明，`inbound::REGISTRY` 上那一条
     // 到底调哪一族就成了「谁先被 match 到」，而那不是契约。
@@ -271,24 +255,12 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         "\n`files-read` 上线的那一组与读族 `Ask` 声明的那一组对不上。\n\
          少接一条的后果是静默的：能力在、判据在，而调用方发过去只会拿到 `unknown_command`。"
     );
-    // ★ 写那一面的**同形相等断言**：登记表 ↔ `REGISTRY` 上真上线的那几条，两向（聊天附件那两条是 `session-attachment-*`，不按前缀挑）。
-    let all_names: std::collections::BTreeSet<String> =
-        super::REGISTRY.iter().map(|s| s.name.to_string()).collect();
-    let wired_write: std::collections::BTreeSet<String> =
-        all_names.intersection(&write_face).cloned().collect();
-    assert_eq!(
-        wired_write, write_face,
-        "\n文件管理**写**面登记的那一组与 `inbound::REGISTRY` 上真上线的那一组对不上。\n\
-         登记了而没上线 ⇒ 调用方发过去拿到 `unknown_command`（静默不可用）；\n\
-         上线了而没登记 ⇒ 🔴 **写能力长出了一个没签字的命令** ——\n\
-         而 `readonly_guard` 那条「拿得到 `Face` 的命令 == 写面登记的命令」判的正是这张表。"
-    );
     // ★ 写那一面的每条命令：喂空 `args` 落在它登记的码上（码表从错误枚举来）。
     for name in &write_face {
         let spec = super::REGISTRY
             .iter()
             .find(|s| s.name == name)
-            .unwrap_or_else(|| panic!("`{name}` 不在 REGISTRY 上 —— 上面那条应该先红"));
+            .unwrap_or_else(|| panic!("`{name}` 不在 REGISTRY 上"));
         // 真的调一次：喂空 `args` ⇒ 落在这条命令登记的码上（撤一组那一条不写盘、不经写面那一扇，不在这里调）。
         if name == <crate::stream::inbound::files_write_face::FilesBatchStop as crate::wire::typed::Command>::NAME {
             continue;

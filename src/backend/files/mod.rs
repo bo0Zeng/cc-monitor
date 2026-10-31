@@ -5,7 +5,7 @@
 //! 四个 target 同一份源码、同一组能力；保鲜是定期重走 ＋ 浏览目录挂监听（[`browse_watch`]，各平台语义不对等）。
 //! 「定期重走」的周期住 [`index::REWALK_INTERVAL_SECS`]，由 `files.index.status` 交出去，界面显示那个延迟。
 //!
-//! 线上名与能力名的翻译只有一处：每条 [`Ask`] 自己的 `CAPABILITY`（`files.ls` ↔ `files-ls`）。
+//! 线上名只有一处：每条入参类型的 `cmd_wire::Call::NAME`（`files-ls`）；入参的类型经 [`Ask`] 选中那条能力。
 //! 索引怎么建、什么时候变新是机制的线上面：`files-index-rebuild`（[`index::rebuild_once`]）· `files-browse`（[`browse_watch::set_browsing`]）；
 //! 节拍归调用方（后端零定时器）—— 没人发 rebuild，`files.find` 就回 `index_missing: true`。
 //! 常驻那一份索引是进程级的 ⇒ 这几条要在同一条连接上才配得起来；CLI 面一次 exec 一个进程，建好的索引随进程没了。
@@ -1063,14 +1063,11 @@ fn home_from(h: Option<std::ffi::OsString>) -> Answer<wire::FilesPathReply> {
 
 /// 本族一条读命令的入参 ⇒ 它的回包与本体。命令表那一扇门只认 [`answer`]：入参的类型就选中了那条能力，抄错能力名这件事不可表示。
 pub trait Ask {
-    /// [`CAPABILITIES`] 里那一行的名字。
-    const CAPABILITY: &'static str;
     type Reply;
     fn answer(self, tz: &crate::common::time::Tz) -> Answer<Self::Reply>;
 }
 
 impl Ask for wire::LsReq {
-    const CAPABILITY: &'static str = "files.ls";
     type Reply = wire::LsReply;
     fn answer(self, tz: &crate::common::time::Tz) -> Answer<wire::LsReply> {
         ls(self, tz)
@@ -1078,7 +1075,6 @@ impl Ask for wire::LsReq {
 }
 
 impl Ask for wire::StatReq {
-    const CAPABILITY: &'static str = "files.stat";
     type Reply = wire::StatReply;
     fn answer(self, tz: &crate::common::time::Tz) -> Answer<wire::StatReply> {
         stat(self, tz)
@@ -1086,7 +1082,6 @@ impl Ask for wire::StatReq {
 }
 
 impl Ask for wire::FindReq {
-    const CAPABILITY: &'static str = "files.find";
     type Reply = wire::FindReply;
     fn answer(self, tz: &crate::common::time::Tz) -> Answer<wire::FindReply> {
         find(self, tz)
@@ -1094,7 +1089,6 @@ impl Ask for wire::FindReq {
 }
 
 impl Ask for wire::IndexStatusReq {
-    const CAPABILITY: &'static str = "files.index.status";
     type Reply = wire::IndexStatusReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::IndexStatusReply> {
         Ok(index_status())
@@ -1102,7 +1096,6 @@ impl Ask for wire::IndexStatusReq {
 }
 
 impl Ask for wire::RebuildReq {
-    const CAPABILITY: &'static str = "files.index.rebuild";
     type Reply = wire::RebuildReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::RebuildReply> {
         index_rebuild(self)
@@ -1110,7 +1103,6 @@ impl Ask for wire::RebuildReq {
 }
 
 impl Ask for wire::ReadTextReq {
-    const CAPABILITY: &'static str = "files.read.text";
     type Reply = wire::ReadTextReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::ReadTextReply> {
         read_text(self)
@@ -1118,7 +1110,6 @@ impl Ask for wire::ReadTextReq {
 }
 
 impl Ask for wire::HomeReq {
-    const CAPABILITY: &'static str = "files.home";
     type Reply = wire::FilesPathReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::FilesPathReply> {
         home()
@@ -1126,7 +1117,6 @@ impl Ask for wire::HomeReq {
 }
 
 impl Ask for wire::SizeReq {
-    const CAPABILITY: &'static str = "files.size";
     type Reply = wire::SizeReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::SizeReply> {
         size_of(self)
@@ -1134,7 +1124,6 @@ impl Ask for wire::SizeReq {
 }
 
 impl Ask for wire::ReadChunkReq {
-    const CAPABILITY: &'static str = "files.read.chunk";
     type Reply = wire::ReadChunkReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::ReadChunkReply> {
         read_chunk(self)
@@ -1143,7 +1132,6 @@ impl Ask for wire::ReadChunkReq {
 
 /// `files.grep` 的同步那一臂（取消不掉；命令面走 [`answer_grep_cancellable`]）。
 impl Ask for wire::GrepReq {
-    const CAPABILITY: &'static str = "files.grep";
     type Reply = wire::GrepReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::GrepReply> {
         grep_with(&self, &std::sync::atomic::AtomicBool::new(false))

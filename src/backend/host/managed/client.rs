@@ -176,7 +176,6 @@ pub(crate) fn interrupt(sock: &Path) -> std::io::Result<()> {
 /// 抓回来的一屏：回滚里最近 `back` 行 ＋ 当屏（`color` ⇒ 行里带 SGR）、尺寸、光标（行 · 列）。
 pub(crate) struct Captured {
     pub(crate) lines: Vec<String>,
-    pub(crate) capped: bool,
     pub(crate) size: Size,
     pub(crate) cursor: [u16; 2],
 }
@@ -185,12 +184,11 @@ pub(crate) fn capture(sock: &Path, back: usize, color: bool) -> std::io::Result<
     ask(sock, vec![Ctl::Capture { back, color }], |c| match c {
         Ctl::Captured {
             lines,
-            capped,
             size,
             cursor,
+            ..
         } => Some(Captured {
             lines,
-            capped,
             size,
             cursor,
         }),

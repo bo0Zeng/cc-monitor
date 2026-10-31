@@ -143,14 +143,13 @@ pub(crate) struct Hands<'a> {
     pub(crate) hub: super::typed::Hub,
 }
 
-/// 一条命令要的能力（[`super::typed::Handle::Needs`]）：处理器拿到的那一份（`Given`）· 要不要写句柄 · 怎么从 [`Hands`] 里取。
+/// 一条命令要的能力（[`super::typed::Handle::Needs`]）：处理器拿到的那一份（`Given`）· 怎么从 [`Hands`] 里取。
 /// 取不到（要写句柄、手里没有）⇒ `None`：那条命令在这个入口交不出来。
 pub(crate) trait Needs: 'static {
     type Given: Send + 'static;
-    /// 要写自家状态的句柄。
-    const WRITES: bool;
-    /// 要文件管理写句柄（改用户的文件）。
-    const FACE: bool;
+    /// 要文件管理写句柄（改用户的文件）：判据拿它对写面登记的命令表，只 [`needs::Face`] 是。
+    #[cfg(test)]
+    const FACE: bool = false;
     fn give(h: &Hands) -> Option<Self::Given>;
 }
 
@@ -174,39 +173,31 @@ pub(crate) mod needs {
 
     impl Needs for Nothing {
         type Given = ();
-        const WRITES: bool = false;
-        const FACE: bool = false;
         fn give(_: &Hands) -> Option<()> {
             Some(())
         }
     }
     impl Needs for Files {
         type Given = Door;
-        const WRITES: bool = false;
-        const FACE: bool = false;
         fn give(h: &Hands) -> Option<Door> {
             Some(h.files)
         }
     }
     impl Needs for Own {
         type Given = crate::platform::Own;
-        const WRITES: bool = true;
-        const FACE: bool = false;
         fn give(h: &Hands) -> Option<crate::platform::Own> {
             h.own.cloned()
         }
     }
     impl Needs for FilesOwn {
         type Given = (Door, crate::platform::Own);
-        const WRITES: bool = true;
-        const FACE: bool = false;
         fn give(h: &Hands) -> Option<Self::Given> {
             Some((h.files, h.own?.clone()))
         }
     }
     impl Needs for Face {
         type Given = crate::platform::fs::Face;
-        const WRITES: bool = false;
+        #[cfg(test)]
         const FACE: bool = true;
         fn give(_: &Hands) -> Option<crate::platform::fs::Face> {
             Some(super::issue_face())
@@ -214,8 +205,6 @@ pub(crate) mod needs {
     }
     impl Needs for OwnHub {
         type Given = (crate::platform::Own, HubFn);
-        const WRITES: bool = true;
-        const FACE: bool = false;
         fn give(h: &Hands) -> Option<Self::Given> {
             Some((h.own?.clone(), h.hub))
         }

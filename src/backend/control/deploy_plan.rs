@@ -36,10 +36,7 @@ use deploy_contract::{DeployAction, Key, Refusal, RemoteIdentity, Route};
 use serde::{Deserialize, Serialize};
 
 /// 判定与计划的本体住 `deploy` crate（桌面与手机同一份）；本文件只是帧面那一层（入参 · 回包形状 · 码）。
-pub use deploy::{
-    identity_decision, interpret_target_probe, judge, promised, stale_leftovers, DialFacing,
-    Facing, Fut, Plan, TargetBinary, LEFTOVER_STALE_SECS, MARKS,
-};
+pub use deploy::{identity_decision, judge, DialFacing, Plan, MARKS};
 
 /// 这一串的失败：码 ＋ 那一句 ＋ 下层原话（那台答 `uname` 的原话进复制详情，不上句子）。
 pub(crate) use crate::wire::spec::Fail;
@@ -57,7 +54,7 @@ fn refused(r: &Refusal, machine: &str) -> Fail {
 /// 出计划（[`deploy::plan`]，一个字节都不写）：判据经它问判定那一半。
 #[cfg(test)]
 pub async fn plan(
-    facing: &dyn Facing,
+    facing: &dyn deploy::Facing,
     carried: &[(deploy_contract::Key, String)],
     machine: &str,
     now_secs: u64,

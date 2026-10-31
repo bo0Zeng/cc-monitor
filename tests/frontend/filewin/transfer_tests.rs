@@ -460,26 +460,6 @@ fn one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection() {
     );
 }
 
-/// 🔴 窗口这一侧写死的那几个**线上名字**与对面（传输台 / 后端）那一份逐字相等。
-///
-/// 两侧异源：窗口的常量 · 传输台的常量 · 后端提交命令表的源码（运行期读，不是编译期边）。
-/// 漂开的症状是具体的：开单答「不认」、订阅答「没有这条流」、提交答 `unknown_command`。
-#[test]
-fn the_wire_names_the_window_says_are_the_ones_the_other_side_answers() {
-    // 窗口 ⇄ monitor 传输中继那三个名字的相等挪到了 monitor 那一侧（`tests/frontend/shell/filewin/cross_half_tests.rs`）。
-    let backend = std::fs::read_to_string(
-        guard_core::addr::repo_root().join("src/backend/control/files_commit.rs"),
-    )
-    .expect("读后端提交那一份");
-    assert_eq!(
-        backend
-            .matches(&format!("name: {CMD_COMMIT:?},")[..])
-            .count(),
-        1,
-        "后端提交命令表里找不到逐字相同的 `{CMD_COMMIT}`"
-    );
-}
-
 // ════════════════════════════════════════════════════════════════════════
 // 经通道的那三步：开单 → 起跑并看 → 提交（真回环 ＋ 真钥匙 ＋ 合成对端）
 // ════════════════════════════════════════════════════════════════════════

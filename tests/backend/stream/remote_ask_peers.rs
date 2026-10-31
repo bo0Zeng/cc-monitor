@@ -3,9 +3,20 @@
 
 use super::{Remote, Said, Table};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Mutex;
+
+impl Table {
+    /// 一张固定的（机器表由调用方给）：各处判据经它造，生产只有 `REACH` 那一张。
+    pub(crate) fn of(hosts: Vec<crate::dial::Host>) -> Self {
+        Table {
+            fixed: Mutex::new(Some(hosts)),
+            peers: Mutex::new(BTreeMap::new()),
+        }
+    }
+}
 
 pub(crate) struct Peers {
     answers: Vec<(String, String)>,
