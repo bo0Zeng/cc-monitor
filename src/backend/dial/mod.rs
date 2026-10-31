@@ -209,7 +209,7 @@ pub(crate) fn request_named(
     use_: &str,
     extra: serde_json::Value,
 ) -> Result<serde_json::Value, Said> {
-    machine::request(hosts, name, None, use_, extra).map_err(|(code, said)| Said::new(code, said))
+    machine::request(hosts, name, None, use_, extra)
 }
 
 /// 同 [`request_named`]，读成拨号请求。

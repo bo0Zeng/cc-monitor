@@ -333,7 +333,7 @@ pub fn dial_plan_json(table: &str, name: &str) -> String {
     let plan = machine_table(table)
         .and_then(|hosts| {
             ssh_dial::machine::request(&hosts, name, None, "stream", serde_json::json!({}))
-                .map_err(|(_, said)| said)
+                .map_err(|s| s.said)
         })
         .and_then(|v| serde_json::from_value(v).map_err(|e| ssh_dial::malformed(&e.to_string())))
         .map_or_else(
