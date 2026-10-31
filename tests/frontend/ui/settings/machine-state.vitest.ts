@@ -37,7 +37,7 @@ describe("机器状态成品", () => {
   });
 
   it("★ 问题行的语气与进度条照成品的 `strip`，不按 `state` 另判", () => {
-    const down = decoded("无应答");
+    const down = decoded("密钥被拒");
     // 同是 down，后端说条上那一行正在做、带进度 ⇒ 照它。
     expect(machineFace({ ...down, strip: { tone: "busy", progress: true } })).toMatchObject({ tone: "busy", bar: true });
     expect(machineFace({ ...down, strip: { tone: "warn", progress: false } })).toMatchObject({ tone: "warn", bar: false });
