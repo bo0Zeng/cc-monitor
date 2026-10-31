@@ -52,6 +52,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "KEEP",
+        "**时长**不是体量：一个会话的用量记录只留最近这么久（`accounts/quota/spend.rs`，6 小时 = 36 格 × 10 分钟），过了就丢。",
+    ),
+    (
         "WEEK",
         "**时长**不是体量：一周的秒数（`accounts/quota/facts.rs`），周窗不在计时时照上次重置往后推整周用。",
     ),

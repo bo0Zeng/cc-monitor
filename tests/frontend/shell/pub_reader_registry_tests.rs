@@ -37,7 +37,7 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     (
         "src/common/cmd-wire/src/transfer.rs",
         "Pulled",
-        "分块下载的结局：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/transfer.rs`，不在扫描面里；w8/mobcore 那一刀接上它）",
+        "分块下载的结局：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/transfer.rs`，后端那棵 workspace，不在扫描面里）",
     ),
     (
         "src/common/cmd-wire/src/record.rs",
