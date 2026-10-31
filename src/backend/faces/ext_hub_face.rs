@@ -3,7 +3,7 @@
 //! 不与内层那 8 条同住：引用图按文件取，这一对够得着的（可达表 · 拨号）不该算到内层头上。
 
 use crate::assets::hub_wire as wire;
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use crate::wire::typed::{self, codes, Command};
 
 codes! {
@@ -48,7 +48,7 @@ impl crate::wire::typed::Handle for ExtHubPreview {
                 &current,
             )
             .await
-            .map_err(|p| typed::of_fail(Fail::from(p), ExtHubErr::IoFailed))
+            .map_err(|p| typed::of_fail(Said::from(p), ExtHubErr::IoFailed))
         }
     }
 }
@@ -83,7 +83,7 @@ impl crate::wire::typed::Handle for ExtHubApply {
                 &current,
             )
             .await
-            .map_err(|p| typed::of_fail(Fail::from(p), ExtHubErr::IoFailed))
+            .map_err(|p| typed::of_fail(Said::from(p), ExtHubErr::IoFailed))
         }
     }
 }

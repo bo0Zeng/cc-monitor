@@ -68,11 +68,11 @@ pub(crate) fn answer(
     name: &str,
     args: &serde_json::Value,
     tz: &crate::common::time::Tz,
-) -> Result<serde_json::Value, Refused> {
+) -> Result<serde_json::Value, Said> {
     fn one<A: Ask + serde::de::DeserializeOwned>(
         args: &serde_json::Value,
         tz: &crate::common::time::Tz,
-    ) -> Result<serde_json::Value, Refused>
+    ) -> Result<serde_json::Value, Said>
     where
         A::Reply: serde::Serialize,
     {
@@ -82,10 +82,10 @@ pub(crate) fn answer(
             args.clone()
         };
         let req: A = serde_json::from_value(v).map_err(|e| {
-            Refused::from((
+            Said::new(
                 "bad_args",
                 crate::common::contract::malformed(&e.to_string()),
-            ))
+            )
         })?;
         super::answer(req, tz).map(|r| serde_json::to_value(r).expect("回包总能序列化"))
     }
@@ -101,10 +101,10 @@ pub(crate) fn answer(
                 args.clone()
             };
             let req: w::BrowseReq = serde_json::from_value(v).map_err(|e| {
-                Refused::from((
+                Said::new(
                     "bad_args",
                     crate::common::contract::malformed(&e.to_string()),
-                ))
+                )
             })?;
             super::browse(TEST_CONN, req).map(|r| serde_json::to_value(r).expect("回包总能序列化"))
         }
@@ -114,10 +114,10 @@ pub(crate) fn answer(
         n if n == <w::GrepReq as Named>::CAPABILITY => one::<w::GrepReq>(args, tz),
         n if n == <w::HomeReq as Named>::CAPABILITY => one::<w::HomeReq>(args, tz),
         n if n == <w::IndexStatusReq as Named>::CAPABILITY => one::<w::IndexStatusReq>(args, tz),
-        other => Err(Refused::from((
+        other => Err(Said::new(
             "unknown_capability",
             crate::common::contract::malformed(&format!("unknown capability `{other}`")),
-        ))),
+        )),
     }
 }
 
@@ -126,7 +126,7 @@ pub(crate) fn answer_wire(
     wire_name: &str,
     args: &serde_json::Value,
     tz: &crate::common::time::Tz,
-) -> Result<serde_json::Value, Refused> {
+) -> Result<serde_json::Value, Said> {
     answer(&wire_name.replace('-', "."), args, tz)
 }
 
@@ -147,11 +147,7 @@ fn req_fields(cap: &str) -> std::collections::BTreeSet<String> {
         &serde_json::json!({ "__probe__": 1 }),
         &Default::default(),
     ) {
-        Err(Refused {
-            code: "bad_args",
-            said,
-            ..
-        }) => said,
+        Err(s) if s.code.as_deref() == Some("bad_args") => s.said,
         other => panic!("`{cap}` 收下了一个不认得的键：{other:?}"),
     };
     if said.contains("there are no fields") {
@@ -269,11 +265,8 @@ fn a_rebuild_on_an_unreadable_root_is_refused_without_touching_the_resident_inde
     );
     assert!(
         matches!(
-            got,
-            Err(Refused {
-                code: "unreadable",
-                ..
-            })
+            &got,
+            Err(s) if s.code.as_deref() == Some("unreadable")
         ),
         "对一个打不开的根没有回 `unreadable`，回的是 {got:?}"
     );
@@ -377,7 +370,7 @@ fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
     ] {
         let got = answer(cap, &args, &Default::default());
         assert!(
-            matches!(got, Err(Refused { code: c, .. }) if c == want),
+            matches!(&got, Err(s) if s.code.as_deref() == Some(want)),
             "`{cap}` 对 {args:?} 该回 `{want}`，回的是 {got:?}"
         );
         let declared = registered_codes(cap);
@@ -725,10 +718,7 @@ fn every_declared_arg_is_really_read_by_the_parser() {
                 &serde_json::json!({ "path": p(&fx.root), "ignore_ascii_case": true }),
                 &Default::default()
             ),
-            Err(Refused {
-                code: "bad_args",
-                ..
-            })
+            Err(s) if s.code.as_deref() == Some("bad_args")
         ),
         "`files.ls` 收下了一个它不认得的键 —— 调用方会以为那个开关生效了"
     );
@@ -930,7 +920,7 @@ fn a_malformed_path_argument_is_refused_with_its_own_code() {
     ] {
         let got = answer(cap, &args, &Default::default());
         assert!(
-            matches!(got, Err(Refused { code: c, .. }) if c == want),
+            matches!(&got, Err(s) if s.code.as_deref() == Some(want)),
             "`{cap}` 对 {args:?} 没有回 `{want}`，回的是 {got:?}"
         );
     }
@@ -938,10 +928,7 @@ fn a_malformed_path_argument_is_refused_with_its_own_code() {
     assert!(
         matches!(
             answer("files.find", &serde_json::json!({}), &Default::default()),
-            Err(Refused {
-                code: "bad_args",
-                ..
-            })
+            Err(s) if s.code.as_deref() == Some("bad_args")
         ),
         "`files.find` 少了 `query` 却没回 `bad_args`"
     );
@@ -960,7 +947,7 @@ fn the_declared_error_codes_are_not_ghosts() {
     for (cap, want) in [("files.ls", "not_found"), ("files.stat", "unreadable")] {
         let got = answer(cap, &arg, &Default::default());
         assert!(
-            matches!(got, Err(Refused { code: c, .. }) if c == want),
+            matches!(&got, Err(s) if s.code.as_deref() == Some(want)),
             "`{cap}` 对一个不存在的路径没有回 `{want}`，回的是 {got:?}"
         );
         let declared = registered_codes(cap);
@@ -984,10 +971,7 @@ fn the_declared_error_codes_are_not_ghosts() {
     assert!(
         matches!(
             ls(&base.join("f.txt")),
-            Err(Refused {
-                code: "not_dir",
-                ..
-            })
+            Err(s) if s.code.as_deref() == Some("not_dir")
         ),
         "给一份文件没回 `not_dir`"
     );
@@ -1013,7 +997,8 @@ fn the_declared_error_codes_are_not_ghosts() {
             .unwrap();
         // root 读得动一切 ⇒ 这一格在 root 下判不了（那时列得出来，读数照实）。
         match ls(&base.join("locked")) {
-            Err(Refused { code: "denied", .. }) | Ok(_) => {}
+            Ok(_) => {}
+            Err(s) if s.code.as_deref() == Some("denied") => {}
             other => panic!("没权限没回 `denied`：{other:?}"),
         }
         std::fs::set_permissions(base.join("locked"), std::fs::Permissions::from_mode(0o755))
@@ -1081,13 +1066,10 @@ fn one_byte_over_the_cap_is_refused_whole_and_exactly_at_the_cap_is_not() {
         &Default::default(),
     );
     match over {
-        Err(Refused {
-            code: "too_large",
-            said: m,
-            ..
-        }) => assert!(
-            copy_core::copy_matches_with("beFilesRead.text.tooLarge", &[("over", "1")], &m),
-            "拒了，但那句话没说多了多少（用户据此知道要删掉多少）：{m}"
+        Err(s) if s.code.as_deref() == Some("too_large") => assert!(
+            copy_core::copy_matches_with("beFilesRead.text.tooLarge", &[("over", "1")], &s.said),
+            "拒了，但那句话没说多了多少（用户据此知道要删掉多少）：{}",
+            s.said
         ),
         other => panic!("🔴 超上限一个字节没被整趟拒（截断了？）：{other:?}"),
     }
@@ -1147,7 +1129,7 @@ fn every_refusal_of_read_text_lands_on_its_own_declared_code() {
     for (args, want) in &cases {
         let got = answer("files.read.text", args, &Default::default());
         assert!(
-            matches!(got, Err(Refused { code: c, .. }) if c == *want),
+            matches!(&got, Err(s) if s.code.as_deref() == Some(*want)),
             "`files.read.text` 对 {args} 该回 `{want}`，回的是 {got:?}"
         );
         seen.insert(want);
@@ -1189,11 +1171,8 @@ fn home_is_given_when_the_environment_has_one_and_refused_otherwise() {
         let got = super::home_from(h);
         assert!(
             matches!(
-                got,
-                Err(Refused {
-                    code: "no_home",
-                    ..
-                })
+                &got,
+                Err(s) if s.code.as_deref() == Some("no_home")
             ),
             "home 是「{what}」时没有回 `no_home`，回的是 {got:?} —— 那就是在猜一个起点"
         );
@@ -1289,14 +1268,14 @@ fn a_non_utf8_file_is_read_back_chunk_by_chunk_byte_for_byte() {
         &Default::default(),
     )
     .unwrap_err();
-    assert_eq!(e.code, "bad_args");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
     let e = answer_wire(
         "files-read-chunk",
         &serde_json::json!({ "path": w::WirePath::from(raw::path_bytes(&dir)), "offset": 0, "len": 1 }),
         &Default::default(),
     )
     .unwrap_err();
-    assert_eq!(e.code, "not_text");
+    assert_eq!(e.code.as_deref(), Some("not_text"));
     std::fs::remove_dir_all(&dir).ok();
 }
 

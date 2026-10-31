@@ -1,5 +1,6 @@
 //! 会话外的需手动清单：账号清单成品（夹具，照类型造）· MCP 读面（夹具）⇒ 每一项带写好的那一句和怎么解。夹具全是合成的。
 use super::*;
+use crate::common::said::Said;
 use crate::wire::typed::Codes;
 use serde_json::{json, Value};
 
@@ -221,15 +222,20 @@ fn whether_the_browser_is_here_rides_beside_the_target() {
         "缺 ⇒ 不在这台"
     );
     for bad in [json!("yes"), json!(1), Value::Null] {
-        assert_eq!(with(bad.clone()).expect_err("拒").code, "bad_args", "{bad}");
+        assert_eq!(
+            with(bad.clone()).expect_err("拒").code.as_deref(),
+            Some("bad_args"),
+            "{bad}"
+        );
     }
     let mut extra = base.clone();
     extra["server"] = json!("x");
     assert_eq!(
         crate::wire::typed::take::<LoginStartArgs>(&extra)
             .expect_err("拒")
-            .code,
-        "bad_args"
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
 }
 
@@ -280,13 +286,18 @@ fn it_says_it_finishes_by_itself_only_when_the_browser_is_here() {
 /// 登录失败的回包说还能怎么办（`data.again`），每个码一个定值：接着粘 · 重来 · 没路。码表里每个码都有（`bad_args` 不带）。
 #[test]
 fn each_failure_says_what_can_be_done_next() {
-    let again = |f: Fail| (f.code.clone(), f.data.map(|d| d["again"].clone()));
+    let again = |f: Said| {
+        (
+            f.code_or_fallback().to_string(),
+            f.data.map(|d| d["again"].clone()),
+        )
+    };
     let start = [
         LoginStartErr::not_found("x".into()),
         LoginStartErr::unsupported("x".into()),
         LoginStartErr::failed("x".into(), false),
     ]
-    .map(|e| again(e.into_fail()));
+    .map(|e| again(e.into_said()));
     assert_eq!(
         start,
         [
@@ -304,7 +315,7 @@ fn each_failure_says_what_can_be_done_next() {
         LoginFinishErr::of(FinishFail::NoJob),
         LoginFinishErr::of(FinishFail::Slow),
     ]
-    .map(|e| again(e.into_fail()));
+    .map(|e| again(e.into_said()));
     assert_eq!(
         finish,
         [
@@ -328,9 +339,9 @@ fn each_failure_says_what_can_be_done_next() {
         "x".into(),
         "tail",
     )))
-    .into_fail();
+    .into_said();
     assert_eq!(
-        (refused.message.as_str(), refused.raw.as_deref()),
+        (refused.said.as_str(), refused.raw.as_deref()),
         ("x", Some("tail"))
     );
 }
@@ -339,27 +350,27 @@ fn each_failure_says_what_can_be_done_next() {
 /// 没这个号 · 不在 app 里登 · 换码那几样一律不在（界面照它亮不亮那一颗，不按码猜）。
 #[test]
 fn only_a_failed_account_start_offers_the_terminal_window() {
-    let terminal = |f: Fail| f.data.map(|d| d["terminal"].clone());
+    let terminal = |f: Said| f.data.map(|d| d["terminal"].clone());
     assert_eq!(
-        terminal(LoginStartErr::failed("x".into(), true).into_fail()),
+        terminal(LoginStartErr::failed("x".into(), true).into_said()),
         Some(json!(true))
     );
     assert_eq!(
-        terminal(LoginStartErr::failed("x".into(), false).into_fail()),
+        terminal(LoginStartErr::failed("x".into(), false).into_said()),
         Some(json!(false))
     );
     for e in [
         LoginStartErr::not_found("x".into()),
         LoginStartErr::unsupported("x".into()),
     ] {
-        assert_eq!(terminal(e.into_fail()), Some(json!(false)));
+        assert_eq!(terminal(e.into_said()), Some(json!(false)));
     }
     for e in [
         LoginFinishErr::of(FinishFail::BadPaste),
         LoginFinishErr::of(FinishFail::NoJob),
         LoginFinishErr::of(FinishFail::Slow),
     ] {
-        assert_eq!(terminal(e.into_fail()), Some(json!(false)));
+        assert_eq!(terminal(e.into_said()), Some(json!(false)));
     }
     // 号那一种起不来才算：目标形状 ⇒ 这一格。
     let account = LoginStartReq::Account {

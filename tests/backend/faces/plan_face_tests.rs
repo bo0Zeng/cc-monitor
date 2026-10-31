@@ -6,16 +6,23 @@ use serde_json::json;
 
 #[test]
 fn missing_args_are_bad_args() {
-    assert_eq!(ask("plan-read", json!({})).unwrap_err().code, "bad_args");
+    assert_eq!(
+        ask("plan-read", json!({})).unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
     assert_eq!(
         ask("plan-cell-view", json!({"workspace": "/w"}))
             .unwrap_err()
-            .code,
-        "bad_args"
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
     assert_eq!(
-        ask("plan-list", json!({"dirs": "x"})).unwrap_err().code,
-        "bad_args"
+        ask("plan-list", json!({"dirs": "x"}))
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
 }
 
@@ -23,26 +30,26 @@ fn missing_args_are_bad_args() {
 #[test]
 fn an_unknown_arg_is_refused() {
     let f = ask("plan-read", json!({"workspace": "/w", "fresh": true})).unwrap_err();
-    assert_eq!(f.code, "bad_args");
+    assert_eq!(f.code.as_deref(), Some("bad_args"));
     let f = ask(
         "plan-ack",
         json!({"workspace": "/w", "slice": "a", "key": "k", "x": 1}),
     )
     .unwrap_err();
-    assert_eq!(f.code, "bad_args");
+    assert_eq!(f.code.as_deref(), Some("bad_args"));
 }
 
 /// `slice` 只跟 `take` 走：`take` 不带 · 别的动词带了 ⇒ `bad_args`（在起 pb 之前）。
 #[test]
 fn slice_goes_with_take_and_only_with_it() {
     let f = ask("plan-command", json!({"workspace": "/w", "cmd": "take"})).unwrap_err();
-    assert_eq!(f.code, "bad_args");
+    assert_eq!(f.code.as_deref(), Some("bad_args"));
     let f = ask(
         "plan-command",
         json!({"workspace": "/w", "cmd": "pause", "slice": "a"}),
     )
     .unwrap_err();
-    assert_eq!(f.code, "bad_args");
+    assert_eq!(f.code.as_deref(), Some("bad_args"));
 }
 
 /// `path` · `domain` 只跟 `repo` 走：`repo` 不带 `path` · 别的动词带了 ⇒ `bad_args`（在起 pb 之前）；`plan-new` 的 `dir` 要绝对路径。
@@ -55,16 +62,22 @@ fn path_goes_with_repo_and_only_with_it() {
         json!({"workspace": "/w", "cmd": "render", "domain": "软件"}),
     ] {
         assert_eq!(
-            ask("plan-command", bad.clone()).unwrap_err().code,
-            "bad_args",
+            ask("plan-command", bad.clone())
+                .unwrap_err()
+                .code
+                .as_deref(),
+            Some("bad_args"),
             "{bad}"
         );
     }
     let f = ask("plan-new", json!({"dir": "rel/dir", "path": "x"})).unwrap_err();
-    assert_eq!(f.code, "bad_args");
+    assert_eq!(f.code.as_deref(), Some("bad_args"));
     assert_eq!(
-        ask("plan-new", json!({"dir": "/w"})).unwrap_err().code,
-        "bad_args"
+        ask("plan-new", json!({"dir": "/w"}))
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
 }
 
@@ -112,8 +125,11 @@ fn record_takes_slice_summary_and_quotes_and_nothing_else_does() {
         json!({"workspace": "/w", "cmd": "take", "slice": "a", "quotes": ["y"]}),
     ] {
         assert_eq!(
-            ask("plan-command", bad.clone()).unwrap_err().code,
-            "bad_args",
+            ask("plan-command", bad.clone())
+                .unwrap_err()
+                .code
+                .as_deref(),
+            Some("bad_args"),
             "{bad}"
         );
     }
@@ -123,14 +139,18 @@ fn record_takes_slice_summary_and_quotes_and_nothing_else_does() {
 #[test]
 fn plan_refs_takes_sid_and_texts_and_answers_one_list_per_text() {
     assert_eq!(
-        ask("plan-refs", json!({"texts": ["A1"]})).unwrap_err().code,
-        "bad_args"
+        ask("plan-refs", json!({"texts": ["A1"]}))
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
     assert_eq!(
         ask("plan-refs", json!({"sid": "s", "texts": [], "x": 1}))
             .unwrap_err()
-            .code,
-        "bad_args"
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
     let r = ask(
         "plan-refs",

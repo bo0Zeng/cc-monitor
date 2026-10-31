@@ -19,9 +19,8 @@
 //!
 //! 认下的：修改时间 / 扩展属性 / 属主 / 特殊权限位都不还原。库自带的「一步解到盘上」不用（不经我们的路径解析）。
 
-use super::files_write::{
-    walk_in_root, wire_of, Act, Last, WriteFail, WriteRefusal, TREE_ENTRY_CAP,
-};
+use super::files_write::{walk_in_root, wire_of, Act, Last, WriteRefusal, TREE_ENTRY_CAP};
+use crate::common::said::Said;
 use crate::platform::fs::{Face, Ro, RoFile};
 use cmd_wire::files as wire;
 use copy_core::{copy_text, io_reason};
@@ -65,7 +64,7 @@ impl Caps {
     }
 }
 
-fn over_bytes(cap: u64) -> Fail {
+fn over_bytes(cap: u64) -> Said {
     refused(copy_text(
         "beFilesExtract.plan.overBytes",
         &[("cap", &copy_core::size_text(cap))],
@@ -182,19 +181,13 @@ pub struct Extracted {
     pub bytes: u64,
 }
 
-type Fail = WriteFail;
-
-fn refused(said: String) -> Fail {
-    WriteFail::from(("refused", said))
+fn refused(said: String) -> Said {
+    Said::new("refused", said)
 }
 
 /// 盘上 / 包里这一步没成：句子带原因词，下层原话进复制详情。
-fn io_failed(said: String, raw: impl std::fmt::Display) -> Fail {
-    WriteFail {
-        code: "io_failed",
-        said,
-        raw: Some(raw.to_string()),
-    }
+fn io_failed(said: String, raw: impl std::fmt::Display) -> Said {
+    Said::with_raw(said, raw).coded("io_failed")
 }
 
 fn shown(b: &[u8]) -> String {
@@ -259,7 +252,7 @@ fn admit(
     raw: Raw,
     zip: bool,
     size: u64,
-) -> Result<(), Fail> {
+) -> Result<(), Said> {
     let rel = match entry_rel(name, zip) {
         Ok(Some(r)) => r,
         Ok(None) => return Ok(()),
@@ -333,7 +326,7 @@ fn admit(
 }
 
 /// 收尾：补包里没写出来的上级目录；条目挂在一条链接 / 一份文件底下 ⇒ 拒（挡「先放一条指到别处的链接、再往它底下写」）。
-fn close_plan(plan: &mut Plan, cap: usize) -> Result<(), Fail> {
+fn close_plan(plan: &mut Plan, cap: usize) -> Result<(), Said> {
     let mut parents: BTreeSet<PathBuf> = BTreeSet::new();
     for rel in plan.entries.keys() {
         let mut up = rel.parent();
@@ -365,7 +358,7 @@ fn close_plan(plan: &mut Plan, cap: usize) -> Result<(), Fail> {
     Ok(())
 }
 
-fn open_archive(path: &Path) -> Result<RoFile, Fail> {
+fn open_archive(path: &Path) -> Result<RoFile, Said> {
     Ro::open_nofollow(path).map_err(|e| {
         io_failed(
             copy_text(
@@ -380,7 +373,7 @@ fn open_archive(path: &Path) -> Result<RoFile, Fail> {
     })
 }
 
-fn broken(path: &Path, e: impl std::fmt::Display) -> Fail {
+fn broken(path: &Path, e: impl std::fmt::Display) -> Said {
     io_failed(
         copy_text(
             "beFilesExtract.archive.broken",
@@ -422,7 +415,7 @@ fn tar_reader(kind: Kind, f: RoFile) -> Box<dyn Read> {
 }
 
 /// **计划趟（只读）**：读一遍包，逐条目判。一个改动都没有。
-pub fn plan(archive: &Path, kind: Kind, cap: usize, bytes_cap: u64) -> Result<Plan, Fail> {
+pub fn plan(archive: &Path, kind: Kind, cap: usize, bytes_cap: u64) -> Result<Plan, Said> {
     let mut plan = Plan::default();
     let mut count = 0usize;
     match kind {
@@ -497,8 +490,8 @@ fn land_file(
     body: &mut dyn Read,
     mode: Option<u32>,
     left: &mut u64,
-) -> Result<u64, Fail> {
-    let at = walk_in_root(Last::Link, root, rel).map_err(|m| ("refused", m))?;
+) -> Result<u64, Said> {
+    let at = walk_in_root(Last::Link, root, rel).map_err(|m| Said::new("refused", m))?;
     let fail = |e: std::io::Error| {
         io_failed(
             copy_text(
@@ -542,8 +535,8 @@ fn land_file(
 }
 
 /// 建一个目录（先过路径解析）。
-fn land_dir(face: &Face, root: &Path, rel: &Path) -> Result<(), Fail> {
-    let at = walk_in_root(Last::Link, root, rel).map_err(|m| ("refused", m))?;
+fn land_dir(face: &Face, root: &Path, rel: &Path) -> Result<(), Said> {
+    let at = walk_in_root(Last::Link, root, rel).map_err(|m| Said::new("refused", m))?;
     face.make_dir(&at).map_err(|e| {
         io_failed(
             copy_text(
@@ -596,7 +589,7 @@ fn execute(
     plan: &Plan,
     made: &mut Vec<(PathBuf, bool)>,
     bytes_cap: u64,
-) -> Result<u64, Fail> {
+) -> Result<u64, Said> {
     let mut left = bytes_cap;
     for (rel, w) in &plan.entries {
         if *w == What::Dir {
@@ -637,8 +630,8 @@ fn execute(
     }
     for (rel, w) in &plan.entries {
         if let What::Copy(from) = w {
-            let src =
-                walk_in_root(Last::Follow, root, into.join(from)).map_err(|m| ("refused", m))?;
+            let src = walk_in_root(Last::Follow, root, into.join(from))
+                .map_err(|m| Said::new("refused", m))?;
             let mut body = open_archive(&src)?;
             let mode = match plan.entries.get(from) {
                 Some(What::File { mode, .. }) => *mode,
@@ -651,7 +644,7 @@ fn execute(
     for (rel, w) in &plan.entries {
         if let What::Link(to) = w {
             land_link(face, root, &into.join(rel), to)
-                .map_err(|e| (e.code(), e.message().to_string()))?;
+                .map_err(|e| Said::new(e.code(), e.message().to_string()))?;
             made.push((into.join(rel), false));
         }
     }
@@ -659,7 +652,7 @@ fn execute(
 }
 
 /// **解压**：`root ＋ rel` 那个包解到 `root ＋ into`（一个此前不存在的新目录）。
-pub fn extract(face: &Face, root: &Path, rel: &Path, into: &Path) -> Result<Extracted, Fail> {
+pub fn extract(face: &Face, root: &Path, rel: &Path, into: &Path) -> Result<Extracted, Said> {
     extract_with(face, root, rel, into, CAPS)
 }
 
@@ -670,11 +663,11 @@ pub fn extract_with(
     rel: &Path,
     into: &Path,
     caps: Caps,
-) -> Result<Extracted, Fail> {
+) -> Result<Extracted, Said> {
     let name = crate::files::raw::path_bytes(rel);
     let base = name.rsplit(|b| *b == b'/').next().unwrap_or(name);
     let kind = kind_of(base).ok_or_else(|| {
-        (
+        Said::new(
             "unsupported",
             copy_text(
                 "beFilesExtract.archive.unknownKind",
@@ -682,16 +675,16 @@ pub fn extract_with(
             ),
         )
     })?;
-    let archive = walk_in_root(Last::Follow, root, rel).map_err(|m| ("refused", m))?;
-    let dest = walk_in_root(Last::Link, root, into).map_err(|m| ("refused", m))?;
+    let archive = walk_in_root(Last::Follow, root, rel).map_err(|m| Said::new("refused", m))?;
+    let dest = walk_in_root(Last::Link, root, into).map_err(|m| Said::new("refused", m))?;
     if Ro::symlink_metadata(&dest).is_ok() {
-        return Err(WriteFail::from((
+        return Err(Said::new(
             "exists",
             copy_text(
                 "beFilesExtract.into.exists",
                 &[("path", &dest.display().to_string())],
             ),
-        )));
+        ));
     }
     let len = Ro::metadata(&archive).map(|m| m.len()).unwrap_or(0);
     let bytes_cap = caps.bytes_for(len);
@@ -699,13 +692,13 @@ pub fn extract_with(
     // 落点目录：`create_dir` 自己就是「不在才建」（与探的那一眼之间有人建了 ⇒ 仍是 `exists`）。
     if let Err(e) = face.make_dir(&dest) {
         return Err(if e.kind() == std::io::ErrorKind::AlreadyExists {
-            WriteFail::from((
+            Said::new(
                 "exists",
                 copy_text(
                     "beFilesExtract.into.exists",
                     &[("path", &dest.display().to_string())],
                 ),
-            ))
+            )
         } else {
             io_failed(
                 copy_text(
@@ -742,15 +735,14 @@ pub fn extract_with(
                 ),
             };
             // 两句原话（停下的那一步 · 撤不掉的那一条）都进复制详情，各占一行。
-            let raw: Vec<String> = f.raw.into_iter().chain(stuck_raw).collect();
-            Err(WriteFail {
-                code: f.code,
-                said: copy_text(
-                    "beFilesExtract.stopped.say",
-                    &[("why", &f.said), ("tail", &tail)],
-                ),
-                raw: (!raw.is_empty()).then(|| raw.join("\n")),
-            })
+            Err(f
+                .wrap(|why| {
+                    copy_text(
+                        "beFilesExtract.stopped.say",
+                        &[("why", why), ("tail", &tail)],
+                    )
+                })
+                .and_raw(stuck_raw.as_deref()))
         }
     }
 }
@@ -772,11 +764,11 @@ pub fn into_name(stem: &[u8], n: u32) -> Vec<u8> {
 }
 
 /// 线上那一形：落点由这里按包名定（名字规矩只有这一份）；`fresh` ⇒ 撞名往后取第一个不在的编号。
-pub fn extract_here(face: &Face, root: &Path, rel: &Path, fresh: bool) -> Result<Extracted, Fail> {
+pub fn extract_here(face: &Face, root: &Path, rel: &Path, fresh: bool) -> Result<Extracted, Said> {
     let name = crate::files::raw::path_bytes(rel);
     let base = name.rsplit(|b| *b == b'/').next().unwrap_or(name);
     let stem = stem_of(base).ok_or_else(|| {
-        (
+        Said::new(
             "unsupported",
             copy_text(
                 "beFilesExtract.archive.unknownKind",
@@ -795,26 +787,26 @@ pub fn extract_here(face: &Face, root: &Path, rel: &Path, fresh: bool) -> Result
     }
     for n in 2..=FRESH_TRIES + 1 {
         match extract(face, root, rel, &at(n)) {
-            Err(WriteFail { code: "exists", .. }) => continue,
+            Err(s) if s.code.as_deref() == Some("exists") => continue,
             other => return other,
         }
     }
-    Err(WriteFail::from((
+    Err(Said::new(
         "exists",
         copy_text(
             "beFilesExtract.into.noFresh",
             &[("n", &FRESH_TRIES.to_string())],
         ),
-    )))
+    ))
 }
 
 /// 一格路径（目标根 · 包 · 链接目标）⇒ `PathBuf`；空的 ⇒ `bad_path`（缺 · 形状不对在解入参那一步就回了 `bad_args`）。
-fn non_empty(p: &wire::WirePath, key: &str) -> Result<PathBuf, Fail> {
+fn non_empty(p: &wire::WirePath, key: &str) -> Result<PathBuf, Said> {
     if p.0.is_empty() {
-        return Err(WriteFail::from((
+        return Err(Said::new(
             "bad_path",
             copy_text("beFilesExtract.args.path", &[("key", key)]),
-        )));
+        ));
     }
     Ok(crate::files::raw::to_path_buf(&p.0))
 }
@@ -825,7 +817,7 @@ super::files_write::acts! {
 }
 
 /// `files-extract`。
-fn extract_of(face: &Face, req: wire::FilesExtractReq) -> Result<wire::FilesTreeReply, Fail> {
+fn extract_of(face: &Face, req: wire::FilesExtractReq) -> Result<wire::FilesTreeReply, Said> {
     let root = non_empty(&req.root, "root")?;
     let rel = non_empty(&req.rel, "rel")?;
     let got = extract_here(face, &root, &rel, req.fresh.unwrap_or(false))?;
@@ -839,11 +831,11 @@ fn extract_of(face: &Face, req: wire::FilesExtractReq) -> Result<wire::FilesTree
 }
 
 /// `Door::link {root, rel, target}` → `{path}`。
-fn link_of(face: &Face, req: wire::FilesLinkReq) -> Result<wire::FilesPathReply, Fail> {
+fn link_of(face: &Face, req: wire::FilesLinkReq) -> Result<wire::FilesPathReply, Said> {
     let root = non_empty(&req.root, "root")?;
     let rel = non_empty(&req.rel, "rel")?;
     let target = non_empty(&req.target, "target")?;
-    let at = land_link(face, &root, &rel, &target).map_err(WriteFail::from)?;
+    let at = land_link(face, &root, &rel, &target).map_err(Said::from)?;
     Ok(wire::FilesPathReply { path: wire_of(&at) })
 }
 

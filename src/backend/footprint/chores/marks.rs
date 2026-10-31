@@ -79,9 +79,8 @@ pub(crate) fn current(path: Option<&Path>) -> Marks {
 pub(crate) fn mark_at(
     own: &crate::platform::fs::Own,
     req: &ChoresMarkReq,
-) -> Result<Marks, crate::wire::spec::Fail> {
-    let bad =
-        |d: &str| crate::wire::spec::Fail::new("bad_args", crate::common::contract::malformed(d));
+) -> Result<Marks, crate::common::said::Said> {
+    let bad = |d: &str| crate::wire::spec::fail("bad_args", crate::common::contract::malformed(d));
     let nonempty = |s: &str, k: &str| {
         if s.is_empty() {
             Err(bad(&format!("`{k}` missing")))
@@ -95,15 +94,15 @@ pub(crate) fn mark_at(
     if let ChoresMarkReq::SelfPaste { rc } = req {
         nonempty(rc, "rc")?;
     }
-    let io = |e: crate::common::said::Said| crate::wire::spec::Fail::from(("io_failed", e));
+    let io = |e: crate::common::said::Said| crate::wire::spec::fail("io_failed", e);
     let dir = own.home_dir().map_err(|_| {
-        crate::wire::spec::Fail::from(("io_failed", copy_text("beChore.marks.noHome", &[])))
+        crate::wire::spec::fail("io_failed", copy_text("beChore.marks.noHome", &[]))
     })?;
     let file = own.at_home(DOC.rel).map_err(io)?;
     let path = file.as_path();
     // 只建那一层、建的那一下就是 0700。
     own.ensure_dir(&dir).map_err(|e| {
-        (
+        crate::wire::spec::fail(
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
@@ -124,7 +123,7 @@ pub(crate) fn mark_at(
         crate::common::own_state::Read::Absent => Marks::default(),
         crate::common::own_state::Read::Present(m) => m,
         crate::common::own_state::Read::Unreadable(why) => {
-            return Err(crate::wire::spec::Fail::from(("marks_unreadable", why)))
+            return Err(crate::wire::spec::fail("marks_unreadable", why))
         }
     };
     match req {
@@ -147,7 +146,7 @@ pub(crate) fn mark_at(
 pub(crate) fn answer_mark(
     req: &ChoresMarkReq,
     own: &crate::platform::fs::Own,
-) -> Result<Marks, crate::wire::spec::Fail> {
+) -> Result<Marks, crate::common::said::Said> {
     mark_at(own, req)
 }
 

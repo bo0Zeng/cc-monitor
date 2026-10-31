@@ -174,9 +174,9 @@ pub(crate) fn menu_in(
     if kind == Some(MachineStateKind::HostKeyChanged) {
         terminal.blocked = Some(copy_text("beMachineMenu.terminal.hostKey", &[]));
     } else if from != MachineFrom::Local {
-        if let Err((_, said)) = crate::dial::terminal::ssh_path(ssh, powershell) {
+        if let Err(f) = crate::dial::terminal::ssh_path(ssh, powershell) {
             if matches!(ssh, SshClient::Missing) {
-                terminal.blocked = Some(said);
+                terminal.blocked = Some(f.said);
             }
         }
     }

@@ -1,8 +1,9 @@
-//! 后端够用户文件的那一扇门（原住 `assets/`，账号库 · 足迹 · 控制面也走它，10-13 下沉到这里）：这台后端自己的文件管理面。算的与写的是同一台后端 ⇒ 门直接问文件管理那一族的本体，
+//! 后端够用户文件的那一扇门（资产 · 账号库 · 足迹 · 控制面都走它）：这台后端自己的文件管理面。算的与写的是同一台后端 ⇒ 门直接问文件管理那一族的本体，
 //! 每一问一个方法、收发那几条 `files-*` 帧命令同一份线上类型（实现住 `stream/inbound/doors.rs::LocalFiles`：
 //! 文件管理面的写句柄 `Face` 只有分派那一层造，这扇门就是进程内的那一次分派）。
 //! 写的规则（CAS · 相同不写 · 备份 · 暂存旁名换名上位 · 回读比对 · 回滚）只有 `files_write::put_text` 那一份。
 
+use crate::common::said::Said;
 use cmd_wire::batch::{BatchReply, ItemState, OnExists};
 use cmd_wire::files as wire;
 use copy_core::copy_text;
@@ -29,19 +30,17 @@ pub(crate) struct Landed {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Refused {
     Stale(String),
-    Peer { code: String, said: String },
+    Peer(Said),
 }
 
 impl Refused {
     pub(crate) fn said(self) -> String {
         match self {
-            Refused::Stale(s) | Refused::Peer { said: s, .. } => s,
+            Refused::Stale(s) => s,
+            Refused::Peer(f) => f.said,
         }
     }
 }
-
-/// 一问没成：码 ＋ 那一句（原话在命令自己的应答里才进复制详情，门这一侧不带）。
-pub(crate) type Said = (String, String);
 
 /// 这台后端的文件管理面：每一问一个方法，入参 · 回包是文件管理那一族的线上类型（`cmd_wire::files`，同那几条帧命令）。
 /// 生产 = `stream/inbound/doors.rs::LocalFiles`（读的直接问 `files::answer`，写的问 `files_write::answer`，写句柄由分派那一层递）；
@@ -60,19 +59,16 @@ pub(crate) trait Door {
     fn chmod(&self, req: wire::FilesChmodReq) -> Result<BatchReply, Said>;
 }
 
-/// 门那一侧的失败 → [`Said`]：契约诊断那一截不带（原话在命令自己的应答里才进复制详情）。
+/// 门那一侧的失败 → [`Said`]：门这一侧总带码；契约诊断那一截不带，原话也不带（原话在命令自己的应答里才进复制详情）。
 pub(crate) fn said_of(code: &str, said: &str) -> Said {
-    (
-        code.to_string(),
-        crate::common::contract::parts(said, None).0,
-    )
+    Said::new(code, crate::common::contract::parts(said, None).0)
 }
 
-fn refused((code, said): Said) -> Refused {
-    if code == "stale" {
-        Refused::Stale(said)
+fn refused(f: Said) -> Refused {
+    if f.code.as_deref() == Some("stale") {
+        Refused::Stale(f.said)
     } else {
-        Refused::Peer { code, said }
+        Refused::Peer(f)
     }
 }
 
@@ -139,13 +135,13 @@ fn only(r: Result<BatchReply, Said>) -> Result<(), Said> {
     let r = r?;
     match r.outcomes.into_iter().next() {
         Some(o) if o.state == ItemState::Done => Ok(()),
-        Some(o) => Err((
-            o.code.unwrap_or_else(|| "io_failed".to_string()),
+        Some(o) => Err(Said::new(
+            o.code.as_deref().unwrap_or("io_failed"),
             o.detail
                 .map(|d| d.lines().next().unwrap_or_default().to_string())
                 .unwrap_or(r.said),
         )),
-        None => Err(("io_failed".to_string(), r.said)),
+        None => Err(Said::new("io_failed", r.said)),
     }
 }
 
@@ -263,7 +259,7 @@ pub(crate) fn chmod(d: &dyn Door, root: &str, rel: &str, mode: u32) -> Result<()
 pub(crate) fn stat(d: &dyn Door, path: &str) -> Result<Option<wire::StatReply>, String> {
     match d.stat(wire::StatReq { path: wp(path) }) {
         Ok(v) => Ok(Some(v)),
-        Err((code, _)) if code == "unreadable" => Ok(None),
+        Err(f) if f.code.as_deref() == Some("unreadable") => Ok(None),
         Err(e) => Err(refused(e).said()),
     }
 }
@@ -360,7 +356,7 @@ pub(crate) fn rel_under(home: &str, abs: &str) -> Result<String, String> {
         .ok_or_else(|| copy_text("beAssets.door.outsideHome", &[("abs", abs), ("home", home)]))
 }
 
-/// [`rel_under`] 的反方向。住址下沉到 `platform::paths`（别名方言列 rc 候选也要它，适配层不往上依赖）。
+/// [`rel_under`] 的反方向。本体住 `platform::paths`（别名方言列 rc 候选也要它，适配层不往上依赖）。
 pub(crate) use crate::platform::paths::join_under;
 
 #[cfg(test)]

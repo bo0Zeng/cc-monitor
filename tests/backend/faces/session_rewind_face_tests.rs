@@ -48,7 +48,7 @@ fn handing_to_the_other_machine_rewrites_it_as_local() {
 fn a_session_without_a_record_here_is_no_such_session() {
     let got =
         options_here("00000000-0000-4000-8000-0000000000a9", "u1").expect_err("沙箱里没有这条会话");
-    assert_eq!(got.code, "no_such_session");
+    assert_eq!(got.code.as_deref(), Some("no_such_session"));
 }
 
 fn record(tag: &str, lines: &[&str]) -> std::path::PathBuf {

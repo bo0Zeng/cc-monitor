@@ -3,7 +3,6 @@
 //! `login-start` 要跟着发起它的那条连接走（连接断了作业就收）⇒ 在分派的硬臂里（内建档），入参 · 回包 · 码表照样从这里的类型来。
 
 use crate::accounts::sign_in::{self, FinishFail, SignInEnd};
-use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
 use std::path::Path;
@@ -228,7 +227,13 @@ pub(crate) fn start(
         path: None,
     };
     let s = sign_in::start(&ask, on_end).map_err(|s| {
-        LoginStartErr::failed(Fail::from(("failed", s)).into_said(), terminal_way(req))
+        LoginStartErr::failed(
+            {
+                let f = crate::wire::spec::fail("failed", s);
+                crate::common::contract::joined(f.said, f.raw)
+            },
+            terminal_way(req),
+        )
     })?;
     Ok(started(s, face, args))
 }
@@ -328,9 +333,13 @@ impl LoginFinishErr {
                 copy_text("beLogin.finish.slow", &[]),
                 LoginAgain::PASTE,
             ),
-            FinishFail::Refused(s) => {
-                LoginFinishErr::Refused(Fail::from(("refused", s)).into_said(), LoginAgain::RESTART)
-            }
+            FinishFail::Refused(s) => LoginFinishErr::Refused(
+                {
+                    let f = crate::wire::spec::fail("refused", s);
+                    crate::common::contract::joined(f.said, f.raw)
+                },
+                LoginAgain::RESTART,
+            ),
         }
     }
     fn no_job() -> Self {

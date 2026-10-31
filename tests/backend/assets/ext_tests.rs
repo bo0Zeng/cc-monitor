@@ -8,7 +8,7 @@ fn answer_uninstall_preview(
     d: &dyn Door,
     env: &Env,
     a: &Value,
-) -> Result<Value, crate::wire::spec::Fail> {
+) -> Result<Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
     super::answer_uninstall_preview(d, env, &req).map(|r| serde_json::to_value(r).unwrap())
 }
@@ -18,7 +18,7 @@ fn answer_uninstall_apply(
     env: &Env,
     record: Record,
     a: &Value,
-) -> Result<Value, crate::wire::spec::Fail> {
+) -> Result<Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
     super::answer_uninstall_apply(d, env, record, &req).map(|r| serde_json::to_value(r).unwrap())
 }
@@ -26,7 +26,8 @@ use crate::assets::aliases::tests::HomeDoor;
 use crate::assets::asset_catalog::{Scanned, Snapshot, Visits};
 use crate::assets::hub::tests::{ap, pv};
 use crate::assets::mcp_sync::{Facts, There};
-use crate::dial::remote_ask::{Remote, Said, Table};
+use crate::common::said::Said;
+use crate::dial::remote_ask::{Remote, Table};
 use crate::wire::typed::Here;
 use std::future::Future;
 use std::pin::Pin;
@@ -35,8 +36,8 @@ use std::sync::{Arc, Mutex};
 /// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
 fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
     args: &Value,
-    f: impl FnOnce(&R) -> Result<T, crate::wire::spec::Fail>,
-) -> Result<Value, crate::wire::spec::Fail> {
+    f: impl FnOnce(&R) -> Result<T, crate::common::said::Said>,
+) -> Result<Value, crate::common::said::Said> {
     let req = crate::wire::typed::take::<R>(args)?;
     f(&req).map(|t| serde_json::to_value(t).unwrap())
 }
@@ -419,7 +420,7 @@ impl M {
         .0
     }
     /// 这台跑一条内层命令（与生产那几条同一个本体，只是根换成这台的临时家目录）。
-    fn inner(&self, cmd: &str, args: &Value) -> Result<Value, (String, String)> {
+    fn inner(&self, cmd: &str, args: &Value) -> Result<Value, crate::common::said::Said> {
         let skills = self.env.skills.clone().unwrap();
         let ledger = self.env.ledger.clone().unwrap();
         let root = match args.get("project").and_then(Value::as_str) {
@@ -475,12 +476,12 @@ impl M {
                 super::super::cc_bus_install::install_at(&self.door(), &skills, &record)
                     .map(|t| serde_json::to_value(t).unwrap())
             }
-            other => Err(crate::wire::spec::Fail::from((
+            other => Err(crate::wire::spec::fail(
                 "unknown_command",
                 other.to_string(),
-            ))),
+            )),
         };
-        r.map_err(|f| (f.code, f.message))
+        r
     }
 }
 
@@ -490,7 +491,7 @@ impl Here for HereM {
     fn viewer_tz(&self) -> crate::Tz {
         Default::default()
     }
-    fn ask(&self, cmd: &str, args: Value) -> Result<Value, (String, String)> {
+    fn ask(&self, cmd: &str, args: Value) -> Result<Value, crate::common::said::Said> {
         self.0.inner(cmd, &args)
     }
 }
@@ -522,12 +523,7 @@ impl Remote for RemoteM {
         self.1.lock().unwrap().push(flag.clone());
         let args: Value = serde_json::from_str(stdin.as_deref().unwrap_or("null").trim()).unwrap();
         let out = self.0.inner(&flag, &args);
-        Box::pin(async move {
-            out.map(|v| v.to_string()).map_err(|(c, m)| Said {
-                code: Some(c),
-                message: m,
-            })
-        })
+        Box::pin(async move { out.map(|v| v.to_string()) })
     }
 }
 
@@ -625,10 +621,10 @@ async fn a_skill_goes_to_the_other_machine_and_comes_back_off() {
     std::fs::write(src.join("lib/x.txt"), "two\n").unwrap();
     let mut apply = args.clone();
     apply["tokens"] = card["tokens"].clone();
-    let (code, _) = ap(&t.here, &apply, &t.reach, &t.remote)
+    let e = ap(&t.here, &apply, &t.reach, &t.remote)
         .await
         .expect_err("源变了还装了");
-    assert_eq!(code, "stale");
+    assert_eq!(e.code.as_deref(), Some("stale"));
     let dst = t.b.env.skills.clone().unwrap().join("demo");
     assert!(!dst.exists(), "stale 了远端还多出了目录");
     assert!(
@@ -725,10 +721,10 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
     );
     let mut apply = args.clone();
     apply["tokens"] = card["tokens"].clone();
-    let (code, _) = ap(&t.here, &apply, &t.reach, &t.remote)
+    let e = ap(&t.here, &apply, &t.reach, &t.remote)
         .await
         .expect_err("没填值也装了");
-    assert_eq!(code, "needs_input");
+    assert_eq!(e.code.as_deref(), Some("needs_input"));
     apply["fill"] = json!({ "env": { "KEY": "typed-B" } });
     ap(&t.here, &apply, &t.reach, &t.remote)
         .await
@@ -858,14 +854,17 @@ async fn the_hub_refuses_a_target_the_table_greys_out() {
     ] {
         let args = json!({ "kind": kind, "name": name, "from": b.from, "to": "laptop",
             "scope": { "from": b.scope.from, "to": to }, "tokens": { "source": "s", "target": null } });
-        let (code, said) = pv(&t.here, &args, &t.reach, &t.remote)
+        let e = pv(&t.here, &args, &t.reach, &t.remote)
             .await
             .expect_err("不可选的那一处也给看卡了");
-        assert_eq!((code.as_str(), said), ("refused", copy_text(why, &[])));
-        let (code, _) = ap(&t.here, &args, &t.reach, &t.remote)
+        assert_eq!(
+            (e.code.as_deref(), e.said),
+            (Some("refused"), copy_text(why, &[]))
+        );
+        let e = ap(&t.here, &args, &t.reach, &t.remote)
             .await
             .expect_err("不可选的那一处也给装了");
-        assert_eq!(code, "refused");
+        assert_eq!(e.code.as_deref(), Some("refused"));
     }
     assert!(
         !t.remote
@@ -1221,9 +1220,8 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     let mut ua = u.clone();
     ua["token"] = card["token"].clone();
     std::fs::write(dir.join("SKILL.md"), "edited\n").unwrap();
-    let crate::wire::spec::Fail { code, .. } =
-        answer_uninstall_apply(&m.door(), &m.env, &record, &ua).expect_err("变了还删了");
-    assert_eq!(code, "stale");
+    let e = answer_uninstall_apply(&m.door(), &m.env, &record, &ua).expect_err("变了还删了");
+    assert_eq!(e.code.as_deref(), Some("stale"));
     assert!(dir.join("SKILL.md").exists());
     let card = answer_uninstall_preview(&m.door(), &m.env, &u).unwrap();
     ua["token"] = card["token"].clone();
@@ -1271,13 +1269,13 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
         "MCP 那份原文没抄进备份"
     );
     // 这台没建账号库：用户级 MCP 只读，卸也拒。
-    let crate::wire::spec::Fail { code, .. } = answer_uninstall_preview(
+    let e = answer_uninstall_preview(
         &m.door(),
         &m.env,
         &json!({ "kind": "mcp", "name": "x", "at": { "level": "user" } }),
     )
     .expect_err("用户级也给卸");
-    assert_eq!(code, "refused");
+    assert_eq!(e.code.as_deref(), Some("refused"));
     let _ = std::fs::remove_dir_all(&base);
 }
 
@@ -1539,7 +1537,7 @@ fn ext_loc_judged_bad_args_omits_sentinel_value_from_rejection() {
     let sentinel = "SENTINEL_SECRET_TOKEN_EXT_LOC_54321";
     let bad_val = serde_json::json!({ "level": sentinel });
     let fail = ExtLoc::shape_of(Some(&bad_val), "place").expect_err("应当因位置格式错误拒绝");
-    let rejection = format!("{} {:?}", fail.message, fail.raw);
+    let rejection = format!("{} {:?}", fail.said, fail.raw);
     assert!(
         !rejection.contains(sentinel),
         "拒绝体中泄露了哨兵串原值：{rejection}"
@@ -1673,13 +1671,13 @@ fn a_plugin_cell_says_on_off_or_project_and_offers_no_install() {
         ledger: None,
     };
     let door = HomeDoor(d.clone());
-    let crate::wire::spec::Fail { code, message, .. } = answer_uninstall_preview(
+    let e = answer_uninstall_preview(
         &door,
         &env,
         &json!({ "kind": "plugin", "name": "github", "at": { "level": "user" } }),
     )
     .expect_err("插件给卸了");
-    assert_eq!((code.as_str(), message), ("refused", ro));
+    assert_eq!((e.code.as_deref(), e.said), (Some("refused"), ro));
     let _ = std::fs::remove_dir_all(&d);
 }
 

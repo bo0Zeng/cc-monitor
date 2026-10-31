@@ -42,7 +42,7 @@ fn cell_part() -> String {
 }
 
 /// 问一次（这台有 tmux）：交回回包与记下的别名。
-fn ask(args: Value, kept: Option<&str>) -> (Result<Value, Fail>, Vec<String>) {
+fn ask(args: Value, kept: Option<&str>) -> (Result<Value, Said>, Vec<String>) {
     ask_on(args, kept, Some(true))
 }
 
@@ -51,7 +51,7 @@ fn ask_on(
     args: Value,
     kept: Option<&str>,
     tmux: Option<bool>,
-) -> (Result<Value, Fail>, Vec<String>) {
+) -> (Result<Value, Said>, Vec<String>) {
     let got = RefCell::new(Vec::new());
     let keep = |a: &str| {
         got.borrow_mut().push(a.to_string());
@@ -87,7 +87,7 @@ fn a_tmuxless_machine_refuses_with_no_tmux() {
         Some(false),
     );
     let e = out.expect_err("没有 tmux 要拒（开口那句只跟 tmux）");
-    assert_eq!(e.code, crate::NO_TMUX, "{e:?}");
+    assert_eq!(e.code.as_deref(), Some(crate::NO_TMUX), "{e:?}");
     assert!(kept.is_empty(), "拒了就不记：{kept:?}");
     let (out, _) = ask_on(
         json!({"workspace": "/w", "slice": "alpha", "id": "A1-1"}),
@@ -148,7 +148,7 @@ fn an_unknown_alias_is_refused_and_not_kept() {
         None,
     );
     let e = out.expect_err("别名不在要拒");
-    assert_eq!(e.code, "no_such_alias", "{e:?}");
+    assert_eq!(e.code.as_deref(), Some("no_such_alias"), "{e:?}");
     assert!(kept.is_empty(), "拒了就不记：{kept:?}");
 }
 
@@ -160,7 +160,11 @@ fn an_unknown_cell_is_refused() {
             None,
         );
         let e = out.expect_err("格不在要拒");
-        assert_eq!(e.code, "no_such_cell", "{slice} {id}: {e:?}");
+        assert_eq!(
+            e.code.as_deref(),
+            Some("no_such_cell"),
+            "{slice} {id}: {e:?}"
+        );
         assert!(kept.is_empty());
     }
 }

@@ -27,6 +27,7 @@
 //! 那个 sid 的目录**不存在** ⇒ 空表（诚实的空：这个会话没用过任务）。
 //! 目录**在但读不了** ⇒ 命令级 `failed`：回空表就与上一行长得一模一样。
 
+use crate::common::said::Said;
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use std::path::Path;
@@ -45,12 +46,9 @@ pub(crate) fn tasks_root(home: &Path) -> std::path::PathBuf {
 /// 注册表里没有任务列表那一家时 [`tasks_root`] 指的那个名字（不建、不写，只读出零条）。
 const NO_TASKS: &str = ".no-task-dir";
 
-/// 本族的错误出口：`(code, message)`。
-pub(crate) type Refusal = (&'static str, String);
-
 /// `sid` 只许是**一段**普通路径名 —— 它要被拼进 `<tasks>/<sid>/`，
 /// 空串 / 含分隔符 / `.` / `..` 都会让那一拼走出任务根。
-fn check_sid(sid: &str) -> Result<(), Refusal> {
+fn check_sid(sid: &str) -> Result<(), Said> {
     let bad = sid.is_empty()
         || sid == "."
         || sid == ".."
@@ -58,7 +56,7 @@ fn check_sid(sid: &str) -> Result<(), Refusal> {
         || sid.contains('\\')
         || sid.contains('\0');
     if bad {
-        return Err((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!("`sid` is not a session id: {sid:?}")),
         ));
@@ -67,16 +65,16 @@ fn check_sid(sid: &str) -> Result<(), Refusal> {
 }
 
 /// 一个会话的任务，按任务号升序、每条一行（原样的 JSON 对象，压成一行）。
-pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, Refusal> {
+pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, Said> {
     check_sid(sid)?;
     let dir = tasks_root(home).join(sid);
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
     let entries = Ro::read_dir(&dir).map_err(|e| {
-        (
+        Said::new(
             "failed",
-            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+            crate::common::said::IntoNote::into_note(Said::with_raw(
                 copy_text(
                     "beTasksQuery.sessionTaskLines.unreadable",
                     &[
@@ -180,7 +178,7 @@ pub(crate) fn task_entry(v: &serde_json::Value) -> Option<Task> {
 
 /// 一个会话的任务**成品**：[`session_task_lines`] 读出的每个对象过 [`task_entry`]，解不成任务的跳过（`trace!`），
 /// 顺序原样（任务号升序）。
-pub(crate) fn session_tasks(home: &Path, sid: &str) -> Result<Vec<Task>, Refusal> {
+pub(crate) fn session_tasks(home: &Path, sid: &str) -> Result<Vec<Task>, Said> {
     Ok(session_task_lines(home, sid)?
         .iter()
         .filter_map(|l| {

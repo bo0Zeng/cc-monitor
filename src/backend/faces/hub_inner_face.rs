@@ -8,11 +8,11 @@ pub(crate) use crate::assets::hub_wire::{
     CcBusInstallCmd, CcBusStateCmd, McpApplyCmd, McpPreviewCmd, McpSourceCmd, SkillApplyCmd,
     SkillPlanCmd, SkillReadCmd,
 };
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use crate::wire::typed::{self, codes, Codes, Command};
 
 /// 下层那一份失败收进这一条的码表（码不在表里 ⇒ `fallback`）。
-fn own_err<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Fail) -> E {
+fn own_err<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Said) -> E {
     move |f| typed::of_fail(f, fallback)
 }
 
@@ -21,7 +21,7 @@ fn record(
     own: &crate::platform::Own,
 ) -> impl Fn(
     &crate::assets::skill_ledger::RecordReq,
-) -> Result<crate::assets::skill_ledger::RecordReply, Fail>
+) -> Result<crate::assets::skill_ledger::RecordReply, Said>
        + '_ {
     move |a| crate::assets::skill_ledger::answer_record(a, own)
 }

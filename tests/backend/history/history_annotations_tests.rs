@@ -19,20 +19,20 @@
 //! - 两个后端进程同时写；真 Windows 上的原子挪。
 
 use super::*;
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use crate::wire::typed::{take, Codes as _};
 
 /// 线上那一份入参照分派那一层解（`typed::take`）再交本体；回包 · 失败都投成线上那一份（判据比的是线上形状）。
-fn answer_annotate_at(own: &Own, args: &Value, now: i64) -> Result<Value, Fail> {
+fn answer_annotate_at(own: &Own, args: &Value, now: i64) -> Result<Value, Said> {
     let req = take::<AnnotateReq>(args)?;
-    let got = annotate_at(own, req, now).map_err(|e| e.into_fail())?;
+    let got = annotate_at(own, req, now).map_err(|e| e.into_said())?;
     Ok(serde_json::to_value(got).expect("回包总能序列化"))
 }
 
 /// 同 [`answer_annotate_at`]，`history-forget` 那一条。
-fn answer_forget_at(own: &Own, args: &Value) -> Result<Value, Fail> {
+fn answer_forget_at(own: &Own, args: &Value) -> Result<Value, Said> {
     let req = take::<ForgetReq>(args)?;
-    let got = forget_at(own, req).map_err(|e| e.into_fail())?;
+    let got = forget_at(own, req).map_err(|e| e.into_said())?;
     Ok(serde_json::to_value(got).expect("回包总能序列化"))
 }
 
@@ -157,14 +157,18 @@ fn an_unreadable_file_is_never_overwritten() {
             1,
         )
         .expect_err("读不懂也写了");
-        assert_eq!(e.code, "annotations_unreadable", "{bad}：{e:?}");
+        assert_eq!(
+            e.code.as_deref(),
+            Some("annotations_unreadable"),
+            "{bad}：{e:?}"
+        );
         assert_eq!(
             std::fs::read_to_string(&p).unwrap(),
             bad,
             "读不懂那份被动了"
         );
         let e = answer_forget_at(&own_of(&p), &json!({"sid": "s"})).expect_err("读不懂也删了");
-        assert_eq!(e.code, "annotations_unreadable");
+        assert_eq!(e.code.as_deref(), Some("annotations_unreadable"));
         assert_eq!(std::fs::read_to_string(&p).unwrap(), bad);
         assert!(
             matches!(load_at(&p), Loaded::Unreadable(_)),
@@ -289,8 +293,11 @@ fn patch_semantics_match_what_the_monitor_did() {
         json!({"sid": "x", "patch": {"starred": "yes"}}),
     ] {
         assert_eq!(
-            answer_annotate_at(&own_of(&p), &bad, 1).unwrap_err().code,
-            "bad_args",
+            answer_annotate_at(&own_of(&p), &bad, 1)
+                .unwrap_err()
+                .code
+                .as_deref(),
+            Some("bad_args"),
             "{bad}"
         );
     }
@@ -329,8 +336,9 @@ fn pin_is_a_cell_on_the_session_and_membership_is_not_patched_here() {
         assert_eq!(
             answer_annotate_at(&own_of(&p), &json!({"sid": sid, "patch": patch}), 10)
                 .unwrap_err()
-                .code,
-            "bad_args",
+                .code
+                .as_deref(),
+            Some("bad_args"),
             "{patch}"
         );
     }
@@ -401,8 +409,9 @@ fn the_auto_answer_cell_is_written_kept_and_removed() {
     assert_eq!(
         at(json!({"autoAnswer": {"afterMin": AUTO_MAX_MIN + 1}}), 5)
             .unwrap_err()
-            .code,
-        "bad_args"
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
     assert_eq!(std::fs::read(&p).unwrap(), before, "拒了也写了");
     let e = at(json!({"autoAnswer": {"afterMin": 0}}), 6).unwrap();
@@ -524,9 +533,9 @@ fn an_unreadable_file_hands_its_raw_to_the_detail_not_the_sentence() {
         1,
     )
     .expect_err("读不出来也写了");
-    assert_eq!(e.code, "annotations_unreadable", "{e:?}");
+    assert_eq!(e.code.as_deref(), Some("annotations_unreadable"), "{e:?}");
     let raw = e.raw.as_deref().expect("原话丢了");
-    assert!(!e.message.contains(raw), "原话上了句子：{e:?}");
+    assert!(!e.said.contains(raw), "原话上了句子：{e:?}");
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -593,9 +602,9 @@ fn a_newer_file_is_left_as_is_and_an_older_one_is_kept_beside() {
         1,
     )
     .expect_err("新版也写了");
-    assert_eq!(e.code, "annotations_unreadable", "{e:?}");
+    assert_eq!(e.code.as_deref(), Some("annotations_unreadable"), "{e:?}");
     let e = answer_forget_at(&own_of(&p), &json!({"sid": "s"})).expect_err("新版也删了");
-    assert_eq!(e.code, "annotations_unreadable");
+    assert_eq!(e.code.as_deref(), Some("annotations_unreadable"));
     assert_eq!(std::fs::read_to_string(&p).unwrap(), newer, "原文被动了");
 
     let older = r#"{"version": 0, "entries": {"s": {"hidden": false}}}"#;

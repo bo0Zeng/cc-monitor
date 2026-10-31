@@ -12,9 +12,10 @@
 //!   也是那一张，不是码；码只剩这台自己没查成的 `failed` · `child_timed_out`。
 //! - `tmux`：会话在 tmux 里（窗口关了时壳才给［在终端里打开］，出口原样交壳）。
 
+use crate::common::said::Said;
 use crate::common::seen_terminal::WindowLabel;
 use crate::dial::opened_windows::Records;
-use crate::dial::remote_ask::{Remote, Said, Table};
+use crate::dial::remote_ask::{Remote, Table};
 use crate::dial::terminal_processes::{Link, OpenedHere, TerminalProcessesReq};
 use crate::observe::session_terminals::{Here, Showing, ShownWhy, SidReq};
 use cmd_wire::front::FrontFace;
@@ -106,9 +107,9 @@ fn local_here(sid: String) -> Result<Option<Here>, SessionWindowErr> {
     };
     crate::observe::session_terminals::here_by(pid)
         .map(Some)
-        .map_err(|(code, said)| match code {
-            crate::platform::child::TIMED_OUT => SessionWindowErr::ChildTimedOut(said),
-            _ => SessionWindowErr::Failed(said),
+        .map_err(|s| match s.code.as_deref() {
+            Some(crate::platform::child::TIMED_OUT) => SessionWindowErr::ChildTimedOut(s.said),
+            _ => SessionWindowErr::Failed(s.said),
         })
 }
 
@@ -301,7 +302,7 @@ fn remote_window(
         },
         tables,
     )
-    .map_err(|(_, said)| SessionWindowErr::Failed(said))?;
+    .map_err(|f| SessionWindowErr::Failed(f.said))?;
     // 对不上的那几个词（`dial/terminal_processes.rs::product` 写的）⇒ 原因。
     let why = match (found.why, found.addr) {
         (None, _) => {
@@ -329,11 +330,11 @@ fn not_asked(s: Said) -> Result<Unplaced, SessionWindowErr> {
         Some("unknown_command" | "backend_differs") => Unplaced::PeerOld,
         Some(crate::wire::listen::CALL_TIMED_OUT) => Unplaced::PeerTimedOut,
         Some("no_such_session") => Unplaced::NotLive,
-        Some("failed") => return Err(SessionWindowErr::Failed(s.message)),
+        Some("failed") => return Err(SessionWindowErr::Failed(s.said)),
         Some(crate::platform::child::TIMED_OUT) => {
-            return Err(SessionWindowErr::ChildTimedOut(s.message))
+            return Err(SessionWindowErr::ChildTimedOut(s.said))
         }
-        _ => Unplaced::Unreached { said: s.message },
+        _ => Unplaced::Unreached { said: s.said },
     })
 }
 

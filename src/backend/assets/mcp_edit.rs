@@ -43,7 +43,7 @@ impl PathForm {
 }
 
 /// 项目目录必须是这台机器上的绝对路径（相对路径在后端这个进程里指的是别处）。
-pub(crate) fn project_root(project_dir: &str) -> Result<String, (&'static str, String)> {
+pub(crate) fn project_root(project_dir: &str) -> Result<String, crate::common::said::Said> {
     project_root_as(project_dir, PathForm::HERE)
 }
 
@@ -51,13 +51,16 @@ pub(crate) fn project_root(project_dir: &str) -> Result<String, (&'static str, S
 pub(crate) fn project_root_as(
     project_dir: &str,
     form: PathForm,
-) -> Result<String, (&'static str, String)> {
+) -> Result<String, crate::common::said::Said> {
     let d = project_dir.trim();
     if d.is_empty() {
-        return Err(("bad_args", copy_text("beMcpEdit.path.emptyDir", &[])));
+        return Err(crate::common::said::Said::new(
+            "bad_args",
+            copy_text("beMcpEdit.path.emptyDir", &[]),
+        ));
     }
     if !form.is_absolute(d) || d.split(['/', '\\']).any(|s| s == "..") {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_path",
             copy_text("beMcpEdit.path.notAbsolute", &[("dir", d)]),
         ));
