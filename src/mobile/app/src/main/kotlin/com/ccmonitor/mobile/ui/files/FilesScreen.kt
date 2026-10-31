@@ -321,7 +321,8 @@ private fun ReadyContent(
     val bookmarkSaid by shelf.said.collectAsState()
     val oldBookmarks = koinInject<BookmarkRepository>()
     LaunchedEffect(shelf) { adoptOldBookmarks(shelf, oldBookmarks, hostId) }
-    LaunchedEffect(shelf, dir) { shelf.refresh() }
+    LaunchedEffect(shelf, dir) { shelf.refresh(dir.text) }
+    val bookmarkHere by shelf.here.collectAsState()
     val tokens = LocalAppTokens.current
     Column(Modifier.fillMaxSize()) {
         if (selection.active) {
@@ -329,7 +330,7 @@ private fun ReadyContent(
             PickBar(selection.size, menu, onClose = vm::unpick) { picked(it, vm, actions, onDialog) }
         } else {
             // 书签存那一串：名字不是合法 UTF-8 的目录不给星标。
-            val bookmarked = dir.text?.let { t -> t in bookmarks } ?: false
+            val bookmarked = dir.text?.let { t -> t in bookmarkHere } ?: false
             PathHeader(
                 dir = dir,
                 listing = listing,
