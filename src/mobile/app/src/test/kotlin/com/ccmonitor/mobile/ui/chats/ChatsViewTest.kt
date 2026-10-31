@@ -11,7 +11,6 @@ import com.ccmonitor.mobile.core.wire.gen.Can
 import com.ccmonitor.mobile.core.wire.gen.CanDelete
 import com.ccmonitor.mobile.core.wire.gen.CanResume
 import com.ccmonitor.mobile.core.wire.gen.EmptyFace
-import com.ccmonitor.mobile.core.wire.gen.ForkedFrom
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.HistoryRow
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
@@ -45,6 +44,7 @@ class ChatsViewTest {
         at: Long = 0,
         face: SessionFace = Faces.of("live-idle"),
         group: String = "/w",
+        parent: String? = null,
     ) = HistoryRow(
         agent = "claude",
         sessionId = sid,
@@ -72,6 +72,7 @@ class ChatsViewTest {
         atText = "09:0$sid",
         sectionText = section,
         spanText = "09:0$sid",
+        forkedFromSessionId = parent,
     )
 
     private fun group(
@@ -118,7 +119,8 @@ class ChatsViewTest {
         filters: Filters = Filters(),
         query: String? = null,
         face: EmptyFace? = allListed,
-    ) = chatsView(parts.toList(), current, parts.map { HostName(it.hostId, it.machine) }, filters, query, face)
+        open: Set<Pair<String, String>> = emptySet(),
+    ) = chatsView(parts.toList(), current, parts.map { HostName(it.hostId, it.machine) }, filters, query, face, open)
 
     /** 核心交的首屏那一句：各台都报完了的那一形。 */
     private val allListed = EmptyFace(copyText("beEmpty.line.none"), copyText("beEmpty.hint.none"))
@@ -284,10 +286,18 @@ class ChatsViewTest {
     }
 
     @Test
-    fun `分叉那一句：父会话在 ⇒ 带标题；只有 id ⇒ 其他会话；都没有 ⇒ 不写`() {
-        assertEquals("分叉自「修登录」", forkLine(ForkedFrom("修登录"), "p1"))
-        assertEquals("分叉自其他会话", forkLine(null, "p1"))
-        assertNull(forkLine(null, null))
+    fun `分叉照核心挂：收着 ⇒ 父行带几条分叉、子行不出；展开 ⇒ 子行紧跟父、标成子；父不在这一列 ⇒ 其他会话`() {
+        val p = hostPart(snap(got = Fetched.Got(page(row("P", "今天", 90), row("F", "昨天", 50, parent = "P"), row("G", "昨天", 40, parent = "X")))))
+        val shut = view(p)
+        assertEquals(listOf("P", "G"), shut.rows.map { it.sessionId })
+        assertEquals(Nest(forks = 1), shut.rows[0].nest)
+        assertEquals(Nest(orphan = true), shut.rows[1].nest)
+        val open = view(p, open = setOf("h1" to "P"))
+        assertEquals(listOf("P", "F", "G"), open.rows.map { it.sessionId })
+        assertEquals(Nest(forks = 1, forksOpen = true), open.rows[0].nest)
+        assertEquals(Nest(child = true), open.rows[1].nest)
+        assertEquals("子行跟着父，不另起「昨天」那一段", listOf(listOf("P", "F"), listOf("G")), open.sections.map { s -> s.rows.map { it.sessionId } })
+        assertEquals("别的台的同名会话不算展开", listOf("P", "G"), view(p, open = setOf("h2" to "P")).rows.map { it.sessionId })
     }
 
     @Test
