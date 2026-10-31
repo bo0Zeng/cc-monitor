@@ -511,7 +511,11 @@ impl PhoneBoard {
                 }
                 Err(None) => break,
             };
-            let mut moves = PartMoves { board: self, p, name };
+            let mut moves = PartMoves {
+                board: self,
+                p,
+                name,
+            };
             let line =
                 transfer::pull_with(ask, self.id, path.clone(), file, name, &mut moves).await;
             match pulled(&line, p.halt.is()) {
@@ -523,7 +527,10 @@ impl PhoneBoard {
                     },
                 ),
                 Pulled::Failed(said, detail) => {
-                    self.local(&LocalAsk::Drop { id: self.id, key: key.clone() });
+                    self.local(&LocalAsk::Drop {
+                        id: self.id,
+                        key: key.clone(),
+                    });
                     self.settle(
                         i,
                         BatchOutcome {
@@ -1249,11 +1256,7 @@ mod tests {
                 hit.map(|i| c.remove(i)).is_some()
             };
             if cut {
-                return crate::transfer::typed::<C>(
-                    7,
-                    "devbox",
-                    Err(CallError::Disconnected),
-                );
+                return crate::transfer::typed::<C>(7, "devbox", Err(CallError::Disconnected));
             }
             if self.hang.contains(&path) {
                 std::future::pending::<()>().await;
@@ -1305,7 +1308,9 @@ mod tests {
                 return;
             }
             match serde_json::from_str::<LocalAsk>(&body).unwrap() {
-                LocalAsk::Open { key, name, over, .. } => {
+                LocalAsk::Open {
+                    key, name, over, ..
+                } => {
                     lock(&h2.opens).push((key.clone(), name.clone(), over.clone()));
                     let answer = if refuse.contains(&name.as_str()) {
                         LocalOpened::Refused {
@@ -1399,7 +1404,13 @@ mod tests {
         let there = There::of(&[("/w/a.txt", b"AAA"), ("/w/b.md", b"BBBB")]);
         lock(&there.cut_once).push("/w/b.md".into());
         let (on, seen, here, slot) = here_side(dir.clone(), &[]);
-        let b = Arc::new(PhoneBoard::new(7, 1, pull_plan(&dir, &[]), "t-1".into(), on));
+        let b = Arc::new(PhoneBoard::new(
+            7,
+            1,
+            pull_plan(&dir, &[]),
+            "t-1".into(),
+            on,
+        ));
         *lock(&slot) = Some(b.clone());
         let run = tokio::spawn(pull_go(b.clone(), Arc::new(there), true));
         for _ in 0..20_000 {
@@ -1438,7 +1449,10 @@ mod tests {
             "完成 1 · 中断 1"
         );
         let end = lock(&r.ended).clone().unwrap();
-        assert!(end.outcomes.iter().all(|o| o.state == ItemState::Done), "{end:?}");
+        assert!(
+            end.outcomes.iter().all(|o| o.state == ItemState::Done),
+            "{end:?}"
+        );
         assert_eq!(std::fs::read(dir.join("a.txt")).unwrap(), b"AAA");
         assert_eq!(std::fs::read(dir.join("b.md")).unwrap(), b"BBBB");
         let _ = std::fs::remove_dir_all(&dir);
@@ -1449,7 +1463,13 @@ mod tests {
     async fn a_local_clash_is_asked_once_and_its_answer_picks_what_to_open() {
         let dir = folder("clash");
         let (on, seen, here, slot) = here_side(dir.clone(), &[]);
-        let b = Arc::new(PhoneBoard::new(7, 1, pull_plan(&dir, &["A.TXT", "b.md"]), "t".into(), on));
+        let b = Arc::new(PhoneBoard::new(
+            7,
+            1,
+            pull_plan(&dir, &["A.TXT", "b.md"]),
+            "t".into(),
+            on,
+        ));
         *lock(&slot) = Some(b.clone());
         let b2 = b.clone();
         let answering = tokio::spawn(async move {
@@ -1466,13 +1486,21 @@ mod tests {
         pull_go(b.clone(), Arc::new(there), false).await;
         answering.await.unwrap();
         let shown = lock(&seen).clone();
-        let ask = &shown.iter().find(|(k, v)| k == "batch" && v["phase"] == "asking").unwrap().1;
+        let ask = &shown
+            .iter()
+            .find(|(k, v)| k == "batch" && v["phase"] == "asking")
+            .unwrap()
+            .1;
         assert_eq!(ask["conflicts"][0]["there"], "A.TXT");
         assert_eq!(ask["conflicts"][1]["there"], "b.md");
         assert_eq!(ask["title"], "下载 2 项");
         assert_eq!(
             *lock(&here.opens),
-            [("0".to_string(), "a.txt".to_string(), Some("A.TXT".to_string()))]
+            [(
+                "0".to_string(),
+                "a.txt".to_string(),
+                Some("A.TXT".to_string())
+            )]
         );
         let end = lock(&b.ended).clone().unwrap();
         assert_eq!(
@@ -1492,7 +1520,13 @@ mod tests {
     async fn a_refused_open_fails_one_and_a_stop_cancels_the_rest() {
         let dir = folder("refuse");
         let (on, seen, here, slot) = here_side(dir.clone(), &["a.txt"]);
-        let b = Arc::new(PhoneBoard::new(9300, 1, pull_plan(&dir, &[]), "t".into(), on));
+        let b = Arc::new(PhoneBoard::new(
+            9300,
+            1,
+            pull_plan(&dir, &[]),
+            "t".into(),
+            on,
+        ));
         *lock(&slot) = Some(b.clone());
         lock(boards()).insert(9300, b.clone());
         let there = There {

@@ -267,7 +267,10 @@ pub enum LocalOpened {
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         fd: i64,
     },
-    Refused { key: String, detail: String },
+    Refused {
+        key: String,
+        detail: String,
+    },
 }
 
 /// 现生成的一把钥匙：私钥 PEM（openssh-key-v1，无口令）· 公钥那一行。

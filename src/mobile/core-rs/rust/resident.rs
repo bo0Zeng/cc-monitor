@@ -700,8 +700,14 @@ mod tests {
     fn a_contract_break_is_said_as_one_not_as_a_lost_link() {
         let line: serde_json::Value =
             serde_json::from_str(&args_of(5, "history-facts", "{").unwrap_err()).unwrap();
-        assert_eq!((line["call"].as_i64(), line["end"].as_str()), (Some(5), Some("unreadable")));
-        assert_eq!(args_of(5, "x", "{\"a\":1}").unwrap(), serde_json::json!({"a": 1}));
+        assert_eq!(
+            (line["call"].as_i64(), line["end"].as_str()),
+            (Some(5), Some("unreadable"))
+        );
+        assert_eq!(
+            args_of(5, "x", "{\"a\":1}").unwrap(),
+            serde_json::json!({"a": 1})
+        );
         let p = PhoneLink::new(serde_json::json!({}))
             .request(serde_json::json!({}))
             .unwrap_err();
