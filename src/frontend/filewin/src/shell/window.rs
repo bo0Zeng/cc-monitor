@@ -222,6 +222,7 @@ pub fn open_detached_seeded(
                     w.rt.clone(),
                     w.line.clone(),
                     &w.source.origin(),
+                    &w.cwd,
                 ));
                 w.machines = machines;
                 // 样子：主界面那一套配色 · 字号 · 间距。

@@ -411,7 +411,7 @@ describe("C01 边界生成物", () => {
       }
     }
     // 正控（按符号认，不数个数）：结构体字段 · enum 变体字段各点名一处。
-    for (const anchor of ["UiErrorPayload.at", "StreamEv.i"])
+    for (const anchor of ["LogFileEntry.modified_ms", "StreamEv.i"])
       expect(seen, `正控：没扫到大整数字段 \`${anchor}\` —— 扫描瞎了（或那个字段真删了：换一处点名）`).toContain(anchor);
   });
 

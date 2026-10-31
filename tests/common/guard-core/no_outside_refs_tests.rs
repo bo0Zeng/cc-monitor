@@ -13,11 +13,9 @@
 //! 第二张网（施工说法）：开发过程的阶段名「第 N 波」与施工记录名 `4d-…`。同一个人群，命中集 == ∅；
 //! 测试声明行（`it(` · `test(` · `describe(` · `bench(` 打头）不扫 —— 测试名不改。
 //!
-//! 第三张网（只报不拦）：工单 / 裁决编号 · 指向已摘掉的代码全景目录（仓里没有的 `.md` 已清到零、并进了 `net()`）。
-//! 今天存量太大，它只把命中清单与数打出来（`cargo test -p guard-core --lib unblocked -- --nocapture`），
-//! 不让门禁红；它自己的合成夹具照样判网眼有没有坏。
-//! 什么时候改成拦：产品代码（`src/`）与 `src/doc` 里这两形清到零的那个提交里，把两眼并进 `net()`，
-//! 本条改成命中集 == ∅（测试与 `tests/evidence/` 同拍清，或那时按目录分两步收）。
+//! 第三张网（工单 / 裁决编号 · 指向已摘掉的代码全景目录）：同一个人群去掉 `CHANGELOG.md`（版本记录照实写当时的编号）、
+//! 两张存量名单（它们列的就是这些名字）与界面生成物（源头在人群里，名单跟不住重新生成），测试声明行不扫；拦，今天的存量记在它自己那张按文件的名单里、只许变短，对账与第六张网同一套。
+//! 名单清空的那个提交连名单一起删，网照旧拦。
 //!
 //! 第五张网（施工过程的叫法）：派活的那一方 · 施工分支与合并分支的代号 · 带日期的「用户 MM-DD」· 「合并」那棵树 ·
 //! 「施工」那一路 · 「这一路的」改动范围 · 施工那一路的自称（「本」＋「路」）· 带日期 / 步骤的施工标签（搬树 · 搬测试 · 步 N · 步 `代号` · 波 N · 条 N 那几种六角括号标签）· 不带括号的施工条目编号（「条」＋数字，量词那几形不算）。同一个人群去掉 `CHANGELOG.md`（版本记录照实写当时怎么做的），测试声明行不扫；
@@ -37,6 +35,7 @@
 use regex::Regex;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 /// 锁文件：工具生成的依赖清单。
 const LOCK_FILES: &[&str] = &["Cargo.lock", "package-lock.json"];
@@ -170,7 +169,7 @@ fn process_names_net() -> Regex {
     Regex::new(&eyes.join("|")).expect("施工叫法网拼不成正则")
 }
 
-/// 第五张网不扫的文件：版本记录照实写当时怎么做的。
+/// 第五 · 第三张网不扫的文件：版本记录照实写当时怎么做的。
 const PROCESS_NAMES_EXEMPT: &[&str] = &["CHANGELOG.md"];
 
 /// 第五张网的第二副网眼：施工口吻（施工那一次的自称 · 改动范围的旧叫法）。每个网眼拆两段、运行期拼。
@@ -223,8 +222,8 @@ fn first_process_word(net: &Regex, line: &str) -> Option<usize> {
     net.find(&scrubbed).map(|m| m.start())
 }
 
-/// 第三张网的两形，各一个名字（报告按它分组）。每个网眼拆两段、运行期拼。
-fn unblocked_eyes() -> [(&'static str, Regex); 2] {
+/// 第三张网的两形，各一个名字。每个网眼拆两段、运行期拼；功能键（[`FUNCTION_KEYS`]）形状像编号，放过。
+fn ticket_eyes() -> [(&'static str, Regex); 2] {
     let ticket = [
         (r"\bK-", r"R\d+"),
         (r"\bKR\d+", r"D\d+\b"),
@@ -248,14 +247,6 @@ fn unblocked_eyes() -> [(&'static str, Regex); 2] {
 /// 功能键名：形状像编号，是键。
 const FUNCTION_KEYS: &[&str] = &["F10", "F11", "F12"];
 
-/// 一行里第三张网第 `eye` 形的第一处命中（字节偏移）。
-fn first_unblocked_hit(eye: usize, rx: &Regex, line: &str) -> Option<usize> {
-    rx.find_iter(line).find_map(|m| {
-        let spared = eye == 0 && FUNCTION_KEYS.contains(&m.as_str());
-        (!spared).then(|| m.start())
-    })
-}
-
 /// 测试声明行：测试名不改，第二张网不扫它。
 fn test_declaration() -> Regex {
     Regex::new(r"^\s*(?:it|test|describe|bench)(?:\.\w+)*\(").expect("测试声明正则")
@@ -278,8 +269,16 @@ fn first_outside_pointer(
     })
 }
 
-/// 人群：`(仓根相对路径, 正文)`。跟踪着的符号链接按 git 存的那样取链接目标的文字。
-pub(super) fn tracked_texts(root: &Path) -> Vec<(String, String)> {
+/// 人群：`(仓根相对路径, 正文)`。一个测试进程里只读一遍，各条判据共用；只认头一回给的那个仓根。
+pub(super) fn tracked_texts(root: &Path) -> &'static [(String, String)] {
+    static TEXTS: OnceLock<(PathBuf, Vec<(String, String)>)> = OnceLock::new();
+    let (at, texts) = TEXTS.get_or_init(|| (root.to_path_buf(), read_tracked_texts(root)));
+    assert_eq!(at, root, "人群只认一个仓根");
+    texts
+}
+
+/// 跟踪着的符号链接按 git 存的那样取链接目标的文字。
+fn read_tracked_texts(root: &Path) -> Vec<(String, String)> {
     let out = std::process::Command::new("git")
         .args(["ls-files", "-z"])
         .current_dir(root)
@@ -349,10 +348,10 @@ fn no_tracked_text_points_at_the_outside_dev_docs() {
         texts.len()
     );
     let net = net();
-    let docs = in_repo_docs(&texts);
+    let docs = in_repo_docs(texts);
     let mut hits = Vec::new();
     let mut files = BTreeSet::new();
-    for (rel, text) in &texts {
+    for (rel, text) in texts {
         for (i, line) in text.lines().enumerate() {
             if let Some(at) = first_outside_pointer(&net, &docs, line) {
                 hits.push(format!("{rel}:{}: {}", i + 1, snippet(line, at)));
@@ -449,7 +448,7 @@ fn no_tracked_text_names_a_dev_process_wave() {
     );
     let (net, decl) = (process_net(), test_declaration());
     let mut hits = Vec::new();
-    for (rel, text) in &texts {
+    for (rel, text) in texts {
         for (i, line) in text.lines().enumerate() {
             if decl.is_match(line) {
                 continue;
@@ -502,7 +501,7 @@ fn no_tracked_text_uses_the_build_process_names() {
     let (net, words, decl) = (process_names_net(), process_words_net(), test_declaration());
     let colloquial = colloquial_net();
     let mut hits = Vec::new();
-    for (rel, text) in &texts {
+    for (rel, text) in texts {
         if PROCESS_NAMES_EXEMPT.contains(&rel.as_str()) {
             continue;
         }
@@ -656,113 +655,78 @@ fn the_process_words_net_catches_build_wording_and_spares_the_turn_copy() {
     );
 }
 
-/// 第三张网：只报不拦。命中清单与数打到标准输出（`-- --nocapture` 看得见），门禁不因它红。
+/// 第三张网的存量名单：`路径<TAB>命中行数`，记法与对账同 [`HISTORY_STOCK`]。
+const TICKET_STOCK: &str = "tests/__fixtures__/ticket-refs-pending.tsv";
+
+/// 第三张网：拦，带一张只许变短的存量名单。人群见本文件头注。
 #[test]
-fn unblocked_outside_pointers_are_reported_not_blocked() {
-    let texts = tracked_texts(&repo());
+fn no_ticket_codes_beyond_the_shrinking_stock_list() {
+    let root = repo();
+    let texts = tracked_texts(&root);
     assert!(
         texts.len() > 500,
-        "人群只有 {} 份 —— `git ls-files` 口径坏了，报出来的数不作数",
+        "人群只有 {} 份 —— `git ls-files` 口径坏了，零命中不作数",
         texts.len()
     );
-    let area = |rel: &str| -> &'static str {
-        if rel.starts_with("src/doc/") {
-            "src/doc"
-        } else if rel.starts_with("src/") {
-            "src（产品）"
-        } else if rel.starts_with("tests/evidence/") {
-            "tests/evidence"
-        } else if rel.starts_with("tests/") {
-            "tests"
-        } else {
-            "其余"
+    let (eyes, decl) = (ticket_eyes(), test_declaration());
+    let mut found = std::collections::BTreeMap::new();
+    for (rel, text) in texts {
+        if PROCESS_NAMES_EXEMPT.contains(&rel.as_str())
+            || [HISTORY_STOCK, TICKET_STOCK].contains(&rel.as_str())
+            || rel.starts_with(GENERATED)
+        {
+            continue;
         }
-    };
-    let mut summary = Vec::new();
-    for (i, (name, rx)) in unblocked_eyes().iter().enumerate() {
-        let mut lines = Vec::new();
-        let mut by_area: std::collections::BTreeMap<&str, usize> = Default::default();
-        let mut files = BTreeSet::new();
-        for (rel, text) in &texts {
-            for (n, line) in text.lines().enumerate() {
-                if let Some(at) = first_unblocked_hit(i, rx, line) {
-                    lines.push(format!("{rel}:{}: {}", n + 1, snippet(line, at)));
-                    *by_area.entry(area(rel)).or_default() += 1;
-                    files.insert(rel.as_str());
-                }
-            }
+        let hits = line_hits(&eyes, &decl, text);
+        if !hits.is_empty() {
+            found.insert(rel.clone(), hits);
         }
-        println!(
-            "== 第三张网 · {name}：{} 行 / {} 份文件",
-            lines.len(),
-            files.len()
-        );
-        for l in &lines {
-            println!("{l}");
-        }
-        summary.push(format!(
-            "{name}：{} 行 / {} 份（{}）",
-            lines.len(),
-            files.len(),
-            by_area
-                .iter()
-                .map(|(a, c)| format!("{a} {c}"))
-                .collect::<Vec<_>>()
-                .join(" · ")
-        ));
     }
-    println!("== 第三张网合计（只报不拦）\n{}", summary.join("\n"));
+    let bad = stock_list_red(&root, TICKET_STOCK, &found);
+    assert!(
+        bad.is_empty(),
+        "工单 / 裁决编号 · 已摘掉的代码全景目录对不上存量名单 `{TICKET_STOCK}`（今天命中 {} 份）。\
+         只是出处的删掉，承载理由的换成就地一句话；清完的那一份从名单删行。{} 条，前 50 条：\n{}",
+        found.len(),
+        bad.len(),
+        bad.iter().take(50).cloned().collect::<Vec<_>>().join("\n")
+    );
 }
 
-/// 合成夹具：两形各该抓的抓到、该放过的放过（行号集相等）。只报不拦那条的数靠它才作数。
+/// 合成夹具：两形各该抓的抓到，功能键 · 别的大写数字串 · 测试声明行放过（行号集相等）。
 #[test]
-fn the_unblocked_net_catches_its_two_shapes_and_spares_the_rest() {
-    let eyes = unblocked_eyes();
-    let cases: [(usize, Vec<String>, BTreeSet<usize>); 2] = [
-        (
-            0,
-            vec![
-                format!("// 🔴 `K{}`：先让它自己说一遍", "-R70"), // 1 ✔
-                format!("// `KR{}D2` 那条", "120"),               // 2 ✔
-                format!("// 用户 `K{}` 逐字", "33"),              // 3 ✔
-                format!("// F{}（#39）：可打开文件窗口", "83"),   // 4 ✔
-                format!("// U8c-{} 只需改例子", "3"),             // 5 ✔
-                format!("| `F{}` | 全屏 |", "11"),                // 6 ✘ 功能键
-                format!("// {}-2023-0071 与 SHA256SUMS", "RUSTSEC"), // 7 ✘
-                format!("// x86_64 · K8s · {}x", "4K"),           // 8 ✘
-                format!("// {} 号的凭据", "KS"),                  // 9 ✘ 没有数字
-            ],
-            BTreeSet::from([1, 2, 3, 4, 5]),
-        ),
-        (
-            1,
-            vec![
-                format!(
-                    "规格住 `{}-picture/doc/agents/claude-code.{}`",
-                    "code", "md"
-                ), // 1 ✔
-                "代码全景已经摘掉了".to_string(), // 2 ✘
-            ],
-            BTreeSet::from([1]),
-        ),
+fn the_ticket_net_catches_its_two_shapes_and_spares_the_rest() {
+    let lines = [
+        format!("// 🔴 `K{}`：先让它自己说一遍", "-R70"), // 1 ✔
+        format!("// `KR{}D2` 那条", "120"),               // 2 ✔
+        format!("// 用户 `K{}` 逐字", "33"),              // 3 ✔
+        format!("// F{}（#39）：可打开文件窗口", "83"),   // 4 ✔
+        format!("// U8c-{} 只需改例子", "3"),             // 5 ✔
+        format!("| `F{}` | 全屏 · F{} |", "11", "12"),    // 6 ✘ 功能键
+        format!("// {}-2023-0071 与 SHA256SUMS", "RUSTSEC"), // 7 ✘
+        format!("// x86_64 · K8s · {}x", "4K"),           // 8 ✘
+        format!("// {} 号的凭据", "KS"),                  // 9 ✘ 没有数字
+        format!(
+            "规格住 `{}-picture/doc/agents/claude-code.{}`",
+            "code", "md"
+        ), // 10 ✔ 已摘掉的全景目录
+        "代码全景已经摘掉了".to_string(),                 // 11 ✘
+        format!("describe(\"K{} 指路\", () => {{", "33"), // 12 ✘ 测试声明行
+        format!("// F{} 之后才是 F{}", "11", "83"),       // 13 ✔ 功能键后面还有一处编号
     ];
-    for (eye, lines, want) in cases {
-        let (name, rx) = &eyes[eye];
-        let got: BTreeSet<usize> = lines
-            .iter()
-            .enumerate()
-            .filter(|(_, l)| first_unblocked_hit(eye, rx, l).is_some())
-            .map(|(i, _)| i + 1)
-            .collect();
-        assert_eq!(
-            got, want,
-            "第三张网「{name}」在合成夹具上抓到的行 ≠ 标定 —— 网坏了，报出来的数不作数"
-        );
-    }
+    let got: BTreeSet<usize> = line_hits(&ticket_eyes(), &test_declaration(), &lines.join("\n"))
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect();
+    assert_eq!(
+        got,
+        BTreeSet::from([1, 2, 3, 4, 5, 10, 13]),
+        "第三张网在合成夹具上抓到的行 ≠ 标定（该抓 1–5、10、13；该放过 6–9、11、12）—— 网坏了，名单对账不作数"
+    );
 }
 
 /// 第六张网（施工史与施工代号）：拦，带一张只许变短的存量名单。
-/// 人群：`src/` · `tests/` · `.github/` 底下跟踪着的文本文件（名单自己除外：它列的就是这些名字）；测试声明行不扫。
+/// 人群：`src/` · `tests/` · `.github/` 底下跟踪着的文本文件（两张存量名单除外：它们列的就是这些名字）；测试声明行不扫。
 /// 生成物（[`GENERATED`]）不扫：那里的字来自 Rust 源码注释，源头在人群里；它随重新生成变，名单跟不住它。
 /// 三形各一个名字，每个网眼拆两段、运行期拼：
 /// - 施工史：「先」「从」＋「前」（「从」＋「前端 / 前后」不算）·「原」＋「住」·「搬家」＋「前」·「回修」＋「轮」·「这一」＋「刀」
@@ -803,8 +767,10 @@ fn coded_evidence_name() -> Regex {
     .expect("文件名网眼")
 }
 
-/// 存量名单：`路径<TAB>命中行数`，一份一行。只许变短：名单外的命中 ⇒ 红；名单里的一份命中行数比记下的多 ⇒ 红；
-/// 名单里的一份已经零命中（或不在了）⇒ 红，删掉那一行。名单清空的那个提交连它和本段读名单的那几行一起删。
+/// 存量名单：`路径<TAB>命中行数`，一份一行，记实数。名单外的命中 ⇒ 红；名单里的一份命中行数与记下的不等 ⇒ 红
+/// （变少了就把那一行改成实数）；名单里的一份已经零命中（或不在了）⇒ 红，删掉那一行。
+/// 只许变短对着基线判（`guard_core::baseline_text`，与 main 分叉点上那一版）：基线上没有的行 · 比基线大的数 ⇒ 红。
+/// 名单清空的那个提交连它和本段读名单的那几行一起删。
 const HISTORY_STOCK: &str = "tests/__fixtures__/outside-refs-pending.tsv";
 
 /// 界面那份生成物的目录：第六张网不扫它。
@@ -823,66 +789,52 @@ fn history_hits(
             hits.push((0, format!("文件名 {name}")));
         }
     }
+    hits.extend(line_hits(eyes, decl, text));
+    hits
+}
+
+/// 一份正文里落在 `eyes` 任一形上的行：`(行号, 片段)`。测试声明行不扫；功能键（[`FUNCTION_KEYS`]）不算命中。
+fn line_hits(eyes: &[(&str, Regex)], decl: &Regex, text: &str) -> Vec<(usize, String)> {
+    let mut hits = Vec::new();
     for (i, line) in text.lines().enumerate() {
         if decl.is_match(line) {
             continue;
         }
-        if let Some(at) = eyes
-            .iter()
-            .find_map(|(_, rx)| rx.find(line).map(|m| m.start()))
-        {
+        if let Some(at) = eyes.iter().find_map(|(_, rx)| {
+            rx.find_iter(line)
+                .find(|m| !FUNCTION_KEYS.contains(&m.as_str()))
+                .map(|m| m.start())
+        }) {
             hits.push((i + 1, snippet(line, at)));
         }
     }
     hits
 }
 
-/// 名单与今天的命中对一遍：返回违规的那几条（空 ⇒ 过）。
-fn history_stock_violations(
-    stock: &std::collections::BTreeMap<String, usize>,
+/// 存量名单 `list`（仓根相对）对今天的命中判一遍：先比基线（只许变短），再对账。返回红的那几条（空 ⇒ 过）。
+/// 今天的命中按名单的形状打到标准输出（`-- --nocapture` 看得见），删行时照它对。
+fn stock_list_red(
+    root: &Path,
+    list: &str,
     found: &std::collections::BTreeMap<String, Vec<(usize, String)>>,
 ) -> Vec<String> {
-    let mut out = Vec::new();
+    println!("== `{list}` 今天的命中：{} 份", found.len());
     for (rel, hits) in found {
-        match stock.get(rel) {
-            None => out.push(format!(
-                "{rel}：名单外的新命中 {} 行，例：{}:{}",
-                hits.len(),
-                hits[0].0,
-                hits[0].1
-            )),
-            Some(&n) if hits.len() > n => out.push(format!(
-                "{rel}：命中 {} 行，名单记的是 {n}（只许变少），例：{}:{}",
-                hits.len(),
-                hits[0].0,
-                hits[0].1
-            )),
-            _ => {}
-        }
+        println!("{rel}\t{}", hits.len());
     }
-    for rel in stock.keys().filter(|r| !found.contains_key(*r)) {
-        out.push(format!("{rel}：已经零命中（或不在了），从名单删掉这一行"));
-    }
-    out
-}
-
-fn read_history_stock(root: &Path) -> std::collections::BTreeMap<String, usize> {
-    let p = root.join(HISTORY_STOCK);
     let text =
-        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{HISTORY_STOCK} 读不动：{e}"));
-    text.lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| {
-            let (rel, n) = l
-                .split_once('\t')
-                .unwrap_or_else(|| panic!("{HISTORY_STOCK} 这一行不是 `路径<TAB>行数`：{l}"));
-            let n = n
-                .trim()
-                .parse()
-                .unwrap_or_else(|_| panic!("{HISTORY_STOCK} 这一行的行数不是数：{l}"));
-            (rel.to_string(), n)
-        })
-        .collect()
+        std::fs::read_to_string(root.join(list)).unwrap_or_else(|e| panic!("{list} 读不动：{e}"));
+    let stock = crate::parse_stock_list(list, &text);
+    let base = crate::baseline_text(root, list)
+        .unwrap_or_else(|e| panic!("存量名单 `{list}` 读不到基线：{e}"));
+    let mut red: Vec<String> = base
+        .map(|b| crate::stock_list_grown_past_baseline(&stock, &crate::parse_stock_list(list, &b)))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|g| format!("比基线长了（新写的删掉，名单只许删行、数只许变小）：{g}"))
+        .collect();
+    red.extend(crate::stock_list_violations(&stock, found));
+    red
 }
 
 #[test]
@@ -896,11 +848,14 @@ fn no_build_history_or_codes_beyond_the_shrinking_stock_list() {
     );
     let (eyes, decl) = (history_eyes(), test_declaration());
     let mut found = std::collections::BTreeMap::new();
-    for (rel, text) in &texts {
+    for (rel, text) in texts {
         let in_scope = ["src/", "tests/", ".github/"]
             .iter()
             .any(|d| rel.starts_with(d));
-        if !in_scope || rel == HISTORY_STOCK || rel.starts_with(GENERATED) {
+        if !in_scope
+            || [HISTORY_STOCK, TICKET_STOCK].contains(&rel.as_str())
+            || rel.starts_with(GENERATED)
+        {
             continue;
         }
         let hits = history_hits(&eyes, &decl, rel, text);
@@ -908,19 +863,12 @@ fn no_build_history_or_codes_beyond_the_shrinking_stock_list() {
             found.insert(rel.clone(), hits);
         }
     }
-    // 今天的命中按名单的形状打到标准输出（`-- --nocapture` 看得见），删行时照它对。
-    println!("== 第六张网今天的命中：{} 份", found.len());
-    for (rel, hits) in &found {
-        println!("{rel}\t{}", hits.len());
-    }
-    let stock = read_history_stock(&root);
-    let bad = history_stock_violations(&stock, &found);
+    let bad = stock_list_red(&root, HISTORY_STOCK, &found);
     assert!(
         bad.is_empty(),
-        "施工史 · 施工代号 · 已删的旧面板对不上存量名单 `{HISTORY_STOCK}`（今天命中 {} 份，名单 {} 行）。\
+        "施工史 · 施工代号 · 已删的旧面板对不上存量名单 `{HISTORY_STOCK}`（今天命中 {} 份）。\
          新写的删掉、写成现在是什么样；清完的那一份从名单删行。{} 条，前 50 条：\n{}",
         found.len(),
-        stock.len(),
         bad.len(),
         bad.iter().take(50).cloned().collect::<Vec<_>>().join("\n")
     );
@@ -980,12 +928,26 @@ fn the_history_net_catches_its_shapes_and_the_stock_list_only_shrinks() {
             .into_iter()
             .map(|(r, n)| (r.to_string(), n))
             .collect();
-    let bad = history_stock_violations(&stock, &found);
+    let bad = crate::stock_list_violations(&stock, &found);
     let who: Vec<&str> = bad.iter().map(|b| b.split('：').next().unwrap()).collect();
     assert_eq!(
         who,
-        ["a.rs", "new.rs", "gone.rs"],
-        "名单对账判错了（a.rs 变多 · new.rs 名单外 · gone.rs 已清该删行，三样都该红；b.rs 变少放过）：{bad:?}"
+        ["a.rs", "b.rs", "new.rs", "gone.rs"],
+        "名单对账判错了（a.rs 变多 · b.rs 变少没改实数 · new.rs 名单外 · gone.rs 已清该删行，四样都该红）：{bad:?}"
+    );
+    let now: std::collections::BTreeMap<String, usize> = [("a.rs", 2), ("b.rs", 1), ("new.rs", 1)]
+        .into_iter()
+        .map(|(r, n)| (r.to_string(), n))
+        .collect();
+    let grown = crate::stock_list_grown_past_baseline(&now, &stock);
+    let who: Vec<&str> = grown
+        .iter()
+        .map(|b| b.split('：').next().unwrap())
+        .collect();
+    assert_eq!(
+        who,
+        ["a.rs", "new.rs"],
+        "对基线判错了（a.rs 比基线大 · new.rs 基线上没有，该红；b.rs 变少放过）：{grown:?}"
     );
 }
 
@@ -1056,7 +1018,7 @@ fn every_named_evidence_file_is_in_the_repo() {
         .collect();
     let eyes = evidence_pointer_eyes();
     let mut hits = Vec::new();
-    for (rel, text) in &texts {
+    for (rel, text) in texts {
         let in_evidence = rel.starts_with(EVIDENCE_DIR);
         for (i, line) in text.lines().enumerate() {
             for name in dangling_evidence_names(&eyes, &evidence, &basenames, in_evidence, line) {

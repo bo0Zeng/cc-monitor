@@ -3,6 +3,7 @@ import type { MachineFaultCode } from "./MachineFaultCode";
 
 /**
  * 机器表那一道没过的那一处（闭集码 ＋ 那台的名字 ＋ 那一格下面的那一句）；界面照 `code` 挑落在哪一格、照抄 `said`。
+ * 只有字段：句子由拨号核心写（`ssh_dial::machine::fault` · `refused_said`）。
  */
 export type MachineFault = { 
 /**

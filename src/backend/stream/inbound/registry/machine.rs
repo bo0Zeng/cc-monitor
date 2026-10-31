@@ -113,3 +113,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // `~/.ssh/config` 的解读（`dial/ssh_config.rs`）：读一份文件 ／ 逐个起 `ssh -G`（只读配置、不建连接）并等它退出 ⇒ 阻塞档。
     crate::wire::typed::blocking::<crate::dial::ssh_config::SshConfigImport>("批量导入预览"),
 ];
+
+#[cfg(test)]
+#[path = "../../../../../tests/backend/control/machines_replay_tests.rs"]
+mod machines_replay_tests;

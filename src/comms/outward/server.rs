@@ -3,7 +3,7 @@
 //!
 //! # ⚠⚠ 🔴 它的**名字**与对不上，理由现打，别当成漏了
 //!
-//! 那张拆分表要的名字是 **`relay/exchange.rs`**。今天它仍叫 `server.rs`，
+//! 那张拆分表要的名字是 **exchange**（交换面，本目录里还没有这份文件）。今天它仍叫 `server.rs`，
 //! 挡着改名的是**这里没改的登记**，拿这个路径当住址、改名当场红（今天剩下两行，第一行已不挡）：
 //!
 //! | 登记 | 它钉着什么 |
@@ -86,7 +86,8 @@ const PAYLOAD_TOO_LARGE: &str = "413 Payload Too Large";
 const UPGRADE_REQUIRED: &str = "426 Upgrade Required";
 /// 路径**根本不是路由的形状**。与上游选择那个 404（表里没这一行）同属「路由不成立」一组，原因头不同。
 const NOT_A_ROUTE: &str = "404 Not Found";
-/// 在飞连接顶满（`listen.rs::INFLIGHT_CONNECTIONS`）或起不了连接线程。**「我们这侧现在吃不下」**。
+/// 在飞连接顶满（`listen.rs::INFLIGHT_CONNECTIONS`）· 在途请求体合计记不下（[`BodyBudget`]，原因头 `body-budget`）·
+/// 起不了连接线程。**「我们这侧现在吃不下」**。
 ///
 /// ⚠ 名字刻意不带 `CAP`/`MAX`/`LIMIT`/`BYTES`（那几个词是 `byte_cap_registry` 的钩子）。
 pub const BUSY: &str = "503 Service Unavailable";
@@ -182,6 +183,72 @@ pub struct Relay {
     open: Arc<OpenFor>,
     /// 上游那一跳留着的 keep-alive 连接（按 来处 · 去处标签 · 协议 · 主机 · 端口 分格，[`upstream::Lane`]）。
     pool: upstream::Pool,
+    /// 在途请求体合计的账（[`BodyBudget`]）：上限由后端交下来。
+    bodies: BodyBudget,
+}
+
+/// 同时在途的下游请求体字节合计的账：上限由后端交下来（`C4`：值归后端 · 执行归本层），此刻记着多少。
+///
+/// 读体之前按 `Content-Length` 记上（[`Self::hold`]），记不下 ⇒ 这一发回 [`BUSY`]（原因头 `body-budget`）、一个体字节都不读；
+/// 记上的那一笔是个守卫（[`BodyHeld`]），活到这一发收场（`serve_one` 返回：成败、换没换号都一样）就退账。
+/// 买的是「在途的体合计有上界」：条数上界（后端的接受循环）乘单发上界（[`BODY_CAP`]）远大于一台机器的内存，
+/// 上游答得慢时在途就攒起来，每条带着一整份体。
+///
+/// 顶满那一阵日志只说一次（顶满时来得最密，一条一行会把日志灌满），退到上限四分之三以下再说一次（同接受循环条数满了那一形）。
+struct BodyBudget {
+    ceiling: usize,
+    held: std::sync::atomic::AtomicUsize,
+    /// 此刻在不在顶满那一阵里（只管说话，不管记账）。
+    full: std::sync::atomic::AtomicBool,
+}
+
+impl BodyBudget {
+    fn within(ceiling: usize) -> Self {
+        Self {
+            ceiling,
+            held: std::sync::atomic::AtomicUsize::new(0),
+            full: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    /// 记不下那一刻：这一阵头一回 ⇒ 说一句。
+    fn say_full(&self) {
+        if !self.full.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            eprintln!(
+                "[relay] refusing: in-flight request bodies at the budget (answering 503 until some end)"
+            );
+        }
+    }
+
+    /// 记上 `n` 字节；合计会超上限 ⇒ `None`（什么都没记）。
+    fn hold(&self, n: usize) -> Option<BodyHeld<'_>> {
+        use std::sync::atomic::Ordering::SeqCst;
+        let mut now = self.held.load(SeqCst);
+        loop {
+            let next = now.checked_add(n).filter(|&t| t <= self.ceiling)?;
+            match self.held.compare_exchange_weak(now, next, SeqCst, SeqCst) {
+                Ok(_) => return Some(BodyHeld { budget: self, n }),
+                Err(seen) => now = seen,
+            }
+        }
+    }
+}
+
+/// 账上记着的一笔：放掉就退账。
+struct BodyHeld<'a> {
+    budget: &'a BodyBudget,
+    n: usize,
+}
+
+impl Drop for BodyHeld<'_> {
+    fn drop(&mut self) {
+        use std::sync::atomic::Ordering::SeqCst;
+        let b = self.budget;
+        let now = b.held.fetch_sub(self.n, SeqCst) - self.n;
+        if now < b.ceiling / 4 * 3 && b.full.swap(false, SeqCst) {
+            eprintln!("[relay] in-flight request bodies back under the budget");
+        }
+    }
 }
 
 impl Relay {
@@ -196,17 +263,19 @@ impl Relay {
         open: Arc<OpenFor>,
         downstream_deadline: std::time::Duration,
         upstream_deadline: std::time::Duration,
+        in_flight_bodies: usize,
     ) -> Self {
         Self {
             stream_headers: dest.stream_label_headers(),
             relay_headers: dest.relay_headers(),
+            pool: upstream::Pool::reusing_within(dest.upstream_idle_reuse()),
             dest,
             door,
             tee,
             downstream_deadline,
             upstream_deadline,
             open,
-            pool: upstream::Pool::default(),
+            bodies: BodyBudget::within(in_flight_bodies),
         }
     }
 }
@@ -367,8 +436,8 @@ pub struct UpstreamFailure {
 
 /// 上游是谁：主机 ＋ 端口（**不带**路径前缀，理由见 [`UpstreamFailure`]）。
 ///
-/// ⚠ 它是从上游选择借给我们的那个 `&Base` 上**现抄**的一份：那个借用活不出上游选择的锁
-/// （`Destinations::resolve` 的契约），而「等响应」那一段在锁外。
+/// ⚠ 它是从上游选择借给我们的那个 `&Base` 上**现抄**的一份：那个借用活不出 `act`
+/// （`Destinations::resolve` 的契约），而「等响应」那一段在 `act` 之外。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Who {
     host: String,
@@ -565,7 +634,15 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //    会把这条线程**永久**钉在下面 `read_head` 的读上。
     //    `try_clone` 是 `dup` ⇒ 下面 `down_w` 与 `down_r` 共用同一条 socket、同一份期限。
     apply_downstream_deadline(&down, relay.downstream_deadline)?;
-    let mut down_w = down.try_clone()?;
+    //    `dup` 不成（fd 用尽）⇒ 先在这条本身上回 503 再交回错误，不让下游拿到一个没有任何 HTTP 回应的 FIN。
+    let mut down_w = match down.try_clone() {
+        Ok(w) => w,
+        Err(e) => {
+            let mut down = down;
+            let _ = refuse_busy(&mut down);
+            return Err(e);
+        }
+    };
     let mut down_r = BufReader::new(down);
 
     let Some(raw_head) = http1::read_head(&mut down_r, HEAD_CAP)? else {
@@ -605,19 +682,34 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
         eprintln!("[relay] refused by key scope: {status}");
         return respond_body_and_drain(&mut down_w, status, reason, format!("{status}\n{why}\n"));
     }
-    // ★ 请求体这一格守两个洞，两个都在这几行上。
+    // ★ 请求体这一格守三个洞，都在这几行上。
     //   ① 长度**无上界** ⇒ `Content-Length: 1e12` 把整个进程 abort 掉（SIGABRT，不走 unwind）；
     //   ② 长度**读不懂**（`7abc`）与「没有这个头」挤在同一个 `None` 里 ⇒ 请求体被静默丢掉、
     //      上游收到空体、下游拿到一条正常的 200。中转搬的正是 `POST /v1/messages` 的载荷。
-    // ⚠ 顺序：它排在**问上游选择之前**（`D2 阻-4`）—— 读下游是一次可能很慢的 IO，
-    //   而上游选择在 `resolve` 里握着自己那张表的读锁；握着锁去等下游，
-    //   等于让「配一次 key」跟着它一起慢。
+    //   ③ 在途的体**合计**无上界 ⇒ 上游答得慢时在途攒起来，每条带着一整份体（[`BodyBudget`]）。
+    //      读体之前按声明的长度记账，记不下 ⇒ 503、一个体字节都不读；那一笔活到本函数返回才退
+    //      （成败、换没换号都一样；换号重发用的是同一份 `body`）。
+    // ⚠ 顺序：读体排在**问上游选择之前**（`D2 阻-4`）—— 读下游是一次可能很慢的 IO，
+    //   `resolve` 里只做查表与备料，不该陪着下游一起慢。
+    let _held: Option<BodyHeld<'_>>;
     let body = match head.content_length() {
-        http1::BodyLen::Exact(n) => match http1::read_exact_body(&mut down_r, n, BODY_CAP)? {
-            Some(b) => b,
-            // 超 `BODY_CAP`：一个字节都没读过（连接上还压着那 n 字节）⇒ 说清楚再关。
-            None => return respond_and_drain(&mut down_w, PAYLOAD_TOO_LARGE, "payload-too-large"),
-        },
+        // 超 `BODY_CAP`：一个字节都没读过（连接上还压着那 n 字节）⇒ 说清楚再关。
+        http1::BodyLen::Exact(n) if n > BODY_CAP => {
+            return respond_and_drain(&mut down_w, PAYLOAD_TOO_LARGE, "payload-too-large")
+        }
+        http1::BodyLen::Exact(n) => {
+            let Some(held) = relay.bodies.hold(n) else {
+                relay.bodies.say_full();
+                return respond_and_drain(&mut down_w, BUSY, "body-budget");
+            };
+            _held = Some(held);
+            match http1::read_exact_body(&mut down_r, n, BODY_CAP)? {
+                Some(b) => b,
+                None => {
+                    return respond_and_drain(&mut down_w, PAYLOAD_TOO_LARGE, "payload-too-large")
+                }
+            }
+        }
         http1::BodyLen::Absent => Vec::new(),
         // **有这个头但读不懂** ⇒ 400，**不许**当成「没有请求体」往上游发一条空体。
         http1::BodyLen::Unparsable => {
@@ -631,11 +723,10 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //  ⚠ 递过去的是 `r.key`（`RouteKey{seg1,seg2}`）—— 两个**不透明段**。
     //    「谁是 agent、谁是账号」这两个词在本文件里一次都不出现。
     //
-    //  ⚠⚠ `D2 阻-4`：**上游选择的读锁活到 `act` 返回为止，所以 `act` 里不许有 `pump`。**
-    //    `std::sync::RwLock` 是写优先的：一个在等的写者（= 用户刚配完一把 key，
-    //    下一条请求触发重载）会挡住其后所有读者；而 `pump` 是流式转发，
-    //    一条 SSE 长流可以跑几分钟 ⇒ `pump` 搬进来，「配一次 key」就会被堵在
-    //    **最长那条在飞流**后面。⚠ 挂起时长**没实测**，这是读源码得出的形状。
+    //  ⚠⚠ `D2 阻-4`：**`act` 里不许有 `pump`。** 递进 `act` 的 `Destination` 是借用（`&Base` · 明文头值），
+    //    活不出 `act`：这里在 `act` 里把请求发出去、把「上游是谁」现抄一份（`Who`），转发在 `act` 之外。
+    //    上游选择取表时就放了锁（拿走的是表的一份指针），`act` 里不按着锁；`pump` 搬进来，
+    //    借来的明文串与表的那一份就跟着一条 SSE 长流（可以跑几分钟）一起活着。
     //    钉这一条的判据：`table_guard::the_upstream_selection_lock_does_not_outlive_the_streaming_pump`。
     let label = stream_label(&head, &relay.stream_headers);
     let owned = relay_heads(&head, &relay.relay_headers);

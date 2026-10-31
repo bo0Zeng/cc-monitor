@@ -169,6 +169,7 @@ import {
   withHistoryReads,
   withSessionReads,
   recordReadCalls,
+  recordReadOf,
 } from "../../test-support/chan-fake";
 import type { SessionFacts, UsageFact } from "../../../src/frontend/ui/session-reads";
 import { failToast, noteMessage, silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
@@ -247,7 +248,7 @@ const usageOf = (promptTokens: number, model: string | null): UsageFact => ({
   limitText: "核心·1M",
   limitFromText: null,
 });
-import { applyConfigEdits, type Edit } from "./config-patch-fake";
+import type { Edit } from "./config-patch-fake";
 import { dispatcher } from "../../../src/frontend/ui/keybindings/registry";
 import { copyPattern } from "../../test-support/copy-pattern";
 import { factsOn } from "../../test-support/host-facts";
@@ -2010,7 +2011,7 @@ describe("account-ux U5 tab 徽章：照会话那台写好的那一份（`sessio
 /**
  * ★★ ↗：点那一刻问本机后端一次（`session-window`：会话在这台电脑上的哪儿 —— 窗口标签 · 进程链 · tmux 那一格，或写好的那一张），
  * 答话**原样**交壳一次（`bring_terminal_to_front`：先按标签、再沿链，找窗口、拉前）；本机会话与远端会话同一条路、同一个形。
- * 前端不解析、不排先后、不按结局挑字：壳 · 后端交来的那一张照摆（句子逐种判在后端 `front_face_tests.rs`）。
+ * 前端不解析、不排先后、不按结局挑字：壳 · 后端交来的那一张照摆（句子逐种判在 `tests/common/face-core/front_tests.rs`）。
  * 结局画成锚在 ↗ 下面的浮层（不出 toast）；切过去了什么都不出、↗ 换成对勾。
  */
 describe("：↗ 问本机后端一次、交壳一次", () => {
@@ -3587,9 +3588,12 @@ describe("步 17·D ⑤ 中间一半停 400ms 才成组（假手势打真事件�
 describe("步 17·C 顺序落盘：读回来那一半", () => {
   let tm: TabManager;
   let disk: Record<string, unknown>;
-  /** 落盘是 fire-and-forget（`先改内存再落盘`）⇒ 读盘前把那条链子跑完。 */
+  /** 交出去的补丁（替身只记、不应用：落盘语义归 Rust 写口）。 */
+  let sent: Edit[];
+  /** 落盘是 fire-and-forget（`先改内存再落盘`）⇒ 看补丁前把那条链子跑完。 */
   const flushDisk = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-  const orderOnDisk = (): unknown => (disk.tabBar as Record<string, unknown> | undefined)?.order;
+  /** 最后一次交给 `tabBar.order` 的那一份。 */
+  const orderSent = (): unknown => sent.filter((e) => e.op === "set" && e.path.join(".") === "tabBar.order").map((e) => (e as { value: unknown }).value).at(-1);
 
   /** 往「盘」上摆一份顺序（模拟上次关 app 前落下的那份）。 */
   const putOrderOnDisk = (order: string[]): void => {
@@ -3614,11 +3618,12 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     vi.clearAllMocks();
     localStorage.clear();
     disk = {};
+    sent = [];
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
       if (cmd === "patch_config") {
-        // 写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/frontend/ui/config-patch-fake.ts`）。
-        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
+        // 写只交补丁；替身只记下来。
+        sent.push(...(args as { edits: Edit[] }).edits);
         return Promise.resolve(undefined);
       }
       return Promise.resolve(undefined);
@@ -3739,7 +3744,7 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     home(tm).dragger.applyDrop("a", before("c"));
     expect(home(tm).store.orderedIds, "拖动本身没生效，这一格后面就没意义了").toEqual(["a", "c", "b"]);
     await flushDisk();
-    expect(orderOnDisk(), "拖完要落盘（`§C.3`：applyReorder 之后提交）").toEqual(["a", "c", "b"]);
+    expect(orderSent(), "拖完要落盘（`§C.3`：applyReorder 之后提交）").toEqual(["a", "c", "b"]);
 
     // 又来一条新会话。
     tm.ensureTab("d", "/proj/d", "/p/d.jsonl", LOCAL_ORIGIN, false);
@@ -4296,13 +4301,9 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     localStorage.clear();
     disk = {};
     probe = { present: true, root: "/h/.claude/projects" };
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(launchRenderShim((cmd: string, args?: unknown) => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(launchRenderShim((cmd: string) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
-      if (cmd === "patch_config") {
-        // 写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/frontend/ui/config-patch-fake.ts`）。
-        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
-        return Promise.resolve(undefined);
-      }
+      // 写只交补丁（`patch_config`）：这一组不看，照默认回空。
       if (cmd === "probe_session_record")
         return probe ? Promise.resolve(probe) : Promise.reject(new Error("没有控制通道"));
       return Promise.resolve(undefined);
@@ -5215,6 +5216,8 @@ describe("组是后端的数据：栏照账画 · 写到会话那台 · 点 × �
   let tm: TabManager;
   let be: ReturnType<typeof groupBackend>;
   let disk: Record<string, unknown>;
+  /** 交给这台 `config.json` 的补丁。 */
+  let sent: Edit[];
   const colsOf = (): TabGroup[] => home(tm).prefs.collections;
   const add = (...sids: string[]): void => {
     for (const sid of sids) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
@@ -5234,11 +5237,11 @@ describe("组是后端的数据：栏照账画 · 写到会话那台 · 点 × �
     vi.clearAllMocks();
     localStorage.clear();
     disk = {};
+    sent = [];
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
-      if (cmd === "patch_config") {
-        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
-      }
+      // 写只交补丁；替身只记下来（落盘语义归 Rust 写口）。
+      if (cmd === "patch_config") sent.push(...(args as { edits: Edit[] }).edits);
       return Promise.resolve(undefined);
     }));
     tm = makeTM();
@@ -5265,8 +5268,7 @@ describe("组是后端的数据：栏照账画 · 写到会话那台 · 点 × �
     await settleGroups();
     expect(be.note(LOCAL_ORIGIN, "d").groups).toEqual(["g1"]);
     expect(be.calls).toContainEqual([LOCAL_ORIGIN, "groups-write", { op: "rename", id: "g1", name: "改", machines: [LOCAL_ORIGIN] }]);
-    expect(Object.keys(disk).sort(), "顶层只有 tab 栏那一段").toEqual(["tabBar"]);
-    expect(Object.keys(disk.tabBar as object).sort(), "段里只有这扇窗的看法").toEqual(["collapsed", "order"]);
+    expect([...new Set(sent.map((e) => e.path.join(".")))].sort(), "只写 tab 栏那一段里这扇窗的看法（顺序 · 收着的组）").toEqual(["tabBar.collapsed", "tabBar.order"]);
     void home(tm).prefs.dissolveGroup(g);
     await settleGroups();
     expect(be.calls).toContainEqual([LOCAL_ORIGIN, "groups-write", { op: "dissolve", id: "g1", machines: [LOCAL_ORIGIN] }]);
@@ -6193,14 +6195,19 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     expect(turnsAsks(), "补上的那段落了以后没再要划段").toBeGreaterThan(live);
   });
 
-  it("缺得多 ⇒ tab 整份重来，只取上流点之下那一截尾巴、取到末尾（重来时丢掉的实时行也在里面）", async () => {
+  it("缺得多 ⇒ tab 整份重来，只取上流点之下那一截尾巴：先取视口那一截到末尾（重来时丢掉的实时行也在里面），再取更早的那一截", async () => {
     answerLines();
     for (let s = 0; s < 10; s++) tm.onLine(line("wbig", s));
     tm.onLine(line("wbig", 2000));
     const before = home(tm).store.tabs.get("wbig")!;
     tm.onSessionWatch(LOCAL_ORIGIN, { sid: "wbig", path: "/p/wbig.jsonl", seq: 2000 });
-    await settle();
-    expect(lineReads()).toEqual([{ from: 1400, until: undefined }]);
+    for (let k = 0; k < 5; k++) await settle();
+    const reads = lineReads();
+    expect(reads, "先取视口那一截、再取更早那一截，两截接得上、合起来正好是上流点之下 600 行").toEqual([
+      { from: reads[0]!.from, until: undefined },
+      { from: 1400, until: reads[0]!.from },
+    ]);
+    expect(reads[0]!.from, "视口那一截不在上流点之下 600 行里").toBeGreaterThan(1400);
     const t = home(tm).store.tabs.get("wbig")!;
     expect(t, "缺得多却没整份重来").not.toBe(before);
     expect(t.seenSeqs.has(5), "重来之后旧的那段还在账上").toBe(false);
@@ -6260,14 +6267,34 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     tm.switchTo("wcold");
     tm.onSessionWatch(LOCAL_ORIGIN, { sid: "wcold", path: "/p/wcold.jsonl", seq: 2000 });
     for (let k = 0; k < 5; k++) await settle();
-    expect(lineReads()[0], "冷起那一趟：上流点之下那一截取到末尾").toEqual({ from: 1400, until: undefined });
+    const first = lineReads()[0]!;
+    expect(first.until, "冷起那一趟：视口那一截取到末尾").toBeUndefined();
+    expect(first.from, "冷起那一趟先取的那一截不在上流点之下 600 行里").toBeGreaterThan(1400);
     const arrived = vi.mocked(startupPerf.noteHistoryArrived).mock.invocationCallOrder;
     const fed = vi.mocked(startupPerf.noteHistoryFed).mock;
     const filled = vi.mocked(startupPerf.noteColdFilled).mock.invocationCallOrder;
     expect(arrived.length, "取回的行喂进去时没记首批").toBeGreaterThan(0);
-    expect(fed.calls[0]?.[0], "冷起那一趟喂进去的行数").toBe(END - 1400);
-    expect(filled, "取完之后 timeline 该落一次盘").toHaveLength(1);
-    expect(filled[0], "落盘要在那一趟喂完之后").toBeGreaterThan(fed.invocationCallOrder[0]!);
+    expect(fed.calls[0]?.[0], "冷起那一趟先喂进去的是视口那一截").toBe(END - first.from);
+    expect(filled, "视口那一截落地之后 timeline 该落一次盘").toHaveLength(1);
+    expect(filled[0], "落盘要在那一截喂完之后").toBeGreaterThan(fed.invocationCallOrder[0]!);
+  });
+
+  it("★ 冷起那一形：先取上流点之下视口那一截、物化出来，更早的那一截还没回也不等（点开新 tab 不空白着等 600 行）", async () => {
+    answerLines();
+    const lines = vi.mocked(invoke).getMockImplementation()!;
+    // 从最老那一行（上流点之下第 600 行）起的取回一直不回：真记录一行几十 KB，那一截要好几页、后端每页从文件头数行
+    vi.mocked(invoke).mockImplementation(((cmd: string, args?: unknown) => {
+      const read = recordReadOf(cmd, args);
+      return read?.[0] === "read_session_lines" && read[1].from === 1400 ? new Promise(() => {}) : lines(cmd, args as never);
+    }) as never);
+    tm.ensureTab("wfirst", null, "/p/wfirst.jsonl", LOCAL_ORIGIN);
+    tm.switchTo("wfirst");
+    tm.onSessionWatch(LOCAL_ORIGIN, { sid: "wfirst", path: "/p/wfirst.jsonl", seq: 2000 });
+    for (let k = 0; k < 5; k++) await settle();
+    const t = home(tm).store.tabs.get("wfirst")!;
+    expect(t.window.floorSeq, "更早那一截没回，视口那一截也没物化（还在等整份尾段）").not.toBeNull();
+    expect(t.seenSeqs.has(END - 1), "视口那一截没取到末尾").toBe(true);
+    expect(lineReads().some((r) => r.from === 1400), "更早那一截没去取").toBe(true);
   });
 
   it("连着的不取；别的那份记录（路径对不上）· 别的机器上的同名会话不归这个 tab", async () => {

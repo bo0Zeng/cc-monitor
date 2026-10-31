@@ -169,4 +169,32 @@ class SessionTabManagerTest {
         m.close(k)
         assertThrows("已 close 的 key 应拒绝（不复活幽灵 store）", IllegalStateException::class.java) { m.storeFor(k) }
     }
+
+    @Test
+    fun `进程被收再起：文件 tab 照原 key 回来，终端 tab 不回来，新开的 key 不撞`() {
+        val was = SessionTabManager()
+        val term = was.open("h1", TabTarget.Terminal(tmuxSession = "work"))
+        val files = was.open("h1", TabTarget.Files, label = "box")
+        val saved = was.saved()
+        assertTrue("存下的只能是字（进得了 Bundle）：$saved", saved.all { it == null || it is String })
+
+        val now = SessionTabManager()
+        now.restore(saved)
+        assertEquals("文件 tab 照原 key · 机器 · 名字回来", listOf(SessionTabManager.OpenSession(files, "h1", TabTarget.Files, "box")), now.sessions.value)
+        assertNull("终端 tab 不回来（接回会在那台再敲一次）", now.get(term))
+        assertSame("回来的 tab 有自己的 store", now.storeFor(files), now.storeFor(files))
+        val next = now.open("h2", TabTarget.Files)
+        assertNotEquals("新开的 key 不撞回来的那几个", files, next)
+        assertEquals("同一台再点文件 ⇒ 复用回来的那个 tab", files, now.open("h1", TabTarget.Files))
+    }
+
+    @Test
+    fun `转屏那一下交回：已在册的不动`() {
+        val m = SessionTabManager()
+        val k = m.open("h1", TabTarget.Files)
+        val store = m.storeFor(k)
+        m.restore(m.saved())
+        assertEquals(1, m.sessions.value.size)
+        assertSame("在册 tab 的 store 不换（换了 VM 就丢）", store, m.storeFor(k))
+    }
 }

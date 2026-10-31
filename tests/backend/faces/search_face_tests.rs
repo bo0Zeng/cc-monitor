@@ -254,8 +254,12 @@ async fn the_local_backend_asks_each_machine_itself_and_merges() {
         ]
     );
     assert_eq!(
-        (got.unreadable, got.skipped.clone()),
-        (2, vec!["Codex".to_string()])
+        got.notes,
+        [
+            copy_core::copy_text("history.search.unreadable", &[("n", "2")]),
+            copy_core::copy_text("history.search.skipped", &[("agent", "Codex")]),
+        ],
+        "读不动的份数相加 · 不覆盖的那一家去重，写成头底下那几句"
     );
     let down: Vec<String> = got.down.iter().map(|d| d.origin.to_string()).collect();
     assert_eq!(down, ["pi", "gone"], "没答上的那几台照实列出");

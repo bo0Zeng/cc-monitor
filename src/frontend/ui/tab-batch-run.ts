@@ -13,7 +13,7 @@ import { copyText } from "./copy-table";
 import type { Tab } from "./tab-model";
 import type { Launch } from "./generated/Launch";
 import { askOpen, BACKGROUND_OPENS } from "./session-open";
-import type { Outcome } from "./generated/Outcome";
+import type { SessionOutcome as Outcome } from "./generated/SessionOutcome";
 import { openLocalTerminal, openTerminal } from "./terminal-open";
 import { failSaid, saidOf } from "./kit/detail";
 

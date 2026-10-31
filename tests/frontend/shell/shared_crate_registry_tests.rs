@@ -268,9 +268,6 @@ fn the_only_windows_signal_still_runs_on_a_windows_runner() {
 ///
 /// ⚠ 顺带澄清一处容易误读的历史：最后改它的提交叫「G-C：三族 e2e 进 CI」，
 /// 查过那次 diff —— 进 CI 的是 `graylight-frames` 等五条，**不含本套件**，提交没说假话。
-///
-/// 与 `tests/frontend/ui/node-suite-registry-guard.vitest.ts` 不冲突（E3）：那条钉的是
-/// 「16 个 tsx 套件各自有断言地板」，本条钉的是「套件有没有人调」——两个事实。
 #[test]
 fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
     /// 手测套件：**CI 结构上跑不了**的，逐条写清为什么、以及谁会去跑它。
@@ -310,10 +307,12 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
             Some((name.to_string(), cmd.to_string()))
         })
         .collect();
-    // ★ 抽取器自检：剥法坏了 ⇒ 下面会零命中地绿（正控：`test:api-error` 那一条必在）。
+    // ★ 抽取器自检：剥法坏了 ⇒ 下面会零命中地绿（正控：`test` 与 `test:f40` 两条必在）。
     assert!(
-        scripts.iter().any(|(n, _)| n == "test:api-error"),
-        "从 `package.json` 剥到的 {} 个 `test*` 脚本里没有 `test:api-error` —— 剥法坏了",
+        ["test", "test:f40"]
+            .iter()
+            .all(|want| scripts.iter().any(|(n, _)| n == want)),
+        "从 `package.json` 剥到的 {} 个 `test*` 脚本里缺 `test` 或 `test:f40` —— 剥法坏了",
         scripts.len()
     );
 

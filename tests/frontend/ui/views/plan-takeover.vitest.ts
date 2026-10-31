@@ -28,6 +28,7 @@ const block = (extra: Partial<PlanBlock> = {}): PlanBlock => ({
   handoffError: null,
   takeover: "open",
   groups: { groups: [], text: "—", unread: null },
+  said: { name: "导入 csv", inside: null },
   ...extra,
 });
 
@@ -105,6 +106,7 @@ describe("节点详情的交接说明照 takeover 出", () => {
       coveredBy: [],
       refs: { title: [], body: [] },
       returned: null,
+      said: { trail: null, blockRoot: null },
     }) as unknown as PlanCell;
   const slice = (b: PlanBlock): PlanSlice => ({ name: "ledger", labels: { A2: "A2 导入 csv" }, cells: [cell()], blocks: [b], pendingSets: [], kinds: [] }) as unknown as PlanSlice;
   const detail = () =>

@@ -133,7 +133,22 @@ mod tests {
         (
             "relay/listen.rs",
             "[relay] refusing",
-            "在途连接顶满，回 503",
+            "在途连接顶满，这一阵回 503（一阵只说一次）",
+        ),
+        (
+            "relay/listen.rs",
+            "[relay] in flight back under",
+            "在途连接顶满那一阵过去了，照常接",
+        ),
+        (
+            "comms-outward/server.rs",
+            "[relay] refusing: in-flight request bodies",
+            "在途请求体合计记不下，这一阵回 503（一阵只说一次）",
+        ),
+        (
+            "comms-outward/server.rs",
+            "[relay] in-flight request bodies back under",
+            "在途请求体合计顶满那一阵过去了，照常收",
         ),
         (
             "relay/listen.rs",
@@ -211,6 +226,21 @@ mod tests {
             "relay/listen.rs",
             "[relay] cannot spawn accept thread",
             "常驻后端进程内中转的接受线程起不来",
+        ),
+        (
+            "relay/listen.rs",
+            "[relay] out of file descriptors",
+            "接受时 fd 用尽，这一阵回 503（一阵只说一次）。只带 io 错误文本",
+        ),
+        (
+            "relay/listen.rs",
+            "[relay] file descriptors free again",
+            "fd 用尽那一阵过去了，照常接",
+        ),
+        (
+            "relay/listen.rs",
+            "[relay] cannot finish a refused connection",
+            "fd 用尽时回过 503 的那条关不上写半边（对端已走）。只带 io 错误文本",
         ),
         (
             "relay/listen.rs",

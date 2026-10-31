@@ -1,7 +1,7 @@
 //! 中转对「只许直通的那把钥匙」与「先试协议升级、被拒再发普通请求」那一形的组合判据：
 //! 真中转 ＋ 生产段的上游选择 ＋ 记头名的假上游（只记请求行与头名，不记值）。
 
-use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
+use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, UPSTREAM_DEADLINE};
 use crate::accounts::upstream_select::{table::RoutingTable, Accounts, Upstreams};
 use crate::common::net::LOOPBACK;
 use comms_outward::{Relay, TapEvent, TapPort, TeeSink};
@@ -93,6 +93,7 @@ pub(super) fn spawn_relay_with(upstreams: Upstreams, taps: Arc<Taps>) -> SocketA
         super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
+        INFLIGHT_BODY_CAP,
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");

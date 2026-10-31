@@ -1,0 +1,9 @@
+tests/backend/agent_locality_guard.rs	3
+tests/backend/assets/pubkey_tests.rs	1
+tests/backend/control/files_extract_tests.rs	1
+tests/backend/platform/cfgless_guard.rs	4
+tests/backend/platform/shell/dialect_tests.rs	1
+tests/backend/sftp_rig.rs	1
+tests/backend/single_stream_guard.rs	1
+tests/comms/outward/framer_tests.rs	1
+tests/frontend/shell/backend_policy_tests.rs	1

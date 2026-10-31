@@ -99,6 +99,11 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "agents/claudecode/sign_in.rs",
         include_str!("../../src/backend/agents/claudecode/sign_in.rs"),
     ),
+    // claude 那一家的开窗那一句（`WARM.args` 里的 `--model` · `--tools` …）：发给 claude 这个子进程的旗标，同上。
+    (
+        "agents/claudecode/mod.rs",
+        include_str!("../../src/backend/agents/claudecode/mod.rs"),
+    ),
     // codex 那一家的起会话事实（`LAUNCH_ARGS = ["--no-daemon"]`）：发给 codex 这个子进程的旗标，同上。
     (
         "agents/codex/resume.rs",
@@ -196,6 +201,22 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
          后端 argv 从不认它，线上契约里也没有它的位置。仓外的真 claude 读不到 ⇒ ② 那一侧读判据用的假 MCP 登录子命令（它照实只认这一个）。",
     ),
     (
+        "agents/claudecode/mod.rs",
+        "tests/__fixtures__/fake-claude-warm.sh",
+        &[
+            "--model",
+            "--no-session-persistence",
+            "--output-format",
+            "--setting-sources",
+            "--strict-mcp-config",
+            "--system-prompt",
+            "--tools",
+        ],
+        "开窗那一句（`agents/claudecode/mod.rs::WARM`，`accounts::quota::warm` 让本二进制当 ccm 交给 claude）：haiku · 不给工具 · \
+         只读项目级设置 · 不起 MCP · 不落会话记录 · 换系统提示。claude 这个子进程的命令面，后端 argv 从不认它们，线上契约里也没有它们的位置。\
+         仓外的真 claude 读不到 ⇒ ② 那一侧读判据用的假子进程（它照实只认这几个）。",
+    ),
+    (
         "agents/codex/resume.rs",
         "tests/__fixtures__/agent-profile-golden.tsv",
         &["--no-daemon"],
@@ -278,42 +299,23 @@ mod tests {
     /// 永远不受文档对拍约束，而护栏**照常报绿**。U6a 之前就正是这个状态。
     #[test]
     fn dispatch_registry_is_complete() {
-        fn walk(dir: &std::path::Path, hits: &mut Vec<String>, root: &std::path::Path) {
-            for e in std::fs::read_dir(dir).expect("读 src/ 失败").flatten() {
-                let p = e.path();
-                if p.is_dir() {
-                    walk(&p, hits, root);
-                } else if p.extension().is_some_and(|x| x == "rs") {
-                    let raw = std::fs::read_to_string(&p).unwrap_or_default();
-                    // 整份文件都是 `#![cfg(test)]` 的（护栏自己就是）：release 构建里
-                    // 根本不存在，不可能分派任何东西。`production_code` 只剥
-                    // `#[cfg(test)] mod` 块，剥不掉文件级的内层属性 —— 得在这里跳。
-                    if raw.contains("#![cfg(test)]") {
-                        continue;
-                    }
-                    // 判据放宽到「生产段里出现 `"--` 字面量」。
-                    //
-                    // 前两版按**分派语法**探测（`Some("--x") =>` / 裸 `"--x" =>`），
-                    // D 审计一击即破：把 `pub const CTRL_FLAG: &str = "--ccm-hidden-ctrl";`
-                    // 放进 `control/tmux_hook.rs`（那文件两种语法都没有）⇒ 两条护栏全绿。
-                    //
-                    // 现在只要**提到**一个 `--token` 就得登记。宁可多登记几个文件，
-                    // 也不要让一个 token 因为「写法不是 match 臂」而隐形。
-                    let prod = guard_core::production_code(&raw);
-                    if prod.contains("\"--") {
-                        hits.push(
-                            p.strip_prefix(root)
-                                .unwrap()
-                                .to_string_lossy()
-                                .replace('\\', "/"),
-                        );
-                    }
-                }
-            }
-        }
         let root = guard_core::addr::backend_src_root();
         let mut found = Vec::new();
-        walk(&root, &mut found, &root);
+        for rel in guard_core::files_by_extension(&root, "rs") {
+            let raw = std::fs::read_to_string(root.join(&rel)).unwrap_or_default();
+            // 整份文件都是 `#![cfg(test)]` 的（护栏自己就是）：release 构建里
+            // 根本不存在，不可能分派任何东西。`production_code` 只剥
+            // `#[cfg(test)] mod` 块，剥不掉文件级的内层属性 —— 得在这里跳。
+            if raw.contains("#![cfg(test)]") {
+                continue;
+            }
+            // 判据是「生产段里出现 `"--` 字面量」，不按分派语法探测：
+            // 把 `pub const CTRL_FLAG: &str = "--ccm-hidden-ctrl";` 放进一份没有 match 臂的文件，
+            // 按语法探测的两条护栏会全绿。只要**提到**一个 `--token` 就得登记。
+            if guard_core::production_code(&raw).contains("\"--") {
+                found.push(rel);
+            }
+        }
         found.sort();
 
         assert!(

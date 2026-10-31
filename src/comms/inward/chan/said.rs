@@ -2,7 +2,8 @@
 //! 按「发没发出去 × 断在哪一种」说；跳号、标签、哪一段只进复制详情（[`super::wire::HopFacts`]）。
 
 use super::wire::{CallError, HopFault, OursFault, PeerFault, Reach};
-use crate::origin::Origin;
+use crate::origin::{Origin, LOCAL};
+use cmd_wire::machine::Blank;
 use copy_core::copy_text;
 
 /// 给人看的那台的称呼：本机 ⇒「本机」，远端 ⇒ 它的名字。
@@ -53,6 +54,14 @@ pub fn said(e: &CallError, origin: &Origin) -> String {
 /// 那台离线那一句（`machine` 是给人看的称呼）。全产品只这一处取字：连接层交出的离线那一句都从这里来，出口照摆。
 pub fn offline(machine: &str) -> String {
     copy_text("link.machine.offline", &[("machine", machine)])
+}
+
+/// 机器名空白、`route` 拒了那一句：点名是哪条命令，并逐字给出本机该送什么。
+pub fn blank_origin(b: &Blank) -> String {
+    copy_text(
+        "rsOrigin.route.blank",
+        &[("command", &b.command), ("local", LOCAL)],
+    )
 }
 
 /// 对端拒了：它写的那一句原样；没写（空 · 体读不出）⇒「{machine} 后端拒绝 · 原因不明」。

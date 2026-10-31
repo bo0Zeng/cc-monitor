@@ -13,7 +13,8 @@
 //!   金样判据落下的现打那份由 `bless-golden.sh` 逐份拷回原处；
 //! - `quick-check.sh` 重的那四段（后端 · 壳 · vitest · 手机）照挑格那张表挑：前三段恒跑，手机那一段改到它读的东西才跑，没改到说一声；
 //!   手机读的仓外路径对着 `src/mobile` 里字面写到的核（`plan.py --cover mobile`），漏一处就红；
-//!   cargo 那几段的逐条耗时从慢到快存进 `.build/quick-check/cargo-times.tsv`，收尾印最慢三条。
+//!   cargo 那几段的逐条耗时从慢到快存进 `.build/quick-check/cargo-times.tsv`，收尾印最慢三条；
+//!   收尾修剪 `.build`（同组旧出窗口的增量会话与测试二进制删掉）；外面给了编译锁（`CCM_BUILD_LOCK`）只套编译那几段。
 
 #[cfg(all(test, unix))]
 mod tests {
@@ -1158,6 +1159,300 @@ mod tests {
             "{said}"
         );
         assert!(said.trim_end().contains("QUICK: OK"), "{said}");
+    }
+
+    fn exe(dir: &Path, rel: &str, text: &str) {
+        write(dir, rel, text);
+        assert!(Command::new("chmod")
+            .args(["+x", rel])
+            .current_dir(dir)
+            .status()
+            .unwrap()
+            .success());
+    }
+
+    /// 一棵假仓：main 之上的工作分支改了后端 · 手机各一份；`bin/cargo`、`node_modules/.bin/{tsc,vitest}`、`src/mobile/gradlew`
+    /// 都是假的，每被调一次往 `calls` 记一行「谁 · 首个参数 · 在不在锁里」（锁里 = 假锁脚本设的 `FAKE_LOCK_HELD=1`）。
+    fn fake_quick_repo(tag: &str) -> PathBuf {
+        let d = scratch(tag);
+        git(&d, &["init", "-q", "-b", "main"]);
+        write(&d, "src/backend/lib.rs", "\n");
+        // 壳那棵只要目录在（几步先 cd 进去）
+        write(&d, "src/frontend/shell/.keep", "");
+        write(
+            &d,
+            ".gitignore",
+            ".build/\nbin/\nnode_modules/\ncalls\nlock-calls\ndirs\nhome/\n",
+        );
+        git(&d, &["add", "-A"]);
+        git(&d, &["commit", "-q", "-m", "base"]);
+        git(&d, &["checkout", "-q", "-b", "work"]);
+        write(&d, "src/backend/lib.rs", "// changed\n");
+        write(&d, "src/mobile/app/src/main/kotlin/X.kt", "changed\n");
+        git(&d, &["add", "-A"]);
+        git(&d, &["commit", "-q", "-m", "work"]);
+        let calls = d.join("calls");
+        let rec = |who: &str| {
+            format!(
+                "echo \"{who} $1 held=${{FAKE_LOCK_HELD:-0}}\" >> '{}'\n",
+                calls.display()
+            )
+        };
+        exe(
+            &d,
+            "bin/cargo",
+            &format!(
+                "#!/bin/sh\n{}case \"$1\" in test|clippy) echo \"$HOME $TMUX_TMPDIR $TMPDIR|${{CCM_BUILD_REMOTE_OK-}}\" >> '{}' ;; esac\n[ \"$1\" = test ] && echo 'test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s'\nexit 0\n",
+                rec("cargo"),
+                d.join("dirs").display()
+            ),
+        );
+        exe(
+            &d,
+            "node_modules/.bin/tsc",
+            &format!("#!/bin/sh\n{}", rec("tsc")),
+        );
+        exe(
+            &d,
+            "node_modules/.bin/vitest",
+            &format!("#!/bin/sh\n{}", rec("vitest")),
+        );
+        exe(
+            &d,
+            "src/mobile/gradlew",
+            &format!(
+                "#!/bin/sh\n{}mkdir -p ../../.build/mobile/app/test-results/t\necho '<testsuite name=\"x\" tests=\"3\" failures=\"0\">' > ../../.build/mobile/app/test-results/t/TEST-x.xml\n",
+                rec("gradle")
+            ),
+        );
+        // 假锁：记下起它的那个 HOME 与它看到的 `CCM_BUILD_REMOTE_OK`（没有 ⇒ 空），标上「在锁里」，原样起命令
+        exe(
+            &d,
+            "bin/fake-lock.sh",
+            &format!(
+                "#!/bin/sh\necho \"$HOME|${{CCM_BUILD_REMOTE_OK-}}\" >> '{}'\nFAKE_LOCK_HELD=1 exec \"$@\"\n",
+                d.join("lock-calls").display()
+            ),
+        );
+        d
+    }
+
+    /// 在假仓里跑一趟 quick-check（`args` 照给）；`lock` 给了 ⇒ 设 `CCM_BUILD_LOCK`，没给 ⇒ 摘掉。回整趟输出。
+    fn run_fake_quick(d: &Path, args: &[&str], lock: Option<&Path>) -> String {
+        let path = format!(
+            "{}:{}",
+            d.join("bin").display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let mut cmd = Command::new("bash");
+        cmd.arg(root().join("tests/scripts/quick-check.sh"))
+            .args(args)
+            .env("PATH", &path)
+            .env("HOME", d.join("home"))
+            .env("JAVA_HOME", d.join("no-jdk"))
+            .env("ANDROID_HOME", d.join("no-sdk"))
+            .env("GRADLE_USER_HOME", d.join("no-gradle"))
+            .env("GATE_STATE_DIR", d.join("state"))
+            .env_remove("HEAVY_HELD")
+            .env_remove("TMUX")
+            .env_remove("TMUX_PANE")
+            .current_dir(d);
+        match lock {
+            Some(l) => cmd.env("CCM_BUILD_LOCK", l),
+            None => cmd.env_remove("CCM_BUILD_LOCK"),
+        };
+        let out = cmd.output().unwrap();
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        )
+    }
+
+    /// ★ 全机编译锁（锁脚本在仓外，路径照 `CCM_BUILD_LOCK`）：给了 ⇒ 编译那几段（后端 · clippy · 壳 · creds-harden 的 cargo，
+    /// 手机那一段的 gradle）各经它起一次，cargo fmt · tsc · vitest 不经它（不编译的不占锁）；锁脚本看到的是真家（它按 HOME 找锁文件），
+    /// 不是沙箱家。没给 ⇒ 不套锁、照跑。
+    #[test]
+    fn quick_check_holds_the_build_lock_only_around_compiling_steps() {
+        let d = fake_quick_repo("qc-lock");
+        let said = run_fake_quick(&d, &[], Some(&d.join("bin/fake-lock.sh")));
+        let calls = std::fs::read_to_string(d.join("calls")).unwrap_or_default();
+        let lock_calls = std::fs::read_to_string(d.join("lock-calls")).unwrap_or_default();
+        let mut seen: Vec<&str> = calls.lines().collect();
+        seen.sort_unstable();
+        assert_eq!(
+            seen,
+            vec![
+                "cargo clippy held=1",
+                "cargo fmt held=0",
+                "cargo fmt held=0",
+                "cargo test held=1",
+                "cargo test held=1",
+                "cargo test held=1",
+                "gradle --no-daemon held=1",
+                "tsc --noEmit held=0",
+                "vitest run held=0",
+            ],
+            "{said}"
+        );
+        let home = d.join("home").display().to_string();
+        let lock_calls: Vec<(&str, &str)> = lock_calls
+            .lines()
+            .map(|l| l.split_once('|').unwrap_or((l, "")))
+            .collect();
+        assert_eq!(
+            lock_calls.iter().map(|c| c.0).collect::<Vec<_>>(),
+            vec![home.as_str(); 5],
+            "锁脚本该在真家下起五次（后端 · clippy · 壳 · creds-harden · 手机）：{said}"
+        );
+        // 可去远端的只有 cargo 那四段：锁脚本拿到的是这一段写在同步的树以外的几个目录（沙箱家 · tmux 目录 · 临时目录），
+        // 正是被起的 cargo 看到的那三个；cargo 自己看不见这个变量（会话变量照摘）；手机那一趟不带
+        let dirs = std::fs::read_to_string(d.join("dirs")).unwrap_or_default();
+        let seen_dirs: Vec<(&str, &str)> = dirs
+            .lines()
+            .map(|l| l.split_once('|').unwrap_or((l, "?")))
+            .collect();
+        assert_eq!(seen_dirs.len(), 4, "{dirs}\n{said}");
+        assert!(
+            seen_dirs.iter().all(|c| c.1.is_empty()),
+            "cargo 看见了 CCM_BUILD_REMOTE_OK：{dirs}"
+        );
+        assert_eq!(
+            lock_calls.iter().map(|c| c.1).collect::<Vec<_>>(),
+            seen_dirs
+                .iter()
+                .map(|c| c.0)
+                .chain([""])
+                .collect::<Vec<_>>(),
+            "{said}"
+        );
+        // 没给锁 ⇒ 照跑，谁都不在锁里
+        let _ = std::fs::remove_file(d.join("calls"));
+        let _ = std::fs::remove_file(d.join("lock-calls"));
+        let _ = std::fs::remove_file(d.join("dirs"));
+        let said = run_fake_quick(&d, &[], None);
+        let calls = std::fs::read_to_string(d.join("calls")).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(calls.lines().count(), 9, "{said}");
+        assert!(
+            calls.lines().all(|l| l.ends_with("held=0")),
+            "{calls}\n{said}"
+        );
+    }
+
+    /// ★ 收尾修剪 `.build`：每棵 cargo 树每一档的 `incremental/` 下同一个 crate 的会话目录、`deps/` 下同名的测试二进制
+    /// （无扩展名的可执行文件，连同它的 `.d`）按名字成组，比同组最新那一份旧出 6 小时的删掉；最新的与窗口里的留着
+    /// （同一个 crate 同时有 lib · lib 测试 · clippy · 各 bin 几种现役变体，同一趟编出来、时刻挨着）。
+    /// `.fingerprint`、`build/`、rlib 不碰。收尾印删了几份。
+    #[test]
+    fn quick_check_prunes_superseded_incremental_sessions_and_test_binaries() {
+        let d = fake_quick_repo("qc-prune");
+        let mk = |rel: &str, dir: bool, age: &str| {
+            let p = d.join(rel);
+            if dir {
+                std::fs::create_dir_all(p.join("s-1")).unwrap();
+            } else {
+                write(&d, rel, "x");
+                // 无扩展名的是测试二进制：可执行
+                if !rel.rsplit('/').next().unwrap().contains('.') {
+                    assert!(Command::new("chmod")
+                        .arg("+x")
+                        .arg(&p)
+                        .status()
+                        .unwrap()
+                        .success());
+                }
+            }
+            assert!(Command::new("touch")
+                .arg("-d")
+                .arg(age)
+                .arg(&p)
+                .status()
+                .unwrap()
+                .success());
+        };
+        let inc = ".build/backend/debug/incremental";
+        let deps = ".build/backend/debug/deps";
+        let gone = [
+            format!("{inc}/foo-3old"),
+            format!("{deps}/foo-fedcba9876543210"),
+            format!("{deps}/foo-fedcba9876543210.d"),
+            ".build/shell/debug/incremental/baz-2old".to_string(),
+            ".build/shell/x86_64-pc-windows-gnu/debug/incremental/win-2old".to_string(),
+        ];
+        let kept = [
+            format!("{inc}/foo-1new"),
+            format!("{inc}/foo-2mid"),
+            format!("{inc}/bar-1only"),
+            format!("{deps}/foo-0123456789abcdef"),
+            format!("{deps}/libfoo-fedcba9876543210.rlib"),
+            format!("{deps}/libfoo-0123456789abcdef.rlib"),
+            ".build/backend/debug/.fingerprint/foo-fedcba9876543210".to_string(),
+            ".build/backend/debug/build/foo-fedcba9876543210".to_string(),
+            ".build/shell/debug/incremental/baz-1new".to_string(),
+            ".build/shell/x86_64-pc-windows-gnu/debug/incremental/win-1new".to_string(),
+        ];
+        mk(&format!("{inc}/foo-1new"), true, "now");
+        mk(&format!("{inc}/foo-2mid"), true, "5 hours ago");
+        mk(&format!("{inc}/foo-3old"), true, "3 days ago");
+        mk(&format!("{inc}/bar-1only"), true, "10 days ago");
+        mk(&format!("{deps}/foo-0123456789abcdef"), false, "now");
+        mk(&format!("{deps}/foo-fedcba9876543210"), false, "3 days ago");
+        mk(
+            &format!("{deps}/foo-fedcba9876543210.d"),
+            false,
+            "3 days ago",
+        );
+        mk(
+            &format!("{deps}/libfoo-fedcba9876543210.rlib"),
+            false,
+            "3 days ago",
+        );
+        mk(
+            &format!("{deps}/libfoo-0123456789abcdef.rlib"),
+            false,
+            "now",
+        );
+        mk(
+            ".build/backend/debug/.fingerprint/foo-fedcba9876543210",
+            true,
+            "3 days ago",
+        );
+        mk(
+            ".build/backend/debug/build/foo-fedcba9876543210",
+            true,
+            "3 days ago",
+        );
+        mk(
+            ".build/shell/debug/incremental/baz-1new",
+            true,
+            "1 hour ago",
+        );
+        mk(
+            ".build/shell/debug/incremental/baz-2old",
+            true,
+            "8 hours ago",
+        );
+        mk(
+            ".build/shell/x86_64-pc-windows-gnu/debug/incremental/win-1new",
+            true,
+            "now",
+        );
+        mk(
+            ".build/shell/x86_64-pc-windows-gnu/debug/incremental/win-2old",
+            true,
+            "2 days ago",
+        );
+        let said = run_fake_quick(&d, &["--only", "vitest"], None);
+        let left: Vec<&String> = gone.iter().filter(|p| d.join(p).exists()).collect();
+        let lost: Vec<&String> = kept.iter().filter(|p| !d.join(p).exists()).collect();
+        let _ = std::fs::remove_dir_all(&d);
+        assert!(left.is_empty(), "该删的还在：{left:?}\n{said}");
+        assert!(lost.is_empty(), "不该删的没了：{lost:?}\n{said}");
+        assert!(
+            said.contains("prune") && said.contains("删了 4 份"),
+            "收尾没印修剪了几份：{said}"
+        );
     }
 
     /// quick-check 重的四段照挑格表：前三段恒跑；只动手机 ⇒ 手机那一段跑、只动界面 ⇒ 不跑；表不认识的 ⇒ 四段全跑（说不准的一律跑）。

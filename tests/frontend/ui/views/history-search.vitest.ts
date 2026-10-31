@@ -24,7 +24,7 @@ const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const Q: FullTextQuery = { query: "kw", includeTools: false, scope: null, afterMs: null, limit: 300 };
 
 /** 本机后端合好的那一份（替身：界面只照抄）。 */
-const MERGED: Merged = { totalHits: 9, sessionCount: 0, truncated: true, sessions: [], unreadable: 3, skipped: ["Codex"], down: [{ origin: "down", said: "down 离线 · 上线后自动恢复" }], summary: "核心·结果头" };
+const MERGED: Merged = { totalHits: 9, sessionCount: 0, truncated: true, sessions: [], notes: ["核心·头底下那一句"], down: [{ origin: "down", said: "down 离线 · 上线后自动恢复" }], summary: "核心·结果头" };
 
 beforeEach(() => invokeMock.mockReset());
 

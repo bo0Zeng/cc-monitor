@@ -449,6 +449,7 @@ fn local_face(
 fn accounts_face(account_env: &'static str) -> crate::agents::AccountsFace {
     crate::agents::AccountsFace {
         identity: &[],
+        shared: &[],
         shared_on_demand: &[],
         config_file: "fake-config.json",
         user_mcp_key: "servers",

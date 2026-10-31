@@ -1,6 +1,6 @@
 //! 中转的 `observe` 口走到账号域那一头：真中转 ＋ 生产段的上游选择 ＋ 一个按鉴权头作答的假上游。
 
-use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
+use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, UPSTREAM_DEADLINE};
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::upstream_select::{table::RoutingTable, Accounts, Upstreams};
 use crate::common::net::LOOPBACK;
@@ -79,6 +79,7 @@ pub(super) fn spawn_relay_over(accounts: Accounts) -> SocketAddr {
         super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
+        INFLIGHT_BODY_CAP,
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
@@ -222,6 +223,10 @@ impl comms_outward::Destinations for Scripted {
     fn stream_label_headers(&self) -> Vec<&'static str> {
         Vec::new()
     }
+
+    fn upstream_idle_reuse(&self) -> std::time::Duration {
+        guard_core::wall::CEILING
+    }
 }
 
 fn base_of(up: SocketAddr) -> comms_outward::Base {
@@ -240,6 +245,7 @@ fn relay_over(d: Arc<dyn comms_outward::Destinations>) -> SocketAddr {
         super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
+        INFLIGHT_BODY_CAP,
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
@@ -795,7 +801,85 @@ fn nothing_to_swap_to_hands_down_the_refusal_as_is() {
     );
 }
 
-/// ★ 真换号与「下一个」同一处判：b 刚吃了一发不带限额头、也没说几点再试的 429（额度账上被拒着，短期限内）⇒
+/// 上游短时限流的那一形：429、限流器那一族头一个都没有、体是 `rate_limit_error`。
+fn throttled_429() -> String {
+    let body = r#"{"type":"error","error":{"type":"rate_limit_error","message":"Number of concurrent connections has exceeded your rate limit."}}"#;
+    format!(
+        "HTTP/1.1 429 Too Many Requests\r\nretry-after: 7\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+}
+
+/// a 吃短时限流、b 接得住。
+fn a_throttled_b_serves(auth: Option<&str>) -> String {
+    if auth == Some(&format!("Bearer {B_TOKEN}")) {
+        sse_200("x-from: b\r\n")
+    } else {
+        throttled_429()
+    }
+}
+
+/// ★ 限流器没说话的 429 不是用满：上游那一发逐字节原样交下去（claude 自己退避），不换号、不记被拒；
+/// 同一会话下一发照旧走 a（a 没被记成用不了）。
+#[test]
+fn a_throttled_answer_is_handed_down_as_is_and_the_account_stays_usable() {
+    let home = Home::new("throttled");
+    home.set_default(&["b"], None);
+    let (up, got) = spawn_judging_upstream(a_throttled_b_serves);
+    let relay = home.relay(up);
+    assert_eq!(send_as_a(relay), throttled_429());
+    assert_eq!(
+        got.lock().expect("lock").len(),
+        1,
+        "短时限流那一发被换号重发了"
+    );
+    assert_eq!(home.session("s-1").current, "a");
+    let quota = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
+    assert!(
+        !quota
+            .entry("claude-code", "a")
+            .is_some_and(|e| e.reading.refused),
+        "短时限流把 a 记成了被拒"
+    );
+    assert_eq!(send_as_a(relay), throttled_429());
+    let got = got.lock().expect("lock");
+    assert_eq!(got.len(), 2);
+    assert_eq!(
+        got[1].auth.as_deref(),
+        Some(AGENT_TOKEN),
+        "下一发没照旧走 a"
+    );
+}
+
+/// ★ 硬上限、别的号都过了上限：a 吃短时限流 ⇒ 不停发、不回我们那份「用满」（claude 会显示「hit your 5-hour limit」），
+/// 上游那一发原样交下去。
+#[test]
+fn a_throttled_answer_under_a_hard_limit_is_not_turned_into_a_limit_reply() {
+    let home = Home::new("throttled-hold");
+    home.set_default_at(&["b"], Some(90), "stop");
+    let now = crate::accounts::quota::now_unix();
+    let side = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
+    let b_at_95: Vec<(String, String)> = [
+        ("anthropic-ratelimit-unified-status", "allowed_warning"),
+        (
+            "anthropic-ratelimit-unified-representative-claim",
+            "five_hour",
+        ),
+        ("anthropic-ratelimit-unified-5h-utilization", "0.95"),
+        ("anthropic-ratelimit-unified-5h-reset", "4000000000"),
+    ]
+    .iter()
+    .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+    .collect();
+    let r = crate::agents::claudecode::quota::read(200, &b_at_95, now).expect("读数");
+    ledger::record_seen(&side, &home.own(), None, "claude-code", "b", r, now);
+    let (up, got) = spawn_judging_upstream(a_throttled_b_serves);
+    let resp = send_as_a(home.relay(up));
+    assert_eq!(resp, throttled_429(), "短时限流被换成了别的回包");
+    assert_eq!(got.lock().expect("lock").len(), 1);
+}
+
+/// ★ 真换号与「下一个」同一处判：b 刚被限流器明说拒了、却没说几点再试（额度账上被拒着，短期限内）⇒
 /// a 被拒时不换到 b，原样交回 a 的拒绝（上游只收到一发）。
 #[test]
 fn a_refused_account_is_not_swapped_onto_one_refused_without_a_reset() {
@@ -803,7 +887,11 @@ fn a_refused_account_is_not_swapped_onto_one_refused_without_a_reset() {
     home.set_default(&["b"], None);
     let now = crate::accounts::quota::now_unix();
     let side = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
-    let r = crate::agents::claudecode::quota::read(429, &[], now).expect("被拒");
+    let rejected = [(
+        "anthropic-ratelimit-unified-status".to_string(),
+        "rejected".to_string(),
+    )];
+    let r = crate::agents::claudecode::quota::read(429, &rejected, now).expect("被拒");
     ledger::record_seen(&side, &home.own(), None, "claude-code", "b", r, now);
     let (up, got) = spawn_judging_upstream(a_refused_b_serves);
     let resp = send_as_a(home.relay(up));
@@ -1020,7 +1108,68 @@ fn in_tests_a_request_to_a_real_host_panics_before_any_connection() {
     assert_eq!(said, "测试档不许出网：platform.claude.com");
 }
 
-/// ★ 被拒那一行日志：号名 · 状态码 · 有没有限额头 · 代表窗 · retry-after；两种 429 各一形；只用这几格 ⇒ 令牌与回包体无从进来。
+/// ★ 短时限流的 429（限流器一个头都没带）不算被拒，但要进后端日志：号 · 状态码 · retry-after 一行；
+/// 只用这几格 ⇒ 令牌与回包体无从进来。非空对照：同一个号答 200 一行都不记。
+/// ⚠ 回包体里的错误类型与那一句还没带上：`observe` 在转回包体之前调，那时体还没读；不缓冲地带上要在 `pump` 逐块转时抄下非 2xx 的前一截、转完再交上游选择。
+#[test]
+fn a_throttled_answer_logs_one_line_of_who_and_when_to_retry() {
+    use comms_outward::{Ask, Destinations, Heard, Mode, RouteKey};
+    let accounts = Accounts::new(
+        RoutingTable::build(std::iter::empty()),
+        Upstreams::from_env(&|_| None).expect("内置默认必须解析得了"),
+        crate::platform::fs::Own::for_tests(),
+    );
+    let key = RouteKey {
+        seg1: "claude-code".to_string(),
+        seg2: "a".to_string(),
+    };
+    let ask = Ask {
+        label: "s-1",
+        origin: None,
+        body: b"{}",
+        heads: &[],
+    };
+    let said = |status: u16, headers: &[(String, String)]| {
+        crate::stream::run_route::tests::heard(|| {
+            accounts.observe(
+                Mode::Passthrough,
+                &key,
+                &ask,
+                &Heard {
+                    tag: "a",
+                    status,
+                    headers,
+                },
+            )
+        })
+    };
+    let throttled = said(
+        429,
+        &[
+            ("retry-after".to_string(), "7".to_string()),
+            ("content-type".to_string(), "application/json".to_string()),
+        ],
+    );
+    let lines: Vec<&String> = throttled.iter().filter(|l| l.contains("[quota]")).collect();
+    assert_eq!(
+        lines.len(),
+        1,
+        "短时限流那一发没进日志，或记了不止一行：{throttled:?}"
+    );
+    assert!(
+        lines[0].ends_with("[quota] 短时限流：号 a · 状态码 429 · retry-after 7"),
+        "那一行不对：{}",
+        lines[0]
+    );
+    let fine = said(200, &[]);
+    assert!(
+        !fine.iter().any(|l| l.contains("[quota]")),
+        "答 200 也记了一行：{fine:?}"
+    );
+}
+
+/// ★ 被拒那一行日志：号名 · 状态码 · 代表窗 · retry-after；说没说卡在哪个窗各一形；只用这几格 ⇒ 令牌与回包体无从进来。
+/// 被拒要求限流器说了 `rejected` ⇒ 「有没有限额头」恒为有，不再印那一格。
 #[test]
 fn a_refusal_logs_one_line_of_who_and_how() {
     use crate::accounts::upstream_select::refusal_line;
@@ -1031,10 +1180,15 @@ fn a_refusal_logs_one_line_of_who_and_how() {
             .collect()
     };
     let now = 1_800_000_000;
-    let bare = crate::agents::claudecode::quota::read(429, &h(&[]), now).expect("被拒");
+    let bare = crate::agents::claudecode::quota::read(
+        429,
+        &h(&[("anthropic-ratelimit-unified-status", "rejected")]),
+        now,
+    )
+    .expect("被拒");
     assert_eq!(
         refusal_line("y", 429, &bare, None),
-        "[quota] 被拒：号 y · 状态码 429 · 限额头 无 · 代表窗 — · retry-after —"
+        "[quota] 被拒：号 y · 状态码 429 · 代表窗 — · retry-after —"
     );
     let full = crate::agents::claudecode::quota::read(
         429,
@@ -1051,7 +1205,7 @@ fn a_refusal_logs_one_line_of_who_and_how() {
     .expect("被拒");
     assert_eq!(
         refusal_line("z", 429, &full, Some("3600")),
-        "[quota] 被拒：号 z · 状态码 429 · 限额头 有 · 代表窗 five_hour · retry-after 3600"
+        "[quota] 被拒：号 z · 状态码 429 · 代表窗 five_hour · retry-after 3600"
     );
 }
 

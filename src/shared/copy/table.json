@@ -603,6 +603,12 @@
       "zh": "{item} 该各号共用 · {names} 各有一份自己的、没有合并\n要共用就把内容并进共享库里的 {item}、删掉号里的，再点「修复」",
       "args": ["item", "names"]
     },
+    "beAcctVerify.global.unclassified": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{n} 项没归类 · 各号各用各的：{items}",
+      "args": ["n", "items"]
+    },
     "beAcctVerify.acct.linkEntity": {
       "kind": "error",
       "role": "报错",
@@ -657,24 +663,12 @@
       "zh": "共享链接 {item} 已断 · 共享库里的 {source} 指向已不在的 {target}\n到共享库修掉或删掉",
       "args": ["item", "source", "target"]
     },
-    "beAcctVerify.acct.unexpected": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{item} 既非身份文件也非共享链接；要共享就挪进共享库 · 要私有就留着",
-      "args": ["item"]
-    },
     "beAcctVerify.drift.nowhere": {
       "kind": "body",
       "role": "说明",
       "zh": "{item} 在共享库 · 主目录 · 各账号里均未找到\n或未用到 · 或 Claude Code 把它挪到别处",
       "args": ["item"],
       "limited": ["Claude Code"]
-    },
-    "beAcctVerify.drift.secretLike": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "共享库里的 {item} 权限 600 却不在身份文件里\n不链给各账号 · 要共享就放宽权限",
-      "args": ["item"]
     },
     "beAcctVerify.global.badManifest": {
       "kind": "error",
@@ -11193,12 +11187,6 @@
       "zh": "请求格式不对 · 机器名为空 · 本机也要写成 \"{local}\" · {command}",
       "args": ["command", "local"]
     },
-    "rsOrigin.expecting.name": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "机器名 · 本机写成 \"{local}\"",
-      "args": ["local"]
-    },
     "rsDataPaths.webview.dataDir": {
       "kind": "body",
       "role": "说明",
@@ -13957,7 +13945,7 @@
     "beArgv.parse.unknownRight": {
       "kind": "error",
       "role": "命令行",
-      "zh": "-- 右边只放 ccm 选项 · {w} 不是 · claude 的参数放 -- 左边（ccm -- --ccm-help 看选项）",
+      "zh": "{w} 不是 -- 右边的 ccm 选项 · claude 参数放左边 · 子命令紧跟开头的 --（ccm -- --commands 看全部）",
       "args": ["w"],
       "limited": ["ccm"]
     },
@@ -13966,13 +13954,6 @@
       "role": "命令行",
       "zh": "new 须是 -- 右边第一个词（ccm [claude 参数…] -- new [ccm 选项…]）",
       "args": [],
-      "limited": ["ccm"]
-    },
-    "beArgv.parse.backendWordAfterClaudeArgs": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "{w} 是 ccm 子命令 · 只能紧跟开头的 --（ccm -- {w} …） · 前面不许有 claude 参数",
-      "args": ["w"],
       "limited": ["ccm"]
     },
     "beAgents.pick.unknown": {
@@ -14202,7 +14183,7 @@
     "beCcm.usage.body": {
       "kind": "body",
       "role": "命令行",
-      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，无法识别就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --hosted           在 cc-monitor 托管的终端里跑（不在 tmux 窗格里敲时缺省就是它；Linux）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建终端的宽高（要带 --ccm-tmux 或 --hosted）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux 或 --hosted）\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（不知道账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --no-rotation      这一发不轮换，只用起它的那个号（不管「新会话用」设的哪一份；只管起新会话）\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是主目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条匹配的算；\n                     两边都可用 ~，链接解开再比；都不匹配才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是主目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话或托管终端（先在托管终端里认名字或句柄）\n  --host-run <句柄> [键=值…] -- <命令…>\n                     托管终端的托管进程：持一个伪终端跑那条命令（只许紧跟打头的 --：ccm -- --host-run …；由 cc-monitor 起）\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --tab show|hide    进不进标签页（不给就照这台的偏好：子会话 · 分身会话各一格）\n  --tab-from <别名>  --tab 是哪个别名写的（ccm 往 tmux 里交下去时带）\n  --ccm-alias <别名> 这一发是哪个别名起的（ccm 往 tmux 里交下去时带）\n  --tab-group <名>   起出来的会话进哪个标签页分组（一组会话那一行没写组名时取它）\n  --say <那句>       第一句话：在 tmux 里起新会话时交给 agent（-- 左边自己写了第一句话就用那句）\n  --ccm-print        不跑，印出等价的一行 shell 命令，另起几行注释写每一项来自哪里\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（已手动设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
+      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，无法识别就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --hosted           在 cc-monitor 托管的终端里跑（不在 tmux 窗格里敲时缺省就是它；Linux · Windows）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建终端的宽高（要带 --ccm-tmux 或 --hosted）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux 或 --hosted）\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（不知道账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --no-rotation      这一发不轮换，只用起它的那个号（不管「新会话用」设的哪一份；只管起新会话）\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是主目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条匹配的算；\n                     两边都可用 ~，链接解开再比；都不匹配才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是主目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话或托管终端（先在托管终端里认名字或句柄）\n  --host-run <句柄> [键=值…] -- <命令…>\n                     托管终端的托管进程：持一个伪终端跑那条命令（只许紧跟打头的 --：ccm -- --host-run …；由 cc-monitor 起）\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --tab show|hide    进不进标签页（不给就照这台的偏好：子会话 · 分身会话各一格）\n  --tab-from <别名>  --tab 是哪个别名写的（ccm 往 tmux 里交下去时带）\n  --ccm-alias <别名> 这一发是哪个别名起的（ccm 往 tmux 里交下去时带）\n  --tab-group <名>   起出来的会话进哪个标签页分组（一组会话那一行没写组名时取它）\n  --say <那句>       第一句话：在 tmux 里起新会话时交给 agent（-- 左边自己写了第一句话就用那句）\n  --ccm-print        不跑，印出等价的一行 shell 命令，另起几行注释写每一项来自哪里\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（手动设过的也指过去，中转再转给手动设的那个地址）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
       "args": [],
       "limited": ["tmux", "ccm"],
       "waive": {
@@ -16817,6 +16798,24 @@
       "kind": "action",
       "role": "按钮",
       "zh": "取消",
+      "args": []
+    },
+    "askBlock.fold.collapse": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "收起",
+      "args": []
+    },
+    "askBlock.fold.expand": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "展开",
+      "args": []
+    },
+    "askBlock.question.full": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "展开全部",
       "args": []
     },
     "askBlock.question.multi": {
@@ -20487,6 +20486,42 @@
       "zh": "未找到该机数据目录 · 轮换配置无处可存",
       "args": []
     },
+    "beQuotaWarm.agent.unsupported": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "{agent} · 无开窗一发",
+      "args": ["agent"]
+    },
+    "beQuotaWarm.run.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "启动开窗一发失败 · {why}",
+      "args": ["why"]
+    },
+    "beQuotaWarm.run.exit": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "开窗一发未成 · 原因不明",
+      "args": []
+    },
+    "beRotation.hold.noAutoResume": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "停到 {dur} 以外 · 客户端不会自己续 · 需手动继续",
+      "args": ["dur"]
+    },
+    "monitorBoard.head.summary": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "机器 {machines} · 会话 {liveSessions} · agent 在跑 {runningAgents}",
+      "args": ["machines", "liveSessions", "runningAgents"]
+    },
+    "monitorBoard.group.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "{machine}（{n}）",
+      "args": ["machine", "n"]
+    },
     "beQuotaProbe.agent.unsupported": {
       "kind": "error",
       "role": "原因格",
@@ -22205,12 +22240,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "需手动",
-      "args": []
-    },
-    "sessionFace.machine.local": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机",
       "args": []
     },
     "sessionFace.state.waiting": {
@@ -26589,30 +26618,6 @@
       "zh": "复制下面一行 · 到该机终端里运行",
       "args": []
     },
-    "beChore.secretLike.name": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "共享库里的 {item} 像按号的密钥",
-      "args": ["item"]
-    },
-    "beChore.secretLike.said": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "权限 600 · 不在身份文件里 · 不链给各账号",
-      "args": []
-    },
-    "beChore.secretLike.why": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{path} 权限 600，不在身份文件里；按号的凭据或状态各账号共用会串号，不自动链给各账号",
-      "args": ["path"]
-    },
-    "beChore.secretLike.step": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "按号的挪进该账号目录 · 共用的放宽权限，下次对齐链接",
-      "args": []
-    },
     "beChore.selfPaste.name": {
       "kind": "title",
       "role": "标题",
@@ -29264,45 +29269,12 @@
       "zh": "硬件密钥不存在",
       "args": []
     },
-    "mobSsh.log.established": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "{target} 连接已建立",
-      "args": ["target"],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.connecting": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "连接 {target}…",
-      "args": ["target"],
-      "limited": ["连接"]
-    },
     "mobSsh.log.connectFailed": {
       "kind": "error",
       "role": "报错",
       "zh": "连接失败",
       "args": [],
       "limited": ["连接"]
-    },
-    "mobSsh.log.negotiated": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "连接中…",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.authKey": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "验证密钥中…",
-      "args": []
-    },
-    "mobSsh.log.authFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "认证失败",
-      "args": []
     },
     "mobSsh.log.waitOther": {
       "kind": "body",
