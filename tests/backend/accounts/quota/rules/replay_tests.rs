@@ -13,7 +13,7 @@ use crate::accounts::quota::strategy::Fail;
 use serde_json::{json, Value};
 use std::sync::OnceLock;
 
-const NIGHT: &str = include_str!("../../../../__fixtures__/rotation/night-1029.json");
+const NIGHT: &str = include_str!("../../../../__fixtures__/rotation-night-1029.json");
 
 /// 判据这一层的沙箱：跟进程里那一份同一个造法，只是不按墙钟掐（同 `decide_tests`）。
 fn test_engine() -> &'static rhai::Engine {
