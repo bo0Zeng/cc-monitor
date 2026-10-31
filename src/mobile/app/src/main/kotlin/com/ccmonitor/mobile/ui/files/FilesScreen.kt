@@ -550,7 +550,7 @@ private fun PathHeader(
 }
 
 /**
- * 〔一次性迁移 · 下一版删〕这台 Room 里旧的书签（书签从前只存在手机上）一次加到那台后端，答 ok 才删那几行；
+ * 〔一次性迁移 · 下一版删〕这台 Room 表里存着的书签（只在手机上的那几行）一次加到那台后端，答 ok 才删那几行；
  * 没答 ok ⇒ 留着，下次进这台的文件屏再迁。Room 那张表随下一次 Room 换形删。
  */
 private suspend fun adoptOldBookmarks(
