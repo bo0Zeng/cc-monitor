@@ -133,7 +133,7 @@ impl WatchDesk {
     }
 }
 
-/// 入口递给这条连接的两样：`stream-watch` 那一口 · 写自家状态的句柄（分派只递给要写句柄的那几条：`Needs::WRITES`）。
+/// 入口递给这条连接的两样：`stream-watch` 那一口 · 写自家状态的句柄（分派只递给要写句柄的那几条：`Needs::give`）。
 pub(crate) struct Given {
     pub(crate) watch: WatchDesk,
     pub(crate) own: crate::platform::Own,

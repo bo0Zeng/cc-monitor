@@ -455,6 +455,7 @@ impl FrameRx {
         Some(frame)
     }
 
+    #[cfg(test)]
     pub fn try_recv(&mut self) -> Result<Frame, mpsc::error::TryRecvError> {
         let (frame, n) = self.rx.try_recv()?;
         self.held.fetch_sub(n, Ordering::AcqRel);
@@ -1004,7 +1005,8 @@ pub struct WatcherPoke(std::sync::mpsc::Sender<WatchEvent>);
 
 impl WatcherPoke {
     /// 催一次 tmux 重探。watcher 已停（channel 关）时静默无操作 —— 那说明没人在听，
-    /// 不是错误。
+    /// 不是错误。生产那一路走 `poke_all`（SIGUSR1 处理器认名单，不认句柄）；这一个只给判据戳一只。
+    #[cfg(test)]
     pub fn poke(&self) {
         let _ = self.0.send(WatchEvent::Poke);
     }

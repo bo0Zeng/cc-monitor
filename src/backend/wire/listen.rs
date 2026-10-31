@@ -283,6 +283,7 @@ impl<W> Down<W> {
         }
     }
 
+    #[cfg(test)]
     pub fn get_ref(&self) -> &W {
         &self.inner
     }

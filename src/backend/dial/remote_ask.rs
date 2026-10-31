@@ -75,7 +75,7 @@ pub struct Said {
 }
 
 /// 那几台：怎么够到一台照这一端的机器表（按名字组请求）＋ 对面的资产目录 id（按名字记，只在本进程里，后端重启就空）。
-/// 生产只有一张（[`REACH`]，现读机器表）；判据各给一张固定的（[`Table::of`]）。
+/// 生产只有一张（[`REACH`]，现读机器表）；判据各给一张固定的（`Table::of`，测试档才有）。
 pub struct Table {
     /// `None` ⇒ 现读这一端的机器表（[`super::machines_now`]）。
     fixed: Mutex<Option<Vec<super::Host>>>,
@@ -91,6 +91,7 @@ pub(crate) static REACH: Table = Table {
 
 impl Table {
     /// 一张固定的（判据用：机器表由调用方给）。
+    #[cfg(test)]
     pub(crate) fn of(hosts: Vec<super::Host>) -> Self {
         Table {
             fixed: Mutex::new(Some(hosts)),

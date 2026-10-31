@@ -24,10 +24,10 @@ pub(crate) use ssh_dial::machine;
 pub(crate) use ssh_dial::machine::Host;
 #[cfg(test)]
 pub(crate) use ssh_dial::pool;
-pub use ssh_dial::{
-    why_of_stage, CaptureOpts, Captured, DialAck, DialRequest, Endpoint, ForwardSpec, JumpHop,
-    Stage, StageSink, Use, Why, ACK_V, USES,
-};
+pub use ssh_dial::{CaptureOpts, Captured, DialRequest, Endpoint, JumpHop, Stage, StageSink, Use};
+// 回执那几样只给本层判据（`dial_tests` 经 `super::*` 读）。
+#[cfg(test)]
+pub(crate) use ssh_dial::{why_of_stage, DialAck, Why, ACK_V, USES};
 
 pub(crate) mod forwards; // 端口转发的账（起 · 停 · 列三条帧命令）
 pub(crate) mod known_hosts;

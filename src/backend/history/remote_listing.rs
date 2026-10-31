@@ -155,13 +155,16 @@ const COPY_DOC: crate::common::own_state::Doc<Vec<u8>> =
     crate::common::own_state::Doc::of(&relay_route_core::REMOTE_LISTING_FILE);
 
 /// 落在 `own` 那个数据目录底下的副本表（[`relay_route_core::REMOTE_LISTING_DIR_REL`]，一台一份）。
+#[cfg(test)]
 pub(crate) fn disk_copies(own: Own) -> Copies {
     Copies::on(DiskShelf(own))
 }
 
 /// 落在给定数据目录底下的那一个落盘处（判据用：换一张空副本表读同一个目录 ＝ 重启过）。
+#[cfg(test)]
 struct DiskShelf(Own);
 
+#[cfg(test)]
 impl Shelf for DiskShelf {
     fn load(&self, machine: &str) -> Option<Vec<u8>> {
         load_at(&self.0, machine)
