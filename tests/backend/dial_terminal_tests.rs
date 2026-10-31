@@ -843,7 +843,7 @@ fn the_posix_record_step_writes_the_label_of_the_shell_that_runs_the_line() {
         format!("{}-{}", seen[1], seen[3]),
     ];
     assert!(
-        ours.contains(&got.label),
+        ours.contains(&got.label.to_string()),
         "标签 {} 不是跑那一行的 shell（{ours:?}）",
         got.label
     );

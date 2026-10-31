@@ -176,33 +176,34 @@ fn a_linux_shaped_table_reads_the_same_way() {
 #[test]
 fn a_terminal_opened_here_is_read_from_the_shell_its_label_names() {
     let t = parse_tables(&tables()).unwrap();
+    let at = |pid, start| {
+        opened_chain(
+            &crate::common::seen_terminal::WindowLabel { pid, start },
+            &t.procs,
+        )
+    };
     let pids = |o: OpenedHere| match o {
         OpenedHere::Chain(c) => c.iter().map(|l| l.pid).collect::<Vec<_>>(),
         other => panic!("{other:?}"),
     };
     assert_eq!(
-        pids(opened_chain("600-3000", &t.procs)),
+        pids(at(600, 3000)),
         vec![700, 600, 500],
         "底下三个 ssh ⇒ 最早起的那个"
     );
     assert_eq!(
-        pids(opened_chain("700-4000", &t.procs)),
+        pids(at(700, 4000)),
         vec![700, 600, 500],
         "shell exec 成了 ssh：同一个进程号与起始时刻"
     );
     assert_eq!(
-        opened_chain("600-3001", &t.procs),
+        at(600, 3001),
         OpenedHere::Gone,
         "起始时刻对不上 ⇒ 进程号被复用了"
     );
+    assert_eq!(at(601, 3000), OpenedHere::Gone, "那个进程不在");
     assert_eq!(
-        opened_chain("601-3000", &t.procs),
-        OpenedHere::Gone,
-        "那个进程不在"
-    );
-    assert_eq!(opened_chain("nope", &t.procs), OpenedHere::Gone);
-    assert_eq!(
-        opened_chain("500-2000", &t.procs),
+        at(500, 2000),
         OpenedHere::NoSsh,
         "底下只有 shell、没有 ssh"
     );

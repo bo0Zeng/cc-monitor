@@ -1,11 +1,11 @@
-//! ↗ 的本机记录（`dial/opened_windows.rs`）：一份两行怎么读 · 标签怎么拆 · 前奏在两种方言里长什么样。
+//! ↗ 的本机记录（`dial/opened_windows.rs`）：一份两行怎么读 · 前奏在两种方言里长什么样。标签的形状在 `WindowLabel` 那一处判（`observe/session_terminals_tests.rs`）。
 
 use super::*;
 
 #[test]
 fn a_record_is_the_label_then_the_machine() {
     let want = Some(Opened {
-        label: "600-20".into(),
+        label: WindowLabel { pid: 600, start: 20 },
         machine: "devbox".into(),
     });
     assert_eq!(parse("600-20\ndevbox\n"), want);
@@ -16,9 +16,7 @@ fn a_record_is_the_label_then_the_machine() {
 }
 
 #[test]
-fn a_label_is_a_pid_and_a_start() {
-    assert_eq!(label_parts("600-20"), Some((600, 20)));
-    assert_eq!(label_parts("600-"), None);
-    assert_eq!(label_parts("x-20"), None);
-    assert_eq!(label_parts("600"), None);
+fn a_record_whose_first_line_is_not_a_label_is_not_a_record() {
+    assert_eq!(parse("123-abc\ndevbox\n"), None);
+    assert_eq!(parse("123\ndevbox\n"), None);
 }

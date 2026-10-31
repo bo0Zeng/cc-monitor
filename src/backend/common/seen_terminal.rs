@@ -30,8 +30,66 @@ pub(crate) struct Terminal {
     /// 最近一次动静（tmux 客户端的 `client_activity`，Unix 秒）；不在 tmux 里 ⇒ `null`。
     #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) activity: Option<u64>,
-    /// 本机那个终端窗口的标签（`LC_CCM_WINDOW`，形如 `<进程号>-<起始时刻>`）；没送过来 / 形状不对 ⇒ 不带。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) window: Option<String>,
+    /// 本机那个终端窗口的标签（`LC_CCM_WINDOW`，[`WindowLabel`]）；没送过来 / 形状不对 ⇒ 不带。
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "WindowLabel::lenient"
+    )]
+    #[cfg_attr(test, ts(optional, type = "string"))]
+    pub(crate) window: Option<WindowLabel>,
+}
+
+/// 窗口标签：`LC_CCM_WINDOW` 那一串 `<进程号>-<起始时刻>`（两段十进制，进程号放得进 u32、起始时刻放得进 u64，前后空白不算）。
+/// 读进来的那一下解一次；线上仍是那一串（[`std::fmt::Display`] 写回同一串）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct WindowLabel {
+    /// 那个 shell 的进程号。
+    pub(crate) pid: u32,
+    /// 那个进程的起始时刻（进程表里的 `start`）。
+    pub(crate) start: u64,
+}
+
+impl std::str::FromStr for WindowLabel {
+    type Err = ();
+
+    fn from_str(raw: &str) -> Result<Self, ()> {
+        let (a, b) = raw.trim().split_once('-').ok_or(())?;
+        let digits = |x: &str| !x.is_empty() && x.bytes().all(|c| c.is_ascii_digit());
+        if !(digits(a) && digits(b)) {
+            return Err(());
+        }
+        Ok(WindowLabel {
+            pid: a.parse().map_err(|_| ())?,
+            start: b.parse().map_err(|_| ())?,
+        })
+    }
+}
+
+impl std::fmt::Display for WindowLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}-{}", self.pid, self.start)
+    }
+}
+
+impl serde::Serialize for WindowLabel {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(self)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for WindowLabel {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(d)?;
+        raw.parse()
+            .map_err(|()| serde::de::Error::custom(format!("not a window label: {raw:?}")))
+    }
+}
+
+impl WindowLabel {
+    /// `Terminal.window` 那一格：是串、形状不对 ⇒ 不带（不当整份认不得）。
+    fn lenient<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Self>, D::Error> {
+        let raw = <Option<String> as serde::Deserialize>::deserialize(d)?;
+        Ok(raw.and_then(|r| r.parse().ok()))
+    }
 }

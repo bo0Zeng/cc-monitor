@@ -168,7 +168,10 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
     );
     assert!(ts.iter().all(|t| t.activity.is_some()));
     // 窗口标签读的也是各客户端自己的环境：B 送了、A 没送。
-    let windows: Vec<Option<String>> = ts.iter().map(|t| t.window.clone()).collect();
+    let windows: Vec<Option<String>> = ts
+        .iter()
+        .map(|t| t.window.map(|w| w.to_string()))
+        .collect();
     assert_eq!(windows, vec![Some("4242-133000000000000000".into()), None]);
 
     // 本机那一问（`session-window`）：同样两个终端、同样的先后，连各自那个 tmux 客户端的进程号（链从它起，不从 pane 里的进程起）。
@@ -245,7 +248,7 @@ fn outside_tmux_the_process_own_environment_is_the_answer() {
                     server_port: 22,
                 }),
                 activity: None,
-                window: Some("4242-133000000000000000".into()),
+                window: "4242-133000000000000000".parse().ok(),
             }],
             tmux: false,
         }
@@ -259,7 +262,10 @@ fn outside_tmux_the_process_own_environment_is_the_answer() {
         panic!("不在 tmux 里，本机那一问却答成没有或在 tmux 里");
     };
     assert_eq!(here.iter().map(|(p, _)| *p).collect::<Vec<_>>(), vec![pid]);
-    assert_eq!(here[0].1.window.as_deref(), Some("4242-133000000000000000"));
+    assert_eq!(
+        here[0].1.window.map(|w| w.to_string()).as_deref(),
+        Some("4242-133000000000000000")
+    );
     let _ = kid.kill();
     let _ = kid.wait();
     let _ = Command::new("kill").arg(pid.to_string()).status();
@@ -307,23 +313,6 @@ fn ssh_connection_is_four_fields_or_nothing() {
     ] {
         assert_eq!(parse_ssh_connection(bad), None, "{bad:?} 不该认");
     }
-    // 窗口标签：`<进程号>-<起始时刻>` 才回显，别的形状一律不带。
-    assert_eq!(
-        window_label(" 4242-133000000000000000 "),
-        Some("4242-133000000000000000".into())
-    );
-    for bad in [
-        "",
-        "4242",
-        "-1",
-        "4242-",
-        "a-1",
-        "1-2-3",
-        "12345678901-1",
-        "1-123456789012345678901",
-    ] {
-        assert_eq!(window_label(bad), None, "{bad:?} 不该认");
-    }
     assert_eq!(
         parse_clients("12 1790918865\nbad\n13 x\n14 7\n"),
         vec![(12, 1790918865), (14, 7)]
@@ -352,4 +341,39 @@ fn an_unknown_or_malformed_sid_is_said_not_guessed() {
         serde_json::json!({ "terminals": [], "why": "detached", "tmux": true })
     );
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 窗口标签（`WindowLabel`）：`<进程号>-<起始时刻>` 解一次成两个数，线上写回同一串；`Terminal.window` 上形状不对 ⇒ 不带。
+#[test]
+fn a_window_label_is_a_pid_and_a_start_or_nothing() {
+    use crate::common::seen_terminal::WindowLabel;
+    assert_eq!(
+        " 4242-133000000000000000 ".parse::<WindowLabel>(),
+        Ok(WindowLabel {
+            pid: 4242,
+            start: 133000000000000000
+        })
+    );
+    for bad in [
+        "",
+        "4242",
+        "-1",
+        "4242-",
+        "a-1",
+        "600-x",
+        "1-2-3",
+        "+1-2",
+        "12345678901-1",
+        "1-123456789012345678901",
+    ] {
+        assert_eq!(bad.parse::<WindowLabel>(), Err(()), "{bad:?} 不该认");
+    }
+    let t: Terminal =
+        serde_json::from_value(serde_json::json!({"ssh": null, "window": "600-20"})).unwrap();
+    assert_eq!(t.window, Some(WindowLabel { pid: 600, start: 20 }));
+    assert_eq!(serde_json::to_value(&t).unwrap()["window"], "600-20");
+    let t: Terminal =
+        serde_json::from_value(serde_json::json!({"ssh": null, "window": "600-x"})).unwrap();
+    assert_eq!(t.window, None, "形状不对的标签不带，整份照收");
+    assert!(serde_json::to_value(&t).unwrap().get("window").is_none());
 }
