@@ -199,5 +199,8 @@ fn nothing_unreadable_and_nothing_skipped_writes_no_note() {
         vec![(Machine::local(), reply(&[("s1", 10, 0, false)], 0, &[]))],
         vec![],
     );
-    assert!(m.notes.is_empty(), "读不动 0 份 · 没有只按标题的 ⇒ 一句都不写");
+    assert!(
+        m.notes.is_empty(),
+        "读不动 0 份 · 没有只按标题的 ⇒ 一句都不写"
+    );
 }

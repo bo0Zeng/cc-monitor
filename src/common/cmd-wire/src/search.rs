@@ -206,7 +206,12 @@ pub fn merge(
         copy_text("history.search.summary", &[("q", q), ("n", &n), ("m", &m)])
     };
     let notes = (unreadable > 0)
-        .then(|| copy_text("history.search.unreadable", &[("n", &unreadable.to_string())]))
+        .then(|| {
+            copy_text(
+                "history.search.unreadable",
+                &[("n", &unreadable.to_string())],
+            )
+        })
         .into_iter()
         .chain(
             skipped
