@@ -243,7 +243,7 @@ pub(crate) async fn listing_with(
         remote,
     )
     .await
-    .map_err(|s| (code_of(s.code.as_deref()), s.message));
+    .map_err(|s| (code_of(s.code.as_deref()), s.said));
     match got {
         Ok(patch) => {
             let at_ms = crate::common::time::now()

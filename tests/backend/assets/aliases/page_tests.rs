@@ -10,7 +10,7 @@ use std::path::PathBuf;
 type Wired = Result<Value, (&'static str, String)>;
 
 fn taken<R: serde::de::DeserializeOwned>(args: &Value) -> Result<R, (&'static str, String)> {
-    crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))
+    crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))
 }
 
 fn wired<T: serde::Serialize>(got: Result<T, (&'static str, String)>) -> Wired {

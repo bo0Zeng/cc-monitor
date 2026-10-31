@@ -1643,7 +1643,7 @@ fn claims() -> Vec<Claim> {
             }),
             install: Some(ImplSite {
                 addr: "wire.rs::run_change",
-                definition: "pub(crate) fn run_change(\n    d: &dyn Door,\n    req: &Request,\n    keys: Option<&KeyTable>,\n) -> Result<Done, Refusal> {",
+                definition: "pub(crate) fn run_change(\n    d: &dyn Door,\n    req: &Request,\n    keys: Option<&KeyTable>,\n) -> Result<Done, Said> {",
             }),
             uninstall: None,
         },

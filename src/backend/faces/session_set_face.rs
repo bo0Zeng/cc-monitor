@@ -304,9 +304,9 @@ fn launch(
                 open::answer(req, facts, d, fork, &pre, user_home)
             })
         });
-        let o = got.map_err(|(code, message, _, _)| LaunchFail {
-            code: code.to_string(),
-            message,
+        let o = got.map_err(|s| LaunchFail {
+            code: s.code_or_fallback().to_string(),
+            message: s.said,
         })?;
         // 那一家不认先定 sid（没用上先定的那一个）⇒ 先写的那一笔摘掉，起好的那一条（说得出 sid 才）照归。
         if let Some(f) = fixed.as_deref().filter(|f| o.sid.as_deref() != Some(*f)) {

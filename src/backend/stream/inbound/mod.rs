@@ -513,8 +513,7 @@ fn dispatch(
                     move |r, cx| async move {
                         crate::dial::probe::answer_probe(&r, cx.until, &tx)
                             .await
-                            .map_err(crate::wire::typed::of_pair(
-                                crate::dial::probe::ProbeErr::Failed,
+                            .map_err(crate::wire::typed::of_fail_with(                                crate::dial::probe::ProbeErr::Failed,
                             ))
                     },
                 ),

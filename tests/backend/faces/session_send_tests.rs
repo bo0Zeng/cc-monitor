@@ -60,7 +60,7 @@ fn at(landed: Landed, session: Option<&str>) -> Reopened {
 
 /// 恢复没成，码 `code`。
 fn not(code: &'static str) -> Reopened {
-    Err((code, "那一句".into(), None, Some("stderr".into())))
+    Err(crate::common::said::Said::new(code, "那一句".into()).and_raw(Some("stderr")))
 }
 
 /// ★ 那台说在等人（批准 · 回答）⇒ 一个字都不送，结局「在等人」（照排着）。

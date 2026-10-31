@@ -110,7 +110,7 @@ pub(crate) fn forward_request(dial: &Value, spec: &Spec) -> Result<DialRequest, 
     );
     obj.insert("stages".into(), json!(false));
     obj.insert("probe".into(), json!(false));
-    crate::dial::read_request(&v).map_err(|(_, m)| m)
+    crate::dial::read_request(&v).map_err(|s| s.said)
 }
 
 /// 账上一条。**丢掉它 = 收掉这条转发**（`pump` 是 [`AbortOnDrop`]，它手里攥着链路那一侧的任务）。
@@ -168,9 +168,9 @@ where
     let dial = reach
         .dial(&spec.origin)
         .map_err(|s| match s.code.as_deref() {
-            Some("bad_jump") => ("bad_jump", s.message),
-            Some("unreachable") => ("unreachable", s.message),
-            _ => ("bad_args", s.message),
+            Some("bad_jump") => ("bad_jump", s.said),
+            Some("unreachable") => ("unreachable", s.said),
+            _ => ("bad_args", s.said),
         })?;
     if ledger.rows().len() >= MAX_FORWARDS {
         return Err((

@@ -400,7 +400,7 @@ async fn ask_to<C: cmd_wire::Call>(w: &Wired, req: &C) -> Result<C::Reply, Miss>
                 Some("bad_name") => "bad_name",
                 _ => "io_failed",
             };
-            (code, Said::from(s.message))
+            (code, Said::from(s.said))
         })
 }
 

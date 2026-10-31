@@ -503,9 +503,14 @@ fn session_cwd(sid: &str) -> Option<std::path::PathBuf> {
 }
 
 /// 附件那一支的失败 ⇒ 这一条的码表。
-fn attach_fail<E: Codes>(f: crate::control::files_write::WriteFail, fallback: fn(String) -> E) -> E {
+fn attach_fail<E: Codes>(
+    code: &str,
+    said: String,
+    raw: Option<String>,
+    fallback: fn(String) -> E,
+) -> E {
     typed::of_fail(
-        crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref()),
+        crate::wire::spec::fail(code, said).and_raw(raw.as_deref()),
         fallback,
     )
 }
@@ -597,13 +602,13 @@ impl crate::wire::typed::Handle for SessionAttachmentCommit {
         async move {
             let face = &needs;
             let cwd = session_cwd(req.sid.as_str()).ok_or_else(|| {
-                attach_fail(
-                    sa::refused(cmd_wire::attachment::AttachRefused::NoSession),
-                    SessionAttachmentCommitErr::BadArgs,
-                )
+                {
+                    let f = sa::refused(cmd_wire::attachment::AttachRefused::NoSession);
+                    attach_fail(f.code, f.said, f.raw, SessionAttachmentCommitErr::BadArgs)
+                }
             })?;
             sa::commit_here(face, &cwd, req)
-                .map_err(|f| attach_fail(f, SessionAttachmentCommitErr::BadArgs))
+                .map_err(|f| attach_fail(f.code, f.said, f.raw, SessionAttachmentCommitErr::BadArgs))
         }
     }
 }
@@ -645,14 +650,14 @@ impl crate::wire::typed::Handle for SessionAttachmentDrop {
         async move {
             let face = &needs;
             let cwd = session_cwd(req.sid.as_str()).ok_or_else(|| {
-                attach_fail(
-                    sa::refused(cmd_wire::attachment::AttachRefused::NoSession),
-                    SessionAttachmentDropErr::BadArgs,
-                )
+                {
+                    let f = sa::refused(cmd_wire::attachment::AttachRefused::NoSession);
+                    attach_fail(f.code, f.said, f.raw, SessionAttachmentDropErr::BadArgs)
+                }
             })?;
             sa::drop_one(face, &cwd, &req.id)
                 .map(|removed| cmd_wire::attachment::SessionAttachmentDropReply { removed })
-                .map_err(|f| attach_fail(f, SessionAttachmentDropErr::BadArgs))
+                .map_err(|f| attach_fail(f.code, f.said, f.raw, SessionAttachmentDropErr::BadArgs))
         }
     }
 }

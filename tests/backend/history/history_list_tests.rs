@@ -116,14 +116,14 @@ fn with_own_annotations(listing: &mut Value, loaded: &crate::history::history_an
 /// 入参照帧面那一处解（typed：形状不对 ⇒ `bad_args`）再核值域，盖住 `super::*` 里的同名口。
 fn parse_ask(args: &Value) -> Result<Ask, (&'static str, String)> {
     let req: HistoryListReq =
-        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
     super::parse_ask(&req)
 }
 
 /// 帧面那一臂（入参照 typed 那一处解、回包过一遍真序列化器），盖住 `super::*` 里的同名口。
 async fn answer_wire(args: Value) -> Result<Value, (&'static str, String)> {
     let req: HistoryListReq =
-        crate::wire::typed::take(&args).map_err(|f| ("bad_args", f.message))?;
+        crate::wire::typed::take(&args).map_err(|f| ("bad_args", f.said))?;
     super::answer(req, Default::default(), None)
         .await
         .map(|r| serde_json::to_value(r).unwrap())

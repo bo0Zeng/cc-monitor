@@ -118,7 +118,7 @@ pub(crate) fn resume_here(
 }
 
 /// 恢复那一下的结局（同 `session-open` 恢复那一支）。
-pub(crate) type Reopened = Result<open::Opened, open::Failed>;
+pub(crate) type Reopened = Result<open::Opened, crate::common::said::Said>;
 
 /// 不带附件的那一句：原样送、原样当恢复的第一句。
 pub(crate) fn plain(text: &str) -> crate::agents::Typed {
@@ -196,12 +196,14 @@ pub(crate) fn say_typed(
             );
             Undeliverable::NotResumed
         }
-        Err((code, said, _, raw)) => {
+        Err(s) => {
             tracing::warn!(
-                "[session-send] {} 终端没了、恢复没成：{code} {said} {raw:?}",
-                say.sid
+                "[session-send] {} 终端没了、恢复没成：{} {}",
+                say.sid,
+                s.code_or_fallback(),
+                s.logged()
             );
-            if *code == "already_live" {
+            if s.code.as_deref() == Some("already_live") {
                 Undeliverable::Elsewhere
             } else {
                 Undeliverable::NotResumed
