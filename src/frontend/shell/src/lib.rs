@@ -1025,7 +1025,7 @@ async fn open_session_in_new_window(
         //   ⇒ 窗口要知道这个会话在哪台机器上；随 URL 交过去（百分号编码：本机那个 `<local>` 有尖括号）。
         origin
             .route("open_session_in_new_window")
-            .map_err(Said::written)?;
+            .map_err(|b| Said::written(chan::said::blank_origin(&b)))?;
         let origin_q = pct_encode(&origin.to_string());
         let run = run.filter(|r| !r.is_empty());
         let label = match &run {
@@ -1097,7 +1097,7 @@ async fn open_terminal_in_new_window(
         use tauri::Manager;
         origin
             .route("open_terminal_in_new_window")
-            .map_err(Said::written)?;
+            .map_err(|b| Said::written(chan::said::blank_origin(&b)))?;
         let origin_s = origin.to_string();
         let label = terminal_window_label(&origin_s, &terminal);
         if let Some(w) = app.get_webview_window(&label) {
@@ -1276,7 +1276,7 @@ async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), Said> {
 
 /// ↗ 拉会话的终端窗口（本机会话与远端会话同一条）：本机后端 `session-window` 答的窗口标签 · 进程链原样交来 ⇒
 /// 先按标签、再沿链每一级先问它显示在哪个窗口（Windows 问控制台 · Linux 查握手表）、再看属主的窗口，校验、拉前
-/// （`bind::bring_session_window`），回切过去了或写好的那一张（`cmd_wire::front::FrontOutcome::told`；`tmux` 是 `session-window` 带来的那一格，
+/// （`bind::bring_session_window`），回切过去了或写好的那一张（`face_core::front::FrontOutcome::told`；`tmux` 是 `session-window` 带来的那一格，
 /// 窗口关了时才给［在终端里打开］）。标签没对上、链又空 ⇒ `None`（界面摆后端那一张）。
 ///
 /// **必须 async + spawn_blocking** 隔离 Win32 sync 调用（v1.6.5 的教训）。
