@@ -267,9 +267,7 @@ fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, S
             f.existing.as_ref().map(|e| e.slice.as_str()),
         );
         let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-        return crate::plan::command::run(&entry, Path::new(&f.root), &argv).map_err(
-            |(code, said, raw)| crate::wire::spec::fail(code, said).and_raw(raw.as_deref()),
-        );
+        return crate::plan::command::run(&entry, Path::new(&f.root), &argv);
     }
     let ws = Path::new(&req.workspace);
     let run = |args: &[&str]| crate::plan::command::run(&entry, ws, args);
@@ -292,7 +290,7 @@ fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, S
         }
         None => run(&[cmd]),
     };
-    out.map_err(|(code, said, raw)| crate::wire::spec::fail(code, said).and_raw(raw.as_deref()))
+    out
 }
 
 /// `plan-files {dir}`：文件窗口反查。只看读好过的工作区（主窗口与需手动的账起来就问过 `plan-list`）——

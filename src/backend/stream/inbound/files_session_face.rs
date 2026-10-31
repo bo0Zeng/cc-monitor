@@ -46,7 +46,10 @@ impl crate::wire::typed::Handle for FilesDeleteSession {
 
             crate::control::files_write::delete_session_of(face, req, &SESSION_PORT).map_err(|f| {
                 typed::of_fail(
-                    crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref()),
+                    {
+                let code = f.code_or_fallback().to_string();
+                crate::wire::spec::fail(&code, f)
+            },
                     FilesDeleteSessionErr::BadArgs,
                 )
             })

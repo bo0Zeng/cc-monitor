@@ -15,7 +15,10 @@ fn ask<A: crate::files::Ask, E: Codes>(
 ) -> Result<A::Reply, E> {
     crate::files::answer(req, &cx.tz).map_err(|f| {
         typed::of_fail(
-            crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref()),
+            {
+                let code = f.code_or_fallback().to_string();
+                crate::wire::spec::fail(&code, f)
+            },
             fallback,
         )
     })
@@ -24,7 +27,7 @@ fn ask<A: crate::files::Ask, E: Codes>(
 /// 资产域那扇门（`doors::LocalFiles`）问读的那几样：同一个本体，失败只交码与那一句（不过这一条的码表：门不是帧面）。
 pub(crate) fn in_process<A: crate::files::Ask>(req: A) -> Result<A::Reply, Said> {
     crate::files::answer(req, &Default::default())
-        .map_err(|f| crate::common::door::said_of(f.code, &f.said))
+        .map_err(|f| crate::common::door::said_of(f.code_or_fallback(), &f.said))
 }
 
 /// 正被浏览的目录有了动静的通道（流的 tap 订它推 `changed {files_dir}`）：经这一扇门交出去，tap 不伸进文件管理那一块。
@@ -232,7 +235,10 @@ impl Command for FilesBrowse {
 pub(crate) fn browse(conn: u64, req: wire::BrowseReq) -> Result<wire::BrowseReply, FilesBrowseErr> {
     crate::files::browse(conn, req).map_err(|f| {
         typed::of_fail(
-            crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref()),
+            {
+                let code = f.code_or_fallback().to_string();
+                crate::wire::spec::fail(&code, f)
+            },
             FilesBrowseErr::BadArgs,
         )
     })
@@ -419,7 +425,10 @@ impl crate::wire::typed::Handle for FilesGrep {
                 .await
                 .map_err(|f| {
                     typed::of_fail(
-                        crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref()),
+                        {
+                let code = f.code_or_fallback().to_string();
+                crate::wire::spec::fail(&code, f)
+            },
                         FilesGrepErr::BadArgs,
                     )
                 })

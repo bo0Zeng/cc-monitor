@@ -125,7 +125,7 @@ fn a_corrupt_stage_leaves_no_numbered_dir_behind() {
         &utc(),
     )
     .expect_err("摘要不等该拒");
-    assert_eq!(err.code, "stale");
+    assert_eq!(err.code_or_fallback(), "stale");
     let tried = format!("1023-1529-{}", &sha(b"expected")[..4]);
     assert!(cwd.join(".ccm-attach/.gitignore").is_file());
     assert!(
@@ -149,7 +149,7 @@ fn an_oversized_file_is_refused_before_and_at_commit() {
     let mut r = req("dataset.zip", b"x");
     r.bytes = MAX_ONE_BYTES + 1;
     let err = commit(&Face::issue(), &home, &cwd, r, AT, &utc()).expect_err("该拒");
-    assert_eq!(err.code, "too_big");
+    assert_eq!(err.code_or_fallback(), "too_big");
     assert!(!cwd.join(".ccm-attach").exists());
 }
 
@@ -220,7 +220,7 @@ fn each_verdict_carries_the_class_of_its_name() {
         .into_iter()
         .map(|v| v.class_text)
         .collect();
-    assert_eq!(words, vec![copy_text("beFilesKind.label.code", &[])]);
+    assert_eq!(words, vec![copy_text("beFilesKind.label.code_or_fallback()", &[])]);
 }
 
 /// 工作目录不在 ⇒ 逐份 `no_session`；只读 ⇒ `not_writable`，落的那一下也拒、不回落别处。
@@ -243,7 +243,7 @@ fn a_missing_or_read_only_workdir_is_refused_without_falling_back() {
     stage(&home, KEY, b"a");
     let err = commit(&Face::issue(), &home, &cwd, req("a", b"a"), AT, &utc()).expect_err("该拒");
     std::fs::set_permissions(&cwd, std::fs::Permissions::from_mode(0o755)).expect("改回");
-    assert_eq!(err.code, "not_writable");
+    assert_eq!(err.code_or_fallback(), "not_writable");
     assert!(!cwd.join(".ccm-attach").exists());
 }
 
@@ -259,7 +259,7 @@ fn dropping_removes_the_numbered_dir_and_is_idempotent() {
     assert_eq!(
         drop_one(&Face::issue(), &cwd, "../x")
             .expect_err("不合形")
-            .code,
+            .code_or_fallback(),
         "bad_args"
     );
 }

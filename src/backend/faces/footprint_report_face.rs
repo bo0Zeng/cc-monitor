@@ -128,7 +128,7 @@ impl crate::wire::typed::Handle for ChoresMergeCmd {
                 tokio::task::spawn_blocking(move || crate::footprint::data_answer(files, &here))
                     .await
                     .map_err(|e| e.to_string())
-                    .and_then(|r| r.map_err(|(_, said)| said))
+                    .and_then(|r| r.map_err(|s| s.said))
                     .map_err(crate::common::said::Said::from)
             };
             chores_merge_with(
