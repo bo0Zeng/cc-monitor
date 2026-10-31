@@ -23,6 +23,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::common::cells::{Tone, Words};
+use crate::common::said::Said;
 use crate::platform::child::{bounded, Deadline, Until};
 use crate::wire::Frame;
 
@@ -201,7 +202,7 @@ impl Cells<'_> {
         self.last.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
-    async fn send(&self, cell: ProbeCell) -> Result<(), (&'static str, String)> {
+    async fn send(&self, cell: ProbeCell) -> Result<(), Said> {
         let (said, segs) = (cell.said.0.clone(), cell.segs);
         self.out
             .send(Frame::Probe(crate::wire::Probe {
@@ -209,7 +210,7 @@ impl Cells<'_> {
                 cell: serde_json::to_value(&cell).unwrap_or(Value::Null),
             }))
             .await
-            .map_err(|_| ("failed", copy_text("beProbe.client.gone", &[])))?;
+            .map_err(|_| Said::new("failed", copy_text("beProbe.client.gone", &[])))?;
         *self.last.lock().unwrap_or_else(|e| e.into_inner()) = (said, segs);
         Ok(())
     }
@@ -281,12 +282,12 @@ impl crate::wire::typed::Command for RemoteProbe {
 }
 
 /// 票：非空、有界、只许字母数字与 `-`。
-fn ticket_ok(t: &str) -> Result<String, (&'static str, String)> {
+fn ticket_ok(t: &str) -> Result<String, Said> {
     if t.is_empty()
         || t.len() > TICKET_MAX
         || !t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
     {
-        return Err((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed("`ticket` must be 1..=64 chars of [A-Za-z0-9-]"),
         ));
@@ -459,7 +460,7 @@ pub(crate) async fn probe_with(
     until: Option<Until>,
     dial: Arc<dyn Dial>,
     out: &tokio::sync::mpsc::Sender<Frame>,
-) -> Result<(), (&'static str, String)> {
+) -> Result<(), Said> {
     let cells = Cells {
         ticket: ticket_ok(&req.ticket)?,
         out,
@@ -485,7 +486,7 @@ async fn run(
     req: &ProbeReq,
     dial: Arc<dyn Dial>,
     cells: &Cells<'_>,
-) -> Result<ProbeCell, (&'static str, String)> {
+) -> Result<ProbeCell, Said> {
     let name = req.machine.name().to_string();
     let hosts = super::machines_now();
     let request = |use_: &str, extra| {
@@ -650,7 +651,7 @@ pub(crate) async fn answer_probe(
     req: &ProbeReq,
     until: Option<Until>,
     replies: &tokio::sync::mpsc::Sender<Frame>,
-) -> Result<(), (&'static str, String)> {
+) -> Result<(), Said> {
     probe_with(req, until, Arc::new(Real), replies).await
 }
 

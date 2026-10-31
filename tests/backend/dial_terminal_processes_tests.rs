@@ -139,7 +139,7 @@ fn a_reused_parent_ends_the_chain_and_a_failed_query_is_said() {
         json!({ "terminals": [{ "ssh": { "clientAddr": "192.0.2.5", "clientPort": 70000, "serverAddr": "192.0.2.9", "serverPort": 22 } }] }),
     ] {
         let e = answer_with(&bad, || panic!("入参不对还去问了系统")).unwrap_err();
-        assert_eq!(e.0, "bad_args", "{bad}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad}");
     }
 }
 

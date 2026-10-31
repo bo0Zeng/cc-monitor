@@ -144,7 +144,7 @@ pub(crate) fn product(found: &Found) -> Processes {
 }
 
 fn bad(msg: &str) -> Said {
-    ("bad_args", crate::common::contract::malformed(msg))
+    Said::new("bad_args", crate::common::contract::malformed(msg))
 }
 
 /// 入参 ⇒ 每格要找的连接（`None` = 不是经 ssh）。个数 1–16；地址认不出 ⇒ `bad_args`。

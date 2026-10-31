@@ -22,6 +22,7 @@
 //! 按名字组请求（[`super::request_named`]），线上没有谁交拨号。拨号请求里只有路径（`key_path`），没有私钥本体（凭据面 `K11`）。
 //! 另记一样：对面的资产目录 id（按名字，只在本进程里，后端重启就空；`assets-sync` 拉过那台才有）。
 
+use crate::common::said::Said;
 use cmd_wire::dial::OLD_BACKEND_MARKER;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
@@ -59,19 +60,9 @@ pub trait Remote: Send + Sync {
         Box::pin(async move {
             self.run(dial, command, stdin)
                 .await
-                .map_err(|message| Said {
-                    code: None,
-                    message,
-                })
+                .map_err(Said::from)
         })
     }
-}
-
-/// 远端那一跳没成时的一句话 ＋ 那台 CLI 信封里的码（信封读得出来才有；拨号 / 链路坏了没有码）。
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Said {
-    pub code: Option<String>,
-    pub message: String,
 }
 
 /// 那几台：怎么够到一台照这一端的机器表（按名字组请求）＋ 对面的资产目录 id（按名字记，只在本进程里，后端重启就空）。
@@ -117,17 +108,9 @@ impl Table {
     pub(crate) fn dial(&self, machine: &str) -> Result<Value, Said> {
         let hosts = self.hosts();
         if !hosts.iter().any(|h| h.name() == machine) {
-            return Err(Said {
-                code: Some("unreachable".to_string()),
-                message: unreachable_message(machine),
-            });
+            return Err(Said::new("unreachable", unreachable_message(machine)));
         }
-        super::request_named(&hosts, machine, "capture", json!({})).map_err(|(code, message)| {
-            Said {
-                code: Some(code.to_string()),
-                message,
-            }
-        })
+        super::request_named(&hosts, machine, "capture", json!({}))
     }
 
     /// 对面的资产目录 id（没拉过 ⇒ `None`）。
@@ -216,12 +199,14 @@ pub(crate) fn reply_of<R: serde::de::DeserializeOwned>(
     cmd: &str,
     v: Value,
 ) -> Result<R, Said> {
-    serde_json::from_value(v).map_err(|e| Said {
-        code: Some("backend_differs".to_string()),
-        message: crate::common::contract::joined(
-            copy_core::backend_differs(machine),
-            Some(format!("{cmd}: {e}")),
-        ),
+    serde_json::from_value(v).map_err(|e| {
+        Said::new(
+            "backend_differs",
+            crate::common::contract::joined(
+                copy_core::backend_differs(machine),
+                Some(format!("{cmd}: {e}")),
+            ),
+        )
     })
 }
 
@@ -233,10 +218,7 @@ async fn ask_via<Req: serde::Serialize, Reply: serde::de::DeserializeOwned>(
     tz: &crate::Tz,
     remote: &dyn Remote,
 ) -> Result<Reply, Said> {
-    let args = serde_json::to_value(req).map_err(|e| Said {
-        code: None,
-        message: e.to_string(),
-    })?;
+    let args = serde_json::to_value(req).map_err(|e| Said::from(e.to_string()))?;
     let flag = crate::wire::cli_words::cli_flag(cmd);
     let zone = tz.iana_name();
     let argv = [
@@ -274,15 +256,9 @@ where
     let dial = table.dial(machine)?;
     let call = crate::wire::listen::ResidentCall {
         cmd: C::NAME.to_string(),
-        args: serde_json::to_value(req).map_err(|e| Said {
-            code: None,
-            message: e.to_string(),
-        })?,
+        args: serde_json::to_value(req).map_err(|e| Said::from(e.to_string()))?,
     };
-    let line = serde_json::to_string(&call).map_err(|e| Said {
-        code: None,
-        message: e.to_string(),
-    })?;
+    let line = serde_json::to_string(&call).map_err(|e| Said::from(e.to_string()))?;
     let ms = total.as_ms().to_string();
     let zone = tz.iana_name();
     let argv = [
@@ -297,16 +273,15 @@ where
     let asked = exchange(&dial, machine, &command, format!("{line}\n"), remote);
     let v = match crate::platform::child::bounded(total, asked).await {
         Ok(got) => got,
-        Err(after) => Err(Said {
-            code: Some(crate::wire::listen::CALL_TIMED_OUT.to_string()),
-            message: crate::wire::listen::call_timed_out(machine, after),
-        }),
+        Err(after) => Err(Said::new(
+            crate::wire::listen::CALL_TIMED_OUT,
+            crate::wire::listen::call_timed_out(machine, after),
+        )),
     }
     .map_err(|s| match s.code.as_deref() {
-        Some(crate::wire::listen::CALL_ABSENT) => Said {
-            code: s.code,
-            message: crate::wire::listen::call_absent(machine),
-        },
+        Some(crate::wire::listen::CALL_ABSENT) => {
+            s.wrap(|_| crate::wire::listen::call_absent(machine))
+        }
         _ => s,
     })?;
     reply_of(machine, C::NAME, v)
@@ -327,12 +302,11 @@ pub(crate) async fn hop<C: crate::wire::typed::Command>(
     until: Option<crate::platform::child::Until>,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<C::Reply, crate::common::said::Said>
+) -> Result<C::Reply, Said>
 where
     C::Req: serde::Serialize,
     C::Reply: serde::de::DeserializeOwned,
 {
-    use crate::common::said::Said;
     let Some(host) = machine.host_name() else {
         return Err(crate::wire::spec::fail(
             "bad_args",
@@ -348,9 +322,9 @@ where
         remote,
     )
     .await
-    .map_err(|Said { code, message }| match code.as_deref() {
-        Some(c) if ours.contains(&c) => crate::wire::spec::fail(c, message),
-        _ => crate::wire::spec::fail("offline", message),
+    .map_err(|s| match s.code.as_deref() {
+        Some(c) if ours.contains(&c) => crate::wire::spec::fail(c, s.said),
+        _ => crate::wire::spec::fail("offline", s.said),
     })
 }
 
@@ -447,18 +421,12 @@ async fn exchange(
         .run_coded(dial, line.to_string(), Some(stdin))
         .await
         .map_err(|s| match s.code.as_deref() {
-            Some(UNKNOWN_COMMAND) => Said {
-                code: s.code,
-                message: copy_core::backend_old(machine),
-            },
+            Some(UNKNOWN_COMMAND) => s.wrap(|_| copy_core::backend_old(machine)),
             _ => s,
         })?;
     serde_json::from_str(out.trim()).map_err(|e| {
         tracing::warn!("reply from {machine} is not JSON: {e}");
-        Said {
-            code: None,
-            message: copy_core::reply_unreadable(machine),
-        }
+        Said::from(copy_core::reply_unreadable(machine))
     })
 }
 
@@ -503,7 +471,7 @@ pub(crate) fn for_capture(
     command: String,
     stdin: Option<String>,
 ) -> Result<crate::dial::DialRequest, String> {
-    let mut req = crate::dial::read_request(dial).map_err(|(_, m)| m)?;
+    let mut req = crate::dial::read_request(dial).map_err(|f| f.said)?;
     req.use_ = crate::dial::Use::Capture;
     req.command = command;
     req.capture = Some(crate::dial::CaptureOpts {
@@ -526,7 +494,7 @@ impl Remote for DialRemote {
         Box::pin(async move {
             self.run_coded(dial, command, stdin)
                 .await
-                .map_err(|s| s.message)
+                .map_err(|s| s.said)
         })
     }
 
@@ -537,10 +505,7 @@ impl Remote for DialRemote {
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
         Box::pin(async move {
-            let req = for_capture(dial, command, stdin).map_err(|message| Said {
-                code: None,
-                message,
-            })?;
+            let req = for_capture(dial, command, stdin).map_err(Said::from)?;
             pull_over_coded(async move { ssh_dial::uses::capture(&req).await }).await
         })
     }
@@ -560,15 +525,12 @@ impl Drop for AbortOnDrop {
 
 /// 跑一趟收全（生产 = `ssh_dial::uses::capture`），把结果判成 stdout 或一句错。收全那一趟就是这个 future 的一部分：
 /// 外层被丢（`cancel` 打断）⇒ 它一起被丢、那一格放掉。**抽出来是为了判据**（替身交一个永不答 / 答好了的结果，不需要真 SSH）。
-/// 失败时带上那台 CLI 信封里的码（`{code, message}` 读得出来才有）；只要话的调用方取 `.message`。
+/// 失败时带上那台 CLI 信封里的码（`{code, message}` 读得出来才有）；只要话的调用方取 `.said`。
 pub(crate) async fn pull_over_coded<F>(capture: F) -> Result<String, Said>
 where
     F: Future<Output = Result<crate::dial::Captured, ssh_dial::DialFail>>,
 {
-    let got = capture.await.map_err(|f| Said {
-        code: None,
-        message: unreachable(&f),
-    })?;
+    let got = capture.await.map_err(|f| Said::from(unreachable(&f)))?;
     settle_pulled(&got)
 }
 
@@ -592,17 +554,13 @@ pub(crate) async fn capture_full(
 /// 一次性子命令的结果那一行 → 它的 stdout（老后端 · 非 0 退出 · 超上限各是一句错）。
 /// 非 0 退出时把那台 CLI 信封里的码一起交回（[`Said`]）。
 fn settle_pulled(got: &crate::dial::Captured) -> Result<String, Said> {
-    let plain = |message: String| Said {
-        code: None,
-        message,
-    };
     let stdout = got.stdout.as_str();
     if stdout.contains(OLD_BACKEND_MARKER) {
         // 那台的后端不认这条子命令（掉进了流模式）：码同「不认这条命令」，话按码取；知道那台名字的调用方换成名字（[`ask`]）。
-        return Err(Said {
-            code: Some(UNKNOWN_COMMAND.to_string()),
-            message: copy_core::backend_old(&copy_core::peer_machine()),
-        });
+        return Err(Said::new(
+            UNKNOWN_COMMAND,
+            copy_core::backend_old(&copy_core::peer_machine()),
+        ));
     }
     if got.exit_status != Some(0) {
         let stderr = got.stderr.as_str();
@@ -624,10 +582,14 @@ fn settle_pulled(got: &crate::dial::Captured) -> Result<String, Said> {
                 stderr.trim(),
             )),
         };
-        return Err(Said { code, message });
+        let said = Said::from(message);
+        return Err(match code {
+            Some(c) => said.coded(&c),
+            None => said,
+        });
     }
     if stdout.len() >= PULL_MAX_BYTES {
-        return Err(plain(copy_text(
+        return Err(Said::from(copy_text(
             "beRemoteAsk.run.tooLarge",
             &[("max", &PULL_MAX_BYTES.to_string())],
         )));
