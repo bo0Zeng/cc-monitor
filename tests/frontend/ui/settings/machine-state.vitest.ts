@@ -72,7 +72,8 @@ describe("机器状态成品", () => {
     expect(localBackendFace({ state: "starting", look: "connecting", tone: "busy", word: "w", said: "s" })).toMatchObject({ dot: "unknown", tone: "busy", fixes: [], next: "" });
     // 点与语气跟壳写的那两格走，不按 `state` 另判：同是 down，壳说画成要更新、语气留意 ⇒ 照它。
     expect(localBackendFace({ ...down, look: "needs_update", tone: "warn" })).toMatchObject({ dot: "needs-you", tone: "warn" });
-    expect(localBackendFace({ state: "newer", look: "newer", tone: "fail", word: "w", said: "s", fixes, next: null })).toMatchObject({ dot: "up", tone: "error", next: "" });
+    // 口上占着更新的构建：壳画成没连着 ⇒ 点与出错那一句对上。
+    expect(localBackendFace({ state: "newer", look: "down", tone: "fail", word: "w", said: "s", fixes, next: null })).toMatchObject({ dot: "failed", tone: "error", next: "" });
   });
 
   it("★ 修法按钮：字照成品、点了交那一颗的码；更新那一颗是主按钮", () => {
