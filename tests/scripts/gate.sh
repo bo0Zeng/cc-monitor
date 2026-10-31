@@ -597,7 +597,7 @@ gate_selftest
 # 排在所有格之前：一族判据的人群是「走文件系统」，仓内多一份副本（并发的 worktree、变异副本）人群就静默膨胀 ——
 # 恒等断言红一片和改动无关的，地板断言则一声不吭地过去。本格红时先清副本再重跑。
 run_gate worktree-clean '判过的条数（抽样 4 个扩展名 `.sh`/`.mjs`/`.rs`/`.ts`，每个一条恒等断言：`git ls-files` 认的份数 == 走文件系统走出的份数）。⚠ 抽样不是全集：挑的是走文件系统的判据在数的东西。买的是「仓里没有第二份工作副本」，不买「所有判据的人群都对」—— 被 `.gitignore` 掉的源码同样会让走文件系统的判据多看一份，本格按 gitignore 的口径算、看不见它' \
-         python3 tests/evidence/K-W25-worktree-clean.py
+         python3 tests/evidence/worktree-clean.py
 
 # ── 按步骤名照 `ci.yml` 原样跑某几步 —— 只给**留在 Windows job 里**的那几步用（`coverage` · `audit`）。
 # 那几步的命令住 `ci.yml` 的 Windows job（门禁跑不了真 Windows，那个 job 保留），本文件不抄第二份。
@@ -705,15 +705,15 @@ run_gate e2e-smoke '步数：`tests/e2e/*.py` 的 `py_compile` · `tests/e2e/exe
 run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PASS：触发与发布闸 · 两处发布步骤的正文来源与生成器 · 产字节那条路（承诺的平台 ↔ 产线 ↔ 登记、target triple，两向集合相等；runner 标签逐字）· 每一处抠 `const BUILD_ID`／身份戳界标的住址实打读得到恰好一行 · 发版产 musl 字节那一步只调 `tests/scripts/re-embed.sh --build-only`（真跑一趟、cargo 是替身：只编不铺）· 本机那一份的原生编译与 `--native` 逐字 · 落点 ↔ `.gitignore` 两向 · 真跑 `--check` · Release 资产 ↔ `src/doc/RELEASING.md` §2.2 登记表）。⚠ 不执行 GitHub 的表达式求值器、不跑流水线 ⇒ 「盘上文本满足这几条」不等于「云端那一趟会绿」，更不等于字节在目标机器上跑得起来；往 Release 上写只认 `softprops/action-gh-release` 与 `gh release`/`gh api …/releases` 两种形状；正文写得对不对不判；`--check` 只读，在没铺字节的树上只答得出「没有对不上的字节」' \
          python3 tests/evidence/release-ruler.py
 
-# ── `platform`：承诺的平台 ↔ 门禁真跑的格（判据本体 `tests/evidence/K-G4-platform-ledger.py`）──
+# ── `platform`：承诺的平台 ↔ 门禁真跑的格（判据本体 `tests/evidence/platform-ledger.py`）──
 # 各格只说「我编得过」，这一格说「该编的都编了」：少一格、或多一个没登记的 target 都红。只判登记，不编东西。
 run_gate platform '判过的条数（判据本体每趟现算并印在它自己那行上：P1 承诺表 ↔ 门禁格两向集合相等 ＋ P2 每格一条逐字锚点 count()==1 ＋ P3 显式拒绝的那格全仓零脚印）。⚠ 反空真锚是 P1 那两向相等。⚠ 它不编任何东西：判的是门禁盖到了哪些平台，不判那些平台上真跑得起来' \
-         python3 tests/evidence/K-G4-platform-ledger.py
+         python3 tests/evidence/platform-ledger.py
 
 # ── `ccbus-twophase`：cc-bus 入口那一侧 —— 每个动词只把一句交给后端 ──
-# 收件箱 · 已读位置 · 发信的规矩都住后端（两阶段读的行为由后端单测钉）；判据本体与射程住 `tests/evidence/W24C-ccbus-twophase-ruler.py`。
+# 收件箱 · 已读位置 · 发信的规矩都住后端（两阶段读的行为由后端单测钉）；判据本体与射程住 `tests/evidence/ccbus-twophase-ruler.py`。
 run_gate ccbus-twophase '判过的条数（判据本体每趟现算并印在它自己那几行上：脚本零数据面 · 零锁零规矩（各带正控）· 各动词只问后端它自己那一条（与登记两向相等）· 脚本问的动词 == 后端的 bus-* · recv 是 peek 接 commit · 手册页那几句 —— 共 6）。⚠ **反空真锚不是这个数，是末尾那条「标签集合与登记两向相等」**。⚠ 它不判后端那一侧（Rust 单测与 e2e 的事）' \
-         python3 tests/evidence/W24C-ccbus-twophase-ruler.py
+         python3 tests/evidence/ccbus-twophase-ruler.py
 
 # ── `fmt`：`src/frontend/shell` workspace 的排版 ──
 # 云端 Windows job 的第一步就是 `cargo fmt --check`，它红了后面全 `skipped`；本机先拦住。只判排版，不判代码对。

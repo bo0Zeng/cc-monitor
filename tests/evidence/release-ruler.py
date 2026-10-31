@@ -144,7 +144,7 @@ RENDERER = "tests/scripts/release-notes.mjs"
 #
 #: 平台**承诺面**住这份账本，本文件只 import、**不抄第二份**
 #: （它是 `platform` 那一格的本体）。
-LEDGER = "tests/evidence/K-G4-platform-ledger.py"
+LEDGER = "tests/evidence/platform-ledger.py"
 #: 内嵌那一段的住址 —— ⑪ 读它，确认「抠不到 `BUILD_ID`」是一条响亮的失败。
 BUILD_RS = "src/frontend/shell/build.rs"
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""cc-bus 入口那一侧的判据本体:**每个动词只把一句交给后端**(A13-8)。
+"""cc-bus 入口那一侧的判据本体:**每个动词只把一句交给后端**。
 
 收件箱 · 已读位置 · 发信的规矩(信封 · 组 · 去重 · 限流 · 敲不敲)都住 cc-monitor 后端;两阶段读的行为
 (令牌 · CAS · 截短自愈 · 分段)由后端单测钉(`tests/backend/control/cc_bus_store_tests.rs` · `cc_bus_rules_tests.rs`),
@@ -20,9 +20,9 @@ here-doc 正文里的 `#` 不认(人群里只有入口的 usage 那一段 here-d
 
 ## 跑法
 
-    python3 tests/evidence/W24C-ccbus-twophase-ruler.py
+    python3 tests/evidence/ccbus-twophase-ruler.py
 
-`W24C_ROOT=<副本>` 只为死值验存在:把仓拷进草稿目录变异之后对着副本跑,不必动真工作树。日常跑一律不带。
+`CCBUS_RULER_ROOT=<副本>` 只为死值验存在:把仓拷进草稿目录变异之后对着副本跑,不必动真工作树。日常跑一律不带。
 """
 
 import os
@@ -30,7 +30,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(os.environ.get("W24C_ROOT") or Path(__file__).resolve().parents[2])
+ROOT = Path(os.environ.get("CCBUS_RULER_ROOT") or Path(__file__).resolve().parents[2])
 SCRIPTS = ROOT / "src" / "shared" / "cc-bus" / "scripts"
 SKILL = ROOT / "src" / "shared" / "cc-bus" / "SKILL.md"
 WIRE = ROOT / "src" / "backend" / "control" / "cc_bus_wire.rs"

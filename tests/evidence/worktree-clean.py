@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 """门禁的**前置条件**：仓里不许有第二份工作副本。
 
-住址：`tests/evidence/K-W25-worktree-clean.py`（门禁第 25 格 `worktree-clean` 调它）
+住址：`tests/evidence/worktree-clean.py`（门禁第 25 格 `worktree-clean` 调它）
 
-# 它治的病：2026-09-19 一天内绊了**三次**
+# 它治的病
 
 本仓有**一族**判据的人群是「**走文件系统**」（`walk` / `read_dir` / `readdirSync` /
 `find` / `eslint .`），而不是 `git ls-files`。现打至少 8 份文件里有这种取法。
 
 只要仓内出现第二份工作副本（并发 agent 的 `git worktree`、死值验的变异副本、
-备份目录、vendored checkout），它们的人群就**静默膨胀**。当天实测：
+备份目录、vendored checkout），它们的人群就**静默膨胀**。实测过一回：
 
     git ls-files 的 `.sh`  =   55
     find 走出来的 `.sh`    = 1193   ← 1138 个在 `.claude/worktrees/` 里
 
 后果不是「多扫了几个文件」，是**一片读不懂的红**：`shell_lint_registry`
 （恒等断言）· `bus_identity_registry` · `cc_bus_deploy` · `eslint 基线 7 → 1383`
-一起红，而它们和这次改的东西**毫无关系**。三次都花了时间才认出来。
+一起红，而它们和手上的改动**毫无关系**，很难认出来。
 
-🔴 **更坏的那一半，今天没发作但它在**：上面那几条是**恒等**断言所以红得响。
+🔴 **更坏的那一半**：上面那几条是**恒等**断言所以红得响。
    同族里凡是用**地板**（`>= N`）的，人群膨胀时**一声不吭地过去** ——
    「多扫了 1138 个文件」在地板下和「扫对了」长得一模一样。
 
@@ -101,7 +101,7 @@ def main():
             capture_output=True, text=True).stdout
         new_files = [f for f in untracked.split("\0")
                      if f and f.rsplit(".", 1)[-1] in EXTS]
-        print("W25: FAIL —— 文件系统与 git 对同一批扩展名看到的份数不等")
+        print("worktree-clean: FAIL —— 文件系统与 git 对同一批扩展名看到的份数不等")
         for f in fails:
             print(f"  ✗ {f}")
         print()

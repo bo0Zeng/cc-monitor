@@ -24,7 +24,7 @@ name: Release
 #
 # ⚠ **平台承诺面哪几格 ↔ 本文件哪几步产它们的字节** —— 那张表**不抄在这里**。
 #   唯一住址：`tests/evidence/release-ruler.py` 的 `BYTE_LINES`（承诺面那一侧它又是从
-#   `tests/evidence/K-G4-platform-ledger.py::PROMISED` 导进去的，全仓只有那一份）。
+#   `tests/evidence/platform-ledger.py::PROMISED` 导进去的，全仓只有那一份）。
 #   本文件里每加/删/改名一个「编后端」的步骤，那份判据会**两向**红 —— 这是刻意的：
 #   多一条没人登记的产线 ＝ 给一个**没承诺的平台**悄悄发了字节。
 on:
