@@ -51,7 +51,6 @@ fun sampleRenderUnits(): List<RenderUnit> =
             key = "s4",
             toolUseId = "t1",
             name = "Bash",
-            input = emptyMap(),
             summary = "./gradlew :core-claude:testDebugUnitTest --console=plain",
             resultText = "BUILD SUCCESSFUL in 7s\nTOTAL tests=37 failures+errors=0 skipped=0",
             isError = false,
@@ -62,7 +61,6 @@ fun sampleRenderUnits(): List<RenderUnit> =
             key = "s5",
             toolUseId = "t2",
             name = "Edit",
-            input = emptyMap(),
             summary = "core-claude/src/main/kotlin/.../LineDiff.kt",
             diff =
                 sampleDiff(
@@ -81,7 +79,6 @@ fun sampleRenderUnits(): List<RenderUnit> =
             key = "s6",
             toolUseId = "tm",
             name = "MultiEdit",
-            input = emptyMap(),
             summary = "core-claude/.../MainBranch.kt",
             diff =
                 sampleDiff(
@@ -103,7 +100,6 @@ fun sampleRenderUnits(): List<RenderUnit> =
             key = "s7",
             toolUseId = "t3",
             name = "Read",
-            input = emptyMap(),
             summary = "/home/pi/project/foo.kt",
             resultText = null,
             isError = false,
@@ -114,7 +110,6 @@ fun sampleRenderUnits(): List<RenderUnit> =
             key = "s8",
             toolUseId = "t4",
             name = "Bash",
-            input = emptyMap(),
             summary = "cat /nonexistent",
             resultText = "cat: /nonexistent: No such file or directory",
             isError = true,

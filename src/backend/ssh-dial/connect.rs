@@ -14,7 +14,7 @@ use russh::client;
 use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate};
 
 use crate::env::{self, Credential};
-use crate::{DialRequest, Endpoint, JumpHop, Said, Stage, StageSink, Why};
+use crate::{DialRequest, Endpoint, JumpHop, Said, StageSink, Why};
 
 /// 长连接的 SSH 层保活：**10 秒没收到对端字节就发一个**（russh 的 `keepalive_interval`：收到任何字节都重新计时）。
 /// 发出去之后又过了 [`KEEPALIVE_MAX`] 轮还是一个字节都没收到 ⇒ russh 判死、断开这条连接（最后收包之后 `KEEPALIVE_MAX + 1` 轮，20 秒）。
@@ -300,7 +300,9 @@ pub struct Checker {
     trust: Trust,
     observed: Seen,
     stages: StageSink,
-    endpoint: String,
+    /// 握手的是哪一台 ＋ 阶段那一句里怎么称呼它。
+    endpoint: Endpoint,
+    label: String,
     /// 这条连接的收包记账；连接没了在这里记一笔（[`crate::pool::Heard::mark_gone`]）。
     heard: Arc<crate::pool::Heard>,
 }
@@ -348,10 +350,11 @@ impl client::Handler for Checker {
         }
         // 到 host key 校验 = 该地址 TCP ＋ KEX 已过。
         self.stages.step(crate::step::HOSTKEY);
-        self.stages.emit(Stage::HostKey {
-            endpoint: self.endpoint.clone(),
-            fingerprint: actual.clone(),
-        });
+        self.stages.emit(crate::stage::host_key(
+            self.endpoint.clone(),
+            &self.label,
+            &actual,
+        ));
         // 协商出的这一把是什么类型（报错时带上：「钥匙变了」那一句要说是哪一种）。
         self.stages
             .note_key_type(server_public_key.algorithm().as_str());
@@ -582,16 +585,15 @@ async fn race(
             let out = out.clone();
             set.spawn(async move {
                 let ep_label = label(&ep);
-                stages.emit(Stage::Dialing {
-                    endpoint: ep_label.clone(),
-                });
+                stages.emit(crate::stage::dialing(ep.clone(), &ep_label));
                 let heard = Arc::new(crate::pool::Heard::new());
                 let config = |compress| config_for(probe, compress, &trust);
                 let checker = Checker {
                     trust: trust.clone(),
                     observed: Arc::clone(&observed),
                     stages: stages.clone(),
-                    endpoint: ep_label.clone(),
+                    endpoint: ep.clone(),
+                    label: ep_label.clone(),
                     heard: Arc::clone(&heard),
                 };
                 let r = match tcp_hop(&ep, &out).await {
@@ -624,10 +626,11 @@ async fn race(
                         heard,
                     }),
                     Err((stage, e)) => {
-                        stages.emit(Stage::Failed {
-                            endpoint: ep_label.clone(),
-                            reason: format!("[{stage}] {e}"),
-                        });
+                        stages.emit(crate::stage::failed(
+                            ep.clone(),
+                            &ep_label,
+                            &format!("[{stage}] {e}"),
+                        ));
                         Err((stage, format!("{ep_label} {e}")))
                     }
                 }
@@ -646,9 +649,10 @@ async fn race(
             match joined {
                 Ok(Ok(winner)) => {
                     set.abort_all();
-                    stages.emit(Stage::Won {
-                        endpoint: label(&winner.winner),
-                    });
+                    stages.emit(crate::stage::won(
+                        winner.winner.clone(),
+                        &label(&winner.winner),
+                    ));
                     return Ok(winner);
                 }
                 Ok(Err((stage, e))) => {
@@ -1035,13 +1039,12 @@ async fn through_hops(
     let mut far = false;
     for hop in chain {
         let name = hop_name(hop);
-        stages.emit(Stage::Dialing {
-            endpoint: copy_text("beConnect.jump.label", &[("hop", &name)]),
-        });
+        let hop_label = copy_text("beConnect.jump.label", &[("hop", &name)]);
         let hop_addrs = [Endpoint {
             host: hop.host.clone(),
             port: hop.port,
         }];
+        stages.emit(crate::stage::dialing(hop_addrs[0].clone(), &hop_label));
         let hop_trust = Trust::of(&hop_addrs).map_err(|e| unreadable(stages, e))?;
         let (mut session, seen, wire, via_proxy) = match held.last() {
             None => {
@@ -1060,7 +1063,8 @@ async fn through_hops(
                     trust: hop_trust.clone(),
                     observed: Arc::clone(&observed),
                     stages: stages.clone(),
-                    endpoint: copy_text("beConnect.jump.label", &[("hop", &name)]),
+                    endpoint: hop_addrs[0].clone(),
+                    label: hop_label.clone(),
                     // 跳板那几台：断了 ⇒ 隧道跟着断 ⇒ 目标那条自己报断开；这一份没人等。
                     heard: Arc::new(crate::pool::Heard::new()),
                 };
@@ -1195,11 +1199,16 @@ pub async fn establish_via(
             );
             // 目标那条的字节经隧道到：收包时刻记在隧道这一层（跳板那条 TCP 上的字节不全是它的）。
             let heard = Arc::new(crate::pool::Heard::new());
+            let winner = Endpoint {
+                host: req.host.clone(),
+                port: req.port,
+            };
             let checker = Checker {
                 trust: target_trust.clone(),
                 observed: Arc::clone(&observed),
                 stages: stages.clone(),
-                endpoint: ep_label,
+                endpoint: winner.clone(),
+                label: ep_label,
                 heard: Arc::clone(&heard),
             };
             let session = client::connect_stream(
@@ -1215,10 +1224,6 @@ pub async fn establish_via(
                     fingerprint_in(&observed),
                 )
             })?;
-            let winner = Endpoint {
-                host: req.host.clone(),
-                port: req.port,
-            };
             (
                 session, observed, winner, jumps, heard, far_inner,
                 // 目标那条在跳板里头开（direct-tcpip）：它自己的 TCP 不经代理，经没经记在最外那台跳板那一条上。
@@ -1236,19 +1241,13 @@ pub async fn establish_via(
     {
         let (code, e) = e;
         stages.note_why(code);
-        stages.emit(Stage::Auth {
-            ok: false,
-            detail: Some(e.said.clone()),
-        });
+        stages.emit(crate::stage::auth_failed(&e.said));
         return Err((e, fingerprint));
     }
     remember(&addrs, &observed);
     stages.step(crate::step::AUTH);
-    stages.emit(Stage::Auth {
-        ok: true,
-        detail: None,
-    });
-    stages.emit(Stage::Established);
+    stages.emit(crate::stage::auth_ok());
+    stages.emit(crate::stage::established());
     Ok(Linked {
         session,
         fingerprint,

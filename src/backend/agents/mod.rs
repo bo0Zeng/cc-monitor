@@ -2046,10 +2046,14 @@ pub(crate) struct DefaultUpstream {
     pub(crate) window_key: Option<fn(&str) -> Option<String>>,
     /// 让这一家的官方客户端报一次某个号的用量（不花模型额度）：怎么起 · 怎么把输出读成窗口。`None` ＝ 这一家没有这一形。
     pub(crate) usage: Option<UsageFace>,
+    /// 用一个号发一句最短的话、让它的 5 小时窗开始计时：交给 ccm 的那几个参数 · 起它时设上的环境。`None` ＝ 这一家没有这一形。
+    pub(crate) warm: Option<WarmFace>,
     /// 订阅号登录那一格：令牌住哪、什么格式、怎么续、锁叫什么。`None` ＝ 这一家没有可换的订阅号登录。
     pub(crate) login: Option<LoginFace>,
     /// 这一家自己认得的「用满」回包（轮换的硬上限用它：这一发不发上游、回这一份）。`None` ＝ 给不出 ⇒ 对它硬上限不成立、按软阈值办。
     pub(crate) limit_reply: Option<LimitReplyOf>,
+    /// 回了「用满」之后，这一家的客户端自己等到重置再续的最远时长（秒）：重置在这之外 ⇒ 它不续、要人接着。`None` ＝ 它不等、或说不出。
+    pub(crate) resumes_within: Option<u64>,
     /// 起会话时怎么把这一家指到中转（`ccm` 最终 exec 那一处照这一格做）。是 [`Inject::Env`] 的那一家，
     /// 继承来的那一条地址（用户自己的端点 · 别的号的中转）也只看那个变量。
     pub(crate) inject: Inject,
@@ -2107,6 +2111,20 @@ pub(crate) struct UsageFace {
     pub(crate) read: fn(&str, u64) -> Result<Vec<QuotaWindow>, String>,
 }
 
+/// 一家「开窗那一句」那一形：通用层（`accounts::quota::warm`）让本二进制当 ccm 跑 `ccm <args> -- --account <号> …`，
+/// `args` 是交给那一家程序的参数（模型 · 关掉工具与 MCP · 不落会话记录 · 换系统提示 · 那一句），只住适配层。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WarmFace {
+    pub(crate) args: &'static [&'static str],
+    /// 起它时设上的（关掉思考 · 不发非必要的请求）。
+    pub(crate) env_set: &'static [(&'static str, &'static str)],
+}
+
+/// 路由第 1 段 → 那一家的「开窗那一句」那一形。
+pub(crate) fn warm_of(route: RouteId) -> Option<WarmFace> {
+    upstream_of(route).and_then(|u| u.warm)
+}
+
 /// 路由第 1 段 → 那一家的「报用量」那一形。
 pub(crate) fn usage_of(route: RouteId) -> Option<UsageFace> {
     upstream_of(route).and_then(|u| u.usage)
@@ -2115,6 +2133,11 @@ pub(crate) fn usage_of(route: RouteId) -> Option<UsageFace> {
 /// 路由第 1 段 → 那一家的「用满」回包（见 [`DefaultUpstream::limit_reply`]）。
 pub(crate) fn limit_reply_of(route: RouteId) -> Option<LimitReplyOf> {
     upstream_of(route).and_then(|u| u.limit_reply)
+}
+
+/// 路由第 1 段 → 那一家的客户端自己等到重置再续的最远时长（见 [`DefaultUpstream::resumes_within`]）。
+pub(crate) fn resumes_within_of(route: RouteId) -> Option<u64> {
+    upstream_of(route).and_then(|u| u.resumes_within)
 }
 
 /// 怎么把一家指到中转：只管地址放哪。地址由上游选择给（不带钥匙），`ccm` exec 那一刻插钥匙，插哪一把按地址的路由。
