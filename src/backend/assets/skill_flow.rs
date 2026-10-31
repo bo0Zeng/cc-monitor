@@ -6,6 +6,7 @@
 use crate::assets::hub_wire::{SkillApplied, SkillApplyReq, SkillPlanReq, SkillSourceFile};
 use crate::assets::mcp_sync::Facts;
 use crate::common::door::{self, Door, Refused};
+use crate::common::said::IntoNote as _;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 

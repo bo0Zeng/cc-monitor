@@ -95,7 +95,7 @@ pub(crate) fn kick(agent: &str, accts: &[String], own: &Own, now: u64) {
                         book().landed(&agent, &a, at);
                         tracing::info!("[warm] {agent}/{a} 开窗一发已回 · 重置 {at:?}");
                     }
-                    Err(e) => tracing::warn!("[warm] {agent}/{a} 开窗一发未成：{}", e.message),
+                    Err(e) => tracing::warn!("[warm] {agent}/{a} 开窗一发未成：{}", e.logged()),
                 });
         if let Err(e) = spawned {
             tracing::warn!("[warm] 开窗线程起不来：{e}");
@@ -169,9 +169,10 @@ pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>,
         child = child.env("PATH", p);
     }
     let out = child.run(SEND_WITHIN).map_err(|e| {
-        Said::from(e.into_cmd_said("failed", |why| {
+        let (code, said) = e.into_cmd_said("failed", |why| {
             copy_text("beQuotaWarm.run.failed", &[("why", why)])
-        }))
+        });
+        crate::wire::spec::fail(code, said)
     })?;
     if !out.status.success() {
         let code = out

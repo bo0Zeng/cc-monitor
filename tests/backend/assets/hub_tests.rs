@@ -307,13 +307,10 @@ impl Remote for CodedRemote {
         _dial: &'a Value,
         _command: String,
         _stdin: Option<String>,
-    ) -> Pin<Box<dyn Future<Output = Result<String, crate::dial::remote_ask::Said>> + Send + 'a>>
+    ) -> Pin<Box<dyn Future<Output = Result<String, crate::common::said::Said>> + Send + 'a>>
     {
         Box::pin(async {
-            Err(crate::dial::remote_ask::Said {
-                code: Some("stale".to_string()),
-                message: "盘上那份在看过之后被改过".to_string(),
-            })
+            Err(crate::common::said::Said::new("stale", "盘上那份在看过之后被改过".to_string()))
         })
     }
 }
@@ -378,7 +375,7 @@ impl Remote for PosixRemote {
         _dial: &'a Value,
         _command: String,
         stdin: Option<String>,
-    ) -> Pin<Box<dyn Future<Output = Result<String, crate::dial::remote_ask::Said>> + Send + 'a>>
+    ) -> Pin<Box<dyn Future<Output = Result<String, crate::common::said::Said>> + Send + 'a>>
     {
         let args: Value = serde_json::from_str(stdin.unwrap_or_default().trim()).unwrap();
         self.asked.lock().unwrap().push(args.clone());
@@ -388,10 +385,7 @@ impl Remote for PosixRemote {
         );
         let out = match judged {
             Ok(_) => Ok(format!("{}\n", self.plan)),
-            Err((code, message)) => Err(crate::dial::remote_ask::Said {
-                code: Some(code.to_string()),
-                message,
-            }),
+            Err((code, message)) => Err(crate::common::said::Said::new(code, message)),
         };
         Box::pin(async move { out })
     }

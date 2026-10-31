@@ -246,7 +246,7 @@ pub(crate) fn answer_restore_at(own: &Own, args: &Value) -> FileFaceAnswer {
 
 /// 表里现有哪几个号（`accounts` 底下的键，按名排）。只读；文件不在 ⇒ 零个；解析不了 ⇒ `Err`（那句话）。
 pub(crate) fn account_ids_at(path: &Path) -> Result<Vec<String>, String> {
-    let doc = read_doc(path).map_err(|f| f.message)?.unwrap_or_default();
+    let doc = read_doc(path).map_err(|f| f.said)?.unwrap_or_default();
     let mut ids: Vec<String> = doc
         .get(store::ACCOUNTS_FIELD)
         .and_then(Value::as_object)
@@ -402,7 +402,7 @@ fn rewrite_at(own: &Own, file: &OwnPath, change: Rewrite) -> Result<bool, Said> 
     //   从前后写的那一份整份盖掉先写的那一格（这一份连进程内锁都没有）。
     let held = own
         .lock(&dir)
-        .map_err(|e| ("io_failed", crate::common::said::Said::from(e)))?;
+        .map_err(|e| crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e)))?;
     // ★ 写的这一刻读盘。解析不了 ⇒ `bad_file`，**不覆盖**。
     let current = read_doc(path)?.unwrap_or_default();
     let Some(merged) = change(&current) else {

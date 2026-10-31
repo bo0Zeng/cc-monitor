@@ -26,7 +26,7 @@
 //!
 //! # 诚实边界
 //!
-//! 远端那一跳失败时码随原话一起交回（`remote_ask::Said`，别压成一个）：被写那台答 `stale` 就是 `stale`；
+//! 远端那一跳失败时码随原话一起交回（`Said` 带码，别压成一个）：被写那台答 `stale` 就是 `stale`；
 //! 读不出码的（拨号失败 · 链路断了 · 那台太旧）回 `unreachable` ＋ 原话。本机那一跳的码原样保留。
 
 use copy_core::copy_text;
@@ -45,6 +45,7 @@ use super::hub_wire::{
     SkillApplyReq, SkillPlan, SkillPlanCmd, SkillPlanReq, SkillRead, SkillReadCmd, SkillReadReq,
     SkillSourceFile,
 };
+use crate::common::said::IntoNote as _;
 use crate::dial::remote_ask::{Remote, Table};
 
 /// 这台自己的那几条内层命令那一口住协议零件那一层（[`crate::wire::typed::Here`]，命令表那一行递进来）。
@@ -87,10 +88,10 @@ where
     C::Req: serde::Serialize,
     C::Reply: serde::de::DeserializeOwned,
 {
-    let said = |s: crate::dial::remote_ask::Said| {
+    let said = |s: crate::common::said::Said| {
         (
             s.code.unwrap_or_else(|| "unreachable".to_string()),
-            s.message,
+            s.said,
         )
     };
     let Some(m) = machine else {
@@ -118,7 +119,7 @@ fn machine_name(m: Option<&str>) -> String {
 /// 枢纽按自己这台的写法判会把别台的路径错拒（Windows 上的枢纽不认 `/home/…`）。
 fn scope_of(args: &Value) -> Result<(ExtLoc, ExtLoc), (String, String)> {
     let s = args.get("scope");
-    let own = |e: crate::common::said::Said| (e.code, e.message);
+    let own = |e: crate::common::said::Said| (e.code_or_fallback().to_string(), e.said);
     Ok((
         ExtLoc::shape_of(s.and_then(|s| s.get("from")), "scope.from").map_err(own)?,
         ExtLoc::shape_of(s.and_then(|s| s.get("to")), "scope.to").map_err(own)?,
@@ -153,11 +154,11 @@ struct Ask<'a> {
 /// 整种只读的那一种（插件）进了「装」⇒ 拒（同 [`super::ext::read_only_refused`]）。
 fn refused_pair(kind: ExtKind) -> (String, String) {
     let f = super::ext::read_only_refused(kind);
-    (f.code, f.message)
+    (f.code_or_fallback().to_string(), f.said)
 }
 
 fn ask_of(args: &Value) -> Result<Ask<'_>, (String, String)> {
-    let own = |e: crate::common::said::Said| (e.code, e.message);
+    let own = |e: crate::common::said::Said| (e.code_or_fallback().to_string(), e.said);
     let kind = super::ext::kind_from_arg(args).map_err(own)?;
     let name = str_arg(args, "name")?;
     // 自己发版的插件（planned-build）照 skill 那条路装：整个目录拷进用户级 skills 目录；别的插件只读。
@@ -695,7 +696,7 @@ pub(crate) type CurrentFn<'a> = &'a (dyn Fn(bool) -> Result<(super::asset_catalo
 
 /// 那张表现拼一次（`ext-list` 同一份目录 ＋ 可达表）；目录那一份由命令表那扇门递进来（同 `ext-list`）。
 fn current_list(table: &Table, current: CurrentFn<'_>) -> Result<ExtList, (String, String)> {
-    let (cat, _) = current(false).map_err(|f| (f.code.clone(), f.into_note()))?;
+    let (cat, _) = current(false).map_err(|f| (f.code_or_fallback().to_string(), f.into_note()))?;
     Ok(super::ext::table(&cat, &super::ext::reach_of(table)))
 }
 

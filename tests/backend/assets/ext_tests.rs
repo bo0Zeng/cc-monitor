@@ -26,7 +26,8 @@ use crate::assets::aliases::tests::HomeDoor;
 use crate::assets::asset_catalog::{Scanned, Snapshot, Visits};
 use crate::assets::hub::tests::{ap, pv};
 use crate::assets::mcp_sync::{Facts, There};
-use crate::dial::remote_ask::{Remote, Said, Table};
+use crate::common::said::Said;
+use crate::dial::remote_ask::{Remote, Table};
 use crate::wire::typed::Here;
 use std::future::Future;
 use std::pin::Pin;
@@ -480,7 +481,7 @@ impl M {
                 other.to_string(),
             )),
         };
-        r.map_err(|f| (f.code, f.message))
+        r.map_err(|f| (f.code_or_fallback().to_string(), f.said))
     }
 }
 
@@ -523,10 +524,7 @@ impl Remote for RemoteM {
         let args: Value = serde_json::from_str(stdin.as_deref().unwrap_or("null").trim()).unwrap();
         let out = self.0.inner(&flag, &args);
         Box::pin(async move {
-            out.map(|v| v.to_string()).map_err(|(c, m)| Said {
-                code: Some(c),
-                message: m,
-            })
+            out.map(|v| v.to_string()).map_err(|(c, m)| Said::new(&c, m))
         })
     }
 }
@@ -1221,9 +1219,9 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     let mut ua = u.clone();
     ua["token"] = card["token"].clone();
     std::fs::write(dir.join("SKILL.md"), "edited\n").unwrap();
-    let crate::common::said::Said { code, .. } =
+    let e =
         answer_uninstall_apply(&m.door(), &m.env, &record, &ua).expect_err("变了还删了");
-    assert_eq!(code, "stale");
+    assert_eq!(e.code.as_deref(), Some("stale"));
     assert!(dir.join("SKILL.md").exists());
     let card = answer_uninstall_preview(&m.door(), &m.env, &u).unwrap();
     ua["token"] = card["token"].clone();
@@ -1271,13 +1269,13 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
         "MCP 那份原文没抄进备份"
     );
     // 这台没建账号库：用户级 MCP 只读，卸也拒。
-    let crate::common::said::Said { code, .. } = answer_uninstall_preview(
+    let e = answer_uninstall_preview(
         &m.door(),
         &m.env,
         &json!({ "kind": "mcp", "name": "x", "at": { "level": "user" } }),
     )
     .expect_err("用户级也给卸");
-    assert_eq!(code, "refused");
+    assert_eq!(e.code.as_deref(), Some("refused"));
     let _ = std::fs::remove_dir_all(&base);
 }
 
@@ -1539,7 +1537,7 @@ fn ext_loc_judged_bad_args_omits_sentinel_value_from_rejection() {
     let sentinel = "SENTINEL_SECRET_TOKEN_EXT_LOC_54321";
     let bad_val = serde_json::json!({ "level": sentinel });
     let fail = ExtLoc::shape_of(Some(&bad_val), "place").expect_err("应当因位置格式错误拒绝");
-    let rejection = format!("{} {:?}", fail.message, fail.raw);
+    let rejection = format!("{} {:?}", fail.said, fail.raw);
     assert!(
         !rejection.contains(sentinel),
         "拒绝体中泄露了哨兵串原值：{rejection}"
@@ -1673,13 +1671,13 @@ fn a_plugin_cell_says_on_off_or_project_and_offers_no_install() {
         ledger: None,
     };
     let door = HomeDoor(d.clone());
-    let crate::common::said::Said { code, message, .. } = answer_uninstall_preview(
+    let e = answer_uninstall_preview(
         &door,
         &env,
         &json!({ "kind": "plugin", "name": "github", "at": { "level": "user" } }),
     )
     .expect_err("插件给卸了");
-    assert_eq!((code.as_str(), message), ("refused", ro));
+    assert_eq!((e.code.as_deref(), e.said), (Some("refused"), ro));
     let _ = std::fs::remove_dir_all(&d);
 }
 

@@ -788,7 +788,7 @@ fn update_core(
     let file = own.at_home(DOC.rel).map_err(no_home)?;
     let path = file.as_path();
     own.ensure_dir(&dir).map_err(|e| {
-        (
+        crate::wire::spec::fail(
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(

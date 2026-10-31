@@ -139,7 +139,7 @@ pub fn push_plan(
 
 /// 写口回的失败（或对面那一份解不成并的入参）⇒ 那一趟的那一句。
 fn fold_failed(f: Said) -> String {
-    let c = f.code.clone();
+    let c = f.code_or_fallback().to_string();
     copy_text(
         "beAssetSync.foldBlocking.failed",
         &[("c", &c), ("m", &f.into_note())],
@@ -247,7 +247,7 @@ async fn sync_named(
 ) -> (bool, AssetsSyncRow) {
     match table.dial(key) {
         Ok(dial) => sync_one(key, &dial, fold, remote, table).await,
-        Err(e) => (false, outcome(key, None, false, 0, &[e.message])),
+        Err(e) => (false, outcome(key, None, false, 0, &[e.said])),
     }
 }
 

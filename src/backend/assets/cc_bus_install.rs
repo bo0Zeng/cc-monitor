@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 
 use crate::assets::hub_wire::{CcBusInstalled, CcBusState};
 use crate::common::door::{self, Door};
+use crate::common::said::IntoNote as _;
 
 pub(crate) use super::skill_ledger::Record;
 use super::skill_ledger::{RecordReq, Recorded};

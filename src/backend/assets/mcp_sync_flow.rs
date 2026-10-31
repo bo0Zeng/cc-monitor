@@ -18,6 +18,7 @@ use crate::assets::hub_wire::{
 };
 use crate::assets::mcp_sync::{candidates, judge, servers_of, Facts, There};
 use crate::common::door::{self, Door, Refused};
+use crate::common::said::IntoNote as _;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 

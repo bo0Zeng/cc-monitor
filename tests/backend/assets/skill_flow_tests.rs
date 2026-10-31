@@ -142,7 +142,7 @@ fn a_file_changed_after_the_preview_stops_the_install_there() {
     let record = |a: &crate::assets::skill_ledger::RecordReq| {
         crate::assets::skill_ledger::record_at(&own_at(&ledger), Some(&root), a)
     };
-    let crate::common::said::Said { code, message: why, .. } = answer_install(
+    let failed = answer_install(
         &LocalFiles,
         &NoFacts,
         Some(&root),
@@ -150,7 +150,8 @@ fn a_file_changed_after_the_preview_stops_the_install_there() {
         &json!({ "name": "demo", "source": g["source"], "target": [{ "path": "lib/a.txt", "text": "old a\n" }], "take": g["take"], "overwrite": g["overwrite"] }),
     )
     .expect_err("看过之后变了还写了");
-    assert_eq!(code, "stale");
+    let (code, why) = (failed.code, failed.said);
+    assert_eq!(code.as_deref(), Some("stale"));
     assert!(why.contains("SKILL.md"), "没说前面写了哪几个：{why}");
     assert_eq!(
         std::fs::read_to_string(root.join("demo/lib/a.txt")).unwrap(),
