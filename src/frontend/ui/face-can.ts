@@ -33,6 +33,8 @@ export function frontWhy(f: Face): string | null {
 }
 /** 结束得了（右键 · 多选同一个确认框，交 `sessions-stop`）。 */
 export const canEnd = (f: Face): boolean => f?.can.end.can === "yes";
+/** 停得下这一轮（输入框里的 ■，交 `session-interrupt`）：那台判一轮在跑才给（判不出 · 读记录中 · 需手动 ⇒ 不给）。 */
+export const canStop = (f: Face): boolean => f?.can.stop.can === "yes";
 /** 能恢复（Resume / 在 tmux 里起）。 */
 export const canResume = (f: Face): boolean => f?.can.resume.can === "yes";
 /** × · 中键 · W · 批量都关得掉。 */

@@ -5,7 +5,7 @@
  * 背景:生产/CCM_NO_DEVTOOLS 下 webview 无 devtools、无 eval 通道,自动化断言的
  * 唯一出口是后端日志(frontend_perf_log → grep fe_perf)。本模块把两类不可见状态
  * 变成可 grep 的 `[e2e]` 行:
- * - 启动重放抖动：只测 scrollTop 发现不了（§21）—— 逐帧采样可见元素 getBoundingClientRect().top 的方向反转。
+ * - 冷开抖动：只测 scrollTop 发现不了（§21）—— 逐帧采样可见元素 getBoundingClientRect().top 的方向反转。
  * - 状态快照:贴底距离/账本余量/fold 数等,连每个 tab 行的点击点(Ctrl+Alt+F9 或中键点状态栏触发,e2e 套件用 xdotool 点)。
  */
 import { commands } from "./ipc/commands";
@@ -38,23 +38,24 @@ let target: Element | null = null;
 let retargets = 0;
 
 /**
- * 启动重放抖动探针:锁定 active stream 的**首卡**,逐 rAF 采样其 top。
+ * 冷开抖动探针：锁定 active stream 的**首卡**，逐 rAF 采样其 top；读数是「冷开抖动密度」。
  *
- * 用首卡不用末卡：末卡上方的异步内容（惰性高亮、字体后载、图片）会推挤它，那是加载不是抖动；首卡在重放期文档位置恒定（零上方插入）。
+ * 用首卡不用末卡：末卡上方的异步内容（惰性高亮、字体后载、图片）会推挤它，那是加载不是抖动；冷开那一段首卡文档位置恒定
+ * （先取视口那一截，更早的那一截落地之后才取、只进账本 ⇒ 零上方插入）。
  *
  * 指标是密度绊线，不是零断言：整数 scrollTop 对分数行高天然有 ±亚像素的合法摆动，幅度与病态抖动同级，只有密度分得开
  * （健康 ≈ 0.12–0.16 反转 / 帧，逐帧震荡 ≈ 1.0）；套件断言 density ≤ 0.4。
- * onBatchStart 起、onBatchEnd 停(批末 fold/物化的一次性位移不在测量窗内)。
+ * 量的窗口只一个：冷起补读的首段行要喂进 tab 时起、冷起补读落地时停（`startup-perf.ts` 的 `registerColdProbe`，`main.ts` 登记）。
  */
-export function startReplayJitterProbe(): void {
-  stopReplayJitterProbe(false);
+export function startColdJitterProbe(): void {
+  stopColdJitterProbe(false);
   tops = [];
   target = null;
   retargets = 0;
   const sample = (): void => {
-    // 防呆:batch-end 永不到达(后端 emit 后崩溃)时不无界采样(~60/s)
+    // 防呆：冷起补读永不落地（取回半途失败）时不无界采样（~60/s）
     if (tops.length > 100_000) {
-      stopReplayJitterProbe(false);
+      stopColdJitterProbe(false);
       return;
     }
     const content = document.querySelector(".stream.active > .stream-content");
@@ -68,18 +69,18 @@ export function startReplayJitterProbe(): void {
       }
       tops.push(target.getBoundingClientRect().top);
     }
-    // 调度：自链 —— 探针每帧取样重排自己，`stopReplayJitterProbe` 取消即停；只在 e2e 探针里开
+    // 调度：自链 —— 探针每帧取样重排自己，`stopColdJitterProbe` 取消即停；只在 e2e 探针里开
     rafId = requestAnimationFrame(sample);
   };
   // 调度：自链 —— 同上，链内那一处
   rafId = requestAnimationFrame(sample);
 }
 
-export function stopReplayJitterProbe(report = true): void {
+export function stopColdJitterProbe(report = true): void {
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
-  // frames=0 也落盘:让套件能区分「探针没加载」与「active tab 整批无内容」
-  // (last-active 指向已消亡会话时后者会发生)
+  // frames=0 也落盘：让套件能区分「探针没加载」与「冷开那一段 active tab 无内容」
+  // （last-active 指向已消亡会话时后者会发生）
   if (report) {
     // NaN 哨兵按段切开分别计数(NaN 参与的比较恒 false → 差值被 threshold 滤不掉,
     // 显式分段最稳)
@@ -94,10 +95,10 @@ export function stopReplayJitterProbe(report = true): void {
       }
     }
     rev += countReversals(seg);
-    const density = tops.length > 1 ? (rev / tops.length).toFixed(3) : "0";
-    log(
-      `[e2e] jitter frames=${tops.length} reversals=${rev} density=${density} retargets=${retargets}`,
-    );
+    // 帧数只数取到的样本，换锚哨兵不算
+    const frames = tops.filter((t) => !Number.isNaN(t)).length;
+    const density = frames > 1 ? (rev / frames).toFixed(3) : "0";
+    log(`[e2e] jitter frames=${frames} reversals=${rev} density=${density} retargets=${retargets}`);
   }
   tops = [];
   target = null;
