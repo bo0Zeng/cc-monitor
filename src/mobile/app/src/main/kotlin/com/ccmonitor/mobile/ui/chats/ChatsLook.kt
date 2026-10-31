@@ -16,13 +16,15 @@ import kotlinx.coroutines.flow.map
 val CHATS_FILTERS_SAVER: Saver<Filters, Any> =
     listSaver(
         save = { listOf(it.view.name, ArrayList(it.unchecked), it.withinDays, it.sort?.name, it.hidden) },
-        restore = { (view, unchecked, within, sort, hidden) ->
+        restore = { cells ->
+            // 照存的先后一格一格取。
+            val next = cells.iterator()
             Filters(
-                view = ChatsView.valueOf(view as String),
-                unchecked = (unchecked as List<*>).filterIsInstance<String>().toSet(),
-                withinDays = within as Int?,
-                sort = (sort as String?)?.let(ListSort::valueOf),
-                hidden = hidden as Boolean,
+                view = ChatsView.valueOf(next.next() as String),
+                unchecked = (next.next() as List<*>).filterIsInstance<String>().toSet(),
+                withinDays = next.next() as Int?,
+                sort = (next.next() as String?)?.let(ListSort::valueOf),
+                hidden = next.next() as Boolean,
             )
         },
     )
