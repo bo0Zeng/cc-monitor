@@ -57,8 +57,8 @@ pub(crate) fn here(req: &BoardHereReq) -> Result<BoardHere, BoardHereErr> {
             client: req.client.clone(),
         },
     )
-    .map_err(|f| match f.code.as_str() {
-        "no_tmux" => BoardHereErr::Unobservable(crate::common::contract::joined(f.said, f.raw)),
+    .map_err(|f| match f.code.as_deref() {
+        Some("no_tmux") => BoardHereErr::Unobservable(crate::common::contract::joined(f.said, f.raw)),
         _ => typed::of_fail(f, BoardHereErr::Unobservable),
     })?;
     let agent_home = crate::history::listing::agent_home();
@@ -133,17 +133,10 @@ impl crate::wire::typed::Handle for TerminalsBoardCmd {
             let local = async move {
                 tokio::task::spawn_blocking(move || here(&mine))
                     .await
-                    .map_err(|e| crate::dial::remote_ask::Said {
-                        code: None,
-                        message: e.to_string(),
-                    })?
+                    .map_err(|e| crate::common::said::Said::from(e.to_string()))?
                     .map_err(|e| {
                         use crate::wire::typed::Codes as _;
-                        let f = e.into_said();
-                        crate::dial::remote_ask::Said {
-                            code: Some(f.code.clone()),
-                            message: f.message,
-                        }
+                        e.into_said()
                     })
             };
             let got = crate::dial::remote_ask::ask_each::<TerminalsBoardHereCmd, _>(
@@ -164,7 +157,7 @@ impl crate::wire::typed::Handle for TerminalsBoardCmd {
                 .map(|(m, r)| {
                     let g = match r {
                         Ok(here) => Got::Answered(here, at.clone()),
-                        Err(s) => Got::Down(s.message),
+                        Err(s) => Got::Down(s.said),
                     };
                     (m, g)
                 })

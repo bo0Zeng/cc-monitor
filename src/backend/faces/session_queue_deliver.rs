@@ -119,7 +119,7 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
         let due = match q::due(deps.own, sid, now_ms) {
             Ok(d) => d,
             Err(f) => {
-                tracing::warn!("[session-queue] {sid} 读不出队：{} {}", f.code, f.message);
+                tracing::warn!("[session-queue] {sid} 读不出队：{} {}", f.code_or_fallback(), f.said);
                 continue;
             }
         };
@@ -152,8 +152,8 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
                 if let Err(f) = q::end(deps.own, sid, now_ms) {
                     tracing::warn!(
                         "[session-queue] {sid} 标未送达没成：{} {}",
-                        f.code,
-                        f.message
+                        f.code_or_fallback(),
+                        f.said
                     );
                 }
                 memo.live = false;
@@ -167,8 +167,8 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
                         if let Err(f) = q::mark_half(deps.own, sid, &item.id, half) {
                             tracing::warn!(
                                 "[session-queue] {sid} 记等的原因没成：{} {}",
-                                f.code,
-                                f.message
+                                f.code_or_fallback(),
+                                f.said
                             );
                         }
                         memo.retry_ms = Some(now_ms.saturating_add(WAITING_RETRY_MS));
@@ -199,8 +199,8 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
                 },
                 Err(f) => tracing::warn!(
                     "[session-queue] {sid} 送没成，下次再试：{} {}",
-                    f.code,
-                    f.message
+                    f.code_or_fallback(),
+                    f.said
                 ),
             },
         }
@@ -224,8 +224,8 @@ fn noted(r: Result<bool, Said>, sid: &str, what: After) {
         Ok(false) => tracing::info!("[session-queue] {sid} {what:?}：那一条已不在排着（撤了）"),
         Err(f) => tracing::warn!(
             "[session-queue] {sid} {what:?} 没成：{} {}",
-            f.code,
-            f.message
+            f.code_or_fallback(),
+            f.said
         ),
     }
 }

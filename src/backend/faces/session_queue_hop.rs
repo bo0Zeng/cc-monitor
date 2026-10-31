@@ -6,8 +6,6 @@
 //! - 那台够不到（不在机器表 · 链路坏 · 常驻没在跑 · 过了期限）⇒ 当场拒、码 `offline`，那一句照连接层写的；
 //!   本机一个字节不写、不攒着回头再发。
 
-#[cfg(test)]
-use crate::dial::remote_ask::Said;
 use crate::dial::remote_ask::{Remote, Table};
 use crate::platform::child::Until;
 use crate::common::said::Said;

@@ -14,7 +14,7 @@ use crate::platform::child::{Child, Deadline};
 use crate::platform::fs::Own;
 use copy_core::copy_text;
 
-/// 失败带码 ＋ 那一句 ＋ 原话（落账写不进那一形的原话进复制详情，[`Fail`]）。
+/// 失败带码 ＋ 那一句 ＋ 原话（落账写不进那一形的原话进复制详情，[`Said`]）。
 type Answer = Result<Probed, crate::common::said::Said>;
 
 /// 起官方客户端报一次用量的期限（它要起进程、读登录、问一次上游）。
@@ -177,7 +177,10 @@ pub(crate) fn answer_probe_with(
     }
     let out = child
         .run(PROBE_WITHIN)
-        .map_err(|e| crate::common::said::Said::from(e.into_cmd_said("failed", failed)))?;
+        .map_err(|e| {
+            let (code, said) = e.into_cmd_said("failed", failed);
+            crate::wire::spec::fail(code, said)
+        })?;
     let text = String::from_utf8_lossy(&out.stdout);
     if !out.status.success() {
         let stderr: String = String::from_utf8_lossy(&out.stderr)
@@ -215,7 +218,7 @@ pub(crate) fn answer_probe_with(
         Err(why) => Ok(probed(ProbeState::Unreadable, Some(why), Vec::new())),
         Ok(windows) => {
             ledger::record_probe(&ctx.hop.quota, own, agent, account, windows.clone(), now)
-                .map_err(|e| ("io_failed", e))?;
+                .map_err(|e| crate::wire::spec::fail("io_failed", e))?;
             Ok(probed(ProbeState::Read, None, windows))
         }
     }

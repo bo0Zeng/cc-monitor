@@ -55,7 +55,7 @@ impl crate::wire::typed::Handle for ExtListCmd {
                     until,
                 )
                 .await
-                .map_err(|f| tracing::warn!("ext-list: mcp-read [{m}]: {}", f.message))
+                .map_err(|f| tracing::warn!("ext-list: mcp-read [{m}]: {}", f.said))
                 .ok()
             };
             Ok(with_mcp(list, here, there).await)

@@ -26,10 +26,10 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
                 .copied()
                 .unwrap_or_else(|| panic!("码表外的码 `{c}`"))
         };
-        let req = take::<C::Req>(args).map_err(|e| (code(&e.code), e.message))?;
+        let req = take::<C::Req>(args).map_err(|e| (code(e.code_or_fallback()), e.said))?;
         let got = f(req).map_err(|e| {
             let fail = e.into_said();
-            (code(&fail.code), fail.message)
+            (code(fail.code_or_fallback()), fail.said)
         })?;
         Ok(serde_json::to_value(got).unwrap())
     }
@@ -1703,7 +1703,7 @@ fn a_projected_facts_reply_is_the_whole_one_minus_what_it_omits() {
     for gone in ["end", "rev"] {
         let view = serde_json::json!({"omit": {"facts": [gone]}});
         let e = crate::stream::inbound::views::plan_for("history-facts", &view).unwrap_err();
-        assert_eq!(e.code, "bad_args", "{gone}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{gone}");
     }
     let _ = std::fs::remove_dir_all(&home);
 }

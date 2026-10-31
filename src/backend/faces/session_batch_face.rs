@@ -76,10 +76,10 @@ fn with_deps_on<T>(
             payload: line.to_string(),
             cwd: None,
             ccm_sid: Some(sid.parse::<cmd_wire::Sid>().map_err(|e| {
-                crate::common::said::Said::from((
+                crate::wire::spec::fail(
                     "bad_args",
                     crate::common::contract::malformed(&e.to_string()),
-                ))
+                )
             })?),
             agent: None,
             width: None,
@@ -127,12 +127,12 @@ fn with_deps_on<T>(
 }
 
 /// 这台的 tmux 名单（挂着 sid 的窗格各一行）；`Err` ＝ 看不见。分叉那一格也读它。
-pub(crate) fn tmux_rows() -> Result<Listed, (&'static str, String)> {
+pub(crate) fn tmux_rows() -> Result<Listed, crate::common::said::Said> {
     batch::listed_on(crate::host::tmux::On::default(), None)
 }
 
 /// 问样子 · 停认的名单：两种宿主都认（托管那一行按句柄交 `terminal-end`）。
-fn both_hosts_rows() -> Result<Listed, (&'static str, String)> {
+fn both_hosts_rows() -> Result<Listed, crate::common::said::Said> {
     batch::listed_on(
         crate::host::tmux::On::default(),
         crate::host::managed::installed(),
@@ -151,13 +151,13 @@ typed::codes! {
 
 impl From<crate::common::said::Said> for BatchErr {
     /// 下层只回这三个码：形状 / 组合不对 · 列名单过了期限 · 列不出（`batch::listed` 把别的都收成 `unobservable`）。
-    fn from((code, said): crate::common::said::Said) -> Self {
-        match code {
-            "bad_args" => BatchErr::BadArgs(said),
-            crate::platform::child::TIMED_OUT => BatchErr::ChildTimedOut(said),
-            _ => {
-                debug_assert_eq!(code, "unobservable");
-                BatchErr::Unobservable(said)
+    fn from(f: crate::common::said::Said) -> Self {
+        match f.code.as_deref() {
+            Some("bad_args") => BatchErr::BadArgs(f.said),
+            Some(crate::platform::child::TIMED_OUT) => BatchErr::ChildTimedOut(f.said),
+            code => {
+                debug_assert_eq!(code, Some("unobservable"));
+                BatchErr::Unobservable(f.said)
             }
         }
     }

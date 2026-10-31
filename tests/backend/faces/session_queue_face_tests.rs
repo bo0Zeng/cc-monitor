@@ -109,15 +109,15 @@ fn attachments_are_checked_on_the_owner_before_anything_is_written() {
         &found,
     )
     .expect_err("有一份不在 ⇒ 拒");
-    assert_eq!(no.code, "attachment_gone");
+    assert_eq!(no.code.as_deref(), Some("attachment_gone"));
     assert!(
-        no.message.to_string().contains("1027-1201-e95b"),
+        no.said.to_string().contains("1027-1201-e95b"),
         "{}",
-        no.message
+        no.said
     );
     let no = put_here(&own, &req(&["1027-1200-a3f2"]), 100, &|_: &str| None)
         .expect_err("读不出工作目录 ⇒ 拒");
-    assert_eq!(no.code, "attachment_gone");
+    assert_eq!(no.code.as_deref(), Some("attachment_gone"));
     assert!(!file.exists(), "拒了还写了队文件");
     let got = put_here(&own, &req(&["1027-1200-a3f2"]), 100, &found).expect("都在");
     assert_eq!(got.outcome, QueuePutOutcome::Queued);
