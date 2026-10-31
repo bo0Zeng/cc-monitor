@@ -23,6 +23,7 @@ pub(crate) const CAPS: &[(&str, Deadline)] = &[
     ("session-open", session_open::OPEN_CAP),
     ("ssh-config-import", crate::dial::ssh_config::SSH_IMPORT_CAP),
     ("quota-probe", crate::faces::quota_probe_face::PROBE_CAP),
+    ("quota-warm", crate::accounts::quota::warm::WARM_CAP),
     ("aliases-read", crate::assets::aliases::ALIASES_READ_CAP),
     (
         "powershell-policy-set",
