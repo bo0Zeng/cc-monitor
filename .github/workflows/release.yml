@@ -1,7 +1,7 @@
 name: Release
 
 # 推 v* tag 时触发：
-#  0. ci-gate：**同一个 commit 上的 CI 必须绿过**，否则后面一步都不起（R1，2026-09-09 加）。
+#  0. ci-gate：**同一个 commit 上的 CI 必须绿过**，否则后面一步都不起。
 #  1. build-backends (ubuntu)：用 cargo-zigbuild 交叉编译 aarch64 / x86_64 musl 远端后端，
 #     作为 artifact 传给 Windows 作业 —— 让发布安装包内嵌后端、自动部署 (#29) 可用。
 #  2. build-windows：下载后端放进 src/frontend/shell/embedded-backends/ → cargo tauri build →
@@ -9,16 +9,13 @@ name: Release
 #  3. build-linux：同一批 backend artifact → tauri build --bundles deb → 追加进同一个 Release。
 # 注意：默认 build 会尝试下载 WiX toolset 来打 MSI，若网络不稳定可临时改 --bundles nsis。
 #
-# ── 🔴 `19b`（2026-09-19）：**本文件是「产字节那条路」的唯一驱动** ─────────────────
+# ── 🔴 **本文件是「产字节那条路」的唯一驱动** ──────────────────────────────────
 #
-# 现打两条硬事实，它们是这一段存在的全部理由：
-#  ① 两个落点（`embedded-backends/` · `native-backend/`；从前还有 `binaries/`，size2 10-11 撤了）**全部 gitignore**
+# 两条硬事实，它们是这一段存在的全部理由：
+#  ① 两个落点（`embedded-backends/` · `native-backend/`；没有 `binaries/`）**全部 gitignore**
 #     ⇒ **字节不进仓**，它只在「发版那一趟」存在 ⇒ 表的值不是一个文件，是**一条产线**；
-#     🔴 **这一句在全仓改名（`daemon`→`backend`）之后曾经是假的**：
-#     `src/frontend/shell/.gitignore` 里当时还写着 `/embedded-daemons/` 与 `/native-daemon/`，
-#     现打 `git check-ignore` **两条都不命中** ⇒ 三个落点里有两个从改名那天起就没被挡住。
-#     那两行已改对，并给它们加了机检锚（`release-ruler.py` ⑬d 与 `build.rs` 的落点常量两向对拍）
-#     —— 这句「硬事实」从此有人每趟核它。
+#     落点改名而 `src/frontend/shell/.gitignore` 没跟，这一句就成了假的 ⇒
+#     那几行带机检锚（`release-ruler.py` ⑬d 与 `build.rs` 的落点常量两向对拍），每趟核它。
 #  ② 三条产线**只由本文件驱动**，而本文件只在推 `v*` tag / 手工触发时跑
 #     ⇒ 平常的 `cargo build` 一格字节都没有 ⇒ **这张表的门禁只能建在本文件上，不能建在 `cargo` 上**。
 #
@@ -30,11 +27,10 @@ name: Release
 on:
   push:
     tags: ['v*']
-  # ── KR114D1（`K-R114`，2026-09-14）：**手工触发**。 ─────────────────────────
+  # ── **手工触发**。 ──────────────────────────────────────────────────────────
   #
-  # 在这之前本文件**只认 tag push**（`KU27` 登记的那条）⇒「先手工跑一趟看看」
-  # **在构造上做不到**：想验一次本文件改得对不对，唯一的办法是真推一个 `v*` tag，
-  # 而推错了要撤 tag、撤 release，还可能已经发到用户手上。
+  # 只认 tag push 的话「先手工跑一趟看看」**在构造上做不到**：想验一次本文件改得对不对，
+  # 唯一的办法是真推一个 `v*` tag，而推错了要撤 tag、撤 release，还可能已经发到用户手上。
   #
   # 🔴 **加触发器的同时必须加一个「不发布」的开关** —— 否则手工触发就等于**误发一个版**，
   #    那比「触发不了」更贵：触发不了只是不方便，误发是发出去了收不回来。
@@ -58,16 +54,15 @@ on:
 #   `actions/upload-artifact`（那份 `embedded-backends` 是内部件，不发给任何人，
 #   而且 `build-windows` / `build-linux` 靠它才起得来）。
 #
-# ── 🔴 `19b`（09-19）：**「后端身份住哪份源码」这个量也只有这一个住址** ──────────────
+# ── 🔴 **「后端身份住哪份源码」这个量也只有这一个住址** ────────────────────────────
 #
 # 本文件有**两步**要抠后端的 `const BUILD_ID`（内嵌校验那一步 · 版本对账那一步）。
-# 步 9 把身份从 `main.rs` 搬到 `lib.rs` 时**只改了其中一步**，另一步留在 `main.rs` 上
-# —— 而 `main.rs` 里今天**没有**那个 const ⇒ 那一步在真发版时抠回一个空值，
-# 死在「抠不到后端的 const BUILD_ID」上，而红的原因与它要守的事毫无关系。
-# ⇒ 收成一个 `env:`：两步都读它，**再也漏不掉第二处**。
+# 各写一份路径的话，身份换住处时只改了其中一步，另一步就指着一份**没有**那个 const 的文件
+# ⇒ 那一步在真发版时抠回一个空值，死在「抠不到后端的 const BUILD_ID」上，而红的原因与它要守的事毫无关系。
+# ⇒ 收成一个 `env:`：两步都读它，**漏不掉第二处**。
 # ⚠ 消费侧写成 `$env:CCM_BACKEND_IDENTITY_SRC`（两步都是 pwsh）。
 # ⚠ 判据那一侧同拍钉住：`release-ruler.py` 的 ⑩ 会把本文件里每一处抽取的路径解出来，
-#   **实打去读那份文件**，抠不出恰好一个 const 就红 —— 住址指空这一形从此当场现形。
+#   **实打去读那份文件**，抠不出恰好一个 const 就红 —— 住址指空这一形当场现形。
 # 身份戳的两个界标住契约 crate（后端拼戳 · monitor 扫字节两侧 `use` 同一份）⇒ 那一步抠界标读 `CCM_STAMP_MARKS_SRC`。
 env:
   PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
@@ -78,13 +73,12 @@ jobs:
   # ────────────────────────────────────────────────────────────────────────────
   # R1：**发版的第一道门 —— 这棵树的 CI 必须绿过。**
   #
-  # 在这个 job 之前，本文件里**一条测试门都没有**（`cargo test` / `cargo clippy` /
+  # 除了这个 job，本文件里**一条测试门都没有**（`cargo test` / `cargo clippy` /
   # `cargo fmt` / `npm test` / `npm run gate` / `tsc --noEmit` / `vitest` / `e2e`
   # 在本文件里**全部零命中**）：它只做「交叉编译 backend → 核版本号与 tag 一致 → npm ci →
   # 打包 → 算校验和 → 上传」。而跑测试的是**另一条**流水线 `ci.yml`，两条互不相干
-  # ⇒ **推一个 tag，主干红成什么样都照发。**
-  #（2026-09-09 现打：`ci.yml` 最近一次 main 的 run 34432595554，8 个 job **红 6 个**。
-  #  而 release 会把这棵红树打成安装包发给新用户 —— 发版标准逐字是「新用户可以稳定装上」。）
+  # ⇒ 没有这道门，**推一个 tag，主干红成什么样都照发**，
+  #  release 会把一棵红树打成安装包发给新用户 —— 发版标准逐字是「新用户可以稳定装上」。
   #
   # ## 为什么是「查同一个 commit 上的 CI 结论」，而不是把测试步骤抄一份进来
   #
@@ -102,17 +96,16 @@ jobs:
   # 和发布目标 —— 而本文件**只有推 tag 才会跑、本地一步都验不了**，那是拿整条发版路径
   # 去换一个等价的结果。⇒ 选查 API。
   #
-  # ## 可行性是现打验过的（2026-09-09，读 v3.6.0 那次的云端记录）
+  # ## 可行性（读云端记录核过）
   #
   # · `ci.yml` 的触发器含 `tags: ['v*']` ⇒ 同一次 tag push **同时**起 CI 与 Release；
-  # · v3.6.0 那次 Release run 的 `head_sha` = `851d8a44…`，与 `head_commit.id` **逐字相同**
+  # · Release run 的 `head_sha` 与 `head_commit.id` **逐字相同**
   #  （**不是** tag 对象的 sha —— annotated tag 那个坑在这里不成立，是查过的，不是推的）；
-  #   按那个 sha 查回来三条 run：CI(tag) · Release(tag) · CI(main)，head_sha 全同 ⇒ 对得上；
-  # · CI 整条实测 3-6 分钟（v3.6.0 那次 3m18s；09-10 那次 5m43s），而 `build-windows`
-  #   一个人就 9m16s ⇒ 这道门加的等待**短于**它后面那一步。
+  #   按那个 sha 查回来的 CI(tag) · Release(tag) · CI(main) 三条 run，head_sha 全同 ⇒ 对得上；
+  # · CI 整条实测 3-6 分钟，而 `build-windows` 一个人就九分多钟 ⇒ 这道门加的等待**短于**它后面那一步。
   #
   # ⚠ **本门只认「结论」，不认「跑了几个 job」** —— 后者是 `ci.yml` 自己的事，本文件不存副本。
-  # ⚠ **认 CI 用两把尺子取或**（workflow 文件路径 **或** workflow 名）：另一路正在改 `ci.yml`，
+  # ⚠ **认 CI 用两把尺子取或**（workflow 文件路径 **或** workflow 名）：有人改 `ci.yml` 时
   #    只改其中一样仍会命中另一把；两把都不中 ⇒ **拦下**，不静默放行。
   # ⚠ **fail-closed**：查不到 CI run · CI 不绿 · 等超时 · API 调不通，四种都拦。
   #    要绕过它只能**改这个文件**（那会留在 git 历史上），不能靠「今天先不管」。
@@ -229,8 +222,8 @@ jobs:
 
       # 命名成 src/frontend/shell/build.rs embed_backends 期望的 cc-monitor-backend-<arch>。
       #
-      # 🔴 **K-R70（09-12）：不再旁挂 `.build_id` 清单 —— 身份跟着字节走。**
-      # 今天后端自己带着一段 `#[used] static` 的身份戳（lib.rs::CC_MONITOR_BUILD_STAMP），
+      # 🔴 **不旁挂 `.build_id` 清单 —— 身份跟着字节走。**
+      # 后端自己带着一段 `#[used] static` 的身份戳（lib.rs::CC_MONITOR_BUILD_STAMP），
       # 连续、拆不成立即数 ⇒ 下游（src/frontend/shell/build.rs）直接从字节里扫，不需要任何旁文件。
       - name: Stage binaries
         run: |
@@ -284,8 +277,8 @@ jobs:
 
       # 放进 build.rs 期望的位置；缺任一 arch 就 fail——绝不静默发出「自动部署被关」的安装包。
       #
-      # 🔴 **K-R70（09-12）：校验从「比清单」换成「问字节」。**
-      # 今天问的是**这份字节自己**：backend 里那段 `#[used] static CC_MONITOR_BUILD_STAMP`
+      # 🔴 **校验是「问字节」，不是「比清单」。**
+      # 问的是**这份字节自己**：backend 里那段 `#[used] static CC_MONITOR_BUILD_STAMP`
       # 逐字是 `<开>$src<关>`，界标的唯一住址在 `env.CCM_STAMP_MARKS_SRC`（契约 crate 的 STAMP_OPEN / STAMP_CLOSE），
       # `$src` 是 `env.CCM_BACKEND_IDENTITY_SRC` 那份源码的 BUILD_ID（这里从源码抠，不手抄）。
       # 🔴 **半 bump 的发版核对就住这一步**：内嵌字节自报的 id 必须 == 源码 BUILD_ID。monitor 构建期只核
@@ -301,16 +294,14 @@ jobs:
             Copy-Item $f.FullName "src/frontend/shell/embedded-backends/cc-monitor-backend-$a" -Force
             Write-Host ("embedded {0} ({1} bytes)" -f $a, $f.Length)
           }
-          # 🔴 从 main.rs 改成 lib.rs —— BUILD_ID 与身份戳界标已按
-          # 前置 2 搬进后端库面（in-process 那条路没有那个 main.rs）。
+          # 🔴 BUILD_ID 与身份戳界标住后端库面（`lib.rs`；in-process 那条路没有 main.rs）。
           #    `tests/scripts/re-embed.sh` 的 IDENTITY_SRC 与本处是同一条住址，改一处就要改另一处；
           #    `tests/backend/build_id_guard.rs` 那条判据钉着它指得到真东西。
-          # 🔴 〔19b · 09-19〕住址收进文件头那个 `env:` —— 本文件另有一步也要抠同一个 const，
-          #    步 9 那次**只改了这一处**，另一处留在 main.rs 上指空了。读同一个量，不各写一份。
+          # 🔴 住址收进文件头那个 `env:` —— 本文件另有一步也要抠同一个 const。读同一个量，不各写一份。
           $main = $env:CCM_BACKEND_IDENTITY_SRC
           $marks = $env:CCM_STAMP_MARKS_SRC
-          # 🔴 〔19b〕**抠不到要落在下面那句诊断上，不是落在 PowerShell 的空数组索引上。**
-          #    原写法 `(...).Matches[0].Groups[1].Value` 在零命中时抛 "Cannot index into a null
+          # 🔴 **抠不到要落在下面那句诊断上，不是落在 PowerShell 的空数组索引上。**
+          #    直接写 `(...).Matches[0].Groups[1].Value` 在零命中时抛 "Cannot index into a null
           #    array" ⇒ 那句写好的「先修抽取」一个字都印不出来。读不出来时**显示什么**，
           #    是点名要答的一格 —— 这里答：印住址、印抠的是哪个 const、退 1。
           $mId    = Select-String -Path $main -Pattern 'const BUILD_ID: &str = "([^"]+)"'        | Select-Object -First 1
@@ -348,11 +339,11 @@ jobs:
           # Cargo.lock 里 monitor 包：`name = "monitor"` 紧跟的 version 行
           $lockRaw = Get-Content src/frontend/shell/Cargo.lock -Raw
           $lock = if ($lockRaw -match '(?m)^name = "monitor"\r?\nversion = "([^"]+)"') { $Matches[1] } else { '<missing>' }
-          # ── KR114D1：这一步拆成**两半**，因为手工触发时 `github.ref_name` 是**分支名**，
+          # ── 这一步拆成**两半**，因为手工触发时 `github.ref_name` 是**分支名**，
           #    拿它当版本号比，演练必然红在这里，而红的原因与「版本漂了」毫无关系。
           #    ① **四处互相对账** —— 与触发方式无关，永远做（演练也做，这正是它的价值）。
           #    ② **与 tag 比** —— 只在真要发布时做（`env.PUBLISH`）。
-          #    ⚠ 推 tag 那条路上两半都做 ⇒ **与改之前逐字同效**，一格覆盖都没少。
+          #    ⚠ 推 tag 那条路上两半都做 ⇒ 一格覆盖都不少。
           if ($pkg -ne $conf -or $pkg -ne $cargo -or $pkg -ne $lock) {
             Write-Error "Version drift (四处内部不一致): package.json=$pkg tauri.conf=$conf Cargo.toml=$cargo Cargo.lock(monitor)=$lock"
             exit 1
@@ -367,21 +358,20 @@ jobs:
           } else {
             Write-Host "演练（publish=false）：跳过「与 tag 一致」那一半；ref_name=$($env:GITHUB_REF_NAME) 不是版本号"
           }
-          # ── 🔴 K-R70（09-12）：**第五处刻意不参加，而它从此被点名核过。** ──────────
+          # ── 🔴 **第五处刻意不参加，而它被点名核着。** ─────────────────────────────
           #
           # `src/backend/Cargo.toml` 的 version 逐字是 `0.0.0`，**故意的** ——
           # 后端换不换由行为变没变决定（BUILD_ID 的 bump 纪律），不由发版节奏决定；
-          # 给它一个跟 tag 走的版本号 = 给后端造第二个身份（K33「后端只有一个」在身份这一维）。
+          # 给它一个跟 tag 走的版本号 = 给后端造第二个身份（「后端只有一个」在身份这一维）。
           # 理由全文住那一行上方的注释，机检住 build_id_guard 的
           # the_crate_version_is_deliberately_zero_and_the_real_identity_has_a_home。
           # ⇒ 这里不比它与 tag，而是**盯住它别被人顺手改成一个假数字**，
           #   并确认真身份（BUILD_ID）在这一版里是**说得出**的。
           $dv = (Select-String -Path src/backend/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
-          # 🔴 〔19b · 09-19〕**这一行原来指着 `src/backend/main.rs`** —— 步 9 把 `BUILD_ID`
-          #    搬进 `lib.rs` 时改了上面那一步、漏了这一步，而 `main.rs` 里今天没有那个 const。
-          #    后果不是「静默放行」（那还好些），是**发版必红在这里**，且原写法在零命中时
-          #    抛 PowerShell 的空数组索引异常 ⇒ 连下面那句诊断都印不出来。
-          #    ⇒ 住址读文件头那个 `env:`（全文件唯一一份），抽取写成零命中安全的形状。
+          # 🔴 住址读文件头那个 `env:`（全文件唯一一份）：`BUILD_ID` 换住处时只改一处就够，
+          #    不会有一步还指着一份没有那个 const 的文件、发版必红在这里。
+          #    抽取写成零命中安全的形状：直接取下标在零命中时抛 PowerShell 的空数组索引异常，
+          #    连下面那句诊断都印不出来。
           $mDid = Select-String -Path $env:CCM_BACKEND_IDENTITY_SRC -Pattern 'const BUILD_ID: &str = "([^"]+)"' | Select-Object -First 1
           $did = if ($mDid) { $mDid.Matches[0].Groups[1].Value } else { $null }
           if ($dv -ne '0.0.0') {
@@ -394,9 +384,9 @@ jobs:
           }
           Write-Host "Backend identity OK: src/backend version=0.0.0 (deliberate), BUILD_ID=$did"
 
-      # ── K-R42：**本机后端与文件窗口程序内嵌进 exe** —— 裸 `cc-monitor.exe` 与装机那份都靠它们 ──────
+      # ── **本机后端与文件窗口程序内嵌进 exe** —— 裸 `cc-monitor.exe` 与装机那份都靠它们 ──────
       #
-      # 本机后端（C7「没有 daemonless，本机也要有后端进程」）：monitor 起它之前先放到 `~/.cc-monitor/bin/ccm` 再跑；
+      # 本机后端（「没有 daemonless，本机也要有后端进程」）：monitor 起它之前先放到 `~/.cc-monitor/bin/ccm` 再跑；
       #   文件窗口程序（文件窗口包 `cc-monitor-filewin` 自己的 `[[bin]]`，monitor 的 `build.rs` 吃不到它 ⇒ 先单编再铺）开窗那一刻
       #   放到 `~/.cc-monitor/bin/` 再起（`filewin::proc::resolve_window_bin`）。两件都原生编、铺进 `native-backend/`
       #   （字节 ＋ 旁挂 `.target`，名字定死在 `build.rs::NATIVE_BACKEND_DIR` · `NATIVE_BACKEND_FILE` · `NATIVE_FILEWIN_FILE`），
@@ -404,7 +394,7 @@ jobs:
       # 与上面那批 embedded-backends 是**两件事**：那些是远端 SFTP 部署用的 musl 二进制；这几份是**用户自己机器上**的。
       # 配方（旗标含 `--locked` · 编的次序 · 落点）只住 `tests/scripts/re-embed.sh`；`--stage-native` 只编只铺、不判
       #   （铺不全 ⇒ 脚本里那一下 `cp` 当场失败）。Git Bash 跑它，job 级 `RUSTFLAGS` 照样传进去。
-      # ⚠ size2（10-11）起安装包旁边**不再另放一份**（判据 `local_backend_tests::no_bundle_job_puts_a_second_local_backend_beside_the_exe`）。
+      # ⚠ 安装包旁边**不另放一份**（判据 `local_backend_tests::no_bundle_job_puts_a_second_local_backend_beside_the_exe`）。
       # ⚠ **落点刻意不是 `embedded-backends/`**，理由住 `build.rs` 的 `NATIVE_BACKEND_DIR` 头注。
       # ⚠ **诚实边界**：本步买到「编得出 · 铺了 · target 对得上 · build.rs 没 panic」；买不到「在真 Windows 上起得来」—— 那要真机跑一趟。
       - name: Build and stage native backend + filewin
@@ -413,8 +403,8 @@ jobs:
 
       # tauri build 会顺序：npm run build (vite) → cargo build --release → bundle (msi + nsis)
       #
-      # ⚠ `--config src/frontend/shell/tauri.sidecar.conf.json` 只在发版这一步注入：今天它只带第三方许可声明（`bundle.resources`）；
-      #   从前的 `externalBin`（安装包旁边另放一份本机后端）size2 10-11 撤了。
+      # ⚠ `--config src/frontend/shell/tauri.sidecar.conf.json` 只在发版这一步注入：它只带第三方许可声明（`bundle.resources`）；
+      #   不带 `externalBin`（安装包旁边不另放本机后端）。
       - name: tauri build
         run: npx tauri build --config src/frontend/shell/tauri.sidecar.conf.json --bundles nsis,msi
 
@@ -444,7 +434,7 @@ jobs:
           $want = @("$bundleDir\nsis\*-setup.exe", "$bundleDir\msi\*.msi", ".build\shell\release\cc-monitor.exe", "THIRD-PARTY-NOTICES.txt")
           $got = @(Get-ChildItem -Path $want -ErrorAction SilentlyContinue)
           if ($got.Count -ne $want.Count) {
-            Write-Error "产物份数对不上：要 $($want.Count) 份（nsis setup · msi · 裸 exe · 第三方许可声明），现打 $($got.Count) 份（$($got.Name -join ', ')）—— 这一形就是 2026-09-23 逮到的那条：产物根搬去了 .build/shell/ 而这里还写着 src/frontend/shell/target/ ⇒ 全空，却一声不响"
+            Write-Error "产物份数对不上：要 $($want.Count) 份（nsis setup · msi · 裸 exe · 第三方许可声明），现打 $($got.Count) 份（$($got.Name -join ', ')）—— 多半是产物根（今天是 .build/shell/）挪了而这里的路径没跟 ⇒ 全空，却一声不响"
             exit 1
           }
           $got |
@@ -452,10 +442,10 @@ jobs:
             ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" } |
             Out-File -FilePath "SHA256SUMS.txt" -Encoding utf8
 
-      # 🔴 KR124D2（`K-R124`，2026-09-15）：**正文来源**。本文件三处发布步骤（Windows · Linux · 手机）**各跑一次这一步**
+      # 🔴 **正文来源**。本文件三处发布步骤（Windows · Linux · 手机）**各跑一次这一步**
       #   —— 不是「Windows 生成、别处沿用」：三个 job 在不同 runner 上，沿用不了。
       #   生成器只有一个住址（`tests/scripts/release-notes.mjs`），正文取自 `CHANGELOG.md` 里本版那一段
-      #   （`src/doc/RELEASING.md § 5` 早就写着这条 SOP，只是一直是手工的一步、从 v3.6.0 起没人做）。
+      #   （`src/doc/RELEASING.md § 5` 那条 SOP，这一步把它做成自动的）。
       #   ⚠ 命令刻意写成**不带任何 shell 语法**的一行：本 job 的默认 shell 是 pwsh，
       #     `>` 重定向的编码在 pwsh 与 bash 上不同 ⇒ 让生成器自己写文件，两个 runner 上同一行。
       #   ⚠ 它**不回落**：这一版在 CHANGELOG 里没有段、或段太短 ⇒ 生成器退出码 1 ⇒ 本步骤红，
@@ -464,7 +454,7 @@ jobs:
         if: env.PUBLISH == 'true'
         run: node tests/scripts/release-notes.mjs RELEASE_BODY.md
 
-      # 🔴 KR114D1：**本文件三处「往 GitHub Release 写」之一**，闸读 `env.PUBLISH`（住址在文件头）。
+      # 🔴 **本文件三处「往 GitHub Release 写」之一**，闸读 `env.PUBLISH`（住址在文件头）。
       - name: Create / update GitHub Release
         if: env.PUBLISH == 'true'
         uses: softprops/action-gh-release@v2
@@ -478,16 +468,12 @@ jobs:
             SHA256SUMS.txt
 
   # ────────────────────────────────────────────────────────────────────────────
-  # L4（local-as-remote）：**Linux 产物**。
+  # **Linux 产物**（本机就是一台远端）。
   #
-  # ⚠ **订正（2026-09-09 现打）**：原话「本 job 从未真正跑过」**今天不成立** ——
-  # v3.6.0 那次 Release run（`30679669587`，2026-08-01）里 `Build Linux artifacts (deb)`
-  # **成功跑完，5m36s**（02:27:39 → 02:33:15，读的是云端 jobs API）。
-  #
-  # ⚠ **仍然成立的那一半，别跟着一起删**：本 job 只在 tag 时触发 ⇒ **本地一步都验不了**。
-  # 而且**真正一次都没在 tag 上跑过的**是 v3.6.0 之后加进来的那些 —— 那之后本文件被改过两次、
-  # 期间**没有再发过版**：`ae18878`（08-02，裸二进制上传）与 `e39253e`（08-04，本机后端）。
-  # 具体是：两个 job 里编、铺本机字节的那几步（今天收成 `re-embed.sh --stage-native` / `--stage-filewin` 各一步）、两处 `tauri build` 上的 `--config tauri.sidecar.conf.json`、以及裸二进制那条上传。
+  # ⚠ 本 job 在 tag 上真跑通过（`Build Linux artifacts (deb)`，五分多钟）；但它只在 tag 时触发
+  # ⇒ **本地一步都验不了**，两次发版之间改进来的步骤要到下一次发版才第一次跑：
+  # 两个 job 里编、铺本机字节的那几步（`re-embed.sh --stage-native` / `--stage-filewin` 各一步）、
+  # 两处 `tauri build` 上的 `--config tauri.sidecar.conf.json`、以及裸二进制那条上传都是这一类。
   # ⇒ 下面每一处设计都是为了「万一它坏了，坏得可见且不伤及发版」：
   #
   # 1. `needs: [build-backends, build-windows]` —— **串在 Windows 之后**，两个理由：
@@ -550,10 +536,10 @@ jobs:
           path: backend-artifacts
 
       # 只做**放置**，不重做校验：`build-windows` 已经对**同一批 artifact** verify 过
-      #（🔴 `K-R70` 09-12 起那道 verify 是「从字节里扫出身份戳」，不再是「比清单」），
+      #（🔴 那道 verify 是「从字节里扫出身份戳」，不是「比清单」），
       # 而本 job `needs` 它 ⇒ 那道检查已经过了。
       # 重写一份 bash 版校验只会多一个会漂的副本。缺文件仍然 fail（`cp` 会失败）。
-      # ⚠ 清单那两行跟着一起没了（`K-R70`：那是标签不是指纹，见 build-backends 那步的墓碑）。
+      # ⚠ 不放清单（那是标签不是指纹，见 build-backends 那一步的注释）。
       - name: Place embedded backends
         run: |
           set -euo pipefail
@@ -615,9 +601,9 @@ jobs:
       # ## 🔴 它同时是「非主 `[[bin]]` 会被打包器自动装」这条机制的**探针**
       #
       # `tauri-cli::get_binaries` 把 monitor 包 Cargo.toml 里每一个 `[[bin]]` 都交给打包器，nsis / msi / deb 三个打包器
-      # 都把非主 bin 装到主二进制旁边 ⇒ 文件窗口程序 size2（10-11）起搬去它自己的包（`cc-monitor-filewin`），
-      # monitor 包只剩主二进制，`externalBin` 也撤了 ⇒ 今天 `usr/bin/` 里该只有 `cc-monitor` 一份。
-      # ⚠ 本步只覆盖 `.deb`；Windows 那两份安装包靠同一个机制，装完的样子在 Win11 虚拟机上走过一趟（size2 交回）。
+      # 都把非主 bin 装到主二进制旁边 ⇒ 文件窗口程序住它自己的包（`cc-monitor-filewin`），
+      # monitor 包只有主二进制，也没有 `externalBin` ⇒ `usr/bin/` 里该只有 `cc-monitor` 一份。
+      # ⚠ 本步只覆盖 `.deb`；Windows 那两份安装包靠同一个机制，装完的样子在 Win11 虚拟机上走过一趟。
       - name: The .deb really ships every binary this package declares
         run: |
           set -euo pipefail
@@ -630,7 +616,7 @@ jobs:
           #   跟着环境的 locale 走，`diff` 会在「两边其实是同一个集合」时报差异。
           # ⚠ **刻意写成 `python3 -c` 一行，不用 heredoc**：`run: |` 是 YAML 的块标量，
           #   heredoc 的正文要顶到第 0 列才收得住终止符，而那**破掉块标量的缩进**
-          #   ⇒ 整份 `release.yml` 解不动（现打栽过一次，`K-R124` 的 ④ 地板当场红）。
+          #   ⇒ 整份 `release.yml` 解不动（`release-ruler.py` 的 ④ 地板当场红）。
           want="$(python3 -c 'import json,tomllib; bins={b["name"] for b in tomllib.load(open("src/frontend/shell/Cargo.toml","rb"))["bin"]}; ext={p.rsplit("/",1)[-1] for p in json.load(open("src/frontend/shell/tauri.sidecar.conf.json"))["bundle"].get("externalBin",[])}; print("\n".join(sorted(bins|ext)))')"
           got="$(dpkg-deb -c "$deb" | awk '{print $NF}' | sed -nE 's#^(\./)?usr/bin/##p' | LC_ALL=C sort)"
           printf '想要：\n%s\n现打（%s 的 usr/bin/）：\n%s\n' "$want" "$deb" "$got"
@@ -640,34 +626,30 @@ jobs:
           diff <(printf '%s\n' "$want") <(printf '%s\n' "$got") \
             || { echo "::error::安装包的二进制清单与本包声明的对不上（上面 < 是声明了没装、> 是装了没登记）"; exit 1; }
 
-      # DN-8（手机端 2026-07-31 请求）：backend 的 **musl 二进制也挂成 Release 资产**。
-      # 此前它们只作为 CI artifact 传给 build-windows 内嵌 ⇒ 外部项目（手机端走自部署）
-      # 拿不到，只能自己装 zig 交叉编译一遍。
+      # backend 的 **musl 二进制也挂成 Release 资产**：只作为 CI artifact 传给 build-windows 内嵌的话，
+      # 外部项目（手机端走自部署）拿不到，只能自己装 zig 交叉编译一遍。
       #
       # **挂在本 job 而不是 build-backends**：后者跑在 build-windows **之前**，在那里调
       # `action-gh-release` 会①抢先创建 release，正是本文件上面那段注释要避开的竞态；
       # ②**绕过** build-windows 里「四处版本号与 tag 一致」那道检查。本 job
       # `needs: [build-backends, build-windows]`，两条都天然继承。artifact 也已经下载好了。
       #
-      # 🔴 **`files: |` 里 `#` 不是注释**（2026-09-09 订正）：那是 YAML 字面块，
-      # 整行会当成**文件 glob** 交给 `action-gh-release`。下面这三行原本就写在块里，
-      # 靠 `fail_on_unmatched_files` 默认 `false` 才只打 warning 没炸。
-      # ⚠ 它们与它们下面那条裸二进制一起是 `ae18878`（08-02）加的，而最后一次发版是
-      # v3.6.0（08-01）⇒ **这一段一次都没在 tag 上跑过**，那三条 warning 也就从没人看见。搬出来。
-      # U5-走查：**裸二进制此前算了 hash 却没上传** —— `SHA256SUMS-linux.txt` 里有它那一行，
-      # 而 Release 页上没有那个文件，用户照校验和逐个核就会卡在这儿。
-      # 补上传（与 Windows 侧 `cc-monitor.exe` 对称：那边一直是「安装器 + 裸二进制」两样都给）。
-      # 🔴 KR124D2（`K-R124`，2026-09-15）：**正文来源，这一处与 Windows 那一处同源同值**。
+      # 🔴 **`files: |` 里 `#` 不是注释**：那是 YAML 字面块，
+      # 整行会当成**文件 glob** 交给 `action-gh-release`，而 `fail_on_unmatched_files` 默认 `false`
+      # 只打 warning ⇒ 说明只写在块外面。
+      # 裸二进制算了 hash 就要上传 —— `SHA256SUMS-linux.txt` 里有它那一行而 Release 页上没有那个文件，
+      # 用户照校验和逐个核就会卡在这儿（与 Windows 侧 `cc-monitor.exe` 对称：「安装器 + 裸二进制」两样都给）。
+      # 🔴 **正文来源，这一处与 Windows 那一处同源同值**。
       #   为什么这一处也要给：`action-gh-release` 对一个**已存在**的 release 是 PATCH ——
       #   本 job 不给正文，那一次 PATCH 会把 Windows 刚写上去的正文按它自己的口径再处理一遍。
       #   两处给**同一个生成器、同一个版本号**产出的同一份字节 ⇒ 第二次写是幂等的。
-      #   ⚠ **竞态一个字没动**：`needs: [build-backends, build-windows]` 还在，
-      #     release 仍然由 `build-windows` 创建，本 job 仍然只追加（`build-linux` 头注的第 ①）。
+      #   ⚠ **竞态不变**：`needs: [build-backends, build-windows]` 在，
+      #     release 由 `build-windows` 创建，本 job 只追加（`build-linux` 头注的第 ①）。
       - name: Render the Release body (CHANGELOG section for this version)
         if: env.PUBLISH == 'true'
         run: node tests/scripts/release-notes.mjs RELEASE_BODY.md
 
-      # 🔴 KR114D1：**本文件三处「往 GitHub Release 写」之二**，闸读 `env.PUBLISH`（住址在文件头）。
+      # 🔴 **本文件三处「往 GitHub Release 写」之二**，闸读 `env.PUBLISH`（住址在文件头）。
       - name: Append Linux artifacts to the release
         if: env.PUBLISH == 'true'
         uses: softprops/action-gh-release@v2
@@ -816,7 +798,7 @@ jobs:
         if: env.PUBLISH == 'true'
         run: node tests/scripts/release-notes.mjs RELEASE_BODY.md
 
-      # 🔴 KR114D1：**本文件「往 GitHub Release 写」之三**，闸读 `env.PUBLISH`（住址在文件头）。
+      # 🔴 **本文件「往 GitHub Release 写」之三**，闸读 `env.PUBLISH`（住址在文件头）。
       - name: Append Android app to the release
         if: env.PUBLISH == 'true'
         uses: softprops/action-gh-release@v2
