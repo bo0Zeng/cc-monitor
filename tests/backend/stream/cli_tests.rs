@@ -74,13 +74,26 @@ fn the_ccm_side_asks_the_gate_for_backend_words() {
         assert!(is_backend_word(t), "`{t}` 是后端的词，ccm 那一侧不认");
         assert!(!argv::is_ccm_word(t), "`{t}` 同时是 ccm 的词");
     }
+    // `lib.rs::SUBCOMMANDS` 删之前（它住的那份文件在别的路手里）：表里每一条闸门都认，上面那一圈管另一向。
+    for w in crate::SUBCOMMANDS {
+        assert!(
+            is_subcommand(w),
+            "`{w}` 在 `lib.rs::SUBCOMMANDS` 里，闸门不认"
+        );
+    }
     for w in ["--some-future-flag", "--ccm-nope=1", "bare"] {
-        assert!(!is_backend_word(w), "`{w}` 没人认，ccm 那一侧却当它是后端的词");
+        assert!(
+            !is_backend_word(w),
+            "`{w}` 没人认，ccm 那一侧却当它是后端的词"
+        );
         assert!(!argv::is_ccm_word(w));
         assert!(!is_subcommand(w));
     }
     for w in argv::RIGHT_WORDS {
-        assert!(argv::is_ccm_word(w), "`{w}` 在 ccm 的右边词表里，`is_ccm_word` 不认");
+        assert!(
+            argv::is_ccm_word(w),
+            "`{w}` 在 ccm 的右边词表里，`is_ccm_word` 不认"
+        );
         assert!(!is_backend_word(w), "`{w}` 是 ccm 的词，不该是后端的词");
     }
 }

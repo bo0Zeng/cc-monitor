@@ -83,8 +83,5 @@ pub const ONESHOTS: &[(&str, &str, &str, Oneshot)] = &[
 
 /// 表里这一条子命令的实现。
 pub fn oneshot(flag: &str) -> Option<Oneshot> {
-    ONESHOTS
-        .iter()
-        .find(|(t, ..)| *t == flag)
-        .map(|(.., f)| *f)
+    ONESHOTS.iter().find(|(t, ..)| *t == flag).map(|(.., f)| *f)
 }

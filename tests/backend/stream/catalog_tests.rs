@@ -317,17 +317,36 @@ fn the_section_generator_rewrites_only_inside_the_markers() {
 fn the_cli_only_rows_print_as_the_oneshot_table_writes_them() {
     let rows = catalog();
     let tail: Vec<&Entry> = rows.iter().skip_while(|e| e.cmd.is_some()).collect();
-    assert!(tail.iter().all(|e| e.cmd.is_none()), "CLI 独有那几行没排在最后");
+    assert!(
+        tail.iter().all(|e| e.cmd.is_none()),
+        "CLI 独有那几行没排在最后"
+    );
     let table = crate::stream::oneshot::ONESHOTS;
-    assert!(table.len() >= 5, "一次性表只有 {} 条 —— 本断言在空转", table.len());
-    assert_eq!(tail.len(), table.len(), "口里 CLI 独有的行数与 `ONESHOTS` 不等");
+    assert!(
+        table.len() >= 5,
+        "一次性表只有 {} 条 —— 本断言在空转",
+        table.len()
+    );
+    assert_eq!(
+        tail.len(),
+        table.len(),
+        "口里 CLI 独有的行数与 `ONESHOTS` 不等"
+    );
     for (e, (name, usage, what, _)) in tail.iter().zip(table) {
         assert_eq!(e.cli.as_deref(), Some(*name));
-        assert_eq!(e.usage, (!usage.is_empty()).then_some(*usage), "`{name}` 的用法");
+        assert_eq!(
+            e.usage,
+            (!usage.is_empty()).then_some(*usage),
+            "`{name}` 的用法"
+        );
         assert_eq!(e.what, *what, "`{name}` 的一句话");
         let v = serde_json::to_value(e).unwrap();
         let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
-        let want: Vec<&str> = if usage.is_empty() { vec!["cli", "what"] } else { vec!["cli", "usage", "what"] };
+        let want: Vec<&str> = if usage.is_empty() {
+            vec!["cli", "what"]
+        } else {
+            vec!["cli", "usage", "what"]
+        };
         assert_eq!(keys, want, "`{name}` 那一行线上的键");
     }
 }

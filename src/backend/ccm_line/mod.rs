@@ -33,5 +33,5 @@ pub(crate) fn is_own_name(name: &str) -> bool {
 
 /// 后端认得的第一个词：一次性子命令 ∪ 流模式旗标。只许紧跟**打头的** `--` 出现（`ccm -- --stream …`）。
 pub(crate) fn is_backend_word(w: &str) -> bool {
-    crate::stream::cli::is_subcommand(w) || crate::STREAM_FLAGS.contains(&w)
+    crate::SUBCOMMANDS.contains(&w) || crate::STREAM_FLAGS.contains(&w)
 }

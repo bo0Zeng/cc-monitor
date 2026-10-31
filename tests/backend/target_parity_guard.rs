@@ -577,7 +577,9 @@ fn masked(src: &[char]) -> Vec<char> {
             }
             if j < n && src[j] == '"' {
                 let mut k = j + 1;
-                while k < n && !(src[k] == '"' && (1..=hashes).all(|h| src.get(k + h) == Some(&'#'))) {
+                while k < n
+                    && !(src[k] == '"' && (1..=hashes).all(|h| src.get(k + h) == Some(&'#')))
+                {
                     k += 1;
                 }
                 out[j + 1..k.min(n)].fill(' ');
@@ -687,7 +689,14 @@ fn fns_in(src: &str) -> FileFns {
     out
 }
 
-fn scan_items(r: &[char], m: &[char], from: usize, to: usize, owner: Option<&str>, out: &mut FileFns) {
+fn scan_items(
+    r: &[char],
+    m: &[char],
+    from: usize,
+    to: usize,
+    owner: Option<&str>,
+    out: &mut FileFns,
+) {
     let mut i = from;
     while i < to {
         let is_impl = word_at(m, i, "impl");
@@ -734,7 +743,11 @@ fn scan_items(r: &[char], m: &[char], from: usize, to: usize, owner: Option<&str
                 if k < to && m[k] == '{' {
                     let close = match_brace(m, k);
                     let key = owner.map_or(name.clone(), |t| format!("{t}::{name}"));
-                    out.fns.push((key, r[k..=close].iter().collect(), m[k..=close].iter().collect()));
+                    out.fns.push((
+                        key,
+                        r[k..=close].iter().collect(),
+                        m[k..=close].iter().collect(),
+                    ));
                     i = close + 1;
                 } else {
                     i = k + 1;
@@ -769,7 +782,11 @@ struct UseContext {
 }
 
 /// `crate::` · `super::` · `self::` · 本文件声明的子模块打头的路径 ⇒ 绝对模块路径。
-fn absolutize_in(me: &[String], children: &std::collections::BTreeSet<String>, segs: &[String]) -> Option<Vec<String>> {
+fn absolutize_in(
+    me: &[String],
+    children: &std::collections::BTreeSet<String>,
+    segs: &[String],
+) -> Option<Vec<String>> {
     match segs.first()?.as_str() {
         "crate" => Some(segs[1..].to_vec()),
         "super" | "self" => {
@@ -796,7 +813,10 @@ fn use_context(rel: &str, src: &str) -> UseContext {
         .skip(1)
         .filter_map(|t| {
             let name: String = t.chars().take_while(|c| is_ident(*c)).collect();
-            t[name.len()..].trim_start().starts_with(';').then_some(name)
+            t[name.len()..]
+                .trim_start()
+                .starts_with(';')
+                .then_some(name)
         })
         .collect();
     let mut uses = std::collections::BTreeMap::new();
@@ -806,7 +826,12 @@ fn use_context(rel: &str, src: &str) -> UseContext {
     while let Some(off) = src[from..].find("use ") {
         let at = from + off;
         from = at + 4;
-        if at > 0 && !matches!(bytes[at - 1], b' ' | b'\n' | b'\t' | b';' | b'{' | b'}' | b')') {
+        if at > 0
+            && !matches!(
+                bytes[at - 1],
+                b' ' | b'\n' | b'\t' | b';' | b'{' | b'}' | b')'
+            )
+        {
             continue;
         }
         let Some(end) = src[at + 4..].find(';') else {
@@ -820,7 +845,10 @@ fn use_context(rel: &str, src: &str) -> UseContext {
             .chars()
             .filter(|c| !c.is_whitespace())
             .collect();
-        if !joined.chars().all(|c| c.is_ascii_alphanumeric() || "_:{},*@".contains(c)) {
+        if !joined
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_:{},*@".contains(c))
+        {
             continue;
         }
         for e in expand_use(&joined) {
@@ -828,8 +856,11 @@ fn use_context(rel: &str, src: &str) -> UseContext {
                 Some((p, a)) => (p.to_string(), Some(a.to_string())),
                 None => (e.clone(), None),
             };
-            let mut segs: Vec<String> =
-                path.split("::").filter(|s| !s.is_empty()).map(String::from).collect();
+            let mut segs: Vec<String> = path
+                .split("::")
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect();
             let glob = segs.last().is_some_and(|s| s == "*");
             if glob || segs.last().is_some_and(|s| s == "self") {
                 segs.pop();
@@ -844,7 +875,12 @@ fn use_context(rel: &str, src: &str) -> UseContext {
             }
         }
     }
-    UseContext { me, children, uses, globs }
+    UseContext {
+        me,
+        children,
+        uses,
+        globs,
+    }
 }
 
 fn fn_graph(tree: &Tree) -> FnGraph {
@@ -852,8 +888,10 @@ fn fn_graph(tree: &Tree) -> FnGraph {
     let mods: BTreeMap<Vec<String>, String> =
         tree.keys().map(|r| (module_of(r), r.clone())).collect();
     let file_edges = file_edges(tree);
-    let per_file: BTreeMap<String, FileFns> =
-        tree.iter().map(|(rel, src)| (rel.clone(), fns_in(src))).collect();
+    let per_file: BTreeMap<String, FileFns> = tree
+        .iter()
+        .map(|(rel, src)| (rel.clone(), fns_in(src)))
+        .collect();
     // 文件 → 末段名 → 住址（自由函数的末段名就是它自己）。
     let mut by_name: BTreeMap<String, BTreeMap<String, Vec<FnAt>>> = BTreeMap::new();
     // 文件 → 类型名 → 它 `impl` 块里的函数（点名一个类型 ⇒ 它的方法都可能被叫：经 trait 注入的那一形）。
@@ -864,12 +902,20 @@ fn fn_graph(tree: &Tree) -> FnGraph {
         for (key, raw, mk) in &f.fns {
             let at: FnAt = (rel.clone(), key.clone());
             let last = key.rsplit("::").next().unwrap_or(key).to_string();
-            let slot = by_name.entry(rel.clone()).or_default().entry(last).or_default();
+            let slot = by_name
+                .entry(rel.clone())
+                .or_default()
+                .entry(last)
+                .or_default();
             if !slot.contains(&at) {
                 slot.push(at.clone());
             }
             if let Some((owner, _)) = key.rsplit_once("::") {
-                let slot = by_owner.entry(rel.clone()).or_default().entry(owner.to_string()).or_default();
+                let slot = by_owner
+                    .entry(rel.clone())
+                    .or_default()
+                    .entry(owner.to_string())
+                    .or_default();
                 if !slot.contains(&at) {
                     slot.push(at.clone());
                 }
@@ -916,7 +962,12 @@ fn fn_graph(tree: &Tree) -> FnGraph {
             return Vec::new();
         };
         let here = vec![g.clone()];
-        let hop: Vec<String> = file_edges.get(&g).unwrap_or(&empty).iter().cloned().collect();
+        let hop: Vec<String> = file_edges
+            .get(&g)
+            .unwrap_or(&empty)
+            .iter()
+            .cloned()
+            .collect();
         match &p[n..] {
             [] => Vec::new(),
             [f] => {
@@ -939,8 +990,10 @@ fn fn_graph(tree: &Tree) -> FnGraph {
             }
         }
     };
-    let ctx: BTreeMap<&String, UseContext> =
-        tree.iter().map(|(rel, src)| (rel, use_context(rel, src))).collect();
+    let ctx: BTreeMap<&String, UseContext> = tree
+        .iter()
+        .map(|(rel, src)| (rel, use_context(rel, src)))
+        .collect();
     let mut edges: BTreeMap<FnAt, BTreeSet<FnAt>> = BTreeMap::new();
     for (at, body) in &masked_bodies {
         let rel = &at.0;
@@ -1026,8 +1079,15 @@ fn fn_graph(tree: &Tree) -> FnGraph {
         to.remove(at);
         edges.insert(at.clone(), to);
     }
-    let impls = per_file.into_iter().map(|(rel, f)| (rel, f.impls)).collect();
-    FnGraph { bodies, edges, impls }
+    let impls = per_file
+        .into_iter()
+        .map(|(rel, f)| (rel, f.impls))
+        .collect();
+    FnGraph {
+        bodies,
+        edges,
+        impls,
+    }
 }
 
 /// 真起 tmux 的函数：[`tmux_spawning_files`] 那几份里，体里直呼 `Child::new("tmux")` 或经 `posix_shell(` 起 shell 的那几个。
@@ -1111,7 +1171,9 @@ fn handler_fns(
                     .filter(|(_, hs)| {
                         hs.iter().any(|(t, h)| {
                             *t == ty
-                                && h.split(" for ").next().is_some_and(|tr| tr.trim_end().ends_with("Handle"))
+                                && h.split(" for ")
+                                    .next()
+                                    .is_some_and(|tr| tr.trim_end().ends_with("Handle"))
                         })
                     })
                     .map(|(rel, _)| rel)
@@ -1248,7 +1310,9 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
     let spawners = tmux_spawning_fns(&tree, &graph);
     // 只防人群塌成空集；是哪一份文件由 `tmux_is_spawned_only_in_the_host_tmux_file` 钉，主锚是下面两向相等。
     assert!(
-        spawners.iter().any(|(rel, k)| rel == "host/tmux.rs" && k == "child"),
+        spawners
+            .iter()
+            .any(|(rel, k)| rel == "host/tmux.rs" && k == "child"),
         "真起 tmux 的函数里没有 `host/tmux.rs` 的 `child` —— 取法坏了：{spawners:?}"
     );
     let handlers = handler_fns(&tree, &graph);
@@ -1459,15 +1523,28 @@ fn the_function_level_ruler_works_on_a_synthetic_tree() {
     .map(|(k, v)| (k.to_string(), v.to_string()))
     .collect();
     let g = fn_graph(&tree);
-    let spawn: std::collections::BTreeSet<FnAt> =
-        [("t.rs".to_string(), "child".to_string())].into_iter().collect();
+    let spawn: std::collections::BTreeSet<FnAt> = [("t.rs".to_string(), "child".to_string())]
+        .into_iter()
+        .collect();
     let reaches = |root: &str| {
         let from = std::iter::once(("h.rs".to_string(), root.to_string())).collect();
         !reachable_fns(&g, &from).is_disjoint(&spawn)
     };
-    assert!(!reaches("A::run"), "同文件里没叫的 `loud` · 常量表里的闭包 · 字符串里的路径被连上了：{:?}", g.edges);
-    assert!(reaches("B::run"), "方法 `.read(` 没连到 `On::read`：{:?}", g.edges);
-    assert!(reaches("C::run"), "点名的类型 `Prod` 没连到它的方法：{:?}", g.edges);
+    assert!(
+        !reaches("A::run"),
+        "同文件里没叫的 `loud` · 常量表里的闭包 · 字符串里的路径被连上了：{:?}",
+        g.edges
+    );
+    assert!(
+        reaches("B::run"),
+        "方法 `.read(` 没连到 `On::read`：{:?}",
+        g.edges
+    );
+    assert!(
+        reaches("C::run"),
+        "点名的类型 `Prod` 没连到它的方法：{:?}",
+        g.edges
+    );
     // 文件级那一把在同一棵树上会把 A 量成够得着（`h.rs` → `q.rs` → `t.rs`）：本条正是函数级比它准的那一处。
     let from = std::iter::once("h.rs".to_string()).collect();
     assert!(reachable(&file_edges(&tree), &from).contains("t.rs"));
