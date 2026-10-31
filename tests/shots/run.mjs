@@ -30,7 +30,7 @@ import { writeIndex } from "./index-page.mjs";
 import { buildBins, pinDateSource, SHOTS_TZ } from "./real/pool.mjs";
 
 // 等页里起好的上限：兜底的那一个数（与 `tests/test-support/wall-ceiling.ts` · Rust `guard_core::wall::CEILING_SECS` 同值，
-// 判据 `wall_ceiling` 逐份核）。从前 30 秒 / 60 秒，机器负载 20+ 时随机漏图；等到了就走，不白等。
+// 判据 `wall_ceiling` 逐份核）。上限短了，机器负载高时随机漏图；等到了就走，不白等。
 const WALL_CEILING_MS = 300_000;
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -277,7 +277,7 @@ async function shootWeb() {
 
 /**
  * 等这一页的场景落定（`window.__shots.finished`：做完 / 没做成，按事件等）。场景里每一处等都有兜底上限、到了就说在等什么（`state: failed` ＋ 原话），
- * 所以这里不另起一个同样长的钟：从前两边都是 300 秒，这边先到就只剩一句「还在 booting」，真正卡在哪一步的那句被盖掉。
+ * 所以这里不另起一个同样长的钟：两边一样长的话，这边先到就只剩一句「还在 booting」，真正卡在哪一步的那句被盖掉。
  * 只兜「页里连那一步都没走到」（假适配层没装上 · 场景里有一处不带上限的等）：两倍上限还没落定 ⇒ 抛。
  */
 async function pageFinished(page) {

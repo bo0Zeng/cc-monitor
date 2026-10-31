@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# F03：**§34 Gate 2 在后端侧的真机行为验收**（真后端二进制 + 真 tmux server）。
+# **§34 Gate 2 在后端侧的真机行为验收**（真后端二进制 + 真 tmux server）。
 #
 # 与两条 Rust 轨道的分工：
 #   - 后端 `control/gate_rules.rs` 的单测断言「判定函数怎么答」；
@@ -83,8 +83,8 @@ waiver_reason() {
 #   那条 `$` 规则**不看任何 flag**（`$` 后跟字母 / `_` / `{` 就插一个反斜杠）⇒ 存进 server 的真名是「cc-a 反斜杠 $x」、
 #   `=cc-a$x:` 找不到。上游 `692ce59bcef5`（2024-05-24）给它加了 `VIS_DQ` 门、首次随 **3.5** 出货
 #   （CI 的 ubuntu-24.04 装的是 3.4：runner 日志逐字 `tmux 3.4-1ubuntu0.1`；开发机 3.6）。
-# 从前它是一条**登记豁免**（与 `meta_colon` 同一支）⇒ 在 3.6 上真跑真过、在 3.4 上豁免，**PASS 数随机器变**，
-#   本机门禁按 exact 钉 35 就等于把开发机的 tmux 烤进了判据（3.4 上恒红）。⇒ 改成**按版本显式分支**：
+# 它不能是一条**登记豁免**（与 `meta_colon` 同一支）：那样在 3.6 上真跑真过、在 3.4 上豁免，**PASS 数随机器变**，
+#   本机门禁按 exact 钉 35 就等于把开发机的 tmux 烤进了判据（3.4 上恒红）。⇒ **按版本显式分支**：
 #   · 版本够（≥ 门槛）⇒ 照常跑；建不出来就是**未登记的 skip** ⇒ 整套 RC=1（不许悄悄跳过）；
 #   · 版本不够 ⇒ 这一格记 **SKIP** 并说原因 —— **但先真建一次**：建得出来 ⇒ 版本门过时 ⇒ **FAIL**
 #     （SKIP 只许出现在「版本真的不够」时，不是「版本号比门槛小」时）。
@@ -156,7 +156,7 @@ settle() {
 }
 
 wait_for '"kind":"hello"' || { echo "10s 内没等到 hello"; tail -20 "$ERR"; exit 1; }
-echo "== F03 Gate 2 · backend 真机验收 =="
+echo "== Gate 2 · backend 真机验收 =="
 echo "backend : $BACKEND"
 echo "判定表 : ${GOLDEN#"$REPO"/}"
 echo
@@ -188,7 +188,7 @@ while IFS=$'\t' read -r id name sid expect; do
     continue
   fi
   [ "$created" = yes ] || { skipped "$id：tmux 建不出这个名字的会话（$name）"; continue; }
-  # ★ audit-0805 F20：**建完要验它真的以那个名字存在**。
+  # ★ **建完要验它真的以那个名字存在**。
   #
   # 起因：CI 上 `meta_dollar`（`cc-a$x`）报的是后端的 `no_such_session`，而不是本例期望的
   # `wrong_owner` —— 也就是说**会话没按那个名字建起来**，而上面那条 `||` 链**返回了 0**
@@ -271,10 +271,10 @@ if wait_for '"id":"e2e-gate2-exp"'; then
   fi
 else bad "_expect 场景 5s 内无应答"; fi
 
-# ── F04a：Gate 3（`windows == 1`，**只给破坏性动作**）的真机验收 ───────────
+# ── Gate 3（`windows == 1`，**只给破坏性动作**）的真机验收 ───────────
 # 与 Gate 2 的用例表分开：Gate 3 的轴是**窗口数**，不是身份，塞进那张表会让两个轴混在一起。
 echo
-echo "-- F04a Gate 3（terminal-end）--"
+echo "-- Gate 3（terminal-end）--"
 g3() { # <场景名> <会话名> <设不设sid> <开几个窗口> <期望码|OK>
   local what="$1" name="$2" sid="$3" wins="$4" want="$5" rid="e2e-g3-$6"
   fresh_tmux
