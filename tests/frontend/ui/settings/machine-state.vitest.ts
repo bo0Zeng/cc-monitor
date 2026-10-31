@@ -36,6 +36,19 @@ describe("机器状态成品", () => {
     expect(machineFace(decoded("不是 Unix"))).toMatchObject({ dot: "failed" });
   });
 
+  it("★ 问题行的语气与进度条照成品的 `strip`，不按 `state` 另判", () => {
+    const down = decoded("无应答");
+    // 同是 down，后端说条上那一行正在做、带进度 ⇒ 照它。
+    expect(machineFace({ ...down, strip: { tone: "busy", progress: true } })).toMatchObject({ tone: "busy", bar: true });
+    expect(machineFace({ ...down, strip: { tone: "warn", progress: false } })).toMatchObject({ tone: "warn", bar: false });
+    expect(machineFace({ ...down, strip: { tone: "fault", progress: false } })).toMatchObject({ tone: "error", bar: false });
+    // 同是正在装，后端说不带进度 ⇒ 不出进度条。
+    expect(machineFace({ ...decoded("正在装"), strip: { tone: "busy", progress: false } })).toMatchObject({ tone: "busy", bar: false });
+    // 不进条（较新 · 停用）而有那一句 ⇒ 待办，不是出错。
+    expect(machineFace(decoded("较新"))).toMatchObject({ tone: "warn", bar: false });
+    expect(machineFace(decoded("停用"))).toMatchObject({ tone: "warn", bar: false });
+  });
+
   it("★ 后端的成品不带下一步那一行", () => {
     for (const c of cases) {
       const el = document.createElement("div");
