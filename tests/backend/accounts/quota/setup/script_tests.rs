@@ -158,7 +158,11 @@ fn a_strategy_reads_the_short_pace_inflight_and_six_hour_bins() {
     ))
     .expect("编得过");
     let bare = f.code.decide(&ctx_of(1)).expect("跑得通");
-    assert_eq!(bare.why, [("a".to_string(), "||36||".to_string())], "量不到的都是 ()");
+    assert_eq!(
+        bare.why,
+        [("a".to_string(), "||36||".to_string())],
+        "量不到的都是 ()"
+    );
     let mut bins = vec![None; 36];
     bins[35] = Some(2_000_000.0);
     let me = Me {
