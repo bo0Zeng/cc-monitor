@@ -5,9 +5,6 @@ pub(crate) use super::exec::KeyTable;
 use super::exec::{self, Applied};
 use super::layout::{self, AddIntent, Plan};
 use crate::common::said::Said;
-
-/// 这一层的拒绝：码 ＋ 那一句 ＋ 下层原话（原话进复制详情）。计划那一层（`layout`）只交 `(码, 句)`，`?` 换过来。
-type Refusal = Said;
 use super::scan::{self, is_under, join, KeyRows, Snapshot};
 use crate::common::door::Door;
 use cmd_wire::accounts::{
@@ -27,33 +24,33 @@ pub(crate) enum Request {
     Rollback(AccountRollbackArgs),
 }
 
-fn bad(detail: &str) -> Refusal {
+fn bad(detail: &str) -> Said {
     crate::wire::spec::fail("bad_args", crate::common::contract::malformed(detail))
 }
 
 /// 这台做不做得了多账号（不做 ⇒ `unsupported`）。
-fn supported() -> Result<(), Refusal> {
+fn supported() -> Result<(), Said> {
     if let Some(said) = crate::platform::acct_view::unsupported_said() {
-        return Err(Refusal::from(("unsupported", said)));
+        return Err(crate::wire::spec::fail("unsupported", said));
     }
     match layout::face() {
         Some(_) => Ok(()),
-        None => Err(Refusal::from((
+        None => Err(crate::wire::spec::fail(
             "unsupported",
             copy_text(
                 "beAcctWire.platform.unsupported",
                 &[("os", std::env::consts::OS)],
             ),
-        ))),
+        )),
     }
 }
 
-fn home_of(d: &dyn Door) -> Result<String, Refusal> {
+fn home_of(d: &dyn Door) -> Result<String, Said> {
     scan::home(d).map_err(|e| crate::wire::spec::fail("io_failed", e))
 }
 
 /// 账号库在就拿它那把锁（读 → 改 → 写这一整趟里别的后端进程进不来）；还没建 ⇒ 没东西可锁（写清单那一下的比对兜底）。
-fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
+fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Said> {
     let accts = scan::accts_root(home);
     if scan::item_at(&accts).exists() {
         crate::platform::lock::hold(std::path::Path::new(&accts))
@@ -100,7 +97,7 @@ fn alias_events(before: &[String], after: &[String]) -> Vec<AliasEvent> {
 }
 
 /// 导入凭据的那个路径：`~/…` 按家目录展开；只收家目录底下的绝对路径（无 `..` 段 · 无控制符）。
-fn cred_path(home: &str, raw: &str) -> Result<String, Refusal> {
+fn cred_path(home: &str, raw: &str) -> Result<String, Said> {
     let t = raw.trim();
     let abs = crate::platform::acct_view::slash_form(&crate::platform::paths::expand_tilde_from(
         t,
@@ -116,13 +113,13 @@ fn cred_path(home: &str, raw: &str) -> Result<String, Refusal> {
     if ok {
         Ok(abs.to_string())
     } else {
-        Err(Refusal::from((
+        Err(crate::wire::spec::fail(
             "refused",
             copy_text(
                 "beAcctWire.cred.outsideHome",
                 &[("path", raw), ("home", home)],
             ),
-        )))
+        ))
     }
 }
 
@@ -154,7 +151,7 @@ pub(crate) fn run_change(
     d: &dyn Door,
     req: &Request,
     keys: Option<&KeyTable>,
-) -> Result<Done, Refusal> {
+) -> Result<Done, Said> {
     supported()?;
     let home = home_of(d)?;
     let _held = lock(&home)?;
@@ -274,7 +271,7 @@ pub(crate) fn run_change(
 /// 这台的账号库补号色（一次）：清单里还有号没分到号色 ⇒ 拿账号库那把锁、照库序分好写回（留一份备份，同别的改动）；
 /// 都有了 · 没有账号库 · 做不了多账号 ⇒ 不动。只由占着常驻的那一个进程起来时调（与 `rotation.json` 换形写回同一处、同一个写的人）；写不成只出声。
 pub(crate) fn colors_here(d: &dyn Door) {
-    let run = || -> Result<bool, Refusal> {
+    let run = || -> Result<bool, Said> {
         supported()?;
         let home = home_of(d)?;
         let _held = lock(&home)?;
@@ -294,7 +291,7 @@ pub(crate) fn colors_here(d: &dyn Door) {
     match run() {
         Ok(true) => tracing::info!("[accounts] 账号库补了号色"),
         Ok(false) => {}
-        Err(e) => tracing::warn!("[accounts] 账号库补号色不成：{} {}", e.code, e.message),
+        Err(e) => tracing::warn!("[accounts] 账号库补号色不成：{} {}", e.code_or_fallback(), e.logged()),
     }
 }
 
@@ -305,7 +302,7 @@ pub(crate) fn align_here(d: &dyn Door) {
     if supported().is_err() {
         return;
     }
-    let run = || -> Result<usize, Refusal> {
+    let run = || -> Result<usize, Said> {
         let home = home_of(d)?;
         let _held = lock(&home)?;
         let snap = scan::scan(&home, &[], &[]);
@@ -327,7 +324,7 @@ pub(crate) fn align_here(d: &dyn Door) {
     match run() {
         Ok(0) => {}
         Ok(n) => tracing::info!("[accounts] 账号库对齐（{n} 步）"),
-        Err(e) => tracing::warn!("[accounts] 账号库对齐不成：{} {}", e.code, e.message),
+        Err(e) => tracing::warn!("[accounts] 账号库对齐不成：{} {}", e.code_or_fallback(), e.logged()),
     }
 }
 
@@ -336,14 +333,14 @@ fn rollback(
     snap: &Snapshot,
     a: &AccountRollbackArgs,
     keys: Option<&KeyTable>,
-) -> Result<Done, Refusal> {
+) -> Result<Done, Said> {
     let pick = match &a.backup {
         Some(id) => {
             if !exec::backup_id_ok(id) {
-                return Err(Refusal::from((
+                return Err(crate::wire::spec::fail(
                     "refused",
                     copy_text("beAcctWire.rollback.badId", &[("id", id)]),
-                )));
+                ));
             }
             snap.backups.iter().find(|b| b.id == *id)
         }
@@ -354,19 +351,19 @@ fn rollback(
             .max_by(|x, y| x.id.cmp(&y.id)),
     };
     let Some(b) = pick else {
-        return Err(Refusal::from((
+        return Err(crate::wire::spec::fail(
             "refused",
             copy_text(
                 "beAcctWire.rollback.none",
                 &[("accts", &snap.roots().accts)],
             ),
-        )));
+        ));
     };
     let Some(undo) = &b.undo else {
-        return Err(Refusal::from((
+        return Err(crate::wire::spec::fail(
             "refused",
             copy_text("beAcctWire.rollback.noUndo", &[("path", &b.path)]),
-        )));
+        ));
     };
     let (steps, bad_lines) = exec::undo_steps(undo);
     let mut change = AccountChange {
@@ -386,7 +383,7 @@ fn rollback(
     }
     let (done, failed) = exec::rollback(d, snap.roots(), &b.path, &steps, keys);
     if !failed.is_empty() {
-        return Err(Refusal::from((
+        return Err(crate::wire::spec::fail(
             "io_failed",
             copy_text(
                 "beAcctWire.rollback.partial",
@@ -396,7 +393,7 @@ fn rollback(
                     ("path", &b.path),
                 ],
             ),
-        )));
+        ));
     }
     change.applied = true;
     change.steps = done;
@@ -410,7 +407,7 @@ fn rollback(
 }
 
 /// `accounts-verify`：先对齐（[`align_here`]：缺的共享链接补上），再逐项核 —— 缺链接只在补不上时才报。
-pub(crate) fn run_verify(d: &dyn Door) -> Result<VerifyReport, Refusal> {
+pub(crate) fn run_verify(d: &dyn Door) -> Result<VerifyReport, Said> {
     supported()?;
     let home = home_of(d)?;
     align_here(d);
@@ -418,16 +415,16 @@ pub(crate) fn run_verify(d: &dyn Door) -> Result<VerifyReport, Refusal> {
 }
 
 /// `accounts-login-cmd`：只算那一行（不起进程、不碰盘之外的读）。
-pub(crate) fn run_login_cmd(d: &dyn Door, a: &AccountNameArgs) -> Result<AccountLoginCmd, Refusal> {
+pub(crate) fn run_login_cmd(d: &dyn Door, a: &AccountNameArgs) -> Result<AccountLoginCmd, Said> {
     supported()?;
     let home = home_of(d)?;
     let snap = scan::scan(&home, &[], &[]);
     let known = snap.manifest().is_some_and(|m| m.find(&a.name).is_some());
     if !known {
-        return Err(Refusal::from((
+        return Err(crate::wire::spec::fail(
             "refused",
             copy_text("beAcctPlan.account.unknown", &[("name", &a.name)]),
-        )));
+        ));
     }
     Ok(AccountLoginCmd {
         cmd: login_line(&home, &a.name),

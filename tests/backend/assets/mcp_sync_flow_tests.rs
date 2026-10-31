@@ -149,13 +149,14 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
         Ok(Default::default())
     };
     let before = std::fs::read_to_string(dst.join(mcp_json())).unwrap();
-    let crate::common::said::Said { code, .. } = answer_apply(
+    let code = answer_apply(
         &LocalFiles,
         &record,
         &json!({ "name": "s", "at": at(&dst), "def": def, "fill": {}, "target": pre["target"] }),
     )
-    .expect_err("缺值还写了");
-    assert_eq!(code, "needs_input");
+    .expect_err("缺值还写了")
+        .code;
+    assert_eq!(code.as_deref(), Some("needs_input"));
     assert_eq!(
         std::fs::read_to_string(dst.join(mcp_json())).unwrap(),
         before
@@ -183,13 +184,14 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
         ))
     );
     // 交来的定义里夹着值 ⇒ 拒（值只许从卡上或这台来）
-    let crate::common::said::Said { code, .. } = answer_preview(
+    let code = answer_preview(
         &LocalFiles,
         &NoFacts,
         &json!({ "name": "s", "at": at(&dst), "def": { "command": "x", "env": { "API_KEY": "leak" } } }),
     )
-    .expect_err("带值的定义也收了");
-    assert_eq!(code, "bad_args");
+    .expect_err("带值的定义也收了")
+        .code;
+    assert_eq!(code.as_deref(), Some("bad_args"));
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -208,24 +210,26 @@ fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_
     .unwrap();
     std::fs::write(dst.join(mcp_json()), "{\"mcpServers\":{\"z\":{}}}").unwrap();
     let record = |_: &crate::assets::skill_ledger::RecordReq| Ok(Default::default());
-    let crate::common::said::Said { code, .. } = answer_apply(
+    let code = answer_apply(
         &LocalFiles,
         &record,
         &json!({ "name": "a", "at": at(&dst), "def": def, "target": pre["target"] }),
     )
-    .expect_err("看过之后变了还写了");
-    assert_eq!(code, "stale");
+    .expect_err("看过之后变了还写了")
+        .code;
+    assert_eq!(code.as_deref(), Some("stale"));
     assert_eq!(
         std::fs::read_to_string(dst.join(mcp_json())).unwrap(),
         "{\"mcpServers\":{\"z\":{}}}"
     );
     // 这台没建账号库（家目录是临时目录）⇒ 用户级只读。
-    let crate::common::said::Said { code, .. } = answer_preview(
+    let code = answer_preview(
         &crate::assets::aliases::tests::HomeDoor(d.clone()),
         &NoFacts,
         &json!({ "name": "a", "at": { "level": "user" }, "def": def }),
     )
-    .expect_err("用户级也收了");
-    assert_eq!(code, "refused");
+    .expect_err("用户级也收了")
+        .code;
+    assert_eq!(code.as_deref(), Some("refused"));
     let _ = std::fs::remove_dir_all(&d);
 }

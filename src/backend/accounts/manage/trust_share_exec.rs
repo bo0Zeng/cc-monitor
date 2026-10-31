@@ -13,9 +13,9 @@ use super::scan::join;
 use super::trust_share;
 use crate::agents::TrustCells;
 use crate::common::door::{self, Door, Refused};
+use crate::common::said::Said;
 use std::collections::BTreeSet;
 
-type Refusal = crate::common::said::Said;
 
 /// 预标那一下的结局。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,11 +33,11 @@ pub(crate) enum Marked {
 }
 
 /// 同步一趟（文件事件 · 加号 · 建库之后）。回改写了的号名。这台没有账号库 / 那一家没有「信任」这件事 ⇒ 什么都不做。
-pub(crate) fn sync(d: &dyn Door) -> Result<Vec<String>, Refusal> {
+pub(crate) fn sync(d: &dyn Door) -> Result<Vec<String>, Said> {
     let Some(cells) = layout::face().and_then(|f| f.trust) else {
         return Ok(Vec::new());
     };
-    let home = super::scan::home(d).map_err(|e| Refusal::new("io_failed", e))?;
+    let home = super::scan::home(d).map_err(|e| Said::new("io_failed", e))?;
     let _held = lock(&home)?;
     let Some(m) = manifest_in(&home)? else {
         return Ok(Vec::new());

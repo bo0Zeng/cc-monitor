@@ -251,6 +251,6 @@ fn an_inner_request_with_an_extra_key_is_bad_args() {
             until: None,
         };
         let got = run(req).map(|_| ()).map_err(|f| f.code);
-        assert_eq!(got, Err("bad_args".to_string()), "{cmd}");
+        assert_eq!(got, Err(Some("bad_args".to_string())), "{cmd}");
     }
 }

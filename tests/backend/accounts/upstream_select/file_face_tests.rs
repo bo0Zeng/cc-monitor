@@ -146,7 +146,7 @@ fn an_unparseable_file_is_refused_and_left_byte_for_byte() {
     )
     .unwrap_err();
     assert_eq!(
-        err.code, "bad_file",
+        err.code.as_deref(), Some("bad_file"),
         "解析不了应当回 bad_file，实得 {err:?}"
     );
     assert_eq!(
@@ -198,11 +198,11 @@ fn bad_arguments_are_refused_before_a_single_byte_is_written() {
         )
         .unwrap_err();
         assert_eq!(
-            err.code, "bad_args",
+            err.code.as_deref(), Some("bad_args"),
             "「{what}」应当是 bad_args，实得 {err:?}"
         );
         assert!(
-            !err.message.contains(PLAIN),
+            !err.said.contains(PLAIN),
             "「{what}」的报错文案里带着明文 key"
         );
         assert!(!f.exists(), "「{what}」被拒了，却写出了文件");
@@ -289,7 +289,7 @@ fn a_missing_home_is_said_and_not_created_for_you() {
         &json!({"configDir": "/h/accts/work", "key": PLAIN}),
     )
     .unwrap_err();
-    assert_eq!(err.code, "io_failed", "实得 {err:?}");
+    assert_eq!(err.code.as_deref(), Some("io_failed"), "实得 {err:?}");
     assert!(!home.join("not-there").exists(), "替人建了家目录");
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -352,17 +352,17 @@ fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
         )
         .expect_err("坏形状还写了");
         assert_eq!(
-            err.code, "bad_args",
+            err.code.as_deref(), Some("bad_args"),
             "{bad:?} 应当是 bad_args，实得 {err:?}"
         );
-        assert!(!err.message.contains(PLAIN), "报错里带着明文");
+        assert!(!err.said.contains(PLAIN), "报错里带着明文");
     }
     let err = answer_set_at(
         &crate::platform::fs::Own::issue_data_at(f.parent().expect("表所在的那一层")),
         &json!({"configDir": "/h/accts/work", "key": PLAIN, "baseUrl": 3}),
     )
     .unwrap_err();
-    assert_eq!(err.code, "bad_args");
+    assert_eq!(err.code.as_deref(), Some("bad_args"));
     assert_eq!(std::fs::read(&f).unwrap(), before, "形状不对却动了文件");
     // 与装表**同一个谓词**（`upstream_url_core::usable`）：装不进表的（明文非回环）写口当场拒、文件不动。
     let err = answer_set_at(
@@ -370,7 +370,7 @@ fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
         &json!({"configDir": "/h/accts/work", "key": PLAIN, "baseUrl": "http://api.example.com"}),
     )
     .unwrap_err();
-    assert_eq!(err.code, "bad_args");
+    assert_eq!(err.code.as_deref(), Some("bad_args"));
     assert_eq!(
         std::fs::read(&f).unwrap(),
         before,
@@ -651,9 +651,9 @@ fn hx2_the_account_id_is_derived_here_from_the_config_dir() {
             &json!({"configDir": bad, "key": "KEY-SHOULD-NOT-LAND"}),
         )
         .unwrap_err();
-        assert_eq!(err.code, "bad_args", "{bad:?}");
+        assert_eq!(err.code.as_deref(), Some("bad_args"), "{bad:?}");
         assert!(
-            !err.message.contains("KEY-SHOULD-NOT-LAND"),
+            !err.said.contains("KEY-SHOULD-NOT-LAND"),
             "报错里带着明文：{err:?}"
         );
         assert_eq!(
@@ -680,9 +680,9 @@ fn an_unreadable_table_hands_its_raw_to_the_detail_not_the_sentence() {
         &json!({"configDir": "/h/accts/work", "key": PLAIN}),
     )
     .unwrap_err();
-    assert_eq!(err.code, "io_failed", "实得 {err:?}");
+    assert_eq!(err.code.as_deref(), Some("io_failed"), "实得 {err:?}");
     let raw = err.raw.as_deref().expect("原话丢了");
-    assert!(!err.message.contains(raw), "原话上了句子：{err:?}");
+    assert!(!err.said.contains(raw), "原话上了句子：{err:?}");
     let _ = std::fs::remove_dir_all(&home);
 }
 

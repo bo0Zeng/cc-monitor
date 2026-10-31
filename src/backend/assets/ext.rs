@@ -27,6 +27,7 @@ use std::path::{Path, PathBuf};
 
 use super::asset_catalog::{self, Asset, Catalog, ExtKind};
 use super::skill_ledger::{Record, RecordReq};
+use crate::common::said::IntoNote as _;
 use crate::common::door::{self, Door, Refused};
 
 // ───────────────────────── 线上形状（界面那一份由这里生成） ─────────────────────────
