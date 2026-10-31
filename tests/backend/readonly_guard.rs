@@ -267,10 +267,10 @@ mod tests {
             "删会话落点的窄口只许门引用（它递给写面）—— 别的面拿到它就等于拿到了删会话的落点"
         );
         assert!(
-            crate::control::files_write::MANAGE_COMMANDS
-                .iter()
-                .any(|c| c.name == "files-delete-session"),
-            "写面登记里没有 `files-delete-session` —— 删历史会话那条路断了"
+            crate::stream::inbound::REGISTRY.iter().any(|s| s.name
+                == <cmd_wire::files::FilesDeleteSessionReq as cmd_wire::Call>::NAME
+                && s.run.face),
+            "命令表上没有拿写句柄的 `files-delete-session` —— 删历史会话那条路断了"
         );
         let keys: Vec<String> = serde_json::to_value(cmd_wire::files::FilesDeleteSessionReq {
             sid: "abc".to_string(),
@@ -774,31 +774,39 @@ mod tests {
         );
     }
 
-    /// 递 [`crate::platform::fs::Face`] 的那一种能力（处理器写 `type Needs = needs::Face`）只有文件管理那一族用；用它的命令恰好是
-    /// 文件管理写面登记的那几张命令表的并（写面 · 上传提交 · 解压）—— 两侧异源：一侧是命令表里的档位（现打），一侧是写面自己的表。
+    /// 递 [`crate::platform::fs::Face`] 的那一种能力（处理器写 `type Needs = needs::Face`）只有文件管理那一族用：
+    /// 这样声明的处理器只住文件管理的两扇门（写面 · 上传提交 · 解压那一份，删会话那一份）。别处的处理器要了它，就是多了一个写用户文件的口。
     #[test]
     fn only_the_file_manager_commands_are_handed_the_face() {
-        use crate::stream::inbound::REGISTRY;
-        let got: std::collections::BTreeSet<&str> = REGISTRY
-            .iter()
-            .filter(|s| s.run.face)
-            .map(|s| s.name)
+        let root = guard_core::addr::backend_src_root();
+        let needle = format!("needs::{};", "Face");
+        let got: std::collections::BTreeSet<String> = core_files()
+            .into_iter()
+            .filter(|p| p.file_name().and_then(|n| n.to_str()) != Some("readonly_guard.rs"))
+            .filter(|p| {
+                guard_core::production_code(&std::fs::read_to_string(p).expect("读后端源码"))
+                    .contains(needle.as_str())
+            })
+            .map(|p| {
+                p.strip_prefix(&root)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
             .collect();
-        let want: std::collections::BTreeSet<&str> = crate::control::files_write::MANAGE_COMMANDS
-            .iter()
-            .chain(crate::control::files_commit::COMMIT_COMMANDS)
-            .chain(crate::control::files_extract::EXTRACT_COMMANDS)
-            .map(|c| c.name)
-            .collect();
-        assert!(
-            want.len() >= 10,
-            "写面的命令表只并出 {} 条 —— 表读坏了",
-            want.len()
-        );
         assert_eq!(
-            got, want,
-            "拿得到文件管理写句柄的命令与写面登记的命令对不上（左 = 命令表里要 `needs::Face` 的那几条）"
+            got.into_iter().collect::<Vec<_>>(),
+            vec![
+                "stream/inbound/files_session_face.rs".to_string(),
+                "stream/inbound/files_write_face.rs".to_string(),
+            ],
+            "要文件管理写句柄的处理器住到了文件管理那两扇门以外"
         );
+        // 正控：针认得出处理器里那一句声明。
+        assert!(guard_core::production_code(&format!(
+            "impl Handle for X {{ type Needs = crate::wire::typed::{needle} }}"
+        ))
+        .contains(needle.as_str()));
     }
 
     /// `Face` 的写方法只收 [`crate::platform::fs::Resolved`]：`impl Face` 里每个方法的参数表都不点名 `Path`

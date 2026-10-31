@@ -448,7 +448,7 @@ pub const PROBE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10)
 pub const CMD_UPLOAD: &str = <cmd_wire::transfer::TransferUploadAsk as cmd_wire::Call>::NAME;
 /// 进度流的 `kind` 前缀（传输台那一侧 `transfer_relay::TRANSFER_KIND_PREFIX`，判据钉两份相等）。
 pub const KIND_PREFIX: &str = "transfer/";
-/// 提交：后端文件管理那一条（后端 `control/files_commit.rs::COMMIT_COMMANDS`）。
+/// 提交：后端文件管理那一条（后端 `control/files_commit.rs`）。
 pub const CMD_COMMIT: &str = <cmd_wire::files::FilesCommitUploadReq as cmd_wire::Call>::NAME;
 /// 开单那一趟往返的上限（调用方给的期限）：开单不搬字节，但整组的同名要在远端落点那台逐项探一遍。
 pub const OPEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(60);
