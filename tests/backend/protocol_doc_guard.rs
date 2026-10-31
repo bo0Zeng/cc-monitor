@@ -99,6 +99,11 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "agents/claudecode/sign_in.rs",
         include_str!("../../src/backend/agents/claudecode/sign_in.rs"),
     ),
+    // claude 那一家的开窗那一句（`WARM.args` 里的 `--model` · `--tools` …）：发给 claude 这个子进程的旗标，同上。
+    (
+        "agents/claudecode/mod.rs",
+        include_str!("../../src/backend/agents/claudecode/mod.rs"),
+    ),
     // codex 那一家的起会话事实（`LAUNCH_ARGS = ["--no-daemon"]`）：发给 codex 这个子进程的旗标，同上。
     (
         "agents/codex/resume.rs",
@@ -194,6 +199,22 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         &["--no-browser"],
         "`claude mcp login <名>` 不开浏览器、只打印授权链接那一支的旗标（`agents/claudecode/sign_in.rs::MCP_FACE`）：claude 这个子进程的命令面，\
          后端 argv 从不认它，线上契约里也没有它的位置。仓外的真 claude 读不到 ⇒ ② 那一侧读判据用的假 MCP 登录子命令（它照实只认这一个）。",
+    ),
+    (
+        "agents/claudecode/mod.rs",
+        "tests/__fixtures__/fake-claude-warm.sh",
+        &[
+            "--model",
+            "--no-session-persistence",
+            "--output-format",
+            "--setting-sources",
+            "--strict-mcp-config",
+            "--system-prompt",
+            "--tools",
+        ],
+        "开窗那一句（`agents/claudecode/mod.rs::WARM`，`accounts::quota::warm` 让本二进制当 ccm 交给 claude）：haiku · 不给工具 · \
+         只读项目级设置 · 不起 MCP · 不落会话记录 · 换系统提示。claude 这个子进程的命令面，后端 argv 从不认它们，线上契约里也没有它们的位置。\
+         仓外的真 claude 读不到 ⇒ ② 那一侧读判据用的假子进程（它照实只认这几个）。",
     ),
     (
         "agents/codex/resume.rs",

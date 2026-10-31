@@ -2017,8 +2017,16 @@ type WirePath = string | { b16: string };
 入参 `BookmarksReadReq` · 回包 `Bookmarks`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Bookmarks = { dirs: Array<string>, };
-type BookmarksReadReq = Record<symbol, never>;
+type Bookmarks = { dirs: Array<string>, 
+/**
+ * 入参 `at` 里的每一串（原样作键）⇒ 它按归一之后的形在 `dirs` 里的下标；不在的不列，没问 ⇒ 空。
+ */
+here?: { [key in string]: number }, };
+type BookmarksReadReq = { 
+/**
+ * 各栏此刻的目录（这台的绝对路径）：回包的 `here` 答每一个是第几条。
+ */
+at?: Array<string>, };
 ```
 
 码：`bad_args` · `io_failed` · `bookmarks_unreadable`
@@ -2032,12 +2040,20 @@ type BookmarksReadReq = Record<symbol, never>;
 入参 `BookmarksEditReq` · 回包 `Bookmarks`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Bookmarks = { dirs: Array<string>, };
+type Bookmarks = { dirs: Array<string>, 
+/**
+ * 入参 `at` 里的每一串（原样作键）⇒ 它按归一之后的形在 `dirs` 里的下标；不在的不列，没问 ⇒ 空。
+ */
+here?: { [key in string]: number }, };
 type BookmarksEditReq = { op: "toggle" | "remove" | "add", 
 /**
  * 那几个目录（这台的绝对路径；按归一之后的形比、存）。
  */
-dirs: Array<string>, };
+dirs: Array<string>, 
+/**
+ * 各栏此刻的目录：回包的 `here` 答每一个在改完的那一份里是第几条。
+ */
+at?: Array<string>, };
 ```
 
 码：`bad_args` · `io_failed` · `bookmarks_unreadable`
@@ -2404,6 +2420,50 @@ resetsAt?: number,
  * 越过了哪条预警线（比例）；没越过就没有。
  */
 warnedAt?: number, };
+```
+
+码：`bad_args` · `child_timed_out` · `failed` · `io_failed` · `not_found` · `unsupported`
+
+#### `quota-warm`
+
+给一个号开窗。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 125 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --quota-warm`
+
+入参 `QuotaWarmReq` · 回包 `Warmed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AgentKind = string;
+type QuotaWarmReq = { 
+/**
+ * 哪一家（线上的 kind）。
+ */
+agent: AgentKind, 
+/**
+ * 账号库里的号（配置目录末段；账号 0 是 `0`）。
+ */
+account: string, };
+type Warmed = { 
+/**
+ * 哪一家（同入参）。
+ */
+agent: AgentKind, 
+/**
+ * 号（同入参）。
+ */
+account: string, 
+/**
+ * 这一趟真发了（`false` ＝ 15 分钟内发过，照那一次答）。
+ */
+sent: boolean, 
+/**
+ * 那一发发出的时刻（unix 秒）。
+ */
+at: number, 
+/**
+ * 回来的重置时刻（额度账里那个号的 5 小时窗；没读到 ⇒ `null`）。
+ */
+resets_at: number | null, };
 ```
 
 码：`bad_args` · `child_timed_out` · `failed` · `io_failed` · `not_found` · `unsupported`
@@ -12572,6 +12632,69 @@ type Words = string;
 
 码：`bad_args`
 
+#### `monitor-board-here`
+
+监控板这台那几条（序 · 活不活 · 在跑几个 agent；不认得的不答）。
+
+收 `args` · 可撤 · CLI：`ccm -- --monitor-board-here`
+
+入参 `MonitorHereReq` · 回包 `MonitorHere`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type MonitorHere = { rows: Array<MonitorHereRow>, };
+type MonitorHereReq = { sids: Array<string>, };
+type MonitorHereRow = { sid: string, 
+/**
+ * 这台发出去的那张脸上的序（`face.order`）。
+ */
+order: number, 
+/**
+ * 那张脸的一生是「活」。
+ */
+live: boolean, 
+/**
+ * 这台运行簿里这条会话此刻在跑的子 agent 数。
+ */
+running: number, };
+```
+
+码：`bad_args`
+
+#### `monitor-board`
+
+监控板（问到各台、合成一份：分组 · 组内先后 · 组头 · 汇总那一句）。
+
+收 `args` · 可撤 · CLI：`ccm -- --monitor-board`
+
+入参 `MonitorBoardReq` · 回包 `MonitorBoard`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type MonitorAsk = { machine: Origin, sid: string, };
+type MonitorBoard = { 
+/**
+ * 几台 · 几条活会话 · 几个 agent 在跑；一组都没有 ⇒ 空。
+ */
+summary: Words, groups: Array<MonitorGroup>, };
+type MonitorBoardReq = { sessions: Array<MonitorAsk>, };
+type MonitorGroup = { machine: Origin, 
+/**
+ * 组头那一句（那台的名字 ＋ 几条）。
+ */
+title: Words, 
+/**
+ * 组内的先后（排好了）。
+ */
+sids: Array<string>, 
+/**
+ * 这台没答 ⇒ 那台离线那一句（`sids` 照请求先后）。
+ */
+down?: Words, };
+type Origin = string;
+type Words = string;
+```
+
+码：`bad_args`
+
 #### `terminal-preview`
 
 抓一个终端的一屏（只抓一次，轮询归调用方）。
@@ -13184,32 +13307,34 @@ ticket: string, };
 入参 `SidsReq` · 回包 `Batched`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Batched = { results: Array<Outcome>, };
-type Outcome = { 
+type Batched = { results: Array<SessionOutcome>, };
+type Origin = string;
+type SessionOutcome = { 
 /**
- * 会话 id（与入参同序）。
+ * 哪台（每台那一跳答的是它自己 ⇒ 本机那一个；本机合好时换成那一项的那台）。
  */
-sid: string, 
+machine: Origin, sid: Sid, outcome: SessionState, 
 /**
- * `done` 做成了 · `skipped` 这一个不用做 / 做不了 · `failed` 做了没成。
- */
-outcome: "done" | "skipped" | "failed", 
-/**
- * 跳过 / 失败的原因码（做成了 ⇒ `null`）。
+ * 跳过 / 失败的原因码（挑按钮用）；做成了 ⇒ `null`。
  */
 why: string | null, 
 /**
- * 停的那一项没做成的那一句（失败的与单个结束被拒同一张表）；做成了 ⇒ `null`。
+ * 那台写好的那一句；做成了 ⇒ `null`。
  */
 said: string | null, 
 /**
- * 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
+ * 失败那一项的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
  */
 copyDetail: string, 
 /**
- * 落在哪个 tmux 会话上。
+ * 那台写的称呼（项目 ＋ 名字）。
+ */
+title: string, 
+/**
+ * 落在哪个终端会话上。
  */
 session: string | null, };
+type SessionState = "done" | "skipped" | "failed";
 type Sid = string;
 type SidsReq = { 
 /**
@@ -16586,6 +16711,8 @@ alias?: string | null, };
 | `--mcp-sync-apply` | ＝ 帧命令 `mcp-sync-apply`：在要被写的那一台把那一条写进去 |
 | `--mcp-sync-preview` | ＝ 帧命令 `mcp-sync-preview`：在要被写的那一台看装上之后那一条 |
 | `--mcp-sync-source` | ＝ 帧命令 `mcp-sync-source`：装到别的机器时来源那一条 |
+| `--monitor-board` | ＝ 帧命令 `monitor-board`：监控板（问到各台、合成一份：分组 · 组内先后 · 组头 · 汇总那一句） |
+| `--monitor-board-here` | ＝ 帧命令 `monitor-board-here`：监控板这台那几条（序 · 活不活 · 在跑几个 agent；不认得的不答） |
 | `--ping` | ＝ 帧命令 `ping`：问活：零载荷，回 `ok` |
 | `--place-self` | 部署那一趟：暂存区里新传上去的这一份读自己的字节，自报是这一版才 `rename(2)` 盖掉落点 `~/.cc-monitor/bin/ccm`；回 `{placed: true, build_id}`；不在暂存区 ⇒ `outside_staging`；自报不是这一版 ⇒ `not_self`、暂存件当场删 |
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
@@ -16613,6 +16740,7 @@ alias?: string | null, };
 | `--pubkey-push` | ＝ 帧命令 `pubkey-push`：把本机公钥推进那台的 `authorized_keys` |
 | `--quota-probe` | ＝ 帧命令 `quota-probe`：用某个号查一次额度 |
 | `--quota-read` | ＝ 帧命令 `quota-read`：这台的额度账 |
+| `--quota-warm` | ＝ 帧命令 `quota-warm`：给一个号开窗 |
 | `--resident-attach` | 小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；断开 ⇒ stdout 一行 `{attach:"refused", reason: absent\|unreachable}`、退出 2 |
 | `--resident-call` `[--stdin-line] --within-ms <毫秒> [--tz <IANA 名>]` | 问这台的常驻后端一条帧命令（stdin 一行 `{cmd, args}`）：连套接字、握手（在看名单交空的）、发请求、等那一条应答，stdout 一行回包、退出 0；常驻答了失败 ⇒ stderr 一行它那一份失败信封、退出 2；没人在听 ⇒ `resident_absent`（不起冷进程顶上）；`--within-ms` 必给（等多久归发起方，缺 ⇒ `bad_args`），到期限没回 ⇒ `timed_out` |
 | `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid, replaced: false}`（pid 是套接字对端）；没在 ⇒ 起一个脱离的自己、回 `{pid, replaced}`；`--replace` 在听那一位比自己旧才停掉再起（只升不降） |

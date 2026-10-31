@@ -225,59 +225,26 @@ fn step(said: String, tone: Tone, segs: Segs) -> ProbeCell {
     }
 }
 
-/// 握手那一行 ⇒ 那一格（四段在 `segs` 上往前走）。
-fn stage_line(st: &ssh_dial::Stage, segs: Segs) -> ProbeCell {
+/// 握手那一行 ⇒ 那一格：字是拨号核心写好的那一句，这里只按支定语气、让四段往前走。「过了一步」不成格 ⇒ `None`。
+fn stage_line(st: &ssh_dial::Stage, segs: Segs) -> Option<ProbeCell> {
     use ssh_dial::Stage;
-    match st {
-        Stage::Dialing { endpoint } => step(
-            copy_text("beProbe.stage.dial", &[("endpoint", endpoint)]),
-            Tone::Now,
-            segs,
+    let (said, tone, segs) = match st {
+        Stage::Step { .. } => return None,
+        Stage::Dialing { said, .. } => (said, Tone::Now, segs),
+        Stage::HostKey { said, .. } | Stage::Won { said, .. } => (said, Tone::Now, segs.reached(2)),
+        Stage::Failed { said, .. } => (said, Tone::Warn, segs),
+        Stage::Auth { ok: true, said } => (said, Tone::Now, segs.reached(3)),
+        Stage::Auth { ok: false, said } => (
+            said,
+            Tone::Fail,
+            Segs {
+                auth: SegMark::Fail,
+                ..segs.reached(2)
+            },
         ),
-        Stage::HostKey {
-            endpoint,
-            fingerprint,
-        } => step(
-            copy_text(
-                "beProbe.stage.fingerprint",
-                &[("endpoint", endpoint), ("fingerprint", fingerprint)],
-            ),
-            Tone::Now,
-            segs.reached(2),
-        ),
-        Stage::Failed { endpoint, reason } => step(
-            copy_text(
-                "beProbe.stage.failed",
-                &[("endpoint", endpoint), ("reason", reason)],
-            ),
-            Tone::Warn,
-            segs,
-        ),
-        Stage::Won { endpoint } => step(
-            copy_text("beProbe.stage.won", &[("endpoint", endpoint)]),
-            Tone::Now,
-            segs.reached(2),
-        ),
-        Stage::Auth { ok: true, .. } => step(
-            copy_text("beProbe.stage.authOk", &[]),
-            Tone::Now,
-            segs.reached(3),
-        ),
-        Stage::Auth { ok: false, detail } => {
-            let said = detail
-                .clone()
-                .unwrap_or_else(|| copy_text("reason.io.unknown", &[]));
-            step(
-                copy_text("beProbe.stage.authFailed", &[("said", &said)]),
-                Tone::Fail,
-                Segs {
-                    auth: SegMark::Fail,
-                    ..segs.reached(2)
-                },
-            )
-        }
-        Stage::Established => step(copy_text("beProbe.stage.ready", &[]), Tone::Now, segs),
-    }
+        Stage::Established { said } => (said, Tone::Now, segs),
+    };
+    Some(step(said.clone(), tone, segs))
 }
 
 /// `remote-probe` 的入参：界面交来的票 ＋ 那台的配置（可能还没保存；它的跳板照这一端的机器表按名字找）。
@@ -567,7 +534,11 @@ async fn run(
             ));
         };
         match ev {
-            Ev::Stage(st) => cells.send(stage_line(&st, cells.last().1)).await?,
+            Ev::Stage(st) => {
+                if let Some(cell) = stage_line(&st, cells.last().1) {
+                    cells.send(cell).await?
+                }
+            }
             Ev::Feed(Event::Ssh(true)) if !ssh => {
                 ssh = true;
                 cells
