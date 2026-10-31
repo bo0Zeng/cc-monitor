@@ -33,8 +33,8 @@ struct Pulling {
 }
 
 /// 一项拉完是什么样（[`transfer::pull_with`] 那一行）。
-enum Pulled {
-    Done(Option<u64>),
+enum PullEnd {
+    Done(u64),
     Failed(String, String),
     Cut,
     Stopped,
@@ -519,14 +519,14 @@ impl PhoneBoard {
             let line =
                 transfer::pull_with(ask, self.id, path.clone(), file, name, &mut moves).await;
             match pulled(&line, p.halt.is()) {
-                Pulled::Done(bytes) => self.settle(
+                PullEnd::Done(bytes) => self.settle(
                     i,
                     BatchOutcome {
-                        bytes,
+                        bytes: Some(bytes),
                         ..one(&key, ItemState::Done)
                     },
                 ),
-                Pulled::Failed(said, detail) => {
+                PullEnd::Failed(said, detail) => {
                     self.local(&LocalAsk::Drop {
                         id: self.id,
                         key: key.clone(),
@@ -540,7 +540,7 @@ impl PhoneBoard {
                         },
                     );
                 }
-                Pulled::Cut => {
+                PullEnd::Cut => {
                     self.local(&LocalAsk::Drop { id: self.id, key });
                     *lock(&p.part) = None;
                     return Err(rebuff_of(
@@ -549,7 +549,7 @@ impl PhoneBoard {
                         CallError::Disconnected,
                     ));
                 }
-                Pulled::Stopped => {
+                PullEnd::Stopped => {
                     self.local(&LocalAsk::Drop { id: self.id, key });
                     break;
                 }
@@ -571,21 +571,29 @@ impl PhoneBoard {
 }
 
 /// 一项拉完那一行（[`CallEnd`]）⇒ 成了 · 没成（那一句 · 详情）· 断了 · 撤了。
-fn pulled(line: &str, halted: bool) -> Pulled {
+fn pulled(line: &str, halted: bool) -> PullEnd {
     match serde_json::from_str::<CallEnd>(line) {
-        Ok(CallEnd::Ok { data, .. }) => Pulled::Done(data.get("bytes").and_then(|b| b.as_u64())),
+        Ok(CallEnd::Ok { data, .. }) => {
+            match serde_json::from_value::<cmd_wire::transfer::Pulled>(data) {
+                Ok(p) => PullEnd::Done(p.bytes),
+                Err(e) => PullEnd::Failed(
+                    copy_core::copy_text("reason.content.unparsable", &[]),
+                    e.to_string(),
+                ),
+            }
+        }
         Ok(CallEnd::Failed {
             message, detail, ..
-        }) => Pulled::Failed(message, detail),
-        Ok(CallEnd::Cancelled { .. }) if halted => Pulled::Stopped,
+        }) => PullEnd::Failed(message, detail),
+        Ok(CallEnd::Cancelled { .. }) if halted => PullEnd::Stopped,
         Ok(CallEnd::Timeout { .. } | CallEnd::Down { .. } | CallEnd::Cancelled { .. }) => {
-            Pulled::Cut
+            PullEnd::Cut
         }
-        Ok(CallEnd::Unreadable { detail, .. }) => Pulled::Failed(
+        Ok(CallEnd::Unreadable { detail, .. }) => PullEnd::Failed(
             copy_core::copy_text("reason.content.unparsable", &[]),
             detail,
         ),
-        Err(e) => Pulled::Failed(
+        Err(e) => PullEnd::Failed(
             copy_core::copy_text("reason.content.unparsable", &[]),
             format!("{e}: {line}"),
         ),

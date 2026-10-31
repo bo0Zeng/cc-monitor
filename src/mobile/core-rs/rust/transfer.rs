@@ -9,6 +9,7 @@ use crate::resident::{self, OnEvent};
 use chunk_core::{Ask, Sink, Watch};
 use cmd_wire::files::WirePath;
 use cmd_wire::phone::{CallEnd, Moved};
+use cmd_wire::transfer::{Pulled, Staged};
 use cmd_wire::Call;
 use resident_client::client::CallError;
 use std::collections::HashMap;
@@ -213,7 +214,13 @@ pub async fn stage_with<A: Ask<Fail = String>>(
     {
         Ok(s) => line(&CallEnd::Ok {
             call: id,
-            data: serde_json::json!({ "key": s.key, "chunks": s.chunks, "bytes": s.bytes, "sha256": s.sha256 }),
+            data: serde_json::to_value(Staged {
+                key: s.key,
+                chunks: s.chunks,
+                bytes: s.bytes,
+                sha256: s.sha256,
+            })
+            .unwrap_or_default(),
         }),
         Err(line) => line,
     }
@@ -252,7 +259,7 @@ pub async fn pull_with<A: Ask<Fail = String>>(
     match chunk_core::pull(ask, path, &mut sink, watch, || cancelled(id)).await {
         Ok(n) => line(&CallEnd::Ok {
             call: id,
-            data: serde_json::json!({ "bytes": n }),
+            data: serde_json::to_value(Pulled { bytes: n }).unwrap_or_default(),
         }),
         Err(line) => line,
     }
