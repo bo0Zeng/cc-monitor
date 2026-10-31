@@ -2,7 +2,8 @@
 
 use super::spec::{invoke, Prepared};
 use super::REGISTRY;
-use crate::common::door::{Door, Said};
+use crate::common::door::Door;
+use crate::common::said::Said;
 use crate::wire::Request;
 use cmd_wire::files as wire;
 
@@ -95,7 +96,7 @@ impl crate::wire::typed::Here for LocalFrames {
         };
         run(req)
             .map(|v| v.unwrap_or(serde_json::Value::Null))
-            .map_err(|f| (f.code, f.message))
+            .map_err(|f| (f.code_or_fallback().to_string(), f.said))
     }
 
     fn viewer_tz(&self) -> crate::Tz {

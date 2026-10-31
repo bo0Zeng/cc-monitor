@@ -1118,7 +1118,7 @@ fn history_search_refuses_what_its_request_type_does_not_have() {
     ] {
         let got = run_registered("history-search", args.clone());
         assert_eq!(
-            got.as_ref().err().map(|f| f.code.as_str()),
+            got.as_ref().err().and_then(|f| f.code.as_deref()),
             Some("bad_args"),
             "入参 {args} 该回 bad_args：{got:?}"
         );
@@ -1175,8 +1175,8 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             serde_json::json!({ "terminal": "tmux-1", "color": false })
         )
         .unwrap_err()
-        .code,
-        "not_known"
+        .code.as_deref(),
+        Some("not_known")
     );
     assert_eq!(
         serde_json::to_string(
@@ -1264,8 +1264,8 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             serde_json::json!({ "terminal": "t-none", "client": "mobile" })
         )
         .unwrap_err()
-        .code,
-        "not_known"
+        .code.as_deref(),
+        Some("not_known")
     );
     // session-open 新起那一形：手机那一份入参（`core-claude/.../link/Sessions.kt`）经登记表跑；目录不在 ⇒ 失败信封的 `data`（哪一格 ＋ 选不了号那一形）。
     let e = run_registered(
@@ -1274,9 +1274,9 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
     )
     .unwrap_err();
     assert_eq!(
-        (e.code.as_str(), serde_json::to_string(&e.data).unwrap()),
+        (e.code.as_deref(), serde_json::to_string(&e.data).unwrap()),
         (
-            "no_dir",
+            Some("no_dir"),
             r##"{"field":"cwd","unavailable":null}"##.to_string()
         )
     );
@@ -1340,7 +1340,7 @@ fn the_terminal_trio_refuses_fields_it_does_not_use() {
         let (e, diag) = crate::common::contract::tests::diag(|| {
             run_registered(cmd, args.clone()).expect_err("多送 / 类型不对的那一格该被拒")
         });
-        assert_eq!(e.code, "bad_args", "{cmd} {args}：{e:?}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{cmd} {args}：{e:?}");
         assert!(
             diag.contains(named),
             "{cmd} {args}：诊断没点名那一格：{diag}"
@@ -1430,7 +1430,7 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
     ] {
         let got = run_any(cmd, args.clone());
         assert_eq!(
-            got.as_ref().err().map(|f| f.code.as_str()),
+            got.as_ref().err().and_then(|f| f.code.as_deref()),
             Some("bad_args"),
             "{cmd} 入参 {args} 该回 bad_args：{got:?}"
         );
@@ -1479,7 +1479,7 @@ fn the_account_library_refuses_what_its_request_types_do_not_have() {
         ("sessions-needs", serde_json::json!({ "x": 1 })),
     ] {
         let got = run_registered(cmd, args.clone()).expect_err(&format!("{cmd} {args} 本该被拒"));
-        assert_eq!(got.code, "bad_args", "{cmd} {args}：{got:?}");
+        assert_eq!(got.code.as_deref(), Some("bad_args"), "{cmd} {args}：{got:?}");
     }
 }
 

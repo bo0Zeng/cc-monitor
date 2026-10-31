@@ -232,9 +232,10 @@ pub(crate) const NO_SERVER_NEEDLES: &[(&str, &str)] = &[
 /// 「tmux 这个程序起不来」那一档的唯一造句处。这一档要与「会话不存在」分得开，而沙箱门禁里摘不掉 tmux ⇒
 /// 判据只能打这一处：钉的是「这一档存在、且与另外两档不同码不同话」，不是在没装 tmux 的机器上实测过。超时那一档另说（`child_timed_out`）。
 pub(crate) fn tmux_unavailable(e: ChildFail) -> Said {
-    Said::from(e.into_cmd_said("no_tmux", |why| {
+    let (code, said) = e.into_cmd_said("no_tmux", |why| {
         copy_text("reason.tmux.startFailed", &[("why", why)])
-    }))
+    });
+    crate::wire::spec::fail(code, said)
 }
 
 /// 一次列全部会话（快照的探测器）的格式串。**三列**用 TAB 分隔：会话名（tmux 转义成字面 `\t`）· 活动窗格的 `@ccm_sid` · 各窗格的 `@ccm_sid`
@@ -248,16 +249,16 @@ const LIST_SESSIONS_WITHIN: Deadline = Deadline::secs(5);
 /// 全 crate 唯一一处「一次列全部 tmux 会话」的起进程点：一次调用列全部，不是每个成员探一次。
 /// 不看退出码（同 `control/gate.rs::probe`）：没有任何会话时 `tmux ls` 是非零 + 空输出，那是「一个都没有」。
 /// `-u` 必须排在子命令之前：放到后面是 `rc=1 + unknown flag -u`，会被压成「一个会话都没有」（`host_tests` 那条判据钉住次序）。
-pub(crate) fn list_sessions() -> Result<Vec<SessionRow>, (&'static str, String)> {
+pub(crate) fn list_sessions() -> Result<Vec<SessionRow>, Said> {
     let out = child(None)
         .args([UTF8_CLIENT_FLAG, "list-sessions", "-F", LIST_FMT])
         .run(LIST_SESSIONS_WITHIN)
         .map_err(|e| {
-            // 句子只说原因词；系统原话记一行日志（快照的失败形是「码 ＋ 一句」，没有原话位）。
+            // 句子只说原因词；系统原话记一行日志（快照的失败只交码与那一句，原话不随它走）。
             let (c, s) = e.into_cmd_said("no_tmux", |why| {
                 copy_text("reason.tmux.startFailed", &[("why", why)])
             });
-            (c, crate::common::said::IntoNote::into_note(s))
+            Said::new(c, crate::common::said::IntoNote::into_note(s))
         })?;
     Ok(crate::common::session_snapshot::parse_rows(
         &String::from_utf8_lossy(&out.stdout),

@@ -28,7 +28,7 @@ fn ask<A: crate::control::files_write::Act, E: Codes>(
 /// 失败只交码与那一句（不过这一条的码表：门不是帧面）。
 pub(crate) fn in_process<A: crate::control::files_write::Act>(
     req: A,
-) -> Result<A::Reply, crate::common::door::Said> {
+) -> Result<A::Reply, Said> {
     crate::wire::spec::with_face(|face| crate::control::files_write::answer(req, face))
         .map_err(|f| crate::common::door::said_of(f.code, &f.said))
 }
@@ -503,7 +503,7 @@ fn session_cwd(sid: &str) -> Option<std::path::PathBuf> {
 }
 
 /// 附件那一支的失败 ⇒ 这一条的码表。
-fn attach_fail<E: Codes>(f: sa::Fail, fallback: fn(String) -> E) -> E {
+fn attach_fail<E: Codes>(f: crate::control::files_write::WriteFail, fallback: fn(String) -> E) -> E {
     typed::of_fail(
         crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref()),
         fallback,

@@ -304,7 +304,7 @@ fn an_extra_key_is_bad_args_on_the_frame_path() {
             tz: Default::default(),
             until: None,
         };
-        let got = run(req).map(|_| ()).map_err(|f| f.code);
+        let got = run(req).map(|_| ()).map_err(|f| f.code_or_fallback().to_string());
         assert_eq!(got, Err("bad_args".to_string()), "{cmd} {args}");
     }
 }

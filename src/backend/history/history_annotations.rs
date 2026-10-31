@@ -401,7 +401,7 @@ codes! {
     }
 }
 
-/// 下层那一份 [`Fail`](crate::common::said::Said) ⇒ 这两条的码（不在表里 ⇒ 落 `io_failed`）。
+/// 下层那一份 [`Said`](crate::common::said::Said) ⇒ 这两条的码（不在表里 ⇒ 落 `io_failed`）。
 fn err(f: crate::common::said::Said) -> AnnotationErr {
     of_fail(f, AnnotationErr::IoFailed)
 }

@@ -22,7 +22,8 @@
 //! - 🔴 真 SSH 与真远端常驻（对面是替身：照生产那一半 [`answer_with`] 现答）。
 
 use super::*;
-use crate::dial::remote_ask::{Remote, Said, Table};
+use crate::common::said::Said;
+use crate::dial::remote_ask::{Remote, Table};
 use serde_json::{json, Value};
 use std::future::Future;
 use std::pin::Pin;
@@ -130,10 +131,7 @@ impl Remote for Peer {
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
         Box::pin(async move {
-            self.run(dial, command, stdin).await.map_err(|_| Said {
-                code: Some("resident_absent".into()),
-                message: "该机后端未在运行".into(),
-            })
+            self.run(dial, command, stdin).await.map_err(|_| Said::new("resident_absent", "该机后端未在运行".to_string()))
         })
     }
 }
