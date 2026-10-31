@@ -197,4 +197,14 @@ class SessionTabManagerTest {
         assertEquals(1, m.sessions.value.size)
         assertSame("在册 tab 的 store 不换（换了 VM 就丢）", store, m.storeFor(k))
     }
+
+    @Test
+    fun `带要敲的那一行 ⇒ 每回新开（同一行敲两回是两次）；不带的照旧复用`() {
+        val m = SessionTabManager()
+        val r1 = m.open("h1", TabTarget.Terminal(run = "claude /login"))
+        val r2 = m.open("h1", TabTarget.Terminal(run = "claude /login"))
+        assertNotEquals(r1, r2)
+        assertEquals("claude /login", (m.get(r2)?.target as TabTarget.Terminal).run)
+        assertEquals(m.open("h1", TabTarget.Terminal(cd = "/a")), m.open("h1", TabTarget.Terminal(cd = "/a")))
+    }
 }

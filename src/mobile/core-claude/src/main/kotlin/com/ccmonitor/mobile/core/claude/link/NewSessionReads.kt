@@ -82,4 +82,11 @@ object Login {
     fun cancel(job: String): Map<String, Any?> = Commands.LoginCancel.args(LoginCancelReq(job = job))
 
     fun started(data: Any?): LoginStarted? = Commands.LoginStart.reply(data)
+
+    /** `accounts-login-cmd`：在终端里登录这个号的那一行（那台拼好，桌面同一条）。 */
+    const val CMD: String = Commands.AccountsLoginCmd.NAME
+
+    fun cmd(account: String): Map<String, Any?> = Commands.AccountsLoginCmd.args(AccountNameArgs(name = account))
+
+    fun cmdOf(data: Any?): String? = Commands.AccountsLoginCmd.reply(data)?.cmd
 }

@@ -149,4 +149,43 @@ class LoginFlowTest {
             assertEquals(copyText("login.sheet.mcp"), titleOf(f.state.value.target))
             assertEquals(copyText("login.sheet.account"), titleOf(Login.account("claude", "team")))
         }
+
+    /** 没起成、那台说终端那条路在 ⇒ 多一颗［在终端里登录］；没说 · 回包里没有 `again` ⇒ 不给。 */
+    @Test
+    fun `没起成 ⇒ terminal 照回包：true 给、false 不给、超时不给`() =
+        runTest {
+            for ((reply, want) in listOf(
+                Reply.Failed(CoreFailure("spawn", "起不来", "d", mapOf("again" to "restart", "terminal" to true))) to true,
+                Reply.Failed(CoreFailure("spawn", "起不来", "d", mapOf("again" to "restart", "terminal" to false))) to false,
+                Reply.TimedOut to false,
+            )) {
+                val l = FakeCoreLink().also { it.answer = { _, _ -> reply } }
+                val f = LoginFlow(l, "smokebox", Login.account("claude", "team"), backgroundScope)
+                f.start()
+                runCurrent()
+                assertEquals(reply.toString(), want, f.state.value.terminal)
+            }
+        }
+
+    @Test
+    fun `terminalLine ⇒ 交 accounts-login-cmd 号名、得那一行；没成 ⇒ 红字换成那台那一句，那一颗留着`() =
+        runTest {
+            var cmdReply: Reply = Reply.Ok(mapOf("cmd" to "claude /login"))
+            val l = FakeCoreLink()
+            l.answer = { cmd, _ ->
+                when (cmd) {
+                    "login-start" -> Reply.Failed(CoreFailure("spawn", "起不来", "d", mapOf("again" to "restart", "terminal" to true)))
+                    else -> cmdReply
+                }
+            }
+            val f = LoginFlow(l, "smokebox", Login.account("claude", "team"), backgroundScope)
+            f.start()
+            runCurrent()
+            assertEquals(Result.success("claude /login"), f.terminalLine())
+            assertEquals(listOf(mapOf("name" to "team")), l.calls("accounts-login-cmd"))
+            cmdReply = Reply.Failed(CoreFailure("missing", "team · 没有这个号", "d"))
+            assertTrue(f.terminalLine().isFailure)
+            assertEquals("team · 没有这个号", f.state.value.failed)
+            assertTrue(f.state.value.terminal)
+        }
 }
