@@ -62,7 +62,10 @@
 
 use crate::platform::fs::{Ro, RoFile};
 use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
-use crate::wire::{FrameMake as _, FrameRules as _, SessionFaceExt as _, TopicExt as _};
+use crate::wire::{FrameMake as _, FrameRules as _, TopicExt as _};
+// 判据经 `super::*` 造会话外观要它。
+#[cfg(test)]
+use crate::wire::SessionFaceExt as _;
 use cmd_wire::frame::{HiddenNow, Relayed};
 use notify::{RecursiveMode, Watcher as _};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
