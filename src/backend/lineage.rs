@@ -164,49 +164,75 @@ pub(crate) fn read_at(path: &Path) -> Read {
 /// 盘上那一份 ＋ 一份缓存（盘上的戳变了才重读）。`path = None` ⇒ 家推不出来，只在内存里。
 pub(crate) struct LineageStore {
     path: Option<PathBuf>,
-    cache: Mutex<(Option<Stamp>, Book)>,
+    cache: Mutex<Cached>,
+}
+
+/// 缓存：读的那一刻盘上的戳 · 读成的那一份 · 那一份是不是读不懂（读不懂 ⇒ 戳变之前不再写、不再报）。
+#[derive(Default)]
+struct Cached {
+    stamp: Option<Stamp>,
+    book: Book,
+    unreadable: bool,
 }
 
 impl LineageStore {
     pub(crate) fn at(path: Option<PathBuf>) -> Self {
         Self {
             path,
-            cache: Mutex::new((None, Book::default())),
+            cache: Mutex::new(Cached::default()),
         }
     }
 
     /// 此刻那一份（盘上动过就重读；读不懂 ⇒ 当作空的）。
     pub(crate) fn now(&self) -> Book {
+        self.current().0
+    }
+
+    /// 此刻那一份 ＋ 盘上那一份读不读得懂。读不懂在重读那一下说一次（戳不变就不再读、不再说）。
+    fn current(&self) -> (Book, bool) {
         let mut g = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         let Some(p) = self.path.as_deref() else {
-            return g.1.clone();
+            return (g.book.clone(), false);
         };
         let s = Ro::stamp(p);
-        if s.is_none() || s != g.0 {
-            g.1 = match read_at(p) {
+        if s.is_none() || s != g.stamp {
+            g.unreadable = false;
+            g.book = match read_at(p) {
                 Read::Present(b) => b,
-                Read::Absent | Read::Unreadable(_) => Book::default(),
+                Read::Absent => Book::default(),
+                Read::Unreadable(e) => {
+                    let said =
+                        e.wrap(|said| copy_text("beLineage.write.unreadable", &[("said", said)]));
+                    tracing::warn!("[lineage] {}", said.logged());
+                    g.unreadable = true;
+                    Book::default()
+                }
             };
-            g.0 = s;
+            g.stamp = s;
         }
-        g.1.clone()
+        (g.book.clone(), g.unreadable)
     }
 
     /// 一发请求被看见。先按缓存判有没有新事实，有才拿锁读盘再判一次、写回。写不成只出声，不影响这一发（血缘不是请求的前提）。
+    /// 盘上那一份读不懂 ⇒ 不写（反正不覆盖），也就不每发拿一次锁、读一遍盘、报一行；戳变了再看。
     /// 外面只经 [`relay_saw`] 进来。
     fn saw(&self, own: &Own, origin: Option<Origin<'_>>, sid: &str, agent: &str, now: u64) {
-        if origin.is_none() || sid.is_empty() || !self.now().clone().saw(origin, sid, agent, now) {
+        if origin.is_none() || sid.is_empty() {
+            return;
+        }
+        let (mut book, unreadable) = self.current();
+        if unreadable || !book.saw(origin, sid, agent, now) {
             return;
         }
         let mut g = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         match self.path.as_deref() {
             None => {
-                g.1.saw(origin, sid, agent, now);
+                g.book.saw(origin, sid, agent, now);
             }
             Some(path) => match write_locked(own, |b| b.saw(origin, sid, agent, now)) {
                 Ok(after) => {
-                    g.0 = Ro::stamp(path);
-                    g.1 = after;
+                    g.stamp = Ro::stamp(path);
+                    g.book = after;
                 }
                 Err(e) => tracing::warn!("[lineage] {}", e.logged()),
             },

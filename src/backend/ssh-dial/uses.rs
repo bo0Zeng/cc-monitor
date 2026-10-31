@@ -778,7 +778,7 @@ async fn opening(req: &DialRequest, stages: &StageSink) -> Result<Opened, DialFa
 }
 
 /// 一份拨号请求的完整一趟，写成**一条链路上的字节**（真过进程的那一处：`dial/link.rs`）：
-/// [`open`] 报的每一步当场写成一行「过了一步」（[`crate::StageLine::Step`]，请求带 `progress` 才写）→ 攒下的阶段行 → 一行 ack → [`Opened::pump`]。
+/// [`open`] 报的每一步当场写成一行「过了一步」（[`crate::Stage::Step`]，请求带 `progress` 才写）→ 攒下的阶段行 → 一行 ack → [`Opened::pump`]。
 /// 返回类型显式写出 `+ Send`：理由同 [`exec`]（russh 借 `&self` 的 `async fn` 在高阶生命周期上推不出 Send）。
 pub fn run<'a, R, W>(
     req: &'a DialRequest,
@@ -832,8 +832,10 @@ where
 }
 
 /// 「过了一步」那一行（线上只有阶段行一种：`{"stage":{"kind":"step","step":…}}`）。
-fn step_line(step: &str) -> serde_json::Value {
-    serde_json::json!({ "stage": crate::StageLine::Step { step: step.to_string() } })
+fn step_line(step: &str) -> crate::StageRow {
+    crate::StageRow {
+        stage: crate::stage::step(step),
+    }
 }
 
 /// ack 之前的一段（拿连接 · 开通道）：等 `fut` 的同时把报来的那一步（[`StageSink::step`]）当场写成一行 `{"stage":{"kind":"step",…}}`；

@@ -20,7 +20,7 @@ class TurnFoldsTest {
 
     private fun text(u: String) = RenderUnit.AssistantMarkdown("$u#0", "t", u)
 
-    private fun tool(u: String) = RenderUnit.ToolCall("$u#0", "c-$u", "Read", emptyMap(), "r", false, false, u)
+    private fun tool(u: String) = RenderUnit.ToolCall("$u#0", "c-$u", "Read", "r", false, false, u)
 
     private fun seg(
         after: String,
