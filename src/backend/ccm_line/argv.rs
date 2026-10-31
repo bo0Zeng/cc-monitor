@@ -56,15 +56,20 @@ pub(crate) mod flag {
     pub(crate) const NEW: &str = "new";
 }
 
-/// 这个词是不是 ccm 自己认的（壳层选项 ＋ `--ccm-*` 诊断口）—— 问的就是真解析器（放在 `--` 右边喂它）。
-/// 后端 CLI 面不许派生出这样的名字（`stream::cli::cli_exposed`）。
+/// 这个词是不是 ccm 自己认的（壳层选项 ＋ `--ccm-*` 诊断口）：解析器认右边那个词的同一处（[`right_word`]）。
+/// 后端 CLI 面不许派生出这样的名字（`stream::cli::cli_exposed`）。不经解析器的报错那一支：那一支要问后端认不认这个词，
+/// 而后端的子命令集合又要问这里，绕一圈就是自己问自己。
 pub(crate) fn is_ccm_word(word: &str) -> bool {
-    // 放在 `--` 右边问：只要不是「认不得这个词」那两句，就是 ccm 的词（缺值 / 组合不对也算认得）。
-    let unknown = [
-        copy_text("beArgv.parse.unknownRight", &[("w", word)]),
-        copy_text("beArgv.parse.backendWordAfterClaudeArgs", &[("w", word)]),
-    ];
-    !matches!(parse(&[flag::END.to_string(), word.to_string()]), Err(Die(m)) if unknown.contains(&m))
+    right_word(word).is_some()
+}
+
+/// `--` 右边这个词（`--flag=值` 只看等号前面）是 [`RIGHT_WORDS`] 里的哪一个。
+fn right_word(a: &str) -> Option<&'static str> {
+    let key = match a.find('=') {
+        Some(p) if a.starts_with("--") && p > 2 => &a[..p],
+        _ => a,
+    };
+    RIGHT_WORDS.iter().find(|w| **w == key).copied()
 }
 
 /// `--cwd` 的取值：`auto`（默认）或一个显式目录。
@@ -273,7 +278,7 @@ pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
         Some(p) if a.starts_with("--") && p > 2 => (&a[..p], Some(a[p + 1..].to_string())),
         _ => (a, None),
     };
-    let Some(&known) = RIGHT_WORDS.iter().find(|w| **w == key) else {
+    let Some(known) = right_word(a) else {
         // 右边认不得 ⇒ 报错。是后端子命令 / 流词（它们只能紧跟打头的 `--`）⇒ 说清为什么。
         return die(if i == 0 && super::is_backend_word(a) {
             copy_text(
