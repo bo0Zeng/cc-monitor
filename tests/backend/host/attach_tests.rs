@@ -369,6 +369,50 @@ async fn the_session_ending_returns_the_childs_code() {
     task.await.unwrap().unwrap();
 }
 
+/// ★ 一接上就敲回车：托管那一屏已经有字时，welcome 一到外层就看得见；这时敲的回车照送进去，
+/// 不能因为 welcome 说的还是换持有者之前的那一位而被当成「回车接管」吞掉。
+/// 托管那一张账与瘦客户端直接接起来，逐帧喂：喂完 welcome 就敲，不等后面那几帧。
+#[test]
+fn enter_right_after_the_welcome_shows_the_screen_reaches_the_pty() {
+    let mut hub = super::super::serve::Hub::new("h", Size { rows: 24, cols: 80 });
+    assert!(hub.pty_out(b"ready\r\n").is_empty());
+    let (id, outbox) = hub.connect(None, 0);
+    let hello = Frame::Ctl(Ctl::Hello {
+        proto: PROTO,
+        build: "t".into(),
+        want: Want::Input,
+        size: Some(Size { rows: 24, cols: 80 }),
+        who: Who {
+            kind: WhoKind::Terminal,
+            client: None,
+        },
+    });
+    hub.frame(id, hello, 0);
+    let (raw, _) = outbox.q.lock().unwrap().drain();
+    let frames: Vec<Frame> = raw
+        .iter()
+        .map(|b| wire::decode(b).expect("解得开").expect("整帧").0)
+        .collect();
+    assert!(
+        matches!(frames.first(), Some(Frame::Ctl(Ctl::Welcome { .. }))),
+        "头一帧是 welcome：{frames:?}"
+    );
+    let (mut c, s) = bare(24, 80);
+    assert!(c.frame(frames[0].clone()).is_none());
+    assert!(s.text().contains("ready"), "welcome 一到就画出那一屏");
+    let (sends, left) = c.key(b"\r", &no_list);
+    assert!(left.is_none());
+    assert_eq!(sends, vec![Frame::In(b"\r".to_vec())], "回车送进去了");
+    for f in &frames[1..] {
+        assert!(c.frame(f.clone()).is_none());
+    }
+    assert_eq!(
+        hub.frame(id, Frame::In(b"\r".to_vec()), 1),
+        vec![super::super::serve::Effect::Write(b"\r".to_vec())],
+        "托管照写进伪终端"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn copy_mode_shows_history_from_the_host() {
     let own = sandbox_own("copy");

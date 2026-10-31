@@ -5,10 +5,10 @@ const A: &str = "0f3c2a1e-1111-2222-3333-444455556666";
 const B: &str = "9a8b7c6d-aaaa-bbbb-cccc-ddddeeeeffff";
 
 /// 入参照线上那一份收（同分派走的 typed 那一处），再交本体。
-fn check_json(v: serde_json::Value) -> Result<Checked, &'static str> {
+fn check_json(v: serde_json::Value) -> Result<Checked, String> {
     let req: crate::control::cc_bus_wire::BusEnvelopeReq =
-        crate::wire::typed::take(&v).map_err(|_| "bad_args")?;
-    check(&req).map_err(|(c, _)| c)
+        crate::wire::typed::take(&v).map_err(|_| "bad_args".to_string())?;
+    check(&req).map_err(|s| s.code_or_fallback().to_string())
 }
 
 fn ok_req() -> serde_json::Value {
@@ -21,9 +21,9 @@ fn with(k: &str, v: serde_json::Value) -> serde_json::Value {
     r
 }
 
-fn code_of(v: serde_json::Value) -> &'static str {
+fn code_of(v: serde_json::Value) -> String {
     match check_json(v) {
-        Ok(_) => "ok",
+        Ok(_) => "ok".to_string(),
         Err(c) => c,
     }
 }

@@ -29,6 +29,7 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 use tokio::io::{BufReader, DuplexStream};
 
+use crate::common::said::Said;
 use crate::dial::remote_ask::{self, AbortOnDrop};
 use crate::dial::DialRequest;
 
@@ -73,8 +74,8 @@ fn port_of(text: &str) -> Option<u16> {
 
 /// 读规格并过围栏 —— **在任何查表 / 拨号之前**（`INVARIANTS §47`：外部值交给对端之前本侧先判）。
 /// 没选那台 · 端口不是 1–65535 · 远端 host 空白 ⇒ `bad_spec` 带那一句（界面照抄）；缺格 / 类型不对在解入参那一步就回了（`bad_args`）。
-pub(crate) fn spec_of(req: &ForwardStartReq) -> Result<Spec, (&'static str, String)> {
-    let bad = |said: String| ("bad_spec", said);
+pub(crate) fn spec_of(req: &ForwardStartReq) -> Result<Spec, Said> {
+    let bad = |said: String| Said::new("bad_spec", said);
     if req.origin.to_string().trim().is_empty() {
         return Err(bad(copy_text("beForwards.spec.origin", &[])));
     }
@@ -110,7 +111,7 @@ pub(crate) fn forward_request(dial: &Value, spec: &Spec) -> Result<DialRequest, 
     );
     obj.insert("stages".into(), json!(false));
     obj.insert("probe".into(), json!(false));
-    crate::dial::read_request(&v).map_err(|(_, m)| m)
+    crate::dial::read_request(&v).map_err(|s| s.said)
 }
 
 /// 账上一条。**丢掉它 = 收掉这条转发**（`pump` 是 [`AbortOnDrop`]，它手里攥着链路那一侧的任务）。
@@ -157,7 +158,7 @@ pub(crate) async fn start_with<F, Fut>(
     reach: &remote_ask::Table,
     ledger: &Ledger,
     serve: F,
-) -> Result<ForwardStarted, (&'static str, String)>
+) -> Result<ForwardStarted, Said>
 where
     F: FnOnce(DialRequest, DuplexStream, DuplexStream) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
@@ -168,12 +169,12 @@ where
     let dial = reach
         .dial(&spec.origin)
         .map_err(|s| match s.code.as_deref() {
-            Some("bad_jump") => ("bad_jump", s.message),
-            Some("unreachable") => ("unreachable", s.message),
-            _ => ("bad_args", s.message),
+            Some("bad_jump") => Said::new("bad_jump", s.said),
+            Some("unreachable") => Said::new("unreachable", s.said),
+            _ => Said::new("bad_args", s.said),
         })?;
     if ledger.rows().len() >= MAX_FORWARDS {
-        return Err((
+        return Err(Said::new(
             "full",
             copy_text(
                 "beForwards.start.full",
@@ -181,14 +182,14 @@ where
             ),
         ));
     }
-    let req = forward_request(&dial, &spec).map_err(|e| ("failed", e))?;
+    let req = forward_request(&dial, &spec).map_err(|e| Said::new("failed", e))?;
     let (up_w, up_r) = tokio::io::duplex(64);
     let (down_w, down_r) = tokio::io::duplex(16 * 1024);
     // 本函数（的 future）被丢 ⇒ 链路那一侧一起收（帧期限到点 / `cancel`）。
     let link = AbortOnDrop(tokio::spawn(serve(req, up_r, down_w)));
     let mut rd = BufReader::new(down_r);
     let failed = |said: String| {
-        (
+        Said::new(
             "failed",
             copy_text(
                 "beForwards.start.failed",
@@ -275,11 +276,11 @@ pub(crate) struct ForwardId {
 pub(crate) fn stop_with(
     req: ForwardId,
     ledger: &Ledger,
-) -> Result<ForwardId, (&'static str, String)> {
+) -> Result<ForwardId, crate::common::said::Said> {
     let entry = id_num(&req.id)
         .and_then(|n| ledger.rows().remove(&n))
         .ok_or_else(|| {
-            (
+            Said::new(
                 "not_found",
                 copy_text("beForwards.stop.notFound", &[("id", &req.id)]),
             )

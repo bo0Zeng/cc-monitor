@@ -77,7 +77,7 @@ fn sweep_other_versions(own: &Own, root: &OwnPath, keep: &str) {
         let Ok(old) = root.join(&name) else { continue };
         let cleared = own
             .lock(&old)
-            .map_err(|(said, _)| std::io::Error::other(said))
+            .map_err(|s| std::io::Error::other(s.said))
             .and_then(|held| own.clear_dir(&old, &held));
         if let Err(e) = cleared {
             tracing::info!(

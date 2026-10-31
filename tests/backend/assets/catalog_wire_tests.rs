@@ -192,7 +192,7 @@ fn an_extra_key_is_bad_args_on_the_frame_path() {
         }
         .map(|_| ())
         .map_err(|f| f.code);
-        assert_eq!(got, Err("bad_args".to_string()), "{cmd}");
+        assert_eq!(got, Err(Some("bad_args".to_string())), "{cmd}");
     }
     assert!(!d.join(".cc-monitor").exists(), "多一个键的那几问写了盘");
     let _ = std::fs::remove_dir_all(&d);

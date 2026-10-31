@@ -32,14 +32,14 @@ impl Fake {
 }
 
 impl ModeIo for Fake {
-    fn open(&mut self) -> Result<Option<crate::control::terminals::Refused>, CmdErr> {
+    fn open(&mut self) -> Result<Option<crate::control::terminals::Refused>, Said> {
         self.opened = true;
         Ok(self.gone)
     }
-    fn read(&mut self) -> Result<Option<&'static str>, CmdErr> {
+    fn read(&mut self) -> Result<Option<&'static str>, Said> {
         Ok((!self.blind).then(|| self.order[self.at]))
     }
-    fn press(&mut self) -> Result<Sent, CmdErr> {
+    fn press(&mut self) -> Result<Sent, Said> {
         self.presses += 1;
         if self.sent == SentResult::Delivered && !self.stuck {
             self.at = (self.at + 1) % self.order.len();
@@ -214,11 +214,14 @@ fn auto_is_offered_and_a_launch_only_mode_says_so() {
     }
     for m in ["bypassPermissions", "dontAsk"] {
         let e = offered(&perm, m).unwrap_err();
-        assert_eq!(e.code, "launch_only", "`{m}`");
+        assert_eq!(e.code.as_deref(), Some("launch_only"), "`{m}`");
         assert_eq!(
-            e.message,
+            e.said,
             copy_core::copy_text("beSessionMode.switch.launchOnly", &[])
         );
     }
-    assert_eq!(offered(&perm, "yolo").unwrap_err().code, "bad_args");
+    assert_eq!(
+        offered(&perm, "yolo").unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
 }

@@ -29,7 +29,13 @@ fn ask(phase: &str, round: usize, q: &str) {
         tz: Default::default(),
         until: None,
     })
-    .unwrap_or_else(|f| panic!("history-search 答错了（{}）：{}", f.code, f.message))
+    .unwrap_or_else(|f| {
+        panic!(
+            "history-search 答错了（{}）：{}",
+            f.code_or_fallback(),
+            f.said
+        )
+    })
     .unwrap_or_default();
     let ms = t.elapsed().as_secs_f64() * 1000.0;
     let lines: Vec<&str> = v["lines"]

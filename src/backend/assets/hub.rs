@@ -26,7 +26,7 @@
 //!
 //! # 诚实边界
 //!
-//! 远端那一跳失败时码随原话一起交回（`remote_ask::Said`，别压成一个）：被写那台答 `stale` 就是 `stale`；
+//! 远端那一跳失败时码随原话一起交回（`Said` 带码，别压成一个）：被写那台答 `stale` 就是 `stale`；
 //! 读不出码的（拨号失败 · 链路断了 · 那台太旧）回 `unreachable` ＋ 原话。本机那一跳的码原样保留。
 
 use copy_core::copy_text;
@@ -45,13 +45,14 @@ use super::hub_wire::{
     SkillApplyReq, SkillPlan, SkillPlanCmd, SkillPlanReq, SkillRead, SkillReadCmd, SkillReadReq,
     SkillSourceFile,
 };
+use crate::common::said::Said;
 use crate::dial::remote_ask::{Remote, Table};
 
 /// 这台自己的那几条内层命令那一口住协议零件那一层（[`crate::wire::typed::Here`]，命令表那一行递进来）。
 use crate::wire::typed::{Command, Here};
 
 /// 枢纽要问的一台：`None` = 这台自己。
-fn machine_of(args: &Value, k: &str) -> Result<Option<String>, (String, String)> {
+fn machine_of(args: &Value, k: &str) -> Result<Option<String>, Said> {
     match args.get(k) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) if !s.is_empty() => Ok(Some(s.clone())),
@@ -61,14 +62,11 @@ fn machine_of(args: &Value, k: &str) -> Result<Option<String>, (String, String)>
     }
 }
 
-fn bad(msg: &str) -> (String, String) {
-    (
-        "bad_args".to_string(),
-        crate::common::contract::malformed(msg),
-    )
+fn bad(msg: &str) -> Said {
+    Said::new("bad_args", crate::common::contract::malformed(msg))
 }
 
-fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, (String, String)> {
+fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, Said> {
     args.get(k)
         .and_then(Value::as_str)
         .ok_or_else(|| bad(&format!("missing `{k}`")))
@@ -82,24 +80,33 @@ async fn ask_one<C: Command>(
     req: &C::Req,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<C::Reply, (String, String)>
+) -> Result<C::Reply, Said>
 where
     C::Req: serde::Serialize,
     C::Reply: serde::de::DeserializeOwned,
 {
-    let said = |s: crate::dial::remote_ask::Said| {
-        (
-            s.code.unwrap_or_else(|| "unreachable".to_string()),
-            s.message,
-        )
+    let said = |s: Said| match s.code {
+        Some(_) => s,
+        None => s.coded("unreachable"),
     };
     let Some(m) = machine else {
-        let args =
-            serde_json::to_value(req).map_err(|e| ("io_failed".to_string(), e.to_string()))?;
+        let args = serde_json::to_value(req).map_err(|e| {
+            Said::new(
+                "io_failed",
+                crate::common::contract::malformed("request does not serialize"),
+            )
+            .and_raw(Some(&e.to_string()))
+        })?;
         let h = Arc::clone(here);
         let got = tokio::task::spawn_blocking(move || h.ask(C::NAME, args))
             .await
-            .map_err(|e| ("io_failed".to_string(), e.to_string()))??;
+            .map_err(|e| {
+                Said::new(
+                    "io_failed",
+                    crate::common::contract::malformed("hub task did not finish"),
+                )
+                .and_raw(Some(&e.to_string()))
+            })??;
         return crate::dial::remote_ask::reply_of(&machine_name(None), C::NAME, got).map_err(said);
     };
     // 码随原话一起交回（`stale` / `refused` / …照那台的原码）；读不出码（拨号 / 链路坏了）⇒ `unreachable`。
@@ -116,12 +123,11 @@ fn machine_name(m: Option<&str>) -> String {
 
 /// `scope` 的两头：只认形状。项目目录是不是绝对路径由它所属的那台判（来源 / 被写那台的内层命令各判各的），
 /// 枢纽按自己这台的写法判会把别台的路径错拒（Windows 上的枢纽不认 `/home/…`）。
-fn scope_of(args: &Value) -> Result<(ExtLoc, ExtLoc), (String, String)> {
+fn scope_of(args: &Value) -> Result<(ExtLoc, ExtLoc), Said> {
     let s = args.get("scope");
-    let own = |e: crate::wire::spec::Fail| (e.code, e.message);
     Ok((
-        ExtLoc::shape_of(s.and_then(|s| s.get("from")), "scope.from").map_err(own)?,
-        ExtLoc::shape_of(s.and_then(|s| s.get("to")), "scope.to").map_err(own)?,
+        ExtLoc::shape_of(s.and_then(|s| s.get("from")), "scope.from")?,
+        ExtLoc::shape_of(s.and_then(|s| s.get("to")), "scope.to")?,
     ))
 }
 
@@ -150,28 +156,21 @@ struct Ask<'a> {
     at_to: ExtLoc,
 }
 
-/// 整种只读的那一种（插件）进了「装」⇒ 拒（同 [`super::ext::read_only_refused`]）。
-fn refused_pair(kind: ExtKind) -> (String, String) {
-    let f = super::ext::read_only_refused(kind);
-    (f.code, f.message)
-}
-
-fn ask_of(args: &Value) -> Result<Ask<'_>, (String, String)> {
-    let own = |e: crate::wire::spec::Fail| (e.code, e.message);
-    let kind = super::ext::kind_from_arg(args).map_err(own)?;
+fn ask_of(args: &Value) -> Result<Ask<'_>, Said> {
+    let kind = super::ext::kind_from_arg(args)?;
     let name = str_arg(args, "name")?;
-    // 自己发版的插件（planned-build）照 skill 那条路装：整个目录拷进用户级 skills 目录；别的插件只读。
+    // 自己发版的插件（planned-build）照 skill 那条路装：整个目录拷进用户级 skills 目录；别的插件只读（整种只读 ⇒ 拒）。
     if super::ext::read_only(kind).is_some() && !super::ext::is_release(kind, name) {
-        return Err(refused_pair(kind));
+        return Err(super::ext::read_only_refused(kind));
     }
     let (from, to) = (machine_of(args, "from")?, machine_of(args, "to")?);
     let (at_from, at_to) = scope_of(args)?;
     if let Some(why) = builtin_refused(kind, name, &at_to) {
-        return Err(("refused".to_string(), why));
+        return Err(Said::new("refused", why));
     }
     if !is_builtin(kind, name) && same_place(from.as_deref(), &at_from, to.as_deref(), &at_to) {
-        return Err((
-            "refused".to_string(),
+        return Err(Said::new(
+            "refused",
             copy_text("beExt.card.sameMachine", &[]),
         ));
     }
@@ -195,7 +194,7 @@ async fn skill_look(
     a: &Ask<'_>,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<(Vec<SkillSourceFile>, SkillPlan), (String, String)> {
+) -> Result<(Vec<SkillSourceFile>, SkillPlan), Said> {
     let read = ask_one::<SkillReadCmd>(
         here,
         a.from.as_deref(),
@@ -231,7 +230,7 @@ async fn mcp_look(
     a: &Ask<'_>,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<(McpSource, McpPreview), (String, String)> {
+) -> Result<(McpSource, McpPreview), Said> {
     let src = ask_one::<McpSourceCmd>(
         here,
         a.from.as_deref(),
@@ -341,7 +340,7 @@ async fn builtin_look(
     a: &Ask<'_>,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<CcBusState, (String, String)> {
+) -> Result<CcBusState, Said> {
     ask_one::<CcBusStateCmd>(here, a.to.as_deref(), &NoReq {}, table, remote).await
 }
 
@@ -375,7 +374,7 @@ pub(crate) async fn ext_preview(
     args: &Value,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<ExtCard, (String, String)> {
+) -> Result<ExtCard, Said> {
     let a = ask_of(args)?;
     if is_builtin(a.kind, a.name) {
         let st = builtin_look(here, &a, table, remote).await?;
@@ -394,8 +393,8 @@ pub(crate) async fn ext_preview(
     })
 }
 
-fn changed_since() -> (String, String) {
-    ("stale".to_string(), copy_text("beExt.apply.changed", &[]))
+fn changed_since() -> Said {
+    Said::new("stale", copy_text("beExt.apply.changed", &[]))
 }
 
 /// 装一台：`{kind, name, from, to, scope}` ＋ 那张卡上的记号 ＋ 用户填的值（`{field: {key: 值}}`；`None` ⇒ 没填）→ [`ExtDone`]。
@@ -407,7 +406,7 @@ pub(crate) async fn ext_apply(
     fill: Option<&Fill>,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<ExtDone, (String, String)> {
+) -> Result<ExtDone, Said> {
     let a = ask_of(args)?;
     let done = match a.kind {
         _ if is_builtin(a.kind, a.name) => {
@@ -439,7 +438,7 @@ pub(crate) async fn ext_apply(
                 return Err(changed_since());
             }
             if let Some(why) = card.stop {
-                return Err(("refused".to_string(), why));
+                return Err(Said::new("refused", why));
             }
             let overwrite: Vec<String> = plan
                 .rows
@@ -539,7 +538,7 @@ pub(crate) fn plan_many(
     name: &str,
     to: &[Option<String>],
     want: Option<ExtLoc>,
-) -> Result<Plan, (String, String)> {
+) -> Result<Plan, Said> {
     if to.is_empty() {
         return Err(bad("`to` must list at least one machine"));
     }
@@ -547,12 +546,7 @@ pub(crate) fn plan_many(
         .rows
         .iter()
         .find(|r| r.kind == kind && r.name == name)
-        .ok_or_else(|| {
-            (
-                "missing".to_string(),
-                copy_text("beExt.many.noRow", &[("name", name)]),
-            )
-        })?;
+        .ok_or_else(|| Said::new("missing", copy_text("beExt.many.noRow", &[("name", name)])))?;
     let picks: Vec<Pick> = to
         .iter()
         .map(|t| {
@@ -677,7 +671,7 @@ fn ask_for(kind: ExtKind, name: &str, p: &Pick, b: &ExtBring, place: &ExtLoc) ->
 }
 
 /// 勾上的几台：空的不行、键不许是空串（`null` = 这台自己）。
-fn picked(to: &[Option<String>]) -> Result<(), (String, String)> {
+fn picked(to: &[Option<String>]) -> Result<(), Said> {
     if to.iter().any(|t| t.as_deref() == Some("")) {
         return Err(bad("`to` entries must be a machine key or null"));
     }
@@ -685,17 +679,17 @@ fn picked(to: &[Option<String>]) -> Result<(), (String, String)> {
 }
 
 /// 那一台说的那一句（给人看）与原话（契约错的诊断 · 解码器那一句：不上卡，进那一行的复制详情）。
-fn said_of(m: String) -> (String, Option<String>) {
-    crate::common::contract::parts(&m, None)
+fn said_of(s: Said) -> (String, Option<String>) {
+    crate::common::contract::parts(&s.said, s.raw.as_deref())
 }
 
 /// 目录那一份的读口（生产 = `asset_catalog::answer_current` 带上那份写句柄，由命令表那扇门递进来）；`Sync` ⇒ 跨 await 送得出去。
-pub(crate) type CurrentFn<'a> = &'a (dyn Fn(bool) -> Result<(super::asset_catalog::Catalog, Vec<String>), crate::wire::spec::Fail>
-         + Sync);
+pub(crate) type CurrentFn<'a> =
+    &'a (dyn Fn(bool) -> Result<(super::asset_catalog::Catalog, Vec<String>), Said> + Sync);
 
 /// 那张表现拼一次（`ext-list` 同一份目录 ＋ 可达表）；目录那一份由命令表那扇门递进来（同 `ext-list`）。
-fn current_list(table: &Table, current: CurrentFn<'_>) -> Result<ExtList, (String, String)> {
-    let (cat, _) = current(false).map_err(|f| (f.code.clone(), f.into_note()))?;
+fn current_list(table: &Table, current: CurrentFn<'_>) -> Result<ExtList, Said> {
+    let (cat, _) = current(false)?;
     Ok(super::ext::table(&cat, &super::ext::reach_of(table)))
 }
 
@@ -706,7 +700,7 @@ pub(crate) async fn ext_preview_many(
     table: &Table,
     remote: &dyn Remote,
     current: CurrentFn<'_>,
-) -> Result<HubPreview, (String, String)> {
+) -> Result<HubPreview, Said> {
     let (kind, name) = (req.kind, req.name.as_str());
     picked(&req.to)?;
     let plan = plan_many(
@@ -720,11 +714,11 @@ pub(crate) async fn ext_preview_many(
     let mut cards: Vec<(String, ExtCard)> = Vec::new();
     for p in &plan.picks {
         let got = match (&p.bring, &plan.place) {
-            (None, _) => Err((
-                "refused".to_string(),
+            (None, _) => Err(Said::new(
+                "refused",
                 copy_text("beExt.many.noBring", &[("machine", &p.name)]),
             )),
-            (Some(_), None) => Err(("refused".to_string(), copy_text("beExt.many.noPlace", &[]))),
+            (Some(_), None) => Err(Said::new("refused", copy_text("beExt.many.noPlace", &[]))),
             (Some(b), Some(place)) => {
                 ext_preview(here, &ask_for(kind, name, p, b, place), table, remote).await
             }
@@ -741,8 +735,8 @@ pub(crate) async fn ext_preview_many(
                 });
                 cards.push((p.name.clone(), card));
             }
-            Err((_, m)) => {
-                let (said, detail) = said_of(m);
+            Err(e) => {
+                let (said, detail) = said_of(e);
                 machines.push(HubMachineCard {
                     to: p.to.clone(),
                     name: p.name.clone(),
@@ -789,7 +783,7 @@ pub(crate) async fn ext_apply_many(
     table: &Table,
     remote: &dyn Remote,
     current: CurrentFn<'_>,
-) -> Result<HubApplied, (String, String)> {
+) -> Result<HubApplied, Said> {
     let (kind, name, want) = (req.kind, req.name.as_str(), req.place.clone());
     picked(&req.to)?;
     let plan = plan_many(
@@ -818,8 +812,8 @@ pub(crate) async fn ext_apply_many(
                     }
                 }
             }
-            (None, _) => Err((
-                "refused".to_string(),
+            (None, _) => Err(Said::new(
+                "refused",
                 copy_text("beExt.many.noBring", &[("machine", &p.name)]),
             )),
             _ => Err(changed_since()),
@@ -832,8 +826,8 @@ pub(crate) async fn ext_apply_many(
                 error: None,
                 detail: None,
             },
-            Err((_, m)) => {
-                let (said, detail) = said_of(m);
+            Err(e) => {
+                let (said, detail) = said_of(e);
                 HubMachineDone {
                     to: p.to.clone(),
                     name: p.name.clone(),

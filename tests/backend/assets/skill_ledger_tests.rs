@@ -13,7 +13,11 @@ use super::*;
 use serde_json::json;
 
 /// 入参仍用 JSON 写：经 `typed::take` 解成入参类型（同帧面那一跳；形状不对 ⇒ `bad_args`），回包写成 JSON 比。
-fn record_at(own: &Own, root: Option<&Path>, a: &Value) -> Result<Value, crate::wire::spec::Fail> {
+fn record_at(
+    own: &Own,
+    root: Option<&Path>,
+    a: &Value,
+) -> Result<Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
     super::record_at(own, root, &req).map(|r| serde_json::to_value(r).unwrap())
 }
@@ -107,7 +111,7 @@ fn the_directory_is_computed_here_and_never_taken_from_the_caller() {
         &json!({"op": "add", "name": "demo", "dir": "/etc", "files": {"a.md": rec(D1, true)}}),
     )
     .expect_err("收了调用方给的 dir");
-    assert_eq!(e.code, "bad_args");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
     assert!(!file.exists(), "拒了还写了");
     let v = record_at(
         &own_at(&file),
@@ -162,7 +166,7 @@ fn drop_removes_exactly_the_named_paths_and_the_whole_entry_at_zero() {
         &json!({"op": "drop", "dir": dir, "paths": ["b", "zzz"]}),
     )
     .expect_err("摘一个没记的");
-    assert_eq!(e.code, "bad_args");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
     assert_eq!(std::fs::read(&file).unwrap(), before, "拒了还动了文件");
     let e = record_at(
         &own_at(&file),
@@ -170,7 +174,7 @@ fn drop_removes_exactly_the_named_paths_and_the_whole_entry_at_zero() {
         &json!({"op": "drop", "dir": "/nowhere", "paths": ["b"]}),
     )
     .expect_err("没记着的目录");
-    assert_eq!(e.code, "not_found");
+    assert_eq!(e.code.as_deref(), Some("not_found"));
     // 摘到零 ⇒ 整条走
     let v = record_at(
         &own_at(&file),
@@ -209,7 +213,7 @@ fn bad_input_is_refused_and_the_file_is_untouched() {
         json!({"op": "drop", "dir": "x", "paths": "a"}),
     ] {
         let e = record_at(&own_at(&file), Some(&root), &bad).expect_err("坏入参被收下");
-        assert_eq!(e.code, "bad_args", "{bad}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad}");
         assert_eq!(
             std::fs::read(&file).unwrap(),
             before,
@@ -240,9 +244,9 @@ fn an_unreadable_or_other_version_ledger_is_never_overwritten() {
             &json!({"op": "add", "name": "demo", "files": {"a": rec(D1, true)}}),
         )
         .expect_err("读不懂的被当成空的覆盖了");
-        assert_eq!(e.code, "ledger_unreadable");
+        assert_eq!(e.code.as_deref(), Some("ledger_unreadable"));
         assert_eq!(std::fs::read(&file).unwrap(), body, "读不懂的那份被动了");
-        assert!(matches!(load_at(&file), Err(crate::wire::spec::Fail { code, .. }) if code == "ledger_unreadable"));
+        assert!(matches!(load_at(&file), Err(e) if e.code.as_deref() == Some("ledger_unreadable")));
     }
     std::fs::remove_file(&file).unwrap();
     assert_eq!(load_at(&file).unwrap(), Ledger::default(), "没有 ⇒ 空的");

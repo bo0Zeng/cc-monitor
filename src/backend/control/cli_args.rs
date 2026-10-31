@@ -46,12 +46,12 @@ enum Source<'a> {
     Argv(&'a str),
 }
 
-pub(crate) fn bad_args(why: &str) -> (&'static str, String) {
-    ("bad_args", contract::malformed(why))
+pub(crate) fn bad_args(why: &str) -> crate::common::said::Said {
+    crate::common::said::Said::new("bad_args", contract::malformed(why))
 }
 
 /// 读 `opts`（子命令之后的那些词）认出入参走哪个口。用法错 ⇒ `bad_args`。
-fn source_of(opts: &[String]) -> Result<Source<'_>, (&'static str, String)> {
+fn source_of(opts: &[String]) -> Result<Source<'_>, crate::common::said::Said> {
     let one_line = opts.iter().any(|a| a == STDIN_LINE_FLAG);
     let mut b64: Option<&str> = None;
     let mut i = 0;
@@ -85,9 +85,9 @@ fn source_of(opts: &[String]) -> Result<Source<'_>, (&'static str, String)> {
 }
 
 /// argv 那一形：base64 → UTF-8 串（JSON 由调用处与 stdin 那一形同一处解）。
-fn decode_argv(b64: &str) -> Result<String, (&'static str, String)> {
+fn decode_argv(b64: &str) -> Result<String, crate::common::said::Said> {
     if b64.len() > MAX_ARGS_B64_LEN {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "args_too_large",
             contract::malformed(&format!(
                 "{} value over the {MAX_ARGS_B64_LEN}-byte cap, refused (not truncated); send larger args on stdin",
@@ -95,9 +95,10 @@ fn decode_argv(b64: &str) -> Result<String, (&'static str, String)> {
             )),
         ));
     }
-    let bytes = crate::wire::b64_decode(b64).map_err(|e| ("bad_request", e))?;
+    let bytes = crate::wire::b64_decode(b64)
+        .map_err(|e| crate::common::said::Said::new("bad_request", e))?;
     String::from_utf8(bytes).map_err(|e| {
-        (
+        crate::common::said::Said::new(
             "bad_request",
             contract::malformed(&format!(
                 "{} is not UTF-8: {e}",
@@ -117,10 +118,10 @@ fn read_stdin_within<R: Read + Send + 'static>(
     r: R,
     one_line: bool,
     quiet: Duration,
-) -> Result<String, (&'static str, String)> {
+) -> Result<String, crate::common::said::Said> {
     enum Ev {
         Arrived,
-        Done(Result<String, (&'static str, String)>),
+        Done(Result<String, crate::common::said::Said>),
     }
     let (tx, rx) = std::sync::mpsc::channel::<Ev>();
     std::thread::spawn(move || {
@@ -132,7 +133,7 @@ fn read_stdin_within<R: Read + Send + 'static>(
         }
     });
     let gone = || {
-        (
+        crate::common::said::Said::new(
             "stdin_read_failed",
             "read stdin failed: the reader stopped".to_string(),
         )
@@ -143,7 +144,7 @@ fn read_stdin_within<R: Read + Send + 'static>(
             _ => Err(gone()),
         },
         Ok(Ev::Done(got)) => got,
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err((
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(crate::common::said::Said::new(
             "no_input",
             contract::malformed(&format!(
                 "stdin is open but sent nothing within {} ms; pass the args with {} <base64 JSON>, or close stdin",
@@ -160,7 +161,7 @@ pub(crate) fn read_args<R: Read + Send + 'static>(
     opts: &[String],
     stdin: R,
     quiet: Duration,
-) -> Result<String, (&'static str, String)> {
+) -> Result<String, crate::common::said::Said> {
     match source_of(opts)? {
         Source::Argv(b64) => decode_argv(b64),
         Source::Stdin { one_line } => read_stdin_within(stdin, one_line, quiet),
@@ -172,7 +173,7 @@ pub(crate) fn read_args<R: Read + Send + 'static>(
 pub(crate) fn read_input<R: std::io::BufRead>(
     r: R,
     one_line: bool,
-) -> Result<String, (&'static str, String)> {
+) -> Result<String, crate::common::said::Said> {
     let mut buf: Vec<u8> = Vec::new();
     // 多读一个字节，好把「刚好装满」与「超了」分开 —— 只读上限那么多是分不开的。
     let mut capped = r.take(MAX_CLI_STDIN + 1);
@@ -182,10 +183,13 @@ pub(crate) fn read_input<R: std::io::BufRead>(
         capped.read_to_end(&mut buf)
     };
     if let Err(e) = got {
-        return Err(("stdin_read_failed", format!("read stdin failed: {e}")));
+        return Err(crate::common::said::Said::new(
+            "stdin_read_failed",
+            format!("read stdin failed: {e}"),
+        ));
     }
     if buf.len() as u64 > MAX_CLI_STDIN {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "args_too_large",
             // 不截断：截半的 JSON 会被报成 bad_request，那句话与真实原因无关。
             contract::malformed(&format!(
@@ -193,12 +197,14 @@ pub(crate) fn read_input<R: std::io::BufRead>(
             )),
         ));
     }
-    String::from_utf8(buf).map_err(|e| ("stdin_read_failed", format!("read stdin failed: {e}")))
+    String::from_utf8(buf).map_err(|e| {
+        crate::common::said::Said::new("stdin_read_failed", format!("read stdin failed: {e}"))
+    })
 }
 
 /// 期限口 [`crate::wire::cli_words::WITHIN_MS_FLAG`]（位置不限）：缺值 · 给两次 ⇒ `bad_args`（同 [`crate::wire::cli_words::ARGS_B64_FLAG`]）；
 /// 值的读法与帧面信封那一格同一处（[`crate::wire::within_ms_of`]：不是正整数 ⇒ 当没带）。
-pub(crate) fn within_of(opts: &[String]) -> Result<Option<u64>, (&'static str, String)> {
+pub(crate) fn within_of(opts: &[String]) -> Result<Option<u64>, crate::common::said::Said> {
     let mut seen: Option<Option<u64>> = None;
     let mut i = 0;
     while i < opts.len() {

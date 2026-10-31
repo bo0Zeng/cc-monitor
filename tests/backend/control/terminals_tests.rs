@@ -3,9 +3,9 @@ use serde_json::{json, Value};
 use std::process::Command;
 
 // 判据照线上那一份说话：入参是帧里的 JSON（解入参同 typed 分派那一步：形状不对 ⇒ `bad_args`），回包是写上线的那一份 JSON。
-fn req<R: serde::de::DeserializeOwned>(args: &Value) -> Result<R, CmdErr> {
+fn req<R: serde::de::DeserializeOwned>(args: &Value) -> Result<R, Said> {
     serde_json::from_value(args.clone()).map_err(|e| {
-        CmdErr::new(
+        crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed(&e.to_string()),
         )
@@ -16,19 +16,19 @@ fn val<T: serde::Serialize>(t: T) -> Value {
     serde_json::to_value(t).unwrap()
 }
 
-fn list_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
+fn list_on(on: On<'_>, args: &Value) -> Result<Value, Said> {
     super::list_on(on, &req(args)?).map(val)
 }
 
-fn preview_on(on: On<'_>, args: &Value, tz: &crate::Tz) -> Result<Value, CmdErr> {
+fn preview_on(on: On<'_>, args: &Value, tz: &crate::Tz) -> Result<Value, Said> {
     super::preview_on(on, &req(args)?, tz).map(val)
 }
 
-fn input_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
+fn input_on(on: On<'_>, args: &Value) -> Result<Value, Said> {
     super::input_on(on, &req(args)?).map(val)
 }
 
-fn input_of(args: &Value) -> Result<Input, CmdErr> {
+fn input_of(args: &Value) -> Result<Input, Said> {
     super::input_of(&req(args)?)
 }
 
@@ -176,7 +176,7 @@ fn a_target_is_one_handle_or_one_sid_from_the_list_and_nothing_else() {
     ] {
         assert_eq!(
             target(h, s).map_err(|e| e.code),
-            Err("bad_target".to_string()),
+            Err(Some("bad_target".to_string())),
             "{h:?} {s:?}"
         );
     }
@@ -246,7 +246,7 @@ fn text_and_keys_are_separate_and_keys_come_from_a_closed_table() {
     ] {
         assert_eq!(
             input_of(&bad).map_err(|e| e.code),
-            Err("bad_args".to_string()),
+            Err(Some("bad_args".to_string())),
             "{bad}"
         );
     }
@@ -682,7 +682,7 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
         assert_eq!(
             preview_on(iso.on(), &json!({ "terminal": raw }), &Default::default())
                 .map_err(|e| e.code),
-            Err("not_known".to_string())
+            Err(Some("not_known".to_string()))
         );
     }
 }
@@ -1014,11 +1014,11 @@ fn every_refusal_reason_has_its_sentence() {
 fn a_refused_take_or_release_says_why_by_its_code() {
     use crate::wire::typed::Codes;
     let told = |code: &str| {
-        crate::control::terminals_wire::hold_refused(CmdErr::new(
+        crate::control::terminals_wire::hold_refused(crate::wire::spec::fail(
             code,
             crate::common::contract::malformed("lower"),
         ))
-        .into_fail()
+        .into_said()
     };
     for (code, why) in [
         ("not_known", "not_known"),
@@ -1027,8 +1027,8 @@ fn a_refused_take_or_release_says_why_by_its_code() {
         ("ambiguous", "ambiguous"),
     ] {
         let f = told(code);
-        assert_eq!(f.code, code);
-        assert_eq!(f.message, no_said(why), "{code} 那一句");
+        assert_eq!(f.code.as_deref(), Some(code));
+        assert_eq!(f.said, no_said(why), "{code} 那一句");
         assert!(
             f.raw.as_deref().unwrap_or("").contains("lower"),
             "{code} 下层那句进原话：{:?}",
