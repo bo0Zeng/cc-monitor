@@ -166,17 +166,16 @@ fn pick_adapter(
             wgpu::Backend::Gl => Api::Gl,
             _ => continue,
         };
-        let kind = if info.device_type == wgpu::DeviceType::Cpu
-            || render::looks_software(&info.name)
-        {
-            Kind::Software
-        } else {
-            match info.device_type {
-                wgpu::DeviceType::DiscreteGpu => Kind::Discrete,
-                wgpu::DeviceType::IntegratedGpu => Kind::Integrated,
-                _ => Kind::Other,
-            }
-        };
+        let kind =
+            if info.device_type == wgpu::DeviceType::Cpu || render::looks_software(&info.name) {
+                Kind::Software
+            } else {
+                match info.device_type {
+                    wgpu::DeviceType::DiscreteGpu => Kind::Discrete,
+                    wgpu::DeviceType::IntegratedGpu => Kind::Integrated,
+                    _ => Kind::Other,
+                }
+            };
         pool.push((
             a,
             Seen {
