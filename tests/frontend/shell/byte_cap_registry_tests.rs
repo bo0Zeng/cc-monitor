@@ -1227,12 +1227,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/history/launch_book.rs",
-        "MAX_BYTES",
-        "后端自有的「会话用的号」记录 `~/.cc-monitor/launch-accounts.json`（读不出来就不覆盖、`unreadable`）",
-        "拒收+回错",
-    ),
-    (
         "src/backend/dial/opened_windows.rs",
         "MAX_BYTES",
         "↗ 的本机记录一份 `<数据目录>/opened-windows/<sid>`（两行：窗口标签 · 那台的名字；超了 ⇒ `warn!` 带路径，当没有、照问那台）",

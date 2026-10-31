@@ -10479,12 +10479,6 @@
       "zh": "登记的路径与安装位置不一致 · {why}",
       "args": ["why"]
     },
-    "rsConfigSurface.effect.indirectWrite": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "cc-monitor 不直接写它；但在 cc-monitor 里的操作会让它被写（由被调用的命令追加内容）",
-      "args": []
-    },
     "rsConfigSurface.effect.generateOnly": {
       "kind": "body",
       "role": "说明",

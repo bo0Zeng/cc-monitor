@@ -125,21 +125,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "手机「复制到…」那一组的入参（桌面经同一个 `copy_req` 算公共根）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，不在扫描面里）与本 crate 的判据",
     ),
     (
-        "src/backend/control/files_commit.rs",
-        "COMMIT_COMMANDS",
-        "文件管理写面的命令声明表：读者是 `readonly_guard`「拿得到 `Face` 的命令」与 inbound 结构判据的对拍（另一侧是命令表里的档位，两侧异源）",
-    ),
-    (
-        "src/backend/control/files_extract.rs",
-        "EXTRACT_COMMANDS",
-        "文件管理写面的命令声明表：读者是 `readonly_guard`「拿得到 `Face` 的命令」与 inbound 结构判据的对拍（另一侧是命令表里的档位，两侧异源）",
-    ),
-    (
-        "src/backend/control/files_write.rs",
-        "MANAGE_COMMANDS",
-        "文件管理写面的命令声明表：读者是 `readonly_guard`「拿得到 `Face` 的命令」与 inbound 结构判据的对拍（另一侧是命令表里的档位，两侧异源）",
-    ),
-    (
         "src/backend/lib.rs",
         "CC_MONITOR_BUILD_STAMP",
         "`#[used]` ＋ `#[no_mangle]` 的身份戳：读者是二进制字节（部署 · 内嵌 · 远端见证按字节扫 `STAMP_OPEN`），不是源码里的名字",
