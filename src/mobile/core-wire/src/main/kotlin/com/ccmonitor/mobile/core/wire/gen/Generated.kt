@@ -10929,6 +10929,7 @@ data class LineDiff(
     val added: Int,
     val removed: Int,
     val stat: String,
+    val notice: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -10941,9 +10942,10 @@ data class LineDiff(
             Field("added", { Int32 }, optional = false, nullable = false),
             Field("removed", { Int32 }, optional = false, nullable = false),
             Field("stat", { Str }, optional = false, nullable = false),
+            Field("notice", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> LineDiff(a[0] as List<LineDiffRow>, a[1] as Int, a[2] as Boolean, a[3] as Int, a[4] as Int, a[5] as String) },
-            { v -> arrayOf(v.rows, v.shown, v.truncated, v.added, v.removed, v.stat) },
+            { a -> LineDiff(a[0] as List<LineDiffRow>, a[1] as Int, a[2] as Boolean, a[3] as Int, a[4] as Int, a[5] as String, a[6] as String?) },
+            { v -> arrayOf(v.rows, v.shown, v.truncated, v.added, v.removed, v.stat, v.notice) },
         )
     }
 }
