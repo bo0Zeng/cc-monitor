@@ -8,12 +8,11 @@ use copy_core::copy_text;
 
 use super::theme::{metrics, palette};
 
-/// 条的语气：出错 · 警告 · 说明。
+/// 条的语气：出错 · 警告。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tone {
     Error,
     Warn,
-    Info,
 }
 
 impl Tone {
@@ -22,7 +21,6 @@ impl Tone {
         match self {
             Self::Error => p.error,
             Self::Warn => p.warn,
-            Self::Info => p.text2,
         }
     }
 
@@ -31,7 +29,6 @@ impl Tone {
         match self {
             Self::Error => ph::WARNING_CIRCLE,
             Self::Warn => ph::WARNING,
-            Self::Info => ph::INFO,
         }
     }
 }

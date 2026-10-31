@@ -13,18 +13,19 @@ impl FileWindow {
     }
 
     /// 打开着的那一份（可改：截图与判据摆「盘上被改过」那一形用）。
+    #[cfg(test)]
     pub fn editing_mut(&mut self) -> Option<&mut crate::editor::Pane> {
         self.editing.as_mut()
     }
 
-    /// 编辑框里那些字（生产那个 `TextEdit` 要的 `&mut String` 从这儿出来）。
-    ///
-    /// ⚠ **它是生产代码，不是测试钩子**（编辑面那个 `TextEdit` 拿的就是这一个 `&mut`）。
+    /// 编辑框里那些字（判据替敲键改它；编辑面那个 `TextEdit` 直接拿 `Pane::text`，是同一个 `String`）。
+    #[cfg(test)]
     pub fn editing_text_mut(&mut self) -> Option<&mut String> {
         self.editing.as_mut().map(|p| &mut p.text)
     }
 
     /// 关窗那一问摆着吗。
+    #[cfg(test)]
     pub fn asking_discard(&self) -> bool {
         self.asking_discard
     }
@@ -393,7 +394,8 @@ impl FileWindow {
         }
     }
 
-    /// 编辑面查找栏那一格（判据与界面同一个口）。没开编辑面 ⇒ `None`。
+    /// 编辑面查找栏那一格（判据用；界面直接拿 `Pane::find`，是同一格）。没开编辑面 ⇒ `None`。
+    #[cfg(test)]
     pub fn find_bar_mut(&mut self) -> Option<&mut crate::editor::FindBar> {
         self.editing.as_mut().map(|p| &mut p.find)
     }

@@ -108,5 +108,5 @@ pub fn none_line(all: &[Seen]) -> String {
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/frontend/filewin/render_tests.rs"]
+#[path = "../../../../../tests/frontend/filewin/render_tests.rs"]
 mod tests;

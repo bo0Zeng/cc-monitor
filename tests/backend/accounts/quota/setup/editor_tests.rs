@@ -297,9 +297,9 @@ fn decide_case(c: &Value, settings: &Value) -> Verdict {
         pace: s["pace"].as_f64(),
         pace_short: s["paceShort"].as_f64(),
         inflight: s["inflight"].as_f64(),
-        bins: s["bins"]
-            .as_array()
-            .map_or(Vec::new(), |b| b.iter().map(serde_json::Value::as_f64).collect()),
+        bins: s["bins"].as_array().map_or(Vec::new(), |b| {
+            b.iter().map(serde_json::Value::as_f64).collect()
+        }),
         spread: s["spread"].as_f64(),
         context: s["context"].as_u64(),
         write_extra: s["writeExtra"].as_f64(),
