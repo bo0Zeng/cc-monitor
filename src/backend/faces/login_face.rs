@@ -3,7 +3,6 @@
 //! `login-start` 要跟着发起它的那条连接走（连接断了作业就收）⇒ 在分派的硬臂里（内建档），入参 · 回包 · 码表照样从这里的类型来。
 
 use crate::accounts::sign_in::{self, FinishFail, SignInEnd};
-use crate::common::said::Said;
 use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
 use std::path::Path;

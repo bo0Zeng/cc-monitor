@@ -14,6 +14,7 @@ use crate::assets::aliases::{self, AmendErr};
 use crate::common::door::Door;
 use crate::platform::shell::dialect::Shell;
 use crate::common::said::Said;
+use crate::common::said::IntoNote as _;
 use crate::wire::typed::{self, Command, Files, NoArgs};
 use cmd_wire::accounts::{
     AccountAddArgs, AccountChange, AccountInitArgs, AccountKind, AccountLoginCmd,

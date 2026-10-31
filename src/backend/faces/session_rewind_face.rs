@@ -17,7 +17,6 @@ use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq, Termina
 use crate::dial::remote_ask::{DialRemote, REACH};
 use crate::observe::lines::Lines;
 use crate::platform::fs::Ro;
-use crate::common::said::Said;
 use crate::wire::typed::{self, codes, Codes as _, Command};
 use cmd_wire::rewind::{Rewind, RewindOptions, SessionRewindOptionsReq};
 use cmd_wire::Machine;

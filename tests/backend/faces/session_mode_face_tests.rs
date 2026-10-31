@@ -214,11 +214,11 @@ fn auto_is_offered_and_a_launch_only_mode_says_so() {
     }
     for m in ["bypassPermissions", "dontAsk"] {
         let e = offered(&perm, m).unwrap_err();
-        assert_eq!(e.code, "launch_only", "`{m}`");
+        assert_eq!(e.code.as_deref(), Some("launch_only"), "`{m}`");
         assert_eq!(
-            e.message,
+            e.said,
             copy_core::copy_text("beSessionMode.switch.launchOnly", &[])
         );
     }
-    assert_eq!(offered(&perm, "yolo").unwrap_err().code, "bad_args");
+    assert_eq!(offered(&perm, "yolo").unwrap_err().code.as_deref(), Some("bad_args"));
 }

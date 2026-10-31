@@ -245,7 +245,7 @@ impl crate::wire::typed::Handle for DriftMergeCmd {
                     until,
                 )
                 .await
-                .map_err(|f| tracing::warn!("drift-merge [{m}]: {}", f.message))
+                .map_err(|f| tracing::warn!("drift-merge [{m}]: {}", f.said))
                 .ok()
             };
             Ok(drift_hub(names, crate::agents::drift_report(), there).await)
@@ -452,7 +452,7 @@ impl crate::wire::typed::Handle for MachineInterrupts {
             let there = move |m: String, r: MachineInterruptsReq| async move {
                 crate::control::feeds::call::<MachineInterrupts>(&m, &r, until)
                     .await
-                    .map_err(|f| tracing::warn!("machine-interrupts [{m}]: {}", f.message))
+                    .map_err(|f| tracing::warn!("machine-interrupts [{m}]: {}", f.said))
                     .ok()
             };
             Ok(interrupts_hub(req, here, there).await)

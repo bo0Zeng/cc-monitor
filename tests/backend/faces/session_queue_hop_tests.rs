@@ -42,7 +42,7 @@ impl Remote for Owner {
             }
             assert_eq!(line["cmd"], json!("session-queue-put"));
             let req: SessionQueuePutReq = serde_json::from_value(line["args"].clone()).unwrap();
-            let got: QueuePut = q::put(&self.own, &req, self.now_ms).map_err(|f| f.message)?;
+            let got: QueuePut = q::put(&self.own, &req, self.now_ms).map_err(|f| f.said)?;
             Ok(serde_json::to_string(&got).unwrap())
         })
     }
@@ -54,10 +54,7 @@ impl Remote for Owner {
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
         Box::pin(async move {
-            self.run(dial, command, stdin).await.map_err(|m| Said {
-                code: Some("resident_absent".into()),
-                message: m,
-            })
+            self.run(dial, command, stdin).await.map_err(|m| Said::new("resident_absent", m))
         })
     }
 }
@@ -74,7 +71,7 @@ async fn hop(
     here_home: &std::path::Path,
     table: &Table,
     owner: &Owner,
-) -> Result<QueuePut, Fail> {
+) -> Result<QueuePut, Said> {
     let own = crate::platform::fs::Own::issue_at(here_home);
     let r = req.clone();
     route::<SessionQueuePutCmd, _>(
@@ -133,12 +130,12 @@ async fn an_offline_owner_is_refused_on_the_spot() {
     let e = hop(&put_to("far", "a", 1), &here, &table, &owner)
         .await
         .unwrap_err();
-    assert_eq!(e.code, "offline");
+    assert_eq!(e.code.as_deref(), Some("offline"));
     // 不在机器表里的那一台：同样 `offline`，一问都不发。
     let e = hop(&put_to("nowhere", "a", 1), &here, &table, &owner)
         .await
         .unwrap_err();
-    assert_eq!(e.code, "offline");
+    assert_eq!(e.code.as_deref(), Some("offline"));
     assert_eq!(owner.asked.lock().unwrap().len(), 1);
     assert!(!here.join(q::DIR_REL).exists(), "不在发件端攒");
     assert!(!there.join(q::DIR_REL).exists());
@@ -163,10 +160,7 @@ async fn the_owners_own_refusal_keeps_its_code() {
             _stdin: Option<String>,
         ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
             Box::pin(async {
-                Err(Said {
-                    code: Some("queue_full".into()),
-                    message: "满".into(),
-                })
+                Err(Said::new("queue_full", "满".to_string()))
             })
         }
     }
@@ -186,7 +180,8 @@ async fn the_owners_own_refusal_keeps_its_code() {
     .await
     .unwrap_err();
     assert_eq!(
-        e.code, "queue_full",
+        e.code.as_deref(),
+        Some("queue_full"),
         "那台说「不行」⇒ 照那台的码，不是 offline"
     );
 }

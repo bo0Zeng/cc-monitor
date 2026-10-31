@@ -215,7 +215,7 @@ fn launch(
         );
         if let Err(e) = r {
             use crate::wire::typed::Codes as _;
-            tracing::warn!("起一组：{sid} 没归进组 {}：{}", g.id, e.into_said().message);
+            tracing::warn!("起一组：{sid} 没归进组 {}：{}", g.id, e.into_said().said);
         }
     };
     let mut group_for = |name: &str| -> Result<GroupRef, String> {
@@ -234,7 +234,7 @@ fn launch(
         )
         .map_err(|e| {
             use crate::wire::typed::Codes as _;
-            e.into_said().message
+            e.into_said().said
         })?;
         let GroupsWritten::Made(h) = made else {
             return Err(name.to_string());
@@ -274,7 +274,7 @@ fn launch(
         );
         if let Err(e) = r {
             use crate::wire::typed::Codes as _;
-            tracing::warn!("起一组：{sid} 没出组 {}：{}", g.id, e.into_said().message);
+            tracing::warn!("起一组：{sid} 没出组 {}：{}", g.id, e.into_said().said);
         }
     };
     // 先定的那几个 sid 各进了哪一组（那一家没用上先定的 ⇒ 照它摘）。

@@ -326,7 +326,7 @@ fn reads(req: &PlanListReq, tz: &crate::Tz) -> (wire::PlanPb, Vec<wire::PlanRead
     dirs.extend(req.dirs.iter().flatten().cloned());
     let entry = match entry() {
         Ok(e) => e,
-        Err(f) => return (pb_state("missing", Some(f.message)), Vec::new()),
+        Err(f) => return (pb_state("missing", Some(f.said)), Vec::new()),
     };
     reads_in(
         book::book(),

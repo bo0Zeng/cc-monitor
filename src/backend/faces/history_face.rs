@@ -900,10 +900,7 @@ impl crate::wire::typed::Handle for NeedsMergeCmd {
                     )
                 })
                 .await
-                .map_err(|e| crate::dial::remote_ask::Said {
-                    code: None,
-                    message: e.to_string(),
-                })
+                .map_err(|e| crate::common::said::Said::from(e.to_string()))
             };
             needs_merge_with(
                 &req.machines,
@@ -921,7 +918,7 @@ impl crate::wire::typed::Handle for NeedsMergeCmd {
 /// [`NeedsMergeCmd`] 的本体（本机那一台怎么答 · 可达表 · 对面由调用方给）。
 pub(crate) async fn needs_merge_with(
     machines: &[cmd_wire::Machine],
-    local: impl std::future::Future<Output = Result<NeedsList, crate::dial::remote_ask::Said>> + Send,
+    local: impl std::future::Future<Output = Result<NeedsList, crate::common::said::Said>> + Send,
     tz: &crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
     table: &crate::dial::remote_ask::Table,
@@ -945,7 +942,7 @@ pub(crate) async fn needs_merge_with(
             Ok(list) => answered.push((origin, list)),
             Err(s) => down.push(crate::observe::recognize::facts::NeedsDown {
                 origin,
-                said: s.message,
+                said: s.said,
             }),
         }
     }
