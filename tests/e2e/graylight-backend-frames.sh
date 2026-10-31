@@ -154,7 +154,7 @@ else
   MARK_BRANCH="$(wc -l <"$FRAMES")"
   echo "-- S0：原地把 $PIDFILE 的 sessionId 从 $SID 改成 $NEWSID（进程不动）--"
   # 只换 sessionId，**其余字段（pid / procStart / kind）原样保留** —— 动了它们会撞上
-  # backend 的 add-time 冒名检查（F20），那时红的原因就不是本条要测的东西了。
+  # backend 的 add-time 冒名检查，那时红的原因就不是本条要测的东西了。
   TMPJ="$(mktemp)"; sed "s/$SID/$NEWSID/g" "$PIDFILE" >"$TMPJ" && mv "$TMPJ" "$PIDFILE"
 
   SR_SUP="$(wait_line "$MARK_BRANCH" "\"kind\":\"session_left\",\"sid\":\"$SID\"" 'session_left(old sid)' || true)"
@@ -256,7 +256,7 @@ fi
 #
 # 这是**唯一**没有内核事件源的场景：server 还活着（`$KEEP` 撑着）、socket 还在，pidfd 与 inotify 都不响。
 # P4 用 tmux hook → `--tmux-notify` → SIGUSR1 补上了它，P5 据此删掉了 8s 轮询 ⇒ 这条路一旦坏掉，该场景就从「亚秒」直接变成「永不」。
-# 等的上限是兜底的那一个数（不按墙钟分快慢：从前 5s 分「事件驱动」与「退回轮询（≥8s）／永不」，忙机上会误红）。
+# 等的上限是兜底的那一个数（不按墙钟分快慢：拿 5s 分「事件驱动」与「退回轮询（≥8s）／永不」，忙机上会误红）。
 # 退回轮询这一形由后端侧的零定时器判据（`no_timer_guard`）静态钉着；这里只判「来了」与「永不」。读数照印毫秒。
 echo "-- tmux kill-session $SESSION(会话名消失 → 后端裁已结束)--"
 MARK_KS="$(wc -l <"$FRAMES")"

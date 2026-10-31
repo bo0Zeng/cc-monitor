@@ -246,18 +246,6 @@ pub fn line_starts(text: &str) -> Vec<usize> {
 }
 
 impl Preview {
-    /// 面板上摆着什么（判据用；界面直接读字段，是同一个值）。
-    #[cfg(test)]
-    pub fn view(&self) -> &View {
-        &self.view
-    }
-
-    /// 发出去过几趟（判据用）。
-    #[cfg(test)]
-    pub fn fired(&self) -> u64 {
-        self.fired
-    }
-
     /// 🔴 **每帧调一次**：先收到货，再看「要的是谁」变没变，最后决定发不发。
     pub fn follow(&mut self, pane: &FileWindow, ctx: Option<egui::Context>) {
         if let Some(h) = self.head.as_mut() {

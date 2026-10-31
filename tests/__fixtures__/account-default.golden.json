@@ -18,7 +18,7 @@
       "selectable": ["a", "b"]
     },
     {
-      "what": "一个都没标 ⇒ 清单里第一个（命令行那一路从前不回落、起成了不指定号）",
+      "what": "一个都没标 ⇒ 清单里第一个（命令行那一路同样回落，不起成不指定号）",
       "accounts": [
         { "name": "a", "hasDir": true, "isDefault": false, "mode": "isolated", "authReady": true, "exists": true },
         { "name": "b", "hasDir": true, "isDefault": false, "mode": "isolated", "authReady": true, "exists": true }

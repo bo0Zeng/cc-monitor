@@ -6,6 +6,30 @@ use batch_core::{copy_details, run, Failed, Rebuff, Verb, EXISTS};
 use cmd_wire::batch::ItemState;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+/// 判据读看板用的两件（生产那一份里没有它们；本模块挂在 `batch` 底下，读得到私有字段）。
+impl BatchBoard {
+    /// 冲突框摆着的那几项。
+    pub(crate) fn conflicts(&self) -> Vec<Conflict> {
+        self.lock()
+            .asking
+            .as_ref()
+            .map(|a| a.conflicts.clone())
+            .unwrap_or_default()
+    }
+
+    /// 结局那一行底下逐项列的那几行（没成的那几项：名字 · 失败 · 原因）。
+    pub(crate) fn failed_lines(&self) -> Vec<String> {
+        let (plan, phase) = {
+            let d = self.lock();
+            (d.plan.clone(), d.phase.clone())
+        };
+        let Phase::Ended(r) = phase else {
+            return Vec::new();
+        };
+        batch_core::failed_lines(&plan, &r)
+    }
+}
+
 fn plan() -> Plan {
     Plan {
         verb: Verb::Copy,

@@ -12,6 +12,38 @@
 
 use super::*;
 use crate::find::testing::{frame_text, window_on, wire_up, Declared, FakeBackend};
+use crate::writeops::{PromptKind, WritePrompt};
+
+/// 判据摆弄新建空文件那一格用的四件（生产那一份里没有它们：界面上那一格走就地那一格共用的口）。
+impl FileWindow {
+    /// 正摆着的新建空文件那一格。
+    pub(crate) fn new_file_prompt(&self) -> Option<&WritePrompt> {
+        self.write_prompt()
+            .filter(|p| matches!(p.kind, PromptKind::NewFile))
+    }
+
+    /// 那一格里正在编辑的字（判据替敲键改它）。
+    pub(crate) fn new_file_text_mut(&mut self) -> Option<&mut String> {
+        self.write_prompt_mut()
+            .filter(|p| matches!(p.kind, PromptKind::NewFile))
+            .map(|p| &mut p.text)
+    }
+
+    /// 收掉那一格，什么都不建。
+    pub(crate) fn cancel_new_file(&mut self) {
+        if self.new_file_prompt().is_some() {
+            self.cancel_write();
+        }
+    }
+
+    /// 那一格答完 ⇒ 发 `files-create`。
+    pub(crate) fn confirm_new_file(&mut self, ctx: Option<egui::Context>) -> bool {
+        if self.new_file_prompt().is_none() {
+            return false;
+        }
+        self.commit_inline(ctx)
+    }
+}
 
 /// 等就地那一趟回来（[`FileWindow::settle_inline`] 收到）。**带上限，绝不挂死**（同 `find::testing::settle`）。
 async fn settle_inline(w: &mut FileWindow, who: &str) {

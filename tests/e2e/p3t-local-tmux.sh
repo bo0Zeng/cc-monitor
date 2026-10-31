@@ -1,5 +1,5 @@
 #!/bin/bash
-# P3t-Y5：**本机会话真的活在 tmux 里且可接**。
+# **本机会话真的活在 tmux 里且可接**。
 #
 # 与 tests/e2e/ccm-acceptance.sh 的分工：那个验 ccm CLI 自己的行为；本脚本验的是
 # **cc-monitor 渲染出来的那一条本机拉起命令**在真 tmux 上干了什么。
@@ -72,9 +72,8 @@ exec "$HERE/fake-claude" "\$@"
 SHIM
 chmod +x "$BIN/$LAUNCHER"
 # ③ ccm 本体上 PATH（渲染出来的串以 `ccm` 开头）。
-# ★ `K-R48` 第二拍（09-11）：`ccm` 从**仓内 bash 脚本**换成**后端二进制本体**
-#   （〔用@09-11 `K33`〕「后端只有一个…不要有什么 bash 脚本，不要有什么单独的 ccm」）。
-#   软链的**名字仍是 `ccm`** —— `control::ccm::intercept` 认的就是 `argv[0]` 的 basename。
+# ★ `ccm` 就是**后端二进制本体**（后端只有一个，没有单独的 bash 版 ccm）。
+#   软链的**名字是 `ccm`** —— `control::ccm::intercept` 认的就是 `argv[0]` 的 basename。
 # 🔴 fail-closed：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份。
 CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 [ -x "$CCM_NATIVE" ] || {
@@ -84,7 +83,7 @@ CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 ln -sf "$CCM_NATIVE" "$BIN/ccm"
 
 export PATH="$BIN:$PATH"
-# 这里从前 `export CCM_SELF="$BIN/ccm"`：那个环境变量删了——
+# 不导出 `CCM_SELF`（后端不读它）——
 # 经 `$BIN/ccm` 这条软链进来，`argv[0]` 本来就是它（入口①），内层载荷取的就是这个名字。
 # 隔离账号库 / 工作区 / 预信任写入点，绝不碰用户真实文件：账号库跟着家目录走 ⇒ 家目录换成临时目录。
 # 工具链的位置先钉住（下面要 `cargo test` 取渲染器输出；它们默认跟着家目录走，换了家就找不到工具链）。
@@ -111,7 +110,7 @@ unset CLAUDECODE CLAUDE_CODE_SESSION_ID
 # ⚠ 这一句是**为了让被测行为发生**，不是隔离手段；隔离由上面的 shim 独自负责。
 unset TMUX TMUX_PANE
 
-echo "== P3t-Y5：本机拉起真的建出 tmux 会话 =="
+echo "== 本机拉起真的建出 tmux 会话 =="
 
 # ── 前置断言 0：**在生产用的那种 shell 里**量，不是在外层量。
 #

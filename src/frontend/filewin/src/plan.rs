@@ -13,10 +13,6 @@ use std::collections::{BTreeMap, BTreeSet};
 /// 一份文件归的那一格（线上那一份原样）。
 pub use cmd_wire::plan::PlanFileOwner as Owner;
 
-/// 那条线上命令的名字（后端 `plan` 族；判据用）。
-#[cfg(test)]
-pub const CMD_PLAN_FILES: &str = <cmd_wire::plan::PlanFilesReq as cmd_wire::Call>::NAME;
-
 /// 那台的计划变了那条流：后端的 `changed` 帧、主题 `plan`（monitor 按主题原样扇出）。格体 `{key, rev, body}` 窗口不读 ——
 /// 变了就重问 `plan-files`，归谁、什么状态照旧只由那一问答。
 pub const PLAN_CHANGED_KIND: &str = "changed/plan";

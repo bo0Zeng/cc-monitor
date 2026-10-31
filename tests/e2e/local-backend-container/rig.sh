@@ -2,10 +2,10 @@
 # **干净 Linux 容器台架** —— 把发版产物 `.deb` 装进一台干净 Linux 机，
 # 然后回答一个问题：**用户装上之后，第一条命令能不能用。**
 #
-# ## 它答的是哪几件（件 `K-R139`）
+# ## 它答的是哪几件
 #
-#   `KR139D1` 后端起不起得来 · `ccm` 在**新 shell** 里敲不敲得到 · `--ccm-probe` 回不回得出六行
-#   `KR139D2` `R80` 的 POSIX 那一臂：**证实 / 证伪 / 半通** 三选一
+#   一 · 后端起不起得来 · `ccm` 在**新 shell** 里敲不敲得到 · `--ccm-probe` 回不回得出六行
+#   二 · 新装的 `ccm` 在 POSIX 登录 shell 里通不通：**证实 / 证伪 / 半通** 三选一
 #
 # ## 形状
 #
@@ -29,14 +29,14 @@
 # 两棵树、同一棵树的两趟同时跑互不打架：收尾只删本趟那几个，开跑前的残留检查只认本趟的名字，
 # 宿主快照剔掉同族别的趟建的网络与网卡（`e2e_docker_host_snapshot`）。
 # **刻意不做「先强删再建」**：清理这一步被拆掉时，本趟收尾那几格（「跑完没了」）当场红。
-# ⚠ 那条 `ip link` 逐字比有一个**已知假红**（件 `K-R136`）：带加速网卡的机器上 VF 会内核热插拔，
+# ⚠ 那条 `ip link` 逐字比有一个**已知假红**：带加速网卡的机器上 VF 会内核热插拔，
 #   与本台架无关。撞上了照实报，**别去改这条自检**。
 #
 # ## 宿主上写了什么
 #
 # **一个字节都不写。** 产物由调用方事先下到 `$LBC_ARTIFACTS`（默认见下），
 # 本脚本只读它、`docker cp` 进容器；临时目录用 `mktemp -d` 并在 `trap` 里删。
-# 宿主上不跑任何一条被测命令（定框 `K31` 逐字：「以后所有开发测试都不允许直接在本机跑」）。
+# 宿主上不跑任何一条被测命令（开发测试一律不直接在本机跑）。
 #
 # 用法：
 #   # 先把发版产物下下来（本脚本不联网、不替你下）：
@@ -306,7 +306,7 @@ printf '%s\n' "$P_PATH" | sed 's/^/    | /'
 #    进程就那么停着，实测 12 分半没退）。
 #    ⚠ 不带 timeout 的话，「它不答」这一格会表现成**整个台架挂死**，而挂死读不出是哪一格坏了。
 # `timeout` 放进**容器里**那一跳：外层 `timeout` 只杀得掉本机的 docker 客户端，容器里那个进程
-#    会留下来 —— 从前靠下面一句 `pkill -f -- '--ccm-probe'` 模式杀去收，那句删了（`tests/e2e` 不许有模式杀）。
+#    会留下来，而 `tests/e2e` 不许用模式杀去收。
 P_SIDE="$(timeout 15 docker exec "$CT" timeout 10 /usr/bin/cc-monitor-backend -- --ccm-probe 2>&1 | head -8)"
 SIDE_RC=$?
 note "③ 问 /usr/bin/cc-monitor-backend（argv[0] 不叫 ccm）：行数 = $(printf '%s' "$P_SIDE" | grep -c . ) · timeout 退出码 = $SIDE_RC（124 = 10 秒内没退）"
@@ -340,7 +340,7 @@ fi
 if diff -q "$SNAP/before.link" "$SNAP/after.link" >/dev/null 2>&1; then
   ok "宿主 ip link 跑前跑后逐字相同"
 else
-  bad "宿主 ip link 变了（⚠ 已知假红 K-R136：加速网卡 VF 热插拔）：$(diff "$SNAP/before.link" "$SNAP/after.link" | tr '\n' ' ')"
+  bad "宿主 ip link 变了（⚠ 已知假红：加速网卡 VF 热插拔）：$(diff "$SNAP/before.link" "$SNAP/after.link" | tr '\n' ' ')"
 fi
 
 TMPDIR_KEEP="$SNAP"

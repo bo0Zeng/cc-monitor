@@ -17,7 +17,7 @@
 //!
 //! # ⚠ 没做到的，写在这儿而不是藏着
 //!
-//! - **本机跑不了真窗口**（`XDG_SESSION_TYPE=tty`，无图形会话）⇒ [`open_detached`]
+//! - **本机跑不了真窗口**（`XDG_SESSION_TYPE=tty`，无图形会话）⇒ [`window::open_detached_seeded`]
 //!   这条路在本机**没有端到端读数**；有的是 scratchpad 那个 `tao ＋ eframe` 原型的
 //!   三趟读数（见 `super` 头注）与编译期的三档 `cargo check`。
 //!   ⚠ 第二刀在这条上多欠一句：**鼠标真的双击一下那一行会怎样，本机判不了**
@@ -359,12 +359,6 @@ pub static MENU_EMPTY: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinShell.menuEmpty.message", &[]));
 
 impl FileWindow {
-    pub fn new(source: Source, cwd: String, rt: Option<tokio::runtime::Handle>) -> Self {
-        let w = Self::seeded(source, cwd, rt, Vec::<Listed>::new());
-        w.reload();
-        w
-    }
-
     /// 接上通道（`proc::child_main` 拨通之后调；判据里接一台合成后端）。
     pub fn attach_line(&mut self, line: Line) {
         // 接上就问一次那台的能力事实（不等它：没回来之前菜单照常，点了由那台的回话兜）。
@@ -873,11 +867,6 @@ impl FileWindow {
         self.cwd_path() != before
     }
 
-    /// 现在高亮着哪一行的名字（`None` = 没有）。判据与界面看同一个值。
-    pub fn reveal_name(&self) -> Option<&str> {
-        self.reveal.as_ref().map(|r| r.name.as_str())
-    }
-
     /// 摆一次 reveal：「进这个目录，并且高亮 `name` 那一行」。
     ///
     /// ⚠ 它**不判那一行在不在** —— 那要等目录列回来（异步）。
@@ -948,9 +937,8 @@ impl FileWindow {
     ///
     /// 🔴 **抽成一个函数是为了让这条胶水本身可判。** 它只有一行，而那一行正是
     /// 「列表说有人点了第 i 行」与「窗口换目录」之间的唯一连接 ——
-    /// 写在 `ui()` 里的话，`activate` 有判据、`show_file_rows` 有判据，
-    /// 中间这一跳**谁都没在看**（那正是第一刀栽过的那一形：判据钉的是副本，
-    /// 生产那一份没人管）。
+    /// 写在 `ui()` 里的话，`activate` 有判据、`show_file_rows_with_tail` 有判据，
+    /// 中间这一跳**谁都没在看**。
     ///
     /// 回值 = 真的换了目录。
     pub fn apply_click(&mut self) -> bool {
@@ -996,17 +984,6 @@ impl FileWindow {
     /// 选中态（判据与界面看同一个值）。
     pub fn selection(&self) -> &Selection {
         &self.selection
-    }
-
-    /// 〔只给截图那一格〕再 Ctrl 点上这几个名字（选中态本体那一口，同点击走的那一个）。
-    #[cfg(test)]
-    pub(crate) fn pick_also(&mut self, names: &[&str]) {
-        let rows = self.listing.rows.lock().unwrap().clone();
-        for n in names {
-            if let Some(k) = rows.iter().position(|r| r.name == *n) {
-                self.selection.click(&rows, k, egui::Modifiers::COMMAND);
-            }
-        }
     }
 
     /// 选中的**恰好那一项**叫什么；`Err(n)` ＝ 选中了 `n` 项（`n ≠ 1`）。
@@ -1067,19 +1044,12 @@ impl FileWindow {
         None
     }
 
-    /// 关整个窗口时问它：同 [`Self::busy_reason`]，只是开着一份**没改过**的文本不算（关了不丢东西；
-    /// 改了没存的那一份由编辑面自己那一问管）；「进度」表里还在跑的那几趟算（关窗就没了）。
-    pub fn work_reason(&self) -> Option<String> {
-        self.held_reason()
-            .or_else(|| self.progress.running_titles().into_iter().next())
-    }
-
     /// 要人填字的那几个框（改名 · 新建 · 改权限 · 复制为 · 复制到另一台）有一个摆着吗。
     fn prompt_up(&self) -> bool {
         self.write_prompt.is_some() || self.copy_prompt.is_some() || self.cross_prompt.is_some()
     }
 
-    /// 做不成的那一下说的话落在哪：有框摆着 ⇒ 框里（[`Self::prompt_error`]）；否则 ⇒ 列表上方那一行。
+    /// 做不成的那一下说的话落在哪：有框摆着 ⇒ 框里（[`Self::prompt_failure`]）；否则 ⇒ 列表上方那一行。
     pub(super) fn say_slot(&self) -> std::sync::MutexGuard<'_, Option<super::source::Failed>> {
         if self.prompt_up() {
             self.prompt_error.lock().unwrap()
@@ -1088,16 +1058,7 @@ impl FileWindow {
         }
     }
 
-    /// 摆着的框里那一句「为什么没做成」（判据与界面看同一个值）。
-    pub fn prompt_error(&self) -> Option<String> {
-        self.prompt_error
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map(|f| f.said.clone())
-    }
-
-    /// 同 [`Self::prompt_error`]，连复制详情一起（框里那一行的［复制详情］用）。
+    /// 摆着的框里那一句「为什么没做成」，连复制详情一起（框里那一行与它的［复制详情］用）。
     pub fn prompt_failure(&self) -> Option<super::source::Failed> {
         self.prompt_error.lock().unwrap().clone()
     }
@@ -1150,7 +1111,6 @@ enum Hist {
 #[cfg(test)]
 #[path = "../../../../tests/frontend/filewin/shell_tests.rs"]
 pub(crate) mod tests;
-
 // 键盘 · 多选 · 右键菜单接到窗口上的那一摞（每一条都真跑 `frame_body`）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/filewin/shell_keys_tests.rs"]

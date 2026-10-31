@@ -140,8 +140,8 @@ F
   [ "$rh" = "$RHOME" ] || die "回环 sshd 那一头的家是「$rh」，不是沙箱 $RHOME"
 
   # 机器表与主机钥匙照今天的落盘形状直接写（住拨号那一端的本机后端读：`~/.cc-monitor/machines.json` · `~/.cc-monitor/known_hosts`）。
-  #   从前写的是 `config.json` 的 `remote` 段，靠第一次起 app 时那趟迁移搬进机器表 —— 迁移只搬一次，
-  #   第二次 setup 换了端口，app 照旧拨上一次的（10-26 实测：一直「端口不通 · 已试 <旧端口>」）。
+  #   不经 `config.json` 的 `remote` 段那趟迁移：迁移只搬一次，
+  #   第二次 setup 换了端口，app 照旧拨上一次的（一直「端口不通 · 已试 <旧端口>」）。
   python3 - "$LHOME" "$RIG" "$port" <<'PY'
 import json, os, sys
 home, rig, port = sys.argv[1], sys.argv[2], int(sys.argv[3])
