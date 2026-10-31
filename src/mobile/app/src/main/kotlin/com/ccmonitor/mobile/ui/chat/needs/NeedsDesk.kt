@@ -60,7 +60,7 @@ data class NeedsBar(
     /** 那台写好的第一行（`clock.head`，已等那一截是 `{dur}` 空位）；不知道等了多久 ⇒ `null`。 */
     val clock: String? = null,
 ) {
-    /** 第一行：那台写好的「等批准 · Bash · 已等 12s」，已等从收到那份起接着走（同需手动屏那一行）；没有 ⇒ [head]。 */
+    /** 第一行：那台写好的「等批准 · Bash · 12s」，已等从收到那份起接着走（同需手动屏那一行）；没有 ⇒ [head]。 */
     fun firstLine(now: Long): String = clock?.let { waitingNow(it, waitedMs, receivedAt, now) } ?: head
 }
 

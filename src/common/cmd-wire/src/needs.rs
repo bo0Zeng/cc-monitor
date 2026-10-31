@@ -66,9 +66,9 @@ pub enum NeedsItem {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct NeedsClock {
-    /// 状态那一句（「等批准 · 已等 {dur}」，种类那一格是 `needs.text`）：桌面需手动浮层 · 手机需手动屏那一行。
+    /// 状态那一句（「等批准 · {dur}」，种类那一格是 `needs.text`）：桌面需手动浮层 · 手机需手动屏那一行。
     pub text: Words,
-    /// 钉条第一行（「等批准 · Bash · 已等 {dur}」，种类那一格是 `needs.head`）。
+    /// 钉条第一行（「等批准 · Bash · {dur}」，种类那一格是 `needs.head`）。
     pub head: Words,
 }
 
