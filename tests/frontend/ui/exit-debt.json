@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1718,
+  "ceiling": 1717,
   "groups": [
     {
       "kind": "首登",
@@ -285,7 +285,7 @@
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/claude/ClaudeReadingPane.kt", "key", 4],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/common/HostLink.kt", "key", 1],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/drawer/DrawerEntries.kt", "key", 1],
-        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/files/FileOps.kt", "key", 2],
+        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/files/FileOps.kt", "key", 1],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/files/FilesScreen.kt", "key", 9],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/files/FilesViewModel.kt", "key", 2],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/files/PickBar.kt", "key", 1],

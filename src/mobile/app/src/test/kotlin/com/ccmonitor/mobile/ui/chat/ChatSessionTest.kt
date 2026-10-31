@@ -392,7 +392,8 @@ class ChatSessionTest {
             runCurrent()
             assertEquals(emptyList<RenderUnit.UserText>(), s.local())
             assertTrue(s.box().isEmpty())
-            assertEquals("第二句照名单排着", listOf(ids[1]), s.state.value.queue.map { it.id })
+            val queued = s.state.value.queue
+            assertEquals("第二句照名单排着", listOf(ids[1]), queued.map { it.id })
         }
 
     @Test
