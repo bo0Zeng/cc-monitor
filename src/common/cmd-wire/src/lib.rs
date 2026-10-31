@@ -8,7 +8,7 @@
 //! - [`terminal`]：给一台开终端那一条（`terminal-ssh`）的入参与回包；
 //! - [`deploy`]：装 · 卸远端后端那两条（`deploy-install` · `deploy-uninstall`）的入参与回包；
 //! - [`files`]：文件管理那一族（`files-*`）的入参与回包，路径走原始字节（[`files::WirePath`]）；
-//! - [`front`]：↗ 切到终端的结局与浮层那一张（壳 · 本机后端 `session-window` 两个写家都调它，句子只在这一处取）；
+//! - [`front`]：↗ 切到终端的线上那三型（浮层那一张 · 按钮 · 壳拉前交给出口的；结局与写字住 `face_core::front`）；
 //! - [`frame`]：后端发给客户端的帧（每种一个具名结构，记录那一格是类型参数）与一行解一帧的 [`frame::decode`]；
 //! - [`live`]：活卡（`live_card` 帧）的线上形与归一流里一块的种类（[`live::BlockKind`]）；
 //! - [`machine`]：「这一趟问的是哪台机器」的唯一类型 [`Machine`]（线上就是一个字符串，本机逐字 `"<local>"`）；
@@ -51,7 +51,6 @@ pub mod cells;
 pub mod deploy;
 pub mod dial;
 pub mod exit_policy;
-pub mod file_class;
 pub mod files;
 #[cfg(any(test, feature = "ts"))]
 pub mod fingerprint;

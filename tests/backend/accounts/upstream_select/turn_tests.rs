@@ -1008,7 +1008,8 @@ fn a_hold_past_a_day_says_claude_code_will_not_resume_by_itself() {
         super::apply(&mut s, &d, &[], t, None);
         s.log.last().expect("记了一条停发").why.clone()
     };
-    let note = copy_core::copy_text("beRotation.hold.noAutoResume", &[]);
+    let dur = copy_core::format_duration(24 * 3600 * 1000);
+    let note = copy_core::copy_text("beRotation.hold.noAutoResume", &[("dur", &dur)]);
     assert_eq!(held(Some(t + 24 * 3600 + 1)), Some(note), "24 小时以外");
     assert_eq!(held(Some(t + 24 * 3600)), None, "正好 24 小时还在内");
     assert_eq!(held(Some(t + 3600)), None);

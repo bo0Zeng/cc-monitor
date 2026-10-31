@@ -460,13 +460,15 @@ pub enum Format {
     Foreign,
 }
 
-/// 声明表的一行：落点（家目录底下 `.cc-monitor/` 那一层起）· 种类 · 格式 · 读上限（字节，超了当读不出来）。
+/// 声明表的一行：落点（家目录底下 `.cc-monitor/` 那一层起）· 种类 · 格式 · 读上限（字节，超了当读不出来）·
+/// 下限抬于哪一版（`X.Y.Z`；下限低于版本的行必写：`package.json` 的 version 到了那一版，删升级步、下限抬成版本）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Row {
     pub rel: &'static str,
     pub kind: Kind,
     pub format: Format,
     pub cap: u64,
+    pub floor_raised_in: Option<&'static str>,
 }
 
 /// 种类那一格的类型形：[`State`] · [`Cache`]。
@@ -516,6 +518,7 @@ impl<K: Class> Decl<K> {
                 kind: K::KIND,
                 format,
                 cap,
+                floor_raised_in: None,
             },
             of: core::marker::PhantomData,
         }
@@ -540,6 +543,16 @@ impl Decl<State> {
             "版本从 1 起，下限不高于版本"
         );
         Self::new(rel, Format::Json { version, floor }, cap)
+    }
+
+    /// 下限抬于哪一版（`X.Y.Z`）：只挂在下限低于版本的那一行上。
+    pub const fn floor_raised_in(mut self, release: &'static str) -> Self {
+        assert!(
+            matches!(self.row.format, Format::Json { version, floor } if floor < version),
+            "只有下限低于版本的行才有下限要抬"
+        );
+        self.row.floor_raised_in = Some(release);
+        self
     }
 }
 
@@ -570,8 +583,9 @@ pub const BACKEND_POLICY_FILE: Decl<State> =
     Decl::<State>::json(BACKEND_POLICY_REL, 1, 1, BACKEND_POLICY_MAX_BYTES);
 /// 这台偏好那一份的读上限（几张小表）。
 const PREFS_MAX_BYTES: u64 = 256 * 1024;
-/// 这台的偏好（第 2 版：恢复那一格从开关 `resumeInTmux` 换成三选 `resumeWhere`；第 1 版经一步升级读）。
-pub const PREFS_FILE: Decl<State> = Decl::<State>::json(PREFS_REL, 2, 1, PREFS_MAX_BYTES);
+/// 这台的偏好（第 2 版：恢复那一格从开关 `resumeInTmux` 换成三选 `resumeWhere`；第 1 版经一步升级读，5.0.4 起不读）。
+pub const PREFS_FILE: Decl<State> =
+    Decl::<State>::json(PREFS_REL, 2, 1, PREFS_MAX_BYTES).floor_raised_in("5.0.4");
 /// 机器表那一份的读上限（至多 256 台）。
 const MACHINES_MAX_BYTES: u64 = 1024 * 1024;
 /// 机器表。
@@ -598,9 +612,9 @@ const BOOKMARKS_MAX_BYTES: u64 = 256 * 1024;
 /// 书签。
 pub const BOOKMARKS_FILE: Decl<State> =
     Decl::<State>::json(BOOKMARKS_REL, 1, 1, BOOKMARKS_MAX_BYTES);
-/// skill 装记录（第 1 版写在 `"v"` 里，第 2 版换成顶层 `version`）。
+/// skill 装记录（第 1 版写在 `"v"` 里，第 2 版换成顶层 `version`；第 1 版经一步升级读，5.0.4 起不读）。
 pub const SKILL_LEDGER_FILE: Decl<State> =
-    Decl::<State>::json(SKILL_LEDGER_REL, 2, 1, 4 * 1024 * 1024);
+    Decl::<State>::json(SKILL_LEDGER_REL, 2, 1, 4 * 1024 * 1024).floor_raised_in("5.0.4");
 /// 资产目录。
 pub const ASSET_CATALOG_FILE: Decl<State> =
     Decl::<State>::json(ASSET_CATALOG_REL, 1, 1, 16 * 1024 * 1024);

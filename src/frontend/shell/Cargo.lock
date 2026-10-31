@@ -1779,6 +1779,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "face-core"
+version = "0.1.0"
+dependencies = [
+ "cmd-wire",
+ "copy-core",
+ "serde",
+ "serde_json",
+ "test-home",
+]
+
+[[package]]
 name = "fancy-regex"
 version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3366,6 +3377,7 @@ dependencies = [
  "copy-core",
  "creds-core",
  "deploy-contract",
+ "face-core",
  "filewin-contract",
  "futures",
  "gtk",

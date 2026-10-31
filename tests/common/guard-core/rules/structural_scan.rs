@@ -1862,8 +1862,11 @@ fn the_dead_name_scanner_really_sees_each_shape() {
 // ── 生产树里不放测试体 ────────────────────────────────────────
 
 /// `#[cfg(test)]` 罩着的测试专用支撑项（`thread_local!` · `impl Drop` · 辅助 `fn`）的上限：只许降。
-const SUPPORT_ITEM_CEILINGS: &[(&str, usize)] =
-    &[("src/backend", 7), ("src/frontend/shell/src", 15)];
+const SUPPORT_ITEM_CEILINGS: &[(&str, usize)] = &[
+    ("src/backend", 7),
+    ("src/frontend/shell/src", 15),
+    ("src/frontend/filewin/src", 42),
+];
 
 /// 一棵生产树里：真 `#[test]` 属性（整行逐字）· 内联 `#[cfg(test)] mod X {` · 别的 `#[cfg(test)]` 块项。
 /// 分号声明形（`#[cfg(test)] #[path = "…"] mod X;`）不算：那是把测试体挂到 `tests/` 的桩（桩指没指进 `tests/` 由 [`test_only_files_in`] 判）。

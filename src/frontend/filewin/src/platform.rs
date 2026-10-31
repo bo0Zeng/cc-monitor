@@ -1,7 +1,11 @@
 //! 文件窗口包的平台层〔窗口包链不到壳的 `platform/`，自开这一份〕：本包平台 cfg 的唯一住址。
 //! 住这里的：[`any_thread_hook`]（`shell.rs`）· [`local_dest_kept`] · [`path_from_bytes`]（`lossy_pull.rs`）·
 //! [`SYSTEM_CJK_FONTS`]（`fonts.rs`）· [`rss_kib`]（`scale.rs`）· [`BACKSLASH_IS_SEP`]（`download.rs::split_dest` 用）。
-//! 另有本包自己的一处：[`renderer_options`]（开窗参数里渲染器那几格，Windows 走 wgpu）。
+//! 另有本包自己的一处：[`renderer_options`]（开窗参数里渲染器那几格，Windows 走 wgpu）；挑哪块显卡的纯规则住子模块 `render`
+//! （只 Windows 的生产路径用它，判据各平台都照跑 ⇒ 声明带 `any(windows, test)`）。
+
+#[cfg(any(windows, test))]
+mod render;
 
 /// 🔴 让 winit 的事件循环能建在**非主线程**上。
 ///
@@ -105,6 +109,7 @@ pub const SYSTEM_CJK_FONTS: &[&str] = &[
 
 /// 读进程 RSS。Linux 走 `/proc/self/statm`；别的平台返回 0（**不是假装 0 字节**，
 /// 是「这台机器上量不到」—— 判据那边按 0 跳过，并且把「跳过了」印出来）。
+#[cfg(test)]
 pub fn rss_kib() -> u64 {
     #[cfg(target_os = "linux")]
     {
@@ -125,7 +130,7 @@ pub fn rss_kib() -> u64 {
     }
 }
 
-/// 开窗参数里渲染器那几格。Windows 走 wgpu（DX12 ＋ OpenGL 两支），挑哪块显卡交给 [`crate::render::choose`]；
+/// 开窗参数里渲染器那几格。Windows 走 wgpu（DX12 ＋ OpenGL 两支），挑哪块显卡交给 `render::choose`；
 /// 别处走 glow，缺省就是对的（Linux 不换的理由住 `Cargo.toml` 那段头注）。生产开窗（`shell.rs`）与真窗口台架都调这一处。
 pub fn renderer_options(opts: &mut eframe::NativeOptions) {
     #[cfg(windows)]
@@ -142,14 +147,14 @@ pub fn renderer_options(opts: &mut eframe::NativeOptions) {
     }
 }
 
-/// wgpu 枚举出来的那几块 → [`crate::render::Seen`] → 挑一块；挑中的那一行上 stderr（monitor 接进它的日志），
+/// wgpu 枚举出来的那几块 → [`render::Seen`] → 挑一块；挑中的那一行上 stderr（monitor 接进它的日志），
 /// 一块都没有 ⇒ 带契约记号的那一句当错回（eframe 把它变成开窗失败的原话）。只要画得到这扇窗的（`surface` 认它）。
 #[cfg(windows)]
 fn pick_adapter(
     all: &[wgpu::Adapter],
     surface: Option<&wgpu::Surface<'_>>,
 ) -> Result<wgpu::Adapter, String> {
-    use crate::render::{Api, Kind, Seen};
+    use render::{Api, Kind, Seen};
     let mut pool: Vec<(&wgpu::Adapter, Seen)> = Vec::new();
     for a in all {
         if surface.is_some_and(|s| !a.is_surface_supported(s)) {
@@ -161,17 +166,16 @@ fn pick_adapter(
             wgpu::Backend::Gl => Api::Gl,
             _ => continue,
         };
-        let kind = if info.device_type == wgpu::DeviceType::Cpu
-            || crate::render::looks_software(&info.name)
-        {
-            Kind::Software
-        } else {
-            match info.device_type {
-                wgpu::DeviceType::DiscreteGpu => Kind::Discrete,
-                wgpu::DeviceType::IntegratedGpu => Kind::Integrated,
-                _ => Kind::Other,
-            }
-        };
+        let kind =
+            if info.device_type == wgpu::DeviceType::Cpu || render::looks_software(&info.name) {
+                Kind::Software
+            } else {
+                match info.device_type {
+                    wgpu::DeviceType::DiscreteGpu => Kind::Discrete,
+                    wgpu::DeviceType::IntegratedGpu => Kind::Integrated,
+                    _ => Kind::Other,
+                }
+            };
         pool.push((
             a,
             Seen {
@@ -182,11 +186,11 @@ fn pick_adapter(
         ));
     }
     let seen: Vec<Seen> = pool.iter().map(|(_, s)| s.clone()).collect();
-    match crate::render::choose(&seen) {
+    match render::choose(&seen) {
         Some(i) => {
-            eprintln!("{}", crate::render::picked_line(&seen, i));
+            eprintln!("{}", render::picked_line(&seen, i));
             Ok(pool[i].0.clone())
         }
-        None => Err(crate::render::none_line(&seen)),
+        None => Err(render::none_line(&seen)),
     }
 }

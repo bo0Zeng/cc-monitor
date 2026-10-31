@@ -2,7 +2,7 @@
 //!
 //! ★ 本机会话与远端会话同一个形：远端 ⇒ 本机后端经 `--resident-call` 问那台的 `session-terminals`，
 //! 那台报来的终端连接拿本机的连接表对出进程链；本机 ⇒ 链从显示它的那个终端进程（tmux 客户端 · 不在 tmux 里就是它自己）起。
-//! 两边的原因照搬、用那台的名字写成那一张（`cmd_wire::front::Unplaced::face`，句子在 `front_face_tests.rs` 判）；
+//! 两边的原因照搬、用那台的名字写成那一张（`face_core::front::Unplaced::face`，句子在 `face-core` 的 `front_tests.rs` 判）；
 //! 那台没问到 ⇒ 连接层那一句照摆。`tmux` 那一格照带（窗口关了时壳才给［在终端里打开］）。
 
 use super::*;

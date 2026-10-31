@@ -1920,6 +1920,12 @@ mod g6_dependency_signoff {
             "同一个 crate 在测试档多开 `ts`（typed 命令线上类型的 TS 派生 · 形状指纹），只多一个 codegen 派生；现打 0 处写面",
         ),
         (
+            "face-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "契约类型的写字一侧（↗ 浮层那一张：照结局与原因从文案表取字），纯字符串变换；与壳共用同一份；仓内 crate，现打 0 处写面",
+        ),
+        (
             "comms-outward",
             DEPS,
             MEASURED_CLEAN,
