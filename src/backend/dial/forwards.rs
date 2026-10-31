@@ -400,7 +400,7 @@ impl crate::wire::typed::Handle for ForwardStart {
                 },
             )
             .await
-            .map_err(crate::wire::typed::of_pair(ForwardStartErr::Failed))
+            .map_err(crate::wire::typed::of_fail_with(ForwardStartErr::Failed))
         }
     }
 }
@@ -429,7 +429,8 @@ impl crate::wire::typed::Handle for ForwardStop {
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl Future<Output = Result<ForwardId, ForwardStopErr>> + Send + 'static {
         std::future::ready(
-            stop_with(req, &LEDGER).map_err(crate::wire::typed::of_pair(ForwardStopErr::NotFound)),
+            stop_with(req, &LEDGER)
+                .map_err(crate::wire::typed::of_fail_with(ForwardStopErr::NotFound)),
         )
     }
 }

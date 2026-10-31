@@ -67,14 +67,6 @@ pub(crate) struct Each<T>(std::marker::PhantomData<T>);
 #[serde(deny_unknown_fields)]
 pub(crate) struct NoArgs {}
 
-/// 下层那一份失败 ⇒ 这一条的错误枚举：句子后面跟着的契约诊断先拆进原话（[`crate::wire::spec::fail`]），再同 [`of_fail`]。
-pub(crate) fn of_pair<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Said) -> E {
-    move |f| {
-        let code = f.code_or_fallback().to_string();
-        of_fail(crate::wire::spec::fail(&code, f), fallback)
-    }
-}
-
 /// 一条命令自己可能回的那几个码（[`codes!`] 声明）。
 pub(crate) trait Codes: Sized {
     /// 全部码，声明次序。
@@ -90,9 +82,12 @@ pub(crate) trait Codes: Sized {
     type Data: DataTypes;
 }
 
-/// 同 [`of_fail`]，交成闭包（`map_err` 那一格）。
+/// 同 [`of_fail`]，交成闭包（`map_err` 那一格）：句子后面跟着的契约诊断先拆进原话（[`crate::wire::spec::fail`]）。
 pub(crate) fn of_fail_with<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Said) -> E {
-    move |f| of_fail(f, fallback)
+    move |f| {
+        let code = f.code_or_fallback().to_string();
+        of_fail(crate::wire::spec::fail(&code, f), fallback)
+    }
 }
 
 /// 下层那一份失败（码 ＋ 那一句 ＋ 原话）⇒ 这一条的错误枚举：码在这一条的码表里 ⇒ 照交；不在 ⇒ 落 `fallback`
