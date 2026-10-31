@@ -46,6 +46,8 @@ data class LoginUi(
  */
 class LoginFlow(
     private val link: CoreLink,
+    /** 哪一台（hostId）：［在终端里登录］在这台开终端 tab。 */
+    val host: String,
     private val machine: String,
     target: LoginStartReq,
     private val scope: CoroutineScope,

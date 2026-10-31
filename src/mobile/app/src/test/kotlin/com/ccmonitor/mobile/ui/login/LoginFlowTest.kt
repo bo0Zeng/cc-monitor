@@ -33,7 +33,7 @@ class LoginFlowTest {
                     else -> Reply.Ok(mapOf("was" to true))
                 }
             }
-            val f = LoginFlow(l, "smokebox", Login.account("claude", "team"), backgroundScope)
+            val f = LoginFlow(l, "h1", "smokebox", Login.account("claude", "team"), backgroundScope)
             f.start()
             runCurrent()
             assertEquals(listOf(mapOf("kind" to "account", "agent" to "claude", "account" to "team")), l.calls("login-start"))
@@ -60,7 +60,7 @@ class LoginFlowTest {
     fun `没起成 ⇒ 那台那一句、没有作业；收起不发撤单`() =
         runTest {
             val l = FakeCoreLink().also { it.answer = { _, _ -> Reply.Failed(CoreFailure("unsupported", "codex · 不支持在 app 里登录", "d")) } }
-            val f = LoginFlow(l, "smokebox", Login.account("codex", "cx"), backgroundScope)
+            val f = LoginFlow(l, "h1", "smokebox", Login.account("codex", "cx"), backgroundScope)
             f.start()
             runCurrent()
             assertEquals("codex · 不支持在 app 里登录", f.state.value.failed)
@@ -74,7 +74,7 @@ class LoginFlowTest {
     fun `起好了中途收起 ⇒ login-cancel 交那份作业`() =
         runTest {
             val l = FakeCoreLink().also { it.answer = { cmd, _ -> if (cmd == "login-start") Reply.Ok(started) else Reply.Ok(mapOf("was" to true)) } }
-            val f = LoginFlow(l, "smokebox", Login.account("claude", "team"), backgroundScope)
+            val f = LoginFlow(l, "h1", "smokebox", Login.account("claude", "team"), backgroundScope)
             f.start()
             runCurrent()
             f.cancel()
@@ -95,7 +95,7 @@ class LoginFlowTest {
                         else -> Reply.Ok(mapOf("was" to true))
                     }
                 }
-                val f = LoginFlow(l, "smokebox", Login.account("claude", "team"), backgroundScope)
+                val f = LoginFlow(l, "h1", "smokebox", Login.account("claude", "team"), backgroundScope)
                 f.start()
                 runCurrent()
                 f.submit("abc")
@@ -117,7 +117,7 @@ class LoginFlowTest {
                 Reply.TimedOut to true,
             )) {
                 val l = FakeCoreLink().also { it.answer = { _, _ -> reply } }
-                val f = LoginFlow(l, "smokebox", Login.account("codex", "cx"), backgroundScope)
+                val f = LoginFlow(l, "h1", "smokebox", Login.account("codex", "cx"), backgroundScope)
                 f.start()
                 runCurrent()
                 assertEquals(reply.toString(), can, f.state.value.canRestart)
@@ -140,7 +140,7 @@ class LoginFlowTest {
         runTest {
             val l = FakeCoreLink().also { it.answer = { _, _ -> Reply.Ok(started) } }
             val item = Wire.bind<ManualItem>(mcpItem)!!
-            val f = LoginFlow(l, "smokebox", item.fix!!.args, backgroundScope)
+            val f = LoginFlow(l, "h1", "smokebox", item.fix!!.args, backgroundScope)
             f.start()
             runCurrent()
             @Suppress("UNCHECKED_CAST")
@@ -160,7 +160,7 @@ class LoginFlowTest {
                 Reply.TimedOut to false,
             )) {
                 val l = FakeCoreLink().also { it.answer = { _, _ -> reply } }
-                val f = LoginFlow(l, "smokebox", Login.account("claude", "team"), backgroundScope)
+                val f = LoginFlow(l, "h1", "smokebox", Login.account("claude", "team"), backgroundScope)
                 f.start()
                 runCurrent()
                 assertEquals(reply.toString(), want, f.state.value.terminal)
@@ -178,7 +178,7 @@ class LoginFlowTest {
                     else -> cmdReply
                 }
             }
-            val f = LoginFlow(l, "smokebox", Login.account("claude", "team"), backgroundScope)
+            val f = LoginFlow(l, "h1", "smokebox", Login.account("claude", "team"), backgroundScope)
             f.start()
             runCurrent()
             assertEquals(Result.success("claude /login"), f.terminalLine())
