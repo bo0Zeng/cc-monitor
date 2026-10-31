@@ -7,6 +7,7 @@ import com.ccmonitor.mobile.core.wire.gen.SessionAttachmentCheckReq
 import com.ccmonitor.mobile.core.wire.gen.SessionAttachmentCommitReq
 import com.ccmonitor.mobile.core.wire.gen.SessionAttachmentDropReq
 import com.ccmonitor.mobile.core.wire.gen.SessionQueuePutReq
+import com.ccmonitor.mobile.core.wire.gen.Staged
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -14,7 +15,7 @@ import org.junit.Test
 
 /** 附件那三条的入参照生成的那几形（后端 `deny_unknown_fields`，多一格就拒）；回包经生成的类解；`session-queue-put` 有编号才带那一格。 */
 class AttachmentsTest {
-    private val staged = FilesCommitUpload.Staged("k", 3L, 9L, "ab".repeat(32))
+    private val staged = Staged("k", 3L, 9L, "ab".repeat(32))
 
     /** 解回生成的那一形、再出成线上那一份：与拼出来的逐格相等 ⇒ 不多一格、不少一格。 */
     private inline fun <reified T : Any> roundTrips(args: Map<String, Any?>) {

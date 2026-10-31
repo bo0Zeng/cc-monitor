@@ -6,6 +6,7 @@ import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.NeedsList
+import com.ccmonitor.mobile.ui.chat.needs.monoMs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -38,6 +39,8 @@ data class MachineNeeds(
     val list: NeedsList? = null,
     val down: Boolean = false,
     val failed: Reply? = null,
+    /** 收到 [list] 那一刻（本机单调钟）：会走的那一句从它起接着走。 */
+    val at: Long = 0L,
 ) {
     /** 进数的那几项（断着 ⇒ 不进）。 */
     val counted: Int get() = if (down) 0 else list?.items?.size ?: 0
@@ -62,6 +65,8 @@ data class MachineNeeds(
 class NeedsBoard(
     sources: Flow<Map<String, NeedsSource>>,
     private val scope: CoroutineScope,
+    /** 本机单调钟（记收到那一份的时刻）。 */
+    private val now: () -> Long = ::monoMs,
 ) {
     private val _state = MutableStateFlow<Map<String, MachineNeeds>>(emptyMap())
 
@@ -138,7 +143,7 @@ class NeedsBoard(
             put(id) { it.copy(failed = if (r is Reply.Ok) Reply.Unreadable(r.data.toString()) else r) }
             return false
         }
-        put(id) { it.copy(list = list, failed = null) }
+        put(id) { it.copy(list = list, failed = null, at = now()) }
         return true
     }
 

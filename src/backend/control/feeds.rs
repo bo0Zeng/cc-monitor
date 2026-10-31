@@ -15,11 +15,10 @@
 //!   （`stream-watch` 信封带 `machine`，[`watch_at`]），并起来交那张台；那条流走了它那一份摘掉（[`Watching`]）。
 
 use crate::wire::Frame;
-use crate::wire::{SessionFace, SessionFaceExt as _, SessionLeft};
 use cmd_wire::frame::Relayed;
 use cmd_wire::machine::{MachineState, MachineStopReq, MachineStopped, MachineWakeReq};
 use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom};
-use resident_client::book::{Seat, SessionBook};
+use resident_client::book::SessionBook;
 use resident_client::feed::{self, Boxed, Config, Event, Exec, Feed, Problem, Progress, Transport};
 use resident_client::watch::Desk;
 use std::collections::{BTreeSet, HashMap};
@@ -225,29 +224,14 @@ fn fold_line(book: &mut SessionBook, line: &str) -> bool {
     false
 }
 
-/// 那台这一条连接断的那一刻：簿里活的 · 可重连的每一条落成说不清（看不见那一张脸，`face.life = unclear`），
-/// 自己先折进簿，交回要转出去的那几行（按 sid 排）。已结束 · 记录已不在的不说。
+/// 那台这一条连接断的那一刻：簿里活的 · 可重连的每一条落成说不清（[`SessionBook::unseen_now`]，簿里先折好），
+/// 交回要转出去的那几行（按 sid 排）。
 fn unclear_now(book: &mut SessionBook, machine: &str) -> Vec<String> {
-    let open: Vec<String> = book
-        .seats()
-        .filter(|(_, p)| match p {
-            Seat::Live(_) => true,
-            Seat::Left(s) => s.face.life == cmd_wire::frame::Life::Reconnectable,
-        })
-        .map(|(sid, _)| sid.clone())
-        .collect();
-    let face = SessionFace::unseen(cmd_wire::cells::Words(comms_inward::chan::said::offline(
-        machine,
-    )));
-    open.into_iter()
-        .filter_map(|sid| {
-            let f: cmd_wire::frame::Frame<serde_json::Value> =
-                cmd_wire::frame::Frame::SessionLeft(SessionLeft {
-                    sid,
-                    face: face.clone(),
-                });
-            book.fold(&f);
-            serde_json::to_string(&f).ok()
+    let offline = cmd_wire::cells::Words(comms_inward::chan::said::offline(machine));
+    book.unseen_now(offline)
+        .into_iter()
+        .filter_map(|l| {
+            serde_json::to_string(&cmd_wire::frame::Frame::<serde_json::Value>::SessionLeft(l)).ok()
         })
         .collect()
 }

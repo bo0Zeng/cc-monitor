@@ -115,16 +115,8 @@ pub(crate) struct Facts {
     pub mcp_login: Vec<McpLogin>,
     /// 这台 sshd 的配置关了端口转发的那一行（说不清 / 没装 sshd ⇒ `None`）。
     pub sshd: Option<sshd::ForwardingOff>,
-    /// 账号库共享库顶层像按号密钥的那几项（判据 `accounts::manage::layout::is_secret_like`；不自动链给各号，要人定归属）。
-    pub secret_like: Vec<SecretLike>,
     /// 点过「不用了」的那几件（`marks.rs`）。
     pub declined: Vec<String>,
-}
-
-/// 共享库里像按号密钥的一项：名字 · 全路径。
-pub(crate) struct SecretLike {
-    pub name: String,
-    pub path: String,
 }
 
 /// 一个要登录的 MCP：名字 · 在哪几个号里（账号库里的名字；没设账号 ⇒ 空）· 登录那条命令。
@@ -369,21 +361,6 @@ pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
         } else {
             cmd
         });
-        out.push(c);
-    }
-    for s in &f.secret_like {
-        let mut c = Chore::new(
-            format!("secret-like:{}", s.name),
-            ChoreKind::Must,
-            ChoreAction::Locate,
-        );
-        c.name = copy_text("beChore.secretLike.name", &[("item", &s.name)]);
-        c.loc = s.path.clone();
-        c.said = copy_text("beChore.secretLike.said", &[]);
-        c.why = copy_text("beChore.secretLike.why", &[("path", &s.path)]);
-        c.steps = vec![copy_text("beChore.secretLike.step", &[])];
-        c.copy = Some(s.path.clone());
-        c.file = Some(s.path.clone());
         out.push(c);
     }
     if let Some(p) = &f.self_paste {

@@ -1,7 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.PrefsReply
+import com.ccmonitor.mobile.core.wire.gen.PrefsSet
 import com.ccmonitor.mobile.core.wire.gen.Tab
 import com.ccmonitor.mobile.core.wire.gen.QuotaRead as QuotaReadReply
 
@@ -19,26 +20,32 @@ enum class TabKind(
 
 /** `prefs-read` · `prefs-set`：这台的偏好；改只交点到的那一格，那台写完读回。 */
 object MachinePrefs {
-    const val READ: String = "prefs-read"
-    const val SET: String = "prefs-set"
+    const val READ: String = Commands.PrefsRead.NAME
+    const val SET: String = Commands.PrefsSet.NAME
 
-    fun of(data: Any?): PrefsReply? = Wire.bind<PrefsReply>(data)
+    fun of(data: Any?): PrefsReply? = Commands.PrefsRead.reply(data)
 
     fun tab(
         kind: TabKind,
         value: Tab,
-    ): Map<String, Any?> = mapOf(kind.wire to if (value == Tab.SHOW) "show" else "hide")
+    ): Map<String, Any?> =
+        Commands.PrefsSet.args(
+            when (kind) {
+                TabKind.CHILD -> PrefsSet(childTab = value)
+                TabKind.BG -> PrefsSet(bgTab = value)
+            },
+        )
 
     /** 一个号的默认模型；[model] 为 `null` ⇒ 删掉那一条（跟随那一家的默认）。 */
     fun model(
         account: String,
         model: String?,
-    ): Map<String, Any?> = mapOf("models" to mapOf(account to model))
+    ): Map<String, Any?> = Commands.PrefsSet.args(PrefsSet(models = mapOf(account to model)))
 }
 
 /** `quota-read`：这台的额度账（设置屏账号卡 · 账号一览 · 用量屏同读这一份）。 */
 object QuotaRead {
-    const val COMMAND: String = "quota-read"
+    const val COMMAND: String = Commands.QuotaRead.NAME
 
-    fun of(data: Any?): QuotaReadReply? = Wire.bind(data)
+    fun of(data: Any?): QuotaReadReply? = Commands.QuotaRead.reply(data)
 }

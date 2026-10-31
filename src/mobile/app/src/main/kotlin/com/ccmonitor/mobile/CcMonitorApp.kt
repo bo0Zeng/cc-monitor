@@ -13,6 +13,7 @@ import com.ccmonitor.mobile.di.appModule
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.AppForeground
 import com.ccmonitor.mobile.service.ForegroundTracker
+import com.ccmonitor.mobile.service.KeepAliveWork
 import com.ccmonitor.mobile.ssh.OldHostKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +42,8 @@ class CcMonitorApp : Application() {
         registerForegroundTracking(backends)
         // 网回来 · 网变了：App 一起来就挂上、直接交给那条重连循环，不等保活服务（它要连上过才起：冷启动时断网就没人重拨）。
         registerNetwork(backends)
+        // 保活服务在「有活」那一下起（终端连着 · 在飞轮次 · 核心里在传的），不挂在哪一屏上；没活时服务自停。
+        koin.get<KeepAliveWork>().startOnWork(CoroutineScope(SupervisorJob() + Dispatchers.Main), this)
 
         // 只在 debug 构建播种演示主机和身份；dev key 资产也只在 src/debug。
         if (BuildConfig.DEBUG) {

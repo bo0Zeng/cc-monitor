@@ -62,7 +62,11 @@ fun BatchCard(
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Row { SecondaryButton(onClick = onStop) { Text(copyText("rsFilewinProgress.action.stop")) } }
                 }
-                is BatchLine.Cut -> CutBody(e, onStop, onRetry, onDismiss)
+                is BatchLine.Cut -> {
+                    // 断开那一行；连回来核心同一张票接着做。
+                    Text(e.line, color = LocalAppTokens.current.textFaint)
+                    Row { SecondaryButton(onClick = onStop) { Text(copyText("rsFilewinProgress.action.stop")) } }
+                }
                 is BatchLine.Ended -> EndedBody(e, { showFailed = true }, onRetry, onDismiss)
                 is BatchLine.Failed -> {
                     Text(e.said)
@@ -76,25 +80,6 @@ fun BatchCard(
         }
     }
     if (showFailed && e is BatchLine.Ended) FailedSheet(e) { showFailed = false }
-}
-
-/** 断开：断开那一行；等［继续］的那一种 ⇒［继续］［关］，否则［停］。 */
-@Composable
-private fun CutBody(
-    e: BatchLine.Cut,
-    onStop: () -> Unit,
-    onRetry: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Text(e.line, color = LocalAppTokens.current.textFaint)
-    if (e.resume) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SecondaryButton(onClick = onRetry) { Text(copyText("rsFilewinBatch.btn.resume")) }
-            SecondaryButton(onClick = onDismiss) { Text(copyText("kit.toast.close")) }
-        }
-    } else {
-        Row { SecondaryButton(onClick = onStop) { Text(copyText("rsFilewinProgress.action.stop")) } }
-    }
 }
 
 /** 收场了：结局句 ＋［看失败的］［重试失败的］［关］。 */

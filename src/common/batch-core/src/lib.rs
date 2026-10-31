@@ -118,6 +118,8 @@ pub enum Verb {
     Chmod,
     Download,
     Upload,
+    /// 下到手机本机：逐项拉在手机那一侧（每项一个本机描述符），回的是一组的结局，不是开了哪几单；字同下载。
+    Pull,
 }
 
 impl Verb {
@@ -136,7 +138,7 @@ impl Verb {
             Verb::Copy => copy_text("beFiles.batch.verbCopy", &[]),
             Verb::Delete => copy_text("beFiles.batch.verbDelete", &[]),
             Verb::Chmod => copy_text("beFiles.batch.verbChmod", &[]),
-            Verb::Download => copy_text("beFiles.batch.verbDownload", &[]),
+            Verb::Download | Verb::Pull => copy_text("beFiles.batch.verbDownload", &[]),
             Verb::Upload => copy_text("rsFilewinBatch.verb.upload", &[]),
         }
     }

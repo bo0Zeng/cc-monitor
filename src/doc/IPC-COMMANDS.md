@@ -1557,7 +1557,7 @@ type AttachItem = { name: string, bytes: number, dir?: boolean, };
 type AttachRefused = "is_dir" | "too_big" | "too_many" | "too_much" | "dir_full" | "not_writable" | "no_session";
 type AttachVerdict = { ok: boolean, 
 /**
- * 照名字判的那一种（目录 ⇒ 文件夹；[`crate::file_class::class_of_name`]）。
+ * 照名字判的那一种（目录 ⇒ 文件夹；后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -5603,13 +5603,10 @@ truncated: boolean,
  */
 sessions: Array<MergedRow>, 
 /**
- * 答了的那几台读不动、没搜到的会话记录份数之和。
+ * 结果头底下那几句，写好的（两端照摆）：答了的那几台读不动的会话记录份数之和（0 份不写）；
+ * 再是内容搜索不覆盖、只按标题的那几家各一句（各台说的，去重、照先说的那台的先后）。
  */
-unreadable: number, 
-/**
- * 内容搜索不覆盖的那几家（各台说的，去重、照先说的那台的先后）。
- */
-skipped: Array<string>, 
+notes: Array<string>, 
 /**
  * 没答上的那几台（它们的会话没搜到）：哪台 · 那一句。
  */
@@ -5812,7 +5809,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -5933,7 +5930,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**
@@ -6265,7 +6266,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -6370,7 +6371,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**
@@ -6726,7 +6731,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -6823,7 +6828,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**
@@ -7132,7 +7141,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -7237,7 +7246,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**
@@ -9079,7 +9092,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -9221,7 +9234,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**

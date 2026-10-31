@@ -44,7 +44,7 @@ impl PhoneLink {
         PhoneLink { base }
     }
 
-    /// 在 `base` 上填这一趟的用法与命令，组成拨号请求（读不动 ⇒ 这条连接用不了）。
+    /// 在 `base` 上填这一趟的用法与命令，组成拨号请求；拼不成 ⇒ 契约错那一句（两端对不上，不冒充断线）。
     fn request(&self, uses: serde_json::Value) -> Result<ssh_dial::DialRequest, Problem> {
         let mut req = self.base.clone();
         if let (Some(r), Some(u)) = (req.as_object_mut(), uses.as_object()) {
@@ -53,8 +53,12 @@ impl PhoneLink {
             }
             r.insert("stages".into(), false.into());
         }
-        serde_json::from_value(req)
-            .map_err(|e| Problem::new(copy_core::copy_text("reason.link.lost", &[]), e.to_string()))
+        serde_json::from_value(req).map_err(|e| {
+            Problem::new(
+                ssh_dial::malformed(&format!("dial request: {e}")),
+                e.to_string(),
+            )
+        })
     }
 }
 
@@ -224,8 +228,9 @@ impl Folds {
         self.book.listed
     }
 
-    /// 换了一条流（正在连）：簿与板随旧连接作废 ⇒ 每一处有卡的交一份空的，再交空簿（新连接那台整份重报）。
-    pub fn reset(&mut self) -> Vec<(&'static str, String)> {
+    /// 换了一条流（正在连）：板随旧连接作废 ⇒ 每一处有卡的交一份空的；簿照桌面那一路落成那台此刻看不见（[`SessionBook::unseen_now`]，
+    /// `offline` 是那台的离线那一句），交那一份（新连接那台整份重报、报完摘掉）。
+    pub fn reset(&mut self, offline: cmd_wire::cells::Words) -> Vec<(&'static str, String)> {
         let mut out: Vec<(&'static str, String)> = self
             .board
             .clear()
@@ -237,7 +242,7 @@ impl Folds {
                 )
             })
             .collect();
-        self.book = SessionBook::default();
+        self.book.unseen_now(offline);
         out.push(("book", book_line(&self.book)));
         out
     }
@@ -445,7 +450,9 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
                 Event::State(s) => {
                     let mut out = match s {
                         State::Connecting => {
-                            folds.lock().unwrap_or_else(|e| e.into_inner()).reset()
+                            folds.lock().unwrap_or_else(|e| e.into_inner()).reset(
+                                cmd_wire::cells::Words(comms_inward::chan::said::offline(&name)),
+                            )
                         }
                         _ => Vec::new(),
                     };
@@ -519,11 +526,28 @@ pub(crate) fn next_call() -> i64 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
-/// 一问一答：回问答编号；结局经 `reply` 那一种交回（`{call, …}`，[`reply_json`]）。这台不在 ⇒ 0。
+/// 一问一答的入参（JSON）；读不动 ⇒ 交 Kotlin 的那一行（契约错：照读不动交，不发）。
+fn args_of(id: i64, cmd: &str, args: &str) -> Result<serde_json::Value, String> {
+    serde_json::from_str(args).map_err(|e| {
+        serde_json::to_string(&CallEnd::Unreadable {
+            call: id,
+            detail: format!("{cmd} args: {e}"),
+        })
+        .unwrap_or_default()
+    })
+}
+
+/// 一问一答：回问答编号；结局经 `reply` 那一种交回（`{call, …}`，[`reply_json`]）。这台不在 ⇒ 0；入参读不动 ⇒ 不发，当场交读不动那一行。
 pub fn call(h: i64, cmd: String, args: &str, within_ms: u64, on_event: OnEvent) -> i64 {
     let Some(f) = feed(h) else { return 0 };
     let id = next_call();
-    let args: serde_json::Value = serde_json::from_str(args).unwrap_or(serde_json::Value::Null);
+    let args = match args_of(id, &cmd, args) {
+        Ok(a) => a,
+        Err(line) => {
+            on_event(h, "reply", line);
+            return id;
+        }
+    };
     let machine = f.machine().to_string();
     tokio::spawn(async move {
         let deadline = tokio::time::Instant::now() + Duration::from_millis(within_ms.max(1));
@@ -673,6 +697,31 @@ pub fn reply_json(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 🔴 两端契约对不上时说契约错：一问一答的入参读不动 ⇒ 读不动那一行（不当 `null` 照发）；拨号请求拼不成 ⇒ 契约错那一句（不说「连接断了」）。
+    #[test]
+    fn a_contract_break_is_said_as_one_not_as_a_lost_link() {
+        let line: serde_json::Value =
+            serde_json::from_str(&args_of(5, "history-facts", "{").unwrap_err()).unwrap();
+        assert_eq!(
+            (line["call"].as_i64(), line["end"].as_str()),
+            (Some(5), Some("unreadable"))
+        );
+        assert_eq!(
+            args_of(5, "x", "{\"a\":1}").unwrap(),
+            serde_json::json!({"a": 1})
+        );
+        let p = PhoneLink::new(serde_json::json!({}))
+            .request(serde_json::json!({}))
+            .unwrap_err();
+        assert_ne!(p.text, copy_core::copy_text("reason.link.lost", &[]));
+        assert!(
+            p.text
+                .starts_with(&copy_core::copy_text("beContract.malformed.say", &[])),
+            "{}",
+            p.text
+        );
+    }
 
     /// 一问一答的结局逐种落到 Kotlin 认的那一行；事前就拒的那几种照失败交、带码与一句话。
     #[test]
@@ -883,16 +932,34 @@ mod tests {
         );
         let stray = r#"{"kind":"live_card","sid":"s1","card":9,"n":4,"op":"awaiting"}"#;
         assert!(folds.frame(stray).is_empty(), "没开过的卡的增量不交");
+        let off = || cmd_wire::cells::Words("m 离线".into());
+        let mut unseen = SessionBook::default();
+        unseen.unseen_now(off());
         assert_eq!(
-            folds.reset(),
+            folds.reset(off()),
             vec![
                 ("live", r#"{"sid":"s1","run":"a1","cards":[]}"#.to_string()),
-                (
-                    "book",
-                    serde_json::to_string(&SessionBook::default()).unwrap()
-                ),
+                ("book", serde_json::to_string(&unseen).unwrap()),
             ]
         );
+    }
+
+    /// ★ 换流那一下簿照桌面那一路落（`resident_client::book::unseen_now`）：活的那一条落成看不见那一张、簿上记着它。
+    #[test]
+    fn a_new_link_folds_the_live_ones_into_the_unseen_face_like_the_desktop() {
+        let mut folds = Folds::default();
+        for line in
+            include_str!("../../../../tests/comms/resident-client/book-frames.jsonl").lines()
+        {
+            folds.frame(line);
+        }
+        let out = folds.reset(cmd_wire::cells::Words("m 离线".into()));
+        let (_, book) = out.last().expect("交了簿");
+        let book: SessionBook = serde_json::from_str(book).unwrap();
+        let face = resident_client::book::unseen(cmd_wire::cells::Words("m 离线".into()));
+        assert_eq!(book.unseen.as_ref(), Some(&face));
+        assert!(book.live.is_empty(), "活的都落成说不清");
+        assert!(book.left.values().any(|l| l.face == face));
     }
 
     /// 交 Kotlin 的几种事：状态那一件走 [`Facts::round`]（要这台手上的事实）· 帧原样。

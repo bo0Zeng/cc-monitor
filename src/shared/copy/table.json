@@ -603,6 +603,12 @@
       "zh": "{item} 该各号共用 · {names} 各有一份自己的、没有合并\n要共用就把内容并进共享库里的 {item}、删掉号里的，再点「修复」",
       "args": ["item", "names"]
     },
+    "beAcctVerify.global.unclassified": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{n} 项没归类 · 各号各用各的：{items}",
+      "args": ["n", "items"]
+    },
     "beAcctVerify.acct.linkEntity": {
       "kind": "error",
       "role": "报错",
@@ -657,24 +663,12 @@
       "zh": "共享链接 {item} 已断 · 共享库里的 {source} 指向已不在的 {target}\n到共享库修掉或删掉",
       "args": ["item", "source", "target"]
     },
-    "beAcctVerify.acct.unexpected": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{item} 既非身份文件也非共享链接；要共享就挪进共享库 · 要私有就留着",
-      "args": ["item"]
-    },
     "beAcctVerify.drift.nowhere": {
       "kind": "body",
       "role": "说明",
       "zh": "{item} 在共享库 · 主目录 · 各账号里均未找到\n或未用到 · 或 Claude Code 把它挪到别处",
       "args": ["item"],
       "limited": ["Claude Code"]
-    },
-    "beAcctVerify.drift.secretLike": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "共享库里的 {item} 权限 600 却不在身份文件里\n不链给各账号 · 要共享就放宽权限",
-      "args": ["item"]
     },
     "beAcctVerify.global.badManifest": {
       "kind": "error",
@@ -3155,6 +3149,12 @@
       "role": "标题",
       "zh": "Edit {n}",
       "args": ["n"]
+    },
+    "cards.diff.coarse": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "改前 {old} 行 · 改后 {new} 行 · 超出逐行比对上限，按整段删增显示",
+      "args": ["old", "new"]
     },
     "cards.command.note": {
       "kind": "body",
@@ -13951,7 +13951,7 @@
     "beArgv.parse.unknownRight": {
       "kind": "error",
       "role": "命令行",
-      "zh": "-- 右边只放 ccm 选项 · {w} 不是 · claude 的参数放 -- 左边（ccm -- --ccm-help 看选项）",
+      "zh": "{w} 不是 -- 右边的 ccm 选项 · claude 参数放左边 · 子命令紧跟开头的 --（ccm -- --commands 看全部）",
       "args": ["w"],
       "limited": ["ccm"]
     },
@@ -13960,13 +13960,6 @@
       "role": "命令行",
       "zh": "new 须是 -- 右边第一个词（ccm [claude 参数…] -- new [ccm 选项…]）",
       "args": [],
-      "limited": ["ccm"]
-    },
-    "beArgv.parse.backendWordAfterClaudeArgs": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "{w} 是 ccm 子命令 · 只能紧跟开头的 --（ccm -- {w} …） · 前面不许有 claude 参数",
-      "args": ["w"],
       "limited": ["ccm"]
     },
     "beAgents.pick.unknown": {
@@ -26629,30 +26622,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "复制下面一行 · 到该机终端里运行",
-      "args": []
-    },
-    "beChore.secretLike.name": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "共享库里的 {item} 像按号的密钥",
-      "args": ["item"]
-    },
-    "beChore.secretLike.said": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "权限 600 · 不在身份文件里 · 不链给各账号",
-      "args": []
-    },
-    "beChore.secretLike.why": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{path} 权限 600，不在身份文件里；按号的凭据或状态各账号共用会串号，不自动链给各账号",
-      "args": ["path"]
-    },
-    "beChore.secretLike.step": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "按号的挪进该账号目录 · 共用的放宽权限，下次对齐链接",
       "args": []
     },
     "beChore.selfPaste.name": {

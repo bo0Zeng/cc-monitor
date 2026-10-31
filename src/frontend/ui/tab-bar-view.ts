@@ -34,7 +34,7 @@ import { countBadge, tag, kbd } from "./kit/badge";
 import { attachTooltip, delegateTooltip } from "./kit/tooltip";
 import { openMenu, type MenuAnchor, type MenuItem } from "./kit/menu";
 import { closePopover, openPopover, popoverOpenOn, swapPopoverContent } from "./kit/popover";
-import { planRows, renderNeedsPanel, type PanelFacts } from "./needs-panel";
+import { planRows, renderNeedsPanel, waitingNow, type PanelFacts } from "./needs-panel";
 import type { NeedsBook } from "./needs-book";
 import type { ManualItem } from "./login-reads";
 import type { Origin } from "./ipc/origin";
@@ -351,14 +351,15 @@ export class TabBarView {
   private needsFacts(): PanelFacts {
     const now = Date.now();
     const book = this.needs.book;
-    // 条上有它 ⇒ 字照条上那一份（会走的钟）；没有 ⇒ 那台写好的标题与那一句。
-    const sessions = (book?.sessions() ?? []).map(({ origin, session }) => {
+    // 状态那一句照那台写好的会走的那一句（在不在条上一样，`waitingNow`）；标题：条上有它 ⇒ 条上那一份，没有 ⇒ 那台写好的。
+    const sessions = (book?.sessions() ?? []).map((b) => {
+      const { origin, session } = b;
       const t = this.store.tabs.get(session.sid);
       return {
         sid: session.sid,
         origin,
         title: t ? fullTitle(t) : session.label,
-        state: t ? stateLine(t, now).text : session.needs.text,
+        state: waitingNow(b, now),
         what: session.needs.what,
         by: session.needs.ask?.run?.text ?? null,
       };

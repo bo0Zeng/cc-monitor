@@ -14,30 +14,34 @@ import org.junit.Test
 class BookmarksTest {
     private val asked = mutableListOf<Pair<String, Map<String, Any?>>>()
 
+    /** 那台的替身：回 [dirs]；问的 `at` 里在 [dirs] 里的那几个各答一个下标（同后端：不在的不列）。 */
     private fun answering(dirs: List<String>): suspend (String, Map<String, Any?>) -> Reply =
         { cmd, args ->
             asked += cmd to args
-            Reply.Ok(mapOf("dirs" to dirs))
+            val at = (args["at"] as? List<*>).orEmpty().map { it as String }
+            Reply.Ok(mapOf("dirs" to dirs, "here" to at.filter { it in dirs }.associateWith { dirs.indexOf(it).toDouble() }))
         }
 
+    /** 🔴 每一问都带此刻那个目录（`at`），在不在书签里照回包的 `here` 认，手机不自己比。 */
     @Test
-    fun `读 · 切换 · 删：入参与桌面同形，回包整份照换`() =
+    fun `读 · 切换 · 删：入参与桌面同形、带此刻那个目录，在不在照那台答的`() =
         runTest {
             val shelf = BookmarkShelf(answering(listOf("/srv")))
-            shelf.refresh()
+            shelf.refresh("/srv")
             assertEquals(listOf("/srv"), shelf.dirs.value)
+            assertEquals(mapOf("/srv" to 0L), shelf.here.value)
             shelf.toggle("/srv/")
             shelf.remove("/srv")
             assertEquals(
                 listOf(
-                    Bookmarks.READ to emptyMap<String, Any?>(),
-                    Bookmarks.EDIT to mapOf("op" to "toggle", "dirs" to listOf("/srv/")),
-                    Bookmarks.EDIT to mapOf("op" to "remove", "dirs" to listOf("/srv")),
+                    Bookmarks.READ to mapOf("at" to listOf("/srv")),
+                    Bookmarks.EDIT to mapOf("op" to "toggle", "dirs" to listOf("/srv/"), "at" to listOf("/srv")),
+                    Bookmarks.EDIT to mapOf("op" to "remove", "dirs" to listOf("/srv"), "at" to listOf("/srv")),
                 ),
                 asked,
             )
-            assertTrue(shelf.has("/srv"))
-            assertFalse(shelf.has("/etc"))
+            shelf.refresh("/etc")
+            assertTrue("那台没把它列进 here ⇒ 不在", shelf.here.value.isEmpty())
         }
 
     @Test
@@ -48,14 +52,14 @@ class BookmarksTest {
                 BookmarkShelf { cmd, _ ->
                     if (cmd == Bookmarks.READ) slow.await() else Reply.Ok(mapOf("dirs" to listOf("/new")))
                 }
-            val first = async(start = CoroutineStart.UNDISPATCHED) { shelf.refresh() }
+            val first = async(start = CoroutineStart.UNDISPATCHED) { shelf.refresh("/new") }
             shelf.toggle("/new")
             slow.complete(Reply.Ok(mapOf("dirs" to listOf("/old"))))
             first.await()
             assertEquals(listOf("/new"), shelf.dirs.value)
             val failing =
                 BookmarkShelf { _, _ -> Reply.Failed(CoreFailure("io_failed", "书签读不出来", "")) }
-            failing.refresh()
+            failing.refresh("/a")
             assertEquals("书签读不出来", failing.said.value)
             assertTrue(failing.dirs.value.isEmpty())
         }
@@ -69,6 +73,6 @@ class BookmarksTest {
             assertEquals(listOf("/a", "/b"), shelf.dirs.value)
             val down = BookmarkShelf { _, _ -> Reply.LinkDown }
             assertFalse("没答 ok ⇒ 旧的那几行不许删", down.adopt(listOf("/a")))
-            assertNull(Bookmarks.dirs(mapOf("dirs" to "x")))
+            assertNull(Bookmarks.of(mapOf("dirs" to "x")))
         }
 }

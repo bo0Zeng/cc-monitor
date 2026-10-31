@@ -21,6 +21,7 @@ import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
+import com.ccmonitor.mobile.core.wire.gen.SessionLeft
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.Problem
@@ -93,9 +94,6 @@ class ChatsViewTest {
 
     private fun page(vararg rows: HistoryRow) = HistoryListPage(rows.toList(), emptyList(), null, false)
 
-    /** 那台成品写的离线那一句（照它比，不取字）。 */
-    private val offLine = "成品写的 m 离线那一句"
-
     private val list = Fetched.Got(page(row("1", "今天"), row("2", "今天"), row("3", "昨天"), row("4", "今天")).copy(truncated = true))
 
     private fun snap(
@@ -107,8 +105,7 @@ class ChatsViewTest {
         ask: ListAsk = ListAsk(),
         id: String = "h1",
         machine: String = "m",
-        offline: String? = offLine,
-    ) = HostSnap(id, machine, link, table, got, cached, deploying, ask, offline)
+    ) = HostSnap(id, machine, link, table, got, cached, deploying, ask)
 
     private fun live(
         sid: String,
@@ -232,17 +229,19 @@ class ChatsViewTest {
     }
 
     @Test
-    fun `断着：那台说看不见时照旧作数的（已结束 · 记录已不在）照画，其余点画说不清、字写那台离线，不照断前那张会话表`() {
-        val cached = page(row("1", "昨天"), row("2", "昨天", face = Faces.of("ended")), row("3", "昨天", face = Faces.of("gone")))
-        val stale = live("1", "live-working-plain")
-        val by = hostPart(snap(linkDown("m 离线", "boom"), stale, Fetched.Loading, cached)).rows.associateBy { it.sessionId }
-        assertEquals(SessionDot.UNKNOWN, by.getValue("1").dot)
-        assertEquals("字照那台成品写的离线那一句", Toned(offLine, Tone.PLAIN), by.getValue("1").status)
-        val unknown = hostPart(snap(linkDown("m 离线", "boom"), stale, Fetched.Loading, cached, offline = null)).rows.first { it.sessionId == "1" }
-        assertEquals("成品还没到 ⇒ 不说离线，说状态不明", Toned(copyText("sessionState.unseen.name"), Tone.PLAIN), unknown.status)
+    fun `★ 断着：只照会话簿那一张看不见的脸（名状态不明 · 点说不清，同桌面）；看不见时照旧作数的（已结束 · 记录已不在）照画`() {
+        val cached = page(row("1", "昨天"), row("2", "昨天", face = Faces.of("ended")), row("3", "昨天", face = Faces.of("gone")), row("4", "昨天"))
+        val unseen = Faces.of("unseen")
+        // 核心折好的：断的那一刻活的那一条落成看不见那一张、簿上记着它（`resident_client::book::unseen_now`）。
+        val down = EMPTY_BOOK.copy(left = mapOf("1" to SessionLeft("1", unseen)), unseen = unseen)
+        val by = hostPart(snap(linkDown("m 离线", "boom"), down, Fetched.Loading, cached)).rows.associateBy { it.sessionId }
+        assertEquals(Toned(unseen.name, unseen.tone) to SessionDot.UNKNOWN, by.getValue("1").status to by.getValue("1").dot)
+        assertEquals("名是状态不明，不是离线那一句", copyText("sessionState.unseen.name"), by.getValue("1").status.text)
+        assertEquals("簿里没有、清单那一行又不作数 ⇒ 也照簿那一张", Toned(unseen.name, unseen.tone), by.getValue("4").status)
         assertEquals(SessionDot.ENDED, by.getValue("2").dot)
         assertEquals("已结束", by.getValue("2").status.text)
         assertEquals(SessionDot.GONE, by.getValue("3").dot)
+        val stale = live("1", "live-working-plain")
         assertEquals("通着 ⇒ 照会话帧", SessionDot.RUNNING, hostPart(snap(table = stale, got = Fetched.Loading, cached = cached)).rows.first().dot)
     }
 

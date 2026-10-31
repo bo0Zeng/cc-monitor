@@ -62,3 +62,38 @@ fn a_left_session_announced_again_is_live_again_and_other_frames_do_not_touch_th
     b.forget("c");
     assert!(b.seat("c").is_none());
 }
+
+/// ★ 断的那一刻（桌面后端那一路 · 手机核心换流那一下都调它）：活的 · 可重连的落成看不见那一张、记在簿上，已结束的照旧；
+/// 那台接上、报完活会话清单 ⇒ 摘掉。
+#[test]
+fn going_unseen_folds_the_open_ones_into_the_one_unseen_face_and_the_replay_clears_it() {
+    let mut b = folded(FRAMES);
+    let ended = b.face("c").cloned();
+    let open: Vec<String> = b
+        .seats()
+        .filter(|(_, p)| match p {
+            Seat::Live(_) => true,
+            Seat::Left(s) => s.face.life == Life::Reconnectable,
+        })
+        .map(|(s, _)| s.clone())
+        .collect();
+    assert!(!open.is_empty(), "夹具里得有活的");
+    let left = b.unseen_now(cmd_wire::cells::Words("X 离线".into()));
+    let face = unseen(cmd_wire::cells::Words("X 离线".into()));
+    assert_eq!(left.iter().map(|l| l.sid.clone()).collect::<Vec<_>>(), open);
+    assert!(left.iter().all(|l| l.face == face));
+    for sid in &open {
+        assert_eq!(b.face(sid), Some(&face), "{sid} 落成看不见那一张");
+    }
+    assert_eq!(b.face("c").cloned(), ended, "已结束的照旧作数");
+    assert_eq!(b.unseen.as_ref(), Some(&face));
+    assert_eq!(
+        (face.name.0.as_str(), face.line.0.as_str()),
+        (
+            copy_core::copy_text("sessionState.unseen.name", &[]).as_str(),
+            "X 离线"
+        )
+    );
+    b.fold(&decode::<serde_json::Value>(r#"{"kind":"sessions_replayed"}"#).unwrap());
+    assert!(b.unseen.is_none(), "报完清单 ⇒ 看得见了");
+}

@@ -3,11 +3,13 @@
 //! 往 Kotlin 交的事：进度 `moved {call, done, total}`，结局走一问一答那一种 `reply`（同 [`resident::reply_json`] 那一行，编号同一族）。
 //!
 //! 上传这里只把块送进那台的暂存区、交回 `{key, chunks, bytes, sha256}`；提交（同名照 `on_exists`）由 Kotlin 一问（同桌面）。
+//! 下载那一半（[`pull_with`]）只由下到本机那一组调（`batch.rs`：本机那一份由它向 Kotlin 要）。
 
 use crate::resident::{self, OnEvent};
 use chunk_core::{Ask, Sink, Watch};
 use cmd_wire::files::WirePath;
 use cmd_wire::phone::{CallEnd, Moved};
+use cmd_wire::transfer::{Pulled, Staged};
 use cmd_wire::Call;
 use resident_client::client::CallError;
 use std::collections::HashMap;
@@ -18,10 +20,15 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 /// 经这台的常驻流问那台：每一问一个期限；没成 ⇒ 交 Kotlin 的那一行（同一问一答的结局）。
-struct Over {
+pub struct Over {
     h: i64,
     id: i64,
     within: Duration,
+}
+
+/// 经第 `h` 台的常驻流逐块问那台（下到本机那一组也走它）：没成那一行的编号是 `id`。
+pub fn over(h: i64, id: i64, within: Duration) -> Over {
+    Over { h, id, within }
 }
 
 impl Ask for Over {
@@ -71,6 +78,19 @@ impl Halt {
 
     pub fn is(&self) -> bool {
         self.hit.load(Ordering::SeqCst)
+    }
+
+    /// 等到撤了那一下（已经撤了 ⇒ 当场回）。
+    pub async fn hit(&self) {
+        loop {
+            let now = self.now.notified();
+            tokio::pin!(now);
+            now.as_mut().enable();
+            if self.is() {
+                return;
+            }
+            now.await;
+        }
     }
 }
 
@@ -194,7 +214,13 @@ pub async fn stage_with<A: Ask<Fail = String>>(
     {
         Ok(s) => line(&CallEnd::Ok {
             call: id,
-            data: serde_json::json!({ "key": s.key, "chunks": s.chunks, "bytes": s.bytes, "sha256": s.sha256 }),
+            data: serde_json::to_value(Staged {
+                key: s.key,
+                chunks: s.chunks,
+                bytes: s.bytes,
+                sha256: s.sha256,
+            })
+            .unwrap_or_default(),
         }),
         Err(line) => line,
     }
@@ -233,7 +259,7 @@ pub async fn pull_with<A: Ask<Fail = String>>(
     match chunk_core::pull(ask, path, &mut sink, watch, || cancelled(id)).await {
         Ok(n) => line(&CallEnd::Ok {
             call: id,
-            data: serde_json::json!({ "bytes": n }),
+            data: serde_json::to_value(Pulled { bytes: n }).unwrap_or_default(),
         }),
         Err(line) => line,
     }
@@ -263,8 +289,10 @@ fn launch<F: std::future::Future<Output = String> + Send + 'static>(
             on_event: on_event.clone(),
         },
     );
+    let busy = crate::busy::Busy::hold(h, on_event.clone());
     tokio::spawn(async move {
         let line = job.await;
+        drop(busy);
         lock(halts()).remove(&id);
         if !halt.is() {
             on_event(h, "reply", line);
@@ -291,26 +319,6 @@ pub fn stage(h: i64, file: File, name: String, within_ms: u64, on_event: OnEvent
             &mut moves,
         )
         .await
-    })
-}
-
-/// 起一趟下载：`args` 是 `{path}`（那台上的路径，线上那一形）。回问答编号；这台不在 · 入参读不动 ⇒ 0。
-pub fn pull(
-    h: i64,
-    file: File,
-    args: &str,
-    shown: String,
-    within_ms: u64,
-    on_event: OnEvent,
-) -> i64 {
-    let path = serde_json::from_str::<serde_json::Value>(args)
-        .ok()
-        .and_then(|v| serde_json::from_value::<WirePath>(v.get("path")?.clone()).ok());
-    let (Some(path), Some(_)) = (path, resident::feed(h)) else {
-        return 0;
-    };
-    launch(h, within_ms, on_event, move |ask, mut moves| async move {
-        pull_with(&ask, ask.id, path, file, &shown, &mut moves).await
     })
 }
 

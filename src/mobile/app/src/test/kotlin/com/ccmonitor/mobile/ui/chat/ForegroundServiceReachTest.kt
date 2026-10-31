@@ -1,29 +1,28 @@
 package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
 /**
- * 前台保活服务在新界面上也得被起起来。
+ * 前台保活服务只在一处起：应用级的 `KeepAliveWork.startOnWork`（「有活」那一下），不挂在哪一屏上。
  *
  * ### 它守的是什么
  *
- * `SshKeepAliveService` 的存活条件是「有活动会话 或 有在飞轮次」，后者由应用级的
- * `ChatController.hasInFlightTurn` 持有。服务得有人起：若只有终端屏（`SessionScreen`）调
- * `startForegroundService`，只走聊天屏的用户就从没起过它，离开 app 等回复时连接没人保，也不报错。
+ * `SshKeepAliveService` 的存活条件是「有活动会话 · 有在飞轮次 · 核心里有在传的」（`KeepAlivePolicy.hasWork`）。
+ * 服务得有人起：挂在某一屏上起，文件页下一组文件 · 附件在传时就没人起它，
+ * 切到后台进程随时被收，也不报错。
  *
  * ### 为什么是扫源码
  *
- * 缺的是一个调用点，不是一段可注入的逻辑：`ContextCompat.startForegroundService`
- * 要 `Context`、只能待在 Composable 里。要真验它得起 instrumented + 观察系统服务状态，
- * 那是另一个量级的装置。
+ * 缺的是一个调用点，不是一段可注入的逻辑：`ContextCompat.startForegroundService` 要 `Context`。
+ * 要真验它得起 instrumented + 观察系统服务状态，那是另一个量级的装置。
  *
- * 所以这里守的是结构规则：两条入口（终端屏、聊天屏）都必须有那个调用。
- * 如实说明它的判别力边界：它能挡住「有人把聊天屏那行删了」，
- * 挡不住「调用还在但参数写错」，后者要靠真机。
+ * 所以这里守的是结构规则：起它的只有 `KeepAliveWork.kt`，且应用起来时挂上它（`CcMonitorApp.kt` 调 `startOnWork`）。
+ * 如实说明它的判别力边界：挡得住「又在哪一屏上另起一处」「应用没挂上」，挡不住「调用还在但参数写错」，后者要靠真机。
  */
 class ForegroundServiceReachTest {
     private fun appSources(): List<File> {
@@ -43,17 +42,19 @@ class ForegroundServiceReachTest {
     private fun codeOnly(text: String): String = KotlinSourceScanner.codeOnlyKeepingLiterals(text)
 
     @Test
-    fun bothTheTerminalAndTheChatSurfaceStartTheKeepAliveService() {
+    fun theKeepAliveServiceIsStartedOnlyWhereWorkIsJudged() {
         val files = appSources()
         assertTrue("前提：得真扫到源文件，否则这条测试是空跑", files.size > 20)
 
         val starters =
             files.filter { codeOnly(it.readText()).contains("startForegroundService") }.map { it.name }.toSet()
-        assertTrue("前提：终端屏本来就有（否则这条判据的参照系不成立）", "SessionScreen.kt" in starters)
-        assertTrue(
-            "聊天屏也必须起前台保活服务，否则新界面上离开 app 等回复时连接没人保。实得：$starters",
-            "ChatRoute.kt" in starters,
+        assertEquals(
+            "起保活服务的只许是「有活」那一处（不挂在哪一屏上：文件页下载 · 附件在传也得起得来）",
+            setOf("KeepAliveWork.kt"),
+            starters,
         )
+        val app = files.single { it.name == "CcMonitorApp.kt" }
+        assertTrue("应用起来时得挂上它", codeOnly(app.readText()).contains("startOnWork("))
     }
 
     /**

@@ -147,8 +147,8 @@ const SETUP_WORDS: &[&str] = &[
 
 /// 一条 shell 命令里说得出用意的那一段起到末尾（需手动 · 钉条摆的「批什么」）：按顶层的 `;` · `&&` · `||` · `|` · `&` · 换行切段
 /// （引号 · `$(…)` · 反引号里的 · 反斜杠转义的 · `2>&1` `&>` 这类重定向不切），跳过只做准备的段（纯赋值 `F=…` · [`SETUP_WORDS`] 打头 · 注释），
-/// 段首的环境赋值（`LC_ALL=C sort`）也跳过。全是准备段 ⇒ 原文。
-pub(crate) fn command_intent(cmd: &str) -> &str {
+/// 段首的环境赋值（`LC_ALL=C sort`）也跳过。全是准备段 ⇒ 用意说不出、值也不摆：第一个词加「…」（[`setup_head`]）。
+pub(crate) fn command_intent(cmd: &str) -> Cow<'_, str> {
     let b = cmd.as_bytes();
     let (mut i, mut start) = (0, 0);
     let cut = |from: usize, to: usize| intent_in(&cmd[from..to]).map(|off| &cmd[from + off..]);
@@ -170,7 +170,7 @@ pub(crate) fn command_intent(cmd: &str) -> &str {
             b'&' if (i > 0 && b[i - 1] == b'>') || b.get(i + 1) == Some(&b'>') => {}
             b';' | b'\n' | b'|' | b'&' => {
                 if let Some(s) = cut(start, i) {
-                    return s.trim_end();
+                    return Cow::Borrowed(s.trim_end());
                 }
                 if matches!(c, b'|' | b'&') && b.get(i + 1) == Some(&c) {
                     i += 1;
@@ -181,7 +181,47 @@ pub(crate) fn command_intent(cmd: &str) -> &str {
         }
         i += 1;
     }
-    cut(start.min(b.len()), b.len()).map_or(cmd, str::trim_end)
+    match cut(start.min(b.len()), b.len()) {
+        Some(s) => Cow::Borrowed(s.trim_end()),
+        None => setup_head(cmd).map_or(Cow::Borrowed(cmd), Cow::Owned),
+    }
+}
+
+/// 全是准备段的命令摆成什么：第一个词（注释跳过）加「…」，赋值词只留到 `=`（`F=…`）；一个词都没有 ⇒ `None`。
+fn setup_head(cmd: &str) -> Option<String> {
+    let b = cmd.as_bytes();
+    let mut i = 0;
+    loop {
+        while i < b.len() && b[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= b.len() {
+            return None;
+        }
+        if b[i] != b'#' {
+            break;
+        }
+        while i < b.len() && b[i] != b'\n' {
+            i += 1;
+        }
+    }
+    let from = i;
+    while i < b.len() && !b[i].is_ascii_whitespace() && !matches!(b[i], b';' | b'&' | b'|') {
+        if let Some(end) = quoted_end(b, i) {
+            i = end;
+        } else {
+            i += if b[i] == b'\\' { 2 } else { 1 };
+        }
+    }
+    let mut end = i.min(b.len());
+    while !cmd.is_char_boundary(end) {
+        end += 1;
+    }
+    let word = &cmd[from..end];
+    Some(match word.split_once('=') {
+        Some((name, _)) if is_assignment(word) => format!("{name}=…"),
+        _ => format!("{word} …"),
+    })
 }
 
 /// `b[i]` 起是一段引起来的（`'…'` · `"…"` · `` `…` `` · `$(…)`，后三样里可以再套，`$(…)` 里认括号的层数）⇒ 它收尾之后的位置

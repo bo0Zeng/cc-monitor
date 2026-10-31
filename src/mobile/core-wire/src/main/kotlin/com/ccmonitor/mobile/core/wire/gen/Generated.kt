@@ -10929,6 +10929,7 @@ data class LineDiff(
     val added: Int,
     val removed: Int,
     val stat: String,
+    val notice: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -10941,9 +10942,10 @@ data class LineDiff(
             Field("added", { Int32 }, optional = false, nullable = false),
             Field("removed", { Int32 }, optional = false, nullable = false),
             Field("stat", { Str }, optional = false, nullable = false),
+            Field("notice", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> LineDiff(a[0] as List<LineDiffRow>, a[1] as Int, a[2] as Boolean, a[3] as Int, a[4] as Int, a[5] as String) },
-            { v -> arrayOf(v.rows, v.shown, v.truncated, v.added, v.removed, v.stat) },
+            { a -> LineDiff(a[0] as List<LineDiffRow>, a[1] as Int, a[2] as Boolean, a[3] as Int, a[4] as Int, a[5] as String, a[6] as String?) },
+            { v -> arrayOf(v.rows, v.shown, v.truncated, v.added, v.removed, v.stat, v.notice) },
         )
     }
 }
@@ -13646,8 +13648,7 @@ data class Merged(
     val sessionCount: Long,
     val truncated: Boolean,
     val sessions: List<MergedRow>,
-    val unreadable: Long,
-    val skipped: List<String>,
+    val notes: List<String>,
     val down: List<SearchDown>,
     val summary: String,
 ) : Ordered {
@@ -13660,13 +13661,12 @@ data class Merged(
             Field("sessionCount", { Lng }, optional = false, nullable = false),
             Field("truncated", { Bool }, optional = false, nullable = false),
             Field("sessions", { arr(MergedRow.ADAPTER) }, optional = false, nullable = false),
-            Field("unreadable", { Lng }, optional = false, nullable = false),
-            Field("skipped", { arr(Str) }, optional = false, nullable = false),
+            Field("notes", { arr(Str) }, optional = false, nullable = false),
             Field("down", { arr(SearchDown.ADAPTER) }, optional = false, nullable = false),
             Field("summary", { Str }, optional = false, nullable = false),
             ),
-            { a -> Merged(a[0] as Long, a[1] as Long, a[2] as Boolean, a[3] as List<MergedRow>, a[4] as Long, a[5] as List<String>, a[6] as List<SearchDown>, a[7] as String) },
-            { v -> arrayOf(v.totalHits, v.sessionCount, v.truncated, v.sessions, v.unreadable, v.skipped, v.down, v.summary) },
+            { a -> Merged(a[0] as Long, a[1] as Long, a[2] as Boolean, a[3] as List<MergedRow>, a[4] as List<String>, a[5] as List<SearchDown>, a[6] as String) },
+            { v -> arrayOf(v.totalHits, v.sessionCount, v.truncated, v.sessions, v.notes, v.down, v.summary) },
         )
     }
 }

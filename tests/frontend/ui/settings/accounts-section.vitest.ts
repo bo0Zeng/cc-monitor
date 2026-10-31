@@ -11,6 +11,7 @@ import { resolve } from "node:path";
 import { REPO_ROOT } from "../../../test-support/repo-root";
 import type { Account, AccountsState } from "../../../../src/frontend/ui/accounts";
 import type { QuotaRead } from "../../../../src/frontend/ui/acct-words";
+import { takeNames } from "../../../../src/frontend/ui/acct-words";
 
 const fetchAccounts = vi.fn();
 const readQuota = vi.fn();
@@ -161,6 +162,8 @@ beforeEach(() => {
   readRemoteConfig.mockResolvedValue({ enabled: true, hosts: [{ name: "devbox", host: { label: "devbox" } }, { name: "gpu-01", host: { label: "gpu-01" } }] });
   fetchAccounts.mockResolvedValue(state());
   readQuota.mockResolvedValue(quota());
+  // readQuota 整块是假的、不经 tookQuota 收表 ⇒ 这里交一张位名表（位名照表出、不拿码兜）。
+  takeNames({ accounts: {}, slots: { "5h": "5h", "7d": "7d" } });
   accountsVerify.mockResolvedValue({ pass: true, fails: 0, warns: 0, checks: [] });
   readProfiles.mockResolvedValue({
     profiles: [

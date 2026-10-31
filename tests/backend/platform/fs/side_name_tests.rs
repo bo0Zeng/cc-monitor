@@ -1,7 +1,9 @@
-//! 旁名的形状：造出来的每一种，账号库的排除名都认；记号的字面只住 `side_name.rs` 一处。
+//! 旁名的形状：造出来的每一种，账号库的共享集都不收（共享集只认已知共享表里的名字）；记号的字面只住 `side_name.rs` 一处。
 
 use super::*;
-use crate::accounts::manage::layout::is_excluded;
+use crate::accounts::manage::layout::share_items;
+use crate::accounts::manage::scan::DirState;
+use crate::platform::acct_view::Item;
 
 /// 每一种拼法各造几个（不同的原名 · pid · 序号）。
 fn every_side_name(name: &str) -> Vec<String> {
@@ -22,12 +24,30 @@ fn every_side_name(name: &str) -> Vec<String> {
     out
 }
 
+/// 共享库顶层摆着原名与它的每一种旁名（写到一半被快照拍到的那一刻）：原名照共享，旁名一个都不进共享集。
 #[test]
-fn every_side_name_is_excluded_from_the_share() {
-    for name in ["settings.json", ".credentials.json", "CLAUDE.md", "plugins"] {
-        assert!(!is_excluded(name), "原名 {name:?} 自己不该被排除");
-        for side in every_side_name(name) {
-            assert!(is_excluded(&side), "旁名 {side:?} 没被排除名认出来");
+fn no_side_name_is_ever_shared() {
+    for name in ["settings.json", "CLAUDE.md", "plugins"] {
+        let sides = every_side_name(name);
+        let file = Item::File {
+            mode: Some(0o600),
+            size: 2,
+            mtime: None,
+        };
+        let shared = DirState {
+            me: Some(Item::Dir { mode: Some(0o700) }),
+            entries: std::iter::once(name.to_string())
+                .chain(sides.iter().cloned())
+                .map(|n| (n, file.clone()))
+                .collect(),
+        };
+        let items = share_items(&shared);
+        assert!(
+            items.iter().any(|i| i == name),
+            "原名 {name:?} 不在共享集里：{items:?}"
+        );
+        for side in &sides {
+            assert!(!items.contains(side), "旁名 {side:?} 进了共享集");
         }
     }
 }

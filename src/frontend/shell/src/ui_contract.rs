@@ -79,6 +79,11 @@ pub struct JsonlLinePayload {
     #[cfg_attr(test, ts(optional, type = "number"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skipped_from: Option<u64>,
+    /// 这一行（含 `\n`）之后那个字节（后端 `line.byte_offset` · 快照的行区间末端，原样转交）：界面从它要尾段那一截的骨架索引。
+    /// 说不准 ⇒ 省略。
+    #[cfg_attr(test, ts(optional, type = "number"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end: Option<u64>,
     /// 这一行的对账键（那台后端给，原样转交）：活卡按它把同一次应答的那段流整轮撤掉。没有 ⇒ 省略。
     #[cfg_attr(test, ts(optional))]
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -276,15 +276,16 @@ pub(crate) enum OpenedHere {
     Chain(Vec<Link>),
     /// 那个 shell 还在，底下没有 ssh（ssh 退了、窗口还开着）。
     NoSsh,
-    /// 那个进程号不在、或起始时刻对不上（shell 退了、进程号被复用了）· 标签认不出。
+    /// 那个进程号不在、或起始时刻对不上（shell 退了、进程号被复用了）。
     Gone,
 }
 
 /// 标签那个 shell 在这台进程表里的样子（[`OpenedHere`]）。底下几个 ssh ⇒ 最早起的那个（前奏之后起的那一个）。
-pub(crate) fn opened_chain(label: &str, procs: &HashMap<u32, Proc>) -> OpenedHere {
-    let Some((pid, start)) = crate::dial::opened_windows::label_parts(label) else {
-        return OpenedHere::Gone;
-    };
+pub(crate) fn opened_chain(
+    label: &crate::common::seen_terminal::WindowLabel,
+    procs: &HashMap<u32, Proc>,
+) -> OpenedHere {
+    let (pid, start) = (label.pid, label.start);
     let Some(shell) = procs.get(&pid).filter(|p| p.start != 0 && p.start == start) else {
         return OpenedHere::Gone;
     };

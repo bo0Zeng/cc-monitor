@@ -72,6 +72,9 @@ class NeedsDeskTest {
         /** 这一条会话上一条提问替人答过的那一句（`null` ＝ 没有）。 */
         var answered: String? = null
 
+        /** 这一条那一项上那台写好的会走的那一句（`{dur}` 空位）。 */
+        val clock: Map<String, Any?> = mapOf("text" to "核心·t {dur}", "head" to "核心·h {dur}")
+
         fun reply(): Reply =
             Reply.Ok(
                 mapOf(
@@ -86,7 +89,7 @@ class NeedsDeskTest {
                                 mine?.let { mapOf("sid" to "s1", "label" to "标题 s1", "face" to Faces.raw["live-needs-you-tmux"], "needs" to it) },
                                 mapOf("sid" to "other", "label" to "标题 other", "face" to Faces.raw["live-needs-you-tmux"], "needs" to mapOf("kind" to "answer", "text" to "等回答", "head" to "等回答", "tone" to "need", "rank" to 1.0)),
                             ),
-                        ),
+                        ).map { if ((it["session"] as Map<*, *>)["sid"] == "s1") it + ("clock" to clock) else it },
                 ),
             )
     }
@@ -133,7 +136,9 @@ class NeedsDeskTest {
             assertEquals("等批准 · Bash", bar.head)
             assertEquals("touch a.txt", bar.line2)
             assertTrue("挂着请求 ⇒ 有［答］", bar.canAnswer)
-            assertEquals(copyText("sessionFace.state.waiting", "kind" to "等批准 · Bash", "waited" to DurationFormat.waited(12_000L, 0L, 0L)!!), bar.firstLine(0L))
+            // 第一行是那台写好的那一句（`clock.head`），已等那一截照 waitedMs ＋ 收到以后走过的填，过 60 s 多 1m。
+            assertEquals("核心·h ${DurationFormat.short(12_000L)}", bar.firstLine(0L))
+            assertEquals("核心·h ${DurationFormat.short(72_000L)}", bar.firstLine(60_000L))
         }
 
     @Test

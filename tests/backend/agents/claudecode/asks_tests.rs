@@ -58,7 +58,7 @@ fn a_sub_agent_request_carries_its_id_and_blocks_the_terminal() {
 }
 
 /// 命令里说得出用意的那一段：准备段（赋值 · cd · export · 注释）跳过，引号 · `$(…)` · 反引号里的分号与 `2>&1` 不切，段首环境赋值跳过；
-/// 全是准备段 ⇒ 原文。
+/// 全是准备段 ⇒ 只摆第一个词加「…」（赋值词只留到 `=`），值不上钉条。
 #[test]
 fn the_command_shows_from_the_part_that_says_what_it_does() {
     use crate::agents::beat::command_intent as at;
@@ -75,7 +75,10 @@ fn the_command_shows_from_the_part_that_says_what_it_does() {
             "grep -n x f &> /dev/null || true",
             "grep -n x f &> /dev/null || true",
         ),
-        ("F=1; cd /w", "F=1; cd /w"),
+        ("F=1; cd /w", "F=…"),
+        ("export GITHUB_TOKEN=ghp_x1", "export …"),
+        ("# 准备\ncd /w && set -e", "cd …"),
+        ("  TOKEN=\"a b\"  ", "TOKEN=…"),
         ("  touch a  ", "touch a"),
         // `$(…)` 与反引号当引号：里面的 `;` · `|` · `&` 不切，带着它们的赋值词整个跳过。
         ("X=$(cd /tmp; pwd) rm -rf \"$X\"", "rm -rf \"$X\""),
@@ -95,6 +98,13 @@ fn the_command_shows_from_the_part_that_says_what_it_does() {
         read(&v).unwrap().what.as_deref(),
         Some("make all"),
         "从那一段起，仍只摆一行"
+    );
+    v["tool_input"]["command"] = json!("export GITHUB_TOKEN=ghp_x1\ncd /w");
+    let a = read(&v).unwrap();
+    assert_eq!(a.what.as_deref(), Some("export …"), "钉条不带值");
+    assert_eq!(
+        a.detail, "export GITHUB_TOKEN=ghp_x1\ncd /w",
+        "答批准那一屏照摆全文"
     );
 }
 

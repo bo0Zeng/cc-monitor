@@ -172,6 +172,13 @@ impl Run<'_> {
                 door::remove(d, &home, &self.rel(p)?, recursive)?;
                 self.record(&[("RESTORE", p)])
             }
+            // 门的非递归删只删得了空目录：快照之后有人往里写了 ⇒ 门拒、整趟停。不记撤销：回滚把挪进来的那一份挪回原处，
+            // 共享库里这一格随后由对齐再种一份空的。
+            Op::DropEmpty(p) => match item_at(p) {
+                Item::Absent => Ok(()),
+                Item::Dir { .. } => door::remove(d, &home, &self.rel(p)?, false),
+                _ => Err(copy_text("beAcctExec.mkdir.notDir", &[("path", p)])),
+            },
             Op::Chmod { mode, at } => match item_at(at) {
                 Item::File { .. } | Item::Dir { .. } => self.chmod(at, *mode),
                 _ => Ok(()),
