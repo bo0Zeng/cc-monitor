@@ -15,11 +15,39 @@ fn only_p(src: &str) -> Vec<Inl> {
         other => panic!("{src:?} 应当只出一段段落，出的是 {other:?}"),
     }
 }
+/// 上限够大、判据里不会淘汰的缓存。
+const BIG: usize = 1 << 24;
+
+/// 全文各段拉一遍，照先后接起来。
+fn hl_all(doc: &Doc) -> Vec<Vec<u32>> {
+    let mut h = Highlighter::new(BIG);
+    (0..=doc.segs.len()).flat_map(|i| h.seg(doc, i)).collect()
+}
 fn only_code(src: &str) -> (Option<String>, String, Vec<u32>) {
     let doc = parse(src);
-    match doc.blocks.as_slice() {
-        [MdBlock::Code { lang, x, hl, cont: false }] => (lang.clone(), x.clone(), hl.clone()),
+    let hl = hl_all(&doc);
+    match (doc.blocks.as_slice(), hl.as_slice()) {
+        (
+            [MdBlock::Code {
+                lang,
+                x,
+                cont: false,
+            }],
+            [hl],
+        ) => (lang.clone(), x.clone(), hl.clone()),
         other => panic!("{src:?} 应当只出一个代码块，出的是 {other:?}"),
+    }
+}
+/// 一份里所有代码块（先序，连嵌着的）。
+fn codes_of(blocks: &[MdBlock], out: &mut Vec<(Option<String>, String)>) {
+    for b in blocks {
+        match b {
+            MdBlock::Code { lang, x, .. } => out.push((lang.clone(), x.clone())),
+            MdBlock::List { items, .. } => items.iter().for_each(|i| codes_of(&i.blocks, out)),
+            MdBlock::Quote { blocks } | MdBlock::Alert { blocks, .. } => codes_of(blocks, out),
+            MdBlock::Notes { items } => items.iter().for_each(|i| codes_of(&i.blocks, out)),
+            _ => {}
+        }
     }
 }
 /// `hl` 三元组 ⇒ 绝对的 (起点, 长, 类)，偏移是 UTF-16 码元。
@@ -42,22 +70,37 @@ fn slice16(x: &str, start: u32, len: u32) -> String {
 
 #[test]
 fn goldens() {
-    let raw = include_str!("../../__fixtures__/md-core/goldens.json");
+    let raw = include_str!("../../__fixtures__/md-core.golden.json");
     let cases: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
     assert!(cases.len() >= 24, "金样少于 24 份：{}", cases.len());
     let mut bad = Vec::new();
     for c in &cases {
         let name = c["name"].as_str().unwrap();
         let md = c["md"].as_str().unwrap();
-        let got = serde_json::to_value(parse(md)).unwrap();
+        let doc = parse(md);
+        let got = serde_json::to_value(&doc).unwrap();
         if got != c["doc"] {
             bad.push(format!("{name}\n  期望 {}\n  得到 {}", c["doc"], got));
         }
+        let want_hl = c.get("hl").cloned().unwrap_or(serde_json::json!([]));
+        let got_hl = serde_json::to_value(hl_all(&doc)).unwrap();
+        if got_hl != want_hl {
+            bad.push(format!("{name} 的高亮\n  期望 {want_hl}\n  得到 {got_hl}"));
+        }
         // 线上那一份读回来还是同一棵树（untagged 的 Inl 双向对得上）。
         let back: Doc = serde_json::from_value(got.clone()).unwrap();
-        assert_eq!(serde_json::to_value(back).unwrap(), got, "{name} 读回来不一样");
+        assert_eq!(
+            serde_json::to_value(back).unwrap(),
+            got,
+            "{name} 读回来不一样"
+        );
     }
-    assert!(bad.is_empty(), "金样对不上 {} 份：\n{}", bad.len(), bad.join("\n"));
+    assert!(
+        bad.is_empty(),
+        "金样对不上 {} 份：\n{}",
+        bad.len(),
+        bad.join("\n")
+    );
 }
 
 #[test]
@@ -71,27 +114,55 @@ fn single_tilde_is_text() {
 
 #[test]
 fn raw_html_is_text_except_br() {
-    assert_eq!(only_p("把 <Composer> 和 Vec<String> 换掉"), vec![s("把 <Composer> 和 Vec<String> 换掉")]);
+    assert_eq!(
+        only_p("把 <Composer> 和 Vec<String> 换掉"),
+        vec![s("把 <Composer> 和 Vec<String> 换掉")]
+    );
     assert_eq!(only_p("上<br>下"), vec![s("上"), n(InlNode::Br), s("下")]);
-    assert_eq!(only_p("按 <kbd>Esc</kbd> 退出"), vec![s("按 <kbd>Esc</kbd> 退出")]);
+    assert_eq!(
+        only_p("按 <kbd>Esc</kbd> 退出"),
+        vec![s("按 <kbd>Esc</kbd> 退出")]
+    );
 }
 
 #[test]
 fn money_is_not_math() {
     assert_eq!(only_p("花了 $5 到 $10"), vec![s("花了 $5 到 $10")]);
-    assert_eq!(only_p("质能 $E=mc^2$ 式"), vec![s("质能 "), n(InlNode::M { tex: "E=mc^2".into() }), s(" 式")]);
+    assert_eq!(
+        only_p("质能 $E=mc^2$ 式"),
+        vec![
+            s("质能 "),
+            n(InlNode::M {
+                tex: "E=mc^2".into()
+            }),
+            s(" 式")
+        ]
+    );
 }
 
 #[test]
 fn latex_brackets() {
-    assert_eq!(parse("\\[ \\sum_i x_i \\]").blocks, vec![MdBlock::Math { tex: "\\sum_i x_i".into() }]);
-    assert_eq!(only_p("和是 \\(a+b\\) 吧"), vec![s("和是 "), n(InlNode::M { tex: "a+b".into() }), s(" 吧")]);
+    assert_eq!(
+        parse("\\[ \\sum_i x_i \\]").blocks,
+        vec![MdBlock::Math {
+            tex: "\\sum_i x_i".into()
+        }]
+    );
+    assert_eq!(
+        only_p("和是 \\(a+b\\) 吧"),
+        vec![s("和是 "), n(InlNode::M { tex: "a+b".into() }), s(" 吧")]
+    );
 }
 
 #[test]
 fn task_list() {
     let doc = parse("- [ ] 待办\n- [x] 已做\n- 普通");
-    let MdBlock::List { start: None, items, .. } = &doc.blocks[0] else { panic!("{doc:?}") };
+    let MdBlock::List {
+        start: None, items, ..
+    } = &doc.blocks[0]
+    else {
+        panic!("{doc:?}")
+    };
     let tasks: Vec<Option<bool>> = items.iter().map(|i| i.task).collect();
     assert_eq!(tasks, vec![Some(false), Some(true), None]);
 }
@@ -101,15 +172,37 @@ fn footnotes_collect_at_end() {
     let doc = parse("前文[^a] 又一处[^b]\n\n[^b]: 二号\n[^a]: 一号\n\n尾段");
     assert_eq!(
         doc.blocks[0],
-        MdBlock::P { k: vec![s("前文"), n(InlNode::Fn { n: 1 }), s(" 又一处"), n(InlNode::Fn { n: 2 })] }
+        MdBlock::P {
+            k: vec![
+                s("前文"),
+                n(InlNode::Fn { n: 1 }),
+                s(" 又一处"),
+                n(InlNode::Fn { n: 2 })
+            ]
+        }
     );
-    assert_eq!(doc.blocks[1], MdBlock::P { k: vec![s("尾段")] });
+    assert_eq!(
+        doc.blocks[1],
+        MdBlock::P {
+            k: vec![s("尾段")]
+        }
+    );
     assert_eq!(
         doc.blocks.last().unwrap(),
         &MdBlock::Notes {
             items: vec![
-                MdNote { n: 1, blocks: vec![MdBlock::P { k: vec![s("一号")] }] },
-                MdNote { n: 2, blocks: vec![MdBlock::P { k: vec![s("二号")] }] },
+                MdNote {
+                    n: 1,
+                    blocks: vec![MdBlock::P {
+                        k: vec![s("一号")]
+                    }]
+                },
+                MdNote {
+                    n: 2,
+                    blocks: vec![MdBlock::P {
+                        k: vec![s("二号")]
+                    }]
+                },
             ]
         }
     );
@@ -119,26 +212,53 @@ fn footnotes_collect_at_end() {
 fn cjk_strong() {
     assert_eq!(
         only_p("这是**“强调”**文字"),
-        vec![s("这是"), n(InlNode::B { k: vec![s("“强调”")] }), s("文字")]
+        vec![
+            s("这是"),
+            n(InlNode::B {
+                k: vec![s("“强调”")]
+            }),
+            s("文字")
+        ]
     );
 }
 
 #[test]
 fn link_scheme_allowlist() {
-    let a = |href: &str, t: &str| n(InlNode::A { href: href.into(), k: vec![s(t)] });
-    assert_eq!(only_p("[站](https://example.com/a)"), vec![a("https://example.com/a", "站")]);
-    assert_eq!(only_p("[信](mailto:x@example.com)"), vec![a("mailto:x@example.com", "信")]);
+    let a = |href: &str, t: &str| {
+        n(InlNode::A {
+            href: href.into(),
+            k: vec![s(t)],
+        })
+    };
+    assert_eq!(
+        only_p("[站](https://example.com/a)"),
+        vec![a("https://example.com/a", "站")]
+    );
+    assert_eq!(
+        only_p("[信](mailto:x@example.com)"),
+        vec![a("mailto:x@example.com", "信")]
+    );
     assert_eq!(only_p("[本地](file:///etc/hosts)"), vec![s("本地")]);
     assert_eq!(only_p("[脚本](javascript:alert(1))"), vec![s("脚本")]);
     assert_eq!(only_p("[相对](./docs/a.md)"), vec![s("相对")]);
     assert_eq!(only_p("[跳](intent://x)"), vec![s("跳")]);
     // 自动链接也过同一道门。
-    assert_eq!(only_p("看 www.example.com 吧"), vec![s("看 "), a("http://www.example.com", "www.example.com"), s(" 吧")]);
+    assert_eq!(
+        only_p("看 www.example.com 吧"),
+        vec![
+            s("看 "),
+            a("http://www.example.com", "www.example.com"),
+            s(" 吧")
+        ]
+    );
     // 图只放行 http · https：别的交成它的替代字。
     assert_eq!(only_p("![图](./a.png)"), vec![s("图")]);
     assert_eq!(
         only_p("![图](https://example.com/a.png)"),
-        vec![n(InlNode::Img { src: "https://example.com/a.png".into(), alt: "图".into() })]
+        vec![n(InlNode::Img {
+            src: "https://example.com/a.png".into(),
+            alt: "图".into()
+        })]
     );
 }
 
@@ -149,7 +269,12 @@ fn soft_break_between_cjk_is_empty() {
     assert_eq!(only_p("中文\nabc"), vec![s("中文 abc")]);
     assert_eq!(
         only_p("中文\n**加粗**"),
-        vec![s("中文"), n(InlNode::B { k: vec![s("加粗")] })]
+        vec![
+            s("中文"),
+            n(InlNode::B {
+                k: vec![s("加粗")]
+            })
+        ]
     );
 }
 
@@ -189,7 +314,14 @@ fn highlight_classes_utf16() {
         sp.iter()
             .find(|(st, len, _)| slice16(&x, *st, *len) == text)
             .map(|t| t.2)
-            .unwrap_or_else(|| panic!("没有正好是 {text:?} 的一段：{:?}", sp.iter().map(|(a, b, c)| (slice16(&x, *a, *b), *c)).collect::<Vec<_>>()))
+            .unwrap_or_else(|| {
+                panic!(
+                    "没有正好是 {text:?} 的一段：{:?}",
+                    sp.iter()
+                        .map(|(a, b, c)| (slice16(&x, *a, *b), *c))
+                        .collect::<Vec<_>>()
+                )
+            })
     };
     assert_eq!(class_of("let"), HlClass::Keyword as u32);
     assert_eq!(class_of("\"汉字😀\""), HlClass::String as u32);
@@ -205,13 +337,25 @@ fn highlight_classes_utf16() {
     let (_, x, hl) = only_code("```diff\n+加\n-删\n```");
     let sp = spans(&hl);
     assert!(sp.iter().any(|(a, b, c)| slice16(&x, *a, *b).starts_with('+') && *c == HlClass::Inserted as u32), "{sp:?}");
-    assert!(sp.iter().any(|(a, b, c)| slice16(&x, *a, *b).starts_with('-') && *c == HlClass::Deleted as u32), "{sp:?}");
+    assert!(
+        sp.iter()
+            .any(|(a, b, c)| slice16(&x, *a, *b).starts_with('-') && *c == HlClass::Deleted as u32),
+        "{sp:?}"
+    );
 }
 
 #[test]
 fn inl_wire_shape() {
-    let v = serde_json::to_value(vec![s("字"), n(InlNode::Br), n(InlNode::C { x: "a".into() })]).unwrap();
-    assert_eq!(v, serde_json::json!(["字", {"t": "br"}, {"t": "c", "x": "a"}]));
+    let v = serde_json::to_value(vec![
+        s("字"),
+        n(InlNode::Br),
+        n(InlNode::C { x: "a".into() }),
+    ])
+    .unwrap();
+    assert_eq!(
+        v,
+        serde_json::json!(["字", {"t": "br"}, {"t": "c", "x": "a"}])
+    );
 }
 
 fn weight(b: &MdBlock) -> usize {
@@ -235,7 +379,10 @@ fn long_doc_segments_on_top_level_blocks() {
     bounds.push(doc.blocks.len() as u32);
     for w in bounds.windows(2) {
         assert!(w[0] < w[1], "段界不递增：{:?}", doc.segs);
-        let bytes: usize = doc.blocks[w[0] as usize..w[1] as usize].iter().map(weight).sum();
+        let bytes: usize = doc.blocks[w[0] as usize..w[1] as usize]
+            .iter()
+            .map(weight)
+            .sum();
         assert!(bytes <= SEG_BYTES + 2_000, "一段 {bytes} 字节");
     }
 }
@@ -245,11 +392,14 @@ fn oversize_code_splits_by_line() {
     let line = "let value = \"一行造的代码\"; // 注释";
     let body = vec![line; 1500].join("\n");
     let doc = parse(&format!("```rust\n{body}\n```"));
+    let hls = hl_all(&doc);
+    assert_eq!(hls.len(), doc.blocks.len());
     let codes: Vec<_> = doc
         .blocks
         .iter()
-        .map(|b| match b {
-            MdBlock::Code { lang, x, hl, cont } => (lang.clone(), x.clone(), hl.clone(), *cont),
+        .zip(hls)
+        .map(|(b, hl)| match b {
+            MdBlock::Code { lang, x, cont } => (lang.clone(), x.clone(), hl, *cont),
             other => panic!("{other:?}"),
         })
         .collect();
@@ -263,9 +413,16 @@ fn oversize_code_splits_by_line() {
         let sp = spans(hl);
         assert!(!sp.is_empty());
         assert!(sp.iter().all(|(a, b, _)| a + b <= n16), "高亮段越出这一块");
-        assert!(sp.iter().any(|(a, b, c)| slice16(x, *a, *b) == "let" && *c == HlClass::Keyword as u32));
+        assert!(sp
+            .iter()
+            .any(|(a, b, c)| slice16(x, *a, *b) == "let" && *c == HlClass::Keyword as u32));
     }
-    assert_eq!(doc.segs.len(), codes.len() - 1, "每块代码各起一段：{:?}", doc.segs);
+    assert_eq!(
+        doc.segs.len(),
+        codes.len() - 1,
+        "每块代码各起一段：{:?}",
+        doc.segs
+    );
 }
 
 #[test]
@@ -298,9 +455,130 @@ fn oversize_paragraph_splits_at_sentence_end() {
     let mut all = String::new();
     for b in &doc.blocks {
         let MdBlock::P { k } = b else { panic!("{b:?}") };
-        let [Inl::S(t)] = k.as_slice() else { panic!("{k:?}") };
+        let [Inl::S(t)] = k.as_slice() else {
+            panic!("{k:?}")
+        };
         assert!(t.ends_with('。'), "没切在句末");
         all.push_str(t);
     }
     assert_eq!(all, src);
+}
+
+// ───────────── 高亮：看见才算（按段算 ＋ 按内容缓存） ─────────────
+
+/// 一页造的长正文：每段都有代码，段与段之间的代码各不一样。
+fn multi_seg_doc() -> Doc {
+    let para = "这是一句造的话。".repeat(40);
+    let mut parts = Vec::new();
+    for i in 0..60u32 {
+        parts.push(para.clone());
+        if i.is_multiple_of(6) {
+            parts.push(format!("```rust\nfn f{i}() {{ let x = {i}; }}\n```"));
+        }
+    }
+    let doc = parse(&parts.join("\n\n"));
+    assert!(doc.segs.len() >= 2, "{:?}", doc.segs);
+    doc
+}
+
+#[test]
+fn parsed_tree_has_no_hl() {
+    let doc = parse("```rust\nfn f() {}\n```\n\n- 项\n\n  ```bash\nls\n  ```");
+    let json = serde_json::to_string(&doc).unwrap();
+    assert!(!json.contains("\"hl\""), "树里带了高亮：{json}");
+}
+
+#[test]
+fn same_segment_twice_computes_once() {
+    let doc = multi_seg_doc();
+    let mut h = Highlighter::new(BIG);
+    let a = h.seg(&doc, 0);
+    let n = h.computed();
+    assert!(
+        n >= 1 && a.iter().any(|x| !x.is_empty()),
+        "第 0 段没算：{a:?}"
+    );
+    let b = h.seg(&doc, 0);
+    assert_eq!(a, b);
+    assert_eq!(h.computed(), n, "同一段第二次又算了");
+}
+
+#[test]
+fn same_content_computes_once() {
+    let code = "```rust\nfn same() {}\n```";
+    let doc = parse(&format!(
+        "{code}\n\n中间一句\n\n{code}\n\n- 列表里\n\n  ```rust\n  fn same() {{}}\n  ```"
+    ));
+    let mut h = Highlighter::new(BIG);
+    let hl = h.seg(&doc, 0);
+    assert_eq!(hl.len(), 3, "{hl:?}");
+    assert!(!hl[0].is_empty() && hl[0] == hl[1] && hl[1] == hl[2]);
+    assert_eq!(h.computed(), 1, "同内容的三块算了 {} 次", h.computed());
+    // 语言不同 ⇒ 不同的键。
+    let other = parse("```c\nfn same() {}\n```");
+    h.seg(&other, 0);
+    assert_eq!(h.computed(), 2);
+}
+
+#[test]
+fn no_lang_is_not_computed() {
+    let doc = parse("```\nplain\n```\n\n```foolang\nx\n```");
+    let mut h = Highlighter::new(BIG);
+    assert_eq!(h.seg(&doc, 0), vec![Vec::<u32>::new(), Vec::new()]);
+    assert_eq!(h.computed(), 0);
+    assert_eq!(h.bytes(), 0);
+}
+
+#[test]
+fn over_cap_evicts_least_recently_used() {
+    let block = |name: &str| parse(&format!("```rust\nfn {name}() {{ let v = 1; }}\n```"));
+    let (a, b, c) = (block("aaaa"), block("bbbb"), block("cccc"));
+    // 先量一条占多少，上限只够放两条。
+    let mut probe = Highlighter::new(BIG);
+    probe.seg(&a, 0);
+    let one = probe.bytes();
+    assert!(one > 0);
+    let mut h = Highlighter::new(one * 2 + one / 2);
+    h.seg(&a, 0);
+    h.seg(&b, 0);
+    h.seg(&a, 0); // a 新近用过 ⇒ 淘汰该轮到 b
+    assert_eq!(h.computed(), 2);
+    h.seg(&c, 0);
+    assert_eq!(h.computed(), 3);
+    assert!(h.bytes() <= one * 2 + one / 2, "超了上限：{}", h.bytes());
+    h.seg(&a, 0);
+    assert_eq!(h.computed(), 3, "a 不该被淘汰");
+    h.seg(&b, 0);
+    assert_eq!(h.computed(), 4, "b 该被淘汰了");
+    // 单条就超过上限的：算完照给，不存。
+    let mut tiny = Highlighter::new(1);
+    let hl = tiny.seg(&a, 0);
+    assert!(!hl[0].is_empty());
+    assert_eq!(tiny.bytes(), 0);
+    tiny.seg(&a, 0);
+    assert_eq!(tiny.computed(), 2);
+}
+
+#[test]
+fn segment_computes_only_its_own_blocks() {
+    let doc = multi_seg_doc();
+    let last = doc.segs.len();
+    let mut mine = Vec::new();
+    codes_of(seg_blocks(&doc, last), &mut mine);
+    assert!(!mine.is_empty(), "最后一段里没有代码");
+    let mut h = Highlighter::new(BIG);
+    let hl = h.seg(&doc, last);
+    assert_eq!(hl.len(), mine.len());
+    assert_eq!(h.computed() as usize, mine.len(), "算了别的段的代码");
+    // 每块的高亮就是那一块自己的。
+    for ((lang, x), got) in mine.iter().zip(&hl) {
+        let one = parse(&format!("```{}\n{x}\n```", lang.as_deref().unwrap()));
+        assert_eq!(&Highlighter::new(BIG).seg(&one, 0)[0], got);
+    }
+    // 段号越界 ⇒ 空、不算。
+    assert!(h.seg(&doc, last + 1).is_empty());
+    assert!(seg_blocks(&doc, last + 1).is_empty());
+    // 各段的块接起来就是整份。
+    let total: usize = (0..=last).map(|i| seg_blocks(&doc, i).len()).sum();
+    assert_eq!(total, doc.blocks.len());
 }
