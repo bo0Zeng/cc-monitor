@@ -29,7 +29,6 @@ import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
-import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.link.Problem
@@ -85,9 +84,9 @@ class HostChats(
     private val syncing = Mutex()
 
     val state: StateFlow<HostSnap> =
-        combine(link.state, link.table, list, link.offline, combine(cached, deploying, asked, groups) { c, d, a, g -> Tail(c, d, a, g) }) { l, t, got, off, tail ->
-            HostSnap(hostId, machine, l, t, got, tail.cached, tail.deploying, tail.ask, off, tail.groups.read, tail.groups.problem)
-        }.stateIn(scope, SharingStarted.Eagerly, HostSnap(hostId, machine, link.state.value, link.table.value, Fetched.Loading, null, null, ListAsk(), link.offline.value))
+        combine(link.state, link.table, list, combine(cached, deploying, asked, groups) { c, d, a, g -> Tail(c, d, a, g) }) { l, t, got, tail ->
+            HostSnap(hostId, machine, l, t, got, tail.cached, tail.deploying, tail.ask, tail.groups.read, tail.groups.problem)
+        }.stateIn(scope, SharingStarted.Eagerly, HostSnap(hostId, machine, link.state.value, link.table.value, Fetched.Loading, null, null, ListAsk()))
 
     init {
         scope.launch { cached.value = syncing.withLock { held() }.takeIf { it.order.isNotEmpty() }?.let(HistoryList::page) }
@@ -220,8 +219,6 @@ data class HostSnap(
     val cached: HistoryListPage?,
     val deploying: Deploying?,
     val ask: ListAsk,
-    /** 那台成品写的离线那一句（[CoreLink.offline]；成品还没到 ⇒ `null`）。 */
-    val offline: String?,
     /** 这台自己那一片组（`groups-read` 最近答上的那一份）；还没答过 ⇒ `null`。 */
     val groups: GroupsRead? = null,
     /** 最近那一问组答了读不出 · 那台报错的那一句；答上了 ⇒ `null`。 */
@@ -252,7 +249,7 @@ data class ChatRow(
     val atText: String?,
     val section: String?,
     val agentTag: String?,
-    /** 状态字与语气：那台给的脸的短名（流上有它 ⇒ 流上最新那一份，否则清单那一行的）；那台断着 ⇒ 离线那一句。 */
+    /** 状态字与语气：那台给的脸的短名（会话簿里有它 ⇒ 簿里那一份，否则清单那一行的；那台断着 ⇒ 簿里看不见那一张，见 [rowOf]）。 */
     val status: Toned,
     val dot: SessionDot,
     /** 隐藏 ⇒ 那台写好的那一句（为什么隐藏）；不隐藏 ⇒ `null`。 */
@@ -327,7 +324,7 @@ internal fun hostPart(
             else -> null
         }
     val table = s.table.takeIf { down == null }
-    val rows = answer?.rows.orEmpty().map { r -> rowOf(s.hostId, s.offline, r, table) }
+    val rows = answer?.rows.orEmpty().map { r -> rowOf(s.hostId, r, s.table) }
     // 断着 ⇒ 不画组：组员的脸会过时，那几条回到按天那几段。
     val g = grouped(s, rows, table?.takeIf { ssh !is HostLink.Failed })
     return HostPart(
@@ -398,22 +395,15 @@ private fun downLine(
 ): String = if (ask.query != null) copyText("history.search.machineDown", "machine" to machine) else copyText("history.list.machineDown", "machine" to machine)
 
 /**
- * 每行的脸：流上有它 ⇒ 流上最新那一份，否则清单那一行的。[table] 为 `null` ＝ 那台断着：那台说「看不见时照旧作数」的（已结束 · 记录已不在）照画，
- * 其余点画说不清、字照那台成品写的离线那一句（断前的会话表与缓存里的状态都可能过时；成品还没到 ⇒ 状态不明）。
+ * 每行的脸，只照会话簿（核心折好的，桌面同一份折法）：簿里有它 ⇒ 那一张（那台断着时活的 · 可重连的已折成看不见那一张）；
+ * 没有 ⇒ 清单那一行的；簿说那台此刻看不见（`unseen`）、清单那一行又不是「看不见时照旧作数」的 ⇒ 簿那一张。
  */
 private fun rowOf(
     hostId: String,
-    offline: String?,
     r: HistoryRow,
-    table: SessionBook?,
+    book: SessionBook,
 ): ChatRow {
-    val face = if (table == null) r.face.takeIf { it.settled } else table.face(r.sessionId) ?: r.face
-    val (status, dot) =
-        if (face == null) {
-            Toned(offline ?: copyText("sessionState.unseen.name"), Tone.PLAIN) to SessionDot.UNKNOWN
-        } else {
-            Toned(face.name, face.tone) to face.dot
-        }
+    val face = book.face(r.sessionId) ?: book.unseen?.takeUnless { r.face.settled } ?: r.face
     return ChatRow(
         hostId = hostId,
         sessionId = r.sessionId,
@@ -422,8 +412,8 @@ private fun rowOf(
         atText = r.atText,
         section = r.sectionText,
         agentTag = r.agentTag,
-        status = status,
-        dot = dot,
+        status = Toned(face.name, face.tone),
+        dot = face.dot,
         hidden = r.hidden?.said,
         starred = r.starred,
         project = r.projectName,

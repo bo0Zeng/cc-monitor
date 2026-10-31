@@ -1,12 +1,14 @@
 package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -57,7 +59,7 @@ class ChatQueueTest {
         }
 
     @Test
-    fun `撤 ⇒ 照编号请那台撤，照回的整份名单画；见过、名单里没了也不在已送进 ⇒ 算撤掉了`() =
+    fun `撤 ⇒ 照编号请那台撤，照回的整份名单画`() =
         runTest(UnconfinedTestDispatcher()) {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
@@ -72,10 +74,6 @@ class ChatQueueTest {
             q.cancel("a", "s1")
             assertEquals(mapOf("machine" to "<local>", "sid" to "s1", "id" to "a"), link.calls("session-queue-cancel").single())
             assertEquals(listOf("b"), q.lines().map { it.id })
-            assertEquals(true, q.gone("a"))
-            assertEquals(false, q.gone("b"))
-            assertEquals(false, q.gone("never-seen"))
-            assertEquals(true, q.holds("b"))
         }
 
     @Test
@@ -87,7 +85,7 @@ class ChatQueueTest {
             val q = ChatQueue(link, backgroundScope) {}
             q.read("s1")
             val outbox = listOf(OutboxLine("o1", "发着的", "发送中", failed = false, retry = false), OutboxLine("o2", "被拒的", "队满", failed = true, retry = true))
-            val rows = queueRows(q.lines(), outbox)
+            val rows = queueRows(q.lines(), outbox).rows
             assertEquals(listOf("a", "b", "o1", "o2"), rows.map { it.id })
             assertEquals(listOf("排第 1", "未送达", "发送中", "队满"), rows.map { it.state })
             assertEquals(listOf("from-word", "from-word", null, null), rows.map { it.from })
@@ -96,4 +94,16 @@ class ChatQueueTest {
             assertEquals(listOf(false, false, false, true), rows.map { it.retry })
             assertEquals(listOf(true, true, false, false), rows.map { it.listed })
         }
+
+    @Test
+    fun `★ 那台离线 ⇒ 那一排头上一行「离线那句 · 名单为上次所知」、淡着；连着 · 一行都没有 ⇒ 不说（同桌面 queue-row）`() {
+        val one = listOf(QueueLine("a", "排第 1", "from-word", "那一句", undelivered = false))
+        val stale = queueRows(one, emptyList(), offline = "X 离线")
+        assertEquals(listOf("X 离线", copyText("terminal.queue.stale")).joinToString(copyText("kit.text.sep")), stale.stale)
+        assertEquals(listOf("a"), stale.rows.map { it.id })
+        assertNull("连着 ⇒ 照常", queueRows(one, emptyList(), offline = null).stale)
+        assertNull("没有一行 ⇒ 那一排收起、不说", queueRows(emptyList(), emptyList(), offline = "X 离线").stale)
+        val pending = listOf(OutboxLine("o1", "发着的", "发送中", failed = false, retry = false))
+        assertEquals("只有待发也算有行", stale.stale, queueRows(emptyList(), pending, offline = "X 离线").stale)
+    }
 }

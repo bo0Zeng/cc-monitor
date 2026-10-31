@@ -325,8 +325,7 @@ pub(crate) fn merge(got: Vec<(Machine, Got)>, last: &LastSeen) -> TerminalsBoard
 
 /// 上次那一份里的一行：那台此刻看不见 ⇒ 点照「状态不明」、去掉在等的徽标。
 fn stale(r: &mut BoardRow, name: &str) {
-    use crate::wire::SessionFaceExt as _;
-    let face = SessionFace::unseen(Words(comms_inward::chan::said::offline(name)));
+    let face = resident_client::book::unseen(Words(comms_inward::chan::said::offline(name)));
     r.dot = face.dot;
     r.dot_name = face.name;
     r.badge = None;
