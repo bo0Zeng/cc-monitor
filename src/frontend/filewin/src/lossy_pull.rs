@@ -50,8 +50,8 @@ struct Restage<'a> {
 }
 
 impl chunk_core::Sink for Restage<'_> {
-    type Fail = super::source::Failed;
-    async fn put(&mut self, bytes: Vec<u8>) -> Result<(), Self::Fail> {
+    type Err = super::source::Failed;
+    async fn put(&mut self, bytes: Vec<u8>) -> Result<(), Self::Err> {
         self.stager.put(&self.here, bytes).await
     }
 }
