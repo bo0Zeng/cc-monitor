@@ -228,8 +228,9 @@ impl Folds {
         self.book.listed
     }
 
-    /// 换了一条流（正在连）：簿与板随旧连接作废 ⇒ 每一处有卡的交一份空的，再交空簿（新连接那台整份重报）。
-    pub fn reset(&mut self) -> Vec<(&'static str, String)> {
+    /// 换了一条流（正在连）：板随旧连接作废 ⇒ 每一处有卡的交一份空的；簿照桌面那一路落成那台此刻看不见（[`SessionBook::unseen_now`]，
+    /// `offline` 是那台的离线那一句），交那一份（新连接那台整份重报、报完摘掉）。
+    pub fn reset(&mut self, offline: cmd_wire::cells::Words) -> Vec<(&'static str, String)> {
         let mut out: Vec<(&'static str, String)> = self
             .board
             .clear()
@@ -241,7 +242,7 @@ impl Folds {
                 )
             })
             .collect();
-        self.book = SessionBook::default();
+        self.book.unseen_now(offline);
         out.push(("book", book_line(&self.book)));
         out
     }
@@ -449,7 +450,9 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
                 Event::State(s) => {
                     let mut out = match s {
                         State::Connecting => {
-                            folds.lock().unwrap_or_else(|e| e.into_inner()).reset()
+                            folds.lock().unwrap_or_else(|e| e.into_inner()).reset(
+                                cmd_wire::cells::Words(comms_inward::chan::said::offline(&name)),
+                            )
                         }
                         _ => Vec::new(),
                     };
@@ -929,16 +932,34 @@ mod tests {
         );
         let stray = r#"{"kind":"live_card","sid":"s1","card":9,"n":4,"op":"awaiting"}"#;
         assert!(folds.frame(stray).is_empty(), "没开过的卡的增量不交");
+        let off = || cmd_wire::cells::Words("m 离线".into());
+        let mut unseen = SessionBook::default();
+        unseen.unseen_now(off());
         assert_eq!(
-            folds.reset(),
+            folds.reset(off()),
             vec![
                 ("live", r#"{"sid":"s1","run":"a1","cards":[]}"#.to_string()),
-                (
-                    "book",
-                    serde_json::to_string(&SessionBook::default()).unwrap()
-                ),
+                ("book", serde_json::to_string(&unseen).unwrap()),
             ]
         );
+    }
+
+    /// ★ 换流那一下簿照桌面那一路落（`resident_client::book::unseen_now`）：活的那一条落成看不见那一张、簿上记着它。
+    #[test]
+    fn a_new_link_folds_the_live_ones_into_the_unseen_face_like_the_desktop() {
+        let mut folds = Folds::default();
+        for line in
+            include_str!("../../../../tests/comms/resident-client/book-frames.jsonl").lines()
+        {
+            folds.frame(line);
+        }
+        let out = folds.reset(cmd_wire::cells::Words("m 离线".into()));
+        let (_, book) = out.last().expect("交了簿");
+        let book: SessionBook = serde_json::from_str(book).unwrap();
+        let face = resident_client::book::unseen(cmd_wire::cells::Words("m 离线".into()));
+        assert_eq!(book.unseen.as_ref(), Some(&face));
+        assert!(book.live.is_empty(), "活的都落成说不清");
+        assert!(book.left.values().any(|l| l.face == face));
     }
 
     /// 交 Kotlin 的几种事：状态那一件走 [`Facts::round`]（要这台手上的事实）· 帧原样。

@@ -14,8 +14,10 @@ import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Transfer
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.ClashRow
 import com.ccmonitor.mobile.core.wire.gen.FileKind
+import com.ccmonitor.mobile.core.wire.gen.Staged
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
@@ -133,7 +135,7 @@ class FileOps(
 
         data class Clash(
             val name: String,
-            val staged: FilesCommitUpload.Staged,
+            val staged: Staged,
             /** 那台写的那一句（「同名 1 项」）。 */
             val said: String,
             /** 抽屉那几行（核心写好的）。 */
@@ -152,7 +154,7 @@ class FileOps(
         progress: (Long, Long) -> Unit,
     ): Result<Upload> {
         val staged =
-            transfer(Transfer.Stage(name), fd, progress, { FilesCommitUpload.Staged.of(it) }) {
+            transfer(Transfer.Stage(name), fd, progress, { Wire.bind<Staged>(it) }) {
                 copyText("mobFiles.local.readFailed", "name" to name)
             }.getOrElse { return Result.failure(it) }
         return commit(dir, name, staged, onExists = null)
@@ -162,7 +164,7 @@ class FileOps(
     suspend fun commit(
         dir: RemotePath,
         name: String,
-        staged: FilesCommitUpload.Staged,
+        staged: Staged,
         onExists: String?,
     ): Result<Upload> {
         val r = feed.call(FilesCommitUpload.COMMAND, FilesCommitUpload.args(dir, name, staged, onExists), CHUNK_MS)
