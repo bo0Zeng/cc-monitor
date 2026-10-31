@@ -3,6 +3,7 @@
 //! 只读：stat 两次，回一个码，说法归界面（按码取文案）。
 
 use crate::common::contract::malformed;
+use crate::common::said::Said;
 use crate::platform::fs::Ro;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -66,7 +67,7 @@ pub(crate) fn verdict(dir: &Path) -> Verdict {
 /// 帧面入口：`{path}`（绝对路径，或 `~/` 开头按这台家目录展开）⇒ `{state}`。
 pub(crate) fn answer_check(
     req: &AgentHomeCheckReq,
-) -> Result<AgentHomeCheck, crate::common::said::Said> {
+) -> Result<AgentHomeCheck, Said> {
     answer_check_with(req, crate::platform::paths::home_dir())
 }
 
@@ -74,13 +75,13 @@ pub(crate) fn answer_check(
 pub(crate) fn answer_check_with(
     req: &AgentHomeCheckReq,
     home: Option<PathBuf>,
-) -> Result<AgentHomeCheck, crate::common::said::Said> {
+) -> Result<AgentHomeCheck, Said> {
     let raw = req.path.as_str();
     if raw.is_empty() {
-        return Err(crate::common::said::Said::new("bad_args", malformed("`path` must be a non-empty string")));
+        return Err(Said::new("bad_args", malformed("`path` must be a non-empty string")));
     }
     let path = if raw == "~" || raw.starts_with("~/") {
-        let home = home.ok_or_else(|| ("bad_args", malformed("home directory unresolvable")))?;
+        let home = home.ok_or_else(|| Said::new("bad_args", malformed("home directory unresolvable")))?;
         if raw == "~" {
             home
         } else {
@@ -90,7 +91,7 @@ pub(crate) fn answer_check_with(
         PathBuf::from(raw)
     };
     if !path.is_absolute() {
-        return Err(crate::common::said::Said::new(
+        return Err(Said::new(
             "bad_args",
             malformed(&format!("`path` is not absolute: {raw}")),
         ));

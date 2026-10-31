@@ -20,6 +20,7 @@ pub(crate) mod readiness;
 pub(crate) mod registry;
 pub(crate) mod rows;
 
+use crate::common::said::Said;
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
@@ -30,9 +31,6 @@ use rows::{build_rows, build_settings_scopes, ConfigSurfaceReport, FsProbe, Surf
 pub(crate) const MAX_ENTRIES: usize = 4096;
 /// 查字样的文件最大多少字节（`settings.json` 那一类，远小于它）。
 pub(crate) const MAX_HOOK_FILE_BYTES: u64 = 1 << 20;
-
-/// 本族的失败（码 ＋ 那一句：`bad_args` · `failed`）。
-pub(crate) type FootprintFail = (&'static str, String);
 
 /// `footprint-report` / `data-report` 的入参：远端那一栏 `{}`；本机那一栏带 `client`（monitor 自己进程的那几条，原样）。
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -58,7 +56,7 @@ pub(crate) struct FootprintClient {
 }
 
 /// 帧面入口（`footprint-report`）。
-pub(crate) fn answer(req: &FootprintReq) -> Result<ConfigSurfaceReport, FootprintFail> {
+pub(crate) fn answer(req: &FootprintReq) -> Result<ConfigSurfaceReport, Said> {
     let get = |k: &str| std::env::var(k).ok();
     answer_with(
         &get,
@@ -79,7 +77,7 @@ struct Client {
 pub(crate) fn data_answer(
     door: &dyn crate::common::door::Door,
     req: &FootprintReq,
-) -> Result<data::DataReport, FootprintFail> {
+) -> Result<data::DataReport, Said> {
     let report = answer(req)?;
     let todo = chores::chores(&chores::gather::facts(door, data::needs_install(&report)));
     let tmux = crate::control::terminals::tmux_here();
@@ -96,10 +94,10 @@ pub(crate) fn answer_with(
     session_path: &dyn Fn() -> Option<String>,
     agent_home: &Path,
     req: &FootprintReq,
-) -> Result<ConfigSurfaceReport, FootprintFail> {
+) -> Result<ConfigSurfaceReport, Said> {
     let client = req.client.as_ref().map(client_of).transpose()?;
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))
-        .ok_or(("failed", copy_text("beFootprint.env.noHome", &[])))?;
+        .ok_or_else(|| Said::new("failed", copy_text("beFootprint.env.noHome", &[])))?;
     let path_env = get("PATH");
     let system_root = get("SystemRoot");
     let session_path = session_path();
@@ -185,10 +183,10 @@ fn hooks_in(p: &Path) -> Option<bool> {
 }
 
 /// `client` 入参：家目录要是绝对路径（解码器判不了的那一样）。
-fn client_of(c: &FootprintClient) -> Result<Client, FootprintFail> {
+fn client_of(c: &FootprintClient) -> Result<Client, Said> {
     let home = PathBuf::from(&c.home);
     if !home.is_absolute() {
-        return Err(crate::common::said::Said::new(
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`client.home`: {:?} is not an absolute path",

@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use super::history_list::{answer_from, blocking, filters, listing_annotations, Sort};
 use super::remote_listing::Kept;
+use crate::common::said::Said;
 use crate::common::views::{ViewSource, Views};
 
 /// 一窗至多几项（界面只问看得见的那几十项）。
@@ -275,15 +276,15 @@ impl crate::wire::typed::Handle for HistoryBrowseCmd {
         async move {
             answer(req, cx.tz, cx.until)
                 .await
-                .map_err(crate::wire::typed::of_pair(HistoryBrowseErr::Failed))
+                .map_err(crate::wire::typed::of_fail_with(HistoryBrowseErr::Failed))
         }
     }
 }
 
 // ───────────────────────── 问各台 ─────────────────────────
 
-fn bad(what: &str) -> (&'static str, String) {
-    ("bad_args", crate::common::contract::malformed(what))
+fn bad(what: &str) -> Said {
+    Said::new("bad_args", crate::common::contract::malformed(what))
 }
 
 /// 一台读到的那一份，或读不到 / 没读过。
@@ -304,7 +305,7 @@ pub(crate) async fn answer(
     req: HistoryBrowseReq,
     tz: crate::Tz,
     until: Option<crate::platform::child::Until>,
-) -> Result<Patch<HistoryBrowseHead, HistoryLine>, crate::common::said::Said> {
+) -> Result<Patch<HistoryBrowseHead, HistoryLine>, Said> {
     let ask = filters(req.query.as_deref(), req.sort, req.within_days, req.hidden)?;
     if !(1..=WINDOW_MAX).contains(&req.range.limit) {
         return Err(bad("`range.limit` must be 1..=2000"));
@@ -360,7 +361,7 @@ pub(crate) async fn answer(
     let here = if req.here {
         Some(match blocking(super::history_list::machine_listing).await {
             Ok(l) => Got::Listing(l),
-            Err((_, why)) => Got::Failed(why),
+            Err(s) => Got::Failed(s.said),
         })
     } else {
         None
@@ -368,9 +369,9 @@ pub(crate) async fn answer(
     let mut got: Vec<(Option<String>, Got)> = here.map(|g| (None, g)).into_iter().collect();
     for s in syncs {
         let (m, g) = s.await.map_err(|e| {
-            (
+            Said::new(
                 "failed",
-                crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                crate::common::said::IntoNote::into_note(Said::with_raw(
                     copy_core::copy_text("beHistoryJoin.blocking.unfinished", &[]),
                     e,
                 )),

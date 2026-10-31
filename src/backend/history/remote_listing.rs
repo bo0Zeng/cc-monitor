@@ -70,7 +70,7 @@ impl crate::wire::typed::Handle for HistoryListingCmd {
         async move {
             let listing = super::history_list::blocking(super::history_list::machine_listing)
                 .await
-                .map_err(crate::wire::typed::of_pair(HistoryListingErr::Failed))?;
+                .map_err(crate::wire::typed::of_fail_with(HistoryListingErr::Failed))?;
             Ok(answer_with(&VIEWS, listing, req.held.as_ref()))
         }
     }
@@ -243,7 +243,7 @@ pub(crate) async fn listing_with(
         remote,
     )
     .await
-    .map_err(|s| (code_of(s.code.as_deref()), s.said));
+    .map_err(|s| crate::common::said::Said::new(code_of(s.code.as_deref()), s.said));
     match got {
         Ok(patch) => {
             let at_ms = crate::common::time::now()
@@ -252,7 +252,7 @@ pub(crate) async fn listing_with(
             Ok(copies.took(machine, patch, at_ms))
         }
         Err(e) => {
-            copies.missed(machine, e.1.clone());
+            copies.missed(machine, e.said.clone());
             Err(e)
         }
     }

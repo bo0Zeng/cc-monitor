@@ -9,10 +9,9 @@ fn answer_check_with(
     home: Option<std::path::PathBuf>,
 ) -> Result<serde_json::Value, crate::common::said::Said> {
     let req: AgentHomeCheckReq =
-        crate::wire::typed::take(a).map_err(|f| (f.code_or_fallback().to_string(), f.said))?;
+        crate::wire::typed::take(a)?;
     super::answer_check_with(&req, home)
         .map(|x| serde_json::to_value(x).unwrap())
-        .map_err(|(c, m)| (c.to_string(), m))
 }
 fn answer_check(a: &serde_json::Value) -> Result<serde_json::Value, crate::common::said::Said> {
     answer_check_with(a, crate::platform::paths::home_dir())
@@ -77,7 +76,7 @@ fn 路径缺席_不是串_相对路径_拒() {
         json!({"path": ""}),
         json!({"path": "rel/x"}),
     ] {
-        assert_eq!(answer_check(&a).unwrap_err().0, "bad_args", "{a}");
+        assert_eq!(answer_check(&a).unwrap_err().code.as_deref(), Some("bad_args"), "{a}");
     }
 }
 

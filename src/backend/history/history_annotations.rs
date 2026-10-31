@@ -298,7 +298,8 @@ fn read_for_write(path: &Path) -> Result<(Doc, Value), crate::common::said::Said
     match read_raw(path).map_err(|e| crate::wire::spec::fail("annotations_unreadable", e))? {
         None => Ok((Doc::default(), json!({ "entries": {} }))),
         Some(raw) => {
-            let doc = parse(&raw, path).map_err(|e| ("annotations_unreadable", e))?;
+            let doc = parse(&raw, path)
+                .map_err(|e| crate::wire::spec::fail("annotations_unreadable", e))?;
             if !raw.is_object() {
                 return Err(crate::wire::spec::fail(
                     "annotations_unreadable",
