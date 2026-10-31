@@ -909,7 +909,7 @@ async fn ask_find(
 ) -> Result<Option<FindOutcome>, super::source::Failed> {
     match super::source::ask_typed(line, origin, req, call_timeout()).await {
         Ok(r) => Ok(Some(decode_find(r))),
-        Err(f) if f.code.as_deref() == Some("superseded") => Ok(None),
+        Err(f) if f.code == "superseded" => Ok(None),
         Err(f) => Err(f),
     }
 }

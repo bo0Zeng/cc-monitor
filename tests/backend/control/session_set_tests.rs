@@ -198,6 +198,12 @@ fn set_plan_reads_a_saved_set_or_unsaved_rows_and_refuses_both_or_neither() {
     );
 }
 
+/// 起一条没成（交出去那一形：码 · 那一句）。
+fn fail(code: &str, said: &str) -> Failed {
+    use crate::wire::spec::Settle as _;
+    crate::wire::spec::fail(code, said.to_string()).settle("set-launch")
+}
+
 fn opened(sid: Option<&str>) -> cmd_wire::session::Opened {
     cmd_wire::session::Opened {
         landed: cmd_wire::session::Landed::Started,
@@ -256,10 +262,7 @@ fn launching_marks_each_new_session_with_its_group_before_starting_it() {
                 log.borrow_mut()
                     .push(format!("start {} {}", r.cwd, sid.unwrap_or("-")));
                 if r.cwd == "/srv/pb" {
-                    Err(LaunchFail {
-                        code: "start_failed".into(),
-                        message: "坏了".into(),
-                    })
+                    Err(fail("start_failed", "坏了"))
                 } else {
                     Ok(opened(sid))
                 }
@@ -433,10 +436,7 @@ fn the_launch_result_carries_its_sentence_and_one_line_per_failure() {
                 mark: &mut |_| None,
                 start: &mut |r: &RowEdit, _| {
                     if fail_b && r.cwd == "/srv/b" {
-                        Err(LaunchFail {
-                            code: "start_failed".into(),
-                            message: "b 需登录".into(),
-                        })
+                        Err(fail("start_failed", "b 需登录"))
                     } else {
                         Ok(opened(None))
                     }

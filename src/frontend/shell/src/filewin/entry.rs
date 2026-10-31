@@ -144,7 +144,7 @@ pub async fn open_file_window(
     path: String,
     reveal_file: Option<String>,
     theme: std::collections::BTreeMap<String, String>,
-) -> Result<usize, Said> {
+) -> Result<usize, cmd_wire::failed::Failed> {
     let r: Result<usize, Said> = async move {
         use tauri::Manager;
         // 窗口的样子：主界面此刻 `:root` 上的那一套（含用户改过的）解成数。解不出来就不开（不替它补一套）。

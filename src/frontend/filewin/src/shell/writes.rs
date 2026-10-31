@@ -241,7 +241,7 @@ impl FileWindow {
                 self.reload();
             }
             Err(f) => {
-                let why = if f.code.as_deref() == Some(crate::writeops::EXISTS) {
+                let why = if f.code == crate::writeops::EXISTS {
                     let name = self
                         .write_prompt
                         .as_ref()

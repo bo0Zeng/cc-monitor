@@ -434,10 +434,10 @@ impl Transport for ProbeLink {
 /// 拨号核心没开成的那一份 ⇒ 那一句（空 ⇒ 链路断了那一句）＋ 复制详情 ＋ 原因码与指纹（同手机那一侧）。
 pub(crate) fn problem_of(f: ssh_dial::DialFail) -> Problem {
     Problem::new(
-        if f.error.is_empty() {
+        if f.said.is_empty() {
             copy_text("reason.link.lost", &[])
         } else {
-            f.error
+            f.said
         },
         f.detail.unwrap_or_default(),
     )
@@ -618,7 +618,7 @@ async fn run(req: &ProbeReq, dial: Arc<dyn Dial>, cells: &Cells<'_>) -> Result<P
             }
             Err(e) => {
                 let raw = match &e {
-                    CallError::Remote { message, .. } => message.clone(),
+                    CallError::Remote(r) => r.said.clone(),
                     other => other.to_string(),
                 };
                 (

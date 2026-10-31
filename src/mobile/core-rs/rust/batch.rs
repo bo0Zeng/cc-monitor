@@ -358,7 +358,7 @@ impl PhoneBoard {
                 title,
                 kept,
                 said: f.said.clone(),
-                details: Failed::copy_body(&f.said, &f.detail),
+                details: batch_core::copy_body(&f.said, &f.detail),
             },
             Phase::Dropped | Phase::Opened => BatchLine::Dropped { id, title, kept },
         }
@@ -436,18 +436,16 @@ impl PhoneBoard {
     /// 本机有同名而还没答 ⇒ 照后端同名那一形拒（`exists` ＋ 同名清单，抽屉照画）；不然从第一项没结局的起逐项拉（`ask` 是逐块问那台的那一口）：
     /// 答了跳过 ⇒ 记跳过；开不了 · 拉不成 ⇒ 记失败（开了的那一份删）；断了 ⇒ 回「断了」（手上那一项删掉、连回来整份重下）；
     /// 撤了 ⇒ 手上那一项删掉、没轮到的记撤了。收场回一组的结局（结局句照 [`batch_core::said_of`]）。
-    pub async fn pull_round<A: Ask<Fail = String>>(
+    pub async fn pull_round<A: Ask<Err = String>>(
         &self,
         args: &serde_json::Value,
         ask: &A,
     ) -> Result<serde_json::Value, Rebuff> {
         let unreadable = |detail: String| Rebuff {
             failed: Failed {
-                code: None,
-                said: copy_core::copy_text("reason.content.unparsable", &[]),
                 detail,
+                ..Failed::local(copy_core::copy_text("reason.content.unparsable", &[]))
             },
-            data: None,
             cut: false,
         };
         let (Some(p), Some(a)) = (&self.pulling, PullArgs::of(args)) else {
@@ -468,11 +466,10 @@ impl PhoneBoard {
                 .collect();
             return Err(Rebuff {
                 failed: Failed {
-                    code: Some(batch_core::EXISTS.into()),
-                    said: String::new(),
-                    detail: String::new(),
+                    code: batch_core::EXISTS.into(),
+                    data: Some(serde_json::json!({ "conflicts": conflicts })),
+                    ..Failed::default()
                 },
-                data: Some(serde_json::json!({ "conflicts": conflicts })),
                 cut: false,
             });
         }
@@ -582,9 +579,7 @@ fn pulled(line: &str, halted: bool) -> PullEnd {
                 ),
             }
         }
-        Ok(CallEnd::Failed {
-            message, detail, ..
-        }) => PullEnd::Failed(message, detail),
+        Ok(CallEnd::Failed { said, detail, .. }) => PullEnd::Failed(said, detail),
         Ok(CallEnd::Cancelled { .. }) if halted => PullEnd::Stopped,
         Ok(CallEnd::Timeout { .. } | CallEnd::Down { .. } | CallEnd::Cancelled { .. }) => {
             PullEnd::Cut
@@ -823,42 +818,26 @@ fn rebuff_of(machine: &str, cmd: &str, e: CallError) -> Rebuff {
         e,
         CallError::Disconnected | CallError::Timeout { .. } | CallError::Cancelled
     );
-    if let CallError::Remote {
-        code,
-        message,
-        detail,
-        data,
-    } = e
-    {
-        return Rebuff {
-            failed: Failed {
-                code: Some(code),
-                said: message,
-                detail,
-            },
-            data: data.as_deref().and_then(|d| serde_json::from_str(d).ok()),
-            cut: false,
-        };
+    if let CallError::Remote(failed) = e {
+        return Rebuff { failed, cut: false };
     }
     // 别的没走通那几种：那一行的字照一问一答那一份（`reply_json`）。
     let line: serde_json::Value =
         serde_json::from_str(&resident::reply_json(0, machine, cmd, Err(e))).unwrap_or_default();
     let said = line
-        .get("message")
+        .get("said")
         .and_then(|m| m.as_str())
         .map(str::to_string)
         .unwrap_or_else(|| comms_inward::chan::said::offline(machine));
     Rebuff {
         failed: Failed {
-            code: None,
-            said,
             detail: line
                 .get("detail")
                 .and_then(|d| d.as_str())
                 .unwrap_or_default()
                 .to_string(),
+            ..Failed::local(said)
         },
-        data: None,
         cut,
     }
 }
@@ -1154,9 +1133,8 @@ mod tests {
                 async move {
                     match n {
                         1 => Err(Rebuff {
-                            failed: Failed { code: Some("exists".into()), said: "同名 1 项".into(), detail: String::new() },
-                            data: Some(serde_json::json!({"conflicts": [{"key": "0", "name": "a.txt", "kind": "file",
-                                "size_text": "3 字节", "there": "file", "there_size_text": "1 字节", "answers": ["overwrite", "skip", "keep_both"]}]})),
+                            failed: Failed { code: "exists".into(), said: "同名 1 项".into(), data: Some(serde_json::json!({"conflicts": [{"key": "0", "name": "a.txt", "kind": "file",
+                                "size_text": "3 字节", "there": "file", "there_size_text": "1 字节", "answers": ["overwrite", "skip", "keep_both"]}]})), ..Failed::default() },
                             cut: false,
                         }),
                         2 => Err(rebuff_of("devbox", "files-delete", CallError::Disconnected)),
@@ -1253,7 +1231,7 @@ mod tests {
     }
 
     impl Ask for There {
-        type Fail = String;
+        type Err = String;
         async fn ask<C: Call + Sync>(&self, req: &C) -> Result<C::Reply, String> {
             let r: cmd_wire::files::ReadChunkReq =
                 serde_json::from_value(serde_json::to_value(req).unwrap()).unwrap();
@@ -1391,7 +1369,7 @@ mod tests {
     struct ThereRef(Arc<There>);
 
     impl Ask for ThereRef {
-        type Fail = String;
+        type Err = String;
         async fn ask<C: Call + Sync>(&self, req: &C) -> Result<C::Reply, String> {
             self.0.ask(req).await
         }
@@ -1767,9 +1745,8 @@ mod tests {
                     async move {
                         match k {
                             1 => Err(Rebuff {
-                                failed: Failed { code: Some("exists".into()), said: "同名 1 项".into(), detail: String::new() },
-                                data: Some(serde_json::json!({"conflicts": [{"key": "0", "name": "a.txt", "kind": "file", "there": "file",
-                                    "answers": ["overwrite", "skip", "keep_both"]}]})),
+                                failed: Failed { code: "exists".into(), said: "同名 1 项".into(), data: Some(serde_json::json!({"conflicts": [{"key": "0", "name": "a.txt", "kind": "file", "there": "file",
+                                    "answers": ["overwrite", "skip", "keep_both"]}]})), ..Failed::default() },
                                 cut: false,
                             }),
                             _ => {

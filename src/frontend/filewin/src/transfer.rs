@@ -225,9 +225,10 @@ where
             _ => out.failed.push((
                 p.name.clone(),
                 super::source::Failed {
-                    code: it.code.clone(),
+                    code: super::source::Failed::code_or_fallback(it.code.clone()),
                     said: it.reason.clone().unwrap_or_default(),
                     detail: it.detail.clone().unwrap_or_default(),
+                    data: None,
                 },
             )),
         }
@@ -262,9 +263,8 @@ pub async fn open_group(
         (Some(v), _) => match serde_json::from_value::<cmd_wire::transfer::TransferOpened>(v) {
             Ok(o) => Opened::Items(o.items),
             Err(e) => Opened::Failed(super::source::Failed {
-                code: None,
-                said: copy_text("reason.content.unparsable", &[]),
                 detail: e.to_string(),
+                ..super::source::Failed::local(copy_text("reason.content.unparsable", &[]))
             }),
         },
         (None, batch_core::Phase::Failed(f)) => Opened::Failed(f),
@@ -574,8 +574,8 @@ async fn upload_once(
         |got, total| sink.progress(&name, got, total),
     )
     .await
-    .map_err(|f| match f.code.as_deref() {
-        Some(SFTP_HOME_MISMATCH) => Once::Mismatch(f.said),
+    .map_err(|f| match f.code.as_str() {
+        SFTP_HOME_MISMATCH => Once::Mismatch(f.said),
         _ => Once::Failed(f),
     })?;
     let sha256 = watched
@@ -589,8 +589,8 @@ async fn upload_once(
     )
     .await
     .map(|_| ())
-    .map_err(|f| match f.code.as_deref() {
-        Some("stale") => Once::Stale(f),
+    .map_err(|f| match f.code.as_str() {
+        "stale" => Once::Stale(f),
         _ => Once::Failed(f),
     })
 }

@@ -35,7 +35,7 @@ pub(crate) trait Settle {
 impl Settle for Said {
     fn settle(self, cmd: &str) -> crate::wire::detail::Failed {
         let code = self.code_or_fallback().to_string();
-        crate::wire::detail::Failed::new(
+        crate::wire::detail::failed(
             Some(cmd),
             &code,
             self.said,

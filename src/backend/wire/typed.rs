@@ -404,7 +404,7 @@ pub(crate) fn answer<C: Command>(
             id: id.to_string(),
             ok: true,
             code: None,
-            message: None,
+            said: None,
             detail: None,
             data,
         }),

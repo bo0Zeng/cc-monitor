@@ -1244,14 +1244,14 @@ async fn the_two_openers_answer_with_the_same_bytes() {
         r#"{"kind":"reply","id":"u1","ok":true,"data":{"items":[{"id":"xfer-<n>","key":"0","staged":"<key>","state":"opened"}]}}"#,
         r#"{"kind":"reply","id":"u2","ok":true,"data":{"items":[{"id":"xfer-<n>","key":"0","staged":"<key>","state":"opened"}]}}"#,
         r#"{"kind":"reply","id":"u3","ok":true,"data":{"items":[{"code":"busy","detail":"同一文件正在上传到该机 · 传完再来","key":"0","reason":"被占用","state":"failed"}]}}"#,
-        r#"{"kind":"reply","id":"u4","ok":false,"code":"bad_args","message":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args\n原话：missing field `machine`"}"#,
+        r#"{"kind":"reply","id":"u4","ok":false,"code":"bad_args","said":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args\n原话：missing field `machine`"}"#,
         r#"{"kind":"reply","id":"u5","ok":true,"data":{"items":[{"code":"refused","detail":"<tmp> 不是普通文件 · 不可传","key":"0","reason":"被拒","state":"failed"}]}}"#,
         r#"{"kind":"reply","id":"u6","ok":true,"data":{"items":[{"code":"io_failed","detail":"读取失败 · 本机 <tmp>/gone.bin · 路径不存在\nNo such file or directory (os error 2)","key":"0","reason":"路径不存在","state":"failed"}]}}"#,
-        r#"{"kind":"reply","id":"u7","ok":false,"code":"bad_args","message":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args\n原话：unknown field `via`, expected one of `machine`, `items`, `remote_dir`, `home`, `on_exists`, `decide`"}"#,
+        r#"{"kind":"reply","id":"u7","ok":false,"code":"bad_args","said":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args\n原话：unknown field `via`, expected one of `machine`, `items`, `remote_dir`, `home`, `on_exists`, `decide`"}"#,
         r#"{"kind":"reply","id":"d1","ok":true,"data":{"items":[{"id":"xfer-<n>","key":"0","path":"<tmp>/dl.bin","state":"opened"}]}}"#,
         r#"{"kind":"reply","id":"d2","ok":true,"data":{"items":[{"id":"xfer-<n>","key":"0","path":"<tmp>/dÿ.bin","state":"opened"}]}}"#,
         r#"{"kind":"reply","id":"d3","ok":true,"data":{"items":[{"code":"refused","detail":"解析 <tmp>/nope 失败 · 路径不存在","key":"0","reason":"被拒","state":"failed"}]}}"#,
-        r#"{"kind":"reply","id":"d4","ok":false,"code":"bad_args","message":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-download\n码：bad_args\n原话：missing field `remote_path`"}"#,
+        r#"{"kind":"reply","id":"d4","ok":false,"code":"bad_args","said":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-download\n码：bad_args\n原话：missing field `remote_path`"}"#,
         r#"{"kind":"reply","id":"d5","ok":true,"data":{"items":[{"code":"too_many_transfers","detail":"传输已达上限 64","key":"0","reason":"超出上限","state":"failed"}]}}"#,
     ];
     assert_eq!(got, want, "开单两条回的字节变了");

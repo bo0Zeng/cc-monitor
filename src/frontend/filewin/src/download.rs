@@ -350,9 +350,10 @@ pub async fn pull_many(
             (_, _) => row.finish(Outcome::Failed {
                 dest,
                 why: super::source::Failed {
-                    code: it.code,
+                    code: super::source::Failed::code_or_fallback(it.code),
                     said: it.reason.unwrap_or_default(),
                     detail: it.detail.unwrap_or_default(),
+                    data: None,
                 },
             }),
         }

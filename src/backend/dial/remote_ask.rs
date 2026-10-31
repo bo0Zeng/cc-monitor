@@ -532,7 +532,7 @@ where
 
 /// 没开成 ⇒「那台够不着」那一句，带拨号核心写好的那一句。
 fn unreachable(f: &ssh_dial::DialFail) -> String {
-    copy_text("beRemoteAsk.run.unreachable", &[("why", &f.error)])
+    copy_text("beRemoteAsk.run.unreachable", &[("why", &f.said)])
 }
 
 /// **原样收全**一条一次性命令（退出码 · stdout · stderr 三样都交回，不替调用方判退出码）：部署计划那两问

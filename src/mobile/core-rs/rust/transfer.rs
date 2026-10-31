@@ -152,7 +152,7 @@ fn local(id: i64, said: String, e: &std::io::Error) -> String {
     line(&CallEnd::Failed {
         call: id,
         code: "io_failed".into(),
-        message: said,
+        said,
         detail: e.to_string(),
         data: None,
     })
@@ -345,12 +345,12 @@ mod tests {
                 return typed::<C>(
                     7,
                     "box",
-                    Err(CallError::Remote {
+                    Err(CallError::Remote(cmd_wire::failed::Failed {
                         code: "refused".into(),
-                        message: "那台拒了".into(),
+                        said: "那台拒了".into(),
                         detail: "d".into(),
                         data: None,
-                    }),
+                    })),
                 );
             }
             let v = serde_json::to_value(req).unwrap();
@@ -484,7 +484,7 @@ mod tests {
             &mut Seen::default(),
         )));
         assert_eq!(
-            (v["end"].as_str(), v["code"].as_str(), v["message"].as_str()),
+            (v["end"].as_str(), v["code"].as_str(), v["said"].as_str()),
             (Some("failed"), Some("refused"), Some("那台拒了"))
         );
 
@@ -498,7 +498,7 @@ mod tests {
         )));
         assert_eq!(v["call"], 5);
         assert_eq!(
-            v["message"],
+            v["said"],
             copy_core::copy_text("mobFiles.local.readFailed", &[("name", "up.bin")])
         );
         assert!(!v["detail"].as_str().unwrap().is_empty());
@@ -516,7 +516,7 @@ mod tests {
             &mut Seen::default(),
         )));
         assert_eq!(
-            v["message"],
+            v["said"],
             copy_core::copy_text("mobFiles.local.writeFailed", &[("path", "/sdcard/f")])
         );
     }

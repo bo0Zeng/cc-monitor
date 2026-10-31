@@ -472,7 +472,7 @@ class ResidentFeed(
         deployFlow.value =
             when (val e = Wire.read<DeployEnd>(body) ?: return broke("deploy", body)) {
                 is DeployEnd.Done -> Deploying.Done(e.text)
-                is DeployEnd.Failed -> Deploying.Failed(Said(e.text, e.detail))
+                is DeployEnd.Failed -> Deploying.Failed(com.ccmonitor.mobile.core.wire.gen.Failed(code = e.code, said = e.text, detail = e.detail))
             }
     }
 
@@ -493,7 +493,7 @@ class ResidentFeed(
         val reply =
             when (e) {
                 is CallEnd.Ok -> Reply.Ok(e.data.value)
-                is CallEnd.Failed -> Reply.Failed(CoreFailure(e.code, e.message, e.detail, e.data.value))
+                is CallEnd.Failed -> Reply.Failed(CoreFailure(e.code, e.said, e.detail, e.data.value))
                 is CallEnd.Timeout -> Reply.TimedOut
                 is CallEnd.Cancelled -> Reply.Cancelled
                 is CallEnd.Down -> Reply.LinkDown

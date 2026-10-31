@@ -145,9 +145,10 @@ fn the_not_text_notice_covers_what_is_left_after_the_size_check() {
 fn the_reply_maps_to_text_not_text_or_failure_by_the_peers_code() {
     use crate::source::Failed;
     let failed = |code: Option<&str>, said: &str| Failed {
-        code: code.map(str::to_string),
+        code: Failed::code_or_fallback(code.map(str::to_string)),
         said: said.to_string(),
         detail: String::new(),
+        data: None,
     };
     assert_eq!(
         text_from_reply(Ok(
@@ -617,9 +618,10 @@ fn a_save_reply_splits_into_saved_stale_and_failed_by_the_peers_code() {
         sha256: cmd_wire::files::Sha256Hex(sha.to_string()),
     };
     let failed = |code: Option<&str>| Failed {
-        code: code.map(str::to_string),
+        code: Failed::code_or_fallback(code.map(str::to_string)),
         said: "原话".to_string(),
         detail: String::new(),
+        data: None,
     };
     let sha = crate::find::testing::fake_sha256("x");
     assert_eq!(

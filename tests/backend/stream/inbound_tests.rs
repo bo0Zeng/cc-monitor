@@ -173,7 +173,7 @@ async fn one_line(input: &str) -> Vec<String> {
 #[tokio::test]
 async fn ping_replies_ok() {
     let out = one_line("{\"id\":\"x\",\"cmd\":\"ping\"}\n").await;
-    // 逐字节钉死：顺带把「`code`/`message` 为 None 时不上线」也钉住了。
+    // 逐字节钉死：顺带把「`code`/`said` 为 None 时不上线」也钉住了。
     assert_eq!(out, vec![r#"{"kind":"reply","id":"x","ok":true}"#]);
 }
 
@@ -777,7 +777,7 @@ async fn a_failed_reply_carries_a_detail_with_the_facts_below_the_sentence() {
             "{detail}"
         );
         assert!(
-            !r["message"].as_str().unwrap().contains(code),
+            !r["said"].as_str().unwrap().contains(code),
             "码进了句子：{r}"
         );
     }
@@ -843,10 +843,10 @@ async fn a_files_read_failure_puts_the_system_words_into_the_detail() {
     )
     .unwrap();
     assert_eq!(r["code"], "not_dir", "{r}");
-    let message = r["message"].as_str().unwrap();
+    let said = r["said"].as_str().unwrap();
     let detail = r["detail"].as_str().unwrap();
     assert_eq!(
-        message,
+        said,
         copy_core::copy_text(
             "beFilesRead.ls.unreadable",
             &[(
@@ -861,7 +861,7 @@ async fn a_files_read_failure_puts_the_system_words_into_the_detail() {
         .find_map(|l| l.strip_prefix(raw_label.as_str()))
         .unwrap_or_else(|| panic!("详情里没有原话那一行：{detail}"));
     assert!(
-        !raw.trim().is_empty() && !message.contains(raw.trim()),
+        !raw.trim().is_empty() && !said.contains(raw.trim()),
         "{r}"
     );
 }

@@ -58,7 +58,7 @@
 ```text
 → {"id":"<不透明串>","cmd":"<命令名>","args":{…},"within_ms":10000,"tz":"Asia/Shanghai","view":{…},"machine":"<那台>"}   一行一个；args 缺 ＝ null；within_ms · tz · view · machine 可缺
 ← {"kind":"reply","id":"…","ok":true,"data":{…}}                              无返回值时没有 data
-← {"kind":"reply","id":"…","ok":false,"code":"…","message":"…","detail":"…"}  少数码另带 data（形状见各命令）
+← {"kind":"reply","id":"…","ok":false,"code":"…","said":"…","detail":"…"}  少数码另带 data（形状见各命令）
 → {"id":"…","cmd":"cancel","args":{"target":"<要撤的 id>"}}
 ← {"kind":"cancelled","id":"<被撤的 id>"}
 ```
@@ -92,8 +92,8 @@
 - **登录失败还能怎么办**：`login-start` · `login-finish` 失败时（`bad_args` 除外）`data` 带 `again`：`paste`（作业还在，接着粘）· `restart`（作业没了，重起一趟 `login-start`）·
   `none`（再来也是同样结果）。值由后端照码定、写在码表那一行上（`faces/login_face.rs`）：`not_found` · `unsupported` ⇒ `none`；`failed` · `refused` · `no_job` ⇒ `restart`；
   `bad_paste` · `child_timed_out` ⇒ `paste`。界面照 `again` 画，不按码去猜。
-- **失败应答三格**：`code` 给程序认（分支 · 重试判断）；`message` 是给人看的那一句（后端按共享文案表 `src/shared/copy/table.json` 写好，前端原样上屏）；
-  `detail` 是「复制详情」那几行（时刻 · 机器 · 命令 · 码 · 原话，排法只住 `copy_core::detail`），下层原话只进这里、不进 `message`。
+- **失败应答三格**（就是交出去那一形 `cmd_wire::failed::Failed`）：`code` 给程序认（分支 · 重试判断）；`said` 是给人看的那一句（后端按共享文案表 `src/shared/copy/table.json` 写好，前端原样上屏）；
+  `detail` 是「复制详情」那几行（时刻 · 机器 · 命令 · 码 · 原话，排法只住 `copy_core::detail`），下层原话只进这里、不进 `said`。
 
 ## 5. 会话流：帧的先后与续传
 
@@ -178,7 +178,7 @@
 
 - 帧：`hello` `build_id` `host_arch` · `line` `session_id` `path` `seq` `byte_offset` `record` ·
   `overflow` `said` · `live` `sid` `run` `card` `n` `op` `rid` `phase` `clipped` `blocks` ·
-  `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）`machine`（可缺）。
+  `reply` `id` `ok` `code` `said` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）`machine`（可缺）。
 - 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `agent_kind` `attachable` `background` 与整份脸 `face` 里手机读的那几格）·
   `session_status`（`sid` `waiting_for` 与 `face` 那几格）· `session_left`（`sid` 与 `face` 那几格，连 `face.life.by`）只冻这几格；
   `line.record` 与 `history-read` 的 `rows`（`end` `hash` `record` `cwd`）整件冻结 —— 通用记录的公共格、六类各自的格、`who`、`error`、各种内容块逐格冻结（见下面「通用记录」一节）；
@@ -248,7 +248,7 @@
 - **stderr 是协议通道**：成功 ⇒ stderr 一个字节都没有；失败 ⇒ 正好一行信封（下一条）。后端自己的诊断日志一行都不写 stderr，
   整行追加进那台后端的 stderr 诊断文件（宿主交了 `CCM_BACKEND_STDERR_LOG` 就是那一份，否则 `~/.cc-monitor/logs/backend/stderr.log`，常驻后端的 stderr 落的也是它；
   那一层目录不在 ⇒ 诊断丢掉，不替它建）。调用方可以整段 JSON-parse stderr。
-- 失败：stderr 一行 `{code, message, detail}`（少数码另带 `data`）、退出 2 —— 与帧面失败应答出自同一份：同一个失败两个面上 `code` · `message` · `detail` · `data` 逐字相同（`detail` 恒在）。
+- 失败：stderr 一行 `{code, said, detail}`（少数码另带 `data`）、退出 2 —— 与帧面失败应答出自同一份：同一个失败两个面上 `code` · `said` · `detail` · `data` 逐字相同（`detail` 恒在）。
   带 `--text` ⇒ stderr 是那一句 ＋ 下面原样接 `detail` 那几行（同界面「复制详情」复制出去的那一段），不是 JSON。
   手写的几条（`--resident-*` · `--tmux-notify`）失败也是这一份；不认识的子命令 ⇒ `unknown_command`，同一份信封。
 - 路径入参（`path`）过同一套路径围栏（只许落在那台的会话记录树里）。

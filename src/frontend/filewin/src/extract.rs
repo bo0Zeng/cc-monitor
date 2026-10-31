@@ -80,7 +80,7 @@ pub fn outcome_text(name: &str, o: &Outcome) -> String {
 /// 结局那一句的［复制详情］整段（没解成、带详情时才有）。
 pub fn outcome_copy(name: &str, o: &Outcome) -> Option<String> {
     match o {
-        Outcome::Failed(f) => super::source::Failed::copy_body(&outcome_text(name, o), &f.detail),
+        Outcome::Failed(f) => batch_core::copy_body(&outcome_text(name, o), &f.detail),
         _ => None,
     }
 }
@@ -116,7 +116,7 @@ where
 {
     match extract_remote(line, origin, root, rel, false).await {
         Ok(e) => Outcome::Done(e),
-        Err(f) if f.code.as_deref() == Some("exists") => {
+        Err(f) if f.code == "exists" => {
             let said = f.said;
             if !ask(said.clone()).await {
                 return Outcome::Skipped(said);

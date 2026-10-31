@@ -98,9 +98,10 @@ async fn each_item_lands_the_way_the_group_opener_said() {
         vec![(
             "d.txt".to_string(),
             super::super::source::Failed {
-                code: Some("busy".into()),
+                code: "busy".into(),
                 said: copy_core::copy_text("reason.io.busy", &[]),
                 detail: "同一文件正在上传".into(),
+                data: None,
             }
         )]
     );

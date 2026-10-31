@@ -40,7 +40,7 @@ pub fn said(e: &CallError, origin: &Origin) -> String {
         } => copy_core::backend_old(name),
         CallError::Peer {
             why: PeerFault::Refused { body },
-        } => refused(&message_of(&body.0), origin),
+        } => refused(&said_of(&body.0), origin),
         CallError::Ours { why, runs_on } => match why {
             OursFault::Cancelled if *runs_on => {
                 copy_text("rsChanSaid.ours.cancelledRunsOn", &[("machine", name)])
@@ -65,22 +65,22 @@ pub fn blank_origin(b: &Blank) -> String {
 }
 
 /// 对端拒了：它写的那一句原样；没写（空 · 体读不出）⇒「{machine} 后端拒绝 · 原因不明」。
-pub fn refused(message: &str, origin: &Origin) -> String {
-    if message.trim().is_empty() {
+pub fn refused(said: &str, origin: &Origin) -> String {
+    if said.trim().is_empty() {
         copy_text(
             "rsChanSaid.peer.refusedNoReason",
             &[("machine", &machine(origin))],
         )
     } else {
-        message.to_string()
+        said.to_string()
     }
 }
 
-/// 拒绝体 `{code, message, …}`（宿主拼的，`backend_route::refusal_body`）里那一句；读不出 ⇒ 空串。
-fn message_of(body: &[u8]) -> String {
+/// 拒绝体 `{code, said, …}`（宿主拼的，`backend_route::refusal_body`）里那一句；读不出 ⇒ 空串。
+fn said_of(body: &[u8]) -> String {
     serde_json::from_slice::<serde_json::Value>(body)
         .ok()
-        .and_then(|v| v.get("message")?.as_str().map(str::to_string))
+        .and_then(|v| v.get("said")?.as_str().map(str::to_string))
         .unwrap_or_default()
 }
 

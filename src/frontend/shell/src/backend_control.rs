@@ -49,7 +49,7 @@ pub struct BackendStatus {
 /// `pid` / `attempts` 只有本机有（远端的进程在别人机器上）—— 天然不对称，所以它们是 `null`。
 /// `async`（`INVARIANTS §10`）：本机那一支要拿句柄表的锁，进 `spawn_blocking` —— 读锁这一下不许落在 IPC 派发线程上。
 #[tauri::command]
-pub async fn backend_status(origin: String) -> Result<BackendStatus, Said> {
+pub async fn backend_status(origin: String) -> Result<BackendStatus, cmd_wire::failed::Failed> {
     let r: Result<BackendStatus, Said> = async move {
         Ok(tauri::async_runtime::spawn_blocking(move || {
             backend_status_now(origin, crate::backend_policy::local_ledger())
@@ -112,7 +112,7 @@ pub(crate) fn backend_status_now(
 /// `async`（`INVARIANTS §10`）：本机那一支（`start_local_backend`）一路会起进程、连本机后端口、读 hello、`sleep` 等它绑上口 ⇒ 进 `spawn_blocking`；
 /// 远端那一支只是换一个流任务的把手，不等任何东西，就地做。判据 `sync_command_registry_tests`。
 #[tauri::command]
-pub async fn backend_start(origin: String) -> Result<(), Said> {
+pub async fn backend_start(origin: String) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = async move {
         check_origin(&origin)?;
         if is_local(&origin) {
@@ -166,7 +166,7 @@ async fn wake_backend_feed(origin: &str) -> Result<(), Said> {
 /// 这里只发一次、拿回结局 `{stopped: graceful | killed | not_running, pid}`，机器页按它说一句。
 /// 远端那一条由本机后端先停它手上那台的常驻流再发（`machine-stop`）。本机那一支会等到结局 ⇒ 等的那一段进阻塞线程池。
 #[tauri::command]
-pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::StopAnswer, Said> {
+pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::StopAnswer, cmd_wire::failed::Failed> {
     let r: Result<crate::remote_resident::StopAnswer, Said> = async move {
         check_origin(&origin)?;
         if is_local(&origin) {

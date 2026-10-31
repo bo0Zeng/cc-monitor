@@ -148,7 +148,7 @@ impl DialAck {
     pub fn of_fail(f: DialFail) -> Self {
         DialAck {
             ok: false,
-            error: Some(f.error),
+            error: Some(f.said),
             detail: f.detail,
             fingerprint: f.fingerprint,
             endpoint: None,
@@ -171,7 +171,7 @@ fn uses() -> Vec<String> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DialFail {
     /// 那一句（只带原因词，不带下层原话）。
-    pub error: String,
+    pub said: String,
     /// 复制详情（时刻 · 机器 · 命令 · 下层原话）。
     pub detail: Option<String>,
     /// 握手时看到的 host key 指纹（失败时也尽量带上）。

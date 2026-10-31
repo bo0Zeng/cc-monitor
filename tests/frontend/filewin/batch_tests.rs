@@ -20,15 +20,15 @@ fn plan() -> Plan {
 fn clash() -> Rebuff {
     Rebuff {
         failed: Failed {
-            code: Some(EXISTS.into()),
+            code: EXISTS.into(),
             said: "同名 2 项".into(),
             detail: String::new(),
-        },
-        data: Some(serde_json::json!({"conflicts": [
+            data: Some(serde_json::json!({"conflicts": [
             {"key": "0", "name": "a", "kind": "file", "size": 3, "size_text": "3 字节", "mtime_text": "14:02",
              "there": "file", "there_size": 1, "there_size_text": "1 字节", "there_mtime_text": "10-01 09:10", "answers": ["overwrite", "skip", "keep_both"]},
             {"key": "1", "name": "c", "kind": "dir", "there": "dir", "answers": ["skip", "keep_both"]},
         ]})),
+        },
         cut: false,
     }
 }
@@ -213,7 +213,6 @@ async fn a_cut_waits_for_the_link_and_asks_again_with_the_same_ticket() {
                 if n == 1 {
                     Err(Rebuff {
                         failed: "断了".into(),
-                        data: None,
                         cut: true,
                     })
                 } else {
