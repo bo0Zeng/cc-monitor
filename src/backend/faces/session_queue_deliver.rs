@@ -18,9 +18,9 @@
 
 use super::session_send::Delivery;
 use crate::agents::SessionActivity;
+use crate::common::said::Said;
 use crate::history::session_queue as q;
 use crate::platform::fs::Own;
-use crate::wire::spec::Fail;
 use crate::wire::typed::Files;
 use cmd_wire::queue::QueueItem;
 use std::collections::BTreeMap;
@@ -90,7 +90,7 @@ pub(crate) fn step(look: &Look, memo: &Memo, now_ms: i64) -> Step {
 pub(crate) struct Deps<'a> {
     pub(crate) own: &'a Own,
     pub(crate) look: &'a dyn Fn(&str) -> Look,
-    pub(crate) send: &'a dyn Fn(&str, &QueueItem) -> Result<Delivery, Fail>,
+    pub(crate) send: &'a dyn Fn(&str, &QueueItem) -> Result<Delivery, Said>,
 }
 
 /// 编辑已发的那一句、选了现在停：主 agent 在跑也送（[`step`] 照它让路）。
@@ -119,7 +119,11 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
         let due = match q::due(deps.own, sid, now_ms) {
             Ok(d) => d,
             Err(f) => {
-                tracing::warn!("[session-queue] {sid} 读不出队：{} {}", f.code, f.message);
+                tracing::warn!(
+                    "[session-queue] {sid} 读不出队：{} {}",
+                    f.code_or_fallback(),
+                    f.said
+                );
                 continue;
             }
         };
@@ -152,8 +156,8 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
                 if let Err(f) = q::end(deps.own, sid, now_ms) {
                     tracing::warn!(
                         "[session-queue] {sid} 标未送达没成：{} {}",
-                        f.code,
-                        f.message
+                        f.code_or_fallback(),
+                        f.said
                     );
                 }
                 memo.live = false;
@@ -167,8 +171,8 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
                         if let Err(f) = q::mark_half(deps.own, sid, &item.id, half) {
                             tracing::warn!(
                                 "[session-queue] {sid} 记等的原因没成：{} {}",
-                                f.code,
-                                f.message
+                                f.code_or_fallback(),
+                                f.said
                             );
                         }
                         memo.retry_ms = Some(now_ms.saturating_add(WAITING_RETRY_MS));
@@ -199,8 +203,8 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
                 },
                 Err(f) => tracing::warn!(
                     "[session-queue] {sid} 送没成，下次再试：{} {}",
-                    f.code,
-                    f.message
+                    f.code_or_fallback(),
+                    f.said
                 ),
             },
         }
@@ -218,14 +222,14 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
 }
 
 /// 送完之后改队那一下没成（那一条已不在排着 · 写不进）：只留一行日志，下一遍照盘上此刻的样子再判。
-fn noted(r: Result<bool, Fail>, sid: &str, what: After) {
+fn noted(r: Result<bool, Said>, sid: &str, what: After) {
     match r {
         Ok(true) => {}
         Ok(false) => tracing::info!("[session-queue] {sid} {what:?}：那一条已不在排着（撤了）"),
         Err(f) => tracing::warn!(
             "[session-queue] {sid} {what:?} 没成：{} {}",
-            f.code,
-            f.message
+            f.code_or_fallback(),
+            f.said
         ),
     }
 }
@@ -307,9 +311,9 @@ fn sleep_until(rx: &std::sync::mpsc::Receiver<()>, wake: Option<i64>) -> bool {
 
 /// 生产那一份送一条：照送字本体（[`super::session_send`]：在等人不送 · 只剩 shell 不送 · 终端没了按记下的号恢复、那一句当第一句 ·
 /// 附件照那一家的写法拼）。发自哪一端是合形状的前端名 ⇒ 当这次请求自报的前端过身份门；不是 ⇒ 不自报（照名字规则）。
-fn send_here(sid: &str, item: &QueueItem, files: Files) -> Result<Delivery, Fail> {
+fn send_here(sid: &str, item: &QueueItem, files: Files) -> Result<Delivery, Said> {
     let sid: cmd_wire::Sid = sid.parse().map_err(|e: cmd_wire::sid::NotASid| {
-        Fail::new(
+        crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed(&e.to_string()),
         )

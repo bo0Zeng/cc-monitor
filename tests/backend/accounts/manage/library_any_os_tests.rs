@@ -84,8 +84,8 @@ fn the_account_library_lands_on_this_os() {
             crate::platform::acct_view::unsupported_said().expect("建不了链接却说做得了多账号");
         let e = init.err().expect("做不了多账号却建成了");
         assert_eq!(
-            (e.code.as_str(), e.message.as_str()),
-            ("unsupported", said.as_str())
+            (e.code.as_deref(), e.said.as_str()),
+            (Some("unsupported"), said.as_str())
         );
         assert!(!t.p(".cc-monitor/accounts").exists(), "拒了却动了盘");
         return;

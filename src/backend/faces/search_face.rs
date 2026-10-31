@@ -130,7 +130,7 @@ pub(crate) fn search_at(
     .map_err(HistorySearchErr::Failed)?;
     if size > cap {
         return Err(HistorySearchErr::TooLarge(
-            super::read_face::too_large_at(size, cap).1,
+            super::read_face::too_large_at(size, cap).said,
         ));
     }
     Ok(HistorySearchReply {
@@ -210,10 +210,7 @@ pub(crate) async fn merge_with(
         // 本机没答上 ⇒ 整次照它的码失败（下面取出来）：这一格只占位。
         local.await.map_err(|e| {
             *local_err.lock().unwrap_or_else(|p| p.into_inner()) = Some(e);
-            crate::dial::remote_ask::Said {
-                code: None,
-                message: String::new(),
-            }
+            crate::common::said::Said::from(String::new())
         })
     };
     let got = crate::dial::remote_ask::ask_each::<HistorySearch, _>(
@@ -241,7 +238,7 @@ pub(crate) async fn merge_with(
             Ok(reply) => answered.push((origin, reply)),
             Err(s) => down.push(SearchDown {
                 origin,
-                said: s.message,
+                said: s.said,
             }),
         }
     }

@@ -24,8 +24,8 @@ async fn answer_with(
     fold: Fold,
     remote: &dyn Remote,
     table: &Table,
-) -> Result<Value, (&'static str, String)> {
-    let req: AssetsSyncReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+) -> Result<Value, crate::common::said::Said> {
+    let req: AssetsSyncReq = crate::wire::typed::take(args).map_err(|f| f.coded("bad_args"))?;
     super::answer_with(&req, fold, remote, table)
         .await
         .map(|r| serde_json::to_value(r).unwrap())
@@ -94,7 +94,7 @@ impl Machine {
             label: name,
         }
     }
-    fn update(&self, incoming: Option<&Value>) -> Result<Value, crate::wire::spec::Fail> {
+    fn update(&self, incoming: Option<&Value>) -> Result<Value, crate::common::said::Said> {
         let inc = incoming.map(|c| {
             let c: cat::CatalogIn = serde_json::from_value(c.clone()).expect("载荷形状");
             cat::machines_of(c.machines).expect("载荷形状")
@@ -149,7 +149,7 @@ impl Remote for FakeRemotes {
             let m = self.by_host.get(&host).ok_or("没这台")?;
             if command == pull_command() {
                 assert_eq!(stdin, None, "拉那一趟不写 stdin");
-                return m.update(None).map(|v| v.to_string()).map_err(|e| e.message);
+                return m.update(None).map(|v| v.to_string()).map_err(|e| e.said);
             }
             // 推那一趟：命令行逐字 == `<落点> --assets-catalog-merge --stdin-line`（不含载荷），载荷恰好一行进 stdin。
             if command != push_command() {
@@ -163,7 +163,7 @@ impl Remote for FakeRemotes {
             let v: Value = serde_json::from_str(payload).map_err(|e| e.to_string())?;
             m.update(Some(&v["catalog"]))
                 .map(|v| v.to_string())
-                .map_err(|e| e.message)
+                .map_err(|e| e.said)
         })
     }
 }
@@ -363,13 +363,13 @@ async fn half_given_arguments_are_refused() {
         let e = answer_with(&bad, local.fold(), &fakes, &table)
             .await
             .expect_err("收下了");
-        assert_eq!(e.0, "bad_args", "{bad}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad}");
     }
     // 点名的那一台不在机器表里 ⇒ 明说够不到，一次都不拨。
     let e = answer_with(&json!({"origin": "o"}), local.fold(), &fakes, &table)
         .await
         .expect_err("机器表里没有也收了");
-    assert_eq!(e.0, "unreachable");
+    assert_eq!(e.code.as_deref(), Some("unreachable"));
     assert!(fakes.seen.lock().unwrap().is_empty());
     // 正控：机器表里有 ⇒ 只给 `origin` 就对那一台做一趟。
     crate::dial::remote_ask::test_peers::add(&table, named("o", "x"));
@@ -627,7 +627,7 @@ async fn an_extra_key_is_bad_args_on_the_frame_path() {
             until: None,
         };
         let got = run(req).await.map(|_| ()).map_err(|f| f.code);
-        assert_eq!(got, Err("bad_args".to_string()), "{args}");
+        assert_eq!(got, Err(Some("bad_args".to_string())), "{args}");
     }
     assert_eq!(
         crate::dial::remote_ask::reach_rows(&REACH).len(),

@@ -34,8 +34,8 @@ pub(crate) fn ours(d: &dyn Door, home: &str) -> Result<Vec<String>, String> {
         range: None,
     }) {
         Ok(v) => v,
-        Err((code, _)) if code == "not_found" => return Ok(Vec::new()),
-        Err((_, said)) => return Err(said),
+        Err(s) if s.code.as_deref() == Some("not_found") => return Ok(Vec::new()),
+        Err(s) => return Err(s.said),
     };
     let mut out = Vec::new();
     for e in listed.up.values() {

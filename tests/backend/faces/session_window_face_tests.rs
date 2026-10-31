@@ -178,9 +178,9 @@ async fn that_machine_not_reached_is_that_face_with_the_sentence_as_said() {
 
 #[test]
 fn what_that_machine_said_when_it_was_not_asked() {
-    let said = |code: Option<&str>| Said {
-        code: code.map(str::to_string),
-        message: "那一句".into(),
+    let said = |code: Option<&str>| match code {
+        Some(c) => Said::new(c, "那一句".to_string()),
+        None => Said::from("那一句"),
     };
     assert_eq!(
         not_asked(said(Some("unknown_command"))).unwrap(),

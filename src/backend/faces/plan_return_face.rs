@@ -4,17 +4,17 @@
 //! 排进去了 ⇒ 记一条「已退回」（[`crate::plan::review`] 的退回写口只从本文件进），
 //! 之后 `plan-read` 里那一格带落没落地（[`crate::plan::needs::landing`]）。
 
+use crate::common::said::Said;
 use crate::plan::needs::{self, Returned};
-use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use cmd_wire::plan::{PlanRead, PlanReturnReply, PlanWho};
 use cmd_wire::queue::{QueuePut, SessionQueuePutReq};
 use copy_core::copy_text;
 
-type Answer = Result<PlanReturnReply, Fail>;
+type Answer = Result<PlanReturnReply, Said>;
 
-fn bad(what: &str) -> Fail {
-    Fail::new("bad_args", crate::common::contract::malformed(what))
+fn bad(what: &str) -> Said {
+    crate::wire::spec::fail("bad_args", crate::common::contract::malformed(what))
 }
 
 fn now_ms() -> u64 {
@@ -25,9 +25,9 @@ fn now_ms() -> u64 {
 }
 
 /// 投进那条会话的输入队（生产 ＝ `session-queue-put` 在这台的那一半）。
-pub(crate) type Put<'a> = &'a dyn Fn(&SessionQueuePutReq) -> Result<QueuePut, Fail>;
+pub(crate) type Put<'a> = &'a dyn Fn(&SessionQueuePutReq) -> Result<QueuePut, Said>;
 /// 记一次退回（生产 ＝ [`crate::plan::review`] 的写口）。
-pub(crate) type Record<'a> = &'a dyn Fn(&str, &str, &str, Returned) -> Result<(), Fail>;
+pub(crate) type Record<'a> = &'a dyn Fn(&str, &str, &str, Returned) -> Result<(), Said>;
 
 /// 发自哪一端：没自报 ⇒ 这一个。
 const END: &str = "plan";
@@ -66,7 +66,8 @@ pub(crate) fn return_with(
         Some(s) if s == "owner" || s == "signer" => s,
         Some(_) => return Err(bad("`to` must be `owner` or `signer`")),
     };
-    let no_cell = || Fail::new("no_such_cell", copy_text("bePlan.review.noSuchCell", &[]));
+    let no_cell =
+        || crate::wire::spec::fail("no_such_cell", copy_text("bePlan.review.noSuchCell", &[]));
     let sl = doc
         .slices
         .iter()
@@ -76,7 +77,7 @@ pub(crate) fn return_with(
     let cell = needs::target(sl, id).ok_or_else(no_cell)?;
     let line = needs::line(id, cell.title.as_deref().unwrap_or_default(), text);
     let Some(to) = cell.who(role) else {
-        return Err(Fail::new(
+        return Err(crate::wire::spec::fail(
             "no_target",
             copy_text("bePlan.review.noTarget", &[("role", role)]),
         ));

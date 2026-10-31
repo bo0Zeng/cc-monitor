@@ -25,16 +25,10 @@ pub(crate) const KEPT_MAX: usize = 3;
 /// 留下的那一份过多久删（从留下的那一刻算）。
 pub(crate) const KEPT_MAX_AGE_SECS: u64 = 30 * 24 * 3600;
 
-/// 失败：码 ＋ 那一句。
-type Failed = (&'static str, Said);
-
 /// 这一份自己（`current_exe()`）；问不到 ⇒ `place_failed`。
-fn this_exe() -> Result<std::path::PathBuf, Failed> {
+fn this_exe() -> Result<std::path::PathBuf, Said> {
     std::env::current_exe().map_err(|e| {
-        (
-            "place_failed",
-            Said::with_raw(copy_text("beResident.spawn.noSelf", &[]), &e),
-        )
+        Said::with_raw(copy_text("beResident.spawn.noSelf", &[]), &e).coded("place_failed")
     })
 }
 
@@ -48,7 +42,10 @@ pub fn run(own: &Own) -> i32 {
             );
             0
         }
-        Err((code, said)) => crate::wire::detail::emit_err(CMD, code, said),
+        Err(said) => {
+            let code = said.code_or_fallback().to_string();
+            crate::wire::detail::emit_err(CMD, &code, said)
+        }
     }
 }
 
@@ -59,21 +56,24 @@ pub fn run_unplace(own: &Own) -> i32 {
             println!("{}", serde_json::json!({ "removed": removed }));
             0
         }
-        Err((code, said)) => crate::wire::detail::emit_err(UNPLACE_CMD, code, said),
+        Err(said) => {
+            let code = said.code_or_fallback().to_string();
+            crate::wire::detail::emit_err(UNPLACE_CMD, &code, said)
+        }
     }
 }
 
 /// `exe` 恰在暂存区里 ⇒ 暂存区（`Own` 发的那一条）＋ 它的名字；不在 ⇒ `outside_staging`（不是部署那一趟放上来的，一个字节不动）。
 /// 两边都解开再比：暂存区本身是不是链接由远端写围栏管。
-fn staged_self<'a>(own: &Own, exe: &'a Path) -> Result<(OwnPath, &'a str), Failed> {
+fn staged_self<'a>(own: &Own, exe: &'a Path) -> Result<(OwnPath, &'a str), Said> {
     let staging = own
         .at_home(relay_route_core::STAGING_DIR_REL)
-        .map_err(|s| ("outside_staging", s))?;
+        .map_err(|s| s.coded("outside_staging"))?;
     let inside = exe.parent().and_then(|d| Ro::canonicalize(d).ok())
         == Ro::canonicalize(staging.as_path()).ok();
     match (inside, exe.file_name().and_then(|n| n.to_str())) {
         (true, Some(name)) => Ok((staging, name)),
-        _ => Err((
+        _ => Err(crate::common::said::Said::new(
             "outside_staging",
             copy_text(
                 "bePlaceSelf.place.outsideStaging",
@@ -85,21 +85,19 @@ fn staged_self<'a>(own: &Own, exe: &'a Path) -> Result<(OwnPath, &'a str), Faile
 }
 
 /// 落点那一下没成 ⇒ `place_failed`（那一句只有路径与原因词，系统原话进 `raw`）。
-fn io_failed(shown: &str, e: std::io::Error) -> Failed {
-    (
-        "place_failed",
-        Said::with_raw(
-            copy_text(
-                "bePlaceSelf.place.failed",
-                &[("path", shown), ("why", &copy_core::io_reason(e.kind()))],
-            ),
-            &e,
+fn io_failed(shown: &str, e: std::io::Error) -> Said {
+    Said::with_raw(
+        copy_text(
+            "bePlaceSelf.place.failed",
+            &[("path", shown), ("why", &copy_core::io_reason(e.kind()))],
         ),
+        &e,
     )
+    .coded("place_failed")
 }
 
 /// 卸载的本体：暂存区里的这一份删掉落点那一份（不在 ⇒ `false`）、再删自己。
-pub(crate) fn unplace(own: &Own, exe: &Path) -> Result<bool, Failed> {
+pub(crate) fn unplace(own: &Own, exe: &Path) -> Result<bool, Said> {
     let (staging, name) = staged_self(own, exe)?;
     let removed = own
         .clear_landing()
@@ -114,7 +112,7 @@ pub(crate) fn unplace(own: &Own, exe: &Path) -> Result<bool, Failed> {
 }
 
 /// 本体：`exe` 是这一份自己（生产 = `current_exe()`）· `mine` 是这一版自报的身份。
-pub(crate) fn place(own: &Own, exe: &Path, mine: &str) -> Result<(), Failed> {
+pub(crate) fn place(own: &Own, exe: &Path, mine: &str) -> Result<(), Said> {
     let shown = exe.display().to_string();
     let (staging, name) = staged_self(own, exe)?;
     let io = |e: std::io::Error| io_failed(&shown, e);
@@ -126,7 +124,7 @@ pub(crate) fn place(own: &Own, exe: &Path, mine: &str) -> Result<(), Failed> {
         if let Ok(p) = staging.join(name) {
             let _ = own.delete_file(&p);
         }
-        return Err((
+        return Err(crate::common::said::Said::new(
             "not_self",
             copy_text(
                 "bePlaceSelf.place.notSelf",
@@ -142,10 +140,10 @@ pub(crate) fn place(own: &Own, exe: &Path, mine: &str) -> Result<(), Failed> {
 }
 
 /// 落点上那一份的字节与留下时叫什么：`ccm-<它自报的身份>`；身份读不出 · 不止一个 ⇒ `ccm-unstamped`。落点不在 ⇒ `None`（头一回装，没有可留的）。
-fn old_copy(own: &Own) -> Result<Option<(Vec<u8>, String)>, Failed> {
+fn old_copy(own: &Own) -> Result<Option<(Vec<u8>, String)>, Said> {
     let at = own
         .at_home(relay_route_core::BACKEND_LANDING_REL)
-        .map_err(|s| ("place_failed", s))?;
+        .map_err(|s| s.coded("place_failed"))?;
     let bytes = match Ro::read(at.as_path()) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -159,12 +157,12 @@ fn old_copy(own: &Own) -> Result<Option<(Vec<u8>, String)>, Failed> {
 }
 
 /// 盖落点之前把旧的那一份整份写进留存区（原子写；同名已在 ⇒ 盖掉）；留不成 ⇒ `place_failed`（不换，落点一个字节不动）。
-fn keep_old(own: &Own) -> Result<(), Failed> {
+fn keep_old(own: &Own) -> Result<(), Said> {
     let Some((bytes, name)) = old_copy(own)? else {
         return Ok(());
     };
     own.keep_backend(&name, &bytes)
-        .map_err(|s| ("place_failed", s))
+        .map_err(|s| s.coded("place_failed"))
 }
 
 /// 删留存区里的一份；删不掉只进日志（不挡这一趟，下一趟再来）。

@@ -3,7 +3,7 @@
 
 use crate::agents::AssetFace;
 use crate::common::contract::malformed;
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
@@ -43,10 +43,10 @@ impl crate::wire::typed::Handle for SessionCommandsCmd {
     }
 }
 
-fn answer(req: &SessionCommandsReq) -> Result<SessionCommands, Fail> {
+fn answer(req: &SessionCommandsReq) -> Result<SessionCommands, Said> {
     let home = crate::history::listing::agent_home();
     let record = crate::observe::query::locate::session_record(&home, &req.sid).map_err(|_| {
-        Fail::new(
+        crate::wire::spec::fail(
             "no_such_session",
             copy_text("beSessionCommands.session.noRecord", &[]),
         )

@@ -21,6 +21,7 @@
 //! 动的仍是判过的那一层，落不到根外；递归删 / 复制每一条都这样走。还开着：CAS 与换名之间（窗里被别人改了会被盖掉）；
 //! Windows 臂仍按路径字符串动手（那几形在 Windows 上没闭合、没在真 Windows 上跑过）。判据全在本机临时目录上跑，没在真远端上跑过。
 
+use crate::common::said::Said;
 use crate::platform::fs::{Face, Perms, Resolved, Ro};
 use cmd_wire::files as wire;
 use copy_core::{copy_text, io_reason};
@@ -622,7 +623,7 @@ pub fn delete_empty_dir(
 
 /// 线上那几个字（八进制写法）⇒ 权限位；两个界面都只交原文，解与拒只在这里。
 /// 超出 `0o7777` 拒而不掩：敲了 `100644`（连文件类型位一起抄来的）掩成 `644` 就是改了别的东西。
-pub fn mode_of_text(t: &str) -> Result<u32, WriteFail> {
+pub fn mode_of_text(t: &str) -> Result<u32, Said> {
     let t = t.trim();
     let said = if t.is_empty() {
         copy_text("beFilesWrite.mode.empty", &[])
@@ -633,7 +634,7 @@ pub fn mode_of_text(t: &str) -> Result<u32, WriteFail> {
             Err(_) => copy_text("beFilesWrite.mode.notOctal", &[]),
         }
     };
-    Err(WriteFail::from(("refused", said)))
+    Err(Said::new("refused", said))
 }
 
 /// 改 unix 权限位（只收低 12 位），另交**改之前**的权限位（低 12 位；读不到 ⇒ `None`）：调用方据它撤销。
@@ -1617,9 +1618,9 @@ pub const PEEK_MAX_BYTES: usize = 256 * 1024;
 /// 于是「读的那一份」与「写的那一份」是同一个落点。
 ///
 /// 不在 ⇒ `Ok(text: None)`；在但不是普通文件 / 不是 UTF-8 / 超上限 ⇒ 拒（码见 [`answer_peek`]）。
-pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail> {
+pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, Said> {
     let rel = rel.as_ref();
-    let at = walk_in_root(Last::Link, root, rel).map_err(|m| WriteFail::from(("refused", m)))?;
+    let at = walk_in_root(Last::Link, root, rel).map_err(|m| Said::new("refused", m))?;
     match Ro::symlink_metadata(&at) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Ok(Peeked {
@@ -1628,7 +1629,7 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail
             })
         }
         Err(e) => {
-            return Err(WriteFail::io(
+            return Err(Said::with_raw(
                 copy_text(
                     "reason.fs.readFailed",
                     &[
@@ -1637,14 +1638,14 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail
                     ],
                 ),
                 &e,
-            ))
+            )
+            .coded("io_failed"))
         }
         Ok(_) => {}
     }
-    let real =
-        walk_in_root(Last::Follow, root, rel).map_err(|m| WriteFail::from(("refused", m)))?;
+    let real = walk_in_root(Last::Follow, root, rel).map_err(|m| Said::new("refused", m))?;
     let md = Ro::metadata(&real).map_err(|e| {
-        WriteFail::io(
+        Said::with_raw(
             copy_text(
                 "reason.fs.readFailed",
                 &[
@@ -1654,18 +1655,19 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail
             ),
             &e,
         )
+        .coded("io_failed")
     })?;
     if !md.is_file() {
-        return Err(WriteFail::from((
+        return Err(Said::new(
             "refused",
             copy_text(
                 "beFilesWrite.peek.notRegular",
                 &[("path", &real.display().to_string())],
             ),
-        )));
+        ));
     }
     if md.len() > PEEK_MAX_BYTES as u64 {
-        return Err(WriteFail::from((
+        return Err(Said::new(
             "too_large",
             copy_text(
                 "beFilesWrite.peek.tooBig",
@@ -1675,10 +1677,10 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail
                     ("max", &PEEK_MAX_BYTES.to_string()),
                 ],
             ),
-        )));
+        ));
     }
     let bytes = Ro::read_nofollow(&real).map_err(|e| {
-        WriteFail::io(
+        Said::with_raw(
             copy_text(
                 "reason.fs.readFailed",
                 &[
@@ -1688,12 +1690,13 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail
             ),
             &e,
         )
+        .coded("io_failed")
     })?;
     if bytes.is_empty() && md.len() > 0 {
-        return Err(WriteFail::from(("io_failed", hollow_read(&real, md.len()))));
+        return Err(Said::new("io_failed", hollow_read(&real, md.len())));
     }
     let text = String::from_utf8(bytes).map_err(|_| {
-        (
+        Said::new(
             "not_text",
             copy_text(
                 "beFilesWrite.peek.notUtf8",
@@ -2460,56 +2463,23 @@ fn fenced_session_file(
 //   「真远端那台机器上跑过」**没有**（同本模块头注第 3 条），
 //   本机跑得到的是本机文件系统上的那一趟。
 
-/// 写面一条命令没成：码 ＋ 给人看的那一句 ＋ 下层原话（可缺；不上句子，进应答的复制详情）。
-/// 参数那几道（`(码, 话)`）与盘上那几步（[`WriteRefusal`]）都经 `?` 换成它。
-#[derive(Debug, Clone, PartialEq)]
-pub struct WriteFail {
-    pub code: &'static str,
-    pub said: String,
-    pub raw: Option<String>,
-}
-
-impl From<(&'static str, String)> for WriteFail {
-    fn from((code, said): (&'static str, String)) -> Self {
-        WriteFail {
-            code,
-            said,
-            raw: None,
-        }
-    }
-}
-
-impl WriteFail {
-    /// 盘上这一步没成（`io_failed`）：句子已带原因词，系统原话进复制详情。
-    pub fn io(said: String, e: &std::io::Error) -> WriteFail {
-        WriteFail {
-            code: "io_failed",
-            said,
-            raw: Some(e.to_string()),
-        }
-    }
-}
-
-impl From<WriteRefusal> for WriteFail {
-    /// 码由那个枚举自己答（理由住 [`WriteRefusal`]）。
+/// 写面一条命令没成是一份 [`Said`]（码 ＋ 给人看的那一句 ＋ 下层原话，原话进应答的复制详情）：
+/// 盘上那几步（[`WriteRefusal`]）经 `?` 换成它，码由那个枚举自己答。
+impl From<WriteRefusal> for Said {
     fn from(e: WriteRefusal) -> Self {
-        WriteFail {
-            code: e.code(),
-            said: e.message().to_string(),
-            raw: e.raw().map(str::to_string),
-        }
+        Said::new(e.code(), e.message().to_string()).and_raw(e.raw())
     }
 }
 
 /// 一条写命令的入参类型就选中了那条命令的本体（同读那一族的 `files::Ask`）：命令那一层只经 [`answer`] 这一扇门进来。
 pub trait Act {
     type Reply;
-    fn act(self, face: &Face) -> Result<Self::Reply, WriteFail>;
+    fn act(self, face: &Face) -> Result<Self::Reply, Said>;
 }
 
 /// 文件管理写的那几条（写面 · 上传提交 · 解压）的**入口**：写经分派递进来的 `face`。
 /// 删会话那一条另走 [`delete_session_of`]（它还要门递进来的那两问）。
-pub fn answer<A: Act>(req: A, face: &Face) -> Result<A::Reply, WriteFail> {
+pub fn answer<A: Act>(req: A, face: &Face) -> Result<A::Reply, Said> {
     req.act(face)
 }
 
@@ -2518,7 +2488,7 @@ macro_rules! acts {
         $(impl Act for wire::$req {
             type Reply = wire::$reply;
             #[allow(unused_variables)]
-            fn act(self, $f: &Face) -> Result<wire::$reply, WriteFail> {
+            fn act(self, $f: &Face) -> Result<wire::$reply, Said> {
                 let $r = self;
                 $body
             }
@@ -2537,12 +2507,12 @@ acts! {
 }
 
 /// 目标根（或别的绝对路径那一格）⇒ `PathBuf`。空的 ⇒ `bad_path`（缺 · 形状不对在解入参那一步就回了 `bad_args`）。
-pub fn root_of(p: &wire::WirePath, key: &str) -> Result<PathBuf, WriteFail> {
+pub fn root_of(p: &wire::WirePath, key: &str) -> Result<PathBuf, Said> {
     if p.0.is_empty() {
-        return Err(WriteFail::from((
+        return Err(Said::new(
             "bad_path",
             crate::common::contract::malformed(&format!("`{key}` is empty")),
-        )));
+        ));
     }
     Ok(crate::files::raw::to_path_buf(&p.0))
 }
@@ -2559,20 +2529,20 @@ pub fn wire_of(p: &Path) -> wire::WirePath {
 
 /// `single`（缺 ⇒ `false`）：给了 ⇒ 这一格只许是一段名字（界面「新建 / 改名」那一格敲的就是一个名字）。
 /// 每一段都过这台的名字规则（`platform::paths::name_problem`）。不合 ⇒ 码 [`BAD_NAME`]。
-pub(crate) fn names_ok(single: bool, rel: &Path) -> Result<(), WriteFail> {
+pub(crate) fn names_ok(single: bool, rel: &Path) -> Result<(), Said> {
     let shown = rel.to_string_lossy();
     let parts: Vec<Component> = rel.components().collect();
     if single && parts.is_empty() {
-        return Err(WriteFail::from((
+        return Err(Said::new(
             BAD_NAME,
             copy_text("beFilesWrite.name.empty", &[]),
-        )));
+        ));
     }
     if single && !matches!(parts.as_slice(), [Component::Normal(_)]) {
-        return Err(WriteFail::from((
+        return Err(Said::new(
             BAD_NAME,
             copy_text("beFilesWrite.name.notOne", &[("name", &shown)]),
-        )));
+        ));
     }
     for part in parts {
         let Component::Normal(seg) = part else {
@@ -2592,14 +2562,14 @@ pub(crate) fn names_ok(single: bool, rel: &Path) -> Result<(), WriteFail> {
                 copy_text("beFilesWrite.name.trailing", &[("name", &name)])
             }
         };
-        return Err(WriteFail::from((BAD_NAME, said)));
+        return Err(Said::new(BAD_NAME, said));
     }
     Ok(())
 }
 
 /// 一次拒绝交回线上：码由那个枚举自己答（理由住 [`WriteRefusal`]）。
-fn refusal(e: WriteRefusal) -> WriteFail {
-    WriteFail::from(e)
+fn refusal(e: WriteRefusal) -> Said {
+    Said::from(e)
 }
 
 fn n(x: usize) -> u64 {
@@ -2607,7 +2577,7 @@ fn n(x: usize) -> u64 {
 }
 
 /// `files-create` —— 把两道路径解析与那一处 `O_EXCL` 落盘接到线上。不给 `content` ⇒ 新建一份**空文件**。
-fn create(face: &Face, req: wire::FilesCreateReq) -> Result<wire::FilesPathBytesReply, WriteFail> {
+fn create(face: &Face, req: wire::FilesCreateReq) -> Result<wire::FilesPathBytesReply, Said> {
     let root = root_of(&req.root, "root")?;
     let rel = rel_of(&req.rel);
     names_ok(req.single.unwrap_or(false), &rel)?;
@@ -2621,7 +2591,7 @@ fn create(face: &Face, req: wire::FilesCreateReq) -> Result<wire::FilesPathBytes
 }
 
 /// `files-mkdir`。
-fn mkdir(face: &Face, req: wire::FilesMkdirReq) -> Result<wire::FilesPathReply, WriteFail> {
+fn mkdir(face: &Face, req: wire::FilesMkdirReq) -> Result<wire::FilesPathReply, Said> {
     let root = root_of(&req.root, "root")?;
     let rel = rel_of(&req.rel);
     names_ok(req.single.unwrap_or(false), &rel)?;
@@ -2632,7 +2602,7 @@ fn mkdir(face: &Face, req: wire::FilesMkdirReq) -> Result<wire::FilesPathReply, 
 }
 
 /// `files-rename`。
-fn rename(face: &Face, req: wire::FilesRenameReq) -> Result<wire::FilesPathReply, WriteFail> {
+fn rename(face: &Face, req: wire::FilesRenameReq) -> Result<wire::FilesPathReply, Said> {
     let root = root_of(&req.root, "root")?;
     let (from, to) = (rel_of(&req.from), rel_of(&req.to));
     names_ok(req.single.unwrap_or(false), &to)?;
@@ -2643,10 +2613,7 @@ fn rename(face: &Face, req: wire::FilesRenameReq) -> Result<wire::FilesPathReply
 }
 
 /// `files-write-text`：`content` · `expect`（摘要形 CAS）都**必给**：没有「不问就盖」这一形（同 `Door::put`）。
-fn write_text(
-    face: &Face,
-    req: wire::FilesWriteTextReq,
-) -> Result<wire::FilesWrittenReply, WriteFail> {
+fn write_text(face: &Face, req: wire::FilesWriteTextReq) -> Result<wire::FilesWrittenReply, Said> {
     let root = root_of(&req.root, "root")?;
     let rel = rel_of(&req.rel);
     let bytes = req.content.0;
@@ -2660,7 +2627,7 @@ fn write_text(
 }
 
 /// `Door::peek`：读改写的读那一半（不写，不要句柄）。
-fn peek(req: wire::FilesPeekReq) -> Result<wire::FilesPeekReply, WriteFail> {
+fn peek(req: wire::FilesPeekReq) -> Result<wire::FilesPeekReply, Said> {
     let root = root_of(&req.root, "root")?;
     let rel = rel_of(&req.rel);
     let got = peek_text(&root, &rel)?;
@@ -2672,7 +2639,7 @@ fn peek(req: wire::FilesPeekReq) -> Result<wire::FilesPeekReply, WriteFail> {
 }
 
 /// `Door::put`：🔴 `expect` **必给**：`null` = 「我读的时候它不在」；字符串 / b16 = 「我读到的就是这一份」（缺席在解入参那一步就拒了）。
-fn put(face: &Face, req: wire::FilesPutReq) -> Result<wire::FilesPutReply, WriteFail> {
+fn put(face: &Face, req: wire::FilesPutReq) -> Result<wire::FilesPutReply, Said> {
     let root = root_of(&req.root, "root")?;
     let rel = rel_of(&req.rel);
     let expect = req.expect.map(|e| e.0);
@@ -2701,7 +2668,7 @@ pub fn delete_session_of(
     face: &Face,
     req: wire::FilesDeleteSessionReq,
     sessions: &SessionPort,
-) -> Result<wire::FilesPathReply, WriteFail> {
+) -> Result<wire::FilesPathReply, Said> {
     let done = delete_session(face, &req.sid, sessions).map_err(refusal)?;
     Ok(wire::FilesPathReply {
         path: wire_of(&done),

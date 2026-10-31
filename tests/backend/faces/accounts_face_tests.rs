@@ -131,7 +131,7 @@ fn key_ids(t: &Tmp) -> Vec<String> {
 /// 门：写 key 那一口由调用方给，删 / 放回 / 在哪都落在临时目录那份表上。
 fn call_door(
     t: &Tmp,
-    set: &dyn Fn(&file_face::KeySetReq) -> Result<file_face::KeySet, Fail>,
+    set: &dyn Fn(&file_face::KeySetReq) -> Result<file_face::KeySet, Said>,
     cmd: &str,
     args: Value,
 ) -> Answer {
@@ -159,7 +159,7 @@ fn call_door(
 }
 
 /// 这一族的应答：成品或失败（码 ＋ 那一句 ＋ 原话）。
-pub(crate) type Answer = Result<Value, Fail>;
+pub(crate) type Answer = Result<Value, Said>;
 
 /// 按名字跑一条（别族的判据也借它搭夹具）：入参经 typed 那一处收（同生产），再交给本体。门 · key 表那几口由判据给。
 pub(crate) fn answer(
@@ -169,7 +169,7 @@ pub(crate) fn answer(
     keys: &KeyDoor,
 ) -> Answer {
     use crate::wire::typed::take;
-    fn out<T: serde::Serialize>(v: Result<T, Fail>) -> Answer {
+    fn out<T: serde::Serialize>(v: Result<T, Said>) -> Answer {
         v.map(|v| serde_json::to_value(v).expect("成品序列化得出"))
     }
     match cmd {
@@ -207,7 +207,7 @@ pub(crate) fn answer(
 /// 写 key 那一口先记下入参，再真写进临时目录那份表。
 fn call_with(t: &Tmp, keys: &KeyLog, cmd: &str, args: Value) -> Answer {
     let table = key_table(t);
-    let set = |v: &file_face::KeySetReq| -> Result<file_face::KeySet, Fail> {
+    let set = |v: &file_face::KeySetReq| -> Result<file_face::KeySet, Said> {
         keys.lock().unwrap().push((
             json!({ "configDir": v.config_dir, "baseUrl": v.base_url }),
             v.key.clone(),
@@ -231,7 +231,7 @@ fn ok(t: &Tmp, cmd: &str, args: Value) -> Value {
 fn code(t: &Tmp, cmd: &str, args: Value) -> String {
     match call(t, cmd, args.clone()) {
         Ok(v) => panic!("{cmd} {args} 本该被拒，却成了：{v}"),
-        Err(f) => f.code,
+        Err(f) => f.code_or_fallback().to_string(),
     }
 }
 
@@ -772,7 +772,10 @@ fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
             Some(b) => json!({ "name": "k2", "kind": "api-key", "key": key, "baseUrl": b }),
             None => json!({ "name": "k2", "kind": "api-key", "key": key }),
         };
-        assert_eq!(call(&t, "accounts-add", args).unwrap_err().code, "bad_args");
+        assert_eq!(
+            call(&t, "accounts-add", args).unwrap_err().code.as_deref(),
+            Some("bad_args")
+        );
         assert!(!t.exists(".cc-monitor/accounts/k2"));
     }
 }
@@ -792,9 +795,9 @@ fn the_dry_run_judges_the_base_url_too() {
         "https://x.test/?q=1",
     ] {
         let e = call(&t, "accounts-add", dry(bad)).unwrap_err();
-        assert_eq!(e.code, "bad_args", "{bad}");
-        assert!(!e.message.trim().is_empty(), "{bad}：拒了却没说为什么");
-        said.push(e.message);
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad}");
+        assert!(!e.said.trim().is_empty(), "{bad}：拒了却没说为什么");
+        said.push(e.said);
     }
     assert_ne!(said[0], said[2], "明文非回环与协议不对说成了同一句");
     for good in [
@@ -813,11 +816,8 @@ fn the_dry_run_judges_the_base_url_too() {
 fn a_key_that_does_not_land_is_said_not_swallowed() {
     let t = machine("api-fail");
     ok(&t, "accounts-init", json!({ "name": "lab" }));
-    let key_set = |_: &file_face::KeySetReq| -> Result<file_face::KeySet, Fail> {
-        Err(crate::wire::spec::Fail::from((
-            "io_failed",
-            "盘满了".to_string(),
-        )))
+    let key_set = |_: &file_face::KeySetReq| -> Result<file_face::KeySet, Said> {
+        Err(crate::wire::spec::fail("io_failed", "盘满了".to_string()))
     };
     let got = call_door(
         &t,
@@ -1276,7 +1276,7 @@ fn rollback_refuses_traversal_and_skips_out_of_bounds_entries() {
     )
     .unwrap();
     let e = call(&t, "accounts-rollback", json!({})).unwrap_err();
-    assert_eq!(e.code, "io_failed");
+    assert_eq!(e.code.as_deref(), Some("io_failed"));
     assert!(t.p("victim/precious.txt").is_file(), "越界的删除照做了");
     assert_eq!(
         t.read(".claude/.credentials.json"),

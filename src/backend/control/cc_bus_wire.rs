@@ -3,16 +3,13 @@
 //! 读的几条（`bus-list` · `bus-inbox` · `bus-peek` · `bus-unread`）与推已读位置那一条（`bus-commit`）本体在 [`super::cc_bus`]。
 
 use super::{cc_bus, cc_bus_envelope};
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use crate::wire::typed::{self, Codes, Command, NoArgs};
 use copy_core::copy_text;
 
-/// 本体回的那一对（码 ＋ 那一句）⇒ 这一条的码表，那一句照这一条的「码 → 句」表换（下层那句进原话）。
-fn of<E: Codes>(
-    fallback: fn(String) -> E,
-    said: impl Fn(&str) -> String,
-) -> impl Fn((String, String)) -> E {
-    move |pair| typed::of_fail_said(Fail::from(pair), fallback, |c| Some(said(c)))
+/// 本体回的失败 ⇒ 这一条的码表，那一句照这一条的「码 → 句」表换（下层那句进原话）。
+fn of<E: Codes>(fallback: fn(String) -> E, said: impl Fn(&str) -> String) -> impl Fn(Said) -> E {
+    move |f| typed::of_fail_said(f, fallback, |c| Some(said(c)))
 }
 
 /// 查在线（`bus-list`）被拒成 `code` 时给人看的那一句（只剩读不成那一种）。
@@ -454,10 +451,10 @@ impl crate::wire::typed::Handle for BusSendCmd {
     }
 }
 
-/// 拒的那一对（码 ＋ 原话）⇒ `bus-send` 的码表，那一句照「码 → 句」表换；原话记诊断日志一行。
-fn refused((c, raw): cc_bus_envelope::Refusal) -> BusSendErr {
-    tracing::info!("cc-bus send refused: {c} {raw}");
-    of(BusSendErr::BadArgs, send_said)((c.to_string(), raw))
+/// 拒的那一条（码 ＋ 原话）⇒ `bus-send` 的码表，那一句照「码 → 句」表换；原话记诊断日志一行。
+fn refused(s: Said) -> BusSendErr {
+    tracing::info!("cc-bus send refused: {} {}", s.code_or_fallback(), s.said);
+    of(BusSendErr::BadArgs, send_said)(s)
 }
 
 /// 收件会话在这台的那一半：盖上 id 与时间 · 照 `roster`（这台读到的组名单）判范围 · 去重限流 · 收进收件箱。
@@ -467,7 +464,7 @@ pub(crate) fn send_here(
     req: &BusEnvelopeReq,
     roster: Result<&crate::history::groups::GroupsRead, &str>,
     now_ms: i64,
-) -> Result<BusSent, cc_bus_envelope::Refusal> {
+) -> Result<BusSent, Said> {
     let env = cc_bus_envelope::envelope_now(req)?;
     super::cc_bus_scope::scope(&env.from, &env.to, roster)?;
     let knock = cc_bus::store::deliver(own, &env, now_ms)?;
@@ -515,7 +512,7 @@ where
         remote,
     )
     .await
-    .map_err(|f| of(BusSendErr::BadArgs, send_said)((f.code, f.message)))
+    .map_err(of(BusSendErr::BadArgs, send_said))
 }
 
 #[cfg(test)]

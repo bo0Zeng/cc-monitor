@@ -75,11 +75,11 @@ pub(crate) fn check(dir: &Path) -> cmd_wire::plan::PlanPbCheck {
     };
     match super::command::run_as(&entry, dir, &["help"], false) {
         Ok(_) => out("ok", copy_text("bePlan.pbDir.ok", &[("dir", &shown)])),
-        Err((_, why, _)) => out(
+        Err(s) => out(
             "not_runnable",
             copy_text(
                 "bePlan.pbDir.notRunnable",
-                &[("dir", &shown), ("why", &why)],
+                &[("dir", &shown), ("why", &s.said)],
             ),
         ),
     }
