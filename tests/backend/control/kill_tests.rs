@@ -12,7 +12,7 @@ fn shape_validation_rejects_what_would_break_the_tmux_target() {
     ] {
         assert_eq!(
             admit_existing_name(bad).map_err(|f| f.code),
-            Err("bad_args".to_string()),
+            Err(Some("bad_args".to_string())),
             "{why} 应当被拒：{bad:?}"
         );
     }
@@ -41,8 +41,8 @@ fn the_terminal_end_request_is_strict() {
 #[test]
 fn the_kill_failures_keep_the_raw_words_out_of_the_sentence() {
     let e = kill_refused(b"can't find pane: %9\n");
-    assert_eq!(e.code, "kill_failed");
-    assert_eq!(e.message, copy_text("beKill.run.failed", &[]));
+    assert_eq!(e.code.as_deref(), Some("kill_failed"));
+    assert_eq!(e.said, copy_text("beKill.run.failed", &[]));
     assert_eq!(e.raw.as_deref(), Some("can't find pane: %9"));
 
     let dir = std::env::temp_dir().join(format!("ccm-kill-gone-{}", std::process::id()));
@@ -50,9 +50,9 @@ fn the_kill_failures_keep_the_raw_words_out_of_the_sentence() {
         .run(crate::platform::child::Deadline::secs(5))
         .expect_err("不存在的程序起得来");
     let e = tmux_unavailable(fail);
-    assert_eq!(e.code, "no_tmux");
+    assert_eq!(e.code.as_deref(), Some("no_tmux"));
     assert_eq!(
-        e.message,
+        e.said,
         copy_text(
             "reason.tmux.startFailed",
             &[(
@@ -128,5 +128,5 @@ async fn terminal_end_ends_a_hosted_terminal_where_there_is_no_tmux() {
     })
     .await
     .expect("线没崩");
-    assert_eq!(gone.map_err(|f| f.code), Err("not_known".to_string()));
+    assert_eq!(gone.map_err(|f| f.code), Err(Some("not_known".to_string())));
 }

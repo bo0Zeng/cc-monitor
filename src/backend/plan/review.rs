@@ -11,6 +11,7 @@
 //! 问图用的别名只从 `faces/plan_ask_face.rs` 进。
 
 use super::needs::{self, Returned};
+use crate::common::said::Said;
 use crate::platform::fs::Own;
 use cmd_wire::plan::{PlanRead, PlanReturned};
 use copy_core::copy_text;
@@ -121,15 +122,13 @@ pub(crate) fn current(path: Option<&Path>) -> Review {
     }
 }
 
-type Err = crate::wire::spec::Fail;
-
 /// 读—改—写一次（跨进程锁里；读不懂的不覆盖）。
-fn edit_at(own: &Own, f: impl FnOnce(&mut Review)) -> Result<(), Err> {
-    let no_home = |_| Err::new("io_failed", copy_text("bePlan.review.noHome", &[]));
+fn edit_at(own: &Own, f: impl FnOnce(&mut Review)) -> Result<(), Said> {
+    let no_home = |_| crate::wire::spec::fail("io_failed", copy_text("bePlan.review.noHome", &[]));
     let dir = own.home_dir().map_err(no_home)?;
     let file = own.at_home(DOC.rel).map_err(no_home)?;
     own.ensure_dir(&dir).map_err(|e| {
-        Err::from((
+        crate::wire::spec::fail(
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
@@ -138,21 +137,21 @@ fn edit_at(own: &Own, f: impl FnOnce(&mut Review)) -> Result<(), Err> {
                 ),
                 e,
             ),
-        ))
+        )
     })?;
     let held = own
         .lock(&dir)
-        .map_err(|e| Err::from(("io_failed", crate::common::said::Said::from(e))))?;
+        .map_err(|e| crate::wire::spec::fail("io_failed", Said::from(e)))?;
     let mut r = match read_at(file.as_path()) {
         crate::common::own_state::Read::Absent => Review::default(),
         crate::common::own_state::Read::Present(r) => r,
         crate::common::own_state::Read::Unreadable(why) => {
-            return Err(Err::from(("review_unreadable", why)))
+            return Err(crate::wire::spec::fail("review_unreadable", why))
         }
     };
     f(&mut r);
     DOC.write(own, &dir, &held, &r)
-        .map_err(|e| Err::from(("io_failed", e)))
+        .map_err(|e| crate::wire::spec::fail("io_failed", e))
 }
 
 /// 认可一条：那一片只留此刻还在的键（`live`）＋ 这一条。
@@ -162,7 +161,7 @@ pub(crate) fn ack_at(
     slice: &str,
     key: &str,
     live: &[String],
-) -> Result<(), Err> {
+) -> Result<(), Said> {
     edit_at(own, |r| {
         let keys = r
             .acks
@@ -176,7 +175,7 @@ pub(crate) fn ack_at(
 }
 
 /// 撤掉一条认可（没有也不算错）。
-pub(crate) fn unack_at(own: &Own, ws: &str, slice: &str, key: &str) -> Result<(), Err> {
+pub(crate) fn unack_at(own: &Own, ws: &str, slice: &str, key: &str) -> Result<(), Said> {
     edit_at(own, |r| {
         if let Some(s) = r.acks.get_mut(ws) {
             if let Some(k) = s.get_mut(slice) {
@@ -199,7 +198,7 @@ pub(crate) fn returned_at(
     slice: &str,
     cell: &str,
     rec: Returned,
-) -> Result<(), Err> {
+) -> Result<(), Said> {
     edit_at(own, |r| {
         r.returns
             .entry(ws.to_string())
@@ -217,12 +216,12 @@ pub(crate) fn answer_ack(
     slice: &str,
     key: &str,
     live: &[String],
-) -> Result<(), Err> {
+) -> Result<(), Said> {
     ack_at(own, ws, slice, key, live)
 }
 
 /// `plan-unack` 的写口（同上）。
-pub(crate) fn answer_unack(own: &Own, ws: &str, slice: &str, key: &str) -> Result<(), Err> {
+pub(crate) fn answer_unack(own: &Own, ws: &str, slice: &str, key: &str) -> Result<(), Said> {
     unack_at(own, ws, slice, key)
 }
 
@@ -233,12 +232,12 @@ pub(crate) fn answer_returned(
     slice: &str,
     cell: &str,
     rec: Returned,
-) -> Result<(), Err> {
+) -> Result<(), Said> {
     returned_at(own, ws, slice, cell, rec)
 }
 
 /// 记这台问图用的那条别名（盖掉先前那条；**只从 `faces/plan_ask_face.rs` 进**）。
-pub(crate) fn ask_at(own: &Own, alias: &str) -> Result<(), Err> {
+pub(crate) fn ask_at(own: &Own, alias: &str) -> Result<(), Said> {
     edit_at(own, |r| r.ask = Some(alias.to_string()))
 }
 

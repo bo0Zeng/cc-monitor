@@ -7,7 +7,7 @@ use serde_json::json;
 fn mark_at(
     own: &crate::platform::fs::Own,
     a: &serde_json::Value,
-) -> Result<serde_json::Value, crate::wire::spec::Fail> {
+) -> Result<serde_json::Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
     super::mark_at(own, &req).map(|x| serde_json::to_value(x).unwrap())
 }
@@ -58,8 +58,9 @@ fn 读不懂的那份_不覆盖_回错() {
     assert_eq!(
         mark_at(&own, &json!({"op": "decline", "id": "x"}))
             .unwrap_err()
-            .code,
-        "marks_unreadable"
+            .code
+            .as_deref(),
+        Some("marks_unreadable")
     );
     assert_eq!(std::fs::read_to_string(&f).unwrap(), "{oops");
     assert_eq!(current(Some(&f)), Marks::default(), "判的时候照没记算");
@@ -76,7 +77,11 @@ fn 不认的_op_或缺参数_拒() {
         json!({"op": "decline"}),
         json!({"op": "selfPaste"}),
     ] {
-        assert_eq!(mark_at(&own, &a).unwrap_err().code, "bad_args", "{a}");
+        assert_eq!(
+            mark_at(&own, &a).unwrap_err().code.as_deref(),
+            Some("bad_args"),
+            "{a}"
+        );
     }
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -109,9 +114,9 @@ fn 读不出来的那份_原话进详情不上句子() {
     std::fs::write(&f, "{}").unwrap();
     std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o000)).unwrap();
     let e = mark_at(&own, &json!({"op": "decline", "id": "x"})).unwrap_err();
-    assert_eq!(e.code, "marks_unreadable", "{e:?}");
+    assert_eq!(e.code.as_deref(), Some("marks_unreadable"), "{e:?}");
     let raw = e.raw.as_deref().expect("原话丢了");
-    assert!(!e.message.contains(raw), "原话上了句子：{e:?}");
+    assert!(!e.said.contains(raw), "原话上了句子：{e:?}");
     let _ = std::fs::remove_dir_all(&d);
 }
 

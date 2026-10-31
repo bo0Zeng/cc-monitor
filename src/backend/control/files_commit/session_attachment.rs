@@ -8,11 +8,10 @@
 
 use crate::common::attachment_dir as layout;
 use crate::common::root_path::{walk_in_root, Last};
-use crate::control::files_write::WriteFail;
+use crate::common::said::Said;
 use layout::{DIR, GITIGNORE, GITIGNORE_BODY};
 
 /// 这一支的失败（同上传提交那一形）。
-pub type Fail = WriteFail;
 use crate::platform::fs::{Face, Ro};
 use cmd_wire::attachment::{
     AttachItem, AttachRefused, AttachVerdict, SessionAttachmentCommitReply,
@@ -70,8 +69,8 @@ pub fn said_of(why: AttachRefused) -> String {
 }
 
 /// 不收 ⇒ 失败（码 ＋ 那一句）。
-pub fn refused(why: AttachRefused) -> WriteFail {
-    WriteFail::from((code_of(why), said_of(why)))
+pub fn refused(why: AttachRefused) -> Said {
+    Said::new(code_of(why), said_of(why))
 }
 
 fn verdict(it: &AttachItem, why: Option<AttachRefused>) -> AttachVerdict {
@@ -144,7 +143,7 @@ pub fn check(cwd: &Path, items: &[AttachItem]) -> Vec<AttachVerdict> {
 }
 
 /// 盘上那一步没成 ⇒ 失败：权限不够 · 只读盘 ⇒ `not_writable`；别的 ⇒ `io_failed`（`said` 拿 `[(path, …), (why, …)]` 写那一句 ＋ 原话）。
-fn io_fail(path: &Path, e: &std::io::Error, said: impl FnOnce(&str, &str) -> String) -> WriteFail {
+fn io_fail(path: &Path, e: &std::io::Error, said: impl FnOnce(&str, &str) -> String) -> Said {
     if matches!(
         e.kind(),
         std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem
@@ -153,15 +152,15 @@ fn io_fail(path: &Path, e: &std::io::Error, said: impl FnOnce(&str, &str) -> Str
     }
     let at = path.display().to_string();
     let why = io_reason(e.kind());
-    WriteFail::io(said(&at, &why), e)
+    Said::with_raw(said(&at, &why), e).coded("io_failed")
 }
 
-fn path_fail(said: String) -> WriteFail {
-    WriteFail::from(("refused", said))
+fn path_fail(said: String) -> Said {
+    Said::new("refused", said)
 }
 
 /// 附件目录在（不在就建）、里面那份 `.gitignore` 在（不在就写一行 `*`）。附件目录是一条链接或不是目录 ⇒ 拒，不往里写。
-fn ensure_root(face: &Face, cwd: &Path) -> Result<PathBuf, WriteFail> {
+fn ensure_root(face: &Face, cwd: &Path) -> Result<PathBuf, Said> {
     let at = walk_in_root(Last::Link, cwd, DIR).map_err(path_fail)?;
     match Ro::symlink_metadata(&at) {
         Ok(m) if m.is_dir() => {}
@@ -219,7 +218,7 @@ fn mint(
     root: &Path,
     at: (u32, u32, u32, u32),
     sha256: &str,
-) -> Result<(String, PathBuf), WriteFail> {
+) -> Result<(String, PathBuf), Said> {
     let seed = u16::from_str_radix(sha256.get(..4).unwrap_or("0"), 16).unwrap_or(0);
     let mut last = None;
     for k in 0..MINT_TRIES {
@@ -236,10 +235,10 @@ fn mint(
         }
     }
     let at = last.map(|d| d.display().to_string()).unwrap_or_default();
-    Err(WriteFail::from((
+    Err(Said::new(
         crate::control::files_write::EXISTS,
         copy_text("beFilesWrite.swap.exists", &[("path", &at)]),
-    )))
+    ))
 }
 
 /// **落一份**：判单份与附件目录上限 ⇒ 附件目录与 `.gitignore` 在 ⇒ 新编号目录 ⇒ 暂存件（或先把块拼起来）落进去、核整份摘要
@@ -252,7 +251,7 @@ pub fn commit(
     req: SessionAttachmentCommitReq,
     at_secs: i64,
     tz: &crate::common::time::Tz,
-) -> Result<SessionAttachmentCommitReply, WriteFail> {
+) -> Result<SessionAttachmentCommitReply, Said> {
     if let Some(why) = cwd_state(cwd) {
         return Err(refused(why));
     }
@@ -314,19 +313,19 @@ pub fn commit_here(
     face: &Face,
     cwd: &Path,
     req: SessionAttachmentCommitReq,
-) -> Result<SessionAttachmentCommitReply, WriteFail> {
+) -> Result<SessionAttachmentCommitReply, Said> {
     let home = super::home_dir()?;
     let tz = crate::common::time::Tz::here();
     commit(face, &home, cwd, req, crate::common::time::now_secs(), &tz)
 }
 
 /// **撤一份**：删掉那个编号目录（里面的普通文件 · 链接各删掉那一项，再删空目录）。本来就不在 ⇒ `false`。编号不合形 ⇒ `bad_args`。
-pub fn drop_one(face: &Face, cwd: &Path, id: &str) -> Result<bool, WriteFail> {
+pub fn drop_one(face: &Face, cwd: &Path, id: &str) -> Result<bool, Said> {
     if !layout::is_id(id) {
-        return Err(WriteFail::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!("not an attachment id: {id:?}")),
-        )));
+        ));
     }
     let root = cwd.join(DIR);
     if Ro::symlink_metadata(&root).is_err() {

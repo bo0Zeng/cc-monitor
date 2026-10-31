@@ -7,16 +7,16 @@
 //!   那一道门，读回走冷开扫描图的用户输入（观测层），会话那一家与此刻在干什么读活会话表。控制面与观测层互不引用，接在这一层。
 
 use super::session_queue_hop::{route, Aimed};
+use crate::common::said::Said;
 use crate::control::rewind::{
     code_after, options_of, runs_after, walk, After, Plan, RewindFace, RewindIo, UserLine, Walked,
     Why,
 };
-use crate::control::terminals::{self, CmdErr, On};
+use crate::control::terminals::{self, On};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq, TerminalPreviewReq};
 use crate::dial::remote_ask::{DialRemote, REACH};
 use crate::observe::lines::Lines;
 use crate::platform::fs::Ro;
-use crate::wire::spec::Fail;
 use crate::wire::typed::{self, codes, Codes as _, Command};
 use cmd_wire::rewind::{Rewind, RewindOptions, SessionRewindOptionsReq};
 use cmd_wire::Machine;
@@ -104,13 +104,13 @@ fn face_of(record: &Path) -> Option<RewindFace> {
 }
 
 /// 这台那一份选项：记录在 ⇒ 那一家申报的几项 ＋ 此刻在不在干活 ＋ 被编辑那一句之后的事；记录主线上没有那一句 ⇒ 只写为什么。
-pub(crate) fn options_here(sid: &str, to: &str) -> Result<RewindOptions, Fail> {
+pub(crate) fn options_here(sid: &str, to: &str) -> Result<RewindOptions, Said> {
     let no_record = |raw: &str| {
-        Fail::new(
+        crate::wire::spec::fail(
             "no_such_session",
             copy_text("beSessionCommands.session.noRecord", &[]),
         )
-        .with_raw(Some(raw))
+        .and_raw(Some(raw))
     };
     let record = record_here(sid).map_err(|raw| no_record(&raw))?;
     let face = face_of(&record);
@@ -170,7 +170,7 @@ pub(crate) fn walk_here(
     rewind: &Rewind,
     text: &str,
     client: Option<String>,
-) -> Result<Walked, CmdErr> {
+) -> Result<Walked, Said> {
     let home = crate::history::listing::agent_home();
     if crate::history::live_table::now(&home).waiting(sid) {
         return Ok(Walked::Wait);
@@ -205,7 +205,7 @@ struct Live<'a> {
 }
 
 impl Live<'_> {
-    fn input(&mut self, key: Option<&str>, text: Option<&str>) -> Result<Sent, CmdErr> {
+    fn input(&mut self, key: Option<&str>, text: Option<&str>) -> Result<Sent, Said> {
         if let Some(w) = self.watch.as_mut() {
             w.forget();
         }
@@ -221,7 +221,7 @@ impl Live<'_> {
 }
 
 impl RewindIo for Live<'_> {
-    fn screen(&mut self) -> Result<Vec<String>, CmdErr> {
+    fn screen(&mut self) -> Result<Vec<String>, Said> {
         let shot = terminals::preview_on(
             On::default(),
             &TerminalPreviewReq {
@@ -233,7 +233,7 @@ impl RewindIo for Live<'_> {
         )?;
         Ok(shot.lines.into_iter().map(|l| l.text).collect())
     }
-    fn press(&mut self, key: &str) -> Result<Sent, CmdErr> {
+    fn press(&mut self, key: &str) -> Result<Sent, Said> {
         self.input(Some(key), None)
     }
     fn redrawn(&mut self) -> bool {
@@ -246,16 +246,16 @@ impl RewindIo for Live<'_> {
     fn pause(&mut self, ms: u64) {
         std::thread::sleep(std::time::Duration::from_millis(ms));
     }
-    fn say(&mut self, text: &str) -> Result<Sent, CmdErr> {
+    fn say(&mut self, text: &str) -> Result<Sent, Said> {
         self.input(None, Some(text))
     }
-    fn lines(&mut self) -> Result<Vec<UserLine>, CmdErr> {
+    fn lines(&mut self) -> Result<Vec<UserLine>, Said> {
         let no_record = |raw: &str| {
-            CmdErr::new(
+            crate::wire::spec::fail(
                 "no_such_session",
                 copy_text("beSessionCommands.session.noRecord", &[]),
             )
-            .with_raw(Some(raw))
+            .and_raw(Some(raw))
         };
         let home = crate::history::listing::agent_home();
         let path = crate::observe::query::locate::session_record(&home, self.sid)

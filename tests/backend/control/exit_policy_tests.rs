@@ -33,7 +33,7 @@ fn wire_as(r: &Read, path: Option<&Path>, resident: bool) -> serde_json::Value {
 fn answer_set(
     args: &serde_json::Value,
     own: &Own,
-) -> Result<serde_json::Value, crate::wire::spec::Fail> {
+) -> Result<serde_json::Value, crate::common::said::Said> {
     let req: ExitPolicySetReq = crate::wire::typed::take(args)?;
     super::answer_set(&req, own).map(|r| serde_json::to_value(r).unwrap())
 }
@@ -158,7 +158,11 @@ fn set_rejects_a_non_boolean_and_writes_nothing() {
         let own = crate::platform::fs::Own::issue_at(&d);
         let err = answer_set(&bad, &own).expect_err("非布尔应当被拒");
         assert!(!d.join(DIR_NAME).exists(), "拒了却建了目录");
-        assert_eq!(err.code, "bad_args", "{bad} 应当回 bad_args");
+        assert_eq!(
+            err.code.as_deref(),
+            Some("bad_args"),
+            "{bad} 应当回 bad_args"
+        );
     }
 }
 

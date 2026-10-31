@@ -1,18 +1,19 @@
 use super::*;
-use crate::common::door::Said;
+use crate::common::said::Said;
 use crate::stream::inbound::LocalFiles;
 use cmd_wire::files as wire;
 use std::path::PathBuf;
 
 // 判据照线上那一份比：入参经 typed 那一处收（同分派）再交本体，回包写成线上那一份（盖住 `super::*` 里的同名口）。
-fn answer_read(d: &dyn Door, args: &Value) -> Result<Value, (&'static str, String)> {
-    let req: AliasesReadReq =
-        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+fn answer_read(d: &dyn Door, args: &Value) -> Result<Value, crate::common::said::Said> {
+    let req: AliasesReadReq = crate::wire::typed::take(args)
+        .map_err(|f| crate::common::said::Said::new("bad_args", f.said))?;
     super::answer_read(d, &req).map(|r| serde_json::to_value(r).unwrap())
 }
 
-fn answer_block_render(d: &dyn Door, args: &Value) -> Result<Value, (&'static str, String)> {
-    let req: BlockReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+fn answer_block_render(d: &dyn Door, args: &Value) -> Result<Value, crate::common::said::Said> {
+    let req: BlockReq = crate::wire::typed::take(args)
+        .map_err(|f| crate::common::said::Said::new("bad_args", f.said))?;
     super::answer_block_render(d, &req).map(|r| serde_json::to_value(r).unwrap())
 }
 
@@ -906,9 +907,9 @@ fn a_dialect_this_machine_does_not_speak_is_refused_out_loud() {
             "{e}"
         );
         let h = tmp_home("ps-refuse");
-        let (code, _) = answer_read(&door(&h), &json!({ "shell": "powershell", "rcPath": null }))
+        let e = answer_read(&door(&h), &json!({ "shell": "powershell", "rcPath": null }))
             .expect_err("线上那一口也该拒");
-        assert_eq!(code, "refused");
+        assert_eq!(e.code.as_deref(), Some("refused"));
     }
 }
 

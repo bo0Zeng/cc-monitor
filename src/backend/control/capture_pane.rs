@@ -41,7 +41,7 @@ use copy_core::copy_text;
 const CAPTURE_WITHIN: Deadline = Deadline::secs(5);
 
 /// 命令级错误：码 ＋ 那一句（只带原因词）＋ tmux 的原话（stderr · 退出码，进复制详情）。
-pub(crate) type CmdErr = crate::wire::spec::Fail;
+use crate::common::said::Said;
 
 /// tmux 的「把这一屏打到 stdout」子命令。
 pub(crate) const CAPTURE_SUBCOMMAND: &str = "capture-pane";
@@ -86,7 +86,7 @@ pub(crate) fn capture_with_on(
     target: &str,
     color: bool,
     back: u32,
-) -> Result<String, CmdErr> {
+) -> Result<String, Said> {
     let argv = capture_argv_with(target, color, back);
     let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
     classify(&spawn_tmux(socket, &argv)?)
@@ -131,7 +131,7 @@ pub(crate) use crate::host::tmux::tmux_unavailable;
 /// 把一次原始读数判成结局。**纯函数。**
 ///
 /// 判「抓没抓到」看**退出码**，不看输出是不是空 —— 空屏是合法的成功（模块头注那一段）。
-pub(crate) fn classify(raw: &RawCapture) -> Result<String, CmdErr> {
+pub(crate) fn classify(raw: &RawCapture) -> Result<String, Said> {
     if raw.code == Some(0) {
         return Ok(raw.stdout.clone());
     }
@@ -158,13 +158,13 @@ pub(crate) fn classify(raw: &RawCapture) -> Result<String, CmdErr> {
             copy_text("beCapturePane.classify.failed", &[]),
         )
     };
-    Err(CmdErr::new(code, said).with_raw(Some(&words)))
+    Err(crate::wire::spec::fail(code, said).and_raw(Some(&words)))
 }
 
 /// 本模块唯一起进程的那一处，也是全 crate 唯一一处 `capture-pane`：跑一条只读的抓屏命令，读回退出码与两条流。
 ///
 /// `socket`：`None` = 让 tmux 按环境解析默认 socket（生产恒 `None`）；`Some(p)` = 显式 `-S <p>`，只为在隔离的 tmux server 上测得出内容。
-fn spawn_tmux(socket: Option<&str>, argv: &[&str]) -> Result<RawCapture, CmdErr> {
+fn spawn_tmux(socket: Option<&str>, argv: &[&str]) -> Result<RawCapture, Said> {
     let out = crate::host::tmux::child(socket)
         .args(argv)
         .run(CAPTURE_WITHIN)

@@ -630,7 +630,7 @@ fn a_seat_being_started_counts() {
         "正在起的也占名额"
     );
     assert_eq!(
-        d.reserve("s0").err().map(|e| e.code),
+        d.reserve("s0").err().and_then(|e| e.code),
         Some("bad_args".to_string()),
         "正在起的票再订一次 ⇒ 重复"
     );
@@ -643,7 +643,7 @@ fn a_seat_being_started_counts() {
             &Default::default()
         )
         .err()
-        .map(|e| e.code),
+        .and_then(|e| e.code),
         Some("bad_args".to_string()),
         "s0 还占着（重复）"
     );
@@ -654,7 +654,7 @@ fn a_seat_being_started_counts() {
             &Default::default()
         )
         .err()
-        .map(|e| e.code),
+        .and_then(|e| e.code),
         Some("not_known".to_string()),
         "让出名额之后、目标不在名单 ⇒ not_known"
     );

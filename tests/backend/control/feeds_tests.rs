@@ -318,8 +318,8 @@ async fn a_call_for_a_machine_goes_through_its_resident_stream() {
     )
     .await
     .expect_err("那台拒了");
-    assert_eq!(fail.code, "no_such_file");
-    assert_eq!(fail.message, "那台说：没有这个文件");
+    assert_eq!(fail.code.as_deref(), Some("no_such_file"));
+    assert_eq!(fail.said, "那台说：没有这个文件");
     assert_eq!(fail.raw.as_deref(), Some("那台的原话"));
     align_in(&[], &ssh, &quiet());
 }
@@ -338,7 +338,7 @@ async fn a_call_for_a_machine_without_a_stream_is_not_sent() {
     )
     .await
     .expect_err("没有那一条就不发");
-    assert_eq!(fail.code, UNREACHABLE);
+    assert_eq!(fail.code.as_deref(), Some(UNREACHABLE));
 }
 
 /// 本机后端自己问那台一条有类型的命令（`call`，并好再答的那几条用）：经同一条常驻流，入参照类型带过去、回包照类型收；
@@ -375,7 +375,7 @@ async fn a_typed_call_from_this_backend_goes_through_the_same_stream() {
     let fail = call::<MachineInterrupts>("feeds-call-nowhere", &exit, within)
         .await
         .expect_err("没有那一条就不发");
-    assert_eq!(fail.code, UNREACHABLE);
+    assert_eq!(fail.code.as_deref(), Some(UNREACHABLE));
 }
 
 /// ★ ④a 先红的那一条：那台那条常驻流上的事原样转给连着本机后端的壳 —— 先它的 hello（一行），再流上的帧（一行一帧），

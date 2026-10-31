@@ -2,7 +2,6 @@
 //!
 //! 单住一份：引用图按文件算，这一份够得到适配层，写面其余几条那一份不该被它带上（族文件也不再放这份窄口：它点着别族的名字，会把整族判成够得到 tmux）。
 
-use crate::wire::spec::Fail;
 use crate::wire::typed::{self, codes, Command};
 use cmd_wire::files as wire;
 
@@ -47,7 +46,10 @@ impl crate::wire::typed::Handle for FilesDeleteSession {
 
             crate::control::files_write::delete_session_of(face, req, &SESSION_PORT).map_err(|f| {
                 typed::of_fail(
-                    Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+                    {
+                        let code = f.code_or_fallback().to_string();
+                        crate::wire::spec::fail(&code, f)
+                    },
                     FilesDeleteSessionErr::BadArgs,
                 )
             })

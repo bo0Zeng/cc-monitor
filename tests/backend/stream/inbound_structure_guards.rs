@@ -265,13 +265,12 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         if name == <crate::stream::inbound::files_write_face::FilesBatchStop as crate::wire::typed::Command>::NAME {
             continue;
         }
-        if let Err(crate::control::files_write::WriteFail {
-            code, said: msg, ..
-        }) = crate::control::files_write::tests::ask(name, &serde_json::json!({}))
-        {
+        if let Err(e) = crate::control::files_write::tests::ask(name, &serde_json::json!({})) {
+            let code = e.code_or_fallback();
             assert!(
-                spec.codes.contains(&code),
-                "`{name}` 回了一个它没登记的 code `{code}`（{msg}）"
+                spec.codes.iter().any(|c| *c == code),
+                "`{name}` 回了一个它没登记的 code `{code}`（{}）",
+                e.said
             );
         }
     }
@@ -289,16 +288,14 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         // ④ 真的调一次：喂空 `args` ⇒ 要么成功，要么落在这条命令登记的码上；落到 `unknown_capability` 就说明能力接错了。
         let out =
             crate::files::tests::answer_wire(&online, &serde_json::json!({}), &Default::default());
-        if let Err(crate::files::Refused {
-            code, said: msg, ..
-        }) = out
-        {
+        if let Err(s) = out {
+            let (code, msg) = (s.code_or_fallback().to_string(), s.said);
             assert_ne!(
                 code, "unknown_capability",
                 "`{online}` 够不到任何能力（{msg}）"
             );
             assert!(
-                spec.codes.contains(&code),
+                spec.codes.contains(&code.as_str()),
                 "`{online}` 回了一个它没登记的 code `{code}`（{msg}）"
             );
         }
