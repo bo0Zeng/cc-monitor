@@ -18,6 +18,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use copy_core::copy_text;
+use copy_core::said::Said;
 use deploy_contract::{
     build_relation, Arch, DeployAction, Key, Marks, Os, Refusal, Relation, RemoteIdentity, Route,
     LINES,
@@ -35,32 +36,6 @@ pub const MARKS: Marks<'static> = Marks {
 };
 
 pub type Fut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-
-/// 这一串的失败：码 ＋ 那一句 ＋ 下层原话（那台答 `uname` 的原话进复制详情，不上句子）。后端把它换成帧面的失败，手机原样交 Kotlin。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Fail {
-    pub code: &'static str,
-    pub said: String,
-    pub raw: Option<String>,
-}
-
-impl Fail {
-    pub fn new(code: &'static str, said: String) -> Fail {
-        Fail {
-            code,
-            said,
-            raw: None,
-        }
-    }
-
-    pub fn with_raw(mut self, raw: Option<&str>) -> Fail {
-        self.raw = raw
-            .map(str::trim)
-            .filter(|r| !r.is_empty())
-            .map(str::to_string);
-        self
-    }
-}
 
 /// 对面：在那台上跑一条一次性命令（收全三样）· 问那台落点上一个文件（SFTP）。生产 = [`DialFacing`]；判据用替身。
 pub trait Facing: Send + Sync {
@@ -275,13 +250,13 @@ async fn identity_at(facing: &dyn Facing, rel: &str, word: &str) -> Result<Remot
 ///
 /// 问 `uname -s -m`（[`deploy_contract::key_from_uname`]）→ 表 A / 表 B（[`judge`]）→ 这一版带没带那一格（`carried`）。
 /// 拒绝点在写第一个字节之前。
-async fn slot_of(facing: &dyn Facing, carried: &[Key], machine: &str) -> Result<Key, Fail> {
+async fn slot_of(facing: &dyn Facing, carried: &[Key], machine: &str) -> Result<Key, Said> {
     let said = |r: Refusal| refused(&r, machine);
     let got = facing
         .exec(deploy_contract::UNAME_CMD.to_string())
         .await
         .map_err(|e| {
-            Fail::new(
+            Said::new(
                 "unreachable",
                 copy_text(
                     "rsSftp.deploy.unameFailed",
@@ -301,8 +276,8 @@ async fn slot_of(facing: &dyn Facing, carried: &[Key], machine: &str) -> Result<
 }
 
 /// 一形拒绝 ⇒ `refused`：句子是 [`Refusal::say`]，那台答的原话（[`Refusal::raw`]）随失败交出去。
-pub fn refused(r: &Refusal, machine: &str) -> Fail {
-    Fail::new("refused", r.say(machine)).with_raw(r.raw())
+pub fn refused(r: &Refusal, machine: &str) -> Said {
+    Said::new("refused", r.say(machine)).and_raw(r.raw())
 }
 
 /// 出计划。`machine` = 那台的名字（只用来说话）；`now_secs` = 此刻（判残件新旧）。一个字节都不写。
@@ -311,7 +286,7 @@ pub async fn plan(
     carried: &[(Key, String)],
     machine: &str,
     now_secs: u64,
-) -> Result<Plan, Fail> {
+) -> Result<Plan, Said> {
     plan_and_landing(facing, carried, machine, now_secs)
         .await
         .map(|(p, _)| p)
@@ -323,7 +298,7 @@ pub(crate) async fn plan_and_landing(
     carried: &[(Key, String)],
     machine: &str,
     now_secs: u64,
-) -> Result<(Plan, bool), Fail> {
+) -> Result<(Plan, bool), Said> {
     let keys: Vec<Key> = carried.iter().map(|(k, _)| *k).collect();
     let key = slot_of(facing, &keys, machine).await?;
     let expected = carried
@@ -334,10 +309,10 @@ pub(crate) async fn plan_and_landing(
     let landing = relay_route_core::BACKEND_LANDING_REL;
     let id = identity_at(facing, landing, relay_route_core::BACKEND_LANDING_SHELL)
         .await
-        .map_err(|e| Fail::new("io_failed", e))?;
+        .map_err(|e| Said::new("io_failed", e))?;
     let had_one = !matches!(id, RemoteIdentity::Missing | RemoteIdentity::Empty);
     let action = identity_decision(&id, &expected, machine, &format!("~/{landing}"))
-        .map_err(|e| Fail::new("undecidable", e))?;
+        .map_err(|e| Said::new("undecidable", e))?;
     let staging = ssh_dial::sftp::STAGING_ROOT;
     let leftovers = facing
         .list(staging)
