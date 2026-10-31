@@ -144,7 +144,7 @@ export async function mockedChanCaller(
   return { ...actual, callTyped };
 }
 
-/** 后端写好的那一句（`MachineFault::new`，键同；这里只为替身回包带上那一格）。 */
+/** 后端写好的那一句（`ssh_dial::machine::fault`，键同；这里只为替身回包带上那一格）。 */
 const faultOf = (code: string, name: string): { code: string; name: string; said: string } => ({
   code,
   name,

@@ -936,3 +936,68 @@ fn r13_the_skeleton_keeps_what_the_prime_takes_not_the_child_run_lines() {
     });
     assert_eq!(got, want, "照骨架补的运行表跟照原文补的不一样");
 }
+
+/// R14（尾段那一截的骨架索引）：这一份的图不在 ⇒ 从中间某一行起只读那一截，出的行与整份扫图上同一截逐格相等、
+/// 末端是最后一个完整行之后（残尾不计），也不为它留一张整图；`take` 回 false ⇒ 停在那一行的起点；图留着 ⇒ 照图切、不再读盘。
+#[test]
+fn r14_index_rows_from_a_middle_line_read_only_that_stretch() {
+    let d = sandbox("r14");
+    let p = d.join("s.jsonl");
+    let text = fixture(6);
+    std::fs::write(&p, &text).unwrap();
+    let all = ScanMap::scan_with(
+        text.as_bytes(),
+        text.len() as u64,
+        crate::agents::claudecode::AGENT_KIND,
+        Some(crate::agents::claudecode::RECORDS),
+    )
+    .unwrap();
+    let from = all.index[all.index.len() / 2].o;
+    let json = |r: &IndexRow| serde_json::to_string(r).unwrap();
+    let want: Vec<String> = all.index.iter().filter(|r| r.o >= from).map(json).collect();
+    assert!(want.len() > 3 && from > 0, "正控：从中间起要有好几行");
+
+    let scans = RecordScans::new(4, 64 << 20);
+    let mut got = Vec::new();
+    let end = scans
+        .index_rows(&p, from, |r| {
+            got.push(json(r));
+            true
+        })
+        .unwrap();
+    assert_eq!(got, want, "从中间起出的行与整份扫图上那一截不一样");
+    assert_eq!(end, all.end, "末端");
+    assert_eq!(
+        scans.bytes_read(),
+        text.len() as u64 - from,
+        "从中间起问却读了那一截之外的"
+    );
+    assert!(scans.peek(&p).is_none(), "只读一截不该留成一张整图");
+
+    let mut n = 0;
+    let stop = scans
+        .index_rows(&p, from, |_| {
+            n += 1;
+            n <= 2
+        })
+        .unwrap();
+    assert_eq!(
+        stop,
+        all.index.iter().filter(|r| r.o >= from).nth(2).unwrap().o,
+        "停在不收的那一行的起点"
+    );
+
+    scans.get(&p).unwrap();
+    let before = scans.bytes_read();
+    let mut again = Vec::new();
+    let end = scans
+        .index_rows(&p, from, |r| {
+            again.push(json(r));
+            true
+        })
+        .unwrap();
+    assert_eq!(again, want, "图留着时照图切的不一样");
+    assert_eq!(end, all.end);
+    assert_eq!(scans.bytes_read(), before, "图留着还读盘");
+    std::fs::remove_dir_all(&d).ok();
+}

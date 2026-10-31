@@ -11193,12 +11193,6 @@
       "zh": "请求格式不对 · 机器名为空 · 本机也要写成 \"{local}\" · {command}",
       "args": ["command", "local"]
     },
-    "rsOrigin.expecting.name": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "机器名 · 本机写成 \"{local}\"",
-      "args": ["local"]
-    },
     "rsDataPaths.webview.dataDir": {
       "kind": "body",
       "role": "说明",
@@ -20526,10 +20520,10 @@
     "beRotation.hold.noAutoResume": {
       "kind": "body",
       "role": "说明",
-      "zh": "停到 24 小时以外 · 客户端不会自己续 · 需手动继续",
-      "args": []
+      "zh": "停到 {dur} 以外 · 客户端不会自己续 · 需手动继续",
+      "args": ["dur"]
     },
-    "monitorBoard.summary": {
+    "monitorBoard.head.summary": {
       "kind": "body",
       "role": "说明",
       "zh": "机器 {machines} · 会话 {liveSessions} · agent 在跑 {runningAgents}",

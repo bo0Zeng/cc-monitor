@@ -146,7 +146,7 @@ export class CellDetail {
     if (!who && !b) return null;
     const row = document.createElement("div");
     row.className = s.cdPos;
-    if (b) row.appendChild(span(copyText("plan.cell.blockRoot", { block: labelOf(slice, cell.id) })));
+    if (b) row.appendChild(span(cell.said.blockRoot ?? ""));
     else row.appendChild(span(copyText("plan.cell.grower")));
     if (who) row.appendChild(this.host.who(who));
     if (b?.phase) row.appendChild(phaseBadge(b.phase));

@@ -149,8 +149,12 @@ pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>,
     let me = std::env::current_exe().map_err(|e| {
         Fail::new(
             "failed",
-            copy_text("beQuotaWarm.run.failed", &[("why", &e.to_string())]),
+            copy_text(
+                "beQuotaWarm.run.failed",
+                &[("why", &copy_core::io_reason(e.kind()))],
+            ),
         )
+        .with_raw(Some(&e.to_string()))
     })?;
     let mut child = Child::new(me)
         .args(line(&face, account, cwd.as_path()))

@@ -800,20 +800,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "cmd-wire": {
     LOCAL: "J36",
     KEYS_NOT_NAMES: "J39",
-    // 按名字判一项是哪一种（`file_class.rs`）：文件管理 · 聊天附件的出口与适配层都调它，类别字也由后端写好；界面只照 `class` / `class_text` 摆，TS 侧没有孪生。
-    class_of_name: NONE,
-    ext_of: NONE,
-    label: NONE,
-    // ↗ 浮层那一张（`front.rs`：壳的窗口结局 `FrontOutcome::told` · 会话为什么没有链 `Unplaced::face`）：壳与本机后端写、界面照摆；TS 侧没有孪生（A16-1-8）。
-    told: NONE,
-    face: NONE,
     // 推送 `changed` 那一臂的主题名与体上限（`Changed::topic` · `Changed::cap_body`）：后端发前判、壳按主题分订阅；界面不判主题、不判上限，TS 侧没有孪生。
     topic: NONE,
     cap_body: NONE,
     // 本机后端转来的别台那一件说的是哪一台（`Relayed::machine`）：后端补欠的那一格、壳按台分收口时读；界面不碰这一帧，TS 侧没有孪生。
     machine: NONE,
-    // 写口拒绝时那一句（带那台的名字与「未保存」）：后端写成品，界面只画；TS 侧没有孪生。
-    refused_said: NONE,
     // 书签的目录归一（`bookmarks.rs`）：后端存之前归一、文件窗口拿它比；界面不碰书签，TS 侧没有孪生。
     normalize_dir: NONE,
     // 拨号的线上形状（`dial.rs`）：ack 的协议版本与用法表 · 开成 / 没开成那一行 ack 怎么组。拨号核心写、壳与手机核心读；界面不碰拨号的行，TS 侧没有孪生。
@@ -908,6 +899,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     join: NONE,
     // 手上那份照先后摊开（`sync::Hand::in_order`）：同上，界面不存手上那份。
     in_order: NONE,
+  },
+  "face-core": {
+    // ↗ 浮层那一张（`face-core/src/front.rs`：壳的窗口结局 `FrontOutcome::told` · 会话为什么没有链 `Unplaced::face`）：壳与本机后端写、界面照摆；TS 侧没有孪生（A16-1-8）。
+    told: NONE,
+    face: NONE,
   },
   "copy-core": {
     backend_old: "J22",
@@ -1184,6 +1180,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     SKILL_LEDGER_FILE: NONE,
     SSH_CONFIG_FILE: NONE,
     STRATEGY_SOURCE_FILE: NONE,
+    // 声明表一行的「下限抬于哪一版」（到期就红那条判据读它）；TS 侧没有孪生。
+    floor_raised_in: NONE,
     foreign: NONE,
     json: NONE,
     kept: NONE,
