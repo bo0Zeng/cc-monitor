@@ -25,7 +25,7 @@ object Bookmarks {
     internal fun edit(
         op: String,
         dirs: List<String>,
-        at: String?,
+        at: String? = null,
     ): Map<String, Any?> = mapOf("op" to op, "dirs" to dirs) + at(at)
 }
 

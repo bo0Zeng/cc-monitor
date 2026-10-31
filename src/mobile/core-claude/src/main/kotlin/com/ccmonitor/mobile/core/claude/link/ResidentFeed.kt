@@ -364,11 +364,21 @@ class ResidentFeed(
             "reply" -> onReply(body)
             "moved" -> onMoved(body)
             "deploy" -> onDeployLine(body)
+            "batch", "batch_keep", "batch_local", "busy" -> onWork(kind, body)
+            else -> broke(kind, body)
+        }
+    }
+
+    /** 核心里在走的活那几样：一组走到哪 · 落盘那一份 · 下到本机那一侧要做的 · 有没有活在走。 */
+    private suspend fun onWork(
+        kind: String,
+        body: String,
+    ) {
+        when (kind) {
             "batch" -> onBatchLine(body)
             "batch_keep" -> onKeepLine(body)
             "batch_local" -> onLocalLine(body)
-            "busy" -> workingFlow.value = body == "true"
-            else -> broke(kind, body)
+            else -> workingFlow.value = body == "true"
         }
     }
 
@@ -436,7 +446,7 @@ class ResidentFeed(
     private fun onLocalLine(body: String) {
         when (val a = Wire.read<LocalAsk>(body) ?: return broke("batch_local", body)) {
             is LocalAsk.Open -> {
-                val answer =
+                val answer: LocalOpened =
                     try {
                         val f = saves.create(a.folder, a.name, a.over)
                         val fd =
