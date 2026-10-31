@@ -13788,6 +13788,141 @@ data class ModelSwitched(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class MonitorAsk(
+    val machine: String,
+    val sid: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MonitorAsk> = obj(
+            listOf(
+            Field("machine", { Str }, optional = false, nullable = false),
+            Field("sid", { Str }, optional = false, nullable = false),
+            ),
+            { a -> MonitorAsk(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.machine, v.sid) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MonitorBoard(
+    val summary: String,
+    val groups: List<MonitorGroup>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MonitorBoard> = obj(
+            listOf(
+            Field("summary", { Str }, optional = false, nullable = false),
+            Field("groups", { arr(MonitorGroup.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> MonitorBoard(a[0] as String, a[1] as List<MonitorGroup>) },
+            { v -> arrayOf(v.summary, v.groups) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MonitorBoardReq(
+    val sessions: List<MonitorAsk>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MonitorBoardReq> = obj(
+            listOf(
+            Field("sessions", { arr(MonitorAsk.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> MonitorBoardReq(a[0] as List<MonitorAsk>) },
+            { v -> arrayOf(v.sessions) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MonitorGroup(
+    val machine: String,
+    val title: String,
+    val sids: List<String>,
+    val down: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MonitorGroup> = obj(
+            listOf(
+            Field("machine", { Str }, optional = false, nullable = false),
+            Field("title", { Str }, optional = false, nullable = false),
+            Field("sids", { arr(Str) }, optional = false, nullable = false),
+            Field("down", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> MonitorGroup(a[0] as String, a[1] as String, a[2] as List<String>, a[3] as String?) },
+            { v -> arrayOf(v.machine, v.title, v.sids, v.down) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MonitorHere(
+    val rows: List<MonitorHereRow>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MonitorHere> = obj(
+            listOf(
+            Field("rows", { arr(MonitorHereRow.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> MonitorHere(a[0] as List<MonitorHereRow>) },
+            { v -> arrayOf(v.rows) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MonitorHereReq(
+    val sids: List<String>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MonitorHereReq> = obj(
+            listOf(
+            Field("sids", { arr(Str) }, optional = false, nullable = false),
+            ),
+            { a -> MonitorHereReq(a[0] as List<String>) },
+            { v -> arrayOf(v.sids) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MonitorHereRow(
+    val sid: String,
+    val order: Int,
+    val live: Boolean,
+    val running: Int,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MonitorHereRow> = obj(
+            listOf(
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("order", { Int32 }, optional = false, nullable = false),
+            Field("live", { Bool }, optional = false, nullable = false),
+            Field("running", { Int32 }, optional = false, nullable = false),
+            ),
+            { a -> MonitorHereRow(a[0] as String, a[1] as Int, a[2] as Boolean, a[3] as Int) },
+            { v -> arrayOf(v.sid, v.order, v.live, v.running) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class Moved(
     val call: Long,
     val done: Long,
@@ -18441,6 +18576,25 @@ enum class QuotaWarmAct(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<QuotaWarmAct> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class QuotaWarmReq(
+    val agent: String,
+    val account: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<QuotaWarmReq> = obj(
+            listOf(
+            Field("agent", { Str }, optional = false, nullable = false),
+            Field("account", { Str }, optional = false, nullable = false),
+            ),
+            { a -> QuotaWarmReq(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.agent, v.account) },
+        )
     }
 }
 
@@ -26031,6 +26185,31 @@ enum class VersionRelation(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<VersionRelation> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class Warmed(
+    val agent: String,
+    val account: String,
+    val sent: Boolean,
+    val at: Long,
+    val resetsAt: Long?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<Warmed> = obj(
+            listOf(
+            Field("agent", { Str }, optional = false, nullable = false),
+            Field("account", { Str }, optional = false, nullable = false),
+            Field("sent", { Bool }, optional = false, nullable = false),
+            Field("at", { Lng }, optional = false, nullable = false),
+            Field("resets_at", { opt(Lng) }, optional = false, nullable = true),
+            ),
+            { a -> Warmed(a[0] as String, a[1] as String, a[2] as Boolean, a[3] as Long, a[4] as Long?) },
+            { v -> arrayOf(v.agent, v.account, v.sent, v.at, v.resetsAt) },
+        )
     }
 }
 
