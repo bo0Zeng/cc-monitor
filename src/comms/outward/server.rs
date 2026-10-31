@@ -193,9 +193,13 @@ pub struct Relay {
 /// 记上的那一笔是个守卫（[`BodyHeld`]），活到这一发收场（`serve_one` 返回：成败、换没换号都一样）就退账。
 /// 买的是「在途的体合计有上界」：条数上界（后端的接受循环）乘单发上界（[`BODY_CAP`]）远大于一台机器的内存，
 /// 上游答得慢时在途就攒起来，每条带着一整份体。
+///
+/// 顶满那一阵日志只说一次（顶满时来得最密，一条一行会把日志灌满），退到上限四分之三以下再说一次（同接受循环条数满了那一形）。
 struct BodyBudget {
     ceiling: usize,
     held: std::sync::atomic::AtomicUsize,
+    /// 此刻在不在顶满那一阵里（只管说话，不管记账）。
+    full: std::sync::atomic::AtomicBool,
 }
 
 impl BodyBudget {
@@ -203,6 +207,17 @@ impl BodyBudget {
         Self {
             ceiling,
             held: std::sync::atomic::AtomicUsize::new(0),
+            full: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    /// 记不下那一刻：这一阵头一回 ⇒ 说一句。
+    fn say_full(&self) {
+        if !self.full.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            eprintln!(
+                "[relay] refusing: in-flight request bodies at {} bytes (answering 503 until some end)",
+                self.ceiling
+            );
         }
     }
 
@@ -228,9 +243,15 @@ struct BodyHeld<'a> {
 
 impl Drop for BodyHeld<'_> {
     fn drop(&mut self) {
-        self.budget
-            .held
-            .fetch_sub(self.n, std::sync::atomic::Ordering::SeqCst);
+        use std::sync::atomic::Ordering::SeqCst;
+        let b = self.budget;
+        let now = b.held.fetch_sub(self.n, SeqCst) - self.n;
+        if now < b.ceiling / 4 * 3 && b.full.swap(false, SeqCst) {
+            eprintln!(
+                "[relay] in-flight request bodies back under {} bytes",
+                b.ceiling
+            );
+        }
     }
 }
 
@@ -617,7 +638,15 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //    会把这条线程**永久**钉在下面 `read_head` 的读上。
     //    `try_clone` 是 `dup` ⇒ 下面 `down_w` 与 `down_r` 共用同一条 socket、同一份期限。
     apply_downstream_deadline(&down, relay.downstream_deadline)?;
-    let mut down_w = down.try_clone()?;
+    //    `dup` 不成（fd 用尽）⇒ 先在这条本身上回 503 再交回错误，不让下游拿到一个没有任何 HTTP 回应的 FIN。
+    let mut down_w = match down.try_clone() {
+        Ok(w) => w,
+        Err(e) => {
+            let mut down = down;
+            let _ = refuse_busy(&mut down);
+            return Err(e);
+        }
+    };
     let mut down_r = BufReader::new(down);
 
     let Some(raw_head) = http1::read_head(&mut down_r, HEAD_CAP)? else {
@@ -673,8 +702,8 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
             return respond_and_drain(&mut down_w, PAYLOAD_TOO_LARGE, "payload-too-large")
         }
         http1::BodyLen::Exact(n) => {
-            // 不进日志：顶满时来得最密，一条一行会把日志灌满；下游看得见原因头。
             let Some(held) = relay.bodies.hold(n) else {
+                relay.bodies.say_full();
                 return respond_and_drain(&mut down_w, BUSY, "body-budget");
             };
             _held = Some(held);

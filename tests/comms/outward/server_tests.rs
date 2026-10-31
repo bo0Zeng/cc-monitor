@@ -535,3 +535,68 @@ fn a_body_is_allocated_once_at_its_declared_length() {
     assert_eq!(got.len(), n);
     assert_eq!(got.capacity(), n, "读出来那一份的容量该恰好是声明的长度");
 }
+
+/// 子进程里那一半的记号：父进程起同一个测试二进制、只跑本条，带上它。
+const FD_CHILD: &str = "CCM_SERVE_ONE_FD_CHILD";
+
+/// ★ 连接线程一上来要 `dup` 下游那条（读写各拿一份）；那一刻 fd 用尽 ⇒ 下游照样拿到 503（原因头 `busy`），
+/// 不是一个没有任何 HTTP 回应的 FIN。fd 用尽只在子进程里造（占满本进程的 fd 会连累同一进程里别的判据）。
+#[test]
+fn a_downstream_gets_busy_when_the_connection_thread_cannot_dup_it() {
+    if std::env::var_os(FD_CHILD).is_none() {
+        let out = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
+            .args([
+                "--exact",
+                "server::tests::a_downstream_gets_busy_when_the_connection_thread_cannot_dup_it",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(FD_CHILD, "1")
+            .output()
+            .expect("起子进程");
+        let said = String::from_utf8_lossy(&out.stdout).into_owned()
+            + &String::from_utf8_lossy(&out.stderr);
+        assert!(
+            out.status.success() && said.contains("fd-child: answered"),
+            "子进程那一半没过：{said}"
+        );
+        return;
+    }
+    let r = Relay::new(
+        Arc::new(Held {
+            entered: std::sync::Mutex::new(mpsc::channel().0),
+            release: std::sync::Mutex::new(mpsc::channel().1),
+        }),
+        door::Keys {
+            full: door::Key::from_text(POOL_FULL_KEY).expect("全权钥匙"),
+            pass: door::Key::from_text(POOL_PASS_KEY).expect("直通钥匙"),
+        },
+        TeeSink::to_port(Arc::new(NoTap)),
+        Arc::new(|_from, _h, _p, _d| Err(std::io::Error::other("不发上游"))),
+        guard_core::wall::CEILING,
+        guard_core::wall::CEILING,
+        BODIES_WIDE,
+    );
+    let l = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind");
+    let mut client = TcpStream::connect(l.local_addr().expect("addr")).expect("connect");
+    client
+        .set_read_timeout(Some(guard_core::wall::CEILING))
+        .expect("读期限");
+    let (srv, _) = l.accept().expect("accept");
+    // 把本进程的 fd 占满（占到打开报错为止）：之后连接线程那一下 `dup` 拿不到号。
+    let mut hog = Vec::new();
+    while let Ok(f) = std::fs::File::open("/dev/null") {
+        hog.push(f);
+    }
+    assert!(srv.try_clone().is_err(), "fd 该已占满");
+    let _ = serve_one(srv, &r);
+    let mut got = Vec::new();
+    let _ = client.read_to_end(&mut got);
+    drop(hog);
+    let got = String::from_utf8_lossy(&got);
+    assert!(
+        got.starts_with("HTTP/1.1 503 ") && got.contains(&format!("{REASON_HEADER}: busy\r\n")),
+        "dup 不成时下游该拿到 503 busy：{got:?}"
+    );
+    println!("fd-child: answered");
+}
