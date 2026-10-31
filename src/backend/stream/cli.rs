@@ -60,14 +60,9 @@ fn runs_once(spec: &CommandSpec) -> bool {
     !spec.run.on_frame_arm() && !STREAM_ONLY.contains(&spec.name) && !UI_ONLY.contains(&spec.name)
 }
 
-/// 手写的那几条一次性子命令（不从 `REGISTRY` 派生的）：名字照 `inbound::CLI_ONLY_DOCS`，实现在 `stream::oneshot::ONESHOTS`
-/// （两向相等由测试钉）。本模块只认名字、不引用实现那一份：帧面命令经本模块不连到那几条实现的依赖上。
+/// 手写的那几条一次性子命令（不从 `REGISTRY` 派生的）：`stream::oneshot::ONESHOTS` 那张表。
 fn cli_only(word: &str) -> bool {
-    word.strip_prefix("--").is_some_and(|n| {
-        crate::stream::inbound::CLI_ONLY_DOCS
-            .iter()
-            .any(|(c, ..)| *c == n)
-    })
+    crate::stream::oneshot::oneshot(word).is_some()
 }
 
 /// 这个词是不是一条子命令（手写的那几条 ∪ 派生的 CLI 面）。闸门 [`is_query_mode`] 与分派认的都是它。
