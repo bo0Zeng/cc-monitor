@@ -152,7 +152,7 @@ async fn fold_blocking(fold: &Fold, req: AssetsCatalogMergeReq) -> Result<Catalo
     tokio::task::spawn_blocking(move || f(req))
         .await
         .map_err(|e| {
-            crate::common::said::Said::with_raw(
+            Said::with_raw(
                 copy_text("beAssetSync.foldBlocking.unfinished", &[]),
                 &e,
             )
@@ -183,7 +183,7 @@ async fn sync_one(
                         None,
                         false,
                         0,
-                        &[crate::common::said::Said::with_raw(
+                        &[Said::with_raw(
                             copy_text("beAssetSync.syncOne.unparsable", &[]),
                             &e,
                         )
@@ -258,7 +258,7 @@ pub(crate) async fn answer(
     req: &AssetsSyncReq,
     fold: Fold,
     remote: &dyn Remote,
-) -> Result<AssetsSynced, crate::common::said::Said> {
+) -> Result<AssetsSynced, Said> {
     answer_with(req, fold, remote, &REACH).await
 }
 
@@ -268,11 +268,11 @@ pub(crate) async fn answer_with(
     fold: Fold,
     remote: &dyn Remote,
     table: &Table,
-) -> Result<AssetsSynced, crate::common::said::Said> {
+) -> Result<AssetsSynced, Said> {
     let origin = req.origin.as_ref().map(ToString::to_string);
     let origin = origin.as_deref();
     if origin == Some("") {
-        return Err(crate::common::said::Said::new(
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed("`origin` is empty (the machine name)"),
         ));
@@ -280,7 +280,7 @@ pub(crate) async fn answer_with(
     // 点名的那一台：机器表里要有（怎么够到它只看这一端的机器表）—— 没有就明说，不猜。
     if let Some(o) = origin {
         if !table.has(o) {
-            return Err(crate::common::said::Said::new(
+            return Err(Said::new(
                 "unreachable",
                 crate::dial::remote_ask::unreachable_message(o),
             ));
@@ -295,7 +295,7 @@ pub(crate) async fn answer_with(
     };
     let own = fold_blocking(&fold, nothing)
         .await
-        .map_err(|e| ("io_failed", e))?;
+        .map_err(|e| Said::new("io_failed", e))?;
     let own_changed = own.changed;
     let mut synced = Vec::new();
     match &first {

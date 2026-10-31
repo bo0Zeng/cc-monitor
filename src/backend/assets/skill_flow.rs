@@ -20,7 +20,7 @@ fn texts_by_path(
     key: &str,
 ) -> Result<Map<String, Value>, crate::common::said::Said> {
     let arr = v.and_then(Value::as_array).ok_or_else(|| {
-        (
+        crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "missing `{key}` (an array of {{path, text}})"
@@ -30,7 +30,7 @@ fn texts_by_path(
     let mut out = Map::new();
     for f in arr {
         let p = f.get("path").and_then(Value::as_str).ok_or_else(|| {
-            (
+            crate::common::said::Said::new(
                 "bad_args",
                 crate::common::contract::malformed(&format!("`{key}[].path` must be a string")),
             )
@@ -191,7 +191,7 @@ pub(crate) fn answer_uninstall(
     args: &Value,
 ) -> Answer {
     let dir = args.get("dir").and_then(Value::as_str).ok_or_else(|| {
-        (
+        crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed("missing `dir`"),
         )

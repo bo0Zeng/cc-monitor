@@ -11,14 +11,14 @@ async fn answer_push(
     reach: &dyn Reach,
     read_pub: &(dyn Fn(&str) -> Result<String, crate::common::said::Said> + Send + Sync),
 ) -> Result<Value, crate::common::said::Said> {
-    let req: PubkeyPushReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
+    let req: PubkeyPushReq = crate::wire::typed::take(args).map_err(|f| f.coded("bad_args"))?;
     super::answer_push(&req, reach, read_pub)
         .await
         .map(|r| serde_json::to_value(r).unwrap())
 }
 
 fn answer_add(d: &dyn Door, args: &Value) -> Result<Value, crate::common::said::Said> {
-    let req: KeyAddReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
+    let req: KeyAddReq = crate::wire::typed::take(args).map_err(|f| f.coded("bad_args"))?;
     super::answer_add(d, &req).map(|r| serde_json::to_value(r).unwrap())
 }
 
@@ -88,7 +88,7 @@ async fn the_push_entry_point_actually_sanitizes_the_key() {
             .await
             .expect_err("空公钥竟然一路走通了 —— 净化没接上");
         assert!(
-            err.1
+            err.said
                 .contains(copy_core::copy_static!("rsPubkey.sanitizePublicKey.empty")),
             "拒绝了，但不是净化拒的：{err:?}"
         );
@@ -183,8 +183,8 @@ fn the_key_lands_through_this_backends_file_face() {
     );
     assert_eq!(before, after, "第二次是 already，一个字节都不该写");
     assert_eq!(
-        answer_add(&d, &json!({ "key": "rm -rf /" })).unwrap_err().0,
-        "refused",
+        answer_add(&d, &json!({ "key": "rm -rf /" })).unwrap_err().code.as_deref(),
+        Some("refused"),
         "被写那台自己也净化"
     );
 }
@@ -389,25 +389,25 @@ async fn push_public_key_unknown_type_omits_sentinel_content_and_reports_file() 
     let err = answer_push(&args(), &fake_reach, &read)
         .await
         .expect_err("应拒绝未知公钥类型");
-    assert_eq!(err.0, "refused");
+    assert_eq!(err.code.as_deref(), Some("refused"));
     assert!(
-        !err.1.contains(sentinel),
+        !err.said.contains(sentinel),
         "拒绝体中泄露了文件内容哨兵串：{}",
-        err.1
+        err.said
     );
     assert!(
-        err.1.contains("/k/id_ed25519.pub"),
+        err.said.contains("/k/id_ed25519.pub"),
         "拒绝体未包含文件名：{}",
-        err.1
+        err.said
     );
     assert!(
         copy_core::copy_matches_with(
             "rsPubkey.pushPublicKey.unknownType",
             &[("path", "/k/id_ed25519.pub")],
-            &err.1,
+            &err.said,
         ),
         "拒绝体未按规范使用文案表：{}",
-        err.1
+        err.said
     );
 }
 
@@ -419,10 +419,10 @@ fn the_pub_file_beside_a_tilde_key_path_is_read_under_the_home() {
     std::fs::create_dir_all(home.join(".ssh")).unwrap();
     std::fs::write(home.join(".ssh").join("id_t.pub"), "ssh-ed25519 AAAA t\n").unwrap();
     assert_eq!(
-        read_pub_file("~/.ssh/id_t.pub", Some(&home)).map_err(|e| e.1),
+        read_pub_file("~/.ssh/id_t.pub", Some(&home)).map_err(|e| e.said),
         Ok("ssh-ed25519 AAAA t\n".to_string())
     );
-    let said = read_pub_file("~/.ssh/nope.pub", Some(&home)).unwrap_err().1;
+    let said = read_pub_file("~/.ssh/nope.pub", Some(&home)).unwrap_err().said;
     assert!(
         said.contains("~/.ssh/nope.pub"),
         "报错句里的路径不是用户写的那一形：{said}"

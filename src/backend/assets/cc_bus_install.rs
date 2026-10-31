@@ -214,7 +214,7 @@ pub(crate) fn install_at(
         let mut files = std::collections::BTreeMap::new();
         for (rel, bytes) in FILES {
             let text = std::str::from_utf8(bytes).map_err(|_| {
-                (
+                crate::common::said::Said::new(
                     "bad_file",
                     copy_text("beCcBusInstall.embed.notUtf8", &[("rel", rel)]),
                 )
@@ -237,10 +237,10 @@ pub(crate) fn install_at(
     };
     // 先算幂等：全都一致就一个字节不写、不备份（只记）。
     let mut all_same =
-        door::stat_kind(d, &dest_s).map_err(|e| ("refused", e))? == Some("dir".into());
+        door::stat_kind(d, &dest_s).map_err(|e| crate::common::said::Said::new("refused", e))? == Some("dir".into());
     if all_same {
         for (rel, bytes) in FILES {
-            let got = door::peek(d, &root, &rel_of(skills, rel)).map_err(|e| ("refused", e))?;
+            let got = door::peek(d, &root, &rel_of(skills, rel)).map_err(|e| crate::common::said::Said::new("refused", e))?;
             if got.text.as_deref().map(str::as_bytes) != Some(*bytes) {
                 all_same = false;
                 break;
@@ -257,7 +257,7 @@ pub(crate) fn install_at(
     }
     // ★ 可撤销：整个目录改名（原子）。已经一致时走不到这里 ⇒ 不攒垃圾备份。
     let backup = if door::stat_kind(d, &dest_s)
-        .map_err(|e| ("refused", e))?
+        .map_err(|e| crate::common::said::Said::new("refused", e))?
         .is_some()
     {
         let ts = crate::common::time::now()
@@ -268,7 +268,7 @@ pub(crate) fn install_at(
         let top_name = skills_name(skills);
         let (from, to) = (format!("{top_name}/{NAME}"), format!("{top_name}/{bak}"));
         door::rename(d, &root, &from, &to).map_err(|e| {
-            (
+            crate::common::said::Said::new(
                 "refused",
                 copy_text(
                     "beCcBusInstall.backup.failed",
@@ -282,18 +282,18 @@ pub(crate) fn install_at(
     };
     for (rel, bytes) in FILES {
         let text = std::str::from_utf8(bytes).map_err(|_| {
-            (
+            crate::common::said::Said::new(
                 "bad_file",
                 copy_text("beCcBusInstall.embed.notUtf8", &[("rel", rel)]),
             )
         })?;
         let at = rel_of(skills, rel);
-        door::put(d, &root, &at, text, None, false, true).map_err(|e| ("refused", e.said()))?;
+        door::put(d, &root, &at, text, None, false, true).map_err(|e| crate::common::said::Said::new("refused", e.said()))?;
         // `scripts/` 下的与带 shebang 的都要可执行（装完不能跑等于没装）。Windows 上没有可执行位：写口那边如实回失败 ⇒ 只在说 POSIX 的那台上发。
         if crate::platform::paths::has_exec_bits()
             && (rel.starts_with("scripts/") || bytes.starts_with(b"#!"))
         {
-            door::chmod(d, &root, &at, 0o755).map_err(|e| ("refused", e))?;
+            door::chmod(d, &root, &at, 0o755).map_err(|e| crate::common::said::Said::new("refused", e))?;
         }
     }
     // 原有那一份已整个改名走 ⇒ 这一趟每个都是新建的。

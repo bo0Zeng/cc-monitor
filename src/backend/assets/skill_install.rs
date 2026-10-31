@@ -74,7 +74,7 @@ fn skill_dir(
         .transpose()?;
     let root = crate::agents::asset_kind()
         .and_then(|k| crate::agents::skill_root_at(k, project.as_deref().map(Path::new)))
-        .ok_or(("io_failed", copy_text("beSkillInstall.read.noRoot", &[])))?;
+        .ok_or(crate::common::said::Said::new("io_failed", copy_text("beSkillInstall.read.noRoot", &[])))?;
     let dir = root.join(name);
     Ok((root, dir))
 }
@@ -471,7 +471,7 @@ pub(crate) fn answer_plan_with(
             .take(2)
             .find(|p| p.is_dir())
             .map(Path::to_path_buf)
-            .ok_or((
+            .ok_or(crate::common::said::Said::new(
                 "io_failed",
                 copy_text(
                     "beSkillInstall.install.noRoot",
@@ -549,7 +549,7 @@ fn on_disk_now(
 /// 卸的判定（被卸的那一台跑；`ext-uninstall-*` 经它判）：记录文件由调用方给。
 pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
     let dir = args.get("dir").and_then(Value::as_str).ok_or_else(|| {
-        (
+        crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed("missing `dir`"),
         )
@@ -563,7 +563,7 @@ pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
         ));
     }
     let l = crate::assets::skill_ledger::load_at(ledger)?;
-    let install = l.installs.get(dir).ok_or((
+    let install = l.installs.get(dir).ok_or(crate::common::said::Said::new(
         "not_found",
         copy_text(
             "beSkillInstall.uninstall.notRecorded",

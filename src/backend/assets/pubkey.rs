@@ -163,8 +163,8 @@ pub(crate) fn answer_add(
     d: &dyn Door,
     req: &KeyAddReq,
 ) -> Result<KeyAdded, crate::common::said::Said> {
-    let key = sanitize_public_key(&req.key).map_err(|e| ("refused", e.into_said()))?;
-    let home = door::home(d).map_err(|e| ("io_failed", e))?;
+    let key = sanitize_public_key(&req.key).map_err(|e| crate::common::said::Said::new("refused", e.into_said()))?;
+    let home = door::home(d).map_err(|e| crate::common::said::Said::new("io_failed", e))?;
     let rel = format!("{SSH_DIR}/{AUTH_FILE}");
     let mut outcome = PushOutcome::Already;
     door::edit(d, &home, &rel, false, true, |existing| {
@@ -172,9 +172,9 @@ pub(crate) fn answer_add(
         outcome = o;
         Ok(next)
     })
-    .map_err(|e| ("io_failed", e))?;
-    door::chmod(d, &home, SSH_DIR, 0o700).map_err(|e| ("io_failed", e))?;
-    door::chmod(d, &home, &rel, 0o600).map_err(|e| ("io_failed", e))?;
+    .map_err(|e| crate::common::said::Said::new("io_failed", e))?;
+    door::chmod(d, &home, SSH_DIR, 0o700).map_err(|e| crate::common::said::Said::new("io_failed", e))?;
+    door::chmod(d, &home, &rel, 0o600).map_err(|e| crate::common::said::Said::new("io_failed", e))?;
     Ok(KeyAdded { outcome })
 }
 
@@ -223,7 +223,7 @@ impl crate::wire::typed::Handle for AuthorizedKeysAdd {
         async move {
             let files = needs;
 
-            answer_add(files, &req).map_err(crate::wire::typed::of_pair(KeyAddErr::IoFailed))
+            answer_add(files, &req).map_err(crate::wire::typed::of_fail_with(KeyAddErr::IoFailed))
         }
     }
 }
@@ -391,7 +391,7 @@ impl crate::wire::typed::Handle for PubkeyPush {
         async move {
             answer_push(&req, &Wire, &read_local_pub)
                 .await
-                .map_err(crate::wire::typed::of_pair(PushErr::Failed))
+                .map_err(crate::wire::typed::of_fail_with(PushErr::Failed))
         }
     }
 }
@@ -404,17 +404,9 @@ pub(crate) async fn answer_push(
 ) -> Result<PubkeyPushed, crate::common::said::Said> {
     let machine = &req.machine;
     let dial =
-        crate::dial::request_draft(&reach.hosts(), machine, "capture", serde_json::json!({}))
-            .map_err(|s| {
-                let code = if s.code.as_deref() == Some("bad_jump") {
-                    "bad_jump"
-                } else {
-                    "bad_args"
-                };
-                (code, s.said)
-            })?;
+        crate::dial::request_draft(&reach.hosts(), machine, "capture", serde_json::json!({}))?;
     let path =
-        pub_key_path(req.pub_key_path.as_deref(), machine.key()).map_err(|e| ("refused", e))?;
+        pub_key_path(req.pub_key_path.as_deref(), machine.key()).map_err(|e| crate::common::said::Said::new("refused", e))?;
     let key = match sanitize_public_key(&read_pub(&path)?) {
         Ok(k) => k,
         Err(SanitizeKeyErr::UnknownType) => {
@@ -430,15 +422,15 @@ pub(crate) async fn answer_push(
         let outcome = reach
             .ask_add(&name, &key)
             .await
-            .map_err(|e| ("failed", e))?;
+            .map_err(|e| crate::common::said::Said::new("failed", e))?;
         (outcome, PushVia::Backend)
     } else {
         let out = reach
             .exec_once(&dial, authorized_keys_cmd(&key))
             .await
-            .map_err(|e| ("failed", e))?;
+            .map_err(|e| crate::common::said::Said::new("failed", e))?;
         (
-            parse_push_outcome(&out).map_err(|e| ("failed", e))?,
+            parse_push_outcome(&out).map_err(|e| crate::common::said::Said::new("failed", e))?,
             PushVia::Exec,
         )
     };
@@ -461,18 +453,14 @@ pub(crate) fn read_pub_file(
 ) -> Result<String, crate::common::said::Said> {
     let at = crate::platform::paths::expand_tilde_from(path, home);
     let said = |why: &str| {
-        (
+        crate::common::said::Said::new(
             "refused",
             copy_text("reason.fs.readFailed", &[("path", path), ("why", why)]),
         )
     };
-    // 系统原话记一行日志；句子只带原因词。
+    // 句子只带原因词；系统原话进原话。
     let io = |e: std::io::Error| {
-        let (c, m) = said(&copy_core::io_reason(e.kind()));
-        (
-            c,
-            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(m, e)),
-        )
+        said(&copy_core::io_reason(e.kind())).and_raw(Some(&e.to_string()))
     };
     let meta = Ro::metadata(&at).map_err(io)?;
     if meta.len() > PUB_READ_MAX {

@@ -54,7 +54,7 @@ impl Here for FakeHere {
         self.answers
             .get(cmd)
             .cloned()
-            .ok_or_else(|| ("unknown_command".to_string(), cmd.to_string()))
+            .ok_or_else(|| crate::common::said::Said::new("unknown_command", cmd.to_string()))
     }
 }
 
@@ -206,8 +206,8 @@ async fn the_hub_refuses_to_write_when_the_source_moved_since_the_preview() {
     let mut args = mcp_args(Value::Null, Value::Null);
     args["scope"]["from"]["dir"] = json!("/a");
     args["tokens"] = json!({ "source": "OLD", "target": "t-dst" });
-    let (code, _) = ap(&dyn_h, &args, &t, &r).await.expect_err("来源变了还写了");
-    assert_eq!(code, "stale");
+    let e = ap(&dyn_h, &args, &t, &r).await.expect_err("来源变了还写了");
+    assert_eq!(e.code.as_deref(), Some("stale"));
     assert!(
         h.asked
             .lock()
@@ -235,11 +235,11 @@ async fn an_unregistered_machine_is_unreachable_and_never_dialed() {
     let (_h, dyn_h) = here(&[]);
     let t = crate::dial::remote_ask::test_peers::empty();
     let r = remote(&[]);
-    let (code, said) = pv(&dyn_h, &mcp_args(json!("ghost"), Value::Null), &t, &r)
+    let e = pv(&dyn_h, &mcp_args(json!("ghost"), Value::Null), &t, &r)
         .await
         .expect_err("没登记的那台也答了");
-    assert_eq!(code, "unreachable");
-    assert!(said.contains("ghost"), "{said}");
+    assert_eq!(e.code.as_deref(), Some("unreachable"));
+    assert!(e.said.contains("ghost"), "{}", e.said);
     assert!(r.calls.lock().unwrap().is_empty());
 }
 
@@ -273,10 +273,10 @@ async fn skill_preview_and_apply_go_through_the_same_pair() {
     );
     let mut apply = args.clone();
     apply["tokens"] = card["tokens"].clone();
-    let (code, _) = ap(&dyn_h, &apply, &t, &r)
+    let e = ap(&dyn_h, &apply, &t, &r)
         .await
         .expect_err("来源变了还装了");
-    assert_eq!(code, "stale");
+    assert_eq!(e.code.as_deref(), Some("stale"));
     assert!(h
         .asked
         .lock()
@@ -285,10 +285,10 @@ async fn skill_preview_and_apply_go_through_the_same_pair() {
         .all(|(c, _)| c != "skill-install-apply"));
     let mut same = args.clone();
     same["from"] = Value::Null;
-    let (code, _) = pv(&dyn_h, &same, &t, &r)
+    let e = pv(&dyn_h, &same, &t, &r)
         .await
         .expect_err("同一台同一处也看卡了");
-    assert_eq!(code, "refused");
+    assert_eq!(e.code.as_deref(), Some("refused"));
 }
 
 /// 远端答「按码说」：被写那台 CLI 信封答 `stale` ⇒ 枢纽回的也是 `stale`（别压成 `refused`）。
@@ -324,7 +324,7 @@ async fn the_hub_passes_the_remote_code_through() {
         json!({ "path": "/a/.mcp.json", "def": {}, "slots": [], "token": "S" }),
     )]);
     let t = table_with("devbox");
-    let (code, said) = pv(
+    let e = pv(
         &dyn_h,
         &mcp_args(Value::Null, json!("devbox")),
         &t,
@@ -332,8 +332,8 @@ async fn the_hub_passes_the_remote_code_through() {
     )
     .await
     .expect_err("被写那台答了 stale");
-    assert_eq!(code, "stale", "{said}");
-    assert!(said.contains("被改过"));
+    assert_eq!(e.code.as_deref(), Some("stale"), "{}", e.said);
+    assert!(e.said.contains("被改过"));
 }
 
 /// 枢纽这台按 Windows 那一形判它自己的路径（内层命令收到的 `project` 先过一遍 Windows 形的判定，再答定好的成品）。
@@ -347,13 +347,12 @@ impl Here for WindowsHere {
     }
     fn ask(&self, cmd: &str, args: Value) -> Result<Value, crate::common::said::Said> {
         if let Some(p) = args["project"].as_str() {
-            crate::assets::mcp_edit::project_root_as(p, crate::assets::mcp_edit::PathForm::Windows)
-                .map_err(|(c, m)| (c.to_string(), m))?;
+            crate::assets::mcp_edit::project_root_as(p, crate::assets::mcp_edit::PathForm::Windows)?;
         }
         self.answers
             .get(cmd)
             .cloned()
-            .ok_or_else(|| ("unknown_command".to_string(), cmd.to_string()))
+            .ok_or_else(|| crate::common::said::Said::new("unknown_command", cmd.to_string()))
     }
 }
 
@@ -386,7 +385,7 @@ impl Remote for PosixRemote {
         );
         let out = match judged {
             Ok(_) => Ok(format!("{}\n", self.plan)),
-            Err((code, message)) => Err(crate::common::said::Said::new(code, message)),
+            Err(e) => Err(e),
         };
         Box::pin(async move { out })
     }
@@ -426,21 +425,21 @@ async fn a_project_dir_is_judged_by_the_machine_it_belongs_to() {
     assert_eq!(card["path"], "/home/user/.claude/skills/demo");
     assert_eq!(laptop.asked.lock().unwrap()[0]["project"], "/home/user");
 
-    let (code, said) = pv(&here, &args(json!("laptop"), "w/x"), &t, &laptop)
+    let e = pv(&here, &args(json!("laptop"), "w/x"), &t, &laptop)
         .await
         .expect_err("被写那台收下了相对路径");
     let want = project_root_as("w/x", PathForm::Posix).unwrap_err();
-    assert_eq!((code.as_str(), said), (want.0, want.1));
+    assert_eq!((e.code, e.said), (want.code, want.said));
     assert_eq!(
         laptop.asked.lock().unwrap().len(),
         2,
         "相对路径该由被写那台判（它要被问到）"
     );
 
-    let (code, _) = pv(&here, &args(Value::Null, "/home/user"), &t, &laptop)
+    let e = pv(&here, &args(Value::Null, "/home/user"), &t, &laptop)
         .await
         .expect_err("正控：Windows 那一形的这台收下了 /home/user");
-    assert_eq!(code, "bad_path");
+    assert_eq!(e.code.as_deref(), Some("bad_path"));
 }
 
 /// ★ 自己发版的插件（planned-build）不拒：照 skill 那条路，来源那台读整个目录、被写那台判、看卡；
@@ -467,8 +466,8 @@ async fn the_hub_installs_planned_build_like_a_skill_directory() {
     assert_eq!(h.asked.lock().unwrap()[0].0, "skill-install-plan");
     let mut proj = args.clone();
     proj["scope"]["to"] = json!({ "level": "project", "dir": "/w" });
-    let (code, _) = pv(&dyn_h, &proj, &t, &r).await.expect_err("插件装进了项目");
-    assert_eq!(code, "refused");
+    let e = pv(&dyn_h, &proj, &t, &r).await.expect_err("插件装进了项目");
+    assert_eq!(e.code.as_deref(), Some("refused"));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -536,14 +535,16 @@ fn a_machine_without_a_bring_or_not_in_the_table_is_said_per_machine() {
     assert_eq!(
         plan_many(&list, ExtKind::Skill, "nope", &[None], None)
             .unwrap_err()
-            .0,
-        "missing"
+            .code
+            .as_deref(),
+        Some("missing")
     );
     assert_eq!(
         plan_many(&list, ExtKind::Skill, "demo", &[], None)
             .unwrap_err()
-            .0,
-        "bad_args"
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
 }
 
@@ -602,15 +603,15 @@ async fn a_reply_that_does_not_parse_says_that_backend_differs() {
     // 远端那台（来源）：回包缺 `token`。
     let r = remote(&[json!({ "path": "/r/.mcp.json", "def": { "command": "c" }, "slots": [] })]);
     let (_h, dyn_h) = here(&[]);
-    let (code, said) = pv(&dyn_h, &mcp_args(json!("devbox"), Value::Null), &t, &r)
+    let e = pv(&dyn_h, &mcp_args(json!("devbox"), Value::Null), &t, &r)
         .await
         .expect_err("半截回包也拼了卡");
-    assert_eq!(code, "backend_differs", "{said}");
+    assert_eq!(e.code.as_deref(), Some("backend_differs"), "{}", e.said);
     assert!(
-        said.starts_with(&copy_core::backend_differs("devbox")),
-        "{said}"
+        e.said.starts_with(&copy_core::backend_differs("devbox")),
+        "{}", e.said
     );
-    assert!(said.contains("token"), "解码器那一句没进原话：{said}");
+    assert!(e.said.contains("token"), "解码器那一句没进原话：{}", e.said);
     // 本机那一跳（被写那台）：`state` 换了型。
     let (_h, dyn_h) = here(&[
         (
@@ -622,7 +623,7 @@ async fn a_reply_that_does_not_parse_says_that_backend_differs() {
             json!({ "path": "/l/.mcp.json", "state": 3, "def": { "command": "c" }, "slots": [], "suspects": [], "target": null }),
         ),
     ]);
-    let (code, said) = pv(
+    let e = pv(
         &dyn_h,
         &mcp_args(Value::Null, Value::Null),
         &t,
@@ -630,13 +631,13 @@ async fn a_reply_that_does_not_parse_says_that_backend_differs() {
     )
     .await
     .expect_err("本机回的半截包也拼了卡");
-    assert_eq!(code, "backend_differs", "{said}");
+    assert_eq!(e.code.as_deref(), Some("backend_differs"), "{}", e.said);
     assert!(
-        said.starts_with(&copy_core::backend_differs(&copy_core::copy_text(
+        e.said.starts_with(&copy_core::backend_differs(&copy_core::copy_text(
             "beExt.machine.here",
             &[]
         ))),
-        "{said}"
+        "{}", e.said
     );
 }
 
@@ -664,8 +665,8 @@ async fn the_hub_refuses_a_plugin_without_asking_anyone() {
     let args = json!({ "kind": "plugin", "name": "github", "from": "devbox", "to": null,
                        "tokens": { "source": "t", "target": null },
                        "scope": { "from": { "level": "user" }, "to": { "level": "user" } } });
-    let want = (
-        "refused".to_string(),
+    let want = crate::common::said::Said::new(
+        "refused",
         copy_text("beExt.note.pluginReadOnly", &[]),
     );
     assert_eq!(
