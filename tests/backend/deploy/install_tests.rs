@@ -10,7 +10,8 @@ use ssh_dial::sftp::rig;
 use ssh_dial::sftp::Session;
 use ssh_dial::Captured;
 
-use crate::{Facing, Fail, Fut, Place, Slot, Step};
+use crate::{Facing, Fut, Place, Slot, Step};
+use copy_core::said::Said;
 
 /// 判据里的「此刻」（秒）。
 const NOW: u64 = 10_000_000;
@@ -185,7 +186,7 @@ impl Facing for Rig {
 }
 
 impl Place for Rig {
-    fn sftp(&self) -> Fut<'_, Result<&Session, Fail>> {
+    fn sftp(&self) -> Fut<'_, Result<&Session, Said>> {
         Box::pin(async move { Ok(&self.session) })
     }
 }
@@ -208,7 +209,7 @@ fn scratch(name: &str) -> std::path::PathBuf {
     d
 }
 
-async fn run(r: &Rig, slots: &[Slot]) -> (Result<crate::Plan, Fail>, Vec<Step>) {
+async fn run(r: &Rig, slots: &[Slot]) -> (Result<crate::Plan, Said>, Vec<Step>) {
     let steps = Mutex::new(Vec::new());
     let load = |p: &std::path::Path| std::fs::read(p);
     let got = crate::install(r, slots, &load, "box", NOW, &|s| {
@@ -306,7 +307,7 @@ async fn bytes_that_do_not_say_the_planned_identity_are_not_pushed() {
     let r = Rig::linux(None).await;
     let (got, _) = run(&r, &[slot(&d, "p9b-mine", &backend("p9a-other"))]).await;
     let e = got.unwrap_err();
-    assert_eq!(e.code, "not_carried", "{e:?}");
+    assert_eq!(e.code.as_deref(), Some("not_carried"), "{e:?}");
     assert!(
         r.fs.lock().unwrap().mutated.is_empty(),
         "{:?}",
@@ -317,7 +318,7 @@ async fn bytes_that_do_not_say_the_planned_identity_are_not_pushed() {
     gone.path = d.join("missing");
     let (got, _) = run(&r, &[gone]).await;
     let e = got.unwrap_err();
-    assert_eq!(e.code, "not_carried");
+    assert_eq!(e.code.as_deref(), Some("not_carried"));
     assert!(e.raw.is_some_and(|r| r.contains("missing")));
 }
 
