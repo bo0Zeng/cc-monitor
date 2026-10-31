@@ -200,14 +200,14 @@ where
     let ack = remote_ask::capped_line(&mut rd, ACK_CAP)
         .await
         .map_err(failed)?
-        .ok_or_else(|| failed(copy_text("beForwards.start.noAck", &[])))?;
+        .ok_or_else(|| failed(copy_text("beForwards.start.unconfirmed", &[])))?;
     let ack: Value = serde_json::from_str(&ack).map_err(|e| failed(e.to_string()))?;
     if ack.get("ok").and_then(Value::as_bool) != Some(true) {
         let why = ack
             .get("error")
             .and_then(Value::as_str)
             .map(str::to_string)
-            .unwrap_or_else(|| copy_text("beForwards.start.noAck", &[]));
+            .unwrap_or_else(|| copy_text("beForwards.start.unconfirmed", &[]));
         return Err(failed(why));
     }
     let conn_count = Arc::new(AtomicU64::new(0));
