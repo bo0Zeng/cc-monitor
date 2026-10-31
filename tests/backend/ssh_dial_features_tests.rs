@@ -922,7 +922,7 @@ fn the_quiet_sink_of_a_raced_dial_still_reports_progress() {
     let quiet = live.quiet();
     quiet.step(crate::step::TCP);
     quiet.note_why(crate::Why::Timeout);
-    quiet.emit(crate::Stage::Established);
+    quiet.emit(crate::stage::established());
     assert_eq!(steps.try_recv().ok(), Some(crate::step::TCP));
     assert_eq!(live.why(), None, "另拨那一条的原因码不进这一趟");
 }

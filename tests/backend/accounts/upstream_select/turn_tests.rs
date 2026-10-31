@@ -980,3 +980,37 @@ fn weekly_and_others_are_facts_of_the_reading_and_the_sessions() {
         "不是这两个会话 ⇒ 两个都算别人"
     );
 }
+
+/// ★ 停发到 24 小时以外 ⇒ 记那一条停发时写一句「Claude Code 不会自己续」（它只在重置落在 24 小时内时挂「等到重置自动续」，
+/// 2.1.314 核过）；24 小时以内 · 说不出停到几点 ⇒ 不写。
+#[test]
+fn a_hold_past_a_day_says_claude_code_will_not_resume_by_itself() {
+    use crate::accounts::quota::rules::decide::{Decision, Pick, Sigma};
+    let t = now();
+    let held = |until: Option<u64>| {
+        let mut s = book::Session::fresh("claude-code", "a", t);
+        let d = Decision {
+            pick: Pick::Hold {
+                until,
+                account: None,
+            },
+            sigma: Sigma::default(),
+            skipped: Vec::new(),
+            order: Vec::new(),
+            why: Vec::new(),
+            from_temp: false,
+            tn: None,
+            wake_at: None,
+            strategy_error: None,
+            warm: Vec::new(),
+            warm_dropped: Vec::new(),
+        };
+        super::apply(&mut s, &d, &[], t, None);
+        s.log.last().expect("记了一条停发").why.clone()
+    };
+    let note = copy_core::copy_text("beRotation.hold.noAutoResume", &[]);
+    assert_eq!(held(Some(t + 24 * 3600 + 1)), Some(note), "24 小时以外");
+    assert_eq!(held(Some(t + 24 * 3600)), None, "正好 24 小时还在内");
+    assert_eq!(held(Some(t + 3600)), None);
+    assert_eq!(held(None), None, "说不出停到几点");
+}

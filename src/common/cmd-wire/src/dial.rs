@@ -1,6 +1,6 @@
 //! **拨号的线上形状**：拨号核心（`ssh-dial`）写、读它的那一侧（手机 Kotlin）读的那几样，两头同一份。
 //!
-//! 一条链路上 ack 之前只有一种行 `{"stage":{…}}`（[`StageLine`]：拨号阶段 [`Stage`] 或「过了一步」），然后恰好一行 ack（[`DialAck`]），
+//! 一条链路上 ack 之前只有一种行 `{"stage":{…}}`（[`StageRow`]：拨号阶段或「过了一步」，同一族 [`Stage`]），然后恰好一行 ack（[`DialAck`]），
 //! 之后按用法（`capture` 那一形是一行 [`Captured`]）。纯数据：怎么拨、详情怎么写住拨号核心。
 
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,9 @@ pub struct Endpoint {
     pub port: u16,
 }
 
-/// ack 之前的一行（`{"stage":…}`）。阶段取 russh 能干净观测的粒度 —— 不含 KEX（`HostKey` 触发即隐含 TCP ＋ KEX 已过）。
+/// ack 之前那一行（[`StageRow`]）的值：拨号又过了一步，或者一条拨号阶段。阶段取 russh 能干净观测的粒度 —— 不含 KEX（`HostKey` 触发即隐含 TCP ＋ KEX 已过）。
+/// 带地址的那几支：`endpoint` 是结构化的那一台，`said` 是拨号核心照这一支写好的那一句（地址怎么称呼 · 原因都在句子里），读的那一侧照摆。
+/// 只经 `ssh_dial::stage` 那几个构造函数造（字在那里写）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -39,38 +41,33 @@ pub struct Endpoint {
 )]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Stage {
+    /// 拨号又过了一步（`tcp` · `banner` · `hostkey` · `auth` · `tunnel` · `channel`，经跳板时每一台各走一遍）。
+    /// 当场就写，不攒；读的那一侧只拿它重新计时，不按名字分支，也不上屏。
+    Step { step: String },
     /// 某地址开始拨号（TCP ＋ 握手）。
-    Dialing { endpoint: String },
-    /// 某地址握手到 host key 校验（带指纹）。
-    HostKey {
-        endpoint: String,
-        fingerprint: String,
-    },
-    /// 某地址连接失败（reason = 粗分类 ＋ 原始错误）。
-    Failed { endpoint: String, reason: String },
+    Dialing { endpoint: Endpoint, said: String },
+    /// 某地址握手到 host key 校验（句子里带指纹）。
+    HostKey { endpoint: Endpoint, said: String },
+    /// 某地址连接失败（句子里带粗分类 ＋ 原始错误）。
+    Failed { endpoint: Endpoint, said: String },
     /// 竞速胜出地址（其余在飞的已丢弃）。
-    Won { endpoint: String },
-    /// 鉴权结果。没登上时 `detail` 是那一句（已带原因词；原话随 ack 走）。
-    Auth { ok: bool, detail: Option<String> },
+    Won { endpoint: Endpoint, said: String },
+    /// 鉴权结果（没登上时句子里带原因词；原话随 ack 走）。
+    Auth { ok: bool, said: String },
     /// 连接就绪（握手 ＋ 鉴权全过）。
-    Established,
+    Established { said: String },
 }
 
-/// ack 之前那一行 `{"stage":…}` 的值：拨号又过了一步，或者一条拨号阶段（[`Stage`]）。同一种行、同一个 `kind` 标签。
+/// ack 之前的一行：`{"stage":…}`。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum StageLine {
-    /// 拨号又过了一步（`tcp` · `banner` · `hostkey` · `auth` · `tunnel` · `channel`，经跳板时每一台各走一遍）。
-    /// 当场就写，不攒；读的那一侧只拿它重新计时，不按名字分支。
-    Step { step: String },
-    /// 一条拨号阶段（`kind` 是它自己那几个）。
-    #[serde(untagged)]
-    Stage(Stage),
+#[serde(deny_unknown_fields)]
+pub struct StageRow {
+    pub stage: Stage,
 }
 
 /// 拨号代理回的那一行 ack。读的那一侧对老代理宽容：除 `ok` 之外的格缺席都按缺省读。
