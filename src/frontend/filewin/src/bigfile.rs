@@ -8,8 +8,7 @@
 //! 卡顿有**两个**互不相关的来源：全文有多少字节（egui 每帧那笔
 //! O(段数) 的记账）· 最长一行有多少字节（epaint 不可再分的排版单位就是一段）。
 //! ⇒ **两条任一成立**就进大文件模式：最长一行 > [`BIG_LINE_BYTES`] · 全文 > [`BIG_TOTAL_BYTES`]。
-//! 两个数由 [`derive_threshold`] 从 [`LINE_READING`] / [`TOTAL_READING`] 两份现打读数推出来，
-//! 判据钉「推算式 == 常量」—— 改了读数不改常量、或改了常量不改读数，当场红。
+//! 两个数从两份现打读数推出来（推法写在那两个常量上；读数由 `bigfile_tests` 里那条手动跑的量具打）。
 //!
 //! 🔴 一旦进了大文件模式，这一份打开着的文本**就一直是大文件模式**（不回落）：
 //! 来回切会丢掉光标、选区和撤销栈，而用户敲一个键把最长一行拉过线又删回来是常事。
@@ -66,86 +65,18 @@ use super::editor::Pane;
 // 一、怎么判断：两个阈值 ＝ 两份读数推出来的
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 一帧的预算（60 Hz），微秒。
-#[cfg(test)]
-pub const FRAME_BUDGET_US: u64 = 16_667;
+// 推法：每一维分**三分之一帧**（60 Hz 一帧 16 667 µs；两个来源会叠加，两条都刚好不越线的最坏文件吃掉 2/3 帧，
+// 剩 1/3 给上屏与 O(全文) 的拷贝比较）。普通路径（生产那个 `TextEdit`）**真敲一个键**那一帧，
+// 在参照语料上三趟取最坏（release 档 · 墙钟）；参照档取扫描里第一档越过预算的那一档。
+// 阈值 ＝ 预算 × 参照字节 ÷ 最坏耗时，再取对数意义上最近的 2 的幂（同一档九趟之间差到 1.4 倍，多留的位数都是噪声）。
+// 两条都刚好不越线的最坏文件 ≈ 6.62 ＋ 5.43 ＝ 12.1 ms，仍在一帧之内。
 
-/// 每一维分到的份数：**三分之一帧**。
-///
-/// 两个来源互相独立、会**叠加**（一份 256 KiB、里面还有一行 32 KiB 的文件两笔都付）
-/// ⇒ 两条都刚好不越线的最坏文件吃掉 2/3 帧，剩 1/3 给上屏、`shell.rs` 那两笔
-/// O(全文) 的拷贝与比较、以及用户那台比开发机慢的机器。
-#[cfg(test)]
-pub const BUDGET_SHARE: u64 = 3;
-
-/// 一份现打读数：普通路径（生产那个 `TextEdit`）**每敲一个键**那一帧，
-/// 在 `at_bytes` 那么大的参照语料上，三趟里**最坏**那一趟的耗时。
-///
-/// 🔴「敲一个键」逐字是**真敲**：控件有焦点、这一帧收到一个 `Event::Text`。
-/// 上一版读数在帧与帧之间 `push` 一个字，控件那一帧只是「文本变了、重排一次」；真敲键还要走
-/// 控件自己的事件路径（撤销器前后各克隆一次全文 · 字下标换字节下标 · **改完再排一次**）——
-/// 全文那一维现打贵 2.2 倍，上一版的 1 MiB 门槛因此放宽了一倍（逮到它的是经窗口生产路径量出来的
-/// 1 MiB 规整文本每键 10.7–16.7 ms，与「1 MiB 只要 7.49 ms」对不上）。
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Reading {
-    pub at_bytes: u64,
-    pub worst_us: u64,
-}
-
-/// 全文那一维的读数（每行 64 字节的规整文本；release 档；墙钟；真敲键）。
-///
-/// 参照档怎么挑：扫描（64 · 128 · 256 · 512 KiB · 1 MiB）里**第一档最坏读数越过预算**
-/// 的那一档 —— 离要推的那个数最近、线性外推最短。2026-09-24 现打三次 × 三趟（负载 5–8 / 24 核）：
-/// 256 KiB 最坏 5.43 ms（没越）· **512 KiB 最坏 11.90 ms（越了）**。
-/// 来源：`tests::the_readings_behind_the_two_thresholds`，逐趟读数住。
-#[cfg(test)]
-pub const TOTAL_READING: Reading = Reading {
-    at_bytes: 512 * 1024,
-    worst_us: 11_900,
-};
-
-/// 最长一行那一维的读数（整份压成一行；release 档；墙钟；真敲键）。参照档挑法同上：
-/// 扫描（4 · 8 · 16 · 32 · 64 KiB）里 16 KiB 最坏 3.30 ms（没越）· **32 KiB 最坏 6.62 ms（越了）**。
-#[cfg(test)]
-pub const LINE_READING: Reading = Reading {
-    at_bytes: 32 * 1024,
-    worst_us: 6_620,
-};
-
-/// 从一份读数推阈值：**预算 × 参照字节 ÷ 最坏耗时**，再取对数意义上最近的 2 的幂。
-///
-/// 取 2 的幂不是为了好看：同一档语料九趟之间差到 1.4 倍（实测 512 KiB 7.67–11.90 ms），
-/// 推出来的数本来就只准到这个量级 ⇒
-/// 「最近的 2 的幂」（误差 ≤ √2 倍）与读数的精度同阶，多保留的位数都是噪声。
-///
-/// ⚠ 如实登记它的代价：推出来 27 496 → 32 KiB（进位）、244 741 → 256 KiB（进位）；
-/// 刚好不越线的文件实际吃到约 0.3–0.4 帧；两条都刚好不越线的最坏文件 ≈ 6.62 ＋ 5.43 ＝ 12.1 ms，
-/// **仍在一帧之内**。
-#[cfg(test)]
-pub const fn derive_threshold(r: Reading) -> usize {
-    let raw = (FRAME_BUDGET_US / BUDGET_SHARE) as u128 * r.at_bytes as u128 / r.worst_us as u128;
-    nearest_pow2(raw) as usize
-}
-
-/// 对数意义上最近的 2 的幂（`x ≥ √2·下界` ⇒ 进位）。
-#[cfg(test)]
-pub const fn nearest_pow2(x: u128) -> u128 {
-    if x <= 1 {
-        return 1;
-    }
-    let lo = 1u128 << (127 - x.leading_zeros());
-    if x * x >= 2 * lo * lo {
-        lo * 2
-    } else {
-        lo
-    }
-}
-
-/// 最长一行超过这么多字节 ⇒ 大文件模式。**住这一处**；判据钉它 == `derive_threshold(LINE_READING)`。
+/// 最长一行超过这么多字节 ⇒ 大文件模式。**住这一处**。
+/// 读数：整份压成一行，16 KiB 最坏 3.30 ms（没越）· 32 KiB 最坏 6.62 ms（越了）⇒ 推出 27 496 → 32 KiB。
 pub const BIG_LINE_BYTES: usize = 32 * 1024;
 
-/// 全文超过这么多字节 ⇒ 大文件模式。**住这一处**；判据钉它 == `derive_threshold(TOTAL_READING)`。
+/// 全文超过这么多字节 ⇒ 大文件模式。**住这一处**。
+/// 读数：每行 64 字节的规整文本，256 KiB 最坏 5.43 ms（没越）· 512 KiB 最坏 11.90 ms（越了）⇒ 推出 244 741 → 256 KiB。
 pub const BIG_TOTAL_BYTES: usize = 256 * 1024;
 
 /// 一份文本量出来的两个数。
@@ -214,11 +145,6 @@ impl Lines {
 
     pub fn count(&self) -> usize {
         self.starts.len()
-    }
-
-    #[cfg(test)]
-    pub fn total_bytes(&self) -> usize {
-        self.len
     }
 
     pub fn start(&self, line: usize) -> usize {
@@ -340,13 +266,6 @@ pub fn byte_at_char(s: &str, k: usize, ascii: bool) -> usize {
 
 /// 不知道摆多高时一屏几行（判据那一形；生产上编辑面的高由它那一栏剩下的高给，见 [`show`]）。
 pub const VIEW_ROWS: usize = 24;
-
-/// `rows` 行等宽字有多高（判据用）。
-#[cfg(test)]
-pub fn view_height(ui: &Ui, rows: usize) -> f32 {
-    let font = TextStyle::Monospace.resolve(ui.style());
-    rows as f32 * ui.fonts_mut(|f| f.row_height(&font))
-}
 
 /// 横向总宽在最宽那一行之后再留几列（放「这一行共 N 字」）。
 const TAG_ROOM: usize = 20;
@@ -470,29 +389,6 @@ impl Doc {
             laid: Vec::new(),
             tally: Tally::default(),
         }
-    }
-
-    #[cfg(test)]
-    pub fn why(&self) -> Why {
-        self.why
-    }
-    #[cfg(test)]
-    pub fn lines(&self) -> &Lines {
-        &self.lines
-    }
-    #[cfg(test)]
-    pub fn tally(&self) -> &Tally {
-        &self.tally
-    }
-    /// 光标与选区另一端（字节偏移）。
-    #[cfg(test)]
-    pub fn cursor(&self) -> (usize, usize) {
-        (self.cur, self.anc)
-    }
-    /// 下一帧把滚动偏移钉在 `off`（内容坐标，像素）。
-    #[cfg(test)]
-    pub fn pin_offset(&mut self, off: Vec2) {
-        self.pin = Some(off);
     }
 
     /// 有人在本模块之外换了全文 ⇒ 行结构、撤销栈都作废，重建。
@@ -1165,18 +1061,6 @@ impl BigSlot {
     /// 进了大文件模式没有。
     pub fn is_big(&self) -> bool {
         self.lock().is_some()
-    }
-
-    /// 上一帧排了什么（没进模式 ⇒ `None`）。
-    #[cfg(test)]
-    pub fn tally(&self) -> Option<Tally> {
-        self.lock().as_ref().map(|d| d.tally.clone())
-    }
-
-    /// 在那份 `Doc` 上做点事（判据钉滚动偏移、读光标用）。
-    #[cfg(test)]
-    pub fn with<R>(&self, f: impl FnOnce(&mut Doc) -> R) -> Option<R> {
-        self.lock().as_mut().map(f)
     }
 }
 

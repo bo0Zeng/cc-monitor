@@ -4,11 +4,7 @@ use super::*;
 
 impl FileWindow {
     /// 摆出「复制到另一台」那一问（机器 ＋ 目标目录）：第 `idx` 那几行（文件与目录都行；目录整棵逐个文件）。回值 ＝ 真的摆出来了。
-    pub fn begin_cross(&mut self, i: usize) -> bool {
-        self.begin_cross_rows(&[i])
-    }
-
-    /// 同 [`Self::begin_cross`]，一组。名字只有原始字节的那几项寻址不到（那一条按路径串寻址）⇒ 不摆、出声。
+    /// 名字只有原始字节的那几项寻址不到（那一条按路径串寻址）⇒ 不摆、出声。
     pub fn begin_cross_rows(&mut self, idx: &[usize]) -> bool {
         *self.prompt_error.lock().unwrap() = None;
         let rows: Vec<Listed> = {
@@ -54,11 +50,6 @@ impl FileWindow {
         });
         self.cross_pick = Default::default();
         true
-    }
-
-    /// 那一问里正在填的（判据与 [`Self::cross_ui`] 用）。
-    pub fn cross_prompt_mut(&mut self) -> Option<&mut crate::cross_copy::CrossPrompt> {
-        self.cross_prompt.as_mut()
     }
 
     /// 答完那一问 ⇒ 起那一趟（机器名空 ⇒ 框留着、出声）。回值 ＝ 真的起来了。

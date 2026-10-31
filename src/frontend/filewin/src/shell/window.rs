@@ -83,7 +83,7 @@ use super::*;
 /// 开过几个窗口 —— **egui 那条线程真的跑起来了**几次。
 ///
 /// ⚠ 它在**次线程里**加，所以从调用方看它是**异步**的：
-/// `open_detached` 返回的那一刻这个数可能还没动。要「请求过几次」看 [`open_requested`]。
+/// `open_detached_seeded` 返回的那一刻这个数可能还没动。要「请求过几次」看 [`OPEN_REQUESTED`]。
 pub(super) static WINDOWS_OPENED: AtomicU64 = AtomicU64::new(0);
 
 /// 请求过几次开窗 —— **同步**加，在 `thread::spawn` 之前。
@@ -101,18 +101,6 @@ pub(super) static OPEN_REQUESTED: AtomicU64 = AtomicU64::new(0);
 /// **扫源码买不到这个**（本仓 09-20 栽过一次：源码扫描那条与行为那条买的不是同一样东西，
 /// 前者看不见「按钮接没接到方法上」）。⇒ 由 Xvfb 那条真开窗的判据读它。
 pub(super) static FONT_VERDICT: Mutex<Option<FontState>> = Mutex::new(None);
-
-pub fn font_verdict() -> Option<FontState> {
-    FONT_VERDICT.lock().unwrap().clone()
-}
-
-pub fn windows_opened() -> u64 {
-    WINDOWS_OPENED.load(Ordering::SeqCst)
-}
-
-pub fn open_requested() -> u64 {
-    OPEN_REQUESTED.load(Ordering::SeqCst)
-}
 
 // `any_thread_hook`（winit 事件循环建在次线程上 · 本进程自己管 DPI，三个平台各一句）住 `platform.rs`。
 
@@ -135,31 +123,9 @@ pub fn window_title(tab: &str, machine: &str) -> String {
 /// ⚠ `eframe::run_native` 在它自己那条线程上是**阻塞到窗口关闭**的；
 /// 这里把它整个丢进 `std::thread::spawn` ⇒ 对调用方是非阻塞的。
 ///
-/// 🔴**这两个函数今天跑在窗口进程里，不在 monitor 里** ——
-/// 调用方是 [`crate::proc::child_main`]。它们**不带种子**的这一支（本函数）
-/// 生产上没人走：入口那条命令恒是先列一趟再把那一屏交出去。
-pub fn open_detached(
-    source: Source,
-    cwd: String,
-    rt: Option<tokio::runtime::Handle>,
-) -> std::thread::JoinHandle<Result<(), Said>> {
-    open_detached_seeded(
-        source,
-        cwd,
-        rt,
-        None,
-        crate::source::Shown::default(),
-        None,
-        None,
-        Vec::new(),
-        None,
-        None,
-    )
-}
-
-/// 同 [`open_detached`]，但**带着已经列好的那一屏**开窗。
+/// 🔴**它跑在窗口进程里，不在 monitor 里** —— 调用方是 [`crate::proc::child_main`]。
 ///
-/// 🔴 用它而不是 `open_detached` 的理由住 [`FileWindow::seeded`]：
+/// **带着已经列好的那一屏**开窗（理由住 [`FileWindow::seeded`]）：
 /// 入口那条命令为了能在 webview 那侧出声，已经列过一趟了，别再打第二次往返。
 /// 🔴**为什么窗口进程里还是「起一条次线程」而不是直接占 `main`**
 ///

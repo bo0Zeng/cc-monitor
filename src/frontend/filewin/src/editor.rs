@@ -507,16 +507,6 @@ impl EditBoard {
         self.lock().saving.clone()
     }
 
-    #[cfg(test)]
-    pub fn opens(&self) -> u64 {
-        self.opens.load(Ordering::SeqCst)
-    }
-
-    #[cfg(test)]
-    pub fn saves(&self) -> u64 {
-        self.saves.load(Ordering::SeqCst)
-    }
-
     /// 毒化容忍 —— 同 `DownloadBoard::lock`（这个窗口崩掉 = 用户丢掉整个文件管理器）。
     fn lock(&self) -> std::sync::MutexGuard<'_, Desk> {
         match self.inner.lock() {
