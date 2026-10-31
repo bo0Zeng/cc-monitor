@@ -128,16 +128,6 @@ impl BatchBoard {
         rx
     }
 
-    /// 冲突框摆着的那几项（判据用）。
-    #[cfg(test)]
-    pub fn conflicts(&self) -> Vec<Conflict> {
-        self.lock()
-            .asking
-            .as_ref()
-            .map(|a| a.conflicts.clone())
-            .unwrap_or_default()
-    }
-
     /// 冲突框上答了：`all` ＝ 整组一个答（`None` ＝ 取消）；逐项选展开着 ⇒ 用逐项的答（没点的那几项跳过）。
     pub fn answer(&self, all: Option<Decide>, each: bool) -> bool {
         let (tx, map) = {
@@ -212,19 +202,6 @@ impl BatchBoard {
     /// 一行的标题：`复制 5 项`（落在一个目录 ⇒ `复制 5 项到 ~/proj/b`）。
     pub fn title(&self) -> String {
         batch_core::title_of(&self.plan())
-    }
-
-    /// 结局那一行底下逐项列的那几行（没成的那几项：名字 · 失败 · 原因）。
-    #[cfg(test)]
-    pub fn failed_lines(&self) -> Vec<String> {
-        let (plan, phase) = {
-            let d = self.lock();
-            (d.plan.clone(), d.phase.clone())
-        };
-        let Phase::Ended(r) = phase else {
-            return Vec::new();
-        };
-        batch_core::failed_lines(&plan, &r)
     }
 }
 

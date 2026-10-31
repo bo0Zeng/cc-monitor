@@ -1,5 +1,18 @@
 use super::*;
 
+/// 判据读编辑看板用的两个数（生产那一份里没有它们；本模块挂在 `editor` 底下，读得到私有字段）。
+impl EditBoard {
+    /// 打开到货过几趟。
+    pub(crate) fn opens(&self) -> u64 {
+        self.opens.load(Ordering::SeqCst)
+    }
+
+    /// 存盘那一趟落过几次结局（成没成都算）。
+    pub(crate) fn saves(&self) -> u64 {
+        self.saves.load(Ordering::SeqCst)
+    }
+}
+
 /// 一份 `files-read-text` 回包（JSON）先按回包类型解（`ask_typed` 那一步；解不出 ⇒ 这一侧的那一句），再交下面那一步。
 fn typed(
     r: Result<serde_json::Value, crate::source::Failed>,

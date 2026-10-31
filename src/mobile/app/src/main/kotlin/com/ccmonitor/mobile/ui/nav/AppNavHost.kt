@@ -52,6 +52,7 @@ import com.ccmonitor.mobile.ui.plan.PlanOutlineScreen
 import com.ccmonitor.mobile.ui.plan.PlanSlicesScreen
 import com.ccmonitor.mobile.ui.rotation.RotFocus
 import com.ccmonitor.mobile.ui.rotation.RotationScreen
+import com.ccmonitor.mobile.ui.session.LocalOpenTerminal
 import com.ccmonitor.mobile.ui.session.SessionScreen
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionTabsSheet
@@ -80,7 +81,11 @@ fun AppNavHost() {
     ) {
         // 全应用的操作反馈与撤销宿主。装在根部：撤销要跨屏活着。
         AppSnackbarHostScaffold {
-            AppNavGraph(nav, tabManager, chatController)
+            // 登录抽屉的［在终端里登录］：那台新开一个终端 tab 敲那一行、切过去（三处开抽屉的入口都在这底下）。
+            val openTerminal: (String, String) -> Unit = { hostId, line -> nav.navigate("session/${tabManager.open(hostId, SessionTabManager.TabTarget.Terminal(run = line))}") }
+            CompositionLocalProvider(LocalOpenTerminal provides openTerminal) {
+                AppNavGraph(nav, tabManager, chatController)
+            }
             UnmigratedHostKeys()
         }
     }
@@ -253,6 +258,7 @@ private fun HostedSession(
                     target.cd,
                     target.tmuxSession, // 进终端 tab 首连即敲那台渲出的那一行，接回该会话
                     target.resume,
+                    target.run,
                     onAttachInNewTab = { name -> onOpenTmuxTab(open.hostId, name) },
                     onShowTabs = { showTabs = true },
                     onEditKeys = onEditKeys,

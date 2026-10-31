@@ -53,6 +53,7 @@ import { GroupBook } from "./group-book";
 import { openLoginDrawer } from "./login-drawer";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
+import { readMonitorBoard } from "./monitor-board-reads";
 import { CommandBarView, type Command } from "./views/command-bar";
 import { UsageHud } from "./usage-hud";
 import { recordFileWiring } from "./record-file-notice";
@@ -271,8 +272,19 @@ window.addEventListener("DOMContentLoaded", async () => {
     newSession: () => void openNewSession({}),
     newSessionOn: (origin) => void openNewSession({ origin }),
   });
-  // 会话状态变了 · 机器连上断开 ⇒ 开着的「终端」视图再问一次（视图自己合批、关着不问）。
-  const pokeBoard = (): void => terminalsView.poke();
+  // 多 agent 并排监控：跨机器只读状态板（一屏看所有会话实时状态，点卡片跳会话；不派发、不驱动 agent）。
+  // 格子照标签页快照画，版面（分组 · 先后 · 组头 · 顶上那一句）问本机后端；`tabs` 在下面才建 ⇒ 经口子取。
+  const gridMonitorView = new GridMonitorView({
+    snapshotSessions: () => tabs.snapshotSessions(),
+    switchTo: (sid) => tabs.switchTo(sid),
+    peekSession: (sid) => tabs.peekSession(sid),
+    board: (picks) => readMonitorBoard(picks),
+  });
+  // 会话状态变了 · 机器连上断开 ⇒ 开着的「终端」视图 · 监控板再问一次（视图自己合批、关着不问）。
+  const pokeBoard = (): void => {
+    terminalsView.poke();
+    gridMonitorView.poke();
+  };
   const mainDrawer = new MainDrawer(tasksPanel, agentsPanel, terminalPage, () => (document.getElementById("app")?.clientHeight ?? window.innerHeight) - status.getBoundingClientRect().height);
   mainDrawer.dock.el.id = "bottom-drawer";
   document.getElementById("app")?.insertBefore(mainDrawer.dock.el, status);
@@ -640,8 +652,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const planTrigger = headButton("plan-trigger", "plan", copyText("main.cmd.openPlan"), hintWithKey(copyText("main.topbar.planHint"), "app.toggle-plan"), () => overlays.toggle("plan"));
   planNeeds.subscribe(() => sessionHead.render());
 
-  // 多 agent 并排监控入口：跨机器只读状态板（一屏看所有会话实时状态，点卡片跳会话；不派发、不驱动 agent）。
-  const gridMonitorView = new GridMonitorView(tabs);
+  // 多 agent 并排监控入口（视图在上面建）。
   overlays.register("grid", gridMonitorView);
   const gridTrigger = headButton("grid-monitor-trigger", "grid", copyText("main.cmd.openGrid"), hintWithKey(copyText("main.topbar.gridHint"), null), () => overlays.toggle("grid"));
 
@@ -923,6 +934,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 进出「需手动」· 停了不在这里判：那台照它的活会话表推 `changed {needs}`（下面 `needs` 那一支）。
     onSessionFace: (sessionId, face) => {
       tabs.onFace(sessionId, face);
+      gridMonitorView.poke(); // 组内先后跟着脸上的序走（后端排）
       // 开着编辑框的那条会话忙闲一变 ⇒ 它再问一次退法（只交脸上那一格，在不在干活归那台判）。
       saidEdit.activity(sessionId, activityOf(face));
     },
@@ -936,7 +948,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
     // 活卡（会话流 `session-live-card`，后端拼好的成品）照画；那台看不见了 ⇒ 活卡全撤。
     onLiveCard: (e) => tabs.onLiveCard(e),
-    onSessionRuns: (p) => tabs.onSessionRuns(p),
+    onSessionRuns: (p) => {
+      tabs.onSessionRuns(p);
+      gridMonitorView.poke(); // 顶上那一句数着在跑的 agent（后端数）
+    },
     onSessionBranch: (p) => tabs.onSessionBranch(p),
     onLiveCardsLost: (origin) => tabs.dropLiveCards(origin),
     // 记录文件不见了 / 被改过已从头重读 ⇒ 那个 tab 顶上说一句。

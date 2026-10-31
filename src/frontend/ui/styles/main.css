@@ -112,6 +112,12 @@
   margin-bottom: 6px;
 }
 
+.grid-monitor-group [data-down] {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  margin-bottom: 6px;
+}
+
 .grid-monitor-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

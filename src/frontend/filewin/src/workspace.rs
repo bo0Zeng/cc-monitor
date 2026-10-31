@@ -132,9 +132,7 @@ pub struct Workspace {
     force_close: bool,
     /// 上一次告诉 monitor 的「会打断什么」那两个数（[`Self::busy_to_tell`]；变了才再说）。
     busy_told: filewin_contract::Busy,
-    /// 取栏 / 标签时下标越界、退回最近那一个的次数（见 [`Self::pane_on`]）。
-    slips: std::sync::atomic::AtomicU64,
-    /// 已经报过警告的调用处（`文件, 行`）。
+    /// 取栏 / 标签时下标越界、退回最近那一个、已经报过警告的调用处（`文件, 行`；见 [`Self::pane_on`]）。
     slip_sites: std::sync::Mutex<std::collections::HashSet<(&'static str, u32)>>,
     /// 帧日志（开窗时照环境变量开；平时关着，什么都不做）。
     /// 系统字体那一趟载入（[`super::fonts::load`]）；`None` ＝ 收下了或没起过（判据直接建的窗口）。
@@ -346,7 +344,6 @@ impl Workspace {
             close_after_save: false,
             force_close: false,
             busy_told: Default::default(),
-            slips: Default::default(),
             slip_sites: Default::default(),
             frame_log: super::frame_log::FrameLog::off(),
         };
@@ -357,11 +354,6 @@ impl Workspace {
     /// 几栏（1 或 2）。
     pub fn sides(&self) -> usize {
         self.sides.len()
-    }
-
-    /// 第 `side` 栏有几个标签页。
-    pub fn tabs_on(&self, side: usize) -> usize {
-        self.sides[side].tabs.len()
     }
 
     /// 第 `side` 栏当前显示第几个标签页。
@@ -380,7 +372,7 @@ impl Workspace {
     /// 收掉右栏，同一帧往后还拿着帧初记下的栏号 1 去取 ⇒ `sides[1]` 越界、进程 0xc0000409 退出）。
     /// 改动口都守着不变式（一或两栏 · 焦点在栏内 · 每栏非空且 `active < tabs.len()`，
     /// `workspace_tests::random_tab_and_split_sequences_keep_the_shape` 钉）；调用方拿着过时的栏号时
-    /// 这里退回最后一栏 / 最后一个标签，记一笔 [`Self::slips`] ＋ 一行警告日志，不崩。
+    /// 这里退回最后一栏 / 最后一个标签，记下调用处 ＋ 一行警告日志，不崩。
     #[track_caller]
     pub fn pane_on(&self, side: usize) -> &FileWindow {
         let (k, i) = self.at(side);
@@ -397,15 +389,13 @@ impl Workspace {
     /// `(栏号, 标签号)`：给的栏号 / 那一栏的 `active` 越界就收进表里（见 [`Self::pane_on`]）。
     /// `sides` 永远非空、每栏 `tabs` 永远非空（只有 `new` / `add_side` 建栏、建时各带一个标签；
     /// `drop_tab` 不拿最后一个、`set_split` 只收第二栏）⇒ 两处 `len() - 1` 不下溢。
-    /// 警告日志每个调用处只报一次（一处过时的栏号会每帧都撞，不刷屏）；计数照记。
+    /// 警告日志每个调用处只报一次（一处过时的栏号会每帧都撞，不刷屏）。
     #[track_caller]
     fn at(&self, side: usize) -> (usize, usize) {
         let k = side.min(self.sides.len() - 1);
         let s = &self.sides[k];
         let i = s.active.min(s.tabs.len() - 1);
         if k != side || i != s.active {
-            self.slips
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let here = std::panic::Location::caller();
             if self
                 .slip_sites
@@ -424,25 +414,6 @@ impl Workspace {
             }
         }
         (k, i)
-    }
-
-    /// 报过警告的调用处有几处（判据看：同一处撞多少次只记一处）。
-    #[cfg(test)]
-    pub(crate) fn slip_sites(&self) -> usize {
-        self.slip_sites
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .len()
-    }
-
-    /// 取栏 / 标签时下标越界、退回最近那一个的次数（判据核它恒为 0；见 [`Self::pane_on`]）。
-    pub fn slips(&self) -> u64 {
-        self.slips.load(std::sync::atomic::Ordering::Relaxed)
-    }
-
-    /// 第 `side` 栏第 `i` 个标签页（判据用：后台标签也看得到）。
-    pub fn tab(&self, side: usize, i: usize) -> &FileWindow {
-        &self.sides[side].tabs[i].pane
     }
 
     /// 上一件做不了时那句话。
@@ -928,20 +899,6 @@ impl Workspace {
             unsaved,
             running: self.progress.running_for_close(),
         }
-    }
-
-    /// 摆出关窗那一问（有东西会丢时；点 × 那一下走 [`Self::guard_close`]，截图与判据直接调它）。回值 ＝ 摆出来了。
-    pub fn begin_close_ask(&mut self) -> bool {
-        if self.close_ask().is_empty() {
-            return false;
-        }
-        self.closing_ask = true;
-        true
-    }
-
-    /// 关窗那一问正摆着吗。
-    pub fn closing_ask(&self) -> bool {
-        self.closing_ask
     }
 
     /// 「关闭文件窗口 · devbox」：按族列出会打断的（未保存 · 传输中 · 删除中 · 解压中 · 计算大小中）；
@@ -1754,24 +1711,6 @@ impl Workspace {
     }
 }
 
-/// 两个目录的最长公共前缀。都只在根下相交 ⇒ `/`。
-///
-/// ⚠ **自己一刀都不切**：拿 [`super::source::breadcrumbs`]（远端路径那一族切法的唯一住址，只认 `/`）
-/// 各切一摞前缀，取两摞共有的最长那一个 ⇒ 不多出第四份切法
-/// （`source_tests::every_place_that_splits_a_remote_path_is_declared` 钉着那张表）。
-pub fn common_dir(a: &str, b: &str) -> String {
-    let theirs: Vec<String> = super::source::breadcrumbs(b)
-        .into_iter()
-        .map(|(_, full)| full)
-        .collect();
-    super::source::breadcrumbs(a)
-        .into_iter()
-        .map(|(_, full)| full)
-        .take_while(|f| theirs.contains(f))
-        .last()
-        .unwrap_or_else(|| "/".to_string())
-}
-
 /// 「复制到另一栏」那一组 → 一条 `files-copy`（公共根与相对段由 `batch_core::copy_req` 算）。
 pub fn across_req(jobs: &[CopyJob]) -> Result<cmd_wire::files::FilesCopyReq, String> {
     let pairs: Vec<(Vec<u8>, Vec<u8>)> = jobs
@@ -1799,9 +1738,8 @@ impl eframe::App for Workspace {
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/frontend/filewin/workspace_tests.rs"]
-mod tests;
-
-#[cfg(test)]
 #[path = "../../../../tests/frontend/filewin/hover_sweep_tests.rs"]
 mod hover_sweep_tests;
+#[cfg(test)]
+#[path = "../../../../tests/frontend/filewin/workspace_tests.rs"]
+mod tests;

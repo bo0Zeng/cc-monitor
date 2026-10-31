@@ -7,16 +7,6 @@ impl FileWindow {
     // 🔴：**新建目录 · 改名 · 删除 · 改权限**
     // ════════════════════════════════════════════════════════════════════
 
-    /// 正摆着的那个框（判据与 [`Self::write_ui`] 用）。
-    pub fn write_prompt(&self) -> Option<&WritePrompt> {
-        self.write_prompt.as_ref()
-    }
-
-    /// 同 [`Self::write_prompt`]，可改（就地那一格里正在编辑的字）。
-    pub fn write_prompt_mut(&mut self) -> Option<&mut WritePrompt> {
-        self.write_prompt.as_mut()
-    }
-
     /// 摆出「新建目录」那个框。回值 = 真的摆出来了。
     ///
     /// 🔴 四个写入口（新建目录 · 改名 · 删除 · 权限）都没有「窗口看着本机 ⇒ 出声拒」那道闸：
@@ -48,12 +38,7 @@ impl FileWindow {
         self.begin_inline(WritePrompt::for_rename(&self.cwd, &row))
     }
 
-    /// 摆出「把第 `i` 行的权限改成」那个框。回值 = 真的摆出来了。
-    pub fn begin_chmod(&mut self, i: usize) -> bool {
-        self.begin_chmod_rows(&[i])
-    }
-
-    /// 摆出「把这几行的权限改成」那个框（批量改权限；一行时与 [`Self::begin_chmod`] 同一个框）。
+    /// 摆出「把这几行的权限改成」那个框（一行与多行同一个框）。回值 = 真的摆出来了。
     /// 有一行不能写 ⇒ **整摞不摆**（同 [`Self::delete_picked`] 那条理由）。
     pub fn begin_chmod_rows(&mut self, idx: &[usize]) -> bool {
         let Some(rows) = idx
@@ -85,18 +70,6 @@ impl FileWindow {
             let modes = crate::writeops::probe_modes(&line, &origin, &paths).await;
             board.land(gen, modes);
         });
-    }
-
-    /// 🔴 **删除不经那个框** —— 它不向用户要任何输入，它要的是一次**确认**，
-    /// 而确认那一步归 [`crate::writeops::run_writes`] 的第二段（一次问完）。
-    ///
-    /// 回值 = 真的起了一摞（`false` = 这一行不能写 / 本机源 / 没有运行时，**且已出声**）。
-    pub fn begin_delete(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
-        let Some(row) = self.writable_row(i) else {
-            return false;
-        };
-        self.describe_for_delete(&row);
-        self.start_writes(vec![crate::writeops::delete_op(&row)], ctx)
     }
 
     /// 第 `i` 行，且它**能被写**。`None` ⇒ 不接（越界 / 有损名）。
@@ -257,14 +230,6 @@ impl FileWindow {
             }
         }
         true
-    }
-
-    /// 判据与截图场景用：就地那一趟当作已发出、带着 `f` 回来（下一帧 [`Self::settle_inline`] 收）。
-    #[cfg(test)]
-    pub(crate) fn land_inline_failure(&mut self, f: crate::source::Failed) {
-        self.inline_busy = true;
-        self.inline_gen += 1;
-        *self.inline_done.lock().unwrap() = Some((self.inline_gen, Err(f)));
     }
 
     /// 回执上点了［撤销］⇒ 那几件直接做（不问、不再出回执），做完重列。
