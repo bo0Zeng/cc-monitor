@@ -36,7 +36,7 @@ pub(crate) struct PreRotation<'a> {
     pub(crate) forget: &'a dyn Fn(&str),
 }
 
-/// 写分支记录：`(源 sid, 消息 uuid)` ⇒ 新 sid；不成 ⇒ `(码, 那一句)`。
+/// 写分支记录：`(源 sid, 消息 uuid)` ⇒ 新 sid；不成 ⇒ 码 ＋ 那一句。
 pub(crate) type ForkWrite<'a> = &'a dyn Fn(&str, &str) -> Result<String, crate::common::said::Said>;
 
 /// `~` / `~/…` ⇒ 这台的家目录下（界面显示的目录常写成 `~/…`）。家说不出 ⇒ 原样。

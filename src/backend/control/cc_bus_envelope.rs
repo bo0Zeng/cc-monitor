@@ -12,9 +12,7 @@
 //! - 正文：不超过 [`TEXT_MAX_BYTES`] 字节，长的写成文件、给路径。正文怎么写的纪律只写进 skill，这里不核。
 
 use super::cc_bus_wire::{BusEnvelope, BusEnvelopeReq};
-
-/// 拒的那一对：码 ＋ 原话（哪一格、什么值；给人看的那一句由码表 `send_said` 出）。
-pub(crate) type Refusal = (&'static str, String);
+use crate::common::said::Said;
 
 /// 标题的上界（按字算）。
 pub(crate) const TITLE_MAX_CHARS: usize = 80;
@@ -76,24 +74,24 @@ fn ref_ok(r: &str) -> bool {
 }
 
 /// 核一封信：照次序一格一格判，第一格不过就拒。
-pub(crate) fn check(req: &BusEnvelopeReq) -> Result<Checked, Refusal> {
+pub(crate) fn check(req: &BusEnvelopeReq) -> Result<Checked, Said> {
     if !sid_ok(&req.from) {
-        return Err(crate::common::said::Said::new(
+        return Err(Said::new(
             "bad_from",
             format!("`from` is not a session id: {:?}", req.from),
         ));
     }
     if !sid_ok(&req.to) {
-        return Err(crate::common::said::Said::new("bad_to", format!("`to` is not a session id: {:?}", req.to)));
+        return Err(Said::new("bad_to", format!("`to` is not a session id: {:?}", req.to)));
     }
     let tier = req.tier.unwrap_or(TIER_DEFAULT);
     if !(1..=2).contains(&tier) {
-        return Err(crate::common::said::Said::new("bad_tier", format!("`tier` must be 1 or 2, got {tier}")));
+        return Err(Said::new("bad_tier", format!("`tier` must be 1 or 2, got {tier}")));
     }
     let title = req.title.trim();
     let chars = title.chars().count();
     if title.is_empty() || title.contains(['\n', '\r']) || chars > TITLE_MAX_CHARS {
-        return Err(crate::common::said::Said::new(
+        return Err(Said::new(
             "bad_title",
             format!("`title` must be one non-empty line of at most {TITLE_MAX_CHARS} chars, got {chars} chars: {title:?}"),
         ));
@@ -101,26 +99,26 @@ pub(crate) fn check(req: &BusEnvelopeReq) -> Result<Checked, Refusal> {
     let re = req.re.as_deref().map(str::trim).filter(|s| !s.is_empty());
     match re {
         None if req.act.needs_re() => {
-            return Err(crate::common::said::Said::new(
+            return Err(Said::new(
                 "need_re",
                 format!("`act` {:?} needs `re` (the message id it follows)", req.act),
             ));
         }
         Some(r) if !msg_id_ok(r) => {
-            return Err(crate::common::said::Said::new("bad_re", format!("`re` is not a message id: {r:?}")));
+            return Err(Said::new("bad_re", format!("`re` is not a message id: {r:?}")));
         }
         _ => {}
     }
     let refs = req.refs.clone().unwrap_or_default();
     if let Some(bad) = refs.iter().find(|r| !ref_ok(r)) {
-        return Err(crate::common::said::Said::new(
+        return Err(Said::new(
             "bad_ref",
             format!("`refs` item has no known shape (path · pb:<slice>/<cell> · msg:<id> · commit:<hash> · URL): {bad:?}"),
         ));
     }
     let text = req.text.clone().unwrap_or_default();
     if text.len() > TEXT_MAX_BYTES {
-        return Err(crate::common::said::Said::new(
+        return Err(Said::new(
             "too_long",
             format!("body is {} bytes, limit {TEXT_MAX_BYTES}", text.len()),
         ));
@@ -163,7 +161,7 @@ pub(crate) fn seal(c: Checked, now_ms: i64, salt: u64) -> BusEnvelope {
 }
 
 /// 生产那一份：此刻的时间 ＋ 一点盐（纳秒尾 ⊕ 进程号 ⊕ 本进程里的序号）。
-pub(crate) fn envelope_now(req: &BusEnvelopeReq) -> Result<BusEnvelope, Refusal> {
+pub(crate) fn envelope_now(req: &BusEnvelopeReq) -> Result<BusEnvelope, Said> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let checked = check(req)?;

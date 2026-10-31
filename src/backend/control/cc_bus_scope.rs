@@ -9,7 +9,7 @@
 use crate::history::groups::GroupsRead;
 use crate::history::history_browse::Read;
 
-use super::cc_bus_envelope::Refusal;
+use crate::common::said::Said;
 
 /// 这台那一片算不算读到了：答了 · 上次所知都算（上次所知也是一份名单）；读不到 · 没同步过不算。
 fn here_read(r: &GroupsRead) -> Result<(), String> {
@@ -30,11 +30,11 @@ pub(crate) fn scope(
     from: &str,
     to: &str,
     roster: Result<&GroupsRead, &str>,
-) -> Result<(), Refusal> {
+) -> Result<(), Said> {
     let r = roster
         .map_err(str::to_string)
         .and_then(|r| here_read(r).map(|()| r))
-        .map_err(|why| ("no_roster", format!("group roster not read: {why}")))?;
+        .map_err(|why| Said::new("no_roster", format!("group roster not read: {why}")))?;
     let mine: Vec<_> = r
         .groups
         .iter()
@@ -47,7 +47,7 @@ pub(crate) fn scope(
         .iter()
         .map(|g| g.name.clone().unwrap_or_else(|| g.id.clone()))
         .collect();
-    Err(crate::common::said::Said::new(
+    Err(Said::new(
         "not_same_group",
         format!("`to` {to:?} is in none of the sender's groups: {names:?}"),
     ))

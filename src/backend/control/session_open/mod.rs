@@ -840,9 +840,9 @@ pub(crate) const OPEN_CAP: Deadline = Deadline::secs(8 + SELF_AS_CCM_SECS);
 
 /// 交一行 ccm：这台后端自己就是 ccm（同一个二进制，argv 不过 shell）。不接进去（`--detach`），等它退出、收它的话。
 /// 去掉 `TMUX` / `TMUX_PANE`：单个那一项是在一个新开的终端里跑这一行，那里不在 tmux 里。
-/// 失败 ⇒ 单个那一条的 `(码, 原话)`：起不来 ⇒ `start_failed`；过了期限 ⇒ `child_timed_out`。
+/// 失败 ⇒ 单个那一条的码 ＋ 原话：起不来 ⇒ `start_failed`；过了期限 ⇒ `child_timed_out`。
 pub(crate) fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), Said> {
-    let me = std::env::current_exe().map_err(|e| ("start_failed", e.to_string()))?;
+    let me = std::env::current_exe().map_err(|e| Said::new("start_failed", e.to_string()))?;
     let out = Child::new(me)
         .args(argv.iter().skip(1))
         .env_remove("TMUX")
@@ -1044,7 +1044,7 @@ fn start_new(
     };
     // 前面几格全过了才写分支记录（某格不行都不留东西）。
     let forked = match &req.fork {
-        Some(f) => Some(fork(&f.sid, &f.uuid).map_err(|(c, m)| fail(c, m, None))?),
+        Some(f) => Some(fork(&f.sid, &f.uuid).map_err(whole)?),
         None => None,
     };
     // 新起的会话：那一家认先定 sid ⇒ 这台先定（交给那一家的那一串里带它），回包就说得出 sid。
@@ -1063,7 +1063,7 @@ fn start_new(
     let sid = forked.clone().or_else(|| preset.clone());
     let wrote = match (&rule, &sid) {
         (Some(r), Some(s)) => {
-            (pre.write)(s, kind, r).map_err(|(c, m)| fail(c, m, None))?;
+            (pre.write)(s, kind, r).map_err(whole)?;
             Some(s.clone())
         }
         _ => None,

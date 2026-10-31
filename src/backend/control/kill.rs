@@ -40,30 +40,30 @@ pub(crate) fn said(target: &str, code: &str) -> String {
 pub(crate) fn admit_existing_name(name: &str) -> Result<(), Said> {
     use crate::control::gate_rules::TmuxNameIssue as I;
     match crate::control::gate_rules::existing_tmux_name_issue(name) {
-        None if name.contains(':') => Err(Said::from((
+        None if name.contains(':') => Err(Said::new(
             "bad_args",
             copy_text("beKill.name.colon", &[("name", &format!("{name:?}"))]),
-        ))),
+        )),
         None => Ok(()),
-        Some(I::Empty) => Err(Said::from((
+        Some(I::Empty) => Err(Said::new(
             "bad_args",
             copy_text("beKill.name.empty", &[]),
-        ))),
-        Some(I::Control(_)) => Err(Said::from((
+        )),
+        Some(I::Control(_)) => Err(Said::new(
             "bad_args",
             copy_text("beKill.name.control", &[]),
-        ))),
-        Some(I::Deceptive(c)) => Err(Said::from((
+        )),
+        Some(I::Deceptive(c)) => Err(Said::new(
             "bad_args",
             copy_text(
                 "beKill.name.deceptive",
                 &[("cp", &format!("U+{:04X}", c as u32))],
             ),
-        ))),
-        Some(other) => Err(Said::from((
+        )),
+        Some(other) => Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!("unexpected name issue: {other:?}")),
-        ))),
+        )),
     }
 }
 
