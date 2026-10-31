@@ -336,6 +336,7 @@ impl Progress {
                         ),
                         batch_core::Verb::Chmod
                         | batch_core::Verb::Download
+                        | batch_core::Verb::Pull
                         | batch_core::Verb::Upload => put(transfers, (*icon, name, String::new())),
                     }
                 }

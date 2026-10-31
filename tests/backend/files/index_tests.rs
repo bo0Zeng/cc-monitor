@@ -280,7 +280,7 @@ fn the_age_is_a_real_number_and_a_backwards_clock_does_not_blow_it_up() {
     let _lock = resident_lock();
     let fx = make_tree("age", 1, 1, 0);
     let snap = build(&fx.root);
-    let t0 = snap.built_at();
+    let t0 = snap.built_at;
     assert_eq!(
         snap.age_secs(t0 + std::time::Duration::from_secs(1234)),
         1234,

@@ -263,8 +263,7 @@ class ChatsBoardTest {
                 "totalHits" to rows.size,
                 "sessionCount" to rows.size,
                 "truncated" to false,
-                "unreadable" to 4,
-                "skipped" to listOf("Codex"),
+                "notes" to listOf("核心·读不动 4 份", "核心·Codex 只按标题"),
                 "down" to emptyList<Any>(),
                 "summary" to "核心·结果头",
                 "sessions" to
@@ -321,10 +320,7 @@ class ChatsBoardTest {
             assertEquals("结果头照核心写好的那一句", "核心·结果头", c.summary)
             assertEquals(listOf("h2" to "s2", "h1" to "s1"), c.rows.map { it.hostId to it.row.sessionId })
             assertEquals(listOf("gpu", null), c.rows.map { it.machineTag })
-            assertEquals(
-                listOf(copyText("history.search.unreadable", "n" to 4), copyText("history.search.skipped", "agent" to "Codex")),
-                c.lines,
-            )
+            assertEquals("头底下那几句照核心写好的摆、不自己按数取字", listOf("核心·读不动 4 份", "核心·Codex 只按标题"), c.lines)
         }
 
     @Test

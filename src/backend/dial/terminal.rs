@@ -269,7 +269,8 @@ impl crate::wire::typed::Handle for TerminalSsh {
     }
 }
 
-/// 按给定的本机终端方言与找 ssh 客户端的结果渲（判据各种都量）；`~/.ssh/config` 的别名按没有算，不记窗口标签。
+/// [`answer_with`] 不给别名、不记窗口标签那一形（只剩 `dial_terminal_tests` 一处在读，那份改调 [`answer_with`] 之后删）。
+#[cfg(test)]
 pub(crate) fn answer_in(
     req: &TerminalSshReq,
     hosts: &[Host],
@@ -279,7 +280,7 @@ pub(crate) fn answer_in(
     answer_with(req, hosts, &[], powershell, ssh, None)
 }
 
-/// 同 [`answer_in`]，另给这台 `~/.ssh/config` 里非通配的别名。`command` · `cwd` 都不给 ⇒ 登录 shell 那一形：
+/// 按给定的机器表 · 本机终端方言 · 找 ssh 客户端的结果 · 这台 `~/.ssh/config` 里非通配的别名渲。`command` · `cwd` 都不给 ⇒ 登录 shell 那一形：
 /// 本机 ⇒ 本机方言的登录 shell（不走 ssh）；机器表里那台 ⇒ `ssh -t …` 外壳、`--` 后面不跟命令；
 /// 机器表里没有、别名里恰好有（过别名白名单）⇒ `ssh -t[ -F …] <别名>`，照用户的 ssh 配置连。
 /// `sid` 只跟 `command`；给了、`opened` 那一层目录也在 ⇒ 回包另带前奏（`opened_windows::prelude`，开窗时接在那一行前面，开的那个 shell

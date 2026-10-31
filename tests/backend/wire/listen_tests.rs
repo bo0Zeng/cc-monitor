@@ -6,6 +6,13 @@
 
 use super::*;
 
+impl<W> Down<W> {
+    /// 写下去的那一头（判据看压过的字节）。
+    fn get_ref(&self) -> &W {
+        &self.inner
+    }
+}
+
 fn env_of<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
     move |k: &str| {
         pairs

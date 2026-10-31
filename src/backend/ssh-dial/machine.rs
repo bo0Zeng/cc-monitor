@@ -160,7 +160,31 @@ pub fn check_table(hosts: &[Host]) -> Option<(MachineFaultCode, &Host)> {
 
 /// 机器表那一道（[`check_table`]）没过的第一处，说成界面那一句（桌面 `machines-try` · 写口 · 手机编辑页同读这一处）。**纯函数**。
 pub fn table_fault(hosts: &[Host]) -> Option<MachineFault> {
-    check_table(hosts).map(|(code, h)| MachineFault::new(code, h.name().to_string()))
+    check_table(hosts).map(|(code, h)| fault(code, h.name().to_string()))
+}
+
+/// 一处错：那一格下面的那一句照码写（添加机器框 · 机器卡同读）。
+pub fn fault(code: MachineFaultCode, name: String) -> MachineFault {
+    let said = match code {
+        MachineFaultCode::NoHost => copy_text("addMachine.err.host", &[]),
+        MachineFaultCode::NoUser => copy_text("addMachine.err.user", &[]),
+        MachineFaultCode::Port => copy_text("addMachine.err.port", &[]),
+        MachineFaultCode::NameTaken => copy_text("addMachine.err.taken", &[("name", &name)]),
+        MachineFaultCode::LeadingDash => copy_text("addMachine.err.dash", &[]),
+    };
+    MachineFault { code, name, said }
+}
+
+/// 写口拒绝时的那一句（带那台的名字与「未保存」）。
+pub fn refused_said(f: &MachineFault) -> String {
+    let name = f.name.as_str();
+    match f.code {
+        MachineFaultCode::NoHost => copy_text("rsConfig.machine.noHost", &[("name", name)]),
+        MachineFaultCode::NoUser => copy_text("rsConfig.machine.noUser", &[("name", name)]),
+        MachineFaultCode::Port => copy_text("rsConfig.machine.port", &[("name", name)]),
+        MachineFaultCode::NameTaken => copy_text("rsConfig.machine.nameTaken", &[("name", name)]),
+        MachineFaultCode::LeadingDash => copy_text("rsConfig.machine.dash", &[("name", name)]),
+    }
 }
 
 /// 机器表里的一行（线上形）：后端算好的名字 ＋ 那一台原样（盘上那一形）。

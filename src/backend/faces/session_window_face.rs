@@ -8,15 +8,17 @@
 //!   否则经 `--resident-call` 问那台的常驻 `session-terminals`（谁在显示它，那台的原因照搬），
 //!   报来的终端连接拿这台的连接表对（`dial/terminal_processes.rs`，对不上的原因照搬）。这台的表一趟只读一次。
 //! - `labels`：各终端带的窗口标签（`LC_CCM_WINDOW`，最近动静在前），壳先按它找；`chain` 空 ⇔ `face` 在。
-//! - `face`：用那台的名字写好的那一张（`cmd_wire::front::Unplaced::face`）。会话不在 · 那台旧 · 那台到期 · 那台没问到（那一句是连接层写的，照摆）
+//! - `face`：用那台的名字写好的那一张（`face_core::front::Unplaced::face`）。会话不在 · 那台旧 · 那台到期 · 那台没问到（那一句是连接层写的，照摆）
 //!   也是那一张，不是码；码只剩这台自己没查成的 `failed` · `child_timed_out`。
 //! - `tmux`：会话在 tmux 里（窗口关了时壳才给［在终端里打开］，出口原样交壳）。
 
+use crate::common::seen_terminal::WindowLabel;
 use crate::dial::opened_windows::Records;
 use crate::dial::remote_ask::{Remote, Said, Table};
 use crate::dial::terminal_processes::{Link, OpenedHere, TerminalProcessesReq};
 use crate::observe::session_terminals::{Here, Showing, ShownWhy, SidReq};
-use cmd_wire::front::{FrontFace, Unplaced};
+use cmd_wire::front::FrontFace;
+use face_core::front::Unplaced;
 use serde::Serialize;
 
 /// `session-window` 的入参。
@@ -37,7 +39,8 @@ pub(crate) struct SessionWindowReq {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct SessionWindow {
     /// 显示它的终端带的窗口标签（`<shell 进程号>-<起始时刻>`），最近动静在前；没带 ⇒ 空。
-    pub(crate) labels: Vec<String>,
+    #[cfg_attr(test, ts(type = "Array<string>"))]
+    pub(crate) labels: Vec<WindowLabel>,
     /// 这台上显示它的那个终端进程往上的进程链（自下而上）；空 ⇔ 有 `face`。
     pub(crate) chain: Vec<Link>,
     /// 会话在 tmux 里。
@@ -229,7 +232,7 @@ where
 }
 
 /// 链空、只有那一张的那一份。
-fn reason(labels: Vec<String>, tmux: bool, why: Unplaced, machine: &str) -> SessionWindow {
+fn reason(labels: Vec<WindowLabel>, tmux: bool, why: Unplaced, machine: &str) -> SessionWindow {
     SessionWindow {
         labels,
         chain: Vec::new(),
@@ -337,7 +340,3 @@ fn not_asked(s: Said) -> Result<Unplaced, SessionWindowErr> {
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/session_window_face_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "../../../tests/backend/faces/front_face_tests.rs"]
-mod front_face_tests;

@@ -58,7 +58,7 @@ pub struct QueueItem {
 #[serde(deny_unknown_fields)]
 pub struct QueueList {
     pub items: Vec<QueueItem>,
-    /// 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）：发件端据它把那一句标「已送进」；不在名单也不在这里 ⇒ 撤了。
+    /// 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）。两端都不据它判那一句的去向：回执到了就离开待发，之后只照名单与记录画。
     pub sent: Vec<String>,
 }
 

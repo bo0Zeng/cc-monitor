@@ -26,10 +26,6 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-/// 目录文件名。字面量只住契约 crate（`relay_route_core::ASSET_CATALOG_REL`：monitor 的数据位置页按它列出），
-/// 写者仍只有本模块（`asset_catalog_tests` 钉）。
-pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::ASSET_CATALOG_REL);
-
 /// 目录的线上形（条目 · 备注 · 行 · 一台 · 整份回包 · 两条的入参）住 cmd-wire：两端照同一份写、照同一份解。
 pub use cmd_wire::assets::{
     Asset, AssetsCatalogMergeReq, AssetsCatalogReq, CatalogFrom, CatalogIn, CatalogMachine,

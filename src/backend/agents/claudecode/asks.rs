@@ -264,8 +264,7 @@ fn what_of(tool: &str, input: &Value, questions: &[AskQuestion]) -> Option<Strin
                 "path",
             ])
             .find_map(|k| str_of(input, k))
-            .map(|s| super::steps::main_text(tool, s))
-            .and_then(first_line)
+            .and_then(|s| first_line(&super::steps::main_text(tool, s)))
             .filter(|s| !s.is_empty()),
     }
 }

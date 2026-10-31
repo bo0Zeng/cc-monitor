@@ -235,18 +235,8 @@ fn terminal_of(pid: u32, activity: Option<u64>) -> Option<Terminal> {
     Some(Terminal {
         ssh: ssh.as_deref().and_then(parse_ssh_connection),
         activity,
-        window: window.as_deref().and_then(window_label),
+        window: window.and_then(|w| w.parse().ok()),
     })
-}
-
-/// 窗口标签：`<十进制>-<十进制>`（进程号 · 起始时刻），总长有界；别的形状不回显。
-pub(crate) fn window_label(raw: &str) -> Option<String> {
-    let t = raw.trim();
-    let (a, b) = t.split_once('-')?;
-    let digits = |x: &str, max: usize| {
-        !x.is_empty() && x.len() <= max && x.bytes().all(|c| c.is_ascii_digit())
-    };
-    (digits(a, 10) && digits(b, 20)).then(|| t.to_string())
 }
 
 /// `SSH_CONNECTION` 的四段：两个地址必须是 IP、两个口必须是端口号；不合 ⇒ `None`（当成不是经 ssh 连的）。

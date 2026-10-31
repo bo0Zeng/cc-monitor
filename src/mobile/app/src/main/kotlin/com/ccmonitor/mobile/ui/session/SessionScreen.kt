@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.session
 
-import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -42,7 +41,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.ccmonitor.mobile.core.copy.copyText
@@ -68,7 +66,6 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.service.AppForeground
-import com.ccmonitor.mobile.service.SshKeepAliveService
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.EditHostButton
 import com.ccmonitor.mobile.ui.copyPlainText
@@ -129,14 +126,6 @@ private fun SessionContent(
         }
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
-
-    // 连上后起前台保活服务（要 Context，所以在这里起）；会话归零时服务自停。
-    LaunchedEffect(state is SessionUiState.Connected) {
-        if (state is SessionUiState.Connected) {
-            val app = context.applicationContext
-            ContextCompat.startForegroundService(app, Intent(app, SshKeepAliveService::class.java))
-        }
-    }
 
     // 一次性提示弹 Toast。
     LaunchedEffect(vm) {

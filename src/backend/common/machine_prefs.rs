@@ -13,9 +13,6 @@ use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// 那份文件名（字面量只住契约 crate：数据位置页按它列出）。
-pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::PREFS_REL);
-
 /// 这台偏好：状态（读不懂不覆盖）。第 1 版经 [`v1_to_v2`] 读成这一版。
 pub(crate) const DOC: crate::common::own_state::Doc<Prefs> =
     crate::common::own_state::upgrade!(relay_route_core::PREFS_FILE, [v1_to_v2]);

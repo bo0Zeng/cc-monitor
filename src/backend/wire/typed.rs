@@ -262,9 +262,8 @@ pub(crate) enum How {
 #[derive(Clone, Copy)]
 pub(crate) struct Typed {
     pub(crate) how: How,
-    /// 要写句柄（自家状态 · 文件管理写面）：手里没有写句柄的入口（文件门 · 小成品重问）交不出它。
-    pub(crate) writes: bool,
-    /// 拿不拿文件管理写句柄（[`super::spec::needs::Face`]）。
+    /// 拿不拿文件管理写句柄（[`super::spec::needs::Face`]）：判据拿它对写面登记的命令表。
+    #[cfg(test)]
     pub(crate) face: bool,
     /// 按声明把能力交进去、装成交出去跑的那一份（帧面硬臂 ⇒ `None`）。
     pub(crate) go: fn(&super::spec::Hands) -> Option<super::spec::Prepared>,
@@ -274,18 +273,9 @@ pub(crate) struct Typed {
 }
 
 impl Typed {
-    /// 开跑之后打不打得断（阻塞档打不断）：读它的只有形状指纹（撤不动的算进指纹，`cmd_wire::shapes::UNCANCELLABLE` 由它写）。
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn blocking(&self) -> bool {
-        matches!(self.how, How::Blocking | How::FrameBlocking)
-    }
     /// 帧面硬臂那一档（只在帧面：CLI 面不派生、不进 [`super::spec::invoke`]）。
     pub(crate) fn on_frame_arm(&self) -> bool {
         matches!(self.how, How::Frame | How::FrameBlocking)
-    }
-    /// 写不写（后端自家状态 · 文件管理面改用户的文件；分派要递写句柄的那几条）。
-    pub(crate) fn writes(&self) -> bool {
-        self.writes || self.face
     }
 }
 
@@ -468,41 +458,28 @@ where
 
 /// 帧面硬臂那一档的一行登记（本体在 `dispatch` 那条硬臂里经 [`answer`] / [`answer_async`] 调）。
 pub(crate) const fn frame<C: Command>(summary: &'static str) -> CommandSpec {
-    spec::<C>(summary, How::Frame, false, false, go_frame)
+    spec::<C, needs::Nothing>(summary, How::Frame, go_frame)
 }
 
 /// 同 [`frame`]，那条硬臂把本体交进阻塞池（[`answer_blocking`]）。
 pub(crate) const fn frame_blocking<C: Command>(summary: &'static str) -> CommandSpec {
-    spec::<C>(summary, How::FrameBlocking, false, false, go_frame)
+    spec::<C, needs::Nothing>(summary, How::FrameBlocking, go_frame)
 }
 
 /// 阻塞档的一行登记。`summary` ＝ 一句话：这条命令做什么（住命令表，同别的命令）。
 pub(crate) const fn blocking<C: Handle>(summary: &'static str) -> CommandSpec {
-    spec::<C>(
-        summary,
-        How::Blocking,
-        <C::Needs as Needs>::WRITES,
-        <C::Needs as Needs>::FACE,
-        go_blocking::<C>,
-    )
+    spec::<C, C::Needs>(summary, How::Blocking, go_blocking::<C>)
 }
 
 /// 异步档的一行登记。
 pub(crate) const fn asynchronous<C: Handle>(summary: &'static str) -> CommandSpec {
-    spec::<C>(
-        summary,
-        How::Async,
-        <C::Needs as Needs>::WRITES,
-        <C::Needs as Needs>::FACE,
-        go_async::<C>,
-    )
+    spec::<C, C::Needs>(summary, How::Async, go_async::<C>)
 }
 
-const fn spec<C: Command>(
+/// `N` ＝ 这条命令声明要的能力（帧面硬臂 ⇒ 什么都不要）：只给判据记它要不要文件管理写句柄；生产照 `go` 取能力。
+const fn spec<C: Command, N: Needs>(
     summary: &'static str,
     how: How,
-    writes: bool,
-    face: bool,
     go: fn(&super::spec::Hands) -> Option<super::spec::Prepared>,
 ) -> CommandSpec {
     CommandSpec {
@@ -512,8 +489,8 @@ const fn spec<C: Command>(
         takes_input: C::TAKES_INPUT,
         run: Typed {
             how,
-            writes,
-            face,
+            #[cfg(test)]
+            face: N::FACE,
             go,
             #[cfg(test)]
             shape: tests::shape_of::<C>,

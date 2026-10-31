@@ -37,13 +37,19 @@ function rowEl(row: LineDiffRow): HTMLElement {
 }
 
 /**
- * 行差的展开那一格。收着先画后端给的前 `shown` 行；行比它多 ⇒ 附「显示全部改动 +N −M」，点一次补上其余。
- * 一行也没有 ⇒ `null`，调用方回退入参原文 `<pre>`。
+ * 行差的展开那一格。后端说没逐行比（`notice`）⇒ 顶上先摆那一句。收着先画后端给的前 `shown` 行；行比它多 ⇒ 附「显示全部改动 +N −M」，
+ * 点一次补上其余。一行也没有 ⇒ `null`，调用方回退入参原文 `<pre>`。
  */
 export function buildDiffBody(diff: LineDiff): HTMLElement | null {
   if (diff.rows.length === 0) return null;
   const root = document.createElement("div");
   root.className = "block-body block-args block-diff";
+  if (diff.notice) {
+    const notice = document.createElement("div");
+    notice.className = "block-diff-edit-label";
+    notice.textContent = diff.notice;
+    root.appendChild(notice);
+  }
   for (const row of diff.rows.slice(0, diff.shown)) root.appendChild(rowEl(row));
   if (diff.rows.length > diff.shown) {
     const btn = document.createElement("button");

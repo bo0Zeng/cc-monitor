@@ -147,7 +147,7 @@ export function cellTarget(slice: PlanSlice, cell: PlanCell): ReturnTarget {
     id: cell.id,
     title: cell.title ?? cell.id,
     done: cell.statusCode === "done",
-    blockTitle: up ? (up.title ?? up.id) : copyText("plan.head.top"),
+    blockTitle: blk?.said.name ?? "",
     owner: blk?.owner ?? cell.owner,
     signer: cell.signer,
   };
@@ -160,7 +160,7 @@ export function cellTarget(slice: PlanSlice, cell: PlanCell): ReturnTarget {
 export function topTarget(slice: PlanSlice, need: PlanNeed): ReturnTarget | null {
   const blk = slice.blocks.find((b) => b.id === need.block);
   if (!blk) return null;
-  return { id: blk.id, title: slice.name, done: true, blockTitle: copyText("plan.head.top"), owner: blk.owner, signer: false };
+  return { id: blk.id, title: slice.name, done: true, blockTitle: blk.said.name, owner: blk.owner, signer: false };
 }
 
 /** 退回框（做完了 ⇒「退回」；没做完 ⇒「说给负责的」，同一个框）。 */

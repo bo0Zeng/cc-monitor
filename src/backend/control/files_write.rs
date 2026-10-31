@@ -738,7 +738,7 @@ pub(crate) fn in_place_reason(links: u64, owner: u32, me: u32) -> Option<String>
 //   算法只有一个家：[`crate::files::content_sha256`]（住读族那一侧：读的那一趟要它，而读族不许伸手进写面 ——
 //   `readonly_guard` 「写面只有一扇门」那条钉着）。
 
-pub use crate::files::{content_sha256, SHA256_HEX_LEN};
+pub use crate::files::content_sha256;
 
 /// **带 CAS 的覆盖写**：盘上那份的摘要 == `expect_sha256` 才交给 [`overwrite_text`]，否则一个字节不写。
 ///
@@ -2151,9 +2151,7 @@ pub(crate) fn replace_contents(
     })?;
     let seq = SWAP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     // 名字可以不是 UTF-8 ⇒ 旁名按 `OsString` 拼。
-    let mut side_name = std::ffi::OsString::from(".");
-    side_name.push(name);
-    side_name.push(format!(".ccm-swap-{}-{seq}.part", std::process::id()));
+    let side_name = crate::platform::fs::side_name::swap(name, std::process::id(), seq);
     let side = dst.sibling(&side_name).ok_or_else(|| {
         WriteRefusal::Refused(copy_text(
             "beFilesWrite.path.noName",
@@ -2246,8 +2244,7 @@ fn land_backup(
         .map(|d| d.as_millis())
         .unwrap_or(0);
     let seq = SWAP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let mut bak_name = name.to_os_string();
-    bak_name.push(format!(".ccm-backup-{ms}-{seq}"));
+    let bak_name = crate::platform::fs::side_name::backup(name, ms, seq);
     let bak_rel = rel.with_file_name(bak_name);
     let bak = walk_in_root(Last::Link, root, &bak_rel).map_err(WriteRefusal::Refused)?;
     let mut f = face.create_new(&bak).map_err(|e| {
@@ -2504,63 +2501,6 @@ impl From<WriteRefusal> for WriteFail {
     }
 }
 
-/// 文件管理**写**面的一条线上命令：只当「线上契约的数据形态」用（判据按它对拍 `inbound::REGISTRY` 与 `IPC-PROTOCOL.md §10`）。
-pub struct ManageCommand {
-    /// 线上命令名（连字符那一套，与 `inbound::REGISTRY` 逐字相同）。
-    pub name: &'static str,
-    /// 它做什么（登记散文，只给判据读、不上界面 ⇒ 不叫 `what`：那个字段名会被普查当成文案出口）。
-    pub purpose: &'static str,
-}
-
-/// 🔴 **文件管理写面的唯一住址。**
-///
-/// `readonly_guard` 那条「拿得到 `Face` 的命令 == 写面登记的命令」判的就是这张表（与上传提交 · 解压两张的并）——
-/// 表里没有的名字，`inbound::REGISTRY` 上也不许有对应的一条。
-pub const MANAGE_COMMANDS: &[ManageCommand] = &[
-    ManageCommand {
-        name: "files-create",
-        purpose: "在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）",
-    },
-    // ── **改动既有数据**的那五件 ──────────
-    ManageCommand {
-        name: "files-mkdir",
-        purpose: "新建一个目录（只建最后那一段；父目录不在就失败，不顺手补）",
-    },
-    ManageCommand {
-        name: "files-rename",
-        purpose: "改名 / 同根内移动；**两个参数各过一遍路径解析**，目标已存在就拒（不覆盖）",
-    },
-    ManageCommand {
-        name: "files-delete",
-        purpose: "删一组（`control/files_batch.rs`）：每项一个文件或一个**空**目录（删的是链接本身，不跟过去）；显式 `recursive: true` \
-               才删整棵树 —— 逐条目过路径解析，任一条被拒那一项不动（`delete_tree`）、按段删，段与段之间看撤的旗；给了 `expect` \
-               ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则那一项 `stale`，一个字节不动）；`expect: {\"empty_dir\": true}` \
-               ⇒ 只删一个空目录；逐项结局 ＋ 结局那一行；带票 ⇒ 断开照常做完、再问回同一份",
-    },
-    ManageCommand {
-        name: "files-chmod",
-        purpose: "一组改成同一个 unix 权限位（低 12 位，`control/files_batch.rs`）；**跟链接**，所以落点解到底再判一次；\
-没有 unix 权限位的平台上那一项回 `no_unix_mode`；每项带改之前的那一份（撤销用）",
-    },
-    // ── 窗口的「复制」换走通道 ──────────────────
-    ManageCommand {
-        name: "files-copy",
-        purpose: "同根内复制一组（`control/files_batch.rs`）：先探整组落点，同名而没答 ⇒ 一项不做、回 `exists` 与同名清单；\
-               答法 `overwrite` · `skip` · `keep_both`（另起 `名 (2).ext`，撞上往后试）；目录整棵复制、同名不合并；\
-               **三条路径各过一遍路径解析**；不覆盖的那几项 `O_EXCL`，探完之后冒出来的同名不盖（那一项 `exists`）；\
-               覆盖经暂存旁名原子顶掉；权限位从源抄；树里的链接复制**链接本身**",
-    },
-    ManageCommand {
-        name: "files-write-text",
-        purpose: "覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\
-`expect: {sha256}` **必给**：盘上那份的摘要对得上才写（否则 `stale`，一个字节不动），应答交新摘要",
-    },
-    // ── 删历史会话 ──
-    ManageCommand {
-        name: "files-delete-session",
-        purpose: "删一份历史会话 —— **只收 sid**，落点由后端按 sid 在记录树里找（历史浏览器的删会话，不是文件管理器）",
-    },
-];
 /// 一条写命令的入参类型就选中了那条命令的本体（同读那一族的 `files::Ask`）：命令那一层只经 [`answer`] 这一扇门进来。
 pub trait Act {
     type Reply;

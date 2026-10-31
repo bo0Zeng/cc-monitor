@@ -756,6 +756,7 @@ mod specimens {
     }
 
     /// 行差：结果那一份带真行号；调用那一份从入参算，不知道在文件第几行（行号恒缺，`NEVER_WRITTEN` 登记）。
+    /// 降级那一句只有调用那一份会带（结果那一份不自己逐行比，同样登记）。
     fn diff(numbered: bool) -> LineDiff {
         LineDiff {
             rows: vec![LineDiffRow {
@@ -769,6 +770,7 @@ mod specimens {
             added: 1,
             removed: 1,
             stat: Words(s("+1 −1")),
+            notice: (!numbered).then(|| Words(s("cells capped"))),
         }
     }
 

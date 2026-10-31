@@ -1,6 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.FileKind
+import com.ccmonitor.mobile.core.wire.gen.Staged
 import com.ccmonitor.mobile.core.wire.gen.WirePath
 import com.ccmonitor.mobile.core.wire.gen.WirePathObjValue
 import org.junit.Assert.assertArrayEquals
@@ -111,10 +113,10 @@ class FilesTest {
 
     @Test
     fun `上传提交：核心送完的那四样照交；同名怎么办不带（那台问）、答了带上`() {
-        val staged = FilesCommitUpload.Staged.of(mapOf("key" to "k", "chunks" to 3.0, "bytes" to 9.0, "sha256" to "ab"))!!
+        val staged = Wire.bind<Staged>(mapOf("key" to "k", "chunks" to 3.0, "bytes" to 9.0, "sha256" to "ab"))!!
         val base = mapOf("root" to "/w", "rel" to "up.bin", "key" to "k", "expect" to mapOf("sha256" to "ab"), "chunks" to 3L, "bytes" to 9L, "single" to true)
         assertEquals(base, FilesCommitUpload.args(RemotePath.of("/w"), "up.bin", staged))
         assertEquals(base + ("on_exists" to "keep_both"), FilesCommitUpload.args(RemotePath.of("/w"), "up.bin", staged, "keep_both"))
-        assertNull("少一格 ⇒ 解不出", FilesCommitUpload.Staged.of(mapOf("key" to "k", "chunks" to 3.0)))
+        assertNull("少一格 ⇒ 解不出", Wire.bind<Staged>(mapOf("key" to "k", "chunks" to 3.0)))
     }
 }

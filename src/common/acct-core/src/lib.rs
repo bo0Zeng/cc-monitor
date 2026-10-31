@@ -2,7 +2,7 @@
 //!
 //! 今天的消费者：
 //! - 后端：`accounts/manage/`（写账号库）· `observe/accounts_query.rs`（读清单）· `accounts/upstream_select/file_face.rs` ·
-//!   `accounts/upstream_select/endpoint.rs` · `control/ccm/plan.rs` · `control/launch_render/payload.rs`；号表由 `accounts/manage` 读清单时填，`accounts/upstream_select/rotate.rs`（换号）· `control/ccm/plan.rs`（起会话）· `observe/accounts_query.rs`（账号清单）读；
+//!   `accounts/upstream_select/endpoint.rs` · `control/ccm/plan.rs`；号表由 `accounts/manage` 读清单时填，`accounts/upstream_select/rotate.rs`（换号）· `control/ccm/plan.rs`（起会话）· `observe/accounts_query.rs`（账号清单）读；
 //! - 界面只经**生成物**用它：`tests/frontend/shell/payload_judgment_rules.rs` 从 [`AUTH_KINDS`] 现生成
 //!   `src/frontend/ui/generated/judgment-rules.ts`。
 //!

@@ -662,6 +662,7 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
 const fn accounts(config_file: &'static str) -> AccountsFace {
     AccountsFace {
         identity: &[],
+        shared: &[],
         shared_on_demand: &[],
         config_file,
         user_mcp_key: "servers",

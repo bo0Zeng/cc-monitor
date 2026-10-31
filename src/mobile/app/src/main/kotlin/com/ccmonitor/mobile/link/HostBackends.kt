@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.link
 import android.util.Log
 import com.ccmonitor.mobile.core.claude.link.EmbeddedBuild
 import com.ccmonitor.mobile.core.claude.link.KeptBatches
+import com.ccmonitor.mobile.core.claude.link.LocalSaves
 import com.ccmonitor.mobile.core.claude.link.ResidentCore
 import com.ccmonitor.mobile.core.claude.link.ResidentFeed
 import com.ccmonitor.mobile.core.wire.gen.EmptyFace
@@ -32,6 +33,8 @@ class HostBackends(
     private val labelOf: suspend (hostId: String) -> String,
     /** 这台在做的几组落盘那一份（`LocalCache.batches`）。 */
     private val keptOf: (hostId: String) -> KeptBatches,
+    /** 下到本机那一侧（核心要本机那一份时在这里开 · 删；`TreeFolder`）。 */
+    val saves: LocalSaves,
     /** 包里那几格后端解到私有目录、交核心的那一段（装 / 更新后端用；解压在 IO 线程上）。 */
     private val backendSlots: () -> String = { "[]" },
     private val core: ResidentCore = CoreResident,
@@ -79,6 +82,7 @@ class HostBackends(
             mine = EmbeddedBuild.ID,
             tz = ZoneId.systemDefault().id,
             kept = keptOf(hostId),
+            saves = saves,
             onBreak = ::onBreak,
             onEmpty = { emptyFlow.value = it },
         ).also { f -> scope.launch { f.sshReached.collect { connector.loopReached(hostId, it) } } }

@@ -1557,7 +1557,7 @@ type AttachItem = { name: string, bytes: number, dir?: boolean, };
 type AttachRefused = "is_dir" | "too_big" | "too_many" | "too_much" | "dir_full" | "not_writable" | "no_session";
 type AttachVerdict = { ok: boolean, 
 /**
- * 照名字判的那一种（目录 ⇒ 文件夹；[`crate::file_class::class_of_name`]）。
+ * 照名字判的那一种（目录 ⇒ 文件夹；后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -2017,8 +2017,16 @@ type WirePath = string | { b16: string };
 入参 `BookmarksReadReq` · 回包 `Bookmarks`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Bookmarks = { dirs: Array<string>, };
-type BookmarksReadReq = Record<symbol, never>;
+type Bookmarks = { dirs: Array<string>, 
+/**
+ * 入参 `at` 里的每一串（原样作键）⇒ 它按归一之后的形在 `dirs` 里的下标；不在的不列，没问 ⇒ 空。
+ */
+here?: { [key in string]: number }, };
+type BookmarksReadReq = { 
+/**
+ * 各栏此刻的目录（这台的绝对路径）：回包的 `here` 答每一个是第几条。
+ */
+at?: Array<string>, };
 ```
 
 码：`bad_args` · `io_failed` · `bookmarks_unreadable`
@@ -2032,12 +2040,20 @@ type BookmarksReadReq = Record<symbol, never>;
 入参 `BookmarksEditReq` · 回包 `Bookmarks`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Bookmarks = { dirs: Array<string>, };
+type Bookmarks = { dirs: Array<string>, 
+/**
+ * 入参 `at` 里的每一串（原样作键）⇒ 它按归一之后的形在 `dirs` 里的下标；不在的不列，没问 ⇒ 空。
+ */
+here?: { [key in string]: number }, };
 type BookmarksEditReq = { op: "toggle" | "remove" | "add", 
 /**
  * 那几个目录（这台的绝对路径；按归一之后的形比、存）。
  */
-dirs: Array<string>, };
+dirs: Array<string>, 
+/**
+ * 各栏此刻的目录：回包的 `here` 答每一个在改完的那一份里是第几条。
+ */
+at?: Array<string>, };
 ```
 
 码：`bad_args` · `io_failed` · `bookmarks_unreadable`
@@ -2404,6 +2420,50 @@ resetsAt?: number,
  * 越过了哪条预警线（比例）；没越过就没有。
  */
 warnedAt?: number, };
+```
+
+码：`bad_args` · `child_timed_out` · `failed` · `io_failed` · `not_found` · `unsupported`
+
+#### `quota-warm`
+
+给一个号开窗。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 125 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --quota-warm`
+
+入参 `QuotaWarmReq` · 回包 `Warmed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AgentKind = string;
+type QuotaWarmReq = { 
+/**
+ * 哪一家（线上的 kind）。
+ */
+agent: AgentKind, 
+/**
+ * 账号库里的号（配置目录末段；账号 0 是 `0`）。
+ */
+account: string, };
+type Warmed = { 
+/**
+ * 哪一家（同入参）。
+ */
+agent: AgentKind, 
+/**
+ * 号（同入参）。
+ */
+account: string, 
+/**
+ * 这一趟真发了（`false` ＝ 15 分钟内发过，照那一次答）。
+ */
+sent: boolean, 
+/**
+ * 那一发发出的时刻（unix 秒）。
+ */
+at: number, 
+/**
+ * 回来的重置时刻（额度账里那个号的 5 小时窗；没读到 ⇒ `null`）。
+ */
+resets_at: number | null, };
 ```
 
 码：`bad_args` · `child_timed_out` · `failed` · `io_failed` · `not_found` · `unsupported`
@@ -5543,13 +5603,10 @@ truncated: boolean,
  */
 sessions: Array<MergedRow>, 
 /**
- * 答了的那几台读不动、没搜到的会话记录份数之和。
+ * 结果头底下那几句，写好的（两端照摆）：答了的那几台读不动的会话记录份数之和（0 份不写）；
+ * 再是内容搜索不覆盖、只按标题的那几家各一句（各台说的，去重、照先说的那台的先后）。
  */
-unreadable: number, 
-/**
- * 内容搜索不覆盖的那几家（各台说的，去重、照先说的那台的先后）。
- */
-skipped: Array<string>, 
+notes: Array<string>, 
 /**
  * 没答上的那几台（它们的会话没搜到）：哪台 · 那一句。
  */
@@ -5752,7 +5809,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -5873,7 +5930,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**
@@ -6205,7 +6266,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -6310,7 +6371,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**
@@ -6666,7 +6731,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -6763,7 +6828,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**
@@ -7072,7 +7141,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -7177,7 +7246,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**
@@ -7753,7 +7826,20 @@ note: NeedsNote,
  */
 row: NeedsChoiceRow, };
 type NeedsChoiceRow = "main" | "hold" | "release";
-type NeedsItem = { "kind": "session", rank: number, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, cell?: NeedsCell, } | { "kind": "manual", rank: number, manual: ManualItem, };
+type NeedsClock = { 
+/**
+ * 状态那一句（「等批准 · {dur}」，种类那一格是 `needs.text`）：桌面需手动浮层 · 手机需手动屏那一行。
+ */
+text: Words, 
+/**
+ * 钉条第一行（「等批准 · Bash · {dur}」，种类那一格是 `needs.head`）。
+ */
+head: Words, };
+type NeedsItem = { "kind": "session", rank: number, 
+/**
+ * 那一行会走的那一句（[`NeedsClock`]）；不知道等了多久（`needs.waitedMs` 为 `null`）⇒ 缺，出口照抄 `needs.text`。
+ */
+clock?: NeedsClock, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, cell?: NeedsCell, } | { "kind": "manual", rank: number, manual: ManualItem, };
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsList = { 
 /**
@@ -8021,8 +8107,21 @@ note: NeedsNote,
  */
 row: NeedsChoiceRow, };
 type NeedsChoiceRow = "main" | "hold" | "release";
+type NeedsClock = { 
+/**
+ * 状态那一句（「等批准 · {dur}」，种类那一格是 `needs.text`）：桌面需手动浮层 · 手机需手动屏那一行。
+ */
+text: Words, 
+/**
+ * 钉条第一行（「等批准 · Bash · {dur}」，种类那一格是 `needs.head`）。
+ */
+head: Words, };
 type NeedsDown = { origin: Origin, said: string, };
-type NeedsItem = { "kind": "session", rank: number, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, cell?: NeedsCell, } | { "kind": "manual", rank: number, manual: ManualItem, };
+type NeedsItem = { "kind": "session", rank: number, 
+/**
+ * 那一行会走的那一句（[`NeedsClock`]）；不知道等了多久（`needs.waitedMs` 为 `null`）⇒ 缺，出口照抄 `needs.text`。
+ */
+clock?: NeedsClock, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, cell?: NeedsCell, } | { "kind": "manual", rank: number, manual: ManualItem, };
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsMergeReq = { machines: Array<Origin>, };
 type NeedsMerged = { items: Array<NeedsAt>, total: number, unreadable: Array<NeedsUnreadable>, down: Array<NeedsDown>, };
@@ -9019,7 +9118,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -9161,7 +9260,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**
@@ -12572,6 +12675,69 @@ type Words = string;
 
 码：`bad_args`
 
+#### `monitor-board-here`
+
+监控板这台那几条（序 · 活不活 · 在跑几个 agent；不认得的不答）。
+
+收 `args` · 可撤 · CLI：`ccm -- --monitor-board-here`
+
+入参 `MonitorHereReq` · 回包 `MonitorHere`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type MonitorHere = { rows: Array<MonitorHereRow>, };
+type MonitorHereReq = { sids: Array<string>, };
+type MonitorHereRow = { sid: string, 
+/**
+ * 这台发出去的那张脸上的序（`face.order`）。
+ */
+order: number, 
+/**
+ * 那张脸的一生是「活」。
+ */
+live: boolean, 
+/**
+ * 这台运行簿里这条会话此刻在跑的子 agent 数。
+ */
+running: number, };
+```
+
+码：`bad_args`
+
+#### `monitor-board`
+
+监控板（问到各台、合成一份：分组 · 组内先后 · 组头 · 汇总那一句）。
+
+收 `args` · 可撤 · CLI：`ccm -- --monitor-board`
+
+入参 `MonitorBoardReq` · 回包 `MonitorBoard`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type MonitorAsk = { machine: Origin, sid: string, };
+type MonitorBoard = { 
+/**
+ * 几台 · 几条活会话 · 几个 agent 在跑；一组都没有 ⇒ 空。
+ */
+summary: Words, groups: Array<MonitorGroup>, };
+type MonitorBoardReq = { sessions: Array<MonitorAsk>, };
+type MonitorGroup = { machine: Origin, 
+/**
+ * 组头那一句（那台的名字 ＋ 几条）。
+ */
+title: Words, 
+/**
+ * 组内的先后（排好了）。
+ */
+sids: Array<string>, 
+/**
+ * 这台没答 ⇒ 那台离线那一句（`sids` 照请求先后）。
+ */
+down?: Words, };
+type Origin = string;
+type Words = string;
+```
+
+码：`bad_args`
+
 #### `terminal-preview`
 
 抓一个终端的一屏（只抓一次，轮询归调用方）。
@@ -13184,32 +13350,34 @@ ticket: string, };
 入参 `SidsReq` · 回包 `Batched`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Batched = { results: Array<Outcome>, };
-type Outcome = { 
+type Batched = { results: Array<SessionOutcome>, };
+type Origin = string;
+type SessionOutcome = { 
 /**
- * 会话 id（与入参同序）。
+ * 哪台（每台那一跳答的是它自己 ⇒ 本机那一个；本机合好时换成那一项的那台）。
  */
-sid: string, 
+machine: Origin, sid: Sid, outcome: SessionState, 
 /**
- * `done` 做成了 · `skipped` 这一个不用做 / 做不了 · `failed` 做了没成。
- */
-outcome: "done" | "skipped" | "failed", 
-/**
- * 跳过 / 失败的原因码（做成了 ⇒ `null`）。
+ * 跳过 / 失败的原因码（挑按钮用）；做成了 ⇒ `null`。
  */
 why: string | null, 
 /**
- * 停的那一项没做成的那一句（失败的与单个结束被拒同一张表）；做成了 ⇒ `null`。
+ * 那台写好的那一句；做成了 ⇒ `null`。
  */
 said: string | null, 
 /**
- * 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
+ * 失败那一项的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
  */
 copyDetail: string, 
 /**
- * 落在哪个 tmux 会话上。
+ * 那台写的称呼（项目 ＋ 名字）。
+ */
+title: string, 
+/**
+ * 落在哪个终端会话上。
  */
 session: string | null, };
+type SessionState = "done" | "skipped" | "failed";
 type Sid = string;
 type SidsReq = { 
 /**
@@ -13903,7 +14071,7 @@ said: string,
 from: string, };
 type QueueList = { items: Array<QueueItem>, 
 /**
- * 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）：发件端据它把那一句标「已送进」；不在名单也不在这里 ⇒ 撤了。
+ * 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）。两端都不据它判那一句的去向：回执到了就离开待发，之后只照名单与记录画。
  */
 sent: Array<string>, };
 type Rewind = { 
@@ -13962,7 +14130,7 @@ said: string,
 from: string, };
 type QueueList = { items: Array<QueueItem>, 
 /**
- * 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）：发件端据它把那一句标「已送进」；不在名单也不在这里 ⇒ 撤了。
+ * 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）。两端都不据它判那一句的去向：回执到了就离开待发，之后只照名单与记录画。
  */
 sent: Array<string>, };
 type Rewind = { 
@@ -15522,7 +15690,11 @@ dirs?: Array<string> | null,
  * `true` ⇒ 认过的目录也重问 pb。
  */
 fresh?: boolean | null, };
-type PlanListSlice = { name: string, domain: string | null, current: boolean, progress: PlanProgress | null, needCount: number, error: string | null, stale: PlanStale | null, };
+type PlanListSlice = { name: string, domain: string | null, current: boolean, progress: PlanProgress | null, needCount: number, error: string | null, stale: PlanStale | null, 
+/**
+ * 同那一片成品上的那一份（照抄）。
+ */
+said: PlanSliceSaid, };
 type PlanListWorkspace = { workspace: string, repo: string | null, auto: boolean, rev: string, stale: PlanStale | null, needCount: number, bySession: { [key in string]: PlanSessionBlock }, slices: Array<PlanListSlice>, };
 type PlanPb = { state: "ok" | "missing" | "unsupported", said: string | null, version?: string, };
 type PlanProgress = { done: number, of: number, };
@@ -15534,7 +15706,37 @@ cell: string | null,
 /**
  * 根节点的标题；最上面那一个 ⇒ `null`。
  */
-title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", };
+title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", said: PlanSessionSaid, };
+type PlanSessionSaid = { 
+/**
+ * 块名：同那一块的 [`PlanBlockSaid::name`]。
+ */
+name: string, 
+/**
+ * 会话头那一枚标：片 · 块名 · 阶段。
+ */
+mark: string, };
+type PlanSliceSaid = { 
+/**
+ * 读不成 ＋ 过期那一句：整份读不成在先，这一片读不成在后；都没有 ⇒ `null`。
+ */
+strip: string | null, 
+/**
+ * 这一片读不成、只剩名字那一句；读得成 ⇒ `null`。
+ */
+bare: string | null, 
+/**
+ * 读到的时刻那一句；时刻的字还没写 ⇒ `null`。
+ */
+readAt: string | null, 
+/**
+ * 顶层签了几格（总览头）；没有收的值 ⇒ `null`。
+ */
+top: string | null, 
+/**
+ * 大纲根那一行右端的「几/几」；没有收的值 ⇒ `null`。
+ */
+root: string | null, };
 type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
 ```
 
@@ -15588,7 +15790,7 @@ takeover: PlanTakeover,
 /**
  * 接手的会话此刻在哪几组（帧面答之前现标，见 后端 `plan::groups`；pb 不知道有组）。
  */
-groups: PlanBlockGroups, };
+groups: PlanBlockGroups, said: PlanBlockSaid, };
 type PlanBlockGroups = { 
 /**
  * 组模块答了 ⇒ 那条会话在的几组（照组的先后；不在组里 ⇒ 空）；没有接手会话 · 组模块没答 ⇒ 空。
@@ -15602,6 +15804,15 @@ text: string,
  * 组模块没答 ⇒ 那一句（「读取组失败 · …」，悬停看）；答了 · 不用问 ⇒ `null`。
  */
 unread: string | null, };
+type PlanBlockSaid = { 
+/**
+ * 块名：最上面那一块 ⇒ 顶层那一句；否则根节点的标题（没有 ⇒ 根节点编号 ⇒ 块编号）。
+ */
+name: string, 
+/**
+ * 根节点底下签了几格（块表「里面」那一格 · 手机此会话那一块）；`inside` 为 `null` ⇒ `null`。
+ */
+inside: string | null, };
 type PlanCell = { id: string, title: string | null, kind: string | null, body: string | null, parent: string | null, children: Array<string>, edges: PlanEdges, pointedBy: PlanEdges, files: Array<PlanFile>, 
 /**
  * 状态里记着的值，一个值一项带笔数（pb 原样，照类上登的先后）。
@@ -15671,7 +15882,16 @@ coveredBy: Array<string>, refs: PlanRefs,
 /**
  * 退回过 ⇒ 那一次的状态；没有 ⇒ `null`。
  */
-returned: PlanReturned | null, };
+returned: PlanReturned | null, said: PlanCellSaid, };
+type PlanCellSaid = { 
+/**
+ * 上面几层的「编号 标题」，从顶层往下连好；顶层 ⇒ `null`。
+ */
+trail: string | null, 
+/**
+ * 它是一块的根节点 ⇒ 那一句（插它的「编号 标题」）；不是 ⇒ `null`。
+ */
+blockRoot: string | null, };
 type PlanCheck = { unreadable: Array<PlanReadError>, 
 /**
  * 元数据坏了、编号还认得出的节点：判不了，不在 `cells` 里。
@@ -15793,7 +16013,16 @@ cell: string | null,
 /**
  * 根节点的标题；最上面那一个 ⇒ `null`。
  */
-title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", };
+title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", said: PlanSessionSaid, };
+type PlanSessionSaid = { 
+/**
+ * 块名：同那一块的 [`PlanBlockSaid::name`]。
+ */
+name: string, 
+/**
+ * 会话头那一枚标：片 · 块名 · 阶段。
+ */
+mark: string, };
 type PlanSetsTo = { target: string | null, value: string | null, 
 /**
  * 加一笔 · 去一笔。
@@ -15847,7 +16076,28 @@ needCount: number,
 /**
  * 最上面那个权力范围（`project`）退回过 ⇒ 那一次此刻的状态；没退回过 ⇒ `null`（缺 ⇒ 同）。
  */
-returned: PlanReturned | null, };
+returned: PlanReturned | null, said: PlanSliceSaid, };
+type PlanSliceSaid = { 
+/**
+ * 读不成 ＋ 过期那一句：整份读不成在先，这一片读不成在后；都没有 ⇒ `null`。
+ */
+strip: string | null, 
+/**
+ * 这一片读不成、只剩名字那一句；读得成 ⇒ `null`。
+ */
+bare: string | null, 
+/**
+ * 读到的时刻那一句；时刻的字还没写 ⇒ `null`。
+ */
+readAt: string | null, 
+/**
+ * 顶层签了几格（总览头）；没有收的值 ⇒ `null`。
+ */
+top: string | null, 
+/**
+ * 大纲根那一行右端的「几/几」；没有收的值 ⇒ `null`。
+ */
+root: string | null, };
 type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
 type PlanState = { value: string, count: number, };
 type PlanTakeover = "open" | "no_line" | "running" | "unsure" | "merging";
@@ -15868,7 +16118,8 @@ needs: string | null,
  */
 face: SessionFace, 
 /**
- * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；会话本身 · 认不出 ⇒ `null`（界面写标签页的名字 · 认不出那一形）。
+ * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
+ * 会话本身 ⇒ `null`（两端写那条会话的名字）。
  */
 label: string | null, };
 type PlanWhyCode = { "kind": "nosign" } | { "kind": "inside", done: number, of: number, } | { "kind": "upper" } | { "kind": "undecided" };
@@ -16344,7 +16595,8 @@ needs: string | null,
  */
 face: SessionFace, 
 /**
- * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；会话本身 · 认不出 ⇒ `null`（界面写标签页的名字 · 认不出那一形）。
+ * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
+ * 会话本身 ⇒ `null`（两端写那条会话的名字）。
  */
 label: string | null, };
 type SessionCan = { 
@@ -16586,6 +16838,8 @@ alias?: string | null, };
 | `--mcp-sync-apply` | ＝ 帧命令 `mcp-sync-apply`：在要被写的那一台把那一条写进去 |
 | `--mcp-sync-preview` | ＝ 帧命令 `mcp-sync-preview`：在要被写的那一台看装上之后那一条 |
 | `--mcp-sync-source` | ＝ 帧命令 `mcp-sync-source`：装到别的机器时来源那一条 |
+| `--monitor-board` | ＝ 帧命令 `monitor-board`：监控板（问到各台、合成一份：分组 · 组内先后 · 组头 · 汇总那一句） |
+| `--monitor-board-here` | ＝ 帧命令 `monitor-board-here`：监控板这台那几条（序 · 活不活 · 在跑几个 agent；不认得的不答） |
 | `--ping` | ＝ 帧命令 `ping`：问活：零载荷，回 `ok` |
 | `--place-self` | 部署那一趟：暂存区里新传上去的这一份读自己的字节，自报是这一版才 `rename(2)` 盖掉落点 `~/.cc-monitor/bin/ccm`；回 `{placed: true, build_id}`；不在暂存区 ⇒ `outside_staging`；自报不是这一版 ⇒ `not_self`、暂存件当场删 |
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
@@ -16613,6 +16867,7 @@ alias?: string | null, };
 | `--pubkey-push` | ＝ 帧命令 `pubkey-push`：把本机公钥推进那台的 `authorized_keys` |
 | `--quota-probe` | ＝ 帧命令 `quota-probe`：用某个号查一次额度 |
 | `--quota-read` | ＝ 帧命令 `quota-read`：这台的额度账 |
+| `--quota-warm` | ＝ 帧命令 `quota-warm`：给一个号开窗 |
 | `--resident-attach` | 小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；断开 ⇒ stdout 一行 `{attach:"refused", reason: absent\|unreachable}`、退出 2 |
 | `--resident-call` `[--stdin-line] --within-ms <毫秒> [--tz <IANA 名>]` | 问这台的常驻后端一条帧命令（stdin 一行 `{cmd, args}`）：连套接字、握手（在看名单交空的）、发请求、等那一条应答，stdout 一行回包、退出 0；常驻答了失败 ⇒ stderr 一行它那一份失败信封、退出 2；没人在听 ⇒ `resident_absent`（不起冷进程顶上）；`--within-ms` 必给（等多久归发起方，缺 ⇒ `bad_args`），到期限没回 ⇒ `timed_out` |
 | `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid, replaced: false}`（pid 是套接字对端）；没在 ⇒ 起一个脱离的自己、回 `{pid, replaced}`；`--replace` 在听那一位比自己旧才停掉再起（只升不降） |

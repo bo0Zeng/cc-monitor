@@ -4,6 +4,7 @@ use cmd_wire::files::FileClass;
 use egui_phosphor::regular as ph;
 
 /// 全部种类（判据逐个对图标）。
+#[cfg(test)]
 pub const ALL: [FileClass; 8] = [
     FileClass::Folder,
     FileClass::Text,

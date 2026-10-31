@@ -213,7 +213,7 @@ class ChatSessionMidTest {
         }
 
     @Test
-    fun `面板里的动作同 ➤ 那一句：进待发、投进那条会话的输入队；没回执 ⇒ 在输入框上方发送中，回执到了进流`() =
+    fun `面板里的动作同 ➤ 那一句：进待发、投进那条会话的输入队；没回执 ⇒ 在输入框上方发送中，回执到了离开待发`() =
         runTest {
             val link = FakeCoreLink()
             val replies = ArrayDeque(listOf<Reply>(Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1")), Reply.TimedOut))
@@ -225,11 +225,11 @@ class ChatSessionMidTest {
             runCurrent()
             assertNull(s.state.value.note)
             assertEquals(listOf("/compact", "/clear"), link.calls("session-queue-put").map { it?.get("text") })
-            assertEquals(
-                listOf("/compact"),
+            assertTrue(
+                "回执到了的不另画进流",
                 s.state.value.units
                     .filterIsInstance<RenderUnit.UserText>()
-                    .map { it.text },
+                    .isEmpty(),
             )
             val box = s.state.value.outbox
             assertEquals(listOf("/clear" to copyText("mobChat.delivery.sending")), box.map { it.text to it.said })

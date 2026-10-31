@@ -1,10 +1,10 @@
 //! 列全部命令与用途的那个口：`ccm -- --commands`。
 //!
 //! 料全是现成的、一处不另抄：帧命令 ⇒ [`crate::stream::inbound::REGISTRY`]（名字 · 一句话 · 收不收参数）；
-//! 上不上 CLI 面 ⇒ [`crate::stream::cli::cli_exposed`]；CLI 独有的那几条 ⇒ [`crate::stream::inbound::CLI_ONLY_DOCS`]。
+//! 上不上 CLI 面 ⇒ [`crate::stream::cli::cli_exposed`]；CLI 独有的那几条 ⇒ [`crate::stream::oneshot::ONESHOTS`]。
 //! 读它的：这个子命令本身（随二进制走，装了 ccm 的机器上都问得到）· 协议参考 `IPC-COMMANDS.md` 的 CLI 那一节 ·
 //! skill 说明书里的命令段（两份都是测试里照 [`catalog`] 现打的生成物）。
-//! 口列的命令集 ＝ 分派表（帧面 `REGISTRY` · CLI 面 `SUBCOMMANDS`）两向相等，判据住测试那一侧。
+//! 口列的命令集 ＝ 分派表（帧面 `REGISTRY` · CLI 面 `stream::cli::is_subcommand`）两向相等，判据住测试那一侧。
 
 use serde::Serialize;
 use std::io::Write;
@@ -28,7 +28,7 @@ pub(crate) struct Entry {
     pub(crate) args: Option<bool>,
 }
 
-/// 全部命令：帧命令照 `REGISTRY` 的先后，接着 CLI 独有的照 `CLI_ONLY_DOCS` 的先后。
+/// 全部命令：帧命令照 `REGISTRY` 的先后，接着 CLI 独有的照 `ONESHOTS` 的先后。
 pub(crate) fn catalog() -> Vec<Entry> {
     let frame = crate::stream::inbound::REGISTRY.iter().map(|s| Entry {
         cmd: Some(s.name),
@@ -37,11 +37,11 @@ pub(crate) fn catalog() -> Vec<Entry> {
         what: s.summary.trim_end_matches('。'),
         args: Some(s.takes_input),
     });
-    let cli_only = crate::stream::inbound::CLI_ONLY_DOCS
+    let cli_only = crate::stream::oneshot::ONESHOTS
         .iter()
-        .map(|(f, usage, what)| Entry {
+        .map(|(f, usage, what, _)| Entry {
             cmd: None,
-            cli: Some(crate::wire::cli_words::cli_flag(f)),
+            cli: Some(f.to_string()),
             usage: (!usage.is_empty()).then_some(*usage),
             what,
             args: None,

@@ -20,7 +20,7 @@
 //! 认下的：修改时间 / 扩展属性 / 属主 / 特殊权限位都不还原。库自带的「一步解到盘上」不用（不经我们的路径解析）。
 
 use super::files_write::{
-    walk_in_root, wire_of, Act, Last, ManageCommand, WriteFail, WriteRefusal, TREE_ENTRY_CAP,
+    walk_in_root, wire_of, Act, Last, WriteFail, WriteRefusal, TREE_ENTRY_CAP,
 };
 use crate::platform::fs::{Face, Ro, RoFile};
 use cmd_wire::files as wire;
@@ -758,15 +758,6 @@ pub fn extract_with(
 // ══════════════════════════════════════════════════════════════════════════
 //  线上面
 // ══════════════════════════════════════════════════════════════════════════
-
-/// 本模块的线上命令（与 `inbound::REGISTRY`、`IPC-PROTOCOL.md §10` 三处对拍，同 `files_write::MANAGE_COMMANDS`）。
-pub const EXTRACT_COMMANDS: &[ManageCommand] = &[
-    ManageCommand {
-        name: "files-extract",
-        purpose: "extract a zip / tar / tar.gz / tgz archive into a new directory next to it (named after the archive); \
-           every entry is path-checked first; see IPC-PROTOCOL `files-extract`",
-    },
-];
 
 /// `fresh` 那一形最多往后试几个编号（`名 (2)` … `名 (FRESH_TRIES + 1)`）。
 pub const FRESH_TRIES: u32 = 999;

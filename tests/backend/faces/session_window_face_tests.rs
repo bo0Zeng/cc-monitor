@@ -2,7 +2,7 @@
 //!
 //! ★ 本机会话与远端会话同一个形：远端 ⇒ 本机后端经 `--resident-call` 问那台的 `session-terminals`，
 //! 那台报来的终端连接拿本机的连接表对出进程链；本机 ⇒ 链从显示它的那个终端进程（tmux 客户端 · 不在 tmux 里就是它自己）起。
-//! 两边的原因照搬、用那台的名字写成那一张（`cmd_wire::front::Unplaced::face`，句子在 `front_face_tests.rs` 判）；
+//! 两边的原因照搬、用那台的名字写成那一张（`face_core::front::Unplaced::face`，句子在 `face-core` 的 `front_tests.rs` 判）；
 //! 那台没问到 ⇒ 连接层那一句照摆。`tmux` 那一格照带（窗口关了时壳才给［在终端里打开］）。
 
 use super::*;
@@ -44,7 +44,7 @@ fn ssh_terminal(window: Option<&str>) -> Terminal {
             server_port: 22,
         }),
         activity: Some(9),
-        window: window.map(str::to_string),
+        window: window.map(|w| w.parse().unwrap()),
     }
 }
 
@@ -221,7 +221,7 @@ async fn a_local_session_starts_the_chain_at_the_terminal_showing_it_and_asks_no
     let local = Terminal {
         ssh: None,
         activity: Some(9),
-        window: Some("600-20".into()),
+        window: "600-20".parse().ok(),
     };
     let got = answer_with(
         &req(cmd_wire::LOCAL),
@@ -313,7 +313,7 @@ impl Shelf {
     fn holding(label: &str, machine: &str) -> Shelf {
         let s = Shelf::default();
         *s.held.lock().unwrap() = Some(Opened {
-            label: label.into(),
+            label: label.parse().unwrap(),
             machine: machine.into(),
         });
         s

@@ -16,7 +16,8 @@ const { disk, answers, opened, marks, seen, fileWin, localOpened, localRevealed,
   localRevealed: [] as string[],
   seen: new Map<string, Record<string, unknown>>(),
   fileWin: [] as Array<{ host: unknown; at: unknown }>,
-  disk: { cfg: {} as Record<string, unknown> },
+  /** `cfg` 是 monitor 的设置；`machines` 是本机后端那份机器表（盘上那几台，`machines-read` 照金样答）。 */
+  disk: { cfg: {} as Record<string, unknown>, machines: [] as Record<string, unknown>[] },
   answers: new Map<string, unknown>(),
   opened: vi.fn(),
   marks: [] as Array<{ origin: string; args: unknown }>,
@@ -62,10 +63,14 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
         const out = op === "last-seen-read" ? { accounts: mine.accounts ?? null, data: mine.data ?? null } : { atMs: 1 };
         return Promise.resolve(new TextEncoder().encode(JSON.stringify(out)));
       }
-      // 机器表住本机后端（`machines-read`）：照这块盘上摆的 `remote.hosts` 答，答法与别的测试同一份（`machinesReadOf`：一行 `{name, host}`）。
+      // 机器表住本机后端（`machines-read`）：照这块盘上摆的那几台，交金样里录好的那一答（后端现打，`machines-fake.ts`）。
       if (op === "machines-read") {
         if (origin !== "<local>") return Promise.reject(new Error("机器表只问本机后端"));
-        return import("../config-patch-fake").then(({ machinesReadOf }) => new TextEncoder().encode(JSON.stringify(machinesReadOf(disk.cfg))));
+        return import("../machines-fake").then(({ recordedMachines }) => {
+          const got = recordedMachines("machines-read", disk.machines);
+          if (!("reply" in got)) throw new Error("读口不拒");
+          return new TextEncoder().encode(JSON.stringify(got.reply));
+        });
       }
       if (op !== "data-report") return Promise.reject(new Error(`没料到 ${op}`));
       const a = answers.get(origin);
@@ -164,7 +169,8 @@ beforeEach(() => {
   merges.asked.length = 0;
   merges.reply = null;
   clipFake = fakeClipboard();
-  disk.cfg = { remote: { hosts: [{ label: "devbox", host: "d.lan", user: "u", port: 22 }, { label: "gpu", host: "g.lan", user: "u", port: 22 }] } };
+  disk.cfg = {};
+  disk.machines = [{ label: "devbox", host: "d.lan", user: "u", port: 22 }, { label: "gpu", host: "g.lan", user: "u", port: 22 }];
 });
 
 describe("上次值", () => {

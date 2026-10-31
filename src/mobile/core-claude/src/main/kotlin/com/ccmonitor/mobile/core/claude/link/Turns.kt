@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.Commands
+import com.ccmonitor.mobile.core.wire.gen.HistoryTurnsReq
 import com.ccmonitor.mobile.core.wire.gen.TurnRow
 import com.ccmonitor.mobile.core.wire.gen.HistoryTurns as HistoryTurnsPage
 
@@ -9,19 +10,19 @@ import com.ccmonitor.mobile.core.wire.gen.HistoryTurns as HistoryTurnsPage
  * 只拉了记录后半截 ⇒ 第一问拿已拉到的最上面那一行的字节问（[cover]：从包着它的那一轮起）；之后从还没收尾那一轮的 `at` 续取（[from]）。
  */
 object Turns {
-    const val COMMAND: String = "history-turns"
+    const val COMMAND: String = Commands.HistoryTurns.NAME
 
     fun cover(
         path: String,
         cover: Long,
-    ): Map<String, Any?> = mapOf("path" to path, "cover" to cover)
+    ): Map<String, Any?> = Commands.HistoryTurns.args(HistoryTurnsReq(path = path, cover = cover))
 
     fun from(
         path: String,
         from: Long,
-    ): Map<String, Any?> = mapOf("path" to path, "from" to from)
+    ): Map<String, Any?> = Commands.HistoryTurns.args(HistoryTurnsReq(path = path, from = from))
 
-    fun of(data: Any?): HistoryTurnsPage? = Wire.bind<HistoryTurnsPage>(data)
+    fun of(data: Any?): HistoryTurnsPage? = Commands.HistoryTurns.reply(data)
 
     /** 手上那一份往后续取从哪个字节起：最早一轮还没收尾的那一轮；都收尾了 ⇒ 最后一轮（新的一轮从它后面长出来）；手上没有 ⇒ `null`。 */
     fun resumeAt(have: List<TurnRow>): Long? = (have.firstOrNull { !it.done } ?: have.lastOrNull())?.at

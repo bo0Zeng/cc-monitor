@@ -31,6 +31,7 @@ src/frontend/shell/src/local_backend.rs:1783	本机后端（stdio 载体）	保�
 src/frontend/shell/src/backend_policy.rs:448	 码={c}	保留	[不对外] 死亡账那一行的「码」一格（裸退出码 / 信号号，界面那一格不带它），只经 DeathSink 落 monitor 日志与复制详情的原话
 src/frontend/shell/src/backend_policy.rs:450	[死亡账] origin={origin} 判定={} 退出状态={}{code} —— {}	保留	[不对外] 〔CP2b 复核〕ST2 步 7 起界面只取 last_brief（判定＋退出状态），ledger_line 只经 DeathSink 落 monitor 日志；原裁「界面只取判定＋退出状态两格，日志行留在日志」已兑现 ⇒ 这一行今天不对外，不进文案表（原裁：改·§2.1 [可达存疑]）
 src/frontend/filewin/src/fonts.rs:257	向式横模滚长	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
+src/frontend/filewin/src/fonts.rs:215	求请	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（通道那一句「请求格式不对」进了窗口带来的两个字）
 src/frontend/filewin/src/fonts.rs:258	头选项	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
 src/frontend/filewin/src/fonts.rs:293	变收	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔F9c 与 FW34 合并〕F9c 删掉的 9 个字里仍被 preview / workspace 用着的两个）
 src/frontend/filewin/src/fonts.rs:277	×书加找移签	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（书签栏那几个字）
@@ -100,27 +101,14 @@ src/frontend/filewin/src/fonts.rs:374	于入及均定持支识该身适途	保�
 src/frontend/filewin/src/fonts.rs:392	见	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案第五段：壳 / 文件窗口改调用点那段压缩新进的字）（`询` 随复制到另一台那五步一起没了）
 src/frontend/filewin/src/fonts.rs:394	余核逐	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（一组一条命令那一层：逐项选 · 其余待核）
 src/frontend/filewin/src/fonts.rs:381	分如	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案第八段：壳 / 文件窗口那面洗欠账 ——「如名字加 (2)」「存到段 N / M 时中断」等新进的字）
-src/backend/control/files_commit.rs:85	把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；先核整份摘要 `expect: {sha256}`，\n             不等 ⇒ 删掉坏暂存件、`stale`；不覆盖时 `O_EXCL` 占位再改名上位）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_commit.rs:92	把存盘的一块写进暂存区 `<key>.<seq>.chunk`（`O_EXCL` 新建：同一块写第二次就拒；暂存区不在就建）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_commit.rs:96	按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再覆盖写目标（原子换，与 \n               `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；`expect: {sha256}` 必给，\n               盘上那份对不上 ⇒ `stale`、一个字节不写；不论成败都删掉这些块	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_commit.rs:103	把暂存区里传完的一份（或先拼好的块）落进会话工作目录下一个新的附件目录 `.ccm-attach/<编号>/<原名>`\n                  （判单份与附件目录上限；工作目录不可写 ⇒ 拒；核整份摘要；成了顺手清超过七天的编号目录）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_commit.rs:108	删掉会话工作目录下的一个附件编号目录（草稿上撤掉那一份；不在 ⇒ `removed: false`）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:1936	在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:1944	新建一个目录（只建最后那一段；父目录不在就失败，不顺手补）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:1951	改名 / 同根内移动；**两个参数各过一遍路径解析**，目标已存在就拒（不覆盖）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:2688	删一组（`control/files_batch.rs`）：每项一个文件或一个**空**目录（删的是链接本身，不跟过去）；显式 `recursive: true` \n               才删整棵树 —— 逐条目过路径解析，任一条被拒那一项不动（`delete_tree`）、按段删，段与段之间看撤的旗；给了 `expect` \n               ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则那一项 `stale`，一个字节不动）；`expect: {"empty_dir": true}` \n               ⇒ 只删一个空目录；逐项结局 ＋ 结局那一行；带票 ⇒ 断开照常做完、再问回同一份	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:2695	一组改成同一个 unix 权限位（低 12 位，`control/files_batch.rs`）；**跟链接**，所以落点解到底再判一次；\n没有 unix 权限位的平台上那一项回 `no_unix_mode`；每项带改之前的那一份（撤销用）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:2701	同根内复制一组（`control/files_batch.rs`）：先探整组落点，同名而没答 ⇒ 一项不做、回 `exists` 与同名清单；\n               答法 `overwrite` · `skip` · `keep_both`（另起 `名 (2).ext`，撞上往后试）；目录整棵复制、同名不合并；\n               **三条路径各过一遍路径解析**；不覆盖的那几项 `O_EXCL`，探完之后冒出来的同名不盖（那一项 `exists`）；\n               覆盖经暂存旁名原子顶掉；权限位从源抄；树里的链接复制**链接本身**	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:2439	覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\n`expect: {sha256}` **必给**：盘上那份的摘要对得上才写（否则 `stale`，一个字节不动），应答交新摘要	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:2011	删一份历史会话 —— **只收 sid**，落点由后端按 sid 在记录树里找（历史浏览器的删会话，不是文件管理器）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/control/files_write.rs:621	它有 {links} 个硬链接	保留	[不对外] in_place_reason 拼的原因只进 tracing::warn 那一行日志（覆盖写退回就地写时），不上界面
 src/backend/control/files_write.rs:625	它的属主（uid {owner}）不是后端这个用户（uid {me}）	保留	[不对外] in_place_reason 拼的原因只进 tracing::warn 那一行日志（覆盖写退回就地写时），不上界面
 src/backend/control/files_write.rs:628	、	保留	[不对外] in_place_reason 拼的原因只进 tracing::warn 那一行日志（覆盖写退回就地写时），不上界面
-src/backend/accounts/upstream_select/mod.rs:473	[quota] 被拒：号 {account} · 状态码 {status} · 限额头 {} · 代表窗 {} · retry-after {}	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
-src/backend/accounts/upstream_select/mod.rs:474	有	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
-src/backend/accounts/upstream_select/mod.rs:474	无	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
+src/backend/accounts/upstream_select/mod.rs:702	[quota] 被拒：号 {account} · 状态码 {status} · 代表窗 {} · retry-after {}	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
 src/backend/accounts/upstream_select/mod.rs:475	—	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
 src/backend/accounts/upstream_select/mod.rs:476	—	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
+src/backend/accounts/upstream_select/mod.rs:711	[quota] 短时限流：号 {account} · 状态码 {status} · retry-after {}	保留	[不对外] throttle_line：短时限流的 429 时 tracing::warn! 打的那一行，只进后端日志
+src/backend/accounts/upstream_select/mod.rs:712	—	保留	[不对外] throttle_line：短时限流的 429 时 tracing::warn! 打的那一行，只进后端日志
 src/backend/accounts/oauth/mod.rs:205	让位	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因），只进后端日志
 src/backend/accounts/oauth/mod.rs:206	成	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因），只进后端日志
 src/backend/accounts/oauth/mod.rs:207	败	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因），只进后端日志

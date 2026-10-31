@@ -752,4 +752,34 @@ fn a_long_diff_shows_its_head_and_keeps_whole_counts() {
         panic!("没出改动")
     };
     assert_eq!((diff.added, diff.removed), (3000, 3000));
+    assert!(
+        diff.notice.as_ref().is_some_and(|n| !n.0.is_empty()),
+        "超了格数上界只画整删整增 ⇒ 带那一句"
+    );
+}
+
+/// 没超格数上界 ⇒ 不带降级那一句；几处里有一处超了 ⇒ 整份带它。
+#[test]
+fn only_a_diff_past_the_cell_cap_says_it_was_not_compared_line_by_line() {
+    let s = step_of(
+        "Edit",
+        &json!({"file_path": "/w/a.rs", "old_string": "k\nx", "new_string": "k\ny"}),
+    );
+    let Some(StepBody::Changes { diff }) = s.body else {
+        panic!("没出改动")
+    };
+    assert_eq!(diff.notice, None);
+    let old: String = (0..3000).map(|i| format!("o{i}\n")).collect();
+    let new: String = (0..3000).map(|i| format!("n{i}\n")).collect();
+    let s = step_of(
+        "MultiEdit",
+        &json!({"file_path": "/w/a.rs", "edits": [
+            {"old_string": "a", "new_string": "b"},
+            {"old_string": old, "new_string": new},
+        ]}),
+    );
+    let Some(StepBody::Changes { diff }) = s.body else {
+        panic!("没出改动")
+    };
+    assert!(diff.notice.is_some(), "几处里有一处降级 ⇒ 整份带那一句");
 }

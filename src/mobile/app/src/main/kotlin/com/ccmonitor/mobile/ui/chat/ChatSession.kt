@@ -23,7 +23,6 @@ import com.ccmonitor.mobile.core.data.db.PendingOutcome
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
 import com.ccmonitor.mobile.core.wire.gen.Changed
-import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCardNow
 import com.ccmonitor.mobile.core.wire.gen.SentAct
@@ -57,12 +56,14 @@ import java.util.UUID
 
 /** 聊天面的一帧 UI 状态。 */
 data class ChatUiState(
-    /** 记录 ＋ 会话那台已回执、还没在记录里出现的那几句。 */
+    /** 记录（回执到了的那几句不另画：在名单那一排 · 记录里）。 */
     val units: List<RenderUnit> = emptyList(),
     /** 输入框上方那一排：交出去了、会话那台还没回执的那几句（「发送中」· 撤）。 */
     val outbox: List<OutboxLine> = emptyList(),
-    /** 消息流末尾那一排：会话那台那份输入队名单（哪一端投的都在；自己的回执到了就挪进这里）· 每条可撤。 */
+    /** 输入框上方那一排的名单：会话那台那份输入队（哪一端投的都在；自己的回执到了就只在这里）· 每条可撤。 */
     val queue: List<QueueLine> = emptyList(),
+    /** 会话那台此刻离线那一句（机器成品写好的，[CoreLink.offline]）；连着 ⇒ `null`：那一排照它淡着、说名单是上次所知。 */
+    val offline: String? = null,
     /** 这条会话此刻在跑（那台给的脸上在干什么是 `working`）：右端是 ■。 */
     val running: Boolean = false,
     /** 会话那一层的失败（起不来 · 读不出记录）那一句；`null` ＝ 没有。 */
@@ -204,8 +205,6 @@ class ChatSession(
     /** 读正文的那几问；没成的那一句照 [readFailed] 上屏。 */
     private val reads = ChatReads(link, machine) { readFailed(it) }
 
-    /** 上次上屏以后新排进来的那几条里人说的话（只拿它们消本地那几句的标）。 */
-    private val heard = mutableListOf<String>()
     private val box = ChatOutbox(link, machine, scope, cache, attach) { publish() }
 
     /** 这条会话的输入队（会话那台那一份）。 */
@@ -228,7 +227,7 @@ class ChatSession(
     /** 过程怎么分段（那台 `history-turns`）· 点开着的那几段。 */
     private val folds = ChatTurns(link)
 
-    /** 正文跟读（读到哪 · 读最后一屏 · 补缺 · 往上翻 · 从命中读起）；排进来的记录里人说的话记进 [heard]。 */
+    /** 正文跟读（读到哪 · 读最后一屏 · 补缺 · 往上翻 · 从命中读起）；排进了 ⇒ 分段重问。 */
     private val record =
         ChatRecord(
             link,
@@ -240,10 +239,7 @@ class ChatSession(
             body,
             _state,
             { sid },
-            took = { rs ->
-                rs.filterIsInstance<LineRecord.Said>().mapTo(heard) { it.who.text }
-                folds.want()
-            },
+            took = folds::want,
             publishLocked = ::publishLocked,
             failSession = ::failSession,
             readFailed = ::readFailed,
@@ -263,6 +259,8 @@ class ChatSession(
             scope.launch { link.table.collect { t -> sid?.let { t.successors[it] }?.let { by -> succeed(by) } } }
             // 那台推来的输入队名单（这一条的）照画。
             queue.watch(queueMoved) { sid }
+            // 那台离线那一句（连着 ⇒ 没有）：输入队那一排照它说是上次所知。
+            scope.launch { link.offline.collect { off -> _state.value = _state.value.copy(offline = off) } }
             // 每次接上那台：待发里还没回执的那几句照同一个编号再交一遍（那台按编号去重，只进一条）；名单问一次（断着时漏了的推送补上）。
             scope.launch {
                 link.state
@@ -514,11 +512,13 @@ class ChatSession(
 
     /** 交那一句（见 [ChatOutbox.put]）；新建会话还没起好 ⇒ 先起（头一句随起交）。 */
     private suspend fun deliver(o: Outgoing) {
-        // 正在交 · 两次再交排到了同一句、前一次已拿到回执（又不是要刷新排第几）⇒ 不再交。
-        if (o.inFlight || o.receipt && !o.refresh) return
+        // 正在交 · 两次再交排到了同一句、前一次已拿到回执 ⇒ 不再交。
+        if (o.inFlight || o.receipt) return
         val s = sid ?: started(o)?.also { if (o.handed) return } ?: return fail(o, permanent = false, text = null)
         box.put(o, s)
         edits.landed(o)
+        // 回执到了 ⇒ 那一句此刻在哪照那台的名单（同桌面：回执那一下重问一次）。
+        if (o.receipt) queue.read(s)
     }
 
     private fun mark(
@@ -567,9 +567,13 @@ class ChatSession(
         answer.prompt?.let { said ->
             first.handed = true
             val (delivery, text) = outcomeOf(said, machine)
-            // 随起交进去了（那台作为启动参数收下）⇒ 进流；没交到 ⇒ 留在待发、能改的给［重试］（那时有 sid，走投进队）。
-            first.receipt = delivery != DeliveryState.FAILED && delivery != DeliveryState.FAILED_PERMANENT
-            mark(first, delivery, text)
+            // 随起交进去了（那台作为启动参数收下）⇒ 离开待发（说不准交没交到 ⇒ chip 上方那一行写那一句）；没交到 ⇒ 留在待发、能改的给［重试］（那时有 sid，走投进队）。
+            if (delivery == DeliveryState.FAILED || delivery == DeliveryState.FAILED_PERMANENT) {
+                mark(first, delivery, text)
+            } else {
+                box.received(first)
+                text?.let { _state.value = _state.value.copy(note = it) }
+            }
         }
         sid = arrived
         cache.bind(outgoing.map { it.localId }, arrived)
@@ -687,26 +691,12 @@ class ChatSession(
         scope.launch { lock.withLock { publishLocked() } }
     }
 
-    /** 新排进来的记录里出现了同一句人话 ⇒ 那一句的本地标消失（一行只消一句）；其余的接在记录后面。 */
+    /** 流只画记录；那台的名单在 [ChatUiState.queue]，还没回执的在 [ChatUiState.outbox]（输入框上方那一排）。 */
     private fun publishLocked() {
-        val seen = outgoing.filter { o -> o.delivery != DeliveryState.FAILED && o.delivery != DeliveryState.FAILED_PERMANENT && heard.remove(o.text) }
-        heard.clear()
-        if (seen.isNotEmpty()) {
-            outgoing.removeAll(seen)
-            scope.launch { cache.forget(seen.map { it.localId }) }
-        }
-        // 回执过的那一句在名单里见过、此刻不在名单也不在已送进 ⇒ 哪一端把它撤了：拿掉。
-        val cancelled = outgoing.filter { it.receipt && queue.gone(it.localId) }
-        if (cancelled.isNotEmpty()) {
-            outgoing.removeAll(cancelled)
-            scope.launch { cache.forget(cancelled.map { it.localId }) }
-        }
-        // 回执到了（会话那台已落盘）的才进流；还在名单里的那几句只在名单那一排（[ChatUiState.queue]）；还没回执的在输入框上方（[ChatUiState.outbox]）。
-        val (local, outbox) = box.view()
+        val outbox = box.view()
         // 跟着尾巴：手上只留最后几页（单元表 · 流的长度都截在这里）。
         if (following) record.trimLocked()
-        val shown = local.filterNot { queue.holds(it.key) }
-        val units = body.units().let { if (shown.isEmpty()) it else it + shown }
+        val units = body.units()
         // 落在一次工具调用的卡里：那张卡读到了 ⇒ 记成落点，之后不再每次找。
         landingTool?.let { t -> units.firstOrNull { it is RenderUnit.ToolCall && it.toolUseId == t }?.key }?.let {
             landingKey = it

@@ -52,6 +52,14 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "KEEP",
+        "**时长**不是体量：一个会话的用量记录只留最近这么久（`accounts/quota/spend.rs`，6 小时 = 36 格 × 10 分钟），过了就丢。",
+    ),
+    (
+        "WEEK",
+        "**时长**不是体量：一周的秒数（`accounts/quota/facts.rs`），周窗不在计时时照上次重置往后推整周用。",
+    ),
+    (
         "DEFLATE_CHUNK",
         "**步长**不是体量：常驻流压缩器一次往外攒多少字节就先往下写（`wire/listen.rs::Down`），流本身多长不受它限。",
     ),
@@ -1219,12 +1227,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/history/launch_book.rs",
-        "MAX_BYTES",
-        "后端自有的「会话用的号」记录 `~/.cc-monitor/launch-accounts.json`（读不出来就不覆盖、`unreadable`）",
-        "拒收+回错",
-    ),
-    (
         "src/backend/dial/opened_windows.rs",
         "MAX_BYTES",
         "↗ 的本机记录一份 `<数据目录>/opened-windows/<sid>`（两行：窗口标签 · 那台的名字；超了 ⇒ `warn!` 带路径，当没有、照问那台）",
@@ -1253,6 +1255,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "KEY_MAX_BYTES",
         "中转钥匙文件 `~/.cc-monitor/relay-key`（一行）；超了 ⇒ `warn!` 带路径说读不懂，当没有、重铸一把",
         "跳过+说清",
+    ),
+    (
+        "src/backend/relay/listen.rs",
+        "INFLIGHT_BODY_CAP",
+        "同时在途的下游请求体字节合计（读体之前按 Content-Length 记账）",
+        "拒收+回错",
     ),
     (
         "src/backend/dial/known_hosts.rs",
@@ -1356,6 +1364,14 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "CHANNEL_MAX_BYTES",
         "一条流连接的出方向通道里压住的帧（按序列化的字节记账）",
         "丢弃+带身份报告",
+    ),
+    // 这台那一本会话脸（`faces_here`，监控板这台那几条照它答）最多记几条（**条数，不是字节**）：收场那一帧就摘，这一格只兜漏摘的底；
+    //   超了先挤最久没动静的（收场的在前），`warn!` 说挤了哪条 ⇒ 「跳过+说清」。
+    (
+        "src/backend/observe/watcher.rs",
+        "FACES_MAX",
+        "这台扇出的会话帧折成的那一本（`observe::watcher::Faces`）里记的会话条数",
+        "跳过+说清",
     ),
     // 记录骨架读回来的上限：超了 ⇒ 当没有骨架，照记录整份重扫（记一笔调试日志）。
     (

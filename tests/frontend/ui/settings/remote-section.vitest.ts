@@ -3,8 +3,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Host } from "../../../../src/frontend/ui/generated/Host";
 import type { MachineState } from "../../../../src/frontend/ui/generated/MachineState";
-// F56：写入/读取都走 config.ts；mock 掉以测 jump write→read 往返。
-// config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
+// config 写只交补丁（`fakeCfg.patches`）；机器表住本机后端，替身照金样回（`machines-fake.ts`：盘是 `fakeMachines.disk`，写完读回的那张交 `fakeMachines.written`）。
 vi.mock("../../../../src/frontend/ui/config", async (orig) => (await import("../config-patch-fake")).mockedConfigModule(orig));
 // S3：把整个 IPC 面 mock 成一个**会记账的 Proxy** —— 用来钉「渲染机器列表时零次
 // 后端调用」。这比源码扫描强：扫描只能证明「没 import」，证明不了「渲染时没调」。
@@ -43,24 +42,11 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           const u = new TextEncoder().encode(JSON.stringify(answer(a0.origin, req)));
           return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
         }
-        // 机器表那三条（本机后端）：照假盘那一份现算（替身在 `config-patch-fake.ts`）。
+        // 机器表那三条（本机后端）：照金样回录好的回包；拒 ⇒ 同 monitor 交回来的那一形（`Refused` ＋ 拒绝体 ＋ 那一句）。
         if (op.startsWith("machines-")) {
           const a0 = args[0] as { payload?: number[] };
           const req: unknown = a0.payload ? JSON.parse(new TextDecoder().decode(new Uint8Array(a0.payload))) : null;
-          // 写口拒 ⇒ 同后端那一形：对端说不行（`Refused` ＋ 码 ＋ 那一句），不是通道坏了。
-          //   认不出 / 已有同名 ⇒ 后端写好的那一句（`control/machines.rs` 同键）。
-          const refused = (e: unknown) => {
-            const code = e instanceof Error && "kind" in e ? String((e as { kind: unknown }).kind) : "bad_machine";
-            const said: Record<string, string> = { element_gone: copyText("rsConfig.write.elementGone"), element_exists: copyText("rsConfig.write.elementExists") };
-            const message = said[code] ?? (e instanceof Error ? e.message : String(e));
-            const body = new TextEncoder().encode(JSON.stringify({ code, message }));
-            // monitor 照对端那一句原样交（`said`）。
-            return Promise.reject({ err: "Refused", body: [...body], said: message, detail: "" });
-          };
-          return fakeMachinesCall(op, req).then((r) => {
-            const u = new TextEncoder().encode(JSON.stringify(r));
-            return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength);
-          }, refused);
+          return machinesChanCall(op, req);
         }
         const reply = ipcReplies.get(name);
         // 回一个 `Error` ⇒ 这条命令 reject（「没问到」那一形；线上是后端回 `Err`）。
@@ -94,10 +80,10 @@ vi.mock("../../../../src/frontend/ui/ssh-config-reads", () => {
   };
 });
 import { loadConfig } from "../../../../src/frontend/ui/config";
-import { fakeCfg, fakeMachinesCall } from "../config-patch-fake";
+import { fakeCfg } from "../config-patch-fake";
+import { fakeMachines, machinesChanCall, recordedMachines, type MachinesDisk } from "../machines-fake";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
-const saveConfig = fakeCfg.saved;
 import {
   shouldShowResetFingerprint,
   RemoteSection,
@@ -220,30 +206,21 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
     connect: true,
       });
 
-  it("jump 写入 config 并读回不丢", async () => {
-    vi.mocked(loadConfig).mockResolvedValue({});
-    let saved: Record<string, unknown> = {};
-    vi.mocked(saveConfig).mockImplementation(async (c: unknown) => {
-      saved = c as Record<string, unknown>;
-    });
+  beforeEach(() => vi.resetAllMocks());
+
+  it("jump 交给写口并读回不丢", async () => {
     await patchRemoteConfig({ upsert: [{ key: null, value: host("bastion") }] });
-    // 写入的 config 里 hosts[0] 含 jump（修前此处丢字段 → undefined，测试红）
-    const written = (saved.remote as { hosts: Array<{ jump?: string }> }).hosts[0];
-    expect(written.jump).toBe("bastion");
-    // 读回:loadConfig 返回刚写的 → readRemoteConfig → coerceHost 保留 jump
-    vi.mocked(loadConfig).mockResolvedValue(saved);
+    // 交出去的那一台含 jump（修前此处丢字段 → undefined，测试红）
+    const ins = fakeMachines.sent.mock.calls.at(-1)![1][0] as { value: { jump?: string } };
+    expect(ins.value.jump).toBe("bastion");
+    expect(fakeMachines.written.mock.calls.at(-1)![0][0]!.jump).toBe("bastion");
+    // 读回：盘上是写口读回的那一张
     const back = await readRemoteConfig();
     expect(back.hosts[0].host.jump).toBe("bastion");
   });
 
   it("空 jump 往返 → 空串（直连）", async () => {
-    vi.mocked(loadConfig).mockResolvedValue({});
-    let saved: Record<string, unknown> = {};
-    vi.mocked(saveConfig).mockImplementation(async (c: unknown) => {
-      saved = c as Record<string, unknown>;
-    });
     await patchRemoteConfig({ upsert: [{ key: null, value: host("") }] });
-    vi.mocked(loadConfig).mockResolvedValue(saved);
     const back = await readRemoteConfig();
     expect(back.hosts[0].host.jump).toBe("");
   });
@@ -345,20 +322,17 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     hosts: Host[],
     pages?: ReturnType<typeof fakePages>["host"],
   ): Promise<RemoteSection> {
-    vi.mocked(loadConfig).mockResolvedValue({
-      keepMe: 1,
-      remote: { enabled: true, hosts },
-    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+    vi.mocked(loadConfig).mockResolvedValue({ keepMe: 1 } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+    fakeMachines.disk.mockReturnValue(hosts);
     const sec = new RemoteSection({ headless: true, pages });
     // 构造里的 refresh 是 fire-and-forget，让出事件循环等它跑完。
     await new Promise((r) => setTimeout(r, 0));
     return sec;
   }
 
+  /** 写口最近一次写完读回的那一张。 */
   function writtenHosts(): Host[] {
-    const calls = vi.mocked(saveConfig).mock.calls;
-    const last = calls[calls.length - 1]![0] as Record<string, unknown>;
-    return (last.remote as { hosts: Host[] }).hosts;
+    return fakeMachines.written.mock.calls.at(-1)![0];
   }
 
   beforeEach(() => vi.resetAllMocks());
@@ -372,7 +346,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(sec.element.querySelectorAll(".remote-machine-remove")).toHaveLength(2);
     await removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
-    expect(saveConfig).toHaveBeenCalled();
+    expect(fakeMachines.written).toHaveBeenCalled();
     expect(writtenHosts().map((h) => h.label)).toEqual(["b"]);
   });
 
@@ -427,9 +401,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("★ 〔FIX〕加载之后别处改了一格、再在页上改另一格 ⇒ 盘上那一格不被整台盖掉", async () => {
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);
     // 加载之后，别处往盘上改了 a 的钥匙路径。
-    const disk = (await vi.mocked(loadConfig)()) as unknown as { remote: { hosts: Host[] } };
-    disk.remote.hosts[0]!.keyPath = "/k/disk";
-    vi.mocked(loadConfig).mockResolvedValue(disk as unknown as Awaited<ReturnType<typeof loadConfig>>);
+    const disk = structuredClone(fakeMachines.disk() as Host[]);
+    disk[0]!.keyPath = "/k/disk";
+    fakeMachines.disk.mockReturnValue(disk);
     const first = sec.element.querySelectorAll<HTMLInputElement>('input[type="text"]')[0]!;
     first.value = "a-renamed";
     first.dispatchEvent(new Event("change"));
@@ -511,24 +485,27 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     // 增删也按键认元素：同一个 origin 两台 ⇒ `removein` 认出不止一台 ⇒ 整批拒（不猜是哪台），banner 说后端写好的那一句
     //   （不是通道那一层的开发者字样）。
     const sec = await mount([mkH("dup", "1.1.1.1"), mkH("dup", "2.2.2.2")]);
-    vi.mocked(saveConfig).mockClear();
+    const disk = fakeMachines.disk() as MachinesDisk;
     await removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
-    const sent = vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { op: string }[];
-    expect(sent.map((e) => e.op)).toContain("removein");
-    expect(saveConfig).not.toHaveBeenCalled();
+    const sent = fakeMachines.sent.mock.calls.at(-1)!;
+    expect(sent[1].map((e) => e.op)).toContain("removein");
+    expect(fakeMachines.written).not.toHaveBeenCalled();
+    // 那一句是写口拒的那一句（金样里录的，后端写好）。
+    const got = recordedMachines(sent[0], disk, sent[1]);
+    if (!("refused" in got)) throw new Error("同名两台删一台，写口没拒");
+    expect(got.refused.code).toBe("element_gone");
     const banner = sec.element.querySelector(".settings-banner-show")?.textContent ?? "";
-    expect(banner).toContain(copyText("rsConfig.write.elementGone"));
+    expect(banner).toContain(got.refused.message);
     expect(banner).not.toContain("通道");
   });
 
-  it("config.json 里的无关顶层键不受影响", async () => {
+  it("删一台只经机器表写口：config.json 一条补丁都不交", async () => {
     const sec = await mount([mkH("a", "1.1.1.1")]);
     await removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
-    const calls = vi.mocked(saveConfig).mock.calls;
-    const last = calls[calls.length - 1]![0] as Record<string, unknown>;
-    expect(last.keepMe).toBe(1);
+    expect(fakeMachines.written).toHaveBeenCalled();
+    expect(fakeCfg.patches).not.toHaveBeenCalled();
   });
 
   // 读 `~/.ssh/config` 失败与「真没有别名」原先同形（空下拉 ＋「未找到」）。
@@ -791,9 +768,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const sec = await mount([mkH("a", "1.1.1.1")], p.host);
     expect(p.added.map((x) => x.title)).toEqual([copyText("control.machine.unsure"), "a"]);
 
-    vi.mocked(loadConfig).mockResolvedValue({
-      remote: { enabled: true, hosts: [mkH("b", "2.2.2.2")] },
-    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+    fakeMachines.disk.mockReturnValue([mkH("b", "2.2.2.2")]);
     await sec.refresh();
 
     expect(p.removed).toContain("machine:a");
@@ -922,8 +897,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   // ── 机器表的几条写盘缺陷：回填漏一格、重名、空白卡、端口越界、卸载失败照记成功 ──
   const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-  const diskHosts = async (): Promise<Host[]> =>
-    ((await vi.mocked(loadConfig)()) as unknown as { remote: { hosts: Host[] } }).remote.hosts;
+  const diskHosts = async (): Promise<Host[]> => fakeMachines.disk() as Host[];
   const field = (page: HTMLElement, placeholder: string): HTMLInputElement =>
     [...page.querySelectorAll<HTMLInputElement>("input")].find((i) => i.placeholder === placeholder)!;
   const pageOf = (p: ReturnType<typeof fakePages>, id: string): HTMLElement => p.added.find((a) => a.id === id)!.element;
@@ -965,9 +939,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("改名之后这一页讲的是新名字；那台的偏好住那台、改名不搬", async () => {
     const p = fakePages();
     vi.mocked(loadConfig).mockResolvedValue({
-      remote: { enabled: true, hosts: [mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")] },
       accounts: { byMachine: { b: { defaultName: "w", modelByAccount: { w: "opus" } } } },
     } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+    fakeMachines.disk.mockReturnValue([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);
     const sec = new RemoteSection({ headless: true, pages: p.host });
     await tick();
     expect(sec.originOfPage("machine:b")).toBe("b");
@@ -995,14 +969,13 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     it("★ 已在列表的那台灰着、勾不了；主按钮按勾上的数写「添加 1 台」；点之前一个字节都不写", async () => {
       ipcReplies.set("ssh-config-import", { groups: sshGroups, partial: false });
       const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
-      vi.mocked(saveConfig).mockClear();
       const dlg = await openAdd(sec);
       const rows = [...dlg.querySelectorAll<HTMLElement>(".add-machine-row")];
       expect(rows).toHaveLength(2);
       expect(rows[0]!.dataset.inList).toBe("true");
       expect(rows[0]!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(true);
       expect(okBtn(dlg).textContent).toBe(copyText("addMachine.action.ssh", { n: "1" }));
-      expect(saveConfig, "框开着就写了盘").not.toHaveBeenCalled();
+      expect(fakeMachines.written, "框开着就写了盘").not.toHaveBeenCalled();
       ipcReplies.clear();
     });
 
@@ -1010,7 +983,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       ipcReplies.set("ssh-config-import", { groups: sshGroups.slice(1), partial: false });
       const p = fakePages();
       const sec = await mount([mkH("gpu", "5.5.5.5")], p.host);
-      vi.mocked(saveConfig).mockClear();
       const dlg = await openAdd(sec);
       expect(okBtn(dlg).getAttribute("aria-disabled"), "撞名还能点").toBe("true");
       expect(dlg.textContent).toContain(copyText("addMachine.err.taken", { name: "gpu" }));
@@ -1057,9 +1029,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       user!.value = "root";
       for (const i of [name, host, user]) i!.dispatchEvent(new Event("input"));
       for (let i = 0; i < 5; i++) await tick(); // 等机器表那一道答回来
-      vi.mocked(fakeCfg.patches).mockImplementationOnce(() => {
-        throw new Error("disk full");
-      });
+      // 写口没写成（盘满）：这一问照这份拒绝体拒，不查金样。
+      fakeMachines.sent.mockImplementation((cmd) => (cmd === "machines-set" ? { code: "io_failed", message: "disk full" } : undefined));
       okBtn(dlg).click();
       for (let i = 0; i < 5; i++) await tick();
       expect(document.querySelector('[role="dialog"]'), "没存上框却关了").not.toBeNull();
@@ -1185,22 +1156,23 @@ describe("remote 段认不出 ⇒ 机器列表顶上说一句、一台都不显�
   beforeEach(() => vi.resetAllMocks());
 
   it("★ 旧的单台写法：那一句常驻显示，机器卡片零张；认得出的那份不显示它", async () => {
-    type Cfg = Awaited<ReturnType<typeof loadConfig>>;
-    vi.mocked(loadConfig).mockResolvedValue({
-      remote: { enabled: true, host: "pi.local", user: "pi", backendPath: "/x" },
-    } as unknown as Cfg);
+    const old: MachinesDisk = { text: JSON.stringify({ enabled: true, host: "pi.local", user: "pi", backendPath: "/x" }) };
+    fakeMachines.disk.mockReturnValue(old);
     let sec = new RemoteSection({ headless: true });
     await new Promise((r) => setTimeout(r, 0));
     let note = sec.element.querySelector<HTMLElement>(".remote-config-unrecognized");
     expect(note, "找不到那一句的元素 —— 下面全是空真").toBeTruthy();
-    expect(note!.textContent).toBe("读不懂"); // 本机后端写好的那一句（替身 `fakeMachinesCall` 回的）
+    // 本机后端写好的那一句（金样里录的读口那一答）。
+    const said = (recordedMachines("machines-read", old) as { reply: { state: string; reason: string } }).reply;
+    expect(said.state).toBe("unreadable");
+    expect(note!.textContent).toBe(said.reason);
     expect(note!.classList.contains("settings-banner-show"), "那一句没显示出来").toBe(true);
     expect(
       sec.element.querySelectorAll(".remote-machine:not(.remote-machine-local)").length,
       "认不出还显示了机器 —— 那是在猜",
     ).toBe(0);
 
-    vi.mocked(loadConfig).mockResolvedValue({ remote: { enabled: true, hosts: [] } } as unknown as Cfg);
+    fakeMachines.disk.mockReturnValue([]);
     sec = new RemoteSection({ headless: true });
     await new Promise((r) => setTimeout(r, 0));
     note = sec.element.querySelector<HTMLElement>(".remote-config-unrecognized");

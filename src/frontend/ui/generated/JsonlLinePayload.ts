@@ -20,7 +20,7 @@ export type JsonlLinePayload = { session_id: string, cwd: string | null, path: s
  */
 origin?: string, 
 /**
- * 这一行的通用记录 —— 那台后端的成品（`agents/record.rs::Record`，ts-rs 从后端导出），
+ * 这一行的通用记录 —— 那台后端的成品（`cmd-wire/src/record.rs::Record`，ts-rs 从共享 crate 导出），
  * monitor **原样转交、一个字段都不读**。
  */
 record: import("./LineRecord").LineRecord, 
@@ -29,6 +29,11 @@ record: import("./LineRecord").LineRecord,
  * 前端可以把它们记成见过，去重集合成区间、段数不再随会话长度涨。缺 = 没有这一段或不确知（不猜）。
  */
 skipped_from?: number, 
+/**
+ * 这一行（含 `\n`）之后那个字节（后端 `line.byte_offset` · 快照的行区间末端，原样转交）：界面从它要尾段那一截的骨架索引。
+ * 说不准 ⇒ 省略。
+ */
+end?: number, 
 /**
  * 这一行的对账键（那台后端给，原样转交）：活卡按它把同一次应答的那段流整轮撤掉。没有 ⇒ 省略。
  */

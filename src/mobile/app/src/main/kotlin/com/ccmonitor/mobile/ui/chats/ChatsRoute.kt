@@ -100,6 +100,7 @@ fun ChatsRoute(
     var filtering by remember { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var typed by rememberSaveable { mutableStateOf("") }
+    KeepChatsLook(board, typed.takeIf { searching })
     val closeSearch = {
         searching = false
         typed = ""

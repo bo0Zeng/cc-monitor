@@ -2,7 +2,7 @@
 //! 那一种的词（[`label`]）也住这里。后端文件管理（`files/class.rs`：图标 · 「类型」那一列 · 几道门）、聊天附件的出口（`session-attachment-commit` 的回包）与
 //! 各家适配层认出的附件（记录里 `said.attachments[].class`）都调它，两端照 [`FileClass`] 画。
 
-use crate::files::FileClass;
+use cmd_wire::files::FileClass;
 
 const TEXT: &[&str] = &[
     "txt", "md", "markdown", "log", "csv", "tsv", "rst", "ini", "cfg", "conf", "env", "org", "adoc",
@@ -83,27 +83,5 @@ pub fn label(c: FileClass) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use FileClass as C;
-
-    /// 几种名字 ⇒ 几种类：扩展名不分大小写 · 无扩展名的代码名 · 只有前导点的不算扩展名 · 目录先于名字。
-    #[test]
-    fn names_map_to_their_class() {
-        for (name, want) in [
-            ("login.CSS", C::Code),
-            ("Makefile", C::Code),
-            ("notes.md", C::Text),
-            ("shot.png", C::Image),
-            ("a.tar.gz", C::Archive),
-            ("spec.pdf", C::Pdf),
-            (".bashrc", C::Other),
-            ("blob", C::Other),
-        ] {
-            assert_eq!(class_of_name(name.as_bytes(), false), want, "{name}");
-        }
-        assert_eq!(class_of_name(b"shot.png", true), C::Folder);
-        assert_eq!(ext_of(b"A.Tar.GZ").as_deref(), Some("gz"));
-        assert_eq!(ext_of(b"\xff.\xfe"), None);
-    }
-}
+#[path = "../../../tests/backend/common/file_class_tests.rs"]
+mod tests;

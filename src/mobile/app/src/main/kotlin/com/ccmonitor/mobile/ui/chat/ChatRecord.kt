@@ -27,7 +27,7 @@ import kotlinx.coroutines.sync.withLock
 
 /**
  * 一条会话的正文跟读（[ChatSession] 持有；名字带 `Locked` 的在它的锁里调）：手上读到哪（续点 · 尾段起点 · 下一行的行号）、
- * 认记录文件 · 读最后一屏 · 交续点对齐那台 · 按行号补缺 · 往上翻 · 从一处命中读起。读到的记录排进 [body]，排进来的那几条交 [took]；
+ * 认记录文件 · 读最后一屏 · 交续点对齐那台 · 按行号补缺 · 往上翻 · 从一处命中读起。读到的记录排进 [body]，排进了就叫一声 [took]；
  * 没读成的那一句照 [failSession] · [readFailed] 上屏。
  */
 internal class ChatRecord(
@@ -40,8 +40,8 @@ internal class ChatRecord(
     private val body: RecordUnits,
     private val state: MutableStateFlow<ChatUiState>,
     private val sid: () -> String?,
-    /** 排进 [body] 的那几条（人说的话 · 分段要不要重问由持有者记）。 */
-    private val took: (List<LineRecord>) -> Unit,
+    /** 排进了 [body]（分段要不要重问由持有者记）。 */
+    private val took: () -> Unit,
     private val publishLocked: () -> Unit,
     private val failSession: (String?) -> Unit,
     private val readFailed: (String?) -> Unit,
@@ -374,13 +374,13 @@ internal class ChatRecord(
         return true
     }
 
-    /** 排进 [body]（[put] 是接后 · 接前 · 整份换哪一样），排进来的那几条交 [took]。 */
+    /** 排进 [body]（[put] 是接后 · 接前 · 整份换哪一样），再叫一声 [took]。 */
     private inline fun take(
         rs: List<LineRecord>,
         put: (List<LineRecord>) -> Unit,
     ) {
         put(rs)
-        took(rs)
+        took()
     }
 
     private companion object {

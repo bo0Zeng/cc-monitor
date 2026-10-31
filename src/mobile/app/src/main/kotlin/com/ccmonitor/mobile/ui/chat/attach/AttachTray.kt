@@ -2,15 +2,22 @@ package com.ccmonitor.mobile.ui.chat.attach
 
 import com.ccmonitor.mobile.core.claude.link.AttachAsk
 import com.ccmonitor.mobile.core.claude.link.CoreLink
-import com.ccmonitor.mobile.core.claude.link.FilesCommitUpload
-import com.ccmonitor.mobile.core.claude.link.RawJson
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionAttachmentCheck
 import com.ccmonitor.mobile.core.claude.link.SessionAttachmentCommit
 import com.ccmonitor.mobile.core.claude.link.SessionAttachmentDrop
 import com.ccmonitor.mobile.core.claude.link.Transfer
 import com.ccmonitor.mobile.core.rs.Core
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.AttachAct
+import com.ccmonitor.mobile.core.wire.gen.AttachCardPhase
+import com.ccmonitor.mobile.core.wire.gen.AttachFace
+import com.ccmonitor.mobile.core.wire.gen.AttachFaceNote
+import com.ccmonitor.mobile.core.wire.gen.AttachLocal
+import com.ccmonitor.mobile.core.wire.gen.AttachWant
+import com.ccmonitor.mobile.core.wire.gen.AttachWantCard
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
+import com.ccmonitor.mobile.core.wire.gen.Staged
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import kotlinx.coroutines.CoroutineScope
@@ -117,14 +124,12 @@ fun AttachTray?.handOver(
 }
 
 /** 手机这边的错（那一条最先说它）。 */
-enum class LocalWhy(
-    val wire: String,
-) {
+enum class LocalWhy {
     /** 拷不进本机（空间满 …）：［换一张］。 */
-    NO_ROOM("no_room"),
+    NO_ROOM,
 
     /** 没有能拍照的系统相机。 */
-    NO_CAMERA("no_camera"),
+    NO_CAMERA,
 }
 
 /**
@@ -295,7 +300,7 @@ class AttachTray(
             } catch (_: IOException) {
                 return set(card.key, AttachPhase.Lost)
             }
-        val staged = (r as? Reply.Ok)?.let { FilesCommitUpload.Staged.of(it.data) } ?: return failOne(card, r, STAGE)
+        val staged = (r as? Reply.Ok)?.let { Wire.bind<Staged>(it.data) } ?: return failOne(card, r, STAGE)
         val c = link.call(SessionAttachmentCommit.COMMAND, SessionAttachmentCommit.args(s, card.name, staged), CHUNK_MS)
         val landed = (c as? Reply.Ok)?.let { SessionAttachmentCommit.of(it.data) } ?: return failOne(card, c, SessionAttachmentCommit.COMMAND)
         withContext(io) { store.landed(s, card.key, landed.id) }
@@ -349,35 +354,47 @@ class AttachTray(
     private fun publish(cards: List<AttachCard> = cards()) {
         val offline = cards.any { it.phase == AttachPhase.Queued } && !up()
         val want =
-            mapOf(
-                "cards" to cards.map { wireOf(it) },
-                "offline" to if (offline) link.offline.value ?: machine else null,
-                "local" to local?.wire,
+            AttachWant(
+                cards = cards.map { AttachWantCard(it.name, wireOf(it.phase)) },
+                offline = if (offline) link.offline.value ?: machine else null,
+                local = local?.let(::wireOf),
             )
-        val got = RawJson.read(face(RawJson.write(want))) as? Map<*, *>
-        val rows = (got?.get("cards") as? List<*>).orEmpty()
-        val shown = cards.mapIndexed { i, c -> (rows.getOrNull(i) as? Map<*, *>)?.let { r -> c.copy(line = r["line"] as? String, removeLabel = r["remove"] as? String ?: "") } ?: c }
-        _state.value = AttachUi(shown, noteOf(got?.get("note") as? Map<*, *>), offline)
+        val line = face(Wire.line(want))
+        val got = checkNotNull(Wire.read<AttachFace>(line)) { "核心交的附件那一排认不出：${line.take(SNIPPET)}" }
+        val shown = cards.zip(got.cards) { c, r -> c.copy(line = r.line, removeLabel = r.remove) }
+        _state.value = AttachUi(shown, got.note?.let(::noteOf), offline)
     }
 
-    private fun wireOf(c: AttachCard): Map<String, Any?> =
-        mapOf("name" to c.name) +
-            when (val p = c.phase) {
-                AttachPhase.Queued -> mapOf("phase" to "queued")
-                is AttachPhase.Moving -> mapOf("phase" to "moving")
-                is AttachPhase.Landed -> mapOf("phase" to "landed")
-                is AttachPhase.Refused -> mapOf("phase" to "refused", "said" to p.said)
-                is AttachPhase.Failed -> mapOf("phase" to "failed", "said" to p.said)
-                AttachPhase.Lost -> mapOf("phase" to "lost")
-            }
+    private fun wireOf(p: AttachPhase): AttachCardPhase =
+        when (p) {
+            AttachPhase.Queued -> AttachCardPhase.Queued
+            is AttachPhase.Moving -> AttachCardPhase.Moving
+            is AttachPhase.Landed -> AttachCardPhase.Landed
+            is AttachPhase.Refused -> AttachCardPhase.Refused(p.said)
+            is AttachPhase.Failed -> AttachCardPhase.Failed(p.said)
+            AttachPhase.Lost -> AttachCardPhase.Lost
+        }
 
-    private fun noteOf(m: Map<*, *>?): AttachNote? {
-        val text = m?.get("text") as? String ?: return null
-        val act = AttachNote.Act.entries.firstOrNull { it.name.lowercase() == m["act"] }
-        return AttachNote(text, act, m["dashed"] == true)
+    private fun wireOf(why: LocalWhy): AttachLocal =
+        when (why) {
+            LocalWhy.NO_ROOM -> AttachLocal.NO_ROOM
+            LocalWhy.NO_CAMERA -> AttachLocal.NO_CAMERA
+        }
+
+    private fun noteOf(n: AttachFaceNote): AttachNote {
+        val act =
+            when (n.act) {
+                AttachAct.RETRY -> AttachNote.Act.RETRY
+                AttachAct.REPICK -> AttachNote.Act.REPICK
+                null -> null
+            }
+        return AttachNote(n.text, act, n.dashed)
     }
 
     private companion object {
+        /** 认不出时报错里带核心那一行的前这么多字。 */
+        const val SNIPPET = 200
+
         /** 一块 · 落那一下等多久（同文件页上传）。 */
         const val CHUNK_MS: Long = 20_000L
 

@@ -89,10 +89,10 @@ class RotationBoardTest {
                     strategies = { RotFixture.strategies(forNew = "night") },
                     view = { RotFixture.view(strategy = "night") },
                 )
-            assertEquals(mapOf("target" to mapOf("strategy" to "night"), "hours" to 12), link.calls(Rotation.VIEW).single())
+            assertEquals(mapOf("target" to mapOf("strategy" to "night"), "hours" to 12L), link.calls(Rotation.VIEW).single())
             b.edit(RotEdit.set("smart", null, false))
             assertEquals(mapOf("strategy" to "night", "edit" to mapOf("set" to mapOf("key" to "smart", "v" to false)), "ifRev" to "h:night"), link.calls(Rotation.SETTINGS).single())
-            assertEquals("再读不带别的", mapOf("target" to mapOf("strategy" to "night"), "hours" to 12), link.calls(Rotation.VIEW).last())
+            assertEquals("再读不带别的", mapOf("target" to mapOf("strategy" to "night"), "hours" to 12L), link.calls(Rotation.VIEW).last())
             b.forNew("spread")
             assertEquals(mapOf("strategy" to "spread"), link.calls(Rotation.FOR_NEW).single())
             assertTrue(link.calls(Rotation.USE).isEmpty())
@@ -293,7 +293,7 @@ class RotationBoardTest {
         runTest {
             val (link, b) = board(sid = null, view = { args -> RotFixture.view(strategy = shownIn(args)) })
             b.pick("night")
-            assertEquals(mapOf("target" to mapOf("strategy" to "night"), "hours" to 12), link.calls(Rotation.VIEW).last())
+            assertEquals(mapOf("target" to mapOf("strategy" to "night"), "hours" to 12L), link.calls(Rotation.VIEW).last())
             assertTrue(link.calls(Rotation.FOR_NEW).isEmpty())
             b.edit(RotEdit.set("smart", null, false))
             assertEquals("改的是看的那份", "night", link.calls(Rotation.SETTINGS).single()!!["strategy"])
@@ -317,7 +317,7 @@ class RotationBoardTest {
             assertEquals(copyText("rot.ask.createGo"), ask.action)
             b.named("夜里")
             assertEquals(mapOf("name" to "夜里"), link.calls(Rotation.ADD).single())
-            assertEquals(mapOf("target" to mapOf("strategy" to "夜里"), "hours" to 12), link.calls(Rotation.VIEW).last())
+            assertEquals(mapOf("target" to mapOf("strategy" to "夜里"), "hours" to 12L), link.calls(Rotation.VIEW).last())
         }
 
     @Test
@@ -331,7 +331,7 @@ class RotationBoardTest {
                 }
             }
             val b = RotationBoard(link, null, "devbox", TestScope(UnconfinedTestDispatcher(testScheduler)), null, RotFocus("night", "lab"))
-            assertEquals(mapOf("target" to mapOf("strategy" to "night"), "hours" to 12), link.calls(Rotation.VIEW).single())
+            assertEquals(mapOf("target" to mapOf("strategy" to "night"), "hours" to 12L), link.calls(Rotation.VIEW).single())
             assertEquals("lab", b.state.value.open)
         }
 

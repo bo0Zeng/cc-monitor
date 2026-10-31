@@ -20,4 +20,8 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };

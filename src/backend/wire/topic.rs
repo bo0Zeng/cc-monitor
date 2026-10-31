@@ -32,7 +32,8 @@ pub struct TopicSpec {
 
 /// 主题表（扩展特征：孤儿规则不许在 `cmd-wire` 的类型上加固有方法）。
 pub trait TopicExt {
-    /// 全部主题（表的行序）。
+    /// 全部主题（表的行序；判据逐行核表用）。
+    #[cfg(test)]
     const ALL: [Topic; 17];
     /// 这个主题那一行。穷尽 `match`：加主题时编译期就被逼着填完这一行。
     fn spec(self) -> TopicSpec;
@@ -41,6 +42,7 @@ pub trait TopicExt {
 }
 
 impl TopicExt for Topic {
+    #[cfg(test)]
     const ALL: [Topic; 17] = [
         Topic::Accounts,
         Topic::Profiles,

@@ -15,8 +15,6 @@ src/backend/assets/aliases/fence.rs	3
 src/backend/assets/aliases/mod.rs	9
 src/backend/assets/pubkey.rs	1
 src/backend/common/door.rs	1
-src/backend/common/json_patch.rs	1
-src/backend/common/mod.rs	1
 src/backend/common/session_snapshot.rs	2
 src/backend/common/tmux_utf8.rs	2
 src/backend/control/ccm/mod.rs	8

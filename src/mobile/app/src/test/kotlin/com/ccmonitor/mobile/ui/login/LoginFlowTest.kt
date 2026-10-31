@@ -136,7 +136,7 @@ class LoginFlowTest {
         )
 
     @Test
-    fun `MCP 那一项：目标就是那一项的 fix args，login-start 入参与它逐格相等（缺的那几格不交，后端照缺省收）；抽屉标题照目标取 MCP 那一句`() =
+    fun `MCP 那一项：目标就是那一项的 fix args，login-start 入参与它逐格相等（可空的那几格照交 null）；抽屉标题照目标取 MCP 那一句`() =
         runTest {
             val l = FakeCoreLink().also { it.answer = { _, _ -> Reply.Ok(started) } }
             val item = Wire.bind<ManualItem>(mcpItem)!!
@@ -144,7 +144,7 @@ class LoginFlowTest {
             f.start()
             runCurrent()
             @Suppress("UNCHECKED_CAST")
-            val want = ((mcpItem["fix"] as Map<String, Any?>)["args"] as Map<String, Any?>).filterValues { it != null }
+            val want = ((mcpItem["fix"] as Map<String, Any?>)["args"] as Map<String, Any?>)
             assertEquals(listOf(want), l.calls("login-start"))
             assertEquals(copyText("login.sheet.mcp"), titleOf(f.state.value.target))
             assertEquals(copyText("login.sheet.account"), titleOf(Login.account("claude", "team")))

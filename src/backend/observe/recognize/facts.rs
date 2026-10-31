@@ -803,6 +803,7 @@ pub(crate) fn needs_list(
         .into_iter()
         .map(|r| NeedsItem::Session {
             rank: r.needs.rank,
+            clock: needs_clock(&r.needs),
             session: r,
         })
         .collect();
@@ -828,6 +829,22 @@ pub(crate) fn needs_list(
         answered,
         manual_unreadable,
     }
+}
+
+/// **需手动那一行会走的那一句的唯一一处**（[`cmd_wire::needs::NeedsClock`]）：同会话状态一句在等那一态的写法，种类那一格分别是 `text` 与 `head`，
+/// 已等多久留 `{dur}`；不知道等了多久 ⇒ `None`。
+fn needs_clock(n: &Needs) -> Option<cmd_wire::needs::NeedsClock> {
+    n.waited_ms?;
+    let line = |kind: &Words| {
+        Words(copy_core::copy_text(
+            "sessionFace.state.waiting",
+            &[("kind", &kind.0), ("waited", DUR_SLOT)],
+        ))
+    };
+    Some(cmd_wire::needs::NeedsClock {
+        text: line(&n.text),
+        head: line(&n.head),
+    })
 }
 
 /// 一项的先后（三臂各带的那一格）。

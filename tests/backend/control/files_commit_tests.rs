@@ -24,7 +24,7 @@ fn staged_sha(home: &Path, key: &str) -> String {
         .ok()
         .and_then(|p| std::fs::read(p).ok())
         .map(|b| content_sha256(&b))
-        .unwrap_or_else(|| "0".repeat(crate::control::files_write::SHA256_HEX_LEN))
+        .unwrap_or_else(|| "0".repeat(crate::files::SHA256_HEX_LEN))
 }
 
 /// 一个这次运行独占的临时目录（`tag` 区分用例，`pid` 区分并发跑的进程）。
@@ -337,7 +337,7 @@ fn answer_commit_text_at(face: &Face, home: &Path, args: &serde_json::Value) -> 
     via(args, |r| commit_text_at(face, home, r))
 }
 
-/// ★ 线上那一面：整份摘要**必须显式给**（不给 ⇒ `bad_args`）；未知命令名 ⇒ `bad_args`；命令表与分派两向对得上。
+/// ★ 线上那一面：整份摘要**必须显式给**（不给 ⇒ `bad_args`）；未知命令名 ⇒ `bad_args`；这一面的每一条分派都够得到。
 #[test]
 fn the_wire_face_requires_an_explicit_digest_and_knows_only_its_command() {
     let (e, diag) = crate::common::contract::tests::diag(|| {
@@ -350,32 +350,29 @@ fn the_wire_face_requires_an_explicit_digest_and_knows_only_its_command() {
     });
     assert_eq!(e.code, "bad_args");
     assert!(diag.contains("expect"), "{}", e.said);
-    assert_eq!(
-        COMMIT_COMMANDS.iter().map(|c| c.name).collect::<Vec<_>>(),
-        vec![
-            "files-commit-upload",
-            "files-stage-chunk",
-            "files-commit-text",
-            "session-attachment-commit",
-            "session-attachment-drop"
-        ]
-    );
-    // 表里每一条，分派都够得到（空参数 ⇒ 拒在参数那一关、码在它自己的登记里，不是「不认这条命令」那句）。
-    for c in COMMIT_COMMANDS {
-        let e =
-            answer_wire(&Face::issue(), c.name, &serde_json::json!({})).expect_err("空参数该拒");
+    // 上传提交这一面的每一条，分派都够得到（空参数 ⇒ 拒在参数那一关、码在它自己的登记里，不是「不认这条命令」那句）。
+    use crate::stream::inbound::files_write_face::{
+        SessionAttachmentCommit, SessionAttachmentDrop,
+    };
+    use crate::wire::typed::Command as _;
+    for name in [
+        <cmd_wire::files::FilesCommitUploadReq as cmd_wire::Call>::NAME,
+        <cmd_wire::files::FilesStageChunkReq as cmd_wire::Call>::NAME,
+        <cmd_wire::files::FilesCommitTextReq as cmd_wire::Call>::NAME,
+        SessionAttachmentCommit::NAME,
+        SessionAttachmentDrop::NAME,
+    ] {
+        let e = answer_wire(&Face::issue(), name, &serde_json::json!({})).expect_err("空参数该拒");
         assert!(
             ["bad_args", "bad_path"].contains(&e.code)
                 && crate::stream::inbound::REGISTRY
                     .iter()
-                    .any(|s| s.name == c.name && s.codes.contains(&e.code)),
-            "{}：{e:?}",
-            c.name
+                    .any(|s| s.name == name && s.codes.contains(&e.code)),
+            "{name}：{e:?}"
         );
         assert!(
             !e.said.contains("不是上传提交那一面的命令"),
-            "{} 分派不到：{}",
-            c.name,
+            "{name} 分派不到：{}",
             e.said
         );
     }
@@ -494,7 +491,7 @@ fn send_commit(home: &Path, key: &str, chunks: u64, bytes: u64, root: &Path, rel
     // CAS 必给：交「此刻盘上那一份」的摘要（读不到就交一个全零串 —— 那一形由判据自己看码）。
     let expect = std::fs::read(root.join(rel))
         .map(|b| content_sha256(&b))
-        .unwrap_or_else(|_| "0".repeat(crate::control::files_write::SHA256_HEX_LEN));
+        .unwrap_or_else(|_| "0".repeat(crate::files::SHA256_HEX_LEN));
     answer_commit_text_at(
         &Face::issue(),
         home,
