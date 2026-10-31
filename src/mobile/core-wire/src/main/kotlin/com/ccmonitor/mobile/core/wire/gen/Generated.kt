@@ -17,6 +17,27 @@ value class Raw(val json: String) {
 }
 
 /**
+ * 一条命令（[Commands] 里每条一个，照 TypedCommands 生成）：线上名 · 入参类怎么写 · 回包类怎么解。
+ * 手机发命令只经它取名字、出入参、解回包，不手写名字与键。
+ */
+abstract class Command<Q, R>(val name: String, req: () -> JsonAdapter<Q>, reply: () -> JsonAdapter<R>) {
+    private val reqAd: JsonAdapter<Q> by lazy(req)
+    private val replyAd: JsonAdapter<R> by lazy(reply)
+
+    /** 入参出成交 CoreLink.call 的那一份：可缺的格（Rust 那头 skip_serializing_if）缺着就不交，可空的照写 null。 */
+    @Suppress("UNCHECKED_CAST")
+    fun args(req: Q): Map<String, Any?> = reqAd.serializeNulls().toJsonValue(req) as Map<String, Any?>
+
+    /** 回包（核心交来的 data）照回包类解；缺格 · 型不对 · 认不出的词 ⇒ null（两端契约对不上，不补默认值）。 */
+    fun reply(data: Any?): R? =
+        try {
+            replyAd.fromJsonValue(data)
+        } catch (_: JsonDataException) {
+            null
+        }
+}
+
+/**
  * 对象的一格：线上键 · 它的编解码（头一回用到才取：各类的编解码互相引用，不按初始化先后）·
  * 可缺（写回时值为 null 就不写，Rust 那头 skip_serializing_if）· 可空（缺席照 null 读）。
  */
@@ -2094,7 +2115,6 @@ sealed interface BatchLine {
         override val title: String,
         override val kept: Boolean,
         val line: String,
-        val resume: Boolean,
     ) : BatchLine, Ordered {
         override val phase: String get() = "cut"
         override var wireOrder: IntArray? = null
@@ -2171,10 +2191,9 @@ sealed interface BatchLine {
                         Field("title", { Str }, optional = false, nullable = false),
                         Field("kept", { Bool }, optional = false, nullable = false),
                         Field("line", { Str }, optional = false, nullable = false),
-                        Field("resume", { Bool }, optional = false, nullable = false),
                         ),
-                        { a -> BatchLine.Cut(a[1] as Long, a[2] as String, a[3] as Boolean, a[4] as String, a[5] as Boolean) },
-                        { v -> arrayOf("cut", v.id, v.title, v.kept, v.line, v.resume) },
+                        { a -> BatchLine.Cut(a[1] as Long, a[2] as String, a[3] as Boolean, a[4] as String) },
+                        { v -> arrayOf("cut", v.id, v.title, v.kept, v.line) },
                     )),
                 Variant("ended", BatchLine.Ended::class.java, obj(
                         listOf(
@@ -11812,6 +11831,65 @@ enum class LiveWhy(val wire: String) {
     }
 }
 
+sealed interface LocalAsk {
+    /** 判别格（`ask`）那个词。 */
+    val ask: String
+
+    val id: Long
+
+    val key: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class Open(
+        override val id: Long,
+        override val key: String,
+        val folder: String,
+        val name: String,
+        val over: String?,
+    ) : LocalAsk, Ordered {
+        override val ask: String get() = "open"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Drop(
+        override val id: Long,
+        override val key: String,
+    ) : LocalAsk, Ordered {
+        override val ask: String get() = "drop"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<LocalAsk> =
+            tagged<LocalAsk>(
+                "ask",
+                listOf(
+                Variant("open", LocalAsk.Open::class.java, obj(
+                        listOf(
+                        Field("ask", { tag("open") }, optional = false, nullable = false),
+                        Field("id", { Lng }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        Field("folder", { Str }, optional = false, nullable = false),
+                        Field("name", { Str }, optional = false, nullable = false),
+                        Field("over", { opt(Str) }, optional = false, nullable = true),
+                        ),
+                        { a -> LocalAsk.Open(a[1] as Long, a[2] as String, a[3] as String, a[4] as String, a[5] as String?) },
+                        { v -> arrayOf("open", v.id, v.key, v.folder, v.name, v.over) },
+                    )),
+                Variant("drop", LocalAsk.Drop::class.java, obj(
+                        listOf(
+                        Field("ask", { tag("drop") }, optional = false, nullable = false),
+                        Field("id", { Lng }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> LocalAsk.Drop(a[1] as Long, a[2] as String) },
+                        { v -> arrayOf("drop", v.id, v.key) },
+                    )),
+                ),
+            )
+    }
+}
+
 sealed interface LocalBackend {
     /** 判别格（`state`）那个词。 */
     val state: String
@@ -11927,6 +12005,57 @@ sealed interface LocalBackend {
                         ),
                         { a -> LocalBackend.Newer(a[1] as MachineStateKind, a[2] as Tone, a[3] as String, a[4] as String, a[5] as List<MachineFixButton>, a[6] as String?) },
                         { v -> arrayOf("newer", v.look, v.tone, v.word, v.said, v.fixes, v.next) },
+                    )),
+                ),
+            )
+    }
+}
+
+sealed interface LocalOpened {
+    /** 判别格（`opened`）那个词。 */
+    val opened: String
+
+    val key: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class Fd(
+        override val key: String,
+        val fd: Long,
+    ) : LocalOpened, Ordered {
+        override val opened: String get() = "fd"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Refused(
+        override val key: String,
+        val detail: String,
+    ) : LocalOpened, Ordered {
+        override val opened: String get() = "refused"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<LocalOpened> =
+            tagged<LocalOpened>(
+                "opened",
+                listOf(
+                Variant("fd", LocalOpened.Fd::class.java, obj(
+                        listOf(
+                        Field("opened", { tag("fd") }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        Field("fd", { Lng }, optional = false, nullable = false),
+                        ),
+                        { a -> LocalOpened.Fd(a[1] as String, a[2] as Long) },
+                        { v -> arrayOf("fd", v.key, v.fd) },
+                    )),
+                Variant("refused", LocalOpened.Refused::class.java, obj(
+                        listOf(
+                        Field("opened", { tag("refused") }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        Field("detail", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> LocalOpened.Refused(a[1] as String, a[2] as String) },
+                        { v -> arrayOf("refused", v.key, v.detail) },
                     )),
                 ),
             )
@@ -14113,6 +14242,25 @@ enum class NeedsChoiceRow(val wire: String) {
 }
 
 @Suppress("UNCHECKED_CAST")
+data class NeedsClock(
+    val text: String,
+    val head: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<NeedsClock> = obj(
+            listOf(
+            Field("text", { Str }, optional = false, nullable = false),
+            Field("head", { Str }, optional = false, nullable = false),
+            ),
+            { a -> NeedsClock(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.text, v.head) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class NeedsDown(
     val origin: String,
     val said: String,
@@ -14140,6 +14288,7 @@ sealed interface NeedsItem {
     @Suppress("UNCHECKED_CAST")
     data class Session(
         override val rank: Long,
+        val clock: NeedsClock? = null,
         val session: NeedsRow,
     ) : NeedsItem, Ordered {
         override val kind: String get() = "session"
@@ -14173,10 +14322,11 @@ sealed interface NeedsItem {
                         listOf(
                         Field("kind", { tag("session") }, optional = false, nullable = false),
                         Field("rank", { U64 }, optional = false, nullable = false),
+                        Field("clock", { opt(NeedsClock.ADAPTER) }, optional = true, nullable = true),
                         Field("session", { NeedsRow.ADAPTER }, optional = false, nullable = false),
                         ),
-                        { a -> NeedsItem.Session(a[1] as Long, a[2] as NeedsRow) },
-                        { v -> arrayOf("session", v.rank, v.session) },
+                        { a -> NeedsItem.Session(a[1] as Long, a[2] as NeedsClock?, a[3] as NeedsRow) },
+                        { v -> arrayOf("session", v.rank, v.clock, v.session) },
                     )),
                 Variant("plan", NeedsItem.Plan::class.java, obj(
                         listOf(
@@ -22000,6 +22150,7 @@ data class SessionBook(
     val successors: Map<String, String>,
     val rereads: Map<String, Long>,
     val listed: Boolean,
+    val unseen: SessionFace? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -22012,9 +22163,10 @@ data class SessionBook(
             Field("successors", { dict(Str) }, optional = false, nullable = false),
             Field("rereads", { dict(Lng) }, optional = false, nullable = false),
             Field("listed", { Bool }, optional = false, nullable = false),
+            Field("unseen", { opt(SessionFace.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> SessionBook(a[0] as Map<String, SessionAdded>, a[1] as Map<String, SessionLeft>, a[2] as Map<String, SessionRuns>, a[3] as Map<String, String>, a[4] as Map<String, Long>, a[5] as Boolean) },
-            { v -> arrayOf(v.live, v.left, v.runs, v.successors, v.rereads, v.listed) },
+            { a -> SessionBook(a[0] as Map<String, SessionAdded>, a[1] as Map<String, SessionLeft>, a[2] as Map<String, SessionRuns>, a[3] as Map<String, String>, a[4] as Map<String, Long>, a[5] as Boolean, a[6] as SessionFace?) },
+            { v -> arrayOf(v.live, v.left, v.runs, v.successors, v.rereads, v.listed, v.unseen) },
         )
     }
 }
