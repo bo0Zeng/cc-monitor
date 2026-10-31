@@ -13646,8 +13646,7 @@ data class Merged(
     val sessionCount: Long,
     val truncated: Boolean,
     val sessions: List<MergedRow>,
-    val unreadable: Long,
-    val skipped: List<String>,
+    val notes: List<String>,
     val down: List<SearchDown>,
     val summary: String,
 ) : Ordered {
@@ -13660,13 +13659,12 @@ data class Merged(
             Field("sessionCount", { Lng }, optional = false, nullable = false),
             Field("truncated", { Bool }, optional = false, nullable = false),
             Field("sessions", { arr(MergedRow.ADAPTER) }, optional = false, nullable = false),
-            Field("unreadable", { Lng }, optional = false, nullable = false),
-            Field("skipped", { arr(Str) }, optional = false, nullable = false),
+            Field("notes", { arr(Str) }, optional = false, nullable = false),
             Field("down", { arr(SearchDown.ADAPTER) }, optional = false, nullable = false),
             Field("summary", { Str }, optional = false, nullable = false),
             ),
-            { a -> Merged(a[0] as Long, a[1] as Long, a[2] as Boolean, a[3] as List<MergedRow>, a[4] as Long, a[5] as List<String>, a[6] as List<SearchDown>, a[7] as String) },
-            { v -> arrayOf(v.totalHits, v.sessionCount, v.truncated, v.sessions, v.unreadable, v.skipped, v.down, v.summary) },
+            { a -> Merged(a[0] as Long, a[1] as Long, a[2] as Boolean, a[3] as List<MergedRow>, a[4] as List<String>, a[5] as List<SearchDown>, a[6] as String) },
+            { v -> arrayOf(v.totalHits, v.sessionCount, v.truncated, v.sessions, v.notes, v.down, v.summary) },
         )
     }
 }
