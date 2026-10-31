@@ -143,7 +143,15 @@ fn run(n: &Night, p: &dyn Strategy) -> Replay {
     let tz = n.tz;
     let clock = move |t: u64| ((t as i64 + tz).rem_euclid(86_400) / 60) as u16;
     replay(
-        &n.sigma, &n.facts, &n.settings, p, &clock, &n.trace, &n.world, n.from, n.to,
+        &n.sigma,
+        &n.facts,
+        &n.settings,
+        p,
+        &clock,
+        &n.trace,
+        &n.world,
+        n.from,
+        n.to,
     )
 }
 
@@ -154,14 +162,14 @@ fn hhmm(t: u64, tz: i64) -> String {
 
 /// 三个数照实印出来（`--nocapture` 看）：卡住的 tok · 换号次数（主动 / 到上限 / 手动）· 每份作废时剩的点数。
 fn report(n: &Night, r: &Replay) {
-    let count = |c: HopCause| r.hops.iter().filter(|h| h.cause == c).count();
+    let count = |c: SwitchCause| r.switches.iter().filter(|h| h.cause == c).count();
     eprintln!(
         "卡住 {:.2}M tok · 换号 {} 次（主动 {} · 到上限 {} · 手动 {}）· 停发 {} 段 · 5 小时窗作废 {} 份共剩 {:.1} 点",
         r.stuck / 1e6,
-        r.hops.len(),
-        count(HopCause::Early),
-        count(HopCause::Forced),
-        count(HopCause::Manual),
+        r.switches.len(),
+        count(SwitchCause::Early),
+        count(SwitchCause::Forced),
+        count(SwitchCause::Manual),
         r.holds.len(),
         r.expired.iter().filter(|e| e.w == 0).count(),
         r.expired
@@ -170,7 +178,7 @@ fn report(n: &Night, r: &Replay) {
             .map(|e| e.left)
             .sum::<f64>(),
     );
-    for h in &r.hops {
+    for h in &r.switches {
         eprintln!("  {} {} → {} {:?}", hhmm(h.at, n.tz), h.from, h.to, h.cause);
     }
     for (a, b) in &r.holds {
@@ -199,23 +207,23 @@ fn the_editor_strategy_on_night_1029_switches_where_the_facts_forced_the_real_lo
         (1, 5, 1, 3),
         "夹具里的真日志"
     );
-    let ours = |c: HopCause| r.hops.iter().filter(|h| h.cause == c).count();
+    let ours = |c: SwitchCause| r.switches.iter().filter(|h| h.cause == c).count();
     // 由事实定的那几样逐样比：手动 · 停发对得上，到上限换允许 ±1。
     // 智能提前换不比：那一夜 02:10 挑号与 02:28 提前换都出自量歪了的号的用速（两次读数的斜率），
     // 回放里别的会话的用速是夹具给的真数，不再有那一抖。
-    assert_eq!(ours(HopCause::Manual), real("manual"), "手动换号");
+    assert_eq!(ours(SwitchCause::Manual), real("manual"), "手动换号");
     assert_eq!(r.holds.len(), real("hold"), "停发几段");
     assert!(
-        ours(HopCause::Forced).abs_diff(real("forced")) <= 1,
+        ours(SwitchCause::Forced).abs_diff(real("forced")) <= 1,
         "到上限换 {} 次，真日志 {}（允许 ±1）",
-        ours(HopCause::Forced),
+        ours(SwitchCause::Forced),
         real("forced")
     );
     // 头两次到上限换的号与真日志一样（那时只有一个号能用，换到哪由事实定）。
     let first: Vec<(&str, &str)> = r
-        .hops
+        .switches
         .iter()
-        .filter(|h| h.cause != HopCause::Manual)
+        .filter(|h| h.cause != SwitchCause::Manual)
         .take(2)
         .map(|h| (h.from.as_str(), h.to.as_str()))
         .collect();
@@ -302,7 +310,7 @@ fn demand_past_the_last_account_is_stuck_and_counted() {
         T0 + 600,
     );
     assert!((r.stuck - 100_000.0).abs() < 1.0, "卡住 {}", r.stuck);
-    assert!(r.hops.is_empty());
+    assert!(r.switches.is_empty());
     assert_eq!(r.holds, vec![(T0 + 300, T0 + 600)]);
 }
 
@@ -325,12 +333,12 @@ fn a_switch_is_counted_by_why_and_charges_the_rewrite_to_the_new_account() {
         T0 + 180,
     );
     assert_eq!(
-        r.hops,
-        vec![Hop {
+        r.switches,
+        vec![Switch {
             at: T0 + 60,
             from: "A".into(),
             to: "B".into(),
-            cause: HopCause::Forced
+            cause: SwitchCause::Forced
         }]
     );
     assert!(r.stuck.abs() < 1.0, "卡住 {}", r.stuck);

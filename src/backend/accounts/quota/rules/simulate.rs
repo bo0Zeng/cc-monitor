@@ -278,8 +278,8 @@ pub(crate) struct Trace {
     pub(crate) ttl: u64,
 }
 
-/// 本会话的用速看最近这么多秒 · 刚开头这么久不给（同额度账那一本的口径）。
-const PACE_SPAN: u64 = super::super::ledger::EST_FRESH;
+/// 本会话的用速看最近 [`PACE_SPAN`] 秒 · 刚开头这么久不给（同额度账那一本的口径）。
+use super::super::ledger::EST_FRESH as PACE_SPAN;
 const PACE_FIRST: u64 = 10 * 60;
 /// 起伏按 10 分钟一段、看最近 6 段，不到 3 段不给。
 const SPREAD_BIN: u64 = 10 * 60;
@@ -359,18 +359,18 @@ pub(crate) struct World {
 
 /// 一次换号为什么换：在用的号用不了了（到上限 · 被拒）· 在用的号还能用、策略要提前换 · 用户「现在用」。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HopCause {
+pub(crate) enum SwitchCause {
     Forced,
     Early,
     Manual,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Hop {
+pub(crate) struct Switch {
     pub(crate) at: u64,
     pub(crate) from: String,
     pub(crate) to: String,
-    pub(crate) cause: HopCause,
+    pub(crate) cause: SwitchCause,
 }
 
 /// 一份额度作废：哪个号的哪一窗 · 几点 · 作废时还剩几点（100 − 用量）。
@@ -385,7 +385,7 @@ pub(crate) struct Expired {
 /// 回放结果：换号 · 停发的时段 · 卡住的需求（折合输入 token）· 作废的每一份 · 跑完时各号的事实。
 #[derive(Debug, Clone)]
 pub(crate) struct Replay {
-    pub(crate) hops: Vec<Hop>,
+    pub(crate) switches: Vec<Switch>,
     pub(crate) holds: Vec<(u64, u64)>,
     pub(crate) stuck: f64,
     pub(crate) expired: Vec<Expired>,
@@ -411,7 +411,7 @@ pub(crate) fn replay(
     let mut s = sigma.clone();
     let mut f: Vec<Acct> = facts.to_vec();
     let mut out = Replay {
-        hops: Vec::new(),
+        switches: Vec::new(),
         holds: Vec::new(),
         stuck: 0.0,
         expired: Vec::new(),
@@ -445,11 +445,11 @@ pub(crate) fn replay(
         for (_, a) in world.use_now.iter().filter(|(at, _)| t <= *at && *at < te) {
             if let Ok(next) = super::decide::use_now(&s, &f, t, a) {
                 if next.current != s.current {
-                    out.hops.push(Hop {
+                    out.switches.push(Switch {
                         at: t,
                         from: s.current.clone(),
                         to: next.current.clone(),
-                        cause: HopCause::Manual,
+                        cause: SwitchCause::Manual,
                     });
                 }
                 s = next;
@@ -479,14 +479,14 @@ pub(crate) fn replay(
                 if *a != prev {
                     let still = d.order.contains(&prev)
                         && f.iter().any(|x| x.id == prev && standing::sendable(x, t));
-                    out.hops.push(Hop {
+                    out.switches.push(Switch {
                         at: t,
                         from: prev.clone(),
                         to: a.clone(),
                         cause: if still {
-                            HopCause::Early
+                            SwitchCause::Early
                         } else {
-                            HopCause::Forced
+                            SwitchCause::Forced
                         },
                     });
                     if !cache.iter().any(|c| c.0 == *a) {
@@ -498,7 +498,9 @@ pub(crate) fn replay(
                     // 这一分钟发得出去的：每一窗（量得到 1% 的）到 100 为止还装得下多少。
                     let room = (0..2)
                         .filter(|w| *w == 0 || x.weekly)
-                        .filter_map(|w| x.per_pct[w].map(|k| (100.0 - x.used[w]).max(0.0) * k as f64))
+                        .filter_map(|w| {
+                            x.per_pct[w].map(|k| (100.0 - x.used[w]).max(0.0) * k as f64)
+                        })
                         .fold(f64::INFINITY, f64::min);
                     let served = (tok + lump).min(room);
                     out.stuck += tok - (served - lump).max(0.0).min(tok);
