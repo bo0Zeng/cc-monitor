@@ -75,7 +75,11 @@ object TerminalPreview {
     fun args(terminal: String): Map<String, Any?> = Commands.TerminalPreview.args(TerminalPreviewReq(terminal = terminal, color = false))
 
     /** 自上而下的行拼成一段。 */
-    fun of(data: Any?): String? = Commands.TerminalPreview.reply(data)?.lines?.joinToString("\n") { it.text }
+    fun of(data: Any?): String? =
+        Commands.TerminalPreview
+            .reply(data)
+            ?.lines
+            ?.joinToString("\n") { it.text }
 }
 
 /** `terminal-end`：按名单里的句柄结束一个终端（两种宿主同一条；那台过身份门；被拒 ⇒ 失败信封里是那台写好的那一句）。 */

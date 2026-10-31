@@ -33,11 +33,11 @@ use crate::record::{HistoryLines, HistoryLinesReq, HistoryRead, HistoryReadReq};
 use crate::rewind::{RewindOptions, SessionRewindOptionsReq};
 use crate::rotation::*;
 use crate::search::{HistorySearchReply, HistorySearchReq};
-use crate::session::{HistoryTail, HistoryTailReq};
 use crate::session::{
     ArriveAsk, ArriveEnd, ModeSwitched, ModelSwitched, OpenFacts, Opened, Preview, Sent,
     SessionCommands, SessionCommandsReq, SessionModelReq, SessionPermissionReq, TerminalsList,
 };
+use crate::session::{HistoryTail, HistoryTailReq};
 use crate::sync::Patch;
 use crate::terminal::{
     SshCommand, TerminalInputReq, TerminalPreviewReq, TerminalSshReq, TerminalsListReq, UnfollowReq,

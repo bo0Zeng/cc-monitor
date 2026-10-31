@@ -42,5 +42,9 @@ object NeedsAnswer {
         )
 
     /** 回包是「别处已答」那一种结局（别处先答了 / 那一头撤了）⇒ 那台写好的那一句；答上了 ⇒ `null`。 */
-    fun gone(data: Any?): String? = Commands.NeedsAnswer.reply(data)?.takeIf { it.result == AnswerResult.GONE }?.let { it.said.orEmpty() }
+    fun gone(data: Any?): String? =
+        Commands.NeedsAnswer
+            .reply(data)
+            ?.takeIf { it.result == AnswerResult.GONE }
+            ?.let { it.said.orEmpty() }
 }
