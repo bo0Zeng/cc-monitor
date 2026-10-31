@@ -467,6 +467,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "session-permission",
         "typed：后端出成品 `ModeSwitched`（`faces/session_mode_face.rs`：按那一家的循环键、读回到了为止）；前端 `src/frontend/ui/session-writes.ts::switchPermission` 按类型问，monitor 这一侧零发送点",
     ),
+    // 中断这一轮：输入框在跑时的 ■，会话那台判能不能停、回送到没送到。
+    (
+        "session-interrupt",
+        "typed：会话那台按那一家的中断键停这一轮、回结局（拒了带那台那一句）；前端 `src/frontend/ui/composer.ts` 的 ■ 按类型问，monitor 这一侧零发送点",
+    ),
     // 钩子诊断：本机远端两条 Tauri 命令合成一条帧命令，界面直接问那台。
     (
         "hooks-diag",

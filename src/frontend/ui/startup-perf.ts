@@ -22,12 +22,27 @@ let coldFed = 0;
 /** 冷起补读那一份 timeline 已经落过盘。 */
 let coldSaid = false;
 
-/** 按行号取回的一段行要喂进 tab 了（`TabStreamView.feedHistoryRows`）：首批那一句 ＋ 第一次派发的时刻。 */
+/** 跨在冷起补读上量的东西：首段补读的行要喂进 tab 时 `start`，冷起补读落地时 `stop`（各只一次）。 */
+export type ColdProbe = { start(): void; stop(): void };
+/** 只在 DEV 有：`main.ts` 加载 e2e 探针以后登记（冷开抖动密度）；生产构建恒空。 */
+let coldProbe: ColdProbe | null = null;
+let coldProbeOn = false;
+
+/** 登记冷开那一段要量的探针（只 DEV 的 `main.ts` 调）。 */
+export function registerColdProbe(p: ColdProbe): void {
+  coldProbe = p;
+}
+
+/** 按行号取回的一段行要喂进 tab 了（`TabStreamView.feedHistoryRows`）：首批那一句 ＋ 第一次派发的时刻；冷起补读还没落地 ⇒ 探针起（只第一次）。 */
 export function noteHistoryArrived(): void {
   const perf = window.__ccmPerf;
   if (!perf) return;
   noteFirstBatch();
   perf.firstPayloadDrained ??= performance.now();
+  if (coldProbe && !coldProbeOn && !coldSaid) {
+    coldProbeOn = true;
+    coldProbe.start();
+  }
 }
 
 /** 那一段 `n` 行喂完了：累计、记第一次喂完的时刻。 */
@@ -38,11 +53,16 @@ export function noteHistoryFed(n: number): void {
   perf.batchDrainEnd ??= performance.now();
 }
 
-/** 冷起那一趟补读落地（取完、当前 tab 物化过）：timeline 落一次盘（页面生命周期里只一次；重放批那一份照旧在它自己的切 live 处落）。 */
+/**
+ * 冷起那一趟补读落地（取完、当前 tab 物化过）：探针停（没起过也停一次：读数 frames=0，看得出探针在、只是没有行来）·
+ * timeline 落一次盘（页面生命周期里只一次；重放批那一份照旧在它自己的切 live 处落）。
+ */
 export function noteColdFilled(): void {
   const perf = window.__ccmPerf;
   if (!perf || coldSaid) return;
   coldSaid = true;
+  coldProbe?.stop();
+  coldProbeOn = false;
   perf.onBatchEndFired ??= performance.now();
   emitPerfSummary(perf, coldFed);
 }
