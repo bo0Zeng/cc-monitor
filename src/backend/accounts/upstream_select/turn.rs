@@ -202,7 +202,10 @@ pub(crate) fn apply(
                                 .and_then(crate::agents::resumes_within_of),
                         )
                         .filter(|(u, within)| u.saturating_sub(now) > *within)
-                        .map(|_| copy_core::copy_text("beRotation.hold.noAutoResume", &[])),
+                        .map(|(_, within)| {
+                            let dur = copy_core::format_duration(within.saturating_mul(1000));
+                            copy_core::copy_text("beRotation.hold.noAutoResume", &[("dur", &dur)])
+                        }),
                 });
             }
         }
