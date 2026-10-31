@@ -535,10 +535,14 @@ fn seen_item(seen: bool, opening: bool) -> Item {
     }
 }
 
-/// 对端（本文件这个句柄）原位说「不行」：`Closed{Peer({"code","message"})}` —— 与后端命令的拒绝同一个信封。
-fn refused(code: &str, message: String) -> Item {
-    let body = serde_json::to_vec(&serde_json::json!({ "code": code, "message": message }))
-        .unwrap_or_default();
+/// 对端（本文件这个句柄）原位说「不行」：`Closed{Peer(失败)}` —— 与后端命令的拒绝同一个信封（`cmd_wire::failed::Failed`）。
+fn refused(code: &str, said: String) -> Item {
+    let body = serde_json::to_vec(&cmd_wire::failed::Failed {
+        code: code.to_string(),
+        said,
+        ..Default::default()
+    })
+    .unwrap_or_default();
     Item::Closed {
         by: By::Peer(Body(body)),
     }

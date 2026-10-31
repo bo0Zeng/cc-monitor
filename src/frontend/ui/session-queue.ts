@@ -146,6 +146,6 @@ export async function putOnce(put: QueuePutFn, origin: Origin, o: Outgoing): Pro
     return { at: "receipt", said: got.said };
   } catch (e) {
     const no = refusalIn(e);
-    return no !== null && no.code !== OFFLINE ? { at: "refused", said: no.message } : { at: "none", said: saidOf(e) };
+    return no !== null && no.code !== OFFLINE ? { at: "refused", said: no.said } : { at: "none", said: saidOf(e) };
   }
 }

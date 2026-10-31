@@ -149,9 +149,10 @@ async fn an_unknown_archive_says_so_and_a_directory_is_not_offered() {
 #[test]
 fn a_failed_extract_copies_its_detail_under_the_sentence() {
     let with = Outcome::Failed(crate::source::Failed {
-        code: Some("io_failed".into()),
+        code: "io_failed".into(),
         said: "夹具：写不进去".into(),
         detail: "码：io_failed".into(),
+        data: None,
     });
     let body = outcome_copy("a.zip", &with).expect("带详情却不出按钮");
     assert!(body.starts_with(&outcome_text("a.zip", &with)), "{body}");

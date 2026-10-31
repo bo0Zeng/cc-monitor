@@ -99,7 +99,7 @@ fn starting_reports_failure_as_failure() {
 /// 「起」成了只回成功本身，不带一句话：那句话没有读者（界面只看成败），带了就是一句不进文案表的硬编码。
 #[test]
 fn starting_answers_success_without_a_sentence() {
-    let r: Result<(), Said> = tauri::async_runtime::block_on(backend_start(" ".into()));
+    let r: Result<(), cmd_wire::failed::Failed> = tauri::async_runtime::block_on(backend_start(" ".into()));
     assert!(r.is_err(), "空 origin 被放过了");
 }
 

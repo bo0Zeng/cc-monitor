@@ -14,6 +14,6 @@ out=$("$ccm" -- --session-self --within-ms 10000 </dev/null 2>"$errf")
 rc=$?
 id=$(printf '%s' "$out" | jq -r '(.data // .).sid // empty' 2>/dev/null)
 if [ "$rc" -eq 0 ] && [ -n "$id" ]; then printf '%s\n' "$id"; exit 0; fi
-said=$(jq -r '.message // empty' < "$errf" 2>/dev/null)
+said=$(jq -r '.said // empty' < "$errf" 2>/dev/null)
 echo "cc-bus whoami: ${said:-cc-monitor did not say which session this is}" >&2
 exit 1

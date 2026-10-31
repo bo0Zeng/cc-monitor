@@ -24,8 +24,8 @@ fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::stream_source::
 /// 要求：「非 unix 远端（Windows 远端，不承诺）断开常驻时**明说**不支持，不静默」。
 #[test]
 fn the_stop_failures_are_read_the_same_as_the_ensure_answer() {
-    let envelope = |code: &str, message: &str, detail: &str| {
-        serde_json::json!({"code": code, "message": message, "detail": detail}).to_string()
+    let envelope = |code: &str, said: &str, detail: &str| {
+        serde_json::json!({"code": code, "said": said, "detail": detail}).to_string()
     };
     let s = read_stop(
         &exec(
@@ -139,7 +139,7 @@ fn the_stop_answer_is_one_of_three_words_or_an_error() {
     let err = read_stop(
         &exec(
             "",
-            r#"{"code":"stop_failed","message":"强杀之后还在"}"#,
+            r#"{"code":"stop_failed","said":"强杀之后还在","detail":""}"#,
             Some(2),
         ),
         "devbox",

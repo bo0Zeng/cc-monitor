@@ -90,7 +90,7 @@ pub(crate) async fn groups_via_resident(
         crate::platform::child::Deadline::millis(ms),
     )
     .await
-    .map_err(|f| f.message)?;
+    .map_err(|f| f.said)?;
     serde_json::from_value(v).map_err(|e| e.to_string())
 }
 

@@ -947,7 +947,7 @@ impl SkipRuns {
 fn forget_session(
     session_id: String,
     replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
-) -> Result<(), Said> {
+) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
         replay.forget(&session_id);
         // 它的会话成品也忘掉（F5 不再重放一个用户关掉了的已结束 tab）。
@@ -963,7 +963,7 @@ fn forget_session(
 fn watch_sessions(
     sessions: Vec<ui_contract::TabSession>,
     replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
-) -> Result<(), Said> {
+) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
         replay.set_main_watch(
             sessions
@@ -980,7 +980,7 @@ fn watch_sessions(
 fn kept_sessions(
     sessions: Vec<ui_contract::TabSession>,
     replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
-) -> Result<(), Said> {
+) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
         replay.set_main_kept(
             sessions
@@ -1019,7 +1019,7 @@ async fn open_session_in_new_window(
     x: Option<f64>,
     y: Option<f64>,
     run: Option<String>,
-) -> Result<(), Said> {
+) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = async move {
         use tauri::Manager;
         // 独立窗口自己订 `session-lines/<sid>`（`subscribe(origin, kind)`：origin 是唯一寻址键）
@@ -1093,7 +1093,7 @@ async fn open_terminal_in_new_window(
     name: String,
     title: String,
     window_title: String,
-) -> Result<(), Said> {
+) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = async move {
         use tauri::Manager;
         origin
@@ -1216,7 +1216,7 @@ fn agent_window_spot(from: &tauri::WebviewWindow, open: usize) -> Option<(f64, f
 /// 已在的窗收 `settings-target` 事件，新建的窗由初始化脚本带进 `window.__CCM_SETTINGS_TARGET__`。
 /// **必须 `async`**（同步命令建窗会死锁）。默认 960×740、最小 640×480，夹进工作区正中。
 #[tauri::command]
-async fn open_settings_window(app: tauri::AppHandle, target: Option<String>) -> Result<(), Said> {
+async fn open_settings_window(app: tauri::AppHandle, target: Option<String>) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = async move {
         use tauri::Manager;
         let label = SETTINGS_WINDOW_LABEL;
@@ -1269,7 +1269,7 @@ fn pct_encode(s: &str) -> String {
 /// v2.4 (issue #2)：把 monitor 自己的主窗口拉到最前 + unminimize + 抢焦点。
 /// 两个平台臂（Windows 的 AttachThreadInput 那套 · 别处 Tauri 自己的 `set_focus`）住 `platform/window.rs::bring_to_front`，头注随之。
 #[tauri::command]
-async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), Said> {
+async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> =
         async move { Ok(crate::platform::window::bring_to_front(app).await?) }.await;
     r.map_err(|s| s.named("bring_monitor_to_front"))
@@ -1287,7 +1287,7 @@ async fn bring_terminal_to_front(
     chain: Vec<bind::ChainLink>,
     tmux: bool,
     bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
-) -> Result<Option<cmd_wire::front::FrontTold>, Said> {
+) -> Result<Option<cmd_wire::front::FrontTold>, cmd_wire::failed::Failed> {
     let r: Result<Option<cmd_wire::front::FrontTold>, Said> = async move {
         let bind = bind_state.inner().clone();
         let outcome =
@@ -1313,7 +1313,7 @@ fn frontend_perf_log(lines: String) {
 
 /// 读 auto-launch.json：UI 显示当前 toggle 状态 + 记录的 exe 路径。
 #[tauri::command]
-fn cc_get_auto_launch() -> Result<auto_launch::AutoLaunchConfig, Said> {
+fn cc_get_auto_launch() -> Result<auto_launch::AutoLaunchConfig, cmd_wire::failed::Failed> {
     let r: Result<auto_launch::AutoLaunchConfig, Said> =
         (move || -> Result<auto_launch::AutoLaunchConfig, Said> {
             let dir = auto_launch::data_dir()
@@ -1325,7 +1325,7 @@ fn cc_get_auto_launch() -> Result<auto_launch::AutoLaunchConfig, Said> {
 
 /// UI toggle 改变时调：写 auto_launch_enabled。
 #[tauri::command]
-fn cc_set_auto_launch(enabled: bool) -> Result<(), Said> {
+fn cc_set_auto_launch(enabled: bool) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
         let dir = auto_launch::data_dir()
             .ok_or_else(|| Said::of("rsShellCmd.autoLaunch.writeNoDir", &[]))?;
@@ -1340,7 +1340,7 @@ fn cc_set_auto_launch(enabled: bool) -> Result<(), Said> {
 #[tauri::command]
 fn get_diagnostics_config(
     state: tauri::State<'_, Arc<logging::LoggingState>>,
-) -> Result<logging::DiagnosticsConfig, Said> {
+) -> Result<logging::DiagnosticsConfig, cmd_wire::failed::Failed> {
     let r: Result<logging::DiagnosticsConfig, Said> =
         (move || -> Result<logging::DiagnosticsConfig, Said> { Ok(state.config()) })();
     r.map_err(|s| s.named("get_diagnostics_config"))
@@ -1352,7 +1352,7 @@ fn get_diagnostics_config(
 fn set_diagnostics_config(
     cfg: logging::DiagnosticsConfig,
     state: tauri::State<'_, Arc<logging::LoggingState>>,
-) -> Result<logging::RestartHint, Said> {
+) -> Result<logging::RestartHint, cmd_wire::failed::Failed> {
     let r: Result<logging::RestartHint, Said> =
         (move || -> Result<logging::RestartHint, Said> { Ok(state.update_config(cfg)?) })();
     r.map_err(|s| s.named("set_diagnostics_config"))
@@ -1363,7 +1363,7 @@ fn set_diagnostics_config(
 #[tauri::command]
 fn get_log_file_info(
     state: tauri::State<'_, Arc<logging::LoggingState>>,
-) -> Result<logging::LogFileInfo, Said> {
+) -> Result<logging::LogFileInfo, cmd_wire::failed::Failed> {
     let r: Result<logging::LogFileInfo, Said> =
         (move || -> Result<logging::LogFileInfo, Said> { Ok(state.log_file_info()) })();
     r.map_err(|s| s.named("get_log_file_info"))
@@ -1372,7 +1372,7 @@ fn get_log_file_info(
 /// 用系统默认编辑器打开当前 log 文件（rolling::daily 写入的 mtime 最新那个）。
 /// 失败常见原因：log_enabled=false 还没生成过 log 文件 → Err 让前端 alert 提示。
 #[tauri::command]
-async fn open_log_file(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Result<(), Said> {
+async fn open_log_file(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = async move {
         let path = state
             .current_log_file()
@@ -1388,7 +1388,7 @@ async fn open_log_file(state: tauri::State<'_, Arc<logging::LoggingState>>) -> R
 
 /// 用资源管理器打开 log 目录。
 #[tauri::command]
-async fn open_log_dir(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Result<(), Said> {
+async fn open_log_dir(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = async move {
         let dir = state.log_dir();
         // 目录可能还不存在（log_enabled=false 时不创建）

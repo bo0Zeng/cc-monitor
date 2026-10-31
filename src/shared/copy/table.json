@@ -28928,6 +28928,12 @@
       "zh": "发送",
       "args": []
     },
+    "composer.input.stop": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "停止",
+      "args": []
+    },
     "composer.input.ended": {
       "kind": "control",
       "role": "占位",

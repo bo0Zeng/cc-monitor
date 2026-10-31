@@ -470,10 +470,10 @@ pub(crate) trait FrameMake {
     fn failed(id: String, f: crate::wire::detail::Failed) -> Frame;
 
     /// 硬臂那几条命令（`Run::Builtin`：链路 · 传输 · 终端订阅）就地被拒：详情里带命令名（同处理器回的失败）。
-    fn refused(id: &str, cmd: &str, code: &str, message: &str) -> Frame;
+    fn refused(id: &str, cmd: &str, code: &str, said: &str) -> Frame;
 
     /// 协议级失败（还没落到哪条命令上：认不出 · 读不懂 · 收场中）：详情里没有命令那一项。
-    fn err(id: &str, code: &str, message: &str) -> Frame;
+    fn err(id: &str, code: &str, said: &str) -> Frame;
 }
 
 impl FrameMake for Frame {
@@ -482,7 +482,7 @@ impl FrameMake for Frame {
             id: id.to_string(),
             ok: true,
             code: None,
-            message: None,
+            said: None,
             detail: None,
             data: None,
         })
@@ -512,23 +512,16 @@ impl FrameMake for Frame {
     }
 
     fn failed(id: String, f: crate::wire::detail::Failed) -> Frame {
-        Frame::Reply(Reply {
-            id,
-            ok: false,
-            code: Some(f.code),
-            message: Some(f.message),
-            detail: Some(f.detail),
-            data: f.data,
-        })
+        Frame::Reply(Reply::refused(id, f))
     }
 
-    fn refused(id: &str, cmd: &str, code: &str, message: &str) -> Frame {
-        let f = crate::wire::detail::Failed::new(Some(cmd), code, message.to_string(), None, None);
+    fn refused(id: &str, cmd: &str, code: &str, said: &str) -> Frame {
+        let f = crate::wire::detail::failed(Some(cmd), code, said.to_string(), None, None);
         Frame::failed(id.to_string(), f)
     }
 
-    fn err(id: &str, code: &str, message: &str) -> Frame {
-        let f = crate::wire::detail::Failed::new(None, code, message.to_string(), None, None);
+    fn err(id: &str, code: &str, said: &str) -> Frame {
+        let f = crate::wire::detail::failed(None, code, said.to_string(), None, None);
         Frame::failed(id.to_string(), f)
     }
 }

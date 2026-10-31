@@ -1062,7 +1062,7 @@ fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
         why: PeerFault::Refused {
             body: Body(
                 serde_json::to_vec(
-                    &serde_json::json!({"code": "io_failed", "message": "m", "detail": wrote}),
+                    &serde_json::json!({"code": "io_failed", "said": "m", "detail": wrote}),
                 )
                 .unwrap(),
             ),
@@ -1128,23 +1128,22 @@ fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
 /// ［复制详情］只在有详情时出：复制出去的首行是屏上那一句；一行汇总底下几件各一段，没一件带详情 ⇒ 不出。
 #[test]
 fn the_copy_body_exists_only_when_there_is_a_detail() {
-    assert_eq!(Failed::copy_body("那一句", ""), None);
-    assert_eq!(Failed::copy_body("那一句", "  \n"), None);
+    assert_eq!(batch_core::copy_body("那一句", ""), None);
+    assert_eq!(batch_core::copy_body("那一句", "  \n"), None);
     assert_eq!(
-        Failed::copy_body("那一句", "码：x"),
+        batch_core::copy_body("那一句", "码：x"),
         Some("那一句\n码：x".to_string())
     );
     let with = Failed {
-        code: None,
-        said: "句 A".into(),
         detail: "码：a".into(),
+        ..Failed::local("句 A".into())
     };
     let without: Failed = "句 B".to_string().into();
     assert_eq!(
-        Failed::copy_many("头", &[("b".into(), without.clone())]),
+        batch_core::copy_many("头", &[("b".into(), without.clone())]),
         None
     );
-    let body = Failed::copy_many("头", &[("a".into(), with), ("b".into(), without)]).unwrap();
+    let body = batch_core::copy_many("头", &[("a".into(), with), ("b".into(), without)]).unwrap();
     assert_eq!(
         body,
         format!(

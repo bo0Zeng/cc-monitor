@@ -1099,7 +1099,22 @@ fn the_commands_released_from_ui_only_are_on_the_cli() {
     }
 }
 
-/// 失败信封只有一种（`{code, message, detail, data?}`）：调用方交来的下层原话（`Said.raw`）进复制详情的「原话」那一项，不上句子、不另立一格。
+/// CLI 面的失败信封就是交出去那一形（`cmd_wire::failed::Failed`）：stderr 那一行的格恰是 `code` · `said` · `detail`（没有按码定形的 `data` ⇒ 不出），
+/// 那一句的格叫 `said`、不叫 `message`。
+#[test]
+fn the_cli_envelope_says_in_said() {
+    let mut err: Vec<u8> = Vec::new();
+    let rc = refuse_unknown_to(&["--no-such-flag".to_string()], &mut err, &crate::Tz::default());
+    let line = String::from_utf8(err).unwrap();
+    let v: serde_json::Value = serde_json::from_str(line.trim()).expect("一行 JSON");
+    let keys: std::collections::BTreeSet<&str> =
+        v.as_object().expect("对象").keys().map(String::as_str).collect();
+    assert_eq!(rc, 2);
+    assert_eq!(keys, ["code", "detail", "said"].into(), "{line}");
+    assert!(v["said"].as_str().is_some_and(|s| !s.is_empty()), "{line}");
+}
+
+/// 失败信封只有一种（`{code, said, detail, data?}`）：调用方交来的下层原话（`Said.raw`）进复制详情的「原话」那一项，不上句子、不另立一格。
 #[test]
 fn the_raw_words_go_into_the_detail_not_a_field_of_their_own() {
     let f = failed_of(
@@ -1108,7 +1123,7 @@ fn the_raw_words_go_into_the_detail_not_a_field_of_their_own() {
         copy_core::said::Said::with_raw("那一句".to_string(), "Permission denied (os error 13)"),
     );
     let v = serde_json::to_value(&f).unwrap();
-    assert_eq!(v["message"], "那一句", "{v}");
+    assert_eq!(v["said"], "那一句", "{v}");
     assert!(v.get("raw").is_none(), "信封又多了一格 raw：{v}");
     let raw_label = copy_core::copy_text("detail.label.raw", &[]);
     assert!(
@@ -1193,13 +1208,13 @@ fn clockless(detail: &str) -> String {
 fn failure_face(v: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({
         "code": v["code"],
-        "message": v["message"],
+        "said": v["said"],
         "detail": v["detail"].as_str().map(clockless),
         "data": v.get("data").cloned().unwrap_or(serde_json::Value::Null),
     })
 }
 
-/// ★ **同一个失败，帧面与 CLI 面说的一字不差**：`code` · `message` · `detail`（复制详情）· `data` 出自同一份失败载体。
+/// ★ **同一个失败，帧面与 CLI 面说的一字不差**：`code` · `said` · `detail`（复制详情）· `data` 出自同一份失败载体。
 /// 挑的三形：有「码 → 句」表的（句子换成表里那句、处理器原话进详情）· 带系统原话的 · 普通的。
 #[test]
 fn a_failure_reads_the_same_on_the_frame_face_and_the_cli_face() {
@@ -1281,7 +1296,7 @@ fn the_text_form_of_a_failure_is_the_sentence_over_its_detail() {
         .trim_end()
         .split_once('\n')
         .unwrap_or_else(|| panic!("没有详情那几行：{err_t:?}"));
-    assert_eq!(said, json["message"].as_str().unwrap());
+    assert_eq!(said, json["said"].as_str().unwrap());
     assert_eq!(
         clockless(detail),
         clockless(json["detail"].as_str().unwrap())
@@ -1349,7 +1364,7 @@ fn a_one_shot_without_its_args_says_what_is_missing_in_the_detail() {
     let v: serde_json::Value = serde_json::from_str(err.trim()).expect("stderr 一行 JSON");
     assert_eq!(v["code"], "bad_args");
     assert_eq!(
-        v["message"],
+        v["said"],
         copy_core::copy_text("beContract.malformed.say", &[]),
         "那一句不带英文诊断"
     );

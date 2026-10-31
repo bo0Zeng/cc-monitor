@@ -504,7 +504,7 @@ pub(crate) fn new_tmux_name_said(n: &str) -> Option<String> {
     })
 }
 
-pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, LaunchFail> {
+pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, LaunchErr> {
     run_with(req, &tmux)
 }
 
@@ -518,22 +518,22 @@ pub(crate) enum Delivery {
 /// [`run`] 的失败：线上那一份 [`Said`] ＋ 送键没确认时是哪一种、会话是不是本趟新建的。
 /// 线上只看 `fail`（两种同码 `typed_unconfirmed`）；`untyped` 给命令行那一处决定接进去还是收掉（`ccm::execute`）。
 #[derive(Debug, PartialEq)]
-pub(crate) struct LaunchFail {
+pub(crate) struct LaunchErr {
     pub(crate) fail: Said,
     /// `Some((哪一种, 本趟建的那个会话的令牌))`：只在送键那一发上有。
     pub(crate) untyped: Option<(Delivery, Option<JustMade>)>,
 }
 
-impl std::ops::Deref for LaunchFail {
+impl std::ops::Deref for LaunchErr {
     type Target = Said;
     fn deref(&self) -> &Said {
         &self.fail
     }
 }
 
-impl From<Said> for LaunchFail {
+impl From<Said> for LaunchErr {
     fn from(fail: Said) -> Self {
-        LaunchFail {
+        LaunchErr {
             fail,
             untyped: None,
         }
@@ -631,7 +631,7 @@ pub(crate) fn open_shell_with(
 fn run_with(
     req: &LaunchRequest,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
-) -> Result<LaunchOutcome, LaunchFail> {
+) -> Result<LaunchOutcome, LaunchErr> {
     let t = exact_target(&req.name);
     match req.mode {
         Mode::SendInto => {
@@ -753,7 +753,7 @@ fn type_payload(
     name: &str,
     payload: &str,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
-) -> Result<(), LaunchFail> {
+) -> Result<(), LaunchErr> {
     let target = match &at {
         TypeAt::Admitted(a) => a.handle(),
         TypeAt::JustMade(m) => m.target(),
@@ -776,12 +776,12 @@ fn type_payload(
 }
 
 /// [`type_payload`] 没确认的那一份：同码 `typed_unconfirmed`，句子按哪一种说，tmux 原话进复制详情。
-fn unconfirmed(delivery: Delivery, name: &str, raw: &str, made: Option<JustMade>) -> LaunchFail {
+fn unconfirmed(delivery: Delivery, name: &str, raw: &str, made: Option<JustMade>) -> LaunchErr {
     let said = match delivery {
         Delivery::NotDelivered => copy_text("beLaunch.type.failed", &[("name", name)]),
         Delivery::Unknown => copy_text("beLaunch.type.timedOut", &[("name", name)]),
     };
-    LaunchFail {
+    LaunchErr {
         fail: crate::wire::spec::fail("typed_unconfirmed", said).and_raw(Some(raw)),
         untyped: Some((delivery, made)),
     }

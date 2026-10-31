@@ -91,7 +91,7 @@ describe("起一组", () => {
   const launched = (failed: number): SetLaunched => ({
     rows: [
       { cwd: "/w/a", alias: "dev", group: { id: "g", name: "开发" }, opened: [opened("/w/a")], failed: [], blocked: null },
-      { cwd: "/w/b", alias: "look", group: null, opened: [], failed: failed ? [{ code: "account_unavailable", message: "b 需登录" }] : [], blocked: null },
+      { cwd: "/w/b", alias: "look", group: null, opened: [], failed: failed ? [{ code: "account_unavailable", said: "b 需登录", detail: "" }] : [], blocked: null },
     ],
     started: 1,
     failed,

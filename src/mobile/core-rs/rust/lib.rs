@@ -517,7 +517,7 @@ async fn opened_within<T>(
         .await
         .unwrap_or_else(|| {
             Err(ssh_dial::DialFail {
-                error: copy_core::copy_text("reason.link.noAnswer", &[]),
+                said: copy_core::copy_text("reason.link.noAnswer", &[]),
                 detail: Some(format!(
                     "{}s",
                     resident_client::backoff::DIAL_WITHIN.as_secs()
@@ -1421,7 +1421,7 @@ mod tests {
         assert_eq!(took, Duration::from_secs(3) + DIAL_WITHIN);
         let f = got.expect_err("不动的那一拨居然开成了");
         assert_eq!(f.reason, Some(cmd_wire::machine::Why::Timeout));
-        assert_eq!(f.error, copy_core::copy_text("reason.link.noAnswer", &[]));
+        assert_eq!(f.said, copy_core::copy_text("reason.link.noAnswer", &[]));
     }
 
     /// 表里与 `key` 同样的那一把有几格、共被握着几份。

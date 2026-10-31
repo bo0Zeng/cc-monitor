@@ -2,8 +2,9 @@
 //! 后端那一半是替身（按剧本回），真后端那一半的判据住 `tests/backend/control/files_batch_tests.rs`。
 
 use super::*;
-use batch_core::{copy_details, run, Failed, Rebuff, Verb, EXISTS};
+use batch_core::{copy_details, run, Rebuff, Verb, EXISTS};
 use cmd_wire::batch::ItemState;
+use cmd_wire::failed::Failed;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// 判据读看板用的两件（生产那一份里没有它们；本模块挂在 `batch` 底下，读得到私有字段）。
@@ -44,15 +45,15 @@ fn plan() -> Plan {
 fn clash() -> Rebuff {
     Rebuff {
         failed: Failed {
-            code: Some(EXISTS.into()),
+            code: EXISTS.into(),
             said: "同名 2 项".into(),
             detail: String::new(),
-        },
-        data: Some(serde_json::json!({"conflicts": [
+            data: Some(serde_json::json!({"conflicts": [
             {"key": "0", "name": "a", "kind": "file", "size": 3, "size_text": "3 字节", "mtime_text": "14:02",
              "there": "file", "there_size": 1, "there_size_text": "1 字节", "there_mtime_text": "10-01 09:10", "answers": ["overwrite", "skip", "keep_both"]},
             {"key": "1", "name": "c", "kind": "dir", "there": "dir", "answers": ["skip", "keep_both"]},
         ]})),
+        },
         cut: false,
     }
 }
@@ -237,7 +238,6 @@ async fn a_cut_waits_for_the_link_and_asks_again_with_the_same_ticket() {
                 if n == 1 {
                     Err(Rebuff {
                         failed: "断了".into(),
-                        data: None,
                         cut: true,
                     })
                 } else {

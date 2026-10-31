@@ -342,7 +342,7 @@ pub struct Overflow {
 
 /// U6b-1：**入方向命令的应答**。`id` 是客户端给的不透明串，backend **原样回显、不解析**。
 ///
-/// 错误形状 `{code, message}`（协议 v1 §3），不发明第二种错误 JSON。成功时两者都省略。
+/// 失败时 `code` · `said` · `detail` · `data` 四格就是 [`crate::failed::Failed`] 那一形（[`Reply::refused`] 装 · [`Reply::failed`] 取），不发明第二种错误 JSON。成功时前三格都省略。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -358,7 +358,7 @@ pub struct Reply {
     /// 失败时给人看的那一句（不含下层原话与码：那些进 `detail`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub message: Option<String>,
+    pub said: Option<String>,
     /// 失败时「复制详情」那几行（时刻 · 机器 · 命令 · 码 · 原话），后端写好、界面原样复制。成功时省略。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -367,6 +367,30 @@ pub struct Reply {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "unknown"))]
     pub data: Option<Value>,
+}
+
+impl Reply {
+    /// 失败应答：那一份失败的四格原样装进来。
+    pub fn refused(id: String, f: crate::failed::Failed) -> Reply {
+        Reply {
+            id,
+            ok: false,
+            code: Some(f.code),
+            said: Some(f.said),
+            detail: Some(f.detail),
+            data: f.data,
+        }
+    }
+
+    /// 失败应答里的那一份失败（成功 ⇒ `None`）；码缺着 ⇒ 兜底码，那一句 · 详情缺着 ⇒ 空串。
+    pub fn failed(&self) -> Option<crate::failed::Failed> {
+        (!self.ok).then(|| crate::failed::Failed {
+            code: crate::failed::Failed::code_or_fallback(self.code.clone()),
+            said: self.said.clone().unwrap_or_default(),
+            detail: self.detail.clone().unwrap_or_default(),
+            data: self.data.clone(),
+        })
+    }
 }
 
 /// U6b-1：某个在跑的命令**已被取消**。取消是一条普通命令（`cmd:"cancel"`）、不是带外信号。
@@ -1096,10 +1120,10 @@ pub enum SessionContainer {
 /// 这一条由 `main_fourth_face_tests.rs::the_declared_code_is_one_the_registry_already_declares` 钉住：
 /// 本表只许说 `inbound::REGISTRY` 里那条命令**自己登记过**的 code。
 ///
-/// # 为什么不带一句 `message`
+/// # 为什么不带一句 `said`
 ///
 /// 那句人话今天归 monitor（见上）。再发一份等于给同一句话开第二个源头，
-/// 而后端这一侧连用户的语言都不知道。**要诊断细节的场合走真调用**，那条路的 message
+/// 而后端这一侧连用户的语言都不知道。**要诊断细节的场合走真调用**，那条路的 `said`
 /// 本来就说得更细（`not_installed_message` 会列出查过哪几个目录）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]

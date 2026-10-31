@@ -24,7 +24,7 @@
 //!   同一份回包里核心写好的那几格（顶上的 `text` · 每一处 `rows`）拼成给人看的字（`control/ship_text.rs`，不按业务写）。
 //! · 期限：[`crate::wire::cli_words::WITHIN_MS_FLAG`] `<毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义，到点回的是同一个码。
 //! · 时区：[`crate::wire::cli_words::TZ_FLAG`] `<IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里「几点」按看的那一台的钟写；没带 ⇒ 这一台的钟（[`crate::Tz::here`]）；缺值 · 认不得 ⇒ UTC。
-//! · 错：exit 2 + stderr 一行 `{code, message, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::wire::cli_words::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
+//! · 错：exit 2 + stderr 一行 `{code, said, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::wire::cli_words::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
 //! · exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id。
 
 use crate::common::contract;
@@ -134,9 +134,9 @@ pub fn handles(flag: &str) -> bool {
     spec_for(flag).is_some()
 }
 
-/// 失败那一份投到 CLI 面（[`Failed::emit_to`]：与别的 CLI 出口同一处）。
+/// 失败那一份投到 CLI 面（[`crate::wire::detail::emit_to`]：与别的 CLI 出口同一处）。
 fn emit_failed(err: &mut dyn Write, f: &Failed, text: bool, tz: &crate::Tz) -> i32 {
-    f.emit_to(err, text, tz)
+    crate::wire::detail::emit_to(f, err, text, tz)
 }
 
 /// 一次性那一形里不认识的子命令（打头那一词不是任何一条子命令，或带着裸参数敲了一条删掉的）：
@@ -152,7 +152,7 @@ pub(crate) fn refuse_unknown_to(args: &[String], err: &mut dyn Write, tz: &crate
         .iter()
         .skip(1)
         .any(|a| a == crate::wire::cli_words::TEXT_FLAG);
-    let f = Failed::new(
+    let f = crate::wire::detail::failed(
         None,
         "unknown_command",
         contract::malformed(&format!("unknown CLI flag {flag}")),

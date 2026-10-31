@@ -148,6 +148,7 @@ impl FileWindow {
                         code: why.code,
                         said,
                         detail: why.detail,
+                        data: why.data,
                     });
                 }
             }

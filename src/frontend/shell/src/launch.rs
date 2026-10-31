@@ -86,7 +86,7 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, Said> {
 #[tauri::command]
 pub async fn open_terminal_window(
     command: String,
-) -> Result<crate::platform::terminal::TerminalOpen, Said> {
+) -> Result<crate::platform::terminal::TerminalOpen, cmd_wire::failed::Failed> {
     let r: Result<crate::platform::terminal::TerminalOpen, Said> = async move {
         // 进程 spawn 挪到阻塞线程池，不堵 IPC 派发线程。
         Ok(tokio::task::spawn_blocking(move || {
@@ -116,7 +116,7 @@ pub async fn terminal_choices() -> crate::platform::terminal::TerminalChoices {
 pub async fn open_local_terminal(
     cmd: String,
     cwd: Option<String>,
-) -> Result<crate::platform::terminal::TerminalOpen, Said> {
+) -> Result<crate::platform::terminal::TerminalOpen, cmd_wire::failed::Failed> {
     let r: Result<crate::platform::terminal::TerminalOpen, Said> = async move {
         Ok(tokio::task::spawn_blocking(move || {
             crate::platform::terminal::open_local(&cmd, cwd.as_deref())

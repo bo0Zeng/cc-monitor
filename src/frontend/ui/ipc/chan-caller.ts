@@ -56,15 +56,15 @@ export function readJson(body: Uint8Array): unknown {
 }
 
 /**
- * 对端「不行」的那份体（后端的拒绝信封 `{code, message, data?}`）⇒ `(code, message, data)`；解不出 ⇒ `null`。
+ * 对端「不行」的那份体（交出去那一形失败 `{code, said, detail, data?}`）⇒ `(code, said, data)`；解不出 ⇒ `null`。
  * `data` 只有协议里按码定了形的那几个码带；它的类型按命令读（[`refusalIn`] 带上 `cmd`）。
  */
-export function refusalOf(body: Uint8Array): { code: string; message: string; data?: unknown } | null {
+export function refusalOf(body: Uint8Array): { code: string; said: string; data?: unknown } | null {
   try {
     const v = readJson(body);
     if (v !== null && typeof v === "object") {
-      const { code, message, data } = v as { code?: unknown; message?: unknown; data?: unknown };
-      if (typeof code === "string" && typeof message === "string") return data === undefined ? { code, message } : { code, message, data };
+      const { code, said, data } = v as { code?: unknown; said?: unknown; data?: unknown };
+      if (typeof code === "string" && typeof said === "string") return data === undefined ? { code, said } : { code, said, data };
     }
   } catch {
     // 体不是 JSON ⇒ 当成没说原因
@@ -128,9 +128,9 @@ type DataOf<K> = K extends keyof RefusalData ? RefusalData[K][keyof RefusalData[
 export function refusalIn<K extends keyof RefusalData = never>(
   e: unknown,
   _cmd?: K,
-): { code: string; message: string; data?: DataOf<K> } | null {
+): { code: string; said: string; data?: DataOf<K> } | null {
   if (!(e instanceof ChanError && e.error.layer === "peer" && e.error.why === "refused")) return null;
-  return refusalOf(e.error.body) as { code: string; message: string; data?: DataOf<K> } | null;
+  return refusalOf(e.error.body) as { code: string; said: string; data?: DataOf<K> } | null;
 }
 
 /**

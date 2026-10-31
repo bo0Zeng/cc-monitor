@@ -14,7 +14,7 @@ const flush = async (): Promise<void> => {
 };
 
 const refused = (code: string, message: string): ChanError =>
-  new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code, message })) }, message);
+  new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code, said: message })) }, message);
 // 回执前断了：没回执（同断线）。
 const offline = (): ChanError => new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "no-answer");
 const queued: QueuePut = { outcome: "queued", seq: 1, place: 1, said: "第 1" };

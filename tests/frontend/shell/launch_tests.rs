@@ -814,12 +814,12 @@ enum FakeTermSpawn {
 
 /// 一条 spawn 错误是不是 `ETXTBSY`。
 ///
-/// 🔴 **认的是类型，不是字串**：起进程那一下没成是 [`LaunchFail::Spawn`]，带着系统那个 `io::Error`，
+/// 🔴 **认的是类型，不是字串**：起进程那一下没成是 [`LaunchErr::Spawn`]，带着系统那个 `io::Error`，
 /// 它的种类是 `ExecutableFileBusy` 就是。不认 `Text file busy`（C 库按 `LC_MESSAGES` 打，glibc 有中文翻译），
 /// 也不认 `os error 26`（句子里早就不带原话了 —— 原话只进日志）。
 #[cfg(not(windows))]
-fn spawn_error_is_etxtbsy(err: &LaunchFail) -> bool {
-    matches!(err, LaunchFail::Spawn(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy)
+fn spawn_error_is_etxtbsy(err: &LaunchErr) -> bool {
+    matches!(err, LaunchErr::Spawn(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy)
 }
 
 /// 写一个「只记录、不执行」的假终端脚本，并**把前提真的建立起来**。

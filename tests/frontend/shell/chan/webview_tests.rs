@@ -64,7 +64,7 @@ impl Backends for Fake {
                 Err(CallError::Peer {
                     why: PeerFault::Refused {
                         body: Body(
-                            br#"{"code":"no","message":"\xe4\xb8\x8d\xe8\xa1\x8c"}"#.to_vec(),
+                            br#"{"code":"no","said":"\xe4\xb8\x8d\xe8\xa1\x8c"}"#.to_vec(),
                         ),
                     },
                 })
@@ -413,12 +413,12 @@ fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
         ("cancelled", Inbound::Cancelled),
         (
             "remote_refused",
-            Inbound::Remote {
+            Inbound::Remote(cmd_wire::failed::Failed {
                 code: "wrong_owner".into(),
-                message: "m".into(),
+                said: "m".into(),
                 detail: String::new(),
                 data: None,
-            },
+            }),
         ),
     ];
     let mut rows = vec![serde_json::json!({
@@ -483,7 +483,7 @@ fn the_fail_carries_the_channel_sentence() {
         },
         CallError::Peer {
             why: PeerFault::Refused {
-                body: Body(r#"{"code":"no","message":"不行"}"#.as_bytes().to_vec()),
+                body: Body(r#"{"code":"no","said":"不行"}"#.as_bytes().to_vec()),
             },
         },
         OursFault::Broken.into(),

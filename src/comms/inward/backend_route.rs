@@ -13,7 +13,7 @@
 //! | `TooManyPending` | `register(&id)` 失败，仍早于 `writes.send` | 证明没发出去 ⇒ 可回落 |
 //! | `Disconnected` | 两个产地：写队列 send 失败（没入队）或 等应答时 `rx` 掉了（已发出） | 分不开 ⇒ 按最坏算 ⇒ 不回落 |
 //! | `Timeout` | 两个产地：写入段超时或 等应答段超时（可能已执行） | 分不开 ⇒ 按最坏算 ⇒ 不回落 |
-//! | `Cancelled` / `Remote{..}` | backend 说过话了 | 不回落 |
+//! | `Cancelled` / `Remote(..)` | backend 说过话了 | 不回落 |
 //!
 //! `Timeout` 与 `Disconnected` 的两个产地类型上分不开 ⇒ 一次写入段超时会让用户拿到错误而不是回落；要修得在 `inbound_client` 那边分成两个变体。
 
@@ -49,15 +49,8 @@ pub enum CallError {
     Differs { cmd: String, said: String },
     /// 本地超时。`withdraw` 说对端那一半：没发出去 / 已补发撤单（best-effort）/ 对端不认撤单（要说出来）。
     Timeout { after: Duration, withdraw: Withdraw },
-    /// backend 回了 `ok:false`。`code`/`message` 原样透出（形状同帧面失败应答）；
-    /// `data` ＝ 那几个按码定了形的码带的 `data`（序列化好的 JSON 原文；别的码 ⇒ `None`）。
-    Remote {
-        code: String,
-        message: String,
-        /// 「复制详情」那几行（那台后端写好；老后端没有 ⇒ 空串）。
-        detail: String,
-        data: Option<String>,
-    },
+    /// backend 回了 `ok:false`：它那一份失败原样透出（码 · 那一句 · 复制详情 · 按码定形的 `data`，同帧面失败应答）。
+    Remote(cmd_wire::failed::Failed),
 }
 
 impl std::fmt::Display for CallError {
@@ -101,18 +94,15 @@ impl std::fmt::Display for CallError {
                 write!(f, "{said}")
             }
             // 那台的原话；码不上屏（调用方要按码分支的读 `code` 本身）。
-            CallError::Remote { message, .. } if message.trim().is_empty() => write!(
+            CallError::Remote(r) if r.said.trim().is_empty() => write!(
                 f,
                 "{}",
                 copy_text("rsInboundClient.error.refusedNoReason", &[])
             ),
-            CallError::Remote { message, .. } => write!(
+            CallError::Remote(r) => write!(
                 f,
                 "{}",
-                copy_text(
-                    "rsInboundClient.error.refused",
-                    &[("said", &message.to_string())]
-                )
+                copy_text("rsInboundClient.error.refused", &[("said", &r.said)])
             ),
         }
     }
@@ -135,13 +125,13 @@ pub enum Routed {
 /// | 进来的 | 分层结果 | 理由（与模块头注那张表逐档对应） |
 /// |---|---|---|
 /// | `Unsupported` | `Peer{Unsupported}` | 对端事前就说不认（`hello.commands`），一个字节没发 |
-/// | `Unavailable{code}` | `Peer{Refused{body}}`，body = `{"code","message"}` | 对端握手时说过这台做不到（`hello.unavailable`），本侧没发；同对端事后回那个码 |
-/// | `Differs{said}` | `Peer{Refused{body}}`，body = `{"code": "backend_differs", "message": said}` | typed 命令两端形状指纹对不上，本侧没发；那一句本层写好 |
+/// | `Unavailable{code}` | `Peer{Refused{body}}`，body = `{"code","said","detail"}`（详情空） | 对端握手时说过这台做不到（`hello.unavailable`），本侧没发；同对端事后回那个码 |
+/// | `Differs{said}` | `Peer{Refused{body}}`，body = `{"code": "backend_differs", "said", "detail"}`（详情空） | typed 命令两端形状指纹对不上，本侧没发；那一句本层写好 |
 /// | `TooManyPending` | `Hop{write, NotSent, Overrun}` | 本侧在飞上限顶满，早于入队 |
 /// | `Disconnected` | `Hop{read, Unknown, Dropped}` | 两个产地分不开 ⇒ 拿不准一律 `Unknown` |
 /// | `Timeout` | `Hop{wait, Unknown, Overrun}` | 同上 |
 /// | `Cancelled` | `Ours{Cancelled}` | 撤单源自本侧（后端只是确认了它）；副作用状态未知，不是回滚 |
-/// | `Remote{code,message}` | `Peer{Refused{body}}`，body = `{"code","message"}` 的 JSON | 对端说了话；body 对通道不透明 |
+/// | `Remote(失败)` | `Peer{Refused{body}}`，body = 那一份失败（`cmd_wire::failed::Failed`）的 JSON | 对端说了话；body 对通道不透明 |
 ///
 /// 附带的 [`Detail`] 是给人看的那句话的原料，不参与任何分流判断（分流只看 `error`）。
 pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
@@ -160,16 +150,17 @@ pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
             error: w::CallError::Peer {
                 why: w::PeerFault::Refused {
                     body: w::Body(
-                        serde_json::to_vec(
-                            &serde_json::json!({ "code": code, "message": e.to_string() }),
-                        )
-                        .unwrap_or_default(),
+                        refusal_body(&cmd_wire::failed::Failed {
+                            code: code.clone(),
+                            said: e.to_string(),
+                            ..Default::default()
+                        }),
                     ),
                 },
             },
             detail: Detail::Remote {
                 code: code.clone(),
-                message: e.to_string(),
+                said: e.to_string(),
             },
         },
         // 两端形状对不上：同 `Unavailable` 那一形（对端的话来得早、本侧没发），码 `cmd_wire::SHAPE_DIFFERS`，那一句是本层写好的。
@@ -177,16 +168,17 @@ pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
             error: w::CallError::Peer {
                 why: w::PeerFault::Refused {
                     body: w::Body(
-                        serde_json::to_vec(
-                            &serde_json::json!({ "code": cmd_wire::SHAPE_DIFFERS, "message": said }),
-                        )
-                        .unwrap_or_default(),
+                        refusal_body(&cmd_wire::failed::Failed {
+                            code: cmd_wire::SHAPE_DIFFERS.to_string(),
+                            said: said.clone(),
+                            ..Default::default()
+                        }),
                     ),
                 },
             },
             detail: Detail::Remote {
                 code: cmd_wire::SHAPE_DIFFERS.to_string(),
-                message: said.clone(),
+                said: said.clone(),
             },
         },
         CallError::TooManyPending => Layered {
@@ -217,35 +209,23 @@ pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
             error: w::OursFault::Cancelled.into(),
             detail: text(e.to_string()),
         },
-        CallError::Remote {
-            code,
-            message,
-            detail,
-            data,
-        } => Layered {
+        CallError::Remote(r) => Layered {
             error: w::CallError::Peer {
                 why: w::PeerFault::Refused {
-                    body: w::Body(refusal_body(code, message, detail, data.as_deref())),
+                    body: w::Body(refusal_body(r)),
                 },
             },
             detail: Detail::Remote {
-                code: code.clone(),
-                message: message.clone(),
+                code: r.code.clone(),
+                said: r.said.clone(),
             },
         },
     }
 }
 
-/// 对端拒绝体 `{code, message}`；带了 `data` 的那几个码再多一格 `data`；那台写了详情 ⇒ 再多一格 `detail`。
-fn refusal_body(code: &str, message: &str, detail: &str, data: Option<&str>) -> Vec<u8> {
-    let mut v = serde_json::json!({ "code": code, "message": message });
-    if !detail.trim().is_empty() {
-        v["detail"] = serde_json::Value::String(detail.to_string());
-    }
-    if let Some(d) = data.and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok()) {
-        v["data"] = d;
-    }
-    serde_json::to_vec(&v).unwrap_or_default()
+/// 对端拒绝体：就是那一份失败（`{code, said, detail, data?}`）。
+fn refusal_body(f: &cmd_wire::failed::Failed) -> Vec<u8> {
+    serde_json::to_vec(f).unwrap_or_default()
 }
 
 /// [`layer_call_error`] 的产出：`05` 的分层错误 ＋ 给人看的那句话的原料。
@@ -263,7 +243,7 @@ pub enum Detail {
     /// 已经说成一句话了。
     Text(String),
     /// 对端的原话，由调用方的 `refusal` 翻成用户看的话。
-    Remote { code: String, message: String },
+    Remote { code: String, said: String },
     /// 那台不认这条命令：按码取那一句（`copy_core::backend_old`），名字由 [`route_call_error`] 的调用方给。
     BackendOld,
 }
@@ -282,7 +262,7 @@ pub fn layer_no_channel(hop: u8) -> w::CallError {
 
 /// `CallError` → 三态 —— **建在 [`layer_call_error`] 上的一层收拢**，自己不再看 inbound 的枚举。
 /// `machine` 是问的那一台给人看的称呼（本机 ⇒ `copy_core::local_machine()`）：那台不认这条命令时说「{machine} 后端要更新」。
-/// `refusal` 只负责把 `(code, message)` 翻成用户看的话 ——
+/// `refusal` 只负责把 `(code, said)` 翻成用户看的话 ——
 /// **分流本身不许由调用方决定**，那就是本模块存在的全部意义。
 ///
 /// 收拢规则只有一条：分层结果**能证明没发出去**（`reach: NotSent`，或对端事前就说不认）
@@ -308,12 +288,12 @@ pub fn route_call_error(
     match (provably_not_sent, detail) {
         (_, Detail::BackendOld) => Routed::NoChannel(copy_core::backend_old(machine)),
         (true, Detail::Text(s)) => Routed::NoChannel(s),
-        (true, Detail::Remote { code, message }) => Routed::NoChannel(refusal(&code, &message)),
+        (true, Detail::Remote { code, said }) => Routed::NoChannel(refusal(&code, &said)),
         (false, Detail::Text(s)) => Routed::Refused(copy_text(
             "rsBackendRoute.route.unsure",
             &[("s", &s.to_string())],
         )),
-        (false, Detail::Remote { code, message }) => Routed::Refused(refusal(&code, &message)),
+        (false, Detail::Remote { code, said }) => Routed::Refused(refusal(&code, &said)),
     }
 }
 

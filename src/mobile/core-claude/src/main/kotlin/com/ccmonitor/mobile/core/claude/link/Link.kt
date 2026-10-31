@@ -15,12 +15,6 @@ import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
-/** 给人看的那一句 ＋ 复制详情（核心写好，手机原样上屏）。 */
-data class Said(
-    val text: String,
-    val detail: String,
-)
-
 /** 正在装 / 更新那一句（成品写好的）；[bar] ⇒ 放字节那一段（屏上走一条进度条）。 */
 data class Busy(
     val text: String,
@@ -56,9 +50,9 @@ sealed interface Deploying {
         val text: String,
     ) : Deploying
 
-    /** 没做成：那一句 ＋ 复制详情。 */
+    /** 没做成：交出去那一形（码 · 那一句 · 复制详情，核心写好、手机原样上屏）。 */
     data class Failed(
-        val said: Said,
+        val failed: com.ccmonitor.mobile.core.wire.gen.Failed,
     ) : Deploying
 }
 

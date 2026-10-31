@@ -157,7 +157,7 @@ async fn serve(peer: Peer, up: DuplexStream, mut down: DuplexStream) {
                 "data": {"relayedSessions": 1, "relayedMaybe": 0, "liveStreams": live, "forwards": 0}})
         } else if asked["args"]["fail"] == true {
             serde_json::json!({"kind": "reply", "id": asked["id"], "ok": false,
-                "code": "no_such_file", "message": "那台说：没有这个文件", "detail": "那台的原话"})
+                "code": "no_such_file", "said": "那台说：没有这个文件", "detail": "那台的原话"})
         } else {
             serde_json::json!({"kind": "reply", "id": asked["id"], "ok": true,
                 "data": {"cmd": asked["cmd"], "args": asked["args"], "view": asked["view"]}})

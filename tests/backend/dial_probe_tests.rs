@@ -184,7 +184,7 @@ async fn serve(peer: Peer, up: DuplexStream, mut down: DuplexStream) {
                 let reply = match ping {
                     None => json!({"kind": "reply", "id": asked["id"], "ok": true}),
                     Some(m) => {
-                        json!({"kind": "reply", "id": asked["id"], "ok": false, "code": "failed", "message": m})
+                        json!({"kind": "reply", "id": asked["id"], "ok": false, "code": "failed", "said": m})
                     }
                 };
                 let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
@@ -254,9 +254,9 @@ async fn cells_until(args: &Value, until: Option<Until>, dial: &Arc<Fake>) -> (V
 }
 
 /// 没开成：拨号核心写好的那一句 · 复制详情 · 看到的指纹。
-fn refused(error: &str, detail: Option<&str>, fingerprint: Option<&str>) -> ssh_dial::DialFail {
+fn refused(said: &str, detail: Option<&str>, fingerprint: Option<&str>) -> ssh_dial::DialFail {
     ssh_dial::DialFail {
-        error: error.into(),
+        said: said.into(),
         detail: detail.map(str::to_string),
         fingerprint: fingerprint.map(str::to_string),
         reason: None,

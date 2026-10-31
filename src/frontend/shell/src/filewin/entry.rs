@@ -1,7 +1,6 @@
-//! `24e` 第二刀：**用户可达的入口** —— 那唯一一条 `#[tauri::command]`。
+//! **用户可达的入口** —— 那唯一一条 `#[tauri::command]`。
 //!
-//! 第一刀落地之后这个窗口只能由代码调 [`super::shell::window::open_detached`]
-//! ⇒ 界面上没有任何地方点得开它。本模块补的就是那一格。
+//! 别处只由代码调 [`super::shell::window::open_detached_seeded`] 开这个窗口；界面上点得开它的只这一格。
 //!
 //! # 🔴 一、为什么先列一趟目录、再开窗（这一条是承重的）
 //!
@@ -144,7 +143,7 @@ pub async fn open_file_window(
     path: String,
     reveal_file: Option<String>,
     theme: std::collections::BTreeMap<String, String>,
-) -> Result<usize, Said> {
+) -> Result<usize, cmd_wire::failed::Failed> {
     let r: Result<usize, Said> = async move {
         use tauri::Manager;
         // 窗口的样子：主界面此刻 `:root` 上的那一套（含用户改过的）解成数。解不出来就不开（不替它补一套）。

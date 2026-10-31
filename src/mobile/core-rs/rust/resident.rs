@@ -117,10 +117,10 @@ impl Transport for PhoneLink {
 /// 拨号核心没开成的那一份 ⇒ 那一句（空 ⇒ 链路断了那一句）＋ 复制详情 ＋ 原因码与那台出示的 · 库里记下的指纹。
 fn problem_of(f: ssh_dial::DialFail) -> Problem {
     Problem::new(
-        if f.error.is_empty() {
+        if f.said.is_empty() {
             copy_core::copy_text("reason.link.lost", &[])
         } else {
-            f.error
+            f.said
         },
         f.detail.unwrap_or_default(),
     )
@@ -654,19 +654,12 @@ pub fn reply_json(
             cmd_wire::record::mend_records(cmd, &mut data);
             CallEnd::Ok { call, data }
         }
-        Err(CallError::Remote {
-            code,
-            message,
-            detail,
-            data,
-        }) => CallEnd::Failed {
+        Err(CallError::Remote(f)) => CallEnd::Failed {
             call,
-            code,
-            message,
-            detail,
-            data: data
-                .as_deref()
-                .and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok()),
+            code: f.code,
+            said: f.said,
+            detail: f.detail,
+            data: f.data,
         },
         Err(CallError::Timeout { .. }) => CallEnd::Timeout { call },
         Err(CallError::Cancelled) => CallEnd::Cancelled { call },
@@ -679,11 +672,11 @@ pub fn reply_json(
                 _ => "busy".to_string(),
             };
             let (Routed::NoChannel(said) | Routed::Refused(said)) =
-                route_call_error(&e, machine, |_code, message| message.to_string());
+                route_call_error(&e, machine, |_code, said| said.to_string());
             CallEnd::Failed {
                 call,
                 code,
-                message: said,
+                said,
                 detail: e.to_string(),
                 data: None,
             }
@@ -731,12 +724,12 @@ mod tests {
             j(Ok(Some(serde_json::json!({"a": 1})))),
             serde_json::json!({"call": 7, "end": "ok", "data": {"a": 1}})
         );
-        let failed = j(Err(CallError::Remote {
+        let failed = j(Err(CallError::Remote(cmd_wire::failed::Failed {
             code: "no_tmux".into(),
-            message: "没有 tmux".into(),
+            said: "没有 tmux".into(),
             detail: "d".into(),
-            data: Some("{\"x\":1}".into()),
-        }));
+            data: Some(serde_json::json!({"x": 1})),
+        })));
         assert_eq!(failed["end"], "failed");
         assert_eq!(failed["code"], "no_tmux");
         assert_eq!(failed["data"], serde_json::json!({"x": 1}));
@@ -747,13 +740,13 @@ mod tests {
             said: copy_core::backend_differs("box"),
         }));
         assert_eq!(differs["code"], "differs");
-        assert_eq!(differs["message"], copy_core::backend_differs("box"));
+        assert_eq!(differs["said"], copy_core::backend_differs("box"));
         let old = j(Err(CallError::Unsupported {
             cmd: "x".into(),
             offered: vec![],
         }));
         assert_eq!(old["code"], "unsupported");
-        assert_eq!(old["message"], copy_core::backend_old("box"));
+        assert_eq!(old["said"], copy_core::backend_old("box"));
     }
 
     /// 回包原样交 Kotlin（由生成的类解那一次）：多一格未知的照带着、缺一格的也不在这里判；记录那一格好的也原样。
@@ -1121,7 +1114,7 @@ mod tests {
     #[test]
     fn a_dial_fail_becomes_the_problem_field_for_field() {
         let p = problem_of(ssh_dial::DialFail {
-            error: "指纹变了".into(),
+            said: "指纹变了".into(),
             detail: Some("d".into()),
             fingerprint: Some("SHA256:seen".into()),
             reason: Some(cmd_wire::machine::Why::HostKey),

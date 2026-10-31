@@ -1001,7 +1001,7 @@ fn drop_partial(tmp: &Path) {
 fn unasked(e: crate::backend_once::OnceErr) -> Said {
     use crate::backend_once::OnceErr;
     let why = match e {
-        OnceErr::Refused { message, .. } => return Said::written(message),
+        OnceErr::Refused(f) => return Said::written(f.said),
         OnceErr::Spawn(e) => Said::with_raw(copy_text("rsLocalBackend.place.askSpawn", &[]), &e),
         OnceErr::TimedOut => Said::of("rsLocalBackend.place.askTimeout", &[]),
         OnceErr::Unreadable(said) => {

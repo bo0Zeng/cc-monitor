@@ -1501,7 +1501,7 @@ impl comms_inward::chan::router::Backends for Hosted {
                 why: PeerFault::Refused {
                     body: Body(
                         serde_json::to_vec(
-                            &serde_json::json!({ "code": code, "message": message }),
+                            &serde_json::json!({ "code": code, "said": message }),
                         )
                         .unwrap_or_default(),
                     ),

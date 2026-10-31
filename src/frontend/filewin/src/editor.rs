@@ -585,7 +585,7 @@ fn reply_from(
 ) -> Result<Option<cmd_wire::files::ReadTextReply>, super::source::Failed> {
     match r {
         Ok(d) => Ok(Some(d)),
-        Err(f) if matches!(f.code.as_deref(), Some("too_large" | "not_text")) => Ok(None),
+        Err(f) if matches!(f.code.as_str(), "too_large" | "not_text") => Ok(None),
         Err(f) => Err(f),
     }
 }
@@ -709,7 +709,7 @@ pub fn saved_from_reply(
             sent: sent.to_string(),
             sha256: Some(d.sha256.0).filter(|s| is_sha256_hex(s)),
         }),
-        Err(f) if f.code.as_deref() == Some("stale") => Err(SaveError::Stale(f.said)),
+        Err(f) if f.code == "stale" => Err(SaveError::Stale(f.said)),
         Err(f) => Err(SaveError::Failed(f)),
     }
 }
