@@ -814,8 +814,8 @@ describe("S25 ⑥ 容器查询取代写死宽度（件 5）", () => {
 
   it("⑥a `.stream` 是名为 stream 的行内尺寸容器", () => {
     // ⚠ 前界用**后行断言**、不吃掉那个 `}`：相邻两条规则共用一个 `}`，吃掉它 ⇒ matchAll 每隔一条漏一条
-    //   （`tests/evidence/P21-frontend-invariants.ts` 的 `cssRules` 头注记过同一个坑；本条第一版又踩了一次，
-    //   `.stream` 恰好落在被漏掉的那一半里，当场「找不到」）。
+    //   （同一个坑见 `tests/evidence/frontend-invariants.ts` 的 `cssRules` 头注；
+    //   `.stream` 恰好会落在被漏掉的那一半里，当场「找不到」）。
     const rules = [...css.matchAll(/(?<=^|[{};])\s*([^{};@]+)\{([^{}]*)\}/g)]
       .map((m) => ({ sel: m[1], body: m[2] }))
       .filter((m) => m.sel.split(",").map((x) => x.trim()).includes(".stream"));
