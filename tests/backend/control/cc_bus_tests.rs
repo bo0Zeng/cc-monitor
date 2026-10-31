@@ -2,19 +2,14 @@ use super::*;
 use serde_json::json;
 
 // 判据照线上那一份比：入参经 typed 那一处收（同分派）再交本体，回包写成线上那一份（盖住 `super::*` 里的同名口）。
-fn take<R: serde::de::DeserializeOwned>(
-    v: &serde_json::Value,
-) -> Result<R, (&'static str, String)> {
-    crate::wire::typed::take(v).map_err(|f| ("bad_args", f.message))
-}
-fn owned<T>(r: Result<T, (&'static str, String)>) -> Result<T, (String, String)> {
-    r.map_err(|(c, m)| (c.to_string(), m))
+fn take<R: serde::de::DeserializeOwned>(v: &serde_json::Value) -> Result<R, Said> {
+    crate::wire::typed::take(v).map_err(|f| Said::new("bad_args", f.said))
 }
 fn val<T: serde::Serialize>(v: T) -> serde_json::Value {
     serde_json::to_value(v).unwrap()
 }
-fn parse_inbox(v: &serde_json::Value) -> Result<(String, u64), (String, String)> {
-    super::parse_inbox(&owned(take(v))?)
+fn parse_inbox(v: &serde_json::Value) -> Result<(String, u64), Said> {
+    super::parse_inbox(&take(v)?)
 }
 fn rows_of(v: &serde_json::Value) -> Vec<String> {
     v.as_array()
@@ -98,8 +93,9 @@ fn the_cockpit_read_products_match_the_cross_language_golden() {
     assert_eq!(
         parse_inbox(&ib["badRequest"])
             .expect_err("`--help` 当 id 必须拒")
-            .0,
-        "bad_id"
+            .code
+            .as_deref(),
+        Some("bad_id")
     );
     assert_eq!(
         val(super::inbox_reply(&rows_of(&ib["lines"]))),
@@ -208,11 +204,15 @@ fn bus_ids_are_judged_here_before_they_reach_cc_bus() {
     }
     for id in bad.iter().filter(|id| !id.trim().is_empty()) {
         let e = parse_inbox(&json!({ "id": id })).expect_err(id);
-        assert_eq!(e.0, "bad_id", "{id:?}：读收件箱的拒码不对（{e:?}）");
+        assert_eq!(
+            e.code.as_deref(),
+            Some("bad_id"),
+            "{id:?}：读收件箱的拒码不对（{e:?}）"
+        );
         assert!(
-            e.1.contains(&format!("{id:?}")),
+            e.said.contains(&format!("{id:?}")),
             "{id:?}：那一句没点出是哪个值：{}",
-            e.1
+            e.said
         );
         for checked in [
             peek_for_inbound(&BusPeekReq {
@@ -223,14 +223,20 @@ fn bus_ids_are_judged_here_before_they_reach_cc_bus() {
             unread_for_inbound(&BusUnreadReq { id: id.clone() }).map(|_| ()),
         ] {
             assert_eq!(
-                checked.unwrap_err().0,
-                "bad_id",
+                checked.unwrap_err().code.as_deref(),
+                Some("bad_id"),
                 "{id:?}：peek · unread 也先判形状"
             );
         }
     }
     // 空是「缺」（`bad_args`），不是「形状不对」—— 两件事的话不一样。
-    assert_eq!(parse_inbox(&json!({ "id": "" })).unwrap_err().0, "bad_args");
+    assert_eq!(
+        parse_inbox(&json!({ "id": "" }))
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("bad_args")
+    );
 }
 
 /// ★★**跨语言金样**：界面直接收的 `bus-list` 成品，两侧读同一份 `tests/__fixtures__/cc-bus-control.golden.json`。

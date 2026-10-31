@@ -30,11 +30,8 @@ const RC_USAGE: i32 = 4;
 /// `render` 成了时 pb 说的那一句的开头（后面跟页面路径）。
 const RENDER_WROTE: &str = "写了 ";
 
-/// 没成 ⇒ `(码, 给人看的那一句, 原话)`。
-pub(crate) type Refused = (&'static str, String, Option<String>);
-
 /// 跑一条（`args[0]` 是动词，帧面先判）；这一侧带不带 agent 身份照本进程的环境。
-pub(crate) fn run(entry: &Path, ws: &Path, args: &[&str]) -> Result<PlanCmdReply, Refused> {
+pub(crate) fn run(entry: &Path, ws: &Path, args: &[&str]) -> Result<PlanCmdReply, Said> {
     run_as(entry, ws, args, std::env::var_os(AGENT_ENV).is_some())
 }
 
@@ -44,26 +41,25 @@ pub(crate) fn run_as(
     ws: &Path,
     args: &[&str],
     agent: bool,
-) -> Result<PlanCmdReply, Refused> {
+) -> Result<PlanCmdReply, Said> {
     let verb = args.first().copied().unwrap_or_default();
     if agent && USER_VERBS.contains(&verb) {
-        return Err((
+        return Err(Said::new(
             "refused",
             copy_text("bePlan.command.humanOnly", &[("verb", verb)]),
-            None,
         ));
     }
     answer(verb, super::pb(entry, ws, args))
 }
 
 /// 起了一次 pb ⇒ 回包或拒（纯函数）：起不来 ⇒ `failed`；过了期限 ⇒ 「pb <动词> 超时」（等了多久照原语说的）；跑完了 ⇒ [`classify`]。
-pub(crate) fn answer(verb: &str, r: Result<Done, Said>) -> Result<PlanCmdReply, Refused> {
+pub(crate) fn answer(verb: &str, r: Result<Done, Said>) -> Result<PlanCmdReply, Said> {
     match r {
-        Err(Said { said, raw, .. }) => Err(("failed", said, raw)),
+        Err(s) => Err(s.coded("failed")),
         Ok(Done {
             waited_secs: Some(secs),
             ..
-        }) => Err((
+        }) => Err(Said::new(
             "failed",
             copy_text(
                 "bePlan.command.timedOut",
@@ -72,7 +68,6 @@ pub(crate) fn answer(verb: &str, r: Result<Done, Said>) -> Result<PlanCmdReply, 
                     ("dur", &copy_core::format_duration(secs * 1000)),
                 ],
             ),
-            None,
         )),
         Ok(d) => classify(verb, d.code, &d.stdout, &d.stderr),
     }
@@ -92,8 +87,8 @@ pub(crate) struct Adopting<'a> {
 /// 回包多 `adopted`：接过来的是哪一个 · 仓库在哪 · 当前仓库换没换。
 pub(crate) fn adopt_with(
     t: &Adopting,
-    run: &dyn Fn(&[&str]) -> Result<PlanCmdReply, Refused>,
-) -> Result<PlanCmdReply, Refused> {
+    run: &dyn Fn(&[&str]) -> Result<PlanCmdReply, Said>,
+) -> Result<PlanCmdReply, Said> {
     let adopted = |switched: bool| {
         Some(PlanAdopted {
             slice: t.slice.to_string(),
@@ -126,7 +121,7 @@ pub(crate) fn classify(
     code: Option<i32>,
     stdout: &[u8],
     stderr: &[u8],
-) -> Result<PlanCmdReply, Refused> {
+) -> Result<PlanCmdReply, Said> {
     let line = |b: &[u8]| {
         let l = crate::plugin::invoke::first_line(b);
         (!l.trim().is_empty()).then_some(l)
@@ -139,7 +134,8 @@ pub(crate) fn classify(
                 .flatten()
                 .map(|p| p.trim().to_string());
             if verb == "render" && path.is_none() {
-                return Err(("failed", copy_text("bePlan.command.noPage", &[]), said));
+                return Err(Said::new("failed", copy_text("bePlan.command.noPage", &[]))
+                    .and_raw(said.as_deref()));
             }
             Ok(PlanCmdReply {
                 rc: 0,
@@ -150,19 +146,19 @@ pub(crate) fn classify(
         }
         Some(RC_REFUSED) => {
             let said = line(stderr).unwrap_or_default();
-            Err(("refused", said.clone(), Some(said)))
+            Err(Said::new("refused", said.clone()).and_raw(Some(&said)))
         }
-        Some(RC_UNREADABLE) => Err((
+        Some(RC_UNREADABLE) => Err(Said::new(
             "not_workspace",
             copy_text("bePlan.face.notWorkspace", &[]),
-            line(stderr),
-        )),
-        Some(RC_USAGE) => Err((
+        )
+        .and_raw(line(stderr).as_deref())),
+        Some(RC_USAGE) => Err(Said::new(
             "pb_unsupported",
             copy_text("bePlan.command.noVerb", &[("verb", verb)]),
-            line(stderr),
-        )),
-        other => Err((
+        )
+        .and_raw(line(stderr).as_deref())),
+        other => Err(Said::new(
             "failed",
             copy_text(
                 "bePlan.command.exited",
@@ -174,8 +170,8 @@ pub(crate) fn classify(
                     ),
                 ],
             ),
-            line(stderr),
-        )),
+        )
+        .and_raw(line(stderr).as_deref())),
     }
 }
 

@@ -13,7 +13,7 @@ use serde::Serialize;
 
 /// 命令级错误：`(code, message)`。
 /// 失败：码 ＋ 那一句 ＋ 原话（`ssh -G` 自己说的 · 起不来时的系统报错，进复制详情）。
-type CmdErr = crate::wire::spec::Fail;
+use crate::common::said::Said;
 
 /// 一个别名解析出的有效连接参数（聚合之前的那一份）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -258,28 +258,29 @@ const SSH_G_WITHIN: Deadline = Deadline::secs(5);
 
 /// 用系统 `ssh -G <alias>` 解析一个别名。别名先过 allowlist、`-` 开头另挡；argv 直传、不过 shell。
 /// `ssh -G` 只读配置、不建连接。
-pub(crate) fn resolve(alias: &str) -> Result<ResolvedHost, CmdErr> {
+pub(crate) fn resolve(alias: &str) -> Result<ResolvedHost, Said> {
     let alias = alias.trim();
     if !is_safe_alias(alias) {
-        return Err(CmdErr::from((
+        return Err(crate::wire::spec::fail(
             "bad_alias",
             copy_text("beSshConfig.host.badAlias", &[("alias", alias)]),
-        )));
+        ));
     }
     if alias.starts_with('-') {
-        return Err(CmdErr::from((
+        return Err(crate::wire::spec::fail(
             "bad_alias",
             copy_text("beSshConfig.host.dashAlias", &[]),
-        )));
+        ));
     }
     let out = Child::new("ssh")
         .arg("-G")
         .arg(alias)
         .run(SSH_G_WITHIN)
         .map_err(|e| {
-            CmdErr::from(e.into_cmd_said("failed", |why| {
+            let (code, said) = e.into_cmd_said("failed", |why| {
                 copy_text("beSshConfig.host.sshGFailed", &[("why", why)])
-            }))
+            });
+            crate::wire::spec::fail(code, said)
         })?;
     if !out.status.success() {
         return Err(ssh_g_exited(alias, &out.stderr));
@@ -291,12 +292,12 @@ pub(crate) fn resolve(alias: &str) -> Result<ResolvedHost, CmdErr> {
 }
 
 /// `ssh -G` 退了非 0：句子只说哪个别名，ssh 自己说的那句进复制详情。
-pub(crate) fn ssh_g_exited(alias: &str, stderr: &[u8]) -> CmdErr {
-    CmdErr::new(
+pub(crate) fn ssh_g_exited(alias: &str, stderr: &[u8]) -> Said {
+    crate::wire::spec::fail(
         "failed",
         copy_text("beSshConfig.host.sshGExit", &[("alias", alias)]),
     )
-    .with_raw(Some(&String::from_utf8_lossy(stderr)))
+    .and_raw(Some(&String::from_utf8_lossy(stderr)))
 }
 
 /// 批量导入：列全部别名、逐个 `ssh -G`（保序）、聚合成预览组（[`import_from`]）。
@@ -307,7 +308,7 @@ pub(crate) fn import() -> (Vec<ImportGroup>, bool) {
 /// 逐个解析、聚合成预览组；解析失败的别名跳过（best-effort）。第二格：有别名在期限内没读完（码 `child_timed_out`）⇒ 只交了一部分。
 pub(crate) fn import_from(
     aliases: Vec<String>,
-    mut resolve: impl FnMut(&str) -> Result<ResolvedHost, CmdErr>,
+    mut resolve: impl FnMut(&str) -> Result<ResolvedHost, Said>,
 ) -> (Vec<ImportGroup>, bool) {
     let mut partial = false;
     let resolved: Vec<(String, ResolvedHost)> = aliases
@@ -315,7 +316,7 @@ pub(crate) fn import_from(
         .filter_map(|a| match resolve(&a) {
             Ok(r) => Some((a, r)),
             Err(e) => {
-                partial |= e.code == crate::platform::child::TIMED_OUT;
+                partial |= e.code.as_deref() == Some(crate::platform::child::TIMED_OUT);
                 None
             }
         })

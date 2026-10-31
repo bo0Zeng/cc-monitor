@@ -66,8 +66,9 @@ fn ok() -> Read {
 fn g1_same_group_passes_and_outside_the_group_is_refused() {
     let r = read(vec![group("g1", "开发", &["a", "b"])], ok());
     assert_eq!(scope("a", "b", Ok(&r)), Ok(()));
-    let (code, raw) = scope("a", "c", Ok(&r)).unwrap_err();
-    assert_eq!(code, "not_same_group");
+    let e = scope("a", "c", Ok(&r)).unwrap_err();
+    let (code, raw) = (e.code.as_deref(), e.said.as_str());
+    assert_eq!(code, Some("not_same_group"));
     assert!(raw.contains("开发"), "原话说发件人在哪几组：{raw}");
 }
 
@@ -83,7 +84,10 @@ fn g2_several_groups_are_a_union() {
     );
     assert_eq!(scope("a", "b", Ok(&r)), Ok(()));
     assert_eq!(scope("a", "d", Ok(&r)), Ok(()));
-    assert_eq!(scope("a", "c", Ok(&r)).unwrap_err().0, "not_same_group");
+    assert_eq!(
+        scope("a", "c", Ok(&r)).unwrap_err().code.as_deref(),
+        Some("not_same_group")
+    );
 }
 
 #[test]
@@ -95,8 +99,9 @@ fn g3_a_sender_in_no_group_reaches_anyone() {
 
 #[test]
 fn g4_no_roster_is_refused_not_waved_through() {
-    let (code, raw) = scope("a", "b", Err("常驻没答 · 这台也没读成")).unwrap_err();
-    assert_eq!(code, "no_roster");
+    let e = scope("a", "b", Err("常驻没答 · 这台也没读成")).unwrap_err();
+    let (code, raw) = (e.code.as_deref(), e.said.as_str());
+    assert_eq!(code, Some("no_roster"));
     assert!(raw.contains("这台也没读成"));
 }
 
@@ -108,9 +113,15 @@ fn g5_this_machines_slice_unread_means_no_roster() {
             why: "注解文件读不懂".into(),
         },
     );
-    assert_eq!(scope("a", "b", Ok(&r)).unwrap_err().0, "no_roster");
+    assert_eq!(
+        scope("a", "b", Ok(&r)).unwrap_err().code.as_deref(),
+        Some("no_roster")
+    );
     let r = read(vec![], Read::Unread);
-    assert_eq!(scope("a", "b", Ok(&r)).unwrap_err().0, "no_roster");
+    assert_eq!(
+        scope("a", "b", Ok(&r)).unwrap_err().code.as_deref(),
+        Some("no_roster")
+    );
     let r = read(
         vec![],
         Read::Stale {

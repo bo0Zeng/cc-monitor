@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::control::launch_account as la;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 
@@ -87,7 +87,7 @@ impl Rig {
     }
 
     /// 线上那一份入参（`local: false`，别的格照给的）⇒ 本体。恢复那一条的记录：哪一家 claude · 目录 /p。
-    fn open(&self, args: Value) -> Result<Opened, Failed> {
+    fn open(&self, args: Value) -> Result<Opened, Said> {
         let mut args = args;
         if args.get("local").is_none() {
             args["local"] = json!(false);
@@ -104,17 +104,23 @@ impl Rig {
             fork_tmux: self.fork_tmux,
             since: 0,
         };
-        let fork = |_: &str, _: &str| -> Result<String, (&'static str, String)> {
+        let fork = |_: &str, _: &str| -> Result<String, crate::common::said::Said> {
             if self.fork_err {
-                Err(("fork_failed", "分支记录写不成".into()))
+                Err(crate::common::said::Said::new(
+                    "fork_failed",
+                    "分支记录写不成".into(),
+                ))
             } else {
                 Ok(U.to_string())
             }
         };
         let sid = || U.to_string();
-        let write = |_: &str, _: &str, _: &str| -> Result<(), (&'static str, String)> {
+        let write = |_: &str, _: &str, _: &str| -> Result<(), crate::common::said::Said> {
             if self.rotation_err {
-                Err(("no_strategy", "没有这一份策略".into()))
+                Err(crate::common::said::Said::new(
+                    "no_strategy",
+                    "没有这一份策略".into(),
+                ))
             } else {
                 Ok(())
             }
@@ -134,9 +140,9 @@ impl Rig {
             .into_iter()
             .map(str::to_string)
             .collect();
-        let list = || -> Result<crate::control::session_batch::Listed, CmdErr> {
+        let list = || -> Result<crate::control::session_batch::Listed, Said> {
             match self.list_err {
-                Some(c) => Err((c, "列不出".to_string())),
+                Some(c) => Err(Said::new(c, "列不出".to_string())),
                 None => Ok(crate::control::session_batch::Listed::of(
                     self.rows.clone(),
                     self.hosted.clone(),
@@ -147,21 +153,22 @@ impl Rig {
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, "/root".into()))
         };
-        let end = |_: &str| -> Result<(), crate::wire::spec::Fail> {
+        let end = |_: &str| -> Result<(), crate::common::said::Said> {
             unreachable!("session-open 不结束")
         };
-        let send_into = |name: &str, _: &str, line: &str| -> Result<(), crate::wire::spec::Fail> {
-            self.sent.borrow_mut().push((name.into(), line.into()));
-            match self.send_err {
-                Some(c) => Err(crate::wire::spec::Fail::new(c, "门没过".to_string())),
-                None => Ok(()),
-            }
-        };
-        let run_ccm = |argv: &[String]| -> Result<(i32, String, String), CmdErr> {
+        let send_into =
+            |name: &str, _: &str, line: &str| -> Result<(), crate::common::said::Said> {
+                self.sent.borrow_mut().push((name.into(), line.into()));
+                match self.send_err {
+                    Some(c) => Err(crate::wire::spec::fail(c, "门没过".to_string())),
+                    None => Ok(()),
+                }
+            };
+        let run_ccm = |argv: &[String]| -> Result<(i32, String, String), Said> {
             self.ccm.borrow_mut().push(argv.to_vec());
             Ok((self.ccm_rc, self.ccm_out.clone(), "坏了".into()))
         };
-        let mint = |base: NameBase| -> Result<String, CmdErr> {
+        let mint = |base: NameBase| -> Result<String, Said> {
             if let Some(n) = &self.minted {
                 return Ok(n.clone());
             }
@@ -172,12 +179,13 @@ impl Rig {
         };
         let writers = |_: &str| self.live.clone();
         let pretrust = |_: &str, _: &str| *self.marks.borrow_mut() += 1;
-        let open_shell = |name: &str, cwd: Option<&str>| -> Result<bool, crate::wire::spec::Fail> {
-            self.shells
-                .borrow_mut()
-                .push((name.into(), cwd.map(str::to_string)));
-            Ok(true)
-        };
+        let open_shell =
+            |name: &str, cwd: Option<&str>| -> Result<bool, crate::common::said::Said> {
+                self.shells
+                    .borrow_mut()
+                    .push((name.into(), cwd.map(str::to_string)));
+                Ok(true)
+            };
         let library = || {
             crate::observe::accounts_query::test_support::list(
                 self.names
@@ -353,7 +361,7 @@ fn where_this_machine_hosts_a_new_session_without_run_lands_in_a_managed_termina
             json!({ "what": { "kind": "new", "agent": "claude", "cwd": "/p" }, "run": "managed" }),
         )
         .unwrap_err();
-    assert_eq!(e.0, "place_unavailable");
+    assert_eq!(e.code.as_deref(), Some("place_unavailable"));
 }
 
 /// 恢复：这台能托管、偏好没开 ⇒ 托管；那一条正在一个托管终端里跑 ⇒ 接回那一行、不另起。
@@ -395,7 +403,10 @@ fn a_direct_resume_of_a_session_someone_is_writing_is_refused() {
     let mut rig = Rig::new(Some(vec![]));
     rig.live = vec![4242];
     let err = rig.open(resume(Some("direct"))).unwrap_err();
-    assert_eq!((err.0, err.3.as_deref()), ("already_live", Some("4242")));
+    assert_eq!(
+        (err.code.as_deref(), err.raw.as_deref()),
+        (Some("already_live"), Some("4242"))
+    );
     assert_eq!((*rig.marks.borrow(), rig.ccm.borrow().len()), (0, 0));
     // 正控：没人在写 ⇒ 照起（回那一行）。
     let rig = Rig::new(Some(vec![]));
@@ -414,7 +425,7 @@ fn asking_for_tmux_where_there_is_none_is_refused_not_rerouted() {
     }] {
         let rig = Rig::new(None);
         let err = rig.open(args).unwrap_err();
-        assert_eq!(err.0, "place_unavailable");
+        assert_eq!(err.code.as_deref(), Some("place_unavailable"));
         assert!(rig.ccm.borrow().is_empty());
     }
     // 没说放在哪 ⇒ 这台定：没 tmux 就直路。
@@ -534,7 +545,7 @@ fn look_attaches_without_starting_anything() {
     let err = rig
         .open(json!({ "what": { "kind": "look", "sid": U } }))
         .unwrap_err();
-    assert_eq!(err.0, "not_hosted");
+    assert_eq!(err.code.as_deref(), Some("not_hosted"));
     assert!(rig.ccm.borrow().is_empty() && rig.sent.borrow().is_empty());
 }
 
@@ -573,7 +584,7 @@ fn look_attaches_a_hosted_terminal_by_handle() {
     let err = Rig::new(None)
         .open(json!({ "what": { "kind": "look", "sid": A } }))
         .unwrap_err();
-    assert_eq!(err.0, "place_unavailable");
+    assert_eq!(err.code.as_deref(), Some("place_unavailable"));
 }
 
 /// 新起：放在 tmux ⇒ 后台起好、回会话名与接进去那一行；直路 ⇒ 回起会话那一行。
@@ -722,11 +733,11 @@ fn every_code_comes_with_a_sentence_written_here() {
         let mut rig = Rig::new(Some(vec![]));
         let args = setup(&mut rig);
         let err = rig.open(args).expect_err(code);
-        assert_eq!(err.0, *code, "{err:?}");
+        assert_eq!(err.code.as_deref(), Some(*code), "{err:?}");
         assert!(
-            !err.1.trim().is_empty() && !err.1.contains(code),
+            !err.said.trim().is_empty() && !err.said.contains(code),
             "{code}：那一句 {:?}",
-            err.1
+            err.said
         );
         fed.insert(code);
     }
@@ -749,7 +760,11 @@ fn the_request_shape_is_closed() {
         json!({ "what": { "kind": "look", "sid": A }, "run": "tmux" }),
         json!({ "what": { "kind": "resume", "sid": A }, "extra": 1 }),
     ] {
-        assert_eq!(rig.open(bad.clone()).unwrap_err().0, "bad_args", "{bad}");
+        assert_eq!(
+            rig.open(bad.clone()).unwrap_err().code.as_deref(),
+            Some("bad_args"),
+            "{bad}"
+        );
     }
 }
 
@@ -849,23 +864,26 @@ fn resuming_to_say_goes_the_tmux_way_and_stops_where_it_would() {
     assert_eq!(
         live.run(|d| resume_saying(&saying(None, None), "claude", d))
             .unwrap_err()
-            .0,
-        "already_live"
+            .code
+            .as_deref(),
+        Some("already_live")
     );
     assert!(live.ccm.borrow().is_empty());
     let none = Rig::new(None);
     assert_eq!(
         none.run(|d| resume_saying(&saying(None, None), "claude", d))
             .unwrap_err()
-            .0,
-        "place_unavailable"
+            .code
+            .as_deref(),
+        Some("place_unavailable")
     );
     let rig = Rig::new(Some(vec![]));
     assert_eq!(
         rig.run(|d| resume_saying(&saying(None, None), "no-such-agent", d))
             .unwrap_err()
-            .0,
-        NO_FIRST_PROMPT
+            .code
+            .as_deref(),
+        Some(NO_FIRST_PROMPT)
     );
     assert!(rig.ccm.borrow().is_empty());
 }
@@ -907,7 +925,7 @@ fn shell_makes_or_joins_a_bare_session_or_enters_a_dir() {
     let err = none
         .open(json!({ "what": { "kind": "shell", "session": "main" } }))
         .unwrap_err();
-    assert_eq!(err.0, "place_unavailable");
+    assert_eq!(err.code.as_deref(), Some("place_unavailable"));
     assert!(none.shells.borrow().is_empty());
     // 没 tmux 也进得了目录（那一行不靠 tmux）。
     assert!(none
@@ -933,7 +951,11 @@ fn shell_makes_or_joins_a_bare_session_or_enters_a_dir() {
             "bad_tmux_name",
         ),
     ] {
-        assert_eq!(rig.open(args.clone()).unwrap_err().0, code, "{args}");
+        assert_eq!(
+            rig.open(args.clone()).unwrap_err().code.as_deref(),
+            Some(code),
+            "{args}"
+        );
     }
     assert_eq!(rig.shells.borrow().len(), 1);
     assert!(rig.ccm.borrow().is_empty() && rig.sent.borrow().is_empty());
@@ -1017,7 +1039,12 @@ fn emit_open_line_for_e2e() {
         req["account"] = a.clone();
     }
     let said = match rig.open(req) {
-        Err((code, said, _, raw)) => Err(format!("{code}: {said} {}", raw.unwrap_or_default())),
+        Err(f) => Err(format!(
+            "{}: {} {}",
+            f.code_or_fallback(),
+            f.said,
+            f.raw.as_deref().unwrap_or_default()
+        )),
         Ok(o) => {
             let argv = rig.ccm.borrow().first().cloned();
             let typed = rig.sent.borrow().first().map(|(_, l)| l.clone());

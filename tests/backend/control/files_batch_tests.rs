@@ -312,8 +312,8 @@ fn a_single_copy_takes_one_plain_name_and_refuses_the_rest_as_bad_name() {
             panic!("`{to}` 该整组拒：{got:?}")
         };
         assert_eq!(
-            f.code,
-            super::super::files_write::BAD_NAME,
+            f.code.as_deref(),
+            Some(super::super::files_write::BAD_NAME),
             "`{to}`：{}",
             f.said
         );

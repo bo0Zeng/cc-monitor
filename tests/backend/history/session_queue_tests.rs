@@ -46,7 +46,11 @@ fn ids(q: &QueueList) -> Vec<(&str, Option<u64>, S)> {
 }
 
 /// 排在最前、还没送的那一条（[`due`] 的那一格）。
-fn next_due(o: &Own, sid: &str, now_ms: i64) -> Result<Option<QueueItem>, Fail> {
+fn next_due(
+    o: &Own,
+    sid: &str,
+    now_ms: i64,
+) -> Result<Option<QueueItem>, crate::common::said::Said> {
     due(o, sid, now_ms).map(|d| d.item)
 }
 
@@ -242,11 +246,14 @@ fn an_unreadable_queue_is_reported_and_left_untouched() {
     std::fs::write(&file, b"{not json").unwrap();
     let o = own(&h);
     let e = put(&o, &req("a", "desk", None, T0), T0).unwrap_err();
-    assert_eq!(e.code, "queue_unreadable");
+    assert_eq!(e.code.as_deref(), Some("queue_unreadable"));
     assert_eq!(std::fs::read(&file).unwrap(), b"{not json", "不覆盖");
     // 更新的版本也不覆盖。
     std::fs::write(&file, format!("{{\"version\":{}}}", DOC.version() + 1)).unwrap();
-    assert_eq!(read(&o, &sid(), T0).unwrap_err().code, "queue_unreadable");
+    assert_eq!(
+        read(&o, &sid(), T0).unwrap_err().code.as_deref(),
+        Some("queue_unreadable")
+    );
 }
 
 #[test]
@@ -256,7 +263,7 @@ fn a_full_queue_refuses_the_next_one() {
         put(&o, &req(&format!("m{i}"), "desk", None, T0), T0).unwrap();
     }
     let e = put(&o, &req("over", "desk", None, T0), T0).unwrap_err();
-    assert_eq!(e.code, "queue_full");
+    assert_eq!(e.code.as_deref(), Some("queue_full"));
 }
 
 #[test]

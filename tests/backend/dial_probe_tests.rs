@@ -600,9 +600,9 @@ async fn a_probe_without_a_valid_ticket_is_refused_before_dialling() {
             Err(f) => Err(f.code),
             Ok(req) => probe_with(&req, None, Arc::clone(&fake) as Arc<dyn Dial>, &tx)
                 .await
-                .map_err(|(c, _)| c.to_string()),
+                .map_err(|f| f.code),
         };
-        assert_eq!(r, Err("bad_args".to_string()), "票 {bad} 该拒");
+        assert_eq!(r, Err(Some("bad_args".to_string())), "票 {bad} 该拒");
         assert!(fake.words().is_empty(), "票不对就不该拨");
     }
     drop(tx);

@@ -502,6 +502,11 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "契约错只进表一句（「请求格式不对」，诊断记日志）",
     ),
     (
+        "common::said::Said",
+        Kind::Common,
+        "失败只一种值：码 ＋ 那一句 ＋ 原话（写面 · 读面的失败都回它）",
+    ),
+    (
         "common::own_dir::PRIVATE_DIR_MODE",
         Kind::Common,
         "同上一格：自家目录里新建的目录给的那个权限位（与 `ensure_private_dir` 同一个值）",

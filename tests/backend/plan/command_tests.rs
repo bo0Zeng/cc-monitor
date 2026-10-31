@@ -38,9 +38,9 @@ fn render_rc0_gives_the_page_path_out_of_pbs_sentence() {
 
 #[test]
 fn render_rc0_without_a_page_is_a_failure_not_a_null_path() {
-    let (code, _, raw) = classify("render", Some(0), "别的话\n".as_bytes(), b"").unwrap_err();
-    assert_eq!(code, "failed");
-    assert_eq!(raw.as_deref(), Some("别的话"));
+    let e = classify("render", Some(0), "别的话\n".as_bytes(), b"").unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("failed"));
+    assert_eq!(e.raw.as_deref(), Some("别的话"));
 }
 
 #[test]
@@ -54,23 +54,38 @@ fn continue_and_pause_rc0_carry_pbs_sentence_and_no_path() {
 #[test]
 fn each_failing_code_lands_in_its_own_refusal() {
     let stderr = "这里不是一个 pb 工作区\n".as_bytes();
-    let (c, said, _) = classify("pause", Some(2), b"", stderr).unwrap_err();
-    assert_eq!((c, said.as_str()), ("refused", "这里不是一个 pb 工作区"));
+    let e = classify("pause", Some(2), b"", stderr).unwrap_err();
     assert_eq!(
-        classify("pause", Some(3), b"", stderr).unwrap_err().0,
-        "not_workspace"
+        (e.code.as_deref(), e.said.as_str()),
+        (Some("refused"), "这里不是一个 pb 工作区")
     );
     assert_eq!(
-        classify("render", Some(4), b"", stderr).unwrap_err().0,
-        "pb_unsupported"
+        classify("pause", Some(3), b"", stderr)
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("not_workspace")
     );
     assert_eq!(
-        classify("render", Some(1), b"", stderr).unwrap_err().0,
-        "failed"
+        classify("render", Some(4), b"", stderr)
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("pb_unsupported")
     );
     assert_eq!(
-        classify("render", None, b"", stderr).unwrap_err().0,
-        "failed"
+        classify("render", Some(1), b"", stderr)
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("failed")
+    );
+    assert_eq!(
+        classify("render", None, b"", stderr)
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("failed")
     );
 }
 
@@ -79,8 +94,11 @@ fn a_real_run_goes_from_the_workspace_root_with_only_the_verb_and_no_pb_id() {
     let root = scratch("command-run");
     let entry = fake_pb(&root.join("pb"), "planned-build", Some(2));
     let ws = workspace(&root.join("ws"), &dump("/x"));
-    let (code, said, _) = run(&entry, &ws, &["pause"]).unwrap_err();
-    assert_eq!((code, said.as_str()), ("refused", "forced"));
+    let e = run(&entry, &ws, &["pause"]).unwrap_err();
+    assert_eq!(
+        (e.code.as_deref(), e.said.as_str()),
+        (Some("refused"), "forced")
+    );
     let ran: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(root.join("pb/ran.json")).unwrap()).unwrap();
     assert_eq!(ran["argv"], serde_json::json!(["pause"]));
@@ -104,9 +122,9 @@ fn an_agent_caller_gets_no_user_command_and_pb_is_never_started() {
         &["adopt"],
         &["repo", "alpha"],
     ] {
-        let (code, said, _) = run_as(&entry, &ws, args, true).unwrap_err();
-        assert_eq!(code, "refused", "{args:?}");
-        assert!(said.contains(args[0]), "{said}");
+        let e = run_as(&entry, &ws, args, true).unwrap_err();
+        assert_eq!(e.code.as_deref(), Some("refused"), "{args:?}");
+        assert!(e.said.contains(args[0]), "{}", e.said);
     }
     assert!(runs(&root.join("pb")).is_empty());
     let _ = run_as(&entry, &ws, &["render"], true);
@@ -138,7 +156,7 @@ fn reply(said: &str) -> PlanCmdReply {
     }
 }
 
-fn ok(said: &str) -> Result<PlanCmdReply, Refused> {
+fn ok(said: &str) -> Result<PlanCmdReply, Said> {
     Ok(reply(said))
 }
 
@@ -153,7 +171,7 @@ fn adopted(slice: &str, path: &str, switched: bool) -> Option<PlanAdopted> {
 /// 已经接过来的那个仓库：不起 pb，照成回、说是哪一个。
 #[test]
 fn adopting_a_repo_already_adopted_runs_nothing() {
-    let run = |a: &[&str]| -> Result<PlanCmdReply, Refused> { panic!("ran {a:?}") };
+    let run = |a: &[&str]| -> Result<PlanCmdReply, Said> { panic!("ran {a:?}") };
     let got = adopt_with(
         &Adopting {
             slice: "alpha",
@@ -229,9 +247,9 @@ fn adopting_another_repo_switches_to_it_first() {
 #[test]
 fn a_refused_switch_stops_before_adopt() {
     let ran = RefCell::new(0);
-    let run = |_: &[&str]| -> Result<PlanCmdReply, Refused> {
+    let run = |_: &[&str]| -> Result<PlanCmdReply, Said> {
         *ran.borrow_mut() += 1;
-        Err(("refused", "拒：x".into(), None))
+        Err(Said::new("refused", "拒：x".into()))
     };
     let e = adopt_with(
         &Adopting {
@@ -243,7 +261,7 @@ fn a_refused_switch_stops_before_adopt() {
         &run,
     )
     .unwrap_err();
-    assert_eq!(e.0, "refused");
+    assert_eq!(e.code.as_deref(), Some("refused"));
     assert_eq!(*ran.borrow(), 1);
 }
 
@@ -256,10 +274,10 @@ fn a_timed_out_or_unstarted_pb_is_failed_with_the_verb() {
         stderr: Vec::new(),
         waited_secs: Some(7),
     };
-    let (code, said, raw) = answer("render", Ok(late)).unwrap_err();
-    assert_eq!(code, "failed");
+    let e = answer("render", Ok(late)).unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("failed"));
     assert_eq!(
-        said,
+        e.said,
         copy_text(
             "bePlan.command.timedOut",
             &[
@@ -268,11 +286,11 @@ fn a_timed_out_or_unstarted_pb_is_failed_with_the_verb() {
             ]
         )
     );
-    assert_eq!(raw, None);
+    assert_eq!(e.raw, None);
     let gone = copy_core::said::Said::with_raw("x".into(), "no such file");
-    let (code, said, raw) = answer("render", Err(gone)).unwrap_err();
+    let e = answer("render", Err(gone)).unwrap_err();
     assert_eq!(
-        (code, said.as_str(), raw.as_deref()),
-        ("failed", "x", Some("no such file"))
+        (e.code.as_deref(), e.said.as_str(), e.raw.as_deref()),
+        (Some("failed"), "x", Some("no such file"))
     );
 }

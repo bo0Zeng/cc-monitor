@@ -155,7 +155,7 @@ pub(crate) fn fork_for_launch(
     agent_home: &Path,
     sid: &str,
     uuid: &str,
-) -> Result<String, (&'static str, String)> {
+) -> Result<String, crate::common::said::Said> {
     fork_checked(nf, agent_home, sid, uuid).map(|r| r.session_id)
 }
 
@@ -165,7 +165,7 @@ fn fork_checked(
     agent_home: &Path,
     sid: &str,
     uuid: &str,
-) -> Result<ForkResult, (&'static str, String)> {
+) -> Result<ForkResult, crate::common::said::Said> {
     // 〔`INVARIANTS §47` ①〕两个 id 在这里先过放行判定（界面经通道直说、不再判；本侧 = 真去用它的这一侧）：
     //   判定只有共享那一份 `session_id_ok`，这里只把「长度不对」与「形状不对」分成两句话。
     for (what, id) in [
@@ -184,10 +184,11 @@ fn fork_checked(
             } else {
                 copy_core::copy_text("rsRemoteBranch.forkId.badChar", &[("what", &what)])
             };
-            return Err(("bad_args", said));
+            return Err(crate::common::said::Said::new("bad_args", said));
         }
     }
-    run_inner(nf, agent_home, sid, uuid).map_err(|m| ("fork_failed", m))
+    run_inner(nf, agent_home, sid, uuid)
+        .map_err(|m| crate::common::said::Said::new("fork_failed", m))
 }
 
 fn run_inner(

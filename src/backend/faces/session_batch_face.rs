@@ -15,14 +15,14 @@ use crate::wire::typed::{self, Command};
 /// 名单两种宿主都认（问样子 · 停：托管那一行按句柄交 `terminal-end`）。
 fn with_deps<T>(
     client: Option<&str>,
-    f: impl FnOnce(&Deps) -> Result<T, batch::CmdErr>,
+    f: impl FnOnce(&Deps) -> Result<T, crate::common::said::Said>,
 ) -> Result<T, BatchErr> {
     let client = crate::control::gate::requester(client).map_err(BatchErr::from)?;
     with_deps_on(both_hosts_rows, client.as_deref(), "", None, f).map_err(BatchErr::from)
 }
 
 /// 认会话的名单那一发。
-type Listing = fn() -> Result<Listed, batch::CmdErr>;
+type Listing = fn() -> Result<Listed, crate::common::said::Said>;
 
 /// 同 [`with_deps`]，前端与那一家已经取好（换号重启每一步在自己的阻塞线程上各拼一份）；名单只认 tmux（起会话 · 就地键入只对 tmux 下手）。
 /// `files` ＝ 起之前预标信任经它写；`None` ＝ 这一趟不起会话（问样子 · 停 · 核目录）。
@@ -76,10 +76,10 @@ fn with_deps_on<T>(
             payload: line.to_string(),
             cwd: None,
             ccm_sid: Some(sid.parse::<cmd_wire::Sid>().map_err(|e| {
-                crate::control::launch::CmdErr::from((
+                crate::wire::spec::fail(
                     "bad_args",
                     crate::common::contract::malformed(&e.to_string()),
-                ))
+                )
             })?),
             agent: None,
             width: None,
@@ -127,12 +127,12 @@ fn with_deps_on<T>(
 }
 
 /// 这台的 tmux 名单（挂着 sid 的窗格各一行）；`Err` ＝ 看不见。分叉那一格也读它。
-pub(crate) fn tmux_rows() -> Result<Listed, (&'static str, String)> {
+pub(crate) fn tmux_rows() -> Result<Listed, crate::common::said::Said> {
     batch::listed_on(crate::host::tmux::On::default(), None)
 }
 
 /// 问样子 · 停认的名单：两种宿主都认（托管那一行按句柄交 `terminal-end`）。
-fn both_hosts_rows() -> Result<Listed, (&'static str, String)> {
+fn both_hosts_rows() -> Result<Listed, crate::common::said::Said> {
     batch::listed_on(
         crate::host::tmux::On::default(),
         crate::host::managed::installed(),
@@ -149,15 +149,15 @@ typed::codes! {
     }
 }
 
-impl From<batch::CmdErr> for BatchErr {
+impl From<crate::common::said::Said> for BatchErr {
     /// 下层只回这三个码：形状 / 组合不对 · 列名单过了期限 · 列不出（`batch::listed` 把别的都收成 `unobservable`）。
-    fn from((code, said): batch::CmdErr) -> Self {
-        match code {
-            "bad_args" => BatchErr::BadArgs(said),
-            crate::platform::child::TIMED_OUT => BatchErr::ChildTimedOut(said),
-            _ => {
-                debug_assert_eq!(code, "unobservable");
-                BatchErr::Unobservable(said)
+    fn from(f: crate::common::said::Said) -> Self {
+        match f.code.as_deref() {
+            Some("bad_args") => BatchErr::BadArgs(f.said),
+            Some(crate::platform::child::TIMED_OUT) => BatchErr::ChildTimedOut(f.said),
+            code => {
+                debug_assert_eq!(code, Some("unobservable"));
+                BatchErr::Unobservable(f.said)
             }
         }
     }

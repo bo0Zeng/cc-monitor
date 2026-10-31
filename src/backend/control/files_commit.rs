@@ -38,9 +38,10 @@
 //!
 //! 目标不由调用方给：会话工作目录下一个新的编号目录（[`session_attachment`]），落那一下就是上传提交这一条（[`commit_upload_at`]）。
 
+use crate::common::said::Said;
 use crate::control::files_write::{
     content_sha256, overwrite_text_expecting, rel_of, replace_contents, root_of, walk_in_root,
-    wire_of, Act, Content, Last, Was, WriteFail, WriteRefusal,
+    wire_of, Act, Content, Last, Was, WriteRefusal,
 };
 use crate::platform::fs::{Face, Ro};
 use cmd_wire::files as wire;
@@ -419,25 +420,15 @@ pub fn sweep_stale(face: &Face, home: &Path, now_secs: u64, keep: &str) -> Vec<S
     gone
 }
 
-/// 这一面的失败：与写面同一形（码 ＋ 那一句 ＋ 下层原话；命令表那一层把原话交给应答的复制详情）。
-/// 不借流那一层的类型：文件管理后端只许够 platform / common（`module_boundary_guard`）。
-pub type Fail = WriteFail;
-
 /// 写面拒绝 ⇒ 失败：码由那个枚举自己答，原话（有的话）随失败交出去。
-fn refused(e: WriteRefusal) -> Fail {
-    WriteFail::from(e)
-}
-
-/// 没有原话的那几形（参数不对 · 家问不到）。
-fn plain(f: (&'static str, String)) -> Fail {
-    WriteFail::from(f)
+fn refused(e: WriteRefusal) -> Said {
+    Said::from(e)
 }
 
 /// 这台后端的家（暂存区拼在它底下）。
-fn home_dir() -> Result<PathBuf, Fail> {
+fn home_dir() -> Result<PathBuf, Said> {
     crate::platform::paths::home_dir()
-        .ok_or(("io_failed", copy_text("beFilesCommit.staging.noHome", &[])))
-        .map_err(plain)
+        .ok_or_else(|| Said::new("io_failed", copy_text("beFilesCommit.staging.noHome", &[])))
 }
 
 /// 一次提交成功 ⇒ 顺手扫孤儿（暂存区清理「孤儿」那一格的事件）。
@@ -459,20 +450,20 @@ crate::control::files_write::acts! {
 #[derive(Debug)]
 pub(crate) enum CommitRefused {
     Clash(String, cmd_wire::batch::Conflicts),
-    Fail(Fail),
+    Fail(Said),
 }
 
-impl From<Fail> for CommitRefused {
-    fn from(f: Fail) -> Self {
+impl From<Said> for CommitRefused {
+    fn from(f: Said) -> Self {
         CommitRefused::Fail(f)
     }
 }
 
 impl CommitRefused {
     /// 只认码与那一句的出口（写面那张分派表 · 资产域的门）：同名照码 `exists` 交那一句。
-    pub(crate) fn flat(self) -> Fail {
+    pub(crate) fn flat(self) -> Said {
         match self {
-            CommitRefused::Clash(said, _) => WriteFail::from((super::files_write::EXISTS, said)),
+            CommitRefused::Clash(said, _) => Said::new(super::files_write::EXISTS, said),
             CommitRefused::Fail(f) => f,
         }
     }
@@ -505,10 +496,10 @@ pub fn commit_upload_at(
     super::files_write::names_ok(req.single.unwrap_or(false), &rel)?;
     let on = req.on_exists.unwrap_or_default();
     if on == OnExists::Skip {
-        return Err(plain((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed("`on_exists: skip` has nothing to commit"),
-        ))
+        )
         .into());
     }
     let clash = |rel: &Path| {
@@ -524,13 +515,13 @@ pub fn commit_upload_at(
                     .map(|k| crate::common::batch_book::minted(&rel, k))
                     .find(|r| clash(r).is_none())
                     .ok_or_else(|| {
-                        plain((
+                        Said::new(
                             super::files_write::EXISTS,
                             copy_text(
                                 "beFilesWrite.swap.exists",
                                 &[("path", &dest.display().to_string())],
                             ),
-                        ))
+                        )
                     })?;
             }
             OnExists::Overwrite | OnExists::Skip => {}
@@ -539,10 +530,10 @@ pub fn commit_upload_at(
     // 块形（SFTP 起始目录不是后端 home ⇒ 窗口改走后端链路分块写）：先拼成暂存件，下面照旧同一条提交。
     if let Some(chunks) = req.chunks {
         let bytes = req.bytes.ok_or_else(|| {
-            plain((
+            Said::new(
                 "bad_args",
                 crate::common::contract::malformed("`chunks` given without `bytes`"),
-            ))
+            )
         })?;
         super::files_upload_chunks::assemble_part(face, home, &req.key, chunks, bytes)
             .map_err(refused)?;
@@ -613,7 +604,7 @@ fn asked(
 fn stage_chunk_of(
     face: &Face,
     req: wire::FilesStageChunkReq,
-) -> Result<wire::FilesStageChunkReply, Fail> {
+) -> Result<wire::FilesStageChunkReply, Said> {
     stage_chunk_at(face, &home_dir()?, req)
 }
 
@@ -622,12 +613,12 @@ pub fn stage_chunk_at(
     face: &Face,
     home: &Path,
     req: wire::FilesStageChunkReq,
-) -> Result<wire::FilesStageChunkReply, Fail> {
+) -> Result<wire::FilesStageChunkReply, Said> {
     if req.content.bytes().is_empty() {
-        return Err(plain((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed("empty chunk (each chunk is at least 1 byte)"),
-        )));
+        ));
     }
     let n = stage_chunk(face, home, &req.key, req.seq, req.content.bytes()).map_err(refused)?;
     Ok(wire::FilesStageChunkReply { bytes: n })
@@ -637,7 +628,7 @@ pub fn stage_chunk_at(
 fn commit_text_of(
     face: &Face,
     req: wire::FilesCommitTextReq,
-) -> Result<wire::FilesWrittenReply, Fail> {
+) -> Result<wire::FilesWrittenReply, Said> {
     commit_text_at(face, &home_dir()?, req)
 }
 
@@ -646,26 +637,26 @@ pub fn commit_text_at(
     face: &Face,
     home: &Path,
     req: wire::FilesCommitTextReq,
-) -> Result<wire::FilesWrittenReply, Fail> {
+) -> Result<wire::FilesWrittenReply, Said> {
     let root = root_of(&req.root, "root")?;
     let (chunks, bytes) = (req.chunks, req.bytes);
     let cap = crate::files::READ_TEXT_MAX_BYTES as u64;
     if bytes > cap {
-        return Err(plain((
+        return Err(Said::new(
             "bad_args",
             copy_text(
                 "beFilesCommit.text.tooLarge",
                 &[("bytes", &bytes.to_string()), ("cap", &cap.to_string())],
             ),
-        )));
+        ));
     }
     if chunks == 0 || chunks > bytes {
-        return Err(plain((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`chunks` is {chunks} and `bytes` is {bytes}; chunks must be within 1..=bytes"
             )),
-        )));
+        ));
     }
     let (landed, n, sha) = commit_text(
         face,

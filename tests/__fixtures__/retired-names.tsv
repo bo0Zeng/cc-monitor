@@ -399,3 +399,8 @@ LaunchPlan
 LaunchContext
 LAUNCH_DIMENSIONS
 WrapSpec
+CmdErr
+into_fail
+WriteFail
+LockFail
+FootprintFail

@@ -1,123 +1,50 @@
 //! 一条入方向命令的登记形状。各族的命令表（`registry/`）只 use 这一份。
 
-use crate::common::said::IntoNote as _;
+use crate::common::said::Said;
 use crate::wire::FrameMake as _;
 use crate::wire::Request;
 
 /// 同步阻塞处理器（分派交进阻塞池：开跑之后打不断）。
 pub(crate) type BlockingHandler = Box<dyn FnOnce(Request) -> Outcome + Send>;
-/// 一条命令的结局（应答那一帧由它出）：成功的返回值 · 失败（码 ＋ 原话 ＋ 按码定形的 `data`）。
-pub(crate) type Outcome = Result<Option<serde_json::Value>, Fail>;
+/// 一条命令的结局（应答那一帧由它出）：成功的返回值 · 失败（码 ＋ 那一句 ＋ 原话 ＋ 按码定形的 `data`）。
+pub(crate) type Outcome = Result<Option<serde_json::Value>, Said>;
 
-/// 命令级失败。`data` 只给在协议文档里按码定了形的那几个码（多数码没有 ⇒ 应答里不出这一格）。
-/// `raw` 是下层原话（子进程 stderr · 系统报错）：不进 `message`，进应答的 `detail`（[`crate::wire::detail::of`]）。
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Fail {
-    pub(crate) code: String,
-    pub(crate) message: String,
-    pub(crate) data: Option<serde_json::Value>,
-    pub(crate) raw: Option<String>,
+/// 命令级失败：码 ＋ 那一句（收 `String`，也收已带原话的 [`Said`]；外层的码换掉里层的）。
+/// 契约错的诊断跟在句子后面（`contract::malformed`）⇒ 拆开放进原话（往下交给只认一句的那一层时也不带它）。
+pub(crate) fn fail(code: &str, said: impl Into<Said>) -> Said {
+    let s: Said = said.into();
+    let (sentence, diag) = crate::common::contract::parts(&s.said, None);
+    let raw = s.raw.clone();
+    Said {
+        said: sentence,
+        raw: diag,
+        ..s
+    }
+    .coded(code)
+    .and_raw(raw.as_deref())
 }
 
-impl From<(String, String)> for Fail {
-    fn from((code, message): (String, String)) -> Self {
-        Fail::new(&code, message)
-    }
+/// 失败投出去的那两口（两个面都经这里：帧面的应答 · CLI 面的信封）。
+pub(crate) trait Settle {
+    /// 这次失败投出去的那一份。`cmd` 是命令名，进详情的「命令」那一项；码缺着 ⇒ 兜底码。
+    fn settle(self, cmd: &str) -> crate::wire::detail::Failed;
+    /// 这次失败的应答帧（[`Settle::settle`] 那一份装进 `reply`）。
+    fn into_reply(self, id: String, cmd: &str) -> crate::wire::Frame;
 }
 
-impl From<(&'static str, String)> for Fail {
-    fn from((code, message): (&'static str, String)) -> Self {
-        Fail::new(code, message)
-    }
-}
-
-impl From<(&'static str, crate::common::said::Said)> for Fail {
-    /// 外层定的码 ＋ 那一句与它的原话（原话进复制详情）· `data`。
-    fn from((code, s): (&'static str, crate::common::said::Said)) -> Self {
-        Fail::from(s.coded(code))
-    }
-}
-
-impl From<crate::common::said::Said> for Fail {
-    /// 投成应答：码缺着 ⇒ 兜底码（[`copy_core::said::FALLBACK_CODE`]）。
-    fn from(s: crate::common::said::Said) -> Self {
-        let code = s.code_or_fallback().to_string();
-        let mut f = Fail::new(&code, s.said).with_raw(s.raw.as_deref());
-        f.data = s.data;
-        f
-    }
-}
-
-impl From<Fail> for crate::common::said::Said {
-    /// 失败不成应答、往下交给只认 [`crate::common::said::Said`] 的那一层（日志 · 拼进别的句子）：码 · 原话 · `data` 跟着走。
-    fn from(f: Fail) -> Self {
-        let s = crate::common::said::Said::from((f.message, f.raw)).coded(&f.code);
-        match f.data {
-            Some(d) => s.with_data(d),
-            None => s,
-        }
-    }
-}
-
-impl Fail {
-    /// 码 ＋ 那一句（没有原话、没有 `data`）。
-    pub(crate) fn new(code: &str, message: String) -> Fail {
-        // 契约错的诊断跟在句子后面（`contract::malformed`）⇒ 拆开放进原话（往下交给只认一句的那一层时也不带它）。
-        let (message, raw) = crate::common::contract::parts(&message, None);
-        Fail {
-            code: code.to_string(),
-            message,
-            data: None,
-            raw,
-        }
-    }
-
-    /// 带上下层原话（进复制详情；空 / 缺 ⇒ 不带）。
-    pub(crate) fn with_raw(mut self, raw: Option<&str>) -> Fail {
-        let given = raw
-            .map(str::trim)
-            .filter(|r| !r.is_empty())
-            .map(str::to_string);
-        self.raw = match (self.raw.take(), given) {
-            (Some(diag), Some(r)) => Some(format!("{diag}\n{r}")),
-            (a, b) => b.or(a),
-        };
-        self
-    }
-
-    /// 那一句连着原话（同 [`crate::common::contract::joined`]）：交给只装一句的那一层（typed 的错误枚举）时原话不丢，投出去时由 [`Fail::new`] 拆回来。
-    /// `data` 不跟：按码定形的 `data` 由那一条自己的变体带。
-    pub(crate) fn into_said(self) -> String {
-        crate::common::contract::joined(self.message, self.raw)
-    }
-
-    /// 这次失败**不成应答**、只成别处的一句（同 `Said::into_note`：原话记一行日志）。
-    pub(crate) fn into_note(self) -> String {
-        crate::common::said::Said::from(self).into_note()
-    }
-
-    /// 换成给人看的那一句（那条命令自己的「码 → 句」表，[`crate::wire::typed::of_fail_said`]）：原来那句进原话（已有原话 ⇒ 照旧）。
-    pub(crate) fn retold(mut self, said: String) -> Fail {
-        let was = std::mem::replace(&mut self.message, said);
-        if self.raw.is_none() && !was.trim().is_empty() {
-            self.raw = Some(was);
-        }
-        self
-    }
-
-    /// 这次失败投出去的那一份（两个面都经这里：帧面的应答 · CLI 面的信封）。`cmd` 是命令名，进详情的「命令」那一项。
-    pub(crate) fn settle(self, cmd: &str) -> crate::wire::detail::Failed {
+impl Settle for Said {
+    fn settle(self, cmd: &str) -> crate::wire::detail::Failed {
+        let code = self.code_or_fallback().to_string();
         crate::wire::detail::Failed::new(
             Some(cmd),
-            &self.code,
-            self.message,
+            &code,
+            self.said,
             self.raw.as_deref(),
             self.data,
         )
     }
 
-    /// 这次失败的应答帧（[`Fail::settle`] 那一份装进 `reply`）。
-    pub(crate) fn into_reply(self, id: String, cmd: &str) -> crate::wire::Frame {
+    fn into_reply(self, id: String, cmd: &str) -> crate::wire::Frame {
         crate::wire::Frame::failed(id, self.settle(cmd))
     }
 }
@@ -249,16 +176,14 @@ pub(crate) fn invoke(run: super::typed::Typed, hands: &Hands) -> Option<Prepared
 }
 
 /// typed 应答 → 应答 `data`（`serde_json::Value` 的对象按键排，与此前现拼的 `json!` 逐字节同形）。
-/// 错误那一形跟着调用方（[`Fail`] · 各处的 `(码, 那一句)`）。序列化不出（实际到不了：格都是普通值）⇒ `failed`，原话记日志。
-pub(crate) fn wire<T: serde::Serialize, E: From<(&'static str, String)>>(
-    t: &T,
-) -> Result<serde_json::Value, E> {
+/// 序列化不出（实际到不了：格都是普通值）⇒ `failed`，原话记日志。
+pub(crate) fn wire<T: serde::Serialize>(t: &T) -> Result<serde_json::Value, Said> {
     serde_json::to_value(t).map_err(|e| {
         tracing::warn!("reply does not serialize: {e}");
-        E::from((
+        Said::new(
             "failed",
             crate::common::contract::malformed("reply does not serialize"),
-        ))
+        )
     })
 }
 

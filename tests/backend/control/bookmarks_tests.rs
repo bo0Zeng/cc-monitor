@@ -30,7 +30,7 @@ fn edit(o: &crate::platform::fs::Own, op: BookmarkOp, dirs: &[&str]) -> Vec<Stri
     .dirs
 }
 
-fn read(o: &crate::platform::fs::Own) -> Result<Bookmarks, Fail> {
+fn read(o: &crate::platform::fs::Own) -> Result<Bookmarks, Said> {
     answer_read(o, &BookmarksReadReq::default())
 }
 
@@ -184,7 +184,10 @@ fn an_unreadable_file_is_said_and_never_overwritten() {
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     std::fs::write(&f, b"{ not json").unwrap();
     let o = own(&h);
-    assert_eq!(read(&o).unwrap_err().code, "bookmarks_unreadable");
+    assert_eq!(
+        read(&o).unwrap_err().code.as_deref(),
+        Some("bookmarks_unreadable")
+    );
     let e = answer_edit(
         &o,
         &BookmarksEditReq {
@@ -194,7 +197,7 @@ fn an_unreadable_file_is_said_and_never_overwritten() {
         },
     )
     .unwrap_err();
-    assert_eq!(e.code, "bookmarks_unreadable");
+    assert_eq!(e.code.as_deref(), Some("bookmarks_unreadable"));
     assert_eq!(std::fs::read(&f).unwrap(), b"{ not json", "读不懂 ⇒ 不覆盖");
 }
 
@@ -206,7 +209,10 @@ fn a_newer_file_is_said_and_never_overwritten() {
     let newer = br#"{"version":2,"dirs":["/a"]}"#;
     std::fs::write(&f, newer).unwrap();
     let o = own(&h);
-    assert_eq!(read(&o).unwrap_err().code, "bookmarks_unreadable");
+    assert_eq!(
+        read(&o).unwrap_err().code.as_deref(),
+        Some("bookmarks_unreadable")
+    );
     let e = answer_edit(
         &o,
         &BookmarksEditReq {
@@ -216,6 +222,6 @@ fn a_newer_file_is_said_and_never_overwritten() {
         },
     )
     .unwrap_err();
-    assert_eq!(e.code, "bookmarks_unreadable");
+    assert_eq!(e.code.as_deref(), Some("bookmarks_unreadable"));
     assert_eq!(std::fs::read(&f).unwrap(), newer, "比这一版新 ⇒ 不覆盖");
 }

@@ -3,9 +3,9 @@
 //!
 //! 不住命令表那一份族文件：同读的那一份（`files_face.rs`）的理由，族文件只放登记那几行。
 
+use crate::common::said::Said;
 use crate::control::files_commit::session_attachment as sa;
 use crate::platform::fs::Face;
-use crate::wire::spec::Fail;
 use crate::wire::typed::{self, codes, Codes, Command};
 use cmd_wire::batch::{BatchReply, Conflicts, FilesBatchStopReply, FilesBatchStopReq};
 use cmd_wire::files as wire;
@@ -18,7 +18,10 @@ fn ask<A: crate::control::files_write::Act, E: Codes>(
 ) -> Result<A::Reply, E> {
     crate::control::files_write::answer(req, face).map_err(|f| {
         typed::of_fail(
-            Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+            {
+                let code = f.code_or_fallback().to_string();
+                crate::wire::spec::fail(&code, f)
+            },
             fallback,
         )
     })
@@ -26,11 +29,9 @@ fn ask<A: crate::control::files_write::Act, E: Codes>(
 
 /// 资产域那扇门（`doors::LocalFiles`）问写的那几样：同一个本体，写句柄经分派那一层（`spec::with_face`）领一份、只活这一问；
 /// 失败只交码与那一句（不过这一条的码表：门不是帧面）。
-pub(crate) fn in_process<A: crate::control::files_write::Act>(
-    req: A,
-) -> Result<A::Reply, crate::common::door::Said> {
+pub(crate) fn in_process<A: crate::control::files_write::Act>(req: A) -> Result<A::Reply, Said> {
     crate::wire::spec::with_face(|face| crate::control::files_write::answer(req, face))
-        .map_err(|f| crate::common::door::said_of(f.code, &f.said))
+        .map_err(|f| crate::common::door::said_of(f.code_or_fallback(), &f.said))
 }
 
 codes! {
@@ -256,7 +257,10 @@ impl crate::wire::typed::Handle for FilesCopy {
             crate::control::files_batch::copy(face, req, &cx.tz).map_err(|e| match e {
                 CopyRefused::Clash(said, data) => FilesCopyErr::Exists(said, data),
                 CopyRefused::Fail(f) => typed::of_fail(
-                    Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+                    {
+                        let code = f.code_or_fallback().to_string();
+                        crate::wire::spec::fail(&code, f)
+                    },
                     FilesCopyErr::BadArgs,
                 ),
             })
@@ -483,7 +487,10 @@ impl crate::wire::typed::Handle for FilesCommitUpload {
             crate::control::files_commit::commit_upload_of(face, req, &cx.tz).map_err(|e| match e {
                 CommitRefused::Clash(said, data) => FilesCommitUploadErr::Exists(said, data),
                 CommitRefused::Fail(f) => typed::of_fail(
-                    Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+                    {
+                        let code = f.code_or_fallback().to_string();
+                        crate::wire::spec::fail(&code, f)
+                    },
                     FilesCommitUploadErr::BadArgs,
                 ),
             })
@@ -503,11 +510,9 @@ fn session_cwd(sid: &str) -> Option<std::path::PathBuf> {
 }
 
 /// 附件那一支的失败 ⇒ 这一条的码表。
-fn attach_fail<E: Codes>(f: sa::Fail, fallback: fn(String) -> E) -> E {
-    typed::of_fail(
-        Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
-        fallback,
-    )
+fn attach_fail<E: Codes>(f: Said, fallback: fn(String) -> E) -> E {
+    let code = f.code_or_fallback().to_string();
+    typed::of_fail(crate::wire::spec::fail(&code, f), fallback)
 }
 
 /// `session-attachment-check`：开传前那一问（纯读，不要写句柄）。找不到工作目录 ⇒ 逐份 `no_session`（不是错）。
@@ -597,10 +602,8 @@ impl crate::wire::typed::Handle for SessionAttachmentCommit {
         async move {
             let face = &needs;
             let cwd = session_cwd(req.sid.as_str()).ok_or_else(|| {
-                attach_fail(
-                    sa::refused(cmd_wire::attachment::AttachRefused::NoSession),
-                    SessionAttachmentCommitErr::BadArgs,
-                )
+                let f = sa::refused(cmd_wire::attachment::AttachRefused::NoSession);
+                attach_fail(f, SessionAttachmentCommitErr::BadArgs)
             })?;
             sa::commit_here(face, &cwd, req)
                 .map_err(|f| attach_fail(f, SessionAttachmentCommitErr::BadArgs))
@@ -645,10 +648,8 @@ impl crate::wire::typed::Handle for SessionAttachmentDrop {
         async move {
             let face = &needs;
             let cwd = session_cwd(req.sid.as_str()).ok_or_else(|| {
-                attach_fail(
-                    sa::refused(cmd_wire::attachment::AttachRefused::NoSession),
-                    SessionAttachmentDropErr::BadArgs,
-                )
+                let f = sa::refused(cmd_wire::attachment::AttachRefused::NoSession);
+                attach_fail(f, SessionAttachmentDropErr::BadArgs)
             })?;
             sa::drop_one(face, &cwd, &req.id)
                 .map(|removed| cmd_wire::attachment::SessionAttachmentDropReply { removed })

@@ -17,15 +17,12 @@ fn ask(
     root: &Path,
     args: serde_json::Value,
     launch: &dyn Fn(&Path, &str) -> crate::control::fork_launch::Launch,
-) -> Result<serde_json::Value, (String, String)> {
+) -> Result<serde_json::Value, crate::common::said::Said> {
     use crate::wire::typed::Codes;
-    let req: ForkReq = crate::wire::typed::take(&args).map_err(|f| (f.code, f.message))?;
+    let req: ForkReq = crate::wire::typed::take(&args)?;
     fork_at(&NewFile::issue(), root, &req, launch)
         .map(|r| serde_json::to_value(&r).unwrap())
-        .map_err(|e| {
-            let f = e.into_fail();
-            (f.code, f.message)
-        })
+        .map_err(Codes::into_said)
 }
 
 fn tmp(tag: &str) -> PathBuf {
@@ -273,17 +270,17 @@ fn the_frame_face_refuses_bad_args_before_touching_the_disk() {
         serde_json::json!({"sid": 1, "uuid": "u2"}),
         serde_json::json!({"sid": "srcsid", "uuid": "u2", "extra": 1}),
     ] {
-        let (code, _) = ask(&root, bad.clone(), &no_launch).expect_err("该拒");
-        assert_eq!(code, "bad_args", "{bad}");
+        let e = ask(&root, bad.clone(), &no_launch).expect_err("该拒");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad}");
     }
-    let (code, msg) = ask(
+    let e = ask(
         &root,
         serde_json::json!({"sid": "nosuch", "uuid": "u2"}),
         &no_launch,
     )
     .unwrap_err();
-    assert_eq!(code, "fork_failed");
-    assert!(msg.contains("nosuch"), "{msg}");
+    assert_eq!(e.code.as_deref(), Some("fork_failed"));
+    assert!(e.said.contains("nosuch"), "{}", e.said);
     assert_eq!(std::fs::read(&src).unwrap(), before, "拒了却动了源文件");
     std::fs::remove_dir_all(&root).ok();
 }
@@ -311,8 +308,9 @@ fn the_fork_ids_are_whitelisted_at_the_frame_face() {
             serde_json::json!({"sid": bad, "uuid": "u2"}),
             serde_json::json!({"sid": "srcsid", "uuid": bad}),
         ] {
-            let (code, msg) = ask(&root, args.clone(), &no_launch).expect_err("该拒");
-            assert_eq!(code, "bad_args", "{args} ⇒ {msg}");
+            let e = ask(&root, args.clone(), &no_launch).expect_err("该拒");
+            let msg = e.said;
+            assert_eq!(e.code.as_deref(), Some("bad_args"), "{args} ⇒ {msg}");
             assert!(
                 copy_core::copy_matches("rsRemoteBranch.forkId.badChar", &msg)
                     || copy_core::copy_matches("rsRemoteBranch.forkId.badLength", &msg),
@@ -334,8 +332,8 @@ fn the_fork_ids_are_whitelisted_at_the_frame_face() {
             serde_json::json!({"sid": "srcsid", "uuid": "a".repeat(64)}),
             &no_launch
         )
-        .map_err(|(c, _)| c)
         .err()
+        .and_then(|e| e.code)
         .as_deref()
             != Some("bad_args"),
         "64 位是上界本身，不该被形状判定拒"
