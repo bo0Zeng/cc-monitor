@@ -5,7 +5,8 @@
 //! 戳格式那几格（扫描命令 · 扫描回话 · 字节自报 · 序键）住契约 crate 的 `tests/common/deploy-contract/lib_tests.rs`。
 
 use super::*;
-// 判定随 `deploy` crate 搬走以后，表 A 那几样不再经被测模块的 `use` 带进来。
+// 判定的本体住 `deploy` crate：被测模块只引它要用的几样，其余判据直接从那里引。
+use deploy::{interpret_target_probe, promised, Facing, Fut, TargetBinary, LEFTOVER_STALE_SECS};
 use deploy_contract::{Arch, Os, LINES};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;

@@ -24,7 +24,7 @@ fn staged_sha(home: &Path, key: &str) -> String {
         .ok()
         .and_then(|p| std::fs::read(p).ok())
         .map(|b| content_sha256(&b))
-        .unwrap_or_else(|| "0".repeat(crate::control::files_write::SHA256_HEX_LEN))
+        .unwrap_or_else(|| "0".repeat(crate::files::SHA256_HEX_LEN))
 }
 
 /// 一个这次运行独占的临时目录（`tag` 区分用例，`pid` 区分并发跑的进程）。
@@ -494,7 +494,7 @@ fn send_commit(home: &Path, key: &str, chunks: u64, bytes: u64, root: &Path, rel
     // CAS 必给：交「此刻盘上那一份」的摘要（读不到就交一个全零串 —— 那一形由判据自己看码）。
     let expect = std::fs::read(root.join(rel))
         .map(|b| content_sha256(&b))
-        .unwrap_or_else(|_| "0".repeat(crate::control::files_write::SHA256_HEX_LEN));
+        .unwrap_or_else(|_| "0".repeat(crate::files::SHA256_HEX_LEN));
     answer_commit_text_at(
         &Face::issue(),
         home,

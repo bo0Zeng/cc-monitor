@@ -13,6 +13,8 @@ use crate::platform::fs::Face;
 use std::sync::atomic::AtomicUsize;
 
 const KEY: &str = "00112233445566778899aabbccddeeff";
+/// 开单（上传）的命令名：照 typed 那一条读，不另立常量。
+const UPLOAD: &str = <TransferUpload as typed::Command>::NAME;
 
 fn no_progress(_: u64, _: u64) {}
 
@@ -612,7 +614,7 @@ fn reply_of(f: &Frame) -> (bool, Option<String>, Option<serde_json::Value>) {
 fn batched(cmd: &str, a: &serde_json::Value) -> serde_json::Value {
     let mut o = a.as_object().cloned().unwrap_or_default();
     let mut item = serde_json::Map::new();
-    if cmd == TRANSFER_UPLOAD {
+    if cmd == UPLOAD {
         if let Some(l) = o.remove("local_path") {
             item.insert("local_path".into(), l);
         }
@@ -704,7 +706,7 @@ impl Desk {
 
     /// 一项的开单问法经答口问（同 [`batched`]）；上传那一条的落点上什么都没有。
     fn ask1(&self, cmd: &str, id: &str, a: &serde_json::Value) -> Frame {
-        if cmd == TRANSFER_UPLOAD {
+        if cmd == UPLOAD {
             return self.upload_frame(id, &batched(cmd, a), &Bare, &crate::Tz::default());
         }
         self.answer_wire(cmd, id, &batched(cmd, a), &crate::Tz::default())
@@ -719,7 +721,7 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     let tmp = Tmp::dir("desk");
     let local = tmp.file("g.bin", b"hello");
     let (ok, _, data) = reply_of(&desk.ask1(
-        TRANSFER_UPLOAD,
+        UPLOAD,
         "r1",
         &serde_json::json!({"machine": "h", "local_path": local}),
     ));
@@ -731,20 +733,17 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     assert!(tid.starts_with("xfer-"));
     // 同一份文件第二张票 ⇒ busy。
     let (ok, code, _) = reply_of(&desk.ask1(
-        TRANSFER_UPLOAD,
+        UPLOAD,
         "r2",
         &serde_json::json!({"machine": "h", "local_path": local}),
     ));
     assert_eq!((ok, code.as_deref()), (false, Some("busy")));
     // 缺字段 / 不是文件。
-    let (_, code, _) = reply_of(&desk.ask1(
-        TRANSFER_UPLOAD,
-        "r3",
-        &serde_json::json!({"local_path": local}),
-    ));
+    let (_, code, _) =
+        reply_of(&desk.ask1(UPLOAD, "r3", &serde_json::json!({"local_path": local})));
     assert_eq!(code.as_deref(), Some("bad_args"));
     let (_, code, _) = reply_of(&desk.ask1(
-        TRANSFER_UPLOAD,
+        UPLOAD,
         "r4",
         &serde_json::json!({"machine": "h", "local_path": tmp.0.to_string_lossy()}),
     ));
@@ -796,7 +795,7 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     // 摘了之后同一份文件又能开单。
     assert!(
         reply_of(&desk.ask1(
-            TRANSFER_UPLOAD,
+            UPLOAD,
             "r9",
             &serde_json::json!({"machine": "h", "local_path": local})
         ))
@@ -814,7 +813,7 @@ async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk()
     let local = tmp.file("h.bin", b"x");
     // 端口 1：本机上一定断开（拒绝连接，立刻失败，不等期限）。
     let (_, _, data) = reply_of(&desk.ask1(
-        TRANSFER_UPLOAD,
+        UPLOAD,
         "r1",
         &serde_json::json!({"machine": "dead", "local_path": local}),
     ));
@@ -896,7 +895,7 @@ fn dropping_the_desk_cancels_every_ticket() {
     let tmp = Tmp::dir("drop");
     let local = tmp.file("i.bin", b"x");
     reply_of(&desk.ask1(
-        TRANSFER_UPLOAD,
+        UPLOAD,
         "r1",
         &serde_json::json!({"machine": "h", "local_path": local}),
     ));
@@ -1181,7 +1180,7 @@ async fn the_two_openers_answer_with_the_same_bytes() {
     let local = tmp.file("g.bin", b"hello");
     let other = tmp.file("h.bin", b"world");
     let gone = tmp.path("gone.bin").to_string_lossy().into_owned();
-    let up = |id: &str, a: serde_json::Value| pinned(&desk.ask1(TRANSFER_UPLOAD, id, &a), &tmp);
+    let up = |id: &str, a: serde_json::Value| pinned(&desk.ask1(UPLOAD, id, &a), &tmp);
     let down = |id: &str, a: serde_json::Value| pinned(&desk.ask1(TRANSFER_DOWNLOAD, id, &a), &tmp);
     let mut got = vec![
         up(

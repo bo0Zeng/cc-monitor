@@ -38,6 +38,7 @@
 //!    本族只判「围栏在不在、拦不拦得住」。
 
 use super::*;
+use crate::files::SHA256_HEX_LEN;
 use crate::platform::fs::Face;
 
 /// 删会话那两问今天由门递进来（[`SessionPort`]）；下面各条照旧按两参写，
