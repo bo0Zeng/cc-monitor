@@ -971,7 +971,7 @@ pub(crate) async fn send_with(
     let local = async move {
         local(mine).map_err(|e| {
             use crate::wire::typed::Codes as _;
-            let f = e.into_fail();
+            let f = e.into_said();
             Said {
                 code: Some(f.code),
                 message: f.message,

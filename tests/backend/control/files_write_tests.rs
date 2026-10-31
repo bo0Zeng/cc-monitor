@@ -58,7 +58,7 @@ pub(crate) fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
 ) -> Answer {
     let req = crate::wire::typed::take::<R>(args).map_err(|f| WriteFail {
         code: "bad_args",
-        said: f.into_said(),
+        said: crate::common::contract::joined(f.said, f.raw),
         raw: None,
     })?;
     body(req).map(|r| serde_json::to_value(r).expect("回包总能序列化"))

@@ -543,7 +543,7 @@ fn find_wire(
     crate::faces::history_face::find_at(home, req, tz)
         .map(|r| serde_json::to_value(r).unwrap())
         .map_err(|e| {
-            let f = crate::wire::typed::Codes::into_fail(e);
+            let f = crate::wire::typed::Codes::into_said(e);
             (f.code, f.message)
         })
 }

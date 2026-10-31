@@ -177,19 +177,19 @@ pub(crate) fn state_at(skills: &Path) -> CcBusState {
     }
 }
 
-fn skills_root() -> Result<PathBuf, crate::wire::spec::Fail> {
+fn skills_root() -> Result<PathBuf, crate::common::said::Said> {
     crate::agents::asset_kind()
         .and_then(crate::agents::skills_root)
         .ok_or_else(|| {
-            crate::wire::spec::Fail::from((
+            crate::wire::spec::fail(
                 "refused",
                 copy_text("beCcBusInstall.root.unknown", &[]),
-            ))
+            )
         })
 }
 
 /// `cc-bus-install-state {}` → [`state_at`]。
-pub(crate) fn answer_state() -> Result<CcBusState, crate::wire::spec::Fail> {
+pub(crate) fn answer_state() -> Result<CcBusState, crate::common::said::Said> {
     Ok(state_at(&skills_root()?))
 }
 
@@ -197,7 +197,7 @@ pub(crate) fn answer_state() -> Result<CcBusState, crate::wire::spec::Fail> {
 pub(crate) fn answer_install(
     d: &dyn Door,
     record: Record,
-) -> Result<CcBusInstalled, crate::wire::spec::Fail> {
+) -> Result<CcBusInstalled, crate::common::said::Said> {
     install_at(d, &skills_root()?, record)
 }
 
@@ -206,14 +206,14 @@ pub(crate) fn install_at(
     d: &dyn Door,
     skills: &Path,
     record: Record,
-) -> Result<CcBusInstalled, crate::wire::spec::Fail> {
+) -> Result<CcBusInstalled, crate::common::said::Said> {
     let (top, dest) =
-        fenced_root(skills).map_err(|e| crate::wire::spec::Fail::from(("refused", e)))?;
+        fenced_root(skills).map_err(|e| crate::wire::spec::fail("refused", e))?;
     let root = top.display().to_string();
     let dest_s = dest.display().to_string();
     // 记：每个内嵌文件一行、摘要是内嵌那一份的；`created` = 这一趟是不是新建的（已记的取第一次的，写口管）。
     //   全都一致那一形也记：盘上被别处换成了这一版之后，记录里不能还留着旧摘要（卸时会误判「装完改过」）；记录没变写口不写盘。
-    let record_all = |created: bool| -> Result<Option<String>, crate::wire::spec::Fail> {
+    let record_all = |created: bool| -> Result<Option<String>, crate::common::said::Said> {
         let mut files = std::collections::BTreeMap::new();
         for (rel, bytes) in FILES {
             let text = std::str::from_utf8(bytes).map_err(|_| {

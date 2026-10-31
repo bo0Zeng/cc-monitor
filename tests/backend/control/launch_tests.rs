@@ -7,16 +7,16 @@
 use super::*;
 
 // 判据拿 JSON 写样例（多一格 · 缺一格 · 类型不对 ⇒ `bad_args`），再过值域那一道。
-fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, CmdErr> {
+fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, Said> {
     let req: LaunchReq = serde_json::from_value(args.clone()).map_err(|e| {
-        CmdErr::new(
+        crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed(&e.to_string()),
         )
     })?;
     super::parse_request(req)
 }
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 
 fn args(v: serde_json::Value) -> serde_json::Value {
     v
@@ -724,18 +724,18 @@ fn no_doc_claims_the_payload_really_landed() {
 /// 不起进程的 tmux 替身：按子命令分派结局，并记下每一次被调的 argv（顺序即调用顺序）。
 struct FakeTmux {
     calls: std::cell::RefCell<Vec<Vec<String>>>,
-    answer: Box<dyn Fn(&str) -> Result<Ran, CmdErr>>,
+    answer: Box<dyn Fn(&str) -> Result<Ran, Said>>,
 }
 
 impl FakeTmux {
-    fn new(answer: impl Fn(&str) -> Result<Ran, CmdErr> + 'static) -> Self {
+    fn new(answer: impl Fn(&str) -> Result<Ran, Said> + 'static) -> Self {
         FakeTmux {
             calls: Default::default(),
             answer: Box::new(answer),
         }
     }
     /// 一串命令（`a ; b`）按最后那一条认：送键那一发前面带着退出窗格模式那一条。
-    fn call(&self, a: &[&str]) -> Result<Ran, CmdErr> {
+    fn call(&self, a: &[&str]) -> Result<Ran, Said> {
         self.calls
             .borrow_mut()
             .push(a.iter().map(|s| s.to_string()).collect());
@@ -765,7 +765,7 @@ fn last_cmd<S: AsRef<str>>(a: &[S]) -> &[S] {
     }
 }
 
-fn said(ok: bool, s: &str) -> Result<Ran, CmdErr> {
+fn said(ok: bool, s: &str) -> Result<Ran, Said> {
     Ok(Ran {
         ok,
         stderr: s.to_string(),
@@ -859,7 +859,7 @@ fn w5vis_s5_the_secondary_note_speaks_only_when_the_step_failed() {
         let n = secondary_note(
             "cc-x",
             step,
-            &Err(Fail::new("no_tmux", "tmux 启动失败 · 未装".into()).with_raw(Some("w5vis"))),
+            &Err(crate::wire::spec::fail("no_tmux", "tmux 启动失败 · 未装").and_raw(Some("w5vis"))),
         )
         .unwrap_or_else(|| panic!("{step:?} 起不来 tmux 却一个字都没说"));
         // 日志那一行：那一句 ＋ 原话（`Said::logged`）都在。
@@ -1007,7 +1007,7 @@ fn a_created_session_is_declared_by_whoever_created_it() {
         }
         let req = parse_request(&args).expect("请求应当解析成功");
         let seen = std::cell::RefCell::new(Vec::<String>::new());
-        let fake = |a: &[&str]| -> Result<Ran, CmdErr> {
+        let fake = |a: &[&str]| -> Result<Ran, Said> {
             seen.borrow_mut().push(a.join(" "));
             Ok(Ran {
                 ok: true,
@@ -1115,7 +1115,7 @@ fn busy1_a_start_command_that_did_not_get_through_says_so() {
     };
     let slow_said = slow.to_string();
     let f = FakeTmux::new(move |verb| match verb {
-        "send-keys" => Err(CmdErr::from(
+        "send-keys" => Err(Said::from(
             crate::platform::child::ChildFail::TimedOut {
                 program: "tmux".into(),
                 after: crate::platform::child::Deadline::secs(5),
@@ -1154,7 +1154,7 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
     );
 
     let f = FakeTmux::new(|verb| match verb {
-        "send-keys" => Err(CmdErr::from(
+        "send-keys" => Err(Said::from(
             crate::platform::child::ChildFail::TimedOut {
                 program: "tmux".into(),
                 after: crate::platform::child::Deadline::secs(5),

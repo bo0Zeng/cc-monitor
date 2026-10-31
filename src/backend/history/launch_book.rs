@@ -75,7 +75,7 @@ pub(crate) fn last_accounts_at(home: Option<&Path>) -> Result<LastAccounts, Last
     let book = match home {
         Some(h) => read_book(h).map_err(|e| {
             crate::wire::typed::of_fail(
-                crate::wire::spec::Fail::from(("unreadable", e)),
+                crate::wire::spec::fail("unreadable", e),
                 LastAccountsErr::Unreadable,
             )
         })?,

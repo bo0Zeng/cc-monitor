@@ -104,7 +104,7 @@ pub(crate) fn kick(agent: &str, accts: &[String], own: &Own, now: u64) {
 }
 
 // 发不成的那一句（码 · 句子 · 原话）。
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 
 /// 交给 ccm 的那一行（不含程序本身）：`<适配层那几个参数> -- --account <号> --cwd <工作目录> --no-rotation`。
 pub(crate) fn line(
@@ -122,39 +122,39 @@ pub(crate) fn line(
 
 /// ★ 用 `account` 发那一句、等它说完；回额度账里那个号此刻的 5 小时窗重置时刻（没读到 ⇒ 空）。
 /// `agent` ＝ 路由名（`claude-code` 一类）。这一家没有开窗那一形 ⇒ 不发；号不在账号库里 ⇒ ccm 自己拒（照它的原话报）。
-pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>, Fail> {
+pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>, Said> {
     use copy_core::copy_text;
     let face = crate::agents::route_named(agent)
         .and_then(crate::agents::warm_of)
         .ok_or_else(|| {
-            Fail::new(
+            crate::wire::spec::fail(
                 "unsupported",
                 copy_text("beQuotaWarm.agent.unsupported", &[("agent", agent)]),
             )
         })?;
-    let no_home = || Fail::new("io_failed", copy_text("beQuotaLedger.read.noHome", &[]));
+    let no_home = || crate::wire::spec::fail("io_failed", copy_text("beQuotaLedger.read.noHome", &[]));
     let cwd = own
         .path(crate::common::own_dir::HIDDEN_WORK_DIR)
         .map_err(|_| no_home())?;
     own.ensure_dir(&cwd).map_err(|e| {
-        Fail::new(
+        crate::wire::spec::fail(
             "io_failed",
             copy_text(
                 "beQuotaProbe.workDir.failed",
                 &[("why", &copy_core::io_reason(e.kind()))],
             ),
         )
-        .with_raw(Some(&e.to_string()))
+        .and_raw(Some(&e.to_string()))
     })?;
     let me = std::env::current_exe().map_err(|e| {
-        Fail::new(
+        crate::wire::spec::fail(
             "failed",
             copy_text(
                 "beQuotaWarm.run.failed",
                 &[("why", &copy_core::io_reason(e.kind()))],
             ),
         )
-        .with_raw(Some(&e.to_string()))
+        .and_raw(Some(&e.to_string()))
     })?;
     let mut child = Child::new(me)
         .args(line(&face, account, cwd.as_path()))
@@ -169,7 +169,7 @@ pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>,
         child = child.env("PATH", p);
     }
     let out = child.run(SEND_WITHIN).map_err(|e| {
-        Fail::from(e.into_cmd_said("failed", |why| {
+        Said::from(e.into_cmd_said("failed", |why| {
             copy_text("beQuotaWarm.run.failed", &[("why", why)])
         }))
     })?;
@@ -187,8 +187,8 @@ pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>,
             .chars()
             .take(200)
             .collect();
-        return Err(Fail::new("failed", copy_text("beQuotaWarm.run.exit", &[]))
-            .with_raw(Some(&format!("exit {code}: {said}"))));
+        return Err(crate::wire::spec::fail("failed", copy_text("beQuotaWarm.run.exit", &[]))
+            .and_raw(Some(&format!("exit {code}: {said}"))));
     }
     let quota = super::ledger::Ledger::at(super::ledger::path_from(&|k| std::env::var(k).ok()));
     Ok(resets_5h(&quota, agent, account))
@@ -277,16 +277,16 @@ impl crate::wire::typed::Handle for QuotaWarm {
 }
 
 /// `quota-warm` 本体：15 分钟内发过 ⇒ 照那一次答、不发；否则发、等它说完。
-fn answer(req: &QuotaWarmReq, own: &Own, now: u64) -> Result<Warmed, Fail> {
+fn answer(req: &QuotaWarmReq, own: &Own, now: u64) -> Result<Warmed, Said> {
     let route = crate::agents::pick_route(Some(&req.agent)).map_err(|_| {
-        Fail::new(
+        crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed("`agent` must be an agent kind such as \"claude\""),
         )
     })?;
     let agent = route.id();
     if !crate::relay::segment_is_safe(&req.account) {
-        return Err(Fail::new(
+        return Err(crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed("`account` must be an account id"),
         ));

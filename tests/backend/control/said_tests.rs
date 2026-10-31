@@ -112,7 +112,7 @@ fn the_wire_layer_keeps_the_handlers_sentence() {
         ("bus-list", "failed"),
         ("accounts-add", "bad_args"),
     ] {
-        let f = crate::wire::spec::Fail::new(code, "处理器那句".to_string());
+        let f = crate::wire::spec::fail(code, "处理器那句".to_string());
         let out = f.settle(cmd);
         assert_eq!(out.message, "处理器那句", "{cmd}/{code}");
     }

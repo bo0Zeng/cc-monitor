@@ -11,7 +11,7 @@ use crate::platform::child::{Child, ChildFail, Deadline};
 use copy_core::copy_text;
 
 /// 命令级错误：码 ＋ 那一句 ＋ 下层原话。
-pub(crate) type CmdErr = crate::wire::spec::Fail;
+use crate::common::said::Said;
 
 /// 起 `tmux` 的唯一构造：`socket`：`None` = 让 tmux 按环境解析默认 socket（生产恒 `None`）；
 /// `Some(p)` = 显式 `-S <p>`（判据在隔离 socket 上起真 tmux）。
@@ -161,12 +161,12 @@ pub(crate) fn parse_clients(text: &str) -> Vec<(String, u64, u64)> {
 pub(crate) type Listed = (Vec<TermRow>, Vec<(String, u64, u64)>, bool);
 
 /// 这台 tmux 的名单（读两次 tmux：窗格 · 客户端）。没装 tmux / 没起 server ⇒ 空名单（不是错）。
-pub(crate) fn rows_on(on: On<'_>) -> Result<Listed, CmdErr> {
+pub(crate) fn rows_on(on: On<'_>) -> Result<Listed, Said> {
     Ok(rows_found_on(on)?.unwrap_or((vec![], vec![], true)))
 }
 
 /// 同 [`rows_on`]，但没装 tmux ⇒ `None`（与「装了、没起 server」分开）。
-pub(crate) fn rows_found_on(on: On<'_>) -> Result<Option<Listed>, CmdErr> {
+pub(crate) fn rows_found_on(on: On<'_>) -> Result<Option<Listed>, Said> {
     let out = match on.read(&[UTF8_CLIENT_FLAG, "list-panes", "-F", PANES_FMT, "-a"]) {
         Ok(o) => o,
         Err(ChildFail::NotFound(_)) => return Ok(None),
@@ -178,11 +178,11 @@ pub(crate) fn rows_found_on(on: On<'_>) -> Result<Option<Listed>, CmdErr> {
         if no_server {
             return Ok(Some((vec![], vec![], true)));
         }
-        return Err(CmdErr::new(
+        return Err(crate::wire::spec::fail(
             "unobservable",
             crate::common::contract::malformed("tmux list-panes failed"),
         )
-        .with_raw(Some(&String::from_utf8_lossy(&out.stderr))));
+        .and_raw(Some(&String::from_utf8_lossy(&out.stderr))));
     }
     let (rows, odd) = parse_rows(&String::from_utf8_lossy(&out.stdout));
     let clients = match on.read(&[UTF8_CLIENT_FLAG, "list-clients", "-F", CLIENTS_FMT]) {
@@ -202,7 +202,7 @@ pub(crate) fn tmux_here() -> Option<bool> {
 }
 
 /// 这台此刻的名单（生产：默认 socket）；没装 tmux ⇒ `None`。批量停 / 起按 sid 认窗格用它。
-pub(crate) fn rows_here() -> Result<Option<Vec<TermRow>>, CmdErr> {
+pub(crate) fn rows_here() -> Result<Option<Vec<TermRow>>, Said> {
     Ok(rows_found_on(On::default())?.map(|(rows, _, _)| rows))
 }
 
@@ -231,8 +231,8 @@ pub(crate) const NO_SERVER_NEEDLES: &[(&str, &str)] = &[
 
 /// 「tmux 这个程序起不来」那一档的唯一造句处。这一档要与「会话不存在」分得开，而沙箱门禁里摘不掉 tmux ⇒
 /// 判据只能打这一处：钉的是「这一档存在、且与另外两档不同码不同话」，不是在没装 tmux 的机器上实测过。超时那一档另说（`child_timed_out`）。
-pub(crate) fn tmux_unavailable(e: ChildFail) -> CmdErr {
-    CmdErr::from(e.into_cmd_said("no_tmux", |why| {
+pub(crate) fn tmux_unavailable(e: ChildFail) -> Said {
+    Said::from(e.into_cmd_said("no_tmux", |why| {
         copy_text("reason.tmux.startFailed", &[("why", why)])
     }))
 }

@@ -23,7 +23,7 @@ pub(crate) const SESSIONS_WHERE_CAP: Deadline = Deadline::secs(8);
 pub(crate) const BATCH_CAP: Deadline = Deadline::secs(8 + 6 * MAX_BATCH as u64);
 
 /// 命令级错误：`(code, message)`。
-pub(crate) type CmdErr = (&'static str, String);
+use crate::common::said::Said;
 
 /// 终端名单里的一个终端（认会话只要这五格；tmux 与托管同一形）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,19 +69,19 @@ impl Listed {
 /// 做事要用到的几样。生产那一份由入口拼（`stream/inbound/mod.rs`），判据给替身。
 pub(crate) struct Deps<'a> {
     /// 这台的终端名单（[`Listed`]）；`Err` = 列不成（码照列名单那一发的：过了期限是 `child_timed_out`）。
-    pub(crate) list: &'a dyn Fn() -> Result<Listed, CmdErr>,
+    pub(crate) list: &'a dyn Fn() -> Result<Listed, Said>,
     /// `(sid, 账号根)` ⇒ 记录在不在 ＋ 查的是哪棵树。
     pub(crate) record: &'a dyn Fn(&str, Option<&str>) -> Result<(bool, String), String>,
     /// 名单句柄 ⇒ 结束那个终端（同 `terminal-end`）。
     /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
-    pub(crate) end: &'a dyn Fn(&str) -> Result<(), crate::wire::spec::Fail>,
+    pub(crate) end: &'a dyn Fn(&str) -> Result<(), crate::common::said::Said>,
     /// 就地键入：`(会话名, sid, 那一行)` ⇒ 同 `launch send-into`（带 sid：落在挂着它的那个窗格，身份按它判）。
     /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
-    pub(crate) send_into: &'a dyn Fn(&str, &str, &str) -> Result<(), crate::wire::spec::Fail>,
+    pub(crate) send_into: &'a dyn Fn(&str, &str, &str) -> Result<(), crate::common::said::Said>,
     /// 交一行 ccm（argv，`argv[0]` 是 `ccm`）⇒ `(退出码, stdout, stderr)`。生产那一份起这台后端自己（它就是 ccm）。
-    pub(crate) run_ccm: &'a dyn Fn(&[String]) -> Result<(i32, String, String), CmdErr>,
+    pub(crate) run_ccm: &'a dyn Fn(&[String]) -> Result<(i32, String, String), Said>,
     /// 基名从哪来 ⇒ 这台铸的新会话名（`control::ccm::terminal_name_mint_with`：按这台此刻的会话名避让）。
-    pub(crate) mint: &'a dyn Fn(NameBase) -> Result<String, CmdErr>,
+    pub(crate) mint: &'a dyn Fn(NameBase) -> Result<String, Said>,
     /// 这台 ccm 会哪些（渲那一行用）。
     pub(crate) caps: &'a BTreeSet<String>,
     /// 本机那一形的事实（平台 · 目录在不在）。
@@ -93,7 +93,7 @@ pub(crate) struct Deps<'a> {
     /// `(号目录, 工作目录)` ⇒ 起之前把工作目录标成那个号信任过（那一家没有「信任」这件事 ⇒ 什么都不做；写不成只出声、照常起）。
     pub(crate) pretrust: &'a dyn Fn(&str, &str),
     /// `(会话名, 工作目录)` ⇒ 开一个空 shell 的 tmux 会话（不在才建）；回「这一趟建的」。失败带 tmux 原话。
-    pub(crate) open_shell: &'a dyn Fn(&str, Option<&str>) -> Result<bool, crate::wire::spec::Fail>,
+    pub(crate) open_shell: &'a dyn Fn(&str, Option<&str>) -> Result<bool, crate::common::said::Said>,
     /// 这台的偏好（启动命令 · 模型表 · 恢复时放在哪；一趟读一次 `prefs.json`）。
     pub(crate) prefs: &'a crate::common::machine_prefs::Prefs,
     /// sid ⇒ 那条会话上次起在哪种宿主里（启动台账；恢复照起时那一种读它）。
@@ -116,7 +116,7 @@ pub(crate) fn pretrust(account: &Settled, cwd: &str, deps: &Deps) {
 pub(crate) fn listed_on(
     on: crate::host::tmux::On<'_>,
     managed: Option<&crate::platform::fs::Own>,
-) -> Result<Listed, CmdErr> {
+) -> Result<Listed, Said> {
     let tmux = crate::host::tmux::rows_found_on(on)
         .map(|got| got.map(|(rows, _, _)| rows))
         .map_err(|f| {
@@ -153,7 +153,7 @@ fn entry_of(r: crate::host::TermRow) -> TermEntry {
 
 /// 这台的名单（一批一次）：列名单那一发过了期限（总期限用完了）⇒ 整条 `child_timed_out`（同别的装了总期限的命令）；
 /// 别的列不成 ⇒ 看不见（`unobservable`，不是零会话）。
-pub(crate) fn listed(deps: &Deps) -> Result<Listed, CmdErr> {
+pub(crate) fn listed(deps: &Deps) -> Result<Listed, Said> {
     (deps.list)().map_err(|(code, said)| {
         if code == crate::platform::child::TIMED_OUT {
             (code, said)
@@ -318,12 +318,12 @@ impl Answer {
     }
 }
 
-pub(crate) fn bad(why: &str) -> CmdErr {
+pub(crate) fn bad(why: &str) -> Said {
     ("bad_args", crate::common::contract::malformed(why))
 }
 
 /// 一串 sid（每个的形状解入参时已判，`cmd_wire::Sid`）：非空、不超上界、不重复。
-fn sids_of(arr: &[cmd_wire::Sid]) -> Result<Vec<String>, CmdErr> {
+fn sids_of(arr: &[cmd_wire::Sid]) -> Result<Vec<String>, Said> {
     let mut out: Vec<String> = Vec::new();
     for s in arr {
         if out.iter().any(|x| x == s.as_str()) {
@@ -386,7 +386,7 @@ pub(crate) struct SidsReq {
 /// `sessions-where`：每个 sid 此刻在这台哪个终端里（菜单就绪时问：这一项亮不亮、写哪个名字）。
 /// `terminals` 与 `names` 同序同数，每一项 `{host, terminal}`（词同容器那一格与 `terminals-list`，宿主照名单那一行）。
 /// 哪个终端都不带着它、这台又没装 tmux ⇒ `no_tmux`。
-pub(crate) fn where_(req: &SidsReq, deps: &Deps) -> Result<Whereabouts, CmdErr> {
+pub(crate) fn where_(req: &SidsReq, deps: &Deps) -> Result<Whereabouts, Said> {
     let sids = sids_of(&req.sids)?;
     let listed = listed(deps)?;
     let results = sids
@@ -438,7 +438,7 @@ fn stop_said(why: &str, a: &Answer) -> String {
 const NOT_ENDABLE: &str = "not_endable";
 
 /// `sessions-stop`：逐个停，与入参同序答；跳不跳过先照这台的会话脸判，每一项带这台写的称呼。
-pub(crate) fn stop(req: &SidsReq, deps: &Deps, faces: &StopFaces) -> Result<Batched, CmdErr> {
+pub(crate) fn stop(req: &SidsReq, deps: &Deps, faces: &StopFaces) -> Result<Batched, Said> {
     sids_of(&req.sids)?;
     let listed = listed(deps)?;
     let results: Vec<SessionOutcome> = req

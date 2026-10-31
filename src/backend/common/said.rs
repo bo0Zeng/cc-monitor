@@ -6,7 +6,7 @@
 pub(crate) use copy_core::said::Said;
 
 /// 这次失败**不成应答**、只成别处的一句（成功应答里的提示格 · 状态格 · 日志行里拼的一段，那一格没有详情位）：
-/// 那一句交出去，原话记一行日志（不上句子、也不丢）。成应答的那几形走 `Fail::from((码, Said))`。
+/// 那一句交出去，原话记一行日志（不上句子、也不丢）。成应答的那几形走 `crate::wire::spec::fail(码, Said)`。
 pub(crate) trait IntoNote {
     fn into_note(self) -> String;
 }

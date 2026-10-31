@@ -10,7 +10,9 @@
 //!   分派在 `dispatch` 那条硬臂，硬臂那一发经 [`answer`] 一处（入参按类型收 · 回包按类型写 · 失败照码表）。
 
 pub(crate) use super::spec::{needs, Needs};
-use super::spec::{CommandSpec, Fail, Outcome};
+use super::spec::{CommandSpec, Outcome};
+use crate::common::said::Said;
+use crate::wire::spec::Settle as _;
 use crate::wire::Request;
 
 /// 测试档才要的 TS 派生（生成类型 · 形状指纹）；发布二进制里它什么都不要求。
@@ -67,7 +69,7 @@ pub(crate) struct NoArgs {}
 
 /// 下层那一份失败（码 ＋ 那一句，`(&'static str, String)` 那一形）⇒ 这一条的错误枚举（同 [`of_fail`]）。
 pub(crate) fn of_pair<E: Codes>(fallback: fn(String) -> E) -> impl Fn((&'static str, String)) -> E {
-    move |(code, said)| of_fail(Fail::new(code, said), fallback)
+    move |(code, said)| of_fail(crate::wire::spec::fail(code, said), fallback)
 }
 
 /// 一条命令自己可能回的那几个码（[`codes!`] 声明）。
@@ -75,7 +77,7 @@ pub(crate) trait Codes: Sized {
     /// 全部码，声明次序。
     const ALL: &'static [&'static str];
     /// 投出去的那一份。
-    fn into_fail(self) -> Fail;
+    fn into_said(self) -> Said;
     /// 下层交上来的码 ⇒ 这一条的那个变体（只认不带 `data` 的那几种）；不在码表里 ⇒ 原样交回那一句（调用方定落哪一格）。
     fn of_code(code: &str, said: String) -> Result<Self, String>;
     /// 带 `data` 的那几个码（声明次序）。读它的只有形状指纹与协议参考（测试档）。
@@ -86,17 +88,17 @@ pub(crate) trait Codes: Sized {
 }
 
 /// 同 [`of_fail`]，交成闭包（`map_err` 那一格）。
-pub(crate) fn of_fail_with<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Fail) -> E {
+pub(crate) fn of_fail_with<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Said) -> E {
     move |f| of_fail(f, fallback)
 }
 
 /// 下层那一份失败（码 ＋ 那一句 ＋ 原话）⇒ 这一条的错误枚举：码在这一条的码表里 ⇒ 照交；不在 ⇒ 落 `fallback`
 /// （这一条自己的那一格失败：资产域那扇门把文件管理那一族的码原样交上来，外层命令的码表不必都有），那一句照旧，原码与原话进原话。
-/// 原话跟着那一句走（[`Fail::into_said`]），投出去时照原样拆回复制详情。
-pub(crate) fn of_fail<E: Codes>(f: Fail, fallback: fn(String) -> E) -> E {
-    let code = f.code.clone();
-    let (message, raw) = (f.message.clone(), f.raw.clone());
-    E::of_code(&code, f.into_said()).unwrap_or_else(|_| {
+/// 原话跟着那一句走（[`crate::common::contract::joined`]），投出去时照原样拆回复制详情。
+pub(crate) fn of_fail<E: Codes>(f: Said, fallback: fn(String) -> E) -> E {
+    let code = f.code_or_fallback().to_string();
+    let (message, raw) = (f.said.clone(), f.raw.clone());
+    E::of_code(&code, crate::common::contract::joined(f.said, f.raw)).unwrap_or_else(|_| {
         tracing::warn!("typed: 下层回了码表里没有的码 `{code}`，落这一条自己的那一格");
         let lower = match raw {
             Some(r) => format!("{code}: {message}\n{r}"),
@@ -109,14 +111,14 @@ pub(crate) fn of_fail<E: Codes>(f: Fail, fallback: fn(String) -> E) -> E {
 /// 同 [`of_fail`]，那一句照这一条自己的「码 → 句」表换（`said` 按落定的码给句子；`None` ⇒ 照下层那句）：下层那句进原话。
 /// 码表外的码先落 `fallback` 那一格再查表（同投出去时的码）。
 pub(crate) fn of_fail_said<E: Codes>(
-    f: Fail,
+    f: Said,
     fallback: fn(String) -> E,
     said: impl FnOnce(&str) -> Option<String>,
 ) -> E {
-    let code = if E::ALL.contains(&f.code.as_str()) {
-        f.code.clone()
+    let code = if E::ALL.contains(&f.code_or_fallback()) {
+        f.code_or_fallback().to_string()
     } else {
-        fallback(String::new()).into_fail().code
+        fallback(String::new()).into_said().code_or_fallback().to_string()
     };
     let f = match said(&code) {
         Some(s) => f.retold(s),
@@ -179,7 +181,7 @@ impl<N: Needs> Cx<N> {
     }
 }
 
-/// 声明一条命令的错误枚举：每个变体带那一句（同 [`Fail::new`]：契约错的诊断跟在句子后面 ⇒ 拆进原话），码就是右边那个字面量。
+/// 声明一条命令的错误枚举：每个变体带那一句（同 [`crate::wire::spec::fail`]：契约错的诊断跟在句子后面 ⇒ 拆进原话），码就是右边那个字面量。
 /// 按码定了 `data` 形状的那几个码写成 `Var = "code" => 类型`：变体多带那一份，投出去时进失败信封的 `data`。
 /// 码表恒以 `bad_args` 打头、枚举里恒有 `BadArgs`：入参解不出来是每条 typed 命令都会回的（[`take`]），
 /// 入参解得出、组合不对（「两个里恰好给一个」那一类）的由处理器自己回 `BadArgs`。
@@ -192,9 +194,9 @@ macro_rules! codes {
         $(#[$vm:meta])* $var:ident = $code:literal => $data:ty $(, $($rest:tt)*)?) => {
         $crate::wire::typed::codes!(@munch $attrs $vis $name
             [$($vars)* $(#[$vm])* $var(String, $data),]
-            [$($arms)* $name::$var(said, data) => $crate::wire::spec::Fail {
-                data: ::serde_json::to_value(&data).ok(),
-                ..$crate::wire::spec::Fail::new($code, said)
+            [$($arms)* $name::$var(said, data) => match ::serde_json::to_value(&data) {
+                Ok(d) => $crate::wire::spec::fail($code, said).with_data(d),
+                Err(_) => $crate::wire::spec::fail($code, said),
             },]
             [$($codes)* $code,]
             [$($of)*]
@@ -206,7 +208,7 @@ macro_rules! codes {
         $(#[$vm:meta])* $var:ident = $code:literal $(, $($rest:tt)*)?) => {
         $crate::wire::typed::codes!(@munch $attrs $vis $name
             [$($vars)* $(#[$vm])* $var(String),]
-            [$($arms)* $name::$var(said) => $crate::wire::spec::Fail::new($code, said),]
+            [$($arms)* $name::$var(said) => $crate::wire::spec::fail($code, said),]
             [$($codes)* $code,]
             [$($of)* ($code, $var)]
             [$($dat)*]
@@ -231,9 +233,9 @@ macro_rules! codes {
                     _ => return Err(said),
                 })
             }
-            fn into_fail(self) -> $crate::wire::spec::Fail {
+            fn into_said(self) -> $crate::common::said::Said {
                 match self {
-                    $name::BadArgs(said) => $crate::wire::spec::Fail::new("bad_args", said),
+                    $name::BadArgs(said) => $crate::wire::spec::fail("bad_args", said),
                     $($arms)*
                 }
             }
@@ -335,7 +337,7 @@ pub(crate) fn sanitize_de_error<R: serde::de::DeserializeOwned>(
 
 /// 入参 ⇒ `R`。缺 ＝ `{}`；多一个键 · 缺一个必填 · 类型不对 ⇒ `bad_args`。
 /// 契约错只回「哪一格 · 期望什么形」，不回调用方给的原值；原值只进本机日志。
-pub(crate) fn take<R: serde::de::DeserializeOwned>(args: &serde_json::Value) -> Result<R, Fail> {
+pub(crate) fn take<R: serde::de::DeserializeOwned>(args: &serde_json::Value) -> Result<R, Said> {
     let v = if args.is_null() {
         serde_json::Value::Object(Default::default())
     } else {
@@ -345,14 +347,14 @@ pub(crate) fn take<R: serde::de::DeserializeOwned>(args: &serde_json::Value) -> 
         let raw = e.to_string();
         tracing::warn!("contract: bad_args deserialization failed: {raw}");
         let detail = sanitize_de_error::<R>(&v, &raw);
-        Fail::new("bad_args", crate::common::contract::malformed(&detail))
+        crate::wire::spec::fail("bad_args", crate::common::contract::malformed(&detail))
     })
 }
 
 /// 本体那一份 ⇒ 结局：失败照码表投；零出参的回包（`()` ⇒ `null`）不带 `data`。
 fn settle<C: Command>(got: Result<C::Reply, C::Err>) -> Outcome {
-    let reply = got.map_err(Codes::into_fail)?;
-    let v = super::spec::wire::<_, Fail>(&reply)?;
+    let reply = got.map_err(Codes::into_said)?;
+    let v = super::spec::wire::<_, Said>(&reply)?;
     Ok((!v.is_null()).then_some(v))
 }
 

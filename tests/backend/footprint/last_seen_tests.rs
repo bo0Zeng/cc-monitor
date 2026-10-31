@@ -7,7 +7,7 @@ use serde_json::json;
 fn read_at(
     p: &std::path::Path,
     a: &serde_json::Value,
-) -> Result<serde_json::Value, crate::wire::spec::Fail> {
+) -> Result<serde_json::Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
     super::read_at(p, &req, &utc()).map(|x| serde_json::to_value(x).unwrap())
 }
@@ -83,7 +83,7 @@ fn write_at(
     own: &crate::platform::fs::Own,
     a: &serde_json::Value,
     now: u64,
-) -> Result<serde_json::Value, crate::wire::spec::Fail> {
+) -> Result<serde_json::Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
     super::write_at(own, &req, now).map(|x| serde_json::to_value(x).unwrap())
 }

@@ -30,7 +30,7 @@ pub(crate) struct Shape {
 fn decode_of<C: Command>(args: &serde_json::Value) -> Result<(), String> {
     super::take::<C::Req>(args)
         .map(drop)
-        .map_err(|f| format!("{}：{}", f.message, f.raw.unwrap_or_default()))
+        .map_err(|f| format!("{}：{}", f.said, f.raw.unwrap_or_default()))
 }
 
 pub(crate) use cmd_wire::fingerprint::{ty_of, Ty};
@@ -295,25 +295,24 @@ export interface RefusalData {{\n{data}}}\n"
 /// 那一句照旧，原码与原话进原话（复制详情）；码表里有的照交。
 #[test]
 fn a_code_the_outer_table_lacks_lands_on_that_commands_own_failure() {
-    use super::super::spec::Fail;
     super::codes! {
         enum OuterErr {
             IoFailed = "io_failed",
         }
     }
     let kept =
-        super::of_fail(Fail::new("io_failed", "读不了".into()), OuterErr::IoFailed).into_fail();
+        super::of_fail(crate::wire::spec::fail("io_failed", "读不了"), OuterErr::IoFailed).into_said();
     assert_eq!(
-        (kept.code.as_str(), kept.message.as_str()),
-        ("io_failed", "读不了")
+        (kept.code.as_deref(), kept.said.as_str()),
+        (Some("io_failed"), "读不了")
     );
     assert_eq!(kept.raw, None);
 
     let lower =
-        Fail::new("not_dir", "那不是一个目录".into()).with_raw(Some("ENOTDIR (os error 20)"));
-    let f = super::of_fail(lower, OuterErr::IoFailed).into_fail();
-    assert_eq!(f.code, "io_failed", "码表里没有的码不上信封");
-    assert_eq!(f.message, "那不是一个目录");
+        crate::wire::spec::fail("not_dir", "那不是一个目录").and_raw(Some("ENOTDIR (os error 20)"));
+    let f = super::of_fail(lower, OuterErr::IoFailed).into_said();
+    assert_eq!(f.code.as_deref(), Some("io_failed"), "码表里没有的码不上信封");
+    assert_eq!(f.said, "那不是一个目录");
     assert_eq!(
         f.raw.as_deref(),
         Some("not_dir: 那不是一个目录\nENOTDIR (os error 20)"),
@@ -333,10 +332,24 @@ fn take_bad_args_omits_sentinel_value_from_rejection() {
     let fail = super::take::<DummyReq>(&args).expect_err("should fail");
     let rejection = format!(
         "code={} message={} raw={:?}",
-        fail.code, fail.message, fail.raw
+        fail.code_or_fallback(), fail.said, fail.raw
     );
     assert!(
         !rejection.contains(sentinel),
         "拒绝体中泄露了哨兵串：{rejection}"
     );
+}
+
+/// 失败只一种值（`Said`）：经 `spec::fail` 带码，投出去那一下码缺 ⇒ 兜底码。
+#[test]
+fn a_failure_settles_with_its_code_or_the_fallback() {
+    use crate::common::said::Said;
+    use crate::wire::spec::Settle as _;
+    assert_eq!(
+        crate::wire::spec::fail("bad_args", "x".to_string())
+            .settle("cmd")
+            .code,
+        "bad_args"
+    );
+    assert_eq!(Said::from("y").settle("cmd").code, "failed");
 }

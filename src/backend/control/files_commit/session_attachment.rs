@@ -12,7 +12,6 @@ use crate::control::files_write::WriteFail;
 use layout::{DIR, GITIGNORE, GITIGNORE_BODY};
 
 /// 这一支的失败（同上传提交那一形）。
-pub type Fail = WriteFail;
 use crate::platform::fs::{Face, Ro};
 use cmd_wire::attachment::{
     AttachItem, AttachRefused, AttachVerdict, SessionAttachmentCommitReply,

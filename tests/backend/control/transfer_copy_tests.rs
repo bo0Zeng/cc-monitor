@@ -342,7 +342,7 @@ impl RigBackend {
         use crate::wire::typed::take;
         let face = crate::platform::fs::Face::issue();
         let w = |f: crate::control::files_write::WriteFail| (f.code.to_string(), f.said);
-        let t = |f: crate::wire::spec::Fail| (f.code, f.message);
+        let t = |f: crate::common::said::Said| (f.code, f.message);
         let v = match flag {
             "files-home" => {
                 take::<cwf::HomeReq>(args).map_err(t)?;

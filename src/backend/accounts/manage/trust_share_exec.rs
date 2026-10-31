@@ -15,7 +15,7 @@ use crate::agents::TrustCells;
 use crate::common::door::{self, Door, Refused};
 use std::collections::BTreeSet;
 
-type Refusal = crate::wire::spec::Fail;
+type Refusal = crate::common::said::Said;
 
 /// 预标那一下的结局。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

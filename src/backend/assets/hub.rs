@@ -118,7 +118,7 @@ fn machine_name(m: Option<&str>) -> String {
 /// 枢纽按自己这台的写法判会把别台的路径错拒（Windows 上的枢纽不认 `/home/…`）。
 fn scope_of(args: &Value) -> Result<(ExtLoc, ExtLoc), (String, String)> {
     let s = args.get("scope");
-    let own = |e: crate::wire::spec::Fail| (e.code, e.message);
+    let own = |e: crate::common::said::Said| (e.code, e.message);
     Ok((
         ExtLoc::shape_of(s.and_then(|s| s.get("from")), "scope.from").map_err(own)?,
         ExtLoc::shape_of(s.and_then(|s| s.get("to")), "scope.to").map_err(own)?,
@@ -157,7 +157,7 @@ fn refused_pair(kind: ExtKind) -> (String, String) {
 }
 
 fn ask_of(args: &Value) -> Result<Ask<'_>, (String, String)> {
-    let own = |e: crate::wire::spec::Fail| (e.code, e.message);
+    let own = |e: crate::common::said::Said| (e.code, e.message);
     let kind = super::ext::kind_from_arg(args).map_err(own)?;
     let name = str_arg(args, "name")?;
     // 自己发版的插件（planned-build）照 skill 那条路装：整个目录拷进用户级 skills 目录；别的插件只读。
@@ -690,7 +690,7 @@ fn said_of(m: String) -> (String, Option<String>) {
 }
 
 /// 目录那一份的读口（生产 = `asset_catalog::answer_current` 带上那份写句柄，由命令表那扇门递进来）；`Sync` ⇒ 跨 await 送得出去。
-pub(crate) type CurrentFn<'a> = &'a (dyn Fn(bool) -> Result<(super::asset_catalog::Catalog, Vec<String>), crate::wire::spec::Fail>
+pub(crate) type CurrentFn<'a> = &'a (dyn Fn(bool) -> Result<(super::asset_catalog::Catalog, Vec<String>), crate::common::said::Said>
          + Sync);
 
 /// 那张表现拼一次（`ext-list` 同一份目录 ＋ 可达表）；目录那一份由命令表那扇门递进来（同 `ext-list`）。

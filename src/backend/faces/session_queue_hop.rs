@@ -10,7 +10,7 @@
 use crate::dial::remote_ask::Said;
 use crate::dial::remote_ask::{Remote, Table};
 use crate::platform::child::Until;
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use crate::wire::typed::Command;
 use cmd_wire::queue::{SessionQueueCancelReq, SessionQueuePutReq, SessionQueueReadReq};
 use cmd_wire::Machine;
@@ -53,23 +53,23 @@ pub(crate) async fn route<C, H>(
     until: Option<Until>,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<C::Reply, Fail>
+) -> Result<C::Reply, Said>
 where
     C: Command,
     C::Req: Aimed + serde::Serialize,
     C::Reply: serde::de::DeserializeOwned + Send + 'static,
-    H: FnOnce() -> Result<C::Reply, Fail> + Send + 'static,
+    H: FnOnce() -> Result<C::Reply, Said> + Send + 'static,
 {
     let machine = req.machine();
     if machine.is_local() {
         return tokio::task::spawn_blocking(here).await.unwrap_or_else(|e| {
-            Err(Fail::from((
+            Err(crate::wire::spec::fail(
                 "io_failed",
                 crate::common::said::Said::with_raw(
                     copy_core::copy_text("reason.code.bug", &[]),
                     e,
                 ),
-            )))
+            ))
         });
     }
     crate::dial::remote_ask::hop::<C>(machine, &req.here(), ours, tz, until, table, remote).await

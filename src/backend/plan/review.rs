@@ -121,7 +121,7 @@ pub(crate) fn current(path: Option<&Path>) -> Review {
     }
 }
 
-type Err = crate::wire::spec::Fail;
+type Err = crate::common::said::Said;
 
 /// 读—改—写一次（跨进程锁里；读不懂的不覆盖）。
 fn edit_at(own: &Own, f: impl FnOnce(&mut Review)) -> Result<(), Err> {

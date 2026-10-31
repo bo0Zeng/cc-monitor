@@ -35,7 +35,7 @@ pub(crate) const TERMINALS_LIST_CAP: Deadline = Deadline::secs(13);
 pub(crate) const TERMINAL_PREVIEW_CAP: Deadline = Deadline::secs(18);
 
 /// 命令级错误：码 ＋ 那一句 ＋ 下层原话（抓屏那一处的 tmux stderr 进复制详情）。
-pub(crate) type CmdErr = crate::wire::spec::Fail;
+use crate::common::said::Said;
 
 /// `scrollback` 的上限（行）。超了截到这里，回话里 `capped: true`。
 pub(crate) const MAX_SCROLLBACK: u32 = 2000;
@@ -206,7 +206,7 @@ pub(crate) fn list_reply(
 }
 
 /// `terminals-list` 的本体。`client`（自报的前端）决定每一行的 `mine` 与 `can`。
-pub(crate) fn list_on(on: On<'_>, req: &TerminalsListReq) -> Result<TerminalsList, CmdErr> {
+pub(crate) fn list_on(on: On<'_>, req: &TerminalsListReq) -> Result<TerminalsList, Said> {
     let requester = gate::requester(req.client.as_deref())?;
     let (rows, clients, complete) = crate::host::list(on)?;
     Ok(list_reply(&rows, &clients, complete, requester.as_deref()))
@@ -220,7 +220,7 @@ pub(crate) enum Target {
 }
 
 /// 入参里那两格（typed 那三条已经按类型解好）⇒ 目标：恰给一个、非空、不超长。
-pub(crate) fn target(terminal: Option<&str>, sid: Option<&str>) -> Result<Target, CmdErr> {
+pub(crate) fn target(terminal: Option<&str>, sid: Option<&str>) -> Result<Target, Said> {
     let ok = |s: &str| !s.is_empty() && s.len() <= MAX_TARGET_BYTES;
     match (terminal, sid) {
         (Some(h), None) if ok(h) => Ok(Target::Handle(h.to_string())),
@@ -229,8 +229,8 @@ pub(crate) fn target(terminal: Option<&str>, sid: Option<&str>) -> Result<Target
     }
 }
 
-fn bad_target() -> CmdErr {
-    CmdErr::new(
+fn bad_target() -> Said {
+    crate::wire::spec::fail(
         "bad_target",
         crate::common::contract::malformed(
             "give exactly one of `terminal` (a handle from terminals-list) / `sid` (a non-empty string)",
@@ -278,10 +278,10 @@ pub(crate) struct View {
 
 /// 抓一次预览（`id` 是名单里那个终端的句柄：窗格的 `#{pane_id}` 或会话的 `#{session_id}`）：先抓屏（`capture_pane` 那一处）、再问尺寸与光标；
 /// 两下都只读。问尺寸那一下回空 ⇒ 会话在两下之间没了 ⇒ `no_such_session`。
-fn view_on(on: On<'_>, id: &str, color: bool, back: u32) -> Result<View, CmdErr> {
+fn view_on(on: On<'_>, id: &str, color: bool, back: u32) -> Result<View, Said> {
     let text = super::capture_pane::capture_with_on(on.socket, id, color, back)?;
     let gone = || {
-        CmdErr::new(
+        crate::wire::spec::fail(
             "no_such_session",
             crate::common::contract::malformed("the terminal went away while it was being read"),
         )
@@ -539,8 +539,8 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-fn not_known(why: &str) -> CmdErr {
-    CmdErr::new(
+fn not_known(why: &str) -> Said {
+    crate::wire::spec::fail(
         "not_known",
         crate::common::contract::malformed(&format!(
             "no such terminal in the list right now ({why})"
@@ -553,7 +553,7 @@ pub(crate) fn preview_on(
     on: On<'_>,
     req: &TerminalPreviewReq,
     tz: &crate::Tz,
-) -> Result<Preview, CmdErr> {
+) -> Result<Preview, Said> {
     let target = target(req.terminal.as_deref(), req.sid.as_deref())?;
     let color = req.color.unwrap_or(true);
     let asked = req.scrollback.unwrap_or(0);
@@ -574,7 +574,7 @@ pub(crate) fn preview_on(
         Found::One(r) => r,
         Found::NotKnown => return Err(not_known("not_known")),
         Found::Ambiguous => {
-            return Err(CmdErr::from((
+            return Err(Said::from((
                 "ambiguous",
                 crate::common::contract::malformed(
                     "more than one terminal carries this sid; point at one by `terminal`",
@@ -629,10 +629,10 @@ pub(crate) fn follow_target_on(
     on: On<'_>,
     terminal: Option<&str>,
     sid: Option<&str>,
-) -> Result<FollowTarget, CmdErr> {
+) -> Result<FollowTarget, Said> {
     let target = target(terminal, sid)?;
     let Some((rows, _, _)) = rows_found_on(on)? else {
-        return Err(CmdErr::from((
+        return Err(Said::from((
             "no_tmux",
             crate::common::contract::malformed("tmux is not installed on this machine"),
         )));
@@ -644,7 +644,7 @@ pub(crate) fn follow_target_on(
             pane: r.pane.clone(),
         }),
         Found::NotKnown => Err(not_known("not_known")),
-        Found::Ambiguous => Err(CmdErr::from((
+        Found::Ambiguous => Err(Said::from((
             "ambiguous",
             crate::common::contract::malformed(
                 "more than one terminal carries this sid; point at one by `terminal`",
@@ -654,7 +654,7 @@ pub(crate) fn follow_target_on(
 }
 
 /// 这一刻那一屏（带颜色、不往回要）：与 `terminal-preview` 同一份成品（实时预览每一帧就是它）。
-pub(crate) fn screen_view_on(on: On<'_>, target: &str, tz: &crate::Tz) -> Result<Preview, CmdErr> {
+pub(crate) fn screen_view_on(on: On<'_>, target: &str, tz: &crate::Tz) -> Result<Preview, Said> {
     let view = view_on(on, target, true, 0)?;
     let at = now_secs();
     Ok(preview_reply(
@@ -667,7 +667,7 @@ pub(crate) fn screen_view_on(on: On<'_>, target: &str, tz: &crate::Tz) -> Result
 }
 
 /// 这台 tmux 的版本串（`#{version}`，如 `3.6` · `3.2a` · `next-3.4`）。
-pub(crate) fn tmux_version_on(on: On<'_>) -> Result<String, CmdErr> {
+pub(crate) fn tmux_version_on(on: On<'_>) -> Result<String, Said> {
     let out = on
         .read(&[UTF8_CLIENT_FLAG, "display-message", "-p", "#{version}"])
         .map_err(super::capture_pane::tmux_unavailable)?;
@@ -675,7 +675,7 @@ pub(crate) fn tmux_version_on(on: On<'_>) -> Result<String, CmdErr> {
 }
 
 /// 这一刻那一屏的指纹（送之前比 `seen_screen` 用；同 [`preview_reply`] 的算法）。
-fn screen_now(on: On<'_>, id: &str) -> Result<String, CmdErr> {
+fn screen_now(on: On<'_>, id: &str) -> Result<String, Said> {
     let v = view_on(on, id, false, 0)?;
     let mut style = Style::default();
     let plain: Vec<String> = split_lines(&v.text)
@@ -693,8 +693,8 @@ pub(crate) enum Input {
 }
 
 /// 送什么：`text`（＋ `enter`，缺省 `true`）与 `key` 恰给一个；键只认键表里的名字。
-pub(crate) fn input_of(req: &TerminalInputReq) -> Result<Input, CmdErr> {
-    let bad = |m: &str| CmdErr::new("bad_args", crate::common::contract::malformed(m));
+pub(crate) fn input_of(req: &TerminalInputReq) -> Result<Input, Said> {
+    let bad = |m: &str| crate::wire::spec::fail("bad_args", crate::common::contract::malformed(m));
     match (&req.text, &req.key) {
         (Some(t), None) => {
             // 只带附件、没写字（输入队投递那一支）⇒ 正文可以是空的，粘的那几段照同一把尺子量。
@@ -743,7 +743,7 @@ fn refused(why: Refused) -> Sent {
 /// `terminal-input` 的本体（多出来的格在解入参那一步就回 `bad_args`）。
 /// 送不了的（不在名单 · 别的前端的 · 不归我们管 · 画面变了 · 已经没了）回 `result: "refused"` ＋ `why`，不是错；
 /// 形状不对才是错（`bad_target` · `bad_args`）。
-pub(crate) fn input_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, CmdErr> {
+pub(crate) fn input_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, Said> {
     send_on(on, req, Via::Typed)
 }
 
@@ -769,7 +769,7 @@ impl Via {
 /// 往一条会话送进一句（输入队投递那一下的送字，`faces/session_send.rs`）：同 [`input_on`]，过了身份门再多一道 —— 挂着它的那个窗格此刻前台是不是 agent
 /// （名单那一刻的 `#{pane_current_command}`，同名单里「程序已退出」那一处：[`agent_in_front`]）。
 /// 不是（agent 退了，或前台换成了别的程序）⇒ 一个字都不送，回「已经没了」（`ended`）：话是说给 agent 的，送进 shell 就成了一行命令。
-pub(crate) fn say_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, CmdErr> {
+pub(crate) fn say_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, Said> {
     send_on(on, req, Via::Queued)
 }
 
@@ -785,7 +785,7 @@ fn admit_on(
     target: &Target,
     client: Option<&str>,
     takes: impl Fn(&TermRow) -> bool,
-) -> Result<Result<(TermRow, gate::Admitted), Refused>, CmdErr> {
+) -> Result<Result<(TermRow, gate::Admitted), Refused>, Said> {
     let requester = gate::requester(client)?;
     let (rows, _, _) = rows_on(on)?;
     let row = match find(&rows, target) {
@@ -820,7 +820,7 @@ pub(crate) fn say_target_on(
     on: On<'_>,
     sid: &str,
     client: Option<&str>,
-) -> Result<Result<FollowTarget, Refused>, CmdErr> {
+) -> Result<Result<FollowTarget, Refused>, Said> {
     let t = target(None, Some(sid))?;
     Ok(
         admit_on(on, &t, client, agent_in_front)?.map(|(row, _)| FollowTarget {
@@ -832,7 +832,7 @@ pub(crate) fn say_target_on(
 }
 
 /// [`input_on`] · [`say_on`] 的本体：`via` 答走哪一道（[`Via`]）。
-fn send_on(on: On<'_>, req: &TerminalInputReq, via: Via) -> Result<Sent, CmdErr> {
+fn send_on(on: On<'_>, req: &TerminalInputReq, via: Via) -> Result<Sent, Said> {
     let target = target(req.terminal.as_deref(), req.sid.as_deref())?;
     let input = input_of(req)?;
     if let Some(row) = managed_row(&target)? {
@@ -878,12 +878,12 @@ fn send_on(on: On<'_>, req: &TerminalInputReq, via: Via) -> Result<Sent, CmdErr>
 // ── 托管那一形（抓屏 · 送字 · 接管 · 交还：经宿主口的托管那一臂，不起 tmux）────────────────
 
 /// 目标对上的托管那一行（只看托管名单：不在里面 ⇒ `None`，交 tmux 那一形）。几个托管终端挂着同一个 sid ⇒ `ambiguous`。
-fn managed_row(target: &Target) -> Result<Option<TermRow>, CmdErr> {
+fn managed_row(target: &Target) -> Result<Option<TermRow>, Said> {
     let (rows, _) = crate::host::managed::listed();
     match find(&rows, target) {
         Found::One(r) => Ok(Some(r.clone())),
         Found::NotKnown => Ok(None),
-        Found::Ambiguous => Err(CmdErr::from((
+        Found::Ambiguous => Err(Said::from((
             "ambiguous",
             crate::common::contract::malformed(
                 "more than one terminal carries this sid; point at one by `terminal`",
@@ -893,16 +893,16 @@ fn managed_row(target: &Target) -> Result<Option<TermRow>, CmdErr> {
 }
 
 /// 托管口那一下没成 ⇒ 「那个终端在读的时候没了」（原话进复制详情）。
-fn managed_gone(e: &std::io::Error) -> CmdErr {
-    CmdErr::new(
+fn managed_gone(e: &std::io::Error) -> Said {
+    crate::wire::spec::fail(
         "no_such_session",
         crate::common::contract::malformed("the hosted terminal did not answer"),
     )
-    .with_raw(Some(&e.to_string()))
+    .and_raw(Some(&e.to_string()))
 }
 
 /// 托管终端的一屏（托管口 `capture`）⇒ 与 tmux 那一形同一份 [`View`]（之后的成品 · 指纹同一套）。
-fn managed_view(id: &str, color: bool, back: u32) -> Result<View, CmdErr> {
+fn managed_view(id: &str, color: bool, back: u32) -> Result<View, Said> {
     view_of_captured(
         crate::host::managed::capture(id, back as usize, color).map_err(|e| managed_gone(&e))?,
     )
@@ -912,7 +912,7 @@ fn managed_view(id: &str, color: bool, back: u32) -> Result<View, CmdErr> {
 pub(crate) fn hosted_sock_of(
     terminal: Option<&str>,
     sid: Option<&str>,
-) -> Result<Option<std::path::PathBuf>, CmdErr> {
+) -> Result<Option<std::path::PathBuf>, Said> {
     let Some(row) = managed_row(&target(terminal, sid)?)? else {
         return Ok(None);
     };
@@ -922,7 +922,7 @@ pub(crate) fn hosted_sock_of(
 }
 
 /// 托管口 `sock` 那个终端这一刻那一屏（带颜色、不往回要）：与 [`screen_view_on`] 同一份成品。
-pub(crate) fn hosted_screen_at(sock: &std::path::Path, tz: &crate::Tz) -> Result<Preview, CmdErr> {
+pub(crate) fn hosted_screen_at(sock: &std::path::Path, tz: &crate::Tz) -> Result<Preview, Said> {
     let view = view_of_captured(
         crate::host::managed::client::capture(sock, 0, true).map_err(|e| managed_gone(&e))?,
     )?;
@@ -936,7 +936,7 @@ pub(crate) fn hosted_screen_at(sock: &std::path::Path, tz: &crate::Tz) -> Result
     ))
 }
 
-fn view_of_captured(got: crate::host::managed::client::Captured) -> Result<View, CmdErr> {
+fn view_of_captured(got: crate::host::managed::client::Captured) -> Result<View, Said> {
     let mut text = got.lines.join("\n");
     text.push('\n');
     Ok(View {
@@ -999,7 +999,7 @@ pub(crate) fn interrupt_managed_at(sock: &std::path::Path) -> Sent {
 /// `session-interrupt` 的本体：中断那条会话这一轮，不进输入队（队等这一轮完才送，中断正是打断这一轮）。
 /// 托管那一形过门（按行事实）、前台得是 agent，经托管口 `interrupt`；tmux 那一形同投递那一道送一个 Escape（各端都能打字，不涉持有）。
 /// 名单里没有它 ⇒ `not_known`；那一刻没了 ⇒ `ended`。
-pub(crate) fn interrupt_on(on: On<'_>, sid: &str, client: Option<&str>) -> Result<Sent, CmdErr> {
+pub(crate) fn interrupt_on(on: On<'_>, sid: &str, client: Option<&str>) -> Result<Sent, Said> {
     let t = target(None, Some(sid))?;
     if let Some(row) = managed_row(&t)? {
         let requester = gate::requester(client)?;
@@ -1081,7 +1081,7 @@ fn send_managed(
     req: &TerminalInputReq,
     input: &Input,
     via: Via,
-) -> Result<Sent, CmdErr> {
+) -> Result<Sent, Said> {
     let requester = gate::requester(req.client.as_deref())?;
     match gate::identity_of(row, requester.as_deref()) {
         Who::Pass => {}
@@ -1128,14 +1128,14 @@ pub(crate) fn hold_on(
     terminal: &str,
     client: Option<&str>,
     take: bool,
-) -> Result<TermInput, CmdErr> {
+) -> Result<TermInput, Said> {
     let requester = gate::requester(client)?;
     let t = target(Some(terminal), None)?;
     let Some(row) = managed_row(&t)? else {
         let (rows, _, _) = crate::host::list(On::default())?;
         return Err(match find(&rows, &t) {
             Found::NotKnown => not_known("not_known"),
-            _ => CmdErr::new(
+            _ => crate::wire::spec::fail(
                 "not_managed",
                 crate::common::contract::malformed(
                     "a tmux terminal takes input from every end; nothing to hold",
@@ -1144,7 +1144,7 @@ pub(crate) fn hold_on(
         });
     };
     if gate::identity_of(&row, requester.as_deref()) != Who::Pass {
-        return Err(CmdErr::new(
+        return Err(crate::wire::spec::fail(
             "not_yours",
             crate::common::contract::malformed("this terminal belongs to another front end"),
         ));

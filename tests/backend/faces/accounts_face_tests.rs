@@ -814,10 +814,10 @@ fn a_key_that_does_not_land_is_said_not_swallowed() {
     let t = machine("api-fail");
     ok(&t, "accounts-init", json!({ "name": "lab" }));
     let key_set = |_: &file_face::KeySetReq| -> Result<file_face::KeySet, Fail> {
-        Err(crate::wire::spec::Fail::from((
+        Err(crate::wire::spec::fail(
             "io_failed",
             "盘满了".to_string(),
-        )))
+        ))
     };
     let got = call_door(
         &t,

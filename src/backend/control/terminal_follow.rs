@@ -145,14 +145,14 @@ struct Inner {
     tickets: Tickets,
 }
 
-type CmdErr = crate::wire::spec::Fail;
+use crate::common::said::Said;
 
-fn bad_args(detail: &str) -> CmdErr {
-    CmdErr::new("bad_args", crate::common::contract::malformed(detail))
+fn bad_args(detail: &str) -> Said {
+    crate::wire::spec::fail("bad_args", crate::common::contract::malformed(detail))
 }
 
 /// 票非空、不超长（客户端给的不透明串）。
-fn ticket_ok(t: &str) -> Result<(), CmdErr> {
+fn ticket_ok(t: &str) -> Result<(), Said> {
     if t.is_empty() || t.len() > MAX_TICKET_BYTES {
         return Err(bad_args(
             "`ticket` must be a non-empty string (at most 128 bytes)",
@@ -214,7 +214,7 @@ pub(crate) struct FollowErr(&'static str, String);
 
 impl FollowErr {
     /// 下层那一份失败 ⇒ 这一条的码；码表外的落 `unobservable`（原码进原话）。
-    pub(crate) fn of(e: CmdErr) -> FollowErr {
+    pub(crate) fn of(e: Said) -> FollowErr {
         crate::wire::typed::of_fail_said(e, |said| FollowErr("unobservable", said), said)
     }
 }
@@ -232,13 +232,13 @@ pub(crate) fn said(code: &str) -> Option<String> {
 
 impl crate::wire::typed::Codes for FollowErr {
     const ALL: &'static [&'static str] = FOLLOW_CODES;
-    fn into_fail(self) -> crate::wire::spec::Fail {
+    fn into_said(self) -> crate::common::said::Said {
         let FollowErr(code, said) = self;
-        let f = crate::wire::spec::Fail::new(code, said);
+        let f = crate::wire::spec::fail(code, said);
         if code == "bad_args" {
             return f;
         }
-        crate::wire::spec::Fail {
+        crate::common::said::Said {
             data: serde_json::to_value(live_after_refusal(code)).ok(),
             ..f
         }
@@ -347,7 +347,7 @@ pub(crate) fn end_said(why: FollowEnd) -> String {
 }
 
 /// 抓那个终端的一屏失败了（或控制模式客户端退了之后再看一眼）⇒ 停因：终端 / tmux 都没了 ⇒ `gone`；还在 ⇒ `lost`。
-fn end_of<T>(seen: &Result<T, CmdErr>) -> FollowEnd {
+fn end_of<T>(seen: &Result<T, Said>) -> FollowEnd {
     match seen {
         Err(f) if matches!(f.code.as_str(), "no_such_session" | "no_server") => FollowEnd::Gone,
         _ => FollowEnd::Lost,
@@ -394,7 +394,7 @@ impl Desk {
     /// 订上：占位 · 认终端（问一次名单）· 看 tmux 版本 · 起控制模式客户端 · 登记 · 起订阅线程（它当场推第一帧）。
     /// 会起几个 tmux ⇒ 帧面放进阻塞线程池。这张票退过 ⇒ 什么都不起、回 `Ok`。
     /// `tz` ＝ 看的那一台的时区（订阅那一问带来的）：之后推的每一帧的抓屏时刻按它写。
-    pub(crate) fn follow(&self, req: &FollowReq, tz: &crate::Tz) -> Result<(), CmdErr> {
+    pub(crate) fn follow(&self, req: &FollowReq, tz: &crate::Tz) -> Result<(), Said> {
         let Some(seat) = self.reserve(&req.ticket)? else {
             return Ok(());
         };
@@ -406,7 +406,7 @@ impl Desk {
     }
 
     /// 占位：查重 · 查上限 · 占上（一把锁里）。这张票退过 ⇒ `None`（订阅那一问到得比退订晚，不必再起）。
-    fn reserve(&self, ticket: &str) -> Result<Option<Seat>, CmdErr> {
+    fn reserve(&self, ticket: &str) -> Result<Option<Seat>, Said> {
         ticket_ok(ticket)?;
         let ticket = ticket.to_string();
         let mut g = lock(&self.0.tickets);
@@ -418,7 +418,7 @@ impl Desk {
             return Err(bad_args("this `ticket` is already following"));
         }
         if g.slots.len() >= MAX_FOLLOWS_PER_CONNECTION {
-            return Err(CmdErr::from((
+            return Err(Said::from((
                 "too_many_follows",
                 copy_text(
                     "beTermFollow.register.tooMany",
@@ -441,7 +441,7 @@ impl Desk {
     }
 
     /// 凭占位起：认终端 · 看版本 · 起控制模式客户端，再把占位换成真的；占位已经被退订摘掉 ⇒ 收掉刚起的客户端、回 `Ok`。
-    fn take_seat(&self, seat: &Seat, req: &FollowReq, tz: &crate::Tz) -> Result<(), CmdErr> {
+    fn take_seat(&self, seat: &Seat, req: &FollowReq, tz: &crate::Tz) -> Result<(), Said> {
         let me = &self.0;
         if let Some(sock) = terminals::hosted_sock_of(req.terminal.as_deref(), req.sid.as_deref())?
         {
@@ -492,7 +492,7 @@ impl Desk {
         seat: &Seat,
         sock: &std::path::Path,
         tz: &crate::Tz,
-    ) -> Result<(), CmdErr> {
+    ) -> Result<(), Said> {
         let me = &self.0;
         let (conn, held, buf) = open_hosted(sock)?;
         let held = Arc::new(Mutex::new(held));
@@ -542,7 +542,7 @@ impl Desk {
         ticket: &str,
         sock: &std::path::Path,
         tz: &crate::Tz,
-    ) -> Result<(), CmdErr> {
+    ) -> Result<(), Said> {
         let Some(seat) = self.reserve(ticket)? else {
             return Ok(());
         };
@@ -558,24 +558,24 @@ impl Desk {
         self,
         req: FollowReq,
         tz: crate::Tz,
-    ) -> Result<(), CmdErr> {
+    ) -> Result<(), Said> {
         tokio::task::spawn_blocking(move || self.follow(&req, &tz))
             .await
             .unwrap_or_else(|e| {
-                Err(CmdErr::new(
+                Err(crate::wire::spec::fail(
                     "unobservable",
                     crate::common::contract::malformed("follow task did not finish"),
                 )
-                .with_raw(Some(&e.to_string())))
+                .and_raw(Some(&e.to_string())))
             })
     }
 
     /// 第 `seq` 帧画完了。不认的票（停了 / 没订过）⇒ `not_known`。
-    pub(crate) fn ack(&self, req: &AckReq) -> Result<(), CmdErr> {
+    pub(crate) fn ack(&self, req: &AckReq) -> Result<(), Said> {
         ticket_ok(&req.ticket)?;
         match lock(&self.0.tickets).slots.get(&req.ticket) {
             Some(Slot::On(f)) if f.tx.send(Ev::Ack(req.seq)).is_ok() => Ok(()),
-            _ => Err(CmdErr::from((
+            _ => Err(Said::from((
                 "not_known",
                 crate::common::contract::malformed(
                     "no such follow (it ended or was never started)",
@@ -585,7 +585,7 @@ impl Desk {
     }
 
     /// 退订（幂等）。正在起的 ⇒ 摘掉占位（起好的那一下自己收）；不在册的 ⇒ 记进「退过」（订阅那一问也许还在路上）。
-    pub(crate) fn unfollow(&self, req: &UnfollowReq) -> Result<(), CmdErr> {
+    pub(crate) fn unfollow(&self, req: &UnfollowReq) -> Result<(), Said> {
         ticket_ok(&req.ticket)?;
         let ticket = req.ticket.clone();
         let mut g = lock(&self.0.tickets);
@@ -627,11 +627,11 @@ fn open_client(
         crate::platform::child::Streaming,
         BufReader<std::process::ChildStdout>,
     ),
-    CmdErr,
+    Said,
 > {
     let v = terminals::tmux_version_on(On { socket })?;
     if !tmux_version_ok(&v) {
-        return Err(CmdErr::from((
+        return Err(Said::from((
             "tmux_too_old",
             copy_text(
                 "beTermFollow.tmux.tooOld",
@@ -664,7 +664,7 @@ fn open_client(
         .stream()
         .map_err(super::capture_pane::tmux_unavailable)?;
     let mut out = BufReader::new(proc.take_stdout().ok_or_else(|| {
-        CmdErr::new(
+        crate::wire::spec::fail(
             "unobservable",
             crate::common::contract::malformed("no output stream from the tmux control client"),
         )
@@ -692,7 +692,7 @@ pub(crate) struct Watch {
 
 impl Watch {
     /// 起：挂在那个终端所在的 tmux 会话上，只看它那个窗格的输出（没有窗格 ⇒ 整个会话）。
-    pub(crate) fn open(socket: Option<&str>, t: &terminals::FollowTarget) -> Result<Watch, CmdErr> {
+    pub(crate) fn open(socket: Option<&str>, t: &terminals::FollowTarget) -> Result<Watch, Said> {
         let (proc, out) = open_client(socket, &t.session)?;
         let (tx, rx) = smpsc::channel::<Ev>();
         let pending = Arc::new(AtomicBool::new(false));
@@ -828,12 +828,12 @@ fn detach(mut proc: crate::platform::child::Streaming, rx: &smpsc::Receiver<Ev>)
 }
 
 /// 托管口那一下没成 ⇒ 同 tmux 那一行不在（不另立码）。
-fn hosted_gone(e: &std::io::Error) -> CmdErr {
-    CmdErr::new(
+fn hosted_gone(e: &std::io::Error) -> Said {
+    crate::wire::spec::fail(
         "not_known",
         crate::common::contract::malformed("the hosted terminal did not answer"),
     )
-    .with_raw(Some(&e.to_string()))
+    .and_raw(Some(&e.to_string()))
 }
 
 /// 托管口报的持有者 ⇒ 名单那一格的读法（同 `host::managed::listed_at`）。
@@ -854,7 +854,7 @@ fn open_hosted(
         Option<crate::host::HeldBy>,
         Vec<u8>,
     ),
-    CmdErr,
+    Said,
 > {
     use crate::host::managed::client;
     use crate::host::managed::wire::{Ctl, Frame as HostFrame};
@@ -925,7 +925,7 @@ enum Source {
 
 impl Source {
     /// 这一刻那一屏 ＋ 输入那一格（tmux 恒 `shared`；托管 ＝ 读线记下的持有者，`mine` 按桌面那一问算）。
-    fn shot(&self, tz: &crate::Tz) -> Result<(cmd_wire::session::Preview, TermInput), CmdErr> {
+    fn shot(&self, tz: &crate::Tz) -> Result<(cmd_wire::session::Preview, TermInput), Said> {
         match self {
             Source::Tmux { target, socket } => terminals::screen_view_on(
                 On {

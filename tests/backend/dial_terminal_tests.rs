@@ -9,13 +9,13 @@ use super::*;
 use serde_json::json;
 
 // 下面除末尾 POSIX 那一节外都量 PowerShell 那一形（Windows 上开终端的那一行）：按方言显式取，不随跑测试的这台机器变。
-fn answer(args: &Value) -> Result<Value, CmdErr> {
+fn answer(args: &Value) -> Result<Value, Said> {
     answer_at(args, true, &found())
 }
 
 /// 判据照旧按「一台 ＋ 它的跳板」写：两样进这一端的机器表，线上只交那台的名字 ——
 /// 再经 typed 那一处收（同分派），按给定方言渲；回包写成线上那一份。
-fn answer_at(args: &Value, powershell: bool, ssh: &SshClient) -> Result<Value, CmdErr> {
+fn answer_at(args: &Value, powershell: bool, ssh: &SshClient) -> Result<Value, Said> {
     let mut wire = args.clone();
     let mut hosts = Vec::new();
     if let Some(m) = args.get("machine").filter(|m| m.is_object()) {
@@ -57,7 +57,7 @@ fn kh() -> String {
     config_arg(crate::dial::known_hosts::terminal_config().as_deref())
 }
 
-fn run(m: Value, cmd: &str) -> Result<String, CmdErr> {
+fn run(m: Value, cmd: &str) -> Result<String, Said> {
     answer(&json!({ "machine": m, "command": cmd }))
         .map(|v| v["line"].as_str().unwrap().to_string())
 }
@@ -547,7 +547,7 @@ fn login(
     aliases: &[&str],
     powershell: bool,
     ssh: &SshClient,
-) -> Result<String, CmdErr> {
+) -> Result<String, Said> {
     let mut wire = args.clone();
     let mut hosts = Vec::new();
     if let Some(m) = args.get("machine").filter(|m| m.is_object()) {
@@ -677,7 +677,7 @@ fn with_sid(
     powershell: bool,
     ssh: &SshClient,
     dir: Option<&std::path::Path>,
-) -> Result<String, CmdErr> {
+) -> Result<String, Said> {
     parts_with_sid(m, cmd, sid, powershell, ssh, dir).map(|r| format!("{}{}", r.prelude, r.line))
 }
 
@@ -688,7 +688,7 @@ fn parts_with_sid(
     powershell: bool,
     ssh: &SshClient,
     dir: Option<&std::path::Path>,
-) -> Result<SshCommand, CmdErr> {
+) -> Result<SshCommand, Said> {
     let mut wire = json!({ "machine": m["label"], "command": cmd });
     if let Some(s) = sid {
         wire["sid"] = json!(s);

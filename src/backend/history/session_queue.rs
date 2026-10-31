@@ -15,7 +15,7 @@
 use crate::common::own_state::{Doc, Read};
 use crate::common::said::Said;
 use crate::platform::fs::Own;
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use cmd_wire::queue::{
     QueueCancelled, QueueItem, QueueList, QueuePut, QueuePutOutcome, QueueState, SessionQueuePutReq,
 };
@@ -405,16 +405,16 @@ fn from_word(end: &str) -> String {
     }
 }
 
-fn io_failed(s: Said) -> Fail {
-    Fail::from(("io_failed", s))
+fn io_failed(s: Said) -> Said {
+    crate::wire::spec::fail("io_failed", s)
 }
 
-fn unreadable(s: Said) -> Fail {
-    Fail::from(("queue_unreadable", s))
+fn unreadable(s: Said) -> Said {
+    crate::wire::spec::fail("queue_unreadable", s)
 }
 
 /// 现读那一份（不在 ⇒ 空的一份；读不懂 · 版本比这一版新 ⇒ `queue_unreadable`）。
-fn load(own: &Own, sid: &str) -> Result<Book, Fail> {
+fn load(own: &Own, sid: &str) -> Result<Book, Said> {
     let file = own
         .at_home(DIR_REL)
         .and_then(|d| d.join(&format!("{sid}.json")))
@@ -451,8 +451,8 @@ pub(crate) fn made_dir(own: &Own) -> Result<crate::platform::fs::OwnPath, Said> 
 fn with_book<R>(
     own: &Own,
     sid: &str,
-    f: impl FnOnce(&mut Book) -> Result<R, Fail>,
-) -> Result<R, Fail> {
+    f: impl FnOnce(&mut Book) -> Result<R, Said>,
+) -> Result<R, Said> {
     let dir = made_dir(own).map_err(io_failed)?;
     let held = own.lock(&dir).map_err(|e| io_failed(Said::from(e)))?;
     let mut book = load(own, sid)?;
@@ -481,20 +481,20 @@ pub(crate) fn moved() {
 }
 
 /// `session-queue-put` 在主人这台的那一半：投一条。
-pub(crate) fn put(own: &Own, req: &SessionQueuePutReq, now_ms: i64) -> Result<QueuePut, Fail> {
+pub(crate) fn put(own: &Own, req: &SessionQueuePutReq, now_ms: i64) -> Result<QueuePut, Said> {
     with_book(own, req.sid.as_str(), |b| {
         b.put(req, now_ms).map_err(|r| {
             let code = match r {
                 Refused::Full => "queue_full",
                 Refused::TooLong => "text_too_long",
             };
-            Fail::new(code, copy_text("reason.code.overLimit", &[]))
+            crate::wire::spec::fail(code, copy_text("reason.code.overLimit", &[]))
         })
     })
 }
 
 /// `session-queue-cancel` 在主人这台的那一半：撤一条，回撤完的整份名单。
-pub(crate) fn cancel(own: &Own, sid: &str, id: &str, now_ms: i64) -> Result<QueueCancelled, Fail> {
+pub(crate) fn cancel(own: &Own, sid: &str, id: &str, now_ms: i64) -> Result<QueueCancelled, Said> {
     with_book(own, sid, |b| {
         let cancelled = b.cancel(id, now_ms);
         Ok(QueueCancelled {
@@ -505,7 +505,7 @@ pub(crate) fn cancel(own: &Own, sid: &str, id: &str, now_ms: i64) -> Result<Queu
 }
 
 /// `session-queue-read` 在主人这台的那一半：此刻的名单（先把等够了的排掉）。
-pub(crate) fn read(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Fail> {
+pub(crate) fn read(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Said> {
     with_book(own, sid, |b| {
         b.settle(now_ms);
         Ok(b.view())
@@ -523,7 +523,7 @@ pub(crate) fn waiting_said(own: &Own, sid: &str, now_ms: i64) -> Option<String> 
 }
 
 /// 投递口：送那一下等着的原因（[`Book::mark_half`]）；没变就不写。
-pub(crate) fn mark_half(own: &Own, sid: &str, id: &str, half: bool) -> Result<(), Fail> {
+pub(crate) fn mark_half(own: &Own, sid: &str, id: &str, half: bool) -> Result<(), Said> {
     with_book(own, sid, |b| {
         b.mark_half(id, half);
         Ok(())
@@ -574,7 +574,7 @@ pub(crate) fn host_line_ears(
 }
 
 /// 会话结束：没送的标未送达，回此刻的名单。
-pub(crate) fn end(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Fail> {
+pub(crate) fn end(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Said> {
     with_book(own, sid, |b| {
         b.end(now_ms);
         Ok(b.view())
@@ -582,7 +582,7 @@ pub(crate) fn end(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Fail> 
 }
 
 /// 投递口：排在最前、还没送的那一条 ＋ 还有收着的话最早那一条等够了是几点（到那一刻要再看一次）。
-pub(crate) fn due(own: &Own, sid: &str, now_ms: i64) -> Result<Due, Fail> {
+pub(crate) fn due(own: &Own, sid: &str, now_ms: i64) -> Result<Due, Said> {
     with_book(own, sid, |b| {
         b.settle(now_ms);
         Ok(Due {
@@ -600,7 +600,7 @@ pub(crate) struct Due {
 }
 
 /// 投递口：那一条送不进去 ⇒ 标未送达，`why` 是投递那一下说的为什么（不在排着 ⇒ `false`）。
-pub(crate) fn give_up(own: &Own, sid: &str, id: &str, why: Option<String>) -> Result<bool, Fail> {
+pub(crate) fn give_up(own: &Own, sid: &str, id: &str, why: Option<String>) -> Result<bool, Said> {
     with_book(own, sid, |b| Ok(b.give_up(id, why)))
 }
 
@@ -644,7 +644,7 @@ pub(crate) fn sids_touched<'a>(
 }
 
 /// 投递口：那一条送掉了（不在排着 ⇒ `false`）。
-pub(crate) fn delivered(own: &Own, sid: &str, id: &str) -> Result<bool, Fail> {
+pub(crate) fn delivered(own: &Own, sid: &str, id: &str) -> Result<bool, Said> {
     with_book(own, sid, |b| Ok(b.delivered(id)))
 }
 

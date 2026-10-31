@@ -119,24 +119,24 @@ impl Rig {
             .map(str::to_string)
             .collect();
         let note = |s: String| self.calls.lock().unwrap().push(s);
-        let list = || -> Result<Listed, crate::control::session_batch::CmdErr> {
+        let list = || -> Result<Listed, crate::common::said::Said> {
             Ok(Listed::of(Some(self.rows.clone()), vec![]))
         };
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
         };
-        let end = |terminal: &str| -> Result<(), crate::wire::spec::Fail> {
+        let end = |terminal: &str| -> Result<(), crate::common::said::Said> {
             note(format!("end {terminal}"));
             if self.end_err.is_none() && !matches!(self.shows, Shows::OverOld) {
                 self.book.lock().unwrap().on_frame(&removed(SID));
             }
             match self.end_err {
-                Some(c) => Err(crate::wire::spec::Fail::new(c, "said".to_string())),
+                Some(c) => Err(crate::wire::spec::fail(c, "said".to_string())),
                 None => Ok(()),
             }
         };
         let send_into =
-            |name: &str, sid: &str, line: &str| -> Result<(), crate::wire::spec::Fail> {
+            |name: &str, sid: &str, line: &str| -> Result<(), crate::common::said::Said> {
                 note(format!("send {name} {sid} {line}"));
                 if self.summarize {
                     let mut f = std::fs::OpenOptions::new()
@@ -147,7 +147,7 @@ impl Rig {
                 }
                 Ok(())
             };
-        let run_ccm = |argv: &[String]| -> Result<(i32, String, String), batch::CmdErr> {
+        let run_ccm = |argv: &[String]| -> Result<(i32, String, String), crate::common::said::Said> {
             note(format!("ccm {}", argv.join(" ")));
             if self.ccm_exit == 0 {
                 let mut b = self.book.lock().unwrap();
@@ -160,7 +160,7 @@ impl Rig {
             Ok((self.ccm_exit, String::new(), "boom".to_string()))
         };
         let mint =
-            |_: batch::NameBase| -> Result<String, batch::CmdErr> { Ok("minted".to_string()) };
+            |_: batch::NameBase| -> Result<String, crate::common::said::Said> { Ok("minted".to_string()) };
         let library = || {
             crate::observe::accounts_query::test_support::list(vec![
                 crate::observe::accounts_query::test_support::row_with("work", |a| {

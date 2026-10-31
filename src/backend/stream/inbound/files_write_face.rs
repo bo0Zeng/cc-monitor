@@ -5,7 +5,7 @@
 
 use crate::control::files_commit::session_attachment as sa;
 use crate::platform::fs::Face;
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use crate::wire::typed::{self, codes, Codes, Command};
 use cmd_wire::batch::{BatchReply, Conflicts, FilesBatchStopReply, FilesBatchStopReq};
 use cmd_wire::files as wire;
@@ -18,7 +18,7 @@ fn ask<A: crate::control::files_write::Act, E: Codes>(
 ) -> Result<A::Reply, E> {
     crate::control::files_write::answer(req, face).map_err(|f| {
         typed::of_fail(
-            Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+            crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref()),
             fallback,
         )
     })
@@ -256,7 +256,7 @@ impl crate::wire::typed::Handle for FilesCopy {
             crate::control::files_batch::copy(face, req, &cx.tz).map_err(|e| match e {
                 CopyRefused::Clash(said, data) => FilesCopyErr::Exists(said, data),
                 CopyRefused::Fail(f) => typed::of_fail(
-                    Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+                    crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref()),
                     FilesCopyErr::BadArgs,
                 ),
             })
@@ -483,7 +483,7 @@ impl crate::wire::typed::Handle for FilesCommitUpload {
             crate::control::files_commit::commit_upload_of(face, req, &cx.tz).map_err(|e| match e {
                 CommitRefused::Clash(said, data) => FilesCommitUploadErr::Exists(said, data),
                 CommitRefused::Fail(f) => typed::of_fail(
-                    Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+                    crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref()),
                     FilesCommitUploadErr::BadArgs,
                 ),
             })
@@ -505,7 +505,7 @@ fn session_cwd(sid: &str) -> Option<std::path::PathBuf> {
 /// 附件那一支的失败 ⇒ 这一条的码表。
 fn attach_fail<E: Codes>(f: sa::Fail, fallback: fn(String) -> E) -> E {
     typed::of_fail(
-        Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+        crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref()),
         fallback,
     )
 }

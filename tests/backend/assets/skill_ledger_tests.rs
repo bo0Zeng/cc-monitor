@@ -13,7 +13,7 @@ use super::*;
 use serde_json::json;
 
 /// 入参仍用 JSON 写：经 `typed::take` 解成入参类型（同帧面那一跳；形状不对 ⇒ `bad_args`），回包写成 JSON 比。
-fn record_at(own: &Own, root: Option<&Path>, a: &Value) -> Result<Value, crate::wire::spec::Fail> {
+fn record_at(own: &Own, root: Option<&Path>, a: &Value) -> Result<Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
     super::record_at(own, root, &req).map(|r| serde_json::to_value(r).unwrap())
 }
@@ -242,7 +242,7 @@ fn an_unreadable_or_other_version_ledger_is_never_overwritten() {
         .expect_err("读不懂的被当成空的覆盖了");
         assert_eq!(e.code, "ledger_unreadable");
         assert_eq!(std::fs::read(&file).unwrap(), body, "读不懂的那份被动了");
-        assert!(matches!(load_at(&file), Err(crate::wire::spec::Fail { code, .. }) if code == "ledger_unreadable"));
+        assert!(matches!(load_at(&file), Err(crate::common::said::Said { code, .. }) if code == "ledger_unreadable"));
     }
     std::fs::remove_file(&file).unwrap();
     assert_eq!(load_at(&file).unwrap(), Ledger::default(), "没有 ⇒ 空的");

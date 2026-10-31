@@ -94,7 +94,7 @@ impl Machine {
             label: name,
         }
     }
-    fn update(&self, incoming: Option<&Value>) -> Result<Value, crate::wire::spec::Fail> {
+    fn update(&self, incoming: Option<&Value>) -> Result<Value, crate::common::said::Said> {
         let inc = incoming.map(|c| {
             let c: cat::CatalogIn = serde_json::from_value(c.clone()).expect("载荷形状");
             cat::machines_of(c.machines).expect("载荷形状")

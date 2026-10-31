@@ -8,7 +8,7 @@
 
 use crate::control::launch_account::AccountAsk;
 use crate::control::session_open::{self as open, Item, Landed};
-use crate::control::terminals::CmdErr;
+use crate::common::said::Said;
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq};
 use crate::wire::typed::Files;
 
@@ -67,7 +67,7 @@ pub(crate) struct Say {
 }
 
 /// 生产那一份送一句：会话工作目录与哪一家从会话记录读（同恢复那一支）；读不出 ⇒ 每一份附件都算不在。
-pub(crate) fn here(say: &Say, files: Files) -> Result<Delivery, CmdErr> {
+pub(crate) fn here(say: &Say, files: Files) -> Result<Delivery, Said> {
     let home = crate::history::listing::agent_home();
     let waiting = |sid: &str| crate::history::live_table::now(&home).waiting(sid);
     let words = if say.attachments.is_empty() {
@@ -163,9 +163,9 @@ pub(crate) fn say_typed(
     say: &Say,
     words: &crate::agents::Typed,
     waiting: &dyn Fn(&str) -> bool,
-    send: &dyn Fn(&TerminalInputReq) -> Result<Sent, CmdErr>,
+    send: &dyn Fn(&TerminalInputReq) -> Result<Sent, Said>,
     resume: &dyn Fn(&Say) -> Option<Reopened>,
-) -> Result<Delivery, CmdErr> {
+) -> Result<Delivery, Said> {
     if waiting(&say.sid) {
         return Ok(Delivery::Waiting);
     }

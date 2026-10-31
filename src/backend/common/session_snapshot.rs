@@ -21,7 +21,7 @@ use std::sync::Mutex;
 use crate::common::tmux_utf8::tab_underflow;
 
 /// 命令级错误：`(code, message)`。与 [`crate::control::gate`] 同型。
-pub(crate) type CmdErr = (&'static str, String);
+use crate::common::said::Said;
 
 /// 快照里的一行：**只有名字与 `@ccm_sid`**（为什么不带 `session_id` 见模块头注）。
 ///
@@ -110,7 +110,7 @@ impl TakenNames {
 }
 
 /// 探回来一份的那个动作。测试用假的替掉，生产用 [`probe_tmux`]。
-pub(crate) type Prober = Box<dyn Fn() -> Result<Vec<SessionRow>, CmdErr> + Send + Sync>;
+pub(crate) type Prober = Box<dyn Fn() -> Result<Vec<SessionRow>, Said> + Send + Sync>;
 
 /// 那一张快照。
 pub(crate) struct SessionSnapshot {
@@ -128,7 +128,7 @@ impl SessionSnapshot {
     }
 
     /// 向快照发一次询问 ⇒ 快照更新一次。没有「只读」这条路：交出去的恒是刚探回来的那一份。改成「先看缓存、有就直接回」是本模块唯一会静默失效的改法。
-    pub(crate) fn query(&self) -> Result<Vec<SessionRow>, CmdErr> {
+    pub(crate) fn query(&self) -> Result<Vec<SessionRow>, Said> {
         let fresh = (self.probe)()?;
         // 存一份供 `publish` 的同居者读（并让「刚探到的」与「焐着的」始终是同一份）。
         if let Ok(mut g) = self.rows.lock() {
@@ -138,7 +138,7 @@ impl SessionSnapshot {
     }
 
     /// 铸名避让要的那份「已占用的名字」。**同样会触发一次更新**（它就是 `query` 的投影）。
-    pub(crate) fn taken_names(&self) -> Result<TakenNames, CmdErr> {
+    pub(crate) fn taken_names(&self) -> Result<TakenNames, Said> {
         let rows = self.query()?;
         let mut names: Vec<String> = rows.iter().map(|r| r.name.clone()).collect();
         names.dedup();
@@ -168,7 +168,7 @@ impl SessionSnapshot {
     /// 测试用：拿一个脚本化的探测器造一份快照。
     #[cfg(test)]
     pub(crate) fn with_prober(
-        probe: impl Fn() -> Result<Vec<SessionRow>, CmdErr> + Send + Sync + 'static,
+        probe: impl Fn() -> Result<Vec<SessionRow>, Said> + Send + Sync + 'static,
     ) -> Self {
         Self::new(Box::new(probe))
     }

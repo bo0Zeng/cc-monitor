@@ -10,15 +10,15 @@
 use crate::assets::aliases::profile::{self, Book};
 use crate::ccm_line::argv::{flag, Parsed};
 use crate::plan::needs;
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use cmd_wire::plan::PlanRead;
 use copy_core::copy_text;
 
-type Answer = Result<PlanAsk, Fail>;
+type Answer = Result<PlanAsk, Said>;
 
 /// 记下这台问图用的那条（生产 ＝ [`crate::plan::review::ask_at`]）。
-pub(crate) type Keep<'a> = &'a dyn Fn(&str) -> Result<(), Fail>;
+pub(crate) type Keep<'a> = &'a dyn Fn(&str) -> Result<(), Said>;
 
 /// `plan-ask` 的本体：`doc` 是这台手上的那一份计划；`book` 是这台的配置文件；`kept` 是记着的那条。
 pub(crate) fn ask_with(
@@ -31,12 +31,12 @@ pub(crate) fn ask_with(
 ) -> Answer {
     // 开口那句只跟 tmux（`session-open` 的 `prompt` 只随 `run: tmux`）：这台没有 ⇒ 不开框；探不出 ⇒ 照做，起的那一步再说。
     if tmux == Some(false) {
-        return Err(Fail::new(
+        return Err(crate::wire::spec::fail(
             crate::NO_TMUX,
             copy_text("bePlan.ask.noTmux", &[]),
         ));
     }
-    let no_cell = || Fail::new("no_such_cell", copy_text("bePlan.review.noSuchCell", &[]));
+    let no_cell = || crate::wire::spec::fail("no_such_cell", copy_text("bePlan.review.noSuchCell", &[]));
     let sl = doc
         .slices
         .iter()
@@ -52,7 +52,7 @@ pub(crate) fn ask_with(
     let (alias, said) = match req.alias.as_deref().map(str::trim) {
         Some(a) => {
             let said = lines_of(book, a).map_err(|why| {
-                Fail::new(
+                crate::wire::spec::fail(
                     "no_such_alias",
                     copy_text("bePlan.ask.noSuchAlias", &[("alias", a), ("why", &why)]),
                 )
@@ -136,7 +136,7 @@ fn ask_here(
         Some(d) => d,
         None => super::plan_face::read_fresh(&req.workspace, tz)?,
     };
-    let store = crate::assets::aliases::load(files).map_err(|m| Fail::new("refused", m))?;
+    let store = crate::assets::aliases::load(files).map_err(|m| crate::wire::spec::fail("refused", m))?;
     let review = crate::plan::review::current(crate::plan::review::review_path().as_deref());
     let keep = |a: &str| crate::plan::review::ask_at(own, a);
     ask_with(

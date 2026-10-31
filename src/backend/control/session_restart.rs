@@ -432,15 +432,15 @@ pub(crate) struct RestartErr(pub(crate) Fault);
 
 impl crate::wire::typed::Codes for RestartErr {
     const ALL: &'static [&'static str] = RESTART_CODES;
-    fn into_fail(self) -> crate::wire::spec::Fail {
+    fn into_said(self) -> crate::common::said::Said {
         let (code, message, data) = self.0;
         debug_assert!(
             RESTART_CODES.contains(&code.as_str()) || code == SHUTTING_DOWN,
             "session-restart 回了码表里没有的码 `{code}`"
         );
-        crate::wire::spec::Fail {
+        crate::common::said::Said {
             data,
-            ..crate::wire::spec::Fail::new(&code, message)
+            ..crate::wire::spec::fail(&code, message)
         }
     }
     const DATA: &'static [&'static str] = &[

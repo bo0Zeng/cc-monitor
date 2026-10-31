@@ -30,7 +30,7 @@ use crate::assets::asset_catalog::{
     AssetsCatalogMergeReq, CatalogIn, CatalogMachine, CatalogReply,
 };
 use crate::common::said::IntoNote as _;
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 
@@ -50,7 +50,7 @@ pub const PUSH_FLAG: &str = "--assets-catalog-merge";
 
 /// 本机写口（`asset_catalog::answer_merge`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（`Own` 由分派那一层递）。
 pub type Fold =
-    std::sync::Arc<dyn Fn(AssetsCatalogMergeReq) -> Result<CatalogReply, Fail> + Send + Sync>;
+    std::sync::Arc<dyn Fn(AssetsCatalogMergeReq) -> Result<CatalogReply, Said> + Send + Sync>;
 
 /// `assets-sync` 的入参与回包住 cmd-wire（壳连上一台时照同一份交、照同一份收）。
 pub(crate) use cmd_wire::assets::{AssetsSyncReq, AssetsSyncRow, AssetsSynced};
@@ -138,7 +138,7 @@ pub fn push_plan(
 }
 
 /// 写口回的失败（或对面那一份解不成并的入参）⇒ 那一趟的那一句。
-fn fold_failed(f: Fail) -> String {
+fn fold_failed(f: Said) -> String {
     let c = f.code.clone();
     copy_text(
         "beAssetSync.foldBlocking.failed",

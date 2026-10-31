@@ -8,7 +8,7 @@ fn answer_uninstall_preview(
     d: &dyn Door,
     env: &Env,
     a: &Value,
-) -> Result<Value, crate::wire::spec::Fail> {
+) -> Result<Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
     super::answer_uninstall_preview(d, env, &req).map(|r| serde_json::to_value(r).unwrap())
 }
@@ -18,7 +18,7 @@ fn answer_uninstall_apply(
     env: &Env,
     record: Record,
     a: &Value,
-) -> Result<Value, crate::wire::spec::Fail> {
+) -> Result<Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
     super::answer_uninstall_apply(d, env, record, &req).map(|r| serde_json::to_value(r).unwrap())
 }
@@ -35,8 +35,8 @@ use std::sync::{Arc, Mutex};
 /// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
 fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
     args: &Value,
-    f: impl FnOnce(&R) -> Result<T, crate::wire::spec::Fail>,
-) -> Result<Value, crate::wire::spec::Fail> {
+    f: impl FnOnce(&R) -> Result<T, crate::common::said::Said>,
+) -> Result<Value, crate::common::said::Said> {
     let req = crate::wire::typed::take::<R>(args)?;
     f(&req).map(|t| serde_json::to_value(t).unwrap())
 }
@@ -475,10 +475,10 @@ impl M {
                 super::super::cc_bus_install::install_at(&self.door(), &skills, &record)
                     .map(|t| serde_json::to_value(t).unwrap())
             }
-            other => Err(crate::wire::spec::Fail::from((
+            other => Err(crate::wire::spec::fail(
                 "unknown_command",
                 other.to_string(),
-            ))),
+            )),
         };
         r.map_err(|f| (f.code, f.message))
     }
@@ -1221,7 +1221,7 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     let mut ua = u.clone();
     ua["token"] = card["token"].clone();
     std::fs::write(dir.join("SKILL.md"), "edited\n").unwrap();
-    let crate::wire::spec::Fail { code, .. } =
+    let crate::common::said::Said { code, .. } =
         answer_uninstall_apply(&m.door(), &m.env, &record, &ua).expect_err("变了还删了");
     assert_eq!(code, "stale");
     assert!(dir.join("SKILL.md").exists());
@@ -1271,7 +1271,7 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
         "MCP 那份原文没抄进备份"
     );
     // 这台没建账号库：用户级 MCP 只读，卸也拒。
-    let crate::wire::spec::Fail { code, .. } = answer_uninstall_preview(
+    let crate::common::said::Said { code, .. } = answer_uninstall_preview(
         &m.door(),
         &m.env,
         &json!({ "kind": "mcp", "name": "x", "at": { "level": "user" } }),
@@ -1673,7 +1673,7 @@ fn a_plugin_cell_says_on_off_or_project_and_offers_no_install() {
         ledger: None,
     };
     let door = HomeDoor(d.clone());
-    let crate::wire::spec::Fail { code, message, .. } = answer_uninstall_preview(
+    let crate::common::said::Said { code, message, .. } = answer_uninstall_preview(
         &door,
         &env,
         &json!({ "kind": "plugin", "name": "github", "at": { "level": "user" } }),

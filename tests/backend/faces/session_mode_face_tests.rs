@@ -32,14 +32,14 @@ impl Fake {
 }
 
 impl ModeIo for Fake {
-    fn open(&mut self) -> Result<Option<crate::control::terminals::Refused>, CmdErr> {
+    fn open(&mut self) -> Result<Option<crate::control::terminals::Refused>, Said> {
         self.opened = true;
         Ok(self.gone)
     }
-    fn read(&mut self) -> Result<Option<&'static str>, CmdErr> {
+    fn read(&mut self) -> Result<Option<&'static str>, Said> {
         Ok((!self.blind).then(|| self.order[self.at]))
     }
-    fn press(&mut self) -> Result<Sent, CmdErr> {
+    fn press(&mut self) -> Result<Sent, Said> {
         self.presses += 1;
         if self.sent == SentResult::Delivered && !self.stuck {
             self.at = (self.at + 1) % self.order.len();

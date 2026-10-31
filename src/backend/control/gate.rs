@@ -20,7 +20,7 @@ use copy_core::copy_text;
 const PROBE_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
 /// 命令级错误：`(code, message)`。与 [`super::launch`] 同型。
-pub(crate) type CmdErr = (&'static str, String);
+use crate::common::said::Said;
 
 // UTF-8 客户端旗与段数下溢的口径住 `crate::common::tmux_utf8` 头注，这里只记本调用点的两句：
 // ① 本机 argv 直传 ⇒ 用旗，而且必须排在子命令之前。
@@ -73,7 +73,7 @@ const PROBE_FMT_FIELDS: usize = 4;
 ///
 /// `target` 不限于会话名：pane id（`%N`）也会被归到它所属的会话上，[`super::identity_tag`] 就拿 `TMUX_PANE` 当 target 调它。
 /// 空串 target 会被 tmux 静默解析成「某个会话」，调用方必须自己挡（`identity_tag::pane_is_safe`）。
-pub(crate) fn probe(target: &str) -> Result<Option<Probed>, CmdErr> {
+pub(crate) fn probe(target: &str) -> Result<Option<Probed>, Said> {
     probe_with(tmux_on(None), target)
 }
 
@@ -151,7 +151,7 @@ pub(crate) fn carrier<'a>(panes: &'a [PaneTag], sid: &str) -> Option<&'a PaneTag
 
 /// [`probe`] 的本体，`tmux` 由调用方造：[`super::identity_tag`] 经它自己那一个口递进来
 /// （测试构建里那个口是注入的假 tmux，`INVARIANTS §48.3`）。
-pub(crate) fn probe_with(tmux: Child, target: &str) -> Result<Option<Probed>, CmdErr> {
+pub(crate) fn probe_with(tmux: Child, target: &str) -> Result<Option<Probed>, Said> {
     let out = tmux
         // `-u` 必须在子命令之前（`display-message -u -p` 是 rc=1 的响错）。
         .args([
@@ -210,11 +210,11 @@ pub(crate) fn probe_with(tmux: Child, target: &str) -> Result<Option<Probed>, Cm
 }
 
 /// 请求里自报的前端（入参的 `client`，typed 命令已按类型解好）：没给 ⇒ `None`；给了就得是一个合形状的名字（`gate_rules::client_name_ok`）。
-pub(crate) fn requester(client: Option<&str>) -> Result<Option<String>, CmdErr> {
+pub(crate) fn requester(client: Option<&str>) -> Result<Option<String>, Said> {
     match client {
         None => Ok(None),
         Some(c) if crate::control::gate_rules::client_name_ok(c) => Ok(Some(c.to_string())),
-        Some(c) => Err((
+        Some(c) => Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`client` must be 1-32 chars of [a-z0-9-]: {c:?}"
@@ -300,11 +300,11 @@ pub(crate) fn admit(
     target: &str,
     sid: Option<&str>,
     requester: Option<&str>,
-) -> Result<Admitted, CmdErr> {
+) -> Result<Admitted, Said> {
     let said = match admit_with(&|| tmux_on(None), name, target, sid, requester)? {
         Ok(a) => return Ok(a),
         Err(Barred::Gone) => {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "no_such_session",
                 copy_text("beGate.admit.noSession", &[("name", name)]),
             ))
@@ -315,7 +315,7 @@ pub(crate) fn admit(
         }
         Err(Barred::Not(_)) => copy_text("beGate.admit.notOurs", &[("name", name)]),
     };
-    Err(("wrong_owner", said))
+    Err(crate::common::said::Said::new("wrong_owner", said))
 }
 
 /// [`admit`] 的本体，`tmux` 由调用方造（终端送字那一路问它自己那台 tmux）：探 → 按 `sid` 找窗格 → 判身份 → 令牌。
@@ -326,7 +326,7 @@ pub(crate) fn admit_with(
     target: &str,
     sid: Option<&str>,
     requester: Option<&str>,
-) -> Result<Result<Admitted, Barred>, CmdErr> {
+) -> Result<Result<Admitted, Barred>, Said> {
     let Some(p) = probe_with(tmux(), target)? else {
         return Ok(Err(Barred::Gone));
     };
@@ -359,9 +359,9 @@ pub(crate) fn admit_destructive(
     target: &str,
     sid: Option<&str>,
     requester: Option<&str>,
-) -> Result<Doomed, CmdErr> {
+) -> Result<Doomed, Said> {
     let Some(p) = probe(target)? else {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "no_such_session",
             copy_text("beGate.admitDestructive.noSession", &[("name", name)]),
         ));
@@ -376,7 +376,7 @@ pub(crate) fn admit_destructive(
                 .map(|t| t.pane.clone())
                 .collect();
             if carrying.is_empty() {
-                return Err((
+                return Err(crate::common::said::Said::new(
                     "wrong_owner",
                     copy_text("beGate.admitDestructive.otherSession", &[("name", name)]),
                 ));
@@ -388,13 +388,13 @@ pub(crate) fn admit_destructive(
     match identity(name, &p.client, &who, requester) {
         Who::Pass => {}
         Who::NotOurs => {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "wrong_owner",
                 copy_text("beGate.admitDestructive.notOurs", &[("name", name)]),
             ))
         }
         Who::OtherClient => {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "wrong_owner",
                 copy_text("beGate.admitDestructive.otherClient", &[("name", name)]),
             ))
@@ -404,7 +404,7 @@ pub(crate) fn admit_destructive(
         return Ok(Doomed(EndAt::Panes(p.session_id, only)));
     }
     if p.windows != 1 {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "too_many_windows",
             copy_text(
                 "beGate.admitDestructive.manyWindows",

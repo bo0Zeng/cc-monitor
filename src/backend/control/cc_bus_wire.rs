@@ -3,7 +3,7 @@
 //! 读的几条（`bus-list` · `bus-inbox` · `bus-peek` · `bus-unread`）与推已读位置那一条（`bus-commit`）本体在 [`super::cc_bus`]。
 
 use super::{cc_bus, cc_bus_envelope};
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use crate::wire::typed::{self, Codes, Command, NoArgs};
 use copy_core::copy_text;
 
@@ -12,7 +12,7 @@ fn of<E: Codes>(
     fallback: fn(String) -> E,
     said: impl Fn(&str) -> String,
 ) -> impl Fn((String, String)) -> E {
-    move |pair| typed::of_fail_said(Fail::from(pair), fallback, |c| Some(said(c)))
+    move |pair| typed::of_fail_said(Said::from(pair), fallback, |c| Some(said(c)))
 }
 
 /// 查在线（`bus-list`）被拒成 `code` 时给人看的那一句（只剩读不成那一种）。

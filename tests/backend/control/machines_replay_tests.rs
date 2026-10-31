@@ -51,7 +51,7 @@ fn answer_for(i: usize, case: &Value) -> Value {
             match answer_set_in(Some(&home), &own, &edits()) {
                 Ok(r) => json!({ "reply": r }),
                 Err(e) => {
-                    let f = e.into_fail();
+                    let f = e.into_said();
                     let mut v = json!({ "code": f.code, "message": f.message });
                     if let Some(d) = f.data {
                         v["data"] = d;

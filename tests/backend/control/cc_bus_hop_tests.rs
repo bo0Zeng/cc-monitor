@@ -218,12 +218,12 @@ async fn an_offline_machine_is_refused_and_nothing_is_kept() {
     let e = send_from(&here, &letter(Some("far"), "占位标题"), &owner)
         .await
         .unwrap_err();
-    assert_eq!(e.into_fail().code, "offline");
+    assert_eq!(e.into_said().code, "offline");
     // 不在机器表里的那一台：同样 `offline`，一问都不发。
     let e = send_from(&here, &letter(Some("nowhere"), "占位标题"), &owner)
         .await
         .unwrap_err();
-    assert_eq!(e.into_fail().code, "offline");
+    assert_eq!(e.into_said().code, "offline");
     assert_eq!(owner.asked.lock().unwrap().len(), 1);
     assert!(!here.join(store::DIR).exists(), "不在发件端攒");
     assert!(!there.join(store::DIR).exists());
@@ -237,7 +237,7 @@ async fn a_bad_envelope_is_refused_here_before_it_leaves() {
     let e = send_from(&here, &letter(Some("far"), ""), &owner)
         .await
         .unwrap_err();
-    assert_eq!(e.into_fail().code, "bad_title");
+    assert_eq!(e.into_said().code, "bad_title");
     assert!(owner.asked.lock().unwrap().is_empty(), "坏信封不出门");
 }
 
@@ -250,6 +250,6 @@ async fn the_far_machines_own_group_roster_decides_and_its_code_comes_back() {
     let e = send_from(&here, &letter(Some("far"), "占位标题"), &owner)
         .await
         .unwrap_err();
-    assert_eq!(e.into_fail().code, "not_same_group");
+    assert_eq!(e.into_said().code, "not_same_group");
     assert!(owner.inbox(B).is_empty());
 }

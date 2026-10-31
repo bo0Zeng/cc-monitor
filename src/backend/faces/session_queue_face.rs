@@ -6,7 +6,7 @@ use super::session_queue_hop::route;
 use crate::dial::remote_ask::{DialRemote, REACH};
 use crate::history::session_queue as q;
 use crate::platform::fs::Own;
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use crate::wire::typed::{self, codes, Codes as _, Command};
 use cmd_wire::queue::{
     QueueCancelled, QueueList, QueuePut, SessionQueueCancelReq, SessionQueuePutReq,
@@ -86,14 +86,14 @@ pub(crate) fn put_here(
     req: &SessionQueuePutReq,
     now_ms: i64,
     cwd_of: &dyn Fn(&str) -> Option<std::path::PathBuf>,
-) -> Result<QueuePut, Fail> {
+) -> Result<QueuePut, Said> {
     if !req.attachments.is_empty() {
         let gone = match cwd_of(req.sid.as_str()) {
             Some(cwd) => crate::common::attachment_dir::missing(&cwd, &req.attachments),
             None => req.attachments.clone(),
         };
         if !gone.is_empty() {
-            return Err(Fail::new(
+            return Err(crate::wire::spec::fail(
                 "attachment_gone",
                 copy_text(
                     "beQueue.put.attachmentGone",

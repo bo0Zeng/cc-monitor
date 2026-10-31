@@ -10,7 +10,7 @@
 use super::launch_account::{self as la, AccountAsk, LaunchedAccount, Settled};
 use super::launch_render::{self as lr, Act, Here};
 use super::session_batch::{
-    carriers, listed, pids_said, pretrust, CmdErr, Deps, Listed, NameBase, Standing, TermEntry,
+    carriers, listed, pids_said, pretrust, Said, Deps, Listed, NameBase, Standing, TermEntry,
 };
 pub(crate) mod new;
 use crate::platform::child::{Child, Deadline};
@@ -55,13 +55,13 @@ pub(crate) struct SessionOpenErr(pub(crate) Failed);
 
 impl crate::wire::typed::Codes for SessionOpenErr {
     const ALL: &'static [&'static str] = OPEN_CODES;
-    fn into_fail(self) -> crate::wire::spec::Fail {
+    fn into_said(self) -> crate::common::said::Said {
         let (code, message, data, raw) = self.0;
         debug_assert!(
             OPEN_CODES.contains(&code),
             "session-open 回了码表里没有的码 `{code}`"
         );
-        crate::wire::spec::Fail {
+        crate::common::said::Said {
             code: code.to_string(),
             message,
             data,
@@ -847,7 +847,7 @@ pub(crate) const OPEN_CAP: Deadline = Deadline::secs(8 + SELF_AS_CCM_SECS);
 /// 交一行 ccm：这台后端自己就是 ccm（同一个二进制，argv 不过 shell）。不接进去（`--detach`），等它退出、收它的话。
 /// 去掉 `TMUX` / `TMUX_PANE`：单个那一项是在一个新开的终端里跑这一行，那里不在 tmux 里。
 /// 失败 ⇒ 单个那一条的 `(码, 原话)`：起不来 ⇒ `start_failed`；过了期限 ⇒ `child_timed_out`。
-pub(crate) fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), CmdErr> {
+pub(crate) fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), Said> {
     let me = std::env::current_exe().map_err(|e| ("start_failed", e.to_string()))?;
     let out = Child::new(me)
         .args(argv.iter().skip(1))

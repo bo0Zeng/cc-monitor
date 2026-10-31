@@ -18,7 +18,7 @@ use copy_core::copy_text;
 const KILL_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
 /// 命令级错误：码 ＋ 那一句 ＋ 下层原话（tmux 的 stderr · 起不来时的系统报错，进复制详情）。与 [`super::launch`] 同型。
-type CmdErr = crate::wire::spec::Fail;
+use crate::common::said::Said;
 
 /// 结束会话被拒成 `code` 时给人看的那一句（批量停那一项也照它说）。`target` 是 tmux 会话名。
 pub(crate) fn said(target: &str, code: &str) -> String {
@@ -37,30 +37,30 @@ pub(crate) fn said(target: &str, code: &str) -> String {
 /// 已有会话名的 Gate 1（结束 · 抓屏 · 送键共用）：规则只有一份 `crate::control::gate_rules::existing_tmux_name_issue`
 /// （空 · 控制符 · 视觉欺骗字符），外加 `:`（tmux 目标语法的分隔符，真会话名里不会有）。
 /// `=` 不拒：`=a=b:` 精确命中名叫 `a=b` 的会话。
-pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
+pub(crate) fn admit_existing_name(name: &str) -> Result<(), Said> {
     use crate::control::gate_rules::TmuxNameIssue as I;
     match crate::control::gate_rules::existing_tmux_name_issue(name) {
-        None if name.contains(':') => Err(CmdErr::from((
+        None if name.contains(':') => Err(Said::from((
             "bad_args",
             copy_text("beKill.name.colon", &[("name", &format!("{name:?}"))]),
         ))),
         None => Ok(()),
-        Some(I::Empty) => Err(CmdErr::from((
+        Some(I::Empty) => Err(Said::from((
             "bad_args",
             copy_text("beKill.name.empty", &[]),
         ))),
-        Some(I::Control(_)) => Err(CmdErr::from((
+        Some(I::Control(_)) => Err(Said::from((
             "bad_args",
             copy_text("beKill.name.control", &[]),
         ))),
-        Some(I::Deceptive(c)) => Err(CmdErr::from((
+        Some(I::Deceptive(c)) => Err(Said::from((
             "bad_args",
             copy_text(
                 "beKill.name.deceptive",
                 &[("cp", &format!("U+{:04X}", c as u32))],
             ),
         ))),
-        Some(other) => Err(CmdErr::from((
+        Some(other) => Err(Said::from((
             "bad_args",
             crate::common::contract::malformed(&format!("unexpected name issue: {other:?}")),
         ))),
@@ -69,7 +69,7 @@ pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
 
 /// tmux 那一形真做事：过三道门 → 对**句柄**下 `kill-session`。`requester` ＝ 请求自报的前端（`gate::identity`）。
 /// 带 `sid`：要求此刻有窗格挂着它（认完名字换了人 ⇒ 不杀）；那个会话里还有别的 claude 窗格 ⇒ 只结束挂着它的窗格（`gate::admit_destructive` 说了算）。
-fn run_expecting(name: &str, sid: Option<&str>, requester: Option<&str>) -> Result<(), CmdErr> {
+fn run_expecting(name: &str, sid: Option<&str>, requester: Option<&str>) -> Result<(), Said> {
     let target = super::launch::exact_target(name);
     // Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）⇒ 通过后拿到令牌。
     let doomed = super::gate::admit_destructive(name, &target, sid, requester)?;
@@ -77,7 +77,7 @@ fn run_expecting(name: &str, sid: Option<&str>, requester: Option<&str>) -> Resu
 }
 
 /// 一发 tmux（`launch::run_with` 那一口的形状）。
-type Tmux<'a> = dyn Fn(&[&str]) -> Result<super::launch::Ran, CmdErr> + 'a;
+type Tmux<'a> = dyn Fn(&[&str]) -> Result<super::launch::Ran, Said> + 'a;
 
 /// 结束会话的两种令牌：门放行的（`terminal-end`），或本趟刚建、启动命令没送进的那个空壳（`ccm` 收掉它）。
 pub(crate) enum Ending<'a> {
@@ -87,7 +87,7 @@ pub(crate) enum Ending<'a> {
 }
 
 /// 结束会话的唯一一处：只收令牌（[`Ending`]），对令牌里的目标下手。
-pub(crate) fn end(ending: Ending<'_>) -> Result<(), CmdErr> {
+pub(crate) fn end(ending: Ending<'_>) -> Result<(), Said> {
     let doomed = match ending {
         Ending::Doomed(d) => d,
         Ending::Bare(made, tmux) => return end_bare(made.target(), tmux),
@@ -121,7 +121,7 @@ pub(crate) fn end(ending: Ending<'_>) -> Result<(), CmdErr> {
 /// [`end`] 的空壳那一臂。判与收在同一发 tmux 里（`if-shell -F`）：只一个窗口、一个窗格、窗格起的是默认 shell
 /// （`pane_start_command` 空）、没有客户端接着 ⇒ `kill-session`；别的形一律不动。不看窗格前台是什么：shell 刚起时
 /// rc 里的子进程会短暂占着前台（实测 40 趟里 4 趟）。收成 ⇒ `Ok`；不在 · 不是空壳 ⇒ `kill_failed`。
-fn end_bare(t: &str, tmux: &Tmux<'_>) -> Result<(), CmdErr> {
+fn end_bare(t: &str, tmux: &Tmux<'_>) -> Result<(), Said> {
     const BARE: &str = "#{&&:#{==:#{session_windows},1},#{&&:#{==:#{window_panes},1},#{&&:#{==:#{pane_start_command},},#{==:#{session_attached},0}}}}";
     let there = || matches!(tmux(&["has-session", "-t", t]), Ok(r) if r.ok);
     let kill = format!("kill-session -t {t}");
@@ -131,23 +131,23 @@ fn end_bare(t: &str, tmux: &Tmux<'_>) -> Result<(), CmdErr> {
     {
         return Ok(());
     }
-    Err(CmdErr::new(
+    Err(crate::wire::spec::fail(
         "kill_failed",
         copy_text("beKill.run.failed", &[]),
     ))
 }
 
 /// tmux 这个程序起不来：句子只说原因词（未装 / 无权限 …），系统原话进复制详情；超时那一档照旧。
-pub(crate) fn tmux_unavailable(e: crate::platform::child::ChildFail) -> CmdErr {
-    CmdErr::from(e.into_cmd_said("no_tmux", |why| {
+pub(crate) fn tmux_unavailable(e: crate::platform::child::ChildFail) -> Said {
+    Said::from(e.into_cmd_said("no_tmux", |why| {
         copy_text("reason.tmux.startFailed", &[("why", why)])
     }))
 }
 
 /// tmux 起来了、但没杀成：句子说「tmux 报错」，tmux 自己说的那句进复制详情。
-pub(crate) fn kill_refused(stderr: &[u8]) -> CmdErr {
-    CmdErr::new("kill_failed", copy_text("beKill.run.failed", &[]))
-        .with_raw(Some(&String::from_utf8_lossy(stderr)))
+pub(crate) fn kill_refused(stderr: &[u8]) -> Said {
+    crate::wire::spec::fail("kill_failed", copy_text("beKill.run.failed", &[]))
+        .and_raw(Some(&String::from_utf8_lossy(stderr)))
 }
 
 // ── `terminal-end`：按名单里的句柄结束一个终端，两种宿主同一条 ─────────────────────
@@ -223,7 +223,7 @@ impl crate::wire::typed::Handle for TerminalEnd {
             )
             .map_err(|f| match f.code.as_str() {
                 // 同 `terminals-list`：tmux 装了却起不来 ⇒ 列不出（不另立 `no_tmux`：没 tmux 照样结束托管的）。
-                "no_tmux" => TerminalEndErr::Unobservable(f.into_said()),
+                "no_tmux" => TerminalEndErr::Unobservable(crate::common::contract::joined(f.said, f.raw)),
                 _ => crate::wire::typed::of_fail(f, TerminalEndErr::KillFailed),
             })
         }
@@ -236,7 +236,7 @@ pub(crate) fn end_terminal(
     on: crate::host::tmux::On<'_>,
     managed: Option<&crate::platform::fs::Own>,
     req: &TerminalEndReq,
-) -> Result<TerminalEnded, CmdErr> {
+) -> Result<TerminalEnded, Said> {
     use super::terminals::{find, target, Found};
     let t = target(req.terminal.as_deref(), req.sid.as_deref())?;
     let requester = super::gate::requester(req.client.as_deref())?;
@@ -248,13 +248,13 @@ pub(crate) fn end_terminal(
     let row = match find(&rows, &t) {
         Found::One(r) => r,
         Found::NotKnown => {
-            return Err(CmdErr::new(
+            return Err(crate::wire::spec::fail(
                 "not_known",
                 crate::common::contract::malformed("no such terminal in the list right now"),
             ))
         }
         Found::Ambiguous => {
-            return Err(CmdErr::new(
+            return Err(crate::wire::spec::fail(
                 "ambiguous",
                 crate::common::contract::malformed(
                     "more than one terminal carries this sid; point at one by `terminal`",
@@ -268,8 +268,8 @@ pub(crate) fn end_terminal(
             let sid = row.pane.as_ref().map(|_| row.sid.as_str());
             run_expecting(&row.name, sid, requester.as_deref()).map_err(|f| {
                 if f.code == "no_tmux" {
-                    CmdErr::new("kill_failed", copy_text("beKill.run.failed", &[]))
-                        .with_raw(Some(&f.message))
+                    crate::wire::spec::fail("kill_failed", copy_text("beKill.run.failed", &[]))
+                        .and_raw(Some(&f.message))
                 } else {
                     f
                 }
@@ -277,7 +277,7 @@ pub(crate) fn end_terminal(
         }
         crate::wire::TerminalHost::Managed => {
             if super::gate::identity_of(row, requester.as_deref()) != super::gate::Who::Pass {
-                return Err(CmdErr::new(
+                return Err(crate::wire::spec::fail(
                     "wrong_owner",
                     copy_text("tmuxControl.kill.wrongOwner", &[("target", &row.name)]),
                 ));
@@ -288,8 +288,8 @@ pub(crate) fn end_terminal(
                 None => Err(std::io::ErrorKind::NotFound.into()),
             };
             done.map_err(|e| {
-                CmdErr::new("kill_failed", copy_text("beKill.run.failed", &[]))
-                    .with_raw(Some(&e.to_string()))
+                crate::wire::spec::fail("kill_failed", copy_text("beKill.run.failed", &[]))
+                    .and_raw(Some(&e.to_string()))
             })?;
         }
     }

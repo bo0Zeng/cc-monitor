@@ -58,7 +58,7 @@ pub(crate) fn here(req: &BoardHereReq) -> Result<BoardHere, BoardHereErr> {
         },
     )
     .map_err(|f| match f.code.as_str() {
-        "no_tmux" => BoardHereErr::Unobservable(f.into_said()),
+        "no_tmux" => BoardHereErr::Unobservable(crate::common::contract::joined(f.said, f.raw)),
         _ => typed::of_fail(f, BoardHereErr::Unobservable),
     })?;
     let agent_home = crate::history::listing::agent_home();
@@ -139,7 +139,7 @@ impl crate::wire::typed::Handle for TerminalsBoardCmd {
                     })?
                     .map_err(|e| {
                         use crate::wire::typed::Codes as _;
-                        let f = e.into_fail();
+                        let f = e.into_said();
                         crate::dial::remote_ask::Said {
                             code: Some(f.code.clone()),
                             message: f.message,

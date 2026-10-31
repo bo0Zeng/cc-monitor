@@ -31,7 +31,7 @@ use crate::common::contract;
 use crate::stream::inbound::REGISTRY;
 use crate::wire::detail::Failed;
 use crate::wire::spec::CommandSpec;
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use crate::wire::Request;
 use std::io::{Read, Write};
 use std::time::Duration;
@@ -164,11 +164,11 @@ pub(crate) fn refuse_unknown_to(args: &[String], err: &mut dyn Write, tz: &crate
 /// 流模式起参的声明（`--stream --view <声明>`）认不出：不起流，stderr 一行失败信封（与别的 CLI 出口同一处出）、退出 2。
 pub fn refuse_stream_view(why: Option<&str>, tz: &crate::Tz) -> i32 {
     let detail = why.unwrap_or_default().to_string();
-    let f = crate::wire::spec::Fail::new(
+    let f = crate::wire::spec::fail(
         "bad_args",
         crate::common::contract::malformed(&format!("stream: {detail}")),
     )
-    .with_raw(Some(&detail));
+    .and_raw(Some(&detail));
     emit_failed(&mut std::io::stderr(), &f.settle("stream"), false, tz)
 }
 
@@ -223,7 +223,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     };
     // 出口的声明：与帧面同一处解、同一处拒（开跑之前）、同一处裁（成功的应答）。
     let (view, plan) = match view_of(opts)
-        .map_err(crate::wire::spec::Fail::from)
+        .map_err(crate::common::said::Said::from)
         .and_then(|v| crate::stream::inbound::views::plan_for(spec.name, &v).map(|p| (v, p)))
     {
         Ok(vp) => vp,
@@ -269,7 +269,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     // 总期限与帧面同一处装：登记了上限的（都在阻塞档）按上限与发起方期限里早的那个装；别的命令不装（`None`）。
     let total = crate::stream::inbound::install_total(&req);
     // 这几行是本模块的全部：派发落到 `REGISTRY` 自己的 `run`。
-    let outcome: Result<Option<serde_json::Value>, Fail> =
+    let outcome: Result<Option<serde_json::Value>, Said> =
         match crate::wire::spec::invoke(spec.run, &crate::stream::inbound::hands(Some(own))) {
             Some(crate::wire::spec::Prepared::Blocking(f)) => f(req),
             Some(crate::wire::spec::Prepared::Async(f)) => f(req).await,
@@ -302,7 +302,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
                     "no args were given: pass a JSON object on stdin, or base64 of it after {}",
                     crate::wire::cli_words::ARGS_B64_FLAG
                 );
-                f.with_raw(Some(&hint))
+                f.and_raw(Some(&hint))
             } else {
                 f
             };

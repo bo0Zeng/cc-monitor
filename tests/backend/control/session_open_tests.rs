@@ -134,7 +134,7 @@ impl Rig {
             .into_iter()
             .map(str::to_string)
             .collect();
-        let list = || -> Result<crate::control::session_batch::Listed, CmdErr> {
+        let list = || -> Result<crate::control::session_batch::Listed, Said> {
             match self.list_err {
                 Some(c) => Err((c, "列不出".to_string())),
                 None => Ok(crate::control::session_batch::Listed::of(
@@ -147,21 +147,21 @@ impl Rig {
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, "/root".into()))
         };
-        let end = |_: &str| -> Result<(), crate::wire::spec::Fail> {
+        let end = |_: &str| -> Result<(), crate::common::said::Said> {
             unreachable!("session-open 不结束")
         };
-        let send_into = |name: &str, _: &str, line: &str| -> Result<(), crate::wire::spec::Fail> {
+        let send_into = |name: &str, _: &str, line: &str| -> Result<(), crate::common::said::Said> {
             self.sent.borrow_mut().push((name.into(), line.into()));
             match self.send_err {
-                Some(c) => Err(crate::wire::spec::Fail::new(c, "门没过".to_string())),
+                Some(c) => Err(crate::wire::spec::fail(c, "门没过".to_string())),
                 None => Ok(()),
             }
         };
-        let run_ccm = |argv: &[String]| -> Result<(i32, String, String), CmdErr> {
+        let run_ccm = |argv: &[String]| -> Result<(i32, String, String), Said> {
             self.ccm.borrow_mut().push(argv.to_vec());
             Ok((self.ccm_rc, self.ccm_out.clone(), "坏了".into()))
         };
-        let mint = |base: NameBase| -> Result<String, CmdErr> {
+        let mint = |base: NameBase| -> Result<String, Said> {
             if let Some(n) = &self.minted {
                 return Ok(n.clone());
             }
@@ -172,7 +172,7 @@ impl Rig {
         };
         let writers = |_: &str| self.live.clone();
         let pretrust = |_: &str, _: &str| *self.marks.borrow_mut() += 1;
-        let open_shell = |name: &str, cwd: Option<&str>| -> Result<bool, crate::wire::spec::Fail> {
+        let open_shell = |name: &str, cwd: Option<&str>| -> Result<bool, crate::common::said::Said> {
             self.shells
                 .borrow_mut()
                 .push((name.into(), cwd.map(str::to_string)));

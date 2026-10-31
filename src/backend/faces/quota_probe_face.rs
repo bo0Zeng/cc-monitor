@@ -15,7 +15,7 @@ use crate::platform::fs::Own;
 use copy_core::copy_text;
 
 /// 失败带码 ＋ 那一句 ＋ 原话（落账写不进那一形的原话进复制详情，[`Fail`]）。
-type Answer = Result<Probed, crate::wire::spec::Fail>;
+type Answer = Result<Probed, crate::common::said::Said>;
 
 /// 起官方客户端报一次用量的期限（它要起进程、读登录、问一次上游）。
 const PROBE_WITHIN: Deadline = Deadline::secs(30);
@@ -26,8 +26,8 @@ pub(crate) const PROBE_CAP: Deadline = Deadline::secs(32);
 /// 报错原话里带官方客户端的输出至多这么多个字。
 const SAID_CHARS: usize = 200;
 
-fn bad(detail: &str) -> crate::wire::spec::Fail {
-    crate::wire::spec::Fail::new("bad_args", crate::common::contract::malformed(detail))
+fn bad(detail: &str) -> crate::common::said::Said {
+    crate::wire::spec::fail("bad_args", crate::common::contract::malformed(detail))
 }
 
 /// `quota-probe` 的入参。
@@ -141,14 +141,14 @@ pub(crate) fn answer_probe_with(
         .path(crate::common::own_dir::HIDDEN_WORK_DIR)
         .map_err(|_| no_home())?;
     own.ensure_dir(&cwd).map_err(|e| {
-        crate::wire::spec::Fail::new(
+        crate::wire::spec::fail(
             "io_failed",
             copy_text(
                 "beQuotaProbe.workDir.failed",
                 &[("why", &copy_core::io_reason(e.kind()))],
             ),
         )
-        .with_raw(Some(&e.to_string()))
+        .and_raw(Some(&e.to_string()))
     })?;
     let failed = |why: &str| {
         copy_text(
@@ -157,7 +157,7 @@ pub(crate) fn answer_probe_with(
         )
     };
     let at = crate::platform::shell::agent_launch(face.program, path)
-        .map_err(|why| crate::wire::spec::Fail::new("failed", failed(&why)))?;
+        .map_err(|why| crate::wire::spec::fail("failed", failed(&why)))?;
     let mut child = Child::new(at.program)
         .args(at.lead)
         .args(face.args)
@@ -177,7 +177,7 @@ pub(crate) fn answer_probe_with(
     }
     let out = child
         .run(PROBE_WITHIN)
-        .map_err(|e| crate::wire::spec::Fail::from(e.into_cmd_said("failed", failed)))?;
+        .map_err(|e| crate::common::said::Said::from(e.into_cmd_said("failed", failed)))?;
     let text = String::from_utf8_lossy(&out.stdout);
     if !out.status.success() {
         let stderr: String = String::from_utf8_lossy(&out.stderr)
@@ -194,11 +194,11 @@ pub(crate) fn answer_probe_with(
             .code()
             .map_or_else(|| "-".to_string(), |c| c.to_string());
         // 退出码与它说的那一行是原话：进复制详情，不上句子。
-        return Err(crate::wire::spec::Fail::new(
+        return Err(crate::wire::spec::fail(
             "failed",
             copy_text("beQuotaProbe.run.exit", &[("program", face.program)]),
         )
-        .with_raw(Some(&format!("exit {code}: {stderr}"))));
+        .and_raw(Some(&format!("exit {code}: {stderr}"))));
     }
     let shown = book.map(|p| p.display().to_string());
     let probed = |state, reason, windows| Probed {

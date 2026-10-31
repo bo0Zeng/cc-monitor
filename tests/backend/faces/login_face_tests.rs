@@ -286,7 +286,7 @@ fn each_failure_says_what_can_be_done_next() {
         LoginStartErr::unsupported("x".into()),
         LoginStartErr::failed("x".into(), false),
     ]
-    .map(|e| again(e.into_fail()));
+    .map(|e| again(e.into_said()));
     assert_eq!(
         start,
         [
@@ -304,7 +304,7 @@ fn each_failure_says_what_can_be_done_next() {
         LoginFinishErr::of(FinishFail::NoJob),
         LoginFinishErr::of(FinishFail::Slow),
     ]
-    .map(|e| again(e.into_fail()));
+    .map(|e| again(e.into_said()));
     assert_eq!(
         finish,
         [
@@ -328,7 +328,7 @@ fn each_failure_says_what_can_be_done_next() {
         "x".into(),
         "tail",
     )))
-    .into_fail();
+    .into_said();
     assert_eq!(
         (refused.message.as_str(), refused.raw.as_deref()),
         ("x", Some("tail"))
@@ -341,25 +341,25 @@ fn each_failure_says_what_can_be_done_next() {
 fn only_a_failed_account_start_offers_the_terminal_window() {
     let terminal = |f: Fail| f.data.map(|d| d["terminal"].clone());
     assert_eq!(
-        terminal(LoginStartErr::failed("x".into(), true).into_fail()),
+        terminal(LoginStartErr::failed("x".into(), true).into_said()),
         Some(json!(true))
     );
     assert_eq!(
-        terminal(LoginStartErr::failed("x".into(), false).into_fail()),
+        terminal(LoginStartErr::failed("x".into(), false).into_said()),
         Some(json!(false))
     );
     for e in [
         LoginStartErr::not_found("x".into()),
         LoginStartErr::unsupported("x".into()),
     ] {
-        assert_eq!(terminal(e.into_fail()), Some(json!(false)));
+        assert_eq!(terminal(e.into_said()), Some(json!(false)));
     }
     for e in [
         LoginFinishErr::of(FinishFail::BadPaste),
         LoginFinishErr::of(FinishFail::NoJob),
         LoginFinishErr::of(FinishFail::Slow),
     ] {
-        assert_eq!(terminal(e.into_fail()), Some(json!(false)));
+        assert_eq!(terminal(e.into_said()), Some(json!(false)));
     }
     // 号那一种起不来才算：目标形状 ⇒ 这一格。
     let account = LoginStartReq::Account {

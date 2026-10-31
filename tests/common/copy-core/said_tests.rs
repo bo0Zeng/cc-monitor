@@ -62,3 +62,13 @@ fn data_rides_beside_the_code() {
         .wrap(|s| s.to_string());
     assert_eq!(s.data, Some(serde_json::json!({"k": 1})));
 }
+
+#[test]
+fn a_code_and_sentence_pair_reads_code_first() {
+    let s = Said::from(("bad_args", "x".to_string()));
+    assert_eq!(s.code.as_deref(), Some("bad_args"));
+    assert_eq!(s.said, "x");
+    let s = Said::from(("io_failed".to_string(), "y".to_string()));
+    assert_eq!(s.code.as_deref(), Some("io_failed"));
+    assert_eq!(s.said, "y");
+}

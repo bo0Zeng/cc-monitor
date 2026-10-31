@@ -135,7 +135,7 @@ impl ssh_dial::env::Facts for BackendFacts {
     }
 }
 
-type CmdErr = (&'static str, String);
+use crate::common::said::Said;
 
 // ───────────── 这一端的机器表：拨号层只读，读法由 faces 装 ─────────────
 
@@ -208,7 +208,7 @@ pub(crate) fn request_named(
     name: &str,
     use_: &str,
     extra: serde_json::Value,
-) -> Result<serde_json::Value, CmdErr> {
+) -> Result<serde_json::Value, Said> {
     machine::request(hosts, name, None, use_, extra)
 }
 
@@ -218,7 +218,7 @@ pub(crate) fn dial_named(
     name: &str,
     use_: &str,
     extra: serde_json::Value,
-) -> Result<DialRequest, CmdErr> {
+) -> Result<DialRequest, Said> {
     read_request(&request_named(hosts, name, use_, extra)?)
 }
 
@@ -228,7 +228,7 @@ pub(crate) fn named_both(
     name: &str,
     use_: &str,
     extra: serde_json::Value,
-) -> Result<(serde_json::Value, DialRequest), CmdErr> {
+) -> Result<(serde_json::Value, DialRequest), Said> {
     let v = request_named(hosts, name, use_, extra)?;
     let req = read_request(&v)?;
     Ok((v, req))
@@ -245,7 +245,7 @@ pub(crate) fn sftp_named(
 }
 
 /// 一份组好的拨号请求（[`request_named`] 那一形）⇒ 拨号请求。
-pub(crate) fn read_request(v: &serde_json::Value) -> Result<DialRequest, CmdErr> {
+pub(crate) fn read_request(v: &serde_json::Value) -> Result<DialRequest, Said> {
     <DialRequest as serde::Deserialize>::deserialize(v).map_err(|e| {
         (
             "bad_args",
@@ -260,7 +260,7 @@ pub(crate) fn request_draft(
     draft: &Host,
     use_: &str,
     extra: serde_json::Value,
-) -> Result<serde_json::Value, CmdErr> {
+) -> Result<serde_json::Value, Said> {
     let mut table: Vec<Host> = hosts
         .iter()
         .filter(|h| h.name() != draft.name())

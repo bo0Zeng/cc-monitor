@@ -23,7 +23,7 @@ fn ask(
     fork_at(&NewFile::issue(), root, &req, launch)
         .map(|r| serde_json::to_value(&r).unwrap())
         .map_err(|e| {
-            let f = e.into_fail();
+            let f = e.into_said();
             (f.code, f.message)
         })
 }

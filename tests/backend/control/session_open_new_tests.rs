@@ -57,23 +57,23 @@ impl Rig {
             .into_iter()
             .map(str::to_string)
             .collect();
-        let list = || -> Result<Listed, crate::control::session_batch::CmdErr> {
+        let list = || -> Result<Listed, crate::common::said::Said> {
             Ok(Listed::of(self.rows.clone(), vec![]))
         };
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
         };
-        let end = |_: &str| -> Result<(), crate::wire::spec::Fail> {
+        let end = |_: &str| -> Result<(), crate::common::said::Said> {
             unreachable!("起新会话不结束")
         };
-        let send_into = |_: &str, _: &str, _: &str| -> Result<(), crate::wire::spec::Fail> {
+        let send_into = |_: &str, _: &str, _: &str| -> Result<(), crate::common::said::Said> {
             unreachable!("起新会话不往已有的终端里键入")
         };
-        let run_ccm = |argv: &[String]| -> Result<(i32, String, String), crate::control::session_batch::CmdErr> {
+        let run_ccm = |argv: &[String]| -> Result<(i32, String, String), crate::common::said::Said> {
             self.ccm.borrow_mut().push(argv.to_vec());
             Ok((self.ccm_rc, String::new(), "boom".into()))
         };
-        let mint = |base: NameBase| -> Result<String, crate::control::session_batch::CmdErr> {
+        let mint = |base: NameBase| -> Result<String, crate::common::said::Said> {
             Ok(match base {
                 NameBase::Cwd(cwd) => {
                     self.mints.borrow_mut().push(format!("cwd {cwd}"));
@@ -426,16 +426,16 @@ fn a_tilde_directory_is_read_under_this_machines_home() {
 #[test]
 fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint() {
     let caps = BTreeSet::new();
-    let none = || -> Result<Listed, crate::control::session_batch::CmdErr> {
+    let none = || -> Result<Listed, crate::common::said::Said> {
         Ok(Listed::of(None, vec![]))
     };
-    let some = || -> Result<Listed, crate::control::session_batch::CmdErr> {
+    let some = || -> Result<Listed, crate::common::said::Said> {
         Ok(Listed::of(
             Some(vec![row("orders-cc", Some(SRC), true)]),
             vec![],
         ))
     };
-    let mint = |b: NameBase| -> Result<String, crate::control::session_batch::CmdErr> {
+    let mint = |b: NameBase| -> Result<String, crate::common::said::Said> {
         Ok(match b {
             NameBase::Cwd(c) => format!("cwd:{c}"),
             NameBase::ForkOf(s) => format!("fork:{s}"),
@@ -448,7 +448,7 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
         library: &library,
         last: &|_| None,
     };
-    let run = |list: &dyn Fn() -> Result<Listed, crate::control::session_batch::CmdErr>,
+    let run = |list: &dyn Fn() -> Result<Listed, crate::common::said::Said>,
                args: Value| {
         let deps = Deps {
             list,

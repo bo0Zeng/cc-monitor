@@ -85,7 +85,7 @@ impl Home {
     }
 
     /// 照线上那一份喂（JSON 入参经 typed 那一处收成类型，同生产），回包回成 `Value` 好按键看。
-    fn probe(&self, ctx: &Ctx, args: Value) -> Result<Value, crate::wire::spec::Fail> {
+    fn probe(&self, ctx: &Ctx, args: Value) -> Result<Value, crate::common::said::Said> {
         let path = format!("{}:/usr/bin:/bin", self.bin.display());
         let req: QuotaProbeReq = crate::wire::typed::take(&args)?;
         answer_probe_with(
@@ -191,7 +191,7 @@ fn unreadable_output_is_said_and_not_booked_and_a_failed_run_is_failed() {
         ctx.hop.quota.entry("claude-code", "bad").is_none(),
         "不写账"
     );
-    let crate::wire::spec::Fail {
+    let crate::common::said::Said {
         code,
         message: msg,
         raw,

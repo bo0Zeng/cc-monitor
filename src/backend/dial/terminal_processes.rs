@@ -13,7 +13,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::net::IpAddr;
 
-type CmdErr = (&'static str, String);
+use crate::common::said::Said;
 
 /// 一次最多看几个终端（与那台一次最多报几个同值）。
 const MAX_TERMINALS: usize = 16;
@@ -95,7 +95,7 @@ pub(crate) struct TerminalProcessesReq {
 pub(crate) fn answer_with(
     req: &TerminalProcessesReq,
     query: impl FnOnce() -> Result<String, String>,
-) -> Result<Processes, CmdErr> {
+) -> Result<Processes, Said> {
     let wanted = read_args(req)?;
     let found = match query().and_then(|raw| parse_tables(&raw)) {
         Ok(t) => decide(&wanted, &t),
@@ -143,12 +143,12 @@ pub(crate) fn product(found: &Found) -> Processes {
     }
 }
 
-fn bad(msg: &str) -> CmdErr {
+fn bad(msg: &str) -> Said {
     ("bad_args", crate::common::contract::malformed(msg))
 }
 
 /// 入参 ⇒ 每格要找的连接（`None` = 不是经 ssh）。个数 1–16；地址认不出 ⇒ `bad_args`。
-pub(crate) fn read_args(req: &TerminalProcessesReq) -> Result<Vec<Option<Wanted>>, CmdErr> {
+pub(crate) fn read_args(req: &TerminalProcessesReq) -> Result<Vec<Option<Wanted>>, Said> {
     let ts = &req.terminals;
     if ts.is_empty() || ts.len() > MAX_TERMINALS {
         return Err(bad("`terminals` must be a non-empty array of at most 16"));

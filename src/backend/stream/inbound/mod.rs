@@ -373,11 +373,11 @@ async fn handle_line(
                 {
                     Ok(res) => res,
                     // 线程没回来（panic / 被取消）：句子说「程序出错」，那条 JoinError 进复制详情。
-                    Err(e) => Err(spec::Fail::from((
+                    Err(e) => Err(crate::wire::spec::fail(
                         "handler_panicked".to_string(),
                         copy_text("beInbound.handleLine.internal", &[]),
-                    ))
-                    .with_raw(Some(&e.to_string()))),
+                    )
+                    .and_raw(Some(&e.to_string()))),
                 }
             };
             spawn_handler(req, replies.clone(), running.clone(), fut, false, plan).await

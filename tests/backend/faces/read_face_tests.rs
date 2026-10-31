@@ -28,7 +28,7 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
         };
         let req = take::<C::Req>(args).map_err(|e| (code(&e.code), e.message))?;
         let got = f(req).map_err(|e| {
-            let fail = e.into_fail();
+            let fail = e.into_said();
             (code(&fail.code), fail.message)
         })?;
         Ok(serde_json::to_value(got).unwrap())

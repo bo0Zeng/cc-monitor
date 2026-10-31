@@ -3,7 +3,7 @@
 //! 住入方向而不住 `faces/`：文件管理后端只许命令那一层够到（`files/module_boundary_guard.rs` 的门表）。
 //! 也不住命令表那一份族文件：那一份还递删会话的窄口（够得到原生那一侧），本体所在的文件要只够得到文件管理那一块。
 
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use crate::wire::typed::{self, codes, Codes, Command, Cx};
 use cmd_wire::files as wire;
 
@@ -15,7 +15,7 @@ fn ask<A: crate::files::Ask, E: Codes>(
 ) -> Result<A::Reply, E> {
     crate::files::answer(req, &cx.tz).map_err(|f| {
         typed::of_fail(
-            Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+            crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref()),
             fallback,
         )
     })
@@ -234,7 +234,7 @@ impl Command for FilesBrowse {
 pub(crate) fn browse(conn: u64, req: wire::BrowseReq) -> Result<wire::BrowseReply, FilesBrowseErr> {
     crate::files::browse(conn, req).map_err(|f| {
         typed::of_fail(
-            Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+            crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref()),
             FilesBrowseErr::BadArgs,
         )
     })
@@ -421,7 +421,7 @@ impl crate::wire::typed::Handle for FilesGrep {
                 .await
                 .map_err(|f| {
                     typed::of_fail(
-                        Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+                        crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref()),
                         FilesGrepErr::BadArgs,
                     )
                 })

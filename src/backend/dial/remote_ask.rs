@@ -327,14 +327,14 @@ pub(crate) async fn hop<C: crate::wire::typed::Command>(
     until: Option<crate::platform::child::Until>,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<C::Reply, crate::wire::spec::Fail>
+) -> Result<C::Reply, crate::common::said::Said>
 where
     C::Req: serde::Serialize,
     C::Reply: serde::de::DeserializeOwned,
 {
-    use crate::wire::spec::Fail;
+    use crate::common::said::Said;
     let Some(host) = machine.host_name() else {
-        return Err(Fail::new(
+        return Err(crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed("`machine` must name a machine"),
         ));
@@ -349,8 +349,8 @@ where
     )
     .await
     .map_err(|Said { code, message }| match code.as_deref() {
-        Some(c) if ours.contains(&c) => Fail::new(c, message),
-        _ => Fail::new("offline", message),
+        Some(c) if ours.contains(&c) => crate::wire::spec::fail(c, message),
+        _ => crate::wire::spec::fail("offline", message),
     })
 }
 

@@ -144,11 +144,11 @@ pub fn read_at(path: &Path) -> Read {
 }
 
 /// 读成一份可用的记录：没有 ⇒ 空的；读不懂 ⇒ `ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
-pub fn load_at(path: &Path) -> Result<Ledger, crate::wire::spec::Fail> {
+pub fn load_at(path: &Path) -> Result<Ledger, crate::common::said::Said> {
     match read_at(path) {
         Read::Absent => Ok(Ledger::default()),
         Read::Present(l) => Ok(l),
-        Read::Unreadable(why) => Err(crate::wire::spec::Fail::from(("ledger_unreadable", why))),
+        Read::Unreadable(why) => Err(crate::wire::spec::fail("ledger_unreadable", why)),
     }
 }
 
@@ -158,38 +158,38 @@ pub fn load_at(path: &Path) -> Result<Ledger, crate::wire::spec::Fail> {
 // 后写的整份会盖掉先写的一条 ⇒ 那一趟装的文件从此卸不掉。
 
 /// `add` 的 `files`：非空、不超上限、每个路径都在 skill 里、摘要是 16 位小写十六进制。
-fn check_files(files: &BTreeMap<String, Recorded>) -> Result<(), crate::wire::spec::Fail> {
+fn check_files(files: &BTreeMap<String, Recorded>) -> Result<(), crate::common::said::Said> {
     if files.is_empty() {
-        return Err(crate::wire::spec::Fail::from((
+        return Err(crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed("`files` is empty"),
-        )));
+        ));
     }
     if files.len() > MAX_FILES {
-        return Err(crate::wire::spec::Fail::from((
+        return Err(crate::wire::spec::fail(
             "too_large",
             copy_text(
                 "beSkillLedger.add.tooMany",
                 &[("max", &MAX_FILES.to_string())],
             ),
-        )));
+        ));
     }
     for (path, rec) in files {
         if !crate::assets::skill_install::valid_rel(path) {
-            return Err(crate::wire::spec::Fail::from((
+            return Err(crate::wire::spec::fail(
                 "bad_args",
                 crate::common::contract::malformed(&format!(
                     "{path:?} is not a relative path inside the skill"
                 )),
-            )));
+            ));
         }
         if !valid_digest(&rec.digest) {
-            return Err(crate::wire::spec::Fail::from((
+            return Err(crate::wire::spec::fail(
                 "bad_args",
                 crate::common::contract::malformed(&format!(
                     "`digest` of {path:?} is not 16 lowercase hex digits"
                 )),
-            )));
+            ));
         }
     }
     Ok(())
@@ -233,7 +233,7 @@ pub(crate) struct RecordReply {
 }
 
 /// 装记录的写口（生产 = [`answer_record`]，由 `stream/inbound/` 递进来；装 · 卸那几处不直呼它）。
-pub(crate) type Record<'a> = &'a dyn Fn(&RecordReq) -> Result<RecordReply, crate::wire::spec::Fail>;
+pub(crate) type Record<'a> = &'a dyn Fn(&RecordReq) -> Result<RecordReply, crate::common::said::Said>;
 
 /// `add`：并进那个目录的记录。回 `(目录, 变没变)`。**纯**（目录由调用方算好）。
 pub fn add(ledger: &mut Ledger, dir: &str, name: &str, files: BTreeMap<String, Recorded>) -> bool {
@@ -263,7 +263,7 @@ pub fn drop_paths(
     ledger: &mut Ledger,
     dir: &str,
     paths: &[String],
-) -> Result<usize, crate::wire::spec::Fail> {
+) -> Result<usize, crate::common::said::Said> {
     let entry = ledger.installs.get_mut(dir).ok_or((
         "not_found",
         copy_text(
@@ -272,10 +272,10 @@ pub fn drop_paths(
         ),
     ))?;
     if let Some(p) = paths.iter().find(|p| !entry.files.contains_key(*p)) {
-        return Err(crate::wire::spec::Fail::from((
+        return Err(crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed(&format!("{p:?} is not recorded under {dir}")),
-        )));
+        ));
     }
     for p in paths {
         entry.files.remove(p);
@@ -292,10 +292,10 @@ pub(crate) fn record_at(
     own: &Own,
     skills_root: Option<&Path>,
     req: &RecordReq,
-) -> Result<RecordReply, crate::wire::spec::Fail> {
+) -> Result<RecordReply, crate::common::said::Said> {
     // 先建那一层目录（在就算了），再拿它的跨进程锁，锁住之后才读。
     let no_home = |_| {
-        crate::wire::spec::Fail::from(("io_failed", copy_text("beSkillLedger.path.noHome", &[])))
+        crate::wire::spec::fail("io_failed", copy_text("beSkillLedger.path.noHome", &[]))
     };
     let lock_dir = own.home_dir().map_err(no_home)?;
     let file = own.at_home(DOC.rel).map_err(no_home)?;
@@ -317,7 +317,7 @@ pub(crate) fn record_at(
         )
     })?;
     let held = own.lock(&lock_dir).map_err(|e| {
-        crate::wire::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
+        crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e))
     })?;
     let mut ledger = load_at(path)?;
     let (dir, name, changed, left) = match req {
@@ -327,12 +327,12 @@ pub(crate) fn record_at(
             project,
         } => {
             if !crate::assets::skill_install::valid_name(name) {
-                return Err(crate::wire::spec::Fail::from((
+                return Err(crate::wire::spec::fail(
                     "bad_args",
                     crate::common::contract::malformed(
                         "`name` is not a valid skill directory name",
                     ),
-                )));
+                ));
             }
             check_files(files)?;
             // 目录自己算：与 `skill-install-plan` 答 `dir` 的是同一个根（不收调用方给的路径）。
@@ -372,25 +372,25 @@ pub(crate) fn record_at(
         }
         RecordReq::McpAdd { file, name, .. } | RecordReq::McpDrop { file, name } => {
             if !Path::new(file).is_absolute() {
-                return Err(crate::wire::spec::Fail::from((
+                return Err(crate::wire::spec::fail(
                     "bad_args",
                     crate::common::contract::malformed("`file` is not an absolute path"),
-                )));
+                ));
             }
             if name.trim().is_empty() {
-                return Err(crate::wire::spec::Fail::from((
+                return Err(crate::wire::spec::fail(
                     "bad_args",
                     crate::common::contract::malformed("`name` is empty"),
-                )));
+                ));
             }
             let changed = if let RecordReq::McpAdd { digest, .. } = req {
                 if !valid_digest(digest) {
-                    return Err(crate::wire::spec::Fail::from((
+                    return Err(crate::wire::spec::fail(
                         "bad_args",
                         crate::common::contract::malformed(
                             "`digest` must be 16 lowercase hex digits",
                         ),
-                    )));
+                    ));
                 }
                 let slot = ledger.mcp.entry(file.clone()).or_default();
                 slot.insert(name.clone(), digest.clone()) != Some(digest.clone())
@@ -411,7 +411,7 @@ pub(crate) fn record_at(
     };
     if changed {
         DOC.write(own, &lock_dir, &held, &ledger)
-            .map_err(|e| crate::wire::spec::Fail::from(("io_failed", e)))?;
+            .map_err(|e| crate::wire::spec::fail("io_failed", e))?;
     }
     Ok(RecordReply {
         dir,
@@ -425,7 +425,7 @@ pub(crate) fn record_at(
 pub(crate) fn answer_record(
     req: &RecordReq,
     own: &Own,
-) -> Result<RecordReply, crate::wire::spec::Fail> {
+) -> Result<RecordReply, crate::common::said::Said> {
     record_at(own, None, req)
 }
 

@@ -4,10 +4,10 @@
 pub(crate) use super::exec::KeyTable;
 use super::exec::{self, Applied};
 use super::layout::{self, AddIntent, Plan};
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 
 /// 这一层的拒绝：码 ＋ 那一句 ＋ 下层原话（原话进复制详情）。计划那一层（`layout`）只交 `(码, 句)`，`?` 换过来。
-type Refusal = Fail;
+type Refusal = Said;
 use super::scan::{self, is_under, join, KeyRows, Snapshot};
 use crate::common::door::Door;
 use cmd_wire::accounts::{
@@ -28,7 +28,7 @@ pub(crate) enum Request {
 }
 
 fn bad(detail: &str) -> Refusal {
-    Fail::new("bad_args", crate::common::contract::malformed(detail))
+    crate::wire::spec::fail("bad_args", crate::common::contract::malformed(detail))
 }
 
 /// 这台做不做得了多账号（不做 ⇒ `unsupported`）。
@@ -49,7 +49,7 @@ fn supported() -> Result<(), Refusal> {
 }
 
 fn home_of(d: &dyn Door) -> Result<String, Refusal> {
-    scan::home(d).map_err(|e| Fail::new("io_failed", e))
+    scan::home(d).map_err(|e| crate::wire::spec::fail("io_failed", e))
 }
 
 /// 账号库在就拿它那把锁（读 → 改 → 写这一整趟里别的后端进程进不来）；还没建 ⇒ 没东西可锁（写清单那一下的比对兜底）。
@@ -58,7 +58,7 @@ fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
     if scan::item_at(&accts).exists() {
         crate::platform::lock::hold(std::path::Path::new(&accts))
             .map(Some)
-            .map_err(|e| Fail::from(("io_failed", crate::common::said::Said::from(e))))
+            .map_err(|e| crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e)))
     } else {
         Ok(None)
     }

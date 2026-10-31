@@ -65,7 +65,7 @@ impl Caps {
     }
 }
 
-fn over_bytes(cap: u64) -> Fail {
+fn over_bytes(cap: u64) -> WriteFail {
     refused(copy_text(
         "beFilesExtract.plan.overBytes",
         &[("cap", &copy_core::size_text(cap))],
@@ -182,14 +182,13 @@ pub struct Extracted {
     pub bytes: u64,
 }
 
-type Fail = WriteFail;
 
-fn refused(said: String) -> Fail {
+fn refused(said: String) -> WriteFail {
     WriteFail::from(("refused", said))
 }
 
 /// 盘上 / 包里这一步没成：句子带原因词，下层原话进复制详情。
-fn io_failed(said: String, raw: impl std::fmt::Display) -> Fail {
+fn io_failed(said: String, raw: impl std::fmt::Display) -> WriteFail {
     WriteFail {
         code: "io_failed",
         said,
@@ -259,7 +258,7 @@ fn admit(
     raw: Raw,
     zip: bool,
     size: u64,
-) -> Result<(), Fail> {
+) -> Result<(), WriteFail> {
     let rel = match entry_rel(name, zip) {
         Ok(Some(r)) => r,
         Ok(None) => return Ok(()),
@@ -333,7 +332,7 @@ fn admit(
 }
 
 /// 收尾：补包里没写出来的上级目录；条目挂在一条链接 / 一份文件底下 ⇒ 拒（挡「先放一条指到别处的链接、再往它底下写」）。
-fn close_plan(plan: &mut Plan, cap: usize) -> Result<(), Fail> {
+fn close_plan(plan: &mut Plan, cap: usize) -> Result<(), WriteFail> {
     let mut parents: BTreeSet<PathBuf> = BTreeSet::new();
     for rel in plan.entries.keys() {
         let mut up = rel.parent();
@@ -365,7 +364,7 @@ fn close_plan(plan: &mut Plan, cap: usize) -> Result<(), Fail> {
     Ok(())
 }
 
-fn open_archive(path: &Path) -> Result<RoFile, Fail> {
+fn open_archive(path: &Path) -> Result<RoFile, WriteFail> {
     Ro::open_nofollow(path).map_err(|e| {
         io_failed(
             copy_text(
@@ -380,7 +379,7 @@ fn open_archive(path: &Path) -> Result<RoFile, Fail> {
     })
 }
 
-fn broken(path: &Path, e: impl std::fmt::Display) -> Fail {
+fn broken(path: &Path, e: impl std::fmt::Display) -> WriteFail {
     io_failed(
         copy_text(
             "beFilesExtract.archive.broken",
@@ -422,7 +421,7 @@ fn tar_reader(kind: Kind, f: RoFile) -> Box<dyn Read> {
 }
 
 /// **计划趟（只读）**：读一遍包，逐条目判。一个改动都没有。
-pub fn plan(archive: &Path, kind: Kind, cap: usize, bytes_cap: u64) -> Result<Plan, Fail> {
+pub fn plan(archive: &Path, kind: Kind, cap: usize, bytes_cap: u64) -> Result<Plan, WriteFail> {
     let mut plan = Plan::default();
     let mut count = 0usize;
     match kind {
@@ -497,7 +496,7 @@ fn land_file(
     body: &mut dyn Read,
     mode: Option<u32>,
     left: &mut u64,
-) -> Result<u64, Fail> {
+) -> Result<u64, WriteFail> {
     let at = walk_in_root(Last::Link, root, rel).map_err(|m| ("refused", m))?;
     let fail = |e: std::io::Error| {
         io_failed(
@@ -542,7 +541,7 @@ fn land_file(
 }
 
 /// 建一个目录（先过路径解析）。
-fn land_dir(face: &Face, root: &Path, rel: &Path) -> Result<(), Fail> {
+fn land_dir(face: &Face, root: &Path, rel: &Path) -> Result<(), WriteFail> {
     let at = walk_in_root(Last::Link, root, rel).map_err(|m| ("refused", m))?;
     face.make_dir(&at).map_err(|e| {
         io_failed(
@@ -596,7 +595,7 @@ fn execute(
     plan: &Plan,
     made: &mut Vec<(PathBuf, bool)>,
     bytes_cap: u64,
-) -> Result<u64, Fail> {
+) -> Result<u64, WriteFail> {
     let mut left = bytes_cap;
     for (rel, w) in &plan.entries {
         if *w == What::Dir {
@@ -659,7 +658,7 @@ fn execute(
 }
 
 /// **解压**：`root ＋ rel` 那个包解到 `root ＋ into`（一个此前不存在的新目录）。
-pub fn extract(face: &Face, root: &Path, rel: &Path, into: &Path) -> Result<Extracted, Fail> {
+pub fn extract(face: &Face, root: &Path, rel: &Path, into: &Path) -> Result<Extracted, WriteFail> {
     extract_with(face, root, rel, into, CAPS)
 }
 
@@ -670,7 +669,7 @@ pub fn extract_with(
     rel: &Path,
     into: &Path,
     caps: Caps,
-) -> Result<Extracted, Fail> {
+) -> Result<Extracted, WriteFail> {
     let name = crate::files::raw::path_bytes(rel);
     let base = name.rsplit(|b| *b == b'/').next().unwrap_or(name);
     let kind = kind_of(base).ok_or_else(|| {
@@ -772,7 +771,7 @@ pub fn into_name(stem: &[u8], n: u32) -> Vec<u8> {
 }
 
 /// 线上那一形：落点由这里按包名定（名字规矩只有这一份）；`fresh` ⇒ 撞名往后取第一个不在的编号。
-pub fn extract_here(face: &Face, root: &Path, rel: &Path, fresh: bool) -> Result<Extracted, Fail> {
+pub fn extract_here(face: &Face, root: &Path, rel: &Path, fresh: bool) -> Result<Extracted, WriteFail> {
     let name = crate::files::raw::path_bytes(rel);
     let base = name.rsplit(|b| *b == b'/').next().unwrap_or(name);
     let stem = stem_of(base).ok_or_else(|| {
@@ -809,7 +808,7 @@ pub fn extract_here(face: &Face, root: &Path, rel: &Path, fresh: bool) -> Result
 }
 
 /// 一格路径（目标根 · 包 · 链接目标）⇒ `PathBuf`；空的 ⇒ `bad_path`（缺 · 形状不对在解入参那一步就回了 `bad_args`）。
-fn non_empty(p: &wire::WirePath, key: &str) -> Result<PathBuf, Fail> {
+fn non_empty(p: &wire::WirePath, key: &str) -> Result<PathBuf, WriteFail> {
     if p.0.is_empty() {
         return Err(WriteFail::from((
             "bad_path",
@@ -825,7 +824,7 @@ super::files_write::acts! {
 }
 
 /// `files-extract`。
-fn extract_of(face: &Face, req: wire::FilesExtractReq) -> Result<wire::FilesTreeReply, Fail> {
+fn extract_of(face: &Face, req: wire::FilesExtractReq) -> Result<wire::FilesTreeReply, WriteFail> {
     let root = non_empty(&req.root, "root")?;
     let rel = non_empty(&req.rel, "rel")?;
     let got = extract_here(face, &root, &rel, req.fresh.unwrap_or(false))?;
@@ -839,7 +838,7 @@ fn extract_of(face: &Face, req: wire::FilesExtractReq) -> Result<wire::FilesTree
 }
 
 /// `Door::link {root, rel, target}` → `{path}`。
-fn link_of(face: &Face, req: wire::FilesLinkReq) -> Result<wire::FilesPathReply, Fail> {
+fn link_of(face: &Face, req: wire::FilesLinkReq) -> Result<wire::FilesPathReply, WriteFail> {
     let root = non_empty(&req.root, "root")?;
     let rel = non_empty(&req.rel, "rel")?;
     let target = non_empty(&req.target, "target")?;

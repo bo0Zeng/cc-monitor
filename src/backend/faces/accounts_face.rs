@@ -13,7 +13,7 @@ use crate::assets::aliases::accounts as acct_aliases;
 use crate::assets::aliases::{self, AmendErr};
 use crate::common::door::Door;
 use crate::platform::shell::dialect::Shell;
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use crate::wire::typed::{self, Command, Files, NoArgs};
 use cmd_wire::accounts::{
     AccountAddArgs, AccountChange, AccountInitArgs, AccountKind, AccountLoginCmd,
@@ -27,7 +27,7 @@ use std::path::PathBuf;
 /// 这台 key 表的几口，由门递进来（生产：`stream/inbound/` 递 `file_face` 那几个；判据给落在临时目录上的那一份）。
 pub(crate) struct KeyDoor<'a> {
     /// 写一个号的 key（同 `apikey-key-set`）。
-    pub(crate) set: &'a dyn Fn(&file_face::KeySetReq) -> Result<file_face::KeySet, Fail>,
+    pub(crate) set: &'a dyn Fn(&file_face::KeySetReq) -> Result<file_face::KeySet, Said>,
     /// 摘掉一个号那一行（`{configDir}`）。
     pub(crate) drop: &'a dyn Fn(&Value) -> file_face::FileFaceAnswer,
     /// 从备份那一份放回一个号那一行（`{configDir, from}`）。
@@ -41,7 +41,7 @@ pub(crate) fn change(
     d: &dyn Door,
     req: wire::Request,
     keys: &KeyDoor,
-) -> Result<AccountChange, Fail> {
+) -> Result<AccountChange, Said> {
     let key = match &req {
         // 预演不带 key（界面填表时每改一格问一次，明文不必跟着走），地址照样判：界面只交原样打的字、只画这里拒的那一句。
         wire::Request::Add(a) if a.kind == AccountKind::ApiKey && a.dry_run == Some(true) => {
@@ -74,12 +74,12 @@ pub(crate) fn change(
     let drop = |dir: &str| {
         (keys.drop)(&json!({ "configDir": dir }))
             .map(|_| ())
-            .map_err(Fail::into_note)
+            .map_err(Said::into_note)
     };
     let restore = |dir: &str, from: &str| {
         (keys.restore)(&json!({ "configDir": dir, "from": from }))
             .map(|_| ())
-            .map_err(Fail::into_note)
+            .map_err(Said::into_note)
     };
     let kt = table.map(|(path, ids)| wire::KeyTable {
         path,
@@ -562,18 +562,18 @@ fn sync_mcp(d: &dyn Door, change: &mut AccountChange) {
 }
 
 /// 预演那一趟的地址：留空 = 默认上游；给了就过写口 · 装表同一个谓词（`table::base_if_usable`），理由是它说的那一句。
-fn base_url_usable(base_url: Option<&str>) -> Result<(), Fail> {
+fn base_url_usable(base_url: Option<&str>) -> Result<(), Said> {
     match base_url.map(str::trim).filter(|u| !u.is_empty()) {
         Some(url) => crate::accounts::upstream_select::table::base_if_usable(url)
             .map(|_| ())
-            .map_err(|why| Fail::from(("bad_args", why.to_string()))),
+            .map_err(|why| crate::wire::spec::fail("bad_args", why.to_string())),
         None => Ok(()),
     }
 }
 
 fn put_key(
     change: &mut AccountChange,
-    key_set: &dyn Fn(&file_face::KeySetReq) -> Result<file_face::KeySet, Fail>,
+    key_set: &dyn Fn(&file_face::KeySetReq) -> Result<file_face::KeySet, Said>,
     config_dir: &str,
     key: creds_core::SecretKey,
     base_url: Option<&str>,

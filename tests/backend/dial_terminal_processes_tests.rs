@@ -7,7 +7,7 @@ use serde_json::json;
 fn answer_with(
     args: &Value,
     query: impl FnOnce() -> Result<String, String>,
-) -> Result<Value, CmdErr> {
+) -> Result<Value, Said> {
     let req: TerminalProcessesReq =
         serde_json::from_value(args.clone()).map_err(|e| bad(&e.to_string()))?;
     super::answer_with(&req, query).map(|p| serde_json::to_value(p).unwrap())

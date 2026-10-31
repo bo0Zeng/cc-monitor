@@ -421,20 +421,19 @@ pub fn sweep_stale(face: &Face, home: &Path, now_secs: u64, keep: &str) -> Vec<S
 
 /// 这一面的失败：与写面同一形（码 ＋ 那一句 ＋ 下层原话；命令表那一层把原话交给应答的复制详情）。
 /// 不借流那一层的类型：文件管理后端只许够 platform / common（`module_boundary_guard`）。
-pub type Fail = WriteFail;
 
 /// 写面拒绝 ⇒ 失败：码由那个枚举自己答，原话（有的话）随失败交出去。
-fn refused(e: WriteRefusal) -> Fail {
+fn refused(e: WriteRefusal) -> WriteFail {
     WriteFail::from(e)
 }
 
 /// 没有原话的那几形（参数不对 · 家问不到）。
-fn plain(f: (&'static str, String)) -> Fail {
+fn plain(f: (&'static str, String)) -> WriteFail {
     WriteFail::from(f)
 }
 
 /// 这台后端的家（暂存区拼在它底下）。
-fn home_dir() -> Result<PathBuf, Fail> {
+fn home_dir() -> Result<PathBuf, WriteFail> {
     crate::platform::paths::home_dir()
         .ok_or(("io_failed", copy_text("beFilesCommit.staging.noHome", &[])))
         .map_err(plain)
@@ -459,18 +458,18 @@ crate::control::files_write::acts! {
 #[derive(Debug)]
 pub(crate) enum CommitRefused {
     Clash(String, cmd_wire::batch::Conflicts),
-    Fail(Fail),
+    WriteFail(WriteFail),
 }
 
-impl From<Fail> for CommitRefused {
-    fn from(f: Fail) -> Self {
+impl From<WriteFail> for CommitRefused {
+    fn from(f: WriteFail) -> Self {
         CommitRefused::Fail(f)
     }
 }
 
 impl CommitRefused {
     /// 只认码与那一句的出口（写面那张分派表 · 资产域的门）：同名照码 `exists` 交那一句。
-    pub(crate) fn flat(self) -> Fail {
+    pub(crate) fn flat(self) -> WriteFail {
         match self {
             CommitRefused::Clash(said, _) => WriteFail::from((super::files_write::EXISTS, said)),
             CommitRefused::Fail(f) => f,
@@ -613,7 +612,7 @@ fn asked(
 fn stage_chunk_of(
     face: &Face,
     req: wire::FilesStageChunkReq,
-) -> Result<wire::FilesStageChunkReply, Fail> {
+) -> Result<wire::FilesStageChunkReply, WriteFail> {
     stage_chunk_at(face, &home_dir()?, req)
 }
 
@@ -622,7 +621,7 @@ pub fn stage_chunk_at(
     face: &Face,
     home: &Path,
     req: wire::FilesStageChunkReq,
-) -> Result<wire::FilesStageChunkReply, Fail> {
+) -> Result<wire::FilesStageChunkReply, WriteFail> {
     if req.content.bytes().is_empty() {
         return Err(plain((
             "bad_args",
@@ -637,7 +636,7 @@ pub fn stage_chunk_at(
 fn commit_text_of(
     face: &Face,
     req: wire::FilesCommitTextReq,
-) -> Result<wire::FilesWrittenReply, Fail> {
+) -> Result<wire::FilesWrittenReply, WriteFail> {
     commit_text_at(face, &home_dir()?, req)
 }
 
@@ -646,7 +645,7 @@ pub fn commit_text_at(
     face: &Face,
     home: &Path,
     req: wire::FilesCommitTextReq,
-) -> Result<wire::FilesWrittenReply, Fail> {
+) -> Result<wire::FilesWrittenReply, WriteFail> {
     let root = root_of(&req.root, "root")?;
     let (chunks, bytes) = (req.chunks, req.bytes);
     let cap = crate::files::READ_TEXT_MAX_BYTES as u64;

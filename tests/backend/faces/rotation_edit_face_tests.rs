@@ -14,7 +14,7 @@ fn code_of(src: &str) -> String {
 
 /// 投到线上的那个码与 `data`（错误枚举 ⇒ 失败信封）。
 fn wire_of<E: crate::wire::typed::Codes>(e: E) -> (String, Option<Value>) {
-    let f = e.into_fail();
+    let f = e.into_said();
     (f.code, f.data)
 }
 

@@ -4036,7 +4036,7 @@ fn resync_face_reply_matches_the_cross_language_golden() {
             needs: (),
         };
         let got = crate::wire::spec::finish(crate::stream::resync_face::ResyncCmd::run(req, cx))
-            .map_err(|e| e.into_fail().code)?;
+            .map_err(|e| e.into_said().code)?;
         Ok(serde_json::to_value(got).expect("回包总能序列化"))
     }
     let golden: serde_json::Value =

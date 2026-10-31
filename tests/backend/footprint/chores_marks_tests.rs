@@ -7,7 +7,7 @@ use serde_json::json;
 fn mark_at(
     own: &crate::platform::fs::Own,
     a: &serde_json::Value,
-) -> Result<serde_json::Value, crate::wire::spec::Fail> {
+) -> Result<serde_json::Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
     super::mark_at(own, &req).map(|x| serde_json::to_value(x).unwrap())
 }

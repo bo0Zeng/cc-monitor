@@ -39,15 +39,15 @@ use serde::{Deserialize, Serialize};
 pub use deploy::{identity_decision, judge, DialFacing, Plan, MARKS};
 
 /// 这一串的失败：码 ＋ 那一句 ＋ 下层原话（那台答 `uname` 的原话进复制详情，不上句子）。
-pub(crate) use crate::wire::spec::Fail;
+use crate::common::said::Said;
 
 /// `deploy` crate 的失败 ⇒ 帧面的失败（码 · 那一句 · 原话原样）。
-fn fail_of(f: deploy::Fail) -> Fail {
-    Fail::new(f.code, f.said).with_raw(f.raw.as_deref())
+fn fail_of(f: deploy::Fail) -> Said {
+    crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref())
 }
 
 /// 一形拒绝 ⇒ `refused`（句子是 `Refusal::say`，那台答的原话随失败交出去）。
-fn refused(r: &Refusal, machine: &str) -> Fail {
+fn refused(r: &Refusal, machine: &str) -> Said {
     fail_of(deploy::refused(r, machine))
 }
 
@@ -58,15 +58,15 @@ pub async fn plan(
     carried: &[(deploy_contract::Key, String)],
     machine: &str,
     now_secs: u64,
-) -> Result<Plan, Fail> {
+) -> Result<Plan, Said> {
     deploy::plan(facing, carried, machine, now_secs)
         .await
         .map_err(fail_of)
 }
 
 /// `slots` 那几行 ⇒ `deploy::Slot`。键认不出 / 身份空 / 路径不是绝对 ⇒ `bad_args`（monitor 交的是它自己表里的词，认不出就是两侧漂了）。
-pub(crate) fn slots_of(rows: &[SlotRow]) -> Result<Vec<deploy::Slot>, Fail> {
-    let bad = |m: &str| Fail::new("bad_args", crate::common::contract::malformed(m));
+pub(crate) fn slots_of(rows: &[SlotRow]) -> Result<Vec<deploy::Slot>, Said> {
+    let bad = |m: &str| crate::wire::spec::fail("bad_args", crate::common::contract::malformed(m));
     rows.iter()
         .map(|r| {
             let key = deploy_contract::key_of(&r.os, &r.arch)
@@ -148,10 +148,10 @@ pub(crate) fn installed_of(p: &Plan) -> Installed {
 }
 
 /// 入参那几行 ⇒ `deploy::Slot`；`machine` 空 ⇒ `bad_args`。
-fn checked(rows: &[SlotRow], machine: &str) -> Result<Vec<deploy::Slot>, Fail> {
+fn checked(rows: &[SlotRow], machine: &str) -> Result<Vec<deploy::Slot>, Said> {
     let slots = slots_of(rows)?;
     if machine.trim().is_empty() {
-        return Err(Fail::new(
+        return Err(crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed("missing `machine` (string)"),
         ));
@@ -169,7 +169,7 @@ pub async fn install(
     req: &DeployInstallReq,
     host: &dyn deploy::Place,
     on: &(dyn Fn(deploy::Step) + Send + Sync),
-) -> Result<Installed, Fail> {
+) -> Result<Installed, Said> {
     let slots = checked(&req.slots, &req.machine)?;
     let now = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -261,7 +261,7 @@ pub(crate) async fn answer_install(req: DeployInstallReq) -> Result<Installed, D
 pub async fn uninstall(
     req: &DeployUninstallReq,
     host: &dyn deploy::Place,
-) -> Result<Uninstalled, Fail> {
+) -> Result<Uninstalled, Said> {
     let slots = checked(&req.slots, &req.machine)?;
     deploy::uninstall(host, &slots, &load, &req.machine)
         .await
@@ -333,14 +333,14 @@ pub fn place_verdict(
     mine: &str,
     machine: &str,
     dest: &str,
-) -> Result<Placed, Fail> {
+) -> Result<Placed, Said> {
     judge(Route::Local, me).map_err(|r| refused(&r, machine))?;
     let id = match disk {
         Ok(None) => RemoteIdentity::Missing,
         Ok(Some(b)) => deploy_contract::identity_of_bytes(&b, MARKS),
         Err(e) => RemoteIdentity::Unreadable(e),
     };
-    match identity_decision(&id, mine, machine, dest).map_err(|e| Fail::new("undecidable", e))? {
+    match identity_decision(&id, mine, machine, dest).map_err(|e| crate::wire::spec::fail("undecidable", e))? {
         DeployAction::Deploy(why) => Ok(Placed::Place(why)),
         DeployAction::Skip => Ok(Placed::Place(copy_text("bePlaceVerdict.why.rebuilt", &[]))),
         DeployAction::Keep { why, .. } => Ok(Placed::Keep(why)),
@@ -372,8 +372,8 @@ pub(crate) struct PlaceAnswer {
 
 /// `place-verdict` 的本体：`dest` 不是绝对路径 · `machine` 空 ⇒ `bad_args`。
 /// 只读落点那一个文件（不在 ⇒ 没装）；这份字节自己的键与身份取自编译期（`Key::this_machine` · `crate::BUILD_ID`）。
-pub fn answer_place(req: &PlaceReq) -> Result<PlaceAnswer, Fail> {
-    let bad = |m: &str| Fail::new("bad_args", crate::common::contract::malformed(m));
+pub fn answer_place(req: &PlaceReq) -> Result<PlaceAnswer, Said> {
+    let bad = |m: &str| crate::wire::spec::fail("bad_args", crate::common::contract::malformed(m));
     if !std::path::Path::new(&req.dest).is_absolute() {
         return Err(bad("missing `dest` (absolute path)"));
     }

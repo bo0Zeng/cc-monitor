@@ -304,7 +304,7 @@ fn a_failed_ssh_g_keeps_what_ssh_said_out_of_the_sentence() {
 #[test]
 fn an_alias_that_ran_out_of_time_marks_the_import_partial() {
     let timed_out = || {
-        Err(CmdErr::new(
+        Err(crate::wire::spec::fail(
             crate::platform::child::TIMED_OUT,
             "过了期限".into(),
         ))

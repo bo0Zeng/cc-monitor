@@ -13,7 +13,7 @@ use serde_json::json;
 fn tasks(home: &std::path::Path, args: &Value) -> Result<Value, String> {
     use crate::wire::typed::Codes as _;
     let req = crate::wire::typed::take::<TasksListReq>(args).map_err(|f| f.code)?;
-    let got = tasks_at(home, req).map_err(|e| e.into_fail().code)?;
+    let got = tasks_at(home, req).map_err(|e| e.into_said().code)?;
     Ok(serde_json::to_value(got).expect("回包总能序列化"))
 }
 

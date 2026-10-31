@@ -20,9 +20,9 @@ fn req(sid: &str, text: &str) -> Say {
 fn say_with(
     say: &Say,
     waiting: &dyn Fn(&str) -> bool,
-    send: &dyn Fn(&TerminalInputReq) -> Result<Sent, CmdErr>,
+    send: &dyn Fn(&TerminalInputReq) -> Result<Sent, Said>,
     resume: &dyn Fn(&Say) -> Option<Reopened>,
-) -> Result<Delivery, CmdErr> {
+) -> Result<Delivery, Said> {
     say_typed(say, &plain(&say.text), waiting, send, resume)
 }
 
