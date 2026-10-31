@@ -312,11 +312,19 @@ fn every_upgrade_step_has_a_release_that_drops_it() {
     let now = current_release();
     for r in OWN_FILES {
         let Format::Json { version, floor } = r.format else {
-            assert_eq!(r.floor_raised_in, None, "{}：不带版本的行没有下限可抬", r.rel);
+            assert_eq!(
+                r.floor_raised_in, None,
+                "{}：不带版本的行没有下限可抬",
+                r.rel
+            );
             continue;
         };
         if floor == version {
-            assert_eq!(r.floor_raised_in, None, "{}：下限已等于版本，抬于那一格要去掉", r.rel);
+            assert_eq!(
+                r.floor_raised_in, None,
+                "{}：下限已等于版本，抬于那一格要去掉",
+                r.rel
+            );
             continue;
         }
         let Some(at) = r.floor_raised_in else {
