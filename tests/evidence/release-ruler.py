@@ -1,34 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""`K-R124` 的判据本体 —— **发版那条流水线的两件事：闸没被偷偷改过 · 正文是我们写的那份。**
+"""发版尺子 —— **发版那条流水线的两件事：闸没被偷偷改过 · 正文是我们写的那份。**
 
 # 它守的性质是（九句）
 
-1. 〔`KR114D1`，`K-R114` 09-14 立〕`release.yml` 里「发不发布」那个闸
+1. `release.yml` 里「发不发布」那个闸
    （`env.PUBLISH` 的**字面** ＋ 每一处「往 Release 上写」与 CI 门那一步的 `if:`）
    **与钉在本文件里的那一份逐字相同**。
-2. 〔`KR124D2`，09-15 立〕**每一处「往 Release 上写」的步骤都带一个正文来源**，
+2. **每一处「往 Release 上写」的步骤都带一个正文来源**，
    而且那份正文**同一个 job 里真的有人生成它**、生成器盘上真的在、生成出来的段真的非空。
-3. 〔`19b`，2026-09-19 立〕**产字节那条路**：平台承诺面的每一格都有一条产线在本文件上
+3. **产字节那条路**（⑨–⑪）：平台承诺面的每一格都有一条产线在本文件上
    （两向），本文件上没有第二条**没人登记**的产线（两向），每一处抠后端 `const BUILD_ID` /
    身份戳界标的住址**实打指得到真东西**，而「半 bump」的发版核对两半都在：本文件把内嵌的
    两份 musl 字节对上源码 `BUILD_ID`，`build.rs` 要求几份内嵌字节彼此同一版（不等当场失败，
    `"unknown"` 兜底从类型上消失）。
-4. 〔`19c`，2026-09-19 立〕**`BUILD_ID` bump 的同拍债：re-embed**。产字节那条路的
+4. **`BUILD_ID` bump 的同拍债：re-embed**（⑬）。产字节那条路的
    **本机那一端**有唯一一条命令（`tests/scripts/re-embed.sh`），它的配方与上面那条产线
    **同源**（target 两向集合相等 ＋ 旗标逐字相同）；它铺的落点与 `build.rs` 吃的落点
    两向相等、且**三个落点全部被 `.gitignore` 挡着**（两向）；`build.rs` 那几处守卫的
    **出路只有这一个住址**，不许再手抄第二条产字节配方。
-   逐条与它买不到什么，见下面 `19c` 那一段的头注。
-5. 〔2026-09-23 立〕**本包的每一个 `[[bin]]` 都有一条登记过的入包路线**（⑭，
+   逐条与它买不到什么，见下面 ⑬ 那一段的头注。
+5. **本包的每一个 `[[bin]]` 都有一条登记过的入包路线**（⑭，
    两向集合相等），主二进制恰好一个、带 `required-features` 的 bin 零命中、
    `externalBin` ↔ 登记两向且不与本包的 bin 重名、消费侧找它的那个文件名主干
    与产出侧**逐字同源**、而这条路线依据的**打包工具版本**钉住。
    ⚠ 它推翻了一条写在 `Cargo.toml` 与 `filewin::proc` 头注里的报备（「安装包只装主二进制
    与 sidecar」）—— 现打读数与机制逐条住下面 ⑭ 那一段的头注。
-6. 〔2026-09-23 立〕**产物路径的根 ↔ 两份 `.cargo/config.toml` 声明的 `target-dir`**
-   （⑮，两向集合相等）。它落地时盘上**就有现物**：搬树之后 `release.yml` 里五处还写着
-   `src/frontend/shell/target/release/…`，而那条坏得完全静默 —— Release 建得出来、上面一个
+6. **产物路径的根 ↔ 两份 `.cargo/config.toml` 声明的 `target-dir`**
+   （⑮，两向集合相等）。根写错是完全静默的坏法 —— Release 建得出来、上面一个
    安装包都没有。逐条住下面 ⑮ 那一段的头注。
 7. **Release 资产 ↔ 登记表**（⑯）：`RELEASING.md` §2.2 那张表是资产名的登记（对外的资产名，改名要同拍改这张表）。
    两处发布步骤的 `files:` ↔ 登记两向一一对上；登记、交叉编译、改名成资产的 musl 目标都等于
@@ -47,33 +46,32 @@
 
 # 🔴 第 3 句为什么归这份判据，而不是归 `platform` 那一格
 
-`K-G4-platform-ledger.py`（`platform`，第 24 格）判的是「**门禁盖到了哪些平台**」——
+平台账本（`platform`，第 24 格）判的是「**门禁盖到了哪些平台**」——
 它读 `gate.sh`。本条判的是「**产线盖到了哪些平台**」—— 它读 `release.yml`。
-两件事分开的理由是硬的（现打）：三个落点全部 gitignore ⇒ **字节不进仓**，
+两件事分开的理由是硬的：三个落点全部 gitignore ⇒ **字节不进仓**，
 三条产线**只由 `release.yml` 一个文件驱动** ⇒ 「这张表的门禁只能建在 `release.yml` 上，
 不能建在 `cargo` 上」。⇒ 门禁编得过 ≠ 发版那趟产得出字节，**两格都要有**。
 ⚠ **平台承诺面本文件一个字不抄**：`PROMISED` 的唯一住址是那份账本，这里 import 它。
 
 # 🔴 它为什么住在这里，而不是住在 `ci.yml` 的 `run:` 块里
 
-`K-R114`（`d1a0552`）把整段判据写进 `ci.yml` 的 `run: |` 里，而 **runner 会把 `run:` 块里的
-`${{ … }}` 先求值再交给 shell** ⇒ 上面第 1 条要比的那个字面 `CANON_ENV` 在渲染之后变成
+**runner 会把 `run:` 块里的 `${{ … }}` 先求值再交给 shell** ⇒ 写进 `ci.yml` 的 `run: |` 里，
+上面第 1 条要比的那个字面 `CANON_ENV` 在渲染之后变成
 `"false"`（`push` / tag 上是 `"true"`），**与盘上那串模板在三个触发器上都必不相等**
-⇒ **这条守卫从加进去那天起就不可能过**（云端 run `34928839471` 日志里逐字 `CANON_ENV = "false"`）。
+⇒ 那样写的守卫**永远不可能过**。
 
-⇒ 修法选的是单子给的第一条路 —— **把字面从 `run:` 块里挪出去**，而且挪得比「经 `env:` 传」更远：
-**整段判据搬进这份 `.py`**。`.py` 不经 GitHub 的表达式渲染器，`${{` 在这里就是四个字符。
-选它不选转义（`${{` → `${{ '${{' }}` 之类）的理由写在交回里，一句话：
-**转义只治「这一个字面」，搬出去同时治了「这段判据在本地跑不起来」** —— 而后者才是
-它坏了一个月没人看见的原因（`KR124D3`）。
+⇒ 字面不进 `run:` 块，而且比「经 `env:` 传」更远：
+**整段判据住这份 `.py`**。`.py` 不经 GitHub 的表达式渲染器，`${{` 在这里就是四个字符。
+不用转义（`${{` → `${{ '${{' }}` 之类）：
+**转义只治「这一个字面」，住进 `.py` 同时治了「这段判据在本地跑不起来」** —— 而后者
+正是坏了没人看见的那一形。
 
-# 🔴 刻意不用 PyYAML（`KR124D3` 选的乙）
+# 🔴 刻意不用 PyYAML
 
-沙箱镜像 `ccmon-devbox:latest` 里 `python3 -c 'import yaml'` 是
-`ModuleNotFoundError: No module named 'yaml'`（**2026-09-15 现打**，命令
-`docker run --rm ccmon-devbox:latest python3 -c 'import yaml'`）。
-原版判据用 `yaml.safe_load` 写 ⇒ 它**在本地从来跑不起来** ⇒ 只能在云端切刀，
-而云端每切一刀要一趟 CI。下面那个 `parse_workflow()` 是本文件自带的 **YAML 子集切块器**，
+沙箱镜像 `ccmon-devbox:latest` 里没有 PyYAML
+（`docker run --rm ccmon-devbox:latest python3 -c 'import yaml'` ⇒ `ModuleNotFoundError`）。
+用 `yaml.safe_load` 写 ⇒ 它**在本地跑不起来** ⇒ 只能在云端试，
+而云端每试一次要一趟 CI。下面那个 `parse_workflow()` 是本文件自带的 **YAML 子集切块器**，
 它切 `on:` / `env:` / `jobs:` / 每一步的 `with:`。
 
 # ⚠ 它买不到什么（逐条，别读宽）
@@ -89,10 +87,10 @@
    `release.yml` 那一族**在本地一步都真跑不起来**（触发器只有推 `v*` tag 与手工 dispatch；
    `windows-latest` / `ubuntu-latest` 两个 runner 本机都没有；`cargo zigbuild` 那两趟、
    `npx tauri build` 那两趟、`softprops/action-gh-release` 那两处，本判据**一条都不执行**）。
-   ⇒ 你买到的是「**盘上这份文本满足这几条**」，**不是**「云端那一趟会绿」。
-   ⇒ 尤其是 `19b` 那几条：「**登记的那一步在文件里**」≠「**那一步在 runner 上编得出字节**」，
+   ⇒ 买到的是「**盘上这份文本满足这几条**」，**不是**「云端那一趟会绿」。
+   ⇒ 尤其是 ⑨–⑪ 那几条：「**登记的那一步在文件里**」≠「**那一步在 runner 上编得出字节**」，
    更不等于「那份字节在目标机器上跑得起来」。真机行为这一维仍然是**判不了**，不是「通过」。
-   本地绿 ＋ 云端红这一形，`K-R119` 那趟已经实打过一次。
+   本地绿 ＋ 云端红这一形真出过。
 5. 第 2 条性质里「正文真的是我们写的那份」，机器认的是
    **「有 `body_path` · 不是 `generate_release_notes` · 那个路径同 job 里有人生成 · 生成器跑得出非空的段」**。
    **正文写得对不对、好不好，它一个字都不判**（那要读语义）。
@@ -103,8 +101,8 @@
 
 # 跑法
 
-    python3 evidence/K-R124-ruler.py                      # 判本树
-    K_R124_ROOT=<别的树> python3 evidence/K-R124-ruler.py   # 死值验：对着变异过的副本跑
+    python3 evidence/release-ruler.py                             # 判本树
+    RELEASE_RULER_ROOT=<别的树> python3 evidence/release-ruler.py   # 死值验：对着变异过的副本跑
     RELEASE_WORKFLOW=<某份 release.yml> python3 …          # 只换被测的那一份
 
 退出码 0 = 过；1 = 有违例 / 地板没过 / 切块器坏了。
@@ -130,7 +128,7 @@ try:
 except ImportError:                                     # pragma: no cover —— py < 3.11
     tomllib = None
 
-ROOT = Path(os.environ.get("K_R124_ROOT") or Path(__file__).resolve().parents[2])
+ROOT = Path(os.environ.get("RELEASE_RULER_ROOT") or Path(__file__).resolve().parents[2])
 TARGET = Path(os.environ.get("RELEASE_WORKFLOW") or (ROOT / ".github" / "workflows" / "release.yml"))
 
 #: 🔴 **闭集只有这一个住址**：`release.yml` 里「发不发布」那个闸的字面，钉在这两个常量上。
@@ -142,10 +140,10 @@ CANON_IF = "env.PUBLISH == 'true'"
 # 是本守卫这个常量没跟 —— 而它红的那条诊断（「生成器不在盘上」）指的方向是对的。
 RENDERER = "tests/scripts/release-notes.mjs"
 
-# ══ `19b`（2026-09-19）：产字节那条路 ═══════════════════════════════════════════
+# ══ ⑨–⑪：产字节那条路 ═══════════════════════════════════════════════════════
 #
 #: 平台**承诺面**住这份账本，本文件只 import、**不抄第二份**
-#: （`G4` 09-19 立，它是 `platform` 那一格的本体）。
+#: （它是 `platform` 那一格的本体）。
 LEDGER = "tests/evidence/K-G4-platform-ledger.py"
 #: 内嵌那一段的住址 —— ⑪ 读它，确认「抠不到 `BUILD_ID`」是一条响亮的失败。
 BUILD_RS = "src/frontend/shell/build.rs"
@@ -166,8 +164,8 @@ COMPILE_STEPS = [
     ("build-linux", "Build and stage native filewin",
      "runner host triple 的原生 glibc `cc-monitor-filewin`（链 GTK，musl 那两份替不了它）",
      "本机 Linux x86_64（文件窗口；内嵌进裸 `cc-monitor`）"),
-    # 本机 Linux 不另编后端（size2 10-11）：从前 deb 旁边另放一份 glibc 后端（`externalBin`），与 musl 那份自释放并存两份来源；
-    #   安装包不再放它 ⇒ 本机 Linux 只剩 musl 那一份（`BYTE_LINES` 第三格），这一步跟着撤。
+    # 本机 Linux 不另编后端：安装包旁边不放 glibc 后端（`externalBin`），
+    #   本机 Linux 只用 musl 那一份自释放（`BYTE_LINES` 第三格）。
 ]
 
 #: 🔴 **承诺面的每一格，它的字节由本文件哪几步产出/铺到 `build.rs` 够得着的地方。**
@@ -181,8 +179,8 @@ BYTE_LINES = [
             # 本机后端与文件窗口程序两件字节，同一步编、铺。
             ("build-windows", "Build and stage native backend + filewin"),
         ],
-        "into": "`build.rs::embed_native_backend` 的 `include_bytes!` ⇒ **进 exe 本体**（`K-R42`），"
-                "起的时候放到 `~/.cc-monitor/bin/ccm` 再跑；安装包旁边不另放一份（size2 10-11）。"
+        "into": "`build.rs::embed_native_backend` 的 `include_bytes!` ⇒ **进 exe 本体**，"
+                "起的时候放到 `~/.cc-monitor/bin/ccm` 再跑；安装包旁边不另放一份。"
                 "文件窗口程序经 `build.rs::embed_native_filewin` 进 exe 本体",
     },
     {
@@ -221,8 +219,7 @@ BYTE_LINES = [
 TRIPLES = {"x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"}
 
 #: 🔴 **每一处抠后端源码常量的住址**（路径, 常量名）→ 出现次数。**Counter 相等，不是包含。**
-#: 它治的是一件真发生过的事：步 9（09-19）把 `BUILD_ID` 从 `main.rs` 搬到 `lib.rs`，
-#: `release.yml` 里**两处**要抠它，那次**只改了一处** ⇒ 另一处指着一份**没有那个 const**
+#: 它治的那一形：`BUILD_ID` 换了住处，`release.yml` 里**两处**要抠它，只改了一处 ⇒ 另一处指着一份**没有那个 const**
 #: 的文件，真发版时死在「抠不到后端的 const BUILD_ID」上，而红的原因与它要守的事无关。
 #: ⇒ 本条不只比登记，还**实打去读那份文件**，抠不出恰好一行就红（⑩b）。
 IDENTITY_READS = {
@@ -231,18 +228,18 @@ IDENTITY_READS = {
     ("src/common/deploy-contract/src/lib.rs", "STAMP_CLOSE"): 1,
 }
 
-# ══ `19c`（2026-09-19）：`BUILD_ID` bump 的同拍债 —— re-embed ═══════════════════
+# ══ ⑬：`BUILD_ID` bump 的同拍债 —— re-embed ═══════════════════════════════════
 #
 # 🔴 **它为什么也归这一格，而不是新开第 25 格**
 #
-# `19b` 已经把「产字节那条路」收进本格：⑪ 读 `src/frontend/shell/build.rs`（吃字节那一侧）。`19c` 补的是同一条路上
+# ⑨–⑪ 收的是「产字节那条路」：⑪ 读 `src/frontend/shell/build.rs`（吃字节那一侧）。⑬ 收的是同一条路上
 # **产字节**那一端：一条 re-embed 命令，musl 那两份的配方只住它，`release.yml` 那一步只调它的 `--build-only`
 # —— 判它就得同时读那两份文本，而「同时读那两份」正是本格的定义。
 # ⇒ 本组判据与 ⑨⑩⑪ 共用同一个被测面，拆出去就得把 `release.yml` 的解析再抄一份。
 #
-# 🔴 **它治的病**（步 `19c` 逐字）：协议面一变就要 bump `BUILD_ID`，
+# 🔴 **它治的病**：协议面一变就要 bump `BUILD_ID`，
 # 而 bump 那一刻 `embedded-backends/` 里那两份 musl 字节立刻变旧 ⇒ `build.rs` 的
-# **半 bump 守卫**当场 panic，**整棵树编不过**（2026-09-18 实地踩过一次，四路 agent 同时编不过）。
+# **半 bump 守卫**当场 panic，**整棵树编不过**。
 # 今天盘上有一张 mtime 安全网，但那**只是安全网不是机制** —— 机制那一半是
 # `tests/scripts/re-embed.sh`：一条真跑得起来的命令 ＋ 一条 `--check`。
 #
@@ -271,7 +268,7 @@ REEMBED_STEPS = {
 }
 #: ⑬d 注册侧：`build.rs` 里登记落点目录名的那两个常量。
 LANDING_CONSTS = ["EMBEDDED_BACKENDS_DIR", "NATIVE_BACKEND_DIR"]
-#: ⑬d 从前还有第三个落点 `binaries/`（Tauri `externalBin` 的暂存区）；安装包不再旁放本机后端（size2 10-11），它跟着撤了。
+#: ⑬d 没有 `binaries/` 那个落点（Tauri `externalBin` 的暂存区）：安装包不旁放本机后端。
 #: ⑬d 盘侧：`.gitignore` 里每一行落点上面那句机检锚，逐字。
 LANDING_MARK = "# ⇐ 内嵌落点"
 #: ⑬e：这两个函数体里的**出路**必须点名 `REEMBED_CMD`，各至少两处（重编 ＋ 诚实关闭）。
@@ -293,11 +290,10 @@ AGREE_BANNED = ['"unknown"', "unwrap_or_default()"]
 
 # ══ ⑭ 本包的每一个 `[[bin]]` ↔ 安装包的清单 ═════════════════════
 #
-# 🔴 **它治的是一条当天就被推翻的报备。** 第十三刀（文件管理窗口落成独立进程）交回时
-# 逐字写着：「Tauri 安装包只装主二进制与 `externalBin` sidecar ⇒ 装机那份上
-# `resolve_window_bin()` 会找不到它并出声」，并据此把「把它打进包」记成一笔欠账。
+# 🔴 **它守的是一个容易想错的事实。** 直觉是「Tauri 安装包只装主二进制与 `externalBin` sidecar ⇒ 装机那份上
+# `resolve_window_bin()` 会找不到文件窗口程序」。
 #
-# **那句是假的。** 现打两趟推翻（用的是本仓这份 `src/frontend/shell/Cargo.toml` ＋
+# **那是错的。** 两趟实测（用的是本仓这份 `src/frontend/shell/Cargo.toml` ＋
 # `tauri.conf.json` ＋ `tauri.sidecar.conf.json`，`@tauri-apps/cli` 现锁的 2.11.2；
 # 二进制喂的是占位字节 —— 本条问的是**清单**，不是那几个字节能不能跑）：
 #   · 真 `.deb`（`npx tauri bundle --bundles deb`）：`dpkg-deb -c` 现打 `usr/bin/` 三份 ——
@@ -349,17 +345,16 @@ BIN_SHIPPING = {
     },
 }
 #: 🔴 `externalBin` 那几项 ↔ 登记，两向集合相等（⑭d）。键 = 那个名字的住址（`(文件, const)`，实打去读，不抄名字）。
-#: 🔴 size2（10-11）起这一张是**空的**：安装包旁边不再放第二份本机后端 —— 它与内嵌进 exe 的那份逐字节相同，
+#: 🔴 这一张是**空的**：安装包旁边不放第二份本机后端 —— 它与内嵌进 exe 的那份逐字节相同，
 #:   而本机后端无论如何都先放到 `~/.cc-monitor/bin/ccm` 再跑（`local_backend::resolve_or_extract`），旁边那份只是字节来源。
 #:   ⇒ ⑭d 判「`externalBin` 零命中」；要加回来，先答「那份字节谁用、为什么不是内嵌那份」。
 FOREIGN_SIDECARS = {}
 
 # ══ ⑮ 产物路径的根 ↔ 声明的 `target-dir` ════════════════════════
 #
-# 🔴 **这一条落地时盘上就有现物，不用故意改坏。** 09-17 搬树（两个 cargo 工程搬进 `src/`，
-# 同拍加了仓根那份 `.cargo/config.toml`：`[build] target-dir = ".build/shell"`）之后，
-# `release.yml` 里**五处**产物路径还写着 `src/frontend/shell/target/release/…` —— 而最后一次发版是
-# v3.6.0（08-01，搬树之前）⇒ **一次都没人踩到过**。
+# 🔴 **它守的那一形：** cargo 工程挪了目录、或仓根 `.cargo/config.toml` 改了 `target-dir`
+# （今天是 `[build] target-dir = ".build/shell"`），`release.yml` 里的产物路径没跟
+# —— 发版之间隔得久，**没人踩得到**。
 # 它坏得完全静默：三个 glob 全空 → `Get-ChildItem … -ErrorAction SilentlyContinue` 吞掉
 # 「路径不存在」→ `SHA256SUMS.txt` 空着照发 → `action-gh-release` 的 `files:` 一条都不匹配、
 # 而 `fail_on_unmatched_files` 默认 `false` ⇒ **Release 建得出来，上面一个安装包都没有。**
@@ -964,7 +959,7 @@ def run_checks(emit):
         check(gate[0].get("if") == CANON_IF, "⑤CI 门挂在同一个闸上",
               "if=%r（这一格红 = 真发版那条路上 CI 门可能被跳过）" % (gate[0].get("if"),))
 
-    # ── ⑥ 每一处发布步骤都带正文来源（`KR124D2`）─────────────────────────────
+    # ── ⑥ 每一处发布步骤都带正文来源 ─────────────────────────────────────────
     #   失效方向逐字：只给 Windows 那处加 ⇒ Linux 那处照样发 GitHub 自动生成的。
     #   ⇒ 这一条对 `pubsteps` **逐条**判，不是「至少有一处带」。
     paths = []
@@ -987,7 +982,7 @@ def run_checks(emit):
           "body_path 的取值集合 = %r" % (sorted({p for _, _, p in paths}),))
 
     # ── ⑦ 那份正文**同一个 job 里真的有人生成它**，而且排在发布步骤前面 ───────
-    #   口径与 `K-R122` 的「build 排在 e2e 前面」同源：认字面量 + 认书写顺序。
+    #   口径与 `ci.yml` 里「build 排在 e2e 前面」那条同源：认字面量 + 认书写顺序。
     for jname, idx, bp in paths:
         producers = [i for jn, i, st in steps
                      if jn == jname and RENDERER in str(st.get("run") or "")
@@ -1016,8 +1011,8 @@ def run_checks(emit):
         except subprocess.TimeoutExpired:
             check(False, "⑧生成器吐得出本版正文", "`node` 跑超时 60s —— 判不了，按红记")
 
-    # ══ `19b`（09-19）：产字节那条路 ═══════════════════════════════════════════
-    text = TARGET.read_text(encoding="utf-8")
+    # ══ ⑨–⑪：产字节那条路 ═══════════════════════════════════════════════════
+    text =TARGET.read_text(encoding="utf-8")
     by_job = collections.Counter()
     for jname, _, st in steps:
         nm = st.get("name")
@@ -1088,7 +1083,7 @@ def run_checks(emit):
             continue
         hits = source_const_hits(rel, const)
         check(hits == 1, "⑩b住址实打·%s 里的 `const %s`" % (rel, const),
-              "%s（应当恰好 1 行）—— 🔴 **这一格就是步 9 那次漏改的形状**："
+              "%s（应当恰好 1 行）—— 🔴 **这一格就是两处只改了一处的形状**："
               "住址指着一份没有那个 const 的文件，发版当场死在抽取上"
               % ("那份文件**读不到**" if hits is None else "命中 %d 行" % hits))
 
@@ -1128,8 +1123,8 @@ def run_checks(emit):
               "`main` 里%s把两条内嵌路收来的 id 交给它 —— 漏一条 = 那一份不进「同一版」的核对" % (
                   "" if wired else "**没有**"))
 
-    # ══ `19c`（09-19）：`BUILD_ID` bump 的同拍债 —— re-embed ═══════════════════
-    reembed = read_rel(REEMBED_SH)
+    # ══ ⑬：`BUILD_ID` bump 的同拍债 —— re-embed ═══════════════════════════════
+    reembed =read_rel(REEMBED_SH)
     gi = read_rel(BRIDGE_GITIGNORE)
 
     # ── ⑬a 地板：出路那条命令有唯一住址，而且它指得到一份真在盘上的东西 ──────────
@@ -1183,12 +1178,9 @@ def run_checks(emit):
              "在" if "cc-monitor-backend-$arch" in reembed else "**不在**"))
 
     # ── ⑬d 三个内嵌落点 ↔ `.gitignore` 挡着的那几行，两向集合相等 ────────────────
-    #   🔴 **这一条今天有现物**：步 8 全仓改名（`daemon` → `backend`）之后，
-    #     `.gitignore` 还写着 `/embedded-daemons/` 与 `/native-daemon/`
-    #     ⇒ 09-19 现打 `git check-ignore` 两条都不命中，两个落点从那天起就没被挡住。
-    #     而与 `release.yml` 文件头都还把「三个落点全部 gitignore」
-    #     当硬事实在用 —— **那句话曾经是假的**，而它正是「门禁只能建在
-    #     `release.yml` 上」这条推理的全部前提。
+    #   🔴 它守的那一形：落点目录改了名、`.gitignore` 里那几行没跟 ⇒ `git check-ignore` 不命中，
+    #     落点没被挡住；而 `release.yml` 文件头把「三个落点全部 gitignore」
+    #     当硬事实在用 —— 它正是「门禁只能建在 `release.yml` 上」这条推理的全部前提。
     registered = {rust_str_const(brs, c) or "<`const %s` 抠不到>" % c for c in LANDING_CONSTS}
     ignored = gitignore_landings(gi)
     check(registered == ignored, "⑬d内嵌落点 ↔ `.gitignore` 的机检锚，两向集合相等",
@@ -1401,7 +1393,7 @@ def run_checks(emit):
           % (len(bins), BRIDGE_CARGO, sorted(names)))
 
     # ── 🔴 ⑭a 本条的本体：**每一个 `[[bin]]` 都有一条登记过的入包路线**（两向集合相等）──
-    #   失效方向逐字：① 有人加第三个 `[[bin]]`（就像第十三刀加了第二个），而**没有任何人
+    #   失效方向逐字：① 有人加第三个 `[[bin]]`（像文件窗口程序那样），而**没有任何人
     #   想过它怎么进安装包、装机之后谁去找它** ⇒ 登记侧缺 ⇒ 红；② 登记里留着一个已经
     #   不存在的 bin ⇒ 盘侧缺 ⇒ 红。**刻意不是 `>=`**：地板在「少了一个」那个方向上是瞎的，
     #   而「少一个 bin 进不了包」正是本条要治的病。
@@ -1451,7 +1443,7 @@ def run_checks(emit):
             reg_foreign.add(got if got is not None else "<`%s::%s` 抠不到>" % (rel, const))
         check(stems == reg_foreign, "⑭d`externalBin` ↔ 登记，两向集合相等",
               "盘上有而没登记 %s · 登记了而盘上没有 %s —— 前者是安装包旁边多放了一份没人登记的程序"
-              "（本机后端那份与 exe 内嵌的逐字节相同、开机只用内嵌那份：size2 10-11 撤的就是它）"
+              "（本机后端那份与 exe 内嵌的逐字节相同、开机只用内嵌那份，旁边那份没人用）"
               % (sorted(stems - reg_foreign), sorted(reg_foreign - stems)))
         dup = stems & names
         check(not dup, "⑭d`externalBin` 与本包的 `[[bin]]` 不重名（零命中）",
@@ -1499,8 +1491,8 @@ def run_checks(emit):
     got_roots = set(roots)
     check(got_roots == want_roots, "⑮产物路径的根 ↔ 声明的 `target-dir`，两向集合相等",
           "`release.yml` 里有而没声明 %s · 声明了而本文件没用 %s（声明侧 %r；"
-          "每个根的原样 token：%r）—— 前者就是 2026-09-23 逮到的那条**静默**缺陷"
-          "（搬树之后 `src/frontend/shell/target/release/…` 指空，三个 glob 全不匹配而只打 warning "
+          "每个根的原样 token：%r）—— 前者是一条**静默**缺陷"
+          "（产物路径指空，三个 glob 全不匹配而只打 warning "
           "⇒ Release 上一个安装包都没有）；后者是「那棵树的产物从此没人拿」"
           % (sorted(got_roots - want_roots), sorted(want_roots - got_roots), declared,
              {k: sorted(set(v))[:3] for k, v in sorted(roots.items())}))
@@ -1700,11 +1692,11 @@ def main():
     print("release-gate: %d passed（分母 = 上面逐行印出来的 PASS 条数；被测对象 `%s`。"
           "⚠ 它不执行 GitHub 的表达式求值器、只认两种「往 Release 上写」的形状、"
           "不判正文写得对不对。"
-          "🔴 **诚实边界（`19b` 加，写死别读宽）**：`release.yml` 那一族**在本地一步都真跑不起来** "
+          "🔴 **诚实边界（写死别读宽）**：`release.yml` 那一族**在本地一步都真跑不起来** "
           "⇒ 买到的是「**盘上这几份文本满足上面逐行列出的那些条件**」，**不是**「云端那一趟会绿」；"
           "⑨ 那几条尤其是 —— 「登记的那一步在文件里」≠「那一步在 runner 上编得出字节」，"
           "更不等于「那份字节在目标机器上跑得起来」。真机行为仍是**判不了**，不是「通过」。"
-          "🔴 **⑬（`19c`）那一组同一条边界**：⑬a–⑬e 全是盘上文本的对拍，"
+          "🔴 **⑬ 那一组同一条边界**：⑬a–⑬e 全是盘上文本的对拍，"
           "「配方写得一样」≠「那条命令今天跑得出字节」；⑬i 真跑 `--build-only` 用的是只记账的 cargo 替身；⑬g 真跑的是 `--check`（只读），"
           "在一棵没铺字节的树上它只答得出「这里没有一份对不上的字节」，"
           "**不是**「字节是对的」，更不是「发版办完了」。"

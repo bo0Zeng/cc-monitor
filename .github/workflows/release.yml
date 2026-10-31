@@ -17,13 +17,13 @@ name: Release
 #     🔴 **这一句在全仓改名（`daemon`→`backend`）之后曾经是假的**：
 #     `src/frontend/shell/.gitignore` 里当时还写着 `/embedded-daemons/` 与 `/native-daemon/`，
 #     现打 `git check-ignore` **两条都不命中** ⇒ 三个落点里有两个从改名那天起就没被挡住。
-#     那两行已改对，并给它们加了机检锚（`K-R124-ruler.py` ⑬d 与 `build.rs` 的落点常量两向对拍）
+#     那两行已改对，并给它们加了机检锚（`release-ruler.py` ⑬d 与 `build.rs` 的落点常量两向对拍）
 #     —— 这句「硬事实」从此有人每趟核它。
 #  ② 三条产线**只由本文件驱动**，而本文件只在推 `v*` tag / 手工触发时跑
 #     ⇒ 平常的 `cargo build` 一格字节都没有 ⇒ **这张表的门禁只能建在本文件上，不能建在 `cargo` 上**。
 #
 # ⚠ **平台承诺面哪几格 ↔ 本文件哪几步产它们的字节** —— 那张表**不抄在这里**。
-#   唯一住址：`tests/evidence/K-R124-ruler.py` 的 `BYTE_LINES`（承诺面那一侧它又是从
+#   唯一住址：`tests/evidence/release-ruler.py` 的 `BYTE_LINES`（承诺面那一侧它又是从
 #   `tests/evidence/K-G4-platform-ledger.py::PROMISED` 导进去的，全仓只有那一份）。
 #   本文件里每加/删/改名一个「编后端」的步骤，那份判据会**两向**红 —— 这是刻意的：
 #   多一条没人登记的产线 ＝ 给一个**没承诺的平台**悄悄发了字节。
@@ -66,7 +66,7 @@ on:
 # 死在「抠不到后端的 const BUILD_ID」上，而红的原因与它要守的事毫无关系。
 # ⇒ 收成一个 `env:`：两步都读它，**再也漏不掉第二处**。
 # ⚠ 消费侧写成 `$env:CCM_BACKEND_IDENTITY_SRC`（两步都是 pwsh）。
-# ⚠ 判据那一侧同拍钉住：`K-R124-ruler.py` 的 ⑩ 会把本文件里每一处抽取的路径解出来，
+# ⚠ 判据那一侧同拍钉住：`release-ruler.py` 的 ⑩ 会把本文件里每一处抽取的路径解出来，
 #   **实打去读那份文件**，抠不出恰好一个 const 就红 —— 住址指空这一形从此当场现形。
 # 身份戳的两个界标住契约 crate（后端拼戳 · monitor 扫字节两侧 `use` 同一份）⇒ 那一步抠界标读 `CCM_STAMP_MARKS_SRC`。
 env:
@@ -434,7 +434,7 @@ jobs:
       # （`.build/shell/release/bundle/deb/cc-monitor_3.8.1_amd64.deb`）。
       #
       # ⇒ 下面的路径一律以 `.build/shell/` 为根；「一条都没匹配」是硬失败（下面那个**恒等**），不静默。
-      # 🔴 判据那一侧同拍钉住：`tests/evidence/K-R124-ruler.py` 的 ⑮ 把本文件里每一处
+      # 🔴 判据那一侧同拍钉住：`tests/evidence/release-ruler.py` 的 ⑮ 把本文件里每一处
       #   cargo 产物路径的**根**与那两份 `.cargo/config.toml` 声明的 `target-dir`
       #   做**两向集合相等** —— 再搬一次树、再改一次 `target-dir` 而这里不跟，当场红。
       - name: Compute SHA256 checksums
@@ -602,7 +602,7 @@ jobs:
       #
       # ## 它买的是什么（这是全仓**唯一**一处对着真产物核这件事的地方）
       #
-      # 门禁那一侧（`K-R124-ruler.py` ⑭）只读**盘上的文本**：Cargo.toml 的 `[[bin]]` ↔ 登记 ↔
+      # 门禁那一侧（`release-ruler.py` ⑭）只读**盘上的文本**：Cargo.toml 的 `[[bin]]` ↔ 登记 ↔
       # `externalBin`。它**买不到**「打包器真把它们装进去了」。本步对着**真 `.deb` 的字节**问
       # 那一句：解出来的 `usr/bin/` 里到底有哪几个文件。
       #
@@ -692,7 +692,7 @@ jobs:
   #    只在还原那一步的 `env:` 上出现，`run:` 里不直接展开；keystore 与 keystore.properties
   #    只写在 `$RUNNER_TEMP`（不落工作树），打包那一步用 `-Pccm.keystoreProperties` 指过去；
   #    打包一结束（成败都算）就删。碰签名变量的每一行都重定向进文件，不往日志写，不开 xtrace。
-  #    这几条由 `K-R124-ruler.py` ⑱ 逐条核。`ci.yml` 的 mobile 格照旧只打未签名包，一个 secret 都不碰。
+  #    这几条由 `release-ruler.py` ⑱ 逐条核。`ci.yml` 的 mobile 格照旧只打未签名包，一个 secret 都不碰。
   # 3. APK 里带给远端装的两份 Linux 后端（x86_64 / aarch64）：本 job 不另编，下载 `build-backends` 的 artifact
   #    放进 `:app` 读的目录；手机连上一台、那台后端与自己不是同一版 ⇒ 提示更新，按了就从包里这两份装上去。
   build-mobile:

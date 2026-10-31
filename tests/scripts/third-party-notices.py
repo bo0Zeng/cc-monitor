@@ -5,7 +5,7 @@
   · `THIRD-PARTY-NOTICES.txt` —— 随安装包（`tauri.sidecar.conf.json` 的 `bundle.resources`）与 Release 资产分发；
   · `tests/evidence/third-party-not-shipped.txt` —— 锁文件里有、但不进产物的包（只在别的平台 / 只开发期用）。
 两份合起来 == 两份 `Cargo.lock` 的第三方包；`package-lock.json` 的生产依赖全在声明里。
-门禁 `release-gate`（`tests/evidence/K-R124-ruler.py` ⑰）两向核这两句；发版那一趟（`release.yml`）跑 `--check`。
+门禁 `release-gate`（`tests/evidence/release-ruler.py` ⑰）两向核这两句；发版那一趟（`release.yml`）跑 `--check`。
 
 来源：
   · Rust（后端 `src/backend` ＋ 壳与文件窗口 `src/frontend/shell` 整个工作区 ＋ 手机嵌的 Rust 核心 `src/mobile/core-rs/rust`）：
