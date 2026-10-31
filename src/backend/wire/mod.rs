@@ -107,12 +107,10 @@ fn housed(c: Option<&SessionContainer>) -> Option<Housed> {
     })
 }
 
-/// **一条会话整份脸的唯一构造口**（[`SessionFace`]）：点 · 字 · 语气 · 序 · 能做什么都只在这里判。
+/// **一条会话整份脸的构造口**（[`SessionFace`]）：点 · 字 · 语气 · 序 · 能做什么都只在这里判；那台看不见时那一张住会话簿那一层
+/// （`resident_client::book::unseen`，桌面与手机核心同一处）。
 pub(crate) trait SessionFaceExt: Sized {
     fn of(life: Life) -> Self;
-    /// 那台看不见（到它的连接断了）时那一张：本机后端在断的那一刻给那台活的 · 可重连的每一条发 `session_left` 带它（`control/feeds.rs`）；
-    /// `offline` 是那台的离线那一句（与机器成品的 `offline_said` 同一处取字），悬停 · 状态一句照它。
-    fn unseen(offline: Words) -> Self;
     /// 带上这条会话跑在哪个号下（`account`，宣告时判的那一个）。
     fn under(self, account: Option<String>) -> Self;
 }
@@ -127,36 +125,6 @@ fn say_yes(hint: String) -> CanSay {
 }
 
 impl SessionFaceExt for SessionFace {
-    fn unseen(offline: Words) -> Self {
-        let tip = offline;
-        SessionFace {
-            dot: SessionDot::Unknown,
-            life: WireLife::Unclear,
-            settled: false,
-            name: Words(copy_core::copy_text("sessionState.unseen.name", &[])),
-            line: tip.clone(),
-            tone: Tone::Plain,
-            order: 3,
-            account: None,
-            can: SessionCan {
-                close: CanClose::Menu,
-                resume: no(Words(copy_core::copy_text(
-                    "sessionState.unseen.noResume",
-                    &[],
-                ))),
-                term: CanTerm::No { why: tip.clone() },
-                reattach: no(tip.clone()),
-                model: no(tip.clone()),
-                permission: no(tip.clone()),
-                stop: no(tip.clone()),
-                end: no(tip.clone()),
-                // 离线照常可写可发：成待发，那台接上照原编号重交。
-                say: say_yes(copy_core::copy_text("composer.input.offline", &[])),
-            },
-            tip,
-        }
-    }
-
     fn under(mut self, account: Option<String>) -> Self {
         self.account = account;
         self

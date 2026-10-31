@@ -529,7 +529,7 @@ fn told(kind: &str, sid: &str, life: crate::wire::Life) -> String {
 /// `face.life = unclear`），排在 `ended` 之前；已结束的不说。壳一条都不用合成。
 #[tokio::test]
 async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backend() {
-    use crate::wire::{Life, SessionFaceExt as _};
+    use crate::wire::Life;
     use cmd_wire::frame::Relayed;
     let machine = "feeds-unclear";
     let _one = one_at_a_time().await;
@@ -569,7 +569,7 @@ async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backe
         .iter()
         .position(|r| matches!(r, Relayed::Ended { .. }))
         .unwrap();
-    let unclear = crate::wire::SessionFace::unseen(crate::common::cells::Words(
+    let unclear = resident_client::book::unseen(crate::common::cells::Words(
         comms_inward::chan::said::offline(machine),
     ));
     let said_left = |sid: &str| Relayed::Line {
