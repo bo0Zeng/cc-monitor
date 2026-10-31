@@ -122,7 +122,7 @@ impl Remote for Owner {
             let own = crate::platform::fs::Own::issue_roots(&self.home, &self.home);
             match send_here(&own, &req, Ok(&self.roster), 1_000) {
                 Ok(sent) => Ok(serde_json::to_string(&sent).unwrap()),
-                Err((code, message)) => Err(Said::new(code, message)),
+                Err(s) => Err(s),
             }
         })
     }
