@@ -1062,10 +1062,11 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     assert!(no_partials());
     // 它说「不」⇒ 那句话原样，不动
     let fake = FakeAsk::new(
-        Err(crate::backend_once::OnceErr::Refused {
+        Err(crate::backend_once::OnceErr::Refused(cmd_wire::failed::Failed {
             code: "undecidable".into(),
-            message: "不说自己是谁（夹具句）".into(),
-        }),
+            said: "不说自己是谁（夹具句）".into(),
+            ..Default::default()
+        })),
         &mine,
     );
     // 比那一句与「本机」那一行；「时刻」那一行是放的那一刻读的钟，不拿测试这边另读的一次去比（跨了一秒就对不上）。

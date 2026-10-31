@@ -24,7 +24,7 @@ const VIEW = golden["terminal-preview"].reply;
 
 const enc = (v: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(v));
 const refused = (code: string, live?: string): ChanError =>
-  new ChanError({ layer: "peer", why: "refused", body: enc({ code, message: `said ${code}`, ...(live !== undefined ? { data: { live } } : {}) }) }, `said ${code}`);
+  new ChanError({ layer: "peer", why: "refused", body: enc({ code, said: `said ${code}`, ...(live !== undefined ? { data: { live } } : {}) }) }, `said ${code}`);
 
 interface Rig {
   port: FollowPort;

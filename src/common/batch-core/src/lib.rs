@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 use std::future::Future;
 
 use cmd_wire::batch::{BatchOutcome, BatchReply, Conflict, Conflicts, Decide, ItemState};
+use cmd_wire::failed::Failed;
 use cmd_wire::files::{CopyItem, FilesCopyReq, WirePath};
 use cmd_wire::Call;
 use copy_core::copy_text;
@@ -37,10 +38,6 @@ pub const EXISTS: &str = "exists";
 
 /// 断了再问最多几次（每次都先等那台连回来）。
 pub const CUTS_MAX: usize = 8;
-
-/// 没成的一下：交出去那一形（码 · 给人看的那一句 · 「复制详情」那几行（空 ⇒ 不出按钮）· 按码定形的 `data`）。
-/// 这一侧自己说的（没走通 · 拼错 · 对端不认这条命令）⇒ 兜底码（[`Failed::local`]）。
-pub use cmd_wire::failed::Failed;
 
 /// 一行汇总底下几件各自的失败 ⇒ 复制出去的整段：首行是那一行，每件一段（「名字：那一句」＋ 它的详情），
 /// 段间空一行；没有一件带详情 ⇒ `None`（不出按钮）。排法住 `copy_core::detail::many`。

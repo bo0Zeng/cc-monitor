@@ -288,13 +288,12 @@ async fn a_batch_the_user_cancelled_never_shows_up() {
             |_| async {
                 Err(batch_core::Rebuff {
                     failed: crate::source::Failed {
-                        code: Some("exists".into()),
-                        said: String::new(),
-                        detail: String::new(),
-                    },
-                    data: Some(serde_json::json!({"conflicts": [
+                        code: "exists".into(),
+                        data: Some(serde_json::json!({"conflicts": [
                         {"key": "0", "name": "x", "kind": "file", "there": "file", "answers": ["overwrite", "skip", "keep_both"]}
-                    ]})),
+                        ]})),
+                        ..Default::default()
+                    },
                     cut: false,
                 })
             },
@@ -395,11 +394,7 @@ fn a_retried_download_takes_the_place_of_the_failed_row() {
     p.add(trip, None, None);
     failed.finish(crate::download::Outcome::Failed {
         dest: "/tmp/n1.txt".into(),
-        why: crate::source::Failed {
-            code: None,
-            said: "x".into(),
-            detail: String::new(),
-        },
+        why: crate::source::Failed::local("x".into()),
     });
     let Some((_, Ok(Act::RetryDownload { row: r, src, dest }))) = p.jobs()[0].view().button else {
         panic!("失败那一行没有「重试」");

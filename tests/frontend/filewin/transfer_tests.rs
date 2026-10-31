@@ -533,7 +533,7 @@ impl comms_inward::chan::router::Backends for XferHost {
             if matches!(self.ends, Ends::DoneStaleCommits(k) if n < k) {
                 let body = serde_json::to_vec(&serde_json::json!({
                     "code": "stale",
-                    "message": "传上来的那份和本机那份对不上（合成）",
+                    "said": "传上来的那份和本机那份对不上（合成）",
                 }))
                 .unwrap_or_default();
                 return Box::pin(async move {
@@ -550,7 +550,7 @@ impl comms_inward::chan::router::Backends for XferHost {
         {
             let body = serde_json::to_vec(&serde_json::json!({
                 "code": "exists",
-                "message": "同名 1 项",
+                "said": "同名 1 项",
                 "data": {"conflicts": [{"key": "0", "name": "a.bin", "kind": "file", "size": 3,
                     "mtime_text": "10-12 14:02", "there": "file", "there_size": 1,
                     "there_mtime_text": "10-01 09:10", "answers": ["overwrite", "skip", "keep_both"]}]},

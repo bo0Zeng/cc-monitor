@@ -11,9 +11,10 @@
 use crate::busy::Busy;
 use crate::resident::{self, OnEvent};
 use crate::transfer::{self, Halt};
-use batch_core::{Board, Failed, Phase, Plan, Rebuff, Tick, Verb};
+use batch_core::{Board, Phase, Plan, Rebuff, Tick, Verb};
 use chunk_core::Ask;
 use cmd_wire::batch::{BatchOutcome, BatchReply, Conflict, Decide, ItemState};
+use cmd_wire::failed::Failed;
 use cmd_wire::files::WirePath;
 use cmd_wire::phone::{
     BatchAnswer, BatchKeep, BatchLine, CallEnd, ClashRow, LocalAsk, LocalOpened,

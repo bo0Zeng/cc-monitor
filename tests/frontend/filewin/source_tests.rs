@@ -1062,7 +1062,7 @@ fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
         why: PeerFault::Refused {
             body: Body(
                 serde_json::to_vec(
-                    &serde_json::json!({"code": "io_failed", "message": "m", "detail": wrote}),
+                    &serde_json::json!({"code": "io_failed", "said": "m", "detail": wrote}),
                 )
                 .unwrap(),
             ),

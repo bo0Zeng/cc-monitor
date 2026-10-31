@@ -87,8 +87,8 @@ if run_fork "99999999-0000-0000-0000-000000000000" u1 >/dev/null; then
 else
   rc=$?
   [ "$rc" = 2 ] && ok "exit 2" || bad "exit code" "got $rc"
-  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["code"] and d["message"] and "detail" in d' "$WORK/err" 2>/dev/null \
-    && ok "stderr 是 {code,message,detail} JSON" || bad "stderr 信封" "$(cat "$WORK/err")"
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["code"] and d["said"] and "detail" in d and "message" not in d' "$WORK/err" 2>/dev/null \
+    && ok "stderr 是 {code,said,detail} JSON" || bad "stderr 信封" "$(cat "$WORK/err")"
 fi
 
 echo "== 5. 路径穿越的 sid 必须被拒 =="

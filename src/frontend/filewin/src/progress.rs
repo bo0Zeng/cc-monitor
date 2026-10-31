@@ -684,7 +684,7 @@ impl Job {
                             detail: fails_of(&o.failed, &sep),
                             frac: None,
                             nums: ended,
-                            copy: super::source::Failed::copy_many(
+                            copy: batch_core::copy_many(
                                 &copy_text(
                                     "rsFilewinProgress.upload.failed",
                                     &[("n", &o.failed.len().to_string())],
@@ -790,7 +790,7 @@ impl Job {
                         nums: ended,
                         copy: match &o {
                             Some(super::download::Outcome::Failed { why, .. }) => {
-                                super::source::Failed::copy_body(
+                                batch_core::copy_body(
                                     &format!(
                                         "{}\n{}",
                                         copy_text(
@@ -858,7 +858,7 @@ impl Job {
                         detail: f.said.clone(),
                         frac: None,
                         nums: ended,
-                        copy: super::source::Failed::copy_body(
+                        copy: batch_core::copy_body(
                             &format!("{}\n{}", board.title(), f.said),
                             &f.detail,
                         ),

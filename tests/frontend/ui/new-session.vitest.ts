@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const sent: { op: string; body: Record<string, unknown> }[] = [];
 const replies = new Map<string, unknown>();
-let refusal: { op: string; code: string; message: string; data: unknown; detail?: string } | null = null;
+let refusal: { op: string; code: string; said: string; data: unknown; detail?: string } | null = null;
 /** 接下来几次 `session-open` 没等到回话（期限到）。 */
 let hang = 0;
 /** 期限到之后那一次再核：`true` ⇒ 一直不回（停在「正在核实」那一刻）。 */
@@ -28,7 +28,7 @@ vi.mock("../../../src/comms/inward/chan", async (importOriginal) => {
         if (refusal && refusal.op === op) {
           const r = refusal;
           refusal = null;
-          throw new real.ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: r.code, message: r.message, data: r.data })) }, r.message, r.detail ?? "");
+          throw new real.ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: r.code, said: r.said, data: r.data })) }, r.said, r.detail ?? "");
         }
         if (boom && op === "session-open") throw boom;
         return new TextEncoder().encode(JSON.stringify(replies.get(op)));
@@ -314,7 +314,7 @@ describe("单个 · 一组：页签与别名那一格", () => {
     await done;
     expect(newRequests()[0].account).toEqual({ kind: "named", name: "work" });
     document.body.replaceChildren();
-    refusal = { op: "profiles-resolve", code: "refused", message: "devbox 离线", data: null };
+    refusal = { op: "profiles-resolve", code: "refused", said: "devbox 离线", data: null };
     void openNewSession({ origin: "devbox" });
     await flush();
     const alias = sel(copyText("newSession.label.alias"));
@@ -404,7 +404,7 @@ describe("点［新建］：交那台的那一份", () => {
   });
 
   it("★ 那台说目录那一格不行 ⇒ 错误落在目录那一格下、框不关、什么都没起", async () => {
-    refusal = { op: "session-open", code: "no_dir", message: copyText("beSessionNew.cwd.missing", { cwd: "/nope" }), data: { field: "cwd", unavailable: null } };
+    refusal = { op: "session-open", code: "no_dir", said: copyText("beSessionNew.cwd.missing", { cwd: "/nope" }), data: { field: "cwd", unavailable: null } };
     void openNewSession({ origin: "devbox" });
     await flush();
     createBtn().click();
@@ -418,7 +418,7 @@ describe("点［新建］：交那台的那一份", () => {
     refusal = {
       op: "session-open",
       code: "account_unavailable",
-      message: "那台说 work 选不了",
+      said: "那台说 work 选不了",
       data: { field: "account", unavailable: { requested: "work", pinned: false, listKnown: true, alternative: "personal" } },
     };
     void openNewSession({ origin: "devbox" });
@@ -505,7 +505,7 @@ describe("点［新建］：交那台的那一份", () => {
 
   it("那台说这一趟还在起 ⇒ 框顶那一句 ＋［再核一次］＋［复制详情］，不重起", async () => {
     hang = 1;
-    refusal = { op: "session-open", code: "launch_pending", message: "还在起-甲", data: { field: null, unavailable: null }, detail: "码：launch_pending" };
+    refusal = { op: "session-open", code: "launch_pending", said: "还在起-甲", data: { field: null, unavailable: null }, detail: "码：launch_pending" };
     void openNewSession({ origin: "devbox" });
     await flush();
     createBtn().click();
@@ -605,7 +605,7 @@ describe("换机器 · 换一家 · 那台问不到", () => {
   });
 
   it("那台问不到能起什么 ⇒ 框顶说原因、［新建］灰着说还在读", async () => {
-    refusal = { op: "session-open-facts", code: "boom", message: "读不出", data: null };
+    refusal = { op: "session-open-facts", code: "boom", said: "读不出", data: null };
     void openNewSession({ origin: "devbox" });
     await flush();
     expect(top()).toContain(copyText("newSession.facts.failed", { machine: "devbox", why: "\u0000" }).split("\u0000")[0]);
@@ -762,18 +762,18 @@ describe("锁住的目录 · 第一句", () => {
 
 describe("那台说不行的其余几形", () => {
   it("哪一格不行落在哪一格下（终端名 · 启动命令）；那一格收着 ⇒ 落到框顶", async () => {
-    refusal = { op: "session-open", code: "tmux_taken", message: "原话", data: { field: "tmuxName", unavailable: null } };
+    refusal = { op: "session-open", code: "tmux_taken", said: "原话", data: { field: "tmuxName", unavailable: null } };
     void openNewSession({ origin: "devbox" });
     await flush();
     createBtn().click();
     await flush();
     expect(rowOf(input(copyText("newSession.label.tmuxName"))).textContent).toContain(copyText("launch.tmux.taken"));
-    refusal = { op: "session-open", code: "bad_cmd", message: "命令不行", data: { field: "command", unavailable: null } };
+    refusal = { op: "session-open", code: "bad_cmd", said: "命令不行", data: { field: "command", unavailable: null } };
     createBtn().click();
     await flush();
     expect(rowOf(input(copyText("newSession.label.command"))).textContent).toContain("命令不行");
     expect(rowOf(input(copyText("newSession.label.tmuxName"))).textContent, "再交一次先清掉上一次的话").not.toContain(copyText("launch.tmux.taken"));
-    refusal = { op: "session-open", code: "bad_agent", message: "这一家不行", data: { field: "agent", unavailable: null }, detail: "码：bad_agent" };
+    refusal = { op: "session-open", code: "bad_agent", said: "这一家不行", data: { field: "agent", unavailable: null }, detail: "码：bad_agent" };
     createBtn().click();
     await flush();
     // 那一格收着 ⇒ 整体那一形：按钮行上方一行红字 ＋［复制详情］（表单框的那一形）。
@@ -794,7 +794,7 @@ describe("那台说不行的其余几形", () => {
     refusal = {
       op: "session-open",
       code: "account_unavailable",
-      message: "work 被钉住了-甲",
+      said: "work 被钉住了-甲",
       data: { field: "account", unavailable: { requested: "work", pinned: true, listKnown: true, alternative: null } },
     };
     createBtn().click();

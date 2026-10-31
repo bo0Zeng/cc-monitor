@@ -93,13 +93,13 @@ export function sessionReadCalls(calls: ReadonlyArray<readonly unknown[]>, which
 /** 通道那一跳「对端说不认」（`Peer{Unsupported}`）—— 那台后端比这条查询老；那一句 monitor 写（替身照「需更新」那一形填）。 */
 export const UNSUPPORTED = { err: "Unsupported", body: [] as number[], said: copyText("peerVersion.said.old", { machine: "devbox" }) };
 
-/** 通道那一跳「对端说不行」（`Peer{Refused}`，体是后端的 `{code, message}`）。 */
-export function refusedReply(code: string, message: string, data?: unknown): { err: string; body: number[]; said: string; detail: string } {
-  const body = data === undefined ? { code, message } : { code, message, data };
+/** 通道那一跳「对端说不行」（`Peer{Refused}`，体是交出去那一形失败 `{code, said, detail, data?}`）。 */
+export function refusedReply(code: string, said: string, data?: unknown): { err: string; body: number[]; said: string; detail: string } {
   // monitor 交回来的那份复制详情（那台后端写好、经 monitor 转交）：替身只写「码」那一项。
   const detail = `${copyText("detail.label.code")}：${code}`;
+  const body = data === undefined ? { code, said, detail } : { code, said, detail, data };
   // 那一句 monitor 照对端那一句原样交（`chan/said.rs::refused`）。
-  return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify(body))), said: message, detail };
+  return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify(body))), said, detail };
 }
 
 // ════════════════════════════════════════════════════════════════════════════

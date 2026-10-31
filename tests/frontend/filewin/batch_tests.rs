@@ -2,8 +2,9 @@
 //! 后端那一半是替身（按剧本回），真后端那一半的判据住 `tests/backend/control/files_batch_tests.rs`。
 
 use super::*;
-use batch_core::{copy_details, run, Failed, Rebuff, Verb, EXISTS};
+use batch_core::{copy_details, run, Rebuff, Verb, EXISTS};
 use cmd_wire::batch::ItemState;
+use cmd_wire::failed::Failed;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// 判据读看板用的两件（生产那一份里没有它们；本模块挂在 `batch` 底下，读得到私有字段）。

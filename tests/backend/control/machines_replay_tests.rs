@@ -32,7 +32,7 @@ fn home_with(i: usize, disk: &Value) -> std::path::PathBuf {
     home
 }
 
-/// 一组输入跑真的那一条：成 ⇒ `{reply}`；拒 ⇒ `{refused: {code, message, data?}}`（线上拒绝体那一形）。
+/// 一组输入跑真的那一条：成 ⇒ `{reply}`；拒 ⇒ `{refused: {code, said, data?}}`（线上拒绝体那一形）。
 fn answer_for(i: usize, case: &Value) -> Value {
     let cmd = case["cmd"]
         .as_str()
@@ -52,7 +52,7 @@ fn answer_for(i: usize, case: &Value) -> Value {
                 Ok(r) => json!({ "reply": r }),
                 Err(e) => {
                     let f = e.into_said();
-                    let mut v = json!({ "code": f.code_or_fallback(), "message": f.said });
+                    let mut v = json!({ "code": f.code_or_fallback(), "said": f.said });
                     if let Some(d) = f.data {
                         v["data"] = d;
                     }

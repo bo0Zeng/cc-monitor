@@ -103,14 +103,14 @@ pub(crate) enum OnceErr {
     Spawn(String),
     /// 上限内没答完（已杀掉）。
     TimedOut,
-    /// 它答了「不」：CLI 面的错信封 `{code, message}`（`message` 是后端对人说的那一句）。
-    Refused { code: String, message: String },
+    /// 它答了「不」：CLI 面的失败信封（交出去那一形：码 · 后端对人说的那一句 · 复制详情）。
+    Refused(cmd_wire::failed::Failed),
     /// 答话不成形：退出码与两根管子上的原话（截短）。
     Unreadable(String),
 }
 
 /// **问我们自己放下去的那一份后端一次**：帧命令的 CLI 面 `<bin> -- --<cmd>`（`stream/cli.rs`：入参 JSON 走 stdin、
-/// 读到 EOF；exit 0 ⇒ stdout 一行 JSON · exit 2 ⇒ stderr 一行 `{code, message}`），不经 shell。
+/// 读到 EOF；exit 0 ⇒ stdout 一行 JSON · exit 2 ⇒ stderr 一行失败信封 `{code, said, detail, data?}`），不经 shell。
 /// 同步命令里问后端就走这一条（`INVARIANTS §10`：同步命令里不 `block_on` 连常驻后端）；本机后端自举（[`ask_place_verdict`]）也走它。
 pub(crate) fn ask_once(
     bin: &std::path::Path,
@@ -155,14 +155,9 @@ pub(crate) fn ask_once(
     match got.code {
         Some(0) => serde_json::from_str(&out).map_err(|_| unreadable()),
         Some(2) => {
-            let v: serde_json::Value = serde_json::from_str(&err).map_err(|_| unreadable())?;
-            match (v["code"].as_str(), v["message"].as_str()) {
-                (Some(c), Some(m)) => Err(OnceErr::Refused {
-                    code: c.to_string(),
-                    message: m.to_string(),
-                }),
-                _ => Err(unreadable()),
-            }
+            let f: cmd_wire::failed::Failed =
+                serde_json::from_str(&err).map_err(|_| unreadable())?;
+            Err(OnceErr::Refused(f))
         }
         _ => Err(unreadable()),
     }

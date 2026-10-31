@@ -22,10 +22,10 @@ fn a_remote_refusal_gets_a_local_line_and_a_local_one_does_not() {
 #[test]
 fn the_refusal_body_detail_is_read_and_missing_reads_empty() {
     assert_eq!(
-        of_refusal_body(br#"{"code":"x","message":"m","detail":"d"}"#),
+        of_refusal_body(br#"{"code":"x","said":"m","detail":"d"}"#),
         "d"
     );
-    assert_eq!(of_refusal_body(br#"{"code":"x","message":"m"}"#), "");
+    assert_eq!(of_refusal_body(br#"{"code":"x","said":"m"}"#), "");
     assert_eq!(of_refusal_body(b"not json"), "");
 }
 
@@ -74,8 +74,11 @@ fn a_shell_command_failure_is_one_shape_with_a_nonempty_detail() {
     assert!(s
         .detail
         .contains(&format!("{}：os error 2", label("detail.label.raw"))));
-    let v = serde_json::to_value(&s).unwrap();
-    assert_eq!(v.as_object().unwrap().len(), 2, "{v}");
+    // 投出去那一形（`named`）：码 · 那一句 · 复制详情三格，没有按码定形的 `data` 就不出那一格。
+    let v = serde_json::to_value(s.named("load_config")).unwrap();
+    let keys: std::collections::BTreeSet<&str> =
+        v.as_object().unwrap().keys().map(String::as_str).collect();
+    assert_eq!(keys, ["code", "detail", "said"].into(), "{v}");
 }
 
 /// 问后端一条命令没成：那台写了详情 ⇒ 原样带上（远端补「本机」）；没写（老后端 / 没走到那台）⇒ 壳写时刻 · 本机 · 命令。
@@ -87,12 +90,12 @@ fn a_backend_call_failure_keeps_the_detail_the_backend_wrote() {
         label("detail.label.code"),
         label("detail.label.raw")
     );
-    let refused = CallError::Remote {
+    let refused = CallError::Remote(cmd_wire::failed::Failed {
         code: "refused".into(),
-        message: "box 系统未知".into(),
+        said: "box 系统未知".into(),
         detail: wrote.clone(),
         data: None,
-    };
+    });
     let s = Said::of_call(
         "box 系统未知".into(),
         "deploy-plan",
@@ -348,7 +351,7 @@ fn naming_does_not_split_raw_words_that_look_like_items() {
 fn a_relayed_refusal_gets_the_local_line_once_at_the_host() {
     let wrote = format!("{}：io_failed", label("detail.label.code"));
     let body = serde_json::to_vec(
-        &serde_json::json!({"code": "io_failed", "message": "m", "detail": wrote}),
+        &serde_json::json!({"code": "io_failed", "said": "m", "detail": wrote}),
     )
     .unwrap();
     let refused = || w::err_from_wire(w::WireErr::Refused, body.clone());
