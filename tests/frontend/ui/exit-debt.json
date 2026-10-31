@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1738,
+  "ceiling": 1735,
   "groups": [
     {
       "kind": "首登",
@@ -316,7 +316,7 @@
         ["src/mobile/core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/crypto/SshKeyGenerator.kt", "key", 2],
         ["src/mobile/core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/LegacyButtons.kt", "branch", 9],
         ["src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/HostKeyChangedException.kt", "key", 1],
-        ["src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/RustTransport.kt", "key", 18]
+        ["src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/RustTransport.kt", "key", 15]
       ]
     }
   ]

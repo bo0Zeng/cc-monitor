@@ -3,7 +3,7 @@
 //!
 //! # ⚠⚠ 🔴 它的**名字**与对不上，理由现打，别当成漏了
 //!
-//! 那张拆分表要的名字是 **`relay/exchange.rs`**。今天它仍叫 `server.rs`，
+//! 那张拆分表要的名字是 **exchange**（交换面，本目录里还没有这份文件）。今天它仍叫 `server.rs`，
 //! 挡着改名的是**这里没改的登记**，拿这个路径当住址、改名当场红（今天剩下两行，第一行已不挡）：
 //!
 //! | 登记 | 它钉着什么 |
@@ -200,13 +200,13 @@ impl Relay {
         Self {
             stream_headers: dest.stream_label_headers(),
             relay_headers: dest.relay_headers(),
+            pool: upstream::Pool::reusing_within(dest.upstream_idle_reuse()),
             dest,
             door,
             tee,
             downstream_deadline,
             upstream_deadline,
             open,
-            pool: upstream::Pool::default(),
         }
     }
 }

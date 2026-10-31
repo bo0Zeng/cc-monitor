@@ -26,6 +26,9 @@ fn with_code(code: &str) -> String {
 static SETTINGS: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
 static ME: Me = Me {
     pace: None,
+    pace_short: None,
+    inflight: None,
+    bins: Vec::new(),
     spread: None,
     context: None,
     write_extra: None,
@@ -123,6 +126,7 @@ fn a_strategy_reads_the_facts_smart_switching_needs_and_nothing_where_unmeasured
             until: 5000,
             tokens: 90_000,
         }],
+        ..Me::default()
     };
     let temp = ["a".to_string(), "b".to_string()];
     let mut c = ctx_of(1);
@@ -140,6 +144,39 @@ fn a_strategy_reads_the_facts_smart_switching_needs_and_nothing_where_unmeasured
             "true|true|0.25|1500.0|0.5|120000|1.9|3600|800.0|5000/90000|true|[\"a\", \"b\"]"
                 .to_string()
         )]
+    );
+}
+
+/// ★ 策略读得到本会话的短窗用速 · 在途 · 6 小时分段：`bins` 恒是 36 格、旧的在前，量不到的格与量不到的值都是 `()`。
+#[test]
+fn a_strategy_reads_the_short_pace_inflight_and_six_hour_bins() {
+    let f = parse(&with_code(
+        r#"fn decide(ctx) {
+  let s = ctx.session;
+  #{ order: ["a"], why: #{ a: `${s.paceShort}|${s.inflight}|${s.bins.len()}|${s.bins[0]}|${s.bins[35]}` } }
+}"#,
+    ))
+    .expect("编得过");
+    let bare = f.code.decide(&ctx_of(1)).expect("跑得通");
+    assert_eq!(
+        bare.why,
+        [("a".to_string(), "||36||".to_string())],
+        "量不到的都是 ()"
+    );
+    let mut bins = vec![None; 36];
+    bins[35] = Some(2_000_000.0);
+    let me = Me {
+        pace_short: Some(400_000.0),
+        inflight: Some(1.5),
+        bins,
+        ..Me::default()
+    };
+    let mut c = ctx_of(1);
+    c.me = &me;
+    let v = f.code.decide(&c).expect("跑得通");
+    assert_eq!(
+        v.why,
+        [("a".to_string(), "400000.0|1.5|36||2000000.0".to_string())]
     );
 }
 

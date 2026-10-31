@@ -315,12 +315,10 @@ fn the_from_section_is_comment_lines_only() {
     assert_eq!(render_from(&from_rows(&o, &g, &env(), &t, &plan)), "");
 }
 
-/// 额度预热不再自己剥一遍环境（那是继承表的第二份判法）：交给 ccm 的就是它自己的环境，只多它自己要的两格。
-/// 它那一发自己声明不轮换（ccm 的 `--no-rotation`）：「新会话用」设成会换号的那一份时也落在它点名的号上，不在脚本里另写判法。
-/// 前提核过（`relay::observe_retry_tests::a_session_started_inside_a_swapped_one_keeps_the_account_it_names`）：
-/// 在别的会话里起、点名一个号的那一发照那个号发，不跟着主会话换。
+/// 额度预热那一句的发法只住后端一处（`accounts::quota::warm`，轮换判完开窗也走它）：脚本只调 `ccm -- --quota-warm`，
+/// 自己不拼 claude 的旗标、不设那一发的环境、不点名 ccm 的起号旗标，也不按名字剥环境（那是继承表的第二份判法）。
 #[test]
-fn quota_warm_hands_ccm_its_own_environment_plus_its_two_switches() {
+fn quota_warm_sends_through_the_backend_command_only() {
     let path = guard_core::addr::repo_root().join("src/shared/quota-warm/scripts/quota-warm");
     let text = std::fs::read_to_string(&path).expect("预热脚本在");
     let code: String = text
@@ -328,19 +326,21 @@ fn quota_warm_hands_ccm_its_own_environment_plus_its_two_switches() {
         .filter(|l| !l.trim_start().starts_with('#'))
         .collect::<Vec<_>>()
         .join("\n");
+    assert!(code.contains("\"--quota-warm\""), "预热脚本没调后端那一条");
     for own in [
-        "MAX_THINKING_TOKENS",
-        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+        "\"MAX_THINKING_TOKENS\"",
+        "\"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC\"",
+        "\"--model\"",
+        "\"--system-prompt\"",
+        "\"--account\"",
+        "\"--no-rotation\"",
+        "\"-p\"",
     ] {
         assert!(
-            code.contains(&format!("\"{own}\"")),
-            "预热自己要的 {own} 那一格不在了"
+            !code.contains(own),
+            "预热脚本又自己写了那一发的 {own}：发法只住后端"
         );
     }
-    assert!(
-        code.contains(&format!("\"{}\"", crate::ccm_line::argv::flag::NO_ROTATION)),
-        "预热那一发没交 ccm 的「不轮换」"
-    );
     for stripped in [
         "\"CCM_\"",
         "\"ANTHROPIC_\"",
@@ -547,9 +547,9 @@ fn no_rotation_presets_the_session_id_it_hands_the_agent() {
     }
 }
 
-/// 额度预热的号单与起号只经后端：不给 `--accounts` ⇒ 号单照 `quota-read` 的 `candidates`（出过数的 ＋ 账号库里没出过数的，
-/// `_` 不在里面）—— 不自己去扫账号库目录；起号用 `--account <名>`，不自己拼账号目录。
-/// 隔离的家目录里只有一个假 `ccm`（答 `--quota-read`、把每一发的参数记下来），没有一份登录文件。
+/// 额度预热的号单与发那一句只经后端：不给 `--accounts` ⇒ 号单照 `quota-read` 的 `candidates`（出过数的 ＋ 账号库里没出过数的，
+/// `_` 不在里面）—— 不自己去扫账号库目录；每个号交 `--quota-warm` 一段 `{agent, account}`。
+/// 隔离的家目录里只有一个假 `ccm`（答 `--quota-read`、把 `--quota-warm` 收到的那一段记下来），没有一份登录文件。
 #[cfg(unix)]
 #[test]
 fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
@@ -575,8 +575,9 @@ fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
     std::fs::write(
         &ccm,
         format!(
-            "#!/bin/sh\ncase \" $* \" in *' --quota-read '*) cat '{r}'; exit 0;; esac\n\
-             {{ printf '%s\\n' \"$@\"; echo '<end>'; }} >> '{s}'\necho '{{\"usage\":{{}}}}'\n",
+            "#!/bin/sh\ncase \" $* \" in *' --quota-read '*) cat '{r}'; exit 0;;\n\
+             *' --quota-warm '*) {{ cat; echo; }} >> '{s}'; echo '{{\"sent\":true,\"at\":1,\"resets_at\":4102444800}}'; exit 0;; esac\n\
+             exit 9\n",
             r = home.join("read.json").display(),
             s = sent.display()
         ),
@@ -598,23 +599,20 @@ fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
         String::from_utf8_lossy(&out.stderr)
     );
     let sent = std::fs::read_to_string(&sent).unwrap_or_default();
-    let work = home.join(".cc-monitor/autostart").display().to_string();
     std::fs::remove_dir_all(&home).ok();
-    // 每一发 ccm 自己那一段（最后一个 `--` 之后），逐个参数比。
-    let tails: Vec<Vec<&str>> = sent
-        .split("<end>\n")
-        .filter(|b| !b.is_empty())
-        .map(|b| {
-            let args: Vec<&str> = b.lines().collect();
-            let cut = args.iter().rposition(|a| *a == "--").expect("有 --");
-            args[cut + 1..].to_vec()
-        })
+    let got: Vec<serde_json::Value> = sent
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).expect("交的是一段 JSON"))
         .collect();
-    let want: Vec<Vec<&str>> = ["seen1", "fresh"]
+    let want: Vec<serde_json::Value> = ["seen1", "fresh"]
         .iter()
-        .map(|n| vec!["--account", n, "--cwd", &work, "--no-rotation"])
+        .map(|n| serde_json::json!({"agent": "claude", "account": n}))
         .collect();
-    assert_eq!(tails, want, "号单该是 seen1 · fresh，起号用 --account <名>");
+    assert_eq!(
+        got, want,
+        "号单该是 seen1 · fresh，每个号交一段 {{agent, account}}"
+    );
 }
 
 /// 经别名起的那一发记下别名名字（合并那一处取最末那一层）：直路便条带它；容器路照 `--ccm-alias` 交给窗格那一趟；

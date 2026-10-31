@@ -195,7 +195,14 @@ pub(crate) fn apply(
                     from: s.current.clone(),
                     to: s.current.clone(),
                     cause: book::Cause::Hold { until: *until },
-                    why: None,
+                    // 那一家的客户端只在重置落在它等得到的时长内才自己续（适配层登记）：停得更久 ⇒ 照实说它不会自己续。
+                    why: until
+                        .zip(
+                            crate::agents::route_named(&s.agent)
+                                .and_then(crate::agents::resumes_within_of),
+                        )
+                        .filter(|(u, within)| u.saturating_sub(now) > *within)
+                        .map(|_| copy_core::copy_text("beRotation.hold.noAutoResume", &[])),
                 });
             }
         }
@@ -391,9 +398,10 @@ impl Hop {
         n
     }
 
-    /// 判一次（不落账）；回这一判。
+    /// 判一次（不落账）；回这一判。策略要开窗的号（判那一侧已照事实收过）交给开窗那一处，另起线程发、不等。
     fn judge(
         &self,
+        own: &Own,
         a: &Turn<'_>,
         s: &Session,
         plan: &Adopted,
@@ -404,6 +412,14 @@ impl Hop {
         if let Some(e) = &d.strategy_error {
             tracing::warn!("[rotate] 策略「{}」这一判走了兜底：{}", plan.id, e.msg);
         }
+        if !d.warm_dropped.is_empty() {
+            tracing::info!(
+                "[rotate] 策略「{}」要开窗的 {:?} 不收（不在号列表 · 按量号 · 发不出去 · 5 小时窗在计时）",
+                plan.id,
+                d.warm_dropped
+            );
+        }
+        crate::accounts::quota::warm::kick(a.agent, &d.warm, own, a.now);
         self.cache.lock().unwrap_or_else(|e| e.into_inner()).runs += 1;
         d
     }
@@ -556,7 +572,7 @@ impl Hop {
                                 a.now,
                             ),
                         };
-                        let d = self.judge(a, s, plan, &facts, &tried);
+                        let d = self.judge(own, a, s, plan, &facts, &tried);
                         pick = d.pick.clone();
                         judged = Some((d, facts));
                     }
@@ -594,7 +610,7 @@ impl Hop {
         }
         // 账本写不成：照锁外那一份判，成了再落账（写不进去就只这一发照它走）。
         let facts = self.accts(a.sid, &s, &self.store.now(), &plan.settings, a.row, a.now);
-        let d = self.judge(a, &s, &plan, &facts, &[]);
+        let d = self.judge(own, a, &s, &plan, &facts, &[]);
         let pick = d.pick.clone();
         self.go_for(own, a, &lib, &s, &plan, pick, Some((d, facts)), Vec::new())
     }
@@ -621,7 +637,7 @@ impl Hop {
                     x.refused_until = Some(until);
                 }
             }
-            let d = self.judge(a, &before, &plan, &facts, tried);
+            let d = self.judge(own, a, &before, &plan, &facts, tried);
             let n = b.sessions.get_mut(a.sid)?;
             apply(n, &d, &facts, a.now, None);
             Some(InTurn {
@@ -669,7 +685,7 @@ impl Hop {
         self.undo(own, a.sid, &after, &before);
         let mut tried = tried;
         tried.push(to);
-        let d = self.judge(a, &before, &plan, &facts, &tried);
+        let d = self.judge(own, a, &before, &plan, &facts, &tried);
         let pick = d.pick.clone();
         self.go_for(own, a, lib, &before, &plan, pick, Some((d, facts)), tried)
     }
@@ -743,7 +759,7 @@ impl Hop {
         if let Some(x) = facts.iter_mut().find(|x| x.id == heard_from) {
             x.refused_until = Some(until);
         }
-        let d = self.judge(a, &s, &plan, &facts, &tried);
+        let d = self.judge(own, a, &s, &plan, &facts, &tried);
         if all_shut(&s, &plan, &facts, &d) {
             self.commit(own, a, &s, &plan, &d, &facts, &tried);
             return None;
