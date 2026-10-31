@@ -1,7 +1,7 @@
 #!/bin/bash
-# ccm CLI 的 shell 级测试（unify-launch F02）。
+# ccm CLI 的 shell 级测试。
 #
-# 全部走 `--ccm-print`（前叫 `--print`）断言命令串——不真起 agent、不碰 tmux（tmux 行为由
+# 全部走 `--ccm-print` 断言命令串——不真起 agent、不碰 tmux（tmux 行为由
 # tests/e2e/tmux-target-acceptance.sh 那套真机 harness 管）。
 #
 # 跑法：bash tests/e2e/ccm-cli.test.sh   （npm run test:ccm-cli）
@@ -13,8 +13,7 @@ REPO="$(cd "$HERE/../.." && pwd)"
 # shellcheck source=tests/e2e/tmux-shim.sh
 . "$HERE/tmux-shim.sh" e2eCcmCli
 
-# ★★ `K-R48` 第二拍（09-11）：被测对象从 `shared/ccm`（bash）换成**后端二进制本体**。
-#   〔用@09-11 `K33`〕逐字「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」。
+# ★★ 被测对象是**后端二进制本体**：后端只有一个，没有单独的 bash 版 ccm。
 #   `intercept` 认的是 `argv[0]` 的 basename ⇒ 做一条叫 `ccm` 的软链指过去。
 # 🔴 **fail-closed**：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份
 #   （那正是本文件全篇隔离纪律要治的那一族：测试结果不许随「是谁在跑测试」而漂移）。
@@ -65,7 +64,7 @@ PLUGIN="export CLAUDE_CODE_PLUGIN_DIRS='$NOHOME/.cc-monitor/answer-plugin'"
 
 echo "===== 契约：壳层选项 × 交给 claude 的参数====="
 # ccm 是 claude 的壳：位置动作取消、`--resume` / `--model` / 未知旗标原样交 claude、诊断口改 `--ccm-*`；
-#   从前 resume 那条 `set -f; exec <后端答案>` 的配方随进程内 `resolve` 一起删了（留着会与透传的 `--resume` 叠两份）。
+#   resume 只走透传的 `--resume`，不另配一条 `set -f; exec <后端答案>`（两条会叠成两份）。
 
 # 相对 `--cwd` 按当前目录补成绝对、按字面折掉 `.` / `..`，再过 §47 形式判定 ⇒ 零修饰回到 `--cwd .`，期望是绝对路径。
 HERE_P="$(pwd -P)"
@@ -91,7 +90,7 @@ ck "--resume=<sid> 等号形式原样交出去" \
 ck "--ccm-agent codex：换启动器 + 不连共享后台 + 不清 claude 的嵌套 env（只清会话号变量）" \
    "unset CLAUDE_CODE_SESSION_ID; cd '/p' && exec codex --no-daemon" \
    "$(ccm -- --ccm-agent codex --cwd /p --ccm-print)"
-ck "--ccm-agent codex：resume <sid> 原样交给 codex（它自己的子命令形；从前 ccm 报「不支持 resume」）" \
+ck "--ccm-agent codex：resume <sid> 原样交给 codex（它自己的子命令形）" \
    "yes" \
    "$(ccm resume x -- --ccm-agent codex --cwd /p --ccm-print | grep -q "cd '/p' && exec codex --no-daemon resume x\$" && echo yes || echo no)"
 ck "--launcher 覆盖默认启动器：后面的词不动，答题插件经环境交下去" \
@@ -136,7 +135,7 @@ ck "--account 与 --base 互斥" \
 ck "不认识的 agent 报错并说出认得的几家" \
    "ccm: $(zh beAgents.pick.unknown agent=gpt 'known=claude / codex')" \
    "$(ccm -- --ccm-agent gpt --cwd /p --ccm-print)"
-ck "未知选项原样交给 claude（从前报「未知选项」）" \
+ck "未知选项原样交给 claude（不报「未知选项」）" \
    "$UNSET; cd '/p' && exec claude$(hk "$NOHOME") --nope" \
    "$(ccm --nope -- --cwd /p --ccm-print)"
 ck "--help 交给 claude（ccm 自己的帮助是 --ccm-help）" \
@@ -199,14 +198,14 @@ ck "--attach 缺值 → 报错" \
    "$(ccm -- --attach)"
 
 echo
-echo "===== 账号继承（F03 综合设计时发现的 bug 回归）====="
+echo "===== 账号继承 ====="
 # 真机复现过：cc-monitor 把「远端 resume 命令」配成 ccm 时，实际调用形态是
 #「外层已 export 好账号 X 的 CLAUDE_CONFIG_DIR，再 exec ccm --resume <sid>（不带任何账号 flag）」。
 # 若 ccm 无脑落 manifest 默认号，会把 cc-monitor 精心选中的账号**静默覆盖**——账号选择完全失效，
 # 且正是这轮建议用户使用的配置会踩中的场景。
-# **必须 `-u TMUX -u TMUX_PANE`**：下面 R08 那几条测的是**容器路径**，而 ccm 有一条
+# **必须 `-u TMUX -u TMUX_PANE`**：下面那几条测的是**容器路径**，而 ccm 有一条
 # 「已在 tmux 内且未给会话名 → 就地起，不建嵌套」的分支。开发者在 tmux 里跑这套件时，
-# `--tmux` 会落进那条分支、根本不走容器路径，于是 4 条 R08 断言假红（CI 上无 TMUX 所以
+# `--tmux` 会落进那条分支、根本不走容器路径，于是 4 条容器路径断言假红（CI 上无 TMUX 所以
 # 一直看不出来）。实测：同一份 HEAD，`TMUX` 有无决定 44/0 还是 40/4。
 # 测什么就要固定什么，不能让环境替测试选路径。
 # 夹具同上一组（临时家目录里的账号库）。
@@ -223,31 +222,31 @@ ck "裸终端（无继承）仍落 manifest 默认号 z"    "export CLAUDE_CONFI
 ck "--base 显式清空，不受继承影响"    "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec claude$(hk "$ACCTMP")"    "$(inherit_acct -- --cwd /p --base --ccm-print)"
 ck "--account 显式指定，优先级最高（覆盖继承的 b）"    "export CLAUDE_CONFIG_DIR='$AL/z'; $UNSET; cd '/p' && exec claude$(hk "$ACCTMP")"    "$(inherit_acct -- --cwd /p --account z --ccm-print)"
 
-# R08（2026-07-28 实测复现）：R11 的修法在**容器路径上留了个洞**。
+# 容器路径另有一个洞：「尊重继承值」在容器路径上不会自己成立。
 # 上面那条注释说"两个场景用同一条 if 天然区分"，**只对非容器路径成立**——
 # 非容器路径下 `exec` 保留进程环境，"尊重继承值"= 什么都不做就已经对了；
 # 但容器路径下 send-keys 打进的是 **tmux server fork 的新 shell**，
 # `update-environment` 默认列表不含 CLAUDE_CONFIG_DIR（这正是本项目要治的那个病），
 # 于是继承值在 L1 边界被吃掉，内层 ccm 看到空值 + 无账号 flag → 落 manifest 默认号 z。
-# 症状与 R11 同型且同样隐蔽：**看起来生效了，只是换成了错的号。**
+# 症状隐蔽：**看起来生效了，只是换成了错的号。**
 # 命中条件：启动器自己建容器（cct = ccm --tmux）+ 账号只靠继承环境变量传递。
 # 载荷在 --print 里是 `'\''` 转义形态（外层再被单引号包一层），直接 grep 裸引号模式会全部落空
 # ——我第一版就写错成这样，三条里两条假红。先反转义 `'\''` → `'` 再匹配。
-# （R02 记的第三个失效模式的同型：断言模式与被测输出的真实形态不符 = 假信号。）
+# （断言模式与被测输出的真实形态不符 = 假信号。）
 unesc() { sed "s/'\\\\''/'/g"; }
-ck "R08：容器路径 + 继承账号 b → 内层载荷必须显式带上 b（不能靠继承穿 tmux 边界）" \
+ck "容器路径 + 继承账号 b → 内层载荷必须显式带上 b（不能靠继承穿 tmux 边界）" \
    "yes" \
    "$(inherit_acct -- --ccm-tmux --cwd /p --ccm-print | unesc | grep -qF "$AL/b" && echo yes || echo no)"
-ck "R08：容器路径 + 继承账号 b → 内层绝不能落到默认号 z" \
+ck "容器路径 + 继承账号 b → 内层绝不能落到默认号 z" \
    "yes" \
    "$(inherit_acct -- --ccm-tmux --cwd /p --ccm-print | unesc | grep -qF "$AL/z" && echo no || echo yes)"
-ck "R08：容器路径 + --base → 内层显式 --base（不受继承影响，issue #75 逃生口不被削弱）" \
+ck "容器路径 + --base → 内层显式 --base（不受继承影响，issue #75 逃生口不被削弱）" \
    "yes" \
    "$(inherit_acct -- --ccm-tmux --cwd /p --base --ccm-print | unesc | grep -qF -- '--base' && echo yes || echo no)"
-ck "R08：容器路径 + 显式 --account z → 内层带 --account z（优先级不变）" \
+ck "容器路径 + 显式 --account z → 内层带 --account z（优先级不变）" \
    "yes" \
    "$(inherit_acct -- --ccm-tmux --cwd /p --account z --ccm-print | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
-ck "R08：容器路径 + 裸终端（无继承）→ 内层仍落默认号 z（粘滞体验不回退）" \
+ck "容器路径 + 裸终端（无继承）→ 内层仍落默认号 z（粘滞体验不回退）" \
    "yes" \
    "$(env -u CLAUDE_CONFIG_DIR -u TMUX -u TMUX_PANE HOME="$ACCTMP" "$CCM" -- --ccm-tmux --cwd /p --ccm-print 2>&1 | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
 rm -rf "$ACCTMP"
@@ -300,20 +299,13 @@ mkdir -p "$TMPROOT/plain" "$TMPROOT/repo/sub/deep"
 ( cd "$TMPROOT/repo" && git init -q . 2>/dev/null )
 FAKEHOME="$TMPROOT/home"; mkdir -p "$FAKEHOME"
 
-# 🔴 〔`K37` 第三条〕**这一组被翻过来了，不是被删掉。**
+# 🔴 **`--cwd auto` 不跳目录**：起会话就停在原地。跳目录（在 $HOME 跳工作区 · 在 git 仓跳仓的父目录）
+#   是用户自己的设置，不进 app（去掉它，用户照样做得到同一件事 ⇒ 是偏好）。
+#   下面 5 种布局一律该停在原地；布局 1/2/3 正是会跳的那几种现场，每一条都证明「不跳」。
 #
-#   上一版这里逐字写着「`--cwd auto` 与旧 `_cc_resolve_target` 对拍」，`want` 那一半是
-#   那段旧 bash 的逐字复刻：**在 $HOME 跳工作区 · 在 git 仓跳仓的父目录**。
-#   〔用@09-11 逐字〕「`cc` 默认就起会话就行，**跳目录是我自己的设置，不要搞进 app**。」
-#   ⇒ 那两档按 `K37`（「把这个行为去掉，用户还做不做得到同一件事」= 做得到 ⇒ 偏好，出去）
-#   删了，于是**把旧语义钉死的正是这 5 条判据本身** —— 这里不删它们，改成钉新语义：
-#   同样这 5 种布局，今天一律该停在原地。布局 1/2/3 就是那两档旧分支的现场，
-#   它们从「证明会跳」变成「证明不跳」，**射程一格没少**。
-#
-# 🔴 **`CCM_WORKSPACE` 这里是故意还在导出的**：`KR58D3` 的失效方向逐字是
-#   「把猜挪进别处（比如挪成一个默认开着的开关）」。设着它、站在 $HOME、答案仍必须是
-#   $HOME —— 那一档要是哪天悄悄回来，这一条当场红。（后端今天**根本不读**这个变量了：
-#   `Env` 里那个 `workspace` 字段跟着删了。）
+# 🔴 **`CCM_WORKSPACE` 这里是故意导出的**：猜目录不许换个地方回来（比如成了一个默认开着的开关）。
+#   设着它、站在 $HOME、答案仍必须是 $HOME —— 那一档要是回来，这一条当场红。
+#   （后端**不读**这个变量，`Env` 里没有 `workspace` 这一格。）
 #
 # ⚠ `want` 取 `pwd -P`（物理路径）而不是 `$PWD`：`mktemp -d` 在有符号链接的 `/tmp` 上
 #   两者不同值，而 Rust 的 `current_dir()` 给的是物理路径 —— 那会是一次跟本题无关的假红。
@@ -351,38 +343,19 @@ for pair in "/home/pi/proj|proj-cc" "/home/pi/a  b|a-b-cc" "/home/pi/proj///|pro
 done
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ⚠ **本文件原来有 264 条断言，已删到 46 条。**
-#
-# 〔用@09-11 `K33`〕逐字「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」
-# ⇒ `shared/ccm` 删了，本套件的被测对象换成后端二进制本体。
-# 删掉的 218 条当时逐条判过，
-# 按族：
-#   · 身份后端前置检查 15 条（第 67–81）—— 「在 tmux 里找不到 backend ⇒ 响亮失败」那一族。
-#     **同一个二进制之下「找不到后端」这个概念不存在了**：敲的那个命令就是后端。
-#   · 账号解析走后端一整节（第 84–152）—— 往返次数 / 帧形状 / 无 jq 纯 bash 解析路 /
-#     「这段 bash 起了几个外部进程」的记账尺子。语义那一半已落成后端侧 Rust 判据
+# 这里不测的几族，各在哪守着：
+#   · 「找不到后端」：敲的那个命令就是后端，没有这个概念。
+#   · 账号解析：后端侧 Rust 判据
 #     （`plan_tests.rs::the_account_is_judged_from_the_listing_product` · `picking_an_account_never_falls_back_to_a_different_one`）。
-#   · `JSONENC` 47 条（第 153–199）—— 那个**手写的 bash JSON 编码器**与 `jq -Rs .` 的逐字节对拍。
-#     Rust 侧是 `serde_json`，**不是我们的实现，不必我们来测**。
-#   · `WIRE` 85 条（第 200–284）—— 「发了 / 发对了 / 不可达 / 撞名 / 缺省尺寸 / 控制字符」。
-#     同一个进程之下**没有「上线字节」这回事**；其中「那几件事一件都不许丢」已落成 Rust 判据
-#     `the_container_launch_goes_through_the_one_door_with_every_field_intact`。
-#
-# 🔴 **两族是后来实测推翻第一拍判词的，写在这里而不是藏进 TSV**（第一拍判 `M-repoint`，
-#    指过去之后发现它们没有指称对象 ⇒ 降级为 `N`）：
-#   ① 第 82–83（`--print` 不受身份前置检查影响 ＋ 它的非空对照）——
-#      **非空对照那一条断的正是 `rc=2`**，而那道检查随第 67–81 那族一起没了。
-#      留下第 82 条单条 = 一条恒真（那正是第 83 条当初被加进来要防的东西）。
-#   ② 第 281–284（`WIRE/launch/--print` 的纯性 4 条）—— 第 281 条数的是「假后端被调了几次」，
-#      而原生实现根本不去调任何外部 backend ⇒ **恒 0，空真**。
-#      余下三条的性质仍在别处守着：`--print` 吐本机 tmux 编排由上面「账号继承」那 5 条
-#      容器路黄金串逐字钉住；「stderr 一个字都没有」由本文件每一条黄金串的 `2>&1` 口径钉住
-#      （`ccm()` 把 stderr 并进被比的串 —— 吵一个字就当场不等）。
+#   · JSON 编码：Rust 侧是 `serde_json`，不是本仓的实现。
+#   · 起容器那几格一件都不许丢：`the_container_launch_goes_through_the_one_door_with_every_field_intact`。
+#   · `--print` 的纯性：吐本机 tmux 编排由上面「账号继承」那 5 条容器路黄金串逐字钉住；
+#     「stderr 一个字都没有」由每一条黄金串的 `2>&1` 口径钉住
+#     （`ccm()` 把 stderr 并进被比的串 —— 吵一个字就当场不等）。
 # ══════════════════════════════════════════════════════════════════════════════
 
 echo
-echo "===== CCM_SELF 删了：内层载荷只认「这个进程自己被怎么叫的」====="
-# 「`CCM_SELF` 这个环境变量随之删掉」。
+echo "===== 内层载荷只认「这个进程自己被怎么叫的」（不读 CCM_SELF）====="
 # 两向：① 设了一个假值，容器路的内层载荷里**一处都不许出现它**（有人把那一格读回来 ⇒ 当场红）；
 #       ② 正控：内层载荷真的以本进程的入口（`$CCM` 这条软链）开头 —— 否则 ① 可以靠「内层根本没打出来」零命中地绿。
 SELF_OUT="$(env -u TMUX -u CLAUDE_CONFIG_DIR CCM_SELF=/bogus/old-ccm HOME="$NOHOME" "$CCM" -- --ccm-tmux --cwd /p --ccm-print 2>&1)"

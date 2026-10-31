@@ -5,7 +5,6 @@
 //! | 判据 | 异源在哪 |
 //! |---|---|
 //! | 进模式两条各一格（刚好越线 / 刚好不越） | 语料按字节手造，两向都过生产入口 [`show`] |
-//! | 阈值 == 推算式 | 推算式与常量是两处写下的数 |
 //! | 排版量 == 视口量 | **epaint 自己的排版缓存条数** ＋ 这一帧真画出来的文字，对着 `split('\n')` 与 egui 的裁剪矩形 |
 //! | 长行只排可见段 | 同上；可见段对着 `chars().skip(c0)` 逐字相等 |
 //! | 编辑后只重排改到的行 | epaint 缓存条数的差（缓存未命中 ＝ 真排了） |
@@ -15,6 +14,42 @@
 
 use super::*;
 use crate::editor::Pane;
+
+// 判据读大文件模式状态用的那几件（生产那一份里没有它们；本模块挂在 `bigfile` 底下，读得到私有字段）。
+
+impl Lines {
+    fn total_bytes(&self) -> usize {
+        self.len
+    }
+}
+
+impl Doc {
+    fn lines(&self) -> &Lines {
+        &self.lines
+    }
+    /// 下一帧把滚动偏移钉在 `off`（内容坐标，像素）。
+    fn pin_offset(&mut self, off: egui::Vec2) {
+        self.pin = Some(off);
+    }
+}
+
+impl BigSlot {
+    /// 上一帧排了什么（没进模式 ⇒ `None`）。
+    fn tally(&self) -> Option<Tally> {
+        self.lock().as_ref().map(|d| d.tally.clone())
+    }
+
+    /// 在那份 `Doc` 上做点事（钉滚动偏移、读光标）。
+    fn with<R>(&self, f: impl FnOnce(&mut Doc) -> R) -> Option<R> {
+        self.lock().as_mut().map(f)
+    }
+}
+
+/// `rows` 行等宽字有多高。
+fn view_height(ui: &egui::Ui, rows: usize) -> f32 {
+    let font = egui::TextStyle::Monospace.resolve(ui.style());
+    rows as f32 * ui.fonts_mut(|f| f.row_height(&font))
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // 量具
@@ -211,26 +246,6 @@ fn each_of_the_two_lines_is_crossed_by_exactly_one_byte() {
         let mut p = pane(text);
         frame(&egui::Context::default(), 0.0, Vec::new(), &mut p);
         assert_eq!(p.big.is_big(), want, "生产入口与判定说的不一样");
-    }
-}
-
-/// 🔴 **两个阈值 == 从读数推出来的数。** 改读数不改常量、或改常量不改读数 ⇒ 红。
-#[test]
-fn the_two_thresholds_are_what_the_readings_derive() {
-    assert_eq!(derive_threshold(LINE_READING), BIG_LINE_BYTES);
-    assert_eq!(derive_threshold(TOTAL_READING), BIG_TOTAL_BYTES);
-    // 取整那一步自己也钉住（手算的独立答案：√2·1024 ≈ 1448.15）。
-    for (x, want) in [
-        (1u128, 1u128),
-        (2, 2),
-        (3, 4),
-        (5, 4),
-        (6, 8),
-        (1024, 1024),
-        (1448, 1024),
-        (1449, 2048),
-    ] {
-        assert_eq!(nearest_pow2(x), want, "nearest_pow2({x})");
     }
 }
 
@@ -734,7 +749,7 @@ fn the_file_window_really_goes_through_the_big_mode() {
 /// 上 CPU 的时间只数这一帧真干的活，不数等调度的那段 ⇒ 门槛按它推。
 /// ⚠ 它仍会被缓存 / 超线程争用抬高一点，所以它是**偏保守**的数，不是下界。
 /// ⚠ 现打：本机上这个数**按 1 ms 取整**（正在跑的线程只在时钟节拍上记账）⇒ 它只够当
-///   「墙钟有没有被排队抬高」的粗对照，**门槛按低负载时的墙钟推**（`bigfile::LINE_READING` 头注）。
+///   「墙钟有没有被排队抬高」的粗对照，**门槛按低负载时的墙钟推**（`bigfile::BIG_LINE_BYTES` 那段推法）。
 fn on_cpu_ns() -> u64 {
     std::fs::read_to_string("/proc/thread-self/schedstat")
         .ok()
@@ -752,7 +767,7 @@ fn timed(f: impl FnOnce()) -> (f64, f64) {
     )
 }
 
-/// 两个阈值的**读数来源**（`LINE_READING` / `TOTAL_READING`），以及大文件模式自己的打字帧。
+/// 两个阈值的**读数来源**（`BIG_LINE_BYTES` / `BIG_TOTAL_BYTES` 上写的那两份），以及大文件模式自己的打字帧。
 ///
 /// 🔴 每档**三趟**，每趟一个全新 `Context`、先烤热两帧（不计）、再连打三帧取最坏；
 /// 印出档位（`debug_assertions`）与当时的负载，墙钟与上 CPU 两个数并排（理由见 [`on_cpu_ns`]）。

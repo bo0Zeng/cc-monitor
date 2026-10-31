@@ -58,6 +58,8 @@ export interface SessionPeek {
   model: string | null;
   /** 本会话写类工具（Edit/Write/…）碰过的文件路径（首触序）——「谁跑偏」关键信号。 */
   recentFiles: string[];
-  /** 本会话 subagent 名单（运行中优先），供 peek 显示「在跑什么」。 */
+  /** 本会话的子运行，照那台运行表写好的三组排（在跑 ++ 最近 ++ 更早），供 peek 显示「在跑什么」。 */
   agents: { label: string; status: RunState }[];
+  /** 子运行那一句（那台写好的「agent n · m 在跑」，`SessionRuns.summary`）；运行表是空的 ⇒ null。 */
+  summary: string | null;
 }

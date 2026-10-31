@@ -1909,13 +1909,13 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
     expect(tm.peekSession("nope")).toBeNull();
   });
 
-  it("运行中 subagent 排在前，同档保插入序；model / 改过的文件透传", () => {
+  it("子运行照那台写好的三组摆（在跑 ++ 最近 ++ 更早）、头那一句照抄 summary；model / 改过的文件透传", () => {
     const tm = makeTM();
     const tab = tm.ensureTab("s1", "/proj", "/p/s1.jsonl", LOCAL_ORIGIN);
     tab.usage = usageOf(1, "claude-opus-4-8");
     tab.touchedFiles.add("/proj/a.ts");
     tab.touchedFiles.add("/proj/b.ts");
-    // 运行表（后端的成品）序：done, running, stopped, running —— 期望 running 提前、组内保表序
+    // 表序与三组序故意对不上：界面只照三组摆，不按状态另排。
     tm.onSessionRuns({
       sid: "s1",
       runs: [
@@ -1925,23 +1925,24 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
         { run: "4", label: "run2", label_text: "run2", state: "running", status_text: "核心·在跑" },
       ],
       ended: [],
-      groups: { running: ["4", "2"], recent: ["3", "1"], older: [] },
+      groups: { running: ["4", "2"], recent: ["3"], older: ["1"] },
+      summary: "核心·agent 9 · 2 在跑",
     });
 
     const p = tm.peekSession("s1");
     expect(p).not.toBeNull();
     expect(p!.model).toBe("claude-opus-4-8");
     expect(p!.recentFiles).toEqual(["/proj/a.ts", "/proj/b.ts"]);
-    // running 全部提前且组内保序；非 running 组内也保插入序
-    expect(p!.agents.map((a) => a.label)).toEqual(["run1", "run2", "done1", "stop1"]);
-    expect(p!.agents.map((a) => a.status)).toEqual(["running", "running", "done", "stopped"]);
+    expect(p!.agents.map((a) => a.label)).toEqual(["run2", "run1", "stop1", "done1"]);
+    expect(p!.agents.map((a) => a.status)).toEqual(["running", "running", "stopped", "done"]);
+    expect(p!.summary).toBe("核心·agent 9 · 2 在跑");
   });
 
   it("无 usage / 无 agent / 无改文件 → 字段空但不报错", () => {
     const tm = makeTM();
     tm.ensureTab("s2", "/x", "/p/s2.jsonl", LOCAL_ORIGIN);
     const p = tm.peekSession("s2");
-    expect(p).toEqual({ model: null, recentFiles: [], agents: [] });
+    expect(p).toEqual({ model: null, recentFiles: [], agents: [], summary: null });
   });
 
   // F91b-fix(batch18)：touchedFiles 近因序（peek `recentFiles` 尾部 = 最近改的）。近因序今天由后端排

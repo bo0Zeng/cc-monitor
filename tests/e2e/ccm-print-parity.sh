@@ -1,5 +1,5 @@
 #!/bin/bash
-# F03「--print 平价预言机」：验证**生产渲染器**产出的 `ccm …` 调用行，被真 ccm 解析后，
+# 「--print 平价预言机」：验证**生产渲染器**产出的 `ccm …` 调用行，被真 ccm 解析后，
 # 展开结果里确实含有渲染器想表达的每个意图（sid / tmux 名 / cwd / launcher / ccm-sid）。
 # 那几行从 `session-open` 本体取（`open-line-emit.sh`：起会话时交出去的那一行，渲染器是 `ccm_invocation`）。
 #
@@ -25,12 +25,10 @@ contains() { case "$2" in *"$1"*) echo yes ;; *) echo no ;; esac; }
 # 机器上的某个版本（可能比仓内旧/新）。CI 上根本没装 ccm，12 条断言全红，正是靠这个才暴露出来。
 # 教训清单第 5 条的同型问题：不显式隔离，开发者本机状态就会污染测试断言。
 #
-# ★ `K-R48` 第二拍（09-11）：`ccm` 从**仓内 bash 脚本**换成**后端二进制本体**。
-#   〔用@09-11 `K33`〕逐字「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」
-#   ⇒ 终端里敲的 `ccm` 就是 `cc-monitor-backend`（分流不看 argv[0]：没有打头的 `--` 就是一次性模式）。
-#   **本套件 12 条断言一个字都没改** —— 它测的一直是「renderCli 渲出来的那行，被真 `ccm`
-#   解析后展开成什么」，那是后端今天仍要保证的命令契约，与用什么语言实现无关。
-#   依据是 `K-R48` 第一拍的逐字节对拍（SAME=27/DIFF=2）。
+# ★ `ccm` 是**后端二进制本体**：后端只有一个，没有单独的 bash 版 ccm。
+#   终端里敲的 `ccm` 就是 `cc-monitor-backend`（分流不看 argv[0]：没有打头的 `--` 就是一次性模式）。
+#   本套件测的是「renderCli 渲出来的那行，被真 `ccm` 解析后展开成什么」——
+#   后端要保证的命令契约，与用什么语言实现无关。
 # 🔴 **fail-closed**：二进制没 build 就**响亮退出**，不许静默回落到 PATH 上碰巧有的那一份
 #   —— 那正是本段头注第一句要治的病。
 CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
@@ -55,7 +53,7 @@ echo "$TSV" | sed 's/^/  /'
 
 get_line() { echo "$TSV" | awk -F'\t' -v k="$1" '$1==k{print $2}'; }
 
-# 隔离环境：不受本机 CLAUDE_CONFIG_DIR/manifest/工作区污染（R11 教训）。
+# 隔离环境：不受本机 CLAUDE_CONFIG_DIR/manifest/工作区污染。
 #
 # `HOME` 换成一个空的临时目录：账号库跟着家目录走（`<家>/.cc-monitor/accounts/`），
 # 空家目录 = 「这台机器没有账号库」，开发者本机的账号库不会被注入断言。
@@ -77,11 +75,10 @@ ck "--resume 被内层 ccm 原样带进去（交给 claude 的词）" yes "$(con
 ck "sid p1 出现在内层调用里" yes "$(contains "p1" "$OUT")"
 ck "tmux 名 cc-p1 出现在 new-session" yes "$(contains "$NEEDLE_TMUX_NAME" "$OUT")"
 ck "cwd /tmp 出现在 -c" yes "$(contains "$NEEDLE_CWD" "$OUT")"
-ck "@ccm_sid_expect 打标用了 p1（F04：通道A写意图，非事实 @ccm_sid）" yes "$(contains "$NEEDLE_SID_TAG" "$OUT")"
-# F05：账号维度恒显式表态——base 态真的把 --base 传进内层调用（R11 同型 bug 修复的端到端验证：
-# 以前账号维度触发即强制降级、CLI 渲染器测不到这条路径；现在 base 态本身就走 CLI，必须验证
-# 真 ccm 收到了 --base，不是被悄悄吞掉/漏传）。
-ck "--base 真的传进了内层调用（F05：账号维度恒显式表态）" yes "$(contains "$NEEDLE_BASE" "$OUT")"
+ck "@ccm_sid_expect 打标用了 p1（通道A写意图，非事实 @ccm_sid）" yes "$(contains "$NEEDLE_SID_TAG" "$OUT")"
+# 账号维度恒显式表态——base 态真的把 --base 传进内层调用：base 态走 CLI，
+# 真 ccm 得收到 --base，不许被悄悄吞掉/漏传。
+ck "--base 真的传进了内层调用（账号维度恒显式表态）" yes "$(contains "$NEEDLE_BASE" "$OUT")"
 
 echo
 echo "===== 场景 newTmuxCustomLauncher ====="
@@ -101,7 +98,7 @@ NEEDLE_ATTACH="attach -t '=cc-p1:'"
 ck "attach 到 cc-p1" yes "$(contains "$NEEDLE_ATTACH" "$OUT")"
 
 echo
-echo "===== 场景 resumeTmuxWithModel（F08：--model 闭合 R14①）====="
+echo "===== 场景 resumeTmuxWithModel（--model 闭合）====="
 LINE="$(get_line resumeTmuxWithModel)"
 OUT="$(run_print "$LINE")"
 # --tmux 场景的 --print 只展示外层 tmux 编排命令（真正的 export ANTHROPIC_MODEL 只会在内层

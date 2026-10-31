@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.session
 
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.lifecycle.ViewModelStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,11 +23,13 @@ class SessionTabManager {
          * - [cd]：初始工作目录（文件屏「在此打开终端」传入）。
          * - [tmuxSession]：首连即接回的会话名（敲那台渲出的那一行）。进去重键：不同名各开一个 tab，同名复用。
          * - [resume]：终端已经不在的那条会话（sid）：首连先让那台恢复它，再接回它落在的那个会话。
+         * - [run]：首连不问进哪儿、不接回，就在新开的 shell 里敲这一行（登录抽屉的［在终端里登录］）。带它的 tab 每回新开（[open]）。
          */
         data class Terminal(
             val cd: String? = null,
             val tmuxSession: String? = null,
             val resume: String? = null,
+            val run: String? = null,
         ) : TabTarget
 
         /** 文件浏览（Termius 式）。无 payload——同主机至多 1 个（去重键仅 hostId+类型）。 */
@@ -57,6 +60,7 @@ class SessionTabManager {
      * 所以同主机可同时有：默认终端 tab、若干 attach tab、一个 文件 tab。
      *
      * - [forceNew]：跳过复用、强制新建（「＋新会话」），同样的 target 也各成独立 shell 与 VM store。
+     *   带 [TabTarget.Terminal.run] 的一律新开：同一行敲两回是两次。
      * - [label]：不进去重键。复用旧 tab 时 null 可被非 null 补上，已有的非 null 不覆写。
      */
     fun open(
@@ -65,7 +69,7 @@ class SessionTabManager {
         label: String? = null,
         forceNew: Boolean = false,
     ): String {
-        if (!forceNew) {
+        if (!forceNew && (target as? TabTarget.Terminal)?.run == null) {
             _sessions.value
                 .firstOrNull { it.hostId == hostId && it.target == target }
                 ?.let { existing -> return reuseExisting(existing, label) }
@@ -128,3 +132,9 @@ class SessionTabManager {
         const val TAB_CELLS = 3
     }
 }
+
+/**
+ * 在一台上新开一个终端 tab、敲给定的那一行（[SessionTabManager.TabTarget.Terminal.run]）并切过去。导航宿主供给；
+ * 登录抽屉的［在终端里登录］从这里取，三处开抽屉的入口不用一层层往下传。
+ */
+val LocalOpenTerminal = staticCompositionLocalOf<(hostId: String, line: String) -> Unit> { error("LocalOpenTerminal not provided") }

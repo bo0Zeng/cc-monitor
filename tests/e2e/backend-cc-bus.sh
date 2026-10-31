@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # cc-bus 真跑：收件箱住后端（数据目录 `cc-bus/`），`--bus-send` · `--bus-peek` · `--bus-commit` · `--bus-unread` · `--bus-list` · `--bus-inbox`
-# 是读写它的唯一入口；`cc-bus <动词>` 每一条只是把一句交给后端（A13-8）。
+# 是读写它的唯一入口；`cc-bus <动词>` 每一条只是把一句交给后端。
 #
 # ## 为什么必须有真跑这一层
 #
@@ -421,7 +421,7 @@ d --history-read --args-b64 "$(head -c 140000 /dev/zero | tr '\0' A)" < <(exec s
 ck "★ argv 超系统上限：exec 那一层立即失败（非 0、不挂）" "是" "$([ "$_rc" -ne 0 ] && [ "$_rc" -ne 124 ] && echo 是 || echo "否 rc=$_rc")"
 
 # 帧命令派生的另一条（`--profiles-from-line`：把一条命令行拆成配置那几格，纯函数、不碰盘）同一套口：
-#   argv 与 stdin 逐字一样 · 开着不写回 no_input。从前这一格用的是 `--resolve`，10-26 随那条帧命令撤了。
+#   argv 与 stdin 逐字一样 · 开着不写回 no_input。
 _rq='{"name":"p","line":"claude --model opus"}'
 printf '%s' "$_rq" | d --profiles-from-line >"$SANDBOX/c2-pf-in.txt"; _rc_in=$?
 d --profiles-from-line --args-b64 "$(printf '%s' "$_rq" | base64 -w0)" < <(sleep 30) >"$SANDBOX/c2-pf-av.txt"; _rc_av=$?

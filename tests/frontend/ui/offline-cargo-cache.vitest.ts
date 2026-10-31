@@ -1,5 +1,5 @@
 /**
- * S27：**断网门禁的 crate 缓存齐不齐** —— 装进 `npm test` 的那一半。
+ * **断网门禁的 crate 缓存齐不齐** —— 装进 `npm test` 的那一半。
  *
  * # 它治的病
  *
@@ -11,7 +11,7 @@
  *
  * # 真正的量具不在这个文件里
  *
- * 逻辑住 `tests/evidence/S27-offline-cache-check.py`（两个人群、地板、反空真都在那边），
+ * 逻辑住 `tests/evidence/offline-cache-check.py`（两个人群、地板、反空真都在那边），
  * 本文件只是把它挂进 `npm test` 并把「哪种环境该判、哪种判不了」这一格写死。
  * **刻意不在 TS 里重写一遍** —— 一个性质两把尺子是本仓最贵那族病
  * （`gate.sh` 头注逐字：「一个性质一把尺子」）。
@@ -34,10 +34,10 @@
  *
  * - **整个缓存被清空** ⇒ 命中变 0 ⇒ 落进「判不了」⇒ **本条不红**。
  *   那一格由门禁的 `cargo` 格自己红（红得难看，但会红），
- *   以及 `tests/evidence/S27-prove-offline.py` 的 stage0 兜着。
+ *   以及 `tests/evidence/prove-offline.py` 的 stage0 兜着。
  *   **这是这条判据已知的洞，写在这里而不是藏着。**
  * - **只证 `.crate` 文件在不在**，不证编得过、不证 checksum 对。
- *   「断网真的跑得动」那一格由 `S27-prove-offline.py`（`bwrap --unshare-net` 跑真 `cargo fetch`）买。
+ *   「断网真的跑得动」那一格由 `prove-offline.py`（`bwrap --unshare-net` 跑真 `cargo fetch`）买。
  * - **看的是宿主的种子缓存**，不是沙箱那个具名卷 `ccmon-cargo-registry`。
  *   卷是派生物（`.claude/devbox/gate` 从 `~/.cargo/registry` 播种），卷若比种子旧，本条看不见。
  */
@@ -50,7 +50,7 @@ import { describe, expect, it } from "vitest";
 import { nonEmpty } from "../../test-support/non-empty";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const METER = resolve(HERE, "../../evidence", "S27-offline-cache-check.py");
+const METER = resolve(HERE, "../../evidence", "offline-cache-check.py");
 
 type Report = {
   cache_dirs: string[];
@@ -73,9 +73,9 @@ function runMeter(): { report: Report | null; why: string } {
   return { report: JSON.parse(raw) as Report, why: "" };
 }
 
-describe("S27 · 断网门禁的 crate 缓存", () => {
+describe("断网门禁的 crate 缓存", () => {
   // 云端 CI（windows runner）上 python 的 stdout 默认 cp1252：量具在「本机没有缓存」那一形里要印汉字（structural_failures），
-  // 原先当场 UnicodeEncodeError 退出 ⇒ 每一趟都落进「量具跑不起来」，说的理由是假的（CI 37848630512 两趟日志都是这一形）。
+  // 量具得自己把 stdout 定成 UTF-8，否则当场 UnicodeEncodeError 退出 ⇒ 每一趟都落进「量具跑不起来」，说的理由是假的。
   // 这里把那一形在本机现造出来：CARGO_HOME 指一个空目录 ＋ stdout 强制 cp1252。
   it("stdout 不是 UTF-8 时（windows runner 的默认）量具照样吐得出 JSON，落进「本机没有缓存」那一形", () => {
     const empty = mkdtempSync(join(tmpdir(), "s27-nocache-"));
@@ -110,7 +110,7 @@ describe("S27 · 断网门禁的 crate 缓存", () => {
 
     // ── 判不了 · 理由一：这台机器上没有 python3 / 量具跑不起来 ──────────
     if (report === null) {
-      console.warn(`S27: 判不了 —— ${why}。**这不是绿**，只是这台机器上量不了。`);
+      console.warn(`断网缓存: 判不了 —— ${why}。**这不是绿**，只是这台机器上量不了。`);
       nonEmpty(why);
       return;
     }
@@ -120,7 +120,7 @@ describe("S27 · 断网门禁的 crate 缓存", () => {
     const foreign = report.total > 0 && report.missing.length === report.total;
     if (noCache || foreign) {
       console.warn(
-        `S27: 判不了 —— ${noCache ? "本机没有 cargo registry 缓存目录" : `本仓 ${report.total} 条一条都不在本机缓存里（云端 CI 就是这一形）`}。` +
+        `断网缓存: 判不了 —— ${noCache ? "本机没有 cargo registry 缓存目录" : `本仓 ${report.total} 条一条都不在本机缓存里（云端 CI 就是这一形）`}。` +
           "**这不是绿**；门禁沙箱与宿主上这一格是要判的。",
       );
       return;
@@ -135,7 +135,7 @@ describe("S27 · 断网门禁的 crate 缓存", () => {
     expect(
       report.missing,
       `断网门禁今天就喂不饱：本机缓存缺这几份 .crate ⇒ ${report.missing.join(" · ")}\n` +
-        "补法：在有网的地方对缺包那棵树跑一次 `cargo fetch`（不带 --target），再跑 tests/evidence/S27-prove-offline.py 断网验一次",
+        "补法：在有网的地方对缺包那棵树跑一次 `cargo fetch`（不带 --target），再跑 tests/evidence/prove-offline.py 断网验一次",
     ).toEqual([]);
   });
 });

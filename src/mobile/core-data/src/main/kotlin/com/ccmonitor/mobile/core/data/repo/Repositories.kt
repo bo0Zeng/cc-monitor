@@ -59,7 +59,7 @@ class HostRepository(
 }
 
 /**
- * 〔一次性迁移 · 下一版删〕旧的书签（从前只存在手机上）：书签已归那台后端（`bookmarks-read` / `-edit`），
+ * 〔一次性迁移 · 下一版删〕Room 表里只在手机上的书签：书签归那台后端（`bookmarks-read` / `-edit`），
  * 这里只剩迁移要的两样 —— 读出一台的旧行、迁好之后删掉。Room 那张表随下一次 Room 换形删。
  */
 class BookmarkRepository(

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""S27 · **真断网跑一次** —— 证明缓存里那些 `.crate` 真的能把依赖喂饱。
+"""**真断网跑一次** —— 证明缓存里那些 `.crate` 真的能把依赖喂饱。
 
 # 为什么不只信 `--offline`
 
@@ -28,14 +28,14 @@
 
 # 反向对照（必须跑，否则不知道这把尺子是不是恒绿）
 
-  python3 tests/evidence/S27-prove-offline.py --negative wasm-bindgen-0.2.128.crate
+  python3 tests/evidence/prove-offline.py --negative wasm-bindgen-0.2.128.crate
 
 把那一份从缓存里挪走 ⇒ 两棵树至少一棵必须**红** ⇒ 再原样挪回来（`finally` 保证放回）。
 
 # 跑法
 
-  python3 tests/evidence/S27-prove-offline.py
-  python3 tests/evidence/S27-prove-offline.py --negative <crate 文件名>
+  python3 tests/evidence/prove-offline.py
+  python3 tests/evidence/prove-offline.py --negative <crate 文件名>
 
 🔴 **它不写仓库一个字节**：`--locked` 保证 cargo 不去改任何 `Cargo.lock`。
 """
@@ -103,7 +103,7 @@ def main() -> int:
             print(f"🔴 缓存里本来就没有 {name} —— 这条对照做不了")
             return 2
         src = hits[0]
-        quarantine = Path(tempfile.gettempdir()) / f"S27-offline.{name}.quarantine"
+        quarantine = Path(tempfile.gettempdir()) / f"prove-offline.{name}.quarantine"
         print(f"── 反向对照 · 把 {name} 挪走，至少一棵树必须红")
         shutil.move(str(src), str(quarantine))
         try:
@@ -118,7 +118,7 @@ def main() -> int:
             shutil.move(str(quarantine), str(src))
             print(f"   ✅ 已原样放回 {src}")
 
-    print("S27-prove-offline: FAIL" if failed else "S27-prove-offline: OK")
+    print("prove-offline: FAIL" if failed else "prove-offline: OK")
     return 1 if failed else 0
 
 

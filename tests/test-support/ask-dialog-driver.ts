@@ -2,8 +2,8 @@
  * 在 jsdom 里「当用户」答 `src/frontend/ui/kit/dialog.ts` 弹出来的应用内对话框。
  *
  * 判据点的是**真按钮**、等的是**真 Promise** —— 与真 app 同形（答案是异步到的）。
- * 从前各处 `vi.spyOn(window, "confirm").mockReturnValue(false)` 测的是一个同步的原生 `confirm`，
- * 而真 app 里那个函数是插件注入的 async 替身、返回 Promise（恒真值）⇒ 那些判据绿着、真 app 里根本不问。
+ * 用 `vi.spyOn(window, "confirm").mockReturnValue(false)` 测的是一个同步的原生 `confirm`，
+ * 而真 app 里那个函数是插件注入的 async 替身、返回 Promise（恒真值）⇒ 那样的判据绿着、真 app 里根本不问。
  */
 import { expect } from "vitest";
 

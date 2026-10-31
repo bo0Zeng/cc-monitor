@@ -100,7 +100,7 @@ fun AccountsScreen(
     ui.accounts.firstOrNull { it.name == open }?.let { a ->
         AccountSheet(a, a.name == ui.defaultAccount, ui, onDismiss = { open = null }, onLogin = {
             open = null
-            login = LoginFlow(feed, here.machine, Login.account(ui.agent?.kind.orEmpty(), a.name), scope).also { it.start() }
+            login = LoginFlow(feed, here.hostId, here.machine, Login.account(ui.agent?.kind.orEmpty(), a.name), scope).also { it.start() }
         }, onSetDefault = {
             open = null
             board.setDefault(a.name)

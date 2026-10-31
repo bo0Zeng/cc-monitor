@@ -2,6 +2,131 @@ use super::*;
 use crate::source::parent_dir;
 use crate::source::Row;
 
+/// 判据读目录视图状态用的那几件（生产那一份里没有它们；本模块挂在 `shell` 底下，读得到私有字段）。
+impl FileWindow {
+    /// 不带种子建一个目录视图，并当场列一趟。
+    pub(crate) fn new(source: Source, cwd: String, rt: Option<tokio::runtime::Handle>) -> Self {
+        let w = Self::seeded(source, cwd, rt, Vec::<Listed>::new());
+        w.reload();
+        w
+    }
+
+    /// 现在高亮着哪一行的名字（`None` = 没有）。
+    pub(crate) fn reveal_name(&self) -> Option<&str> {
+        self.reveal.as_ref().map(|r| r.name.as_str())
+    }
+
+    /// 关整个窗口时会打断的头一件：手上那一份（没改过的文本不算）· 「进度」表里还在跑的那几趟。
+    pub(crate) fn work_reason(&self) -> Option<String> {
+        self.held_reason()
+            .or_else(|| self.progress.running_titles().into_iter().next())
+    }
+
+    /// 摆着的框里那一句「为什么没做成」。
+    pub(crate) fn prompt_error(&self) -> Option<String> {
+        self.prompt_failure().map(|f| f.said)
+    }
+
+    /// 地址栏现在是不是在手输。
+    pub(crate) fn address_editing(&self) -> Option<&str> {
+        self.addr_edit.as_deref()
+    }
+
+    /// 正摆着的那个框（改名 · 新建 · 改权限）。
+    pub(crate) fn write_prompt(&self) -> Option<&WritePrompt> {
+        self.write_prompt.as_ref()
+    }
+
+    /// 同 [`Self::write_prompt`]，可改（就地那一格里正在编辑的字）。
+    pub(crate) fn write_prompt_mut(&mut self) -> Option<&mut WritePrompt> {
+        self.write_prompt.as_mut()
+    }
+
+    /// 就地那一趟当作已发出、带着 `f` 回来（下一帧 `settle_inline` 收）。
+    pub(crate) fn land_inline_failure(&mut self, f: crate::source::Failed) {
+        self.inline_busy = true;
+        self.inline_gen += 1;
+        *self.inline_done.lock().unwrap() = Some((self.inline_gen, Err(f)));
+    }
+
+    /// 再 Ctrl 点上这几个名字（选中态本体那一口，同点击走的那一个）。
+    pub(crate) fn pick_also(&mut self, names: &[&str]) {
+        let rows = self.listing.rows.lock().unwrap().clone();
+        for n in names {
+            if let Some(k) = rows.iter().position(|r| r.name == *n) {
+                self.selection.click(&rows, k, egui::Modifiers::COMMAND);
+            }
+        }
+    }
+
+    /// 打开着的那一份（可改：摆「盘上被改过」那一形用）。
+    pub(crate) fn editing_mut(&mut self) -> Option<&mut crate::editor::Pane> {
+        self.editing.as_mut()
+    }
+
+    /// 编辑框里那些字（替敲键改它；编辑面那个 `TextEdit` 直接拿 `Pane::text`，是同一个 `String`）。
+    pub(crate) fn editing_text_mut(&mut self) -> Option<&mut String> {
+        self.editing.as_mut().map(|p| &mut p.text)
+    }
+
+    /// 关窗那一问摆着吗。
+    pub(crate) fn asking_discard(&self) -> bool {
+        self.asking_discard
+    }
+
+    /// 编辑面查找栏那一格（界面直接拿 `Pane::find`，是同一格）。没开编辑面 ⇒ `None`。
+    pub(crate) fn find_bar_mut(&mut self) -> Option<&mut crate::editor::FindBar> {
+        self.editing.as_mut().map(|p| &mut p.find)
+    }
+
+    /// 摆着的那个右键菜单。
+    pub(crate) fn menu(&self) -> Option<&MenuAt> {
+        self.menu.as_ref()
+    }
+
+    /// 搜索范围：`true` ＝ 整台机器，`false` ＝ 当前目录以下（界面上是状态行那个下拉）。
+    pub(crate) fn set_search_whole(&mut self, on: bool) {
+        self.search_whole = on;
+    }
+
+    /// 按内容搜那个框里的字（生产那一侧直接改字段）。
+    pub(crate) fn set_grep_query(&mut self, q: &str) {
+        self.search_content = true;
+        self.grep_query = q.to_string();
+    }
+
+    /// 搜索框里现在是什么。
+    pub(crate) fn query(&self) -> &str {
+        &self.query
+    }
+
+    /// 正摆着的那个「复制为」框。
+    pub(crate) fn copy_prompt(&self) -> Option<&CopyPrompt> {
+        self.copy_prompt.as_ref()
+    }
+
+    /// 系统存盘框开着时要下的那一项。
+    pub(crate) fn pull_want(&self) -> Option<&(String, String)> {
+        self.pull_want.as_ref()
+    }
+}
+
+/// 开窗那条路写的三个进程级的数（`window` 里的静态量），真开窗的判据读回来。
+#[cfg(not(windows))]
+fn open_requested() -> u64 {
+    OPEN_REQUESTED.load(Ordering::SeqCst)
+}
+
+#[cfg(not(windows))]
+fn windows_opened() -> u64 {
+    WINDOWS_OPENED.load(Ordering::SeqCst)
+}
+
+#[cfg(not(windows))]
+fn font_verdict() -> Option<FontState> {
+    FONT_VERDICT.lock().unwrap().clone()
+}
+
 /// 合成那台远端的名字（窗口只拿名字；名字由本机后端的机器表算，判据在后端 `machines_tests`）。
 fn synth_cfg(label: &str) -> String {
     String::from(label)
@@ -1044,10 +1169,6 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
             ]),
         ),
         (
-            "open_detached",
-            set(&["cc-monitor-filewin/shell/window.rs"]),
-        ),
-        (
             "child_main",
             set(&["cc-monitor-filewin/proc.rs", "cc-monitor-filewin/lib.rs"]),
         ),
@@ -1194,8 +1315,8 @@ fn a_lossy_name_or_an_out_of_range_row_is_refused_by_the_second_gate() {
     let mut w = remote_window_with_rows("/srv/data", vec![lossy_row()]);
     for i in [0usize, 99] {
         assert!(!w.begin_rename(i), "第 {i} 行竟然摆出了改名框");
-        assert!(!w.begin_chmod(i), "第 {i} 行竟然摆出了权限框");
-        assert!(!w.begin_delete(i, None), "第 {i} 行竟然起了一摞删除");
+        assert!(!w.begin_chmod_rows(&[i]), "第 {i} 行竟然摆出了权限框");
+        assert!(!w.delete_picked(&[i], None), "第 {i} 行竟然起了一摞删除");
     }
     assert!(w.write_prompt().is_none());
 }
@@ -1308,7 +1429,7 @@ fn the_hit_list_can_never_hand_the_window_a_row_index() {
             ..Default::default()
         },
         |ui| {
-            crate::rows::show_file_rows(
+            crate::rows::testing::show_file_rows(
                 ui,
                 &rows,
                 &mut rt,
@@ -2623,7 +2744,7 @@ async fn a_save_over_a_file_someone_else_changed_asks_instead_of_overwriting() {
 fn gp1_a_chmod_box_without_a_line_says_the_current_mode_is_unreadable() {
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
     assert_eq!(w.mode_probe.readout(), None, "还没摆框就有了现值");
-    assert!(w.begin_chmod(0), "权限框没摆出来");
+    assert!(w.begin_chmod_rows(&[0]), "权限框没摆出来");
     assert_eq!(
         w.mode_probe.readout(),
         Some(crate::writeops::ModeReadout {
@@ -3517,7 +3638,7 @@ async fn a_chmod_is_done_without_asking_and_offers_the_backends_before_as_undo()
     )
     .await;
     w.attach_line(wired.line.clone());
-    assert!(w.begin_chmod(0));
+    assert!(w.begin_chmod_rows(&[0]));
     w.write_prompt.as_mut().unwrap().text = "755".into();
     assert!(w.confirm_write(None));
     for _ in guard_core::wall::rounds() {

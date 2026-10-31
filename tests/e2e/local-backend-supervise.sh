@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# F05a：**本机后端进程「起与看住」的真进程验收**。
+# **本机后端进程「起与看住」的真进程验收**。
 #
 # 与单测的分工：单测断言「重启策略与路径解析怎么答」（纯函数）；
 # **本脚本断言「监护器在真进程上到底干了什么」** —— 起真 `cc-monitor-backend`、把它杀掉、
@@ -13,18 +13,16 @@
 #     ② 临时工作目录（必崩脚本、空目录探测都在里面造）；
 #     ③ 断言计数与收尾格式（与全仓其余 18 套逐字一致）。
 #
-# ## ★★ `K-R7`（08-31）：**本套件多接了两条 —— 而它们此前是普通 `#[test]`**
+# ## ★★ **起真后端的两条 Rust 测试只走本套件**
 #
-# 〔用 08-29〕逐字：「**你只能做产品, 不能动机器**」·「**以后所有开发测试都不允许直接在本机跑**」。
-# 在此之前，下面这两条起真后端的测试是**普通 `#[test]`**（只由 `cfg(embedded_backends)` 门着）：
+# 开发测试不许动这台机器。下面这两条起真后端：
 #
 #   · `local_backend_host::tests::the_local_backend_host_can_be_stopped_and_started_again`
 #   · `local_backend::tests::the_local_backend_host_really_registers_an_inbound_client`
 #
-# ⇒ **任何人在铺了 `src/frontend/shell/embedded-backends/` 的树上跑一次 `cargo test`**（包括用户自己
-# clone 下来跑一遍）**都会改这台机器的 tmux 全局状态**。已经真发生过三次
-# （08-26 实现方 · 08-27 PM · 08-29 PM）。
-# ⇒ 两条都改成 `#[ignore]` + `CCM_E2E_TMUX_SHIM_BIN` fail-closed，**并接到本脚本这条带 shim 的路上**。
+# 写成普通 `#[test]` 的话，**任何人在铺了 `src/frontend/shell/embedded-backends/` 的树上跑一次 `cargo test`**
+#（包括用户自己 clone 下来跑一遍）**都会改这台机器的 tmux 全局状态**。
+# ⇒ 两条都是 `#[ignore]` + `CCM_E2E_TMUX_SHIM_BIN` fail-closed，**接在本脚本这条带 shim 的路上**。
 # 人群那一侧由 `local_backend_host.rs` 的
 # `every_test_that_starts_the_real_backend_demands_a_private_tmux` 守着（按「二进制哪来的」派生，
 # 不看属性，两个文件一起扫）。
@@ -55,8 +53,8 @@ CLAUDE_DIR="$WORK/claude"; mkdir -p "$CLAUDE_DIR/projects"
 # **本套件自己的后端**：二进制是 `$BACKEND`、环境里带着本套件的 `$WORK`
 #   （Rust 那侧起的每一个都继承 `CCM_E2E_WORK` / 沙箱 `HOME`，两样都在 `$WORK` 底下）。
 #   认的是进程表里的事实（`/proc/<pid>/exe` ＋ `environ`），不是命令行长相 ——
-#   从前收尾是 `pkill -f "$BACKEND"`：模式杀，连带命令行里含这条路径的**调用方 shell**（09-27 实发：
-#   跑本套件的那条循环被它打死）与同一个二进制上别的套件的后端。
+#   不用 `pkill -f "$BACKEND"` 收尾：模式杀会连带命令行里含这条路径的**调用方 shell**
+#  （跑本套件的那条循环）与同一个二进制上别的套件的后端。
 ours_backends() {
   local p exe real
   real="$(readlink -f -- "$BACKEND")"
@@ -72,7 +70,7 @@ cleanup() {
   set +e
   # 收掉可能残留的被监护进程（测试自己会 stop()，这里是兜底）
   #
-  # ★★ **这一步与下面删 shim 的顺序是承重的**〔`K-P1` 08-26 实测教训〕：
+  # ★★ **这一步与下面删 shim 的顺序是承重的**：
   #    漏网的 backend **还活着**，而 `tmux_shim_cleanup` 把 shim 目录 `rm -rf` 掉之后，
   #    它下一次装 tmux hook（watcher 换人时会重装）沿 PATH 找不到 shim ⇒ **落到真 tmux 上**
   #    ⇒ 用户真实 server 的 `[50]` 槽位被盖成它的 pid。真发生过一次。
@@ -92,7 +90,7 @@ trap cleanup EXIT
 
 [ -x "$BACKEND" ] || { echo "backend 二进制不存在/不可执行：$BACKEND（先 cd src/backend && cargo build）"; exit 1; }
 
-echo "== F05a 本机后端监护 · 真进程验收 =="
+echo "== 本机后端监护 · 真进程验收 =="
 echo "backend     : $BACKEND"
 echo "tmux shim: $TMUX_SHIM_BIN（-L $TMUX_SHIM_SOCK，绝不碰用户真实 tmux server）"
 echo
@@ -100,7 +98,7 @@ echo
 OUT="$WORK/rust.log"
 # ⚠ **别写成 `cargo test … | tee`** —— 管线会把退出码藏起来。落文件再回显。
 # ★★ **两趟，两个过滤串**：真进程判据今天住**两个**模块 ——
-#    `local_backend`（F05a：监护那条路）与 `local_backend_host`（K-P1：常驻那条路）。
+#    `local_backend`（监护那条路）与 `local_backend_host`（常驻那条路）。
 #
 # ⚠⚠ 两个过滤串各在本文件里钉着：真机层那张表（`test_tiers_tests.rs` 的 `REAL_MACHINE`）逐条登记
 #    「触发者 = 本文件、过滤串 = `local_backend` / `local_backend_host`」，剥注释后找不到、或不再是测试全名的子串 ⇒ 红
@@ -201,7 +199,7 @@ else
 fi
 
 # Rust 那侧自己收尸（`E2eSandbox` 的 `Drop` 按句柄收）；跑完还活着的就是**漏网**的 ——
-#   从前靠收尾那句模式杀兜着，漏了也看不见（两趟过滤串重叠那次，第一趟接上的后端就是这样留到第二趟、
+#   不在这里记就漏了也看不见（两趟过滤串重叠时，第一趟接上的后端会留到第二趟、
 #   让它当场报「已经在跑」）。收尾照样会收掉它们，但先记一条红。
 LEFT="$(ours_backends | tr '\n' ' ')"
 if [ -n "${LEFT// /}" ]; then bad "Rust 侧跑完还有本套件起的后端活着（pid $LEFT）—— 有一条判据没收尸"

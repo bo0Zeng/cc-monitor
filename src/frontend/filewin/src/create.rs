@@ -55,41 +55,10 @@ pub async fn create_typed_coded(
 }
 
 impl FileWindow {
-    /// 正摆着的新建空文件那一格（就地；判据看同一个值）。
-    #[cfg(test)]
-    pub fn new_file_prompt(&self) -> Option<&super::writeops::WritePrompt> {
-        self.write_prompt()
-            .filter(|p| matches!(p.kind, super::writeops::PromptKind::NewFile))
-    }
-
-    /// 那一格里正在编辑的字（判据替敲键改它）。
-    #[cfg(test)]
-    pub fn new_file_text_mut(&mut self) -> Option<&mut String> {
-        self.write_prompt_mut()
-            .filter(|p| matches!(p.kind, super::writeops::PromptKind::NewFile))
-            .map(|p| &mut p.text)
-    }
-
     /// 「新建 ▾ → 空文件」⇒ 列表里冒出一行「新建文件」、名字选中（同新建文件夹那一格）。
+    /// 答完走就地那一格共用的 `commit_inline`（填错 ⇒ 那一格下面说、留着；名字被占了 ⇒「x 已存在」）。
     pub fn begin_new_file(&mut self) -> bool {
         self.begin_inline(super::writeops::WritePrompt::for_new(&self.cwd, true))
-    }
-
-    /// 收掉那一格，什么都不建。
-    #[cfg(test)]
-    pub fn cancel_new_file(&mut self) {
-        if self.new_file_prompt().is_some() {
-            self.cancel_write();
-        }
-    }
-
-    /// 那一格答完 ⇒ 发 `files-create`（填错 ⇒ 那一格下面说、留着；名字被占了 ⇒「x 已存在」）。
-    #[cfg(test)]
-    pub fn confirm_new_file(&mut self, ctx: Option<egui::Context>) -> bool {
-        if self.new_file_prompt().is_none() {
-            return false;
-        }
-        self.commit_inline(ctx)
     }
 }
 

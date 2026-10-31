@@ -1,82 +1,38 @@
 /**
  * 多 agent 并排监控：跨机器只读状态板，全屏 overlay（与 HistoryView 同一种 body 级 fixed overlay）。
  *
- * 只读：零后端、零写、零落盘（INVARIANTS §1）。一会话一格（本机 ＋ 所有远端），按机器分组；每格红绿灯 / 标题 / cwd /
+ * 只读：零写、零落盘（INVARIANTS §1）。一会话一格（本机 ＋ 所有远端）；每格红绿灯 / 标题 / cwd /
  * 运行中子 agent 数 / context% / 未读 / ⚙bg。点一格 = 选中高亮 ＋ 底部 peek 详情（板不关，连续看）；跳转在 peek 里的按钮上。
- * 数据来自 `TabManager.snapshotSessions()`（纯派生）＋ 选中时 `peekSession()`；开着时 1Hz 重渲染，按格子差量更新
- * （格子按 sid 留住、组按机器留住，没变的一拍零 DOM 写）。分组 / 排序 / 汇总是纯函数。
+ * 版面（分组 · 组序 · 组头 · 组内先后 · 顶上那一句 · 没答的那台）照本机后端合好的那份 `MonitorBoard` 摆：开板问一次，
+ * 之后宿主转来「标签页增减 · 脸变 · 运行表变 · 那台接上」才再问（`poke` 合批）。格子里的点 · 字 · 徽标照
+ * `TabManager.snapshotSessions()`（与标签栏同一张脸）＋ 选中时 `peekSession()`；开着时 1Hz 只重画格子，按格子差量更新
+ * （格子按 sid 留住、组按机器留住，没变的一拍零 DOM 写）。
  */
 import { dispatcher } from "../keybindings/registry";
-import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import type { Origin } from "../ipc/origin";
 import type { GridSessionSnapshot, SessionPeek } from "../session-status";
+import type { MonitorAsk } from "../generated/MonitorAsk";
+import type { MonitorBoard } from "../generated/MonitorBoard";
 import { backgroundLine } from "../session-face";
-import { isEnded, isLive } from "../face-can";
+import { isEnded } from "../face-can";
 import { copyText } from "../copy-table";
+import { machineName } from "../control-said";
+import { saidOf } from "../kit/detail";
 import { setDot, statusDot } from "../kit/status-dot";
 import { place } from "../kit/morph";
 
-/** grid 数据源（TabManager 的只读子集——便于测试注入桩）。 */
+/** grid 数据源（TabManager 的只读子集 ＋ 版面那一问——便于测试注入桩）。 */
 export interface GridSource {
   snapshotSessions(): GridSessionSnapshot[];
   switchTo(sessionId: string): void;
   /** 选中一格时 peek 的补充数据。可选：缺省时 peek 只显 snapshot 字段。 */
   peekSession?(sessionId: string): SessionPeek | null;
+  /** 版面：交这一窗此刻列着的那几条，回本机后端合好的那一份（失败 ⇒ 抛，那一句已经说好）。 */
+  board(picks: MonitorAsk[]): Promise<MonitorBoard>;
 }
 
-export interface OriginGroup {
-  origin: Origin;
-  label: string;
-  sessions: GridSessionSnapshot[];
-}
-
-/** 按机器(origin)分组：本机（`LOCAL_ORIGIN`）组恒在最前，远端组按 label 升序。组内保持输入序。纯函数。 */
-export function groupSessionsByOrigin(sessions: GridSessionSnapshot[]): OriginGroup[] {
-  const local: GridSessionSnapshot[] = [];
-  const remotes = new Map<string, GridSessionSnapshot[]>();
-  for (const s of sessions) {
-    if (isLocalOrigin(s.origin)) {
-      local.push(s);
-    } else {
-      const arr = remotes.get(s.origin);
-      if (arr) arr.push(s);
-      else remotes.set(s.origin, [s]);
-    }
-  }
-  const groups: OriginGroup[] = [];
-  if (local.length > 0) groups.push({ origin: LOCAL_ORIGIN, label: copyText("gridMonitor.groups.local"), sessions: local });
-  for (const origin of [...remotes.keys()].sort((a, b) => a.localeCompare(b))) {
-    groups.push({ origin, label: origin, sessions: remotes.get(origin)! });
-  }
-  return groups;
-}
-
-/** 组内排序：只按脸上的序（`face.order`，小的在前：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 5）。
- *  同序保持输入序（稳定）。纯函数——不改入参，返回新数组。 */
-export function sortSessionsInGroup(sessions: GridSessionSnapshot[]): GridSessionSnapshot[] {
-  return sessions
-    .map((s, i) => ({ s, i }))
-    .sort((a, b) => a.s.face.order - b.s.face.order || a.i - b.i)
-    .map((x) => x.s);
-}
-
-export interface GridSummary {
-  machines: number;
-  liveSessions: number;
-  runningAgents: number;
-}
-
-/** 顶部聚合摘要：机器数（distinct origin，本机算一台）/ 活会话数 / 运行中 agent 总数。纯函数。 */
-export function summarizeSessions(sessions: GridSessionSnapshot[]): GridSummary {
-  const origins = new Set<Origin>();
-  let liveSessions = 0;
-  let runningAgents = 0;
-  for (const s of sessions) {
-    origins.add(s.origin);
-    if (isLive(s.face)) liveSessions += 1; // 进程在：Claude 已退出的不算活
-    runningAgents += s.runningAgents;
-  }
-  return { machines: origins.size, liveSessions, runningAgents };
-}
+/** 连着来的几次「变了」合成一问。 */
+const POKE_MS = 300;
 
 /**
  * peek 内容签名：相等 = 不重建 DOM（保住选区 / 滚动）。纯函数；selected = null → 空串（收起态）。
@@ -93,6 +49,7 @@ function peekSignature(selected: GridSessionSnapshot | null, peek: SessionPeek |
     selected.face.name,
     selected.needs,
     peek?.model ?? null,
+    peek?.summary ?? null,
     peek?.agents.length ?? 0,
     peek?.agents.slice(0, 8).map((a) => `${a.label}:${a.status}`) ?? null,
     peek?.recentFiles.length ?? 0,
@@ -117,6 +74,8 @@ interface CellRefs {
 interface GroupRefs {
   el: HTMLDivElement;
   title: HTMLDivElement;
+  /** 那台没答那一句；答了 ⇒ 不在 DOM 里。 */
+  down: HTMLDivElement | null;
   grid: HTMLDivElement;
 }
 
@@ -178,7 +137,7 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement, now: number):
   }
 }
 
-/** 组的留存键 —— 就是那台机器的 origin（本机是具名的 `LOCAL_ORIGIN`，与主机名撞不上：
+/** 组的留存键 —— 版面里那一组的 `machine`（本机是具名的 `LOCAL_ORIGIN`，与主机名撞不上：
  *  `"<local>"` 在全仓只指本机，`Origin::route` 就按它分本机）。 */
 const groupKey = (origin: Origin): string => origin;
 
@@ -197,10 +156,15 @@ export class GridMonitorView {
   private readonly cells = new Map<string, CellRefs>();
   /** 机器 → 分组容器（键见 `groupKey`）。 */
   private readonly groups = new Map<string, GroupRefs>();
-  /** 摘要那一行上次写的时候的数（`null` = 还没写过）。 */
-  private summarySig: string | null = null;
-  /** 空态那一行（建一次，没会话时挂上、有会话时摘掉）。 */
+  /** 空态那一行（建一次，没会话 · 头一问就失败时挂上，否则摘掉）。 */
   private emptyEl: HTMLElement | null = null;
+  /** 本机后端最近答的那份版面；还没答过 ⇒ `null`（格子先不摆）。 */
+  private board: MonitorBoard | null = null;
+  /** 还没有一份版面时那一问失败的那一句；有版面 ⇒ `null`（留着上一份）。 */
+  private failed: string | null = null;
+  /** 第几问：叠着问只收最后一问。 */
+  private seq = 0;
+  private pokeTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private source: GridSource) {
     this.root = this.build();
@@ -257,7 +221,8 @@ export class GridMonitorView {
     this.isOpen = true;
     dispatcher.pushOverlay(this);
     this.render();
-    // overlay 开着时 1Hz 轮询快照重渲染（快照纯内存、N 会话小 DOM，成本可忽略）。
+    void this.refresh();
+    // overlay 开着时 1Hz 轮询快照重画格子（快照纯内存、N 会话小 DOM，成本可忽略；每秒重画时不问版面）。
     // 调度：钟 —— 浮层开着时每秒按格重画（只读内存快照、不取数），关浮层即清
     this.timer = setInterval(() => this.render(), 1000);
   }
@@ -268,6 +233,11 @@ export class GridMonitorView {
       clearInterval(this.timer);
       this.timer = null;
     }
+    if (this.pokeTimer !== null) {
+      clearTimeout(this.pokeTimer);
+      this.pokeTimer = null;
+    }
+    this.seq += 1; // 关着时回来的那一问不收
     this.root.remove();
     this.isOpen = false;
     this.selectedId = null; // 重开从干净态起（无残留选中/peek）
@@ -275,35 +245,57 @@ export class GridMonitorView {
     dispatcher.popOverlay(this);
   }
 
+  /** 宿主转来「标签页增减 · 脸变 · 运行表变 · 那台接上」：开着才问，连着来的合成一问。 */
+  poke(): void {
+    if (!this.isOpen || this.pokeTimer !== null) return;
+    // 调度：合批 —— 连着来的标签页 · 脸 · 运行表变化 · 机器接上合成一问
+    this.pokeTimer = setTimeout(() => {
+      this.pokeTimer = null;
+      void this.refresh();
+    }, POKE_MS);
+  }
+
+  /** 问一次版面（开着才问；叠着问只收最后一问）。失败 ⇒ 留着上一份；一份都还没有 ⇒ 空态写那一句。 */
+  async refresh(): Promise<void> {
+    if (!this.isOpen) return;
+    const mine = ++this.seq;
+    const picks = this.source.snapshotSessions().map((s) => ({ machine: s.origin, sid: s.sessionId }));
+    try {
+      const b = await this.source.board(picks);
+      if (mine !== this.seq || !this.isOpen) return;
+      this.board = b;
+      this.failed = null;
+    } catch (e) {
+      if (mine !== this.seq || !this.isOpen) return;
+      this.failed = this.board === null ? saidOf(e) : null;
+    }
+    this.render();
+  }
+
   private render(): void {
     const sessions = this.source.snapshotSessions();
-    const summary = summarizeSessions(sessions);
-    // 摘要那一行也只在数变了时写。
-    const summarySig = `${sessions.length}/${summary.machines}/${summary.liveSessions}/${summary.runningAgents}`;
-    if (this.summarySig !== summarySig) {
-      this.summarySig = summarySig;
-      this.summaryEl.textContent =
-        sessions.length === 0
-          ? ""
-          : copyText("gridMonitor.render.summary", { machines: summary.machines, liveSessions: summary.liveSessions, runningAgents: summary.runningAgents });
-    }
+    const bySid = new Map(sessions.map((s) => [s.sessionId, s]));
+    const summaryText = sessions.length === 0 ? "" : (this.board?.summary ?? "");
+    if (this.summaryEl.textContent !== summaryText) this.summaryEl.textContent = summaryText;
 
     // 选中的会话若已消失（归档移除 / 远端断线）→ 清选中、收 peek。
-    const selected = this.selectedId
-      ? (sessions.find((s) => s.sessionId === this.selectedId) ?? null)
-      : null;
+    const selected = this.selectedId ? (bySid.get(this.selectedId) ?? null) : null;
     if (this.selectedId && !selected) this.selectedId = null;
 
-    // 先摘：这一次快照里没有了的格子、没有了的机器分组。
-    const alive = new Set(sessions.map((s) => s.sessionId));
+    // 版面照后端那一份；此刻快照里已没有的那几条不画（下一问的版面里也就没有了）。
+    const groups = (sessions.length === 0 ? [] : (this.board?.groups ?? []))
+      .map((g) => ({ g, shown: g.sids.flatMap((sid) => bySid.get(sid) ?? []) }))
+      .filter((x) => x.shown.length > 0);
+
+    // 先摘：这一份版面里没有了的格子、没有了的机器分组。
+    const alive = new Set(groups.flatMap((x) => x.shown.map((s) => s.sessionId)));
     for (const [sid, refs] of this.cells) {
       if (!alive.has(sid)) {
         refs.cell.remove();
         this.cells.delete(sid);
       }
     }
-    const groups = sessions.length === 0 ? [] : groupSessionsByOrigin(sessions);
-    const wantedGroups = new Set(groups.map((g) => groupKey(g.origin)));
+    const wantedGroups = new Set(groups.map((x) => groupKey(x.g.machine)));
     for (const [key, g] of this.groups) {
       if (!wantedGroups.has(key)) {
         g.el.remove();
@@ -311,28 +303,28 @@ export class GridMonitorView {
       }
     }
 
-    if (sessions.length === 0) {
+    const emptyText = sessions.length === 0 ? copyText("gridMonitor.render.empty") : this.board === null ? this.failed : null;
+    if (emptyText !== null) {
       if (!this.emptyEl) {
         this.emptyEl = document.createElement("div");
         this.emptyEl.className = "grid-monitor-empty";
-        this.emptyEl.textContent = copyText("gridMonitor.render.empty");
       }
-      if (this.emptyEl.parentNode !== this.bodyEl) this.bodyEl.appendChild(this.emptyEl);
+      if (this.emptyEl.textContent !== emptyText) this.emptyEl.textContent = emptyText;
+      place(this.bodyEl, [this.emptyEl]);
       this.renderPeek(null);
       return;
     }
-    if (this.emptyEl?.parentNode === this.bodyEl) this.emptyEl.remove();
 
-    // 再摆：组按 `groupSessionsByOrigin` 的顺序、格子按 `sortSessionsInGroup` 的顺序；按身份原地摆（kit `place`：
+    // 再摆：组 · 组头 · 组内先后照版面；按身份原地摆（kit `place`：
     // 顺序没变的一拍零搬动，挪过的那一格丢了焦点还回去，不把格子滚回视口）。
     const groupEls: HTMLElement[] = [];
-    for (const group of groups) {
-      const g = this.groupFor(group.origin);
-      const titleText = `${group.label}（${group.sessions.length}）`;
-      if (g.title.textContent !== titleText) g.title.textContent = titleText;
+    for (const { g: group, shown } of groups) {
+      const g = this.groupFor(group.machine);
+      if (g.title.textContent !== group.title) g.title.textContent = group.title;
+      this.paintDown(g, group.down ?? null);
       groupEls.push(g.el);
       const cells: HTMLElement[] = [];
-      for (const s of sortSessionsInGroup(group.sessions)) {
+      for (const s of shown) {
         const refs = this.cellFor(s.sessionId);
         this.updateCell(refs, s);
         cells.push(refs.cell);
@@ -342,6 +334,21 @@ export class GridMonitorView {
     place(this.bodyEl, groupEls);
 
     this.renderPeek(selected); // 1Hz 也刷 peek（选中会话内容随之更新）
+  }
+
+  /** 那台没答那一句：有才在 DOM 里，位置恒在组头之后。 */
+  private paintDown(g: GroupRefs, said: string | null): void {
+    if (said === null) {
+      g.down?.remove();
+      g.down = null;
+      return;
+    }
+    if (!g.down) {
+      g.down = document.createElement("div");
+      g.down.dataset.down = ""; // 钩子：那台没答那一句
+      g.el.insertBefore(g.down, g.grid);
+    }
+    if (g.down.textContent !== said) g.down.textContent = said;
   }
 
   /** 某台机器的分组容器（没有就建一次）。 */
@@ -357,7 +364,7 @@ export class GridMonitorView {
       const grid = document.createElement("div");
       grid.className = "grid-monitor-grid";
       el.appendChild(grid);
-      g = { el, title, grid };
+      g = { el, title, down: null, grid };
       this.groups.set(key, g);
     }
     return g;
@@ -386,19 +393,17 @@ export class GridMonitorView {
     }
     this.peekEl.classList.remove("is-empty");
 
-    // 头行：标题 +（远端）origin + 跳转/关闭
+    // 头行：标题 + 那台的名字 + 跳转/关闭
     const head = document.createElement("div");
     head.className = "grid-monitor-peek-head";
     const title = document.createElement("span");
     title.className = "grid-monitor-peek-title one-line";
     title.textContent = selected.title;
     head.appendChild(title);
-    if (isRemoteOrigin(selected.origin)) {
-      const org = document.createElement("span");
-      org.className = "grid-monitor-peek-origin";
-      org.textContent = selected.origin;
-      head.appendChild(org);
-    }
+    const org = document.createElement("span");
+    org.className = "grid-monitor-peek-origin";
+    org.textContent = machineName(selected.origin);
+    head.appendChild(org);
     const spacer = document.createElement("span");
     spacer.className = "grid-monitor-peek-spacer";
     head.appendChild(spacer);
@@ -441,14 +446,13 @@ export class GridMonitorView {
     if (peek?.model) addFact(copyText("gridMonitor.fact.model"), peek.model);
     this.peekEl.appendChild(facts);
 
-    // subagent 名单（运行中优先）
+    // 子运行名单：照那台写好的三组序摆，头那一句照抄那台写好的
     if (peek && peek.agents.length > 0) {
       const agentsWrap = document.createElement("div");
       agentsWrap.className = "grid-monitor-peek-agents";
-      const running = peek.agents.filter((a) => a.status === "running").length;
       const k = document.createElement("span");
       k.className = "grid-monitor-peek-k";
-      k.textContent = copyText("gridMonitor.renderPeek.agentsHead", { running, agentsCount: peek.agents.length });
+      k.textContent = peek.summary ?? "";
       agentsWrap.appendChild(k);
       for (const a of peek.agents.slice(0, 8)) {
         const chip = document.createElement("span");

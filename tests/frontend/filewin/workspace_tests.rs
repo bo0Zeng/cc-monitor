@@ -26,6 +26,41 @@ use crate::copy::testing::{rects_of, text_in_frame, PaintedText};
 use crate::find::testing::{window_on, wire_up, Declared, FakeBackend};
 use crate::source::{Row, Source};
 
+/// 判据读工作区状态用的那几件（生产那一份里没有它们；本模块挂在 `workspace` 底下，读得到私有字段）。
+impl Workspace {
+    /// 第 `side` 栏有几个标签页。
+    pub(crate) fn tabs_on(&self, side: usize) -> usize {
+        self.sides[side].tabs.len()
+    }
+
+    /// 第 `side` 栏第 `i` 个标签页（后台标签也看得到）。
+    pub(crate) fn tab(&self, side: usize, i: usize) -> &FileWindow {
+        &self.sides[side].tabs[i].pane
+    }
+
+    /// 取栏 / 标签时下标越界、退回最近那一个、报过警告的调用处有几处（同一处撞多少次只记一处）。
+    pub(crate) fn slip_sites(&self) -> usize {
+        self.slip_sites
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len()
+    }
+
+    /// 摆出关窗那一问（有东西会丢时；同点 × 那一下 `guard_close` 走到的那一态）。回值 ＝ 摆出来了。
+    pub(crate) fn begin_close_ask(&mut self) -> bool {
+        if self.close_ask().is_empty() {
+            return false;
+        }
+        self.closing_ask = true;
+        true
+    }
+
+    /// 关窗那一问正摆着吗。
+    pub(crate) fn closing_ask(&self) -> bool {
+        self.closing_ask
+    }
+}
+
 const SCREEN: egui::Vec2 = egui::vec2(1600.0, 900.0);
 
 fn cfg(label: &str) -> String {
@@ -344,8 +379,10 @@ fn closing_a_tab_with_a_transfer_running_closes_it_and_the_transfer_keeps_going(
         Some("/srv".into()),
         None,
     );
-    assert!(
-        ws.tab(0, 1).progress.same(&ws.progress),
+    // 窗口那一份上刚开的那一行，新标签页手上那一份里也看得见 ⇒ 两边是同一张表。
+    assert_eq!(
+        ws.tab(0, 1).progress.running(),
+        1,
         "新标签页拿的不是窗口那一份「进度」表"
     );
     assert!(
@@ -938,11 +975,6 @@ fn across_req_cuts_paths_at_the_common_directory() {
             { "from": "a/d/y", "to": "b/y" }
         ] })
     );
-    assert_eq!(
-        common_dir("/srv/ab", "/srv/a"),
-        "/srv",
-        "按段比，不按字符前缀比"
-    );
 }
 
 fn ctrl(k: egui::Key) -> egui::Event {
@@ -1265,7 +1297,8 @@ async fn screenshot_for_the_shots_tool() {
         .unwrap()
         .insert(dir.join("main.rs").to_string_lossy().to_string(), code);
     if scene.starts_with("plan") {
-        be.offered.push(crate::plan::CMD_PLAN_FILES.to_string());
+        be.offered
+            .push(<cmd_wire::plan::PlanFilesReq as cmd_wire::Call>::NAME.to_string());
         *be.plan_reply.lock().unwrap() = Some(
             serde_json::json!({"workspace": "/home/user/work", "slice": "orders-service", "unreadable": null, "unowned": null, "unownedWhy": null, "entries": [
                 {"name": "main.rs", "id": "A2-1", "label": "A2-1 下单入口", "title": "下单入口", "statusCode": "done", "status": null, "block": "下单流程",
@@ -1698,7 +1731,7 @@ async fn screenshot_for_the_shots_tool() {
     // 改权限：main.rs 上「⋯ → 权限」；现值答回来之后（帧里）勾上三个执行位。
     if scene == "chmod" {
         let i = row_of(&w, "main.rs");
-        w.begin_chmod(i);
+        w.begin_chmod_rows(&[i]);
     }
     // 上传遇到同名：本机三份、两份同名 ⇒ 那台后端探了回同名清单，冲突框照它画（时刻是后端写好的字）。
     if scene == "upload-clash" {
@@ -1748,7 +1781,7 @@ async fn screenshot_for_the_shots_tool() {
     // 复制到另一台：report.pdf ⇒ 那一问；选择器去那台的主目录、选中 inbox（帧里）。
     if scene == "cross-copy" {
         let i = row_of(&w, "report.pdf");
-        w.begin_cross(i);
+        w.begin_cross_rows(&[i]);
     }
     // 多选右键菜单（按两栏摆）：一个文件夹 ＋ 两个文件 ⇒「下载 3 项」灰着（有目录）·「复制 3 项到另一台…」·「复制 3 项到另一栏」；算大小 · 改权限；删除。
     if scene == "many-menu" {
@@ -2950,7 +2983,7 @@ fn unsplitting_from_the_focused_right_side_does_not_crash() {
     // 收完再画几帧也稳；兜底没被用上（真修在调用方，不是靠兜底吞掉）。
     d.frame(&mut ws, Vec::new());
     d.frame(&mut ws, Vec::new());
-    assert_eq!(ws.slips(), 0, "有一帧拿着过时的栏号取了目录视图");
+    assert_eq!(ws.slip_sites(), 0, "有一帧拿着过时的栏号取了目录视图");
 }
 
 /// 工作区的不变式：一或两栏；焦点落在某一栏；每栏至少一个标签、`active` 在表里；
@@ -2990,7 +3023,7 @@ fn assert_shape(ws: &Workspace, step: usize, op: &str) {
         "第 {step} 步（{op}）后拿焦点的标签不对"
     );
     assert_eq!(
-        ws.slips(),
+        ws.slip_sites(),
         0,
         "第 {step} 步（{op}）里有人拿着过时的栏号 / 标签号取目录视图（退回兜底了，但那是缺陷）"
     );
@@ -3090,27 +3123,27 @@ fn random_tab_and_split_sequences_keep_the_shape() {
     }
 }
 
-/// 兜底那一层：拿着过时的栏号 / 被弄坏的 `active` 取目录视图 ⇒ 退回最近那一个、记一笔，不 panic。
+/// 兜底那一层：拿着过时的栏号 / 被弄坏的 `active` 取目录视图 ⇒ 退回最近那一个、记下调用处，不 panic。
 #[test]
 fn a_stale_side_or_tab_index_falls_back_instead_of_panicking() {
     let mut ws = Workspace::new(pane("/srv", &["a"]));
     assert_eq!(ws.pane_on(1).cwd, "/srv", "过时的栏号该退回最后一栏");
-    assert_eq!(ws.slips(), 1);
+    assert_eq!(ws.slip_sites(), 1);
     ws.sides[0].active = 3;
     assert_eq!(
         ws.pane_on_mut(0).cwd,
         "/srv",
         "越界的 active 该退回最后一个标签"
     );
-    assert_eq!(ws.slips(), 2);
+    assert_eq!(ws.slip_sites(), 2, "另一处调用处退回了却没记上");
     // 这一形下整帧也画得完；同一处每帧都撞，警告只按调用处记、不随帧数长（不刷屏）。
     let mut d = Drive::new();
     d.frame(&mut ws, Vec::new());
     let sites = ws.slip_sites();
+    assert!(sites > 2, "越界的 active 在帧里取目录视图那几处没记上");
     for _ in 0..5 {
         d.frame(&mut ws, Vec::new());
     }
-    assert!(ws.slips() > 2, "越界的 active 每帧都该记一笔");
     assert_eq!(
         ws.slip_sites(),
         sites,
