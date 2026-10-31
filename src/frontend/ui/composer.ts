@@ -2,6 +2,8 @@
  * **消息流底下的输入框**（说一句只在这一处，R19：聊天是主体、终端是逃生口；手机聊天屏同形 A2-18-8）。跟着当前标签页走。
  *
  * - 一行：［＋］附件 · 字 · ➤；Enter 发、Shift+Enter 换行，组字时回车归输入法；Esc 焦点还给消息流。没发的字按会话各记一份。
+ * - 一轮在跑（脸上 `can.stop`，那台判好）、框里没字也没附件 ⇒ ➤ 换成 ■（同手机，二选一）：点了交 `session-interrupt`（不进队、不靠持有输入）；
+ *   送到了 · 不知道送没送到 ⇒ 不说（看记录）；那台拒了 · 没送成 ⇒ 框下写那台那一句。说不了（框灰着）也照样能停。
  * - 上方一排（`queue-row.ts`）：这一端的待发（`outbox.ts`，发送中 ·［撤回］）＋ 那台推来的整份队列名单（排第 n · 谁发的 ·［撤回］）；
  *   那台离线（机器成品，宿主经 `machineChanged` 交来）⇒ 照手上那一份淡着画、头上写名单是上次所知；
  *   再上一排是附件（`attach-row.ts`，拖到主区上（宿主经 `takeDrops` 交落点）· 粘贴 · ［＋］进同一排）。
@@ -11,8 +13,10 @@
  *   那台离线照常可写可发（成待发，占位写「连上后送」）；已结束能恢复的 ⇒ 可写，发一句 ＝ 先恢复（落后台）再把这句交进它的队。
  */
 import { copyText } from "./copy-table";
-import { machineName, offlineSaid } from "./control-said";
-import { canResume, hasTerminal, isLive } from "./face-can";
+import { machineName, offlineSaid, settleTyped } from "./control-said";
+import { canResume, canStop, hasTerminal, isLive } from "./face-can";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
+import { sentOf, type TerminalSent } from "./terminal-reads";
 import { fullTitle } from "./session-face";
 import { terminalFrontAvailable } from "./terminal-front";
 import type { Tab } from "./tab-model";
@@ -67,6 +71,15 @@ export interface ComposerReads {
 
 export const CHANNEL_COMPOSER: ComposerReads = { io: channelIo, read: CHANNEL_READ, cancel: CHANNEL_CANCEL, watch: CHANNEL_WATCH };
 
+/** ■：中断那条会话这一轮（`session-interrupt`）；回包同送字送键。没送成 ⇒ 抛（那一句后端写好）。 */
+export type InterruptFn = (origin: Origin, sid: string) => Promise<TerminalSent>;
+
+/** ■ 的期限（同送字送键）。 */
+const INTERRUPT_BUDGET_MS = 20_000;
+
+export const CHANNEL_INTERRUPT: InterruptFn = async (origin, sid) =>
+  sentOf(await settleTyped(origin, "session-interrupt", callTyped(origin, "session-interrupt", { sid }, budgetWithin(INTERRUPT_BUDGET_MS))));
+
 export interface ComposerHost {
   /** 此刻的标签页（占位标签页显着 · 没有 ⇒ `null`，框收起）。 */
   active(): Tab | null;
@@ -91,6 +104,10 @@ export class Composer {
   private readonly box: HTMLTextAreaElement;
   private readonly sendBtn: HTMLButtonElement;
   private readonly sendLabel = copyText("composer.input.send");
+  /** ■（一轮在跑、框里没字没附件时顶替 ➤）。 */
+  private readonly stopBtn: HTMLButtonElement;
+  private readonly stopLabel = copyText("composer.input.stop");
+  private stopping = false;
   /** 说不了时那条出路［切到终端］（还有终端可去才出）。 */
   private readonly frontBtn: HTMLButtonElement;
   private readonly outRow: HTMLElement;
@@ -115,6 +132,7 @@ export class Composer {
     private readonly host: ComposerHost,
     private readonly outbox: Outbox = mainOutbox,
     private readonly reads: ComposerReads = CHANNEL_COMPOSER,
+    private readonly interrupt: InterruptFn = CHANNEL_INTERRUPT,
   ) {
     this.el = el("div", s.composer);
     this.el.dataset.role = "composer";
@@ -140,8 +158,10 @@ export class Composer {
     });
     this.sendBtn = button({ label: this.sendLabel, kind: "icon", size: "compact", icon: "send", onClick: () => void this.send() });
     this.sendBtn.dataset.role = "composer-send";
+    this.stopBtn = button({ label: this.stopLabel, kind: "icon", size: "compact", icon: "stop", onClick: () => void this.stop() });
+    this.stopBtn.dataset.role = "composer-stop";
     this.outRow = el("div", s.composerRow);
-    this.outRow.append(this.attach.plus, this.box, this.sendBtn);
+    this.outRow.append(this.attach.plus, this.box, this.sendBtn, this.stopBtn);
     this.noteEl = el("div", s.composerNote);
     this.frontBtn = button({
       label: copyText("terminal.head.front"),
@@ -171,6 +191,7 @@ export class Composer {
       this.queueOf = null;
       this.note = null;
       this.sending = false;
+      this.stopping = false;
       this.box.value = key === null ? "" : (this.drafts.get(key) ?? "");
       this.onInput();
       if (t) {
@@ -262,6 +283,32 @@ export class Composer {
     this.sending = false;
     // 没回执 ⇒ 字留着、写那一句（那一排「发送中」，接上重交）；有结局的由 [settled] 说。
     if (end.at === "none") this.showNote({ text: end.said, tone: "error" });
+    else this.paint();
+  }
+
+  /** 此刻是 ■ 不是 ➤：一轮在跑（脸上 `can.stop`）、框里没字、也没附件（同手机）。 */
+  private showsStop(t: Tab): boolean {
+    const draft = this.attachDraft();
+    return canStop(t.face) && this.box.value.trim() === "" && (draft === null || draft.chips().length === 0);
+  }
+
+  /** ■：交 `session-interrupt`；送到了 · 不知道 ⇒ 不说（看记录）；那台拒了 · 没送成 ⇒ 写那台那一句。 */
+  private async stop(): Promise<void> {
+    const t = this.host.active();
+    if (!t || this.stopping || !this.showsStop(t)) return;
+    const key = this.key;
+    this.stopping = true;
+    this.paint();
+    let note: Note | null = null;
+    try {
+      const sent = await this.interrupt(t.origin, t.sessionId);
+      if (sent.result === "refused") note = { text: sent.said, tone: "error" };
+    } catch (e) {
+      note = { text: saidOf(e), tone: "error", detail: detailOf(e) };
+    }
+    if (key !== this.key) return;
+    this.stopping = false;
+    if (note !== null) this.showNote(note);
     else this.paint();
   }
 
@@ -371,6 +418,8 @@ export class Composer {
     if (this.key !== null) this.drafts.set(this.key, this.box.value);
     const lines = this.box.value.split("\n").length;
     this.box.rows = Math.min(MAX_ROWS, Math.max(1, lines));
+    const t = this.host.active();
+    if (t !== null) this.paintSendOrStop(t);
     this.measure();
   }
 
@@ -389,6 +438,7 @@ export class Composer {
     this.box.placeholder = say.can === "yes" ? say.hint : say.why;
     setDisabled(this.sendBtn, no ?? this.attachDraft()?.blocker(this.offlineLine()) ?? null);
     setBusy(this.sendBtn, this.sending ? this.sendLabel : null);
+    this.paintSendOrStop(t);
     this.attach.paint();
     this.queueRow.paint(this.queueOf === this.key ? this.queue : null, this.outbox.of(t.origin, t.sessionId), this.offline.get(t.origin) ?? null);
     // 说不了、还有终端可去 ⇒ 那条出路（同会话头 ↗ 那一道）。
@@ -401,6 +451,14 @@ export class Composer {
     }
     this.noteEl.replaceChildren(...parts);
     this.measure();
+  }
+
+  /** ➤ 与 ■ 二选一（打字 · 删字时也跟着换，不等整份重画）。 */
+  private paintSendOrStop(t: Tab): void {
+    const stop = this.showsStop(t);
+    this.sendBtn.style.display = stop ? "none" : "";
+    this.stopBtn.style.display = stop ? "" : "none";
+    setBusy(this.stopBtn, this.stopping ? this.stopLabel : null);
   }
 
   /** 量自己多高、交宿主（变了才交）。 */

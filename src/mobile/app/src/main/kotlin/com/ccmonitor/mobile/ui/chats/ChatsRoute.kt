@@ -84,15 +84,7 @@ fun ChatsRoute(
     val checked by board.checked.collectAsStateWithLifecycle()
     val attempts = remember { mutableStateMapOf<String, Int>() }
     val links = remember { mutableStateMapOf<String, HostLink>() }
-    for (c in checked) {
-        key(c.hostId) {
-            val link by rememberHostLink(c.hostId, conversationsHolder(c.hostId), attempt = attempts[c.hostId] ?: 0)
-            LaunchedEffect(link) {
-                links[c.hostId] = link
-                board.ssh(c.hostId, link)
-            }
-        }
-    }
+    HoldChecked(board, checked.map { it.hostId }, attempts, links)
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -137,6 +129,25 @@ fun ChatsRoute(
                 }
             },
         ) { inner -> ChatsScreen(ui, act, listState, Modifier.fillMaxSize().padding(inner)) }
+    }
+}
+
+/** 勾上的每台各建一条 SSH 持有（离屏放手）；连上的那一条记进 [links]、交给 [board] 接常驻流。 */
+@Composable
+private fun HoldChecked(
+    board: ChatsBoard,
+    hostIds: List<String>,
+    attempts: Map<String, Int>,
+    links: MutableMap<String, HostLink>,
+) {
+    for (id in hostIds) {
+        key(id) {
+            val link by rememberHostLink(id, conversationsHolder(id), attempt = attempts[id] ?: 0)
+            LaunchedEffect(link) {
+                links[id] = link
+                board.ssh(id, link)
+            }
+        }
     }
 }
 
