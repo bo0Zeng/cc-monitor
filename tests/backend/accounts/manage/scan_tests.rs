@@ -127,7 +127,8 @@ mod on_disk {
         let accts = PathBuf::from(accts_root(&hs));
         let shared = h.0.join("store");
         let z = accts.join("z");
-        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::create_dir_all(shared.join("plans")).unwrap();
+        write(&shared.join("agents").join("a.md"), "");
         std::fs::create_dir_all(z.join("projects")).unwrap();
         std::fs::set_permissions(&z, std::fs::Permissions::from_mode(0o700)).unwrap();
         std::os::unix::fs::symlink(shared.join("skills"), z.join("skills")).unwrap();
@@ -162,6 +163,11 @@ mod on_disk {
             "清单点名的共享库（尾部 `/` 去掉）"
         );
         assert!(snap.shared.is_dir());
+        assert_eq!(
+            snap.empty_shared.iter().collect::<Vec<_>>(),
+            ["plans"],
+            "按需目录里只有空的那一个算空；号里的不看"
+        );
         let zd = snap.dir(&s(&z));
         assert!(zd.is_dir());
         assert_eq!(zd.mode().map(|m| m & 0o777), Some(0o700));
