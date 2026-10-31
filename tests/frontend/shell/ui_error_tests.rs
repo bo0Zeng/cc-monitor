@@ -47,10 +47,10 @@ pub(crate) fn assert_is_copy_not_log(ev: &serde_json::Value) {
     let said = ev.get("said").and_then(|v| v.as_str()).unwrap_or_default();
     assert!(!said.is_empty(), "推给界面的出错事件没有那一句：{ev}");
     assert!(!said.starts_with('〔'), "那一句的文案键不在表里：{ev}");
-    let unfilled = said
-        .split('{')
-        .skip(1)
-        .any(|s| s.find('}').is_some_and(|j| j > 0 && s[..j].chars().all(|c| c.is_alphanumeric() || c == '_')));
+    let unfilled = said.split('{').skip(1).any(|s| {
+        s.find('}')
+            .is_some_and(|j| j > 0 && s[..j].chars().all(|c| c.is_alphanumeric() || c == '_'))
+    });
     assert!(!unfilled, "那一句里还有没填的占位符：{ev}");
     let Some(obj) = ev.as_object() else {
         panic!("出错事件不是对象：{ev}")
@@ -203,7 +203,10 @@ fn every_kind_of_ui_error_is_a_copy_keyed_sentence_and_the_log_line_stays_in_the
 fn the_remote_kinds_are_copy_keyed_sentences_too() {
     let cases: Vec<(String, UiError, &str)> = vec![
         (
-            copy_core::copy_text("rsSshSource.health.badFrame", &[("host", "devbox"), ("kind", "line")]),
+            copy_core::copy_text(
+                "rsSshSource.health.badFrame",
+                &[("host", "devbox"), ("kind", "line")],
+            ),
             UiError::FrameUnreadable {
                 host: "devbox".into(),
                 kind: "line".into(),
@@ -212,7 +215,10 @@ fn the_remote_kinds_are_copy_keyed_sentences_too() {
             "missing field",
         ),
         (
-            copy_core::copy_text("rsUiError.overflow.said", &[("host", "devbox"), ("said", "那台写的一句")]),
+            copy_core::copy_text(
+                "rsUiError.overflow.said",
+                &[("host", "devbox"), ("said", "那台写的一句")],
+            ),
             UiError::Overflow {
                 host: "devbox".into(),
                 said: "那台写的一句".into(),
@@ -249,7 +255,10 @@ fn the_remote_kinds_are_copy_keyed_sentences_too() {
         assert_eq!(got.len(), 1, "{e:?} 没推、或推了不止一条：{got:?}");
         let ev = &got[0];
         assert_is_copy_not_log(ev);
-        assert_eq!(ev["said"], want, "{e:?} 那一句不是照它的文案键取出来的：{ev}");
+        assert_eq!(
+            ev["said"], want,
+            "{e:?} 那一句不是照它的文案键取出来的：{ev}"
+        );
         assert!(
             ev.get("reconnect").is_none(),
             "远端提示不给［重新连接］：{ev}"
@@ -281,16 +290,42 @@ fn every_told_kind() -> Vec<UiError> {
         ledger_line: "账行".into(),
     };
     vec![
-        died(Death::Crashed { how: Outcome::Exited(1) }, Then::Restarted),
-        died(Death::Crashed { how: Outcome::Exited(1) }, Then::Down),
+        died(
+            Death::Crashed {
+                how: Outcome::Exited(1),
+            },
+            Then::Restarted,
+        ),
+        died(
+            Death::Crashed {
+                how: Outcome::Exited(1),
+            },
+            Then::Down,
+        ),
         died(Death::Refused { code: 1 }, Then::Restarted),
         died(Death::Refused { code: 1 }, Then::Down),
         died(Death::Misread { detail: "x".into() }, Then::Down),
-        UiError::MachinesUnreadable { path: "/x".into(), why: "y".into() },
-        UiError::FrameUnreadable { host: "h".into(), kind: "line".into(), why: "w".into() },
-        UiError::Overflow { host: "h".into(), said: "那台写的一句".into() },
-        UiError::HistoryUnfetched { sid: "s".into(), raw: "r".into() },
-        UiError::FileWindowExited { code: None, raw: None },
+        UiError::MachinesUnreadable {
+            path: "/x".into(),
+            why: "y".into(),
+        },
+        UiError::FrameUnreadable {
+            host: "h".into(),
+            kind: "line".into(),
+            why: "w".into(),
+        },
+        UiError::Overflow {
+            host: "h".into(),
+            said: "那台写的一句".into(),
+        },
+        UiError::HistoryUnfetched {
+            sid: "s".into(),
+            raw: "r".into(),
+        },
+        UiError::FileWindowExited {
+            code: None,
+            raw: None,
+        },
     ]
 }
 
@@ -309,7 +344,11 @@ fn the_wire_form_carries_only_what_the_ui_reads() {
         } else {
             vec!["detail", "said"]
         };
-        assert_eq!(keys, want, "{e:?} 推出去的格子不是界面读的那几格：{}", got[0]);
+        assert_eq!(
+            keys, want,
+            "{e:?} 推出去的格子不是界面读的那几格：{}",
+            got[0]
+        );
     }
 }
 

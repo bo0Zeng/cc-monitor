@@ -96,7 +96,9 @@ impl UiError {
                     (Death::Refused { .. }, Then::Restarted) => {
                         copy_text("rsUiError.localQuit.restarted", &[])
                     }
-                    (Death::Refused { .. }, Then::Down) => copy_text("rsUiError.localQuit.down", &[]),
+                    (Death::Refused { .. }, Then::Down) => {
+                        copy_text("rsUiError.localQuit.down", &[])
+                    }
                     (Death::Misread { .. }, Then::Down) => {
                         copy_text("rsUiError.localUnreadable.down", &[])
                     }
