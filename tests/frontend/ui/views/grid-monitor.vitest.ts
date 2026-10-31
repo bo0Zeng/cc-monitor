@@ -455,13 +455,13 @@ describe("监控板照后端成品摆", () => {
         board: async () => ({ summary: "核心·0 台", groups: [{ machine: "pi", title: "核心·pi（1）", sids: ["p1"], ...(down ? { down } : {}) }] }),
       });
       await openSettled(view);
-      expect(document.querySelector(".grid-monitor-group-down")?.textContent).toBe("核心·pi 离线");
+      expect(document.querySelector(".grid-monitor-group [data-down]")?.textContent).toBe("核心·pi 离线");
       expect(document.querySelectorAll(".grid-monitor-cell").length).toBe(1);
       down = undefined;
       view.poke();
       vi.advanceTimersByTime(1000);
       await settle();
-      expect(document.querySelector(".grid-monitor-group-down")).toBeNull();
+      expect(document.querySelector(".grid-monitor-group [data-down]")).toBeNull();
       view.close();
     } finally {
       vi.useRealTimers();
@@ -519,7 +519,7 @@ describe("F91 GridMonitorView 问版面的时机 · interval 生命周期", () =
       sessions = [snap({ sessionId: "a", title: "A" }), snap({ sessionId: "b", title: "B" })];
       vi.advanceTimersByTime(3000);
       await settle();
-      expect(source.board, "1Hz 那一拍不问").toHaveBeenCalledTimes(1);
+      expect(source.board, "每秒重画不问版面").toHaveBeenCalledTimes(1);
       expect(document.querySelectorAll(".grid-monitor-cell").length).toBe(1);
 
       view.poke();

@@ -222,7 +222,7 @@ export class GridMonitorView {
     dispatcher.pushOverlay(this);
     this.render();
     void this.refresh();
-    // overlay 开着时 1Hz 轮询快照重画格子（快照纯内存、N 会话小 DOM，成本可忽略；版面不在这一拍问）。
+    // overlay 开着时 1Hz 轮询快照重画格子（快照纯内存、N 会话小 DOM，成本可忽略；每秒重画时不问版面）。
     // 调度：钟 —— 浮层开着时每秒按格重画（只读内存快照、不取数），关浮层即清
     this.timer = setInterval(() => this.render(), 1000);
   }
@@ -282,7 +282,7 @@ export class GridMonitorView {
     const selected = this.selectedId ? (bySid.get(this.selectedId) ?? null) : null;
     if (this.selectedId && !selected) this.selectedId = null;
 
-    // 版面照后端那一份；这一拍快照里已没有的那几条不画（下一问的版面里也就没有了）。
+    // 版面照后端那一份；此刻快照里已没有的那几条不画（下一问的版面里也就没有了）。
     const groups = (sessions.length === 0 ? [] : (this.board?.groups ?? []))
       .map((g) => ({ g, shown: g.sids.flatMap((sid) => bySid.get(sid) ?? []) }))
       .filter((x) => x.shown.length > 0);
@@ -345,7 +345,7 @@ export class GridMonitorView {
     }
     if (!g.down) {
       g.down = document.createElement("div");
-      g.down.className = "grid-monitor-group-down";
+      g.down.dataset.down = ""; // 钩子：那台没答那一句
       g.el.insertBefore(g.down, g.grid);
     }
     if (g.down.textContent !== said) g.down.textContent = said;
