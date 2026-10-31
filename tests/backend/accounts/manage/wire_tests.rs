@@ -42,8 +42,8 @@ impl Home {
     }
 }
 
-/// ★ 共享库里新冒出来的项（Claude Code 升级后自己在 `~/.claude` 建的目录）：核对那一下先对齐 ⇒ 两个号都有指向它的链接、
-/// 不报「缺共享链接」；号里自己的那份实体一个字节不动；锁文件不链给各号；接好之后再核不动盘（不另留备份）。
+/// ★ 共享库里新冒出来一项已知共享的（`plugins`）：核对那一下先对齐 ⇒ 两个号都有指向它的链接、不报「缺共享链接」；
+/// 认不得的新目录（`bridge-spawn`）· 锁文件不链给各号；号里自己的那份实体一个字节不动；接好之后再核不动盘（不另留备份）。
 #[cfg(unix)]
 #[test]
 fn the_checkup_links_a_new_shared_item_instead_of_reporting_it_missing() {
@@ -80,7 +80,8 @@ fn the_checkup_links_a_new_shared_item_instead_of_reporting_it_missing() {
         None,
     )
     .unwrap();
-    h.write(".claude/bridge-spawn/one", "共享库里那一份（夹具句）");
+    h.write(".claude/plugins/one", "共享库里那一份（夹具句）");
+    h.write(".claude/bridge-spawn/one", "认不得的那一份（夹具句）");
     h.write(".claude/.oauth_refresh.lock.owner", "{}");
     std::fs::remove_file(h.0.join(".cc-monitor/accounts/x/skills")).unwrap();
     h.write(".cc-monitor/accounts/x/skills/own.md", "x 自己的（夹具句）");
@@ -95,9 +96,14 @@ fn the_checkup_links_a_new_shared_item_instead_of_reporting_it_missing() {
         .collect();
     for n in ["lab", "x"] {
         assert_eq!(
-            h.link_of(&format!(".cc-monitor/accounts/{n}/bridge-spawn")),
-            Some(h.0.join(".claude/bridge-spawn")),
+            h.link_of(&format!(".cc-monitor/accounts/{n}/plugins")),
+            Some(h.0.join(".claude/plugins")),
             "{n} 没链上新冒出来的项"
+        );
+        assert_eq!(
+            h.link_of(&format!(".cc-monitor/accounts/{n}/bridge-spawn")),
+            None,
+            "{n}：认不得的项被链给了号"
         );
         assert_eq!(
             h.link_of(&format!(
@@ -126,10 +132,7 @@ fn the_checkup_links_a_new_shared_item_instead_of_reporting_it_missing() {
         h.read(".cc-monitor/accounts/x/skills/own.md"),
         "x 自己的（夹具句）"
     );
-    assert_eq!(
-        h.read(".claude/bridge-spawn/one"),
-        "共享库里那一份（夹具句）"
-    );
+    assert_eq!(h.read(".claude/plugins/one"), "共享库里那一份（夹具句）");
     let before = h.entries(".cc-monitor/accounts");
     run_verify(&d).unwrap();
     assert_eq!(

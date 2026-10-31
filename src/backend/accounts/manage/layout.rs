@@ -1,34 +1,15 @@
 //! **布局计划** —— 纯：快照 ＋ 意图 ⇒ 一份计划（要建哪些目录、哪些链接、改哪些权限、清单改成什么）。
 //! 一个字节都不写；执行在 [`super::exec`]。
 //!
-//! 布局：每个号一个配置目录（`0700`）。Claude 的身份文件（[`identity`]）每个号各一份（凭据 `0600`），
-//! 共享库顶层其余每一项都是一条链回共享库的符号链接（改一处，各号同时看见）；那一家按需才建、各号该共用的几个目录
-//! （[`shared_on_demand`]）共享库里还没有也照样链（先在共享库里建出来）。
+//! 布局：每个号一个配置目录（`0700`）。Claude 的身份文件（[`identity`]）每个号各一份（凭据 `0600`）；
+//! 已知共享的那几项（[`share_items`]：适配层申报的共享表，共享库里有才链 ∪ 按需才建的 [`shared_on_demand`]，共享库里还没有
+//! 也照样链、先在共享库里建出来）各是一条链回共享库的符号链接（改一处，各号同时看见）。两边都不在的名字不链，各号各用各的。
 
 use super::model::{Account, Manifest, ACCOUNT_ZERO};
 use super::scan::{is_under, join, DirState, Snapshot};
 use crate::agents::{AccountsFace, IdentityClass, IdentityRoot};
 use crate::platform::acct_view::Item;
-use crate::platform::fs::side_name;
 use copy_core::copy_text;
-
-/// 共享库顶层里**不链**给各号的那几项（`accounts` 目录 · 编辑器留的 `*.bak` / `*.bak-*` · 锁文件 · 原子写的旁名，见 [`is_excluded`]）。
-const SHARE_EXCLUDE_EXACT: &[&str] = &["accounts"];
-
-/// 锁文件的尾巴：Claude Code 刷新登录时在配置根下建 `.oauth_refresh.lock` 与记着谁持锁的 `.oauth_refresh.lock.owner`。
-/// 链给各号 ⇒ 几个号抢同一把锁、读到别的号的持锁人；每个号用自己配置根下的那一把。
-const LOCK_SUFFIXES: &[&str] = &[".lock", ".lock.owner"];
-
-/// cc-monitor 原子写落在原名旁边的旁名带的记号（换名件 · 留下的备份）住 [`side_name::MARKS`]，造名同一份：
-/// 写到一半那一刻被快照拍到 ⇒ 链出去就是一条悬空链，或把备份件链给每个号。
-///
-/// 写到一半的临时件与编辑器旁名的尾巴：自家状态原子写的临时件（凭据续期走它）· 暂存件 · vim 的 `*.swp` · `*~`。
-const SIDE_SUFFIXES: &[&str] = &[
-    side_name::OWN_TMP_SUFFIX,
-    crate::common::staging::PART_SUFFIX,
-    ".swp",
-    "~",
-];
 
 /// 这台机器上账号库的布局（注册表里那一家的；没有 ⇒ 这台做不了多账号，`wire` 那一层先拒）。
 pub(crate) fn face() -> Option<AccountsFace> {
@@ -88,43 +69,24 @@ pub(crate) fn email_in(dir: &str) -> Option<String> {
     face().and_then(|f| (f.email_in)(std::path::Path::new(dir)))
 }
 
-/// 共享库顶层里不链给各号的那几项（共享集 · 核对 · 对齐清旧链都只认这一张）。
-pub(crate) fn is_excluded(name: &str) -> bool {
-    SHARE_EXCLUDE_EXACT.contains(&name)
-        || name.ends_with(".bak")
-        || name.contains(".bak-")
-        || LOCK_SUFFIXES.iter().any(|s| name.ends_with(s))
-        || side_name::MARKS.iter().any(|m| name.contains(m))
-        || SIDE_SUFFIXES.iter().any(|s| name.ends_with(s))
-}
-
-/// 共享库顶层一项像密钥：不在身份表、不是排除名、是一份 `0600` 的普通文件。
-/// 它不进共享集（对齐与修复都不链它），只由核对提示，归身份还是归共享由人定。
-pub(crate) fn is_secret_like(name: &str, item: &Item) -> bool {
-    !is_identity(name)
-        && !is_excluded(name)
-        && matches!(
-            item,
-            Item::File {
-                mode: Some(0o600),
-                ..
-            }
-        )
-}
-
 /// 那一家按需才建、各号该共用的那几个目录：共享库里还没有也照样链（计划里先在共享库建出来）。
 pub(crate) fn shared_on_demand() -> &'static [&'static str] {
     face().map_or(&[], |f| f.shared_on_demand)
 }
 
-/// 要链给每个号的那几项（排好序）：共享库顶层此刻有的（减去身份那几项 · 排除的那几项 · 像密钥的那几项）
-/// ∪ 按需才建的那几个（[`shared_on_demand`]）。
+/// 那一家申报的已知共享项（共享库里有才链）。
+fn known_shared() -> &'static [&'static str] {
+    face().map_or(&[], |f| f.shared)
+}
+
+/// 要链给每个号的那几项（排好序）：共享库顶层此刻有的 ∩ 已知共享表，∪ 按需才建的那几个（[`shared_on_demand`]）。
+/// 共享集只认这一处：对齐 · 修复 · 核对 · 摘旧链都照它。
 pub(crate) fn share_items(shared: &DirState) -> Vec<String> {
     let mut items: Vec<String> = shared
         .entries
-        .iter()
-        .filter(|(n, it)| !is_identity(n) && !is_excluded(n) && !is_secret_like(n, it))
-        .map(|(n, _)| n.clone())
+        .keys()
+        .filter(|n| known_shared().contains(&n.as_str()) && !is_identity(n))
+        .cloned()
         .collect();
     for n in shared_on_demand() {
         if !items.iter().any(|i| i == n) {
@@ -562,7 +524,7 @@ fn link_missing(
 }
 
 /// **账号库对齐**（常驻那一个起来时 · 核对之前 · 起会话之前做）：按需才建的那几个共享库里没有 ⇒ 建一份空的；
-/// 每个号照 [`share_items`] 缺的链补上 —— Claude Code 升级后在共享库里新建的项也在内。
+/// 每个号照 [`share_items`] 缺的链补上（已知共享表里的一项共享库里新冒出来也在内；认不得的名字不链）。
 /// 只建目录 · 建链接 · 摘自己建的旧链（[`drop_own_stale`]）：号里已有的别的（指错的链接 · 自己的实体，按需目录的实体也算）
 /// 不动，挪实体是「修复」的事。接好之后再算 ⇒ 空计划（不写、不留备份）。
 pub(crate) fn plan_align(s: &Snapshot) -> Result<Plan, Refusal> {
@@ -572,24 +534,20 @@ pub(crate) fn plan_align(s: &Snapshot) -> Result<Plan, Refusal> {
     seed_shared(&mut plan, s);
     for a in own_dirs(s, m) {
         link_missing(&mut plan, s, &a.config_dir, &items, &[], |_, _, _| {});
-        drop_own_stale(&mut plan, s, &a.config_dir);
+        drop_own_stale(&mut plan, s, &a.config_dir, &items);
     }
     Ok(plan)
 }
 
 /// 号的目录 `c` 里 cc-monitor 自己建的那一形链接（`<号>/<名> → 共享库/<名>`）不该再在的 ⇒ 摘掉这条链（链的目标一个字节不动）：
-/// 名字在排除名里（锁文件 · 原子写的旁名）· 共享库那头已不在、又不是按需才建的（悬空）。身份那几项不在此列（修复复制成号自己的一份）。
-fn drop_own_stale(plan: &mut Plan, s: &Snapshot, c: &str) {
+/// 名字不在这一次的共享集 `items` 里（认不得的 · 锁 · 原子写的旁名 · 共享库那头已不在的）。身份那几项不在此列（修复复制成号自己的一份）。
+fn drop_own_stale(plan: &mut Plan, s: &Snapshot, c: &str, items: &[String]) {
     let shared = &s.roots().shared;
     for (base, it) in &s.dir(c).entries {
         let Item::Link { target, .. } = it else {
             continue;
         };
-        if *target != join(shared, base) || is_identity(base) {
-            continue;
-        }
-        let gone = !s.shared.get(base).exists() && !shared_on_demand().contains(&base.as_str());
-        if is_excluded(base) || gone {
+        if *target == join(shared, base) && !is_identity(base) && !items.contains(base) {
             plan.ops.push(Op::Remove(join(c, base)));
         }
     }
@@ -660,10 +618,8 @@ pub(crate) fn plan_repair(s: &Snapshot) -> Result<Plan, Refusal> {
                 if !is_under(target, &r.shared) || *target == r.shared {
                     continue;
                 }
-                let in_shared =
-                    s.shared.get(base).exists() || shared_on_demand().contains(&base.as_str());
                 if is_identity(base) {
-                    plan.ops.push(if in_shared {
+                    plan.ops.push(if s.shared.get(base).exists() {
                         Op::Isolate {
                             from: join(&r.shared, base),
                             at: join(c, base),
@@ -671,7 +627,7 @@ pub(crate) fn plan_repair(s: &Snapshot) -> Result<Plan, Refusal> {
                     } else {
                         Op::Remove(join(c, base))
                     });
-                } else if is_excluded(base) || !in_shared {
+                } else if !items.contains(base) {
                     plan.ops.push(Op::Remove(join(c, base)));
                 }
             }

@@ -1091,15 +1091,12 @@ fn verify_on_empty_shared_and_broken_sources() {
     assert!(checks(&v, "fail").is_empty(), "{v}");
 
     let u = two_accounts("v-src");
-    std::os::unix::fs::symlink(u.p("gone"), u.p(".claude/local")).unwrap();
+    std::os::unix::fs::symlink(u.p("gone"), u.p(".claude/jobs")).unwrap();
     ok(&u, "accounts-repair", json!({}));
-    assert!(
-        u.is_link(".cc-monitor/accounts/lab/local"),
-        "断链项也该链上"
-    );
+    assert!(u.is_link(".cc-monitor/accounts/lab/jobs"), "断链项也该链上");
     let v = verify(&u);
     assert_eq!(v["pass"], true, "{v}");
-    assert!(checks(&v, "warn").iter().any(|w| w.contains("local")));
+    assert!(checks(&v, "warn").iter().any(|w| w.contains("jobs")));
     let again = ok(&u, "accounts-repair", json!({}));
     assert_eq!(again["applied"], false, "断链让修复来回翻：{again}");
 }
@@ -1115,7 +1112,8 @@ fn repair_restores_every_invariant_and_is_idempotent() {
     std::fs::remove_file(t.p(".cc-monitor/accounts/x/CLAUDE.md")).unwrap();
     std::fs::remove_file(t.p(".cc-monitor/accounts/x/skills")).unwrap();
     std::os::unix::fs::symlink(t.p("elsewhere"), t.p(".cc-monitor/accounts/x/skills")).unwrap();
-    t.write(".claude/newdir/a", "a");
+    t.write(".claude/downloads/a", "a");
+    t.write(".claude/bridge-spawn/a", "a");
     std::os::unix::fs::symlink(
         t.p(".claude/retired"),
         t.p(".cc-monitor/accounts/lab/retired"),
@@ -1141,9 +1139,13 @@ fn repair_restores_every_invariant_and_is_idempotent() {
     );
     for a in ["lab", "x"] {
         assert_eq!(
-            t.link_of(&format!(".cc-monitor/accounts/{a}/newdir")),
-            t.s(".claude/newdir"),
+            t.link_of(&format!(".cc-monitor/accounts/{a}/downloads")),
+            t.s(".claude/downloads"),
             "{a}"
+        );
+        assert!(
+            !t.exists(&format!(".cc-monitor/accounts/{a}/bridge-spawn")),
+            "{a}：认不得的项被链了"
         );
     }
     assert!(!t.exists(".cc-monitor/accounts/lab/retired"));
