@@ -82,7 +82,7 @@ pub(crate) fn listen(port: u16) -> std::io::Result<TcpListener> {
 pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<AtomicUsize>) {
     let mut spare = dup_listener(&listener);
     let mut short = false;
-    // 在途顶满的这一阵（只说一次 · 回到上限之下再说一次）。
+    // 在途顶满的这一阵（只说一次 · 退到上界四分之三以下再说一次）。
     let mut full = false;
     let say_short = |short: &mut bool, e: &std::io::Error| {
         if !std::mem::replace(short, true) {
