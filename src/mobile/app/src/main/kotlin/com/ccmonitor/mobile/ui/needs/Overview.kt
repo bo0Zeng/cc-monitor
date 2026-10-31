@@ -1,8 +1,10 @@
 package com.ccmonitor.mobile.ui.needs
 
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
+import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
 import com.ccmonitor.mobile.core.wire.gen.NeedsCell
+import com.ccmonitor.mobile.core.wire.gen.NeedsClock
 import com.ccmonitor.mobile.core.wire.gen.NeedsItem
 import com.ccmonitor.mobile.core.wire.gen.NeedsRow
 import com.ccmonitor.mobile.link.Problem
@@ -14,11 +16,16 @@ import com.ccmonitor.mobile.ui.chats.HostName
 sealed interface NeedsLine {
     val host: HostName
 
-    /** 一条在等的会话：点了打开它。 */
+    /** 一条在等的会话：点了打开它。[clock] ＝ 那台写好的会走的那一句（不知道等了多久 ⇒ `null`）；[receivedAt] ＝ 收到那一份的时刻（本机单调钟）。 */
     data class Session(
         override val host: HostName,
         val row: NeedsRow,
-    ) : NeedsLine
+        val clock: NeedsClock? = null,
+        val receivedAt: Long = 0L,
+    ) : NeedsLine {
+        /** 第二行此刻的字：那台写好的那一句、已等照收到以后走过的接着走；没有 ⇒ 那台写的种类那一句。 */
+        fun state(now: Long): String = clock?.let { waitingNow(it.text, row.needs.waitedMs, receivedAt, now) } ?: row.needs.text
+    }
 
     /** 计划里要人看的一条（一条一行）：落在 [cell] 那一格 ⇒ 点了进那一格；没有格可落 ⇒ 进那一片的大纲。 */
     data class Plan(
@@ -77,7 +84,7 @@ fun overviewOf(
     val of = { h: HostName -> board.getValue(h.id) }
     val up = order.filter { !of(it).down }
     return Overview(
-        needs = up.flatMap { h -> linesOf(h, of(h).list?.items.orEmpty()) },
+        needs = up.flatMap { h -> linesOf(h, of(h).list?.items.orEmpty(), of(h).at) },
         down = order.filter { of(it).down },
         unreadable = order.mapNotNull { h -> of(h).unreadable?.let { h to it } },
         failed = order.mapNotNull { h -> of(h).unread?.let { h to (it.problem(h.label, SessionsNeeds.COMMAND, null) ?: unreadableReply(h.label, SessionsNeeds.COMMAND, it.toString())) } },
@@ -88,15 +95,27 @@ fun overviewOf(
     )
 }
 
-/** 一台的几项 ⇒ 行（照那台的先后，一项一行）。 */
+/** 一台的几项 ⇒ 行（照那台的先后，一项一行；[at] ＝ 收到那一份的时刻）。 */
 private fun linesOf(
     h: HostName,
     items: List<NeedsItem>,
+    at: Long,
 ): List<NeedsLine> =
     items.map {
         when (it) {
-            is NeedsItem.Session -> NeedsLine.Session(h, it.session)
+            is NeedsItem.Session -> NeedsLine.Session(h, it.session, it.clock, at)
             is NeedsItem.Manual -> NeedsLine.Manual(h, it.manual)
             is NeedsItem.Plan -> NeedsLine.Plan(h, it.workspace, it.slice, it.cell)
         }
     }
+
+/**
+ * 那台写好的会走的那一句（`{dur}` 空位）此刻的字：已等 ＝ [waitedMs]（那台答出那一刻）＋ 本机从 [receivedAt] 起走过的，
+ * 当成起点在 `receivedAt − waitedMs` 的会走的钟交 [DurationFormat.clock] 填。不知道等了多久 ⇒ `null`。
+ */
+fun waitingNow(
+    text: String,
+    waitedMs: Long?,
+    receivedAt: Long,
+    now: Long,
+): String? = waitedMs?.let { DurationFormat.clock(text, receivedAt - it, null, now) }

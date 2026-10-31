@@ -10,8 +10,8 @@ package com.ccmonitor.mobile.core.rs
  *
  * 一台的**常驻流**（重连 · 握手 · 版本门 · 在看名单 · 一问一答，桌面同一份 `resident-client`）整条在核心里：[residentOpen] 看一台，
  * [residentSsh] 交 SSH 那层此刻的拨号请求，[residentCall] 问一句，[residentWatch] 报在看哪条，[residentKick] 叫它马上再接，[residentClose] 不看了；
- * 它交的事经 [Sink.resident] 回来（`state` · `empty` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy`）。给一台装 / 更新后端经 [deploy]。
- * 分块传（上传送进暂存区 · 下载读回）的循环也在核心里：本机那一份的文件描述符交 [transferStage] / [transferPull]，走到哪经 `moved`、结局经 `reply` 回。
+ * 它交的事经 [Sink.resident] 回来（`state` · `empty` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy` · `batch` · `batch_keep` · `batch_local` · `busy`）。给一台装 / 更新后端经 [deploy]。
+ * 分块传（上传送进暂存区）的循环也在核心里：本机那一份的文件描述符交 [transferStage]，走到哪经 `moved`、结局经 `reply` 回；下到本机那一组整组在核心里（[batchStart]）。
  *
  * 第一次碰到时才加载那份 .so；JVM 单测不碰它（真连接那一条路才用，单测走假传输）。写字那几个口另在 core-copy 的 `CopyCore`。
  */
@@ -129,13 +129,10 @@ object Core {
     /** 几台搜内容的结果 `[{origin, reply}]` ⇒ 合好的那一份（`Merged`，本机后端扇出完调的同一份合并）；读不动 ⇒ 空串。 */
     external fun searchMerge(data: String): String
 
-    /** 下载一组那几格（`{id, machine, names, phase, …}` JSON）⇒ `batch` 那一形的一行；读不动 ⇒ 空串。 */
-    external fun downloadEvent(want: String): String
-
     /** 聊天输入框上方那一排附件的字（`{cards, offline, local}` JSON）⇒ `{cards: [{line, remove}], note}`；读不动 ⇒ 空串。 */
     external fun attachFace(want: String): String
 
-    /** 手机这一侧问的同名（下载 · 上传）那一答（`{all}` · `{each}`；`null` ⇒ 取消）⇒ [keys] 那几行每个键一格（JSON）；取消 ⇒ `null`。 */
+    /** 手机这一侧问的同名（上传）那一答（`{all}` · `{each}`；`null` ⇒ 取消）⇒ [keys] 那几行每个键一格（JSON）；取消 ⇒ `null`。 */
     external fun answerOf(
         keys: String,
         answer: String?,
@@ -201,15 +198,6 @@ object Core {
         handle: Long,
         fd: Int,
         name: String,
-        withinMs: Long,
-    ): Long
-
-    /** 下载：那台上的 `args.path` 逐块读回、写进 [fd]（写，同上）；[shown] 是本机落点在句子里的名字。结局 `data {bytes}`。这台不在 ⇒ 0。 */
-    external fun transferPull(
-        handle: Long,
-        fd: Int,
-        args: String,
-        shown: String,
         withinMs: Long,
     ): Long
 
