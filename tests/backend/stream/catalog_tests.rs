@@ -1,6 +1,6 @@
 //! 列全部命令的那个口（`ccm -- --commands`）的判据，与读它的 skill 说明书命令段的生成器。
 //!
-//! 三条：口列的命令集 ＝ 分派表（帧面 `REGISTRY` · CLI 面 `SUBCOMMANDS`）两向相等；
+//! 三条：口列的命令集 ＝ 分派表（帧面 `REGISTRY` · CLI 面 子命令集合）两向相等；CLI 独有那几行照 `ONESHOTS` 的先后与写法出；
 //! 每份带命令段的 `src/shared/*/SKILL.md` 与照口现打的逐字相等（金样那一套：不等 ⇒ 现打的落 `.build/golden/`、红，
 //! 对过后 `bash tests/scripts/bless-golden.sh` 拷回）；命令段以外不手抄命令（提到的子命令都得在本份命令段里、没有以子命令打头的列表行）。
 
@@ -57,7 +57,7 @@ fn the_catalog_is_the_dispatch_table() {
     );
     assert!(
         extra.is_empty() && missing.is_empty(),
-        "口列的子命令与 `SUBCOMMANDS` 不两向相等：多 {extra:?}（闸门不认、分派不到）· 少 {missing:?}（`CLI_ONLY_DOCS` 没写说明）"
+        "口列的子命令与闸门认的不两向相等：多 {extra:?}（闸门不认、分派不到）· 少 {missing:?}（口漏列）"
     );
     assert!(rows.iter().all(|e| e.cmd.is_some() || e.cli.is_some()));
     assert!(rows.iter().all(|e| !e.what.is_empty()), "有一条没有一句话");
@@ -309,4 +309,25 @@ fn the_section_generator_rewrites_only_inside_the_markers() {
     assert!(flags_in("`--quota-reader`").is_empty(), "整词才算");
     let (again, _, _) = regenerate(&fresh, &rows);
     assert_eq!(again, fresh, "重打一遍不变");
+}
+
+/// CLI 独有那几行排在口的最后，照 `ONESHOTS` 的先后：`cli` 是那个子命令、`usage` 空 ⇒ 不出这一格、`what` 是那一句；
+/// 线上那一行只有 `cli` · `usage` · `what` 三个键（没有 `cmd` · `args`）。
+#[test]
+fn the_cli_only_rows_print_as_the_oneshot_table_writes_them() {
+    let rows = catalog();
+    let tail: Vec<&Entry> = rows.iter().skip_while(|e| e.cmd.is_some()).collect();
+    assert!(tail.iter().all(|e| e.cmd.is_none()), "CLI 独有那几行没排在最后");
+    let table = crate::stream::oneshot::ONESHOTS;
+    assert!(table.len() >= 5, "一次性表只有 {} 条 —— 本断言在空转", table.len());
+    assert_eq!(tail.len(), table.len(), "口里 CLI 独有的行数与 `ONESHOTS` 不等");
+    for (e, (name, usage, what, _)) in tail.iter().zip(table) {
+        assert_eq!(e.cli.as_deref(), Some(*name));
+        assert_eq!(e.usage, (!usage.is_empty()).then_some(*usage), "`{name}` 的用法");
+        assert_eq!(e.what, *what, "`{name}` 的一句话");
+        let v = serde_json::to_value(e).unwrap();
+        let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        let want: Vec<&str> = if usage.is_empty() { vec!["cli", "what"] } else { vec!["cli", "usage", "what"] };
+        assert_eq!(keys, want, "`{name}` 那一行线上的键");
+    }
 }

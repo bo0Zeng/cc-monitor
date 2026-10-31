@@ -4,14 +4,14 @@
 //! 闸门与分派同源、帧命令要么上 CLI 要么写明理由、CLI 入口只经注册表、探测口报的就是它能派发的，判的正是这件事。
 //! 「CLI 入口不借用帧入口的安全理由」那一条没有设计原文，守的是生产头注里那段散文。〔JA1 点址 2026-09-24〕
 
-/// 子命令全集：手写的那几条（名字照 `CLI_ONLY_DOCS`）在前，派生的那一面照 `REGISTRY` 的先后。进程里头一次问时算一次。
+/// 子命令全集：手写的那几条（`stream::oneshot::ONESHOTS` 的先后）在前，派生的那一面照 `REGISTRY` 的先后。进程里头一次问时算一次。
 /// 读者都是判据（版本号指纹 · 命令目录 · ccm 旗标对拍）；产品里的闸门逐个词问 [`is_subcommand`]。
 pub(crate) fn subcommands() -> &'static [&'static str] {
     static ALL: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
     ALL.get_or_init(|| {
-        crate::stream::inbound::CLI_ONLY_DOCS
+        crate::stream::oneshot::ONESHOTS
             .iter()
-            .map(|(n, ..)| format!("--{n}"))
+            .map(|(n, ..)| n.to_string())
             .chain(
                 REGISTRY
                     .iter()
@@ -23,25 +23,14 @@ pub(crate) fn subcommands() -> &'static [&'static str] {
     })
 }
 
-/// 子命令集合 ＝ 手写的一次性表 ∪ 帧命令派生的 CLI 面，两半不交、没有重名；闸门（`is_query_mode`）认的就是这一份。
-/// 手写那几条的名字（`CLI_ONLY_DOCS`，闸门照它认）与实现表（`stream::oneshot::ONESHOTS`，`main` 照它分派）两向相等。
+/// 子命令集合 ＝ 手写的一次性表（`stream::oneshot::ONESHOTS`：名字 · 用法 · 一句话 · 实现一行）∪ 帧命令派生的 CLI 面，
+/// 两半不交、没有重名；闸门（`is_query_mode`）认的就是这一份。
 #[test]
 fn the_subcommands_are_the_oneshot_table_plus_the_derived_cli_face() {
     let oneshots: Vec<String> = crate::stream::oneshot::ONESHOTS
         .iter()
-        .map(|(t, _)| t.to_string())
+        .map(|(t, ..)| t.to_string())
         .collect();
-    let mut named: Vec<String> = crate::stream::inbound::CLI_ONLY_DOCS
-        .iter()
-        .map(|(n, ..)| format!("--{n}"))
-        .collect();
-    named.sort();
-    let mut table = oneshots.clone();
-    table.sort();
-    assert_eq!(
-        table, named,
-        "手写子命令的实现表（`ONESHOTS`）与名字表（`CLI_ONLY_DOCS`）对不上：闸门认了却分派不到，或者分派得到闸门却不放"
-    );
     let derived: Vec<String> = REGISTRY
         .iter()
         .filter(|s| cli_exposed(s))
@@ -74,13 +63,26 @@ fn the_subcommands_are_the_oneshot_table_plus_the_derived_cli_face() {
         );
     }
     assert!(!is_subcommand("--some-future-flag"));
-    // `lib.rs::SUBCOMMANDS` 还是手写的一份（ccm 那一侧认后端词读它）：与派生的这一份两向相等。
-    let mut mirror: Vec<String> = crate::SUBCOMMANDS.iter().map(|s| s.to_string()).collect();
-    mirror.sort();
-    assert_eq!(
-        mirror, got,
-        "`lib.rs::SUBCOMMANDS` 与派生的子命令集合对不上"
-    );
+}
+
+/// ccm 那一侧认后端词（`ccm_line::is_backend_word`）问的就是闸门：子命令 ∪ 流旗标，不认的词不认、ccm 自己的词不认。
+/// 认不认一个词要先问 ccm 认不认（派生的名字不许占 ccm 的词），ccm 那一问不许再绕回来问后端：一个没人认的词得当场答出来。
+#[test]
+fn the_ccm_side_asks_the_gate_for_backend_words() {
+    use crate::ccm_line::{argv, is_backend_word};
+    for t in subcommands().iter().chain(crate::STREAM_FLAGS) {
+        assert!(is_backend_word(t), "`{t}` 是后端的词，ccm 那一侧不认");
+        assert!(!argv::is_ccm_word(t), "`{t}` 同时是 ccm 的词");
+    }
+    for w in ["--some-future-flag", "--ccm-nope=1", "bare"] {
+        assert!(!is_backend_word(w), "`{w}` 没人认，ccm 那一侧却当它是后端的词");
+        assert!(!argv::is_ccm_word(w));
+        assert!(!is_subcommand(w));
+    }
+    for w in argv::RIGHT_WORDS {
+        assert!(argv::is_ccm_word(w), "`{w}` 在 ccm 的右边词表里，`is_ccm_word` 不认");
+        assert!(!is_backend_word(w), "`{w}` 是 ccm 的词，不该是后端的词");
+    }
 }
 
 /// 未知 `--flag` 不许把后端踢出流模式（新版 monitor 发给旧版后端的那种）：踢进查询模式 ⇒ exit 2、无 hello ⇒ monitor 重连死循环。
@@ -119,15 +121,11 @@ const RETIRED_ONESHOTS: &[&str] = &[
 /// 删掉的那几条不再是子命令：单敲照「不认识的 flag」进流模式；带裸参数敲 ⇒ stderr 一行 `unknown_command`、退出 2。
 #[test]
 fn retired_oneshot_subcommands_answer_unknown_command() {
-    let docs: Vec<String> = crate::stream::inbound::CLI_ONLY_DOCS
-        .iter()
-        .map(|(n, _, _)| format!("--{n}"))
-        .collect();
     for f in RETIRED_ONESHOTS {
         assert!(!is_subcommand(f), "`{f}` 还是子命令");
         assert!(
-            !docs.contains(&f.to_string()),
-            "`{f}` 还在 CLI_ONLY_DOCS 里"
+            crate::stream::oneshot::oneshot(f).is_none(),
+            "`{f}` 还在 ONESHOTS 里"
         );
         assert!(!is_query_mode(&[f.to_string()]), "`{f}` 单敲还进查询模式");
         let args = vec![f.to_string(), "/x.jsonl".to_string()];
@@ -246,7 +244,7 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
     ),
     (
         "ccm-print",
-        "派生名 `--ccm-print` 是 ccm 自己的诊断口；二进制叫 `ccm` 时后端按 `SUBCOMMANDS` 分流，占了它就把 `ccm --ccm-print` 抢进后端。",
+        "派生名 `--ccm-print` 是 ccm 自己的诊断口；二进制叫 `ccm` 时后端按子命令集合分流，占了它就把 `ccm --ccm-print` 抢进后端。",
     ),
     (
         "transfer-stop",
