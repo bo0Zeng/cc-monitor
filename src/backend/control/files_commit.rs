@@ -458,7 +458,7 @@ crate::control::files_write::acts! {
 #[derive(Debug)]
 pub(crate) enum CommitRefused {
     Clash(String, cmd_wire::batch::Conflicts),
-    WriteFail(WriteFail),
+    Fail(WriteFail),
 }
 
 impl From<WriteFail> for CommitRefused {

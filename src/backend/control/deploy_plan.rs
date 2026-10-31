@@ -38,7 +38,6 @@ use serde::{Deserialize, Serialize};
 /// 判定与计划的本体住 `deploy` crate（桌面与手机同一份）；本文件只是帧面那一层（入参 · 回包形状 · 码）。
 pub use deploy::{identity_decision, judge, DialFacing, Plan, MARKS};
 
-/// 这一串的失败：码 ＋ 那一句 ＋ 下层原话（那台答 `uname` 的原话进复制详情，不上句子）。
 use crate::common::said::Said;
 
 /// `deploy` crate 的失败 ⇒ 帧面的失败（码 · 那一句 · 原话原样）。
@@ -220,7 +219,7 @@ fn facing_of(machine: &str) -> Result<DialFacing, String> {
     let hosts = crate::control::machines::here();
     let (dial, to) =
         crate::dial::named_both(&hosts, machine.trim(), "capture", serde_json::json!({}))
-            .map_err(|(_, said)| said)?;
+            .map_err(|f| f.said)?;
     crate::dial::host();
     let exec: deploy::Exec = Box::new(move |command| {
         let dial = dial.clone();
@@ -245,7 +244,7 @@ pub(crate) async fn answer_install(req: DeployInstallReq) -> Result<Installed, D
             crate::control::machine_state::note(
                 &req.machine,
                 deploy::machine::Fact::UpdateFailed {
-                    said: f.message.clone(),
+                    said: f.said.clone(),
                 },
             );
         }

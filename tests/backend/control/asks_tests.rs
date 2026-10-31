@@ -9,7 +9,7 @@ use serde_json::json;
 /// 线上那一份入参照分派那一层解（`typed::take`，`deny_unknown_fields`）再交本体；回包投成线上那一份。
 /// 入参形状不对 ⇒ `bad_args`（与本体回的码同一形，判据只比码）。
 fn answer(args: &Value) -> Result<Value, (&'static str, String)> {
-    let req: AnswerReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    let req: AnswerReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
     super::answer(req).map(|a| serde_json::to_value(a).expect("回包总能序列化"))
 }
 
@@ -329,8 +329,9 @@ async fn an_agent_without_an_answer_door_gets_no_decision_at_once() {
     assert_eq!(
         crate::wire::typed::take::<AskReq>(&json!({"hook": {}}))
             .unwrap_err()
-            .code,
-        "bad_args"
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
 }
 

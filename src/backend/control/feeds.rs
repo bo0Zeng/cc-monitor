@@ -442,7 +442,7 @@ impl Pool {
     ) -> Result<crate::dial::DialRequest, Problem> {
         crate::dial::host();
         crate::dial::dial_named(&crate::dial::machines_now(), machine, use_, extra)
-            .map_err(|(_, said)| Problem::new(said, ""))
+            .map_err(|f| Problem::new(f.said, ""))
     }
 }
 
@@ -475,7 +475,7 @@ impl Ssh for Pool {
             "capture",
             serde_json::json!({}),
         )
-        .map_err(|(_, said)| Problem::new(said, ""));
+        .map_err(|f| Problem::new(f.said, ""));
         Box::pin(async move {
             let got = crate::dial::remote_ask::capture_full(&dial?, command)
                 .await
@@ -664,7 +664,6 @@ pub(crate) async fn forward(
     machine: String,
     req: crate::wire::Request,
 ) -> crate::wire::spec::Outcome {
-    use crate::common::said::Said;
     use resident_client::client::CallError;
     let left = req.until.map_or(FORWARD_WITHOUT_DEADLINE, |u| {
         Duration::from_millis(u.left_ms())
@@ -691,12 +690,13 @@ pub(crate) async fn forward(
             message,
             detail,
             data,
-        } => Said {
-            code,
-            message,
-            data: data.and_then(|d| serde_json::from_str(&d).ok()),
-            raw: (!detail.is_empty()).then_some(detail),
-        },
+        } => {
+            let f = crate::wire::spec::fail(&code, message).and_raw(Some(&detail));
+            match data.and_then(|d| serde_json::from_str(&d).ok()) {
+                Some(d) => f.with_data(d),
+                None => f,
+            }
+        }
         CallError::Disconnected => unreachable(),
         // 连那台的客户端事前就拒的那几种：那一句是它自己的（`CallError` 的 `Display` 照文案表写），码照它是哪一种。
         other => {
