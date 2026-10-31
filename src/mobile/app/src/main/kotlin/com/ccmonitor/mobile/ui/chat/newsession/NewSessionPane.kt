@@ -59,7 +59,7 @@ fun NewSessionPane(
         NewSessionSheet.Account ->
             AccountSheet(ui, machine, picker, onLogin = { name ->
                 close()
-                login = LoginFlow(backends.of(hostId), machine, Login.account(ui.agent.orEmpty(), name), scope).also { it.start() }
+                login = LoginFlow(backends.of(hostId), hostId, machine, Login.account(ui.agent.orEmpty(), name), scope).also { it.start() }
             }, onDismiss = close)
         NewSessionSheet.Cwd ->
             CwdSheet(ui, machine, onPick = { picker.pickRecent(it) { picked -> if (picked) close() } }, onBrowse = {

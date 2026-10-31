@@ -89,6 +89,7 @@ fun SessionScreen(
     cd: String? = null,
     tmuxSession: String? = null, // 进终端 tab 首连即接回的会话名；普通 tab 为 null
     resume: String? = null, // 终端没了的那条会话：首连先让那台恢复再接回；普通 tab 为 null
+    run: String? = null, // 首连就在新 shell 里敲的那一行：不问进哪儿、不接回；普通 tab 为 null
     onAttachInNewTab: (name: String) -> Unit = {}, // tmux「附着」：开新终端 tab
     onShowTabs: () -> Unit = {}, // 唤出 tab 面板
     onEditKeys: () -> Unit, // 进编辑按键页（⋯「编辑按键」· 绑了「编辑按键」的触发 · 空组那一行）
@@ -97,7 +98,7 @@ fun SessionScreen(
     val hostRepo = koinInject<HostRepository>()
     val hostLabel by produceState(hostId, hostId) { value = hostRepo.get(hostId)?.label ?: hostId }
     CompositionLocalProvider(LocalKeysEnv provides KeysEnv(onEditKeys, hostLabel)) {
-        SessionContent(hostId, cd, tmuxSession, resume, onAttachInNewTab, onShowTabs, onEditHost)
+        SessionContent(hostId, cd, tmuxSession, resume, run, onAttachInNewTab, onShowTabs, onEditHost)
     }
 }
 
@@ -115,6 +116,7 @@ private fun SessionContent(
     cd: String?,
     tmuxSession: String?,
     resume: String?,
+    run: String?,
     onAttachInNewTab: (name: String) -> Unit,
     onShowTabs: () -> Unit,
     onEditHost: (hostId: String) -> Unit,
@@ -122,7 +124,7 @@ private fun SessionContent(
     // Koin 参数不能传 null，可空参数一律用空串表示 null。
     val vm =
         koinViewModel<SessionViewModel> {
-            parametersOf(hostId, cd ?: "", tmuxSession ?: "", resume ?: "")
+            parametersOf(hostId, cd ?: "", tmuxSession ?: "", resume ?: "", run ?: "")
         }
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
