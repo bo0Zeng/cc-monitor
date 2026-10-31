@@ -1755,8 +1755,9 @@ pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
             fixes,
             next,
         },
+        // 口上那一份比这一版新也是没连着：点画成没连着（`Newer` 那一态是连着的点），与出错那一句对上。
         Relation::Newer => LocalBackend::Newer {
-            look: MachineStateKind::Newer,
+            look: MachineStateKind::Down,
             tone: Tone::Fail,
             word: copy_text("machineState.word.newer", &[]),
             said: copy_text("machineState.problem.newer", &[("machine", &machine)]),

@@ -4569,11 +4569,11 @@ fn the_local_backend_says_its_look_and_tone() {
         look(&local_backend(false, Some("p8c-mine"))),
         Some((K::NeedsUpdate, Tone::Warn))
     );
+    // 口上占着更新的构建：没连着、出错 ⇒ 画成没连着（`Newer` 那一态的点是连着的绿点，与出错那一句对不上）。
     note_local_foreign(Some("p9a-new"));
-    assert_eq!(
-        look(&local_backend(false, Some("p8c-mine"))),
-        Some((K::Newer, Tone::Fail))
-    );
+    let newer = local_backend(false, Some("p8c-mine"));
+    assert!(matches!(newer, L::Newer { .. }), "{newer:?}");
+    assert_eq!(look(&newer), Some((K::Down, Tone::Fail)));
     note_local_foreign(None);
     assert_eq!(look(&local_backend(true, Some("p8c-mine"))), None);
 }
