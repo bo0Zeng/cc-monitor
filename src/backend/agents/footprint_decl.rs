@@ -247,9 +247,6 @@ pub enum TouchEffect {
     /// （`~/.claude/settings.json` 的 cc-bus 钩子走这条：用户定调 + cc-bus 安装脚本
     ///  第 3 行同样拒绝改它。）
     GenerateOnly,
-    /// **我们不直接写这个文件，但用户在 cc-monitor 里的动作会导致它被写。**
-    ///
-    IndirectWrite,
 }
 
 /// **同一个东西的一种载体** —— 「它这一份怎么产出来、落到哪、碰哪些文件」。

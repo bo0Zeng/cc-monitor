@@ -90,10 +90,6 @@ impl Snapshot {
         self.blob.len() + self.ends.len() * core::mem::size_of::<u32>() + self.kinds.len()
     }
 
-    pub fn built_at(&self) -> SystemTime {
-        self.built_at
-    }
-
     /// 读不进去的那几个目录（前 [`UNREADABLE_PATHS_MAX`] 个，按遍历先后）。
     pub fn unreadable_paths(&self) -> &[Vec<u8>] {
         &self.unreadable_paths
@@ -118,11 +114,6 @@ impl Snapshot {
         let end = *self.ends.get(i)? as usize;
         let start = if i == 0 { 0 } else { self.ends[i - 1] as usize };
         self.blob.get(start..end)
-    }
-
-    /// 逐条走一遍。
-    pub fn iter(&self) -> impl Iterator<Item = &[u8]> + '_ {
-        (0..self.entries()).filter_map(|i| self.get(i))
     }
 
     /// 逐条走一遍，连类型字节。
