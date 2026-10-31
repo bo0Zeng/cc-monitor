@@ -130,7 +130,7 @@ pub(crate) fn search_at(
     .map_err(HistorySearchErr::Failed)?;
     if size > cap {
         return Err(HistorySearchErr::TooLarge(
-            super::read_face::too_large_at(size, cap).1,
+            super::read_face::too_large_at(size, cap).said,
         ));
     }
     Ok(HistorySearchReply {
