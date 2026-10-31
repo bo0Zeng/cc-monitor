@@ -28,7 +28,7 @@ import com.ccmonitor.mobile.core.wire.gen.LineDiff
 import com.ccmonitor.mobile.core.wire.gen.LineDiffKind
 import com.ccmonitor.mobile.core.wire.gen.LineDiffRow
 
-/** 行级 diff 渲染（行 · 行号 · 「+N −M」都是核心算好的，照画）：add/del 实心左边框为主信号，底色为辅。 */
+/** 行级 diff 渲染（行 · 行号 · 「+N −M」· 没逐行比那一句都是核心算好的，照画）：add/del 实心左边框为主信号，底色为辅。 */
 @Composable
 fun DiffView(
     diff: LineDiff,
@@ -43,6 +43,9 @@ fun DiffView(
     ) {
         if (diff.stat.isNotEmpty()) {
             Text(diff.stat, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs))
+        }
+        diff.notice?.let { notice ->
+            Text(notice, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs))
         }
         val rows = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
         Column(rows) {
