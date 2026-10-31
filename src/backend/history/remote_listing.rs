@@ -154,26 +154,6 @@ impl Shelf for Installed {
 const COPY_DOC: crate::common::own_state::Doc<Vec<u8>> =
     crate::common::own_state::Doc::of(&relay_route_core::REMOTE_LISTING_FILE);
 
-/// 落在 `own` 那个数据目录底下的副本表（[`relay_route_core::REMOTE_LISTING_DIR_REL`]，一台一份）。
-#[cfg(test)]
-pub(crate) fn disk_copies(own: Own) -> Copies {
-    Copies::on(DiskShelf(own))
-}
-
-/// 落在给定数据目录底下的那一个落盘处（判据用：换一张空副本表读同一个目录 ＝ 重启过）。
-#[cfg(test)]
-struct DiskShelf(Own);
-
-#[cfg(test)]
-impl Shelf for DiskShelf {
-    fn load(&self, machine: &str) -> Option<Vec<u8>> {
-        load_at(&self.0, machine)
-    }
-    fn store(&self, machine: &str, body: &[u8]) {
-        store_at(&self.0, machine, body);
-    }
-}
-
 /// 从数据目录往下的那几层目录，与那台的文件。
 fn copy_at(own: &Own, machine: &str) -> Option<(Vec<OwnPath>, OwnPath)> {
     let rel = relay_route_core::REMOTE_LISTING_DIR_REL.strip_prefix(".cc-monitor/")?;

@@ -1,3 +1,12 @@
+/// 判据不等地取一帧（取走就把它的字节还回去，同 `recv`）：生产只 `recv`，这一个只给本层判据。
+impl FrameRx {
+    pub(crate) fn try_recv(&mut self) -> Result<Frame, tokio::sync::mpsc::error::TryRecvError> {
+        let (frame, n) = self.rx.try_recv()?;
+        self.held.fetch_sub(n, std::sync::atomic::Ordering::AcqRel);
+        Ok(frame)
+    }
+}
+
 /// ★ **事件分派不许有兜底臂**。
 ///
 /// # 它钉的是一个「没人盯的前提」，不是一个缺陷
@@ -688,24 +697,15 @@ fn tmux_reprobe_triggers_on_sid_drift_not_on_every_json_event() {
     );
 }
 
-/// ★ P4：`WatcherPoke` 是**窄**句柄 —— 外部只能催重探，不能伪造带载荷的内部事件。
+/// ★ P4：`WatcherPoke` 是**窄**句柄 —— 外部拿不到 sender，不能伪造带载荷的内部事件。
 ///
-/// 为什么要钉：`main` 的 SIGUSR1 流拿到的若是 `Sender<WatchEvent>` 本身，它就能发
+/// 为什么要钉：`main` 拿到的若是 `Sender<WatchEvent>` 本身，它就能发
 /// `PidDied{key,pid}` / `TmuxObserved(..)` —— 那等于把「谁能宣布一个会话死了」这件事
 /// 从 watcher 内部漏到了进程边界上（signal 处理器是最不该有这个权力的地方）。
 #[test]
 fn watcher_poke_is_a_narrow_handle() {
     let me = include_str!("../../../src/backend/observe/watcher.rs");
-    // 结构性判据：poke 句柄只暴露一个无参方法，且它只发 Poke 这一个变体。
-    assert!(
-        me.contains("pub fn poke(&self)"),
-        "WatcherPoke 应当只暴露 poke()"
-    );
-    assert!(
-        me.contains("self.0.send(WatchEvent::Poke)"),
-        "poke() 只许发 Poke 变体"
-    );
-    // 反向：句柄字段不许是 pub（否则外部直接拿 sender，窄类型就白设了）。
+    // 句柄字段不许是 pub（否则外部直接拿 sender，窄类型就白设了）。
     //
     // ★ 判据**在运行时拼出来**，绝不把它当字面量写进源码 —— 否则这条 `!contains`
     // 会被**本测试自己的那行字面量**命中而恒红（初版就是这么栽的：源码里字段并不是

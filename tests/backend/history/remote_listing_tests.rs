@@ -28,6 +28,23 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Mutex;
 
+/// 落在 `own` 那个数据目录底下的副本表（一台一份）：换一张空副本表读同一个目录 ＝ 重启过。
+fn disk_copies(own: Own) -> Copies {
+    Copies::on(DiskShelf(own))
+}
+
+/// 落在给定数据目录底下的那一个落盘处（同生产那一处的读写）。
+struct DiskShelf(Own);
+
+impl Shelf for DiskShelf {
+    fn load(&self, machine: &str) -> Option<Vec<u8>> {
+        load_at(&self.0, machine)
+    }
+    fn store(&self, machine: &str, body: &[u8]) {
+        store_at(&self.0, machine, body);
+    }
+}
+
 fn row(sid: &str, title: &str, at: i64) -> RawRow {
     serde_json::from_value(json!({
         "agent": "claude", "sessionId": sid, "projectPath": "/w/a", "projectName": "a",

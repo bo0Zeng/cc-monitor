@@ -4,6 +4,7 @@
 //! 语料是结构性的假行（`{"n":…}`），不含任何真会话正文。
 
 use super::*;
+use crate::wire::SessionFaceExt as _;
 use crate::wire::WatchFrom;
 
 const A: &str = "s-wa";

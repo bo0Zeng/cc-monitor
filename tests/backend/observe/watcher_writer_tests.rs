@@ -3,6 +3,7 @@
 //! 记录是造的中性样本（Codex rollout 的形状：`session_meta` · 一条用户话 · `task_complete`），不是真会话。
 
 use super::*;
+use crate::wire::SessionFaceExt as _;
 use std::io::Write;
 use std::process::{Child, Command, Stdio};
 

@@ -273,11 +273,6 @@ pub(crate) struct Typed {
 }
 
 impl Typed {
-    /// 开跑之后打不打得断（阻塞档打不断）：读它的只有形状指纹（撤不动的算进指纹，`cmd_wire::shapes::UNCANCELLABLE` 由它写）。
-    #[cfg(test)]
-    pub(crate) fn blocking(&self) -> bool {
-        matches!(self.how, How::Blocking | How::FrameBlocking)
-    }
     /// 帧面硬臂那一档（只在帧面：CLI 面不派生、不进 [`super::spec::invoke`]）。
     pub(crate) fn on_frame_arm(&self) -> bool {
         matches!(self.how, How::Frame | How::FrameBlocking)
