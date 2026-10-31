@@ -89,7 +89,10 @@ fn going_unseen_folds_the_open_ones_into_the_one_unseen_face_and_the_replay_clea
     assert_eq!(b.unseen.as_ref(), Some(&face));
     assert_eq!(
         (face.name.0.as_str(), face.line.0.as_str()),
-        (copy_core::copy_text("sessionState.unseen.name", &[]).as_str(), "X 离线")
+        (
+            copy_core::copy_text("sessionState.unseen.name", &[]).as_str(),
+            "X 离线"
+        )
     );
     b.fold(&decode::<serde_json::Value>(r#"{"kind":"sessions_replayed"}"#).unwrap());
     assert!(b.unseen.is_none(), "报完清单 ⇒ 看得见了");
