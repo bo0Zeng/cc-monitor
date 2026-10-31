@@ -119,7 +119,7 @@ pub(crate) fn merge(
         Words::default()
     } else {
         Words(copy_text(
-            "monitorBoard.summary",
+            "monitorBoard.head.summary",
             &[
                 ("machines", &groups.len().to_string()),
                 ("liveSessions", &live.to_string()),
