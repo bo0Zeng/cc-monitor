@@ -295,3 +295,72 @@ fn here_sums_every_session_and_others_leaves_this_one_out() {
     assert_eq!((o[0].0.as_str(), o[0].1.as_str()), ("s2", "b"));
     assert!((o[0].2 - u).abs() < 1.0, "s2 每分钟一发");
 }
+
+/// 会话 `sid` 在 `a` 上于 `at` 说了一发、折合 `u` 个输入 token（全读缓存：上下文 ＝ 10 × u）。
+fn spent(s: &Spend, sid: &str, at: u64, u: u64) {
+    said(s, sid, "a", at, u * 10, 0, "5m", 0);
+}
+
+/// ★ 短窗用速看最近 5 分钟：25 分钟每分 10 万、最后 5 分钟每分 200 万 ⇒ 短窗 ≈ 200 万，半小时那一份只有 ≈ 42 万；
+/// 会话记了不到 2 分钟不给，记满 2 分钟按记了多久算。
+#[test]
+fn the_short_pace_sees_the_last_five_minutes_spike() {
+    let s = Spend::default();
+    for k in 0..30 {
+        spent(&s, "s1", T0 + 60 * k + 30, if k < 25 { 100_000 } else { 2_000_000 });
+    }
+    let me = s.me("s1", T0 + 1800);
+    let short = me.pace_short.expect("量得到");
+    assert!((short - 2_000_000.0).abs() < 1.0, "短窗：{short}");
+    let pace = me.pace.expect("量得到");
+    assert!((400_000.0..450_000.0).contains(&pace), "半小时：{pace}");
+    let fresh = Spend::default();
+    spent(&fresh, "s1", T0, 100_000);
+    assert_eq!(fresh.me("s1", T0 + 119).pace_short, None, "记了不到 2 分钟");
+    let two = fresh.me("s1", T0 + 120).pace_short.expect("记满 2 分钟");
+    assert!((two - 50_000.0).abs() < 1e-6, "按 2 分钟算：{two}");
+}
+
+/// ★ 6 小时每 10 分钟一格、36 格、旧的在前、最后一格到此刻：6 小时以前的用量不留；会话记到之前就开始的格空着。
+#[test]
+fn bins_cover_six_hours_in_ten_minute_cells() {
+    let s = Spend::default();
+    for i in 0..420 {
+        spent(&s, "s1", T0 + 60 * i, if i >= 410 { 2_000_000 } else { 100_000 });
+    }
+    let bins = s.me("s1", T0 + 420 * 60).bins;
+    assert_eq!(bins.len(), 36);
+    assert_eq!(bins[35], Some(20_000_000.0), "最后一格");
+    assert!(bins[..35].iter().all(|b| *b == Some(1_000_000.0)), "{bins:?}");
+    let young = Spend::default();
+    spent(&young, "s1", T0, 100_000);
+    spent(&young, "s1", T0 + 1000, 100_000);
+    let bins = young.me("s1", T0 + 1500).bins;
+    assert_eq!(bins.len(), 36);
+    assert!(bins[..34].iter().all(Option::is_none), "{bins:?}");
+    assert_eq!(&bins[34..], &[Some(0.0), Some(100_000.0)]);
+}
+
+/// ★ 在途 ＝ 最近 5 分钟里每发在途的秒数之和 ÷ 5 分钟：一发整段在途、一发后半段开着没收尾 ⇒ 1.5；
+/// 记了不到 2 分钟 · 一发的开头都没记到过 · 会话此刻在哪个号上说不出 ⇒ 空。
+#[test]
+fn inflight_averages_the_sends_open_over_five_minutes() {
+    let s = Spend::default();
+    s.answered(Some("s1"), AGENT, "a");
+    s.began("s1", 1, T0);
+    s.began("s1", 2, T0 + 150);
+    assert_eq!(s.me("s1", T0 + 119).inflight, None, "记了不到 2 分钟");
+    s.ended("s1", 1, T0 + 300);
+    s.ended("s1", 9, T0 + 300);
+    let n = s.me("s1", T0 + 300).inflight.expect("量得到");
+    assert!((n - 1.5).abs() < 1e-9, "{n}");
+    s.ended("s1", 2, T0 + 400);
+    let n = s.me("s1", T0 + 700).inflight.expect("量得到");
+    assert!(n.abs() < 1e-9, "最近 5 分钟都说完了：{n}");
+    let only_said = Spend::default();
+    spent(&only_said, "s1", T0, 100_000);
+    assert_eq!(only_said.me("s1", T0 + 600).inflight, None, "没记到开头");
+    let lost = Spend::default();
+    lost.began("ghost", 1, T0);
+    assert_eq!(lost.me("ghost", T0 + 600), Me::default(), "说不出在哪个号上 ⇒ 不记");
+}

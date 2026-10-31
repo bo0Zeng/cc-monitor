@@ -5,6 +5,24 @@
 use super::*;
 use crate::dial::Stage;
 use crate::platform::child::{Deadline, Until};
+use ssh_dial::stage;
+
+/// 直连那一台（句子里照 `host:port` 称呼）。
+fn at(label: &str) -> (ssh_dial::Endpoint, &str) {
+    let (host, port) = label.rsplit_once(':').expect("夹具写成 host:port");
+    (
+        ssh_dial::Endpoint {
+            host: host.into(),
+            port: port.parse().expect("夹具的端口"),
+        },
+        label,
+    )
+}
+
+fn dialing(label: &str) -> Stage {
+    let (ep, label) = at(label);
+    stage::dialing(ep, label)
+}
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, DuplexStream};
@@ -269,9 +287,7 @@ fn reached_hello() -> Value {
 #[tokio::test(start_paused = true)]
 async fn a_refused_handshake_reports_ssh_down_with_its_stages_and_no_fingerprint() {
     let fake = Fake::new(vec![Open::Refused(
-        vec![Stage::Dialing {
-            endpoint: "192.0.2.2:22".into(),
-        }],
+        vec![dialing("192.0.2.2:22")],
         refused(
             "host key mismatch",
             Some("cmd: dial\nraw: fixture-raw-1"),
@@ -315,24 +331,22 @@ async fn a_refused_handshake_reports_ssh_down_with_its_stages_and_no_fingerprint
 async fn every_handshake_stage_is_a_written_line() {
     let fake = Fake::new(vec![Open::Refused(
         vec![
-            Stage::Dialing {
-                endpoint: "h:22".into(),
+            dialing("h:22"),
+            {
+                let (ep, label) = at("h:22");
+                stage::failed(ep, label, "超时-甲")
             },
-            Stage::Failed {
-                endpoint: "h:22".into(),
-                reason: "超时-甲".into(),
+            {
+                let (ep, label) = at("h2:22");
+                stage::host_key(ep, label, "SHA256:x")
             },
-            Stage::HostKey {
-                endpoint: "h2:22".into(),
-                fingerprint: "SHA256:x".into(),
+            // 「过了一步」不成格。
+            stage::step(ssh_dial::step::AUTH),
+            {
+                let (ep, label) = at("h2:22");
+                stage::won(ep, label)
             },
-            Stage::Won {
-                endpoint: "h2:22".into(),
-            },
-            Stage::Auth {
-                ok: false,
-                detail: Some("拒绝-乙".into()),
-            },
+            stage::auth_failed("拒绝-乙"),
         ],
         refused("e", None, None),
     )]);
@@ -384,13 +398,7 @@ async fn every_handshake_stage_is_a_written_line() {
 #[tokio::test(start_paused = true)]
 async fn a_passed_login_lights_three_segments() {
     let fake = Fake::new(vec![Open::Refused(
-        vec![
-            Stage::Auth {
-                ok: true,
-                detail: None,
-            },
-            Stage::Established,
-        ],
+        vec![stage::auth_ok(), stage::established()],
         refused("e", None, None),
     )]);
     let (_, cells) = cells_of(&args(), &fake).await;
@@ -427,9 +435,7 @@ async fn a_stall_within_the_callers_deadline_says_that_deadline() {
 /// 拨出去一直没人回话：与真连接同一个判法（拨号期限里一步进展都没有 ⇒ 没够着那一台），那一句照真连接那一句。
 #[tokio::test(start_paused = true)]
 async fn a_dial_nobody_answers_says_the_machine_is_unreached() {
-    let fake = Fake::new(vec![Open::Hang(vec![Stage::Dialing {
-        endpoint: "192.0.2.2:22".into(),
-    }])]);
+    let fake = Fake::new(vec![Open::Hang(vec![dialing("192.0.2.2:22")])]);
     let (r, cells) = cells_of(&args(), &fake).await;
     let last = copy_text("beProbe.stage.dial", &[("endpoint", "192.0.2.2:22")]);
     assert_eq!(cells, vec![step(&last, "now", ["wait"; 4])]);
