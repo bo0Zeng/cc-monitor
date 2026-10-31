@@ -152,3 +152,27 @@ fn a_catch_up_line_says_so_on_the_payload_and_a_live_one_does_not() {
     assert!(wire[0].contains("\"catch_up\":true"), "{}", wire[0]);
     assert!(!wire[1].contains("catch_up"), "{}", wire[1]);
 }
+
+/// 一行的末字节原样带上载荷（界面从开页那一批里最老那一行的末字节要尾段那一截的骨架索引）；说不准的照旧省略。
+#[test]
+fn a_line_end_byte_rides_on_the_payload_and_an_unknown_one_is_left_out() {
+    let user = r#"{"agent":"claude","id":"u-1","t":"said","who":{"speaker":{"kind":"human"},"text":"hi"},"blocks":[]}"#;
+    let mut known = jline("s-abc", 3, Some(user), None);
+    known.end = Some(4096);
+    let unknown = jline("s-abc", 4, Some(user), None);
+    let payloads = batch_to_payloads(
+        vec![known, unknown],
+        &crate::origin::Origin::local(),
+        &mut SkipRuns::default(),
+    );
+    assert_eq!(
+        payloads.iter().map(|p| p.end).collect::<Vec<_>>(),
+        [Some(4096), None]
+    );
+    let wire: Vec<String> = payloads
+        .iter()
+        .map(|p| serde_json::to_string(p).unwrap())
+        .collect();
+    assert!(wire[0].contains("\"end\":4096"), "{}", wire[0]);
+    assert!(!wire[1].contains("\"end\""), "{}", wire[1]);
+}

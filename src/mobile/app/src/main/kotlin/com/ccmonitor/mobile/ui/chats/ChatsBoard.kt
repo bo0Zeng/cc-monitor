@@ -281,7 +281,7 @@ class ChatsBoard(
     }
 }
 
-/** 没答上的那几台各一句 · 合好的那一份里读不动几份 · 只按标题的那几家。 */
+/** 没答上的那几台各一句 · 合好的那一份写好的那几句（读不动几份 · 只按标题的那几家，核心写、这里照摆）。 */
 private fun contentLines(
     per: List<Pair<HostChats, Searched>>,
     r: Merged?,
@@ -294,8 +294,7 @@ private fun contentLines(
                 is Searched.Got -> Unit
             }
         }
-        r?.unreadable?.takeIf { it > 0 }?.let { add(copyText("history.search.unreadable", "n" to it)) }
-        r?.skipped?.forEach { add(copyText("history.search.skipped", "agent" to it)) }
+        r?.notes?.let { addAll(it) }
     }
 
 /** 各台答回来的 ⇒ 核心合一份。 */

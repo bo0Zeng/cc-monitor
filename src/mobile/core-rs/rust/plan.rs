@@ -1,6 +1,6 @@
 //! 手机计划三屏的字：Kotlin 交 `plan-list` / `plan-read` 的回包原样 ＋ 要哪一屏，这里按契约里的类型（[`cmd_wire::plan`]）解开，
 //! 照成品把那一屏每一格摆好，Kotlin 照摆。
-//! 状态码 · 画哪一种 · 右端那一句 · 原因 · 谁负责 · 需手动哪几条都是那台后端的成品；这里只取文、插值、照成品的先后摆，不另判。窄屏一屏一层，不给整张图。
+//! 状态码 · 画哪一种 · 右端那一句 · 原因 · 谁负责 · 需手动哪几条都是那台后端的成品；随数据变的那几句也是后端写好的（`said`），这里只照成品的先后摆，不另判、不拼；骨架字（节标题 · 表头）照文案表取。窄屏一屏一层，不给整张图。
 //!
 //! 入：`{layer: "slices" | "outline" | "cell", reply: <回包>, slice?, id?, sid?}`（`slices` 交 `plan-list`，另两屏交 `plan-read`）。
 //! 出（读不动 · 解不开 · 片或格不在 ⇒ `None`）：
@@ -10,9 +10,7 @@
 //!
 //! 一行（大纲顶层 · 一格的里面）：`{id, label, look, end, kids}`，`look` ∈ `done` · `open` · `undecided` · `none`（图标照它挑）。
 
-use cmd_wire::plan::{
-    PlanBlock, PlanCell, PlanList, PlanNeed, PlanRead, PlanSlice, PlanStale, PlanWho,
-};
+use cmd_wire::plan::{PlanBlock, PlanCell, PlanList, PlanNeed, PlanRead, PlanSlice, PlanWho};
 use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -31,15 +29,6 @@ fn joined<'a>(parts: impl IntoIterator<Item = Option<&'a str>>) -> String {
         .join(&sep())
 }
 
-/// 过期那一句（时刻照那台写好的字）。
-fn stale_line(st: Option<&PlanStale>) -> Option<String> {
-    let st = st?;
-    Some(copy_text(
-        "plan.strip.stale",
-        &[("time", st.since_text.as_deref().unwrap_or_default())],
-    ))
-}
-
 // ═══ 片 ═══════════════════════════════════════════════════════════════════════
 
 /// `plan-list` ⇒ 片那一屏：每个工作区一组，一片一行。
@@ -55,20 +44,11 @@ pub fn slices(list: &PlanList) -> Value {
                 .slices
                 .iter()
                 .map(|sl| {
-                    let line = match sl.error.as_deref() {
-                        Some(e) => copy_text("plan.strip.sliceUnreadable", &[("reason", e)]),
-                        None => joined([
-                            sl.domain.as_deref(),
-                            stale_line(sl.stale.as_ref()).as_deref(),
-                        ]),
+                    let line = match sl.said.bare.clone() {
+                        Some(b) => b,
+                        None => joined([sl.domain.as_deref(), sl.said.strip.as_deref()]),
                     };
-                    let end = sl.progress.as_ref().map(|p| {
-                        copy_text(
-                            "plan.outline.rootProgress",
-                            &[("done", &p.done.to_string()), ("of", &p.of.to_string())],
-                        )
-                    });
-                    json!({ "slice": sl.name, "line": line, "end": end, "need": sl.need_count > 0 })
+                    json!({ "slice": sl.name, "line": line, "end": sl.said.root, "need": sl.need_count > 0 })
                 })
                 .collect();
             json!({ "workspace": w.workspace, "head": w.workspace, "rows": rows })
@@ -130,15 +110,9 @@ impl<'a> Slice<'a> {
     }
 }
 
-/// 一个 id 对到的那条会话叫什么：后端写好的名字（子 agent）；认不出 ⇒ 认不出那一句；会话本身 ⇒ 它的会话名。
+/// 一个 id 对到的那条会话叫什么：后端写好的名字（子 agent · 认不出）；会话本身 ⇒ 它的会话名。
 fn who_name(w: &PlanWho) -> String {
-    if let Some(l) = &w.label {
-        return l.clone();
-    }
-    if w.kind == "unknown" {
-        return copy_text("plan.who.unknown", &[("id", &w.id)]);
-    }
-    w.face.name.0.clone()
+    w.label.clone().unwrap_or_else(|| w.face.name.0.clone())
 }
 
 /// 一条需手动：标题 · 底下那几行 · 第几条都是后端写好的；问人 · 负责人停了那两种在最前面挂负责人的名字（桌面那一枚的位置）。
@@ -168,23 +142,14 @@ fn mine(sl: &Slice, read: &PlanRead, sid: &str) -> Option<Value> {
     if b.slice != sl.v.name {
         return None;
     }
-    let name = if b.top {
-        copy_text("plan.head.top", &[])
-    } else {
-        b.title.clone().unwrap_or_else(|| b.block.clone())
-    };
-    let mut rows = vec![json!({ "k": copy_text("plan.blocks.block", &[]), "v": name })];
+    let mut rows = vec![json!({ "k": copy_text("plan.blocks.block", &[]), "v": b.said.name })];
     if let Some(p) = &b.phase {
         rows.push(json!({ "k": copy_text("plan.blocks.phase", &[]), "v": p }));
     }
     if let Some(at) = &b.at {
         rows.push(json!({ "k": copy_text("plan.blocks.at", &[]), "v": sl.label(at) }));
     }
-    if let Some(k) = sl.block(&b.block).and_then(|blk| blk.inside.as_ref()) {
-        let v = copy_text(
-            "plan.whyShort.inside",
-            &[("done", &k.done.to_string()), ("of", &k.of.to_string())],
-        );
+    if let Some(v) = sl.block(&b.block).and_then(|blk| blk.said.inside.as_ref()) {
         rows.push(json!({ "k": copy_text("plan.blocks.inside", &[]), "v": v }));
     }
     Some(json!({ "head": copy_text("plan.overview.blocks", &[]), "rows": rows }))
@@ -193,23 +158,18 @@ fn mine(sl: &Slice, read: &PlanRead, sid: &str) -> Option<Value> {
 /// `plan-read` 里一片 ⇒ 大纲那一屏。
 pub fn outline(read: &PlanRead, slice: &str, sid: Option<&str>) -> Option<Value> {
     let sl = Slice::of(read, slice)?;
-    let mut meta: Vec<String> = Vec::new();
-    if let Some(e) = &sl.v.error {
-        meta.push(copy_text("plan.strip.sliceUnreadable", &[("reason", e)]));
-    }
-    meta.extend(stale_line(read.stale.as_ref()).or_else(|| stale_line(sl.v.stale.as_ref())));
-    if let Some(t) = &read.read_at_text {
-        meta.push(copy_text("plan.overview.readAt", &[("time", t)]));
-    }
-    if let Some(p) = &sl.v.progress {
-        meta.push(copy_text(
-            "plan.overview.top",
-            &[("done", &p.done.to_string()), ("of", &p.of.to_string())],
-        ));
-    }
-    if sl.v.docs_only {
-        meta.push(copy_text("plan.sub.docsOnly", &[]));
-    }
+    let said = &sl.v.said;
+    let docs_only = sl.v.docs_only.then(|| copy_text("plan.sub.docsOnly", &[]));
+    let meta: Vec<String> = [
+        said.bare.clone(),
+        said.strip.clone(),
+        said.read_at.clone(),
+        said.top.clone(),
+        docs_only,
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
     let needs: Vec<Value> =
         sl.v.needs
             .iter()
@@ -233,33 +193,24 @@ pub fn outline(read: &PlanRead, slice: &str, sid: Option<&str>) -> Option<Value>
 pub fn cell(read: &PlanRead, slice: &str, id: &str) -> Option<Value> {
     let sl = Slice::of(read, slice)?;
     let c = sl.cell(id)?;
-    let mut up: Vec<String> = Vec::new();
-    let mut at = c.parent.as_deref();
-    while let Some(p) = at {
-        if up.len() > sl.cells.len() {
-            break;
-        }
-        up.push(sl.label(p));
-        at = sl.cell(p).and_then(|x| x.parent.as_deref());
-    }
-    up.reverse();
     let state = c
         .end
         .clone()
         .or_else(|| c.quiet.clone())
         .unwrap_or_default();
-    let block =
-        sl.v.blocks
-            .iter()
-            .find(|b| b.id != "project" && b.cells.iter().any(|x| x == id))
-            .map(|b| {
-                let head = copy_text(
-                    "plan.cell.blockRoot",
-                    &[("block", c.title.as_deref().unwrap_or(id))],
-                );
-                let owner = b.owner.as_ref().map(who_name);
-                joined([Some(head.as_str()), owner.as_deref(), b.phase.as_deref()])
-            });
+    // 块根那一行：后端写好的那一句，后面挨着负责人与阶段（同桌面那一行的几枚）。
+    let block = c.said.block_root.as_deref().map(|head| {
+        let b =
+            sl.v.blocks
+                .iter()
+                .find(|b| b.id != "project" && b.cells.iter().any(|x| x == id));
+        let owner = b.and_then(|b| b.owner.as_ref()).map(who_name);
+        joined([
+            Some(head),
+            owner.as_deref(),
+            b.and_then(|b| b.phase.as_deref()),
+        ])
+    });
     let design = c
         .body
         .as_deref()
@@ -278,7 +229,7 @@ pub fn cell(read: &PlanRead, slice: &str, id: &str) -> Option<Value> {
     Some(json!({
         "label": sl.label(id),
         "kind": c.kind,
-        "path": (!up.is_empty()).then(|| up.join(&sep())),
+        "path": c.said.trail,
         "look": c.look,
         "state": state,
         "block": block,
@@ -340,7 +291,8 @@ mod tests {
                 "children": [], "edges": edges(), "pointedBy": edges(), "files": [], "state": [], "stateLine": null,
                 "evidencedBy": [], "statusCode": null, "undecided": false, "look": "none", "end": null,
                 "whyCode": null, "whyShort": null, "sets": [], "block": null, "owner": null, "signer": null,
-                "covers": [], "coveredBy": [], "refs": { "title": [], "body": [] } });
+                "covers": [], "coveredBy": [], "refs": { "title": [], "body": [] },
+                "said": { "trail": null, "blockRoot": null } });
         for (k, v) in extra.as_object().cloned().unwrap_or_default() {
             c[k] = v;
         }
@@ -350,7 +302,7 @@ mod tests {
     fn block_with(id: &str, extra: Value) -> Value {
         let mut b = json!({ "id": id, "cells": [], "inside": null, "dir": null, "owner": null, "phase": null, "at": null,
                 "listed": true, "handoff": null, "handoffError": null, "takeover": "open",
-                "groups": { "groups": [], "text": "", "unread": null } });
+                "groups": { "groups": [], "text": "", "unread": null }, "said": { "name": "后端·块名", "inside": null } });
         for (k, v) in extra.as_object().cloned().unwrap_or_default() {
             b[k] = v;
         }
@@ -364,19 +316,21 @@ mod tests {
         a1["children"] = json!(["A1-1"]);
         let mut a11 = cell_with("A1-1", done);
         a11["parent"] = json!("A1");
+        a11["said"]["trail"] = json!("后端·上面几层");
         a11["files"] = json!([{ "path": "src/a.rs", "stateCode": "missing", "note": null,
                                 "checkText": copy_text("plan.fileState.missing", &[]), "alsoBy": [] }]);
         let a2 = cell_with(
             "A2",
             json!({ "kind": "能力", "body": "", "statusCode": "open", "look": "open", "end": "1/3",
-                    "whyShort": { "text": "1/3", "wait": false }, "whyCode": { "kind": "inside", "done": 1, "of": 3 } }),
+                    "whyShort": { "text": "1/3", "wait": false }, "whyCode": { "kind": "inside", "done": 1, "of": 3 },
+                    "said": { "trail": null, "blockRoot": "后端·块根" } }),
         );
         let blocks = json!([
             block_with("project", json!({ "phase": "开发" })),
             block_with(
                 "B1",
                 json!({ "cells": ["A2"], "phase": "审计", "owner": who("subagent", Some("会话甲 的 agent")),
-                        "inside": { "done": 1, "of": 3 } })
+                        "inside": { "done": 1, "of": 3 }, "said": { "name": "后端·块名", "inside": "后端·里面" } })
             ),
         ]);
         let check = json!({ "unreadable": [], "unparsed": [], "undecidable": [],
@@ -398,12 +352,15 @@ mod tests {
             "cells": [a1, a11, a2], "blocks": blocks,
             "unbuiltBlocks": [], "unowned": { "paths": null, "why": null }, "pendingSets": [],
             "check": check, "archived": [], "needCount": 2, "returned": null, "needs": needs,
+            "said": { "strip": "后端·读不成 · 过期", "bare": null, "readAt": "后端·读到", "top": "后端·顶层", "root": "后端·几/几" },
         });
         let by_session = json!({
             "s1": { "slice": "ledger", "block": "B1", "cell": "A1", "title": "导出", "top": false,
-                    "phase": "回看", "at": "A1-1", "atTitle": "标题A1-1", "via": "session" },
+                    "phase": "回看", "at": "A1-1", "atTitle": "标题A1-1", "via": "session",
+                    "said": { "name": "后端·块名", "mark": "后端·标" } },
             "s2": { "slice": "site", "block": "B9", "cell": null, "title": null, "top": true,
-                    "phase": "开发", "at": null, "atTitle": null, "via": "session" },
+                    "phase": "开发", "at": null, "atTitle": null, "via": "session",
+                    "said": { "name": "后端·顶层", "mark": "后端·标" } },
         });
         json!({
             "pb": null, "workspace": "/w", "repo": null, "auto": false, "domains": [], "rev": "r0", "readAt": 0,
@@ -448,10 +405,8 @@ mod tests {
         assert_eq!(rows[1]["kids"], false);
         assert_eq!(
             o["meta"],
-            json!([
-                copy_text("plan.overview.readAt", &[("time", "02:11")]),
-                copy_text("plan.overview.top", &[("done", "1"), ("of", "2")]),
-            ])
+            json!(["后端·读不成 · 过期", "后端·读到", "后端·顶层"]),
+            "照后端写好的那几句摆，先后：读不成 · 读到 · 顶层"
         );
         assert!(o["mine"].is_null(), "没给会话 ⇒ 不出此会话那一节");
     }
@@ -493,13 +448,10 @@ mod tests {
         assert_eq!(
             kv,
             vec![
-                (copy_text("plan.blocks.block", &[]), "导出".to_owned()),
+                (copy_text("plan.blocks.block", &[]), "后端·块名".to_owned()),
                 (copy_text("plan.blocks.phase", &[]), "回看".to_owned()),
                 (copy_text("plan.blocks.at", &[]), "A1-1 标题A1-1".to_owned()),
-                (
-                    copy_text("plan.blocks.inside", &[]),
-                    copy_text("plan.whyShort.inside", &[("done", "1"), ("of", "3")])
-                ),
+                (copy_text("plan.blocks.inside", &[]), "后端·里面".to_owned()),
             ]
         );
         assert!(outline(&read(), "ledger", Some("别的")).expect("一片")["mine"].is_null());
@@ -513,7 +465,7 @@ mod tests {
     fn cell_writes_path_state_kids_and_files() {
         let c = cell(&read(), "ledger", "A1-1").expect("一格");
         assert_eq!(c["label"], "A1-1 标题A1-1");
-        assert_eq!(c["path"], "A1 标题A1");
+        assert_eq!(c["path"], "后端·上面几层");
         assert_eq!(c["state"], "已签收");
         assert!(c["inside"].is_null(), "没子格 ⇒ 不出里面那一节");
         assert_eq!(
@@ -527,11 +479,7 @@ mod tests {
         let root = cell(&read(), "ledger", "A2").expect("一格");
         assert_eq!(
             root["block"],
-            joined([
-                Some(copy_text("plan.cell.blockRoot", &[("block", "标题A2")]).as_str()),
-                Some("会话甲 的 agent"),
-                Some("审计"),
-            ])
+            joined([Some("后端·块根"), Some("会话甲 的 agent"), Some("审计"),])
         );
         assert!(root["design"].is_null(), "空正文不出");
         assert!(cell(&read(), "ledger", "没这格").is_none());
@@ -539,7 +487,8 @@ mod tests {
 
     fn list_slice(name: &str, extra: Value) -> Value {
         let mut s = json!({ "name": name, "domain": null, "current": false, "progress": null, "needCount": 0,
-                            "error": null, "stale": null });
+                            "error": null, "stale": null,
+                            "said": { "strip": null, "bare": null, "readAt": null, "top": null, "root": null } });
         for (k, v) in extra.as_object().cloned().unwrap_or_default() {
             s[k] = v;
         }
@@ -564,9 +513,13 @@ mod tests {
             vec![
                 list_slice(
                     "ledger",
-                    json!({ "domain": "软件", "progress": { "done": 1, "of": 4 }, "needCount": 1 }),
+                    json!({ "domain": "软件", "progress": { "done": 1, "of": 4 }, "needCount": 1,
+                            "said": { "strip": null, "bare": null, "readAt": null, "top": null, "root": "后端·1/4" } }),
                 ),
-                list_slice("坏的", json!({ "error": "读不成" })),
+                list_slice(
+                    "坏的",
+                    json!({ "error": "读不成", "said": { "strip": null, "bare": "后端·这一片读不成", "readAt": null, "top": null, "root": null } }),
+                ),
             ],
         ));
         assert!(v["said"].is_null());
@@ -574,12 +527,9 @@ mod tests {
         assert_eq!(
             rows[0],
             json!({ "slice": "ledger", "line": "软件",
-            "end": copy_text("plan.outline.rootProgress", &[("done", "1"), ("of", "4")]), "need": true })
+            "end": "后端·1/4", "need": true })
         );
-        assert_eq!(
-            rows[1]["line"],
-            copy_text("plan.strip.sliceUnreadable", &[("reason", "读不成")])
-        );
+        assert_eq!(rows[1]["line"], "后端·这一片读不成");
         assert!(rows[1]["end"].is_null());
         assert_eq!(
             slices(&list(ok, vec![]))["said"],

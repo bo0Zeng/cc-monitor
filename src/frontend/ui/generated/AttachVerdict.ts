@@ -7,7 +7,7 @@ import type { FileClass } from "./FileClass";
  */
 export type AttachVerdict = { ok: boolean, 
 /**
- * 照名字判的那一种（目录 ⇒ 文件夹；[`crate::file_class::class_of_name`]）。
+ * 照名字判的那一种（目录 ⇒ 文件夹；后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**

@@ -82,6 +82,31 @@ function singleDoors() {
   // 会话此刻是什么样、能做什么只由那台后端判（整份脸 `SessionFace`）：界面没有转移表 · 落值口 · 两轴的格。
   door("会话状态只由那台后端判（SessionFace）：界面不写状态转移（转移表 · 落值口 · 判活 · 可恢复两轴）。", {},
     ...words("nextState|applyState|StateEvent|liveness|recoverability"));
+  // 「在跑」只读一格：会话在不在跑只看后端写好的会话脸那一格 `life`，读它的只有 `face-can.ts` 那三个短名。
+  door("「在跑」只读一格：会话一生（life）只在 face-can.ts 读，别处调 isLive · isUnclear · activityOf。",
+    { homes: [`${UI}/face-can.ts`] },
+    "MemberExpression[property.name='is'][object.name='life']", "MemberExpression[property.name='is'][object.property.name='life']",
+    "MemberExpression[property.value='is'][object.property.name='life']");
+  door("「在跑」只读一格：不拿状态点（dot === \"unknown\"）推在不在跑 / 说不清，调 face-can.ts 的 isUnclear。", {},
+    "ConditionalExpression > BinaryExpression.test[operator=/^[=!]==?$/][left.name='dot'][right.value='unknown']",
+    "ConditionalExpression > BinaryExpression.test[operator=/^[=!]==?$/][left.property.name='dot'][right.value='unknown']");
+
+  // 一个组件一个家：对话框 · 弹出菜单 · 悬停提示 · toast 栈 · 点外面关 · 按钮 · 建元素的小函数只在 `kit/` 里建。
+  const kit = [`${UI}/kit/**`];
+  const kitRole = "/^(?:(?:alert)?dialog|menu(?:item\\w*)?|tooltip)$/";
+  door("对话框 · 弹出菜单 · 悬停提示 · toast 栈 · 点外面关只在 kit/ 里建（kit/dialog · menu · tooltip · toast · popover）。", { homes: kit },
+    `CallExpression[callee.property.name='setAttribute'][arguments.0.value='role'][arguments.1.value=${kitRole}]`,
+    `AssignmentExpression[left.property.name='role'][right.value=${kitRole}]`,
+    "Literal[value='aria-modal']", ...strings("toast-stack"),
+    "CallExpression[callee.property.name='addEventListener'][callee.object.name=/^(?:document|window)$/][arguments.0.value='pointerdown']");
+  // 设置页那套按钮类拼出来写：免得本文件自己成了全仓 grep 的一处命中。
+  door("按钮只经 kit/button.ts：设置页那套按钮类已删。", { homes: kit }, ...strings(["settings", "btn"].join("-")));
+  door("建元素只经 kit/el.ts 的 el()：kit 外不另写本地 el。", { homes: kit },
+    "FunctionDeclaration[id.name='el']", "VariableDeclarator[id.name='el'][init.type=/^(?:Arrow)?FunctionExpression$/]");
+
+  // 账号可用性只读那台后端写好的 `selectable`（规则住 `acct_core::account_selectable`）：鉴权那几格只在 `accounts.ts` 出现。
+  door("账号可用性只读那台写好的 selectable（规则住 acct_core::account_selectable）：loggedIn · authReady · authKind 只在 accounts.ts 出现。",
+    { homes: [`${UI}/accounts.ts`] }, ...words("loggedIn|authReady|authKind"));
   // INVARIANTS §12：关键失败要有 toast / banner。`confirm` · `prompt` 问的是要不要干，不在这一条里。
   door("错误反馈不用 alert（可能没看清就关掉）：用 toast / banner（INVARIANTS §12）。", {},
     "CallExpression[callee.name='alert']", "CallExpression[callee.object.name='window'][callee.property.name='alert']");

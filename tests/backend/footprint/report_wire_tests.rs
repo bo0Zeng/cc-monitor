@@ -129,7 +129,6 @@ fn base() -> Facts {
         hooks: None,
         mcp_login: vec![],
         sshd: None,
-        secret_like: vec![],
         declined: vec![],
     }
 }

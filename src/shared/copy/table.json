@@ -603,6 +603,12 @@
       "zh": "{item} 该各号共用 · {names} 各有一份自己的、没有合并\n要共用就把内容并进共享库里的 {item}、删掉号里的，再点「修复」",
       "args": ["item", "names"]
     },
+    "beAcctVerify.global.unclassified": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{n} 项没归类 · 各号各用各的：{items}",
+      "args": ["n", "items"]
+    },
     "beAcctVerify.acct.linkEntity": {
       "kind": "error",
       "role": "报错",
@@ -657,24 +663,12 @@
       "zh": "共享链接 {item} 已断 · 共享库里的 {source} 指向已不在的 {target}\n到共享库修掉或删掉",
       "args": ["item", "source", "target"]
     },
-    "beAcctVerify.acct.unexpected": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{item} 既非身份文件也非共享链接；要共享就挪进共享库 · 要私有就留着",
-      "args": ["item"]
-    },
     "beAcctVerify.drift.nowhere": {
       "kind": "body",
       "role": "说明",
       "zh": "{item} 在共享库 · 主目录 · 各账号里均未找到\n或未用到 · 或 Claude Code 把它挪到别处",
       "args": ["item"],
       "limited": ["Claude Code"]
-    },
-    "beAcctVerify.drift.secretLike": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "共享库里的 {item} 权限 600 却不在身份文件里\n不链给各账号 · 要共享就放宽权限",
-      "args": ["item"]
     },
     "beAcctVerify.global.badManifest": {
       "kind": "error",
@@ -11193,12 +11187,6 @@
       "zh": "请求格式不对 · 机器名为空 · 本机也要写成 \"{local}\" · {command}",
       "args": ["command", "local"]
     },
-    "rsOrigin.expecting.name": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "机器名 · 本机写成 \"{local}\"",
-      "args": ["local"]
-    },
     "rsDataPaths.webview.dataDir": {
       "kind": "body",
       "role": "说明",
@@ -20505,6 +20493,42 @@
       "zh": "未找到该机数据目录 · 轮换配置无处可存",
       "args": []
     },
+    "beQuotaWarm.agent.unsupported": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "{agent} · 无开窗一发",
+      "args": ["agent"]
+    },
+    "beQuotaWarm.run.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "启动开窗一发失败 · {why}",
+      "args": ["why"]
+    },
+    "beQuotaWarm.run.exit": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "开窗一发未成 · 原因不明",
+      "args": []
+    },
+    "beRotation.hold.noAutoResume": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "停到 {dur} 以外 · 客户端不会自己续 · 需手动继续",
+      "args": ["dur"]
+    },
+    "monitorBoard.head.summary": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "机器 {machines} · 会话 {liveSessions} · agent 在跑 {runningAgents}",
+      "args": ["machines", "liveSessions", "runningAgents"]
+    },
+    "monitorBoard.group.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "{machine}（{n}）",
+      "args": ["machine", "n"]
+    },
     "beQuotaProbe.agent.unsupported": {
       "kind": "error",
       "role": "原因格",
@@ -26601,30 +26625,6 @@
       "zh": "复制下面一行 · 到该机终端里运行",
       "args": []
     },
-    "beChore.secretLike.name": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "共享库里的 {item} 像按号的密钥",
-      "args": ["item"]
-    },
-    "beChore.secretLike.said": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "权限 600 · 不在身份文件里 · 不链给各账号",
-      "args": []
-    },
-    "beChore.secretLike.why": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{path} 权限 600，不在身份文件里；按号的凭据或状态各账号共用会串号，不自动链给各账号",
-      "args": ["path"]
-    },
-    "beChore.secretLike.step": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "按号的挪进该账号目录 · 共用的放宽权限，下次对齐链接",
-      "args": []
-    },
     "beChore.selfPaste.name": {
       "kind": "title",
       "role": "标题",
@@ -29276,45 +29276,12 @@
       "zh": "硬件密钥不存在",
       "args": []
     },
-    "mobSsh.log.established": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "{target} 连接已建立",
-      "args": ["target"],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.connecting": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "连接 {target}…",
-      "args": ["target"],
-      "limited": ["连接"]
-    },
     "mobSsh.log.connectFailed": {
       "kind": "error",
       "role": "报错",
       "zh": "连接失败",
       "args": [],
       "limited": ["连接"]
-    },
-    "mobSsh.log.negotiated": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "连接中…",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.authKey": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "验证密钥中…",
-      "args": []
-    },
-    "mobSsh.log.authFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "认证失败",
-      "args": []
     },
     "mobSsh.log.waitOther": {
       "kind": "body",

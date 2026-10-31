@@ -71,12 +71,6 @@ const ALLOW: Record<string, Partial<Record<Form, [number, string]>>> = {
       "合成拒答的复制详情（`detail.value.backend`：场景演「那台拒了」的那几条帧命令还是合成的，机器页那一族）· Windows 那台账号清单的 `meta.unsupported`（台架只有 Linux 编的后端，`cfg(windows)` 那一句演不出来，回包其余照真后端）",
     ],
   },
-  "tests/frontend/ui/config-patch-fake.ts": {
-    coreKey: [
-      4,
-      "机器表那三条的替身（`faultOf` 按码挑 `addMachine.err.*`，同 `fakeMachineTableTry` 照抄的 `check_table` 一起）：要换成后端现打的 `machines-try` / `-set` 回包金样，用到它的 `settings/remote-section.vitest.ts` 与 `settings/data-page.vitest.ts` 跟着改（图上 A17-60-7-1-4）",
-    ],
-  },
   "tests/test-support/chan-fake.ts": {
     coreKey: [
       3,
@@ -99,7 +93,7 @@ const keyOf = (f: string) => (f.startsWith(fakeDir + path.sep) ? path.relative(f
 describe("测试替身不写核心成品", () => {
   it("人群不空：fake/ 下有那几份，核心的键也读到了", () => {
     expect(files.map((p) => path.basename(p))).toContain("backend.ts");
-    expect(files.map(keyOf)).toEqual(expect.arrayContaining(["tests/test-support/needs-fake.ts", "tests/frontend/ui/config-patch-fake.ts"]));
+    expect(files.map(keyOf)).toEqual(expect.arrayContaining(["tests/test-support/needs-fake.ts", "tests/frontend/ui/config-patch-fake.ts", "tests/frontend/ui/machines-fake.ts"]));
     nonEmpty(keys);
     // 判据认得出这几种写法（自检：拿一段写着成品的样本过一遍）。
     const sample = 'copyText("history.section.today"); d.getHours(); fmtDur(3); `+${m}m`; view.omit?.record';

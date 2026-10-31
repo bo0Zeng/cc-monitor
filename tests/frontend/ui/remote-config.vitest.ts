@@ -6,21 +6,18 @@
  * 一页一台之后，同样的保存动作会把其余机器静默删光。下面每一条钉的都是
  * 「即使调用方只提交一部分，也不会伤到别人」这个性质。
  *
- * 纯函数、不碰文件系统，故不需要 mock `config.ts`。
+ * 补丁怎么落、拒不拒在后端写口（`control/machines.rs`）；这里核的是交出去的补丁，盘上终态照写口读回的那一张。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Host } from "../../../src/frontend/ui/generated/Host";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-// config 写只交补丁；替身记下交出去的补丁（`fakeCfg.patches`）。机器表那三条的替身还在现算，写完的整份交 `fakeCfg.saved`。
-vi.mock("../../../src/frontend/ui/config", async (orig) => (await import("./config-patch-fake")).mockedConfigModule(orig));
-// 机器表住本机后端：`machines-read` / `-try` / `-set` 的替身把表摆在同一块假盘的 `remote.hosts` 里。
-vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => (await import("./config-patch-fake")).mockedChanCaller(orig));
-import { loadConfig } from "../../../src/frontend/ui/config";
-import { fakeCfg } from "./config-patch-fake";
-const saveConfig = fakeCfg.saved;
+// 机器表住本机后端：`machines-read` / `-try` / `-set` 的替身照金样回（`machines-fake.ts`，回包与拒的那一句由后端现打）。
+vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => (await import("./machines-fake")).mockedChanCaller(orig));
+import { fakeMachines } from "./machines-fake";
 import { srcDirOf } from "../../test-support/repo-root";
 import { patchRemoteConfig, remoteConfigOf } from "../../../src/frontend/ui/remote-config";
+import { refusalIn } from "../../../src/frontend/ui/ipc/chan-caller";
 
 function mk(over: Partial<Host> = {}): Host {
   return {
@@ -40,19 +37,25 @@ const A = mk({ label: "alpha", host: "192.0.2.1", user: "ua", jump: "gw" });
 const B = mk({ label: "beta", host: "192.0.2.2", user: "ub", jump: "gw2" });
 const C = mk({ label: "", host: "192.0.2.3", user: "uc" }); // label 空 ⇒ key = host
 
+const disk = (hosts: Host[]) => fakeMachines.disk.mockReturnValue(hosts);
+const lastEdits = () => fakeMachines.sent.mock.calls.at(-1)![1] as { op: string; field?: string }[];
+const lastHosts = () => fakeMachines.written.mock.calls.at(-1)![0];
+/** 那一次拒的码（不是对端拒了 ⇒ 抛）。 */
+const refusedCode = async (p: Promise<unknown>) => {
+  const e = await p.then(
+    () => null,
+    (x: unknown) => x,
+  );
+  const r = refusalIn(e);
+  if (!r) throw new Error(`不是对端拒了：${String(e)}`);
+  return r.code;
+};
 
 // 设置页增删机器也按键认元素：「固化那一写与设置页同写 `remote.hosts` 有毫秒级丢更新窗口」。
-//   这一组看的盘上终态是机器表替身现算的（`config-patch-fake.ts` 机器表那一半，还没换成后端现打的回包）。
+//   这一组看的盘上终态是后端写口读回的那一张（替身照金样回，`machines-fake.ts`）。
 describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整段写 remote", () => {
   beforeEach(() => vi.resetAllMocks());
   const pinnedB = { ...B, keyPath: "/k/disk" }; // 加载之后别处刚改的
-  const disk = (hosts: Host[]) =>
-    vi.mocked(loadConfig).mockResolvedValue({
-      theme: "dark",
-      remote: { enabled: true, hosts },
-    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
-  const lastEdits = () => vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { op: string }[];
-  const lastHosts = () => (vi.mocked(saveConfig).mock.calls.at(-1)![0] as { remote: { hosts: Host[] } }).remote.hosts;
 
   it("★ 增一台 ⇒ 恰好一条 insertin 追加到末尾（字段全带）；别的机器连别处刚改的那一格都不动", async () => {
     disk([A, pinnedB, C]);
@@ -79,19 +82,19 @@ describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整�
 
   it("★ 增的那个 origin 盘上已有 / 删的那台盘上没了 / 那个 origin 不止一台 ⇒ 整批拒，盘上不动", async () => {
     disk([A, pinnedB]);
-    await expect(patchRemoteConfig({ upsert: [{ key: null, value: { ...B, user: "x" } }] })).rejects.toThrow();
-    await expect(patchRemoteConfig({ remove: ["gone"] })).rejects.toThrow();
+    expect(await refusedCode(patchRemoteConfig({ upsert: [{ key: null, value: { ...B, user: "x" } }] }))).toBe("element_exists");
+    expect(await refusedCode(patchRemoteConfig({ remove: ["gone"] }))).toBe("element_gone");
     const dup = mk({ label: "dup", host: "1.1.1.1" });
     disk([dup, { ...dup, host: "2.2.2.2" }]);
-    await expect(patchRemoteConfig({ upsert: [{ key: "dup", value: { ...dup, user: "x" } }] })).rejects.toThrow();
-    expect(saveConfig).not.toHaveBeenCalled();
+    expect(await refusedCode(patchRemoteConfig({ upsert: [{ key: "dup", value: { ...dup, user: "x" } }] }))).toBe("element_gone");
+    expect(fakeMachines.written).not.toHaveBeenCalled();
   });
 
   it("没动任何东西 ⇒ 一条补丁都不交", async () => {
     disk([A]);
     await patchRemoteConfig({ upsert: [{ key: "alpha", was: A, value: A }] });
     await patchRemoteConfig({});
-    expect(fakeCfg.patches).not.toHaveBeenCalled();
+    expect(fakeMachines.sent).not.toHaveBeenCalled();
   });
 });
 
@@ -104,16 +107,11 @@ describe("S1：整表覆盖那条路必须**不可达**", () => {
     expect(src).not.toMatch(whole);
   });
 
-  it("〔CFG1〕读盘失败 ⇒ `patchRemoteConfig` 抛、一个字节不写（从前读失败回空表，再把空表写回去 ⇒ 机器全没）", async () => {
+  it("〔CFG1〕盘上那份读不懂 ⇒ `patchRemoteConfig` 抛、一个字节不写（不拿空表盖掉原文）", async () => {
     vi.resetAllMocks();
-    // 第一次读失败、之后读得到（瞬时失败）：旧写法第一次那一读被吞成空表，随后照样写 ⇒ B 被删掉。
-    vi.mocked(loadConfig)
-      .mockRejectedValueOnce(new Error("盘坏了"))
-      .mockResolvedValue({ remote: { enabled: true, hosts: [B] } } as unknown as Awaited<
-        ReturnType<typeof loadConfig>
-      >);
-    await expect(patchRemoteConfig({ upsert: [{ key: null, value: A }] })).rejects.toThrow("盘坏了");
-    expect(saveConfig).not.toHaveBeenCalled();
+    fakeMachines.disk.mockReturnValue({ text: "{ 不是 JSON" });
+    expect(await refusedCode(patchRemoteConfig({ upsert: [{ key: null, value: A }] }))).toBe("unreadable");
+    expect(fakeMachines.written).not.toHaveBeenCalled();
   });
 });
 
@@ -140,27 +138,22 @@ describe("〔FIX · ㊶〕设置页改一台 ⇒ 按格 setin，不整台盖", (
 
   it("★ 加载之后别处改了一格、设置页改了别的格 ⇒ 那一格留着、只动那几格；改名先写 label；那台没了 ⇒ 整批拒", async () => {
     const pinned = { ...A, keyPath: "/k/disk" };
-    vi.mocked(loadConfig).mockResolvedValue({
-      theme: "dark",
-      remote: { enabled: true, hosts: [pinned, B, C] },
-    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+    disk([pinned, B, C]);
     // 表单加载时 A 还是旧的钥匙路径（`was`），用户改了 user 与 label。
     await patchRemoteConfig({
       upsert: [{ key: "alpha", was: A, value: { ...A, user: "new", label: "alpha2" } }],
     });
-    const edits = vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { op: string; field?: string }[];
-    expect(edits.map((e) => (e.op === "setin" ? e.field : e.op))).toEqual(["label", "user"]);
-    const hosts = (vi.mocked(saveConfig).mock.calls.at(-1)![0] as { remote: { hosts: Host[] } }).remote.hosts;
+    expect(lastEdits().map((e) => (e.op === "setin" ? e.field : e.op))).toEqual(["label", "user"]);
+    const hosts = lastHosts();
     expect(hosts[0]).toEqual({ ...pinned, user: "new", label: "alpha2" });
     expect(hosts.slice(1)).toEqual([B, C]);
     // 空 label 的那台改 host：先把 label 写成表单值（origin 与整台写那一形相同），host 排最后。
     const c = { ...C, label: C.host };
     await patchRemoteConfig({ upsert: [{ key: C.host, was: c, value: { ...c, host: "192.0.2.9" } }] });
-    const e2 = vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { field?: string }[];
-    expect(e2.map((e) => e.field)).toEqual(["label", "host"]);
+    expect(lastEdits().map((e) => e.field)).toEqual(["label", "host"]);
     // 盘上那台已被改名 / 删掉 ⇒ 整批拒（不再「找不到就当新增」）。
-    await expect(
-      patchRemoteConfig({ upsert: [{ key: "gone", was: { ...B, label: "gone" }, value: { ...B, label: "gone", user: "x" } }] }),
-    ).rejects.toThrow();
+    expect(
+      await refusedCode(patchRemoteConfig({ upsert: [{ key: "gone", was: { ...B, label: "gone" }, value: { ...B, label: "gone", user: "x" } }] })),
+    ).toBe("element_gone");
   });
 });

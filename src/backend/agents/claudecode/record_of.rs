@@ -328,11 +328,11 @@ fn attachment_at(cwd: Option<&str>, id: &str, name: &str) -> cmd_wire::attachmen
     });
     let gone = matches!(meta, Some(None));
     let bytes = meta.flatten().map(|m| m.len());
-    let class = cmd_wire::file_class::class_of_name(name.as_bytes(), false);
+    let class = crate::common::file_class::class_of_name(name.as_bytes(), false);
     cmd_wire::attachment::Attachment {
         name: name.to_string(),
         class,
-        class_text: cmd_wire::file_class::label(class),
+        class_text: crate::common::file_class::label(class),
         rel,
         bytes,
         size_text: bytes.map(copy_core::size_text),

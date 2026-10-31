@@ -142,3 +142,147 @@ fn plan_refs_takes_sid_and_texts_and_answers_one_list_per_text() {
         Some(json!({"workspace": null, "slice": null, "refs": [[], [], []]}))
     );
 }
+
+/// 交出去的那一份：随数据变的那几句后端照文案表写好（`said`），两端不再拼。
+mod said {
+    use super::*;
+    use crate::plan::fixture::{dump, dump_broken, who, MAIN, STRANGER};
+    use crate::plan::product::make;
+
+    fn out(d: &serde_json::Value, stale: bool) -> wire::PlanRead {
+        let mut doc = make(d, &who, "r0".into(), 0);
+        if stale {
+            doc.stale = Some(wire::PlanStale {
+                said: Some("pb 那一句".into()),
+                raw: None,
+                since: 0,
+                since_text: None,
+            });
+        }
+        annotated(doc, &Default::default())
+    }
+
+    fn t(key: &str, args: &[(&str, &str)]) -> String {
+        copy_text(key, args)
+    }
+
+    fn sep() -> String {
+        t("kit.text.sep", &[])
+    }
+
+    #[test]
+    fn the_slice_lines_are_written_from_its_numbers_and_time() {
+        let doc = out(&dump("/w"), false);
+        let sl = &doc.slices[0];
+        let p = sl.progress.as_ref().expect("有收的值");
+        let (d, o) = (p.done.to_string(), p.of.to_string());
+        assert_eq!(
+            sl.said.top.as_deref(),
+            Some(t("plan.overview.top", &[("done", &d), ("of", &o)]).as_str())
+        );
+        assert_eq!(
+            sl.said.root.as_deref(),
+            Some(t("plan.outline.rootProgress", &[("done", &d), ("of", &o)]).as_str())
+        );
+        let at = doc.read_at_text.clone().expect("时刻的字");
+        assert_eq!(
+            sl.said.read_at.as_deref(),
+            Some(t("plan.overview.readAt", &[("time", &at)]).as_str())
+        );
+        assert_eq!(sl.said.strip, None);
+        assert_eq!(sl.said.bare, None);
+    }
+
+    #[test]
+    fn a_stale_read_says_unreadable_then_since_when_in_one_line() {
+        let doc = out(&dump("/w"), true);
+        let since = doc
+            .stale
+            .as_ref()
+            .and_then(|s| s.since_text.clone())
+            .expect("时刻的字");
+        let want = [
+            t("plan.strip.unreadable", &[("reason", "pb 那一句")]),
+            t("plan.strip.stale", &[("time", &since)]),
+        ]
+        .join(&sep());
+        assert_eq!(doc.slices[0].said.strip.as_deref(), Some(want.as_str()));
+        let broken = out(&dump_broken("/w"), false);
+        let sl = &broken.slices[0];
+        let e = sl.error.clone().expect("读不成");
+        assert_eq!(
+            sl.said.bare.as_deref(),
+            Some(t("plan.strip.sliceUnreadable", &[("reason", &e)]).as_str())
+        );
+    }
+
+    #[test]
+    fn blocks_cells_and_sessions_carry_their_written_lines() {
+        let doc = out(&dump("/w"), false);
+        let sl = &doc.slices[0];
+        let a2 = sl.blocks.iter().find(|b| b.id == "A2").expect("A2 那一块");
+        let k = a2.inside.as_ref().expect("底下有算活的");
+        assert_eq!(
+            a2.said.inside.as_deref(),
+            Some(
+                t(
+                    "plan.whyShort.inside",
+                    &[("done", &k.done.to_string()), ("of", &k.of.to_string())]
+                )
+                .as_str()
+            )
+        );
+        let cell = |id: &str| sl.cells.iter().find(|c| c.id == id).expect("那一格");
+        assert_eq!(
+            Some(a2.said.name.as_str()),
+            cell("A2").title.as_deref(),
+            "块名是根节点的标题"
+        );
+        assert_eq!(
+            sl.blocks[0].said.name,
+            t("plan.head.top", &[]),
+            "最上面那一块"
+        );
+        assert_eq!(
+            cell("A2").said.block_root.as_deref(),
+            Some(t("plan.cell.blockRoot", &[("block", &sl.labels["A2"])]).as_str()),
+            "插的是「编号 标题」"
+        );
+        assert_eq!(cell("A2").said.trail, None, "顶层没有上面几层");
+        let kid = sl
+            .cells
+            .iter()
+            .find(|c| c.parent.as_deref() == Some("A2"))
+            .expect("A2 底下一格");
+        assert_eq!(kid.said.trail.as_deref(), Some(sl.labels["A2"].as_str()));
+        assert_eq!(kid.said.block_root, None);
+        let mine = &doc.by_session[MAIN].said;
+        assert_eq!(mine.name, t("plan.head.top", &[]));
+        assert_eq!(
+            mine.mark,
+            [
+                "alpha".to_string(),
+                t("plan.head.top", &[]),
+                "开发".to_string()
+            ]
+            .join(&sep())
+        );
+        let mut d = dump("/w");
+        d["repos"][0]["scopes"][0]["assignee"] = json!(STRANGER);
+        let doc = out(&d, false);
+        let owner = doc.slices[0].blocks[0].owner.as_ref().expect("负责人");
+        assert_eq!(
+            owner.label.as_deref(),
+            Some(t("plan.who.unknown", &[("id", "999999…0000")]).as_str())
+        );
+    }
+
+    /// 列表那一行的 `said` 照抄那一片成品上的那一份（不另写一遍）。
+    #[test]
+    fn a_list_row_copies_the_slices_said() {
+        let doc = out(&dump("/w"), false);
+        let row = crate::plan::product::list_row(&doc);
+        assert_eq!(row.slices[0].said, doc.slices[0].said);
+        assert_eq!(row.by_session[MAIN].said, doc.by_session[MAIN].said);
+    }
+}

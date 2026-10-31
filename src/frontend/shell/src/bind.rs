@@ -378,9 +378,9 @@ fn find_window_by_marker_substr(marker: &str) -> Option<MarkerHit> {
     crate::platform::hwnd::first_visible_window(marker, title_carries_marker)
 }
 
-// ↗ 一次的结局（`FrontOutcome`）与它的两种原因住 `cmd_wire::front`：浮层那一张也在那里写（[`FrontOutcome::told`]），壳只判窗口的事。
+// ↗ 一次的结局（`FrontOutcome`）与它的两种原因住 `face_core::front`：浮层那一张也在那里写（[`FrontOutcome::told`]），壳只判窗口的事。
 // 分不清的原因由 [`several_why`] 判，标签页没切成的原因由 [`pick_tab`] · [`tab_step`] 判。
-use cmd_wire::front::{FrontOutcome, SeveralWhy, TabMiss};
+use face_core::front::{FrontOutcome, SeveralWhy, TabMiss};
 
 /// 这一种桌面会话上 ↗ 走不走得通：Windows · X11 ⇒ 走（`None`）；Wayland ⇒ 照实说切不了；别的 ⇒ 不支持。
 pub(crate) fn refusal_of(session: &crate::platform::hwnd::DisplaySession) -> Option<FrontOutcome> {

@@ -1,10 +1,11 @@
 /**
  * 每台机器的状态成品：排成「点 · 名字旁那个词 · 问题行一句 · 修法按钮」。
- * 哪一态、那一句、给哪几颗修法、按钮上的字都是后端定的（`deploy::machine`）；这里只按那一态挑样子（点 · 语气 · 进度条）。
+ * 哪一态、那一句、给哪几颗修法、按钮上的字、问题行的语气与带不带进度都是后端定的（`deploy::machine`）；这里只挑样子：点照那一态，语气 · 进度条照 `strip`。
  */
 import type { MachineState } from "../generated/MachineState";
 import type { MachineFix } from "../generated/MachineFix";
 import type { MachineFixButton } from "../generated/MachineFixButton";
+import type { StripTone } from "../generated/StripTone";
 import type { MachineDotState } from "../kit/status-dot";
 import { machineDot } from "../machine-dot";
 import { button } from "../kit/button";
@@ -32,15 +33,17 @@ export interface MachineFace {
   route: string;
 }
 
+/** 条上那一行的语气 ⇒ 问题行的样子（语气 · 带不带进度由后端 `deploy::machine::strip` 定）。 */
+const TONE: Record<StripTone, MachineFace["tone"]> = { busy: "busy", warn: "warn", offline: "error", fault: "error" };
+
 export function machineFace(m: MachineState): MachineFace {
-  const busy = m.state === "connecting" || m.state === "installing" || m.state === "updating";
-  const dot = machineDot(m.state);
   return {
-    dot,
+    dot: machineDot(m.state),
     word: m.word,
     problem: m.said,
-    tone: busy ? "busy" : dot === "needs-you" ? "warn" : "error",
-    bar: m.state === "installing" || m.state === "updating",
+    // 不进条（连着 · 较新 · 停用 · 不明）还有那一句 ⇒ 待办：这几样都不是出错。
+    tone: m.strip ? TONE[m.strip.tone] : "warn",
+    bar: m.strip?.progress ?? false,
     fixes: m.fixes,
     detail: m.detail ?? "",
     next: "",

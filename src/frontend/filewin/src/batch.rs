@@ -128,7 +128,8 @@ impl BatchBoard {
         rx
     }
 
-    /// 冲突框摆着的那几项（判据与画框用）。
+    /// 冲突框摆着的那几项（判据用）。
+    #[cfg(test)]
     pub fn conflicts(&self) -> Vec<Conflict> {
         self.lock()
             .asking
@@ -214,6 +215,7 @@ impl BatchBoard {
     }
 
     /// 结局那一行底下逐项列的那几行（没成的那几项：名字 · 失败 · 原因）。
+    #[cfg(test)]
     pub fn failed_lines(&self) -> Vec<String> {
         let (plan, phase) = {
             let d = self.lock();

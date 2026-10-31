@@ -485,7 +485,8 @@ fn init_on_an_empty_home_creates_the_shared_root_too() {
 
 /// ★ 从没起过会话的家（`~/.claude` 里只有凭据，没有 `projects` · `sessions`）：建库 · 加号之后两个号里这两项都是链回共享库的链接、
 /// 共享库里建出了目录 —— 不然那个号起的会话记录与在跑会话的登记落在号里，后端看不见。
-/// 已经建好、缺这两条链接的旧库（lab 里留着一份自己的 `sessions`）：常驻那一个起来时那一步挪进共享库、两个号都链上。
+/// 已经建好、缺这两条链接的旧库（lab 里留着一份自己的 `sessions`）：常驻那一个起来时那一步只补链、不挪 lab 那一份；
+/// 人点「修复」才挪进共享库、两个号都链上。
 #[test]
 fn a_fresh_home_without_transcripts_still_gets_them_shared_and_old_libraries_are_relinked_on_start()
 {
@@ -519,6 +520,9 @@ fn a_fresh_home_without_transcripts_still_gets_them_shared_and_old_libraries_are
     }
     t.write(&acct("lab", "sessions/1.json"), "{}");
     crate::accounts::manage::wire::align_here(&HomeDoor(t.0.clone()));
+    assert!(!t.is_link(&acct("lab", "sessions")), "对齐挪了 lab 的那份");
+    assert!(t.is_link(&acct("x", "sessions")) && t.is_link(&acct("lab", "projects")));
+    ok(&t, "accounts-repair", json!({}));
     assert_eq!(t.read(".claude/sessions/1.json"), "{}");
     for n in ["lab", "x"] {
         for d in ["projects", "sessions"] {
@@ -1087,15 +1091,12 @@ fn verify_on_empty_shared_and_broken_sources() {
     assert!(checks(&v, "fail").is_empty(), "{v}");
 
     let u = two_accounts("v-src");
-    std::os::unix::fs::symlink(u.p("gone"), u.p(".claude/local")).unwrap();
+    std::os::unix::fs::symlink(u.p("gone"), u.p(".claude/jobs")).unwrap();
     ok(&u, "accounts-repair", json!({}));
-    assert!(
-        u.is_link(".cc-monitor/accounts/lab/local"),
-        "断链项也该链上"
-    );
+    assert!(u.is_link(".cc-monitor/accounts/lab/jobs"), "断链项也该链上");
     let v = verify(&u);
     assert_eq!(v["pass"], true, "{v}");
-    assert!(checks(&v, "warn").iter().any(|w| w.contains("local")));
+    assert!(checks(&v, "warn").iter().any(|w| w.contains("jobs")));
     let again = ok(&u, "accounts-repair", json!({}));
     assert_eq!(again["applied"], false, "断链让修复来回翻：{again}");
 }
@@ -1111,7 +1112,8 @@ fn repair_restores_every_invariant_and_is_idempotent() {
     std::fs::remove_file(t.p(".cc-monitor/accounts/x/CLAUDE.md")).unwrap();
     std::fs::remove_file(t.p(".cc-monitor/accounts/x/skills")).unwrap();
     std::os::unix::fs::symlink(t.p("elsewhere"), t.p(".cc-monitor/accounts/x/skills")).unwrap();
-    t.write(".claude/newdir/a", "a");
+    t.write(".claude/downloads/a", "a");
+    t.write(".claude/bridge-spawn/a", "a");
     std::os::unix::fs::symlink(
         t.p(".claude/retired"),
         t.p(".cc-monitor/accounts/lab/retired"),
@@ -1137,9 +1139,13 @@ fn repair_restores_every_invariant_and_is_idempotent() {
     );
     for a in ["lab", "x"] {
         assert_eq!(
-            t.link_of(&format!(".cc-monitor/accounts/{a}/newdir")),
-            t.s(".claude/newdir"),
+            t.link_of(&format!(".cc-monitor/accounts/{a}/downloads")),
+            t.s(".claude/downloads"),
             "{a}"
+        );
+        assert!(
+            !t.exists(&format!(".cc-monitor/accounts/{a}/bridge-spawn")),
+            "{a}：认不得的项被链了"
         );
     }
     assert!(!t.exists(".cc-monitor/accounts/lab/retired"));
@@ -1490,7 +1496,8 @@ fn repair_lifts_the_one_account_copy_of_an_on_demand_shared_dir_into_the_shared_
 }
 
 /// ★ 升级那一步（常驻那一个起来时，`align_here`）：旧账号库里没有 agents · plans 那两条链接、lab 里留着一份自己的 plans ⇒
-/// 不等人点修复：plans 挪进共享库、agents 在共享库里建出来，两个号都链上；之后体检一条都不报这两项（不报缺链接、也不提示）。
+/// 对齐不挪号里的实体：agents · plans 在共享库里各建一份空的，x 两条都链上，lab 只链 agents、它那份 plans 一个字节不动；
+/// 体检不报致命，只一条提示点名 lab。人点「修复」⇒ 共享库里那份空的 plans 摘掉、lab 那一份挪过去，两个号都链上，体检不再说这两项。
 /// 接好之后再调不动盘（不另留备份）。两个号各有一份自己的 agents ⇒ 不合并、两个号都不动，体检不报致命，只一条提示点名这两个号。
 #[test]
 fn the_upgrade_step_links_the_on_demand_shared_dirs_so_the_checkup_has_nothing_to_say_about_them() {
@@ -1516,6 +1523,19 @@ fn the_upgrade_step_links_the_on_demand_shared_dirs_so_the_checkup_has_nothing_t
     old_layout(&t);
     t.write(&acct("lab", "plans/a-plan.md"), "计划（夹具句）");
     crate::accounts::manage::wire::align_here(&HomeDoor(t.0.clone()));
+    assert!(!t.is_link(&acct("lab", "plans")), "对齐挪了 lab 的那份");
+    assert_eq!(t.read(&acct("lab", "plans/a-plan.md")), "计划（夹具句）");
+    assert!(!t.exists(".claude/plans/a-plan.md"));
+    assert!(t.is_link(&acct("lab", "agents")) && t.is_link(&acct("x", "agents")));
+    assert!(t.is_link(&acct("x", "plans")));
+    let v = verify(&t);
+    assert_eq!(v["pass"], true, "{v}");
+    let said = about(&v, "plans");
+    assert!(
+        said.len() == 1 && checks(&v, "warn").contains(&said[0]) && said[0].contains("lab"),
+        "{said:?}"
+    );
+    ok(&t, "accounts-repair", json!({}));
     assert_eq!(t.read(".claude/plans/a-plan.md"), "计划（夹具句）");
     for n in ["lab", "x"] {
         for d in ["agents", "plans"] {

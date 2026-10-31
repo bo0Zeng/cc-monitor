@@ -2,7 +2,7 @@
 //! 两侧调同一份：本机后端扇出问完各台（`faces/search_face.rs`）· 手机嵌的 Rust 核心逐台直连问完（`mobcore::search_merge_json`）。
 //!
 //! 只并不判：每台的行由那台排好（最近优先）、写好时刻字（按问的那一方的时区）；这里只把几列按 `updatedAt` 并成一列（同一刻照台的先后）、
-//! 命中数 · 读不动的份数相加、不覆盖的那几家去重、远端的行添上那台的名字；结果头那一句（搜的词 · 命中几处 · 几个会话 · 截没截）也在这里写一次。
+//! 命中数 · 读不动的份数相加、不覆盖的那几家去重、远端的行添上那台的名字；结果头那一句（搜的词 · 命中几处 · 几个会话 · 截没截）与头底下那几句（读不动几份 · 只按标题的那几家）也在这里写一次。
 
 use crate::listing::{Can, ForkedFrom};
 use crate::Machine;
@@ -124,10 +124,9 @@ pub struct Merged {
     pub truncated: bool,
     /// 各台的会话行，按 `updatedAt` 倒序（同一刻照台的先后）。
     pub sessions: Vec<MergedRow>,
-    /// 答了的那几台读不动、没搜到的会话记录份数之和。
-    pub unreadable: usize,
-    /// 内容搜索不覆盖的那几家（各台说的，去重、照先说的那台的先后）。
-    pub skipped: Vec<String>,
+    /// 结果头底下那几句，写好的（两端照摆）：答了的那几台读不动的会话记录份数之和（0 份不写）；
+    /// 再是内容搜索不覆盖、只按标题的那几家各一句（各台说的，去重、照先说的那台的先后）。
+    pub notes: Vec<String>,
     /// 没答上的那几台（它们的会话没搜到）：哪台 · 那一句。
     pub down: Vec<SearchDown>,
     /// 结果头那一句（搜的词 · 命中几处 · 几个会话；截过 ⇒ 截过那一句）：两端照摆。
@@ -206,14 +205,27 @@ pub fn merge(
     } else {
         copy_text("history.search.summary", &[("q", q), ("n", &n), ("m", &m)])
     };
+    let notes = (unreadable > 0)
+        .then(|| {
+            copy_text(
+                "history.search.unreadable",
+                &[("n", &unreadable.to_string())],
+            )
+        })
+        .into_iter()
+        .chain(
+            skipped
+                .iter()
+                .map(|a| copy_text("history.search.skipped", &[("agent", a)])),
+        )
+        .collect();
     Merged {
         summary,
         total_hits,
         session_count,
         truncated,
         sessions,
-        unreadable,
-        skipped,
+        notes,
         down,
     }
 }
