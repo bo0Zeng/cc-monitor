@@ -328,8 +328,12 @@ impl Trace {
             .zip(context)
             .filter(|_| t >= back + 120)
             .map(|(a, b)| b.saturating_sub(a.1) as f64 / ((t - 60 - back) as f64 / 60.0));
+        // 短窗用速 · 在途并发 · 6 小时分段：录下来的轨迹里没有这三样 ⇒ 交「量不到」；刀三把推演挪进 rollout 时与 spend 共用一份口径。
         Me {
             pace: pace.filter(|p| *p > 0.0),
+            pace_short: None,
+            inflight: None,
+            bins: Vec::new(),
             spread,
             context,
             write_extra: Some(self.extra),
