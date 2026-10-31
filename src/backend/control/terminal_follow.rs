@@ -210,12 +210,16 @@ const FOLLOW_CODES: &[&str] = &[
 /// `terminal-follow` 订不上：码 ＋ 那一句（原话跟着那一句走）。投出去时带上实时那一格落在「只能快照」还是「停了」
 /// （[`live_after_refusal`]；入参形状不对那一种不带）。
 #[derive(Debug)]
-pub(crate) struct FollowErr(&'static str, String);
+pub(crate) struct FollowErr(Said);
 
 impl FollowErr {
     /// 下层那一份失败 ⇒ 这一条的码；码表外的落 `unobservable`（原码进原话）。
     pub(crate) fn of(e: Said) -> FollowErr {
-        crate::wire::typed::of_fail_said(e, |said| FollowErr("unobservable", said), said)
+        crate::wire::typed::of_fail_said(
+            e,
+            |said| FollowErr(Said::new("unobservable", said)),
+            said,
+        )
     }
 }
 
@@ -233,19 +237,20 @@ pub(crate) fn said(code: &str) -> Option<String> {
 impl crate::wire::typed::Codes for FollowErr {
     const ALL: &'static [&'static str] = FOLLOW_CODES;
     fn into_said(self) -> crate::common::said::Said {
-        let FollowErr(code, said) = self;
-        let f = crate::wire::spec::fail(code, said);
+        let FollowErr(s) = self;
+        let code = s.code_or_fallback().to_string();
+        let f = crate::wire::spec::fail(&code, s);
         if code == "bad_args" {
             return f;
         }
-        match serde_json::to_value(live_after_refusal(code)) {
+        match serde_json::to_value(live_after_refusal(&code)) {
             Ok(v) => f.with_data(v),
             Err(_) => f,
         }
     }
     fn of_code(code: &str, said: String) -> Result<Self, String> {
         match FOLLOW_CODES.iter().find(|c| **c == code) {
-            Some(c) => Ok(FollowErr(c, said)),
+            Some(c) => Ok(FollowErr(Said::new(c, said))),
             None => Err(said),
         }
     }
@@ -420,13 +425,13 @@ impl Desk {
             return Err(bad_args("this `ticket` is already following"));
         }
         if g.slots.len() >= MAX_FOLLOWS_PER_CONNECTION {
-            return Err(Said::from((
+            return Err(Said::new(
                 "too_many_follows",
                 copy_text(
                     "beTermFollow.register.tooMany",
                     &[("max", &MAX_FOLLOWS_PER_CONNECTION.to_string())],
                 ),
-            )));
+            ));
         }
         g.seats += 1;
         let n = g.seats;
@@ -568,12 +573,12 @@ impl Desk {
         ticket_ok(&req.ticket)?;
         match lock(&self.0.tickets).slots.get(&req.ticket) {
             Some(Slot::On(f)) if f.tx.send(Ev::Ack(req.seq)).is_ok() => Ok(()),
-            _ => Err(Said::from((
+            _ => Err(Said::new(
                 "not_known",
                 crate::common::contract::malformed(
                     "no such follow (it ended or was never started)",
                 ),
-            ))),
+            )),
         }
     }
 
@@ -624,13 +629,13 @@ fn open_client(
 > {
     let v = terminals::tmux_version_on(On { socket })?;
     if !tmux_version_ok(&v) {
-        return Err(Said::from((
+        return Err(Said::new(
             "tmux_too_old",
             copy_text(
                 "beTermFollow.tmux.tooOld",
                 &[("version", v.as_str()), ("need", "3.2")],
             ),
-        )));
+        ));
     }
     // 控制模式客户端：只读、不改尺寸，挂在那个终端所在的 tmux 会话上。它自己不要 `$TMUX`（不当成嵌套），
     // 但要与别的几条问同一台 server：没给 socket 时照 `$TMUX` 里那一台。

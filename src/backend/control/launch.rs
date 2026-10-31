@@ -229,7 +229,7 @@ pub(crate) fn parse_request(req: LaunchReq) -> Result<LaunchRequest, Said> {
         None => None,
         Some(a) => Some(
             crate::agents::pick_kind(Some(a))
-                .map_err(|say| ("bad_args", say))?
+                .map_err(|say| Said::new("bad_args", say))?
                 .0
                 .to_string(),
         ),
@@ -243,11 +243,11 @@ pub(crate) fn parse_request(req: LaunchReq) -> Result<LaunchRequest, Said> {
         }
         (None, None) => {}
         _ => {
-            return Err(Said::from((
+            return Err(Said::new(
                 "bad_args",
                 crate::common::contract::malformed("`width` and `height` must be given together")
                     .to_string(),
-            )))
+            ))
         }
     }
 
@@ -273,43 +273,43 @@ pub(crate) fn parse_request(req: LaunchReq) -> Result<LaunchRequest, Said> {
 /// 而错误信息里看不出是谁给的。
 fn check_size(what: &str, v: &str) -> Result<(), Said> {
     if v.is_empty() || v.len() > 4 || !v.chars().all(|c| c.is_ascii_digit()) {
-        return Err(Said::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`{what}` must be 1-4 decimal digits: {v:?}"
             )),
-        )));
+        ));
     }
     Ok(())
 }
 
 fn check_field(what: &str, v: &str) -> Result<(), Said> {
     if v.trim().is_empty() {
-        return Err(Said::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!("`{what}` is empty")),
-        )));
+        ));
     }
     check_len(what, v)?;
     // 控制字符会让 send-keys 的语义变掉（`\n` = 多敲一次回车）。形状问题。
     if v.chars().any(char::is_control) {
-        return Err(Said::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!("`{what}` contains a control character")),
-        )));
+        ));
     }
     Ok(())
 }
 
 fn check_len(what: &str, v: &str) -> Result<(), Said> {
     if v.len() > MAX_FIELD_BYTES {
-        return Err(Said::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`{what}` is too long ({} > {MAX_FIELD_BYTES})",
                 v.len()
             )),
-        )));
+        ));
     }
     Ok(())
 }
@@ -326,31 +326,31 @@ fn check_typed_payload(v: &str) -> Result<(), Said> {
     // 这样「空」「过长」「别的控制字符」三条判法**逐字复用**，且长度判的仍是原串
     // （下面那次 `check_field` 收到的是抹过的串，只用来判控制字符）。
     if v.trim().is_empty() {
-        return Err(Said::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed("`payload` is empty"),
-        )));
+        ));
     }
     if v.len() > MAX_FIELD_BYTES {
-        return Err(Said::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`payload` is too long ({} > {MAX_FIELD_BYTES})",
                 v.len()
             )),
-        )));
+        ));
     }
     if let Some(bad) = v
         .chars()
         .find(|c| c.is_control() && *c != '\n' && *c != '\t')
     {
-        return Err(Said::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`payload` has a control character other than \\n / \\t (U+{:04X})",
                 bad as u32
             )),
-        )));
+        ));
     }
     Ok(())
 }
@@ -540,12 +540,6 @@ impl From<Said> for LaunchFail {
     }
 }
 
-impl From<(&'static str, String)> for LaunchFail {
-    fn from(e: (&'static str, String)) -> Self {
-        Said::from(e).into()
-    }
-}
-
 /// 本趟刚建成的会话（精确目标 `=名:`）：字段私有、不能复制，只有建会话那一臂（`new-session` 成功之后）造得出。
 /// 往里送启动命令（[`TypeAt::JustMade`]）与没送进时收掉它（[`super::kill::end`]）都只收它。
 #[derive(Debug, PartialEq, Eq)]
@@ -577,7 +571,7 @@ fn create(
         if tmux(&["has-session", "-t", &t])?.ok {
             return Ok(false);
         }
-        return Err(Said::from(("bad_args", said)));
+        return Err(Said::new("bad_args", said));
     }
     let mut new_args: Vec<&str> = vec!["new-session", "-d", "-s", name];
     if let Some(cwd) = cwd {

@@ -82,7 +82,7 @@ pub(crate) struct Seen {
 
 /// 总线名单 —— `bus-list` 读它。行是这台的收件箱（[`store::inboxes`]）；叫它什么 · 在不在问 `seen`（后端那一处）。
 pub(crate) fn list_for_inbound(seen: &dyn Fn(&str) -> Seen) -> Result<BusList, Said> {
-    let mut rows = store::inboxes(&here()?).map_err(|m| ("failed".to_string(), m))?;
+    let mut rows = store::inboxes(&here()?).map_err(|m| Said::new("failed", m))?;
     rows.sort();
     Ok(list_reply(roster_agents(&rows, seen)))
 }
@@ -139,7 +139,7 @@ pub(crate) fn parse_inbox(req: &BusInboxReq) -> Result<(String, u64), Said> {
 /// `bus-inbox`：只读看一个收件箱的尾巴（不推已读位置）。
 pub(crate) fn inbox_for_inbound(req: &BusInboxReq) -> Result<BusInbox, Said> {
     let (id, lines) = parse_inbox(req)?;
-    let rows = store::tail(&here()?, &id, lines as usize).map_err(|m| ("failed".to_string(), m))?;
+    let rows = store::tail(&here()?, &id, lines as usize).map_err(|m| Said::new("failed", m))?;
     Ok(inbox_reply(&rows))
 }
 
@@ -235,7 +235,7 @@ pub(crate) fn peek_for_inbound(req: &BusPeekReq) -> Result<BusPeeked, Said> {
             ))
         }
     };
-    let got = store::peek(&here()?, &req.id, max).map_err(|m| ("failed".to_string(), m))?;
+    let got = store::peek(&here()?, &req.id, max).map_err(|m| Said::new("failed", m))?;
     Ok(match got {
         None => BusPeeked {
             text: String::new(),
@@ -263,7 +263,6 @@ pub(crate) fn commit_for_inbound(
     checked_id(&req.id)?;
     store::commit(own, &req.id, &req.token)
         .map(|read| BusCommitted { read })
-        .map_err(|(c, m)| Said::new(c, m))
 }
 
 /// `bus-unread`：未读几封（只读）。

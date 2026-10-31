@@ -574,12 +574,12 @@ pub(crate) fn preview_on(
         Found::One(r) => r,
         Found::NotKnown => return Err(not_known("not_known")),
         Found::Ambiguous => {
-            return Err(Said::from((
+            return Err(Said::new(
                 "ambiguous",
                 crate::common::contract::malformed(
                     "more than one terminal carries this sid; point at one by `terminal`",
                 ),
-            )))
+            ))
         }
     };
     let view = view_on(on, row.target(), color, back)?;
@@ -632,10 +632,10 @@ pub(crate) fn follow_target_on(
 ) -> Result<FollowTarget, Said> {
     let target = target(terminal, sid)?;
     let Some((rows, _, _)) = rows_found_on(on)? else {
-        return Err(Said::from((
+        return Err(Said::new(
             "no_tmux",
             crate::common::contract::malformed("tmux is not installed on this machine"),
-        )));
+        ));
     };
     match find(&rows, &target) {
         Found::One(r) => Ok(FollowTarget {
@@ -644,12 +644,12 @@ pub(crate) fn follow_target_on(
             pane: r.pane.clone(),
         }),
         Found::NotKnown => Err(not_known("not_known")),
-        Found::Ambiguous => Err(Said::from((
+        Found::Ambiguous => Err(Said::new(
             "ambiguous",
             crate::common::contract::malformed(
                 "more than one terminal carries this sid; point at one by `terminal`",
             ),
-        ))),
+        )),
     }
 }
 
@@ -883,12 +883,12 @@ fn managed_row(target: &Target) -> Result<Option<TermRow>, Said> {
     match find(&rows, target) {
         Found::One(r) => Ok(Some(r.clone())),
         Found::NotKnown => Ok(None),
-        Found::Ambiguous => Err(Said::from((
+        Found::Ambiguous => Err(Said::new(
             "ambiguous",
             crate::common::contract::malformed(
                 "more than one terminal carries this sid; point at one by `terminal`",
             ),
-        ))),
+        )),
     }
 }
 
