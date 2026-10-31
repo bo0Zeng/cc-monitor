@@ -326,7 +326,10 @@ fn quota_warm_sends_through_the_backend_command_only() {
         .filter(|l| !l.trim_start().starts_with('#'))
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(code.contains("\"--quota-warm\""), "预热脚本没调后端那一条");
+    assert!(
+        guard_core::contains_word(&code, "\"--quota-warm\""),
+        "预热脚本没调后端那一条"
+    );
     for own in [
         "\"MAX_THINKING_TOKENS\"",
         "\"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC\"",

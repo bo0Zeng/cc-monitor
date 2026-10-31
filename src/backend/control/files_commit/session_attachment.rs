@@ -75,11 +75,11 @@ pub fn refused(why: AttachRefused) -> WriteFail {
 }
 
 fn verdict(it: &AttachItem, why: Option<AttachRefused>) -> AttachVerdict {
-    let class = cmd_wire::file_class::class_of_name(it.name.as_bytes(), it.dir);
+    let class = crate::common::file_class::class_of_name(it.name.as_bytes(), it.dir);
     AttachVerdict {
         ok: why.is_none(),
         class,
-        class_text: cmd_wire::file_class::label(class),
+        class_text: crate::common::file_class::label(class),
         why,
         said: why.map(said_of),
     }
@@ -301,7 +301,7 @@ pub fn commit(
         path: crate::files::raw::to_path_buf(landed.path.bytes())
             .display()
             .to_string(),
-        class: cmd_wire::file_class::class_of_name(name.as_bytes(), false),
+        class: crate::common::file_class::class_of_name(name.as_bytes(), false),
         bytes: landed.bytes,
         sha256: cmd_wire::files::Sha256Hex(sha),
         id,

@@ -1557,7 +1557,7 @@ type AttachItem = { name: string, bytes: number, dir?: boolean, };
 type AttachRefused = "is_dir" | "too_big" | "too_many" | "too_much" | "dir_full" | "not_writable" | "no_session";
 type AttachVerdict = { ok: boolean, 
 /**
- * 照名字判的那一种（目录 ⇒ 文件夹；[`crate::file_class::class_of_name`]）。
+ * 照名字判的那一种（目录 ⇒ 文件夹；后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -5812,7 +5812,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -6265,7 +6265,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -6726,7 +6726,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -7132,7 +7132,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -9079,7 +9079,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -15647,7 +15647,11 @@ dirs?: Array<string> | null,
  * `true` ⇒ 认过的目录也重问 pb。
  */
 fresh?: boolean | null, };
-type PlanListSlice = { name: string, domain: string | null, current: boolean, progress: PlanProgress | null, needCount: number, error: string | null, stale: PlanStale | null, };
+type PlanListSlice = { name: string, domain: string | null, current: boolean, progress: PlanProgress | null, needCount: number, error: string | null, stale: PlanStale | null, 
+/**
+ * 同那一片成品上的那一份（照抄）。
+ */
+said: PlanSliceSaid, };
 type PlanListWorkspace = { workspace: string, repo: string | null, auto: boolean, rev: string, stale: PlanStale | null, needCount: number, bySession: { [key in string]: PlanSessionBlock }, slices: Array<PlanListSlice>, };
 type PlanPb = { state: "ok" | "missing" | "unsupported", said: string | null, version?: string, };
 type PlanProgress = { done: number, of: number, };
@@ -15659,7 +15663,37 @@ cell: string | null,
 /**
  * 根节点的标题；最上面那一个 ⇒ `null`。
  */
-title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", };
+title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", said: PlanSessionSaid, };
+type PlanSessionSaid = { 
+/**
+ * 块名：同那一块的 [`PlanBlockSaid::name`]。
+ */
+name: string, 
+/**
+ * 会话头那一枚标：片 · 块名 · 阶段。
+ */
+mark: string, };
+type PlanSliceSaid = { 
+/**
+ * 读不成 ＋ 过期那一句：整份读不成在先，这一片读不成在后；都没有 ⇒ `null`。
+ */
+strip: string | null, 
+/**
+ * 这一片读不成、只剩名字那一句；读得成 ⇒ `null`。
+ */
+bare: string | null, 
+/**
+ * 读到的时刻那一句；时刻的字还没写 ⇒ `null`。
+ */
+readAt: string | null, 
+/**
+ * 顶层签了几格（总览头）；没有收的值 ⇒ `null`。
+ */
+top: string | null, 
+/**
+ * 大纲根那一行右端的「几/几」；没有收的值 ⇒ `null`。
+ */
+root: string | null, };
 type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
 ```
 
@@ -15713,7 +15747,7 @@ takeover: PlanTakeover,
 /**
  * 接手的会话此刻在哪几组（帧面答之前现标，见 后端 `plan::groups`；pb 不知道有组）。
  */
-groups: PlanBlockGroups, };
+groups: PlanBlockGroups, said: PlanBlockSaid, };
 type PlanBlockGroups = { 
 /**
  * 组模块答了 ⇒ 那条会话在的几组（照组的先后；不在组里 ⇒ 空）；没有接手会话 · 组模块没答 ⇒ 空。
@@ -15727,6 +15761,15 @@ text: string,
  * 组模块没答 ⇒ 那一句（「读取组失败 · …」，悬停看）；答了 · 不用问 ⇒ `null`。
  */
 unread: string | null, };
+type PlanBlockSaid = { 
+/**
+ * 块名：最上面那一块 ⇒ 顶层那一句；否则根节点的标题（没有 ⇒ 根节点编号 ⇒ 块编号）。
+ */
+name: string, 
+/**
+ * 根节点底下签了几格（块表「里面」那一格 · 手机此会话那一块）；`inside` 为 `null` ⇒ `null`。
+ */
+inside: string | null, };
 type PlanCell = { id: string, title: string | null, kind: string | null, body: string | null, parent: string | null, children: Array<string>, edges: PlanEdges, pointedBy: PlanEdges, files: Array<PlanFile>, 
 /**
  * 状态里记着的值，一个值一项带笔数（pb 原样，照类上登的先后）。
@@ -15796,7 +15839,16 @@ coveredBy: Array<string>, refs: PlanRefs,
 /**
  * 退回过 ⇒ 那一次的状态；没有 ⇒ `null`。
  */
-returned: PlanReturned | null, };
+returned: PlanReturned | null, said: PlanCellSaid, };
+type PlanCellSaid = { 
+/**
+ * 上面几层的「编号 标题」，从顶层往下连好；顶层 ⇒ `null`。
+ */
+trail: string | null, 
+/**
+ * 它是一块的根节点 ⇒ 那一句（插它的「编号 标题」）；不是 ⇒ `null`。
+ */
+blockRoot: string | null, };
 type PlanCheck = { unreadable: Array<PlanReadError>, 
 /**
  * 元数据坏了、编号还认得出的节点：判不了，不在 `cells` 里。
@@ -15918,7 +15970,16 @@ cell: string | null,
 /**
  * 根节点的标题；最上面那一个 ⇒ `null`。
  */
-title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", };
+title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", said: PlanSessionSaid, };
+type PlanSessionSaid = { 
+/**
+ * 块名：同那一块的 [`PlanBlockSaid::name`]。
+ */
+name: string, 
+/**
+ * 会话头那一枚标：片 · 块名 · 阶段。
+ */
+mark: string, };
 type PlanSetsTo = { target: string | null, value: string | null, 
 /**
  * 加一笔 · 去一笔。
@@ -15972,7 +16033,28 @@ needCount: number,
 /**
  * 最上面那个权力范围（`project`）退回过 ⇒ 那一次此刻的状态；没退回过 ⇒ `null`（缺 ⇒ 同）。
  */
-returned: PlanReturned | null, };
+returned: PlanReturned | null, said: PlanSliceSaid, };
+type PlanSliceSaid = { 
+/**
+ * 读不成 ＋ 过期那一句：整份读不成在先，这一片读不成在后；都没有 ⇒ `null`。
+ */
+strip: string | null, 
+/**
+ * 这一片读不成、只剩名字那一句；读得成 ⇒ `null`。
+ */
+bare: string | null, 
+/**
+ * 读到的时刻那一句；时刻的字还没写 ⇒ `null`。
+ */
+readAt: string | null, 
+/**
+ * 顶层签了几格（总览头）；没有收的值 ⇒ `null`。
+ */
+top: string | null, 
+/**
+ * 大纲根那一行右端的「几/几」；没有收的值 ⇒ `null`。
+ */
+root: string | null, };
 type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
 type PlanState = { value: string, count: number, };
 type PlanTakeover = "open" | "no_line" | "running" | "unsure" | "merging";
@@ -15993,7 +16075,8 @@ needs: string | null,
  */
 face: SessionFace, 
 /**
- * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；会话本身 · 认不出 ⇒ `null`（界面写标签页的名字 · 认不出那一形）。
+ * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
+ * 会话本身 ⇒ `null`（两端写那条会话的名字）。
  */
 label: string | null, };
 type PlanWhyCode = { "kind": "nosign" } | { "kind": "inside", done: number, of: number, } | { "kind": "upper" } | { "kind": "undecided" };
@@ -16469,7 +16552,8 @@ needs: string | null,
  */
 face: SessionFace, 
 /**
- * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；会话本身 · 认不出 ⇒ `null`（界面写标签页的名字 · 认不出那一形）。
+ * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
+ * 会话本身 ⇒ `null`（两端写那条会话的名字）。
  */
 label: string | null, };
 type SessionCan = { 

@@ -27,8 +27,8 @@ fn dir(mode: u32, entries: &[(&str, Item)]) -> DirState {
     }
 }
 
-/// `/h` 家；共享库有 skills · settings.json · agents · plans · projects · sessions · accounts（排除）· x.bak（排除）·
-/// 登录刷新那把锁与它的属主记录（排除）；清单里一个号 z。
+/// `/h` 家；共享库有 skills · settings.json · agents · plans · projects · sessions，另有几项不在已知共享表里的
+/// （accounts · x.bak · 登录刷新那把锁与它的属主记录）；清单里一个号 z。
 fn snap(z: DirState) -> Snapshot {
     let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[{"name":"z","email":"","configDir":"/h/.cc-monitor/accounts/z","isDefault":true}]}"#;
     let mut dirs = BTreeMap::new();
@@ -78,7 +78,7 @@ fn healthy() -> DirState {
 }
 
 #[test]
-fn share_items_skip_identity_and_excluded_names() {
+fn share_items_take_only_the_known_shared_names() {
     assert_eq!(
         share_items(&snap(healthy()).shared),
         [
@@ -260,9 +260,9 @@ fn the_shared_dirs_claude_makes_on_demand_are_linked_before_the_shared_store_has
     }
 }
 
-/// 对齐：共享库里新冒出来的项（`bridge-spawn`，Claude Code 升级后自己建的）⇒ 每个号补一条链；按需才建的那几个谁都没有 ⇒ 建、都链；
-/// 一个号有实体 ⇒ 挪进共享库、都链；两个号各有一份 ⇒ 建一份空的、两个号都不动；号里自己的实体（`skills`）不动；
-/// 锁文件不链；只建目录 · 挪按需才建的那一份 · 建链接；接好之后 ⇒ 空计划。
+/// 对齐：已知共享表里的一项共享库里新冒出来（`history.jsonl`）⇒ 每个号补一条链；按需才建的那几个谁都没有 ⇒ 建、都链；
+/// 一个号有实体 ⇒ 共享库里建一份空的、别的号链上、那个号不动；两个号各有一份 ⇒ 建一份空的、两个号都不动；号里自己的实体（`skills`）不动；
+/// 锁文件不链；只建目录 · 建链接；接好之后 ⇒ 空计划。
 #[test]
 fn aligning_links_every_shared_item_an_account_lacks_and_settles_to_nothing() {
     let acct = |n: &str| format!("/h/.cc-monitor/accounts/{n}");
@@ -274,9 +274,7 @@ fn aligning_links_every_shared_item_an_account_lacks_and_settles_to_nothing() {
         s.dirs.insert(acct("b"), b);
         s.shared.entries.remove("agents");
         s.shared.entries.remove("plans");
-        s.shared
-            .entries
-            .insert("bridge-spawn".into(), Item::Dir { mode: Some(0o700) });
+        s.shared.entries.insert("history.jsonl".into(), file(0o600));
         s
     };
     let bare = || {
@@ -302,10 +300,10 @@ fn aligning_links_every_shared_item_an_account_lacks_and_settles_to_nothing() {
             mk("agents"),
             mk("plans"),
             ln("z", "agents"),
-            ln("z", "bridge-spawn"),
+            ln("z", "history.jsonl"),
             ln("z", "plans"),
             ln("b", "agents"),
-            ln("b", "bridge-spawn"),
+            ln("b", "history.jsonl"),
             ln("b", "plans"),
         ]
     );
@@ -324,20 +322,17 @@ fn aligning_links_every_shared_item_an_account_lacks_and_settles_to_nothing() {
         "号里自己的 skills 被动了：{:?}",
         p.ops
     );
+    // 一个号里有实体：对齐不挪它 —— 共享库里建一份空的、别的号链上，有实体的那个号一步都不出（挪只在「修复」）。
     let p = plan_align(&two(with("plans"), bare())).unwrap();
     assert_eq!(
         p.ops,
         vec![
             mk("agents"),
-            Op::Move {
-                from: format!("{}/plans", acct("z")),
-                to: "/h/.claude/plans".into()
-            },
+            mk("plans"),
             ln("z", "agents"),
-            ln("z", "bridge-spawn"),
-            ln("z", "plans"),
+            ln("z", "history.jsonl"),
             ln("b", "agents"),
-            ln("b", "bridge-spawn"),
+            ln("b", "history.jsonl"),
             ln("b", "plans"),
         ]
     );
@@ -396,30 +391,58 @@ fn transcripts_and_live_session_records_are_linked_even_when_the_shared_store_ha
     }
 }
 
-/// 共享库顶层一份不在身份表、`0600` 的普通文件（像密钥）：不进共享集，对齐不给任何号建指向它的链。
+/// 认不得的不链：共享库顶层不在已知共享表里的（`bridge-spawn` · `ssh` · 普通文件 · 锁的临时件，权限不论）一项都不进共享集；
+/// 已知的那一项 `0600` 也照链。号里 cc-monitor 建过的 `bridge-spawn → 共享库/bridge-spawn` ⇒ 对齐与修复都摘掉这条链
+/// （链的目标一个字节不动）；号里的 `bridge-spawn` 是实体 ⇒ 不动。
 #[test]
-fn a_secret_like_file_in_the_shared_store_is_never_linked_by_align() {
-    let mut s = snap(healthy());
-    s.shared.entries.insert("x.json".into(), file(0o600));
-    assert!(is_secret_like("x.json", &file(0o600)));
-    assert!(!is_secret_like("x.json", &file(0o644)));
-    assert!(!share_items(&s.shared).contains(&"x.json".to_string()));
-    let p = plan_align(&s).unwrap();
-    assert!(
-        !p.ops
-            .iter()
-            .any(|o| matches!(o, Op::Link { target, .. } if target.ends_with("/x.json"))),
-        "{:?}",
-        p.ops
+fn only_known_shared_names_are_linked_and_old_links_to_unknown_ones_are_dropped() {
+    let unknown = [
+        ("bridge-spawn", Item::Dir { mode: Some(0o700) }),
+        ("ssh", Item::Dir { mode: Some(0o700) }),
+        ("x.json", file(0o644)),
+        (".oauth_refresh.lock.owner.tmp.1a2b3c4d", file(0o664)),
+    ];
+    let z = "/h/.cc-monitor/accounts/z";
+    let shaped = |own: Item| {
+        let mut d = healthy();
+        d.entries.insert("bridge-spawn".into(), own);
+        let mut s = snap(d);
+        for (n, it) in &unknown {
+            s.shared.entries.insert((*n).into(), it.clone());
+        }
+        s.shared.entries.insert("settings.json".into(), file(0o600));
+        s
+    };
+    let s = shaped(link("/h/.claude/bridge-spawn"));
+    let items = share_items(&s.shared);
+    assert_eq!(
+        items,
+        [
+            "agents",
+            "plans",
+            "projects",
+            "sessions",
+            "settings.json",
+            "skills"
+        ]
     );
-    let p = plan_repair(&s).unwrap();
-    assert!(
-        !p.ops
-            .iter()
-            .any(|o| matches!(o, Op::Link { target, .. } if target.ends_with("/x.json"))),
-        "{:?}",
-        p.ops
-    );
+    for p in [plan_align(&s).unwrap(), plan_repair(&s).unwrap()] {
+        assert!(
+            !p.ops
+                .iter()
+                .any(|o| matches!(o, Op::Link { .. } | Op::Relink { .. })),
+            "{:?}",
+            p.ops
+        );
+        assert_eq!(
+            p.ops,
+            vec![Op::Remove(format!("{z}/bridge-spawn"))],
+            "{:?}",
+            p.ops
+        );
+    }
+    let s = shaped(Item::Dir { mode: Some(0o700) });
+    assert_eq!(plan_align(&s).unwrap(), Plan::default());
 }
 
 /// 原子写与编辑器的旁名不进共享集；号里一条 cc-monitor 建的链（`<号>/foo → 共享库/foo`）共享库那头已不在 ⇒ 对齐摘掉它；
@@ -454,7 +477,6 @@ fn side_names_are_not_shared_and_align_drops_its_own_dangling_links() {
     let mut s = snap(z);
     for n in sides {
         s.shared.entries.insert(n.into(), file(0o600));
-        assert!(is_excluded(n), "{n}");
     }
     let items = share_items(&s.shared);
     for n in sides {
@@ -495,4 +517,52 @@ fn align_drops_old_links_to_the_shared_lock_files() {
     z.entries
         .insert(".oauth_refresh.lock.owner".into(), link("/elsewhere/owner"));
     assert_eq!(plan_align(&snap(z)).unwrap(), Plan::default());
+}
+
+/// 对齐种下的空按需目录（共享库里有 `plans`、快照说它是空的）在修复里当作「共享库还没有」：恰好一个号里有实体 ⇒
+/// 先摘掉那个空目录、再把那一份挪过去，各号链上；对齐同一快照不挪不摘；共享库那一份不空 ⇒ 不挪，有实体的那个号只提示。
+#[test]
+fn repair_lifts_the_one_entity_over_the_empty_dir_align_seeded() {
+    let acct = |n: &str| format!("/h/.cc-monitor/accounts/{n}");
+    let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[{"name":"z","email":"","configDir":"/h/.cc-monitor/accounts/z","isDefault":true},{"name":"b","email":"","configDir":"/h/.cc-monitor/accounts/b","isDefault":false}]}"#;
+    let mut z = healthy();
+    z.entries
+        .insert("plans".into(), Item::Dir { mode: Some(0o700) });
+    let mut s = snap(z);
+    s.manifest_text = Some(text.into());
+    s.manifest = Some(Manifest::parse(text));
+    s.dirs.insert(acct("b"), healthy());
+    s.empty_shared.insert("plans".into());
+    let p = plan_repair(&s).unwrap();
+    let drop = Op::DropEmpty("/h/.claude/plans".into());
+    let moved = Op::Move {
+        from: format!("{}/plans", acct("z")),
+        to: "/h/.claude/plans".into(),
+    };
+    let d = p.ops.iter().position(|o| *o == drop);
+    let m = p.ops.iter().position(|o| *o == moved);
+    assert!(d.is_some() && m > d, "没先摘空目录再挪：{:?}", p.ops);
+    let relinked = Op::Link {
+        target: "/h/.claude/plans".into(),
+        at: format!("{}/plans", acct("z")),
+    };
+    assert!(p.ops.iter().position(|o| *o == relinked) > m, "{:?}", p.ops);
+    let a = plan_align(&s).unwrap();
+    assert!(
+        !a.ops
+            .iter()
+            .any(|o| matches!(o, Op::Move { .. } | Op::DropEmpty(_))),
+        "{:?}",
+        a.ops
+    );
+    s.empty_shared.clear();
+    let p = plan_repair(&s).unwrap();
+    assert!(
+        !p.ops
+            .iter()
+            .any(|o| matches!(o, Op::Move { .. } | Op::DropEmpty(_))),
+        "{:?}",
+        p.ops
+    );
+    assert!(p.notes.iter().any(|n| n.contains("plans")), "{:?}", p.notes);
 }

@@ -192,6 +192,8 @@ async fn main() {
     // 一次性查询已 exit；到此必是流模式。agent_home 日志放此（审计 correctness-重要①：
     // 一次性查询模式 stderr 只承载结构化错误/查询结果，不掺 info——兑现协议 v1 §3
     // 「错误 exit2 + stderr 纯 JSON 失败信封」，客户端可整段 JSON-parse stderr）。
+    // fd 软上限抬到硬上限：排在起中转、各台常驻流、监听口之前（起后端的桌面会话缺省只给 1024）。一次性那几条不抬（用不了几个 fd）。
+    tracing::info!("{}", cc_monitor_backend::platform::raise_open_files_limit());
     // 这台设了的各家数据目录（本机 `prefs.json` 的 `agentHomes`）交成那一家的目录环境变量：排在解析家目录、起任何会话之前。
     control::apply_agent_homes();
     let agent_home = resolve_agent_home();
