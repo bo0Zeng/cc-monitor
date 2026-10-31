@@ -295,7 +295,8 @@ pub(crate) async fn call_at(
     total: Deadline,
 ) -> Result<serde_json::Value, crate::wire::detail::Failed> {
     let peer = copy_core::peer_machine();
-    let fail = |code: &str, said: String| crate::wire::detail::failed(Some(CALL), code, said, None, None);
+    let fail =
+        |code: &str, said: String| crate::wire::detail::failed(Some(CALL), code, said, None, None);
     let req = serde_json::json!({
         "id": CALL_ID,
         "cmd": asked.cmd,

@@ -860,10 +860,7 @@ async fn a_files_read_failure_puts_the_system_words_into_the_detail() {
         .lines()
         .find_map(|l| l.strip_prefix(raw_label.as_str()))
         .unwrap_or_else(|| panic!("详情里没有原话那一行：{detail}"));
-    assert!(
-        !raw.trim().is_empty() && !said.contains(raw.trim()),
-        "{r}"
-    );
+    assert!(!raw.trim().is_empty() && !said.contains(raw.trim()), "{r}");
 }
 
 /// `stream-watch`：名单（连同要哪几个的主线外清单、手上各有什么）原样交给这条连接的 watcher（整份），它答的「从第几行起」原样回；

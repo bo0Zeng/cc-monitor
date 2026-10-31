@@ -1104,11 +1104,19 @@ fn the_commands_released_from_ui_only_are_on_the_cli() {
 #[test]
 fn the_cli_envelope_says_in_said() {
     let mut err: Vec<u8> = Vec::new();
-    let rc = refuse_unknown_to(&["--no-such-flag".to_string()], &mut err, &crate::Tz::default());
+    let rc = refuse_unknown_to(
+        &["--no-such-flag".to_string()],
+        &mut err,
+        &crate::Tz::default(),
+    );
     let line = String::from_utf8(err).unwrap();
     let v: serde_json::Value = serde_json::from_str(line.trim()).expect("一行 JSON");
-    let keys: std::collections::BTreeSet<&str> =
-        v.as_object().expect("对象").keys().map(String::as_str).collect();
+    let keys: std::collections::BTreeSet<&str> = v
+        .as_object()
+        .expect("对象")
+        .keys()
+        .map(String::as_str)
+        .collect();
     assert_eq!(rc, 2);
     assert_eq!(keys, ["code", "detail", "said"].into(), "{line}");
     assert!(v["said"].as_str().is_some_and(|s| !s.is_empty()), "{line}");

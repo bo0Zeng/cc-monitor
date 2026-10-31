@@ -63,9 +63,7 @@ impl Backends for Fake {
             "refuse" => Box::pin(async {
                 Err(CallError::Peer {
                     why: PeerFault::Refused {
-                        body: Body(
-                            br#"{"code":"no","said":"\xe4\xb8\x8d\xe8\xa1\x8c"}"#.to_vec(),
-                        ),
+                        body: Body(br#"{"code":"no","said":"\xe4\xb8\x8d\xe8\xa1\x8c"}"#.to_vec()),
                     },
                 })
             }),

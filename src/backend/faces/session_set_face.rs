@@ -5,8 +5,8 @@
 
 use crate::control::session_open as open;
 use crate::control::session_set::{
-    self as set, answer, GroupRef, Hands, Live, SetLaunchReq, SetLaunched, SetPlan,
-    SetPlanErr, SetPlanReq,
+    self as set, answer, GroupRef, Hands, Live, SetLaunchReq, SetLaunched, SetPlan, SetPlanErr,
+    SetPlanReq,
 };
 use crate::wire::spec::Settle as _;
 use crate::wire::typed::{of_fail_with, Command};

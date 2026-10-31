@@ -232,7 +232,9 @@ fn the_layering_table_is_pinned_cell_by_cell() {
             }),
             w::CallError::Peer {
                 why: w::PeerFault::Refused {
-                    body: w::Body(br#"{"code":"wrong_owner","said":"x\u0000y","detail":""}"#.to_vec()),
+                    body: w::Body(
+                        br#"{"code":"wrong_owner","said":"x\u0000y","detail":""}"#.to_vec(),
+                    ),
                 },
             },
         ),
@@ -278,7 +280,12 @@ fn a_refusal_with_data_carries_it_in_the_body() {
         code: "account_unavailable".into(),
         said: "m".into(),
         detail: String::new(),
-        data: Some(serde_json::from_str(r#"{"requested":"z","pinned":true,"listKnown":true,"alternative":null}"#).unwrap()),
+        data: Some(
+            serde_json::from_str(
+                r#"{"requested":"z","pinned":true,"listKnown":true,"alternative":null}"#,
+            )
+            .unwrap(),
+        ),
     });
     let w::CallError::Peer {
         why: w::PeerFault::Refused { body },

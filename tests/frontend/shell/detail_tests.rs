@@ -350,10 +350,9 @@ fn naming_does_not_split_raw_words_that_look_like_items() {
 #[test]
 fn a_relayed_refusal_gets_the_local_line_once_at_the_host() {
     let wrote = format!("{}：io_failed", label("detail.label.code"));
-    let body = serde_json::to_vec(
-        &serde_json::json!({"code": "io_failed", "said": "m", "detail": wrote}),
-    )
-    .unwrap();
+    let body =
+        serde_json::to_vec(&serde_json::json!({"code": "io_failed", "said": "m", "detail": wrote}))
+            .unwrap();
     let refused = || w::err_from_wire(w::WireErr::Refused, body.clone());
     let detail_of = |e: &w::CallError| match e {
         w::CallError::Peer {

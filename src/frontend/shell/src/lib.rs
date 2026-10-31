@@ -1216,7 +1216,10 @@ fn agent_window_spot(from: &tauri::WebviewWindow, open: usize) -> Option<(f64, f
 /// 已在的窗收 `settings-target` 事件，新建的窗由初始化脚本带进 `window.__CCM_SETTINGS_TARGET__`。
 /// **必须 `async`**（同步命令建窗会死锁）。默认 960×740、最小 640×480，夹进工作区正中。
 #[tauri::command]
-async fn open_settings_window(app: tauri::AppHandle, target: Option<String>) -> Result<(), cmd_wire::failed::Failed> {
+async fn open_settings_window(
+    app: tauri::AppHandle,
+    target: Option<String>,
+) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = async move {
         use tauri::Manager;
         let label = SETTINGS_WINDOW_LABEL;
@@ -1372,7 +1375,9 @@ fn get_log_file_info(
 /// 用系统默认编辑器打开当前 log 文件（rolling::daily 写入的 mtime 最新那个）。
 /// 失败常见原因：log_enabled=false 还没生成过 log 文件 → Err 让前端 alert 提示。
 #[tauri::command]
-async fn open_log_file(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Result<(), cmd_wire::failed::Failed> {
+async fn open_log_file(
+    state: tauri::State<'_, Arc<logging::LoggingState>>,
+) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = async move {
         let path = state
             .current_log_file()
@@ -1388,7 +1393,9 @@ async fn open_log_file(state: tauri::State<'_, Arc<logging::LoggingState>>) -> R
 
 /// 用资源管理器打开 log 目录。
 #[tauri::command]
-async fn open_log_dir(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Result<(), cmd_wire::failed::Failed> {
+async fn open_log_dir(
+    state: tauri::State<'_, Arc<logging::LoggingState>>,
+) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = async move {
         let dir = state.log_dir();
         // 目录可能还不存在（log_enabled=false 时不创建）

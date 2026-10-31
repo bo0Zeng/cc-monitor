@@ -551,8 +551,7 @@ impl FileWindow {
                     .await;
                     // 打不开（后端说是哪一种）⇒ 记下那一种，列表顶上画那一条 ＋ 出路。
                     let fail = r.as_ref().err().and_then(|f| {
-                        super::source::OpenFail::of_code(&f.code)
-                            .map(|k| (k, f.said.clone()))
+                        super::source::OpenFail::of_code(&f.code).map(|k| (k, f.said.clone()))
                     });
                     if store_listed_if_current(&l, mine, r) {
                         *l.open_fail.lock().unwrap() = fail;

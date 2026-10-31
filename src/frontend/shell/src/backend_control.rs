@@ -166,7 +166,9 @@ async fn wake_backend_feed(origin: &str) -> Result<(), Said> {
 /// 这里只发一次、拿回结局 `{stopped: graceful | killed | not_running, pid}`，机器页按它说一句。
 /// 远端那一条由本机后端先停它手上那台的常驻流再发（`machine-stop`）。本机那一支会等到结局 ⇒ 等的那一段进阻塞线程池。
 #[tauri::command]
-pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::StopAnswer, cmd_wire::failed::Failed> {
+pub async fn backend_stop(
+    origin: String,
+) -> Result<crate::remote_resident::StopAnswer, cmd_wire::failed::Failed> {
     let r: Result<crate::remote_resident::StopAnswer, Said> = async move {
         check_origin(&origin)?;
         if is_local(&origin) {

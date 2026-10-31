@@ -149,13 +149,11 @@ pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
         CallError::Unavailable { code, .. } => Layered {
             error: w::CallError::Peer {
                 why: w::PeerFault::Refused {
-                    body: w::Body(
-                        refusal_body(&cmd_wire::failed::Failed {
-                            code: code.clone(),
-                            said: e.to_string(),
-                            ..Default::default()
-                        }),
-                    ),
+                    body: w::Body(refusal_body(&cmd_wire::failed::Failed {
+                        code: code.clone(),
+                        said: e.to_string(),
+                        ..Default::default()
+                    })),
                 },
             },
             detail: Detail::Remote {
@@ -167,13 +165,11 @@ pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
         CallError::Differs { said, .. } => Layered {
             error: w::CallError::Peer {
                 why: w::PeerFault::Refused {
-                    body: w::Body(
-                        refusal_body(&cmd_wire::failed::Failed {
-                            code: cmd_wire::SHAPE_DIFFERS.to_string(),
-                            said: said.clone(),
-                            ..Default::default()
-                        }),
-                    ),
+                    body: w::Body(refusal_body(&cmd_wire::failed::Failed {
+                        code: cmd_wire::SHAPE_DIFFERS.to_string(),
+                        said: said.clone(),
+                        ..Default::default()
+                    })),
                 },
             },
             detail: Detail::Remote {

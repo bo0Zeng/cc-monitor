@@ -49,10 +49,10 @@ fn clash() -> Rebuff {
             said: "同名 2 项".into(),
             detail: String::new(),
             data: Some(serde_json::json!({"conflicts": [
-            {"key": "0", "name": "a", "kind": "file", "size": 3, "size_text": "3 字节", "mtime_text": "14:02",
-             "there": "file", "there_size": 1, "there_size_text": "1 字节", "there_mtime_text": "10-01 09:10", "answers": ["overwrite", "skip", "keep_both"]},
-            {"key": "1", "name": "c", "kind": "dir", "there": "dir", "answers": ["skip", "keep_both"]},
-        ]})),
+                {"key": "0", "name": "a", "kind": "file", "size": 3, "size_text": "3 字节", "mtime_text": "14:02",
+                 "there": "file", "there_size": 1, "there_size_text": "1 字节", "there_mtime_text": "10-01 09:10", "answers": ["overwrite", "skip", "keep_both"]},
+                {"key": "1", "name": "c", "kind": "dir", "there": "dir", "answers": ["skip", "keep_both"]},
+            ]})),
         },
         cut: false,
     }

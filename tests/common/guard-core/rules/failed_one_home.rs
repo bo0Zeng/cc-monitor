@@ -35,6 +35,10 @@ fn failed_shape_lives_only_in_cmd_wire() {
             .map(|f| (f.rel.clone(), hits(f.prod())))
             .filter(|(_, n)| *n > 0)
             .collect();
-        equal("生产 Rust 里 `struct Failed` 的住处", found, [(HOME.to_string(), 1)]);
+        equal(
+            "生产 Rust 里 `struct Failed` 的住处",
+            found,
+            [(HOME.to_string(), 1)],
+        );
     });
 }
