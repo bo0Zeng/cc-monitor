@@ -12,6 +12,7 @@
 //!   也是那一张，不是码；码只剩这台自己没查成的 `failed` · `child_timed_out`。
 //! - `tmux`：会话在 tmux 里（窗口关了时壳才给［在终端里打开］，出口原样交壳）。
 
+use crate::common::seen_terminal::WindowLabel;
 use crate::dial::opened_windows::Records;
 use crate::dial::remote_ask::{Remote, Said, Table};
 use crate::dial::terminal_processes::{Link, OpenedHere, TerminalProcessesReq};
@@ -38,7 +39,8 @@ pub(crate) struct SessionWindowReq {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct SessionWindow {
     /// 显示它的终端带的窗口标签（`<shell 进程号>-<起始时刻>`），最近动静在前；没带 ⇒ 空。
-    pub(crate) labels: Vec<String>,
+    #[cfg_attr(test, ts(type = "Array<string>"))]
+    pub(crate) labels: Vec<WindowLabel>,
     /// 这台上显示它的那个终端进程往上的进程链（自下而上）；空 ⇔ 有 `face`。
     pub(crate) chain: Vec<Link>,
     /// 会话在 tmux 里。
@@ -230,7 +232,7 @@ where
 }
 
 /// 链空、只有那一张的那一份。
-fn reason(labels: Vec<String>, tmux: bool, why: Unplaced, machine: &str) -> SessionWindow {
+fn reason(labels: Vec<WindowLabel>, tmux: bool, why: Unplaced, machine: &str) -> SessionWindow {
     SessionWindow {
         labels,
         chain: Vec::new(),
