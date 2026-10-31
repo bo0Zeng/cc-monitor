@@ -383,11 +383,6 @@ impl FileWindow {
         self.cwd != before
     }
 
-    /// 地址栏现在是不是在手输（判据用）。
-    pub fn address_editing(&self) -> Option<&str> {
-        self.addr_edit.as_deref()
-    }
-
     /// 「选中的」那一件此刻能不能做：能 ⇒ `None`；不能 ⇒ 悬停说的那一句（没选中 · 这几项做不了 · 这台做不到）。
     pub fn command_blocked(&self, a: super::select::Action) -> Option<String> {
         let rows = self.listing.rows.lock().unwrap();
@@ -663,7 +658,7 @@ impl FileWindow {
             Cmd::NewFile => {
                 self.begin_new_file();
             }
-            // 系统的选文件框（可多选）；选完由 `settle_pick` 接上拖入那一条（先一次问完同名，再并行传）。
+            // 系统的选文件框（可多选）；选完由 `settle_pick_with` 接上拖入那一条（先一次问完同名，再并行传）。
             Cmd::Upload => {
                 self.start_pick(super::picker::Purpose::Upload, ctx);
             }

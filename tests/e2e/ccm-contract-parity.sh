@@ -2,20 +2,11 @@
 # U9a「保住清单差分对拍」：把里那七条散文式的「U9 之后必须保住」，
 # 变成会红的判据。跑的是**真 `ccm`**（= 后端二进制本体），不是 shim、不是手搓字符串。
 #
-# ★★ `K-R48` 第二拍（09-11）：被测对象从那份 bash `ccm` 换成**后端二进制**。
-#   〔用@09-11 `K33`〕逐字「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」。
-#   对本套件做过两件事，**分开记**：
-#     ① **repoint** —— `CCM` 指向 `cc-monitor-backend`（`argv[0]` basename 为 `ccm` 即进一次性模式），
-#        调用点从 `bash "$CCM"` 改成 `"$CCM"`。**39 条断言的判定文字一个字没改。**
-#     ② **删 33 条** —— 它们测的全是「**bash 去问另一个进程**」这件事的形状：
-#        `A″`(7) 账号 configDir 的 provenance（夹具要害逐字是「backend 与 manifest 必须答不同的目录」，
-#        而同一个进程之下两者是同一件事，这个夹具**造不出来了**）·
-#        `A′d`/`A′e`(13) backend 在位/不在位时 argv 从哪来、部署落点发现、答不出时的静默退路 ·
-#        `A′f`(6) backend hang/garbage/broken 三种坏法的兜底与超时 ·
-#        `A′g`(2) 后端回的命令串不许被 shell 改写（**已落成后端侧 Rust 判据**
-#        `control::ccm::plan::tests::a_command_from_the_backend_is_never_rewritten_by_the_shell`）·
-#        `A′h`(5) `$CCM_BACKEND_BIN` → 部署落点 → PATH 的查找次序（`K-R48` `§0h` 逐字：
-#        「这道题消失了，不是被挑了边」）。
+# ★★ 被测对象是**后端二进制**：后端只有一个，没有单独的 bash 版 ccm。
+#   `CCM` 指向 `cc-monitor-backend`（`argv[0]` basename 为 `ccm` 即进一次性模式）。
+#   「去问另一个进程」那一族（账号目录从哪来 · 后端在不在位 · 后端坏了怎么兜 · 查找次序）
+#   在同一个进程之下没有对象，不在这里测；「后端回的命令串不许被 shell 改写」是后端侧 Rust 判据
+#   `control::ccm::plan::tests::a_command_from_the_backend_is_never_rewritten_by_the_shell`。
 #
 # ## 为什么单独一套，而不是塞进既有五套
 #
@@ -48,7 +39,7 @@
 set -o pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-# ★★ `K-R48` 第二拍：被测对象 = 后端二进制，**名字必须是 `ccm`**（`intercept` 认的是
+# ★★ 被测对象 = 后端二进制，**名字必须是 `ccm`**（`intercept` 认的是
 #   `argv[0]` 的 basename）⇒ 在一次性目录里做一条叫 `ccm` 的软链指过去。
 # 🔴 **fail-closed**：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份。
 CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
@@ -80,10 +71,7 @@ exit 0
 SHIM
 chmod +x "$W/bin/tmux"
 
-# ⚠ **这里原来有一整块假后端脚手架，已整块删了。**
-#   它存在的理由逐字是「本套件必须让 ccm『查得到 backend』，否则每一条真跑都会被身份前置检查挡下」
-#   （`U-NP④` 08-14）＋「账号解析改成问后端之后，每一条真跑都会先问它一次」（`K-C1` 08-24）。
-#   **这两条今天都没有指称对象了**：敲的那个命令**就是**后端 ——「查得到后端」不是一个问题，
+# ⚠ **这里不搭假后端**：敲的那个命令**就是**后端 ——「查得到后端」不是一个问题，
 #   账号表由它自己在家目录下读（`<家>/.cc-monitor/accounts/accounts.json` 是唯一事实源，不再经一次 argv 往返）。
 #   现打验过：`TMUX` 有值 · agent=claude · `HOME` 是空沙箱 —— 一个后端都没有，照样 rc=0。
 
@@ -152,7 +140,7 @@ echo "===== A 组：--ccm-print 说的 == 真跑做的 ====="
 pair "codex（不清 claude 的嵌套标记）"     -- --ccm-agent codex
 pair "claude（嵌套 env 清理）"             -- --ccm-agent claude
 pair "claude + --account b"               -- --ccm-agent claude --account b
-# Codex 没有账号这一维 ⇒ `--account` 真跑与 print 都明说不收（从前静默导出一个它不读的变量）。
+# Codex 没有账号这一维 ⇒ `--account` 真跑与 print 都明说不收（不静默导出一个它不读的变量）。
 NOACCT="ccm: codex 不可选账号 · 不收 --account / --account-dir · --base 照收"
 ck "codex + --account b：真跑明说不收" "$NOACCT" \
    "$(base_env "$CCM" -- --ccm-agent codex --account b --cwd "$CWD" --launcher "$W/bin/envdump" 2>&1)"
@@ -161,7 +149,7 @@ ck "codex + --account b：--ccm-print 同样不收" "$NOACCT" \
 pair "claude + --account b + 透传（交给 agent 的词不改环境）" AL3_PASSTHRU=1 -- --ccm-agent claude --account b
 
 # `--base` 要有意义，基础环境里必须**先有**一个 CLAUDE_CONFIG_DIR 让它去 unset。
-# 从前靠再带一个 `--model` 撑住受控键集合，今天换成 codex（它留着嵌套标记）：`claude + --base` 单独跑的话，受控键集合会被清成**空集**
+# 这里用 codex（它留着嵌套标记）撑住受控键集合：`claude + --base` 单独跑的话，受控键集合会被清成**空集**
 # （config_dir 被 unset、四个嵌套标记被 unset）⇒
 # 差分退化成 `"" == ""`。上面那条自检就是逮到这个的（第一次跑当场红）。
 BASE_EXTRA=(CLAUDE_CONFIG_DIR="$W/acct-z")
@@ -176,7 +164,7 @@ BASE_EXTRA=()
 
 echo
 echo "===== A′ 组：print↔exec 的 **argv** 一致（A 组只比 env，且六格全是 new）====="
-# ★ 这一组的开张理由是一个**存活的反例**（F06b-1b，2026-08-04）：
+# ★ 这一组防的是一个**存活的反例**：
 # 往 `--print` 的非容器出口里塞一句「现在就去问后端要 command」，打印串从
 # `exec claude --resume abc-123` 变成 `exec claude --resume STUB-FROM-BACKEND`
 # —— 而 `ccm-print-parity`(12) 与本套件(31) **两套全绿**。
@@ -248,13 +236,13 @@ ck "--account b 真跑注入其 configDir" "CLAUDE_CONFIG_DIR=$W/acct-b" \
 ck "--model opus 真跑原样交给 agent" "ARGV|--model opus" \
    "$(actual_argv --model opus -- --ccm-agent claude)"
 # 继承值刻意用 **b**（≠ manifest 的默认号 z）：这样下面「不带 --base 时它还在」
-# 同时证明了 R11 的「继承优先于默认号」，而不是与「默认号被注入」不可区分。
+# 同时证明了「继承优先于默认号」，而不是与「默认号被注入」不可区分。
 BASE_EXTRA=(CLAUDE_CONFIG_DIR="$W/acct-b")
 ck "--base 真跑把继承来的 CLAUDE_CONFIG_DIR 清干净（#75 逃生口）" "" \
    "$(actual_env -- --ccm-agent claude --base | tr '|' '\n' | grep '^CLAUDE_CONFIG_DIR=')"
 # 反面：同一继承环境下**不带** --base 时该值必须还在 —— 否则上一条会被「ccm 在这条路上
 # 整体没跑起来」这种劣化冒充成功（期望空串型断言的固有弱点）。
-ck "同一继承环境下不带 --base 时它必须还在（上一条的反面 + R11 继承优先）" "CLAUDE_CONFIG_DIR=$W/acct-b" \
+ck "同一继承环境下不带 --base 时它必须还在（上一条的反面 + 继承优先）" "CLAUDE_CONFIG_DIR=$W/acct-b" \
    "$(actual_env -- --ccm-agent claude | tr '|' '\n' | grep '^CLAUDE_CONFIG_DIR=')"
 BASE_EXTRA=()
 ck "claude 的四个嵌套标记真跑后一个不剩" "" \
@@ -313,9 +301,8 @@ ck "agents= 行列出 claude 与 codex" "1" \
 # ── 🔴 **问一份真的二进制「你是哪一次构建」** ────────────────
 #
 # 这三格是唯一**真跑一份编出来的二进制**的判据（上面 Rust 侧那几条跑的是测试壳）。
-# 问题（`K-R68` 摸底）：在此之前，后端的身份只能去读它
-# **旁边**那个 `.build_id` 文本文件，而那是 `release.yml` 从源码常量抠出来写的标签
-# —— 三个载体的标签恒等 ⇒ 一格证据都不提供。
+# 只读它**旁边**那个 `.build_id` 文本文件不算数：那是 `release.yml` 从源码常量抠出来写的标签，
+# 三个载体的标签恒等 ⇒ 一格证据都不提供。
 #
 # ⚠ **左值取自源码那一处唯一住址，不手抄** —— 手抄一个 `p2f-…` 进来，
 #   下次 bump 时这一格会以「假红」的形式提醒错人（而且它测的会变成「我抄对了没有」）。
@@ -337,7 +324,7 @@ ck "build= 与 version= 不是同一个值（前者答『你是谁』，后者�
 
 # ── **申报与兑现要一起量** ──────────────────────────────────
 # monitor 侧 `history.rs::RELAY_KEEPS_THE_OLD_PATH` 的退役条件点名的就是这个 token。
-# 它先前的形状是「能力在、声明不在」：容器路真的转发 `ANTHROPIC_BASE_URL`，
+# 要防的形状是「能力在、声明不在」：容器路真的转发 `ANTHROPIC_BASE_URL`，
 # 而 `capabilities=` 里一个 token 都没声明它 ⇒ 那条降级理由挡的是我们自己做到的事。
 # ⇒ 这里**两半一起钉**：说了（① ），而且真做了（② ），外加一条反空真（③ ）。
 ck "capabilities= 声明 base-url-across-tmux（monitor 侧退役条件点名的那个 token）" "1" \
@@ -353,13 +340,5 @@ NORELAY_PRINT="$(base_env "$CCM" -- --ccm-print --ccm-tmux=r61-caps --cwd "$CWD"
 ck "反空真：不设中转地址时那一串里没有 ANTHROPIC_BASE_URL" "0" \
    "$(printf '%s\n' "$NORELAY_PRINT" | grep -c 'ANTHROPIC_BASE_URL')"
 
-# ⚠ **`A′f`(6) · `A′g`(2) · `A′h`(5) 共 13 条整组删了**
-#   （verdicts 第 344–356 行；`A′g` 判 `M/rust`，其余判 `N`）。
-#   · `A′f`：backend hang / garbage / broken 三种坏法的兜底与 `timeout 3` —— 超时与降级都是**跨进程调用的形状**。
-#   · `A′g`：「后端回的命令串里的 `*` 不许被 cwd 的文件名改写、`$(…)` 不许被执行」——
-#     🔴 **这一条没有消失，它搬进了 Rust**：`control::ccm::plan::tests::
-#     a_command_from_the_backend_is_never_rewritten_by_the_shell`（第一拍补的 `set -f`，PM 亲手切过刀验红）。
-#   · `A′h`：`$CCM_BACKEND_BIN` → 部署落点 → PATH 的查找次序 —— `K-R48` `§0h` 逐字
-#     「这道题消失了，不是被挑了边」。
 echo
 finish

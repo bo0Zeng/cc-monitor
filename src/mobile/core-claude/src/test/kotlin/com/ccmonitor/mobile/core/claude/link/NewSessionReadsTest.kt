@@ -162,4 +162,12 @@ class NewSessionReadsTest {
         assertFalse(s.auto)
         assertNull(Login.started(mapOf("job" to "j1", "url" to "u", "paste" to "other", "auto" to false, "opened" to false)))
     }
+
+    @Test
+    fun `accounts-login-cmd：只交号名；回包照 AccountLoginCmd 解出那一行；缺格 ⇒ 解不出`() {
+        assertEquals("accounts-login-cmd", Login.CMD)
+        assertEquals(mapOf("name" to "team"), Login.cmd("team"))
+        assertEquals("CLAUDE_CONFIG_DIR=/x claude /login", Login.cmdOf(mapOf("cmd" to "CLAUDE_CONFIG_DIR=/x claude /login")))
+        assertNull(Login.cmdOf(mapOf("line" to "x")))
+    }
 }

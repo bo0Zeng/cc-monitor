@@ -162,12 +162,6 @@ impl FileWindow {
         true
     }
 
-    /// 「属性」框开着吗（判据用）。
-    #[cfg(test)]
-    pub fn props(&self) -> Option<&Props> {
-        self.props.as_ref()
-    }
-
     /// 画「属性」框（开着才画；同一种对话框 `kit::dialog`）。点「关闭」· Esc · 点压暗的底就收。
     pub(super) fn props_ui(&mut self, ui: &mut egui::Ui) {
         let Some(p) = &self.props else {

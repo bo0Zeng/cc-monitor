@@ -3,19 +3,6 @@
 use cmd_wire::files::FileClass;
 use egui_phosphor::regular as ph;
 
-/// 全部种类（判据逐个对图标）。
-#[cfg(test)]
-pub const ALL: [FileClass; 8] = [
-    FileClass::Folder,
-    FileClass::Text,
-    FileClass::Code,
-    FileClass::Image,
-    FileClass::Archive,
-    FileClass::Pdf,
-    FileClass::Link,
-    FileClass::Other,
-];
-
 /// 名字以 `.` 起头 ⇒ 隐藏文件（列表里淡一级，可以切成不显示）。
 pub fn is_hidden(name: &str) -> bool {
     name.starts_with('.') && name != "." && name != ".."
