@@ -86,7 +86,11 @@ impl Trail {
         if let Some(t) = self.open.remove(&resp) {
             self.flown.push_back((t, now));
         }
-        while self.flown.front().is_some_and(|(_, e)| e + SHORT_SPAN < now) {
+        while self
+            .flown
+            .front()
+            .is_some_and(|(_, e)| e + SHORT_SPAN < now)
+        {
             self.flown.pop_front();
         }
     }
@@ -147,7 +151,11 @@ impl Trail {
     /// 起伏（σ/μ）：最近 [`SPREAD_BINS`] 段里量得到的那几段。
     fn spread(&self, now: u64) -> Option<f64> {
         let all = self.bins(now);
-        let bins: Vec<f64> = all[BINS - SPREAD_BINS..].iter().flatten().copied().collect();
+        let bins: Vec<f64> = all[BINS - SPREAD_BINS..]
+            .iter()
+            .flatten()
+            .copied()
+            .collect();
         if bins.len() < SPREAD_MIN {
             return None;
         }
