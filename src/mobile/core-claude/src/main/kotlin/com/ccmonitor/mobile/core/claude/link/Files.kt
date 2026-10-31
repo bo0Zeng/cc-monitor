@@ -21,6 +21,7 @@ import com.ccmonitor.mobile.core.wire.gen.OnExists
 import com.ccmonitor.mobile.core.wire.gen.PreviewGate
 import com.ccmonitor.mobile.core.wire.gen.ReadTextReq
 import com.ccmonitor.mobile.core.wire.gen.Sha256Expect
+import com.ccmonitor.mobile.core.wire.gen.Staged
 import com.ccmonitor.mobile.core.wire.gen.StatReq
 import com.ccmonitor.mobile.core.wire.gen.WirePath
 import com.ccmonitor.mobile.core.wire.gen.WirePathObjValue
@@ -343,6 +344,7 @@ object FilesDeleteSession {
 object FilesCommitUpload {
     const val COMMAND: String = Commands.FilesCommitUpload.NAME
 
+    /** [staged]：核心送完的那一份（[CoreLink.transfer] 的 [Transfer.Stage] 回的那一形，`Wire.bind<Staged>` 解）。 */
     fun args(
         dir: RemotePath,
         name: String,
@@ -361,20 +363,4 @@ object FilesCommitUpload {
                 single = true,
             ),
         )
-
-    /** 核心送完的那一份（[CoreLink.transfer] 的 [Transfer.Stage] 回的那一形）。 */
-    data class Staged(
-        val key: String,
-        val chunks: Long,
-        val bytes: Long,
-        val sha256: String,
-    ) {
-        companion object {
-            fun of(data: Any?): Staged? =
-                (data as? Map<*, *>)?.let { m ->
-                    val n = { k: String -> (m[k] as? Number)?.toLong() }
-                    Staged(m["key"] as? String ?: return null, n("chunks") ?: return null, n("bytes") ?: return null, m["sha256"] as? String ?: return null)
-                }
-        }
-    }
 }

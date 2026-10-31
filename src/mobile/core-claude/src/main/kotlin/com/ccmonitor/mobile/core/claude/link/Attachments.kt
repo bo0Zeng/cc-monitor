@@ -1,13 +1,14 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.wire.gen.AttachItem
-import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.AttachVerdict
+import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.SessionAttachmentCheckReq
 import com.ccmonitor.mobile.core.wire.gen.SessionAttachmentCommitReply
 import com.ccmonitor.mobile.core.wire.gen.SessionAttachmentCommitReq
 import com.ccmonitor.mobile.core.wire.gen.SessionAttachmentDropReq
 import com.ccmonitor.mobile.core.wire.gen.Sha256Expect
+import com.ccmonitor.mobile.core.wire.gen.Staged
 
 /*
  * 聊天里随一句发的附件（`IPC-COMMANDS.md`「session-attachment-*」）：收不收 · 落多大 · 落在哪全由会话那台判；手机只拼入参、解成品。
@@ -39,7 +40,7 @@ object SessionAttachmentCommit {
     fun args(
         sid: String,
         name: String,
-        staged: FilesCommitUpload.Staged,
+        staged: Staged,
     ): Map<String, Any?> =
         Commands.SessionAttachmentCommit.args(SessionAttachmentCommitReq(sid, staged.key, name, staged.bytes, staged.chunks, Sha256Expect(staged.sha256)))
 
