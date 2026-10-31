@@ -96,7 +96,7 @@ interface CoreLink {
     /**
      * 分块传（循环在核心里，桌面同一份）：[fd] 现开本机那一份、交出描述符（核心用完就关；开不了就抛 [java.io.IOException]）。
      * 每一块等至多 [withinMs]，走到哪经 [moved]（已过字节 · 总数，不知道 ⇒ `-1`）；结局同 [call]。
-     * [Transfer.Stage]：送进那台的暂存区，成了 ⇒ `{key, chunks, bytes, sha256}`；[Transfer.Pull]：读回写进本机那一份，成了 ⇒ `{bytes}`。
+     * [Transfer.Stage]：送进那台的暂存区，成了 ⇒ `{key, chunks, bytes, sha256}`。
      */
     suspend fun transfer(
         how: Transfer,
@@ -108,6 +108,9 @@ interface CoreLink {
     /** 一组一条命令走到哪（全部编号的都在这一条流上；按 [BatchLine.id] 认自己那一组）。 */
     val batches: SharedFlow<BatchLine>
 
+    /** 核心里此刻有活在走（一组 · 一趟分块传，核心交的 `busy`）：保活服务照它判，切到后台活不断。 */
+    val working: StateFlow<Boolean>
+
     /**
      * 落过盘、这一趟开起来接回来的那几组（[BatchLine.kept]）各自最后那一格：屏后开也照画。
      * 收场的那一格只交一次（交过 · 收场时 [batches] 上有人在看 ⇒ 不再交）。
@@ -116,8 +119,9 @@ interface CoreLink {
 
     /**
      * 起一组（全过程与字在核心里，桌面同一份）：[want] 是要做什么 —— `delete {root, items [{rel, name, dir}]}` ·
-     * `chmod {root, items [{rel, name}], mode}` · `copy {from, names, to}` · `retry id` · `undo id`，入参由核心拼。
-     * 回编号；这台不在 ⇒ 0。
+     * `chmod {root, items [{rel, name}], mode}` · `copy {from, names, to}` ·
+     * `download {folder, items [{path, name}], here}`（下到本机 [folder] 那一棵：`folder` 原样一串，每项要本机那一份时经 [LocalSaves] 开）·
+     * `retry id` · `undo id`，入参由核心拼。回编号；这台不在 ⇒ 0。
      */
     suspend fun batch(want: Map<String, Any?>): Long
 
@@ -136,17 +140,11 @@ interface CoreLink {
     /** 一问一答撞了同名（码 `exists` 的 `data`）⇒ 抽屉那几行（说明由核心写，一组那一问同一份）；认不出 ⇒ 空。 */
     fun clashes(data: Any?): List<ClashRow>
 
-    /** 手机这一侧问的同名（下载 · 上传）那一答 ⇒ [keys] 那几行每个键怎么做（`overwrite` · `skip` · `keep_both`，核心认：逐项没点的照跳过）；取消 ⇒ `null`。 */
+    /** 手机这一侧问的同名（上传）那一答 ⇒ [keys] 那几行每个键怎么做（`overwrite` · `skip` · `keep_both`，核心认：逐项没点的照跳过）；取消 ⇒ `null`。 */
     fun decided(
         keys: List<String>,
         answer: BatchAnswer?,
     ): Map<String, Decide>?
-
-    /**
-     * 下载一组那几格（逐项拉在手机这一圈里走，字在核心）：`{id, machine, names, phase, …}` ⇒ 一格（[BatchLine]）；读不动 ⇒ `null`。
-     * `phase`：`asking`（`here` 本机文件夹里已有的名字）· `running`（`done` · `part` · `current`）· `cut` · `ended`（`outcomes` 逐项结局）。
-     */
-    fun downloadEvent(want: Map<String, Any?>): BatchLine?
 
     /** 断开这一条（有的话）、马上整份重来：停在要人动手那一步的（没装 · 起不来）也重拨。 */
     fun reconnect()
@@ -163,12 +161,6 @@ sealed interface Transfer {
     /** 上传那一半；[name] 是本机那一份在句子里的名字。 */
     data class Stage(
         val name: String,
-    ) : Transfer
-
-    /** 下载：那台上的 [path] 读回；[shown] 是本机落点在句子里的名字。 */
-    data class Pull(
-        val path: RemotePath,
-        val shown: String,
     ) : Transfer
 }
 

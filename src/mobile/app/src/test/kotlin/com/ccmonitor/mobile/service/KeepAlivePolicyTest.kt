@@ -87,19 +87,30 @@ class KeepAlivePolicyTest {
     }
 
     /**
-     * `NoWork` 一支就是 `n == 0 && !inFlight`（没会话也没在飞轮次）。
+     * `NoWork` 一支就是 `n == 0 && !inFlight && !moving`（没会话 · 没在飞轮次 · 核心里没有在传的）。
      *
-     * 四种 `(n, inFlight)` 组合全覆。
+     * `(n, inFlight, moving)` 组合全覆。
      */
     @Test
-    fun theNoWorkBranchIsExactlyNoSessionsAndNothingInFlight() {
+    fun theNoWorkBranchIsExactlyNoSessionsNothingInFlightAndNothingMoving() {
         for (n in listOf(0, 1, 7)) {
             for (inFlight in listOf(true, false)) {
-                val before = n == 0 && !inFlight // 「没会话也没在飞轮次」那句条件
-                val after = KeepAlivePolicy.stopReasonFor(KeepAliveStopReason.NoWork, hasWork = n > 0 || inFlight) != null
-                assertEquals("自停条件变了（n=$n inFlight=$inFlight）", before, after)
+                for (moving in listOf(true, false)) {
+                    val idle = n == 0 && !inFlight && !moving
+                    val stops = KeepAlivePolicy.stopReasonFor(KeepAliveStopReason.NoWork, hasWork = KeepAlivePolicy.hasWork(n, inFlight, moving)) != null
+                    assertEquals("自停条件变了（n=$n inFlight=$inFlight moving=$moving）", idle, stops)
+                }
             }
         }
+    }
+
+    /** 🔴 会话 0 · 轮次不在飞 · 核心里有一趟在传（文件页下一组 · 附件在传）⇒ 不停：切到后台那一趟不跟着进程没了。 */
+    @Test
+    fun aTransferStillMovingKeepsTheServiceAlive() {
+        assertNull(
+            "有一趟在传还自停 ⇒ 切到后台进程随时被收，下到一半那一组没了",
+            KeepAlivePolicy.stopReasonFor(KeepAliveStopReason.NoWork, hasWork = KeepAlivePolicy.hasWork(sessions = 0, inFlight = false, moving = true)),
+        )
     }
 
     /** 有活时 `NoWork` 不停（否则会把正在用的保活服务停掉，反方向的 bug）。 */

@@ -49,14 +49,6 @@ object CoreResident : ResidentCore {
         withinMs: Long,
     ): Long = Core.transferStage(handle, fd, name, withinMs)
 
-    override fun pull(
-        handle: Long,
-        fd: Int,
-        args: String,
-        shown: String,
-        withinMs: Long,
-    ): Long = Core.transferPull(handle, fd, args, shown, withinMs)
-
     override fun transferStop(id: Long) = Core.transferStop(id)
 
     override fun batchStart(
@@ -91,11 +83,6 @@ object CoreResident : ResidentCore {
     override fun searchMerge(data: String): String {
         ensureRustCore()
         return Core.searchMerge(data)
-    }
-
-    override fun downloadEvent(want: String): String {
-        ensureRustCore()
-        return Core.downloadEvent(want)
     }
 
     override fun answerOf(

@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.chat
 
-import android.content.Intent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,7 +18,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -27,11 +25,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.cache.ChatCache
 import com.ccmonitor.mobile.core.claude.link.CoreLink
@@ -46,7 +42,6 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.link.HostBackends
-import com.ccmonitor.mobile.service.SshKeepAliveService
 import com.ccmonitor.mobile.ui.agents.agentsEntry
 import com.ccmonitor.mobile.ui.chat.attach.AttachStore
 import com.ccmonitor.mobile.ui.chat.attach.AttachTray
@@ -113,7 +108,6 @@ fun ChatRoute(
 ) {
     // 先把连接建起来；持有挂在对话上，由 `ChatController.sessionFor(hostId = …)` 负责。
     val link by rememberHostLink(hostId, chatHolder(chatKey(hostId, sessionId)), retainWhileComposed = false)
-    KeepAliveWhileLinked(link)
     val scope = rememberCoroutineScope()
     val host = rememberChatHost(hostId) ?: return
     val product = rememberProductName(hostId)
@@ -418,24 +412,6 @@ private fun rememberAgentsEntry(
     val backends = koinInject<HostBackends>()
     val book by remember(hostId) { backends.of(hostId).table }.collectAsStateWithLifecycle()
     return sid?.let { agentsEntry(book, it) }
-}
-
-/**
- * 连上主机就起前台保活服务。
- *
- * 服务按「有活动会话或有在飞轮次」存活，在飞轮次由 `ChatController.hasInFlightTurn` 持有；
- * 不在这里起，只走聊天屏的用户离开 app 等回复时连接没人保。
- * 服务没会话也没在飞轮次时会自停，所以这里只管起、不管停。
- */
-@Composable
-private fun KeepAliveWhileLinked(link: HostLink) {
-    val context = LocalContext.current
-    LaunchedEffect(link is HostLink.Ready) {
-        if (link is HostLink.Ready) {
-            val app = context.applicationContext
-            ContextCompat.startForegroundService(app, Intent(app, SshKeepAliveService::class.java))
-        }
-    }
 }
 
 /**
