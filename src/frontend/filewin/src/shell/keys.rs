@@ -12,7 +12,8 @@ impl FileWindow {
         self.key_notice.as_deref()
     }
 
-    /// 摆着的那个右键菜单。
+    /// 摆着的那个右键菜单（判据用）。
+    #[cfg(test)]
     pub fn menu(&self) -> Option<&MenuAt> {
         self.menu.as_ref()
     }

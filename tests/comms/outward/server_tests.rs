@@ -231,6 +231,10 @@ impl Destinations for ToStub {
     fn stream_label_headers(&self) -> Vec<&'static str> {
         Vec::new()
     }
+    /// 判据里连着的几发都在墙钟上限之内 ⇒ 复用那几条判据量的是「复用」本身，不受空闲期限干扰。
+    fn upstream_idle_reuse(&self) -> std::time::Duration {
+        guard_core::wall::CEILING
+    }
 }
 
 struct NoTap;

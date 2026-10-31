@@ -131,8 +131,63 @@ pub struct PlanWho {
     pub needs: Option<String>,
     /// 此刻那条会话的整份脸（认不出 ⇒ 状态不明）。
     pub face: crate::frame::SessionFace,
-    /// 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；会话本身 · 认不出 ⇒ `null`（界面写标签页的名字 · 认不出那一形）。
+    /// 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
+    /// 会话本身 ⇒ `null`（两端写那条会话的名字）。
     pub label: Option<String>,
+}
+
+/// 一片随数据变的那几句（后端照这台的文案表写好）：桌面整页 · 手机一屏一层摆的是同一份，两端不拼。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct PlanSliceSaid {
+    /// 读不成 ＋ 过期那一句：整份读不成在先，这一片读不成在后；都没有 ⇒ `null`。
+    pub strip: Option<String>,
+    /// 这一片读不成、只剩名字那一句；读得成 ⇒ `null`。
+    pub bare: Option<String>,
+    /// 读到的时刻那一句；时刻的字还没写 ⇒ `null`。
+    pub read_at: Option<String>,
+    /// 顶层签了几格（总览头）；没有收的值 ⇒ `null`。
+    pub top: Option<String>,
+    /// 大纲根那一行右端的「几/几」；没有收的值 ⇒ `null`。
+    pub root: Option<String>,
+}
+
+/// 一块随数据变的那两句。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct PlanBlockSaid {
+    /// 块名：最上面那一块 ⇒ 顶层那一句；否则根节点的标题（没有 ⇒ 根节点编号 ⇒ 块编号）。
+    pub name: String,
+    /// 根节点底下签了几格（块表「里面」那一格 · 手机此会话那一块）；`inside` 为 `null` ⇒ `null`。
+    pub inside: Option<String>,
+}
+
+/// 一格随数据变的那两句。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct PlanCellSaid {
+    /// 上面几层的「编号 标题」，从顶层往下连好；顶层 ⇒ `null`。
+    pub trail: Option<String>,
+    /// 它是一块的根节点 ⇒ 那一句（插它的「编号 标题」）；不是 ⇒ `null`。
+    pub block_root: Option<String>,
+}
+
+/// 会话接手的那一块随数据变的那两句。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct PlanSessionSaid {
+    /// 块名：同那一块的 [`PlanBlockSaid::name`]。
+    pub name: String,
+    /// 会话头那一枚标：片 · 块名 · 阶段。
+    pub mark: String,
 }
 
 /// 一个节点管的一份文件（pb 的 `file_check`）。
@@ -371,6 +426,7 @@ pub struct PlanCell {
     /// 退回过 ⇒ 那一次的状态；没有 ⇒ `null`。
     #[serde(default)]
     pub returned: Option<PlanReturned>,
+    pub said: PlanCellSaid,
 }
 
 /// 要你看的一条（后端判的四种）。
@@ -427,6 +483,7 @@ pub struct PlanBlock {
     pub takeover: PlanTakeover,
     /// 接手的会话此刻在哪几组（帧面答之前现标，见 后端 `plan::groups`；pb 不知道有组）。
     pub groups: PlanBlockGroups,
+    pub said: PlanBlockSaid,
 }
 
 /// 一个权力范围的接手会话在哪几组（块表「组」那一格，字后端写好）。
@@ -629,6 +686,7 @@ pub struct PlanSlice {
     /// 最上面那个权力范围（`project`）退回过 ⇒ 那一次此刻的状态；没退回过 ⇒ `null`（缺 ⇒ 同）。
     #[serde(default)]
     pub returned: Option<PlanReturned>,
+    pub said: PlanSliceSaid,
 }
 
 /// 会话 ⇒ 它负责的那个权力范围（会话头那一枚标）。
@@ -649,6 +707,7 @@ pub struct PlanSessionBlock {
     pub at_title: Option<String>,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "\"session\" | \"subagent\""))]
     pub via: String,
+    pub said: PlanSessionSaid,
 }
 
 /// `plan-read` 的回包：一个工作区的成品。
@@ -695,6 +754,8 @@ pub struct PlanListSlice {
     pub need_count: u32,
     pub error: Option<String>,
     pub stale: Option<PlanStale>,
+    /// 同那一片成品上的那一份（照抄）。
+    pub said: PlanSliceSaid,
 }
 
 /// `plan-list` 里的一个工作区。
@@ -859,4 +920,54 @@ pub struct PlanMsgRefs {
     pub workspace: Option<String>,
     pub slice: Option<String>,
     pub refs: Vec<Vec<PlanMsgRef>>,
+}
+
+#[cfg(test)]
+mod said_tests {
+    use super::*;
+    use serde_json::{json, Value};
+
+    /// 一份 `plan-list` 回包：片那一行与会话接手的那一块都带写好的 `said`（值是可认的夹具字）。
+    fn list_json() -> Value {
+        json!({
+            "pb": { "state": "ok", "said": null },
+            "workspaces": [{
+                "workspace": "/w", "repo": null, "auto": false, "rev": "r0", "stale": null, "needCount": 0,
+                "bySession": { "s1": {
+                    "slice": "ledger", "block": "B1", "cell": "A1", "title": "导出", "top": false,
+                    "phase": "回看", "at": null, "atTitle": null, "via": "session",
+                    "said": { "name": "后端·块名", "mark": "后端·标" } } },
+                "slices": [{
+                    "name": "ledger", "domain": null, "current": true, "progress": null, "needCount": 0,
+                    "error": null, "stale": null,
+                    "said": { "strip": "后端·读不成", "bare": null, "readAt": "后端·读到", "top": "后端·顶层", "root": "后端·几/几" } }],
+            }],
+        })
+    }
+
+    #[test]
+    fn said_round_trips_word_for_word() {
+        let v = list_json();
+        let back: PlanList = serde_json::from_value(v.clone()).expect("照契约的形状");
+        assert_eq!(serde_json::to_value(&back).expect("序列化"), v);
+    }
+
+    /// 必填：回包缺 `said` ⇒ 解不开，报的就是那一格（两端契约对不上，不悄悄当空）。
+    #[test]
+    fn a_reply_without_said_does_not_decode() {
+        let mut v = list_json();
+        v["workspaces"][0]["slices"][0]
+            .as_object_mut()
+            .expect("片")
+            .remove("said");
+        let e = serde_json::from_value::<PlanList>(v).expect_err("缺必填格");
+        assert!(e.to_string().contains("said"), "{e}");
+        let mut v = list_json();
+        v["workspaces"][0]["bySession"]["s1"]
+            .as_object_mut()
+            .expect("会话块")
+            .remove("said");
+        let e = serde_json::from_value::<PlanList>(v).expect_err("缺必填格");
+        assert!(e.to_string().contains("said"), "{e}");
+    }
 }

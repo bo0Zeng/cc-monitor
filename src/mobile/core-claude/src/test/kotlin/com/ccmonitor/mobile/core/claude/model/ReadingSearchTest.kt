@@ -10,24 +10,19 @@ class ReadingSearchTest {
         assertEquals("pondering", RenderUnit.Thinking("k", "pondering", null).searchableText())
     }
 
-    @Test fun searchableTextToolCallIncludesNameInputResult() {
+    @Test fun searchableTextToolCallIncludesNameSummaryResult() {
         val tc =
             RenderUnit.ToolCall(
                 key = "k",
                 toolUseId = "t1",
                 name = "Bash",
-                input = mapOf("command" to "ls -la", "timeout" to null),
+                summary = "ls -la",
                 resultText = "total 0",
                 isError = false,
                 pending = false,
                 sourceUuid = null,
             )
-        val s = tc.searchableText()
-        assert(s.contains("Bash")) { s }
-        assert(s.contains("ls -la")) { s }
-        assert(s.contains("total 0")) { s }
-        // null 输入值不应抛/不拼 "null"
-        assert(!s.contains("null")) { s }
+        assertEquals("Bash\nls -la\ntotal 0", tc.searchableText())
     }
 
     @Test fun extractCodeBlocksSingle() {
@@ -55,14 +50,17 @@ class ReadingSearchTest {
                 key = "k",
                 toolUseId = "t1",
                 name = "Read",
-                input = mapOf("file_path" to "/a/b.kt"),
+                summary = "/a/b.kt",
                 resultText = null,
                 isError = false,
                 pending = true,
                 sourceUuid = null,
             )
-        val s = tc.searchableText()
-        assert(s.contains("Read") && s.contains("/a/b.kt")) { s }
-        assert(!s.contains("null")) { s } // resultText==null 不拼 "null"
+        assertEquals("Read\n/a/b.kt", tc.searchableText())
+    }
+
+    @Test fun searchableTextToolCallWithoutSummary() {
+        val tc = RenderUnit.ToolCall("k", "t1", "Read", "r", false, false, null)
+        assertEquals("Read\nr", tc.searchableText())
     }
 }

@@ -36,23 +36,6 @@ use super::shell::FileWindow;
 use super::source::{Line, Origin};
 use super::writeops::WRITE_BUDGET;
 
-/// 后端那条命令（`files-create`）。
-pub const CMD_CREATE: &str = <cmd_wire::files::FilesCreateReq as cmd_wire::Call>::NAME;
-
-/// 真建一份 —— 经通道说 `files-create`，参数切成 `(root, rel)`，**不带 `content`**
-/// （契约逐字：不给 `content` ⇒ 新建一份空文件）。
-///
-/// 切法走 [`super::source::parent_dir`] / [`super::source::remote_basename`] 那一对
-/// （同 `writeops::apply_remote`，不另写一份切法）。
-///
-/// # Errors
-///
-/// 后端那句原话（围栏拒 `refused` · 已存在 / 父目录不在 `io_failed` · 通道哪一段断了），
-/// 经 [`comms_inward::chan::said::said`] 翻过，原样交出去。
-pub async fn create_remote(line: &Line, origin: &Origin, path: &str) -> Result<(), String> {
-    create_remote_at(line, origin, &super::source::RemotePath::plain(path)).await
-}
-
 /// 就地新建：名字是用户敲的 `typed`，原样交后端、带 `single: true`（合不合法由那台判，不合 ⇒ 码 `bad_name`）。
 pub async fn create_typed_coded(
     line: &Line,
@@ -71,32 +54,16 @@ pub async fn create_typed_coded(
         .map(|_| ())
 }
 
-/// 〔有损名全寻址〕同 [`create_remote`]，路径可以带字节（有损目录里新建：根发 `{"b16": …}`）。
-pub async fn create_remote_at(
-    line: &Line,
-    origin: &Origin,
-    at: &super::source::RemotePath,
-) -> Result<(), String> {
-    let req = cmd_wire::files::FilesCreateReq {
-        root: at.parent().path(),
-        rel: at.tail(),
-        content: None,
-        single: None,
-    };
-    super::source::ask_typed(line, origin, &req, WRITE_BUDGET)
-        .await
-        .map(|_| ())
-        .map_err(|f| f.said)
-}
-
 impl FileWindow {
     /// 正摆着的新建空文件那一格（就地；判据看同一个值）。
+    #[cfg(test)]
     pub fn new_file_prompt(&self) -> Option<&super::writeops::WritePrompt> {
         self.write_prompt()
             .filter(|p| matches!(p.kind, super::writeops::PromptKind::NewFile))
     }
 
-    /// 那一格里正在编辑的字。
+    /// 那一格里正在编辑的字（判据替敲键改它）。
+    #[cfg(test)]
     pub fn new_file_text_mut(&mut self) -> Option<&mut String> {
         self.write_prompt_mut()
             .filter(|p| matches!(p.kind, super::writeops::PromptKind::NewFile))
@@ -109,6 +76,7 @@ impl FileWindow {
     }
 
     /// 收掉那一格，什么都不建。
+    #[cfg(test)]
     pub fn cancel_new_file(&mut self) {
         if self.new_file_prompt().is_some() {
             self.cancel_write();
@@ -116,6 +84,7 @@ impl FileWindow {
     }
 
     /// 那一格答完 ⇒ 发 `files-create`（填错 ⇒ 那一格下面说、留着；名字被占了 ⇒「x 已存在」）。
+    #[cfg(test)]
     pub fn confirm_new_file(&mut self, ctx: Option<egui::Context>) -> bool {
         if self.new_file_prompt().is_none() {
             return false;
