@@ -16,6 +16,7 @@ use serde_json::{json, Value};
 use super::profile::{self, Book, Change, Profile, ProfileEdit};
 use super::{door, links, Door, Shell};
 use crate::ccm_line::argv::{self, flag, Origin};
+use crate::common::said::Said;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 表单那几格 · 标签
@@ -792,10 +793,10 @@ fn chain_problem_line(book: &Book, name: &str) -> Option<usize> {
     }
 }
 
-type Answer<T> = Result<T, crate::common::said::Said>;
+type Answer<T> = Result<T, Said>;
 
-fn refused(said: String) -> (&'static str, String) {
-    ("refused", said)
+fn refused(said: String) -> Said {
+    Said::new("refused", said)
 }
 
 /// 盘上那份配置文件此刻的修改时间（秒）；不在 / 问不到 ⇒ `None`。
@@ -1674,7 +1675,7 @@ pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<Profi
         });
     }
     if super::rev_of(store.text.as_deref()).as_deref() != if_rev {
-        return Err(crate::common::said::Said::new(
+        return Err(Said::new(
             "stale",
             copy_text(
                 "rsAccountAliases.install.changedElsewhere",
@@ -1714,7 +1715,7 @@ pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<Profi
     }
     let wrote = match super::write_profiles(d, &store.home, store.text.as_deref(), &text) {
         Ok(w) => w,
-        Err(super::WriteErr::Stale(e)) => return Err(crate::common::said::Said::new("stale", e)),
+        Err(super::WriteErr::Stale(e)) => return Err(Said::new("stale", e)),
         Err(super::WriteErr::Refused(e)) => return Err(refused(e)),
     };
     let out = super::sync_outputs(d, &store.home, &profile::parse_book(&text), None);
@@ -1736,7 +1737,7 @@ pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<Profi
 // 帧命令（typed）：经这台的文件管理面读写 ⇒ 阻塞档，带文件面
 // ═══════════════════════════════════════════════════════════════════════════
 
-use crate::wire::typed::{of_pair, Command};
+use crate::wire::typed::{of_fail_with, Command};
 
 crate::wire::typed::codes! {
     /// 配置文件那几条只读的码：读没成 · 表单写不成配置（那一句说清哪一样）。
@@ -1774,7 +1775,7 @@ impl crate::wire::typed::Handle for ProfilesImpactCmd {
         async move {
             let files = needs;
 
-            answer_impact(files, &req).map_err(of_pair(ProfilesErr::Refused))
+            answer_impact(files, &req).map_err(of_fail_with(ProfilesErr::Refused))
         }
     }
 }
@@ -1800,7 +1801,7 @@ impl crate::wire::typed::Handle for ProfilesBasesCmd {
         async move {
             let files = needs;
 
-            answer_bases(files, &req).map_err(of_pair(ProfilesErr::Refused))
+            answer_bases(files, &req).map_err(of_fail_with(ProfilesErr::Refused))
         }
     }
 }
@@ -1826,7 +1827,7 @@ impl crate::wire::typed::Handle for ProfilesWrite {
         async move {
             let files = needs;
 
-            answer_write(files, &req).map_err(of_pair(ProfilesWriteErr::Refused))
+            answer_write(files, &req).map_err(of_fail_with(ProfilesWriteErr::Refused))
         }
     }
 }
@@ -1847,7 +1848,7 @@ impl crate::wire::typed::Handle for ProfilesFromLine {
         req: ProfilesFromLineReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<ProfileForm, ProfilesErr>> + Send + 'static {
-        async move { form_of_line(&req).map_err(of_pair(ProfilesErr::Refused)) }
+        async move { form_of_line(&req).map_err(of_fail_with(ProfilesErr::Refused)) }
     }
 }
 

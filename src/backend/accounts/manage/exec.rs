@@ -15,6 +15,7 @@
 use super::layout::{describe, Op, Plan};
 use super::model::Manifest;
 use super::scan::{is_under, item_at, join, Roots, BACKUP_PREFIX, ROLLED_BACK_NAME, UNDO_NAME};
+use crate::common::said::Said;
 use crate::common::door::{self, Door, Refused};
 use crate::platform::acct_view::{is_absolute, under_root, Item};
 use crate::platform::fs::side_name;
@@ -27,9 +28,6 @@ pub(crate) struct Applied {
     pub backup: Option<String>,
     pub steps: Vec<String>,
 }
-
-/// 执行失败：那一句（带着「做到第几步 · 用哪份备份回滚」）。
-pub(crate) type Failed = (&'static str, String);
 
 /// 这台 key 表的两口（账号库不认识它的格式、也不自己写它；门递进来）。
 pub(crate) struct KeyTable<'a> {
@@ -312,7 +310,7 @@ pub(crate) fn apply(
     manifest_before: Option<&str>,
     render: &dyn Fn(&Manifest) -> String,
     keys: Option<&KeyTable>,
-) -> Result<Applied, Failed> {
+) -> Result<Applied, Said> {
     let steps: Vec<String> = plan
         .ops
         .iter()
@@ -324,7 +322,7 @@ pub(crate) fn apply(
             steps,
         });
     }
-    let fail = |e: String| ("io_failed", e);
+    let fail = |e: String| Said::new("io_failed", e);
     // 账号库自己先在（备份住在它里面）：计划里建它那一步在这里先做，且**不记撤销** —— 回滚删了它就连备份一起删了。
     if !item_at(&r.accts).exists() {
         mkdirs(d, &r.home, &r.accts).map_err(fail)?;
@@ -355,7 +353,7 @@ pub(crate) fn apply(
     for (i, op) in plan.ops.iter().enumerate() {
         let m = text.as_deref().map(|t| (t, manifest_before));
         if let Err(e) = run.op(op, m) {
-            return Err(crate::common::said::Said::new(
+            return Err(Said::new(
                 "io_failed",
                 copy_text(
                     "beAcctExec.apply.stopped",

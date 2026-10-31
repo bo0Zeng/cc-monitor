@@ -30,6 +30,7 @@
 //! 必须是同一个读法）· 不写盘 · 不改写任何一条配置（写的内容由 monitor 从原文里原样取）。
 //! 事实只有两种：`stat` 一条绝对路径 · 在这个后端进程的 `PATH` 上找一个名字。
 
+use crate::common::said::Said;
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
@@ -268,14 +269,14 @@ pub(crate) fn judge(cands: &[Candidate], facts: &dyn Facts) -> Vec<Suspect> {
 pub(crate) fn servers_of(
     text: Option<&str>,
     side: &str,
-) -> Result<Map<String, Value>, crate::common::said::Said> {
+) -> Result<Map<String, Value>, Said> {
     let Some(t) = text else {
         return Ok(Map::new());
     };
     let v: Value = serde_json::from_str(t.trim_start_matches('\u{feff}')).map_err(|e| {
-        (
+        Said::new(
             "bad_file",
-            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+            crate::common::said::IntoNote::into_note(Said::with_raw(
                 copy_text(
                     "beMcpSync.serversOf.badJson",
                     &[("side", &side.to_string())],
@@ -284,7 +285,7 @@ pub(crate) fn servers_of(
             )),
         )
     })?;
-    let root = v.as_object().ok_or((
+    let root = v.as_object().ok_or_else(|| Said::new(
         "bad_file",
         copy_text(
             "beMcpSync.serversOf.notObject",
@@ -294,7 +295,7 @@ pub(crate) fn servers_of(
     match root.get(super::mcp_servers_key()) {
         None => Ok(Map::new()),
         Some(Value::Object(m)) => Ok(m.clone()),
-        Some(_) => Err(crate::common::said::Said::new(
+        Some(_) => Err(Said::new(
             "bad_file",
             copy_text(
                 "beMcpSync.serversOf.serversNotObject",
@@ -340,9 +341,9 @@ pub(crate) fn plan(
     rows: &[(String, State)],
     take: &BTreeSet<String>,
     overwrite: &BTreeSet<String>,
-) -> Result<Vec<String>, crate::common::said::Said> {
+) -> Result<Vec<String>, Said> {
     if let Some(n) = overwrite.iter().find(|n| !take.contains(*n)) {
-        return Err(crate::common::said::Said::new(
+        return Err(Said::new(
             "bad_args",
             copy_text(
                 "beMcpSync.plan.overwriteUnchecked",
@@ -355,7 +356,7 @@ pub(crate) fn plan(
     for n in take {
         match state_of(n) {
             None | Some(State::OnlyThere) => {
-                return Err(crate::common::said::Said::new(
+                return Err(Said::new(
                     "bad_args",
                     copy_text("beMcpSync.plan.notInSource", &[("n", &n.to_string())]),
                 ))
@@ -364,7 +365,7 @@ pub(crate) fn plan(
             Some(State::New) => write.push(n.clone()),
             Some(State::Differs) if overwrite.contains(n) => write.push(n.clone()),
             Some(State::Differs) => {
-                return Err(crate::common::said::Said::new(
+                return Err(Said::new(
                     "needs_consent",
                     copy_text(
                         "beMcpSync.plan.conflictUnconfirmed",
@@ -381,14 +382,14 @@ pub(crate) fn plan(
 pub(crate) fn names_arg(
     v: Option<&Value>,
     key: &str,
-) -> Result<Option<BTreeSet<String>>, (&'static str, String)> {
+) -> Result<Option<BTreeSet<String>>, Said> {
     match v {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Array(a)) => a
             .iter()
             .map(|x| {
                 x.as_str().map(str::to_string).ok_or_else(|| {
-                    (
+                    Said::new(
                         "bad_args",
                         crate::common::contract::malformed(&format!(
                             "`{key}` accepts strings only"
@@ -398,7 +399,7 @@ pub(crate) fn names_arg(
             })
             .collect::<Result<BTreeSet<_>, _>>()
             .map(Some),
-        Some(_) => Err(crate::common::said::Said::new(
+        Some(_) => Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!("`{key}` must be an array of strings")),
         )),

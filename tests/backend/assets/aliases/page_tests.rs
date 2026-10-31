@@ -10,7 +10,7 @@ use std::path::PathBuf;
 type Wired = Result<Value, crate::common::said::Said>;
 
 fn taken<R: serde::de::DeserializeOwned>(args: &Value) -> Result<R, crate::common::said::Said> {
-    crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))
+    crate::wire::typed::take(args).map_err(|f| crate::common::said::Said::new("bad_args", f.said))
 }
 
 fn wired<T: serde::Serialize>(got: Result<T, crate::common::said::Said>) -> Wired {
@@ -361,8 +361,8 @@ fn write_rename_moves_the_section_in_place_and_children_follow() {
 #[test]
 fn removing_a_base_needs_a_choice_and_each_choice_does_what_it_says() {
     let t = tmp("remove", Some(BOOK));
-    let (code, _) = write(&t, json!([{"op": "remove", "name": "cct"}])).unwrap_err();
-    assert_eq!(code, "refused");
+    let e = write(&t, json!([{"op": "remove", "name": "cct"}])).unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("refused"));
     assert_eq!(t.text(), BOOK);
 
     write(
@@ -395,7 +395,7 @@ fn a_stale_rev_writes_nothing() {
         &t.door(),
         &json!({"changes": [{"op": "remove", "name": "pcc"}], "ifRev": "0-0000000000000000"}),
     );
-    assert_eq!(r.unwrap_err().0, "stale");
+    assert_eq!(r.unwrap_err().code.as_deref(), Some("stale"));
     assert_eq!(t.text(), BOOK);
 }
 
@@ -456,12 +456,12 @@ fn a_write_may_fix_the_broken_section_but_may_not_break_another() {
     );
     // 改出新的坏处（基于一个不存在的）⇒ 拒、一个字节不写。
     let before = t.text();
-    let (code, _) = write(
+    let e = write(
         &t,
         json!([{"op": "set", "was": "pcc", "form": {"name": "pcc", "from": "nope"}}]),
     )
     .unwrap_err();
-    assert_eq!(code, "refused");
+    assert_eq!(e.code.as_deref(), Some("refused"));
     assert_eq!(t.text(), before);
 }
 
@@ -795,15 +795,15 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
         r#"{"reload":null,"rev":"221-66c4ac7d0a5265d6","wrote":false}"#
     );
 
-    let (code, said) = answer_write(
+    let e = answer_write(
         &t.door(),
         &json!({"changes": [{"op": "remove", "name": "pcc"}], "ifRev": "0-0"}),
     )
     .unwrap_err();
     assert_eq!(
-        (code, said.replace(&home, "<HOME>")),
+        (e.code.as_deref(), e.said.replace(&home, "<HOME>")),
         (
-            "stale",
+            Some("stale"),
             "<HOME>/.cc-monitor/profiles.toml 在本页读取后被别处改过 · 本次未写入".to_string()
         )
     );
@@ -856,9 +856,9 @@ fn a_free_command_line_folds_into_the_alias_form_on_the_backend() {
     assert_eq!(ccm["args"], "--verbose");
     assert_eq!(ccm["account"], json!({"kind": "account", "name": "team"}));
     assert_eq!(ccm["tmux"]["mode"], "auto");
-    let (code, said) = form(json!({"name": "x", "line": "htop"})).expect_err("别的命令建不了");
-    assert_eq!(code, "refused");
-    assert!(!said.is_empty());
+    let e = form(json!({"name": "x", "line": "htop"})).expect_err("别的命令建不了");
+    assert_eq!(e.code.as_deref(), Some("refused"));
+    assert!(!e.said.is_empty());
     assert!(
         form(json!({"name": "x", "line": "claude \"open"})).is_err(),
         "引号没配对"
@@ -931,7 +931,7 @@ fn write_saves_renames_and_removes_a_set_and_refuses_a_broken_one() {
         json!([{"op": "saveSet", "was": "开发", "set": {"name": "开发", "rows": [bad]}}]),
     )
     .unwrap_err();
-    assert_eq!(e.0, "refused", "{e:?}");
+    assert_eq!(e.code.as_deref(), Some("refused"), "{e:?}");
     assert_eq!(t.text(), before);
 
     // 新建撞上已有的组名 ⇒ 拒。
@@ -940,7 +940,7 @@ fn write_saves_renames_and_removes_a_set_and_refuses_a_broken_one() {
         json!([{"op": "saveSet", "was": null, "set": {"name": "开发", "rows": [row]}}]),
     )
     .unwrap_err();
-    assert_eq!(e.0, "refused", "{e:?}");
+    assert_eq!(e.code.as_deref(), Some("refused"), "{e:?}");
 
     write(&t, json!([{"op": "removeSet", "name": "开发"}])).expect("删一组");
     assert_eq!(read(&t)["sets"], json!([]));
