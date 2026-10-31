@@ -65,7 +65,7 @@ pub(crate) fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
 }
 
 /// 照登记那一行的问法问一条（名字 ＋ JSON）：入参经 `typed::take` 解成那条命令的入参类型（形状不对 ⇒ `bad_args`），
-/// 再交本体；回包照线上那一形序列化。写面 · 上传提交 · 解压三张表的 15 条都在这里。
+/// 再交本体；回包照线上那一形序列化。拿写句柄的那几条（写面 · 上传提交 · 解压）都在这里。
 pub(crate) fn ask(wire_name: &str, args: &serde_json::Value) -> Answer {
     fn one<R: Act + serde::de::DeserializeOwned>(args: &serde_json::Value) -> Answer
     where
@@ -1567,7 +1567,7 @@ fn copy_is_fenced_on_the_source_the_target_and_through_a_link() {
 }
 
 /// 形状类的拒：目录 · 源即目标 · 上跳段 · `overwrite` 不是布尔 —— 各落自己的码，盘上不多一个字节。
-/// 命令面那一侧真够得到它，回参的键 == `MANAGE_COMMANDS` 声明的 `fields`（两向）。
+/// 命令面那一侧真够得到它，回包照线上类型解得回来。
 #[test]
 fn copy_refuses_its_shapes_and_is_reachable_on_the_command_face() {
     let base = temp_root("cps");
