@@ -5,7 +5,10 @@ use super::*;
 #[test]
 fn a_record_is_the_label_then_the_machine() {
     let want = Some(Opened {
-        label: WindowLabel { pid: 600, start: 20 },
+        label: WindowLabel {
+            pid: 600,
+            start: 20,
+        },
         machine: "devbox".into(),
     });
     assert_eq!(parse("600-20\ndevbox\n"), want);

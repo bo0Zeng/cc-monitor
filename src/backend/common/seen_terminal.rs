@@ -30,7 +30,7 @@ pub(crate) struct Terminal {
     /// 最近一次动静（tmux 客户端的 `client_activity`，Unix 秒）；不在 tmux 里 ⇒ `null`。
     #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) activity: Option<u64>,
-    /// 本机那个终端窗口的标签（`LC_CCM_WINDOW`，[`WindowLabel`]）；没送过来 / 形状不对 ⇒ 不带。
+    /// 本机那个终端窗口的标签（`LC_CCM_WINDOW`，形如 `<进程号>-<起始时刻>`）；没送过来 / 形状不对 ⇒ 不带。
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

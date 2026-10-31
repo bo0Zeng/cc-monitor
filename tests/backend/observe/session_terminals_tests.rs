@@ -168,10 +168,7 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
     );
     assert!(ts.iter().all(|t| t.activity.is_some()));
     // 窗口标签读的也是各客户端自己的环境：B 送了、A 没送。
-    let windows: Vec<Option<String>> = ts
-        .iter()
-        .map(|t| t.window.map(|w| w.to_string()))
-        .collect();
+    let windows: Vec<Option<String>> = ts.iter().map(|t| t.window.map(|w| w.to_string())).collect();
     assert_eq!(windows, vec![Some("4242-133000000000000000".into()), None]);
 
     // 本机那一问（`session-window`）：同样两个终端、同样的先后，连各自那个 tmux 客户端的进程号（链从它起，不从 pane 里的进程起）。
@@ -370,7 +367,13 @@ fn a_window_label_is_a_pid_and_a_start_or_nothing() {
     }
     let t: Terminal =
         serde_json::from_value(serde_json::json!({"ssh": null, "window": "600-20"})).unwrap();
-    assert_eq!(t.window, Some(WindowLabel { pid: 600, start: 20 }));
+    assert_eq!(
+        t.window,
+        Some(WindowLabel {
+            pid: 600,
+            start: 20
+        })
+    );
     assert_eq!(serde_json::to_value(&t).unwrap()["window"], "600-20");
     let t: Terminal =
         serde_json::from_value(serde_json::json!({"ssh": null, "window": "600-x"})).unwrap();

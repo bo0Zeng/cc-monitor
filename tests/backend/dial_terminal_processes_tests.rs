@@ -202,9 +202,5 @@ fn a_terminal_opened_here_is_read_from_the_shell_its_label_names() {
         "起始时刻对不上 ⇒ 进程号被复用了"
     );
     assert_eq!(at(601, 3000), OpenedHere::Gone, "那个进程不在");
-    assert_eq!(
-        at(500, 2000),
-        OpenedHere::NoSsh,
-        "底下只有 shell、没有 ssh"
-    );
+    assert_eq!(at(500, 2000), OpenedHere::NoSsh, "底下只有 shell、没有 ssh");
 }
