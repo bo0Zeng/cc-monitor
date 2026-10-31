@@ -267,7 +267,6 @@ pub fn byte_at_char(s: &str, k: usize, ascii: bool) -> usize {
 /// 不知道摆多高时一屏几行（判据那一形；生产上编辑面的高由它那一栏剩下的高给，见 [`show`]）。
 pub const VIEW_ROWS: usize = 24;
 
-
 /// 横向总宽在最宽那一行之后再留几列（放「这一行共 N 字」）。
 const TAG_ROOM: usize = 20;
 

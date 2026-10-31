@@ -59,7 +59,10 @@ async fn the_menu_item_puts_up_the_box_and_asks_the_backend() {
     assert!(w.apply_intent(crate::select::Intent::SelectAll, 0.0, None));
     assert!(w.perform(Action::Properties, None), "菜单那一下该摆出框");
     for _ in guard_core::wall::rounds() {
-        if !matches!(*w.props.as_ref().unwrap().state.lock().unwrap(), State::Loading) {
+        if !matches!(
+            *w.props.as_ref().unwrap().state.lock().unwrap(),
+            State::Loading
+        ) {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;

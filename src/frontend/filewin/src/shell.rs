@@ -867,7 +867,6 @@ impl FileWindow {
         self.cwd_path() != before
     }
 
-
     /// 摆一次 reveal：「进这个目录，并且高亮 `name` 那一行」。
     ///
     /// ⚠ 它**不判那一行在不在** —— 那要等目录列回来（异步）。

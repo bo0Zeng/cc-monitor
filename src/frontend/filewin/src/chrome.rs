@@ -383,7 +383,6 @@ impl FileWindow {
         self.cwd != before
     }
 
-
     /// 「选中的」那一件此刻能不能做：能 ⇒ `None`；不能 ⇒ 悬停说的那一句（没选中 · 这几项做不了 · 这台做不到）。
     pub fn command_blocked(&self, a: super::select::Action) -> Option<String> {
         let rows = self.listing.rows.lock().unwrap();
