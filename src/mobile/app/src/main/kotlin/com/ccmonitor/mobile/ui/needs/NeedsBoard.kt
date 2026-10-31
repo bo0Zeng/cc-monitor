@@ -78,8 +78,8 @@ class NeedsBoard(
 
     init {
         scope.launch {
-            sources.collect { now ->
-                for ((id, src) in now) if (!jobs.containsKey(id)) jobs[id] = watch(id, src)
+            sources.collect { srcs ->
+                for ((id, src) in srcs) if (!jobs.containsKey(id)) jobs[id] = watch(id, src)
             }
         }
     }
