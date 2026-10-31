@@ -264,7 +264,7 @@ fn a_failed_save_keeps_every_character_the_user_typed() {
 
     // 失败：`text` 与 `dirty` 都不许变（那些字是用户唯一的一份）。
     let why = "拒绝写 Claude 数据源文件(/x/projects/p/s.jsonl)——管理会话文件请用历史浏览器";
-    p.mark_failed(why.to_string());
+    p.mark_failed_with(crate::source::Failed::local(why.to_string()));
     assert_eq!(p.text, "new", "存失败把用户敲的东西弄掉了");
     assert!(p.dirty(), "存失败之后却说已经存好了");
     match p.last_save.clone() {

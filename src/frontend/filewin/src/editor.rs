@@ -320,7 +320,7 @@ impl Pane {
             .map(|d| d.as_secs());
     }
 
-    /// 存盘撞上 `stale` ⇒ 同 [`Self::mark_failed`]（字一个不动、基准不动），外加摆出那两颗按钮。
+    /// 存盘撞上 `stale` ⇒ 同 [`Self::mark_failed_with`]（字一个不动、基准不动），外加摆出那两颗按钮。
     pub fn mark_stale(&mut self, why: String) {
         self.last_save = Some(Err(stale_notice(&why)));
         self.save_detail.clear();
@@ -330,13 +330,7 @@ impl Pane {
     /// 🔴 存失败了 ⇒ **基准线不动、`text` 一个字都不碰**。
     ///
     /// 用户敲的那些东西是他**唯一的一份**（远端那份还是旧的）。
-    /// 失败照样传上去，编辑框里的字留着。
-    #[cfg(test)]
-    pub fn mark_failed(&mut self, why: String) {
-        self.mark_failed_with(why.into());
-    }
-
-    /// 同 [`Self::mark_failed`]，连复制详情一起记下（保存失败那一条的［复制详情］用）。
+    /// 失败照样传上去，编辑框里的字留着；复制详情一起记下（保存失败那一条的［复制详情］用）。
     pub fn mark_failed_with(&mut self, f: super::source::Failed) {
         self.last_save = Some(Err(f.said));
         self.save_detail = f.detail;
@@ -629,7 +623,7 @@ pub fn text_from_reply(
 /// | 装不进 | 现造一个键 ⇒ `chunk_core::stage`（与上传同一套：按字节切块、逐块 `files-stage-chunk`）⇒ `files-commit-text` |
 ///
 /// ⚠ 某一块没送成 ⇒ **不发提交**、当场回错（第几段、共几段、原话）；已经送进暂存区的块由后端孤儿扫收，
-///   远端那份一个字节没动。编辑框里的字一个不丢（「存失败不清编辑框」照旧，[`Pane::mark_failed`]）。
+///   远端那份一个字节没动。编辑框里的字一个不丢（「存失败不清编辑框」照旧，[`Pane::mark_failed_with`]）。
 /// ⚠ 超上限 ⇒ 本地拒、一个字节不发（[`over_cap_notice`]）。
 /// 路径可以带字节；`cap` ＝ 打开时后端给的编辑上限。
 pub async fn write_text_at(
