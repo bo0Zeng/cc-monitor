@@ -114,6 +114,7 @@ import { answerNeeds } from "./answer-reads";
 import { installQuitGuard } from "./quit-now";
 import { SAID_EDIT_EVENT, SaidEdit, type SaidAt } from "./said-edit";
 import { CHANNEL_REWIND_OPTIONS } from "./session-queue";
+import { registerColdProbe } from "./startup-perf";
 
 // === 启动 perf 测量 ===
 // performance.now() 自页面 navigation start 起；前端各阶段时间点。
@@ -138,9 +139,6 @@ declare global {
 window.__ccmPerf = {
   domContentLoaded: 0,
 };
-
-// 只在 DEV 的 E2E 探针句柄（动态 import；生产恒 null，调用点全用可选链）
-let e2eProbe: typeof import("./e2e-probe") | null = null;
 
 // Vite HMR 默认在没显式 `hot.accept` 时对 TS 文件部分热替换，可能让旧模块的
 // 已注册 listener / 已渲染 DOM 与新代码并存。对监控这种长跑+事件密集的应用，
@@ -890,11 +888,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.applyOverrides(await getKeybindings());
   dispatcher.start();
 
-  // 只在 DEV 的 E2E 探针（抖动采样 ＋ Ctrl+Alt+F9 状态快照 → fe_perf 日志）：生产构建整支被 vite 消掉；热键不进 keybindings 登记。
-  // 须在 bindEvents 之前就绪（启动那一批紧随 frontend-ready）。
+  // 只在 DEV 的 E2E 探针（冷开抖动采样 ＋ Ctrl+Alt+F9 状态快照 → fe_perf 日志）：生产构建整支被 vite 消掉；热键不进 keybindings 登记。
+  // 须在 bindEvents 之前就绪（冷起补读紧随 frontend-ready）：抖动探针跨在冷起补读上（`startup-perf.ts` 起停）。
   if (import.meta.env.DEV) {
     try {
-      e2eProbe = await import("./e2e-probe");
+      const e2eProbe = await import("./e2e-probe");
+      registerColdProbe({ start: e2eProbe.startColdJitterProbe, stop: () => e2eProbe.stopColdJitterProbe() });
       e2eProbe.registerSnapshotHotkey(
         () => tabs.debugSnapshot(),
         () => tabs.debugSessionsSnapshot(), // 全会话状态出口（Ctrl+Alt+F10 / 中键账号 chip）
@@ -966,16 +965,9 @@ window.addEventListener("DOMContentLoaded", async () => {
       // 本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
       startup?.onAppeared(sessionId);
     },
-    // 启动重放期间走批模式（惰性高亮），结束时 flush。
-    // DEV 抖动探针跨在批窗口上（生产 probe 恒 null）。
-    onBatchStart: () => {
-      e2eProbe?.startReplayJitterProbe();
-      tabs.onBatchStart();
-    },
-    onBatchEnd: () => {
-      e2eProbe?.stopReplayJitterProbe();
-      tabs.onBatchEnd();
-    },
+    // 成批的那一段走批模式（惰性高亮），结束时 flush。
+    onBatchStart: () => tabs.onBatchStart(),
+    onBatchEnd: () => tabs.onBatchEnd(),
     // 那台的某样东西变了（主题表住后端）⇒ 各管各的重问：
     //   账号清单 ⇒ 重问账号清单 ＋ chip（那台的长连接又通了也算）· 任务清单 ⇒ 重问 `tasks-list` ·
     //   额度 / 会话轮换 / 规则表 ⇒ `acct-center.ts`（画的那几处订 store）· 计划 ⇒ 计划页开着就重问（摘要没变不问）与「需手动」那一侧。
