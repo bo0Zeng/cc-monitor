@@ -2,7 +2,7 @@
  * 骨架外框秤的一键复算：打包探针 → Chromium（Playwright 的 headless shell）跑一遍 → 写金样。
  * 不进门禁（门禁读金样，`tests/frontend/ui/scale2-height-truth.vitest.ts` 末尾「骨架外框」那一组）。
  *
- * 用法（仓根）：`npx tsx tests/evidence/RENDER2-skel-run.ts`
+ * 用法（仓根）：`npx tsx tests/evidence/skel-run.ts`
  * 要一份 playwright：`npm i --prefix .scratch/pw playwright`（浏览器本体在 `~/.cache/ms-playwright`，秤 2 那份同用）。
  * 产物落 `.scratch/skel-probe/`（不进仓）；时区 / locale 与秤 2 同钉（语料带时间戳，字数跟着变）。
  */
@@ -28,7 +28,7 @@ async function run(): Promise<void> {
       emptyOutDir: true,
       cssCodeSplit: false,
       minify: false,
-      lib: { entry: resolve(here, "RENDER2-skel-probe-entry.ts"), formats: ["iife"], name: "SkelProbe", fileName: () => "probe.js" },
+      lib: { entry: resolve(here, "skel-probe-entry.ts"), formats: ["iife"], name: "SkelProbe", fileName: () => "probe.js" },
     },
   });
   writeFileSync(
@@ -51,9 +51,9 @@ async function run(): Promise<void> {
   await page.waitForFunction(() => (window as unknown as { __DONE?: boolean }).__DONE === true, null, { timeout: 60_000 });
   const raw = await page.evaluate(() => (window as unknown as { __RESULT: string }).__RESULT);
   await browser.close();
-  const out = { note: "RENDER2 骨架外框秤（RENDER2-skel-run.ts 生成，勿手改）", generatedAt: new Date().toISOString(), ...JSON.parse(raw) };
-  writeFileSync(resolve(here, "RENDER2-skel-golden.json"), JSON.stringify(out, null, 2) + "\n");
-  console.log(`写了 ${out.rows.length} 行 → tests/evidence/RENDER2-skel-golden.json`);
+  const out = { note: "骨架外框秤（skel-run.ts 生成，勿手改）", generatedAt: new Date().toISOString(), ...JSON.parse(raw) };
+  writeFileSync(resolve(here, "skel-golden.json"), JSON.stringify(out, null, 2) + "\n");
+  console.log(`写了 ${out.rows.length} 行 → tests/evidence/skel-golden.json`);
 }
 
 void run();
