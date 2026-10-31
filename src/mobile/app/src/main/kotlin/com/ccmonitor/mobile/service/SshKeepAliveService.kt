@@ -33,7 +33,6 @@ import org.koin.android.ext.android.inject
  * 没活（没有活动会话 · 没有在飞轮次 · 核心里没有在传的）时自停。网回来 · 网变了的回调不在这里（App 一起来就挂上，见 `CcMonitorApp`）。
  */
 class SshKeepAliveService : Service() {
-
     /** 断连接经网关：[onTaskRemoved] 走 [HostConnector.disconnectAll]。 */
     private val connector: HostConnector by inject()
 
