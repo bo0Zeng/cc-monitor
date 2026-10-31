@@ -356,7 +356,7 @@ pub(crate) fn rel_under(home: &str, abs: &str) -> Result<String, String> {
         .ok_or_else(|| copy_text("beAssets.door.outsideHome", &[("abs", abs), ("home", home)]))
 }
 
-/// [`rel_under`] 的反方向。住址下沉到 `platform::paths`（别名方言列 rc 候选也要它，适配层不往上依赖）。
+/// [`rel_under`] 的反方向。本体住 `platform::paths`（别名方言列 rc 候选也要它，适配层不往上依赖）。
 pub(crate) use crate::platform::paths::join_under;
 
 #[cfg(test)]

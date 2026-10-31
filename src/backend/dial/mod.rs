@@ -33,7 +33,7 @@ pub(crate) mod opened_windows; // ↗ 的本机记录：开终端那一刻那个
 pub use known_hosts::install as install_known_hosts;
 pub(crate) mod probe; // 测试连接（`remote-probe`）
                       // 本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 那几台（照机器表按名字够到）—— 全后端只此一处。
-                      // 住拨号层：它只用拨号与契约那几样，不碰帧面（审计二 B2e：原住 `stream/`，那时 `dial ⇄ stream` 双向都因它多出几条边）。
+                      // 住拨号层：它只用拨号与契约那几样，不碰帧面（放在 `stream/` 会让 `dial ⇄ stream` 双向都多出几条边）。
 pub mod remote_ask;
 pub(crate) mod ssh_config;
 pub(crate) mod terminal; // 开终端那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷）在这里渲
