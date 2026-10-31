@@ -63,7 +63,23 @@ class LaunchFromAliasesTest {
         "start" to "'/h/.cc-monitor/bin/ccm' @$name",
     )
 
-    private val folded = mapOf("name" to "cc", "args" to "--resume x")
+    private val folded =
+        mapOf(
+            "name" to "cc",
+            "from" to null,
+            "account" to null,
+            "tmux" to null,
+            "cwdIf" to null,
+            "cwd" to "~/w",
+            "agent" to null,
+            "args" to "--resume x",
+            "launcher" to null,
+            "tmuxSize" to null,
+            "detach" to false,
+            "tab" to null,
+            "tabGroup" to null,
+            "say" to null,
+        )
 
     private fun link(
         write: Reply = Reply.Ok(mapOf("wrote" to true, "rev" to "fp2", "reload" to null)),

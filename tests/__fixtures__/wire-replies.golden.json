@@ -1809,6 +1809,45 @@
         "title": "title-x"
       }
     },
+    "session-arrive": {
+      "rust": "{\"kind\":\"arrived\",\"sid\":\"sid-x\"}",
+      "sample": {
+        "kind": "arrived",
+        "sid": "sid-x"
+      }
+    },
+    "session-attachment-check": {
+      "rust": "{\"items\":[{\"ok\":true,\"class\":\"folder\",\"class_text\":\"class_text-x\",\"why\":\"is_dir\",\"said\":\"said-x\"}]}",
+      "sample": {
+        "items": [
+          {
+            "class": "folder",
+            "class_text": "class_text-x",
+            "ok": true,
+            "said": "said-x",
+            "why": "is_dir"
+          }
+        ]
+      }
+    },
+    "session-attachment-commit": {
+      "rust": "{\"id\":\"id-x\",\"name\":\"name-x\",\"path\":\"path-x\",\"rel\":\"rel-x\",\"bytes\":7,\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"class\":\"folder\"}",
+      "sample": {
+        "bytes": 7,
+        "class": "folder",
+        "id": "id-x",
+        "name": "name-x",
+        "path": "path-x",
+        "rel": "rel-x",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    "session-attachment-drop": {
+      "rust": "{\"removed\":true}",
+      "sample": {
+        "removed": true
+      }
+    },
     "session-commands": {
       "rust": "{\"commands\":[{\"name\":\"name-x\",\"text\":\"text-x\",\"scope\":\"builtin\",\"scopeText\":\"scopeText-x\",\"needsArgs\":true,\"confirm\":true,\"needsArgsText\":\"needsArgsText-x\",\"confirmText\":\"confirmText-x\"}],\"skills\":[{\"name\":\"name-x\",\"text\":\"text-x\",\"say\":\"say-x\"}],\"problems\":[\"problems-x\"],\"compact\":{\"say\":\"say-x\",\"confirm\":true},\"clear\":{\"say\":\"say-x\",\"confirm\":true}}",
       "sample": {
@@ -1966,6 +2005,94 @@
         "result": "done",
         "said": "said-x",
         "why": "not_yours"
+      }
+    },
+    "session-queue-cancel": {
+      "rust": "{\"cancelled\":true,\"queue\":{\"items\":[{\"seq\":7,\"id\":\"id-x\",\"end\":\"end-x\",\"text\":\"text-x\",\"attachments\":[\"attachments-x\"],\"rewind\":{\"to\":\"to-x\",\"how\":\"conversation\",\"when\":\"after_turn\"},\"state\":\"queued\",\"said\":\"said-x\",\"from\":\"from-x\"}],\"sent\":[\"sent-x\"]}}",
+      "sample": {
+        "cancelled": true,
+        "queue": {
+          "items": [
+            {
+              "attachments": [
+                "attachments-x"
+              ],
+              "end": "end-x",
+              "from": "from-x",
+              "id": "id-x",
+              "rewind": {
+                "how": "conversation",
+                "to": "to-x",
+                "when": "after_turn"
+              },
+              "said": "said-x",
+              "seq": 7,
+              "state": "queued",
+              "text": "text-x"
+            }
+          ],
+          "sent": [
+            "sent-x"
+          ]
+        }
+      }
+    },
+    "session-queue-put": {
+      "rust": "{\"outcome\":\"queued\",\"seq\":7,\"place\":7,\"said\":\"said-x\"}",
+      "sample": {
+        "outcome": "queued",
+        "place": 7,
+        "said": "said-x",
+        "seq": 7
+      }
+    },
+    "session-queue-read": {
+      "rust": "{\"items\":[{\"seq\":7,\"id\":\"id-x\",\"end\":\"end-x\",\"text\":\"text-x\",\"attachments\":[\"attachments-x\"],\"rewind\":{\"to\":\"to-x\",\"how\":\"conversation\",\"when\":\"after_turn\"},\"state\":\"queued\",\"said\":\"said-x\",\"from\":\"from-x\"}],\"sent\":[\"sent-x\"]}",
+      "sample": {
+        "items": [
+          {
+            "attachments": [
+              "attachments-x"
+            ],
+            "end": "end-x",
+            "from": "from-x",
+            "id": "id-x",
+            "rewind": {
+              "how": "conversation",
+              "to": "to-x",
+              "when": "after_turn"
+            },
+            "said": "said-x",
+            "seq": 7,
+            "state": "queued",
+            "text": "text-x"
+          }
+        ],
+        "sent": [
+          "sent-x"
+        ]
+      }
+    },
+    "session-rewind-options": {
+      "rust": "{\"how\":[{\"how\":\"conversation\",\"text\":\"text-x\",\"default\":true,\"enabled\":true,\"why\":\"why-x\"}],\"when\":[{\"when\":\"after_turn\",\"text\":\"text-x\",\"default\":true}],\"said\":\"said-x\"}",
+      "sample": {
+        "how": [
+          {
+            "default": true,
+            "enabled": true,
+            "how": "conversation",
+            "text": "text-x",
+            "why": "why-x"
+          }
+        ],
+        "said": "said-x",
+        "when": [
+          {
+            "default": true,
+            "text": "text-x",
+            "when": "after_turn"
+          }
+        ]
       }
     },
     "sessions-needs": {

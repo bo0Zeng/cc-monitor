@@ -45,7 +45,7 @@ class RotationTest {
     @Test
     fun `入参：会话那一形不带推几小时；设置页带 id 与推几小时；改一格带那份的版本；会话载入一份不带别的`() {
         assertEquals(mapOf("target" to mapOf("sid" to "s")), Rotation.view(RotWhere.Session("s"), 12))
-        assertEquals(mapOf("target" to mapOf("strategy" to "a"), "hours" to 24), Rotation.view(RotWhere.Strategy("a"), 24))
+        assertEquals(mapOf("target" to mapOf("strategy" to "a"), "hours" to 24L), Rotation.view(RotWhere.Strategy("a"), 24))
         assertEquals(mapOf("strategy" to "a", "edit" to RotEdit.add("x"), "ifRev" to "r"), Rotation.settings("a", RotEdit.add("x"), "r"))
         assertEquals(mapOf("sid" to "s", "strategy" to "a"), Rotation.use("s", "a"))
     }

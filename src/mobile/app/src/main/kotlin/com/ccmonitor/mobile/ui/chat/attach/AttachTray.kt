@@ -2,7 +2,6 @@ package com.ccmonitor.mobile.ui.chat.attach
 
 import com.ccmonitor.mobile.core.claude.link.AttachAsk
 import com.ccmonitor.mobile.core.claude.link.CoreLink
-import com.ccmonitor.mobile.core.claude.link.FilesCommitUpload
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionAttachmentCheck
 import com.ccmonitor.mobile.core.claude.link.SessionAttachmentCommit
@@ -18,6 +17,7 @@ import com.ccmonitor.mobile.core.wire.gen.AttachLocal
 import com.ccmonitor.mobile.core.wire.gen.AttachWant
 import com.ccmonitor.mobile.core.wire.gen.AttachWantCard
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
+import com.ccmonitor.mobile.core.wire.gen.Staged
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import kotlinx.coroutines.CoroutineScope
@@ -300,7 +300,7 @@ class AttachTray(
             } catch (_: IOException) {
                 return set(card.key, AttachPhase.Lost)
             }
-        val staged = (r as? Reply.Ok)?.let { FilesCommitUpload.Staged.of(it.data) } ?: return failOne(card, r, STAGE)
+        val staged = (r as? Reply.Ok)?.let { Wire.bind<Staged>(it.data) } ?: return failOne(card, r, STAGE)
         val c = link.call(SessionAttachmentCommit.COMMAND, SessionAttachmentCommit.args(s, card.name, staged), CHUNK_MS)
         val landed = (c as? Reply.Ok)?.let { SessionAttachmentCommit.of(it.data) } ?: return failOne(card, c, SessionAttachmentCommit.COMMAND)
         withContext(io) { store.landed(s, card.key, landed.id) }
