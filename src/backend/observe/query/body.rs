@@ -267,7 +267,8 @@ pub(crate) fn read_page(
     line_cap: usize,
 ) -> Result<ReadPage, Said> {
     use std::io::{Read, Seek, SeekFrom};
-    let target = validate_session_path(agent_home, jsonl_path).map_err(|e| Said::new("refused", e))?;
+    let target =
+        validate_session_path(agent_home, jsonl_path).map_err(|e| Said::new("refused", e))?;
     let mut f = Ro::open(&target).map_err(|e| Said::new("failed", format!("open failed: {e}")))?;
     let len = f
         .metadata()
@@ -353,7 +354,8 @@ pub(crate) fn read_back(
     line_cap: usize,
 ) -> Result<BackPage, Said> {
     use std::io::{Read, Seek, SeekFrom};
-    let target = validate_session_path(agent_home, jsonl_path).map_err(|e| Said::new("refused", e))?;
+    let target =
+        validate_session_path(agent_home, jsonl_path).map_err(|e| Said::new("refused", e))?;
     let mut f = Ro::open(&target).map_err(|e| Said::new("failed", format!("open failed: {e}")))?;
     let len = f
         .metadata()
@@ -496,7 +498,8 @@ pub(crate) fn read_lines(
     page: usize,
     line_cap: usize,
 ) -> Result<LinesPage, Said> {
-    let target = validate_session_path(agent_home, jsonl_path).map_err(|e| Said::new("refused", e))?;
+    let target =
+        validate_session_path(agent_home, jsonl_path).map_err(|e| Said::new("refused", e))?;
     let f = Ro::open(&target).map_err(|e| Said::new("failed", format!("open failed: {e}")))?;
     read_lines_from(std::io::BufReader::new(f), from, until, page, line_cap)
 }

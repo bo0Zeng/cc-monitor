@@ -19,7 +19,8 @@ pub(crate) fn run_source(
     run: Option<&str>,
     tool: Option<&str>,
 ) -> Result<(std::path::PathBuf, String), Said> {
-    let parent_path = validate_session_path(agent_home, parent).map_err(|e| Said::new("path_refused", e))?;
+    let parent_path =
+        validate_session_path(agent_home, parent).map_err(|e| Said::new("path_refused", e))?;
     let faces = crate::agents::record_face_of(&parent_path)
         .map(|f| crate::agents::RunFaces::of(&f))
         .unwrap_or(crate::agents::RunFaces::NONE);
@@ -39,7 +40,10 @@ pub(crate) fn run_source(
             return Ok((c, run));
         }
     }
-    Err(Said::new("not_found", copy_text("rsRun.load.notFound", &[])))
+    Err(Said::new(
+        "not_found",
+        copy_text("rsRun.load.notFound", &[]),
+    ))
 }
 
 /// 「这次工具调用派出的是哪个子运行」：子运行记录那一侧落了盘的对上 ‖ 父记录里带了子运行的那一条派出链接。

@@ -27,6 +27,10 @@ fn a_broken_mcp_json_is_never_replaced_with_a_skeleton() {
 #[test]
 fn relative_or_dotdot_project_dirs_are_refused() {
     for bad in ["rel/dir", "/a/../b"] {
-        assert_eq!(project_root(bad).expect_err(bad).code.as_deref(), Some("bad_path"), "{bad}");
+        assert_eq!(
+            project_root(bad).expect_err(bad).code.as_deref(),
+            Some("bad_path"),
+            "{bad}"
+        );
     }
 }

@@ -2022,7 +2022,11 @@ fn peek_tells_absent_from_present_and_goes_through_the_same_resolution() {
     let none = peek_text(&root, "nope.txt").expect("不在不是错");
     assert_eq!(none.text, None, "不在的文件该答 `None`，不是空串");
     for (rel, want) in [("../x", "refused"), ("/etc/passwd", "refused")] {
-        assert_eq!(peek_text(&root, rel).unwrap_err().code.as_deref(), Some(want), "{rel}");
+        assert_eq!(
+            peek_text(&root, rel).unwrap_err().code.as_deref(),
+            Some(want),
+            "{rel}"
+        );
     }
     std::fs::create_dir_all(root.join("cfg/projects/-p")).expect("建会话目录");
     std::fs::write(root.join("cfg/projects/-p/s1.jsonl"), "{}\n").expect("铺会话");
@@ -2035,9 +2039,15 @@ fn peek_tells_absent_from_present_and_goes_through_the_same_resolution() {
         Some("{}\n")
     );
     std::fs::write(root.join("bin.dat"), [0xffu8, 0xfe, 0x00]).expect("铺二进制");
-    assert_eq!(peek_text(&root, "bin.dat").unwrap_err().code.as_deref(), Some("not_text"));
+    assert_eq!(
+        peek_text(&root, "bin.dat").unwrap_err().code.as_deref(),
+        Some("not_text")
+    );
     std::fs::write(root.join("big.txt"), vec![b'x'; PEEK_MAX_BYTES + 1]).expect("铺大文件");
-    assert_eq!(peek_text(&root, "big.txt").unwrap_err().code.as_deref(), Some("too_large"));
+    assert_eq!(
+        peek_text(&root, "big.txt").unwrap_err().code.as_deref(),
+        Some("too_large")
+    );
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -2285,7 +2295,11 @@ fn the_read_modify_write_commands_answer_with_their_declared_fields() {
         "files-put",
         &serde_json::json!({"root": r, "rel": "a", "content": "x"}),
     ) {
-        Err(s) => assert_eq!(s.code.as_deref(), Some("bad_args"), "缺 `expect` 该回 bad_args"),
+        Err(s) => assert_eq!(
+            s.code.as_deref(),
+            Some("bad_args"),
+            "缺 `expect` 该回 bad_args"
+        ),
         Ok(v) => panic!("🔴 没给 `expect` 竟然写了：{v}"),
     }
     assert!(!root.join("a").exists(), "没给 `expect` 的那一趟落了盘");

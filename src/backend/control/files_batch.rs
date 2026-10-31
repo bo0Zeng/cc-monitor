@@ -22,10 +22,10 @@ use super::files_write::{
     delete_file_expecting, delete_tree_upto, lexical_in_root, rel_of, root_of, wire_of,
     WriteRefusal,
 };
-use crate::common::said::Said;
 use crate::common::batch_book::{
     cancel_rest, choice_of, key_of, minted, moment_text, mtime_secs, ticketed, Run,
 };
+use crate::common::said::Said;
 use crate::platform::fs::{Face, Ro};
 use batch_core::said_of;
 

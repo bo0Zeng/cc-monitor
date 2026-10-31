@@ -41,10 +41,7 @@ pub(crate) fn redact(def: &Value) -> (Value, Vec<(String, String)>) {
 }
 
 /// 这一级的 MCP 配置文件在这台上的（根, 相对段）：项目 = `<项目>/.mcp.json`；用户级 = agent 的那份（只读）。
-fn file_of(
-    at: &ExtLoc,
-    user_mcp: Option<&std::path::Path>,
-) -> Result<(String, String), Said> {
+fn file_of(at: &ExtLoc, user_mcp: Option<&std::path::Path>) -> Result<(String, String), Said> {
     match at {
         ExtLoc::Project { dir } => Ok((dir.clone(), mcp_json().to_string())),
         ExtLoc::User => {

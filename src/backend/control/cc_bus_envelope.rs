@@ -82,11 +82,17 @@ pub(crate) fn check(req: &BusEnvelopeReq) -> Result<Checked, Said> {
         ));
     }
     if !sid_ok(&req.to) {
-        return Err(Said::new("bad_to", format!("`to` is not a session id: {:?}", req.to)));
+        return Err(Said::new(
+            "bad_to",
+            format!("`to` is not a session id: {:?}", req.to),
+        ));
     }
     let tier = req.tier.unwrap_or(TIER_DEFAULT);
     if !(1..=2).contains(&tier) {
-        return Err(Said::new("bad_tier", format!("`tier` must be 1 or 2, got {tier}")));
+        return Err(Said::new(
+            "bad_tier",
+            format!("`tier` must be 1 or 2, got {tier}"),
+        ));
     }
     let title = req.title.trim();
     let chars = title.chars().count();
@@ -105,7 +111,10 @@ pub(crate) fn check(req: &BusEnvelopeReq) -> Result<Checked, Said> {
             ));
         }
         Some(r) if !msg_id_ok(r) => {
-            return Err(Said::new("bad_re", format!("`re` is not a message id: {r:?}")));
+            return Err(Said::new(
+                "bad_re",
+                format!("`re` is not a message id: {r:?}"),
+            ));
         }
         _ => {}
     }

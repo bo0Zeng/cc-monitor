@@ -672,8 +672,8 @@ fn said_of(s: Said) -> (String, Option<String>) {
 }
 
 /// 目录那一份的读口（生产 = `asset_catalog::answer_current` 带上那份写句柄，由命令表那扇门递进来）；`Sync` ⇒ 跨 await 送得出去。
-pub(crate) type CurrentFn<'a> = &'a (dyn Fn(bool) -> Result<(super::asset_catalog::Catalog, Vec<String>), Said>
-         + Sync);
+pub(crate) type CurrentFn<'a> =
+    &'a (dyn Fn(bool) -> Result<(super::asset_catalog::Catalog, Vec<String>), Said> + Sync);
 
 /// 那张表现拼一次（`ext-list` 同一份目录 ＋ 可达表）；目录那一份由命令表那扇门递进来（同 `ext-list`）。
 fn current_list(table: &Table, current: CurrentFn<'_>) -> Result<ExtList, Said> {

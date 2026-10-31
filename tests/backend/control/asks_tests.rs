@@ -9,7 +9,8 @@ use serde_json::json;
 /// 线上那一份入参照分派那一层解（`typed::take`，`deny_unknown_fields`）再交本体；回包投成线上那一份。
 /// 入参形状不对 ⇒ `bad_args`（与本体回的码同一形，判据只比码）。
 fn answer(args: &Value) -> Result<Value, crate::common::said::Said> {
-    let req: AnswerReq = crate::wire::typed::take(args).map_err(|f| crate::common::said::Said::new("bad_args", f.said))?;
+    let req: AnswerReq = crate::wire::typed::take(args)
+        .map_err(|f| crate::common::said::Said::new("bad_args", f.said))?;
     super::answer(req).map(|a| serde_json::to_value(a).expect("回包总能序列化"))
 }
 
@@ -136,7 +137,10 @@ fn when_the_hook_side_goes_away_the_request_is_withdrawn_and_later_answers_are_g
         gone(&copy_text("beAsk.answer.closed", &[]))
     );
     assert_eq!(
-        answer_of(sid, "ask-nope", "allow").unwrap_err().code.as_deref(),
+        answer_of(sid, "ask-nope", "allow")
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("not_found")
     );
 }
@@ -218,12 +222,21 @@ fn notes_and_picks_are_checked_before_anything_is_delivered() {
     let mut rx = open_id(AGENT, approve(sid), 9005).1;
     let id = pending(sid).pop().unwrap().id;
     assert_eq!(
-        answer_of(sid, &id, "deny-note").unwrap_err().code.as_deref(),
+        answer_of(sid, &id, "deny-note")
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("note_required")
     );
-    assert_eq!(answer_of(sid, &id, "always-3").unwrap_err().code.as_deref(), Some("bad_choice"));
     assert_eq!(
-        answer_of("t-other", &id, "allow").unwrap_err().code.as_deref(),
+        answer_of(sid, &id, "always-3").unwrap_err().code.as_deref(),
+        Some("bad_choice")
+    );
+    assert_eq!(
+        answer_of("t-other", &id, "allow")
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("not_found"),
         "会话对不上"
     );
@@ -278,14 +291,16 @@ fn notes_and_picks_are_checked_before_anything_is_delivered() {
     assert_eq!(
         try_picks(json!({"q0": {"options": ["q0o0"]}}))
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("bad_args"),
         "每题都要答"
     );
     assert_eq!(
         try_picks(json!({"q0": {"options": ["q0o0", "q0o1"]}, "q1": {"options": ["q1o0"]}}))
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("bad_args"),
         "单选至多一项"
     );

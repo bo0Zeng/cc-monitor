@@ -261,8 +261,7 @@ pub(crate) fn commit_for_inbound(
     req: &BusCommitReq,
 ) -> Result<BusCommitted, Said> {
     checked_id(&req.id)?;
-    store::commit(own, &req.id, &req.token)
-        .map(|read| BusCommitted { read })
+    store::commit(own, &req.id, &req.token).map(|read| BusCommitted { read })
 }
 
 /// `bus-unread`：未读几封（只读）。

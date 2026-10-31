@@ -175,7 +175,8 @@ fn launch(
 ) -> Result<SetLaunched, crate::common::said::Said> {
     use crate::history::groups::{self as groups, GroupsWriteReq, GroupsWritten, HereGroup};
     no_tmux()?;
-    let store = crate::assets::aliases::load(files).map_err(|m| crate::common::said::Said::new("refused", m))?;
+    let store = crate::assets::aliases::load(files)
+        .map_err(|m| crate::common::said::Said::new("refused", m))?;
     let home = std::path::PathBuf::from(&store.home);
     let live = live_here();
     let plan = answer(

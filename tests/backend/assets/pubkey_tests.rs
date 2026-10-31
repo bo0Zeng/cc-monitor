@@ -183,7 +183,10 @@ fn the_key_lands_through_this_backends_file_face() {
     );
     assert_eq!(before, after, "第二次是 already，一个字节都不该写");
     assert_eq!(
-        answer_add(&d, &json!({ "key": "rm -rf /" })).unwrap_err().code.as_deref(),
+        answer_add(&d, &json!({ "key": "rm -rf /" }))
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("refused"),
         "被写那台自己也净化"
     );
@@ -422,7 +425,9 @@ fn the_pub_file_beside_a_tilde_key_path_is_read_under_the_home() {
         read_pub_file("~/.ssh/id_t.pub", Some(&home)).map_err(|e| e.said),
         Ok("ssh-ed25519 AAAA t\n".to_string())
     );
-    let said = read_pub_file("~/.ssh/nope.pub", Some(&home)).unwrap_err().said;
+    let said = read_pub_file("~/.ssh/nope.pub", Some(&home))
+        .unwrap_err()
+        .said;
     assert!(
         said.contains("~/.ssh/nope.pub"),
         "报错句里的路径不是用户写的那一形：{said}"

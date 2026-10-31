@@ -35,7 +35,11 @@ fn the_same_letter_twice_within_the_window_is_a_duplicate() {
     // 一秒之内同一封（id 与时间是后端每次另盖的，不算进「同一封」）⇒ 重复。
     let e = admit(&mut l, &env(A, B, 2, "t", "m2"), t0 + 1_000).unwrap_err();
     assert_eq!(e.code.as_deref(), Some("duplicate"));
-    assert!(e.said.contains("m1"), "那一句说的是跟哪一封重了：{}", e.said);
+    assert!(
+        e.said.contains("m1"),
+        "那一句说的是跟哪一封重了：{}",
+        e.said
+    );
     // 拒掉的不进账：窗口过了照常收。
     assert_eq!(
         code(admit(
@@ -81,7 +85,9 @@ fn a_pair_over_its_limit_is_throttled_and_others_still_pass() {
             "ok"
         );
     }
-    let c = admit(&mut l, &env(A, B, 2, "over", "m"), t0 + 100).unwrap_err().code;
+    let c = admit(&mut l, &env(A, B, 2, "over", "m"), t0 + 100)
+        .unwrap_err()
+        .code;
     assert_eq!(c.as_deref(), Some("throttled"));
     // 另一对不受这一对的限。
     assert_eq!(code(admit(&mut l, &env(A, C, 2, "x", "m"), t0 + 101)), "ok");
@@ -104,7 +110,9 @@ fn the_whole_machine_has_one_limit_too() {
     for i in 0..RATE_GLOBAL {
         assert_eq!(code(admit(&mut l, &env(&sid(i), B, 2, "t", "m"), t0)), "ok");
     }
-    let c = admit(&mut l, &env(&sid(RATE_GLOBAL), B, 2, "t", "m"), t0).unwrap_err().code;
+    let c = admit(&mut l, &env(&sid(RATE_GLOBAL), B, 2, "t", "m"), t0)
+        .unwrap_err()
+        .code;
     assert_eq!(c.as_deref(), Some("throttled"));
 }
 

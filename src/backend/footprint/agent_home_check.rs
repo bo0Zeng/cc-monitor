@@ -65,9 +65,7 @@ pub(crate) fn verdict(dir: &Path) -> Verdict {
 }
 
 /// 帧面入口：`{path}`（绝对路径，或 `~/` 开头按这台家目录展开）⇒ `{state}`。
-pub(crate) fn answer_check(
-    req: &AgentHomeCheckReq,
-) -> Result<AgentHomeCheck, Said> {
+pub(crate) fn answer_check(req: &AgentHomeCheckReq) -> Result<AgentHomeCheck, Said> {
     answer_check_with(req, crate::platform::paths::home_dir())
 }
 
@@ -78,10 +76,14 @@ pub(crate) fn answer_check_with(
 ) -> Result<AgentHomeCheck, Said> {
     let raw = req.path.as_str();
     if raw.is_empty() {
-        return Err(Said::new("bad_args", malformed("`path` must be a non-empty string")));
+        return Err(Said::new(
+            "bad_args",
+            malformed("`path` must be a non-empty string"),
+        ));
     }
     let path = if raw == "~" || raw.starts_with("~/") {
-        let home = home.ok_or_else(|| Said::new("bad_args", malformed("home directory unresolvable")))?;
+        let home =
+            home.ok_or_else(|| Said::new("bad_args", malformed("home directory unresolvable")))?;
         if raw == "~" {
             home
         } else {

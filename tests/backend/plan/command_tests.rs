@@ -60,19 +60,31 @@ fn each_failing_code_lands_in_its_own_refusal() {
         (Some("refused"), "这里不是一个 pb 工作区")
     );
     assert_eq!(
-        classify("pause", Some(3), b"", stderr).unwrap_err().code.as_deref(),
+        classify("pause", Some(3), b"", stderr)
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("not_workspace")
     );
     assert_eq!(
-        classify("render", Some(4), b"", stderr).unwrap_err().code.as_deref(),
+        classify("render", Some(4), b"", stderr)
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("pb_unsupported")
     );
     assert_eq!(
-        classify("render", Some(1), b"", stderr).unwrap_err().code.as_deref(),
+        classify("render", Some(1), b"", stderr)
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("failed")
     );
     assert_eq!(
-        classify("render", None, b"", stderr).unwrap_err().code.as_deref(),
+        classify("render", None, b"", stderr)
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("failed")
     );
 }

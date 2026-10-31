@@ -633,7 +633,10 @@ pub(crate) fn preset_with(
     now: u64,
 ) -> Result<(), crate::common::said::Said> {
     if ctx.hop.store.path().is_none() {
-        return Err(crate::common::said::Said::new("io_failed", copy_text("beRotation.read.noHome", &[])));
+        return Err(crate::common::said::Said::new(
+            "io_failed",
+            copy_text("beRotation.read.noHome", &[]),
+        ));
     }
     // 空 ⇒ 起成不轮换的会话（新会话框选了「不轮换」），不去目录里找。
     let copy = match strategy {
@@ -646,7 +649,8 @@ pub(crate) fn preset_with(
     };
     let route = crate::agents::pick_route(Some(&crate::agents::AgentKind::new(kind)))
         .map_err(|say| crate::common::said::Said::new("bad_args", say))?;
-    uses::preset(&ctx.setup, own, sid, route, copy, now).map_err(|e| crate::common::said::Said::new("io_failed", note(e)))
+    uses::preset(&ctx.setup, own, sid, route, copy, now)
+        .map_err(|e| crate::common::said::Said::new("io_failed", note(e)))
 }
 
 /// 起不成：撤掉 [`preset_with`] 记的那一条（只撤还没换过号的；写不成只出声）。

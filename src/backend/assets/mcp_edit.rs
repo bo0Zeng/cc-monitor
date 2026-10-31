@@ -54,7 +54,10 @@ pub(crate) fn project_root_as(
 ) -> Result<String, crate::common::said::Said> {
     let d = project_dir.trim();
     if d.is_empty() {
-        return Err(crate::common::said::Said::new("bad_args", copy_text("beMcpEdit.path.emptyDir", &[])));
+        return Err(crate::common::said::Said::new(
+            "bad_args",
+            copy_text("beMcpEdit.path.emptyDir", &[]),
+        ));
     }
     if !form.is_absolute(d) || d.split(['/', '\\']).any(|s| s == "..") {
         return Err(crate::common::said::Said::new(

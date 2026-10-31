@@ -52,10 +52,7 @@ pub(crate) struct SidReq {
 
 /// 帧面入口（宿主 `faces/feature_face.rs` 交家目录）：此刻显示它的终端，或一条原因。
 /// 码：`bad_args`（sid 形状不对）· `no_such_session` · `failed` / `child_timed_out`（问 tmux 那一发）。
-pub(crate) fn answer_at(
-    home: &std::path::Path,
-    req: &SidReq,
-) -> Result<Showing, Said> {
+pub(crate) fn answer_at(home: &std::path::Path, req: &SidReq) -> Result<Showing, Said> {
     let sid = req.sid.as_str();
     let pid = crate::observe::watcher::running_sessions(home)
         .into_iter()
@@ -276,10 +273,7 @@ fn pane_ok(p: &str) -> bool {
 const LIST_CLIENTS_WITHIN: Deadline = Deadline::secs(5);
 
 /// 问那个 socket：连着 `pane` 所在会话的客户端（pid, 最近动静）。tmux 起不来 / 报错 ⇒ `failed`。
-pub(crate) fn list_clients(
-    socket: &str,
-    pane: &str,
-) -> Result<Vec<(u32, u64)>, Said> {
+pub(crate) fn list_clients(socket: &str, pane: &str) -> Result<Vec<(u32, u64)>, Said> {
     let out = crate::host::tmux::child(None)
         .arg(crate::common::tmux_utf8::UTF8_CLIENT_FLAG)
         .args(["-S", socket, "list-clients", "-t", pane, "-F"])

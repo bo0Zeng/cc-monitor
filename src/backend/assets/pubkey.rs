@@ -163,7 +163,8 @@ pub(crate) fn answer_add(
     d: &dyn Door,
     req: &KeyAddReq,
 ) -> Result<KeyAdded, crate::common::said::Said> {
-    let key = sanitize_public_key(&req.key).map_err(|e| crate::common::said::Said::new("refused", e.into_said()))?;
+    let key = sanitize_public_key(&req.key)
+        .map_err(|e| crate::common::said::Said::new("refused", e.into_said()))?;
     let home = door::home(d).map_err(|e| crate::common::said::Said::new("io_failed", e))?;
     let rel = format!("{SSH_DIR}/{AUTH_FILE}");
     let mut outcome = PushOutcome::Already;
@@ -173,8 +174,10 @@ pub(crate) fn answer_add(
         Ok(next)
     })
     .map_err(|e| crate::common::said::Said::new("io_failed", e))?;
-    door::chmod(d, &home, SSH_DIR, 0o700).map_err(|e| crate::common::said::Said::new("io_failed", e))?;
-    door::chmod(d, &home, &rel, 0o600).map_err(|e| crate::common::said::Said::new("io_failed", e))?;
+    door::chmod(d, &home, SSH_DIR, 0o700)
+        .map_err(|e| crate::common::said::Said::new("io_failed", e))?;
+    door::chmod(d, &home, &rel, 0o600)
+        .map_err(|e| crate::common::said::Said::new("io_failed", e))?;
     Ok(KeyAdded { outcome })
 }
 
@@ -405,8 +408,8 @@ pub(crate) async fn answer_push(
     let machine = &req.machine;
     let dial =
         crate::dial::request_draft(&reach.hosts(), machine, "capture", serde_json::json!({}))?;
-    let path =
-        pub_key_path(req.pub_key_path.as_deref(), machine.key()).map_err(|e| crate::common::said::Said::new("refused", e))?;
+    let path = pub_key_path(req.pub_key_path.as_deref(), machine.key())
+        .map_err(|e| crate::common::said::Said::new("refused", e))?;
     let key = match sanitize_public_key(&read_pub(&path)?) {
         Ok(k) => k,
         Err(SanitizeKeyErr::UnknownType) => {
@@ -459,9 +462,8 @@ pub(crate) fn read_pub_file(
         )
     };
     // 句子只带原因词；系统原话进原话。
-    let io = |e: std::io::Error| {
-        said(&copy_core::io_reason(e.kind())).and_raw(Some(&e.to_string()))
-    };
+    let io =
+        |e: std::io::Error| said(&copy_core::io_reason(e.kind())).and_raw(Some(&e.to_string()));
     let meta = Ro::metadata(&at).map_err(io)?;
     if meta.len() > PUB_READ_MAX {
         return Err(said(&copy_text("bePubkey.read.tooBig", &[])));

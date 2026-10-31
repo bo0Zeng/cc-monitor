@@ -210,8 +210,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         // 走不到（`main` 只把已知 flag 派到这里），但**不许 panic**：与 `main` 那条 `_` 臂同一形。
         return refuse_unknown_to(args, err, tz);
     };
-    let refuse =
-        |err: &mut dyn Write, f: Said| emit_failed(err, &f.settle(spec.name), text, tz);
+    let refuse = |err: &mut dyn Write, f: Said| emit_failed(err, &f.settle(spec.name), text, tz);
     let within_ms = match within_of(opts) {
         Ok(ms) => ms,
         Err(f) => return refuse(err, f),

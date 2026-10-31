@@ -95,7 +95,8 @@ fn decode_argv(b64: &str) -> Result<String, crate::common::said::Said> {
             )),
         ));
     }
-    let bytes = crate::wire::b64_decode(b64).map_err(|e| crate::common::said::Said::new("bad_request", e))?;
+    let bytes = crate::wire::b64_decode(b64)
+        .map_err(|e| crate::common::said::Said::new("bad_request", e))?;
     String::from_utf8(bytes).map_err(|e| {
         crate::common::said::Said::new(
             "bad_request",
@@ -182,7 +183,10 @@ pub(crate) fn read_input<R: std::io::BufRead>(
         capped.read_to_end(&mut buf)
     };
     if let Err(e) = got {
-        return Err(crate::common::said::Said::new("stdin_read_failed", format!("read stdin failed: {e}")));
+        return Err(crate::common::said::Said::new(
+            "stdin_read_failed",
+            format!("read stdin failed: {e}"),
+        ));
     }
     if buf.len() as u64 > MAX_CLI_STDIN {
         return Err(crate::common::said::Said::new(
@@ -193,7 +197,9 @@ pub(crate) fn read_input<R: std::io::BufRead>(
             )),
         ));
     }
-    String::from_utf8(buf).map_err(|e| crate::common::said::Said::new("stdin_read_failed", format!("read stdin failed: {e}")))
+    String::from_utf8(buf).map_err(|e| {
+        crate::common::said::Said::new("stdin_read_failed", format!("read stdin failed: {e}"))
+    })
 }
 
 /// 期限口 [`crate::wire::cli_words::WITHIN_MS_FLAG`]（位置不限）：缺值 · 给两次 ⇒ `bad_args`（同 [`crate::wire::cli_words::ARGS_B64_FLAG`]）；

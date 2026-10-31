@@ -22,7 +22,10 @@ impl Ends for Local {
         Box::pin(async move {
             let p = Path::new(path);
             let Ok(m) = fs::metadata(p) else {
-                return Err(crate::common::said::Said::new("io_failed", format!("missing {path}")));
+                return Err(crate::common::said::Said::new(
+                    "io_failed",
+                    format!("missing {path}"),
+                ));
             };
             // 源那台上的树按铺的时候那张清单答（判据不自己遍历目录）。
             let mut out = vec![Entry {
@@ -67,7 +70,10 @@ impl Ends for Local {
         Box::pin(async move {
             let to = Path::new(dir).join(name);
             if to.exists() && !overwrite {
-                return Err(crate::common::said::Said::new("exists", "exists".to_string()));
+                return Err(crate::common::said::Said::new(
+                    "exists",
+                    "exists".to_string(),
+                ));
             }
             // 走到一半报一次（替身里「一半」＝ 一半字节），传完报整份。
             let len = fs::metadata(from).map(|m| m.len()).unwrap_or(0);
@@ -346,12 +352,10 @@ impl RigBackend {
                 take::<cwf::HomeReq>(args)?;
                 serde_json::json!({ "path": rig::HOME })
             }
-            "files-mkdir" => serde_json::to_value(
-                crate::control::files_write::answer(
-                    take::<cwf::FilesMkdirReq>(args)?,
-                    &face,
-                )?,
-            )
+            "files-mkdir" => serde_json::to_value(crate::control::files_write::answer(
+                take::<cwf::FilesMkdirReq>(args)?,
+                &face,
+            )?)
             .unwrap(),
             "files-commit-upload" => serde_json::to_value(
                 crate::control::files_commit::commit_upload_at(
@@ -363,7 +367,12 @@ impl RigBackend {
                 .map_err(|e| e.flat())?,
             )
             .unwrap(),
-            other => return Err(crate::common::said::Said::new("unknown_command", other.to_string())),
+            other => {
+                return Err(crate::common::said::Said::new(
+                    "unknown_command",
+                    other.to_string(),
+                ))
+            }
         };
         Ok(v)
     }
@@ -406,9 +415,7 @@ impl crate::dial::remote_ask::Remote for RigBackend {
             Ok(_) => flag,
             Err(s) => format!("{flag} ✗ {}: {}", s.code_or_fallback(), s.said),
         });
-        Box::pin(async move {
-            out.map(|v| v.to_string().replace(&disk, rig::HOME))
-        })
+        Box::pin(async move { out.map(|v| v.to_string().replace(&disk, rig::HOME)) })
     }
 }
 

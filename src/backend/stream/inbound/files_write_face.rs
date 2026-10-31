@@ -258,9 +258,9 @@ impl crate::wire::typed::Handle for FilesCopy {
                 CopyRefused::Clash(said, data) => FilesCopyErr::Exists(said, data),
                 CopyRefused::Fail(f) => typed::of_fail(
                     {
-                let code = f.code_or_fallback().to_string();
-                crate::wire::spec::fail(&code, f)
-            },
+                        let code = f.code_or_fallback().to_string();
+                        crate::wire::spec::fail(&code, f)
+                    },
                     FilesCopyErr::BadArgs,
                 ),
             })
@@ -488,9 +488,9 @@ impl crate::wire::typed::Handle for FilesCommitUpload {
                 CommitRefused::Clash(said, data) => FilesCommitUploadErr::Exists(said, data),
                 CommitRefused::Fail(f) => typed::of_fail(
                     {
-                let code = f.code_or_fallback().to_string();
-                crate::wire::spec::fail(&code, f)
-            },
+                        let code = f.code_or_fallback().to_string();
+                        crate::wire::spec::fail(&code, f)
+                    },
                     FilesCommitUploadErr::BadArgs,
                 ),
             })
@@ -605,9 +605,8 @@ impl crate::wire::typed::Handle for SessionAttachmentCommit {
                 let f = sa::refused(cmd_wire::attachment::AttachRefused::NoSession);
                 attach_fail(f, SessionAttachmentCommitErr::BadArgs)
             })?;
-            sa::commit_here(face, &cwd, req).map_err(|f| {
-                attach_fail(f, SessionAttachmentCommitErr::BadArgs)
-            })
+            sa::commit_here(face, &cwd, req)
+                .map_err(|f| attach_fail(f, SessionAttachmentCommitErr::BadArgs))
         }
     }
 }

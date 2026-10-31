@@ -491,7 +491,11 @@ fn sort_key_and_limit() {
         json!({"hidden": "y"}),
         json!({"extra": 1}),
     ] {
-        assert_eq!(parse_ask(&bad).unwrap_err().code.as_deref(), Some("bad_args"), "{bad}");
+        assert_eq!(
+            parse_ask(&bad).unwrap_err().code.as_deref(),
+            Some("bad_args"),
+            "{bad}"
+        );
     }
 }
 
@@ -551,7 +555,11 @@ async fn a_remote_listing_comes_from_that_machine_or_fails_plainly() {
     let e = super::answer(req.clone(), Default::default(), None)
         .await
         .unwrap_err();
-    assert_eq!(e.code.as_deref(), Some("bad_args"), "没带期限却去问了那台：{e:?}");
+    assert_eq!(
+        e.code.as_deref(),
+        Some("bad_args"),
+        "没带期限却去问了那台：{e:?}"
+    );
     assert!(e.said.contains("within_ms"), "没说缺的是哪一格：{e:?}");
     let until = crate::platform::child::Until::after(crate::platform::child::Deadline::secs(5));
     let e = super::answer(req, Default::default(), until)
@@ -565,7 +573,11 @@ async fn a_remote_listing_comes_from_that_machine_or_fails_plainly() {
         json!({"origin": ""}),
     ] {
         let e = answer_wire(bad.clone()).await.unwrap_err();
-        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad} 应是 bad_args：{e:?}");
+        assert_eq!(
+            e.code.as_deref(),
+            Some("bad_args"),
+            "{bad} 应是 bad_args：{e:?}"
+        );
     }
 }
 

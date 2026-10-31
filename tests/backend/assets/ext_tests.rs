@@ -857,7 +857,10 @@ async fn the_hub_refuses_a_target_the_table_greys_out() {
         let e = pv(&t.here, &args, &t.reach, &t.remote)
             .await
             .expect_err("不可选的那一处也给看卡了");
-        assert_eq!((e.code.as_deref(), e.said), (Some("refused"), copy_text(why, &[])));
+        assert_eq!(
+            (e.code.as_deref(), e.said),
+            (Some("refused"), copy_text(why, &[]))
+        );
         let e = ap(&t.here, &args, &t.reach, &t.remote)
             .await
             .expect_err("不可选的那一处也给装了");

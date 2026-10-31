@@ -425,7 +425,9 @@ impl crate::wire::typed::Handle for SessionTerminals {
             .map_err(|s| match s.code.as_deref() {
                 Some("bad_args") => SessionTerminalsErr::BadArgs(s.said),
                 Some("no_such_session") => SessionTerminalsErr::NoSuchSession(s.said),
-                Some(crate::platform::child::TIMED_OUT) => SessionTerminalsErr::ChildTimedOut(s.said),
+                Some(crate::platform::child::TIMED_OUT) => {
+                    SessionTerminalsErr::ChildTimedOut(s.said)
+                }
                 _ => SessionTerminalsErr::Failed(s.said),
             })
         }

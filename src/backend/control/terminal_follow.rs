@@ -215,11 +215,7 @@ pub(crate) struct FollowErr(Said);
 impl FollowErr {
     /// 下层那一份失败 ⇒ 这一条的码；码表外的落 `unobservable`（原码进原话）。
     pub(crate) fn of(e: Said) -> FollowErr {
-        crate::wire::typed::of_fail_said(
-            e,
-            |said| FollowErr(Said::new("unobservable", said)),
-            said,
-        )
+        crate::wire::typed::of_fail_said(e, |said| FollowErr(Said::new("unobservable", said)), said)
     }
 }
 

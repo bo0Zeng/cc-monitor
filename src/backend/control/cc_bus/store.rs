@@ -125,9 +125,7 @@ fn locked(
             ))
         })?;
     }
-    let held = own
-        .lock(&dir)
-        .map_err(|e| io(Said::from(e).said))?;
+    let held = own.lock(&dir).map_err(|e| io(Said::from(e).said))?;
     Ok((dir, held))
 }
 
@@ -183,8 +181,8 @@ fn parse_token(t: &str) -> Option<(u64, u64, u64)> {
 /// 两阶段读的第二跳：令牌对得上 ⇒ 把那条会话的已读位置推到 `to`，回推到了第几行。
 /// 盘上的位置不是令牌的 from ⇒ `stale`（别人推过了：手上那段照常处理）；第 to 行变了 ⇒ `changed`；令牌坏 ⇒ `bad_token`。
 pub(crate) fn commit(own: &crate::platform::Own, sid: &str, token: &str) -> Result<u64, Said> {
-    let (from, to, want) =
-        parse_token(token).ok_or_else(|| Said::new("bad_token", format!("not a peek token: {token:?}")))?;
+    let (from, to, want) = parse_token(token)
+        .ok_or_else(|| Said::new("bad_token", format!("not a peek token: {token:?}")))?;
     let (dir, held) = locked(own)?;
     let mut s = state(dir.as_path()).map_err(io)?;
     let rows = lines(dir.as_path(), sid).map_err(io)?;

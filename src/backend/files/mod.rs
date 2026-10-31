@@ -900,9 +900,7 @@ fn home_var() -> Option<std::ffi::OsString> {
 
 /// `files.grep` 的入参：`needle` 与 `path` 同两种形（字符串 / `{"b16"}`），
 /// 非空、至多 [`grep::NEEDLE_MAX_BYTES`] 字节；`limit` 缺省 [`grep::DEFAULT_LIMIT`]、至多 [`grep::MAX_LIMIT`]。
-fn grep_args(
-    req: &wire::GrepReq,
-) -> Result<(std::path::PathBuf, grep::GrepArgs), Said> {
+fn grep_args(req: &wire::GrepReq) -> Result<(std::path::PathBuf, grep::GrepArgs), Said> {
     let path = path_of(&req.path, "path")?;
     let needle = req.needle.0.clone();
     if needle.is_empty() || needle.len() > grep::NEEDLE_MAX_BYTES {

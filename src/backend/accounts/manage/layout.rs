@@ -7,8 +7,8 @@
 
 use super::model::{Account, Manifest, ACCOUNT_ZERO};
 use super::scan::{is_under, join, DirState, Snapshot};
-use crate::common::said::Said;
 use crate::agents::{AccountsFace, IdentityClass, IdentityRoot};
+use crate::common::said::Said;
 use crate::platform::acct_view::Item;
 use copy_core::copy_text;
 

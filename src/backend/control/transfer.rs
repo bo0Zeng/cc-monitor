@@ -1062,7 +1062,10 @@ fn register(tickets: &Tickets, t: Ticket) -> Result<String, crate::common::said:
     }
     if let Some(k) = &t.key {
         if g.values().any(|o| o.key.as_ref() == Some(k)) {
-            return Err(crate::common::said::Said::new("busy", copy_text("beTransfer.register.sameFile", &[])));
+            return Err(crate::common::said::Said::new(
+                "busy",
+                copy_text("beTransfer.register.sameFile", &[]),
+            ));
         }
     }
     let tid = next_id();

@@ -134,10 +134,8 @@ pub(crate) fn classify(
                 .flatten()
                 .map(|p| p.trim().to_string());
             if verb == "render" && path.is_none() {
-                return Err(
-                    Said::new("failed", copy_text("bePlan.command.noPage", &[]))
-                        .and_raw(said.as_deref()),
-                );
+                return Err(Said::new("failed", copy_text("bePlan.command.noPage", &[]))
+                    .and_raw(said.as_deref()));
             }
             Ok(PlanCmdReply {
                 rc: 0,

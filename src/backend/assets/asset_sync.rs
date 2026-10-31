@@ -152,11 +152,7 @@ async fn fold_blocking(fold: &Fold, req: AssetsCatalogMergeReq) -> Result<Catalo
     tokio::task::spawn_blocking(move || f(req))
         .await
         .map_err(|e| {
-            Said::with_raw(
-                copy_text("beAssetSync.foldBlocking.unfinished", &[]),
-                &e,
-            )
-            .into_note()
+            Said::with_raw(copy_text("beAssetSync.foldBlocking.unfinished", &[]), &e).into_note()
         })?
         .map_err(fold_failed)
 }
@@ -183,11 +179,10 @@ async fn sync_one(
                         None,
                         false,
                         0,
-                        &[Said::with_raw(
-                            copy_text("beAssetSync.syncOne.unparsable", &[]),
-                            &e,
-                        )
-                        .into_note()],
+                        &[
+                            Said::with_raw(copy_text("beAssetSync.syncOne.unparsable", &[]), &e)
+                                .into_note(),
+                        ],
                     ),
                 )
             }

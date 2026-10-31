@@ -802,7 +802,8 @@ fn the_chunk_commands_refuse_bad_arguments_before_touching_the_disk() {
     for (chunks, bytes) in [(1, cap + 1), (0, 5), (6, 5)] {
         let e = send_commit(&home, KEY, chunks, bytes, &root, "t.txt").expect_err("该拒");
         assert_eq!(
-            e.code_or_fallback(), "bad_args",
+            e.code_or_fallback(),
+            "bad_args",
             "chunks={chunks} bytes={bytes}：{}",
             e.said
         );
@@ -1156,7 +1157,11 @@ fn an_upload_name_goes_through_the_same_name_rules_as_create() {
     std::fs::create_dir_all(root.join("sub")).expect("建子目录");
     let e = answer_commit_at(&Face::issue(), &home, &args("sub/a.bin"))
         .expect_err("带 / 的名字落进了子目录");
-    assert_eq!(e.code_or_fallback(), super::super::files_write::BAD_NAME, "{e:?}");
+    assert_eq!(
+        e.code_or_fallback(),
+        super::super::files_write::BAD_NAME,
+        "{e:?}"
+    );
     assert!(!root.join("sub/a.bin").exists());
     answer_commit_at(&Face::issue(), &home, &args("a.bin")).expect("一段名字该照落");
     assert_eq!(std::fs::read(root.join("a.bin")).expect("读落点"), b"x");

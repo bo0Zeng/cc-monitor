@@ -138,7 +138,10 @@ impl Rig {
         let sid = || PRESET.to_string();
         let write = |sid: &str, kind: &str, rule: &str| -> Result<(), crate::common::said::Said> {
             if rule == "c_gone" {
-                return Err(crate::common::said::Said::new("no_strategy", "配置不在".into()));
+                return Err(crate::common::said::Said::new(
+                    "no_strategy",
+                    "配置不在".into(),
+                ));
             }
             let at = self.ccm.borrow().len();
             self.rot

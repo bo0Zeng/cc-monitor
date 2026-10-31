@@ -106,7 +106,10 @@ impl Rig {
         };
         let fork = |_: &str, _: &str| -> Result<String, crate::common::said::Said> {
             if self.fork_err {
-                Err(crate::common::said::Said::new("fork_failed", "分支记录写不成".into()))
+                Err(crate::common::said::Said::new(
+                    "fork_failed",
+                    "分支记录写不成".into(),
+                ))
             } else {
                 Ok(U.to_string())
             }
@@ -114,7 +117,10 @@ impl Rig {
         let sid = || U.to_string();
         let write = |_: &str, _: &str, _: &str| -> Result<(), crate::common::said::Said> {
             if self.rotation_err {
-                Err(crate::common::said::Said::new("no_strategy", "没有这一份策略".into()))
+                Err(crate::common::said::Said::new(
+                    "no_strategy",
+                    "没有这一份策略".into(),
+                ))
             } else {
                 Ok(())
             }

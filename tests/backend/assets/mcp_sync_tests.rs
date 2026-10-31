@@ -314,19 +314,31 @@ fn differing_entries_are_written_only_when_the_user_said_overwrite() {
         Ok(vec!["a".to_string(), "c".to_string()])
     );
     assert_eq!(
-        plan(&rows, &set(&["a", "c"]), &set(&[])).unwrap_err().code.as_deref(),
+        plan(&rows, &set(&["a", "c"]), &set(&[]))
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("needs_consent")
     );
     assert_eq!(
-        plan(&rows, &set(&["d"]), &set(&[])).unwrap_err().code.as_deref(),
+        plan(&rows, &set(&["d"]), &set(&[]))
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("bad_args")
     );
     assert_eq!(
-        plan(&rows, &set(&["zzz"]), &set(&[])).unwrap_err().code.as_deref(),
+        plan(&rows, &set(&["zzz"]), &set(&[]))
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("bad_args")
     );
     assert_eq!(
-        plan(&rows, &set(&["a"]), &set(&["c"])).unwrap_err().code.as_deref(),
+        plan(&rows, &set(&["a"]), &set(&["c"]))
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("bad_args")
     );
 }

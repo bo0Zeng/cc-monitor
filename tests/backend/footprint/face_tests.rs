@@ -245,7 +245,11 @@ fn bad_arguments_are_refused() {
     ];
     for args in cases {
         let err = answer_with(&get, &no_session, &d, &args).expect_err("坏入参还成功了");
-        assert_eq!(err.code.as_deref(), Some("bad_args"), "{args} 应当是 bad_args，实得 {err:?}");
+        assert_eq!(
+            err.code.as_deref(),
+            Some("bad_args"),
+            "{args} 应当是 bad_args，实得 {err:?}"
+        );
     }
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -266,7 +270,11 @@ fn home_falls_back_to_userprofile_and_is_required() {
         "HOME 缺 ⇒ 退 USERPROFILE"
     );
     let e = answer_with(&env_of(vec![]), &no_session, &d, &json!({})).unwrap_err();
-    assert_eq!(e.code.as_deref(), Some("failed"), "没有家目录就解不了 `~/…`，不猜");
+    assert_eq!(
+        e.code.as_deref(),
+        Some("failed"),
+        "没有家目录就解不了 `~/…`，不猜"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 

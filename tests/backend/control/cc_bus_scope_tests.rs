@@ -84,7 +84,10 @@ fn g2_several_groups_are_a_union() {
     );
     assert_eq!(scope("a", "b", Ok(&r)), Ok(()));
     assert_eq!(scope("a", "d", Ok(&r)), Ok(()));
-    assert_eq!(scope("a", "c", Ok(&r)).unwrap_err().code.as_deref(), Some("not_same_group"));
+    assert_eq!(
+        scope("a", "c", Ok(&r)).unwrap_err().code.as_deref(),
+        Some("not_same_group")
+    );
 }
 
 #[test]
@@ -110,9 +113,15 @@ fn g5_this_machines_slice_unread_means_no_roster() {
             why: "注解文件读不懂".into(),
         },
     );
-    assert_eq!(scope("a", "b", Ok(&r)).unwrap_err().code.as_deref(), Some("no_roster"));
+    assert_eq!(
+        scope("a", "b", Ok(&r)).unwrap_err().code.as_deref(),
+        Some("no_roster")
+    );
     let r = read(vec![], Read::Unread);
-    assert_eq!(scope("a", "b", Ok(&r)).unwrap_err().code.as_deref(), Some("no_roster"));
+    assert_eq!(
+        scope("a", "b", Ok(&r)).unwrap_err().code.as_deref(),
+        Some("no_roster")
+    );
     let r = read(
         vec![],
         Read::Stale {

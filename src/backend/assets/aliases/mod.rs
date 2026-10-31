@@ -803,10 +803,7 @@ pub(crate) struct AliasesReadReq {
 }
 
 /// `aliases-read`：启动文件候选（接入那一格）。
-pub(crate) fn answer_read(
-    d: &dyn Door,
-    req: &AliasesReadReq,
-) -> Result<AliasListing, Said> {
+pub(crate) fn answer_read(d: &dyn Door, req: &AliasesReadReq) -> Result<AliasListing, Said> {
     dialect_here(req.shell).map_err(refused)?;
     read_via(d, req.shell, req.rc_path.as_deref()).map_err(refused)
 }
@@ -843,10 +840,7 @@ pub(crate) struct BlockText {
 pub(crate) struct BlockDone {}
 
 /// `aliases-block-render {rcPath}` → `{text}`（纯：往一份空文件里装一次会写成什么；方言由 `rcPath` 的扩展名定）。
-pub(crate) fn answer_block_render(
-    d: &dyn Door,
-    req: &BlockReq,
-) -> Result<BlockText, Said> {
+pub(crate) fn answer_block_render(d: &dyn Door, req: &BlockReq) -> Result<BlockText, Said> {
     let shell = Shell::of_target(Path::new(&req.rc_path));
     dialect_here(shell).map_err(refused)?;
     let home = door::home(d).map_err(refused)?;
@@ -855,20 +849,14 @@ pub(crate) fn answer_block_render(
 }
 
 /// `aliases-block-install {rcPath}` → `{}`（幂等，整块替换；经这台的 `Door::put`）。
-pub(crate) fn answer_block_install(
-    d: &dyn Door,
-    req: &BlockReq,
-) -> Result<BlockDone, Said> {
+pub(crate) fn answer_block_install(d: &dyn Door, req: &BlockReq) -> Result<BlockDone, Said> {
     let (_, p) = block_target(d, req)?;
     block::install_to_profile(d, Path::new(&p)).map_err(refused)?;
     Ok(BlockDone {})
 }
 
 /// `aliases-block-remove {rcPath}` → `{}`（整块删，块外一个字节不动；围栏损坏 ⇒ 中止）。
-pub(crate) fn answer_block_remove(
-    d: &dyn Door,
-    req: &BlockReq,
-) -> Result<BlockDone, Said> {
+pub(crate) fn answer_block_remove(d: &dyn Door, req: &BlockReq) -> Result<BlockDone, Said> {
     let (_, p) = block_target(d, req)?;
     block::uninstall_from_profile(d, Path::new(&p)).map_err(refused)?;
     Ok(BlockDone {})
@@ -956,7 +944,8 @@ impl crate::wire::typed::Handle for AliasesBlockRender {
         async move {
             let files = needs;
 
-            answer_block_render(files, &req).map_err(crate::wire::typed::of_fail_with(AliasErr::Refused))
+            answer_block_render(files, &req)
+                .map_err(crate::wire::typed::of_fail_with(AliasErr::Refused))
         }
     }
 }
@@ -1007,7 +996,8 @@ impl crate::wire::typed::Handle for AliasesBlockRemove {
         async move {
             let files = needs;
 
-            answer_block_remove(files, &req).map_err(crate::wire::typed::of_fail_with(AliasErr::Refused))
+            answer_block_remove(files, &req)
+                .map_err(crate::wire::typed::of_fail_with(AliasErr::Refused))
         }
     }
 }
@@ -1028,7 +1018,9 @@ impl crate::wire::typed::Handle for PowershellPolicySet {
         req: PolicySetReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<PolicySet, AliasErr>> + Send + 'static {
-        async move { answer_policy_set(&req).map_err(crate::wire::typed::of_fail_with(AliasErr::Refused)) }
+        async move {
+            answer_policy_set(&req).map_err(crate::wire::typed::of_fail_with(AliasErr::Refused))
+        }
     }
 }
 

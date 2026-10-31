@@ -291,7 +291,11 @@ mod tests {
             &serde_json::json!({"sid": "abc", "path": "/tmp/x.jsonl"}),
         ) {
             Err(e) => {
-                assert_eq!(e.code.as_deref(), Some("bad_args"), "多给一个 `path` 该回 bad_args")
+                assert_eq!(
+                    e.code.as_deref(),
+                    Some("bad_args"),
+                    "多给一个 `path` 该回 bad_args"
+                )
             }
             Ok(v) => panic!("🔴 多给了一个 `path`，删会话那条竟然答了：{v}"),
         }

@@ -93,7 +93,8 @@ async fn the_spec_fence_stands_before_any_lookup_or_dial() {
         .await
         .expect_err("非法规格竟然没被拒");
         assert_eq!(
-            err.code.as_deref(), Some("bad_spec"),
+            err.code.as_deref(),
+            Some("bad_spec"),
             "拒了，但不是围栏拒的（{err:?}）—— 围栏在查表之后了"
         );
         assert_eq!(&err.said, said, "{bad} 拒的那一句不对");
@@ -227,7 +228,10 @@ async fn a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link() {
     );
     assert_eq!(list_with(&ledger)["forwards"], json!([]));
     assert_eq!(
-        stop_with(&json!({"id": id}), &ledger).unwrap_err().code.as_deref(),
+        stop_with(&json!({"id": id}), &ledger)
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("not_found")
     );
 }

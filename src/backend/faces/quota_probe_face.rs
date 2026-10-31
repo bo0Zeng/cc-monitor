@@ -132,7 +132,8 @@ pub(crate) fn answer_probe_with(
     }
     let book = ctx.hop.quota.path();
     // 家里那个不出会话的工作目录（数据目录底下一层，没有就建）：经写句柄建。
-    let no_home = || crate::common::said::Said::new("io_failed", copy_text("beQuotaLedger.read.noHome", &[]));
+    let no_home =
+        || crate::common::said::Said::new("io_failed", copy_text("beQuotaLedger.read.noHome", &[]));
     if book.is_none() {
         return Err(no_home());
     }

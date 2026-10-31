@@ -74,8 +74,12 @@ pub(crate) fn log_tail(
             truncated: false,
         });
     };
-    let mut f = Ro::open(path).map_err(|e| crate::common::said::Said::new("failed", e.to_string()))?;
-    let size = f.metadata().map_err(|e| crate::common::said::Said::new("failed", e.to_string()))?.len();
+    let mut f =
+        Ro::open(path).map_err(|e| crate::common::said::Said::new("failed", e.to_string()))?;
+    let size = f
+        .metadata()
+        .map_err(|e| crate::common::said::Said::new("failed", e.to_string()))?
+        .len();
     let from = size.saturating_sub(max);
     let mut buf = Vec::new();
     f.seek(SeekFrom::Start(from))
@@ -569,8 +573,8 @@ pub(crate) fn record_face(
     home: &std::path::Path,
     path: &str,
 ) -> Result<(std::path::PathBuf, crate::agents::RecordFace), crate::common::said::Said> {
-    let target =
-        crate::observe::query::locate::session_path_at(home, path).map_err(|e| crate::common::said::Said::new("refused", e))?;
+    let target = crate::observe::query::locate::session_path_at(home, path)
+        .map_err(|e| crate::common::said::Said::new("refused", e))?;
     let face = crate::agents::record_face_of(&target).ok_or_else(|| {
         crate::common::said::Said::new(
             "failed",

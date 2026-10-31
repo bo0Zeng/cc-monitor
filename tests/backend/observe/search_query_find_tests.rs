@@ -527,7 +527,10 @@ fn user_scope_hits_are_what_the_stream_draws_as_said_by_the_person() {
         assert_eq!(got, want, "帧面 · include_tools={tools}");
         assert_eq!(v["total"].as_u64(), Some(want.len() as u64));
     }
-    assert_eq!(ask("bogus", false).unwrap_err().code.as_deref(), Some("bad_args"));
+    assert_eq!(
+        ask("bogus", false).unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 

@@ -19,9 +19,7 @@
 //!
 //! 认下的：修改时间 / 扩展属性 / 属主 / 特殊权限位都不还原。库自带的「一步解到盘上」不用（不经我们的路径解析）。
 
-use super::files_write::{
-    walk_in_root, wire_of, Act, Last, WriteRefusal, TREE_ENTRY_CAP,
-};
+use super::files_write::{walk_in_root, wire_of, Act, Last, WriteRefusal, TREE_ENTRY_CAP};
 use crate::common::said::Said;
 use crate::platform::fs::{Face, Ro, RoFile};
 use cmd_wire::files as wire;
@@ -632,8 +630,8 @@ fn execute(
     }
     for (rel, w) in &plan.entries {
         if let What::Copy(from) = w {
-            let src =
-                walk_in_root(Last::Follow, root, into.join(from)).map_err(|m| Said::new("refused", m))?;
+            let src = walk_in_root(Last::Follow, root, into.join(from))
+                .map_err(|m| Said::new("refused", m))?;
             let mut body = open_archive(&src)?;
             let mode = match plan.entries.get(from) {
                 Some(What::File { mode, .. }) => *mode,
@@ -766,12 +764,7 @@ pub fn into_name(stem: &[u8], n: u32) -> Vec<u8> {
 }
 
 /// 线上那一形：落点由这里按包名定（名字规矩只有这一份）；`fresh` ⇒ 撞名往后取第一个不在的编号。
-pub fn extract_here(
-    face: &Face,
-    root: &Path,
-    rel: &Path,
-    fresh: bool,
-) -> Result<Extracted, Said> {
+pub fn extract_here(face: &Face, root: &Path, rel: &Path, fresh: bool) -> Result<Extracted, Said> {
     let name = crate::files::raw::path_bytes(rel);
     let base = name.rsplit(|b| *b == b'/').next().unwrap_or(name);
     let stem = stem_of(base).ok_or_else(|| {

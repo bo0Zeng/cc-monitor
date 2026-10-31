@@ -74,7 +74,10 @@ fn skill_dir(
         .transpose()?;
     let root = crate::agents::asset_kind()
         .and_then(|k| crate::agents::skill_root_at(k, project.as_deref().map(Path::new)))
-        .ok_or(crate::common::said::Said::new("io_failed", copy_text("beSkillInstall.read.noRoot", &[])))?;
+        .ok_or(crate::common::said::Said::new(
+            "io_failed",
+            copy_text("beSkillInstall.read.noRoot", &[]),
+        ))?;
     let dir = root.join(name);
     Ok((root, dir))
 }

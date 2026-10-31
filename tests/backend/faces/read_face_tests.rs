@@ -26,7 +26,8 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
                 .copied()
                 .unwrap_or_else(|| panic!("码表外的码 `{c}`"))
         };
-        let req = take::<C::Req>(args).map_err(|e| crate::common::said::Said::new(code(e.code_or_fallback()), e.said))?;
+        let req = take::<C::Req>(args)
+            .map_err(|e| crate::common::said::Said::new(code(e.code_or_fallback()), e.said))?;
         let got = f(req).map_err(|e| {
             let fail = e.into_said();
             crate::common::said::Said::new(code(fail.code_or_fallback()), fail.said)
@@ -512,7 +513,8 @@ fn the_find_answer_hits_exactly_the_fixture_hits() {
             &Default::default()
         )
         .unwrap_err()
-        .code.as_deref(),
+        .code
+        .as_deref(),
         Some("bad_args"),
         "缺 query 该是 bad_args"
     );
@@ -810,7 +812,8 @@ fn history_facts_applies_the_limits_this_machine_keeps() {
     assert_eq!(
         ask(serde_json::json!({ "path": path, "limits": {"m": 1} }))
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("bad_args")
     );
     let _ = std::fs::remove_dir_all(&home);
@@ -880,7 +883,8 @@ fn history_facts_takes_only_a_path_and_answers_the_file_as_it_is_now() {
     assert_eq!(
         ask(serde_json::json!({ "path": path, "prior": { "end": 1, "rev": 1 } }))
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("bad_args")
     );
     let more = r#"{"type":"assistant","uuid":"f-5","message":{"content":[{"type":"tool_use","id":"tu-4","name":"Write","input":{"file_path":"/w/b.ts"}}]}}"#;
@@ -899,7 +903,10 @@ fn history_facts_takes_only_a_path_and_answers_the_file_as_it_is_now() {
     std::fs::write(&path, format!("{more}\n")).unwrap();
     let rewritten = ask(serde_json::json!({ "path": path })).unwrap();
     assert_eq!(rewritten["touchedFiles"], serde_json::json!(["/w/b.ts"]));
-    assert_eq!(ask(serde_json::json!({})).unwrap_err().code.as_deref(), Some("bad_args"));
+    assert_eq!(
+        ask(serde_json::json!({})).unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
     // 围栏同族：`projects` 之外的文件不读。
     let outside = home.join("outside.jsonl");
     std::fs::write(&outside, "{}\n").unwrap();
@@ -1300,7 +1307,8 @@ fn gap1_backend_log_returns_the_tail_cut_at_a_line() {
             &Default::default()
         )
         .unwrap_err()
-        .code.as_deref(),
+        .code
+        .as_deref(),
         Some("bad_args")
     );
     let _ = std::fs::remove_dir_all(&home);

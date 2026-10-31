@@ -72,11 +72,7 @@ pub(crate) const HUB_INNER: &[&str] = &[
 ];
 
 impl crate::wire::typed::Here for LocalFrames {
-    fn ask(
-        &self,
-        cmd: &str,
-        args: serde_json::Value,
-    ) -> Result<serde_json::Value, Said> {
+    fn ask(&self, cmd: &str, args: serde_json::Value) -> Result<serde_json::Value, Said> {
         let spec = REGISTRY
             .iter()
             .find(|s| s.name == cmd && HUB_INNER.contains(&s.name))

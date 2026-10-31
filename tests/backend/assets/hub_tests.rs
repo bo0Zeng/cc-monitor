@@ -347,7 +347,10 @@ impl Here for WindowsHere {
     }
     fn ask(&self, cmd: &str, args: Value) -> Result<Value, crate::common::said::Said> {
         if let Some(p) = args["project"].as_str() {
-            crate::assets::mcp_edit::project_root_as(p, crate::assets::mcp_edit::PathForm::Windows)?;
+            crate::assets::mcp_edit::project_root_as(
+                p,
+                crate::assets::mcp_edit::PathForm::Windows,
+            )?;
         }
         self.answers
             .get(cmd)
@@ -609,7 +612,8 @@ async fn a_reply_that_does_not_parse_says_that_backend_differs() {
     assert_eq!(e.code.as_deref(), Some("backend_differs"), "{}", e.said);
     assert!(
         e.said.starts_with(&copy_core::backend_differs("devbox")),
-        "{}", e.said
+        "{}",
+        e.said
     );
     assert!(e.said.contains("token"), "解码器那一句没进原话：{}", e.said);
     // 本机那一跳（被写那台）：`state` 换了型。
@@ -633,11 +637,13 @@ async fn a_reply_that_does_not_parse_says_that_backend_differs() {
     .expect_err("本机回的半截包也拼了卡");
     assert_eq!(e.code.as_deref(), Some("backend_differs"), "{}", e.said);
     assert!(
-        e.said.starts_with(&copy_core::backend_differs(&copy_core::copy_text(
-            "beExt.machine.here",
-            &[]
-        ))),
-        "{}", e.said
+        e.said
+            .starts_with(&copy_core::backend_differs(&copy_core::copy_text(
+                "beExt.machine.here",
+                &[]
+            ))),
+        "{}",
+        e.said
     );
 }
 
@@ -665,10 +671,8 @@ async fn the_hub_refuses_a_plugin_without_asking_anyone() {
     let args = json!({ "kind": "plugin", "name": "github", "from": "devbox", "to": null,
                        "tokens": { "source": "t", "target": null },
                        "scope": { "from": { "level": "user" }, "to": { "level": "user" } } });
-    let want = crate::common::said::Said::new(
-        "refused",
-        copy_text("beExt.note.pluginReadOnly", &[]),
-    );
+    let want =
+        crate::common::said::Said::new("refused", copy_text("beExt.note.pluginReadOnly", &[]));
     assert_eq!(
         pv(&dyn_h, &args, &t, &r).await.expect_err("插件给看卡了"),
         want

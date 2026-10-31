@@ -265,13 +265,16 @@ pub fn drop_paths(
     dir: &str,
     paths: &[String],
 ) -> Result<usize, crate::common::said::Said> {
-    let entry = ledger.installs.get_mut(dir).ok_or(crate::common::said::Said::new(
-        "not_found",
-        copy_text(
-            "beSkillLedger.drop.notRecorded",
-            &[("dir", &dir.to_string())],
-        ),
-    ))?;
+    let entry = ledger
+        .installs
+        .get_mut(dir)
+        .ok_or(crate::common::said::Said::new(
+            "not_found",
+            copy_text(
+                "beSkillLedger.drop.notRecorded",
+                &[("dir", &dir.to_string())],
+            ),
+        ))?;
     if let Some(p) = paths.iter().find(|p| !entry.files.contains_key(*p)) {
         return Err(crate::wire::spec::fail(
             "bad_args",
@@ -342,7 +345,10 @@ pub(crate) fn record_at(
                     let p = crate::assets::mcp_edit::project_root(p)?;
                     crate::agents::asset_kind()
                         .and_then(|k| crate::agents::skill_root_at(k, Some(Path::new(&p))))
-                        .ok_or(crate::common::said::Said::new("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?
+                        .ok_or(crate::common::said::Said::new(
+                            "io_failed",
+                            copy_text("beSkillLedger.add.noRoot", &[]),
+                        ))?
                         .join(name)
                         .display()
                         .to_string()
@@ -352,7 +358,10 @@ pub(crate) fn record_at(
                         Some(r) => r.to_path_buf(),
                         None => crate::agents::asset_kind()
                             .and_then(crate::agents::skills_root)
-                            .ok_or(crate::common::said::Said::new("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?,
+                            .ok_or(crate::common::said::Said::new(
+                                "io_failed",
+                                copy_text("beSkillLedger.add.noRoot", &[]),
+                            ))?,
                     };
                     root.join(name).display().to_string()
                 }

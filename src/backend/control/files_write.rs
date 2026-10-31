@@ -1638,12 +1638,12 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, Said> {
                     ],
                 ),
                 &e,
-            ).coded("io_failed"))
+            )
+            .coded("io_failed"))
         }
         Ok(_) => {}
     }
-    let real =
-        walk_in_root(Last::Follow, root, rel).map_err(|m| Said::new("refused", m))?;
+    let real = walk_in_root(Last::Follow, root, rel).map_err(|m| Said::new("refused", m))?;
     let md = Ro::metadata(&real).map_err(|e| {
         Said::with_raw(
             copy_text(
@@ -1654,7 +1654,8 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, Said> {
                 ],
             ),
             &e,
-        ).coded("io_failed")
+        )
+        .coded("io_failed")
     })?;
     if !md.is_file() {
         return Err(Said::new(
@@ -1688,7 +1689,8 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, Said> {
                 ],
             ),
             &e,
-        ).coded("io_failed")
+        )
+        .coded("io_failed")
     })?;
     if bytes.is_empty() && md.len() > 0 {
         return Err(Said::new("io_failed", hollow_read(&real, md.len())));
@@ -2611,10 +2613,7 @@ fn rename(face: &Face, req: wire::FilesRenameReq) -> Result<wire::FilesPathReply
 }
 
 /// `files-write-text`：`content` · `expect`（摘要形 CAS）都**必给**：没有「不问就盖」这一形（同 `Door::put`）。
-fn write_text(
-    face: &Face,
-    req: wire::FilesWriteTextReq,
-) -> Result<wire::FilesWrittenReply, Said> {
+fn write_text(face: &Face, req: wire::FilesWriteTextReq) -> Result<wire::FilesWrittenReply, Said> {
     let root = root_of(&req.root, "root")?;
     let rel = rel_of(&req.rel);
     let bytes = req.content.0;

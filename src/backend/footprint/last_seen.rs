@@ -273,9 +273,7 @@ fn locked_edit(
     edit: impl FnOnce(&mut Map<String, Value>) -> bool,
 ) -> Result<(), Said> {
     let io = |e| crate::wire::spec::fail("io_failed", e);
-    let held = own
-        .lock(dir)
-        .map_err(|e| io(Said::from(e)))?;
+    let held = own.lock(dir).map_err(|e| io(Said::from(e)))?;
     let mut origins = load(file.as_path());
     if edit(&mut origins) {
         DOC.write(own, dir, &held, &Store { origins }).map_err(io)?;

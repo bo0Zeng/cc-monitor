@@ -45,14 +45,8 @@ pub(crate) fn admit_existing_name(name: &str) -> Result<(), Said> {
             copy_text("beKill.name.colon", &[("name", &format!("{name:?}"))]),
         )),
         None => Ok(()),
-        Some(I::Empty) => Err(Said::new(
-            "bad_args",
-            copy_text("beKill.name.empty", &[]),
-        )),
-        Some(I::Control(_)) => Err(Said::new(
-            "bad_args",
-            copy_text("beKill.name.control", &[]),
-        )),
+        Some(I::Empty) => Err(Said::new("bad_args", copy_text("beKill.name.empty", &[]))),
+        Some(I::Control(_)) => Err(Said::new("bad_args", copy_text("beKill.name.control", &[]))),
         Some(I::Deceptive(c)) => Err(Said::new(
             "bad_args",
             copy_text(

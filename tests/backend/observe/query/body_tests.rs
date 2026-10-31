@@ -561,7 +561,10 @@ fn read_back_pages_from_the_tail_cut_at_line_starts() {
     assert!(!pg.more, "末行写完了 ⇒ 后面没有了");
     assert!(last.more, "有残尾 ⇒ end 之后还有字节");
     assert_eq!(
-        read_back(&home, &path, None, 64, 100).unwrap_err().code.as_deref(),
+        read_back(&home, &path, None, 64, 100)
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("oversized_line")
     );
     let _ = std::fs::remove_dir_all(&home);

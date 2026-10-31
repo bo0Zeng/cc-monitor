@@ -363,10 +363,7 @@ impl ExtLoc {
     }
 
     /// 只认形状（`{level: user}` · `{level: project, dir}` 且 dir 非空）：枢纽用，别台的路径由那台自己判。
-    pub(crate) fn shape_of(
-        v: Option<&Value>,
-        key: &str,
-    ) -> Result<ExtLoc, Said> {
+    pub(crate) fn shape_of(v: Option<&Value>, key: &str) -> Result<ExtLoc, Said> {
         Self::judged(v, key, None)
     }
 
@@ -673,10 +670,7 @@ pub(crate) fn read_only_refused(kind: ExtKind) -> Said {
 }
 
 /// 这一处的 MCP 配置文件在这台上的（根, 相对段）：项目 = `<项目>/.mcp.json`；用户级 = 各账号共用的那一份（没有账号库 ⇒ 拒）。
-pub(crate) fn mcp_file(
-    d: &dyn Door,
-    at: &ExtLoc,
-) -> Result<(String, String), Said> {
+pub(crate) fn mcp_file(d: &dyn Door, at: &ExtLoc) -> Result<(String, String), Said> {
     match at {
         ExtLoc::Project { dir } => Ok((dir.clone(), super::mcp_edit::mcp_json().to_string())),
         ExtLoc::User => {
@@ -700,7 +694,8 @@ pub(crate) fn mcp_file(
 pub(crate) fn shared_mcp_file(d: &dyn Door) -> Result<String, Said> {
     let home = door::home(d).map_err(|e| Said::new("io_failed", e))?;
     let store = crate::accounts::manage::mcp_share_exec::store_file_in(&home);
-    writable(ExtKind::Mcp, &ExtLoc::User, store.is_some()).map_err(|why| Said::new("refused", why))?;
+    writable(ExtKind::Mcp, &ExtLoc::User, store.is_some())
+        .map_err(|why| Said::new("refused", why))?;
     Ok(store.unwrap_or_default())
 }
 
@@ -1141,8 +1136,7 @@ fn pick_source<'c, 'a>(
 }
 
 /// 目录的写口（现扫 ＋ 记下 ＋ 交回整份与读不出来的那几份）：生产 = `asset_catalog::answer_current`。
-pub(crate) type Current<'a> =
-    &'a dyn Fn(bool) -> Result<(Catalog, Vec<String>), Said>;
+pub(crate) type Current<'a> = &'a dyn Fn(bool) -> Result<(Catalog, Vec<String>), Said>;
 
 /// `ext-list` / `ext-list-here` 的入参。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
@@ -1172,8 +1166,7 @@ pub(crate) fn answer_list(
 pub const NOTE_MAX_CHARS: usize = 2000;
 
 /// 备注的写口（现扫 ＋ 记进本机目录自己那一格 ＋ 交回整份）：生产 = `asset_catalog::answer_note`。
-pub(crate) type NoteWrite<'a> =
-    &'a dyn Fn(&str, &str) -> Result<Catalog, Said>;
+pub(crate) type NoteWrite<'a> = &'a dyn Fn(&str, &str) -> Result<Catalog, Said>;
 
 /// `ext-note-set` 的入参。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1196,10 +1189,7 @@ pub(crate) struct ExtNote {
 }
 
 /// `ext-note-set`：用户写 / 改 / 清（空串）一个条目的备注。记在本机目录自己那一格，随目录同步到别的后端。
-pub(crate) fn answer_note(
-    req: &ExtNoteReq,
-    write: NoteWrite,
-) -> Result<ExtNote, Said> {
+pub(crate) fn answer_note(req: &ExtNoteReq, write: NoteWrite) -> Result<ExtNote, Said> {
     if req.name.trim().is_empty() {
         return Err(crate::wire::spec::fail(
             "bad_args",
@@ -1374,12 +1364,7 @@ struct McpHere {
     recorded: Option<String>,
 }
 
-fn mcp_here(
-    d: &dyn Door,
-    env: &Env,
-    name: &str,
-    at: &ExtLoc,
-) -> Result<McpHere, Said> {
+fn mcp_here(d: &dyn Door, env: &Env, name: &str, at: &ExtLoc) -> Result<McpHere, Said> {
     let (root, rel) = mcp_file(d, at)?;
     let got = door::peek(d, &root, &rel).map_err(|m| Said::new("refused", m))?;
     let text = got.text.ok_or_else(|| {
