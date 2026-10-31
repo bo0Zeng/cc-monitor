@@ -13945,7 +13945,7 @@
     "beArgv.parse.unknownRight": {
       "kind": "error",
       "role": "命令行",
-      "zh": "-- 右边只放 ccm 选项 · {w} 不是 · claude 的参数放 -- 左边（ccm -- --ccm-help 看选项）",
+      "zh": "{w} 不是 -- 右边的 ccm 选项 · claude 的参数放 -- 左边 · ccm 子命令只能紧跟开头的 --（ccm -- --commands 列全部）",
       "args": ["w"],
       "limited": ["ccm"]
     },
@@ -13954,13 +13954,6 @@
       "role": "命令行",
       "zh": "new 须是 -- 右边第一个词（ccm [claude 参数…] -- new [ccm 选项…]）",
       "args": [],
-      "limited": ["ccm"]
-    },
-    "beArgv.parse.backendWordAfterClaudeArgs": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "{w} 是 ccm 子命令 · 只能紧跟开头的 --（ccm -- {w} …） · 前面不许有 claude 参数",
-      "args": ["w"],
       "limited": ["ccm"]
     },
     "beAgents.pick.unknown": {

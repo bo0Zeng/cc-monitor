@@ -1263,6 +1263,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "跳过+说清",
     ),
     (
+        "src/backend/relay/listen.rs",
+        "INFLIGHT_BODY_CAP",
+        "同时在途的下游请求体字节合计（读体之前按 Content-Length 记账）",
+        "拒收+回错",
+    ),
+    (
         "src/backend/dial/known_hosts.rs",
         "MAX_BYTES",
         "后端自有的主机钥匙 `~/.cc-monitor/known_hosts`（读不出来 ⇒ 不覆盖、回错，记钥匙那一处留一行日志）",
