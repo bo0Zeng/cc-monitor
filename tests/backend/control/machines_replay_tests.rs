@@ -52,7 +52,7 @@ fn answer_for(i: usize, case: &Value) -> Value {
                 Ok(r) => json!({ "reply": r }),
                 Err(e) => {
                     let f = e.into_said();
-                    let mut v = json!({ "code": f.code, "message": f.message });
+                    let mut v = json!({ "code": f.code_or_fallback(), "message": f.said });
                     if let Some(d) = f.data {
                         v["data"] = d;
                     }

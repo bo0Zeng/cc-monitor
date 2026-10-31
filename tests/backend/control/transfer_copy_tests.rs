@@ -342,7 +342,7 @@ impl RigBackend {
         use crate::wire::typed::take;
         let face = crate::platform::fs::Face::issue();
         let w = |f: crate::control::files_write::WriteFail| (f.code.to_string(), f.said);
-        let t = |f: crate::common::said::Said| (f.code, f.message);
+        let t = |f: crate::common::said::Said| (f.code_or_fallback().to_string(), f.said);
         let v = match flag {
             "files-home" => {
                 take::<cwf::HomeReq>(args).map_err(t)?;
@@ -386,7 +386,7 @@ impl crate::dial::remote_ask::Remote for RigBackend {
         _dial: &'a serde_json::Value,
         command: String,
         stdin: Option<String>,
-    ) -> Fut<'a, Result<String, crate::dial::remote_ask::Said>> {
+    ) -> Fut<'a, Result<String, crate::common::said::Said>> {
         let flag = command
             .split(" -- ")
             .nth(1)
@@ -411,10 +411,7 @@ impl crate::dial::remote_ask::Remote for RigBackend {
         });
         Box::pin(async move {
             out.map(|v| v.to_string().replace(&disk, rig::HOME))
-                .map_err(|(c, m)| crate::dial::remote_ask::Said {
-                    code: Some(c),
-                    message: m,
-                })
+                .map_err(|(c, m)| crate::common::said::Said::new(&c, m))
         })
     }
 }

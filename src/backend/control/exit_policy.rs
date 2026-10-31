@@ -220,7 +220,7 @@ pub(crate) fn answer_set(
     let path = policy_path().ok_or_else(|| {
         crate::wire::spec::fail("io_failed", copy_text("beExitPolicy.answerSet.noHome", &[]))
     })?;
-    write_at(own, req.kill_on_exit).map_err(|e| ("io_failed", e))?;
+    write_at(own, req.kill_on_exit).map_err(|e| crate::wire::spec::fail("io_failed", e))?;
     Ok(wire(&read_at(&path), Some(&path)))
 }
 

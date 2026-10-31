@@ -5,6 +5,7 @@
 //! 戳格式那几格（扫描命令 · 扫描回话 · 字节自报 · 序键）住契约 crate 的 `tests/common/deploy-contract/lib_tests.rs`。
 
 use super::*;
+use crate::wire::spec::Settle as _;
 // 判定的本体住 `deploy` crate：被测模块只引它要用的几样，其余判据直接从那里引。
 use deploy::{interpret_target_probe, promised, Facing, Fut, TargetBinary, LEFTOVER_STALE_SECS};
 use deploy_contract::{Arch, Os, LINES};
@@ -17,7 +18,7 @@ fn installed_json(p: &Plan) -> Value {
     serde_json::to_value(super::installed_of(p)).unwrap()
 }
 
-fn slots_of(args: &Value) -> Result<Vec<deploy::Slot>, Fail> {
+fn slots_of(args: &Value) -> Result<Vec<deploy::Slot>, Said> {
     #[derive(serde::Deserialize)]
     struct Only {
         slots: Vec<SlotRow>,
@@ -26,7 +27,7 @@ fn slots_of(args: &Value) -> Result<Vec<deploy::Slot>, Fail> {
     super::slots_of(&only.slots)
 }
 
-fn answer_place(args: &Value) -> Result<Value, Fail> {
+fn answer_place(args: &Value) -> Result<Value, Said> {
     let req: PlaceReq = crate::wire::typed::take(args)?;
     super::answer_place(&req).map(|r| serde_json::to_value(r).unwrap())
 }
@@ -187,11 +188,11 @@ async fn a_machine_this_build_does_not_carry_is_refused_before_the_landing_is_as
         "p9a-mine".to_string(),
     )];
     let e = plan(&f, &aarch, "box", NOW).await.unwrap_err();
-    assert_eq!(e.code, "refused");
+    assert_eq!(e.code.as_deref(), Some("refused"));
     assert!(
-        e.message.contains("box"),
+        e.said.contains("box"),
         "拒绝那句要点名那台：{}",
-        e.message
+        e.said
     );
     assert_eq!(f.asked.lock().unwrap().len(), 1, "拒绝点在问落点之前");
 }
@@ -206,7 +207,7 @@ async fn a_windows_remote_is_refused_as_not_promised() {
     let e = plan(&f, &carried("p9a-mine"), "box", NOW)
         .await
         .unwrap_err();
-    assert_eq!(e.code, "refused");
+    assert_eq!(e.code.as_deref(), Some("refused"));
 }
 
 /// 那台答 `uname` 答了一句报错（Windows 默认 shell 没有它）⇒ `refused`；句子只说原因词，那句原话随失败交出去（进复制详情）。
@@ -224,9 +225,9 @@ async fn what_the_machine_said_to_uname_goes_to_the_detail_not_the_sentence() {
     let e = plan(&f, &carried("p9a-mine"), "box", NOW)
         .await
         .unwrap_err();
-    assert_eq!(e.code, "refused");
-    assert!(!e.message.contains("not recognized"), "{}", e.message);
-    assert!(e.message.contains("box"), "{}", e.message);
+    assert_eq!(e.code.as_deref(), Some("refused"));
+    assert!(!e.said.contains("not recognized"), "{}", e.said);
+    assert!(e.said.contains("box"), "{}", e.said);
     assert_eq!(
         e.raw.as_deref(),
         Some("uname : The term 'uname' is not recognized")
@@ -251,7 +252,7 @@ async fn a_link_that_cannot_ask_uname_is_unreachable_not_a_refusal() {
     let e = plan(&f, &carried("p9a-mine"), "box", NOW)
         .await
         .unwrap_err();
-    assert_eq!(e.code, "unreachable");
+    assert_eq!(e.code.as_deref(), Some("unreachable"));
 }
 
 #[tokio::test]
@@ -262,7 +263,7 @@ async fn an_unstamped_landing_is_undecidable_whatever_it_holds() {
     let e = plan(&f, &carried("p9a-mine"), "box", NOW)
         .await
         .unwrap_err();
-    assert_eq!(e.code, "undecidable");
+    assert_eq!(e.code.as_deref(), Some("undecidable"));
 
     // 计划这一路只 stat 与扫戳：对面那一口（`Facing`）连「读回落点那一份」都没有，落点上是什么字节都认不成「我们从前那份」。
 }
@@ -364,7 +365,7 @@ fn slot_rows_outside_table_a_without_an_id_or_without_an_absolute_path_are_bad_a
         serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "p9a-x", "path": "s/x"}]}),
         serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "p9a-x"}]}),
     ] {
-        assert_eq!(slots_of(&bad).unwrap_err().code, "bad_args", "{bad}");
+        assert_eq!(slots_of(&bad).unwrap_err().code.as_deref(), Some("bad_args"), "{bad}");
     }
 }
 
@@ -668,7 +669,7 @@ fn landed(id: &str) -> Result<Option<Vec<u8>>, String> {
 fn place_verdict_places_only_upward_and_refuses_what_it_cannot_judge() {
     let me = || deploy_contract::key_of("Linux", "x86_64");
     let v = |disk| place_verdict(me(), disk, "p5v-mine", "本机", "/h/.cc-monitor/bin/ccm");
-    let place = |r: Result<Placed, Fail>| matches!(r, Ok(Placed::Place(_)));
+    let place = |r: Result<Placed, Said>| matches!(r, Ok(Placed::Place(_)));
     assert!(place(v(Ok(None))), "没装 ⇒ 放");
     assert!(place(v(Ok(Some(Vec::new())))), "0 字节 ⇒ 放");
     assert!(place(v(landed("p5v-mine"))), "同一版、字节不同 ⇒ 放");
@@ -688,13 +689,13 @@ fn place_verdict_places_only_upward_and_refuses_what_it_cannot_judge() {
         ("读不了", Err("Permission denied".to_string())),
     ] {
         let e = v(disk).expect_err(what);
-        assert_eq!(e.code, "undecidable", "{what}");
+        assert_eq!(e.code.as_deref(), Some("undecidable"), "{what}");
     }
     let local_arm = deploy_contract::key_of("Linux", "aarch64");
     let e = place_verdict(local_arm, Ok(None), "p5v-mine", "本机", "/d").unwrap_err();
-    assert_eq!(e.code, "refused");
+    assert_eq!(e.code.as_deref(), Some("refused"));
     assert_eq!(
-        e.message,
+        e.said,
         Refusal::NotPromisedHere {
             os: "Linux".into(),
             arch: "arm64".into(),
@@ -711,7 +712,7 @@ fn place_verdict_places_only_upward_and_refuses_what_it_cannot_judge() {
         "/d",
     )
     .unwrap_err();
-    assert_eq!(e.code, "refused", "表 A 没有产线的机器");
+    assert_eq!(e.code.as_deref(), Some("refused"), "表 A 没有产线的机器");
 }
 
 /// 帧面：入参缺 / 相对路径 ⇒ `bad_args`；读真盘（不在 ⇒ 放；是自己这一版的戳 ⇒ 放）；答话恰两格。
@@ -727,7 +728,7 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
         serde_json::json!({ "dest": "rel/ccm", "machine": "本机" }),
         serde_json::json!({ "dest": dest.to_string_lossy() }),
     ] {
-        assert_eq!(answer_place(&bad).unwrap_err().code, "bad_args", "{bad}");
+        assert_eq!(answer_place(&bad).unwrap_err().code.as_deref(), Some("bad_args"), "{bad}");
     }
     if Key::this_machine()
         .and_then(|k| judge(Route::Local, Ok(k)))
@@ -743,8 +744,8 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
         assert_eq!(answer_place(&args).unwrap()["action"], "keep", "盘上更新");
     } else {
         assert_eq!(
-            answer_place(&args).unwrap_err().code,
-            "refused",
+            answer_place(&args).unwrap_err().code.as_deref(),
+            Some("refused"),
             "这台不承诺"
         );
     }
