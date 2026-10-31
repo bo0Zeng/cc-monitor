@@ -15,14 +15,14 @@ where
     F: FnOnce(DialRequest, DuplexStream, DuplexStream) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
 {
-    let req: ForwardStartReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
+    let req: ForwardStartReq = crate::wire::typed::take(args)?;
     super::start_with(&req, reach, ledger, serve)
         .await
         .map(|r| serde_json::to_value(r).unwrap())
 }
 
 fn parse_spec(args: &Value) -> Result<Spec, crate::common::said::Said> {
-    let req: ForwardStartReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
+    let req: ForwardStartReq = crate::wire::typed::take(args)?;
     spec_of(&req)
 }
 
@@ -31,7 +31,7 @@ fn list_with(ledger: &Ledger) -> Value {
 }
 
 fn stop_with(args: &Value, ledger: &Ledger) -> Result<Value, crate::common::said::Said> {
-    let req: ForwardId = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
+    let req: ForwardId = crate::wire::typed::take(args)?;
     super::stop_with(req, ledger).map(|r| serde_json::to_value(r).unwrap())
 }
 
@@ -93,10 +93,10 @@ async fn the_spec_fence_stands_before_any_lookup_or_dial() {
         .await
         .expect_err("非法规格竟然没被拒");
         assert_eq!(
-            err.0, "bad_spec",
+            err.code.as_deref(), Some("bad_spec"),
             "拒了，但不是围栏拒的（{err:?}）—— 围栏在查表之后了"
         );
-        assert_eq!(&err.1, said, "{bad} 拒的那一句不对");
+        assert_eq!(&err.said, said, "{bad} 拒的那一句不对");
     }
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     let ok = parse_spec(&args("dev", " 15432 ", "localhost", 5432)).unwrap();
@@ -105,8 +105,9 @@ async fn the_spec_fence_stands_before_any_lookup_or_dial() {
     assert_eq!(
         parse_spec(&json!({"origin": "dev", "localPort": 1, "remoteHost": "h", "remotePort": "1"}))
             .unwrap_err()
-            .0,
-        "bad_args"
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
 }
 
@@ -127,7 +128,7 @@ async fn an_unknown_machine_is_not_dialled_and_a_known_one_gets_a_forward_reques
     )
     .await
     .unwrap_err();
-    assert_eq!(err.0, "unreachable");
+    assert_eq!(err.code.as_deref(), Some("unreachable"));
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert_eq!(list_with(&ledger)["forwards"], json!([]));
 
@@ -167,11 +168,11 @@ async fn a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link() {
     )
     .await
     .unwrap_err();
-    assert_eq!(err.0, "failed");
+    assert_eq!(err.code.as_deref(), Some("failed"));
     assert!(
-        err.1.contains("port 15432 in use"),
+        err.said.contains("port 15432 in use"),
         "原话没带回来：{}",
-        err.1
+        err.said
     );
     assert_eq!(list_with(&ledger)["forwards"], json!([]));
 
@@ -226,8 +227,8 @@ async fn a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link() {
     );
     assert_eq!(list_with(&ledger)["forwards"], json!([]));
     assert_eq!(
-        stop_with(&json!({"id": id}), &ledger).unwrap_err().0,
-        "not_found"
+        stop_with(&json!({"id": id}), &ledger).unwrap_err().code.as_deref(),
+        Some("not_found")
     );
 }
 
@@ -267,7 +268,7 @@ async fn a_machine_that_never_streamed_is_dialled_from_the_table() {
     let e = start_with(&a, &empty, &ledger, |_req, _up, _down| async {})
         .await
         .expect_err("表里没有那台也拨了");
-    assert_eq!(e.0, "unreachable");
+    assert_eq!(e.code.as_deref(), Some("unreachable"));
     let table = remote_ask::Table::of(vec![crate::dial::machine::loose(
         &json!({"host": "198.51.100.9", "label": "dev", "port": 2201, "user": "u"}),
     )

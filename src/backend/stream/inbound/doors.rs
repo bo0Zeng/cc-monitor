@@ -76,11 +76,11 @@ impl crate::wire::typed::Here for LocalFrames {
         &self,
         cmd: &str,
         args: serde_json::Value,
-    ) -> Result<serde_json::Value, crate::common::said::Said> {
+    ) -> Result<serde_json::Value, Said> {
         let spec = REGISTRY
             .iter()
             .find(|s| s.name == cmd && HUB_INNER.contains(&s.name))
-            .ok_or_else(|| ("unknown_command".to_string(), cmd.to_string()))?;
+            .ok_or_else(|| Said::new("unknown_command", cmd.to_string()))?;
         let req = Request {
             id: "in-process".to_string(),
             cmd: cmd.to_string(),
@@ -92,11 +92,9 @@ impl crate::wire::typed::Here for LocalFrames {
         };
         // 内层那几条都在阻塞档（读 · 带码的读 · 写装记录）；枢纽在阻塞线程上问，异步档不问。
         let Some(Prepared::Blocking(run)) = invoke(spec.run, &super::hands(Some(&self.own))) else {
-            return Err(crate::common::said::Said::new("unknown_command".to_string(), cmd.to_string()));
+            return Err(Said::new("unknown_command", cmd.to_string()));
         };
-        run(req)
-            .map(|v| v.unwrap_or(serde_json::Value::Null))
-            .map_err(|f| (f.code_or_fallback().to_string(), f.said))
+        run(req).map(|v| v.unwrap_or(serde_json::Value::Null))
     }
 
     fn viewer_tz(&self) -> crate::Tz {

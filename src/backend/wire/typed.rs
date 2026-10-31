@@ -67,9 +67,12 @@ pub(crate) struct Each<T>(std::marker::PhantomData<T>);
 #[serde(deny_unknown_fields)]
 pub(crate) struct NoArgs {}
 
-/// 下层那一份失败（码 ＋ 那一句，`(&'static str, String)` 那一形）⇒ 这一条的错误枚举（同 [`of_fail`]）。
-pub(crate) fn of_pair<E: Codes>(fallback: fn(String) -> E) -> impl Fn((&'static str, String)) -> E {
-    move |(code, said)| of_fail(crate::wire::spec::fail(code, said), fallback)
+/// 下层那一份失败 ⇒ 这一条的错误枚举：句子后面跟着的契约诊断先拆进原话（[`crate::wire::spec::fail`]），再同 [`of_fail`]。
+pub(crate) fn of_pair<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Said) -> E {
+    move |f| {
+        let code = f.code_or_fallback().to_string();
+        of_fail(crate::wire::spec::fail(&code, f), fallback)
+    }
 }
 
 /// 一条命令自己可能回的那几个码（[`codes!`] 声明）。
@@ -357,7 +360,7 @@ pub(crate) fn take<R: serde::de::DeserializeOwned>(args: &serde_json::Value) -> 
 /// 本体那一份 ⇒ 结局：失败照码表投；零出参的回包（`()` ⇒ `null`）不带 `data`。
 fn settle<C: Command>(got: Result<C::Reply, C::Err>) -> Outcome {
     let reply = got.map_err(Codes::into_said)?;
-    let v = super::spec::wire::<_, Said>(&reply)?;
+    let v = super::spec::wire(&reply)?;
     Ok((!v.is_null()).then_some(v))
 }
 
