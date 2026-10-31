@@ -249,11 +249,16 @@ mod said {
             "插的是「编号 标题」"
         );
         assert_eq!(cell("A2").said.trail, None, "顶层没有上面几层");
+        let kid = sl
+            .cells
+            .iter()
+            .find(|c| c.parent.as_deref() == Some("A2"))
+            .expect("A2 底下一格");
         assert_eq!(
-            cell("A2-1").said.trail.as_deref(),
+            kid.said.trail.as_deref(),
             Some(sl.labels["A2"].as_str())
         );
-        assert_eq!(cell("A2-1").said.block_root, None);
+        assert_eq!(kid.said.block_root, None);
         let mine = &doc.by_session[MAIN].said;
         assert_eq!(mine.name, t("plan.head.top", &[]));
         assert_eq!(

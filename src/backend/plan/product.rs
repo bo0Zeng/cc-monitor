@@ -823,9 +823,10 @@ pub(crate) fn with_time_texts(v: &mut PlanRead, now_ms: i64, tz: &crate::Tz) {
 /// 随数据变的那几句（`said`）照这台的文案表写好：两端照摆、不拼。要时刻的字 ⇒ 由 [`with_time_texts`] 写完时刻接着写。
 fn write_said(v: &mut PlanRead) {
     let sep = copy_text("kit.text.sep", &[]);
-    let strip = |key: &str, st: &PlanStale| {
+    let reason = |st: &PlanStale| st.said.clone().unwrap_or_default();
+    let strip = |first: String, st: &PlanStale| {
         [
-            copy_text(key, &[("reason", st.said.as_deref().unwrap_or_default())]),
+            first,
             copy_text(
                 "plan.strip.stale",
                 &[("time", st.since_text.as_deref().unwrap_or_default())],
@@ -833,31 +834,36 @@ fn write_said(v: &mut PlanRead) {
         ]
         .join(&sep)
     };
-    let whole = v
-        .stale
-        .as_ref()
-        .map(|st| strip("plan.strip.unreadable", st));
+    let whole = v.stale.as_ref().map(|st| {
+        strip(
+            copy_text("plan.strip.unreadable", &[("reason", &reason(st))]),
+            st,
+        )
+    });
     let read_at = v
         .read_at_text
         .as_deref()
         .map(|t| copy_text("plan.overview.readAt", &[("time", t)]));
-    let count = |key: &str, done: u32, of: u32| {
-        copy_text(key, &[("done", &done.to_string()), ("of", &of.to_string())])
-    };
+    let n = |x: u32| x.to_string();
     for sl in &mut v.slices {
-        let top = sl
-            .progress
-            .as_ref()
-            .map(|p| count("plan.overview.top", p.done, p.of));
-        let root = sl
-            .progress
-            .as_ref()
-            .map(|p| count("plan.outline.rootProgress", p.done, p.of));
+        let top = sl.progress.as_ref().map(|p| {
+            copy_text(
+                "plan.overview.top",
+                &[("done", &n(p.done)), ("of", &n(p.of))],
+            )
+        });
+        let root = sl.progress.as_ref().map(|p| {
+            copy_text(
+                "plan.outline.rootProgress",
+                &[("done", &n(p.done)), ("of", &n(p.of))],
+            )
+        });
         sl.said = PlanSliceSaid {
             strip: whole.clone().or_else(|| {
-                sl.stale
-                    .as_ref()
-                    .map(|st| strip("plan.strip.sliceUnreadable", st))
+                sl.stale.as_ref().map(|st| {
+                    let first = copy_text("plan.strip.sliceUnreadable", &[("reason", &reason(st))]);
+                    strip(first, st)
+                })
             }),
             bare: sl
                 .error
@@ -885,10 +891,12 @@ fn write_said(v: &mut PlanRead) {
         for (b, name) in sl.blocks.iter_mut().zip(names) {
             b.said = PlanBlockSaid {
                 name,
-                inside: b
-                    .inside
-                    .as_ref()
-                    .map(|k| count("plan.whyShort.inside", k.done, k.of)),
+                inside: b.inside.as_ref().map(|k| {
+                    copy_text(
+                        "plan.whyShort.inside",
+                        &[("done", &n(k.done)), ("of", &n(k.of))],
+                    )
+                }),
             };
         }
         let said = cell_said(sl, &sep);
