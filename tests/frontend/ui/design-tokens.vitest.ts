@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cssDeclarations, type CssDecl } from "../../evidence/S30-css-conventions.ts";
+import { cssDeclarations, type CssDecl } from "../../evidence/css-conventions.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 
 const TOKENS = readFileSync(resolve(REPO_ROOT, "src/shared/theme/tokens.css"), "utf8");
