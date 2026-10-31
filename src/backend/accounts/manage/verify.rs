@@ -3,12 +3,10 @@
 //!
 //! 致命（`fail`）：身份没隔离开（身份文件是链接 · 两个号邮箱相同 · 共享库里留着原生根在家目录的那份身份）、
 //! 权限不对（号的目录不是 `0700` · 凭据不是 `0600`）、共享没接上（缺链接 · 链错地方 · 断链 · 共享项在号里是实体文件）。
-//! 提示（`warn`）：还没登录 · 号里有意料之外的实体项（排除项 —— 编辑器备份 · 锁文件 · 原子写的旁名 —— 不算）· 共享库本身的源头断了 ·
-//! 身份本体哪儿都找不到 · 共享库顶层有一份像密钥的文件（[`is_secret_like`]：不链给各号，归身份还是归共享由人定）。
+//! 提示（`warn`）：还没登录 · 共享库本身的源头断了 · 身份本体哪儿都找不到 · 按需目录在号里各有一份自己的。
+//! 既不是身份、又不在共享集里的名字（共享库顶层与各号里的实体）各号各用各的：全报告一条 `ok` 级「没归类」列出来，不提示。
 
-use super::layout::{
-    identity, is_excluded, is_identity, is_secret_like, share_items, shared_on_demand,
-};
+use super::layout::{identity, is_identity, share_items, shared_on_demand};
 use super::model::Manifest;
 use super::scan::{join, Snapshot};
 use crate::platform::acct_view::Item;
@@ -139,6 +137,14 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
     let mut emails: Vec<(String, String)> = Vec::new();
     // 按需才建的共用目录在号里是自己的一份（两个号以上各有一份，起来时那一步不替人合并）：`(项, 哪几个号)`，最后一项一条提示。
     let mut own_copies: Vec<(String, Vec<String>)> = Vec::new();
+    // 既不是身份、又不在共享集里的名字（共享库顶层的 ＋ 各号里的实体），去重排好序，最后一条「没归类」。
+    let mut unclassified: std::collections::BTreeSet<String> = s
+        .shared
+        .entries
+        .keys()
+        .filter(|n| !is_identity(n) && !items.contains(n))
+        .cloned()
+        .collect();
     for a in m.managed() {
         if !names.is_empty() && !names.contains(&a.name) {
             continue;
@@ -312,19 +318,14 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                     ),
                 );
             }
-            for (base, it) in &d.entries {
-                if it.is_link() || is_identity(base) || is_excluded(base) {
-                    continue;
-                }
-                if items.contains(base) {
-                    continue;
-                }
-                o.push(
-                    CheckLevel::Warn,
-                    n,
-                    copy_text("beAcctVerify.acct.unexpected", &[("item", base)]),
-                );
-            }
+            unclassified.extend(
+                d.entries
+                    .iter()
+                    .filter(|(base, it)| {
+                        !it.is_link() && !is_identity(base) && !items.contains(base)
+                    })
+                    .map(|(base, _)| base.clone()),
+            );
         }
         match s.email_of(c) {
             Some(e) => {
@@ -407,14 +408,20 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             );
         }
     }
-    for (base, it) in &s.shared.entries {
-        if is_secret_like(base, it) {
-            o.push(
-                CheckLevel::Warn,
-                None,
-                copy_text("beAcctVerify.drift.secretLike", &[("item", base)]),
-            );
-        }
+    if !unclassified.is_empty() {
+        let sep = copy_text("beAcctVerify.global.ownCopiesSep", &[]);
+        let list: Vec<&str> = unclassified.iter().map(String::as_str).collect();
+        o.push(
+            CheckLevel::Ok,
+            None,
+            copy_text(
+                "beAcctVerify.global.unclassified",
+                &[
+                    ("n", &unclassified.len().to_string()),
+                    ("items", &list.join(&sep)),
+                ],
+            ),
+        );
     }
     finish(o)
 }

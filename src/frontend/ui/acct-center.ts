@@ -24,9 +24,14 @@ export async function refreshQuota(origin: Origin): Promise<void> {
   try {
     putIn(appStore.quota, origin, await readQuota(origin));
   } catch (e) {
-    console.warn(`[acct] quota-read [${origin}] 失败：`, e);
-    putIn(appStore.quota, origin, { state: "failed", said: saidOf(e), detail: detailOf(e) });
+    quotaFailed(origin, e);
   }
+}
+
+/** 那台的额度账这一份没收成（问失败 · 推来的读不出）⇒ 那一格记下出错那一层写好的那一句与复制详情。 */
+function quotaFailed(origin: Origin, e: unknown): void {
+  console.warn(`[acct] quota-read [${origin}] 失败：`, e);
+  putIn(appStore.quota, origin, { state: "failed", said: saidOf(e), detail: detailOf(e) });
 }
 
 /** 一批会话各问一次 `rotation-view`（逐个；一个失败不挡别的，那一格照旧）。 */
@@ -92,7 +97,13 @@ export function onQuotaChanged(origin: Origin, topic: "quota" | "rotation" | "ro
   if (topic === "quota") {
     const p = pushedProducts(change, "quota");
     const q = p.got.get(null);
-    if (q !== undefined) putIn(appStore.quota, origin, tookQuota(q));
+    if (q !== undefined) {
+      try {
+        putIn(appStore.quota, origin, tookQuota(origin, q));
+      } catch (e) {
+        quotaFailed(origin, e); // 推来的那一份两端契约对不上（`tookQuota`）
+      }
+    }
     if (p.all || (q === undefined && p.ask.length > 0)) void refreshQuota(origin);
     reaskAccounts(origin);
     return;

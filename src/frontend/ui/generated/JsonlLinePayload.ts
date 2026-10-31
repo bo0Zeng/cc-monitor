@@ -30,6 +30,11 @@ record: import("./LineRecord").LineRecord,
  */
 skipped_from?: number, 
 /**
+ * 这一行（含 `\n`）之后那个字节（后端 `line.byte_offset` · 快照的行区间末端，原样转交）：界面从它要尾段那一截的骨架索引。
+ * 说不准 ⇒ 省略。
+ */
+end?: number, 
+/**
  * 这一行的对账键（那台后端给，原样转交）：活卡按它把同一次应答的那段流整轮撤掉。没有 ⇒ 省略。
  */
 rid?: string, 

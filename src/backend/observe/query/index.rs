@@ -225,7 +225,8 @@ fn index_row_cost(
 
 /// `history-index` 的一页，上限是参数（判据拿小上限喂）。
 ///
-/// 行从哪来：一律从那一份的扫描图上切（从 0 起 · 从中间续都一样；图不在了照骨架起步或重扫，见 [`locate::scan_from`]）。
+/// 行从哪来：从 0 起 · 那一份的图留着 ⇒ 从扫描图上切；从中间起而图不在（界面冷开先要尾段那一截）⇒ 只读那一截
+/// （[`locate::index_rows`]）。
 pub(crate) fn index_page(
     home: &Path,
     req: HistoryIndexReq,
@@ -237,20 +238,18 @@ pub(crate) fn index_page(
     let mut seen = Seen::default();
     let mut rows: Vec<crate::observe::recognize::index_row::IndexRow> = Vec::new();
     let mut next = None;
-    let map = locate::scan_from(home, &req.path, offset)?;
-    let start = map.index.partition_point(|r| r.o < offset);
-    // `until`：只收起点在它之前的行；末端是界外第一行的起点（没有 ⇒ 扫到的末端）。
-    let stop = req
-        .until
-        .map_or(map.index.len(), |u| map.index.partition_point(|r| r.o < u));
-    let end = map.index.get(stop).map_or(map.end, |r| r.o);
-    for r in &map.index[start..stop.max(start)] {
+    // `until`：只收起点在它之前的行；末端是界外第一行的起点（没有 ⇒ 读到的末端）。
+    let end = locate::index_rows(home, &req.path, offset, |r| {
+        if req.until.is_some_and(|u| r.o >= u) {
+            return false;
+        }
         if !pager.admit(index_row_cost(r, rows.len(), &mut seen)) {
             next = Some(r.o);
-            break;
+            return false;
         }
         rows.push(r.clone());
-    }
+        true
+    })?;
     let mut ix = pack_index(offset, next.unwrap_or(end), &rows);
     ix.next = next;
     Ok(ix)

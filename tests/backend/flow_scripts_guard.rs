@@ -1182,7 +1182,7 @@ mod tests {
         write(
             &d,
             ".gitignore",
-            ".build/\nbin/\nnode_modules/\ncalls\nlock-calls\nhome/\n",
+            ".build/\nbin/\nnode_modules/\ncalls\nlock-calls\ndirs\nhome/\n",
         );
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "base"]);
@@ -1202,8 +1202,9 @@ mod tests {
             &d,
             "bin/cargo",
             &format!(
-                "#!/bin/sh\n{}[ \"$1\" = test ] && echo 'test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s'\nexit 0\n",
-                rec("cargo")
+                "#!/bin/sh\n{}case \"$1\" in test|clippy) echo \"$HOME $TMUX_TMPDIR $TMPDIR|${{CCM_BUILD_REMOTE_OK-}}\" >> '{}' ;; esac\n[ \"$1\" = test ] && echo 'test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s'\nexit 0\n",
+                rec("cargo"),
+                d.join("dirs").display()
             ),
         );
         exe(
@@ -1224,12 +1225,12 @@ mod tests {
                 rec("gradle")
             ),
         );
-        // 假锁：记下起它的那个 HOME，标上「在锁里」，原样起命令
+        // 假锁：记下起它的那个 HOME 与它看到的 `CCM_BUILD_REMOTE_OK`（没有 ⇒ 空），标上「在锁里」，原样起命令
         exe(
             &d,
             "bin/fake-lock.sh",
             &format!(
-                "#!/bin/sh\necho \"$HOME\" >> '{}'\nFAKE_LOCK_HELD=1 exec \"$@\"\n",
+                "#!/bin/sh\necho \"$HOME|${{CCM_BUILD_REMOTE_OK-}}\" >> '{}'\nFAKE_LOCK_HELD=1 exec \"$@\"\n",
                 d.join("lock-calls").display()
             ),
         );
@@ -1295,14 +1296,40 @@ mod tests {
             "{said}"
         );
         let home = d.join("home").display().to_string();
+        let lock_calls: Vec<(&str, &str)> = lock_calls
+            .lines()
+            .map(|l| l.split_once('|').unwrap_or((l, "")))
+            .collect();
         assert_eq!(
-            lock_calls.lines().collect::<Vec<_>>(),
+            lock_calls.iter().map(|c| c.0).collect::<Vec<_>>(),
             vec![home.as_str(); 5],
             "锁脚本该在真家下起五次（后端 · clippy · 壳 · creds-harden · 手机）：{said}"
+        );
+        // 可去远端的只有 cargo 那四段：锁脚本拿到的是这一段写在同步的树以外的几个目录（沙箱家 · tmux 目录 · 临时目录），
+        // 正是被起的 cargo 看到的那三个；cargo 自己看不见这个变量（会话变量照摘）；手机那一趟不带
+        let dirs = std::fs::read_to_string(d.join("dirs")).unwrap_or_default();
+        let seen_dirs: Vec<(&str, &str)> = dirs
+            .lines()
+            .map(|l| l.split_once('|').unwrap_or((l, "?")))
+            .collect();
+        assert_eq!(seen_dirs.len(), 4, "{dirs}\n{said}");
+        assert!(
+            seen_dirs.iter().all(|c| c.1.is_empty()),
+            "cargo 看见了 CCM_BUILD_REMOTE_OK：{dirs}"
+        );
+        assert_eq!(
+            lock_calls.iter().map(|c| c.1).collect::<Vec<_>>(),
+            seen_dirs
+                .iter()
+                .map(|c| c.0)
+                .chain([""])
+                .collect::<Vec<_>>(),
+            "{said}"
         );
         // 没给锁 ⇒ 照跑，谁都不在锁里
         let _ = std::fs::remove_file(d.join("calls"));
         let _ = std::fs::remove_file(d.join("lock-calls"));
+        let _ = std::fs::remove_file(d.join("dirs"));
         let said = run_fake_quick(&d, &[], None);
         let calls = std::fs::read_to_string(d.join("calls")).unwrap_or_default();
         let _ = std::fs::remove_dir_all(&d);

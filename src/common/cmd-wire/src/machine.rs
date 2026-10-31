@@ -51,7 +51,7 @@
 //! | 闸 | 拦的是 | 在哪 |
 //! |---|---|---|
 //! | ① **反序列化边界** | 线上 `null`（以及数字 / 数组 / 对象 / 布尔）| 本文件手写的 `Deserialize`：它**构造不出**一个「没说」的 `Machine` ⇒ 命令的代码**结构上**见不到那一档 |
-//! | ② [`Machine::route`] | **空白名**（`""` / 全空白）—— `null` 消失之后，线上唯一还能表达「没说」的值 | 拒的那句话点名是哪条命令、并**逐字**给出本机该送什么 |
+//! | ② [`Machine::route`] | **空白名**（`""` / 全空白）—— `null` 消失之后，线上唯一还能表达「没说」的值 | 拒成 [`Blank`]（带是哪条命令）；给人看的那一句由连接层 `comms_inward::chan::said::blank_origin` 写，点名命令、并**逐字**给出本机该送什么 |
 //!
 //! 🔴 ② 不是凑数的：`subagent.rs` 的 `Backend::for_origin` 上一拍**逐字**把
 //! 「`origin` 缺省 / **空串** = 本机」写在一起 —— 也就是说空串在盘上**真的**被当过本机。
@@ -59,7 +59,7 @@
 //!
 //! ⚠ ① 那道闸的**话说得清不清楚**是靠 `expecting()` 买的，不是白送的：
 //! serde 的 stock 报错是「invalid type: null, expected a string」，它不会告诉调用方
-//! 「本机该送 `"<local>"`」。那句话是本文件自己写的，由 `origin_tests.rs` 的 `A` 组钉着。
+//! 「本机该送 `"<local>"`」。那句期望串是本文件自己写的技术字面量，由 `origin_tests.rs` 的 `A` 组钉着。
 //!
 //! # ⚠ 射程（写死，别读宽）
 //!
@@ -79,7 +79,6 @@
 //! 两侧都有金标准钉着（`the_two_surviving_wire_values_are_byte_identical`
 //! ＋ `an_unknown_shape_is_refused_not_guessed`）。
 
-use copy_core::copy_text;
 use serde::de::{Error as DeError, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -129,6 +128,7 @@ pub struct Machine(String);
 /// 🔴 线上 `null` 在这里**变成一次反序列化失败**，而失败那句话必须自带出路：
 /// 「本机逐字送 `"<local>"`」。`derive` 出来的版本只会说
 /// 「invalid type: null, expected a string」——那句话是对的，但它把调用方留在原地。
+/// 期望串是 serde 的技术字面量（同 `files.rs` 的 `WirePath`），进 `bad_args` 的细节，不是给人看的成品句。
 ///
 /// ⚠ 它**不判**名字合不合法（空白名走 [`Machine::route`] 那道闸）：
 /// 两道闸各只有一个住址，合在一处的话「构造时拒」与「路由时拒」会各说各的。
@@ -139,11 +139,7 @@ impl<'de> Deserialize<'de> for Machine {
             type Value = Machine;
 
             fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                write!(
-                    f,
-                    "{}",
-                    copy_text("rsOrigin.expecting.name", &[("local", &LOCAL.to_string())])
-                )
+                write!(f, "a machine name; this machine is \"{LOCAL}\"")
             }
 
             fn visit_str<E: DeError>(self, s: &str) -> Result<Machine, E> {
@@ -199,15 +195,11 @@ impl Machine {
     /// 也**不判**本机那条路该不该做这件事（那是各命令自己的守卫）。
     /// ⚠ 它**不 trim**：非空白的名字**原样**交出去（`" devbox "` 仍然是 `" devbox "`）——
     /// trim 会让今天找不到配置的 label 突然找得到，那是行为变更，不归本步。
-    pub fn route(&self, command: &str) -> Result<Route<'_>, String> {
+    pub fn route(&self, command: &str) -> Result<Route<'_>, Blank> {
         if self.0.trim().is_empty() {
-            return Err(copy_text(
-                "rsOrigin.route.blank",
-                &[
-                    ("command", &command.to_string()),
-                    ("local", &LOCAL.to_string()),
-                ],
-            ));
+            return Err(Blank {
+                command: command.to_string(),
+            });
         }
         if self.0 == LOCAL {
             Ok(Route::Local)
@@ -235,6 +227,13 @@ pub enum Route<'a> {
     Local,
     /// 某台远端，带着它的机器名（机器表里那一台的名字）。
     Remote(&'a str),
+}
+
+/// [`Machine::route`] 拒的那一档：名字空白（「没给名字」）。只带是哪条命令；给人看的那一句由连接层写
+/// （`comms_inward::chan::said::blank_origin`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Blank {
+    pub command: String,
 }
 
 // 判据 `tests/comms/inward/origin_tests.rs` 挂在 monitor 的 `lib.rs`（它的棘轮扫的是 monitor 的命令面）；那边经 `comms_inward::origin` 的再导出用它。
@@ -503,6 +502,7 @@ pub enum MachineFaultCode {
 }
 
 /// 机器表那一道没过的那一处（闭集码 ＋ 那台的名字 ＋ 那一格下面的那一句）；界面照 `code` 挑落在哪一格、照抄 `said`。
+/// 只有字段：句子由拨号核心写（`ssh_dial::machine::fault` · `refused_said`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -518,34 +518,6 @@ pub struct MachineFault {
     pub name: String,
     /// 那一格下面的那一句（添加机器框 · 机器卡同读）。
     pub said: String,
-}
-
-impl MachineFault {
-    /// 一处错（那一格下面的那一句照码写）。
-    pub fn new(code: MachineFaultCode, name: String) -> Self {
-        let said = match code {
-            MachineFaultCode::NoHost => copy_text("addMachine.err.host", &[]),
-            MachineFaultCode::NoUser => copy_text("addMachine.err.user", &[]),
-            MachineFaultCode::Port => copy_text("addMachine.err.port", &[]),
-            MachineFaultCode::NameTaken => copy_text("addMachine.err.taken", &[("name", &name)]),
-            MachineFaultCode::LeadingDash => copy_text("addMachine.err.dash", &[]),
-        };
-        Self { code, name, said }
-    }
-
-    /// 写口拒绝时的那一句（带那台的名字与「未保存」）。
-    pub fn refused_said(&self) -> String {
-        let name = self.name.as_str();
-        match self.code {
-            MachineFaultCode::NoHost => copy_text("rsConfig.machine.noHost", &[("name", name)]),
-            MachineFaultCode::NoUser => copy_text("rsConfig.machine.noUser", &[("name", name)]),
-            MachineFaultCode::Port => copy_text("rsConfig.machine.port", &[("name", name)]),
-            MachineFaultCode::NameTaken => {
-                copy_text("rsConfig.machine.nameTaken", &[("name", name)])
-            }
-            MachineFaultCode::LeadingDash => copy_text("rsConfig.machine.dash", &[("name", name)]),
-        }
-    }
 }
 
 /// `machine-read` 的入参：不收参数（缺 · `null` · `{}` 都认，多一个键 ⇒ `bad_args`）。

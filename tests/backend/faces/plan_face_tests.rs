@@ -254,10 +254,7 @@ mod said {
             .iter()
             .find(|c| c.parent.as_deref() == Some("A2"))
             .expect("A2 底下一格");
-        assert_eq!(
-            kid.said.trail.as_deref(),
-            Some(sl.labels["A2"].as_str())
-        );
+        assert_eq!(kid.said.trail.as_deref(), Some(sl.labels["A2"].as_str()));
         assert_eq!(kid.said.block_root, None);
         let mine = &doc.by_session[MAIN].said;
         assert_eq!(mine.name, t("plan.head.top", &[]));

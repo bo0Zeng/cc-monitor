@@ -1,5 +1,5 @@
 //! 一项是哪一种、读得起来的那几道门：图标 · 「类型」那一列 · 按类型排 · 预览 / 看图 / 编辑许读多少、不许时那一句。
-//! 只在这里判（按名字判那一种住 `cmd_wire::file_class`）；文件窗口与手机照画。
+//! 只在这里判（按名字判那一种住 `common::file_class`）；文件窗口与手机照画。
 
 use cmd_wire::files::{FileClass, Gate, Gates, PreviewGate, TextPreview};
 use copy_core::{copy_text, size_text};
@@ -14,8 +14,8 @@ pub const VIEW_IMAGE_MAX_BYTES: u64 = 32 * 1024 * 1024;
 /// 两端自己解得开的那几种图（其余的图不当图读）。
 const DECODABLE: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp"];
 
-/// 按名字判那一种 · 那一种的词住 `cmd_wire::file_class`（聊天附件的出口与各家适配层同一份）。
-pub use cmd_wire::file_class::{class_of_name, ext_of, label};
+// 按名字判那一种 · 那一种的词住 `common::file_class`（聊天附件的出口与各家适配层同一份）。
+use crate::common::file_class::{class_of_name, ext_of, label};
 
 /// 列表里一项画哪种图标：链接画它指向的那一种（指向目录 ⇒ 文件夹，其余按名字）。
 pub fn class_of_entry(name: &[u8], is_dir: bool, link: bool, link_dir: bool) -> FileClass {

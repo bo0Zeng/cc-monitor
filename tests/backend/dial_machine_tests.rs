@@ -277,3 +277,34 @@ fn req(
     let v = request(table, name, prefer, use_, extra)?;
     Ok(serde_json::from_value(v).expect("组好的那一形读得成拨号请求"))
 }
+
+/// 机器表那一道没过的那一句：格下那一句（添加机器框 · 机器卡同读）与写口拒绝那一句（带名字与「未保存」），逐码对文案表。
+#[test]
+fn faults_say_the_line_for_their_code() {
+    use MachineFaultCode as K;
+    for (code, key) in [
+        (K::NoHost, "addMachine.err.host"),
+        (K::NoUser, "addMachine.err.user"),
+        (K::Port, "addMachine.err.port"),
+        (K::LeadingDash, "addMachine.err.dash"),
+    ] {
+        let f = fault(code, "a".into());
+        assert_eq!((f.code, f.name.as_str()), (code, "a"));
+        assert_eq!(f.said, copy_text(key, &[]), "{code:?}");
+    }
+    assert_eq!(
+        fault(K::NameTaken, "B".into()).said,
+        copy_text("addMachine.err.taken", &[("name", "B")])
+    );
+    for (code, key) in [
+        (K::NoHost, "rsConfig.machine.noHost"),
+        (K::NoUser, "rsConfig.machine.noUser"),
+        (K::Port, "rsConfig.machine.port"),
+        (K::NameTaken, "rsConfig.machine.nameTaken"),
+        (K::LeadingDash, "rsConfig.machine.dash"),
+    ] {
+        let said = refused_said(&fault(code, "B".into()));
+        assert_eq!(said, copy_text(key, &[("name", "B")]), "{code:?}");
+        assert!(said.contains('B'), "写口拒绝那一句没带那台的名字：{said}");
+    }
+}

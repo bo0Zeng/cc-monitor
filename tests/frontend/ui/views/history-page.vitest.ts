@@ -256,8 +256,11 @@ beforeEach(() => {
         sessionCount: ss.length,
         truncated: false,
         sessions: ss,
-        unreadable: got.reduce((n, [, r]) => n + r.unreadable, 0),
-        skipped: [...new Set(got.flatMap(([, r]) => r.skipped))],
+        // 头底下那几句由核心写好（替身写成认得出的样子：界面只照摆、不按数取字）。
+        notes: [
+          ...[got.reduce((n, [, r]) => n + r.unreadable, 0)].filter((n) => n > 0).map((n) => `核心·读不动 ${n} 份`),
+          ...[...new Set(got.flatMap(([, r]) => r.skipped))].map((a) => `核心·${a} 只按标题`),
+        ],
         down: per.filter((p) => p[1] === "down").map(([o]) => ({ origin: o, said: `${o} 问不到` })),
         summary: `核心·「${String((args.search as { query: string }).query)}」的结果头`,
       });
@@ -984,8 +987,8 @@ describe("内容搜索的其余几态", () => {
     const body = document.body.textContent ?? "";
     expect(body).toContain(copyText("history.search.noMatch", { q: "无" }));
     expect(body).toContain(copyText("history.search.machineDown", { machine: "dev" }));
-    expect(body).toContain(copyText("history.search.skipped", { agent: "codex" }));
-    expect(body).toContain(copyText("history.search.unreadable", { n: 2 }));
+    expect(body).toContain("核心·codex 只按标题");
+    expect(body).toContain("核心·读不动 2 份");
     invokeMock.mock.calls.length = 0;
     const tools = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("history.filter.tools"))!;
     tools.click();

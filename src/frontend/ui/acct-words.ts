@@ -25,9 +25,9 @@ export function accountLabel(account: string): string {
   return names.accounts[account] ?? account;
 }
 
-/** 语义位的字：照核心那张表；不在表里的照原样。 */
+/** 语义位的字：照核心那张表（收表那一下已核过回包里每一格的语义位都在表里，`quota-reads.ts::tookQuota`）；表里没有 ⇒ `—`，不拿码当名字。 */
 export function slotLabel(slot: string): string {
-  return names.slots[slot] ?? slot;
+  return names.slots[slot] ?? copyText("acct.val.none");
 }
 
 /** 一个语义位那一格的字（核心写好的 `slots[].text`）；这个号没有这一格 ⇒ `—`。 */
