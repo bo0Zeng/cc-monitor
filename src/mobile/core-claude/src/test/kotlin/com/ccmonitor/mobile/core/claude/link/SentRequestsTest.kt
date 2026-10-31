@@ -72,6 +72,7 @@ class SentRequestsTest {
             TerminalEnd.COMMAND to listOf(TerminalEnd.args("t1")),
             SessionInterrupt.COMMAND to listOf(SessionInterrupt.args("s")),
             KeyAdd.COMMAND to listOf(KeyAdd.args("ssh-ed25519 AAAA k")),
+            Login.CMD to listOf(Login.cmd("a")),
             Login.CANCEL to listOf(Login.cancel("j")),
             Login.FINISH to listOf(Login.finish("j", "code")),
             Login.START to

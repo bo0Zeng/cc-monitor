@@ -1,5 +1,6 @@
 {
   "accounts-list": [{"agent":"claude"},{"agent":""}],
+  "accounts-login-cmd": [{"name":"a"}],
   "accounts-set-default": [{"name":"a"}],
   "authorized-keys-add": [{"key":"ssh-ed25519 AAAA k"}],
   "bookmarks-edit": [{"op":"toggle","dirs":["/w"]},{"op":"remove","dirs":["/w"]},{"op":"add","dirs":["/w","/v"]}],
