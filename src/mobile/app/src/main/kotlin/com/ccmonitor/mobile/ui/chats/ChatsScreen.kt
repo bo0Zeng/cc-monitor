@@ -43,6 +43,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.ListSort
@@ -81,6 +82,7 @@ object ChatsTags {
     const val SEARCH = "chats-search"
     const val SEARCH_CONTENT = "chats-search-content"
     const val RENAME = "chats-rename"
+    const val FORKS = "chats-forks"
 }
 
 /** 一屏上点下去的那几件事（交给板 · 导航）。 */
@@ -99,6 +101,8 @@ class ChatsActions(
     val searchContent: () -> Unit,
     /** 条下那一颗［编辑］：进那一台的编辑页。 */
     val editHost: (hostId: String) -> Unit = {},
+    /** 父行那一格「分叉 N」：就地展开 / 收起它的分叉。 */
+    val toggleForks: (hostId: String, sessionId: String) -> Unit = { _, _ -> },
 )
 
 /**
@@ -364,9 +368,11 @@ private fun LazyListScope.group(
         }
     }
     items(ui.rowsOf(g), key = { "in-${g.id}\n${it.sessionId}" }) { r ->
-        DotRow(r.dot, r.status.text, onClick = { act.open(r.hostId, r.sessionId) }, onLongClick = { act.menu(r) }) {
+        DotRow(r.dot, r.status.text, onClick = { act.open(r.hostId, r.sessionId) }, onLongClick = { act.menu(r) }, indent = indentOf(r)) {
             if (r.starred) PhIcon(Ph.Star, contentDescription = null, size = Touch.iconInline, tint = LocalAppTokens.current.warn)
             Text(r.label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            // 一层那一形：「分叉 N ▸」在时刻前面（桌面 compact 同一处）。
+            ForkToggle(r, act)
             r.atText?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
@@ -405,23 +411,26 @@ private fun SessionRow(
     r: ChatRow,
     act: ChatsActions,
 ) {
-    DotRow(r.dot, r.status.text, onClick = { act.open(r.hostId, r.sessionId) }, onLongClick = { act.menu(r) }) {
+    DotRow(r.dot, r.status.text, onClick = { act.open(r.hostId, r.sessionId) }, onLongClick = { act.menu(r) }, indent = indentOf(r)) {
         Column(Modifier.weight(1f)) {
-            // 第一层：★ · 标题 · 时刻；第二层：机器小标签 · 状态字 · 目录短名 · 家牌 ·「已隐藏」· 分叉那一句（有的才写，用 · 连）。
+            // 第一层：★ · 标题 · 时刻；第二层：机器小标签 · 状态字 · 目录短名 · 家牌 ·「已隐藏」·「分叉自其他会话」·「分叉 N ▸」（有的才写，用 · 连）。
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (r.starred) PhIcon(Ph.Star, contentDescription = null, size = Touch.iconInline, tint = LocalAppTokens.current.warn)
                 Text(r.label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = rowTitle(), modifier = Modifier.weight(1f))
                 r.atText?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            SecondLine(r)
+            SecondLine(r, act)
         }
     }
 }
 
-/** 第二层：机器小标签在最前，状态字（带语气）跟着，其余几格淡字，用 ` · ` 连。 */
+/** 第二层：机器小标签在最前，状态字（带语气）跟着，其余几格淡字，用 ` · ` 连；父行末尾一格「分叉 N ▸」。 */
 @Composable
-private fun SecondLine(r: ChatRow) {
-    val rest = listOfNotNull(r.project, r.agentTag, r.hidden?.let { copyText("history.row.hidden") }, r.fork)
+private fun SecondLine(
+    r: ChatRow,
+    act: ChatsActions,
+) {
+    val rest = listOfNotNull(r.project, r.agentTag, r.hidden?.let { copyText("history.row.hidden") }, copyText("history.row.orphan").takeIf { r.nest.orphan })
     Row(verticalAlignment = Alignment.CenterVertically) {
         r.machineTag?.let { MachineTag(it) }
         StatusText(r.status)
@@ -433,11 +442,42 @@ private fun SecondLine(r: ChatRow) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = if (r.hidden != null) Modifier.testTag(ChatsTags.HIDDEN) else Modifier,
+                modifier = if (r.hidden != null) Modifier.weight(1f, fill = false).testTag(ChatsTags.HIDDEN) else Modifier.weight(1f, fill = false),
             )
+        }
+        if (r.nest.forks > 0) {
+            Text(copyText("kit.text.sep"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            ForkToggle(r, act)
         }
     }
 }
+
+/**
+ * 「分叉 N ▸ / ▾」：只这一格开合那一行的分叉（行的其余部分照旧打开 · 长按菜单）。淡字、不画按钮框，热区补到 [Touch.target] 高。
+ * 这一列里没有分叉自它的 ⇒ 不画。
+ */
+@Composable
+private fun ForkToggle(
+    r: ChatRow,
+    act: ChatsActions,
+) {
+    if (r.nest.forks <= 0) return
+    val tint = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        Modifier
+            .heightIn(min = Touch.target)
+            .clickable { act.toggleForks(r.hostId, r.sessionId) }
+            .testTag(ChatsTags.FORKS),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(copyText("history.row.forks", "n" to r.nest.forks), style = MaterialTheme.typography.bodySmall, color = tint, maxLines = 1)
+        PhIcon(if (r.nest.forksOpen) Ph.CaretDown else Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = tint)
+    }
+}
+
+/** 挂在展开了的父下 ⇒ 整行（连状态点）缩一层；分叉的分叉也只缩这一层。 */
+private fun indentOf(r: ChatRow): Dp = if (r.nest.child) FORK_INDENT else 0.dp
 
 /** 机器小标签（等宽小字、底色一块）。 */
 @Composable
@@ -529,6 +569,8 @@ internal fun DotRow(
     label: String?,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    /** 行首多缩的那一截（分叉挂在父下的那一层）。 */
+    indent: Dp = 0.dp,
     content: @Composable RowScope.() -> Unit,
 ) {
     Row(
@@ -536,7 +578,7 @@ internal fun DotRow(
             .fillMaxWidth()
             .heightIn(min = Touch.rowDouble)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(start = 16.dp + indent, end = 16.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -559,6 +601,7 @@ private fun toneColor(t: Tone?): Color {
     }
 }
 
+private val FORK_INDENT = 24.dp
 internal const val WEEK = 7
 internal const val MONTH = 30
 private const val SKELETON_ROWS = 8

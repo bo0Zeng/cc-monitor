@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.chats
 
 import com.ccmonitor.mobile.cache.ListCache
+import com.ccmonitor.mobile.core.claude.link.ListSort
 import com.ccmonitor.mobile.core.claude.link.RawJson
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.copyText
@@ -23,6 +24,7 @@ class ChatsBoardTest {
     private fun rowMap(
         sid: String,
         at: Long,
+        parent: String? = null,
     ) = mapOf(
         "sessionId" to sid,
         "label" to sid,
@@ -38,7 +40,7 @@ class ChatsBoardTest {
         "agentTag" to null,
         "face" to Faces.raw["ended"],
         "hidden" to null,
-        "forkedFromSessionId" to null,
+        "forkedFromSessionId" to parent,
         "forkedFrom" to null,
         "can" to mapOf("resume" to "yes", "accounts" to false, "fork" to false, "delete" to "yes"),
         "aiTitle" to null,
@@ -215,6 +217,27 @@ class ChatsBoardTest {
             advanceTimeBy(2)
             runCurrent()
             assertEquals(mapOf("query" to "登录"), a.link.calls("history-list").last())
+        }
+
+    @Test
+    fun `点开合那一格 ⇒ 分叉就地出在父下、不重问那台；换筛选不清；再点收起`() =
+        runTest {
+            val a = Host(HostName("h1", "a"))
+            a.rows = listOf(rowMap("p", 3), rowMap("f", 2, parent = "p"), rowMap("q", 1))
+            val board = board(a)
+            runCurrent()
+            assertEquals(listOf("p", "q"), board.ui.value.rows.map { it.sessionId })
+            val asked = a.link.calls("history-list").size
+            board.toggleForks("h1", "p")
+            runCurrent()
+            assertEquals(listOf("p", "f", "q"), board.ui.value.rows.map { it.sessionId })
+            assertEquals("开合不重问那台", asked, a.link.calls("history-list").size)
+            board.filters { it.copy(sort = ListSort.CREATED) }
+            runCurrent()
+            assertEquals("换筛选不清", listOf("p", "f", "q"), board.ui.value.rows.map { it.sessionId })
+            board.toggleForks("h1", "p")
+            runCurrent()
+            assertEquals(listOf("p", "q"), board.ui.value.rows.map { it.sessionId })
         }
 
     @Test
