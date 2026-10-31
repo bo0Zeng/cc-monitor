@@ -35,7 +35,7 @@ fn spans(hl: &[u32]) -> Vec<(u32, u32, u32)> {
         .collect()
 }
 /// 按 UTF-16 码元取一段代码原文。
-fn cut16(x: &str, start: u32, len: u32) -> String {
+fn slice16(x: &str, start: u32, len: u32) -> String {
     let u: Vec<u16> = x.encode_utf16().collect();
     String::from_utf16(&u[start as usize..(start + len) as usize]).unwrap()
 }
@@ -187,9 +187,9 @@ fn highlight_classes_utf16() {
     let sp = spans(&hl);
     let class_of = |text: &str| {
         sp.iter()
-            .find(|(st, len, _)| cut16(&x, *st, *len) == text)
+            .find(|(st, len, _)| slice16(&x, *st, *len) == text)
             .map(|t| t.2)
-            .unwrap_or_else(|| panic!("没有正好是 {text:?} 的一段：{:?}", sp.iter().map(|(a, b, c)| (cut16(&x, *a, *b), *c)).collect::<Vec<_>>()))
+            .unwrap_or_else(|| panic!("没有正好是 {text:?} 的一段：{:?}", sp.iter().map(|(a, b, c)| (slice16(&x, *a, *b), *c)).collect::<Vec<_>>()))
     };
     assert_eq!(class_of("let"), HlClass::Keyword as u32);
     assert_eq!(class_of("\"汉字😀\""), HlClass::String as u32);
@@ -204,8 +204,8 @@ fn highlight_classes_utf16() {
     }
     let (_, x, hl) = only_code("```diff\n+加\n-删\n```");
     let sp = spans(&hl);
-    assert!(sp.iter().any(|(a, b, c)| cut16(&x, *a, *b).starts_with('+') && *c == HlClass::Inserted as u32), "{sp:?}");
-    assert!(sp.iter().any(|(a, b, c)| cut16(&x, *a, *b).starts_with('-') && *c == HlClass::Deleted as u32), "{sp:?}");
+    assert!(sp.iter().any(|(a, b, c)| slice16(&x, *a, *b).starts_with('+') && *c == HlClass::Inserted as u32), "{sp:?}");
+    assert!(sp.iter().any(|(a, b, c)| slice16(&x, *a, *b).starts_with('-') && *c == HlClass::Deleted as u32), "{sp:?}");
 }
 
 #[test]
@@ -263,7 +263,7 @@ fn oversize_code_splits_by_line() {
         let sp = spans(hl);
         assert!(!sp.is_empty());
         assert!(sp.iter().all(|(a, b, _)| a + b <= n16), "高亮段越出这一块");
-        assert!(sp.iter().any(|(a, b, c)| cut16(x, *a, *b) == "let" && *c == HlClass::Keyword as u32));
+        assert!(sp.iter().any(|(a, b, c)| slice16(x, *a, *b) == "let" && *c == HlClass::Keyword as u32));
     }
     assert_eq!(doc.segs.len(), codes.len() - 1, "每块代码各起一段：{:?}", doc.segs);
 }
