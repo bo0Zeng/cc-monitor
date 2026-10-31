@@ -17,6 +17,7 @@ import type { SessionQueuePutReq } from "../../../src/frontend/ui/generated/Sess
 import { ChanError } from "../../../src/comms/inward/chan";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { goldenFace, liveFace } from "../../test-support/session-faces";
+import type { TerminalSent } from "../../../src/frontend/ui/terminal-reads";
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
@@ -27,7 +28,15 @@ const list = (...items: QueueItem[]): QueueList => ({ items, sent: [] });
 const tabOf = (face: SessionFace, sid = "s-1"): Tab => ({ origin: "devbox", sessionId: sid, face, label: "t", labelProject: null, background: false, forkedFromSessionId: null }) as unknown as Tab;
 const down = (): ChanError => new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "no-answer");
 
-function rig(opts: { face?: SessionFace; first?: QueueList; put?: (o: string, r: SessionQueuePutReq) => Promise<QueuePut>; resume?: () => Promise<boolean> } = {}) {
+function rig(
+  opts: {
+    face?: SessionFace;
+    first?: QueueList;
+    put?: (o: string, r: SessionQueuePutReq) => Promise<QueuePut>;
+    resume?: () => Promise<boolean>;
+    interrupt?: () => Promise<TerminalSent>;
+  } = {},
+) {
   let tab: Tab | null = tabOf(opts.face ?? liveFace("idle", true));
   let push: (m: QueueMoved) => void = () => {};
   const put = vi.fn(opts.put ?? (async (): Promise<QueuePut> => ({ outcome: "queued", seq: 9, place: 1, said: "q-1" })));
@@ -40,15 +49,17 @@ function rig(opts: { face?: SessionFace; first?: QueueList; put?: (o: string, r:
       return () => {};
     }),
   };
+  const interrupt = vi.fn(opts.interrupt ?? (async (): Promise<TerminalSent> => ({ result: "delivered", acts: [] })));
   const resume = vi.fn(opts.resume ?? (async () => true));
   const outbox = new Outbox(put);
-  const c = new Composer({ active: () => tab, resume, front: () => {}, focusStream: () => {} }, outbox, reads);
+  const c = new Composer({ active: () => tab, resume, front: () => {}, focusStream: () => {} }, outbox, reads, interrupt);
   document.body.replaceChildren(c.el);
   c.render(); // 第一次画由宿主叫（构造里不画，A2-17-10-1-2）
   return {
     c,
     put,
     reads,
+    interrupt,
     resume,
     outbox,
     push: (m: QueueMoved) => push(m),
@@ -65,6 +76,15 @@ const enter = (c: Composer, text: string): void => {
   box(c).dispatchEvent(new Event("input"));
   box(c).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 };
+/** 一轮在跑、说得了的那张脸：金样里「在干活」那一张（`can.stop = yes`），说一句那一格换成闲着那一张的（在终端宿主里活着）。 */
+const runningFace = (): SessionFace => {
+  const f = liveFace("working", true);
+  f.can.say = liveFace("idle", true).can.say;
+  return f;
+};
+const shown = (b: HTMLElement | null): boolean => b !== null && b.style.display !== "none";
+const stopBtn = (c: Composer): HTMLButtonElement | null => c.el.querySelector<HTMLButtonElement>('[data-role="composer-stop"]');
+const sendBtn = (c: Composer): HTMLButtonElement | null => c.el.querySelector<HTMLButtonElement>('[data-role="composer-send"]');
 const rows = (c: Composer): string[] => Array.from(c.el.querySelectorAll<HTMLElement>('[data-role="queue-line"]')).map((l) => l.textContent ?? "");
 
 beforeEach(() => localStorage.clear());
@@ -199,5 +219,65 @@ describe("消息流底下的输入框", () => {
     expect(box(c).value).toBe("draft-1");
     setTab(null);
     expect(c.el.hidden).toBe(true);
+  });
+
+  it("★ 脸上 can.stop = yes、框里没字 ⇒［发送］换成 ■，点了交一次 session-interrupt；框里有字 ⇒ 还是［发送］", async () => {
+    const face = runningFace();
+    expect(face.can.stop.can).toBe("yes");
+    const { c, interrupt, put } = rig({ face });
+    await flush();
+    expect(shown(stopBtn(c)), "在跑、没字 ⇒ ■").toBe(true);
+    expect(shown(sendBtn(c)), "■ 与［发送］二选一").toBe(false);
+    expect(stopBtn(c)!.getAttribute("aria-label") ?? stopBtn(c)!.textContent).toContain(copyText("composer.input.stop"));
+    stopBtn(c)!.click();
+    await flush();
+    expect(interrupt).toHaveBeenCalledTimes(1);
+    expect(interrupt).toHaveBeenCalledWith("devbox", "s-1");
+    expect(put).not.toHaveBeenCalled();
+    box(c).value = "more";
+    box(c).dispatchEvent(new Event("input"));
+    expect(shown(stopBtn(c)), "有字 ⇒ 不是 ■").toBe(false);
+    expect(shown(sendBtn(c))).toBe(true);
+  });
+
+  it("脸上 can.stop = no（闲着）⇒ 没有 ■、是［发送］", async () => {
+    const face = liveFace("idle", true);
+    expect(face.can.stop.can).toBe("no");
+    const { c } = rig({ face });
+    await flush();
+    expect(shown(stopBtn(c))).toBe(false);
+    expect(shown(sendBtn(c))).toBe(true);
+  });
+
+  it("说不了（can.say = no）、一轮在跑 ⇒ 框灰着、■ 照样点得了", async () => {
+    const face = goldenFace("live-working-plain");
+    expect(face.can.say.can).toBe("no");
+    expect(face.can.stop.can).toBe("yes");
+    const { c, interrupt } = rig({ face });
+    await flush();
+    expect(box(c).disabled).toBe(true);
+    expect(shown(stopBtn(c))).toBe(true);
+    stopBtn(c)!.click();
+    await flush();
+    expect(interrupt).toHaveBeenCalledTimes(1);
+  });
+
+  it("■ 那台拒了 ⇒ 框下写那台那一句；送不到（抛）⇒ 写那一句；送到了 ⇒ 不说", async () => {
+    const refused = rig({ face: runningFace(), interrupt: async () => ({ result: "refused", said: "not-yours-said", screen: null, acts: [] }) });
+    await flush();
+    stopBtn(refused.c)!.click();
+    await flush();
+    expect(refused.c.el.textContent).toContain("not-yours-said");
+    const gone = new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "stop-down-said");
+    const thrown = rig({ face: runningFace(), interrupt: async () => Promise.reject(gone) });
+    await flush();
+    stopBtn(thrown.c)!.click();
+    await flush();
+    expect(thrown.c.el.querySelector('[class*="composerNoteError"]')).not.toBeNull();
+    const ok = rig({ face: runningFace() });
+    await flush();
+    stopBtn(ok.c)!.click();
+    await flush();
+    expect(ok.c.el.querySelector('[class*="composerNoteError"]')).toBeNull();
   });
 });
