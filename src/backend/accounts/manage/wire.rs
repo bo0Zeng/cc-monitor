@@ -183,7 +183,7 @@ pub(crate) fn run_change(
         _ => (vec![], vec![], None),
     };
     let mut snap = scan::scan(&home, &dirs, &files);
-    snap.roots().check().map_err(|e| ("refused", e))?;
+    snap.roots().check().map_err(|e| Said::new("refused", e))?;
     snap.keys = keys.map(|k| KeyRows {
         path: k.path.clone(),
         ids: k.ids.clone(),
@@ -279,7 +279,7 @@ pub(crate) fn colors_here(d: &dyn Door) {
         if snap.manifest().is_none_or(|m| !m.needs_colors()) {
             return Ok(false);
         }
-        snap.roots().check().map_err(|e| ("refused", e))?;
+        snap.roots().check().map_err(|e| Said::new("refused", e))?;
         let plan = layout::plan_colors(&snap)?;
         let r = snap.roots().clone();
         let zero_email = snap.email_of(&home).unwrap_or_default().to_string();
@@ -313,7 +313,7 @@ pub(crate) fn align_here(d: &dyn Door) {
         if snap.manifest().is_none() {
             return Ok(0);
         }
-        snap.roots().check().map_err(|e| ("refused", e))?;
+        snap.roots().check().map_err(|e| Said::new("refused", e))?;
         let plan = layout::plan_align(&snap)?;
         if plan.ops.is_empty() {
             return Ok(0);

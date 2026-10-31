@@ -130,7 +130,7 @@ pub(crate) fn answer_set_at(own: &Own, req: &KeySetReq) -> Result<KeySet, Said> 
             .find(|e| e.id == account)
     });
     let base_url_now = row.as_ref().and_then(|e| e.base_url.clone());
-    let masked = row.and_then(|e| e.key.map(|k| k.masked())).ok_or((
+    let masked = row.and_then(|e| e.key.map(|k| k.masked())).ok_or_else(|| Said::new(
         "io_failed",
         copy_text(
             "beUpstreamFileFace.keySet.notReadBack",
@@ -151,7 +151,7 @@ pub(crate) fn answer_set_at(own: &Own, req: &KeySetReq) -> Result<KeySet, Said> 
 /// 入参里那个号的账号 id：按 `configDir` 推（`acct_core::apikey_account_id_of_dir`，起会话那一侧 `endpoint.rs` 调的同一个）。
 /// 推出来的 id 还要过装表那一步**同一个谓词**：写得进去、却装不进表 ⇒ 那一行的请求永远 404。
 fn account_of(config_dir: &str) -> Result<String, Said> {
-    let account = acct_core::apikey_account_id_of_dir(config_dir).ok_or((
+    let account = acct_core::apikey_account_id_of_dir(config_dir).ok_or_else(|| Said::new(
         "bad_args",
         copy_text(
             "beUpstreamFileFace.keySet.noAccount",
@@ -219,7 +219,7 @@ pub(crate) fn answer_restore_at(own: &Own, args: &Value) -> FileFaceAnswer {
     let file = own_file(own)?;
     let account = account_of(config_dir_arg(args)?)?;
     let from = args.get("from").and_then(Value::as_str).ok_or_else(|| {
-        (
+        Said::new(
             "bad_args",
             crate::common::contract::malformed("missing `from` (string)"),
         )
@@ -266,7 +266,7 @@ pub(crate) fn check_inputs(key: &SecretKey, base_url: Option<&str>) -> Result<()
         ));
     }
     if let Some(url) = base_url.map(str::trim).filter(|u| !u.is_empty()) {
-        super::table::base_if_usable(url).map_err(|why| ("bad_args", why.to_string()))?;
+        super::table::base_if_usable(url).map_err(|why| Said::new("bad_args", why.to_string()))?;
     }
     Ok(())
 }

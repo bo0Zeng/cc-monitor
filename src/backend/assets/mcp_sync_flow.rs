@@ -19,6 +19,7 @@ use crate::assets::hub_wire::{
 use crate::assets::mcp_sync::{candidates, judge, servers_of, Facts, There};
 use crate::common::door::{self, Door, Refused};
 use crate::common::said::IntoNote as _;
+use crate::common::said::Said;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
@@ -43,7 +44,7 @@ pub(crate) fn redact(def: &Value) -> (Value, Vec<(String, String)>) {
 fn file_of(
     at: &ExtLoc,
     user_mcp: Option<&std::path::Path>,
-) -> Result<(String, String), crate::common::said::Said> {
+) -> Result<(String, String), Said> {
     match at {
         ExtLoc::Project { dir } => Ok((dir.clone(), mcp_json().to_string())),
         ExtLoc::User => {
@@ -70,11 +71,11 @@ pub(crate) fn answer_source(
     d: &dyn Door,
     user_mcp: Option<&std::path::Path>,
     req: &McpSourceReq,
-) -> Result<McpSource, crate::common::said::Said> {
+) -> Result<McpSource, Said> {
     let name = req.name.as_str();
     let at = req.at.here()?;
     let (root, rel) = file_of(&at, user_mcp)?;
-    let got = door::peek(d, &root, &rel).map_err(|m| ("refused", m))?;
+    let got = door::peek(d, &root, &rel).map_err(|m| Said::new("refused", m))?;
     let text = got.text.ok_or_else(|| {
         crate::wire::spec::fail(
             "missing",
@@ -107,7 +108,7 @@ pub(crate) fn answer_source(
 }
 
 /// 被写那台：`args.def` 必须是一条对象、且装密钥的那几格一个值都没有（来源交出来就该是空位）。
-fn def_arg(def: &Value) -> Result<Value, crate::common::said::Said> {
+fn def_arg(def: &Value) -> Result<Value, Said> {
     let def = Some(def.clone()).filter(Value::is_object).ok_or_else(|| {
         crate::wire::spec::fail(
             "bad_args",
@@ -125,9 +126,9 @@ fn def_arg(def: &Value) -> Result<Value, crate::common::said::Said> {
 
 type Target = (String, door::Peeked, Map<String, Value>);
 
-fn target_of(d: &dyn Door, at: &ExtLoc) -> Result<Target, crate::common::said::Said> {
+fn target_of(d: &dyn Door, at: &ExtLoc) -> Result<Target, Said> {
     let (root, rel) = crate::assets::ext::mcp_file(d, at)?;
-    let tgt = door::peek(d, &root, &rel).map_err(|m| ("refused", m))?;
+    let tgt = door::peek(d, &root, &rel).map_err(|m| Said::new("refused", m))?;
     let servers = servers_of(
         tgt.text.as_deref(),
         &copy_text("beMcpSync.answerWith.targetSide", &[]),
@@ -144,7 +145,7 @@ pub(crate) fn answer_preview(
     d: &dyn Door,
     facts: &dyn Facts,
     req: &McpPreviewReq,
-) -> Result<McpPreview, crate::common::said::Said> {
+) -> Result<McpPreview, Said> {
     let name = req.name.as_str();
     let at = req.at.here()?;
     let def = def_arg(&req.def)?;
@@ -189,7 +190,7 @@ pub(crate) fn answer_apply(
     d: &dyn Door,
     record: Record,
     req: &McpApplyReq,
-) -> Result<McpApplied, crate::common::said::Said> {
+) -> Result<McpApplied, Said> {
     let name = req.name.as_str();
     let at = req.at.here()?;
     let def = def_arg(&req.def)?;
@@ -250,7 +251,7 @@ pub(crate) fn answer_apply(
         upsert_mcp_server_value(v, name.to_string(), full.clone())?;
         Ok(true)
     })
-    .map_err(|m| ("refused", m))?
+    .map_err(|m| Said::new("refused", m))?
     .unwrap_or_default();
     let landed = match door::put(
         d,

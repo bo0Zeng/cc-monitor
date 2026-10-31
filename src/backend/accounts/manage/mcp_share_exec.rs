@@ -123,7 +123,7 @@ pub(crate) fn load_store(home: &str) -> Result<(Store, Option<String>), Said> {
         .map_err(|e| crate::wire::spec::fail("io_failed", e.wrap(say)))?;
     let store = match &store_raw {
         Some(t) => Store::parse(t, key).map_err(|e| {
-            (
+            Said::new(
                 "refused",
                 copy_text(
                     "beAcctMcpShare.store.cannotUse",
@@ -290,7 +290,7 @@ fn run(
     why: Why,
     decide: &dyn Fn(&Store, &[Seen]) -> Result<Store, Said>,
 ) -> Result<AccountMcpView, Said> {
-    let home = super::scan::home(d).map_err(|e| ("io_failed", e))?;
+    let home = super::scan::home(d).map_err(|e| Said::new("io_failed", e))?;
     let _held = lock(&home)?;
     let Some(m) = manifest_in(&home)? else {
         return Ok(AccountMcpView::default());
@@ -344,7 +344,7 @@ fn run(
             h.store_raw.as_deref(),
         )
         .map_err(|e| {
-            (
+            Said::new(
                 "io_failed",
                 copy_text("beAcctMcpShare.store.writeFailed", &[("why", &e.said())]),
             )
@@ -365,7 +365,7 @@ pub(crate) fn sync(d: &dyn Door) -> Result<AccountMcpView, Said> {
 /// 停 ⇒ 之后各号各管各的，已经同步过去的一条不删；开 ⇒ 落下那一格之后立刻同步一趟（停着那段时间各号改的照三方对照采纳，
 /// 两边都改了的照常列出来等挑）。已经是那一态 ⇒ 不写，照答。
 pub(crate) fn set_sync(d: &dyn Door, on: bool) -> Result<AccountMcpView, Said> {
-    let home = super::scan::home(d).map_err(|e| ("io_failed", e))?;
+    let home = super::scan::home(d).map_err(|e| Said::new("io_failed", e))?;
     {
         let _held = lock(&home)?;
         let Some(m) = manifest_in(&home)? else {
@@ -392,7 +392,7 @@ pub(crate) fn set_sync(d: &dyn Door, on: bool) -> Result<AccountMcpView, Said> {
             h.store_raw.as_deref(),
         )
         .map_err(|e| {
-            (
+            Said::new(
                 "io_failed",
                 copy_text("beAcctMcpShare.store.writeFailed", &[("why", &e.said())]),
             )
@@ -417,7 +417,7 @@ fn view_after(h: &Here) -> AccountMcpView {
 
 /// `accounts-mcp-read`：此刻的样子（只算不写；冲突照算）。
 pub(crate) fn read(d: &dyn Door) -> Result<AccountMcpView, Said> {
-    let home = super::scan::home(d).map_err(|e| ("io_failed", e))?;
+    let home = super::scan::home(d).map_err(|e| Said::new("io_failed", e))?;
     let Some(m) = manifest_in(&home)? else {
         return Ok(AccountMcpView::default());
     };
@@ -456,7 +456,7 @@ pub(crate) fn remove(d: &dyn Door, name: &str) -> Result<AccountMcpView, Said> {
 pub(crate) fn pick(d: &dyn Door, name: &str, from: Option<&str>) -> Result<AccountMcpView, Said> {
     run(d, Why::Asked, &|s, seen| {
         known(s, seen, name)?;
-        let to = mcp_share::pick(s, seen, name, from).map_err(|e| ("refused", e))?;
+        let to = mcp_share::pick(s, seen, name, from).map_err(|e| Said::new("refused", e))?;
         Ok(mcp_share::decide(s, seen, name, to))
     })
 }

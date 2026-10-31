@@ -7,6 +7,7 @@
 
 use super::model::{Account, Manifest, ACCOUNT_ZERO};
 use super::scan::{is_under, join, DirState, Snapshot};
+use crate::common::said::Said;
 use crate::agents::{AccountsFace, IdentityClass, IdentityRoot};
 use crate::platform::acct_view::Item;
 use copy_core::copy_text;
@@ -171,28 +172,26 @@ impl Plan {
     }
 }
 
-/// 计划被拒：`(码, 那句话)`。码只有两个：`not_enabled`（还没有账号库）· `refused`（其余，句子说清为什么）。
-pub(crate) type Refusal = (&'static str, String);
-
-fn refused(said: String) -> Refusal {
-    ("refused", said)
+/// 计划被拒。码只有两个：`not_enabled`（还没有账号库）· `refused`（其余，句子说清为什么）。
+fn refused(said: String) -> Said {
+    Said::new("refused", said)
 }
 
-fn need_manifest(s: &Snapshot) -> Result<&Manifest, Refusal> {
+fn need_manifest(s: &Snapshot) -> Result<&Manifest, Said> {
     match &s.manifest {
-        None => Err(crate::common::said::Said::new(
+        None => Err(Said::new(
             "not_enabled",
             copy_text(
                 "beAcctPlan.need.noManifest",
                 &[("path", &s.roots().manifest())],
             ),
         )),
-        Some(Err(e)) => Err(crate::common::said::Said::new("refused", e.clone())),
+        Some(Err(e)) => Err(Said::new("refused", e.clone())),
         Some(Ok(m)) => Ok(m),
     }
 }
 
-fn check_name(name: &str) -> Result<(), Refusal> {
+fn check_name(name: &str) -> Result<(), Said> {
     if !super::model::name_ok(name) {
         return Err(refused(copy_text(
             "beAcctPlan.name.shape",
@@ -216,7 +215,7 @@ fn link_all(plan: &mut Plan, s: &Snapshot, cfg: &str) {
 
 /// **建账号库**：这台机器现在登录的那个身份收成名叫 `name` 的默认号 —— 身份那几份搬进 `<账号库>/<name>`，
 /// 共享库里其余每一项链过去；共享库自己不在就先建它。
-pub(crate) fn plan_init(s: &Snapshot, name: &str) -> Result<Plan, Refusal> {
+pub(crate) fn plan_init(s: &Snapshot, name: &str) -> Result<Plan, Said> {
     let r = s.roots();
     if s.manifest.is_some() {
         return Err(refused(copy_text(
@@ -305,7 +304,7 @@ pub(crate) struct AddIntent {
 
 /// **加号**：建目录 ＋ 链共享项 ＋ 身份之外那几份状态从共享库复制一份（共享库那份是模板）＋ 可选地导入凭据 ＋ 写清单。
 /// 身份本体（凭据 · `.claude.json`）刻意不从共享库复制：身份只能是导入的那一份或登录产生的。
-pub(crate) fn plan_add(s: &Snapshot, want: &AddIntent) -> Result<Plan, Refusal> {
+pub(crate) fn plan_add(s: &Snapshot, want: &AddIntent) -> Result<Plan, Said> {
     let m = need_manifest(s)?;
     let r = s.roots();
     check_name(&want.name)?;
@@ -376,7 +375,7 @@ pub(crate) fn plan_add(s: &Snapshot, want: &AddIntent) -> Result<Plan, Refusal> 
 }
 
 /// **删号**：只删它自己的目录（共享库不动）；删的是默认号 ⇒ 要 `force`，并由第一个号接着当默认。
-pub(crate) fn plan_remove(s: &Snapshot, name: &str, force: bool) -> Result<Plan, Refusal> {
+pub(crate) fn plan_remove(s: &Snapshot, name: &str, force: bool) -> Result<Plan, Said> {
     let m = need_manifest(s)?;
     let r = s.roots();
     if name == ACCOUNT_ZERO {
@@ -430,7 +429,7 @@ pub(crate) fn plan_remove(s: &Snapshot, name: &str, force: bool) -> Result<Plan,
 }
 
 /// **设默认号**：只改清单。
-pub(crate) fn plan_set_default(s: &Snapshot, name: &str) -> Result<Plan, Refusal> {
+pub(crate) fn plan_set_default(s: &Snapshot, name: &str) -> Result<Plan, Said> {
     let m = need_manifest(s)?;
     let a = m
         .find(name)
@@ -443,7 +442,7 @@ pub(crate) fn plan_set_default(s: &Snapshot, name: &str) -> Result<Plan, Refusal
 }
 
 /// **补号色**（幂等）：旧清单里还没分到号色的号照库序分一格（[`Manifest::with_colors`]）、写回清单；都有了 ⇒ 空计划（不动盘）。
-pub(crate) fn plan_colors(s: &Snapshot) -> Result<Plan, Refusal> {
+pub(crate) fn plan_colors(s: &Snapshot) -> Result<Plan, Said> {
     let m = need_manifest(s)?;
     let mut plan = Plan::default();
     if m.needs_colors() {
@@ -527,7 +526,7 @@ fn link_missing(
 /// 每个号照 [`share_items`] 缺的链补上（已知共享表里的一项共享库里新冒出来也在内；认不得的名字不链）。
 /// 只建目录 · 建链接 · 摘自己建的旧链（[`drop_own_stale`]）：号里已有的别的（指错的链接 · 自己的实体，按需目录的实体也算）
 /// 不动，挪实体是「修复」的事。接好之后再算 ⇒ 空计划（不写、不留备份）。
-pub(crate) fn plan_align(s: &Snapshot) -> Result<Plan, Refusal> {
+pub(crate) fn plan_align(s: &Snapshot) -> Result<Plan, Said> {
     let m = need_manifest(s)?;
     let items = share_items(&s.shared);
     let mut plan = Plan::default();
@@ -556,7 +555,7 @@ fn drop_own_stale(plan: &mut Plan, s: &Snapshot, c: &str, items: &[String]) {
 /// **修复**（幂等）：目录改回 `0700` · 身份本体改回 `0600` · 缺的共享链接补上 · 指错的改指 · 不再属于共享集的残链清掉
 /// （身份那几项若还是链向共享库的链接 ⇒ 复制成这个号自己的一份，不是删掉）· 清单里的邮箱按各号 `.claude.json` 刷新。
 /// 共享项在号的目录里是一份实体文件 ⇒ 不动它，只提示（那是这个号自己的改动，合并与否由人定）。
-pub(crate) fn plan_repair(s: &Snapshot) -> Result<Plan, Refusal> {
+pub(crate) fn plan_repair(s: &Snapshot) -> Result<Plan, Said> {
     let m = need_manifest(s)?;
     let r = s.roots();
     let mut plan = Plan::default();

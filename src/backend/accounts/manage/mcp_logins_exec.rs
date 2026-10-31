@@ -108,7 +108,7 @@ fn revert(next: &mut LoginBase, old: &LoginBase, dir: &str, key: &str) {
 
 /// 同步一趟（文件事件 · 加号 · 建库之后，跟在服务器定义那一半后面）。`own` = 写自家状态的句柄（铸各号的凭据窄句柄）。
 pub(crate) fn sync(d: &dyn Door, own: &Own) -> Result<Synced, Said> {
-    let home = super::scan::home(d).map_err(|e| ("io_failed", e))?;
+    let home = super::scan::home(d).map_err(|e| Said::new("io_failed", e))?;
     let _held = lock(&home)?;
     let Some(m) = manifest_in(&home)? else {
         return Ok(Synced::default());
@@ -175,7 +175,7 @@ pub(crate) fn sync(d: &dyn Door, own: &Own) -> Result<Synced, Said> {
             store_raw.as_deref(),
         )
         .map_err(|e| {
-            (
+            Said::new(
                 "io_failed",
                 copy_text("beAcctMcpShare.store.writeFailed", &[("why", &e.said())]),
             )
