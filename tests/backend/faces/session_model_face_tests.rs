@@ -25,7 +25,7 @@ fn a_waiting_session_gets_nothing_sent() {
 }
 
 /// 不该走到记下那一支。
-fn no_keep() -> Result<String, crate::wire::spec::Fail> {
+fn no_keep() -> Result<String, crate::common::said::Said> {
     panic!("记下了")
 }
 
@@ -230,10 +230,10 @@ impl ConfirmIo for Term {
             false
         }
     }
-    fn screen(&mut self) -> Result<Vec<String>, crate::wire::spec::Fail> {
+    fn screen(&mut self) -> Result<Vec<String>, crate::common::said::Said> {
         Ok(self.screens[self.at].clone())
     }
-    fn press(&mut self, key: &'static str) -> Result<Sent, crate::wire::spec::Fail> {
+    fn press(&mut self, key: &'static str) -> Result<Sent, crate::common::said::Said> {
         self.pressed.push(key);
         Ok(sent(self.sent))
     }

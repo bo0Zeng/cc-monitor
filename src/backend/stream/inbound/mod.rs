@@ -32,6 +32,7 @@
 //! 单行长度上限（不缓冲、不 OOM）· 未见 Hello 之前不许有 stdin（时序，机检钉住）·
 //! 坏行只回错误、**绝不结束进程**。
 
+use crate::wire::spec::Settle as _;
 use crate::wire::FrameMake as _;
 use crate::wire::{Frame, Request};
 use copy_core::copy_text;
@@ -373,11 +374,11 @@ async fn handle_line(
                 {
                     Ok(res) => res,
                     // 线程没回来（panic / 被取消）：句子说「程序出错」，那条 JoinError 进复制详情。
-                    Err(e) => Err(spec::Fail::from((
-                        "handler_panicked".to_string(),
+                    Err(e) => Err(crate::wire::spec::fail(
+                        "handler_panicked",
                         copy_text("beInbound.handleLine.internal", &[]),
-                    ))
-                    .with_raw(Some(&e.to_string()))),
+                    )
+                    .and_raw(Some(&e.to_string()))),
                 }
             };
             spawn_handler(req, replies.clone(), running.clone(), fut, false, plan).await
@@ -512,7 +513,7 @@ fn dispatch(
                     move |r, cx| async move {
                         crate::dial::probe::answer_probe(&r, cx.until, &tx)
                             .await
-                            .map_err(crate::wire::typed::of_pair(
+                            .map_err(crate::wire::typed::of_fail_with(
                                 crate::dial::probe::ProbeErr::Failed,
                             ))
                     },

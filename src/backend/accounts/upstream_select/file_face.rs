@@ -39,8 +39,8 @@
 //! （`creds_core::perm::create_private`，O_EXCL）· 写满 · 落盘 · 原子改名 · 失败删自己的临时文件。
 //! ⚠ 现有文件**解析不了 ⇒ 拒绝、不覆盖**（`bad_file`）：人手编打错一个逗号时，覆盖等于把他写的东西抹掉。
 
+use crate::common::said::Said;
 use crate::platform::fs::{Own, OwnPath};
-use crate::wire::spec::Fail;
 use copy_core::copy_text;
 use creds_core::store;
 use creds_core::SecretKey;
@@ -48,7 +48,7 @@ use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
 /// 本族的应答：`data` 或失败（码 ＋ 那一句 ＋ 下层原话，原话进复制详情）。
-pub(crate) type FileFaceAnswer = Result<Value, Fail>;
+pub(crate) type FileFaceAnswer = Result<Value, Said>;
 
 /// 这台机器上那份文件在哪 —— **与中转里的上游选择同一个出处**（`creds::resolve_path`，同一个进程环境；见模块头注）。
 /// 自己拼一条路径 = 长出第二份规则，不做。推不出 ⇒ `Err`（那句话）。
@@ -96,18 +96,18 @@ pub(crate) struct KeySet {
 }
 
 /// `apikey-key-set`：给**一个账号**写 key，写完读回，回掩码。推不出路径 ⇒ 拒（一个字节不写）。
-pub(crate) fn answer_set(req: &KeySetReq, own: &Own) -> Result<KeySet, Fail> {
+pub(crate) fn answer_set(req: &KeySetReq, own: &Own) -> Result<KeySet, Said> {
     answer_set_at(own, req)
 }
 
 /// 那份表在写句柄底下的落点（数据目录根上的 [`store::FILE_NAME`]，与 [`machine_path`] 同一处）。没有数据目录 ⇒ 拒。
-fn own_file(own: &Own) -> Result<OwnPath, Fail> {
+fn own_file(own: &Own) -> Result<OwnPath, Said> {
     own.path(store::FILE_NAME)
-        .map_err(|e| Fail::from(("io_failed", e)))
+        .map_err(|e| crate::wire::spec::fail("io_failed", e))
 }
 
 /// [`answer_set`] 的本体，写句柄是参数（判据拿落在临时目录上的那一份喂它，不碰真家目录）。
-pub(crate) fn answer_set_at(own: &Own, req: &KeySetReq) -> Result<KeySet, Fail> {
+pub(crate) fn answer_set_at(own: &Own, req: &KeySetReq) -> Result<KeySet, Said> {
     let file = own_file(own)?;
     let path = file.as_path();
     // 账号 id 由**这台后端**按全仓唯一那份规则推（`acct_core::apikey_account_id_of_dir`，起会话那一侧 `endpoint.rs` 调的同一个）。
@@ -130,16 +130,18 @@ pub(crate) fn answer_set_at(own: &Own, req: &KeySetReq) -> Result<KeySet, Fail> 
             .find(|e| e.id == account)
     });
     let base_url_now = row.as_ref().and_then(|e| e.base_url.clone());
-    let masked = row.and_then(|e| e.key.map(|k| k.masked())).ok_or((
-        "io_failed",
-        copy_text(
-            "beUpstreamFileFace.keySet.notReadBack",
-            &[
-                ("path", &path.display().to_string()),
-                ("account", &format!("{account:?}")),
-            ],
-        ),
-    ))?;
+    let masked = row.and_then(|e| e.key.map(|k| k.masked())).ok_or_else(|| {
+        Said::new(
+            "io_failed",
+            copy_text(
+                "beUpstreamFileFace.keySet.notReadBack",
+                &[
+                    ("path", &path.display().to_string()),
+                    ("account", &format!("{account:?}")),
+                ],
+            ),
+        )
+    })?;
     Ok(KeySet {
         account: account.to_string(),
         path: path.display().to_string(),
@@ -150,43 +152,45 @@ pub(crate) fn answer_set_at(own: &Own, req: &KeySetReq) -> Result<KeySet, Fail> 
 
 /// 入参里那个号的账号 id：按 `configDir` 推（`acct_core::apikey_account_id_of_dir`，起会话那一侧 `endpoint.rs` 调的同一个）。
 /// 推出来的 id 还要过装表那一步**同一个谓词**：写得进去、却装不进表 ⇒ 那一行的请求永远 404。
-fn account_of(config_dir: &str) -> Result<String, Fail> {
-    let account = acct_core::apikey_account_id_of_dir(config_dir).ok_or((
-        "bad_args",
-        copy_text(
-            "beUpstreamFileFace.keySet.noAccount",
-            &[("dir", &format!("{config_dir:?}"))],
-        ),
-    ))?;
+fn account_of(config_dir: &str) -> Result<String, Said> {
+    let account = acct_core::apikey_account_id_of_dir(config_dir).ok_or_else(|| {
+        Said::new(
+            "bad_args",
+            copy_text(
+                "beUpstreamFileFace.keySet.noAccount",
+                &[("dir", &format!("{config_dir:?}"))],
+            ),
+        )
+    })?;
     if !crate::relay::segment_is_safe(&account) {
-        return Err(Fail::from((
+        return Err(crate::wire::spec::fail(
             "bad_args",
             copy_text(
                 "beUpstreamFileFace.keySet.badId",
                 &[("account", &format!("{account:?}"))],
             ),
-        )));
+        ));
     }
     Ok(account)
 }
 
 /// 删号 · 回滚那两口（改账号库那几条的内层，不上线）入参里的 `configDir`；不收 `account`（不为旧形状留兼容）。
-fn config_dir_arg(args: &Value) -> Result<&str, Fail> {
+fn config_dir_arg(args: &Value) -> Result<&str, Said> {
     if args.get("account").is_some() {
-        return Err(Fail::from((
+        return Err(crate::wire::spec::fail(
             "bad_args",
             crate::common::contract::malformed(
                 "`account` is not accepted; the account id is derived from `configDir`",
             ),
-        )));
+        ));
     }
     args.get("configDir")
         .and_then(Value::as_str)
         .ok_or_else(|| {
-            Fail::from((
+            crate::wire::spec::fail(
                 "bad_args",
                 crate::common::contract::malformed("missing `configDir` (string)"),
-            ))
+            )
         })
 }
 
@@ -219,7 +223,7 @@ pub(crate) fn answer_restore_at(own: &Own, args: &Value) -> FileFaceAnswer {
     let file = own_file(own)?;
     let account = account_of(config_dir_arg(args)?)?;
     let from = args.get("from").and_then(Value::as_str).ok_or_else(|| {
-        (
+        Said::new(
             "bad_args",
             crate::common::contract::malformed("missing `from` (string)"),
         )
@@ -230,13 +234,13 @@ pub(crate) fn answer_restore_at(own: &Own, args: &Value) -> FileFaceAnswer {
         .and_then(Value::as_object)
         .is_some_and(|m| m.contains_key(&account));
     if !has {
-        return Err(Fail::from((
+        return Err(crate::wire::spec::fail(
             "io_failed",
             copy_text(
                 "beUpstreamFileFace.restore.notSaved",
                 &[("from", from), ("account", &account)],
             ),
-        )));
+        ));
     }
     rewrite_at(own, &file, &|cur| {
         Some(store::restore_account(cur, &account, &saved))
@@ -246,7 +250,7 @@ pub(crate) fn answer_restore_at(own: &Own, args: &Value) -> FileFaceAnswer {
 
 /// 表里现有哪几个号（`accounts` 底下的键，按名排）。只读；文件不在 ⇒ 零个；解析不了 ⇒ `Err`（那句话）。
 pub(crate) fn account_ids_at(path: &Path) -> Result<Vec<String>, String> {
-    let doc = read_doc(path).map_err(|f| f.message)?.unwrap_or_default();
+    let doc = read_doc(path).map_err(|f| f.said)?.unwrap_or_default();
     let mut ids: Vec<String> = doc
         .get(store::ACCOUNTS_FIELD)
         .and_then(Value::as_object)
@@ -258,15 +262,15 @@ pub(crate) fn account_ids_at(path: &Path) -> Result<Vec<String>, String> {
 
 /// 一把 key ＋ 一个 Base URL 写不写得进去（空 key · 装不进表的地址 ⇒ 拒）—— [`answer_set_at`] 落盘前判的就是这一条；
 /// 建 API 号那一趟在建目录**之前**先问它，免得号建好了 key 却写不进去。
-pub(crate) fn check_inputs(key: &SecretKey, base_url: Option<&str>) -> Result<(), Fail> {
+pub(crate) fn check_inputs(key: &SecretKey, base_url: Option<&str>) -> Result<(), Said> {
     if !key.is_configured() {
-        return Err(Fail::from((
+        return Err(crate::wire::spec::fail(
             "bad_args",
             copy_text("beUpstreamFileFace.keySet.emptyKey", &[]),
-        )));
+        ));
     }
     if let Some(url) = base_url.map(str::trim).filter(|u| !u.is_empty()) {
-        super::table::base_if_usable(url).map_err(|why| ("bad_args", why.to_string()))?;
+        super::table::base_if_usable(url).map_err(|why| Said::new("bad_args", why.to_string()))?;
     }
     Ok(())
 }
@@ -341,16 +345,16 @@ const KEY_FILE: crate::common::own_state::Doc<String> =
     crate::common::own_state::Doc::of(&relay_route_core::APIKEY_CREDENTIALS_FILE);
 
 /// 读一次、解析一次。`Ok(None)` = 文件不在（还没配）；空文件 = 空对象。
-fn read_doc(path: &Path) -> Result<Option<Map<String, Value>>, Fail> {
+fn read_doc(path: &Path) -> Result<Option<Map<String, Value>>, Said> {
     use crate::common::own_state::Read;
     let raw = match KEY_FILE.read_with(path, |b| Ok(String::from_utf8_lossy(&b).into_owned())) {
         Read::Present(s) => s,
         Read::Absent => return Ok(None),
-        Read::Unreadable(why) => return Err(Fail::from(("io_failed", why))),
+        Read::Unreadable(why) => return Err(crate::wire::spec::fail("io_failed", why)),
     };
     store::parse(&raw)
         .map(Some)
-        .map_err(|e| Fail::from(("bad_file", e.said(path))))
+        .map_err(|e| crate::wire::spec::fail("bad_file", e.said(path)))
 }
 
 /// 写一个号的 key（与 Base URL）：同一个合并函数、只改这一条的那一格。
@@ -360,7 +364,7 @@ fn write_at(
     id: &str,
     key: &SecretKey,
     base_url: Option<&str>,
-) -> Result<(), Fail> {
+) -> Result<(), Said> {
     // 本机那一份也由（本机）后端的这一处写，monitor 那侧的写口删了。
     rewrite_at(own, file, &|current| {
         let merged = store::merge_account_key(current, id, key);
@@ -377,14 +381,14 @@ type Rewrite<'a> = &'a dyn Fn(&Map<String, Value>) -> Option<Map<String, Value>>
 
 /// **这台机器上唯一的写者**（经 `Own`：建那一层目录 · 原子写 · 删 · 改名）。
 /// `change` 回 `None` ⇒ 一个字节不动（回 `false`）。
-fn rewrite_at(own: &Own, file: &OwnPath, change: Rewrite) -> Result<bool, Fail> {
+fn rewrite_at(own: &Own, file: &OwnPath, change: Rewrite) -> Result<bool, Said> {
     let path = file.as_path();
-    let dir = own
-        .root()
-        .ok_or_else(|| Fail::from(("io_failed", copy_text("beOwnState.path.noHome", &[]))))?;
+    let dir = own.root().ok_or_else(|| {
+        crate::wire::spec::fail("io_failed", copy_text("beOwnState.path.noHome", &[]))
+    })?;
     // 只建**这一层**（数据目录 `~/.cc-monitor`，也是后端的家）：建的那一下只给本人；父目录是家目录，不在就说出来、不替它建。
     if let Err(e) = own.ensure_dir(&dir) {
-        return Err(Fail::from((
+        return Err(crate::wire::spec::fail(
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
@@ -396,13 +400,13 @@ fn rewrite_at(own: &Own, file: &OwnPath, change: Rewrite) -> Result<bool, Fail> 
                 ),
                 &e,
             ),
-        )));
+        ));
     }
     // 读—改—写整段在那个目录的跨进程锁里（`platform/lock.rs`）：两个后端进程同时给两个号写 key，
     //   从前后写的那一份整份盖掉先写的那一格（这一份连进程内锁都没有）。
     let held = own
         .lock(&dir)
-        .map_err(|e| ("io_failed", crate::common::said::Said::from(e)))?;
+        .map_err(|e| crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e)))?;
     // ★ 写的这一刻读盘。解析不了 ⇒ `bad_file`，**不覆盖**。
     let current = read_doc(path)?.unwrap_or_default();
     let Some(merged) = change(&current) else {
@@ -411,7 +415,7 @@ fn rewrite_at(own: &Own, file: &OwnPath, change: Rewrite) -> Result<bool, Fail> 
     let text = store::to_pretty_json(&merged);
     // 出生即只给本人（`own_state`）：先按 umask 建出来再收窄，中间那一段里已经有明文了。
     own.write(file, &held, text.as_bytes())
-        .map_err(|e| Fail::from(("io_failed", e)))?;
+        .map_err(|e| crate::wire::spec::fail("io_failed", e))?;
     Ok(true)
 }
 

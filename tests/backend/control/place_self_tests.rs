@@ -101,8 +101,8 @@ fn p2_bytes_that_do_not_say_this_build_are_dropped() {
         &backend("other"),
     );
     let own = Own::issue_at(&home);
-    let (code, _) = place(&own, &staged, "mine").unwrap_err();
-    assert_eq!(code, "not_self");
+    let e = place(&own, &staged, "mine").unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("not_self"));
     assert!(!staged.exists(), "暂存件该当场删");
     assert_eq!(landing(&home), Some(backend("old")));
 }
@@ -116,8 +116,8 @@ fn p3_a_copy_outside_staging_is_refused_and_left_alone() {
         &backend("mine"),
     );
     let own = Own::issue_at(&home);
-    let (code, _) = place(&own, &at_landing, "mine").unwrap_err();
-    assert_eq!(code, "outside_staging");
+    let e = place(&own, &at_landing, "mine").unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("outside_staging"));
     assert_eq!(landing(&home), Some(backend("mine")));
     // 暂存区底下再深一层也不算（只认恰在暂存区里的一份）。
     let deeper = put(
@@ -128,8 +128,8 @@ fn p3_a_copy_outside_staging_is_refused_and_left_alone() {
         ),
         &backend("mine"),
     );
-    let (code, _) = place(&own, &deeper, "mine").unwrap_err();
-    assert_eq!(code, "outside_staging");
+    let e = place(&own, &deeper, "mine").unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("outside_staging"));
     assert!(deeper.exists());
 }
 
@@ -166,8 +166,8 @@ fn p5_a_staged_copy_removes_the_landing_and_itself() {
     assert!(!staged.exists(), "暂存件还在");
     // 不在暂存区里（落点上那一份自己跑了这条）⇒ 拒、一个字节不动。
     let at_landing = put(&home, relay_route_core::BACKEND_LANDING_REL, b"x");
-    let (code, _) = unplace(&own, &at_landing).unwrap_err();
-    assert_eq!(code, "outside_staging");
+    let e = unplace(&own, &at_landing).unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("outside_staging"));
     assert!(at_landing.exists());
 }
 
@@ -283,8 +283,8 @@ fn p8_no_swap_when_the_old_copy_cannot_be_kept() {
     );
     std::fs::create_dir_all(kept(&home, "ccm-old").join("x")).unwrap();
     let staged = staged_at(&home, &backend("mine"));
-    let (code, _) = place(&own, &staged, "mine").unwrap_err();
-    assert_eq!(code, "place_failed");
+    let e = place(&own, &staged, "mine").unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("place_failed"));
     assert_eq!(landing(&home), Some(backend("old")), "落点该一个字节不动");
 }
 

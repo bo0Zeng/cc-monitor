@@ -19,12 +19,13 @@ use copy_core::copy_text;
 
 use super::files_write::{
     change_mode_reporting, copy_entry, copy_tree, delete_empty_dir, delete_entry,
-    delete_file_expecting, delete_tree_upto, lexical_in_root, rel_of, root_of, wire_of, WriteFail,
+    delete_file_expecting, delete_tree_upto, lexical_in_root, rel_of, root_of, wire_of,
     WriteRefusal,
 };
 use crate::common::batch_book::{
     cancel_rest, choice_of, key_of, minted, moment_text, mtime_secs, ticketed, Run,
 };
+use crate::common::said::Said;
 use crate::platform::fs::{Face, Ro};
 use batch_core::said_of;
 
@@ -35,14 +36,14 @@ const DELETE_STRIDE: usize = 256;
 // ═══ 结局 ═══════════════════════════════════════════════════════════════════════════
 
 /// 一项没成 ⇒ 那一项的结局（码 · 原因词 · 那一句与原话进复制详情）。
-fn failed(key: &str, f: WriteFail) -> BatchOutcome {
-    let reason = copy_core::code_reason(f.code, f.raw.as_deref());
+fn failed(key: &str, f: Said) -> BatchOutcome {
+    let reason = copy_core::code_reason(f.code_or_fallback(), f.raw.as_deref());
     let detail = match &f.raw {
         Some(r) => format!("{}\n{r}", f.said),
         None => f.said.clone(),
     };
     BatchOutcome {
-        code: Some(f.code.to_string()),
+        code: Some(f.code_or_fallback().to_string()),
         reason: Some(reason),
         detail: Some(detail),
         ..BatchOutcome::bare(key, ItemState::Failed)
@@ -126,10 +127,10 @@ pub(crate) fn copy(
         for (from, to) in &items {
             super::files_write::names_ok(true, to).map_err(CopyRefused::Fail)?;
             if from == to {
-                return Err(CopyRefused::Fail(WriteFail::from((
+                return Err(CopyRefused::Fail(Said::new(
                     super::files_write::BAD_NAME,
                     copy_text("beFilesWrite.copy.same", &[("path", &to.to_string_lossy())]),
-                ))));
+                )));
             }
         }
     }
@@ -179,7 +180,7 @@ pub(crate) fn copy(
     ticketed(
         req.ticket.as_deref(),
         total,
-        |m| CopyRefused::Fail(WriteFail::from(("bad_args", m))),
+        |m| CopyRefused::Fail(Said::new("bad_args", m)),
         probe,
         |clashes, run| {
             let mut out = Vec::with_capacity(total);
@@ -206,11 +207,11 @@ pub(crate) fn copy(
 #[derive(Debug)]
 pub(crate) enum CopyRefused {
     Clash(String, Conflicts),
-    Fail(WriteFail),
+    Fail(Said),
 }
 
-impl From<WriteFail> for CopyRefused {
-    fn from(f: WriteFail) -> Self {
+impl From<Said> for CopyRefused {
+    fn from(f: Said) -> Self {
         CopyRefused::Fail(f)
     }
 }
@@ -270,7 +271,7 @@ fn copy_item(
                 ..BatchOutcome::bare(key, ItemState::Exists)
             }
         } else {
-            failed(key, WriteFail::from(e))
+            failed(key, Said::from(e))
         }
     };
     match clash {
@@ -293,7 +294,7 @@ fn copy_item(
             dir_into: false,
         }) => match copy_one(face, root, from, to, false, true) {
             Ok(d) => done(d, None),
-            Err(e) => failed(key, WriteFail::from(e)),
+            Err(e) => failed(key, Said::from(e)),
         },
         Some(Clash {
             choice: Some(Decide::KeepBoth),
@@ -320,12 +321,12 @@ fn copy_item(
                     {
                         last = Some(e);
                     }
-                    Err(e) => return failed(key, WriteFail::from(e)),
+                    Err(e) => return failed(key, Said::from(e)),
                 }
             }
             let e = last
                 .unwrap_or_else(|| WriteRefusal::Exists(copy_text("beFiles.batch.mintSpent", &[])));
-            failed(key, WriteFail::from(e))
+            failed(key, Said::from(e))
         }
     }
 }
@@ -333,25 +334,25 @@ fn copy_item(
 // ═══ 删除 ═══════════════════════════════════════════════════════════════════════════
 
 /// `files-delete`。
-pub(crate) fn delete(face: &Face, req: wire::FilesDeleteReq) -> Result<BatchReply, WriteFail> {
+pub(crate) fn delete(face: &Face, req: wire::FilesDeleteReq) -> Result<BatchReply, Said> {
     let root = root_of(&req.root, "root")?;
     if req
         .items
         .iter()
         .any(|i| i.recursive.unwrap_or(false) && i.expect.is_some())
     {
-        return Err(WriteFail::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed("`expect` and `recursive` are mutually exclusive"),
-        )));
+        ));
     }
     let total = req.items.len();
     let items = req.items;
     ticketed(
         req.ticket.as_deref(),
         total,
-        |m| WriteFail::from(("bad_args", m)),
-        || Ok::<(), WriteFail>(()),
+        |m| Said::new("bad_args", m),
+        || Ok::<(), Said>(()),
         |(), run| {
             let mut out = Vec::with_capacity(total);
             for (i, item) in items.into_iter().enumerate() {
@@ -402,7 +403,7 @@ fn delete_item(
                         };
                     }
                 }
-                Err(e) => return failed(key, WriteFail::from(e)),
+                Err(e) => return failed(key, Said::from(e)),
             }
         }
     }
@@ -413,14 +414,14 @@ fn delete_item(
     };
     match got {
         Ok(at) => done(at, 1),
-        Err(e) => failed(key, WriteFail::from(e)),
+        Err(e) => failed(key, Said::from(e)),
     }
 }
 
 // ═══ 改权限 ═════════════════════════════════════════════════════════════════════════
 
 /// `files-chmod`。
-pub(crate) fn chmod(face: &Face, req: wire::FilesChmodReq) -> Result<BatchReply, WriteFail> {
+pub(crate) fn chmod(face: &Face, req: wire::FilesChmodReq) -> Result<BatchReply, Said> {
     let root = root_of(&req.root, "root")?;
     let total = req.items.len();
     let mode = super::files_write::mode_of_text(&req.mode)?;
@@ -428,8 +429,8 @@ pub(crate) fn chmod(face: &Face, req: wire::FilesChmodReq) -> Result<BatchReply,
     ticketed(
         req.ticket.as_deref(),
         total,
-        |m| WriteFail::from(("bad_args", m)),
-        || Ok::<(), WriteFail>(()),
+        |m| Said::new("bad_args", m),
+        || Ok::<(), Said>(()),
         |(), run| {
             let mut out = Vec::with_capacity(total);
             for (i, item) in items.iter().enumerate() {
@@ -445,7 +446,7 @@ pub(crate) fn chmod(face: &Face, req: wire::FilesChmodReq) -> Result<BatchReply,
                         before,
                         ..BatchOutcome::bare(key_of(i), ItemState::Done)
                     },
-                    Err(e) => failed(&key_of(i), WriteFail::from(e)),
+                    Err(e) => failed(&key_of(i), Said::from(e)),
                 });
             }
             run.step(out.len(), None);
@@ -462,10 +463,10 @@ pub(crate) fn chmod(face: &Face, req: wire::FilesChmodReq) -> Result<BatchReply,
 // 资产域那扇门（`doors::LocalFiles`）问这三条也经这一处（同那几条帧命令）：同名要问那一形门上不会出现（门不问人），照码交回。
 impl super::files_write::Act for wire::FilesCopyReq {
     type Reply = BatchReply;
-    fn act(self, face: &Face) -> Result<BatchReply, WriteFail> {
+    fn act(self, face: &Face) -> Result<BatchReply, Said> {
         // 门不问人 ⇒ 同名清单（连同它的时刻字）不出门，时区照缺。
         copy(face, self, &Default::default()).map_err(|e| match e {
-            CopyRefused::Clash(said, _) => WriteFail::from((super::files_write::EXISTS, said)),
+            CopyRefused::Clash(said, _) => Said::new(super::files_write::EXISTS, said),
             CopyRefused::Fail(f) => f,
         })
     }
@@ -473,14 +474,14 @@ impl super::files_write::Act for wire::FilesCopyReq {
 
 impl super::files_write::Act for wire::FilesDeleteReq {
     type Reply = BatchReply;
-    fn act(self, face: &Face) -> Result<BatchReply, WriteFail> {
+    fn act(self, face: &Face) -> Result<BatchReply, Said> {
         delete(face, self)
     }
 }
 
 impl super::files_write::Act for wire::FilesChmodReq {
     type Reply = BatchReply;
-    fn act(self, face: &Face) -> Result<BatchReply, WriteFail> {
+    fn act(self, face: &Face) -> Result<BatchReply, Said> {
         chmod(face, self)
     }
 }

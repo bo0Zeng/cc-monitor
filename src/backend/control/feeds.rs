@@ -442,7 +442,7 @@ impl Pool {
     ) -> Result<crate::dial::DialRequest, Problem> {
         crate::dial::host();
         crate::dial::dial_named(&crate::dial::machines_now(), machine, use_, extra)
-            .map_err(|(_, said)| Problem::new(said, ""))
+            .map_err(|f| Problem::new(f.said, ""))
     }
 }
 
@@ -475,7 +475,7 @@ impl Ssh for Pool {
             "capture",
             serde_json::json!({}),
         )
-        .map_err(|(_, said)| Problem::new(said, ""));
+        .map_err(|f| Problem::new(f.said, ""));
         Box::pin(async move {
             let got = crate::dial::remote_ask::capture_full(&dial?, command)
                 .await
@@ -628,9 +628,9 @@ impl crate::wire::typed::Handle for MachineStop {
 pub(crate) async fn stop_with(
     ssh: &dyn Ssh,
     machine: &str,
-) -> Result<MachineStopped, crate::wire::spec::Fail> {
+) -> Result<MachineStopped, crate::common::said::Said> {
     let fail = |p: Problem| {
-        crate::wire::spec::Fail::new("stop_failed", p.text).with_raw(Some(p.detail.as_str()))
+        crate::wire::spec::fail("stop_failed", p.text).and_raw(Some(p.detail.as_str()))
     };
     let exec = ssh
         .capture(machine, feed::backend_command(feed::STOP))
@@ -664,14 +664,14 @@ pub(crate) async fn forward(
     machine: String,
     req: crate::wire::Request,
 ) -> crate::wire::spec::Outcome {
-    use crate::wire::spec::Fail;
     use resident_client::client::CallError;
     let left = req.until.map_or(FORWARD_WITHOUT_DEADLINE, |u| {
         Duration::from_millis(u.left_ms())
     });
     let deadline = tokio::time::Instant::now() + left;
     let feed = lock(table()).get(&machine).cloned();
-    let unreachable = || Fail::new(UNREACHABLE, comms_inward::chan::said::offline(&machine));
+    let unreachable =
+        || crate::wire::spec::fail(UNREACHABLE, comms_inward::chan::said::offline(&machine));
     let Some(feed) = feed else {
         return Err(unreachable());
     };
@@ -691,12 +691,13 @@ pub(crate) async fn forward(
             message,
             detail,
             data,
-        } => Fail {
-            code,
-            message,
-            data: data.and_then(|d| serde_json::from_str(&d).ok()),
-            raw: (!detail.is_empty()).then_some(detail),
-        },
+        } => {
+            let f = crate::wire::spec::fail(&code, message).and_raw(Some(&detail));
+            match data.and_then(|d| serde_json::from_str(&d).ok()) {
+                Some(d) => f.with_data(d),
+                None => f,
+            }
+        }
         CallError::Disconnected => unreachable(),
         // 连那台的客户端事前就拒的那几种：那一句是它自己的（`CallError` 的 `Display` 照文案表写），码照它是哪一种。
         other => {
@@ -709,7 +710,7 @@ pub(crate) async fn forward(
                 _ => "cancelled".to_string(),
             };
             let said = other.to_string();
-            Fail::new(&code, said)
+            crate::wire::spec::fail(&code, said)
         }
     })
 }
@@ -720,7 +721,7 @@ pub(crate) async fn call<C>(
     machine: &str,
     req: &C::Req,
     until: Option<crate::platform::child::Until>,
-) -> Result<C::Reply, crate::wire::spec::Fail>
+) -> Result<C::Reply, crate::common::said::Said>
 where
     C: crate::wire::typed::Command,
     C::Req: serde::Serialize,
@@ -735,7 +736,7 @@ pub(crate) async fn call_passing<C>(
     machine: &str,
     req: &C::Req,
     until: Option<crate::platform::child::Until>,
-) -> Result<serde_json::Value, crate::wire::spec::Fail>
+) -> Result<serde_json::Value, crate::common::said::Said>
 where
     C: crate::wire::typed::Command,
     C::Req: serde::Serialize,
@@ -754,8 +755,8 @@ where
 }
 
 /// 读不懂那台的回包那一句。
-fn unreadable(machine: &str) -> crate::wire::spec::Fail {
-    crate::wire::spec::Fail::new("failed", copy_core::reply_unreadable(machine))
+fn unreadable(machine: &str) -> crate::common::said::Said {
+    crate::wire::spec::fail("failed", copy_core::reply_unreadable(machine))
 }
 
 #[cfg(test)]

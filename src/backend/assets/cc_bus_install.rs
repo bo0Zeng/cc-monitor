@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 
 use crate::assets::hub_wire::{CcBusInstalled, CcBusState};
 use crate::common::door::{self, Door};
+use crate::common::said::IntoNote as _;
 
 pub(crate) use super::skill_ledger::Record;
 use super::skill_ledger::{RecordReq, Recorded};
@@ -177,19 +178,16 @@ pub(crate) fn state_at(skills: &Path) -> CcBusState {
     }
 }
 
-fn skills_root() -> Result<PathBuf, crate::wire::spec::Fail> {
+fn skills_root() -> Result<PathBuf, crate::common::said::Said> {
     crate::agents::asset_kind()
         .and_then(crate::agents::skills_root)
         .ok_or_else(|| {
-            crate::wire::spec::Fail::from((
-                "refused",
-                copy_text("beCcBusInstall.root.unknown", &[]),
-            ))
+            crate::wire::spec::fail("refused", copy_text("beCcBusInstall.root.unknown", &[]))
         })
 }
 
 /// `cc-bus-install-state {}` → [`state_at`]。
-pub(crate) fn answer_state() -> Result<CcBusState, crate::wire::spec::Fail> {
+pub(crate) fn answer_state() -> Result<CcBusState, crate::common::said::Said> {
     Ok(state_at(&skills_root()?))
 }
 
@@ -197,7 +195,7 @@ pub(crate) fn answer_state() -> Result<CcBusState, crate::wire::spec::Fail> {
 pub(crate) fn answer_install(
     d: &dyn Door,
     record: Record,
-) -> Result<CcBusInstalled, crate::wire::spec::Fail> {
+) -> Result<CcBusInstalled, crate::common::said::Said> {
     install_at(d, &skills_root()?, record)
 }
 
@@ -206,18 +204,17 @@ pub(crate) fn install_at(
     d: &dyn Door,
     skills: &Path,
     record: Record,
-) -> Result<CcBusInstalled, crate::wire::spec::Fail> {
-    let (top, dest) =
-        fenced_root(skills).map_err(|e| crate::wire::spec::Fail::from(("refused", e)))?;
+) -> Result<CcBusInstalled, crate::common::said::Said> {
+    let (top, dest) = fenced_root(skills).map_err(|e| crate::wire::spec::fail("refused", e))?;
     let root = top.display().to_string();
     let dest_s = dest.display().to_string();
     // 记：每个内嵌文件一行、摘要是内嵌那一份的；`created` = 这一趟是不是新建的（已记的取第一次的，写口管）。
     //   全都一致那一形也记：盘上被别处换成了这一版之后，记录里不能还留着旧摘要（卸时会误判「装完改过」）；记录没变写口不写盘。
-    let record_all = |created: bool| -> Result<Option<String>, crate::wire::spec::Fail> {
+    let record_all = |created: bool| -> Result<Option<String>, crate::common::said::Said> {
         let mut files = std::collections::BTreeMap::new();
         for (rel, bytes) in FILES {
             let text = std::str::from_utf8(bytes).map_err(|_| {
-                (
+                crate::common::said::Said::new(
                     "bad_file",
                     copy_text("beCcBusInstall.embed.notUtf8", &[("rel", rel)]),
                 )
@@ -239,11 +236,13 @@ pub(crate) fn install_at(
         .map(|f| copy_text("beCcBusInstall.record.failed", &[("why", &f.into_note())])))
     };
     // 先算幂等：全都一致就一个字节不写、不备份（只记）。
-    let mut all_same =
-        door::stat_kind(d, &dest_s).map_err(|e| ("refused", e))? == Some("dir".into());
+    let mut all_same = door::stat_kind(d, &dest_s)
+        .map_err(|e| crate::common::said::Said::new("refused", e))?
+        == Some("dir".into());
     if all_same {
         for (rel, bytes) in FILES {
-            let got = door::peek(d, &root, &rel_of(skills, rel)).map_err(|e| ("refused", e))?;
+            let got = door::peek(d, &root, &rel_of(skills, rel))
+                .map_err(|e| crate::common::said::Said::new("refused", e))?;
             if got.text.as_deref().map(str::as_bytes) != Some(*bytes) {
                 all_same = false;
                 break;
@@ -260,7 +259,7 @@ pub(crate) fn install_at(
     }
     // ★ 可撤销：整个目录改名（原子）。已经一致时走不到这里 ⇒ 不攒垃圾备份。
     let backup = if door::stat_kind(d, &dest_s)
-        .map_err(|e| ("refused", e))?
+        .map_err(|e| crate::common::said::Said::new("refused", e))?
         .is_some()
     {
         let ts = crate::common::time::now()
@@ -271,7 +270,7 @@ pub(crate) fn install_at(
         let top_name = skills_name(skills);
         let (from, to) = (format!("{top_name}/{NAME}"), format!("{top_name}/{bak}"));
         door::rename(d, &root, &from, &to).map_err(|e| {
-            (
+            crate::common::said::Said::new(
                 "refused",
                 copy_text(
                     "beCcBusInstall.backup.failed",
@@ -285,18 +284,20 @@ pub(crate) fn install_at(
     };
     for (rel, bytes) in FILES {
         let text = std::str::from_utf8(bytes).map_err(|_| {
-            (
+            crate::common::said::Said::new(
                 "bad_file",
                 copy_text("beCcBusInstall.embed.notUtf8", &[("rel", rel)]),
             )
         })?;
         let at = rel_of(skills, rel);
-        door::put(d, &root, &at, text, None, false, true).map_err(|e| ("refused", e.said()))?;
+        door::put(d, &root, &at, text, None, false, true)
+            .map_err(|e| crate::common::said::Said::new("refused", e.said()))?;
         // `scripts/` 下的与带 shebang 的都要可执行（装完不能跑等于没装）。Windows 上没有可执行位：写口那边如实回失败 ⇒ 只在说 POSIX 的那台上发。
         if crate::platform::paths::has_exec_bits()
             && (rel.starts_with("scripts/") || bytes.starts_with(b"#!"))
         {
-            door::chmod(d, &root, &at, 0o755).map_err(|e| ("refused", e))?;
+            door::chmod(d, &root, &at, 0o755)
+                .map_err(|e| crate::common::said::Said::new("refused", e))?;
         }
     }
     // 原有那一份已整个改名走 ⇒ 这一趟每个都是新建的。

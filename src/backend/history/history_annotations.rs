@@ -234,10 +234,10 @@ pub fn load() -> Loaded {
 }
 
 /// 读—改—写的锁：先建那一层目录（数据目录，默认就是 `~/.cc-monitor`，建的那一下只给本人），再拿它的跨进程锁。
-fn lock_for_write(own: &Own, dir: &OwnPath) -> Result<OwnLock, crate::wire::spec::Fail> {
+fn lock_for_write(own: &Own, dir: &OwnPath) -> Result<OwnLock, crate::common::said::Said> {
     let d = dir.as_path();
     if let Err(e) = own.ensure_dir(dir) {
-        return Err(crate::wire::spec::Fail::from((
+        return Err(crate::wire::spec::fail(
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
@@ -249,11 +249,10 @@ fn lock_for_write(own: &Own, dir: &OwnPath) -> Result<OwnLock, crate::wire::spec
                 ),
                 &e,
             ),
-        )));
+        ));
     }
-    own.lock(dir).map_err(|e| {
-        crate::wire::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
-    })
+    own.lock(dir)
+        .map_err(|e| crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e)))
 }
 
 /// 一次改动（线上 `patch`）：缺格 / `null` = 不改；标题给空白串 = 清空。
@@ -295,21 +294,20 @@ fn now_ms() -> i64 {
 }
 
 /// 读原文成「严格读过的结构 ＋ 原文 JSON」（`version` 那一格读写口摘了、写时再带上）。文件不在 ⇒ 缺省形状。
-fn read_for_write(path: &Path) -> Result<(Doc, Value), crate::wire::spec::Fail> {
-    match read_raw(path)
-        .map_err(|e| crate::wire::spec::Fail::from(("annotations_unreadable", e)))?
-    {
+fn read_for_write(path: &Path) -> Result<(Doc, Value), crate::common::said::Said> {
+    match read_raw(path).map_err(|e| crate::wire::spec::fail("annotations_unreadable", e))? {
         None => Ok((Doc::default(), json!({ "entries": {} }))),
         Some(raw) => {
-            let doc = parse(&raw, path).map_err(|e| ("annotations_unreadable", e))?;
+            let doc = parse(&raw, path)
+                .map_err(|e| crate::wire::spec::fail("annotations_unreadable", e))?;
             if !raw.is_object() {
-                return Err(crate::wire::spec::Fail::from((
+                return Err(crate::wire::spec::fail(
                     "annotations_unreadable",
                     copy_text(
                         "beHistoryAnnotations.readForWrite.notObject",
                         &[("path", &(path.display()).to_string())],
                     ),
-                )));
+                ));
             }
             Ok((doc, raw))
         }
@@ -371,19 +369,19 @@ fn write_at(
 }
 
 /// 那份文件所在的目录（数据目录）与它本身。推不出家 ⇒ `no_annotations`。
-fn need_path(own: &Own) -> Result<(OwnPath, OwnPath), crate::wire::spec::Fail> {
+fn need_path(own: &Own) -> Result<(OwnPath, OwnPath), crate::common::said::Said> {
     let dir = own.root().ok_or_else(|| {
-        crate::wire::spec::Fail::from((
+        crate::wire::spec::fail(
             "no_annotations",
             copy_text(
                 "beHistoryAnnotations.needPath.unknown",
                 &[("env", creds_core::store::DATA_DIR_ENV)],
             ),
-        ))
+        )
     })?;
     let file = dir
         .join(creds_core::store::HISTORY_METADATA_FILE)
-        .map_err(|e| crate::wire::spec::Fail::from(("io_failed", e)))?;
+        .map_err(|e| crate::wire::spec::fail("io_failed", e))?;
     Ok((dir, file))
 }
 
@@ -401,8 +399,8 @@ codes! {
     }
 }
 
-/// 下层那一份 [`Fail`](crate::wire::spec::Fail) ⇒ 这两条的码（不在表里 ⇒ 落 `io_failed`）。
-fn err(f: crate::wire::spec::Fail) -> AnnotationErr {
+/// 下层那一份 [`Said`](crate::common::said::Said) ⇒ 这两条的码（不在表里 ⇒ 落 `io_failed`）。
+fn err(f: crate::common::said::Said) -> AnnotationErr {
     of_fail(f, AnnotationErr::IoFailed)
 }
 
@@ -527,8 +525,7 @@ pub(crate) fn annotate_at(
     }
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
-    write_at(own, &dir, &held, &raw)
-        .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
+    write_at(own, &dir, &held, &raw).map_err(|e| err(crate::wire::spec::fail("io_failed", e)))?;
     // 会话事实里那一格（`autoAnswer`）跟着变：出口照推帧重读，不自己去问。
     if auto_changed {
         super::needs_changed::moved(sid);
@@ -547,13 +544,13 @@ pub(crate) fn keep_resume_at(
     sid: &str,
     pick: ResumeWith,
     now: i64,
-) -> Result<(), crate::wire::spec::Fail> {
+) -> Result<(), crate::common::said::Said> {
     use crate::wire::typed::Codes as _;
-    let sid = checked_sid(sid).map_err(|e| e.into_fail())?;
+    let sid = checked_sid(sid).map_err(|e| e.into_said())?;
     let (dir, file) = need_path(own)?;
     let held = lock_for_write(own, &dir)?;
     let (doc, mut raw) = read_for_write(file.as_path())?;
-    let io = |e| crate::wire::spec::Fail::from(("io_failed", e));
+    let io = |e| crate::wire::spec::fail("io_failed", e);
     let mut entry = doc.entries.get(sid).cloned().unwrap_or_default();
     entry.resume_with = Some(match entry.resume_with.take() {
         Some(old) if old.end == pick.end => ResumeWith {
@@ -582,9 +579,9 @@ pub(crate) fn keep_for_resume(
     record: &Path,
     model: Option<&str>,
     permission_mode: Option<&str>,
-) -> Result<(), crate::wire::spec::Fail> {
+) -> Result<(), crate::common::said::Said> {
     let end = crate::platform::fs::Ro::metadata(record)
-        .map_err(|e| crate::wire::spec::Fail::new("io_failed", copy_core::io_reason(e.kind())))?
+        .map_err(|e| crate::wire::spec::fail("io_failed", copy_core::io_reason(e.kind())))?
         .len();
     keep_resume_at(
         own,
@@ -656,8 +653,7 @@ pub(crate) fn edit_slice_at<T>(
     if !section.is_empty() {
         root.insert("groups".into(), Value::Object(section));
     }
-    write_at(own, &dir, &held, &raw)
-        .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
+    write_at(own, &dir, &held, &raw).map_err(|e| err(crate::wire::spec::fail("io_failed", e)))?;
     Ok(out)
 }
 
@@ -692,8 +688,7 @@ pub(crate) fn forget_at(own: &Own, req: ForgetReq) -> Result<Forgotten, Annotati
         return Ok(Forgotten { removed: false });
     }
     put_entry(&mut raw, sid, None);
-    write_at(own, &dir, &held, &raw)
-        .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
+    write_at(own, &dir, &held, &raw).map_err(|e| err(crate::wire::spec::fail("io_failed", e)))?;
     Ok(Forgotten { removed: true })
 }
 

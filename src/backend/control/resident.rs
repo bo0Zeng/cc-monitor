@@ -186,7 +186,10 @@ pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
     };
     let (within_ms, total) = match deadline_of(args) {
         Ok(x) => x,
-        Err((code, message)) => return refuse(code, message),
+        Err(s) => {
+            let code = s.code_or_fallback().to_string();
+            return refuse(&code, s.said);
+        }
     };
     let line = match crate::control::cli_args::read_args(
         args,
@@ -194,7 +197,10 @@ pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
         crate::control::cli_args::STDIN_QUIET,
     ) {
         Ok(l) => l,
-        Err((code, message)) => return refuse(code, message),
+        Err(s) => {
+            let code = s.code_or_fallback().to_string();
+            return refuse(&code, s.said);
+        }
     };
     let asked: crate::wire::listen::ResidentCall = match serde_json::from_str(line.trim()) {
         Ok(a) => a,
@@ -268,7 +274,7 @@ const ASKER_GONE_EXIT: i32 = 2;
 
 /// 期限口（`--within-ms`）⇒ 原样往常驻那一跳带的毫秒数 ＋ 本进程等多久（就是那么久）。等多久只归发起方：
 /// 不给 · 给的不是正整数 ⇒ `bad_args`，这里不自己定一个。
-pub(crate) fn deadline_of(args: &[String]) -> Result<(u64, Deadline), (&'static str, String)> {
+pub(crate) fn deadline_of(args: &[String]) -> Result<(u64, Deadline), crate::common::said::Said> {
     let flag = crate::wire::cli_words::WITHIN_MS_FLAG;
     let ms = crate::control::cli_args::within_of(args)?.ok_or_else(|| {
         crate::control::cli_args::bad_args(&format!(

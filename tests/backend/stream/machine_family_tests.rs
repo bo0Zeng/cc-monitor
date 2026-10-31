@@ -164,7 +164,7 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
     ] {
         let got = run_any(cmd, args.clone());
         assert_eq!(
-            got.as_ref().err().map(|f| f.code.as_str()),
+            got.as_ref().err().and_then(|f| f.code.as_deref()),
             Some("bad_args"),
             "`{cmd}` 入参 {args} 该回 bad_args：{got:?}"
         );
@@ -172,7 +172,7 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
     // 版本给错了类型 ⇒ `bad_args`，拒的原因是那一格的类型（不是「多了个不认识的键」：键名对得上才测得到类型）。
     let got = run_any("profiles-write", json!({ "changes": [], "ifRev": 3 }));
     let f = got.err().expect("版本给成数该拒");
-    assert_eq!(f.code, "bad_args");
+    assert_eq!(f.code.as_deref(), Some("bad_args"));
     assert!(
         f.raw.as_deref() == Some("`ifRev`: expected a string"),
         "该拒在版本的类型上：{:?}",
@@ -183,7 +183,7 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
         "pubkey-push",
         json!({ "machine": { "host": "h", "user": "u", "jump": "hop", "resumeCommand": "x" } }),
     );
-    assert_eq!(got.err().map(|f| f.code), Some("bad_jump".to_string()));
+    assert_eq!(got.err().and_then(|f| f.code), Some("bad_jump".to_string()));
 }
 
 /// 壳读的部署那几条（`deploy-install` · `place-verdict` · `exit-policy-read` · `ccm-probe`）：回包字节照钉的字面量。

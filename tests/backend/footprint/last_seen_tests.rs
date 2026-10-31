@@ -7,7 +7,7 @@ use serde_json::json;
 fn read_at(
     p: &std::path::Path,
     a: &serde_json::Value,
-) -> Result<serde_json::Value, crate::wire::spec::Fail> {
+) -> Result<serde_json::Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
     super::read_at(p, &req, &utc()).map(|x| serde_json::to_value(x).unwrap())
 }
@@ -83,7 +83,7 @@ fn write_at(
     own: &crate::platform::fs::Own,
     a: &serde_json::Value,
     now: u64,
-) -> Result<serde_json::Value, crate::wire::spec::Fail> {
+) -> Result<serde_json::Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
     super::write_at(own, &req, now).map(|x| serde_json::to_value(x).unwrap())
 }
@@ -178,7 +178,12 @@ fn 文件不在或读不懂_照没记过算_写的时候整份重来() {
 #[test]
 fn 入参闭集_种类只认两样_值要是对象_太大的不收() {
     let d = Dir::new("args");
-    let code = |a: serde_json::Value| write_at(&d.own(), &a, 1).unwrap_err().code;
+    let code = |a: serde_json::Value| {
+        write_at(&d.own(), &a, 1)
+            .unwrap_err()
+            .code_or_fallback()
+            .to_string()
+    };
     assert_eq!(
         code(json!({"origin": "devbox", "kind": "ext", "value": {}})),
         "bad_args"
@@ -196,7 +201,10 @@ fn 入参闭集_种类只认两样_值要是对象_太大的不收() {
         code(json!({"origin": "devbox", "kind": "data", "value": {"s": big}})),
         "too_large"
     );
-    assert_eq!(read_at(&d.file(), &json!({})).unwrap_err().code, "bad_args");
+    assert_eq!(
+        read_at(&d.file(), &json!({})).unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
     assert!(!d.file().exists(), "拒掉的不许落一个字节");
 }
 
@@ -258,7 +266,7 @@ fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那�
         &json!({"origin": "gpu-01", "forget": true, "kind": "data", "value": report()}),
         40,
     );
-    assert_eq!(mixed.unwrap_err().code, "bad_args");
+    assert_eq!(mixed.unwrap_err().code.as_deref(), Some("bad_args"));
     assert_eq!(
         read_at(&d.file(), &json!({"origin": "gpu-01"})).unwrap()["data"]["seen"]["atMs"],
         10
@@ -276,7 +284,8 @@ fn 每一样按回包类型收_形状不对的不收() {
             1,
         )
         .unwrap_err()
-        .code
+        .code_or_fallback()
+        .to_string()
     };
     let mut extra = report();
     extra["extra"] = json!(1);

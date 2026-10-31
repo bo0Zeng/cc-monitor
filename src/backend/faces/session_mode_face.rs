@@ -3,7 +3,8 @@
 
 use crate::agents::ModeSwitch;
 use crate::common::contract::malformed;
-use crate::control::terminals::{self, no_said, CmdErr, On, Refused};
+use crate::common::said::Said;
+use crate::control::terminals::{self, no_said, On, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq, TerminalPreviewReq};
 use crate::wire::typed::{self, Command};
 
@@ -50,11 +51,11 @@ typed::codes! {
 /// 切档那三样副作用（判据拿合成的屏喂）。
 pub(crate) trait ModeIo {
     /// 起看屏的那一份（只在真要按的时候起）；终端不收（没了 · 只剩 shell · 不归我们）⇒ 原因。
-    fn open(&mut self) -> Result<Option<Refused>, CmdErr>;
+    fn open(&mut self) -> Result<Option<Refused>, Said>;
     /// 此刻的档（认不出 ⇒ `None`）。
-    fn read(&mut self) -> Result<Option<&'static str>, CmdErr>;
+    fn read(&mut self) -> Result<Option<&'static str>, Said>;
     /// 按一下换档键。
-    fn press(&mut self) -> Result<Sent, CmdErr>;
+    fn press(&mut self) -> Result<Sent, Said>;
     /// 等下一次重画（到期没变 ⇒ `false`）。
     fn redrawn(&mut self) -> bool;
 }
@@ -84,8 +85,8 @@ pub(crate) fn switch_with(
     sw: &ModeSwitch,
     waiting: bool,
     io: &mut dyn ModeIo,
-    keep: &dyn Fn() -> Result<(), CmdErr>,
-) -> Result<ModeSwitched, CmdErr> {
+    keep: &dyn Fn() -> Result<(), Said>,
+) -> Result<ModeSwitched, Said> {
     let got = walk(target, sw, waiting, io)?;
     if !terminals::terminal_gone(got.why) {
         return Ok(got);
@@ -102,7 +103,7 @@ fn walk(
     sw: &ModeSwitch,
     waiting: bool,
     io: &mut dyn ModeIo,
-) -> Result<ModeSwitched, CmdErr> {
+) -> Result<ModeSwitched, Said> {
     if waiting {
         return Ok(reply(
             SwitchResult::Refused,
@@ -175,7 +176,7 @@ struct Live<'a> {
 }
 
 impl ModeIo for Live<'_> {
-    fn open(&mut self) -> Result<Option<Refused>, CmdErr> {
+    fn open(&mut self) -> Result<Option<Refused>, Said> {
         let t = match terminals::say_target_on(On::default(), self.sid, self.client.as_deref())? {
             Ok(t) => t,
             Err(why) => return Ok(Some(why)),
@@ -183,7 +184,7 @@ impl ModeIo for Live<'_> {
         self.watch = Some(crate::control::terminal_follow::Watch::open(None, &t)?);
         Ok(None)
     }
-    fn read(&mut self) -> Result<Option<&'static str>, CmdErr> {
+    fn read(&mut self) -> Result<Option<&'static str>, Said> {
         let shot = terminals::preview_on(
             On::default(),
             &TerminalPreviewReq {
@@ -196,7 +197,7 @@ impl ModeIo for Live<'_> {
         let lines: Vec<String> = shot.lines.into_iter().map(|l| l.text).collect();
         Ok((self.sw.read)(&lines))
     }
-    fn press(&mut self) -> Result<Sent, CmdErr> {
+    fn press(&mut self) -> Result<Sent, Said> {
         if let Some(w) = self.watch.as_mut() {
             w.forget();
         }
@@ -235,23 +236,23 @@ impl crate::wire::typed::Handle for SessionPermission {
 }
 
 /// 收不收这一档：那一家给选的 ⇒ 收；认得出、却不给选的（越过批准那几档：只能起会话时带参数定）⇒ `launch_only`；认不出 ⇒ `bad_args`。
-pub(crate) fn offered(perm: &crate::agents::PermissionFace, mode: &str) -> Result<(), CmdErr> {
+pub(crate) fn offered(perm: &crate::agents::PermissionFace, mode: &str) -> Result<(), Said> {
     if perm.modes.iter().any(|c| c.value == mode) {
         return Ok(());
     }
     if perm.shown.iter().any(|c| c.value == mode) {
-        return Err(CmdErr::new(
+        return Err(crate::wire::spec::fail(
             "launch_only",
             copy_core::copy_text("beSessionMode.switch.launchOnly", &[]),
         ));
     }
-    Err(CmdErr::new(
+    Err(crate::wire::spec::fail(
         "bad_args",
         malformed("`mode` is not one this agent offers"),
     ))
 }
 
-fn answer(req: &SessionPermissionReq, own: &crate::platform::Own) -> Result<ModeSwitched, CmdErr> {
+fn answer(req: &SessionPermissionReq, own: &crate::platform::Own) -> Result<ModeSwitched, Said> {
     let home = crate::history::listing::agent_home();
     let record = crate::observe::query::locate::session_record(&home, &req.sid).ok();
     let kind = record.as_deref().and_then(crate::agents::record_kind_of);
@@ -259,7 +260,7 @@ fn answer(req: &SessionPermissionReq, own: &crate::platform::Own) -> Result<Mode
         .ok()
         .and_then(|(_, f)| f.permission);
     let Some((perm, sw)) = face.and_then(|p| p.switch.map(|s| (p, s))) else {
-        return Err(CmdErr::new(
+        return Err(crate::wire::spec::fail(
             "unsupported",
             copy_core::copy_text("beSessionMode.switch.unsupported", &[]),
         ));
@@ -280,7 +281,7 @@ fn answer(req: &SessionPermissionReq, own: &crate::platform::Own) -> Result<Mode
             None,
             Some(&req.mode),
         ),
-        None => Err(CmdErr::new(
+        None => Err(crate::wire::spec::fail(
             "no_such_session",
             copy_core::copy_text("beSessionCommands.session.noRecord", &[]),
         )),
