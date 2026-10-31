@@ -63,6 +63,8 @@ data class ChatUiState(
     val outbox: List<OutboxLine> = emptyList(),
     /** 消息流末尾那一排：会话那台那份输入队名单（哪一端投的都在；自己的回执到了就挪进这里）· 每条可撤。 */
     val queue: List<QueueLine> = emptyList(),
+    /** 会话那台此刻离线那一句（机器成品写好的，[CoreLink.offline]）；连着 ⇒ `null`：那一排照它淡着、说名单是上次所知。 */
+    val offline: String? = null,
     /** 这条会话此刻在跑（那台给的脸上在干什么是 `working`）：右端是 ■。 */
     val running: Boolean = false,
     /** 会话那一层的失败（起不来 · 读不出记录）那一句；`null` ＝ 没有。 */
@@ -263,6 +265,8 @@ class ChatSession(
             scope.launch { link.table.collect { t -> sid?.let { t.successors[it] }?.let { by -> succeed(by) } } }
             // 那台推来的输入队名单（这一条的）照画。
             queue.watch(queueMoved) { sid }
+            // 那台离线那一句（连着 ⇒ 没有）：输入队那一排照它说是上次所知。
+            scope.launch { link.offline.collect { off -> _state.value = _state.value.copy(offline = off) } }
             // 每次接上那台：待发里还没回执的那几句照同一个编号再交一遍（那台按编号去重，只进一条）；名单问一次（断着时漏了的推送补上）。
             scope.launch {
                 link.state

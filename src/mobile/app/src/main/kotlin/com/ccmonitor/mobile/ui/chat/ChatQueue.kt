@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionQueueCancel
 import com.ccmonitor.mobile.core.claude.link.SessionQueueRead
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.QueueList
 import com.ccmonitor.mobile.core.wire.gen.QueueState
@@ -108,13 +109,24 @@ data class QueueRowFace(
     val listed: Boolean,
 )
 
-/** 名单在前（先后照那台），待发接在后面。 */
+/** 输入框上方那一排：每条一行 · [stale] ＝ 那台离线时头上那一行（「{离线那句} · 名单为上次所知」，整排淡着；连着 · 没有一行 ⇒ `null`）。 */
+data class QueueRows(
+    val rows: List<QueueRowFace>,
+    val stale: String?,
+)
+
+/** 名单在前（先后照那台），待发接在后面；[offline] ＝ 那台此刻离线那一句（连接层写好的；连着 ⇒ `null`），同桌面 `queue-row.ts`。 */
 fun queueRows(
     queue: List<QueueLine>,
     outbox: List<OutboxLine>,
-): List<QueueRowFace> =
-    queue.map { QueueRowFace(it.id, it.said, it.from, headOf(it.text), error = it.undelivered, retry = false, listed = true) } +
-        outbox.map { QueueRowFace(it.id, it.said, null, headOf(it.text), error = it.failed, retry = it.retry, listed = false) }
+    offline: String? = null,
+): QueueRows {
+    val rows =
+        queue.map { QueueRowFace(it.id, it.said, it.from, headOf(it.text), error = it.undelivered, retry = false, listed = true) } +
+            outbox.map { QueueRowFace(it.id, it.said, null, headOf(it.text), error = it.failed, retry = it.retry, listed = false) }
+    val stale = offline?.takeIf { rows.isNotEmpty() }?.let { listOf(it, copyText("terminal.queue.stale")).joinToString(copyText("kit.text.sep")) }
+    return QueueRows(rows, stale)
+}
 
 private fun headOf(text: String): String {
     val first = text.lineSequence().firstOrNull { it.isNotBlank() } ?: return ""
