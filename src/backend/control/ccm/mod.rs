@@ -595,7 +595,7 @@ pub(crate) fn answer_print(
         Err(Die(msg)) => return Err(crate::common::said::Said::new("refused", msg)),
     };
     let plan = plan_of(&o, Env::for_preview(), false, accounts)
-        .map_err(|Die(msg)| ("refused", msg))?
+        .map_err(|Die(msg)| crate::common::said::Said::new("refused", msg))?
         .plan;
     Ok(CcmLine {
         line: plan::render_for(&plan, plan::terminal_shell()),

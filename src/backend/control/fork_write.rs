@@ -187,7 +187,7 @@ fn fork_checked(
             return Err(crate::common::said::Said::new("bad_args", said));
         }
     }
-    run_inner(nf, agent_home, sid, uuid).map_err(|m| ("fork_failed", m))
+    run_inner(nf, agent_home, sid, uuid).map_err(|m| crate::common::said::Said::new("fork_failed", m))
 }
 
 fn run_inner(

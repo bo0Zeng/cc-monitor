@@ -186,7 +186,10 @@ pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
     };
     let (within_ms, total) = match deadline_of(args) {
         Ok(x) => x,
-        Err((code, message)) => return refuse(code, message),
+        Err(s) => {
+            let code = s.code_or_fallback().to_string();
+            return refuse(&code, s.said);
+        }
     };
     let line = match crate::control::cli_args::read_args(
         args,
@@ -194,7 +197,10 @@ pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
         crate::control::cli_args::STDIN_QUIET,
     ) {
         Ok(l) => l,
-        Err((code, message)) => return refuse(code, message),
+        Err(s) => {
+            let code = s.code_or_fallback().to_string();
+            return refuse(&code, s.said);
+        }
     };
     let asked: crate::wire::listen::ResidentCall = match serde_json::from_str(line.trim()) {
         Ok(a) => a,

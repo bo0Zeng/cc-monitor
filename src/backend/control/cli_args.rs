@@ -46,8 +46,8 @@ enum Source<'a> {
     Argv(&'a str),
 }
 
-pub(crate) fn bad_args(why: &str) -> (&'static str, String) {
-    ("bad_args", contract::malformed(why))
+pub(crate) fn bad_args(why: &str) -> crate::common::said::Said {
+    crate::common::said::Said::new("bad_args", contract::malformed(why))
 }
 
 /// 读 `opts`（子命令之后的那些词）认出入参走哪个口。用法错 ⇒ `bad_args`。
@@ -95,9 +95,9 @@ fn decode_argv(b64: &str) -> Result<String, crate::common::said::Said> {
             )),
         ));
     }
-    let bytes = crate::wire::b64_decode(b64).map_err(|e| ("bad_request", e))?;
+    let bytes = crate::wire::b64_decode(b64).map_err(|e| crate::common::said::Said::new("bad_request", e))?;
     String::from_utf8(bytes).map_err(|e| {
-        (
+        crate::common::said::Said::new(
             "bad_request",
             contract::malformed(&format!(
                 "{} is not UTF-8: {e}",
@@ -132,7 +132,7 @@ fn read_stdin_within<R: Read + Send + 'static>(
         }
     });
     let gone = || {
-        (
+        crate::common::said::Said::new(
             "stdin_read_failed",
             "read stdin failed: the reader stopped".to_string(),
         )
@@ -193,7 +193,7 @@ pub(crate) fn read_input<R: std::io::BufRead>(
             )),
         ));
     }
-    String::from_utf8(buf).map_err(|e| ("stdin_read_failed", format!("read stdin failed: {e}")))
+    String::from_utf8(buf).map_err(|e| crate::common::said::Said::new("stdin_read_failed", format!("read stdin failed: {e}")))
 }
 
 /// 期限口 [`crate::wire::cli_words::WITHIN_MS_FLAG`]（位置不限）：缺值 · 给两次 ⇒ `bad_args`（同 [`crate::wire::cli_words::ARGS_B64_FLAG`]）；

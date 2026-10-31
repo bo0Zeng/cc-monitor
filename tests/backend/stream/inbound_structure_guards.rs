@@ -265,13 +265,12 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         if name == <crate::stream::inbound::files_write_face::FilesBatchStop as crate::wire::typed::Command>::NAME {
             continue;
         }
-        if let Err(crate::control::files_write::WriteFail {
-            code, said: msg, ..
-        }) = crate::control::files_write::tests::ask(name, &serde_json::json!({}))
-        {
+        if let Err(e) = crate::control::files_write::tests::ask(name, &serde_json::json!({})) {
+            let code = e.code_or_fallback();
             assert!(
-                spec.codes.contains(&code),
-                "`{name}` 回了一个它没登记的 code `{code}`（{msg}）"
+                spec.codes.iter().any(|c| *c == code),
+                "`{name}` 回了一个它没登记的 code `{code}`（{}）",
+                e.said
             );
         }
     }

@@ -290,8 +290,8 @@ mod tests {
             "files-delete-session",
             &serde_json::json!({"sid": "abc", "path": "/tmp/x.jsonl"}),
         ) {
-            Err(crate::control::files_write::WriteFail { code, .. }) => {
-                assert_eq!(code, "bad_args", "多给一个 `path` 该回 bad_args")
+            Err(e) => {
+                assert_eq!(e.code.as_deref(), Some("bad_args"), "多给一个 `path` 该回 bad_args")
             }
             Ok(v) => panic!("🔴 多给了一个 `path`，删会话那条竟然答了：{v}"),
         }

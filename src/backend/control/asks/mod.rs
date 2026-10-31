@@ -16,6 +16,7 @@ pub mod hook;
 use crate::agents::asks::{product_of, Ask, NoteNeed};
 use crate::agents::{AskIn, PlanMode, Verdict};
 use crate::common::cells::Words;
+use crate::common::said::Said;
 /// 挂上 · 撤掉 · 答掉都报这一声（`history::needs_changed`）。
 use crate::history::needs_changed::moved;
 pub(crate) use cmd_wire::needs::{
@@ -349,12 +350,6 @@ pub(crate) fn sids() -> Vec<String> {
     v
 }
 
-type Refusal = (&'static str, String);
-
-fn refuse(code: &'static str, said: String) -> Refusal {
-    (code, said)
-}
-
 /// 选的那一项 ⇒ 通用答案（`None` ＝ 改到终端里答：不给决定）。闭集：approve 那几项 `allow` · `always-<i>` · `deny` · `deny-note` · `deny-stop`；
 /// plan `plan-auto` · `plan-edits` · `plan-manual` · `plan-keep`；question `answer` · `dismiss`；挡着终端的另有 `release`。
 pub(crate) fn verdict_of(
@@ -363,15 +358,15 @@ pub(crate) fn verdict_of(
     choice: &str,
     note: Option<&str>,
     picks: Option<&BTreeMap<String, Pick>>,
-) -> Result<Option<Verdict>, Refusal> {
+) -> Result<Option<Verdict>, Said> {
     let spec = product
         .choices
         .iter()
         .find(|c| c.id == choice)
-        .ok_or_else(|| refuse("bad_choice", copy_text("beAsk.answer.badChoice", &[])))?;
+        .ok_or_else(|| Said::new("bad_choice", copy_text("beAsk.answer.badChoice", &[])))?;
     let note = note.map(str::trim).filter(|n| !n.is_empty());
     if spec.note == NoteNeed::Required && note.is_none() {
-        return Err(refuse(
+        return Err(Said::new(
             "note_required",
             copy_text("beAsk.answer.noteRequired", &[]),
         ));
@@ -414,7 +409,7 @@ pub(crate) fn verdict_of(
         {
             Some(i) if i < a.suggestions.len() => allow(Some(i), None),
             _ => {
-                return Err(refuse(
+                return Err(Said::new(
                     "bad_choice",
                     copy_text("beAsk.answer.badChoice", &[]),
                 ))
@@ -428,8 +423,8 @@ pub(crate) fn verdict_of(
 fn answers_of(
     product: &Ask,
     picks: Option<&BTreeMap<String, Pick>>,
-) -> Result<Vec<(String, String)>, Refusal> {
-    let bad = || refuse("bad_args", copy_text("beAsk.answer.picks", &[]));
+) -> Result<Vec<(String, String)>, Said> {
+    let bad = || Said::new("bad_args", copy_text("beAsk.answer.picks", &[]));
     let picks = picks.ok_or_else(bad)?;
     let mut out = Vec::new();
     for q in &product.questions {
@@ -490,7 +485,7 @@ fn gone(said: String) -> Answered {
 
 /// `needs-answer` 的本体 ⇒ `{result: "answered"}`；别处先答了（别的出口 · 替人答过）· hook 那头已经走了（终端那边答了 · 被打断）
 /// ⇒ `{result: "gone", said}`（不是错：这一下没答进去，也不用再答）；没这一条 ⇒ `not_found`。
-pub(crate) fn answer(req: AnswerReq) -> Result<Answered, Refusal> {
+pub(crate) fn answer(req: AnswerReq) -> Result<Answered, Said> {
     let (sid, id, choice) = (req.sid.as_str(), req.ask.as_str(), req.choice.as_str());
     let mut b = book();
     let Some(o) = b.open.get(id).filter(|o| o.ask.sid == sid) else {
@@ -502,7 +497,7 @@ pub(crate) fn answer(req: AnswerReq) -> Result<Answered, Refusal> {
                     .map_or_else(|| copy_text("beAsk.answer.already", &[]), |w| w.0.clone()),
             )),
             Some(Settled::Closed) => Ok(gone(copy_text("beAsk.answer.closed", &[]))),
-            None => Err(refuse("not_found", copy_text("beAsk.answer.notFound", &[]))),
+            None => Err(Said::new("not_found", copy_text("beAsk.answer.notFound", &[]))),
         };
     };
     let verdict = verdict_of(
@@ -516,7 +511,7 @@ pub(crate) fn answer(req: AnswerReq) -> Result<Answered, Refusal> {
         Some(v) => match crate::agents::ask_face(&o.agent).and_then(|f| (f.decide)(&o.ask, v)) {
             Some(d) => Some(d),
             None => {
-                return Err(refuse(
+                return Err(Said::new(
                     "bad_choice",
                     copy_text("beAsk.answer.badChoice", &[]),
                 ))
