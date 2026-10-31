@@ -29276,45 +29276,12 @@
       "zh": "硬件密钥不存在",
       "args": []
     },
-    "mobSsh.log.established": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "{target} 连接已建立",
-      "args": ["target"],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.connecting": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "连接 {target}…",
-      "args": ["target"],
-      "limited": ["连接"]
-    },
     "mobSsh.log.connectFailed": {
       "kind": "error",
       "role": "报错",
       "zh": "连接失败",
       "args": [],
       "limited": ["连接"]
-    },
-    "mobSsh.log.negotiated": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "连接中…",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.authKey": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "验证密钥中…",
-      "args": []
-    },
-    "mobSsh.log.authFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "认证失败",
-      "args": []
     },
     "mobSsh.log.waitOther": {
       "kind": "body",

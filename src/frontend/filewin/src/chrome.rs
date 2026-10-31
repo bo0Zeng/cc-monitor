@@ -228,7 +228,7 @@ impl FileWindow {
                 // 右端那颗星（Phosphor 线形 STAR，只用线形一套）：当前目录在不在书签里只差颜色 ——
                 // 不在 ⇒ `text2`（点了加）· 在 ⇒ `accent`（点了去，同浏览器）；有损目录 / 没接书签不画。
                 let star = match (&self.shelf, lossy) {
-                    (Some(shelf), false) => Some(if shelf.contains(&self.cwd) {
+                    (Some(shelf), false) => Some(if shelf.here(&self.cwd).is_some() {
                         (ph::STAR, super::bookmarks::DROP_LABEL.as_str(), p.accent)
                     } else {
                         (ph::STAR, super::bookmarks::ADD_LABEL.as_str(), p.text2)
@@ -1223,17 +1223,19 @@ impl Workspace {
                 // ── 书签 ──
                 section(ui, copy_text("rsFilewinChrome.side.bookmarks", &[]));
                 let pane = self.pane_on(f);
+                let cwd = pane.cwd.clone();
                 if let Some(shelf) = pane.shelf.clone() {
                     let list = shelf.list();
+                    let at = shelf.here(&cwd);
                     if list.is_empty() {
                         ui.label(egui::RichText::new(copy_text("rsFilewinChrome.side.noBookmarks", &[])).color(p.text2).small());
                         ui.label(egui::RichText::new(copy_text("rsFilewinChrome.side.noBookmarksHint", &[("star", ph::STAR)])).color(p.faint).small());
                     }
                     let mut drop: Option<String> = None;
-                    for d in list {
+                    for (i, d) in list.into_iter().enumerate() {
                         let tail = super::source::remote_basename(&d);
                         let tail = if tail.is_empty() { "/" } else { tail };
-                        let here = cmd_wire::bookmarks::normalize_dir(&d) == here_dir;
+                        let here = at == Some(i);
                         let r = side_item(ui, ph::STAR, tail, here, SideMark::None).on_hover_text(&d);
                         if r.clicked() {
                             go = Some(d.clone());
