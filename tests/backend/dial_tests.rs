@@ -16,7 +16,9 @@
 //! 而那张登记表这里不改）。
 
 use super::*;
-use ssh_dial::{connect, write_ack, write_stages_then_ack};
+use ssh_dial::{
+    connect, why_of_stage, write_ack, write_stages_then_ack, DialAck, Why, ACK_V, USES,
+};
 use std::sync::Arc;
 
 /// 从一行 JSON 文本读一份**组好的**请求（`DialRequest` 自己的反序列化 —— 生产上线交来的只是那台的名字，
@@ -272,7 +274,7 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
                 host: "h".into(),
                 port: 22,
             }),
-            reason: Some(super::Why::Auth),
+            reason: Some(Why::Auth),
             key_type: None,
             expected_fingerprint: None,
             v: ACK_V,
@@ -308,7 +310,6 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
 /// 竞速那一格的阶段标签 → 原因码：每个标签各落一格，认不出的落「别的」。
 #[test]
 fn stage_labels_map_to_the_closed_reason_set() {
-    use super::{why_of_stage, Why};
     let rows = [
         ("resolve", Why::Resolve),
         ("tcp", Why::Unreachable),

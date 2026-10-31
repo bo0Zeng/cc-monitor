@@ -282,10 +282,6 @@ impl<W> Down<W> {
             }),
         }
     }
-
-    pub fn get_ref(&self) -> &W {
-        &self.inner
-    }
 }
 
 /// 攒着的那几字节写下去（写完清空，好接着压）。
