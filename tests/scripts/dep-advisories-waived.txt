@@ -8,3 +8,5 @@ quick-xml RUSTSEC-2026-0194 只经 plist 进来：tauri-utils 那条只在构建
 quick-xml RUSTSEC-2026-0195 同上
 katex GHSA-238p-pmpm-9mq7 要先有原型污染才绕得过 trust；本仓 KATEX_OPTIONS 不开 trust，渲染结果另过 DOMPurify。升 0.18 公式渲染可能变，要先用截图台架比过公式再升（10-28 npm 补丁那批定了这轮不升）
 zip GHSA-m665-v7pm-7grj 毛病是两种读法对不上：ZipStreamReader 按本地头的名字落盘、ZipArchive 按中央目录的名字，拿一种审、另一种解就能被换包。本仓只在 control/files_extract.rs 用 ZipArchive，计划趟与落盘趟同一读法、同一 by_index，名字都取中央目录；不调 ZipStreamReader、不写 zip（9.0.5 的修是可选的头一致校验，大版本不升）
+zip GHSA-8hxf-qr8p-62x4 AES 条目提前 EOF 时不验 HMAC：只在带密码读（by_index_decrypt · by_name_decrypt 等）的 AES 读器里；本仓 zip 只开 deflate-flate2，aes-crypto 没编进来，AES 条目一律报错不解，也不调带密码的读法。钉在 2 的是 src/backend/Cargo.toml 的 zip = "2"；升 9.1.3 试过（name() 改成返回 Result，files_extract.rs 跟着改一处，files_extract 那 11 条测试过），落进 9 就撤这行
+zip GHSA-q7v9-x93c-xqv3 链接条目按声明的大小先 Vec::with_capacity、2^62 直接 abort：只在 ZipArchive::extract 的链接那一支；本仓不调 extract，control/files_extract.rs 读链接目标用 take(LINK_TARGET_MAX_BYTES + 1) 有界读、超了整趟拒。撤法同上一行

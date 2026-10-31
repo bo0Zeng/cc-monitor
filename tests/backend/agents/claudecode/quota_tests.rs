@@ -324,3 +324,52 @@ fn the_limit_reply_calls_a_per_model_week_by_its_own_name() {
     let r = limit_reply(NOW + 60, NOW, Some("weird"));
     assert_eq!(claim_and_retry_after(&r).0, Some("five_hour"));
 }
+
+/// ★ 每窗单独的被拒：总头说 `rejected`，卡着的那一窗另有 `<段>-status: rejected` 与它自己的重置时刻 ⇒ 被拒到那一窗重置，
+/// 用量没到 100 也一样（97% 就被拒的周窗）；没有总的 `reset` 也不退回 `retry-after` · 短期限。说 `allowed` 的窗不算。
+#[test]
+fn a_window_that_says_rejected_holds_the_refusal_until_its_own_reset() {
+    let week = 1_800_400_000;
+    let got = read(
+        429,
+        &h(&[
+            ("anthropic-ratelimit-unified-status", "rejected"),
+            ("anthropic-ratelimit-unified-5h-status", "allowed"),
+            ("anthropic-ratelimit-unified-5h-utilization", "0.4"),
+            ("anthropic-ratelimit-unified-5h-reset", "1800003600"),
+            ("anthropic-ratelimit-unified-7d-status", "rejected"),
+            ("anthropic-ratelimit-unified-7d-utilization", "0.97"),
+            ("anthropic-ratelimit-unified-7d-reset", "1800400000"),
+        ]),
+        NOW,
+    )
+    .expect("被拒");
+    assert!(got.refused);
+    assert_eq!(got.resets_at, Some(week));
+    // 总的 `reset` 早于那一窗自己的重置 ⇒ 取晚的那个（拒到被拒的窗都重置了为止）。
+    let got = read(
+        429,
+        &h(&[
+            ("anthropic-ratelimit-unified-status", "rejected"),
+            ("anthropic-ratelimit-unified-reset", "1800003600"),
+            ("anthropic-ratelimit-unified-7d-status", "rejected"),
+            ("anthropic-ratelimit-unified-7d-reset", "1800400000"),
+        ]),
+        NOW,
+    )
+    .expect("被拒");
+    assert_eq!(got.resets_at, Some(week));
+    // 说 `allowed` 的窗不拉长被拒。
+    let got = read(
+        429,
+        &h(&[
+            ("anthropic-ratelimit-unified-status", "rejected"),
+            ("anthropic-ratelimit-unified-reset", "1800003600"),
+            ("anthropic-ratelimit-unified-7d-status", "allowed"),
+            ("anthropic-ratelimit-unified-7d-reset", "1800400000"),
+        ]),
+        NOW,
+    )
+    .expect("被拒");
+    assert_eq!(got.resets_at, Some(1_800_003_600));
+}

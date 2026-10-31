@@ -24,6 +24,11 @@ fn opened_from_reply(
 const CAP: u64 = 8 * 1024 * 1024;
 const MAX_EDIT_BYTES: usize = CAP as usize;
 
+/// 存盘那几条线上命令的名字：照线上类型读，不另记一份。
+const WRITE_TEXT: &str = <w::FilesWriteTextReq as cmd_wire::Call>::NAME;
+const STAGE_CHUNK: &str = <w::FilesStageChunkReq as cmd_wire::Call>::NAME;
+const COMMIT_TEXT: &str = <w::FilesCommitTextReq as cmd_wire::Call>::NAME;
+
 async fn read_text(
     line: &crate::source::Line,
     origin: &crate::source::Origin,
@@ -77,7 +82,6 @@ fn row(
 fn an_open_gate_is_editable_with_nothing_to_explain() {
     let r = row("a.txt", false, false, Some(cmd_wire::files::Gate::Cap(CAP)));
     assert_eq!(why_not_editable(&r), None);
-    assert!(editable(&r));
     assert_eq!(edit_cap(&r), Some(CAP));
 }
 
@@ -260,7 +264,7 @@ fn a_failed_save_keeps_every_character_the_user_typed() {
 
     // 失败：`text` 与 `dirty` 都不许变（那些字是用户唯一的一份）。
     let why = "拒绝写 Claude 数据源文件(/x/projects/p/s.jsonl)——管理会话文件请用历史浏览器";
-    p.mark_failed(why.to_string());
+    p.mark_failed_with(crate::source::Failed::local(why.to_string()));
     assert_eq!(p.text, "new", "存失败把用户敲的东西弄掉了");
     assert!(p.dirty(), "存失败之后却说已经存好了");
     match p.last_save.clone() {
@@ -411,7 +415,7 @@ async fn save_rig(
     std::sync::Arc<std::sync::Mutex<Option<(String, String)>>>,
 ) {
     let mut be = crate::find::testing::FakeBackend::new(
-        &[CMD_WRITE_TEXT, CMD_STAGE_CHUNK, CMD_COMMIT_TEXT],
+        &[WRITE_TEXT, STAGE_CHUNK, COMMIT_TEXT],
         crate::find::testing::Declared::default(),
     );
     be.refuse_stage_at = refuse_stage_at;
@@ -449,7 +453,7 @@ fn the_one_line_check_is_conservative_for_the_worst_escaping() {
     let worst = "\u{1}".repeat(k);
     let line = serde_json::to_vec(&serde_json::json!({
         "id": "m".repeat(75),
-        "cmd": CMD_WRITE_TEXT,
+        "cmd": WRITE_TEXT,
         "args": save_args_at(&at, &worst, SHA0),
         "within_ms": u64::MAX,
         "tz": "Z".repeat(host_core::TZ_ROOM),
@@ -476,7 +480,7 @@ async fn a_save_that_fits_one_line_goes_as_one_write_and_one_byte_more_goes_in_c
         .expect("装得进一行的那一份没存成");
     assert_eq!(
         wired.cmds(),
-        vec![CMD_WRITE_TEXT],
+        vec![WRITE_TEXT],
         "装得进一行的那一份没走一条写"
     );
 
@@ -490,9 +494,9 @@ async fn a_save_that_fits_one_line_goes_as_one_write_and_one_byte_more_goes_in_c
     .await
     .expect("多一个字节的那一份没存成（拿上一次应答交的摘要存）");
     let n = over.len().div_ceil(chunk_core::CHUNK);
-    let mut want = vec![CMD_WRITE_TEXT.to_string()];
-    want.extend(std::iter::repeat_n(CMD_STAGE_CHUNK.to_string(), n));
-    want.push(CMD_COMMIT_TEXT.to_string());
+    let mut want = vec![WRITE_TEXT.to_string()];
+    want.extend(std::iter::repeat_n(STAGE_CHUNK.to_string(), n));
+    want.push(COMMIT_TEXT.to_string());
     assert_eq!(
         wired.cmds(),
         want,
@@ -525,12 +529,12 @@ async fn the_worst_case_full_cap_file_saves_back_through_the_staging_area() {
         .await
         .expect("满上限的控制字符没存成");
     assert_eq!(
-        wired.count(CMD_STAGE_CHUNK),
+        wired.count(STAGE_CHUNK),
         MAX_EDIT_BYTES.div_ceil(chunk_core::CHUNK),
         "块数不是按原始字节切的"
     );
-    assert_eq!(wired.count(CMD_COMMIT_TEXT), 1);
-    assert_eq!(wired.count(CMD_WRITE_TEXT), 0);
+    assert_eq!(wired.count(COMMIT_TEXT), 1);
+    assert_eq!(wired.count(WRITE_TEXT), 0);
     assert!(
         committed
             .lock()
@@ -583,7 +587,7 @@ async fn a_chunk_that_fails_stops_the_save_before_the_commit() {
     let why = why.said;
     assert_eq!(
         wired.cmds(),
-        vec![CMD_STAGE_CHUNK; 3],
+        vec![STAGE_CHUNK; 3],
         "断在第三块之后还在发（或发了提交）"
     );
     assert!(committed.lock().unwrap().is_none());
@@ -881,11 +885,9 @@ fn a_lossy_path_is_saved_by_its_bytes() {
     assert_eq!(v["root"], serde_json::json!({ "b16": "2f7372762f64ff" }));
     assert_eq!(v["rel"], "f.txt");
     let plain = crate::source::RemotePath::plain("/srv/a.txt");
-    assert_eq!(
-        save_args_at(&plain, "x", SHA0),
-        save_args("/srv/a.txt", "x", SHA0),
-        "合法 UTF-8 那一形变了"
-    );
+    let v = serde_json::to_value(save_args_at(&plain, "x", SHA0)).unwrap();
+    assert_eq!(v["root"], "/srv", "合法 UTF-8 那一形变了");
+    assert_eq!(v["rel"], "a.txt", "合法 UTF-8 那一形变了");
 }
 
 /// 写进去了、却没拿到新摘要 ⇒ **算存成了**（不说「没保存」），另挂一句「重开后再改」；

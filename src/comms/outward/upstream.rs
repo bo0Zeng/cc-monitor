@@ -167,35 +167,42 @@ impl Lane {
 }
 
 /// 整个池里至多留几条空闲连接（各格合计）。满了先扔最早还回来的那条。
-/// 没有按时间的淘汰（零定时器护栏）：对端关掉的那条在下一次取的时候被探活扔掉，在那之前至多占这么多个描述符。
+/// 没有定时器（零定时器护栏）：对端关掉的、空闲太久的，都在下一次取的时候扔掉，在那之前至多占这么多个描述符。
 const POOL_IDLE_MAX: usize = 8;
 
 /// 上游连接池：读完一个应答、连接还能用就还回来，同一格的下一发先从这里取。
 ///
-/// 只在写请求头**之前**取：取出时探活（[`Conn::idle_and_open`]），死的扔掉换下一条，都没有就由调用方新连。
+/// 只在写请求头**之前**取：空闲超过期限的扔掉，余下的取出时探活（[`Conn::idle_and_open`]），死的扔掉换下一条，都没有就由调用方新连。
+/// 空闲期限挡的是探活看不出的那两形（对端恰在探活之后才关 · NAT 表项过期却没发 RST）：两形都落在请求已写出之后，
+/// 那时照规矩不重发 ⇒ 只能在取的时候不拿它。期限的值归后端（[`crate::Destinations::upstream_idle_reuse`]）。
 /// 请求头写出去之后出的错一律照旧往下游回码，不在这一层重发（`POST /v1/messages` 不幂等）。
 pub struct Pool {
-    idle: std::sync::Mutex<std::collections::VecDeque<(Lane, Conn)>>,
-}
-
-impl Default for Pool {
-    fn default() -> Self {
-        Pool {
-            idle: std::sync::Mutex::new(std::collections::VecDeque::new()),
-        }
-    }
+    /// 每条记着还回来的那一刻（取的时候比，不是定时器）。
+    idle: std::sync::Mutex<std::collections::VecDeque<(Lane, Conn, std::time::Instant)>>,
+    within: Duration,
 }
 
 impl Pool {
+    /// 空闲不到 `within` 的连接才复用的一个池（中转构造时按后端交的数起；判据给零或墙钟上限）。
+    pub fn reusing_within(within: Duration) -> Self {
+        Pool {
+            idle: std::sync::Mutex::new(std::collections::VecDeque::new()),
+            within,
+        }
+    }
+
     /// 取这一格里一条还活着的连接（最近还回来的先取），读写期限换成这一发的。
     pub fn take(&self, lane: &Lane, deadline: Duration) -> Option<Conn> {
         loop {
-            let mut conn = {
+            let (_, mut conn, back_at) = {
                 let mut idle = self.idle.lock().unwrap_or_else(|e| e.into_inner());
-                let at = idle.iter().rposition(|(l, _)| l == lane)?;
-                idle.remove(at)?.1
+                let at = idle.iter().rposition(|(l, _, _)| l == lane)?;
+                idle.remove(at)?
             };
-            if conn.idle_and_open() && conn.set_deadline(deadline).is_ok() {
+            if back_at.elapsed() < self.within
+                && conn.idle_and_open()
+                && conn.set_deadline(deadline).is_ok()
+            {
                 return Some(conn);
             }
         }
@@ -207,7 +214,7 @@ impl Pool {
         if idle.len() >= POOL_IDLE_MAX {
             idle.pop_front();
         }
-        idle.push_back((lane, conn));
+        idle.push_back((lane, conn, std::time::Instant::now()));
     }
 }
 
@@ -320,7 +327,9 @@ pub fn fetch(
     let mut view = super::http1::BodyView::for_response(&headers);
     let mut got = Vec::new();
     let mut buf = [0u8; 8192];
-    loop {
+    // 回包收尾了（定长够数 · 分块终止块到了）就停，不等对端关：对端或路上的代理不理 `Connection: close` 时，
+    // 读到关为止就是干等到期限（同 `server.rs` 里 `pump` 那一判）。没有长度也不分块的那一形照旧读到关。
+    while !view.ended() {
         let n = match up.read(&mut buf) {
             Ok(0) => break,
             Ok(n) => n,

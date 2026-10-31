@@ -202,7 +202,8 @@ impl FileWindow {
     // 第二段：**零流量复制**接到这一侧
     // ════════════════════════════════════════════════════════════════════
 
-    /// 正摆着的那个「复制为」框（判据与 [`Self::copy_ui`] 用）。
+    /// 正摆着的那个「复制为」框（判据用；[`Self::copy_ui`] 直接读字段）。
+    #[cfg(test)]
     pub fn copy_prompt(&self) -> Option<&CopyPrompt> {
         self.copy_prompt.as_ref()
     }
@@ -410,6 +411,7 @@ impl FileWindow {
     // ═══════════════════════════════════════════════════════════════════
 
     /// 系统存盘框开着时要下的那一项（判据看同一个值）。
+    #[cfg(test)]
     pub fn pull_want(&self) -> Option<&(String, String)> {
         self.pull_want.as_ref()
     }
@@ -446,11 +448,6 @@ impl FileWindow {
             board.deliver(purpose, got);
         });
         true
-    }
-
-    /// 选择框的结局落回那一问：上传 ⇒ 路径接进框里；下载 ⇒ 保存位置填进「存到哪儿」。没选到 ⇒ 那一问上说一句、框不动。
-    pub fn settle_pick(&mut self) -> bool {
-        self.settle_pick_with(None)
     }
 
     /// 选择框的结局：上传 ⇒ 选到的那几份走拖入那一条；下载 ⇒ 起那一趟（覆盖由系统存盘框自己问过了）；没选（取消）⇒ 什么都不做。

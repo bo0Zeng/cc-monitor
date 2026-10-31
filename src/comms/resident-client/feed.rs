@@ -14,7 +14,7 @@
 //! - 流断了 ⇒ 按退避接（[`crate::backoff`]，活过 30 s 才清零）。下面那条 SSH 死没死不问宿主：再拨那一拨在拨号核心的池里自己换一条。
 //! - 开链路那一步 [`DIAL_WITHIN`] 里拨号核心一步进展都没报（静默断网；慢链路每过一步重新计时，[`Progress`]）⇒ 丢下、隔下界再拨，不涨退避；拨着的时候宿主报了事（[`Feed::wake`] · [`Feed::reconnect`] ·
 //!   换了一条 SSH）⇒ 丢下马上再拨。
-//! - 连着的时候判死靠流自己的心跳（[`HEARTBEAT_IDLE`] 没来字节就问活、[`PING_WITHIN`] 没回话就判死），不等 SSH 保活；
+//! - 连着的时候判死靠流自己的心跳（[`HEARTBEAT_IDLE`] 没来字节就问活、连着 [`PING_MISSES`] 问都没来字节就判死，一问的期限照最近的往返放宽），流上来着字节就算连着；
 //!   宿主报「网回来了 · 网变了 · 回前台」时连着 ⇒ 当场问一句活。
 //! - 走不通、要人动手的那几种不自己反复试，等 [`Feed::reconnect`] / [`Feed::wake`]（［重试］· 回前台 · 网络变了 · 机器页「起」）：
 //!   那台不是 Unix（常驻脱离不了）恒是；没装 · 起不了常驻 · 不是我们的后端只在装不了后端的宿主上是（装得了的下一轮装过再试）。
@@ -24,7 +24,8 @@
 
 use crate::attach::{self, AttachFail, RELAY_ABSENT, RELAY_TRIES, RELAY_WAIT};
 use crate::backoff::{
-    DIAL_WITHIN, HEARTBEAT_IDLE, MIN_HEALTHY_UPTIME, PING_WITHIN, RECONNECT_MAX, RECONNECT_MIN,
+    PingWindow, DIAL_WITHIN, HEARTBEAT_IDLE, MIN_HEALTHY_UPTIME, PING_CEIL, PING_MISSES,
+    RECONNECT_MAX, RECONNECT_MIN,
 };
 use crate::client::{deliver_answer, InboundClient};
 use crate::frames::Admit;
@@ -372,7 +373,7 @@ impl<T: Transport> Feed<T> {
         self.kick.send_modify(|k| *k += 1);
     }
 
-    /// 回到前台 · 网络变了 · 网回来了 · ［重新连接］：通着 ⇒ 当场问一句活（[`PING_WITHIN`] 没回话就判死重接，回了照用）；
+    /// 回到前台 · 网络变了 · 网回来了 · ［重新连接］：通着 ⇒ 当场问一句活（与心跳同一个判法：连着 [`PING_MISSES`] 问没回话才判死重接，回了照用）；
     /// 没通 ⇒ 不等退避马上再接（正卡在一拨开不出链路的拨号里 ⇒ 丢下它马上再拨；正在做别的那几步 ⇒ 这一轮没成就不睡）。
     pub fn wake(&self) {
         if matches!(*self.state.borrow(), State::Up { .. }) {
@@ -837,7 +838,8 @@ impl<T: Transport> Feed<T> {
 
     /// 读到头为止：应答交回请求方，别的帧原样交宿主。到头 · 读不动 · 被叫停（[`Feed::reconnect`]）· 心跳判死 ⇒ 回。
     ///
-    /// 心跳：[`HEARTBEAT_IDLE`] 没来一个字节 ⇒ 问一句活；问出去 [`PING_WITHIN`] 还是一个字节都没来 ⇒ 判死（被叫醒时当场问，同一个判法）。
+    /// 心跳：[`HEARTBEAT_IDLE`] 没来一个字节 ⇒ 问一句活；一问到期（[`PingWindow`]，照这条流量到的往返放宽）还是一个字节都没来 ⇒ 再问一句，
+    /// 连着 [`PING_MISSES`] 问都没来 ⇒ 判死（被叫醒时当场问，同一个判法）。问出去到流上来下一行，记一个往返样本。
     /// 「来了字节」按读进来的字节算、不按整行（一行几 MiB 的记录在慢网上要读好一阵，读着就是活着）。
     /// 那台不认 `ping` ⇒ 不问（判死照旧靠 SSH 保活）。读一行不许中途取消（[`read_capped_line`] 不是 cancellation-safe）⇒ 这一行的读在心跳那几支之间一直留着。
     async fn pump(
@@ -857,16 +859,17 @@ impl<T: Transport> Feed<T> {
             inner: reader,
             n: &heard,
         };
-        // 上一次看到的字节数 · 那一刻；问活发出去的那一刻（没在问 ⇒ `None`）。
+        // 上一次看到的字节数 · 那一刻；在问着的那一回（没在问 ⇒ `None`）。
         let mut seen = (0u64, tokio::time::Instant::now());
-        let mut asked: Option<tokio::time::Instant> = None;
+        let mut asked: Option<Asking> = None;
+        let mut window = PingWindow::default();
         loop {
             let got = {
                 let read = read_capped_line(&mut reader, &mut buf, BACKEND_FRAME_LINE_CAP);
                 tokio::pin!(read);
                 loop {
-                    let due = match asked {
-                        Some(at) => at + PING_WITHIN,
+                    let due = match &asked {
+                        Some(a) => a.last + window.window(),
                         None => seen.1 + HEARTBEAT_IDLE,
                     };
                     tokio::select! {
@@ -874,34 +877,43 @@ impl<T: Transport> Feed<T> {
                         () = cut.notified() => return,
                         () = tokio::time::sleep_until(due), if beats => {
                             let n = heard.load(std::sync::atomic::Ordering::Relaxed);
+                            let now = tokio::time::Instant::now();
                             if n != seen.0 {
                                 // 读着一行长的：来着字节就是活着。
-                                seen = (n, tokio::time::Instant::now());
-                                asked = None;
-                            } else if asked.is_some() {
-                                tracing::warn!(
-                                    "[{}] 常驻流问活 {}s 没回话 ⇒ 判这条死了、重接",
-                                    self.cfg.machine,
-                                    PING_WITHIN.as_secs()
-                                );
-                                return;
+                                if let Some(a) = asked.take() {
+                                    window.sample(now - a.first);
+                                }
+                                seen = (n, now);
+                            } else if let Some(a) = &mut asked {
+                                a.unanswered += 1;
+                                if a.unanswered >= PING_MISSES {
+                                    tracing::warn!(
+                                        "[{}] 常驻流连着问活 {} 回都没回话（{}s，一问的期限 {}s）⇒ 判这条死了、重接",
+                                        self.cfg.machine,
+                                        a.unanswered,
+                                        (now - a.first).as_secs(),
+                                        window.window().as_secs()
+                                    );
+                                    return;
+                                }
+                                a.last = ask_alive(client);
                             } else {
-                                asked = Some(ask_alive(client));
+                                asked = Some(Asking::new(ask_alive(client)));
                             }
                         }
                         () = self.ask.notified(), if beats => {
                             if asked.is_none() {
-                                asked = Some(ask_alive(client));
+                                asked = Some(Asking::new(ask_alive(client)));
                             }
                         }
                     }
                 }
             };
-            seen = (
-                heard.load(std::sync::atomic::Ordering::Relaxed),
-                tokio::time::Instant::now(),
-            );
-            asked = None;
+            let now = tokio::time::Instant::now();
+            if let Some(a) = asked.take() {
+                window.sample(now - a.first);
+            }
+            seen = (heard.load(std::sync::atomic::Ordering::Relaxed), now);
             match got {
                 Ok(CappedLine::Line) => {
                     if std::str::from_utf8(&buf).is_err() {
@@ -949,11 +961,29 @@ impl<T: Transport> Feed<T> {
 /// 问活那一条命令（零载荷，回 `ok`）。
 const PING: &str = "ping";
 
-/// 发一句问活、不等它（回话也是流上的一行，[`Feed::pump`] 按来没来字节判）。回发出去的那一刻。
+/// 在问着的那一回：头一问发出去的那一刻（量往返从它算）· 最近一问的那一刻 · 已到期没答的几问。
+struct Asking {
+    first: tokio::time::Instant,
+    last: tokio::time::Instant,
+    unanswered: u32,
+}
+
+impl Asking {
+    fn new(at: tokio::time::Instant) -> Self {
+        Asking {
+            first: at,
+            last: at,
+            unanswered: 0,
+        }
+    }
+}
+
+/// 发一句问活、不等它（回话也是流上的一行，[`Feed::pump`] 按来没来字节判；这一问自己等到 [`PING_CEIL`]，晚到的回话照收、不撤）。
+/// 回发出去的那一刻。
 fn ask_alive(client: &Arc<InboundClient>) -> tokio::time::Instant {
     let c = Arc::clone(client);
     tokio::spawn(async move {
-        if let Err(e) = c.call(PING, serde_json::Value::Null, PING_WITHIN).await {
+        if let Err(e) = c.call(PING, serde_json::Value::Null, PING_CEIL).await {
             tracing::debug!("问活没答上（{e:?}）：判不判死看流上来没来字节");
         }
     });

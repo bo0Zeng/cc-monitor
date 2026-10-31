@@ -575,15 +575,23 @@ fn a_broken_slice_comes_out_as_name_domain_and_pbs_reason() {
 #[test]
 fn by_session_maps_each_owner_session_to_its_scope_preferring_its_own_claim() {
     let m = made();
+    let sep = copy_text("kit.text.sep", &[]);
+    let top = copy_text("plan.head.top", &[]);
+    let said = |name: &str, phase: &str| {
+        let mark = ["alpha", name, phase].join(&sep);
+        json!({"name": name, "mark": mark})
+    };
     assert_eq!(
         m.doc["bySession"],
-        json!({MAIN: {"slice": "alpha", "block": "project", "cell": "project", "title": null, "top": true, "phase": "开发", "at": "A1-2", "atTitle": "甲的写出", "via": "session"}})
+        json!({MAIN: {"slice": "alpha", "block": "project", "cell": "project", "title": null, "top": true, "phase": "开发", "at": "A1-2", "atTitle": "甲的写出", "via": "session",
+                      "said": said(&top, "开发")}})
     );
     let mut d = dump("/w");
     d["repos"][0]["scopes"][0]["assignee"] = Value::Null;
     assert_eq!(
         make(&d, &who).doc["bySession"][MAIN],
-        json!({"slice": "alpha", "block": "A2", "cell": "A2", "title": "乙功能", "top": false, "phase": "回看", "at": "A2-1", "atTitle": "乙的一半", "via": "subagent"})
+        json!({"slice": "alpha", "block": "A2", "cell": "A2", "title": "乙功能", "top": false, "phase": "回看", "at": "A2-1", "atTitle": "乙的一半", "via": "subagent",
+               "said": said("乙功能", "回看")})
     );
     let mut d = dump("/w");
     for b in [0, 1] {

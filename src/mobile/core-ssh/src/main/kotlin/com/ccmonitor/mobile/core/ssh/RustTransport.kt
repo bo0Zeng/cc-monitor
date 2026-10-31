@@ -12,6 +12,7 @@ import com.ccmonitor.mobile.core.wire.gen.DialUse
 import com.ccmonitor.mobile.core.wire.gen.JumpHop
 import com.ccmonitor.mobile.core.wire.gen.PtyOpts
 import com.ccmonitor.mobile.core.wire.gen.Stage
+import com.ccmonitor.mobile.core.wire.gen.StageRow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,7 +21,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -104,7 +104,7 @@ class RustTransport(
         val link = RustCore.open(req.copy(use = DialUse.HOLD, stages = onEvent != null))
         val ack =
             try {
-                link.awaitAck { onEvent?.invoke(eventOf(it, first)) }
+                link.awaitAck { st -> eventOf(st, first)?.let { onEvent?.invoke(it) } }
             } catch (e: IOException) {
                 link.close()
                 throw HostUnreachedException(e.message ?: copyText("reason.link.lost"), e)
@@ -238,38 +238,25 @@ class RustTransport(
         }
     }
 
-    /** 那一步说的是哪个地址（`host:port`）；鉴权 · 就绪那两步不带 ⇒ 空。 */
-    private fun endpointOf(stage: Stage): String =
-        when (stage) {
-            is Stage.Dialing -> stage.endpoint
-            is Stage.HostKey -> stage.endpoint
-            is Stage.Failed -> stage.endpoint
-            is Stage.Won -> stage.endpoint
-            is Stage.Auth, Stage.Established -> ""
-        }
-
+    /**
+     * 一条拨号阶段 ⇒ 连接日志那一条：字是拨号核心写好的那一句，主机与端口取阶段带的那一台（鉴权 · 就绪两支不带 ⇒ 请求那一台）。
+     * 「过了一步」不上日志（手机不要 `progress`，只在这里明写）⇒ `null`。
+     */
     private fun eventOf(
         stage: Stage,
         cfg: ConnectionConfig,
-    ): SshConnectEvent {
-        val ep = endpointOf(stage)
-        val host = ep.substringBeforeLast(':', cfg.host)
-        val port = ep.substringAfterLast(':', "").toIntOrNull() ?: cfg.port
-        val (kind, message) =
+    ): SshConnectEvent? {
+        val (at, kind, said) =
             when (stage) {
-                is Stage.Dialing -> SshConnectEvent.Stage.TCP to copyText("mobSsh.log.connecting", "target" to ep)
-                is Stage.HostKey -> SshConnectEvent.Stage.HOSTKEY to stage.fingerprint
-                is Stage.Won -> SshConnectEvent.Stage.NEGOTIATE to copyText("mobSsh.log.negotiated")
-                is Stage.Auth ->
-                    if (stage.ok) {
-                        SshConnectEvent.Stage.AUTH to copyText("mobSsh.log.authKey")
-                    } else {
-                        SshConnectEvent.Stage.ERROR to (stage.detail?.ifEmpty { null } ?: copyText("mobSsh.log.authFailed"))
-                    }
-                Stage.Established -> SshConnectEvent.Stage.ESTABLISHED to copyText("mobSsh.log.established", "target" to "${cfg.host}:${cfg.port}")
-                is Stage.Failed -> SshConnectEvent.Stage.ERROR to stage.reason
+                is Stage.Step -> return null
+                is Stage.Dialing -> Triple(stage.endpoint, SshConnectEvent.Stage.TCP, stage.said)
+                is Stage.HostKey -> Triple(stage.endpoint, SshConnectEvent.Stage.HOSTKEY, stage.said)
+                is Stage.Won -> Triple(stage.endpoint, SshConnectEvent.Stage.NEGOTIATE, stage.said)
+                is Stage.Failed -> Triple(stage.endpoint, SshConnectEvent.Stage.ERROR, stage.said)
+                is Stage.Auth -> Triple(null, if (stage.ok) SshConnectEvent.Stage.AUTH else SshConnectEvent.Stage.ERROR, stage.said)
+                is Stage.Established -> Triple(null, SshConnectEvent.Stage.ESTABLISHED, stage.said)
             }
-        return SshConnectEvent(host, port, kind, message)
+        return SshConnectEvent(at?.host ?: cfg.host, at?.port ?: cfg.port, kind, said)
     }
 
     internal companion object {
@@ -423,9 +410,10 @@ internal class RustLink(
     suspend fun awaitAck(onStage: (Stage) -> Unit): DialAck {
         while (true) {
             val line = readLine() ?: throw IOException(copyText("reason.link.lost"))
-            val stage = JSONObject(line).optJSONObject("stage")
-            if (stage == null) return Wire.read<DialAck>(line) ?: throw IOException(copyText("mobSsh.log.connectFailed"))
-            Wire.read<Stage>(stage.toString())?.let(onStage)
+            val row =
+                Wire.read<StageRow>(line)
+                    ?: return Wire.read<DialAck>(line) ?: throw IOException(copyText("mobSsh.log.connectFailed"))
+            onStage(row.stage)
         }
     }
 

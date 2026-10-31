@@ -257,7 +257,7 @@ export class SettingsPanel {
   /** 后端开关区（并进机器列表各行）。 */
   private backendSection?: BackendSection;
   /** 后端报来的各台状态成品（按后端那套名字）。 */
-  private readonly machineOf = new Map<string, MachineState>();
+  private readonly stateOf = new Map<string, MachineState>();
   /** 「终端」栏「直接敲的 claude 也走中转」那一块：回到机器页时展开过就重问。 */
 
   // 通用页「行为」那几个开关与「恢复」那一组（拨了马上存；存失败拇指退回 ＋ 行下一句）
@@ -478,7 +478,7 @@ export class SettingsPanel {
   private ccSummary(origin: string, connected: boolean | null): string {
     if (connected === null) return "";
     const state = connected ? copyText("machinePage.cc.summaryUp") : copyText("machinePage.cc.summaryDown");
-    const ver = this.machineOf.get(origin)?.version ?? null;
+    const ver = this.stateOf.get(origin)?.version ?? null;
     return ver ? copyText("machinePage.cc.summaryVer", { ver, state }) : state;
   }
 
@@ -487,7 +487,7 @@ export class SettingsPanel {
    * 收不下 / 没问到 ⇒ 不动（「连上没有」那一路照旧画）。
    */
   private paintMachine(origin: string, m: MachineState): void {
-    this.machineOf.set(origin, m);
+    this.stateOf.set(origin, m);
     const local = isLocalOrigin(origin);
     const pageId = local ? LOCAL_MACHINE_PAGE_ID : this.remoteSection?.pageIdOfMachine(origin);
     if (!pageId) return;
@@ -509,7 +509,7 @@ export class SettingsPanel {
   private paintLocalBackend(l: LocalBackend): void {
     const face = localBackendFace(l);
     if (!face) return;
-    this.machineOf.delete(LOCAL_ORIGIN);
+    this.stateOf.delete(LOCAL_ORIGIN);
     const machine = machineName(LOCAL_ORIGIN);
     this.remoteSection?.setLocalBackend(l);
     this.router.setNavDot(LOCAL_MACHINE_PAGE_ID, face.dot, `${machine} · ${face.word}`);
@@ -938,7 +938,7 @@ export class SettingsPanel {
         hosted: true,
         onChannel: (origin, connected) => this.paintNavDot(origin, connected),
         onLocal: (l) => this.paintLocalBackend(l),
-        machineOf: (origin) => this.machineOf.get(origin) ?? null,
+        stateOf: (origin) => this.stateOf.get(origin) ?? null,
       });
       this.backendSection = backend;
     } catch (e) {

@@ -147,7 +147,7 @@ export class BackendSection {
   private readonly hosted: boolean;
   private readonly onChannel: ((origin: string, connected: boolean | null) => void) | undefined;
   private readonly onLocal: ((local: LocalBackend) => void) | undefined;
-  private readonly machineOf: ((origin: string) => MachineState | null) | undefined;
+  private readonly stateOf: ((origin: string) => MachineState | null) | undefined;
   /** 后端清单（`backend_machines`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
   private registered: Set<string> | null = null;
 
@@ -166,12 +166,12 @@ export class BackendSection {
       /** 每次问完本机后端起没起来（只本机那一行带）。 */
       onLocal?: (local: LocalBackend) => void;
       /** 那台手上最新那一份成品（各台含本机由本机后端推，`backend_status` 不带）。 */
-      machineOf?: (origin: string) => MachineState | null;
+      stateOf?: (origin: string) => MachineState | null;
     } = {},
   ) {
     this.onChannel = opts.onChannel;
     this.onLocal = opts.onLocal;
-    this.machineOf = opts.machineOf;
+    this.stateOf = opts.stateOf;
     this.hosted = opts.hosted ?? false;
     this.confirm = opts.confirm ?? confirmDialog;
     this.interrupts = opts.interrupts ?? askInterrupts;
@@ -584,7 +584,7 @@ export class BackendSection {
       const st = await commands.backend_status({ origin });
       const on = st.channel;
       const word = on ? copyText("backend.status.connected") : copyText("backend.status.notConnected");
-      const ver = this.machineOf?.(origin)?.version ?? null;
+      const ver = this.stateOf?.(origin)?.version ?? null;
       state.textContent = ver ? `${ver}${copyText("kit.text.sep")}${word}` : word;
       state.dataset.on = String(on);
       for (const b of cells.querySelectorAll<HTMLElement>("[data-op]")) b.style.display = (b.dataset.op === "start") === on ? "none" : "";

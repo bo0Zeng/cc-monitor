@@ -700,6 +700,14 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "「终端」视图那张名单：各台照 `terminals-board-here`（没 tmux 的那台是空的一组；没答的那台进那一组的 `down`，命令照答）",
     ),
     (
+        "monitor-board-here",
+        "监控板这台那几条：只读进程里的会话簿与运行簿，自己不起 tmux（够得着是经 watcher 那一份）；没 tmux ⇒ 照答",
+    ),
+    (
+        "monitor-board",
+        "监控板：各台照 `monitor-board-here`（没 tmux 的那台照答；没答的那台那一组带离线那一句，命令照答）",
+    ),
+    (
         "sessions-where",
         "问这几个会话在哪个 tmux 会话里：没 tmux ⇒ 逐个答「这台没 tmux」、命令照答",
     ),

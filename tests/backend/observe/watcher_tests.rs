@@ -121,6 +121,7 @@ impl FrameSink {
             priming: HashSet::new(),
             arrivals: crate::observe::arrivals::Arrivals::default(),
             list: std::sync::Arc::default(),
+            faces: std::sync::Arc::default(),
         }
     }
 
@@ -184,6 +185,90 @@ fn frames_that_move_a_row_ring_the_list_node_once_per_session() {
         ..Default::default()
     }));
     assert!(!list_rang(&mut list), "运行表与清单无关");
+}
+
+/// ★ 这台发出去的会话帧折进这台那一本（[`faces_here`]）：宣告之后的状态帧换上脸，`order` 是脸上那一格。
+#[test]
+fn frames_fanned_out_fold_into_the_book_read_by_faces_here() {
+    const SID: &str = "faces-here-fold";
+    let face = |activity| {
+        crate::wire::SessionFace::of(crate::wire::Life::Live {
+            activity,
+            host: None,
+        })
+    };
+    let idle = face(None);
+    let needs = face(Some(crate::agents::SessionActivity::NeedsYou));
+    assert_ne!(idle.order, needs.order, "两张脸的序要不同才看得出换没换");
+    let mut sink = FrameSink::hub();
+    let frame = |v: serde_json::Value| crate::wire::decode(&v.to_string()).expect("一帧");
+    sink.send(frame(serde_json::json!({
+        "kind": "session_added", "sid": SID, "agent_kind": "claude",
+        "face": idle, "label": SID, "pid": 1,
+    })));
+    sink.send(frame(serde_json::json!({
+        "kind": "session_status", "sid": SID, "face": needs, "label": SID,
+    })));
+    let book = faces_here().expect("起过发帧口 ⇒ 有那一本");
+    let order = book
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .book()
+        .face(SID)
+        .map(|f| f.order);
+    assert_eq!(order, Some(needs.order));
+}
+
+fn added_frame(sid: &str) -> Frame {
+    let face = crate::wire::SessionFace::of(crate::wire::Life::Live {
+        activity: None,
+        host: None,
+    });
+    crate::wire::decode(
+        &serde_json::json!({
+            "kind": "session_added", "sid": sid, "agent_kind": "claude",
+            "face": face, "label": sid, "pid": 1,
+        })
+        .to_string(),
+    )
+    .expect("一帧")
+}
+
+/// ★ 一条会话收场（发出 `session_left` 那一帧）⇒ 这台那一本里不再有它（同运行簿收场那一下摘）。
+/// 用夹具那一份发帧口：生产那一份的会话账本会压住离开那一帧、等 tmux 观测裁过才放出来，放出来走的是同一个出口。
+#[test]
+fn a_session_that_left_is_gone_from_faces_here() {
+    const SID: &str = "faces-here-left";
+    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let mut sink = FrameSink::new(tx);
+    sink.send(added_frame(SID));
+    assert!(
+        sink.faces.lock().unwrap().book().face(SID).is_some(),
+        "宣告了 ⇒ 在那一本里"
+    );
+    sink.send(Frame::session_left(
+        SID.into(),
+        crate::wire::Life::Ended,
+        None,
+        None,
+    ));
+    let b = sink.faces.lock().unwrap_or_else(|e| e.into_inner());
+    assert!(b.book().face(SID).is_none(), "收场了还在那一本里");
+    assert!(b.book().left.is_empty() && b.book().successors.is_empty());
+}
+
+/// ★ 漏摘的兜底：那一本超了上限 ⇒ 先挤最久没动静的那几条（收场的在前），不长过上限。
+#[test]
+fn the_faces_book_never_grows_past_its_cap_and_evicts_the_stalest_first() {
+    let mut f = Faces::default();
+    for sid in ["a", "b", "c"] {
+        f.take(&added_frame(sid), 3);
+    }
+    // a 又有了动静 ⇒ 最久没动静的是 b。
+    f.take(&added_frame("a"), 3);
+    f.take(&added_frame("d"), 3);
+    let live: Vec<&str> = f.book().live.keys().map(String::as_str).collect();
+    assert_eq!(live, ["a", "c", "d"]);
 }
 
 /// ★ 注解动了（改名 · 星标 · 隐藏 · 别的进程写的也算）⇒ 重判隐藏那一处响清单的节点（不分会话：不在跟的那几行也可能变）。

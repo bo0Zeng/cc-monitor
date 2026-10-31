@@ -819,10 +819,9 @@ export class PlanView {
       const re = button({ label: copyText("plan.strip.reconnect"), size: "compact", onClick: () => this.reconnect(cur.origin) });
       out.push(banner("warn", copyText("plan.strip.offline", { machine: cur.origin, seen: this.currentDoc()?.seen?.said ?? copyText("plan.page.none") }), [re]));
     }
-    const doc = this.currentDoc();
     const slice = this.currentSlice();
-    if (doc?.stale) out.push(banner("error", joinSep(copyText("plan.strip.unreadable", { reason: doc.stale.said ?? "" }), copyText("plan.strip.stale", { time: doc.stale.sinceText ?? "" }))));
-    else if (slice?.stale) out.push(banner("error", joinSep(copyText("plan.strip.sliceUnreadable", { reason: slice.stale.said ?? "" }), copyText("plan.strip.stale", { time: slice.stale.sinceText ?? "" }))));
+    // 读不成 ＋ 过期那一句：后端写好（整份读不成在先，这一片读不成在后）。
+    if (slice?.said.strip) out.push(banner("error", slice.said.strip));
     // pb 读不成的几处（哪一份 · 第几行 · pb 那一句）：那一片照读出来的画，这几处照实列在顶上。
     for (const e of slice?.check.unreadable ?? []) out.push(banner("warn", joinSep(copyText("plan.check.unreadable", { file: e.line === null ? (e.file ?? "") : `${e.file ?? ""}:${e.line}` }), e.message ?? "")));
     this.stripsEl.replaceChildren(...out);
@@ -849,7 +848,7 @@ export class PlanView {
       return;
     }
     if (slice.bare) {
-      pane.appendChild(emptyState({ icon: "warning", text: copyText("plan.strip.sliceUnreadable", { reason: slice.error ?? "" }) }));
+      pane.appendChild(emptyState({ icon: "warning", text: slice.said.bare ?? "" }));
       morph(this.bodyEl, [tree, pane]);
       return;
     }
@@ -921,7 +920,7 @@ export class PlanView {
     hd.textContent = slice.name;
     const trail = document.createElement("span");
     trail.className = s.pvTrail;
-    if (slice.progress) trail.textContent = copyText("plan.outline.rootProgress", { done: slice.progress.done, of: slice.progress.of });
+    if (slice.said.root) trail.textContent = slice.said.root;
     head.append(icon("plan", "compact"), hd, trail);
     head.addEventListener("click", () => this.select(null));
     box.appendChild(head);
@@ -1077,13 +1076,9 @@ export class PlanView {
     t.textContent = slice.name;
     h1.appendChild(t);
     if (slice.domain) h1.appendChild(phaseBadge(slice.domain));
-    if (slice.progress) {
-      const p = slice.progress;
-      h1.appendChild(text(copyText("plan.overview.top", { done: p.done, of: p.of }), s.pvMeta));
-    }
+    if (slice.said.top) h1.appendChild(text(slice.said.top, s.pvMeta));
     box.appendChild(h1);
-    const doc = this.currentDoc();
-    if (doc?.readAtText) box.appendChild(text(copyText("plan.overview.readAt", { time: doc.readAtText }), s.pvMeta));
+    if (slice.said.readAt) box.appendChild(text(slice.said.readAt, s.pvMeta));
 
     // 块
     // 末一格「接手」照后端那一格（建了的 `takeover` · 还没建的那一列）。
@@ -1105,7 +1100,7 @@ export class PlanView {
           groupsCell(b),
           b.phase ? phaseBadge(b.phase) : none(),
           text(at ? labelOf(slice, at.id) : copyText("plan.page.none")),
-          text(b.inside ? `${b.inside.done}/${b.inside.of}` : copyText("plan.page.none")),
+          text(b.said.inside ?? copyText("plan.page.none")),
           stop(takeoverCell(b, () => this.takeover(b))),
         ]);
         if (root) clickRow(tr, () => this.select(root.id));
@@ -1160,7 +1155,7 @@ export class PlanView {
     const txt = document.createElement("span");
     txt.className = s.pvOwnerText;
     if (w.kind === "unknown" || w.sid === null) {
-      txt.textContent = copyText("plan.who.unknown", { id: shortId(w.id) });
+      txt.textContent = w.label ?? "";
       b.appendChild(txt);
       b.addEventListener("click", (ev) => {
         ev.stopPropagation();

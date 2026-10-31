@@ -226,3 +226,112 @@ pub struct FilesBatchStopReq {
 pub struct FilesBatchStopReply {
     pub stopping: bool,
 }
+
+/// 一批会话要做的那一样（`stop`；`start` 带放在哪）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionsOp {
+    /// 停：结束带着它的那个终端。
+    Stop,
+    /// 起：恢复到 `run` 那一种宿主里。
+    Start { run: crate::session::Launch },
+}
+
+/// 一批里的一项：哪台的哪条会话。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct SessionItem {
+    pub machine: crate::Machine,
+    pub sid: crate::Sid,
+}
+
+/// 一批会话一次问的请求：只有 id 与刚选的那一样（跳不跳过由各台照会话脸判）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct SessionsBatchReq {
+    pub op: SessionsOp,
+    /// 那几项（1–64 个，照选中的先后）。
+    pub items: Vec<SessionItem>,
+    /// 自报的前端（「哪个前端的会话」那一维，同 `terminal-end`）。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub client: Option<String>,
+}
+
+/// 一条会话的结局：做成了 · 不用做 / 做不了 · 做了没成。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionState {
+    Done,
+    Skipped,
+    Failed,
+}
+
+/// 一条会话的结局上线那一形：每台那一跳与本机合好的回包同一形。可缺的格一律出 `null`，不省键。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionOutcome {
+    /// 哪台（每台那一跳答的是它自己 ⇒ 本机那一个；本机合好时换成那一项的那台）。
+    pub machine: crate::Machine,
+    pub sid: crate::Sid,
+    pub outcome: SessionState,
+    /// 跳过 / 失败的原因码（挑按钮用）；做成了 ⇒ `null`。
+    pub why: Option<String>,
+    /// 那台写好的那一句；做成了 ⇒ `null`。
+    pub said: Option<String>,
+    /// 失败那一项的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
+    pub copy_detail: String,
+    /// 那台写的称呼（项目 ＋ 名字）。
+    pub title: String,
+    /// 落在哪个终端会话上。
+    pub session: Option<String>,
+}
+
+/// 一批会话合好的回包：逐条结局与入参同序，汇总句 · 逐条行 · 复制详情都写好（界面只摆）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionsBatchReply {
+    pub results: Vec<SessionOutcome>,
+    /// 一句汇总（同文件批量那一句）。
+    pub said: String,
+    /// 有没成的 ⇒ 出错的样子。
+    pub failed: bool,
+    /// 没成 · 跳过的逐条（写好的字）。
+    pub lines: Vec<String>,
+    /// 没成的那几段（都成了 ⇒ 空串）。
+    pub copy_detail: String,
+}
+
+#[cfg(test)]
+#[path = "../../../../tests/common/cmd-wire/batch_tests.rs"]
+mod tests;
