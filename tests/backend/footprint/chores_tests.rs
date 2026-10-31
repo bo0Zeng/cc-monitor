@@ -28,7 +28,6 @@ fn base() -> Facts {
         hooks: None,
         mcp_login: vec![],
         sshd: None,
-        secret_like: vec![],
         declined: vec![],
     }
 }
@@ -93,25 +92,6 @@ fn 旧_ccm_要做_复制一行命令() {
     assert_eq!(c[0]["state"], json!("todo"));
     assert_eq!(c[0]["action"], json!("copyCommand"));
     assert_eq!(c[0]["copy"], json!("sudo rm '/usr/local/bin/ccm'"));
-    assert_eq!(badge_of(&f), 1);
-}
-
-/// 共享库里像按号密钥的一项：要做（需手动），名字点出那一项、位置与复制的是它的全路径、按钮是定位；进角标。
-#[test]
-fn 共享库里像密钥的一项_要做_点出名字与位置() {
-    let mut f = base();
-    f.secret_like = vec![SecretLike {
-        name: "x.json".into(),
-        path: "/h/.claude/x.json".into(),
-    }];
-    let c = chores(&f);
-    assert_eq!(ids(&c), vec!["secret-like:x.json"]);
-    assert_eq!(c[0]["kind"], json!("must"));
-    assert_eq!(c[0]["state"], json!("todo"));
-    assert_eq!(c[0]["action"], json!("locate"));
-    assert_eq!(c[0]["loc"], json!("/h/.claude/x.json"));
-    assert_eq!(c[0]["copy"], json!("/h/.claude/x.json"));
-    assert_eq!(c[0]["file"], json!("/h/.claude/x.json"));
     assert_eq!(badge_of(&f), 1);
 }
 
