@@ -36,9 +36,11 @@ pub(crate) const UPSTREAM: crate::agents::DefaultUpstream = crate::agents::Defau
     window_slot: None,
     window_key: None,
     usage: None,
+    warm: None,
     login: None,
     // 没有这一家认得的「用满」回包 ⇒ 硬上限对它不成立。
     limit_reply: None,
+    resumes_within: None,
     inject: crate::agents::Inject::Args(launch_args),
     // 照常见 HTTP 客户端的读法：另认 `ALL_PROXY`。
     proxy: crate::agents::ProxyFace {

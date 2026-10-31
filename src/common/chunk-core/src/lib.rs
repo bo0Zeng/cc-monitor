@@ -6,6 +6,7 @@
 //! - 问那台的那一下是 [`Ask`]（桌面经通道、手机经常驻流）；撤 · 进度 · 本机读不动怎么说都由调用方给，这里不写字。
 
 use cmd_wire::files::{to_hex, ChunkBytes, FilesStageChunkReq, ReadChunkReq, WirePath};
+use cmd_wire::transfer::Staged;
 use cmd_wire::Call;
 use sha2::Digest as _;
 use std::future::Future;
@@ -31,16 +32,6 @@ pub trait Watch {
     fn stopped(&self) -> bool;
     /// 已经过去的字节 · 总数（不知道 ⇒ `None`）。
     fn moved(&mut self, done: u64, total: Option<u64>);
-}
-
-/// 送完了的那一份：提交时照交（`chunks` · `bytes` · `expect.sha256`）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Staged {
-    pub key: String,
-    pub chunks: u64,
-    pub bytes: u64,
-    /// 整份 SHA-256，小写十六进制。
-    pub sha256: String,
 }
 
 /// 一块一块往那台的暂存区里送（同一个键、块号从 0 连着来），边送边算整份摘要。

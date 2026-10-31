@@ -108,8 +108,11 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     window_slot: Some(quota::slot_of),
     window_key: Some(quota::key_of),
     usage: Some(usage::FACE),
+    warm: Some(WARM),
     login: Some(LOGIN),
     limit_reply: Some(quota::limit_reply),
+    // 收到「用满」后，重置落在 24 小时内才挂「等到重置自动续」（2.1.314 读码核过）。
+    resumes_within: Some(24 * 3600),
     // 认 `ANTHROPIC_BASE_URL`：插上钥匙的整条地址进这个变量。
     inject: super::Inject::Env(paths::BASE_URL_ENV),
     // 官方客户端认的代理与免代理变量（大小写两形；不认 `ALL_PROXY`）。
@@ -117,6 +120,31 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
         via: &["https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY"],
         skip: &["no_proxy", "NO_PROXY"],
     },
+};
+
+/// 开窗那一句：`-p` 一发 haiku · 不给工具 · 只读项目级设置 · 不起 MCP · 不落会话记录 · 系统提示换成一句（不换约 6.8k token，
+/// 隔几小时才发一次时缓存早过期、按写缓存价付）· 关掉思考。实测一发（claude 2.1.289）：输入约 870 token（自带、去不掉的那一段）· 输出 4 token。
+pub(crate) const WARM: super::WarmFace = super::WarmFace {
+    args: &[
+        "-p",
+        "--model",
+        "haiku",
+        "--tools",
+        "",
+        "--no-session-persistence",
+        "--setting-sources",
+        "project",
+        "--strict-mcp-config",
+        "--output-format",
+        "json",
+        "--system-prompt",
+        "Reply with the single letter a.",
+        "a",
+    ],
+    env_set: &[
+        ("MAX_THINKING_TOKENS", "0"),
+        ("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1"),
+    ],
 };
 
 /// 订阅号登录：`<配置目录>/.credentials.json` 的 `claudeAiOauth` 那一节；续期照 claude 自己的做法

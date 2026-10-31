@@ -17,7 +17,7 @@
 
 use super::*;
 use ssh_dial::{
-    connect, why_of_stage, write_ack, write_stages_then_ack, DialAck, Why, ACK_V, USES,
+    connect, stage, why_of_stage, write_ack, write_stages_then_ack, DialAck, Why, ACK_V, USES,
 };
 use std::sync::Arc;
 
@@ -489,30 +489,21 @@ fn the_dial_uses_named_in_production_are_exactly_these() {
 }
 
 /// ack 与阶段行的线上形状：ack 带 `v`/`uses`/`endpoint`；阶段行是 `{"stage":{"kind":…}}`，
-/// `kind` 是 camelCase 的六个字面量（契约 `cmd_wire::dial::Stage`，读的那一侧同一份）。
+/// `kind` 是 camelCase 的字面量（契约 `cmd_wire::dial::Stage`，读的那一侧同一份）。
 #[tokio::test]
 async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     let mut buf: Vec<u8> = Vec::new();
     let sink = StageSink::new(true);
-    sink.emit(Stage::Dialing {
-        endpoint: "h:22".into(),
-    });
-    sink.emit(Stage::HostKey {
-        endpoint: "h:22".into(),
-        fingerprint: "SHA256:x".into(),
-    });
-    sink.emit(Stage::Failed {
-        endpoint: "b:22".into(),
-        reason: "[tcp] refused".into(),
-    });
-    sink.emit(Stage::Won {
-        endpoint: "h:22".into(),
-    });
-    sink.emit(Stage::Auth {
-        ok: true,
-        detail: None,
-    });
-    sink.emit(Stage::Established);
+    let at = |host: &str| ssh_dial::Endpoint {
+        host: host.into(),
+        port: 22,
+    };
+    sink.emit(stage::dialing(at("h"), "h:22"));
+    sink.emit(stage::host_key(at("h"), "h:22", "SHA256:x"));
+    sink.emit(stage::failed(at("b"), "b:22", "[tcp] refused"));
+    sink.emit(stage::won(at("h"), "h:22"));
+    sink.emit(stage::auth_ok());
+    sink.emit(stage::established());
     write_stages_then_ack(
         &mut buf,
         &sink,
@@ -537,7 +528,17 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
         kinds,
         ["dialing", "hostKey", "failed", "won", "auth", "established"]
     );
-    assert_eq!(lines[1]["stage"]["fingerprint"], "SHA256:x");
+    assert_eq!(
+        lines[1]["stage"]["said"],
+        copy_core::copy_text(
+            "beProbe.stage.fingerprint",
+            &[("endpoint", "h:22"), ("fingerprint", "SHA256:x")]
+        )
+    );
+    assert_eq!(
+        lines[1]["stage"]["endpoint"],
+        serde_json::json!({ "host": "h", "port": 22 })
+    );
     let ack = &lines[6];
     assert_eq!(ack["ok"], false);
     assert_eq!(ack["v"], ACK_V);
@@ -549,7 +550,7 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     // 不要阶段 ⇒ 一个字节的阶段都不出
     let mut quiet: Vec<u8> = Vec::new();
     let off = StageSink::new(false);
-    off.emit(Stage::Established);
+    off.emit(stage::established());
     write_stages_then_ack(
         &mut quiet,
         &off,

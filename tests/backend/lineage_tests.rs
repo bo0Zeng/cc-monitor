@@ -174,3 +174,47 @@ fn a_file_without_version_reads_as_format_1_and_is_written_back_with_it() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// 盘上那一份读不懂时：中转一发接一发进来，只在第一次（印记变之前）说一行，之后不再拿锁读盘、不再报。
+/// 印记变了（人把文件挪走 / 改好）⇒ 照常记、照常写。
+#[test]
+fn an_unreadable_file_is_reported_once_and_not_retried_on_every_request() {
+    let dir = std::env::temp_dir().join(format!("ccm-lineage-once-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(FILE_NAME);
+    std::fs::write(&path, b"{not json").unwrap();
+    let own = crate::platform::fs::Own::issue_data_at(&dir);
+    let store = LineageStore::at(Some(path.clone()));
+    let said = crate::stream::run_route::tests::heard(|| {
+        for n in 0..3 {
+            relay_saw(
+                &store,
+                &own,
+                o(T, None),
+                &format!("s-{n}"),
+                "claude-code",
+                100,
+            );
+        }
+    });
+    let lineage: Vec<&String> = said.iter().filter(|l| l.contains("[lineage]")).collect();
+    assert_eq!(
+        lineage.len(),
+        1,
+        "读不懂的那一份每发都报一行（每发都拿锁读盘）：{lineage:?}"
+    );
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        b"{not json",
+        "读不懂的被覆盖了"
+    );
+    // 非空对照：印记变了之后照常记下、写回（不是从此不写）。
+    std::fs::remove_file(&path).unwrap();
+    relay_saw(&store, &own, o(T, None), "s-fixed", "claude-code", 200);
+    assert!(
+        std::fs::read(&path).is_ok(),
+        "印记变了之后没写回：读不懂那一态没随印记清掉"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

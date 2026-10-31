@@ -1,4 +1,4 @@
-//! 命令表 · 终端与会话：`terminal-*`（含实时预览三条）· `terminals-list` · `session-window` · `session-terminals` · `launch*` · `terminal-end` · `sessions-*`。
+//! 命令表 · 终端与会话：`terminal-*`（含实时预览三条）· `terminals-list` · `session-window` · `session-terminals` · `launch*` · `terminal-end` · `sessions-*` · 监控板那两条。
 
 use crate::wire::spec::CommandSpec;
 
@@ -32,6 +32,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     crate::wire::typed::asynchronous::<crate::faces::terminals_board_face::TerminalsBoardCmd>(
         "「终端」视图那张名单（问到各台、合成一份：每台一组 · 筛选四格的数）",
+    ),
+    // 监控板（`faces/monitor_board_face.rs`）：这台那几条会话的序 · 活不活 · 在跑几个（只读进程里那两本）；
+    //   本机后端问到各台合成一份（别的台经常驻问 `monitor-board-here`，没答的那一组带那台离线那一句）。
+    crate::wire::typed::asynchronous::<crate::faces::monitor_board_face::MonitorBoardHereCmd>(
+        "监控板这台那几条（序 · 活不活 · 在跑几个 agent；不认得的不答）",
+    ),
+    crate::wire::typed::asynchronous::<crate::faces::monitor_board_face::MonitorBoardCmd>(
+        "监控板（问到各台、合成一份：分组 · 组内先后 · 组头 · 汇总那一句）",
     ),
     crate::wire::typed::blocking::<crate::control::terminals_wire::TerminalPreviewCmd>(
         "抓一个终端的一屏（只抓一次，轮询归调用方）",

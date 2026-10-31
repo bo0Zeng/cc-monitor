@@ -20505,6 +20505,42 @@
       "zh": "未找到该机数据目录 · 轮换配置无处可存",
       "args": []
     },
+    "beQuotaWarm.agent.unsupported": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "{agent} · 无开窗一发",
+      "args": ["agent"]
+    },
+    "beQuotaWarm.run.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "启动开窗一发失败 · {why}",
+      "args": ["why"]
+    },
+    "beQuotaWarm.run.exit": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "开窗一发未成 · 原因不明",
+      "args": []
+    },
+    "beRotation.hold.noAutoResume": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "停到 {dur} 以外 · 客户端不会自己续 · 需手动继续",
+      "args": ["dur"]
+    },
+    "monitorBoard.head.summary": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "机器 {machines} · 会话 {liveSessions} · agent 在跑 {runningAgents}",
+      "args": ["machines", "liveSessions", "runningAgents"]
+    },
+    "monitorBoard.group.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "{machine}（{n}）",
+      "args": ["machine", "n"]
+    },
     "beQuotaProbe.agent.unsupported": {
       "kind": "error",
       "role": "原因格",
@@ -29276,45 +29312,12 @@
       "zh": "硬件密钥不存在",
       "args": []
     },
-    "mobSsh.log.established": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "{target} 连接已建立",
-      "args": ["target"],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.connecting": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "连接 {target}…",
-      "args": ["target"],
-      "limited": ["连接"]
-    },
     "mobSsh.log.connectFailed": {
       "kind": "error",
       "role": "报错",
       "zh": "连接失败",
       "args": [],
       "limited": ["连接"]
-    },
-    "mobSsh.log.negotiated": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "连接中…",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.authKey": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "验证密钥中…",
-      "args": []
-    },
-    "mobSsh.log.authFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "认证失败",
-      "args": []
     },
     "mobSsh.log.waitOther": {
       "kind": "body",
