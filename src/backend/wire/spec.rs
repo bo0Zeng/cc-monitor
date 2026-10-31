@@ -176,16 +176,14 @@ pub(crate) fn invoke(run: super::typed::Typed, hands: &Hands) -> Option<Prepared
 }
 
 /// typed 应答 → 应答 `data`（`serde_json::Value` 的对象按键排，与此前现拼的 `json!` 逐字节同形）。
-/// 错误那一形跟着调用方（[`Said`] · 各处的 `(码, 那一句)`）。序列化不出（实际到不了：格都是普通值）⇒ `failed`，原话记日志。
-pub(crate) fn wire<T: serde::Serialize, E: From<(&'static str, String)>>(
-    t: &T,
-) -> Result<serde_json::Value, E> {
+/// 序列化不出（实际到不了：格都是普通值）⇒ `failed`，原话记日志。
+pub(crate) fn wire<T: serde::Serialize>(t: &T) -> Result<serde_json::Value, Said> {
     serde_json::to_value(t).map_err(|e| {
         tracing::warn!("reply does not serialize: {e}");
-        E::from((
+        Said::new(
             "failed",
             crate::common::contract::malformed("reply does not serialize"),
-        ))
+        )
     })
 }
 
