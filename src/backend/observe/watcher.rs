@@ -62,7 +62,7 @@
 
 use crate::platform::fs::{Ro, RoFile};
 use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
-use crate::wire::{FrameMake as _, FrameRules as _, SessionFaceExt as _, TopicExt as _};
+use crate::wire::{FrameMake as _, FrameRules as _, TopicExt as _};
 use cmd_wire::frame::{HiddenNow, Relayed};
 use notify::{RecursiveMode, Watcher as _};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -453,12 +453,6 @@ impl FrameRx {
         let (frame, n) = self.rx.recv().await?;
         self.held.fetch_sub(n, Ordering::AcqRel);
         Some(frame)
-    }
-
-    pub fn try_recv(&mut self) -> Result<Frame, mpsc::error::TryRecvError> {
-        let (frame, n) = self.rx.try_recv()?;
-        self.held.fetch_sub(n, Ordering::AcqRel);
-        Ok(frame)
     }
 }
 
@@ -995,20 +989,14 @@ fn watch_sock_dir_if_present(
 /// reader watches `<claude_dir>/projects/` recursively and
 /// `<claude_dir>/sessions/`.
 /// **P4：戳一下 watcher 的句柄** —— 故意是个**窄类型**而不是把
-/// `Sender<WatchEvent>` 整个交出去：外部（`main` 的 SIGUSR1 流）只该有「催一次重探」
-/// 这一个权力，不该能伪造 `PidDied` / `TmuxObserved` 这类带载荷的内部事件。
+/// `Sender<WatchEvent>` 整个交出去：外部只拿得到停机与接连接这几样，催重探走 [`poke_all`]
+/// （SIGUSR1 处理器认名单，不认句柄），不能伪造 `PidDied` / `TmuxObserved` 这类带载荷的内部事件。
 ///
 /// 这是账本第 1 行那条「只加事件源、不加定时器」的自然延伸：新来源经**同一个** channel。
 #[derive(Clone)]
 pub struct WatcherPoke(std::sync::mpsc::Sender<WatchEvent>);
 
 impl WatcherPoke {
-    /// 催一次 tmux 重探。watcher 已停（channel 关）时静默无操作 —— 那说明没人在听，
-    /// 不是错误。
-    pub fn poke(&self) {
-        let _ = self.0.send(WatchEvent::Poke);
-    }
-
     /// **P5：显式停机。** 删掉 8s ticker 之后，`sink.is_closed()` 那道复查再没有定期
     /// 醒来的机会 ⇒ 必须由 `main` 在 writer 结束时主动说一声，reader 线程才会退出
     /// `recv()`。**这件事漏做不会红任何测试**（进程退出时线程随之消亡），

@@ -2,8 +2,15 @@
 //! 界面那张命令表（`src/frontend/ui/generated/TypedCommands.ts`：命令名 ⇒ 入参 · 回包 · 码）。
 //! 跟盘上那份不一样 ⇒ 重写盘上那份、并红（提交新的那一份）。
 
-use super::{Codes, Command};
+use super::{Codes, Command, How, Typed};
 use crate::stream::inbound::REGISTRY;
+
+impl Typed {
+    /// 开跑之后打不打得断（阻塞档打不断）：读它的只有形状指纹与协议文档（撤不动的算进指纹，`cmd_wire::shapes::UNCANCELLABLE` 由它写）。
+    pub(crate) fn blocking(&self) -> bool {
+        matches!(self.how, How::Blocking | How::FrameBlocking)
+    }
+}
 
 /// 一条 typed 命令的形状（测试档）：入参 · 回包的 TS 名，连同它们引到的每个具名类型的 TS 声明，＋ 码表。
 pub(crate) struct Shape {
