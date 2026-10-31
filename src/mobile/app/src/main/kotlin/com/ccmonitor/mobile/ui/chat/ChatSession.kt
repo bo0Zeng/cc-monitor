@@ -163,7 +163,7 @@ sealed interface ChatTarget {
 /**
  * 一条会话的聊天状态。起会话、送字、正文都走那台的核心（[CoreLink]）：
  * - 新建会话：第一条按 ➤ ⇒ `session-open`（在那台 tmux 里起，桌面那一侧看得到、接得上），那一句随起交（`prompt`：那台作为启动参数交给 agent，
- *   作为启动参数交，送没送到看回包）；那台没交（回包没有 `prompt`）⇒ 等它报到（会话表里那个目录新出现的一条）再经 `terminal-input` 送。
+ *   作为启动参数交，送没送到看回包）；那台没交（回包没有 `prompt`）⇒ 等它报到（会话表里那个目录新出现的一条）再投进它的输入队（同送字）。
  *   新起的会话记录要等第一句进去才落盘 ⇒ 读正文之前先等那台推来它的记录路径（[freshPath]）。
  * - 送字：投进那条会话的输入队（`session-queue-put`，编号去重，回执才算出去，见 [ChatOutbox]）；停：`session-interrupt`（不进队、不靠持有输入，没成照那台那一句）。
  * - 正文：`history-tail` ＋ `history-read` 读最后一屏，之后跟流上这条会话的 `line` 帧；往上翻再读上一段（读到哪 · 怎么读归 [ChatRecord]）。记录 ⇒ 渲染单元见 [RecordUnits]。
@@ -534,7 +534,7 @@ class ChatSession(
     ) = mark(o, if (permanent) DeliveryState.FAILED_PERMANENT else DeliveryState.FAILED, text ?: copyText("newSession.start.failed"))
 
     /** 新建会话起好、认出来了 ⇒ 它的 sid；起不来 ⇒ `null`（那一句已在 [ChatUiState.failedWhy]）。几句同时等同一次起，头一句（[o]）随起交；
-     * 那台说没交到（`prompt` 是 `refused`）⇒ 那句标未送达、能改的给［再发一次］（走 `terminal-input`）：兜底，今天两家都作为启动参数交、起好就是交到了。 */
+     * 那台说没交到（`prompt` 是 `refused`）⇒ 那句标未送达、能改的给［再发一次］（那时有 sid，投进输入队）：兜底，今天两家都作为启动参数交、起好就是交到了。 */
     private suspend fun started(o: Outgoing): String? {
         val d = draft ?: return null
         val job = lock.withLock { starting?.takeIf { it.isActive } ?: scope.launch { start(d, o) }.also { starting = it } }
@@ -728,7 +728,7 @@ class ChatSession(
     }
 }
 
-/** 那台判的送没送到（`terminal-input` 的回话 · `session-open` 回包里第一句的结局）⇒ 标与那一句。能不能再发一次照那台给的下一步（[SentAct.RETRY]）。 */
+/** 那台判的送没送到（`session-open` 回包里第一句的结局）⇒ 标与那一句。能不能再发一次照那台给的下一步（[SentAct.RETRY]）。 */
 private fun outcomeOf(
     res: TerminalInput.Result,
     machine: String,

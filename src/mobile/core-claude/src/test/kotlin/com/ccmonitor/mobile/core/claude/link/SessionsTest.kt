@@ -98,13 +98,6 @@ class SessionsTest {
     }
 
     @Test
-    fun `terminal-input：请求与金样同形（字 · 键），只带 sid`() {
-        val golden = terminals.obj("terminal-input")!!.objs("requests")!!
-        assertEquals(golden[1], TerminalInput.key("sid-a", "esc"))
-        assertEquals(mapOf("sid" to "s", "text" to "/model opus"), TerminalInput.text("s", "/model opus"))
-    }
-
-    @Test
     fun `terminal-input：金样三种回话都解得出，拒的那句照抄`() {
         val replies = terminals.obj("terminal-input")!!.objs("replies")!!.map(TerminalInput::of)
         assertEquals(TerminalInput.Result.Delivered, replies[0])
