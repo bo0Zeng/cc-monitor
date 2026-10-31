@@ -209,7 +209,7 @@ pub(crate) fn request_named(
     use_: &str,
     extra: serde_json::Value,
 ) -> Result<serde_json::Value, Said> {
-    machine::request(hosts, name, None, use_, extra)
+    machine::request(hosts, name, None, use_, extra).map_err(Said::from)
 }
 
 /// 同 [`request_named`]，读成拨号请求。
@@ -240,14 +240,14 @@ pub(crate) fn sftp_named(
     name: &str,
 ) -> Result<(serde_json::Value, sftp::Dial), String> {
     let (v, req) =
-        named_both(hosts, name, "capture", serde_json::json!({})).map_err(|(_, said)| said)?;
+        named_both(hosts, name, "capture", serde_json::json!({})).map_err(|f| f.said)?;
     Ok((v, sftp::Dial::of(req)))
 }
 
 /// 一份组好的拨号请求（[`request_named`] 那一形）⇒ 拨号请求。
 pub(crate) fn read_request(v: &serde_json::Value) -> Result<DialRequest, Said> {
     <DialRequest as serde::Deserialize>::deserialize(v).map_err(|e| {
-        (
+        Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!("dial request unreadable: {e}")),
         )

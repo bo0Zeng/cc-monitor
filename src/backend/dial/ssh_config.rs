@@ -261,25 +261,26 @@ const SSH_G_WITHIN: Deadline = Deadline::secs(5);
 pub(crate) fn resolve(alias: &str) -> Result<ResolvedHost, Said> {
     let alias = alias.trim();
     if !is_safe_alias(alias) {
-        return Err(Said::from((
+        return Err(crate::wire::spec::fail(
             "bad_alias",
             copy_text("beSshConfig.host.badAlias", &[("alias", alias)]),
-        )));
+        ));
     }
     if alias.starts_with('-') {
-        return Err(Said::from((
+        return Err(crate::wire::spec::fail(
             "bad_alias",
             copy_text("beSshConfig.host.dashAlias", &[]),
-        )));
+        ));
     }
     let out = Child::new("ssh")
         .arg("-G")
         .arg(alias)
         .run(SSH_G_WITHIN)
         .map_err(|e| {
-            Said::from(e.into_cmd_said("failed", |why| {
+            let (code, said) = e.into_cmd_said("failed", |why| {
                 copy_text("beSshConfig.host.sshGFailed", &[("why", why)])
-            }))
+            });
+            crate::wire::spec::fail(code, said)
         })?;
     if !out.status.success() {
         return Err(ssh_g_exited(alias, &out.stderr));
@@ -315,7 +316,7 @@ pub(crate) fn import_from(
         .filter_map(|a| match resolve(&a) {
             Ok(r) => Some((a, r)),
             Err(e) => {
-                partial |= e.code == crate::platform::child::TIMED_OUT;
+                partial |= e.code.as_deref() == Some(crate::platform::child::TIMED_OUT);
                 None
             }
         })

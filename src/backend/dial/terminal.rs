@@ -33,7 +33,7 @@ pub(crate) const MAX_COMMAND: usize = 4096;
 use crate::common::said::Said;
 
 fn refused(msg: String) -> Said {
-    ("refused", msg)
+    Said::new("refused", msg)
 }
 
 /// 用户名：非空，仅 `[A-Za-z0-9._-]`、不以 `-` 打头（拼进命令体的裸词，白名单杜绝注入；打头的 `-` 会被 `ssh` 读成选项）。
@@ -264,7 +264,7 @@ impl crate::wire::typed::Handle for TerminalSsh {
                 &crate::platform::ssh_client::locate(),
                 opened.as_deref(),
             )
-            .map_err(crate::wire::typed::of_pair(TerminalSshErr::Refused))
+            .map_err(crate::wire::typed::of_fail_with(TerminalSshErr::Refused))
         }
     }
 }
