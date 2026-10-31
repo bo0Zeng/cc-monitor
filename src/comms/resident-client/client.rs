@@ -580,7 +580,7 @@ impl InboundClient {
                     said,
                     ..
                 } => format!(
-                    "（错误应答 code={} said={}）",
+                    "（错误应答 code={} message={}）",
                     code.as_deref().unwrap_or("-"),
                     said.as_deref().unwrap_or("-")
                 ),
