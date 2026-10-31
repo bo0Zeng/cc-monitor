@@ -1108,7 +1108,7 @@ fn in_tests_a_request_to_a_real_host_panics_before_any_connection() {
 
 /// ★ 短时限流的 429（限流器一个头都没带）不算被拒，但要进后端日志：号 · 状态码 · retry-after 一行；
 /// 只用这几格 ⇒ 令牌与回包体无从进来。非空对照：同一个号答 200 一行都不记。
-/// ⚠ 回包体里的错误类型与那一句还没带上：`observe` 在转回包体之前调（见 `A17-60-4-1-2`）。
+/// ⚠ 回包体里的错误类型与那一句还没带上：`observe` 在转回包体之前调，那时体还没读；不缓冲地带上要在 `pump` 逐块转时抄下非 2xx 的前一截、转完再交上游选择。
 #[test]
 fn a_throttled_answer_logs_one_line_of_who_and_when_to_retry() {
     use comms_outward::{Ask, Destinations, Heard, Mode, RouteKey};

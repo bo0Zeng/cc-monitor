@@ -35,27 +35,6 @@ const LINE_ENVELOPE_ROOM: usize = 1024;
 /// 一个字节放进 JSON 字符串最多占几个字节（`\u00XX`）。
 const WORST_ESCAPE: usize = 6;
 
-/// 存盘那条线上命令的名字（装得进一行的那一支）。
-pub const CMD_WRITE_TEXT: &str = <cmd_wire::files::FilesWriteTextReq as cmd_wire::Call>::NAME;
-
-/// 装不进一行的那一支：逐块进暂存区（后端 `control/files_commit.rs`）。
-pub const CMD_STAGE_CHUNK: &str = <cmd_wire::files::FilesStageChunkReq as cmd_wire::Call>::NAME;
-
-/// 装不进一行的那一支：读回拼起来、原地覆盖（与 `files-write-text` 同一个原语）。
-pub const CMD_COMMIT_TEXT: &str = <cmd_wire::files::FilesCommitTextReq as cmd_wire::Call>::NAME;
-
-/// 存盘那一趟的参数（路径切成 `(root, rel)` 与写面其余四条同形）。
-///
-/// `expect` = 「我打开时那一份」的摘要（`files-read-text` 交的、或上一次存成时应答交的），
-/// 后端比盘上此刻那一份、对不上就 `stale`、一个字节不写。窗口只把它当不透明令牌原样交回（算法住后端一处）。
-pub fn save_args(path: &str, content: &str, expect_sha256: &str) -> w::FilesWriteTextReq {
-    save_args_at(
-        &super::source::RemotePath::plain(path),
-        content,
-        expect_sha256,
-    )
-}
-
 /// 摘要形的 `expect`（窗口当不透明令牌原样交回）。
 fn expect_of(sha256: &str) -> w::Sha256Expect {
     w::Sha256Expect {
@@ -63,7 +42,10 @@ fn expect_of(sha256: &str) -> w::Sha256Expect {
     }
 }
 
-/// 〔有损名全寻址〕同 [`save_args`]，路径可以带字节（`root` / `rel` 按字节切，有损那一段发 `{"b16": …}`）。
+/// 存盘那一趟的参数（路径切成 `(root, rel)` 与写面其余四条同形；按字节切，有损那一段发 `{"b16": …}`）。
+///
+/// `expect` = 「我打开时那一份」的摘要（`files-read-text` 交的、或上一次存成时应答交的），
+/// 后端比盘上此刻那一份、对不上就 `stale`、一个字节不写。窗口只把它当不透明令牌原样交回（算法住后端一处）。
 pub fn save_args_at(
     at: &super::source::RemotePath,
     content: &str,
@@ -80,7 +62,7 @@ pub fn save_args_at(
 /// 提交那一趟的参数：块数与总字节数**显式**给（`chunk_core` 送完交的那两个数），后端读回来必须对得上。
 fn commit_args_at(
     at: &super::source::RemotePath,
-    s: &chunk_core::Staged,
+    s: &cmd_wire::transfer::Staged,
     expect_sha256: &str,
 ) -> w::FilesCommitTextReq {
     w::FilesCommitTextReq {
@@ -160,11 +142,6 @@ pub static REOPEN_LABEL: std::sync::LazyLock<String> =
 /// 回那句话而不是 `bool`：灰着的按钮与「这个功能坏了」在屏幕上同形。
 pub fn why_not_editable(l: &super::source::Listed) -> Option<String> {
     pick_core::why_not_editable(&l.pick())
-}
-
-/// [`why_not_editable`] 的 `is_none()`。
-pub fn editable(l: &super::source::Listed) -> bool {
-    why_not_editable(l).is_none()
 }
 
 /// 打开这一行许读多少（后端那道编辑门给的；不许 ⇒ `None`）。
@@ -343,7 +320,7 @@ impl Pane {
             .map(|d| d.as_secs());
     }
 
-    /// 存盘撞上 `stale` ⇒ 同 [`Self::mark_failed`]（字一个不动、基准不动），外加摆出那两颗按钮。
+    /// 存盘撞上 `stale` ⇒ 同 [`Self::mark_failed_with`]（字一个不动、基准不动），外加摆出那两颗按钮。
     pub fn mark_stale(&mut self, why: String) {
         self.last_save = Some(Err(stale_notice(&why)));
         self.save_detail.clear();
@@ -353,12 +330,7 @@ impl Pane {
     /// 🔴 存失败了 ⇒ **基准线不动、`text` 一个字都不碰**。
     ///
     /// 用户敲的那些东西是他**唯一的一份**（远端那份还是旧的）。
-    /// 失败照样传上去，编辑框里的字留着。
-    pub fn mark_failed(&mut self, why: String) {
-        self.mark_failed_with(why.into());
-    }
-
-    /// 同 [`Self::mark_failed`]，连复制详情一起记下（保存失败那一条的［复制详情］用）。
+    /// 失败照样传上去，编辑框里的字留着；复制详情一起记下（保存失败那一条的［复制详情］用）。
     pub fn mark_failed_with(&mut self, f: super::source::Failed) {
         self.last_save = Some(Err(f.said));
         self.save_detail = f.detail;
@@ -535,10 +507,12 @@ impl EditBoard {
         self.lock().saving.clone()
     }
 
+    #[cfg(test)]
     pub fn opens(&self) -> u64 {
         self.opens.load(Ordering::SeqCst)
     }
 
+    #[cfg(test)]
     pub fn saves(&self) -> u64 {
         self.saves.load(Ordering::SeqCst)
     }
@@ -649,7 +623,7 @@ pub fn text_from_reply(
 /// | 装不进 | 现造一个键 ⇒ `chunk_core::stage`（与上传同一套：按字节切块、逐块 `files-stage-chunk`）⇒ `files-commit-text` |
 ///
 /// ⚠ 某一块没送成 ⇒ **不发提交**、当场回错（第几段、共几段、原话）；已经送进暂存区的块由后端孤儿扫收，
-///   远端那份一个字节没动。编辑框里的字一个不丢（「存失败不清编辑框」照旧，[`Pane::mark_failed`]）。
+///   远端那份一个字节没动。编辑框里的字一个不丢（「存失败不清编辑框」照旧，[`Pane::mark_failed_with`]）。
 /// ⚠ 超上限 ⇒ 本地拒、一个字节不发（[`over_cap_notice`]）。
 /// 路径可以带字节；`cap` ＝ 打开时后端给的编辑上限。
 pub async fn write_text_at(
@@ -694,7 +668,7 @@ async fn stage_text(
     line: &super::source::Line,
     origin: &super::source::Origin,
     content: &str,
-) -> Result<chunk_core::Staged, SaveError> {
+) -> Result<cmd_wire::transfer::Staged, SaveError> {
     let key = chunk_core::key_of(*uuid::Uuid::new_v4().as_bytes());
     let total = content.len().div_ceil(chunk_core::CHUNK);
     let mut sent = Sent(0);

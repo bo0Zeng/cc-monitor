@@ -307,7 +307,12 @@ fn spent(s: &Spend, sid: &str, at: u64, u: u64) {
 fn the_short_pace_sees_the_last_five_minutes_spike() {
     let s = Spend::default();
     for k in 0..30 {
-        spent(&s, "s1", T0 + 60 * k + 30, if k < 25 { 100_000 } else { 2_000_000 });
+        spent(
+            &s,
+            "s1",
+            T0 + 60 * k + 30,
+            if k < 25 { 100_000 } else { 2_000_000 },
+        );
     }
     let me = s.me("s1", T0 + 1800);
     let short = me.pace_short.expect("量得到");
@@ -326,12 +331,20 @@ fn the_short_pace_sees_the_last_five_minutes_spike() {
 fn bins_cover_six_hours_in_ten_minute_cells() {
     let s = Spend::default();
     for i in 0..420 {
-        spent(&s, "s1", T0 + 60 * i, if i >= 410 { 2_000_000 } else { 100_000 });
+        spent(
+            &s,
+            "s1",
+            T0 + 60 * i,
+            if i >= 410 { 2_000_000 } else { 100_000 },
+        );
     }
     let bins = s.me("s1", T0 + 420 * 60).bins;
     assert_eq!(bins.len(), 36);
     assert_eq!(bins[35], Some(20_000_000.0), "最后一格");
-    assert!(bins[..35].iter().all(|b| *b == Some(1_000_000.0)), "{bins:?}");
+    assert!(
+        bins[..35].iter().all(|b| *b == Some(1_000_000.0)),
+        "{bins:?}"
+    );
     let young = Spend::default();
     spent(&young, "s1", T0, 100_000);
     spent(&young, "s1", T0 + 1000, 100_000);
@@ -362,5 +375,9 @@ fn inflight_averages_the_sends_open_over_five_minutes() {
     assert_eq!(only_said.me("s1", T0 + 600).inflight, None, "没记到开头");
     let lost = Spend::default();
     lost.began("ghost", 1, T0);
-    assert_eq!(lost.me("ghost", T0 + 600), Me::default(), "说不出在哪个号上 ⇒ 不记");
+    assert_eq!(
+        lost.me("ghost", T0 + 600),
+        Me::default(),
+        "说不出在哪个号上 ⇒ 不记"
+    );
 }

@@ -15113,6 +15113,7 @@ data class PlanBlock(
     val handoffError: String?,
     val takeover: PlanTakeover,
     val groups: PlanBlockGroups,
+    val said: PlanBlockSaid,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -15131,9 +15132,10 @@ data class PlanBlock(
             Field("handoffError", { opt(Str) }, optional = false, nullable = true),
             Field("takeover", { PlanTakeover.ADAPTER }, optional = false, nullable = false),
             Field("groups", { PlanBlockGroups.ADAPTER }, optional = false, nullable = false),
+            Field("said", { PlanBlockSaid.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> PlanBlock(a[0] as String, a[1] as List<String>, a[2] as PlanKids?, a[3] as String?, a[4] as PlanWho?, a[5] as String?, a[6] as String?, a[7] as Boolean, a[8] as String?, a[9] as String?, a[10] as PlanTakeover, a[11] as PlanBlockGroups) },
-            { v -> arrayOf(v.id, v.cells, v.inside, v.dir, v.owner, v.phase, v.at, v.listed, v.handoff, v.handoffError, v.takeover, v.groups) },
+            { a -> PlanBlock(a[0] as String, a[1] as List<String>, a[2] as PlanKids?, a[3] as String?, a[4] as PlanWho?, a[5] as String?, a[6] as String?, a[7] as Boolean, a[8] as String?, a[9] as String?, a[10] as PlanTakeover, a[11] as PlanBlockGroups, a[12] as PlanBlockSaid) },
+            { v -> arrayOf(v.id, v.cells, v.inside, v.dir, v.owner, v.phase, v.at, v.listed, v.handoff, v.handoffError, v.takeover, v.groups, v.said) },
         )
     }
 }
@@ -15155,6 +15157,25 @@ data class PlanBlockGroups(
             ),
             { a -> PlanBlockGroups(a[0] as List<PlanGroup>, a[1] as String, a[2] as String?) },
             { v -> arrayOf(v.groups, v.text, v.unread) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanBlockSaid(
+    val name: String,
+    val inside: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanBlockSaid> = obj(
+            listOf(
+            Field("name", { Str }, optional = false, nullable = false),
+            Field("inside", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> PlanBlockSaid(a[0] as String, a[1] as String?) },
+            { v -> arrayOf(v.name, v.inside) },
         )
     }
 }
@@ -15188,6 +15209,7 @@ data class PlanCell(
     val coveredBy: List<String>,
     val refs: PlanRefs,
     val returned: PlanReturned?,
+    val said: PlanCellSaid,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -15221,9 +15243,29 @@ data class PlanCell(
             Field("coveredBy", { arr(Str) }, optional = false, nullable = false),
             Field("refs", { PlanRefs.ADAPTER }, optional = false, nullable = false),
             Field("returned", { opt(PlanReturned.ADAPTER) }, optional = false, nullable = true),
+            Field("said", { PlanCellSaid.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> PlanCell(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as List<String>, a[6] as PlanEdges, a[7] as PlanEdges, a[8] as List<PlanFile>, a[9] as List<PlanState>, a[10] as String?, a[11] as List<String>, a[12] as PlanCellStatusCode?, a[13] as Boolean, a[14] as PlanLook, a[15] as String?, a[16] as String?, a[17] as PlanWhyCode?, a[18] as PlanWhyShort?, a[19] as List<PlanSetsTo>, a[20] as String?, a[21] as PlanWho?, a[22] as PlanWho?, a[23] as List<String>, a[24] as List<String>, a[25] as PlanRefs, a[26] as PlanReturned?) },
-            { v -> arrayOf(v.id, v.title, v.kind, v.body, v.parent, v.children, v.edges, v.pointedBy, v.files, v.state, v.stateLine, v.evidencedBy, v.statusCode, v.undecided, v.look, v.end, v.quiet, v.whyCode, v.whyShort, v.sets, v.block, v.owner, v.signer, v.covers, v.coveredBy, v.refs, v.returned) },
+            { a -> PlanCell(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as List<String>, a[6] as PlanEdges, a[7] as PlanEdges, a[8] as List<PlanFile>, a[9] as List<PlanState>, a[10] as String?, a[11] as List<String>, a[12] as PlanCellStatusCode?, a[13] as Boolean, a[14] as PlanLook, a[15] as String?, a[16] as String?, a[17] as PlanWhyCode?, a[18] as PlanWhyShort?, a[19] as List<PlanSetsTo>, a[20] as String?, a[21] as PlanWho?, a[22] as PlanWho?, a[23] as List<String>, a[24] as List<String>, a[25] as PlanRefs, a[26] as PlanReturned?, a[27] as PlanCellSaid) },
+            { v -> arrayOf(v.id, v.title, v.kind, v.body, v.parent, v.children, v.edges, v.pointedBy, v.files, v.state, v.stateLine, v.evidencedBy, v.statusCode, v.undecided, v.look, v.end, v.quiet, v.whyCode, v.whyShort, v.sets, v.block, v.owner, v.signer, v.covers, v.coveredBy, v.refs, v.returned, v.said) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanCellSaid(
+    val trail: String?,
+    val blockRoot: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanCellSaid> = obj(
+            listOf(
+            Field("trail", { opt(Str) }, optional = false, nullable = true),
+            Field("blockRoot", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> PlanCellSaid(a[0] as String?, a[1] as String?) },
+            { v -> arrayOf(v.trail, v.blockRoot) },
         )
     }
 }
@@ -15694,6 +15736,7 @@ data class PlanListSlice(
     val needCount: Int,
     val error: String?,
     val stale: PlanStale?,
+    val said: PlanSliceSaid,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -15707,9 +15750,10 @@ data class PlanListSlice(
             Field("needCount", { Int32 }, optional = false, nullable = false),
             Field("error", { opt(Str) }, optional = false, nullable = true),
             Field("stale", { opt(PlanStale.ADAPTER) }, optional = false, nullable = true),
+            Field("said", { PlanSliceSaid.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> PlanListSlice(a[0] as String, a[1] as String?, a[2] as Boolean, a[3] as PlanProgress?, a[4] as Int, a[5] as String?, a[6] as PlanStale?) },
-            { v -> arrayOf(v.name, v.domain, v.current, v.progress, v.needCount, v.error, v.stale) },
+            { a -> PlanListSlice(a[0] as String, a[1] as String?, a[2] as Boolean, a[3] as PlanProgress?, a[4] as Int, a[5] as String?, a[6] as PlanStale?, a[7] as PlanSliceSaid) },
+            { v -> arrayOf(v.name, v.domain, v.current, v.progress, v.needCount, v.error, v.stale, v.said) },
         )
     }
 }
@@ -16400,6 +16444,7 @@ data class PlanSessionBlock(
     val at: String?,
     val atTitle: String?,
     val via: PlanSessionBlockVia,
+    val said: PlanSessionSaid,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -16415,9 +16460,10 @@ data class PlanSessionBlock(
             Field("at", { opt(Str) }, optional = false, nullable = true),
             Field("atTitle", { opt(Str) }, optional = false, nullable = true),
             Field("via", { PlanSessionBlockVia.ADAPTER }, optional = false, nullable = false),
+            Field("said", { PlanSessionSaid.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> PlanSessionBlock(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Boolean, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as PlanSessionBlockVia) },
-            { v -> arrayOf(v.slice, v.block, v.cell, v.title, v.top, v.phase, v.at, v.atTitle, v.via) },
+            { a -> PlanSessionBlock(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Boolean, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as PlanSessionBlockVia, a[9] as PlanSessionSaid) },
+            { v -> arrayOf(v.slice, v.block, v.cell, v.title, v.top, v.phase, v.at, v.atTitle, v.via, v.said) },
         )
     }
 }
@@ -16429,6 +16475,25 @@ enum class PlanSessionBlockVia(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<PlanSessionBlockVia> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanSessionSaid(
+    val name: String,
+    val mark: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanSessionSaid> = obj(
+            listOf(
+            Field("name", { Str }, optional = false, nullable = false),
+            Field("mark", { Str }, optional = false, nullable = false),
+            ),
+            { a -> PlanSessionSaid(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.name, v.mark) },
+        )
     }
 }
 
@@ -16480,6 +16545,7 @@ data class PlanSlice(
     val needs: List<PlanNeed>,
     val needCount: Int,
     val returned: PlanReturned?,
+    val said: PlanSliceSaid,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -16511,9 +16577,35 @@ data class PlanSlice(
             Field("needs", { arr(PlanNeed.ADAPTER) }, optional = false, nullable = false),
             Field("needCount", { Int32 }, optional = false, nullable = false),
             Field("returned", { opt(PlanReturned.ADAPTER) }, optional = false, nullable = true),
+            Field("said", { PlanSliceSaid.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> PlanSlice(a[0] as String, a[1] as String?, a[2] as String?, a[3] as Boolean, a[4] as Boolean, a[5] as String?, a[6] as PlanStale?, a[7] as Boolean, a[8] as List<PlanKind>, a[9] as List<PlanPhase>, a[10] as String?, a[11] as List<String>, a[12] as PlanProgress?, a[13] as Int, a[14] as List<PlanBlock>, a[15] as List<PlanUnbuilt>, a[16] as PlanUnowned, a[17] as List<PlanPendingSet>, a[18] as PlanCheck, a[19] as Map<String, String>, a[20] as List<PlanCell>, a[21] as List<PlanArchived>, a[22] as List<PlanNeed>, a[23] as Int, a[24] as PlanReturned?) },
-            { v -> arrayOf(v.name, v.domain, v.path, v.current, v.docsOnly, v.error, v.stale, v.bare, v.kinds, v.phases, v.doneValue, v.top, v.progress, v.openCells, v.blocks, v.unbuiltBlocks, v.unowned, v.pendingSets, v.check, v.labels, v.cells, v.archived, v.needs, v.needCount, v.returned) },
+            { a -> PlanSlice(a[0] as String, a[1] as String?, a[2] as String?, a[3] as Boolean, a[4] as Boolean, a[5] as String?, a[6] as PlanStale?, a[7] as Boolean, a[8] as List<PlanKind>, a[9] as List<PlanPhase>, a[10] as String?, a[11] as List<String>, a[12] as PlanProgress?, a[13] as Int, a[14] as List<PlanBlock>, a[15] as List<PlanUnbuilt>, a[16] as PlanUnowned, a[17] as List<PlanPendingSet>, a[18] as PlanCheck, a[19] as Map<String, String>, a[20] as List<PlanCell>, a[21] as List<PlanArchived>, a[22] as List<PlanNeed>, a[23] as Int, a[24] as PlanReturned?, a[25] as PlanSliceSaid) },
+            { v -> arrayOf(v.name, v.domain, v.path, v.current, v.docsOnly, v.error, v.stale, v.bare, v.kinds, v.phases, v.doneValue, v.top, v.progress, v.openCells, v.blocks, v.unbuiltBlocks, v.unowned, v.pendingSets, v.check, v.labels, v.cells, v.archived, v.needs, v.needCount, v.returned, v.said) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanSliceSaid(
+    val strip: String?,
+    val bare: String?,
+    val readAt: String?,
+    val top: String?,
+    val root: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanSliceSaid> = obj(
+            listOf(
+            Field("strip", { opt(Str) }, optional = false, nullable = true),
+            Field("bare", { opt(Str) }, optional = false, nullable = true),
+            Field("readAt", { opt(Str) }, optional = false, nullable = true),
+            Field("top", { opt(Str) }, optional = false, nullable = true),
+            Field("root", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> PlanSliceSaid(a[0] as String?, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?) },
+            { v -> arrayOf(v.strip, v.bare, v.readAt, v.top, v.root) },
         )
     }
 }
@@ -25756,29 +25848,21 @@ data class TurnSpan(
 
 @Suppress("UNCHECKED_CAST")
 data class UiErrorPayload(
-    val code: String,
-    val key: String,
-    val args: Map<String, String>,
     val said: String,
     val detail: String,
     val reconnect: String? = null,
-    val at: Long,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
         val ADAPTER: JsonAdapter<UiErrorPayload> = obj(
             listOf(
-            Field("code", { Str }, optional = false, nullable = false),
-            Field("key", { Str }, optional = false, nullable = false),
-            Field("args", { dict(Str) }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
             Field("detail", { Str }, optional = false, nullable = false),
             Field("reconnect", { opt(Str) }, optional = true, nullable = true),
-            Field("at", { Lng }, optional = false, nullable = false),
             ),
-            { a -> UiErrorPayload(a[0] as String, a[1] as String, a[2] as Map<String, String>, a[3] as String, a[4] as String, a[5] as String?, a[6] as Long) },
-            { v -> arrayOf(v.code, v.key, v.args, v.said, v.detail, v.reconnect, v.at) },
+            { a -> UiErrorPayload(a[0] as String, a[1] as String, a[2] as String?) },
+            { v -> arrayOf(v.said, v.detail, v.reconnect) },
         )
     }
 }

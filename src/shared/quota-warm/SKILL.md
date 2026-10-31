@@ -77,7 +77,7 @@ scripts/quota-warm run         先跑一趟，之后按最早的醒点自己醒�
 ## 依赖（cc-monitor 的基本模块）
 
 - 这台的额度账（`--quota-read`，见下面的命令段）：不给 `--accounts` 时号单也从这里来（`candidates`），脚本不另扫账号库。
-- `--quota-warm`：后端用某个号发那一句（经 ccm `--account <名>` 起一次 `claude -p`，走这台的中转；`--no-rotation` 让这一发不轮换）。
+- 后端用某个号发那一句（`--quota-warm`，见下面的命令段）：经 ccm `--account <名>` 起一次 `claude -p`，走这台的中转；`--no-rotation` 让这一发不轮换。
 - 后端藏掉工作目录是 `~/.cc-monitor/autostart/` 的会话（历史页 · 会话列表 · 流上的会话宣告）。
 
 ## AI 自己管额度：cc-monitor 的后端命令
@@ -86,10 +86,21 @@ scripts/quota-warm run         先跑一趟，之后按最早的醒点自己醒�
 
 <!-- 命令：quota-read quota-warm rotation-view rotation-use-now（生成物：照 `ccm -- --commands` 现打，勿手改；重打见 `tests/backend/stream/catalog_tests.rs`） -->
 - `ccm -- --quota-read`：这台的额度账。不收参数
+- `ccm -- --quota-warm`：给一个号开窗。参数 `QuotaWarmReq`
 - `ccm -- --rotation-view`：一个会话或一份策略此刻的轮换。参数 `RotationViewReq`
 - `ccm -- --rotation-use-now`：现在用这个号。参数 `RotationUseNowReq`
 
 ```ts
+type AgentKind = string;
+type QuotaWarmReq = { 
+/**
+ * 哪一家（线上的 kind）。
+ */
+agent: AgentKind, 
+/**
+ * 账号库里的号（配置目录末段；账号 0 是 `0`）。
+ */
+account: string, };
 type RotTarget = { sid: string, } | { strategy: string, };
 type RotationUseNowReq = { sid: string, account: string, };
 type RotationViewReq = { target: RotTarget, 

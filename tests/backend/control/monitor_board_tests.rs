@@ -47,7 +47,7 @@ fn title(name: &str, n: usize) -> Words {
 
 fn summary(machines: usize, live: usize, running: usize) -> Words {
     Words(copy_text(
-        "monitorBoard.summary",
+        "monitorBoard.head.summary",
         &[
             ("machines", &machines.to_string()),
             ("liveSessions", &live.to_string()),
