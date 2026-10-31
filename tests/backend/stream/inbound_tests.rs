@@ -1048,9 +1048,9 @@ fn the_hub_local_hop_reaches_every_inner_command() {
     let mut missed = Vec::new();
     for cmd in super::doors::HUB_INNER {
         // 空入参：多数条按自己的码拒；`cc-bus-install` 不看入参，会装进测试档的沙箱家（`src/common/test-home`）。只看它到没到。
-        if let Err((code, said)) = here.ask(cmd, serde_json::json!({})) {
-            if code == "unknown_command" {
-                missed.push(format!("{cmd}（{said}）"));
+        if let Err(f) = here.ask(cmd, serde_json::json!({})) {
+            if f.code.as_deref() == Some("unknown_command") {
+                missed.push(format!("{cmd}（{}）", f.said));
             }
         }
     }

@@ -8,6 +8,11 @@
 use super::*;
 use serde_json::json;
 
+/// 线上那一形的一台（经拨号核心那一处读，[`crate::dial::machine::loose`]）；读不动 ⇒ 它的码与那一句。
+fn host_of(m: &Value) -> Result<crate::dial::Host, Said> {
+    crate::dial::machine::loose(m).map_err(|(code, said)| Said::new(code, said))
+}
+
 // 下面除末尾 POSIX 那一节外都量 PowerShell 那一形（Windows 上开终端的那一行）：按方言显式取，不随跑测试的这台机器变。
 fn answer(args: &Value) -> Result<Value, Said> {
     answer_at(args, true, &found())
@@ -19,13 +24,13 @@ fn answer_at(args: &Value, powershell: bool, ssh: &SshClient) -> Result<Value, S
     let mut wire = args.clone();
     let mut hosts = Vec::new();
     if let Some(m) = args.get("machine").filter(|m| m.is_object()) {
-        let h = crate::dial::machine::loose(m)?;
+        let h = host_of(m)?;
         wire["machine"] = json!(h.name());
         hosts.push(h);
     }
     let obj = wire.as_object_mut().expect("入参是对象");
     if let Some(j) = obj.remove("jump").filter(|j| !j.is_null()) {
-        hosts.push(crate::dial::machine::loose(&j)?);
+        hosts.push(host_of(&j)?);
     }
     let req: TerminalSshReq =
         crate::wire::typed::take(&wire).map_err(|f| Said::new("bad_args", f.said))?;
@@ -591,7 +596,7 @@ fn login(
     let mut wire = args.clone();
     let mut hosts = Vec::new();
     if let Some(m) = args.get("machine").filter(|m| m.is_object()) {
-        let h = crate::dial::machine::loose(m)?;
+        let h = host_of(m)?;
         wire["machine"] = json!(h.name());
         hosts.push(h);
     }
@@ -733,7 +738,7 @@ fn parts_with_sid(
     if let Some(s) = sid {
         wire["sid"] = json!(s);
     }
-    let hosts = vec![crate::dial::machine::loose(&m)?];
+    let hosts = vec![host_of(&m)?];
     let req: TerminalSshReq =
         crate::wire::typed::take(&wire).map_err(|f| Said::new("bad_args", f.said))?;
     answer_with(&req, &hosts, &[], powershell, ssh, dir)

@@ -576,7 +576,8 @@ async fn race(
     let seen: Arc<Mutex<Option<String>>> = Arc::default();
     let seen_for_race = Arc::clone(&seen);
     let race = async move {
-        let mut set: JoinSet<Result<_, (&'static str, String)>> = JoinSet::new();
+        // 每个地址那一格没成 ⇒ 码是它停在的阶段（`resolve` · `tcp` · `hostkey` …），句子带那条地址。
+        let mut set: JoinSet<Result<_, Said>> = JoinSet::new();
         for ep in order {
             let stages = stages.clone();
             let observed: Seen = Arc::default();
@@ -607,9 +608,9 @@ async fn race(
                         )
                         .await
                         .map(|h| (h, far, via_proxy))
-                        .map_err(|e| (stage_of_russh(&e), e.to_string()))
+                        .map_err(|e| Said::new(stage_of_russh(&e), e.to_string()))
                     }
-                    Err((stage, e)) => Err((stage, e.to_string())),
+                    Err((stage, e)) => Err(Said::new(stage, e.to_string())),
                 };
                 if let Some(fp) = fingerprint_in(&observed) {
                     if let Ok(mut s) = seen.lock() {
@@ -625,20 +626,20 @@ async fn race(
                         via_proxy,
                         heard,
                     }),
-                    Err((stage, e)) => {
+                    Err(f) => {
                         stages.emit(crate::stage::failed(
                             ep.clone(),
                             &ep_label,
-                            &format!("[{stage}] {e}"),
+                            &format!("[{}] {}", f.code_or_fallback(), f.said),
                         ));
-                        Err((stage, format!("{ep_label} {e}")))
+                        Err(f.wrap(|e| format!("{ep_label} {e}")))
                     }
                 }
             });
         }
         let mut errors: Vec<String> = Vec::new();
         // 各地址没成的阶段：全输了按最说明问题的那一个记原因码（指纹不对 ＞ 解析不出 ＞ 拨不通 ＞ 超时 ＞ 别的）。
-        let mut worst: Option<&'static str> = None;
+        let mut worst: Option<String> = None;
         let rank = |s: &str| {
             ["hostkey", "resolve", "tcp", "timeout"]
                 .iter()
@@ -655,11 +656,12 @@ async fn race(
                     ));
                     return Ok(winner);
                 }
-                Ok(Err((stage, e))) => {
-                    if worst.is_none_or(|w| rank(stage) < rank(w)) {
-                        worst = Some(stage);
+                Ok(Err(f)) => {
+                    let stage = f.code_or_fallback();
+                    if worst.as_deref().is_none_or(|w| rank(stage) < rank(w)) {
+                        worst = Some(stage.to_string());
                     }
-                    errors.push(e)
+                    errors.push(f.said)
                 }
                 Err(je) if je.is_cancelled() => {}
                 Err(je) => errors.push(format!(
@@ -668,7 +670,7 @@ async fn race(
                 )),
             }
         }
-        stages.note_why(crate::why_of_stage(worst.unwrap_or("resolve")));
+        stages.note_why(crate::why_of_stage(worst.as_deref().unwrap_or("resolve")));
         // 句子只带原因词（按最说明问题的那一格）；各地址的原话进详情。
         Err(if errors.is_empty() {
             Said::from(copy_text("beConnect.race.noAddress", &[]))
@@ -677,7 +679,7 @@ async fn race(
                 copy_text(
                     "beConnect.race.allFailed",
                     &[
-                        ("why", &race_reason(worst)),
+                        ("why", &race_reason(worst.as_deref())),
                         ("addrs", &addr_list.to_string()),
                     ],
                 ),
