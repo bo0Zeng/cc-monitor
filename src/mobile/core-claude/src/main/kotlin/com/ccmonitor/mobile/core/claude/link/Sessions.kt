@@ -41,7 +41,6 @@ import com.ccmonitor.mobile.core.wire.gen.SessionQueueCancelReq
 import com.ccmonitor.mobile.core.wire.gen.SessionQueuePutReq
 import com.ccmonitor.mobile.core.wire.gen.SessionQueueReadReq
 import com.ccmonitor.mobile.core.wire.gen.SessionRewindOptionsReq
-import com.ccmonitor.mobile.core.wire.gen.TerminalInputReq
 import com.ccmonitor.mobile.core.wire.gen.HistoryRun as HistoryRunPage
 import com.ccmonitor.mobile.core.wire.gen.HistoryTail as HistoryTailReply
 import com.ccmonitor.mobile.core.wire.gen.Sent as SentWire
@@ -309,22 +308,8 @@ object SessionInterrupt {
     fun args(sid: String): Map<String, Any?> = Commands.SessionInterrupt.args(SessionInterruptReq(sid = sid, client = CLIENT))
 }
 
-/** `terminal-input`：往一条会话所在的终端送字或送键（那台过身份门、判送没送到）。 */
+/** 那台判的送没送到（`terminal-input` 回话那一形；`session-open` 第一句 · `session-interrupt` 的回包同形）。手机不发 `terminal-input`。 */
 object TerminalInput {
-    const val COMMAND: String = Commands.TerminalInput.NAME
-
-    /** 送字（原样送、末尾补回车）。 */
-    fun text(
-        sid: String,
-        text: String,
-    ): Map<String, Any?> = Commands.TerminalInput.args(TerminalInputReq(sid = sid, text = text))
-
-    /** 送键（`esc` 停这一轮 …）。 */
-    fun key(
-        sid: String,
-        key: String,
-    ): Map<String, Any?> = Commands.TerminalInput.args(TerminalInputReq(sid = sid, key = key))
-
     sealed interface Result {
         data object Delivered : Result
 
