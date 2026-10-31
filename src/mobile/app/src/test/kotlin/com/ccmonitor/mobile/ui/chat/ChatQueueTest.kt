@@ -59,7 +59,7 @@ class ChatQueueTest {
         }
 
     @Test
-    fun `撤 ⇒ 照编号请那台撤，照回的整份名单画；见过、名单里没了也不在已送进 ⇒ 算撤掉了`() =
+    fun `撤 ⇒ 照编号请那台撤，照回的整份名单画`() =
         runTest(UnconfinedTestDispatcher()) {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
@@ -74,10 +74,6 @@ class ChatQueueTest {
             q.cancel("a", "s1")
             assertEquals(mapOf("machine" to "<local>", "sid" to "s1", "id" to "a"), link.calls("session-queue-cancel").single())
             assertEquals(listOf("b"), q.lines().map { it.id })
-            assertEquals(true, q.gone("a"))
-            assertEquals(false, q.gone("b"))
-            assertEquals(false, q.gone("never-seen"))
-            assertEquals(true, q.holds("b"))
         }
 
     @Test

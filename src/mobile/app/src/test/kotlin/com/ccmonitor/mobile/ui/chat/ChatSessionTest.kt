@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.copy.copyText
@@ -92,12 +91,11 @@ class ChatSessionTest {
             runCurrent()
             assertEquals("new", s.state.value.sid)
             assertEquals(listOf("new" to "你好"), link.puts())
-            assertEquals("回执到了进流、标排着", DeliveryState.QUEUED, s.local().single().delivery)
-            assertTrue(s.box().isEmpty())
+            assertTrue("★ 回执到了 ⇒ 离开待发、流里不另画本地那一行（同桌面：之后照名单与记录）", s.local().isEmpty() && s.box().isEmpty())
+            assertEquals("回执那一下重问一次名单", 1, link.calls("session-queue-read").count { it!!["sid"] == "new" })
 
             link.line("new", 0, human("u1", "你好"))
             runCurrent()
-            assertEquals("记录里出现了这句人话 ⇒ 本地那句换成记录那一条", emptyList<RenderUnit.UserText>(), s.local())
             assertEquals(
                 listOf("u1"),
                 s.state.value.units
@@ -127,7 +125,7 @@ class ChatSessionTest {
             assertEquals("你好", opened?.get("prompt"))
             assertEquals("pre", s.state.value.sid)
             assertTrue("第一句已随起交了，不再送一遍", link.puts().isEmpty())
-            assertNull("送到了的不挂标", s.local().single().delivery)
+            assertTrue("送到了 ⇒ 离开待发、流里不另画", s.local().isEmpty() && s.box().isEmpty())
         }
 
     @Test
@@ -212,7 +210,7 @@ class ChatSessionTest {
             link.arrive("cx")
             runCurrent()
             assertEquals(listOf("cx" to "看一下"), link.puts())
-            assertEquals(DeliveryState.QUEUED, s.local().single().delivery)
+            assertTrue(s.local().isEmpty() && s.box().isEmpty())
         }
 
     @Test
@@ -370,26 +368,31 @@ class ChatSessionTest {
         }
 
     @Test
-    fun `同一句发了两回：记录里出现一回只消掉一句，另一句等它自己那一行`() =
+    fun `★ 同一句连发两回、记录里只来了第一句 ⇒ 第二句照那台名单还排着；这一端不按字面配对、不另留一行`() =
         runTest {
             val link = FakeCoreLink()
             val file = FakeCoreLink.File(mutableListOf(human("u0", "问")))
-            link.answer = { cmd, args -> if (cmd == "session-queue-put") queued else file.answer(cmd, args) ?: Reply.LinkDown }
+            val ids = mutableListOf<String>()
+            // 那台的名单：第一句已送进，第二句还排着。
+            val listed = { mapOf("items" to ids.drop(1).map { mapOf("seq" to 2, "id" to it, "end" to "mobile", "text" to "继续", "state" to "queued", "said" to "第 1", "from" to "手机") }, "sent" to ids.take(1)) }
+            link.answer = { cmd, args ->
+                when (cmd) {
+                    "session-queue-put" -> queued.also { ids += args!!["id"] as String }
+                    "session-queue-read" -> Reply.Ok(listed())
+                    else -> file.answer(cmd, args) ?: Reply.LinkDown
+                }
+            }
             link.report("s1", "/w")
             val s = existing(link)
             runCurrent()
             s.send("继续")
             s.send("继续")
             runCurrent()
-            assertEquals(2, s.local().size)
             link.line("s1", 1, human("u1", "继续"))
             runCurrent()
-            link.line("s1", 2, reply("a2", "好"))
-            runCurrent()
-            assertEquals("第二句的那一行还没来", 1, s.local().size)
-            link.line("s1", 3, human("u3", "继续"))
-            runCurrent()
             assertEquals(emptyList<RenderUnit.UserText>(), s.local())
+            assertTrue(s.box().isEmpty())
+            assertEquals("第二句照名单排着", listOf(ids[1]), s.state.value.queue.map { it.id })
         }
 
     @Test
@@ -428,7 +431,7 @@ class ChatSessionTest {
             assertNull("接上以后那一句撤掉", s.state.value.failedWhy)
         }
 
-    /** 回执：排着 ⇒ 排第几 · 那个编号收过、已不在排着 ⇒ 已送进；期限到了 · 断线 ⇒ 没回执、照旧发送中；那台拒了（码）⇒ 待发里标没送到、那一句照那台写的。 */
+    /** 回执（排着 · 那个编号收过）⇒ 离开待发；期限到了 · 断线 ⇒ 没回执、照旧发送中；那台拒了（码）⇒ 待发里标没送到、那一句照那台写的。 */
     @Test
     fun `回执 · 没回执 · 那台拒了：各是各的样子，字照文案表`() =
         runTest {
@@ -448,9 +451,7 @@ class ChatSessionTest {
                 s.send(t)
                 runCurrent()
             }
-            val (a, b) = s.local()
-            assertEquals("回执那一句照那台写的", DeliveryState.QUEUED to "q-1", a.delivery to a.deliveryText)
-            assertEquals(DeliveryState.QUEUED to "in", b.delivery to b.deliveryText)
+            assertTrue("回执到了的两句离开待发、流里不另画", s.local().isEmpty())
             val (c, d) = s.box()
             assertEquals(copyText("mobChat.delivery.sending") to false, c.said to c.failed)
             assertEquals(copyText("terminal.input.failed", "why" to "队满了") to true, d.said to d.retry)
