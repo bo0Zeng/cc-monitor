@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-// config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
+// config 写只交补丁；替身记下交出去的补丁，不应用。
 vi.mock("../../../src/frontend/ui/config", async (orig) => (await import("./config-patch-fake")).mockedConfigModule(orig));
 // 记账失败要出声：只换 toast 这一个出口，判据读它收到了什么。
 // 账号选不了的那句提示由 `withAccount` 自己出（调用方不各带「账号不可用」回调）。

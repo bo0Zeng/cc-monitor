@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -70,6 +71,8 @@ import org.koin.compose.koinInject
 fun AppNavHost() {
     val nav = rememberNavController()
     val tabManager = koinInject<SessionTabManager>() // 多 tab 总览状态 + per-key VM store
+    // 进程被收再回来：导航栈照旧回到 `session/<key>`，那个 tab 得先在册（不然当场退回）。要在 NavHost 之前交回。
+    rememberSaveable(saver = listSaver<SessionTabManager, String?>({ it.saved() }, { saved -> tabManager.also { it.restore(saved) } })) { tabManager }
     val chatController = koinInject<ChatController>()
     Surface(
         modifier = Modifier.fillMaxSize(),

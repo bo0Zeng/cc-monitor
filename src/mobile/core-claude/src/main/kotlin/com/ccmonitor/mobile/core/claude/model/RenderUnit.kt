@@ -85,7 +85,6 @@ sealed interface RenderUnit {
         override val key: String,
         val toolUseId: String,
         val name: String,
-        val input: Map<String, Any?>,
         val resultText: String?,
         val isError: Boolean,
         val pending: Boolean,
@@ -180,11 +179,9 @@ fun RenderUnit.searchableText(): String =
 private fun RenderUnit.ToolCall.toolCallSearchable(): String =
     buildString {
         append(name)
-        input.values.forEach { v ->
-            if (v != null) {
-                append('\n')
-                append(v.toString())
-            }
+        if (summary.isNotEmpty()) {
+            append('\n')
+            append(summary)
         }
         resultText?.let {
             append('\n')

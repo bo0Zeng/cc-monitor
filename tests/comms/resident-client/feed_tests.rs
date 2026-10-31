@@ -3,7 +3,7 @@
 //! 发完 hello 就死退避照样涨 · 问答等它接上 · 新连接的 attach 行带在看名单（握手中改了才补报） · 没装：装不了的要人动手、装得了的自己再试 ·
 //! 不是 Unix 两端都等人 · ［重新连接］在拨的时候按也算数、接上那一刻作废 · 断线重连之后数格。全部虚拟时钟。
 use super::*;
-use crate::backoff::RECONNECT_MIN;
+use crate::backoff::{PING_WITHIN, RECONNECT_MIN};
 use crate::client::CallError;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -77,6 +77,12 @@ enum Peer {
     Slow { gaps: Vec<u64>, then: Box<Peer> },
     /// 链路通了、每个方向的字节各晚 `lag` 到（握手成，之后照答）。
     Laggy { build: String, lag: Duration },
+    /// 那台忙（负载高、写日志等盘）：每条应答晚 `answer_after` 才写出；会话流照常，每 `frame_every` 来一帧。
+    Busy {
+        build: String,
+        answer_after: Duration,
+        frame_every: Duration,
+    },
     /// 拨号核心说没拨成（那一句 ＋ 原因码 ＋ 那台出示的指纹）。
     Refused(Problem),
 }
@@ -235,6 +241,14 @@ fn start_desk(f: &Arc<Fake>) -> (Arc<Feed<D>>, Seen) {
 async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
     let mut r = tokio::io::BufReader::new(s);
     let mute = matches!(peer, Peer::Mute { .. });
+    let busy = match &peer {
+        Peer::Busy {
+            answer_after,
+            frame_every,
+            ..
+        } => Some((*answer_after, *frame_every)),
+        _ => None,
+    };
     let (build, die_now) = match peer {
         Peer::Absent => {
             let _ = r
@@ -244,7 +258,9 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
             return;
         }
         Peer::Up { build, die_now } => (build, die_now),
-        Peer::Mute { build } | Peer::Laggy { build, .. } => (build, false),
+        Peer::Mute { build } | Peer::Laggy { build, .. } | Peer::Busy { build, .. } => {
+            (build, false)
+        }
         Peer::Hang | Peer::Slow { .. } | Peer::Refused(_) => {
             unreachable!("没人回话 / 还在拨 / 拨号拒了的那一拨开不出链路")
         }
@@ -305,6 +321,9 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
             .as_bytes()
         })
         .await;
+    if let Some((answer_after, frame_every)) = busy {
+        return serve_busy(r, answer_after, frame_every).await;
+    }
     loop {
         line.clear();
         let got = tokio::select! {
@@ -330,6 +349,46 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
             reply.as_object_mut().unwrap().remove("ok");
         }
         let _ = r.get_mut().write_all(format!("{reply}\n").as_bytes()).await;
+    }
+}
+
+/// [`Peer::Busy`] 握手之后那一段：读到的每条命令晚 `answer_after` 才回；另每 `frame_every` 自己发一帧会话流。
+async fn serve_busy(
+    mut r: tokio::io::BufReader<tokio::io::DuplexStream>,
+    answer_after: Duration,
+    frame_every: Duration,
+) {
+    let mut due: VecDeque<(tokio::time::Instant, String)> = VecDeque::new();
+    let mut next_frame = tokio::time::Instant::now() + frame_every;
+    let mut line = String::new();
+    loop {
+        let answer_at = due.front().map(|(at, _)| *at);
+        let out = tokio::select! {
+            n = r.read_line(&mut line) => {
+                if n.unwrap_or(0) == 0 {
+                    return;
+                }
+                let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+                line.clear();
+                let reply = serde_json::json!({"kind":"reply","id":v["id"],"ok":true,"data":{"from":[]}});
+                due.push_back((tokio::time::Instant::now() + answer_after, reply.to_string()));
+                continue;
+            }
+            () = tokio::time::sleep_until(answer_at.unwrap_or(next_frame)), if answer_at.is_some() => {
+                due.pop_front().map(|(_, l)| l).unwrap_or_default()
+            }
+            () = tokio::time::sleep_until(next_frame) => {
+                next_frame += frame_every;
+                r#"{"kind":"sessions_replayed"}"#.to_string()
+            }
+        };
+        if r.get_mut()
+            .write_all(format!("{out}\n").as_bytes())
+            .await
+            .is_err()
+        {
+            return;
+        }
     }
 }
 
@@ -1359,8 +1418,8 @@ async fn a_host_event_drops_a_hanging_dial_and_dials_again_at_once() {
     }
 }
 
-/// **连接自己的心跳**：流上 [`HEARTBEAT_IDLE`] 没来一个字节 ⇒ 问一句活（`ping`）；问出去 [`PING_WITHIN`] 还是一个字节都没来 ⇒
-/// 判这条死了、收掉重接（不等 SSH 保活：它要最后收包之后 20 秒才判死，判死之前网回来了，补发的包还要等 TCP 的退避）。
+/// **连接自己的心跳**：流上 [`HEARTBEAT_IDLE`] 没来一个字节 ⇒ 问一句活（`ping`）；没量过往返的连接一问等 [`PING_WITHIN`]，
+/// 连着 [`PING_MISSES`] 问都一个字节没来 ⇒ 判这条死了、收掉重接。
 /// 健康的空闲连接照答、不断；来着字节的连接（哪怕一行很长、还没读完）不问。
 #[tokio::test(start_paused = true)]
 async fn a_link_gone_silent_is_judged_dead_by_its_own_heartbeat() {
@@ -1379,8 +1438,8 @@ async fn a_link_gone_silent_is_judged_dead_by_its_own_heartbeat() {
     let gap = gaps_of(&f)[0];
     assert_eq!(
         gap,
-        (HEARTBEAT_IDLE + PING_WITHIN + RECONNECT_MIN).as_secs(),
-        "静了 {HEARTBEAT_IDLE:?} 问活、{PING_WITHIN:?} 没回话判死、隔下界重接"
+        (HEARTBEAT_IDLE + PING_WITHIN * PING_MISSES + RECONNECT_MIN).as_secs(),
+        "静了 {HEARTBEAT_IDLE:?} 问活、{PING_MISSES} 问各 {PING_WITHIN:?} 没回话判死、隔下界重接"
     );
     // 第二条照答：空闲十分钟不断，问活照问。
     tokio::time::sleep(Duration::from_secs(600)).await;
@@ -1396,8 +1455,35 @@ async fn a_link_gone_silent_is_judged_dead_by_its_own_heartbeat() {
     );
 }
 
+/// **那台忙、不是断了**：答 `ping` 要 8 秒（超过没量过往返时的问活期限），会话帧每 20 秒照常一条（帧之间隔得比「静了问活 ＋ 一问的期限」长）。
+/// 一问没等到 ⇒ 再问、不判死；等到的那一回量出往返，之后的期限照它放宽 ⇒ 一个小时里一直连着、一次都不重接。
+#[tokio::test(start_paused = true)]
+async fn a_busy_backend_that_answers_late_while_its_stream_flows_stays_up() {
+    let f = Arc::new(Fake::default());
+    f.attaches.lock().unwrap().push_back(Peer::Busy {
+        build: MINE.into(),
+        answer_after: Duration::from_secs(8),
+        frame_every: Duration::from_secs(20),
+    });
+    let (feed, seen) = start(&f);
+    until("流接上了", || up(&feed)).await;
+    tokio::time::sleep(Duration::from_secs(3600)).await;
+    let downs = seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|e| matches!(e, Event::State(State::Down { .. })))
+        .count();
+    assert_eq!(
+        (f.attach_at.lock().unwrap().len(), downs),
+        (1, 0),
+        "答得慢、流上照常有帧 ⇒ 不该判死重接（接了几回 · 断过几回）"
+    );
+    assert!(up(&feed), "一直连着");
+}
+
 /// 宿主报「网回来了 / 网变了 / 回前台」时**连着**（[`Feed::wake`]）⇒ 当场问一句活，不等下一次心跳：
-/// 没回话 ⇒ [`PING_WITHIN`] 判死重接；回了 ⇒ 照用。
+/// 没回话 ⇒ 与心跳同一个判法（连着 [`PING_MISSES`] 问）判死重接；回了 ⇒ 照用。
 #[tokio::test(start_paused = true)]
 async fn a_wake_while_up_asks_at_once() {
     let f = Arc::new(Fake::default());
@@ -1416,7 +1502,7 @@ async fn a_wake_while_up_asks_at_once() {
     .await;
     assert_eq!(
         gaps_of(&f)[0],
-        (Duration::from_secs(1) + PING_WITHIN + RECONNECT_MIN).as_secs(),
+        (Duration::from_secs(1) + PING_WITHIN * PING_MISSES + RECONNECT_MIN).as_secs(),
         "叫醒那一刻就问活"
     );
     tokio::time::sleep(Duration::from_secs(1)).await;

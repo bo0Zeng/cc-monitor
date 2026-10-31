@@ -152,6 +152,14 @@ pub(crate) fn scan_from(
     jsonl_path: &str,
     from: u64,
 ) -> Result<std::sync::Arc<super::super::record_scan::ScanMap>, String> {
+    let target = within(agent_home, jsonl_path, from)?;
+    super::super::record_scan::global()
+        .get(&target)
+        .map_err(|e| format!("open failed: {e}"))
+}
+
+/// 续取的那两条（[`scan_from`] · [`index_rows`]）共用：过围栏、`from` 不越过文件尾。
+fn within(agent_home: &Path, jsonl_path: &str, from: u64) -> Result<std::path::PathBuf, String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
     let len = Ro::metadata(&target)
         .map_err(|e| format!("stat failed: {e}"))?
@@ -161,8 +169,20 @@ pub(crate) fn scan_from(
             "`from` {from} is past EOF ({len} bytes): file was truncated or rewritten"
         ));
     }
+    Ok(target)
+}
+
+/// 骨架索引从字节 `from` 起的行（同一道围栏；照图切还是只读那一截见 [`super::super::record_scan::RecordScans::index_rows`]）。
+/// `from` 越过文件尾 ⇒ 报错（截断 / 重写过，调用方从 0 重要）。
+pub(crate) fn index_rows(
+    agent_home: &Path,
+    jsonl_path: &str,
+    from: u64,
+    take: impl FnMut(&super::super::recognize::index_row::IndexRow) -> bool,
+) -> Result<u64, String> {
+    let target = within(agent_home, jsonl_path, from)?;
     super::super::record_scan::global()
-        .get(&target)
+        .index_rows(&target, from, take)
         .map_err(|e| format!("open failed: {e}"))
 }
 

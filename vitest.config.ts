@@ -3,9 +3,7 @@ import { defineConfig } from "vitest/config";
 import { nodeModulesAllow } from "./vite.config";
 import { WALL_CEILING_MS } from "./tests/test-support/wall-ceiling";
 
-// DOM 单元测试（jsdom 环境）。**只挑 *.vitest.ts**，与既有手写 node 测试（*.test.ts，
-// 由 `tsx tests/X.test.ts` 跑纯函数）分流，互不干扰。新增需 DOM/模块 mock 的测试写成
-// `<name>.vitest.ts` 即自动纳入。
+// 前端测试只有这一套（jsdom 环境）：`tests/**/*.vitest.ts` 即自动纳入。
 // ── 🔴 显示时区与 locale 钉死在这里（09-19）────────────────────────────────────
 // 起因：断网沙箱里 `tests/frontend/ui/scale2-height-truth.vitest.ts` 红，而宿主上它绿 —— 同一个提交、
 // 同一份 node_modules。现打差异只有两条：宿主 `TZ=America/Los_Angeles` / `zh-CN`，
@@ -69,7 +67,7 @@ export default defineConfig({
     setupFiles: ["tests/test-support/pin-locale.ts", "tests/test-support/host-facts-default.ts"], // 默认 locale 钉在上面那行 `LANG` 上（Windows 那一半，见顶上）
     // F08b：覆盖率**设地板阈值（下方 thresholds）**——`npm run coverage` 与 CI 的 `coverage floor`
     // 步骤（ci.yml，**无 `|| true`=真·阻断门禁**）都吃它，低于地板即红。**不是** advisory、不是只报告。
-    // 只设「地板」不追「85% 全局」：覆盖只统计本 vitest(jsdom) 套件，`*.test.ts`(tsx node) 不计入，
+    // 只设「地板」不追「85% 全局」：覆盖只统计 `src/**` 被 vitest 套件跑到的部分，
     // 全局高目标会误红——故用「当前值下方 ~2-3% 的地板」只挡明显回归。
     // ⚠ 「收紧留后续按核心 DOM 模块 per-file」那半**已经做了**（`tests/scripts/assert-coverage-floors.mjs`，
     //   F17 下半建语句地板、08- 2b 补上分支地板）—— 本行原先还写着「留后续」，
@@ -80,15 +78,14 @@ export default defineConfig({
       include: ["src/**/*.ts"],
       exclude: [
         // 〔src/test 分离后〕测试与 test-support 已整体搬到 `tests/`，
-        // 而 `include` 只圈 `src/**` ⇒ 原先那四条（`*.test.ts` / `*.vitest.ts` /
+        // 而 `include` 只圈 `src/**` ⇒ 原先那几条（`*.vitest.ts` /
         // `test-support/**`）**已无对象可排**，删掉而不是留成死规则。
         // 留下的这两条仍有对象：`.d.ts` 与 `types.ts` 都住在 `src/` 里。
         "src/**/*.d.ts",
         "src/**/types.ts",
       ],
       // 地板棘轮（非追高目标）：设在当前值下方 ~2-3% 吸收环境/v8 版本差，只挡**明显回归**
-      // （如新增大块无测代码）。注：只统计 `*.vitest.ts`；`*.test.ts`(tsx node) 不计入
-      // → 故意不设 85% 全局。
+      // （如新增大块无测代码）→ 故意不设 85% 全局。
       //
       // **棘紧记录（E81）——每次棘都在这里追一行，别只改数字：**
       // - 建立时：实测 S48.98 / B41.15 / F44.60 / L50.41 ⇒ 地板 40 / 34 / 36 / 41。

@@ -246,12 +246,14 @@ pub fn line_starts(text: &str) -> Vec<usize> {
 }
 
 impl Preview {
-    /// 面板上摆着什么（判据与界面看同一个值）。
+    /// 面板上摆着什么（判据用；界面直接读字段，是同一个值）。
+    #[cfg(test)]
     pub fn view(&self) -> &View {
         &self.view
     }
 
-    /// 发出去过几趟。
+    /// 发出去过几趟（判据用）。
+    #[cfg(test)]
     pub fn fired(&self) -> u64 {
         self.fired
     }

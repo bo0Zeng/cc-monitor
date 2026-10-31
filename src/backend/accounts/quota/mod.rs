@@ -13,6 +13,7 @@ pub(crate) mod setup;
 pub(crate) mod show;
 pub(crate) mod spend;
 pub(crate) mod strategy;
+pub(crate) mod warm;
 
 /// ★ 派生事实「已重置、未计时」的唯一判法：这个窗口（或卡着的那一处）说的重置时刻已经过了 ⇒ 之后没再看到它，
 /// 上次的数不再作数（用量当 0、窗口没开）。说不出几点重置 ⇒ 不算（还在那一期里）。

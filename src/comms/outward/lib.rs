@@ -21,10 +21,6 @@
 //! - **代码标识符 → 用 `relay`**（模块名 · 函数名 · 环境变量 · 文件名），
 //!   在散文里引用它们时**加反引号**，那样读的人一眼知道那是个符号不是个词。
 //!
-//! 现打（步 8 收口）：全仓散文里裸着的 `relay` 只剩 **1 处** ——
-//! 当时 `relay/tee.rs` 头注里那条 NDJSON 样例的 `"source":"relay"`（线上字段的值，不是散文）。
-//! 那个 NDJSON 落点随独立 `--relay` 删了，那一处随之没了。
-//!
 //! ⚠ 落在用户机器上的 `relay` 字面量今天只剩**一个**：`CCM_RELAY_PORT`（中转监听的端口 —— 中转的，
 //! 名字是对的；两个 workspace 间**今天不由任何东西对拍**，见 `payload.rs` 那句逐字）。
 //! 凭据文件（`apikey-credentials.json`，住家里，位置只跟着家走）是**上游选择**的：读那份文件的是上游选择，
@@ -359,6 +355,9 @@ pub trait Destinations: Send + Sync {
     /// 哪几个请求头给流打标签（第一个在请求里、值过段闸的那个）。中转不知道它们是谁的什么头，
     /// 只照这份名单取 —— 会话 id 归 agent 自己，启动器不往地址里塞（路由第 3 段随之退役）。
     fn stream_label_headers(&self) -> Vec<&'static str>;
+
+    /// 上游那一跳还回来的连接空闲多久以内还拿去复用（过了就扔、新连；[`upstream::Pool`]）。值归后端，中转构造时问一次。
+    fn upstream_idle_reuse(&self) -> std::time::Duration;
 
     /// 中转要原样带回的请求头名单（头名比对不分大小写）。中转不知道它们是谁的什么头：出现在请求里、值过闸
     /// （`server.rs` 的 `value_is_safe`：逗号分隔的 token 列表）的，按 (名单上的名字, 值) 交给 [`Self::resolve`] 的 [`Ask::heads`]、

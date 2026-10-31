@@ -43,8 +43,8 @@
  *
  * ## 在不在门禁的执行链上
  *
- * 在。`tests/scripts/gate.sh` 的 `npm` 那一格跑 `npm test`，链末是
- * `test:dom` ＝ `vitest run`，而 `vitest.config.ts` 的 `include` 是
+ * 在。`tests/scripts/gate.sh` 的 `npm` 那一格跑 `npm test`
+ * ＝ `vitest run`，而 `vitest.config.ts` 的 `include` 是
  * `tests/**\/*.vitest.ts` ⇒ 本文件自动在里面。**不需要往 `gate.sh` 里加行**，
  * 加了反而成了第二处登记。现打验过：故意弄红本文件 ⇒ `npm test` 退出码非零。
  */
@@ -503,57 +503,6 @@ describe("S30 ⑦ 会被 hidden 切的元素，CSS 不许在它身上裸写 disp
 
 const CARRIERS: StateCarriers = stateCarriers(REPO_ROOT, stripCodeComments);
 
-/**
- * `classList.*(…)` 实参里一个字符串字面量都没有的调用点 —— 静态认不出切的是哪个类。逐处登记。
- * 键是「文件 · 调用原文」（不按行号 —— ⑦ 那张表逐轮漂行号的教训）。
- */
-const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
-  "src/frontend/ui/cards/brief.ts · classList.add(s.briefMore)":
-    "CSS Modules：给 kit 按钮挂派活框里［展开全部］的版位类；哈希过的类名，不是状态名",
-  "src/frontend/ui/kit/fold.ts · classList.add(s.foldCaret)":
-    "折叠号：svg 元素只能走 classList；`s.foldCaret` 是 CSS Modules 哈希名，开合靠所在元素的 `aria-expanded`，不是状态名",
-  "src/frontend/ui/kit/icon.ts · classList.add(s.icon)":
-    "图标件：svg 元素的 `className` 不是串、只能走 classList；`s.icon` 是 CSS Modules 哈希名，与 `data-*` 撞不了名",
-  "src/frontend/ui/rot-board.ts · classList.add(s.rotCardAdd)":
-    "CSS Modules：给 kit 按钮挂号牌那一排里［加号］的版位类；哈希过的类名，不是状态名",
-  "src/frontend/ui/rot-board.ts · classList.add(s.rotNull)": "同上（可空格子的空值说法那一颗）",
-  "src/frontend/ui/rot-board.ts · classList.add(s.rotPick)": "同上（第一行的策略下拉）",
-  "src/frontend/ui/rot-board.ts · classList.add(s.rotSwitch)": "同上（开关格）",
-  "src/frontend/ui/tab-bar-drag.ts · classList.add(s.ghostStack)":
-    "CSS Modules（`tab-group.module.css`）：几个一起拖时影子叠一层；哈希过的类名，只活在一次拖拽的影子上，不是状态名",
-  "src/frontend/ui/tab-bar-drag.ts · classList.add(s.hot)":
-    "CSS Modules（`tab-group.module.css`）：拖放时点亮落点所在的那一块组（ui3 组成块）；哈希过的类名，只活在一次拖拽里，不是状态名",
-  "src/frontend/ui/tab-bar-drag.ts · classList.remove(s.hot)":
-    "同上那一格的摘掉（换落点 / 收尾）",
-  "src/frontend/ui/tab-bar-drag.ts · classList.add(s.landed)":
-    "CSS Modules（`tab-group.module.css`）：落下那几行的底色淡出一次（600ms 后摘）；哈希过的类名，是一段动效，不是状态名",
-  "src/frontend/ui/tab-bar-drag.ts · classList.remove(s.landed)":
-    "同上那一格放完摘掉",
-  "src/frontend/ui/tab-bar-drag.ts · classList.toggle(s.ghostCancel, d.cancel)":
-    "CSS Modules（`tab-group.module.css`）：拖出栏时影子变灰；哈希过的类名，只活在一次拖拽的影子上，没有 `data-*` 那一种载体",
-  "src/frontend/ui/usage-hud.ts · classList.add(s.hudChip)":
-    "CSS Modules（`usage-hud.module.css`）：`s.hudChip` 是构建时哈希过的类名（数字等宽那一条），不是状态名；预警态走 kit chip 的 `data-intent`",
-  "src/frontend/ui/views/agent-window.ts · classList.add(s.awMark)":
-    "CSS Modules（agent 窗口）：给 kit 建的元素挂本页的版位类；哈希过的类名，不是状态名",
-  "src/frontend/ui/views/agent-window.ts · classList.add(s.awWhyAct)": "同上（状态不明那一句后的按钮）",
-  "src/frontend/ui/views/agent-window.ts · classList.add(sv.svPill)": "同上（「↓ 新内容」借只读查看器的样式）",
-  "src/frontend/ui/views/history-rows.ts · classList.add(s.hvDot)":
-    "CSS Modules（`history.module.css`）：给 kit 建的元素（状态点 · 徽标 · 按钮 · 提示条）挂本页的版位类；哈希过的类名，不是状态名",
-  "src/frontend/ui/views/history-rows.ts · classList.add(s.hvGroupNew)": "同上（项目头上的［＋ 新会话］）",
-  "src/frontend/ui/views/history-rows.ts · classList.add(s.hvMachine)": "同上（机器标签）",
-  "src/frontend/ui/views/history-rows.ts · classList.add(s.hvStar)": "同上（星标图标）",
-  "src/frontend/ui/views/history-rows.ts · classList.add(s.hvStrip)": "同上（列表顶的警示条）",
-  "src/frontend/ui/views/history.ts · classList.add(s.hvCount)": "同上（「筛选」上的数字徽标）",
-  "src/frontend/ui/views/history.ts · classList.add(s.hvViews)": "同上（「按时间 | 按项目」那一条分栏）",
-  "src/frontend/ui/views/history.ts · classList.add(s.hvFilterBtn)": "同上（「筛选」按钮：窄档只剩图标）",
-  "src/frontend/ui/views/history.ts · classList.add(s.hvToList)": "同上（窄档内容头左端的「← 列表」）",
-  "src/frontend/ui/views/plan.ts · classList.add(s.pvAuto)": "同上（计划页：给 kit 开关挂页头里的版位类「自动接着做」）",
-  "src/frontend/ui/views/session-viewer.ts · classList.add(sv.svPill)": "「↓ 新内容」那颗 kit 按钮叠上自己的定位类（不是状态名；露 / 收由 `hidden` 管）",
-  "src/frontend/ui/kit/split-button.ts · classList.add(s.splitMain)":
-    "CSS Modules（`split-button.module.css`）：给拆分按钮的两半（kit 按钮）挂拼接用的版位类；哈希过的类名，不是状态名",
-  "src/frontend/ui/kit/split-button.ts · classList.add(s.splitMore)": "同上（▾ 那一半）",
-} as const;
-
 /** 名字形的已知违例（今天空：立格时逮到的两处已改）。 */
 const STATE_NAME_KNOWN_BAD: Readonly<Record<string, string>> = {} as const;
 /** 同一处写两遍的已知违例（今天空：立格时逮到的一处已改）。 */
@@ -569,12 +518,12 @@ describe("S30 ⑧ 同一个状态名不许同现于类名与 data-* 两种载体
     expect(CARRIERS.classNames.has("open"), "`classList` 切的 `open` 都没认出来 ⇒ 取法坏了").toBe(true);
   });
 
-  it("解析不出类名的 classList 调用 == 登记表（不许静默跳过）", () => {
+  it("解析不出类名的 classList 调用一处都没有（CSS 模块成员按导入认）", () => {
     expect(
       sorted(new Set(CARRIERS.unresolved)),
-      "「静态认不出切的是哪个类」的调用点变了：多出来的要么登记进 STATE_CLASS_UNRESOLVED（写清为什么它不是状态名的第二种载体），\n" +
-        "要么把实参写成字面量；少了的把登记删掉。",
-    ).toEqual(sorted(Object.keys(STATE_CLASS_UNRESOLVED)));
+      "「静态认不出切的是哪个类」的调用点：实参既不是字符串字面量、也不是本文件 `import x from \"….module.css\"` 的 `x.<类>` ⇒\n" +
+        "把实参写成字面量或 CSS 模块成员。",
+    ).toEqual([]);
   });
 
   it("名字形：两种载体都出现过的状态名 == 已知违例表", () => {
@@ -629,6 +578,22 @@ describe("S30 ⑧ 同一个状态名不许同现于类名与 data-* 两种载体
     const f = fresh();
     stateCarriersOfTs("<合成>", "li.className = `gap gap-${g.kind}`;\nother.dataset.kind = g.kind;\nli.dataset.kind = g.other;\n", f);
     expect(f.sameWrite, "接收者或值不同也报 ⇒ 这把尺子不可信").toEqual([]);
+    // CSS 模块成员 · 阴：本文件导入的 `.module.css` 名字底下的成员不是状态名，不进「认不出」。
+    const g = fresh();
+    stateCarriersOfTs(
+      "<合成>",
+      'import s from "./a.module.css";\nx.classList.add(s.foo);\nx.classList.toggle(s.bar, on);\nx.classList.remove(s.a, s.b);\n',
+      g,
+    );
+    expect(g.unresolved, "CSS 模块成员被记成认不出 ⇒ 名单又会长回来").toEqual([]);
+    // 认不出 · 阳：导入的不是 `.module.css` · 普通变量 · 混了别的实参 · 没导入的名字，照记。
+    const h = fresh();
+    stateCarriersOfTs(
+      "<合成>",
+      'import s from "./a.module.css";\nimport t from "./theme";\nx.classList.add(t.foo);\nx.classList.add(cls);\nx.classList.add(s.foo, extra);\nx.classList.toggle(sv.bar);\n',
+      h,
+    );
+    expect(h.unresolved.length, "非 CSS 模块成员的实参被放过 ⇒ 这一族静默变瞎").toBe(4);
   });
 });
 

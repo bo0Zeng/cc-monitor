@@ -24,10 +24,46 @@ pub const DIAL_WITHIN: Duration = Duration::from_secs(10);
 /// 问活的回话把 SSH 保活的计时也续上，空闲时线上的包数不变）。
 pub const HEARTBEAT_IDLE: Duration = Duration::from_secs(10);
 
-/// 问活之后这么久一个字节都没来 ⇒ 判这条流死了、收掉重接。最后收到字节之后至多 [`HEARTBEAT_IDLE`] ＋ 它（15 秒）判死，
-/// 不再等 SSH 保活（最后收包之后 20 秒）；判死之前网就回来了的那种，旧连接上补发的包要等 TCP 的重传退避（断得越久等得越久），
-/// 判死重拨一条新的反而快。宿主报「网回来了 · 网变了 · 回前台」时连着 ⇒ 当场问一句（[`crate::feed::Feed::wake`]），这一问也按它判。
+/// 一问的期限下限：这条流还没量到往返、或量到的往返很短时，问活之后这么久一个字节都没来 ⇒ 这一问算没答。
+/// 测试连接那一问也用它。
 pub const PING_WITHIN: Duration = Duration::from_secs(5);
+
+/// 一问的期限上限：往返量得再长，一问也至多等这么久。
+pub const PING_CEIL: Duration = Duration::from_secs(30);
+
+/// 连着这么多问都没来一个字节 ⇒ 判这条流死了、收掉重接。一问没答只再问一句：那台忙（负载高、写盘被堵）时回话晚到，
+/// 不当成断。好链路上最后收到字节之后 [`HEARTBEAT_IDLE`] ＋ 两个 [`PING_WITHIN`]（20 秒）判死，与 SSH 保活同一个数；
+/// 宿主报「网回来了 · 网变了 · 回前台」时连着 ⇒ 当场问一句（[`crate::feed::Feed::wake`]），之后同一个判法。
+pub const PING_MISSES: u32 = 2;
+
+/// **一问的期限照这条流最近的往返放宽**（RFC 6298 那一式：平滑往返 ＋ 4 倍抖动，夹在 [`PING_WITHIN`] 与 [`PING_CEIL`] 之间）。
+/// 往返的一个样本是「问活发出去（没答再问的，从头一问算）到流上来下一行」。一条流一份，新连接从没量过开始。
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct PingWindow {
+    /// 平滑往返 · 抖动；没量过 ⇒ `None`。
+    est: Option<(Duration, Duration)>,
+}
+
+impl PingWindow {
+    /// 记一个往返样本。
+    pub(crate) fn sample(&mut self, r: Duration) {
+        self.est = Some(match self.est {
+            None => (r, r / 2),
+            Some((srtt, var)) => {
+                let dev = srtt.abs_diff(r);
+                (srtt * 7 / 8 + r / 8, var * 3 / 4 + dev / 4)
+            }
+        });
+    }
+
+    /// 此刻一问等多久。
+    pub(crate) fn window(&self) -> Duration {
+        match self.est {
+            None => PING_WITHIN,
+            Some((srtt, var)) => (srtt + var * 4).clamp(PING_WITHIN, PING_CEIL),
+        }
+    }
+}
 
 /// ★ **「本次连接算不算健康」的最短存活时长**〔audit-0805 F05 / 报告 I-1〕。
 ///

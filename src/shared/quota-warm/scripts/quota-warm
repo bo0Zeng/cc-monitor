@@ -8,16 +8,13 @@
 - 被拒（5h 或 7d 用满）⇒ 等到它重置；
 - 登录失效 ⇒ 记一行，过一阵再看。
 
-发法：官方 `claude -p` 经 ccm 起、走本机中转（额度账由中转记下）、这一发不轮换（ccm 的 --no-rotation），haiku · 不给工具 · 不起 MCP ·
-关掉思考 · 不落会话记录 · 系统提示词换成一句，工作目录用 `~/.cc-monitor/autostart`（后端在历史与会话列表里藏掉它）。
-实测一发（claude 2.1.289）：输入约 870 token（claude 自带、去不掉的那一段）· 输出 4 token。
-不换系统提示词时约 6.8k token：缓存热时按一成价算，可隔几小时才发一次时缓存早过期、要按写缓存价付 ⇒ 换掉更省。
+发法：调 cc-monitor 后端的 `ccm -- --quota-warm`（发那一句的做法只住后端一处，轮换判完开窗也走它），回包带回来的重置时刻。
 
 用法：
   quota-warm status             只读：列出各号的重置时刻
   quota-warm once               跑一趟（该发的发）后退出
   quota-warm run                先跑一趟，之后按最早的重置时刻自己醒来再跑，一直跑
-  选项：--accounts work,personal（不给 ⇒ quota-read 的 candidates：出过数的号 ＋ 账号库里没出过数的号）· --system '只回复字母a' · --text a · --model haiku · --dry-run
+  选项：--accounts work,personal（不给 ⇒ quota-read 的 candidates：出过数的号 ＋ 账号库里没出过数的号）· --dry-run
 """
 
 import argparse
@@ -32,12 +29,11 @@ from datetime import datetime
 HOME = os.path.expanduser("~")
 CCM_HOME = os.path.join(HOME, ".cc-monitor")
 CCM = os.path.join(CCM_HOME, "bin", "ccm")
-WORK_DIR = os.path.join(CCM_HOME, "autostart")
 LOG = os.path.join(CCM_HOME, "logs", "quota-warm.log")
 LOCK = os.path.join(CCM_HOME, "quota-warm.lock")
 
-RETRY_S = 15 * 60      # 发了没出新数 / 读不到额度账 ⇒ 过这么久再试
-SEND_TIMEOUT_S = 120
+RETRY_S = 15 * 60      # 发了没成 / 读不到额度账 ⇒ 过这么久再试
+SEND_TIMEOUT_S = 150   # 后端那一发自己的期限是 120 秒
 SLEEP_CHUNK_S = 600    # 长睡分段：机器休眠醒来后按真实时刻重算
 
 
@@ -56,15 +52,6 @@ def log(msg):
             f.write(line + "\n")
     except OSError:
         pass
-
-
-def ccm_env():
-    """交给 ccm 的环境：就是本进程的（新会话从调用方拿什么由 ccm 那一张继承表定：号照 --account、中转按这一发重新问、
-    嵌套标记清掉；在某条会话里跑时这一发记成它的子会话，轮换不跟随它），只多这一发自己要的两格。"""
-    env = dict(os.environ)
-    env["MAX_THINKING_TOKENS"] = "0"
-    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
-    return env
 
 
 def quota_read():
@@ -91,31 +78,28 @@ def judge(q, name):
     return w.get("act", "skip"), at, w.get("text", "")
 
 
-def send(name, system, text, model):
-    os.makedirs(WORK_DIR, mode=0o700, exist_ok=True)
-    argv = [
-        CCM, "-p", "--model", model, "--tools", "", "--no-session-persistence",
-        "--setting-sources", "project", "--strict-mcp-config", "--output-format", "json",
-        "--system-prompt", system, text, "--", "--account", name, "--cwd", WORK_DIR,
-        # 这一发不轮换：「新会话用」设成会换号的那一份时也落在点名的这个号上（不然预热白做）。
-        "--no-rotation",
-    ]
+def send(name):
+    """后端那一条命令发一句 ⇒ (回来的重置时刻 或 None, 说明)。"""
     try:
         p = subprocess.run(
-            argv, env=ccm_env(), cwd=WORK_DIR, stdin=subprocess.DEVNULL,
-            capture_output=True, text=True, timeout=SEND_TIMEOUT_S,
+            [CCM, "--", "--quota-warm"],
+            input=json.dumps({"agent": "claude", "account": name}),
+            cwd=HOME, capture_output=True, text=True, timeout=SEND_TIMEOUT_S,
         )
     except subprocess.TimeoutExpired:
-        return False, "超时"
+        return None, "超时"
+    if p.returncode != 0:
+        try:
+            e = json.loads(p.stderr.strip().splitlines()[-1])
+            return None, f"{e.get('code')}：{e.get('message')}"
+        except (ValueError, IndexError, AttributeError):
+            return None, f"退出码 {p.returncode}，回包读不懂"
     try:
         d = json.loads(p.stdout)
-        u = d.get("usage") or {}
-        return (not d.get("is_error")), (
-            f"in {u.get('input_tokens')} · cache {u.get('cache_read_input_tokens')} · "
-            f"out {u.get('output_tokens')}"
-        )
-    except (ValueError, AttributeError):
-        return False, f"退出码 {p.returncode}，回包读不懂"
+    except ValueError:
+        return None, "回包读不懂"
+    at = d.get("resets_at")
+    return at, ("发了" if d.get("sent") else "15 分钟内发过") + (f" ⇒ ↻{stamp(at)}" if at else "")
 
 
 def candidates(q):
@@ -128,7 +112,7 @@ def candidates(q):
     return seen
 
 
-def one_pass(accounts, system, text, model, dry_run):
+def one_pass(accounts, dry_run):
     """跑一趟，回下一次该醒的时刻。`accounts` 为空 ⇒ 这一趟照额度账的候选。"""
     try:
         q = quota_read()
@@ -142,20 +126,12 @@ def one_pass(accounts, system, text, model, dry_run):
             if dry_run:
                 log(f"{name}: {why} ⇒ 该发（--dry-run，没发）")
                 continue
-            started = time.time()
-            ok, info = send(name, system, text, model)
-            try:
-                q2 = quota_read()
-                e2 = next((a for a in q2.get("accounts", []) if a.get("account") == name), None)
-                heard = bool(e2 and (e2.get("seenAt") or 0) >= started - 5)
-                a2, at2, why2 = judge(q2, name)
-            except Exception:  # noqa: BLE001
-                heard, a2, at2, why2 = False, None, None, ""
-            if ok and heard and a2 == "wait":
-                log(f"{name}: {why} ⇒ 发了（{info}）⇒ {why2}")
-                wakes.append(at2)
+            at, info = send(name)
+            if at and at > time.time():
+                log(f"{name}: {why} ⇒ {info}")
+                wakes.append(at + 60)
             else:
-                log(f"{name}: {why} ⇒ 发了没成（{info}；额度账{'有' if heard else '没有'}新数）⇒ {stamp(time.time() + RETRY_S)} 再试")
+                log(f"{name}: {why} ⇒ 没成（{info}）⇒ {stamp(time.time() + RETRY_S)} 再试")
                 wakes.append(time.time() + RETRY_S)
         elif action == "wait":
             log(f"{name}: {why}")
@@ -188,9 +164,6 @@ def main():
     ap = argparse.ArgumentParser(description="让各账号的 5h 窗口尽早开始计时")
     ap.add_argument("mode", choices=["status", "once", "run"])
     ap.add_argument("--accounts", help="逗号分隔的账号名（不给 ⇒ 额度账的候选：出过数的 ＋ 账号库里没出过数的）")
-    ap.add_argument("--system", default="只回复字母a", help="换上的系统提示词")
-    ap.add_argument("--text", default="a", help="发的那一句")
-    ap.add_argument("--model", default="haiku")
     ap.add_argument("--dry-run", action="store_true", help="只判、不发")
     a = ap.parse_args()
     accounts = [x for x in (a.accounts or "").split(",") if x]
@@ -200,7 +173,7 @@ def main():
     lock = hold_lock()  # noqa: F841 —— 进程活着就一直持着
     log(f"开始（{a.mode}）：{', '.join(accounts) or '额度账的候选'}")
     while True:
-        wake = one_pass(accounts, a.system, a.text, a.model, a.dry_run)
+        wake = one_pass(accounts, a.dry_run)
         if a.mode == "once":
             return
         if wake is None:

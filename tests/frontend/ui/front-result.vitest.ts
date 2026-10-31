@@ -1,5 +1,5 @@
 /**
- * ↗ 结局 ⇒ 浮层：写好的那一张照摆（句子由 `cmd_wire::front` 写，逐种判在后端 `front_face_tests.rs`）；
+ * ↗ 结局 ⇒ 浮层：写好的那一张照摆（句子由 `face_core::front` 写，逐种判在 `tests/common/face-core/front_tests.rs`）；
  * 出口自己那一跳的失败（本机后端不认 · 期限到 · 断开 · 认不出）逐种手写期望。切过去了 ⇒ 什么都不出。
  * 接线（session-window 的 tmux 原样交壳、壳没对上摆后端那一张）在 `tabs.vitest.ts`「↗」那一组里走。
  */

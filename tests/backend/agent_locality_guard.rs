@@ -155,6 +155,11 @@ mod tests {
             ".jsonl",
             "cc-bus 收件箱的文件名（`<会话 id>.jsonl`，一行一封信封）：后端自己的落盘，不是哪个 agent 的会话格式知识。",
         ),
+        (
+            "common/file_class.rs",
+            "\"jsonl\"",
+            "按名字判一项是哪一种的扩展名表（`.jsonl` 文件算代码）：文件管理画图标 · 「类型」那一列用，不是哪个 agent 的会话格式知识。",
+        ),
         // `control/ccm/argv.rs` 那一条摘了：账号库的门牌号搬进后端的家（契约 crate 的 `ACCOUNTS_DIR_REL`），那里不再有 `.claude` 字样。
         // `observe/search_query.rs` 那一条摘了（第 8 批）：`history-search-merge` 的回包改成 typed 结构体，字面量 `"sessions"` 随之没了。
         // `faces/rotation_switch_face.rs` · `stream/inbound/registry/accounts.rs` 那两条摘了：「现在就换」随轮换第五版删了，登记表里也没有那一格了。
@@ -262,8 +267,7 @@ mod tests {
     ///
     /// ⚠ 先前这一行写着「`scan_tree!` **按构造摘掉调用者自己**」——
     /// 那一刀**在这一处不生效**：判据一律由 `#[path]` 挂进生产树，`file!()` 给的是
-    /// 带 `..` 的折返路径，后缀比不命中
-    /// （`the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split` 守着这件事）。
+    /// 带 `..` 的折返路径，后缀比不命中。
     /// 本条的人群里没有本文件，靠的是**住址**：判据住 `tests/backend/`，不在被扫的 `src/` 下。
     fn sources() -> Vec<(String, String)> {
         let src_dir = guard_core::addr::backend_src_root();

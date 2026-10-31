@@ -153,7 +153,7 @@ fn ctx_dynamic(c: &Ctx<'_>) -> Dynamic {
     Dynamic::from(m)
 }
 
-/// ctx 的 `session`：本会话量出来的，量不到的格是 `()`；`cached` ＝ `#{号: #{until, tokens}}`。
+/// ctx 的 `session`：本会话量出来的，量不到的格是 `()`；`bins` 恒是 36 格（旧的在前）；`cached` ＝ `#{号: #{until, tokens}}`。
 fn session_dynamic(me: &super::decide::Me) -> Dynamic {
     let int = |x: u64| Dynamic::from(i64::try_from(x).unwrap_or(i64::MAX));
     let opt = |v: Option<u64>| v.map_or(Dynamic::UNIT, int);
@@ -167,6 +167,12 @@ fn session_dynamic(me: &super::decide::Me) -> Dynamic {
     }
     let mut m = Map::new();
     m.insert("pace".into(), optf(me.pace));
+    m.insert("paceShort".into(), optf(me.pace_short));
+    m.insert("inflight".into(), optf(me.inflight));
+    let bins: rhai::Array = (0..crate::accounts::quota::spend::BINS)
+        .map(|i| optf(me.bins.get(i).copied().flatten()))
+        .collect();
+    m.insert("bins".into(), Dynamic::from(bins));
     m.insert("spread".into(), optf(me.spread));
     m.insert("context".into(), opt(me.context));
     m.insert("writeExtra".into(), optf(me.write_extra));
@@ -201,7 +207,7 @@ fn time(d: Option<&Dynamic>, what: &str) -> Result<Option<u64>, Fail> {
     }
 }
 
-/// 回值照形状收：`#{order: [号], why?: #{号: 一句}, hold_until?, wake?: #{at?, when?: [#{acct, w, used_at_least}]}, memo?}`。
+/// 回值照形状收：`#{order: [号], why?: #{号: 一句}, hold_until?, wake?: #{at?, when?: [#{acct, w, used_at_least}]}, warm?: [号], memo?}`。
 fn shape(v: Dynamic) -> Result<Verdict, Fail> {
     let bad = |m: &str| fail(FailKind::BadShape, None, m.to_string());
     let top = v
@@ -271,6 +277,18 @@ fn shape(v: Dynamic) -> Result<Verdict, Fail> {
                     used_at_least: n,
                 });
             }
+        }
+    }
+    if let Some(w) = top.get("warm").filter(|w| !w.is_unit()) {
+        let w = w
+            .clone()
+            .try_cast::<rhai::Array>()
+            .ok_or_else(|| bad("warm must be an array"))?;
+        for a in w {
+            out.warm.push(
+                a.into_string()
+                    .map_err(|_| bad("warm must list account ids"))?,
+            );
         }
     }
     if let Some(m) = top.get("memo").filter(|m| !m.is_unit()) {

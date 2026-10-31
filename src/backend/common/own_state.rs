@@ -7,7 +7,8 @@
 //! - 版本（从表取的、格式是 JSON 的那几份；[`Doc::read`] · [`Doc::read_as`]）：顶层整数 `version`，缺了当 1。
 //!   比声明新 ⇒ 读不出来（状态不覆盖、缓存当没有）；比下限老 ⇒ 当没有；中间的依次过升级步；`version` 那一格摘掉再交给 `T`。
 //!   流式读写的大缓存不经 `Value`：自己核顶层 `version`，值取 [`Doc::version`]。
-//! - 写：[`Doc::write`] 整份写、顶层自动带 `version`；盖新版状态 ⇒ 拒；盖旧版 ⇒ 原文先照字节留成 `<名>.v<N>`。
+//! - 写：[`Doc::write`] 整份写、顶层自动带 `version`；盘上那份状态比声明新 · 在却读不懂 ⇒ 拒（与读那一侧同一句；
+//!   要盖由调用方先删再写）；盖旧版 ⇒ 原文先照字节留成 `<名>.v<N>`。
 //!   一类多份的那几样文件名另给：[`Doc::write_named`]。字节是 [`json_body`]（紧凑 JSON ＋ 收尾换行）。
 
 use crate::common::said::Said;
@@ -198,7 +199,7 @@ impl<T: serde::de::DeserializeOwned> Doc<T> {
 
 impl<T: serde::Serialize> Doc<T> {
     /// 整份写进 `dir` 底下这份（名字是落点的最后一截），`held` 是 `dir` 的锁。从表取的 JSON：顶层带 `version`；
-    /// 盘上那一份是状态且比声明新 ⇒ 拒、一个字节不动；比声明老 ⇒ 原文先照字节留成 `<名>.v<N>`（已有不动）。
+    /// 盘上那一份是状态且比声明新 · 在却读不懂 ⇒ 拒、一个字节不动；比声明老 ⇒ 原文先照字节留成 `<名>.v<N>`（已有不动）。
     pub(crate) fn write(
         &self,
         own: &Own,
@@ -231,7 +232,8 @@ impl<T: serde::Serialize> Doc<T> {
         own.write(&at, held, &body)
     }
 
-    /// 盖之前看一眼盘上那一份：新版 ⇒ 拒；旧版 ⇒ 留一份 `<名>.v<N>`。不在 · 读不懂 ⇒ 不管（读不懂的盖不盖由调用方定）。
+    /// 盖之前看一眼盘上那一份：不在 ⇒ 照写；新版 · 读不懂 ⇒ 拒，与读那一侧同一句（要盖一份读不懂的 ⇒ 调用方先删再写）；
+    /// 旧版 ⇒ 留一份 `<名>.v<N>`。
     fn keep_older(
         &self,
         own: &Own,
@@ -241,15 +243,14 @@ impl<T: serde::Serialize> Doc<T> {
         held: &OwnLock,
         version: u32,
     ) -> Result<(), Said> {
-        let Read::Present(bytes) = read_bytes(at.as_path(), self.cap) else {
-            return Ok(());
+        let bytes = match read_bytes(at.as_path(), self.cap) {
+            Read::Absent => return Ok(()),
+            Read::Unreadable(e) => return Err(e),
+            Read::Present(b) => b,
         };
-        let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
-            return Ok(());
-        };
-        let Ok(found) = on_disk_version(at.as_path(), &v) else {
-            return Ok(());
-        };
+        let v = serde_json::from_slice::<serde_json::Value>(&bytes)
+            .map_err(|e| not_json(at.as_path(), e))?;
+        let found = on_disk_version(at.as_path(), &v)?;
         if found > u64::from(version) {
             return Err(newer(at.as_path(), found, version));
         }

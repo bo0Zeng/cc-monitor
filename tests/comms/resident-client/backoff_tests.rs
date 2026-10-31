@@ -83,6 +83,7 @@ fn both_ends_take_the_backoff_from_here() {
         "DIAL_WITHIN",
         "HEARTBEAT_IDLE",
         "PING_WITHIN",
+        "PING_CEIL",
     ] {
         assert_eq!(
             here.matches(&format!("pub const {name}: Duration")).count(),
@@ -148,4 +149,31 @@ fn both_ends_take_the_backoff_from_here() {
             "Kotlin 落地那一份里又有了一份退避（`{name}`）"
         );
     }
+}
+
+/// 一问的期限：没量过 ⇒ 下限；量到的往返短 ⇒ 仍是下限；那台答得慢（8 秒）⇒ 平滑往返 ＋ 4 倍抖动放宽（8 ＋ 4×4 ＝ 24 秒）；
+/// 再慢也封顶；之后一串快的样本让它慢慢收回下限。
+#[test]
+fn the_ping_window_follows_the_measured_round_trip_between_floor_and_ceiling() {
+    use crate::backoff::{PingWindow, PING_CEIL, PING_WITHIN};
+    assert_eq!(
+        (PING_WITHIN, PING_CEIL),
+        (Duration::from_secs(5), Duration::from_secs(30))
+    );
+    let mut w = PingWindow::default();
+    assert_eq!(w.window(), PING_WITHIN);
+    w.sample(Duration::from_millis(40));
+    assert_eq!(w.window(), PING_WITHIN, "好链路的往返远小于下限");
+
+    let mut busy = PingWindow::default();
+    busy.sample(Duration::from_secs(8));
+    assert_eq!(busy.window(), Duration::from_secs(24));
+    let mut worse = busy;
+    worse.sample(Duration::from_secs(60));
+    assert_eq!(worse.window(), PING_CEIL);
+
+    for _ in 0..40 {
+        busy.sample(Duration::from_millis(40));
+    }
+    assert_eq!(busy.window(), PING_WITHIN, "负载退了，期限收回下限");
 }

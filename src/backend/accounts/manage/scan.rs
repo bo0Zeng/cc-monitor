@@ -4,7 +4,7 @@
 use super::model::Manifest;
 use crate::common::said::IntoNote as _;
 use crate::platform::acct_view::{self, Item};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 /// 清单读取上限（账号数有限，几 MB 足矣）。
@@ -127,6 +127,9 @@ pub(crate) struct Snapshot {
     /// 读得出来 ⇒ `Some(Ok)`；在却读不动 / 解不开 ⇒ `Some(Err(那句话))`；不在 ⇒ `None`。
     pub manifest: Option<Result<Manifest, String>>,
     pub shared: DirState,
+    /// 按需才建的那几个（[`super::layout::shared_on_demand`]）里，共享库里此刻是一个空目录的那几个名字
+    /// （修复把它当「共享库还没有」：恰好一个号有实体 ⇒ 摘掉空的、挪那一份过去）。
+    pub empty_shared: BTreeSet<String>,
     /// 账号库目录本身在不在。
     pub accts: DirState,
     /// `$HOME` 下那几份原生根是家目录的身份文件。
@@ -199,6 +202,14 @@ pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) ->
         manifest,
         ..Snapshot::default()
     };
+    for n in super::layout::shared_on_demand() {
+        let at = join(&shared, n);
+        if matches!(snap.shared.get(n), Item::Dir { .. })
+            && crate::platform::fs::Ro::read_dir(&at).is_ok_and(|mut rd| rd.next().is_none())
+        {
+            snap.empty_shared.insert((*n).to_string());
+        }
+    }
     for (name, home_rooted, _) in super::layout::identity() {
         if home_rooted {
             snap.home_items.insert(
