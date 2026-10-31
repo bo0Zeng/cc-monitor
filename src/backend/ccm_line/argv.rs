@@ -57,8 +57,7 @@ pub(crate) mod flag {
 }
 
 /// 这个词是不是 ccm 自己认的（壳层选项 ＋ `--ccm-*` 诊断口）：解析器认右边那个词的同一处（[`right_word`]）。
-/// 后端 CLI 面不许派生出这样的名字（`stream::cli::cli_exposed`）。不经解析器的报错那一支：那一支要问后端认不认这个词，
-/// 而后端的子命令集合又要问这里，绕一圈就是自己问自己。
+/// 后端 CLI 面不许派生出这样的名字（`stream::cli::cli_exposed`）：后端的子命令集合要问这里，这里不许再问回去。
 pub(crate) fn is_ccm_word(word: &str) -> bool {
     right_word(word).is_some()
 }
@@ -279,15 +278,8 @@ pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
         _ => (a, None),
     };
     let Some(known) = right_word(a) else {
-        // 右边认不得 ⇒ 报错。是后端子命令 / 流词（它们只能紧跟打头的 `--`）⇒ 说清为什么。
-        return die(if i == 0 && super::is_backend_word(a) {
-            copy_text(
-                "beArgv.parse.backendWordAfterClaudeArgs",
-                &[("w", &a.to_string())],
-            )
-        } else {
-            copy_text("beArgv.parse.unknownRight", &[("w", &a.to_string())])
-        });
+        // 右边认不得 ⇒ 报错。那一句同时说清后端子命令只能紧跟打头的 `--`：认不认它是不是子命令要问命令表，这一层不问。
+        return die(copy_text("beArgv.parse.unknownRight", &[("w", &a.to_string())]));
     };
     // `--flag <值>` / `--flag=<值>`：值与占几个词。
     let one = || -> Result<(String, usize), Die> {
