@@ -191,52 +191,142 @@ fn identity_chars_ok(s: &str) -> bool {
     s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
-fn user_id_identity(body: &serde_json::Value) -> Option<Option<String>> {
-    let Some(raw) = body.get("metadata").and_then(|m| m.get("user_id")) else {
-        return Some(None);
+/// 请求体里账号身份那一格（`metadata.user_id` 这段 JSON 串里的 `account_uuid`）读出来是什么。
+#[derive(Debug, PartialEq, Eq)]
+enum BodyIdentity {
+    /// 整份不是一个 JSON 对象。
+    NotJson,
+    /// 没有这一格（没有 `metadata` · 它不是对象 · 里面没有 `user_id` · 那段串里没有 `account_uuid`）。
+    Absent,
+    /// 有这一格，但读不出（`user_id` 不是串 · 那段串不是 JSON · `account_uuid` 不是串）。
+    Odd,
+    Has(String),
+}
+
+/// 请求体的外形只取 `metadata` 这一格；别的格（几 MB 的 `messages` 之类）由 serde 原地跳过，不建树、不分配。
+#[derive(serde::Deserialize)]
+struct BodyCells {
+    #[serde(default)]
+    metadata: MetaCells,
+}
+
+/// `metadata` 里只留 `user_id`（一段几百字节的 JSON 串）；`metadata` 不是对象 ⇒ 当没有这一格。
+#[derive(Default)]
+struct MetaCells {
+    user_id: Option<serde_json::Value>,
+}
+
+impl<'de> serde::Deserialize<'de> for MetaCells {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        d.deserialize_any(MetaVisitor)
+    }
+}
+
+struct MetaVisitor;
+
+impl<'de> serde::de::Visitor<'de> for MetaVisitor {
+    type Value = MetaCells;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("metadata")
+    }
+
+    fn visit_map<M: serde::de::MapAccess<'de>>(self, mut m: M) -> Result<MetaCells, M::Error> {
+        let mut user_id = None;
+        while let Some(k) = m.next_key::<std::borrow::Cow<'de, str>>()? {
+            if k == "user_id" {
+                user_id = Some(m.next_value::<serde_json::Value>()?);
+            } else {
+                m.next_value::<serde::de::IgnoredAny>()?;
+            }
+        }
+        Ok(MetaCells { user_id })
+    }
+
+    fn visit_seq<S: serde::de::SeqAccess<'de>>(self, mut s: S) -> Result<MetaCells, S::Error> {
+        while s.next_element::<serde::de::IgnoredAny>()?.is_some() {}
+        Ok(MetaCells::default())
+    }
+
+    fn visit_unit<E>(self) -> Result<MetaCells, E> {
+        Ok(MetaCells::default())
+    }
+
+    fn visit_bool<E>(self, _: bool) -> Result<MetaCells, E> {
+        Ok(MetaCells::default())
+    }
+
+    fn visit_i64<E>(self, _: i64) -> Result<MetaCells, E> {
+        Ok(MetaCells::default())
+    }
+
+    fn visit_u64<E>(self, _: u64) -> Result<MetaCells, E> {
+        Ok(MetaCells::default())
+    }
+
+    fn visit_f64<E>(self, _: f64) -> Result<MetaCells, E> {
+        Ok(MetaCells::default())
+    }
+
+    fn visit_str<E>(self, _: &str) -> Result<MetaCells, E> {
+        Ok(MetaCells::default())
+    }
+}
+
+fn body_identity(body: &[u8]) -> BodyIdentity {
+    let Ok(cells) = serde_json::from_slice::<BodyCells>(body) else {
+        return BodyIdentity::NotJson;
     };
-    let inner: serde_json::Value = serde_json::from_str(raw.as_str()?).ok()?;
+    let Some(raw) = cells.metadata.user_id else {
+        return BodyIdentity::Absent;
+    };
+    let Some(Ok(inner)) = raw.as_str().map(serde_json::from_str::<serde_json::Value>) else {
+        return BodyIdentity::Odd;
+    };
     match inner.get("account_uuid") {
-        None => Some(None),
-        Some(v) => v.as_str().map(|s| Some(s.to_string())),
+        None => BodyIdentity::Absent,
+        Some(v) => v
+            .as_str()
+            .map_or(BodyIdentity::Odd, |s| BodyIdentity::Has(s.to_string())),
     }
 }
 
 /// 请求体里账号身份那一格的值（`metadata.user_id` 这段 JSON 串里的 `account_uuid`）：没有 / 读不出 / 空串 / 不像一个 id ⇒ `None`。
 pub(crate) fn identity_of_body(body: &[u8]) -> Option<String> {
-    let v: serde_json::Value = serde_json::from_slice(body).ok()?;
-    user_id_identity(&v)
-        .flatten()
-        .filter(|s| !s.is_empty() && identity_chars_ok(s))
+    match body_identity(body) {
+        BodyIdentity::Has(s) if !s.is_empty() && identity_chars_ok(&s) => Some(s),
+        _ => None,
+    }
 }
 
 /// 请求体里账号身份那一格（`metadata.user_id` 这段 JSON 串里的 `account_uuid`）换成 `uuid`：只换那几个字节，别的一个字节不动。
 /// 没有这一格 ⇒ [`IdentityCell::Absent`]；那几个字节在整份里不是恰好一处、或换完读回来对不上 ⇒ [`IdentityCell::Unsure`]。
+/// 认旧值与读回比对都只取那一格（[`body_identity`]）；手里多出来的只有换好的那一份。
 pub(crate) fn rewrite_identity(body: &[u8], uuid: &str) -> IdentityCell {
     if !identity_chars_ok(uuid) {
         return IdentityCell::Unsure;
     }
-    let Ok(v) = serde_json::from_slice::<serde_json::Value>(body) else {
-        return IdentityCell::Absent;
-    };
-    let old = match user_id_identity(&v) {
-        Some(None) => return IdentityCell::Absent,
-        Some(Some(old)) => old,
-        None => return IdentityCell::Unsure,
+    let old = match body_identity(body) {
+        BodyIdentity::NotJson | BodyIdentity::Absent => return IdentityCell::Absent,
+        BodyIdentity::Odd => return IdentityCell::Unsure,
+        BodyIdentity::Has(old) => old,
     };
     let cell = |u: &str| format!("\\\"account_uuid\\\":\\\"{u}\\\"");
     let Ok(text) = std::str::from_utf8(body) else {
         return IdentityCell::Unsure;
     };
     let needle = cell(&old);
-    if text.matches(&needle).count() != 1 {
+    let mut hits = text.match_indices(&needle);
+    let (Some((at, _)), None) = (hits.next(), hits.next()) else {
         return IdentityCell::Unsure;
-    }
-    let out = text.replacen(&needle, &cell(uuid), 1).into_bytes();
-    let back = serde_json::from_slice::<serde_json::Value>(&out)
-        .ok()
-        .and_then(|v| user_id_identity(&v));
-    if back != Some(Some(uuid.to_string())) {
+    };
+    // 换好的那一份按最终长度一次分配（不按 `push` 翻倍长，免得换的那一刻手里有一份半）。
+    let with = cell(uuid);
+    let mut out = Vec::with_capacity(body.len() - needle.len() + with.len());
+    out.extend_from_slice(&body[..at]);
+    out.extend_from_slice(with.as_bytes());
+    out.extend_from_slice(&body[at + needle.len()..]);
+    if body_identity(&out) != BodyIdentity::Has(uuid.to_string()) {
         return IdentityCell::Unsure;
     }
     IdentityCell::Rewritten(out)

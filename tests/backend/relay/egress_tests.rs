@@ -1,7 +1,7 @@
 //! 中转去上游经出网口：真中转 ＋ 生产段的上游选择，上游是内置的 `https://api.anthropic.com`，出网描述指到沙箱里的假 HTTP CONNECT 代理。
 //! 直连那一路被测试档断言断着（出网口真开 TCP 的那个目的地不是回环 ⇒ panic），所以假代理收到那一问 ＝ 这一发经了代理。
 
-use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
+use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, UPSTREAM_DEADLINE};
 use super::two_form_tests::Taps;
 use crate::accounts::upstream_select::{table::RoutingTable, Accounts, Upstreams};
 use comms_outward::{Relay, TeeSink};
@@ -56,6 +56,7 @@ fn a_relayed_request_reaches_the_upstream_through_the_configured_proxy() {
         }),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
+        INFLIGHT_BODY_CAP,
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
@@ -118,6 +119,7 @@ fn a_session_launched_with_a_proxy_reaches_the_upstream_through_that_proxy() {
         super::open_for(egress_of(&own)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
+        INFLIGHT_BODY_CAP,
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
