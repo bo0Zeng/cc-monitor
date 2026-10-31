@@ -392,7 +392,7 @@ fn transcripts_and_live_session_records_are_linked_even_when_the_shared_store_ha
 }
 
 /// 认不得的不链：共享库顶层不在已知共享表里的（`bridge-spawn` · `ssh` · 普通文件 · 锁的临时件，权限不论）一项都不进共享集；
-/// 已知的那一项 `0600` 也照链。号里 cc-monitor 早先建的 `bridge-spawn → 共享库/bridge-spawn` ⇒ 对齐与修复都摘掉这条链
+/// 已知的那一项 `0600` 也照链。号里 cc-monitor 建过的 `bridge-spawn → 共享库/bridge-spawn` ⇒ 对齐与修复都摘掉这条链
 /// （链的目标一个字节不动）；号里的 `bridge-spawn` 是实体 ⇒ 不动。
 #[test]
 fn only_known_shared_names_are_linked_and_old_links_to_unknown_ones_are_dropped() {
