@@ -970,7 +970,10 @@ impl Desk {
                         }),
                         ..opened(key, OpenState::Opened)
                     },
-                    Err((c, m)) => not_opened(key, c, m, None),
+                    Err(s) => {
+                        let code = s.code_or_fallback().to_string();
+                        not_opened(key, &code, s.said, s.raw)
+                    }
                 }
             })
             .collect();
@@ -1234,19 +1237,18 @@ fn open_upload(
     dial: &Dial,
     local: &str,
     home: Option<String>,
-) -> Result<(String, String), (&'static str, String, Option<String>)> {
+) -> Result<(String, String), crate::common::said::Said> {
     let meta = Ro::metadata(local).map_err(|e| {
         let said = copy_text(
             "beTransfer.local.readFailed",
             &[("path", local), ("why", &io_reason(e.kind()))],
         );
-        ("io_failed", said, Some(e.to_string()))
+        crate::common::said::Said::with_raw(said, &e).coded("io_failed")
     })?;
     if !meta.is_file() {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "refused",
             copy_text("beTransfer.local.notRegular", &[("path", local)]),
-            None,
         ));
     }
     let mtime_ns = meta
@@ -1266,7 +1268,7 @@ fn open_upload(
         key: Some(key.clone()),
         cancel: Arc::new(Cancel::default()),
     };
-    let id = register(tickets, t).map_err(|(c, m)| (c, m, None))?;
+    let id = register(tickets, t)?;
     Ok((id, key))
 }
 
@@ -1306,7 +1308,10 @@ pub(crate) async fn upload_with(
                         overwrite,
                         ..opened(key, OpenState::Opened)
                     },
-                    Err((code, said, raw)) => not_opened(key, code, said, raw),
+                    Err(s) => {
+                        let code = s.code_or_fallback().to_string();
+                        not_opened(key, &code, s.said, s.raw)
+                    }
                 },
             }
         })

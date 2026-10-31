@@ -18,11 +18,11 @@ struct Local {
 }
 
 impl Ends for Local {
-    fn walk<'a>(&'a self, path: &'a str) -> Fut<'a, Result<Vec<Entry>, Miss>> {
+    fn walk<'a>(&'a self, path: &'a str) -> Fut<'a, Result<Vec<Entry>, Said>> {
         Box::pin(async move {
             let p = Path::new(path);
             let Ok(m) = fs::metadata(p) else {
-                return Err(crate::common::said::Said::new("io_failed", Said::from(format!("missing {path}"))));
+                return Err(crate::common::said::Said::new("io_failed", format!("missing {path}")));
             };
             // 源那台上的树按铺的时候那张清单答（判据不自己遍历目录）。
             let mut out = vec![Entry {
@@ -49,10 +49,10 @@ impl Ends for Local {
     fn there<'a>(&'a self, path: &'a str) -> Fut<'a, Option<bool>> {
         Box::pin(async move { fs::symlink_metadata(path).ok().map(|m| m.is_dir()) })
     }
-    fn mkdir<'a>(&'a self, dir: &'a str, name: &'a str) -> Fut<'a, Result<(), Miss>> {
+    fn mkdir<'a>(&'a self, dir: &'a str, name: &'a str) -> Fut<'a, Result<(), Said>> {
         Box::pin(async move {
             fs::create_dir(Path::new(dir).join(name))
-                .map_err(|e| ("io_failed", Said::from(e.to_string())))
+                .map_err(|e| Said::new("io_failed", e.to_string()))
         })
     }
     fn copy_file<'a>(
@@ -63,16 +63,16 @@ impl Ends for Local {
         overwrite: bool,
         _stop: &'a (dyn Fn() -> bool + Send + Sync),
         sent: &'a (dyn Fn(u64) + Send + Sync),
-    ) -> Fut<'a, Result<u64, Miss>> {
+    ) -> Fut<'a, Result<u64, Said>> {
         Box::pin(async move {
             let to = Path::new(dir).join(name);
             if to.exists() && !overwrite {
-                return Err(crate::common::said::Said::new("exists", Said::from("exists".to_string())));
+                return Err(crate::common::said::Said::new("exists", "exists".to_string()));
             }
             // 走到一半报一次（替身里「一半」＝ 一半字节），传完报整份。
             let len = fs::metadata(from).map(|m| m.len()).unwrap_or(0);
             sent(len / 2);
-            let n = fs::copy(from, &to).map_err(|e| ("io_failed", Said::from(e.to_string())))?;
+            let n = fs::copy(from, &to).map_err(|e| Said::new("io_failed", e.to_string()))?;
             sent(n);
             let k = self.files.fetch_add(1, Ordering::SeqCst) + 1;
             (self.after)(k);
@@ -341,32 +341,29 @@ impl RigBackend {
     ) -> Result<serde_json::Value, crate::common::said::Said> {
         use crate::wire::typed::take;
         let face = crate::platform::fs::Face::issue();
-        let w = |f: crate::control::files_write::WriteFail| (f.code.to_string(), f.said);
-        let t = |f: crate::common::said::Said| (f.code_or_fallback().to_string(), f.said);
         let v = match flag {
             "files-home" => {
-                take::<cwf::HomeReq>(args).map_err(t)?;
+                take::<cwf::HomeReq>(args)?;
                 serde_json::json!({ "path": rig::HOME })
             }
             "files-mkdir" => serde_json::to_value(
                 crate::control::files_write::answer(
-                    take::<cwf::FilesMkdirReq>(args).map_err(t)?,
+                    take::<cwf::FilesMkdirReq>(args)?,
                     &face,
-                )
-                .map_err(w)?,
+                )?,
             )
             .unwrap(),
             "files-commit-upload" => serde_json::to_value(
                 crate::control::files_commit::commit_upload_at(
                     &face,
                     &self.disk,
-                    take::<cwf::FilesCommitUploadReq>(args).map_err(t)?,
+                    take::<cwf::FilesCommitUploadReq>(args)?,
                     &crate::Tz::default(),
                 )
-                .map_err(|e| w(e.flat()))?,
+                .map_err(|e| e.flat())?,
             )
             .unwrap(),
-            other => return Err(crate::common::said::Said::new("unknown_command".to_string(), other.to_string())),
+            other => return Err(crate::common::said::Said::new("unknown_command", other.to_string())),
         };
         Ok(v)
     }
@@ -407,11 +404,10 @@ impl crate::dial::remote_ask::Remote for RigBackend {
         );
         self.asked.lock().unwrap().push(match &out {
             Ok(_) => flag,
-            Err((c, m)) => format!("{flag} ✗ {c}: {m}"),
+            Err(s) => format!("{flag} ✗ {}: {}", s.code_or_fallback(), s.said),
         });
         Box::pin(async move {
             out.map(|v| v.to_string().replace(&disk, rig::HOME))
-                .map_err(|(c, m)| crate::common::said::Said::new(&c, m))
         })
     }
 }

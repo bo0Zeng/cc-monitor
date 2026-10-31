@@ -298,7 +298,7 @@ pub(crate) fn answer(
     let rows = match (&req.name, &req.rows) {
         (Some(name), None) => {
             let s = book.find_set(name).ok_or_else(|| {
-                (
+                crate::common::said::Said::new(
                     "no_such_set",
                     copy_text("beSessionSet.set.unknown", &[("name", name)]),
                 )
