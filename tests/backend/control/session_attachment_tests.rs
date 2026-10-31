@@ -222,7 +222,7 @@ fn each_verdict_carries_the_class_of_its_name() {
         .collect();
     assert_eq!(
         words,
-        vec![copy_text("beFilesKind.label.code_or_fallback()", &[])]
+        vec![copy_text("beFilesKind.label.code", &[])]
     );
 }
 

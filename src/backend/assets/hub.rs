@@ -90,11 +90,17 @@ where
         None => s.coded("unreachable"),
     };
     let Some(m) = machine else {
-        let args = serde_json::to_value(req).map_err(|e| Said::new("io_failed", e.to_string()))?;
+        let args = serde_json::to_value(req).map_err(|e| {
+            Said::new("io_failed", crate::common::contract::malformed("request does not serialize"))
+                .and_raw(Some(&e.to_string()))
+        })?;
         let h = Arc::clone(here);
         let got = tokio::task::spawn_blocking(move || h.ask(C::NAME, args))
             .await
-            .map_err(|e| Said::new("io_failed", e.to_string()))??;
+            .map_err(|e| {
+                Said::new("io_failed", crate::common::contract::malformed("hub task did not finish"))
+                    .and_raw(Some(&e.to_string()))
+            })??;
         return crate::dial::remote_ask::reply_of(&machine_name(None), C::NAME, got).map_err(said);
     };
     // 码随原话一起交回（`stale` / `refused` / …照那台的原码）；读不出码（拨号 / 链路坏了）⇒ `unreachable`。
