@@ -19,6 +19,9 @@
 # 逐条耗时：cargo 那几段存 `.build/quick-check/cargo-times.tsv`（从慢到快，收尾印最慢三条），vitest 存 `vitest-times.json`。
 # 编译锁：外面给了 `CCM_BUILD_LOCK`（一份仓外的锁脚本，`<脚本> <命令…>` 排上队再起命令）⇒ 编译那几段（后端 · clippy · 壳 ·
 #   creds-harden 的 cargo，手机那一段的 gradle）各经它起，排队只排这几段；cargo fmt · tsc · 静态格 · vitest 不经它。没给 ⇒ 不套锁照跑。
+#   cargo 那四段起锁时另带 `CCM_BUILD_REMOTE_OK`：这一段可以派去别的机器跑（锁脚本认它才派，不认 ⇒ 照旧本机）；值是这一段
+#   写在同步的树以外的几个目录（沙箱家 · 沙箱 tmux 目录 · cargo 的临时目录，空格分隔）：那边照同一路径建好，跑完把里面剩的拉回这几个目录，
+#   tmp-left 照旧在本机判。手机那一段不带（gradle 的工具链只认本机）。
 #   整趟 quick-check 别再套在锁里（锁只一个位时里外互等）。
 # 收尾修剪 `.build`：每棵 cargo 树每一档的 `incremental/` 下同一个 crate 的会话目录、`deps/` 下同名的测试二进制（无扩展名的可执行文件，
 #   连同它的 `.d`）按名字成组，比同组最新那一份旧出 6 小时的删掉。同一个 crate 同时有几种现役变体（lib · lib 测试 · clippy · 各 bin），
@@ -102,7 +105,7 @@ locked() { "${build_lock[@]}" bash "$HERE/session-scrub.sh" "${box_env[@]}" "$@"
 # cargo 那几步不按墙钟判 ⇒ 降到 nice 10，机器忙时给别处按墙钟判的测试让路（vitest / tsc 不降）。
 # runcargo：不编译的（fmt）；buildcargo：编译的，经锁。
 runcargo() { run env TMPDIR="$ctmp" nice -n 10 "$@"; }
-buildcargo() { locked env TMPDIR="$ctmp" nice -n 10 "$@"; }
+buildcargo() { CCM_BUILD_REMOTE_OK="$box/home $box/tmux $ctmp" locked env TMPDIR="$ctmp" nice -n 10 "$@"; }
 fails=(); notes=()
 t_all=$SECONDS
 # 失败测试的 panic 原话：`panicked at` 那一行起、到空行为止（cargo 的格式）。
