@@ -449,11 +449,9 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
             let got = match &e {
                 Event::State(s) => {
                     let mut out = match s {
-                        State::Connecting => {
-                            folds.lock().unwrap_or_else(|e| e.into_inner()).reset(
-                                cmd_wire::cells::Words(comms_inward::chan::said::offline(&name)),
-                            )
-                        }
+                        State::Connecting => folds.lock().unwrap_or_else(|e| e.into_inner()).reset(
+                            cmd_wire::cells::Words(comms_inward::chan::said::offline(&name)),
+                        ),
                         _ => Vec::new(),
                     };
                     out.extend(note(id, |f| f.round(s.clone(), &name)));

@@ -1532,17 +1532,14 @@ fn a_waiting_session_item_carries_the_written_clock() {
     let mut a = waiting_row("a", 0, Some(5_000));
     a.needs.text = crate::common::cells::Words("核心·t".into());
     a.needs.head = crate::common::cells::Words("核心·h".into());
-    let got = needs_list(
-        vec![a, waiting_row("b", 0, None)],
-        &[],
-        Ok(vec![]),
-        vec![],
-    );
+    let got = needs_list(vec![a, waiting_row("b", 0, None)], &[], Ok(vec![]), vec![]);
     let clock = |sid: &str| {
         got.items
             .iter()
             .find_map(|i| match i {
-                cmd_wire::needs::NeedsItem::Session { session, clock, .. } if session.sid == sid => {
+                cmd_wire::needs::NeedsItem::Session { session, clock, .. }
+                    if session.sid == sid =>
+                {
                     Some(clock.clone())
                 }
                 _ => None,
