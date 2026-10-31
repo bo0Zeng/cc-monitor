@@ -1,7 +1,7 @@
 //! **上游选择**（apikey 端点改写那一块）：`resolve` 那张决策表的**唯一住址**。
 //!
 //! 从 `accounts/` 挪进子目录 `accounts/upstream_select/`：`accounts/` 是账号**域**，
-//! 它下面「挂在中转上当上游选择的这一块」与「账号隔离工具的查询」（`accounts/iso.rs`）是两件事，
+//! 它下面「挂在中转上当上游选择的这一块」与账号域别的几块（`accounts/manage/` · `accounts/oauth/` · `accounts/quota/`）是两件事，
 //! 不共用一张登记表（用户「账号就账号, 中转就中转」）。两块互不引用，由
 //! `upstream_selection_guard::the_two_halves_of_the_account_domain_do_not_reference_each_other` 钉着。
 //!
@@ -43,7 +43,7 @@
 //! 而且**不许回落到某一个写死的常量**。
 //! 先前两句在「每 agent 一行的默认上游」那张表落地之前不可能同时成立，本层取了后者（恒拒）。
 //! 那张表今天落了 ⇒ **两句同时成立**：登记过的 agent 走**它自己那一行**（不是某一个进程级常量），
-//! 未登记的仍是拒（今天 404 ＋ 原因头 `agent-not-registered`）。两格的判据住 `tests/backend/relay/table_tests.rs`
+//! 未登记的仍是拒（今天 404 ＋ 原因头 `agent-not-registered`）。两格的判据住 `tests/backend/accounts/upstream_select/table_tests.rs`
 //! （`decide` 被直接问，不经网络）；`wire_golden` 那一格用的 `seg1` 是一个**未登记**的名字，
 //! 仍钉着「拒」那一半。
 
@@ -68,6 +68,10 @@ pub(crate) use policy::Reload;
 #[cfg(test)]
 #[path = "../../../../tests/backend/accounts/upstream_select/upstreams_testing.rs"]
 pub(crate) mod upstreams_testing;
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/accounts/upstream_select/mod_tests.rs"]
+mod tests;
 
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::relay::{
@@ -320,7 +324,10 @@ pub(crate) struct Accounts {
     ///
     /// ⚠ 它**不进任何 `Debug`**：`SecretKey` 手写的 `Debug` 恒为遮蔽形，
     /// 而本结构体**整个没有** `derive(Debug)`（`KS1` 的第二道）。
-    table: std::sync::RwLock<RoutingTable>,
+    ///
+    /// 锁里只放一个 `Arc`：读者克隆出指针就放锁，拿着那一份去连上游、写请求体；重载只换指针。
+    /// ⇒ 一发卡在连上游时改凭据文件，重载那一下的写锁不排在它后面，别的请求照常答。
+    table: std::sync::RwLock<std::sync::Arc<RoutingTable>>,
     /// 每 agent 一行的默认上游。`/t/` 无行时按 `seg1` 查它；重载时给没写 `base_url` 的行取值。
     upstreams: Upstreams,
     /// 重载源。`None` = 判据自己造的表（不从文件来）⇒ 永不重载。
@@ -348,7 +355,7 @@ impl Accounts {
         own: crate::platform::fs::Own,
     ) -> Self {
         Self {
-            table: std::sync::RwLock::new(table),
+            table: std::sync::RwLock::new(std::sync::Arc::new(table)),
             upstreams,
             reload: None,
             quota: std::sync::Arc::new(Ledger::at(None)),
@@ -381,9 +388,10 @@ impl Accounts {
         self
     }
 
-    /// 那张表的读锁 —— 上游选择取它**只在这一处**；守卫活到调用方用完（`resolve` / `retry` 里活到 `act` 返回）。
-    fn table(&self) -> std::sync::RwLockReadGuard<'_, RoutingTable> {
-        self.table.read().expect("lock")
+    /// 此刻那张表 —— 上游选择取读锁**只在这一处**，只为克隆出指针，返回前就放了：
+    /// `resolve` / `retry` 拿着这一份跑到 `act` 返回（连上游 · 写请求体都在里面），锁不跟着。
+    fn table(&self) -> std::sync::Arc<RoutingTable> {
+        std::sync::Arc::clone(&self.table.read().expect("lock"))
     }
 
     /// 换号那一侧要的这一发事实（按量号那几格现问表）。
@@ -497,7 +505,7 @@ impl Accounts {
             &notes,
             &mut std::io::stderr(),
         );
-        *self.table.write().expect("lock") = table;
+        *self.table.write().expect("lock") = std::sync::Arc::new(table);
         r.remember(now);
     }
 }
@@ -555,9 +563,9 @@ impl Destinations for Accounts {
                 None => {}
             }
         }
-        // ⚠ 这个读锁活到本函数返回为止 —— 而 `resolve` 的契约禁止调用方在 `act` 里做
-        //   流式转发（见 `Destinations::resolve` 头注第 2 条硬约束）⇒ 锁不跨 `pump`。
-        // 换号那一问（可能要续令牌 ⇒ 有网络 IO）在取读锁**之前**做完，锁里只照备好的去处交给中转。
+        // 表是克隆出来的一份指针，读锁在 `table()` 里就放了 ⇒ `act` 里连上游、写请求体都不按着它
+        // （`resolve` 的契约另外禁止在 `act` 里做流式转发，见 `Destinations::resolve` 头注第 2 条硬约束）。
+        // 换号那一问（可能要续令牌 ⇒ 有网络 IO）在取表**之前**做完，取表之后只照备好的去处交给中转。
         let key = &self.recognized(mode, key, ask);
         let row = |a: &str| self.row_of(&key.seg1, a);
         let go = match &self.hop {
@@ -573,13 +581,18 @@ impl Destinations for Accounts {
         crate::agents::session_headers()
     }
 
+    /// 上游连接空闲多久内还复用：[`UPSTREAM_IDLE_REUSE`]。
+    fn upstream_idle_reuse(&self) -> std::time::Duration {
+        UPSTREAM_IDLE_REUSE
+    }
+
     /// 中转要带回的请求头：同上，只从适配层来（`agents::relay_headers`）。
     fn relay_headers(&self) -> Vec<&'static str> {
         crate::agents::relay_headers()
     }
 
     /// 回包头 → 这一家的读法 → 额度账（记在答这一发的那个号名下：`tag` 就是那个号）。
-    /// 回包被拒（读法同 `observe`）⇒ 问轮换要下一个号；要到了就按它备好的去处重发（锁外备料、锁里交）。
+    /// 回包被拒（读法同 `observe`）⇒ 问轮换要下一个号；要到了就按它备好的去处重发（先备料，再取表交给中转）。
     fn retry(
         &self,
         mode: Mode,
@@ -630,13 +643,18 @@ impl Destinations for Accounts {
             return;
         };
         let now = (self.clock)();
-        if let Some(reading) = read(seen.status, seen.headers, now) {
+        let retry_after = seen
+            .headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(RETRY_AFTER))
+            .map(|(_, v)| v.trim());
+        let reading = read(seen.status, seen.headers, now);
+        // 429 而这一家的读法没读成被拒（限流器没说话的短时限流）⇒ 不换号、不记账，但日志里要看得见它。
+        if seen.status == TOO_MANY_REQUESTS && !reading.as_ref().is_some_and(|r| r.refused) {
+            tracing::warn!("{}", throttle_line(seen.tag, seen.status, retry_after));
+        }
+        if let Some(reading) = reading {
             if reading.refused {
-                let retry_after = seen
-                    .headers
-                    .iter()
-                    .find(|(k, _)| k.eq_ignore_ascii_case(RETRY_AFTER))
-                    .map(|(_, v)| v.trim());
                 tracing::warn!(
                     "{}",
                     refusal_line(seen.tag, seen.status, &reading, retry_after)
@@ -656,7 +674,24 @@ const OWN_UPSTREAM_TAG: &str = "~own";
 /// HTTP 通用的「几秒后再试」头（不是哪一家的）。
 const RETRY_AFTER: &str = "retry-after";
 
-/// 被拒那一发记进后端日志的一行：号名 · 状态码 · 有没有限额头 · 代表窗 · `retry-after`。只用这几格 ⇒ 不带令牌、不带回包体。
+/// 中转上游那一跳还回来的连接空闲多久以内还拿去复用（过了就扔、新连）。
+///
+/// 探活只看得出对端已经发了 FIN / RST 的那几形；看不出的两形都随空闲时长变多：
+/// 对端（或路上的代理）恰在探活之后才按它自己的空闲期限关；路上的 NAT 表项已过期却没发 RST（这一发写进黑洞，等满期限）。
+/// 两形都落在请求已写出之后，那时照规矩不重发（`POST /v1/messages` 不幂等）⇒ 只能在取的时候不拿它。
+/// 30 秒：短于常见上游与代理的空闲关闭期限（几十秒到十几分钟），又盖得住一轮里紧挨着的几发（agent 连着调工具）；
+/// 隔得更久的那一发多付一次建连 ＋ TLS 握手。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "不是定时器：没有线程按它醒来，连接池在取连接那一下拿它比一下还回来的时刻"
+)]
+const UPSTREAM_IDLE_REUSE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// HTTP 通用的「请求太多」状态码（不是哪一家的）。
+const TOO_MANY_REQUESTS: u16 = 429;
+
+/// 被拒那一发记进后端日志的一行：号名 · 状态码 · 代表窗 · `retry-after`。只用这几格 ⇒ 不带令牌、不带回包体。
+/// 被拒要求限流器说了被拒（读法那一侧定）⇒ 「有没有限额头」恒为有，不印。
 pub(crate) fn refusal_line(
     account: &str,
     status: u16,
@@ -664,9 +699,16 @@ pub(crate) fn refusal_line(
     retry_after: Option<&str>,
 ) -> String {
     format!(
-        "[quota] 被拒：号 {account} · 状态码 {status} · 限额头 {} · 代表窗 {} · retry-after {}",
-        if r.status.is_some() { "有" } else { "无" },
+        "[quota] 被拒：号 {account} · 状态码 {status} · 代表窗 {} · retry-after {}",
         r.limiting.as_deref().unwrap_or("—"),
+        retry_after.filter(|v| !v.is_empty()).unwrap_or("—"),
+    )
+}
+
+/// 短时限流（429、没读成被拒）那一发记进后端日志的一行：号名 · 状态码 · `retry-after`。只用这几格 ⇒ 不带令牌、不带回包体。
+fn throttle_line(account: &str, status: u16, retry_after: Option<&str>) -> String {
+    format!(
+        "[quota] 短时限流：号 {account} · 状态码 {status} · retry-after {}",
         retry_after.filter(|v| !v.is_empty()).unwrap_or("—"),
     )
 }
@@ -695,7 +737,7 @@ fn names_of<'a>(ask: &Ask<'a>) -> Vec<&'a str> {
 /// 那张决策表**本身**，从「谁持锁、什么时候重载」里剥出来。
 ///
 /// ★ 剥出来只为一件事：判据要能**拿生产段这一份**去问，而不是自己再写一份同构的
-/// 「这一行该不该换头」。[`Accounts::resolve`] 自己也只是「重载 → 取读锁 → 调它」
+/// 「这一行该不该换头」。[`Accounts::resolve`] 自己也只是「重载 → 取表 → 调它」
 /// ⇒ **实现只有这一份**，没有第二本账。
 pub(crate) fn decide(
     table: &RoutingTable,
