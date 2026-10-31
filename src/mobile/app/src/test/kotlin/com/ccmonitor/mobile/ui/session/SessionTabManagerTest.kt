@@ -204,7 +204,7 @@ class SessionTabManagerTest {
         val r1 = m.open("h1", TabTarget.Terminal(run = "claude /login"))
         val r2 = m.open("h1", TabTarget.Terminal(run = "claude /login"))
         assertNotEquals(r1, r2)
-        assertEquals("claude /login", (m.get(r2)?.target as TabTarget.Terminal).run)
+        assertEquals(TabTarget.Terminal(run = "claude /login"), m.get(r2)?.target)
         assertEquals(m.open("h1", TabTarget.Terminal(cd = "/a")), m.open("h1", TabTarget.Terminal(cd = "/a")))
     }
 }

@@ -188,6 +188,9 @@ class SessionViewModel(
     private val runTab: Boolean = !runArg.isNullOrBlank()
     private var run: String? = runArg?.ifBlank { null }
 
+    /** 这个 tab 的 shell 自己起会话（不接回 · 不恢复 · 不敲给定的那一行）⇒ 才出「用哪个启动」那一排。 */
+    private val picksLaunch: Boolean = attachTo == null && resumeSid == null && !runTab
+
     // 当前所在的 tmux 会话名，每个 tab 各记各的（同主机多 tab 不互相覆盖），跨重连保留。
     // 切模型 · 抓屏按它找那台名单里的终端。进终端 tab 以 [attachTo] 初始化。
     private val _tmuxSession = MutableStateFlow(attachTo)
@@ -228,7 +231,7 @@ class SessionViewModel(
     val moved: StateFlow<List<MovedLaunch>> = _moved.asStateFlow()
 
     private fun loadAliases() {
-        if (attachTo != null || resumeSid != null || runTab || _aliasPicked.value) return
+        if (!picksLaunch || _aliasPicked.value) return
         viewModelScope.launch { terminals.aliases().onSuccess { _aliases.value = it } }
     }
 
