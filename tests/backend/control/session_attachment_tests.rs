@@ -220,10 +220,7 @@ fn each_verdict_carries_the_class_of_its_name() {
         .into_iter()
         .map(|v| v.class_text)
         .collect();
-    assert_eq!(
-        words,
-        vec![copy_text("beFilesKind.label.code", &[])]
-    );
+    assert_eq!(words, vec![copy_text("beFilesKind.label.code", &[])]);
 }
 
 /// 工作目录不在 ⇒ 逐份 `no_session`；只读 ⇒ `not_writable`，落的那一下也拒、不回落别处。

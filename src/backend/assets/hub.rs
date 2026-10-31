@@ -91,15 +91,21 @@ where
     };
     let Some(m) = machine else {
         let args = serde_json::to_value(req).map_err(|e| {
-            Said::new("io_failed", crate::common::contract::malformed("request does not serialize"))
-                .and_raw(Some(&e.to_string()))
+            Said::new(
+                "io_failed",
+                crate::common::contract::malformed("request does not serialize"),
+            )
+            .and_raw(Some(&e.to_string()))
         })?;
         let h = Arc::clone(here);
         let got = tokio::task::spawn_blocking(move || h.ask(C::NAME, args))
             .await
             .map_err(|e| {
-                Said::new("io_failed", crate::common::contract::malformed("hub task did not finish"))
-                    .and_raw(Some(&e.to_string()))
+                Said::new(
+                    "io_failed",
+                    crate::common::contract::malformed("hub task did not finish"),
+                )
+                .and_raw(Some(&e.to_string()))
             })??;
         return crate::dial::remote_ask::reply_of(&machine_name(None), C::NAME, got).map_err(said);
     };
