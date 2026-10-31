@@ -62,7 +62,7 @@ pub fn save_args_at(
 /// 提交那一趟的参数：块数与总字节数**显式**给（`chunk_core` 送完交的那两个数），后端读回来必须对得上。
 fn commit_args_at(
     at: &super::source::RemotePath,
-    s: &chunk_core::Staged,
+    s: &cmd_wire::transfer::Staged,
     expect_sha256: &str,
 ) -> w::FilesCommitTextReq {
     w::FilesCommitTextReq {
@@ -674,7 +674,7 @@ async fn stage_text(
     line: &super::source::Line,
     origin: &super::source::Origin,
     content: &str,
-) -> Result<chunk_core::Staged, SaveError> {
+) -> Result<cmd_wire::transfer::Staged, SaveError> {
     let key = chunk_core::key_of(*uuid::Uuid::new_v4().as_bytes());
     let total = content.len().div_ceil(chunk_core::CHUNK);
     let mut sent = Sent(0);
