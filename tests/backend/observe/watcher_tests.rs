@@ -64,6 +64,7 @@ fn the_event_dispatch_has_no_catch_all_arm() {
     );
 }
 use super::*;
+use crate::wire::SessionFaceExt as _;
 use std::time::Duration;
 
 /// 等文件耳朵叫醒一次（[`fs_ears`]），回那一批路径；`wait` 里没叫醒 ⇒ `None`。
