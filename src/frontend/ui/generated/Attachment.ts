@@ -10,7 +10,7 @@ export type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**

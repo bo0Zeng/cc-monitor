@@ -1557,7 +1557,7 @@ type AttachItem = { name: string, bytes: number, dir?: boolean, };
 type AttachRefused = "is_dir" | "too_big" | "too_many" | "too_much" | "dir_full" | "not_writable" | "no_session";
 type AttachVerdict = { ok: boolean, 
 /**
- * 照名字判的那一种（目录 ⇒ 文件夹；[`crate::file_class::class_of_name`]）。
+ * 照名字判的那一种（目录 ⇒ 文件夹；后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -5812,7 +5812,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -6265,7 +6265,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -6726,7 +6726,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -7132,7 +7132,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
@@ -9079,7 +9079,7 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
- * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ * 哪一种（照名字判，后端 `common/file_class.rs` 的 `class_of_name`）。
  */
 class: FileClass, 
 /**
