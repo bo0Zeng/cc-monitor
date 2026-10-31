@@ -641,12 +641,12 @@ pub(crate) fn preset_with(
         id => Some(
             find(ctx, id)
                 .and_then(|s| setup::copy_of(&s))
-                .ok_or_else(|| ("no_strategy", gone(id)))?,
+                .ok_or_else(|| crate::common::said::Said::new("no_strategy", gone(id)))?,
         ),
     };
     let route = crate::agents::pick_route(Some(&crate::agents::AgentKind::new(kind)))
-        .map_err(|say| ("bad_args", say))?;
-    uses::preset(&ctx.setup, own, sid, route, copy, now).map_err(|e| ("io_failed", note(e)))
+        .map_err(|say| crate::common::said::Said::new("bad_args", say))?;
+    uses::preset(&ctx.setup, own, sid, route, copy, now).map_err(|e| crate::common::said::Said::new("io_failed", note(e)))
 }
 
 /// 起不成：撤掉 [`preset_with`] 记的那一条（只撤还没换过号的；写不成只出声）。

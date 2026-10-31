@@ -107,9 +107,9 @@ fn local_here(sid: String) -> Result<Option<Here>, SessionWindowErr> {
     };
     crate::observe::session_terminals::here_by(pid)
         .map(Some)
-        .map_err(|(code, said)| match code {
-            crate::platform::child::TIMED_OUT => SessionWindowErr::ChildTimedOut(said),
-            _ => SessionWindowErr::Failed(said),
+        .map_err(|s| match s.code.as_deref() {
+            Some(crate::platform::child::TIMED_OUT) => SessionWindowErr::ChildTimedOut(s.said),
+            _ => SessionWindowErr::Failed(s.said),
         })
 }
 

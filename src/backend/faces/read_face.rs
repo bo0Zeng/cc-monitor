@@ -74,13 +74,13 @@ pub(crate) fn log_tail(
             truncated: false,
         });
     };
-    let mut f = Ro::open(path).map_err(|e| ("failed", e.to_string()))?;
-    let size = f.metadata().map_err(|e| ("failed", e.to_string()))?.len();
+    let mut f = Ro::open(path).map_err(|e| crate::common::said::Said::new("failed", e.to_string()))?;
+    let size = f.metadata().map_err(|e| crate::common::said::Said::new("failed", e.to_string()))?.len();
     let from = size.saturating_sub(max);
     let mut buf = Vec::new();
     f.seek(SeekFrom::Start(from))
         .and_then(|_| f.take(max).read_to_end(&mut buf))
-        .map_err(|e| ("failed", e.to_string()))?;
+        .map_err(|e| crate::common::said::Said::new("failed", e.to_string()))?;
     let body = if from > 0 {
         buf.iter()
             .position(|&b| b == b'\n')
@@ -151,7 +151,7 @@ impl crate::wire::typed::Handle for BackendLog {
                 .max_bytes
                 .map_or(LOG_TAIL_BYTES, |n| n.min(LOG_TAIL_BYTES));
             log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max)
-                .map_err(crate::wire::typed::of_pair(BackendLogErr::Failed))
+                .map_err(crate::wire::typed::of_fail_with(BackendLogErr::Failed))
         }
     }
 }
@@ -344,7 +344,7 @@ impl crate::wire::typed::Handle for AccountsListCmd {
             );
             let size = serde_json::to_string(&v).map_or(0, |t| t.len());
             if size > LINES_CAP_BYTES {
-                return Err(AccountsListErr::TooLarge(too_large(size).1));
+                return Err(AccountsListErr::TooLarge(too_large(size).said));
             }
             Ok(v)
         }
@@ -570,9 +570,9 @@ pub(crate) fn record_face(
     path: &str,
 ) -> Result<(std::path::PathBuf, crate::agents::RecordFace), crate::common::said::Said> {
     let target =
-        crate::observe::query::locate::session_path_at(home, path).map_err(|e| ("refused", e))?;
+        crate::observe::query::locate::session_path_at(home, path).map_err(|e| crate::common::said::Said::new("refused", e))?;
     let face = crate::agents::record_face_of(&target).ok_or_else(|| {
-        (
+        crate::common::said::Said::new(
             "failed",
             crate::common::contract::malformed("no adapter reads this record"),
         )
@@ -588,13 +588,13 @@ pub(crate) fn reader<'a>(
     crate::observe::query::body::Reader::new(face, tz.clone())
 }
 
-pub(crate) fn too_large(size: usize) -> (&'static str, String) {
+pub(crate) fn too_large(size: usize) -> crate::common::said::Said {
     too_large_at(size, LINES_CAP_BYTES)
 }
 
 /// 同 [`too_large`]，上限是参数（全文搜索那条按它判，判据拿小上限验）。
-pub(crate) fn too_large_at(size: usize, cap: usize) -> (&'static str, String) {
-    (
+pub(crate) fn too_large_at(size: usize, cap: usize) -> crate::common::said::Said {
+    crate::common::said::Said::new(
         "too_large",
         copy_text(
             "beReadFace.tooLarge.say",

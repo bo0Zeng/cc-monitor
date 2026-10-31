@@ -8,7 +8,7 @@ use crate::control::session_set::{
     self as set, answer, GroupRef, Hands, LaunchFail, Live, SetLaunchReq, SetLaunched, SetPlan,
     SetPlanErr, SetPlanReq,
 };
-use crate::wire::typed::{of_pair, Command};
+use crate::wire::typed::{of_fail_with, Command};
 use std::sync::Mutex;
 
 /// 刚起、还没报到的那几条算「正在启动」多久（同单个起等报到的期限）。
@@ -66,7 +66,7 @@ fn live_here() -> Vec<Live> {
 /// 这台没有 tmux ⇒ `no_tmux`（一组只起在 tmux 里：这台自己当 ccm 起、`--detach`）。探不出 ⇒ 照做，起的那一步再说。
 fn no_tmux() -> Result<(), crate::common::said::Said> {
     match crate::control::terminals::tmux_here() {
-        Some(false) => Err((
+        Some(false) => Err(crate::common::said::Said::new(
             crate::NO_TMUX,
             copy_core::copy_text("beSessionNew.place.noTmux", &[]),
         )),
@@ -98,11 +98,11 @@ impl crate::wire::typed::Handle for SetPlanCmd {
     ) -> impl std::future::Future<Output = Result<SetPlan, SetPlanErr>> + Send + 'static {
         let (_cx, files) = cx.split();
         async move {
-            no_tmux().map_err(of_pair(SetPlanErr::Refused))?;
+            no_tmux().map_err(of_fail_with(SetPlanErr::Refused))?;
             let store = crate::assets::aliases::load(files).map_err(SetPlanErr::Refused)?;
             let home = std::path::PathBuf::from(&store.home);
             answer(&req, &store.book, &live_here(), Some(&home), &is_dir)
-                .map_err(of_pair(SetPlanErr::Refused))
+                .map_err(of_fail_with(SetPlanErr::Refused))
         }
     }
 }
@@ -175,7 +175,7 @@ fn launch(
 ) -> Result<SetLaunched, crate::common::said::Said> {
     use crate::history::groups::{self as groups, GroupsWriteReq, GroupsWritten, HereGroup};
     no_tmux()?;
-    let store = crate::assets::aliases::load(files).map_err(|m| ("refused", m))?;
+    let store = crate::assets::aliases::load(files).map_err(|m| crate::common::said::Said::new("refused", m))?;
     let home = std::path::PathBuf::from(&store.home);
     let live = live_here();
     let plan = answer(
@@ -388,7 +388,7 @@ impl crate::wire::typed::Handle for SetLaunchCmd {
         let (_cx, needs) = cx.split();
         async move {
             let (files, own) = (needs.0, &needs.1);
-            launch(&req, files, own).map_err(of_pair(SetLaunchErr::Refused))
+            launch(&req, files, own).map_err(of_fail_with(SetLaunchErr::Refused))
         }
     }
 }

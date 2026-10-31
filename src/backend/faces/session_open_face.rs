@@ -400,11 +400,11 @@ impl crate::wire::typed::Handle for SessionOpenFacts {
         async move {
             let cx = &cx;
 
-            facts(&req, &cx.tz).map_err(|(code, said)| match code {
-                "bad_args" => OpenFactsErr::BadArgs(said),
+            facts(&req, &cx.tz).map_err(|s| match s.code.as_deref() {
+                Some("bad_args") => OpenFactsErr::BadArgs(s.said),
                 _ => {
-                    debug_assert_eq!(code, "fork_failed");
-                    OpenFactsErr::ForkFailed(said)
+                    debug_assert_eq!(s.code.as_deref(), Some("fork_failed"));
+                    OpenFactsErr::ForkFailed(s.said)
                 }
             })
         }
@@ -444,7 +444,7 @@ pub(crate) fn facts(
         None => None,
         Some(sid) => {
             let source = crate::agents::find_session(&home, sid)
-                .map_err(|m| ("fork_failed", m))?
+                .map_err(|m| crate::common::said::Said::new("fork_failed", m))?
                 .file;
             // 第几轮照那一份的扫描图数（与 `history-turns` 同一张：回退掉的那几句不算一轮）。
             let turn = at.and_then(|uuid| {
