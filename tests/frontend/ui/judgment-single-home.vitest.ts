@@ -1184,6 +1184,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     SKILL_LEDGER_FILE: NONE,
     SSH_CONFIG_FILE: NONE,
     STRATEGY_SOURCE_FILE: NONE,
+    // 声明表一行的「下限抬于哪一版」（到期就红那条判据读它）；TS 侧没有孪生。
+    floor_raised_in: NONE,
     foreign: NONE,
     json: NONE,
     kept: NONE,
