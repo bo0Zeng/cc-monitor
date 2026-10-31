@@ -4,12 +4,9 @@ import com.ccmonitor.mobile.core.wire.gen.Block
 import com.ccmonitor.mobile.core.wire.gen.Draw
 import com.ccmonitor.mobile.core.wire.gen.LineDiff
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
-import com.ccmonitor.mobile.core.wire.gen.Raw
 import com.ccmonitor.mobile.core.wire.gen.Speaker
 import com.ccmonitor.mobile.core.wire.gen.StepBody
 import com.ccmonitor.mobile.core.wire.gen.ToolCard
-import com.squareup.moshi.JsonReader
-import okio.Buffer
 
 /**
  * 核心的通用记录（`IPC-PROTOCOL.md`「通用记录」，线上类 [LineRecord]）⇒ 渲染单元。只按记录 · 说话人 · 块是哪一形排，
@@ -185,7 +182,6 @@ class RecordUnits {
             key = "${r.id}#$i",
             toolUseId = callId,
             name = b.name,
-            input = inputOf(b.input),
             resultText = res?.text,
             isError = res?.isError == true,
             pending = res == null,
@@ -204,10 +200,4 @@ class RecordUnits {
         blocks: List<Block>,
         record: String,
     ): List<SaidImage> = blocks.filterIsInstance<Block.Image>().map { SaidImage(it.mediaType, it.at, it.n, record) }
-
-    /** 工具入参原样（形状照那一家，不解）：是一团键值 ⇒ 交卡片；别的 ⇒ 空。 */
-    private fun inputOf(raw: Raw): Map<String, Any?> {
-        val m = JsonReader.of(Buffer().writeUtf8(raw.json)).readJsonValue() as? Map<*, *> ?: return emptyMap()
-        return m.entries.mapNotNull { (k, x) -> (k as? String)?.let { it to x } }.toMap()
-    }
 }

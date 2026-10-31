@@ -116,11 +116,11 @@ src/backend/control/files_write.rs:2011	删一份历史会话 —— **只收 si
 src/backend/control/files_write.rs:621	它有 {links} 个硬链接	保留	[不对外] in_place_reason 拼的原因只进 tracing::warn 那一行日志（覆盖写退回就地写时），不上界面
 src/backend/control/files_write.rs:625	它的属主（uid {owner}）不是后端这个用户（uid {me}）	保留	[不对外] in_place_reason 拼的原因只进 tracing::warn 那一行日志（覆盖写退回就地写时），不上界面
 src/backend/control/files_write.rs:628	、	保留	[不对外] in_place_reason 拼的原因只进 tracing::warn 那一行日志（覆盖写退回就地写时），不上界面
-src/backend/accounts/upstream_select/mod.rs:473	[quota] 被拒：号 {account} · 状态码 {status} · 限额头 {} · 代表窗 {} · retry-after {}	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
-src/backend/accounts/upstream_select/mod.rs:474	有	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
-src/backend/accounts/upstream_select/mod.rs:474	无	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
+src/backend/accounts/upstream_select/mod.rs:702	[quota] 被拒：号 {account} · 状态码 {status} · 代表窗 {} · retry-after {}	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
 src/backend/accounts/upstream_select/mod.rs:475	—	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
 src/backend/accounts/upstream_select/mod.rs:476	—	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
+src/backend/accounts/upstream_select/mod.rs:711	[quota] 短时限流：号 {account} · 状态码 {status} · retry-after {}	保留	[不对外] throttle_line：短时限流的 429 时 tracing::warn! 打的那一行，只进后端日志
+src/backend/accounts/upstream_select/mod.rs:712	—	保留	[不对外] throttle_line：短时限流的 429 时 tracing::warn! 打的那一行，只进后端日志
 src/backend/accounts/oauth/mod.rs:205	让位	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因），只进后端日志
 src/backend/accounts/oauth/mod.rs:206	成	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因），只进后端日志
 src/backend/accounts/oauth/mod.rs:207	败	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因），只进后端日志
