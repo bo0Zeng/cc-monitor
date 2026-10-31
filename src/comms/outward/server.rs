@@ -215,8 +215,7 @@ impl BodyBudget {
     fn say_full(&self) {
         if !self.full.swap(true, std::sync::atomic::Ordering::SeqCst) {
             eprintln!(
-                "[relay] refusing: in-flight request bodies at {} bytes (answering 503 until some end)",
-                self.ceiling
+                "[relay] refusing: in-flight request bodies at the budget (answering 503 until some end)"
             );
         }
     }
@@ -247,10 +246,7 @@ impl Drop for BodyHeld<'_> {
         let b = self.budget;
         let now = b.held.fetch_sub(self.n, SeqCst) - self.n;
         if now < b.ceiling / 4 * 3 && b.full.swap(false, SeqCst) {
-            eprintln!(
-                "[relay] in-flight request bodies back under {} bytes",
-                b.ceiling
-            );
+            eprintln!("[relay] in-flight request bodies back under the budget");
         }
     }
 }
