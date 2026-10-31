@@ -242,8 +242,8 @@ async fn it_asks_the_resident_and_an_absent_one_fails_plainly() {
     assert!(stdin["args"]["held"].is_null(), "头一问不带记号：{stdin}");
     peer.absent = true;
     let e = ask(&peer, &copies, &t, true).await.unwrap_err();
-    assert_eq!(e.0, "resident_absent", "{e:?}");
-    assert!(e.1.contains("devbox"), "那一句没说是哪台：{e:?}");
+    assert_eq!(e.code.as_deref(), Some("resident_absent"), "{e:?}");
+    assert!(e.said.contains("devbox"), "那一句没说是哪台：{e:?}");
     // 没登记过的那台 ⇒ 够不着，照实说。
     let fresh_copies = Copies::default();
     let e = listing_with(
@@ -257,7 +257,7 @@ async fn it_asks_the_resident_and_an_absent_one_fails_plainly() {
     )
     .await
     .unwrap_err();
-    assert_eq!(e.0, "unreachable", "{e:?}");
+    assert_eq!(e.code.as_deref(), Some("unreachable"), "{e:?}");
 }
 
 /// ★ 判据 8：手上那份照读，不去问那台；同步没成记下那一句，再成了清掉。

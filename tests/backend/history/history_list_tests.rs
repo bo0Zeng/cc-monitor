@@ -115,13 +115,13 @@ fn with_own_annotations(listing: &mut Value, loaded: &crate::history::history_an
 
 /// 入参照帧面那一处解（typed：形状不对 ⇒ `bad_args`）再核值域，盖住 `super::*` 里的同名口。
 fn parse_ask(args: &Value) -> Result<Ask, crate::common::said::Said> {
-    let req: HistoryListReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
+    let req: HistoryListReq = crate::wire::typed::take(args).map_err(|f| f.coded("bad_args"))?;
     super::parse_ask(&req)
 }
 
 /// 帧面那一臂（入参照 typed 那一处解、回包过一遍真序列化器），盖住 `super::*` 里的同名口。
 async fn answer_wire(args: Value) -> Result<Value, crate::common::said::Said> {
-    let req: HistoryListReq = crate::wire::typed::take(&args).map_err(|f| ("bad_args", f.said))?;
+    let req: HistoryListReq = crate::wire::typed::take(&args).map_err(|f| f.coded("bad_args"))?;
     super::answer(req, Default::default(), None)
         .await
         .map(|r| serde_json::to_value(r).unwrap())
@@ -454,7 +454,7 @@ fn one_session_by_id_ignores_the_other_filters() {
     .is_empty());
     for bad in [json!(""), json!("a/b"), json!(7), json!("x".repeat(65))] {
         let e = parse_ask(&json!({ "sid": bad })).expect_err("形状不对");
-        assert_eq!(e.0, "bad_args");
+        assert_eq!(e.code.as_deref(), Some("bad_args"));
     }
 }
 
@@ -491,7 +491,7 @@ fn sort_key_and_limit() {
         json!({"hidden": "y"}),
         json!({"extra": 1}),
     ] {
-        assert_eq!(parse_ask(&bad).unwrap_err().0, "bad_args", "{bad}");
+        assert_eq!(parse_ask(&bad).unwrap_err().code.as_deref(), Some("bad_args"), "{bad}");
     }
 }
 
@@ -551,13 +551,13 @@ async fn a_remote_listing_comes_from_that_machine_or_fails_plainly() {
     let e = super::answer(req.clone(), Default::default(), None)
         .await
         .unwrap_err();
-    assert_eq!(e.0, "bad_args", "没带期限却去问了那台：{e:?}");
-    assert!(e.1.contains("within_ms"), "没说缺的是哪一格：{e:?}");
+    assert_eq!(e.code.as_deref(), Some("bad_args"), "没带期限却去问了那台：{e:?}");
+    assert!(e.said.contains("within_ms"), "没说缺的是哪一格：{e:?}");
     let until = crate::platform::child::Until::after(crate::platform::child::Deadline::secs(5));
     let e = super::answer(req, Default::default(), until)
         .await
         .unwrap_err();
-    assert_eq!(e.0, "unreachable", "{e:?}");
+    assert_eq!(e.code.as_deref(), Some("unreachable"), "{e:?}");
     for bad in [
         json!({"origin": "never-reached", "fresh": true}),
         json!({"raw": true}),
@@ -565,7 +565,7 @@ async fn a_remote_listing_comes_from_that_machine_or_fails_plainly() {
         json!({"origin": ""}),
     ] {
         let e = answer_wire(bad.clone()).await.unwrap_err();
-        assert_eq!(e.0, "bad_args", "{bad} 应是 bad_args：{e:?}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad} 应是 bad_args：{e:?}");
     }
 }
 
@@ -1061,7 +1061,7 @@ async fn the_frame_arm_takes_the_mark() {
     let again = answer_wire(json!({"held": first["held"]})).await.unwrap();
     assert_eq!(again["same"], true, "{again}");
     let e = answer_wire(json!({"held": 7})).await.unwrap_err();
-    assert_eq!(e.0, "bad_args");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
 }
 
 /// ★ 答一份清单（这台的整份扫）⇒ 清单的节点放开：响过的会话再变一次 ⇒ 再响（放开那一处没接上 ⇒ 每个会话只响头一次、之后清单静默变旧）。

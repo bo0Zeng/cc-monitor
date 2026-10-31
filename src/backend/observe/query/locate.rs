@@ -2,6 +2,7 @@
 //! 冷开那几问要的扫描图（过同一道围栏再问 [`crate::observe::record_scan`]）。只读：只 read_dir / read。
 
 use crate::common::fence::Fence;
+use crate::common::said::Said;
 use crate::history::listing::{fence_under_projects, records_root, NO_TREE};
 use crate::platform::fs::{Ro, RoFile};
 use copy_core::copy_text;
@@ -17,17 +18,17 @@ pub(crate) fn run_source(
     parent: &str,
     run: Option<&str>,
     tool: Option<&str>,
-) -> Result<(std::path::PathBuf, String), crate::common::said::Said> {
-    let parent_path = validate_session_path(agent_home, parent).map_err(|e| ("path_refused", e))?;
+) -> Result<(std::path::PathBuf, String), Said> {
+    let parent_path = validate_session_path(agent_home, parent).map_err(|e| Said::new("path_refused", e))?;
     let faces = crate::agents::record_face_of(&parent_path)
         .map(|f| crate::agents::RunFaces::of(&f))
         .unwrap_or(crate::agents::RunFaces::NONE);
     let run = match (run, tool) {
         (Some(r), _) if !r.is_empty() => r.to_string(),
         (_, Some(t)) if !t.is_empty() => run_of_tool(&parent_path, &faces, t)
-            .ok_or_else(|| ("not_found", copy_text("rsRun.load.notLinked", &[])))?,
+            .ok_or_else(|| Said::new("not_found", copy_text("rsRun.load.notLinked", &[])))?,
         _ => {
-            return Err(crate::common::said::Said::new(
+            return Err(Said::new(
                 "bad_args",
                 crate::common::contract::malformed("history-run needs run or tool"),
             ))
@@ -38,7 +39,7 @@ pub(crate) fn run_source(
             return Ok((c, run));
         }
     }
-    Err(crate::common::said::Said::new("not_found", copy_text("rsRun.load.notFound", &[])))
+    Err(Said::new("not_found", copy_text("rsRun.load.notFound", &[])))
 }
 
 /// 「这次工具调用派出的是哪个子运行」：子运行记录那一侧落了盘的对上 ‖ 父记录里带了子运行的那一条派出链接。

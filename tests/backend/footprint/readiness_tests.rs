@@ -10,7 +10,6 @@ fn product(terminal: bool, named: bool, remotes: u64, skipped: bool) -> serde_js
 fn remotes_arg(a: &serde_json::Value) -> Result<u64, crate::common::said::Said> {
     crate::wire::typed::take::<FirstRunReq>(a)
         .map(|r| r.remotes)
-        .map_err(|f| (f.code_or_fallback().to_string(), f.said))
 }
 
 #[test]
@@ -42,13 +41,13 @@ fn 三步照事实打勾_哪步必做由这里说_剩几步只数必做的() {
 #[test]
 fn 机器表的台数由问的那一方带上_不给或不是非负整数就拒() {
     assert_eq!(remotes_arg(&json!({"remotes": 3})).unwrap(), 3);
-    assert_eq!(remotes_arg(&json!({})).unwrap_err().0, "bad_args");
+    assert_eq!(remotes_arg(&json!({})).unwrap_err().code.as_deref(), Some("bad_args"));
     assert_eq!(
-        remotes_arg(&json!({"remotes": -1})).unwrap_err().0,
-        "bad_args"
+        remotes_arg(&json!({"remotes": -1})).unwrap_err().code.as_deref(),
+        Some("bad_args")
     );
     assert_eq!(
-        remotes_arg(&json!({"remotes": "2"})).unwrap_err().0,
-        "bad_args"
+        remotes_arg(&json!({"remotes": "2"})).unwrap_err().code.as_deref(),
+        Some("bad_args")
     );
 }

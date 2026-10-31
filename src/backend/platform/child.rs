@@ -219,15 +219,15 @@ impl ChildFail {
         matches!(self, ChildFail::TimedOut { .. })
     }
 
-    /// 阻塞档命令把这次失败交成命令级 `(码, 话)`：超时 ⇒ [`TIMED_OUT`] ＋ 原语的话；其余 ⇒ `other` ＋ 调用方的话。
+    /// 阻塞档命令把这次失败交成命令级的码 ＋ 话：超时 ⇒ [`TIMED_OUT`] ＋ 原语的话；其余 ⇒ `other` ＋ 调用方的话。
     pub(crate) fn into_cmd_err(
         self,
-        other: &'static str,
+        other: &str,
         said: impl FnOnce(&ChildFail) -> String,
-    ) -> (&'static str, String) {
+    ) -> copy_core::said::Said {
         match self {
-            ChildFail::TimedOut { .. } => (TIMED_OUT, self.to_string()),
-            _ => (other, said(&self)),
+            ChildFail::TimedOut { .. } => copy_core::said::Said::new(TIMED_OUT, self.to_string()),
+            _ => copy_core::said::Said::new(other, said(&self)),
         }
     }
 }

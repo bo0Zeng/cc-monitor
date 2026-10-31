@@ -219,7 +219,7 @@ fn stale_listing() -> cmd_wire::listing::Listing {
 
 async fn browse(args: Value, until: bool) -> Result<Value, crate::common::said::Said> {
     let req: HistoryBrowseReq =
-        crate::wire::typed::take(&args).map_err(|f| ("bad_args", f.said))?;
+        crate::wire::typed::take(&args).map_err(|f| f.coded("bad_args"))?;
     let until = until
         .then(|| crate::platform::child::Until::after(crate::platform::child::Deadline::secs(5)))
         .flatten();
@@ -272,7 +272,7 @@ async fn the_frame_arm_reads_what_is_held_and_syncs_only_fresh_ones() {
         (with(json!({"range": null})), false),
     ] {
         let e = browse(bad.clone(), until).await.unwrap_err();
-        assert_eq!(e.0, "bad_args", "{bad} 应是 bad_args：{e:?}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad} 应是 bad_args：{e:?}");
     }
 }
 

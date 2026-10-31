@@ -22,7 +22,7 @@ fn answer_with(
     agent_home: &Path,
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, crate::common::said::Said> {
-    let req: FootprintReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
+    let req: FootprintReq = crate::wire::typed::take(args).map_err(|f| f.coded("bad_args"))?;
     super::answer_with(get, session_path, agent_home, &req)
         .map(|r| serde_json::to_value(r).unwrap())
 }
@@ -245,7 +245,7 @@ fn bad_arguments_are_refused() {
     ];
     for args in cases {
         let err = answer_with(&get, &no_session, &d, &args).expect_err("坏入参还成功了");
-        assert_eq!(err.0, "bad_args", "{args} 应当是 bad_args，实得 {err:?}");
+        assert_eq!(err.code.as_deref(), Some("bad_args"), "{args} 应当是 bad_args，实得 {err:?}");
     }
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -265,8 +265,8 @@ fn home_falls_back_to_userprofile_and_is_required() {
         d.display().to_string(),
         "HOME 缺 ⇒ 退 USERPROFILE"
     );
-    let (code, _) = answer_with(&env_of(vec![]), &no_session, &d, &json!({})).unwrap_err();
-    assert_eq!(code, "failed", "没有家目录就解不了 `~/…`，不猜");
+    let e = answer_with(&env_of(vec![]), &no_session, &d, &json!({})).unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("failed"), "没有家目录就解不了 `~/…`，不猜");
     let _ = std::fs::remove_dir_all(&d);
 }
 
