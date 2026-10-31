@@ -1,5 +1,6 @@
 {
   "accounts-list": [{"agent":"claude"},{"agent":""}],
+  "accounts-login-cmd": [{"name":"a"}],
   "accounts-set-default": [{"name":"a"}],
   "authorized-keys-add": [{"key":"ssh-ed25519 AAAA k"}],
   "bookmarks-edit": [{"op":"toggle","dirs":["/w"]},{"op":"remove","dirs":["/w"]},{"op":"add","dirs":["/w","/v"]}],
@@ -68,7 +69,6 @@
   "session-rewind-options": [{"machine":"<local>","sid":"s","to":"u"}],
   "sessions-needs": [null],
   "terminal-end": [{"terminal":"t1","client":"mobile"}],
-  "terminal-input": [{"sid":"s","text":"hi"},{"sid":"s","key":"esc"}],
   "terminal-preview": [{"terminal":"t1","color":false}],
   "terminals-list": [{"client":"mobile"}]
 }

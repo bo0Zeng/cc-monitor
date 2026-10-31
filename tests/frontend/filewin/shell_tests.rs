@@ -58,6 +58,57 @@ impl FileWindow {
             }
         }
     }
+
+    /// 打开着的那一份（可改：摆「盘上被改过」那一形用）。
+    pub(crate) fn editing_mut(&mut self) -> Option<&mut crate::editor::Pane> {
+        self.editing.as_mut()
+    }
+
+    /// 编辑框里那些字（替敲键改它；编辑面那个 `TextEdit` 直接拿 `Pane::text`，是同一个 `String`）。
+    pub(crate) fn editing_text_mut(&mut self) -> Option<&mut String> {
+        self.editing.as_mut().map(|p| &mut p.text)
+    }
+
+    /// 关窗那一问摆着吗。
+    pub(crate) fn asking_discard(&self) -> bool {
+        self.asking_discard
+    }
+
+    /// 编辑面查找栏那一格（界面直接拿 `Pane::find`，是同一格）。没开编辑面 ⇒ `None`。
+    pub(crate) fn find_bar_mut(&mut self) -> Option<&mut crate::editor::FindBar> {
+        self.editing.as_mut().map(|p| &mut p.find)
+    }
+
+    /// 摆着的那个右键菜单。
+    pub(crate) fn menu(&self) -> Option<&MenuAt> {
+        self.menu.as_ref()
+    }
+
+    /// 搜索范围：`true` ＝ 整台机器，`false` ＝ 当前目录以下（界面上是状态行那个下拉）。
+    pub(crate) fn set_search_whole(&mut self, on: bool) {
+        self.search_whole = on;
+    }
+
+    /// 按内容搜那个框里的字（生产那一侧直接改字段）。
+    pub(crate) fn set_grep_query(&mut self, q: &str) {
+        self.search_content = true;
+        self.grep_query = q.to_string();
+    }
+
+    /// 搜索框里现在是什么。
+    pub(crate) fn query(&self) -> &str {
+        &self.query
+    }
+
+    /// 正摆着的那个「复制为」框。
+    pub(crate) fn copy_prompt(&self) -> Option<&CopyPrompt> {
+        self.copy_prompt.as_ref()
+    }
+
+    /// 系统存盘框开着时要下的那一项。
+    pub(crate) fn pull_want(&self) -> Option<&(String, String)> {
+        self.pull_want.as_ref()
+    }
 }
 
 /// 开窗那条路写的三个进程级的数（`window` 里的静态量），真开窗的判据读回来。
@@ -1378,7 +1429,7 @@ fn the_hit_list_can_never_hand_the_window_a_row_index() {
             ..Default::default()
         },
         |ui| {
-            crate::rows::show_file_rows(
+            crate::rows::testing::show_file_rows(
                 ui,
                 &rows,
                 &mut rt,

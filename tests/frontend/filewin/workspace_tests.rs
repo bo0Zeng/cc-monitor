@@ -379,8 +379,10 @@ fn closing_a_tab_with_a_transfer_running_closes_it_and_the_transfer_keeps_going(
         Some("/srv".into()),
         None,
     );
-    assert!(
-        ws.tab(0, 1).progress.same(&ws.progress),
+    // 窗口那一份上刚开的那一行，新标签页手上那一份里也看得见 ⇒ 两边是同一张表。
+    assert_eq!(
+        ws.tab(0, 1).progress.running(),
+        1,
         "新标签页拿的不是窗口那一份「进度」表"
     );
     assert!(
@@ -1295,7 +1297,8 @@ async fn screenshot_for_the_shots_tool() {
         .unwrap()
         .insert(dir.join("main.rs").to_string_lossy().to_string(), code);
     if scene.starts_with("plan") {
-        be.offered.push(crate::plan::CMD_PLAN_FILES.to_string());
+        be.offered
+            .push(<cmd_wire::plan::PlanFilesReq as cmd_wire::Call>::NAME.to_string());
         *be.plan_reply.lock().unwrap() = Some(
             serde_json::json!({"workspace": "/home/user/work", "slice": "orders-service", "unreadable": null, "unowned": null, "unownedWhy": null, "entries": [
                 {"name": "main.rs", "id": "A2-1", "label": "A2-1 下单入口", "title": "下单入口", "statusCode": "done", "status": null, "block": "下单流程",

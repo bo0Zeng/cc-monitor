@@ -71,12 +71,6 @@ impl FileWindow {
         self.hit_rows.2.clone()
     }
 
-    /// 搜索范围：`true` ＝ 整台机器，`false` ＝ 当前目录以下（判据用；界面上是状态行那个下拉）。
-    #[cfg(test)]
-    pub fn set_search_whole(&mut self, on: bool) {
-        self.search_whole = on;
-    }
-
     /// 点了结果表的一列表头 ⇒ 换排序、按新序从头再问（排是后端排的）。
     pub fn click_hit_header(&mut self, col: find::SortCol, ctx: Option<egui::Context>) -> bool {
         self.hit_sort = self.hit_sort.clicked(col);
@@ -129,13 +123,6 @@ impl FileWindow {
         true
     }
 
-    /// 按内容搜那个框里的字（判据用；生产那一侧直接改字段）。
-    #[cfg(test)]
-    pub fn set_grep_query(&mut self, q: &str) {
-        self.search_content = true;
-        self.grep_query = q.to_string();
-    }
-
     /// 这一帧该画「按内容搜」的命中：文件名那个框是空的、按内容那个框里有字。
     pub fn showing_grep(&self) -> bool {
         self.search_content
@@ -165,12 +152,6 @@ impl FileWindow {
     /// （用户会以为搜索没生效）。
     pub fn showing_hits(&self) -> bool {
         !self.query.trim().is_empty()
-    }
-
-    /// 搜索框里现在是什么（判据用；生产那一侧直接改 [`Self::query`]）。
-    #[cfg(test)]
-    pub fn query(&self) -> &str {
-        &self.query
     }
 
     /// 搜索那两条状态行（按名字 · 按内容）；目录换了而范围是「当前目录以下」⇒ 先按新目录再搜。

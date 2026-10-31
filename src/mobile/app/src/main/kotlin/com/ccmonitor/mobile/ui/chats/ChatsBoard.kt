@@ -9,8 +9,9 @@ import com.ccmonitor.mobile.core.claude.link.ListSort
 import com.ccmonitor.mobile.core.claude.link.SearchMerge
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.ChatsColumnAsk
-import com.ccmonitor.mobile.core.wire.gen.ColumnAt
+import com.ccmonitor.mobile.core.wire.gen.ColumnFork
 import com.ccmonitor.mobile.core.wire.gen.ColumnHost
+import com.ccmonitor.mobile.core.wire.gen.ColumnLine
 import com.ccmonitor.mobile.core.wire.gen.ColumnRow
 import com.ccmonitor.mobile.core.wire.gen.EmptyFace
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
@@ -186,6 +187,9 @@ class ChatsBoard(
     private val content = MutableStateFlow<ContentUi?>(null)
     private var contentJob: Job? = null
     private val held = MutableStateFlow(false)
+
+    /** 展开了分叉的那几行（哪台 · 会话 id）：换筛选 · 换词不清；app 重启收起。 */
+    private val forks = MutableStateFlow<Set<Pair<String, String>>>(emptySet())
     private val _ui = MutableStateFlow(ChatsUi())
     private var latest = ChatsUi()
 
@@ -205,8 +209,8 @@ class ChatsBoard(
             boards
                 .map { bs -> if (bs.isEmpty()) flowOf(emptyList()) else combine(bs.map { it.state }) { it.toList() } }
                 .collectLatest { snaps ->
-                    combine(snaps, ssh, filters, combine(query, content, ::Pair), combine(table, empty, ::Pair)) { s, l, f, (q, c), (t, e) ->
-                        chatsView(s.map { hostPart(it, l[it.hostId]) }, current, t, f, q, e).copy(content = c)
+                    combine(snaps, ssh, combine(filters, forks, ::Pair), combine(query, content, ::Pair), combine(table, empty, ::Pair)) { s, l, (f, o), (q, c), (t, e) ->
+                        chatsView(s.map { hostPart(it, l[it.hostId]) }, current, t, f, q, e, o).copy(content = c)
                     }.collect { v ->
                         latest = v
                         if (!held.value) _ui.value = v
@@ -230,6 +234,12 @@ class ChatsBoard(
     }
 
     fun filters(change: (Filters) -> Filters) = filters.update(change)
+
+    /** 点「分叉 N」：展开 / 收起那一行的分叉（核心重摆，不重问那台）。 */
+    fun toggleForks(
+        hostId: String,
+        sessionId: String,
+    ) = forks.update { o -> (hostId to sessionId).let { if (it in o) o - it else o + it } }
 
     /** 搜标题：空串 ⇒ 收起（`null`）。 */
     fun query(q: String?) {
@@ -338,16 +348,24 @@ internal fun chatsView(
     query: String?,
     /** 首屏那一句（核心交的；还没交 ⇒ `null`：不说「无会话」，照在读画骨架）。 */
     face: EmptyFace?,
+    /** 展开了分叉的那几行（哪台 · 会话 id）。 */
+    open: Set<Pair<String, String>> = emptySet(),
 ): ChatsUi {
     val multi = parts.size > 1
     val tag = { p: HostPart -> p.machine.takeIf { multi && p.hostId != current } }
     val (pinned, bands) = if (filters.banded(query)) bandsOf(parts, tag) else emptyList<ChatRow>() to emptyList()
     val placed = (pinned + bands.flatMap { it.rows }).map { it.hostId to it.sessionId }.toSet()
     val none = parts.all { it.rows.isEmpty() } && placed.isEmpty()
-    // 并 · 切段 · 组的先后都在核心；交回第几台第几项，这里照它摆那台那一行。
-    val ask = ChatsColumnAsk(parts.map { p -> ColumnHost(p.rows.map { ColumnRow(it.at, it.section, (it.hostId to it.sessionId) in placed) }, p.groups.map { it.order }) })
+    // 并 · 切段 · 分叉挂父 · 组的先后都在核心；交回第几台第几项与它在分叉树里的样子，这里照它摆那台那一行。
+    val ask =
+        ChatsColumnAsk(
+            parts.map { p -> ColumnHost(p.rows.map { ColumnRow(it.at, it.section, (it.hostId to it.sessionId) in placed, it.sessionId, it.parent) }, p.groups.map { it.order }) },
+            parts.flatMapIndexed { i, p -> open.filter { it.first == p.hostId }.map { ColumnFork(i.toLong(), it.second) } },
+        )
     val column = ColumnFace.of(ask)
-    val row = { a: ColumnAt -> parts[a.host.toInt()].let { p -> p.rows[a.at.toInt()].copy(machineTag = tag(p)) } }
+    val row = { l: ColumnLine ->
+        parts[l.host.toInt()].let { p -> p.rows[l.at.toInt()].copy(machineTag = tag(p), nest = Nest(l.child, l.forks.toInt(), l.forksOpen, l.orphan)) }
+    }
     val sections = column.sections.map { s -> ChatSection(s.title, s.rows.map(row)) }
     val groups = column.groups.map { a -> parts[a.host.toInt()].let { p -> ChatGroup(p.hostId, p.groups[a.at.toInt()], tag(p)) } }
     val down = parts.filter { it.bar?.offline == true }.map { it.hostId }.toSet()

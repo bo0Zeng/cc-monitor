@@ -1,5 +1,65 @@
 use super::*;
 
+/// [`show_file_rows_with_tail`] 不带尾行 · 就地格 · 计划列的那一形（判据用；生产只走带尾的那一个）。
+pub fn show_file_rows(
+    ui: &mut Ui,
+    rows: &[Listed],
+    tally: &mut RenderTally,
+    scroll_offset_y: Option<f32>,
+    reveal: Option<&str>,
+    picked: Option<&crate::select::Selection>,
+    cols: &Columns,
+) {
+    show_file_rows_with_tail(
+        ui,
+        rows,
+        tally,
+        scroll_offset_y,
+        reveal,
+        picked,
+        cols,
+        None,
+        None,
+        None,
+    );
+}
+
+/// Headless 跑一趟 egui 并收 [`RenderTally`]。
+///
+/// ⚠ **这是 CPU 段**：布局 ＋ 生成绘制命令 ＋ 文字整形，不含把三角形交给 GPU（本机没有图形会话）。
+/// 旁证：虚拟滚动那一档三角形数与总行数无关 ⇒ 交给 GPU 的活不随行数涨，**它不是 64 万行的风险点**。
+pub fn render_headless(
+    ctx: &egui::Context,
+    rows: &[Listed],
+    screen: egui::Vec2,
+    scroll_offset_y: f32,
+) -> RenderTally {
+    let mut tally = RenderTally::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, screen)),
+        ..Default::default()
+    };
+    let out = ctx.run_ui(input, |ui| {
+        // 🔴 调的是**生产那个函数**，不是它的副本 —— 见 `show_file_rows_with_tail` 的注释。
+        let mut t = RenderTally::default();
+        show_file_rows_with_tail(
+            ui,
+            rows,
+            &mut t,
+            Some(scroll_offset_y),
+            None,
+            None,
+            &Columns::default(),
+            None,
+            None,
+            None,
+        );
+        tally = t;
+    });
+    out.drop_without_applying_deltas();
+    tally
+}
+
 /// 🔴 **对照组**：故意**不虚拟**的同一个列表（`ScrollArea::show`）。
 /// 它只住 `cfg(test)` —— 生产里不许有第二条画列表的路。
 /// 它的用处是证明上面那把尺子**量得出差别**：

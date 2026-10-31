@@ -116,27 +116,6 @@ impl FrameLog {
     }
 }
 
-/// 判据看的两格（只给测试）。
-#[cfg(test)]
-impl FrameLog {
-    pub(crate) fn is_on(&self) -> bool {
-        self.out.is_some()
-    }
-
-    /// 记过几帧（关着恒 0）。
-    pub(crate) fn frames(&self) -> u64 {
-        self.frames
-    }
-
-    /// 同 [`FrameLog::to_file`]，记满 `cap` 帧就停。
-    pub(crate) fn capped(path: &std::path::Path, cap: u64) -> std::io::Result<Self> {
-        Ok(Self {
-            cap,
-            ..Self::to_file(path)?
-        })
-    }
-}
-
 fn verdict(last: Option<u64>, now: u64) -> &'static str {
     match last {
         None => "first",
