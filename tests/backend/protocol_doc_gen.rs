@@ -1,5 +1,5 @@
 //! 协议参考 `src/doc/IPC-COMMANDS.md` 从代码生成：帧与出参读源码里的 serde 类型（字段说明取 `///` 第一句），
-//! 命令读 `inbound::REGISTRY`（一句话 · 入参与回包的类型 · 码 · 档位），CLI 子命令读 `SUBCOMMANDS` ＋ `CLI_ONLY_DOCS`。
+//! 命令读 `inbound::REGISTRY`（一句话 · 入参与回包的类型 · 码 · 档位），CLI 子命令读列全部命令的那个口（`stream::catalog`：派生的那一面 ＋ `stream::oneshot::ONESHOTS`）。
 //!
 //! 判据只有一条：重新生成 == 仓里那份。改了帧字段 / 命令登记之后红是预期的，对过现打的那份后 `bash tests/scripts/bless-golden.sh` 拷回。
 
@@ -878,7 +878,7 @@ fn total_families(names: &[&str], name: &str) -> usize {
 fn cli(out: &mut String) {
     out.push_str("## 5. CLI 子命令\n\n一次性调用：`ccm -- --子命令 …`（打头的 `--` 之后才归后端）；收 `args` 的那一段 JSON 从 stdin 读，或经 `--args-b64 <base64>` 走 argv（二选一，上限与码见 `IPC-PROTOCOL.md` §8），回一行 JSON 到 stdout。\n\
 「＝ 帧命令」的那几条与流上同名命令是同一个处理器。本表随二进制走的那一份：`ccm -- --commands`（同一个口，`stream/catalog.rs`）。\n\n| 子命令 | 说明 |\n|---|---|\n");
-    // 逐行照口写；口列的子命令 ＝ `SUBCOMMANDS` 两向相等由口自己的判据钉（`tests/backend/stream/catalog_tests.rs`）。
+    // 逐行照口写；口列的子命令 ＝ 闸门认的子命令集合两向相等由口自己的判据钉（`tests/backend/stream/catalog_tests.rs`）。
     let mut rows: Vec<_> = crate::stream::catalog::catalog()
         .into_iter()
         .filter(|e| e.cli.is_some())

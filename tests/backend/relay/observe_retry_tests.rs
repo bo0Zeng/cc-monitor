@@ -1,6 +1,6 @@
 //! 中转的 `observe` 口走到账号域那一头：真中转 ＋ 生产段的上游选择 ＋ 一个按鉴权头作答的假上游。
 
-use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
+use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, UPSTREAM_DEADLINE};
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::upstream_select::{table::RoutingTable, Accounts, Upstreams};
 use crate::common::net::LOOPBACK;
@@ -79,6 +79,7 @@ pub(super) fn spawn_relay_over(accounts: Accounts) -> SocketAddr {
         super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
+        INFLIGHT_BODY_CAP,
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
@@ -244,6 +245,7 @@ fn relay_over(d: Arc<dyn comms_outward::Destinations>) -> SocketAddr {
         super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
+        INFLIGHT_BODY_CAP,
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");

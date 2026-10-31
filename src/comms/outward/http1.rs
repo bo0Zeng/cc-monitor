@@ -413,19 +413,20 @@ pub fn is_interim_status(status_line: &str) -> bool {
 /// ⚠ 这里的 `None` 与 `read_head` 的 `None` **不同族**：那边一个 `None` 装了**两个**来源
 /// （超上限 · 提前 EOF，它自己的头注登记着这一点），这里**只有一个**。
 ///
-/// # ★★ 为什么不是 `vec![0u8; n]`
+/// # ★★ 先判 `n > cap`，再按 `n` 分配
 ///
 /// `n` 来自 `content_length()`，值域是 **`usize` 全域，没有任何上界**（`HEAD_CAP` 只管头**字节数**，管不到它）。
-/// 按 `n` 预分配的话，一条 `Content-Length: 1000000000000` 的下游请求 ⇒ 分配失败 ⇒ `std::alloc::handle_alloc_error`
+/// 先按 `n` 分配的话，一条 `Content-Length: 1000000000000` 的下游请求 ⇒ 分配失败 ⇒ `std::alloc::handle_alloc_error`
 /// ⇒ **abort（SIGABRT）**。**abort 不走 unwind** ⇒ `panic = "unwind"` 与 `catch_unwind`
 /// 一概接不住；而这里的形状是「**一个进程**服务 N 个会话」
 /// ⇒ 这一发打掉的不是一条连接，是**当时所有会话的在途流**。
 ///
-/// 两道，缺一不可：
+/// 两道：
 /// 1. **`n > cap` 当场拒收**，一个字节不读、一个字节不分配；
-/// 2. 即便 `n <= cap`，也**按真的读到的字节增长**（`take(n).read_to_end`），**不按 `n` 预分配**
-///    —— 否则一条「只声明 `Content-Length: <cap>`、一个字节不发」的请求照样能逼出
-///    `cap` 那么大的一块内存，而攻击方一个字节的代价都没付。
+/// 2. `n <= cap` ⇒ 按 `n` **一次分配**（`Vec::with_capacity(n)`），读满为止，不按读到的字节翻倍增长
+///    （翻倍的话容量最多到体长的两倍，长的那一下新旧两块同时在手里）。
+///    「只声明 `Content-Length: <cap>`、一个字节不发」逼出的那一块，由调用方读体之前记的那一笔账挡着
+///    （`server.rs` 的 `BodyBudget`：在途的体合计有上限，记不下就不读）。
 ///
 /// 死值验与射程见 `an_oversized_content_length_is_refused_without_allocating_it` 与件文件 §8.20.2。
 pub fn read_exact_body<R: BufRead>(
@@ -436,7 +437,7 @@ pub fn read_exact_body<R: BufRead>(
     if n > cap {
         return Ok(None);
     }
-    let mut body = Vec::new();
+    let mut body = Vec::with_capacity(n);
     r.by_ref().take(n as u64).read_to_end(&mut body)?;
     if body.len() != n {
         return Err(std::io::Error::new(

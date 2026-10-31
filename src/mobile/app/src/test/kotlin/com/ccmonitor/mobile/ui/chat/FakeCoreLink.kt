@@ -258,7 +258,7 @@ internal class FakeCoreLink :
             id: String,
             text: String,
         ): Map<String, Any?> =
-            mapOf("agent" to "claude", "id" to id, "t" to "reply", "autoReply" to false, "draw" to "card", "human" to false, "blocks" to listOf(mapOf("type" to "text", "text" to text)))
+            mapOf("agent" to "claude", "id" to id, "t" to "reply", "autoReply" to false, "draw" to "card", "human" to false, "blocks" to listOf(mapOf("type" to "text", "text" to text, "bytes" to text.toByteArray().size.toLong())))
 
         fun failed(message: String) = Reply.Failed(CoreFailure("start_failed", message, "detail"))
 

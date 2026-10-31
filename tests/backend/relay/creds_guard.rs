@@ -141,6 +141,16 @@ mod tests {
             "在途连接顶满那一阵过去了，照常接",
         ),
         (
+            "comms-outward/server.rs",
+            "[relay] refusing: in-flight request bodies",
+            "在途请求体合计记不下，这一阵回 503（一阵只说一次）",
+        ),
+        (
+            "comms-outward/server.rs",
+            "[relay] in-flight request bodies back under",
+            "在途请求体合计顶满那一阵过去了，照常收",
+        ),
+        (
             "relay/listen.rs",
             "[relay] connection ended",
             "一条连接以错误收尾",

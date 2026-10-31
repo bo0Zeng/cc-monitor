@@ -255,17 +255,17 @@ fn every_target_has_the_same_commands_except_the_registered_gaps() {
 // ══════════════ 机制声明的反方向：从实现那一侧对声明 ══════════════
 //
 // 上面那条现推只读声明 —— 声明漏一格，那条命令在 Windows 上就被现推成「做得到」，而两向相等照样绿。下面两条补这一向：
-// - **帧面**：`inbound::REGISTRY` 每条命令的处理器（`run:` 闭包里点名的 `crate::…` 路径）所在文件，沿**文件级引用图**
-//   （`use` / `crate::` / `super::` / 本文件声明的子模块）能不能走到一份**真起 `tmux`** 的生产文件（`Command::new("tmux")`，
-//   或经 `platform::shell::posix_shell` 送一段带 `tmux ` 的脚本）。够得着的 == 声明 `no_tmux` 的 ∪ 登记的「够得着但 tmux 只是可选的」。
+// - **帧面**：`inbound::REGISTRY` 每条命令的处理器函数（`impl Handle for <类型>` 那一块），沿**函数级调用图**（[`fn_graph`]）
+//   能不能走到一个**真起 `tmux`** 的函数（`Command::new("tmux")`，或经 `platform::shell::posix_shell` 起 shell 送 tmux 脚本的那一个）。
+//   够得着的 == 声明 `no_tmux` 的 ∪ 登记的「够得着但 tmux 只是可选的」。
 // - **ccm 面**：`control::ccm::CAPABILITIES` 每一条配一个最小探针 argv，经**真解析器 ＋ 真计划**（`argv::parse` → `plan::build`，纯、不起进程）
 //   看它落在哪条路上：接回 / 容器 ⇒ 靠 tmux；直路 ⇒ 它在直路上必须**有效果**（计划与基线不同），否则它离了 tmux 什么都不做。
 //   靠 tmux 的 ∪ 登记的例外 == `CCM_TMUX_CARRIED`。
 //
 // ⚠ 买不到（如实）：
-// - 帧面的引用图是**文件级**的（拿不到函数级调用图）：同一份文件里「只用了一个常量」也算够得着 ⇒ 多判不少判，
-//   多出来的进登记表逐条写理由；经函数指针 / trait 对象注入的调用（`inbound` 递给处理器的闭包）看不见。
-// - `Run::Builtin` 与就地应答的那几条没有 `crate::` 路径，不在射程（逐条登记，新来一条没路径的会红）。
+// - 帧面的调用图按名字认、不认类型：方法 `.f(` 连本文件与它引用到的文件里每个 `…::f`，点名一个类型连它全部方法 ⇒ 多判不少判，
+//   多出来的进登记表逐条写理由；值经别的线程的通道送过去（watcher 那一类）、经文件级引用图之外的路注入的调用看不见。
+// - 帧面硬臂那一档（`typed::frame::<…>`）本体在分派的硬臂里，起点退成那个类型住的那份文件里的全部函数。
 // - ccm 面判的是「落在哪条路上」与「直路上有没有效果」，**不是**「在 Windows 上真跑得起来」（真机维一格没有）；
 //   平台原语那一层（读别的进程的环境）计划里看不见 —— `ccm-sid` 正是这一形，登记在例外表里。
 
@@ -549,10 +549,585 @@ fn reachable(
     seen
 }
 
-/// 命令表各族（`stream/inbound/registry/*.rs`）生产段里每一条的 `run:` 闭包点名的 `crate::…` 路径所在文件（命令名 → 文件集）。
-fn handler_files(
+/// 一个函数的住址：`(文件, 名)`；`impl` / `trait` 块里的写成 `类型::名`。同一份文件里同一个住址的几个并成一个（多判不少判）。
+type FnAt = (String, String);
+
+fn is_ident(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// 字符串 · 字符字面量的内容抹成空白（引号留着，长度不变）：找花括号与路径时不被字面量里的 `{` · `::` 骗。
+fn masked(src: &[char]) -> Vec<char> {
+    let mut out = src.to_vec();
+    let n = src.len();
+    let mut i = 0;
+    while i < n {
+        let c = src[i];
+        let fresh = i == 0 || !is_ident(src[i - 1]);
+        let raw_at = match c {
+            'r' if fresh => Some(i + 1),
+            'b' if fresh && src.get(i + 1) == Some(&'r') => Some(i + 2),
+            _ => None,
+        };
+        if let Some(mut j) = raw_at {
+            let mut hashes = 0;
+            while j < n && src[j] == '#' {
+                hashes += 1;
+                j += 1;
+            }
+            if j < n && src[j] == '"' {
+                let mut k = j + 1;
+                while k < n
+                    && !(src[k] == '"' && (1..=hashes).all(|h| src.get(k + h) == Some(&'#')))
+                {
+                    k += 1;
+                }
+                out[j + 1..k.min(n)].fill(' ');
+                i = k + 1 + hashes;
+                continue;
+            }
+        }
+        if c == '"' {
+            let mut k = i + 1;
+            while k < n && src[k] != '"' {
+                k += if src[k] == '\\' { 2 } else { 1 };
+            }
+            out[i + 1..k.min(n)].fill(' ');
+            i = k + 1;
+            continue;
+        }
+        if c == '\'' {
+            if src.get(i + 1) == Some(&'\\') {
+                let mut k = i + 3;
+                while k < n && src[k] != '\'' {
+                    k += 1;
+                }
+                out[i + 1..k.min(n)].fill(' ');
+                i = k + 1;
+                continue;
+            }
+            if src.get(i + 2) == Some(&'\'') {
+                out[i + 1] = ' ';
+                i += 3;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+/// `m[i..]` 以整词 `w` 打头。
+fn word_at(m: &[char], i: usize, w: &str) -> bool {
+    let w: Vec<char> = w.chars().collect();
+    m.get(i..i + w.len()) == Some(&w[..])
+        && (i == 0 || !is_ident(m[i - 1]))
+        && !m.get(i + w.len()).copied().is_some_and(is_ident)
+}
+
+/// `m[open]` 是 `{`：交回与它配对的 `}`（没收尾 ⇒ 末尾）。
+fn match_brace(m: &[char], open: usize) -> usize {
+    let mut depth = 0i32;
+    for (k, c) in m.iter().enumerate().skip(open) {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return k;
+                }
+            }
+            _ => {}
+        }
+    }
+    m.len().saturating_sub(1)
+}
+
+/// `impl` / `trait` 头（关键字之后到 `{` 之前）里那个类型的名字：尖括号里的去掉，有 ` for ` 取它后面那一个，路径取末段。
+fn owner_of(header: &str, is_impl: bool) -> String {
+    let h: Vec<char> = header.chars().collect();
+    let mut top = String::new();
+    let mut depth = 0i32;
+    let mut i = 0;
+    while i < h.len() {
+        match h[i] {
+            '-' if h.get(i + 1) == Some(&'>') => i += 1,
+            '<' => depth += 1,
+            '>' => depth -= 1,
+            c if depth == 0 => top.push(c),
+            _ => {}
+        }
+        i += 1;
+    }
+    let after = if is_impl {
+        top.rsplit(" for ").next().unwrap_or(&top)
+    } else {
+        &top
+    };
+    let path: String = after
+        .trim_start()
+        .trim_start_matches(['&', ' '])
+        .trim_start_matches("dyn ")
+        .chars()
+        .take_while(|c| is_ident(*c) || *c == ':')
+        .collect();
+    path.rsplit("::").next().unwrap_or("").to_string()
+}
+
+/// 一份文件里的函数（住址名 · 原文 · 抹过字面量的那一份）与 `impl` 头（类型名 · 头那一段），按出现先后。
+#[derive(Default)]
+struct FileFns {
+    fns: Vec<(String, String, String)>,
+    impls: Vec<(String, String)>,
+}
+
+fn fns_in(src: &str) -> FileFns {
+    let r: Vec<char> = src.chars().collect();
+    let m = masked(&r);
+    let mut out = FileFns::default();
+    scan_items(&r, &m, 0, m.len(), None, &mut out);
+    out
+}
+
+fn scan_items(
+    r: &[char],
+    m: &[char],
+    from: usize,
+    to: usize,
+    owner: Option<&str>,
+    out: &mut FileFns,
+) {
+    let mut i = from;
+    while i < to {
+        let is_impl = word_at(m, i, "impl");
+        if is_impl || word_at(m, i, "trait") {
+            let kw = if is_impl { 4 } else { 5 };
+            let mut j = i + kw;
+            while j < to && m[j] != '{' && m[j] != ';' {
+                j += 1;
+            }
+            if j < to && m[j] == '{' {
+                let header: String = m[i + kw..j].iter().collect();
+                let ty = owner_of(&header, is_impl);
+                let close = match_brace(m, j);
+                out.impls.push((ty.clone(), header));
+                scan_items(r, m, j + 1, close, Some(&ty), out);
+                i = close + 1;
+            } else {
+                i = j + 1;
+            }
+            continue;
+        }
+        if word_at(m, i, "fn") {
+            let mut j = i + 2;
+            while j < to && m[j].is_whitespace() {
+                j += 1;
+            }
+            let s = j;
+            while j < to && is_ident(m[j]) {
+                j += 1;
+            }
+            if j > s {
+                let name: String = m[s..j].iter().collect();
+                let mut depth = 0i32;
+                let mut k = j;
+                while k < to {
+                    match m[k] {
+                        '(' | '[' => depth += 1,
+                        ')' | ']' => depth -= 1,
+                        '{' | ';' if depth == 0 => break,
+                        _ => {}
+                    }
+                    k += 1;
+                }
+                if k < to && m[k] == '{' {
+                    let close = match_brace(m, k);
+                    let key = owner.map_or(name.clone(), |t| format!("{t}::{name}"));
+                    out.fns.push((
+                        key,
+                        r[k..=close].iter().collect(),
+                        m[k..=close].iter().collect(),
+                    ));
+                    i = close + 1;
+                } else {
+                    i = k + 1;
+                }
+                continue;
+            }
+        }
+        i += 1;
+    }
+}
+
+/// 函数级调用图：每个函数 → 它体里叫到 / 点名的函数。
+/// - `a::b::f` 路径（`crate::` · `super::` · `self::` · 本文件声明的子模块 · `use` 进来的名字打头）⇒ 那份文件里的 `f` / `T::f`；
+///   那份文件里没有（再导出）⇒ 它引用到的文件里的同名函数。
+/// - 光一个名字 `f` ⇒ 本文件的自由函数 `f`，或 `use …::*` 进来的那一个；`T::f`（`T` 不是模块）⇒ 本文件与它引用到的文件里的 `T::f`。
+/// - 方法 `.f(` 与泛型参数 `C::f(` ⇒ 本文件与它引用到的文件里任一 `…::f`。
+/// - 读一张常量 / 静态表不算叫了表里的闭包。
+///
+/// 每条边都落在本文件或它在文件级引用图（[`file_edges`]）上引用到的文件里：够得着的只会比文件级少。
+struct FnGraph {
+    bodies: std::collections::BTreeMap<FnAt, String>,
+    edges: std::collections::BTreeMap<FnAt, std::collections::BTreeSet<FnAt>>,
+    impls: std::collections::BTreeMap<String, Vec<(String, String)>>,
+}
+
+/// 一份文件的模块住址 · 本文件声明的子模块 · `use` 进来的名字（别名照别名）→ 绝对路径 · `use …::*` 的那几个模块。
+struct UseContext {
+    me: Vec<String>,
+    children: std::collections::BTreeSet<String>,
+    uses: std::collections::BTreeMap<String, Vec<String>>,
+    globs: Vec<Vec<String>>,
+}
+
+/// `crate::` · `super::` · `self::` · 本文件声明的子模块打头的路径 ⇒ 绝对模块路径。
+fn absolutize_in(
+    me: &[String],
+    children: &std::collections::BTreeSet<String>,
+    segs: &[String],
+) -> Option<Vec<String>> {
+    match segs.first()?.as_str() {
+        "crate" => Some(segs[1..].to_vec()),
+        "super" | "self" => {
+            let mut base = me.to_vec();
+            let mut i = 0;
+            while i < segs.len() && (segs[i] == "super" || segs[i] == "self") {
+                if segs[i] == "super" {
+                    base.pop();
+                }
+                i += 1;
+            }
+            base.extend(segs[i..].iter().cloned());
+            Some(base)
+        }
+        c if children.contains(c) => Some(me.iter().chain(segs.iter()).cloned().collect()),
+        _ => None,
+    }
+}
+
+fn use_context(rel: &str, src: &str) -> UseContext {
+    let me = module_of(rel);
+    let children: std::collections::BTreeSet<String> = src
+        .split("mod ")
+        .skip(1)
+        .filter_map(|t| {
+            let name: String = t.chars().take_while(|c| is_ident(*c)).collect();
+            t[name.len()..]
+                .trim_start()
+                .starts_with(';')
+                .then_some(name)
+        })
+        .collect();
+    let mut uses = std::collections::BTreeMap::new();
+    let mut globs = Vec::new();
+    let bytes = src.as_bytes();
+    let mut from = 0;
+    while let Some(off) = src[from..].find("use ") {
+        let at = from + off;
+        from = at + 4;
+        if at > 0
+            && !matches!(
+                bytes[at - 1],
+                b' ' | b'\n' | b'\t' | b';' | b'{' | b'}' | b')'
+            )
+        {
+            continue;
+        }
+        let Some(end) = src[at + 4..].find(';') else {
+            break;
+        };
+        let joined: String = src[at + 4..at + 4 + end]
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace(" as ", "@")
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        if !joined
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_:{},*@".contains(c))
+        {
+            continue;
+        }
+        for e in expand_use(&joined) {
+            let (path, alias) = match e.split_once('@') {
+                Some((p, a)) => (p.to_string(), Some(a.to_string())),
+                None => (e.clone(), None),
+            };
+            let mut segs: Vec<String> = path
+                .split("::")
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect();
+            let glob = segs.last().is_some_and(|s| s == "*");
+            if glob || segs.last().is_some_and(|s| s == "self") {
+                segs.pop();
+            }
+            let Some(abs) = absolutize_in(&me, &children, &segs) else {
+                continue;
+            };
+            if glob {
+                globs.push(abs);
+            } else if let Some(name) = alias.or_else(|| abs.last().cloned()) {
+                uses.insert(name, abs);
+            }
+        }
+    }
+    UseContext {
+        me,
+        children,
+        uses,
+        globs,
+    }
+}
+
+fn fn_graph(tree: &Tree) -> FnGraph {
+    use std::collections::{BTreeMap, BTreeSet};
+    let mods: BTreeMap<Vec<String>, String> =
+        tree.keys().map(|r| (module_of(r), r.clone())).collect();
+    let file_edges = file_edges(tree);
+    let per_file: BTreeMap<String, FileFns> = tree
+        .iter()
+        .map(|(rel, src)| (rel.clone(), fns_in(src)))
+        .collect();
+    // 文件 → 末段名 → 住址（自由函数的末段名就是它自己）。
+    let mut by_name: BTreeMap<String, BTreeMap<String, Vec<FnAt>>> = BTreeMap::new();
+    // 文件 → 类型名 → 它 `impl` 块里的函数（点名一个类型 ⇒ 它的方法都可能被叫：经 trait 注入的那一形）。
+    let mut by_owner: BTreeMap<String, BTreeMap<String, Vec<FnAt>>> = BTreeMap::new();
+    let mut bodies: BTreeMap<FnAt, String> = BTreeMap::new();
+    let mut masked_bodies: BTreeMap<FnAt, String> = BTreeMap::new();
+    for (rel, f) in &per_file {
+        for (key, raw, mk) in &f.fns {
+            let at: FnAt = (rel.clone(), key.clone());
+            let last = key.rsplit("::").next().unwrap_or(key).to_string();
+            let slot = by_name
+                .entry(rel.clone())
+                .or_default()
+                .entry(last)
+                .or_default();
+            if !slot.contains(&at) {
+                slot.push(at.clone());
+            }
+            if let Some((owner, _)) = key.rsplit_once("::") {
+                let slot = by_owner
+                    .entry(rel.clone())
+                    .or_default()
+                    .entry(owner.to_string())
+                    .or_default();
+                if !slot.contains(&at) {
+                    slot.push(at.clone());
+                }
+            }
+            bodies.entry(at.clone()).or_default().push_str(raw);
+            masked_bodies.entry(at).or_default().push_str(mk);
+        }
+    }
+    let empty = BTreeSet::new();
+    // 在这几份文件里按末段名找：`owned` ⇒ 只要 `T::f`（给了 `T` 就只要那一个类型的）；否则只要自由函数。
+    let find = |files: &[String], name: &str, owner: Option<&str>, owned: bool| -> Vec<FnAt> {
+        files
+            .iter()
+            .filter_map(|f| by_name.get(f).and_then(|m| m.get(name)))
+            .flatten()
+            .filter(|(_, k)| match (owned, owner) {
+                (false, _) => !k.contains("::"),
+                (true, None) => k.contains("::"),
+                (true, Some(t)) => {
+                    k.strip_suffix(name).and_then(|p| p.strip_suffix("::")) == Some(t)
+                }
+            })
+            .cloned()
+            .collect()
+    };
+    // 点名一个类型（大写打头）⇒ 这几份文件里它 `impl` 块的全部函数（值交给泛型 / trait 对象之后谁叫哪个看不见，全算上）。
+    let owned_by = |files: &[String], t: &str| -> Vec<FnAt> {
+        if !t.starts_with(|c: char| c.is_ascii_uppercase()) {
+            return Vec::new();
+        }
+        files
+            .iter()
+            .filter_map(|f| by_owner.get(f).and_then(|m| m.get(t)))
+            .flatten()
+            .cloned()
+            .collect()
+    };
+    // 绝对路径 ⇒ 函数：最长的模块前缀定文件，剩下的是 `f` 或 `T::f`。
+    let resolve = |p: &[String]| -> Vec<FnAt> {
+        let Some((n, g)) = (0..=p.len())
+            .rev()
+            .find_map(|n| mods.get(&p[..n]).map(|g| (n, g.clone())))
+        else {
+            return Vec::new();
+        };
+        let here = vec![g.clone()];
+        let hop: Vec<String> = file_edges
+            .get(&g)
+            .unwrap_or(&empty)
+            .iter()
+            .cloned()
+            .collect();
+        match &p[n..] {
+            [] => Vec::new(),
+            [f] => {
+                let mut hit = find(&here, f, None, false);
+                hit.extend(owned_by(&here, f));
+                if hit.is_empty() {
+                    hit = find(&hop, f, None, false);
+                    hit.extend(owned_by(&hop, f));
+                }
+                hit
+            }
+            [.., t, f] => {
+                let mut hit = find(&here, f, Some(t), true);
+                hit.extend(find(&here, f, None, false));
+                if hit.is_empty() {
+                    find(&hop, f, Some(t), true)
+                } else {
+                    hit
+                }
+            }
+        }
+    };
+    let ctx: BTreeMap<&String, UseContext> = tree
+        .iter()
+        .map(|(rel, src)| (rel, use_context(rel, src)))
+        .collect();
+    let mut edges: BTreeMap<FnAt, BTreeSet<FnAt>> = BTreeMap::new();
+    for (at, body) in &masked_bodies {
+        let rel = &at.0;
+        let cx = &ctx[rel];
+        let here = vec![rel.clone()];
+        let near: Vec<String> = here
+            .iter()
+            .cloned()
+            .chain(file_edges.get(rel).unwrap_or(&empty).iter().cloned())
+            .collect();
+        let b: Vec<char> = body.chars().collect();
+        let mut to = BTreeSet::new();
+        let mut i = 0;
+        while i < b.len() {
+            let start_ok = (b[i].is_alphabetic() || b[i] == '_')
+                && (i == 0 || !(is_ident(b[i - 1]) || b[i - 1] == ':'));
+            if !start_ok {
+                i += 1;
+                continue;
+            }
+            let mut segs: Vec<String> = Vec::new();
+            let mut j = i;
+            loop {
+                let s = j;
+                while j < b.len() && is_ident(b[j]) {
+                    j += 1;
+                }
+                segs.push(b[s..j].iter().collect());
+                if b.get(j) == Some(&':')
+                    && b.get(j + 1) == Some(&':')
+                    && b.get(j + 2).is_some_and(|c| c.is_alphabetic() || *c == '_')
+                {
+                    j += 2;
+                    continue;
+                }
+                break;
+            }
+            let prev = b[..i].iter().rev().find(|c| !c.is_whitespace()).copied();
+            let next = b[j..].iter().find(|c| !c.is_whitespace()).copied();
+            let call = next == Some('(') || (b.get(j) == Some(&':') && b.get(j + 2) == Some(&'<'));
+            i = j.max(i + 1);
+            if next == Some('!') {
+                continue;
+            }
+            if prev == Some('.') {
+                if call && segs.len() == 1 {
+                    to.extend(find(&near, &segs[0], None, true));
+                }
+                continue;
+            }
+            let abs = absolutize_in(&cx.me, &cx.children, &segs).or_else(|| {
+                cx.uses
+                    .get(&segs[0])
+                    .map(|u| u.iter().chain(segs[1..].iter()).cloned().collect())
+            });
+            if let Some(p) = abs {
+                to.extend(resolve(&p));
+                continue;
+            }
+            match segs.as_slice() {
+                [f] => {
+                    to.extend(find(&here, f, None, false));
+                    to.extend(owned_by(&near, f));
+                    for g in &cx.globs {
+                        let p: Vec<String> = g.iter().chain(std::iter::once(f)).cloned().collect();
+                        to.extend(resolve(&p));
+                    }
+                }
+                [t, f] if t == "Self" => to.extend(find(&here, f, None, true)),
+                [t, f] if call && t.len() == 1 && t.chars().all(|c| c.is_ascii_uppercase()) => {
+                    to.extend(find(&near, f, None, true));
+                }
+                [.., t, f] if call => {
+                    to.extend(find(&near, f, Some(t), true));
+                    for g in &cx.globs {
+                        let p: Vec<String> = g.iter().chain(segs.iter()).cloned().collect();
+                        to.extend(resolve(&p));
+                    }
+                }
+                _ => {}
+            }
+        }
+        to.remove(at);
+        edges.insert(at.clone(), to);
+    }
+    let impls = per_file
+        .into_iter()
+        .map(|(rel, f)| (rel, f.impls))
+        .collect();
+    FnGraph {
+        bodies,
+        edges,
+        impls,
+    }
+}
+
+/// 真起 tmux 的函数：[`tmux_spawning_files`] 那几份里，体里直呼 `Child::new("tmux")` 或经 `posix_shell(` 起 shell 的那几个。
+fn tmux_spawning_fns(tree: &Tree, g: &FnGraph) -> std::collections::BTreeSet<FnAt> {
+    let files = tmux_spawning_files(tree);
+    g.bodies
+        .iter()
+        .filter(|((rel, _), _)| files.contains(rel))
+        .filter(|(_, body)| {
+            let squeezed: String = body.chars().filter(|c| !c.is_whitespace()).collect();
+            squeezed.contains("Child::new(\"tmux\")") || body.contains("posix_shell(")
+        })
+        .map(|(at, _)| at.clone())
+        .collect()
+}
+
+/// 从一组起点函数沿调用图走完，交回够得着的函数（含起点）。
+fn reachable_fns(
+    g: &FnGraph,
+    from: &std::collections::BTreeSet<FnAt>,
+) -> std::collections::BTreeSet<FnAt> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut todo: Vec<FnAt> = from.iter().cloned().collect();
+    while let Some(f) = todo.pop() {
+        if seen.insert(f.clone()) {
+            todo.extend(g.edges.get(&f).into_iter().flatten().cloned());
+        }
+    }
+    seen
+}
+
+/// 命令名 → 它的处理器函数（起点）。命令表各族（`stream/inbound/registry/*.rs`）里 typed 那几行
+/// （`typed::blocking::<路径>()` · `typed::asynchronous::<路径>()` · 帧面硬臂那一档 `typed::frame::<路径>()`）点名一个类型，
+/// 命令名从那个类型住的文件里它的 `impl Command for <类型>` 的 `const NAME` 读（异源：不读 `REGISTRY`）。
+/// 起点：`impl … Handle for <类型>` 那一块里的函数（住哪份文件都算）；帧面硬臂那几条没有 `Handle`（本体在分派的硬臂里），
+/// 起点退成那个类型住的那份文件里的全部函数。
+fn handler_fns(
     tree: &Tree,
-) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
+    g: &FnGraph,
+) -> std::collections::BTreeMap<String, std::collections::BTreeSet<FnAt>> {
     let families: Vec<&String> = tree
         .iter()
         .filter(|(rel, _)| rel.starts_with("stream/inbound/registry/"))
@@ -571,68 +1146,56 @@ fn handler_files(
         let at = src
             .find("const SPECS: &[CommandSpec] = &[")
             .expect("命令表族文件里锚不住 `SPECS`");
-        handler_files_of(&src[at..], &mods, &mut out);
-        typed_handler_files_of(&src[at..], tree, &mods, &mut out);
-    }
-    out
-}
-
-/// 一族命令表里 typed 那几行（`typed::blocking::<路径>()` · `typed::asynchronous::<路径>()` · 帧面硬臂那一档 `typed::frame::<路径>()`）：本体就是那个类型住的文件，
-/// 命令名从那份文件里它的 `impl Command for <类型>` 那一段的 `const NAME` 读（异源：不读 `REGISTRY`）。
-fn typed_handler_files_of(
-    table: &str,
-    tree: &Tree,
-    mods: &std::collections::BTreeMap<Vec<String>, String>,
-    out: &mut std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
-) {
-    for ctor in [
-        "typed::blocking::<",
-        "typed::asynchronous::<",
-        "typed::frame::<",
-        "typed::frame_blocking::<",
-    ] {
-        for (at, _) in table.match_indices(ctor) {
-            let rest = &table[at + ctor.len()..];
-            let path: Vec<String> = rest[..rest.find('>').expect("typed 那一行没收尾")]
-                .split(':')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty() && s != "crate")
-                .collect();
-            let ty = path.last().expect("typed 那一行没有类型名").clone();
-            let file = file_of(mods, &path)
-                .unwrap_or_else(|| panic!("typed 那一行的 `{ty}` 找不到它住的文件"));
-            let src = &tree[&file];
-            let name = guard_core::typed_command_name(src, &ty)
-                .unwrap_or_else(|| panic!("`{file}` 里没有 `impl Command for {ty}`"));
-            out.insert(name, std::iter::once(file).collect());
+        let table = &src[at..];
+        for ctor in [
+            "typed::blocking::<",
+            "typed::asynchronous::<",
+            "typed::frame::<",
+            "typed::frame_blocking::<",
+        ] {
+            for (at, _) in table.match_indices(ctor) {
+                let rest = &table[at + ctor.len()..];
+                let path: Vec<String> = rest[..rest.find('>').expect("typed 那一行没收尾")]
+                    .split(':')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty() && s != "crate")
+                    .collect();
+                let ty = path.last().expect("typed 那一行没有类型名").clone();
+                let file = file_of(&mods, &path)
+                    .unwrap_or_else(|| panic!("typed 那一行的 `{ty}` 找不到它住的文件"));
+                let name = guard_core::typed_command_name(&tree[&file], &ty)
+                    .unwrap_or_else(|| panic!("`{file}` 里没有 `impl Command for {ty}`"));
+                let handle_files: Vec<&String> = g
+                    .impls
+                    .iter()
+                    .filter(|(_, hs)| {
+                        hs.iter().any(|(t, h)| {
+                            *t == ty
+                                && h.split(" for ")
+                                    .next()
+                                    .is_some_and(|tr| tr.trim_end().ends_with("Handle"))
+                        })
+                    })
+                    .map(|(rel, _)| rel)
+                    .collect();
+                let prefix = format!("{ty}::");
+                let roots: std::collections::BTreeSet<FnAt> = g
+                    .bodies
+                    .keys()
+                    .filter(|(rel, k)| {
+                        if handle_files.is_empty() {
+                            *rel == file
+                        } else {
+                            handle_files.contains(&rel) && k.starts_with(&prefix)
+                        }
+                    })
+                    .cloned()
+                    .collect();
+                out.insert(name, roots);
+            }
         }
     }
-}
-
-/// 一族命令表（`SPECS` 那张表起）里逐块取 `run:` 闭包点名的文件，并进 `out`。
-fn handler_files_of(
-    table: &str,
-    mods: &std::collections::BTreeMap<Vec<String>, String>,
-    out: &mut std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
-) {
-    for block in table.split("CommandSpec {").skip(1) {
-        // 块到下一条 typed 那一行为止（typed 那几行不是 `CommandSpec {` 块，由 [`typed_handler_files_of`] 另认）。
-        let block = block.split("crate::wire::typed::").next().unwrap_or(block);
-        let Some(n) = block.find("name: \"") else {
-            continue;
-        };
-        let name: String = block[n + 7..].chars().take_while(|c| *c != '"').collect();
-        let Some(r) = block.find("run:") else {
-            continue;
-        };
-        let run = &block[r..];
-        let files: std::collections::BTreeSet<String> = paths_in(&[], run)
-            .into_iter()
-            .filter_map(|p| file_of(mods, &p))
-            .filter(|f| !f.starts_with("stream/inbound/"))
-            .collect();
-        out.insert(name, files);
-    }
+    out
 }
 
 /// 够得着 tmux、却**不**声明 `no_tmux` 的命令 —— 逐条写理由（tmux 在它那里是可选的：问不到就降级，命令本身照做）。
@@ -653,7 +1216,7 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     ),
     (
         "terminal-follow-ack",
-        "终端实时预览：与 `terminal-follow` 同住 `control/terminal_follow.rs`（引用图按文件取），它自己只往订阅线程送一个回执、不起 tmux",
+        "终端实时预览：帧面硬臂那一档，起点是 `control/terminal_follow.rs` 整份（与 `terminal-follow` 同住）；它自己只往订阅线程送一个回执、不起 tmux",
     ),
     (
         "terminal-unfollow",
@@ -666,10 +1229,6 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     (
         "data-report",
         "文件与数据：`tmux` 那一格问这台有没有 tmux（与起新会话框同一个判法），没 tmux ⇒ `tmux: false`、别的几格照答",
-    ),
-    (
-        "footprint-report",
-        "足迹：与 `data-report` 同住 `footprint/mod.rs` 与帧面 `faces/footprint_report_face.rs`（引用图按文件取），它自己不问 tmux（tmux 那一行只 stat PATH）",
     ),
     (
         "session-open",
@@ -700,14 +1259,6 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "「终端」视图那张名单：各台照 `terminals-board-here`（没 tmux 的那台是空的一组；没答的那台进那一组的 `down`，命令照答）",
     ),
     (
-        "monitor-board-here",
-        "监控板这台那几条：只读进程里的会话簿与运行簿，自己不起 tmux（够得着是经 watcher 那一份）；没 tmux ⇒ 照答",
-    ),
-    (
-        "monitor-board",
-        "监控板：各台照 `monitor-board-here`（没 tmux 的那台照答；没答的那台那一组带离线那一句，命令照答）",
-    ),
-    (
         "sessions-where",
         "问这几个会话在哪个 tmux 会话里：没 tmux ⇒ 逐个答「这台没 tmux」、命令照答",
     ),
@@ -724,11 +1275,6 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "批量停：没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答（停的对象本来就只在 tmux 里）",
     ),
     (
-        "ccm-probe",
-        "同 `ccm-print` 那一族（`control/ccm/mod.rs`）：`--ccm-probe` 那几行里 `capabilities=` 按本二进制的平台档摘掉 tmux 载体，\
-         不问 tmux server；命令本身恒答",
-    ),
-    (
         "profiles-resolve",
         "设置窗合并预览的「等于」那一行：与 `ccm-print` 同一个 `control/ccm/mod.rs::plan_of`，经会话快照做铸名避让 —— \
          问不到 ⇒ 不退让、照算；它的能力是合并与渲计划，不是 tmux",
@@ -743,23 +1289,10 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
          `host::snapshot().taken_names().ok()` 问一次会话快照做铸名避让 —— 问不到 ⇒ `None` ⇒ 不退让\
          （`plan::build` 头注的诚实降级），预览照出；它的能力是渲计划，不是 tmux",
     ),
-    // 〔合并 SH1 × W5-AUX 时本判据当场点出〕
-    ("resync", "打标经 `identity_tag::tag`：不在 tmux / tmux 起不来 ⇒ 那个会话不打（结局说进日志），对齐照做、照回差异；它的能力是对表，不是 tmux"),
-    ("hooks-diag", "同 `mcp-read`：只因与 `session-terminals` 同住 `feature_face.rs` 被连带；读 settings ＋ stat 本身不碰 tmux"),
-    ("mcp-read", "与 `session-terminals` 同住 `feature_face.rs`（引用图按文件算，因此连带）；读 MCP 本身不碰 tmux"),
-    ("tasks-list", "同 `mcp-read`：只因与 `session-terminals` 同住 `feature_face.rs` 被连带；本身不碰 tmux"),
-    ("ext-list", "表里有 MCP 行 ⇒ 本机那一格读 `feature_face.rs::mcp_read_here`（同 `mcp-read` 被连带）；扫目录 · 读 MCP 都不碰 tmux"),
-    ("ext-uninstall-preview", "同 `ext-list`：只因与它同住 `ext_list_face.rs` 被连带；本身不碰 tmux"),
-    ("ext-uninstall-apply", "同 `ext-list`：只因与它同住 `ext_list_face.rs` 被连带；本身不碰 tmux"),
     (
         "session-terminals",
         "tmux 只在那个会话本来就在 tmux 里时被问（`list-clients`，socket 取自那个进程自己的 `TMUX`）；\
          不在 tmux 里的会话读进程自己的环境，整条链上没有 tmux ⇒ 不是必需品，不声明 `no_tmux`",
-    ),
-    (
-        "session-rewind-options",
-        "只因与投递那一下的回退（`walk_here`，看屏 · 按键）同住 `session_rewind_face.rs` 被连带；\
-         选项本身读记录（那一家申报的几项）与活会话表（在不在干活），不碰 tmux",
     ),
 ];
 
@@ -773,14 +1306,16 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
         "后端树里没有 `lib.rs`（收到 {} 份）—— 遍历坏了，下面全称恒真",
         tree.len()
     );
-    let edges = file_edges(&tree);
-    let spawners = tmux_spawning_files(&tree);
-    // 只防人群塌成空集；是哪一份由 `tmux_is_spawned_only_in_the_host_tmux_file` 钉，主锚是下面两向相等。
+    let graph = fn_graph(&tree);
+    let spawners = tmux_spawning_fns(&tree, &graph);
+    // 只防人群塌成空集；是哪一份文件由 `tmux_is_spawned_only_in_the_host_tmux_file` 钉，主锚是下面两向相等。
     assert!(
-        !spawners.is_empty(),
-        "真起 tmux 的文件一份都没找到 —— 取法坏了"
+        spawners
+            .iter()
+            .any(|(rel, k)| rel == "host/tmux.rs" && k == "child"),
+        "真起 tmux 的函数里没有 `host/tmux.rs` 的 `child` —— 取法坏了：{spawners:?}"
     );
-    let handlers = handler_files(&tree);
+    let handlers = handler_fns(&tree, &graph);
     let names: BTreeSet<&str> = crate::stream::inbound::REGISTRY
         .iter()
         .map(|s| s.name)
@@ -801,7 +1336,7 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
     );
     let reach: BTreeSet<&str> = handlers
         .iter()
-        .filter(|(_, from)| !reachable(&edges, from).is_disjoint(&spawners))
+        .filter(|(_, from)| !reachable_fns(&graph, from).is_disjoint(&spawners))
         .map(|(n, _)| n.as_str())
         .collect();
     let declared: BTreeSet<&str> = crate::stream::inbound::REGISTRY
@@ -954,6 +1489,65 @@ fn the_tmux_reach_ruler_reads_use_as_aliases() {
         vec!["f.rs", "g/mod.rs"],
         "分组里的别名也要认：{edges:?}"
     );
+}
+
+/// 🔴 正反两控：函数级调用图在合成树上——同一份文件里不叫的函数不连（文件级会连）· 读一张常量表不算叫了表里的闭包 ·
+/// 字符串里的花括号与路径不算；方法调用 · 经 `use` 进来的名字 · 点名一个类型（交给 trait 用）照连。
+#[test]
+fn the_function_level_ruler_works_on_a_synthetic_tree() {
+    let tree: Tree = [
+        ("lib.rs", "pub mod h; pub mod t; pub mod q; pub mod inj;"),
+        (
+            "t.rs",
+            "pub fn child() -> Child { Child::new(\"tmux\") }\n\
+             pub struct On;\nimpl On { pub fn read(&self) { child(); } }",
+        ),
+        (
+            "q.rs",
+            "use crate::t::child;\npub fn calm() {}\npub fn loud() { child(); }\n\
+             pub const TABLE: &[fn()] = &[|| loud()];",
+        ),
+        (
+            "inj.rs",
+            "pub struct Prod;\nimpl Host for Prod { fn screen(&self) { crate::t::On.read(); } }",
+        ),
+        (
+            "h.rs",
+            "use crate::q;\n\
+             pub struct A; impl Handle for A { fn run() { q::calm(); let _ = q::TABLE.len(); let s = \"{ crate::q::loud() }\"; } }\n\
+             pub struct B; impl Handle for B { fn run() { let o = crate::t::On; o.read(); } }\n\
+             pub struct C; impl Handle for C { fn run() { arrive(crate::inj::Prod); } }",
+        ),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect();
+    let g = fn_graph(&tree);
+    let spawn: std::collections::BTreeSet<FnAt> = [("t.rs".to_string(), "child".to_string())]
+        .into_iter()
+        .collect();
+    let reaches = |root: &str| {
+        let from = std::iter::once(("h.rs".to_string(), root.to_string())).collect();
+        !reachable_fns(&g, &from).is_disjoint(&spawn)
+    };
+    assert!(
+        !reaches("A::run"),
+        "同文件里没叫的 `loud` · 常量表里的闭包 · 字符串里的路径被连上了：{:?}",
+        g.edges
+    );
+    assert!(
+        reaches("B::run"),
+        "方法 `.read(` 没连到 `On::read`：{:?}",
+        g.edges
+    );
+    assert!(
+        reaches("C::run"),
+        "点名的类型 `Prod` 没连到它的方法：{:?}",
+        g.edges
+    );
+    // 文件级那一把在同一棵树上会把 A 量成够得着（`h.rs` → `q.rs` → `t.rs`）：本条正是函数级比它准的那一处。
+    let from = std::iter::once("h.rs".to_string()).collect();
+    assert!(reachable(&file_edges(&tree), &from).contains("t.rs"));
 }
 
 /// ccm 面每条能力的最小探针（位置动作 ＋ 旗标；`carriers` = 探针里为了让它起得来而**必须**带上的 tmux 载体旗标）。

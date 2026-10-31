@@ -29,7 +29,7 @@ fn answer_at(args: &Value, powershell: bool, ssh: &SshClient) -> Result<Value, C
     }
     let req: TerminalSshReq =
         crate::wire::typed::take(&wire).map_err(|f| ("bad_args", f.message))?;
-    answer_in(&req, &hosts, powershell, ssh).map(|r| serde_json::to_value(r).unwrap())
+    answer_with(&req, &hosts, &[], powershell, ssh, None).map(|r| serde_json::to_value(r).unwrap())
 }
 
 /// 这台找到的 ssh 客户端（Windows 系统可选功能装的那一处）。
@@ -843,7 +843,7 @@ fn the_posix_record_step_writes_the_label_of_the_shell_that_runs_the_line() {
         format!("{}-{}", seen[1], seen[3]),
     ];
     assert!(
-        ours.contains(&got.label),
+        ours.contains(&got.label.to_string()),
         "标签 {} 不是跑那一行的 shell（{ours:?}）",
         got.label
     );
