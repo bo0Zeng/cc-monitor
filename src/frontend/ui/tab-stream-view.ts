@@ -178,6 +178,8 @@ export class TabStreamView {
   private readonly indexEnds = new WeakMap<Tab, number>();
   /** 〔骨架〕正文重来时从上一代接过来的账本与它的末字节：要骨架时从这里续，不从 0 再要（`restartTail`）。 */
   private readonly carriedSkeletons = new WeakMap<Tab, { ledger: SkeletonLedger; end: number }>();
+  /** 〔骨架〕每个 tab 见过的、带末字节的最老那一行（行号 · 末字节）：尾段那一截的索引从它之后要（`requestTailSkeleton`）。 */
+  private readonly tailAnchors = new WeakMap<Tab, { seq: number; end: number }>();
   /** 〔骨架〕账本续到末尾那一趟在途的 tab（同一个 tab 同时只续一趟，`extendIndex`）。 */
   private readonly extending = new WeakSet<Tab>();
   /** 每个 tab 的第一趟会话事实 ＋ 轮次什么时候问（当前的先、后台的空闲时一个一个，`tab-cold-reads.ts`）。 */
@@ -492,7 +494,9 @@ export class TabStreamView {
    * 大纲（从上次的末端）· 会话事实（带上一份的令牌）。文件被截断 / 改写不走这里（后端出声 ⇒ `restartContent` 整份重来）。
    */
   private restartTail(old: Tab): Tab {
-    const ledger = old.skeleton?.ledger ?? this.parkedSkeletons.get(old) ?? null;
+    // 只接了尾段那一截的账本不往下传（上面那一截不在里面）：新的一代照常要整份
+    const whole = old.skeleton && old.skeleton.ledger.base === 0 ? old.skeleton.ledger : null;
+    const ledger = whole ?? this.parkedSkeletons.get(old) ?? null;
     const end = this.indexEnds.get(old);
     const outline = old.outline.handoff(); // 在 `restartContent` 拆掉它之前取
     const tab = this.restartContent(old, true);
@@ -763,6 +767,8 @@ export class TabStreamView {
     if (tab.seenSeqs.has(payload.seq)) return false;
     if (payload.skipped_from !== undefined) tab.seenSeqs.addRange(payload.skipped_from, payload.seq);
     tab.seenSeqs.add(payload.seq);
+    const at = this.tailAnchors.get(tab);
+    if (payload.end !== undefined && (!at || payload.seq < at.seq)) this.tailAnchors.set(tab, { seq: payload.seq, end: payload.end });
     return true;
   }
 
@@ -1043,6 +1049,7 @@ export class TabStreamView {
     }
     // 整份要到末尾（连冷开建的那一截尾巴）：尾巴的切点 · 折叠也得在账本里，收起时才交得回去（`release` 只认账本里的切点）。
     // 只要 `[0, floor)` 的话，冷开那一截与之后的实时行都在账本外，切走一条都不交。
+    this.requestTailSkeleton(tab);
     const first = readSessionIndex(origin, jsonlPath, 0);
     // 〔欠账〕大纲**等这一趟**：索引顺带出清单（后端 `IndexRow::x`）⇒ 首屏同一份文件
     // 只读一遍；带不回（老后端 / 零条 / 失败）⇒ 它自己照旧从 0 要一份清单。
@@ -1060,8 +1067,10 @@ export class TabStreamView {
         // 索引拉回来之前 tab 可能又长了：floor 之下还有索引没覆盖到的行 ⇒ **续传**（从上次的 end 接着要）；
         // 续不上 ⇒ 不接（盖不到尾段的账本接上去，占位里那一截没有行），同瞬时失败
         const floor = tab.window.floorSeq!; // 进来时判过不是 null，之后只会往下钉
+        // 先接上了尾段那一截 ⇒ 整份要盖得住它的每一行，才换得上
+        const partial = tab.skeleton && tab.skeleton.ledger.base > 0 ? tab.skeleton : null;
         let end = got.end;
-        if (floor > got.ledger.endSeq) {
+        if (Math.max(floor, partial?.ledger.endSeq ?? 0) > got.ledger.endSeq) {
           const more = await readSessionIndex(origin, jsonlPath, got.end);
           if (!more.available) {
             failed(more.failure !== "oldBackend");
@@ -1072,6 +1081,10 @@ export class TabStreamView {
         }
         this.indexEnds.set(tab, end);
         if (this.store.tabs.get(tab.sessionId) !== tab) return;
+        if (partial && tab.skeleton === partial) {
+          this.rebaseSkeleton(tab, partial, got.ledger);
+          return;
+        }
         if (this.store.activeId !== tab.sessionId) {
           this.parkedSkeletons.set(tab, got.ledger); // 已经切走：停着，切回来再接
           return;
@@ -1082,6 +1095,33 @@ export class TabStreamView {
         failed(true);
         console.warn(`[tabs] 骨架索引拉取失败（${tab.sessionId.slice(0, 8)}）：`, e);
       });
+  }
+
+  /**
+   * 〔骨架〕**尾段那一截先要一份索引**：从这个 tab 见过的、带末字节的最老那一行之后要（后端只读那一截，不为它扫整份）。
+   * 整份还没到时接上它（账本 `[那一行 + 1, 末尾)`，之上那一截算在占位里、不画），补可见区照旧扣掉折着的过程；
+   * 整份到了换上整份（`rebaseSkeleton`）。整份先到 · 切走了 · 期间关掉了 ⇒ 这一份不用；要不到 ⇒ 等整份。
+   */
+  private requestTailSkeleton(tab: Tab): void {
+    const at = this.tailAnchors.get(tab);
+    const floor = tab.window.floorSeq;
+    if (!at || floor === null || at.seq + 1 >= floor || tab.skeleton || !tab.parentPath) return;
+    void readSessionIndex(tab.origin, tab.parentPath, at.end)
+      .then((res) => {
+        if (tab.skeleton || tab.skeletonFetch !== "pending" || !this.inFront(tab)) return;
+        const got = ledgerFromIndex(res, at.seq + 1);
+        if (!got.ok || tab.window.floorSeq! > got.ledger.endSeq) return;
+        this.attachSkeleton(tab, got.ledger);
+      })
+      .catch((e: unknown) => console.warn(`[tabs] 尾段索引拉取失败（${tab.sessionId.slice(0, 8)}）：`, e));
+  }
+
+  /** 〔骨架〕整份索引到了、骨架先接的是尾段那一截：同一个骨架换上整份账本（折叠先交给新账本），列宽跟上，还在眼前就补一次可见区。 */
+  private rebaseSkeleton(tab: Tab, view: SkeletonView, ledger: SkeletonLedger): void {
+    tab.turnFold.seedFolds(ledger);
+    view.rebase(ledger);
+    this.relayoutOnColumnChange(tab);
+    if (this.inFront(tab)) this.fillSkeleton(tab);
   }
 
   /**
@@ -1143,7 +1183,7 @@ export class TabStreamView {
   private attachSkeleton(tab: Tab, ledger: SkeletonLedger): void {
     const floor = tab.window.floorSeq;
     if (floor === null || tab.skeleton) return;
-    for (const p of tab.window.peek(8)) {
+    for (const p of tab.window.peek(8, ledger.base)) {
       const at = ledger.factsOf(p.seq)?.t;
       if (at !== p.record.t) {
         console.warn(

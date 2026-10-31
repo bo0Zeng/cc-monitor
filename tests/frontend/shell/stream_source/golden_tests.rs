@@ -155,10 +155,13 @@ async fn an_unread_frame_is_said_once_per_kind_per_connection() {
     assert_eq!(took, ["hello", "line"], "好帧没照收 / 拦下的漏进来了");
 
     // 帧门拦下的（那台那一版形状不同 · 不认）只记日志：版本对不上由栏底机器条照那台的成品说，不另弹提示。
-    let codes: Vec<&str> = said.iter().filter_map(|e| e["code"].as_str()).collect();
+    let lines: Vec<&str> = said.iter().filter_map(|e| e["said"].as_str()).collect();
     assert_eq!(
-        codes,
-        ["frame-shape"],
+        lines,
+        [copy_core::copy_text(
+            "rsSshSource.health.badFrame",
+            &[("host", "台架"), ("kind", "line")]
+        )],
         "推给界面的不是只有解不开的那一种恰好一条：{said:?}"
     );
     crate::ui_error::tests::assert_is_copy_not_log(&said[0]);

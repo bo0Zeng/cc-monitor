@@ -10,8 +10,8 @@ use std::path::Path;
 /// 账号级配置文件的文件名（住在配置根下）。
 pub(crate) const CONFIG_FILE_NAME: &str = ".claude.json";
 
-/// Claude Code 把「你是谁」与「你的本机状态」放在哪几份文件里。账号库里每个号各有一份的就是这几项，
-/// 其余顶层项都链回共享的配置根。Claude Code 换了文件名或位置 ⇒ 只改这张表。
+/// Claude Code 把「你是谁」与「你的本机状态」放在哪几份文件里。账号库里每个号各有一份的就是这几项；
+/// 链回共享配置根的是 [`NATIVE_SHARED`] 与 [`SHARED_ON_DEMAND`] 两张表里的。Claude Code 换了文件名或位置 ⇒ 只改这张表。
 ///
 /// 收哪些：Claude Code 在每个配置根里各写一份、共享会串号或互相覆盖的 —— 登录身份、按这个号从服务端取回的
 /// 设置与限额（连同记着「是给哪个身份取的」那份戳、远端设置上次同步的时刻）、这个号的 MCP 授权缓存与用量、各自的清理 / 更新记录、
@@ -81,9 +81,29 @@ pub(crate) const SHARED_ON_DEMAND: &[&str] = &[
     super::paths::SESSIONS_DIR,
 ];
 
+/// Claude Code 在配置根下建、各号共用的其余顶层项（共享库里有才链；按需才建的那几个在 [`SHARED_ON_DEMAND`]，这里不重）：
+/// 用户自己的指令与设置（`CLAUDE.md` · `settings.json`）· 技能与插件 · 输入历史 · 各类缓存 · 文件改动历史 · 后台任务 ·
+/// 会话环境与命令行快照。不在这张表也不在身份表的名字（Claude Code 升级后新冒出来的 · 锁 · 原子写的旁名）不链，各号各用各的。
+/// Claude Code 换了名字或加了一样共用的 ⇒ 只改这张表。
+pub(crate) const NATIVE_SHARED: &[&str] = &[
+    "CLAUDE.md",
+    "cache",
+    "downloads",
+    "file-history",
+    "history.jsonl",
+    "jobs",
+    "paste-cache",
+    "plugins",
+    "session-env",
+    "settings.json",
+    "shell-snapshots",
+    "skills",
+];
+
 /// 注册表里 Claude 那一行的账号库布局（`agents::Adapter::accounts`）。
 pub(crate) const FACE: AccountsFace = AccountsFace {
     identity: NATIVE_IDENTITY,
+    shared: NATIVE_SHARED,
     shared_on_demand: SHARED_ON_DEMAND,
     config_file: CONFIG_FILE_NAME,
     user_mcp_key: super::assets::SERVERS_KEY,

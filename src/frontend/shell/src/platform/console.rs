@@ -127,7 +127,7 @@ pub fn helper_request(args: &[String]) -> Option<HelperRequest> {
 #[cfg(any(windows, test))]
 pub fn tab_line(pick: crate::bind::TabPick) -> String {
     use crate::bind::TabPick;
-    use cmd_wire::front::TabMiss;
+    use face_core::front::TabMiss;
     let why = |m: TabMiss| match m {
         TabMiss::TitleIgnored => "title-ignored",
         TabMiss::NoUia => "no-uia",
@@ -145,7 +145,7 @@ pub fn tab_line(pick: crate::bind::TabPick) -> String {
 #[cfg(any(windows, test))]
 pub fn parse_tab(out: &str) -> crate::bind::TabPick {
     use crate::bind::TabPick;
-    use cmd_wire::front::TabMiss;
+    use face_core::front::TabMiss;
     match out.trim().split_whitespace().collect::<Vec<_>>().as_slice() {
         ["selected"] => TabPick::Selected,
         ["single"] => TabPick::Single,
@@ -240,7 +240,7 @@ fn helper_windows(pids: &[u32]) {
 #[cfg(windows)]
 fn helper_tab(pid: u32, hwnd: isize) {
     use crate::bind::TabPick;
-    use cmd_wire::front::TabMiss;
+    use face_core::front::TabMiss;
     use std::io::Write;
     let marker = crate::bind::front_marker();
     let deadline = std::time::Instant::now() + TAB_BUDGET;
@@ -429,7 +429,7 @@ pub(crate) fn pick_tab_in_budget(
     answer: std::sync::Arc<dyn Fn(crate::bind::TabPick) + Send + Sync>,
 ) {
     use crate::bind::{pick_tab, TabPick, TabReader};
-    use cmd_wire::front::TabMiss;
+    use face_core::front::TabMiss;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
     struct Lease {

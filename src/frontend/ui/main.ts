@@ -348,8 +348,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       planMark: (tab) => {
         const b = planNeeds.sessionBlock(tab.origin, tab.sessionId);
         if (!b) return null;
-        const label = [b.slice, b.top ? copyText("plan.head.top") : (b.title ?? b.block), b.phase ?? ""].filter((x) => x !== "").join(copyText("kit.text.sep"));
-        return { slice: b.slice, label, open: () => void planView.openAt(tab.origin, b.workspace, b.slice, b.top ? null : b.cell) };
+        return { slice: b.slice, label: b.said.mark, open: () => void planView.openAt(tab.origin, b.workspace, b.slice, b.top ? null : b.cell) };
       },
   });
   document.getElementById("session-head")?.replaceWith(sessionHead.el);
