@@ -121,6 +121,7 @@ fun ChatsRoute(
             newInDir = onNewInDir,
             searchContent = board::searchContent,
             editHost = onEditHost,
+            toggleForks = board::toggleForks,
         )
     ChatDrawer(hostId, links[hostId] is HostLink.Ready, drawerState, onDrawerAction) {
         Scaffold(

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""`G4` 的判据本体 —— **承诺的平台 ↔ 门禁真跑的格**，两向对拍。
+"""平台账本 —— **承诺的平台 ↔ 门禁真跑的格**，两向对拍。
 
-住址：`tests/evidence/K-G4-platform-ledger.py`（门禁第 22 格 `platform` 调它）
+住址：`tests/evidence/platform-ledger.py`（门禁第 22 格 `platform` 调它）
 
 # 它买什么
 
@@ -63,7 +63,7 @@ PROMISED = [
 ]
 
 # ── 承诺面（后端 `deploy/lib.rs::promised` 的源头；键 = (origin, OS, arch)，只列表 A 里有产线的格）──────
-# 🔴 与代码两向相等（后端 `deploy_plan_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 读这两张表；从前在 monitor `byte_table_tests.rs`）：
+# 🔴 与代码两向相等（后端 `deploy_plan_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 读这两张表）：
 #    承诺了而代码不放行、代码放行而这里没写，都红。
 PROMISE_FACE = [
     ("Local", "Windows", "x86_64"),
@@ -96,7 +96,7 @@ def main():
     fails = []
 
     # ── P1：两向集合相等 ────────────────────────────────────────────────
-    # 盘上现打：`gate.sh` 里那些**跨 target / 跨壳**的格。认法与 `K-R80` 同源：
+    # 盘上现打：`gate.sh` 里那些**跨 target / 跨壳**的格。
     # 只认行首调用（缩进着的是 `gate_selftest` 的探针，不是判定格）。
     on_disk = set()
     for m in re.finditer(r"^run_gate(?:_sum)? (\S+) ", text, re.M):
@@ -130,7 +130,7 @@ def main():
             except OSError:
                 continue
         # 本文件自己写着那个字面量（它是判据），摘掉自己 —— 不靠 `file!()`，逐字写出来。
-        hits = [h for h in hits if h != "tests/evidence/K-G4-platform-ledger.py"]
+        hits = [h for h in hits if h != "tests/evidence/platform-ledger.py"]
         if hits:
             fails.append(
                 f"P3 {label} 是**显式拒绝**的平台，而盘上现打 {len(hits)} 处脚印："
@@ -139,12 +139,12 @@ def main():
 
     checks = 1 + len(PROMISED) + len(REFUSED)
     if fails:
-        print(f"KG4D1: FAIL={len(fails)}")
+        print(f"platform: FAIL={len(fails)}")
         for f in fails:
             print(f"  ✗ {f}")
         return 1
 
-    print(f"# `G4` 平台账本 —— 量于 `{GATE}`")
+    print(f"# 平台账本 —— 量于 `{GATE}`")
     print()
     print("| 平台 | 门禁哪一格 | 这一格买到了什么 |")
     print("|---|---|---|")
@@ -162,7 +162,7 @@ def main():
     print()
     print(f"platform: {checks} passed（分母 = P1 两向集合相等 1 ＋ "
           f"P2 逐字锚点 {len(PROMISED)} 条 ＋ P3 显式拒绝 {len(REFUSED)} 格零脚印）")
-    print("KG4D1: OK —— P1..P3 全过（⚠ 它判的是「门禁盖到了哪些平台」，"
+    print("platform: OK —— P1..P3 全过（⚠ 它判的是「门禁盖到了哪些平台」，"
           "**不判那些平台上真的跑得起来**）")
     return 0
 

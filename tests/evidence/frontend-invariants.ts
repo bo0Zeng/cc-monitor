@@ -1,6 +1,6 @@
 /**
- * `P21` —— **`INVARIANTS.md` 讲前端那五条的量具**（判与登记住
- * `tests/frontend/ui/invariants-frontend-guard.vitest.ts`，分家的理由同 `S25`/`S30`：
+ * **`INVARIANTS.md` 讲前端那五条的量具**（判与登记住
+ * `tests/frontend/ui/invariants-frontend-guard.vitest.ts`，分家的理由同 `class-ledger.ts` / `css-conventions.ts`：
  * `scanning-guard-registry.vitest.ts` 的 `WALKER_CEILING` 不许测试文件再多一个遍历者，
  * 而本文件不是 `*.vitest.ts`/`*.test.ts` ⇒ 不进那条棘轮的人群）。
  *
@@ -53,9 +53,8 @@ export function productionCode(): ReadonlyArray<{ file: string; code: string }> 
 /**
  * 应用的全部 CSS，剥注释后拼成一份。
  *
- * 〔三入口拆分 · 人群改定义〕原先人群就是 `src/frontend/ui/styles.css` 这一份；拆开之后是
- * **三个 html 的 `<link rel="stylesheet">` 清单去重** —— 那就是三个窗口真正加载的全部样式表，
- * 没有第二份清单可漂。下游各条（规则数 > 500、fixed 选择器 == 25、包含块正控）一字未改。
+ * 人群是**三个 html 的 `<link rel="stylesheet">` 清单去重** —— 那就是三个窗口真正加载的全部样式表，
+ * 没有第二份清单可漂。
  */
 export function styleSheet(): string {
   const files = new Set<string>();
@@ -76,11 +75,10 @@ export interface CssRule {
  * 全部规则，`{ 选择器, 声明体 }`。`@media`/`@supports` 里的规则**照收**（取其内层选择器）。
  *
  * 🔴 **不许退回 `matchAll(/(^|[};])([^{};]+)\{([^{}]*)\}/g)` 那一形** —— 相邻两条规则
- * 共用同一个 `}`，而 `matchAll` 不允许重叠 ⇒ **每隔一条漏一条**。这不是理论洞：
- * 本文件第一版就是那一形，`fixedSelectors()` 实测报 **16**（真值 **25**，与同一趟的
- * python 对拍脚本差 9 条）。而 16 那个数**看起来完全正常** —— 没有任何东西会告诉你它漏了谁。
- * ⇒ 改成按 `}` 切段、段内取最后一个 `{` 之前那一截当选择器（对嵌套 at-rule 天然正确）。
- * 调用侧那条「分母自检」是为这一刀留的常驻哨兵。
+ * 共用同一个 `}`，而 `matchAll` 不允许重叠 ⇒ **每隔一条漏一条**（`fixedSelectors()` 会报 **16**，真值 **25**），
+ * 而 16 那个数**看起来完全正常** —— 没有任何东西会说它漏了谁。
+ * ⇒ 按 `}` 切段、段内取最后一个 `{` 之前那一截当选择器（对嵌套 at-rule 天然正确）。
+ * 调用侧那条「分母自检」是盯这一形的常驻哨兵。
  */
 export function cssRules(css = styleSheet()): CssRule[] {
   const out: CssRule[] = [];

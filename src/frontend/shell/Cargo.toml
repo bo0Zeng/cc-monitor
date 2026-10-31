@@ -95,7 +95,7 @@ path = "src/main.rs"
 # `tauri-cli::get_binaries` 把本包**每一个** `[[bin]]` 都交给打包器，nsis/msi/deb 都把非主 bin 装在主程序旁；
 # 而开窗只用 monitor 内嵌的那一份（`build.rs::embed_native_filewin`，放到 `~/.cc-monitor/bin/` 再起）
 # ⇒ 它若住这里，安装包里就多一份逐字节相同的 10 MB。它是文件窗口包自己的 `[[bin]]`（`src/frontend/filewin/Cargo.toml`）。
-# 🔴 判据：`tests/evidence/K-R124-ruler.py` 的 ⑭ —— 本包每个 `[[bin]]` ↔ 入包路线登记（两向集合相等，今天只有主二进制）·
+# 🔴 判据：`tests/evidence/release-ruler.py` 的 ⑭ —— 本包每个 `[[bin]]` ↔ 入包路线登记（两向集合相等，今天只有主二进制）·
 #   主二进制恰好一个 · `required-features` 零命中 · `externalBin` 零命中 · 以及那把工具的版本。
 
 [lints.rust]
@@ -138,7 +138,7 @@ cmd-wire = { path = "../../common/cmd-wire" }
 face-core = { path = "../../common/face-core" }
 # `raw_value`：会话行的成品（后端给的记录）原样转交、monitor 不解析它（`ui_contract::JsonlLinePayload::message`）。
 serde_json = { version = "1", features = ["raw_value"] }
-# F62：从历史某轮创建分支（写 <new-sid>.jsonl）时生成新 sessionId。
+# 从历史某轮创建分支（写 <new-sid>.jsonl）时生成新 sessionId。
 # uuid 1.x 已在 Cargo.lock（tauri 传递依赖）+ 本地 registry 缓存，加 v4 feature 离线可编。
 uuid = { version = "1", features = ["v4"] }
 
@@ -152,10 +152,8 @@ copy-core = { path = "../../common/copy-core" }
 #   「monitor 写不了这份文件」从判据兜换回**编译器兜**：写半边（`perm::create_private`）只在 `harden` 下存在。
 creds-core = { path = "../../common/creds-core" }
 
-# P4c：**POSIX 单引号 quote 的唯一 Rust 实现**（P4b 之前叫 `launch-core`，那时它还持有
-# 载荷编译器与 ccm 调用行的决策内核 —— 那两样 P4b 已归位 `src/backend/control/`）。
-# ⚠ 原注释说「backend 侧刻意还没加这条依赖」已经过期两轮：U8c-2b-0 起后端的
-# `control/tmux_hook.rs::sq` 就在调它，那也是它今天唯一的后端用量。
+# **POSIX 单引号 quote 的唯一 Rust 实现**（载荷编译器与 ccm 调用行的决策内核住 `src/backend/control/`）。
+# 后端那一侧 `control/tmux_hook.rs::sq` 调它，那是它唯一的后端用量。
 shell-quote-core = { path = "../../common/shell-quote-core" }
 # 后端的门牌与家的契约（端口 · 钥匙 · 路由语法 · `~/.cc-monitor/` 下每一样的相对路径），与后端同一份（目标）。
 relay-route-core = { path = "../../common/relay-route-core" }
@@ -217,9 +215,9 @@ upstream-url-core = { path = "../../common/upstream-url-core" }
 # 账号种类取值集 `AUTH_KINDS`（J16）：monitor 生产树零引用，只有生成器（`export_bindings_judgment_rules`）用它 ⇒ dev 侧，
 #   发布二进制里不再链它（连同它那张对拍夹具 —— 夹具另在 `fixtures` feature 后面，这里也不开）。
 acct-core = { path = "../../common/acct-core" }
-# U8a-2a：源码扫描型守卫的「只留生产段」剥法，与远端后端共用同一份。
+# 源码扫描型守卫的「只留生产段」剥法，与远端后端共用同一份。
 # **必须是 dev-dependency** —— 守卫全在 `cfg(test)` 里，它没有理由进发布二进制。
-# 起因：monitor 侧的守卫此前各写便宜近似（`split("\n#[cfg(test)]").next()`），
+# 各写一份便宜近似（`split("\n#[cfg(test)]").next()`）不行：
 # 那个近似在 `stream_source/` 上会把扫描面砍掉三分之二（详见 guard-core 头注）。
 guard-core = { path = "../../common/guard-core" }
 # `Origin` 编进 `comms-inward` 之后，本包测试档里别的生成类型（会话流那几帧）嵌着它 ⇒ dev 侧开它的 TS 派生（发布二进制不开）。

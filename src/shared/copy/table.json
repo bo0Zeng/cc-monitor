@@ -29221,12 +29221,6 @@
       "zh": "搜内容「{q}」",
       "args": ["q"]
     },
-    "mobChats.fork.from": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "分叉自「{label}」",
-      "args": ["label"]
-    },
     "mobAccounts.list.section": {
       "kind": "title",
       "role": "标题",

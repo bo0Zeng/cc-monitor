@@ -55,7 +55,7 @@ pub trait Facing: Send + Sync {
 /// 表 B：这个 origin 承诺哪几种机器（本机 Windows x86_64 · 本机 Linux x86_64 · 远端 Linux 两个 arch）。
 ///
 /// 本机 (Linux, aarch64) 不承诺（[`Refusal::NotPromisedHere`]；OS 适配以后单独做）⇒ 本机那两行都钉到 x86_64，远端 Linux 两个 arch 照旧。
-/// 承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py` 的 `PROMISE_FACE`；本函数与它两向相等
+/// 承诺面的唯一住址是 `tests/evidence/platform-ledger.py` 的 `PROMISE_FACE`；本函数与它两向相等
 /// 由后端 `deploy_plan_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 钉着。
 pub fn promised(route: Route, key: Key) -> bool {
     matches!(

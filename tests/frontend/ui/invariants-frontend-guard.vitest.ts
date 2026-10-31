@@ -1,7 +1,7 @@
 /**
- * `P21` —— **`INVARIANTS.md` 里讲前端那五条（§12 / 13 / 14 / 21 / 22）的判据。**
+ * **`INVARIANTS.md` 里讲前端那五条（§12 / 13 / 14 / 21 / 22）的判据。**
  *
- * 量具住 `tests/evidence/P21-frontend-invariants.ts`，**本文件只登记与判**
+ * 量具住 `tests/evidence/frontend-invariants.ts`，**本文件只登记与判**
  * （分家的理由写在那边：`scanning-guard-registry.vitest.ts` 的 `WALKERS`
  * 不许测试文件不登记就多一个遍历者）。
  *
@@ -10,7 +10,7 @@
  * 原先的读数是：「§21 · 22 · 12 · 13 · 14 这五条讲的全是前端，
  * 而 TS 侧 2 129 条判据里**没有一条的断言对象是那几条条文**」。
  * 那个读数**是对的**，但它后面那句推论 ——「所以它们没人守」——**不成立**。
- * `P21` 第一步现打核过（命令与逐条读数写在件里），结论是**三种情况混在一起**：
+ * 逐条核下来是**三种情况混在一起**：
  *
  * | 条 | 今天到底有没有人守 | 住址 |
  * |---|---|---|
@@ -18,14 +18,14 @@
  * | **13** portal 必须真挂 body | 🔴 **没人守**（`info-icon.vitest.ts` 断的是 tooltip **零残留**，不是它挂在哪） | ⇒ 本文件 ② |
  * | **14** key 必须前缀 `cc-monitor.` | 🔴 **没人守**（`src/frontend/ui/local-storage.ts` 头注引了 §14，全仓无断言读它） | ⇒ 本文件 ③ |
  * | **21.1/21.2** 守卫式 `snap` · 不手动补偿 | 🔴 **TS 侧没人守**（只有 `tests/e2e/f40-suite.sh` 的密度绊线，而它**手动、不进 CI**） | ⇒ 本文件 ④⑤ |
- * | **21.3** 尾部优先门控（F40a/F40b） | ✅ **已有人守** —— `tests/frontend/ui/tabs.vitest.ts` 那一组 `F40a 门控矩阵` / `F40b R-1` 等值断言 | **不在这里复制**（`D1`） |
+ * | **21.3** 尾部优先门控 | ✅ **已有人守** —— `tests/frontend/ui/tabs.vitest.ts` 里门控矩阵那两组等值断言 | **不在这里复制**（`D1`） |
  * | **22.4** 精简模式 CSS 不塌 grid 行 | ✅ **已有人守** —— `tests/frontend/ui/app-grid-claims.vitest.ts`，`viewer` 模式的隐式行数钉在 0 | **不在这里复制**（`D1`） |
  * | **22.5** 关窗要 `core:window:allow-close` | ✅ **已有人守** —— `tests/frontend/shell/capability_registry_tests.rs::every_webview_permission_is_registered` 那条 `stale` 断言（`ALLOWED` 里登记过的权限必须还在 `capabilities/default.json` 里）。⚠ 那份文件的头注**逐字说 `§22` 那处讲的是「要加权限，不是不许加」** —— 它当时判的是「本条服务哪条要求」，而它顺带兑现的正是 `§22` 第 5 项 | **不在这里复制**（`D1`；且 `.rs` 这里不改，只能登记） |
  * | **22.3/22.6** listen 先注册再 emit · 独立窗自调 `dispatcher.start()` | 🔴 **没人守** | ⇒ 本文件 ⑥ |
  * | **22.1/22.2** 开窗 IPC 必须 `async` · 定向事件 target-kind 对齐 | ✅ **Rust 那半已有人守**—— `tests/frontend/shell/lib_window_lifecycle_tests.rs::every_window_building_command_is_async`（建窗点集合两向相等 ＋ 每处 `async fn` ＋ 紧挨 `#[tauri::command]`）· `…::every_emit_to_targets_a_webview_window_not_a_bare_label`（`emit_to` 调用点两向相等 ＋ 目标由 `EventTarget::webview_window(` 绑定）。TS 那半（viewer 传 `windowScoped: true`）随那个选项删了：`bindEvents` 里已没有 Tauri 监听，定向投递只剩 `src/comms/inward/chan.ts` 那一处按窗口作用域听 | **不在这里复制**（`D1`） |
  *
- * ⇒ **`105` 那句「所以它们没人守」要改成「五条里有两条半今天真有人守，只是那些判据的
- * 散文里没点出它服务哪条条」。** 后半句才是 `105` 量到的东西（它量的是**指向**）。
+ * ⇒ **「所以它们没人守」应是「五条里有两条半今天真有人守，只是那些判据的
+ * 散文里没点出它服务哪条条」。** 后半句才是那个读数量到的东西（它量的是**指向**）。
  *
  * # 形态（每一格都是恒等或零命中，没有地板）
  *
@@ -65,7 +65,7 @@ import {
   productionCode,
   storageKeys,
   topLevelFnBody,
-} from "../../evidence/P21-frontend-invariants.ts";
+} from "../../evidence/frontend-invariants.ts";
 import { nonEmpty } from "../../test-support/non-empty.ts";
 
 // jsdom 无 `ResizeObserver`（`MessageStream` 构造需要）——空壳即可（同 `record-timeline.vitest.ts`）。
@@ -211,7 +211,7 @@ describe("P21 ③ 条 14：localStorage / IndexedDB key 必须前缀 `cc-monitor
     expect(
       [...new Set(KEYS.filter((k) => !k.registered).map((k) => k.key))].sort(),
       "新增了一个绕过 `src/frontend/ui/local-storage.ts` 的直写 key。\n" +
-        "★ §14 的附带契约（Batch5-F19：非主窗视图写共享 key 前必须显式隔离）那个审视动作\n" +
+        "★ §14 的附带契约（非主窗视图写共享 key 前必须显式隔离）那个审视动作\n" +
         "只发生在 `LS_KEYS` 旁边 —— 绕过去的 key 没人会想起来审。收口进 `LS_KEYS`。",
     ).toEqual([]);
   });
