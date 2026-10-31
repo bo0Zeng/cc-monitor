@@ -3150,6 +3150,12 @@
       "zh": "Edit {n}",
       "args": ["n"]
     },
+    "cards.diff.coarse": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "改前 {old} 行 · 改后 {new} 行 · 超出逐行比对上限，按整段删增显示",
+      "args": ["old", "new"]
+    },
     "cards.command.note": {
       "kind": "body",
       "role": "片段",
