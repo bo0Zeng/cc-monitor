@@ -2583,12 +2583,6 @@
       "zh": "改过的文件 {recentFilesCount}",
       "args": ["recentFilesCount"]
     },
-    "gridMonitor.renderPeek.agentsHead": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "agent {agentsCount} · {running} 在跑",
-      "args": ["running", "agentsCount"]
-    },
     "gridMonitor.fact.model": {
       "kind": "title",
       "role": "标题",
@@ -2636,12 +2630,6 @@
       "role": "空态",
       "zh": "无会话",
       "args": []
-    },
-    "gridMonitor.render.summary": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "机器 {machines} · 会话 {liveSessions} · agent 在跑 {runningAgents}",
-      "args": ["machines", "liveSessions", "runningAgents"]
     },
     "gridMonitor.build.intro": {
       "kind": "body",
@@ -2696,12 +2684,6 @@
       "role": "状态",
       "zh": "在跑 · agent {runningAgents}",
       "args": ["runningAgents"]
-    },
-    "gridMonitor.groups.local": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "本机",
-      "args": []
     },
     "sessionFind.box.closeHint": {
       "kind": "action",

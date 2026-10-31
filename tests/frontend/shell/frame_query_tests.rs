@@ -332,6 +332,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "terminals-board",
         "「终端」视图那张名单：本机后端 `faces/terminals_board_face.rs` 问到各台的 `terminals-board-here`、合成一份（成品住 `control/terminals_board.rs`）；前端 `src/frontend/ui/terminals-board-reads.ts` 原样交给视图",
     ),
+    // 监控板版面：本机后端问到各台、合成一份（组序 · 组头 · 组内先后 · 顶上那一句都写好）。
+    (
+        "monitor-board",
+        "监控板版面：本机后端 `faces/monitor_board_face.rs` 问到各台的 `monitor-board-here`、合成一份（成品住 `control/monitor_board.rs`）；前端 `src/frontend/ui/monitor-board-reads.ts` 原样交给视图",
+    ),
     // 终端名单：那台后端出成品（与宿主无关的句柄）；只有 tmux 名在手的那一方先按名字认出那一行。
     (
         "terminals-list",
