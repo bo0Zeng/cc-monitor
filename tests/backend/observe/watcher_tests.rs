@@ -271,14 +271,21 @@ fn a_session_that_left_is_gone_from_faces_here() {
 #[test]
 fn the_faces_book_never_grows_past_its_cap_and_evicts_the_stalest_first() {
     let mut f = Faces::default();
-    for sid in ["a", "b", "c"] {
-        f.take(&added_frame(sid), 3);
+    let sid = |i: usize| format!("a{i}");
+    let count = |f: &Faces| f.book().live.len() + f.book().left.len();
+    for i in 1..=FACES_MAX {
+        f.take(&added_frame(&sid(i)));
     }
-    // a 又有了动静 ⇒ 最久没动静的是 b。
-    f.take(&added_frame("a"), 3);
-    f.take(&added_frame("d"), 3);
-    let live: Vec<&str> = f.book().live.keys().map(String::as_str).collect();
-    assert_eq!(live, ["a", "c", "d"]);
+    assert_eq!(count(&f), FACES_MAX, "上限以内一条都不挤");
+    // a1 又有了动静 ⇒ 最久没动静的是 a2。
+    f.take(&added_frame(&sid(1)));
+    f.take(&added_frame(&sid(FACES_MAX + 1)));
+    assert_eq!(count(&f), FACES_MAX, "长过了上限");
+    assert!(
+        f.book().face(&sid(2)).is_none(),
+        "挤掉的不是最久没动静的 a2"
+    );
+    assert!(f.book().face(&sid(1)).is_some() && f.book().face(&sid(FACES_MAX + 1)).is_some());
 }
 
 /// ★ 注解动了（改名 · 星标 · 隐藏 · 别的进程写的也算）⇒ 重判隐藏那一处响清单的节点（不分会话：不在跟的那几行也可能变）。

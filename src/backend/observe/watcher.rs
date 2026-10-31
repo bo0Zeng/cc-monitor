@@ -1104,8 +1104,8 @@ impl Faces {
         &self.book
     }
 
-    /// 扇出去的一帧：折进那一本；收场的摘掉；超了 `cap` 挤最久没动静的。
-    fn take(&mut self, frame: &Frame, cap: usize) {
+    /// 扇出去的一帧：折进那一本；收场的摘掉；超了 [`FACES_MAX`] 挤最久没动静的。
+    fn take(&mut self, frame: &Frame) {
         if !self.book.fold(frame) {
             return;
         }
@@ -1127,19 +1127,22 @@ impl Faces {
         }
         self.tick += 1;
         self.touched.insert(sid, self.tick);
-        while self.book.live.len() + self.book.left.len() > cap {
-            let stalest = |m: &mut dyn Iterator<Item = &String>| {
-                m.min_by_key(|s| self.touched.get(*s).copied().unwrap_or(0))
-                    .cloned()
-            };
-            let Some(out) =
-                stalest(&mut self.book.left.keys()).or_else(|| stalest(&mut self.book.live.keys()))
-            else {
+        while self.book.live.len() + self.book.left.len() > FACES_MAX {
+            let Some(out) = self.stalest() else {
                 break;
             };
-            tracing::warn!(sid = %out, cap, "faces book over its cap: dropping the stalest session");
+            tracing::warn!(sid = %out, cap = FACES_MAX, "faces book over its cap: dropping the stalest session");
             self.forget(&out);
         }
+    }
+
+    /// 最久没动静的那一条：收场的在前，再到在场的。
+    fn stalest(&self) -> Option<String> {
+        let stalest = |m: &mut dyn Iterator<Item = &String>| {
+            m.min_by_key(|s| self.touched.get(*s).copied().unwrap_or(0))
+                .cloned()
+        };
+        stalest(&mut self.book.left.keys()).or_else(|| stalest(&mut self.book.live.keys()))
     }
 
     fn forget(&mut self, sid: &str) {
@@ -5124,7 +5127,7 @@ impl FrameSink {
         self.faces
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .take(&frame, FACES_MAX);
+            .take(&frame);
         let to: Vec<usize> = (0..self.subs.len())
             .filter(|&i| self.subs[i].wants(&frame))
             .collect();
