@@ -25,7 +25,7 @@ async fn answer_with(
     remote: &dyn Remote,
     table: &Table,
 ) -> Result<Value, crate::common::said::Said> {
-    let req: AssetsSyncReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
+    let req: AssetsSyncReq = crate::wire::typed::take(args).map_err(|f| f.coded("bad_args"))?;
     super::answer_with(&req, fold, remote, table)
         .await
         .map(|r| serde_json::to_value(r).unwrap())
@@ -363,13 +363,13 @@ async fn half_given_arguments_are_refused() {
         let e = answer_with(&bad, local.fold(), &fakes, &table)
             .await
             .expect_err("收下了");
-        assert_eq!(e.0, "bad_args", "{bad}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad}");
     }
     // 点名的那一台不在机器表里 ⇒ 明说够不到，一次都不拨。
     let e = answer_with(&json!({"origin": "o"}), local.fold(), &fakes, &table)
         .await
         .expect_err("机器表里没有也收了");
-    assert_eq!(e.0, "unreachable");
+    assert_eq!(e.code.as_deref(), Some("unreachable"));
     assert!(fakes.seen.lock().unwrap().is_empty());
     // 正控：机器表里有 ⇒ 只给 `origin` 就对那一台做一趟。
     crate::dial::remote_ask::test_peers::add(&table, named("o", "x"));

@@ -873,7 +873,7 @@ pub fn answer_merge(
     req: AssetsCatalogMergeReq,
     own: &Own,
 ) -> Result<CatalogReply, crate::common::said::Said> {
-    let incoming = machines_of(req.catalog.machines).map_err(|e| ("bad_args", e))?;
+    let incoming = machines_of(req.catalog.machines).map_err(|e| crate::common::said::Said::new("bad_args", e))?;
     update_now(own, Some(incoming))
 }
 

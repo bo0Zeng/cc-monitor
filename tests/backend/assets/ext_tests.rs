@@ -481,7 +481,7 @@ impl M {
                 other.to_string(),
             )),
         };
-        r.map_err(|f| (f.code_or_fallback().to_string(), f.said))
+        r
     }
 }
 
@@ -523,10 +523,7 @@ impl Remote for RemoteM {
         self.1.lock().unwrap().push(flag.clone());
         let args: Value = serde_json::from_str(stdin.as_deref().unwrap_or("null").trim()).unwrap();
         let out = self.0.inner(&flag, &args);
-        Box::pin(async move {
-            out.map(|v| v.to_string())
-                .map_err(|(c, m)| Said::new(&c, m))
-        })
+        Box::pin(async move { out.map(|v| v.to_string()) })
     }
 }
 
@@ -624,10 +621,10 @@ async fn a_skill_goes_to_the_other_machine_and_comes_back_off() {
     std::fs::write(src.join("lib/x.txt"), "two\n").unwrap();
     let mut apply = args.clone();
     apply["tokens"] = card["tokens"].clone();
-    let (code, _) = ap(&t.here, &apply, &t.reach, &t.remote)
+    let e = ap(&t.here, &apply, &t.reach, &t.remote)
         .await
         .expect_err("源变了还装了");
-    assert_eq!(code, "stale");
+    assert_eq!(e.code.as_deref(), Some("stale"));
     let dst = t.b.env.skills.clone().unwrap().join("demo");
     assert!(!dst.exists(), "stale 了远端还多出了目录");
     assert!(
@@ -724,10 +721,10 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
     );
     let mut apply = args.clone();
     apply["tokens"] = card["tokens"].clone();
-    let (code, _) = ap(&t.here, &apply, &t.reach, &t.remote)
+    let e = ap(&t.here, &apply, &t.reach, &t.remote)
         .await
         .expect_err("没填值也装了");
-    assert_eq!(code, "needs_input");
+    assert_eq!(e.code.as_deref(), Some("needs_input"));
     apply["fill"] = json!({ "env": { "KEY": "typed-B" } });
     ap(&t.here, &apply, &t.reach, &t.remote)
         .await
@@ -857,14 +854,14 @@ async fn the_hub_refuses_a_target_the_table_greys_out() {
     ] {
         let args = json!({ "kind": kind, "name": name, "from": b.from, "to": "laptop",
             "scope": { "from": b.scope.from, "to": to }, "tokens": { "source": "s", "target": null } });
-        let (code, said) = pv(&t.here, &args, &t.reach, &t.remote)
+        let e = pv(&t.here, &args, &t.reach, &t.remote)
             .await
             .expect_err("不可选的那一处也给看卡了");
-        assert_eq!((code.as_str(), said), ("refused", copy_text(why, &[])));
-        let (code, _) = ap(&t.here, &args, &t.reach, &t.remote)
+        assert_eq!((e.code.as_deref(), e.said), (Some("refused"), copy_text(why, &[])));
+        let e = ap(&t.here, &args, &t.reach, &t.remote)
             .await
             .expect_err("不可选的那一处也给装了");
-        assert_eq!(code, "refused");
+        assert_eq!(e.code.as_deref(), Some("refused"));
     }
     assert!(
         !t.remote
