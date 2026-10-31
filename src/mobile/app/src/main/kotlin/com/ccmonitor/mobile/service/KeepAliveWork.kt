@@ -62,7 +62,7 @@ class KeepAliveWork(
         scope: CoroutineScope,
         context: Context,
     ) = scope.launch {
-        work.map { it.any }.distinctUntilChanged().filter { it }.collect {
+        work.map { it.any }.distinctUntilChanged().filter { it }.collect { _ ->
             val app = context.applicationContext
             runCatching { ContextCompat.startForegroundService(app, Intent(app, SshKeepAliveService::class.java)) }
                 .onFailure { Log.w(TAG, "起保活服务没成：${it.message}") }

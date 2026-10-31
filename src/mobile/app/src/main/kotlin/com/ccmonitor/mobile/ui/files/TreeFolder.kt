@@ -36,19 +36,19 @@ class TreeFolder(
     private inner class Tree(
         folder: String,
     ) {
-        private val tree: Uri = Uri.parse(folder)
-        private val root = guarded { DocumentsContract.getTreeDocumentId(tree) }
-        val parent: Uri = DocumentsContract.buildDocumentUriUsingTree(tree, root)
+        private val uri: Uri = Uri.parse(folder)
+        private val root = guarded { DocumentsContract.getTreeDocumentId(uri) }
+        val parent: Uri = DocumentsContract.buildDocumentUriUsingTree(uri, root)
 
         /** 里面那几项：名字 ⇒ 它的文档地址。 */
         fun children(): List<Pair<String, Uri>> {
-            val q = DocumentsContract.buildChildDocumentsUriUsingTree(tree, root)
+            val q = DocumentsContract.buildChildDocumentsUriUsingTree(uri, root)
             val cols = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME)
             return guarded {
                 resolver
                     .query(q, cols, null, null, null)
                     ?.use { c ->
-                        buildList { while (c.moveToNext()) add(c.getString(1) to DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0))) }
+                        buildList { while (c.moveToNext()) add(c.getString(1) to DocumentsContract.buildDocumentUriUsingTree(uri, c.getString(0))) }
                     }.orEmpty()
             }
         }
