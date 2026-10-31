@@ -170,7 +170,7 @@ describe("消息流底下的输入框", () => {
   });
 
   it("那台拒了 ⇒ 字留着、写那台那一句", async () => {
-    const refused = new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: "queue_full", message: "full-said" })) }, "full-said");
+    const refused = new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: "queue_full", said: "full-said" })) }, "full-said");
     const { c } = rig({ put: async () => Promise.reject(refused) });
     enter(c, "x");
     await flush();
