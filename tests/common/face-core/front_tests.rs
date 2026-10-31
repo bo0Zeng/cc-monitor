@@ -1,9 +1,10 @@
-//! ↗ 浮层那一张由 `cmd_wire::front` 一处写：壳的窗口结局 · 会话为什么没有链 ⇒ 标题 · 正文 · 灰字 · 语气 · 按钮。
+//! ↗ 浮层那一张由 `face_core::front` 一处写：壳的窗口结局 · 会话为什么没有链 ⇒ 标题 · 正文 · 灰字 · 语气 · 按钮。
 //! 逐种手写期望；句子取文案表（同一把 `copy_text`），判的是「哪一种出哪几句、哪几颗按钮、什么语气」。
-//! 挂在 `session_window_face.rs` 底下跑（那一张的两个写家：壳 · 本机后端 `session-window`，都调这一份）。
+//! 挂在 `face-core/src/front.rs` 底下跑（那一张的两个写家：壳 · 本机后端 `session-window`，都调这一份）。
 
+use crate::front::*;
 use cmd_wire::cells::{Tone, Words};
-use cmd_wire::front::*;
+use cmd_wire::front::{FrontAct, FrontFace, FrontTold};
 use copy_core::copy_text;
 
 fn face(title: &str, body: &str, hint: Option<&str>, tone: Tone, acts: Vec<FrontAct>) -> FrontFace {

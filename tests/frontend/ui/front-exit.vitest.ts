@@ -1,8 +1,8 @@
 /**
- * ↗ 浮层那一张由 `cmd_wire::front` 写好交来（壳的回包 · 本机后端 `session-window` 的 `face`，A16-1-8），出口照摆、不各自判：
+ * ↗ 浮层那一张由 `face_core::front` 写好交来（壳的回包 · 本机后端 `session-window` 的 `face`，A16-1-8），出口照摆、不各自判：
  * - ↗ 那几处出口（`front-result.ts` · 调它的几处）零出现壳的窗口结局 · 会话在哪的原因的词，与三个结局类型的名字；
  * - 给不给［在终端里打开］不由出口照会话的 tmux 那一格自己判（`session-window` 带 `tmux`，原样交壳）。
- * 正控：同一把尺在 `cmd-wire/src/front.rs` 量得到那几把键（没量到 ⇒ 本条在空转）。
+ * 正控：同一把尺在 `face-core/src/front.rs` 量得到那几把键（没量到 ⇒ 本条在空转）。
  * 同 `exit-said-acts.vitest.ts` 的做法；只读一张写死的文件名单，不遍历目录。注释照扫（「零出现」就是零出现）。
  */
 import { readFileSync } from "node:fs";
@@ -40,10 +40,10 @@ describe("↗ 浮层：出口照摆写好的那一张", () => {
       "TabMiss",
     ] as const;
     expect(hits(EXITS, needles)).toEqual([]);
-    const be = readFileSync(join(ROOT, "src/common/cmd-wire/src/front.rs"), "utf8");
+    const be = readFileSync(join(ROOT, "src/common/face-core/src/front.rs"), "utf8");
     for (const k of ["front.title.unsure", "front.body.severalUnregistered", "front.title.gone", "front.body.detached", "front.body.notSsh"]) {
       // 按调用认、不按排版：带参数的那几处 rustfmt 折成多行（`copy_text(` 换行再写键）。
-      expect(be, `正控：${k} 由 cmd_wire::front 写`).toMatch(new RegExp(`copy_text\\(\\s*"${k.replace(/\./g, "\\.")}"`));
+      expect(be, `正控：${k} 由 face_core::front 写`).toMatch(new RegExp(`copy_text\\(\\s*"${k.replace(/\./g, "\\.")}"`));
     }
   });
 
