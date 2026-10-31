@@ -40,16 +40,6 @@ pub use deploy::{identity_decision, judge, DialFacing, Plan, MARKS};
 
 use crate::common::said::Said;
 
-/// `deploy` crate 的失败 ⇒ 帧面的失败（码 · 那一句 · 原话原样）。
-fn fail_of(f: deploy::Fail) -> Said {
-    crate::wire::spec::fail(f.code, f.said).and_raw(f.raw.as_deref())
-}
-
-/// 一形拒绝 ⇒ `refused`（句子是 `Refusal::say`，那台答的原话随失败交出去）。
-fn refused(r: &Refusal, machine: &str) -> Said {
-    fail_of(deploy::refused(r, machine))
-}
-
 /// 出计划（[`deploy::plan`]，一个字节都不写）：判据经它问判定那一半。
 #[cfg(test)]
 pub async fn plan(
@@ -58,9 +48,7 @@ pub async fn plan(
     machine: &str,
     now_secs: u64,
 ) -> Result<Plan, Said> {
-    deploy::plan(facing, carried, machine, now_secs)
-        .await
-        .map_err(fail_of)
+    deploy::plan(facing, carried, machine, now_secs).await
 }
 
 /// `slots` 那几行 ⇒ `deploy::Slot`。键认不出 / 身份空 / 路径不是绝对 ⇒ `bad_args`（monitor 交的是它自己表里的词，认不出就是两侧漂了）。
@@ -177,7 +165,6 @@ pub async fn install(
     deploy::install(host, &slots, &load, &req.machine, now, on)
         .await
         .map(|p| installed_of(&p))
-        .map_err(fail_of)
 }
 
 crate::wire::typed::codes! {
@@ -268,7 +255,6 @@ pub async fn uninstall(
             removed: r.removed,
             said: r.said,
         })
-        .map_err(fail_of)
 }
 
 crate::wire::typed::codes! {
@@ -333,7 +319,7 @@ pub fn place_verdict(
     machine: &str,
     dest: &str,
 ) -> Result<Placed, Said> {
-    judge(Route::Local, me).map_err(|r| refused(&r, machine))?;
+    judge(Route::Local, me).map_err(|r| deploy::refused(&r, machine))?;
     let id = match disk {
         Ok(None) => RemoteIdentity::Missing,
         Ok(Some(b)) => deploy_contract::identity_of_bytes(&b, MARKS),
