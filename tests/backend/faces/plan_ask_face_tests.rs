@@ -160,7 +160,11 @@ fn an_unknown_cell_is_refused() {
             None,
         );
         let e = out.expect_err("格不在要拒");
-        assert_eq!(e.code.as_deref(), Some("no_such_cell"), "{slice} {id}: {e:?}");
+        assert_eq!(
+            e.code.as_deref(),
+            Some("no_such_cell"),
+            "{slice} {id}: {e:?}"
+        );
         assert!(kept.is_empty());
     }
 }

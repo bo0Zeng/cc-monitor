@@ -82,7 +82,10 @@ fn shape_validation_rejects_the_things_that_would_break_tmux() {
     // 超长
     let long = "x".repeat(MAX_FIELD_BYTES + 1);
     assert_eq!(
-        parse_request(&base("n", &long)).unwrap_err().code.as_deref(),
+        parse_request(&base("n", &long))
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("bad_args")
     );
     // `ccm_sid` 会被拼进 tmux 格式串，收紧字符集

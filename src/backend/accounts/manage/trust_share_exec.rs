@@ -16,7 +16,6 @@ use crate::common::door::{self, Door, Refused};
 use crate::common::said::Said;
 use std::collections::BTreeSet;
 
-
 /// 预标那一下的结局。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Marked {

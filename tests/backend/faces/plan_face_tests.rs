@@ -6,15 +6,22 @@ use serde_json::json;
 
 #[test]
 fn missing_args_are_bad_args() {
-    assert_eq!(ask("plan-read", json!({})).unwrap_err().code.as_deref(), Some("bad_args"));
     assert_eq!(
-        ask("plan-cell-view", json!({"workspace": "/w"}))
-            .unwrap_err()
-            .code.as_deref(),
+        ask("plan-read", json!({})).unwrap_err().code.as_deref(),
         Some("bad_args")
     );
     assert_eq!(
-        ask("plan-list", json!({"dirs": "x"})).unwrap_err().code.as_deref(),
+        ask("plan-cell-view", json!({"workspace": "/w"}))
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("bad_args")
+    );
+    assert_eq!(
+        ask("plan-list", json!({"dirs": "x"}))
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("bad_args")
     );
 }
@@ -55,7 +62,10 @@ fn path_goes_with_repo_and_only_with_it() {
         json!({"workspace": "/w", "cmd": "render", "domain": "软件"}),
     ] {
         assert_eq!(
-            ask("plan-command", bad.clone()).unwrap_err().code.as_deref(),
+            ask("plan-command", bad.clone())
+                .unwrap_err()
+                .code
+                .as_deref(),
             Some("bad_args"),
             "{bad}"
         );
@@ -63,7 +73,10 @@ fn path_goes_with_repo_and_only_with_it() {
     let f = ask("plan-new", json!({"dir": "rel/dir", "path": "x"})).unwrap_err();
     assert_eq!(f.code.as_deref(), Some("bad_args"));
     assert_eq!(
-        ask("plan-new", json!({"dir": "/w"})).unwrap_err().code.as_deref(),
+        ask("plan-new", json!({"dir": "/w"}))
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("bad_args")
     );
 }
@@ -112,7 +125,10 @@ fn record_takes_slice_summary_and_quotes_and_nothing_else_does() {
         json!({"workspace": "/w", "cmd": "take", "slice": "a", "quotes": ["y"]}),
     ] {
         assert_eq!(
-            ask("plan-command", bad.clone()).unwrap_err().code.as_deref(),
+            ask("plan-command", bad.clone())
+                .unwrap_err()
+                .code
+                .as_deref(),
             Some("bad_args"),
             "{bad}"
         );
@@ -123,13 +139,17 @@ fn record_takes_slice_summary_and_quotes_and_nothing_else_does() {
 #[test]
 fn plan_refs_takes_sid_and_texts_and_answers_one_list_per_text() {
     assert_eq!(
-        ask("plan-refs", json!({"texts": ["A1"]})).unwrap_err().code.as_deref(),
+        ask("plan-refs", json!({"texts": ["A1"]}))
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("bad_args")
     );
     assert_eq!(
         ask("plan-refs", json!({"sid": "s", "texts": [], "x": 1}))
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("bad_args")
     );
     let r = ask(

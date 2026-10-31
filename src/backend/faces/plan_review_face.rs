@@ -4,8 +4,8 @@
 //! - `plan-ack {workspace, slice, key}`：认可一条要你看（键此刻在、不是问人那一种才收）；推一帧 `changed {plan}` 带新的数。
 //! - `plan-unack {workspace, slice, key}`：撤掉（8 秒撤销那一下）；同上推一帧。
 
-use crate::plan::needs;
 use crate::common::said::Said;
+use crate::plan::needs;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use cmd_wire::plan as wire;
 use copy_core::copy_text;
@@ -50,11 +50,9 @@ fn after_ack(ws: &str, key: &str, acked: bool) -> Answer {
 fn ack(req: &PlanAckReq, own: &crate::platform::fs::Own) -> Answer {
     let (ws, slice, key) = (req.workspace.as_str(), req.slice.as_str(), req.key.as_str());
     let doc = last(ws)?;
-    let sl = doc
-        .slices
-        .iter()
-        .find(|s| s.name == slice)
-        .ok_or_else(|| crate::wire::spec::fail("no_such_need", copy_text("bePlan.review.noSuchNeed", &[])))?;
+    let sl = doc.slices.iter().find(|s| s.name == slice).ok_or_else(|| {
+        crate::wire::spec::fail("no_such_need", copy_text("bePlan.review.noSuchNeed", &[]))
+    })?;
     check_ack(sl, key)?;
     crate::plan::review::answer_ack(own, ws, slice, key, &needs::keys_of(sl))?;
     after_ack(ws, key, true)

@@ -57,11 +57,7 @@ pub trait Remote: Send + Sync {
         command: String,
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
-        Box::pin(async move {
-            self.run(dial, command, stdin)
-                .await
-                .map_err(Said::from)
-        })
+        Box::pin(async move { self.run(dial, command, stdin).await.map_err(Said::from) })
     }
 }
 

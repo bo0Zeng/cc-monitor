@@ -204,7 +204,11 @@ fn bus_ids_are_judged_here_before_they_reach_cc_bus() {
     }
     for id in bad.iter().filter(|id| !id.trim().is_empty()) {
         let e = parse_inbox(&json!({ "id": id })).expect_err(id);
-        assert_eq!(e.code.as_deref(), Some("bad_id"), "{id:?}：读收件箱的拒码不对（{e:?}）");
+        assert_eq!(
+            e.code.as_deref(),
+            Some("bad_id"),
+            "{id:?}：读收件箱的拒码不对（{e:?}）"
+        );
         assert!(
             e.said.contains(&format!("{id:?}")),
             "{id:?}：那一句没点出是哪个值：{}",
@@ -227,7 +231,10 @@ fn bus_ids_are_judged_here_before_they_reach_cc_bus() {
     }
     // 空是「缺」（`bad_args`），不是「形状不对」—— 两件事的话不一样。
     assert_eq!(
-        parse_inbox(&json!({ "id": "" })).unwrap_err().code.as_deref(),
+        parse_inbox(&json!({ "id": "" }))
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("bad_args")
     );
 }

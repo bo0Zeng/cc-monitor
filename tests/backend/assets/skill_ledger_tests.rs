@@ -13,7 +13,11 @@ use super::*;
 use serde_json::json;
 
 /// 入参仍用 JSON 写：经 `typed::take` 解成入参类型（同帧面那一跳；形状不对 ⇒ `bad_args`），回包写成 JSON 比。
-fn record_at(own: &Own, root: Option<&Path>, a: &Value) -> Result<Value, crate::common::said::Said> {
+fn record_at(
+    own: &Own,
+    root: Option<&Path>,
+    a: &Value,
+) -> Result<Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
     super::record_at(own, root, &req).map(|r| serde_json::to_value(r).unwrap())
 }

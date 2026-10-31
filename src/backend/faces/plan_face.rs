@@ -15,8 +15,8 @@
 //!
 //! 读过的工作区就开始盯（[`crate::plan::watch`]），变了推 `changed {plan}`。
 
-use crate::plan::{book, locate, watch, Live, Whose};
 use crate::common::said::Said;
+use crate::plan::{book, locate, watch, Live, Whose};
 use crate::wire::typed::{self, Command, Cx, Handle};
 use cmd_wire::plan as wire;
 use copy_core::copy_text;
@@ -199,7 +199,9 @@ fn miss(m: book::Miss) -> Said {
                 .and_raw(Some(&said))
         }
         book::Miss::Unsupported(said) => crate::wire::spec::fail("pb_unsupported", said),
-        book::Miss::Failed { said, raw } => crate::wire::spec::fail("failed", said).and_raw(raw.as_deref()),
+        book::Miss::Failed { said, raw } => {
+            crate::wire::spec::fail("failed", said).and_raw(raw.as_deref())
+        }
     }
 }
 
@@ -265,8 +267,9 @@ fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, S
             f.existing.as_ref().map(|e| e.slice.as_str()),
         );
         let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-        return crate::plan::command::run(&entry, Path::new(&f.root), &argv)
-            .map_err(|(code, said, raw)| crate::wire::spec::fail(code, said).and_raw(raw.as_deref()));
+        return crate::plan::command::run(&entry, Path::new(&f.root), &argv).map_err(
+            |(code, said, raw)| crate::wire::spec::fail(code, said).and_raw(raw.as_deref()),
+        );
     }
     let ws = Path::new(&req.workspace);
     let run = |args: &[&str]| crate::plan::command::run(&entry, ws, args);
@@ -639,7 +642,9 @@ fn cell_view(req: &PlanCellViewReq) -> Result<String, Said> {
         NodeMiss::Ran(Ran::NotWorkspace(said)) => miss(book::Miss::NotWorkspace(said)),
         NodeMiss::Ran(Ran::Unsupported(said)) => miss(book::Miss::Unsupported(said)),
         NodeMiss::Ran(Ran::Failed { said, raw }) => miss(book::Miss::Failed { said, raw }),
-        NodeMiss::Ran(Ran::Dump { .. }) => crate::wire::spec::fail("failed", copy_text("bePlan.face.shape", &[])),
+        NodeMiss::Ran(Ran::Dump { .. }) => {
+            crate::wire::spec::fail("failed", copy_text("bePlan.face.shape", &[]))
+        }
     })
 }
 

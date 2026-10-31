@@ -46,7 +46,11 @@ pub(crate) fn knock(own: &crate::platform::Own, env: &BusEnvelope, now_ms: i64) 
     match put {
         Ok(_) => true,
         Err(f) => {
-            tracing::info!("cc-bus knock not queued for {}: {}", env.to, f.code_or_fallback());
+            tracing::info!(
+                "cc-bus knock not queued for {}: {}",
+                env.to,
+                f.code_or_fallback()
+            );
             false
         }
     }

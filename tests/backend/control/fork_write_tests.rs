@@ -19,7 +19,8 @@ fn ask(
     launch: &dyn Fn(&Path, &str) -> crate::control::fork_launch::Launch,
 ) -> Result<serde_json::Value, (String, String)> {
     use crate::wire::typed::Codes;
-    let req: ForkReq = crate::wire::typed::take(&args).map_err(|f| (f.code_or_fallback().to_string(), f.said))?;
+    let req: ForkReq =
+        crate::wire::typed::take(&args).map_err(|f| (f.code_or_fallback().to_string(), f.said))?;
     fork_at(&NewFile::issue(), root, &req, launch)
         .map(|r| serde_json::to_value(&r).unwrap())
         .map_err(|e| {

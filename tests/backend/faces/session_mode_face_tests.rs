@@ -220,5 +220,8 @@ fn auto_is_offered_and_a_launch_only_mode_says_so() {
             copy_core::copy_text("beSessionMode.switch.launchOnly", &[])
         );
     }
-    assert_eq!(offered(&perm, "yolo").unwrap_err().code.as_deref(), Some("bad_args"));
+    assert_eq!(
+        offered(&perm, "yolo").unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
 }

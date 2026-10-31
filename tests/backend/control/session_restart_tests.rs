@@ -147,20 +147,22 @@ impl Rig {
                 }
                 Ok(())
             };
-        let run_ccm = |argv: &[String]| -> Result<(i32, String, String), crate::common::said::Said> {
-            note(format!("ccm {}", argv.join(" ")));
-            if self.ccm_exit == 0 {
-                let mut b = self.book.lock().unwrap();
-                match self.shows {
-                    Shows::AfterOld => b.on_frame(&added(SID)),
-                    Shows::OverOld => b.again(SID),
-                    Shows::Never => {}
+        let run_ccm =
+            |argv: &[String]| -> Result<(i32, String, String), crate::common::said::Said> {
+                note(format!("ccm {}", argv.join(" ")));
+                if self.ccm_exit == 0 {
+                    let mut b = self.book.lock().unwrap();
+                    match self.shows {
+                        Shows::AfterOld => b.on_frame(&added(SID)),
+                        Shows::OverOld => b.again(SID),
+                        Shows::Never => {}
+                    }
                 }
-            }
-            Ok((self.ccm_exit, String::new(), "boom".to_string()))
+                Ok((self.ccm_exit, String::new(), "boom".to_string()))
+            };
+        let mint = |_: batch::NameBase| -> Result<String, crate::common::said::Said> {
+            Ok("minted".to_string())
         };
-        let mint =
-            |_: batch::NameBase| -> Result<String, crate::common::said::Said> { Ok("minted".to_string()) };
         let library = || {
             crate::observe::accounts_query::test_support::list(vec![
                 crate::observe::accounts_query::test_support::row_with("work", |a| {
@@ -358,7 +360,10 @@ fn nothing_moves_when_the_account_or_the_terminal_is_not_there() {
     let mut a = args(true, 1000);
     a["account"] = json!("nope");
     let (out, rig) = go(Rig::new("acct"), a);
-    assert_eq!(out.unwrap_err().code.as_deref(), Some("account_unavailable"));
+    assert_eq!(
+        out.unwrap_err().code.as_deref(),
+        Some("account_unavailable")
+    );
     assert!(rig.calls().is_empty(), "{:?}", rig.calls());
 
     let mut rig = Rig::new("none");

@@ -670,7 +670,8 @@ pub(crate) async fn forward(
     });
     let deadline = tokio::time::Instant::now() + left;
     let feed = lock(table()).get(&machine).cloned();
-    let unreachable = || crate::wire::spec::fail(UNREACHABLE, comms_inward::chan::said::offline(&machine));
+    let unreachable =
+        || crate::wire::spec::fail(UNREACHABLE, comms_inward::chan::said::offline(&machine));
     let Some(feed) = feed else {
         return Err(unreachable());
     };

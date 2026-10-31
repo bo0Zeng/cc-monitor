@@ -4,9 +4,9 @@
 pub(crate) use super::exec::KeyTable;
 use super::exec::{self, Applied};
 use super::layout::{self, AddIntent, Plan};
-use crate::common::said::Said;
 use super::scan::{self, is_under, join, KeyRows, Snapshot};
 use crate::common::door::Door;
+use crate::common::said::Said;
 use cmd_wire::accounts::{
     AccountAddArgs, AccountChange, AccountInitArgs, AccountKind, AccountLoginCmd, AccountNameArgs,
     AccountRef, AccountRemoveArgs, AccountRepairArgs, AccountRollbackArgs, VerifyReport,
@@ -291,7 +291,11 @@ pub(crate) fn colors_here(d: &dyn Door) {
     match run() {
         Ok(true) => tracing::info!("[accounts] 账号库补了号色"),
         Ok(false) => {}
-        Err(e) => tracing::warn!("[accounts] 账号库补号色不成：{} {}", e.code_or_fallback(), e.logged()),
+        Err(e) => tracing::warn!(
+            "[accounts] 账号库补号色不成：{} {}",
+            e.code_or_fallback(),
+            e.logged()
+        ),
     }
 }
 
@@ -324,7 +328,11 @@ pub(crate) fn align_here(d: &dyn Door) {
     match run() {
         Ok(0) => {}
         Ok(n) => tracing::info!("[accounts] 账号库对齐（{n} 步）"),
-        Err(e) => tracing::warn!("[accounts] 账号库对齐不成：{} {}", e.code_or_fallback(), e.logged()),
+        Err(e) => tracing::warn!(
+            "[accounts] 账号库对齐不成：{} {}",
+            e.code_or_fallback(),
+            e.logged()
+        ),
     }
 }
 

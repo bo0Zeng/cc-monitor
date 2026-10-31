@@ -189,11 +189,7 @@ async fn a_machine_this_build_does_not_carry_is_refused_before_the_landing_is_as
     )];
     let e = plan(&f, &aarch, "box", NOW).await.unwrap_err();
     assert_eq!(e.code.as_deref(), Some("refused"));
-    assert!(
-        e.said.contains("box"),
-        "拒绝那句要点名那台：{}",
-        e.said
-    );
+    assert!(e.said.contains("box"), "拒绝那句要点名那台：{}", e.said);
     assert_eq!(f.asked.lock().unwrap().len(), 1, "拒绝点在问落点之前");
 }
 
@@ -365,7 +361,11 @@ fn slot_rows_outside_table_a_without_an_id_or_without_an_absolute_path_are_bad_a
         serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "p9a-x", "path": "s/x"}]}),
         serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "p9a-x"}]}),
     ] {
-        assert_eq!(slots_of(&bad).unwrap_err().code.as_deref(), Some("bad_args"), "{bad}");
+        assert_eq!(
+            slots_of(&bad).unwrap_err().code.as_deref(),
+            Some("bad_args"),
+            "{bad}"
+        );
     }
 }
 
@@ -728,7 +728,11 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
         serde_json::json!({ "dest": "rel/ccm", "machine": "本机" }),
         serde_json::json!({ "dest": dest.to_string_lossy() }),
     ] {
-        assert_eq!(answer_place(&bad).unwrap_err().code.as_deref(), Some("bad_args"), "{bad}");
+        assert_eq!(
+            answer_place(&bad).unwrap_err().code.as_deref(),
+            Some("bad_args"),
+            "{bad}"
+        );
     }
     if Key::this_machine()
         .and_then(|k| judge(Route::Local, Ok(k)))

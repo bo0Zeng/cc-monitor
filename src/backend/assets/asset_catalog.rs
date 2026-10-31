@@ -781,9 +781,8 @@ fn update_core(
     note: Option<(&str, &str)>,
     now: u64,
 ) -> Result<(Catalog, Vec<String>, bool), crate::common::said::Said> {
-    let no_home = |_| {
-        crate::wire::spec::fail("io_failed", copy_text("beAssetCatalog.write.noHome", &[]))
-    };
+    let no_home =
+        |_| crate::wire::spec::fail("io_failed", copy_text("beAssetCatalog.write.noHome", &[]));
     let dir = own.home_dir().map_err(no_home)?;
     let file = own.at_home(DOC.rel).map_err(no_home)?;
     let path = file.as_path();
@@ -802,15 +801,13 @@ fn update_core(
             ),
         )
     })?;
-    let held = own.lock(&dir).map_err(|e| {
-        crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e))
-    })?;
+    let held = own
+        .lock(&dir)
+        .map_err(|e| crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e)))?;
     let mut cat = match read_at(path) {
         Read::Present(c) => c,
         Read::Absent => fresh(new_machine_id()),
-        Read::Unreadable(why) => {
-            return Err(crate::wire::spec::fail("catalog_unreadable", why))
-        }
+        Read::Unreadable(why) => return Err(crate::wire::spec::fail("catalog_unreadable", why)),
     };
     let Scanned {
         assets,
@@ -835,8 +832,7 @@ fn update_core(
         dirty = true;
     }
     if dirty || !path.exists() {
-        write_at(own, &dir, &held, &cat)
-            .map_err(|e| crate::wire::spec::fail("io_failed", e))?;
+        write_at(own, &dir, &held, &cat).map_err(|e| crate::wire::spec::fail("io_failed", e))?;
     }
     Ok((cat, problems, changed))
 }

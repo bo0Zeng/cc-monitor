@@ -118,7 +118,10 @@ pub(crate) fn of_fail_said<E: Codes>(
     let code = if E::ALL.contains(&f.code_or_fallback()) {
         f.code_or_fallback().to_string()
     } else {
-        fallback(String::new()).into_said().code_or_fallback().to_string()
+        fallback(String::new())
+            .into_said()
+            .code_or_fallback()
+            .to_string()
     };
     let f = match said(&code) {
         Some(s) => f.retold(s),

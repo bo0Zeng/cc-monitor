@@ -80,8 +80,7 @@ pub(crate) fn mark_at(
     own: &crate::platform::fs::Own,
     req: &ChoresMarkReq,
 ) -> Result<Marks, crate::common::said::Said> {
-    let bad =
-        |d: &str| crate::wire::spec::fail("bad_args", crate::common::contract::malformed(d));
+    let bad = |d: &str| crate::wire::spec::fail("bad_args", crate::common::contract::malformed(d));
     let nonempty = |s: &str, k: &str| {
         if s.is_empty() {
             Err(bad(&format!("`{k}` missing")))

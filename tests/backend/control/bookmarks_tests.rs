@@ -184,7 +184,10 @@ fn an_unreadable_file_is_said_and_never_overwritten() {
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     std::fs::write(&f, b"{ not json").unwrap();
     let o = own(&h);
-    assert_eq!(read(&o).unwrap_err().code.as_deref(), Some("bookmarks_unreadable"));
+    assert_eq!(
+        read(&o).unwrap_err().code.as_deref(),
+        Some("bookmarks_unreadable")
+    );
     let e = answer_edit(
         &o,
         &BookmarksEditReq {
@@ -206,7 +209,10 @@ fn a_newer_file_is_said_and_never_overwritten() {
     let newer = br#"{"version":2,"dirs":["/a"]}"#;
     std::fs::write(&f, newer).unwrap();
     let o = own(&h);
-    assert_eq!(read(&o).unwrap_err().code.as_deref(), Some("bookmarks_unreadable"));
+    assert_eq!(
+        read(&o).unwrap_err().code.as_deref(),
+        Some("bookmarks_unreadable")
+    );
     let e = answer_edit(
         &o,
         &BookmarksEditReq {

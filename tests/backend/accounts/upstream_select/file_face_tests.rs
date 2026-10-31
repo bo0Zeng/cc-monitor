@@ -146,7 +146,8 @@ fn an_unparseable_file_is_refused_and_left_byte_for_byte() {
     )
     .unwrap_err();
     assert_eq!(
-        err.code.as_deref(), Some("bad_file"),
+        err.code.as_deref(),
+        Some("bad_file"),
         "解析不了应当回 bad_file，实得 {err:?}"
     );
     assert_eq!(
@@ -198,7 +199,8 @@ fn bad_arguments_are_refused_before_a_single_byte_is_written() {
         )
         .unwrap_err();
         assert_eq!(
-            err.code.as_deref(), Some("bad_args"),
+            err.code.as_deref(),
+            Some("bad_args"),
             "「{what}」应当是 bad_args，实得 {err:?}"
         );
         assert!(
@@ -352,7 +354,8 @@ fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
         )
         .expect_err("坏形状还写了");
         assert_eq!(
-            err.code.as_deref(), Some("bad_args"),
+            err.code.as_deref(),
+            Some("bad_args"),
             "{bad:?} 应当是 bad_args，实得 {err:?}"
         );
         assert!(!err.said.contains(PLAIN), "报错里带着明文");

@@ -241,7 +241,8 @@ fn what_cannot_travel_as_text_cannot_be_taken() {
     assert_eq!(
         answer_plan_with(&no_facts(), Some(&d), &take_bin)
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("bad_args")
     );
     let mut take_blob = base.clone();
@@ -250,7 +251,8 @@ fn what_cannot_travel_as_text_cannot_be_taken() {
     assert_eq!(
         answer_plan_with(&no_facts(), Some(&d), &take_blob)
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("bad_file")
     );
     let _ = std::fs::remove_dir_all(&d);

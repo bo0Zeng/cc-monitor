@@ -1124,11 +1124,7 @@ fn send_managed(
 
 /// `terminal-take-input` · `terminal-release-input` 的本体：只认托管那一形（tmux 各端都能打字，没有持有 ⇒ `not_managed`）；
 /// 过门（按行事实）之后替请求自报的前端接管 / 交还，回那一行此刻的输入那一格。
-pub(crate) fn hold_on(
-    terminal: &str,
-    client: Option<&str>,
-    take: bool,
-) -> Result<TermInput, Said> {
+pub(crate) fn hold_on(terminal: &str, client: Option<&str>, take: bool) -> Result<TermInput, Said> {
     let requester = gate::requester(client)?;
     let t = target(Some(terminal), None)?;
     let Some(row) = managed_row(&t)? else {

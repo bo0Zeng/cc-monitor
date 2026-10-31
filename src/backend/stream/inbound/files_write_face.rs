@@ -3,9 +3,9 @@
 //!
 //! 不住命令表那一份族文件：同读的那一份（`files_face.rs`）的理由，族文件只放登记那几行。
 
+use crate::common::said::Said;
 use crate::control::files_commit::session_attachment as sa;
 use crate::platform::fs::Face;
-use crate::common::said::Said;
 use crate::wire::typed::{self, codes, Codes, Command};
 use cmd_wire::batch::{BatchReply, Conflicts, FilesBatchStopReply, FilesBatchStopReq};
 use cmd_wire::files as wire;
@@ -26,9 +26,7 @@ fn ask<A: crate::control::files_write::Act, E: Codes>(
 
 /// 资产域那扇门（`doors::LocalFiles`）问写的那几样：同一个本体，写句柄经分派那一层（`spec::with_face`）领一份、只活这一问；
 /// 失败只交码与那一句（不过这一条的码表：门不是帧面）。
-pub(crate) fn in_process<A: crate::control::files_write::Act>(
-    req: A,
-) -> Result<A::Reply, Said> {
+pub(crate) fn in_process<A: crate::control::files_write::Act>(req: A) -> Result<A::Reply, Said> {
     crate::wire::spec::with_face(|face| crate::control::files_write::answer(req, face))
         .map_err(|f| crate::common::door::said_of(f.code, &f.said))
 }
@@ -602,13 +600,12 @@ impl crate::wire::typed::Handle for SessionAttachmentCommit {
         async move {
             let face = &needs;
             let cwd = session_cwd(req.sid.as_str()).ok_or_else(|| {
-                {
-                    let f = sa::refused(cmd_wire::attachment::AttachRefused::NoSession);
-                    attach_fail(f.code, f.said, f.raw, SessionAttachmentCommitErr::BadArgs)
-                }
+                let f = sa::refused(cmd_wire::attachment::AttachRefused::NoSession);
+                attach_fail(f.code, f.said, f.raw, SessionAttachmentCommitErr::BadArgs)
             })?;
-            sa::commit_here(face, &cwd, req)
-                .map_err(|f| attach_fail(f.code, f.said, f.raw, SessionAttachmentCommitErr::BadArgs))
+            sa::commit_here(face, &cwd, req).map_err(|f| {
+                attach_fail(f.code, f.said, f.raw, SessionAttachmentCommitErr::BadArgs)
+            })
         }
     }
 }
@@ -650,10 +647,8 @@ impl crate::wire::typed::Handle for SessionAttachmentDrop {
         async move {
             let face = &needs;
             let cwd = session_cwd(req.sid.as_str()).ok_or_else(|| {
-                {
-                    let f = sa::refused(cmd_wire::attachment::AttachRefused::NoSession);
-                    attach_fail(f.code, f.said, f.raw, SessionAttachmentDropErr::BadArgs)
-                }
+                let f = sa::refused(cmd_wire::attachment::AttachRefused::NoSession);
+                attach_fail(f.code, f.said, f.raw, SessionAttachmentDropErr::BadArgs)
             })?;
             sa::drop_one(face, &cwd, &req.id)
                 .map(|removed| cmd_wire::attachment::SessionAttachmentDropReply { removed })

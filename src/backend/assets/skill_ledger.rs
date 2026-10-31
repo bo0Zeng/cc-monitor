@@ -233,7 +233,8 @@ pub(crate) struct RecordReply {
 }
 
 /// 装记录的写口（生产 = [`answer_record`]，由 `stream/inbound/` 递进来；装 · 卸那几处不直呼它）。
-pub(crate) type Record<'a> = &'a dyn Fn(&RecordReq) -> Result<RecordReply, crate::common::said::Said>;
+pub(crate) type Record<'a> =
+    &'a dyn Fn(&RecordReq) -> Result<RecordReply, crate::common::said::Said>;
 
 /// `add`：并进那个目录的记录。回 `(目录, 变没变)`。**纯**（目录由调用方算好）。
 pub fn add(ledger: &mut Ledger, dir: &str, name: &str, files: BTreeMap<String, Recorded>) -> bool {
@@ -294,9 +295,8 @@ pub(crate) fn record_at(
     req: &RecordReq,
 ) -> Result<RecordReply, crate::common::said::Said> {
     // 先建那一层目录（在就算了），再拿它的跨进程锁，锁住之后才读。
-    let no_home = |_| {
-        crate::wire::spec::fail("io_failed", copy_text("beSkillLedger.path.noHome", &[]))
-    };
+    let no_home =
+        |_| crate::wire::spec::fail("io_failed", copy_text("beSkillLedger.path.noHome", &[]));
     let lock_dir = own.home_dir().map_err(no_home)?;
     let file = own.at_home(DOC.rel).map_err(no_home)?;
     let path = file.as_path();
@@ -316,9 +316,9 @@ pub(crate) fn record_at(
             ),
         )
     })?;
-    let held = own.lock(&lock_dir).map_err(|e| {
-        crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e))
-    })?;
+    let held = own
+        .lock(&lock_dir)
+        .map_err(|e| crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e)))?;
     let mut ledger = load_at(path)?;
     let (dir, name, changed, left) = match req {
         RecordReq::Add {

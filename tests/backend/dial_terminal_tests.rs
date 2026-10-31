@@ -159,7 +159,8 @@ fn the_jump_hop_renders_as_dash_j_and_a_missing_or_looping_jump_is_refused() {
     assert_eq!(
         answer(&json!({ "machine": m, "command": "x" }))
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("bad_jump")
     );
     let looped =
@@ -167,7 +168,8 @@ fn the_jump_hop_renders_as_dash_j_and_a_missing_or_looping_jump_is_refused() {
     assert_eq!(
         answer(&json!({ "machine": looped, "command": "x" }))
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("bad_jump")
     );
     let bad_user =
@@ -175,14 +177,16 @@ fn the_jump_hop_renders_as_dash_j_and_a_missing_or_looping_jump_is_refused() {
     assert_eq!(
         answer(&json!({ "machine": m, "jump": bad_user, "command": "x" }))
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("refused")
     );
     let bad_host = json!({ "host": "h;rm -rf", "user": "u", "port": 22, "label": "bastion" });
     assert_eq!(
         answer(&json!({ "machine": m, "jump": bad_host, "command": "x" }))
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("refused")
     );
 }
@@ -195,32 +199,49 @@ fn bad_inputs_are_refused_and_say_which_cell() {
         ("a\nb", "控制字符"),
         ("cc --x \"y\"", "双引号（PS native 畸变面）"),
     ] {
-        assert_eq!(run(c(), cmd).unwrap_err().code.as_deref(), Some("refused"), "{why}");
+        assert_eq!(
+            run(c(), cmd).unwrap_err().code.as_deref(),
+            Some("refused"),
+            "{why}"
+        );
     }
     assert_eq!(
-        run(c(), &"a".repeat(MAX_COMMAND + 1)).unwrap_err().code.as_deref(),
+        run(c(), &"a".repeat(MAX_COMMAND + 1))
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("refused"),
         "超长"
     );
     assert_eq!(
-        run(machine("h", "u ser", 22, None), "x").unwrap_err().code.as_deref(),
+        run(machine("h", "u ser", 22, None), "x")
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("refused"),
         "user 空格"
     );
     assert_eq!(
-        run(machine("h; rm", "u", 22, None), "x").unwrap_err().code.as_deref(),
+        run(machine("h; rm", "u", 22, None), "x")
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("refused"),
         "host 注入"
     );
     // 契约错：缺机器 / 机器缺 user（缺命令是登录 shell 那一形，见末尾那一节）。
     assert_eq!(
-        answer(&json!({ "command": "x" })).unwrap_err().code.as_deref(),
+        answer(&json!({ "command": "x" }))
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("bad_args")
     );
     assert_eq!(
         answer(&json!({ "machine": { "host": "h" }, "command": "x" }))
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("bad_args")
     );
 }
@@ -232,14 +253,16 @@ fn a_leading_dash_in_any_bare_word_is_refused() {
     assert_eq!(
         run(machine("h", "-oProxyCommand", 22, None), "x")
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("refused"),
         "用户名打头是 -"
     );
     assert_eq!(
         run(machine("-oProxyCommand", "u", 22, None), "x")
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("refused"),
         "地址打头是 -"
     );
@@ -255,7 +278,8 @@ fn a_leading_dash_in_any_bare_word_is_refused() {
         assert_eq!(
             answer(&json!({ "machine": m, "jump": j, "command": "x" }))
                 .unwrap_err()
-                .code.as_deref(),
+                .code
+                .as_deref(),
             Some("refused"),
             "{why}"
         );
@@ -319,7 +343,10 @@ fn every_remote_command_the_backend_renders_passes_the_terminal_guard() {
     assert!(!with_dq.is_empty(), "正控没造出带双引号的命令");
     for c in with_dq {
         assert_eq!(
-            run(machine("h", "u", 22, None), c).unwrap_err().code.as_deref(),
+            run(machine("h", "u", 22, None), c)
+                .unwrap_err()
+                .code
+                .as_deref(),
             Some("refused"),
             "守卫被放宽了：{c}"
         );
@@ -341,7 +368,9 @@ fn the_open_terminal_command_keeps_its_three_shapes() {
     ];
     for (input, want) in GOLDEN {
         assert_eq!(
-            command_for_cwd(&json!(input)).map_err(|e| e.said).as_deref(),
+            command_for_cwd(&json!(input))
+                .map_err(|e| e.said)
+                .as_deref(),
             Ok(*want),
             "入参 {input:?}"
         );
@@ -401,7 +430,11 @@ fn a_cwd_intent_renders_exactly_like_the_command_it_stands_for() {
         answer(&json!({ "machine": m, "cwd": "/srv/c" })).unwrap()
     );
     for bad in [json!({ "machine": m, "cwd": "/srv", "command": "ls" })] {
-        assert_eq!(answer(&bad).unwrap_err().code.as_deref(), Some("bad_args"), "{bad}");
+        assert_eq!(
+            answer(&bad).unwrap_err().code.as_deref(),
+            Some("bad_args"),
+            "{bad}"
+        );
     }
 }
 
@@ -508,7 +541,13 @@ fn the_posix_line_hands_ssh_the_same_arguments_a_real_shell_would() {
 #[test]
 fn only_the_powershell_line_refuses_double_quotes() {
     let args = json!({ "machine": machine("h", "u", 22, None), "command": r#"echo "a b""# });
-    assert_eq!(answer_at(&args, true, &found()).unwrap_err().code.as_deref(), Some("refused"));
+    assert_eq!(
+        answer_at(&args, true, &found())
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("refused")
+    );
     assert!(answer_at(&args, false, &SshClient::At("/usr/bin/ssh".into())).is_ok());
 }
 
@@ -532,7 +571,7 @@ fn a_failed_check_says_it_cannot_tell_and_never_claims_missing() {
     let e = answer_at(&args, true, &SshClient::Unknown(why.into())).unwrap_err();
     assert_eq!(e.code.as_deref(), Some("unobservable"));
     let said = e.said;
-    assert_eq!(said,copy_text("beTerminal.ssh.unknown", &[("why", why)]));
+    assert_eq!(said, copy_text("beTerminal.ssh.unknown", &[("why", why)]));
     for missing in [
         "beTerminal.ssh.missingWindows",
         "beTerminal.ssh.missingPosix",

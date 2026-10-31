@@ -150,13 +150,14 @@ impl Rig {
         let end = |_: &str| -> Result<(), crate::common::said::Said> {
             unreachable!("session-open 不结束")
         };
-        let send_into = |name: &str, _: &str, line: &str| -> Result<(), crate::common::said::Said> {
-            self.sent.borrow_mut().push((name.into(), line.into()));
-            match self.send_err {
-                Some(c) => Err(crate::wire::spec::fail(c, "门没过".to_string())),
-                None => Ok(()),
-            }
-        };
+        let send_into =
+            |name: &str, _: &str, line: &str| -> Result<(), crate::common::said::Said> {
+                self.sent.borrow_mut().push((name.into(), line.into()));
+                match self.send_err {
+                    Some(c) => Err(crate::wire::spec::fail(c, "门没过".to_string())),
+                    None => Ok(()),
+                }
+            };
         let run_ccm = |argv: &[String]| -> Result<(i32, String, String), Said> {
             self.ccm.borrow_mut().push(argv.to_vec());
             Ok((self.ccm_rc, self.ccm_out.clone(), "坏了".into()))
@@ -172,12 +173,13 @@ impl Rig {
         };
         let writers = |_: &str| self.live.clone();
         let pretrust = |_: &str, _: &str| *self.marks.borrow_mut() += 1;
-        let open_shell = |name: &str, cwd: Option<&str>| -> Result<bool, crate::common::said::Said> {
-            self.shells
-                .borrow_mut()
-                .push((name.into(), cwd.map(str::to_string)));
-            Ok(true)
-        };
+        let open_shell =
+            |name: &str, cwd: Option<&str>| -> Result<bool, crate::common::said::Said> {
+                self.shells
+                    .borrow_mut()
+                    .push((name.into(), cwd.map(str::to_string)));
+                Ok(true)
+            };
         let library = || {
             crate::observe::accounts_query::test_support::list(
                 self.names
@@ -752,7 +754,11 @@ fn the_request_shape_is_closed() {
         json!({ "what": { "kind": "look", "sid": A }, "run": "tmux" }),
         json!({ "what": { "kind": "resume", "sid": A }, "extra": 1 }),
     ] {
-        assert_eq!(rig.open(bad.clone()).unwrap_err().code.as_deref(), Some("bad_args"), "{bad}");
+        assert_eq!(
+            rig.open(bad.clone()).unwrap_err().code.as_deref(),
+            Some("bad_args"),
+            "{bad}"
+        );
     }
 }
 
@@ -939,7 +945,11 @@ fn shell_makes_or_joins_a_bare_session_or_enters_a_dir() {
             "bad_tmux_name",
         ),
     ] {
-        assert_eq!(rig.open(args.clone()).unwrap_err().code.as_deref(), Some(code), "{args}");
+        assert_eq!(
+            rig.open(args.clone()).unwrap_err().code.as_deref(),
+            Some(code),
+            "{args}"
+        );
     }
     assert_eq!(rig.shells.borrow().len(), 1);
     assert!(rig.ccm.borrow().is_empty() && rig.sent.borrow().is_empty());

@@ -524,7 +524,8 @@ impl Remote for RemoteM {
         let args: Value = serde_json::from_str(stdin.as_deref().unwrap_or("null").trim()).unwrap();
         let out = self.0.inner(&flag, &args);
         Box::pin(async move {
-            out.map(|v| v.to_string()).map_err(|(c, m)| Said::new(&c, m))
+            out.map(|v| v.to_string())
+                .map_err(|(c, m)| Said::new(&c, m))
         })
     }
 }
@@ -1219,8 +1220,7 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     let mut ua = u.clone();
     ua["token"] = card["token"].clone();
     std::fs::write(dir.join("SKILL.md"), "edited\n").unwrap();
-    let e =
-        answer_uninstall_apply(&m.door(), &m.env, &record, &ua).expect_err("变了还删了");
+    let e = answer_uninstall_apply(&m.door(), &m.env, &record, &ua).expect_err("变了还删了");
     assert_eq!(e.code.as_deref(), Some("stale"));
     assert!(dir.join("SKILL.md").exists());
     let card = answer_uninstall_preview(&m.door(), &m.env, &u).unwrap();

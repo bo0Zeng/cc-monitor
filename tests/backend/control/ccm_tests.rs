@@ -892,7 +892,12 @@ fn minting_derives_here_and_steps_aside_on_this_machines_snapshot() {
         mint(NameBase::ForkOf("/home/u/gone")).unwrap(),
         "gone-fork-cc"
     );
-    let no_tmux = SessionSnapshot::with_prober(|| Err(crate::common::said::Said::new("no_tmux", "tmux: not found".to_string())));
+    let no_tmux = SessionSnapshot::with_prober(|| {
+        Err(crate::common::said::Said::new(
+            "no_tmux",
+            "tmux: not found".to_string(),
+        ))
+    });
     assert_eq!(
         terminal_name_mint_with(NameBase::Cwd("/home/u/proj"), &no_tmux).unwrap(),
         "proj-cc"

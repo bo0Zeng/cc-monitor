@@ -9,8 +9,8 @@
 
 use crate::assets::aliases::profile::{self, Book};
 use crate::ccm_line::argv::{flag, Parsed};
-use crate::plan::needs;
 use crate::common::said::Said;
+use crate::plan::needs;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use cmd_wire::plan::PlanRead;
 use copy_core::copy_text;
@@ -36,7 +36,8 @@ pub(crate) fn ask_with(
             copy_text("bePlan.ask.noTmux", &[]),
         ));
     }
-    let no_cell = || crate::wire::spec::fail("no_such_cell", copy_text("bePlan.review.noSuchCell", &[]));
+    let no_cell =
+        || crate::wire::spec::fail("no_such_cell", copy_text("bePlan.review.noSuchCell", &[]));
     let sl = doc
         .slices
         .iter()
@@ -136,7 +137,8 @@ fn ask_here(
         Some(d) => d,
         None => super::plan_face::read_fresh(&req.workspace, tz)?,
     };
-    let store = crate::assets::aliases::load(files).map_err(|m| crate::wire::spec::fail("refused", m))?;
+    let store =
+        crate::assets::aliases::load(files).map_err(|m| crate::wire::spec::fail("refused", m))?;
     let review = crate::plan::review::current(crate::plan::review::review_path().as_deref());
     let keep = |a: &str| crate::plan::review::ask_at(own, a);
     ask_with(

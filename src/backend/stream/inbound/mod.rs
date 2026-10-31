@@ -32,8 +32,8 @@
 //! 单行长度上限（不缓冲、不 OOM）· 未见 Hello 之前不许有 stdin（时序，机检钉住）·
 //! 坏行只回错误、**绝不结束进程**。
 
-use crate::wire::FrameMake as _;
 use crate::wire::spec::Settle as _;
+use crate::wire::FrameMake as _;
 use crate::wire::{Frame, Request};
 use copy_core::copy_text;
 use std::collections::HashMap;
@@ -513,7 +513,8 @@ fn dispatch(
                     move |r, cx| async move {
                         crate::dial::probe::answer_probe(&r, cx.until, &tx)
                             .await
-                            .map_err(crate::wire::typed::of_fail_with(                                crate::dial::probe::ProbeErr::Failed,
+                            .map_err(crate::wire::typed::of_fail_with(
+                                crate::dial::probe::ProbeErr::Failed,
                             ))
                     },
                 ),

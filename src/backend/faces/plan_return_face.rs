@@ -4,8 +4,8 @@
 //! 排进去了 ⇒ 记一条「已退回」（[`crate::plan::review`] 的退回写口只从本文件进），
 //! 之后 `plan-read` 里那一格带落没落地（[`crate::plan::needs::landing`]）。
 
-use crate::plan::needs::{self, Returned};
 use crate::common::said::Said;
+use crate::plan::needs::{self, Returned};
 use crate::wire::typed::{self, Command, Cx, Handle};
 use cmd_wire::plan::{PlanRead, PlanReturnReply, PlanWho};
 use cmd_wire::queue::{QueuePut, SessionQueuePutReq};
@@ -66,7 +66,8 @@ pub(crate) fn return_with(
         Some(s) if s == "owner" || s == "signer" => s,
         Some(_) => return Err(bad("`to` must be `owner` or `signer`")),
     };
-    let no_cell = || crate::wire::spec::fail("no_such_cell", copy_text("bePlan.review.noSuchCell", &[]));
+    let no_cell =
+        || crate::wire::spec::fail("no_such_cell", copy_text("bePlan.review.noSuchCell", &[]));
     let sl = doc
         .slices
         .iter()

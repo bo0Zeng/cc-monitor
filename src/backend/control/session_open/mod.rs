@@ -460,12 +460,7 @@ fn opened(landed: Landed, session: Option<String>, line: Option<String>) -> Open
 
 /// 接回：按会话（挂着它的那个；命中多个接第一个、`note` 说一句）或按终端名。两种宿主都认（名单是入口交的那一份）：
 /// tmux 那一行接会话名，托管那一行接句柄（瘦客户端 `--attach <句柄>`）。一个都没认到、这台又没 tmux ⇒ `place_unavailable`。
-fn look(
-    sid: Option<&str>,
-    session: Option<&str>,
-    here: Here,
-    deps: &Deps,
-) -> Result<Opened, Said> {
+fn look(sid: Option<&str>, session: Option<&str>, here: Here, deps: &Deps) -> Result<Opened, Said> {
     let listed = listed(deps).map_err(lower)?;
     let rows = &listed.rows;
     // 没认到：那一句由调用处取好（这台没 tmux ⇒ 改说放不了）。

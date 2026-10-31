@@ -58,7 +58,9 @@ pub(crate) fn here(req: &BoardHereReq) -> Result<BoardHere, BoardHereErr> {
         },
     )
     .map_err(|f| match f.code.as_deref() {
-        Some("no_tmux") => BoardHereErr::Unobservable(crate::common::contract::joined(f.said, f.raw)),
+        Some("no_tmux") => {
+            BoardHereErr::Unobservable(crate::common::contract::joined(f.said, f.raw))
+        }
         _ => typed::of_fail(f, BoardHereErr::Unobservable),
     })?;
     let agent_home = crate::history::listing::agent_home();

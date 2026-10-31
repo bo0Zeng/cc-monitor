@@ -27,8 +27,8 @@ use std::path::{Path, PathBuf};
 
 use super::asset_catalog::{self, Asset, Catalog, ExtKind};
 use super::skill_ledger::{Record, RecordReq};
-use crate::common::said::IntoNote as _;
 use crate::common::door::{self, Door, Refused};
+use crate::common::said::IntoNote as _;
 
 // ───────────────────────── 线上形状（界面那一份由这里生成） ─────────────────────────
 
@@ -397,12 +397,9 @@ impl ExtLoc {
             (ExtLoc::Project { dir }, Some(form)) => Ok(ExtLoc::Project {
                 dir: super::mcp_edit::project_root_as(&dir, form)?,
             }),
-            (ExtLoc::Project { dir }, None) if dir.trim().is_empty() => {
-                Err(crate::wire::spec::fail(
-                    "bad_args",
-                    copy_text("beMcpEdit.path.emptyDir", &[]),
-                ))
-            }
+            (ExtLoc::Project { dir }, None) if dir.trim().is_empty() => Err(
+                crate::wire::spec::fail("bad_args", copy_text("beMcpEdit.path.emptyDir", &[])),
+            ),
             (ExtLoc::Project { dir }, None) => Ok(ExtLoc::Project {
                 dir: dir.trim().to_string(),
             }),
@@ -1174,7 +1171,8 @@ pub(crate) fn answer_list(
 pub const NOTE_MAX_CHARS: usize = 2000;
 
 /// 备注的写口（现扫 ＋ 记进本机目录自己那一格 ＋ 交回整份）：生产 = `asset_catalog::answer_note`。
-pub(crate) type NoteWrite<'a> = &'a dyn Fn(&str, &str) -> Result<Catalog, crate::common::said::Said>;
+pub(crate) type NoteWrite<'a> =
+    &'a dyn Fn(&str, &str) -> Result<Catalog, crate::common::said::Said>;
 
 /// `ext-note-set` 的入参。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1271,9 +1269,7 @@ impl Env {
 
 /// 这台上缺了家目录那一格（装记录 · 备份 · skill 根都从它来）。
 fn need<T>(v: Option<T>) -> Result<T, crate::common::said::Said> {
-    v.ok_or_else(|| {
-        crate::wire::spec::fail("io_failed", copy_text("beExt.uninstall.noHome", &[]))
-    })
+    v.ok_or_else(|| crate::wire::spec::fail("io_failed", copy_text("beExt.uninstall.noHome", &[])))
 }
 
 /// 一段值的记号（看过的那一份 · 应用时再算一次比）。

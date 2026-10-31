@@ -190,7 +190,9 @@ fn hold(req: &TerminalHoldReq, take: bool) -> Result<cmd_wire::session::InputNow
 pub(crate) fn hold_refused(f: Said) -> TerminalHoldErr {
     match f.code.as_deref() {
         // 同 `terminals-list`：tmux 装了却起不来说成「列不出」。
-        Some("no_tmux") => TerminalHoldErr::Unobservable(crate::common::contract::joined(f.said, f.raw)),
+        Some("no_tmux") => {
+            TerminalHoldErr::Unobservable(crate::common::contract::joined(f.said, f.raw))
+        }
         _ => typed::of_fail_said(f, TerminalHoldErr::Unobservable, |c| match c {
             "not_known" | "no_such_session" => Some(t::no_said(t::Refused::Ended)),
             "not_yours" => Some(t::no_said(t::Refused::NotYours)),
@@ -219,7 +221,9 @@ impl crate::wire::typed::Handle for TerminalsListCmd {
             // 名单这一条登记成「tmux 可选」（没装 ⇒ 空名单，不是错）：装了却起不来那一种（下层回 `no_tmux`）说成「列不出」，
             //   不在这一条的码表里另立一个 `no_tmux`（`target_parity_guard` 钉着两句不许自相矛盾）。
             t::list_on(On::default(), &req).map_err(|f| match f.code.as_deref() {
-                Some("no_tmux") => TerminalsListErr::Unobservable(crate::common::contract::joined(f.said, f.raw)),
+                Some("no_tmux") => {
+                    TerminalsListErr::Unobservable(crate::common::contract::joined(f.said, f.raw))
+                }
                 _ => typed::of_fail(f, TerminalsListErr::Unobservable),
             })
         }

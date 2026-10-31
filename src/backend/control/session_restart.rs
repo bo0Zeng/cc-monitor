@@ -262,23 +262,21 @@ fn swap(
         );
         return Err(already_live(said, others, true));
     }
-    open::relaunch_in(&req.item, &req.agent, account, name, req.local, deps).map_err(
-        |f| {
-            let code = f.code_or_fallback().to_string();
-            if let Some(raw) = &f.raw {
-                tracing::warn!("[session-restart] relaunch into {name} failed: {code} {raw}");
-            }
-            refused(
-                "start_failed",
-                f.said,
-                Refused::StartFailed {
-                    terminal: name.to_string(),
-                    why: Some(code),
-                    stopped: true,
-                },
-            )
-        },
-    )
+    open::relaunch_in(&req.item, &req.agent, account, name, req.local, deps).map_err(|f| {
+        let code = f.code_or_fallback().to_string();
+        if let Some(raw) = &f.raw {
+            tracing::warn!("[session-restart] relaunch into {name} failed: {code} {raw}");
+        }
+        refused(
+            "start_failed",
+            f.said,
+            Refused::StartFailed {
+                terminal: name.to_string(),
+                why: Some(code),
+                stopped: true,
+            },
+        )
+    })
 }
 
 /// 先压缩那一步的结局（不论哪种都照常往下）。
@@ -358,9 +356,7 @@ pub(crate) async fn run<H: Host>(
     req.until = until;
     let req = std::sync::Arc::new(req);
     let r = req.clone();
-    let (account, name, terminal, mine) = host
-        .blocking(move |d| prepare(&r, d))
-        .await?;
+    let (account, name, terminal, mine) = host.blocking(move |d| prepare(&r, d)).await?;
     let compact = compact(&req, &name, &host).await;
     // 停之前记下报到序号：此刻在跑的那个进程不算。
     let since = crate::common::arrival_seq::mark();

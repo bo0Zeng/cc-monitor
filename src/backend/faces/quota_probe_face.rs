@@ -175,12 +175,10 @@ pub(crate) fn answer_probe_with(
     if let Some(p) = &at.path {
         child = child.env("PATH", p);
     }
-    let out = child
-        .run(PROBE_WITHIN)
-        .map_err(|e| {
-            let (code, said) = e.into_cmd_said("failed", failed);
-            crate::wire::spec::fail(code, said)
-        })?;
+    let out = child.run(PROBE_WITHIN).map_err(|e| {
+        let (code, said) = e.into_cmd_said("failed", failed);
+        crate::wire::spec::fail(code, said)
+    })?;
     let text = String::from_utf8_lossy(&out.stdout);
     if !out.status.success() {
         let stderr: String = String::from_utf8_lossy(&out.stderr)

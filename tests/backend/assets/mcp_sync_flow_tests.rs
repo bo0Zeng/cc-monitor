@@ -155,7 +155,7 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
         &json!({ "name": "s", "at": at(&dst), "def": def, "fill": {}, "target": pre["target"] }),
     )
     .expect_err("缺值还写了")
-        .code;
+    .code;
     assert_eq!(code.as_deref(), Some("needs_input"));
     assert_eq!(
         std::fs::read_to_string(dst.join(mcp_json())).unwrap(),
@@ -216,7 +216,7 @@ fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_
         &json!({ "name": "a", "at": at(&dst), "def": def, "target": pre["target"] }),
     )
     .expect_err("看过之后变了还写了")
-        .code;
+    .code;
     assert_eq!(code.as_deref(), Some("stale"));
     assert_eq!(
         std::fs::read_to_string(dst.join(mcp_json())).unwrap(),
@@ -229,7 +229,7 @@ fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_
         &json!({ "name": "a", "at": { "level": "user" }, "def": def }),
     )
     .expect_err("用户级也收了")
-        .code;
+    .code;
     assert_eq!(code.as_deref(), Some("refused"));
     let _ = std::fs::remove_dir_all(&d);
 }

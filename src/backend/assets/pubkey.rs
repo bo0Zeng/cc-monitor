@@ -406,7 +406,11 @@ pub(crate) async fn answer_push(
     let dial =
         crate::dial::request_draft(&reach.hosts(), machine, "capture", serde_json::json!({}))
             .map_err(|s| {
-                let code = if s.code.as_deref() == Some("bad_jump") { "bad_jump" } else { "bad_args" };
+                let code = if s.code.as_deref() == Some("bad_jump") {
+                    "bad_jump"
+                } else {
+                    "bad_args"
+                };
                 (code, s.said)
             })?;
     let path =

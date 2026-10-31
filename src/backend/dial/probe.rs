@@ -482,11 +482,7 @@ pub(crate) async fn probe_with(
 
 /// 跑一趟真连接那一串（`resident_client::feed`：attach → 没接上 ensure → 再 attach），等到第一个通 / 断。
 /// 通了 ⇒ 问一次 `ping` 量往返；断了 ⇒ 那一句就是真连接会说的那一句。
-async fn run(
-    req: &ProbeReq,
-    dial: Arc<dyn Dial>,
-    cells: &Cells<'_>,
-) -> Result<ProbeCell, Said> {
+async fn run(req: &ProbeReq, dial: Arc<dyn Dial>, cells: &Cells<'_>) -> Result<ProbeCell, Said> {
     let name = req.machine.name().to_string();
     let hosts = super::machines_now();
     let request = |use_: &str, extra| {

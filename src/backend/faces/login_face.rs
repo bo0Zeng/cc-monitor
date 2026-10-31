@@ -227,7 +227,13 @@ pub(crate) fn start(
         path: None,
     };
     let s = sign_in::start(&ask, on_end).map_err(|s| {
-        LoginStartErr::failed({ let f = crate::wire::spec::fail("failed", s); crate::common::contract::joined(f.said, f.raw) }, terminal_way(req))
+        LoginStartErr::failed(
+            {
+                let f = crate::wire::spec::fail("failed", s);
+                crate::common::contract::joined(f.said, f.raw)
+            },
+            terminal_way(req),
+        )
     })?;
     Ok(started(s, face, args))
 }
@@ -327,9 +333,13 @@ impl LoginFinishErr {
                 copy_text("beLogin.finish.slow", &[]),
                 LoginAgain::PASTE,
             ),
-            FinishFail::Refused(s) => {
-                LoginFinishErr::Refused({ let f = crate::wire::spec::fail("refused", s); crate::common::contract::joined(f.said, f.raw) }, LoginAgain::RESTART)
-            }
+            FinishFail::Refused(s) => LoginFinishErr::Refused(
+                {
+                    let f = crate::wire::spec::fail("refused", s);
+                    crate::common::contract::joined(f.said, f.raw)
+                },
+                LoginAgain::RESTART,
+            ),
         }
     }
     fn no_job() -> Self {

@@ -89,10 +89,7 @@ where
     C::Reply: serde::de::DeserializeOwned,
 {
     let said = |s: crate::common::said::Said| {
-        (
-            s.code.unwrap_or_else(|| "unreachable".to_string()),
-            s.said,
-        )
+        (s.code.unwrap_or_else(|| "unreachable".to_string()), s.said)
     };
     let Some(m) = machine else {
         let args =

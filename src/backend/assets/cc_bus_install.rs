@@ -182,10 +182,7 @@ fn skills_root() -> Result<PathBuf, crate::common::said::Said> {
     crate::agents::asset_kind()
         .and_then(crate::agents::skills_root)
         .ok_or_else(|| {
-            crate::wire::spec::fail(
-                "refused",
-                copy_text("beCcBusInstall.root.unknown", &[]),
-            )
+            crate::wire::spec::fail("refused", copy_text("beCcBusInstall.root.unknown", &[]))
         })
 }
 
@@ -208,8 +205,7 @@ pub(crate) fn install_at(
     skills: &Path,
     record: Record,
 ) -> Result<CcBusInstalled, crate::common::said::Said> {
-    let (top, dest) =
-        fenced_root(skills).map_err(|e| crate::wire::spec::fail("refused", e))?;
+    let (top, dest) = fenced_root(skills).map_err(|e| crate::wire::spec::fail("refused", e))?;
     let root = top.display().to_string();
     let dest_s = dest.display().to_string();
     // 记：每个内嵌文件一行、摘要是内嵌那一份的；`created` = 这一趟是不是新建的（已记的取第一次的，写口管）。

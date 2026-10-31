@@ -3,9 +3,9 @@
 //! 文件管理面的写句柄 `Face` 只有分派那一层造，这扇门就是进程内的那一次分派）。
 //! 写的规则（CAS · 相同不写 · 备份 · 暂存旁名换名上位 · 回读比对 · 回滚）只有 `files_write::put_text` 那一份。
 
+use crate::common::said::Said;
 use cmd_wire::batch::{BatchReply, ItemState, OnExists};
 use cmd_wire::files as wire;
-use crate::common::said::Said;
 use copy_core::copy_text;
 
 /// 一次 `Door::peek` 读回来的。

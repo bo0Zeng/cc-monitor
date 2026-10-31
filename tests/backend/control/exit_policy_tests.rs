@@ -158,7 +158,11 @@ fn set_rejects_a_non_boolean_and_writes_nothing() {
         let own = crate::platform::fs::Own::issue_at(&d);
         let err = answer_set(&bad, &own).expect_err("非布尔应当被拒");
         assert!(!d.join(DIR_NAME).exists(), "拒了却建了目录");
-        assert_eq!(err.code.as_deref(), Some("bad_args"), "{bad} 应当回 bad_args");
+        assert_eq!(
+            err.code.as_deref(),
+            Some("bad_args"),
+            "{bad} 应当回 bad_args"
+        );
     }
 }
 

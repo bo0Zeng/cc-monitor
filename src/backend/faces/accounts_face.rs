@@ -12,9 +12,9 @@ use crate::accounts::upstream_select::file_face;
 use crate::assets::aliases::accounts as acct_aliases;
 use crate::assets::aliases::{self, AmendErr};
 use crate::common::door::Door;
-use crate::platform::shell::dialect::Shell;
-use crate::common::said::Said;
 use crate::common::said::IntoNote as _;
+use crate::common::said::Said;
+use crate::platform::shell::dialect::Shell;
 use crate::wire::typed::{self, Command, Files, NoArgs};
 use cmd_wire::accounts::{
     AccountAddArgs, AccountChange, AccountInitArgs, AccountKind, AccountLoginCmd,

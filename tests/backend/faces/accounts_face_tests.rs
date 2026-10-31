@@ -772,7 +772,10 @@ fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
             Some(b) => json!({ "name": "k2", "kind": "api-key", "key": key, "baseUrl": b }),
             None => json!({ "name": "k2", "kind": "api-key", "key": key }),
         };
-        assert_eq!(call(&t, "accounts-add", args).unwrap_err().code.as_deref(), Some("bad_args"));
+        assert_eq!(
+            call(&t, "accounts-add", args).unwrap_err().code.as_deref(),
+            Some("bad_args")
+        );
         assert!(!t.exists(".cc-monitor/accounts/k2"));
     }
 }
@@ -814,10 +817,7 @@ fn a_key_that_does_not_land_is_said_not_swallowed() {
     let t = machine("api-fail");
     ok(&t, "accounts-init", json!({ "name": "lab" }));
     let key_set = |_: &file_face::KeySetReq| -> Result<file_face::KeySet, Said> {
-        Err(crate::wire::spec::fail(
-            "io_failed",
-            "盘满了".to_string(),
-        ))
+        Err(crate::wire::spec::fail("io_failed", "盘满了".to_string()))
     };
     let got = call_door(
         &t,

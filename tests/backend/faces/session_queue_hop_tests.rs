@@ -54,7 +54,9 @@ impl Remote for Owner {
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
         Box::pin(async move {
-            self.run(dial, command, stdin).await.map_err(|m| Said::new("resident_absent", m))
+            self.run(dial, command, stdin)
+                .await
+                .map_err(|m| Said::new("resident_absent", m))
         })
     }
 }
@@ -159,9 +161,7 @@ async fn the_owners_own_refusal_keeps_its_code() {
             _command: String,
             _stdin: Option<String>,
         ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
-            Box::pin(async {
-                Err(Said::new("queue_full", "满".to_string()))
-            })
+            Box::pin(async { Err(Said::new("queue_full", "满".to_string())) })
         }
     }
     let here = home("full-here");

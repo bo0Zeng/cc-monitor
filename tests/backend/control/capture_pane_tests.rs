@@ -91,7 +91,8 @@ fn capturing_a_real_pane_brings_the_screen_back() {
     let miss = capture_with_on(Some(&sock.to_string_lossy()), "=kr86nope:", false, 0)
         .expect_err("不存在的会话不许回成功");
     assert_eq!(
-        miss.code.as_deref(), Some("no_such_session"),
+        miss.code.as_deref(),
+        Some("no_such_session"),
         "server 在、目标不在 ⇒ 该报 `no_such_session`。实得：{miss:?}"
     );
 
@@ -106,7 +107,8 @@ fn a_socket_with_no_server_says_so_in_its_own_words() {
     let e = capture_with_on(Some(&sock.to_string_lossy()), "=whatever:", false, 0)
         .expect_err("没有 server 的 socket 上不许回成功");
     assert_eq!(
-        e.code.as_deref(), Some("no_server"),
+        e.code.as_deref(),
+        Some("no_server"),
         "没有 server 时报的是 `{}` —— 那一档被压进别的码里了。实得：{e:?}",
         e.code_or_fallback()
     );
@@ -124,7 +126,8 @@ fn missing_tmux_and_missing_session_are_two_different_answers() {
     let gone =
         classify(&raw(Some(1), "", "can't find pane: =x:")).expect_err("目标不存在不许回成功");
     assert_ne!(
-        absent.code, gone.code,
+        absent.code,
+        gone.code,
         "「这台机没有 tmux」与「会话不存在」共用了同一个码 `{}` —— \
              压成一句之后，拿到这条错的人没法判断该去装 tmux 还是该去看会话名",
         absent.code_or_fallback()
@@ -165,7 +168,8 @@ fn an_unrecognised_failure_carries_the_real_words_instead_of_a_guess() {
     let e =
         classify(&raw(Some(3), "", "tmux: 未来某个版本的新措辞")).expect_err("非零退出不许回成功");
     assert_eq!(
-        e.code.as_deref(), Some("capture_failed"),
+        e.code.as_deref(),
+        Some("capture_failed"),
         "认不出来的失败被塞进了一个具体的码 —— 那是拿一个错答案冒充知识"
     );
     let raw_said = e.raw.as_deref().unwrap_or_default();
@@ -226,13 +230,18 @@ fn every_registered_needle_lands_in_its_own_bucket() {
     for (needle, _) in NO_SERVER_NEEDLES {
         let e = classify(&raw(Some(1), "", &format!("tmux: {needle} blah")))
             .expect_err("非零退出不许回成功");
-        assert_eq!(e.code.as_deref(), Some("no_server"), "针 {needle:?} 没落进 `no_server`");
+        assert_eq!(
+            e.code.as_deref(),
+            Some("no_server"),
+            "针 {needle:?} 没落进 `no_server`"
+        );
     }
     for (needle, _) in NO_TARGET_NEEDLES {
         let e = classify(&raw(Some(1), "", &format!("tmux: {needle}: =x:")))
             .expect_err("非零退出不许回成功");
         assert_eq!(
-            e.code.as_deref(), Some("no_such_session"),
+            e.code.as_deref(),
+            Some("no_such_session"),
             "针 {needle:?} 没落进 `no_such_session`"
         );
     }

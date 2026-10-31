@@ -228,7 +228,8 @@ fn stopping_the_sync_leaves_each_account_alone_until_it_is_turned_back_on() {
     assert_eq!(
         t.call("accounts-mcp-remove", json!({ "name": "cclsp" }))
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("refused"),
         "停着 ⇒ 从所有号删一条被拒（不然就成了同步）"
     );
@@ -304,7 +305,8 @@ fn removed_in_cc_monitor_leaves_both_accounts() {
     assert_eq!(
         t.call("accounts-mcp-remove", json!({ "name": "anysearch" }))
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("not_found")
     );
 }
@@ -403,11 +405,15 @@ fn bad_arguments_are_refused() {
     assert_eq!(
         t.call("accounts-mcp-read", json!({ "x": 1 }))
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("bad_args")
     );
     assert_eq!(
-        t.call("accounts-mcp-remove", json!({})).unwrap_err().code.as_deref(),
+        t.call("accounts-mcp-remove", json!({}))
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("bad_args")
     );
     assert_eq!(
@@ -416,7 +422,8 @@ fn bad_arguments_are_refused() {
             json!({ "name": "cclsp", "from": "nobody" })
         )
         .unwrap_err()
-        .code.as_deref(),
+        .code
+        .as_deref(),
         Some("refused")
     );
 }

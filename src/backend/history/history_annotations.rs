@@ -251,9 +251,8 @@ fn lock_for_write(own: &Own, dir: &OwnPath) -> Result<OwnLock, crate::common::sa
             ),
         ));
     }
-    own.lock(dir).map_err(|e| {
-        crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e))
-    })
+    own.lock(dir)
+        .map_err(|e| crate::wire::spec::fail("io_failed", crate::common::said::Said::from(e)))
 }
 
 /// 一次改动（线上 `patch`）：缺格 / `null` = 不改；标题给空白串 = 清空。
@@ -296,9 +295,7 @@ fn now_ms() -> i64 {
 
 /// 读原文成「严格读过的结构 ＋ 原文 JSON」（`version` 那一格读写口摘了、写时再带上）。文件不在 ⇒ 缺省形状。
 fn read_for_write(path: &Path) -> Result<(Doc, Value), crate::common::said::Said> {
-    match read_raw(path)
-        .map_err(|e| crate::wire::spec::fail("annotations_unreadable", e))?
-    {
+    match read_raw(path).map_err(|e| crate::wire::spec::fail("annotations_unreadable", e))? {
         None => Ok((Doc::default(), json!({ "entries": {} }))),
         Some(raw) => {
             let doc = parse(&raw, path).map_err(|e| ("annotations_unreadable", e))?;
@@ -527,8 +524,7 @@ pub(crate) fn annotate_at(
     }
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
-    write_at(own, &dir, &held, &raw)
-        .map_err(|e| err(crate::wire::spec::fail("io_failed", e)))?;
+    write_at(own, &dir, &held, &raw).map_err(|e| err(crate::wire::spec::fail("io_failed", e)))?;
     // 会话事实里那一格（`autoAnswer`）跟着变：出口照推帧重读，不自己去问。
     if auto_changed {
         super::needs_changed::moved(sid);
@@ -656,8 +652,7 @@ pub(crate) fn edit_slice_at<T>(
     if !section.is_empty() {
         root.insert("groups".into(), Value::Object(section));
     }
-    write_at(own, &dir, &held, &raw)
-        .map_err(|e| err(crate::wire::spec::fail("io_failed", e)))?;
+    write_at(own, &dir, &held, &raw).map_err(|e| err(crate::wire::spec::fail("io_failed", e)))?;
     Ok(out)
 }
 
@@ -692,8 +687,7 @@ pub(crate) fn forget_at(own: &Own, req: ForgetReq) -> Result<Forgotten, Annotati
         return Ok(Forgotten { removed: false });
     }
     put_entry(&mut raw, sid, None);
-    write_at(own, &dir, &held, &raw)
-        .map_err(|e| err(crate::wire::spec::fail("io_failed", e)))?;
+    write_at(own, &dir, &held, &raw).map_err(|e| err(crate::wire::spec::fail("io_failed", e)))?;
     Ok(Forgotten { removed: true })
 }
 

@@ -39,8 +39,7 @@ fn answer(
     own: &crate::platform::fs::Own,
     nf: &crate::platform::fs::NewFile,
 ) -> Result<open::Opened, crate::common::said::Said> {
-    let client = crate::control::gate::requester(req.client.as_deref())
-        .map_err(open::whole)?;
+    let client = crate::control::gate::requester(req.client.as_deref()).map_err(open::whole)?;
     // 起之前记下这台的报到序号：之后报到的那一条才是它（回包的 `arrival.since`）。
     let since = crate::common::arrival_seq::mark();
     let (agent, facts) = match &req.what {

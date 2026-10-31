@@ -132,7 +132,8 @@ pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>,
                 copy_text("beQuotaWarm.agent.unsupported", &[("agent", agent)]),
             )
         })?;
-    let no_home = || crate::wire::spec::fail("io_failed", copy_text("beQuotaLedger.read.noHome", &[]));
+    let no_home =
+        || crate::wire::spec::fail("io_failed", copy_text("beQuotaLedger.read.noHome", &[]));
     let cwd = own
         .path(crate::common::own_dir::HIDDEN_WORK_DIR)
         .map_err(|_| no_home())?;
@@ -188,8 +189,10 @@ pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>,
             .chars()
             .take(200)
             .collect();
-        return Err(crate::wire::spec::fail("failed", copy_text("beQuotaWarm.run.exit", &[]))
-            .and_raw(Some(&format!("exit {code}: {said}"))));
+        return Err(
+            crate::wire::spec::fail("failed", copy_text("beQuotaWarm.run.exit", &[]))
+                .and_raw(Some(&format!("exit {code}: {said}"))),
+        );
     }
     let quota = super::ledger::Ledger::at(super::ledger::path_from(&|k| std::env::var(k).ok()));
     Ok(resets_5h(&quota, agent, account))

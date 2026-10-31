@@ -339,7 +339,9 @@ pub fn place_verdict(
         Ok(Some(b)) => deploy_contract::identity_of_bytes(&b, MARKS),
         Err(e) => RemoteIdentity::Unreadable(e),
     };
-    match identity_decision(&id, mine, machine, dest).map_err(|e| crate::wire::spec::fail("undecidable", e))? {
+    match identity_decision(&id, mine, machine, dest)
+        .map_err(|e| crate::wire::spec::fail("undecidable", e))?
+    {
         DeployAction::Deploy(why) => Ok(Placed::Place(why)),
         DeployAction::Skip => Ok(Placed::Place(copy_text("bePlaceVerdict.why.rebuilt", &[]))),
         DeployAction::Keep { why, .. } => Ok(Placed::Keep(why)),

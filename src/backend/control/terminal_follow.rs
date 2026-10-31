@@ -349,7 +349,9 @@ pub(crate) fn end_said(why: FollowEnd) -> String {
 /// 抓那个终端的一屏失败了（或控制模式客户端退了之后再看一眼）⇒ 停因：终端 / tmux 都没了 ⇒ `gone`；还在 ⇒ `lost`。
 fn end_of<T>(seen: &Result<T, Said>) -> FollowEnd {
     match seen {
-        Err(f) if matches!(f.code.as_deref(), Some("no_such_session" | "no_server")) => FollowEnd::Gone,
+        Err(f) if matches!(f.code.as_deref(), Some("no_such_session" | "no_server")) => {
+            FollowEnd::Gone
+        }
         _ => FollowEnd::Lost,
     }
 }
@@ -487,12 +489,7 @@ impl Desk {
 
     /// 托管那一形凭占位起：经托管口开一条只看的连接（`hello{want: view, who: backend}`），读线记「变了」；
     /// 抓屏照旧走托管口 `capture`，帧里带此刻的持有者。托管口连接失败 ⇒ `not_known`（同 tmux 那一行不在）。不设定时器：同 tmux 那一形，一次只有一帧在送。
-    fn take_hosted(
-        &self,
-        seat: &Seat,
-        sock: &std::path::Path,
-        tz: &crate::Tz,
-    ) -> Result<(), Said> {
+    fn take_hosted(&self, seat: &Seat, sock: &std::path::Path, tz: &crate::Tz) -> Result<(), Said> {
         let me = &self.0;
         let (conn, held, buf) = open_hosted(sock)?;
         let held = Arc::new(Mutex::new(held));
@@ -554,11 +551,7 @@ impl Desk {
     }
 
     /// 帧面那一口：[`Desk::follow`] 挪进阻塞线程池做（起 tmux 那几下不占 worker，同换号重启那几步）。
-    pub(crate) async fn follow_off_worker(
-        self,
-        req: FollowReq,
-        tz: crate::Tz,
-    ) -> Result<(), Said> {
+    pub(crate) async fn follow_off_worker(self, req: FollowReq, tz: crate::Tz) -> Result<(), Said> {
         tokio::task::spawn_blocking(move || self.follow(&req, &tz))
             .await
             .unwrap_or_else(|e| {

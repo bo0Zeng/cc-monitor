@@ -141,7 +141,8 @@ fn an_owner_waiting_for_you_is_queued_and_a_failed_put_keeps_nothing() {
         kept[0].3.children,
         vec!["A2-1".to_string(), "A2-2".to_string()]
     );
-    let full = |_: &SessionQueuePutReq| Err(crate::wire::spec::fail("queue_full", "满了".to_string()));
+    let full =
+        |_: &SessionQueuePutReq| Err(crate::wire::spec::fail("queue_full", "满了".to_string()));
     let (out, _, kept) = run_with(&doc, args("A2"), &full);
     assert_eq!(out.unwrap_err().code.as_deref(), Some("queue_full"));
     assert!(kept.is_empty());
@@ -179,7 +180,10 @@ fn the_signer_is_a_target_only_when_pb_gives_one() {
     assert_eq!(out.unwrap()["to"]["id"], SUB);
     assert_eq!(sent[0].sid.as_str(), MAIN);
     a["to"] = json!("boss");
-    assert_eq!(run(&doc, a).0.unwrap_err().code.as_deref(), Some("bad_args"));
+    assert_eq!(
+        run(&doc, a).0.unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
 }
 
 #[test]
@@ -187,11 +191,20 @@ fn bad_shapes_and_missing_cells_are_errors() {
     let doc = doc_with(&live(crate::agents::SessionActivity::Working));
     let mut a = args("A2-1");
     a["text"] = json!("   ");
-    assert_eq!(run(&doc, a).0.unwrap_err().code.as_deref(), Some("bad_args"));
-    assert_eq!(run(&doc, args("Z9")).0.unwrap_err().code.as_deref(), Some("no_such_cell"));
+    assert_eq!(
+        run(&doc, a).0.unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
+    assert_eq!(
+        run(&doc, args("Z9")).0.unwrap_err().code.as_deref(),
+        Some("no_such_cell")
+    );
     let mut a = args("A2-1");
     a["slice"] = json!("beta");
-    assert_eq!(run(&doc, a).0.unwrap_err().code.as_deref(), Some("no_such_cell"));
+    assert_eq!(
+        run(&doc, a).0.unwrap_err().code.as_deref(),
+        Some("no_such_cell")
+    );
     let mut a = args("A2-1");
     a["seen_screen"] = json!("abc");
     assert!(
@@ -221,7 +234,10 @@ fn the_top_block_is_addressed_as_project_and_goes_to_its_owner() {
     );
     let mut a = args("project");
     a["to"] = json!("signer");
-    assert_eq!(run(&doc, a).0.unwrap_err().code.as_deref(), Some("no_target"));
+    assert_eq!(
+        run(&doc, a).0.unwrap_err().code.as_deref(),
+        Some("no_target")
+    );
 }
 
 fn ended(id: &str) -> Whose {

@@ -13,8 +13,8 @@
 //! 有字时按 Enter 就把它说出去 —— 通用层哪一步没核对就按，判据当场看得见。
 
 use crate::agents::{RewindChoice, RewindFace, RewindItem, RewindRow, RewindScreen};
-use crate::control::rewind::{RewindIo, UserLine};
 use crate::common::said::Said;
+use crate::control::rewind::{RewindIo, UserLine};
 use crate::control::terminals_wire::{Sent, SentResult};
 use cmd_wire::rewind::RewindHow;
 

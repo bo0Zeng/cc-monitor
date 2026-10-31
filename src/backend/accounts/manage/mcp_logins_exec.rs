@@ -18,7 +18,6 @@ use copy_core::copy_text;
 use serde_json::Value;
 use std::path::Path;
 
-
 /// 一趟的结果：改写了哪几个号 · 没落下的那几句。
 #[derive(Debug, Default, Clone, PartialEq)]
 pub(crate) struct Synced {

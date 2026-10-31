@@ -211,7 +211,12 @@ fn unreadable_output_is_said_and_not_booked_and_a_failed_run_is_failed() {
 fn bad_args_unknown_accounts_and_api_keys_never_start_anything() {
     let home = Home::new("args");
     let ctx = home.ctx();
-    let code = |args: Value| home.probe(&ctx, args).expect_err("应拒").code.expect("带码");
+    let code = |args: Value| {
+        home.probe(&ctx, args)
+            .expect_err("应拒")
+            .code
+            .expect("带码")
+    };
     assert_eq!(code(json!({"account": "b"})), "bad_args");
     assert_eq!(code(json!({"agent": "claude", "account": "_"})), "bad_args");
     assert_eq!(

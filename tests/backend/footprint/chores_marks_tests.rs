@@ -58,7 +58,8 @@ fn 读不懂的那份_不覆盖_回错() {
     assert_eq!(
         mark_at(&own, &json!({"op": "decline", "id": "x"}))
             .unwrap_err()
-            .code.as_deref(),
+            .code
+            .as_deref(),
         Some("marks_unreadable")
     );
     assert_eq!(std::fs::read_to_string(&f).unwrap(), "{oops");
@@ -76,7 +77,11 @@ fn 不认的_op_或缺参数_拒() {
         json!({"op": "decline"}),
         json!({"op": "selfPaste"}),
     ] {
-        assert_eq!(mark_at(&own, &a).unwrap_err().code.as_deref(), Some("bad_args"), "{a}");
+        assert_eq!(
+            mark_at(&own, &a).unwrap_err().code.as_deref(),
+            Some("bad_args"),
+            "{a}"
+        );
     }
     let _ = std::fs::remove_dir_all(&d);
 }

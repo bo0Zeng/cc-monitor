@@ -92,7 +92,8 @@ pub(crate) struct Deps<'a> {
     /// `(号目录, 工作目录)` ⇒ 起之前把工作目录标成那个号信任过（那一家没有「信任」这件事 ⇒ 什么都不做；写不成只出声、照常起）。
     pub(crate) pretrust: &'a dyn Fn(&str, &str),
     /// `(会话名, 工作目录)` ⇒ 开一个空 shell 的 tmux 会话（不在才建）；回「这一趟建的」。失败带 tmux 原话。
-    pub(crate) open_shell: &'a dyn Fn(&str, Option<&str>) -> Result<bool, crate::common::said::Said>,
+    pub(crate) open_shell:
+        &'a dyn Fn(&str, Option<&str>) -> Result<bool, crate::common::said::Said>,
     /// 这台的偏好（启动命令 · 模型表 · 恢复时放在哪；一趟读一次 `prefs.json`）。
     pub(crate) prefs: &'a crate::common::machine_prefs::Prefs,
     /// sid ⇒ 那条会话上次起在哪种宿主里（启动台账；恢复照起时那一种读它）。

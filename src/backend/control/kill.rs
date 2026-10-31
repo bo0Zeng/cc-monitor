@@ -224,7 +224,9 @@ impl crate::wire::typed::Handle for TerminalEnd {
             )
             .map_err(|f| match f.code.as_deref() {
                 // 同 `terminals-list`：tmux 装了却起不来 ⇒ 列不出（不另立 `no_tmux`：没 tmux 照样结束托管的）。
-                Some("no_tmux") => TerminalEndErr::Unobservable(crate::common::contract::joined(f.said, f.raw)),
+                Some("no_tmux") => {
+                    TerminalEndErr::Unobservable(crate::common::contract::joined(f.said, f.raw))
+                }
                 _ => crate::wire::typed::of_fail(f, TerminalEndErr::KillFailed),
             })
         }

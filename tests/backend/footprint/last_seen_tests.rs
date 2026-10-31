@@ -178,7 +178,12 @@ fn 文件不在或读不懂_照没记过算_写的时候整份重来() {
 #[test]
 fn 入参闭集_种类只认两样_值要是对象_太大的不收() {
     let d = Dir::new("args");
-    let code = |a: serde_json::Value| write_at(&d.own(), &a, 1).unwrap_err().code_or_fallback().to_string();
+    let code = |a: serde_json::Value| {
+        write_at(&d.own(), &a, 1)
+            .unwrap_err()
+            .code_or_fallback()
+            .to_string()
+    };
     assert_eq!(
         code(json!({"origin": "devbox", "kind": "ext", "value": {}})),
         "bad_args"
@@ -196,7 +201,10 @@ fn 入参闭集_种类只认两样_值要是对象_太大的不收() {
         code(json!({"origin": "devbox", "kind": "data", "value": {"s": big}})),
         "too_large"
     );
-    assert_eq!(read_at(&d.file(), &json!({})).unwrap_err().code.as_deref(), Some("bad_args"));
+    assert_eq!(
+        read_at(&d.file(), &json!({})).unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
     assert!(!d.file().exists(), "拒掉的不许落一个字节");
 }
 

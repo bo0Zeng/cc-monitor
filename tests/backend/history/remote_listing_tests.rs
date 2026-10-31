@@ -131,7 +131,9 @@ impl Remote for Peer {
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
         Box::pin(async move {
-            self.run(dial, command, stdin).await.map_err(|_| Said::new("resident_absent", "该机后端未在运行".to_string()))
+            self.run(dial, command, stdin)
+                .await
+                .map_err(|_| Said::new("resident_absent", "该机后端未在运行".to_string()))
         })
     }
 }

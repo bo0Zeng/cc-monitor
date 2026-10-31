@@ -20,7 +20,6 @@ use copy_core::copy_text;
 use serde_json::Value;
 use std::path::Path;
 
-
 /// 共享集合那份小文件的读取上限。
 const MAX_SMALL_BYTES: u64 = 8 * 1024 * 1024;
 /// 改写某个号的配置文件之前那份原文放在备份目录下的哪一层（每个号一份 `<号><配置文件名>`）。
@@ -190,7 +189,8 @@ pub(crate) fn put_private(
         return door::put(d, home, rel, text, expect, false, false).map(|_| ());
     }
     door::put(d, home, rel, "", None, false, true)?;
-    super::exec::set_mode(d, home, rel, 0o600).map_err(|said| Refused::Peer(Said::new("io_failed", said)))?;
+    super::exec::set_mode(d, home, rel, 0o600)
+        .map_err(|said| Refused::Peer(Said::new("io_failed", said)))?;
     door::put(d, home, rel, text, Some(""), false, false).map(|_| ())
 }
 
@@ -453,11 +453,7 @@ pub(crate) fn remove(d: &dyn Door, name: &str) -> Result<AccountMcpView, Said> {
 }
 
 /// `accounts-mcp-pick`：两边都改了的那一条用哪一版（`from` = 那个号里的；`None` = 共享的那一版）。
-pub(crate) fn pick(
-    d: &dyn Door,
-    name: &str,
-    from: Option<&str>,
-) -> Result<AccountMcpView, Said> {
+pub(crate) fn pick(d: &dyn Door, name: &str, from: Option<&str>) -> Result<AccountMcpView, Said> {
     run(d, Why::Asked, &|s, seen| {
         known(s, seen, name)?;
         let to = mcp_share::pick(s, seen, name, from).map_err(|e| ("refused", e))?;

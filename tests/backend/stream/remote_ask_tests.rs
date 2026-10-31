@@ -130,11 +130,7 @@ async fn an_unregistered_origin_is_said_and_never_dialed() {
         .expect_err("机器表里没有的那台不许问出东西来");
     assert_eq!(e.code.as_deref(), Some("unreachable"));
     assert_eq!(e.said, unreachable_message("nowhere"));
-    assert!(
-        e.said.contains("nowhere"),
-        "那句话要点名是哪台：{}",
-        e.said
-    );
+    assert!(e.said.contains("nowhere"), "那句话要点名是哪台：{}", e.said);
     assert_eq!(far.n.load(Ordering::SeqCst), 0, "表里没有也去拨了");
 }
 

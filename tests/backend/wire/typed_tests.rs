@@ -300,8 +300,11 @@ fn a_code_the_outer_table_lacks_lands_on_that_commands_own_failure() {
             IoFailed = "io_failed",
         }
     }
-    let kept =
-        super::of_fail(crate::wire::spec::fail("io_failed", "读不了"), OuterErr::IoFailed).into_said();
+    let kept = super::of_fail(
+        crate::wire::spec::fail("io_failed", "读不了"),
+        OuterErr::IoFailed,
+    )
+    .into_said();
     assert_eq!(
         (kept.code.as_deref(), kept.said.as_str()),
         (Some("io_failed"), "读不了")
@@ -311,7 +314,11 @@ fn a_code_the_outer_table_lacks_lands_on_that_commands_own_failure() {
     let lower =
         crate::wire::spec::fail("not_dir", "那不是一个目录").and_raw(Some("ENOTDIR (os error 20)"));
     let f = super::of_fail(lower, OuterErr::IoFailed).into_said();
-    assert_eq!(f.code.as_deref(), Some("io_failed"), "码表里没有的码不上信封");
+    assert_eq!(
+        f.code.as_deref(),
+        Some("io_failed"),
+        "码表里没有的码不上信封"
+    );
     assert_eq!(f.said, "那不是一个目录");
     assert_eq!(
         f.raw.as_deref(),
@@ -332,7 +339,9 @@ fn take_bad_args_omits_sentinel_value_from_rejection() {
     let fail = super::take::<DummyReq>(&args).expect_err("should fail");
     let rejection = format!(
         "code={} message={} raw={:?}",
-        fail.code_or_fallback(), fail.said, fail.raw
+        fail.code_or_fallback(),
+        fail.said,
+        fail.raw
     );
     assert!(
         !rejection.contains(sentinel),

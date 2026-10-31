@@ -48,10 +48,7 @@ fn file_of(
         ExtLoc::Project { dir } => Ok((dir.clone(), mcp_json().to_string())),
         ExtLoc::User => {
             let f = user_mcp.ok_or_else(|| {
-                crate::wire::spec::fail(
-                    "io_failed",
-                    copy_text("beExt.uninstall.noHome", &[]),
-                )
+                crate::wire::spec::fail("io_failed", copy_text("beExt.uninstall.noHome", &[]))
             })?;
             let (Some(dir), Some(name)) = (f.parent(), f.file_name()) else {
                 return Err(crate::wire::spec::fail(

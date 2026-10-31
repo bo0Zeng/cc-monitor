@@ -307,10 +307,12 @@ impl Remote for CodedRemote {
         _dial: &'a Value,
         _command: String,
         _stdin: Option<String>,
-    ) -> Pin<Box<dyn Future<Output = Result<String, crate::common::said::Said>> + Send + 'a>>
-    {
+    ) -> Pin<Box<dyn Future<Output = Result<String, crate::common::said::Said>> + Send + 'a>> {
         Box::pin(async {
-            Err(crate::common::said::Said::new("stale", "盘上那份在看过之后被改过".to_string()))
+            Err(crate::common::said::Said::new(
+                "stale",
+                "盘上那份在看过之后被改过".to_string(),
+            ))
         })
     }
 }
@@ -375,8 +377,7 @@ impl Remote for PosixRemote {
         _dial: &'a Value,
         _command: String,
         stdin: Option<String>,
-    ) -> Pin<Box<dyn Future<Output = Result<String, crate::common::said::Said>> + Send + 'a>>
-    {
+    ) -> Pin<Box<dyn Future<Output = Result<String, crate::common::said::Said>> + Send + 'a>> {
         let args: Value = serde_json::from_str(stdin.unwrap_or_default().trim()).unwrap();
         self.asked.lock().unwrap().push(args.clone());
         let judged = crate::assets::mcp_edit::project_root_as(

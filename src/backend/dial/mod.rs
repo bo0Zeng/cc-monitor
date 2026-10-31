@@ -239,8 +239,7 @@ pub(crate) fn sftp_named(
     hosts: &[Host],
     name: &str,
 ) -> Result<(serde_json::Value, sftp::Dial), String> {
-    let (v, req) =
-        named_both(hosts, name, "capture", serde_json::json!({})).map_err(|f| f.said)?;
+    let (v, req) = named_both(hosts, name, "capture", serde_json::json!({})).map_err(|f| f.said)?;
     Ok((v, sftp::Dial::of(req)))
 }
 

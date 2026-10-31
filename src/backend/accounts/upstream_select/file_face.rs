@@ -39,8 +39,8 @@
 //! （`creds_core::perm::create_private`，O_EXCL）· 写满 · 落盘 · 原子改名 · 失败删自己的临时文件。
 //! ⚠ 现有文件**解析不了 ⇒ 拒绝、不覆盖**（`bad_file`）：人手编打错一个逗号时，覆盖等于把他写的东西抹掉。
 
-use crate::platform::fs::{Own, OwnPath};
 use crate::common::said::Said;
+use crate::platform::fs::{Own, OwnPath};
 use copy_core::copy_text;
 use creds_core::store;
 use creds_core::SecretKey;
@@ -379,9 +379,9 @@ type Rewrite<'a> = &'a dyn Fn(&Map<String, Value>) -> Option<Map<String, Value>>
 /// `change` 回 `None` ⇒ 一个字节不动（回 `false`）。
 fn rewrite_at(own: &Own, file: &OwnPath, change: Rewrite) -> Result<bool, Said> {
     let path = file.as_path();
-    let dir = own
-        .root()
-        .ok_or_else(|| crate::wire::spec::fail("io_failed", copy_text("beOwnState.path.noHome", &[])))?;
+    let dir = own.root().ok_or_else(|| {
+        crate::wire::spec::fail("io_failed", copy_text("beOwnState.path.noHome", &[]))
+    })?;
     // 只建**这一层**（数据目录 `~/.cc-monitor`，也是后端的家）：建的那一下只给本人；父目录是家目录，不在就说出来、不替它建。
     if let Err(e) = own.ensure_dir(&dir) {
         return Err(crate::wire::spec::fail(

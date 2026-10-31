@@ -18,9 +18,9 @@
 
 use super::session_send::Delivery;
 use crate::agents::SessionActivity;
+use crate::common::said::Said;
 use crate::history::session_queue as q;
 use crate::platform::fs::Own;
-use crate::common::said::Said;
 use crate::wire::typed::Files;
 use cmd_wire::queue::QueueItem;
 use std::collections::BTreeMap;
@@ -119,7 +119,11 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
         let due = match q::due(deps.own, sid, now_ms) {
             Ok(d) => d,
             Err(f) => {
-                tracing::warn!("[session-queue] {sid} 读不出队：{} {}", f.code_or_fallback(), f.said);
+                tracing::warn!(
+                    "[session-queue] {sid} 读不出队：{} {}",
+                    f.code_or_fallback(),
+                    f.said
+                );
                 continue;
             }
         };

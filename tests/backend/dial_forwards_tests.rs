@@ -15,16 +15,14 @@ where
     F: FnOnce(DialRequest, DuplexStream, DuplexStream) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
 {
-    let req: ForwardStartReq =
-        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
+    let req: ForwardStartReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
     super::start_with(&req, reach, ledger, serve)
         .await
         .map(|r| serde_json::to_value(r).unwrap())
 }
 
 fn parse_spec(args: &Value) -> Result<Spec, (&'static str, String)> {
-    let req: ForwardStartReq =
-        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
+    let req: ForwardStartReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
     spec_of(&req)
 }
 

@@ -3,8 +3,8 @@
 
 use crate::agents::ModeSwitch;
 use crate::common::contract::malformed;
-use crate::control::terminals::{self, no_said, On, Refused};
 use crate::common::said::Said;
+use crate::control::terminals::{self, no_said, On, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq, TerminalPreviewReq};
 use crate::wire::typed::{self, Command};
 

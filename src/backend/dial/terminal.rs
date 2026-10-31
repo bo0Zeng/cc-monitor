@@ -385,7 +385,10 @@ pub(crate) fn local_login_shell(powershell: bool) -> Result<String, Said> {
         return Ok(posix::cd_then_login_shell(None));
     }
     let Some(home) = crate::platform::paths::home_dir() else {
-        return Err(crate::common::said::Said::new("unobservable", copy_text("beTerminal.login.noHome", &[])));
+        return Err(crate::common::said::Said::new(
+            "unobservable",
+            copy_text("beTerminal.login.noHome", &[]),
+        ));
     };
     let line =
         crate::platform::shell::powershell::set_location(&ps_literal(&home.to_string_lossy()));

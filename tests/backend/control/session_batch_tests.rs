@@ -595,7 +595,8 @@ fn a_listing_that_ran_out_of_time_answers_child_timed_out_not_unobservable() {
     ] {
         let mut rig = Rig::new(Some(vec![row("a-cc", Some(A), true)]));
         rig.list_err = Some(err);
-        let code = |r: Result<Value, Said>| r.expect_err("该整条失败").code_or_fallback().to_string();
+        let code =
+            |r: Result<Value, Said>| r.expect_err("该整条失败").code_or_fallback().to_string();
         assert_eq!(
             code(rig.run(|d| where_(&json!({ "sids": [A] }), d))),
             want,

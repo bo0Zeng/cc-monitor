@@ -69,10 +69,11 @@ impl Rig {
         let send_into = |_: &str, _: &str, _: &str| -> Result<(), crate::common::said::Said> {
             unreachable!("起新会话不往已有的终端里键入")
         };
-        let run_ccm = |argv: &[String]| -> Result<(i32, String, String), crate::common::said::Said> {
-            self.ccm.borrow_mut().push(argv.to_vec());
-            Ok((self.ccm_rc, String::new(), "boom".into()))
-        };
+        let run_ccm =
+            |argv: &[String]| -> Result<(i32, String, String), crate::common::said::Said> {
+                self.ccm.borrow_mut().push(argv.to_vec());
+                Ok((self.ccm_rc, String::new(), "boom".into()))
+            };
         let mint = |base: NameBase| -> Result<String, crate::common::said::Said> {
             Ok(match base {
                 NameBase::Cwd(cwd) => {
@@ -409,7 +410,10 @@ fn a_window_launch_hands_back_the_line_and_starts_nothing() {
 fn unknown_fields_are_refused() {
     let rig = Rig::new(Some(vec![]));
     assert_eq!(
-        rig.call(req(json!({ "machine": "devbox" }))).unwrap_err().code.as_deref(),
+        rig.call(req(json!({ "machine": "devbox" })))
+            .unwrap_err()
+            .code
+            .as_deref(),
         Some("bad_args")
     );
 }
@@ -427,9 +431,7 @@ fn a_tilde_directory_is_read_under_this_machines_home() {
 #[test]
 fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint() {
     let caps = BTreeSet::new();
-    let none = || -> Result<Listed, crate::common::said::Said> {
-        Ok(Listed::of(None, vec![]))
-    };
+    let none = || -> Result<Listed, crate::common::said::Said> { Ok(Listed::of(None, vec![])) };
     let some = || -> Result<Listed, crate::common::said::Said> {
         Ok(Listed::of(
             Some(vec![row("orders-cc", Some(SRC), true)]),
@@ -449,8 +451,7 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
         library: &library,
         last: &|_| None,
     };
-    let run = |list: &dyn Fn() -> Result<Listed, crate::common::said::Said>,
-               args: Value| {
+    let run = |list: &dyn Fn() -> Result<Listed, crate::common::said::Said>, args: Value| {
         let deps = Deps {
             list,
             record: &no,
@@ -648,7 +649,10 @@ fn a_config_at_launch_that_fails_leaves_nothing_behind() {
     );
     let rig = Rig::new(Some(vec![]));
     assert_eq!(
-        rig.call(req(json!({"rotation": 3}))).expect_err("形状").code.as_deref(),
+        rig.call(req(json!({"rotation": 3})))
+            .expect_err("形状")
+            .code
+            .as_deref(),
         Some("bad_args")
     );
 }

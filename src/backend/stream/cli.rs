@@ -28,10 +28,10 @@
 //! · exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id。
 
 use crate::common::contract;
+use crate::common::said::Said;
 use crate::stream::inbound::REGISTRY;
 use crate::wire::detail::Failed;
 use crate::wire::spec::CommandSpec;
-use crate::common::said::Said;
 use crate::wire::spec::Settle as _;
 use crate::wire::Request;
 use std::io::{Read, Write};
@@ -298,15 +298,17 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         // 失败那一份与帧面同一处出（复制详情 · 按码定形的 `data`）。
         // 一个入参都没给就缺了格 ⇒ 原话里再说一句入参从哪给（一次性模式的入参只从这两处来）。
         Err(f) => {
-            let f = if f.code.as_deref() == Some("bad_args") && trimmed.is_empty() && reads_stdin(spec) {
-                let hint = format!(
-                    "no args were given: pass a JSON object on stdin, or base64 of it after {}",
-                    crate::wire::cli_words::ARGS_B64_FLAG
-                );
-                f.and_raw(Some(&hint))
-            } else {
-                f
-            };
+            let f =
+                if f.code.as_deref() == Some("bad_args") && trimmed.is_empty() && reads_stdin(spec)
+                {
+                    let hint = format!(
+                        "no args were given: pass a JSON object on stdin, or base64 of it after {}",
+                        crate::wire::cli_words::ARGS_B64_FLAG
+                    );
+                    f.and_raw(Some(&hint))
+                } else {
+                    f
+                };
             emit_failed(err, &f.settle(spec.name), text, tz)
         }
     }

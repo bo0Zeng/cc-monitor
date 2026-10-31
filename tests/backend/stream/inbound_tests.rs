@@ -1175,7 +1175,8 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             serde_json::json!({ "terminal": "tmux-1", "color": false })
         )
         .unwrap_err()
-        .code.as_deref(),
+        .code
+        .as_deref(),
         Some("not_known")
     );
     assert_eq!(
@@ -1264,7 +1265,8 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             serde_json::json!({ "terminal": "t-none", "client": "mobile" })
         )
         .unwrap_err()
-        .code.as_deref(),
+        .code
+        .as_deref(),
         Some("not_known")
     );
     // session-open 新起那一形：手机那一份入参（`core-claude/.../link/Sessions.kt`）经登记表跑；目录不在 ⇒ 失败信封的 `data`（哪一格 ＋ 选不了号那一形）。
@@ -1479,7 +1481,11 @@ fn the_account_library_refuses_what_its_request_types_do_not_have() {
         ("sessions-needs", serde_json::json!({ "x": 1 })),
     ] {
         let got = run_registered(cmd, args.clone()).expect_err(&format!("{cmd} {args} 本该被拒"));
-        assert_eq!(got.code.as_deref(), Some("bad_args"), "{cmd} {args}：{got:?}");
+        assert_eq!(
+            got.code.as_deref(),
+            Some("bad_args"),
+            "{cmd} {args}：{got:?}"
+        );
     }
 }
 

@@ -6,10 +6,10 @@
 
 use crate::agents::ModelSaid;
 use crate::common::contract::malformed;
+use crate::common::said::Said;
 use crate::control::terminals::{no_said, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq};
 use crate::faces::session_mode_face::SwitchResult;
-use crate::common::said::Said;
 use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
 
@@ -239,7 +239,9 @@ enum Sent2 {
 async fn answer(req: SessionModelReq, own: crate::platform::Own) -> Result<ModelSwitched, Said> {
     let pre = tokio::task::spawn_blocking(move || send(&req, &own))
         .await
-        .map_err(|_| crate::wire::spec::fail("unobservable", malformed("model task did not finish")))??;
+        .map_err(|_| {
+            crate::wire::spec::fail("unobservable", malformed("model task did not finish"))
+        })??;
     Ok(match pre {
         Sent2::Done(r) => r,
         Sent2::Wait(ears, shared) => settled(ears.fetch(READBACK_MS).await, shared),

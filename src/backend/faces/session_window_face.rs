@@ -12,9 +12,9 @@
 //!   也是那一张，不是码；码只剩这台自己没查成的 `failed` · `child_timed_out`。
 //! - `tmux`：会话在 tmux 里（窗口关了时壳才给［在终端里打开］，出口原样交壳）。
 
+use crate::common::said::Said;
 use crate::common::seen_terminal::WindowLabel;
 use crate::dial::opened_windows::Records;
-use crate::common::said::Said;
 use crate::dial::remote_ask::{Remote, Table};
 use crate::dial::terminal_processes::{Link, OpenedHere, TerminalProcessesReq};
 use crate::observe::session_terminals::{Here, Showing, ShownWhy, SidReq};

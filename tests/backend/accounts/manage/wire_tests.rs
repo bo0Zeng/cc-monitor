@@ -176,7 +176,11 @@ fn a_credential_path_must_live_under_home() {
         "/h/a\nb",
         "/hx/cred",
     ] {
-        assert_eq!(cred_path("/h", bad).unwrap_err().code.as_deref(), Some("refused"), "{bad:?}");
+        assert_eq!(
+            cred_path("/h", bad).unwrap_err().code.as_deref(),
+            Some("refused"),
+            "{bad:?}"
+        );
     }
 }
 

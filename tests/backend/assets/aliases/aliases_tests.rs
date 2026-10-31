@@ -6,8 +6,7 @@ use std::path::PathBuf;
 
 // 判据照线上那一份比：入参经 typed 那一处收（同分派）再交本体，回包写成线上那一份（盖住 `super::*` 里的同名口）。
 fn answer_read(d: &dyn Door, args: &Value) -> Result<Value, (&'static str, String)> {
-    let req: AliasesReadReq =
-        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
+    let req: AliasesReadReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.said))?;
     super::answer_read(d, &req).map(|r| serde_json::to_value(r).unwrap())
 }
 
