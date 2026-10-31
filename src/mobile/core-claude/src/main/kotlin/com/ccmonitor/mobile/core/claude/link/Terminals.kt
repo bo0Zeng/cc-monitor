@@ -37,7 +37,10 @@ object TerminalsList {
         val sid: String?,
         /** 住在 tmux 里（副标题带「tmux」）；托管那一形 ⇒ `false`。 */
         val tmux: Boolean = true,
-        /** 托管那一形：此刻谁在输入，那台写好的那一句（同桌面 · 你的终端那一句）；tmux 那一形 ⇒ `null`。手机不接管、不交还。 */
+        /** 托管那一形：此刻谁在输入，那台写好的那一句（同桌面 · 你的终端那一句）；tmux 那一形 ⇒ `null`。
+         * 谁在输入照接入协议（`host/managed/attach.rs`）：终端 tab 接上即持有，只看时回车接管，别的端接上即交出；
+         * 手机不另调 `terminal-take-input` · `terminal-release-input`。
+         */
         val holder: String? = null,
     )
 
