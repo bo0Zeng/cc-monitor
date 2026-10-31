@@ -11,6 +11,15 @@ import type { NeedsMerged } from "./generated/NeedsMerged";
 import type { NeedsRow } from "./generated/NeedsRow";
 import type { ManualItem } from "./generated/ManualItem";
 import type { NeedsCell } from "./generated/NeedsCell";
+import type { NeedsClock } from "./generated/NeedsClock";
+
+/** 簿上一条在等的会话：哪台 · 那一行 · 那台写好的会走的那一句（没有 ⇒ `null`）· 收到这一份的时刻（本机钟）。 */
+export interface BookSession {
+  origin: Origin;
+  session: NeedsRow;
+  clock: NeedsClock | null;
+  receivedAt: number;
+}
 
 /** 本机后端问到各台（各台读内存与几份小文件 ＋ 回程）再合：等这么久。 */
 const ASK_BUDGET_MS = 20_000;
@@ -53,6 +62,8 @@ export class NeedsBook {
   private readonly listeners = new Set<() => void>();
   private seq = 0;
   private merged: NeedsMerged = EMPTY;
+  /** 收到 `merged` 那一刻（本机钟）：会走的那一句从它起接着走。 */
+  private at = 0;
 
   constructor(private readonly merge: (machines: Origin[]) => Promise<NeedsMerged> = mergeNeeds) {}
 
@@ -106,6 +117,7 @@ export class NeedsBook {
     if (my !== this.seq) return;
     this.backoff = 0;
     this.merged = next;
+    this.at = Date.now();
     this.emit();
   }
 
@@ -124,10 +136,10 @@ export class NeedsBook {
     return this.merged.total;
   }
 
-  /** 在等的会话，先答的在前。 */
-  sessions(): { origin: Origin; session: NeedsRow }[] {
-    const out: { origin: Origin; session: NeedsRow }[] = [];
-    for (const { origin, item } of this.merged.items) if (item.kind === "session") out.push({ origin, session: item.session });
+  /** 在等的会话，先答的在前：各带那台写好的会走的那一句（`clock`，没有 ⇒ `null`）与收到这一份的时刻（本机钟）。 */
+  sessions(): BookSession[] {
+    const out: BookSession[] = [];
+    for (const { origin, item } of this.merged.items) if (item.kind === "session") out.push({ origin, session: item.session, clock: item.clock ?? null, receivedAt: this.at });
     return out;
   }
 

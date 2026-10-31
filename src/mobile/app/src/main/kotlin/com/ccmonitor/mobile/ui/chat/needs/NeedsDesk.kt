@@ -19,6 +19,7 @@ import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.needs.MachineNeeds
+import com.ccmonitor.mobile.ui.needs.waitingNow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,11 +57,11 @@ data class NeedsBar(
     val canAnswer: Boolean,
     val waitedMs: Long?,
     val receivedAt: Long,
+    /** 那台写好的第一行（`clock.head`，已等那一截是 `{dur}` 空位）；不知道等了多久 ⇒ `null`。 */
+    val clock: String? = null,
 ) {
-    /** 第一行：「等批准 · Bash · 12s」，已等从收到那份起接着走（同桌面 `stateLine`）。 */
-    fun firstLine(now: Long): String = waited(now)?.let { copyText("sessionFace.state.waiting", "kind" to head, "waited" to it) } ?: head
-
-    fun waited(now: Long): String? = DurationFormat.waited(waitedMs, receivedAt, now)
+    /** 第一行：那台写好的「等批准 · Bash · 已等 12s」，已等从收到那份起接着走（同需手动屏那一行）；没有 ⇒ [head]。 */
+    fun firstLine(now: Long): String = clock?.let { waitingNow(it, waitedMs, receivedAt, now) } ?: head
 }
 
 /** 答题抽屉：画的是哪一份请求（拿到手那一刻的快照，那台撤了也照画到关上）＋ 这边答到哪了。 */
@@ -177,6 +178,9 @@ class NeedsDesk(
     /** 此刻对着的那条会话（新建会话起好之前没有）。 */
     @Volatile private var current: String? = null
     private var needs: Needs? = null
+
+    /** 那一项上那台写好的钉条第一行（[NeedsBar.clock]）。 */
+    private var clock: String? = null
 
     /** 那台说这条会话的上一条提问已替人答过 ⇒ 那一句（`sessions-needs.answered`）。 */
     private var answered: String? = null
@@ -300,7 +304,9 @@ class NeedsDesk(
         s: String,
         list: NeedsList,
     ) {
-        needs = list.items.firstNotNullOfOrNull { (it as? NeedsItem.Session)?.session?.takeIf { r -> r.sid == s } }?.needs
+        val item = list.items.firstNotNullOfOrNull { (it as? NeedsItem.Session)?.takeIf { i -> i.session.sid == s } }
+        needs = item?.session?.needs
+        clock = item?.clock?.head
         answered = list.answered.firstOrNull { it.sid == s }?.said
         receivedAt = now()
         val ask = needs?.ask
@@ -327,6 +333,7 @@ class NeedsDesk(
                             canAnswer = it.ask != null && it.ask?.id != settled,
                             waitedMs = it.waitedMs,
                             receivedAt = receivedAt,
+                            clock = clock,
                         )
                     },
                 awaiting = n?.call?.let { AwaitingStep(it, n.text) },

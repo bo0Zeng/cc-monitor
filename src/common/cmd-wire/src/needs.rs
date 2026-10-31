@@ -35,6 +35,10 @@ pub enum NeedsItem {
     Session {
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         rank: u64,
+        /// 那一行会走的那一句（[`NeedsClock`]）；不知道等了多久（`needs.waitedMs` 为 `null`）⇒ 缺，出口照抄 `needs.text`。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        clock: Option<NeedsClock>,
         session: NeedsRow,
     },
     /// 计划里要人看的一条：哪个工作区 · 哪一片 · 落在哪一格（没有格可落：顶块没有根格 · 不通过那一条不在哪个权力范围里 ⇒ 缺，进那一片的大纲）。
@@ -53,6 +57,19 @@ pub enum NeedsItem {
         rank: u64,
         manual: ManualItem,
     },
+}
+
+/// 在等的会话那一行**会走的那一句**（写好的字，`{dur}` 是已等多久的空位）：已等多久只一种算法 —— `needs.waitedMs`（那台答出那一刻）
+/// ＋ 本机从收到这一份起又走过的（不跨机器减）；出口把它当成起点在「收到时刻 − `waitedMs`」的会走的钟，交各自填钟的那一个读口。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct NeedsClock {
+    /// 状态那一句（「等批准 · 已等 {dur}」，种类那一格是 `needs.text`）：桌面需手动浮层 · 手机需手动屏那一行。
+    pub text: Words,
+    /// 钉条第一行（「等批准 · Bash · 已等 {dur}」，种类那一格是 `needs.head`）。
+    pub head: Words,
 }
 
 /// 计划那一项落在的那一格：编号（计划页照它选中）· 后端写好的「编号 标题」（行上照抄）。
