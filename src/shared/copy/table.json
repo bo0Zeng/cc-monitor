@@ -11193,12 +11193,6 @@
       "zh": "请求格式不对 · 机器名为空 · 本机也要写成 \"{local}\" · {command}",
       "args": ["command", "local"]
     },
-    "rsOrigin.expecting.name": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "机器名 · 本机写成 \"{local}\"",
-      "args": ["local"]
-    },
     "rsDataPaths.webview.dataDir": {
       "kind": "body",
       "role": "说明",
