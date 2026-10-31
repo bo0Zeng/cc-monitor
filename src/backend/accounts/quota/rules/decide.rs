@@ -31,6 +31,8 @@ pub(crate) struct Verdict {
     pub(crate) wake_when: Vec<WakeWhen>,
     /// 策略要跨判记的小东西（后端原样存回、下一判原样交回）。
     pub(crate) memo: Option<Value>,
+    /// 要开 5 小时窗的号（后端照 [`warmable`] 收、交给开窗那一处发一句）。
+    pub(crate) warm: Vec<String>,
 }
 
 /// 策略那一侧（沙箱里的脚本，或判据里的假策略）。
@@ -68,8 +70,14 @@ pub(crate) struct Ctx<'a> {
 /// 本会话此刻量出来的（交给策略的 `session`；量不到的空着）。
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Me {
-    /// 用速：折合输入 token / 分（最近一段的平均）。
+    /// 用速：折合输入 token / 分（最近半小时的平均）。
     pub(crate) pace: Option<f64>,
+    /// 短窗用速：同一口径，最近 5 分钟（会话记满 2 分钟才给）。
+    pub(crate) pace_short: Option<f64>,
+    /// 在途：最近 5 分钟平均几发同时在途（子 agent · 工作流的请求带本会话标识，一并算）。
+    pub(crate) inflight: Option<f64>,
+    /// 最近 6 小时每 10 分钟用了多少（折合输入 token），36 格、旧的在前；会话记到之前的格空着。
+    pub(crate) bins: Vec<Option<f64>>,
     /// 起伏：一段一段比的 σ/μ。
     pub(crate) spread: Option<f64>,
     /// 上下文：最近一发的 输入 ＋ 写缓存 ＋ 读缓存（token）。
@@ -157,6 +165,9 @@ pub(crate) struct Decision {
     /// 策略约的时刻（原样存进会话，推演与下一判从它接着）。
     pub(crate) wake_at: Option<u64>,
     pub(crate) strategy_error: Option<super::super::strategy::Fail>,
+    /// 策略要开窗、后端收下的号（[`warmable`]）；没收的另列（只记一句，不发）。
+    pub(crate) warm: Vec<String>,
+    pub(crate) warm_dropped: Vec<String>,
 }
 
 /// 策略声明了结论随时间变、又没约时刻 ⇒ 每隔这么久来问一次。
@@ -164,6 +175,30 @@ pub(crate) const FALLBACK_STEP: u64 = 15 * 60;
 
 fn fact<'a>(f: &'a [Acct], a: &str) -> Option<&'a Acct> {
     f.iter().find(|x| x.id == a)
+}
+
+/// ★ 开窗只认这样的号：订阅号 · 此刻发得出去 · 5 小时窗没在计时（没见过重置时刻 · 重置时刻已过）。
+/// 号的 5 小时窗由第一发触发：在计时的窗不会因多发一句提前或推后，发了白花。
+pub(crate) fn warmable(x: &Acct, t: u64) -> bool {
+    !x.api
+        && standing::sendable(x, t)
+        && x.resets[0].is_none_or(|r| crate::accounts::quota::reset_since_seen(Some(r), t))
+}
+
+/// 策略交的 `warm` 照事实分两份：收下的 · 丢掉的（不在号列表里的也丢）。同一个号只算一次。
+fn warm_of(want: &[String], facts: &[Acct], t: u64) -> (Vec<String>, Vec<String>) {
+    let (mut keep, mut drop) = (Vec::new(), Vec::new());
+    for a in want {
+        if keep.contains(a) || drop.contains(a) {
+            continue;
+        }
+        if fact(facts, a).is_some_and(|x| warmable(x, t)) {
+            keep.push(a.clone());
+        } else {
+            drop.push(a.clone());
+        }
+    }
+    (keep, drop)
 }
 
 /// 拼交给策略的 ctx（号照事实的先后）。
@@ -315,7 +350,7 @@ pub(crate) fn turn(
         }
     };
     let mut r = choose(sigma, &v, facts, t, &send);
-    let (mut order, mut why, mut wake_at) = (v.order, v.why, v.wake_at);
+    let (mut order, mut why, mut wake_at, mut warm) = (v.order, v.why, v.wake_at, v.warm);
     // 换了号 ⇒ 在用的号变了，这是一件事实：照新的在用号再问策略一次（它约的叫醒跟着新在用号走，不然要等到别的节点才知道几点再判）。
     // 它此刻就又要换（例：拖出来的顺序选中的号，策略照强制切换要换走）⇒ 同一刻接着换（第 4 步照新的在用号再走一遍），
     // 直到它留下；同一刻里一个号只换到一次（策略来回要 ⇒ 停在这一个），至多号数那么多次。
@@ -331,6 +366,7 @@ pub(crate) fn turn(
             };
             let r2 = choose(&r.sigma, &v2, facts, t, &send);
             wake_at = v2.wake_at;
+            warm = v2.warm;
             r.sigma.wake_when = v2.wake_when;
             r.sigma.memo = v2.memo;
             match &r2.pick {
@@ -365,7 +401,10 @@ pub(crate) fn turn(
     if let Pick::Hold { until: Some(u), .. } = &pick {
         tn.push(*u);
     }
+    let (warm, warm_dropped) = warm_of(&warm, facts, t);
     Decision {
+        warm,
+        warm_dropped,
         pick,
         sigma: next,
         skipped,

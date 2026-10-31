@@ -226,6 +226,7 @@ async fn a_new_tab_and_the_right_side_inherit_the_line_and_the_shelf() {
         None,
         None,
         &crate::source::Origin::named("fw34-ws-inherit"),
+        "/",
     ));
     let mut ws = Workspace::new(first);
     assert!(ws.open_tab(0));

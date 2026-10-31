@@ -381,6 +381,16 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "不覆盖改名那一格：那块盘不认这个旗时退回 `link ＋ unlink`（要问是不是「没有这件原语」）",
     ),
     (
+        "platform::fs::side_name::swap",
+        Kind::Platform,
+        "写入的换名件叫什么：旁名的形状只一处，账号库的排除名认同一份",
+    ),
+    (
+        "platform::fs::side_name::backup",
+        Kind::Platform,
+        "覆盖前另存的备份件叫什么：同上一格",
+    ),
+    (
         "platform::fs::links_creatable",
         Kind::Platform,
         "这台此刻建不建得了符号链接（解压与复制碰到链接时整趟拒还是照建）：Windows 要开发者模式或建链接的特权，只读地判只住 `platform/fs/`",
@@ -395,7 +405,6 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         Kind::Platform,
         "unix 权限位（`files-stat` 的 `mode` 那一格）：读元数据的平台扩展只住 `platform/fs/`，非 unix ⇒ 缺席",
     ),
-    // 路径字节的线上两种形搬进 `common/path_wire.rs`（原生那一块的「在此打开终端」也读它），本族经 `raw` 的再导出照旧用。
     (
         "common::batch_book::Run",
         Kind::Common,
@@ -445,21 +454,6 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "common::batch_book::ticketed",
         Kind::Common,
         "一组一条那几条共用的票 · 进度 · 撤：带票做一组（断开照常做完、再问回同一份）",
-    ),
-    (
-        "common::path_wire::from_json",
-        Kind::Common,
-        "入方向路径参数的两种形（字符串 / `{\"b16\"}`）→ 字节",
-    ),
-    (
-        "common::path_wire::to_json",
-        Kind::Common,
-        "回送路径的两种形（字节 → 字符串 / `{\"b16\"}`，双向无损）",
-    ),
-    (
-        "common::path_wire::HEX_KEY",
-        Kind::Common,
-        "线上那个键名 `b16`（本族判据按它对拍）",
     ),
     (
         "common::path_wire::to_path_buf",
@@ -521,6 +515,21 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "common::attachment_dir",
         Kind::Common,
         "聊天附件在会话那台的落点形状（`.ccm-attach/<编号>/<原名>`）：落 · 撤 · 清的一侧与送字 · 认记录的一侧各引各的",
+    ),
+    (
+        "common::file_class::class_of_name",
+        Kind::Common,
+        "按名字判一项是哪一种：图标 · 「类型」那一列 · 几道门 · 聊天附件回包这一侧与适配层认出的附件那一侧各引各的",
+    ),
+    (
+        "common::file_class::ext_of",
+        Kind::Common,
+        "扩展名：「类型」那一列 · 按类型排 · 几道门判预览 / 看图都按它",
+    ),
+    (
+        "common::file_class::label",
+        Kind::Common,
+        "那一种的词：「类型」那一列与聊天附件 chip 上的类别字同一份（适配层认出的附件也引它）",
     ),
     (
         "common::time::Tz::here",
@@ -805,7 +814,7 @@ fn the_edge_extractors_see_what_they_should_and_nothing_else() {
     assert_eq!(paths_from(&format!("my_{w}::a"), w), want(&[]));
     // 外向：成员之间的引用不算边，别人的算。
     let src = format!(
-        "{w}::files::raw::to_json(x); {w}::control::files_write::answer_wire(); {w}::observe::fs::x();"
+        "{w}::files::raw::path_bytes(x); {w}::control::files_write::answer_wire(); {w}::observe::fs::x();"
     );
     assert_eq!(outward_edges(&src), want(&["observe::fs::x"]));
     // 内向：两种写法都认，带模块前缀回。

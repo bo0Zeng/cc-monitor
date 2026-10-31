@@ -1232,6 +1232,17 @@ mod spawn_registry {
              ⚠ 不许往这一处底下加第二种用途 —— 它起的永远是适配层登记的那一条报用量的命令。",
         ),
         (
+            "accounts/quota/warm.rs",
+            "<非字面量>",
+            "开窗（`quota-warm` · 轮换策略交回 `warm`）：**本后端这个二进制自己**（`current_exe`）当 ccm 跑一发，参数来自适配层登记的那一形\
+             （`agents::warm_of`，Claude：`claude -p` 一句 haiku · 不给工具 · 不落会话记录）、argv 直传不过 shell、期限 120 秒；\
+             号由 `--account` 点名、这一发不轮换、工作目录是家里不出会话的那一个。被起的是 ccm 那一趟，它自己的起法由本护栏照样管；\
+             **不是**后端进程自身写用户既有数据。",
+            super::Cell::ShrinkProperty,
+            "号的 5 小时窗不再由第一发触发（或有别的不花额度的办法开窗）的那天摘掉。\
+             ⚠ 不许往这一处底下加第二种用途 —— 它起的永远是本二进制的 ccm 那一趟、发适配层登记的那一句。",
+        ),
+        (
             "control/resident.rs",
             "<非字面量>",
             "远端那台的常驻后端由那台的 `--resident-ensure` 起：**本后端这个二进制自己**（`current_exe`）\
@@ -1907,6 +1918,12 @@ mod g6_dependency_signoff {
             DEV_DEPS,
             MEASURED_CLEAN,
             "同一个 crate 在测试档多开 `ts`（typed 命令线上类型的 TS 派生 · 形状指纹），只多一个 codegen 派生；现打 0 处写面",
+        ),
+        (
+            "face-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "契约类型的写字一侧（↗ 浮层那一张：照结局与原因从文案表取字），纯字符串变换；与壳共用同一份；仓内 crate，现打 0 处写面",
         ),
         (
             "comms-outward",

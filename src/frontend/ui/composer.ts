@@ -12,7 +12,7 @@
  */
 import { copyText } from "./copy-table";
 import { machineName, offlineSaid } from "./control-said";
-import { canResume, hasTerminal, isLive, machineOf } from "./face-can";
+import { canResume, hasTerminal, isLive } from "./face-can";
 import { fullTitle } from "./session-face";
 import { terminalFrontAvailable } from "./terminal-front";
 import type { Tab } from "./tab-model";
@@ -124,7 +124,7 @@ export class Composer {
       draft: () => this.attachDraft(),
       target: () => {
         const t = this.host.active();
-        return { title: t ? fullTitle(t) : "", machine: t ? machineOf(t) : "" };
+        return { title: t ? fullTitle(t) : "", machine: t ? machineName(t.origin) : "" };
       },
       offline: () => this.offlineLine(),
       blocked: () => this.sayNo(),

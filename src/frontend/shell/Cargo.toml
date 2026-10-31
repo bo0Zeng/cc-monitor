@@ -6,6 +6,8 @@ members = [
     "../../common/acct-core",
     # 帧命令两端对上的那几样：机器名 · typed 命令的形状指纹表（后端 · monitor 同一份）。
     "../../common/cmd-wire",
+    # 照契约类型写成品字的那一侧（↗ 浮层那一张）：壳 · 后端 · 手机核心同一份。
+    "../../common/face-core",
     # 分块传的循环（上传进暂存区 ＋ 整份摘要 · 下载逐块读回）：文件窗口与手机嵌的核心同一份。
     "../../common/chunk-core",
     # 一组一条命令的全过程与它的字（标题 · 结局句 · 断开那一行）：后端 · 文件窗口 · 手机嵌的核心同一份。
@@ -132,6 +134,8 @@ arboard = { version = "3.6", default-features = false }
 serde = { version = "1", features = ["derive"] }
 # 传输台开单那两条（`transfer-upload` / `-download`）的线上类型：窗口那一份按它解、补上拨号按后端那一份发（`transfer_relay.rs`）。
 cmd-wire = { path = "../../common/cmd-wire" }
+# ↗ 一次的结局与浮层那一张（`face_core::front`）：本机后端链同一份。
+face-core = { path = "../../common/face-core" }
 # `raw_value`：会话行的成品（后端给的记录）原样转交、monitor 不解析它（`ui_contract::JsonlLinePayload::message`）。
 serde_json = { version = "1", features = ["raw_value"] }
 # F62：从历史某轮创建分支（写 <new-sid>.jsonl）时生成新 sessionId。

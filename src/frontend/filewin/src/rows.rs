@@ -46,7 +46,7 @@ pub struct RenderTally {
     pub total_rows: usize,
     /// 🔴 这一帧被**双击**的那一行的下标（`None` = 没人点）。
     ///
-    /// **点击要从这里出来，不许在生产里另画一遍列表** —— [`show_file_rows`] 是
+    /// **点击要从这里出来，不许在生产里另画一遍列表** —— [`show_file_rows_with_tail`] 是
     /// 唯一一条画列表的路，所以「谁被点了」也只能从它带出来。
     pub clicked: Option<usize>,
     /// 🔴这一帧哪一行被画成了**「就是这个文件」**（`None` = 没有）。
@@ -616,10 +616,8 @@ pub fn show_header(ui: &mut Ui, cols: &mut Columns, sort: Sort) -> Option<SortBy
     picked
 }
 
-/// 画一屏文件行（详情视图）。**虚拟滚动**：只物化看得见的那几行。
-///
-/// 🔴 这是**唯一**一条画文件列表的路。行与行之间不留缝（`item_spacing.y = 0`），
-/// 一行恰好一个行高（`theme::Metrics::row_h`）⇒ 「滚到第 i 行」的偏移是 `i × 行高`（[`row_pitch`]），算出来的，不是找出来的。
+/// 判据那一形：[`show_file_rows_with_tail`] 不带尾行 · 就地格 · 计划列。
+#[cfg(test)]
 pub fn show_file_rows(
     ui: &mut Ui,
     rows: &[Listed],
@@ -663,7 +661,11 @@ pub struct InlineCell<'a> {
     pub outcome: Option<bool>,
 }
 
-/// 同 [`show_file_rows`]，最后一行之后再画一行次级色的字（「有 3 项读不出来」那一句）。
+/// 画一屏文件行（详情视图）。**虚拟滚动**：只物化看得见的那几行。`tail` 给了 ⇒ 最后一行之后再画一行次级色的字
+/// （「有 3 项读不出来」那一句）。
+///
+/// 🔴 这是**唯一**一条画文件列表的路。行与行之间不留缝（`item_spacing.y = 0`），
+/// 一行恰好一个行高（`theme::Metrics::row_h`）⇒ 「滚到第 i 行」的偏移是 `i × 行高`（[`row_pitch`]），算出来的，不是找出来的。
 #[allow(clippy::too_many_arguments)]
 pub fn show_file_rows_with_tail(
     ui: &mut Ui,
@@ -1188,6 +1190,7 @@ pub fn row_pitch(ui: &Ui) -> f32 {
 /// 理由与射程照（本机 `XDG_SESSION_TYPE=tty`，没有图形会话）。
 /// 那一节的旁证也照抄下来：虚拟滚动那一档三角形数与总行数无关
 /// ⇒ 交给 GPU 的活不随行数涨，**它不是 64 万行的风险点**。
+#[cfg(test)]
 pub fn render_headless(
     ctx: &egui::Context,
     rows: &[Listed],
@@ -1200,9 +1203,9 @@ pub fn render_headless(
         ..Default::default()
     };
     let out = ctx.run_ui(input, |ui| {
-        // 🔴 调的是**生产那个函数**，不是它的副本 —— 见 `show_file_rows` 的注释。
+        // 🔴 调的是**生产那个函数**，不是它的副本 —— 见 `show_file_rows_with_tail` 的注释。
         let mut t = RenderTally::default();
-        show_file_rows(
+        show_file_rows_with_tail(
             ui,
             rows,
             &mut t,
@@ -1210,6 +1213,9 @@ pub fn render_headless(
             None,
             None,
             &Columns::default(),
+            None,
+            None,
+            None,
         );
         tally = t;
     });

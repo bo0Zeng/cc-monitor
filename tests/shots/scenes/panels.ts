@@ -658,7 +658,7 @@ async function clickHeadFront(): Promise<void> {
   await click("[data-role=head-front]");
 }
 
-/** 壳 · 本机后端交来的 ↗ 那一张（台架替它们写：键与 `cmd_wire::front` 取的同一把）。 */
+/** 壳 · 本机后端交来的 ↗ 那一张（台架替它们写：键与 `face_core::front` 取的同一把）。 */
 function frontFace(title: string, body: string, tone: "plain" | "warn" | "fail", acts: unknown[] = [], hint?: string): Record<string, unknown> {
   return { title, body, tone, acts, ...(hint ? { hint } : {}) };
 }
@@ -826,11 +826,7 @@ PANEL_SCENES[PANEL_SCENES.length - 1].storage = {};
 
 /** 壳推来的那一条（本机后端说过话之后退出码 1 退出、没人再起它）。详情里的账行是复制详情的原话。 */
 const LOCAL_EXITED = {
-  code: "local-exited",
-  key: "rsUiError.localExited.down",
-  args: {},
   said: copyText("rsUiError.localExited.down"),
   detail: "时刻：2026-10-09 13:39:41 -07:00\n本机：cc-monitor 4.1.6 · Linux x86_64\n码：1\n原话：[死亡账] origin=<local> 判定=崩溃 退出状态=原因不明 码=1 —— 说过话之后异常终止",
   reconnect: "<local>",
-  at: 0,
 };

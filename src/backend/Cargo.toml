@@ -112,6 +112,8 @@ upstream-url-core = { path = "../common/upstream-url-core" }
 acct-core = { path = "../common/acct-core" }
 # typed 命令两端对上的那几样：机器名 · 形状指纹表（hello 带出去）。
 cmd-wire = { path = "../common/cmd-wire" }
+# 照契约类型写成品字的那一侧（↗ 浮层那一张）：壳链同一份。
+face-core = { path = "../common/face-core" }
 # K-H2a：第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。
 # 🔴 **开了 `harden`** —— `K-H2a` 裁四「backend 只许读」收窄成
 # 「backend 里只有账号域那一份（`accounts/upstream_select/file_face.rs`）写这份文件，只从帧面 `apikey-key-set` 进来」。
@@ -242,7 +244,7 @@ ring = "0.17"
 russh = { version = "0.65", default-features = false, features = ["ring", "flate2", "rsa"] }
 # ── SFTP 客户端：**SFTP 进本机常驻后端**（用户「进本机常驻后端，只写暂存区」）──
 #
-# 🔴 **它只服务 `src/dial/sftp.rs` 那一份**：`readonly_guard::remote_write_layer` 把「持 SFTP 会话 /
+# 🔴 **它只服务 `src/backend/ssh-dial/sftp.rs` 那一份**：`readonly_guard::remote_write_layer` 把「持 SFTP 会话 /
 # 开子系统 / 协议改动动词」钉在那**一份文件**上，而那份文件的写根 == `{~/.cc-monitor/staging, ~/.cc-monitor/bin}`
 # （`INVARIANTS §41.6`）。签字行住 `readonly_guard::g6_dependency_signoff`。
 # 版本照抄当年 `../frontend/shell/Cargo.toml` 那一行（`3`，lock 里 `3.0.0`，Apache-2.0；现打核过 5 个候选、

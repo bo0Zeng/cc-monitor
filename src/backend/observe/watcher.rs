@@ -65,6 +65,7 @@ use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
 use crate::wire::{FrameMake as _, FrameRules as _, SessionFaceExt as _, TopicExt as _};
 use cmd_wire::frame::{HiddenNow, Relayed};
 use notify::{RecursiveMode, Watcher as _};
+use resident_client::book::SessionBook;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1087,6 +1088,79 @@ pub(crate) fn run_book() -> Option<std::sync::Arc<crate::observe::runs::RunBook>
 
 static RUN_BOOK: std::sync::OnceLock<std::sync::Arc<crate::observe::runs::RunBook>> =
     std::sync::OnceLock::new();
+
+/// 这台发出去的会话成品折成的那一本（[`FrameSink`] 扇出那一个出口折，与客户端同一折法 `SessionBook::fold`；没起过发帧口 ⇒ `None`）。
+/// 只读着用：`monitor-board-here` 照它答这台那几条会话的序与活不活。
+pub(crate) fn faces_here() -> Option<std::sync::Arc<std::sync::Mutex<Faces>>> {
+    FACES.get().cloned()
+}
+
+static FACES: std::sync::OnceLock<std::sync::Arc<std::sync::Mutex<Faces>>> =
+    std::sync::OnceLock::new();
+
+/// [`Faces`] 最多记几条会话（条数，不是字节）：收场那一帧就摘，这一格只兜漏摘的底。
+const FACES_MAX: usize = 4096;
+
+/// 这台那一本（[`faces_here`]）：只记此刻在场的会话。收场（`session_left`）那一帧就摘，与运行簿收场同一下；
+/// 漏摘的超了 [`FACES_MAX`] ⇒ 先挤最久没动静的那几条（收场的在前），`warn!` 说挤了哪条。
+#[derive(Default)]
+pub(crate) struct Faces {
+    book: SessionBook,
+    /// 每条会话最近一次有动静是第几帧。
+    touched: HashMap<String, u64>,
+    tick: u64,
+}
+
+impl Faces {
+    pub(crate) fn book(&self) -> &SessionBook {
+        &self.book
+    }
+
+    /// 扇出去的一帧：折进那一本；收场的摘掉；超了 `cap` 挤最久没动静的。
+    fn take(&mut self, frame: &Frame, cap: usize) {
+        if !self.book.fold(frame) {
+            return;
+        }
+        let sid = match frame {
+            Frame::SessionRuns(r) => Some(r.sid.as_str()),
+            f => row_moved_by(f),
+        };
+        let Some(sid) = sid.map(str::to_string) else {
+            return;
+        };
+        if matches!(frame, Frame::SessionLeft(_)) {
+            self.forget(&sid);
+            return;
+        }
+        if self.book.seat(&sid).is_none() {
+            // 没宣告过的那条（重读计数之类）：不记。
+            self.forget(&sid);
+            return;
+        }
+        self.tick += 1;
+        self.touched.insert(sid, self.tick);
+        while self.book.live.len() + self.book.left.len() > cap {
+            let stalest = |m: &mut dyn Iterator<Item = &String>| {
+                m.min_by_key(|s| self.touched.get(*s).copied().unwrap_or(0))
+                    .cloned()
+            };
+            let Some(out) =
+                stalest(&mut self.book.left.keys()).or_else(|| stalest(&mut self.book.live.keys()))
+            else {
+                break;
+            };
+            tracing::warn!(sid = %out, cap, "faces book over its cap: dropping the stalest session");
+            self.forget(&out);
+        }
+    }
+
+    fn forget(&mut self, sid: &str) {
+        self.book.forget(sid);
+        self.book.successors.remove(sid);
+        self.book.rereads.remove(sid);
+        self.touched.remove(sid);
+    }
+}
 
 /// 起这台的 watcher（**一个进程一份**：本机远端、stdio 与常驻都只起这一份；各条流连接经 [`WatcherPoke::attach`] 接上来）。
 /// 回戳它的句柄 ＋ 这台的运行簿（整台一本：watcher 写、各连接的流归位读）。
@@ -4880,6 +4954,8 @@ struct FrameSink {
     arrivals: crate::observe::arrivals::Arrivals,
     /// 这台会话清单的节点（`history::list_node`）：扇出去的帧说的事让清单里某一行变了 ⇒ 响它（生产 ＝ 本进程那一份；夹具各一份）。
     list: std::sync::Arc<crate::history::list_node::ListNode>,
+    /// 扇出去的会话帧折成的那一本（生产 ＝ 本进程那一份，[`faces_here`] 读它；夹具各一份）。
+    faces: std::sync::Arc<std::sync::Mutex<Faces>>,
 }
 
 /// 一条流连接在这台 watcher 上的投影：它的有界通道 · 它的名单 · 它欠的丢帧账。
@@ -4926,6 +5002,7 @@ impl FrameSink {
             priming: HashSet::new(),
             arrivals: crate::observe::arrivals::Arrivals::default(),
             list: crate::history::list_node::node().clone(),
+            faces: FACES.get_or_init(std::sync::Arc::default).clone(),
         }
     }
 
@@ -5050,11 +5127,16 @@ impl FrameSink {
         }
     }
 
-    /// 逐条连接按名单投（最后一条拿原帧，前面的拿副本）；通道关了的连接顺手摘掉。说的事让清单里那一行变了 ⇒ 先响清单的节点（没人连着也响）。
+    /// 逐条连接按名单投（最后一条拿原帧，前面的拿副本）；通道关了的连接顺手摘掉。说的事让清单里那一行变了 ⇒ 先响清单的节点（没人连着也响）；
+    /// 会话那几帧折进这台那一本（[`faces_here`]，没人连着也折；收场那一帧就摘）。
     fn fan(&mut self, frame: Frame) {
         if let Some(sid) = row_moved_by(&frame) {
             self.list.moved(Some(sid));
         }
+        self.faces
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take(&frame, FACES_MAX);
         let to: Vec<usize> = (0..self.subs.len())
             .filter(|&i| self.subs[i].wants(&frame))
             .collect();

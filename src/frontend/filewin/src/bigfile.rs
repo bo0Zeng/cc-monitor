@@ -67,6 +67,7 @@ use super::editor::Pane;
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 一帧的预算（60 Hz），微秒。
+#[cfg(test)]
 pub const FRAME_BUDGET_US: u64 = 16_667;
 
 /// 每一维分到的份数：**三分之一帧**。
@@ -74,6 +75,7 @@ pub const FRAME_BUDGET_US: u64 = 16_667;
 /// 两个来源互相独立、会**叠加**（一份 256 KiB、里面还有一行 32 KiB 的文件两笔都付）
 /// ⇒ 两条都刚好不越线的最坏文件吃掉 2/3 帧，剩 1/3 给上屏、`shell.rs` 那两笔
 /// O(全文) 的拷贝与比较、以及用户那台比开发机慢的机器。
+#[cfg(test)]
 pub const BUDGET_SHARE: u64 = 3;
 
 /// 一份现打读数：普通路径（生产那个 `TextEdit`）**每敲一个键**那一帧，
@@ -84,6 +86,7 @@ pub const BUDGET_SHARE: u64 = 3;
 /// 控件自己的事件路径（撤销器前后各克隆一次全文 · 字下标换字节下标 · **改完再排一次**）——
 /// 全文那一维现打贵 2.2 倍，上一版的 1 MiB 门槛因此放宽了一倍（逮到它的是经窗口生产路径量出来的
 /// 1 MiB 规整文本每键 10.7–16.7 ms，与「1 MiB 只要 7.49 ms」对不上）。
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Reading {
     pub at_bytes: u64,
@@ -96,6 +99,7 @@ pub struct Reading {
 /// 的那一档 —— 离要推的那个数最近、线性外推最短。2026-09-24 现打三次 × 三趟（负载 5–8 / 24 核）：
 /// 256 KiB 最坏 5.43 ms（没越）· **512 KiB 最坏 11.90 ms（越了）**。
 /// 来源：`tests::the_readings_behind_the_two_thresholds`，逐趟读数住。
+#[cfg(test)]
 pub const TOTAL_READING: Reading = Reading {
     at_bytes: 512 * 1024,
     worst_us: 11_900,
@@ -103,6 +107,7 @@ pub const TOTAL_READING: Reading = Reading {
 
 /// 最长一行那一维的读数（整份压成一行；release 档；墙钟；真敲键）。参照档挑法同上：
 /// 扫描（4 · 8 · 16 · 32 · 64 KiB）里 16 KiB 最坏 3.30 ms（没越）· **32 KiB 最坏 6.62 ms（越了）**。
+#[cfg(test)]
 pub const LINE_READING: Reading = Reading {
     at_bytes: 32 * 1024,
     worst_us: 6_620,
@@ -117,12 +122,14 @@ pub const LINE_READING: Reading = Reading {
 /// ⚠ 如实登记它的代价：推出来 27 496 → 32 KiB（进位）、244 741 → 256 KiB（进位）；
 /// 刚好不越线的文件实际吃到约 0.3–0.4 帧；两条都刚好不越线的最坏文件 ≈ 6.62 ＋ 5.43 ＝ 12.1 ms，
 /// **仍在一帧之内**。
+#[cfg(test)]
 pub const fn derive_threshold(r: Reading) -> usize {
     let raw = (FRAME_BUDGET_US / BUDGET_SHARE) as u128 * r.at_bytes as u128 / r.worst_us as u128;
     nearest_pow2(raw) as usize
 }
 
 /// 对数意义上最近的 2 的幂（`x ≥ √2·下界` ⇒ 进位）。
+#[cfg(test)]
 pub const fn nearest_pow2(x: u128) -> u128 {
     if x <= 1 {
         return 1;
@@ -209,6 +216,7 @@ impl Lines {
         self.starts.len()
     }
 
+    #[cfg(test)]
     pub fn total_bytes(&self) -> usize {
         self.len
     }
@@ -333,7 +341,8 @@ pub fn byte_at_char(s: &str, k: usize, ascii: bool) -> usize {
 /// 不知道摆多高时一屏几行（判据那一形；生产上编辑面的高由它那一栏剩下的高给，见 [`show`]）。
 pub const VIEW_ROWS: usize = 24;
 
-/// `rows` 行等宽字有多高。
+/// `rows` 行等宽字有多高（判据用）。
+#[cfg(test)]
 pub fn view_height(ui: &Ui, rows: usize) -> f32 {
     let font = TextStyle::Monospace.resolve(ui.style());
     rows as f32 * ui.fonts_mut(|f| f.row_height(&font))
@@ -463,20 +472,25 @@ impl Doc {
         }
     }
 
+    #[cfg(test)]
     pub fn why(&self) -> Why {
         self.why
     }
+    #[cfg(test)]
     pub fn lines(&self) -> &Lines {
         &self.lines
     }
+    #[cfg(test)]
     pub fn tally(&self) -> &Tally {
         &self.tally
     }
     /// 光标与选区另一端（字节偏移）。
+    #[cfg(test)]
     pub fn cursor(&self) -> (usize, usize) {
         (self.cur, self.anc)
     }
     /// 下一帧把滚动偏移钉在 `off`（内容坐标，像素）。
+    #[cfg(test)]
     pub fn pin_offset(&mut self, off: Vec2) {
         self.pin = Some(off);
     }
@@ -1154,11 +1168,13 @@ impl BigSlot {
     }
 
     /// 上一帧排了什么（没进模式 ⇒ `None`）。
+    #[cfg(test)]
     pub fn tally(&self) -> Option<Tally> {
         self.lock().as_ref().map(|d| d.tally.clone())
     }
 
     /// 在那份 `Doc` 上做点事（判据钉滚动偏移、读光标用）。
+    #[cfg(test)]
     pub fn with<R>(&self, f: impl FnOnce(&mut Doc) -> R) -> Option<R> {
         self.lock().as_mut().map(f)
     }
