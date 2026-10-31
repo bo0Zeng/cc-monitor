@@ -9,6 +9,7 @@ import type { PlanPendingSet } from "./PlanPendingSet";
 import type { PlanPhase } from "./PlanPhase";
 import type { PlanProgress } from "./PlanProgress";
 import type { PlanReturned } from "./PlanReturned";
+import type { PlanSliceSaid } from "./PlanSliceSaid";
 import type { PlanStale } from "./PlanStale";
 import type { PlanUnbuilt } from "./PlanUnbuilt";
 import type { PlanUnowned } from "./PlanUnowned";
@@ -64,4 +65,4 @@ needCount: number,
 /**
  * 最上面那个权力范围（`project`）退回过 ⇒ 那一次此刻的状态；没退回过 ⇒ `null`（缺 ⇒ 同）。
  */
-returned: PlanReturned | null, };
+returned: PlanReturned | null, said: PlanSliceSaid, };
