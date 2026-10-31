@@ -169,6 +169,18 @@ clippy_step() {
   if [ ${#pkgs[@]} -eq 0 ]; then printf '  --   %-16s 不跑：相对 %s 没改到后端那棵的包\n' clippy-backend "$base_ref"; return; fi
   step clippy-backend buildcargo bash -c 'cd src/backend && cargo clippy --all-targets "$@"' _ "${pkgs[@]}"
 }
+# 共享包的文档测试（`compile_fail` 那几条钉的是「这样写编不过」）：壳那棵只跑 --lib，这几份也不在后端那棵 ⇒ 单跑 --doc。改到的包才跑。
+#   名单只列有文档测试的包：一条都没有的包单独改到时 step 报「0 条跑到」。
+doc_pkgs=("relay-route-core:src/common/relay-route-core/")
+doc_step() {
+  local spec paths pkgs=()
+  for spec in "${doc_pkgs[@]}"; do
+    read -ra paths <<< "${spec#*:}"
+    [ -n "$(touched "${paths[@]}")" ] && pkgs+=(-p "${spec%%:*}")
+  done
+  if [ ${#pkgs[@]} -eq 0 ]; then printf '  --   %-16s 不跑：相对 %s 没改到带文档测试的共享包\n' doc-shared "$base_ref"; return; fi
+  step doc-shared buildcargo bash -c 'cd src/frontend/shell && cargo test --doc "$@"' _ "${pkgs[@]}"
+}
 # 修剪（见头注）：同组（路径去掉末尾 `-<哈希>`）最新那一份往前 6 小时之外的删掉
 prune_step() {
   local t0=$SECONDS victims=() p kb
@@ -240,6 +252,7 @@ else printf '  红   %-16s ci.yml 里读不到 static-gate 那个 job 的 GATE_O
 backend_step
 clippy_step
 shell_step
+doc_step
 # 凭据那份共享 crate 开 `harden` 那一档（壳那棵不开它，后端那棵不跑它的测试）
 step creds-harden buildcargo bash -c 'cd src/frontend/shell && cargo test -p creds-core --features harden --lib -q'
 vitest_step
