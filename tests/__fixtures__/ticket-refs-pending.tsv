@@ -201,7 +201,7 @@ tests/common/creds-core/lib_tests.rs	8
 tests/common/creds-core/perm_tests.rs	4
 tests/common/creds-core/store_tests.rs	9
 tests/common/guard-core/lib_tests.rs	6
-tests/common/guard-core/no_outside_refs_tests.rs	5
+tests/common/guard-core/no_outside_refs_tests.rs	3
 tests/common/guard-core/rules/structural_scan.rs	3
 tests/copy/copy-rules.vitest.ts	2
 tests/e2e/README.md	4

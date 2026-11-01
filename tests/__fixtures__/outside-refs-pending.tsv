@@ -29,7 +29,6 @@ src/backend/wire/mod.rs	2
 src/common/cmd-wire/src/frame.rs	1
 src/common/guard-core/src/lib.rs	41
 src/doc/INVARIANTS.md	2
-src/doc/IPC-COMMANDS.md	1
 src/doc/IPC-PROTOCOL.md	1
 src/frontend/filewin/src/source.rs	2
 src/frontend/shell/src/local_backend.rs	1
