@@ -15274,6 +15274,29 @@ sealed interface OpenWhat {
 }
 
 @Suppress("UNCHECKED_CAST")
+data class OpenWindow(
+    val machine: String,
+    val sid: String,
+    val line: String,
+    val cwd: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<OpenWindow> = obj(
+            listOf(
+            Field("machine", { Str }, optional = false, nullable = false),
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("line", { Str }, optional = false, nullable = false),
+            Field("cwd", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> OpenWindow(a[0] as String, a[1] as String, a[2] as String, a[3] as String?) },
+            { v -> arrayOf(v.machine, v.sid, v.line, v.cwd) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class Opened(
     val landed: Landed,
     val session: String?,
@@ -23413,6 +23436,8 @@ data class SessionsBatchReply(
     val failed: Boolean,
     val lines: List<String>,
     val copyDetail: String,
+    val windows: List<OpenWindow>,
+    val undo: List<SessionsBatchReq>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -23424,16 +23449,18 @@ data class SessionsBatchReply(
             Field("failed", { Bool }, optional = false, nullable = false),
             Field("lines", { arr(Str) }, optional = false, nullable = false),
             Field("copyDetail", { Str }, optional = false, nullable = false),
+            Field("windows", { arr(OpenWindow.ADAPTER) }, optional = false, nullable = false),
+            Field("undo", { arr(SessionsBatchReq.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> SessionsBatchReply(a[0] as List<SessionOutcome>, a[1] as String, a[2] as Boolean, a[3] as List<String>, a[4] as String) },
-            { v -> arrayOf(v.results, v.said, v.failed, v.lines, v.copyDetail) },
+            { a -> SessionsBatchReply(a[0] as List<SessionOutcome>, a[1] as String, a[2] as Boolean, a[3] as List<String>, a[4] as String, a[5] as List<OpenWindow>, a[6] as List<SessionsBatchReq>) },
+            { v -> arrayOf(v.results, v.said, v.failed, v.lines, v.copyDetail, v.windows, v.undo) },
         )
     }
 }
 
 @Suppress("UNCHECKED_CAST")
 data class SessionsBatchReq(
-    val op: SessionsOp,
+    val op: Raw,
     val items: List<SessionItem>,
     val client: String? = null,
 ) : Ordered {
@@ -23442,11 +23469,11 @@ data class SessionsBatchReq(
     companion object {
         val ADAPTER: JsonAdapter<SessionsBatchReq> = obj(
             listOf(
-            Field("op", { SessionsOp.ADAPTER }, optional = false, nullable = false),
+            Field("op", { RawJson }, optional = false, nullable = false),
             Field("items", { arr(SessionItem.ADAPTER) }, optional = false, nullable = false),
             Field("client", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> SessionsBatchReq(a[0] as SessionsOp, a[1] as List<SessionItem>, a[2] as String?) },
+            { a -> SessionsBatchReq(a[0] as Raw, a[1] as List<SessionItem>, a[2] as String?) },
             { v -> arrayOf(v.op, v.items, v.client) },
         )
     }
@@ -23454,68 +23481,6 @@ data class SessionsBatchReq(
 
 data object SessionsNeedsReq {
     val ADAPTER: JsonAdapter<SessionsNeedsReq> = obj(emptyList(), { SessionsNeedsReq }, { emptyArray() })
-}
-
-sealed interface SessionsOp {
-    data class Text(
-        val value: SessionsOpTextValue,
-    ) : SessionsOp
-    data class Obj(
-        val value: SessionsOpObjValue,
-    ) : SessionsOp
-
-    companion object {
-        val ADAPTER: JsonAdapter<SessionsOp> =
-            byToken<SessionsOp>(
-                listOf(
-                Tok(JsonReader.Token.STRING, SessionsOp.Text::class.java, { SessionsOpTextValue.ADAPTER }, { SessionsOp.Text(it as SessionsOpTextValue) }, { (it as SessionsOp.Text).value }),
-                Tok(JsonReader.Token.BEGIN_OBJECT, SessionsOp.Obj::class.java, { SessionsOpObjValue.ADAPTER }, { SessionsOp.Obj(it as SessionsOpObjValue) }, { (it as SessionsOp.Obj).value }),
-                ),
-            )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class SessionsOpObjValue(
-    val start: SessionsOpObjValueStart,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<SessionsOpObjValue> = obj(
-            listOf(
-            Field("start", { SessionsOpObjValueStart.ADAPTER }, optional = false, nullable = false),
-            ),
-            { a -> SessionsOpObjValue(a[0] as SessionsOpObjValueStart) },
-            { v -> arrayOf(v.start) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class SessionsOpObjValueStart(
-    val run: Launch,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<SessionsOpObjValueStart> = obj(
-            listOf(
-            Field("run", { Launch.ADAPTER }, optional = false, nullable = false),
-            ),
-            { a -> SessionsOpObjValueStart(a[0] as Launch) },
-            { v -> arrayOf(v.run) },
-        )
-    }
-}
-
-enum class SessionsOpTextValue(val wire: String) {
-    STOP("stop"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<SessionsOpTextValue> = enumOf(entries) { it.wire }
-    }
 }
 
 @Suppress("UNCHECKED_CAST")

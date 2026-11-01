@@ -16,6 +16,7 @@ fn a(id: &str, used: f64, rate: Option<f64>) -> Acct {
         per_pct: [None, None],
         weekly: false,
         others: None,
+        past: Default::default(),
     }
 }
 

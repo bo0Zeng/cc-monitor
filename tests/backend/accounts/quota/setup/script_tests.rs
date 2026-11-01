@@ -58,6 +58,7 @@ fn ctx_of(now: u64) -> Ctx<'static> {
             weekly: false,
             off: false,
             others: None,
+            past: Default::default(),
         }],
         me: &ME,
         pinned: false,
@@ -180,6 +181,31 @@ fn a_strategy_reads_the_short_pace_inflight_and_six_hour_bins() {
     );
 }
 
+/// ★ 策略读得到号的历史：`weeklyLeftAtReset` 是最近几次周重置时剩几点（没记到 ⇒ 空数组）；
+/// `windowGrid` 恒是 `#{step: 600, up}`，判不出往哪边取整 ⇒ `up` 是 `()`。
+#[test]
+fn a_strategy_reads_what_the_week_left_and_which_way_the_grid_rounds() {
+    let f = parse(&with_code(
+        r#"fn decide(ctx) {
+  let a = ctx.accounts[0];
+  #{ order: ["a"], why: #{ a: `${a.weeklyLeftAtReset}|${a.weeklyLeftAtReset.len()}|${a.windowGrid.step}|${a.windowGrid.up}` } }
+}"#,
+    ))
+    .expect("编得过");
+    let bare = f.code.decide(&ctx_of(1)).expect("跑得通");
+    assert_eq!(bare.why, [("a".to_string(), "[]|0|600|".to_string())]);
+    let mut c = ctx_of(1);
+    c.accounts[0].past = crate::accounts::quota::rules::Past {
+        weekly_left_at_reset: vec![38.0, 12.5],
+        grid_up: Some(true),
+    };
+    let v = f.code.decide(&c).expect("跑得通");
+    assert_eq!(
+        v.why,
+        [("a".to_string(), "[38.0, 12.5]|2|600|true".to_string())]
+    );
+}
+
 /// ★ 号到 100 个时 ctx 照样放得进沙箱：改 ctx 里一格（整个 ctx 按嵌套合计查一遍）· 照号摊平的几张表 · 每号一行的表都放得下。
 #[test]
 fn the_sandbox_holds_a_hundred_accounts() {
@@ -225,6 +251,7 @@ fn the_sandbox_holds_a_hundred_accounts() {
             pos,
             per_pct: [Some(150_000), Some(1_000_000)],
             others: Some(0.1),
+            past: Default::default(),
             weekly: true,
             ..one.clone()
         })
@@ -424,6 +451,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
             per_pct: [None, None],
             weekly: false,
             others: None,
+            past: Default::default(),
         },
         Acct {
             id: "b".into(),
@@ -436,6 +464,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
             per_pct: [None, None],
             weekly: false,
             others: None,
+            past: Default::default(),
         },
         Acct {
             id: "c".into(),
@@ -448,6 +477,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
             per_pct: [None, None],
             weekly: false,
             others: None,
+            past: Default::default(),
         },
     ];
     assert_eq!(fixtures().len(), 3, "样例没读到");

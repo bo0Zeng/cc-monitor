@@ -121,6 +121,26 @@ fn ctx_dynamic(c: &Ctx<'_>) -> Dynamic {
                 pair(opt(a.per_pct[0]), opt(a.per_pct[1])),
             );
             m.insert("weekly".into(), a.weekly.into());
+            m.insert(
+                "weeklyLeftAtReset".into(),
+                Dynamic::from(
+                    a.past
+                        .weekly_left_at_reset
+                        .iter()
+                        .map(|x| Dynamic::from(*x))
+                        .collect::<rhai::Array>(),
+                ),
+            );
+            let mut grid = Map::new();
+            grid.insert(
+                "step".into(),
+                Dynamic::from(crate::accounts::quota::ledger::GRID_STEP as i64),
+            );
+            grid.insert(
+                "up".into(),
+                a.past.grid_up.map_or(Dynamic::UNIT, Dynamic::from),
+            );
+            m.insert("windowGrid".into(), Dynamic::from(grid));
             m.insert("off".into(), a.off.into());
             m.insert(
                 "others".into(),

@@ -84,6 +84,7 @@ fn night() -> Night {
             per_pct: [a["perPct"][0].as_u64(), a["perPct"][1].as_u64()],
             weekly: a["weekly"].as_bool().expect("周上限"),
             others: None,
+            past: Default::default(),
         })
         .collect();
     let trace = Trace {
@@ -264,6 +265,7 @@ fn one(id: &str, used: f64, resets: Option<u64>, per_pct: u64) -> Acct {
         per_pct: [Some(per_pct), None],
         weekly: false,
         others: None,
+        past: Default::default(),
     }
 }
 
