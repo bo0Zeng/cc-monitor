@@ -33,8 +33,8 @@ export interface GridSessionSnapshot {
   face: SessionFace;
   /** 在等人时等的是什么（核心写好的字：等批准 · 等回答 …，`needs.text`）；不在等 ⇒ null。 */
   needs: string | null;
-  /** 本会话仍在跑的 subagent 数（后端那一组「在跑」的个数）。 */
-  runningAgents: number;
+  /** 格子上 agent 那一枚后端写好的字（「在跑 · agent n」，`RunGroups.running_text`）；没有在跑的 ⇒ null，不画。 */
+  running: string | null;
   /** 本会话 agent 那一枚后端写好的字（总数后端照实数，`SessionRuns.summary`）；没有子 agent ⇒ null。 */
   agents: string | null;
   /** 上下文那一格（核心写好的字 · 语气 · 百分比；百分比为 null ＝ 上限判不出）；还没有用量 ⇒ null。 */
@@ -58,8 +58,10 @@ export interface SessionPeek {
   model: string | null;
   /** 本会话写类工具（Edit/Write/…）碰过的文件路径（首触序）——「谁跑偏」关键信号。 */
   recentFiles: string[];
-  /** 本会话的子运行，照那台运行表写好的三组排（在跑 ++ 最近 ++ 更早），供 peek 显示「在跑什么」。 */
+  /** 本会话的子运行：那台挑好的那几个（`RunGroups.peek`，三组序取前几个），供 peek 显示「在跑什么」。 */
   agents: { label: string; status: RunState }[];
   /** 子运行那一句（那台写好的「agent n · m 在跑」，`SessionRuns.summary`）；运行表是空的 ⇒ null。 */
   summary: string | null;
+  /** 没列下的余下几个那一截（那台写好的「+n」，`RunGroups.peek_more_text`）；都列下了 ⇒ null。 */
+  more: string | null;
 }
