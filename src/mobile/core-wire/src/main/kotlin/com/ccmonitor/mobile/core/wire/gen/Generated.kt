@@ -12758,6 +12758,8 @@ enum class LsSortBy(val wire: String) {
     }
 }
 
+typealias Machine = String
+
 enum class MachineBlocker(val wire: String) {
     NOT_UNIX("not_unix"),
     NO_BACKEND("no_backend"),
@@ -15392,8 +15394,6 @@ data class OpenedItem(
         )
     }
 }
-
-typealias Origin = String
 
 @Suppress("UNCHECKED_CAST")
 data class OriginSessionsListedPayload(
@@ -21895,6 +21895,7 @@ data class RunInfo(
     val parent: String? = null,
     val state: RunState,
     val statusText: String,
+    val tookText: String? = null,
     val labelText: String,
     val last: RunDid? = null,
     val lastText: String? = null,
@@ -21924,6 +21925,7 @@ data class RunInfo(
             Field("parent", { opt(Str) }, optional = true, nullable = true),
             Field("state", { RunState.ADAPTER }, optional = false, nullable = false),
             Field("status_text", { Str }, optional = false, nullable = false),
+            Field("took_text", { opt(Str) }, optional = true, nullable = true),
             Field("label_text", { Str }, optional = false, nullable = false),
             Field("last", { opt(RunDid.ADAPTER) }, optional = true, nullable = true),
             Field("last_text", { opt(Str) }, optional = true, nullable = true),
@@ -21941,8 +21943,8 @@ data class RunInfo(
             Field("end", { opt(RunEndLine.ADAPTER) }, optional = true, nullable = true),
             Field("needs", { opt(Needs.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> RunInfo(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as RunState, a[6] as String, a[7] as String, a[8] as RunDid?, a[9] as String?, a[10] as String?, a[11] as Long?, a[12] as String?, a[13] as Long?, a[14] as Long?, a[15] as RunWhy?, a[16] as String?, a[17] as Int?, a[18] as Boolean?, a[19] as List<RunLine>?, a[20] as RunExplain?, a[21] as RunEndLine?, a[22] as Needs?) },
-            { v -> arrayOf(v.run, v.label, v.kind, v.tool, v.parent, v.state, v.statusText, v.labelText, v.last, v.lastText, v.waiting, v.startedMs, v.startedText, v.activeMs, v.endedMs, v.why, v.error, v.calls, v.background, v.facts, v.explain, v.end, v.needs) },
+            { a -> RunInfo(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as RunState, a[6] as String, a[7] as String?, a[8] as String, a[9] as RunDid?, a[10] as String?, a[11] as String?, a[12] as Long?, a[13] as String?, a[14] as Long?, a[15] as Long?, a[16] as RunWhy?, a[17] as String?, a[18] as Int?, a[19] as Boolean?, a[20] as List<RunLine>?, a[21] as RunExplain?, a[22] as RunEndLine?, a[23] as Needs?) },
+            { v -> arrayOf(v.run, v.label, v.kind, v.tool, v.parent, v.state, v.statusText, v.tookText, v.labelText, v.last, v.lastText, v.waiting, v.startedMs, v.startedText, v.activeMs, v.endedMs, v.why, v.error, v.calls, v.background, v.facts, v.explain, v.end, v.needs) },
         )
     }
 }
