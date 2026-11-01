@@ -268,7 +268,7 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number)
         case "coordinator":
           return { kind: "card", element: buildCoordinatorBar(speaker, time) };
         case "taskNotification":
-          return { kind: "card", element: buildNoticeLine(speaker, rec.at ?? "", time) };
+          return { kind: "card", element: buildNoticeLine(speaker) };
         case "interrupt":
           return { kind: "card", element: buildInterruptLine(time) };
         case "agentTask":

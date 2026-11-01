@@ -6067,7 +6067,15 @@ record: LineRecord,
  * 它的对账键（界面拿它撤那个子运行的活卡）；没有 ⇒ 这一格不出现。
  */
 rid?: string, };
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+/**
+ * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
+ */
+end?: TaskEnd, 
+/**
+ * 写好的那一行（「后台任务 {做的事} {怎么收场} · {钟面}」）：出口那一下照看的那一台的时区写，界面照抄。
+ */
+row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
  * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
  */
@@ -6149,6 +6157,7 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
+type TaskEnd = "done" | "failed" | "stopped";
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -6524,7 +6533,15 @@ type ReplyError = { reason: ApiReason,
  */
 status?: number, };
 type ResultKind = "launched" | "handback";
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+/**
+ * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
+ */
+end?: TaskEnd, 
+/**
+ * 写好的那一行（「后台任务 {做的事} {怎么收场} · {钟面}」）：出口那一下照看的那一台的时区写，界面照抄。
+ */
+row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
  * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
  */
@@ -6606,6 +6623,7 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
+type TaskEnd = "done" | "failed" | "stopped";
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -6973,7 +6991,15 @@ type ReplyError = { reason: ApiReason,
  */
 status?: number, };
 type ResultKind = "launched" | "handback";
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+/**
+ * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
+ */
+end?: TaskEnd, 
+/**
+ * 写好的那一行（「后台任务 {做的事} {怎么收场} · {钟面}」）：出口那一下照看的那一台的时区写，界面照抄。
+ */
+row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
  * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
  */
@@ -7055,6 +7081,7 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
+type TaskEnd = "done" | "failed" | "stopped";
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -7399,7 +7426,15 @@ type ReplyError = { reason: ApiReason,
  */
 status?: number, };
 type ResultKind = "launched" | "handback";
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+/**
+ * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
+ */
+end?: TaskEnd, 
+/**
+ * 写好的那一行（「后台任务 {做的事} {怎么收场} · {钟面}」）：出口那一下照看的那一台的时区写，界面照抄。
+ */
+row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
  * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
  */
@@ -7481,6 +7516,7 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
+type TaskEnd = "done" | "failed" | "stopped";
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -8427,6 +8463,10 @@ handedBack: Array<string>,
  */
 retries: Array<RetryRun>, 
 /**
+ * 一组一组相邻的收场通知（按首条的记录 id，文件序）：哪几条并一组 · 哪几条交回过、不露 · 写好的组头。出口那一下算（[`settle_notices`]）。
+ */
+notices: Array<NoticeRun>, 
+/**
  * 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null`。
  */
 permissionMode: string | null, 
@@ -8654,6 +8694,27 @@ type NeedsQuestionOption = {
  * `q0o0` …
  */
 id: string, text: string, detail: string | null, };
+type NoticeRun = { 
+/**
+ * 这一组首条那条记录的 id（界面那一张就挂在它上面）。
+ */
+id: string, 
+/**
+ * 这一组的几条（记录 id，文件序，含首条）。
+ */
+members: Array<string>, 
+/**
+ * 其中不露的那几条：同一个子运行已经交回了（以交回为准）。
+ */
+hidden: Array<string>, 
+/**
+ * 露着不止一条 ⇒ 写好的组头（几条 · 时段 · 失败几条）；只露一条 · 一条都不露 ⇒ `null`（露着的那一条照它自己那一行）。
+ */
+head: Words | null, 
+/**
+ * 露着的那几条里有失败的。
+ */
+failed: boolean, };
 type PendingCall = { 
 /**
  * 工具调用 id（等它的 `tool_result` 来摘）。
@@ -9405,7 +9466,15 @@ type ReplyError = { reason: ApiReason,
  */
 status?: number, };
 type ResultKind = "launched" | "handback";
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+/**
+ * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
+ */
+end?: TaskEnd, 
+/**
+ * 写好的那一行（「后台任务 {做的事} {怎么收场} · {钟面}」）：出口那一下照看的那一台的时区写，界面照抄。
+ */
+row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
  * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
  */
@@ -9488,6 +9557,7 @@ chars?: number,
  */
 kind?: ResultKind, };
 type TailHow = "tail" | "resume" | "handoff" | "truncated" | "rewritten";
+type TaskEnd = "done" | "failed" | "stopped";
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -12774,6 +12844,57 @@ type Origin = string;
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type TerminalsBoard = { filters: Array<BoardFilter>, groups: Array<BoardGroup>, };
 type Words = string;
+```
+
+码：`bad_args`
+
+#### `terminals-end`
+
+结束一批终端跨几台（按台分组做、照原序合好那一句）。
+
+收 `args` · 可撤 · CLI：`ccm -- --terminals-end`
+
+入参 `TerminalsEndReq` · 回包 `TerminalsEndReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Origin = string;
+type SessionState = "done" | "skipped" | "failed";
+type TerminalOutcome = { 
+/**
+ * 哪台（每台那一跳答的是它自己 ⇒ 本机那一个；本机合好时换成那一项的那台）。
+ */
+machine: Origin, terminal: string, outcome: SessionState, 
+/**
+ * 没成的原因码；做成了 ⇒ `null`。
+ */
+why: string | null, 
+/**
+ * 那台写好的那一句；做成了 ⇒ `null`。
+ */
+said: string | null, 
+/**
+ * 没成那一项的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
+ */
+copyDetail: string, 
+/**
+ * 那台名单那一行的标题（远端的套机器名）。
+ */
+title: string, };
+type TerminalsEndItem = { machine: Origin, 
+/**
+ * 名单里的那个句柄（`terminals-list` · 名单那一行的 `terminal`）。
+ */
+terminal: string, };
+type TerminalsEndReply = { results: Array<TerminalOutcome>, said: string, failed: boolean, lines: Array<string>, copyDetail: string, };
+type TerminalsEndReq = { 
+/**
+ * 那几项（1–64 个，照选中的先后）。
+ */
+items: Array<TerminalsEndItem>, 
+/**
+ * 自报的前端（「哪个前端的会话」那一维，同 `terminal-end`）。
+ */
+client?: string, };
 ```
 
 码：`bad_args`
@@ -17114,6 +17235,7 @@ alias?: string | null, };
 | `--terminal-take-input` | ＝ 帧命令 `terminal-take-input`：替自报的前端接管托管终端的输入 |
 | `--terminals-board` | ＝ 帧命令 `terminals-board`：「终端」视图那张名单（问到各台、合成一份：每台一组 · 筛选四格的数） |
 | `--terminals-board-here` | ＝ 帧命令 `terminals-board-here`：这台「终端」视图那几行（只列 cc-monitor 起的，排好、字写好） |
+| `--terminals-end` | ＝ 帧命令 `terminals-end`：结束一批终端跨几台（按台分组做、照原序合好那一句） |
 | `--terminals-list` | ＝ 帧命令 `terminals-list`：这台的终端名单（两种宿主同一形，每一行带宿主） |
 | `--tmux-notify` `<backend_pid> <backend_starttime>` | tmux 钩子用：核对身份后叫正在跑的后端立刻重扫 tmux；身份对不上静默退出 0；不碰文件系统 |
 | `--unplace-self` | 卸载那一趟：暂存区里传上去的这一份删掉落点 `~/.cc-monitor/bin/ccm`（不认身份）、再删自己；回 `{removed: true\|false}`；不在暂存区 ⇒ `outside_staging` |

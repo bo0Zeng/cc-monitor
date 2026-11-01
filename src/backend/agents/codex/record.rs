@@ -313,9 +313,22 @@ fn subagent_notice(text: &str) -> Speaker {
             .get("agent_path")
             .and_then(Value::as_str)
             .map(str::to_string),
+        end: status.as_deref().and_then(subagent_end),
         status,
         summary: None,
         tool_use_id: None,
+        row: None,
+    }
+}
+
+/// 这一家子 agent 的状态词 ⇒ 怎么收场的（只翻这一处）；还在跑 · 认不出 ⇒ `None`。
+fn subagent_end(status: &str) -> Option<cmd_wire::record::TaskEnd> {
+    use cmd_wire::record::TaskEnd;
+    match status {
+        "completed" => Some(TaskEnd::Done),
+        "errored" => Some(TaskEnd::Failed),
+        "interrupted" | "shutdown" => Some(TaskEnd::Stopped),
+        _ => None,
     }
 }
 

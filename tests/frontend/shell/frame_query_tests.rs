@@ -668,9 +668,9 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          `src/frontend/ui/terminal-reads.ts`（终端页 `terminal-page.ts` 调它）",
     ),
     (
-        "terminal-end",
-        "结束名单里的一个终端（两种宿主同一条，身份门 ＋ 窗口门在后端先过、对句柄下手）；界面 `src/frontend/ui/terminal-reads.ts::endTerminal` 交句柄或会话 ID，\
-         被拒照后端那一句说",
+        "terminals-end",
+        "结束一批终端跨几台（两种宿主同一条，身份门 ＋ 窗口门在各台先过、对句柄下手）：本机后端 `faces/terminals_end_face.rs` 按台分组、合好那一句；\
+         界面 `src/frontend/ui/terminal-reads.ts::endTerminals` 交一条、`end-confirm.ts::sayReply` 照摆",
     ),
     (
         "terminal-take-input",

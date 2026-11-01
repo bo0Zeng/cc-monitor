@@ -6,7 +6,8 @@
  */
 import { speakerNameOf } from "./agent-profile";
 import { SPEAKER_SELECTOR } from "./cards/speaker";
-import { applyHandedBack } from "./cards/speaker-bar";
+import { applyNotices } from "./cards/speaker-bar";
+import type { NoticeRun } from "./generated/NoticeRun";
 import { applyRetries } from "./cards/api-error";
 import { paintWaiting } from "./cards/step-line";
 import { waitedNow } from "./duration-format";
@@ -180,6 +181,8 @@ export class TabStreamView {
   private readonly carriedSkeletons = new WeakMap<Tab, { ledger: SkeletonLedger; end: number }>();
   /** 〔骨架〕每个 tab 见过的、带末字节的最老那一行（行号 · 末字节）：尾段那一截的索引从它之后要（`requestTailSkeleton`）。 */
   private readonly tailAnchors = new WeakMap<Tab, { seq: number; end: number }>();
+  /** 最近一份会话事实里的通知组（`factsLanded` 记下）：后来才建出来的通知卡（上翻补批 · 实时）照它再摆一遍。 */
+  private readonly notices = new WeakMap<Tab, readonly NoticeRun[]>();
   /** 〔骨架〕账本续到末尾那一趟在途的 tab（同一个 tab 同时只续一趟，`extendIndex`）。 */
   private readonly extending = new WeakSet<Tab>();
   /** 每个 tab 的第一趟会话事实 ＋ 轮次什么时候问（当前的先、后台的空闲时一个一个，`tab-cold-reads.ts`）。 */
@@ -684,6 +687,11 @@ export class TabStreamView {
           uuid: rec.id,
           onFork: (uuid) => this.host.forkFrom(tab, uuid),
         });
+        // 落下一条收场通知：先照手上那一份摆，组头跟着新的那条走 ⇒ 再要一份会话事实（同别处的排法，只排一趟）。
+        if (rec.t === "said" && rec.who.speaker.kind === "taskNotification") {
+          applyNotices(tab.streamEl, this.notices.get(tab) ?? []);
+          if (!this.store.inBatch) this.wantFacts(tab);
+        }
       },
     };
 
@@ -773,11 +781,12 @@ export class TabStreamView {
   }
 
   /**
-   * 后端的一份会话事实落到 tab 上之后（`applyFacts`），消息流里跟着补画的那几样：交回了的子运行收起收场通知 ·
+   * 后端的一份会话事实落到 tab 上之后（`applyFacts`），消息流里跟着补画的那几样：收场通知照通知组摆（并组 · 交回过的收起 · 组头）·
    * 重试细条的结局 · 等批准那一轮的刻度 · 过程行的「现在：…」· 还没结果的那几步 · 先画出来的卡头补上那一家的名字。
    */
   factsLanded(tab: Tab, f: SessionFacts, ch: FactsChange): void {
-    applyHandedBack(tab.streamEl, new Set(f.handedBack)); // 同一个子运行只报一次：以交回为准
+    this.notices.set(tab, f.notices);
+    applyNotices(tab.streamEl, f.notices);
     applyRetries(tab.streamEl, tab.retries); // 按首条的 id
     if (ch.needs) tab.turnRail.render(); // 在等批准的那一轮琥珀
     // 过程行上的「现在：… / 等批准：…」跟着这台此刻的会话事实（后端在 `history-turns` 里拼）。
@@ -1014,6 +1023,7 @@ export class TabStreamView {
     });
     for (const el of reconcilePendingToolResults(ctx)) tab.timeline.removeByElement(el);
     tab.branchFolder.rebuildNow();
+    applyNotices(tab.streamEl, this.notices.get(tab) ?? []); // 这一批里的通知卡照手上那一份通知组摆
   }
 
   /** 物化 tab 的尾段：从窗口账本弹出 seq 最高的 ≤ k 条建卡。对象是没有滚动位置要保的 tab，不做滚动补偿（那在 fillAbove）。 */

@@ -15,11 +15,27 @@ fn tree() -> &'static str {
     crate::agents::claudecode::AGENT_KIND
 }
 
-/// 一条已解析的记录不过快路、直接累加（「过滤 / 不过滤」对拍的那一侧）。
-fn note_slow(f: &mut SessionFacts, v: &Value) {
-    if let Some(b) = crate::agents::beat_of(tree(), v) {
-        note_record(f, tree(), v, &b);
+/// 每一行都不过快路、直接累加（「过滤 / 不过滤」对拍的那一侧）：一拍记进事实，翻成的通用记录记进通知组。
+fn slow_all(text: &str) -> SessionFacts {
+    let mut f = SessionFacts::default();
+    let mut start = 0u64;
+    for line in text.split_inclusive('\n') {
+        let body = line.trim_end_matches('\n');
+        if let Some(v) = crate::observe::lines::parse(body.as_bytes()) {
+            if let Some(b) = crate::agents::beat_of(tree(), &v) {
+                note_record(&mut f, tree(), &v, &b);
+            }
+            if let Some(r) = record_of(tree(), body, start) {
+                note_notice(
+                    &mut f,
+                    &r,
+                    crate::agents::run_of_record(tree(), &v).is_some(),
+                );
+            }
+        }
+        start += line.len() as u64;
     }
+    f
 }
 
 /// 一份夹具会话：每条记录一行（`\n` 收尾）。
@@ -36,7 +52,7 @@ fn scan_facts<R: std::io::BufRead>(
 ) -> std::io::Result<SessionFacts> {
     let mut lines = crate::observe::lines::Lines::new(r, 0);
     while let Some(row) = lines.next()? {
-        note_line(&mut facts, tree(), row.body());
+        note_line(&mut facts, tree(), row.body(), row.at);
     }
     settle_limit(&mut facts, limits, relay);
     Ok(facts)
@@ -183,6 +199,16 @@ fn the_fast_path_never_changes_the_answer() {
     recs.push(json!({"type": "attachment", "x": 1}));
     recs.push(json!({"type": "some-future-ledger", "sessionId": "s"}));
     recs.push(handback("fp-1", true));
+    // 通知组：两条通知中间隔着一条旁注细条（快路得放过它，组才接得上）· 一条不说子运行的回复把组隔开。
+    recs.push(notice("fp-n1", "fp-1", "completed", "t-n1"));
+    recs.push(injected("fp-s", "t-s"));
+    recs.push(notice("fp-n2", "fp-2", "failed", "t-n2"));
+    recs.push(reply(
+        "fp-a",
+        "t-a",
+        json!([{"type": "thinking", "thinking": "x"}]),
+    ));
+    recs.push(notice("fp-n3", "fp-3", "completed", "t-n3"));
     recs.push(mcp_delta(
         json!({"failedMcpServers": [{"name": "m-f", "error": "e"}]}),
     ));
@@ -191,16 +217,20 @@ fn the_fast_path_never_changes_the_answer() {
     assert_eq!(fast.handed_back, ["fp-1"], "交回那一行没漏过快路");
     assert_eq!(fast.mcp.len(), 1, "MCP 那一行没漏过快路");
     assert_eq!(
+        fast.notice_log
+            .runs
+            .iter()
+            .map(|r| r.len())
+            .collect::<Vec<_>>(),
+        [2, 1],
+        "通知组没被快路拆开"
+    );
+    assert_eq!(
         fast.quiet_unread.as_ref().map(|q| q.count),
         Some(1),
         "没身份的簿记行没漏过快路"
     );
-    let mut slow = SessionFacts::default();
-    for line in text.lines() {
-        if let Some(v) = crate::observe::lines::parse(line.as_bytes()) {
-            note_slow(&mut slow, &v);
-        }
-    }
+    let slow = slow_all(&text);
     assert_eq!(fast, slow);
     // 正控：过滤真的在拦东西（不然上面那条等式是恒真）。
     let f = SessionFacts {
@@ -592,12 +622,7 @@ fn the_fast_path_keeps_pending_and_last_say_exact() {
     ];
     let text = jsonl(&recs);
     let fast = scan_all(&text);
-    let mut slow = SessionFacts::default();
-    for line in text.lines() {
-        if let Some(v) = crate::observe::lines::parse(line.as_bytes()) {
-            note_slow(&mut slow, &v);
-        }
-    }
+    let slow = slow_all(&text);
     assert_eq!(fast, slow);
     assert_eq!(fast.pending.len(), 1);
     // 正控：有没结果的调用时，别人的工具结果照旧不解析。
@@ -1124,12 +1149,7 @@ fn background_commands_are_kept_until_their_end_notice() {
         assert_eq!(tail.bg_tasks, f.bg_tasks, "续点 {at}");
     }
     // 快路：每行都解析与先过滤再解析结果一样。
-    let mut slow = SessionFacts::default();
-    for line in text.lines() {
-        if let Some(v) = crate::observe::lines::parse(line.as_bytes()) {
-            note_slow(&mut slow, &v);
-        }
-    }
+    let slow = slow_all(&text);
     assert_eq!(f, slow);
 }
 
@@ -1865,4 +1885,121 @@ fn the_state_line_follows_the_pidfile_state_and_the_record_facts() {
     assert_eq!(n.clock.unwrap().from, t0);
 
     assert!(line_of(None, &f, now).is_none(), "不活 ⇒ 没有这一句");
+}
+
+/// 一条收场通知（框里那几格；记录带 `uuid` 与时刻，翻得成通用记录）。
+fn notice(uuid: &str, task: &str, status: &str, at: &str) -> Value {
+    json!({"type": "user", "uuid": uuid, "timestamp": at, "isMeta": true,
+           "origin": {"kind": "task-notification"},
+           "message": {"role": "user", "content": format!("<task-notification>\n<task-id>{task}</task-id>\n<status>{status}</status>\n<summary>s-{task}</summary>\n</task-notification>")}})
+}
+
+/// 一条系统注入（画成旁注细条）。
+fn injected(uuid: &str, at: &str) -> Value {
+    json!({"type": "user", "uuid": uuid, "isMeta": true, "timestamp": at,
+           "message": {"role": "user", "content": "<system-reminder>r</system-reminder>"}})
+}
+
+/// 一条代理的回复（`blocks` 是正文 ⇒ 一张卡；只有思考 ⇒ 过程那几步）。
+fn reply(uuid: &str, at: &str, blocks: Value) -> Value {
+    json!({"type": "assistant", "uuid": uuid, "timestamp": at,
+           "message": {"role": "assistant", "content": blocks}})
+}
+
+/// ★ 通知组：相邻（中间只隔着画成旁注细条 · 不画的记录）的几条并一组，按首条的记录 id 记；交回过的那几条不露（交回晚到也照新的重算）；
+/// 露着不止一条 ⇒ 组头写好（几条 · 时段 · 失败几条），只露一条 ⇒ 没有组头（那一条照自己那一行）；接力扫 == 一次扫完。
+#[test]
+fn adjacent_notices_make_one_group_and_handed_back_ones_hide() {
+    let tz = crate::Tz::named("Asia/Shanghai").unwrap();
+    let mut recs = vec![
+        notice("w1", "t1", "completed", "2026-01-01T06:02:00.000Z"),
+        injected("s1", "2026-01-01T06:03:00.000Z"),
+        notice("w2", "t2", "failed", "2026-01-01T06:05:00.000Z"),
+        reply(
+            "a1",
+            "2026-01-01T06:06:00.000Z",
+            json!([{"type": "text", "text": "y"}]),
+        ),
+        notice("w3", "t3", "completed", "2026-01-01T06:07:00.000Z"),
+    ];
+    let mut f = scan_all(&jsonl(&recs));
+    settle_notices(&mut f, &tz);
+    assert_eq!(f.notices.len(), 2, "两组：回复那一张卡隔开了");
+    let g = &f.notices[0];
+    assert_eq!(g.id, "w1");
+    assert_eq!(g.members, ["w1", "w2"]);
+    assert!(g.hidden.is_empty());
+    assert_eq!(
+        g.head.as_ref().map(|w| w.0.as_str()),
+        Some(
+            copy_core::copy_text(
+                "speaker.notice.many",
+                &[
+                    ("n", "2"),
+                    ("span", "14:02–14:05"),
+                    (
+                        "fail",
+                        &copy_core::copy_text("speaker.notice.fails", &[("n", "1")])
+                    ),
+                ],
+            )
+            .as_str()
+        )
+    );
+    assert!(g.failed);
+    let lone = &f.notices[1];
+    assert_eq!(lone.members, ["w3"]);
+    assert_eq!(lone.head, None, "只露一条 ⇒ 照它自己那一行");
+    assert!(!lone.failed);
+
+    // w2 那个子运行后来交回了 ⇒ 它那条不露、组头跟着没了。
+    recs.push(handback("t2", true));
+    let text = jsonl(&recs);
+    let mut f = scan_all(&text);
+    settle_notices(&mut f, &tz);
+    let g = &f.notices[0];
+    assert_eq!(g.members, ["w1", "w2"]);
+    assert_eq!(g.hidden, ["w2"]);
+    assert_eq!(g.head, None);
+    assert!(!g.failed, "失败的那条交回了，露着的没有失败");
+
+    // 整组都交回了 ⇒ 成员全在 hidden 里。
+    recs.push(handback("t3", true));
+    let mut f = scan_all(&jsonl(&recs));
+    settle_notices(&mut f, &tz);
+    assert_eq!(f.notices[1].hidden, ["w3"]);
+    assert_eq!(f.notices[1].head, None);
+
+    // 接力扫 == 一次扫完（累加的那几格跟着留下）。
+    let whole = scan_all(&text);
+    let mut cuts = vec![0usize];
+    cuts.extend(text.match_indices('\n').map(|(i, _)| i + 1));
+    for cut in cuts {
+        let head = scan_all(&text[..cut]);
+        let resumed = scan_facts(&text.as_bytes()[cut..], head, &Vec::new(), None).unwrap();
+        assert_eq!(resumed, whole, "在字节 {cut} 处接力，结果与一次扫完不同");
+    }
+}
+
+/// 通知组有上界：超了丢最早的那几组。
+#[test]
+fn notice_groups_are_bounded() {
+    let mut recs = Vec::new();
+    for i in 0..NOTICE_KEEP + 2 {
+        recs.push(notice(
+            &format!("n{i}"),
+            &format!("t{i}"),
+            "completed",
+            "2026-01-01T06:00:00.000Z",
+        ));
+        recs.push(reply(
+            &format!("a{i}"),
+            "2026-01-01T06:00:00.000Z",
+            json!([{"type": "text", "text": "y"}]),
+        ));
+    }
+    let mut f = scan_all(&jsonl(&recs));
+    settle_notices(&mut f, &crate::Tz::default());
+    assert_eq!(f.notices.len(), NOTICE_KEEP);
+    assert_eq!(f.notices[0].id, "n2", "超了丢最早的");
 }

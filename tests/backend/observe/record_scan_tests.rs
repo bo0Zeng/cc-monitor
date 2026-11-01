@@ -160,6 +160,7 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
             &mut want_facts,
             crate::agents::claudecode::AGENT_KIND,
             row.body(),
+            row.at,
         );
     }
     assert_eq!(map.facts, want_facts, "事实");
