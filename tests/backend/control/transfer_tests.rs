@@ -851,9 +851,9 @@ async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk()
     }
     match frames.last() {
         Some(Frame::Transfer(crate::wire::Transfer {
-            end: Some(TransferEnd::Failed { why, .. }),
+            end: Some(TransferEnd::Failed(f)),
             ..
-        })) => assert!(!why.is_empty()),
+        })) => assert!(!f.said.is_empty()),
         other => panic!("终局不是 failed：{other:?}"),
     }
     // 票在终局帧送出之后摘掉（给 spawn 那一侧一个调度点）。
@@ -1096,7 +1096,7 @@ async fn a_failed_upload_says_a_reason_word_and_hands_the_raw_text_on() {
     );
 }
 
-/// 收场帧：失败那一形多一格 `detail`（复制详情那几行：时刻 · 机器 · 命令 · 原话），缺 ⇒ 不出这一格。
+/// 收场帧：失败那一形是交出去的那一份失败，`detail` 是复制详情那几行（时刻 · 机器 · 命令 · 原话）。
 #[test]
 fn a_failed_transfer_end_carries_the_detail_beside_the_sentence() {
     let end = crate::wire::TransferEnd::failed(
@@ -1121,12 +1121,11 @@ fn a_failed_transfer_end_carries_the_detail_beside_the_sentence() {
         )),
         "{d}"
     );
-    let bare = crate::wire::TransferEnd::Failed {
-        why: "x".into(),
-        code: None,
-        detail: None,
-    };
-    assert!(serde_json::to_value(&bare).unwrap().get("detail").is_none());
+    // 没给码 ⇒ 兜底码；那一句叫 `said`。
+    assert_eq!(
+        (v["code"].as_str(), v["said"].as_str()),
+        (Some(copy_core::said::FALLBACK_CODE), Some("写入远端失败 · 原因不明"))
+    );
 }
 
 // ═══ 开单两条的线上字节（换形之前用旧代码跑出来钉的）══════════════════════════════════

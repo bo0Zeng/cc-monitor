@@ -52,3 +52,53 @@ fn local_has_fallback_code_and_no_detail() {
         (copy_core::said::FALLBACK_CODE, "没走通", "", None)
     );
 }
+
+fn keys(v: &serde_json::Value) -> BTreeSet<String> {
+    v.as_object().expect("对象").keys().cloned().collect()
+}
+
+/// 手机装后端没做成的那一行：标签 `end` ＋ 恰是 `Failed` 那几格（那一句叫 `said`）；读回同一份。
+#[test]
+fn deploy_end_failed_carries_failed() {
+    let end = crate::phone::DeployEnd::Failed(sample());
+    let v = serde_json::to_value(&end).expect("序列化");
+    assert_eq!(
+        keys(&v),
+        ["end", "code", "said", "detail", "data"].map(String::from).into()
+    );
+    assert_eq!(v["end"], "failed");
+    let back: crate::phone::DeployEnd = serde_json::from_value(v).expect("读回");
+    assert_eq!(back, end);
+}
+
+/// 传输收场的失败那一形：标签 `state` ＋ 恰是 `Failed` 那几格（不出 `why`）；读回同一份。
+#[test]
+fn transfer_end_failed_carries_failed() {
+    let end = crate::frame::TransferEnd::Failed(Failed {
+        data: None,
+        ..sample()
+    });
+    let v = serde_json::to_value(&end).expect("序列化");
+    assert_eq!(
+        keys(&v),
+        ["state", "code", "said", "detail"].map(String::from).into()
+    );
+    let back: crate::frame::TransferEnd = serde_json::from_value(v).expect("读回");
+    assert_eq!(back, end);
+}
+
+/// 拨号回执没开成的那一句也叫 `said`（不出 `error`）。
+#[test]
+fn dial_ack_says_said() {
+    let ack = crate::dial::DialAck::of_fail(crate::dial::DialFail {
+        said: "拨不通".into(),
+        detail: None,
+        fingerprint: None,
+        reason: None,
+        key_type: None,
+        expected_fingerprint: None,
+    });
+    let v = serde_json::to_value(&ack).expect("序列化");
+    assert_eq!(v["said"], "拨不通", "{v}");
+    assert!(v.get("error").is_none(), "{v}");
+}

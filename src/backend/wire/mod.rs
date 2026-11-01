@@ -443,11 +443,12 @@ pub(crate) trait TransferEndExt {
 impl TransferEndExt for TransferEnd {
     /// 跑起来之后才停下的那一形：那一句 ＋ 复制详情（命令 `cmd` · 下层原话，后端这一端写好）。
     fn failed(why: String, code: Option<String>, cmd: &str, raw: Option<&str>) -> TransferEnd {
-        TransferEnd::Failed {
-            why,
-            code,
-            detail: Some(crate::wire::detail::of_run(cmd, raw)),
-        }
+        TransferEnd::Failed(crate::wire::detail::Failed {
+            code: crate::wire::detail::Failed::code_or_fallback(code),
+            said: why,
+            detail: crate::wire::detail::of_run(cmd, raw),
+            data: None,
+        })
     }
 }
 
