@@ -34,6 +34,7 @@ use crate::wire::detail::Failed;
 use crate::wire::spec::CommandSpec;
 use crate::wire::spec::Settle as _;
 use crate::wire::Request;
+use copy_core::discard::{Discard, Why};
 use std::io::{Read, Write};
 use std::time::Duration;
 
@@ -293,7 +294,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
             } else {
                 v.to_string()
             };
-            let _ = writeln!(out, "{}", crate::common::time::fill_at(&line, tz));
+            writeln!(out, "{}", crate::common::time::fill_at(&line, tz)).discard(Why::Diag); // CLI 面的应答写 stdout（JSON 那一形与 `--text` 那一形同一行）：写不进去 ⇒ 调用方已经走了（管道断），没有第二个地方可以说
             0
         }
         // 失败那一份与帧面同一处出（复制详情 · 按码定形的 `data`）。
