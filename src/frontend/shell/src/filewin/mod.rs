@@ -12,8 +12,3 @@ pub mod proc;
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/filewin/boundary_tests.rs"]
 mod boundary_tests;
-
-// 跨两半的几条（一侧窗口包、异源一侧 monitor）：只有 monitor 的测试档两边都够得着。
-#[cfg(test)]
-#[path = "../../../../../tests/frontend/shell/filewin/cross_half_tests.rs"]
-mod cross_half_tests;
