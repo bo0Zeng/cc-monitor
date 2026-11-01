@@ -271,7 +271,7 @@ enum Kind {
     Geometry,
     /// monitor 那一侧：通道宿主（交接件 · 生产句柄）。
     Host,
-    /// monitor 那一侧：起进程那个全仓唯一出口（`write_site_registry::spawn_sites` 管着）。
+    /// monitor 那一侧：起进程那个全仓唯一出口（`spawn_managed`；`src/frontend/clippy.toml` 起进程那一组只许经它起）。
     Spawn,
     /// monitor 那一侧：monitor 自己的数据目录 —— 书签文件住那儿，
     /// 开窗时在这一侧算好全路径、放进种子交给窗口进程（窗口进程自己不找数据目录）。
