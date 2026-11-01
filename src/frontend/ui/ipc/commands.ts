@@ -58,10 +58,10 @@ async function callShell<T>(cmd: string, args?: Record<string, unknown>): Promis
 const invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T> = callShell;
 
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
-// 合并后的命令一律收 `origin`，类型用生成物 `Origin`（`string`，不手写）：给 origin 参数传 `null` 是编译错。
-// 本机逐字送 `LOCAL_ORIGIN`（`"<local>"`，住 `../backend-policy.ts`）；TS 侧其余各处的 origin 也是这一个表示
+// 合并后的命令一律收 `origin`，类型用生成物 `Machine`（`string`，不手写）：给 origin 参数传 `null` 是编译错。
+// 本机逐字送 `LOCAL`（`"<local>"`，经 `./origin.ts` 转出生成物）；TS 侧其余各处的 origin 也是这一个表示
 //（判据：`commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节）。
-import type { Origin } from "../generated/Origin";
+import type { Machine } from "../generated/Machine";
 import type { FrontTold } from "../generated/FrontTold";
 import type { SessionWindow } from "../generated/SessionWindow";
 import type { TabSession } from "../generated/TabSession";
@@ -262,7 +262,7 @@ export const commands = {
    */
   open_session_in_new_window: (args: {
     sessionId: string;
-    origin: Origin;
+    origin: Machine;
     title: string;
     x?: number;
     y?: number;
@@ -273,7 +273,7 @@ export const commands = {
    * 开一扇只装终端面的窗（`viewer-term-<那台>-<句柄>`；一个终端一扇，已开着就拉前）。**桶①**。
    * `origin` · `terminal`（名单里的句柄）· `name`（tmux 会话名）· `title` 随 URL 交给那扇窗；`windowTitle` 是系统标题。
    */
-  open_terminal_in_new_window: (args: { origin: Origin; terminal: string; name: string; title: string; windowTitle: string }) =>
+  open_terminal_in_new_window: (args: { origin: Machine; terminal: string; name: string; title: string; windowTitle: string }) =>
     invoke<void>("open_terminal_in_new_window", args),
 
   /** ↗ 拉前会话的终端窗口：本机后端 `session-window` 答的标签 · 进程链 · tmux 那一格原样交来，先按标签、再沿链；回切过去了或写好的那一张（标签没对上、链又空 ⇒ `null`）。**桶①**。 */
@@ -298,7 +298,7 @@ export const commands = {
    * **桶②**：回的是不透明字节，本表不认识它的形状。
    */
   chan_call: (args: {
-    origin: Origin;
+    origin: Machine;
     op: string;
     payload: number[];
     view: object | null;
@@ -310,7 +310,7 @@ export const commands = {
    * 判断在 monitor 那边做完，本侧只查成员。`null` = 今天没有控制通道。
    * ⚠ 调用方经 `src/comms/inward/chan.ts` 的 `chan.offer` / `chan.cachedOffer` 用它。
    */
-  chan_offer: (args: { origin: Origin }) =>
+  chan_offer: (args: { origin: Machine }) =>
     invoke<{
       ops: string[];
       unavailable: [string, string, string][];
@@ -322,7 +322,7 @@ export const commands = {
    * （编号、窗口作用域的交格事件、解码都住那里）。`id` 由那一侧给（每页从 1 起）。**不回错**：说不了的在流里原位说。
    */
   chan_subscribe: (args: {
-    origin: Origin;
+    origin: Machine;
     kind: string;
     from: number[] | null;
     want: number;
