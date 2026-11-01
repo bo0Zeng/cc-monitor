@@ -12,7 +12,7 @@
 
 use crate::common::said::Said;
 use crate::platform::Own;
-use copy_core::copy_text;
+use copy_core::{copy_text, Discard, Why};
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 
@@ -344,7 +344,8 @@ pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<()> {
 }
 
 fn ring() {
-    let _ = changes().send(());
+    // 此刻没有流连接订它 ⇒ 发不出是正常的，盘上那份照旧在，客户端重问就有
+    changes().send(()).discard(Why::NotAnError);
     crate::control::machine_state::table_moved();
     // 各台的常驻流照新表对齐（只在常驻进程里有；一次性进程里改表不起流）。
     if crate::control::feeds::hosted() {

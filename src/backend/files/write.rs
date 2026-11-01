@@ -24,7 +24,7 @@
 use crate::common::said::Said;
 use crate::platform::fs::{Face, Perms, Resolved, Ro};
 use cmd_wire::files as wire;
-use copy_core::{copy_text, io_reason};
+use copy_core::{copy_text, io_reason, Discard, Why};
 use std::path::{Component, Path, PathBuf};
 
 // 路径解析住 `common/root_path.rs`：传输台（原生那一块）写本机落点也过它，两块各引各的。
@@ -2111,7 +2111,7 @@ pub(crate) fn replace_contents(
     };
     let staged_gone = |staged: &Resolved| {
         // 内容已经落进目标：暂存件删不掉不算失败（孤儿扫按期限收）。
-        face.delete_file(staged).ok();
+        face.delete_file(staged).discard(Why::CleanupAfterFailure);
     };
     if in_place {
         let mut f = face.overwrite(&dst).map_err(|e| unwritten(&dst, e))?;
@@ -2137,7 +2137,7 @@ pub(crate) fn replace_contents(
         between();
         match place(face, staged, &dst, was == Was::New) {
             Ok(()) => {
-                face.sync_dir(&dst).ok();
+                face.sync_dir(&dst).discard(Why::CleanupAfterFailure); // 内容已落盘、上位已成：不成只是断电时可能回到旧名，不为它把已成的一趟报成失败
                 return Ok((dst.into_path_buf(), n));
             }
             Err(e) if e.kind() != std::io::ErrorKind::CrossesDevices => {
@@ -2171,16 +2171,16 @@ pub(crate) fn replace_contents(
     let n = match written {
         Ok(n) => n,
         Err(e) => {
-            face.delete_file(&side).ok();
+            face.delete_file(&side).discard(Why::CleanupAfterFailure);
             return Err(unwritten(&side, e));
         }
     };
     between();
     if let Err(e) = place(face, &side, &dst, was == Was::New) {
-        face.delete_file(&side).ok();
+        face.delete_file(&side).discard(Why::CleanupAfterFailure);
         return Err(placed_err(&dst, e));
     }
-    face.sync_dir(&dst).ok();
+    face.sync_dir(&dst).discard(Why::CleanupAfterFailure); // 同上：上位已成
     if let Content::Staged(staged) = content {
         staged_gone(staged);
     }
@@ -2264,7 +2264,7 @@ fn land_backup(
     })?;
     if let Err(e) = f.write_all(original) {
         drop(f);
-        face.delete_file(&bak).ok();
+        face.delete_file(&bak).discard(Why::CleanupAfterFailure);
         return Err(WriteRefusal::io(
             copy_text(
                 "beFilesWrite.backup.createFailed",

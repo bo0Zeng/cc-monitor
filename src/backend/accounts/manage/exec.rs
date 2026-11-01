@@ -19,7 +19,7 @@ use crate::common::door::{self, Door, Refused};
 use crate::common::said::Said;
 use crate::platform::acct_view::{is_absolute, under_root, Item};
 use crate::platform::fs::side_name;
-use copy_core::copy_text;
+use copy_core::{copy_text, Discard, Why};
 
 /// 一趟执行的结局。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,7 +153,9 @@ impl Run<'_> {
                     .chmod(&tmp, 0o600)
                     .and_then(|()| door::rename(d, &home, &self.rel(&tmp)?, &self.rel(to)?));
                 if let Err(e) = landed {
-                    let _ = door::remove(d, &home, &self.rel(&tmp)?, false);
+                    // 导入凭据的临时件：删不掉只剩一份 0600 的临时件
+                    door::remove(d, &home, &self.rel(&tmp)?, false)
+                        .discard(Why::CleanupAfterFailure);
                     return Err(e);
                 }
                 self.record(&[("DELETE", to)])
@@ -228,7 +230,8 @@ impl Run<'_> {
         door::copy(d, &home, &self.rel(from)?, &self.rel(&tmp)?)?;
         let drop_tmp = |r: &Run| {
             if let Ok(rel) = r.rel(&tmp) {
-                let _ = door::remove(r.d, &r.r.home, &rel, dir);
+                // 私有化的临时副本：复制期间源被改了 / 改权限失败之后删它
+                door::remove(r.d, &r.r.home, &rel, dir).discard(Why::CleanupAfterFailure);
             }
         };
         if !dir {
@@ -256,9 +259,11 @@ impl Run<'_> {
                 _ => false,
             };
         if !ok {
-            let _ = door::remove(d, &home, &self.rel(at)?, dir);
+            // 私有化自检没过：先删掉落位的那一份再建回链接
+            door::remove(d, &home, &self.rel(at)?, dir).discard(Why::CleanupAfterFailure);
             if let Item::Link { target, .. } = &was {
-                let _ = door::link(d, &home, &self.rel(at)?, target);
+                // 把原来那条链接建回去；备份里有原件
+                door::link(d, &home, &self.rel(at)?, target).discard(Why::CleanupAfterFailure);
             }
             return Err(copy_text("beAcctExec.isolate.selfCheck", &[("path", at)]));
         }

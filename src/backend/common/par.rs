@@ -61,6 +61,7 @@ pub fn par_workers(available: Option<usize>) -> usize {
 // 线程只阻塞在任务队列上（`recv()`，无期限）：没有任务就一直睡在内核里，不定时、不自己醒（`no_timer_guard` 登记了这一处）。
 // 池子丢了 ⇒ 队列的发送端没了 ⇒ 各线程的 `recv()` 回错、退出。线程数照 [`par_workers`]（只此一处算）。
 
+use copy_core::{Discard, Why};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 
@@ -108,7 +109,8 @@ impl<J: Send + 'static> Pool<J> {
 
     /// 排一份任务（池子的线程都忙 ⇒ 排着，先来先跑）。
     pub fn submit(&self, job: J) {
-        let _ = self.tx.send(job);
+        // 池子的线程都退了（只在进程收尾时）：交它的那一方也在收尾
+        self.tx.send(job).discard(Why::PeerGone);
     }
 
     /// 几条线程（同时在跑的上限）。
