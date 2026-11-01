@@ -31,7 +31,13 @@ fn req(v: serde_json::Value) -> Result<HistoryFactsReq, serde_json::Error> {
 
 fn ask(home: &Path, v: serde_json::Value) -> Result<serde_json::Value, HistoryFactsErr> {
     let limits = crate::observe::recognize::facts::ContextLimits::default();
-    facts_at(home, req(v).expect("入参该读得进"), &limits).map(|r| serde_json::to_value(r).unwrap())
+    facts_at(
+        home,
+        req(v).expect("入参该读得进"),
+        &limits,
+        &crate::Tz::default(),
+    )
+    .map(|r| serde_json::to_value(r).unwrap())
 }
 
 #[test]

@@ -32,6 +32,7 @@
 //! | `background` | 那台 pidfile 说「一轮停了、后台命令还在跑」⇒ 状态一句（[`background_of`]）；每次现查，不累加 |
 //! | `mcp` | 适配层 `agents::mcp_said_of` 说的三张表（要登录 · 断开 · 还在连），每张以文件序最后一次写它的那一条为准；按名字排 |
 //! | `quietUnread` | 认不出、又不成卡的行（适配层 `agents::quiet_unread_of` 判：没见过的顶层类型 ＋ 没有链上身份 ⇒ 那一家的簿记行）：几行 · 哪几种（首见序，至多 [`QUIET_KINDS_KEEP`] 种，再多只加数）· 写好的一句；一行都没有 ⇒ `null` |
+//! | `notices` | 收场通知一组一组记（[`note_notice`]，吃那一行翻成的通用记录）：两条中间只隔着画成旁注细条 · 不画的记录 ⇒ 同一组，按首条的记录 id 记；主线外的剔掉。出口那一下照 `handedBack` 定哪几条不露、写组头（[`settle_notices`]）。文件序，至多 [`NOTICE_KEEP`] 组 |
 //! | `handedBack` | 交回了的子运行：用户那侧「谁说的」是 agent 交回（一拍的 `Said` 是 `AgentMessage { handback: true }`）⇒ 它的 `from`；去重、文件序，至多 [`HANDED_BACK_KEEP`] 条。同一个子运行的收场通知（`taskNotification.taskId` ＝ 这个 id）以交回为准，界面不再另画 |
 //!
 //! # 快路
@@ -54,6 +55,9 @@ pub(crate) const RETRY_KEEP: usize = 200;
 
 /// 还没收场的后台命令至多留几条（超 ⇒ 丢最早的）。
 pub(crate) const BG_KEEP: usize = 16;
+
+/// 收场通知至多记多少组（超 ⇒ 丢最早的；丢掉的那几条界面照单条画）。
+pub(crate) const NOTICE_KEEP: usize = 200;
 
 /// 交回了的子运行至多留多少个（超 ⇒ 丢最早的）。回包有上限，一个 id 几十字节。
 pub(crate) const HANDED_BACK_KEEP: usize = 500;
@@ -100,6 +104,12 @@ pub(crate) struct SessionFacts {
     pub(crate) handed_back: Vec<String>,
     /// 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。
     pub(crate) retries: Vec<RetryRun>,
+    /// 一组一组相邻的收场通知（按首条的记录 id，文件序）：哪几条并一组 · 哪几条交回过、不露 · 写好的组头。出口那一下算（[`settle_notices`]）。
+    pub(crate) notices: Vec<NoticeRun>,
+    /// 通知组的累加（[`note_notice`]）：不上线，骨架落它（[`skel`]）。
+    #[serde(skip)]
+    #[cfg_attr(test, ts(skip))]
+    pub(crate) notice_log: NoticeLog,
     /// 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null`。
     pub(crate) permission_mode: Option<String>,
     /// 同一档写给人看的那一句（那一家的权限档那一处给：`agents::permission_mode_text`，切档回包的 `modeText` 同一处）；
@@ -506,6 +516,43 @@ pub(crate) struct RetryRun {
     /// 这一串首条重试记录的 `uuid`（界面那条细条就挂在它上面）。
     pub(crate) id: String,
     pub(crate) outcome: RetryOutcome,
+}
+
+/// 一组相邻的收场通知（[`SessionFacts::notices`]）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct NoticeRun {
+    /// 这一组首条那条记录的 id（界面那一张就挂在它上面）。
+    pub(crate) id: String,
+    /// 这一组的几条（记录 id，文件序，含首条）。
+    pub(crate) members: Vec<String>,
+    /// 其中不露的那几条：同一个子运行已经交回了（以交回为准）。
+    pub(crate) hidden: Vec<String>,
+    /// 露着不止一条 ⇒ 写好的组头（几条 · 时段 · 失败几条）；只露一条 · 一条都不露 ⇒ `null`（露着的那一条照它自己那一行）。
+    pub(crate) head: Option<Words>,
+    /// 露着的那几条里有失败的。
+    pub(crate) failed: bool,
+}
+
+/// 通知组的累加（[`SessionFacts::notice_log`]）：一组一组记下的那几条 · 上一条记录之后组还接不接得上。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NoticeLog {
+    pub(crate) runs: Vec<Vec<NoticeSeen>>,
+    /// 最后一条画出来的记录是收场通知（之后只来了画成旁注细条 · 不画的）⇒ 下一条通知并进最后一组。
+    pub(crate) open: bool,
+}
+
+/// 记下的一条收场通知：记录 id · 哪件活 · 怎么收场 · 时刻（毫秒）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NoticeSeen {
+    pub(crate) id: String,
+    pub(crate) task: Option<String>,
+    pub(crate) end: Option<cmd_wire::record::TaskEnd>,
+    pub(crate) at_ms: Option<i64>,
 }
 
 /// 一串重试的结局：还没下文 · 后面来了正常回复（接上了）· 来了报错那条（重试耗尽 / 不可重试）· 人发了一句或打断。
@@ -1086,16 +1133,160 @@ pub(crate) fn context_limit(
     }
 }
 
-/// 一个完整行（不含结尾 `\n`）累加到 `facts` 上：先过快路（[`could_matter`]），过了才解析。没解析过这一行的读者（事实尾巴接着读）走它。
-/// `kind` ＝ 这份记录是哪一家的。
-pub(crate) fn note_line(facts: &mut SessionFacts, kind: &str, line: &[u8]) {
-    if could_matter(kind, line, facts) {
-        if let Some(v) = super::super::lines::parse(line) {
-            if let Some(beat) = crate::agents::beat_of(kind, &v) {
-                note_record(facts, kind, &v, &beat);
-            }
+/// 一个完整行（不含结尾 `\n`，起点在 `start`）累加到 `facts` 上：先过快路（[`could_matter`]），过了才解析。没解析过这一行的读者（事实尾巴接着读）走它。
+/// `kind` ＝ 这份记录是哪一家的。通知组要看这一行画成什么，只在它可能动通知组时才翻成通用记录（[`notice_may`]）。
+pub(crate) fn note_line(facts: &mut SessionFacts, kind: &str, line: &[u8], start: u64) {
+    let notice = notice_may(kind, line, facts);
+    if !notice && !could_matter(kind, line, facts) {
+        return;
+    }
+    let Some(v) = super::super::lines::parse(line) else {
+        return;
+    };
+    if let Some(beat) = crate::agents::beat_of(kind, &v) {
+        note_record(facts, kind, &v, &beat);
+    }
+    if notice {
+        let text = String::from_utf8_lossy(line);
+        if let Some(r) = record_of(kind, &text, start) {
+            note_notice(facts, &r, crate::agents::run_of_record(kind, &v).is_some());
         }
     }
+}
+
+/// 这一行可能动通知组（快路，**只许放过、不许误拦**）：一组还接得上 ⇒ 哪一行都可能把它隔开；否则只有说到子运行的那几行
+/// （那一家的预筛 `ChildFace.hint`，收场通知在里面）可能起一组；那一家没有这一格 ⇒ 照事实的快路。
+fn notice_may(kind: &str, line: &[u8], facts: &SessionFacts) -> bool {
+    if facts.notice_log.open {
+        return true;
+    }
+    match crate::agents::record_face(kind).and_then(|r| r.children) {
+        Some(c) => (c.hint)(&String::from_utf8_lossy(line)),
+        None => could_matter(kind, line, facts),
+    }
+}
+
+/// 一行 ⇒ 它翻成的通用记录（那一家的记录面；翻不成 · 不成记录 ⇒ `None`）。
+pub(crate) fn record_of(
+    kind: &str,
+    text: &str,
+    start: u64,
+) -> Option<crate::agents::record::Record> {
+    let parse = crate::agents::record_face(kind)?.parse;
+    parse(&crate::agents::Line::of(kind, text, start))
+        .ok()
+        .flatten()
+        .and_then(|t| t.record)
+}
+
+/// 一条通用记录记进通知组（口径的唯一住址）：收场通知 ⇒ 组接得上就并进最后一组、否则起一组（超 [`NOTICE_KEEP`] 丢最早的）；
+/// 别的记录画成旁注细条 · 不画 ⇒ 组照旧接得上，画出来的 ⇒ 隔开。子运行的记录不在主消息流里，不算。
+pub(crate) fn note_notice(f: &mut SessionFacts, rec: &crate::agents::record::Record, sub: bool) {
+    use crate::agents::record::{Body, Draw};
+    if sub {
+        return;
+    }
+    let log = &mut f.notice_log;
+    if let Body::Said { who, .. } = &rec.body {
+        if let crate::agents::Speaker::TaskNotification { task_id, end, .. } = &who.speaker {
+            let seen = NoticeSeen {
+                id: rec.id.clone(),
+                task: task_id.clone(),
+                end: *end,
+                at_ms: rec
+                    .at
+                    .as_deref()
+                    .and_then(crate::common::time::parse_iso8601_ms),
+            };
+            match log.runs.last_mut() {
+                Some(run) if log.open => run.push(seen),
+                _ => {
+                    log.runs.push(vec![seen]);
+                    if log.runs.len() > NOTICE_KEEP {
+                        log.runs.remove(0);
+                    }
+                }
+            }
+            log.open = true;
+            return;
+        }
+    }
+    if !matches!(rec.draw, Draw::Strip | Draw::None) {
+        log.open = false;
+    }
+}
+
+/// 主线外的记录（回退出来的岔）不进通知组：照主线外清单剔掉，剔空的组不留；最后一组剔空了 ⇒ 下一条通知另起一组。
+pub(crate) fn drop_off_notices(f: &mut SessionFacts, off: &std::collections::HashSet<&str>) {
+    let log = &mut f.notice_log;
+    for run in &mut log.runs {
+        run.retain(|s| !off.contains(s.id.as_str()));
+    }
+    if log.runs.last().is_some_and(Vec::is_empty) {
+        log.open = false;
+    }
+    log.runs.retain(|r| !r.is_empty());
+}
+
+/// 出口那一下照累加的通知组与此刻的 `handed_back` 写 [`SessionFacts::notices`]（组头的钟面照看的那一台的时区写）。
+pub(crate) fn settle_notices(f: &mut SessionFacts, tz: &crate::common::time::Tz) {
+    use cmd_wire::record::TaskEnd;
+    let back = &f.handed_back;
+    f.notices = f
+        .notice_log
+        .runs
+        .iter()
+        .filter_map(|run| {
+            let first = run.first()?;
+            let gone = |s: &NoticeSeen| s.task.as_ref().is_some_and(|t| back.contains(t));
+            let shown: Vec<&NoticeSeen> = run.iter().filter(|s| !gone(s)).collect();
+            let fails = shown
+                .iter()
+                .filter(|s| s.end == Some(TaskEnd::Failed))
+                .count();
+            let head = (shown.len() > 1).then(|| {
+                let ats = shown.iter().filter_map(|s| s.at_ms);
+                let span = match (ats.clone().min(), ats.max()) {
+                    (Some(a), Some(b)) => {
+                        let (from, to) = (
+                            crate::common::time::ms_hm(a, tz),
+                            crate::common::time::ms_hm(b, tz),
+                        );
+                        if from == to {
+                            from
+                        } else {
+                            format!("{from}–{to}")
+                        }
+                    }
+                    _ => String::new(),
+                };
+                let fail = if fails > 0 {
+                    copy_core::copy_text("speaker.notice.fails", &[("n", &fails.to_string())])
+                } else {
+                    String::new()
+                };
+                Words(copy_core::copy_text(
+                    "speaker.notice.many",
+                    &[
+                        ("n", &shown.len().to_string()),
+                        ("span", &span),
+                        ("fail", &fail),
+                    ],
+                ))
+            });
+            Some(NoticeRun {
+                id: first.id.clone(),
+                members: run.iter().map(|s| s.id.clone()).collect(),
+                hidden: run
+                    .iter()
+                    .filter(|s| gone(s))
+                    .map(|s| s.id.clone())
+                    .collect(),
+                head,
+                failed: fails > 0,
+            })
+        })
+        .collect();
 }
 
 /// 只要 `mcp` 那一格：从 `r` 此刻的位置读到尾，只解析快路放过的完整行（那一家的快路只问 MCP 那一格）、
@@ -1500,15 +1691,16 @@ fn short_tokens(n: u64) -> String {
     }
 }
 
-/// 骨架落盘那一形（`observe::skeleton`）：线上那一形跳过的 [`TokenUse::last`] 另落一格，读回来放回去。
+/// 骨架落盘那一形（`observe::skeleton`）：线上那一形跳过的 [`TokenUse::last`] · [`SessionFacts::notice_log`] 另落一格，读回来放回去。
 pub(crate) mod skel {
-    use super::{LastRequest, SessionFacts};
+    use super::{LastRequest, NoticeLog, SessionFacts};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     #[derive(Serialize)]
     struct Ref<'a> {
         facts: &'a SessionFacts,
         last: Option<&'a LastRequest>,
+        notices: &'a NoticeLog,
     }
 
     #[derive(Deserialize)]
@@ -1516,21 +1708,28 @@ pub(crate) mod skel {
     struct Owned {
         facts: SessionFacts,
         last: Option<LastRequest>,
+        notices: NoticeLog,
     }
 
     pub(crate) fn serialize<S: Serializer>(f: &&SessionFacts, s: S) -> Result<S::Ok, S::Error> {
         Ref {
             facts: f,
             last: f.tokens.as_ref().and_then(|t| t.last.as_ref()),
+            notices: &f.notice_log,
         }
         .serialize(s)
     }
 
     pub(crate) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<SessionFacts, D::Error> {
-        let Owned { mut facts, last } = Owned::deserialize(d)?;
+        let Owned {
+            mut facts,
+            last,
+            notices,
+        } = Owned::deserialize(d)?;
         if let Some(t) = facts.tokens.as_mut() {
             t.last = last;
         }
+        facts.notice_log = notices;
         Ok(facts)
     }
 }

@@ -45,6 +45,21 @@
     "modelPick": null,
     "modelText": null,
     "needs": null,
+    "notices": [
+      {
+        "failed": true,
+        "head": "后台任务 ×2 · 07:31–07:33 · 失败 ×1",
+        "hidden": [
+          "n-1"
+        ],
+        "id": "n-1",
+        "members": [
+          "n-1",
+          "n-2",
+          "n-3"
+        ]
+      }
+    ],
     "pending": [
       {
         "at": "t3",

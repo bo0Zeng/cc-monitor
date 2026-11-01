@@ -5,6 +5,7 @@
 use super::*;
 use crate::agents::UserTextExt as _;
 use crate::agents::{Pasted, Speaker, UserText};
+use cmd_wire::record::TaskEnd;
 use serde_json::{json, Value};
 
 #[test]
@@ -121,6 +122,8 @@ fn record_fields_decide_first() {
             status: Some("completed".into()),
             summary: Some("甲完成了".into()),
             tool_use_id: Some("toolu_1".into()),
+            end: Some(TaskEnd::Done),
+            row: None,
         }
     );
     assert_eq!(
@@ -133,7 +136,9 @@ fn record_fields_decide_first() {
             task_id: None,
             status: None,
             summary: None,
-            tool_use_id: None
+            tool_use_id: None,
+            end: None,
+            row: None,
         }
     );
     assert_eq!(
@@ -253,7 +258,9 @@ fn the_sub_agent_side() {
             task_id: Some("c3".into()),
             status: Some("failed".into()),
             summary: Some("乙".into()),
-            tool_use_id: None
+            tool_use_id: None,
+            end: Some(TaskEnd::Failed),
+            row: None,
         }
     );
     // 同一段没有记录级字段（老版本）也认得出：标记行与框都是具名的。
@@ -282,6 +289,23 @@ fn the_sub_agent_side() {
     assert_eq!(kind(&fork), "agentTask");
 }
 
+/// 收场通知的状态词只在 `Notice::end` 翻一次：运行表与记录成品都照它。
+#[test]
+fn notice_end_reads_the_status_word_once() {
+    let end = |status: &str| {
+        task_notice(&format!(
+            "<task-notification>\n<task-id>x</task-id>\n<status>{status}</status>\n</task-notification>"
+        ))
+        .unwrap()
+        .end()
+    };
+    assert_eq!(end("completed"), Some(TaskEnd::Done));
+    assert_eq!(end("failed"), Some(TaskEnd::Failed));
+    assert_eq!(end("killed"), Some(TaskEnd::Stopped));
+    assert_eq!(end("stopped"), Some(TaskEnd::Stopped));
+    assert_eq!(end("running"), None);
+}
+
 #[test]
 fn named_frames_without_record_fields() {
     let plain = |t: &str| rec(t, json!({}));
@@ -291,7 +315,9 @@ fn named_frames_without_record_fields() {
             task_id: Some("d4".into()),
             status: Some("killed".into()),
             summary: None,
-            tool_use_id: None
+            tool_use_id: None,
+            end: Some(TaskEnd::Stopped),
+            row: None,
         }
     );
     assert_eq!(
@@ -666,6 +692,8 @@ fn the_index_kind_is_the_wire_kind() {
             status: None,
             summary: None,
             tool_use_id: None,
+            end: None,
+            row: None,
         },
         Speaker::AgentMessage {
             from: None,
