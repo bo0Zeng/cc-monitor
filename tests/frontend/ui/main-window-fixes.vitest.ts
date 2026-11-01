@@ -525,6 +525,7 @@ describe("上下文那一格：状态栏与监控板照抄同一份核心成品"
     background: null,
     answerOff: null,
     autoAnswer: null,
+    autoAnswerChoices: [],
     autoAnswered: null,
     quietUnread: null,
     usage: {
