@@ -40,8 +40,12 @@ case "${1:-}" in
   *) echo "quick-check：不认识的参数 $1（只认 --plan · --only <段>）" >&2; exit 2 ;;
 esac
 # 后端那棵 workspace 的包 → 编进它的路径（git 路径规格，空格分隔）
+#   每个后端成员一行（路径照它的目录）；主 crate 那一行排除拆出去的那几个包的目录。
 # shellcheck disable=SC2034  # 两张包表都经 clippy_step 的 nameref 读
-clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/ssh-dial/ :(exclude)src/backend/deploy/" "ssh-dial:src/backend/ssh-dial/" "deploy:src/backend/deploy/" "mobcore:src/mobile/core-rs/rust/")
+clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/ssh-dial/ :(exclude)src/backend/deploy/ :(exclude)src/backend/egress/ :(exclude)src/backend/platform/ :(exclude)src/backend/test-meters/"
+  "backend-platform:src/backend/platform/ tests/backend/platform/ tests/backend/tmux_sandbox.rs"
+  "test-meters:src/backend/test-meters/ tests/backend/alloc_probe.rs tests/backend/alloc_probe_tests.rs tests/backend/golden.rs"
+  "ssh-dial:src/backend/ssh-dial/" "deploy:src/backend/deploy/" "egress:src/backend/egress/" "mobcore:src/mobile/core-rs/rust/")
 # 壳那棵 workspace 里带禁用名单的包 → 编进它的路径（连它读的那份 clippy.toml）
 # shellcheck disable=SC2034
 shell_clippy_pkgs=("monitor:src/frontend/shell/ tests/frontend/shell/ src/frontend/clippy.toml" "cc-monitor-filewin:src/frontend/filewin/ tests/frontend/filewin/ src/frontend/clippy.toml" "resident-client:src/comms/resident-client/ tests/comms/resident-client/ src/comms/clippy.toml" "comms-inward:src/comms/inward/ tests/comms/inward/ src/comms/clippy.toml" "comms-outward:src/comms/outward/ tests/comms/outward/")
@@ -248,7 +252,8 @@ echo "快检 $(git log --oneline -1 | cut -c1-60)"
 [ -n "$only" ] && { "${only}_step"; verdict; }
 if [ ! -x node_modules/.bin/tsc ]; then echo "  --   node_modules 不在（新树）⇒ npm ci"; run env npm_config_cache="$npm_cache" npm ci --prefer-offline --no-audit --no-fund >/dev/null 2>&1 || { echo "QUICK: 红 —— npm ci 失败"; exit 1; }; fi
 step fmt          runcargo bash -c 'cd src/frontend/shell && cargo fmt --all --check'
-step fmt-backend  runcargo bash -c 'cd src/backend && cargo fmt --check -p cc-monitor-backend -p ssh-dial -p deploy'
+# 后端那棵的包名单从 `cargo metadata --no-deps` 现取（手机嵌的 `mobcore` 除外；与门禁 `fmt-backend` 那一格同一条取法）。
+step fmt-backend  runcargo bash -c 'cd src/backend && pkgs=$(cargo metadata --no-deps --offline --format-version 1 | python3 -c "import json, sys; print(\" \".join(\"-p \" + p[\"name\"] for p in json.load(sys.stdin)[\"packages\"] if p[\"name\"] != \"mobcore\"))") && [ -n "$pkgs" ] || { echo "fmt-backend: cargo metadata 一个包都没取到"; exit 1; }; cargo fmt --check $pkgs'
 step tsc          run node_modules/.bin/tsc --noEmit
 # 便宜的静态格：只读盘上文本，合计十来秒（shellcheck 按核数并起）。名单只住 ci.yml `static-gate` 那个 job 的 GATE_ONLY。
 static=$(awk '/^  static-gate:/{f=1} f&&/GATE_ONLY:/{sub(/.*GATE_ONLY:[[:space:]]*/,""); print; exit}' .github/workflows/ci.yml 2>/dev/null)

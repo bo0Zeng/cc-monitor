@@ -1101,7 +1101,7 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
 fn the_listen_env_names_are_the_same_string_on_both_sides() {
     // env 名住后端最下层那一份（帧面监听引它）。
     let names = include_str!("../../../src/backend/platform/child_env.rs");
-    for (backend, vis, rust_name, ours) in [(names, "pub(crate) ", "RESIDENT", RESIDENT_ENV)] {
+    for (backend, vis, rust_name, ours) in [(names, "pub ", "RESIDENT", RESIDENT_ENV)] {
         let head = format!("{vis}const {rust_name}: &str =");
         let line = backend
             .lines()

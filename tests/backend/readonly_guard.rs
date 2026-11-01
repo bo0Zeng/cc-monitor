@@ -1787,6 +1787,19 @@ mod g6_dependency_signoff {
     /// 只在远端 musl 版才链的那一段（今天只有分配器 `mimalloc`，判据 `allocator_guard`）。
     const MUSL_DEPS: &str = "[target.'cfg(target_env = \"musl\")'.dependencies]";
     const DEP_SECTIONS: &[&str] = &[DEPS, DEV_DEPS, MUSL_DEPS];
+    /// 「我们写下的依赖」的版本与缺省 feature 住的那一段（根清单）：各成员段里只写 `<名>.workspace = true`。
+    const WS_DEPS: &str = "[workspace.dependencies]";
+    /// 同一棵 workspace 里不归本判据管的成员（目录, 为什么）：它们的清单手机那一侧也单读，版本照旧自己写、与根清单那一段对齐。
+    const NOT_COVERED: &[(&str, &str)] = &[
+        ("ssh-dial", "拨号核心：手机的 `mobcore` 也链它，清单自带版本，由 `dial_compress_tests` 钉 russh 那一行与各清单对齐"),
+        ("deploy", "装 / 升级远端后端的编排：手机同链，清单自带版本"),
+        ("egress", "出网口：手机同链，清单自带版本"),
+        ("../mobile/core-rs/rust", "手机嵌的 Rust 核心（`mobcore`）：Gradle 那一侧单编它，清单自带版本"),
+    ];
+    /// 只在 dev 侧的成员（包名）：它们的 `[dependencies]` 只进测试二进制，签字记在 [`DEV_DEPS`] 那一档。
+    const DEV_ONLY_MEMBERS: &[&str] = &["test-meters"];
+    /// 仓内成员只给上层测试档开的 feature：只许出现在 `[dev-dependencies]`。
+    const TEST_ONLY_FEATURES: &[&str] = &["test-support", "ts"];
 
     /// 判档：**闭集**，名字只有这一处住址（表里与签字行都引这几个常量，不写第二遍字面量）。
     const MEASURED_WRITES: &str = "已量·有写面";
@@ -2146,6 +2159,14 @@ mod g6_dependency_signoff {
              与 monitor 那一侧同一个用法（C01），版本是 monitor 那份 lock 早已解析的 `12.0.1`",
         ),
         (
+            "ts-rs",
+            DEPS,
+            UNMEASURED,
+            "拆出去的那几层（`backend-*`）被上层线上类型嵌着的类型导出 TS 用：`optional`，只在它们自己的 `ts` feature 下编进来，\
+             而开 `ts` 的只有上层的 `[dev-dependencies]`（`members_write_third_party_dependencies_only_through_the_workspace_table` 钉）\
+             ⇒ 不进发布二进制；写面同上一行（`cargo test` 往 `src/frontend/ui/generated/` 写生成物）",
+        ),
+        (
             "tokio",
             DEV_DEPS,
             UNMEASURED,
@@ -2216,6 +2237,19 @@ mod g6_dependency_signoff {
              落盘那一形要另一条 crate，而本清单上没有",
         ),
         (
+            "tracing",
+            DEV_DEPS,
+            UNMEASURED,
+            "量具包 `test-meters` 的 `heard`（听本线程上一段代码期间说了什么）用它装一个临时的订阅者。\
+             量具包只在各成员的 `[dev-dependencies]`，**只在测试期链接**；与 `[dependencies]` 里那一条同一个包",
+        ),
+        (
+            "tracing-subscriber",
+            DEV_DEPS,
+            UNMEASURED,
+            "同上一行（`heard` 的订阅者把字写进内存里的一块缓冲，不落盘）。**只在测试期链接**；与 `[dependencies]` 里那一条同一个包",
+        ),
+        (
             "mimalloc",
             MUSL_DEPS,
             UNMEASURED,
@@ -2261,7 +2295,18 @@ mod g6_dependency_signoff {
     /// ⚠ 剥 `#` 整行注释走 `guard_core` 的**共享原语**，不在这里自己写第二份 ——
     /// 本函数第一版内联了一个 `#` 过滤，而 monitor 侧那张「剥注释实现只许一份」的登记表
     /// **当场逮住了它**（09-04 现打；它的人群跨三棵树，backend 这一侧也在里面）。
+    ///
+    /// 条目认两种写法：`<名> = …` 与 `<名>.workspace = true`（版本在根清单的 [`WS_DEPS`] 那一段）。
+    /// [`WS_DEPS`] 那一段本身不在这里出现：它只记版本与缺省 feature，链不链、在哪一段链看各段里那一行（[`ws_dep_names`] 读它）。
     fn dep_entries(manifest_text: &str) -> Vec<(String, String, String)> {
+        sectioned_entries(manifest_text)
+            .into_iter()
+            .filter(|(s, ..)| s != WS_DEPS)
+            .collect()
+    }
+
+    /// 所有以 `dependencies]` 收尾的段（连 [`WS_DEPS`]）里的条目：`(段名, crate 名, 那一行原文)`。
+    fn sectioned_entries(manifest_text: &str) -> Vec<(String, String, String)> {
         let mut out: Vec<(String, String, String)> = Vec::new();
         let mut section = String::new();
         let uncommented = guard_core::strip_hash_comment_lines(manifest_text);
@@ -2281,7 +2326,8 @@ mod g6_dependency_signoff {
             let Some((key, _)) = entry.split_once('=') else {
                 continue;
             };
-            let name = key.trim();
+            let key = key.trim();
+            let name = key.strip_suffix(".workspace").unwrap_or(key);
             if name.is_empty()
                 || !name
                     .chars()
@@ -2296,12 +2342,221 @@ mod g6_dependency_signoff {
         out
     }
 
+    /// 根清单 [`WS_DEPS`] 那一段里记了版本的名字。
+    fn ws_dep_names(manifest_text: &str) -> std::collections::BTreeSet<String> {
+        sectioned_entries(manifest_text)
+            .into_iter()
+            .filter(|(s, ..)| s == WS_DEPS)
+            .map(|(_, n, _)| n)
+            .collect()
+    }
+
+    /// 一条依赖那一行引的是 [`WS_DEPS`] 那一段（`<名>.workspace = true` · `<名> = { workspace = true, … }`）。
+    fn refers_to_workspace(line: &str) -> bool {
+        let (key, value) = line.split_once('=').unwrap_or((line, ""));
+        key.trim().ends_with(".workspace")
+            || value
+                .split(|c: char| c == '{' || c == ',' || c == '}')
+                .any(|kv| kv.split_whitespace().collect::<String>() == "workspace=true")
+    }
+
+    /// 一条依赖那一行是仓内 crate（`path = "…"`）。
+    fn is_path_dep(line: &str) -> bool {
+        line.split_once('=').is_some_and(|(_, v)| {
+            v.split(|c: char| c == '{' || c == ',' || c == '}')
+                .any(|kv| kv.trim_start().starts_with("path"))
+        })
+    }
+
+    /// 本判据管的成员：后端那棵 workspace 的 `members` 去掉 [`NOT_COVERED`]（主 crate 与拆出来的 `backend-*` · 量具包）。
+    /// `(目录（相对根清单）, 包名, 只在 dev 侧, 清单原文)`；读不到就点名红，不静默少一份。
+    fn covered_members() -> Vec<(String, String, bool, String)> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let members_line = guard_core::strip_hash_comment_lines(MANIFEST)
+            .lines()
+            .find(|l| l.trim_start().starts_with("members"))
+            .map(str::to_string)
+            .expect("根清单里没有 `members`");
+        members_line
+            .split('"')
+            .skip(1)
+            .step_by(2)
+            .filter(|m| !NOT_COVERED.iter().any(|(d, _)| d == m))
+            .map(|m| {
+                let text = if m == "." {
+                    MANIFEST.to_string()
+                } else {
+                    let p = root.join(m).join("Cargo.toml");
+                    std::fs::read_to_string(&p)
+                        .unwrap_or_else(|e| panic!("读不到成员清单 {}：{e}", p.display()))
+                };
+                let name =
+                    package_name(&text).unwrap_or_else(|| panic!("成员 `{m}` 的清单里抽不出包名"));
+                let dev_only = DEV_ONLY_MEMBERS.contains(&name.as_str());
+                (m.to_string(), name, dev_only, text)
+            })
+            .collect()
+    }
+
+    /// `[package]` 那一段的 `name = "…"`。
+    fn package_name(manifest_text: &str) -> Option<String> {
+        let mut in_package = false;
+        for line in guard_core::strip_hash_comment_lines(manifest_text).lines() {
+            let entry = line.trim();
+            if entry.starts_with('[') {
+                in_package = entry == "[package]";
+                continue;
+            }
+            match entry.split_once('=') {
+                Some((key, value)) if in_package && key.trim() == "name" => {
+                    return Some(value.trim().trim_matches('"').to_string());
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// 签字的分母：本判据管的每个成员各段的条目并起来。成员之间的互引（`backend-*` · 量具包）不算依赖，不签字；
+    /// 只在 dev 侧的成员（量具包）的 `[dependencies]` 记进 [`DEV_DEPS`] —— 它自己只许被别的成员写在 `[dev-dependencies]` 里
+    /// （[`members_write_third_party_dependencies_only_through_the_workspace_table`] 钉）。
+    fn declared_all() -> Vec<(String, String, String)> {
+        let members = covered_members();
+        let names: Vec<&str> = members.iter().map(|(_, n, ..)| n.as_str()).collect();
+        let mut out: Vec<(String, String, String)> = members
+            .iter()
+            .flat_map(|(_, _, dev_only, text)| {
+                dep_entries(text).into_iter().map(move |(s, n, l)| {
+                    let s = if *dev_only && s == DEPS {
+                        DEV_DEPS.to_string()
+                    } else {
+                        s
+                    };
+                    (s, n, l)
+                })
+            })
+            .filter(|(_, n, _)| !names.contains(&n.as_str()))
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
     /// 清单的依赖段里某一条依赖的**那一行原文**（`None` = 那一段里没有这条依赖）。
     fn dep_line(manifest_text: &str, name: &str) -> Option<String> {
         dep_entries(manifest_text)
             .into_iter()
             .find(|(_, n, _)| n.as_str() == name)
             .map(|(_, _, line)| line)
+    }
+
+    /// 一份成员清单里不经 [`WS_DEPS`]、自己写了版本的第三方依赖（`段 · 那一行`）。**纯函数**，能喂合成清单。
+    fn bare_third_party(manifest_text: &str) -> Vec<String> {
+        dep_entries(manifest_text)
+            .into_iter()
+            .filter(|(_, _, l)| !refers_to_workspace(l) && !is_path_dep(l))
+            .map(|(s, _, l)| format!("  {s}：{l}"))
+            .collect()
+    }
+
+    /// 一份成员清单的 `[dependencies]`（含按平台分的那几段）里给仓内成员开了只给测试用的 feature 的那几行。**纯函数**。
+    fn test_features_in_release_deps(manifest_text: &str) -> Vec<String> {
+        dep_entries(manifest_text)
+            .into_iter()
+            .filter(|(s, _, l)| {
+                s != DEV_DEPS
+                    && TEST_ONLY_FEATURES
+                        .iter()
+                        .any(|f| l.contains(&format!("\"{f}\"")))
+            })
+            .map(|(s, _, l)| format!("  {s}：{l}"))
+            .collect()
+    }
+
+    /// ★ 第三方依赖的版本与缺省 feature 只住根清单的 [`WS_DEPS`]：本判据管的成员里，不是仓内 crate 的依赖一律
+    /// `.workspace = true`（子清单里偷写一条带版本的 ⇒ 红）；那一段与各成员引到的名字两向相等；
+    /// 只在 dev 侧的成员只出现在别人的 `[dev-dependencies]`；只给测试用的 feature 不进 `[dependencies]`。
+    #[test]
+    fn members_write_third_party_dependencies_only_through_the_workspace_table() {
+        let members = covered_members();
+        assert!(
+            members.len() >= 3 && members.iter().any(|(d, ..)| d == "."),
+            "本判据管的成员只认出 {}（至少主 crate · 平台层 · 量具包）—— 读 `members` 坏了，本条在空转",
+            members.len()
+        );
+        let mut bare = Vec::new();
+        let mut gated = Vec::new();
+        let mut referenced = std::collections::BTreeSet::new();
+        let dev_only: Vec<&str> = members
+            .iter()
+            .filter(|(_, _, d, _)| *d)
+            .map(|(_, n, ..)| n.as_str())
+            .collect();
+        let mut dev_only_misplaced = Vec::new();
+        for (dir, _, _, text) in &members {
+            bare.extend(
+                bare_third_party(text)
+                    .into_iter()
+                    .map(|l| format!("{dir}{l}")),
+            );
+            gated.extend(
+                test_features_in_release_deps(text)
+                    .into_iter()
+                    .map(|l| format!("{dir}{l}")),
+            );
+            for (s, n, l) in dep_entries(text) {
+                if refers_to_workspace(&l) {
+                    referenced.insert(n.clone());
+                }
+                if dev_only.contains(&n.as_str()) && s != DEV_DEPS {
+                    dev_only_misplaced.push(format!("  {dir} {s}：{l}"));
+                }
+            }
+        }
+        assert!(
+            bare.is_empty(),
+            "这几条第三方依赖在成员清单里自己写了版本（要写成 `<名>.workspace = true`，版本与缺省 feature 只住根清单的 `{WS_DEPS}`）：\n{}",
+            bare.join("\n")
+        );
+        assert!(
+            gated.is_empty(),
+            "只给测试用的 feature（{}）开在了发布构建也链的段里 —— 测试专用的那几样会进发布二进制：\n{}",
+            TEST_ONLY_FEATURES.join(" · "),
+            gated.join("\n")
+        );
+        assert!(
+            dev_only_misplaced.is_empty(),
+            "只在 dev 侧的成员（{}）出现在了 `[dev-dependencies]` 以外 —— 它那几条依赖记在 dev 那一档签字，前提没了：\n{}",
+            dev_only.join(" · "),
+            dev_only_misplaced.join("\n")
+        );
+        let in_table = ws_dep_names(MANIFEST);
+        assert!(
+            in_table.len() >= 15,
+            "根清单 `{WS_DEPS}` 里只抽出 {} 条 —— 抽取坏了，本条在空转",
+            in_table.len()
+        );
+        assert_eq!(
+            in_table, referenced,
+            "根清单 `{WS_DEPS}` 里记了版本的 ≠ 各成员引到的（多出来的是没人用的版本；少的那条 cargo 会报找不到）"
+        );
+        // 反空真：合成清单上，偷写版本的 · 开测试 feature 的各认出一条；经表的 · 仓内的不报。
+        let fake = format!(
+            "[package]\nname = \"backend-某层\"\n\n{DEPS}\nserde.workspace = true\nlibc = \"0.2\"\n\
+             tokio = {{ workspace = true, features = [\"sync\"] }}\nbackend-lower = {{ path = \"../lower\", features = [\"{}\"] }}\n\n\
+             {DEV_DEPS}\nbackend-lower = {{ path = \"../lower\", features = [\"{}\"] }}\n",
+            TEST_ONLY_FEATURES[0], TEST_ONLY_FEATURES[0]
+        );
+        assert_eq!(
+            bare_third_party(&fake),
+            vec![format!("  {DEPS}：libc = \"0.2\"")],
+            "合成清单里偷写版本的那一条没认准"
+        );
+        assert_eq!(
+            test_features_in_release_deps(&fake).len(),
+            1,
+            "合成清单里 `[dependencies]` 开测试 feature 的那一条没认出（`[dev-dependencies]` 那条不该报）"
+        );
     }
 
     /// 没签字的那些（诊断用的住址表）。**纯函数** —— 能直接喂合成清单，
@@ -2476,7 +2731,7 @@ mod g6_dependency_signoff {
     /// ★ 正题：**清单上每一条依赖都得有一行签字**，而带依赖的段本身也钉住。
     #[test]
     fn every_dependency_this_manifest_declares_carries_a_signature() {
-        let declared = dep_entries(MANIFEST);
+        let declared = declared_all();
         // 抽取器自检：分母塌了下面两条一起零命中地绿。
         assert!(
             declared.len() >= 15,
@@ -2538,7 +2793,7 @@ mod g6_dependency_signoff {
                 unlock.trim().chars().count()
             );
         }
-        let declared = dep_entries(MANIFEST);
+        let declared = declared_all();
         for (name, sect, verdict, _) in SIGNED {
             assert!(
                 is_verdict(verdict),

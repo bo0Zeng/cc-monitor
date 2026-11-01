@@ -120,6 +120,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
+name = "backend-platform"
+version = "0.0.0"
+dependencies = [
+ "acct-core",
+ "cmd-wire",
+ "copy-core",
+ "creds-core",
+ "guard-core",
+ "jiff",
+ "libc",
+ "notify",
+ "own-chan",
+ "pidwatch-core",
+ "portable-pty",
+ "relay-route-core",
+ "russh",
+ "serde",
+ "serde_json",
+ "shell-quote-core",
+ "ssh-dial",
+ "test-home",
+ "test-meters",
+ "tokio",
+ "tracing",
+ "ts-rs",
+ "walkdir",
+ "win-path-core",
+]
+
+[[package]]
 name = "base16ct"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -255,6 +285,7 @@ name = "cc-monitor-backend"
 version = "0.0.0"
 dependencies = [
  "acct-core",
+ "backend-platform",
  "batch-core",
  "cmd-wire",
  "comms-inward",
@@ -288,6 +319,7 @@ dependencies = [
  "ssh-dial",
  "tar",
  "test-home",
+ "test-meters",
  "tokio",
  "toml_edit",
  "tracing",
@@ -2759,6 +2791,16 @@ version = "0.1.0"
 dependencies = [
  "ctor",
  "libc",
+]
+
+[[package]]
+name = "test-meters"
+version = "0.0.0"
+dependencies = [
+ "guard-core",
+ "test-home",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

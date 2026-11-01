@@ -267,7 +267,7 @@ fn the_detached_backend_is_handed_its_stderr_log_path_and_only_that_carrier_is()
     let backend = include_str!("../../../src/backend/platform/child_env.rs");
     guard_core::pin_line(
         backend,
-        "pub(crate) const STDERR_LOG: &str = \"CCM_BACKEND_STDERR_LOG\";",
+        "pub const STDERR_LOG: &str = \"CCM_BACKEND_STDERR_LOG\";",
     )
     .unwrap_or_else(|e| panic!("后端读的变量名变了（或不是恰好一处）：{e}"));
     assert_eq!(BACKEND_STDERR_LOG_ENV, "CCM_BACKEND_STDERR_LOG");

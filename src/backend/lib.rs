@@ -25,8 +25,7 @@ mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与
 mod agent_locality_guard; // S2：agent 的格式知识只许住 agents/<名>/ + 通用层零个 agent 名字面量（整体 #[cfg(test)]）
 pub mod agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode）
 #[cfg(test)]
-#[path = "../../tests/backend/alloc_probe.rs"]
-mod alloc_probe; // 线程级内存量具（`VmHWM` 是进程级的，会把邻居测试算进来）
+use test_meters::alloc_probe; // 线程级内存量具（`VmHWM` 是进程级的，会把邻居测试算进来；住 dev 侧的量具包）
 #[cfg(test)]
 #[path = "../../tests/backend/allocator_guard.rs"]
 mod allocator_guard; // 远端 musl 版的全局分配器是 mimalloc，本机 glibc 版与 Windows 版不换（整体 #[cfg(test)]）
@@ -47,8 +46,7 @@ pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻�
 mod flow_scripts_guard; // flow3：流程工具（门禁入口 · 挑格 · 重活隔离 · 推候选分支）在仓里、能跑、不写家目录（整体 #[cfg(test)]）
 pub mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
 #[cfg(test)]
-#[path = "../../tests/backend/golden.rs"]
-mod golden; // 金样判据只比不写；现打的落 `.build/golden/`，由 `tests/scripts/bless-golden.sh` 拷回（仅测试构建）
+use test_meters::golden; // 金样判据只比不写；现打的落 `.build/golden/`，由 `tests/scripts/bless-golden.sh` 拷回（住 dev 侧的量具包）
 pub mod history; // 历史清单与注解（history_list · history_annotations）
 pub mod host; // 宿主口：终端住在哪种宿主里（tmux · 托管），起 tmux 进程只在 `host/tmux.rs`；control · observe 都引它，它不引那两层
 #[cfg(test)]
@@ -60,7 +58,13 @@ pub mod lineage; // 会话血缘：谁起的谁（中转那一处认，只存 `~
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 pub mod observe; // U3：观测面 —— 读，不改变世界
 pub mod plan; // 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `changed {plan}`（只读，一个字节都不写）
-pub mod platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线）
+pub use backend_platform as platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线；独立的包 `backend-platform`）
+#[cfg(test)]
+#[path = "../../tests/backend/platform/cross_tests.rs"]
+mod platform_cross_tests; // 平台层判据里引到上层的那几条（平台层是独立的包、够不到上层）
+#[cfg(test)]
+#[path = "../../tests/backend/platform/fs/own_bytes_golden.rs"]
+mod platform_own_bytes_golden; // 经上层各写口写几份自有文件、盘上字节与金样逐字比（平台层的 `Own` 那一套）
 pub mod plugin; // 插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（方向由 layering_guard 钉）
 #[cfg(test)]
 #[path = "../../tests/backend/plugin_walk_fixture.rs"]
@@ -78,8 +82,10 @@ mod ratchet_guard; // 动过的那几张登记表，**断言那几行**逐字没
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard;
 #[cfg(test)]
-#[path = "../../tests/backend/tmux_sandbox.rs"]
-mod tmux_sandbox; // 判据用的私有 tmux server（`-L` ＋ 私有 TMUX_TMPDIR，碰不到用户的默认 server；仅测试构建）
+#[path = "../../tests/backend/accounts/manage/side_name_exclusion_tests.rs"]
+mod side_name_exclusion_tests; // 平台层造的旁名进不了账号库的共享集（账号域拆成包时挪到 `accounts/manage/layout.rs` 底下）
+#[cfg(test)]
+use platform::tmux_sandbox; // 判据用的私有 tmux server（`-L` ＋ 私有 TMUX_TMPDIR，碰不到用户的默认 server；住平台层的 `test-support`）
 #[cfg(test)]
 #[path = "../../tests/backend/ts_export_guard.rs"]
 mod ts_export_guard; // ts-rs 生成物只落在登记的目录、同名只许一个出处（内部整体 #[cfg(test)]，生产构建为空）
