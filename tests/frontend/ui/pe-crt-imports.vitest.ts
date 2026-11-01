@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * Windows 程序导入表检查（`tests/scripts/pe-imports.mjs`）：发出去的 exe 不许动态链 C 运行库。
  * 没装 VC++ 运行库的 Windows 上，导入了 `VCRUNTIME140.dll` 的程序一起就弹「找不到 VCRUNTIME140.dll」。

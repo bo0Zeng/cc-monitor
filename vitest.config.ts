@@ -8,8 +8,8 @@ import { WALL_CEILING_MS } from "./tests/test-support/wall-ceiling";
 // jsdom 环境每份文件要另花半秒上下建一份 DOM（10-31 量：空用例 50 份，jsdom 0.56 s/份、node 0.14 s/份）。
 // 不碰 DOM 的文件放进 node 组省掉这一截。node 组收 `NODE_ENV_FILES` 这份明列的名单：逐份在 node 环境里跑过、
 // 通过与跳过的条数和 jsdom 下一样才进。jsdom 组收全部、减掉这份名单 ⇒ 新文件默认在 jsdom（慢些，但不会因为没有
-// `window` 红）；要进 node 组就把路径加进名单，文件头不另写 `@vitest-environment`（写了也要与所在组一致，判据扫着）。
-// 判据：`tests/frontend/ui/vitest-env-split.vitest.ts`（两组合起来恰好是全部、不重叠、名单每条都在盘上）。
+// `window` 红）；要进 node 组就把路径加进名单，测试文件里不写 `@vitest-environment`（判据扫着）。
+// 判据：`tests/frontend/ui/vitest-env-split.vitest.ts`（两组合起来恰好是全部、不重叠、名单每条都在盘上、测试文件里没有环境指令）。
 const NODE_ENV_FILES = [
   "tests/comms/inward/chan.vitest.ts",
   "tests/copy/clock-face.vitest.ts",

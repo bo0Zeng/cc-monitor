@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * 别名页里零处自己解析 ccm 参数（结构判据）。
  *
