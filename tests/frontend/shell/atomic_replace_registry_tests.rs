@@ -71,6 +71,13 @@ const SITES: &[(&str, &str, &str, &str, &str)] = &[
     //   那段原子上传随 SFTP 搬进本机常驻后端（`src/backend/ssh-dial/sftp.rs::put_atomic`，写只许两处）；本表只管 monitor。
     // 传输台那份（今 `transfer_relay.rs`）`[rename]`（`download_inner`：下载先写 `<local>.part` 再 rename 落地）这一行摘了 ——
     //   下载的本机落点随传输台搬进了本机常驻后端（`control/transfer.rs`，第三层文件管理写面），monitor 这一侧零 rename。
+    (
+        "platform/own_fs.rs",
+        "rename",
+        "rename",
+        "monitor 自己的文件（数据目录底下的状态 · bin/ 底下的部署物）",
+        "旁名先 sync_all 再换名上位；文件是我们自己的，tmp 的 ACL 覆盖上去没有受害者。用户文件不经这里。",
+    ),
 ];
 
 fn src_root() -> PathBuf {
