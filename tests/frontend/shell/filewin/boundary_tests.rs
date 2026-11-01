@@ -400,8 +400,6 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("machine_table::rows_now", Kind::Config),
     // 左栏「其他机器」点一台：那台在不在机器表里（只要名字，怎么连照本机后端的机器表）。
     ("machine_table::has", Kind::Config),
-    // 名单里本机那一项的名字：引 monitor 自己那一份哨兵值（不借窗口包的）。
-    ("inbound_client::LOCAL_ORIGIN", Kind::Config),
     ("config::resolve_monitor_data_dir", Kind::DataDir), // 原 `paths::`（`paths.rs` 并进 `config.rs`）
     // 视图文件（整窗缩放）的名字：全路径在这一侧拼好随种子交过去（窗口那一侧不引它）。
     ("data_paths::FILEWIN_VIEW_FILE", Kind::DataDir),

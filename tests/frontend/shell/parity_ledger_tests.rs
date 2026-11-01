@@ -336,7 +336,7 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
 const ASYMMETRY_REASONS: &[(&str, &str)] = &[
     ("session.launch", "远端那一侧不是一条 Tauri 命令：界面只交那台的名字、经通道直问本机后端 `terminal-ssh` 渲那一行，开窗走同一条 `open_terminal_window`；本机这一侧要带起始目录，才有 `open_local_terminal`。"),
     ("backend.deploy", "本机也要后端（入方向通道、每台机开关、tmux 帧都靠它），而且会自部署 —— `local_backend.rs::extract_embedded_to`（exe 旁没有本机后端就把内嵌那份释放到 `~/.cc-monitor/bin`）。不对称只在一格：**本机那次释放不经一条 IPC 命令**，是宿主启动时自己做的（`lib.rs` 的启动段），所以命令面上没有本机对侧。天然不对称说的是「不需要一条命令」，不是「不需要后端」。"),
-    ("mcp.list-origins", "`list_remote_mcp_origins` 答的是「哪几台远端有 MCP 配置」——「有哪些 origin」这个问题在本机侧退化成一台，没有可列的集合。⚠ 注意它与 `backend_machines` 不同：那条**包含**本机（`LOCAL_ORIGIN`），因为它答的是「哪几台有后端」而本机也有。"),
+    ("mcp.list-origins", "`list_remote_mcp_origins` 答的是「哪几台远端有 MCP 配置」——「有哪些 origin」这个问题在本机侧退化成一台，没有可列的集合。⚠ 注意它与 `backend_machines` 不同：那条**包含**本机（`cmd_wire::LOCAL`），因为它答的是「哪几台有后端」而本机也有。"),
     ("sftp.file-panel", "§40 天然不对称白名单第 1 条：本地有操作系统的文件管理器，不需要它。"),
     ("audit.monitor-own", "足迹里 **monitor 自己那台**那几行（`HostScope::Client`：本机 `ccm` 入口 · 终端 · shell profile …）的事实：monitor 只在一台机器上跑，远端那台没有 monitor，也就没有「它自己那几行」可答 —— 远端那一栏由那台后端自己答（`footprint-report` 不带 `client`，那一族不进人群）。不是欠一条对侧命令。"),
 ];
@@ -524,7 +524,7 @@ fn every_asymmetric_capability_has_a_reason() {
 
 /// ★★ **P2 之后 `origin` 不再是「远端专用」** —— 本条因此从一刀切禁改成**登记制**。
 ///
-/// `inbound_client::LOCAL_ORIGIN`（`"<local>"`）让本机也成为一个 origin，
+/// `cmd_wire::LOCAL`（`"<local>"`）让本机也成为一个 origin，
 /// 那正是 `C1`「本地要和远端一样，只是远端走 ssh、本地不走」在命令面上的样子。
 /// 一条 per-host 的命令**本来就该**吃 `origin`，两侧共用一个签名。
 ///
