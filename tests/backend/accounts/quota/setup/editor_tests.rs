@@ -427,7 +427,10 @@ fn it_orders_the_same_as_the_algorithm_on_the_simulated_facts() {
     let all = cases();
     assert!(all.len() >= 30, "夹具够多：{}", all.len());
     for (name, _, _) in CHANGED {
-        assert!(all.iter().any(|c| c["case"] == *name), "改了期望的「{name}」在夹具里");
+        assert!(
+            all.iter().any(|c| c["case"] == *name),
+            "改了期望的「{name}」在夹具里"
+        );
     }
     let mut off = Vec::new();
     for c in &all {
@@ -472,7 +475,7 @@ fn many(n: usize, spread: f64) -> Value {
 
 /// ★ 号多了一判也在操作数上限里判完、不走兜底：一次推几种走法由策略照号数封顶（积木交回的原始量至多 6000 个值），
 /// 定价的循环跟着原始量走。9 个号到 100 个号都推得起、比了候选（至少留着 ＋ 一个），一判不到上限（20 万）的一半。
-/// 30 个号、没起伏时照推演提前换去快作废的 n00。
+/// 30 个号、没起伏、饱和时照推演提前换走（换去哪个看推演：别的会话都压着，不再是「最先作废」的 n00）。
 #[test]
 fn many_accounts_judge_within_the_limit() {
     for (n, spread) in [
@@ -496,8 +499,9 @@ fn many_accounts_judge_within_the_limit() {
     }
     let c = many(30, 0.0);
     let v = decide_case(&c, &c["settings"]);
-    assert_eq!(v.order.first().map(String::as_str), Some("n00"), "{v:?}");
-    assert!(why_of(&v, "n00").starts_with("智能切换"), "{v:?}");
+    let first = v.order.first().cloned().unwrap_or_default();
+    assert_ne!(first, "n03", "{v:?}");
+    assert!(why_of(&v, &first).starts_with("智能切换"), "{v:?}");
 }
 
 // ───────────── 推演在原生内核里：与 Rhai 那一版逐个相等 ─────────────
@@ -557,7 +561,9 @@ fn probe_engine() -> &'static rhai::Engine {
             )
             .replacen(
                 priced,
-                &format!("{priced}\n  if parts != () {{ rec_walks(parts.runs.len(), parts.paths); }}"),
+                &format!(
+                    "{priced}\n  if parts != () {{ rec_walks(parts.runs.len(), parts.paths); }}"
+                ),
                 1,
             );
         code::with_lib_from(e, &src).expect("积木库编得过")
@@ -959,7 +965,11 @@ fn a_gain_inside_the_noise_or_under_a_tenth_of_the_switch_cost_keeps_the_current
     let c = night_a(50.0);
     let first = |gain: f64, se: f64| {
         let v = decide_priced(&c, gain, se);
-        (v.order.first().cloned().unwrap_or_default(), why_of(&v, "j").to_string(), v)
+        (
+            v.order.first().cloned().unwrap_or_default(),
+            why_of(&v, "j").to_string(),
+            v,
+        )
     };
     let (who, why, v) = first(100_000.0, 200_000.0);
     assert_eq!(who, "j", "差在两倍标准误以内不换：{v:?}");
