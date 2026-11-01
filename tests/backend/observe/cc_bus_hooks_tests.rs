@@ -101,6 +101,12 @@ fn program_of_handles_real_shapes() {
     assert_eq!(first_arg_of("cc-bus"), None);
     // `=` 在首位不是赋值
     assert_eq!(program_of("=weird").unwrap().0, "=weird");
+    // 名字首字是数字的也不是赋值（shell 里它就是要执行的那个词），程序与第一个参数都从它起算
+    assert_eq!(
+        program_of("1X=a run.sh"),
+        Some(("1X=a".into(), "1X=a".into()))
+    );
+    assert_eq!(first_arg_of("1X=a run.sh").as_deref(), Some("run.sh"));
     assert_eq!(program_of("   "), None);
     assert_eq!(program_of(""), None);
     assert_eq!(program_of("''"), None);
