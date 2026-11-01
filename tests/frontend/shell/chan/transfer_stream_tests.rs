@@ -16,7 +16,7 @@
 //!
 //! # 买不到什么
 //!
-//! - 真 sshd 上的一趟（`tests/evidence/SR1b-sftp-loopback.py`）；真窗口进程（窗口那一侧由 `filewin` 的判据另判）。
+//! - 真 sshd 上的一趟（`tests/evidence/sftp-loopback.py`）；真窗口进程（窗口那一侧由 `filewin` 的判据另判）。
 
 use super::super::wire::{
     Body, Budget, By, CallError, CancelToken, Comms, Item, Op, PeerFault, Sub,
