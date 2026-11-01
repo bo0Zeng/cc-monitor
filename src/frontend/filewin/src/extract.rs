@@ -10,6 +10,7 @@
 use std::sync::{Arc, Mutex};
 
 use copy_core::copy_text;
+use copy_core::{Discard, Why};
 
 /// 菜单上那一项的字。**唯一住址**。
 pub static EXTRACT_LABEL: std::sync::LazyLock<String> =
@@ -168,7 +169,7 @@ impl ExtractBoard {
         let Some((_, tx)) = self.asking.lock().unwrap().take() else {
             return false;
         };
-        tx.send(fresh).ok();
+        tx.send(fresh).discard(Why::PeerGone); // 等答的那一趟已收场就没人要
         self.lane.poke();
         true
     }

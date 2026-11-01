@@ -185,7 +185,7 @@ fn rows_here_read_order_and_life_from_the_book_and_skip_unknown_sids() {
     });
     let ended = SessionFace::of(crate::wire::Life::Ended);
     for line in [added("a", &needs), added("b", &ended)] {
-        book.fold(&crate::wire::decode::<serde_json::Value>(&line).expect("一帧"));
+        book.fold(&cmd_wire::frame::decode::<serde_json::Value>(&line).expect("一帧"));
     }
     let running = |sid: &str| if sid == "a" { 2 } else { 0 };
     let here = rows_here(
