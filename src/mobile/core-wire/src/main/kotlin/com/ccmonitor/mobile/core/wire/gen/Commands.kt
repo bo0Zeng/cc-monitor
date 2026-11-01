@@ -2456,7 +2456,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.StrategyFail::class.java to com.ccmonitor.mobile.core.wire.gen.StrategyFail.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.StrategyFailKind::class.java to com.ccmonitor.mobile.core.wire.gen.StrategyFailKind.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.StreamEv::class.java to com.ccmonitor.mobile.core.wire.gen.StreamEv.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.StripTone::class.java to com.ccmonitor.mobile.core.wire.gen.StripTone.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SurfaceRow::class.java to com.ccmonitor.mobile.core.wire.gen.SurfaceRow.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SurfaceState::class.java to com.ccmonitor.mobile.core.wire.gen.SurfaceState.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.SyncRange::class.java to com.ccmonitor.mobile.core.wire.gen.SyncRange.ADAPTER,
