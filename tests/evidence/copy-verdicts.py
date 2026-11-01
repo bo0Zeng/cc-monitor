@@ -2,22 +2,22 @@
 # ruff: noqa: E501
 """CP1：**存疑带逐条裁决台账** 的量具 ＋ 判据。
 
-住址：`<仓根>/tests/evidence/CP1-copy-verdicts.py`
-台账：`<仓根>/tests/evidence/CP1-copy-verdicts.tsv`
+住址：`<仓根>/tests/evidence/copy-verdicts.py`
+台账：`<仓根>/tests/evidence/copy-verdicts.tsv`
 要求：存疑带「对账开工前必须逐条裁完」。
 
 跑法（仓根下）：
-    python3 tests/evidence/CP1-copy-verdicts.py            # 判：台账人群 == 普查存疑带（两向）
-    python3 tests/evidence/CP1-copy-verdicts.py --json     # 同上，机读（vitest 那一侧吃这个）
-    python3 tests/evidence/CP1-copy-verdicts.py --dump     # 把今天的存疑带逐条吐成 JSONL（裁的时候用）
-    python3 tests/evidence/CP1-copy-verdicts.py --selftest # 死值验（空语料 · 删一行 · 加一条）
+    python3 tests/evidence/copy-verdicts.py            # 判：台账人群 == 普查存疑带（两向）
+    python3 tests/evidence/copy-verdicts.py --json     # 同上，机读（vitest 那一侧吃这个）
+    python3 tests/evidence/copy-verdicts.py --dump     # 把今天的存疑带逐条吐成 JSONL（裁的时候用）
+    python3 tests/evidence/copy-verdicts.py --selftest # 死值验（空语料 · 删一行 · 加一条）
 
 退出码：0 = 两向相等且每行裁词合法 · 1 = 不相等 / 裁词不合法 · 3 = 空转（正控没过：普查认不出那一句现造的存疑带样本）
 
 ═══════════════════════════════════════════════════════════════════════════════
  一、人群是**借来的**，不是本文件自己定义的
 ═══════════════════════════════════════════════════════════════════════════════
-「存疑带」的定义住在 `K-T68-A1-outward-copy-census.py`（`scan()` 的残差 ＋ `is_declined()`）。
+「存疑带」的定义住在 `outward-copy-census.py`（`scan()` 的残差 ＋ `is_declined()`）。
 本文件**把那个模块原样 import 进来调它**，不抄它的正则 —— 一个性质两把尺子会各自漂
 （`gate.sh` 头注逐字：「一个性质一把尺子」）。普查改口径，本判据的人群跟着变，台账当场对不上 ⇒ 红。
 
@@ -87,8 +87,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
-CENSUS_PATH = HERE / "K-T68-A1-outward-copy-census.py"
-LEDGER = HERE / "CP1-copy-verdicts.tsv"
+CENSUS_PATH = HERE / "outward-copy-census.py"
+LEDGER = HERE / "copy-verdicts.tsv"
 
 # `改·` 后跟病号：四类主病 §2.1–§2.4，另收 §2.5（自造比喻）/ §2.6（口语腔）两个后补的病号，
 # 免得真撞上时被迫塞进别的病号里。

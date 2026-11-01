@@ -18,16 +18,16 @@ fn answer_probe() -> serde_json::Value {
     .unwrap()
 }
 
-/// ★★ **`KR96D2` 死值验第一刀：铸名避让只许问那一张快照，且算完就定死。**
+/// ★★ **死值验：铸名避让只许问那一张快照，且算完就定死。**
 ///
 /// 「另起一份名字集合」有两种长法，这里各钉一条：
 ///
 /// | 长法 | 挡它的是什么 |
 /// |---|---|
 /// | 在这里自己去列一遍 tmux、拼一个 `Vec<String>` 喂给 `build` | **类型**：`plan::build` 只收 `TakenNames`，而它的字段是 `common::session_snapshot` 模块私有的 ⇒ **编译不过** |
-/// | 让 `build` 拿到名字之后，在 `execute` 里再退让一次（本文件从前正是这样） | **本条**：算完的名字一个字都不许再改 |
+/// | 让 `build` 拿到名字之后，在 `execute` 里再退让一次 | **本条**：算完的名字一个字都不许再改 |
 ///
-/// 🔴 第二种是从前的真实形状 —— 后果不是「名字错了」，是
+/// 🔴 第二种的后果不是「名字错了」，是
 /// **`--print` 与真跑吐的名字可以不一样**，而 `--print` 的全部意义就是当平价预言机。
 #[test]
 fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
@@ -43,7 +43,7 @@ fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
     assert!(
         prod.contains("host::snapshot().taken_names()"),
         "喂给 `plan::build` 的那份「已占用的名字」不是从会话快照来的。\n\
-             ★ `R52` 裁定二：那张 hash 表只有一处住址（`common::session_snapshot`，进程内那一份是 `host::snapshot`）。"
+             ★ 那张 hash 表只有一处住址（`common::session_snapshot`，进程内那一份是 `host::snapshot`）。"
     );
     assert!(
         !prod.contains("next_free_name"),
@@ -203,7 +203,7 @@ fn the_probe_output_is_the_shape_its_parser_expects() {
     assert_eq!(lines[2], "self=/usr/local/bin/ccm");
     assert!(lines[3].starts_with("capabilities="));
     assert_eq!(lines[4], "agents=claude,codex");
-    // 🔴 `K-R70`：**身份那一行，取自这个进程自己编进来的常量**。
+    // 🔴 **身份那一行，取自这个进程自己编进来的常量**。
     //   它与 `version=` 分开问是刻意的（前者「你是哪一份」、后者「你认得哪些参数」），
     //   理由全文住 `probe_output` 的头注。
     assert_eq!(lines[5], format!("build={}", crate::BUILD_ID));
@@ -288,7 +288,7 @@ fn every_flag_we_accept_has_a_usage_line() {
     );
 }
 
-/// 🔴 `K-R61` 09-11：**`base-url-across-tmux` 这个 token 不是一句自称。**
+/// 🔴 **`base-url-across-tmux` 这个 token 不是一句自称。**
 ///
 /// 它声明的那件事（把 `ANTHROPIC_BASE_URL` 带过 tmux 的进程边界）由本条
 /// **真去算一遍容器路的计划**来兑现 —— 量的是 [`plan::build`] 交出来的那一串载荷，
@@ -306,10 +306,10 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
     assert!(
         CAPABILITIES.contains(&"base-url-across-tmux"),
         "`base-url-across-tmux` 不在 CAPABILITIES 里了 —— 容器路把继承来的中转地址带过 tmux 边界那件事\n\
-             就**又没有申报了**，而它正是 `K-R61` 立件的原因（前提指着一个已经被删掉的文件）。"
+             就**没有申报了** —— 能力表上的每个 token 都要说得出它兑现在哪。"
     );
 
-    // ② 实现这一半 —— 真算一遍，只喂替身环境，一个字节不碰这台机器（`K31`）。
+    // ② 实现这一半 —— 真算一遍，只喂替身环境，一个字节不碰这台机器。
     let base_env = || Env {
         home: "/home/pi".into(),
         pwd: "/p".into(),
@@ -378,10 +378,9 @@ fn the_agent_set_has_one_address_and_every_member_is_wired() {
     assert!(face("claude").has_identity && !face("codex").has_identity);
 }
 
-/// 〔搬自 `ccm-cli` WIRE/launch「发对了①–⑤」「缺省尺寸①②」「控制字符①–④」那几族〕
+/// 「发对了」「缺省尺寸」「控制字符」那几族。
 ///
-/// 从前那几条测的是「`ccm` 编出来的那段 JSON 上线之后逐字节对不对」。同一个进程之下
-/// 没有「上线」这回事了 —— 剩下的真契约是**那几件事一件都不许丢**，
+/// 同一个进程之下没有「上线」这回事 —— 真契约是**那几件事一件都不许丢**，
 /// 而且**必须经过 `parse_request` 那道门**（字段校验只长在它身上）。
 #[test]
 fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
@@ -993,7 +992,7 @@ fn string_literals(code: &str) -> Vec<String> {
 /// ★★ **后端生产段里，除 `ccm` 自己（`control/ccm/`，最终 exec 那一处）与 agent 注册表（`agents/`，起会话事实声明的地方）之外，
 /// 零处渲染出直接起 agent 的命令**。名字从注册表取（每一家的默认启动器 ＋ resume 词）。
 ///
-/// 命中为空（从前唯一登记的例外 `control/resolve_query.rs` 随帧命令 `resolve` 删了）。
+/// 命中为空（没有登记的例外）。
 /// 正控：同一个针在注册表那一侧量得到默认启动器的字面量；一段现造的语料里该中的中、`ccm …` 不中。
 #[test]
 fn nothing_but_ccm_renders_a_command_that_starts_an_agent() {

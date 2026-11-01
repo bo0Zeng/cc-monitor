@@ -18,7 +18,7 @@ pub(crate) struct SessionScan {
     forked: Option<(String, String)>,
     /// 第一条写着工作目录的记录说的那个（全文搜索的项目名从这里取；清单那一行照适配层的项目目录）。
     cwd: Option<String>,
-    // Batch11-F32：CC 2.1.x 后台分身会话（←/bg/退出转后台 fork 出的 worker）——
+    // CC 2.1.x 后台分身会话（←/bg/退出转后台 fork 出的 worker）——
     // 记录级的后台标记是官方 resume 选择器同款识别信号（内部字段无兼容
     // 承诺，缺失=false 安全降级）。历史列表标 ⚙ 徽标防 resume 选错克隆。
     is_bg: bool,
@@ -171,7 +171,7 @@ impl SessionScan {
 }
 
 /// 清单里的一行（[`SessionScan::row`] 写、`history_list` · 叫一条会话什么那几处读）：清单缓存与协议之间那一形，**是我们自己的格式**，
-/// 不是那一家的记录（键名照它从前的样子，读写两头都经这个类型，不按键名取字）。按 sid 只要分组那几格的行只带三格，其余照缺省。
+/// 不是那一家的记录（读写两头都经这个类型，不按键名取字）。按 sid 只要分组那几格的行只带三格，其余照缺省。
 #[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub(crate) struct SessionRow {

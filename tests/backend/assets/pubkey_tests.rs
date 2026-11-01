@@ -1,5 +1,5 @@
 //! 要求：公钥推送进本机后端（`pubkey-push`），写 `authorized_keys` 经那台（后端不在就一次 exec、只写这一件）。
-//! 校验 · 规划 · 解记号 · 那一串 shell 的判据原住 `tests/frontend/shell/pubkey_tests.rs`，随实现搬来、期望一字未改。
+//! 判校验 · 规划 · 解记号 · 那一串 shell。
 use super::*;
 use crate::assets::aliases::tests::HomeDoor;
 use serde_json::json;

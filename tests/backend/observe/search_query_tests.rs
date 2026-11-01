@@ -16,7 +16,7 @@ fn hits_v(
 }
 
 // ⚠ `extract_*` / `user_text` / `find_ci` / `make_snippet` 那 4 条单元测试
-// **随实现住在口径的家里**（`K-R100`；通用那几条在 `search_rules_tests.rs`，记录文本那几条在 `agents/claudecode/text_tests.rs`）。
+// **随实现在口径的家里**（通用那几条在 `search_rules_tests.rs`，记录文本那几条在 `agents/claudecode/text_tests.rs`）。
 // 在这里再抄一份 = 又在本文件养出一个「口径的家」，正是这里要治的形状。
 
 #[test]
@@ -170,7 +170,7 @@ fn system_injections_are_never_searched() {
     }
 }
 
-// ── `K-R100` 的三条行为判据 ──────────────────────────────────────────
+// ── 口径只有一个家：三条行为判据 ──────────────────────────────────────────
 // 它们**不判源码文本**（那是判写法，且今天两侧本来就一样，会恒绿）。
 // 判的是「本侧真跑出来的东西跟不跟 `search_rules` 走」。
 
@@ -201,10 +201,10 @@ fn filetime_from_ms(ms: i64) -> std::time::SystemTime {
 }
 /// 只用 std 设 mtime（本 crate 不引 `filetime`）。
 ///
-/// 🔴 `K-R122`（09-14）：**这一处换成了 `std::fs::File::set_times`，加的不是 `cfg`。**
-/// 上一版走 `unsafe { libc::utimensat(libc::AT_FDCWD, …) }` —— 那两个名字在
+/// 🔴 **这一处用 `std::fs::File::set_times`，不加 `cfg`。**
+/// `unsafe { libc::utimensat(libc::AT_FDCWD, …) }` 那两个名字在
 /// `x86_64-pc-windows-msvc` 上**不存在**（`libc` 的 Windows 侧没有它们），
-/// 于是后端那条「Windows 编得过」的跨 target check 在 **test 档**上红了 2 个错。
+/// 后端那条「Windows 编得过」的跨 target check 在 **test 档**上会红。
 ///
 /// ⚠ **为什么这一处与 `sidecars/codepicture/acquire.rs` 那三条的处置相反**：
 /// 那三条断的是**只在 unix 上成立的语义**（可执行位 · `chmod` 造出来的 `EACCES`），
@@ -213,8 +213,7 @@ fn filetime_from_ms(ms: i64) -> std::time::SystemTime {
 /// （[`std::fs::FileTimes`]）。⇒ 这一处该换 API，不该加 `cfg`：加了 `cfg`
 /// 就等于把「预算按最近优先花」那一族判据在 Windows 上整族关掉，而它们本来跑得了。
 ///
-/// ⚠ 语义逐字对齐旧版：旧版给 `times[0]`（atime）与 `times[1]`（mtime）**同一个值**，
-/// 这里同样两个都设。
+/// ⚠ atime 与 mtime **设同一个值**。
 fn set_mtime(p: &Path, t: std::time::SystemTime) {
     let f = std::fs::File::options()
         .write(true)
@@ -241,7 +240,7 @@ fn run_search(home: &Path, q: &str, limit: usize) -> Vec<Value> {
         .collect()
 }
 
-/// `KR100D2`：**预算按最近优先花** —— 输出的行序就是预算顺序。
+/// **预算按最近优先花** —— 输出的行序就是预算顺序。
 ///
 /// 死值验①（恢复成「按文件系统先走到的顺序」）当场红：语料刻意让
 /// **创建序 / 名字序 与 mtime 序相反**，所以只要把 `sort_by_recency` 拿掉，
@@ -280,7 +279,7 @@ fn the_snippet_budget_goes_to_the_most_recent_sessions() {
     std::fs::remove_dir_all(&home).ok();
 }
 
-/// `KR100D3`：**截断说得出话**，而且与「本会话就这么点命中」分得开。
+/// **截断说得出话**，而且与「本会话就这么点命中」分得开。
 #[test]
 fn truncation_is_stated_not_left_to_an_empty_array() {
     let home = corpus("trunc", &[("a", 3_000, 2), ("b", 2_000, 5)]);
@@ -331,7 +330,7 @@ fn a_session_gives_its_first_three_hits_and_counts_the_rest() {
     );
 }
 
-/// `KR100D1` 第 ③ 刀（本侧那一半）：**改 `search_rules` 一处，本侧真跑出来的东西跟着变**。
+/// 第 ③ 条（本侧那一半）：**改 `search_rules` 一处，本侧真跑出来的东西跟着变**。
 ///
 /// 期望值**从 `search_rules::SNIPPET_CTX` 取**，实际值从本文件的生产管线
 /// （`search` → `session_hits_in` → `search_rules::make_snippet`）来。

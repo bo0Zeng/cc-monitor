@@ -23,6 +23,7 @@
 //! - [`cells`]：成品格的两种标记类型（写好的字 [`cells::Words`] · 语气 [`cells::Tone`]）；
 //! - [`session`] · [`needs`] · [`listing`] · [`record`]：手机问的那几条的入参与回包（会话族 · 需手动 · 历史清单 · 读记录连同通用记录；
 //!   记录那一格的认不认得 [`record::mend_records`]）；
+//! - [`md`]：助手正文的块树（[`md::Doc`]：后端 `md-core` 解析一次，两端只照它排版）与一段的高亮回包（[`md::SegHl`]）；
 //! - [`open`]：起会话那两条（`session-open` · `session-open-facts`）的入参；
 //! - [`phone`]：手机嵌的 Rust 核心与 Kotlin 之间那一层（JNI 交上来的几样事 · 几个口的回值；Kotlin 读从这里生成的类）；
 //! - [`plan`]：计划读面那一族（`plan-*`）的回包与计划反查 `plan-files` 的回包（界面 · 文件窗口 · 手机核心都按它解）；
@@ -63,6 +64,7 @@ pub mod front;
 pub mod listing;
 pub mod live;
 pub mod machine;
+pub mod md;
 pub mod needs;
 pub mod open;
 pub mod phone;

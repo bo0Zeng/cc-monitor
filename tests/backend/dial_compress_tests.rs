@@ -8,7 +8,7 @@
 //! `ssh-dial/connect.rs` 的压缩判准（[`compression_for`]）与它的接法。四件：
 //! Z1 真值表 · Z2 两张偏好序 · Z3 判准只有一处、只有一个调用点 · Z4 回环上内核真量得到往返时间、判准答「不压」。
 //! 真 sshd 上「强制压 ⇒ 协商出 zlib、线上字节变少」那一维是 [`ZR`] 那条 `#[ignore]` 读数
-//! （由 `tests/evidence/NT1-net-loopback.py --compress` 带环境变量来跑）。
+//! （由 `tests/evidence/net-loopback.py --compress` 带环境变量来跑）。
 
 use super::*;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -365,18 +365,18 @@ fn russh_comes_from_crates_io_at_a_version_with_the_zlib_fix() {
 
 /// ★ ZR（读数，`#[ignore]`）：**真 sshd 上**同一段可压的字节（`seq 1 400000`），强制不压 vs 强制压。
 ///
-/// 由 `tests/evidence/NT1-net-loopback.py --compress` 起回环 sshd、带 `NT1_COMPRESS={host,port,user,key_path}` 来跑；
+/// 由 `tests/evidence/net-loopback.py --compress` 起回环 sshd、带 `NT1_COMPRESS={host,port,user,key_path}` 来跑；
 /// 协商结果（`compression: none` / `zlib@openssh.com`）由那份脚本读 sshd 日志核（异源）。本条自己判：
 /// - 不压那趟：载荷收全（> 2 MB）；
 /// - 压的那趟：**闸关着（russh 解压坏着）⇒ 30 秒内收不全**（现打的样子是卡在第一条通道上）；
 ///   闸开着 ⇒ 载荷逐字节同、线上字节 < 不压那趟的一半。
 /// - 上行那一半（客户端压、sshd 解 —— 与下行是两套代码）：同一条连接上把一段会话 jsonl 样子的载荷喂给远端 `sha256sum`，
 ///   两趟都要摘要 == 本侧算的；闸开着 ⇒ 压的那趟上行线上字节 < 不压那趟的一半。
-#[ignore = "要真 sshd：由 tests/evidence/NT1-net-loopback.py --compress 带环境变量来跑"]
+#[ignore = "要真 sshd：由 tests/evidence/net-loopback.py --compress 带环境变量来跑"]
 #[tokio::test(flavor = "multi_thread")]
 async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
     let Ok(raw) = std::env::var("NT1_COMPRESS") else {
-        panic!("没有 NT1_COMPRESS —— 这条读数由 NT1-net-loopback.py --compress 来跑");
+        panic!("没有 NT1_COMPRESS —— 这条读数由 net-loopback.py --compress 来跑");
     };
     let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
     let host = v["host"].as_str().unwrap().to_string();
@@ -534,13 +534,13 @@ fn incompressible(n: usize, seed: u64) -> Vec<u8> {
 
 /// ★ ZR2（读数，`#[ignore]`）：**真 sshd 上**强制压 / 强制不压各一趟，经部署那条路（`sftp::put_atomic`）
 /// 往暂存区放 33 000 字节与 1 MiB **不可压**的字节，读回逐字节同。WIN3 现打（p5p）：压的那趟 > 32 000 字节就断
-/// （sshd「channel_input_data: … incomplete message」）。由 `tests/evidence/WF2-zlib-container.py` 起一次性容器 sshd、
+/// （sshd「channel_input_data: … incomplete message」）。由 `tests/evidence/zlib-container.py` 起一次性容器 sshd、
 /// 带 `NT1_COMPRESS={host,port,user,key_path}` 来跑；协商结果由那份脚本读 sshd 日志核（异源）。
-#[ignore = "要真 sshd：由 tests/evidence/WF2-zlib-container.py 带环境变量来跑"]
+#[ignore = "要真 sshd：由 tests/evidence/zlib-container.py 带环境变量来跑"]
 #[tokio::test(flavor = "multi_thread")]
 async fn zr_real_sshd_takes_incompressible_puts_when_forced() {
     let Ok(raw) = std::env::var("NT1_COMPRESS") else {
-        panic!("没有 NT1_COMPRESS —— 这条读数由 WF2-zlib-container.py 来跑");
+        panic!("没有 NT1_COMPRESS —— 这条读数由 zlib-container.py 来跑");
     };
     let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
     let host = v["host"].as_str().unwrap().to_string();

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # ruff: noqa: E501
-"""CF1：**本机会话内容走本机后端的 Line 帧** —— 真后端 × 生产读循环的现打。
+"""**本机会话内容走本机后端的 Line 帧** —— 真后端 × 生产读循环的现打。
 
 跑法（仓根下）：
-    python3 tests/evidence/CF1-local-lines.py [后端二进制路径]
+    python3 tests/evidence/local-lines.py [后端二进制路径]
 
 缺省二进制是 `.build/backend/debug/cc-monitor-backend`（先 `cd src/backend && cargo build`）。
 它带 `CF1_BACKEND` 跑 `local_lines_tests::a_real_backend_feeds_local_lines_through_the_production_read_loop`

@@ -231,7 +231,7 @@ fn an_unreadable_or_other_version_ledger_is_never_overwritten() {
     let root = d.join("skills");
     for body in [
         b"{not json".to_vec(),
-        // 形状本身读得懂、只是版本比这一版新 ⇒ 仍然不认（别让 `deny_unknown_fields` 替版本闸挡了这一刀）
+        // 形状本身读得懂、只是版本比这一版新 ⇒ 仍然不认（别让 `deny_unknown_fields` 替版本闸挡了这一形）
         br#"{"version":3,"installs":{}}"#.to_vec(),
         // 第 1 版那一格写的不是 1 ⇒ 不认
         br#"{"v":2,"installs":{}}"#.to_vec(),

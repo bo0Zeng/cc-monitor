@@ -7,7 +7,7 @@
 //! 遵循 INVARIANT § 18「宽容 schema」：非核心字段一律 `Option<T>` / `#[serde(default)]`，
 //! 避免 Claude Code 写法变动导致整行解析失败。
 //!
-//! **F63（issue #49）起看不懂的记录不静默丢**（INVARIANT § 18.1）：未知 `type` 落到
+//! **看不懂的记录不静默丢**（INVARIANT § 18.1）：未知 `type` 落到
 //! `#[serde(other)] Unknown`（仅 serde 内部落点），但 **`Unknown` 绝不出 `parse::parse_line`**
 //! ——它连同「已知 type 解析失败但仍是合法 JSON」的行一起被抢救成 `Unrecognized`
 //! （留原文 + uuid/parentUuid/timestamp），进链防孤儿化误折叠。详见 `Unrecognized` 变体注释。
@@ -191,9 +191,9 @@ pub struct AttachmentHead {
 /// 写入。`sessionId` 是 parent session 的 sessionId（**全前缀共享同一个**）；`messageUuid`
 /// 则是**该条记录自身的 uuid**（= 它在父会话里的原 uuid），逐条不同。
 ///
-/// **实证**（本机原生 branch 会话 fe4aad07/0473c3a0 逐条比对，F62 落盘亦按此）：`/branch`
+/// **实证**（本机原生 branch 会话 fe4aad07/0473c3a0 逐条比对，本工具建分支落盘亦按此）：`/branch`
 /// 把 root→分叉点的线性前缀复制进新文件，每条 `sessionId` 改新 id、`forkedFrom.messageUuid`
-/// = 自身 uuid（**不是**"整段共享同一个 messageUuid"——早期注释误述，勿据此把 F62 改回错的）。
+/// = 自身 uuid（**不是**"整段共享同一个 messageUuid"）。
 /// `analyze_jsonl` 取首条 forkedFrom 的 sessionId 认 parent，故只需前缀共享 sessionId 即可。
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ForkedFrom {
@@ -325,7 +325,7 @@ pub enum JsonlRecord {
         session_id: String,
     },
     // ai-title 是 agent 自己起的标题；custom-title / customTitle 是人在 Claude 里 /rename 写的。
-    // 两个都翻成通用记录的 `title`（`by` 分谁起的）；cc-monitor 定名只认 agent 起的那一种（A2-12）。
+    // 两个都翻成通用记录的 `title`（`by` 分谁起的）；cc-monitor 定名只认 agent 起的那一种。
     #[serde(rename = "custom-title")]
     CustomTitle {
         #[serde(rename = "customTitle")]
@@ -400,7 +400,7 @@ pub enum JsonlRecord {
         )]
         user_text: Option<UserText>,
     },
-    /// Batch10-F31 (issue #36)：CC 2.1.x 队列操作记录。enqueue 带 content —— 主线判定
+    /// CC 2.1.x 队列操作记录。enqueue 带 content —— 主线判定
     /// 用它豁免"被消费的队列消息"（永久裸 user 叶，CC 的回复链挂在 interrupt 叶
     /// 下而非队列消息下）不被 ESC 回退折叠。无 uuid/parentUuid；不出通用记录
     /// （一轮中途插进去的那一句由紧跟着的 `attachment queued_command` 那一行出，见 `record_of`）。
@@ -420,8 +420,8 @@ pub enum JsonlRecord {
     #[serde(rename = "file-history-snapshot")]
     FileHistorySnapshot {},
     // Claude 自己的状态行（07-16 语料：mode 6472 / agent-name 2020 / file-history-delta 181 / pr-link 58 / relocated 19 /
-    // worktree-state 19 / frame-link 2，都没有链身份）：认识、不上屏、不进链。从前落在 `Unrecognized` 里，
-    // 记录出 `unread` 之后会被它们刷满 ⇒ 10-10 登成认识的类型（同 `permission-mode`）。
+    // worktree-state 19 / frame-link 2，都没有链身份）：认识、不上屏、不进链。落在 `Unrecognized` 里的话，
+    // 记录出的 `unread` 会被它们刷满 ⇒ 登成认识的类型（同 `permission-mode`）。
     #[serde(rename = "mode")]
     Mode {},
     #[serde(rename = "agent-name")]
@@ -453,7 +453,7 @@ pub enum JsonlRecord {
     #[serde(rename = "artifact-autoreact-ledger")]
     ArtifactAutoreactLedger {},
 
-    /// F63 (issue #49)：**看不懂的记录 —— 留原文 + 留链上的身份**。
+    /// **看不懂的记录 —— 留原文 + 留链上的身份**。
     ///
     /// 由 `parse::parse_line` 构造，**绝不从真实 jsonl 反序列化得来**（故 type 名带
     /// `cc-monitor-` 前缀防撞未来的真类型）。两条来源：
@@ -520,7 +520,7 @@ pub struct ApiMessage {
     pub model: Option<String>,
     #[serde(default)]
     pub usage: Option<Usage>,
-    /// Batch14-F42：一轮结束判定（assistant 终结记录带 `end_turn`；
+    /// 一轮结束判定（assistant 终结记录带 `end_turn`；
     /// 手机端 HANDOFF 同判据）。老记录/流式中间记录无此字段 → None 不序列化。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop_reason: Option<String>,

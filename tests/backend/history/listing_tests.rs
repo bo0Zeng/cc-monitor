@@ -53,7 +53,7 @@ fn analyze_extracts_excerpt_title_cwd_count() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-/// Batch11-F32：sessionKind:"bg" 探测 → isBg。
+/// sessionKind:"bg" 探测 → isBg。
 #[test]
 fn analyze_session_detects_bg_kind() {
     let tmp = std::env::temp_dir().join(format!("ccm-isbg-{}", std::process::id()));
@@ -79,11 +79,8 @@ fn analyze_session_detects_bg_kind() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-// 〔审计 F 🔴-6〕「围栏只许有一处」（audit-0805 08-06，定框 E3）那一条搬去 `fence_tests.rs`、名字照旧：
-//   它先前只数**本文件**里的 `canonicalize()`（== 2），而 `search_query.rs` 里还有一份内联的 ——
-//   「守卫范围 ≠ 性质范围」。围栏收进 `common/fence.rs` 之后，人群换成 observe 全树。
-// LOC1b 把那一条的锚从 `fn fence_under_projects` 换成了 `fn fence_under_root`（本体提成根是参数）；
-//   那一形今天就是 `Fence::at` ＋ `admit`，锚跟着住 `fence_tests.rs`。
+// 「围栏只许有一处」那一条在 `fence_tests.rs`：人群是 observe 全树，不是本文件 ——
+//   只数本文件会漏掉别处内联的那一份（「守卫范围 ≠ 性质范围」）。围栏是 `common/fence.rs` 的 `Fence::at` ＋ `admit`。
 
 #[test]
 fn list_sessions_rejects_path_traversal() {
@@ -556,13 +553,13 @@ fn listing_append_holds_about_a_block_not_the_growth() {
     );
 }
 
-/// ★ **历史查询那几条读路不许整读 jsonl**〔audit-0805 F07 / 报告 I-10 与 B-6 第 5 环〕。
+/// ★ **历史查询那几条读路不许整读 jsonl**。
 ///
-/// `analyze_session` 此前是 `read_to_string`：`--list-sessions` 对该项目**每个** jsonl 调它一次；
+/// `--list-sessions` 对该项目**每个** jsonl 调 `analyze_session` 一次；它用 `read_to_string` 的话，
 ///   43 个项目 / 2.4 GB 的机器上，一次列表就是把 2.4 GB 读进内存再逐行解析。
 ///
 /// 扫描本身是必须的（要数行、要判 bg），**但不必先整份进内存**。
-/// ⚠ 「慢/费内存」**不会让任何测试变红** ⇒ 只能靠源码形态钉（同 F04 那条）。
+/// ⚠ 「慢/费内存」**不会让任何测试变红** ⇒ 只能靠源码形态钉。
 #[test]
 fn the_history_readers_stream_instead_of_slurping() {
     let src = guard_core::production_code(include_str!("../../../src/backend/history/listing.rs"));

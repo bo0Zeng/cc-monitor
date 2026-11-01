@@ -68,7 +68,7 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39" | "J40";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -687,6 +687,17 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     rustGone: ["src/backend/control/ccm/plan.rs::default_name"],
     rustNeedles: [{ file: "src/backend/control/launch_account.rs", text: '.find(|a| a.is_default)', count: 0 }],
   },
+  J40: {
+    what: "助手正文怎么解析成块树 · 长正文在哪分段 · 代码高亮成哪一类",
+    // 唯一的家是后端链的判定类 crate `md-core`（线上形 `cmd_wire::md::Doc` · `SegHl`）；界面那一份（marked ＋ highlight.js）还在，
+    //   两端改照 `Doc` 排版之后删。
+    homes: ["md-core::parse", "md-core::segment", "md-core::seg"],
+    status: "open",
+    defs: ["renderMarkdown"],
+    needles: [],
+    owner: "桌面照 Doc 排版那一刀",
+    why: "线上还没交 Doc（拉块树那条命令接上之前），界面今天只能自己解析；两端照树排版那一刀删 renderMarkdown",
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -907,6 +918,18 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // ↗ 浮层那一张（`face-core/src/front.rs`：壳的窗口结局 `FrontOutcome::told` · 会话为什么没有链 `Unplaced::face`）：壳与本机后端写、界面照摆；TS 侧没有孪生（A16-1-8）。
     told: NONE,
     face: NONE,
+  },
+  "md-core": {
+    // 解析 · 分段 · 高亮（`md-core/src/{parse,segment,highlight}.rs`）：后端算、两端照 `Doc` 排；TS 侧的孪生见 J40。
+    parse: "J40",
+    segment: "J40",
+    seg_blocks: NONE,
+    SEG_BYTES: NONE,
+    // `Highlighter` 的几个口：建 · 一段的 hl · 真算过几次 · 缓存占多少字节。
+    new: NONE,
+    seg: "J40",
+    computed: NONE,
+    bytes: NONE,
   },
   "copy-core": {
     backend_old: "J22",

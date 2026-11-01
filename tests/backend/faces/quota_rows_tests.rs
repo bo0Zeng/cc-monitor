@@ -315,7 +315,7 @@ fn the_wire_golden_is_what_the_exit_writes() {
 }
 
 /// ★ 额度账读不懂（一份坏的夹具：不是 JSON）⇒ 一个号都不发：账号库里的每个号 `warm` 都是 `wait`（过一阵再看），
-/// 那一句照实说哪一份读不懂、为什么（就是 `reason`：路径 ＋ 原因词）。从前这时每号照「无采样 · 发一句才知道」判成 `send`。
+/// 那一句照实说哪一份读不懂、为什么（就是 `reason`：路径 ＋ 原因词），不把每号照「无采样 · 发一句才知道」判成 `send`。
 #[test]
 fn an_unreadable_ledger_sends_nothing_and_says_which_file_and_why() {
     let d = std::env::temp_dir().join(format!("ccm-quota-bad-{}", std::process::id()));

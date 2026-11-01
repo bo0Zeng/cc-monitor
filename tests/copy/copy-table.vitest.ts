@@ -24,7 +24,7 @@
  *   ⚠ Rust 那一侧不是编译器解析：按调用形状读（剥掉 `//` 注释后找 `copy_text(`），key 必须是紧跟的字符串字面量、
  *   参数必须是 `&[…]` 数组字面量、每一项 `("名", …)` 的名是字符串字面量 —— 其余写法一律报「绕过」，不放过。
  * - **不判表里的文案写得好不好**：规矩住 `src/shared/copy/rules.json`，判据住 `copy-rules.vitest.ts`。
- * - **不判全集**：没抽进表的文案今天仍是散在源码里的字面量，归普查（K-T68）与 CP1 台账管。
+ * - **不判全集**：没抽进表的文案今天仍是散在源码里的字面量，归对外文案普查与 CP1 台账管。
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -205,7 +205,7 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
     nonEmpty(ktFiles);
     expect(ktFiles.map((f) => f.file)).toContain(KT_HOME);
     expect(ktFiles.some((f) => f.file.includes("/src/test/")), "测试源混进了生产人群").toBe(false);
-    expect(ktAll.some((f) => f.file.startsWith(KT_TOOL)), `${KT_TOOL} 一份都不在人群里了 —— 这一刀排除空着，删掉它`).toBe(true);
+    expect(ktAll.some((f) => f.file.startsWith(KT_TOOL)), `${KT_TOOL} 一份都不在人群里了 —— 这条排除空着，删掉它`).toBe(true);
     nonEmpty(ktRefs);
   });
 

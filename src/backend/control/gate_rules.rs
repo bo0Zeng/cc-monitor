@@ -2,9 +2,8 @@
 //!
 //! **§34 Gate 2（identity）与 tmux 会话名两条规则的唯一实现** ——「这个 tmux 会话是不是本工具管的？」「这个名字能不能建 / 能不能寻址？」
 //!
-//! 它从前是共享 crate `gate-core`（F03 立：当时 monitor 与后端各有一份门）。monitor 侧最后两处（Gate 1 前检 ·
-//! `is_ccm_tmux_name` 的转调壳，只剩跨轨对拍锚点在用）删了之后，消费者只剩后端 `control/` 一层
-//! （`gate.rs` 送键 / 杀会话之前那道门 · `launch.rs` · `kill.rs` · `launch_render/` · `ccm/plan.rs`）⇒ 收成后端模块，共享 crate 那一格没了。
+//! 消费者只有后端 `control/` 一层（`gate.rs` 送键 / 杀会话之前那道门 · `launch.rs` · `kill.rs` · `launch_render/` ·
+//! `ccm/plan.rs`）⇒ 它是后端模块，不是共享 crate。
 //! 金表 `tests/__fixtures__/gate2-golden.tsv` 两个读者：`gate_tests.rs` 与 e2e `backend-gate2-acceptance.sh`。
 //!
 //! # 边界：本模块只判，不取
@@ -43,8 +42,8 @@ impl Gate2 {
 ///
 /// # 两种形状都要认，**一个都不许删**
 ///
-/// - 新形 `<X>-cc`（撞名时 `<X>-cc-2`）是 S4b-3b 定的；
-/// - 老形 `cc-<sid8>` 必须一并保留：F02 之前的老 `cc-*` 会话**没有 `@ccm_sid`**，
+/// - 新形 `<X>-cc`（撞名时 `<X>-cc-2`）是本工具今天起会话用的；
+/// - 老形 `cc-<sid8>` 必须一并保留：不写 `@ccm_sid` 的版本建的老 `cc-*` 会话**没有它**，
 ///   只靠这条前缀判据仍必须可 kill/send-keys。删了就是把用户**正在跑的**会话
 ///   变成 issue #76 那种「失管会话」。
 ///
@@ -137,14 +136,11 @@ pub(crate) fn gate2(name: &str, remote_sid: Option<&str>) -> Gate2 {
 // ═══════════════════════════════════════════════════════════════════════════
 // **tmux 会话名的形状 —— 全仓唯一一份**。
 //
-// 此前三份、规则互不相同：后端 `ccm/plan.rs::validate_tmux_name`（非空 · 不以 `-` 开头 · 无 `*?.:=` · 无控制符）·
-// monitor 载荷 `TmuxTarget::check`（`Raw` 只放行 `[A-Za-z0-9_-]`、却放过前导 `-`；`Quoted` 拒控制符与欺骗字符）·
-// 界面 `shell-quote.ts` 两个谓词 ＋ `launch-requests.ts` 两处内联式子（F01「不把 glob 建进名字」在载荷那条路上只有界面那一道）。
-// 今天两条规则住这里，按「这个名字是不是本工具要**建**的」分：
+// 两条规则，按「这个名字是不是本工具要**建**的」分：
 //
 // - **新建**（本工具铸的名，`INVARIANTS §47` ① 那一族）：非空 · 不以 `-` 开头（`new-session -s -x` 会被当选项）·
-//   无 [`NEW_TMUX_NAME_REFUSED`]（`.` `:` `=` 是 tmux 目标语法、`*` `?` 是 glob —— F01「本工具永远不把 glob 字符建进会话名」·
-//   F04b「别建一个主路杀不掉的名字」）· 无控制符与视觉欺骗字符 · ≤ [`NEW_TMUX_NAME_MAX`] 个字符；
+//   无 [`NEW_TMUX_NAME_REFUSED`]（`.` `:` `=` 是 tmux 目标语法、`*` `?` 是 glob —— 本工具永远不把 glob 字符建进会话名 ·
+//   别建一个主路杀不掉的名字）· 无控制符与视觉欺骗字符 · ≤ [`NEW_TMUX_NAME_MAX`] 个字符；
 // - **已有会话**（attach / 送进一个已在的会话，`§47` ② 那一形）：非空 · 无控制符与视觉欺骗字符（**拒绝集**，不是白名单：
 //   那些名字不是我们建的，里面真有 glob 字符）。寻址恒走 tmux 精确匹配形 `=<名>:`（`INVARIANTS §31a`：`*` `?` 不被当通配、
 //   前导 `-` 不被当选项 —— DUP2 在隔离 socket 上现打过，读数在）。

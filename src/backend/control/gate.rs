@@ -180,7 +180,7 @@ pub(crate) fn probe_with(tmux: Child, target: &str) -> Result<Option<Probed>, Sa
     if tab_underflow(line, PROBE_FMT_FIELDS) {
         tracing::warn!(
             "CCM_TMUX_UNPARSABLE display-message 切出 {} 段 < {PROBE_FMT_FIELDS} —— \
-             tmux 打印通道被改写（K-R12：客户端不是 UTF-8 ⇒ TAB 变 `_`），\
+             tmux 打印通道被改写（客户端不是 UTF-8 ⇒ TAB 变 `_`），\
              判成「探不到」而不是「@ccm_sid 没设」。原样回包：{line:?}",
             line.split('\t').count()
         );

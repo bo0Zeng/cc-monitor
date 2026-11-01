@@ -108,7 +108,7 @@
 ### 2.8 界面文字
 
 - 新写的界面文字走文案表：TS 用 `src/frontend/ui/copy-table.ts` 的 `copyText(key)`，Rust 用 `copy_text`，文案住 `src/shared/copy/table.json`。只说现在是什么、用户能做什么，不讲演进、不露内部名，一句能说清不写两句。对外拼法是「API key」。
-- 改了或加了任何界面 / 报错文字 ⇒ `python3 tests/evidence/CP1-copy-verdicts.py --json` 必须 `ok:true`，缺的在 `tests/evidence/CP1-copy-verdicts.tsv` 补一行；新词要在 `src/shared/copy/terms.json` 给出处置（`tests/copy/copy-terms.vitest.ts`）。
+- 改了或加了任何界面 / 报错文字 ⇒ `python3 tests/evidence/copy-verdicts.py --json` 必须 `ok:true`，缺的在 `tests/evidence/copy-verdicts.tsv` 补一行；新词要在 `src/shared/copy/terms.json` 给出处置（`tests/copy/copy-terms.vitest.ts`）。
 
 ### 2.9 加跨进程文件
 

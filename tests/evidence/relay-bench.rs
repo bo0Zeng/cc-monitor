@@ -1,7 +1,7 @@
 //! 「几十个会话同时走中转，不卡不丢」的真机台架（Win11 虚拟机上跑）。
 //! 不是 cargo target，独立交叉编译：
 //!
-//!     rustc -O --edition 2021 --target x86_64-pc-windows-gnu -o rt1-bench.exe tests/evidence/RT1-relay-bench.rs
+//!     rustc -O --edition 2021 --target x86_64-pc-windows-gnu -o rt1-bench.exe tests/evidence/relay-bench.rs
 //!
 //! 依据：中转全量注入（`CCM_RELAY_ALL_SESSIONS`）先在虚拟机上量几十个会话同时走中转不卡不丢，过了才默认开。
 //!
@@ -17,7 +17,7 @@
 //! 「不卡」量两样：首字节时刻（缓冲了的话首字节会等到整条流结束 ≈ events×gap）与
 //! 最大读间隔（逐块透传时应 ≈ gap；被攒一下就会远大于 gap）。门槛写在汇总里，由跑台架的人对着汇总判。
 //!
-//! ⚠ 期望值生成器与 `RT1-fake-claude.rs` 里那份**逐字同一段**（两份都是被测方之外的第三方：
+//! ⚠ 期望值生成器与 `fake-claude.rs` 里那份**逐字同一段**（两份都是被测方之外的第三方：
 //! 一份在假上游手里产字节，一份在消费方手里验字节 —— 中转在中间，一个字节都不许改）。
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};

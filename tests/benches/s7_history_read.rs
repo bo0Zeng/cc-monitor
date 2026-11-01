@@ -11,8 +11,7 @@
 //! 本秤 **spawn 真二进制的真 CLI 入口** `--history-tail`（帧命令 `history-tail` 派生的那一面，入参经
 //! `--args-b64`）。`CARGO_BIN_EXE_*` 由 cargo 在**构建 bench target 时**注入，指向同一 profile 下编出来的那个 bin
 //! ⇒ 被测的就是发货路径本身，零漂移。
-//! （从前驱动的是一次性 `--read-session-tail` / `--read-session` / `--read-session-from-offset`；那几条手写子命令
-//! 第 7 批第二题删了，正文按字节区间另走 `history-read` 分页，「搬字节」那一格随之没有了单独的 CLI 入口。）
+//! 正文按字节区间走 `history-read` 分页，「搬字节」那一格没有单独的 CLI 入口。
 //!
 //! **代价如实记**：每次读数里含一次 `fork/exec` + 动态链接。所以表里**必有一行进程地板**
 //! （同一入口问一份只有一行的会话：走完 argv 派发 + 解入参 + 路径围栏 + `File::open` + 数一行），
@@ -46,7 +45,7 @@
 //! - **热页缓存**。夹具刚生成就读，文件整个在 page cache 里。冷缓存要 root 才能
 //!   `drop_caches`，本秤不做 ⇒ 读数是**计算 + 内存拷贝**的下界，不是磁盘的。
 //! - **stdout 丢进 `/dev/null`**，不过 SSH。生产里应答要过网络，那一段不在读数里。
-//! - **不是真机语料**。是按仓内那份**合成**语料的结构放大出来的（见 `S7-make-corpus.sh`）。
+//! - **不是真机语料**。是按仓内那份**合成**语料的结构放大出来的（见 `make-corpus.sh`）。
 
 #![allow(
     clippy::disallowed_methods,
@@ -85,7 +84,7 @@ fn main() {
     print_machine_banner();
     println!("被测二进制 : {BIN}");
     println!("夹具目录   : {}", sess.display());
-    println!("重建夹具   : tests/evidence/S7-make-corpus.sh   （产物落 .build/，不进 git）\n");
+    println!("重建夹具   : tests/evidence/make-corpus.sh   （产物落 .build/，不进 git）\n");
 
     // ── 反空真自检：先证明「输入不存在 / 是空的」会被当成失败 ───────────────
     // 全篇的教训之一：恒绿看起来和真绿一模一样。一把量文件的秤，
@@ -130,7 +129,7 @@ fn main() {
             }
             Err(why) => {
                 eprintln!("秤 7：夹具不合格 —— {why}");
-                eprintln!("      先跑 tests/evidence/S7-make-corpus.sh 重建。");
+                eprintln!("      先跑 tests/evidence/make-corpus.sh 重建。");
                 std::process::exit(1);
             }
         }
