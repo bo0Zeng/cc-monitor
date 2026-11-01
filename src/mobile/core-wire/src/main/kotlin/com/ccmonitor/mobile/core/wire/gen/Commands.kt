@@ -1651,8 +1651,6 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.DialRequest::class.java to com.ccmonitor.mobile.core.wire.gen.DialRequest.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.DialUse::class.java to com.ccmonitor.mobile.core.wire.gen.DialUse.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.DialWhy::class.java to com.ccmonitor.mobile.core.wire.gen.DialWhy.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.DiffOp::class.java to com.ccmonitor.mobile.core.wire.gen.DiffOp.ADAPTER,
-            com.ccmonitor.mobile.core.wire.gen.DiffRow::class.java to com.ccmonitor.mobile.core.wire.gen.DiffRow.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.DirChecked::class.java to com.ccmonitor.mobile.core.wire.gen.DirChecked.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Doc::class.java to com.ccmonitor.mobile.core.wire.gen.Doc.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.DownloadItem::class.java to com.ccmonitor.mobile.core.wire.gen.DownloadItem.ADAPTER,

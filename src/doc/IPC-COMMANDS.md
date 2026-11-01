@@ -9751,7 +9751,11 @@ type ChangedFile = { path: string, what: string,
  * 撤回在哪（设置窗的页 · 栏 · 锚点）；没有 ⇒ `null`。
  */
 undo: UndoAt | null, };
-type Chore = { id: string, kind: ChoreKind, state: ChoreState, name: string, loc: string, said: string, why: string, steps: Array<string>, diff: Array<DiffRow>, copy: string | null, whole: string | null, 
+type Chore = { id: string, kind: ChoreKind, state: ChoreState, name: string, loc: string, said: string, why: string, steps: Array<string>, 
+/**
+ * 要贴的那几行的行差（与写类工具那一张卡同一形）；没有要贴进文件的（命令一类）⇒ 缺。
+ */
+diff: LineDiff | null, copy: string | null, whole: string | null, 
 /**
  * 「整份」盖了哪几件（同一份文件里两件都没做 ⇒ 两件的 id）。
  */
@@ -9809,10 +9813,39 @@ counts: ChoreCounts,
  * 几台排先后的键，小的在前：有进角标的件 0 · 只剩别的没做完的 1 · 没事 2。
  */
 rank: number, own: Array<OwnItem>, };
-type DiffOp = "same" | "del" | "add";
-type DiffRow = { n: number | null, op: DiffOp, text: string, };
 type FootprintClient = { home: string, path?: string | null, };
 type FootprintReq = { client?: FootprintClient | null, };
+type LineDiff = { rows: Array<LineDiffRow>, 
+/**
+ * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
+ */
+shown: number, 
+/**
+ * 行没给全（超了字数上界，在段的边界停下）；`added` / `removed` 仍是整份的数。
+ */
+truncated: boolean, 
+/**
+ * 整份加了几行 · 删了几行。
+ */
+added: number, removed: number, 
+/**
+ * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
+ */
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
+type LineDiffKind = "add" | "del" | "ctx" | "head";
+type LineDiffRow = { kind: LineDiffKind, 
+/**
+ * 行正文（不带头字；过长的一行截了以「…」收尾）。段头 ⇒ 写好的那一格。
+ */
+text: string, 
+/**
+ * 改之前 · 改之后的行号（1 起）：加的行没有改前，删的行没有改后；段头 · 从入参算的那一份（不知道在文件第几行）⇒ 缺。
+ */
+oldNo?: number, newNo?: number, };
 type OwnClass = "truth" | "cache";
 type OwnItem = { 
 /**
@@ -9962,7 +9995,11 @@ type ChangedFile = { path: string, what: string,
  * 撤回在哪（设置窗的页 · 栏 · 锚点）；没有 ⇒ `null`。
  */
 undo: UndoAt | null, };
-type Chore = { id: string, kind: ChoreKind, state: ChoreState, name: string, loc: string, said: string, why: string, steps: Array<string>, diff: Array<DiffRow>, copy: string | null, whole: string | null, 
+type Chore = { id: string, kind: ChoreKind, state: ChoreState, name: string, loc: string, said: string, why: string, steps: Array<string>, 
+/**
+ * 要贴的那几行的行差（与写类工具那一张卡同一形）；没有要贴进文件的（命令一类）⇒ 缺。
+ */
+diff: LineDiff | null, copy: string | null, whole: string | null, 
 /**
  * 「整份」盖了哪几件（同一份文件里两件都没做 ⇒ 两件的 id）。
  */
@@ -10020,14 +10057,43 @@ counts: ChoreCounts,
  * 几台排先后的键，小的在前：有进角标的件 0 · 只剩别的没做完的 1 · 没事 2。
  */
 rank: number, own: Array<OwnItem>, };
-type DiffOp = "same" | "del" | "add";
-type DiffRow = { n: number | null, op: DiffOp, text: string, };
 type LastSeen = { accounts: Seen<AccountsList> | null, data: Seen<DataReport> | null, };
 type LastSeenReadReq = { 
 /**
  * 哪台（机器名）。
  */
 origin: Origin, };
+type LineDiff = { rows: Array<LineDiffRow>, 
+/**
+ * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
+ */
+shown: number, 
+/**
+ * 行没给全（超了字数上界，在段的边界停下）；`added` / `removed` 仍是整份的数。
+ */
+truncated: boolean, 
+/**
+ * 整份加了几行 · 删了几行。
+ */
+added: number, removed: number, 
+/**
+ * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
+ */
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
+type LineDiffKind = "add" | "del" | "ctx" | "head";
+type LineDiffRow = { kind: LineDiffKind, 
+/**
+ * 行正文（不带头字；过长的一行截了以「…」收尾）。段头 ⇒ 写好的那一格。
+ */
+text: string, 
+/**
+ * 改之前 · 改之后的行号（1 起）：加的行没有改前，删的行没有改后；段头 · 从入参算的那一份（不知道在文件第几行）⇒ 缺。
+ */
+oldNo?: number, newNo?: number, };
 type ListMeta = { 
 /**
  * 这台建了账号库（清单读得出）。
@@ -10163,7 +10229,11 @@ type ChangedFile = { path: string, what: string,
  * 撤回在哪（设置窗的页 · 栏 · 锚点）；没有 ⇒ `null`。
  */
 undo: UndoAt | null, };
-type Chore = { id: string, kind: ChoreKind, state: ChoreState, name: string, loc: string, said: string, why: string, steps: Array<string>, diff: Array<DiffRow>, copy: string | null, whole: string | null, 
+type Chore = { id: string, kind: ChoreKind, state: ChoreState, name: string, loc: string, said: string, why: string, steps: Array<string>, 
+/**
+ * 要贴的那几行的行差（与写类工具那一张卡同一形）；没有要贴进文件的（命令一类）⇒ 缺。
+ */
+diff: LineDiff | null, copy: string | null, whole: string | null, 
 /**
  * 「整份」盖了哪几件（同一份文件里两件都没做 ⇒ 两件的 id）。
  */
@@ -10224,9 +10294,38 @@ counts: ChoreCounts,
  * 几台排先后的键，小的在前：有进角标的件 0 · 只剩别的没做完的 1 · 没事 2。
  */
 rank: number, own: Array<OwnItem>, };
-type DiffOp = "same" | "del" | "add";
-type DiffRow = { n: number | null, op: DiffOp, text: string, };
 type FootprintClient = { home: string, path?: string | null, };
+type LineDiff = { rows: Array<LineDiffRow>, 
+/**
+ * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
+ */
+shown: number, 
+/**
+ * 行没给全（超了字数上界，在段的边界停下）；`added` / `removed` 仍是整份的数。
+ */
+truncated: boolean, 
+/**
+ * 整份加了几行 · 删了几行。
+ */
+added: number, removed: number, 
+/**
+ * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
+ */
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
+type LineDiffKind = "add" | "del" | "ctx" | "head";
+type LineDiffRow = { kind: LineDiffKind, 
+/**
+ * 行正文（不带头字；过长的一行截了以「…」收尾）。段头 ⇒ 写好的那一格。
+ */
+text: string, 
+/**
+ * 改之前 · 改之后的行号（1 起）：加的行没有改前，删的行没有改后；段头 · 从入参算的那一份（不知道在文件第几行）⇒ 缺。
+ */
+oldNo?: number, newNo?: number, };
 type Origin = string;
 type OwnClass = "truth" | "cache";
 type OwnItem = { 
@@ -13395,6 +13494,76 @@ client?: string, };
 ```
 
 码：`bad_args` · `unobservable` · `child_timed_out`
+
+#### `sessions-batch`
+
+一批会话跨几台（按台分组做、照原序合好那一句）。
+
+收 `args` · 可撤 · CLI：`ccm -- --sessions-batch`
+
+入参 `SessionsBatchReq` · 回包 `SessionsBatchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Launch = "managed" | "tmux" | "direct";
+type Origin = string;
+type SessionItem = { machine: Origin, sid: Sid, };
+type SessionOutcome = { 
+/**
+ * 哪台（每台那一跳答的是它自己 ⇒ 本机那一个；本机合好时换成那一项的那台）。
+ */
+machine: Origin, sid: Sid, outcome: SessionState, 
+/**
+ * 跳过 / 失败的原因码（挑按钮用）；做成了 ⇒ `null`。
+ */
+why: string | null, 
+/**
+ * 那台写好的那一句；做成了 ⇒ `null`。
+ */
+said: string | null, 
+/**
+ * 失败那一项的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
+ */
+copyDetail: string, 
+/**
+ * 那台写的称呼（项目 ＋ 名字）。
+ */
+title: string, 
+/**
+ * 落在哪个终端会话上。
+ */
+session: string | null, };
+type SessionState = "done" | "skipped" | "failed";
+type SessionsBatchReply = { results: Array<SessionOutcome>, 
+/**
+ * 一句汇总（同文件批量那一句）。
+ */
+said: string, 
+/**
+ * 有没成的 ⇒ 出错的样子。
+ */
+failed: boolean, 
+/**
+ * 没成 · 跳过的逐条（写好的字）。
+ */
+lines: Array<string>, 
+/**
+ * 没成的那几段（都成了 ⇒ 空串）。
+ */
+copyDetail: string, };
+type SessionsBatchReq = { op: SessionsOp, 
+/**
+ * 那几项（1–64 个，照选中的先后）。
+ */
+items: Array<SessionItem>, 
+/**
+ * 自报的前端（「哪个前端的会话」那一维，同 `terminal-end`）。
+ */
+client?: string, };
+type SessionsOp = "stop" | { "start": { run: Launch, } };
+type Sid = string;
+```
+
+码：`bad_args`
 
 #### `sessions-where`
 
@@ -16908,6 +17077,7 @@ alias?: string | null, };
 | `--session-queue-read` | ＝ 帧命令 `session-queue-read`：一条会话此刻的队列名单 |
 | `--session-rewind-options` | ＝ 帧命令 `session-rewind-options`：编辑已发的一句时，发送那一下给哪几项（怎么退 · 什么时候退） |
 | `--session-self` | ＝ 帧命令 `session-self`：我是哪条会话 · 在哪几组 · 组员有谁 |
+| `--sessions-batch` | ＝ 帧命令 `sessions-batch`：一批会话跨几台（按台分组做、照原序合好那一句） |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |
 | `--sessions-needs-merge` | ＝ 帧命令 `sessions-needs-merge`：问到各台的需手动、合成一个先后 |
 | `--sessions-stop` | ＝ 帧命令 `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个） |
