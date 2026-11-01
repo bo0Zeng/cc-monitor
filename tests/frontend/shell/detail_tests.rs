@@ -155,6 +155,11 @@ fn naming_a_shell_command_failure_adds_the_command_once() {
 /// 壳命令签名上的错型（交出去那一形）。
 const FAILED: &str = "cmd_wire::failed::Failed";
 
+/// 错型是不是交出去那一形：写全路径，或者那一份 `use cmd_wire::failed::Failed;` 进口了它、写短名。
+fn is_failed(e: &str, prod: &str) -> bool {
+    e == FAILED || (e == "Failed" && prod.contains("use cmd_wire::failed::Failed;"))
+}
+
 /// 一份源码里全部 `#[tauri::command]`：(名字, 签名到 `{` 为止, 整块)。
 fn shell_commands(prod: &str) -> Vec<(String, String, String)> {
     let starts: Vec<usize> = prod
@@ -203,8 +208,12 @@ fn commands_failing_otherwise(prod: &str) -> Vec<String> {
         .into_iter()
         .filter_map(|(name, sig, _)| {
             let e = error_type(&sig)?;
-            let allowed = if name == "chan_call" { "Fail" } else { FAILED };
-            (e != allowed).then(|| format!("{name} → {e}"))
+            let ok = if name == "chan_call" {
+                e == "Fail"
+            } else {
+                is_failed(&e, prod)
+            };
+            (!ok).then(|| format!("{name} → {e}"))
         })
         .collect()
 }
@@ -224,7 +233,7 @@ fn every_shell_command_fails_as_said_and_names_itself() {
                 .map(|c| format!("{file}::{c}")),
         );
         for (name, sig, chunk) in shell_commands(&prod) {
-            if !sig.contains(&format!("{FAILED}>")) {
+            if !error_type(&sig).is_some_and(|e| is_failed(&e, &prod)) {
                 continue;
             }
             seen += 1;
