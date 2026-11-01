@@ -5,12 +5,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), recentToasts: vi.fn(() => [{ title: "最新一条" }]) }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), failToast: vi.fn(), recentToasts: vi.fn(() => [{ title: "最新一条" }]) }));
 vi.mock("../../../src/frontend/ui/status-messages", () => ({ showMessage: vi.fn() }));
 vi.mock("../../../src/frontend/ui/kit/dialog", () => ({ confirmDialog: vi.fn(), askText: vi.fn() }));
 
 import { openBatchMenu, type TabBatchHost, type TabBatchRun } from "../../../src/frontend/ui/tab-batch-menu";
-import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
+import { failToast, toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { askText } from "../../../src/frontend/ui/kit/dialog";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { endConfirm } from "../../../src/frontend/ui/end-confirm";
@@ -101,56 +101,36 @@ describe("批量菜单", () => {
     expect(toastBody().split("\n")).toContain(unseen);
   });
 
-  it("★ 杀：能做的照脸上 can.end 数，跳过的理由照抄各自那一格的 why；「已结束几个」按点数（不拿句子比）；确认框是结束会话那一个", async () => {
+  const reply = (over: Record<string, unknown> = {}) => ({ results: [], said: "S-合好", failed: true, lines: ["L-一"], copyDetail: "D-详", ...over });
+
+  it("★ 杀：能做的照脸上 can.end 数；确认框只列结束得了的（结束会话那一个）；交出去的是选中的全部，结局照回包摆", async () => {
     const ended = { ...goldenFace("ended"), can: { ...goldenFace("ended").can, end: { can: "no" as const, why: "核心·e" } } };
-    const gone = { ...goldenFace("gone"), can: { ...goldenFace("gone").can, end: { can: "no" as const, why: "核心·g" } } };
-    tabs = [tab("e1", false, { face: ended }), tab("e2", false, { face: ended }), tab("g", false, { face: gone }), tab("r", true)];
-    run.stop.mockResolvedValue([{ sid: "r", outcome: "done", why: "" }]);
+    tabs = [tab("e1", false, { face: ended }), tab("r", true)];
+    run.stop.mockResolvedValue(reply());
     open();
     await press(copyText("tabBatch.menu.stop", { n: 1 }));
-    expect(run.stop.mock.calls[0][0].map((t: Tab) => t.sessionId)).toEqual(["r"]);
-    expect(run.confirm.mock.calls[0][0]).toEqual(endConfirm(["T-r"], copyText("sessionState.batch.skipped", { n: 3 })));
-    expect(toastBody().split("\n")).toEqual([
-      copyText("tabBatch.result.skippedLine", { title: "T-e1", why: "核心·e" }),
-      copyText("tabBatch.result.skippedLine", { title: "T-e2", why: "核心·e" }),
-      copyText("tabBatch.result.skippedLine", { title: "T-g", why: "核心·g" }),
-    ]);
-  });
-
-  it("B2 · 杀：确认框列出这一批，只交还在跑的；结果一条：做了 · 跳过（为什么）· 失败（为什么）", async () => {
-    run.stop.mockResolvedValue([
-      { sid: "a", outcome: "done", why: "" },
-      { sid: "c", outcome: "failed", why: "门拦下了" },
-    ]);
-    open();
-    await press(copyText("tabBatch.menu.stop", { n: 2 }));
-    const spec = run.confirm.mock.calls[0][0] as { list: string[]; note?: string; danger?: boolean; action: string };
-    expect(spec.list, "清单只列这一批里还在跑的（本机的不写机器）").toEqual(["T-a", "T-c"]);
-    expect(spec.note).toBe(copyText("sessionState.batch.skipped", { n: 1 }));
-    expect(spec.danger, "批量杀是撤不回的：确认框默认焦点要在「取消」").toBe(true);
-    expect(spec.action, "批量确认的数量写在按钮上").toBe(copyText("tabBatch.stop.action", { n: 2 }));
-    expect(run.stop.mock.calls[0][0].map((t: Tab) => t.sessionId)).toEqual(["a", "c"]);
-    expect(toastHead()).toBe(copyText("sessionState.batch.someFailed", { done: 1, failed: 1 }));
-    expect(toastBody().split("\n")).toEqual([
-      copyText("tabBatch.result.failedLine", { title: "T-c", why: "门拦下了" }),
-      copyText("tabBatch.result.skippedLine", { title: "T-b", why: copyText("tabBatch.why.ended", { ended: copyText("sessionState.ended.name") }) }),
-    ]);
-    const opts = vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[2] as { action?: { label: string; run: () => void } };
-    expect(opts.action?.label, "有逐条原因 ⇒ 带［查看］").toBe(copyText("tabBatch.result.view"));
-    expect((opts.action as { toastOnly?: boolean }).toastOnly, "［查看］只在提示条上出（「消息」里那一条自己就展得开）").toBe(true);
+    expect(run.confirm.mock.calls[0][0]).toEqual(endConfirm(["T-r"]));
+    expect(run.stop.mock.calls[0][0].map((t: Tab) => t.sessionId), "跳不跳过由后端判：选中的全交").toEqual(["e1", "r"]);
+    expect(toastHead()).toBe("S-合好");
+    expect(toastBody()).toBe("L-一");
+    const opts = vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[2] as { level?: string; detail?: string; action?: { label: string; run: () => void; toastOnly?: boolean } };
+    expect(opts.level).toBe("error");
+    expect(opts.detail).toBe("D-详");
+    expect(opts.action?.label, "有逐条 ⇒ 带［查看］").toBe(copyText("tabBatch.result.view"));
+    expect(opts.action?.toastOnly).toBe(true);
     opts.action!.run();
     expect(showMessage, "［查看］打开「消息」并展开刚才那一条").toHaveBeenCalledWith({ title: "最新一条" });
+  });
+
+  it("确认框点了取消 ⇒ 一个都不交", async () => {
     run.confirm.mockResolvedValueOnce(false);
     open();
     await press(copyText("tabBatch.menu.stop", { n: 2 }));
-    expect(run.stop, "确认框点了取消 ⇒ 一个都不杀").toHaveBeenCalledTimes(1);
+    expect(run.stop).not.toHaveBeenCalled();
   });
 
   it("全都做成了 ⇒ 一句汇总，不带［查看］", async () => {
-    run.stop.mockResolvedValue([
-      { sid: "a", outcome: "done", why: "" },
-      { sid: "c", outcome: "done", why: "" },
-    ]);
+    run.stop.mockResolvedValue(reply({ failed: false, lines: [], copyDetail: "" }));
     tabs = [tab("a", true), tab("c", true)];
     open();
     await press(copyText("tabBatch.menu.stop", { n: 2 }));
@@ -158,21 +138,25 @@ describe("批量菜单", () => {
     expect((vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[2] as { action?: unknown }).action).toBeUndefined();
   });
 
-  it("远端那几行机器只出一次：标题不带 `[机器]` 前缀，机器写在括号里（确认框与结果那几行同一形；原因那台写、不带机器）", async () => {
+  it("本机后端问不到 ⇒ 一条失败提示（那一句照通道那一层）", async () => {
+    run.stop.mockRejectedValue(new Error("gone"));
+    open();
+    await press(copyText("tabBatch.menu.stop", { n: 2 }));
+    expect(vi.mocked(failToast)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(failToast).mock.calls[0][0]).toBe(copyText("tabBatch.stop.title", { n: 3 }));
+  });
+
+  it("远端那几行机器只出一次：确认框里标题不带 `[机器]` 前缀，机器写在括号里", async () => {
     const devbox = originFromWire("devbox");
     tabs = [
       tab("r", true, { origin: devbox, title: "[devbox] [billing] 账单导出改成流式", projectDir: "/w/billing", label: "账单导出改成流式", labelProject: "billing" }),
       tab("l", true, { title: "[web] 首页", projectDir: "/w/web", label: "首页", labelProject: "web" }),
     ];
-    run.stop.mockResolvedValue([
-      { sid: "r", outcome: "failed", why: "门拦下了" },
-      { sid: "l", outcome: "done", why: "" },
-    ]);
+    run.stop.mockResolvedValue(reply());
     open();
     await press(copyText("tabBatch.menu.stop", { n: 2 }));
     const spec = run.confirm.mock.calls[0][0] as { list: string[] };
     expect(spec.list).toEqual([copyText("tabBatch.line.remote", { title: "billing 账单导出改成流式", machine: "devbox" }), "web 首页"]);
-    expect(toastBody().split("\n")).toEqual([copyText("tabBatch.result.failedLine", { title: spec.list[0], why: "门拦下了" })]);
   });
 
   it("B3 · 固定 / 分组：一次交出能做的那几个；新建分组整批进同一个新组，不问名字", async () => {

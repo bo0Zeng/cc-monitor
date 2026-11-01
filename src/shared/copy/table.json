@@ -3952,6 +3952,12 @@
       "zh": "接上终端",
       "args": []
     },
+    "tabBatch.verb.stop": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "结束",
+      "args": []
+    },
     "tabBatch.menu.head": {
       "kind": "title",
       "role": "标题",
@@ -25812,12 +25818,6 @@
       "role": "报错",
       "zh": "已结束 {done} · 失败 ×{failed}",
       "args": ["done", "failed"]
-    },
-    "sessionState.batch.skipped": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "另 ×{n} 已结束 · 跳过",
-      "args": ["n"]
     },
     "statusBar.todo.label": {
       "kind": "action",

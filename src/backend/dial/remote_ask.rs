@@ -327,10 +327,7 @@ where
 /// 一台的结局：答回来的那一份 · 那台的码与那一句。
 pub(crate) type Asked<R> = (cmd_wire::Machine, Result<R, Said>);
 
-/// **一问问几台**（跨台合并那几条：本机后端自己扇出、并好再答，界面不当信差）：`machines` 里本机那一台照 `local` 答（同进程，不经 SSH），
-/// 别的每台经 [`ask_resident`] 问它的常驻（几台同时问）。结局照 `machines` 的先后、一台一格（重名的只问一次）：
-/// 那台够不着 · 常驻不在 · 答了失败 ⇒ 那一格是那台的码与那一句，别台照常。
-/// 等多久只归发起方：`until` ＝ 发起方给的截止时刻，每台都只等到那一刻；问到别的台而它缺 ⇒ `Err`（`bad_args` 那一句），这里不自己定一个。
+/// **一问问几台**（跨台合并那几条：本机后端自己扇出、并好再答，界面不当信差）：几台问同一份入参，经 [`ask_apiece`]。
 pub(crate) async fn ask_each<'a, C, F>(
     machines: &[cmd_wire::Machine],
     req: &'a C::Req,
@@ -346,13 +343,37 @@ where
     C::Reply: serde::de::DeserializeOwned + Send + 'a,
     F: Future<Output = Result<C::Reply, Said>> + Send + 'a,
 {
-    let mut seen: Vec<&cmd_wire::Machine> = Vec::new();
-    for m in machines {
-        if !seen.contains(&m) {
-            seen.push(m);
+    let asks = machines.iter().map(|m| (m.clone(), req)).collect();
+    ask_apiece::<C, _, _, _>(asks, |_| local, tz, until, table, remote).await
+}
+
+/// **一问问几台、每台各一份入参**：本机那一台的那一份交给 `local` 答（同进程，不经 SSH），
+/// 别的每台经 [`ask_resident`] 拿它那一份问它的常驻（几台同时问）。结局照 `asks` 的先后、一台一格（重名的只问头一份）：
+/// 那台够不着 · 常驻不在 · 答了失败 ⇒ 那一格是那台的码与那一句，别台照常。
+/// 等多久只归发起方：`until` ＝ 发起方给的截止时刻，每台都只等到那一刻；问到别的台而它缺 ⇒ `Err`（`bad_args` 那一句），这里不自己定一个。
+pub(crate) async fn ask_apiece<'a, C, Q, L, F>(
+    asks: Vec<(cmd_wire::Machine, Q)>,
+    local: L,
+    tz: &'a crate::Tz,
+    until: Option<crate::platform::child::Until>,
+    table: &'a Table,
+    remote: &'a dyn Remote,
+) -> Result<Vec<Asked<C::Reply>>, String>
+where
+    C: crate::wire::typed::Command,
+    C::Req: serde::Serialize + Sync,
+    Q: std::borrow::Borrow<C::Req> + Send + 'a,
+    C::Reply: serde::de::DeserializeOwned + Send + 'a,
+    L: FnOnce(Q) -> F,
+    F: Future<Output = Result<C::Reply, Said>> + Send + 'a,
+{
+    let mut seen: Vec<(cmd_wire::Machine, Q)> = Vec::new();
+    for (m, q) in asks {
+        if !seen.iter().any(|(s, _)| *s == m) {
+            seen.push((m, q));
         }
     }
-    let remote_named = seen.iter().any(|m| !m.is_local());
+    let remote_named = seen.iter().any(|(m, _)| !m.is_local());
     let total = match until {
         Some(u) => crate::platform::child::Deadline::millis(u.left_ms()),
         None if remote_named => {
@@ -363,23 +384,26 @@ where
         None => crate::platform::child::Deadline::millis(0),
     };
     let mut local = Some(local);
+    let mut machines = Vec::with_capacity(seen.len());
     let mut asks: Vec<Pin<Box<dyn Future<Output = Result<C::Reply, Said>> + Send + 'a>>> =
         Vec::new();
-    for m in &seen {
+    for (m, q) in seen {
         if m.is_local() {
             match local.take() {
-                Some(f) => asks.push(Box::pin(f)),
+                Some(f) => asks.push(Box::pin(f(q))),
                 None => unreachable!("本机那一台只列一次（上面去过重）"),
             }
         } else {
             let name = m.host_name().unwrap_or_default().to_string();
             asks.push(Box::pin(async move {
+                let req = <Q as std::borrow::Borrow<C::Req>>::borrow(&q);
                 ask_resident::<C>(&name, req, tz, total, table, remote).await
             }));
         }
+        machines.push(m);
     }
     let got = all(asks).await;
-    Ok(seen.into_iter().cloned().zip(got).collect())
+    Ok(machines.into_iter().zip(got).collect())
 }
 
 /// 几个问法同时等、都回来才交（照交进来的先后）。

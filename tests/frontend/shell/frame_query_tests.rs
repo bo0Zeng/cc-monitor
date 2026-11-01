@@ -332,6 +332,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "terminals-board",
         "「终端」视图那张名单：本机后端 `faces/terminals_board_face.rs` 问到各台的 `terminals-board-here`、合成一份（成品住 `control/terminals_board.rs`）；前端 `src/frontend/ui/terminals-board-reads.ts` 原样交给视图",
     ),
+    // 一批会话跨几台：本机后端按台分组做、合好那一句。
+    (
+        "sessions-batch",
+        "多选批量停：本机后端 `faces/sessions_batch_face.rs` 本机那一组同进程停、别的台问它自己那一组，照原序合好那一句（合句住 `batch_core::sessions`）；前端 `src/frontend/ui/tab-batch-run.ts` 交一条、`end-confirm.ts::sayReply` 照摆",
+    ),
     // 监控板版面：本机后端问到各台、合成一份（组序 · 组头 · 组内先后 · 顶上那一句都写好）。
     (
         "monitor-board",

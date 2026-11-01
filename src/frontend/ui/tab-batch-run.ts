@@ -1,21 +1,23 @@
 /**
- * **tab 栏停 / 起：交给那几台后端** —— 不同机器并发各发各的，一台失败不挡别台（那一台的几个记成失败、说清为什么）。
+ * **tab 栏停 / 起：交给后端**。
  *
- * - 停（`sessions-stop`）：同一台的那几个一次调用，那台逐个答；单个菜单就是一个 sid 的一批。
- * - 起（`session-open`，与单个恢复同一问）：同一台逐项挨个问，每项只交 sid 与放在哪（号 · 目录 · 哪一家那台从记录里读）；
+ * - 批量停（`sessions-batch`）：选中的全部交本机后端一条，按台扇出 · 跳不跳过 · 合那一句都在后端，回包照摆；
+ *   单个结束经 [`callStop`]（`sessions-stop`，那台逐个答）。
+ * - 起（`session-open`，与单个恢复同一问）：不同机器并发、一台失败不挡别台；同一台逐项挨个问，每项只交 sid 与放在哪（号 · 目录 · 哪一家那台从记录里读）；
  *   每项的结局取那台那一句；落在窗口里的那几项逐个开窗（[`BACKGROUND_OPENS`]）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { settleTyped, unavailableSaid } from "./control-said";
 import { batchRefused } from "./sessions-where";
-import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import type { SessionsBatchReply } from "./generated/SessionsBatchReply";
 import { copyText } from "./copy-table";
 import type { Tab } from "./tab-model";
 import type { Launch } from "./generated/Launch";
 import { askOpen, BACKGROUND_OPENS } from "./session-open";
 import type { SessionOutcome as Outcome } from "./generated/SessionOutcome";
 import { openLocalTerminal, openTerminal } from "./terminal-open";
-import { failSaid, saidOf } from "./kit/detail";
+import { failSaid } from "./kit/detail";
 
 /** 一个 tab 的结局（`why` 是给人看的那一句；做成了 ⇒ 空串）。 */
 export interface BatchOutcome {
@@ -28,12 +30,6 @@ export interface BatchOutcome {
 
 /** 后端答的一个（`sessions-*` 的 `results[i]`，类型从 Rust 生成）。`why` 是那台的原因码。 */
 export type Reply = Outcome;
-
-/** 一台的整体失败（通道不在 · 后端太旧 · 拒了整批）⇒ 那一台的每一个都记成失败、带同一句。 */
-function machineFailed(sids: readonly string[], e: unknown): BatchOutcome[] {
-  const why = saidOf(e);
-  return sids.map((sid) => ({ sid, outcome: "failed", why }));
-}
 
 function groupByOrigin(tabs: readonly Tab[]): Map<Origin, Tab[]> {
   const m = new Map<Origin, Tab[]>();
@@ -62,21 +58,11 @@ export async function callStop(origin: Origin, sids: readonly string[]): Promise
   return v.results;
 }
 
-/** 停：每台一次 `sessions-stop`，各台并发。 */
-export async function stopMany(tabs: readonly Tab[]): Promise<BatchOutcome[]> {
-  const parts = await Promise.all(
-    Array.from(groupByOrigin(tabs), async ([origin, list]): Promise<BatchOutcome[]> => {
-      const sids = list.map((t) => t.sessionId);
-      const no = offered(origin, "sessions-stop", sids);
-      if (no) return no;
-      try {
-        return (await callStop(origin, sids)).map((r) => ({ sid: r.sid, outcome: r.outcome, why: r.said ?? "", ...(r.copyDetail !== "" ? { detail: r.copyDetail } : {}) }));
-      } catch (e) {
-        return machineFailed(sids, e);
-      }
-    }),
-  );
-  return parts.flat();
+/** 批量停：选中的全部（照选中的先后）交本机后端一条 `sessions-batch`；回包是合好的那一份。问不到本机后端 ⇒ 抛。 */
+export async function stopMany(tabs: readonly Tab[]): Promise<SessionsBatchReply> {
+  const budget = budgetWithin(BATCH_BASE_MS + BATCH_EACH_MS * tabs.length);
+  const req = { op: "stop" as const, items: tabs.map((t) => ({ machine: t.origin, sid: t.sessionId })) };
+  return settleTyped(LOCAL_ORIGIN, "sessions-batch", callTyped(LOCAL_ORIGIN, "sessions-batch", req, budget));
 }
 
 /** 开终端那一形：后端渲好的那一行，monitor 开窗（本机带起始目录，远端经 `openTerminal`，带上那条会话）。开不了 ⇒ 那一句。 */
