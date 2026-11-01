@@ -1,6 +1,10 @@
 //! 策略的代码：编一次 · 在沙箱里调 `decide(ctx)`（挂着只读的积木库 `lib`，`src/shared/rotation/lib.rhai`）· 回值照形状收 · 一趟推演的总时限。
 //! 文件的格式（说明 · 头 · 只重写头）归配置编辑层；这里只认代码。
 
+/// 推演的内核（原生，挂进积木库）。
+#[path = "rollout.rs"]
+pub(crate) mod rollout;
+
 use super::decide::{Ctx, Strategy, Verdict, WakeWhen};
 use crate::accounts::quota::strategy::{Fail, FailKind};
 use rhai::{Dynamic, Map, AST};
@@ -76,10 +80,16 @@ pub(crate) fn engine() -> Result<&'static rhai::Engine, String> {
 }
 
 /// 在沙箱 `e` 上挂积木库 `lib`（[`engine`] 那一份就是 [`fresh_engine`](crate::accounts::quota::strategy::fresh_engine) 挂上它）。
-pub(crate) fn with_lib(mut e: rhai::Engine) -> Result<rhai::Engine, String> {
-    let ast = e.compile(LIB_SOURCE).map_err(|x| x.to_string())?;
-    let m =
+pub(crate) fn with_lib(e: rhai::Engine) -> Result<rhai::Engine, String> {
+    with_lib_from(e, LIB_SOURCE)
+}
+
+/// 同 [`with_lib`]，积木库照给的原文编（判据量积木库时用）。
+pub(crate) fn with_lib_from(mut e: rhai::Engine, source: &str) -> Result<rhai::Engine, String> {
+    let ast = e.compile(source).map_err(|x| x.to_string())?;
+    let mut m =
         rhai::Module::eval_ast_as_new(rhai::Scope::new(), &ast, &e).map_err(|x| x.to_string())?;
+    rollout::install(&mut m);
     e.register_static_module("lib", m.into());
     Ok(e)
 }

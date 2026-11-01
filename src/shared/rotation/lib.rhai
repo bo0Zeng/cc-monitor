@@ -221,109 +221,15 @@ fn refills(r5, left7, wk, exp, segs5, dflt, clock, now, horizon) {
 //   o.share ＝ 别的会话也守在这个号上的用速。池子照最先作废的那份用（延迟切入的最后）；本会话并进池子以后跟着池子走，池子每换一个号本会话就换一次：
 //   换到缓存期内用过的号只补写新长的那段（o.grow：每分钟多出的重写量），否则整段重写（o.kfull）；重写的量也从那个号的额度里出。
 //   o 另有：mine（本会话守的号）· lump（现在换过去当场重写的量，留着 ＝ 0）· cache（#{号: 缓存到几点}）· ttl · now · end。
-//   每一步只碰排在最前的那份：能用的按作废先后、还没开始的按开始先后各排一列（整数键 ＋ 沙箱自带的排序），一次推演随份数线性涨。
-//   开销封顶在调用方：一遍约 600 × 份数次操作，视野至多两个 5 小时窗（每号至多三份）；一判先算推得起几遍、至多比 3 个候选，
-//   一遍都推不起就不推（号多 · 用速有起伏时提前换就少了，不会撞上一判 20 万次的上限）。rotsim 量的一判最多：9 · 15 · 30 个号
-//   18.5 万 · 18.0 万 · 18.1 万（量得到用速），1.0 万 · 1.5 万 · 2.8 万（量不到）；50 · 100 个号 7.3 万 · 8.3 万（推不起，不提前换）。
+//   推演本身在后端的原生内核里（lib::project_raw，一次调用一次操作），这里只把它交的几份原始量照这个口径加起来：
+//   卡住的 ＋ 一路换号重写的 ＋ 每个号用掉的周上限卡着的额度。
 fn project(amt, st, ex, who, wk, late, oev, o) {
-  let now = o.now;
-  let t_end = o.end;
-  let cache = o.cache;
-  let n = amt.len();
-  let cost = o.lump;
-  // 别的会话：守在各自号上，用完或作废的那一刻并进池子（编码：时刻 × 1024 ＋ 第几条）
-  let evt = []; let erho = []; let elump = []; let eme = [];
-  let q = 0;
-  while q < oev.acc.len() {
-    let r = oev.r[q] * o.m;
-    if oev.acc[q] != o.mine && r > 0.0 {   // 这一档用速是 0 的（起伏大时低的那一档）⇒ 他不用、不并进池子
-      let z = oev.q[q];
-      let tt = now;
-      if z != () {
-        let dt = amt[z] / r * 60.0;
-        if ex[z] - now < dt { dt = (ex[z] - now).to_float(); }
-        if wk[z] { cost += r * dt / 60.0; }
-        amt[z] = 0.0;
-        tt = now + dt.to_int();
-      }
-      if tt < t_end { evt.push(tt * 1024 + erho.len()); erho.push(r); elump.push(0.0); eme.push(false); }
-    }
-    q += 1;
-  }
-  // 本会话这一条
-  let k = o.at;
-  let rho = o.rho;
-  if o.share != () { rho += o.share; }
-  if k == () || rho <= 0.0 { evt.push(now * 1024 + erho.len()); erho.push(o.rho); elump.push(o.lump); eme.push(true); }
-  else {
-    let need = amt[k] - o.lump;
-    if wk[k] { cost += o.lump; }
-    if need <= 0.0 { amt[k] = 0.0; evt.push(now * 1024 + erho.len()); erho.push(o.rho); elump.push(-need); eme.push(true); }
-    else {
-      let dt = need / rho * 60.0;
-      if ex[k] - now < dt { dt = (ex[k] - now).to_float(); }
-      if wk[k] { cost += o.rho * dt / 60.0; }
-      amt[k] = 0.0;
-      let t = now + dt.to_int();
-      if t < t_end { evt.push(t * 1024 + erho.len()); erho.push(o.rho); elump.push(0.0); eme.push(true); }
-    }
-  }
-  evt.sort();
-  let avail = []; let pend = [];
-  let i = 0;
-  while i < n {
-    if amt[i] > 0.0 && ex[i] > now {
-      if st[i] > now { pend.push(st[i] * 1024 + i); } else { avail.push((if late[i] { 4000000000000000 } else { 0 }) + ex[i] * 1024 + i); }
-    }
-    i += 1;
-  }
-  pend.sort();
-  avail.sort();
-  let d = 0.0; let due = 0.0; let tau = now; let ei = 0; let pi = 0;
-  let me_in = false; let my = o.mine; let guard = 0;
-  while tau < t_end && guard < 4 * n + 4 * evt.len() + 16 {
-    guard += 1;
-    while ei < evt.len() && evt[ei] / 1024 <= tau {
-      let q = evt[ei] % 1024;
-      d += erho[q]; due += elump[q];
-      if eme[q] { me_in = true; }
-      ei += 1;
-    }
-    let moved = false;
-    while pi < pend.len() && pend[pi] / 1024 <= tau {
-      let j = pend[pi] % 1024;
-      avail.push((if late[j] { 4000000000000000 } else { 0 }) + ex[j] * 1024 + j);
-      pi += 1; moved = true;
-    }
-    if moved { avail.sort(); }
-    while avail.len() > 0 && (amt[avail[0] % 1024] <= 0.0 || ex[avail[0] % 1024] <= tau) { avail.remove(0); }
-    let nxt = if ei < evt.len() { evt[ei] / 1024 } else { t_end };
-    if pi < pend.len() && pend[pi] / 1024 < nxt { nxt = pend[pi] / 1024; }
-    if d <= 0.0 && due <= 0.0 { tau = nxt; continue; }
-    if avail.len() == 0 { cost += d * (nxt - tau).to_float() / 60.0 + due; due = 0.0; tau = nxt; continue; }
-    let k = avail[0] % 1024;
-    if me_in && who[k] != my {
-      let c = cache[who[k]];
-      let r = if c != () && c > tau { o.grow * (tau - now).to_float() / 60.0 } else { o.kfull };
-      cost += r; due += r;
-      cache[my] = tau + o.ttl;
-      my = who[k];
-    }
-    if due > 0.0 {
-      let take = if due < amt[k] { due } else { amt[k] };
-      amt[k] -= take; due -= take;
-      if wk[k] { cost += take; }
-      continue;
-    }
-    let end = if ex[k] < nxt { ex[k] } else { nxt };
-    let e2 = tau + (amt[k] / d * 60.0).ceiling().to_int();
-    if e2 < end { end = e2; }
-    if end <= tau { end = tau + 1; }
-    let used = d * (end - tau).to_float() / 60.0;
-    if used > amt[k] { used = amt[k]; }
-    amt[k] -= used;
-    if wk[k] { cost += used; }
-    tau = end;
-  }
+  let r = lib::project_raw(amt, st, ex, who, wk, late, oev, o);
+  let cost = r.stuck + r.rewrite;
+  for x in r.weekly.values() { cost += x; }
   cost
 }
+
+// 往后推演一遍、交原始量（只算、不决定）：参数同 project；回 #{stuck, rewrite, weekly: #{号: tok}, left: [[号, tok, 作废时刻]]}
+//   （卡住发不出的 · 一路换号重写缓存的 · 每个号用掉的周上限卡着的额度 · 推完还剩的每一份）。怎么加权由策略定。
+//   原生积木：后端里那一份，不在这份文件里。
