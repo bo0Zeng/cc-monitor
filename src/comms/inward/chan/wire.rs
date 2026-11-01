@@ -141,7 +141,7 @@ impl Budget {
     #[must_use]
     pub fn narrow(self, until: Instant) -> Self {
         Self {
-            until: self.until.max(until),
+            until: self.until.min(until),
             cancel: self.cancel,
         }
     }
