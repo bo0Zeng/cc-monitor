@@ -9,7 +9,8 @@
  * - Kotlin（`src/mobile`）是 `src/mobile/detekt-rules` 里的 detekt 规则（`ExitCopyKey` · `ExitCopyBranch`）。
  * 名单自身与合计在这里判。存量只许删、不许加：
  * 1. TS 每一格（文件 × 句）实得 == 名单登的数：多一处 ⇒ 红；少了 ⇒ 也红（删了就把那一格改小或删掉）；名单外的文件命中一处 ⇒ 红。
- * 2. 合计 == `ceiling`；`ceiling` 不许比基线（与 main 分叉点上那一版名单，`ledger-base.ts`）大。
+ * 2. 合计 == `ceiling`；`ceiling` 不许比基线（与 main 分叉点上那一版名单）大 —— 后一半与别的存量名单一样在 guard-core 的
+ *    `exit_debt_base_tests.rs` 里判（基线读法只此一份）。
  * 3. 名单自身：每格 `n > 0`、`why` 非空、`kind` 在闭集里、句名认得、文件在盘上、没有重复格；`roots` 里每棵树都扫到了文件（反空真）。
  * 4. 对照样例：每一段两句各命中的数恰好是登的数（探测器坏了 ⇒ 先红）。
  *
@@ -21,7 +22,6 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { baselineText } from "../../test-support/ledger-base.ts";
 import { productionKtFiles, productionRsFiles, productionTsFiles } from "../../test-support/production-sources.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { RULE_IDS, SAMPLE_TABLE, TS_SAMPLES, scanTs, type CopyTable } from "./exit-rules.ts";
@@ -70,14 +70,9 @@ describe("出口零判定零格式化：按意思判的两句 ＋ 只减不增�
     expect(wrong, wrong.join("\n")).toEqual([]);
   });
 
-  it("★ 合计 == ceiling，ceiling 不比基线大", () => {
+  it("★ 合计 == ceiling", () => {
     const sum = entries.reduce((a, e) => a + e.n, 0);
     expect(sum, "名单各格之和与 ceiling 不一致 —— 收掉几处就把 ceiling 降到现数").toBe(debt.ceiling);
-    const raw = baselineText(DEBT_PATH);
-    const base = raw === null ? null : (JSON.parse(raw) as Partial<Debt>);
-    // 基线上那一份不是按格分组的名单（换成两句之前的旧形）⇒ 不是同一张名单，没有可比的上限。
-    if (base?.groups === undefined || base.ceiling === undefined) return;
-    expect(debt.ceiling, `ceiling ${debt.ceiling} 比基线上的 ${base.ceiling} 大 —— 名单只许删`).toBeLessThanOrEqual(base.ceiling);
   });
 
   it("名单自身：每棵树都扫到文件 · 每格 n > 0 · kind 在闭集里 · why 非空 · 句名认得 · 文件在盘上 · 没有重复格", () => {

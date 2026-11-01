@@ -33,6 +33,9 @@ pub(crate) mod file_class;
 /// 一份 JSON 原文里就地设一格 / 往数组加一项，别的字节不动（＋ 行号 ＋ diff）。① 足迹（「待办」要贴的改法）与适配层（settings 里就地补中转地址那一格）都用 ·
 /// ② 纯文本 ＋ `serde_json` · ③ 只认「JSON 原文 ＋ 一条键路径」，不认那是谁的设置。
 pub(crate) mod json_patch;
+/// 两份文本逐行比（行差的算法 ＋ 线上那一形 `LineDiff` 的拼法）。① 适配层（写类工具那一张卡的行差）与足迹（「待办」要贴的改法，经 [`json_patch`]）都用 ·
+/// ② 纯文本 · ③ 只认「改前 ＋ 改后两段文本」，不认那是谁的文件。
+pub(crate) mod line_diff;
 /// 这台偏好那份文件（`prefs.json`）的形状、值域与读。① control（起会话 · `prefs-read` / `prefs-set`）与 history（隐藏的判定读那两格）都读 ·
 /// ② 读经 `common::own_state` · ③ 只认那份文件长什么样、读不读得懂，写与「拿它做什么」在各自那一层。
 pub(crate) mod machine_prefs;

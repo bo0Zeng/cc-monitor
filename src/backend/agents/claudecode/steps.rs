@@ -14,28 +14,13 @@ use crate::agents::{
     StepBody, StepResult, ToolStep,
 };
 use crate::common::cells::Words;
+use crate::common::line_diff;
 use serde_json::Value;
 use std::borrow::Cow;
 
 /// 一次改动的行差至多带多少字（各段行正文的字数之和；调用那一份 · 结果那一份同一个上界）：超了就只给前几段、立 `truncated`，
 /// **整段不劈**；放不下的段一律不给（连第一段也不例外 —— 不然它就不是上界）。本机 1,139 份记录实测：32 KiB 让 98.99% 的改动整份给全。
 const PATCH_MAX: usize = 32 * 1024;
-/// 行差收着时先画几行（两端同一个数）。
-const DIFF_SHOWN: usize = 400;
-/// 行差里一行至多留多少字（按字符），截了以「…」收尾：压缩过的单行几十万字不进界面。
-const DIFF_LINE_MAX: usize = 2000;
-/// 从改前改后逐行比的格数上界（改前行数 × 改后行数）：超了不比，出整删 ＋ 整增（数照这一形），行差带降级那一句（[`LineDiff::notice`]）。
-const DIFF_CELLS_MAX: usize = 4_000_000;
-
-/// 一行正文进行差的样子：去掉行尾的 `\r`，过长截到 [`DIFF_LINE_MAX`] 字。
-fn diff_cell(text: &str) -> String {
-    let t = text.strip_suffix('\r').unwrap_or(text);
-    match t.char_indices().nth(DIFF_LINE_MAX) {
-        Some((i, _)) => format!("{}…", &t[..i]),
-        None => t.to_string(),
-    }
-}
-
 fn diff_row(
     kind: LineDiffKind,
     text: String,
@@ -50,9 +35,9 @@ fn diff_row(
     }
 }
 
-/// 攒好的行 ＋ 整份的增删数 ⇒ 行差：收着画几行、「+N −M」那一句（与过程那一行右侧那一句同一处写，[`StepResult::written`]）。
-/// `notice` ＝ 降级了的那一句（[`line_ops`] 超了格数上界时写的），照带。
-fn line_diff(
+/// 攒好的行 ＋ 整份的增删数 ⇒ 行差（[`line_diff::assemble`]）：「+N −M」那一句与过程那一行右侧那一句同一处写（[`StepResult::written`]）。
+/// `notice` ＝ 降级了的那一句（[`line_diff::ops`] 超了格数上界时写的），照带。
+fn diff_of(
     rows: Vec<LineDiffRow>,
     added: u32,
     removed: u32,
@@ -67,15 +52,7 @@ fn line_diff(
     }
     .written(false)
     .text;
-    LineDiff {
-        shown: u32::try_from(rows.len().min(DIFF_SHOWN)).unwrap_or(u32::MAX),
-        rows,
-        truncated,
-        added,
-        removed,
-        stat,
-        notice,
-    }
+    line_diff::assemble(rows, added, removed, truncated, notice, stat)
 }
 
 /// 结果里的逐段改动（`structuredPatch`）⇒ 整份的增删数 ＋ 行差（真行号从各段的 `oldStart` / `newStart` 起算；
@@ -130,7 +107,7 @@ fn patch_of(hunks: &[Value]) -> (u32, u32, Option<LineDiff>) {
                 Some('+') => {
                     rows.push(diff_row(
                         LineDiffKind::Add,
-                        diff_cell(chars.as_str()),
+                        line_diff::cell(chars.as_str()),
                         None,
                         Some(n),
                     ));
@@ -139,7 +116,7 @@ fn patch_of(hunks: &[Value]) -> (u32, u32, Option<LineDiff>) {
                 Some('-') => {
                     rows.push(diff_row(
                         LineDiffKind::Del,
-                        diff_cell(chars.as_str()),
+                        line_diff::cell(chars.as_str()),
                         Some(o),
                         None,
                     ));
@@ -149,7 +126,7 @@ fn patch_of(hunks: &[Value]) -> (u32, u32, Option<LineDiff>) {
                 Some(' ') => {
                     rows.push(diff_row(
                         LineDiffKind::Ctx,
-                        diff_cell(chars.as_str()),
+                        line_diff::cell(chars.as_str()),
                         Some(o),
                         Some(n),
                     ));
@@ -157,87 +134,20 @@ fn patch_of(hunks: &[Value]) -> (u32, u32, Option<LineDiff>) {
                     n += 1;
                 }
                 _ => {
-                    rows.push(diff_row(LineDiffKind::Ctx, diff_cell(l), Some(o), Some(n)));
+                    rows.push(diff_row(
+                        LineDiffKind::Ctx,
+                        line_diff::cell(l),
+                        Some(o),
+                        Some(n),
+                    ));
                     o += 1;
                     n += 1;
                 }
             }
         }
     }
-    let diff = (!rows.is_empty()).then(|| line_diff(rows, added, removed, truncated, None));
+    let diff = (!rows.is_empty()).then(|| diff_of(rows, added, removed, truncated, None));
     (added, removed, diff)
-}
-
-/// 改前改后的原文 ⇒ 逐行的种类（行尾风格不算差别：`\r\n` · `\r` 当 `\n`，末尾恰好一个换行不成行）。
-/// 一样 ⇒ 全是没变；改前空 ⇒ 全是加的；改后空 ⇒ 全是删的；行数之积超了 [`DIFF_CELLS_MAX`] ⇒ 整删 ＋ 整增，连降级那一句；
-/// 余下按最长公共子序列（迭代的表 ＋ 迭代回溯，上千行不靠调用栈），同长时删的排在加的前面。
-/// 第二格 ＝ 降级那一句（没降级 ⇒ `None`）。
-fn line_ops(old: &str, new: &str) -> (Vec<(LineDiffKind, String)>, Option<Words>) {
-    let norm = |s: &str| {
-        let t = s.replace("\r\n", "\n").replace('\r', "\n");
-        match t.strip_suffix('\n') {
-            Some(x) => x.to_string(),
-            None => t,
-        }
-    };
-    let (o, n) = (norm(old), norm(new));
-    let split = |s: &str| -> Vec<String> {
-        if s.is_empty() {
-            Vec::new()
-        } else {
-            s.split('\n').map(str::to_string).collect()
-        }
-    };
-    let (a, b) = (split(&o), split(&n));
-    let all = |v: Vec<String>, k: LineDiffKind| v.into_iter().map(move |l| (k, l));
-    if o == n {
-        return (all(a, LineDiffKind::Ctx).collect(), None);
-    }
-    let (m, w) = (a.len(), b.len());
-    let past_cap = m.saturating_mul(w) > DIFF_CELLS_MAX;
-    if m == 0 || w == 0 || past_cap {
-        let notice = past_cap.then(|| {
-            let (m, w) = (m.to_string(), w.to_string());
-            Words(copy_core::copy_text(
-                "cards.diff.coarse",
-                &[("old", &m), ("new", &w)],
-            ))
-        });
-        let ops = all(a, LineDiffKind::Del)
-            .chain(all(b, LineDiffKind::Add))
-            .collect();
-        return (ops, notice);
-    }
-    let width = w + 1;
-    let mut c = vec![0u32; (m + 1) * width];
-    for i in 1..=m {
-        for j in 1..=w {
-            c[i * width + j] = if a[i - 1] == b[j - 1] {
-                c[(i - 1) * width + j - 1] + 1
-            } else {
-                c[(i - 1) * width + j].max(c[i * width + j - 1])
-            };
-        }
-    }
-    let mut ops = Vec::with_capacity(m + w);
-    let (mut i, mut j) = (m, w);
-    while i > 0 && j > 0 {
-        if a[i - 1] == b[j - 1] {
-            ops.push((LineDiffKind::Ctx, a[i - 1].clone()));
-            i -= 1;
-            j -= 1;
-        } else if c[i * width + j - 1] >= c[(i - 1) * width + j] {
-            ops.push((LineDiffKind::Add, b[j - 1].clone()));
-            j -= 1;
-        } else {
-            ops.push((LineDiffKind::Del, a[i - 1].clone()));
-            i -= 1;
-        }
-    }
-    ops.extend(a[..i].iter().rev().map(|l| (LineDiffKind::Del, l.clone())));
-    ops.extend(b[..j].iter().rev().map(|l| (LineDiffKind::Add, l.clone())));
-    ops.reverse();
-    (ops, None)
 }
 
 /// 入参里的几处改前改后 ⇒ 行差（不知道在文件第几行 ⇒ 行号缺）。几处时每处前一行段头；数照整份，行到 [`PATCH_MAX`] 在段的边界停下。
@@ -250,7 +160,7 @@ fn changes_of(changes: &[(String, String)]) -> LineDiff {
     let mut truncated = false;
     let mut notice = None;
     for (i, (old, new)) in changes.iter().enumerate() {
-        let (ops, coarse) = line_ops(old, new);
+        let (ops, coarse) = line_diff::ops(old, new);
         added += ops.iter().filter(|(k, _)| *k == LineDiffKind::Add).count() as u32;
         removed += ops.iter().filter(|(k, _)| *k == LineDiffKind::Del).count() as u32;
         let cost = ops.iter().map(|(_, l)| l.len()).sum::<usize>();
@@ -271,10 +181,10 @@ fn changes_of(changes: &[(String, String)]) -> LineDiff {
         }
         rows.extend(
             ops.into_iter()
-                .map(|(k, l)| diff_row(k, diff_cell(&l), None, None)),
+                .map(|(k, l)| diff_row(k, line_diff::cell(&l), None, None)),
         );
     }
-    line_diff(rows, added, removed, truncated, notice)
+    diff_of(rows, added, removed, truncated, notice)
 }
 
 /// 工具 ⇒ 主参数取哪个入参 · 它是不是路径。**「工具 → 主参数」只此一张**：消息流那一行（[`step_of`]）·

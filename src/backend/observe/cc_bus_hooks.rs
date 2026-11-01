@@ -92,13 +92,7 @@ pub(crate) fn program_of(cmd: &str) -> Option<(String, String)> {
     let mut rest = cmd.trim();
     loop {
         let tok = rest.split_whitespace().next()?;
-        let is_assign = match tok.find('=') {
-            Some(i) if i > 0 => tok[..i]
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_'),
-            _ => false,
-        };
-        if !is_assign {
+        if !shell_quote_core::is_assignment(tok) {
             break;
         }
         rest = rest[tok.len()..].trim_start();
@@ -118,12 +112,7 @@ pub(crate) fn program_of(cmd: &str) -> Option<(String, String)> {
 pub(crate) fn first_arg_of(cmd: &str) -> Option<String> {
     let mut words = cmd
         .split_whitespace()
-        .skip_while(|tok| match tok.find('=') {
-            Some(i) if i > 0 => tok[..i]
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_'),
-            _ => false,
-        });
+        .skip_while(|tok| shell_quote_core::is_assignment(tok));
     words.next()?;
     words.next().map(|w| unquote_once(w).to_string())
 }

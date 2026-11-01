@@ -247,7 +247,7 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
     ).toEqual([]);
   });
 
-  const CHORE = { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, action: "copySnippet" };
+  const CHORE = { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: null, copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, action: "copySnippet" };
 
   it("〔ST2〕文件与数据**喂一份真成品**再扫：待办各类 ＋ 改过你的文件都上屏，一条都不许命中", async () => {
     // 文件与数据经通道问本机后端一次（`chores-merge`：它问到各台的 `data-report`）；monitor 自己进程的那几条事实问 `footprint_client_facts`。
@@ -256,7 +256,7 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
       changedFiles: [{ path: "~/.bashrc", what: copyText("rsToolRegistry.tools.ccmName"), undo: { page: "machine", tab: "config", anchor: "connect-terminal" } }],
       todo: [
         { ...CHORE, id: "install:claude-cli", kind: "install", name: "Claude Code", loc: "claude", said: copyText("dataPage.chores.countInstall", { n: 1 }), action: "how", howUrl: "https://example.invalid/claude" },
-        { ...CHORE, id: "relay", name: "实时显示", loc: "~/.claude/settings.json · env", said: copyText("beChore.relay.saidTodo"), why: "慢一拍", steps: ["打开 ~/.claude/settings.json"], diff: [{ n: 3, op: "same", text: '  "env": {' }, { n: null, op: "add", text: '    "K": "v",' }], copy: '"K": "v"', whole: "{}", wholeCovers: ["relay"], file: "/h/.claude/settings.json" },
+        { ...CHORE, id: "relay", name: "实时显示", loc: "~/.claude/settings.json · env", said: copyText("beChore.relay.saidTodo"), why: "慢一拍", steps: ["打开 ~/.claude/settings.json"], diff: { rows: [{ kind: "ctx", text: '  "env": {', oldNo: 3, newNo: 3 }, { kind: "add", text: '    "K": "v",', newNo: 4 }], shown: 2, truncated: false, added: 1, removed: 0, stat: "+1" }, copy: '"K": "v"', whole: "{}", wholeCovers: ["relay"], file: "/h/.claude/settings.json" },
       ],
       tmux: false,
       counts: { badge: 1, open: 2, must: 0, decide: 0, install: 1, optional: 1, done: 0 },

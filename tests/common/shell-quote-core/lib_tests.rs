@@ -1,5 +1,16 @@
 use super::*;
 
+/// 赋值词：名字首字是字母或 `_`、其余是字母数字下划线、后面跟 `=`；别的（首字是数字 · 没有名字 · 名字里有别的字）都不是。
+#[test]
+fn an_assignment_word_is_a_shell_name_then_equals() {
+    for yes in ["A=1", "_x=", "FOO_2=a=b", "a=\"q r\""] {
+        assert!(is_assignment(yes), "{yes}");
+    }
+    for no in ["1X=a", "=x", "A-B=1", "A", "", "x.y=1", "é=1"] {
+        assert!(!is_assignment(no), "{no}");
+    }
+}
+
 #[test]
 fn posix_quote_breaks_single_quotes_the_posix_way() {
     assert_eq!(posix_quote("/p"), "'/p'");
