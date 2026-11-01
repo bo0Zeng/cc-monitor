@@ -244,7 +244,12 @@ fn spawn_more(book: &RunBook, from: usize, n: usize) {
         let s = m.entry(SID.to_string()).or_default();
         for i in from..from + n {
             let seen = t0 + Duration::from_secs(i as u64);
-            s.mark(mark(&format!("r{i:05}"), None), Some(format!("q{i}")), seen, ms(seen));
+            s.mark(
+                mark(&format!("r{i:05}"), None),
+                Some(format!("q{i}")),
+                seen,
+                ms(seen),
+            );
         }
     });
 }
