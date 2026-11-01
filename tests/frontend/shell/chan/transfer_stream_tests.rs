@@ -78,10 +78,7 @@ fn body_json(b: &Body) -> serde_json::Value {
 }
 
 fn kind(id: &str) -> crate::chan::wire::Kind {
-    crate::chan::wire::Kind(format!(
-        "{}{id}",
-        crate::transfer_relay::TRANSFER_KIND_PREFIX
-    ))
+    crate::chan::wire::Kind(format!("{}{id}", filewin_contract::TRANSFER_KIND_PREFIX))
 }
 
 /// 开一张上传单（经中继、转给台架那个本机后端），回票号。

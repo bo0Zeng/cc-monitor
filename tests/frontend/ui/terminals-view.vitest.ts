@@ -8,7 +8,7 @@
  * | 换筛选 ⇒ 照后端的先后重排、只留那一格的行 | 「换筛选」 |
  * | 找：按后端给的 `find` 那一格筛 | 「找」 |
  * | Ctrl 点两行 ⇒ 底下「已选 2」，结束交的是那两行 | 「多选」 |
- * | 结束几行：确认之后逐行按句柄交那台 `terminal-end`（有没有会话、哪种宿主同一条）；一行没结束 ⇒ 说没结束 | 「结束」 |
+ * | 结束几行：确认之后交本机一条 `terminals-end`（几台的句柄照选中的先后，有没有会话、哪种宿主同一条）；那一句照回包；问不到本机 ⇒ 说没结束 | 「结束」 |
  * | 点一行 ⇒ 终端面看那一台的那个终端 | 「看」 |
  * | 空 · 某台没答（那一句 ＋ 重新连接）· 读不出 | 「样子」 |
  */
@@ -35,17 +35,18 @@ import type { BoardRow } from "../../../src/frontend/ui/generated/BoardRow";
 import type { BoardGroup } from "../../../src/frontend/ui/generated/BoardGroup";
 import type { Watched } from "../../../src/frontend/ui/terminal-page";
 import { endRows } from "../../../src/frontend/ui/terminals-board-reads";
-import { endTerminal } from "../../../src/frontend/ui/terminal-reads";
-import { toast } from "../../../src/frontend/ui/kit/toast";
+import { endTerminals } from "../../../src/frontend/ui/terminal-reads";
+import { failToast, toast } from "../../../src/frontend/ui/kit/toast";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
 vi.mock("../../../src/frontend/ui/terminal-reads", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/terminal-reads")>()),
-  endTerminal: vi.fn(async () => {}),
+  endTerminals: vi.fn(async () => ({ results: [], said: "S-结束 3 项", failed: false, lines: [], copyDetail: "" })),
 }));
 vi.mock("../../../src/frontend/ui/kit/toast", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/kit/toast")>()),
   toast: vi.fn(),
+  failToast: vi.fn(),
 }));
 
 function row(key: string, over: Partial<BoardRow> = {}): BoardRow {
@@ -233,8 +234,8 @@ describe("「终端」视图", () => {
 });
 
 describe("结束几行", () => {
-  it("★ 确认之后逐行按句柄交那台 `terminal-end`（有会话的 · 没会话的同一条）；不确认 ⇒ 一行都不动", async () => {
-    const end = vi.mocked(endTerminal);
+  it("★ 确认之后交本机一条 `terminals-end`（有会话的 · 没会话的同一条，句柄照选中的先后）；不确认 ⇒ 一行都不动", async () => {
+    const end = vi.mocked(endTerminals);
     end.mockClear();
     const items = [
       { origin: "devbox", row: row("a", { sid: "sid-a", title: "甲" }) },
@@ -245,13 +246,18 @@ describe("结束几行", () => {
     expect(end).not.toHaveBeenCalled();
     await endRows(items, async () => true);
     expect(end.mock.calls).toEqual([
-      ["devbox", { terminal: "h-a" }, "甲"],
-      ["devbox", { terminal: "h-b" }, "乙"],
-      ["<local>", { terminal: "h-c" }, "丙"],
+      [
+        [
+          { machine: "devbox", terminal: "h-a" },
+          { machine: "devbox", terminal: "h-b" },
+          { machine: "<local>", terminal: "h-c" },
+        ],
+      ],
     ]);
-    expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toBe(copyText("sessionState.batch.done", { done: 3 }));
-    end.mockRejectedValueOnce(new Error("refused"));
+    expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toBe("S-结束 3 项");
+    const down = new Error("refused");
+    end.mockRejectedValueOnce(down);
     await endRows(items.slice(0, 1), async () => true);
-    expect(vi.mocked(toast).mock.calls.at(-1)?.slice(0, 2)).toEqual([copyText("tabSessionActions.kill.failed", { title: "甲" }), "refused"]);
+    expect(vi.mocked(failToast).mock.calls.at(-1)).toEqual([copyText("terminalsView.select.end"), down]);
   });
 });

@@ -677,6 +677,18 @@
         {
           "frozen": true,
           "kind": "value",
+          "path": "{t=said}.who.speaker{kind=taskNotification}.end",
+          "type": "enum"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.who.speaker{kind=taskNotification}.row",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
           "path": "{t=said}.who.speaker{kind=taskNotification}.status",
           "type": "string"
         },
@@ -1325,6 +1337,36 @@
           "frozen": false,
           "kind": "value",
           "path": "needs.what",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "notices[].failed",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "notices[].head",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "notices[].hidden[]",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "notices[].id",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "notices[].members[]",
           "type": "string"
         },
         {

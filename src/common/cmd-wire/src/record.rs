@@ -578,6 +578,18 @@ pub enum ResultKind {
     Handback,
 }
 
+/// 一件后台的活（子 agent / 后台命令）怎么收场的：收场通知上那一格（[`Speaker::TaskNotification`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
+pub enum TaskEnd {
+    Done,
+    Failed,
+    /// 被叫停（人 / 派出它的那一方让它停的）。
+    Stopped,
+}
+
 /// 提问 / 计划答了什么（B7）。界面写「已批准」/「已选「{option}」」，不显示 Claude Code 的英文原句。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -635,6 +647,14 @@ pub enum Speaker {
         #[serde(rename = "toolUseId", skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         tool_use_id: Option<String>,
+        /// 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        end: Option<TaskEnd>,
+        /// 写好的那一行（「后台任务 {做的事} {怎么收场} · {钟面}」）：出口那一下照看的那一台的时区写，界面照抄。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
+        row: Option<Words>,
     },
     /// 同一会话里的子 agent 发来的话；`handback` ＝ 它交回的报告。`from` 是子 agent 的 id。
     AgentMessage {
