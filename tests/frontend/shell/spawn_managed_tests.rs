@@ -68,7 +68,7 @@ fn the_no_default_guard_is_actually_looking_at_the_enums() {
 /// 数它只会逼出一个什么都往里传的上帝函数。
 /// 真正会出错的是**收尾那一下**：`.spawn()` / `.output()` / `.status()`
 /// 以及三条平台原语。⇒ 人群锚在那儿。
-/// 「谁在起进程」那张表另有其人：`write_site_registry::SPAWNS`（本条不替它）。
+/// 「谁在起进程」由 `src/frontend/clippy.toml` 起进程那一组管（只许经 `spawn_managed` 起；本条不替它）。
 ///
 /// # ⚠ `build.rs` 刻意不在人群里
 ///

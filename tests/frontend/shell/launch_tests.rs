@@ -776,7 +776,7 @@ fn relay_probe_prefix(url: &str) -> String {
 // `ETXTBSY` 的定义就是「execve 的目标文件此刻正被某个进程打开着写」。
 // 本进程自己那把写句柄在 `install_fake_terminal` 里**确定性地关掉了**（见那里）。
 // 剩下的唯一来路是**别的线程**：这个测试二进制的生产段里有 40+ 处真起进程的调用点
-//（`write_site_registry` 那张 `SPAWNS` 表逐条登记着），起进程要么 fork 要么 posix-spawn，
+//（都经 `spawn_managed`），起进程要么 fork 要么 posix-spawn，
 // 两者都把父进程此刻打开的 fd **复制一份给子进程**，而 close-on-exec 要到子进程
 // **exec 那一刻**才生效 ⇒ 「fork 之后、exec 之前」那段窗口里，那个子进程就是
 // **一个握着我们这个文件写 fd 的进程**。我们此刻 execve 它 = `ETXTBSY`。

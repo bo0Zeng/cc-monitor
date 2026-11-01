@@ -558,8 +558,8 @@ fn the_production_sink_really_hands_the_line_to_the_log() {
             "{why}\n\
                  ⇒ `MonitorLog` 不再把那一行交给日志了。\n\
                  那本账**真的会被写下来**靠的就是这一行：真正碰盘的是\n\
-                 `logging.rs::build_rolling_appender`（`write_site_registry::WRITE_SITES` 里\n\
-                 已登记的那条），而时刻由 `fmt` 的默认 timer 打（带日期）。\n\
+                 `logging.rs::build_rolling_appender`（monitor 自己的滚动日志，日志目录经\n\
+                 `platform::own_fs` 建），而时刻由 `fmt` 的默认 timer 打（带日期）。\n\
                  换成一个不打时刻的落点，账上就再问不出「它上一次崩在哪一天」——\n\
                  `~/.cc-monitor/bin/wrap.log` 那两行就是那个样子。"
         )
