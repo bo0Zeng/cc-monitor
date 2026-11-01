@@ -1,8 +1,9 @@
 // 每号的用量上限、切入、切出照设置；智能切换关着时，用满或被拒才换号，几个号都能用时照号牌顺序。
 // 切入：默认 ＝ 轮到它才用；强制切入 ＝ 有额度就切到它，几个强制切入的照号牌顺序、靠前的有额度就切回；延迟切入 ＝ 其余账号都用完才切到它，延迟时长内有账号恢复就先停发、到点用那个账号。
 // 切出：默认 ＝ 到上限或被拒才换走；强制切出 ＝ 用着它时，其余账号余量合计达到切出条件（或一有额度）即换走，换走后排在其余账号后面。
-// 智能切换：要换号时先用最先作废的那份额度（只有 5 小时上限的账号看 5 小时重置，周上限卡着的账号看周重置），没开窗的、周上限卡着的放后面；
-// 在用的账号还能用时，往后推演「留着」与「现在换过去」两种，比卡住发不出的量、用掉的周额度与换号代价（重写一遍提示缓存），换了更少才换。量不到这个会话的用速时不提前换。
+// 智能切换：往后推演几种走法（留着 · 换到每一个能用的账号 · 给空着的账号此刻开窗），照几条用速路径各推一遍，比期望代价：卡住发不出的量 ＋ 换号重写提示缓存的一成 ＋ 用掉的周额度（周重置前用不完的不算）− 视野末还用得上的余量。
+// 要换号时挑期望代价最小的，一样小的先用最先作废的、再照号牌；在用的账号还能用时，换过去少的超过换号代价的一成与两倍估计误差才换；空着的账号此刻开窗比不开少的超过一句话的代价，就发一句开窗。
+// 量不到这个会话的用速时不推演：要换号时先用最先作废的那份额度（没开窗的、周上限卡着的放后面），在用的账号还能用就不提前换。
 // 「现在用」选的账号与手动排的先后压过上面这些：在用的账号只在用不了时换。
 
 /*--- rotation
@@ -34,7 +35,7 @@
       "label": { "zh": "切出条件" },
       "help": { "zh": "其余账号余量之和，单位为百分点；余量 ＝ 上限 − 用量，两窗取小，此刻不可用的账号按 0 计" } },
     { "key": "smart", "kind": "toggle", "scope": "all", "default": true,
-      "label": { "zh": "智能切换" }, "help": { "zh": "要换号时先用最先作废的那份额度；在用的账号还能用时，现在换过去能少卡住或省下周额度、且抵得过换号代价才换。额度宽裕时很少提前换" } }
+      "label": { "zh": "智能切换" }, "help": { "zh": "往后推演各个账号：要换号时挑卡住与代价最少的；在用的账号还能用时，现在换过去少卡的超过换号代价与估计误差才换；空着的账号此刻开窗能少卡就先开窗。额度宽裕时很少提前换" } }
   ]
 }
 ---*/
@@ -62,6 +63,16 @@ fn back_at(a, r, now, clock) {
   if t > now { t } else { () }
 }
 
+// 折合输入 token 照「万」写，一位小数（why 里的数）。
+fn wan(x) { (x / 1000.0).round() / 10.0 }
+
+// 推演过的两个号谁在前（[期望代价, 最先作废的键, 号牌]）：代价差过 1 tok 照代价，一样小的先最先作废、再照号牌。
+fn before(x, y) {
+  if (x[0] - y[0]).abs() > 1.0 { return if x[0] < y[0] { -1 } else { 1 }; }
+  if x[1] != y[1] { return if x[1] < y[1] { -1 } else { 1 }; }
+  x[2] - y[2]
+}
+
 fn decide(ctx) {
   let s = ctx.settings;
   let now = ctx.now;
@@ -86,8 +97,8 @@ fn decide(ctx) {
     rows[id] = r;
   }
 
-  // 每号此刻那一份额度（余量 · 作废时刻 · 周上限卡着 · 开没开窗 · 周剩的）· 有没有额度 · 切入 · 1% 约多少 · 别的会话压在上面的用速。
-  let p = #{}; let amt = #{}; let ok = #{}; let tier = #{}; let tpp = #{}; let oth = #{};
+  // 每号此刻那一份额度（余量 · 作废时刻 · 周上限卡着 · 开没开窗 · 周剩的）· 有没有额度 · 切入。
+  let p = #{}; let amt = #{}; let ok = #{}; let tier = #{};
   for id in ids {
     let a = have[id];
     let r = rows[id];
@@ -95,15 +106,15 @@ fn decide(ctx) {
     amt[id] = p[id].amt;
     ok[id] = a.sendable == true && amt[id] > 0.0;
     tier[id] = if r["in"] != () { r["in"] } else { "default" };
-    tpp[id] = if a.tokensPerPct != () && a.tokensPerPct.w5h != () { a.tokensPerPct.w5h.to_float() } else { () };
-    oth[id] = if a.others != () && a.others.w5h != () { a.others.w5h.to_float() } else { () };
   }
 
-  // 挑号的先后：智能切换开 ⇒ 最先作废的在前（lib::due_rank），同一档照号牌；关 ⇒ 照号牌。
+  // 最先作废的先后键（越小越先）：开着窗的看离作废几秒，没开窗的第二档，周上限卡着的最后。
+  let due = |id| { let q = p[id]; if q.exp == () { 1000000000 } else if q.wk { 3000000000 } else { q.exp - now } };
+  // 挑号的先后：智能切换开 ⇒ 最先作废的在前，同一档照号牌（量得到用速时下面照推演重排）；关 ⇒ 照号牌。
   let rank = |list| {
     if !smart { return list; }
     let keys = [];
-    for id in list { keys.push(lib::due_rank(p[id], oth[id], now) * 1024 + pos[id]); }
+    for id in list { keys.push(due.call(id) * 1024 + pos[id]); }
     keys.sort();
     let out = [];
     for k in keys { out.push(ids[k % 1024]); }
@@ -153,6 +164,46 @@ fn decide(ctx) {
     }
   }
 
+  // 推演（智能切换开着、量得到本会话的用速、没有强制切入的号有额度）：lib::rollout 照几条用速路径把几种走法各推一遍、交原始量，
+  //   lib::price 定价（卡住的 ＋ 换号重写的一成 ＋ 用掉的周额度 × 影子价 − 视野末的残值），回每种走法的期望代价与「和留着的差」的标准误。
+  let pace = if sess.pace != () { sess.pace.to_float() } else { () };
+  let can_roll = smart && pace != () && force.len() == 0;
+  let eps = 0.1;           // 换号代价里不算额度的那一截占几成（同 lib::price）
+  let sentence = 5000.0;   // 开窗发的那一句话（折合输入 token，取宽）
+  let caps = #{};          // 号 ⇒ 两窗的分段上限（没设 ⇒ 90；7 天没设 ⇒ 同 5 小时）
+  let lates = [];
+  for id in ids {
+    let c = rows[id].caps;
+    let c5 = if c != () && c["5h"] != () { c["5h"] } else { 90.0 };
+    caps[id] = #{ "5h": c5, "7d": if c != () && c["7d"] != () { c["7d"] } else { c5 } };
+    if tier[id] == "delay" { lates.push(id); }
+  }
+  // 一次推得起几种走法：每种每条路径交回约 6 ＋ 9 × 号数个值，积木一次至多交 6000 个（超了先减路径，减到一条为止）。
+  let room = (6000 - 8 * ids.len() - 8) / (6 + 9 * ids.len());
+  if room < 2 { room = 2; }
+  // 往后看两个 5 小时窗：此刻开着的每一窗都在里面作废、再来一轮。
+  let roll = |c, walks| {
+    let parts = lib::rollout(c, #{ caps: caps, dflt: 90.0, late: lates, walks: walks, horizon: 2 * 18000 });
+    if parts == () { () } else { lib::price(parts, c) }
+  };
+  let jv = #{};            // 号 ⇒ 换到它的期望代价（推演过的）
+  if can_roll && !keep && norm.len() > 1 {
+    // 要换号：能用的都推（推不起的照最先作废排在后面），挑期望代价最小的；一样小（差不到 1 tok）的先用最先作废的、再照号牌。
+    let cands = [];
+    let rest = [];
+    for id in norm { if cands.len() < room { cands.push(id); } else { rest.push(id); } }
+    let pr = roll.call(ctx, cands);
+    if pr != () {
+      let keys = [];
+      for i in 0..cands.len() { keys.push([pr[i].j, due.call(cands[i]), pos[cands[i]], cands[i]]); jv[cands[i]] = pr[i].j; }
+      keys.sort(|x, y| before(x, y));
+      norm = [];
+      for k in keys { norm.push(k[3]); }
+      norm += rest;
+      front = force + norm + outs;
+    }
+  }
+
   let order = [];
   if keep { order.push(cur); }
   for id in front { if !order.contains(id) { order.push(id); } }
@@ -173,7 +224,8 @@ fn decide(ctx) {
   for id in ids {
     if why[id] != () { continue; }
     if order.contains(id) {
-      why[id] = if tier[id] == "delay" { "其余账号无可用额度" } else if tier[id] == "force" { "强制切入" } else if smart { "最先作废" } else { "号牌顺序" };
+      why[id] = if tier[id] == "delay" { "其余账号无可用额度" } else if tier[id] == "force" { "强制切入" }
+        else if jv[id] != () { `推演：换过去期望代价约 ${wan(jv[id])} 万` } else if smart { "最先作废" } else { "号牌顺序" };
     } else if ok[id] {
       why[id] = if tier[id] == "delay" { "其余账号用完才切入" } else { "满足切出条件" };
     } else if have[id].sendable == true {
@@ -181,96 +233,38 @@ fn decide(ctx) {
     }
   }
 
-  // 智能切换：在用的号还能用、用户没定住它、没有强制切入的号有额度 ⇒ 比「留着」与「现在换过去」。
+  // 智能切换：在用的号还能用、用户没定住它 ⇒ 比「留着」与「换到每一个能用的号」（推得起几种比几种，照最先作废取）。
+  //   换的条件：留着的期望代价 − 换过去的 ＞ 换号代价的一成与两倍标准误里大的那个（估不准的差不换，免得来回换）。
   let cands_seen = false;
-  let pace = if sess.pace != () { sess.pace.to_float() } else { () };
-  if smart && keep && !pinned && pace != () && tpp[cur] != () && force.len() == 0 && norm.len() > 0 {
-    // 便宜的估（O(号数)）：比在用的那份先作废、扣掉别的会话会用掉的还剩、本会话换过去用得掉的多过一次换号代价的，才算候选；
-    //   候选照最先作废排，只对前 3 个往前推演。
-    let pc = p[cur];
-    let est = [];
-    for id in norm {
-      let q = p[id];
-      if id == cur || tpp[id] == () || oth[id] == () || q.exp == () || q.wk { continue; }
-      if !pc.wk && pc.exp != () && q.exp >= pc.exp { continue; }
-      let m = (q.exp - now).to_float() / 60.0;
-      let free = q.amt - oth[id] * m;
-      if free <= 0.0 { continue; }
-      if lib::usable(free, pace, tpp[id], m) <= lib::switch_cost(sess, id, now) { continue; }
-      est.push((q.exp - now) * 1024 + pos[id]);
-    }
-    if est.len() > 0 {
+  if can_roll && keep && !pinned {
+    let cands = [];
+    for id in norm { if id != cur && cands.len() < room - 1 { cands.push(id); } }
+    if cands.len() > 0 {
       cands_seen = true;
-      est.sort();
-      let horizon = 2 * 18000;   // 往后看两个 5 小时窗：此刻开着的每一窗都在里面作废一次、再来一轮
-      // 推演要的每一份额度，按列放（数量 · 起 · 作废 · 号 · 周上限卡着 · 延迟切入），连同视野里每次 5 小时重置后再来的那几份。
-      let pa = []; let pst = []; let pex = []; let pid = []; let pwk = []; let plt = [];
-      for id in ids {
-        if tpp[id] == () { continue; }
-        let a = have[id];
-        let q = p[id];
-        let start = now;
-        if a.refusedUntil != () && a.refusedUntil > now { start = a.refusedUntil; }
-        if a.sendable != true && start == now { continue; }
-        let left = if q.amt > 0.0 { q.amt } else { 0.0 };
-        let lt = tier[id] == "delay";
-        let e = if q.exp == () { now + 2 * horizon } else { q.exp };
-        let tk = tpp[id];
-        pa.push(left * tk); pst.push(start); pex.push(e); pid.push(id); pwk.push(q.wk); plt.push(lt);
-        let c5 = rows[id].caps;
-        let segs5 = if c5 != () { c5["5h"] } else { () };
-        for x in lib::refills(a.resets.w5h, if q.l7 != () { q.l7 - left } else { () }, q.wk, e, segs5, 90.0, clock, now, horizon) {
-          pa.push(x[0] * tk); pst.push(x[1]); pex.push(x[2]); pid.push(id); pwk.push(q.wk); plt.push(lt);
+      let pr = roll.call(ctx, [cur] + cands);
+      if pr != () {
+        let bi = 1;
+        let kb = [pr[1].j, due.call(cands[0]), pos[cands[0]]];
+        for i in 2..pr.len() {
+          let ki = [pr[i].j, due.call(cands[i - 1]), pos[cands[i - 1]]];
+          if before(ki, kb) < 0 { bi = i; kb = ki; }
         }
-      }
-      let bands = lib::pace_bands(sess.spread);
-      let at = #{};   // 号 ⇒ 它此刻那份在第几格
-      let k = 0;
-      while k < pa.len() { if pst[k] <= now && at[pid[k]] == () { at[pid[k]] = k; } k += 1; }
-      let full = lib::write_extra(sess) * (if sess.context != () { sess.context.to_float() } else { 0.0 });   // 整段重写一遍
-      let grow = lib::write_extra(sess) * (if sess.grow != () { sess.grow.to_float() } else { 0.0 });
-      let ttl = if sess.ttl != () { sess.ttl } else { 3600 };   // 提示缓存留多久（说不出 ⇒ 1 小时那一档）
-      let cache = #{};                                          // 号 ⇒ 本会话在它上面的缓存到几点
-      if sess.cached != () { for c in sess.cached.keys() { let u = sess.cached[c]["until"]; if u != () { cache[c] = u; } } }
-      cache[cur] = now + ttl;
-      // 别的会话守在哪个号、那份在第几格、用速多少（几种走法 · 几档用速共用）。
-      let oev = #{ acc: [], q: [], r: [] };
-      for id in ids {
-        let o = oth[id];
-        if o == () || o <= 0.0 || tpp[id] == () || id == cur { continue; }
-        oev.acc.push(id); oev.q.push(at[id]); oev.r.push(o * tpp[id]);
-      }
-      // 一种走法的代价：几档用速各推一遍、按权平均；别的会话也守在本会话要换去的那个号上 ⇒ 并进本会话这一条一起守。
-      let plan = |to, lump| {
-        let j = 0.0;
-        for b in bands {
-          let share = ();
-          if to != cur && oth[to] != () && oth[to] > 0.0 { share = oth[to] * tpp[to] * b[0]; }
-          j += b[1] * lib::project(pa, pst, pex, pid, pwk, plt, oev,
-                 #{ m: b[0], at: at[to], rho: pace * b[0], share: share, mine: to, lump: lump, kfull: full, grow: grow, cache: cache, ttl: ttl, now: now, end: now + horizon });
+        let best = cands[bi - 1];
+        let gain = -pr[bi].diff;
+        let k = lib::switch_cost(sess, best, now);
+        let noise = 2.0 * pr[bi].se;
+        if gain > eps * k && gain > noise {
+          why[best] = `智能切换：换过去少卡约 ${wan(gain)} 万 · 换号代价约 ${wan(k)} 万`;
+          let o2 = [best];
+          for id in order { if !o2.contains(id) { o2.push(id); } }
+          order = o2;
+        } else if gain <= 0.0 {
+          why[cur] = `继续使用：换号不少卡（换号代价约 ${wan(k)} 万）`;
+        } else if noise >= eps * k {
+          why[cur] = `继续使用：换过去少卡约 ${wan(gain)} 万，在估计误差约 ${wan(noise)} 万以内`;
+        } else {
+          why[cur] = `继续使用：换过去少卡约 ${wan(gain)} 万，不抵换号代价的一成约 ${wan(eps * k)} 万`;
         }
-        j
-      };
-      // 一判的操作数有上限：推演在后端原生里，一档用速一次调用、连拼参数与加起来约 40 ＋ 2 × 号数次；前面的准备约 1500 × 号数次（取宽）。
-      //   推得起几遍就比几个候选（至多 3 个）；一个都推不起 ⇒ 这一判不提前换（只剩用满换号时照最先作废挑）。
-      let looks = (170000 - 1500 * ids.len()) / (bands.len() * (40 + 2 * ids.len()) + 1);
-      let top = if looks - 1 < 3 { looks - 1 } else { 3 };
-      let best = cur;
-      let j_best = if top >= 1 { plan.call(cur, 0.0) } else { 0.0 };
-      let i = 0;
-      while i < est.len() && i < top {
-        let id = ids[est[i] % 1024];
-        let j = plan.call(id, lib::switch_cost(sess, id, now));
-        if j < j_best - 1.0 { j_best = j; best = id; }
-        i += 1;
-      }
-      if best != cur {
-        why[best] = `智能切换：${(p[best].exp - now + 59) / 60} 分钟后作废，现在换过去能少卡住或省下周额度`;
-        let o2 = [best];
-        for id in order { if !o2.contains(id) { o2.push(id); } }
-        order = o2;
-      } else {
-        why[cur] = "继续使用：现在换号省下的不抵换号代价";
       }
     }
   }
@@ -278,6 +272,33 @@ fn decide(ctx) {
   // 记下延迟切入的号是不是其余都用完才切进来的（会话从它开、其余有额度 ⇒ 换走）。
   let first = if order.len() > 0 { order[0] } else { () };
   memo.late = if first != () && tier[first] == "delay" { first } else { () };
+
+  // 开窗：号列表里此刻能用、5 小时窗关着的号，推演说「此刻给它开窗」比不开期望代价少的超过一句话的代价与两倍标准误 ⇒ 交回 warm，
+  //   后端用它发一句、让它的 5 小时从此刻起算（饱和时空着的号每 5 小时少一份）。比的是接着用 first 的两种走法。
+  let warm = [];
+  if can_roll && first != () {
+    let shut = [];
+    for id in ids {
+      let a = have[id];
+      if id != first && ok[id] && !p[id].open && a.kind != "api" && a.off != true && shut.len() < room - 1 { shut.push(id); }
+    }
+    if shut.len() > 0 {
+      let c = ctx;
+      if first != cur { c.current = first; }
+      let walks = [first];
+      for id in shut { walks.push(#{ warm: id }); }
+      let pr = roll.call(c, walks);
+      if pr != () {
+        for i in 0..shut.len() {
+          let gain = -pr[i + 1].diff;
+          if gain > sentence && gain > 2.0 * pr[i + 1].se {
+            warm.push(shut[i]);
+            why[shut[i]] = `开窗：此刻开窗少卡约 ${wan(gain)} 万`;
+          }
+        }
+      }
+    }
+  }
 
   // 一个都不能用：停到延迟里等的那一刻，或最早有号恢复。
   let hold = ();
@@ -314,5 +335,5 @@ fn decide(ctx) {
   }
   if cands_seen && (at == () || now + 60 < at) { at = now + 60; }
 
-  #{ order: order, why: why, hold_until: hold, wake: #{ at: at, when: when }, memo: memo }
+  #{ order: order, why: why, hold_until: hold, wake: #{ at: at, when: when }, warm: warm, memo: memo }
 }

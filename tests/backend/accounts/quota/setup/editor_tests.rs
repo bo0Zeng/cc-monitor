@@ -380,16 +380,62 @@ fn smart_off_keeps_the_current_and_goes_by_the_list() {
     assert_eq!(v.order.first().map(String::as_str), Some("A"), "{v:?}");
 }
 
+/// 夹具里改了期望的几判：照推演 ＋ 定价排出来的先后与「最先作废先用 ＋ 差 1 tok 就换」那一版不同，逐条写为什么。
+const CHANGED: &[(&str, &[&str], &str)] = &[
+    (
+        "h · 场景 42 · 智能切换",
+        &["B", "W", "C"],
+        "额度宽裕、哪种走法都不卡；B 上有本会话的缓存，换过去当场不用重写，视野里只再换一次；留着 W 或换去 C（20 分钟后作废）都要换两次。\
+         少一次重写的一成 ≈ 2.85 万，换号代价 0 ⇒ 换去 B。C 那 40 点作废不卡，不算代价",
+    ),
+    (
+        "h · 场景 43 · 智能切换",
+        &["B", "W", "C"],
+        "同场景 42（C 60 分钟后作废）：去 B 少一次重写，作废的不卡不算代价",
+    ),
+    (
+        "h · 场景 48 · 智能切换",
+        &["B", "W", "C"],
+        "同场景 42：去 B 少一次重写，作废的不卡不算代价",
+    ),
+    (
+        "h · 场景 54 · 智能切换",
+        &["W", "B"],
+        "额度宽裕：W 剩 60 点，够用到 A 4 小时后重置，不卡；换去 B（25 分钟后作废）视野里也是换两次，两种走法期望代价一样 ⇒ 不到门槛，留着。\
+         旧的照最先作废提前换去 B，白换一次",
+    ),
+    (
+        "h · 场景 55 · 智能切换",
+        &["W", "B"],
+        "同场景 54：留着与换去 B 期望代价一样，不换",
+    ),
+    (
+        "b · 场景 65 · 智能切换",
+        &[
+            "a00", "a03", "a05", "a23", "a08", "a16", "a01", "a24", "a09", "a17", "a02", "a25", "a10",
+            "a18", "a26", "a11", "a19", "a04", "a27", "a12", "a20", "a28", "a13", "a21", "a06", "a29",
+            "a14", "a22", "a07", "a15",
+        ],
+        "提前换去 a00 与旧的一样；排在后面的照最先作废、不再扣别的会话的用速（due_rank 那一刀切不再调），后面几号的先后跟着变",
+    ),
+];
+
 /// ★ 编辑器那一份与算法定稿时的那一份对同一组事实排出同样的先后（rotsim 的几十判：提前换 · 不值得换 · 用满换号 ·
-/// 延迟切入 · 强制切出 · 停发 · 手动选的 · 量不到用速 · 30 个号）。
+/// 延迟切入 · 强制切出 · 停发 · 手动选的 · 量不到用速 · 30 个号），[`CHANGED`] 里那几判照它写的。
 #[test]
 fn it_orders_the_same_as_the_algorithm_on_the_simulated_facts() {
     let all = cases();
     assert!(all.len() >= 30, "夹具够多：{}", all.len());
+    for (name, _, _) in CHANGED {
+        assert!(all.iter().any(|c| c["case"] == *name), "改了期望的「{name}」在夹具里");
+    }
     let mut off = Vec::new();
     for c in &all {
         let v = decide_case(&c["ctx"], &c["ctx"]["settings"]);
-        let want: Vec<String> = serde_json::from_value(c["order"].clone()).expect("order");
+        let want: Vec<String> = match CHANGED.iter().find(|(n, _, _)| c["case"] == *n) {
+            Some((_, o, _)) => o.iter().map(|s| (*s).to_string()).collect(),
+            None => serde_json::from_value(c["order"].clone()).expect("order"),
+        };
         if v.order != want {
             off.push(format!("{}：得 {:?}，应 {:?}", c["case"], v.order, want));
         }
@@ -424,9 +470,9 @@ fn many(n: usize, spread: f64) -> Value {
            "pinned": false})
 }
 
-/// ★ 号多了一判也在操作数上限里判完、不走兜底：推演开销由算法自己封顶（推不起几遍就少比几个候选，一个都推不起就不提前换）。
-/// 用速起伏大时低的那一档是 0，别的会话那一档不用、不并进池子（不拿 0 去除）。30 个号、没起伏时照推演提前换去快作废的 n00。
-/// 推演在原生内核里（`lib::project` 一次调用一次操作）：15 个号 · 起伏 0.6 一判不到 3 万次操作；15 个号起直到 100 个号都推得起、比了候选。
+/// ★ 号多了一判也在操作数上限里判完、不走兜底：一次推几种走法由策略照号数封顶（积木交回的原始量至多 6000 个值），
+/// 定价的循环跟着原始量走。9 个号到 100 个号都推得起、比了候选（至少留着 ＋ 一个），一判不到上限（20 万）的一半。
+/// 30 个号、没起伏时照推演提前换去快作废的 n00。
 #[test]
 fn many_accounts_judge_within_the_limit() {
     for (n, spread) in [
@@ -439,20 +485,14 @@ fn many_accounts_judge_within_the_limit() {
         (100, 0.6),
     ] {
         let c = many(n, spread);
-        let (_, ops, calls) = probe(&c);
-        eprintln!(
-            "{n} 个号 · 起伏 {spread}：{ops} 次操作 · 推演 {} 遍",
-            calls.len()
+        let (_, ops, _) = probe(&c);
+        let walks = WALKS.with(|w| w.take());
+        eprintln!("{n} 个号 · 起伏 {spread}：{ops} 次操作 · 定价 {walks:?}（走法数, 路径数）");
+        assert!(ops < 100_000, "{n} 个号 · 起伏 {spread} 一判 {ops} 次操作");
+        assert!(
+            walks.first().is_some_and(|(w, p)| *w >= 2 && *p >= 1),
+            "{n} 个号 · 起伏 {spread} 推不起、没比候选：{walks:?}"
         );
-        if n == 15 && spread > 0.0 {
-            assert!(ops < 30_000, "15 个号 · 起伏 0.6 一判 {ops} 次操作");
-        }
-        if n >= 15 {
-            assert!(
-                !calls.is_empty(),
-                "{n} 个号 · 起伏 {spread} 推不起、没比候选"
-            );
-        }
     }
     let c = many(30, 0.0);
     let v = decide_case(&c, &c["settings"]);
@@ -466,9 +506,11 @@ thread_local! {
     /// 量具那一份沙箱：这一判到此用了几次操作 · 每次喂给 `lib::project` 的八个参数。
     static OPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     static CALLS: std::cell::RefCell<Vec<Vec<rhai::Dynamic>>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// 每次调 `lib::price` 时那一份原始量有几种走法 · 几条路径。
+    static WALKS: std::cell::RefCell<Vec<(i64, i64)>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
-/// 量具：数操作数，并在 `lib::project` 开头录下它的八个参数（积木库别的不动）。
+/// 量具：数操作数，在 `lib::project` 开头录下它的八个参数、在 `lib::price` 开头录下几种走法几条路径（积木库别的不动）。
 fn probe_engine() -> &'static rhai::Engine {
     static E: OnceLock<rhai::Engine> = OnceLock::new();
     E.get_or_init(|| {
@@ -500,13 +542,24 @@ fn probe_engine() -> &'static rhai::Engine {
                 CALLS.with(|x| x.borrow_mut().push(v));
             },
         );
+        e.register_fn("rec_walks", |w: i64, p: i64| {
+            WALKS.with(|x| x.borrow_mut().push((w, p)));
+        });
         let head = "fn project(amt, st, ex, who, wk, late, oev, o) {";
         assert!(code::LIB_SOURCE.contains(head), "积木库里有 project");
-        let src = code::LIB_SOURCE.replacen(
-            head,
-            &format!("{head}\n  rec(amt, st, ex, who, wk, late, oev, o);"),
-            1,
-        );
+        let priced = "fn price(parts, ctx) {";
+        assert!(code::LIB_SOURCE.contains(priced), "积木库里有 price");
+        let src = code::LIB_SOURCE
+            .replacen(
+                head,
+                &format!("{head}\n  rec(amt, st, ex, who, wk, late, oev, o);"),
+                1,
+            )
+            .replacen(
+                priced,
+                &format!("{priced}\n  if parts != () {{ rec_walks(parts.runs.len(), parts.paths); }}"),
+                1,
+            );
         code::with_lib_from(e, &src).expect("积木库编得过")
     })
 }
@@ -515,6 +568,7 @@ fn probe_engine() -> &'static rhai::Engine {
 fn probe(c: &Value) -> (Verdict, u64, Vec<Vec<rhai::Dynamic>>) {
     OPS.with(|x| x.set(0));
     CALLS.with(|x| x.borrow_mut().clear());
+    WALKS.with(|x| x.borrow_mut().clear());
     let v = decide_case_in(probe_engine(), c, &c["settings"]);
     (v, OPS.with(std::cell::Cell::get), CALLS.with(|x| x.take()))
 }
@@ -664,8 +718,74 @@ fn both(args: &[rhai::Dynamic]) -> (f64, f64) {
     (call(oe, oa, "project"), call(test_engine(), na, "via_lib"))
 }
 
-/// ★ 夹具里每一判当时喂给 `lib::project` 的参数（录下来）·（加上合成的 15 · 30 个号）：Rhai 原文那一版与此刻的积木库代价逐个相等
-/// （相对差 ＜ 1e-6）；排法也一样（见 [`it_orders_the_same_as_the_algorithm_on_the_simulated_facts`]）。
+/// 照旧签名调 `lib::project` 的那种写法（用户的策略文件里还这样调）：每号此刻那份 ＋ `refills` 补的几份按列放，别的会话进 `oev`，
+/// 留着与换到每一个号各推一遍、每档用速（`pace_bands`）一次。上限一律 90。
+const PACK: &str = r#"
+fn pack(ctx) {
+  let now = ctx.now; let clock = ctx.clock; let cur = ctx.current; let sess = ctx.session;
+  let horizon = 2 * 18000;
+  let late = #{};
+  for r in ctx.settings.accounts { if r.id != () && r["in"] == "delay" { late[r.id] = true; } }
+  let pa = []; let pst = []; let pex = []; let pid = []; let pwk = []; let plt = [];
+  let tpp = #{}; let oth = #{};
+  for a in ctx.accounts {
+    if a.tokensPerPct == () || a.tokensPerPct.w5h == () { continue; }
+    let tk = a.tokensPerPct.w5h.to_float();
+    tpp[a.id] = tk;
+    oth[a.id] = if a.others != () && a.others.w5h != () { a.others.w5h.to_float() } else { () };
+    let q = lib::piece(a, 90.0, 90.0, now);
+    let start = now;
+    if a.refusedUntil != () && a.refusedUntil > now { start = a.refusedUntil; }
+    if a.sendable != true && start == now { continue; }
+    let left = if q.amt > 0.0 { q.amt } else { 0.0 };
+    let lt = late[a.id] == true;
+    let e = if q.exp == () { now + 2 * horizon } else { q.exp };
+    pa.push(left * tk); pst.push(start); pex.push(e); pid.push(a.id); pwk.push(q.wk); plt.push(lt);
+    for x in lib::refills(a.resets.w5h, if q.l7 != () { q.l7 - left } else { () }, q.wk, e, (), 90.0, clock, now, horizon) {
+      pa.push(x[0] * tk); pst.push(x[1]); pex.push(x[2]); pid.push(a.id); pwk.push(q.wk); plt.push(lt);
+    }
+  }
+  let at = #{};
+  let k = 0;
+  while k < pa.len() { if pst[k] <= now && at[pid[k]] == () { at[pid[k]] = k; } k += 1; }
+  let full = lib::write_extra(sess) * (if sess.context != () { sess.context.to_float() } else { 0.0 });
+  let grow = lib::write_extra(sess) * (if sess.grow != () { sess.grow.to_float() } else { 0.0 });
+  let ttl = if sess.ttl != () { sess.ttl } else { 3600 };
+  let cache = #{};
+  if sess.cached != () { for c in sess.cached.keys() { let u = sess.cached[c]["until"]; if u != () { cache[c] = u; } } }
+  cache[cur] = now + ttl;
+  let oev = #{ acc: [], q: [], r: [] };
+  for id in tpp.keys() {
+    let o = oth[id];
+    if o == () || o <= 0.0 || id == cur { continue; }
+    oev.acc.push(id); oev.q.push(at[id]); oev.r.push(o * tpp[id]);
+  }
+  let pace = if sess.pace != () { sess.pace.to_float() } else { return; };
+  for to in at.keys() {
+    let lump = if to == cur { 0.0 } else { lib::switch_cost(sess, to, now) };
+    for b in lib::pace_bands(sess.spread) {
+      let share = if to != cur && oth[to] != () && oth[to] > 0.0 { oth[to] * tpp[to] * b[0] } else { () };
+      lib::project(pa, pst, pex, pid, pwk, plt, oev,
+        #{ m: b[0], at: at[to], rho: pace * b[0], share: share, mine: to, lump: lump, kfull: full, grow: grow, cache: cache, ttl: ttl, now: now, end: now + horizon });
+    }
+  }
+}
+"#;
+
+/// 在量具里照 [`PACK`] 那种写法调 `lib::project`，回录下的每次参数。
+fn packed_calls(c: &Value) -> Vec<Vec<rhai::Dynamic>> {
+    static AST: OnceLock<rhai::AST> = OnceLock::new();
+    let ast = AST.get_or_init(|| probe_engine().compile(PACK).expect("编得过"));
+    CALLS.with(|x| x.borrow_mut().clear());
+    let ctx = rhai::serde::to_dynamic(c).expect("ctx");
+    probe_engine()
+        .call_fn::<rhai::Dynamic>(&mut rhai::Scope::new(), ast, "pack", (ctx,))
+        .unwrap_or_else(|e| panic!("跑出错（{}）：{e}", c["case"]));
+    CALLS.with(|x| x.take())
+}
+
+/// ★ 照旧签名调 `lib::project` 的写法（[`PACK`]）对夹具里每一判 ·（加上合成的 15 · 30 个号）喂的参数：Rhai 原文那一版与此刻的积木库
+/// 代价逐个相等（相对差 ＜ 1e-6）。编辑器自己改调 `lib::rollout`，`lib::project` 留给用户的策略文件。
 #[test]
 fn project_costs_the_same_as_the_rhai_version_on_every_recorded_call() {
     let mut inputs: Vec<(String, Value)> = cases()
@@ -684,8 +804,7 @@ fn project_costs_the_same_as_the_rhai_version_on_every_recorded_call() {
     let mut seen = 0;
     let mut off = Vec::new();
     for (name, c) in &inputs {
-        let (_, _, calls) = probe(c);
-        for args in calls {
+        for args in packed_calls(c) {
             seen += 1;
             let (old, new) = both(&args);
             if (old - new).abs() > 1e-6 * old.abs().max(1.0) {
@@ -762,4 +881,113 @@ fn price_does_not_pay_to_switch_when_the_weekly_backstop_cannot_be_used_up() {
         (f(4) - (f(3) - f(2))).abs() < 1e-6 * k,
         "diff ＝ 这一走法 − 留着"
     );
+}
+
+// ───────────── 编辑器的决策规则：推演 ＋ 定价 ─────────────
+
+/// 此刻（02:10 那一判）：一天里第几分钟 130。
+const T1: u64 = 1_791_907_200;
+
+/// 一个号（夹具的写法）：5 小时用量 · 离重置几分钟（空 ⇒ 窗关着）· 别的会话压在它上面的用速（点 / 分）。
+fn fact(id: &str, pos: usize, used: f64, resets_in: Option<u64>, others: f64) -> Value {
+    json!({"id": id, "pos": pos, "kind": "sub", "sendable": true,
+           "used": {"w5h": used, "w7d": 0.0},
+           "resets": {"w5h": resets_in.map(|m| T1 + m * 60), "w7d": T1 + 6 * 86_400},
+           "rate": {"w5h": 0.3}, "tokensPerPct": {"w5h": 150_000, "w7d": 150_000},
+           "others": {"w5h": others}, "weekly": false})
+}
+
+/// 一判的 ctx：号列表照 `accounts` 的先后，本会话用速 `pace`（折合输入 token / 分）· 10 分钟一格的用量 `bins`。
+fn ctx_of(current: &str, accounts: Vec<Value>, pace: f64, bins: Vec<f64>) -> Value {
+    let list: Vec<Value> = accounts.iter().map(|a| json!({"id": a["id"]})).collect();
+    json!({"case": "合成", "now": T1, "clock": 130, "current": current,
+           "settings": {"accounts": list, "smart": true},
+           "accounts": accounts,
+           "session": {"pace": pace, "paceShort": pace, "inflight": 1.0, "bins": bins, "spread": 0.0,
+                       "context": 150_000, "writeExtra": 1.9, "ttl": 3600, "grow": 0.0,
+                       "cached": {current: {"until": T1 + 1800, "tokens": 150_000}}},
+           "pinned": false})
+}
+
+/// 反例 A 那一夜的号：j 用到上限（90）、50 分钟后重置；y 剩 9 点、190 分钟后（05:20）作废，别的会话在它上面量成 0.5 点 / 分（真值 0）；
+/// r 剩 49 点、300 分钟后（07:10）作废。本会话饱和：每分钟 30 万，号都供不上。
+fn night_a(j_used: f64) -> Value {
+    ctx_of(
+        "j",
+        vec![
+            fact("j", 0, j_used, Some(50), 0.0),
+            fact("y", 1, 81.0, Some(190), 0.5),
+            fact("r", 2, 41.0, Some(300), 0.0),
+        ],
+        300_000.0,
+        vec![3_000_000.0; 36],
+    )
+}
+
+/// ★ 反例 A：j 到上限要换号。「最先作废」那一键拿 y 上别的会话的用速 × 到作废的分钟跟余量比、一刀切排到最后，挑 r；
+/// 编辑器改照 `lib::rollout` ＋ `lib::price` 的期望代价挑，挑 y。
+/// 注意：此刻 y 便宜约 4200 万，几乎全是推演里一起守 y 的别的会话在 y 那份用完后不再并进池子、它们的用量不算了（0.5 点 / 分 ×
+/// 15 万 × 约 600 分钟）；那一处照实并回池子，两种走法卡住的一样，r 少一次重写、挑 r。推演改了这一条要跟着重看。
+#[test]
+fn a_used_up_account_hands_over_to_the_cheapest_by_rollout_not_the_due_rank_cliff() {
+    let c = night_a(90.0);
+    let v = decide_case(&c, &c["settings"]);
+    assert_eq!(v.order.first().map(String::as_str), Some("y"), "{v:?}");
+    assert!(why_of(&v, "y").contains("万"), "why 写数：{v:?}");
+}
+
+/// 同 [`decide_case`]，`lib::price` 换成一份假定价：留着那一种期望代价 1 亿、差 0；别的每一种都比留着少 `gain`、标准误 `se`。
+fn decide_priced(c: &Value, gain: f64, se: f64) -> Verdict {
+    let head = "fn price(parts, ctx) {";
+    assert!(code::LIB_SOURCE.contains(head), "积木库里有 price");
+    let fake = format!(
+        "{head}\n  let out = [];\n  let b = if parts.base != () {{ parts.base }} else {{ 0 }};\n  \
+         for i in 0..parts.runs.len() {{ if i == b {{ out.push(#{{ j: 1e8, diff: 0.0, se: 0.0 }}); }} \
+         else {{ out.push(#{{ j: 1e8 - {gain:.1}, diff: -{gain:.1}, se: {se:.1} }}); }} }}\n  return out;"
+    );
+    let mut e = crate::accounts::quota::strategy::fresh_engine();
+    e.on_progress(|_| None);
+    let e = code::with_lib_from(e, &code::LIB_SOURCE.replacen(head, &fake, 1)).expect("编得过");
+    decide_case_in(&e, c, &c["settings"])
+}
+
+/// ★ 换的条件是 E[J_留] − E[J_换] ＞ max(ε·K, 2 × 标准误)：反例 A 那组号、j 还能用（用了 50），换号代价 K ＝ 1.9 × 15 万 ＝ 28.5 万，
+/// ε·K ＝ 2.85 万。少 10 万、标准误 20 万（差在误差里）⇒ 留着；少 10 万、标准误 0.1 万 ⇒ 换（几个候选一样少 ⇒ 先用最先作废的 y）；
+/// 少 2 万（不到 ε·K）、没有误差 ⇒ 留着。
+#[test]
+fn a_gain_inside_the_noise_or_under_a_tenth_of_the_switch_cost_keeps_the_current() {
+    let c = night_a(50.0);
+    let first = |gain: f64, se: f64| {
+        let v = decide_priced(&c, gain, se);
+        (v.order.first().cloned().unwrap_or_default(), why_of(&v, "j").to_string(), v)
+    };
+    let (who, why, v) = first(100_000.0, 200_000.0);
+    assert_eq!(who, "j", "差在两倍标准误以内不换：{v:?}");
+    assert!(why.contains("误差"), "{v:?}");
+    let (who, _, v) = first(100_000.0, 1_000.0);
+    assert_eq!(who, "y", "差过了门槛就换，同分先用最先作废的：{v:?}");
+    assert!(why_of(&v, "y").starts_with("智能切换"), "{v:?}");
+    let (who, why, v) = first(20_000.0, 0.0);
+    assert_eq!(who, "j", "不到换号代价的一成不换：{v:?}");
+    assert!(why.contains("一成"), "{v:?}");
+}
+
+/// ★ 反例 C：两号都空着（5 小时窗都没在计时），本会话此刻用得少，用量记录里猛涨一来就是几个钟头（猛涨时每分钟 60 万，两号各 20 来分钟打满）。
+/// 此刻给 an 开窗，猛涨来时它这一窗已经过了一截、早重置早再来一份；等用到才开就晚一截 ⇒ 交回 warm: ["an"]。在用的 q 不在里面。
+#[test]
+fn an_idle_window_is_warmed_when_later_bursts_would_be_stuck() {
+    let mut bins = vec![100_000.0; 19];
+    bins.extend(vec![6_000_000.0; 17]);
+    let mut c = ctx_of(
+        "q",
+        vec![fact("q", 0, 0.0, None, 0.0), fact("an", 1, 0.0, None, 0.0)],
+        1_000.0,
+        bins,
+    );
+    c["session"]["paceShort"] = json!(1_000.0);
+    c["session"]["inflight"] = json!(0.0);
+    let v = decide_case(&c, &c["settings"]);
+    assert_eq!(v.warm, ["an"], "{v:?}");
+    assert!(why_of(&v, "an").starts_with("开窗"), "{v:?}");
+    assert_eq!(v.order.first().map(String::as_str), Some("q"), "{v:?}");
 }
