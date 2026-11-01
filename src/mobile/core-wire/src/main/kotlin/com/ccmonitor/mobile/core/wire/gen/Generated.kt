@@ -25840,6 +25840,35 @@ data class TerminalItem(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class TerminalOutcome(
+    val machine: String,
+    val terminal: String,
+    val outcome: SessionState,
+    val why: String?,
+    val said: String?,
+    val copyDetail: String,
+    val title: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<TerminalOutcome> = obj(
+            listOf(
+            Field("machine", { Str }, optional = false, nullable = false),
+            Field("terminal", { Str }, optional = false, nullable = false),
+            Field("outcome", { SessionState.ADAPTER }, optional = false, nullable = false),
+            Field("why", { opt(Str) }, optional = false, nullable = true),
+            Field("said", { opt(Str) }, optional = false, nullable = true),
+            Field("copyDetail", { Str }, optional = false, nullable = false),
+            Field("title", { Str }, optional = false, nullable = false),
+            ),
+            { a -> TerminalOutcome(a[0] as String, a[1] as String, a[2] as SessionState, a[3] as String?, a[4] as String?, a[5] as String, a[6] as String) },
+            { v -> arrayOf(v.machine, v.terminal, v.outcome, v.why, v.said, v.copyDetail, v.title) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class TerminalPreviewReq(
     val terminal: String? = null,
     val sid: String? = null,
@@ -25959,6 +25988,69 @@ data class TerminalsBoard(
             ),
             { a -> TerminalsBoard(a[0] as List<BoardFilter>, a[1] as List<BoardGroup>) },
             { v -> arrayOf(v.filters, v.groups) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class TerminalsEndItem(
+    val machine: String,
+    val terminal: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<TerminalsEndItem> = obj(
+            listOf(
+            Field("machine", { Str }, optional = false, nullable = false),
+            Field("terminal", { Str }, optional = false, nullable = false),
+            ),
+            { a -> TerminalsEndItem(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.machine, v.terminal) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class TerminalsEndReply(
+    val results: List<TerminalOutcome>,
+    val said: String,
+    val failed: Boolean,
+    val lines: List<String>,
+    val copyDetail: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<TerminalsEndReply> = obj(
+            listOf(
+            Field("results", { arr(TerminalOutcome.ADAPTER) }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
+            Field("failed", { Bool }, optional = false, nullable = false),
+            Field("lines", { arr(Str) }, optional = false, nullable = false),
+            Field("copyDetail", { Str }, optional = false, nullable = false),
+            ),
+            { a -> TerminalsEndReply(a[0] as List<TerminalOutcome>, a[1] as String, a[2] as Boolean, a[3] as List<String>, a[4] as String) },
+            { v -> arrayOf(v.results, v.said, v.failed, v.lines, v.copyDetail) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class TerminalsEndReq(
+    val items: List<TerminalsEndItem>,
+    val client: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<TerminalsEndReq> = obj(
+            listOf(
+            Field("items", { arr(TerminalsEndItem.ADAPTER) }, optional = false, nullable = false),
+            Field("client", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> TerminalsEndReq(a[0] as List<TerminalsEndItem>, a[1] as String?) },
+            { v -> arrayOf(v.items, v.client) },
         )
     }
 }

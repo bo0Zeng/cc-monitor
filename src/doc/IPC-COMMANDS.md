@@ -12848,6 +12848,57 @@ type Words = string;
 
 码：`bad_args`
 
+#### `terminals-end`
+
+结束一批终端跨几台（按台分组做、照原序合好那一句）。
+
+收 `args` · 可撤 · CLI：`ccm -- --terminals-end`
+
+入参 `TerminalsEndReq` · 回包 `TerminalsEndReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Origin = string;
+type SessionState = "done" | "skipped" | "failed";
+type TerminalOutcome = { 
+/**
+ * 哪台（每台那一跳答的是它自己 ⇒ 本机那一个；本机合好时换成那一项的那台）。
+ */
+machine: Origin, terminal: string, outcome: SessionState, 
+/**
+ * 没成的原因码；做成了 ⇒ `null`。
+ */
+why: string | null, 
+/**
+ * 那台写好的那一句；做成了 ⇒ `null`。
+ */
+said: string | null, 
+/**
+ * 没成那一项的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
+ */
+copyDetail: string, 
+/**
+ * 那台名单那一行的标题（远端的套机器名）。
+ */
+title: string, };
+type TerminalsEndItem = { machine: Origin, 
+/**
+ * 名单里的那个句柄（`terminals-list` · 名单那一行的 `terminal`）。
+ */
+terminal: string, };
+type TerminalsEndReply = { results: Array<TerminalOutcome>, said: string, failed: boolean, lines: Array<string>, copyDetail: string, };
+type TerminalsEndReq = { 
+/**
+ * 那几项（1–64 个，照选中的先后）。
+ */
+items: Array<TerminalsEndItem>, 
+/**
+ * 自报的前端（「哪个前端的会话」那一维，同 `terminal-end`）。
+ */
+client?: string, };
+```
+
+码：`bad_args`
+
 #### `monitor-board-here`
 
 监控板这台那几条（序 · 活不活 · 在跑几个 agent；不认得的不答）。
@@ -17184,6 +17235,7 @@ alias?: string | null, };
 | `--terminal-take-input` | ＝ 帧命令 `terminal-take-input`：替自报的前端接管托管终端的输入 |
 | `--terminals-board` | ＝ 帧命令 `terminals-board`：「终端」视图那张名单（问到各台、合成一份：每台一组 · 筛选四格的数） |
 | `--terminals-board-here` | ＝ 帧命令 `terminals-board-here`：这台「终端」视图那几行（只列 cc-monitor 起的，排好、字写好） |
+| `--terminals-end` | ＝ 帧命令 `terminals-end`：结束一批终端跨几台（按台分组做、照原序合好那一句） |
 | `--terminals-list` | ＝ 帧命令 `terminals-list`：这台的终端名单（两种宿主同一形，每一行带宿主） |
 | `--tmux-notify` `<backend_pid> <backend_starttime>` | tmux 钩子用：核对身份后叫正在跑的后端立刻重扫 tmux；身份对不上静默退出 0；不碰文件系统 |
 | `--unplace-self` | 卸载那一趟：暂存区里传上去的这一份删掉落点 `~/.cc-monitor/bin/ccm`（不认身份）、再删自己；回 `{removed: true\|false}`；不在暂存区 ⇒ `outside_staging` |
