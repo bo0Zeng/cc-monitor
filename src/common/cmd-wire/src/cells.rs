@@ -32,7 +32,7 @@ impl From<String> for Words {
 }
 
 /// 一格字的语气（闭集）：常规 · 失败 · 现在在做的那一步 · 需手动 · 该留意了（还没出错，如上下文快满）·
-/// 后台有事在跑（不要人、也不是这会儿在干的那一步）。
+/// 后台有事在跑（不要人、也不是这会儿在干的那一步）· 没连上（那一端此刻够不着：画离线的灰，与常规不同色，也不算出错）。
 /// 出口按它选颜色，不按业务码自己判。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -48,6 +48,7 @@ pub enum Tone {
     Need,
     Warn,
     Busy,
+    Offline,
 }
 
 /// 上次读数那一格：记下的时刻 ＋ 后端按看的那一台的时区写好的那一句（「采样于 12:03」）。
