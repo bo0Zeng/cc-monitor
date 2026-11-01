@@ -316,7 +316,14 @@ pub fn commit_here(
 ) -> Result<SessionAttachmentCommitReply, Said> {
     let home = super::home_dir()?;
     let tz = crate::common::time::Tz::here();
-    commit(face, &home, cwd, req, crate::common::time::now_secs(), &tz)
+    commit(
+        face,
+        &home,
+        cwd,
+        req,
+        crate::common::time::now_secs() as i64,
+        &tz,
+    )
 }
 
 /// **撤一份**：删掉那个编号目录（里面的普通文件 · 链接各删掉那一项，再删空目录）。本来就不在 ⇒ `false`。编号不合形 ⇒ `bad_args`。

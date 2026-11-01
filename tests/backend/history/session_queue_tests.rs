@@ -439,7 +439,7 @@ fn the_host_line_follows_the_owners_list_from_tag_to_empty() {
             .expect("等到下一句")
     };
     let waiting = |n: usize| Some(copy_text("beQueue.said.waiting", &[("n", &n.to_string())]));
-    let now = crate::common::time::now_ms;
+    let now = || crate::common::time::now_ms() as i64;
     assert_eq!(next(), None, "还没打标 ⇒ 没有");
     put(&o, &req("a", "mobile", None, T0), now()).unwrap();
     put(&o, &req("b", "mobile", None, T0), now()).unwrap();

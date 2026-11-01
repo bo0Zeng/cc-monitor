@@ -17,13 +17,6 @@ fn bad(what: &str) -> Said {
     crate::wire::spec::fail("bad_args", crate::common::contract::malformed(what))
 }
 
-fn now_ms() -> u64 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
-
 /// 投进那条会话的输入队（生产 ＝ `session-queue-put` 在这台的那一半）。
 pub(crate) type Put<'a> = &'a dyn Fn(&SessionQueuePutReq) -> Result<QueuePut, Said>;
 /// 记一次退回（生产 ＝ [`crate::plan::review`] 的写口）。
@@ -132,14 +125,19 @@ fn give_back(req: &PlanReturnReq, own: &crate::platform::fs::Own) -> Answer {
     let doc = crate::faces::plan_face::read_fresh(ws, &crate::Tz::default())?;
     let put = |r: &SessionQueuePutReq| {
         use super::session_queue_face as face;
-        let got = face::put_here(own, r, crate::common::time::now_ms(), &face::cwd_here);
+        let got = face::put_here(
+            own,
+            r,
+            crate::common::time::now_ms() as i64,
+            &face::cwd_here,
+        );
         crate::history::session_queue::moved();
         got
     };
     let record = |ws: &str, sl: &str, id: &str, r: Returned| {
         crate::plan::review::answer_returned(own, ws, sl, id, r)
     };
-    return_with(req, &doc, &put, &record, now_ms())
+    return_with(req, &doc, &put, &record, crate::common::time::now_ms())
 }
 
 /// `plan-return` 的入参。

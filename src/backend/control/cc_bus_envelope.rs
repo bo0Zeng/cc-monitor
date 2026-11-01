@@ -179,7 +179,7 @@ pub(crate) fn envelope_now(req: &BusEnvelopeReq) -> Result<BusEnvelope, Said> {
         .map(|d| d.subsec_nanos() as u64)
         .unwrap_or(0);
     let salt = nanos ^ u64::from(std::process::id()) ^ SEQ.fetch_add(1, Ordering::Relaxed);
-    Ok(seal(checked, crate::common::time::now_ms(), salt))
+    Ok(seal(checked, crate::common::time::now_ms() as i64, salt))
 }
 
 #[cfg(test)]

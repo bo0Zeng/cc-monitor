@@ -1572,7 +1572,7 @@ fn watch_loop(
                         own.as_ref(),
                     ) {
                         crate::history::session_queue::moved();
-                        let now = crate::common::time::now_ms();
+                        let now = crate::common::time::now_ms() as i64;
                         for sid in sids {
                             sink.send(Frame::changed(match own.as_ref() {
                                 Some(own) => queue_changed(own, &sid, now),

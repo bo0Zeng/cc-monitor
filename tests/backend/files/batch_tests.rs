@@ -107,7 +107,7 @@ fn the_clash_list_carries_moments_written_on_the_viewers_clock() {
     let text = |p: &Path| {
         Some(crate::common::time::fmt_at(
             secs(p),
-            crate::common::time::now_secs(),
+            crate::common::time::now_secs() as i64,
             &tz,
         ))
     };
