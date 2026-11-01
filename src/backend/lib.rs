@@ -101,7 +101,7 @@ pub mod wire; // 帧面的协议零件（最底下那一层，只引 platform ·
 
 /// 后端身份（`Hello` 帧的 `build_id`，也烤进二进制的身份戳）：monitor 拿它比内嵌那份的，不同 ⇒ 那台该换后端。
 /// 后端发出去的东西变了（子命令集 · 冻结格 · 形状指纹 · 行为）就打一个新的：`tests/scripts/bump-build-id.sh`，再 re-embed。
-pub const BUILD_ID: &str = "p11f-said-wire";
+pub const BUILD_ID: &str = "p11g-terminals-end";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
