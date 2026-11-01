@@ -897,11 +897,15 @@ fn every_state_lands_on_its_strip_line_or_stays_off_the_strip() {
 /// 机器条的语气就是共享的那一格语气：缺后端那一态是 `Tone::Fail`，没连上是 `Tone::Offline`，上线照 `Tone` 的小写词。
 #[test]
 fn the_strip_tone_is_the_shared_cell_tone() {
-    let fault = phone(vec![blocked(Blocker::NoBackend)]).strip.expect("进条");
+    let fault = phone(vec![blocked(Blocker::NoBackend)])
+        .strip
+        .expect("进条");
     let tone: cmd_wire::cells::Tone = fault.tone;
     assert_eq!(tone, cmd_wire::cells::Tone::Fail);
     assert_eq!(serde_json::to_value(fault).unwrap()["tone"], "fail");
-    let down = of(vec![down_(Some(Why::Timeout))], true).strip.expect("进条");
+    let down = of(vec![down_(Some(Why::Timeout))], true)
+        .strip
+        .expect("进条");
     assert_eq!(down.tone, cmd_wire::cells::Tone::Offline);
     assert_eq!(serde_json::to_value(down).unwrap()["tone"], "offline");
 }
