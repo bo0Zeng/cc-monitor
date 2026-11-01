@@ -7,6 +7,7 @@ import { confirmDialog, type ConfirmFn, type ConfirmSpec } from "./kit/dialog";
 import { copyText } from "./copy-table";
 import { recentToasts, toast, undoToast, type ToastRecord } from "./kit/toast";
 import { showMessage } from "./status-messages";
+import type { SessionsBatchReply } from "./generated/SessionsBatchReply";
 
 /** 那个确认框：标题与按钮写个数；`note` ＝ 清单下那一行（多选里跳过了几个已结束的）。 */
 export function endConfirm(titles: readonly string[], note?: string): ConfirmSpec {
@@ -64,6 +65,14 @@ export function sayRows(rows: readonly EndRow[], head?: (done: number, failed: n
   const level = failed > 0 ? "error" : "success";
   if (undo && done > 0) undoToast(said, undo.run, undo.settle, { level, more: lines, detail, ...(view ? { action: view } : {}) });
   else toast(said, "", { level, more: lines, action: view, detail });
+  made.rec = recentToasts()[0];
+}
+
+/** 一批会话的回包（`sessions-batch`）：那一句 · 逐条 · 复制详情由本机后端合好，这里只照摆（［查看］· 复制详情同 [`sayRows`]）。 */
+export function sayReply(reply: Pick<SessionsBatchReply, "said" | "failed" | "lines" | "copyDetail">): void {
+  const made: { rec?: ToastRecord } = {};
+  const view = reply.lines.length > 0 ? { label: copyText("tabBatch.result.view"), run: () => made.rec && showMessage(made.rec), toastOnly: true } : undefined;
+  toast(reply.said, "", { level: reply.failed ? "error" : "success", more: reply.lines, action: view, detail: reply.copyDetail });
   made.rec = recentToasts()[0];
 }
 

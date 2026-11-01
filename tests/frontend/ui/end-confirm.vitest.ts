@@ -12,7 +12,7 @@ vi.mock("../../../src/frontend/ui/terminal-reads", async (orig) => ({
   endTerminal: vi.fn(async () => undefined),
 }));
 
-import { endConfirm, sayEnded, sayRows } from "../../../src/frontend/ui/end-confirm";
+import { endConfirm, sayEnded, sayReply, sayRows } from "../../../src/frontend/ui/end-confirm";
 import { endRows } from "../../../src/frontend/ui/terminals-board-reads";
 import { endTerminal } from "../../../src/frontend/ui/terminal-reads";
 import { toast, undoToast } from "../../../src/frontend/ui/kit/toast";
@@ -92,5 +92,26 @@ describe("一批的结局带［撤销］（批量隐藏 · 取消隐藏，A2-17-
     sayRows([rows[1]], (done, failed) => `动作 ${done} · 失败 ×${failed}`, { run: vi.fn(), settle: vi.fn() });
     expect(undoToast).not.toHaveBeenCalled();
     expect(toast).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("一批会话的回包照摆（`sessions-batch`：那一句 · 逐条 · 复制详情由本机后端合好）", () => {
+  const reply = { results: [], said: "S-合好", failed: true, lines: ["L-一", "L-二"], copyDetail: "D-详" };
+  it("★ toast 标题就是 said、more 就是 lines、详情就是 copyDetail；有没成的 ⇒ 出错的样子、带［查看］", () => {
+    sayReply(reply);
+    expect(toast).toHaveBeenCalledTimes(1);
+    const [title, body, opts] = vi.mocked(toast).mock.calls[0];
+    expect(title).toBe("S-合好");
+    expect(body).toBe("");
+    expect(opts?.level).toBe("error");
+    expect(opts?.more).toEqual(["L-一", "L-二"]);
+    expect(opts?.detail).toBe("D-详");
+    expect((opts?.action as { label: string } | undefined)?.label).toBe(copyText("tabBatch.result.view"));
+  });
+  it("都成了 ⇒ 成功的样子、没有［查看］", () => {
+    sayReply({ ...reply, failed: false, lines: [], copyDetail: "" });
+    const [, , opts] = vi.mocked(toast).mock.calls[0];
+    expect(opts?.level).toBe("success");
+    expect(opts?.action).toBeUndefined();
   });
 });

@@ -1275,6 +1275,10 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "批量停：没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答（停的对象本来就只在 tmux 里）",
     ),
     (
+        "sessions-batch",
+        "跨几台的批量停：各台照 `sessions-stop` 那一条（没 tmux 的那台逐个答跳过；没答的那台那一组逐项记没成，命令照答）",
+    ),
+    (
         "profiles-resolve",
         "设置窗合并预览的「等于」那一行：与 `ccm-print` 同一个 `control/ccm/mod.rs::plan_of`，经会话快照做铸名避让 —— \
          问不到 ⇒ 不退让、照算；它的能力是合并与渲计划，不是 tmux",
