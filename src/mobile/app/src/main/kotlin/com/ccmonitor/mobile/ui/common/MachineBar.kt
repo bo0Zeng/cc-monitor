@@ -22,7 +22,7 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
-import com.ccmonitor.mobile.core.wire.gen.StripTone
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.HostBackends
 import org.koin.compose.koinInject
 
@@ -35,7 +35,7 @@ const val MACHINE_BAR_TAG = "machine-bar"
  */
 data class BarLook(
     val text: String,
-    val tone: StripTone,
+    val tone: Tone,
     val fix: MachineFixButton? = null,
     val progress: Boolean = false,
     val detail: String = "",
@@ -51,7 +51,7 @@ fun barOf(
 ): BarLook? {
     val m = line?.machine ?: return null
     val fix = m.fixes.firstOrNull()
-    (deploying as? Deploying.Failed)?.let { return BarLook(it.failed.said, StripTone.FAULT, fix, detail = it.failed.detail) }
+    (deploying as? Deploying.Failed)?.let { return BarLook(it.failed.said, Tone.FAIL, fix, detail = it.failed.detail) }
     val strip = m.strip ?: return null
     return BarLook(m.said, strip.tone, fix, strip.progress, m.detail.orEmpty())
 }
@@ -91,18 +91,18 @@ fun MachineBarView(
 ) {
     val m = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).testTag(MACHINE_BAR_TAG)
     val line = MaterialTheme.colorScheme.outline
-    Column(if (look.tone == StripTone.OFFLINE) m.dashedFrame(line).padding(horizontal = 14.dp, vertical = 8.dp) else m) {
+    Column(if (look.tone == Tone.OFFLINE) m.dashedFrame(line).padding(horizontal = 14.dp, vertical = 8.dp) else m) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 when (look.tone) {
-                    StripTone.FAULT -> ErrorLine(look.text)
-                    StripTone.WARN -> Text(look.text, style = MaterialTheme.typography.bodyMedium, color = LocalAppTokens.current.warn)
-                    StripTone.BUSY, StripTone.OFFLINE -> Text(look.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Tone.FAIL -> ErrorLine(look.text)
+                    Tone.WARN, Tone.NEED -> Text(look.text, style = MaterialTheme.typography.bodyMedium, color = LocalAppTokens.current.warn)
+                    Tone.PLAIN, Tone.NOW, Tone.BUSY, Tone.OFFLINE -> Text(look.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             val fix = look.fix
             // 正在装 ⇒ 按钮灰着不消失。
-            if (fix != null && onFix != null) SecondaryButton(onClick = onFix, enabled = look.tone != StripTone.BUSY) { Text(fix.label) }
+            if (fix != null && onFix != null) SecondaryButton(onClick = onFix, enabled = look.tone != Tone.BUSY) { Text(fix.label) }
             CopyDetailButton(look.text, look.detail)
         }
         if (look.progress) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
