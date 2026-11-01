@@ -13,11 +13,11 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 /// Windows 上系统可选功能装 ssh 的位置（相对 `%SystemRoot%`）。
-pub(crate) const WINDOWS_OPENSSH_REL: &str = "System32\\OpenSSH\\ssh.exe";
+pub const WINDOWS_OPENSSH_REL: &str = "System32\\OpenSSH\\ssh.exe";
 
 /// 找的结果。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum SshClient {
+pub enum SshClient {
     /// 在这儿（全路径）。
     At(String),
     /// 每一处都查清了，都没有。
@@ -27,7 +27,7 @@ pub(crate) enum SshClient {
 }
 
 /// 这台电脑上找（读本进程的 `SystemRoot` / `PATH`，查真文件）。
-pub(crate) fn locate() -> SshClient {
+pub fn locate() -> SshClient {
     locate_with(
         cfg!(windows),
         std::env::var_os("SystemRoot").as_deref(),
@@ -45,12 +45,12 @@ pub(crate) fn system_config() -> String {
 
 /// 这台电脑上系统那份 ssh 配置。
 #[cfg(not(windows))]
-pub(crate) fn system_config() -> String {
+pub fn system_config() -> String {
     "/etc/ssh/ssh_config".to_string()
 }
 
 /// [`locate`] 的本体：平台 · 两格环境 · 查文件那一下都由调用方给。
-pub(crate) fn locate_with(
+pub fn locate_with(
     windows: bool,
     system_root: Option<&OsStr>,
     path: Option<&OsStr>,

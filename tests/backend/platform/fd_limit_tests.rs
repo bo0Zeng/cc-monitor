@@ -5,7 +5,7 @@ use super::*;
 
 const CHILD_MARK: &str = "CCM_FD_LIMIT_CHILD";
 const CHILD_TEST: &str =
-    "platform::proc::fd_limit_tests::the_soft_open_files_limit_goes_up_to_the_hard_one";
+    "proc::fd_limit_tests::the_soft_open_files_limit_goes_up_to_the_hard_one";
 /// 子进程先把软上限压到这么低（桌面会话缺省给的 1024 之下，好看出抬没抬）。
 const LOW: u64 = 64;
 

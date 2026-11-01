@@ -43,18 +43,18 @@ use std::path::{Path, PathBuf};
 ///
 /// 它取代了 `profile_installer` 里那个只给别名块用的方言枚举（那一族的旧名见本仓 `git log`）：
 /// 别名文件、别名块、source 那一行，三件事问的是同一个问题，不许有两个枚举各答一半。
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
         rename = "ShellKind"
     )
 )]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum Shell {
+pub enum Shell {
     /// POSIX sh（bash / zsh 都 source 得了；fish 不行）。
     Posix,
     /// PowerShell（5.1 与 7 同一种写法）。
@@ -67,7 +67,7 @@ impl Shell {
     ///
     /// ⚠ 为什么按扩展名而不是按 `cfg!(windows)`：**跑在哪台机器上**与**这份文件是什么**是两件事。
     /// 用户可以指任意一份 home 内的文件，而 PowerShell 的 profile 恒是 `.ps1`（`$PROFILE` 的四种取值全是）。
-    pub(crate) fn of_target(path: &Path) -> Shell {
+    pub fn of_target(path: &Path) -> Shell {
         match path.extension().and_then(|e| e.to_str()) {
             Some(ext) if ext.eq_ignore_ascii_case("ps1") => Shell::PowerShell,
             _ => Shell::Posix,
@@ -75,7 +75,7 @@ impl Shell {
     }
 
     /// 这种方言的那份实现。
-    pub(crate) fn dialect(self) -> &'static dyn ShellDialect {
+    pub fn dialect(self) -> &'static dyn ShellDialect {
         match self {
             Shell::Posix => &Posix,
             Shell::PowerShell => &PowerShell,
@@ -87,7 +87,7 @@ impl Shell {
 /// 许不许交给 ccm 是通用层的规则（只有接回会话那一形），方言只照着写。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum RestTo {
+pub enum RestTo {
     #[default]
     Agent,
     Ccm,
@@ -96,14 +96,14 @@ pub(crate) enum RestTo {
 /// 一条别名调的是谁、argv 里哪个词把两半分开。**通用层给**（`control::ccm` 那两个常量），方言只照着写：
 /// 适配层不往上依赖。
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Call<'a> {
+pub struct Call<'a> {
     /// 被调的那个命令（`ccm_line::SUBCOMMAND_WORD`）。
-    pub(crate) word: &'a str,
+    pub word: &'a str,
     /// 分两半的那个词（`ccm_line::argv::flag::END`）：左边交 claude，右边归 ccm。
-    pub(crate) end: &'a str,
+    pub end: &'a str,
     /// ccm 落在家目录下哪儿（`/` 分隔的相对路径，`relay_route_core::BACKEND_LANDING_REL`）：不靠 `PATH` 的那一臂按它显式叫
     /// （PowerShell：别名块不动会话 `PATH`）。
-    pub(crate) landing: &'a str,
+    pub landing: &'a str,
 }
 
 /// 一份启动文件候选：**路径 ＋ 盘上不在时列不列**（「列不列不存在的」是方言的读法，表第一行）。
@@ -112,7 +112,7 @@ pub(crate) struct Call<'a> {
 /// （`account_aliases::rc_candidates_via` 经 `user_files::Door` 问 `Door::peek` / `files-stat`）——
 /// 从前这里自己 `is_file()` / `is_dir()`，量的是 monitor 这台的盘，拿去说远端是错的。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct StartupCandidate {
+pub struct StartupCandidate {
     /// 那台机器上的绝对路径（按那台 home 的写法拼，见 `user_files::join_under`）。
     pub path: String,
     pub listed: Listed,
@@ -122,7 +122,7 @@ pub(crate) struct StartupCandidate {
 
 /// 一份候选**不在盘上时**列不列。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Listed {
+pub enum Listed {
     /// 不在就不列（POSIX 那四份：只列真有的）。
     IfFileExists,
     /// 不在也列（`$PROFILE` 常常要装的时候才建）。
@@ -133,7 +133,7 @@ pub(crate) enum Listed {
 
 /// 🔴 **方言那组接口。** 每个方法都只回答「这个 shell 里怎么写 / 怎么读 / 文件在哪」；
 /// 任何「合不合格」的判断都不许写进实现里（那是通用层的，两边一模一样）。
-pub(crate) trait ShellDialect: Sync {
+pub trait ShellDialect: Sync {
     // 别名块的排版按目标文件扩展名走 `profile_installer` 那一份，不经这里。
 
     /// 落盘前的编码。PowerShell 加 BOM（`K-R132`：PS 5.1 把无 BOM 的 `.ps1` 按 ANSI 代码页解，
@@ -181,7 +181,7 @@ pub(crate) trait ShellDialect: Sync {
 const UTF8_BOM: &str = "\u{feff}";
 
 /// 读进来的那一份：把 BOM 剥掉再交给任何**判内容**的东西（两种方言都剥 —— 读的一侧宽，写的一侧严）。
-pub(crate) fn strip_bom(s: &str) -> &str {
+pub fn strip_bom(s: &str) -> &str {
     s.strip_prefix(UTF8_BOM).unwrap_or(s)
 }
 
@@ -283,7 +283,7 @@ fn portable_name(name: &str) -> bool {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// POSIX sh 那一份实现。
-pub(crate) struct Posix;
+pub struct Posix;
 
 /// POSIX 那一侧「source 那一行加进哪份」的候选（**只列真实存在的那几份**）。
 ///
@@ -441,7 +441,7 @@ impl ShellDialect for Posix {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// PowerShell 那一份实现（5.1 与 7 同一种写法）。
-pub(crate) struct PowerShell;
+pub struct PowerShell;
 
 /// PowerShell 那份别名文件在 home 下的相对路径（交给后端的 `rel` 用 `/`；PowerShell 两种分隔符都认）。
 /// 值只住契约 crate（monitor 的数据位置页按它列出）。
@@ -474,7 +474,7 @@ const PS_END: &str = " '--'";
 /// 后端生产段凡是把一个值放进 PowerShell 单引号里的都只调它（判据 `shell_home_guard.rs` 零命中）。
 ///
 /// 别名参数也每个都走它、不像 POSIX 那样「安全字符裸放」：PS 5.1 对裸词有 `--%`（停止解析）与 `--x=a.b` 在 `.` 处被劈开两个坑。
-pub(crate) fn ps_literal(s: &str) -> String {
+pub fn ps_literal(s: &str) -> String {
     let mut out = String::from("'");
     for c in s.chars() {
         if PS_QUOTES.contains(&c) {

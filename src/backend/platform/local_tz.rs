@@ -5,7 +5,7 @@
 
 /// 时刻 `t`（unix 秒）那一刻的本地偏移。
 #[cfg(unix)]
-pub(crate) fn offset_secs(t: u64) -> Option<i64> {
+pub fn offset_secs(t: u64) -> Option<i64> {
     let tt = libc::time_t::try_from(t).ok()?;
     // SAFETY: `tm` 是纯数据（全零是合法值）；`localtime_r` 只写进我们给的那一份、不留指针。
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
@@ -19,7 +19,7 @@ pub(crate) use super::win_tz::offset_secs;
 
 /// 这台机器的时区叫什么（IANA 名，例：`America/Los_Angeles`）：`TZ` 是 IANA 名 ⇒ 它；不然看 `/etc/localtime` 指向 zoneinfo 里的哪一份。
 /// 说不出（`TZ` 是 POSIX 串 · 没有那条链 · Windows）⇒ `None`：调用方说「时区不明」，不猜成 UTC。全后端只这一处取。
-pub(crate) fn iana_name() -> Option<String> {
+pub fn iana_name() -> Option<String> {
     let tz = std::env::var("TZ").ok();
     #[cfg(unix)]
     let link = crate::platform::fs::Ro::read_link("/etc/localtime").ok();

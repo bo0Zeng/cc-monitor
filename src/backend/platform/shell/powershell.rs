@@ -18,18 +18,18 @@ const POLICY_ALLOW_LOCAL: &str =
     "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force";
 
 /// 这一代 PowerShell 的执行策略现状（`aliases-read` 每份 `$PROFILE` 候选带一份）。
-#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
-    test,
+    any(test, feature = "ts"),
     ts(
         export,
-        export_to = "../../frontend/ui/generated/",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
         rename = "PsExecPolicy"
     )
 )]
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ExecPolicy {
+pub struct ExecPolicy {
     pub host: PsHost,
     /// 生效那一档的原词（`Get-ExecutionPolicy`）；问不到 ⇒ `None`，原因词在 `error`。
     pub effective: Option<String>,
@@ -102,7 +102,7 @@ fn run_fixed(host: PsHost, script: &str, within: Deadline) -> Result<String, Str
 }
 
 /// 现问这一代的执行策略（只读）。
-pub(crate) fn execution_policy(host: PsHost) -> ExecPolicy {
+pub fn execution_policy(host: PsHost) -> ExecPolicy {
     match run_fixed(host, POLICY_QUERY, POLICY_WITHIN) {
         Ok(text) => read_policy_listing(host, &text),
         Err(e) => policy_unknown(host, e),
@@ -110,7 +110,7 @@ pub(crate) fn execution_policy(host: PsHost) -> ExecPolicy {
 }
 
 /// 设成当前用户 `RemoteSigned`（[`POLICY_ALLOW_LOCAL`]）再现问一次。设的那一下报错（组策略压着时 PowerShell 会报）⇒ 原因词随回（原话记日志）。
-pub(crate) fn allow_local_scripts(host: PsHost) -> (ExecPolicy, Option<String>) {
+pub fn allow_local_scripts(host: PsHost) -> (ExecPolicy, Option<String>) {
     let set = run_fixed(host, POLICY_ALLOW_LOCAL, POLICY_WITHIN).err();
     (execution_policy(host), set)
 }
@@ -119,12 +119,12 @@ pub(crate) fn allow_local_scripts(host: PsHost) -> (ExecPolicy, Option<String>) 
 // 与 `posix.rs` 那几句一一对应；词由调用方先过 `dialect::ps_literal`。
 
 /// `$env:VAR = <词>; `
-pub(crate) fn set_env(var: &str, word: &str) -> String {
+pub fn set_env(var: &str, word: &str) -> String {
     format!("$env:{var} = {word}; ")
 }
 
 /// `Remove-Item Env:A, Env:B -ErrorAction Ignore; `（不在也不报）。
-pub(crate) fn remove_env<S: AsRef<str>>(vars: &[S]) -> String {
+pub fn remove_env<S: AsRef<str>>(vars: &[S]) -> String {
     let names: Vec<String> = vars.iter().map(|v| format!("Env:{}", v.as_ref())).collect();
     format!("Remove-Item {} -ErrorAction Ignore; ", names.join(", "))
 }
@@ -132,7 +132,7 @@ pub(crate) fn remove_env<S: AsRef<str>>(vars: &[S]) -> String {
 /// 跑这一行的那个 PowerShell 把自己的窗口标签（`$PID-<StartTime.ToFileTime()>`，与接入块设的 `LC_CCM_WINDOW` 同一个键）与 `machine`
 /// 两行写进 `file`（UTF-8 无 BOM，先写 `part` 再挪过去）。在一个脚本块里跑（变量不留在那个窗口里），错误吞掉、不往终端里打字；
 /// 不带双引号。三个词由调用方先过 `dialect::ps_literal`。以 `; ` 收尾，后面接那一行。
-pub(crate) fn note_own_window(file: &str, part: &str, machine: &str) -> String {
+pub fn note_own_window(file: &str, part: &str, machine: &str) -> String {
     format!(
         "try {{ & {{ param($f, $t, $m) $ErrorActionPreference = 'Stop'; \
          [System.IO.File]::WriteAllText($t, [string]$PID + '-' + [System.Diagnostics.Process]::GetCurrentProcess().StartTime.ToFileTime() + [char]10 + $m + [char]10); \
@@ -141,18 +141,18 @@ pub(crate) fn note_own_window(file: &str, part: &str, machine: &str) -> String {
 }
 
 /// `Set-Location -LiteralPath <词>; `
-pub(crate) fn set_location(dir_word: &str) -> String {
+pub fn set_location(dir_word: &str) -> String {
     format!("Set-Location -LiteralPath {dir_word}; ")
 }
 
 /// 跑那条命令：`& <词> <词> …`（第一个词是程序名）。
-pub(crate) fn call<S: AsRef<str>>(words: &[S]) -> String {
+pub fn call<S: AsRef<str>>(words: &[S]) -> String {
     let w: Vec<&str> = words.iter().map(AsRef::as_ref).collect();
     format!("& {}", w.join(" "))
 }
 
 /// 一个词：`<head>` ＋ 家目录底下 `rel` 那份文件的内容（现读、去掉尾部换行）＋ `<tail>`（head / tail 已成词）。
-pub(crate) fn home_file_between(head: &str, rel: &str, tail: &str) -> String {
+pub fn home_file_between(head: &str, rel: &str, tail: &str) -> String {
     format!(
         "({head} + (Get-Content -Raw -LiteralPath (Join-Path $HOME {})).Trim() + {tail})",
         super::dialect::ps_literal(rel)
@@ -203,7 +203,7 @@ pub(crate) const SETTING_CHANGE_BROADCAST: &str = "    Add-Type -Namespace CcMon
     [void][CcMonitor.Env]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$r)\n";
 
 /// 把 `dir` 加到用户级 `PATH` 末尾；已经在（每格展开 `%VAR%` 之后整格比，大小写不敏感）⇒ 一个字节不写。
-pub(crate) fn user_path_add(dir: &str) -> String {
+pub fn user_path_add(dir: &str) -> String {
     format!(
         "{}\
          if (-not ($p -split ';' | Where-Object {{ [Environment]::ExpandEnvironmentVariables($_) -eq $d }})) {{\n\
@@ -217,7 +217,7 @@ pub(crate) fn user_path_add(dir: &str) -> String {
 
 /// 从用户级 `PATH` 上只摘 `dir` 那一格（整格比，与加同一种相等；不用子串口径，`…\bin-old` 不受牵连）。
 /// 空项不顺手清（空项在 Windows 上是「当前目录」）⇒ 别的格逐字复原；摘完剩空串 ⇒ 删掉这个值。不在 ⇒ 一个字节不写。
-pub(crate) fn user_path_remove(dir: &str) -> String {
+pub fn user_path_remove(dir: &str) -> String {
     format!(
         "{}\
          $kept = @($p -split ';' | Where-Object {{ [Environment]::ExpandEnvironmentVariables($_) -ne $d }})\n\
@@ -258,7 +258,7 @@ pub(crate) fn between_marks<'a>(out: &'a str, mark: &str) -> Option<&'a str> {
 }
 
 /// 现问：`dir` 在不在用户级 `PATH` 上。这台不说 PowerShell ⇒ `None`。
-pub(crate) fn user_path_holds(dir: &str) -> Option<Result<bool, Said>> {
+pub fn user_path_holds(dir: &str) -> Option<Result<bool, Said>> {
     const MARK: &str = "@@ccm-user-path@@";
     let cmd = super::powershell_on(PsHost::Desktop, &user_path_query(MARK))?;
     Some(run_said(cmd, USER_PATH_WITHIN).and_then(|out| {
@@ -274,7 +274,7 @@ pub(crate) fn user_path_holds(dir: &str) -> Option<Result<bool, Said>> {
 }
 
 /// 跑 [`user_path_add`] / [`user_path_remove`] 那一段。这台不说 PowerShell ⇒ `None`。
-pub(crate) fn user_path_set(dir: &str, on: bool) -> Option<Result<(), Said>> {
+pub fn user_path_set(dir: &str, on: bool) -> Option<Result<(), Said>> {
     let script = if on {
         user_path_add(dir)
     } else {

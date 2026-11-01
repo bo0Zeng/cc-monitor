@@ -13,7 +13,7 @@
 //! - [`signal`]：`send_sigusr1`
 //! - [`ssh_agent`]：连本机 ssh-agent（Unix 套接字 / Windows 命名管道）—— 拨号代理没配私钥路径时用
 //! - [`ssh_client`]：这台的 ssh 客户端在哪（只查文件：Windows 先 System32\OpenSSH 再 PATH，别处 PATH）—— 开远端终端那一行用它的全路径
-//! - [`stderr_fd`]：把本进程的 fd 2 换到一份文件上 · 问它多长（脱离常驻的后端把 stderr 落盘，`crate::stderr_log`）
+//! - [`stderr_fd`]：把本进程的 fd 2 换到一份文件上 · 问它多长（脱离常驻的后端把 stderr 落盘，上层的 stderr 落盘那一块）
 //! - [`lock`]：后端自有状态文件（经 `Own`）的跨进程锁 —— 锁那份文件所在的目录（unix `flock` · Windows 命名互斥量）
 //! - [`acct_view`]：账号库读盘的平台原语（不跟链接地看一项 · unix 权限位 · 这台做不做得了多账号）—— 只读
 //! - [`fs`]：碰盘的唯一住址（读 `Ro` · 文件管理写 `Face` · 自家状态 `Own`）
@@ -23,52 +23,60 @@
 //! - [`shell`]：shell 方言与「把一串命令交给这台的 shell」那一跳
 //! - [`writers`]：谁开着哪份文件写（进程表一趟 · 新建 / 打开 / 写完关闭那道耳朵）—— 不留 pidfile 的那一家判活用它（Linux；别处判不了）
 //! - [`watch_file`]：盯盘的唯一原语（几个目录 · 路径过滤 · 一阵动静并成一次回调 · 名单换得动 · 踢得醒）—— 轮换 · 计划 · 一次性等待 · 各号同步 · 浏览保鲜都用它
+//!
+//! 独立的包 `backend-platform`：不引后端里任何别的层（引了就编不过）。
 
-pub(crate) mod acct_view;
+// 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许上层的 `common::time::now`（`clippy.toml`）。
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
+// 包里照旧写 `crate::platform::…`。
+extern crate self as platform;
+
+pub mod acct_view;
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/cfgless_guard.rs"]
 mod cfgless_guard;
-pub(crate) mod child;
+pub mod child;
 /// 常驻后端自有的那几格环境的名字（常驻开关 · 诊断文件）：起子进程原语无条件摘它们，帧面监听与诊断文件读它们。
-pub(crate) mod child_env;
+pub mod child_env;
 /// 控制台子进程写进管道的字节按那台控制台的代码页解（PowerShell 5.1 的报错）。
-pub(crate) mod console_text;
+pub mod console_text;
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/fallback_guard.rs"]
 mod fallback_guard;
-pub(crate) mod fs;
+pub mod fs;
 /// 自家状态写句柄（启动入口 `main.rs` 在另一个 crate 里造它 ⇒ 从这里交出去）。
 pub use fs::{DiagLog, Own, OwnLock};
 #[cfg(target_os = "linux")]
-pub(crate) mod linux_tables;
-pub(crate) mod liveness;
-pub(crate) mod local_tz;
-pub(crate) mod lock;
-pub(crate) mod paths;
-pub(crate) mod proc;
+pub mod linux_tables;
+pub mod liveness;
+pub mod local_tz;
+pub mod lock;
+pub mod paths;
+pub mod proc;
 /// 分配器起来那一下的设置（启动入口 `main.rs` 在另一个 crate 里调 ⇒ 从这里交出去）。
 pub use proc::return_freed_pages_at_once;
 /// 常驻后端起来那一下抬 fd 软上限（同上，`main.rs` 调）。
 pub use proc::{raise_open_files_limit, OpenFiles};
-pub(crate) mod shell;
-pub(crate) mod signal;
-pub(crate) mod ssh_agent;
-pub(crate) mod ssh_client;
-pub(crate) mod stderr_fd;
-pub(crate) mod term; // 瘦客户端那个外层真终端：原始模式 · 窗口尺寸 · 尺寸变了的信号
-pub(crate) mod tmux; // 这台的 tmux：平台那一维（编译期）× 探针那一维（扫 `PATH`）
-pub(crate) mod watch_file;
+pub mod shell;
+pub mod signal;
+pub mod ssh_agent;
+pub mod ssh_client;
+pub mod stderr_fd;
+pub mod term; // 瘦客户端那个外层真终端：原始模式 · 窗口尺寸 · 尺寸变了的信号
+pub mod tmux; // 这台的 tmux：平台那一维（编译期）× 探针那一维（扫 `PATH`）
+pub mod watch_file;
 #[cfg(windows)]
-pub(crate) mod win_proc;
+pub mod win_proc;
 #[cfg(windows)]
-pub(crate) mod win_tables;
+pub mod win_tables;
 #[cfg(windows)]
-pub(crate) mod win_tz;
-pub(crate) mod writers;
+pub mod win_tz;
+pub mod writers;
 
 /// ↗ 那一问的系统事实（已建立的 TCP 连接表 ＋ 进程表，一行 JSON，两个平台同形）。Windows 直调系统接口 · Linux 读 `/proc`；
 /// 别的平台 ⇒ `Err`。`start` 只在同一台上比先后：Windows 是 FILETIME，Linux 是开机后的时钟滴答。
-pub(crate) fn connection_and_process_tables() -> Result<String, String> {
+pub fn connection_and_process_tables() -> Result<String, String> {
     #[cfg(windows)]
     {
         win_tables::connection_and_process_tables()
@@ -85,10 +93,20 @@ pub(crate) fn connection_and_process_tables() -> Result<String, String> {
 
 /// 进程表里 ssh 客户端的名字（↗ 那一问认「这台有 ssh 连着那个地址」用）：Windows `ssh.exe` · Linux `ssh`。
 /// 两台的名字都列着（不按 cfg 分）：判定在哪台跑都认两种写法，判据在 Linux 上就测得到 Windows 那一形。
-pub(crate) const SSH_CLIENT_NAMES: &[&str] = &["ssh.exe", "ssh"];
+pub const SSH_CLIENT_NAMES: &[&str] = &["ssh.exe", "ssh"];
 /// 进程链数到这些就停（它们不算终端：Windows 的桌面外壳 · Linux 的 init / 用户服务管理器）。
-pub(crate) const CHAIN_STOP_NAMES: &[&str] = &["explorer.exe", "systemd", "init"];
+pub const CHAIN_STOP_NAMES: &[&str] = &["explorer.exe", "systemd", "init"];
 // Windows 判活那一臂在本机（Linux）够得着的那几半：纯换算 · 与 Linux 同契约的映射 · 唯一住址。
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/win_proc_contract_tests.rs"]
 mod win_proc_contract_tests;
+
+/// 判据用的私有 tmux server（`-L` ＋ 私有 `TMUX_TMPDIR`，碰不到用户的缺省 server）：本包与上层的测试档（经 `test-support`）共用。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../tests/backend/tmux_sandbox.rs"]
+pub mod tmux_sandbox;
+
+// 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本包的测试二进制。
+#[cfg(test)]
+#[used]
+static TEST_HOME: fn() = test_home::linked;
