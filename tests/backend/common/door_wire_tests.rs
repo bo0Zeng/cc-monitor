@@ -2,8 +2,8 @@
 //! 换形之前用旧代码（按名找命令、JSON 进 JSON 出）跑出来、钉成字面量（临时目录换 `<D>`）；没有重写开关。
 //! 只在 POSIX 跑（链接 · 权限位那几问 Windows 上是另一套结局）。
 //! 复制换成一组一条（10-14）时有意改了两格：目标已在那一句换成「同名 {n} 项」（整组先探、有同名一项不做）；「不带 recursive 复制目录」那一问删了（目录按源判，整棵复制）。
-use super::*;
 use crate::assets::aliases::tests::HomeDoor;
+use crate::common::door::*;
 
 #[cfg(unix)]
 #[test]

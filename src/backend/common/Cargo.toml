@@ -1,0 +1,49 @@
+# 两边都要、又不含平台原语的纯工具那一层：只引平台层。
+[package]
+name = "backend-common"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "mod.rs"
+
+[lints]
+workspace = true
+
+[features]
+# 截图台架那一档：「现在」从台架交的时刻接着走（`time::shots_clock`）。不开任何依赖的特性；主 crate 的同名特性只转给它。
+shots = []
+# 只给上层测试用的那几样（契约错的诊断 · 整份读按块的夹具 · 脚本化的会话快照）：上层的 `[dev-dependencies]` 开它。
+test-support = ["dep:tracing-subscriber"]
+# 被上层线上类型嵌着的那几样的 TS 派生（上层测试档开它，生成物落 `src/frontend/ui/generated/`）。
+ts = ["dep:ts-rs", "cmd-wire/ts"]
+
+[dependencies]
+backend-platform = { path = "../platform" }
+batch-core = { path = "../../common/batch-core" }
+cmd-wire = { path = "../../common/cmd-wire" }
+copy-core = { path = "../../common/copy-core" }
+relay-route-core = { path = "../../common/relay-route-core" }
+shell-quote-core = { path = "../../common/shell-quote-core" }
+win-path-core = { path = "../../common/win-path-core" }
+ssh-dial = { path = "../ssh-dial" }
+jiff.workspace = true
+ring.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+ts-rs = { workspace = true, optional = true }
+# 契约错的诊断要听 `tracing` 说了什么（`contract::tests::diag`，挂量具包那一份 `tests/backend/heard.rs`）：只在 `test-support` 下。
+tracing-subscriber = { workspace = true, optional = true }
+
+[dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../../common/test-home" }
+# 源码扫描型守卫的「只留生产段」剥法（只在测试档）。
+guard-core = { path = "../../common/guard-core" }
+ts-rs.workspace = true
+cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
+tracing-subscriber.workspace = true
+# 自有状态的判据造一份只认临时目录的 `Own`（平台层的 `test-support`）。
+backend-platform = { path = "../platform", features = ["test-support"] }

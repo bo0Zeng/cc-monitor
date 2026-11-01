@@ -25,6 +25,8 @@ const MAIN_RS: &str = include_str!("../../src/backend/main.rs");
 
 /// mimalloc 唯一该住的那一段。
 const MUSL_SECTION: &str = "[target.'cfg(target_env = \"musl\")'.dependencies]";
+/// 第三方依赖的版本住的那一段（不是链接段）。
+const WORKSPACE_SECTION: &str = "[workspace.dependencies]";
 const ATTR: &str = "#[global_allocator]";
 
 /// 清单里一共几条依赖 ＋ 名为 `dep` 的那条住在哪几段（`#` 注释行由 `guard_core::strip_hash_comment_lines` 先剥掉）。
@@ -38,14 +40,19 @@ fn sections_declaring(manifest: &str, dep: &str) -> (usize, Vec<String>) {
             section = t.to_string();
             continue;
         }
-        if !section.ends_with("dependencies]") || line.starts_with(char::is_whitespace) {
+        // `[workspace.dependencies]` 只记版本与缺省 feature，链不链、在哪一段链看各段里那一行（`<名>.workspace = true`）。
+        if !section.ends_with("dependencies]")
+            || section == WORKSPACE_SECTION
+            || line.starts_with(char::is_whitespace)
+        {
             continue;
         }
         let Some((k, _)) = t.split_once('=') else {
             continue;
         };
         total += 1;
-        if k.trim() == dep {
+        let k = k.trim();
+        if k.strip_suffix(".workspace").unwrap_or(k) == dep {
             found.push(section.clone());
         }
     }

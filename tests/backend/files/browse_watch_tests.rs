@@ -22,7 +22,8 @@
 
 use super::*;
 
-use crate::files::index::tests::{make_tree, resident_lock};
+use crate::files::index::test_support::resident_lock;
+use crate::files::index::tests::make_tree;
 
 #[test]
 fn the_browse_list_is_a_real_diff() {
@@ -138,7 +139,7 @@ fn a_file_created_after_the_walk_is_found_because_its_directory_is_being_watched
 
     // ① 先建索引 —— 此刻那个文件还不存在。
     // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     crate::files::index::rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
     let before = crate::files::index::tests::query("born-after-the-walk", 10);
@@ -185,7 +186,7 @@ fn an_entry_deleted_on_disk_stops_being_returned_once_its_directory_is_relisted(
     std::fs::File::create(&doomed).expect("造那个待删的文件");
 
     // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     crate::files::index::rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
     let before = crate::files::index::tests::query("about-to-be-deleted", 10);
@@ -268,7 +269,7 @@ fn the_real_watcher_arms_and_delivers() {
     assert_eq!(armed, 1, "名单上一个目录，挂上的个数不是 1");
 
     // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     crate::files::index::rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
     std::fs::File::create(dir.join("pushed-by-the-kernel")).expect("造那个文件");
@@ -302,7 +303,7 @@ fn files_browse_keeps_a_live_watcher_that_follows_the_list() {
     let fx = make_tree("livewatch", 2, 1, 0);
     let dir = fx.root.join("d0000");
     let p = |x: &std::path::Path| serde_json::Value::String(x.to_string_lossy().to_string());
-    let v = crate::files::tests::answer_wire(
+    let v = crate::files::test_support::answer_wire(
         "files-browse",
         &serde_json::json!({ "dirs": [p(&dir)] }),
         &Default::default(),
@@ -331,7 +332,7 @@ fn files_browse_keeps_a_live_watcher_that_follows_the_list() {
         found,
         "登记之后新建的文件到兜底上限还没进 overlay —— 没有人在后端进程里持有那个监听器"
     );
-    let v = crate::files::tests::answer_wire(
+    let v = crate::files::test_support::answer_wire(
         "files-browse",
         &serde_json::json!({ "dirs": [] }),
         &Default::default(),

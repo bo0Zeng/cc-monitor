@@ -1,0 +1,51 @@
+# 平台原语那一层：后端里唯一许平台原语与平台 `cfg` 的地方（进程 · 盘 · 子进程 · shell · 终端 · 盯盘）。不引后端里任何别的层。
+[package]
+name = "backend-platform"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "mod.rs"
+
+[lints]
+workspace = true
+
+[features]
+# 只给上层测试用的那几样（判据看要起的命令 · 私有 tmux server · 起子进程前那一道落到空 socket 目录）：上层的 `[dev-dependencies]` 开它。
+test-support = []
+# 被上层线上类型嵌着的那几样的 TS 派生（上层测试档开它，生成物落 `src/frontend/ui/generated/`）。
+ts = ["dep:ts-rs"]
+
+[dependencies]
+acct-core = { path = "../../common/acct-core" }
+cmd-wire = { path = "../../common/cmd-wire" }
+copy-core = { path = "../../common/copy-core" }
+# 读凭据文件时按句柄量权限（`perm::open_checked`）：与主 crate 同开 `harden`。
+creds-core = { path = "../../common/creds-core", features = ["harden"] }
+own-chan = { path = "../../common/own-chan" }
+pidwatch-core = { path = "../../common/pidwatch-core" }
+relay-route-core = { path = "../../common/relay-route-core" }
+shell-quote-core = { path = "../../common/shell-quote-core" }
+win-path-core = { path = "../../common/win-path-core" }
+ssh-dial = { path = "../ssh-dial" }
+jiff.workspace = true
+libc.workspace = true
+notify.workspace = true
+portable-pty.workspace = true
+russh.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+walkdir.workspace = true
+ts-rs = { workspace = true, optional = true }
+# musl 下 `proc.rs` 调 mimalloc 的 C 口：符号由主二进制链进来的 `mimalloc` 给，本包不加依赖。
+
+[dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../../common/test-home" }
+# 源码扫描型守卫的「只留生产段」剥法（只在测试档）。
+guard-core = { path = "../../common/guard-core" }
+ts-rs.workspace = true
+test-meters = { path = "../test-meters" }

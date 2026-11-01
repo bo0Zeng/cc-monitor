@@ -47,7 +47,7 @@ pub(crate) fn not_installed_message(
 /// 全由调用方给（理由见模块头注第一段）。
 ///
 /// `Err` 是**整句话**（已经说明查过哪儿），调用方只需给它套上自己的语义码。
-pub(crate) fn find(
+pub fn find(
     name: &str,
     fixed: &[PathBuf],
     search_path: bool,

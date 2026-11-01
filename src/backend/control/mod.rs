@@ -1,7 +1,6 @@
 //! 控制面：会改变世界，或产出「要怎么改变世界」的计划。
 //!
 //! - [`fork_write`]：写文件系统（`O_EXCL` 新建一个 `<new-sid>.jsonl`），经只会新建的 `NewFile`。
-//! - [`files_write`]：文件管理的写面（经 `Face`：只收过了路径解析的路径，只递给命令表文件管理那一族）。
 //! - [`exit_policy`]：写后端自己的那一份状态文件（`~/.cc-monitor/backend.json`）；不碰用户数据，`readonly_guard` 为它单开一层。
 //! - [`tmux_hook`]：改 tmux server 状态（`tmux set-hook -g`）+ 发信号（`SIGUSR1`）。
 //! - [`gate`]：Gate 2（identity）在本侧的承载，判定本身在 [`gate_rules`]。它只读 tmux，但归 control/：它是「能不能改这个会话」这个决策的一部分。
@@ -32,20 +31,13 @@ pub mod cli_args;
 pub mod deploy_plan;
 pub mod exit_policy;
 pub mod feeds; // 各台的常驻流（机器表里要连的那几台各一条；那一态直接进机器状态 · 装后端在 connect 那一支）
-pub mod files_commit;
 pub(crate) mod machine_prefs;
 pub use machine_prefs::apply_agent_homes;
 pub(crate) mod machine_menu; // 命令面板打机器名：`machine-find` 认那台 · `machine-menu` 那台能做的几样
 pub(crate) mod machine_state;
 pub(crate) mod machines;
 pub(crate) mod monitor_board; // 监控板的成品：每台写行 · 各台合成（分组 · 组内先后 · 组头 · 汇总；宿主 `faces/monitor_board_face.rs`）
-                              // 解压（`files-extract`）＋ 「建链接」那一个动词的调用方（复制链接本身 · 解压包里的链接）。
-pub mod files_extract;
-// 上传的块形：把送进暂存区的块拼成暂存件（SFTP 起始目录不是后端 home 时走这条）。
-pub(crate) mod files_batch;
-pub mod files_upload_chunks;
-pub mod files_write; // 同一台上一组一条（复制 · 删除 · 改权限）：探 · 问 · 做 · 逐项结局 · 票 · 进度 · 撤
-                     // 分叉之后起：新会话的工作目录 / 号 / 终端从哪知道（逐格知道 ＋ 来源码 / 不知道 ＋ 原因码，不猜）。
+                              // 分叉之后起：新会话的工作目录 / 号 / 终端从哪知道（逐格知道 ＋ 来源码 / 不知道 ＋ 原因码，不猜）。
 pub(crate) mod fork_launch;
 pub mod fork_write;
 pub(crate) mod gate;

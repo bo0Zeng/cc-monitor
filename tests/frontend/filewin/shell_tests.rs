@@ -3629,7 +3629,7 @@ async fn a_chmod_is_done_without_asking_and_offers_the_backends_before_as_undo()
 /// 窗口认的「落点名被占了」那个码 == 后端写面登记的那一个（读两侧源码）。
 #[test]
 fn the_exists_code_is_the_backends_one() {
-    let be = include_str!("../../../src/backend/control/files_write.rs");
+    let be = include_str!("../../../src/backend/files/write.rs");
     assert!(
         be.contains(&format!(
             "pub const EXISTS: &str = \"{}\";",
@@ -3643,7 +3643,7 @@ fn the_exists_code_is_the_backends_one() {
 /// 窗口认的「名字在那台不能用」那个码 == 后端写面登记的那一个（读两侧源码）。
 #[test]
 fn the_bad_name_code_is_the_backends_one() {
-    let be = include_str!("../../../src/backend/control/files_write.rs");
+    let be = include_str!("../../../src/backend/files/write.rs");
     assert!(
         be.contains(&format!(
             "pub const BAD_NAME: &str = \"{}\";",

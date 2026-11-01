@@ -124,8 +124,8 @@ fn read_rows(
     tz: &crate::Tz,
     fixed: usize,
 ) -> Result<(Vec<ReadRow>, u64, bool), crate::common::said::Said> {
-    let (_, face) = record_face(home, path)?;
-    let mut reader = reader(&face, tz);
+    let (target, face) = record_face(home, path)?;
+    let mut reader = reader(&face, tz).back(&target, READ_PAGE_BYTES);
     let room = READ_PAGE_BYTES.saturating_sub(fixed + ENVELOPE_BYTES);
     let (mut rows, mut used, mut at) = (Vec::<ReadRow>::new(), 0usize, offset);
     // 上一块里最后一条带记录的行：这一块第一条带记录的行可能要并进它。
@@ -262,7 +262,7 @@ pub(crate) fn page_at(
     )
     .map_err(&lower)?;
     let (lines, next_seq) = crate::observe::query::body::record_lines_of_page(
-        &mut reader(&face, tz),
+        &mut reader(&face, tz).back(&target, READ_PAGE_BYTES),
         &target,
         req.seq.unwrap_or(0),
         offset,
@@ -328,7 +328,7 @@ pub(crate) fn lines_at(
     )
     .map_err(&lower)?;
     let (lines, _) = crate::observe::query::body::record_lines(
-        &mut reader(&face, tz),
+        &mut reader(&face, tz).back(&target, READ_PAGE_BYTES),
         &target,
         page.from,
         page.lines
@@ -547,7 +547,7 @@ pub(crate) fn run_at(
         locate::run_source(home, &req.parent, req.run.as_deref(), req.tool.as_deref())
             .map_err(&lower)?;
     let path = source.to_string_lossy().into_owned();
-    let (_, face) = record_face(home, &path).map_err(&lower)?;
+    let (target, face) = record_face(home, &path).map_err(&lower)?;
     let (from, bytes, end, more) = if req.tail == Some(true) || req.before.is_some() {
         let page = body::read_back(home, &path, req.before, READ_PAGE_BYTES, LINE_CAP_BYTES)
             .map_err(&lower)?;
@@ -557,7 +557,11 @@ pub(crate) fn run_at(
             .map_err(&lower)?;
         (from, page.bytes, page.next, !page.eof)
     };
-    let rows = crate::observe::query::body::run_rows(&mut reader(&face, tz), from, &bytes);
+    let rows = crate::observe::query::body::run_rows(
+        &mut reader(&face, tz).back(&target, READ_PAGE_BYTES),
+        from,
+        &bytes,
+    );
     let reply = HistoryRun {
         run,
         path,
@@ -1432,6 +1436,7 @@ pub(crate) fn facts_at(
     // 没人答时自动答：注解里那一格 · 上一条替人答过的那一句（判定与记录都住 `control::asks`）。
     facts.auto_answer =
         crate::history::history_annotations::auto_answer_of(sid).map(|a| a.after_min);
+    facts.auto_answer_choices = crate::control::asks::auto_choices(facts.auto_answer);
     facts.auto_answered = crate::control::asks::answered(sid);
     facts.needs = dress_ask(
         facts::needs_of(

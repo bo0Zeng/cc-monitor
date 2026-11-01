@@ -4970,6 +4970,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     mcp: [],
     answerOff: null,
     autoAnswer: null,
+    autoAnswerChoices: [],
     autoAnswered: null,
     quietUnread: null,
     ...p,
@@ -6570,6 +6571,7 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     mcp: [],
     answerOff: null,
     autoAnswer: null,
+    autoAnswerChoices: [],
     autoAnswered: null,
     quietUnread: null,
   });

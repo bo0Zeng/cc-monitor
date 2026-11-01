@@ -2538,6 +2538,7 @@ name = "guard-core"
 version = "0.1.0"
 dependencies = [
  "regex",
+ "serde_json",
  "test-home",
 ]
 
@@ -3377,6 +3378,7 @@ dependencies = [
  "comrak",
  "serde_json",
  "syntect",
+ "test-home",
  "two-face",
 ]
 

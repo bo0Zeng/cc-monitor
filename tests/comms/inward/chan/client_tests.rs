@@ -13,10 +13,7 @@ const CAP: usize = 64 * 1024;
 const WAIT: Duration = guard_core::wall::CEILING;
 
 fn budget(d: Duration) -> Budget {
-    Budget {
-        until: Instant::now() + d,
-        cancel: CancelToken::new(),
-    }
+    Budget::new(Instant::now() + d, CancelToken::new())
 }
 
 /// 起一个客户端：返回它与「路由器那一端」。
@@ -103,17 +100,17 @@ async fn a_call_gets_the_answer_for_its_own_id() {
 #[tokio::test]
 async fn a_spent_or_cancelled_budget_sends_nothing() {
     let (c, mut r) = start();
-    let spent = Budget {
-        until: Instant::now() - Duration::from_millis(1),
-        cancel: CancelToken::new(),
-    };
+    let spent = Budget::new(
+        Instant::now() - Duration::from_millis(1),
+        CancelToken::new(),
+    );
     assert_eq!(
         c.call(&Origin::local(), &op("ping"), Body::default(), spent)
             .await,
         Err(hop(0, "write", Reach::NotSent, HopFault::Overrun))
     );
     let b = budget(WAIT);
-    b.cancel.cancel();
+    b.cancel().cancel();
     assert_eq!(
         c.call(&Origin::local(), &op("ping"), Body::default(), b)
             .await,
@@ -173,7 +170,7 @@ async fn a_withdrawn_call_says_whether_the_peer_may_still_run_it() {
 
     for (name, runs_on) in [(stuck, true), ("ping", false)] {
         let b = budget(WAIT);
-        let cancel = b.cancel.clone();
+        let cancel = b.cancel().clone();
         let call = tokio::spawn({
             let c = c.clone();
             async move {

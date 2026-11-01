@@ -193,9 +193,9 @@ fn the_registry_families_are_exactly_the_files_in_the_registry_directory() {
 fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     // ④ 那一步真调每一条读能力：`files-index-rebuild` 不给 `path` 就重走家目录、装上常驻那一份 ⇒ 拿那把唯一的锁
     //   （不拿 ⇒ 与 `files::index` 那几条「清空了再查」并发时把状态换掉，CI 上并行跑时现红过）。
-    let _lock = crate::files::index::tests::resident_lock();
+    let _lock = crate::files::index::test_support::resident_lock();
     // ① 名字：能力名把 `.` 换成 `-` 就是线上名（反向那一半住 `files::answer_wire`）。
-    let declared: std::collections::BTreeSet<String> = crate::files::tests::CAPABILITIES
+    let declared: std::collections::BTreeSet<String> = crate::files::test_support::CAPABILITIES
         .iter()
         .map(|n| n.replace('.', "-"))
         .collect();
@@ -206,7 +206,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     );
     // 反向替换够用的前提：能力名里**没有** `-`。它一旦被破坏，`answer_wire` 会静默地
     // 去查一个不存在的能力名，而上面那个映射照样对得上。
-    for n in crate::files::tests::CAPABILITIES {
+    for n in crate::files::test_support::CAPABILITIES {
         assert!(
             !n.contains('-'),
             "能力名 `{n}` 里有 `-` —— `files::answer_wire` 的反向替换从此会翻错，\n\
@@ -223,7 +223,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         .iter()
         .filter(|s| s.run.face)
         .map(|s| s.name)
-        // 撤一组复制 · 删除 · 改权限（`control/files_batch.rs`）：写那一族的，只立旗、不碰盘，不拿写句柄。
+        // 撤一组复制 · 删除 · 改权限（`files/batch.rs`）：写那一族的，只立旗、不碰盘，不拿写句柄。
         .chain([<crate::stream::inbound::files_write_face::FilesBatchStop as crate::wire::typed::Command>::NAME])
         .map(str::to_string)
         .collect();
@@ -265,7 +265,9 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         if name == <crate::stream::inbound::files_write_face::FilesBatchStop as crate::wire::typed::Command>::NAME {
             continue;
         }
-        if let Err(e) = crate::control::files_write::tests::ask(name, &serde_json::json!({})) {
+        if let Err(e) =
+            crate::stream::inbound::files_write_face::write_tests::ask(name, &serde_json::json!({}))
+        {
             let code = e.code_or_fallback();
             assert!(
                 spec.codes.iter().any(|c| *c == code),
@@ -277,7 +279,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
 
     // ② ③ 逐条：读的那几条都在登记表上。
     let mut checked = 0usize;
-    for cap in crate::files::tests::CAPABILITIES {
+    for cap in crate::files::test_support::CAPABILITIES {
         let online = cap.replace('.', "-");
         let spec = super::REGISTRY
             .iter()
@@ -286,8 +288,11 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         checked += 1;
 
         // ④ 真的调一次：喂空 `args` ⇒ 要么成功，要么落在这条命令登记的码上；落到 `unknown_capability` 就说明能力接错了。
-        let out =
-            crate::files::tests::answer_wire(&online, &serde_json::json!({}), &Default::default());
+        let out = crate::files::test_support::answer_wire(
+            &online,
+            &serde_json::json!({}),
+            &Default::default(),
+        );
         if let Err(s) = out {
             let (code, msg) = (s.code_or_fallback().to_string(), s.said);
             assert_ne!(
@@ -302,7 +307,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     }
     assert_eq!(
         checked,
-        crate::files::tests::CAPABILITIES.len(),
+        crate::files::test_support::CAPABILITIES.len(),
         "只逐条判过 {checked} 条 —— 本条在空转"
     );
 }

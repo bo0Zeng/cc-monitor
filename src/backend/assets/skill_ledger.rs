@@ -50,7 +50,7 @@ const _: () = assert!(MAX_BYTES == relay_route_core::SKILL_LEDGER_FILE.row.cap);
 
 /// 装记录：状态（读不懂不覆盖；更新的格式也算读不懂）。第 1 版经 [`v1_to_v2`] 读成这一版。
 const DOC: crate::common::own_state::Doc<Ledger> =
-    crate::common::own_state::upgrade!(relay_route_core::SKILL_LEDGER_FILE, [v1_to_v2]);
+    crate::common::upgrade!(relay_route_core::SKILL_LEDGER_FILE, [v1_to_v2]);
 
 /// 第 1 版 ⇒ 第 2 版：版本从 `"v"` 挪到顶层 `version`（读写口管），别的格子不变。`"v"` 不是 1 ⇒ 读不懂（不认的格式不覆盖）。
 fn v1_to_v2(mut v: Value) -> Result<Value, crate::common::said::Said> {

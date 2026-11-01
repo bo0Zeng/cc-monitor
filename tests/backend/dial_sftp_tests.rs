@@ -86,7 +86,7 @@ fn the_lexical_fence_admits_exactly_the_staging_root_and_nothing_else() {
 #[test]
 fn the_declared_write_root_is_exactly_staging() {
     assert_eq!(STAGING_ROOT, ".cc-monitor/staging");
-    // 暂存区那一根与提交那一侧（后端 `files_commit`）是同一个串：那一条住后端（`dial_tests`），这里够不到后端。
+    // 暂存区那一根与提交那一侧（后端 `files::commit`）是同一个串：那一条住后端（`dial_tests`），这里够不到后端。
 }
 
 // ═══ 解链接那一道 ══════════════════════════════════════════════════════════════════════

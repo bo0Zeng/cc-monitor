@@ -11,13 +11,13 @@
 
 /// 宿主告诉后端「你是常驻的那一个」的 env 名（值 `1`；帧面监听 `wire/listen.rs` 读它）。
 /// 听哪个套接字不交：按家算（`relay_route_core::listen_socket_for`），宿主与后端同一个函数。
-pub(crate) const RESIDENT: &str = "CCM_RESIDENT";
+pub const RESIDENT: &str = "CCM_RESIDENT";
 
 /// stderr 诊断文件完整路径的 env 名（`stderr_log.rs` 读它）。
-pub(crate) const STDERR_LOG: &str = "CCM_BACKEND_STDERR_LOG";
+pub const STDERR_LOG: &str = "CCM_BACKEND_STDERR_LOG";
 
 /// 常驻后端自有的那几格（起它的那一方只交给它自己用；中转口除外，见头注）。名字住这里（最下层），读它们的上层引这里。
-pub(crate) const OWN_ENVS: [&str; 2] = [RESIDENT, STDERR_LOG];
+pub const OWN_ENVS: [&str; 2] = [RESIDENT, STDERR_LOG];
 
 /// 后端内部的变量族（前缀）：起子进程原语对**每个**子进程无条件摘掉名字以它们打头的变量 —— 不论是不是本进程交的。
 /// 会话环境里会混进来源别处的这几族（monitor 给终端窗口导的后端二进制路径 · 旧版常驻后端留在长寿 tmux server 全局环境里的监听口与钥匙文件），
@@ -30,7 +30,7 @@ pub(crate) const INTERNAL_PREFIXES: [&str; 2] = ["CCM_BACKEND_", "CCM_LISTEN_"];
 static ALSO_INTERNAL: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
 
 /// 登记那几个名字（只认第一次）。
-pub(crate) fn also_internal(names: Vec<&'static str>) {
+pub fn also_internal(names: Vec<&'static str>) {
     ALSO_INTERNAL.get_or_init(|| names);
 }
 
@@ -40,7 +40,7 @@ pub(crate) fn also_internal(names: Vec<&'static str>) {
 pub(crate) const NAMES_FOLD_CASE: bool = cfg!(windows);
 
 /// 两个环境变量名在本平台上是不是同一格（[`NAMES_FOLD_CASE`]）。
-pub(crate) fn same_name(a: &str, b: &str) -> bool {
+pub fn same_name(a: &str, b: &str) -> bool {
     same_name_as(a, b, NAMES_FOLD_CASE)
 }
 
@@ -61,7 +61,7 @@ fn has_prefix_as(name: &str, prefix: &str, fold: bool) -> bool {
 /// 这个名字是不是不往下传的（[`OWN_ENVS`] ∪ [`INTERNAL_PREFIXES`] 那几族 ∪ 上层登记的会话号变量）；按本平台的大小写规矩比。
 ///
 /// 〔继承表〕后端自己的载体那一格。
-pub(crate) fn is_internal(name: &str) -> bool {
+pub fn is_internal(name: &str) -> bool {
     is_internal_as(
         name,
         ALSO_INTERNAL.get().map_or(&[][..], Vec::as_slice),

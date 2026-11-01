@@ -157,7 +157,7 @@ fn tmpdir(tag: &str) -> TmpDir {
 
 /// profile 的读写经「门」（生产 = 本机后端的文件管理那一面）。
 /// 判据用落在临时目录上的替身门，home = 那份文件所在的目录；写的规则（备份 · 原子替换 · 回读 · 回滚）
-/// 住后端，由 `files_write_tests.rs` 判。
+/// 住后端，由 `tests/backend/files/write_tests.rs` 判。
 fn door_at(p: &std::path::Path) -> super::super::tests::HomeDoor {
     super::super::tests::HomeDoor(p.parent().expect("有父目录").to_path_buf())
 }
@@ -569,7 +569,7 @@ fn install_preserves_existing_user_content() {
     assert!(after.contains("# === cc-monitor BEGIN"));
     assert!(!after.is_empty());
 
-    // 备份由后端做（`Door::put` 的 `backup: true`，判据在 `files_write_tests.rs`）；
+    // 备份由后端做（`Door::put` 的 `backup: true`，判据在 `tests/backend/files/write_tests.rs`）；
     //   这一侧钉的是「要了备份」—— 用户的 profile 不许在没有备份的情况下被改。
     // 门就是本进程的 `Door::put` ⇒ 直接看盘：旁边真留了一份备份。
     let parent = p.parent().unwrap();
@@ -647,7 +647,7 @@ fn reinstall_replaces_block_keeps_user_content() {
 }
 
 // 「Windows 上替换要保住 explicit ACE（`ReplaceFileW`）」那条性质住写的那一侧（后端）：
-// `tests/backend/control/files_write_tests.rs::put_keeps_explicit_acl_entries_on_windows`。
+// `tests/backend/files/write_tests.rs::put_keeps_explicit_acl_entries_on_windows`。
 
 #[test]
 fn uninstall_strips_block_keeps_user_content() {

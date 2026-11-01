@@ -1,6 +1,6 @@
 //! 一组一条命令（复制 · 删除 · 改权限 · 下载 · 上传 · 跨机复制）共用的线上类型：同名怎么办 · 逐项结局 · 同名清单 · 进度 · 撤。
 //!
-//! 单个就是一组里的一项：没有一次一件的那一形。判法住后端一处（同台那三条在 `control/files_batch.rs`，传输那几条在 `control/transfer.rs`）。
+//! 单个就是一组里的一项：没有一次一件的那一形。判法住后端一处（同台那三条在 `files/batch.rs`，传输那几条在 `control/transfer.rs`）。
 
 use serde::{Deserialize, Serialize};
 

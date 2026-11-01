@@ -429,7 +429,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 聊天附件（终端面板输入行那一排）：判收不收 · 落点 · 上限 · 清理都在会话那台后端，字节逐块进那台暂存区；本机远端同一条路。
     (
         "session-attachment-check",
-        "typed：开传前那一问，后端逐份答收不收 ＋ 类别与类别字（`control/files_commit/session_attachment.rs::check`）；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
+        "typed：开传前那一问，后端逐份答收不收 ＋ 类别与类别字（`files/commit/session_attachment.rs::check`）；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
     ),
     (
         "files-stage-chunk",
