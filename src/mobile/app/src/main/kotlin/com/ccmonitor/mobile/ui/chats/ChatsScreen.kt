@@ -597,7 +597,7 @@ private fun toneColor(t: Tone?): Color {
     return when (t) {
         Tone.NEED, Tone.WARN -> tokens.warn
         Tone.FAIL -> tokens.errorText
-        Tone.NOW, Tone.BUSY, Tone.PLAIN, null -> MaterialTheme.colorScheme.onSurfaceVariant
+        Tone.NOW, Tone.BUSY, Tone.PLAIN, Tone.OFFLINE, null -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 }
 

@@ -179,7 +179,7 @@
         "state": "host_key_changed",
         "strip": {
           "progress": false,
-          "tone": "fault"
+          "tone": "fail"
         },
         "version": null,
         "versionRelation": null,
@@ -272,7 +272,7 @@
         "state": "unsupported",
         "strip": {
           "progress": false,
-          "tone": "fault"
+          "tone": "fail"
         },
         "version": null,
         "versionRelation": null,

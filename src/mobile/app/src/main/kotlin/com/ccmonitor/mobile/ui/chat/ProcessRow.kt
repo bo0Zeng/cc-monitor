@@ -147,7 +147,7 @@ private fun toneColor(
     when (t) {
         Tone.NEED, Tone.WARN -> warn
         Tone.FAIL -> error
-        Tone.NOW, Tone.BUSY, Tone.PLAIN -> plain
+        Tone.NOW, Tone.BUSY, Tone.PLAIN, Tone.OFFLINE -> plain
     }
 
 /** 右端那一截：`{dur}` 照 `from` / `to` 填（会走的钟，同桌面）；还在跑 ⇒ 每分钟重画一次。没有起点 ⇒ 照抄。 */

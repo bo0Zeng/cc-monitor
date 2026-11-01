@@ -208,7 +208,7 @@ internal fun UsageText(
         when (tone) {
             Tone.FAIL -> tokens.errorText
             Tone.WARN, Tone.NEED -> tokens.warn
-            Tone.PLAIN, Tone.NOW, Tone.BUSY -> MaterialTheme.colorScheme.onSurfaceVariant
+            Tone.PLAIN, Tone.NOW, Tone.BUSY, Tone.OFFLINE -> MaterialTheme.colorScheme.onSurfaceVariant
         }
     Text(text, style = MaterialTheme.typography.bodySmall, color = color)
 }
