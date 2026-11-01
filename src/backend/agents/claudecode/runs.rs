@@ -234,11 +234,12 @@ fn notice(text: &str) -> Vec<super::super::ChildLink> {
     let Some(n) = super::text::task_notice(text) else {
         return Vec::new();
     };
-    let end = match n.status.as_deref() {
-        Some("completed") => RunEnd::Done,
-        Some("failed") => RunEnd::Failed,
-        Some("killed" | "stopped") => RunEnd::Stopped,
-        _ => return Vec::new(),
+    use cmd_wire::record::TaskEnd;
+    let end = match n.end() {
+        Some(TaskEnd::Done) => RunEnd::Done,
+        Some(TaskEnd::Failed) => RunEnd::Failed,
+        Some(TaskEnd::Stopped) => RunEnd::Stopped,
+        None => return Vec::new(),
     };
     match n.task_id {
         Some(run) => vec![ChildLink {

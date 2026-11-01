@@ -143,6 +143,10 @@ pub(crate) struct Snapshot {
     pub backups: Vec<Backup>,
     /// 这台 key 表里有哪几行（门递进来的，账号库不自己读那份文件）；`None` = 这一趟不看它。
     pub keys: Option<KeyRows>,
+    /// 此刻有活会话的号的目录（这一族的 `/` 写法）：修复不从这几个号里挪实体。只「修复」那一趟填（`wire::busy_of`）。
+    pub busy: BTreeSet<String>,
+    /// 有活会话、却认不出是哪个号（环境读不出配置目录、又不是裸起）⇒ 当所有号都忙。
+    pub busy_unknown: bool,
 }
 
 /// 这台 key 表（上游选择自己的状态）此刻的样子：它在哪 · 里面有哪几个号（账号 id）。

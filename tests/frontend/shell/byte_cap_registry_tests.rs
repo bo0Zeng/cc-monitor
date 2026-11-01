@@ -64,6 +64,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "**步长**不是体量：常驻流压缩器一次往外攒多少字节就先往下写（`wire/listen.rs::Down`），流本身多长不受它限。",
     ),
     (
+        "WRITE_FLUSH_BYTES",
+        "**步长**不是体量：后端写者帧一直排着时自上次 flush 起写满这么多字节就照 flush 一次（`main.rs::writer_task`），流本身多长不受它限。",
+    ),
+    (
         "VERSION",
         "**格式版本号**不是体量：骨架落盘那一格（`observe/skeleton.rs`），值取声明表（`relay_route_core::SKELETON_FILE`）。",
     ),

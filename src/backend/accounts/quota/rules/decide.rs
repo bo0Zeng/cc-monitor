@@ -118,6 +118,8 @@ pub(crate) struct CtxAcct {
     pub(crate) off: bool,
     /// 别的会话压在它 5 小时窗上的用速（点 / 分）；说不出 ⇒ 空。
     pub(crate) others: Option<f64>,
+    /// 换窗时额度账记下的那两样（周重置时剩几点 · 开窗取整往哪边）。
+    pub(crate) past: super::Past,
 }
 
 /// 会话状态 Σ（后端存 ＋ 本会话量出来的）。
@@ -229,6 +231,7 @@ pub(crate) fn ctx_of<'a>(
                 off: sigma.off.contains(&x.id),
                 weekly: x.weekly,
                 others: x.others,
+                past: x.past.clone(),
                 sendable: !sigma.off.contains(&x.id) && standing::sendable(x, t),
                 used: [standing::used_at(x, 0, t), standing::used_at(x, 1, t)],
                 resets: x.resets.map(|r| r.filter(|r| *r > t)),

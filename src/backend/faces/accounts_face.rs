@@ -88,7 +88,19 @@ pub(crate) fn change(
         drop: &drop,
         restore: &restore,
     });
-    let done = wire::run_change(d, &req, kt.as_ref())?;
+    // 这台此刻的会话（判活与归号住观测侧）：修复不从有活会话的号里挪实体。
+    let live = || {
+        let home = crate::history::listing::agent_home();
+        crate::observe::accounts_query::session_accounts_here(&home)
+            .into_iter()
+            .map(|r| wire::LiveSession {
+                alive: r.alive,
+                bare: r.bare,
+                config_dir: r.config_dir,
+            })
+            .collect()
+    };
+    let done = wire::run_change(d, &req, kt.as_ref(), &live)?;
     let mut change = done.change;
     if let (Some(note), wire::Request::Remove(_)) = (unreadable, &req) {
         change.notes.push(note);

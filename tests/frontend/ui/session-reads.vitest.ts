@@ -210,6 +210,7 @@ describe("〔STC〕第五问：会话事实", () => {
         { id: "rt-1", outcome: "recovered" },
         { id: "rt-2", outcome: "retrying" },
       ],
+      notices: [{ id: "n-1", members: ["n-1", "n-2", "n-3"], hidden: ["n-1"], head: "后台任务 ×2 · 07:31–07:33 · 失败 ×1", failed: true }],
       permissionMode: "acceptEdits",
       permissionModeText: copyText("beAsk.choice.planEdits"),
       modelText: null,

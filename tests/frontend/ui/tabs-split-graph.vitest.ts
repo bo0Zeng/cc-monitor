@@ -174,7 +174,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/cards/step-line.ts", // 会话事实说在等批准的那一步：那一行照画 / 不等了回到在跑
     "src/frontend/ui/duration-format.ts", // 那一行右侧已等多久（会走的钟，那一个读口 `waitedNow`）
     "src/frontend/ui/cards/api-error.ts", // applyRetries：每串重试的结局 ⇒ 消息流里的重试细条照画
-    "src/frontend/ui/cards/speaker-bar.ts", // applyHandedBack：交回了的子运行 ⇒ 它们的收场通知收起
+    "src/frontend/ui/cards/speaker-bar.ts", // applyNotices：照会话事实的通知组摆收场通知
     "src/frontend/ui/record-reads.ts", // 按偏移 / 按行号取正文经通道问那台后端（`history-page` · `history-lines`，后端出记录行）
     "src/frontend/ui/record-timeline.ts",
     "src/frontend/ui/render-stream-record.ts",

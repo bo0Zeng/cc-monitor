@@ -288,14 +288,15 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const rec = (seq: number, speaker: Record<string, unknown>) =>
       userLine(seq, `u${seq}`, "x", { who: { speaker, text: "x" } }) as never;
     tm.onLine(rec(1, { kind: "agentMessage", from: "w6", name: "worker-7", handback: true, body: "报告正文" }));
-    tm.onLine(rec(2, { kind: "taskNotification", taskId: "w6", status: "completed", summary: "扫目录" }));
-    tm.onLine(rec(3, { kind: "taskNotification", taskId: "w8", status: "completed", summary: "别的" }));
+    // 那一行是后端写好的（`row`），界面照抄。
+    tm.onLine(rec(2, { kind: "taskNotification", taskId: "w6", status: "completed", end: "done", summary: "扫目录", row: "后台任务 扫目录 完成 · 14:02" }));
+    tm.onLine(rec(3, { kind: "taskNotification", taskId: "w8", status: "completed", end: "done", summary: "别的", row: "后台任务 别的 完成 · 14:03" }));
     const notices = () =>
       [...streamRootEl.querySelectorAll<HTMLElement>(".card-notice:not([hidden]) .notice-row:not([hidden])")].map((r) => r.textContent ?? "");
-    expect(notices().join("|")).toContain("扫目录");
-    // 句子里的状态写字（完成 / 失败），不拿字符当图标（C-W1）。
-    expect(notices()).toContain(copyText("speaker.notice.row", { what: "扫目录", state: copyText("runs.state.done"), time: notices()[0].split(" · ").at(-1) ?? "" }));
-    const facts = { agent: "claude", forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, writers: [], pending: [], lastSay: null, needs: null, handedBack: ["w6"], retries: [], permissionMode: null, tokens: null, cost: null, mcp: [], startedBy: null, children: [] };
+    expect(notices()).toEqual(["后台任务 扫目录 完成 · 14:02", "后台任务 别的 完成 · 14:03"]);
+    // 后端说这两条是一组、w6 那条交回过不露（`notices` 那一格）。
+    const notice = { id: "u2", members: ["u2", "u3"], hidden: ["u2"], head: null, failed: false };
+    const facts = { agent: "claude", forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, writers: [], pending: [], lastSay: null, needs: null, handedBack: ["w6"], retries: [], notices: [notice], permissionMode: null, tokens: null, cost: null, mcp: [], startedBy: null, children: [] };
     (tm as unknown as { onSessionFacts(sid: string, f: unknown): void }).onSessionFacts(SID, facts);
     expect(notices().join("|")).not.toContain("扫目录");
     expect(notices().join("|"), "别的子运行的通知照常").toContain("别的");

@@ -32,6 +32,7 @@ internal object Fixtures {
             "needs" to null,
             "handedBack" to emptyList<Any>(),
             "retries" to emptyList<Any>(),
+            "notices" to emptyList<Any>(),
             "permissionMode" to null,
             "permissionModeText" to null,
             "tokens" to null,

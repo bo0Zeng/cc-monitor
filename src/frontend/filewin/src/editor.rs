@@ -17,7 +17,6 @@
 
 use cmd_wire::files as w;
 use copy_core::copy_text;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// 🔴**一条请求行最多多长** ＝ 后端入方向一行的上限（`src/backend/stream/inbound/mod.rs::MAX_LINE_BYTES`，
@@ -424,9 +423,6 @@ struct Desk {
 #[derive(Clone, Default)]
 pub struct EditBoard {
     inner: Arc<Mutex<Desk>>,
-    /// 打开过几趟、存过几趟 —— 给判据与诊断两个可观测的数。
-    opens: Arc<AtomicU64>,
-    saves: Arc<AtomicU64>,
     /// 🔴 敲窗口那只手（同 `DownloadBoard::ctx`：读/存都在 tokio 那条线程上落，
     /// 而 egui 只在有事发生时画下一帧）。
     ctx: Arc<Mutex<Option<egui::Context>>>,
@@ -453,8 +449,7 @@ impl EditBoard {
             d.opening = None;
             d.arrived = Some(a);
         }
-        // ⚠ 同 `DownloadBoard::finish`：先落货、再加数、最后才敲（锁已放掉）。
-        self.opens.fetch_add(1, Ordering::SeqCst);
+        // ⚠ 同 `DownloadBoard::finish`：先落货、再敲（锁已放掉）。
         self.poke();
     }
 
@@ -495,7 +490,6 @@ impl EditBoard {
             d.saving = None;
             d.saved = Some(r);
         }
-        self.saves.fetch_add(1, Ordering::SeqCst);
         self.poke();
     }
 

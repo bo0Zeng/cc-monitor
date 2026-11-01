@@ -39,8 +39,6 @@ pub const TRANSFER_OPS: [&str; 2] = [TRANSFER_UPLOAD, TRANSFER_DOWNLOAD];
 /// 两台之间复制一组。载荷 `cmd_wire::transfer::TransferCopyAsk`（寻址 ＝ 源那台，`to` ＝ 落点那台的名字），回 `BatchReply`。
 /// 不开单：本机后端做完整组才回，进度走 `files_batch` 帧（[`crate::files_batch_relay`]），撤是 `files-batch-stop`。
 pub const TRANSFER_COPY: &str = <cmd_wire::transfer::TransferCopyAsk as cmd_wire::Call>::NAME;
-/// 进度流的 `kind`：`transfer/<id>`。
-pub const TRANSFER_KIND_PREFIX: &str = "transfer/";
 
 /// 开单 / 起跑 / 撤这几条等本机后端应答的上限。它们都是后端**就地记账**的命令（不等拨号、不等传输），
 /// 本机那条流上毫秒级回；给 60 s，与 `frame_query` 一页的期限同值（流被别的大应答占着时也不误判）。

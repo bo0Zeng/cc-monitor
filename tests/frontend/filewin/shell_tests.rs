@@ -111,17 +111,7 @@ impl FileWindow {
     }
 }
 
-/// 开窗那条路写的三个进程级的数（`window` 里的静态量），真开窗的判据读回来。
-#[cfg(not(windows))]
-fn open_requested() -> u64 {
-    OPEN_REQUESTED.load(Ordering::SeqCst)
-}
-
-#[cfg(not(windows))]
-fn windows_opened() -> u64 {
-    WINDOWS_OPENED.load(Ordering::SeqCst)
-}
-
+/// 真窗口在第一帧上写下的字体裁决（`window` 里的 `FONT_VERDICT`），真开窗的判据读回来。
 #[cfg(not(windows))]
 fn font_verdict() -> Option<FontState> {
     FONT_VERDICT.lock().unwrap().clone()
@@ -661,8 +651,6 @@ fn xvfb_worker_opens_a_real_window() {
     //    （三趟的 pid 互不相同 ⇒ 那三份读数真是三个进程各自量的，
     //     不是同一趟输出被读了三遍）。
     xvfb::emit("a.pid", std::process::id());
-    let req0 = open_requested();
-    let opened0 = windows_opened();
     let h = open_detached_seeded(
         Source::remote(synth_cfg(XVFB_ORIGIN)),
         cwd.clone(),
@@ -728,8 +716,6 @@ fn xvfb_worker_opens_a_real_window() {
             },
         );
     }
-    xvfb::emit("a.open_requested_delta", open_requested() - req0);
-    xvfb::emit("a.windows_opened_delta", windows_opened() - opened0);
     let (verdict, why) = join_verdict(h);
     xvfb::emit("a.run_native", verdict);
     xvfb::emit("a.reason_len", why.chars().count());
@@ -845,7 +831,6 @@ fn scenario_a() -> &'static crate::rows::testing::xvfb::ChildRun {
 /// - 窗口有**非零面积**（一个 0×0 的窗口在窗口树里照样数得到）。
 /// - 那个窗口是**真的映射到屏幕上**的那一档（`--onlyvisible`）——
 ///   一个「建了却没摆出来」的窗口不算。
-/// - 那两个计数器各 **+1**（`open_requested` 与 `windows_opened`）。
 ///
 /// # ⚠ 它买不到的（逐条，别读宽）
 ///
@@ -914,8 +899,6 @@ fn the_native_window_really_comes_up_on_a_real_graphics_session() {
         run.reading("a.run_native"),
         run.reading("a.reason")
     );
-    assert_eq!(run.reading("a.open_requested_delta"), "1");
-    assert_eq!(run.reading("a.windows_opened_delta"), "1");
     // 反空真：喂进去的那一屏真的有行（否则上面全是在量一个空窗）。
     let seed: usize = run.reading("a.seed_rows").parse().unwrap_or(0);
     assert!(seed > 0, "喂给窗口的那一屏是空的 —— 这一趟量的是一个空窗");
@@ -996,9 +979,6 @@ fn a_window_that_cannot_come_up_comes_back_as_a_reason_not_a_silent_ok() {
 ///   🔴 **第二趟与第三趟是这一条的全部价值**：旧形态下它们恒是 0。
 /// - **三趟是三个进程**（pid 互不相同）—— 反空真锚：少了它，同一份输出被读三遍
 ///   也会让上面三条一起绿。
-/// - **三趟各自的计数器都是 +1**（`windows_opened_delta`）—— 它说明那三趟
-///   **不共享进程级状态**：旧形态里第二趟的这个数也是 1，而窗口数是 0，
-///   两个数分叉正是那个进程级标志的指纹；今天两个数在每一趟里都对得上。
 ///
 /// ══════════════════════════════════════════════════════════════════════
 /// # ⚠ 它买不到什么（逐条，别读宽）
@@ -1015,15 +995,8 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
     let trips = scenario_trips();
     let counts: Vec<String> = trips.iter().map(|r| r.reading("a.window_count")).collect();
     let pids: Vec<String> = trips.iter().map(|r| r.reading("a.pid")).collect();
-    let opened: Vec<String> = trips
-        .iter()
-        .map(|r| r.reading("a.windows_opened_delta"))
-        .collect();
     let codes: Vec<Option<i32>> = trips.iter().map(|r| r.code).collect();
-    println!(
-        "  三趟现打：窗口数 {counts:?} · pid {pids:?} · \
-         本进程开窗计数 {opened:?} · 退出码 {codes:?}"
-    );
+    println!("  三趟现打：窗口数 {counts:?} · pid {pids:?} · 退出码 {codes:?}");
 
     // ① 反空真锚**排在最前**：三趟真是三个进程。
     //    塌了的话（同一份输出读三遍 / `OnceLock` 只跑了一趟），下面三条会一起假绿。
@@ -1048,10 +1021,7 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
         );
     }
 
-    // ④三趟都**干净收场**：退出码 0 ＋ `run_native == ok`。
-    //    上一版刻意不判它（「归因未定的抖动」）；归因定了、锤子换了 ⇒ 判。
-    //    ⚠ 排在 ③ 前面：abort 那一形（退出码 `None`）下 ③ 的读数照样印得出来，
-    //    先判它才不会让一个崩掉的进程冒充「计数器对得上」。
+    // ③ 三趟都**干净收场**：退出码 0 ＋ `run_native == ok`。
     let verdicts: Vec<String> = trips.iter().map(|r| r.reading("a.run_native")).collect();
     assert_eq!(
         (codes.clone(), verdicts.clone()),
@@ -1060,17 +1030,6 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
          `None` = 进程被信号打死（winit 在析构里二次 panic ⇒ abort）；\
          `panic` = 窗口被人硬拆了。逐条住「Xvfb 抖动」"
     );
-
-    // ③ 每一趟自己那个计数器都是 +1 —— 三趟不共享进程级状态。
-    for (i, o) in opened.iter().enumerate() {
-        assert_eq!(
-            o,
-            "1",
-            "第 {} 趟里 `windows_opened` 只涨了 {o} —— 那个计数器是**进程级**的，\
-             每个窗口进程里都该恰好涨一次。三趟读数：{opened:?}",
-            i + 1
-        );
-    }
 }
 
 /// 🔴 **进程 DPI 归属〔09-24 改写〕：窗口进程里没有 Tauri ⇒ winit 自己设 DPI。**
@@ -1737,24 +1696,24 @@ async fn a_real_click_on_edit_fires_the_read() {
     .await;
     w.attach_line(wired.line.clone());
     assert!(w.editing().is_none(), "什么都没点就有编辑面了");
-    assert_eq!(w.edits.opens(), 0);
+    assert!(w.edits.open_pending().is_none());
     let ctx = egui::Context::default();
     menu_pick(&ctx, &mut w, "app.conf", EDIT_LABEL.as_str());
-    // 那一趟**发出去了** —— 要么还在飞，要么已经到货（`.invalid` 解析很快就失败）。
+    // 那一趟**发出去了** —— 要么还在飞，要么已经到货、等编辑面来取。
     for _ in guard_core::wall::rounds() {
-        if w.edits.opens() > 0 || w.edits.opening().is_some() {
+        if w.edits.open_pending().is_some() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
     assert!(
-        w.edits.opens() > 0 || w.edits.opening().is_some(),
+        w.edits.open_pending().is_some(),
         "真点了「{EDIT_LABEL}」，那趟读一次都没发出去 —— 胶水那一跳断了",
         EDIT_LABEL = EDIT_LABEL.as_str()
     );
     // 等它到货，然后编辑面真的立起来，内容就是后端那一趟交回来的。
     for _ in guard_core::wall::rounds() {
-        if w.edits.opens() > 0 {
+        if w.edits.arrived() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
@@ -1821,7 +1780,7 @@ async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
 
     // 而**直接调那条路**（多选长出来那天会走到）也要：不发往返 ＋ 出声。
     assert!(!w.begin_edit(0, None), "超上限那一行竟然发了那趟读");
-    assert_eq!(w.edits.opens(), 0, "一趟都不该发");
+    assert!(w.edits.open_pending().is_none(), "一趟都不该发");
     assert!(w.edits.opening().is_none());
     let e = w
         .listing
@@ -2134,7 +2093,7 @@ async fn ctrl_s_in_the_editor_saves() {
             w.frame_body(ui)
         });
     for _ in guard_core::wall::rounds() {
-        if w.edits.saves() > 0 {
+        if w.edits.saved() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
@@ -2280,7 +2239,7 @@ async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
     // 真发一趟存 —— 后端那一侧当场拒。
     assert!(w.save_edit(None), "那趟存一次都没发出去");
     for _ in guard_core::wall::rounds() {
-        if w.edits.saves() > 0 {
+        if w.edits.saved() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
@@ -2670,7 +2629,7 @@ async fn a_save_over_a_file_someone_else_changed_asks_instead_of_overwriting() {
     let ctx = egui::Context::default();
 
     assert!(w.begin_edit(0, None), "打开那一趟没发出去");
-    until("打开到货", || w.edits.opens() > 0).await;
+    until("打开到货", || w.edits.arrived()).await;
     assert!(w.settle_opened_edits());
     *w.editing_text_mut().unwrap() = "a=2\n".into();
 
@@ -2679,7 +2638,7 @@ async fn a_save_over_a_file_someone_else_changed_asks_instead_of_overwriting() {
         .unwrap()
         .insert(path.into(), "a=1\nalias x=y\n".into());
     assert!(w.save_edit(None));
-    until("存的结局到货", || w.edits.saves() > 0).await;
+    until("存的结局到货", || w.edits.saved()).await;
     assert!(w.settle_saved_edits());
     {
         let p = w.editing().expect("stale 之后编辑面不见了");
@@ -2699,7 +2658,7 @@ async fn a_save_over_a_file_someone_else_changed_asks_instead_of_overwriting() {
 
     // 真点「仍然覆盖」。
     click_label(&ctx, &mut w, &OVERWRITE_LABEL, 1.0);
-    until("覆盖那一趟的结局", || w.edits.saves() > 1).await;
+    until("覆盖那一趟的结局", || w.edits.saved()).await;
     assert!(w.settle_saved_edits());
     let p = w.editing().unwrap();
     assert_eq!(p.last_save, Some(Ok(())), "仍然覆盖没存成");
@@ -2725,12 +2684,12 @@ async fn a_save_over_a_file_someone_else_changed_asks_instead_of_overwriting() {
     *w.editing_text_mut().unwrap() = "a=3\n".into();
     disk.lock().unwrap().insert(path.into(), "theirs\n".into());
     assert!(w.save_edit(None));
-    until("第三趟存的结局", || w.edits.saves() > 2).await;
+    until("第三趟存的结局", || w.edits.saved()).await;
     assert!(w.settle_saved_edits());
     assert!(w.editing().unwrap().stale);
-    let opens = w.edits.opens();
+    assert!(!w.edits.arrived());
     click_label(&ctx, &mut w, &REOPEN_LABEL, 2.0);
-    until("重新打开到货", || w.edits.opens() > opens).await;
+    until("重新打开到货", || w.edits.arrived()).await;
     assert!(w.settle_opened_edits());
     let p = w.editing().expect("重新打开之后编辑面不见了");
     assert_eq!(p.text, "theirs\n", "重新打开之后编辑框不是盘上此刻那一份");

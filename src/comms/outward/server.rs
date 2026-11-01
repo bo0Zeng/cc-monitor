@@ -802,7 +802,8 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     };
     // 回包头读完、还没往下游写一个字节：交上游选择看一眼（只读），再问要不要换去处、用同一份请求体重发。
     //   要 ⇒ 发新的那一发、读它的头，手上这个回包整个丢掉（下游一个字节都没收到过，对 agent 透明）；
-    //   新的那一发没发出去 / 头读不出来 ⇒ 不再换，把手上这个原样往下游送。重发至多 [`RETRY_HARD_CAP`] 次。
+    //   新的那一发没发出去 ⇒ 不再换，把手上这个原样往下游送；发出去了、头读不出来 ⇒ 回中转自己的 502/504
+    //   （手上那条回包带着前一个号的限流头，送下去等于替已换好的号报额度用满）。重发至多 [`RETRY_HARD_CAP`] 次。
     let mut tried: Vec<String> = vec![tag.clone()];
     loop {
         let heard = Heard {
@@ -832,8 +833,10 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
             break;
         };
         tried.push(next_tag.clone());
-        let Ok((s2, h2, raw2)) = read_final_head(&mut up2, &who2) else {
-            break;
+        let (s2, h2, raw2) = match read_final_head(&mut up2, &who2) {
+            Ok(h) => h,
+            // 手上那条（体没读）不还池，随 `up` 一起丢。
+            Err(why) => return respond_upstream_failed(&mut down_w, &why),
         };
         (up, tag, lane) = (up2, next_tag, lane2);
         (status_line, headers, raw_resp) = (s2, h2, raw2);

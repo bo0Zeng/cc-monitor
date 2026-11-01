@@ -580,7 +580,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     defs: [],
     needles: [],
     rustNeedles: [
-      { file: "src/backend/accounts/manage/model.rs", text: 'ACCOUNT_ZERO: &str = "0"', count: 0 },
+      // `model.rs` 那一份旧名进了 retired-names，全仓那张网看着它，这里不再另钉一根针。
       { file: "src/backend/accounts/upstream_select/endpoint.rs", text: 'BASE_ACCOUNT_SEGMENT: &str = "0"', count: 0 },
       { file: "src/backend/accounts/quota/name_words.rs", text: '&str = "0"', count: 0 },
     ],
@@ -700,15 +700,12 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J41: {
     what: "一批会话做完 ⇒ 那一句 · 逐条明细 · 复制详情",
-    // 唯一的家是 `batch-core::sessions`（`sessions-batch` 的回包由本机后端合好，界面照摆）：停 · 起 · 隐藏 · 固定 · 单个结束都走它，
-    //   `sayRows` · `batchHead` · `sayBatch` 删了；剩终端名单「结束所选」与起会话占位［结束］（手里是终端句柄）在 `sayEnded` 里自己合。
+    // 唯一的家是 `batch-core::sessions`：`sessions-batch` · `terminals-end` 的回包由本机后端合好，界面照摆。
     homes: ["batch-core::sessions_reply", "batch-core::summary_of"],
-    status: "open",
-    defs: ["sayEnded"],
-    gone: ["sayRows", "batchHead", "sayBatch"],
+    status: "zero",
+    defs: [],
+    gone: ["sayRows", "batchHead", "sayBatch", "sayEnded"],
     needles: [],
-    owner: "终端名单 · 起会话占位那一批走本机合各台的 terminals-end 那一刀",
-    why: "那两处手里是终端句柄、不是会话，界面今天只能自己合那一句；terminals-end 接上、照回包摆之后删 sayEnded",
   },
 };
 
@@ -1100,6 +1097,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     FILEWIN_OPEN_OP: NONE,
     // 文件窗口订一组的进度（`files-batch/<票>`，monitor 按票转），TS 侧零孪生。
     FILES_BATCH_KIND_PREFIX: NONE,
+    // 传输台那一趟的进度流（`transfer/<id>`，monitor 自己接），TS 侧零孪生。
+    TRANSFER_KIND_PREFIX: NONE,
     filewin_open_args: NONE,
     filewin_open_theme: NONE,
     // 「在计划里看」那一问（窗口 → monitor → 主窗口），参数形状只在这里；TS 侧收的是壳发的事件（`window-events.ts`），零孪生。

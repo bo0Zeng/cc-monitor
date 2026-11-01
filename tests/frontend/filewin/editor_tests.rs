@@ -1,15 +1,15 @@
 use super::*;
 
-/// 判据读编辑看板用的两个数（生产那一份里没有它们；本模块挂在 `editor` 底下，读得到私有字段）。
+/// 判据读编辑看板此刻的两格（生产那一份里没有它们；本模块挂在 `editor` 底下，读得到私有字段）。
 impl EditBoard {
-    /// 打开到货过几趟。
-    pub(crate) fn opens(&self) -> u64 {
-        self.opens.load(Ordering::SeqCst)
+    /// 有一趟打开到了货、还没被编辑面取走。
+    pub(crate) fn arrived(&self) -> bool {
+        self.lock().arrived.is_some()
     }
 
-    /// 存盘那一趟落过几次结局（成没成都算）。
-    pub(crate) fn saves(&self) -> u64 {
-        self.saves.load(Ordering::SeqCst)
+    /// 有一趟存落了结局（成没成都算）、还没被编辑面取走。
+    pub(crate) fn saved(&self) -> bool {
+        self.lock().saved.is_some()
     }
 }
 

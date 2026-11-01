@@ -110,7 +110,7 @@ pub mod wire; // 帧面的协议零件（最底下那一层，只引 platform ·
 
 /// 后端身份（`Hello` 帧的 `build_id`，也烤进二进制的身份戳）：monitor 拿它比内嵌那份的，不同 ⇒ 那台该换后端。
 /// 后端发出去的东西变了（子命令集 · 冻结格 · 形状指纹 · 行为）就打一个新的：`tests/scripts/bump-build-id.sh`，再 re-embed。
-pub const BUILD_ID: &str = "p11f-said-wire";
+pub const BUILD_ID: &str = "p11g-terminals-end";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -535,6 +535,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--terminals-board-here",
     "--terminals-board",
+    "--terminals-end",
     // 监控板（`monitor-board-here` 这台那几条 · `monitor-board` 各台合成）派生的 CLI 面（一次性进程里没起 watcher ⇒ 这台一条都不认得，
     //   别的台照实进那一组的 `down`）。⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--monitor-board-here",

@@ -1278,5 +1278,60 @@
       "source": "界面术语统一",
       "note": "不用口语的说法（见禁档「说不清 / 说不出」）。"
     }
-  ]
+  ],
+  "mobileFaces": {
+    "说明": [
+      "手机界面禁词：按面判，不进上面的 R1 全表扫描（「连接」「SSH」「tmux」在终端那一路与桌面上是对的词）。",
+      "每一面：dirs = 手机 app 的 ui/<包> 目录，那几个目录的源码里出现的文案表键都算这一面上屏的字；words = 这一面不许出现的词（占位符名不算文字）；ignoreCase = 比对是否不分大小写；owed = 还欠着的「键 · 词」，只许变短。",
+      "判据：src/mobile/app/src/test/kotlin/com/ccmonitor/mobile/ui/chats/UiWordlistTest.kt（新命中红 · 欠账写了却不再命中也红）。第二人称不在这里判，文案表上 C-W19 逐条扫全表。"
+    ],
+    "faces": [
+      {
+        "name": "聊天 · 总览 · 设置 · 服务器",
+        "dirs": ["chats", "chat", "claude", "settings", "host", "identity"],
+        "words": ["连接", "SSH", "tmux", "exec", "bridge", "daemon", "offset"],
+        "ignoreCase": false,
+        "owed": [
+          { "key": "mobHostEdit.switch.reconnect", "word": "连接" },
+          { "key": "mobHostEdit.field.extraPreview", "word": "连接" },
+          { "key": "mobIdentity.delete.body", "word": "连接" },
+          { "key": "mobIdentity.delete.bodyKeystore", "word": "连接" }
+        ]
+      },
+      {
+        "name": "聊天菜单 · 抽屉",
+        "dirs": ["chat", "drawer"],
+        "words": [
+          "settings",
+          "chat",
+          "conversations",
+          "sessions",
+          "hosts",
+          "route",
+          "launch",
+          "screen",
+          "navhost",
+          "composable",
+          "viewmodel",
+          "scaffold",
+          "dropdown",
+          "ssh",
+          "tmux",
+          "bridge",
+          "daemon",
+          "pipe",
+          "ndjson",
+          "offset",
+          "exec",
+          "log",
+          "管道",
+          "路由",
+          "实例",
+          "进程"
+        ],
+        "ignoreCase": true,
+        "owed": []
+      }
+    ]
+  }
 }

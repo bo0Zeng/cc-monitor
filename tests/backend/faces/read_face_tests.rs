@@ -56,7 +56,7 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
                 crate::common::machine_prefs::read_at(&crate::common::machine_prefs::path_in(home))
                     .prefs()
                     .limits();
-            h::facts_at(home, r, &limits)
+            h::facts_at(home, r, &limits, tz)
         }),
         "backend-log" => via::<super::BackendLog>(args, |r| {
             crate::wire::spec::finish(<super::BackendLog as crate::wire::typed::Handle>::run(
@@ -558,7 +558,11 @@ fn golden_facts_session(home: &Path) -> String {
     let body = [
         r#"{"type":"user","uuid":"f-1","timestamp":"t0a","cwd":"/g/proj","forkedFrom":{"sessionId":"src-0","messageUuid":"m-0"},"message":{"content":"q"}}"#,
         r#"{"type":"user","uuid":"f-1b","timestamp":"t0aa","parentUuid":"f-1","isMeta":true,"origin":{"kind":"peer","from":"ag-7","handback":true,"body":"report"},"message":{"content":"<agent-message from=\"ag-7\">report</agent-message>"}}"#,
-        r#"{"type":"system","subtype":"api_error","uuid":"rt-1","timestamp":"t0aaa","parentUuid":"f-1b","retryAttempt":1,"maxRetries":10}"#,
+        // 三条相邻的收场通知并成一组：ag-7 交回过 ⇒ 它那条不露；露着的两条写组头（一条失败）。
+        r#"{"type":"user","uuid":"n-1","parentUuid":"f-1b","timestamp":"2026-10-09T07:30:00.000Z","isMeta":true,"origin":{"kind":"task-notification"},"message":{"role":"user","content":"<task-notification>\n<task-id>ag-7</task-id>\n<status>completed</status>\n<summary>scan</summary>\n</task-notification>"}}"#,
+        r#"{"type":"user","uuid":"n-2","parentUuid":"n-1","timestamp":"2026-10-09T07:31:00.000Z","isMeta":true,"origin":{"kind":"task-notification"},"message":{"role":"user","content":"<task-notification>\n<task-id>bb3</task-id>\n<status>failed</status>\n<summary>lint</summary>\n</task-notification>"}}"#,
+        r#"{"type":"user","uuid":"n-3","parentUuid":"n-2","timestamp":"2026-10-09T07:33:00.000Z","isMeta":true,"origin":{"kind":"task-notification"},"message":{"role":"user","content":"<task-notification>\n<task-id>bb4</task-id>\n<status>completed</status>\n<summary>check</summary>\n</task-notification>"}}"#,
+        r#"{"type":"system","subtype":"api_error","uuid":"rt-1","timestamp":"t0aaa","parentUuid":"n-3","retryAttempt":1,"maxRetries":10}"#,
         r#"{"type":"assistant","uuid":"f-2","parentUuid":"rt-1","timestamp":"t3","message":{"model":"m-g","usage":{"input_tokens":1,"cache_creation_input_tokens":2,"cache_read_input_tokens":3},"content":[{"type":"tool_use","id":"tu-1","name":"Edit","input":{"file_path":"/w/a.ts"}},{"type":"tool_use","id":"tu-2","name":"Task","input":{"description":"scan","subagent_type":"Explore"}}]}}"#,
         r#"{"type":"user","uuid":"f-3","timestamp":"t3a","parentUuid":"f-2","cwd":"/g/proj/sub","message":{"content":[{"type":"tool_result","tool_use_id":"tu-2","content":"ok"}]}}"#,
         r#"{"type":"assistant","uuid":"f-4","parentUuid":"f-3","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"tu-3","name":"Agent","input":{"prompt":"p1\np2"}}]}}"#,
