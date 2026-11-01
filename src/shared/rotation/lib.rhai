@@ -230,6 +230,93 @@ fn project(amt, st, ex, who, wk, late, oev, o) {
   cost
 }
 
-// 往后推演一遍、交原始量（只算、不决定）：参数同 project；回 #{stuck, rewrite, weekly: #{号: tok}, left: [[号, tok, 作废时刻]]}
-//   （卡住发不出的 · 一路换号重写缓存的 · 每个号用掉的周上限卡着的额度 · 推完还剩的每一份）。怎么加权由策略定。
-//   原生积木：后端里那一份，不在这份文件里。
+// lib::project_raw(amt, st, ex, who, wk, late, oev, o)：往后推演一遍、交原始量（只算、不决定）：参数同 project；
+//   回 #{stuck, rewrite, weekly: #{号: tok}, left: [[号, tok, 作废时刻]]}（卡住发不出的 · 一路换号重写缓存的 · 每个号用掉的周上限卡着的额度 ·
+//   推完还剩的每一份）。怎么加权由策略定。原生积木：后端里那一份，不在这份文件里。
+//
+// lib::rollout(ctx, plan)：份数照 ctx 的事实搭、往后推演几种走法，交原始量（只算、不决定、不定价；原生积木）。
+//   plan ＝ #{ caps: #{号: #{"5h": 数 | [#{from, to, v}], "7d": …}}（只推这里列的号；"7d" 不写 ⇒ 同 5 小时；分段落空取 dflt）,
+//              dflt?: 100, late?: [延迟切入的号], walks: [号 | "hold" | #{warm: 号}], paths?: 8, horizon?: 秒 }。
+//   走法：号 ＝ 现在换到它（在用的号 ＝ 留着），守着它此刻那份用完再跟池子走；"hold" ＝ 停发，等到不是延迟切入的哪一份能用；
+//   #{warm: 号} ＝ 留着，此刻给那个号开窗。池子照最先作废的那份用，没开窗的在后、延迟切入的最后。
+//   号的动态：两窗同扣；5 小时窗关着的号头一次被用那一刻开窗，重置取到 10 分钟格（照 windowGrid，说不出往下取），之后一份接一份；
+//   周窗在 resets.w7d 那个固定时刻重置。1% ≈ 量不到的号取量得到的号的中位数（列在 est）。本会话用速走两态路径（常态 · 猛涨，
+//   照 session 的 pace · paceShort · inflight · bins），别的会话的用速照路径取量到的 · 往下一档 · 往上一档，各走法共用同一组路径；
+//   份数 × 路径 × 走法超了就减路径（至少一条）。
+//   回 #{ now, end, paths, base（留着那一走法在 walks 里第几个，没有 ⇒ ()）, others（别的会话合计 tok / 分）,
+//         accts: #{号: #{est, rate（每分钟能供多少）, open（此刻开着那份剩多少）, week（周剩多少，没有周上限 ⇒ ()）, reset7}},
+//         runs: [每种走法 [每条路径 #{stuck, rewrite, weekly, left}]] }；weekly ＝ 这一周（周重置之前）用掉的周额度。
+//   量不到本会话的用速 · 一个号的 1% ≈ 都量不到 ⇒ ()。
+
+// 给 lib::rollout 交的原始量定价（只算、不决定；策略可以不调、自己定价）。回每种走法 #{j, diff, se}（跟 parts.runs 一一对应）：
+//   j ＝ 各路径代价的平均；diff ＝ 这一走法 − 留着（parts.base；没有 ⇒ 第一种）逐条路径之差的平均；se ＝ 那个差的标准误（同一组路径）。
+//   一条路径的代价 ＝ 卡住的 ＋ ε × 换号重写的 ＋ Σ μ_号 × 那个号这一周用掉的 − Φ，ε ＝ 0.1（重写吃的额度已经在推演里扣过）：
+//   需求 λ ＝ 本会话 bins 的平均外推（每格 10 分钟；量不到 ⇒ pace）＋ 别的会话的用速；别的号能供 ＝ 它们此刻开着那份剩的 ＋ 每分钟能供的；
+//   μ_号 ＝「到它周重置前别的号供不上的需求」÷ 它周剩的，截到 [0, 1]，再乘（1 − 它过去几次周重置时剩的平均 ÷ 100）；
+//   Φ ＝ 视野末各份照作废先后，填「各号每分钟能供的也供不上的那部分需求」，填得上的那些（需求供得上 ⇒ 剩的不值钱）。
+fn price(parts, ctx) {
+  if parts == () { return (); }
+  let eps = 0.1;
+  let sess = if ctx.session != () { ctx.session } else { #{} };
+  let lam = 0.0;
+  let nb = 0;
+  if sess.bins != () { for b in sess.bins { if b != () { lam += b.to_float(); nb += 1; } } }
+  lam = if nb > 0 { lam / nb.to_float() / 10.0 } else if sess.pace != () { sess.pace.to_float() } else { 0.0 };
+  lam += parts.others;
+  let rate_all = 0.0;
+  let open_all = 0.0;
+  for id in parts.accts.keys() { rate_all += parts.accts[id].rate; open_all += parts.accts[id].open; }
+  let hist = #{};
+  for a in ctx.accounts { hist[a.id] = a.weeklyLeftAtReset; }
+  let mu = #{};
+  for id in parts.accts.keys() {
+    let a = parts.accts[id];
+    if a.week == () { continue; }
+    let mins = (a.reset7 - parts.now).to_float() / 60.0;
+    let short = (lam - (rate_all - a.rate)) * mins - (open_all - a.open);
+    let m = if a.week <= 0.0 { 1.0 } else if short <= 0.0 { 0.0 } else if short >= a.week { 1.0 } else { short / a.week };
+    let h = hist[id];
+    if h != () && h.len() > 0 {
+      let s = 0.0;
+      for x in h { s += x.to_float(); }
+      let f = 1.0 - s / h.len().to_float() / 100.0;
+      m *= if f > 0.0 { f } else { 0.0 };
+    }
+    mu[id] = m;
+  }
+  let unmet = lam - rate_all;
+  if unmet < 0.0 { unmet = 0.0; }
+  let costs = [];
+  for runs in parts.runs {
+    let row = [];
+    for r in runs {
+      let j = r.stuck + eps * r.rewrite;
+      for id in r.weekly.keys() { if mu[id] != () { j += mu[id] * r.weekly[id]; } }
+      if unmet > 0.0 {
+        let filled = 0.0;
+        for x in r.left {
+          let want = unmet * (x[2] - parts.end).to_float() / 60.0 - filled;
+          if want <= 0.0 { continue; }
+          filled += if x[1] < want { x[1] } else { want };
+        }
+        j -= filled;
+      }
+      row.push(j);
+    }
+    costs.push(row);
+  }
+  let b = if parts.base != () { parts.base } else { 0 };
+  let out = [];
+  for row in costs {
+    let n = row.len();
+    let sj = 0.0;
+    let sd = 0.0;
+    let sd2 = 0.0;
+    for p in 0..n { sj += row[p]; let d = row[p] - costs[b][p]; sd += d; sd2 += d * d; }
+    let nf = n.to_float();
+    let mean = sd / nf;
+    let v = if n > 1 { (sd2 - nf * mean * mean) / (nf - 1.0) } else { 0.0 };
+    out.push(#{ j: sj / nf, diff: mean, se: if v > 0.0 { (v / nf).sqrt() } else { 0.0 } });
+  }
+  out
+}
