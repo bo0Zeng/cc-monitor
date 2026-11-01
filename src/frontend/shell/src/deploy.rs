@@ -71,8 +71,7 @@ pub(crate) fn place_slots() {
 /// 那几格落在哪：本机后端落点旁边（`~/.cc-monitor/bin/slots`）。家目录问不到 ⇒ `None`。
 fn slots_dir() -> Option<std::path::PathBuf> {
     let (rel, _) = relay_route_core::BACKEND_LANDING_REL.rsplit_once('/')?;
-    creds_core::store::home_dir()
-        .map(|h| rel.split('/').fold(h, |p, seg| p.join(seg)).join("slots"))
+    crate::data_paths::home().map(|h| rel.split('/').fold(h, |p, seg| p.join(seg)).join("slots"))
 }
 
 /// 请本机常驻后端给那台装一趟：入参只有事实；每走一步记进那台的状态成品（后端推 `changed {machine}`）。

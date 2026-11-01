@@ -140,8 +140,8 @@ pub fn kill_on_exit_now(origin: &Origin) -> bool {
 //    而**唯一观测得到后端之死的位置是它的父进程 = 宿主**（`§0-4` 的结论）。
 //
 // ⇒ 账住宿主侧，**而它零新增写盘口**：真正碰盘的是 `logging.rs::build_rolling_appender`
-//   （`write_site_registry::WRITE_SITES` 里已登记的那条「monitor 自己的滚动日志」），
-//   本段一个 `fs::` 调用都没有 ⇒ 不进那张表的人群，也不用改它。
+//   （monitor 自己的滚动日志，日志目录那一组落点归 `platform::own_fs`），
+//   本段一个 `fs::` 调用都没有 ⇒ 写盘那一组禁用名单在这里零命中。
 //
 // # ⚠ 今天**还没接线**的那一格，如实登记（不写在注释里就等于埋掉）
 //
@@ -433,8 +433,8 @@ pub trait DeathSink {
 /// 生产落点：**monitor 自己的滚动日志**（只进日志；告诉用户的那一句由调用方经 `ui_error::tell` 说）。
 ///
 /// ★ 这是「真的会被写下来」那一半的全部内容，而它**零新增写盘口**：
-/// 真正碰盘的是 `logging.rs::build_rolling_appender` —— 一个已经登记在
-/// `write_site_registry::WRITE_SITES` 里的落点。本模块一个 `fs::` 调用都没有。
+/// 真正碰盘的是 `logging.rs::build_rolling_appender` —— 日志目录那一组落点归 `platform::own_fs`。
+/// 本模块一个 `fs::` 调用都没有。
 ///
 /// ⚠ **诚实边界**：`tracing` 的语义是「没有 subscriber 就丢掉」。
 /// `logging.rs` 在 setup 时才装 subscriber ⇒ **在那之前记的一笔会被静默丢掉**，
