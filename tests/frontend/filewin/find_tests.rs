@@ -25,6 +25,12 @@
 use super::testing::{self, Declared, FakeBackend};
 use super::*;
 
+// 线上名只住线上类型（生产段发的也是这一份）。
+const CMD_FIND: &str = <cmd_wire::files::FindReq as cmd_wire::Call>::NAME;
+const CMD_INDEX_STATUS: &str = <cmd_wire::files::IndexStatusReq as cmd_wire::Call>::NAME;
+const CMD_INDEX_REBUILD: &str = <cmd_wire::files::RebuildReq as cmd_wire::Call>::NAME;
+const CMD_BROWSE: &str = <cmd_wire::files::BrowseReq as cmd_wire::Call>::NAME;
+
 // 入参按线上类型造、回包按回包类型解；下面几条判的是「发出去的那一份 JSON」与「一份 JSON 回包解成什么」，
 // 经这几层薄壳把两步接起来（解不出 ⇒ 报错，同 `ask_typed` 那一步）。
 fn find_args(asked: &Asked, seq: u64, stream: &str, offset: usize) -> Value {
@@ -303,11 +309,6 @@ async fn the_window_sends_a_rebuild_when_the_backend_says_the_index_is_missing()
         wired.count(CMD_INDEX_REBUILD),
         wired.cmds()
     );
-    assert_eq!(
-        w.search.rebuilds_sent(),
-        1,
-        "那块板子自己记的重走数与线上数不一致 —— 两个数有一个在撒谎"
-    );
     // 顺序：查（后端说要不要走、走哪个根）→ 重走 → 再查。少了后一趟查，用户看到的就是**重走之前**那份索引的答案。
     let cmds = wired.cmds();
     let i_first = cmds.iter().position(|c| c == CMD_FIND);
@@ -473,7 +474,7 @@ async fn many_keystrokes_in_flight_still_only_trigger_one_rebuild() {
     // 等到五趟全落地（`rounds` 会数到 5：`store_if_current` 只对号对得上的那一趟写，
     // 但 `rounds` 那个数是**落地过几份**，号不对的那几趟不加）。
     for _ in guard_core::wall::rounds() {
-        if w.search.rebuilds_sent() > 0 && !w.search.is_running() {
+        if wired.count(CMD_INDEX_REBUILD) > 0 && !w.search.is_running() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
@@ -623,12 +624,12 @@ async fn the_scope_follows_the_directory_and_a_hit_takes_you_there() {
 
     w.set_search_whole(true);
     let before = w.search.rounds();
-    let rebuilds = w.search.rebuilds_sent();
+    let rebuilds = wired.count(CMD_INDEX_REBUILD);
     w.fire_search(None, false);
     testing::settle(&w.search, before, "整台机器那一趟").await;
     // 合成机器的「整台」就是它那棵合成树（已经在索引里）⇒ 这一趟不该发重走（不许拿真盘上的 `/` 当范围、去走整台真机器）。
     assert_eq!(
-        w.search.rebuilds_sent(),
+        wired.count(CMD_INDEX_REBUILD),
         rebuilds,
         "整台机器那一趟发了重走：合成后端的范围落到了真盘上"
     );

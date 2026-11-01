@@ -43,17 +43,15 @@ use super::source::{Line, Origin};
 // 线上命令名
 // ═══════════════════════════════════════════════════════════════════
 
-/// 在常驻索引里查。**整族的存在理由**。
-pub const CMD_FIND: &str = <cmd_wire::files::FindReq as cmd_wire::Call>::NAME;
-/// 索引的新鲜度 ／ 条目数 ／ 常驻字节 ／ **后端声明的重走周期**。
-pub const CMD_INDEX_STATUS: &str = <cmd_wire::files::IndexStatusReq as cmd_wire::Call>::NAME;
-/// 走一遍，就一遍，做完返回（那条裁决里的「机制」那一格）。
-pub const CMD_INDEX_REBUILD: &str = <cmd_wire::files::RebuildReq as cmd_wire::Call>::NAME;
-/// 告诉后端「用户现在在看哪几个目录」（保鲜的另一半）。
-pub const CMD_BROWSE: &str = <cmd_wire::files::BrowseReq as cmd_wire::Call>::NAME;
-
-/// 这一侧用到的**全部**线上名。**唯一住址** —— 判据按它对拍协议文档。
-pub const COMMANDS: &[&str] = &[CMD_FIND, CMD_INDEX_STATUS, CMD_INDEX_REBUILD, CMD_BROWSE];
+/// 这一侧用到的**全部**线上名（查 · 索引新鲜度 · 重走 · 浏览名单），判据按它对拍协议文档。
+/// 名字只住线上类型（`<Req as cmd_wire::Call>::NAME`），生产段发的也是那一份。
+#[cfg(test)]
+pub const COMMANDS: &[&str] = &[
+    <cmd_wire::files::FindReq as cmd_wire::Call>::NAME,
+    <cmd_wire::files::IndexStatusReq as cmd_wire::Call>::NAME,
+    <cmd_wire::files::RebuildReq as cmd_wire::Call>::NAME,
+    <cmd_wire::files::BrowseReq as cmd_wire::Call>::NAME,
+];
 
 /// 一趟查询 ／ 一趟状态 ／ 一趟浏览名单的往返上限。
 ///
@@ -105,7 +103,8 @@ pub struct Hit {
 }
 
 impl Hit {
-    /// 画到屏幕上的那一份。**有损** —— 见本类型头注。
+    /// 整条路径的显示形（判据用）。**有损** —— 见本类型头注。
+    #[cfg(test)]
     pub fn display(&self) -> String {
         String::from_utf8_lossy(&self.path).to_string()
     }
@@ -140,7 +139,8 @@ impl Hit {
         }
     }
 
-    /// 这条命中的字节不是有效 UTF-8 ⇒ 上面那一份是有损的。
+    /// 这条命中的字节不是有效 UTF-8 ⇒ 显示形是有损的（判据用）。
+    #[cfg(test)]
     pub fn lossy(&self) -> bool {
         std::str::from_utf8(&self.path).is_err()
     }
@@ -570,8 +570,6 @@ pub enum SearchAction {
     Scope(bool),
     /// 出错条上的「重试」。
     Retry,
-    /// 翻页失败那一行的「重试」。
-    RetryMore,
     /// 「n 个目录无权限［查看］」那一层里点了一行：复制这条绝对路径。
     CopyPath(String),
 }
@@ -613,16 +611,12 @@ pub struct SearchBoard {
     /// 手上有没有一趟重走在飞。🔴 **它不是优化** —— 重走是一整棵树的遍历，
     /// 连打五个字就发五趟，那是客户端自己造的雪崩（后端那一侧另有互斥，抢不到回 `already_rebuilding`）。
     rebuilding: Arc<AtomicBool>,
-    /// 一共发出去过几趟重走。**给判据一个可观测的数**。
-    rebuilds: Arc<AtomicU64>,
     /// 落地过几份答案。判据靠它等（不靠睡一个猜出来的时长）。
     rounds: Arc<AtomicU64>,
     /// 往下翻那一趟在飞。
     paging: Arc<AtomicBool>,
     /// 往下翻那一趟失败了：这一问不再自动往下翻（不然滚到底每帧重发一趟）；换一问才放开。
     page_failed: Arc<AtomicBool>,
-    /// 整份 [`Shown`] 被克隆过几次（判据数它：画命中那一摞不许每帧整份克隆）。
-    full_clones: Arc<AtomicU64>,
     /// **冷启动首建正在走**：`Some(后端声明的秒数)`。
     ///
     /// 🔴 它**不跟 `epoch` 走**，跟那一趟重走走：用户在首建期间接着打字，号就换了、
@@ -644,11 +638,9 @@ impl Default for SearchBoard {
             )
             .into(),
             rebuilding: Default::default(),
-            rebuilds: Default::default(),
             rounds: Default::default(),
             paging: Default::default(),
             page_failed: Default::default(),
-            full_clones: Default::default(),
             first_build: Default::default(),
             ctx: Default::default(),
         }
@@ -711,19 +703,11 @@ impl SearchBoard {
         self.rounds.load(Ordering::SeqCst)
     }
 
-    /// 一共发出去过几趟重走。
-    pub fn rebuilds_sent(&self) -> u64 {
-        self.rebuilds.load(Ordering::SeqCst)
-    }
-
+    /// 整份 [`Shown`]（判据用）。生产段画命中那一摞只按格取（[`Self::asked_under`] · [`Self::hit`] …），
+    /// 不整份克隆 —— 这一条由可见性守：生产段够不着这个口子。
+    #[cfg(test)]
     pub fn shown(&self) -> Shown {
-        self.full_clones.fetch_add(1, Ordering::Relaxed);
         self.inner.lock().unwrap().clone()
-    }
-
-    /// [`Self::shown`] 被调过几次（每次一份整克隆）。
-    pub fn full_clones(&self) -> u64 {
-        self.full_clones.load(Ordering::Relaxed)
     }
 
     /// 眼下这一问的范围（只克隆这一格）。
@@ -962,7 +946,6 @@ async fn one_round(
 
     let want = force_rebuild || outcome.wants_rebuild();
     if want && board.claim_rebuild() {
-        board.rebuilds.fetch_add(1, Ordering::SeqCst);
         // 后端说「还没建过」⇒ 这一趟就是冷启动首建，用户看得见 ⇒ 先挂上后端声明的那个秒数，回来再摘。
         //   该重走了 / 换根 / 按按钮那几种是热的，那个数不适用 ⇒ 不挂。
         let first = round
