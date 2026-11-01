@@ -314,6 +314,9 @@ fun <T> tuple(lazyAds: List<() -> JsonAdapter<*>>, build: (Array<Any?>) -> T, ge
         w.endArray()
     }, "tuple")
 
+/** 本机那台的机器键（`cmd_wire::machine::LOCAL`）。 */
+const val LOCAL: String = "<local>"
+
 @Suppress("UNCHECKED_CAST")
 data class AccountAddArgs(
     val name: String,
@@ -13316,7 +13319,7 @@ data class MachineStopped(
 
 @Suppress("UNCHECKED_CAST")
 data class MachineStripLine(
-    val tone: StripTone,
+    val tone: Tone,
     val progress: Boolean,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -13324,10 +13327,10 @@ data class MachineStripLine(
     companion object {
         val ADAPTER: JsonAdapter<MachineStripLine> = obj(
             listOf(
-            Field("tone", { StripTone.ADAPTER }, optional = false, nullable = false),
+            Field("tone", { Tone.ADAPTER }, optional = false, nullable = false),
             Field("progress", { Bool }, optional = false, nullable = false),
             ),
-            { a -> MachineStripLine(a[0] as StripTone, a[1] as Boolean) },
+            { a -> MachineStripLine(a[0] as Tone, a[1] as Boolean) },
             { v -> arrayOf(v.tone, v.progress) },
         )
     }
@@ -25143,18 +25146,6 @@ sealed interface StreamEv {
     }
 }
 
-enum class StripTone(val wire: String) {
-    BUSY("busy"),
-    OFFLINE("offline"),
-    WARN("warn"),
-    FAULT("fault"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<StripTone> = enumOf(entries) { it.wire }
-    }
-}
-
 @Suppress("UNCHECKED_CAST")
 data class SurfaceRow(
     val toolId: String,
@@ -26158,6 +26149,7 @@ enum class Tone(val wire: String) {
     NEED("need"),
     WARN("warn"),
     BUSY("busy"),
+    OFFLINE("offline"),
     ;
 
     companion object {

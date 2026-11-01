@@ -5,7 +5,7 @@
 import type { MachineState } from "../generated/MachineState";
 import type { MachineFix } from "../generated/MachineFix";
 import type { MachineFixButton } from "../generated/MachineFixButton";
-import type { StripTone } from "../generated/StripTone";
+import type { Tone } from "../generated/Tone";
 import type { MachineDotState } from "../kit/status-dot";
 import { machineDot } from "../machine-dot";
 import { button } from "../kit/button";
@@ -34,7 +34,7 @@ export interface MachineFace {
 }
 
 /** 条上那一行的语气 ⇒ 问题行的样子（语气 · 带不带进度由后端 `deploy::machine::strip` 定）。 */
-const TONE: Record<StripTone, MachineFace["tone"]> = { busy: "busy", warn: "warn", offline: "error", fault: "error" };
+const TONE: Record<Tone, MachineFace["tone"]> = { plain: "warn", now: "busy", busy: "busy", need: "warn", warn: "warn", offline: "error", fail: "error" };
 
 export function machineFace(m: MachineState): MachineFace {
   return {

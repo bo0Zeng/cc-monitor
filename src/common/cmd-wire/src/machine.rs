@@ -82,6 +82,8 @@
 use serde::de::{Error as DeError, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::cells::Tone;
+
 /// 本机那台机器的哨兵值。
 ///
 /// 这个字面量的家。界面经生成物 `src/frontend/ui/generated/judgment-rules.ts` 的 `LOCAL` 拿它
@@ -335,22 +337,8 @@ pub struct FixButton {
     pub label: String,
 }
 
-/// 机器条上那一行的语气：正在连 · 装 · 更新（忙）· 没连上（离线）· 那台旧了（警示）· 指纹不对 · 做不了 · 缺后端（故障）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-#[serde(rename_all = "snake_case")]
-pub enum StripTone {
-    Busy,
-    Offline,
-    Warn,
-    Fault,
-}
-
 /// 机器条上那一台那一行怎么画（进条才有）：语气 · 带不带进度条。字照成品的 `said` · `fixes`。
+/// 语气用共享的 [`Tone`]：正在连 · 装 · 更新 ⇒ `Busy`；没连上 ⇒ `Offline`；那台旧了 ⇒ `Warn`；指纹不对 · 做不了 · 缺后端 ⇒ `Fail`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -359,7 +347,7 @@ pub enum StripTone {
 )]
 #[serde(deny_unknown_fields)]
 pub struct MachineStripLine {
-    pub tone: StripTone,
+    pub tone: Tone,
     pub progress: bool,
 }
 

@@ -2,8 +2,9 @@
 // 手机那一侧的线上类型（Kotlin）由这里从 ts-rs 导出的声明生成，不手抄。
 //
 //   读：src/frontend/ui/generated/*.ts（ts-rs 从 Rust 类型导出的那一份）· TypedCommands.ts（命令 ⇒ 入参 · 回包）·
-//       Rust 源里写成 f32 / f64 的格（TS 只有一种 `number`，整数与小数写回时字节不同 ⇒ 照 Rust 定）。
-//   写：src/mobile/core-wire/src/main/kotlin/com/ccmonitor/mobile/core/wire/gen/Generated.kt（类型 ＋ 各自的编解码）·
+//       Rust 源里写成 f32 / f64 的格（TS 只有一种 `number`，整数与小数写回时字节不同 ⇒ 照 Rust 定）·
+//       judgment-rules.ts 里本机那台的机器键 `LOCAL`（手机不手写 `"<local>"`）。
+//   写：src/mobile/core-wire/src/main/kotlin/com/ccmonitor/mobile/core/wire/gen/Generated.kt（类型 ＋ 各自的编解码 ＋ 常量 `LOCAL`）·
 //       同目录 Commands.kt（命令表：命令名 ⇒ 回包怎么解）。
 //   用法：node tests/scripts/gen-kotlin-wire.mjs            重生成上面两份
 //         node tests/scripts/gen-kotlin-wire.mjs --samples  印每条命令回包的结构夹具（`tests/__fixtures__/wire-replies.golden.json` 的 `sample` 格从它来）
@@ -1012,6 +1013,13 @@ export function kotlinTypes(decls, floats) {
   return typesOf(emitAll(decls, floats));
 }
 
+/** `judgment-rules.ts` 原文 ⇒ 本机那台机器键的 Kotlin 常量（契约常量住 `cmd_wire::machine::LOCAL`）；原文里没有 ⇒ 报错。 */
+export function localConst(text) {
+  const m = stripComments(text).match(/^export const LOCAL\s*=\s*("(?:[^"\\]|\\.)*")\s*;/m);
+  if (!m) throw new Error("judgment-rules.ts 里没有 `export const LOCAL = \"…\";`（cmd_wire::machine::LOCAL 没导出）");
+  return `/** 本机那台的机器键（\`cmd_wire::machine::LOCAL\`）。 */\nconst val LOCAL: String = "${esc(JSON.parse(m[1]))}"\n`;
+}
+
 function main() {
   const decls = loadDecls();
   const cmds = loadCommands();
@@ -1044,7 +1052,8 @@ function main() {
   const byClass = [...g.out.keys()].filter((k) => /\n {4}(?:val ADAPTER|companion object \{\n {8}val ADAPTER)/.test(g.out.get(k)) || /^data object /m.test(g.out.get(k))).sort();
   const header = `// 生成的文件（tests/scripts/gen-kotlin-wire.mjs 读 ts-rs 导出的声明出的）。不要手改：改 Rust 那一份类型，再跑 \`npm run gen:types\`。\n@file:Suppress("ktlint", "detekt:all")\n\npackage ${PKG}\n\nimport com.squareup.moshi.JsonAdapter\n`;
   const types = typesOf(g);
-  writeFileSync(join(OUT_DIR, "Generated.kt"), `${header}\n${PREAMBLE}\n${types}`);
+  const local = localConst(readFileSync(join(GEN, "judgment-rules.ts"), "utf8"));
+  writeFileSync(join(OUT_DIR, "Generated.kt"), `${header}\n${PREAMBLE}\n${local}\n${types}`);
   writeFileSync(
     join(OUT_DIR, "Commands.kt"),
     `${header}\n/** 每条命令（桌面 TypedCommands 那一份）：名字 · 入参类 · 回包类，按命令名取的 [ALL]；按类取编解码的 [BY_CLASS]。 */\nobject Commands {\n    /** 金样逐字节对过的那几条（\`cmd-wire/src/call.rs\` 那张 \`calls!\` 表）⇒ 回包怎么解。 */\n    val REPLIES: Map<String, JsonAdapter<*>> = mapOf(\n${table.map(fq).join("\n")}\n    )\n\n${commands.join("\n")}\n    /** 命令名 ⇒ 那一条。 */\n    val ALL: Map<String, Command<*, *>> by lazy {\n        listOf<Command<*, *>>(\n${[...cmds.keys()].sort().map((c) => `            ${pascal(c)},`).join("\n")}\n        ).associateBy { it.name }\n    }\n\n    /** 每个不带类型参数的类型 ⇒ 它的编解码（按类取，不经反射）。 */\n    val BY_CLASS: Map<Class<*>, JsonAdapter<*>> by lazy {\n        mapOf(\n${byClass.map((k) => `            ${fq(k)}::class.java to ${fq(k)}.ADAPTER,`).join("\n")}\n        )\n    }\n}\n`,

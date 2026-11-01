@@ -12,6 +12,7 @@ import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.HistoryHead
 import com.ccmonitor.mobile.core.wire.gen.HistoryMachineRead
 import com.ccmonitor.mobile.core.wire.gen.HistoryRow
+import com.ccmonitor.mobile.core.wire.gen.LOCAL
 import com.ccmonitor.mobile.core.wire.gen.Merged
 import com.ccmonitor.mobile.core.wire.gen.NeedsItem
 import com.ccmonitor.mobile.core.wire.gen.NeedsList
@@ -173,7 +174,7 @@ object HistoryAnnotate {
 object Groups {
     const val COMMAND: String = "groups-read"
 
-    val ARGS: Map<String, Any?> = mapOf("machines" to listOf(LOCAL_MACHINE))
+    val ARGS: Map<String, Any?> = mapOf("machines" to listOf(LOCAL))
 
     /** 回包（核心按 `cmd-wire` 那一份解过）；缺必填格 ⇒ `null`。 */
     fun of(data: Any?): GroupsRead? = Wire.bind<GroupsRead>(data)
@@ -188,9 +189,6 @@ object Groups {
             }
         }
 }
-
-/** 问一台自己时机器名逐字写这个（`cmd_wire::LOCAL`）。 */
-private const val LOCAL_MACHINE = "<local>"
 
 /** `history-search`：这台的会话内容里搜一个词（不分大小写，子串）。回包原样交 [SearchMerge]（手机不解各台那一份）。 */
 object HistorySearch {
