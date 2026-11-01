@@ -3,7 +3,7 @@
  *
  * # 为什么两条住一个文件
  *
- * 两条的人群都借普查 `tests/evidence/K-T68-A1-outward-copy-census.py`，整仓扫一遍。
+ * 两条的人群都借普查 `tests/evidence/outward-copy-census.py`，整仓扫一遍。
  * 云端 windows runner（4 核）上几趟整仓扫挤在一起会撞期限（CI 37848630512 第一趟）
  * ⇒ 一个进程、一趟普查（`tests/evidence/CP-copy-judges.py`）出两份读数。
  * ⚠ 别拆成几个文件、也别在别的测试里另起这份量具：每多一个文件就多一趟并行的整仓扫。
@@ -21,9 +21,9 @@ import { REPO_ROOT } from "../test-support/repo-root.ts";
 
 const EV = resolve(REPO_ROOT, "tests", "evidence");
 const RUNNER = resolve(EV, "CP-copy-judges.py");
-const CENSUS = resolve(EV, "K-T68-A1-outward-copy-census.py");
-const CP1_METER = resolve(EV, "CP1-copy-verdicts.py");
-const CP1_LEDGER = resolve(EV, "CP1-copy-verdicts.tsv");
+const CENSUS = resolve(EV, "outward-copy-census.py");
+const CP1_METER = resolve(EV, "copy-verdicts.py");
+const CP1_LEDGER = resolve(EV, "copy-verdicts.tsv");
 
 type Cp1Report = {
   ok: boolean;
@@ -105,10 +105,10 @@ it("量具 · 台账 · 人群的定义都在盘上", () => {
  * ## 它治的病
  *
  * 普查把对外文案分成「主集」与「存疑带」（先算成变量再交出去、或装进要人读才知道语义的字段里 —— 静态扫描分不出上不上界面）。
- * 存疑带「**对账开工前必须逐条裁完**」，裁完的结果住 `CP1-copy-verdicts.tsv`（一条一行：住址 · 原文 · 裁词 · 依据）。
+ * 存疑带「**对账开工前必须逐条裁完**」，裁完的结果住 `copy-verdicts.tsv`（一条一行：住址 · 原文 · 裁词 · 依据）。
  * 台账是一次性裁出来的，**源码会一直长**：有人往 `src/` 加一句 `let msg = format!("…")` 再 `Err(msg)`，
  * 它就进了存疑带、却没人裁。⇒ **普查有、台账没有** 红（新文案没裁）；**台账有、普查没有** 也红（删改了文案台账没跟）。
- * 人群定义住普查脚本（本条**不抄**它的正则），相等判定住 `CP1-copy-verdicts.py`。
+ * 人群定义住普查脚本（本条**不抄**它的正则），相等判定住 `copy-verdicts.py`。
  *
  * ## 不判什么（诚实段）
  *
@@ -130,7 +130,7 @@ describe("CP1 · 存疑带裁决台账与普查两向相等", () => {
       expect(
         report.missing_sample,
         `普查里有 ${report.missing} 条存疑带文案**台账没裁**（新加的文案？）。` +
-          "去 tests/evidence/CP1-copy-verdicts.tsv 补一行裁词，口径见 CP1-copy-verdicts.py 头注。",
+          "去 tests/evidence/copy-verdicts.tsv 补一行裁词，口径见 copy-verdicts.py 头注。",
       ).toEqual([]);
       expect(
         report.extra_sample,
