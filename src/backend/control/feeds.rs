@@ -630,7 +630,7 @@ pub(crate) async fn stop_with(
     machine: &str,
 ) -> Result<MachineStopped, crate::common::said::Said> {
     let fail = |p: Problem| {
-        crate::wire::spec::fail("stop_failed", p.text).and_raw(Some(p.detail.as_str()))
+        crate::wire::spec::fail("stop_failed", p.said).and_raw(Some(p.detail.as_str()))
     };
     let exec = ssh
         .capture(machine, feed::backend_command(feed::STOP))
