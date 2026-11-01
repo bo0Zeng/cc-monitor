@@ -84,7 +84,7 @@
 用户文件（rc / `$PROFILE` / `.mcp.json` / skills 目录）只由后端写，规则只有一份：`src/backend/files/write.rs::put_text`（经 `Door::put`）——
 ① `expect` 必给（读改写之间盘上那份被改过 ⇒ `stale`、不写）· ② 与盘上逐字节相同 ⇒ 不写 · ③ 要备份 ⇒ `O_EXCL` 另存 `<名>.ccm-backup-<毫秒>-<序号>`（沿用原权限位）· ④ 替换：unix 同目录暂存旁名写满后换名上位（原子）；Windows 已在的目标**就地覆盖写**，保住 dst 的 ACL / ADS / 创建时间 · ⑤ 回读逐字节比对，不符回滚 · 盘上有字节却读到空 ⇒ 停。最后一段是链接 ⇒ 改真文件、链接留着。
 
-**为什么不能松动**：用 `MoveFileExW` / rename 拿暂存文件覆盖，会用暂存文件继承来的 ACL 盖掉用户文件上的显式 ACE（Documents 重定向到别的盘的用户会读不了自己的 profile）——这正是从前用 `ReplaceFileW` 的理由，今天由「Windows 就地覆盖」承担；OneDrive 占位 / 杀软会让读回成空，纯写就是清空用户内容 ⇒ 备份加回读双保险。
+**为什么不能松动**：用 `MoveFileExW` / rename 拿暂存文件覆盖，会用暂存文件继承来的 ACL 盖掉用户文件上的显式 ACE（Documents 重定向到别的盘的用户会读不了自己的 profile）⇒ Windows 上已在的目标就地覆盖写；OneDrive 占位 / 杀软会让读回成空，纯写就是清空用户内容 ⇒ 备份加回读双保险。
 
 **谁在守**：`tests/backend/files/write_tests.rs` 的 `put_*` 一族（含只在 Windows 上跑的 `put_keeps_explicit_acl_entries_on_windows`）· `atomic_replace_registry_tests.rs`（monitor 自己的文件与用户文件两类语义分开登记）。
 
@@ -532,7 +532,7 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 
 常驻后端只听这台家里的一个 Unix 套接字 `<家>/run/backend.sock`（路径只由共享 crate `relay_route_core::listen_socket_for` 算）。`run/` 只给本人（`0700`），每条连接再核对端 uid（共享 crate `own-chan`），不同 ⇒ 关掉、出声；在听的那一个攥着 `run/` 的独占锁，抢不到就带「已有人在听」的退出码退。attach 行只是 `{"attach":true}`（可带 `tz` · `mine` · `deflate` · `watch`，类型 `cmd_wire::attach::AttachLine`），形状不对 ⇒ `malformed-attach`；带了 `mine` ⇒ 回话里是这台相对它的新旧；带了 `deflate` ⇒ 回话认它，之后这台写过去的字节整条是一个 raw deflate 流（每帧 sync flush，`wire::listen::Down`）。远端经 ssh 跑 `ccm -- --resident-attach` 小中继去连那台的套接字。常驻后端起子进程时清掉常驻开关、诊断文件与后端内部那几族环境（`platform/child_env.rs`）。沙箱跑（`CCM_SANDBOX=1`）却要占本账号真家目录里的门牌 ⇒ 拒绝起。文件窗口的通道不监听（父子管道，`chan/host.rs::serve_window`）。
 
-**为什么不能松动**：从前的回环 TCP 口没有权限位，只能靠一把钥匙补，钥匙文件又被别的实例改写过（远端从此一直被拒）⇒ 已删，换成内核给的本人门。能连上套接字的只有本账号自己的进程。
+**为什么不能松动**：回环 TCP 口没有权限位，只能靠一把钥匙补，而钥匙文件会被别的实例改写（远端从此一直被拒）；内核给的本人门不靠钥匙，能连上套接字的只有本账号自己的进程。
 
 **谁在守**：`listen_tests.rs::the_resident_switch_is_empty_one_or_refused` · `listen_tests.rs::the_attach_reply_says_how_this_build_stands_against_the_clients` · `listen_tests.rs::refusal_reasons_are_a_closed_set` · `lib_tests.rs::the_dir_lock_is_exclusive_and_released_on_drop` · `lib_tests.rs::a_peer_with_my_uid_is_ours_and_nobody_means_nobody` · `main_claim_tests.rs::a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket` · `main_claim_tests.rs::a_sandboxed_start_refuses_the_real_home` · `resident_tests.rs::the_sandbox_refusal_truth_table` · `cross_tests.rs::a_child_never_inherits_the_backend_internal_families` · `local_backend_host_tests.rs::the_host_never_writes_the_resident_dir_and_carries_no_key` · `local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused` · `feed_tests.rs::a_relay_that_stays_absent_is_tried_a_capped_number_of_times` · e2e `local-backend-supervise.sh`。
 
