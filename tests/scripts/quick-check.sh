@@ -3,6 +3,7 @@
 # 用法：在仓里任一处 `bash tests/scripts/quick-check.sh [--plan | --only <段>]`
 #   恒跑（便宜）：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的那几格（名单是 ci.yml 里 `static-gate` 那个 job 的 GATE_ONLY，经 gate.sh 跑）·
 #     后端那棵改到的包跑 clippy（照门禁 `clippy-backend` 的参数；系统钟 · 定时器那几类 lint 定成 deny，测试拦不住）·
+#     壳那棵改到的包同样跑 clippy（clippy-shell：壳 · 文件窗口 · 通信那三个包；禁用名单住 `src/frontend/clippy.toml` · `src/comms/clippy.toml`）·
 #     凭据那份共享 crate 开 `harden` 那一档（creds-harden：壳那棵不开它，后端那棵不跑它的测试）· 末尾生成物有没有落在提交外（generated-drift.sh）。
 #   重的四段：后端那棵 `cargo test --workspace --lib --bins --benches`（bench 只跑冒烟档）· 壳那棵 `cargo test --workspace --lib` · 整套 vitest ·
 #     手机那一套（ktlint · detekt · 各模块 JVM 单测，经 heavy.sh、gradle 带 --no-daemon）。这棵树（连没提交的）相对起点改到的路径
@@ -39,7 +40,11 @@ case "${1:-}" in
   *) echo "quick-check：不认识的参数 $1（只认 --plan · --only <段>）" >&2; exit 2 ;;
 esac
 # 后端那棵 workspace 的包 → 编进它的路径（git 路径规格，空格分隔）
+# shellcheck disable=SC2034  # 两张包表都经 clippy_step 的 nameref 读
 clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/ssh-dial/ :(exclude)src/backend/deploy/" "ssh-dial:src/backend/ssh-dial/" "deploy:src/backend/deploy/" "mobcore:src/mobile/core-rs/rust/")
+# 壳那棵 workspace 里带禁用名单的包 → 编进它的路径（连它读的那份 clippy.toml）
+# shellcheck disable=SC2034
+shell_clippy_pkgs=("monitor:src/frontend/shell/ tests/frontend/shell/ src/frontend/clippy.toml" "cc-monitor-filewin:src/frontend/filewin/ tests/frontend/filewin/ src/frontend/clippy.toml" "resident-client:src/comms/resident-client/ tests/comms/resident-client/ src/comms/clippy.toml" "comms-inward:src/comms/inward/ tests/comms/inward/ src/comms/clippy.toml" "comms-outward:src/comms/outward/ tests/comms/outward/")
 # 起点（base.sh：`<提交> <对着谁>`；找不到 ⇒ 空）
 base_line=$(bash "$HERE/base.sh") || base_line=
 base_ref=${base_line#* }
@@ -159,15 +164,16 @@ mobile_step() {
     n=$(cat "$out"/*/test-results/*/*.xml 2>/dev/null | grep -oE "<testsuite [^>]*tests=\"[0-9]+\"" | grep -oE "tests=\"[0-9]+\"" | grep -oE "[0-9]+" | paste -sd+ - | bc 2>/dev/null)
     echo "mobile: ${n:-0} passed"'
 }
-# 后端那棵的 clippy：改到的包才跑（见头注）
+# 一棵树的 clippy：改到的包才跑（见头注）。clippy_step <格名> <树的目录> <哪棵树（不跑时那一句）> <包表的变量名>
 clippy_step() {
-  local spec paths pkgs=()
-  for spec in "${clippy_pkgs[@]}"; do
+  local name=$1 dir=$2 tree=$3 spec paths pkgs=()
+  local -n table=$4
+  for spec in "${table[@]}"; do
     read -ra paths <<< "${spec#*:}"
     [ -n "$(touched "${paths[@]}")" ] && pkgs+=(-p "${spec%%:*}")
   done
-  if [ ${#pkgs[@]} -eq 0 ]; then printf '  --   %-16s 不跑：相对 %s 没改到后端那棵的包\n' clippy-backend "$base_ref"; return; fi
-  step clippy-backend buildcargo bash -c 'cd src/backend && cargo clippy --all-targets "$@"' _ "${pkgs[@]}"
+  if [ ${#pkgs[@]} -eq 0 ]; then printf '  --   %-16s 不跑：相对 %s 没改到%s的包\n' "$name" "$base_ref" "$tree"; return; fi
+  step "$name" buildcargo bash -c 'cd "$1" && shift && cargo clippy --all-targets "$@"' _ "$dir" "${pkgs[@]}"
 }
 # 共享包的文档测试（`compile_fail` 那几条钉的是「这样写编不过」）：壳那棵只跑 --lib，这几份也不在后端那棵 ⇒ 单跑 --doc。改到的包才跑。
 #   名单只列有文档测试的包：一条都没有的包单独改到时 step 报「0 条跑到」。
@@ -250,8 +256,9 @@ if [ -n "$static" ]; then step static run env GATE_ONLY="$static" bash tests/scr
 else printf '  红   %-16s ci.yml 里读不到 static-gate 那个 job 的 GATE_ONLY（job 改名了？）\n' static; fails+=(static); fi
 
 backend_step
-clippy_step
+clippy_step clippy-backend src/backend 后端那棵 clippy_pkgs
 shell_step
+clippy_step clippy-shell src/frontend/shell 壳那棵 shell_clippy_pkgs
 doc_step
 # 凭据那份共享 crate 开 `harden` 那一档（壳那棵不开它，后端那棵不跑它的测试）
 step creds-harden buildcargo bash -c 'cd src/frontend/shell && cargo test -p creds-core --features harden --lib -q'
