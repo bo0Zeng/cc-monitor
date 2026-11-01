@@ -22,7 +22,7 @@ fn only_a_link_that_lived_long_enough_resets_the_backoff() {
     assert!(should_reset_backoff(true, MIN_HEALTHY_UPTIME));
 }
 
-/// 对端发完 hello 就死（每一轮都握上手、都活不过 30 s）：退避照样翻倍，不停在下界（F05 / I-1 那个自激循环）。
+/// 对端发完 hello 就死（每一轮都握上手、都活不过 30 s）：退避照样翻倍，不停在下界（握上手就把退避复位，会自激成不停的快速重连）。
 /// 站住过的那一轮之后从下界来；［重新连接］也从下界来。
 #[test]
 fn a_backend_that_dies_after_hello_every_round_still_backs_off() {
@@ -135,7 +135,7 @@ fn both_ends_take_the_backoff_from_here() {
         phone.contains("ssh_dial::uses::open(&req, &stages, |_| progress.step())"),
         "手机核心开长 exec 时没把拨号核心的进展接到循环（src/mobile/core-rs/rust/resident.rs）"
     );
-    // Kotlin 那一侧：从前那一份（`BackendFeed.Backoff` · `HEALTHY_MS`）的名字一个都不许回来（只看落地那一份）。
+    // Kotlin 那一侧：退避只在核心里一份，自写退避的那几个名字（`BackendFeed.Backoff` · `HEALTHY_MS`）一个都不许出现（只看落地那一份）。
     let kt = read("src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/ResidentFeed.kt");
     for name in [
         "class Backoff",
