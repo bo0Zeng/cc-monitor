@@ -74,16 +74,8 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "assets/asset_sync.rs",
         include_str!("../../src/backend/assets/asset_sync.rs"),
     ),
-    // `accounts/iso.rs` 那一行摘了：`--acct-iso-status` / `--acct-iso-shellinit` 的 argv 形分派退役，
-    //   两问上了帧面（CLI 面由 `stream::cli` 从 `REGISTRY` 派生，那一份早在本表里）。
-    // `observe/history_query.rs` · `observe/accounts_query.rs` 两行摘了（10-11）：`--read-session*` · `--list-*` ·
-    //   `--find-in-session` · `--account-trust*` 那几条手写子命令删了，两份文件里不再有 `"--` 字面量。
-    // `observe/search_query.rs` · `faces/read_face.rs` 两行摘了（第 8 批）：帧面 `history-search` 的入参直接从类型收，
-    //   不再摊成 `--include-tools` / `--scope` / `--after-ms` / `--limit` 交从前那个选项词解析器，两份文件里不再有 `"--` 字面量。
-    // `relay/machine.rs` 那一行摘了：它不再起 `--relay`（argv 字面量随脱离中转一族删了），派生的文件集不再扫到它。
-    // 它不做 match 分派，只在用法串里提自己的名字 —— 但 D 审计正是把一个
-    // `pub const CTRL_FLAG: &str = "--ccm-hidden-ctrl";` 藏在这里绕过了护栏。
-    // 放宽后的探测把它揪了出来。
+    // 它不做 match 分派，只在用法串里提自己的名字；登记在这里，它生产段里的 `"--` 字面量
+    // （连藏在常量里的）照样受对拍约束。
     (
         "control/tmux_hook.rs",
         include_str!("../../src/backend/control/tmux_hook.rs"),
@@ -118,7 +110,7 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
 
 /// 🔴 **终端命令面**的文件 —— 它们持有 `--旗标` 字面量，但那些**不是 wire 子命令**。
 ///
-/// # 为什么要有这张表（`K-R48` 09-11）
+/// # 为什么要有这张表
 ///
 /// `dispatch_registry_is_complete` 的判法是「生产段里出现 `"--` 字面量的文件集
 /// == [`DISPATCH_FILES`]」，而 [`DISPATCH_FILES`] 里的每个 token 都得落进
@@ -787,13 +779,13 @@ mod tests {
 
     /// ★ **R4**：协议级错误码是**闭集**，且只有 `stream/inbound/` 可以发。
     ///
-    /// # 为什么要分层（设计审计 · 视角 A · P6）
+    /// # 为什么要分层
     ///
     /// `bad_request` 今天一词两义：协议级（信封 JSON 坏了 ⇒「**客户端代码写错了**，别重试」）
     /// vs 命令级（参数不合适 ⇒ 可能是用户输入）。客户端拿到的只有 `code` 字符串，分不出来。
     /// 命令级的形状错误叫 `bad_args`（全部命令一个码）；本条把这条分层**钉住**。
     ///
-    /// 从前登记在案的例外 `resolve`（命令级 parse 错误也叫 `bad_request`）10-26 随那条帧命令删了 ⇒ 闭集整个进本条，一个例外都没有。
+    /// 闭集整个进本条，一个例外都没有。
     #[test]
     fn protocol_level_codes_are_never_emitted_from_the_control_layer() {
         // 协议级闭集：协议参考的第 3 节从同一张表生成。**只有 `stream/inbound/` 可以发这些。**

@@ -4,7 +4,7 @@
 //! # 走 Unix 套接字，门由内核给
 //!
 //! 套接字住这台家里只给本人的目录（`relay_route_core::listen_socket_for`，目录 `0700`），收下的每条连接再核一次对端 uid
-//! （共享 crate `own-chan`）⇒ 连得上的只有本账号自己的进程，没有钥匙这一层（从前回环 TCP 没有权限位，才要钥匙补）。
+//! （共享 crate `own-chan`）⇒ 连得上的只有本账号自己的进程，门由内核给，不另设钥匙。
 //! 远端经 ssh 跑一次 `ccm -- --resident-attach`（`control/resident.rs` 那个小中继）连它：ssh 已经证明了「是本人」。
 //! 起它的：本机 `src/frontend/shell/src/local_backend_host.rs`，远端 `--resident-ensure`（`control/resident.rs`）—— 同一种交法：只交 [`ENV_RESIDENT`]。
 //!
