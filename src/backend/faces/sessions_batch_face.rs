@@ -1,5 +1,5 @@
 //! 帧面 `sessions-batch`（typed，只在本机后端答全）：一批会话跨几台的那一条 —— 收全部 id、按台分组、
-//! 本机那一组同进程做（停 ＝ `sessions-stop` 的本体；起 ＝ 逐项 `session-open` 的恢复那一形），别的台各拿自己那一组问它常驻的
+//! 本机那一组同进程做（停 ＝ `sessions-stop` 的本体；起 ＝ 逐项 `session-open` 的恢复那一形；隐藏那三样 ＝ 逐项 `history-annotate {hide}` 的本体），别的台各拿自己那一组问它常驻的
 //! `sessions-batch`（那一份只含它自己的会话），逐条结局照入参原序摆好，合那一句交 `batch_core::sessions::sessions_reply`（手机核心同一份）。
 //!
 //! 那台够不着 · 常驻不在 · 太旧 · 答了失败 ⇒ 那一组每一项都是 `failed`，那一句与复制详情照那一台的失败（`cmd_wire::Failed`）写。
@@ -79,10 +79,25 @@ pub(crate) fn verb_of(op: &SessionsOp) -> Verb {
             one_done: |t| copy_text("tabBatch.one.resumed", &[("title", t)]),
             one_failed: |t| copy_text("tabBatch.one.resumeFailed", &[("title", t)]),
         },
+        SessionsOp::Hide => Verb {
+            action: copy_text("tabBatch.verb.hide", &[]),
+            one_done: |t| copy_text("tabBar.hide.done", &[("title", t)]),
+            one_failed: |t| copy_text("tabBar.hide.failed", &[("title", t)]),
+        },
+        SessionsOp::Unhide => Verb {
+            action: copy_text("tabBatch.verb.unhide", &[]),
+            one_done: |t| copy_text("tabBatch.one.unhidden", &[("title", t)]),
+            one_failed: |t| copy_text("tabBar.unhide.failed", &[("title", t)]),
+        },
+        SessionsOp::ClearHide => Verb {
+            action: copy_text("tabBatch.verb.clearHide", &[]),
+            one_done: |t| copy_text("tabBatch.one.hideUndone", &[("title", t)]),
+            one_failed: |t| copy_text("tabBatch.one.hideUndoFailed", &[("title", t)]),
+        },
     }
 }
 
-/// 本机那一组：照那一样分到停 · 起。
+/// 本机那一组：照那一样分到停 · 起 · 隐藏那三样。
 async fn here(
     req: SessionsBatchReq,
     tz: crate::Tz,
@@ -92,6 +107,113 @@ async fn here(
     match req.op {
         SessionsOp::Stop => stop_here(req, tz, until).await,
         SessionsOp::Start { run, relayed } => start_here(req, run, !relayed, tz, until, hands).await,
+        SessionsOp::Hide | SessionsOp::Unhide | SessionsOp::ClearHide => {
+            hide_here(req, tz, until, hands.1).await
+        }
+    }
+}
+
+/// 隐藏那三样：逐项写这台的注解（`history-annotate {hide}` 的本体，同进程）；做成了的那几项照改之前那一格分好撤销那几问。
+async fn hide_here(
+    req: SessionsBatchReq,
+    tz: crate::Tz,
+    until: Option<crate::platform::child::Until>,
+    own: crate::platform::Own,
+) -> Result<SessionsBatchReply, Said> {
+    use crate::wire::typed::{Codes as _, Handle as _};
+    let op = req.op;
+    let rt = tokio::runtime::Handle::current();
+    let (results, undo) = tokio::task::spawn_blocking(move || {
+        let home = crate::history::listing::agent_home();
+        let notes = notes();
+        let word = match op {
+            SessionsOp::Hide => "on",
+            SessionsOp::Unhide => "off",
+            _ => "rule",
+        };
+        let mut results = Vec::with_capacity(req.items.len());
+        let mut undo = Vec::new();
+        for it in &req.items {
+            let sid = it.sid.as_str();
+            let (o, u) = hide_one(&it.sid, title_here(&home, &notes, sid), op, || {
+                let ask: crate::history::history_annotations::AnnotateReq = serde_json::from_value(
+                    serde_json::json!({"sid": sid, "patch": {"hide": word}}),
+                )
+                .map_err(|e| Said::from(e.to_string()))?;
+                let cx = crate::wire::typed::Cx {
+                    tz: tz.clone(),
+                    until,
+                    needs: own.clone(),
+                };
+                rt.block_on(crate::history::history_annotations::HistoryAnnotateCmd::run(
+                    ask, cx,
+                ))
+                .map(|a| a.prev)
+                .map_err(|e| e.into_said())
+            });
+            results.push(o);
+            if let Some(u) = u {
+                undo_push(&mut undo, u, it.clone());
+            }
+        }
+        (results, undo)
+    })
+    .await
+    .map_err(|e| Said::from(e.to_string()))?;
+    Ok(SessionsBatchReply {
+        undo,
+        ..sessions_reply(&verb_of(&op), results)
+    })
+}
+
+/// 隐藏那三样的一项：写成了 ⇒ 成了（隐藏 ⇒ 撤销那一问照改之前那一格：没有 ⇒ 回到规则 · `off` ⇒ 取消隐藏 · `on` ⇒ 隐藏；别的两样撤不回）；
+/// 写不下去 ⇒ 没成（那一句 ＋ 复制详情）。`write` 回改之前那一格。
+pub(crate) fn hide_one(
+    sid: &cmd_wire::Sid,
+    title: String,
+    op: SessionsOp,
+    write: impl FnOnce() -> Result<Option<cmd_wire::session::Hide>, Said>,
+) -> (SessionOutcome, Option<SessionsOp>) {
+    use cmd_wire::session::Hide;
+    let mut o = SessionOutcome {
+        machine: Machine::local(),
+        sid: sid.clone(),
+        outcome: SessionState::Done,
+        why: None,
+        said: None,
+        copy_detail: String::new(),
+        title,
+        session: None,
+    };
+    match write() {
+        Ok(prev) => {
+            let undo = (op == SessionsOp::Hide).then_some(match prev {
+                None => SessionsOp::ClearHide,
+                Some(Hide::Off) => SessionsOp::Unhide,
+                Some(Hide::On) => SessionsOp::Hide,
+            });
+            (o, undo)
+        }
+        Err(s) => {
+            let f = crate::wire::detail::failed_of("history-annotate", s.code_or_fallback(), s.clone());
+            o.outcome = SessionState::Failed;
+            o.why = Some(f.code);
+            o.said = Some(f.said);
+            o.copy_detail = f.detail;
+            (o, None)
+        }
+    }
+}
+
+/// 撤销那几问里添一项：同一样的并进同一问（照第一次出现的先后）。
+fn undo_push(undo: &mut Vec<SessionsBatchReq>, op: SessionsOp, it: SessionItem) {
+    match undo.iter_mut().find(|q| q.op == op) {
+        Some(q) => q.items.push(it),
+        None => undo.push(SessionsBatchReq {
+            op,
+            items: vec![it],
+            client: None,
+        }),
     }
 }
 
@@ -283,7 +405,7 @@ fn title_here(home: &std::path::Path, notes: &cmd_wire::listing::Table, sid: &st
 }
 
 /// 合各台：校验 → 按台分组（照第一次出现的先后）→ 每台各问自己那一组（转给别的台的起那一组标 `relayed`）→
-/// 逐条照入参原序摆好、远端的称呼套机器名 → 合那一句；开窗那几行照原序、换成那一项的那台。
+/// 逐条照入参原序摆好、远端的称呼套机器名 → 合那一句；开窗那几行 · 撤销那几问照原序、换成那一项的那台。
 /// `local` ＝ 本机那一组怎么做（生产 [`here`]，判据给替身）；入参不对 ⇒ `Err`（`bad_args` 那一句）。
 pub(crate) async fn across<'a, L, F>(
     req: SessionsBatchReq,
@@ -353,8 +475,18 @@ where
             })
         })
         .collect();
+    let mut undo = Vec::new();
+    for it in &req.items {
+        let Some(Ok(r)) = answered(it) else {
+            continue;
+        };
+        if let Some(q) = r.undo.iter().find(|q| q.items.iter().any(|i| i.sid == it.sid)) {
+            undo_push(&mut undo, q.op, it.clone());
+        }
+    }
     Ok(SessionsBatchReply {
         windows,
+        undo,
         ..sessions_reply(&verb_of(&req.op), results)
     })
 }

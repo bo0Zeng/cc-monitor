@@ -1,56 +1,36 @@
 /**
  * **标签页栏上的「隐藏」那几件**：帧上那一格落到 tab 上 · 右键 / 批量「隐藏」「取消隐藏」交的命令 · 撤销 · 隐藏了又结束的收走。
  *
- * 隐藏不隐藏只照后端那一格（`Tab.hidden`，会话宣告与推帧主题「会话隐藏」带来）：点了「隐藏」只交命令、给撤销 toast，
- * 栏上那一格等推帧来了才挪（界面不先挪、不判）。挪进「已隐藏」时它的固定与分组一起摘掉（同关闭的摘法）；
- * 从这里点的隐藏被撤销 ⇒ 推帧说「不隐藏了」那一刻原位、原分组、原固定放回；别的取消隐藏 ⇒ 回到散的标签页末尾。
- * 零 DOM：toast 与命令经宿主（判据换替身）。
+ * 隐藏不隐藏只照后端那一格（`Tab.hidden`，会话宣告与推帧主题「会话隐藏」带来）：点了「隐藏」只交本机后端一条（`sessions-batch`，按台扇出 · 合那一句都在后端），
+ * 照回包出那一条（成了的带撤销：撤销交的那几问也是回包写好的），栏上那一格等推帧来了才挪（界面不先挪、不判、不数）。
+ * 挪进「已隐藏」时它的固定与分组一起摘掉（同关闭的摘法）；从这里点的隐藏被撤销 ⇒ 推帧说「不隐藏了」那一刻原位、原分组、原固定放回；
+ * 别的取消隐藏 ⇒ 回到散的标签页末尾。零 DOM：toast 与命令经宿主（判据换替身）。
  */
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
 import { isEnded } from "./face-can";
-import { sameHidden, undoHide, type HideSet, type SessionHidden } from "./session-hidden";
+import { sameHidden, type SessionHidden } from "./session-hidden";
 import { copyText } from "./copy-table";
-import type { Hide } from "./generated/Hide";
 import { fullTitle } from "./session-face";
-import type { EndRow } from "./end-confirm";
-import { detailOf, saidOf } from "./kit/detail";
+import type { SessionsBatchReply } from "./generated/SessionsBatchReply";
+import type { SessionsOp } from "./generated/SessionsOp";
+import type { SessionItem } from "./generated/SessionItem";
 
 /** 隐藏那几件要宿主做的：交命令 · 出 toast · 重画 · 关掉一个已结束的。 */
 export interface TabHideHost {
-  /** 改单个那一格（`history-annotate {hide}`），回改之前那一格；失败 ⇒ 抛。 */
-  setHide(tab: Tab, to: HideSet): Promise<Hide | null>;
-  /** 可撤的 toast（撤销 ⇒ `undo`；过期 ⇒ `settle`）。 */
-  undoToast(title: string, undo: () => void, settle: () => void): void;
-  /** 没交成那一句。 */
+  /** 交本机后端一批（`sessions-batch`：`hide` · `unhide` · 撤销那几问），回合好的回包；问不到本机后端 ⇒ 抛。 */
+  send(op: SessionsOp, items: readonly SessionItem[]): Promise<SessionsBatchReply>;
+  /** 照回包出那一条（`end-confirm.ts::sayReply`）；`undo` 给了 ⇒ 同一条上［撤销］（`Ctrl Z` 同样）。 */
+  say(reply: SessionsBatchReply, undo?: { run: () => void; settle: () => void }): void;
+  /** 本机后端问不到那一句。 */
   failed(title: string, e: unknown): void;
-  /**
-   * 一批（≥ 2 个）里有没成的：结束那一种结局一条（`end-confirm.ts::sayRows`，汇总照 `tab-batch-menu.ts::batchHead(action)`）；
-   * `undo` 给了 ⇒ 同一条上［撤销］成了的那几个。
-   */
-  batch(action: string, rows: readonly EndRow[], undo?: { run: () => void; settle: () => void }): void;
   refreshTabBar(): void;
   /** 关掉一个已结束的（同 ×：拆流、让后端忘掉）。 */
   close(sid: string): void;
 }
 
-/** 交了没成的那一个：哪一个 · 交的是不是「隐藏」· 那一句。 */
-interface Missed {
-  tab: Tab;
-  on: boolean;
-  e: unknown;
-}
-
-/** 一批的逐条结局（照交的先后）：没成的带那台那一句与详情，别的算成了。 */
-function rowsOf(tabs: readonly Tab[], missed: readonly Missed[]): EndRow[] {
-  return tabs.map((t): EndRow => {
-    const m = missed.find((x) => x.tab === t);
-    if (!m) return { title: fullTitle(t), outcome: "done", why: "" };
-    const detail = detailOf(m.e);
-    return { title: fullTitle(t), outcome: "failed", why: saidOf(m.e), ...(detail !== "" ? { detail } : {}) };
-  });
-}
+const itemOf = (t: Tab): SessionItem => ({ machine: t.origin, sid: t.sessionId });
 
 /** 隐藏之前那一刻（撤销时放回）：顺序里那一格 · 分组 · 固定。 */
 interface Before {
@@ -100,69 +80,51 @@ export class TabHide {
   }
 
   /**
-   * 右键 / 批量「隐藏」：交命令；回包成了才给撤销 toast，只数成了的那几个（`已隐藏 orders` · `已隐藏 ×3`）；
-   * 没成的各说那一句（全没成 ⇒ 只有那几句）。不弹确认；已经隐藏的跳过。
+   * 右键 / 批量「隐藏」：交本机后端一条；照回包说（成了的那几个带撤销，撤销交回包写好的那几问；一个都没成 ⇒ 只那一句）。
+   * 不弹确认；已经隐藏的不交。
    */
   hide(sids: readonly string[]): void {
     const tabs = sids.map((s) => this.store.tabs.get(s)).filter((t): t is Tab => t !== undefined && (t.hidden ?? null) === null);
     if (tabs.length === 0) return;
     for (const t of tabs) this.before.set(t.sessionId, { index: this.store.orderedIds.indexOf(t.sessionId), group: t.group, pinned: t.pinned });
-    // 撤销回到隐藏之前那一份单独设置（各个照后端回的改之前那一格，`undoHide`），不一律钉成「单独显示」。
-    const prevs = new Map<string, Hide | null>();
-    void this.send(tabs, () => "on", (t, prev) => prevs.set(t.sessionId, prev)).then((missed) => {
-      const done = tabs.filter((t) => prevs.has(t.sessionId));
-      const undo = {
-        run: () => void this.send(done, (t) => undoHide(prevs.get(t.sessionId) ?? null)).then((m) => this.sayMissed(m)),
-        settle: () => done.forEach((t) => this.before.delete(t.sessionId)),
-      };
-      // 一批里有没成的 ⇒ 一条结局（「已隐藏 k · 失败 ×m」·［撤销］［查看］），不逐个弹。
-      if (tabs.length > 1 && missed.length > 0) {
-        this.host.batch(copyText("tabBatch.action.hide"), rowsOf(tabs, missed), done.length > 0 ? undo : undefined);
-        return;
-      }
-      this.sayMissed(missed);
-      if (done.length === 0) return;
-      const title = done.length === 1 ? copyText("tabBar.hide.done", { title: fullTitle(done[0]) }) : copyText("tabBar.hide.doneMany", { n: done.length });
-      this.host.undoToast(title, undo.run, undo.settle);
-    });
+    const forget = (ids: Iterable<string>): void => {
+      for (const id of ids) this.before.delete(id);
+    };
+    void this.host.send("hide", tabs.map(itemOf)).then(
+      (reply) => {
+        const done = new Set(reply.results.filter((o) => o.outcome === "done").map((o) => o.sid));
+        forget(tabs.map((t) => t.sessionId).filter((id) => !done.has(id)));
+        if (reply.undo.length === 0) {
+          this.host.say(reply);
+          return;
+        }
+        const undo = {
+          // 撤销回到隐藏之前那一份单独设置：后端照各自改之前那一格分好的那几问，原样交回。
+          run: () => void Promise.all(reply.undo.map((q) => this.host.send(q.op, q.items))).then((rs) => rs.filter((r) => r.failed).forEach((r) => this.host.say(r)), (e: unknown) => this.host.failed(copyText("tabBar.unhide.failed", { title: fullTitle(tabs[0]) }), e)),
+          settle: () => forget(done),
+        };
+        this.host.say(reply, undo);
+      },
+      (e: unknown) => {
+        forget(tabs.map((t) => t.sessionId));
+        this.host.failed(tabs.length === 1 ? copyText("tabBar.hide.failed", { title: fullTitle(tabs[0]) }) : copyText("tabBatch.menu.hide", { n: tabs.length }), e);
+      },
+    );
   }
 
   /**
-   * 「已隐藏」里的行 ·批量「取消隐藏」：写 `hide: "off"`（规则隐藏的一样，之后不再按那一条隐藏）。推帧到了才挪回栏上。
+   * 「已隐藏」里的行 · 批量「取消隐藏」：交 `unhide`（单个那一格写 `off`：规则隐藏的一样，之后不再按那一条隐藏）。推帧到了才挪回栏上；
+   * 都成了不另出声，有没成的照回包说。
    */
   unhide(sids: readonly string[]): void {
     const tabs = sids.map((s) => this.store.tabs.get(s)).filter((t): t is Tab => t !== undefined && (t.hidden ?? null) !== null);
     if (tabs.length === 0) return;
-    void this.send(tabs, () => "off").then((m) => {
-      if (tabs.length > 1 && m.length > 0) this.host.batch(copyText("tabBatch.action.unhide"), rowsOf(tabs, m));
-      else this.sayMissed(m);
-    });
-  }
-
-  /** 逐个交（`to` ＝ 这一个交什么）；交成了 ⇒ `done(那一个, 改之前那一格)`。回没成的那几个（不出声，调用方定怎么说）。 */
-  private async send(tabs: readonly Tab[], to: (t: Tab) => HideSet, done?: (t: Tab, prev: Hide | null) => void): Promise<Missed[]> {
-    const missed: Missed[] = [];
-    await Promise.all(
-      tabs.map((t) => {
-        const word = to(t);
-        return this.host.setHide(t, word).then(
-          (prev) => done?.(t, prev),
-          (e: unknown) => {
-            this.before.delete(t.sessionId);
-            missed.push({ tab: t, on: word === "on", e });
-          },
-        );
-      }),
+    void this.host.send("unhide", tabs.map(itemOf)).then(
+      (reply) => {
+        if (reply.failed) this.host.say(reply);
+      },
+      (e: unknown) => this.host.failed(tabs.length === 1 ? copyText("tabBar.unhide.failed", { title: fullTitle(tabs[0]) }) : copyText("tabBatch.menu.unhide", { n: tabs.length }), e),
     );
-    return missed;
-  }
-
-  /** 没成的各说那一句。 */
-  private sayMissed(missed: readonly Missed[]): void {
-    for (const { tab, on, e } of missed) {
-      const title = fullTitle(tab);
-      this.host.failed(on ? copyText("tabBar.hide.failed", { title }) : copyText("tabBar.unhide.failed", { title }), e);
-    }
   }
 
   /** 隐藏了又结束的：不留（「已隐藏」只列活的，要看去历史）；正看着的那一个切走再收。 */

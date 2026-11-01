@@ -68,11 +68,16 @@ export function sayRows(rows: readonly EndRow[], head?: (done: number, failed: n
   made.rec = recentToasts()[0];
 }
 
-/** 一批会话的回包（`sessions-batch`）：那一句 · 逐条 · 复制详情由本机后端合好，这里只照摆（［查看］· 复制详情同 [`sayRows`]）。 */
-export function sayReply(reply: Pick<SessionsBatchReply, "said" | "failed" | "lines" | "copyDetail">): void {
+/**
+ * 一批会话的回包（`sessions-batch`）：那一句 · 逐条 · 复制详情由本机后端合好，这里只照摆（逐条进「消息」那一条，［查看］展开它）。
+ * `undo` 给了（撤得回的批量：隐藏）⇒ 同一条上先［撤销］（`Ctrl Z` 同样），再［查看］。
+ */
+export function sayReply(reply: Pick<SessionsBatchReply, "said" | "failed" | "lines" | "copyDetail">, undo?: { run: () => void; settle: () => void }): void {
   const made: { rec?: ToastRecord } = {};
   const view = reply.lines.length > 0 ? { label: copyText("tabBatch.result.view"), run: () => made.rec && showMessage(made.rec), toastOnly: true } : undefined;
-  toast(reply.said, "", { level: reply.failed ? "error" : "success", more: reply.lines, action: view, detail: reply.copyDetail });
+  const level = reply.failed ? "error" : "success";
+  if (undo) undoToast(reply.said, undo.run, undo.settle, { level, more: reply.lines, detail: reply.copyDetail, ...(view ? { action: view } : {}) });
+  else toast(reply.said, "", { level, more: reply.lines, action: view, detail: reply.copyDetail });
   made.rec = recentToasts()[0];
 }
 

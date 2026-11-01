@@ -12,7 +12,7 @@ vi.mock("../../../src/frontend/ui/terminal-reads", async (orig) => ({
   endTerminal: vi.fn(async () => undefined),
 }));
 
-import { endConfirm, sayEnded, sayReply, sayRows } from "../../../src/frontend/ui/end-confirm";
+import { endConfirm, sayEnded, sayReply } from "../../../src/frontend/ui/end-confirm";
 import { endRows } from "../../../src/frontend/ui/terminals-board-reads";
 import { endTerminal } from "../../../src/frontend/ui/terminal-reads";
 import { toast, undoToast } from "../../../src/frontend/ui/kit/toast";
@@ -68,28 +68,25 @@ describe("结束会话的确认框", () => {
   });
 });
 
-describe("一批的结局带［撤销］（批量隐藏 · 取消隐藏，A2-17-7-3-1）", () => {
-  const rows = [
-    { title: "甲", outcome: "done" as const, why: "" },
-    { title: "乙", outcome: "failed" as const, why: "那台拒了", detail: "详情-乙" },
-  ];
-  it("★ 给了撤销且有成了的 ⇒ 同一条上［撤销］［查看］：汇总照 head，没成的逐条进「消息」，不另出一条", () => {
+describe("一批的回包带［撤销］（批量隐藏，A2-17-7-3-1）", () => {
+  const reply = { results: [], said: "S-隐藏 2 项 · 完成 1 · 失败 ×1", failed: true, lines: ["L-乙"], copyDetail: "D-乙" };
+  it("★ 给了撤销 ⇒ 同一条上［撤销］［查看］：标题是回包那一句，逐条进「消息」，不另出一条", () => {
     const run = vi.fn();
     const settle = vi.fn();
-    sayRows(rows, (done, failed) => `动作 ${done} · 失败 ×${failed}`, { run, settle });
+    sayReply(reply, { run, settle });
     expect(toast).not.toHaveBeenCalled();
     expect(undoToast).toHaveBeenCalledTimes(1);
     const [title, undo, commit, opts] = vi.mocked(undoToast).mock.calls[0];
-    expect(title).toBe("动作 1 · 失败 ×1");
+    expect(title).toBe(reply.said);
     expect(undo).toBe(run);
     expect(commit).toBe(settle);
     expect(opts?.level).toBe("error");
-    expect(opts?.more).toEqual([copyText("tabBatch.result.failedLine", { title: "乙", why: "那台拒了" })]);
+    expect(opts?.more).toEqual(["L-乙"]);
     expect((opts?.action as { label: string } | undefined)?.label).toBe(copyText("tabBatch.result.view"));
-    expect(opts?.detail).toBe("那台拒了\n详情-乙");
+    expect(opts?.detail).toBe("D-乙");
   });
-  it("一个都没成 ⇒ 没有可撤的，照旧那一条（不出［撤销］）", () => {
-    sayRows([rows[1]], (done, failed) => `动作 ${done} · 失败 ×${failed}`, { run: vi.fn(), settle: vi.fn() });
+  it("没给撤销 ⇒ 照旧那一条（不出［撤销］）", () => {
+    sayReply(reply);
     expect(undoToast).not.toHaveBeenCalled();
     expect(toast).toHaveBeenCalledTimes(1);
   });

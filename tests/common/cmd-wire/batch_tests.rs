@@ -45,16 +45,17 @@ fn sessions_batch_reply_wire_shape_keeps_null_keys_and_reads_back() {
             line: "claude --resume s-1".into(),
             cwd: None,
         }],
+        undo: vec![],
     };
     let v = serde_json::to_value(&reply).unwrap();
     let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
-    assert_eq!(keys.len(), 6, "{v}");
+    assert_eq!(keys.len(), 7, "{v}");
     assert_eq!(
         v["windows"],
         serde_json::json!([{"machine": "<local>", "sid": "s-1", "line": "claude --resume s-1", "cwd": null}]),
         "开窗那一行：可缺的目录出 null"
     );
-    for k in ["results", "said", "failed", "lines", "copyDetail", "windows"] {
+    for k in ["results", "said", "failed", "lines", "copyDetail", "windows", "undo"] {
         assert!(v.get(k).is_some(), "缺 {k}：{v}");
     }
     let done = &v["results"][0];
@@ -143,4 +144,42 @@ fn sessions_batch_req_ops_on_the_wire() {
         }))
         .is_err()
     );
+}
+
+#[test]
+fn hide_ops_on_the_wire_and_the_undo_asks_ride_the_reply() {
+    for (op, word) in [
+        (SessionsOp::Hide, "hide"),
+        (SessionsOp::Unhide, "unhide"),
+        (SessionsOp::ClearHide, "clear_hide"),
+    ] {
+        assert_eq!(serde_json::to_value(op).unwrap(), serde_json::json!(word));
+        assert_eq!(
+            serde_json::from_value::<SessionsOp>(serde_json::json!(word)).unwrap(),
+            op
+        );
+    }
+    let undo = SessionsBatchReq {
+        op: SessionsOp::ClearHide,
+        items: vec![SessionItem {
+            machine: Machine::named("box2"),
+            sid: sid("s-3"),
+        }],
+        client: None,
+    };
+    let reply = SessionsBatchReply {
+        results: vec![failed_one()],
+        said: "S".into(),
+        failed: true,
+        lines: vec![],
+        copy_detail: String::new(),
+        windows: vec![],
+        undo: vec![undo.clone()],
+    };
+    let v = serde_json::to_value(&reply).unwrap();
+    assert_eq!(
+        v["undo"],
+        serde_json::json!([{"op": "clear_hide", "items": [{"machine": "box2", "sid": "s-3"}], "client": null}])
+    );
+    assert_eq!(serde_json::from_value::<SessionsBatchReply>(v).unwrap(), reply);
 }

@@ -385,3 +385,121 @@ fn one_start_maps_the_open_answer() {
     assert_eq!(o.said.as_deref(), Some("那一趟还在起"));
     assert!(!o.copy_detail.is_empty(), "没成的带复制详情");
 }
+
+fn ask(op: SessionsOp, items: Vec<SessionItem>) -> SessionsBatchReq {
+    SessionsBatchReq {
+        op,
+        items,
+        client: None,
+    }
+}
+
+/// ★ 隐藏：三项跨两台（box2 那一项那台写注解没成）⇒ 那一句照「隐藏」那个词合（完成 2 · 失败 ×1）；
+/// 撤销那几问照各台答回的合起来：同一样的并成一问、照原序、远端那一项写那台。
+#[tokio::test]
+async fn hide_across_two_machines_merges_the_said_and_the_undo_asks() {
+    let local = |sid: &str| item("here", sid);
+    let box2 = SessionsBatchReply {
+        undo: vec![ask(SessionsOp::ClearHide, vec![local("s-2")])],
+        ..sessions_reply(
+            &verb_of(&SessionsOp::Hide),
+            vec![
+                outcome("s-2", SessionState::Done, None, ""),
+                outcome("s-4", SessionState::Failed, Some("写不下去"), "io"),
+            ],
+        )
+    };
+    let peers = Peers::new(&[("box2", serde_json::to_string(&box2).unwrap())]);
+    let table = Peers::table(&["box2"]);
+    let here = |r: SessionsBatchReq| {
+        assert_eq!(r.op, SessionsOp::Hide);
+        let results = r
+            .items
+            .iter()
+            .map(|i| outcome(i.sid.as_str(), SessionState::Done, None, ""))
+            .collect();
+        std::future::ready(Ok(SessionsBatchReply {
+            undo: vec![
+                ask(SessionsOp::ClearHide, vec![local("s-1")]),
+                ask(SessionsOp::Unhide, vec![local("s-3")]),
+            ],
+            ..sessions_reply(&verb_of(&r.op), results)
+        }))
+    };
+    let r = across(
+        ask(
+            SessionsOp::Hide,
+            vec![
+                local("s-1"),
+                item("box2", "s-2"),
+                local("s-3"),
+                item("box2", "s-4"),
+            ],
+        ),
+        here,
+        &crate::Tz::default(),
+        until(5_000),
+        &table,
+        &peers,
+    )
+    .await
+    .expect("答得出");
+    let action = copy_text("tabBatch.verb.hide", &[]);
+    assert_eq!(
+        r.said,
+        said_line(
+            &action,
+            "4",
+            &[
+                ("beFiles.batch.segOk", "ok", "3"),
+                ("beFiles.batch.segBad", "bad", "1")
+            ]
+        )
+    );
+    assert_eq!(
+        peers.asked()[0].1["args"]["op"],
+        serde_json::json!("hide"),
+        "隐藏那一组照原样转"
+    );
+    assert_eq!(
+        r.undo,
+        vec![
+            ask(
+                SessionsOp::ClearHide,
+                vec![local("s-1"), item("box2", "s-2")]
+            ),
+            ask(SessionsOp::Unhide, vec![local("s-3")]),
+        ]
+    );
+}
+
+/// 隐藏一项：写成了 ⇒ 成了、撤销那一问照改之前那一格（没有 ⇒ 回到规则 · `off` ⇒ 取消隐藏 · `on` ⇒ 隐藏）；
+/// 取消隐藏 · 回到规则成了 ⇒ 撤不回；写不下去 ⇒ 没成（那一句 ＋ 复制详情）。
+#[test]
+fn one_hide_maps_the_write() {
+    use cmd_wire::session::Hide;
+    let sid: cmd_wire::Sid = "s-1".parse().unwrap();
+    for (prev, undo) in [
+        (None, SessionsOp::ClearHide),
+        (Some(Hide::Off), SessionsOp::Unhide),
+        (Some(Hide::On), SessionsOp::Hide),
+    ] {
+        let (o, u) = hide_one(&sid, "t".into(), SessionsOp::Hide, || Ok(prev));
+        assert_eq!(o.outcome, SessionState::Done);
+        assert_eq!(u, Some(undo), "改之前 {prev:?}");
+    }
+    for op in [SessionsOp::Unhide, SessionsOp::ClearHide] {
+        let (o, u) = hide_one(&sid, "t".into(), op, || Ok(Some(Hide::On)));
+        assert_eq!(o.outcome, SessionState::Done);
+        assert_eq!(u, None);
+    }
+    let (o, u) = hide_one(&sid, "proj 起头".into(), SessionsOp::Hide, || {
+        Err(Said::new("io_failed", "写不下去".into()))
+    });
+    assert_eq!(o.outcome, SessionState::Failed);
+    assert_eq!(o.why.as_deref(), Some("io_failed"));
+    assert_eq!(o.said.as_deref(), Some("写不下去"));
+    assert_eq!(o.title, "proj 起头");
+    assert!(!o.copy_detail.is_empty());
+    assert_eq!(u, None);
+}

@@ -227,7 +227,7 @@ pub struct FilesBatchStopReply {
     pub stopping: bool,
 }
 
-/// 一批会话要做的那一样（`stop`；`start` 带放在哪）。
+/// 一批会话要做的那一样（`stop`；`start` 带放在哪；隐藏那三样写会话那一台的注解）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -246,6 +246,12 @@ pub enum SessionsOp {
         #[cfg_attr(any(test, feature = "ts"), ts(skip))]
         relayed: bool,
     },
+    /// 隐藏：单个那一格写 `on`。
+    Hide,
+    /// 取消隐藏：单个那一格写 `off`（规则隐藏的一样，之后不再按那一条隐藏）。
+    Unhide,
+    /// 摘掉单个那一格、回到规则（撤销「隐藏」时原本没有那一格的那几项）。
+    ClearHide,
 }
 
 /// 一批里的一项：哪台的哪条会话。
@@ -338,6 +344,8 @@ pub struct SessionsBatchReply {
     pub copy_detail: String,
     /// 起那一批里落在窗口里的那几项（照原序；别的批 ⇒ 空）：开窗是这台电脑上的事，界面照这几行开。
     pub windows: Vec<OpenWindow>,
+    /// 撤销交的那几问（撤得回的那一样里做成了的那几项，后端照各自改之前那一格分好；原样交回本机）；撤不回 ⇒ 空。
+    pub undo: Vec<SessionsBatchReq>,
 }
 
 /// 起那一批里落在窗口里的一项：哪台的哪条 ＋ 那台渲好的那一行与起始目录。
