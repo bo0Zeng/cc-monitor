@@ -330,7 +330,7 @@ async fn main() {
     // 唯一的写盘入口 `control/fork_write.rs` 在一次性查询模式，那条路早就 exit 了」—— RW1 / FW5 / F9c 之后**已假**：
     // `files-*` 写面、`files-commit-*`、`exit-policy-set`、资产目录、`apikey-key-set`、`history-annotate` 全在流模式里跑，
     // 当场 `exit` 会把正在写的那一条连线程带走（E §E2）。⇒ 今天 exit 之前先排空停不下来的那一档（`drain::exit_after_drain`）。
-    // stdout 不欠 flush 那半仍成立：`writer_task` 每帧写完即 flush。
+    // stdout 不欠 flush 那半仍成立：`writer_task` 三路一排空就 flush（一直排着时每 `WRITE_FLUSH_BYTES` 一次）。
     // 两条载体都不返回（类型上是 `!`，各自在收场处 exit）⇒ 这里没有第二个 exit。
 }
 
@@ -813,8 +813,11 @@ async fn serve_listening(
     }
 }
 
+/// 写者自上次 flush 起写满这么多字节就照 flush 一次：帧一直排着时首帧的延迟有界。
+const WRITE_FLUSH_BYTES: usize = 64 * 1024;
+
 /// The stdout writer half of the §5.4 split: drain frames and write one wire
-/// line each, flushing per frame so a connected client sees them promptly.
+/// line each, flushing whenever nothing is queued so a connected client sees them promptly.
 ///
 /// Awaiting `recv()` here is what back-pressures the bounded channel when the
 /// SSH pipe is slow; that back-pressure never reaches the inotify reader.
@@ -854,34 +857,56 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     //   按字节，至多再等一页 —— 「大应答分页取到一半，别的会话来了一行，它在下一页之前上线」就靠这一道（8a b）。
     let mut burst = 0u32;
     let mut burst_bytes = 0usize;
+    // flush 只在三路此刻都没有排着的时候做（排空了再一次），另有 `WRITE_FLUSH_BYTES` 封顶；不用计时器。
+    //   一帧一 flush 时，分页应答与成批的行是一帧一次写系统调用，开了 deflate 还一帧一次 sync flush。
+    let mut unflushed = 0usize;
     loop {
-        // 活卡那一路**排在最后**（`biased` 按书写顺序问）：只有出方向与应答此刻都没有东西时才轮到它。
-        //   它可丢（SSE 只保快，jsonl 保对），而出方向里的 `line` 帧不许因为它晚到或被挤掉 —— 它走自己那个
-        //   有界发件箱（`live::LIVE_OUTBOX_CAP`），满了合成整卡。
-        let (frame, reply) =
-            if burst < REPLY_BURST && burst_bytes < cc_monitor_backend::REPLY_PAGE_BYTES {
-                tokio::select! {
-                    biased;
-                    Some(f) = reply_rx.recv() => { burst += 1; (f, true) }
-                    f = rx.recv() => match f {
-                        Some(mut f) => { f.stamp(&tz); (f, false) }
-                        None => return, // 出方向通道关了 = 寿终
-                    },
-                    Some(f) = tap_rx.next() => (f, false),
-                }
-            } else {
-                burst = 0;
-                burst_bytes = 0;
-                tokio::select! {
-                    biased;
-                    f = rx.recv() => match f {
-                        Some(mut f) => { f.stamp(&tz); (f, false) }
-                        None => return,
-                    },
-                    Some(f) = reply_rx.recv() => (f, true),
-                    Some(f) = tap_rx.next() => (f, false),
+        let picked = {
+            // 活卡那一路**排在最后**（`biased` 按书写顺序问）：只有出方向与应答此刻都没有东西时才轮到它。
+            //   它可丢（SSE 只保快，jsonl 保对），而出方向里的 `line` 帧不许因为它晚到或被挤掉 —— 它走自己那个
+            //   有界发件箱（`live::LIVE_OUTBOX_CAP`），满了合成整卡。
+            let pick = async {
+                if burst < REPLY_BURST && burst_bytes < cc_monitor_backend::REPLY_PAGE_BYTES {
+                    tokio::select! {
+                        biased;
+                        Some(f) = reply_rx.recv() => { burst += 1; Some((f, true)) }
+                        f = rx.recv() => f.map(|mut f| { f.stamp(&tz); (f, false) }),
+                        Some(f) = tap_rx.next() => Some((f, false)),
+                    }
+                } else {
+                    burst = 0;
+                    burst_bytes = 0;
+                    tokio::select! {
+                        biased;
+                        f = rx.recv() => f.map(|mut f| { f.stamp(&tz); (f, false) }),
+                        Some(f) = reply_rx.recv() => Some((f, true)),
+                        Some(f) = tap_rx.next() => Some((f, false)),
+                    }
                 }
             };
+            tokio::pin!(pick);
+            if unflushed == 0 {
+                pick.await
+            } else {
+                // 先问一下三路；此刻一路都没有 ⇒ 写出去的先 flush，再接着等**同一个** `pick`（没取消，什么都不丢）。
+                tokio::select! {
+                    biased;
+                    p = &mut pick => p,
+                    () = std::future::ready(()) => {
+                        if !flush_out(&mut out).await {
+                            return;
+                        }
+                        unflushed = 0;
+                        pick.await
+                    }
+                }
+            }
+        };
+        let Some((frame, reply)) = picked else {
+            // 出方向通道关了 = 寿终：攒着没 flush 的先发出去。
+            flush_out(&mut out).await;
+            return;
+        };
         let wrote = match write_frame(&mut out, &frame, &tz, view.as_ref()).await {
             Ok(n) => n,
             Err(e) => {
@@ -896,9 +921,23 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
             burst = 0;
             burst_bytes = 0;
         }
-        if let Err(e) = out.flush().await {
+        unflushed += wrote;
+        if unflushed >= WRITE_FLUSH_BYTES {
+            if !flush_out(&mut out).await {
+                return;
+            }
+            unflushed = 0;
+        }
+    }
+}
+
+/// flush 写者那一端；失败（对端走了）⇒ 记一行、回 `false`，写者就此停。
+async fn flush_out<W: tokio::io::AsyncWrite + Unpin>(out: &mut W) -> bool {
+    match out.flush().await {
+        Ok(()) => true,
+        Err(e) => {
             tracing::warn!("stdout flush failed ({e}); stopping writer");
-            return;
+            false
         }
     }
 }

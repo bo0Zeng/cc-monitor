@@ -275,6 +275,7 @@ impl Hop {
         for x in &mut all {
             x.others = self.others_on(&s.agent, sid, book, x, now);
         }
+        self.with_past(&s.agent, &mut all, now);
         listed(settings, &s.start, all)
     }
 

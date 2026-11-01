@@ -154,7 +154,7 @@ fn decide(ctx) { … }
 - **头**（`/*--- rotation … ---*/`）：`format` · `tz` · `settings` · `form`。头里**没有** `name` · `line`（写了 ⇒ 读不懂、形状不对）。后端存设置只重写这一块，说明和代码一个字节不动。
 - `settings`：这份策略自己的设置，形状它自己定；号列表固定在 `settings.accounts`（`{start: true}` ＝ 开会话用的号），**号列表的先后就是默认优先级**（权重同权时照它）。
 - `form`：设置怎么画、怎么校验。格的种类：`percent` · `minutes` · `toggle` · `choice` · `daySegments`；`scope: all` 画在总体设置，`each` 画在每个号下面（`inherit: true` ＝ 号没另设就跟总体）；`showIf: {key, v}` ＝ 那一格（开关或几选一）取这个值才出；`daySegments` 的 `follow: true` ＝ 后面几窗没另设同第一窗；`lead` ＝ 数格前面那半句；选项的 `mark: {glyph} | {dashed: true}` ＝ 号取这一项时号名旁的记号。`label` 用短的正式名字（用量上限 · 权重容差 · 强制切换阈值 · 耗尽后启用 · 启用延迟 · 单次用量上限），定义写在 `help` 里；不用第二人称，不写讲结构的字。
-- `ctx`：`now` · `clock`（策略时区的本地分钟）· `start` · `current` · `settings` · `memo`（上一判交的，原样带回）· `accounts[{id, pos, kind, sendable, used, resets, refusedUntil, rate, tokensPerPct, weekly, off, others}]`（`rate` 用速、点 / 分；`tokensPerPct` 1% ≈ 多少用量、折合输入 token，套餐不同就不一样大，余量跨号比时乘它；两样都是这个号自己量出来的；`weekly` 有周上限；`off` 本会话先不用；`others.w5h` 别的会话压在它 5 小时窗上的用速、点 / 分）· `session{pace, paceShort, inflight, bins, spread, context, writeExtra, ttl, grow, cached}`（本会话：用速、折合输入 token / 分、最近半小时 · 同一口径的最近 5 分钟（会话记满 2 分钟才给）· 最近 5 分钟平均几发同时在途（子 agent · 工作流的请求一并算）· `bins` 最近 6 小时每 10 分钟用了多少、折合输入 token，恒 36 格、旧的在前、最后一格到此刻，会话记到之前的格是 `()` · 起伏 σ/μ · 上下文 token · 写缓存比读缓存多几倍 · 缓存留几秒 · 上下文每分钟长多少 · `cached{号: {until, tokens}}` 各号上的缓存到几点、当时多长；`until` 是 Rhai 的关键字，照 `c["until"]` 取）· `pinned`（在用的号是手动选的）· `temp`（手动排的先后）。量不到的格 ⇒ `()`。各会话的判依次来：后判的看得见先判的刚换到哪。没有文件 · 网络 · 钟 · 随机数。
+- `ctx`：`now` · `clock`（策略时区的本地分钟）· `start` · `current` · `settings` · `memo`（上一判交的，原样带回）· `accounts[{id, pos, kind, sendable, used, resets, refusedUntil, rate, tokensPerPct, weekly, weeklyLeftAtReset, windowGrid, off, others}]`（`rate` 用速、点 / 分；`tokensPerPct` 1% ≈ 多少用量、折合输入 token，套餐不同就不一样大，余量跨号比时乘它；两样都是这个号自己量出来的；`weekly` 有周上限；`weeklyLeftAtReset` 最近几次（至多 4 次）周窗重置时还剩几点、旧的在前，没记到 ⇒ `[]`；`windowGrid` ＝ `#{step: 600, up}`：5 小时窗开窗时刻取到 `step` 秒的格是往上（`true`）还是往下（`false`），记到的开窗不够判 ⇒ `()`；这两样是额度账里这个号换窗时记下的；`off` 本会话先不用；`others.w5h` 别的会话压在它 5 小时窗上的用速、点 / 分）· `session{pace, paceShort, inflight, bins, spread, context, writeExtra, ttl, grow, cached}`（本会话：用速、折合输入 token / 分、最近半小时 · 同一口径的最近 5 分钟（会话记满 2 分钟才给）· 最近 5 分钟平均几发同时在途（子 agent · 工作流的请求一并算）· `bins` 最近 6 小时每 10 分钟用了多少、折合输入 token，恒 36 格、旧的在前、最后一格到此刻，会话记到之前的格是 `()` · 起伏 σ/μ · 上下文 token · 写缓存比读缓存多几倍 · 缓存留几秒 · 上下文每分钟长多少 · `cached{号: {until, tokens}}` 各号上的缓存到几点、当时多长；`until` 是 Rhai 的关键字，照 `c["until"]` 取）· `pinned`（在用的号是手动选的）· `temp`（手动排的先后）。量不到的格 ⇒ `()`。各会话的判依次来：后判的看得见先判的刚换到哪。没有文件 · 网络 · 钟 · 随机数。
 - `decide(ctx)` 交回 `#{order: [号…], why: #{号: "一句"}, hold_until?, wake: #{at?, when: [#{acct, w, used_at_least}]}, warm?: [号…], memo?}`。后端照 `order` 第一个事实上发得出去的号用：**在用的号排第一就是不换**。
 - `warm`：要开 5 小时窗的号。后端只收订阅号 · 此刻发得出去 · 5 小时窗没在计时（没见过重置时刻 · 重置时刻已过）的，用那个号发一句最短的话（与 quota-warm 同一处发法），同一个号 15 分钟内只发一次；不收的记一句日志。不交 ⇒ 不开。
 
@@ -179,7 +179,8 @@ fn decide(ctx) { … }
 - `switch_cost(sess, id, now)` · `write_extra(sess)`：换到 `id` 当场要重写的缓存（缓存期内回去只补写新长的）· 写缓存比读缓存多几倍；
 - `usable(free, pace, tpp, minutes)`：本会话在一份额度作废前用得掉多少；`pace_bands(spread)`：用速的几档（量不到起伏只一档，否则 μ、μ ± √3σ）；
 - `refills(r5, left7, wk, exp, segs5, dflt, clock, now, horizon)`：视野里每次 5 小时重置后再来的那几份；
-- `project(amt, st, ex, who, wk, late, oev, o)`：往后推演一种走法，回卡住的 ＋ 用掉的周上限卡着的 ＋ 一路换号重写缓存的（参数见 `lib.rhai` 里的注释）；一遍约 600 × 份数次操作，一判有 20 万次的上限，号多时先算推得起几遍。
+- `project(amt, st, ex, who, wk, late, oev, o)`：往后推演一种走法，回卡住的 ＋ 用掉的周上限卡着的 ＋ 一路换号重写缓存的（参数见 `lib.rhai` 里的注释）；推演在后端原生里，一次调用一次操作；
+- `project_raw(amt, st, ex, who, wk, late, oev, o)`：参数同 `project`，不加起来、交原始量 `#{stuck, rewrite, weekly: #{号: tok}, left: [[号, tok, 作废时刻]]}`（卡住发不出的 · 一路换号重写缓存的 · 每个号用掉的周上限卡着的 · 推完还剩的每一份）；不收系数，怎么加权由策略定。
 
 ## 4. 怎么装、怎么试
 

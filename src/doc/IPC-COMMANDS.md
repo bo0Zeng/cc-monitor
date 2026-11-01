@@ -13505,6 +13505,15 @@ client?: string, };
 
 ```ts
 type Launch = "managed" | "tmux" | "direct";
+type OpenWindow = { machine: Origin, sid: Sid, 
+/**
+ * 开终端跑的那一行。
+ */
+line: string, 
+/**
+ * 起在哪个目录（那台展开过的；没有 ⇒ `null`）。
+ */
+cwd: string | null, };
 type Origin = string;
 type SessionItem = { machine: Origin, sid: Sid, };
 type SessionOutcome = { 
@@ -13549,7 +13558,15 @@ lines: Array<string>,
 /**
  * 没成的那几段（都成了 ⇒ 空串）。
  */
-copyDetail: string, };
+copyDetail: string, 
+/**
+ * 起那一批里落在窗口里的那几项（照原序；别的批 ⇒ 空）：开窗是这台电脑上的事，界面照这几行开。
+ */
+windows: Array<OpenWindow>, 
+/**
+ * 撤销交的那几问（撤得回的那一样里做成了的那几项，后端照各自改之前那一格分好；原样交回本机）；撤不回 ⇒ 空。
+ */
+undo: Array<SessionsBatchReq>, };
 type SessionsBatchReq = { op: SessionsOp, 
 /**
  * 那几项（1–64 个，照选中的先后）。
@@ -13559,7 +13576,7 @@ items: Array<SessionItem>,
  * 自报的前端（「哪个前端的会话」那一维，同 `terminal-end`）。
  */
 client?: string, };
-type SessionsOp = "stop" | { "start": { run: Launch, } };
+type SessionsOp = "stop" | { "start": { run: Launch, } } | "hide" | "unhide" | "clear_hide" | "pin" | "unpin";
 type Sid = string;
 ```
 

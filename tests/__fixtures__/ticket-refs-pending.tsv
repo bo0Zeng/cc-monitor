@@ -264,7 +264,7 @@ tests/frontend/ui/settings/remote-section.vitest.ts	2
 tests/frontend/ui/skeleton-ledger-huge.vitest.ts	1
 tests/frontend/ui/tab-bar-perf.vitest.ts	1
 tests/frontend/ui/tab-batch-copy.vitest.ts	1
-tests/frontend/ui/tabs-split-graph.vitest.ts	3
+tests/frontend/ui/tabs-split-graph.vitest.ts	2
 tests/frontend/ui/tabs.vitest.ts	31
 tests/frontend/ui/terminal-page-slot.vitest.ts	1
 tests/frontend/ui/topbar-icons.vitest.ts	1
