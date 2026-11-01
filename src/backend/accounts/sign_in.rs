@@ -13,6 +13,7 @@
 use crate::agents::SignInFace;
 use crate::common::said::Said;
 use crate::platform::child::{Child, Conversation, Heard};
+use copy_core::{Discard, Why};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Mutex};
@@ -228,13 +229,15 @@ fn listen(
                         if let Some(j) = jobs().get_mut(job) {
                             j.url = url.clone();
                         }
-                        let _ = link_tx.send(Ok(url));
+                        // `login-start` 等链接已过期限放手 ⇒ 这条链接没人收（作业已收）
+                        link_tx.send(Ok(url)).discard(Why::PeerGone);
                         continue;
                     }
                 }
                 if (f.said_bad_paste)(&l) {
                     if let Some(w) = jobs().get_mut(job).and_then(|j| j.waiter.take()) {
-                        let _ = w.send(Waited::BadPaste);
+                        // `login-finish` 等结局已过期限、回了「暂无答复」⇒ 没人收（作业还在，可再粘）
+                        w.send(Waited::BadPaste).discard(Why::PeerGone);
                     }
                 }
                 let l = scrubbed(
@@ -252,7 +255,8 @@ fn listen(
     let still = jobs().remove(job);
     // 没给出链接就退了 ⇒ 告诉还在等链接的 `start`（它照实回「起不成」）。
     if !linked {
-        let _ = link_tx.send(Err(tail));
+        // `login-start` 等链接已过期限、自己回了「链接没有出现」⇒ 没人收
+        link_tx.send(Err(tail)).discard(Why::PeerGone);
         return;
     }
     // 作业已经不在（取消 · 替掉 · 连接断）⇒ 不出声。
@@ -269,7 +273,8 @@ fn listen(
     // 先报「结束了」，再答还在等的 `finish`：`finish` 一返回，这份作业的结局就已经报出去了（不让两条线程比快慢）。
     on_end(job, &ended);
     if let Some(w) = j.waiter {
-        let _ = w.send(Waited::SignInEnd(ended));
+        // `login-finish` 等结局已过期限放手；结束回调在它之前已经推给发起它的连接
+        w.send(Waited::SignInEnd(ended)).discard(Why::PeerGone);
     }
 }
 
