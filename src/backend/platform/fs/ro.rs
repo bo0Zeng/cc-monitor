@@ -7,6 +7,7 @@
 
 use copy_core::copy_text;
 use copy_core::said::Said;
+use relay_route_core::{Cap, Over};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -104,46 +105,48 @@ impl Ro {
         }
     }
 
-    /// 安全读取：先确认是常规文件（挡掉 FIFO / 字符设备 / socket —— 它们的 `metadata().len()` 报 0 会骗过大小检查，而无上限的读能把内存吃爆，
-    /// symlink→/dev/zero 几秒涨十几 GB），再 `take(cap)` 限量读。symlink 会被 `metadata()`（跟随）解析到目标类型：目标是常规文件才放行、是设备就拒。
-    pub fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, Said> {
-        // 读不了的那一句只是原因（原因词 · 不是普通文件 · 超出上限）；系统原话进 `raw`（复制详情）。
-        let io = |e: std::io::Error| Said::with_raw(copy_core::io_reason(e.kind()), e);
-        let meta = std::fs::metadata(path).map_err(io)?;
-        if !meta.is_file() {
-            return Err(copy_text("reason.fs.notRegular", &[]).into());
-        }
-        // 先看长度再决定读不读：拒绝一个巨型文件之前不先读 `cap + 1` 进内存。
-        // 早退不取代下面那道 `take(cap + 1)`：`metadata` 与 `read_to_end` 之间文件还会长（TOCTOU），两道一起才完整。
-        if meta.len() > cap {
-            return Err(copy_text(
-                "beFs.readRegularCapped.tooBigSized",
-                &[
-                    ("cap", &cap.to_string()),
-                    ("size", &(meta.len()).to_string()),
-                ],
-            )
-            .into());
-        }
-        let f = std::fs::File::open(path).map_err(io)?;
-        let mut buf = Vec::new();
-        // take(cap+1)：读到 cap+1 就知道超限了，不必读满整个（可能无界的）文件
-        f.take(cap + 1).read_to_end(&mut buf).map_err(io)?;
-        if buf.len() as u64 > cap {
-            return Err(copy_text(
-                "beFs.readRegularCapped.tooBig",
-                &[("cap", &cap.to_string())],
-            )
-            .into());
-        }
-        Ok(buf)
+    /// 带上限地整份读（跟链接）：只认普通文件（挡掉 FIFO / 字符设备 / socket —— 它们的 `metadata().len()` 报 0 会骗过大小检查，
+    /// symlink→/dev/zero 几秒涨十几 GB）；比 `cap.bytes` 多一个字节 ⇒ 回超出上限那一句，一个字节不交出去。
+    /// 链接照 `metadata()` 解析到目标：目标是普通文件才读。
+    ///
+    /// 整份读越界时交得出的只有「不给」：截一段交回去没有一格能带「截了」，就成了静默截断。`cap.over` 那一档在越界之后由调用方照办
+    /// （硬报错 · 拒收 · 降级 · 带身份报告 …）；[`Over::SkipAndSay`] 那一档在这里 `warn!` 带上是哪一份，调用方当没有即可。
+    /// 要截断 · 分块 · 只截可搜性的读不走整份读。
+    pub fn read_capped(p: impl AsRef<Path>, cap: Cap) -> Result<Vec<u8>, Said> {
+        read_whole(p.as_ref(), cap, Link::Follow)
     }
 
-    /// 安全读一份 JSON（同 [`Ro::read_regular_capped`]，剥掉 UTF-8 BOM 再解）：读不了 ⇒ 那一句是原因；解不开 ⇒「内容无法解析」，解析器原话进 `raw`。
+    /// 带上限、不跟链接地整份读：最后一段是链接 ⇒ 不读（回「不是普通文件」）；别的同 [`Ro::read_capped`]。
+    pub fn read_capped_nofollow(p: impl AsRef<Path>, cap: Cap) -> Result<Vec<u8>, Said> {
+        read_whole(p.as_ref(), cap, Link::Refuse)
+    }
+
+    /// 带上限地读成字符串（同 [`Ro::read_capped`]）：不是 UTF-8 ⇒ 读不成，解码原话进 `raw`。
+    pub fn read_string_capped(p: impl AsRef<Path>, cap: Cap) -> Result<String, Said> {
+        String::from_utf8(Self::read_capped(p, cap)?)
+            .map_err(|e| Said::with_raw(copy_core::io_reason(io::ErrorKind::InvalidData), e))
+    }
+
+    /// 带上限地读一份 JSON（同 [`Ro::read_capped`]，剥掉 UTF-8 BOM 再解）：读不了 ⇒ 那一句是原因；解不开 ⇒「内容无法解析」，解析器原话进 `raw`。
+    pub fn read_json(p: impl AsRef<Path>, cap: Cap) -> Result<serde_json::Value, Said> {
+        parse_json(&Self::read_capped(p, cap)?)
+    }
+
+    /// 同 [`Ro::read_capped`]，上限是裸字节数（超了即拒收）。
+    pub fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, Said> {
+        read_whole(
+            path,
+            Cap {
+                bytes: cap,
+                over: Over::Reject,
+            },
+            Link::Follow,
+        )
+    }
+
+    /// 同 [`Ro::read_json`]，上限是裸字节数（超了即拒收）。
     pub fn read_json_capped(path: &Path, cap: u64) -> Result<serde_json::Value, Said> {
-        let b = Self::read_regular_capped(path, cap)?;
-        serde_json::from_slice(b.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(&b))
-            .map_err(|e| Said::with_raw(copy_text("reason.content.unparsable", &[]), e))
+        parse_json(&Self::read_regular_capped(path, cap)?)
     }
 
     /// 文件 mtime 的毫秒时间戳；任何读取失败都退化成 `0`（排序时沉到最旧：读失败与「1970 年的文件」混成同一个值，要改得连同调用点的排序语义一起想）。
@@ -222,6 +225,66 @@ impl Ro {
             None
         }
     }
+}
+
+/// 整份读遇到最后一段是链接时：跟到目标 · 不读。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Link {
+    Follow,
+    Refuse,
+}
+
+/// 带上限的整份读只这一份实现。读不了的那一句只是原因（原因词 · 不是普通文件 · 超出上限）；系统原话进 `raw`（复制详情）。
+fn read_whole(path: &Path, cap: Cap, link: Link) -> Result<Vec<u8>, Said> {
+    let io = |e: io::Error| Said::with_raw(copy_core::io_reason(e.kind()), e);
+    // 先看类型再打开：打开一个 FIFO 会卡住等写端。
+    let meta = match link {
+        Link::Follow => std::fs::metadata(path),
+        Link::Refuse => std::fs::symlink_metadata(path),
+    }
+    .map_err(io)?;
+    if !meta.is_file() {
+        return Err(copy_text("reason.fs.notRegular", &[]).into());
+    }
+    // 先看长度再决定读不读：拒一份巨型文件之前不先读 `cap + 1` 进内存。
+    // 早退不取代下面那道 `take(cap + 1)`：看长度与读之间文件还会长，两道一起才完整。
+    if meta.len() > cap.bytes {
+        return Err(over_cap(path, cap, Some(meta.len())));
+    }
+    let f = match link {
+        Link::Follow => std::fs::File::open(path),
+        Link::Refuse => nofollow_read().open(path),
+    }
+    .map_err(io)?;
+    let mut buf = Vec::new();
+    // 读到 cap + 1 就知道超了，不读满整份（可能无界）。
+    f.take(cap.bytes + 1).read_to_end(&mut buf).map_err(io)?;
+    if buf.len() as u64 > cap.bytes {
+        return Err(over_cap(path, cap, None));
+    }
+    Ok(buf)
+}
+
+/// 超出上限那一句（量得出实际大小就带上）；[`Over::SkipAndSay`] 那一档在这里 `warn!` 是哪一份。
+fn over_cap(path: &Path, cap: Cap, size: Option<u64>) -> Said {
+    if cap.over == Over::SkipAndSay {
+        tracing::warn!(path = %path.display(), cap = cap.bytes, ?size, "超出读上限，跳过");
+    }
+    let c = cap.bytes.to_string();
+    match size {
+        Some(n) => copy_text(
+            "beFs.readRegularCapped.tooBigSized",
+            &[("cap", &c), ("size", &n.to_string())],
+        ),
+        None => copy_text("beFs.readRegularCapped.tooBig", &[("cap", &c)]),
+    }
+    .into()
+}
+
+/// 剥掉 UTF-8 BOM 再解；解不开 ⇒「内容无法解析」，解析器原话进 `raw`。
+fn parse_json(b: &[u8]) -> Result<serde_json::Value, Said> {
+    serde_json::from_slice(b.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(b))
+        .map_err(|e| Said::with_raw(copy_text("reason.content.unparsable", &[]), e))
 }
 
 /// 只读、不跟链接的开法（最后一段是链接 ⇒ 失败）。
