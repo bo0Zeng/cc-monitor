@@ -3968,7 +3968,7 @@ sealed interface Changed {
     }
     @Suppress("UNCHECKED_CAST")
     data class Empty(
-        val body: EmptyFace? = null,
+        val body: FleetLines? = null,
     ) : Changed, Ordered {
         override val topic: String get() = "empty"
         override var wireOrder: IntArray? = null
@@ -4101,9 +4101,9 @@ sealed interface Changed {
                 Variant("empty", Changed.Empty::class.java, obj(
                         listOf(
                         Field("topic", { tag("empty") }, optional = false, nullable = false),
-                        Field("body", { opt(EmptyFace.ADAPTER) }, optional = true, nullable = true),
+                        Field("body", { opt(FleetLines.ADAPTER) }, optional = true, nullable = true),
                         ),
-                        { a -> Changed.Empty(a[1] as EmptyFace?) },
+                        { a -> Changed.Empty(a[1] as FleetLines?) },
                         { v -> arrayOf("empty", v.body) },
                     )),
                 Variant("session_hidden", Changed.SessionHidden::class.java, obj(
@@ -5636,25 +5636,6 @@ data class ElemKey(
             ),
             { a -> ElemKey(a[0] as List<String>, a[1] as String) },
             { v -> arrayOf(v.fields, v.equals) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class EmptyFace(
-    val line: String,
-    val hint: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<EmptyFace> = obj(
-            listOf(
-            Field("line", { Str }, optional = false, nullable = false),
-            Field("hint", { Str }, optional = false, nullable = false),
-            ),
-            { a -> EmptyFace(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.line, v.hint) },
         )
     }
 }
@@ -7335,6 +7316,27 @@ enum class FirstRunStepId(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<FirstRunStepId> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class FleetLines(
+    val line: String,
+    val hint: String,
+    val count: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<FleetLines> = obj(
+            listOf(
+            Field("line", { Str }, optional = false, nullable = false),
+            Field("hint", { Str }, optional = false, nullable = false),
+            Field("count", { Str }, optional = false, nullable = false),
+            ),
+            { a -> FleetLines(a[0] as String, a[1] as String, a[2] as String) },
+            { v -> arrayOf(v.line, v.hint, v.count) },
+        )
     }
 }
 
@@ -13122,7 +13124,7 @@ data class MachineMenuReq(
 @Suppress("UNCHECKED_CAST")
 data class MachineRead(
     val machines: Map<String, MachineState>,
-    val empty: EmptyFace,
+    val empty: FleetLines,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13130,9 +13132,9 @@ data class MachineRead(
         val ADAPTER: JsonAdapter<MachineRead> = obj(
             listOf(
             Field("machines", { dict(MachineState.ADAPTER) }, optional = false, nullable = false),
-            Field("empty", { EmptyFace.ADAPTER }, optional = false, nullable = false),
+            Field("empty", { FleetLines.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> MachineRead(a[0] as Map<String, MachineState>, a[1] as EmptyFace) },
+            { a -> MachineRead(a[0] as Map<String, MachineState>, a[1] as FleetLines) },
             { v -> arrayOf(v.machines, v.empty) },
         )
     }

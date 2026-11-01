@@ -2,7 +2,7 @@
 //! 这里只接两根线 —— 下面那条 SSH（[`PhoneLink`]：拨号核心在这台手机上开的链路，拨号请求由 Kotlin 交那一份）· 往 Kotlin 交的事（一个回调，走消息）。
 //!
 //! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通 ＋ 那台的状态成品，JSON：[`Facts`]；SSH 那层跟着它换连接）·
-//! `empty`（首屏那一句，跟着 `state` 交：手上每台合的，[`empty_of`]）· `book`（这台的会话簿整份）· `live`（某会话某运行此刻整份的活卡）—— 两样都照端核心那一份折法折好（[`Folds`]），Kotlin 不折 ·
+//! `empty`（首屏那一句，跟着 `state` 交：手上每台合的，[`fleet_of`]）· `book`（这台的会话簿整份）· `live`（某会话某运行此刻整份的活卡）—— 两样都照端核心那一份折法折好（[`Folds`]），Kotlin 不折 ·
 //! `frame`（流上别的一帧，按类型写一行；`line` 帧里解不开的那条记录换成认不出那一条）·
 //! `watch_from`（JSON 数组）· `ssh`（SSH 够没够着那一台：`true` / `false`，与流通不通分开；SSH 那层跟它走）· `reply`（一问一答的结局，JSON，带 `call` 编号）·
 //! `moved`（分块传走到哪，`transfer.rs`）。
@@ -263,7 +263,7 @@ fn live_line(c: &LiveCards) -> String {
 pub struct Facts {
     /// 这台的编号（[`open`] 发的那个）：成品里的连接按这台交的拨号请求（[`ssh`]）在本进程池里找。
     id: i64,
-    /// 这台叫什么（首屏那一句里点名用，[`empty_of`]）。
+    /// 这台叫什么（首屏那一句里点名用，[`fleet_of`]）。
     name: String,
     entry: Entry,
     last: Option<State>,
@@ -351,7 +351,7 @@ fn facts() -> &'static Mutex<HashMap<i64, Arc<Mutex<Facts>>>> {
     F.get_or_init(Default::default)
 }
 
-/// 在编号 `h` 那台手上的事实里收一件 ⇒ 交 Kotlin 的那两行：`state`（那台的）· `empty`（首屏那一句，[`empty_line`]）；那台不在 ⇒ 空。
+/// 在编号 `h` 那台手上的事实里收一件 ⇒ 交 Kotlin 的那两行：`state`（那台的）· `empty`（首屏那一句，[`fleet_line`]）；那台不在 ⇒ 空。
 pub(crate) fn note(h: i64, f: impl FnOnce(&mut Facts) -> String) -> Vec<(&'static str, String)> {
     let Some(got) = facts()
         .lock()
@@ -362,23 +362,23 @@ pub(crate) fn note(h: i64, f: impl FnOnce(&mut Facts) -> String) -> Vec<(&'stati
         return Vec::new();
     };
     let line = f(&mut got.lock().unwrap_or_else(|e| e.into_inner()));
-    vec![("state", line), ("empty", empty_line())]
+    vec![("state", line), ("empty", fleet_line())]
 }
 
-/// 首屏那一句（[`cmd_wire::machine::EmptyFace`]）：这台手机看着的每台，照打开的先后，同桌面那一份合（`deploy::machine::empty`）。
+/// 各台合一次写好的那几句（[`cmd_wire::machine::FleetLines`]；手机只摆首屏那一句）：这台手机看着的每台，照打开的先后，同桌面那一份合（`deploy::machine::fleet`）。
 /// 手机不自己装后端、没有停用那一说 ⇒ 每台照「连着这台」读成品。
-pub fn empty_of(all: &[&Facts]) -> cmd_wire::machine::EmptyFace {
+pub fn fleet_of(all: &[&Facts]) -> cmd_wire::machine::FleetLines {
     let rows: Vec<(cmd_wire::machine::MachineState, bool)> = all
         .iter()
         .map(|f| (product(&f.entry, &f.name, true, false), f.entry.listed()))
         .collect();
     let rows: Vec<(&cmd_wire::machine::MachineState, bool)> =
         rows.iter().map(|(m, l)| (m, *l)).collect();
-    deploy::machine::empty(&rows)
+    deploy::machine::fleet(&rows)
 }
 
-/// [`empty_of`] 照此刻手上的每台写成一行（交 Kotlin 的 `empty`）。
-fn empty_line() -> String {
+/// [`fleet_of`] 照此刻手上的每台写成一行（交 Kotlin 的 `empty`）。
+fn fleet_line() -> String {
     let mut all: Vec<(i64, Arc<Mutex<Facts>>)> = facts()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -391,7 +391,7 @@ fn empty_line() -> String {
         .map(|(_, f)| f.lock().unwrap_or_else(|e| e.into_inner()))
         .collect();
     let refs: Vec<&Facts> = held.iter().map(|g| &**g).collect();
-    serde_json::to_string(&empty_of(&refs)).unwrap_or_default()
+    serde_json::to_string(&fleet_of(&refs)).unwrap_or_default()
 }
 
 /// 看一台（在当前运行时上起它的循环）。`mine` = 手上这一版的身份（版本门的对照物）。回编号。
@@ -1223,7 +1223,7 @@ mod tests {
         assert_eq!(stranger.detail, None, "没交过拨号请求的那台带上了连接");
     }
 
-    /// 首屏那一句：手上看着的每台照桌面那一份合（`deploy::machine::empty`）—— 一台报完、一台还在连 ⇒ 不说「无会话」；
+    /// 首屏那一句：手上看着的每台照桌面那一份合（`deploy::machine::fleet`）—— 一台报完、一台还在连 ⇒ 不说「无会话」；
     /// 都报完了才说；报完了的那台又在连 ⇒ 作废。
     #[test]
     fn the_empty_line_says_no_sessions_only_once_every_machine_has_listed() {
@@ -1237,20 +1237,20 @@ mod tests {
         a.round(up(), "a");
         b.round(State::Connecting, "b");
         a.listed();
-        let face = empty_of(&[&a, &b]);
+        let face = fleet_of(&[&a, &b]);
         assert_ne!(face.line, none, "b 还在连就说了无会话");
         assert!(face.hint.contains('b'), "没说 b 还在连：{}", face.hint);
         b.round(up(), "b");
         assert_ne!(
-            empty_of(&[&a, &b]).line,
+            fleet_of(&[&a, &b]).line,
             none,
             "b 连上了、还没报完就说了无会话"
         );
         b.listed();
-        assert_eq!(empty_of(&[&a, &b]).line, none);
+        assert_eq!(fleet_of(&[&a, &b]).line, none);
         a.round(State::Connecting, "a");
         assert_ne!(
-            empty_of(&[&a, &b]).line,
+            fleet_of(&[&a, &b]).line,
             none,
             "a 又在连，报完的那一次没作废"
         );

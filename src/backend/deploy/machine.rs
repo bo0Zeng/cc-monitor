@@ -5,7 +5,7 @@
 use cmd_wire::attach::Relation;
 use cmd_wire::cells::Tone;
 use cmd_wire::machine::{
-    Blocker, EmptyFace, FixButton, MachineFix, MachineState, MachineStateKind as K,
+    Blocker, FixButton, FleetLines, MachineFix, MachineState, MachineStateKind as K,
     MachineStripLine, Round, RoundProblem, Stage, Why,
 };
 use copy_core::copy_text;
@@ -128,10 +128,46 @@ impl Entry {
     }
 }
 
-/// **首屏那一句**（[`EmptyFace`]）：各台的成品 ＋ 报完了没有，合一句。停用的不算；报完了的那几台「无会话」；
+/// **各台合一次写好的那几句**（[`FleetLines`]）：各台的成品 ＋ 报完了没有，合首屏那一句与机器列表计数那一句
+/// （传进来的就是全部那几台：机器表 ＋ 本机）。
+pub fn fleet(rows: &[(&MachineState, bool)]) -> FleetLines {
+    let (line, hint) = first_screen(rows);
+    FleetLines {
+        line,
+        hint,
+        count: count(rows),
+    }
+}
+
+/// 机器列表页头那一句：`机器 N`（每台都数，停用的也数）· `离线 a`（成品的 `offline`）· `要更新 b`（那一态）；
+/// 停用的不数离线与要更新；是 0 的那一段不出。
+fn count(rows: &[(&MachineState, bool)]) -> String {
+    let live = || rows.iter().filter(|(m, _)| m.state != K::Disabled);
+    let off = live().filter(|(m, _)| m.offline).count();
+    let upd = live().filter(|(m, _)| m.state == K::NeedsUpdate).count();
+    let mut parts = vec![copy_text(
+        "machineList.count.all",
+        &[("n", &rows.len().to_string())],
+    )];
+    if off > 0 {
+        parts.push(copy_text(
+            "machineList.count.off",
+            &[("a", &off.to_string())],
+        ));
+    }
+    if upd > 0 {
+        parts.push(copy_text(
+            "machineList.count.update",
+            &[("b", &upd.to_string())],
+        ));
+    }
+    parts.join(&copy_text("kit.text.sep", &[]))
+}
+
+/// 首屏那一句（大字 · 下面那一行）：停用的不算；报完了的那几台「无会话」；
 /// 在连 · 在装 · 在更新 · 还没结论 · 连上了还没报完 ⇒ 还在连；别的（没连上 · 指纹不对 · 要更新 · 做不了）⇒ 名字 ＋ 那台的词、会话未计入。
 /// 都报完了才说「无会话」。
-pub fn empty(rows: &[(&MachineState, bool)]) -> EmptyFace {
+fn first_screen(rows: &[(&MachineState, bool)]) -> (String, String) {
     let mut listed: Vec<&str> = Vec::new();
     let mut pending: Vec<&str> = Vec::new();
     let mut out: Vec<String> = Vec::new();
@@ -149,10 +185,10 @@ pub fn empty(rows: &[(&MachineState, bool)]) -> EmptyFace {
         }
     }
     if pending.is_empty() && out.is_empty() {
-        return EmptyFace {
-            line: copy_text("beEmpty.line.none", &[]),
-            hint: copy_text("beEmpty.hint.none", &[]),
-        };
+        return (
+            copy_text("beEmpty.line.none", &[]),
+            copy_text("beEmpty.hint.none", &[]),
+        );
     }
     let sep = copy_text("beEmpty.list.sep", &[]);
     let line = if listed.is_empty() {
@@ -170,10 +206,7 @@ pub fn empty(rows: &[(&MachineState, bool)]) -> EmptyFace {
     if !out.is_empty() {
         hint.push(copy_text("beEmpty.hint.out", &[("names", &out.join(&sep))]));
     }
-    EmptyFace {
-        line,
-        hint: hint.join(&copy_text("kit.text.sep", &[])),
-    }
+    (line, hint.join(&copy_text("kit.text.sep", &[])))
 }
 
 /// 读一台的成品。`machine` 是给人看的名字；`enabled = false` ⇒ 「连接这台」关着（停用）；

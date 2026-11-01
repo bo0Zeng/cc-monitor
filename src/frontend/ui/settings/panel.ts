@@ -287,7 +287,11 @@ export class SettingsPanel {
     document.body.appendChild(this.el);
     if (this.windowMode) this.installWindowLifecycle();
     // 那台的状态一变，壳推一帧：点 · 词 · 问题行原位换（不轮询）。
-    onMachineState((origin, m) => this.paintMachine(origin, m));
+    // 机器列表页头那一句（几台 · 离线 · 要更新）由本机后端合好随它推，照摆。
+    onMachineState(
+      (origin, m) => this.paintMachine(origin, m),
+      (f) => this.remoteSection?.setFleet(f),
+    );
     onLocalBackend((l) => this.paintLocalBackend(l));
     // 新建的窗：壳把目的地放在初始化脚本里。
     this.goTo(parseSettingsTarget((window as { __CCM_SETTINGS_TARGET__?: unknown }).__CCM_SETTINGS_TARGET__));
