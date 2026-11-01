@@ -65,6 +65,7 @@ const SUPPORT: &[&str] = &[
     "tests/backend/observe/search_query_support.rs", // 全文搜索几份判据共用：照选项词造选项 · 逐行写进缓冲
     "tests/backend/stream/remote_ask_peers.rs", // 跨台合并那几条判据共用的「那几台」替身（问常驻 · 记命令行与 stdin）
     "tests/backend/observe/accounts_list_support.rs", // 账号清单成品几份判据共用：照类型造号行与清单
+    "tests/backend/platform/fs/own_support.rs", // 判据用的几种 `Own` 造法 · `DiagFile` 的两样（平台层的包与上层测试档经 `test-support` 共用）
     "tests/backend/common/streamed_read_support.rs", // 整份读按块几份判据共用：合成大记录 · 手里最多多少的上界
     "tests/backend/files/index_testing.rs",
     "tests/backend/alloc_probe.rs", // 线程级内存量具（只在测试档编，挂在后端库根）
@@ -210,14 +211,14 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/control/files_write_tests.rs", needle: "control::files_write::tests::own_home_child_entry_point" },
     ),
     (
-        "tests/backend/platform/child_tests.rs",
+        "tests/backend/platform/cross_tests.rs",
         "internal_families_inner",
-        Trigger::Filter { by: "tests/backend/platform/child_tests.rs", needle: "platform::child::tests::internal_families_inner" },
+        Trigger::Filter { by: "tests/backend/platform/cross_tests.rs", needle: "platform_cross_tests::child::internal_families_inner" },
     ),
     (
         "tests/backend/platform/child_tests.rs",
         "detach_helper_inner",
-        Trigger::Filter { by: "tests/backend/platform/child_tests.rs", needle: "platform::child::tests::detach_helper_inner" },
+        Trigger::Filter { by: "tests/backend/platform/child_tests.rs", needle: "child::tests::detach_helper_inner" },
     ),
     (
         "tests/backend/control/exit_policy_tests.rs",
@@ -247,7 +248,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/platform/freed_memory_tests.rs",
         "child_gives_freed_pages_back",
-        Trigger::Filter { by: "tests/backend/platform/freed_memory_tests.rs", needle: "platform::proc::freed_memory_tests::child_gives_freed_pages_back" },
+        Trigger::Filter { by: "tests/backend/platform/freed_memory_tests.rs", needle: "proc::freed_memory_tests::child_gives_freed_pages_back" },
     ),
     (
         "tests/backend/plugin_walk_fixture.rs",
@@ -282,7 +283,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/platform/shell/dialect_tests.rs",
         "on_path_child_reports_what_it_sees",
-        Trigger::Filter { by: "tests/backend/platform/shell/dialect_tests.rs", needle: "platform::shell::dialect::tests::on_path_child_reports_what_it_sees" },
+        Trigger::Filter { by: "tests/backend/platform/shell/dialect_tests.rs", needle: "shell::dialect::tests::on_path_child_reports_what_it_sees" },
     ),
     (
         "tests/backend/stderr_log_tests.rs",

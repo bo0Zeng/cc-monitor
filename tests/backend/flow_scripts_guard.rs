@@ -1202,7 +1202,7 @@ mod tests {
             &d,
             "bin/cargo",
             &format!(
-                "#!/bin/sh\n{}case \"$1\" in test|clippy) echo \"$HOME $TMUX_TMPDIR $TMPDIR|${{CCM_BUILD_REMOTE_OK-}}\" >> '{}' ;; esac\n[ \"$1\" = test ] && echo 'test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s'\nexit 0\n",
+                "#!/bin/sh\n{}case \"$1\" in test|clippy) echo \"$HOME $TMUX_TMPDIR $TMPDIR|${{CCM_BUILD_REMOTE_OK-}}\" >> '{}' ;; esac\n[ \"$1\" = test ] && echo 'test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s'\n[ \"$1\" = metadata ] && echo '{{\"packages\":[{{\"name\":\"cc-monitor-backend\"}}]}}'\nexit 0\n",
                 rec("cargo"),
                 d.join("dirs").display()
             ),
@@ -1270,7 +1270,7 @@ mod tests {
     }
 
     /// ★ 全机编译锁（锁脚本在仓外，路径照 `CCM_BUILD_LOCK`）：给了 ⇒ 编译那几段（后端 · clippy · 壳 · creds-harden 的 cargo，
-    /// 手机那一段的 gradle）各经它起一次，cargo fmt · tsc · vitest 不经它（不编译的不占锁）；锁脚本看到的是真家（它按 HOME 找锁文件），
+    /// 手机那一段的 gradle）各经它起一次，cargo fmt · cargo metadata · tsc · vitest 不经它（不编译的不占锁）；锁脚本看到的是真家（它按 HOME 找锁文件），
     /// 不是沙箱家。没给 ⇒ 不套锁、照跑。
     #[test]
     fn quick_check_holds_the_build_lock_only_around_compiling_steps() {
@@ -1286,6 +1286,8 @@ mod tests {
                 "cargo clippy held=1",
                 "cargo fmt held=0",
                 "cargo fmt held=0",
+                // 快检 fmt-backend 现取后端那棵的包名单（`cargo metadata --no-deps`）：不编译、不占锁。
+                "cargo metadata held=0",
                 "cargo test held=1",
                 "cargo test held=1",
                 "cargo test held=1",
@@ -1333,7 +1335,7 @@ mod tests {
         let said = run_fake_quick(&d, &[], None);
         let calls = std::fs::read_to_string(d.join("calls")).unwrap_or_default();
         let _ = std::fs::remove_dir_all(&d);
-        assert_eq!(calls.lines().count(), 9, "{said}");
+        assert_eq!(calls.lines().count(), 10, "{said}");
         assert!(
             calls.lines().all(|l| l.ends_with("held=0")),
             "{calls}\n{said}"
