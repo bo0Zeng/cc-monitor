@@ -1,7 +1,17 @@
 //! 按文件现在的内容算改法：合好的整份（别的设置原样保留、排版不动）＋ 行号 ＋ diff。只算不写。
 
 use super::*;
+use cmd_wire::record::LineDiffKind::{self, Add, Ctx, Del};
 use serde_json::{json, Value};
+
+fn row(kind: LineDiffKind, text: &str, old_no: Option<u32>, new_no: Option<u32>) -> LineDiffRow {
+    LineDiffRow {
+        kind,
+        text: text.into(),
+        old_no,
+        new_no,
+    }
+}
 
 fn parsed(s: &str) -> Value {
     serde_json::from_str(s).expect("合好的整份要是合法 JSON")
@@ -20,9 +30,9 @@ fn env_里已有别的键_插进去_其余一字不动() {
     assert_eq!(
         p.diff,
         vec![
-            DiffLine::Same(3, "  \"env\": {".into()),
-            DiffLine::Add("    \"K\": \"v\",".into()),
-            DiffLine::Same(4, "    \"A\": \"1\"".into()),
+            row(Ctx, "  \"env\": {", Some(3), Some(3)),
+            row(Add, "    \"K\": \"v\",", None, Some(4)),
+            row(Ctx, "    \"A\": \"1\"", Some(4), Some(5)),
         ]
     );
     assert_eq!(p.at_line, 3, "在第 3 行后面加");
@@ -36,12 +46,40 @@ fn 键已在_换掉那一行的值() {
     assert_eq!(
         p.diff,
         vec![
-            DiffLine::Same(2, "  \"env\": {".into()),
-            DiffLine::Del(3, "    \"K\": \"old\",".into()),
-            DiffLine::Add("    \"K\": \"new\",".into()),
-            DiffLine::Same(4, "    \"A\": \"1\"".into()),
+            row(Ctx, "  \"env\": {", Some(2), Some(2)),
+            row(Del, "    \"K\": \"old\",", Some(3), None),
+            row(Add, "    \"K\": \"new\",", None, Some(3)),
+            row(Ctx, "    \"A\": \"1\"", Some(4), Some(4)),
         ]
     );
+    assert_eq!(p.at_line, 2);
+}
+
+/// 行尾风格不算差别（`\r\n` · `\r` 当 `\n`）：只出真改了的那一删一增，行号照断好的行数。
+#[test]
+fn 两份逐行比_行尾风格不算差别() {
+    let p = plan_of("a\r\nb\r\n", "a\nc\n".to_string());
+    assert_eq!(
+        p.diff,
+        vec![
+            row(Ctx, "a", Some(1), Some(1)),
+            row(Del, "b", Some(2), None),
+            row(Add, "c", None, Some(2)),
+        ]
+    );
+    assert_eq!(p.at_line, 1);
+    assert_eq!(p.notice, None);
+    let p = plan_of("x\ry", "x\ny\nz".to_string());
+    assert_eq!(p.diff.iter().filter(|r| r.kind == Del).count(), 0);
+}
+
+/// 改动隔得远 ⇒ 只留改动那几行 ＋ 上下各一行原文，中间没变的不带。
+#[test]
+fn 改动之外只带上下各一行原文() {
+    let old = "1\n2\n3\n4\n5\n6\n7\n";
+    let p = plan_of(old, "1\n2\nX\n4\n5\n6\n7\n".to_string());
+    let texts: Vec<&str> = p.diff.iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(texts, vec!["2", "3", "X", "4"]);
 }
 
 #[test]

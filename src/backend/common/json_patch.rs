@@ -3,25 +3,22 @@
 //! 在原文上就地插 / 换，不重排：别的设置、键序、缩进、注释以外的一切原样保留（解析再整份写回会按字母重排键）。
 //! 合好之后再解析一遍核对：不是合法 JSON ⇒ 不给改法（`None`），调用方只说「这份文件读不懂」。
 
+use crate::common::cells::Words;
+use crate::common::line_diff;
+use cmd_wire::record::{LineDiffKind, LineDiffRow};
 use serde_json::Value;
-
-/// diff 的一行：原样（带现在的行号）· 删（带行号）· 加。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DiffLine {
-    Same(usize, String),
-    Del(usize, String),
-    Add(String),
-}
 
 /// 一份改法。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Plan {
     /// 合好的整份。
     pub whole: String,
-    /// 改动那几行，上下各带一行原文。
-    pub diff: Vec<DiffLine>,
+    /// 改动那几行，上下各带一行原文（[`line_diff::numbered`] 那一形：带真行号，正文不截）。
+    pub diff: Vec<LineDiffRow>,
     /// 改动从哪一行之后开始（1 起；文件开头 ⇒ 0）。
     pub at_line: usize,
+    /// 行数太多、没逐行比的那一句（逐行比了 ⇒ `None`）。
+    pub notice: Option<Words>,
 }
 
 /// 把 `path` 那一格设成 `v`（沿途没有的对象一并建）。
@@ -87,12 +84,7 @@ fn edit(src: &str, path: &[&str], v: &Value, push: bool) -> Option<Plan> {
 /// 核对合好的那份、算 diff。
 fn finish(src: &str, whole: String) -> Option<Plan> {
     serde_json::from_str::<Value>(&whole).ok()?;
-    let (diff, at_line) = line_diff(src, &whole);
-    Some(Plan {
-        whole,
-        diff,
-        at_line,
-    })
+    Some(plan_of(src, whole))
 }
 
 fn nest(path: &[&str], v: Value) -> Value {
@@ -271,67 +263,33 @@ fn skip_value(b: &[u8], i: usize) -> Option<usize> {
     }
 }
 
-/// 两份文本逐行比（[`line_diff`] 对外那一口：几处改动一次合好之后按原文算 diff）。
-pub(crate) fn line_diff_of(old: &str, new: &str) -> (Vec<DiffLine>, usize) {
-    line_diff(old, new)
-}
-
-/// 两份文本逐行比：改动那几行 ＋ 上下各一行原文；以及改动从哪一行之后开始。
-fn line_diff(old: &str, new: &str) -> (Vec<DiffLine>, usize) {
-    let a: Vec<&str> = old.lines().collect();
-    let c: Vec<&str> = new.lines().collect();
-    let (n, m) = (a.len(), c.len());
-    let mut lcs = vec![vec![0usize; m + 1]; n + 1];
-    for i in (0..n).rev() {
-        for j in (0..m).rev() {
-            lcs[i][j] = if a[i] == c[j] {
-                lcs[i + 1][j + 1] + 1
-            } else {
-                lcs[i + 1][j].max(lcs[i][j + 1])
-            };
-        }
-    }
-    let mut ops = Vec::new();
-    let (mut i, mut j) = (0, 0);
-    while i < n || j < m {
-        if i < n && j < m && a[i] == c[j] {
-            ops.push(DiffLine::Same(i + 1, a[i].to_string()));
-            i += 1;
-            j += 1;
-        } else if i < n && (j == m || lcs[i + 1][j] >= lcs[i][j + 1]) {
-            ops.push(DiffLine::Del(i + 1, a[i].to_string()));
-            i += 1;
-        } else {
-            ops.push(DiffLine::Add(c[j].to_string()));
-            j += 1;
-        }
-    }
-    let changed: Vec<usize> = ops
+/// 原文 ⇒ 合好的整份那一份改法：逐行比（[`line_diff::numbered`]）后只留改动那几行 ＋ 上下各一行原文，以及改动从哪一行之后开始。
+/// 几处改动一次合好之后也走这一口（按原文算 diff）。
+pub(crate) fn plan_of(old: &str, whole: String) -> Plan {
+    let (rows, notice) = line_diff::numbered(old, &whole);
+    let changed: Vec<usize> = rows
         .iter()
         .enumerate()
-        .filter(|(_, o)| !matches!(o, DiffLine::Same(..)))
+        .filter(|(_, r)| r.kind != LineDiffKind::Ctx)
         .map(|(k, _)| k)
         .collect();
     let keep = |k: usize| changed.iter().any(|&c| c.abs_diff(k) <= 1);
     let at_line = changed
         .first()
-        .and_then(|&f| {
-            ops[..f].iter().rev().find_map(|o| {
-                if let DiffLine::Same(n, _) | DiffLine::Del(n, _) = o {
-                    Some(*n)
-                } else {
-                    None
-                }
-            })
-        })
-        .unwrap_or(0);
-    let diff = ops
+        .and_then(|&f| rows[..f].iter().rev().find_map(|r| r.old_no))
+        .map_or(0, |n| n as usize);
+    let diff = rows
         .into_iter()
         .enumerate()
         .filter(|(k, _)| keep(*k))
-        .map(|(_, o)| o)
+        .map(|(_, r)| r)
         .collect();
-    (diff, at_line)
+    Plan {
+        whole,
+        diff,
+        at_line,
+        notice,
+    }
 }
 
 #[cfg(test)]
