@@ -93,6 +93,7 @@ pub(crate) fn sweep(
     let Some(d) = own.root().and_then(|r| r.join(DIR).ok()) else {
         return;
     };
+    let records = OnDisk(own.clone());
     let Ok(entries) = Ro::read_dir(d.as_path()) else {
         return;
     };
@@ -101,17 +102,11 @@ pub(crate) fn sweep(
         let Some(sid) = name.to_str().filter(|s| shell_quote_core::session_id_ok(s)) else {
             continue;
         };
-        let Ok(f) = d.join(sid) else {
-            continue;
-        };
-        let alive = Ro::metadata(f.as_path())
-            .ok()
-            .filter(|m| m.len() <= MAX_BYTES)
-            .and_then(|_| Ro::read_to_string(f.as_path()).ok())
-            .and_then(|b| parse(&b))
+        let alive = records
+            .get(sid)
             .is_some_and(|r| crate::dial::terminal_processes::shell_still_there(&r.label, procs));
         if !alive {
-            let _ = own.delete_file(&f);
+            records.forget(sid);
         }
     }
 }

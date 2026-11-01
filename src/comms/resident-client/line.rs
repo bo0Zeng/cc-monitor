@@ -83,15 +83,18 @@ impl<R: AsyncBufRead + Unpin> AsyncRead for Inflate<R> {
         if this.backlog {
             let was_out = this.z.total_out();
             let space = out.remaining();
-            // 空输入：只吐压着的；解不开的错留给下一批真输入去报。
-            let _ = this.z.decompress(
-                &[],
-                out.initialize_unfilled(),
-                flate2::FlushDecompress::None,
-            );
+            // 空输入：只吐压着的。没吐出来（含解不开）⇒ 落到下面照常读网络，解不开的错由那一批真输入报。
+            let spat = this
+                .z
+                .decompress(
+                    &[],
+                    out.initialize_unfilled(),
+                    flate2::FlushDecompress::None,
+                )
+                .is_ok();
             let made = (this.z.total_out() - was_out) as usize;
             out.advance(made);
-            this.backlog = made == space;
+            this.backlog = spat && made == space;
             if made > 0 {
                 return Poll::Ready(Ok(()));
             }

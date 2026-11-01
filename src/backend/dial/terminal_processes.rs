@@ -20,11 +20,14 @@ const MAX_TERMINALS: usize = 16;
 /// 进程链最多几级（父进程表成环 / 读坏了也停得下来）。
 const MAX_CHAIN: usize = 32;
 
-/// 进程表 `start` 一秒几格（同一台上比先后用）：Windows 是 FILETIME（100ns 一格），别处是 Linux `/proc` 的 USER_HZ 滴答。
-#[cfg(windows)]
-pub(crate) const STARTS_PER_SEC: u64 = crate::platform::proc::FILETIME_TICKS_PER_SEC;
-#[cfg(not(windows))]
-pub(crate) const STARTS_PER_SEC: u64 = crate::platform::proc::USER_HZ;
+/// `secs` 秒合进程表 `start` 几格（同一台上比先后用）：Windows 是 FILETIME（100ns 一格），别处是 Linux `/proc` 的 USER_HZ 滴答。
+pub(crate) const fn start_ticks(secs: u64) -> u64 {
+    #[cfg(windows)]
+    let per_sec = crate::platform::proc::FILETIME_TICKS_PER_SEC;
+    #[cfg(not(windows))]
+    let per_sec = crate::platform::proc::USER_HZ;
+    secs * per_sec
+}
 
 /// 本机开的那个终端里，开窗那一刻起的 ssh 最晚比那个 shell 晚起几秒（终端起 shell · 载入 profile · 跑前奏，随后就是那一条 ssh）。
 /// 晚过这么久才起的 ssh 是那条退了之后人在同一个窗口里又敲的，连的可能是别台 ⇒ 不当开的那一条。
@@ -319,7 +322,7 @@ pub(crate) fn opened_chain(
         return OpenedHere::Gone;
     };
     let ssh = |p: &Proc| named(&p.name, crate::platform::SSH_CLIENT_NAMES);
-    let latest = start.saturating_add(OPENED_SSH_WITHIN_SECS * STARTS_PER_SEC);
+    let latest = start.saturating_add(start_ticks(OPENED_SSH_WITHIN_SECS));
     let at = if ssh(shell) {
         Some(pid)
     } else {

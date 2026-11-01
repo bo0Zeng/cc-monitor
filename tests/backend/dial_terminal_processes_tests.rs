@@ -229,7 +229,7 @@ fn an_ssh_started_long_after_the_window_opened_is_not_the_one_it_opened() {
         pid: 600,
         start: 3000,
     };
-    let window = OPENED_SSH_WITHIN_SECS * STARTS_PER_SEC;
+    let window = start_ticks(OPENED_SSH_WITHIN_SECS);
     assert_eq!(
         opened_chain(&label, &reconnected(window + 1).procs),
         OpenedHere::NoSsh,
@@ -261,7 +261,7 @@ async fn a_window_whose_ssh_was_restarted_elsewhere_is_not_brought_forward() {
             panic!("shell 还在 ⇒ 不删");
         }
     }
-    let late = reconnected(OPENED_SSH_WITHIN_SECS * STARTS_PER_SEC + 1);
+    let late = reconnected(start_ticks(OPENED_SSH_WITHIN_SECS) + 1);
     let raw = json!({
         "tcp": late.conns.iter().map(|c| json!({
             "la": c.local.to_string(), "lp": c.local_port,
@@ -319,15 +319,21 @@ fn records_whose_shell_is_gone_are_swept_when_the_directory_is_made() {
     std::fs::write(dir.join(&part), "600-30").unwrap();
     std::fs::write(dir.join("notes.txt"), "x").unwrap();
     crate::dial::opened_windows::sweep(&own, &reconnected(1000).procs);
-    let mut left: Vec<String> = std::fs::read_dir(&dir)
-        .unwrap()
-        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-        .collect();
-    left.sort();
+    let left = [alive, gone, reused, unreadable, part.as_str(), "notes.txt"]
+        .map(|n| (n.to_string(), dir.join(n).exists()));
     let _ = std::fs::remove_dir_all(&data);
-    let mut want = vec![alive.to_string(), part, "notes.txt".to_string()];
-    want.sort();
-    assert_eq!(left, want);
+    assert_eq!(
+        left,
+        [
+            (alive.to_string(), true),
+            (gone.to_string(), false),
+            (reused.to_string(), false),
+            (unreadable.to_string(), false),
+            (part.clone(), true),
+            ("notes.txt".to_string(), true),
+        ],
+        "shell 还在的留 · 不在的 · 进程号被复用的 · 认不出的删 · 旁名与别的名字不动"
+    );
 }
 
 #[test]

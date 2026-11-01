@@ -1,6 +1,6 @@
 //! 常驻流 deflate 的读半边：一帧的压缩字节整段到了、之后那台不再来字节 ⇒ 这一帧当场整行读得出，不等下一批。
 use super::*;
-use std::time::Duration;
+use std::future::Future;
 
 /// 只给这几段字节、之后永远 `Pending`（不唤醒）的读者：那台静下来时的 socket。
 struct ThenSilent {
@@ -67,31 +67,30 @@ fn noise(n: usize, seed: u64) -> Vec<u8> {
         .collect()
 }
 
-async fn every_frame_comes_out_before_the_silence(frames: Vec<Vec<u8>>, piece: usize) {
+fn every_frame_comes_out_before_the_silence(frames: Vec<Vec<u8>>, piece: usize) {
     let bytes = deflate_frames(&frames);
     let chunks = bytes.chunks(piece).map(|c| c.to_vec()).collect();
     let r = BufReader::new(ThenSilent { chunks });
     let mut rd = Downstream::new(r, true);
     let mut buf = Vec::new();
     for (i, f) in frames.iter().enumerate() {
-        let got = tokio::time::timeout(
-            Duration::from_secs(1),
-            read_capped_line(&mut rd, &mut buf, BACKEND_FRAME_LINE_CAP),
-        )
-        .await
-        .unwrap_or_else(|_| {
+        // 字节全在内存里、读者之后永远不唤醒：读这一行必须一次 poll 就完，`Pending` 就是在等那台根本不会再来的字节。
+        let read = read_capped_line(&mut rd, &mut buf, BACKEND_FRAME_LINE_CAP);
+        let mut read = std::pin::pin!(read);
+        let mut cx = Context::from_waker(std::task::Waker::noop());
+        let Poll::Ready(got) = read.as_mut().poll(&mut cx) else {
             panic!(
                 "第 {i} 帧（{} 字节）的压缩字节全到了却没交出来（每段 {piece} 字节）",
                 f.len()
             )
-        });
+        };
         assert!(matches!(got.unwrap(), CappedLine::Line));
         assert_eq!(buf, f[..f.len() - 1], "第 {i} 帧内容");
     }
 }
 
-#[tokio::test]
-async fn the_last_frame_comes_out_once_its_bytes_are_in_even_if_the_wire_goes_quiet() {
+#[test]
+fn the_last_frame_comes_out_once_its_bytes_are_in_even_if_the_wire_goes_quiet() {
     // 重复多的一行：几字节的回指拷贝就解出一大段 ⇒ 解压器把输入吃干净、输出还压在手里。
     let repetitive = frame(&b"ab".repeat(100 * 1024));
     // 一段随机、后面整段重复它：长回指跨过外层 8 KB 的读缓冲。
@@ -101,9 +100,9 @@ async fn the_last_frame_comes_out_once_its_bytes_are_in_even_if_the_wire_goes_qu
     let echoed = frame(&echo);
     let random = frame(&noise(200 * 1024, 11));
     for piece in [usize::MAX, 4096, 1] {
-        every_frame_comes_out_before_the_silence(vec![repetitive.clone()], piece).await;
-        every_frame_comes_out_before_the_silence(vec![echoed.clone()], piece).await;
-        every_frame_comes_out_before_the_silence(vec![random.clone()], piece).await;
+        every_frame_comes_out_before_the_silence(vec![repetitive.clone()], piece);
+        every_frame_comes_out_before_the_silence(vec![echoed.clone()], piece);
+        every_frame_comes_out_before_the_silence(vec![random.clone()], piece);
         every_frame_comes_out_before_the_silence(
             vec![
                 frame(b"short"),
@@ -112,7 +111,6 @@ async fn the_last_frame_comes_out_once_its_bytes_are_in_even_if_the_wire_goes_qu
                 frame(b"tail"),
             ],
             piece,
-        )
-        .await;
+        );
     }
 }
