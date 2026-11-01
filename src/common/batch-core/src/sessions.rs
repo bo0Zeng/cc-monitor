@@ -114,6 +114,8 @@ pub fn sessions_reply(verb: &Verb, results: Vec<SessionOutcome>) -> SessionsBatc
         failed,
         lines,
         copy_detail,
+        windows: Vec::new(),
+        undo: Vec::new(),
     }
 }
 

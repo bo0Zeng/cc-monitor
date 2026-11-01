@@ -209,15 +209,12 @@ impl crate::wire::typed::Handle for SessionsStop {
 }
 
 /// 停之前问的会话脸与称呼（生产那一份）：活不活照这台的活会话表（`live_table::life_of`），容器照这台名单 ⇒ 会话脸（`SessionFaceExt::of`）上 `can.end` 那一格；
-/// 称呼 ＝ 这条会话叫什么那两格（`search_rules::name_face`）拼成一行（项目在前）。活会话表与注解一趟各读一次。
+/// 称呼照 `sessions_batch_face::title_here`（一批会话各样共用那一份）。活会话表与注解一趟各读一次。
 fn with_stop_faces<T>(f: impl FnOnce(&batch::StopFaces) -> T) -> T {
     use crate::wire::{Life, SessionFace, SessionFaceExt as _, WireLife};
     let home = crate::history::listing::agent_home();
     let live = crate::history::live_table::now(&home);
-    let annotations = match crate::history::history_annotations::load() {
-        crate::history::history_annotations::Loaded::Read(t) => t,
-        _ => Default::default(),
-    };
+    let notes = crate::faces::sessions_batch_face::notes();
     let can_end = |sid: &str, c: &crate::wire::SessionContainer| {
         let life = match live.life_of(sid) {
             WireLife::Live { activity } => Life::live(activity, Some(c)),
@@ -225,27 +222,7 @@ fn with_stop_faces<T>(f: impl FnOnce(&batch::StopFaces) -> T) -> T {
         };
         SessionFace::of(life).can.end
     };
-    let title = |sid: &str| {
-        use crate::history::search_rules::LabelFacts;
-        let custom = annotations.get(sid).and_then(|e| e.custom_title.clone());
-        let facts = match crate::agents::find_session(&home, sid) {
-            Ok(at) => LabelFacts {
-                custom,
-                ..crate::history::listing::label_facts_of(&at.file)
-            },
-            // 记录找不到、也没改过名 ⇒ 会话号的头八位（同标签页还没报过名字时那一形）。
-            Err(_) if custom.is_none() => return sid.chars().take(8).collect(),
-            Err(_) => LabelFacts {
-                custom,
-                ..Default::default()
-            },
-        };
-        let name = crate::history::search_rules::name_face(&facts);
-        match name.label_project {
-            Some(p) => format!("{} {}", p.0, name.label.0),
-            None => name.label.0,
-        }
-    };
+    let title = |sid: &str| crate::faces::sessions_batch_face::title_here(&home, &notes, sid);
     f(&batch::StopFaces {
         can_end: &can_end,
         title: &title,

@@ -19,11 +19,12 @@ import type { SessionWindow } from "./generated/SessionWindow";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, type RecordProbe } from "./session-reads";
 import { openFileWindow } from "./file-window";
-import { callStop, type Reply } from "./tab-batch-run";
+import { askSessions } from "./tab-batch-run";
+import type { SessionsBatchReply } from "./generated/SessionsBatchReply";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
-import { askEnd, sayEnded } from "./end-confirm";
+import { askEnd, sayReply } from "./end-confirm";
 import { offerResyncRetry, resyncMachines, resyncMachinesSaid } from "./resync";
 
 /** DEV 断言出口：把状态转移写成可 grep 的 `[e2e]` 行。`import.meta.env.DEV` 门控，生产构建整支消除。 */
@@ -136,26 +137,22 @@ export class TabSessionActions {
   }
 
   /**
-   * 结束这个会话：结束会话那一个确认框（`end-confirm.ts`）答了之后交那台（`sessions-stop`，与批量同一条：那台按 sid 认出名单里那一行、
-   * 交 `terminal-end`，过三道门、杀句柄；命中几个 · 不在终端里都是那台判、那台说）。变已结束由会话流兜（不主动改状态）。
+   * 结束这个会话：结束会话那一个确认框（`end-confirm.ts`）答了之后交本机后端一项的那一批（`sessions-batch`，与批量同一条：那台按 sid 认出名单里那一行、
+   * 交 `terminal-end`，过三道门、杀句柄；命中几个 · 不在终端里都是那台判、那台说；点名那一句本机后端写）。变已结束由会话流兜（不主动改状态）。
    */
   endSession(origin: string, sid: string, title: string, opts?: { confirm?: ConfirmFn }): void {
     const kill = async (): Promise<void> => {
-      let r: Reply;
+      let reply: SessionsBatchReply;
       try {
-        [r] = await callStop(origin, [sid]);
+        reply = await askSessions("stop", [{ machine: origin, sid }]);
       } catch (e) {
         failToast(copyText("tabSessionActions.kill.failed", { title }), e);
         return;
       }
-      if (r.outcome !== "done") {
-        const said = r.said ?? "";
-        // 关卡 2 拒的 ⇒ 提示带「对齐后重试」（只对这个会话重验 ＋ 重打，再过一次关卡）。
-        if (r.why === "wrong_owner") offerResyncRetry(origin, sid, copyText("tabSessionActions.kill.failed", { title }), said, kill);
-        else sayEnded([{ title, outcome: "failed", why: said, detail: r.copyDetail }]);
-        return;
-      }
-      sayEnded([{ title, outcome: "done", why: "" }]);
+      const one = reply.results[0];
+      // 关卡 2 拒的 ⇒ 提示带「对齐后重试」（只对这个会话重验 ＋ 重打，再过一次关卡）：挑码选按钮，那几句照回包。
+      if (one?.why === "wrong_owner") offerResyncRetry(origin, sid, reply.said, one.said ?? "", kill);
+      else sayReply(reply);
     };
     void (async () => {
       if (!(await askEnd([title], opts?.confirm ?? confirmDialog))) return;
