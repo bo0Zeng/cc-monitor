@@ -28,7 +28,7 @@ pub use topic::TopicExt;
 pub use cmd_wire::frame::Life as WireLife;
 /// 帧的线上形住 `cmd-wire`（[`cmd_wire::frame`]，客户端按同一份解）；这里是后端在它上面做的事：写字 · 判定 · 丢帧规矩 · 分页 · 钟面
 /// （扩展特征：孤儿规则不许在那边的类型上加固有方法）。
-pub use cmd_wire::frame::{decode, Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
+pub use cmd_wire::frame::{Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
 pub use cmd_wire::frame::{Allow, CanClose, CanSay, CanTerm, SessionCan, SessionDot, SessionFace};
 pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionLeft};
 pub use cmd_wire::frame::{FilesBatch, Probe, SessionsReplayed, Transfer};
