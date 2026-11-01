@@ -100,7 +100,10 @@ async fn a_call_gets_the_answer_for_its_own_id() {
 #[tokio::test]
 async fn a_spent_or_cancelled_budget_sends_nothing() {
     let (c, mut r) = start();
-    let spent = Budget::new(Instant::now() - Duration::from_millis(1), CancelToken::new());
+    let spent = Budget::new(
+        Instant::now() - Duration::from_millis(1),
+        CancelToken::new(),
+    );
     assert_eq!(
         c.call(&Origin::local(), &op("ping"), Body::default(), spent)
             .await,

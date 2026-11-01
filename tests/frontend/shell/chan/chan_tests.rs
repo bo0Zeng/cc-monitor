@@ -36,7 +36,10 @@ use std::time::{Duration, Instant};
 const FRAME: usize = 1 << 20;
 
 fn budget(ms: u64) -> Budget {
-    Budget::new(Instant::now() + Duration::from_millis(ms), CancelToken::new())
+    Budget::new(
+        Instant::now() + Duration::from_millis(ms),
+        CancelToken::new(),
+    )
 }
 
 /// 句柄看见的一次 `call`：`(origin, op, payload, left, cancel)`。
