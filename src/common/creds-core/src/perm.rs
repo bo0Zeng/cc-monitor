@@ -379,7 +379,7 @@ fn windows_create_owner_only(p: &std::path::Path) -> std::io::Result<std::fs::Fi
             FILE_ATTRIBUTE_NORMAL,
             None,
         );
-        let _ = LocalFree(HLOCAL(psd.0));
+        LocalFree(HLOCAL(psd.0)); // 回的不是 `Result`（放不掉时回原句柄）；放不掉没有补救
         let h = h.map_err(|e| std::io::Error::other(e.message().to_string()))?;
         Ok(std::fs::File::from_raw_handle(
             h.0 as *mut core::ffi::c_void,
@@ -396,6 +396,7 @@ fn owner_only_sddl(user_sid: &str) -> String {
 #[cfg(all(windows, feature = "harden"))]
 /// 当前进程那个用户的 SID 串。失败 ⇒ 系统那个错原样（带 OS 码，调用方按种类出原因词；不在这里拼句子）。
 fn current_user_sid() -> std::io::Result<String> {
+    use copy_core::{Discard, Why};
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
     use windows::Win32::Security::{GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER};
     use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
@@ -405,7 +406,8 @@ fn current_user_sid() -> std::io::Result<String> {
         OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token)
             .map_err(std::io::Error::from)?;
         let mut need = 0u32;
-        let _ = GetTokenInformation(token, TokenUser, None, 0, &mut need);
+        // 第一次只问缓冲区要多大：按约定一定回「缓冲区不够」。
+        GetTokenInformation(token, TokenUser, None, 0, &mut need).discard(Why::NotAnError);
         let mut buf = vec![0u8; need.max(1) as usize];
         let got = GetTokenInformation(
             token,
@@ -414,7 +416,7 @@ fn current_user_sid() -> std::io::Result<String> {
             need,
             &mut need,
         );
-        let _ = CloseHandle(token);
+        CloseHandle(token).discard(Why::Reap);
         got.map_err(std::io::Error::from)?;
         let tu = &*(buf.as_ptr() as *const TOKEN_USER);
         sid_text(tu.User.Sid)
@@ -524,7 +526,7 @@ fn measure(f: &std::fs::File) -> Protection {
                 dacl: Some(aces),
             })
         })();
-        let _ = LocalFree(HLOCAL(psd.0));
+        LocalFree(HLOCAL(psd.0)); // 同上：回的不是 `Result`，放不掉没有补救
         match read {
             Ok(p) | Err(p) => p,
         }
@@ -534,11 +536,13 @@ fn measure(f: &std::fs::File) -> Protection {
 /// 一个 SID ⇒ 账号名（`LookupAccountSidW`：有域 ⇒ `域\名`，内置组那种没有域的 ⇒ 名）；翻不出 ⇒ `None`（说法里给 SID 串）。
 #[cfg(all(windows, feature = "harden"))]
 unsafe fn account_name(sid: windows::Win32::Foundation::PSID) -> Option<String> {
+    use copy_core::{Discard, Why};
     use windows::core::{PCWSTR, PWSTR};
     use windows::Win32::Security::{LookupAccountSidW, SID_NAME_USE};
     let (mut n, mut d) = (0u32, 0u32);
     let mut kind = SID_NAME_USE::default();
-    let _ = LookupAccountSidW(
+    // 第一次只问名字与域要多长：按约定一定回「缓冲区不够」；长度为 0 ⇒ 翻不出、给 SID。
+    LookupAccountSidW(
         PCWSTR::null(),
         sid,
         PWSTR::null(),
@@ -546,7 +550,8 @@ unsafe fn account_name(sid: windows::Win32::Foundation::PSID) -> Option<String> 
         PWSTR::null(),
         &mut d,
         &mut kind,
-    );
+    )
+    .discard(Why::NotAnError);
     if n == 0 {
         return None;
     }
@@ -585,7 +590,7 @@ unsafe fn sid_text(sid: windows::Win32::Foundation::PSID) -> std::io::Result<Str
     let out = s
         .to_string()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e));
-    let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));
+    LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void)); // 同上：回的不是 `Result`，放不掉没有补救
     out
 }
 
