@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(() => Promise.resolve()), listen: vi.fn(() => Promise.resolve(() => {})) }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), failToast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), failToast: vi.fn(), undoToast: vi.fn(), recentToasts: vi.fn(() => []) }));
 
 import { failToast, toast } from "../../../src/frontend/ui/kit/toast";
 import { LaunchSlots, SLOT_MISS_MS, type SlotActs, type SlotSpec } from "../../../src/frontend/ui/launch-slot";
@@ -14,6 +14,7 @@ import type { ArriveSaid } from "../../../src/frontend/ui/session-open";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { endConfirm } from "../../../src/frontend/ui/end-confirm";
+import type { TerminalsEndReply } from "../../../src/frontend/ui/generated/TerminalsEndReply";
 
 let tail: HTMLElement;
 let root: HTMLElement;
@@ -24,6 +25,18 @@ let viewed: number;
 /** 那台那一问的回话：判据手里放行。 */
 let answer: (end: ArriveSaid) => Promise<void>;
 let acts: { [K in keyof SlotActs]: ReturnType<typeof vi.fn> };
+
+/** 本机后端合好的一项那一批（`terminals-end`）：那一项的结局 ＋ 那一句。 */
+function ended(outcome: "done" | "failed", said: string): TerminalsEndReply {
+  const failed = outcome === "failed";
+  return {
+    results: [{ machine: "devbox", terminal: "%7", outcome, why: failed ? "wrong_owner" : null, said: failed ? "S-wrong_owner" : null, copyDetail: failed ? "d" : "", title: "billing-2" }],
+    said,
+    failed,
+    lines: [],
+    copyDetail: failed ? "S-wrong_owner\nd" : "",
+  };
+}
 
 function make(): LaunchSlots {
   return new LaunchSlots(
@@ -73,7 +86,7 @@ beforeEach(() => {
   acts = {
     arrive: vi.fn(() => new Promise<ArriveSaid>((r) => pending.push(r))),
     attach: vi.fn(),
-    end: vi.fn(async () => {}),
+    end: vi.fn(async () => ended("done", "S-done")),
     confirm: vi.fn(async () => true),
   };
   vi.mocked(toast).mockClear();
@@ -205,28 +218,35 @@ describe("报错卡上的几颗", () => {
     expect(slots.watched(), "收起了 ⇒ 抽屉回到当前标签页").toBeNull();
   });
 
-  it("★［结束］开的是结束会话那一个确认框，结束了 ⇒ 这一行关掉", async () => {
+  it("★［结束］开的是结束会话那一个确认框，交本机一项的那一批；回包那一项成了 ⇒ 照摆那一句、这一行关掉", async () => {
     make().add(SPEC);
     await missWith(SAID, "%7");
     click("end");
     await tick();
     expect(acts.confirm).toHaveBeenCalledWith(endConfirm(["billing-2"]));
-    expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toBe(copyText("sessionState.kill.done", { title: "billing-2" }));
-    expect(acts.end, "按名单里的句柄结束（terminal-end），不按会话名").toHaveBeenCalledWith("devbox", "%7", "billing-2");
+    expect(acts.end, "按名单里的句柄结束，不按会话名").toHaveBeenCalledWith("devbox", "%7");
+    expect(vi.mocked(toast).mock.calls.at(-1)?.[0], "那一句照回包，界面不自己合").toBe("S-done");
     expect(rows()).toEqual([]);
   });
 
-  it("不确认 ⇒ 不动；结束失败 ⇒ 说一句、这一行留着", async () => {
+  it("不确认 ⇒ 不动；那台说没成 ⇒ 照摆那一句、这一行留着；问不到本机后端 ⇒ 点名那一句、这一行留着", async () => {
     make().add(SPEC);
     await missWith(SAID, "%7");
     acts.confirm.mockResolvedValueOnce(false);
     click("end");
     await tick();
     expect(acts.end).not.toHaveBeenCalled();
-    acts.end.mockRejectedValueOnce(new Error("不在名单"));
+    acts.end.mockResolvedValueOnce(ended("failed", "S-failed"));
     click("end");
     await tick();
-    expect(vi.mocked(toast).mock.calls.at(-1)?.slice(0, 2)).toEqual([copyText("tabSessionActions.kill.failed", { title: "billing-2" }), "不在名单"]);
+    expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toBe("S-failed");
+    expect(vi.mocked(toast).mock.calls.at(-1)?.[2]).toMatchObject({ level: "error", detail: "S-wrong_owner\nd" });
+    expect(rows()).toHaveLength(1);
+    const down = new Error("本机后端不在");
+    acts.end.mockRejectedValueOnce(down);
+    click("end");
+    await tick();
+    expect(vi.mocked(failToast).mock.calls.at(-1)).toEqual([copyText("tabSessionActions.kill.failed", { title: "billing-2" }), down]);
     expect(rows()).toHaveLength(1);
   });
 

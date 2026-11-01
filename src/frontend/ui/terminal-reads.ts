@@ -1,6 +1,7 @@
 /**
- * **界面说终端管理那几条命令**：终端名单（`terminals-list`）· 抓一屏（`terminal-preview`）· 送字送键（`terminal-input`）· 结束（`terminal-end`）·
- * 接管 · 交还输入（`terminal-take-input` · `terminal-release-input`，托管那一形）。经通道直接问那台后端，本机远端同一条路。
+ * **界面说终端管理那几条命令**：终端名单（`terminals-list`）· 抓一屏（`terminal-preview`）· 送字送键（`terminal-input`）·
+ * 接管 · 交还输入（`terminal-take-input` · `terminal-release-input`，托管那一形）经通道直接问那台后端，本机远端同一条路；
+ * 结束（`terminals-end`）只交本机后端一条，它按台分组问到各台、合好那一句。
  *
  * 目标只认名单里的终端（`terminal` 句柄）或会话 ID（`sid`），不收 tmux 目标串。
  *
@@ -8,19 +9,20 @@
  * 实时预览的帧（`terminal_screen`）的 `view` 就是 `terminal-preview` 的回包类型（帧的形状指纹核过），同一个 [`shotOf`] 收。
  * 预览要带颜色的成品（`color: true`）：每行 `text` ＋ 颜色段交给画面（`terminal-screen.ts`）；纯文字那一份是每行 `text` 用换行接起来，与那一屏逐行相同。
  *
- * 结束是破坏性的：回的句柄与交的那个对得上才算结束了，否则当「不知道结束了没有」（不当成功、不换条路重做）。
- * 期限：抓一屏 · 送字送键 · 结束 · 接管交还 20 秒，名单 15 秒（远端没连着还要握手）。
+ * 期限：抓一屏 · 送字送键 · 接管交还 20 秒，结束 20 秒 ＋ 每项 6 秒，名单 15 秒（远端没连着还要握手）。
  */
 import { copyText } from "./copy-table";
-import { ControlError, machineName, settleTyped } from "./control-said";
+import { settleTyped } from "./control-said";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { screenText, type ScreenLine } from "./terminal-screen";
 import type { Preview } from "./generated/Preview";
 import type { Sent } from "./generated/Sent";
 import type { SentAct } from "./generated/SentAct";
 import type { TerminalsList } from "./generated/TerminalsList";
 import type { TermInput } from "./generated/TermInput";
+import type { TerminalItem } from "./generated/TerminalItem";
+import type { TerminalsEndReply } from "./generated/TerminalsEndReply";
 
 /** 抓一屏的期限。 */
 const PREVIEW_BUDGET_MS = 20_000;
@@ -135,14 +137,16 @@ export async function sendToTerminal(origin: Origin, terminal: string, what: Ter
 /** 结束 · 接管 · 交还的期限（与送字同）。 */
 const HOLD_BUDGET_MS = 20_000;
 
+/** 结束一批时每项多给的那一段（那台逐项结束）。 */
+const END_EACH_MS = 6_000;
+
 /**
- * 结束那个终端（**破坏性**：调用方先确认）：两种宿主同一条 `terminal-end`，身份门 · 窗口门在后端先过、对句柄下手。
- * 回的句柄与交的那个对不上（按会话 ID 指时：回的是空）⇒ 当「不知道结束了没有」抛（`name` 是确认框里说的那个名字）。失败 ⇒ 抛（那一句后端写好）。
+ * 结束一批终端（**破坏性**：调用方先确认）：交本机后端一条 `terminals-end`（`items` 照交进来的先后，跨几台也只这一发）；
+ * 按台分组 · 每台结束（两种宿主同一条，身份门 · 窗口门在那台先过、对句柄下手）· 合那一句都在后端，回包照摆。问不到本机后端 ⇒ 抛。
  */
-export async function endTerminal(origin: Origin, target: TerminalTarget, name: string): Promise<void> {
-  const v = await settleTyped(origin, "terminal-end", callTyped(origin, "terminal-end", { ...target }, budgetWithin(HOLD_BUDGET_MS)));
-  const confirmed = "terminal" in target ? v.terminal === target.terminal : v.terminal !== "";
-  if (!confirmed) throw new ControlError(copyText("tmuxControl.kill.notConfirmed", { machine: machineName(origin), target: name }), "");
+export async function endTerminals(items: readonly TerminalItem[]): Promise<TerminalsEndReply> {
+  const budget = budgetWithin(HOLD_BUDGET_MS + END_EACH_MS * items.length);
+  return settleTyped(LOCAL_ORIGIN, "terminals-end", callTyped(LOCAL_ORIGIN, "terminals-end", { items: [...items] }, budget));
 }
 
 /** 替这一端接管托管终端的输入（之后送字经它）；回那一行此刻的输入那一格。失败 ⇒ 抛（那一句后端写好）。 */
