@@ -3,22 +3,43 @@
 
 use super::*;
 
+/// 全部主题（表的行序；逐行核表用；`wire_tests` 也读这一份）。
+pub(in crate::wire) const ALL: [Topic; 17] = [
+    Topic::Accounts,
+    Topic::Profiles,
+    Topic::Quota,
+    Topic::Rotation,
+    Topic::RotationStrategies,
+    Topic::Plan,
+    Topic::Tasks,
+    Topic::Needs,
+    Topic::Login,
+    Topic::Machines,
+    Topic::Machine,
+    Topic::Empty,
+    Topic::SessionHidden,
+    Topic::FilesDir,
+    Topic::HistoryList,
+    Topic::Groups,
+    Topic::SessionQueue,
+];
+
 #[test]
 fn the_wire_name_is_the_serde_name() {
-    for t in Topic::ALL {
+    for t in ALL {
         let v = serde_json::to_value(t).unwrap();
         assert_eq!(v.as_str(), Some(t.name()), "{t:?}");
     }
-    let mut names: Vec<&str> = Topic::ALL.iter().map(|t| t.name()).collect();
+    let mut names: Vec<&str> = ALL.iter().map(|t| t.name()).collect();
     names.sort_unstable();
     names.dedup();
-    assert_eq!(names.len(), Topic::ALL.len(), "主题名重了");
+    assert_eq!(names.len(), ALL.len(), "主题名重了");
 }
 
 /// 带 `body` 的主题有上限、不带的上限是 0（表里两格不许说两样话）。
 #[test]
 fn a_body_has_a_cap_and_only_then() {
-    for t in Topic::ALL {
+    for t in ALL {
         let s = t.spec();
         assert_eq!(s.body, s.body_cap > 0, "{t:?}：body 与 body_cap 对不上");
     }
@@ -47,7 +68,7 @@ fn emitters(topic: &str) -> Vec<String> {
 /// 表里改了可丢性却没换发端（或反过来）⇒ 红。
 #[test]
 fn lossy_topics_go_out_on_the_tap_and_the_rest_on_the_watcher() {
-    for t in Topic::ALL {
+    for t in ALL {
         let variant = format!("{t:?}");
         // 只推给发起它的那条连接的那一种（登录作业收了）走那条连接的应答通道（不丢）：发端在分派那一层。
         let want = if t == Topic::Login {
@@ -115,7 +136,7 @@ fn the_protocol_topic_table_is_this_table() {
     let yes = |x: bool| if x { "带" } else { "—" };
     let mut want =
         String::from("| topic | 可丢 | key | rev | body | 重问 |\n|---|---|---|---|---|---|\n");
-    for t in Topic::ALL {
+    for t in ALL {
         let s = t.spec();
         let body = if s.body {
             format!("带（≤ {} B）", s.body_cap)
@@ -138,7 +159,7 @@ fn the_protocol_topic_table_is_this_table() {
 /// 每个主题的「重问」是一条登记了的命令。
 #[test]
 fn every_reask_is_a_registered_command() {
-    for t in Topic::ALL {
+    for t in ALL {
         let r = t.spec().reask;
         assert!(
             crate::stream::inbound::REGISTRY.iter().any(|c| c.name == r),
@@ -151,7 +172,7 @@ fn every_reask_is_a_registered_command() {
 #[test]
 fn each_arm_has_the_cells_the_table_says() {
     let decl = <crate::wire::Changed as ts_rs::TS>::decl(&ts_rs::Config::default());
-    for t in Topic::ALL {
+    for t in ALL {
         let s = t.spec();
         let arm = crate::wire::Changed::bare(t, Some("k".into())).expect("每个主题都有那一臂");
         assert_eq!(arm.topic(), t, "{t:?} 那一臂说的是别的主题");
@@ -172,7 +193,7 @@ fn each_arm_has_the_cells_the_table_says() {
 #[test]
 fn a_computed_body_is_a_declared_body() {
     use crate::wire::typed::Command as _;
-    for t in Topic::ALL {
+    for t in ALL {
         if crate::stream::topic_body::body_now(t, Some("x"), &crate::Tz::default()).is_some() {
             assert!(t.spec().body, "{t:?} 现算小成品，表里却写不带 body");
         }

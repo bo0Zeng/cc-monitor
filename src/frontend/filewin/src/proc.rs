@@ -5,6 +5,7 @@
 
 use copy_core::copy_text;
 use copy_core::said::Said;
+use copy_core::{Discard, Why};
 
 use super::source::Source;
 use filewin_contract::{decode_request, encode_ready, Ready};
@@ -62,9 +63,9 @@ pub async fn first_screen(
 fn say(r: &Ready) {
     use std::io::Write;
     let mut err = std::io::stderr().lock();
-    let _ = err
-        .write_all(encode_ready(r).as_bytes())
-        .and_then(|()| err.flush());
+    err.write_all(encode_ready(r).as_bytes())
+        .and_then(|()| err.flush())
+        .discard(Why::DeadLink);
 }
 
 /// 说「列不出来」并回那个退出码（窗口不开）。

@@ -462,7 +462,8 @@ impl PhoneBoard {
                 .iter()
                 .map(|r| {
                     serde_json::json!({ "key": r.key, "name": WirePath(r.name.as_bytes().to_vec()),
-                        "kind": "file", "there": "file", "answers": r.answers })
+                        "kind": "file", "there": "file",
+                        "answers": r.choices.iter().map(|o| o.decide).collect::<Vec<_>>() })
                 })
                 .collect();
             return Err(Rebuff {
@@ -659,7 +660,7 @@ impl Board for PhoneBoard {
     }
 }
 
-/// 同名那一问的几行（抽屉照画）：键 · 名字 · 那一行的说明（核心写好）· 这一项能怎么答（那台给的）。
+/// 同名那一问的几行（抽屉照画）：键 · 名字 · 那一行的说明（核心写好）· 这一项能怎么答（那台给的，带字：[`batch_core::choices`]）。
 pub fn clash_rows(conflicts: &[Conflict]) -> Vec<ClashRow> {
     conflicts
         .iter()
@@ -667,7 +668,7 @@ pub fn clash_rows(conflicts: &[Conflict]) -> Vec<ClashRow> {
             key: c.key.clone(),
             name: String::from_utf8_lossy(c.name.bytes()).into_owned(),
             meta: batch_core::conflict_meta(c),
-            answers: c.answers.clone(),
+            choices: batch_core::choices(&c.answers),
             there: None,
         })
         .collect()
@@ -675,7 +676,7 @@ pub fn clash_rows(conflicts: &[Conflict]) -> Vec<ClashRow> {
 
 /// 本机同名那一步：要下的名字里，文件夹里已有（不分大小写：手机的共享存储不分）的那几项 ⇒ 抽屉那几行（只有名字一格；目录不下，恒给覆盖）。
 fn local_clashes(names: &[String], here: &[String]) -> Vec<ClashRow> {
-    let answers = [Decide::Overwrite, Decide::Skip, Decide::KeepBoth];
+    let choices = batch_core::choices(&[Decide::Overwrite, Decide::Skip, Decide::KeepBoth]);
     names
         .iter()
         .enumerate()
@@ -686,7 +687,7 @@ fn local_clashes(names: &[String], here: &[String]) -> Vec<ClashRow> {
                 name: n.clone(),
                 there: Some(there.clone()),
                 meta: String::new(),
-                answers: answers.to_vec(),
+                choices: choices.clone(),
             })
         })
         .collect()

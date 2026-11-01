@@ -1392,7 +1392,7 @@ fn c3_the_word_transport_never_crosses_the_boundary() {
 /// 后三条是同族的别名，后补的 —— 补的理由：只挡三种写法等于给第四种写法留门，
 /// 而「换个写法就过」在本仓有记录（`readonly_guard` 的前身栽过）。
 /// 🔴 **串一律运行时拼**：写成字面量的话，本文件自己就是一处「读盘点」，
-/// 而 `local_read_surface_registry` / `write_site_registry` 那几张表会把它数进去。
+/// 而按这些串扫源码的判据会把本文件自己数进去。
 fn disk_and_env_needles() -> Vec<(&'static str, String, &'static str)> {
     vec![
         ("读文本", format!("read_to_{}(", "string"), "§2 C4 逐字"),
@@ -1415,7 +1415,7 @@ fn disk_and_env_needles() -> Vec<(&'static str, String, &'static str)> {
 /// 一份文本里**咬得上的那几个 `C4` 判词**，按**标签**返回。
 ///
 /// 🔴 **为什么登记表用标签而不用那个串本身**：串写成字面量的话，本文件自己就成了一处
-/// 「读盘点」，`local_read_surface_registry` / `write_site_registry` 那几张表会把它数进去
+/// 「读盘点」，按这些串扫源码的判据会把它数进去
 /// —— 那正是 [`disk_and_env_needles`] 头注里「串一律运行时拼」在治的事。
 /// 标签是中文短名 ⇒ 任何按代码形状扫的判据都不可能命中它。
 /// ⚠ 标签拼错 ⇒ 那一行从此**恒不命中**；挡这一形的是 [`assert_left_outside`] 里那条

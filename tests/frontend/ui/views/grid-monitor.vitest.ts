@@ -28,7 +28,7 @@ const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   cwd: null,
   face: liveFace("working"),
   needs: null,
-  runningAgents: 0,
+  running: null,
   agents: null,
   context: null,
   unread: 0,
@@ -83,7 +83,7 @@ describe("F91 GridMonitorView", () => {
   it("open 渲染分组标题 + 摘要 + cell；F91b 点 cell = 高亮不关（不 switchTo、板保持开）", async () => {
     document.body.replaceChildren();
     const source = fixed([
-      snap({ sessionId: "l1", title: "本地会话", origin: LOCAL_ORIGIN, runningAgents: 2, face: liveFace("working") }),
+      snap({ sessionId: "l1", title: "本地会话", origin: LOCAL_ORIGIN, running: "核心·在跑 2", face: liveFace("working") }),
       snap({ sessionId: "r1", title: `${copyText("rsConfigSurface.host.remote")}${copyText("commandBar.group.sessions")}`, origin: "pi", needs: "核心·等批准", face: liveFace("needs_you") }),
     ]);
     const view = new GridMonitorView(source);
@@ -239,6 +239,7 @@ describe("F91 GridMonitorView", () => {
               model: "claude-opus-4-8",
               recentFiles: ["/a/b.ts", "/a/c.ts"],
               summary: "核心·agent 2 · 1 在跑",
+              more: null,
               agents: [
                 { label: "explorer", status: "running" as const },
                 { label: "planner", status: "done" as const },
@@ -265,7 +266,7 @@ describe("F91 GridMonitorView", () => {
       let model = "m1";
       const source = mkSource(
         () => [snap({ sessionId: "l1", title: "a" })],
-        () => ({ model, recentFiles: [] as string[], agents: [] as never[], summary: null }),
+        () => ({ model, recentFiles: [] as string[], agents: [] as never[], summary: null, more: null }),
       );
       const view = new GridMonitorView(source);
       await openSettled(view);
@@ -294,7 +295,7 @@ describe("F91 GridMonitorView", () => {
       let contextPct = 40;
       const source = mkSource(
         () => [snap({ sessionId: "l1", title: "a", unread, context: { text: `${contextPct}%`, tone: "plain", percent: contextPct } })],
-        () => ({ model: "m", recentFiles: [] as string[], agents: [] as never[], summary: null }),
+        () => ({ model: "m", recentFiles: [] as string[], agents: [] as never[], summary: null, more: null }),
       );
       const view = new GridMonitorView(source);
       await openSettled(view);
@@ -320,7 +321,7 @@ describe("F91 GridMonitorView", () => {
       let files = Array.from({ length: 12 }, (_, i) => `/f${i}.ts`);
       const source = mkSource(
         () => [snap({ sessionId: "l1", title: "a" })],
-        () => ({ model: "m", recentFiles: files, agents: [] as never[], summary: null }),
+        () => ({ model: "m", recentFiles: files, agents: [] as never[], summary: null, more: null }),
       );
       const view = new GridMonitorView(source);
       await openSettled(view);
@@ -367,11 +368,11 @@ describe("F91 GridMonitorView", () => {
     view.close();
   });
 
-  it("在跑 agent 的徽标走文案表（不写死 ▶ / agent）", async () => {
+  it("在跑 agent 的徽标照抄后端写好的那一句（界面不数在跑的、不拼字）；没有那一句 ⇒ 不画", async () => {
     document.body.replaceChildren();
-    const view = new GridMonitorView(fixed([snap({ sessionId: "l1", runningAgents: 2, agents: "agent 448 · 2 在跑" })]));
+    const view = new GridMonitorView(fixed([snap({ sessionId: "l1", running: "核心·在跑 · agent 5", agents: "agent 448 · 2 在跑" }), snap({ sessionId: "l2" })]));
     await openSettled(view);
-    expect(document.querySelector(".badge-agents")?.textContent).toBe(copyText("gridMonitor.renderBadges.agentsLabel", { runningAgents: 2 }));
+    expect([...document.querySelectorAll(".badge-agents")].map((e) => e.textContent)).toEqual(["核心·在跑 · agent 5"]);
     // 悬停那一句照抄后端写好的那一句（总数后端照实数，界面不拿运行表的长度自己拼）。
     expect((document.querySelector(".badge-agents") as HTMLElement | null)?.title).toBe("agent 448 · 2 在跑");
     view.close();
@@ -400,7 +401,7 @@ describe("监控板照后端成品摆", () => {
       summary: "后端·两台三条",
       groups: [
         { machine: "zeta", title: "工作站 B（1）", sids: ["z1", "z2"] },
-        { machine: "alpha", title: "box-b（2）", sids: ["a1"] },
+        { machine: "alpha", title: "alpha 机（2）", sids: ["a1"] },
       ],
     }));
     const view = new GridMonitorView({ snapshotSessions: () => sessions, switchTo: vi.fn(), board });
@@ -411,7 +412,7 @@ describe("监控板照后端成品摆", () => {
       { machine: "zeta", sid: "z2" },
     ]);
     const titles = [...document.querySelectorAll(".grid-monitor-group-title")].map((e) => e.textContent);
-    expect(titles).toEqual(["工作站 B（1）", "box-b（2）"]);
+    expect(titles).toEqual(["工作站 B（1）", "alpha 机（2）"]);
     const order = [...document.querySelectorAll<HTMLElement>(".grid-monitor-cell")].map((c) => c.dataset.sid);
     expect(order).toEqual(["z1", "z2", "a1"]);
     expect(document.querySelector(".grid-monitor-summary")?.textContent).toBe("后端·两台三条");
@@ -429,6 +430,7 @@ describe("监控板照后端成品摆", () => {
         model: null,
         recentFiles: [],
         summary: "核心·agent 9 · 1 在跑", // 总数后端照实数（连被挤出表的），与界面手上那三条对不上
+        more: null,
         agents: [
           { label: "done1", status: "done" as const },
           { label: "stop1", status: "stopped" as const },
@@ -440,6 +442,24 @@ describe("监控板照后端成品摆", () => {
     document.querySelector<HTMLElement>(".grid-monitor-cell")!.click();
     expect(document.querySelector(".grid-monitor-peek-agents .grid-monitor-peek-k")?.textContent).toBe("核心·agent 9 · 1 在跑");
     expect([...document.querySelectorAll(".grid-monitor-peek-agent")].map((e) => e.textContent)).toEqual(["done1", "stop1", "run1"]);
+    expect(document.querySelector(".grid-monitor-peek-agents .grid-monitor-peek-more")).toBeNull();
+    view.close();
+  });
+
+  it("peek：chip 只照后端挑好的那几个画（不截）、「+N」照抄后端那一句（不拿总数减）", async () => {
+    document.body.replaceChildren();
+    const sessions = [snap({ sessionId: "l1", title: "a" })];
+    const agents = Array.from({ length: 10 }, (_, i) => ({ label: `a${i}`, status: "done" as const }));
+    const view = new GridMonitorView({
+      snapshotSessions: () => sessions,
+      switchTo: vi.fn(),
+      board: async () => ({ summary: "", groups: [{ machine: LOCAL_ORIGIN, title: "本机·1", sids: ["l1"] }] }),
+      peekSession: () => ({ model: null, recentFiles: [], summary: "核心·agent 14", more: "核心·+4", agents }),
+    });
+    await openSettled(view);
+    document.querySelector<HTMLElement>(".grid-monitor-cell")!.click();
+    expect(document.querySelectorAll(".grid-monitor-peek-agent")).toHaveLength(10);
+    expect(document.querySelector(".grid-monitor-peek-agents .grid-monitor-peek-more")?.textContent).toBe("核心·+4");
     view.close();
   });
 
@@ -588,7 +608,7 @@ describe("F91 GridMonitorView 问版面的时机 · interval 生命周期", () =
 describe("UP1 机器总览按行更新", () => {
   /** 三台机器、七个会话；`snapshotSessions` 每拍都返回**新对象**（与 `TabManager.snapshotSessions` 同形）。 */
   const base = (): GridSessionSnapshot[] => [
-    snap({ sessionId: "l1", title: "本机一", cwd: "/w/a", runningAgents: 2, agents: "agent 3 · 2 在跑", face: ordered(liveFace("working"), 1) }),
+    snap({ sessionId: "l1", title: "本机一", cwd: "/w/a", running: "核心·在跑 2", agents: "agent 3 · 2 在跑", face: ordered(liveFace("working"), 1) }),
     snap({ sessionId: "l2", title: "本机二", cwd: "/w/b", context: { text: "85%", tone: "warn", percent: 85 }, unread: 4 }),
     snap({ sessionId: "l3", title: "本机三", face: goldenFace("ended") }),
     snap({ sessionId: "p1", title: "派一", origin: "pi", needs: "核心·等批准", face: ordered(liveFace("needs_you"), 0) }),
@@ -701,7 +721,7 @@ describe("UP1 机器总览按行更新", () => {
     try {
       const steps: ((s: GridSessionSnapshot[]) => void)[] = [
         (s) => {
-          s[0].runningAgents = 0;
+          s[0].running = null;
           s[2].face = liveFace("working");
         },
         (s) => {
