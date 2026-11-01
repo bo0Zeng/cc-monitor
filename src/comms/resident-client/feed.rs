@@ -196,7 +196,7 @@ impl State {
                 problem, blocker, ..
             } => Round::Down {
                 problem: RoundProblem {
-                    text: problem.said.clone(),
+                    said: problem.said.clone(),
                     detail: problem.detail.clone(),
                     why: problem.why,
                     seen_key: problem.seen_key.clone(),

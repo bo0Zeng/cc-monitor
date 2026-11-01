@@ -475,7 +475,7 @@ pub enum Blocker {
 )]
 #[serde(deny_unknown_fields)]
 pub struct RoundProblem {
-    pub text: String,
+    pub said: String,
     pub detail: String,
     pub why: Option<Why>,
     pub seen_key: Option<String>,

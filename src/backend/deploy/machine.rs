@@ -209,7 +209,7 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
         word: word(state, e.relation),
         said: match (state, blocker, problem) {
             // 没有后端：是哪一种（没装 · 起不了 · 不是我们的）只有通信层那一句说得清。
-            (K::Down, Some(Blocker::NoBackend), Some(p)) => p.text.clone(),
+            (K::Down, Some(Blocker::NoBackend), Some(p)) => p.said.clone(),
             // 接上过、又在接常驻（不是部署那一步）⇒ 重连那一句。
             (K::Connecting, _, _) if e.was_up && e.stage != Some(Stage::Deploy) => {
                 copy_text("machineState.busy.reconnecting", &[("machine", machine)])
@@ -285,7 +285,7 @@ fn detail(machine: &str, p: &RoundProblem, code: &str) -> String {
     let d = if d.has(Label::Hop) {
         d
     } else {
-        d.insert(Label::Hop, &p.text)
+        d.insert(Label::Hop, &p.said)
     };
     let d = if d.has(Label::Code) {
         d
