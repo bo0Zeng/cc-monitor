@@ -1,8 +1,8 @@
 //! **失败时不说话的那一类**：丢掉一个 `Result` 只经 [`Discard::discard`]，理由是 [`Why`] 的一个变体，住在调用处。
 //!
 //! 与 [`crate::said::Said`] 是一对：`Said` 是失败了说什么，`Why` 是为什么不说。
-//! 丢的那一下什么也不做；理由是闭集，拼错编不过。裸丢的两形 `let _ = …` / `….ok();` 是
-//! `clippy::let_underscore_must_use` · `clippy::unused_result_ok` 两条认的形状，这一口是带着理由丢的那一形。
+//! 丢的那一下什么也不做；理由是闭集，拼错编不过。裸丢的两形 `let _ = …` / `….ok();` 由 clippy 的两条 lint
+//! 认出来（丢 must_use 的 let 绑定 · 丢 Result 的 .ok()），这一口是带着理由丢的那一形。
 //!
 //! 只给 `Result` 实现：`Option` 不是 `#[must_use]`，两条 lint 都不报，丢一个 `Option` 不用写理由。
 

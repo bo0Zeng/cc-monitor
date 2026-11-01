@@ -34,6 +34,7 @@ fn acct(id: &str, api: bool, resets5h: Option<u64>) -> Acct {
         per_pct: [None, None],
         weekly: false,
         others: None,
+        past: Default::default(),
     }
 }
 
