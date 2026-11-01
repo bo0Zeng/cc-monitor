@@ -34,7 +34,6 @@ import { machineName, unavailableSaid } from "./control-said";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import type { ActionId } from "./keybindings/actions";
 import { fullTitle } from "./session-face";
-import { fmtDur } from "./duration-format";
 import { renameTab } from "./tab-rename";
 
 /** 菜单项 id ⇒ 它要那台后端做的那条命令（那台握手时说过做不到 ⇒ 置灰并说为什么）。 */
@@ -144,19 +143,15 @@ export interface TabMenuHost {
   accountPanelWired?: () => boolean;
 }
 
-/** 「没人答时自动答」可选的几档（分钟；`0` ＝ 关）。上限由那台判（超了回 `bad_args`）。 */
-export const AUTO_ANSWER_MINUTES: readonly number[] = [0, 5, 15, 30];
-
-/** 「没人答时自动答 ▸」那一组单选：勾在会话事实那一格上（不在这几档里 ⇒ 多列一项，勾在它上）。 */
-export function autoAnswerItems(t: Pick<Tab, "autoAnswer">, set: (min: number) => void): MenuItem[] {
+/** 「没人答时自动答 ▸」那一组单选：照会话事实 `autoAnswerChoices` 列（几档与字都是核心给的），勾在 `min == autoAnswer`（关 ＝ `0`）那一项上。 */
+export function autoAnswerItems(t: Pick<Tab, "autoAnswer" | "autoAnswerChoices">, set: (min: number) => void): MenuItem[] {
   const now = t.autoAnswer ?? 0;
-  const mins = AUTO_ANSWER_MINUTES.includes(now) ? AUTO_ANSWER_MINUTES : [...AUTO_ANSWER_MINUTES, now].sort((a, b) => a - b);
-  return mins.map((m) => ({
-    label: m === 0 ? copyText("tabMenu.autoAnswer.off") : fmtDur(m * 60),
+  return t.autoAnswerChoices.map(({ min, text }) => ({
+    label: text,
     radio: "autoAnswer",
-    checked: m === now,
+    checked: min === now,
     onClick: () => {
-      if (m !== now) set(m);
+      if (min !== now) set(min);
     },
   }));
 }
