@@ -569,3 +569,106 @@ fn read_back_pages_from_the_tail_cut_at_line_starts() {
     );
     let _ = std::fs::remove_dir_all(&home);
 }
+
+// ───────────── 一步用时：出页时配对 ─────────────
+// 夹具只造结构（调用 id、时刻、一句占位的输出），不采任何真会话正文。
+
+/// 一条回复：一次工具调用 `id`，时刻 `ts`。
+fn call_line(id: &str, ts: &str) -> String {
+    format!(
+        r#"{{"type":"assistant","uuid":"a-{id}","timestamp":"{ts}","message":{{"role":"assistant","content":[{{"type":"tool_use","id":"{id}","name":"Bash","input":{{"command":"true"}}}}]}}}}"#
+    )
+}
+
+/// 一条结果：`id` 那次调用的结果，时刻 `ts`。
+fn result_line(id: &str, ts: &str) -> String {
+    format!(
+        r#"{{"type":"user","uuid":"u-{id}","timestamp":"{ts}","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"{id}","content":"x"}}]}}}}"#
+    )
+}
+
+const T0: &str = "2026-01-01T00:00:00.000Z";
+const T90: &str = "2026-01-01T00:01:30.000Z";
+
+/// 成品里那一格结果（最后一条带 `record.results.<id>` 的）。
+fn result_cell(rows: &[Value], id: &str) -> Value {
+    rows.iter()
+        .rev()
+        .find_map(|l| l["record"]["results"].get(id).cloned())
+        .unwrap_or_else(|| panic!("没有 {id} 的结果那一格: {rows:?}"))
+}
+
+/// 一份文件（在临时目录里），回它的路径与 `marker` 那一行的起点。
+fn back_file(name: &str, body: &str, marker: &str) -> (std::path::PathBuf, u64) {
+    let dir = std::env::temp_dir().join(format!("body-steppage-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("s.jsonl");
+    std::fs::write(&p, body).unwrap();
+    let at = body.find(marker).unwrap() as u64;
+    (p, at)
+}
+
+/// 同一页里调用与结果隔 90 秒 ⇒ 结果那一格带写好的用时，带耗时那一形清掉；三种成品一个样。
+#[test]
+fn a_result_on_the_same_page_as_its_call_carries_the_step_duration() {
+    let page = format!("{}\n{}\n", call_line("c1", T0), result_line("c1", T90));
+    let face = claude();
+    let want = copy_core::short_duration(90_000);
+    let (lines, _) = record_lines_of_page(
+        &mut rd(&face),
+        std::path::Path::new("/p/abc.jsonl"),
+        0,
+        0,
+        page.as_bytes(),
+    );
+    let c = result_cell(&lines, "c1");
+    assert_eq!(c["text"], want.as_str(), "{c}");
+    assert!(c.get("timed").is_none(), "{c}");
+    let rows = rows_v(&mut rd(&face), 0, page.as_bytes());
+    assert_eq!(result_cell(&rows, "c1")["text"], want.as_str());
+    let runs = run_rows(&mut rd(&face), 0, page.as_bytes());
+    assert_eq!(result_cell(&runs, "c1")["text"], want.as_str());
+}
+
+/// 调用在前一页、离这一页起点不到一页的额度 ⇒ 往回读那一段配上，照样写好用时。
+#[test]
+fn a_call_within_one_page_before_the_page_start_still_times_its_result() {
+    let res = result_line("c2", T90);
+    let body = format!(
+        "{}\n{}\n{USER}\n{res}\n",
+        call_line("other", T0),
+        call_line("c2", T0),
+    );
+    let (file, at) = back_file("near", &body, &res);
+    let face = claude();
+    let page = &body.as_bytes()[at as usize..];
+    let (lines, _) = record_lines_of_page(&mut rd(&face).back(&file, 4096), &file, 0, at, page);
+    let c = result_cell(&lines, "c2");
+    assert_eq!(c["text"], copy_core::short_duration(90_000).as_str(), "{c}");
+    assert!(c.get("timed").is_none(), "{c}");
+    let rows = rows_v(&mut rd(&face).back(&file, 4096), at, page);
+    assert_eq!(
+        result_cell(&rows, "c2")["text"],
+        copy_core::short_duration(90_000).as_str()
+    );
+    let _ = std::fs::remove_dir_all(file.parent().unwrap());
+}
+
+/// 调用在一页额度以外 ⇒ 再往前不读：不写用时，带耗时那一形照留。
+#[test]
+fn a_call_beyond_one_page_before_the_page_start_leaves_the_result_untimed() {
+    let res = result_line("c3", T90);
+    let filler: String = (0..20).map(|_| format!("{USER}\n")).collect();
+    let body = format!("{}\n{filler}{res}\n", call_line("c3", T0));
+    let (file, at) = back_file("far", &body, &res);
+    let face = claude();
+    let page = &body.as_bytes()[at as usize..];
+    // 额度够到填充那一段的中间，够不到调用那一行。
+    let budget = filler.len() - USER.len() / 2;
+    let (lines, _) = record_lines_of_page(&mut rd(&face).back(&file, budget), &file, 0, at, page);
+    let c = result_cell(&lines, "c3");
+    assert_eq!(c["text"], "", "{c}");
+    assert!(c.get("timed").is_some(), "{c}");
+    let _ = std::fs::remove_dir_all(file.parent().unwrap());
+}
