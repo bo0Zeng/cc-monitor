@@ -1209,7 +1209,9 @@ impl WriteBoard {
             b.undo = undo;
             b.quiet = quiet;
             #[cfg(test)]
-            let _ = b.last.replace(outcome);
+            {
+                b.last = Some(outcome);
+            }
         }
         self.rounds.fetch_add(1, Ordering::SeqCst);
         self.poke();
