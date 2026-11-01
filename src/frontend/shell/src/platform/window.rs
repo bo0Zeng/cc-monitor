@@ -71,6 +71,10 @@ pub fn desktop_fixes(mut builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<
             std::thread::spawn(move || {
                 let mut last = resize_gen.load(Ordering::SeqCst);
                 loop {
+                    #[expect(
+                        clippy::disallowed_methods,
+                        reason = "WebView2 最大化 / 全屏后内容错位修复的去抖：60ms 一步、两次读到同一代 resize 就停；resize 事件没有「停了」那一下"
+                    )]
                     std::thread::sleep(Duration::from_millis(60));
                     let now = resize_gen.load(Ordering::SeqCst);
                     if now == last {
