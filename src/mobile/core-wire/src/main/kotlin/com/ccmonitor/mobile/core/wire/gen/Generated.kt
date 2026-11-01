@@ -4246,7 +4246,7 @@ data class Chore(
     val said: String,
     val why: String,
     val steps: List<String>,
-    val diff: List<DiffRow>,
+    val diff: LineDiff?,
     val copy: String?,
     val whole: String?,
     val wholeCovers: List<String>,
@@ -4268,7 +4268,7 @@ data class Chore(
             Field("said", { Str }, optional = false, nullable = false),
             Field("why", { Str }, optional = false, nullable = false),
             Field("steps", { arr(Str) }, optional = false, nullable = false),
-            Field("diff", { arr(DiffRow.ADAPTER) }, optional = false, nullable = false),
+            Field("diff", { opt(LineDiff.ADAPTER) }, optional = false, nullable = true),
             Field("copy", { opt(Str) }, optional = false, nullable = true),
             Field("whole", { opt(Str) }, optional = false, nullable = true),
             Field("wholeCovers", { arr(Str) }, optional = false, nullable = false),
@@ -4277,7 +4277,7 @@ data class Chore(
             Field("howUrl", { opt(Str) }, optional = false, nullable = true),
             Field("action", { ChoreAction.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> Chore(a[0] as String, a[1] as ChoreKind, a[2] as ChoreState, a[3] as String, a[4] as String, a[5] as String, a[6] as String, a[7] as List<String>, a[8] as List<DiffRow>, a[9] as String?, a[10] as String?, a[11] as List<String>, a[12] as String?, a[13] as UndoAt?, a[14] as String?, a[15] as ChoreAction) },
+            { a -> Chore(a[0] as String, a[1] as ChoreKind, a[2] as ChoreState, a[3] as String, a[4] as String, a[5] as String, a[6] as String, a[7] as List<String>, a[8] as LineDiff?, a[9] as String?, a[10] as String?, a[11] as List<String>, a[12] as String?, a[13] as UndoAt?, a[14] as String?, a[15] as ChoreAction) },
             { v -> arrayOf(v.id, v.kind, v.state, v.name, v.loc, v.said, v.why, v.steps, v.diff, v.copy, v.whole, v.wholeCovers, v.file, v.go, v.howUrl, v.action) },
         )
     }
@@ -5407,38 +5407,6 @@ enum class DialWhy(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<DialWhy> = enumOf(entries) { it.wire }
-    }
-}
-
-enum class DiffOp(val wire: String) {
-    SAME("same"),
-    DEL("del"),
-    ADD("add"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<DiffOp> = enumOf(entries) { it.wire }
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class DiffRow(
-    val n: Long?,
-    val op: DiffOp,
-    val text: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<DiffRow> = obj(
-            listOf(
-            Field("n", { opt(Lng) }, optional = false, nullable = true),
-            Field("op", { DiffOp.ADAPTER }, optional = false, nullable = false),
-            Field("text", { Str }, optional = false, nullable = false),
-            ),
-            { a -> DiffRow(a[0] as Long?, a[1] as DiffOp, a[2] as String) },
-            { v -> arrayOf(v.n, v.op, v.text) },
-        )
     }
 }
 

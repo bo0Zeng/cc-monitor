@@ -2,13 +2,17 @@
 import type { ChoreAction } from "./ChoreAction";
 import type { ChoreKind } from "./ChoreKind";
 import type { ChoreState } from "./ChoreState";
-import type { DiffRow } from "./DiffRow";
+import type { LineDiff } from "./LineDiff";
 import type { UndoAt } from "./UndoAt";
 
 /**
  * 「待办」的一件（`data-report` 的 `todo[]`）。
  */
-export type Chore = { id: string, kind: ChoreKind, state: ChoreState, name: string, loc: string, said: string, why: string, steps: Array<string>, diff: Array<DiffRow>, copy: string | null, whole: string | null, 
+export type Chore = { id: string, kind: ChoreKind, state: ChoreState, name: string, loc: string, said: string, why: string, steps: Array<string>, 
+/**
+ * 要贴的那几行的行差（与写类工具那一张卡同一形）；没有要贴进文件的（命令一类）⇒ 缺。
+ */
+diff: LineDiff | null, copy: string | null, whole: string | null, 
 /**
  * 「整份」盖了哪几件（同一份文件里两件都没做 ⇒ 两件的 id）。
  */

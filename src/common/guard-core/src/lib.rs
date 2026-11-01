@@ -1858,7 +1858,7 @@ pub fn shell_scripts(root: &std::path::Path) -> Vec<String> {
 /// 基线 ＝ HEAD 与 main 的分叉点（`git merge-base HEAD main`，本地没有 `main` 就用 `origin/main`）。
 /// 名单与上限住同一个改动面，同一次提交就能一起放大；对着分叉点判，放大的那一次在这条分支上一直红，提交了也不变绿。
 /// 读不到基线（没有 git · 没有 main · 浅克隆）⇒ `Err`，调用方当红报，不当成过。路径在基线上还没有 ⇒ `Ok(None)`。
-/// TS 侧同口径的一份是 `tests/test-support/ledger-base.ts`。
+/// 各张「只许变短」的名单（连 TS 那一侧的退出债名单）对基线都在本 crate 的测试里判，基线读法只此一份。
 pub fn baseline_text(root: &std::path::Path, rel: &str) -> Result<Option<String>, String> {
     let git = |args: &[&str]| -> Result<Option<String>, String> {
         let out = std::process::Command::new("git")
@@ -2587,6 +2587,11 @@ mod no_outside_refs;
 #[cfg(test)]
 #[path = "../../../../tests/common/guard-core/retired_names_tests.rs"]
 mod retired_names;
+
+/// 退出债名单（TS 那一侧的）上限只许变小：对着基线判。
+#[cfg(test)]
+#[path = "../../../../tests/common/guard-core/exit_debt_base_tests.rs"]
+mod exit_debt_base;
 
 /// 仓里不留私人标识的形状（家目录名 · 私网地址 · 记忆链接 · 邮箱）：只认形状，不点名。
 #[cfg(test)]

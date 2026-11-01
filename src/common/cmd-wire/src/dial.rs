@@ -81,7 +81,7 @@ pub struct DialAck {
     pub ok: bool,
     /// `ok=false` 时的那一句（只带原因词，不带下层原话）。
     #[serde(default)]
-    pub error: Option<String>,
+    pub said: Option<String>,
     /// `ok=false` 时的复制详情（时刻 · 机器 · 命令 · 下层原话）。成功 ⇒ 不出这一格。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -130,7 +130,7 @@ impl DialAck {
     pub fn opened(fingerprint: Option<String>, endpoint: String, winner: Endpoint) -> Self {
         DialAck {
             ok: true,
-            error: None,
+            said: None,
             detail: None,
             fingerprint,
             endpoint: Some(endpoint),
@@ -148,7 +148,7 @@ impl DialAck {
     pub fn of_fail(f: DialFail) -> Self {
         DialAck {
             ok: false,
-            error: Some(f.said),
+            said: Some(f.said),
             detail: f.detail,
             fingerprint: f.fingerprint,
             endpoint: None,

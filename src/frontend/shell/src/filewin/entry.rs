@@ -38,8 +38,9 @@
 //! 顶栏那个入口（`src/frontend/ui/sftp-host-picker.ts`，0 台提示 / 1 台直开 / 多台选单）接过来时**不必先自己解一趟路径**。
 //! 逐条理由住 [`open_file_window`] 的 `# 🔴` 那一节。
 
-use crate::detail::Said;
+use crate::detail::Shell as _;
 use copy_core::copy_text;
+use copy_core::said::Said;
 
 use super::proc::{open_in_new_process, OpenRequest, ProcFail, Unopened};
 
@@ -147,7 +148,7 @@ pub async fn open_file_window(
     let r: Result<usize, Said> = async move {
         use tauri::Manager;
         // 窗口的样子：主界面此刻 `:root` 上的那一套（含用户改过的）解成数。解不出来就不开（不替它补一套）。
-        let theme = filewin_contract::Theme::from_tokens(&theme).map_err(Said::written)?;
+        let theme = filewin_contract::Theme::from_tokens(&theme).map_err(Said::from)?;
         // 主窗所在那台显示器的工作区（窗口进程开出来第一拍夹进它）。
         let work_area = app
             .get_webview_window(crate::MAIN_WINDOW_LABEL)
@@ -182,7 +183,7 @@ pub(crate) async fn open_with(
         .map(|d| d.join(crate::data_paths::FILEWIN_VIEW_FILE));
     // ⓪ 三者优先级 —— 那一段是**纯函数**（[`plan_target`]），理由见它的头注。
     //    〔09-28 裁 3〕home 那一支不在这里问了：`cwd` 缺席交给窗口进程（`proc::first_screen`）。
-    let (cwd, reveal) = match plan_target(&path, reveal_file.as_deref()).map_err(command)? {
+    let (cwd, reveal) = match plan_target(&path, reveal_file.as_deref()).map_err(Said::from)? {
         Target::Dir(d) => (Some(d), None),
         Target::Reveal { dir, name } => (Some(dir), Some(name)),
         Target::Home => (None, None),
@@ -211,13 +212,7 @@ pub(crate) async fn open_with(
     //      各自带着自己的原因），**不许**退回同进程开一个。
     let opened = tokio::task::spawn_blocking(move || open_in_new_process(&req, late))
         .await
-        .map_err(|e| {
-            Said::new(
-                copy_text("rsFilewinEntry.open.crashed", &[]),
-                OPEN_COMMAND,
-                Some(&e.to_string()),
-            )
-        })?;
+        .map_err(|e| Said::with_raw(copy_text("rsFilewinEntry.open.crashed", &[]), e))?;
     let (pid, n) = opened.map_err(unopened_said)?;
     tracing::info!("文件窗口起在进程 {pid} 上（第一屏 {n} 行，它自己列的）");
     Ok(n)
@@ -257,24 +252,20 @@ pub(crate) async fn open_from_window(
         .map_err(|why| ("open_failed", why.said))
 }
 
-/// 开窗那条命令的名字（复制详情的「命令」那一项）。
-const OPEN_COMMAND: &str = "open_file_window";
-
-/// 开窗那条路上只有一句话的失败 ⇒ 带命令名的那一形。
-fn command(said: String) -> Said {
-    Said::new(said, OPEN_COMMAND, None)
-}
-
-/// 进程这一层没成 ⇒ 那一句 ＋ 复制详情（命令 · 退出状态 · stderr 末几行）。
+/// 进程这一层没成 ⇒ 那一句 ＋ 码（退出状态）· 原话（stderr 末几行）；命令名由开窗那条命令投出去时补。
 fn process_said(f: ProcFail) -> Said {
-    Said::coded(f.said, OPEN_COMMAND, f.code.as_deref(), f.raw.as_deref())
+    let s = Said::from(f.said).and_raw(f.raw.as_deref());
+    match f.code.as_deref() {
+        Some(code) => s.coded(code),
+        None => s,
+    }
 }
 
 /// 开窗没成 ⇒ 给 webview 的那一句。窗口进程列不出来时说的那句**原话原样**交出去（与上一版 monitor 自己列不出来时回的是同一句）；
 /// 进程这一层的错套上「文件窗口没起来」，退出状态与 stderr 进复制详情。
 fn unopened_said(u: Unopened) -> Said {
     match u {
-        Unopened::Said(said) => command(said),
+        Unopened::Said(said) => Said::from(said),
         Unopened::Process(f) => process_said(ProcFail {
             said: copy_text("rsFilewinEntry.open.failed", &[("why", &f.said)]),
             ..f

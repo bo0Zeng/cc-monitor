@@ -8,17 +8,19 @@
  * 那台能不能做、怎么做由那台后端判（`tab-batch-run.ts`）。固定 · 集合 · 关闭是 monitor 自己的界面状态，不经后端。
  */
 import type { Tab } from "./tab-model";
-import { canEnd, canResume, closesQuietly, isEnded } from "./face-can";
+import { canEnd, canResume, closesQuietly } from "./face-can";
 import { copyText } from "./copy-table";
 import { openMenu, type MenuItem } from "./kit/menu";
 import type { TabGroup } from "./tab-bar-prefs";
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { groupSubmenu } from "./tab-menu";
-import { askEnd, sayRows, type EndRow } from "./end-confirm";
+import { askEnd, sayReply, sayRows, type EndRow } from "./end-confirm";
 import { machineName } from "./control-said";
 import { fullTitle } from "./session-face";
 import { isRemoteOrigin } from "./ipc/origin";
 import { startMany, stopMany, type BatchOutcome } from "./tab-batch-run";
+import type { SessionsBatchReply } from "./generated/SessionsBatchReply";
+import { failToast } from "./kit/toast";
 import type { Launch } from "./generated/Launch";
 
 /** 批量菜单要宿主给的：按 sid 取 tab · 集合 · 固定 · 关闭（都一次改完、落盘一次）。 */
@@ -40,7 +42,7 @@ export interface TabBatchHost {
 
 /** 后端那两件（判据换替身）。 */
 export interface TabBatchRun {
-  stop(tabs: readonly Tab[]): Promise<BatchOutcome[]>;
+  stop(tabs: readonly Tab[]): Promise<SessionsBatchReply>;
   start(tabs: readonly Tab[], run: Launch): Promise<BatchOutcome[]>;
   confirm: ConfirmFn;
 }
@@ -117,11 +119,14 @@ export function openBatchMenu(
   const [startable, notStartable] = split(tabs, (t) => canResume(t.face), (t) => whyOf(t.face?.can.resume));
   const items: MenuItem[] = [
     { label: copyText("tabBatch.menu.head", { n: tabs.length }), heading: true },
+    // 结束：确认框只列结束得了的（同后端判跳过的那一格）；交出去的是选中的全部，跳过的由回包逐条列。
     item(copyText("tabBatch.menu.stop", { n: stoppable.length }), stoppable.length, async () => {
-      const ended = tabs.filter((t) => isEnded(t.face)).length;
-      const note = ended > 0 ? copyText("sessionState.batch.skipped", { n: ended }) : undefined;
-      if (!(await askEnd(stoppable.map(lineTitle), run.confirm, note))) return;
-      sayRows(rowsOf(tabs, [...(await run.stop(stoppable)), ...notStoppable]));
+      if (!(await askEnd(stoppable.map(lineTitle), run.confirm))) return;
+      try {
+        sayReply(await run.stop(tabs));
+      } catch (e) {
+        failToast(copyText("tabBatch.stop.title", { n: tabs.length }), e);
+      }
     }, true, notStoppable[0]?.why),
     item(copyText("tabBatch.menu.startTmux", { n: startable.length }), startable.length, async () => {
       sayBatch(copyText("tabBatch.action.startTmux"), tabs, [...(await run.start(startable, "tmux")), ...notStartable]);

@@ -122,12 +122,8 @@ pub enum DeployAct {
 pub enum DeployEnd {
     /// 做完了。
     Done { act: DeployAct, text: String },
-    /// 没做成：码 · 那一句 · 复制详情。
-    Failed {
-        code: String,
-        text: String,
-        detail: String,
-    },
+    /// 没做成：交出去的那一形失败（码 · 那一句 · 复制详情）。
+    Failed(crate::failed::Failed),
 }
 
 /// 同名那一问的一行（抽屉照画）：键 · 名字 · 那一行的说明（核心写好）· 这一项能怎么答 · 撞的那一份叫什么（本机同名才有）。

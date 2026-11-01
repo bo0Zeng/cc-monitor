@@ -1,12 +1,13 @@
 package com.ccmonitor.mobile.ui.login
 
-import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Login
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
 import com.ccmonitor.mobile.core.wire.gen.PasteKind
+import com.ccmonitor.mobile.core.wire.gen.Raw
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
@@ -25,7 +26,7 @@ class LoginFlowTest {
     fun `起 · 粘错一回（那一格下面那一句、作业还在）· 再交成了 ⇒ done；成了之后收起不再撤`() =
         runTest {
             val l = FakeCoreLink()
-            var finish: Reply = Reply.Failed(CoreFailure("bad_paste", "粘贴的内容对不上本次登录 · 可重新粘贴", "d", mapOf("again" to "paste", "terminal" to false)))
+            var finish: Reply = Reply.Failed(Failed("bad_paste", "粘贴的内容对不上本次登录 · 可重新粘贴", "d", Raw("""{"again":"paste","terminal":false}""")))
             l.answer = { cmd, _ ->
                 when (cmd) {
                     "login-start" -> Reply.Ok(started)
@@ -59,7 +60,7 @@ class LoginFlowTest {
     @Test
     fun `没起成 ⇒ 那台那一句、没有作业；收起不发撤单`() =
         runTest {
-            val l = FakeCoreLink().also { it.answer = { _, _ -> Reply.Failed(CoreFailure("unsupported", "codex · 不支持在 app 里登录", "d")) } }
+            val l = FakeCoreLink().also { it.answer = { _, _ -> Reply.Failed(Failed("unsupported", "codex · 不支持在 app 里登录", "d")) } }
             val f = LoginFlow(l, "h1", "smokebox", Login.account("codex", "cx"), backgroundScope)
             f.start()
             runCurrent()
@@ -91,7 +92,7 @@ class LoginFlowTest {
                 l.answer = { cmd, _ ->
                     when (cmd) {
                         "login-start" -> Reply.Ok(started)
-                        "login-finish" -> Reply.Failed(CoreFailure("expired", "这次登录已过期", "d", mapOf("again" to again, "terminal" to false)))
+                        "login-finish" -> Reply.Failed(Failed("expired", "这次登录已过期", "d", Raw("""{"again":"$again","terminal":false}""")))
                         else -> Reply.Ok(mapOf("was" to true))
                     }
                 }
@@ -113,7 +114,7 @@ class LoginFlowTest {
     fun `没起成 ⇒ again none 不给重新开始；回包里没有 again ⇒ 给`() =
         runTest {
             for ((reply, can) in listOf(
-                Reply.Failed(CoreFailure("unsupported", "不支持", "d", mapOf("again" to "none", "terminal" to false))) to false,
+                Reply.Failed(Failed("unsupported", "不支持", "d", Raw("""{"again":"none","terminal":false}"""))) to false,
                 Reply.TimedOut to true,
             )) {
                 val l = FakeCoreLink().also { it.answer = { _, _ -> reply } }
@@ -155,8 +156,8 @@ class LoginFlowTest {
     fun `没起成 ⇒ terminal 照回包：true 给、false 不给、超时不给`() =
         runTest {
             for ((reply, want) in listOf(
-                Reply.Failed(CoreFailure("spawn", "起不来", "d", mapOf("again" to "restart", "terminal" to true))) to true,
-                Reply.Failed(CoreFailure("spawn", "起不来", "d", mapOf("again" to "restart", "terminal" to false))) to false,
+                Reply.Failed(Failed("spawn", "起不来", "d", Raw("""{"again":"restart","terminal":true}"""))) to true,
+                Reply.Failed(Failed("spawn", "起不来", "d", Raw("""{"again":"restart","terminal":false}"""))) to false,
                 Reply.TimedOut to false,
             )) {
                 val l = FakeCoreLink().also { it.answer = { _, _ -> reply } }
@@ -174,7 +175,7 @@ class LoginFlowTest {
             val l = FakeCoreLink()
             l.answer = { cmd, _ ->
                 when (cmd) {
-                    "login-start" -> Reply.Failed(CoreFailure("spawn", "起不来", "d", mapOf("again" to "restart", "terminal" to true)))
+                    "login-start" -> Reply.Failed(Failed("spawn", "起不来", "d", Raw("""{"again":"restart","terminal":true}""")))
                     else -> cmdReply
                 }
             }
@@ -183,7 +184,7 @@ class LoginFlowTest {
             runCurrent()
             assertEquals(Result.success("claude /login"), f.terminalLine())
             assertEquals(listOf(mapOf("name" to "team")), l.calls("accounts-login-cmd"))
-            cmdReply = Reply.Failed(CoreFailure("missing", "team · 没有这个号", "d"))
+            cmdReply = Reply.Failed(Failed("missing", "team · 没有这个号", "d"))
             assertTrue(f.terminalLine().isFailure)
             assertEquals("team · 没有这个号", f.state.value.failed)
             assertTrue(f.state.value.terminal)

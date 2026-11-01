@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.chat
 
-import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.human
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.reply
@@ -46,7 +46,7 @@ class ChatOpenByIdTest {
         runTest {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
-                if (cmd == "history-facts") Reply.Failed(CoreFailure("no_such_session", "未找到此会话的记录", "")) else Reply.LinkDown
+                if (cmd == "history-facts") Reply.Failed(Failed("no_such_session", "未找到此会话的记录", "")) else Reply.LinkDown
             }
             val s = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope).also { it.open() }
             runCurrent()

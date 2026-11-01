@@ -1,10 +1,10 @@
 package com.ccmonitor.mobile.link
 
 import com.ccmonitor.mobile.cache.Pending
-import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.data.db.PendingOutcome
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import com.ccmonitor.mobile.ui.chat.linkConnecting
 import com.ccmonitor.mobile.ui.chat.linkUp
@@ -71,7 +71,7 @@ class PendingResendTest {
     fun `那台拒了 ⇒ 记成没送到、不再交；没回执（断着 · 期限到）⇒ 留着等下一回接上`() =
         runTest {
             val link = FakeCoreLink().apply { state.value = linkConnecting() }
-            val replies = ArrayDeque(listOf<Reply>(Reply.Failed(CoreFailure("too_long", "s-refused", "")), Reply.TimedOut))
+            val replies = ArrayDeque(listOf<Reply>(Reply.Failed(Failed("too_long", "s-refused", "")), Reply.TimedOut))
             link.answer = { cmd, _ -> if (cmd == "session-queue-put") replies.removeFirst() else Reply.LinkDown }
             val box = Box(listOf(Pending("p1", "s1", "t-1", PendingOutcome.PENDING, 1), Pending("p2", "s2", "t-2", PendingOutcome.PENDING, 1)))
             PendingResend(MutableStateFlow(mapOf<String, CoreLink>("h" to link)), { box }, backgroundScope)

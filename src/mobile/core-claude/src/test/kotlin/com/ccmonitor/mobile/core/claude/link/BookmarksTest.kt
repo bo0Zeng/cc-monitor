@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -58,7 +59,7 @@ class BookmarksTest {
             first.await()
             assertEquals(listOf("/new"), shelf.dirs.value)
             val failing =
-                BookmarkShelf { _, _ -> Reply.Failed(CoreFailure("io_failed", "书签读不出来", "")) }
+                BookmarkShelf { _, _ -> Reply.Failed(Failed("io_failed", "书签读不出来", "")) }
             failing.refresh("/a")
             assertEquals("书签读不出来", failing.said.value)
             assertTrue(failing.dirs.value.isEmpty())

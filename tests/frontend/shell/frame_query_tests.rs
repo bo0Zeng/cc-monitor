@@ -332,6 +332,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "terminals-board",
         "「终端」视图那张名单：本机后端 `faces/terminals_board_face.rs` 问到各台的 `terminals-board-here`、合成一份（成品住 `control/terminals_board.rs`）；前端 `src/frontend/ui/terminals-board-reads.ts` 原样交给视图",
     ),
+    // 一批会话跨几台：本机后端按台分组做、合好那一句。
+    (
+        "sessions-batch",
+        "多选批量停：本机后端 `faces/sessions_batch_face.rs` 本机那一组同进程停、别的台问它自己那一组，照原序合好那一句（合句住 `batch_core::sessions`）；前端 `src/frontend/ui/tab-batch-run.ts` 交一条、`end-confirm.ts::sayReply` 照摆",
+    ),
     // 监控板版面：本机后端问到各台、合成一份（组序 · 组头 · 组内先后 · 顶上那一句都写好）。
     (
         "monitor-board",
@@ -1335,7 +1340,7 @@ async fn an_expired_deadline_sends_nothing() {
     inbound_client::unregister(&client);
 }
 
-/// 那台拒了：句子就是它那一句（不在前面接「谁查询失败 ·」），复制详情是它写的那份（远端补「本机」那一行）。
+/// 那台拒了：句子就是它那一句（不在前面接「谁查询失败 ·」），码 · 复制详情是它交来的那一份原样（壳不拆、不补）。
 #[tokio::test]
 async fn a_refusal_says_the_peer_sentence_and_carries_its_detail() {
     let origin = Origin::named("said3-refused");
@@ -1373,16 +1378,8 @@ async fn a_refusal_says_the_peer_sentence_and_carries_its_detail() {
     );
     let e = asking.await.expect("task").expect_err("拒了却成了");
     assert_eq!(e.said, "机器表写不进去");
-    assert!(
-        e.detail.contains(&wrote),
-        "那台写的详情没带上：{}",
-        e.detail
-    );
-    assert!(
-        e.detail.contains(&crate::detail::local_line()),
-        "远端没补「本机」：{}",
-        e.detail
-    );
+    assert_eq!(e.code, "write_failed");
+    assert_eq!(e.detail, wrote, "那台写的详情没原样带上");
     inbound_client::unregister(&client);
 }
 

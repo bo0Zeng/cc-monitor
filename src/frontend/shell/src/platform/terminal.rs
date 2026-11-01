@@ -3,7 +3,7 @@
 //! Windows：`wt.exe` / `powershell.exe` 开窗。「跑什么」的校验与 argv 住 `launch.rs::build_local_posix_argv`；
 //! 两条 Tauri 命令（`open_terminal_window` · `open_local_terminal`）也留在 `launch.rs`，都经本文件的 [`open_local`] 开窗。
 
-use crate::detail::Said;
+use copy_core::said::Said;
 
 /// 常见终端怎么交给它一条命令：`(程序名, 命令前垫的参数)`，各家约定不同（逐个照它的用法串核过；后面整串 argv 原样接上）。
 /// 先两个「交给系统定」的出口（freedesktop `xdg-terminal-exec` —— Ubuntu 26.04 的「默认终端」就按它的配置走 ·

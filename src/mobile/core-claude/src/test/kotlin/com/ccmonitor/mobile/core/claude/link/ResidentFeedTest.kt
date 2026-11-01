@@ -376,10 +376,10 @@ class ResidentFeedTest {
             assertEquals(Deploying.Done("已安装后端 p10g-mine"), f.deploying.value)
             core.emit("state", line("那台旧"))
             assertEquals("又说要更新 ⇒ 装好那一句收起", null, f.deploying.value)
-            core.emit("deploy", """{"end":"failed","code":"io_failed","text":"上传后校验失败","detail":"d"}""")
+            core.emit("deploy", """{"end":"failed","code":"io_failed","said":"上传后校验失败","detail":"d"}""")
             assertEquals(Deploying.Failed(Failed("io_failed", "上传后校验失败", "d")), f.deploying.value)
             // 缺一格（详情）· 认不出的结局 ⇒ 不补默认、不动，报契约对不上。
-            core.emit("deploy", """{"end":"failed","code":"io_failed","text":"别的"}""")
+            core.emit("deploy", """{"end":"failed","code":"io_failed","said":"别的"}""")
             core.emit("deploy", """{"what":1}""")
             assertEquals(Deploying.Failed(Failed("io_failed", "上传后校验失败", "d")), f.deploying.value)
         }
@@ -395,8 +395,10 @@ class ResidentFeedTest {
             core.emit("reply", """{"call":1,"end":"ok","data":{"rows":[],"later":{"x":1}}}""")
             assertEquals(Reply.Ok(mapOf("rows" to emptyList<Any>(), "later" to mapOf("x" to 1.0))), ok.await())
             val failed = async { f.call("session-open") }
-            core.emit("reply", """{"call":2,"end":"failed","code":"differs","said":"box 后端版本不同","detail":"d","data":null}""")
-            assertEquals(Reply.Failed(CoreFailure("differs", "box 后端版本不同", "d", null)), failed.await())
+            core.emit("reply", """{"call":2,"end":"failed","code":"differs","said":"box 后端版本不同","detail":"d","data":{"want":"5.1"}}""")
+            val said = (failed.await() as Reply.Failed).failure
+            assertEquals(listOf("differs", "box 后端版本不同", "d"), listOf(said.code, said.said, said.detail))
+            assertEquals(mapOf("want" to "5.1"), said.data?.value)
             for ((line, want) in listOf("""{"call":3,"end":"timeout"}""" to Reply.TimedOut, """{"call":4,"end":"down"}""" to Reply.LinkDown)) {
                 val r = async { f.call("ping") }
                 core.emit("reply", line)

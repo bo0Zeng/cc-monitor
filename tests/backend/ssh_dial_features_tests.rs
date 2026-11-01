@@ -686,7 +686,7 @@ async fn a_login_that_passes_but_refuses_the_session_says_so() {
         }));
         let (ack, ..) = open(req, crate::uses::Control::none()).await;
         assert_eq!(ack["ok"], false, "{use_}：开会话被拒却回了 ok：{ack}");
-        assert_eq!(ack["error"], refused.as_str(), "{use_}：{ack}");
+        assert_eq!(ack["said"], refused.as_str(), "{use_}：{ack}");
         assert_ne!(ack["reason"], "auth", "{use_}：登录是过了的：{ack}");
         assert_eq!(
             ack["reason"], "session_denied",

@@ -166,11 +166,11 @@ fn 实时显示_没贴可选_贴过过期升成要做_贴好已做() {
         c[0]["whole"].as_str().unwrap().contains("SECRET"),
         "整份里是要贴的那条地址"
     );
-    assert!(c[0]["diff"]
+    assert!(c[0]["diff"]["rows"]
         .as_array()
         .unwrap()
         .iter()
-        .any(|l| l["op"] == json!("add")));
+        .any(|l| l["kind"] == json!("add")));
     f.relay[0].state = "stale".into();
     let c = chores(&f);
     assert_eq!(
@@ -198,6 +198,47 @@ fn cc_bus_收信_没装_cc_bus_先决_windows_不出() {
     assert_eq!(c[0]["go"], json!({"page": "ext"}));
     f.windows = true;
     assert!(chores(&f).is_empty());
+}
+
+/// 待办那一件的行差与写类工具那一份同形（`cmd_wire::record::LineDiff`），行尾风格不算差别：
+/// 改前以 `\r\n` · `\r` 断行、合进去的那几行以 `\n` 断行，没动的那几行不出删。
+#[test]
+fn 待办的_diff_是写类工具那一份行差_行尾风格不算差别() {
+    let mut f = base();
+    f.relay = vec![claude_relay(
+        "absent",
+        "/h/s.json",
+        Some("{\r\n  \"model\": \"opus\"\r}\r\n"),
+        Some("u"),
+    )];
+    let c = super::chores(&f);
+    let d: &cmd_wire::record::LineDiff = c[0].diff.as_ref().expect("那一件带行差");
+    assert_eq!(d.removed, 0, "行尾风格不同的那几行不算删：{:?}", d.rows);
+    assert!(d.added > 0);
+    assert!(
+        d.rows.iter().all(|r| !r.text.contains('\r')),
+        "{:?}",
+        d.rows
+    );
+    let ctx = d
+        .rows
+        .iter()
+        .find(|r| r.kind == cmd_wire::record::LineDiffKind::Ctx)
+        .expect("上下带一行原文");
+    assert!(ctx.old_no.is_some() && ctx.new_no.is_some(), "{ctx:?}");
+}
+
+/// 没有要贴的那几件（命令一类）不带行差。
+#[test]
+fn 命令一类的待办_没有行差() {
+    let mut f = base();
+    f.stale_ccm = Some(StaleCcm {
+        path: "/usr/local/bin/ccm".into(),
+        needs_root: true,
+    });
+    let c = chores(&f);
+    assert_eq!(c[0]["id"], json!("stale-ccm"));
+    assert_eq!(c[0]["diff"], Value::Null);
 }
 
 #[test]
@@ -406,10 +447,17 @@ fn sshd_关了转发_要做_换那一行() {
     assert_eq!(c[0]["file"], json!("/etc/ssh/sshd_config"));
     assert_eq!(
         c[0]["diff"],
-        json!([
-            {"n": 7, "op": "del", "text": "AllowTcpForwarding no"},
-            {"n": null, "op": "add", "text": "AllowTcpForwarding yes"}
-        ])
+        json!({
+            "rows": [
+                {"kind": "del", "text": "AllowTcpForwarding no", "oldNo": 7},
+                {"kind": "add", "text": "AllowTcpForwarding yes", "newNo": 7}
+            ],
+            "shown": 2,
+            "truncated": false,
+            "added": 1,
+            "removed": 1,
+            "stat": "+1 −1"
+        })
     );
     assert_eq!(c[0]["steps"].as_array().unwrap().len(), 3);
     assert!(c[0]["loc"]

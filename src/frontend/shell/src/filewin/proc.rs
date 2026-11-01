@@ -89,8 +89,8 @@ pub fn resolve_window_bin_in(
     env: Option<PathBuf>,
     embedded: Option<&[u8]>,
     landing: Option<&Path>,
-    make_executable: &dyn Fn(&Path) -> Result<(), crate::detail::Said>,
-    ensure_dir: &dyn Fn(&Path) -> Result<(), crate::detail::Said>,
+    make_executable: &dyn Fn(&Path) -> Result<(), copy_core::said::Said>,
+    ensure_dir: &dyn Fn(&Path) -> Result<(), copy_core::said::Said>,
 ) -> Result<PathBuf, ProcFail> {
     let mut looked: Vec<PathBuf> = Vec::new();
     if let Some(p) = env {

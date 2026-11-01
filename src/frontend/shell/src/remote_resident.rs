@@ -3,10 +3,11 @@
 //! - 停：请本机后端 `machine-stop`（它先停自己那一条、再在那台跑一次 `--resident-stop`：那台自己做「请它收尾 → 宽限期内等 → 到点强杀」），
 //!   拿回 `graceful | killed | not_running`。本机那一趟（`local_backend_host::run_resident_stop`）读 `--resident-stop` 那一行，读法同循环那一份。
 
-use crate::detail::Said;
+use crate::detail::Shell as _;
 use cmd_wire::machine::{MachineStopReq, MachineStopped};
 use cmd_wire::Call;
 use copy_core::copy_text;
+use copy_core::said::Said;
 
 /// 等它的上限：那台自己的宽限期 ＋ 强杀后再等的那一段 ＋ 拨号都得在这里头
 /// （`remote_resident_tests::the_stop_budget_outlasts_the_remote_stop` 现抠后端两个毫秒字面量比）。
@@ -49,13 +50,21 @@ pub(crate) fn read_stop(
 }
 
 /// **停那台的常驻后端**（机器页「停」）：请本机后端停（`machine-stop`：先停它那一条，再在那台发**一次** `--resident-stop`），
-/// 等与强杀由那台自己做（同机监督者），这里只拿回结局。
-pub(crate) async fn stop(machine: &str) -> Result<StopAnswer, Said> {
+/// 等与强杀由那台自己做（同机监督者），这里只拿回结局。本机后端答了失败 ⇒ 它那一份原样；
+/// 壳自己这一侧没成（本机后端不在 · 回包读不懂）⇒ 那一句说哪台没停成，下层那一句进原话。
+pub(crate) async fn stop(machine: &str) -> Result<StopAnswer, cmd_wire::failed::Failed> {
     use crate::backend_route::{route_call_error, Routed};
     const NAME: &str = MachineStopReq::NAME;
+    let own = |s: Said| {
+        s.retold(copy_text(
+            "rsBackendControl.remote.stopFailed",
+            &[("origin", machine)],
+        ))
+        .named(NAME)
+    };
     let client = crate::inbound_client::local_backend_accepting(NAME)
         .await
-        .map_err(|said| Said::new(said, NAME, None))?;
+        .map_err(|said| own(Said::from(said)))?;
     let req = MachineStopReq {
         machine: machine.to_string(),
     };
@@ -66,11 +75,11 @@ pub(crate) async fn stop(machine: &str) -> Result<StopAnswer, Said> {
         }) {
             Routed::NoChannel(s) | Routed::Refused(s) => s,
         };
-        Said::of_call(said, NAME, &crate::origin::Origin::local(), &e)
+        crate::detail::of_call(said, NAME, &e)
     })?;
     match got {
-        Ok(r) => answer_of_stopped(&r),
-        Err(e) => Err(unknown_answer(e.to_string())),
+        Ok(r) => answer_of_stopped(&r).map_err(own),
+        Err(e) => Err(own(unknown_answer(e.to_string()))),
     }
 }
 

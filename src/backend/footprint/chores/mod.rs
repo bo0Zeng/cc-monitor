@@ -10,8 +10,12 @@ pub(crate) mod gather;
 pub(crate) mod marks;
 pub(crate) mod sshd;
 
-use crate::common::json_patch::{self as patch, DiffLine, Plan};
+use crate::agents::StepResultExt as _;
+use crate::common::cells::Words;
+use crate::common::json_patch::{self as patch, Plan};
+use crate::common::line_diff;
 use crate::footprint::data::{Missing, UndoAt};
+use cmd_wire::record::{LineDiff, LineDiffKind, LineDiffRow};
 use copy_core::copy_text;
 use serde_json::Value;
 
@@ -78,13 +82,7 @@ impl Relay {
     /// 按现在的内容合上地址的那一份改法（合不出 ⇒ `None`）。
     fn plan(&self, url: &str) -> Option<Plan> {
         let now = self.text.as_deref().unwrap_or("");
-        let whole = (self.merge)(now, url)?;
-        let (diff, at_line) = patch::line_diff_of(now, &whole);
-        Some(Plan {
-            whole,
-            diff,
-            at_line,
-        })
+        Some(patch::plan_of(now, (self.merge)(now, url)?))
     }
 }
 
@@ -172,35 +170,27 @@ pub(crate) enum ChoreAction {
     InstallFirst,
 }
 
-/// diff 一行的种类。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub(crate) enum DiffOp {
-    Same,
-    Del,
-    Add,
+/// 要贴的那几行 ⇒ 那一件的行差（与写类工具那一张卡同一形；「+N −M」那一句与过程那一行右侧那一句同一处写）。
+fn diff_of(rows: Vec<LineDiffRow>, notice: Option<Words>) -> LineDiff {
+    let count = |k: LineDiffKind| rows.iter().filter(|r| r.kind == k).count() as u32;
+    let (added, removed) = (count(LineDiffKind::Add), count(LineDiffKind::Del));
+    let stat = cmd_wire::record::StepResult {
+        ok: true,
+        added: Some(added),
+        removed: Some(removed),
+        ..Default::default()
+    }
+    .written(false)
+    .text;
+    line_diff::assemble(rows, added, removed, false, notice, stat)
 }
 
-/// diff 的一行（线上形）：加的那几行 `n` 为 `null`。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct DiffRow {
-    pub(crate) n: Option<usize>,
-    pub(crate) op: DiffOp,
-    pub(crate) text: String,
-}
-
-impl From<DiffLine> for DiffRow {
-    fn from(l: DiffLine) -> DiffRow {
-        let (n, op, text) = match l {
-            DiffLine::Same(n, t) => (Some(n), DiffOp::Same, t),
-            DiffLine::Del(n, t) => (Some(n), DiffOp::Del, t),
-            DiffLine::Add(t) => (None, DiffOp::Add, t),
-        };
-        DiffRow { n, op, text }
+fn row(kind: LineDiffKind, text: &str, old_no: Option<u32>, new_no: Option<u32>) -> LineDiffRow {
+    LineDiffRow {
+        kind,
+        text: text.to_string(),
+        old_no,
+        new_no,
     }
 }
 
@@ -218,7 +208,8 @@ pub(crate) struct Chore {
     pub(crate) said: String,
     pub(crate) why: String,
     pub(crate) steps: Vec<String>,
-    pub(crate) diff: Vec<DiffRow>,
+    /// 要贴的那几行的行差（与写类工具那一张卡同一形）；没有要贴进文件的（命令一类）⇒ 缺。
+    pub(crate) diff: Option<LineDiff>,
     pub(crate) copy: Option<String>,
     pub(crate) whole: Option<String>,
     /// 「整份」盖了哪几件（同一份文件里两件都没做 ⇒ 两件的 id）。
@@ -241,7 +232,7 @@ impl Chore {
             said: String::new(),
             why: String::new(),
             steps: vec![],
-            diff: vec![],
+            diff: None,
             copy: None,
             whole: None,
             whole_covers: vec![],
@@ -340,10 +331,14 @@ pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
             copy_text("beChore.step.replace", &[("line", &line), ("n", "1")]),
             copy_text("beChore.sshd.stepReload", &[]),
         ];
-        c.diff = vec![
-            DiffLine::Del(s.line, s.text.clone()).into(),
-            DiffLine::Add(s.fix.clone()).into(),
-        ];
+        let at = u32::try_from(s.line).ok();
+        c.diff = Some(diff_of(
+            vec![
+                row(LineDiffKind::Del, &line_diff::cell(&s.text), at, None),
+                row(LineDiffKind::Add, &line_diff::cell(&s.fix), None, at),
+            ],
+            None,
+        ));
         c.copy = Some(s.fix.clone());
         c.file = Some(s.path.clone());
         out.push(c);
@@ -379,11 +374,11 @@ pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
             copy_text("beChore.selfPaste.step", &[("line", &line), ("n", &n)]),
             copy_text("beChore.selfPaste.stepSave", &[]),
         ];
-        c.diff = p
-            .lines
-            .iter()
-            .map(|l| DiffLine::Add(l.clone()).into())
-            .collect();
+        let rows = p.lines.iter().enumerate().map(|(k, l)| {
+            let at = u32::try_from(p.after_line + k + 1).ok();
+            row(LineDiffKind::Add, &line_diff::cell(l), None, at)
+        });
+        c.diff = Some(diff_of(rows.collect(), None));
         c.copy = Some(p.lines.join("\n"));
         c.file = Some(p.rc.clone());
         if p.present {
@@ -532,26 +527,17 @@ pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
             c.said = copy_text("beChore.hooks.said", &[]);
         } else {
             c.said = copy_text("beChore.hooks.said", &[]);
-            let mut text = h.text.clone().unwrap_or_default();
-            let mut first: Option<Plan> = None;
-            for (event, item) in &h.items {
-                match patch::push_item(&text, &["hooks", event], item) {
-                    Some(p) => {
-                        text = p.whole.clone();
-                        first.get_or_insert(p);
-                    }
-                    None => {
-                        first = None;
-                        break;
-                    }
-                }
-            }
-            if let Some(mut p) = first {
+            let now = h.text.as_deref().unwrap_or("");
+            let merged = h
+                .items
+                .iter()
+                .try_fold(now.to_string(), |text, (event, item)| {
+                    patch::push_item(&text, &["hooks", event], item).map(|p| p.whole)
+                })
+                .filter(|_| !h.items.is_empty());
+            if let Some(text) = merged {
                 // diff 按现在的文件算（一次加齐的那几行），整份是加齐之后的。
-                let all = patch::line_diff_of(h.text.as_deref().unwrap_or(""), &text);
-                p.diff = all.0;
-                p.at_line = all.1;
-                p.whole = text;
+                let p = patch::plan_of(now, text);
                 fill_plan(&mut c, &h.path, &p);
                 same_file.push((out.len(), p));
             }
@@ -617,49 +603,40 @@ fn merge_both(f: &Facts) -> Option<String> {
 
 /// 一份改法填进那一件：怎么做的几步 · diff · 要复制的那几行 · 整份。
 fn fill_plan(c: &mut Chore, path: &str, p: &Plan) {
-    let added: Vec<String> = p
+    let added: Vec<&str> = p
         .diff
         .iter()
-        .filter_map(|l| {
-            if let DiffLine::Add(t) = l {
-                Some(t.clone())
-            } else {
-                None
-            }
-        })
+        .filter(|r| r.kind == LineDiffKind::Add)
+        .map(|r| r.text.as_str())
         .collect();
-    let replaces = p.diff.iter().any(|l| matches!(l, DiffLine::Del(..)));
     let n = added.len().to_string();
     let line = p.at_line.to_string();
-    let first_del = p.diff.iter().find_map(|l| {
-        if let DiffLine::Del(n, _) = l {
-            Some(n.to_string())
-        } else {
-            None
-        }
-    });
+    let first_del = p
+        .diff
+        .iter()
+        .find(|r| r.kind == LineDiffKind::Del)
+        .and_then(|r| r.old_no);
     c.steps = vec![
         copy_text("beChore.step.open", &[("path", path)]),
         match first_del {
-            Some(d) if replaces => copy_text("beChore.step.replace", &[("line", &d), ("n", &n)]),
+            Some(d) => copy_text(
+                "beChore.step.replace",
+                &[("line", &d.to_string()), ("n", &n)],
+            ),
             _ if p.at_line == 0 => copy_text("beChore.step.insertTop", &[("n", &n)]),
             _ => copy_text("beChore.step.insert", &[("line", &line), ("n", &n)]),
         },
         copy_text("beChore.step.save", &[]),
     ];
     // 从用户文件原样摘出的行（上下文 · 换掉的那几行）里，我们那一形地址的钥匙段显示成 `…`（贴过的老地址带的可能是全权那一把）。
-    c.diff = p
-        .diff
-        .iter()
-        .cloned()
-        .map(|l| {
-            let mut row = DiffRow::from(l);
-            if row.op != DiffOp::Add {
-                row.text = relay_route_core::hide_key(&row.text);
-            }
-            row
-        })
-        .collect();
+    let rows = p.diff.iter().map(|r| {
+        let text = match r.kind {
+            LineDiffKind::Add => line_diff::cell(&r.text),
+            _ => line_diff::cell(&relay_route_core::hide_key(&r.text)),
+        };
+        LineDiffRow { text, ..r.clone() }
+    });
+    c.diff = Some(diff_of(rows.collect(), p.notice.clone()));
     c.copy = Some(added.join("\n"));
     c.whole = Some(p.whole.clone());
     c.whole_covers = vec![c.id.clone()];

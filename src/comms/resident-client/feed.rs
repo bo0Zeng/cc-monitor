@@ -45,7 +45,7 @@ use tokio::sync::{watch as tw, Notify};
 /// 给人看的那一句 ＋ 复制详情；拨号拒了时另带原因码 · 那台出示的指纹与库里记下的那一枚（后端按它们定那一态与修法）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Problem {
-    pub text: String,
+    pub said: String,
     pub detail: String,
     pub why: Option<Why>,
     pub seen_key: Option<String>,
@@ -53,9 +53,9 @@ pub struct Problem {
 }
 
 impl Problem {
-    pub fn new(text: impl Into<String>, detail: impl Into<String>) -> Self {
+    pub fn new(said: impl Into<String>, detail: impl Into<String>) -> Self {
         Problem {
-            text: text.into(),
+            said: said.into(),
             detail: detail.into(),
             why: None,
             seen_key: None,
@@ -196,7 +196,7 @@ impl State {
                 problem, blocker, ..
             } => Round::Down {
                 problem: RoundProblem {
-                    text: problem.text.clone(),
+                    said: problem.said.clone(),
                     detail: problem.detail.clone(),
                     why: problem.why,
                     seen_key: problem.seen_key.clone(),
@@ -771,7 +771,7 @@ impl<T: Transport> Feed<T> {
             AttachOr::Unanswered => {
                 return Fail::new(
                     Problem::new(
-                        self.offline().text,
+                        self.offline().said,
                         format!(
                             "{} · {}s",
                             copy_text("reason.link.noAnswer", &[]),

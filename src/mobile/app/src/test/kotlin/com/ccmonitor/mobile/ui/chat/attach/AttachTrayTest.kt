@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.chat.attach
 
-import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Transfer
 import com.ccmonitor.mobile.core.copy.copyText
@@ -11,6 +10,7 @@ import com.ccmonitor.mobile.core.wire.gen.AttachCardPhase
 import com.ccmonitor.mobile.core.wire.gen.AttachFace
 import com.ccmonitor.mobile.core.wire.gen.AttachWant
 import com.ccmonitor.mobile.core.wire.gen.AttachWantCard
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import com.ccmonitor.mobile.ui.chat.linkDown
 import com.ccmonitor.mobile.ui.chat.linkUp
@@ -43,7 +43,7 @@ class AttachTrayTest {
 
     private fun landed(id: String) = mapOf("id" to id, "name" to "n", "path" to "/w/.ccm-attach/$id/n", "rel" to ".ccm-attach/$id/n", "bytes" to 5.0, "sha256" to "ab", "class" to "image")
 
-    private fun remote(said: String) = Reply.Failed(CoreFailure("dir_full", said, "d", null))
+    private fun remote(said: String) = Reply.Failed(Failed("dir_full", said, "d", null))
 
     /** 那台：全收；落一份回一个新编号；撤照收。 */
     private fun FakeCoreLink.happy(verdicts: (Int) -> List<Map<String, Any?>> = { n -> List(n) { OK } }) {

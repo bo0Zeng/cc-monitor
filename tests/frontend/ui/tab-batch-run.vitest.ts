@@ -68,25 +68,6 @@ function backend(
   });
 }
 
-const res = (
-  sid: string,
-  outcome: string,
-  why: string | null = null,
-  extra: Record<string, unknown> = {},
-) => ({
-  sid,
-  outcome,
-  why,
-  detail: "",
-  said: null,
-  copyDetail: "",
-  session: null,
-  bus: null,
-  cmd: null,
-  account: null,
-  unavailable: null,
-  ...extra,
-});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -95,57 +76,33 @@ beforeEach(() => {
   vi.mocked(getBehavior).mockResolvedValue({ resumeCommand: "" } as never);
 });
 
-describe("批量停：每台一次、逐个答", () => {
-  it("同一台的几个一次调用、各台各一次；一台不通只挡它自己；每一个说的就是单个那条的那一句", async () => {
-    backend((origin, _op, args) => {
-      if (origin === "r2") throw NO_CHANNEL;
-      const sids = args.sids as string[];
-      if (origin === LOCAL_ORIGIN)
-        return {
-          results: [
-            res(sids[0], "done", null, { session: "a-cc" }),
-            res(sids[1], "skipped", "not_hosted", { said: "S-b" }),
+describe("批量停：交本机后端一条（`sessions-batch`），按台扇出 · 合句都在后端", () => {
+  const merged = { results: [], said: "S", failed: false, lines: [], copyDetail: "" };
+  it("★ 两台四个 tab ⇒ 只发一发、发给本机、items 是选中的全部（照选中的先后，不先筛）；回包原样交回", async () => {
+    backend(() => merged);
+    const out = await stopMany([tab("a", LOCAL_ORIGIN), tab("c", "r1"), tab("b", LOCAL_ORIGIN), tab("d", "r1")]);
+    expect(calls).toEqual([
+      [
+        LOCAL_ORIGIN,
+        "sessions-batch",
+        {
+          op: "stop",
+          items: [
+            { machine: LOCAL_ORIGIN, sid: "a" },
+            { machine: "r1", sid: "c" },
+            { machine: LOCAL_ORIGIN, sid: "b" },
+            { machine: "r1", sid: "d" },
           ],
-        };
-      return {
-        results: [
-          res(sids[0], "failed", "too_many_windows", {
-            session: "c-cc",
-            detail: "2",
-            said: "S-c-cc",
-            copyDetail: "D-c-cc",
-          }),
-        ],
-      };
-    });
-    const out = await stopMany([
-      tab("a", LOCAL_ORIGIN),
-      tab("c", "r1"),
-      tab("b", LOCAL_ORIGIN),
-      tab("d", "r2"),
+        },
+      ],
     ]);
-    expect(calls.map(([o, op, a]) => [o, op, a])).toEqual([
-      [LOCAL_ORIGIN, "sessions-stop", { sids: ["a", "b"] }],
-      ["r1", "sessions-stop", { sids: ["c"] }],
-      ["r2", "sessions-stop", { sids: ["d"] }],
-    ]);
-    const by = Object.fromEntries(out.map((o) => [o.sid, o]));
-    expect(by.a).toEqual({ sid: "a", outcome: "done", why: "" });
-    expect(by.b).toEqual({
-      sid: "b",
-      outcome: "skipped",
-      // 跳过那一句也由那台写好（每个原因码都配），界面不按码现说。
-      why: "S-b",
+    expect(out).toEqual(merged);
+  });
+  it("本机后端问不到 ⇒ 抛（由调用方照那一句说）", async () => {
+    backend(() => {
+      throw NO_CHANNEL;
     });
-    expect(by.c).toEqual({
-      sid: "c",
-      outcome: "failed",
-      // 停失败那一句由那台写好（与单条结束同一张表），原样上屏；那台写的复制详情跟着走。
-      why: "S-c-cc",
-      detail: "D-c-cc",
-    });
-    expect(by.d.outcome).toBe("failed");
-    expect(by.d.why).not.toBe("");
+    await expect(stopMany([tab("a", LOCAL_ORIGIN)])).rejects.toBeDefined();
   });
 });
 

@@ -49,8 +49,9 @@
 //! - tracing 全局 dispatcher 一旦 init 不能再换 → 必须在 `tauri::Builder` 之前调用
 //! - WorkerGuard drop 才会 flush 缓冲 → 必须挂在 state 上（与 app 同生命周期）
 
-use crate::detail::Said;
+use crate::detail::Shell as _;
 use copy_core::copy_text;
+use copy_core::said::Said;
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

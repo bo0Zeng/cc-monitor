@@ -348,7 +348,7 @@ class RotationBoard(
                 ?.firstOrNull { it.account == account }
                 ?.blocked
                 ?.text
-        val line = account to copyText("rot.acct.refused", "account" to label(account), "why" to (blocked ?: f?.message.orEmpty()))
+        val line = account to copyText("rot.acct.refused", "account" to label(account), "why" to (blocked ?: f?.said.orEmpty()))
         return when {
             r is Reply.Ok -> {
                 _state.update { it.copy(refused = null) }

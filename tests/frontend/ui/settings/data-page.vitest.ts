@@ -110,7 +110,7 @@ const chore = (over: Record<string, unknown>) => ({
   said: "现状",
   why: "",
   steps: [],
-  diff: [],
+  diff: null,
   copy: null,
   whole: null,
   wholeCovers: [],
@@ -234,7 +234,7 @@ describe("待办", () => {
   });
 
   it("★ 复制 ⇒ 剪贴板是那一件交来的整份、那件标「已复制 · 等你贴」；整份盖两件 ⇒ 两件一起标；那台认出已做 ⇒ 段头说一句、收进「已做的 N」", async () => {
-    const relay = chore({ id: "relay", name: "实时显示", copy: "K=SECRET", whole: "{SECRET}", wholeCovers: ["relay", "cc-bus-hooks"], why: "为什么", steps: ["打开 f"], diff: [{ n: 3, op: "same", text: "{" }, { n: null, op: "add", text: "K=SECRET" }] });
+    const relay = chore({ id: "relay", name: "实时显示", copy: "K=SECRET", whole: "{SECRET}", wholeCovers: ["relay", "cc-bus-hooks"], why: "为什么", steps: ["打开 f"], diff: { rows: [{ kind: "ctx", text: "{", oldNo: 3, newNo: 3 }, { kind: "add", text: "K=SECRET", newNo: 4 }], shown: 2, truncated: false, added: 1, removed: 0, stat: "+1" } });
     const hooks = chore({ id: "cc-bus-hooks", name: "收信", copy: "h", whole: "{SECRET}", wholeCovers: ["relay", "cc-bus-hooks"], why: "w" });
     answers.set(LOCAL_ORIGIN, report({ todo: [relay, hooks] }));
     const { page } = mount();
@@ -242,6 +242,8 @@ describe("待办", () => {
     await settle();
     const row = (id: string) => page.element.querySelector<HTMLElement>(`[data-chore="${id}"]`)!;
     row("relay").querySelector<HTMLButtonElement>("[aria-expanded]")!.click();
+    const gutter = [...row("relay").querySelectorAll(".chore-diff-line")].map((l) => `${(l as HTMLElement).dataset.op} ${l.querySelector(".chore-diff-n")?.textContent}`);
+    expect(gutter, "行差照那台交来的行画：没变的带改前行号，加的那行是「+」").toEqual(["ctx 3", "add +"]);
     [...row("relay").querySelectorAll("button")].find((b) => b.textContent === copyText("dataPage.chore.copyWholeN", { n: 2 }))!.click();
     await settle();
     expect(clipFake.written).toEqual(["{SECRET}"]);

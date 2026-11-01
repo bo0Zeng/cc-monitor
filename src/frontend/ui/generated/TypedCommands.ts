@@ -349,6 +349,8 @@ import type { SessionRewindOptionsReq } from "./SessionRewindOptionsReq";
 import type { SessionSelf } from "./SessionSelf";
 import type { SessionWindow } from "./SessionWindow";
 import type { SessionWindowReq } from "./SessionWindowReq";
+import type { SessionsBatchReply } from "./SessionsBatchReply";
+import type { SessionsBatchReq } from "./SessionsBatchReq";
 import type { SessionsNeedsReq } from "./SessionsNeedsReq";
 import type { SetLaunchReq } from "./SetLaunchReq";
 import type { SetLaunched } from "./SetLaunched";
@@ -597,6 +599,7 @@ export interface TypedCommands {
   "session-self": { req: NoArgs; reply: SessionSelf; code: "bad_args" | "not_in_session" };
   "session-terminals": { req: SidReq; reply: Showing; code: "bad_args" | "no_such_session" | "failed" | "child_timed_out" };
   "session-window": { req: SessionWindowReq; reply: SessionWindow; code: "bad_args" | "failed" | "child_timed_out" };
+  "sessions-batch": { req: SessionsBatchReq; reply: SessionsBatchReply; code: "bad_args" };
   "sessions-needs": { req: SessionsNeedsReq; reply: NeedsList; code: "bad_args" };
   "sessions-needs-merge": { req: NeedsMergeReq; reply: NeedsMerged; code: "bad_args" };
   "sessions-stop": { req: SidsReq; reply: Batched; code: "bad_args" | "unobservable" | "child_timed_out" };

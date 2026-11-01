@@ -286,7 +286,7 @@ enum Kind {
     /// 这一类原先还装着「开窗前解 home」（走 SFTP，后端没有这一问）——
     /// 现在问后端 `files-home`，走的是 `Host` 那一类的同一个句柄 ⇒ 这一类只剩配置，改了名。
     Config,
-    /// monitor 那一侧：壳命令失败的那一形（`detail::Said`：一句 ＋ 复制详情）。开窗那条命令也是壳命令，全仓同一形。
+    /// monitor 那一侧：壳自己的错投出去那一口（`detail::Shell`：一句 ＋ 复制详情）。开窗那条命令也是壳命令，全仓同一形。
     Said,
 }
 
@@ -376,7 +376,7 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("chan::host::FRAME_MAX_BYTES", Kind::Host),
     ("chan::host::serve_window", Kind::Host),
     // 开窗那条命令失败时回的那一形（全仓壳命令同一形）。
-    ("detail::Said", Kind::Said),
+    ("detail::Shell", Kind::Said),
     // 开窗种子里那一格「本机」（窗口自己写的复制详情带它，同主界面那一行）。
     ("detail::local_line", Kind::Said),
     ("spawn_managed::ConsolePolicy", Kind::Spawn),

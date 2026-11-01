@@ -164,7 +164,6 @@ const NODE_ENV_FILES = [
   "tests/shots/world-boxes.vitest.ts",
   "tests/test-support/component-sources.vitest.ts",
   "tests/test-support/copy-pattern.vitest.ts",
-  "tests/test-support/ledger-base.vitest.ts",
   "tests/test-support/non-empty.vitest.ts",
   "tests/test-support/strip-comments.vitest.ts",
 ];

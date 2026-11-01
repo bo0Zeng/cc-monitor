@@ -126,7 +126,7 @@ fn e2e_the_local_backend_outlives_the_monitor() {
         );
         let why = match &out {
             super::DetachOutcome::Done(super::StartOutcome::Failed { reason, .. }) => {
-                format!("{} {}", reason.said, reason.detail)
+                reason.logged()
             }
             super::DetachOutcome::NotTaken => "没走脱离那条路".into(),
             _ => String::new(),
