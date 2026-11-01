@@ -25867,18 +25867,6 @@
       "zh": "各会话当前轮次",
       "args": []
     },
-    "sessionState.batch.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已结束 {done}",
-      "args": ["done"]
-    },
-    "sessionState.batch.someFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "已结束 {done} · 失败 ×{failed}",
-      "args": ["done", "failed"]
-    },
     "statusBar.todo.label": {
       "kind": "action",
       "role": "按钮",

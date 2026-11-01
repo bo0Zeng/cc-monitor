@@ -526,6 +526,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--terminals-board-here",
     "--terminals-board",
+    "--terminals-end",
     // 监控板（`monitor-board-here` 这台那几条 · `monitor-board` 各台合成）派生的 CLI 面（一次性进程里没起 watcher ⇒ 这台一条都不认得，
     //   别的台照实进那一组的 `down`）。⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--monitor-board-here",
