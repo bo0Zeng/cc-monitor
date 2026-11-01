@@ -12,7 +12,7 @@
  * HMR 走 full reload（不引框架，原生 DOM，强制整页重载简化心智模型）。
  */
 // `LOCAL_ORIGIN`：本机那个 origin 的**唯一住址**（Rust 侧是
-// `origin::LOCAL`，三处由 `origin_tests.rs::the_sentinel_agrees_with_the_two_existing_homes` 钉着）。
+// `origin::LOCAL`，两处由 `origin_tests.rs::the_sentinel_agrees_with_the_ts_copy` 钉着）。
 import { hiddenPushed } from "./session-hidden";
 import { LOCAL_ORIGIN, isLocalOrigin, type Origin } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
