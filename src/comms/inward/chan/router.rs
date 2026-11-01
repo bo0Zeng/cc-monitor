@@ -35,6 +35,7 @@ use super::wire::{
     err_to_wire, item_to_wire, read_frame, write_frame, Body, By, CallError, CancelToken, Cursor,
     Head, HopFault, HopId, Item, Kind, Offer, Op, Origin, OursFault, Reach, ReadFault,
 };
+use copy_core::discard::{Discard, Why};
 use futures::future::BoxFuture;
 use futures::stream::{BoxStream, StreamExt};
 use std::collections::HashMap;
@@ -301,7 +302,7 @@ async fn run_call(
         }
     };
     // 连接已经没了 ⇒ 写不出去；这一格的结局本来也没人收了。
-    tx.send(out).await.ok();
+    tx.send(out).await.discard(Why::PeerGone);
 }
 
 /// 按 credit 把句柄的流抽到连接上。credit 用完就停下不取 —— 回推给句柄那一侧。

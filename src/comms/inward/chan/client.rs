@@ -35,6 +35,7 @@ use super::wire::{
     err_from_wire, item_from_wire, read_frame, write_frame, Body, Budget, By, CallError, Comms,
     Cursor, Head, HopFault, HopId, Item, Kind, Offer, Op, Origin, OursFault, Reach, Sub, Withdraw,
 };
+use copy_core::discard::{Discard, Why};
 use std::collections::{HashMap, VecDeque};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -143,7 +144,7 @@ impl Client {
                 }
                 if let Some(w) = job.written {
                     // 调用方已经不等了也无妨。
-                    w.send(()).ok();
+                    w.send(()).discard(Why::Signal);
                 }
             }
         });
@@ -165,7 +166,7 @@ impl Client {
                 written: None,
             })
             .await
-            .ok();
+            .discard(Why::PeerGone);
         });
     }
 
@@ -435,7 +436,7 @@ async fn read_loop<R: AsyncRead + Unpin>(mut rd: R, frame: usize, shared: Arc<Sh
     let pending = lock(&shared.calls).take().unwrap_or_default();
     for (_, tx) in pending {
         tx.send(Err(hop(0, "read", Reach::Unknown, HopFault::Dropped)))
-            .ok();
+            .discard(Why::PeerGone);
     }
     let taps: Vec<Arc<Mutex<Tap>>> = lock(&shared.taps).drain().map(|(_, t)| t).collect();
     for tap in taps {
@@ -453,7 +454,7 @@ fn answer(shared: &Shared, id: u64, r: Result<Body, CallError>) {
     let tx = lock(&shared.calls).as_mut().and_then(|m| m.remove(&id));
     if let Some(tx) = tx {
         // 调用方已经不等了（期限到了 / 撤了）也无妨。
-        tx.send(r).ok();
+        tx.send(r).discard(Why::PeerGone);
     }
 }
 
