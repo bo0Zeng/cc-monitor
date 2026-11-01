@@ -11,7 +11,7 @@ import { observeForEnhance } from "./render";
 import { askRefs } from "./plan-refs";
 import { applyIntrinsicSize } from "./height-estimate";
 import { isRetryBar, mergeRetry } from "./cards/api-error";
-import { buildInjectedLine, isNoticeLine, mergeNotice } from "./cards/speaker-bar";
+import { buildInjectedLine } from "./cards/speaker-bar";
 import type { RecordTimeline } from "./record-timeline";
 import type { JsonlLinePayload } from "./events";
 
@@ -197,7 +197,7 @@ export function renderContentRecord(
   switch (result.kind) {
     case "skip": {
       // 系统注入：不建卡，另放一条旁注细条——开关关着时 CSS 不露、估高 0；
-      // 时间线的邻居查询跳过它（`aside`），相邻合并照它不在时一样合。不进 `renderMessage`（秤 2 的 DOM 指纹不动）。
+      // 时间线的邻居查询跳过它（`aside`），相邻合并照它不在时一样合（收场通知并不并一组由后端判，同一条规矩）。不进 `renderMessage`（秤 2 的 DOM 指纹不动）。
       const sp = message.draw === "strip" && message.t === "said" ? message.who.speaker : undefined;
       const injected = sp !== undefined && "body" in sp ? sp.body : undefined;
       if (typeof injected === "string") {
@@ -222,14 +222,6 @@ export function renderContentRecord(
     }
 
     case "card": {
-      // 后台任务通知：左邻居也是通知 ⇒ 并进它（时段取两头、逐条留在展开里）。
-      if (isNoticeLine(result.element)) {
-        const prev = sink.timeline.peekPrev(payload.seq);
-        if (prev && isNoticeLine(prev.element)) {
-          mergeNotice(prev.element, result.element);
-          return;
-        }
-      }
       // 重试细条（§5.2.5）：左邻居也是一条还在重试的细条 ⇒ 并进它、原地更新，不另起一条。
       if (isRetryBar(result.element)) {
         const prev = sink.timeline.peekPrev(payload.seq);
