@@ -10,7 +10,7 @@ fn names(v: &[&str]) -> Option<BTreeSet<String>> {
     Some(v.iter().map(|s| s.to_string()).collect())
 }
 
-/// ★ `K-R96`：切给那张唯一会话快照的行 —— 名字取第 0 列；sid 取活动窗格那列 ＋ 各窗格那列（挂着几个就几行，活动窗格那个在前）。
+/// ★ 切给那张唯一会话快照的行 —— 名字取第 0 列；sid 取活动窗格那列 ＋ 各窗格那列（挂着几个就几行，活动窗格那个在前）。
 ///
 /// 顺带钉住两条：段数不等于 `TMUX_LS_FMT_FIELDS` 的行**整行丢掉**（下溢是通道被改写、
 /// 过溢是路径里有真 TAB —— 两种都不许当好数据）；`NO_TMUX` 哨兵不是会话。
@@ -53,7 +53,7 @@ fn the_ledger_view_is_keyed_by_the_session_handle() {
     assert_eq!(v.get("$7").map(|s| s.len()), Some(0));
 }
 
-/// ★★ `K-R96` 死值验（observe 这一侧）：**观测无效时快照一个字都不许动。**
+/// ★★ 死值验（observe 这一侧）：**观测无效时快照一个字都不许动。**
 ///
 /// 把 `NoTmux`/`Unobservable` 那一支改成 `publish(Vec::new())`（= 「都没了」），
 /// 本条当场红 —— 那正是「观测失败被读成零会话，把活会话全部误 retire」的那一下，
@@ -319,7 +319,7 @@ fn tmux_probe_classifies_four_states() {
     assert_eq!(classify_tmux_probe(None, ""), TmuxObservation::Unobservable);
 }
 
-/// ★★ **K-R12 `J1` 死值验：让段数真的下溢一次，它必须红。**
+/// ★★ **死值验：让段数真的下溢一次，它必须红。**
 ///
 /// # 这一条钉的到底是什么
 ///
@@ -393,7 +393,7 @@ fn a_dirty_tmux_channel_is_unobservable_never_sessions() {
     );
 }
 
-/// K-R12 `J1` 的判据本体：**下溢红、恰好绿、过溢绿**。
+/// 段数判据本体：**下溢红、恰好绿、过溢绿**。
 ///
 /// 与上一条分开写，是因为上一条量的是「处置对不对」，这一条量的是「那条不等号的方向」。
 ///
@@ -423,7 +423,7 @@ fn the_underflow_predicate_only_fires_downward() {
     assert!(!tab_underflow("15\t/tmp/x/sock", 2));
 }
 
-/// ★★ **K-R12 下一拍（09-04）：本模块每一处起 `sh` 的地方都必须挂上 UTF-8 那个 env
+/// ★★ **本模块每一处起 `sh` 的地方都必须挂上 UTF-8 那个 env
 /// —— 一处都不许漏。**
 ///
 /// # 🔴 它补的是上一拍留下的一个真洞（现打）
@@ -442,13 +442,11 @@ fn the_underflow_predicate_only_fires_downward() {
 /// 逐处查（不只比总数）：从每一个起 `sh` 的地方到它那句 `.output()` 之间
 /// 必须出现那行 `.env(…)`。只比总数的话，「一处挂了两遍、另一处零」照样绿。
 ///
-/// # 🔴 `K-R55`（09-11）：**锚点换了** —— 起 `sh` 这一跳搬进了适配层
+/// # 🔴 **锚点是 `posix_shell(`** —— 起 `sh` 这一跳在适配层
 ///
-/// 上一版的锚点是本模块里的裸 `Command::new("sh")`。那两处今天住在
-/// [`crate::platform::shell::posix_shell`]（`K33` 裁定二：平台差异只许住适配层），
-/// 本模块留下的是**调用点** ⇒ 锚点跟着换成 `posix_shell(`。
-/// ⚠ **换锚点不是把红的那条删掉了事**（`guard_support` 那条纪律）：
-/// 本条要守的性质一个字没变 —— 「本模块每一处起 `sh` 的地方都挂了那个 env」，
+/// 起 `sh` 在 [`crate::platform::shell::posix_shell`]（平台差异只许在适配层），
+/// 本模块留下的是**调用点** ⇒ 锚点是 `posix_shell(`，不是裸 `Command::new("sh")`。
+/// ⚠ 本条要守的性质 —— 「本模块每一处起 `sh` 的地方都挂了那个 env」，
 /// 而挂 env 的仍然是**这一侧**（适配层只负责备命令，不碰 env）。
 /// 🔴 它因此**没有**跟着搬走：`posix_shell` 有第二个使用者的那天，
 /// 那一处的 env 归那一处自己管，本条**看不见它** —— 如实登记，别读宽。
@@ -542,9 +540,7 @@ fn observation_parts_keep_the_four_states_apart_for_the_ledger() {
 /// 为什么必须这样测：P1 的关键改动是把 `tmux ls … || true` 换成 `exec tmux …` 让 rc
 /// 透出。`|| true` 与 `exec` 的差别**在字符串断言里看不出来**——只有真执行才知道 rc
 /// 有没有传出来。（同 `control/ccm/plan.rs::render_container` 那一族的教训：
-/// 门禁只锁字符串形状不锁行为。⚠ 这句话点名的活体**换过两次**：`K-R72` 09-12 之前指
-/// `tmux.rs` 那一份（随桌面侧 SSH 回落一起走了），之后指用量探针那份
-/// （`K-R104` 09-13 随编排搬上帧面一起走了）—— **教训没变，每次换指今天真在的那个。**）
+/// 门禁只锁字符串形状不锁行为。）
 #[test]
 fn probe_script_propagates_rc_with_fake_tmux() {
     let dir = std::env::temp_dir().join(format!("ccm-p1-probe-{}", std::process::id()));
@@ -615,7 +611,7 @@ fn probe_script_propagates_rc_with_fake_tmux() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// ★ `P0b-Y2` 第十六拍：**socket 目录按 `TMUX_TMPDIR` 推，不许硬编码 `/tmp`。**
+/// ★ **socket 目录按 `TMUX_TMPDIR` 推，不许硬编码 `/tmp`。**
 ///
 /// # 为什么这条是单测而不是 e2e
 ///

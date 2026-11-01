@@ -125,7 +125,7 @@ pub(super) enum TmuxObservation {
 ///
 /// **提成独立函数是为了可测**：真机 tmux 的四种 rc 由 P0 实测过，但脚本本身（`command -v`
 /// 门控 + `exec` 的 rc 透传）要能在 CI 上用**假 tmux** 验证，不能只信字符串断言。
-/// ★★ **探测必须有上界**〔audit-0805 F09 / 报告 I-2〕。
+/// ★★ **探测必须有上界**。
 ///
 /// # 上界
 ///
@@ -145,15 +145,15 @@ const TMUX_PROBE_WITHIN: Deadline = Deadline::secs(5);
 /// P1：把探测的 (rc, stdout) 折成四态。**可单测**（判据只有 rc + stdout 的形状，
 /// 刻意**不看 stderr**——P0 实测 stderr 有两种措辞，且拿英文消息当判据本身就是错的）。
 ///
-/// ⚠ **K-R12 起判据多了一条**：rc=0 且 stdout 非空时，还要看**段数有没有下溢**
+/// ⚠ **还有一条判据**：rc=0 且 stdout 非空时，还要看**段数有没有下溢**
 /// （见 [`tab_underflow`]）。下溢 ⇒ `Unobservable` + 一条 warn ——
-/// 所以本函数不再是严格无副作用的（脏输入那一支会打一行日志），返回值仍然只由入参决定。
+/// 所以本函数不是严格无副作用的（脏输入那一支会打一行日志），返回值仍然只由入参决定。
 ///
 /// `code == None` = 被信号杀（如 tmux 卡死后探测线程连带被清）⇒ 观测无效。
 fn classify_tmux_probe(code: Option<i32>, stdout: &str) -> TmuxObservation {
     match code {
         Some(0) if stdout.trim().is_empty() => TmuxObservation::ServerEmpty,
-        // ★★ K-R12 `J1`：**raw 的入口**。有任何一行段数下溢 ⇒ 通道被改写 ⇒ `Unobservable`。
+        // ★★ **raw 的入口**。有任何一行段数下溢 ⇒ 通道被改写 ⇒ `Unobservable`。
         //
         // 为什么归 `Unobservable` 而不是新造一档：`observation` 那三个 token 是与 monitor
         // 逐字节对拍的**双写点**（`OBS_*`），新增一个要动 wire 契约；而 `Unobservable` 的
@@ -168,7 +168,7 @@ fn classify_tmux_probe(code: Option<i32>, stdout: &str) -> TmuxObservation {
         {
             tracing::warn!(
                 "CCM_TMUX_UNPARSABLE tmux ls 有行切出的段数 < {TMUX_LS_FMT_FIELDS} —— \
-                 tmux 打印通道被改写（K-R12：客户端不是 UTF-8 ⇒ TAB 与非 ASCII 变 `_`），\
+                 tmux 打印通道被改写（客户端不是 UTF-8 ⇒ TAB 与非 ASCII 变 `_`），\
                  整趟观测判为无效（绝不当零会话）。原样回包首行：{:?}",
                 stdout.lines().next().unwrap_or("")
             );
@@ -194,9 +194,8 @@ fn classify_tmux_probe(code: Option<i32>, stdout: &str) -> TmuxObservation {
 /// 带期限（[`TMUX_PROBE_WITHIN`]）；仍只在一次性后台线程里调（见 `watch_loop` 的 `tmux_inflight`），
 /// 不跑在 watch_loop 线程上 —— 卡到期限那几秒也不该冻住 reader。
 fn run_tmux_ls() -> TmuxObservation {
-    // 🔴 `K-R55`（09-11）：起 shell 这一跳住适配层（`K33` 裁定二）。
-    //    先前这里是裸 `Command::new("sh")` —— `K-R52` 的 A2「真漏」堆头一条。
-    //    非 unix 上 `None` ⇒ 与搬之前逐字同一个落点（那时是 `output()` 返 `Err`）。
+    // 🔴 起 shell 这一跳在适配层（平台差异只许在适配层），这里不写裸 `Command::new("sh")`。
+    //    非 unix 上 `None` ⇒ 整趟观测判为无效。
     let Some(ran) = crate::host::tmux::via_shell(&tmux_probe_script(), TMUX_PROBE_WITHIN) else {
         tracing::warn!("本平台没有 POSIX shell ⇒ tmux ls 这一跳没有实现，整趟观测判为无效");
         return TmuxObservation::Unobservable;
@@ -248,7 +247,7 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
     }
     let text = String::from_utf8_lossy(&out.stdout);
     let line = text.lines().next().unwrap_or("");
-    // ★ K-R12 `J1`：这条一行两列，段数下溢 ⇒ 通道被改写。
+    // ★ 这条一行两列，段数下溢 ⇒ 通道被改写。
     //
     // ⚠ 这一处**今天已经是 fail-closed 的，但完全静默**：脏了以后 `pid` 那一段是
     // `9_/tmp/tmux-1000/default`，`parse::<u32>()` 自然失败 ⇒ `(None, None)`
@@ -258,7 +257,7 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
     if !line.is_empty() && tab_underflow(line, 2) {
         tracing::warn!(
             "CCM_TMUX_UNPARSABLE display-message 切出 {} 段 < 2 —— \
-             tmux 打印通道被改写（K-R12：客户端不是 UTF-8 ⇒ TAB 变 `_`），\
+             tmux 打印通道被改写（客户端不是 UTF-8 ⇒ TAB 变 `_`），\
              server 的 pid/socket 这一趟拿不到（pidfd 与 socket inotify 都装不上）。原样回包：{line:?}",
             line.split('\t').count()
         );
@@ -289,11 +288,9 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
 
 /// tmux socket 目录 = 「本平台的临时根」＋ tmux 自己那条 `tmux-<uid>` 约定。
 ///
-/// 🔴 `K-R55`（09-11）：**两个平台原语搬进了 [`crate::platform::paths`]**，这里只剩组合。
-/// 先前这一段是「只修一半」的活体：`uid` 那半有两条 `#[cfg]` 臂，而兜底根目录那半
-/// 是一句裸 `PathBuf::from("/tmp")`（`K-R52` 的 A2「真漏」堆第二条）。
-/// ⇒ 两半现在住在一起，本函数留下的是 **tmux 的约定**（读 `TMUX_TMPDIR`、拼 `tmux-<uid>`），
-/// 那不是平台语义，不该进适配层。
+/// 🔴 **两个平台原语（`uid` · 临时根）在 [`crate::platform::paths`]**，这里只做组合：
+/// 本函数管的是 **tmux 的约定**（读 `TMUX_TMPDIR`、拼 `tmux-<uid>`），
+/// 那不是平台语义，不该进适配层；也不写裸 `/tmp`。
 pub(super) fn tmux_socket_dir() -> PathBuf {
     let base = std::env::var_os("TMUX_TMPDIR")
         .map(PathBuf::from)
@@ -337,7 +334,7 @@ fn session_names(raw: &str) -> std::collections::BTreeSet<String> {
 }
 
 /// 一行 `tmux ls` 切成列；段数不等于 `TMUX_LS_FMT_FIELDS`（下溢 = 通道被改写 · 过溢 = 路径里有真 TAB）或名字空 ⇒ 整行丢掉
-/// （`K-R12 J1`：通道被改写就不当好数据；本函数也被「raw 从别处来」的路径调得到，不许假设上游已经筛过）。
+/// （通道被改写就不当好数据；本函数也被「raw 从别处来」的路径调得到，不许假设上游已经筛过）。
 /// 回 `(会话名, 句柄, 这个会话挂着的 sid)`，sid 活动窗格那个在前。
 fn ls_row(line: &str) -> Option<(&str, &str, Vec<String>)> {
     let cols: Vec<&str> = line.split('\t').collect();
@@ -352,7 +349,7 @@ fn ls_row(line: &str) -> Option<(&str, &str, Vec<String>)> {
     Some((name, cols[6].trim(), sids))
 }
 
-/// `K-R96`：把这一份观测切成**那张唯一的会话快照**认的行（`crate::common::session_snapshot::SessionRow`：
+/// 把这一份观测切成**那张唯一的会话快照**认的行（`crate::common::session_snapshot::SessionRow`：
 /// 会话名 ＋ 它某个窗格上的 `@ccm_sid`，挂着几个就几行）。
 pub(crate) fn session_rows(raw: &str) -> Vec<crate::common::session_snapshot::SessionRow> {
     raw.lines()
@@ -398,12 +395,12 @@ fn diff_closed_into(
     obs: &TmuxObservation,
     snapshot: &crate::common::session_snapshot::SessionSnapshot,
 ) -> Vec<String> {
-    // ★★ `K-R96`（09-12）：观测到什么，就**往那张唯一的会话快照里焐一份**。
+    // ★★ 观测到什么，就**往那张唯一的会话快照里焐一份**。
     //
-    // `R52` 裁定一之后，「谁还活着」在本 crate 里只有一个数据结构
+    // 「谁还活着」在本 crate 里只有一个数据结构
     //（`common::session_snapshot`）：control 侧的 Gate 判活与 `ccm` 铸名避让向它要，
     // observe 这边把每一轮观测发布进去。
-    // ⚠ **焐热不等于「问过了」**：那边的 `query()` 一定重探（那是 `R52` 允许 Gate
+    // ⚠ **焐热不等于「问过了」**：那边的 `query()` 一定重探（那是 Gate 能
     //   读快照的前提）。这里发布买的是「同一张表」，不是「省一次探测」。
     // ⚠ 三态的处置与下面 `now` 那三支**逐字同源**，刻意写在一起：
     //   观测无效那一支**什么都不发布**（快照不动），绝不把「不知道」写成「都没了」。

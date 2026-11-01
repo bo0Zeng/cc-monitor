@@ -26,7 +26,7 @@ use crate::{DialRequest, Endpoint, JumpHop, Said, StageSink, Why};
 /// 代价：每条空闲连接每 10 秒一个保活往返（一个 `keepalive@openssh.com` 全局请求 ＋ 一条回话，各一包、百来字节）。
 #[allow(
     clippy::disallowed_methods,
-    reason = "`K-P6b` 的拨号代理交给 `russh` 的 SSH 层 keepalive 间隔（`client::Config`）"
+    reason = "拨号代理交给 `russh` 的 SSH 层 keepalive 间隔（`client::Config`）"
 )]
 const KEEPALIVE: Duration = Duration::from_millis(10_000);
 

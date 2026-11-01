@@ -1,4 +1,4 @@
-//! U8a-2b：**平面 ②（远端执行面）** —— 在远端真的建 tmux 会话 / 往已有会话键入载荷。
+//! **平面 ②（远端执行面）** —— 在远端真的建 tmux 会话 / 往已有会话键入载荷。
 //!
 //! # 这一层归哪、不做什么
 //!
@@ -110,10 +110,10 @@ pub(crate) struct LaunchRequest {
     pub(crate) ccm_sid: Option<cmd_wire::Sid>,
     /// 哪个 AI（`claude` / `codex`）。落成 tmux 的 `@ccm_agent` 标记。
     ///
-    /// ★★ 〔`K-P2` `D` 阶段第三拍 09-03〕**它是为「ccm 的 `--tmux` 真的改走这条路」补的**：
+    /// ★★ **ccm 的 `--tmux` 走这条路，靠它**：
     /// `shared/ccm` 那条本地编排里 `new-session` 之后紧跟着
-    /// `set-option -t <名> @ccm_agent <agent>`，而这一侧此前**没有任何字段能表达它**
-    /// ⇒ 不补的话，「起会话改走后端」会**静默丢掉 `@ccm_agent`**（`REQUIRED_NEEDLES` 里
+    /// `set-option -t <名> @ccm_agent <agent>`；这一侧没有能表达它的字段
+    /// ⇒ 起会话走后端时会**静默丢掉 `@ccm_agent`**（`REQUIRED_NEEDLES` 里
     /// 那条 needle 守的正是它），而那是本文件反复消灭的病：**看起来生效了，只是少了一件**。
     pub(crate) agent: Option<String>,
     /// 新建会话的宽 / 高（`--tmux-size <W>x<H>` 的两半）。
@@ -149,7 +149,7 @@ pub(crate) struct LaunchOutcome {
 /// 失败：码 ＋ 那一句 ＋ 下层原话（tmux 的 stderr · 起不来时的系统报错，进复制详情）。
 use crate::common::said::Said;
 
-/// `=name:` —— tmux 的**精确匹配**目标形式（F01）。
+/// `=name:` —— tmux 的**精确匹配**目标形式。
 ///
 /// # 别把尾冒号「简化」掉
 ///
@@ -635,7 +635,7 @@ fn run_with(
     let t = exact_target(&req.name);
     match req.mode {
         Mode::SendInto => {
-            // ★ **过 §34 的 Gate 2**（F03）。`admit` 一次探测同时办三件事：
+            // ★ **过 §34 的 Gate 2**。`admit` 一次探测同时办三件事：
             //   1. 会话不存在 ⇒ `no_such_session`，**绝不顺手新建**（顺手新建就是 #76 的反向：
             //      用户以为在复用那个 idle 会话，实际被丢进一个新建的空 shell）；
             //   2. 名字不是本工具形状、`@ccm_sid` 也没设 ⇒ `wrong_owner`，拒绝键入；
@@ -663,11 +663,9 @@ fn run_with(
             // 走到这里的只可能是本趟刚建成的会话 ⇒ 发「刚建的」令牌（唯一一处）。
             let fresh = JustMade(t.clone());
             // 身份标记与标题是**次要**动作：失败绝不阻断主要动作（键入载荷）。
-            // 与 `ccm` 容器路字符串形（`control/ccm/plan.rs::render_container`）里 `(… 2>/dev/null || true) &&` 同一条纪律
-            // （原来点的是 TS 座 `session-backend.ts` 与后端载荷那一层，两份都删了）。
+            // 与 `ccm` 容器路字符串形（`control/ccm/plan.rs::render_container`）里 `(… 2>/dev/null || true) &&` 同一条纪律。
             //
-            // ★★ **建会话这一刻写的是「意图」，不是「事实」**〔`K-P2` C 第五拍，09-03；
-            //    PM `§13 裁三` 裁「候选丙」〕。
+            // ★★ **建会话这一刻写的是「意图」，不是「事实」**。
             //
             // # 它修的是什么（**不是**冒名，别把两件事压成一句）
             //
@@ -678,8 +676,8 @@ fn run_with(
             // 它真正的问题是**过早取得权威**：`@ccm_sid` 是破坏性动作（`kill`，
             // `super::gate::admit_destructive` → `crate::control::gate_rules::gate2`）**唯一认的事实**。
             // 建会话即写它 ⇒ 一个「声明了 sid、但那个 claude 进程还没起（甚至永远起不来）」
-            // 的空会话**当场获得事实身份**。那正是 F04 修掉的 `R10`：
-            // 意图（通道 A）与事实（通道 B）之间的那道确认被绕过去了。
+            // 的空会话**当场获得事实身份**：
+            // 意图（通道 A）与事实（通道 B）之间的那道确认就被绕过去了。
             //
             // # 事实由谁写：仍然只有一个人
             //
