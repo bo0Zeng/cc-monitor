@@ -346,6 +346,62 @@ fn a_resend_that_cannot_connect_hands_down_the_answer_in_hand() {
     assert_eq!(got.lock().expect("lock").len(), 1);
 }
 
+/// 一个收下整条请求、一个字节都不回就关掉的上游（重发那一跳传输失败的样子）；回收到了几条请求。
+fn spawn_silent_upstream() -> (SocketAddr, Arc<Mutex<usize>>) {
+    let l = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind");
+    let at = l.local_addr().expect("addr");
+    let seen = Arc::new(Mutex::new(0));
+    let n = seen.clone();
+    std::thread::spawn(move || {
+        for s in l.incoming() {
+            let Ok(s) = s else { break };
+            let mut r = std::io::BufReader::new(s);
+            let mut len = 0usize;
+            let mut line = String::new();
+            while r.read_line(&mut line).is_ok_and(|k| k > 0) {
+                if line == "\r\n" {
+                    break;
+                }
+                if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    len = v.trim().parse().unwrap_or(0);
+                }
+                line.clear();
+            }
+            let mut body = vec![0; len];
+            let _ = r.read_exact(&mut body);
+            *n.lock().expect("lock") += 1;
+        }
+    });
+    (at, seen)
+}
+
+/// 重发那一发发出去了、头读不出来 ⇒ 回中转自己的 502（带原因头），不冒充第一发那条 429：
+/// 那条 429 带着前一个号的限流头，下游照它会停下报额度用满，而这一发其实已交给下一个号。
+#[test]
+fn a_resend_whose_head_never_arrives_answers_the_relays_own_502_not_the_first_refusal() {
+    fn answer(_auth: Option<&str>) -> String {
+        refused_429()
+    }
+    let (up, got) = spawn_judging_upstream(answer);
+    let (silent, seen) = spawn_silent_upstream();
+    let d = Arc::new(Scripted {
+        up: base_of(up),
+        retry_to: base_of(silent),
+        body: b"{}".to_vec(),
+        always: false,
+        asked: Mutex::new(Vec::new()),
+    });
+    let resp = shoot(relay_over(d), "/t/x/y/v1/messages", "", "{}");
+    assert!(resp.starts_with("HTTP/1.1 502"), "{resp}");
+    assert!(
+        resp.to_ascii_lowercase()
+            .contains(&comms_outward::test_support::server::REASON_HEADER.to_ascii_lowercase()),
+        "{resp}"
+    );
+    assert_eq!(got.lock().expect("lock").len(), 1);
+    assert_eq!(*seen.lock().expect("lock"), 1, "重发那一发真发出去了");
+}
+
 // ── 换号：真中转 ＋ 生产段的上游选择（装上换号）＋ 按鉴权头作答的假上游；假凭据、临时家目录 ─────────────────
 
 use crate::accounts::quota::rotation::{self, RotationStore};

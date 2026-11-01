@@ -96,6 +96,25 @@ fn alias_events(before: &[String], after: &[String]) -> Vec<AliasEvent> {
         .collect()
 }
 
+/// 一条会话里账号库要的那三格。判活与「会话归哪个号」住观测侧，门面层读好、折成这一形交进来（账号域不认观测侧的类型）。
+pub(crate) struct LiveSession {
+    pub alive: bool,
+    /// 活着、环境读得到、没设配置目录（账号 0）。
+    pub bare: bool,
+    pub config_dir: Option<String>,
+}
+
+/// 此刻有活会话的号（目录，这一族的 `/` 写法）· 有没有认不出号的活会话。
+pub(crate) fn busy_of(rows: &[LiveSession]) -> (std::collections::BTreeSet<String>, bool) {
+    let live = || rows.iter().filter(|r| r.alive);
+    let busy = live()
+        .filter_map(|r| r.config_dir.as_deref())
+        .map(crate::platform::acct_view::slash_form)
+        .collect();
+    let unknown = live().any(|r| !r.bare && r.config_dir.is_none());
+    (busy, unknown)
+}
+
 /// 导入凭据的那个路径：`~/…` 按家目录展开；只收家目录底下的绝对路径（无 `..` 段 · 无控制符）。
 fn cred_path(home: &str, raw: &str) -> Result<String, Said> {
     let t = raw.trim();
@@ -146,11 +165,13 @@ fn alias_names_for(account: &str) -> Vec<String> {
         .collect()
 }
 
-/// 跑一条改动命令。`keys` = 这台 key 表那两口（删号清它那一行、回滚放回去；门递进来）。
+/// 跑一条改动命令。`keys` = 这台 key 表那两口（删号清它那一行、回滚放回去；门递进来）；
+/// `live` = 这台此刻的会话（只「修复」那一趟问：有活会话的号不挪实体）。
 pub(crate) fn run_change(
     d: &dyn Door,
     req: &Request,
     keys: Option<&KeyTable>,
+    live: &dyn Fn() -> Vec<LiveSession>,
 ) -> Result<Done, Said> {
     supported()?;
     let home = home_of(d)?;
@@ -188,6 +209,9 @@ pub(crate) fn run_change(
         path: k.path.clone(),
         ids: k.ids.clone(),
     });
+    if matches!(req, Request::Repair(_)) {
+        (snap.busy, snap.busy_unknown) = busy_of(&live());
+    }
     let (plan, dry, extra): (Plan, bool, AccountChange) = match req {
         Request::Rollback(a) => return rollback(d, &snap, a, keys),
         Request::Init(a) => (

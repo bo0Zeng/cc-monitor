@@ -5,11 +5,12 @@
 //! 已知共享的那几项（[`share_items`]：适配层申报的共享表，共享库里有才链 ∪ 按需才建的 [`shared_on_demand`]，共享库里还没有
 //! 也照样链、先在共享库里建出来）各是一条链回共享库的符号链接（改一处，各号同时看见）。两边都不在的名字不链，各号各用各的。
 
-use super::model::{Account, Manifest, ACCOUNT_ZERO};
+use super::model::{Account, Manifest};
 use super::scan::{is_under, join, DirState, Snapshot};
 use crate::agents::{AccountsFace, IdentityClass, IdentityRoot};
 use crate::common::said::Said;
 use crate::platform::acct_view::Item;
+use acct_core::BARE_ACCOUNT;
 use copy_core::copy_text;
 
 /// 这台机器上账号库的布局（注册表里那一家的；没有 ⇒ 这台做不了多账号，`wire` 那一层先拒）。
@@ -201,7 +202,7 @@ fn check_name(name: &str) -> Result<(), Said> {
             ],
         )));
     }
-    if name == ACCOUNT_ZERO {
+    if name == BARE_ACCOUNT {
         return Err(refused(copy_text("beAcctPlan.name.zero", &[])));
     }
     Ok(())
@@ -378,7 +379,7 @@ pub(crate) fn plan_add(s: &Snapshot, want: &AddIntent) -> Result<Plan, Said> {
 pub(crate) fn plan_remove(s: &Snapshot, name: &str, force: bool) -> Result<Plan, Said> {
     let m = need_manifest(s)?;
     let r = s.roots();
-    if name == ACCOUNT_ZERO {
+    if name == BARE_ACCOUNT {
         return Err(refused(copy_text("beAcctPlan.remove.zero", &[])));
     }
     let a = m
@@ -453,10 +454,13 @@ pub(crate) fn plan_colors(s: &Snapshot) -> Result<Plan, Said> {
 
 /// 按需才建的那几个共享库里还没有（或只有对齐种下的一份空目录，[`Snapshot::empty_shared`]）⇒ 恰好一个号里有一份实体目录：
 /// 挪进共享库当共用的那一份（空目录先摘掉）；否则共享库里没有就建一份空的（两个号以上各有一份 ⇒ 不替人合并，核对照「各有一份」提示）。
+/// 那个号此刻有活会话（[`Snapshot::busy`]；有认不出号的活会话 ⇒ 当所有号都忙）⇒ 这一轮不挪它那一份、出一条提示，
+/// 照「各有一份」那一支走（挪走到链回之间会话会重建一份，计划半路撞「已在」停下）。
 /// 回挪过来的那几个 `(号的目录, 项)`（那个号随后照样链回去）。只有「修复」调它。
 fn lift_on_demand<'a>(plan: &mut Plan, s: &Snapshot, m: &Manifest) -> Vec<(String, &'a str)> {
     let r = s.roots();
     let mut lifted = Vec::new();
+    let busy = |a: &Account| s.busy_unknown || s.busy.contains(&a.config_dir);
     for n in shared_on_demand() {
         let seeded = s.empty_shared.contains(*n);
         if s.shared.get(n).exists() && !seeded {
@@ -466,6 +470,15 @@ fn lift_on_demand<'a>(plan: &mut Plan, s: &Snapshot, m: &Manifest) -> Vec<(Strin
             .filter(|a| matches!(s.dir(&a.config_dir).get(n), Item::Dir { .. }))
             .collect();
         match holders.as_slice() {
+            [one] if busy(one) => {
+                plan.notes.push(copy_text(
+                    "beAcctPlan.repair.liftBusy",
+                    &[("name", &one.name), ("item", n)],
+                ));
+                if !seeded {
+                    plan.ops.push(Op::MkDir(join(&r.shared, n)));
+                }
+            }
             [one] => {
                 if seeded {
                     plan.ops.push(Op::DropEmpty(join(&r.shared, n)));

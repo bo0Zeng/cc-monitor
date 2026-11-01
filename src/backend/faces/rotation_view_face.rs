@@ -453,8 +453,11 @@ pub(crate) fn view_with(
                     Vec::new(),
                 ),
             };
-            let zero = crate::accounts::manage::model::ACCOUNT_ZERO;
-            let s = book::Session::fresh(crate::faces::rotation_face::LIBRARY_AGENT, zero, now);
+            let s = book::Session::fresh(
+                crate::faces::rotation_face::LIBRARY_AGENT,
+                acct_core::BARE_ACCOUNT,
+                now,
+            );
             let agent = crate::faces::rotation_face::LIBRARY_AGENT.to_string();
             (s, plan, Some(shelved), form, agent)
         }

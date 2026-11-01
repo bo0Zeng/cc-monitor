@@ -78,7 +78,12 @@ fn take<T: serde::de::DeserializeOwned>(v: Value) -> T {
 fn the_account_library_lands_on_this_os() {
     let t = machine("lands");
     let d = HomeDoor(t.0.clone());
-    let init = run_change(&d, &Request::Init(take(json!({ "name": "lab" }))), None);
+    let init = run_change(
+        &d,
+        &Request::Init(take(json!({ "name": "lab" }))),
+        None,
+        &Vec::new,
+    );
     if !can_link(&t.0) {
         let said =
             crate::platform::acct_view::unsupported_said().expect("建不了链接却说做得了多账号");
@@ -99,6 +104,7 @@ fn the_account_library_lands_on_this_os() {
             "credFile": "~/snap/cred-x.json"
         }))),
         None,
+        &Vec::new,
     )
     .unwrap_or_else(|e| panic!("加号：{e:?}"));
     let manifest: Value =
