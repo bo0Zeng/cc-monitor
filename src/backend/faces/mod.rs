@@ -50,6 +50,7 @@ pub(crate) mod session_rewind_face; // 编辑已发的一句、发送那一下�
 pub(crate) mod session_send; // 往一条会话送进一句的本体（在等人不送 · 只剩 shell 不送 · 终端没了恢复再交 · 附件照那一家拼）；只由投递调
 pub(crate) mod session_set_face; // 帧面 `set-plan` · `set-launch`：补足一组会话要的这台事实与手（配置文件 · 活会话表 · 启动台账的别名 · 起会话 · 组注解）；判定住 control/session_set.rs
 pub(crate) mod session_window_face; // 帧面 `session-window`（typed）：↗ 那一问，会话在这台电脑上的哪儿（本机 · 远端同一个形）
+pub(crate) mod sessions_batch_face; // 帧面 `sessions-batch`（typed）：一批会话跨几台，本机同进程做、别的台经常驻问它自己那一组，合好那一句
 pub(crate) mod terminals_board_face; // 「终端」视图那两条（typed）：terminals-board-here（这台那几行）· terminals-board（问到各台、合成一份）
 
 /// 拨号层要的「这一端的机器表怎么读」由这里装（拨号层不认控制面）：进程起来那一下调一次。

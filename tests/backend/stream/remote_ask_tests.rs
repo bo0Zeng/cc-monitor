@@ -459,3 +459,56 @@ async fn a_resident_call_stops_waiting_once_the_asker_is_gone() {
         got.map(|r| r.map_err(|f| f.code))
     );
 }
+
+/// ★ 每台各一份入参：本机那一份交给本机那一问，别的台各自 stdin 里是给它的那一份（照先后、一台一格）。
+#[tokio::test]
+async fn each_machine_gets_its_own_args() {
+    use crate::dial::remote_ask::test_peers::{until, Peers};
+    let ask = |name: &str| SkillReadReq {
+        name: name.to_string(),
+        project: None,
+    };
+    let peers = Peers::new(&[]);
+    let table = Peers::table(&["box1", "box2"]);
+    let seen = StdMutex::new(None::<String>);
+    let asks = vec![
+        (cmd_wire::Machine::named("box2"), ask("for-box2")),
+        (cmd_wire::Machine::local(), ask("for-here")),
+        (cmd_wire::Machine::named("box1"), ask("for-box1")),
+    ];
+    let got = ask_apiece::<SkillReadCmd, _, _, _>(
+        asks,
+        |r: SkillReadReq| {
+            *seen.lock().unwrap() = Some(r.name.clone());
+            async { Err(Said::from("here")) }
+        },
+        &crate::Tz::default(),
+        until(5_000),
+        &table,
+        &peers,
+    )
+    .await
+    .expect("问得出去");
+    let order: Vec<String> = got.iter().map(|(m, _)| m.to_string()).collect();
+    assert_eq!(
+        order,
+        vec![
+            "box2".to_string(),
+            cmd_wire::LOCAL.to_string(),
+            "box1".to_string()
+        ]
+    );
+    assert_eq!(seen.lock().unwrap().as_deref(), Some("for-here"));
+    let mut names: Vec<String> = peers
+        .asked()
+        .iter()
+        .map(|(_, line)| {
+            line["args"]["name"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["for-box1".to_string(), "for-box2".to_string()]);
+}
