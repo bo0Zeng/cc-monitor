@@ -70,11 +70,13 @@ const SUPPORT: &[&str] = &[
     "tests/backend/common/contract_support.rs", // 契约错记进日志的那条诊断怎么读（纯工具那一层的包与上层测试档经 `test-support` 共用）
     "tests/backend/common/session_snapshot_support.rs", // 会话快照的脚本化探测器 · 陈值（纯工具那一层的包与上层测试档经 `test-support` 共用）
     "tests/backend/heard.rs", // 本线程上一段代码期间 `tracing` 说了什么（量具包与纯工具那一层的 `test-support` 各挂这一份）
-    "tests/backend/files/index_testing.rs",
-    "tests/backend/alloc_probe.rs", // 线程级内存量具（只在测试档编，挂在后端库根）
-    "tests/backend/agents/fake/mod.rs", // 最小假 agent：每一种能力都与真 agent 不同形
-    "tests/backend/agents/fake/runs.rs", // 假 agent 的子运行形状
-    "tests/backend/plan/fixture.rs", // 计划读面的夹具：合成 dump · 假 pb 插件
+    "tests/backend/files/index_support.rs", // 常驻索引的串行锁 · 按住重走那个位 · 碰常驻那一份的锁（文件管理那一块的包与上层测试档经 `test-support` 共用）
+    "tests/backend/files/answer_support.rs", // 读族按能力名问的那一口（文件管理那一块的包与上层测试档经 `test-support` 共用）
+    "tests/backend/files/write_support.rs", // 写面判据够到的那几样内部项（上层挂的写面判据经 `test-support` 读）
+    "tests/backend/alloc_probe.rs",         // 线程级内存量具（只在测试档编，挂在后端库根）
+    "tests/backend/agents/fake/mod.rs",     // 最小假 agent：每一种能力都与真 agent 不同形
+    "tests/backend/agents/fake/runs.rs",    // 假 agent 的子运行形状
+    "tests/backend/plan/fixture.rs",        // 计划读面的夹具：合成 dump · 假 pb 插件
     "tests/backend/control/identity_tag_door.rs", // `identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
     "tests/backend/platform/child_tmux_fence.rs", // 子进程起前那一道的测试构建那一份（裸名 tmux 落到本进程的空 socket 目录）
     "tests/backend/tmux_sandbox.rs", // 判据用的私有 tmux server（`-L` ＋ 私有 TMUX_TMPDIR，碰不到默认 server）
@@ -211,7 +213,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/files/write_tests.rs",
         "own_home_child_entry_point",
-        Trigger::Filter { by: "tests/backend/files/write_tests.rs", needle: "files_write_face::write_tests::own_home_child_entry_point" },
+        Trigger::Filter { by: "tests/backend/files/write_tests.rs", needle: "stream::inbound::files_write_face::write_tests::own_home_child_entry_point" },
     ),
     (
         "tests/backend/platform/cross_tests.rs",
@@ -1089,6 +1091,7 @@ fn module_path(
         "src/backend/platform/",
         "src/backend/common/",
         "src/backend/plugin/",
+        "src/backend/files/",
         "src/backend/test-meters/",
         "src/backend/",
     ];

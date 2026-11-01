@@ -172,9 +172,7 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
     };
     // 暂存区那两层：经文件管理面句柄那一个自家目录方法（`Face::own_dir`，本体同 `Own::own_dir` 那一个函数），恰好一处。
     assert_eq!(
-        src("files/commit.rs")
-            .matches("face.own_dir(")
-            .count(),
+        src("files/commit.rs").matches("face.own_dir(").count(),
         1,
         "暂存区建目录不是经 `Face::own_dir` 恰好一处"
     );

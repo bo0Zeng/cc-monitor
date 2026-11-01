@@ -86,7 +86,7 @@
 
 **为什么不能松动**：用 `MoveFileExW` / rename 拿暂存文件覆盖，会用暂存文件继承来的 ACL 盖掉用户文件上的显式 ACE（Documents 重定向到别的盘的用户会读不了自己的 profile）——这正是从前用 `ReplaceFileW` 的理由，今天由「Windows 就地覆盖」承担；OneDrive 占位 / 杀软会让读回成空，纯写就是清空用户内容 ⇒ 备份加回读双保险。
 
-**谁在守**：`files_write_tests.rs` 的 `put_*` 一族（含只在 Windows 上跑的 `put_keeps_explicit_acl_entries_on_windows`）· `atomic_replace_registry_tests.rs`（monitor 自己的文件与用户文件两类语义分开登记）。
+**谁在守**：`tests/backend/files/write_tests.rs` 的 `put_*` 一族（含只在 Windows 上跑的 `put_keeps_explicit_acl_entries_on_windows`）· `atomic_replace_registry_tests.rs`（monitor 自己的文件与用户文件两类语义分开登记）。
 
 ---
 
