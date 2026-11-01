@@ -67,10 +67,8 @@ pub(crate) enum By {
 )]
 #[serde(deny_unknown_fields)]
 pub(crate) struct GroupId {
-    /// 哪台（这台 ⇒ 缺）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
-    pub(crate) origin: Option<Machine>,
+    /// 哪台（这台逐字 `"<local>"`）。
+    pub(crate) origin: Machine,
     pub(crate) key: String,
 }
 
@@ -87,10 +85,8 @@ pub(crate) struct GroupId {
 )]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RowId {
-    /// 哪台（这台 ⇒ 缺）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
-    pub(crate) origin: Option<Machine>,
+    /// 哪台（这台逐字 `"<local>"`）。
+    pub(crate) origin: Machine,
     pub(crate) sid: String,
 }
 
@@ -187,10 +183,8 @@ pub(crate) enum Read {
     )
 )]
 pub(crate) struct MachineHead {
-    /// 哪台（这台 ⇒ 缺）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
-    pub(crate) origin: Option<Machine>,
+    /// 哪台（这台逐字 `"<local>"`）。
+    pub(crate) origin: Machine,
     /// 那台筛好的几行（算上只为挂住分叉才带上的父会话）。
     pub(crate) total: u32,
     pub(crate) read: Read,
@@ -312,8 +306,9 @@ pub(crate) async fn answer(
     }
     let mut seen = BTreeSet::new();
     for m in &req.remotes {
-        if m.to_string().is_empty() || !seen.insert(m) {
-            return Err(bad("`remotes` must be distinct non-empty machine names"));
+        // 这台走 `here`：`remotes` 里只许别台的名字（不然这台会在一列里出两回）。
+        if !m.is_remote() || !seen.insert(m) {
+            return Err(bad("`remotes` must be distinct names of other machines"));
         }
     }
     if let Some(m) = req.fresh.iter().find(|m| !seen.contains(m)) {
@@ -332,15 +327,16 @@ pub(crate) async fn answer(
         .iter()
         .map(|m| {
             let sync = req.fresh.contains(m);
-            let (m, tz) = (m.to_string(), tz.clone());
+            let (m, tz) = (m.clone(), tz.clone());
             tokio::spawn(async move {
+                let name = m.to_string();
                 // 同步那几台先同步（没成的那一句副本表记下了）；之后一律照副本表读：成了 ⇒ 新的那份，没成 ⇒ 旧副本标旧 · 或只有那一句。
                 if sync {
-                    if let Ok(l) = super::remote_listing::listing(&m, true, &tz, until).await {
+                    if let Ok(l) = super::remote_listing::listing(&name, true, &tz, until).await {
                         return (m, Got::Listing(l));
                     }
                 }
-                let got = match super::remote_listing::kept(&m) {
+                let got = match super::remote_listing::kept(&name) {
                     Kept::Got(l) => Got::Listing(l),
                     Kept::Stale {
                         listing,
@@ -366,7 +362,10 @@ pub(crate) async fn answer(
     } else {
         None
     };
-    let mut got: Vec<(Option<String>, Got)> = here.map(|g| (None, g)).into_iter().collect();
+    let mut got: Vec<(Machine, Got)> = here
+        .map(|g| (Machine::local(), g))
+        .into_iter()
+        .collect();
     for s in syncs {
         let (m, g) = s.await.map_err(|e| {
             Said::new(
@@ -377,7 +376,7 @@ pub(crate) async fn answer(
                 )),
             )
         })?;
-        got.push((Some(m), g));
+        got.push((m, g));
     }
     let shape = Shape {
         by: req.by,
@@ -412,18 +411,17 @@ pub(crate) struct Answered {
 
 /// 各台读到的 ⇒ 各台那一格 ＋ 读到了的那几台的成品（`history_list::answer_from`，一台一份）。
 pub(crate) fn per_machine(
-    got: Vec<(Option<String>, Got)>,
+    got: Vec<(Machine, Got)>,
     ask: &super::history_list::Ask,
     now_ms: i64,
     tz: &crate::Tz,
 ) -> (Vec<MachineHead>, Vec<Answered>) {
     let mut heads = Vec::new();
     let mut answered = Vec::new();
-    for (origin, g) in got {
-        let machine = origin.clone().map(Machine::named);
+    for (machine, g) in got {
         match g {
             Got::Listing(l) => {
-                let (head, rows) = product(&l, origin.as_deref(), ask, now_ms, tz);
+                let (head, rows) = product(&l, &machine, ask, now_ms, tz);
                 heads.push(MachineHead {
                     origin: machine,
                     total: u32::try_from(rows.len()).unwrap_or(u32::MAX),
@@ -438,7 +436,7 @@ pub(crate) fn per_machine(
                 why,
                 at_ms,
             } => {
-                let (head, rows) = product(&listing, origin.as_deref(), ask, now_ms, tz);
+                let (head, rows) = product(&listing, &machine, ask, now_ms, tz);
                 heads.push(MachineHead {
                     origin: machine,
                     total: u32::try_from(rows.len()).unwrap_or(u32::MAX),
@@ -467,7 +465,7 @@ pub(crate) fn per_machine(
 /// 一台的清单 ⇒ 它的成品（并它自己带来的注解 · 筛 · 排）。
 fn product(
     l: &cmd_wire::listing::Listing,
-    origin: Option<&str>,
+    origin: &Machine,
     ask: &super::history_list::Ask,
     now_ms: i64,
     tz: &crate::Tz,
@@ -491,7 +489,7 @@ pub(crate) struct Shape {
     /// 搜着字 ⇒ 组都开着（命中的就在眼前）。
     pub(crate) all_open: bool,
     pub(crate) fold: Fold,
-    pub(crate) forks: BTreeSet<(Option<Machine>, String)>,
+    pub(crate) forks: BTreeSet<(Machine, String)>,
 }
 
 impl Shape {
@@ -504,7 +502,7 @@ impl Shape {
     }
 }
 
-type Id = (Option<Machine>, String);
+type Id = (Machine, String);
 
 fn id_of(r: &HistoryRow) -> Id {
     (r.origin.clone(), r.session_id.clone())
@@ -518,13 +516,12 @@ fn parent_of(r: &HistoryRow) -> Option<Id> {
 
 /// 一项的键（同一个会话在两台上是两项；组头另一种）。
 fn key_of(line: &HistoryLine) -> String {
-    let o = |m: &Option<Machine>| m.as_ref().map_or(String::new(), ToString::to_string);
     match line {
         HistoryLine::Group { group, .. } => {
-            format!("g\u{1f}{}\u{1f}{}", o(&group.origin), group.key)
+            format!("g\u{1f}{}\u{1f}{}", group.origin, group.key)
         }
         HistoryLine::Row { row, .. } => {
-            format!("r\u{1f}{}\u{1f}{}", o(&row.origin), row.session_id)
+            format!("r\u{1f}{}\u{1f}{}", row.origin, row.session_id)
         }
     }
 }
@@ -578,9 +575,9 @@ pub(crate) fn lay(answered: &[Answered], shape: &Shape) -> Laid {
             laid.projects = u32::try_from(groups.len()).unwrap_or(u32::MAX);
             laid.grouped = groups.iter().map(|g| g.count).sum();
             // 每组那几行：顶层的行进它自己那一组，挂在父下的跟着父。
-            let mut by_group: BTreeMap<(Option<Machine>, &str), Vec<(&HistoryRow, Nest)>> =
+            let mut by_group: BTreeMap<(Machine, &str), Vec<(&HistoryRow, Nest)>> =
                 BTreeMap::new();
-            let mut at: Option<(Option<Machine>, &str)> = None;
+            let mut at: Option<(Machine, &str)> = None;
             for &(r, n) in &nested {
                 if !n.child {
                     at = Some((r.origin.clone(), r.group.as_str()));

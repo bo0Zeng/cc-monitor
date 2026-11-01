@@ -77,10 +77,12 @@ fn patch(
 ) -> Value {
     let l: Listing = serde_json::from_value(listing.clone()).expect("清单读不回来");
     let held: Option<Held> = held.map(|h| serde_json::from_value(h.clone()).expect("记号"));
+    // 判据的简写：`None` 是问这台（线上逐字 `"<local>"`），`Some(名字)` 是问那一台。
+    let origin = origin.map_or_else(cmd_wire::Machine::local, cmd_wire::Machine::named);
     serde_json::to_value(super::patch_from(
         views,
         &l,
-        origin,
+        &origin,
         ann,
         ask,
         held.as_ref(),
@@ -114,8 +116,11 @@ fn with_own_annotations(listing: &mut Value, loaded: &crate::history::history_an
 }
 
 /// 入参照帧面那一处解（typed：形状不对 ⇒ `bad_args`）再核值域，盖住 `super::*` 里的同名口。
+/// 筛法（[`Ask`]）不含哪台：判据只写筛的那几格，`origin` 在这里补成这台（缺 `origin` 的判据在 [`answer_wire`] 那一臂）。
 fn parse_ask(args: &Value) -> Result<Ask, crate::common::said::Said> {
-    let req: HistoryListReq = crate::wire::typed::take(args).map_err(|f| f.coded("bad_args"))?;
+    let mut args = args.clone();
+    args["origin"] = json!(cmd_wire::LOCAL);
+    let req: HistoryListReq = crate::wire::typed::take(&args).map_err(|f| f.coded("bad_args"))?;
     super::parse_ask(&req)
 }
 
@@ -771,7 +776,7 @@ fn asking_by_sid_scans_one_session_and_answers_the_same() {
 }
 
 /// ★ 注解跟着会话住在那台：一个远端会话，桌面经本机后端（`chan.call(那台, history-annotate)`）标星 ⇒ 写进**那台**的注解文件；
-/// 再读：直连那台的 history-list（`origin` 缺席）与本机后端代问那台的 history-list（`origin` = 那台）读到的是同一个星。
+/// 再读：直连那台的 history-list（`origin` 是那台眼里的这台）与本机后端代问那台的 history-list（`origin` = 那台）读到的是同一个星。
 /// 并的那张表只从清单自己带来的那份取（[`listing_annotations`]）：那台没标的 S2 读出来就是没标。
 #[test]
 fn a_remote_sessions_annotation_lives_on_that_machine() {
@@ -831,7 +836,7 @@ fn a_remote_sessions_annotation_lives_on_that_machine() {
 
 /// ★ 手机读的这一条，线上字节钉住：换成带键集合那一形时重钉过一回（记号换成定值 `h1`）；字节存在 `tests/__fixtures__/history-list.wire-bytes.txt`（每行 `名字<TAB>字节`），
 /// 之后逐字节比（经 `serde_json::Value` 那一跳，同帧面）。没有重写开关：字节变了就是线上形状变了，先问手机那一侧。
-/// A 手机那一问（不带 `origin`）· B 注解读不到 ＋ 搜索词 · C 按开始排 ＋ 一窗 ＋ 隐藏的也出。
+/// A 手机那一问（`origin` 是这台）· B 注解读不到 ＋ 搜索词 · C 按开始排 ＋ 一窗 ＋ 隐藏的也出。
 #[test]
 fn the_wire_bytes_the_phone_reads_stay_the_same() {
     use crate::history::history_annotations::Loaded;
@@ -1063,16 +1068,47 @@ fn asking_again_with_the_mark_answers_only_what_changed() {
     }
 }
 
+/// ★ 哪台是必填：不带 `origin` ⇒ `bad_args`（不当这台）；这台逐字送 `"<local>"` ⇒ 问的就是这台（不去问一台叫 `<local>` 的远端），
+/// 行与组的 `origin` 照实写 `"<local>"`。
+#[tokio::test]
+async fn the_machine_is_named_both_ways() {
+    let _tree = MACHINE_TREE.lock().await;
+    let e = answer_wire(json!({})).await.unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("bad_args"), "缺 `origin` 当成了这台：{e:?}");
+    let e = answer_wire(json!({"origin": " "})).await.unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("bad_args"), "空白名：{e:?}");
+    answer_flat(json!({"origin": cmd_wire::LOCAL}))
+        .await
+        .expect("`<local>` ⇒ 这台，不要期限、不问远端");
+    let v = answer_from(
+        &listing(),
+        None,
+        Ok(&ann()),
+        &ask(json!({})),
+        1_000,
+        &crate::Tz::default(),
+    );
+    let rows = v["rows"].as_array().unwrap();
+    let groups = v["groups"].as_array().unwrap();
+    assert!(!rows.is_empty() && !groups.is_empty(), "夹具没出行与组");
+    for x in rows.iter().chain(groups) {
+        assert_eq!(x["origin"], json!(cmd_wire::LOCAL), "这台那一格没写出来：{x}");
+    }
+}
+
 /// ★ 判据 11（帧面那一臂）：带着上次的 `held` 来问 ⇒ 没变就 `same`；入参里的 `held` 形状不对 ⇒ `bad_args`。
 #[tokio::test]
 async fn the_frame_arm_takes_the_mark() {
     // 问这台（远端那份怎么来归 `remote_listing_tests`）：拿着 [`MACHINE_TREE`]，这台的记录树不动 ⇒ 第二问没变。
     let _tree = MACHINE_TREE.lock().await;
-    let first = answer_wire(json!({})).await.unwrap();
+    let here = cmd_wire::LOCAL;
+    let first = answer_wire(json!({"origin": here})).await.unwrap();
     assert_eq!(first["whole"], true);
-    let again = answer_wire(json!({"held": first["held"]})).await.unwrap();
+    let again = answer_wire(json!({"origin": here, "held": first["held"]}))
+        .await
+        .unwrap();
     assert_eq!(again["same"], true, "{again}");
-    let e = answer_wire(json!({"held": 7})).await.unwrap_err();
+    let e = answer_wire(json!({"origin": here, "held": 7})).await.unwrap_err();
     assert_eq!(e.code.as_deref(), Some("bad_args"));
 }
 

@@ -5,8 +5,8 @@
 //! # 形状
 //!
 //! ```text
-//! history-list {origin?, sid?, query?, sort?, within_days?, hidden?, held?, range?}   （入参 · 回包 · 码都是类型）
-//!   origin 缺席    这台；给了 = 那一台：那台的清单（那台自己判活、自己读上次的号、并好它自己的注解）由本进程问那台的常驻取、记着副本
+//! history-list {origin, sid?, query?, sort?, within_days?, hidden?, held?, range?}   （入参 · 回包 · 码都是类型）
+//!   origin `"<local>"` ⇒ 这台；别的名字 = 那一台（空白名 ⇒ `bad_args`）：那台的清单（那台自己判活、自己读上次的号、并好它自己的注解）由本进程问那台的常驻取、记着副本
 //!                  （`remote_listing.rs`：带记号问 `history-listing`，只拿变了的那几行）；手上有就用手上那份，没有才去问
 //!                  （历史页开页 · 刷新时同步副本归几台并成一列那一问，`history_browse.rs`）；那台常驻不在 ⇒ `resident_absent`（不在那台起一个冷进程顶上）
 //!   ⇒ 并上那台的注解（星标 · 改名 · 隐藏）⇒ 筛（隐藏 · 时间 · 搜索词）⇒ 补上被筛掉的分叉父会话（`context`）⇒ 排 ⇒ 截
@@ -509,9 +509,10 @@ fn hits(f: &Finished, q: &str) -> bool {
         .any(|s| s.to_lowercase().contains(q))
 }
 
-/// 一行成品（活不活只在 `face` 里）。
+/// 一行成品（活不活只在 `face` 里）；`origin` ＝ 问的是哪一台。
 fn row_of(
     f: Finished,
+    origin: &cmd_wire::Machine,
     at: i64,
     context: bool,
     now_ms: i64,
@@ -544,7 +545,7 @@ fn row_of(
         at_text,
         section_text,
         span_text,
-        origin: None,
+        origin: origin.clone(),
         agent: r.agent,
         session_id: r.session_id,
         project_path: r.project_path,
@@ -569,11 +570,11 @@ fn row_of(
     }
 }
 
-/// 一台的清单 ＋ 注解 ＋ 入参 ⇒ 成品：头 ＋ 排好的全部行（窗口在 [`patch_from`] 切）。`origin` ＝ 问的是哪一台（缺 ＝ 这台）。`now_ms` 由调用方给（时间筛的「现在」）；
+/// 一台的清单 ＋ 注解 ＋ 入参 ⇒ 成品：头 ＋ 排好的全部行（窗口在 [`patch_from`] 切）。`origin` ＝ 问的是哪一台。`now_ms` 由调用方给（时间筛的「现在」）；
 /// `tz` ＝ 看的那一台的时区（请求信封带来的）：每行的行尾 · 分段 · 时间段三格按它写好（偏移按各自那一刻）。
 pub(crate) fn answer_from(
     listing: &Listing,
-    origin: Option<&str>,
+    origin: &cmd_wire::Machine,
     ann: Result<&Table, String>,
     ask: &Ask,
     now_ms: i64,
@@ -645,22 +646,15 @@ pub(crate) fn answer_from(
         .zip(context)
         .map(|(f, cx)| {
             let at = key(&f);
-            row_of(f, at, cx, now_ms, tz, &labels)
+            row_of(f, origin, at, cx, now_ms, tz, &labels)
         })
         .collect();
     rows.sort_by(|a, b| {
         b.at.cmp(&a.at)
             .then_with(|| a.session_id.cmp(&b.session_id))
     });
-    let mut groups = groups_of(&rows, listing, now_ms, tz);
     // 问的是哪一台：每行每组都带上（界面把几台并成一列时认得出是哪台的）。
-    if let Some(o) = origin {
-        rows.iter_mut()
-            .for_each(|r| r.origin = Some(cmd_wire::Machine::named(o.to_string())));
-        groups
-            .iter_mut()
-            .for_each(|g| g.origin = Some(cmd_wire::Machine::named(o.to_string())));
-    }
+    let groups = groups_of(&rows, listing, origin, now_ms, tz);
     (
         HistoryHead {
             groups,
@@ -674,7 +668,7 @@ pub(crate) fn answer_from(
 /// 此刻的全部项 ＝ [`answer_from`] 排好的行（键 ＝ 会话 ID）。
 struct Source<'a> {
     listing: &'a Listing,
-    origin: Option<&'a str>,
+    origin: &'a cmd_wire::Machine,
     ann: Result<&'a Table, String>,
     ask: &'a Ask,
     now_ms: i64,
@@ -727,7 +721,7 @@ fn views_for(ask: &Ask) -> &'static Views {
 pub(crate) fn patch_from(
     views: &Views,
     listing: &Listing,
-    origin: Option<&str>,
+    origin: &cmd_wire::Machine,
     ann: Result<&Table, String>,
     ask: &Ask,
     held: Option<&Held>,
@@ -759,6 +753,7 @@ fn live_rank(g: &HistoryGroup) -> i64 {
 fn groups_of(
     rows: &[HistoryRow],
     listing: &Listing,
+    origin: &cmd_wire::Machine,
     now_ms: i64,
     tz: &crate::Tz,
 ) -> Vec<HistoryGroup> {
@@ -777,7 +772,7 @@ fn groups_of(
             at_text: None,
             order: 0,
             failed: None,
-            origin: None,
+            origin: origin.clone(),
         });
         g.count += 1;
         // 有在跑的：确定有一个就够；有答不了的就不许说「都没在跑」（同项目清单）。
@@ -824,7 +819,7 @@ fn groups_of(
             at_text: None,
             order: 0,
             failed: Some(f.error.clone()),
-            origin: None,
+            origin: origin.clone(),
         });
     }
     out
@@ -872,7 +867,7 @@ pub(crate) fn specimen() -> Patch<HistoryHead, HistoryRow> {
         at_text: w("t"),
         section_text: w("s"),
         span_text: w("p"),
-        origin: Some(cmd_wire::Machine::named(s("m"))),
+        origin: cmd_wire::Machine::named(s("m")),
     }];
     let groups = vec![HistoryGroup {
         key: s("agent:/w"),
@@ -887,7 +882,7 @@ pub(crate) fn specimen() -> Patch<HistoryHead, HistoryRow> {
         at_text: Some(w("t")),
         order: 2,
         failed: Some(s("x")),
-        origin: Some(cmd_wire::Machine::named(s("m"))),
+        origin: cmd_wire::Machine::named(s("m")),
     }];
     // 离开活的那两形也各露一行（能做什么那几格的「不能」与为什么：已结束只灰终端那两格，记录已不在连换模型 · 权限档也灰）。
     for (sid, life) in [
@@ -948,20 +943,19 @@ pub(crate) async fn answer(
 ) -> Result<Patch<HistoryHead, HistoryRow>, Said> {
     let ask = parse_ask(&req)?;
     let held = req.held;
-    let origin = match req.origin {
-        None => None,
-        Some(m) if !m.to_string().is_empty() => Some(m.to_string()),
-        Some(_) => return Err(bad("`origin` must be a non-empty string")),
-    };
-    let listing = match &origin {
-        None => {
+    let origin = req.origin;
+    let listing = match origin.route("history-list") {
+        Err(_) => return Err(bad("`origin` must be a non-empty string")),
+        Ok(cmd_wire::Route::Local) => {
             let only = ask.sid.clone();
             blocking(move || {
                 machine_listing_for(only.as_deref(), crate::history::list_node::node())
             })
             .await?
         }
-        Some(o) => super::remote_listing::listing(o, false, &tz, until).await?,
+        Ok(cmd_wire::Route::Remote(o)) => {
+            super::remote_listing::listing(o, false, &tz, until).await?
+        }
     };
     blocking(move || {
         // 并的是清单自己带来的那台的注解（本机的那份只并本机会话；远端那台自己并好了它那份）。
@@ -969,7 +963,7 @@ pub(crate) async fn answer(
         Ok(patch_from(
             views_for(&ask),
             &listing,
-            origin.as_deref(),
+            &origin,
             ann.as_ref().map_err(Clone::clone),
             &ask,
             held.as_ref(),
