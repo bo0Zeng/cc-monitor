@@ -25,7 +25,8 @@ fn a_record_whose_first_line_is_not_a_label_is_not_a_record() {
     assert_eq!(parse("123\ndevbox\n"), None);
 }
 
-const LINE_POSIX: &str = "'/usr/bin/ssh' -t -p 22 dev@192.0.2.9 -- 'bash -lic '\\''claude --resume x'\\'''";
+const LINE_POSIX: &str =
+    "'/usr/bin/ssh' -t -p 22 dev@192.0.2.9 -- 'bash -lic '\\''claude --resume x'\\'''";
 const LINE_PS: &str = "& 'C:\\Windows\\System32\\OpenSSH\\ssh.exe' -t -p 22 dev@192.0.2.9 -- 'bash -lic ''claude --resume x'''";
 
 /// 开窗那一串：前奏 · 那一行 · 收尾，收尾删的正是前奏写的那一份（那条 ssh 怎么退的都一样：「记录在」＝「开窗那条 ssh 还开着」）。
@@ -33,7 +34,10 @@ const LINE_PS: &str = "& 'C:\\Windows\\System32\\OpenSSH\\ssh.exe' -t -p 22 dev@
 fn the_window_line_forgets_the_record_once_the_ssh_returns() {
     let file = Path::new("/home/u/.cc-monitor/opened-windows/0b9c3f2e-1111-4222-8333-944455556666");
     let posix = window(false, file, "devbox", LINE_POSIX);
-    assert!(posix.starts_with(&prelude(false, file, "devbox")), "{posix}");
+    assert!(
+        posix.starts_with(&prelude(false, file, "devbox")),
+        "{posix}"
+    );
     let after = posix.split_once(LINE_POSIX).expect("那一行原样在里面").1;
     assert_eq!(
         after,
