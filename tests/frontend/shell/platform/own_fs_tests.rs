@@ -41,14 +41,10 @@ fn own_state_lands_under_the_data_dir_and_only_for_me() {
     // 覆盖写：旁名不留。
     own.write("sub/state.json", b"[1]").expect("再写一次");
     assert_eq!(std::fs::read(&at).expect("读回"), b"[1]");
-    let left: Vec<_> = std::fs::read_dir(at.parent().expect("上一层"))
-        .expect("列")
-        .filter_map(Result::ok)
-        .map(|e| e.file_name())
-        .collect();
-    assert_eq!(left.len(), 1, "原子写的旁名换名后不留：{left:?}");
     own.remove("sub/state.json").expect("删");
     assert!(!at.exists());
+    // 那一层只删得掉空目录：删得掉 ⇒ 两趟原子写的旁名都没留下。
+    std::fs::remove_dir(at.parent().expect("上一层")).expect("原子写的旁名换名后不留");
     std::fs::remove_dir_all(&home).ok();
 }
 

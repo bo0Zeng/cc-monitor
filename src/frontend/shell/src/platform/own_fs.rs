@@ -5,36 +5,28 @@
 //! - 自己的部署物（[`OwnBin`]）：数据目录底下的 `bin/`（终端里敲的 `ccm` 与文件窗口程序住这里）。方法只收落点目录里的一个名字；
 //!   放一份 ＝ 先写 `.<名>.<pid>.partial`、置可执行位，再换名上位（Windows 上旧的正在跑 ⇒ 先挪成 `.<名>.<pid>.old`）。
 //! - 终端设备（[`tty_write`]）：不是盘上的文件，往 `/dev/pts/N` 一类写控制序列。
-//! - 日志目录（[`log_dir`]）：调用方给的那一层目录，只建目录。
+//! - 日志目录（[`log_dir`]）：调用方给的那一层目录，只建目录（只给本人）。
 //!
 //! 用户的文件不在这里：经那台机器的后端写，或经 `host_core` 保留目标 ACL 的那一个替换。
+//! 失败回 `io::Error`（带落点）：说给人听的那一句由调用方照它那一处的文案取。
 //! `std::fs` 的写原语进了 `src/frontend/clippy.toml` 的禁用名单，放行只在本文件、各组那几个只做这一件事的小函数上。
 
-use copy_core::copy_text;
-use copy_core::said::Said;
-use std::io::Write as _;
+use crate::detail::Shell as _;
+use copy_core::{Discard as _, Why};
+use std::io::{Error, ErrorKind, Result, Write as _};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// 写失败那一句（落点 ＋ 原因词，原话进复制详情）。
-fn failed(at: &Path, e: &std::io::Error) -> Said {
-    Said::with_raw(
-        copy_text(
-            "reason.fs.writeFailed",
-            &[
-                ("path", &at.display().to_string()),
-                ("why", &copy_core::io_reason(e.kind())),
-            ],
-        ),
-        e,
-    )
+/// 带上落点的下层错（种类照旧）。
+fn at_path(at: &Path, e: &Error) -> Error {
+    Error::new(e.kind(), format!("{}: {e}", at.display()))
 }
 
-/// 名字不是根底下的相对名 ⇒ 当成「参数不对」那一类写失败报。
-fn not_relative(root: &Path, rel: &str) -> Said {
-    failed(
-        &root.join(rel),
-        &std::io::Error::from(std::io::ErrorKind::InvalidInput),
+/// 名字不是根底下的相对名（或不是落点目录里的一个名字）。
+fn not_relative(root: &Path, rel: &str) -> Error {
+    Error::new(
+        ErrorKind::InvalidInput,
+        format!("{}: {rel:?} is not a plain relative name", root.display()),
     )
 }
 
@@ -49,6 +41,11 @@ fn single_name_ok(name: &str) -> bool {
     relative_ok(name) && Path::new(name).components().count() == 1
 }
 
+/// 建一层只给本人的目录（缺的上层一并建；已在不动）。
+fn private_dir(dir: &Path) -> Result<()> {
+    super::fs::ensure_private_dir(dir).map_err(|s| s.into_io())
+}
+
 /// 旁名序号：同一进程几个线程同时写同一份也不撞。
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -59,7 +56,7 @@ static SEQ: AtomicU64 = AtomicU64::new(0);
     clippy::disallowed_methods,
     reason = "写盘只经本文件：只给本人地新建一份"
 )]
-fn create_new_private(at: &Path) -> std::io::Result<std::fs::File> {
+fn create_new_private(at: &Path) -> Result<std::fs::File> {
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create_new(true);
     super::fs::only_me_on_create(&mut opts);
@@ -71,7 +68,7 @@ fn create_new_private(at: &Path) -> std::io::Result<std::fs::File> {
     clippy::disallowed_methods,
     reason = "写盘只经本文件：只给本人地建或截断一份"
 )]
-fn create_private(at: &Path) -> std::io::Result<std::fs::File> {
+fn create_private(at: &Path) -> Result<std::fs::File> {
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
     super::fs::only_me_on_create(&mut opts);
@@ -83,27 +80,24 @@ fn create_private(at: &Path) -> std::io::Result<std::fs::File> {
     clippy::disallowed_methods,
     reason = "写盘只经本文件：原子写与上位的换名"
 )]
-fn rename(from: &Path, to: &Path) -> std::io::Result<()> {
+fn rename(from: &Path, to: &Path) -> Result<()> {
     std::fs::rename(from, to)
 }
 
 /// 删一份文件。
 #[expect(clippy::disallowed_methods, reason = "写盘只经本文件：删自己的一份")]
-fn remove_file(at: &Path) -> std::io::Result<()> {
+fn remove_file(at: &Path) -> Result<()> {
     std::fs::remove_file(at)
 }
 
-/// 建一层目录（缺的上层一并建；已在不动）。
-#[expect(
-    clippy::disallowed_methods,
-    reason = "写盘只经本文件：日志目录只建目录"
-)]
-fn create_dir_all(at: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(at)
+/// 写满 → 落盘。
+fn fill(mut f: std::fs::File, bytes: &[u8]) -> Result<()> {
+    f.write_all(bytes)?;
+    f.sync_all()
 }
 
 /// 写满 → 落盘 → 换名到 `at`；中途失败删掉自己建的旁名。
-fn write_atomic(at: &Path, bytes: &[u8]) -> Result<(), Said> {
+fn write_atomic(at: &Path, bytes: &[u8]) -> Result<()> {
     let dir = at.parent().unwrap_or(Path::new("."));
     let name = at
         .file_name()
@@ -114,24 +108,20 @@ fn write_atomic(at: &Path, bytes: &[u8]) -> Result<(), Said> {
         std::process::id(),
         SEQ.fetch_add(1, Ordering::Relaxed)
     ));
-    let wrote = create_new_private(&tmp).and_then(|mut f| {
-        f.write_all(bytes)?;
-        f.sync_all()
-    });
-    if let Err(e) = wrote {
-        remove_file(&tmp).ok();
-        return Err(failed(&tmp, &e));
+    if let Err(e) = create_new_private(&tmp).and_then(|f| fill(f, bytes)) {
+        remove_file(&tmp).discard(Why::CleanupAfterFailure);
+        return Err(at_path(&tmp, &e));
     }
     rename(&tmp, at).map_err(|e| {
-        remove_file(&tmp).ok();
-        failed(at, &e)
+        remove_file(&tmp).discard(Why::CleanupAfterFailure);
+        at_path(at, &e)
     })
 }
 
 /// 删一份；本来就不在算删成了。
-fn remove_if_there(at: &Path) -> Result<(), Said> {
+fn remove_if_there(at: &Path) -> Result<()> {
     match remove_file(at) {
-        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(failed(at, &e)),
+        Err(e) if e.kind() != ErrorKind::NotFound => Err(at_path(at, &e)),
         _ => Ok(()),
     }
 }
@@ -155,7 +145,7 @@ impl OwnState {
     }
 
     /// 根底下一条相对名的路径（读的那一侧也照它拼）；不是相对名 ⇒ 拒。
-    pub fn path(&self, rel: &str) -> Result<PathBuf, Said> {
+    pub fn path(&self, rel: &str) -> Result<PathBuf> {
         if !relative_ok(rel) {
             return Err(not_relative(&self.root, rel));
         }
@@ -163,36 +153,33 @@ impl OwnState {
     }
 
     /// 建一层目录（缺的上层一并建，建出来只给本人；已在不动）。回那一层的路径。
-    pub fn dir(&self, rel: &str) -> Result<PathBuf, Said> {
+    pub fn dir(&self, rel: &str) -> Result<PathBuf> {
         let at = self.path(rel)?;
-        super::fs::ensure_private_dir(&at)?;
+        private_dir(&at)?;
         Ok(at)
     }
 
     /// 所在目录缺 ⇒ 先建（只给本人）。
-    fn parent_ready(at: &Path) -> Result<(), Said> {
-        match at.parent() {
-            Some(dir) => super::fs::ensure_private_dir(dir),
-            None => Ok(()),
-        }
+    fn parent_ready(at: &Path) -> Result<()> {
+        at.parent().map_or(Ok(()), private_dir)
     }
 
     /// 原子写一份（只给本人）；所在目录缺 ⇒ 先建。
-    pub fn write(&self, rel: &str, bytes: &[u8]) -> Result<(), Said> {
+    pub fn write(&self, rel: &str, bytes: &[u8]) -> Result<()> {
         let at = self.path(rel)?;
         Self::parent_ready(&at)?;
         write_atomic(&at, bytes)
     }
 
     /// 建（或截断）一份只给本人的文件，交回句柄（锁旁件这一类：要的是那份文件本身，不是内容）。
-    pub fn create(&self, rel: &str) -> Result<std::fs::File, Said> {
+    pub fn create(&self, rel: &str) -> Result<std::fs::File> {
         let at = self.path(rel)?;
         Self::parent_ready(&at)?;
-        create_private(&at).map_err(|e| failed(&at, &e))
+        create_private(&at).map_err(|e| at_path(&at, &e))
     }
 
     /// 删一份；本来就不在算删成了。
-    pub fn remove(&self, rel: &str) -> Result<(), Said> {
+    pub fn remove(&self, rel: &str) -> Result<()> {
         remove_if_there(&self.path(rel)?)
     }
 }
@@ -220,7 +207,7 @@ impl OwnBin {
         &self.dir
     }
 
-    fn named(&self, name: &str) -> Result<PathBuf, Said> {
+    fn named(&self, name: &str) -> Result<PathBuf> {
         if !single_name_ok(name) {
             return Err(not_relative(&self.dir, name));
         }
@@ -228,30 +215,26 @@ impl OwnBin {
     }
 
     /// 写一份暂存件 `.<名>.<pid>.partial`（只给本人、已置可执行位），回它的路径；还没上位。
-    pub fn stage(&self, name: &str, bytes: &[u8]) -> Result<PathBuf, Said> {
+    pub fn stage(&self, name: &str, bytes: &[u8]) -> Result<PathBuf> {
         self.named(name)?;
-        super::fs::ensure_private_dir(&self.dir)?;
+        private_dir(&self.dir)?;
         let tmp = self
             .dir
             .join(format!(".{name}.{}.partial", std::process::id()));
-        let wrote = create_private(&tmp).and_then(|mut f| {
-            f.write_all(bytes)?;
-            f.sync_all()
-        });
-        if let Err(e) = wrote {
-            remove_file(&tmp).ok();
-            return Err(failed(&tmp, &e));
-        }
-        if let Err(s) = super::fs::make_executable(&tmp) {
-            remove_file(&tmp).ok();
-            return Err(s);
+        let ready = create_private(&tmp)
+            .and_then(|f| fill(f, bytes))
+            .map_err(|e| at_path(&tmp, &e))
+            .and_then(|()| super::fs::make_executable(&tmp).map_err(|s| s.into_io()));
+        if let Err(e) = ready {
+            remove_file(&tmp).discard(Why::CleanupAfterFailure);
+            return Err(e);
         }
         Ok(tmp)
     }
 
     /// 暂存件上位成 `<名>`，回落点。换不上（Windows 上旧的正在跑）⇒ 先把旧的挪成 `.<名>.<pid>.old` 再上位；
     /// 挪也挪不开 ⇒ 回第一次的错，暂存件留给调用方收。
-    pub fn put(&self, name: &str, staged: &Path) -> Result<PathBuf, Said> {
+    pub fn put(&self, name: &str, staged: &Path) -> Result<PathBuf> {
         let dest = self.named(name)?;
         rename(staged, &dest)
             .or_else(|first| {
@@ -260,20 +243,20 @@ impl OwnBin {
                     .and_then(|()| rename(staged, &dest))
                     .map_err(|_| first)
             })
-            .map_err(|e| failed(&dest, &e))?;
+            .map_err(|e| at_path(&dest, &e))?;
         Ok(dest)
     }
 
     /// 暂存 ＋ 上位；上位不成 ⇒ 删掉暂存件再回错。
-    pub fn place(&self, name: &str, bytes: &[u8]) -> Result<PathBuf, Said> {
+    pub fn place(&self, name: &str, bytes: &[u8]) -> Result<PathBuf> {
         let staged = self.stage(name, bytes)?;
         self.put(name, &staged).inspect_err(|_| {
-            remove_file(&staged).ok();
+            remove_file(&staged).discard(Why::CleanupAfterFailure);
         })
     }
 
     /// 删落点目录里的一份（暂存件 · 挪开的旧版 · 落点本身）；本来就不在算删成了。
-    pub fn remove(&self, name: &str) -> Result<(), Said> {
+    pub fn remove(&self, name: &str) -> Result<()> {
         remove_if_there(&self.named(name)?)
     }
 }
@@ -281,12 +264,13 @@ impl OwnBin {
 // ── 终端设备 ──────────────────────────────
 
 /// 往终端设备（`/dev/pts/N` 一类）写一段控制序列；不新建、不把它认作本进程的控制终端（`O_NOCTTY`）。
+/// 只给同层的控制台那一族用（改标题）。
 #[cfg(target_os = "linux")]
 #[expect(
     clippy::disallowed_methods,
     reason = "写盘只经本文件：终端设备不是盘上的文件，只写不建"
 )]
-pub fn tty_write(tty: &Path, bytes: &[u8]) -> std::io::Result<()> {
+pub(super) fn tty_write(tty: &Path, bytes: &[u8]) -> Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
     const O_NOCTTY: i32 = 0o400;
     std::fs::OpenOptions::new()
@@ -298,9 +282,9 @@ pub fn tty_write(tty: &Path, bytes: &[u8]) -> std::io::Result<()> {
 
 // ── 日志目录 ──────────────────────────────
 
-/// 建调用方给的那一层日志目录（缺的上层一并建；已在不动）。
-pub fn log_dir(dir: &Path) -> Result<(), Said> {
-    create_dir_all(dir).map_err(|e| failed(dir, &e))
+/// 建调用方给的那一层日志目录（缺的上层一并建，建出来只给本人；已在不动）。
+pub fn log_dir(dir: &Path) -> Result<()> {
+    private_dir(dir)
 }
 
 #[cfg(test)]
