@@ -979,6 +979,10 @@ pub(crate) const DUR_SLOT: &str = "{dur}";
 pub(crate) trait StepResultExt {
     /// ★ 右侧那一句（唯一一处）。`read` ＝ 这是读文件那一类的结果（`lines` 才说成「读了几行」；命令输出几行 · 搜索命中几行不说）。
     fn written(self, read: bool) -> Self;
+    /// ★ 配上调用时刻之后那一句（唯一一处）：有带耗时那一形、`ms` 有 ⇒ `{dur}` 填好成 `text`、`timed` 清掉；
+    /// 配不上（`None`）· 没有带耗时那一形 ⇒ 不动（读不到就不写，不猜）。
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn timed_by(self, ms: Option<u64>) -> Self;
 }
 
 impl StepResultExt for StepResult {
@@ -1032,6 +1036,15 @@ impl StepResultExt for StepResult {
         };
         self.text = w(text);
         self.timed = timed.map(w);
+        self
+    }
+
+    fn timed_by(mut self, ms: Option<u64>) -> Self {
+        if let (Some(ms), Some(timed)) = (ms, &self.timed) {
+            let text = timed.0.replace(DUR_SLOT, &copy_core::short_duration(ms));
+            self.text = crate::common::cells::Words(text);
+            self.timed = None;
+        }
         self
     }
 }
