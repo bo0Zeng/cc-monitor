@@ -7,8 +7,7 @@
 #[test]
 fn the_shell_spells_the_local_address_only_as_cmd_wire_local() {
     // 本机后端的地址只有一个家：`cmd_wire::LOCAL`。壳包里不许另起一份常量、不许经别的包转一份名字、不许手写那个串。
-    let files =
-        guard_core::scan_tree_excluding(&guard_core::addr::shell_src_root(), &["rs"], &[]);
+    let files = guard_core::scan_tree_excluding(&guard_core::addr::shell_src_root(), &["rs"], &[]);
     assert!(!files.is_empty(), "壳包一份 .rs 都没扫到 —— 住址坏了");
     let prod: Vec<(String, String)> = files
         .iter()
