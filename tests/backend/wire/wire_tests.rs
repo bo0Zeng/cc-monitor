@@ -1622,7 +1622,7 @@ fn a_changed_body_over_its_cap_is_left_off() {
 /// `changed` 丢了能不能恢复照主题表答。
 #[test]
 fn changed_loss_follows_the_topic_table() {
-    for t in Topic::ALL {
+    for t in super::topic::tests::ALL {
         let f = Frame::changed(
             crate::wire::Changed::bare(t, Some("k".into())).expect("每个主题都有那一臂"),
         );
