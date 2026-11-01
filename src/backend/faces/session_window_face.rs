@@ -4,7 +4,7 @@
 //! - 本机会话：显示它的终端进程（在 tmux 里 ⇒ 连着它的 tmux 客户端；不在 ⇒ 它自己，`observe/session_terminals.rs::here_by`）
 //!   往上数进程链（`dial/terminal_processes.rs::chain`，一趟读这台的进程表）。
 //! - 远端会话：终端是 cc-monitor 开的 ⇒ 先照开的那一刻记下的标签在这台找（`dial/opened_windows.rs`：那个 shell 还是它、
-//!   它自己或底下开着 ssh ⇒ 从那个 ssh 往上的链），找到就不问那台；
+//!   它自己或底下开着开窗那一刻起的 ssh ⇒ 从那个 ssh 往上的链；后来在窗口里又敲的 ssh 不认），找到就不问那台；
 //!   否则经 `--resident-call` 问那台的常驻 `session-terminals`（谁在显示它，那台的原因照搬），
 //!   报来的终端连接拿这台的连接表对（`dial/terminal_processes.rs`，对不上的原因照搬）。这台的表一趟只读一次。
 //! - `labels`：各终端带的窗口标签（`LC_CCM_WINDOW`，最近动静在前），壳先按它找；`chain` 空 ⇔ `face` 在。

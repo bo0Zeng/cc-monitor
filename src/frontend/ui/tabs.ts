@@ -36,8 +36,9 @@ export type { Tab, TabsSummary } from "./tab-model";
 import { TabMenu } from "./tab-menu";
 import type { MenuItem } from "./kit/menu";
 import { TabSelection } from "./tab-selection";
-import { batchHead, openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
-import { sayRows } from "./end-confirm";
+import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
+import { sayReply } from "./end-confirm";
+import { askSessions } from "./tab-batch-run";
 import { AllListed, TabStore, type ActiveView } from "./tab-store";
 import { appStore, type Slice } from "./app-store";
 import { TabStreamView } from "./tab-stream-view";
@@ -46,7 +47,7 @@ import type { SessionLiveCardsPayload } from "./generated/SessionLiveCardsPayloa
 import { TabBarPrefs } from "./tab-bar-prefs";
 import { TabHide } from "./tab-hide";
 import { NO_LINEAGE, type SessionHidden } from "./session-hidden";
-import { setAutoAnswer, setHide } from "./session-hidden-cmds";
+import { setAutoAnswer } from "./session-hidden-cmds";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView, type PlanNeeds } from "./tab-bar-view";
 import type { NeedsBook } from "./needs-book";
@@ -204,10 +205,9 @@ export class TabManager {
 
   /** 隐藏那几件（帧上那一格落到 tab 上 · 隐藏 / 取消隐藏交的命令 · 撤销 · 隐藏了又结束的收走）。 */
   private readonly hider = new TabHide(this.store, this.prefs, {
-    setHide: (tab, to) => setHide(tab.origin, tab.sessionId, to),
-    undoToast: (title, undo, settle) => undoToast(title, undo, settle),
+    send: (op, items) => askSessions(op, items),
+    say: (reply, undo) => sayReply(reply, undo),
     failed: (title, e) => failToast(title, e),
-    batch: (action, rows, undo) => sayRows(rows, batchHead(action), undo),
     refreshTabBar: () => this.refreshTabBar(),
     close: (sid) => this.closeTab(sid),
   });
@@ -447,7 +447,7 @@ export class TabManager {
     collectionsLoaded: () => this.prefs.collectionsLoaded,
     collections: () => this.prefs.collections,
     pinnedLoaded: () => this.prefs.pinnedLoaded,
-    setPinnedMany: (sids, on) => void this.prefs.setPinnedMany(sids, on),
+    landPinned: (sids, on) => this.prefs.landPinned(sids, on),
     joinGroup: (sids, gid) => this.dragger.joinNow(sids, gid),
     foundGroup: (sids) => this.dragger.foundNow(sids),
     leaveGroup: (sids) => this.dragger.leaveNow(sids),
