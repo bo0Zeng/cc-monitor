@@ -4,29 +4,13 @@
 //! ★ 回放（[`replay`]）：同一个 [`turn`] 每分钟判一次，本会话的需求照一段真轨迹走（不照用速），量卡住 · 换号 · 作废。
 
 use super::decide::{turn, Me, Pick, PromptCache, Sigma, Strategy};
+use super::rollout::rate_of;
 use super::standing;
 use super::{Acct, WINDOW_SECS};
 use serde_json::Value;
 
 /// 一次推演最多几个事件。
 pub(crate) const MAX_EVENTS: usize = 200;
-
-/// 推演里号 `x` 第 `w` 窗每分钟涨几点。`pace` ＝ 本会话的用速（折合输入 token / 分），按这一窗「1% ≈ 多少」折成点：
-/// - 量得到别的会话压在它上面的（`others`，只有 5 小时窗）⇒ 它，本会话在它上面再加本会话那一份；
-/// - 量不到 ⇒ 号自己在额度账里量出来的用速（本会话在它上面时量的已含本会话，不再加）；在用的号这也量不到 ⇒ 只算本会话那一份；
-/// - 都量不到 ⇒ 空（不编数）。
-fn rate_of(x: &Acct, w: usize, in_use: bool, pace: Option<f64>) -> Option<f64> {
-    let mine = pace
-        .zip(x.per_pct[w].filter(|t| *t > 0))
-        .map(|(p, t)| p / t as f64);
-    let others = if w == 0 { x.others } else { None };
-    match (others, in_use, mine) {
-        (Some(o), true, Some(m)) => Some(o + m),
-        (Some(o), false, _) => Some(o),
-        (_, true, Some(m)) if x.rate[w].is_none() => Some(m),
-        _ => x.rate[w],
-    }
-}
 
 /// 号用起来时窗口没开 ⇒ 从此刻起计时（推演与回放同此一处）。
 fn open_windows(x: &mut Acct, t: u64) {
