@@ -95,7 +95,7 @@ const WRITE_SITES: &[(&str, &str, Lands, &str)] = &[
     //    （`put_atomic` / `save_backup` / `delete_created`，那时是本机 rc · `$PROFILE` · 别名文件 · rc 里那一行
     //    source 的唯一落盘漏斗）。只有后端的文件管理部分写文件，**本机也算** ⇒ 那几件改经本机后端
     //    （`user_files::edit` → `files-peek` / `files-put`），本进程**一个字节都不落** ⇒ 三行随原语一起走了。
-    //    写的规则（备份 · 原子替换 · 回读 · 回滚）从此只住后端 `control/files_write.rs::put_text`。
+    //    写的规则（备份 · 原子替换 · 回读 · 回滚）从此只住后端 `files/write.rs::put_text`。
     // ── 不是安装动作：写的是 monitor 自己的东西
     ("bind.rs", "spawn", Lands::OwnState, "monitor 自己的运行时目录/落地文件"),
     ("bind.rs", "process_tty_file", Lands::OwnState, "monitor 自己的握手表（bash / zsh 那一份认上了写一条登记）· 删用完的那份等待记录"),

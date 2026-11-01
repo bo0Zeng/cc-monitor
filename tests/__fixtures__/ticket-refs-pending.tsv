@@ -1,7 +1,7 @@
 .stylelintrc.json	1
 src/backend/accounts/upstream_select/file_face.rs	1
 src/backend/agents/footprint_decl.rs	24
-src/backend/common/session_snapshot.rs	2
+src/backend/common/session_snapshot.rs	1
 src/backend/common/tmux_utf8.rs	2
 src/backend/control/cc_bus_scope.rs	1
 src/backend/control/fork_write.rs	3
@@ -121,7 +121,6 @@ tests/backend/control/cc_bus_envelope_tests.rs	1
 tests/backend/control/cc_bus_hop_tests.rs	1
 tests/backend/control/exit_policy_tests.rs	2
 tests/backend/control/feeds_tests.rs	1
-tests/backend/control/files_write_tests.rs	1
 tests/backend/control/fork_write_tests.rs	1
 tests/backend/control/gate_rules_tests.rs	1
 tests/backend/control/launch_render/ccm_invocation_tests.rs	1
@@ -134,6 +133,7 @@ tests/backend/dial_ssh_config_tests.rs	2
 tests/backend/faces/accounts_face_tests.rs	1
 tests/backend/faces/plan_ask_face_tests.rs	15
 tests/backend/faces/plan_return_face_tests.rs	12
+tests/backend/files/write_tests.rs	1
 tests/backend/footprint/chores_tests.rs	4
 tests/backend/history/session_queue_deliver_tests.rs	1
 tests/backend/host/attach_tests.rs	4
@@ -155,7 +155,6 @@ tests/backend/plan/refs_tests.rs	11
 tests/backend/platform/cfgless_guard.rs	21
 tests/backend/platform/fallback_guard.rs	4
 tests/backend/platform/fs/ro_tests.rs	1
-tests/backend/platform/shell/dialect_tests.rs	1
 tests/backend/relay/creds_guard.rs	16
 tests/backend/relay/server_tests.rs	25
 tests/backend/relay/table_guard.rs	9

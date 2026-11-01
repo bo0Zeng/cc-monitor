@@ -1,5 +1,4 @@
 tests/backend/agent_locality_guard.rs	3
-tests/backend/control/files_extract_tests.rs	1
 tests/backend/platform/cfgless_guard.rs	4
 tests/backend/platform/shell/dialect_tests.rs	1
 tests/backend/sftp_rig.rs	1
