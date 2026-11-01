@@ -136,8 +136,8 @@ dependencies = [
  "shell-quote-core",
  "ssh-dial",
  "test-home",
- "test-meters",
  "tracing",
+ "tracing-subscriber",
  "ts-rs",
  "win-path-core",
 ]
