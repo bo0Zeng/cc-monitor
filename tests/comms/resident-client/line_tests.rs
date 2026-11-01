@@ -75,10 +75,11 @@ fn every_frame_comes_out_before_the_silence(frames: Vec<Vec<u8>>, piece: usize) 
     let mut buf = Vec::new();
     for (i, f) in frames.iter().enumerate() {
         // 字节全在内存里、读者之后永远不唤醒：读这一行必须一次 poll 就完，`Pending` 就是在等那台根本不会再来的字节。
-        let read = read_capped_line(&mut rd, &mut buf, BACKEND_FRAME_LINE_CAP);
-        let mut read = std::pin::pin!(read);
-        let mut cx = Context::from_waker(std::task::Waker::noop());
-        let Poll::Ready(got) = read.as_mut().poll(&mut cx) else {
+        let polled = {
+            let read = std::pin::pin!(read_capped_line(&mut rd, &mut buf, BACKEND_FRAME_LINE_CAP));
+            read.poll(&mut Context::from_waker(std::task::Waker::noop()))
+        };
+        let Poll::Ready(got) = polled else {
             panic!(
                 "第 {i} 帧（{} 字节）的压缩字节全到了却没交出来（每段 {piece} 字节）",
                 f.len()
