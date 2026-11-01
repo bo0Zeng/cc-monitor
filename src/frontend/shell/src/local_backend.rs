@@ -66,7 +66,8 @@
 //! 现在给后端一条**前面挂着 shim 的 PATH**（`tests/e2e/tmux-shim.sh`），它 shell out 的 tmux
 //! 被强插 `-L` —— **显式选择器压得过 `$TMUX`**。
 
-use crate::detail::Said;
+use crate::detail::Shell as _;
+use copy_core::said::Said;
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -1001,7 +1002,7 @@ fn drop_partial(tmp: &Path) {
 fn unasked(e: crate::backend_once::OnceErr) -> Said {
     use crate::backend_once::OnceErr;
     let why = match e {
-        OnceErr::Refused(f) => return Said::written(f.said),
+        OnceErr::Refused(f) => return Said::from(f.said),
         OnceErr::Spawn(e) => Said::with_raw(copy_text("rsLocalBackend.place.askSpawn", &[]), &e),
         OnceErr::TimedOut => Said::of("rsLocalBackend.place.askTimeout", &[]),
         OnceErr::Unreadable(said) => {
@@ -1632,7 +1633,7 @@ pub fn resolve_or_extract(
             Ok(e) => e,
             Err(why) => {
                 break 'resolve Resolved::Missing {
-                    reason: Said::written(why),
+                    reason: Said::from(why),
                     looked_at: Vec::new(),
                 }
             }

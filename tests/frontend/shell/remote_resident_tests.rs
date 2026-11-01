@@ -40,8 +40,9 @@ fn the_stop_failures_are_read_the_same_as_the_ensure_answer() {
         s.said,
         copy_text("rsRemoteResident.ensure.unsupported", &[])
     );
-    assert!(s.detail.contains("不是 unix"), "{}", s.detail);
-    assert!(s.detail.contains("那台写的详情"), "{}", s.detail);
+    let raw = s.raw.clone().unwrap_or_default();
+    assert!(raw.contains("不是 unix"), "{raw}");
+    assert!(raw.contains("那台写的详情"), "{raw}");
     let s = read_stop(
         &exec(
             "",
@@ -53,9 +54,9 @@ fn the_stop_failures_are_read_the_same_as_the_ensure_answer() {
     .unwrap_err();
     assert_eq!(s.said, "x");
     assert!(
-        s.detail.contains("Permission denied (os error 13)"),
-        "{}",
-        s.detail
+        s.raw.as_deref().unwrap_or_default().contains("Permission denied (os error 13)"),
+        "{:?}",
+        s.raw
     );
     assert_eq!(
         read_stop(&exec("", "", Some(127)), "devbox")

@@ -29,8 +29,10 @@
 //! 期限的**值**暂住下面那几个常量：「期限的值归谁」待定，定了再搬。
 
 use crate::backend_route::{no_channel, route_call_error, Routed};
+use cmd_wire::failed::Failed;
 use crate::chan::said::machine as who;
-use crate::detail::Said;
+use crate::detail::Shell as _;
+use copy_core::said::Said;
 use crate::inbound_client;
 use crate::origin::Origin;
 use copy_core::copy_text;
@@ -92,29 +94,29 @@ impl Deadline {
 ///
 /// 期限是调用方给的**那一件事**的 [`Deadline`]：已经到点 ⇒ **一个字节都不发**（同 `src/comms/inward/chan.ts`
 /// 「已经过了 ⇒ 一个字节都不发」）；发出去之后到点 ⇒ `InboundClient` 补发 `cancel`，这里说「没在 N 秒内答完」。
-/// 那台拒了 ⇒ 句子就是它那一句、详情是它写的那份（[`Said::of_call`]，远端补「本机」）。
+/// 那台答了失败 ⇒ 它交来的那一份原样（`crate::detail::of_call`）；壳这一侧没问成（没通道 · 太旧 · 到点 · 回包读不懂）⇒ 壳自己的错，命令就是问的那一条。
 pub(crate) async fn call(
     origin: &Origin,
     cmd: &str,
     args: Value,
     view: Option<&Value>,
     deadline: Deadline,
-) -> Result<Value, Said> {
+) -> Result<Value, Failed> {
     let here = who(&Origin::local());
     let who = who(origin);
     // 问哪一台都只走本机后端那一条通道：问别的台 ⇒ 信封带那台的名字，本机后端转给它那条常驻流
     // （那台认不认这条 · 做不做得到由本机后端连那台的客户端判、照码回）。本机后端不在 ⇒ 说的是本机没有通道。
     let Some(client) = inbound_client::local_client() else {
         // 说「谁」用同一个 [`who`]：不许把 `<local>` 这个键原样说给人看。
-        return Err(Said::written(said(no_channel(&here))));
+        return Err(Said::from(said(no_channel(&here))).named(cmd));
     };
     let at = origin.host_name();
     // 能力协商放在发之前：「本机后端太旧」是问得出答案的，不许与超时同形。
     if at.is_none() && !client.accepts(cmd) {
-        return Err(Said::written(copy_core::backend_old(&who)));
+        return Err(Said::from(copy_core::backend_old(&who)).named(cmd));
     }
     if deadline.passed() {
-        return Err(deadline.overdue(&who));
+        return Err(deadline.overdue(&who).named(cmd));
     }
     let answer = match (at, view) {
         (Some(m), v) => client.call_at(m, cmd, args, v, deadline.until).await,
@@ -123,16 +125,16 @@ pub(crate) async fn call(
     };
     let data = answer.map_err(|e| {
         if deadline.passed() {
-            return deadline.overdue(&who);
+            return deadline.overdue(&who).named(cmd);
         }
         let sentence = said(route_call_error(&e, &who, |code, message| {
             // 码只进日志（详情里也有）。
             tracing::warn!("frame query {cmd} refused ({code}): {message}");
             crate::chan::said::refused(message, origin)
         }));
-        Said::of_call(sentence, cmd, origin, &e)
+        crate::detail::of_call(sentence, cmd, &e)
     })?;
-    data.ok_or_else(|| Said::written(copy_core::reply_unreadable(&who)))
+    data.ok_or_else(|| Said::from(copy_core::reply_unreadable(&who)).named(cmd))
 }
 
 /// 照类型问一条（[`call`] 那一口）：名字取 `C::NAME`、入参照类型写、回包照 `C::Reply` 解；解不开 ⇒ 读不懂那台的回包。
@@ -141,8 +143,8 @@ pub(crate) async fn ask<C: cmd_wire::Call>(
     req: &C,
     view: Option<&Value>,
     deadline: Deadline,
-) -> Result<C::Reply, Said> {
-    let unreadable = || Said::written(copy_core::reply_unreadable(&who(origin)));
+) -> Result<C::Reply, Failed> {
+    let unreadable = || Said::from(copy_core::reply_unreadable(&who(origin))).named(C::NAME);
     let args = serde_json::to_value(req).map_err(|_| unreadable())?;
     let data = call(origin, C::NAME, args, view, deadline).await?;
     serde_json::from_value(data).map_err(|_| unreadable())

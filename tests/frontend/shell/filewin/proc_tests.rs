@@ -163,7 +163,7 @@ fn the_window_binary_is_never_guessed() {
     let dir = std::env::temp_dir().join(format!("filewin-bin-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("造不出临时目录");
     let landing = dir.join("home-bin");
-    let mk = |_: &Path| -> Result<(), crate::detail::Said> { Ok(()) };
+    let mk = |_: &Path| -> Result<(), copy_core::said::Said> { Ok(()) };
     let ensure = crate::platform::fs::ensure_private_dir;
     // ① 纯函数那一格：文件名的形状（Windows 上带 `.exe`）。
     assert_eq!(
@@ -226,7 +226,7 @@ fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe
     std::fs::create_dir_all(&exe_dir).expect("造不出 exe 目录");
     let landing = root.join("home").join(".cc-monitor").join("bin");
     let made = std::cell::Cell::new(0usize);
-    let mk = |_: &Path| -> Result<(), crate::detail::Said> {
+    let mk = |_: &Path| -> Result<(), copy_core::said::Said> {
         made.set(made.get() + 1);
         Ok(())
     };
@@ -276,8 +276,8 @@ fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe
             .said,
         copy_text("rsFilewinProc.bin.noHome", &[])
     );
-    let no_dir = |_: &Path| -> Result<(), crate::detail::Said> {
-        Err(crate::detail::Said::written("不许建".into()))
+    let no_dir = |_: &Path| -> Result<(), copy_core::said::Said> {
+        Err(copy_core::said::Said::from("不许建"))
     };
     let fresh = root.join("fresh");
     let e = resolve_window_bin_in(None, Some(b"x"), Some(&fresh), &mk, &no_dir)
@@ -299,7 +299,7 @@ fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o500)).unwrap();
-        let ok_dir = |_: &Path| -> Result<(), crate::detail::Said> { Ok(()) };
+        let ok_dir = |_: &Path| -> Result<(), copy_core::said::Said> { Ok(()) };
         let e = resolve_window_bin_in(None, Some(b"x"), Some(&denied), &mk, &ok_dir)
             .expect_err("只读目录里竟然写进去了");
         // root 跑测试时只读挡不住 —— 那一形不判。

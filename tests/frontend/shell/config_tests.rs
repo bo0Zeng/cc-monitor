@@ -424,8 +424,7 @@ fn a_disk_failure_says_the_reason_word_and_keeps_the_os_text_in_the_detail() {
     let raw = s.raw();
     assert!(
         !raw.is_empty() && !s.said.contains(&raw),
-        "系统原话没进详情 / 还在句子里：{s} · {}",
-        s.detail
+        "系统原话没进详情 / 还在句子里：{s} · {raw}"
     );
     let _ = std::fs::remove_dir_all(&base);
 }

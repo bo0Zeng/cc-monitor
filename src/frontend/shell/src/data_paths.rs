@@ -15,7 +15,8 @@
 //! - 本机后端家里（`~/.cc-monitor/`）那几样**不在这里**：界面照本机后端 `data-report` 的 `own` 画
 //! - WebView2 UserDataFolder 推断路径（基于 Tauri 默认约定）
 
-use crate::detail::Said;
+use crate::detail::Shell as _;
+use copy_core::said::Said;
 use copy_core::copy_text;
 use serde::Serialize;
 use std::path::{Path, PathBuf};

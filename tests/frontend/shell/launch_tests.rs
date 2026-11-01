@@ -704,8 +704,7 @@ fn a_terminal_that_cannot_start_says_the_reason_and_keeps_the_raw_words() {
             )]
         )
     );
-    let raw = copy_text("detail.label.raw", &[]);
-    assert!(e.detail.contains(&format!("{raw}：")), "{}", e.detail);
+    assert!(!e.raw().is_empty(), "原话没进复制详情：{e:?}");
 }
 
 fn scratch_dir(tag: &str) -> std::path::PathBuf {

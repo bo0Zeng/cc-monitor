@@ -36,7 +36,8 @@
 //! 给了但不是绝对路径 ⇒ 回 `None`，**不退回用户真 profile**，
 //! 逐条理由住 [`resolve_monitor_data_dir`]。
 
-use crate::detail::Said;
+use crate::detail::Shell as _;
+use copy_core::said::Said;
 use copy_core::copy_text;
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -145,7 +146,7 @@ impl ConfigWriteError {
                 let raw = detail.clone();
                 Said::with_raw(self.to_string(), raw)
             }
-            other => Said::written(other.to_string()),
+            other => Said::from(other.to_string()),
         }
     }
 }
