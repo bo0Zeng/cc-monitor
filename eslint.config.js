@@ -1,4 +1,4 @@
-// F08b：ESLint flat config。**基线/顾问式**（同 CI 里 clippy 不强制）——先建门禁基础设施，
+// ESLint flat config。**基线/顾问式**（同 CI 里 clippy 不强制）——
 // 不追一次清零；既有告警作基线、`npm run lint` 本地看，CI 步骤 advisory 不阻断（见 ci.yml）。
 // 非 type-checked 预设（不需 parserOptions.project）：快、且不因文件不在 tsconfig 里而报错。
 import js from "@eslint/js";
@@ -305,9 +305,8 @@ export default tseslint.config(
     },
   },
   {
-    // `tests/evidence/RT1-cdp.mjs`（经 WebView2 远程调试口在真页里求值的台架）
-    // 是 `tests/evidence/` 下第一份 `.mjs` —— 上面那个洞的第三次复发形态（新目录、没有 globals 块，
-    // 11 条 `no-undef: process/console/fetch/WebSocket` 一次性把基线 3 顶成 14）。照上一块止血。
+    // `tests/evidence/` 下的 `.mjs`（如 `cdp.mjs`：经 WebView2 远程调试口在真页里求值的台架）
+    // 同上面那个洞：新目录没有 globals 块，`no-undef: process/console/fetch/WebSocket` 一齐顶高基线。照上一块止血。
     files: ["tests/evidence/**/*.mjs"],
     languageOptions: {
       globals: { ...globals.node },

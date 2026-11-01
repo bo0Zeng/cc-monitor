@@ -51,7 +51,7 @@ IDENTITY_SRC="$ROOT/src/backend/lib.rs"
 #: 身份戳两个界标的住址 —— 契约 crate（后端拼戳 · monitor 扫字节同一份；`release.yml` 的 `env.CCM_STAMP_MARKS_SRC` 同一份文件）。
 MARKS_SRC="$ROOT/src/common/deploy-contract/src/lib.rs"
 #: 内嵌落点 —— 名字定死在 `build.rs` 的 `EMBEDDED_BACKENDS_DIR` / `NATIVE_BACKEND_DIR`
-#: （`K-R124-ruler.py` 把这两处与本文件、与 `src/frontend/shell/.gitignore` 三向钉在一起）。
+#: （`release-ruler.py` 把这两处与本文件、与 `src/frontend/shell/.gitignore` 三向钉在一起）。
 EMBEDDED_DIR="$ROOT/src/frontend/shell/embedded-backends"
 NATIVE_DIR="$ROOT/src/frontend/shell/native-backend"
 

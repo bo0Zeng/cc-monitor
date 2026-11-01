@@ -1249,7 +1249,7 @@ impl WriteBoard {
                 None
             } else {
                 receipt_of(&outcome, &done, &undo).map(|(text, undo)| {
-                    let copy = super::source::Failed::copy_many(&text, &outcome.failed);
+                    let copy = batch_core::copy_many(&text, &outcome.failed);
                     (text, undo, copy)
                 })
             };

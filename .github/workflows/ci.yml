@@ -11,7 +11,7 @@ on:
 #   ⇒ main 只收 CI 绿过的提交。本文件因此不许按分支 / 事件分叉（不写 `if:` · `github.ref`），也不写仓、不打标签、不发版
 #   （发版只走 release.yml 的标签触发）。判据：`shared_crate_registry_tests.rs::ci_runs_the_same_jobs_on_the_candidate_branch_and_never_releases_from_it`。
 
-# 两种 runner：Windows（monitor 那棵 · 前端）与 Linux（后端 · Linux 版界面 · 静态格 · 手机端）；Linux 版 L0–L4 已做。macOS 不在支持面里。
+# 两种 runner：Windows（monitor 那棵 · 前端）与 Linux（后端 · Linux 版界面 · 静态格 · 手机端）。macOS 不在支持面里。
 
 # 显式 bash：GitHub 对显式指定的 bash 注入 `-eo pipefail`（默认 shell 只有 -e）。
 # 防未来某步加 `cargo test | tee` 这类管道时静默吞掉左侧失败（本仓踩过：裸管道
@@ -23,24 +23,17 @@ defaults:
 jobs:
   # ── 每个 job 一条 `timeout-minutes` ─────────────────────────────────────────
   #
-  # 🔴 **本文件先前一条都没有**（`grep -c timeout-minutes` = **0**，8 个 job）
-  #    ⇒ 挂住的那一个会一直跑到 **GitHub 的 6 小时默认上限**。
+  # 🔴 不写的话，挂住的那一个会一直跑到 **GitHub 的 6 小时默认上限**。
   #
-  # ## 它 09-10 真的发生了一次，而且拦下的正是我们等着看的那个读数
-  #
-  # run `34462442459` @ `32d527c`：`cargo test` 这一步跑了 **27 分钟仍未完**，
-  # 日志里只有一行有用的 ——
-  #   `test cc_bus::tests::a_timed_out_local_read_does_not_leave_an_orphan_behind
-  #    has been running for over 60 seconds`
-  # 对照：**同一台 windows runner 上一趟只用 4 分 26 秒**（run `34452852951`）。
-  # 最后是人去按的取消键。
+  # ## 真发生过：`cargo test` 一步跑了 27 分钟仍未完，同一台 windows runner 上正常一趟四分多钟，
+  # 日志里只有一行「某条测试 has been running for over 60 seconds」，最后是人去按的取消键。
   #
   # ★ 一条会**挂死**的测试比一条**红**的测试更坏：红的会说出哪里坏了，
   #   挂死的什么都不说，还把它后面的步骤全部拖成 `skipped`。
   #
   # ## 这几个数是量出来的，不是拍的
   #
-  # 取 09-10 三趟（`34462442459` / `34452852951` / `34451929158`）各 job 的真实墙钟，
+  # 取三趟各 job 的真实墙钟，
   # **取上界 × 约 4，下限 15 分钟**：
   #   Rust lint + test 满跑 **8m** ⇒ 35   ·  E2E tmux + Rust **6m** ⇒ 25
   #   Frontend **4–5m** ⇒ 20              ·  其余（backend · linux-app-build ·
@@ -50,16 +43,14 @@ jobs:
   #   正常波动（缓存未命中、runner 排队）要留得下，所以倍数给到 4。
   #   真有一天正常跑到超时，那说明该重新量一遍，不是该悄悄把数字调大。
   #
-  # ## 装 apt 包的那几步另有一道**步骤级**的闸（10-07 加）
+  # ## 装 apt 包的那几步另有一道**步骤级**的闸
   #
-  # 上面这些数都是 **job 级**的。10-07 两回 runner 上 apt 挂住，`rust-linux` 与 `linux-app-build`
-  # 都是整个 job 等满上限才被取消 —— 挂在装依赖上，后面的步骤一步没跑，等的那半个小时什么都没换来。
-  # 实测（主线 2e9f26d1f）不是整个卡死，是从镜像下单个小包时停住（32 kB 的包前停了 625 秒）。
-  # ⇒ 装 apt 包一律经 `tests/scripts/apt-install.sh`（apt 带 20 秒的连接 / 读超时与重试、每趟 update / install 套 `timeout`、
-  #   一趟没成歇一下再来、最多 3 趟；重试的写法只住那一处）。
-  # 10-08 又一回（主线 83f27b4bc）：不是停住，是镜像**很慢但在动**（约 125 KB/s），25.5 MB 的 webkit 包被每趟 200 秒的闸连杀三趟。
-  # ⇒ 那份脚本改成一次调用一个总时限（20 分钟，照最慢实测装得完一个 job 最多约 123 MB；算法写在它的头注），
-  #   装包那一步 `timeout-minutes: 21`，所在 job 的时限 = 原来的数 ＋ 20；
+  # 上面这些数都是 **job 级**的。runner 上 apt 挂住时，整个 job 等满上限才被取消 —— 挂在装依赖上，
+  # 后面的步骤一步没跑。实测见过两形：从镜像下单个小包时停住（32 kB 的包前停了 625 秒）；
+  # 镜像**很慢但在动**（约 125 KB/s），一个 25.5 MB 的包按单趟时限会被连杀。
+  # ⇒ 装 apt 包一律经 `tests/scripts/apt-install.sh`（apt 带 20 秒的连接 / 读超时与重试、
+  #   一次调用一个总时限 20 分钟，照最慢实测装得完一个 job 最多约 123 MB；重试与算法只住那一处的头注），
+  #   装包那一步 `timeout-minutes: 21`，所在 job 的时限 = 不装包时的数 ＋ 20；
   #   并且下好的 .deb 用官方 `actions/cache@v4` 缓存：每个装包的 job 先一步 `apt-install.sh --cache-key $APT_PKGS` 算键、
   #   再一步 `actions/cache@v4` 放回 / 存下下载目录，命中时不再下载。包清单一个 job 一份（job 级 `env: APT_PKGS`），
   #   算键与装包读同一份，键跟着清单走。`release.yml` 的 `build-linux` 同一写法。
@@ -77,11 +68,11 @@ jobs:
       - uses: actions/checkout@v4
         # 🔴 `fetch-depth: 0` 在这个 job 上是**判据的输入**，不是习惯问题。
         # `scanning_guard_registry::the_pending_ratchet_never_turns_backwards` 有一格
-        # 走 `git log --format=%h -- <path>` 数本文件的历史版本（地板 5，09-06 实测 9 份）。
-        # checkout 默认 depth 1 ⇒ 只回得出 1 个 sha ⇒ 那一格红 —— 09-09 云端实测就是它，
+        # 走 `git log --format=%h -- <path>` 数本文件的历史版本（地板 5）。
+        # checkout 默认 depth 1 ⇒ 只回得出 1 个 sha ⇒ 那一格红，
         # 而它的诊断第一条自己就点名「浅克隆把历史截掉了（要 fetch-depth: 0）」。
         # ⚠ 判据自己明写「不许靠调低地板让今天好过」⇒ 要修的是这里，不是那个 5。
-        # ⚠ 只加在本 job：另外两处 checkout 的 job 里没有读 git 历史的判据（09-09 现打），
+        # ⚠ 只加在本 job：另外两处 checkout 的 job 里没有读 git 历史的判据，
         #    全仓加上去只是让每次 clone 更大而买不到东西。真有新的历史面判据落到别的 job，
         #    那一格会红并点名这一条，到时候再加。
         with:
@@ -173,7 +164,7 @@ jobs:
   frontend:
     name: Frontend typecheck + build
     runs-on: windows-latest
-    timeout-minutes: 20      # 实测 4–5m（09-10 三趟）；口径见 `rust` 那一格的头注
+    timeout-minutes: 20      # 实测 4–5m（三趟）；口径见 `rust` 那一格的头注
     steps:
       - uses: actions/checkout@v4
 
@@ -192,26 +183,19 @@ jobs:
 
       - run: npx tsc --noEmit
 
-      # F08b：ESLint（flat config + typescript-eslint）。基线清到 0 之后**改成会拦**：
-      # 去掉原来的 `|| true`，有一条错就红（`tests/frontend/ui/eslint-baseline.vitest.ts` ③ 钉着这一步的写法）。
-      # 此前它是顾问式（既有告警作基线、`|| true` 不红 CI），沿革见下。
+      # ESLint（flat config + typescript-eslint）。基线是 0 ⇒ **会拦**：
+      # 不带 `|| true`，有一条错就红（`tests/frontend/ui/eslint-baseline.vitest.ts` ③ 钉着这一步的写法）。
       #
-      # **E83（2026-08-01）：作用面从 `eslint src` 放开到 `eslint .`。** 本仓 `eslint.config.js`
-      # 的 `ignores` 一直是**仓级**写法（逐条列 dist / node_modules / src/frontend/shell / …），
-      # 而脚本只跑 `src` ⇒ 那份意图从没兑现，`tests/e2e/**/*.mjs` 里 39 个 `no-undef` 永远没人看得到，
-      # 且它们一个真问题都不是（纯缺一段 node/browser globals）。补完 globals 后
-      # **全仓实测当时仍是 7 项**，基线数字不变、覆盖面变大。那天剩三项：
-      # `src/frontend/ui/settings/machine-aliases.ts` 那四处空 catch 随原「终端集成」记住上次选择的那段代码删了。
-      # 那天剩两项：`src/frontend/ui/shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了。
-      # 那天剩一项：写类工具口径的前端那份测试随被测对象（搬进后端）整份删了。
-      # 〔发版后〕今天全仓 0 项：`render.ts` 那处 `no-control-regex` 随代码 stub 的哨兵换成非字符 `\uFDD0` 没了。
+      # **作用面是 `eslint .`，不是 `eslint src`**：本仓 `eslint.config.js` 的 `ignores` 是**仓级**写法
+      # （逐条列 dist / node_modules / src/frontend/shell / …），只跑 `src` 的话 `tests/**/*.mjs` 里的告警没人看得到。
+      # 今天全仓 0 项。
       - name: eslint (blocking, baseline 0)
         run: npm run lint
 
-      # F08b：Stylelint（`src/**/*.css`）。**这一步本身仍是顾问式**（`|| true`，结构上不会红），
+      # Stylelint（`src/**/*.css`）。**这一步本身仍是顾问式**（`|| true`，结构上不会红），
       # 不 --fix 避免全量 churn。
       #
-      # **真正会红的不再是这一步**：`tests/frontend/ui/css-ledger.vitest.ts` 把报错与一张登记表做两向相等（`STYLELINT_KNOWN`；
+      # **真正会红的不是这一步**：`tests/frontend/ui/css-ledger.vitest.ts` 把报错与一张登记表做两向相等（`STYLELINT_KNOWN`；
       # `no-descending-specificity` 另由同一份 ④b 的例外表管），它跟着下面那步 `unit tests` 一起跑 ⇒ 阻断。
       # 留着本步的理由：它把逐条报错印在 CI 日志里。
       - name: stylelint (advisory, baseline)
@@ -223,12 +207,12 @@ jobs:
       - name: unit tests (node pure-fn + vitest DOM)
         run: npm test
 
-      # F08b：覆盖率**地板棘轮（阻断）**——阈值设在当前值下方（见 vitest.config.ts），只挡明显
+      # 覆盖率**地板棘轮（阻断）**——阈值设在当前值下方（见 vitest.config.ts），只挡明显
       # 回归（新增大块无测代码），不追高。确定性套件 + 余量，正常不会误红。
       - name: coverage floor (vitest jsdom)
         run: npm run coverage
 
-      # audit-0805 F17：**逐文件**地板 + 0% 文件递减棘轮。
+      # **逐文件**地板 + 0% 文件递减棘轮。
       # 上一步那个阈值是**聚合值** —— 187 个文件里单个模块掉到 0%，总数只动零点几个点，
       # 而地板留着 2-3 点余量 ⇒ 门禁一声不响。`vitest.config.ts` 那段注释自己就写着
       # 「收紧留后续按核心 DOM 模块 per-file」，这一步就是那个「后续」。
@@ -246,14 +230,14 @@ jobs:
   backend:
     name: Remote backend (Linux) lint + test
     runs-on: ubuntu-latest
-    timeout-minutes: 15      # 实测 0–1m（09-10 三趟）；口径见 `rust` 那一格的头注
+    timeout-minutes: 15      # 实测 0–1m（三趟）；口径见 `rust` 那一格的头注
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          # U4a：跨 target check 需要 Windows 的 std。**只 check 不链接**，
+          # 跨 target check 需要 Windows 的 std。**只 check 不链接**，
           # 所以在 ubuntu 上就能跑、不需要 Windows runner，成本近零。
           targets: x86_64-pc-windows-msvc
 
@@ -262,13 +246,13 @@ jobs:
           workspaces: src/backend
 
 
-      # ★ 08-25（`K-H1` / `KU10` 走「甲」）：**给这个 ubuntu job 装一个能给 Windows 编 C 的交叉工具链。**
+      # ★ **给这个 ubuntu job 装一个能给 Windows 编 C 的交叉工具链。**
       #
-      # 为什么突然要它：backend 引入 TLS（`rustls` → `ring`）之后，`ring` 的 build script 要**编 C**，
-      # 而 cc-rs 在 Linux 上给 `*-pc-windows-msvc` 找不到 MSVC 的工具 ⇒ 下面那条跨 target check
+      # 为什么要它：backend 用 TLS（`rustls` → `ring`），`ring` 的 build script 要**编 C**，
+      # 而 cc-rs 在 Linux 上给 `*-pc-windows-msvc` 找不到 MSVC 的工具 ⇒ 没有它，下面那条跨 target check
       # **必红**（本机实测 exit 101，`error occurred in cc-rs: failed to find tool "lib.exe"`）。
       # ⚠ 那个红**不是**我们的代码坏了：失败输出里 `Checking cc-monitor-backend` 命中 **0**，
-      #   它根本没走到我们这一行 ⇒ 「平台线的唯一真判据」当时等于**没了**。
+      #   它根本没走到我们这一行 ⇒ 「平台线的唯一真判据」等于**没了**。
       #
       # 为什么是 zig：它一个包同时给齐三样（本机逐条实测过）——
       #   ① `zig cc` = clang，`-target x86_64-windows-gnu` 能编出 **COFF** 目标文件；
@@ -283,21 +267,20 @@ jobs:
         with:
           version: 0.14.0
 
-      # ★ U4a（2026-08-01）
-      # **位置**：排在门禁那一步之前 —— 它最便宜、最确定；排在后面会被最不稳的那步（cargo test 真起 tmux、真 spawn 进程）遮住。
-      # 原注：**§1.1 第一条解耦线（平台线）的唯一真判据。**
+      # ★ **位置**：排在门禁那一步之前 —— 它最便宜、最确定；排在后面会被最不稳的那步（cargo test 真起 tmux、真 spawn 进程）遮住。
+      # **第一条解耦线（平台线）的唯一真判据。**
       #
-      # 计划自审 §0.5-3 打掉过一个安慰剂式的机检：「`platform/` 之外出现平台 cfg 就红」
+      # 「`platform/` 之外出现平台 cfg 就红」那种机检是安慰剂：
       # **抓不到 `pidfd_open`** —— 它是**无条件编译**的 Linux-only 代码，一个 cfg 都没有。
       # 能证明「平台依赖真的被隔离了」的只有编译器。
       #
       # **必须 `--all-targets`**：不加的话只编生产段，而实测 12 个错里有 1 个在测试段
       # （`libc::getuid`）。少这个 flag 会让判据漏掉整个测试面。
       #
-      # 这一步之前，backend 在 Windows 上 **RC=101 / 12 个错**，而 CI 从来不知道。
+      # 没有这一步，backend 在 Windows 上编不过（实测见过 **RC=101 / 12 个错**）CI 也不会知道。
       - name: cargo check（跨 target：Windows 编得过 —— 平台线的真判据）
         working-directory: src/backend
-        # ★ 08-25：这三个环境变量是上面那步 zig 的用法，**不改这条命令一个字符** ——
+        # ★ 这三个环境变量是上面那步 zig 的用法，**不改这条命令一个字符** ——
         # `shared_crate_registry::the_windows_cross_target_signal_covers_only_the_backend` 钉着下面这条 `run:`，
         # 换写法（如 `cargo xwin check …`）会把它打红。
         #
@@ -309,9 +292,9 @@ jobs:
         #     因为 zig 不带 MSVC 的 libc 头（实测 `-target x86_64-windows-msvc` 直接
         #     `'string.h' file not found`）。`cargo check` **不链接** ⇒ 那份 `.lib` 从头到尾没人用，
         #     它存在只是为了让 build script 走完、好让检查继续走到我们的代码。
-        #   · 「`ring` 在真 Windows 上编得过」这一格由上游与真机负责：08-25 在一台真 Windows 上跑
-        #     同一份代码 `cargo check --all-targets` ⇒ EXIT=0 / 0 error（读数住 `KU10`）。
-        #   · ⇒ 这一步**没有**因此变弱：它守的一直是「我们的代码在 Windows 上编得过」，那一半一个字没动。
+        #   · 「`ring` 在真 Windows 上编得过」这一格由上游与真机负责：在一台真 Windows 上跑过
+        #     同一份代码 `cargo check --all-targets` ⇒ EXIT=0 / 0 error。
+        #   · ⇒ 这一步守的是「我们的代码在 Windows 上编得过」，那一半是全的。
         env:
           CC_x86_64_pc_windows_msvc: zig cc
           CFLAGS_x86_64_pc_windows_msvc: --target=x86_64-windows-gnu
@@ -323,12 +306,12 @@ jobs:
           GATE_ONLY: fmt-backend clippy-backend backend deadcode-backend
         run: bash tests/scripts/gate.sh
 
-  # L4（local-as-remote）：**Linux 宿主上 app 能不能构建**的持续信号（`release.yml` 的 Linux 打包 job 只在 tag 时跑）。
+  # **Linux 宿主上 app 能不能构建**的持续信号（`release.yml` 的 Linux 打包 job 只在 tag 时跑）。
   # 刻意只 build 不 bundle。`npm run build`（tsc ＋ vite）先产出 `dist/`，app crate 编译时要它。
   linux-app-build:
     name: Linux app build (no bundle)
     runs-on: ubuntu-latest
-    timeout-minutes: 35      # 实测 1–2m（09-10 三趟）⇒ 15，＋ 装 apt 包最坏 20 分钟；口径见 `rust` 那一格的头注
+    timeout-minutes: 35      # 实测 1–2m（三趟）⇒ 15，＋ 装 apt 包最坏 20 分钟；口径见 `rust` 那一格的头注
     env:
       APT_PKGS: libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
     steps:
@@ -388,7 +371,7 @@ jobs:
   e2e:
     name: E2E real-machine (tmux + backend, gate)
     runs-on: ubuntu-latest
-    timeout-minutes: 50      # 旧 e2e-tmux-rust 实测 6m（09-10 三趟），这里多了几套 ⇒ 30，＋ 装 apt 包最坏 20 分钟；口径见 `rust` 那一格的头注
+    timeout-minutes: 50      # e2e-tmux-rust 那几套实测 6m（三趟），这里还有别的几套 ⇒ 30，＋ 装 apt 包最坏 20 分钟；口径见 `rust` 那一格的头注
     env:
       APT_PKGS: >-
         tmux jq libwebkit2gtk-4.1-dev libsoup-3.0-dev build-essential
@@ -432,7 +415,7 @@ jobs:
   weak-net:
     name: E2E weak-net rig (docker + netem, gate)
     runs-on: ubuntu-latest
-    timeout-minutes: 15      # 实测 0m（09-10 三趟）；口径见 `rust` 那一格的头注
+    timeout-minutes: 15      # 实测 0m（三趟）；口径见 `rust` 那一格的头注
     steps:
       - uses: actions/checkout@v4
 
@@ -460,7 +443,7 @@ jobs:
           java-version: '21'
 
       # 只装 platform-tools：这个 action 默认还装 `tools`，那个旧包已从 SDK 仓里撤了、
-      # sdkmanager 找不到就整步失败（10-10 那一趟）。平台与 build-tools 由 AGP 按需自己装。
+      # sdkmanager 找不到就整步失败。平台与 build-tools 由 AGP 按需自己装。
       # 手机嵌的 Rust 核心（`src/mobile/core-rs`）由 Gradle 调 cargo 编：NDK 版本与 `src/mobile/gradle.properties` 的 `ccm.ndkVersion` 同一行，
       #   两个 android target 各给一个构建类型（release = arm64-v8a · debug = x86_64，门禁 `mobile` 那一格两趟都编）。
       - uses: android-actions/setup-android@v3

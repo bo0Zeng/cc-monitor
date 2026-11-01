@@ -471,7 +471,9 @@ impl crate::wire::typed::Handle for NeedsAnswerCmd {
         req: AnswerReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<Answered, AnswerErr>> + Send + 'static {
-        std::future::ready(answer(req).map_err(crate::wire::typed::of_pair(AnswerErr::NotFound)))
+        std::future::ready(
+            answer(req).map_err(crate::wire::typed::of_fail_with(AnswerErr::NotFound)),
+        )
     }
 }
 

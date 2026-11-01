@@ -31,36 +31,36 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
             withdraw: crate::chan::wire::Withdraw::Asked,
         },
         CallError::Cancelled,
-        CallError::Remote {
+        CallError::Remote(cmd_wire::failed::Failed {
             code: "wrong_owner".into(),
-            message: "sid=".into(),
+            said: "sid=".into(),
             detail: String::new(),
             data: None,
-        },
-        CallError::Remote {
+        }),
+        CallError::Remote(cmd_wire::failed::Failed {
             code: "too_many_windows".into(),
-            message: "windows=3".into(),
+            said: "windows=3".into(),
             detail: String::new(),
             data: None,
-        },
-        CallError::Remote {
+        }),
+        CallError::Remote(cmd_wire::failed::Failed {
             code: "kill_failed".into(),
-            message: "boom".into(),
+            said: "boom".into(),
             detail: String::new(),
             data: None,
-        },
-        CallError::Remote {
+        }),
+        CallError::Remote(cmd_wire::failed::Failed {
             code: "no_such_session".into(),
-            message: "".into(),
+            said: "".into(),
             detail: String::new(),
             data: None,
-        },
-        CallError::Remote {
+        }),
+        CallError::Remote(cmd_wire::failed::Failed {
             code: "bad_args".into(),
-            message: "未知 mode `attach-only`".into(),
+            said: "未知 mode `attach-only`".into(),
             detail: String::new(),
             data: None,
-        },
+        }),
     ];
     for e in &no_fallback {
         assert!(
@@ -103,7 +103,7 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
             | CallError::Disconnected
             | CallError::Cancelled
             | CallError::Timeout { .. }
-            | CallError::Remote { .. } => {}
+            | CallError::Remote(_) => {}
         }
     }
     // 〔CP1 裁「改·§2.4」〕说法换了（去掉 ** 与「另一条路」，不点命令名与声明的能力），三态一格没动。
@@ -141,12 +141,12 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
             Routed::Refused(unsure(t("reason.op.cancelled"))),
         ),
         (
-            CallError::Remote {
+            CallError::Remote(cmd_wire::failed::Failed {
                 code: "wrong_owner".into(),
-                message: "sid=x".into(),
+                said: "sid=x".into(),
                 detail: String::new(),
                 data: None,
-            },
+            }),
             Routed::Refused("wrong_owner/sid=x".into()),
         ),
         (
@@ -189,7 +189,7 @@ fn the_layering_table_is_pinned_cell_by_cell() {
             | CallError::Disconnected
             | CallError::Cancelled
             | CallError::Timeout { .. }
-            | CallError::Remote { .. } => {}
+            | CallError::Remote(_) => {}
         }
     }
     let hop = |tag: &'static str, reach: w::Reach, why: w::HopFault| w::CallError::Hop {
@@ -224,15 +224,17 @@ fn the_layering_table_is_pinned_cell_by_cell() {
         ),
         (CallError::Cancelled, w::OursFault::Cancelled.into()),
         (
-            CallError::Remote {
+            CallError::Remote(cmd_wire::failed::Failed {
                 code: "wrong_owner".into(),
-                message: "x\u{0}y".into(),
+                said: "x\u{0}y".into(),
                 detail: String::new(),
                 data: None,
-            },
+            }),
             w::CallError::Peer {
                 why: w::PeerFault::Refused {
-                    body: w::Body(br#"{"code":"wrong_owner","message":"x\u0000y"}"#.to_vec()),
+                    body: w::Body(
+                        br#"{"code":"wrong_owner","said":"x\u0000y","detail":""}"#.to_vec(),
+                    ),
                 },
             },
         ),
@@ -245,7 +247,7 @@ fn the_layering_table_is_pinned_cell_by_cell() {
                 why: w::PeerFault::Refused {
                     body: w::Body(
                         format!(
-                            r#"{{"code":"no_tmux","message":"{}"}}"#,
+                            r#"{{"code":"no_tmux","said":"{}","detail":""}}"#,
                             copy_core::copy_static!("rsInboundClient.error.unavailable")
                         )
                         .into_bytes(),
@@ -274,12 +276,17 @@ fn the_layering_table_is_pinned_cell_by_cell() {
 /// 比的是解出来的 JSON（键序随 serde_json 的特性开关变，不是契约）。
 #[test]
 fn a_refusal_with_data_carries_it_in_the_body() {
-    let e = CallError::Remote {
+    let e = CallError::Remote(cmd_wire::failed::Failed {
         code: "account_unavailable".into(),
-        message: "m".into(),
+        said: "m".into(),
         detail: String::new(),
-        data: Some(r#"{"requested":"z","pinned":true,"listKnown":true,"alternative":null}"#.into()),
-    };
+        data: Some(
+            serde_json::from_str(
+                r#"{"requested":"z","pinned":true,"listKnown":true,"alternative":null}"#,
+            )
+            .unwrap(),
+        ),
+    });
     let w::CallError::Peer {
         why: w::PeerFault::Refused { body },
     } = layer_call_error(&e, 0).error
@@ -291,7 +298,8 @@ fn a_refusal_with_data_carries_it_in_the_body() {
         got,
         serde_json::json!({
             "code": "account_unavailable",
-            "message": "m",
+            "said": "m",
+            "detail": "",
             "data": {"requested": "z", "pinned": true, "listKnown": true, "alternative": null},
         })
     );

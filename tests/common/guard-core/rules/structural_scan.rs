@@ -1865,7 +1865,7 @@ fn the_dead_name_scanner_really_sees_each_shape() {
 const SUPPORT_ITEM_CEILINGS: &[(&str, usize)] = &[
     ("src/backend", 7),
     ("src/frontend/shell/src", 15),
-    ("src/frontend/filewin/src", 42),
+    ("src/frontend/filewin/src", 1),
 ];
 
 /// 一棵生产树里：真 `#[test]` 属性（整行逐字）· 内联 `#[cfg(test)] mod X {` · 别的 `#[cfg(test)]` 块项。

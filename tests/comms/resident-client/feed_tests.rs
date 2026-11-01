@@ -1020,7 +1020,7 @@ async fn a_remote_that_is_not_unix_waits_for_a_hand() {
     let unsupported = || Exec {
         exit_status: Some(2),
         stdout: String::new(),
-        stderr: r#"{"code":"unsupported","message":"setsid: not supported","detail":""}"#.into(),
+        stderr: r#"{"code":"unsupported","said":"setsid: not supported","detail":""}"#.into(),
     };
     async fn waits<X: Transport>(feed: &Feed<X>, f: &Fake) {
         until("停在要人动手", || {
@@ -1105,7 +1105,7 @@ async fn a_wake_while_dialing_skips_one_wait_and_is_void_once_up() {
     f.ensures.lock().unwrap().push_back(Exec {
         exit_status: Some(1),
         stdout: String::new(),
-        stderr: r#"{"code":"spawn_failed","message":"起不来","detail":""}"#.into(),
+        stderr: r#"{"code":"spawn_failed","said":"起不来","detail":""}"#.into(),
     });
     {
         let mut a = f.attaches.lock().unwrap();
@@ -1257,7 +1257,7 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
     );
     let (p, k) = fail(exec(
         "",
-        r#"{"code":"unsupported","message":"不是 unix","detail":"命令: resident-ensure"}"#,
+        r#"{"code":"unsupported","said":"不是 unix","detail":"命令: resident-ensure"}"#,
         Some(2),
     ));
     assert_eq!(k, FailKind::Blocked(Blocker::NotUnix));
@@ -1272,7 +1272,7 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
     );
     let (p, k) = fail(exec(
         "",
-        r#"{"code":"spawn_failed","message":"x","detail":"Permission denied (os error 13)"}"#,
+        r#"{"code":"spawn_failed","said":"x","detail":"Permission denied (os error 13)"}"#,
         Some(2),
     ));
     assert_eq!(
@@ -1683,9 +1683,9 @@ async fn an_answer_that_does_not_parse_comes_back_as_unreadable() {
     f.reply_without_ok.store(true, Ordering::SeqCst);
     let (feed, _seen) = start(&f);
     match ask(&feed, "ping", Duration::from_secs(5)).await {
-        Err(CallError::Remote { code, detail, .. }) => {
-            assert_eq!(code, "unreadable");
-            assert!(detail.contains("\"reply\""), "{detail}");
+        Err(CallError::Remote(f)) => {
+            assert_eq!(f.code, "unreadable");
+            assert!(f.detail.contains("\"reply\""), "{}", f.detail);
         }
         other => panic!("缺 `ok` 的应答该交回「认不出」：{other:?}"),
     }

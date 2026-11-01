@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// 界面要 monitor 这台自己进程的足迹事实：`{home, path}`（`path` 取不到 ⇒ `null`）。
 #[tauri::command]
-pub fn footprint_client_facts() -> Result<Value, Said> {
+pub fn footprint_client_facts() -> Result<Value, cmd_wire::failed::Failed> {
     let r: Result<Value, Said> = (move || -> Result<Value, Said> {
         facts(creds_core::store::home_dir(), std::env::var("PATH").ok())
     })();

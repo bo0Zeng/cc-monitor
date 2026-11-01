@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// RT1 · 经 WebView2 的远程调试口在 monitor 页里求值（本机侧跑；虚拟机的 9222 由 ssh -L 转到本机 19222）。
+// 真机台架 · 经 WebView2 的远程调试口在 monitor 页里求值（本机侧跑；虚拟机的 9222 由 ssh -L 转到本机 19222）。
 // 守的要求：虚拟机当真机测试资源 —— 读数要从真 WebView2 里拿，不是 jsdom。
-// 用法：node RT1-cdp.mjs [页面 url 或标题的子串] < 表达式.js   （表达式可 await；结果按 JSON 打印）
-// 口子怎么开：monitor 进程环境里 WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222（RT1-lib.ps1::Rt1-Env）。
+// 用法：node cdp.mjs [页面 url 或标题的子串] < 表达式.js   （表达式可 await；结果按 JSON 打印）
+// 口子怎么开：monitor 进程环境里 WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222（vm-lib.ps1::Rt1-Env）。
 const PORT = process.env.RT1_CDP_PORT || "19222";
 const want = process.argv[2] || "";
 const expr = await new Promise((res) => { let s = ""; process.stdin.on("data", (d) => (s += d)); process.stdin.on("end", () => res(s)); });

@@ -176,7 +176,7 @@ pub async fn diagnostics_report(
     config_unknown: Vec<String>,
     drift: Vec<DriftIn>,
     state: tauri::State<'_, std::sync::Arc<crate::logging::LoggingState>>,
-) -> Result<DiagnosticsReport, Said> {
+) -> Result<DiagnosticsReport, cmd_wire::failed::Failed> {
     let r: Result<DiagnosticsReport, Said> = async move {
         let log_file = state.log_file_info().current_file;
         let local = crate::inbound_client::LOCAL_ORIGIN;

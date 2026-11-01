@@ -75,7 +75,7 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
                 }
                 // 本机落点那一侧有同名、还没答 ⇒ 回 `exists` 带同名清单（窗口照它画冲突框）。
                 Some("transfer-download") if v["args"]["local_dir"] == "/clash" => format!(
-                    r#"{{"kind":"reply","id":{id:?},"ok":false,"code":"exists","message":"同名 1 项","data":{{"conflicts":[{{"key":"0","name":"a","kind":"file","there":"file","answers":["overwrite","skip","keep_both"]}}]}}}}"#
+                    r#"{{"kind":"reply","id":{id:?},"ok":false,"code":"exists","said":"同名 1 项","data":{{"conflicts":[{{"key":"0","name":"a","kind":"file","there":"file","answers":["overwrite","skip","keep_both"]}}]}}}}"#
                 ),
                 Some("transfer-download") => {
                     n += 1;
@@ -327,9 +327,7 @@ async fn bad_subscriptions_say_why_in_place() {
 async fn an_old_local_backend_is_named_too_old_and_nothing_is_sent() {
     let _g = crate::inbound_client::local_origin_test_lock();
     let mut rig = rig(&["ping"]);
-    let Refusal {
-        code, message: e, ..
-    } = transfer_call(
+    let Failed { code, said: e, .. } = transfer_call(
         cfg("中继·旧"),
         TRANSFER_UPLOAD,
         &serde_json::json!({ "items": [{ "local_path": "/tmp/q.bin" }], "remote_dir": "/srv" }),
@@ -347,9 +345,7 @@ async fn an_old_local_backend_is_named_too_old_and_nothing_is_sent() {
 async fn without_a_local_backend_the_transfer_is_refused_out_loud() {
     let _g = crate::inbound_client::local_origin_test_lock();
     assert!(crate::inbound_client::local_client().is_none());
-    let Refusal {
-        code, message: e, ..
-    } = transfer_call(
+    let Failed { code, said: e, .. } = transfer_call(
         cfg("中继·无"),
         TRANSFER_UPLOAD,
         &serde_json::json!({ "items": [{ "local_path": "/tmp/q.bin" }], "remote_dir": "/srv" }),
@@ -454,11 +450,7 @@ async fn the_openers_are_relayed_with_the_same_bytes() {
         ),
         ("transfer-start", serde_json::json!({ "id": "xfer-1" })),
     ] {
-        let Refusal {
-            code,
-            message: said,
-            ..
-        } = transfer_call(cfg("中继·字节"), op, &payload)
+        let Failed { code, said, .. } = transfer_call(cfg("中继·字节"), op, &payload)
             .await
             .expect_err("该拒");
         got.push(format!("{op} {payload} => {code} {said}"));

@@ -574,12 +574,12 @@ async fn an_error_reply_surfaces_code_and_message() {
     );
     assert_eq!(
         caller.await.expect("task").unwrap_err(),
-        CallError::Remote {
+        CallError::Remote(cmd_wire::failed::Failed {
             code: "bad_request".into(),
-            message: "缺 sid".into(),
+            said: "缺 sid".into(),
             detail: String::new(),
             data: None,
-        }
+        })
     );
 }
 

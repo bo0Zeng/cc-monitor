@@ -10,7 +10,7 @@ use serde_json::json;
 
 /// 线上那一形的一台（经拨号核心那一处读，[`crate::dial::machine::loose`]）；读不动 ⇒ 它的码与那一句。
 fn host_of(m: &Value) -> Result<crate::dial::Host, Said> {
-    crate::dial::machine::loose(m).map_err(|(code, said)| Said::new(code, said))
+    crate::dial::machine::loose(m)
 }
 
 // 下面除末尾 POSIX 那一节外都量 PowerShell 那一形（Windows 上开终端的那一行）：按方言显式取，不随跑测试的这台机器变。

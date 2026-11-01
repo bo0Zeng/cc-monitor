@@ -28,7 +28,7 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => ({
     const code = refuse.get(name);
     if (code) {
       refuse.delete(name);
-      throw new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code, message: `那台说：${code}` })) }, `那台说：${code}`);
+      throw new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code, said: `那台说：${code}` })) }, `那台说：${code}`);
     }
     return name === "rotation-settings" ? { rev: "h:9" } : name === "rotation-strategy-add" ? { id: "新的" } : {};
   }),

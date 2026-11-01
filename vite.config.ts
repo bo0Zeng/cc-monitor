@@ -26,7 +26,7 @@ const hmrPort = port + 1;
  * 与拆层之前「我们的覆盖靠更高特异度赢」的结果相同（离线核对末尾追加的那一节）。
  *
  * 为什么在构建配置里包、而不是改成在 CSS 里 `@import … layer(vendor)`：这两份是 `src/frontend/ui/render.ts` 用
- * `import "<包>/….css"` 引进来的 —— `tests/evidence/S25-class-ledger.ts` 的「第三方类名」一族正是从这一形
+ * `import "<包>/….css"` 引进来的 —— `tests/evidence/class-ledger.ts` 的「第三方类名」一族正是从这一形
  * 现读的，改走 CSS `@import` 会让那本账看不见 `.katex-*` 而误判死规则。
  *
  * `@font-face` / `@charset` / `@import` 留在层外（字体声明不参与层叠；后两者按语法必须在最前）。

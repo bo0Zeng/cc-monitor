@@ -5,6 +5,7 @@ import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.EmptyFace
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.HiddenNow
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCards
@@ -376,11 +377,11 @@ class ResidentFeedTest {
             core.emit("state", line("那台旧"))
             assertEquals("又说要更新 ⇒ 装好那一句收起", null, f.deploying.value)
             core.emit("deploy", """{"end":"failed","code":"io_failed","text":"上传后校验失败","detail":"d"}""")
-            assertEquals(Deploying.Failed(Said("上传后校验失败", "d")), f.deploying.value)
+            assertEquals(Deploying.Failed(Failed("io_failed", "上传后校验失败", "d")), f.deploying.value)
             // 缺一格（详情）· 认不出的结局 ⇒ 不补默认、不动，报契约对不上。
             core.emit("deploy", """{"end":"failed","code":"io_failed","text":"别的"}""")
             core.emit("deploy", """{"what":1}""")
-            assertEquals(Deploying.Failed(Said("上传后校验失败", "d")), f.deploying.value)
+            assertEquals(Deploying.Failed(Failed("io_failed", "上传后校验失败", "d")), f.deploying.value)
         }
 
     @Test
@@ -394,7 +395,7 @@ class ResidentFeedTest {
             core.emit("reply", """{"call":1,"end":"ok","data":{"rows":[],"later":{"x":1}}}""")
             assertEquals(Reply.Ok(mapOf("rows" to emptyList<Any>(), "later" to mapOf("x" to 1.0))), ok.await())
             val failed = async { f.call("session-open") }
-            core.emit("reply", """{"call":2,"end":"failed","code":"differs","message":"box 后端版本不同","detail":"d","data":null}""")
+            core.emit("reply", """{"call":2,"end":"failed","code":"differs","said":"box 后端版本不同","detail":"d","data":null}""")
             assertEquals(Reply.Failed(CoreFailure("differs", "box 后端版本不同", "d", null)), failed.await())
             for ((line, want) in listOf("""{"call":3,"end":"timeout"}""" to Reply.TimedOut, """{"call":4,"end":"down"}""" to Reply.LinkDown)) {
                 val r = async { f.call("ping") }

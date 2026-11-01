@@ -32,7 +32,7 @@ fn main() {
 const REEMBED_CMD: &str = "bash tests/scripts/re-embed.sh";
 
 /// 远端那两份 musl 字节的落点目录名。与 [`NATIVE_BACKEND_DIR`] 对称，两个都是
-/// **机检过的落点**：`tests/evidence/K-R124-ruler.py` ⑬d 把这两个常量与
+/// **机检过的落点**：`tests/evidence/release-ruler.py` ⑬d 把这两个常量与
 /// `src/frontend/shell/.gitignore` 里带 `⇐ 内嵌落点` 锚的那几行**两向集合相等**。
 const EMBEDDED_BACKENDS_DIR: &str = "embedded-backends";
 

@@ -38,7 +38,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
 import ts from "typescript";
 import { describe, it, expect } from "vitest";
-import { buildLedger, type Ledger } from "../../evidence/S25-class-ledger.ts";
+import { buildLedger, type Ledger } from "../../evidence/class-ledger.ts";
 import { toPosix } from "../../test-support/posix-path.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { nonEmpty } from "../../test-support/non-empty.ts";

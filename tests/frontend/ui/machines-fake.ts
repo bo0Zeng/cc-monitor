@@ -19,10 +19,10 @@ import { REPO_ROOT } from "../../test-support/repo-root";
 /** 盘上那份机器表：那几台 · 读不懂的原文；`undefined` ⇒ 没有那份。 */
 export type MachinesDisk = readonly Partial<Host>[] | { text: string } | undefined;
 
-/** 拒绝体（后端 `{code, message, data?}` 那一形）。 */
+/** 拒绝体（后端 `{code, said, data?}` 那一形）。 */
 export interface Refusal {
   code: string;
-  message: string;
+  said: string;
   data?: unknown;
 }
 
@@ -105,7 +105,7 @@ export function machinesChanCall(op: string, req: unknown): Promise<ArrayBuffer>
     return Promise.reject(e);
   }
   if ("refused" in got) {
-    return Promise.reject({ err: "Refused", body: [...enc.encode(JSON.stringify(got.refused))], said: got.refused.message, detail: "" });
+    return Promise.reject({ err: "Refused", body: [...enc.encode(JSON.stringify(got.refused))], said: got.refused.said, detail: "" });
   }
   const u = enc.encode(JSON.stringify(got.reply));
   return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
@@ -118,7 +118,7 @@ export async function mockedChanCaller(importOriginal: <T>() => Promise<T>): Pro
   const callTyped = async (origin: unknown, cmd: unknown, req: unknown, ...rest: unknown[]): Promise<unknown> => {
     if (!String(cmd).startsWith("machines-")) return real(origin, cmd, req, ...rest);
     const got = answerMachines(String(cmd), req);
-    if ("refused" in got) throw new ChanError({ layer: "peer", why: "refused", body: enc.encode(JSON.stringify(got.refused)) }, got.refused.message, "");
+    if ("refused" in got) throw new ChanError({ layer: "peer", why: "refused", body: enc.encode(JSON.stringify(got.refused)) }, got.refused.said, "");
     return got.reply;
   };
   return { ...actual, callTyped };

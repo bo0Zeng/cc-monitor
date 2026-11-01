@@ -1,5 +1,5 @@
 /**
- * `S25` —— **把 CSS 的对账接进判据**（件 8）。
+ * **把 CSS 的对账接进判据**。
  *
  * ## 这条为什么存在
  *
@@ -9,7 +9,7 @@
  * 布局根没人对账。那个 bug 与那个浮层压按钮，都是从这儿长出来的。
  *
  * 本文件装的是**这一面的第一批机检**。量具（遍历 ＋ 词法 ＋ 两个方向的账）住
- * `tests/evidence/S25-class-ledger.ts`，**本文件只登记与判**。分工的理由写在那份文件的头注里
+ * `tests/evidence/class-ledger.ts`，**本文件只登记与判**。分工的理由写在那份文件的头注里
  * （一句话：`scanning-guard-registry.vitest.ts` 的 `WALKERS` 不许测试文件不登记就多一个遍历者）。
  *
  * ## 装了四格，另有一格**明确没装**
@@ -60,7 +60,7 @@
  *
  * ## 诚实边界
  *
- * - 量具买不到的东西逐条写在 `tests/evidence/S25-class-ledger.ts` 的头注里，这里不复述。
+ * - 量具买不到的东西逐条写在 `tests/evidence/class-ledger.ts` 的头注里，这里不复述。
  * - **（变量对账）没装**：它要 `npm i -D stylelint-value-no-unknown-custom-properties`，
  *   而装包要改 `package-lock.json`，这里不改。而且它今天**装上就红** ——
  *   `S21` 步 2 现打剩 1 个未定义变量（`--bg-1`，6 处），那一处正等用户在
@@ -80,7 +80,7 @@ import {
   scanStrings,
   stripCodeComments,
   type Ledger,
-} from "../../evidence/S25-class-ledger.ts";
+} from "../../evidence/class-ledger.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { nonEmpty } from "../../test-support/non-empty.ts";
 
@@ -814,8 +814,8 @@ describe("S25 ⑥ 容器查询取代写死宽度（件 5）", () => {
 
   it("⑥a `.stream` 是名为 stream 的行内尺寸容器", () => {
     // ⚠ 前界用**后行断言**、不吃掉那个 `}`：相邻两条规则共用一个 `}`，吃掉它 ⇒ matchAll 每隔一条漏一条
-    //   （`tests/evidence/P21-frontend-invariants.ts` 的 `cssRules` 头注记过同一个坑；本条第一版又踩了一次，
-    //   `.stream` 恰好落在被漏掉的那一半里，当场「找不到」）。
+    //   （同一个坑见 `tests/evidence/frontend-invariants.ts` 的 `cssRules` 头注；
+    //   `.stream` 恰好会落在被漏掉的那一半里，当场「找不到」）。
     const rules = [...css.matchAll(/(?<=^|[{};])\s*([^{};@]+)\{([^{}]*)\}/g)]
       .map((m) => ({ sel: m[1], body: m[2] }))
       .filter((m) => m.sel.split(",").map((x) => x.trim()).includes(".stream"));

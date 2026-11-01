@@ -80,7 +80,7 @@ import { ChanError } from "../../../../src/comms/inward/chan";
 
 /** 那台后端拒了一发（对端 `refused` 那一层 ＋ 码 ＋ 那一句）。 */
 function refusal(code: string, message: string): ChanError {
-  return new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code, message })) }, message);
+  return new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code, said: message })) }, message);
 }
 
 function acct(p: Partial<Account>): Account {

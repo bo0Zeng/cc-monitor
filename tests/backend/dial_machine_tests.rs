@@ -13,8 +13,12 @@ fn ep(host: &str, port: u16) -> Endpoint {
     }
 }
 
-fn code(r: Result<Value, Err>) -> Result<(), &'static str> {
-    r.map(|_| ()).map_err(|(c, _)| c)
+fn code(r: Result<Value, Said>) -> Result<(), &'static str> {
+    r.map(|_| ()).map_err(|s| match s.code.as_deref() {
+        Some("bad_args") => "bad_args",
+        Some("bad_jump") => "bad_jump",
+        _ => "(other)",
+    })
 }
 
 #[test]
@@ -79,8 +83,14 @@ fn the_wire_shape_tolerates_nulls_and_extra_keys_but_not_wrong_types() {
         (h.key(), h.jump_name(), h.port, h.connect),
         (None, None, 22, true)
     );
-    assert_eq!(loose(&json!({"host": 1})).unwrap_err().0, "bad_args");
-    assert_eq!(loose(&json!({"port": "22"})).unwrap_err().0, "bad_args");
+    assert_eq!(
+        loose(&json!({"host": 1})).unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
+    assert_eq!(
+        loose(&json!({"port": "22"})).unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
 }
 
 #[test]
@@ -273,7 +283,7 @@ fn req(
     prefer: Option<&Endpoint>,
     use_: &str,
     extra: Value,
-) -> Result<crate::DialRequest, Err> {
+) -> Result<crate::DialRequest, Said> {
     let v = request(table, name, prefer, use_, extra)?;
     Ok(serde_json::from_value(v).expect("组好的那一形读得成拨号请求"))
 }
