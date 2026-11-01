@@ -201,7 +201,7 @@ fn process_words_exempt(rel: &str) -> bool {
     rel == "src/shared/copy/table.json"
         || rel == "src/shared/copy/terms.json"
         || rel.starts_with("src/shared/cc-bus/")
-        || rel.starts_with(concat!("tests/evi", "dence/K", "-T68-"))
+        || rel == "tests/evidence/outward-copy-census.py"
 }
 
 /// 第五张网的第三副网眼：口语的连接说法（「连不」＋「上」）。连接说「断开」，机器状态说「{machine} 离线」。拆两段拼。
@@ -636,7 +636,7 @@ fn the_process_words_net_catches_build_wording_and_spares_the_turn_copy() {
         "src/shared/copy/table.json",
         "src/shared/copy/terms.json",
         "src/shared/cc-bus/examples/policy.tsv",
-        concat!("tests/evi", "dence/K", "-T68-A1-outward-copy-census.py"),
+        "tests/evidence/outward-copy-census.py",
         "src/shared/copy/rules.json",
         "src/backend/lib.rs",
     ]
@@ -649,7 +649,7 @@ fn the_process_words_net_catches_build_wording_and_spares_the_turn_copy() {
             "src/shared/copy/table.json",
             "src/shared/copy/terms.json",
             "src/shared/cc-bus/examples/policy.tsv",
-            concat!("tests/evi", "dence/K", "-T68-A1-outward-copy-census.py"),
+            "tests/evidence/outward-copy-census.py",
         ],
         "豁免名单只该放过文案表 · 禁用词表 · cc-bus 包 · 对外文案普查量具"
     );
