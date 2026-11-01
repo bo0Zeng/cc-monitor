@@ -69,9 +69,9 @@ fn a_bad_level_is_said_in_copy_and_the_value_goes_to_the_detail() {
     let e = level_filter("zz-bad=42=42=").expect_err("认不出的级别该拒");
     assert_eq!(e.said, copy_text("rsLogging.level.invalid", &[]));
     assert!(
-        e.detail.contains("zz-bad"),
+        e.raw().contains("zz-bad"),
         "那个值没进复制详情：{}",
-        e.detail
+        e.raw()
     );
     assert!(level_filter("info").is_ok());
 }
@@ -188,8 +188,7 @@ fn a_config_we_cannot_parse_is_left_alone_not_overwritten() {
     let raw = err.raw();
     assert!(
         !raw.is_empty() && !err.said.contains(&raw),
-        "解析错没进详情 / 还在句子里：{err} · 详情 {}",
-        err.detail
+        "解析错没进详情 / 还在句子里：{err} · 原话 {raw}"
     );
     let _ = std::fs::remove_dir_all(&tmp);
 }

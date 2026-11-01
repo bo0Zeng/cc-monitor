@@ -616,7 +616,7 @@ async fn a_backend_that_refuses_the_new_attach_line_is_old() {
             problem, blocker, ..
         } => {
             assert_eq!(blocker, Some(Blocker::OldBackend));
-            assert_eq!(problem.text, copy_core::backend_old("box"));
+            assert_eq!(problem.said, copy_core::backend_old("box"));
         }
         other => panic!("{other:?}"),
     }
@@ -776,7 +776,7 @@ async fn a_missing_backend_needs_a_hand_and_does_not_retry_by_itself() {
     .await;
     match feed.state() {
         State::Down { problem, .. } => assert_eq!(
-            problem.text,
+            problem.said,
             copy_core::copy_text("remoteHealth.head.notDeployed", &[])
         ),
         _ => unreachable!(),
@@ -1037,7 +1037,7 @@ async fn a_remote_that_is_not_unix_waits_for_a_hand() {
         match feed.state() {
             State::Down { problem, .. } => {
                 assert_eq!(
-                    problem.text,
+                    problem.said,
                     copy_core::copy_text("rsRemoteResident.ensure.unsupported", &[])
                 );
                 assert!(problem.detail.contains("setsid"), "{}", problem.detail);
@@ -1233,7 +1233,7 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
     );
     let (p, k) = fail(exec("7", "", Some(0)));
     assert_eq!(
-        (p.text, k),
+        (p.said, k),
         (
             copy_text("rsRemoteResident.ensure.answerUnreadable", &[]),
             FailKind::Blocked(Blocker::NoBackend)
@@ -1241,7 +1241,7 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
     );
     let (p, k) = fail(exec(&hello("p1a-old"), "", None));
     assert_eq!(
-        (p.text, k),
+        (p.said, k),
         (
             copy_core::backend_old("devbox"),
             FailKind::Blocked(Blocker::OldBackend)
@@ -1249,7 +1249,7 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
     );
     let (p, k) = fail(exec("", "sh: ccm: not found", Some(127)));
     assert_eq!(
-        (p.text, k),
+        (p.said, k),
         (
             copy_text("remoteHealth.head.notDeployed", &[]),
             FailKind::Blocked(Blocker::NoBackend)
@@ -1262,7 +1262,7 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
     ));
     assert_eq!(k, FailKind::Blocked(Blocker::NotUnix));
     assert_eq!(
-        p.text,
+        p.said,
         copy_text("rsRemoteResident.ensure.unsupported", &[])
     );
     assert!(
@@ -1276,7 +1276,7 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
         Some(2),
     ));
     assert_eq!(
-        (p.text.as_str(), p.detail.as_str(), k),
+        (p.said.as_str(), p.detail.as_str(), k),
         (
             "x",
             "Permission denied (os error 13)",
@@ -1284,7 +1284,7 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
         )
     );
     let (p, _) = fail(exec("", "garbage", Some(1)));
-    assert_eq!(p.text, copy_text("rsRemoteResident.ensure.noReason", &[]));
+    assert_eq!(p.said, copy_text("rsRemoteResident.ensure.noReason", &[]));
 }
 
 /// 中继一直说「没人在听」（ensure 说起了、却一直没绑上口）：至多试 [`RELAY_TRIES`] 回（隔 [`RELAY_WAIT`]），然后说「后端没在运行」、照退避再来；
@@ -1295,7 +1295,7 @@ async fn a_relay_that_stays_absent_is_tried_a_capped_number_of_times() {
     let (feed, _) = start(&f);
     until("断在「后端没在运行」", || {
         matches!(feed.state(), State::Down { ref problem, needs_hand: false, .. }
-            if problem.text == copy_text("rsRemoteResident.relay.absent", &[("machine", "box")]))
+            if problem.said == copy_text("rsRemoteResident.relay.absent", &[("machine", "box")]))
     })
     .await;
     assert_eq!(
@@ -1625,7 +1625,7 @@ async fn replacing_the_resident_runs_ensure_replace_then_reconnects() {
 
     let none: Arc<Feed<T>> = Feed::start(cfg(), None, desk(), sink(|_| {}));
     let e = none.replace().await.unwrap_err();
-    assert_eq!(e.text, comms_inward::chan::said::offline("box"));
+    assert_eq!(e.said, comms_inward::chan::said::offline("box"));
     assert_eq!(none.theirs(), None);
 }
 
@@ -1689,4 +1689,12 @@ async fn an_answer_that_does_not_parse_comes_back_as_unreadable() {
         }
         other => panic!("缺 `ok` 的应答该交回「认不出」：{other:?}"),
     }
+}
+
+/// 那一句的格与 `Said` · `Failed` 同名：`said`；构造口两参不变，其余几格空着。
+#[test]
+fn problem_said_is_the_first_argument() {
+    let p = Problem::new("x", "d");
+    assert_eq!((p.said.as_str(), p.detail.as_str()), ("x", "d"));
+    assert_eq!((p.why, p.seen_key, p.expected_key), (None, None, None));
 }

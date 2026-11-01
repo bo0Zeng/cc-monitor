@@ -1217,17 +1217,9 @@ pub enum TransferEnd {
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         sha256: Option<String>,
     },
-    /// 失败（那一句 ＋ 复制详情）。上传那一路的暂存件**留着**给续传；下载那一路的 `.part` 删了。
-    /// `code`：调用方要按它换路的那几形（今天只有 `sftp_home_mismatch`）；缺席 ＝ 一般的失败。`detail` 缺席 ＝ 没写。
-    Failed {
-        why: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        code: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        detail: Option<String>,
-    },
+    /// 失败：交出去的那一形（码 · 那一句 · 复制详情）。上传那一路的暂存件**留着**给续传；下载那一路的 `.part` 删了。
+    /// 码：调用方按它换路的那几形（今天只有 `sftp_home_mismatch`），别的是一般的失败（兜底码）；没写详情 ⇒ 空串。
+    Failed(crate::failed::Failed),
     /// 撤了（`transfer-stop` / 本机流断了）。上传那一路的暂存件已删；下载那一路的 `.part` 留着。
     Cancelled,
 }

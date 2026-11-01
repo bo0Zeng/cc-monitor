@@ -1018,7 +1018,7 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     let d = tmpdir_e2("place");
     let mark = |_: &Path| Ok(());
     let dirs = |p: &Path| {
-        std::fs::create_dir_all(p).map_err(|e| crate::detail::Said::written(e.to_string()))
+        std::fs::create_dir_all(p).map_err(|e| copy_core::said::Said::from(e.to_string()))
     };
     let dest = d.join(local_ccm_entry_name());
     let disk = || std::fs::read(&dest).unwrap_or_default();
@@ -1075,10 +1075,10 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     match put(&fake) {
         Err(Unplaced::Said(s)) => {
             assert_eq!(s.said, "不说自己是谁（夹具句）");
+            let detail = s.named("place").detail;
             assert!(
-                s.detail.contains(&crate::detail::local_line()),
-                "复制详情里没有「本机」那一行：{}",
-                s.detail
+                detail.contains(&crate::detail::local_line()),
+                "复制详情里没有「本机」那一行：{detail}"
             );
         }
         other => panic!("它说「不」⇒ 该是那句话原样，实得 {other:?}"),
@@ -1247,7 +1247,7 @@ fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all(
     let denied = copy_core::io_reason(std::io::ErrorKind::PermissionDenied);
     let refused = extraction_failure_reason(
         dir,
-        crate::detail::Said::with_raw(format!("{dir:?} · {denied}"), os_err),
+        copy_core::said::Said::with_raw(format!("{dir:?} · {denied}"), os_err),
     );
 
     // ── 反向锚点：标记串不许来自夹具的名字 ───────────────────────────
@@ -1264,7 +1264,7 @@ fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all(
         arch: "x86_64".into(),
     }
     .say(&copy_text("rsLocalBackendHost.local.machine", &[]));
-    let absent = crate::detail::Said::written(absent);
+    let absent = copy_core::said::Said::from(absent);
     assert!(
         refused.said.contains(EXTRACTION_REFUSED_MARKER.as_str()),
         "「放不下来」那一句丢了它的标记 ⇒ 调用方与判据都再也分不出它和「没带后端」。\n逐字：{refused}"
@@ -1286,8 +1286,8 @@ fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all(
     );
     assert!(
         refused.raw().contains(os_err),
-        "底层错误串没被原样带进复制详情。\n详情：{}",
-        refused.detail
+        "底层错误串没被原样带进复制详情。\n原话：{}",
+        refused.raw()
     );
 
     // ── ③ 与兄弟那条同职：给得出下一步 · 不许甩件号 ──────────────────

@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.chat.attach
 
-import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.ui.chat.ChatSession
 import com.ccmonitor.mobile.ui.chat.ChatTarget
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
@@ -98,7 +98,7 @@ class AttachSendTest {
     fun a_retry_after_a_failed_send_carries_the_same_ids() =
         runTest {
             var first = true
-            val refused = Reply.Failed(CoreFailure("queue_full", "队满了", "", null))
+            val refused = Reply.Failed(Failed("queue_full", "队满了", "", null))
             val link =
                 FakeCoreLink().apply {
                     there {

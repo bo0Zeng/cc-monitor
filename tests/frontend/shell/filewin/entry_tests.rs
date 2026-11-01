@@ -38,12 +38,13 @@ fn a_process_failure_puts_its_exit_status_and_stderr_in_the_detail() {
         s.said
     );
     let label = |k: &str| copy_text(k, &[]);
+    let detail = s.named("open_file_window").detail;
     for want in [
         format!("{}：open_file_window", label("detail.label.command")),
         format!("{}：exit status: 1", label("detail.label.code")),
         format!("{}：line a\nline b", label("detail.label.raw")),
     ] {
-        assert!(s.detail.contains(&want), "缺「{want}」：\n{}", s.detail);
+        assert!(detail.contains(&want), "缺「{want}」：\n{detail}");
     }
 }
 

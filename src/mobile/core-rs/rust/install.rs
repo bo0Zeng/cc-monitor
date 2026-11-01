@@ -4,7 +4,7 @@
 //! 一个入口（`Core.deploy(handle, slots)`）。走到哪一步收进那台的状态成品（`deploy::machine`，同桌面那一份），经 `state` 那一行交 Kotlin
 //! （正在装 / 更新那一句与进度条照成品画）；结局经常驻流同一个口交（种类 `deploy`，一行 JSON）：
 //! - `{"end": "done", "act": "skip" | "deploy" | "keep", "text"}`：做完了（已是这一版 · 装上了这一版 · 那台不比这一版旧、没动它）；
-//! - `{"end": "failed", "code", "text", "detail"}`：没做成（那一句 ＋ 复制详情）。
+//! - `{"end": "failed", "code", "said", "detail"}`：没做成（交出去的那一形失败：码 · 那一句 · 复制详情）。
 //! 形状住契约（`cmd_wire::phone::DeployEnd`），Kotlin 读同一份生成的类。
 //!
 //! 字节：App 把包里那两格解到自己的私有目录（每版一次），交路径；这里从文件读，不经 JNI 传数组。
@@ -41,13 +41,14 @@ pub fn done_json(plan: &deploy::Plan) -> String {
 }
 
 /// 没做成 ⇒ 那一行（详情：命令 · 码 · 原话，钟是这台手机的）。
-pub fn failed_json(code: &str, text: &str, raw: Option<&str>) -> String {
+pub fn failed_json(code: &str, said: &str, raw: Option<&str>) -> String {
     let detail = ssh_dial::env::get().facts.detail("deploy", Some(code), raw);
-    serde_json::to_string(&DeployEnd::Failed {
+    serde_json::to_string(&DeployEnd::Failed(cmd_wire::failed::Failed {
         code: code.to_string(),
-        text: text.to_string(),
+        said: said.to_string(),
         detail,
-    })
+        data: None,
+    }))
     .unwrap_or_default()
 }
 
@@ -119,7 +120,7 @@ async fn run(
         let link = Arc::clone(&link);
         Box::pin(async move {
             use resident_client::feed::Transport as _;
-            let got = link.capture(command).await.map_err(|p| p.text)?;
+            let got = link.capture(command).await.map_err(|p| p.said)?;
             Ok(ssh_dial::Captured {
                 stdout: got.stdout,
                 stderr: got.stderr,
@@ -147,7 +148,7 @@ async fn run(
                 Ok(_) => done_json(&plan),
                 Err(p) => {
                     let raw = (!p.detail.is_empty()).then_some(p.detail.as_str());
-                    failed_json("restart_failed", &p.text, raw)
+                    failed_json("restart_failed", &p.said, raw)
                 }
             }
         }

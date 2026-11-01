@@ -88,11 +88,7 @@ fn end_here(state: &Held, why: String) {
 
 /// 壳这一侧收场的失败（流断了 · 开跑那一问没成）：只有那一句，详情由窗口进程自己写。
 pub(crate) fn failed(why: String) -> End {
-    End::Failed {
-        why,
-        code: None,
-        detail: None,
-    }
+    End::Failed(Failed::local(why))
 }
 
 /// 一趟在本机后端册上的传输，在 monitor 这一侧的影子。

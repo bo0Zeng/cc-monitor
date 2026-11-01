@@ -29,8 +29,9 @@ mod bookmarks_migration;
 mod backend_policy;
 // 通信层面 A 是 crate `comms_inward`（住 `src/comms/inward/`）：`origin` · 分流这里再导出、路径不变；
 //   `origin` 那份判据（含 monitor 这一侧的「origin 归一」棘轮）照旧挂在 monitor 里（`origin_tests` 见下）。
-use crate::detail::Said;
+use crate::detail::Shell as _;
 use comms_inward::{backend_route, origin};
+use copy_core::said::Said;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/backend_route_senders_tests.rs"]
 mod backend_route_senders_tests; // 每个走后端的发送端都经那一份分流规则（遍历 monitor 源码树）
@@ -1026,7 +1027,7 @@ async fn open_session_in_new_window(
         //   ⇒ 窗口要知道这个会话在哪台机器上；随 URL 交过去（百分号编码：本机那个 `<local>` 有尖括号）。
         origin
             .route("open_session_in_new_window")
-            .map_err(|b| Said::written(chan::said::blank_origin(&b)))?;
+            .map_err(|b| Said::from(chan::said::blank_origin(&b)))?;
         let origin_q = pct_encode(&origin.to_string());
         let run = run.filter(|r| !r.is_empty());
         let label = match &run {
@@ -1098,7 +1099,7 @@ async fn open_terminal_in_new_window(
         use tauri::Manager;
         origin
             .route("open_terminal_in_new_window")
-            .map_err(|b| Said::written(chan::said::blank_origin(&b)))?;
+            .map_err(|b| Said::from(chan::said::blank_origin(&b)))?;
         let origin_s = origin.to_string();
         let label = terminal_window_label(&origin_s, &terminal);
         if let Some(w) = app.get_webview_window(&label) {
