@@ -76,10 +76,16 @@ pub(crate) fn engine() -> Result<&'static rhai::Engine, String> {
 }
 
 /// 在沙箱 `e` 上挂积木库 `lib`（[`engine`] 那一份就是 [`fresh_engine`](crate::accounts::quota::strategy::fresh_engine) 挂上它）。
-pub(crate) fn with_lib(mut e: rhai::Engine) -> Result<rhai::Engine, String> {
-    let ast = e.compile(LIB_SOURCE).map_err(|x| x.to_string())?;
-    let m =
+pub(crate) fn with_lib(e: rhai::Engine) -> Result<rhai::Engine, String> {
+    with_lib_from(e, LIB_SOURCE)
+}
+
+/// 同 [`with_lib`]，积木库照给的原文编（判据量积木库时用）。
+pub(crate) fn with_lib_from(mut e: rhai::Engine, source: &str) -> Result<rhai::Engine, String> {
+    let ast = e.compile(source).map_err(|x| x.to_string())?;
+    let mut m =
         rhai::Module::eval_ast_as_new(rhai::Scope::new(), &ast, &e).map_err(|x| x.to_string())?;
+    super::rollout::install(&mut m);
     e.register_static_module("lib", m.into());
     Ok(e)
 }

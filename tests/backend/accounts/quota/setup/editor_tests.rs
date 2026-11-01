@@ -271,6 +271,11 @@ fn case(name: &str) -> Value {
 
 /// 一判的 ctx 照夹具拼回来，`settings` 换成给的那一份，调编辑器的代码。
 fn decide_case(c: &Value, settings: &Value) -> Verdict {
+    decide_case_in(test_engine(), c, settings)
+}
+
+/// 同 [`decide_case`]，在给的沙箱里判。
+fn decide_case_in(e: &rhai::Engine, c: &Value, settings: &Value) -> Verdict {
     let pair = |v: &Value| [v["w5h"].as_f64(), v["w7d"].as_f64()];
     let int = |v: &Value| [v["w5h"].as_u64(), v["w7d"].as_u64()];
     let accounts: Vec<CtxAcct> = c["accounts"]
@@ -329,7 +334,7 @@ fn decide_case(c: &Value, settings: &Value) -> Verdict {
     };
     ed().0
         .code
-        .decide_in(test_engine(), &ctx)
+        .decide_in(e, &ctx)
         .unwrap_or_else(|e| panic!("编辑器的代码跑出错（{}）：{e:?}", c["case"]))
 }
 
@@ -419,14 +424,274 @@ fn many(n: usize, spread: f64) -> Value {
 
 /// ★ 号多了一判也在操作数上限里判完、不走兜底：推演开销由算法自己封顶（推不起几遍就少比几个候选，一个都推不起就不提前换）。
 /// 用速起伏大时低的那一档是 0，别的会话那一档不用、不并进池子（不拿 0 去除）。30 个号、没起伏时照推演提前换去快作废的 n00。
+/// 推演在原生内核里（`lib::project` 一次调用一次操作）：15 个号 · 起伏 0.6 一判不到 3 万次操作；15 个号起直到 100 个号都推得起、比了候选。
 #[test]
 fn many_accounts_judge_within_the_limit() {
-    for (n, spread) in [(9, 0.6), (15, 0.0), (15, 0.6), (30, 0.0), (30, 0.6)] {
+    for (n, spread) in [
+        (9, 0.6),
+        (15, 0.0),
+        (15, 0.6),
+        (30, 0.0),
+        (30, 0.6),
+        (50, 0.6),
+        (100, 0.6),
+    ] {
         let c = many(n, spread);
-        decide_case(&c, &c["settings"]);
+        let (_, ops, calls) = probe(&c);
+        eprintln!(
+            "{n} 个号 · 起伏 {spread}：{ops} 次操作 · 推演 {} 遍",
+            calls.len()
+        );
+        if n == 15 && spread > 0.0 {
+            assert!(ops < 30_000, "15 个号 · 起伏 0.6 一判 {ops} 次操作");
+        }
+        if n >= 15 {
+            assert!(
+                !calls.is_empty(),
+                "{n} 个号 · 起伏 {spread} 推不起、没比候选"
+            );
+        }
     }
     let c = many(30, 0.0);
     let v = decide_case(&c, &c["settings"]);
     assert_eq!(v.order.first().map(String::as_str), Some("n00"), "{v:?}");
     assert!(why_of(&v, "n00").starts_with("智能切换"), "{v:?}");
+}
+
+// ───────────── 推演在原生内核里：与 Rhai 那一版逐个相等 ─────────────
+
+thread_local! {
+    /// 量具那一份沙箱：这一判到此用了几次操作 · 每次喂给 `lib::project` 的八个参数。
+    static OPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static CALLS: std::cell::RefCell<Vec<Vec<rhai::Dynamic>>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// 量具：数操作数，并在 `lib::project` 开头录下它的八个参数（积木库别的不动）。
+fn probe_engine() -> &'static rhai::Engine {
+    static E: OnceLock<rhai::Engine> = OnceLock::new();
+    E.get_or_init(|| {
+        let mut e = crate::accounts::quota::strategy::fresh_engine();
+        e.on_progress(|n| {
+            OPS.with(|c| c.set(n));
+            None
+        });
+        e.register_fn(
+            "rec",
+            |a: rhai::Array,
+             b: rhai::Array,
+             c: rhai::Array,
+             d: rhai::Array,
+             f: rhai::Array,
+             g: rhai::Array,
+             h: rhai::Map,
+             o: rhai::Map| {
+                let v: Vec<rhai::Dynamic> = vec![
+                    a.into(),
+                    b.into(),
+                    c.into(),
+                    d.into(),
+                    f.into(),
+                    g.into(),
+                    h.into(),
+                    o.into(),
+                ];
+                CALLS.with(|x| x.borrow_mut().push(v));
+            },
+        );
+        let head = "fn project(amt, st, ex, who, wk, late, oev, o) {";
+        assert!(code::LIB_SOURCE.contains(head), "积木库里有 project");
+        let src = code::LIB_SOURCE.replacen(
+            head,
+            &format!("{head}\n  rec(amt, st, ex, who, wk, late, oev, o);"),
+            1,
+        );
+        code::with_lib_from(e, &src).expect("积木库编得过")
+    })
+}
+
+/// 在量具里判一次：结论 · 操作数 · 录下的每次推演的参数。
+fn probe(c: &Value) -> (Verdict, u64, Vec<Vec<rhai::Dynamic>>) {
+    OPS.with(|x| x.set(0));
+    CALLS.with(|x| x.borrow_mut().clear());
+    let v = decide_case_in(probe_engine(), c, &c["settings"]);
+    (v, OPS.with(std::cell::Cell::get), CALLS.with(|x| x.take()))
+}
+
+/// `lib::project` 用 Rhai 写的那一版（对照：同样的参数代价逐个相等）。
+const RHAI_PROJECT: &str = r#"
+fn project(amt, st, ex, who, wk, late, oev, o) {
+  let now = o.now;
+  let t_end = o.end;
+  let cache = o.cache;
+  let n = amt.len();
+  let cost = o.lump;
+  let evt = []; let erho = []; let elump = []; let eme = [];
+  let q = 0;
+  while q < oev.acc.len() {
+    let r = oev.r[q] * o.m;
+    if oev.acc[q] != o.mine && r > 0.0 {
+      let z = oev.q[q];
+      let tt = now;
+      if z != () {
+        let dt = amt[z] / r * 60.0;
+        if ex[z] - now < dt { dt = (ex[z] - now).to_float(); }
+        if wk[z] { cost += r * dt / 60.0; }
+        amt[z] = 0.0;
+        tt = now + dt.to_int();
+      }
+      if tt < t_end { evt.push(tt * 1024 + erho.len()); erho.push(r); elump.push(0.0); eme.push(false); }
+    }
+    q += 1;
+  }
+  let k = o.at;
+  let rho = o.rho;
+  if o.share != () { rho += o.share; }
+  if k == () || rho <= 0.0 { evt.push(now * 1024 + erho.len()); erho.push(o.rho); elump.push(o.lump); eme.push(true); }
+  else {
+    let need = amt[k] - o.lump;
+    if wk[k] { cost += o.lump; }
+    if need <= 0.0 { amt[k] = 0.0; evt.push(now * 1024 + erho.len()); erho.push(o.rho); elump.push(-need); eme.push(true); }
+    else {
+      let dt = need / rho * 60.0;
+      if ex[k] - now < dt { dt = (ex[k] - now).to_float(); }
+      if wk[k] { cost += o.rho * dt / 60.0; }
+      amt[k] = 0.0;
+      let t = now + dt.to_int();
+      if t < t_end { evt.push(t * 1024 + erho.len()); erho.push(o.rho); elump.push(0.0); eme.push(true); }
+    }
+  }
+  evt.sort();
+  let avail = []; let pend = [];
+  let i = 0;
+  while i < n {
+    if amt[i] > 0.0 && ex[i] > now {
+      if st[i] > now { pend.push(st[i] * 1024 + i); } else { avail.push((if late[i] { 4000000000000000 } else { 0 }) + ex[i] * 1024 + i); }
+    }
+    i += 1;
+  }
+  pend.sort();
+  avail.sort();
+  let d = 0.0; let due = 0.0; let tau = now; let ei = 0; let pi = 0;
+  let me_in = false; let my = o.mine; let guard = 0;
+  while tau < t_end && guard < 4 * n + 4 * evt.len() + 16 {
+    guard += 1;
+    while ei < evt.len() && evt[ei] / 1024 <= tau {
+      let q = evt[ei] % 1024;
+      d += erho[q]; due += elump[q];
+      if eme[q] { me_in = true; }
+      ei += 1;
+    }
+    let moved = false;
+    while pi < pend.len() && pend[pi] / 1024 <= tau {
+      let j = pend[pi] % 1024;
+      avail.push((if late[j] { 4000000000000000 } else { 0 }) + ex[j] * 1024 + j);
+      pi += 1; moved = true;
+    }
+    if moved { avail.sort(); }
+    while avail.len() > 0 && (amt[avail[0] % 1024] <= 0.0 || ex[avail[0] % 1024] <= tau) { avail.remove(0); }
+    let nxt = if ei < evt.len() { evt[ei] / 1024 } else { t_end };
+    if pi < pend.len() && pend[pi] / 1024 < nxt { nxt = pend[pi] / 1024; }
+    if d <= 0.0 && due <= 0.0 { tau = nxt; continue; }
+    if avail.len() == 0 { cost += d * (nxt - tau).to_float() / 60.0 + due; due = 0.0; tau = nxt; continue; }
+    let k = avail[0] % 1024;
+    if me_in && who[k] != my {
+      let c = cache[who[k]];
+      let r = if c != () && c > tau { o.grow * (tau - now).to_float() / 60.0 } else { o.kfull };
+      cost += r; due += r;
+      cache[my] = tau + o.ttl;
+      my = who[k];
+    }
+    if due > 0.0 {
+      let take = if due < amt[k] { due } else { amt[k] };
+      amt[k] -= take; due -= take;
+      if wk[k] { cost += take; }
+      continue;
+    }
+    let end = if ex[k] < nxt { ex[k] } else { nxt };
+    let e2 = tau + (amt[k] / d * 60.0).ceiling().to_int();
+    if e2 < end { end = e2; }
+    if end <= tau { end = tau + 1; }
+    let used = d * (end - tau).to_float() / 60.0;
+    if used > amt[k] { used = amt[k]; }
+    amt[k] -= used;
+    if wk[k] { cost += used; }
+    tau = end;
+  }
+  cost
+}
+"#;
+
+/// 一组参数各调一遍：Rhai 原文那一版 · 积木库此刻的 `lib::project`。
+fn both(args: &[rhai::Dynamic]) -> (f64, f64) {
+    static OLD: OnceLock<(rhai::Engine, rhai::AST)> = OnceLock::new();
+    static NEW: OnceLock<rhai::AST> = OnceLock::new();
+    let (oe, oa) = OLD.get_or_init(|| {
+        let mut e = crate::accounts::quota::strategy::fresh_engine();
+        e.on_progress(|_| None);
+        e.set_max_operations(0);
+        let a = e.compile(RHAI_PROJECT).expect("对照那一版编得过");
+        (e, a)
+    });
+    let na = NEW.get_or_init(|| {
+        test_engine()
+            .compile("fn via_lib(a, b, c, d, e, f, g, h) { lib::project(a, b, c, d, e, f, g, h) }")
+            .expect("编得过")
+    });
+    let call = |e: &rhai::Engine, ast: &rhai::AST, name: &str| {
+        let a: Vec<rhai::Dynamic> = args.to_vec();
+        let r = e
+            .call_fn::<rhai::Dynamic>(
+                &mut rhai::Scope::new(),
+                ast,
+                name,
+                (
+                    a[0].clone(),
+                    a[1].clone(),
+                    a[2].clone(),
+                    a[3].clone(),
+                    a[4].clone(),
+                    a[5].clone(),
+                    a[6].clone(),
+                    a[7].clone(),
+                ),
+            )
+            .unwrap_or_else(|x| panic!("{name} 跑出错：{x}"));
+        r.as_float()
+            .unwrap_or_else(|_| panic!("{name} 交的不是数：{r:?}"))
+    };
+    (call(oe, oa, "project"), call(test_engine(), na, "via_lib"))
+}
+
+/// ★ 夹具里每一判当时喂给 `lib::project` 的参数（录下来）·（加上合成的 15 · 30 个号）：Rhai 原文那一版与此刻的积木库代价逐个相等
+/// （相对差 ＜ 1e-6）；排法也一样（见 [`it_orders_the_same_as_the_algorithm_on_the_simulated_facts`]）。
+#[test]
+fn project_costs_the_same_as_the_rhai_version_on_every_recorded_call() {
+    let mut inputs: Vec<(String, Value)> = cases()
+        .into_iter()
+        .map(|c| {
+            (
+                c["case"].as_str().unwrap_or("").to_string(),
+                c["ctx"].clone(),
+            )
+        })
+        .collect();
+    for (n, spread) in [(15, 0.6), (30, 0.0), (30, 0.6)] {
+        let c = many(n, spread);
+        inputs.push((c["case"].as_str().unwrap_or("").to_string(), c));
+    }
+    let mut seen = 0;
+    let mut off = Vec::new();
+    for (name, c) in &inputs {
+        let (_, _, calls) = probe(c);
+        for args in calls {
+            seen += 1;
+            let (old, new) = both(&args);
+            if (old - new).abs() > 1e-6 * old.abs().max(1.0) {
+                off.push(format!("{name}：Rhai {old}，此刻 {new}"));
+            }
+        }
+    }
+    eprintln!("录下的推演 {seen} 遍，逐个比过");
+    assert!(seen >= 20, "录下的推演够多：{seen}");
+    assert!(off.is_empty(), "代价不一样：\n{}", off.join("\n"));
 }
