@@ -5,7 +5,6 @@ import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
-import com.ccmonitor.mobile.ui.chat.CHAT_MENU_BANNED_WORDS
 import com.ccmonitor.mobile.ui.chats.ChatRow
 import com.ccmonitor.mobile.ui.nav.Screen
 import com.ccmonitor.mobile.ui.nav.drawerDestination
@@ -169,20 +168,6 @@ class DrawerTest {
 
         val hosts = codeOnly(source("HostScreens.kt"))
         assertFalse("机器列表不再有自己进设置的那颗", Regex("""\bonSettings\b""").containsMatchIn(hosts))
-    }
-
-    // ---- 文案 -----------------------------------------------------------------------
-
-    @Test
-    fun theDrawerWordingFollowsTheCopyRules() {
-        val onScreen =
-            drawerEntries().map { it.label } +
-                listOf(DRAWER_TITLE, RECENT_HEADER, serverRowLabel("devbox"), SETTINGS_DESCRIPTION, DRAWER_OPEN_DESCRIPTION)
-        for (text in onScreen) {
-            assertFalse("不许第二人称：$text", text.contains("你") || text.contains("您"))
-            val hit = CHAT_MENU_BANNED_WORDS.filter { it.lowercase() in text.lowercase() }
-            assertTrue("「$text」里有内部词 $hit", hit.isEmpty())
-        }
     }
 
     private fun row(

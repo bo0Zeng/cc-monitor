@@ -2,142 +2,139 @@ package com.ccmonitor.mobile.ui.chats
 
 import com.ccmonitor.mobile.testing.CopyTableForTests
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
+import com.squareup.moshi.Moshi
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
 /**
- * 词表机检：禁用的技术词不许出现在给用户看的字面量里。
+ * 手机界面禁词：每一面（聊天 · 总览 · 设置 · 服务器 · 抽屉）上屏的字不许带那一面的禁词。
  *
- * 「终端 / tmux / 按键排」这些对新用户应该不可见；词表是把这条落到可执行层面的唯一手段，
- * 否则文案会一句句把技术概念漏回 UI。这条机检抓的是手滑与顺手：有人图省事写了「连接失败」「SSH 已断开」。
+ * 词与射程只住 `src/shared/copy/terms.json` 的 `mobileFaces` 一节（[MobileFaceWords] 读它），这里不抄词。
+ * 手机上屏的中文全从文案表出（`MobileLiteralsTest` 守着），所以判的是文案表里那几条：
+ * 一面目录（`ui/<包>`）下的源码里出现的每个表键，取它的 zh 比那一面的词。
+ * 第二人称不在这里判：文案表上 C-W19 逐条扫全表。
+ *
+ * 欠账（`owed`，「键 · 词」）两向相等：新命中红，写着欠却已不命中也红（欠账只许变短）。
  *
  * ### 它不防什么
  *
- * 1. 字符串拼接绕得过：`"连" + "接"`、`"$a$b"`。
- * 2. 扫不到资源文件：`strings.xml` 里的任何一句它都看不见。
- * 3. 只扫 `Text(` 的实参：`Toast`、`contentDescription`、`placeholder = "…"`、异常消息里的字它看不见。
- *    `SessionScreen.kt` 里有 `Text(context, "…")` 这种 `Toast.makeText` 形态，不是 Compose 的 `Text`，
- *    但本扫描器会把它算进来，这个方向是安全的（多抓不漏抓）。
- *
- * ### 射程：新界面的三个面，不是整个 `app/src/main`
- *
- * `ui/session` / `ui/host` / `ui/identity` 是终端那一路，一个终端屏上写「tmux 会话」是对的。
- * 词表管的是聊天 / 总览 / 设置三个面，[cleanPackages] 里每个包零命中，任何手滑当场红
- * （设置那一句「重新连接」随机器条收走了：离线那一颗的字由核心点名）。
- *
- * 扫描器走共享实现 [KotlinSourceScanner.literalsInCallsTo]；它认 Kotlin 的嵌套块注释，
- * 回归锚钉在 [theScannerDoesNotMistakeANestedKdocForScreenCopy]，词法层那条钉在
- * `KotlinSourceScannerTest.aNestedBlockCommentNeverLeaksIntoTheCallLiterals`（两个模块各跑一遍）。
+ * 1. 不是表键的字面（数据 · 标点 · 英文日志）不比：英文路由名会被大小写不敏感那一面误伤。
+ * 2. 键拼接（`copyText("a.$x.c")`）认不出：取文调用点的形状另有文案表判据管。
  */
 class UiWordlistTest {
-    /** 禁用词，逐字。「会话」不在里面：共用术语表里它就是「与 agent 的一次运行」，会话屏的标题就叫它。 */
-    private val banned = listOf("连接", "SSH", "tmux", "exec", "bridge", "daemon", "offset")
+    @Test
+    fun everyFaceSaysNoneOfItsBannedWordsAndOwesExactlyWhatItSays() {
+        val faces = MobileFaceWords.faces
+        assertTrue("terms.json 的 mobileFaces 一面都没读到 ⇒ 本条恒绿", faces.isNotEmpty())
+        val problems =
+            faces.flatMap { face ->
+                val sources = face.dirs.flatMap { sourcesOf(it) }
+                assertTrue("「${face.name}」一份源码都没扫到 ⇒ 射程写错了", sources.isNotEmpty())
+                verdict(face, sources.map { it.readText() }, CopyTableForTests::zhOf).map { "「${face.name}」$it" }
+            }
+        assertEquals("手机界面禁词：\n" + problems.joinToString("\n"), emptyList<String>(), problems)
+    }
 
-    /** 已经干净的包。零命中。 */
-    private val cleanPackages = listOf("chats", "chat", "claude", "settings")
+    /** 阴性对照：一条落在这一面的键 zh 带禁词 ⇒ 报出来；欠账写了却不命中 ⇒ 也报出来；注释里的键不算。 */
+    @Test
+    fun theVerdictCatchesANewHitAndAStaleDebt() {
+        val face = Face("样面", listOf("x"), listOf("SSH", "tmux"), ignoreCase = true, owed = setOf("a.b.d" to "tmux"))
+        val table = mapOf("a.b.c" to "SSH 已断开", "a.b.d" to "会话已结束", "a.b.e" to "这句是干净的", "a.b.f" to "tmux")
+        val src = "fun f() {\n  Text(copyText(\"a.b.c\"))\n  Text(copyText(\"a.b.e\"))\n  // copyText(\"a.b.f\") 注释里的不算\n}\n"
+        assertEquals(listOf("新命中 a.b.c 「SSH」：SSH 已断开", "欠账已不命中 a.b.d 「tmux」"), verdict(face, listOf(src), table::get))
+        val sensitive = face.copy(ignoreCase = false, owed = emptySet())
+        assertEquals("大小写敏感的一面，小写那个不算", emptyList<String>(), verdict(sensitive, listOf("copyText(\"k.l.m\")"), mapOf("k.l.m" to "ssh")::get))
+    }
 
-    private fun uiDir(pkg: String): File {
+    /**
+     * 「聊天菜单 · 抽屉」那一面不禁「会话」「连接」两个裸词：理由是技术义复合词都带着一个已禁的英文词。
+     * 两头断：技术义仍被拦（有人删了 `tmux` / `ssh` ⇒ 红），产品义真放行（把词塞满 ⇒ 红）。
+     */
+    @Test
+    fun theChatMenuFaceCatchesTechnicalSensesAndPassesProductWords() {
+        val words = MobileFaceWords.wordsOf("聊天菜单 · 抽屉")
+
+        fun banned(text: String) = words.any { text.contains(it, ignoreCase = true) }
+        for (technical in listOf("tmux 会话", "SSH 会话", "daemon 连接", "bridge 会话", "pipe 连接", "打开 Settings 屏")) {
+            assertTrue("「$technical」是技术义，必须仍被拦住", banned(technical))
+        }
+        for (product in listOf("结束会话", "连接失败", "设置", "服务器 · devbox")) {
+            assertTrue("「$product」是产品话，不许被拦", !banned(product))
+        }
+    }
+
+    /** 占位符名不是字：`{offset}` 不算命中「offset」。 */
+    @Test
+    fun placeholderNamesAreNotWords() {
+        val face = Face("样面", listOf("x"), listOf("offset"), ignoreCase = false, owed = emptySet())
+        assertEquals(emptyList<String>(), verdict(face, listOf("copyText(\"a.b.c\")"), mapOf("a.b.c" to "第 {offset} 行")::get))
+    }
+
+    private fun sourcesOf(pkg: String): List<File> {
         val rel = "src/main/kotlin/com/ccmonitor/mobile/ui/$pkg"
         // 单测的工作目录是模块目录（`app/`）；从仓根跑时退回带模块前缀的路径。
-        return File(rel).takeIf { it.isDirectory } ?: File("app/$rel")
-    }
-
-    private data class Hit(
-        val where: String,
-        val word: String,
-        val literal: String,
-    )
-
-    private fun scan(pkg: String): List<Hit> {
-        val dir = uiDir(pkg)
-        assertTrue("找不到 $pkg 的源码目录（判据自己失效了，比不合规更坏）：${dir.absolutePath}", dir.isDirectory)
-        return dir
-            .walkTopDown()
-            .filter { it.isFile && it.extension == "kt" }
-            .flatMap { f ->
-                textLiterals(f.readText()).flatMap { (line, literal) ->
-                    banned.filter { literal.contains(it) }.map { Hit("${f.name}:$line", it, literal) }
-                }
-            }.toList()
-    }
-
-    @Test
-    fun theOverviewAndChatFacesNeverSayATechnicalWordOutLoud() {
-        val hits = cleanPackages.flatMap { scan(it) }
-        assertEquals(
-            "词表命中：每条都要改成人话：\n" +
-                hits.joinToString("\n") { "  ${it.where}  「${it.word}」 in ${it.literal}" },
-            emptyList<Hit>(),
-            hits,
-        )
-    }
-
-    /**
-     * 判据的阴性对照：扫描器自己得真的能抓到东西。
-     *
-     * 没有这条的话，一个「永远返回空列表」的扫描器 bug 会让上面两条恒绿。
-     */
-    @Test
-    fun theScannerActuallyFindsABannedWordWhenThereIsOne() {
-        val src =
-            """
-            fun f() {
-                Text("连接失败: ${'$'}message")
-                Text("这句是干净的")
-                // Text("连接") —— 注释里的不算
-            }
-            """.trimIndent()
-        val found = textLiterals(src).map { it.second }
-        assertTrue("扫描器漏了 Text 里的字面量：$found", found.any { it.contains("连接失败") })
-        assertTrue("扫描器漏了第二个 Text：$found", found.any { it.contains("这句是干净的") })
-        assertEquals("注释里的 Text 不该被算进来：$found", 2, found.size)
-    }
-
-    /**
-     * 嵌套 KDoc 里的 `Text(…)` 不是界面文案。
-     *
-     * 用「找下一个闭合」跳块注释的扫描器不认嵌套，在这份样本上会吐出
-     * `[(3, 连接已断开), (5, 真实文案)]`：注释里的引文被算成上屏文案（假阳），会让人去改一句根本没上屏的话。
-     * 退回那种跳法 ⇒ 本条当场红。
-     *
-     * 块注释的开/闭在这里逐字拼、不写成连续字面：写成字面的话本文件会被
-     * `SharedScannerGateTest` 的⑤（按形状认手搓剥注释器）点名。
-     */
-    @Test
-    fun theScannerDoesNotMistakeANestedKdocForScreenCopy() {
-        val star = "*"
-        val sample =
-            "fun f() {\n" +
-                "/" + star + star + " 外层 KDoc，里面嵌一层：" + "/" + star + " 内层说明 " + star + "/" + " 外层还没完\n" +
-                " " + star + " Text(\"连接已断开\")  —— 注释里的引文，不该上屏\n" +
-                " " + star + "/\n" +
-                "    Text(\"这句是干净的\")\n" +
-                "}\n"
-        val got = textLiterals(sample)
-        assertEquals("嵌套块注释提前收尾了，注释后半段被当代码扫 ⇒ 一条假阳：$got", listOf(5 to "这句是干净的"), got)
-        // 靶子还在：样本真的带嵌套，而且「提前收尾」之后那一段里真的有一个禁用词引文。
-        val close = star + "/"
-        val firstClose = sample.indexOf(close)
-        assertTrue(
-            "样本不再带嵌套 / 提前收尾之后那段里没有禁用词了 ⇒ 这条锚失去靶子，请换一份样本",
-            firstClose > 0 && banned.any { w -> sample.substring(firstClose + close.length).contains(w) },
-        )
+        val dir = File(rel).takeIf { it.isDirectory } ?: File("app/$rel")
+        assertTrue("找不到 ui/$pkg 的源码目录（判据自己失效了，比不合规更坏）：${dir.absolutePath}", dir.isDirectory)
+        return dir.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
     }
 }
 
-/**
- * 从一份 Kotlin 源码里挑出每个 `Text(` 调用的实参里的字符串字面量，走全仓唯一一份
- * 词法扫描器 [KotlinSourceScanner.literalsInCallsTo]。
- *
- * 载荷就是字面内容：本文件问的是「上屏的那句话里有没有技术词」。接到 `codeOnlyDroppingLiterals` 上的话
- * 一句文案都抠不出来、词表全零命中然后全绿；[UiWordlistTest.theScannerActuallyFindsABannedWordWhenThereIsOne]
- * 钉着「扫描器真能抓到东西」。
- *
- * @return `行号 to 字面量内容`（不含引号；模板 `${'$'}{...}` 原样留在串里，
- *   所以 `Text("${'$'}{n} 个连接")` 抓得到「连接」）。行号是那条字面自己所在的行；
- *   这个数只进报错信息，不进判定。界面上的字收进了文案表：字面量是表里的键（`Text(copyText("键"))`）⇒ 换成那句 zh 再比。
- */
-internal fun textLiterals(source: String): List<Pair<Int, String>> =
-    KotlinSourceScanner.literalsInCallsTo(source, "Text").literals.map { it.line to CopyTableForTests.shown(it.body) }
+/** `terms.json` 里 `mobileFaces` 的一面。 */
+internal data class Face(
+    val name: String,
+    val dirs: List<String>,
+    val words: List<String>,
+    val ignoreCase: Boolean,
+    /** 还欠着的（键 · 词）。 */
+    val owed: Set<Pair<String, String>>,
+)
+
+/** 一面的判定：源码里出现的表键，zh（去掉占位符名）带禁词而不在欠账里的；欠账里写了却不再命中的。 */
+internal fun verdict(
+    face: Face,
+    sources: List<String>,
+    zhOf: (String) -> String?,
+): List<String> {
+    val keys = sources.flatMap { text -> KotlinSourceScanner.literalsOf(text).map { it.body } }.distinct()
+    val hits =
+        keys
+            .mapNotNull { k -> zhOf(k)?.let { k to it.replace(PLACEHOLDER, "") } }
+            .flatMap { (k, zh) -> face.words.filter { zh.contains(it, ignoreCase = face.ignoreCase) }.map { Triple(k, it, zh) } }
+    val fresh = hits.filter { (k, w, _) -> (k to w) !in face.owed }.map { (k, w, zh) -> "新命中 $k 「$w」：$zh" }
+    val stale = face.owed.filter { (k, w) -> hits.none { it.first == k && it.second == w } }.map { (k, w) -> "欠账已不命中 $k 「$w」" }
+    return fresh + stale
+}
+
+private val PLACEHOLDER = Regex("""\{[A-Za-z][A-Za-z0-9]*\}""")
+
+/** 手机界面禁词，读 `src/shared/copy/terms.json` 的 `mobileFaces`（词与射程只住那里）。 */
+internal object MobileFaceWords {
+    @Suppress("UNCHECKED_CAST")
+    val faces: List<Face> by lazy {
+        val terms =
+            generateSequence(File("").absoluteFile) { it.parentFile }
+                .map { File(it, "src/shared/copy/terms.json") }
+                .first { it.isFile }
+        val doc =
+            Moshi
+                .Builder()
+                .build()
+                .adapter(Any::class.java)
+                .fromJson(terms.readText()) as Map<String, Any?>
+        val list = (doc["mobileFaces"] as Map<String, Any?>?)?.get("faces") as List<Map<String, Any?>>? ?: emptyList()
+        list.map { f ->
+            Face(
+                name = f["name"] as String,
+                dirs = f["dirs"] as List<String>,
+                words = f["words"] as List<String>,
+                ignoreCase = f["ignoreCase"] as Boolean,
+                owed = (f["owed"] as List<Map<String, String>>).map { it.getValue("key") to it.getValue("word") }.toSet(),
+            )
+        }
+    }
+
+    /** 那一面的禁词（按名取）。 */
+    fun wordsOf(name: String): List<String> = faces.first { it.name == name }.words
+}
