@@ -2,6 +2,9 @@ use super::*;
 
 use std::sync::atomic::{AtomicUsize, Ordering as O};
 
+/// 提交那一条的线上名字：读入参类型上挂的那一个（生产段经后端那一侧读的也是它）。
+const COMMIT: &str = <cmd_wire::files::FilesCommitUploadReq as cmd_wire::Call>::NAME;
+
 fn p(name: &str) -> Pending {
     Pending {
         local_path: format!("/home/u/{name}"),
@@ -369,10 +372,10 @@ fn the_real_adapters_speak_only_through_the_channel() {
         "生产段只剩 {} 字节 —— 剥法把它剥没了，下面几条在空转",
         prod.len()
     );
-    // 提交那一条的名字从它的入参取（`cmd_wire::Call`），不再是字面量。
+    // 提交那一条经带类型的那一问说（名字从入参类型取，`cmd_wire::Call`），不写字面量（下面禁用名单里有它）。
     for needle in [
         "UploadItem {",
-        "FilesCommitUploadReq as cmd_wire::Call>::NAME",
+        "ask_typed(\n        line,\n        origin,\n        &p.commit_req(",
         "pub fn lanes()",
     ] {
         assert_eq!(
@@ -395,6 +398,7 @@ fn the_real_adapters_speak_only_through_the_channel() {
         "SESSION_CHANNEL_CAP",
         "RemoteConfig",
         "tauri::",
+        "\"files-commit-upload\"",
     ] {
         assert!(
             !prod.contains(banned),
@@ -526,7 +530,7 @@ impl comms_inward::chan::router::Backends for XferHost {
             .unwrap()
             .push(format!("{} {}", op.0, String::from_utf8_lossy(&payload.0)));
         self.log.lock().unwrap().push((op.0.clone(), args.clone()));
-        if op.0 == "files-commit-upload" {
+        if op.0 == COMMIT {
             let n = self
                 .commits
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -768,7 +772,7 @@ async fn an_opened_upload_watches_then_commits_with_the_answer_it_was_opened_wit
     let names: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
     assert_eq!(
         &names[..],
-        ["subscribe", "files-commit-upload"],
+        ["subscribe", COMMIT],
         "顺序不对（单子已在整组开单那一步开好，这里不再开单）：{names:?}"
     );
     assert_eq!(got[0].1, serde_json::json!("transfer/x-up"));
@@ -797,11 +801,11 @@ async fn a_commit_that_finds_a_bad_staging_part_restarts_once_and_says_so() {
         names,
         [
             "subscribe",
-            "files-commit-upload",
+            COMMIT,
             "files-home",
             "transfer-upload",
             "subscribe",
-            "files-commit-upload"
+            COMMIT
         ],
         "stale 之后不是「另开一张单、从头再走一遍」"
     );
@@ -821,10 +825,7 @@ async fn a_commit_that_finds_a_bad_staging_part_restarts_once_and_says_so() {
         .expect_err("一直对不上竟然成了");
     assert!(e.said.contains("对不上"), "原话没带回来：{e}");
     assert_eq!(
-        steps(&log)
-            .iter()
-            .filter(|s| *s == "files-commit-upload")
-            .count(),
+        steps(&log).iter().filter(|s| *s == COMMIT).count(),
         2,
         "一直 stale 却不止重一次（或一次都没重）"
     );
@@ -842,7 +843,7 @@ async fn a_failed_transfer_is_never_committed() {
     assert_eq!(e.detail, "原话：夹具原话", "复制详情没带回来：{e:?}");
     assert!(!e.said.contains("夹具原话"), "{e}");
     assert!(
-        !steps(&log).iter().any(|s| s == "files-commit-upload"),
+        !steps(&log).iter().any(|s| s == COMMIT),
         "传输失败了还去提交：{:?}",
         steps(&log)
     );
@@ -879,7 +880,7 @@ async fn pressing_cancel_stops_the_subscription_and_nothing_is_committed() {
     })
     .await
     .expect("对端没看见流被丢掉 —— 停订没送到（传输台那一侧就撤不了）");
-    assert!(!steps(&log).iter().any(|s| s == "files-commit-upload"));
+    assert!(!steps(&log).iter().any(|s| s == COMMIT));
 }
 
 /// ★ 下载两步：开单（远端路径 ＋ 本机落点）→ 订阅；**没有提交**（远端只读、不经后端）。
