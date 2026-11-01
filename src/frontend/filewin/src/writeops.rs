@@ -6,7 +6,7 @@
 //!
 //! 下面第一节讲的是「经池子那四条 SFTP 命令调下去」—— **那是上一版**。窗口成了独立进程、
 //! 后端写面（`files-mkdir` / `files-delete` / `files-rename` / `files-chmod`，F1 落的）上线之后，
-//! [`apply_remote`] 改成经 [`super::source::ask`] 说那四条命令：`root` ＝ 那一行所在的目录，
+//! [`apply_remote_coded`] 改成经 [`super::source::ask`] 说那四条命令：`root` ＝ 那一行所在的目录，
 //! `rel` ＝ 名字（后端路径解析按段判 `rel`）。
 //! ⚠ 下面讲池子那几节的每一句都当成**历史**读（`guard_write`、车道预算、池里那条连接）。
 //!
@@ -66,7 +66,7 @@
 //!
 //! # ⚠ **买不到**什么（逐条写明，别读宽）
 //!
-//! - **一趟真操作的读数买不到。** 本仓红线不许起真连接 ⇒ [`apply_remote`] 本机跑不到。
+//! - **一趟真操作的读数买不到。** 本仓红线不许起真连接 ⇒ [`apply_remote_coded`] 本机跑不到。
 //!   它买得到的是**委派**（调的是池那四条既有命令，而不是自己借会话）。
 //! - 🔴 **今天生产那一侧递进来的恒是 `N = 1`。** 窗口还**没有多选**
 //!   （把多选排在本节**之后**），一次手势只点得中一行。
@@ -81,9 +81,9 @@
 //!   （[`mode_readout`]），只有一项或各项相同时**预填**那个值（它是读回来的，不是猜的；用户直接点确认 = 原样不变）。
 //!   问不到 ⇒ 照旧空着开、说「读不到现在的权限」—— 不猜。
 //! - ✅~~多选只有删除~~：多选也给「权限」（一个框、一个八进制数、出 N 件、一次问完）。
-//! - ✅~~有损名一律不许写~~：带着原始字节（`Listed::raw_name`）的有损名能改名 · 删除 · 改权限（相对段发 b16）；
+//! - ✅~~有损名一律不许写~~：带着原始字节（`Listed::raw_name`）的有损名能改名 · 删除 · 改权限（相对段发原始字节）；
 //! 进有损名目录 · 复制 / 编辑 / 算大小有损名也做了（窗口发路径改走 `source::RemotePath`，
-//!   写面的根在有损目录里发字节 —— [`apply_remote_in`]）；**下载有损名**仍然做不到（SFTP 库按 UTF-8 有损解码文件名）。
+//!   写面的根在有损目录里发字节 —— [`apply_remote_coded`] 的 `root_raw`）；下载有损名经那台后端按字节读回（`lossy_pull`）。
 //! - 🔴**新建空文件：后端那一半有了，窗口这一半刻意没接。**
 //!   后端文件管理写面今天有 `files-create`（`O_EXCL` 新建，不给 `content` 就是空文件，
 //!   过路径解析；`src/doc/IPC-PROTOCOL.md` §10 那一节），另有
@@ -103,10 +103,7 @@ use super::source::{child_of, parent_dir, remote_basename, Line, Origin};
 
 use super::source::Listed;
 
-/// 行上／工具栏上那几颗按钮的字面。**唯一住址** —— 判据按同一个常量去找它画出来的字。
-pub static MKDIR_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.mkdir", &[]));
-/// 行上那颗「改名」。
+/// 行上那颗「改名」。**唯一住址** —— 判据按同一个常量去找它画出来的字。
 pub static RENAME_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.rename", &[]));
 /// 行上那颗「删除」。
@@ -125,22 +122,11 @@ pub static CHMOD_LABEL: std::sync::LazyLock<String> =
 /// 拿一个含 U+FFFD 的名字去删，删中的是**另一个**文件，或者什么都删不中。
 ///
 /// 🔴**有损名但带着原始字节**（[`Listed::raw_name`]，后端 `files-ls` 送的就是字节）
-/// ⇒ **能写**：发给后端的相对段走 `{"b16": …}`（[`rel_json`]），寻址的是那几个真字节，不是显示串。
+/// ⇒ **能写**：发给后端的相对段走原始字节（[`cmd_wire::files::WirePath`]），寻址的是那几个真字节，不是显示串。
 /// 此前这一档一律灰置 —— 乱码名的文件在窗口上改不了名、删不掉，而「改成一个读得出的名字」正是它最常要的那一下。
 ///
 pub fn is_writable(r: &Listed) -> bool {
     !r.lossy_name || r.raw_name.is_some()
-}
-
-/// 一个名字发给后端写面时的形状：有原始字节 ⇒ `{"b16": …}`；否则就是那个字符串。
-///
-/// 🔴 **有损名只许走字节那一支** —— 把显示串（含 U+FFFD）发过去就是对另一个名字动手；
-/// 这一条由 [`is_writable`] 在上游挡（有损而没有字节 ⇒ 不许写），这里不再兜第二份判定。
-pub fn rel_json(shown: &str, raw: Option<&[u8]>) -> serde_json::Value {
-    match raw {
-        Some(b) => serde_json::json!(cmd_wire::files::HexBytes(b.to_vec())),
-        None => serde_json::Value::String(shown.to_string()),
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -281,31 +267,6 @@ where
 // 生产适配器：**一行自己的写代码都没有**
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 真做一件 —— 经通道说后端写面那四条命令（`files-mkdir` / `-delete` / `-rename` / `-chmod`）。
-///
-/// 后端写面按「一个根 ＋ 一段相对名」收参。删 · 改权限的对象是当前目录的直接子项 ⇒ 「上一级 ＋ 尾段」；
-/// 新建 · 改名的名字原样交那台、带 `single: true`（合不合法、是不是一段由那台按它的平台判，不合 ⇒ 码 [`BAD_NAME`]）。
-///
-/// ⚠ 回来的 `Err` **原样**带出去（后端那句拒绝经 [`comms_inward::chan::said::said`] 翻成人话），由 [`WriteBoard::ui`] 画到窗口上。
-pub async fn apply_remote(line: &Line, origin: &Origin, op: &WriteOp) -> Result<(), String> {
-    apply_remote_in(line, origin, op, None).await
-}
-
-/// 〔「有损名…整条寻址链要换成字节」〕同 [`apply_remote`]，但**根**由调用方给字节：
-/// 窗口的当前目录不是合法 UTF-8 时（`root_raw = Some`），`root` 发 `{"b16": …}`（写操作的对象恒是当前目录的直接子项，
-/// 根就是当前目录）；`None` ⇒ 与 [`apply_remote`] 逐字节同。
-pub async fn apply_remote_in(
-    line: &Line,
-    origin: &Origin,
-    op: &WriteOp,
-    root_raw: Option<&[u8]>,
-) -> Result<(), String> {
-    apply_remote_coded(line, origin, op, root_raw)
-        .await
-        .map(|_| ())
-        .map_err(|f| f.said)
-}
-
 /// 写面一件交回来的那一份（按命令的回包类型解好的）：改权限的 `before` 撤销要用。
 #[derive(Clone, Debug, PartialEq)]
 pub enum Applied {
@@ -325,8 +286,15 @@ fn rel_wire(shown: &str, raw: Option<&[u8]>) -> cmd_wire::files::WirePath {
     }
 }
 
-/// 同 [`apply_remote_in`]，但交回**最后一趟的应答**（改权限的 `before` 撤销要用）与对端的码
-/// （就地改名 / 新建据 `exists` 在那一格下面说「已存在」）。
+/// 真做一件 —— 经通道说后端写面那四条命令（`files-mkdir` / `-delete` / `-rename` / `-chmod`）。
+///
+/// 后端写面按「一个根 ＋ 一段相对名」收参。删 · 改权限的对象是当前目录的直接子项 ⇒ 「上一级 ＋ 尾段」；
+/// 新建 · 改名的名字原样交那台、带 `single: true`（合不合法、是不是一段由那台按它的平台判，不合 ⇒ 码 `bad_name`）。
+/// 根：窗口的当前目录不是合法 UTF-8 时（`root_raw = Some`）由调用方给字节（写操作的对象恒是当前目录的直接子项，
+/// 根就是当前目录）；`None` ⇒ 按显示串发。
+///
+/// 交回**最后一趟的应答**（改权限的 `before` 撤销要用）与对端的码（就地改名 / 新建据 `exists` 在那一格下面说「已存在」）。
+/// ⚠ 回来的 `Err` **原样**带出去（后端那句拒绝经 [`comms_inward::chan::said::said`] 翻成人话），由 [`WriteBoard::ui`] 画到窗口上。
 pub async fn apply_remote_coded(
     line: &Line,
     origin: &Origin,
@@ -564,10 +532,6 @@ pub const WRITE_BUDGET: std::time::Duration = std::time::Duration::from_secs(20)
 /// 就地改名 / 新建据它在那一格下面说「x 已存在」，不把系统那句长话搬上来。
 pub const EXISTS: &str = "exists";
 
-/// 后端写面「这个名字在那台不能用」那个码（后端 `files/write.rs::BAD_NAME`，判据读两侧源码钉相等）：
-/// 那一格下面照登后端那一句（哪条规则、哪个字），界面不另写一份名字规则。
-pub const BAD_NAME: &str = "bad_name";
-
 /// 删除那一问最多列几项（其余写「另外 n 项」）。
 pub const DELETE_LIST_MAX: usize = 8;
 
@@ -662,12 +626,8 @@ impl WritePrompt {
         }
     }
 
-    /// 改权限那个框 —— 摆出来时**空着**；现值由 [`ModeProbe`] 逐项问回来之后再说、再预填（[`mode_readout`]）。
-    pub fn for_chmod(dir: &str, r: &Listed) -> Self {
-        Self::for_chmod_many(dir, &[r])
-    }
-
-    /// **批量改权限**那个框：N 项共用一个八进制数，出 N 件，走「一次问完」。
+    /// **改权限**那个框（一项或多项）：N 项共用一个八进制数，出 N 件，走「一次问完」。
+    /// 摆出来时**空着**；现值由 [`ModeProbe`] 逐项问回来之后再说、再预填（[`mode_readout`]）。
     ///
     /// ⚠ 空摞 ⇒ 一个 `targets` 为空的框（[`Self::to_ops`] 会拒它，不会出零件却说「做完了」）。
     pub fn for_chmod_many(dir: &str, rows: &[&Listed]) -> Self {
@@ -914,7 +874,7 @@ pub fn grid_text(g: &[Option<bool>; 9]) -> Option<String> {
     (mask == 0o777).then(|| format!("{want:03o}"))
 }
 
-/// 框里敲的名字：去掉两头空白。合不合法由那台判（写面带 `single`，不合 ⇒ [`BAD_NAME`]），这里不另写规则。
+/// 框里敲的名字：去掉两头空白。合不合法由那台判（写面带 `single`，不合 ⇒ 码 `bad_name`，那一格下面照登那台那一句），这里不另写规则。
 ///
 /// 「新建空文件」（[`super::create`]）问的也是这一个函数。
 pub(super) fn clean_name(t: &str) -> String {
@@ -1087,7 +1047,8 @@ struct Board {
     ticks: Vec<bool>,
     /// 答复往哪儿送。
     answer: Option<tokio::sync::oneshot::Sender<Vec<WriteOp>>>,
-    /// 上一趟的结果（**画在窗口上**，不是 `println!`）。
+    /// 上一趟的结果（只给判据读；窗口上画的是 `receipt`）。
+    #[cfg(test)]
     last: Option<WriteOutcome>,
     /// 删除那一问每一项右端那一格（路径 → (图标, 「文件夹」/ 大小)）：调用方摆问题之前交来（[`WriteBoard::describe`]）。
     shown: std::collections::HashMap<String, (&'static str, String)>,
@@ -1212,11 +1173,6 @@ impl WriteBoard {
         !self.inner.lock().unwrap().asking.is_empty()
     }
 
-    /// 正摆着的那几件（判据用）。
-    pub fn asking(&self) -> Vec<WriteOp> {
-        self.inner.lock().unwrap().asking.clone()
-    }
-
     /// 把窗口交给它，好让它在有事发生时敲一下。
     pub fn attach(&self, ctx: Option<egui::Context>) {
         *self.ctx.lock().unwrap() = ctx;
@@ -1229,11 +1185,7 @@ impl WriteBoard {
         }
     }
 
-    pub fn finish(&self, outcome: WriteOutcome) {
-        self.finish_with(outcome, Vec::new(), Vec::new(), true);
-    }
-
-    /// 同 [`Self::finish`]，另交做成了的那几件与撤销它们的那几件；`quiet` ⇒ 这一趟是撤销本身，不再出回执。
+    /// 一趟落地：结果 ＋ 做成了的那几件与撤销它们的那几件；`quiet` ⇒ 这一趟是撤销本身，不再出回执。
     pub fn finish_with(
         &self,
         outcome: WriteOutcome,
@@ -1256,7 +1208,8 @@ impl WriteBoard {
             b.done = done;
             b.undo = undo;
             b.quiet = quiet;
-            b.last = Some(outcome);
+            #[cfg(test)]
+            let _ = b.last.replace(outcome);
         }
         self.rounds.fetch_add(1, Ordering::SeqCst);
         self.poke();
@@ -1278,10 +1231,6 @@ impl WriteBoard {
 
     pub fn rounds(&self) -> u64 {
         self.rounds.load(Ordering::SeqCst)
-    }
-
-    pub fn last(&self) -> Option<WriteOutcome> {
-        self.inner.lock().unwrap().last.clone()
     }
 
     /// 人点了「做勾上的」/「都别做」—— 把答复送出去，问题收掉。
