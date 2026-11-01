@@ -667,10 +667,8 @@ fn feed(kind: &str, t: &mut Open, v: &Value, beat: &Beat, line: u64) {
             if let Some(said) = beat.said() {
                 use crate::agents::Speaker;
                 match &said.speaker {
-                    Speaker::TaskNotification {
-                        task_id, status, ..
-                    } => {
-                        let failed = status.as_deref() == Some("failed");
+                    Speaker::TaskNotification { task_id, end, .. } => {
+                        let failed = *end == Some(cmd_wire::record::TaskEnd::Failed);
                         if failed && it.fail.is_none() {
                             it.fail = it.uuid.clone().map(|uuid| FailAt {
                                 uuid,

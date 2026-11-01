@@ -382,6 +382,8 @@ import type { TerminalInputReq } from "./TerminalInputReq";
 import type { TerminalPreviewReq } from "./TerminalPreviewReq";
 import type { TerminalSshReq } from "./TerminalSshReq";
 import type { TerminalsBoard } from "./TerminalsBoard";
+import type { TerminalsEndReply } from "./TerminalsEndReply";
+import type { TerminalsEndReq } from "./TerminalsEndReq";
 import type { TerminalsList } from "./TerminalsList";
 import type { TerminalsListReq } from "./TerminalsListReq";
 import type { TransferCopyReq } from "./TransferCopyReq";
@@ -623,6 +625,7 @@ export interface TypedCommands {
   "terminal-unfollow": { req: UnfollowReq; reply: null; code: "bad_args" };
   "terminals-board": { req: BoardReq; reply: TerminalsBoard; code: "bad_args" };
   "terminals-board-here": { req: BoardHereReq; reply: BoardHere; code: "bad_args" | "unobservable" | "child_timed_out" };
+  "terminals-end": { req: TerminalsEndReq; reply: TerminalsEndReply; code: "bad_args" };
   "terminals-list": { req: TerminalsListReq; reply: TerminalsList; code: "bad_args" | "unobservable" | "child_timed_out" };
   "transfer-copy": { req: TransferCopyReq; reply: BatchReply; code: "bad_args" | "exists" | "unreachable" | "sftp_home_mismatch" };
   "transfer-download": { req: TransferDownloadReq; reply: TransferOpened; code: "bad_args" | "refused" | "exists" };

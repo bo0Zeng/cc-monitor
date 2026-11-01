@@ -447,6 +447,12 @@
       "zh": "{name} 的 {item} 是独立文件非共享链接 · 未动\n要共享先把内容合进共享库再删它",
       "args": ["name", "item"]
     },
+    "beAcctPlan.repair.liftBusy": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{name} 有会话在跑 · {item} 本轮不挪，会话停止后再修",
+      "args": ["name", "item"]
+    },
     "beAcctPlan.repair.skipMissing": {
       "kind": "body",
       "role": "说明",
@@ -3958,6 +3964,121 @@
       "zh": "结束",
       "args": []
     },
+    "tabBatch.verb.start": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "恢复",
+      "args": []
+    },
+    "tabBatch.verb.startTmux": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "在 tmux 里恢复",
+      "args": [],
+      "limited": [
+        "tmux"
+      ]
+    },
+    "tabBatch.verb.startWindow": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "在终端窗口里恢复",
+      "args": []
+    },
+    "tabBatch.verb.hide": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "隐藏",
+      "args": []
+    },
+    "tabBatch.verb.unhide": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "取消隐藏",
+      "args": []
+    },
+    "tabBatch.verb.clearHide": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "撤销隐藏",
+      "args": []
+    },
+    "tabBatch.verb.pin": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "固定",
+      "args": []
+    },
+    "tabBatch.verb.unpin": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "取消固定",
+      "args": []
+    },
+    "tabBatch.one.resumed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已恢复「{title}」",
+      "args": [
+        "title"
+      ]
+    },
+    "tabBatch.one.resumeFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "恢复失败 · {title}",
+      "args": [
+        "title"
+      ]
+    },
+    "tabBatch.one.unhidden": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已取消隐藏「{title}」",
+      "args": [
+        "title"
+      ]
+    },
+    "tabBatch.one.hideUndone": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已撤销隐藏「{title}」",
+      "args": [
+        "title"
+      ]
+    },
+    "tabBatch.one.hideUndoFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "撤销隐藏失败 · {title}",
+      "args": [
+        "title"
+      ]
+    },
+    "tabBatch.one.pinned": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已固定「{title}」",
+      "args": [
+        "title"
+      ]
+    },
+    "tabBatch.one.pinFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "固定失败 · {title}",
+      "args": [
+        "title"
+      ]
+    },
+    "tabBatch.one.unpinFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "取消固定失败 · {title}",
+      "args": [
+        "title"
+      ]
+    },
     "tabBatch.menu.head": {
       "kind": "title",
       "role": "标题",
@@ -4048,49 +4169,6 @@
       "role": "按钮",
       "zh": "结束（{n}）",
       "args": ["n"]
-    },
-    "tabBatch.action.startTmux": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已在 tmux 里恢复",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "tabBatch.action.startWindow": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已各开一个终端恢复",
-      "args": []
-    },
-    "tabBatch.action.pin": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已固定",
-      "args": []
-    },
-    "tabBatch.action.unpin": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已取消固定",
-      "args": []
-    },
-    "tabBatch.action.close": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已关闭",
-      "args": []
-    },
-    "tabBatch.action.hide": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已隐藏",
-      "args": []
-    },
-    "tabBatch.action.unhide": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已取消隐藏",
-      "args": []
     },
     "tabBatch.result.skippedLine": {
       "kind": "body",
@@ -9364,12 +9442,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "传输未交回校验值 · 无法比对 · 未写入目标 · 重开 app 再传",
-      "args": []
-    },
-    "rsFilewinTransfer.label.cancel": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "取消传输",
       "args": []
     },
     "beFilesWrite.name.empty": {
@@ -25795,30 +25867,6 @@
       "zh": "各会话当前轮次",
       "args": []
     },
-    "tabBatch.result.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "{action} {done}",
-      "args": ["action", "done"]
-    },
-    "tabBatch.result.someFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{action} {done} · 失败 ×{failed}",
-      "args": ["action", "done", "failed"]
-    },
-    "sessionState.batch.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已结束 {done}",
-      "args": ["done"]
-    },
-    "sessionState.batch.someFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "已结束 {done} · 失败 ×{failed}",
-      "args": ["done", "failed"]
-    },
     "statusBar.todo.label": {
       "kind": "action",
       "role": "按钮",
@@ -26039,12 +26087,6 @@
       "role": "toast",
       "zh": "已隐藏「{title}」",
       "args": ["title"]
-    },
-    "tabBar.hide.doneMany": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已隐藏 ×{n}",
-      "args": ["n"]
     },
     "tabBar.hide.failed": {
       "kind": "error",

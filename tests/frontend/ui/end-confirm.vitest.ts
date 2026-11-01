@@ -1,6 +1,6 @@
 /**
  * 结束会话只有一个确认框（A2-17-12-3）：右键 · 多选 · 终端名单 · 起会话占位交出去的都是 `endConfirm` 那一份；
- * 结局一种说法（一条点名那一条 · 几条「已结束 k · 失败 ×m」＋［查看］逐条）。
+ * 结局一种说法：本机后端合好的那一句 ＋［查看］逐条，界面照摆。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -9,15 +9,17 @@ vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast
 vi.mock("../../../src/frontend/ui/status-messages", () => ({ showMessage: vi.fn() }));
 vi.mock("../../../src/frontend/ui/terminal-reads", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/terminal-reads")>()),
-  endTerminal: vi.fn(async () => undefined),
+  endTerminals: vi.fn(async () => ({ results: [], said: "S-结束 2 项", failed: false, lines: [], copyDetail: "" })),
 }));
 
-import { endConfirm, sayEnded, sayReply, sayRows } from "../../../src/frontend/ui/end-confirm";
+import { endConfirm, sayReply } from "../../../src/frontend/ui/end-confirm";
 import { endRows } from "../../../src/frontend/ui/terminals-board-reads";
-import { endTerminal } from "../../../src/frontend/ui/terminal-reads";
+import { endTerminals } from "../../../src/frontend/ui/terminal-reads";
 import { toast, undoToast } from "../../../src/frontend/ui/kit/toast";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { BoardRow } from "../../../src/frontend/ui/generated/BoardRow";
+import { productionTsFiles } from "../../test-support/production-sources";
+import { stripComments } from "../../test-support/strip-comments";
 
 const row = (key: string, title: string): BoardRow => ({ key, terminal: `h-${key}`, title }) as unknown as BoardRow;
 
@@ -38,58 +40,44 @@ describe("结束会话的确认框", () => {
     });
   });
 
-  it("★ 终端名单「结束所选」开的就是这个框；结局照一批那一种说", async () => {
+  it("★ 终端名单「结束所选」开的就是这个框；交出去的是那几行的句柄，结局照回包那一句说；不确认 ⇒ 一行不动", async () => {
     const ask = vi.fn(async () => true);
     await endRows([{ origin: "devbox", row: row("a", "甲") }, { origin: "devbox", row: row("b", "乙") }], ask);
     expect(ask.mock.calls).toEqual([[endConfirm(["甲", "乙"])]]);
-    expect(vi.mocked(endTerminal).mock.calls).toEqual([
-      ["devbox", { terminal: "h-a" }, "甲"],
-      ["devbox", { terminal: "h-b" }, "乙"],
+    expect(vi.mocked(endTerminals).mock.calls).toEqual([
+      [
+        [
+          { machine: "devbox", terminal: "h-a" },
+          { machine: "devbox", terminal: "h-b" },
+        ],
+      ],
     ]);
-    expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toBe(copyText("sessionState.batch.done", { done: 2 }));
-  });
-
-  it("终端名单：一行没结束 ⇒ 汇总写失败几个，逐条写那台那一句；不确认 ⇒ 一行不动", async () => {
-    vi.mocked(endTerminal).mockRejectedValueOnce(new Error("不在名单"));
-    await endRows([{ origin: "devbox", row: row("a", "甲") }, { origin: "devbox", row: row("b", "乙") }], async () => true);
-    const [head, , opts] = vi.mocked(toast).mock.calls.at(-1) as [string, string, { more?: string[] }];
-    expect(head).toBe(copyText("sessionState.batch.someFailed", { done: 1, failed: 1 }));
-    expect(opts.more).toEqual([copyText("tabBatch.result.failedLine", { title: "甲", why: "不在名单" })]);
-    vi.mocked(endTerminal).mockClear();
+    expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toBe("S-结束 2 项");
+    vi.mocked(endTerminals).mockClear();
     await endRows([{ origin: "devbox", row: row("a", "甲") }], async () => false);
-    expect(endTerminal).not.toHaveBeenCalled();
-  });
-
-  it("只有一条 ⇒ 点名那一条（成 · 没成）", () => {
-    sayEnded([{ title: "甲", outcome: "done", why: "" }]);
-    expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toBe(copyText("sessionState.kill.done", { title: "甲" }));
-    sayEnded([{ title: "甲", outcome: "failed", why: "那台说的", detail: "d" }]);
-    expect(vi.mocked(toast).mock.calls.at(-1)).toEqual([copyText("tabSessionActions.kill.failed", { title: "甲" }), "那台说的", { detail: "d" }]);
+    expect(endTerminals).not.toHaveBeenCalled();
   });
 });
 
-describe("一批的结局带［撤销］（批量隐藏 · 取消隐藏，A2-17-7-3-1）", () => {
-  const rows = [
-    { title: "甲", outcome: "done" as const, why: "" },
-    { title: "乙", outcome: "failed" as const, why: "那台拒了", detail: "详情-乙" },
-  ];
-  it("★ 给了撤销且有成了的 ⇒ 同一条上［撤销］［查看］：汇总照 head，没成的逐条进「消息」，不另出一条", () => {
+describe("一批的回包带［撤销］（批量隐藏，A2-17-7-3-1）", () => {
+  const reply = { results: [], said: "S-隐藏 2 项 · 完成 1 · 失败 ×1", failed: true, lines: ["L-乙"], copyDetail: "D-乙" };
+  it("★ 给了撤销 ⇒ 同一条上［撤销］［查看］：标题是回包那一句，逐条进「消息」，不另出一条", () => {
     const run = vi.fn();
     const settle = vi.fn();
-    sayRows(rows, (done, failed) => `动作 ${done} · 失败 ×${failed}`, { run, settle });
+    sayReply(reply, { run, settle });
     expect(toast).not.toHaveBeenCalled();
     expect(undoToast).toHaveBeenCalledTimes(1);
     const [title, undo, commit, opts] = vi.mocked(undoToast).mock.calls[0];
-    expect(title).toBe("动作 1 · 失败 ×1");
+    expect(title).toBe(reply.said);
     expect(undo).toBe(run);
     expect(commit).toBe(settle);
     expect(opts?.level).toBe("error");
-    expect(opts?.more).toEqual([copyText("tabBatch.result.failedLine", { title: "乙", why: "那台拒了" })]);
+    expect(opts?.more).toEqual(["L-乙"]);
     expect((opts?.action as { label: string } | undefined)?.label).toBe(copyText("tabBatch.result.view"));
-    expect(opts?.detail).toBe("那台拒了\n详情-乙");
+    expect(opts?.detail).toBe("D-乙");
   });
-  it("一个都没成 ⇒ 没有可撤的，照旧那一条（不出［撤销］）", () => {
-    sayRows([rows[1]], (done, failed) => `动作 ${done} · 失败 ×${failed}`, { run: vi.fn(), settle: vi.fn() });
+  it("没给撤销 ⇒ 照旧那一条（不出［撤销］）", () => {
+    sayReply(reply);
     expect(undoToast).not.toHaveBeenCalled();
     expect(toast).toHaveBeenCalledTimes(1);
   });
@@ -113,5 +101,16 @@ describe("一批会话的回包照摆（`sessions-batch`：那一句 · 逐条 �
     const [, , opts] = vi.mocked(toast).mock.calls[0];
     expect(opts?.level).toBe("success");
     expect(opts?.action).toBeUndefined();
+  });
+});
+
+describe("界面不再自己数一批的结局（会话照 `sessions-batch`、终端照 `terminals-end` 的回包）", () => {
+  it("★ src/frontend/ui 底下没有 sayRows · batchHead · sayBatch · callStop · sayEnded · EndRow 的定义与调用", () => {
+    const gone = ["sayRows", "batchHead", "sayBatch", "callStop", "sayEnded", "EndRow"];
+    const hits = productionTsFiles("src/frontend/ui").flatMap(({ file, text }) => {
+      const code = stripComments(text, "ts");
+      return gone.filter((name) => new RegExp(`\\b${name}\\b`).test(code)).map((name) => `${file}: ${name}`);
+    });
+    expect(hits).toEqual([]);
   });
 });

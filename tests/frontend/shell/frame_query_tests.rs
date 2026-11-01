@@ -263,14 +263,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("rotation-strategy-rename", "typed 帧命令：改文件名（指着它的会话一起改过去）"),
     ("rotation-strategy-delete", "typed 帧命令：删一份策略（有会话在用由后端拒）"),
     ("rotation-strategy-tz", "typed 帧命令：给策略设时区（只重写设置块里的 tz · 版本冲突由后端判）"),
-    // tab 栏多选的批量停（`src/frontend/ui/tab-batch-run.ts`）：一台一次、那台逐个判逐个答，monitor 从没有过这条命令。
+    // tab 栏单个菜单（`src/frontend/ui/sessions-where.ts`）：一台一次、那台逐个判逐个答，monitor 从没有过这条命令。
     (
         "sessions-where",
         "新帧命令：这几个会话各在哪个 tmux 会话里（单个菜单亮哪几项 · 重启切换 · 分叉都问它），判在那台后端",
-    ),
-    (
-        "sessions-stop",
-        "新帧命令：每一个同单个「杀死会话」（恰一个带着它的 tmux 会话才杀，门在那台后端），判在那台后端",
     ),
     // 设置「扩展」页（`src/frontend/ui/ext-reads.ts`）：表 · 装（本机后端当枢纽）· 卸（问被卸那台），判定全在后端。
     (
@@ -672,9 +668,9 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          `src/frontend/ui/terminal-reads.ts`（终端页 `terminal-page.ts` 调它）",
     ),
     (
-        "terminal-end",
-        "结束名单里的一个终端（两种宿主同一条，身份门 ＋ 窗口门在后端先过、对句柄下手）；界面 `src/frontend/ui/terminal-reads.ts::endTerminal` 交句柄或会话 ID，\
-         被拒照后端那一句说",
+        "terminals-end",
+        "结束一批终端跨几台（两种宿主同一条，身份门 ＋ 窗口门在各台先过、对句柄下手）：本机后端 `faces/terminals_end_face.rs` 按台分组、合好那一句；\
+         界面 `src/frontend/ui/terminal-reads.ts::endTerminals` 交一条、`end-confirm.ts::sayReply` 照摆",
     ),
     (
         "terminal-take-input",

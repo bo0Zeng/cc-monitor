@@ -2,10 +2,8 @@
 // 夹具故意让原始时刻与钟面对不上（原始是 UTC 02:01，钟面写 17:45）：界面若还在自己换算，这几条就红。
 import { describe, it, expect } from "vitest";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
-import { buildNoticeLine, mergeNotice } from "../../../../src/frontend/ui/cards/speaker-bar";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
-import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const ctx = () => ({ parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: false });
 const AT = "2026-10-06T02:01:00.000Z";
@@ -19,13 +17,5 @@ describe("卡上的时刻照抄后端写好的钟面", () => {
       if (r.kind !== "card") throw new Error(r.kind);
       expect(r.element.querySelector(".card-header .ts")?.textContent).toBe(want);
     }
-  });
-
-  it("相邻的后台通知并成一条：时段按时刻排先后、写的是各自的钟面", () => {
-    const sp = { kind: "taskNotification", status: "completed", summary: "x" } as never;
-    const late = buildNoticeLine(sp, "2026-10-06T02:09:00.000Z", "18:09");
-    const early = buildNoticeLine(sp, "2026-10-06T02:03:00.000Z", "18:03");
-    mergeNotice(late as HTMLDetailsElement, early as HTMLDetailsElement);
-    expect(late.querySelector(".notice-head")?.textContent).toBe(copyText("speaker.notice.many", { n: 2, span: "18:03–18:09", fail: "" }));
   });
 });

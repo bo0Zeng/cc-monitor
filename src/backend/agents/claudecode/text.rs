@@ -308,13 +308,28 @@ pub(crate) fn task_notice(text: &str) -> Option<Notice> {
     })
 }
 
+impl Notice {
+    /// 怎么收场的：这一家的状态词只在这里翻（运行表 `runs.rs::notice` 与记录成品都照它）；认不出 · 没写 ⇒ `None`。
+    pub(crate) fn end(&self) -> Option<cmd_wire::record::TaskEnd> {
+        use cmd_wire::record::TaskEnd;
+        match self.status.as_deref()? {
+            "completed" => Some(TaskEnd::Done),
+            "failed" => Some(TaskEnd::Failed),
+            "killed" | "stopped" => Some(TaskEnd::Stopped),
+            _ => None,
+        }
+    }
+}
+
 fn notice(raw: &str) -> Speaker {
     let n = task_notice(raw).unwrap_or_default();
     Speaker::TaskNotification {
+        end: n.end(),
         task_id: n.task_id,
         status: n.status,
         summary: n.summary,
         tool_use_id: n.tool_use_id,
+        row: None,
     }
 }
 

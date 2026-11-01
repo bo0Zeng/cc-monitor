@@ -1,4 +1,4 @@
-//! 命令表 · 终端与会话：`terminal-*`（含实时预览三条）· `terminals-list` · `session-window` · `session-terminals` · `launch*` · `terminal-end` · `sessions-*` · 监控板那两条。
+//! 命令表 · 终端与会话：`terminal-*`（含实时预览三条）· `terminals-list` · `session-window` · `session-terminals` · `launch*` · `terminal-end` · `terminals-end` · `sessions-*` · 监控板那两条。
 
 use crate::wire::spec::CommandSpec;
 
@@ -32,6 +32,11 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     crate::wire::typed::asynchronous::<crate::faces::terminals_board_face::TerminalsBoardCmd>(
         "「终端」视图那张名单（问到各台、合成一份：每台一组 · 筛选四格的数）",
+    ),
+    // 终端名单「结束所选」· 起会话占位［结束］那一批（`faces/terminals_end_face.rs`）：按台分组，本机那一组同进程逐项走 `terminal-end` 的本体，
+    //   别的台经常驻问它自己那一组；逐条照原序、合好那一句（同结束一批会话那一句）。异步档。
+    crate::wire::typed::asynchronous::<crate::faces::terminals_end_face::TerminalsEndCmd>(
+        "结束一批终端跨几台（按台分组做、照原序合好那一句）",
     ),
     // 监控板（`faces/monitor_board_face.rs`）：这台那几条会话的序 · 活不活 · 在跑几个（只读进程里那两本）；
     //   本机后端问到各台合成一份（别的台经常驻问 `monitor-board-here`，没答的那一组带那台离线那一句）。
@@ -85,7 +90,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::session_batch_face::SessionsStop>(
         "停一批会话（逐个答，一个不成不挡下一个）",
     ),
-    // 一批会话跨几台（`faces/sessions_batch_face.rs`）：本机那一组同进程停，别的台经常驻问它自己那一组；逐条照原序、合好那一句。异步档。
+    // 一批会话跨几台（`faces/sessions_batch_face.rs`）：停 · 起 · 隐藏 · 固定，本机那一组同进程做，别的台经常驻问它自己那一组；逐条照原序、合好那一句。异步档。
     crate::wire::typed::asynchronous::<crate::faces::sessions_batch_face::SessionsBatchCmd>(
         "一批会话跨几台（按台分组做、照原序合好那一句）",
     ),

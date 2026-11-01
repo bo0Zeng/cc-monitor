@@ -136,17 +136,18 @@ vi.mock("../../../src/frontend/ui/cards", () => ({
 }));
 vi.mock("../../../src/frontend/ui/cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn(), failToast: vi.fn(), silentUndo: vi.fn(), noteMessage: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn(), failToast: vi.fn(), silentUndo: vi.fn(), noteMessage: vi.fn(), recentToasts: vi.fn(() => []) }));
 // 恢复交那台（`session-open`）：这里换成 spy，判的是交了什么；那台怎么判住后端判据，发 · 说 · 开窗住 `session-open.vitest.ts`。
 vi.mock("../../../src/frontend/ui/session-open", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/session-open")>()),
   openSession: vi.fn().mockResolvedValue(true),
 }));
-// 单个菜单的「杀」交那台（`sessions-stop`，与批量同一条）：这里换成 spy，
-//   判的是单个那一侧交了什么、拿到回答之后做什么；那台怎么判住后端判据（`session_batch_tests.rs`），交法住 `tab-batch-run.vitest.ts`。
+// 单个菜单的「杀」交本机后端一项的那一批（`sessions-batch`，与批量同一条）：这里换成 spy，
+//   判的是单个那一侧交了什么、拿到回包之后做什么；合那一句住后端判据（`sessions_batch_face_tests.rs`），交法住 `tab-batch-run.vitest.ts`。
+const ONE_DONE = vi.hoisted(() => ({ results: [], said: "S-已结束", failed: false, lines: [] as string[], copyDetail: "", windows: [] }));
 vi.mock("../../../src/frontend/ui/tab-batch-run", async (orig) => {
   const real = await orig<typeof import("../../../src/frontend/ui/tab-batch-run")>();
-  return { ...real, callStop: vi.fn() };
+  return { ...real, askSessions: vi.fn(async () => ONE_DONE) };
 });
 // ↗ 浮层［更新］就地部署：部署那一处住共用模块（`backend-deploy.ts`，它自己的判据住 `backend-deploy.vitest.ts`），这里换成 spy，判的是浮层接上它、就地说过程与结局。
 vi.mock("../../../src/frontend/ui/backend-deploy", () => ({ updateBackendOf: vi.fn() }));
@@ -176,7 +177,7 @@ import { failToast, noteMessage, silentUndo, toast as showActionFailureToast, un
 import { __setHostFactsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
 import { openSession } from "../../../src/frontend/ui/session-open";
 import { pickAsk } from "../../../src/frontend/ui/resume-menu";
-import { callStop } from "../../../src/frontend/ui/tab-batch-run";
+import { askSessions } from "../../../src/frontend/ui/tab-batch-run";
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
 import * as startupPerf from "../../../src/frontend/ui/startup-perf";
 import { DWELL_MS, DWELL_MOVE_PX, type DropTarget } from "../../../src/frontend/ui/tab-drop";
@@ -1812,7 +1813,7 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
 const flushMicro = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 
-describe("auto-e2e F-E4 可注入 confirm seam（endSession：交那台 sessions-stop，与批量同一条；那台那一项走 terminal-end）", () => {
+describe("auto-e2e F-E4 可注入 confirm seam（endSession：交本机一项的 sessions-batch，与批量同一条；那台那一项走 terminal-end）", () => {
   let tm: TabManager;
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1822,8 +1823,8 @@ describe("auto-e2e F-E4 可注入 confirm seam（endSession：交那台 sessions
     await Promise.resolve();
     await Promise.resolve();
   };
-  // 单个杀交那台一个 sid 的一批（`sessions-stop`；那台按 sid 认出是哪个、过三道门）⇒ 这里数交了几发、交的是哪个 sid。
-  const killCalls = (): unknown[] => vi.mocked(callStop).mock.calls;
+  // 单个杀交本机一项的那一批（`sessions-batch`；那台按 sid 认出是哪个、过三道门）⇒ 这里数交了几发、交的是哪一项。
+  const killCalls = (): unknown[] => vi.mocked(askSessions).mock.calls;
 
   it("endSession 默认（不传 opts）→ 弹应用内对话框；答之前不杀，答「取消」⇒ 不杀", async () => {
     const confirmSpy = vi.spyOn(window, "confirm");
@@ -1843,7 +1844,7 @@ describe("auto-e2e F-E4 可注入 confirm seam（endSession：交那台 sessions
     await microFlush();
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(killCalls()).toHaveLength(1);
-    expect(killCalls()[0]).toEqual(["hostA", ["s1"]]);
+    expect(killCalls()[0]).toEqual(["stop", [{ machine: "hostA", sid: "s1" }]]);
     confirmSpy.mockRestore();
   });
 
@@ -1871,31 +1872,48 @@ describe("auto-e2e F-E4 可注入 confirm seam（endSession：交那台 sessions
   });
 });
 
-describe("F79 杀死会话（二次确认 ＋ 交那台 sessions-stop）", () => {
+describe("F79 杀死会话（二次确认 ＋ 交本机一项的 sessions-batch）", () => {
   beforeEach(() => vi.clearAllMocks());
-  it("二次确认通过 → 交那台这一个 sid（变已结束由会话流兜、不主动 archive）；杀成了说杀的是哪个", async () => {
-    vi.mocked(callStop).mockResolvedValue([{ sid: "s1", outcome: "done", why: null, detail: "", session: "cc-abc", bus: { removed: [], failed: [], unread: null }, cmd: null }] as never);
+  it("★ 二次确认通过 → 只发一发、发给本机后端那一批（一项带那台的机器名）；toast 照回包那一句（变已结束由会话流兜）", async () => {
+    vi.mocked(askSessions).mockResolvedValueOnce(ONE_DONE as never);
     const tm = home(makeTM()).actions;
     tm.endSession("hostA", "s1", "cc-abc");
     await answerAskDialog(true);
     await new Promise((r) => setTimeout(r, 0));
-    expect(vi.mocked(callStop).mock.calls).toEqual([["hostA", ["s1"]]]);
-    expect(vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[0]).toBe(copyText("sessionState.kill.done", { title: "cc-abc" }));
+    expect(vi.mocked(askSessions).mock.calls).toEqual([["stop", [{ machine: "hostA", sid: "s1" }]]]);
+    expect(vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[0]).toBe("S-已结束");
   });
   it("二次确认取消 → 不交", async () => {
     const tm = home(makeTM()).actions;
     tm.endSession("hostA", "s1", "cc-abc");
     await answerAskDialog(false);
-    expect(callStop).not.toHaveBeenCalled();
+    expect(askSessions).not.toHaveBeenCalled();
   });
-  it("那台没杀（关卡拒 / 不在 tmux 里）⇒ 说那台的原因；关卡 2 拒的 ⇒ 提示带「对齐后重试」", async () => {
-    vi.mocked(callStop).mockResolvedValue([{ sid: "s1", outcome: "failed", why: "wrong_owner", detail: "x", session: "cc-abc", bus: null, cmd: null }] as never);
+  it("那台没杀、码是关卡 2 拒的（wrong_owner）⇒ 提示带「对齐后重试」，那一句照回包那一项", async () => {
+    const one = { machine: "hostA", sid: "s1", outcome: "failed", why: "wrong_owner", said: "不是这一端起的", copyDetail: "x", title: "cc-abc", session: null };
+    vi.mocked(askSessions).mockResolvedValueOnce({ ...ONE_DONE, results: [one], said: "S-没成", failed: true } as never);
     const tm = home(makeTM()).actions;
     tm.endSession("hostA", "s1", "cc-abc", { confirm: () => true });
     await new Promise((r) => setTimeout(r, 0));
     const [title, body] = vi.mocked(showActionFailureToast).mock.calls.at(-1)!;
-    expect(title).toBe(copyText("tabSessionActions.kill.failed", { title: "cc-abc" }));
+    expect(title).toBe("S-没成");
     expect(body).toContain(copyText("resync.retry.hint"));
+  });
+  it("别的没成 ⇒ 照回包摆（那一句 · 逐条 · 复制详情）", async () => {
+    vi.mocked(askSessions).mockResolvedValueOnce({ ...ONE_DONE, said: "S-没成", failed: true, lines: ["L"], copyDetail: "D" } as never);
+    const tm = home(makeTM()).actions;
+    tm.endSession("hostA", "s1", "cc-abc", { confirm: () => true });
+    await new Promise((r) => setTimeout(r, 0));
+    const [title, , opts] = vi.mocked(showActionFailureToast).mock.calls.at(-1)!;
+    expect(title).toBe("S-没成");
+    expect((opts as { detail?: string }).detail).toBe("D");
+  });
+  it("本机后端问不到 ⇒ 一条失败提示（点名那一条）", async () => {
+    vi.mocked(askSessions).mockRejectedValueOnce(new Error("gone"));
+    const tm = home(makeTM()).actions;
+    tm.endSession("hostA", "s1", "cc-abc", { confirm: () => true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(failToast).mock.calls.at(-1)?.[0]).toBe(copyText("tabSessionActions.kill.failed", { title: "cc-abc" }));
   });
 });
 
@@ -4914,6 +4932,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     needs: null,
     handedBack: [],
     retries: [],
+    notices: [],
     permissionMode: null,
     permissionModeText: null,
     modelText: null,
@@ -6513,6 +6532,7 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     needs: null,
     handedBack: [],
     retries: [],
+    notices: [],
     permissionMode: null,
     permissionModeText: null,
     modelText: null,

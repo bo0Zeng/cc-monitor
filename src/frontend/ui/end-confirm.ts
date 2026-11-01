@@ -29,63 +29,15 @@ export async function askEnd(titles: readonly string[], ask: ConfirmFn = confirm
   return ask(endConfirm(titles, note));
 }
 
-/** 一条的结局：做成了 · 没成（那台那一句）· 跳过（那一格的 why）；`detail` ＝ 那台写的详情（复制详情用）。 */
-export interface EndRow {
-  title: string;
-  outcome: "done" | "failed" | "skipped";
-  why: string;
-  detail?: string;
-}
-
 /**
- * 一批的结局 toast：一句汇总；没成的 · 跳过的逐条（各自那一句）进「消息」那一条，［查看］展开它。
- * `head` 给了 ⇒ 用它当汇总（多选里别的几项）；不给 ⇒ 结束的那一句（「已结束 k · 失败 ×m」）。
- * `undo` 给了、又有做成了的（撤得回的批量：隐藏）⇒ 同一条上先［撤销］（只撤成了的那几个；`Ctrl Z` 同样），再［查看］。
+ * 一批会话 · 一批终端的回包（`sessions-batch` · `terminals-end`）：那一句 · 逐条 · 复制详情由本机后端合好，这里只照摆（逐条进「消息」那一条，［查看］展开它）。
+ * `undo` 给了（撤得回的批量：隐藏）⇒ 同一条上先［撤销］（`Ctrl Z` 同样），再［查看］。
  */
-export function sayRows(rows: readonly EndRow[], head?: (done: number, failed: number) => string, undo?: { run: () => void; settle: () => void }): void {
-  const n = (k: EndRow["outcome"]): number => rows.filter((r) => r.outcome === k).length;
-  const done = n("done");
-  const failed = n("failed");
-  const said = head
-    ? head(done, failed)
-    : failed > 0
-      ? copyText("sessionState.batch.someFailed", { done, failed })
-      : copyText("sessionState.batch.done", { done });
-  const lines = [
-    ...rows.filter((r) => r.outcome === "failed").map((r) => copyText("tabBatch.result.failedLine", { title: r.title, why: r.why })),
-    ...rows.filter((r) => r.outcome === "skipped").map((r) => copyText("tabBatch.result.skippedLine", { title: r.title, why: r.why })),
-  ];
-  const made: { rec?: ToastRecord } = {};
-  const view = lines.length > 0 ? { label: copyText("tabBatch.result.view"), run: () => made.rec && showMessage(made.rec), toastOnly: true } : undefined;
-  // 复制详情：没成的那几条各一段（那一句 ＋ 那台写的详情），段间空一行；成了的不进。
-  const detail = rows
-    .filter((r) => r.outcome === "failed" && r.detail)
-    .map((r) => `${r.why}\n${r.detail}`)
-    .join("\n\n");
-  const level = failed > 0 ? "error" : "success";
-  if (undo && done > 0) undoToast(said, undo.run, undo.settle, { level, more: lines, detail, ...(view ? { action: view } : {}) });
-  else toast(said, "", { level, more: lines, action: view, detail });
-  made.rec = recentToasts()[0];
-}
-
-/** 一批会话的回包（`sessions-batch`）：那一句 · 逐条 · 复制详情由本机后端合好，这里只照摆（［查看］· 复制详情同 [`sayRows`]）。 */
-export function sayReply(reply: Pick<SessionsBatchReply, "said" | "failed" | "lines" | "copyDetail">): void {
+export function sayReply(reply: Pick<SessionsBatchReply, "said" | "failed" | "lines" | "copyDetail">, undo?: { run: () => void; settle: () => void }): void {
   const made: { rec?: ToastRecord } = {};
   const view = reply.lines.length > 0 ? { label: copyText("tabBatch.result.view"), run: () => made.rec && showMessage(made.rec), toastOnly: true } : undefined;
-  toast(reply.said, "", { level: reply.failed ? "error" : "success", more: reply.lines, action: view, detail: reply.copyDetail });
+  const level = reply.failed ? "error" : "success";
+  if (undo) undoToast(reply.said, undo.run, undo.settle, { level, more: reply.lines, detail: reply.copyDetail, ...(view ? { action: view } : {}) });
+  else toast(reply.said, "", { level, more: reply.lines, action: view, detail: reply.copyDetail });
   made.rec = recentToasts()[0];
-}
-
-/** 结束的结局：只有一条 ⇒ 点名那一条（已结束「…」/ 结束失败 · …，那台那一句）；几条 ⇒ 一批那一种。 */
-export function sayEnded(rows: readonly EndRow[]): void {
-  const only = rows.length === 1 ? rows[0] : undefined;
-  if (only?.outcome === "done") {
-    toast(copyText("sessionState.kill.done", { title: only.title }), "", { level: "success" });
-    return;
-  }
-  if (only?.outcome === "failed") {
-    toast(copyText("tabSessionActions.kill.failed", { title: only.title }), only.why, { detail: only.detail });
-    return;
-  }
-  sayRows(rows);
 }

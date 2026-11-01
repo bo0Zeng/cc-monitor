@@ -369,6 +369,7 @@ fn observed() -> crate::accounts::quota::ledger::Observed {
             ),
         ]
         .into(),
+        history: Default::default(),
     }
 }
 

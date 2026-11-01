@@ -1279,6 +1279,10 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "跨几台的批量停：各台照 `sessions-stop` 那一条（没 tmux 的那台逐个答跳过；没答的那台那一组逐项记没成，命令照答）",
     ),
     (
+        "terminals-end",
+        "跨几台结束一批终端：各台逐项照 `terminal-end` 那一条（没 tmux ⇒ 托管的照结束，tmux 那几项各记没成）；标题读 `terminals-board-here` 那几行，读不到退回句柄；没答的那台那一组逐项记没成，命令照答",
+    ),
+    (
         "profiles-resolve",
         "设置窗合并预览的「等于」那一行：与 `ccm-print` 同一个 `control/ccm/mod.rs::plan_of`，经会话快照做铸名避让 —— \
          问不到 ⇒ 不退让、照算；它的能力是合并与渲计划，不是 tmux",
