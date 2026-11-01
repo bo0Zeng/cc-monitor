@@ -360,6 +360,9 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("copy_core::detail::stamp", Kind::Copy),
     // 走块上传本机那份读不到：IO 错 → 原因词（全仓那一张表住 copy-core）。
     ("copy_core::io_reason", Kind::Copy),
+    // 丢一个结果带上为什么可以丢（`Discard` · 理由闭集 `Why`）：与 `Said` 同住 copy-core 的一对，丢的那一下什么也不做。
+    ("copy_core::Discard", Kind::Copy),
+    ("copy_core::Why", Kind::Copy),
     // 那台不认这条命令 ⇒ 全产品那一句（按名字取，与 monitor · 后端同一份）。
     ("copy_core::backend_old", Kind::Copy),
     // 大小那一格（列表 · 属性 · 进度 · 预览上限）：写法只住核心一处（与后端 · 界面同一份金样 size-text.golden.json）。

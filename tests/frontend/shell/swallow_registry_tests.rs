@@ -135,72 +135,18 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/control/resident.rs", "let _ = log_dir_chain(own);", Why::Diag, "诊断文件那层目录建不了 ⇒ 子进程装不上 stderr 文件、照旧 null（「写不进去不拖垮后端」）；这是一次性子命令，stderr 只许一行 JSON 信封，没有第二个地方可说"),
     ("src/backend/faces/read_face.rs", "let _ = BACKEND_LOG.set(path);", Why::SetOnce, "`main.rs` 装上 stderr 诊断文件之后交一次"),
     // NDJSON 那一形的四行（写线程 · 两处 `write_all` · `flush`）随独立 `--relay` 删了。
-    ("src/common/creds-core/src/perm.rs", "let _ = CloseHandle(token);", Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/common/creds-core/src/perm.rs", "let _ = GetTokenInformation(token, TokenUser, None, 0, &mut need);", Why::NotAnError, "第一次调用只为问缓冲区要多大，按约定一定回「缓冲区不够」"),
-    ("src/common/creds-core/src/perm.rs", "let _ = LookupAccountSidW(PCWSTR::null(), sid, PWSTR::null(), &mut n, PWSTR::null(), &mut d, &mut kind);", Why::NotAnError, "第一次调用只为问名字与域要多长，按约定一定回「缓冲区不够」；长度为 0 ⇒ 翻不出、给 SID"),
-    ("src/common/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(psd.0));", Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/common/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));", Why::Reap, "Windows 句柄 / 内存释放"),
     // `cc_bus.rs` 那两行（本机 shell 读收尸）随那条读删了。
-    ("src/frontend/shell/src/local_backend.rs", "let _ = c.kill();", Why::Reap, ""),
-    ("src/frontend/shell/src/local_backend_host.rs", "let _ = ended_tx.lock().unwrap_or_else(|e| e.into_inner()).send(how);", Why::PeerGone, "被监护那一命结束了，告诉起它的那一趟别再等：那一趟已经等到握手回去了，就没人要这一声"),
-    ("src/frontend/shell/src/local_backend.rs", "let _ = c.wait();", Why::Reap, ""),
-    ("src/frontend/shell/src/local_backend.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
-    ("src/frontend/shell/src/local_backend.rs", "let _ = std::fs::remove_file(ent.path());", Why::CleanupAfterFailure, "清过期的释放半成品（`STALE_PARTIAL_AGE`）· 换版时挪开的旧 `ccm`；删不掉下次再清"),
-    ("src/frontend/shell/src/local_backend.rs", "let _ = std::io::copy(&mut o, &mut std::io::sink());", Why::Drain, ""),
     // 载荷那一层渲 env 那四行 `let _ = write!(out, "export …")` 摘了：`export` / `unset` 的写法搬进 `platform::shell::posix`
     //   （返回 `String`、调用处 `push_str`，不再有吞）；载荷那一层后来整层删了。
-    // 下面六行随 `bind.rs` 的 Win32 读法搬进 `platform/{pid,hwnd}.rs`（处数不变）。
-    ("src/frontend/shell/src/platform/pid.rs", "let _ = CloseHandle(handle);", Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/frontend/shell/src/platform/pid.rs", "let _ = CloseHandle(h);", Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/frontend/shell/src/platform/pid.rs", "let _ = CloseHandle(token);", Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/frontend/shell/src/platform/console.rs", "let _ = std::io::stdout().write_all(out.as_bytes());", Why::DeadLink, "借控制台的小助手往 monitor 给的管子答话：写不出去 = 起它的 monitor 已经不在了（或已等过期限掐断），没人收"),
-    ("src/frontend/shell/src/platform/console.rs", "let _ = out.write_all(format!(\"{}\\n\", tab_line(pick)).as_bytes());", Why::DeadLink, "同上（切标签页那一件的答话；标题此时已经写回）"),
-    ("src/frontend/shell/src/platform/console.rs", "let _ = out.flush();", Why::DeadLink, "同上"),
-    ("src/frontend/shell/src/platform/pid.rs", "let _ = CloseHandle(snap);", Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/frontend/shell/src/platform/hwnd.rs", "let _ = EnumWindows(Some(cb), LPARAM(0));", Why::NotAnError, "回调里自己收结果；回调提前停时它回 Err 是约定"),
-    ("src/frontend/shell/src/platform/hwnd.rs", "let _ = GetWindowThreadProcessId(hwnd, Some(&mut cur_owner));", Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
-    ("src/frontend/shell/src/platform/hwnd.rs", "let _ = ShowWindow(h, SW_RESTORE);", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/platform/console.rs", "let _ = done.send(());", Why::PeerGone, "告诉切标签页的看门那一支「做完了」：它到点已经自己收场、不再收，就没人要这一声"),
-    ("src/frontend/shell/src/platform/console.rs", "let _ = watch.join();", Why::Reap, "收看门那一支：它只写回标题、答话，自己出错（panic）也没有更好的补救，答话那一格由下面的 `answered` 兜住"),
-    ("src/frontend/shell/src/platform/console.rs", "let _ = child.wait();", Why::Reap, "替到点没等完的小助手收尸（它自己有预算、到点退出）"),
-    ("src/frontend/shell/src/platform/console.rs", "let _ = tx.send(read.map(|_| buf));", Why::PeerGone, "小助手的答话交回去：monitor 到点已经不等了，就没人要它"),
-    ("src/frontend/shell/src/bind.rs", "let _ = std::fs::remove_file(&p);", Why::CleanupAfterFailure, "撤死进程留下的登记文件；删不掉下次重扫再撤"),
-    ("src/frontend/shell/src/bind.rs", "let _ = std::fs::remove_file(file);", Why::CleanupAfterFailure, "bash / zsh 那一份记录用完 / 认不出 / 作废就删；删不掉下一个 monitor 起来按身份再核、再删"),
-    ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };", Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
-    ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner)) };", Why::NotAnError, "按属主筛的那一遍：同上，要的是出参里的属主 pid"),
-    ("src/frontend/shell/src/platform/hwnd.rs", "let _ = EnumWindows(Some(cb), LPARAM(pid as isize));", Why::NotAnError, "回调里自己收结果、从不提前停；枚举失败 ⇒ 收到的是空表，调用方照「没有窗口」说"),
-    ("src/frontend/shell/src/backend_once.rs", "let _ = child.kill();", Why::Reap, ""),
-    ("src/frontend/shell/src/backend_once.rs", "let _ = child.wait();", Why::Reap, ""),
-    // `capture_full` 交入参那条写线程：对面不读 stdin 就退了 ⇒ 写端断，结局由它的退出码与 stderr 说；等那条线程收尾同理。
-    ("src/frontend/shell/src/backend_once.rs", "let _ = w.write_all(&bytes);", Why::DeadLink, ""),
-    ("src/frontend/shell/src/backend_once.rs", "let _ = w.join();", Why::Signal, ""),
-    ("src/frontend/filewin/src/proc.rs", "let _ = err.write_all(encode_ready(r).as_bytes()).and_then(|()| err.flush());", Why::DeadLink, "就绪那一行写不出去 = 起它的 monitor 已经不在了（stderr 管子断了），没人收"),
-    ("src/frontend/shell/src/config.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回"),
     // 窗口那几问的答复送回等答的那一趟（它已收场 ⇒ 没人要）· 暂存件收尾删不掉交孤儿扫（不盖下载 / 复制本身的结局）。
-    ("src/frontend/filewin/src/extract.rs", "tx.send(fresh).ok();", Why::PeerGone, "解压撞名那一问的答复；等答的那一趟已收场就没人要"),
     // `history.rs` 那一处（读整份会话末块交前端、前端已走）随那条命令退役。
-    ("src/frontend/shell/src/platform/terminal.rs", "let _ = child.wait();", Why::Reap, ""), // 原 `launch.rs`
-    // 下面九行是主窗口拉前 · 单实例回调那两个平台臂（`platform/window.rs`）。
-    ("src/frontend/shell/src/platform/window.rs", "let _ = AttachThreadInput(fg_thread, cur_thread, false);", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/platform/window.rs", "let _ = BringWindowToTop(h);", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/platform/window.rs", "let _ = SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/platform/window.rs", "let _ = SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/platform/window.rs", "let _ = ShowWindow(h, SW_RESTORE);", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/platform/window.rs", "let _ = ShowWindow(h, SW_SHOW);", Why::WindowBestEffort, ""),
     // F5 重放那两处裸 `let _ = handle.emit(…)`（容器 · 可重连）随起停事件并进会话流删了（就绪点在流里原位交成品）。
     ("src/frontend/shell/src/lib.rs", "let _ = w.set_focus();", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = w.show();", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = w.unminimize();", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/platform/window.rs", "let _ = win.show();", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/platform/window.rs", "let _ = win.unminimize();", Why::WindowBestEffort, ""),
     // 单实例回调那三行收进 `platform::window::raise_main`（与点通知共用，失败各留一行日志），这里不再有。
     ("src/frontend/shell/src/lib.rs", "let _ = window.set_focus();", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/logging.rs", "let _ = h.emit(crate::ui_error::EVENT, p);", Why::Diag, "把一条要让用户知道的出错推给界面；推不上它照样进了日志文件"),
-    // 下面两行随 Job Object 那一段搬进 `platform/spawn.rs`（处数不变）。
-    ("src/frontend/shell/src/platform/spawn.rs", "let _ = CloseHandle(job);", Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/frontend/shell/src/platform/spawn.rs", "let _ = windows::Win32::Foundation::CloseHandle(h);", Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/common/host-core/src/atomic.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
     // `agent_home` 的可重入挂法（`rewatch_agent_home`）：同上面三个目录那一族。
     ("src/backend/control/resident.rs", "let _ = tokio::io::copy(&mut down, &mut stdout).await;", Why::DeadLink, "小中继下行：套接字那头走了 / stdout 写不出去（ssh 通道关了），两种都是这一趟结束，退出就是交代"),
     ("src/backend/control/resident.rs", "let _ = tokio::io::AsyncWriteExt::flush(&mut stdout).await;", Why::DeadLink, "小中继收尾 flush：ssh 通道已经关了就写不出去，退出就是交代"),
