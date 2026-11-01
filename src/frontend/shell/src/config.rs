@@ -71,7 +71,7 @@ pub(crate) fn load_config_at(path: &Path) -> Result<Value, Said> {
 /// 读 `config.json` 的原文，上限照声明表：不在 ⇒ `None`；读不出来（超了上限 · 盘上那一步）⇒ 那一句，原话进复制详情。
 /// 读设置与写口现读都经它（同一句「读取设置失败 · 原因」）。
 fn read_config_text(path: &Path) -> Result<Option<String>, Said> {
-    let cap = relay_route_core::CONFIG_FILE.row.cap;
+    let cap = relay_route_core::CONFIG_FILE.row.cap.bytes;
     let (why, raw) = match host_core::read_capped(path, cap) {
         Ok(host_core::Capped::Text(raw)) => return Ok(Some(raw)),
         Ok(host_core::Capped::Absent) => return Ok(None),
