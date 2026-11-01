@@ -1,10 +1,6 @@
 //! 策略的代码：编一次 · 在沙箱里调 `decide(ctx)`（挂着只读的积木库 `lib`，`src/shared/rotation/lib.rhai`）· 回值照形状收 · 一趟推演的总时限。
 //! 文件的格式（说明 · 头 · 只重写头）归配置编辑层；这里只认代码。
 
-/// 推演的内核（原生，挂进积木库）。
-#[path = "rollout.rs"]
-pub(crate) mod rollout;
-
 use super::decide::{Ctx, Strategy, Verdict, WakeWhen};
 use crate::accounts::quota::strategy::{Fail, FailKind};
 use rhai::{Dynamic, Map, AST};
@@ -89,7 +85,7 @@ pub(crate) fn with_lib_from(mut e: rhai::Engine, source: &str) -> Result<rhai::E
     let ast = e.compile(source).map_err(|x| x.to_string())?;
     let mut m =
         rhai::Module::eval_ast_as_new(rhai::Scope::new(), &ast, &e).map_err(|x| x.to_string())?;
-    rollout::install(&mut m);
+    super::rollout::install(&mut m);
     e.register_static_module("lib", m.into());
     Ok(e)
 }

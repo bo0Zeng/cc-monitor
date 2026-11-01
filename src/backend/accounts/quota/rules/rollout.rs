@@ -3,7 +3,7 @@
 //! 怎么加权由策略定。积木库里挂成 `lib::project_raw`，`lib::project` 照它加起来。
 //! 另有时间轴推演（`simulate`）与它共用的「号的动态」：号每分钟涨几点（[`rate_of`]）。
 
-use super::super::Acct;
+use super::Acct;
 use rhai::{Array, Dynamic, EvalAltResult, Map};
 use std::collections::BTreeMap;
 

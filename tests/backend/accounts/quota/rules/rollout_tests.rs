@@ -108,7 +108,7 @@ fn others_guard_their_piece_then_join_the_pool() {
 /// 积木库里：`lib::project_raw` 交这几份原始量，`lib::project` 是卡住 ＋ 重写 ＋ 各号周额度加起来。
 #[test]
 fn the_lib_adds_the_raw_parts_up() {
-    let e = super::super::engine().expect("沙箱挂得上积木库");
+    let e = super::super::code::engine().expect("沙箱挂得上积木库");
     let src = r#"
         let amt = [1000.0, 10000.0]; let st = [0, 0]; let ex = [600, 3600]; let who = ["A", "B"];
         let wk = [false, true]; let late = [false, false]; let oev = #{ acc: [], q: [], r: [] };
@@ -127,7 +127,7 @@ fn the_lib_adds_the_raw_parts_up() {
 /// 参数形状不对 ⇒ 报错（策略这一判走兜底），不当 0。
 #[test]
 fn a_bad_argument_is_an_error() {
-    let e = super::super::engine().expect("沙箱挂得上积木库");
+    let e = super::super::code::engine().expect("沙箱挂得上积木库");
     let src = r#"
         lib::project_raw([1.0], [0, 1], [600], ["A"], [false], [false], #{ acc: [], q: [], r: [] },
           #{ m: 1.0, at: (), rho: 60.0, mine: "A", lump: 0.0, kfull: 0.0, grow: 0.0, ttl: 3600, now: 0, end: 60 })

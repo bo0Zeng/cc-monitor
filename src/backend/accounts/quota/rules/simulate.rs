@@ -3,8 +3,8 @@
 //! 事件只有事实（重置 · 被拒到期 · 用到 100）和策略约的叫醒（时刻 · 读数 —— 量得到用速的号按用速换算成时刻，量不到不编数）。
 //! ★ 回放（[`replay`]）：同一个 [`turn`] 每分钟判一次，本会话的需求照一段真轨迹走（不照用速），量卡住 · 换号 · 作废。
 
-use super::code::rollout::rate_of;
 use super::decide::{turn, Me, Pick, PromptCache, Sigma, Strategy};
+use super::rollout::rate_of;
 use super::standing;
 use super::{Acct, WINDOW_SECS};
 use serde_json::Value;
