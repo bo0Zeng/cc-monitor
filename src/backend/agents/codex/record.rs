@@ -515,7 +515,7 @@ pub fn record_of(v: &Value, start: u64) -> Option<Record> {
             let text = flatten_text(payload.get("content").unwrap_or(&Value::Null));
             match message_said(payload) {
                 Some(who) => said(who, text_blocks(text)),
-                None => reply(text_blocks(text)),
+                None => reply(crate::agents::record::reply_blocks(text_blocks(text))),
             }
         }
         K::AgentMail => {

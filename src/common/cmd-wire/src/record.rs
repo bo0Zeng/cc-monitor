@@ -215,7 +215,15 @@ pub enum TitleBy {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub enum Block {
-    /// 一段正文。只经 [`Block::text`] 建（`bytes` 跟着正文算）。
+    /// 助手的一段正文，解析好的块树（后端 `md_core::parse` 解一次，两端只照树排版；原文不上线）。只经 [`Block::prose`] 建。
+    /// 排在第一形：回包金样的结构夹具取第一形，跨语言那一对就照树解。
+    Prose {
+        doc: crate::md::Doc,
+        /// 原文多少字节（UTF-8）：界面写「展开 3.0 KB」照它。
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        bytes: u64,
+    },
+    /// 一段正文（用户那一句 · 工具结果，按纯文本画）。只经 [`Block::text`] 建（`bytes` 跟着正文算）。
     Text {
         text: String,
         /// 正文多少字节（UTF-8）：界面写「展开 3.0 KB」照它，不自己量。
@@ -271,6 +279,14 @@ impl Block {
         Block::Text { text, bytes }
     }
 
+    /// 一段助手正文块：`doc` 是 `text` 解析成的树，字节数照原文算。
+    pub fn prose(text: &str, doc: crate::md::Doc) -> Block {
+        Block::Prose {
+            doc,
+            bytes: text.len() as u64,
+        }
+    }
+
     /// 一个工具结果块（字节数在这里算：正文块与图块的字节之和）。
     pub fn tool_result(of: String, content: Vec<Block>, is_error: bool) -> Block {
         let bytes = content.iter().map(Block::bytes).sum();
@@ -285,7 +301,8 @@ impl Block {
     /// 这一块多少字节（正文 · 工具结果 · 图有；别的 0）。
     fn bytes(&self) -> u64 {
         match self {
-            Block::Text { bytes, .. }
+            Block::Prose { bytes, .. }
+            | Block::Text { bytes, .. }
             | Block::ToolResult { bytes, .. }
             | Block::Image { bytes, .. } => *bytes,
             Block::Thinking { .. } | Block::ToolUse { .. } => 0,

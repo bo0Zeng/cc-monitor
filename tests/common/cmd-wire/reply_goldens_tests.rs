@@ -57,3 +57,36 @@ fn every_phone_reply_has_a_golden_line_written_by_its_type() {
     }
     let _ = std::fs::remove_file(&fresh_path);
 }
+
+/// 助手那一行的正文上线是块树（`prose`：解析好的 `doc` ＋ 原文字节），不是原文：手机按记录解的那几条（`history-tail` 这一形）
+/// 照类型解得开、写回逐字同；解不开就成了「认不出」那一条（`t: unread`），这里红。夹具是造的短样例，不放真正文。
+#[test]
+fn a_reply_carrying_a_prose_tree_reads_back_as_itself() {
+    let reply = serde_json::json!({
+        "agent": "claude", "at": "2026-10-09T01:30:03.000Z", "atMs": 1791509403000_u64, "autoReply": false,
+        "blocks": [{
+            "type": "prose",
+            "doc": {
+                "blocks": [
+                    { "t": "p", "k": ["改好了，", { "t": "b", "k": ["两处"] }, "：", { "t": "c", "x": "a.rs" }] },
+                    { "t": "code", "lang": "rust", "x": "fn main() {}", "cont": false },
+                    { "t": "list", "start": null, "tight": true, "items": [{ "task": null, "blocks": [{ "t": "p", "k": ["一"] }] }] }
+                ],
+                "segs": []
+            },
+            "bytes": 52
+        }],
+        "draw": "card", "human": false, "id": "a-prose", "t": "reply", "timeText": "01:30"
+    });
+    let mut sample = serde_json::json!({
+        "end": 7, "eof": true, "from": 7, "how": "tail",
+        "held": { "mark": "mark-x", "next": 7, "next_byte": 7, "path": "path-x" }, "next": 7, "split_at": 7, "tail_from": 7, "total": 7,
+        "rows": [{ "cwd": "cwd-x", "end": 7, "hash": 7 }]
+    });
+    sample["rows"][0]["record"] = reply.clone();
+    let rust = typed_text("history-tail", sample)
+        .expect("表里的命令")
+        .unwrap_or_else(|e| panic!("history-tail 解不开：{e}"));
+    let back: serde_json::Value = serde_json::from_str(&rust).unwrap();
+    assert_eq!(back["rows"][0]["record"], reply, "助手正文那一块的树没照原样读回来");
+}
