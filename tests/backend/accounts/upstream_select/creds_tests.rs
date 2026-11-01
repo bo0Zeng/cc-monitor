@@ -80,7 +80,7 @@ fn upstream_selection_loads_the_key_from_a_hand_written_file_alone() {
 }
 
 /// 位置只跟着家走：默认 `~/.cc-monitor` 根上那一份；`CCM_DATA_DIR`（绝对）⇒ 它根上那一份；相对 ⇒ 出声。
-/// 不认 agent 家（`CLAUDE_CONFIG_DIR`），也没有另指它的变量（从前的 `CCM_APIKEY_CREDENTIALS` 删了，给了也不认）。期望手写。
+/// 不认 agent 家（`CLAUDE_CONFIG_DIR`），也没有另指它的变量（`CCM_APIKEY_CREDENTIALS` 给了也不认）。期望手写。
 #[test]
 fn the_location_only_follows_the_home() {
     let home = tmpdir("home-only");
@@ -137,7 +137,7 @@ fn a_broken_file_is_a_problem_not_a_silent_not_configured() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// `KS11`：权限过宽 ⇒ **出声**（不是拒绝），而且说得出怎么修。
+/// 权限过宽 ⇒ **出声**（不是拒绝），而且说得出怎么修。
 #[cfg(unix)]
 #[test]
 fn a_world_readable_file_is_announced_with_a_fix_and_still_serves_the_key() {
@@ -177,7 +177,7 @@ fn a_world_readable_file_is_announced_with_a_fix_and_still_serves_the_key() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// ★ **日志里一个字节的 key 都不许有**（`KS4` 的行为那一半，`KS6` 的日志出口）。
+/// ★ **日志里一个字节的 key 都不许有**（行为那一半，日志出口）。
 #[test]
 fn nothing_that_gets_announced_ever_carries_the_key() {
     let home = tmpdir("announce-clean");
@@ -219,7 +219,7 @@ fn a_missing_file_prints_the_template_so_import_does_not_need_guessing() {
         "模板里没点名那个字段：{text}"
     );
     assert!(text.contains("plain JSON"), "没说清它是明文 JSON：{text}");
-    // 路径**总是**印（`KS9` 的「文档化」）。
+    // 路径**总是**印（文件在哪写给人看）。
     assert!(text.contains(store::FILE_NAME), "没印出路径：{text}");
     let _ = std::fs::remove_dir_all(&home);
 }
