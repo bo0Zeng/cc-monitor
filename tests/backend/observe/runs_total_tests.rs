@@ -131,3 +131,33 @@ fn older_group_head_is_written_here() {
     };
     assert_eq!(r.groups.older_text, None, "更早那一组空 ⇒ 不上线");
 }
+
+/// 收场的子运行：用了多久那一句由出帧这一处写好（起止都定了，是静态的），卡上照抄；在跑的不上线。
+#[test]
+fn ended_run_carries_written_took() {
+    let book = RunBook::default();
+    let t0 = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+    let t1 = t0 + Duration::from_secs(90);
+    book.with(|m| {
+        let s = m.entry(SID.to_string()).or_default();
+        s.mark(mark("r-done", None), Some("q-done".into()), t0, ms(t0));
+        s.mark(mark("r-done", Some(RunEnd::Done)), None, t1, ms(t1));
+        s.mark(mark("r-live", None), Some("q-live".into()), t0, ms(t0));
+    });
+    let now = t0 + Duration::from_secs(100);
+    let Frame::SessionRuns(r) = book.frame_at(SID, now) else {
+        panic!("frame_at 该出运行表帧");
+    };
+    let took = |run: &str| {
+        r.runs
+            .iter()
+            .find(|i| i.run == run)
+            .map(|i| i.took_text.clone().map(|w| w.0))
+    };
+    let want = copy_text(
+        "agentWindow.facts.took",
+        &[("dur", &copy_core::short_duration(90_000))],
+    );
+    assert_eq!(took("r-done"), Some(Some(want)), "收场了 ⇒ 写好的用时那一句");
+    assert_eq!(took("r-live"), Some(None), "在跑 ⇒ 不上线");
+}
