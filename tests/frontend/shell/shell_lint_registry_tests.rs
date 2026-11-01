@@ -75,12 +75,12 @@ const POWERSHELL_TODAY: &[(&str, &str)] = &[
         "tests/e2e/tier2/run-in-session1.ps1",
         "tier2 e2e：跳到已登录 session1 里跑（SSH 落 session0 没有桌面）",
     ),
-    // RT1 的 Win11 虚拟机真机台架两份：只在台架里跑、不进产品，仍零 lint（`pwsh` 不在 PATH）。
+    // Win11 虚拟机真机台架两份：只在台架里跑、不进产品，仍零 lint（`pwsh` 不在 PATH）。
     (
-        "tests/evidence/RT1-lib.ps1",
-        "RT1 真机台架：窗口枚举 / DPI / WM_CLOSE / 控制台事件",
+        "tests/evidence/vm-lib.ps1",
+        "真机台架：窗口枚举 / DPI / WM_CLOSE / 控制台事件",
     ),
-    ("tests/evidence/RT1-winwatch.ps1", "RT1 真机台架：窗口哨兵"),
+    ("tests/evidence/winwatch.ps1", "真机台架：窗口哨兵"),
     // 手机端的两份：只在 Windows 开发机上装 / 激活 Android 工具链，不进产品、不进门禁，仍零 lint。
     (
         "src/mobile/scripts/bootstrap-android-env.ps1",
