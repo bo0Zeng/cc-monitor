@@ -7,7 +7,7 @@
 //! （[`crate::dial::links`]）；池里成员动了（放进一条 · 断了 · 没人用了）⇒ 每台重推一份（[`follow_pool`]，零定时器）。
 
 use crate::dial::links::Links;
-use cmd_wire::machine::{EmptyFace, MachineRead, MachineReadReq, MachineState, Round};
+use cmd_wire::machine::{FleetLines, MachineRead, MachineReadReq, MachineState, Round};
 use deploy::machine::{fold, product, Entry, Fact};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -149,20 +149,16 @@ pub(crate) fn read_in(hosts: &[(String, bool)], links: &Links) -> BTreeMap<Strin
     out
 }
 
-/// 此刻的首屏那一句（[`deploy::machine::empty`]）：本机那一行（这个后端在答 ⇒ 报完了）＋ 机器表里每台与它这一条连接上报完了没有。
-pub(crate) fn empty() -> EmptyFace {
+/// 此刻各台合一次写好的那几句（[`deploy::machine::fleet`]）：本机那一行（这个后端在答 ⇒ 报完了）＋ 机器表里每台（停用的也在）
+/// 与它这一条连接上报完了没有。
+pub(crate) fn fleet() -> FleetLines {
     let (hosts, links) = hosts();
-    empty_in(&hosts, &links)
-}
-
-/// [`empty`] 的本体（机器表与连接由调用方给）。
-pub(crate) fn empty_in(hosts: &[(String, bool)], links: &Links) -> EmptyFace {
     let t = table().clone();
-    empty_over(&t, hosts, links)
+    fleet_over(&t, &hosts, &links)
 }
 
-/// [`empty_in`] 照给的那一张表算（不碰进程里那一张）。
-fn empty_over(t: &BTreeMap<String, Entry>, hosts: &[(String, bool)], links: &Links) -> EmptyFace {
+/// [`fleet`] 照给的那一张表算（不碰进程里那一张）。
+fn fleet_over(t: &BTreeMap<String, Entry>, hosts: &[(String, bool)], links: &Links) -> FleetLines {
     let local = local_row();
     let rows: Vec<(MachineState, bool)> = hosts
         .iter()
@@ -173,7 +169,7 @@ fn empty_over(t: &BTreeMap<String, Entry>, hosts: &[(String, bool)], links: &Lin
         .collect();
     let mut all: Vec<(&MachineState, bool)> = vec![(&local, true)];
     all.extend(rows.iter().map(|(m, l)| (m, *l)));
-    deploy::machine::empty(&all)
+    deploy::machine::fleet(&all)
 }
 
 /// 本机那一行：问得到这个后端 ⇒ 连着、与手上同一份字节；版本号是这份二进制出自的那一版（`build.rs` 交的）。
@@ -217,7 +213,7 @@ impl crate::wire::typed::Handle for MachineReadCmd {
         async move {
             Ok(MachineRead {
                 machines: read(),
-                empty: empty(),
+                empty: fleet(),
             })
         }
     }
