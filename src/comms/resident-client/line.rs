@@ -55,6 +55,9 @@ impl<R: AsyncRead + Unpin> AsyncBufRead for Downstream<R> {
 pub struct Inflate<R> {
     inner: R,
     z: flate2::Decompress,
+    /// 上一次是把 `out` 填满才停的 ⇒ 解压器手里可能还压着已经吃进去的输入解出的字节（停在一段回指拷贝的半中间）。
+    /// 这时先不等网络、空输入再解一次把它们吐出来：一帧的压缩字节已经全到、那台随后静下来时，这一帧当场整行交出。
+    backlog: bool,
 }
 
 impl<R> Inflate<R> {
@@ -62,6 +65,7 @@ impl<R> Inflate<R> {
         Inflate {
             inner,
             z: flate2::Decompress::new(false),
+            backlog: false,
         }
     }
 }
@@ -76,10 +80,27 @@ impl<R: AsyncBufRead + Unpin> AsyncRead for Inflate<R> {
         if out.remaining() == 0 {
             return Poll::Ready(Ok(()));
         }
+        if this.backlog {
+            let was_out = this.z.total_out();
+            let space = out.remaining();
+            // 空输入：只吐压着的；解不开的错留给下一批真输入去报。
+            let _ = this.z.decompress(
+                &[],
+                out.initialize_unfilled(),
+                flate2::FlushDecompress::None,
+            );
+            let made = (this.z.total_out() - was_out) as usize;
+            out.advance(made);
+            this.backlog = made == space;
+            if made > 0 {
+                return Poll::Ready(Ok(()));
+            }
+        }
         loop {
             let input = ready!(Pin::new(&mut this.inner).poll_fill_buf(cx))?;
             let eof = input.is_empty();
             let (was_in, was_out) = (this.z.total_in(), this.z.total_out());
+            let space = out.remaining();
             let status = this.z.decompress(
                 input,
                 out.initialize_unfilled(),
@@ -89,6 +110,7 @@ impl<R: AsyncBufRead + Unpin> AsyncRead for Inflate<R> {
             let made = (this.z.total_out() - was_out) as usize;
             Pin::new(&mut this.inner).consume(used);
             out.advance(made);
+            this.backlog = made == space;
             match status {
                 Err(e) if !eof => {
                     return Poll::Ready(Err(std::io::Error::new(
@@ -182,3 +204,7 @@ where
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/comms/resident-client/line_tests.rs"]
+mod tests;
