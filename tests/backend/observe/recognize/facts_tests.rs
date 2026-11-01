@@ -26,7 +26,11 @@ fn slow_all(text: &str) -> SessionFacts {
                 note_record(&mut f, tree(), &v, &b);
             }
             if let Some(r) = record_of(tree(), body, start) {
-                note_notice(&mut f, &r, crate::agents::run_of_record(tree(), &v).is_some());
+                note_notice(
+                    &mut f,
+                    &r,
+                    crate::agents::run_of_record(tree(), &v).is_some(),
+                );
             }
         }
         start += line.len() as u64;
@@ -199,7 +203,11 @@ fn the_fast_path_never_changes_the_answer() {
     recs.push(notice("fp-n1", "fp-1", "completed", "t-n1"));
     recs.push(injected("fp-s", "t-s"));
     recs.push(notice("fp-n2", "fp-2", "failed", "t-n2"));
-    recs.push(reply("fp-a", "t-a", json!([{"type": "thinking", "thinking": "x"}])));
+    recs.push(reply(
+        "fp-a",
+        "t-a",
+        json!([{"type": "thinking", "thinking": "x"}]),
+    ));
     recs.push(notice("fp-n3", "fp-3", "completed", "t-n3"));
     recs.push(mcp_delta(
         json!({"failedMcpServers": [{"name": "m-f", "error": "e"}]}),
@@ -209,7 +217,11 @@ fn the_fast_path_never_changes_the_answer() {
     assert_eq!(fast.handed_back, ["fp-1"], "交回那一行没漏过快路");
     assert_eq!(fast.mcp.len(), 1, "MCP 那一行没漏过快路");
     assert_eq!(
-        fast.notice_log.runs.iter().map(|r| r.len()).collect::<Vec<_>>(),
+        fast.notice_log
+            .runs
+            .iter()
+            .map(|r| r.len())
+            .collect::<Vec<_>>(),
         [2, 1],
         "通知组没被快路拆开"
     );
@@ -1903,7 +1915,11 @@ fn adjacent_notices_make_one_group_and_handed_back_ones_hide() {
         notice("w1", "t1", "completed", "2026-01-01T06:02:00.000Z"),
         injected("s1", "2026-01-01T06:03:00.000Z"),
         notice("w2", "t2", "failed", "2026-01-01T06:05:00.000Z"),
-        reply("a1", "2026-01-01T06:06:00.000Z", json!([{"type": "text", "text": "y"}])),
+        reply(
+            "a1",
+            "2026-01-01T06:06:00.000Z",
+            json!([{"type": "text", "text": "y"}]),
+        ),
         notice("w3", "t3", "completed", "2026-01-01T06:07:00.000Z"),
     ];
     let mut f = scan_all(&jsonl(&recs));
@@ -1921,7 +1937,10 @@ fn adjacent_notices_make_one_group_and_handed_back_ones_hide() {
                 &[
                     ("n", "2"),
                     ("span", "14:02–14:05"),
-                    ("fail", &copy_core::copy_text("speaker.notice.fails", &[("n", "1")])),
+                    (
+                        "fail",
+                        &copy_core::copy_text("speaker.notice.fails", &[("n", "1")])
+                    ),
                 ],
             )
             .as_str()
@@ -1967,8 +1986,17 @@ fn adjacent_notices_make_one_group_and_handed_back_ones_hide() {
 fn notice_groups_are_bounded() {
     let mut recs = Vec::new();
     for i in 0..NOTICE_KEEP + 2 {
-        recs.push(notice(&format!("n{i}"), &format!("t{i}"), "completed", "2026-01-01T06:00:00.000Z"));
-        recs.push(reply(&format!("a{i}"), "2026-01-01T06:00:00.000Z", json!([{"type": "text", "text": "y"}])));
+        recs.push(notice(
+            &format!("n{i}"),
+            &format!("t{i}"),
+            "completed",
+            "2026-01-01T06:00:00.000Z",
+        ));
+        recs.push(reply(
+            &format!("a{i}"),
+            "2026-01-01T06:00:00.000Z",
+            json!([{"type": "text", "text": "y"}]),
+        ));
     }
     let mut f = scan_all(&jsonl(&recs));
     settle_notices(&mut f, &crate::Tz::default());

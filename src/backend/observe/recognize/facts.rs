@@ -1149,11 +1149,7 @@ pub(crate) fn note_line(facts: &mut SessionFacts, kind: &str, line: &[u8], start
     if notice {
         let text = String::from_utf8_lossy(line);
         if let Some(r) = record_of(kind, &text, start) {
-            note_notice(
-                facts,
-                &r,
-                crate::agents::run_of_record(kind, &v).is_some(),
-            );
+            note_notice(facts, &r, crate::agents::run_of_record(kind, &v).is_some());
         }
     }
 }
@@ -1171,7 +1167,11 @@ fn notice_may(kind: &str, line: &[u8], facts: &SessionFacts) -> bool {
 }
 
 /// 一行 ⇒ 它翻成的通用记录（那一家的记录面；翻不成 · 不成记录 ⇒ `None`）。
-pub(crate) fn record_of(kind: &str, text: &str, start: u64) -> Option<crate::agents::record::Record> {
+pub(crate) fn record_of(
+    kind: &str,
+    text: &str,
+    start: u64,
+) -> Option<crate::agents::record::Record> {
     let parse = crate::agents::record_face(kind)?.parse;
     parse(&crate::agents::Line::of(kind, text, start))
         .ok()
