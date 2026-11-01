@@ -81,7 +81,7 @@ pub(crate) fn unreadable(
 
 /// 此刻那一行：先写成空位（[`crate::common::time::at_slot`]），出去那一下按看的那一台的时区填（带偏移）。
 fn now() -> String {
-    crate::common::time::at_slot(crate::common::time::now_secs())
+    crate::common::time::at_slot(crate::common::time::now_secs() as i64)
 }
 
 /// `Linux x86_64 · 后端 p9k-…`。

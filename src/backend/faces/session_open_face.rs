@@ -123,7 +123,7 @@ pub(crate) fn with_launch_ctx<T>(
             sid,
             kind,
             rule,
-            crate::accounts::quota::now_unix(),
+            crate::common::time::now_secs(),
         )
     };
     let forget = |sid: &str| super::rotation_edit_face::forget_preset_with(&ctx, own, sid);
@@ -473,10 +473,7 @@ pub(crate) fn facts(
         recent: recent_dirs(
             &record_dirs(&home),
             &crate::history::listing::hidden_cwd,
-            &crate::common::time::TextClock::new(
-                u64::try_from(crate::common::time::now_secs()).unwrap_or(0),
-                tz,
-            ),
+            &crate::common::time::TextClock::new(crate::common::time::now_secs(), tz),
             crate::platform::paths::home_dir().as_deref(),
         ),
         hosts: facts_hosts(tmux, managed),
