@@ -35,6 +35,7 @@ use cmd_wire::attach::Relation;
 use cmd_wire::dial::OLD_BACKEND_MARKER;
 use cmd_wire::machine::{Blocker, Why};
 use copy_core::copy_text;
+use copy_core::discard::{self, Discard};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -573,10 +574,10 @@ impl<T: Transport> Feed<T> {
             let wait = backoff.before_wait(healthy);
             let kicked = {
                 let ssh_changed = async {
-                    let _ = ssh.changed().await;
+                    ssh.changed().await.discard(discard::Why::Signal);
                 };
                 let kicked = async {
-                    let _ = kicks.changed().await;
+                    kicks.changed().await.discard(discard::Why::Signal);
                 };
                 if needs_hand {
                     tokio::select! {
