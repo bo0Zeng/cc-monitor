@@ -222,6 +222,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("terminal-unfollow", "7ffb2c4f"),
     ("terminals-board", "06a4b847"),
     ("terminals-board-here", "cfb55238"),
+    ("terminals-end", "b0245eef"),
     ("terminals-list", "e8433eb1"),
     ("transfer-copy", "81f684d9"),
     ("transfer-download", "c504e0e5"),

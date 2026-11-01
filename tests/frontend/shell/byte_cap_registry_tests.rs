@@ -68,6 +68,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "**步长**不是体量：后端写者帧一直排着时自上次 flush 起写满这么多字节就照 flush 一次（`main.rs::writer_task`），流本身多长不受它限。",
     ),
     (
+        "BUDGET",
+        "**条数**不是体量：`lib::rollout` 交回的原始量至多这么多个数组元素与表项（`accounts/quota/rules/rollout.rs`），超了就减路径、至少留一条。",
+    ),
+    (
         "VERSION",
         "**格式版本号**不是体量：骨架落盘那一格（`observe/skeleton.rs`），值取声明表（`relay_route_core::SKELETON_FILE`）。",
     ),

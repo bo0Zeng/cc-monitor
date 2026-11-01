@@ -8,6 +8,7 @@ use super::key;
 use crate::common::net::LOOPBACK;
 use comms_outward::{Relay, Startup, TeeSink};
 use copy_core::copy_text;
+use copy_core::discard::{Discard, Why};
 use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use std::sync::Arc;
@@ -146,7 +147,7 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
             if !std::mem::replace(&mut full, true) {
                 eprintln!("[relay] refusing: {INFLIGHT_CONNECTIONS} connections already in flight (answering 503 until one ends)");
             }
-            let _ = comms_outward::refuse_busy(&mut stream);
+            comms_outward::refuse_busy(&mut stream).discard(Why::DeadLink); // 回一句「忙」给被拒的那条连接
             continue;
         }
         // 顶满那一阵退到上界四分之三以下才算过去：贴着上界时一放一满，按「放进一条」算会一阵一阵地说个不停。
@@ -174,7 +175,7 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
             inflight.fetch_sub(1, SeqCst);
             eprintln!("[relay] cannot spawn connection thread: {e}");
             if let Some(mut s) = spare {
-                let _ = comms_outward::refuse_busy(&mut s);
+                comms_outward::refuse_busy(&mut s).discard(Why::DeadLink); // 回一句「忙」给被拒的那条连接
             }
         }
     }
@@ -198,7 +199,8 @@ fn dup_listener(listener: &TcpListener) -> Option<Spare> {
 /// fd 用尽时接上的那条：回 503、关写半边，留下当新的备用（它的号不放回 ⇒ 别的线程抢不走）。
 fn refuse_and_keep(mut s: std::net::TcpStream) -> Spare {
     // 不装期限：刚接上的 socket 往空的发送缓冲里写 ~90 字节，阻塞不了。
-    let _ = comms_outward::refuse_busy(&mut s);
+    comms_outward::refuse_busy(&mut s).discard(Why::DeadLink); // 回一句「忙」给被拒的那条连接
+
     // 只关写半边（发 FIN）：读半边一关，晚到的请求字节会招来 RST，下游那头已经收着的 503 跟着被丢掉。
     if let Err(e) = s.shutdown(std::net::Shutdown::Write) {
         eprintln!("[relay] cannot finish a refused connection: {e}");
@@ -334,12 +336,12 @@ pub(crate) fn announce_key_perm(
     match verdict {
         Verdict::OwnerOnly => 0,
         Verdict::TooWide { how, fix } => {
-            let _ = writeln!(out, "[relay] key file permissions too wide: {how}");
-            let _ = writeln!(out, "[relay] how to fix: {fix}");
+            writeln!(out, "[relay] key file permissions too wide: {how}").discard(Why::Diag); // `announce_key_perm` 往它的诊断出口（stderr）印钥匙文件权限那几行
+            writeln!(out, "[relay] how to fix: {fix}").discard(Why::Diag);
             2
         }
         Verdict::Undetermined { why, .. } => {
-            let _ = writeln!(out, "[relay] key file permissions unknown: {why}");
+            writeln!(out, "[relay] key file permissions unknown: {why}").discard(Why::Diag);
             1
         }
     }

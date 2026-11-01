@@ -1190,6 +1190,11 @@ object Commands {
         const val NAME: String = "terminals-board-here"
     }
 
+    /** `terminals-end`。 */
+    object TerminalsEnd : Command<com.ccmonitor.mobile.core.wire.gen.TerminalsEndReq, com.ccmonitor.mobile.core.wire.gen.TerminalsEndReply>("terminals-end", { com.ccmonitor.mobile.core.wire.gen.TerminalsEndReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.TerminalsEndReply.ADAPTER }) {
+        const val NAME: String = "terminals-end"
+    }
+
     /** `terminals-list`。 */
     object TerminalsList : Command<com.ccmonitor.mobile.core.wire.gen.TerminalsListReq, com.ccmonitor.mobile.core.wire.gen.TerminalsList>("terminals-list", { com.ccmonitor.mobile.core.wire.gen.TerminalsListReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.TerminalsList.ADAPTER }) {
         const val NAME: String = "terminals-list"
@@ -1442,6 +1447,7 @@ object Commands {
             TerminalUnfollow,
             TerminalsBoard,
             TerminalsBoardHere,
+            TerminalsEnd,
             TerminalsList,
             TransferCopy,
             TransferDownload,
@@ -2480,12 +2486,16 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.TerminalHoldReq::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalHoldReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalInputReq::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalInputReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalItem::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalItem.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.TerminalOutcome::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalOutcome.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalPreviewReq::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalPreviewReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalScreen::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalScreen.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalSshReq::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalSshReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalSshReqCwd::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalSshReqCwd.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalSshReqCwdObjValue::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalSshReqCwdObjValue.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalsBoard::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalsBoard.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.TerminalsEndItem::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalsEndItem.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.TerminalsEndReply::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalsEndReply.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.TerminalsEndReq::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalsEndReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalsList::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalsList.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TerminalsListReq::class.java to com.ccmonitor.mobile.core.wire.gen.TerminalsListReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.TextPreview::class.java to com.ccmonitor.mobile.core.wire.gen.TextPreview.ADAPTER,

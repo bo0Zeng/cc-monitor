@@ -5,6 +5,7 @@
 
 use copy_core::copy_text;
 use copy_core::detail::{failure, os_word, Host};
+use copy_core::discard::{Discard, Why};
 
 /// 这台后端此刻的一份详情。`cmd` 缺 ＝ 协议级失败（还没落到哪条命令上）；`raw` 是下层原话（子进程 stderr · 系统报错）。
 pub(crate) fn of(cmd: Option<&str>, code: &str, raw: Option<&str>) -> String {
@@ -59,7 +60,7 @@ pub(crate) fn emit_to(
             .map(|l| crate::common::time::fill_at(&l, tz).into_owned())
             .unwrap_or_else(|_| text_of(f, tz))
     };
-    let _ = writeln!(err, "{line}");
+    writeln!(err, "{line}").discard(Why::Diag); // CLI 面的失败信封写 stderr（各 CLI 出口都经 `Failed::emit_to` 这一处）：写不进去就没有第二个地方可以说（退出码 2 照样回）
     2
 }
 

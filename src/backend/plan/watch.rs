@@ -6,6 +6,7 @@
 //! 重读本身要 0.1–1 秒，正好把 agent 一口气写的几份并成一两次；写到一半读到的那一刻，
 //! 那一片 pb 回 `error` ⇒ 本子给上一次好的、摘要多半不变 ⇒ 不推。
 
+use copy_core::discard::{Discard, Why};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -179,7 +180,9 @@ pub(crate) fn watch(
                     crate::history::needs_changed::ring();
                 }
                 last = Some(now.clone());
-                let _ = changes().send((target.to_string_lossy().to_string(), now.0, now.1));
+                changes()
+                    .send((target.to_string_lossy().to_string(), now.0, now.1))
+                    .discard(Why::NotAnError); // 进程内「某工作区的计划变了」的广播：此刻没有流连接订它 ⇒ 发不出是正常的，计划在盘上，客户端重问就有
             }
         },
     )?;

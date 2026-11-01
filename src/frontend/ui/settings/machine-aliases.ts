@@ -36,7 +36,7 @@ import { toggleSwitch } from "../kit/switch";
 import { allowLocalScripts, installAliasBlock, readAliases, readCcmOnPath, removeAliasBlock, renderAliasBlock, userPath } from "../alias-reads";
 import type { UserPathOp } from "../generated/UserPathOp";
 import { buildProfilesList, type ProfileClash } from "./profiles-list";
-import type { Origin } from "../generated/Origin";
+import type { Machine } from "../generated/Machine";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { cfgRow, type CfgDot, type CfgRow } from "./cfg-row";
 import { hostFacts } from "./host-os";
@@ -79,10 +79,10 @@ const quiet =
  * 已经露出来读过的那几组别名（本机那一组与每张远端卡各一组）。别处改了那台的别名清单（账号增删）、
  * 或回到那一页时按机器重读 —— 不然清单与指纹停在第一次读的那一刻，「加上」拿旧指纹去写就被说「被别处改过」。
  */
-const loadedManagers = new Map<HTMLElement, { origin: () => Origin; reread: () => void }>();
+const loadedManagers = new Map<HTMLElement, { origin: () => Machine; reread: () => void }>();
 
 /** 重读那台机器上已经读过的别名组（没读过的不读；已不在界面上的顺手清掉）。 */
-export function rereadAliases(origin: Origin): void {
+export function rereadAliases(origin: Machine): void {
   for (const [el, m] of loadedManagers) {
     if (!el.isConnected) loadedManagers.delete(el);
     else if (m.origin() === origin) m.reread();
@@ -94,7 +94,7 @@ export interface AliasManagerSpec {
   /** 这台机器用哪种 shell 的方言（本机 = [`localShell`]；远端恒 `posix`）。 */
   platform: Shell;
   /** 那台机器（取值函数：远端卡改名后跟着它走）。每一发都带它。 */
-  origin: () => Origin;
+  origin: () => Machine;
   /** 改执行策略之前问一句的注入缝（缺省走应用内对话框）。 */
   confirm?: ConfirmFn;
 }
@@ -632,7 +632,7 @@ interface PsExtras {
   loadNow(): void;
 }
 
-function buildPsExtras(row: CfgRow, origin: () => Origin): PsExtras {
+function buildPsExtras(row: CfgRow, origin: () => Machine): PsExtras {
   const body = row.body;
   let onPath: boolean | null = null;
   const paintStatus = (): void => {

@@ -27,6 +27,7 @@ use super::route;
 use super::tee::{SseSplitter, TeeSink};
 use super::upstream::{self, Base, Conn, Open, OpenFor};
 use super::{Ask, AuthSwap, Destination, Destinations, Heard, StreamId};
+use copy_core::discard::{Discard, Why};
 use std::io::{BufReader, Read, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
@@ -380,7 +381,7 @@ fn reply_and_drain(down: &mut TcpStream, bytes: &[u8]) -> std::io::Result<()> {
 
 /// 上两条共用的「排掉已经到了的」那一半（理由整段在 [`respond_and_drain`] 头注）。
 fn drain_arrived(down: &mut TcpStream) {
-    let _ = down.set_nonblocking(true);
+    down.set_nonblocking(true).discard(Why::DeadLink); // 已经答完的那条连接上排掉已到的字节，排不掉就算了
     let mut sink = [0u8; 4096];
     let mut left = HEAD_CAP;
     while left > 0 {
@@ -392,7 +393,7 @@ fn drain_arrived(down: &mut TcpStream) {
             Err(_) => break,
         }
     }
-    let _ = down.set_nonblocking(false);
+    down.set_nonblocking(false).discard(Why::DeadLink); // 已经答完的那条连接上排掉已到的字节，排不掉就算了
 }
 
 /// 上游选择答完那一刻，中转手里的**四种**结局（下游看到的字节各不相同）。
@@ -639,7 +640,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
         Ok(w) => w,
         Err(e) => {
             let mut down = down;
-            let _ = refuse_busy(&mut down);
+            refuse_busy(&mut down).discard(Why::DeadLink); // dup 不成（fd 用尽）时回一句「忙」给这条连接，随后照样交回那个错
             return Err(e);
         }
     };

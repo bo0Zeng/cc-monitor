@@ -59,6 +59,7 @@ use crate::platform::fs::{Ro, RoFile};
 use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
 use crate::wire::{FrameMake as _, FrameRules as _, TopicExt as _};
 use cmd_wire::frame::{HiddenNow, Relayed};
+use copy_core::discard::{Discard, Why};
 use notify::{RecursiveMode, Watcher as _};
 use resident_client::book::SessionBook;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -198,11 +199,13 @@ impl notify::EventHandler for FsSink {
             Ok(ev) if is_open(&ev.kind) => {}
             Ok(ev) => {
                 if self.pending.add(ev.paths) {
-                    let _ = self.tx.send(WatchEvent::Notify);
+                    self.tx.send(WatchEvent::Notify).discard(Why::PeerGone);
                 }
             }
             Err(e) => {
-                let _ = self.tx.send(WatchEvent::NotifyFailed(e));
+                self.tx
+                    .send(WatchEvent::NotifyFailed(e))
+                    .discard(Why::PeerGone);
             }
         }
     }
@@ -262,7 +265,7 @@ fn spawn_pid_watcher(
         pid,
         || crate::platform::proc::session_alive(pid, expected_start),
         move || {
-            let _ = tx.send(target.death_event(pid));
+            tx.send(target.death_event(pid)).discard(Why::PeerGone);
         },
     );
 }
@@ -368,7 +371,7 @@ fn arm_pid_watcher(key: &Path, pid: u32, expected_start: Option<u64>, state: &mu
 /// （P4），server 生死由 pidfd / socket inotify 管（P3）。**零定时器。**
 fn initial_tmux_probe(tx: &std::sync::mpsc::Sender<WatchEvent>) {
     // send 失败 = reader 已经走了 ⇒ 无所谓。
-    let _ = tx.send(WatchEvent::TmuxProbeDue);
+    tx.send(WatchEvent::TmuxProbeDue).discard(Why::PeerGone);
 }
 
 /// 起一次 tmux 探测（一次性后台线程，结果回 `TmuxObserved`）。已有在途的就不起 —— `inflight` 只在这里置位、
@@ -385,7 +388,8 @@ fn start_tmux_probe(
     sink.observing();
     let tx = tx.clone();
     std::thread::spawn(move || {
-        let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));
+        tx.send(WatchEvent::TmuxObserved(run_tmux_probe()))
+            .discard(Why::PeerGone);
     });
     true
 }
@@ -473,12 +477,12 @@ fn rewatch_dir(
     if !dir.is_dir() {
         if *watched {
             tracing::info!("目录消失了 {} —— 解除记账，等它回来再挂", dir.display());
-            let _ = fs_watch.unwatch(dir);
+            fs_watch.unwatch(dir).discard(Why::Reap); // 撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败
             *watched = false;
         }
         return;
     }
-    let _ = fs_watch.unwatch(dir);
+    fs_watch.unwatch(dir).discard(Why::Reap); // 撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败
     match fs_watch.watch(dir, mode) {
         Ok(()) => {
             if !*watched {
@@ -506,7 +510,7 @@ fn rewatch_agent_home(
     if agent_home.is_dir() {
         let was = *home_watched;
         // 无条件先 unwatch 再 watch：分不清「同 inode 的普通事件」与「换了 inode」（`rewatch_dir` 同一条纪律）。
-        let _ = fs_watch.unwatch(agent_home);
+        fs_watch.unwatch(agent_home).discard(Why::Reap); // 撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败
         return match fs_watch.watch(agent_home, RecursiveMode::NonRecursive) {
             Ok(()) => {
                 *home_watched = true;
@@ -531,7 +535,7 @@ fn rewatch_agent_home(
             "{what} 消失了 {} —— 解除记账，等它回来再挂",
             agent_home.display()
         );
-        let _ = fs_watch.unwatch(agent_home);
+        fs_watch.unwatch(agent_home).discard(Why::Reap); // 撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败
         *home_watched = false;
     }
     if *parent_watched {
@@ -723,7 +727,7 @@ impl AccountsEar {
             })
             .unwrap_or_default();
         for gone in self.subs.difference(&now) {
-            let _ = fs_watch.unwatch(gone);
+            fs_watch.unwatch(gone).discard(Why::Reap); // 账号目录里不在了的号目录撤掉 watch：目录已删时 unwatch 本来就会失败
         }
         let fresh: Vec<PathBuf> = now.difference(&self.subs).cloned().collect();
         self.subs.retain(|p| now.contains(p));
@@ -952,14 +956,14 @@ fn watch_sock_dir_if_present(
                 "tmux socket 目录消失了 {} —— 解除记账，等它回来再挂",
                 sock_dir.display()
             );
-            let _ = fs_watch.unwatch(sock_dir);
+            fs_watch.unwatch(sock_dir).discard(Why::Reap); // 撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败
             *watched = false;
         }
         return;
     }
     // 目录在。**无条件先 unwatch 再 watch**（分辨不出「同 inode 的普通事件」与「换了 inode」，
     // 而重挂同一个 inode 无害、漏挂新 inode 致命）——与 `rewatch_sessions` 同一条纪律。
-    let _ = fs_watch.unwatch(sock_dir);
+    fs_watch.unwatch(sock_dir).discard(Why::Reap); // 撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败
     match fs_watch.watch(sock_dir, RecursiveMode::NonRecursive) {
         Ok(()) => {
             let first = !*watched;
@@ -994,7 +998,7 @@ impl WatcherPoke {
     /// `recv()`。**这件事漏做不会红任何测试**（进程退出时线程随之消亡），
     /// 所以它和删 ticker 是同一步、不许拆开。
     pub fn shutdown(&self) {
-        let _ = self.0.send(WatchEvent::Shutdown);
+        self.0.send(WatchEvent::Shutdown).discard(Why::PeerGone);
     }
 
     /// 接上一条流连接：回它的出方向通道（这台的帧从这里来；先来一份此刻的样子）与它在这台 watcher 上的那一份（丢了 ＝ 走了）。
@@ -1008,9 +1012,9 @@ impl WatcherPoke {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
-        let _ = self
-            .0
-            .send(WatchEvent::Join(Sub::new(id, tx, tz.clone()), watch));
+        self.0
+            .send(WatchEvent::Join(Sub::new(id, tx, tz.clone()), watch))
+            .discard(Why::PeerGone); // watcher 已停：这条连接的出方向通道随即读到关闭，按「流结束」收场
         (
             rx,
             Attachment(WatchHandle {
@@ -1033,7 +1037,10 @@ impl Attachment {
 
 impl Drop for Attachment {
     fn drop(&mut self) {
-        let _ = self.0.tx.send(WatchEvent::Leave(self.0.id));
+        self.0
+            .tx
+            .send(WatchEvent::Leave(self.0.id))
+            .discard(Why::PeerGone); // watcher 已停：连接本来就不在它的名单上了
     }
 }
 
@@ -1051,11 +1058,13 @@ impl WatchHandle {
         ask: crate::wire::WatchAsk,
     ) -> tokio::sync::oneshot::Receiver<Vec<crate::wire::WatchFrom>> {
         let (done, rx) = tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>();
-        let _ = self.tx.send(WatchEvent::Watch {
-            sub: self.id,
-            ask,
-            done,
-        });
+        self.tx
+            .send(WatchEvent::Watch {
+                sub: self.id,
+                ask,
+                done,
+            })
+            .discard(Why::PeerGone);
         rx
     }
 }
@@ -1202,24 +1211,26 @@ fn live_leave(id: u64) {
 /// （同出方向那条大通道：字节封顶，挤丢了那台欠一格，[`Sub::push`]）。没有在跑的 watcher ＝ 没人连着，不交。
 pub fn relay(frame: Frame) {
     for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
-        let _ = w.send(WatchEvent::Relay(frame.clone()));
+        w.send(WatchEvent::Relay(frame.clone()))
+            .discard(Why::PeerGone); // 别台那条流上的一件投给名单上的每一份 watcher：那一份正在退出 ⇒ 它的连接也没了，没人要这一件
     }
 }
 
 /// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」** —— 名单上每一份 watcher 都戳一下（语义同 [`WatcherPoke::poke`]）。
 pub fn poke_all() {
     for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
-        let _ = w.send(WatchEvent::Poke);
+        w.send(WatchEvent::Poke).discard(Why::PeerGone);
     }
 }
 
 /// 这台刚问过一条会话的记录在不在（`history-record` · `session-open` 恢复那一问答完）：交每一份在跑的 watcher 的会话账本。
 pub(crate) fn record_seen(sid: &str, present: bool) {
     for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
-        let _ = w.send(WatchEvent::RecordSeen {
+        w.send(WatchEvent::RecordSeen {
             sid: sid.to_string(),
             present,
-        });
+        })
+        .discard(Why::PeerGone);
     }
 }
 
@@ -1230,11 +1241,12 @@ pub(crate) fn expect_arrival(
     tell: &crate::observe::arrivals::Tell,
 ) {
     for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
-        let _ = w.send(WatchEvent::Arrive {
+        w.send(WatchEvent::Arrive {
             by: by.clone(),
             since,
             tell: tell.clone(),
-        });
+        })
+        .discard(Why::PeerGone);
     }
 }
 
@@ -1250,10 +1262,11 @@ pub(crate) fn resync(only: Option<&str>) -> (Reconciled, usize) {
         .map(|(_, w)| w.clone())
         .collect();
     for w in &live {
-        let _ = w.send(WatchEvent::Resync {
+        w.send(WatchEvent::Resync {
             only: only.map(str::to_string),
             done: tx.clone(),
-        });
+        })
+        .discard(Why::PeerGone);
     }
     drop(tx);
     let mut n = 0;
@@ -1786,7 +1799,8 @@ fn watch_loop(
             }
             // 与起步同一套：耳朵重挂 · 账号清单重读（整机时）· pidfile 对表（顺手对账标签）· 重探 tmux。
             WatchEvent::Watch { sub, ask, done } => {
-                let _ = done.send(watch_sessions(sub, ask, &mut state, &mut sink));
+                done.send(watch_sessions(sub, ask, &mut state, &mut sink))
+                    .discard(Why::PeerGone);
             }
             WatchEvent::Join(sub, watch) => join(sub, watch, &mut state, &mut sink),
             WatchEvent::Leave(id) => sink.leave(id),
@@ -1832,7 +1846,7 @@ fn watch_loop(
                 state.table_dirty = true;
                 let got = resync_sessions(&sessions, &mut state, &mut sink, only.as_deref());
                 start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
-                let _ = done.send(got);
+                done.send(got).discard(Why::PeerGone);
             }
             WatchEvent::Shutdown => break,
         }
@@ -3313,7 +3327,7 @@ fn rewatch_sessions(
                 "sessions 目录消失了 {} —— 解除记账，等它回来再挂",
                 sessions.display()
             );
-            let _ = fs_watch.unwatch(sessions);
+            fs_watch.unwatch(sessions).discard(Why::Reap); // 撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败
             *watched = false;
         }
         return;
@@ -3321,7 +3335,7 @@ fn rewatch_sessions(
     // 目录在。**无条件先 unwatch 再 watch**：我们分辨不出「同一个 inode 的普通事件」与
     // 「换了 inode」——而重挂同一个 inode 是无害的（notify 幂等），漏挂新 inode 是致命的。
     // ⇒ 宁可多挂一次。`unwatch` 在没挂过时会报错，忽略它。
-    let _ = fs_watch.unwatch(sessions);
+    fs_watch.unwatch(sessions).discard(Why::Reap); // 撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败
     match fs_watch.watch(sessions, RecursiveMode::NonRecursive) {
         Ok(()) => {
             if !*watched {
@@ -4699,7 +4713,9 @@ impl PrimePool {
     fn start(events: std::sync::mpsc::Sender<WatchEvent>) -> Self {
         PrimePool {
             pool: crate::common::par::Pool::new("record-prime", move |job| {
-                let _ = events.send(WatchEvent::Primed(run_prime(job)));
+                events
+                    .send(WatchEvent::Primed(run_prime(job)))
+                    .discard(Why::PeerGone); // watcher 已停：这一趟预读的结果没人要
             }),
             queue: std::collections::VecDeque::new(),
             in_flight: 0,

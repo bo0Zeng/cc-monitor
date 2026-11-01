@@ -34,6 +34,7 @@
 //!   （`§3.3.0` 逐字），认不出的标签当作协议坏了，不当作新标签收下。
 
 use copy_core::copy_text;
+use copy_core::discard::{Discard, Why};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -99,7 +100,7 @@ impl CancelToken {
     pub async fn cancelled(&self) {
         let mut rx = self.0.subscribe();
         // `wait_for` 只在发送端没了时出错 —— 而发送端就在 `self` 里，这一支到不了。
-        rx.wait_for(|c| *c).await.ok();
+        rx.wait_for(|c| *c).await.discard(Why::Signal);
     }
 }
 
