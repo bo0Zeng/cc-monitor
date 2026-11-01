@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # ruff: noqa: E501
-"""SX1：把 `history-search` 那一群会话文件逐份**丢出页缓存** —— 秤的「冷」那一格。
+"""把 `history-search` 那一群会话文件逐份**丢出页缓存** —— 秤的「冷」那一格。
 
 跑法：
-    python3 tests/evidence/SX1-evict-page-cache.py <projects 根>
+    python3 tests/evidence/evict-page-cache.py <projects 根>
 
 人群与后端那一问同一个：`<根>` 下深度 ≤ 2 的 `*.jsonl`（`search_query::search_counting` 的 walk：
 `WalkDir(max_depth 2)`、不跟符号链接、只收普通文件）。
@@ -64,7 +64,7 @@ def resident_bytes(paths):
 
 def main():
     if len(sys.argv) != 2:
-        print("用法：SX1-evict-page-cache.py <projects 根>", file=sys.stderr)
+        print("用法：evict-page-cache.py <projects 根>", file=sys.stderr)
         return 2
     paths = population(sys.argv[1])
     size = 0
