@@ -1074,7 +1074,11 @@ fn asking_again_with_the_mark_answers_only_what_changed() {
 async fn the_machine_is_named_both_ways() {
     let _tree = MACHINE_TREE.lock().await;
     let e = answer_wire(json!({})).await.unwrap_err();
-    assert_eq!(e.code.as_deref(), Some("bad_args"), "缺 `origin` 当成了这台：{e:?}");
+    assert_eq!(
+        e.code.as_deref(),
+        Some("bad_args"),
+        "缺 `origin` 当成了这台：{e:?}"
+    );
     let e = answer_wire(json!({"origin": " "})).await.unwrap_err();
     assert_eq!(e.code.as_deref(), Some("bad_args"), "空白名：{e:?}");
     answer_flat(json!({"origin": cmd_wire::LOCAL}))
@@ -1092,7 +1096,11 @@ async fn the_machine_is_named_both_ways() {
     let groups = v["groups"].as_array().unwrap();
     assert!(!rows.is_empty() && !groups.is_empty(), "夹具没出行与组");
     for x in rows.iter().chain(groups) {
-        assert_eq!(x["origin"], json!(cmd_wire::LOCAL), "这台那一格没写出来：{x}");
+        assert_eq!(
+            x["origin"],
+            json!(cmd_wire::LOCAL),
+            "这台那一格没写出来：{x}"
+        );
     }
 }
 
@@ -1108,7 +1116,9 @@ async fn the_frame_arm_takes_the_mark() {
         .await
         .unwrap();
     assert_eq!(again["same"], true, "{again}");
-    let e = answer_wire(json!({"origin": here, "held": 7})).await.unwrap_err();
+    let e = answer_wire(json!({"origin": here, "held": 7}))
+        .await
+        .unwrap_err();
     assert_eq!(e.code.as_deref(), Some("bad_args"));
 }
 

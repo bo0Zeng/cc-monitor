@@ -463,6 +463,9 @@ fn the_phone_column_nests_forks_under_their_parent() {
     let got = phone_tokens(&later, &column(&phone_ask(&later, &shape, &|_| false)));
     let want = tokens(&lay(&later, &shape), By::Time);
     assert_eq!(got, want, "分叉落在另一天");
-    let at = want.iter().position(|t| *t == here("g1:child")).expect("g1");
+    let at = want
+        .iter()
+        .position(|t| *t == here("g1:child"))
+        .expect("g1");
     assert_eq!(want[at - 1], here("k1:child:forks=1(open)"), "{want:?}");
 }

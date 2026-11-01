@@ -362,10 +362,7 @@ pub(crate) async fn answer(
     } else {
         None
     };
-    let mut got: Vec<(Machine, Got)> = here
-        .map(|g| (Machine::local(), g))
-        .into_iter()
-        .collect();
+    let mut got: Vec<(Machine, Got)> = here.map(|g| (Machine::local(), g)).into_iter().collect();
     for s in syncs {
         let (m, g) = s.await.map_err(|e| {
             Said::new(
@@ -575,8 +572,7 @@ pub(crate) fn lay(answered: &[Answered], shape: &Shape) -> Laid {
             laid.projects = u32::try_from(groups.len()).unwrap_or(u32::MAX);
             laid.grouped = groups.iter().map(|g| g.count).sum();
             // 每组那几行：顶层的行进它自己那一组，挂在父下的跟着父。
-            let mut by_group: BTreeMap<(Machine, &str), Vec<(&HistoryRow, Nest)>> =
-                BTreeMap::new();
+            let mut by_group: BTreeMap<(Machine, &str), Vec<(&HistoryRow, Nest)>> = BTreeMap::new();
             let mut at: Option<(Machine, &str)> = None;
             for &(r, n) in &nested {
                 if !n.child {
