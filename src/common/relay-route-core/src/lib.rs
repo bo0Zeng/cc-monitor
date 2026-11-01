@@ -858,8 +858,10 @@ const HOST_FACTS_MAX_BYTES: Cap = Cap {
     over: Over::Reject,
 };
 /// 托管进程跑的那份按版本的程序副本（后端不读它，只交给系统去跑；没有 · 坏了照自己再复制一份）。
-pub const HOST_PROGRAM_FILE: Decl<Cache> =
-    Decl::<Cache>::foreign(".cc-monitor/hosts/.bin/<version>/ccm.exe", HOST_PROGRAM_NOT_READ);
+pub const HOST_PROGRAM_FILE: Decl<Cache> = Decl::<Cache>::foreign(
+    ".cc-monitor/hosts/.bin/<version>/ccm.exe",
+    HOST_PROGRAM_NOT_READ,
+);
 /// 程序副本不读：上限是 0，真有一处去读，读口就照缓存那一档当没有、`warn!` 带路径。
 const HOST_PROGRAM_NOT_READ: Cap = Cap {
     bytes: 0,
