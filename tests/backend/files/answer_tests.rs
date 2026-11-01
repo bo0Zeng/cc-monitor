@@ -2,143 +2,11 @@
 
 use super::*;
 
-use crate::files::index::tests::resident_lock;
+use crate::files::index::test_support::resident_lock;
 
 use cmd_wire::files as w;
-
-/// 每条 [`Ask`] 在判据里的能力名（生产按入参类型分派，不读名字）。
-pub(crate) trait Named: Ask {
-    const CAPABILITY: &'static str;
-}
-
-impl Named for w::LsReq {
-    const CAPABILITY: &'static str = "files.ls";
-}
-impl Named for w::StatReq {
-    const CAPABILITY: &'static str = "files.stat";
-}
-impl Named for w::FindReq {
-    const CAPABILITY: &'static str = "files.find";
-}
-impl Named for w::IndexStatusReq {
-    const CAPABILITY: &'static str = "files.index.status";
-}
-impl Named for w::RebuildReq {
-    const CAPABILITY: &'static str = "files.index.rebuild";
-}
-impl Named for w::ReadTextReq {
-    const CAPABILITY: &'static str = "files.read.text";
-}
-impl Named for w::HomeReq {
-    const CAPABILITY: &'static str = "files.home";
-}
-impl Named for w::SizeReq {
-    const CAPABILITY: &'static str = "files.size";
-}
-impl Named for w::ReadChunkReq {
-    const CAPABILITY: &'static str = "files.read.chunk";
-}
-impl Named for w::GrepReq {
-    const CAPABILITY: &'static str = "files.grep";
-}
-
-/// 本族的能力名单（每条 [`Ask`] 的 [`Named::CAPABILITY`]）。与 [`answer`] 的分派两向对得上由
-/// `inbound_structure_guards::the_files_read_family_is_online_exactly_as_it_is_declared` 钉（上线的那组 == 本表，且每条不落 `unknown_capability`）。
-pub(crate) const CAPABILITIES: &[&str] = &[
-    <w::LsReq as Named>::CAPABILITY,
-    <w::StatReq as Named>::CAPABILITY,
-    <w::FindReq as Named>::CAPABILITY,
-    <w::RebuildReq as Named>::CAPABILITY,
-    // 浏览名单跟着连接走（不是 `Ask`：帧面硬臂带本连接的号进 `files::browse`）；判据里记在 [`TEST_CONN`] 名下。
-    "files.browse",
-    <w::ReadTextReq as Named>::CAPABILITY,
-    <w::ReadChunkReq as Named>::CAPABILITY,
-    <w::SizeReq as Named>::CAPABILITY,
-    <w::GrepReq as Named>::CAPABILITY,
-    <w::HomeReq as Named>::CAPABILITY,
-    <w::IndexStatusReq as Named>::CAPABILITY,
-];
-
-/// 判据里交浏览名单用的那条连接号（帧面那一侧每条连接一个号，从 1 起）。
-pub(crate) const TEST_CONN: u64 = 1;
-
-/// 判据里按能力名问一条（同命令表那一扇门：入参先按它的类型解，形状不对 ⇒ `bad_args`；回包按线上那一形摊回 JSON）。
-/// 名字从每条 [`Ask`] 的 [`Named::CAPABILITY`] 来，不在里面 ⇒ `unknown_capability`。
-pub(crate) fn answer(
-    name: &str,
-    args: &serde_json::Value,
-    tz: &crate::common::time::Tz,
-) -> Result<serde_json::Value, Said> {
-    fn one<A: Ask + serde::de::DeserializeOwned>(
-        args: &serde_json::Value,
-        tz: &crate::common::time::Tz,
-    ) -> Result<serde_json::Value, Said>
-    where
-        A::Reply: serde::Serialize,
-    {
-        let v = if args.is_null() {
-            serde_json::json!({})
-        } else {
-            args.clone()
-        };
-        let req: A = serde_json::from_value(v).map_err(|e| {
-            Said::new(
-                "bad_args",
-                crate::common::contract::malformed(&e.to_string()),
-            )
-        })?;
-        super::answer(req, tz).map(|r| serde_json::to_value(r).expect("回包总能序列化"))
-    }
-    match name {
-        n if n == <w::LsReq as Named>::CAPABILITY => one::<w::LsReq>(args, tz),
-        n if n == <w::StatReq as Named>::CAPABILITY => one::<w::StatReq>(args, tz),
-        n if n == <w::FindReq as Named>::CAPABILITY => one::<w::FindReq>(args, tz),
-        n if n == <w::RebuildReq as Named>::CAPABILITY => one::<w::RebuildReq>(args, tz),
-        "files.browse" => {
-            let v = if args.is_null() {
-                serde_json::json!({})
-            } else {
-                args.clone()
-            };
-            let req: w::BrowseReq = serde_json::from_value(v).map_err(|e| {
-                Said::new(
-                    "bad_args",
-                    crate::common::contract::malformed(&e.to_string()),
-                )
-            })?;
-            super::browse(TEST_CONN, req).map(|r| serde_json::to_value(r).expect("回包总能序列化"))
-        }
-        n if n == <w::ReadTextReq as Named>::CAPABILITY => one::<w::ReadTextReq>(args, tz),
-        n if n == <w::ReadChunkReq as Named>::CAPABILITY => one::<w::ReadChunkReq>(args, tz),
-        n if n == <w::SizeReq as Named>::CAPABILITY => one::<w::SizeReq>(args, tz),
-        n if n == <w::GrepReq as Named>::CAPABILITY => one::<w::GrepReq>(args, tz),
-        n if n == <w::HomeReq as Named>::CAPABILITY => one::<w::HomeReq>(args, tz),
-        n if n == <w::IndexStatusReq as Named>::CAPABILITY => one::<w::IndexStatusReq>(args, tz),
-        other => Err(Said::new(
-            "unknown_capability",
-            crate::common::contract::malformed(&format!("unknown capability `{other}`")),
-        )),
-    }
-}
-
-/// 同 [`answer`]，名字写线上那一形（`files-ls`）。
-pub(crate) fn answer_wire(
-    wire_name: &str,
-    args: &serde_json::Value,
-    tz: &crate::common::time::Tz,
-) -> Result<serde_json::Value, Said> {
-    answer(&wire_name.replace('-', "."), args, tz)
-}
-
-/// 那条能力在命令表里登记的码（码表从那一行的错误枚举来）。
-fn registered_codes(cap: &str) -> &'static [&'static str] {
-    let wire = cap.replace('.', "-");
-    crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|s| s.name == wire)
-        .unwrap_or_else(|| panic!("`{wire}` 不在命令表里"))
-        .codes
-}
+// 按能力名问的那一口住 `files::test_support`（上层的判据也用）。
+use crate::files::test_support::{answer, answer_wire, CAPABILITIES};
 
 /// 那条能力的入参类型认得的键：喂一个不认得的键，解码器拒的那一句里列着它认得的全部字段（从类型来，不另抄一份）。
 fn req_fields(cap: &str) -> std::collections::BTreeSet<String> {
@@ -164,7 +32,17 @@ fn req_fields(cap: &str) -> std::collections::BTreeSet<String> {
         .collect()
 }
 
-/// 本族目录下的 `(文件名, 整份源码)`。
+/// 同住 `files/` 的写面那几份（相对 `files/`）：不是读族，下面那几条读族判据不扫它们。
+const WRITE_FACE: &[&str] = &[
+    "batch.rs",
+    "commit.rs",
+    "commit/session_attachment.rs",
+    "extract.rs",
+    "upload_chunks.rs",
+    "write.rs",
+];
+
+/// 读族的 `(文件名, 整份源码)`：`files/` 底下摘掉 [`WRITE_FACE`]。
 ///
 /// 走 `guard_core::scan_tree!`。
 ///
@@ -174,8 +52,23 @@ fn req_fields(cap: &str) -> std::collections::BTreeSet<String> {
 /// **根本不在被扫的那棵树里**。
 fn family_sources() -> Vec<(String, String)> {
     let dir = guard_core::addr::backend_src_root().join("files");
-    let mut out: Vec<(String, String)> = guard_core::scan_tree!(&dir, &["rs"])
+    let rel_of = |p: &std::path::Path| {
+        p.strip_prefix(&dir)
+            .unwrap_or(p)
+            .to_string_lossy()
+            .replace('\\', "/")
+    };
+    let all = guard_core::scan_tree!(&dir, &["rs"]);
+    // 摘掉的那几份都得真在：改了名却没跟上这张表 ⇒ 写面那一份会悄悄混进读族的人群。
+    for w in WRITE_FACE {
+        assert!(
+            all.iter().any(|(p, _)| rel_of(p) == *w),
+            "`files/{w}` 不在了 —— 写面那张摘除表没跟上"
+        );
+    }
+    let mut out: Vec<(String, String)> = all
         .into_iter()
+        .filter(|(p, _)| !WRITE_FACE.contains(&rel_of(p).as_str()))
         .map(|(p, src)| {
             (
                 p.file_name()
@@ -208,7 +101,7 @@ fn family_sources() -> Vec<(String, String)> {
 fn the_index_rebuild_counts_what_the_fixture_really_has() {
     let _lock = resident_lock();
     // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     let fx = crate::files::index::tests::make_tree("rebuild-fields", 2, 3, 0);
     let v = answer(
         "files.index.rebuild",
@@ -245,7 +138,7 @@ fn the_index_rebuild_counts_what_the_fixture_really_has() {
 fn a_rebuild_on_an_unreadable_root_is_refused_without_touching_the_resident_index() {
     let _lock = resident_lock();
     // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     let fx = crate::files::index::tests::make_tree("rebuild-keep", 2, 2, 0);
     answer(
         "files.index.rebuild",
@@ -325,62 +218,6 @@ fn the_browse_diff_counts_are_exact() {
     );
 }
 
-/// 新那两条自己声明的错误码，**都得真的出得来**（幽灵码检查）。
-///
-/// ⚠ `unreadable` 那一档由上面那条
-/// [`a_rebuild_on_an_unreadable_root_is_refused_without_touching_the_resident_index`]
-/// 行使（那条同时钉着「不许清索引」），这里只补形状类的那几个。
-#[test]
-fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
-    let _lock = resident_lock();
-    // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
-    let _serial = crate::files::index::testing::serial();
-    for (cap, args, want) in [
-        // `path` 那一族与同族其余两条逐字同一条路（`path_arg`）。
-        (
-            "files.index.rebuild",
-            serde_json::json!({"path": ""}),
-            "bad_path",
-        ),
-        // 形状不对（不是字符串也不是 `{"b16"}`）在解入参那一步就拒 ⇒ `bad_args`；解得出、却是空的 ⇒ `bad_path`。
-        (
-            "files.index.rebuild",
-            serde_json::json!({"path": 7}),
-            "bad_args",
-        ),
-        // `dirs` **自己**的形状不对 ⇒ `bad_args`（少了它 / 不是数组）。
-        ("files.browse", serde_json::json!({}), "bad_args"),
-        (
-            "files.browse",
-            serde_json::json!({"dirs": "/tmp"}),
-            "bad_args",
-        ),
-        // 数组里某一项形状不对 ⇒ 同样在解入参那一步拒（`bad_args`）；某一项是空的 ⇒ `bad_path`。
-        ("files.browse", serde_json::json!({"dirs": [7]}), "bad_args"),
-        (
-            "files.browse",
-            serde_json::json!({"dirs": [{"b16": "zz"}]}),
-            "bad_args",
-        ),
-        (
-            "files.browse",
-            serde_json::json!({"dirs": [""]}),
-            "bad_path",
-        ),
-    ] {
-        let got = answer(cap, &args, &Default::default());
-        assert!(
-            matches!(&got, Err(s) if s.code.as_deref() == Some(want)),
-            "`{cap}` 对 {args:?} 该回 `{want}`，回的是 {got:?}"
-        );
-        let declared = registered_codes(cap);
-        assert!(
-            declared.contains(&want),
-            "`{cap}` 的错误码表里没有 `{want}` —— 它真的会回这个码"
-        );
-    }
-}
-
 /// 🔴🔴 **`args` 那一侧终于也去对真解析器了**〔`24f` 第三刀补， 登记的那条欠账〕。
 ///
 /// # 它补的是哪一格
@@ -431,7 +268,7 @@ fn every_declared_arg_is_really_read_by_the_parser() {
 
     // `files.find` 那几条要有一份**真的**常驻索引才谈得上差分。
     // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     crate::files::index::rebuild_once(&fx.root).expect("本格独占跑，抢不到就是并发保护写错了");
 
     // `files.read.text` 的两份夹具 —— 放在那棵树**之外**（免得动了树的形状）。
@@ -934,79 +771,6 @@ fn a_malformed_path_argument_is_refused_with_its_own_code() {
     );
 }
 
-/// 每条能力声明的错误码，都得**真的出得来**（幽灵码检查）。
-///
-/// ⚠ 它只覆盖今天造得出触发条件的那几个；`unreadable` 那一档要一个读不了的路径，
-/// 用一个不存在的路径造（`io::ErrorKind` 不同，但走的是同一条出口）。
-#[test]
-fn the_declared_error_codes_are_not_ghosts() {
-    let _lock = resident_lock();
-    let nowhere = std::env::temp_dir().join(format!("ccm-24f-ghost-{}", std::process::id()));
-    std::fs::remove_dir_all(&nowhere).ok();
-    let arg = serde_json::json!({"path": nowhere.to_str().expect("ASCII")});
-    for (cap, want) in [("files.ls", "not_found"), ("files.stat", "unreadable")] {
-        let got = answer(cap, &arg, &Default::default());
-        assert!(
-            matches!(&got, Err(s) if s.code.as_deref() == Some(want)),
-            "`{cap}` 对一个不存在的路径没有回 `{want}`，回的是 {got:?}"
-        );
-        let declared = registered_codes(cap);
-        assert!(
-            declared.contains(&"unreadable") && declared.contains(&"bad_path"),
-            "`{cap}` 的错误码表漏了它真的会回的那几个"
-        );
-    }
-    // `files.ls` 打不开的另两种：给的是一份文件 ⇒ `not_dir`；没有读权限 ⇒ `denied`（unix）。
-    let base = std::env::temp_dir().join(format!("ccm-24f-ghost2-{}", std::process::id()));
-    std::fs::remove_dir_all(&base).ok();
-    std::fs::create_dir_all(base.join("locked")).unwrap();
-    std::fs::write(base.join("f.txt"), b"x").unwrap();
-    let ls = |p: &std::path::Path| {
-        answer(
-            "files.ls",
-            &serde_json::json!({"path": p.to_str().unwrap()}),
-            &Default::default(),
-        )
-    };
-    assert!(
-        matches!(
-            ls(&base.join("f.txt")),
-            Err(s) if s.code.as_deref() == Some("not_dir")
-        ),
-        "给一份文件没回 `not_dir`"
-    );
-    // 句子里只有原因词（全仓那一张表；「不是目录」这一种它说「原因不明」），系统原话进 `raw`、不进句子。
-    let e = ls(&base.join("f.txt")).unwrap_err();
-    assert_eq!(
-        e.said,
-        copy_core::copy_text(
-            "beFilesRead.ls.unreadable",
-            &[(
-                "kind",
-                &copy_core::io_reason(std::io::ErrorKind::NotADirectory)
-            )]
-        )
-    );
-    let raw = e.raw.clone().unwrap_or_default();
-    assert!(!raw.trim().is_empty(), "系统原话丢了：{e:?}");
-    assert!(!e.said.contains(raw.trim()), "原话进了句子：{e:?}");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        std::fs::set_permissions(base.join("locked"), std::fs::Permissions::from_mode(0o000))
-            .unwrap();
-        // root 读得动一切 ⇒ 这一格在 root 下判不了（那时列得出来，读数照实）。
-        match ls(&base.join("locked")) {
-            Ok(_) => {}
-            Err(s) if s.code.as_deref() == Some("denied") => {}
-            other => panic!("没权限没回 `denied`：{other:?}"),
-        }
-        std::fs::set_permissions(base.join("locked"), std::fs::Permissions::from_mode(0o755))
-            .unwrap();
-    }
-    std::fs::remove_dir_all(&base).ok();
-}
-
 // ══════════════════════ 第七、第八条 ══════════════════════
 //
 // 窗口换走通道的那两问。每条都**正控 ＋ 阴性对照同拍**：只验「该拒的拒了」，
@@ -1075,83 +839,6 @@ fn one_byte_over_the_cap_is_refused_whole_and_exactly_at_the_cap_is_not() {
     }
     std::fs::remove_dir_all(&d).ok();
 }
-
-/// 三形「不是文本」各自落 `not_text`；读不到落 `unreadable`；参数形状落各自的码。
-/// ⚠ 最后一条是**两向集合相等**：造得出来的码 == 声明的码（多一个是幽灵、少一个是没声明）。
-#[test]
-fn every_refusal_of_read_text_lands_on_its_own_declared_code() {
-    let d = f7a_dir("rt-codes");
-    let nul = d.join("nul.bin");
-    std::fs::write(&nul, b"ab\0cd").expect("铺");
-    let bad = d.join("latin1.txt");
-    std::fs::write(&bad, [0x63u8, 0x61, 0x66, 0xE9]).expect("铺"); // 「café」的 Latin-1 字节
-    let big = d.join("big.txt");
-    std::fs::write(&big, "y".repeat(10)).expect("铺");
-    let gone = d.join("gone.txt");
-    let ceiling = crate::files::READ_TEXT_MAX_BYTES as u64;
-    let cases: Vec<(serde_json::Value, &str)> = vec![
-        (
-            serde_json::json!({ "path": path_json(&nul), "max_bytes": 100 }),
-            "not_text",
-        ),
-        (
-            serde_json::json!({ "path": path_json(&bad), "max_bytes": 100 }),
-            "not_text",
-        ),
-        (
-            serde_json::json!({ "path": path_json(&d), "max_bytes": 100 }),
-            "not_text",
-        ),
-        (
-            serde_json::json!({ "path": path_json(&big), "max_bytes": 9 }),
-            "too_large",
-        ),
-        (
-            serde_json::json!({ "path": path_json(&gone), "max_bytes": 100 }),
-            "unreadable",
-        ),
-        (serde_json::json!({ "max_bytes": 100 }), "bad_args"),
-        (
-            serde_json::json!({ "path": "", "max_bytes": 100 }),
-            "bad_path",
-        ),
-        (serde_json::json!({ "path": path_json(&big) }), "bad_args"),
-        (
-            serde_json::json!({ "path": path_json(&big), "max_bytes": 0 }),
-            "bad_args",
-        ),
-        (
-            serde_json::json!({ "path": path_json(&big), "max_bytes": ceiling + 1 }),
-            "bad_args",
-        ),
-    ];
-    let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
-    for (args, want) in &cases {
-        let got = answer("files.read.text", args, &Default::default());
-        assert!(
-            matches!(&got, Err(s) if s.code.as_deref() == Some(*want)),
-            "`files.read.text` 对 {args} 该回 `{want}`，回的是 {got:?}"
-        );
-        seen.insert(want);
-    }
-    // 正控：天花板本身是收的（对一份小文件）—— 不然上面那一条「超天花板」证不了边界在哪。
-    assert!(
-        answer(
-            "files.read.text",
-            &serde_json::json!({ "path": path_json(&big), "max_bytes": ceiling }),
-            &Default::default()
-        )
-        .is_ok(),
-        "`max_bytes` 恰好等于天花板被拒了"
-    );
-    let declared: std::collections::BTreeSet<&str> = registered_codes("files.read.text")
-        .iter()
-        .copied()
-        .collect();
-    assert_eq!(seen, declared, "造得出来的码与登记的码不是同一个集合");
-    std::fs::remove_dir_all(&d).ok();
-}
-
 /// ★ `files.home`：有就交、说不出就拒（没有 / 空 / 相对 三形），**不拿别处兜底**。
 ///
 /// ⚠ 喂的是纯函数 [`super::home_from`]，不去改测试进程的环境（理由在它的头注）。
@@ -1371,7 +1058,8 @@ fn ls_and_stat_carry_mtime_texts_written_by_this_machine() {
     .expect("ls");
     let e = &ls_rows(&ls)[0];
     let t = e["mtime_secs"].as_u64().expect("这一项有修改时间");
-    let (short, full) = crate::common::time::mtime_texts_now(t, &crate::Tz::default());
+    let (short, full) =
+        crate::common::time::mtime_texts_now(t, &crate::common::time::Tz::default());
     assert_eq!(
         (e["mtime_text"].as_str(), e["mtime_full"].as_str()),
         (Some(short.as_str()), Some(full.as_str()))

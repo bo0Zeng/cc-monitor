@@ -44,7 +44,10 @@ mod common_cross_tests; // 纯工具那一层判据里引到上层的那几条�
 pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
 pub mod dial; // SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）
 pub mod faces; // 帧面宿主：read_face · feature_face · fork_face · resync_face（薄壳，本体在 observe/ · control/）
-pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻文件名索引 ＋ 四条只读能力
+use backend_files as files; // 文件管理那一块：只读族（常驻文件名索引 ＋ 列 · 读 · 找 · grep）＋ 写面（独立的包 `backend-files`：只引纯工具与平台两层）
+#[cfg(test)]
+#[path = "../../tests/backend/cross/files.rs"]
+mod cross_files; // 文件管理那一块的判据里引到上层的那几条（那一块是独立的包、够不到上层）
 #[path = "../../tests/backend/flow_scripts_guard.rs"]
 mod flow_scripts_guard; // flow3：流程工具（门禁入口 · 挑格 · 重活隔离 · 推候选分支）在仓里、能跑、不写家目录（整体 #[cfg(test)]）
 pub mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
@@ -621,7 +624,7 @@ pub const NO_TMUX: &str = "no_tmux";
 
 /// 命令级 code —— **「这个平台没有 unix 权限位」**。
 ///
-/// 只有 `files-chmod` 声明它（`control/files_write.rs::change_mode_reporting` 在非 unix 上回它）。
+/// 只有 `files-chmod` 声明它（`files/write.rs::change_mode_reporting` 在非 unix 上回它）。
 /// 与 [`NO_TMUX`] 同形：真相是 `inbound::REGISTRY` 里命令自己登记的 `codes`，本常量只拿去查那张表；
 /// `hello.unavailable` 经 [`unix_mode_unavailable`] 读它。
 pub const NO_UNIX_MODE: &str = "no_unix_mode";

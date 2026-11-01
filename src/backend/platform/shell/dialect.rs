@@ -25,7 +25,7 @@
 //! # 七问里不在这里的两问
 //!
 //! - `atomic_replace()`：写的序列（CAS · 备份 · 暂存旁名换名上位 · 回读 · 回滚）只住后端
-//!   `control/files_write.rs::put_text`，Windows 那一支是就地覆盖保 ACE。方言只多答一格「落盘前要不要加 BOM」
+//!   `files/write.rs::put_text`，Windows 那一支是就地覆盖保 ACE。方言只多答一格「落盘前要不要加 BOM」
 //!   （[`ShellDialect::encode_for_disk`]）。
 //! - `has_tmux()`：「不进这一族 —— 它是一项能力」⇒ 住通用层 `account_aliases::Caps`。
 //!

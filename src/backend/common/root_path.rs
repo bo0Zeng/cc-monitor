@@ -1,8 +1,8 @@
 //! 「这一段拼到根上之后还在不在根底下」的路径解析：词法（纯路径算术，不碰盘）＋ 从根句柄逐段往下开（[`walk_in_root`]）。
-//! 文件管理那一块的写面（`control/files_write.rs` 等）与原生那一块的传输台（`control/transfer.rs`，下载的本机落点）
-//! 每一处改动的路径都先过它；两块之间零互相依赖（`files/module_boundary_guard.rs`），共用的只许住 `common/`。
+//! 文件管理那一块的写面（`files/write.rs` 等）与原生那一块的传输台（`control/transfer.rs`，下载的本机落点）
+//! 每一处改动的路径都先过它；两块之间零互相依赖（文件管理那一块是独立的包，只引纯工具与平台两层），共用的只许住 `common/`。
 //! 它只答落点在不在根底下，**不问落点是谁的数据**（要求：「文件管理器全部都可以改. 不需要任何围栏」）。
-//! 判据住 `tests/backend/control/files_write_tests.rs`（经写面的再导出跑）。
+//! 判据住 `tests/backend/files/write_tests.rs`（经写面的再导出跑）。
 
 use crate::platform::fs::{Resolved, Ro};
 use copy_core::{copy_text, io_reason};
@@ -52,7 +52,7 @@ pub enum Last {
 /// 路径解析：词法过了 → 把要动的那一格解成真路径（`Link` 只解父目录，`Follow` 连最后一段也解）→ 判它那一层仍在根下 →
 /// 从根句柄逐段不跟链接地开到那一层（[`Resolved::walk`]）。回的那一格写只经那个目录句柄：判过之后半路哪一层被换成链接，
 /// 逐段开那一步就失败（判完开完之后再换，动的仍是开着的那一层），落不到根外。
-/// 父目录必须已在盘上（建目录是 `files_write::make_dir` 的事）；那一格就是根自己（经链接解到根）⇒ 当越根拒。
+/// 父目录必须已在盘上（建目录是 `files::write::make_dir` 的事）；那一格就是根自己（经链接解到根）⇒ 当越根拒。
 pub fn walk_in_root(last: Last, root: &Path, rel: impl AsRef<Path>) -> Result<Resolved, String> {
     let target = lexical_in_root(root, rel)?;
     let unresolved = |p: &Path, e: std::io::Error| {

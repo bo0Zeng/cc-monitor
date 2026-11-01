@@ -245,7 +245,7 @@ mod tests {
         assert_eq!(
             calls,
             vec![(
-                "control/files_write.rs".to_string(),
+                "files/write.rs".to_string(),
                 "delete_session_with".to_string()
             )],
             "\n删会话那一道（`{call}`）必须**恰好一处调用**、住 `delete_session_with`。\n\
@@ -283,7 +283,7 @@ mod tests {
             vec!["sid".to_string()],
             "删历史会话那条命令**只收 sid** —— 多一个入参就多一种表达「另一份文件」的办法"
         );
-        match crate::control::files_write::tests::ask(
+        match crate::stream::inbound::files_write_face::write_tests::ask(
             "files-delete-session",
             &serde_json::json!({"sid": "abc", "path": "/tmp/x.jsonl"}),
         ) {
@@ -352,8 +352,8 @@ mod tests {
             p = "path"
         );
         assert_eq!(
-            session_shape_calls("control/files_write.rs", &fake),
-            vec![("control/files_write.rs".to_string(), "make_dir".to_string())],
+            session_shape_calls("files/write.rs", &fake),
+            vec![("files/write.rs".to_string(), "make_dir".to_string())],
             "抽取器在合成语料上认不出那一处调用 / 把定义行当成了调用 —— 下面那个集合不可信"
         );
 
@@ -380,7 +380,7 @@ mod tests {
         let want: std::collections::BTreeSet<(String, String)> = [
             ("agents/claudecode/paths.rs", "is_session_record_path"),
             ("agents/claudecode/paths.rs", "session_file_for_delete_in"),
-            ("control/files_write.rs", "fenced_session_file"),
+            ("files/write.rs", "fenced_session_file"),
         ]
         .iter()
         .map(|(a, b)| (a.to_string(), b.to_string()))
@@ -741,7 +741,7 @@ mod tests {
         // 「已过路径解析」只有路径解析本身造得出：从根句柄逐段开（`common/root_path.rs`，文件管理写面与传输台共用）；
         // 按路径担保的那一形只给删会话那一道（写面）。
         ("Resolved::walk", &["common/root_path.rs"]),
-        ("Resolved::vouch", &["control/files_write.rs"]),
+        ("Resolved::vouch", &["files/write.rs"]),
     ];
 
     #[test]
@@ -2053,7 +2053,7 @@ mod g6_dependency_signoff {
             "flate2",
             DEPS,
             UNMEASURED,
-            "解压 tar.gz / tgz 与 zip 的 deflate 那一支（`control/files_extract.rs`）：纯内存解码器（`rust_backend` ＝ `miniz_oxide`）。\
+            "解压 tar.gz / tgz 与 zip 的 deflate 那一支（`files/extract.rs`）：纯内存解码器（`rust_backend` ＝ `miniz_oxide`）。\
              它本来就在发布二进制里（`russh` 的 `flate2` feature 那一棵），这一行只是把间接依赖提成直接依赖、零新包。\
              写不写盘：本 crate 对它的用法只有 `read::GzDecoder` 包一个读句柄（用法签字，没扫它的源码）",
         ),
@@ -2061,17 +2061,17 @@ mod g6_dependency_signoff {
             "tar",
             DEPS,
             UNMEASURED,
-            "解压 tar / tar.gz（`control/files_extract.rs`，「用 Rust 库、不调外部命令」）：缺省 feature 关了（不带 `xattr`）。\
+            "解压 tar / tar.gz（`files/extract.rs`，「用 Rust 库、不调外部命令」）：缺省 feature 关了（不带 `xattr`）。\
              ⚠ 它**有**一步解到盘上的 API（`unpack` 一族，会自己建文件、设权限与时间）—— 本 crate **不调它**：只用 `Archive::entries` 逐条读头与正文，\
-             落盘由 `files_extract` 自己逐条过路径解析再写。本档是用法签字（没扫它的源码）",
+             落盘由 `files::extract` 自己逐条过路径解析再写。本档是用法签字（没扫它的源码）",
         ),
         (
             "zip",
             DEPS,
             UNMEASURED,
-            "解压 zip（`control/files_extract.rs`）：缺省 feature 全关（aes / bzip2 / lzma / xz / zstd / zopfli 不进来），只开读 deflate 那一支。\
+            "解压 zip（`files/extract.rs`）：缺省 feature 全关（aes / bzip2 / lzma / xz / zstd / zopfli 不进来），只开读 deflate 那一支。\
              ⚠ 它**有**一步解到盘上的 API（`ZipArchive::extract`）—— 本 crate **不调它**：只用 `by_index` 逐条读名字、种类、权限位与正文，\
-             落盘由 `files_extract` 自己逐条过路径解析再写。本档是用法签字（没扫它的源码）",
+             落盘由 `files::extract` 自己逐条过路径解析再写。本档是用法签字（没扫它的源码）",
         ),
         (
             "ring",
@@ -2149,6 +2149,19 @@ mod g6_dependency_signoff {
             "判据里异源算 sha256（夹具的摘要 · 传输与写盘的整份摘要对拍）。\
              **只在测试期链接**，不进发布二进制；版本是 russh 那棵树早已锁着的 `0.11.0`（不新增包）。纯内存摘要 —— 它不开文件，\
              读文件的是判据自己",
+        ),
+        (
+            "tar",
+            DEV_DEPS,
+            UNMEASURED,
+            "判据手铺 tar 包（解压的命令面 · 文件管理帧面）：只用 `Builder` 往内存里的 `Vec` 写。**只在测试期链接**，\
+             与发布那一份同一个包（文件管理那一块解压用它），不新增包",
+        ),
+        (
+            "libc",
+            DEV_DEPS,
+            UNMEASURED,
+            "覆盖写写到一半被收掉那一条认子进程收到的 `SIGXFSZ`（只读一个常量）。**只在测试期链接**，与平台层那一份同一个包，不新增包",
         ),
         (
             "ts-rs",
