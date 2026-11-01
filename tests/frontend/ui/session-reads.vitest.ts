@@ -233,6 +233,7 @@ describe("〔STC〕第五问：会话事实", () => {
       ],
       answerOff: null,
       autoAnswer: null,
+      autoAnswerChoices: [],
       autoAnswered: null,
       startedBy: null,
       children: [],

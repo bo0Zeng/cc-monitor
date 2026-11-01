@@ -4330,12 +4330,6 @@
       "zh": "只答提问 · 等满没人答就替人答一句；批准与计划照常等人",
       "args": []
     },
-    "tabMenu.autoAnswer.off": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "关",
-      "args": []
-    },
     "tabMenu.autoAnswer.failed": {
       "kind": "error",
       "role": "报错",
@@ -16769,6 +16763,12 @@
       "role": "说明",
       "zh": "{dur}没人答，已自动答：{say}",
       "args": ["dur", "say"]
+    },
+    "beAsk.auto.off": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "关",
+      "args": []
     },
     "beAsk.auto.say": {
       "kind": "body",
