@@ -68,7 +68,7 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39" | "J40";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39" | "J40" | "J41";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -698,6 +698,17 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     owner: "桌面照 Doc 排版那一刀",
     why: "线上还没交 Doc（拉块树那条命令接上之前），界面今天只能自己解析；两端照树排版那一刀删 renderMarkdown",
   },
+  J41: {
+    what: "一批会话做完 ⇒ 那一句 · 逐条明细 · 复制详情",
+    // 唯一的家是 `batch-core::sessions`（`sessions-batch` 的回包由本机后端合好，界面照摆）；结束那一批已经走它，
+    //   起 · 隐藏 · 固定那几批还在界面里用 `sayRows` 自己合，搬到 `sessions-batch` 之后删。
+    homes: ["batch-core::sessions_reply", "batch-core::summary_of"],
+    status: "open",
+    defs: ["sayRows"],
+    needles: [],
+    owner: "起 · 隐藏 · 固定几批搬到 sessions-batch 那一刀",
+    why: "起 · 隐藏 · 固定那几批还没走 sessions-batch，界面今天只能自己合那一句；都搬过去之后删 sayRows",
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -784,6 +795,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     common_dir_bytes: NONE,
     copy_req: NONE,
     copy_plan: NONE,
+    sessions_reply: "J41",
+    summary_of: "J41",
   },
   // 选中几项 ⇒ 菜单那张表：文件窗口与手机嵌的核心照它画；界面（TS）不列文件，没有孪生。
   "pick-core": {
