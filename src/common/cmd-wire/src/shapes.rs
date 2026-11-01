@@ -20,7 +20,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("aliases-block-install", "65f12d7b"),
     ("aliases-block-remove", "65f12d7b"),
     ("aliases-block-render", "9b0b7f7f"),
-    ("aliases-read", "7768722e"),
+    ("aliases-read", "76346026"),
     ("apikey-key-set", "66170d8b"),
     ("assets-catalog", "ce04a688"),
     ("assets-catalog-merge", "f04ff211"),
