@@ -778,6 +778,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     of_cell: NONE,
     frac: NONE,
     answer_of: NONE,
+    choices: NONE,
+    whole: NONE,
     run: NONE,
     title_of: NONE,
     name_of: NONE,

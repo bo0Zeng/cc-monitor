@@ -82,6 +82,7 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     unread: 0,
     needs: null,
     autoAnswer: null,
+    autoAnswerChoices: [],
     autoAnswered: null,
     backgroundWork: null,
     pending: [],

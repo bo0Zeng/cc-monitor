@@ -281,6 +281,9 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `recent` | [string] |  |
 | `older` | [string] |  |
 | `older_text` | Words? | 更早那一组的组头字（「更早 ×n」），两端照抄；那一组空 ⇒ 不上线 |
+| `running_text` | Words? | 监控板格子上 agent 那一枚（「在跑 · agent n」，n 是在跑那一组的个数），两端照抄；没有在跑的 ⇒ 不上线 |
+| `peek` | [string]? | 监控板 peek 列的那几个（三组序：在跑 ++ 最近 ++ 更早，取前几个，几个由后端定）；表是空的 ⇒ 不上线 |
+| `peek_more_text` | Words? | peek 没列的余下几个那一截（「+n」）；都列下了 ⇒ 不上线 |
 
 #### `RunLine`
 
@@ -507,6 +510,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `parent` | string? | 派出它的那个子运行；主运行派的（或还没对上派出它的那次调用）⇒ 不上线 |
 | `state` | RunState |  |
 | `status_text` | Words? | 状态写好的字（在跑 · 完成 · 失败 · 已中止 · 状态不明）：出口照抄，不按 `state` 挑字 |
+| `took_text` | Words? | 收场了用了多久那一句（「用时 6m」：`ended_ms` − `started_ms`，两头都定了）；在跑 · 状态不明 · 缺一头 ⇒ 不上线 |
 | `label_text` | Words? | 名字写好的字：`label`，没有 ⇒ 通称（「agent」） |
 | `last` | RunDid? |  |
 | `last_text` | Words? | `last` 写好的字（写回复中 · 思考中 · 调用 X）；没有 `last` ⇒ 不上线 |
@@ -786,6 +790,7 @@ answers: Array<Decide>, };
 type Conflicts = { conflicts: Array<Conflict>, };
 type Decide = "overwrite" | "skip" | "keep_both";
 type FileKind = "dir" | "file" | "symlink" | "other";
+type Machine = string;
 type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
 type OpenState = "opened" | "skipped" | "failed";
 type OpenedItem = { key: string, state: OpenState, 
@@ -813,13 +818,12 @@ overwrite?: boolean,
  * 没开成的那一项的码 · 原因词 · 复制详情（同一组那几条的结局）。
  */
 code?: string, reason?: string, detail?: string, };
-type Origin = string;
 type TransferOpened = { items: Array<OpenedItem>, };
 type TransferUploadReq = { 
 /**
  * 那台远端的名字。
  */
-machine: Origin, items: Array<UploadItem>, remote_dir: WirePath, home?: string, on_exists?: OnExists, decide?: { [key in string]: Decide }, };
+machine: Machine, items: Array<UploadItem>, remote_dir: WirePath, home?: string, on_exists?: OnExists, decide?: { [key in string]: Decide }, };
 type UploadItem = { local_path: string, };
 type WirePath = string | { b16: string };
 ```
@@ -886,6 +890,7 @@ type Conflicts = { conflicts: Array<Conflict>, };
 type Decide = "overwrite" | "skip" | "keep_both";
 type DownloadItem = { remote_path: string, name?: WirePath, };
 type FileKind = "dir" | "file" | "symlink" | "other";
+type Machine = string;
 type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
 type OpenState = "opened" | "skipped" | "failed";
 type OpenedItem = { key: string, state: OpenState, 
@@ -913,12 +918,11 @@ overwrite?: boolean,
  * 没开成的那一项的码 · 原因词 · 复制详情（同一组那几条的结局）。
  */
 code?: string, reason?: string, detail?: string, };
-type Origin = string;
 type TransferDownloadReq = { 
 /**
  * 那台远端的名字。
  */
-machine: Origin, items: Array<DownloadItem>, local_dir: WirePath, on_exists?: OnExists, decide?: { [key in string]: Decide }, };
+machine: Machine, items: Array<DownloadItem>, local_dir: WirePath, on_exists?: OnExists, decide?: { [key in string]: Decide }, };
 type TransferOpened = { items: Array<OpenedItem>, };
 type WirePath = string | { b16: string };
 ```
@@ -1052,17 +1056,17 @@ type CopyFrom = { remote_path: string, };
 type Decide = "overwrite" | "skip" | "keep_both";
 type FileKind = "dir" | "file" | "symlink" | "other";
 type ItemState = "done" | "skipped" | "exists" | "failed" | "cancelled";
+type Machine = string;
 type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
-type Origin = string;
 type TransferCopyReq = { 
 /**
  * 源那台的名字。
  */
-from: Origin, 
+from: Machine, 
 /**
  * 落点那台的名字。
  */
-to: Origin, items: Array<CopyFrom>, 
+to: Machine, items: Array<CopyFrom>, 
 /**
  * 落点那台上的目录（绝对路径）。
  */
@@ -2268,7 +2272,7 @@ tone: "plain" | "fail" | "warn",
  * 这一格那个窗口「1% ≈ 多少用量」写好的字（`1% ≈ 2.1M`，同 [`WindowShow::per_pct_text`]）；量不到 ⇒ 缺。
  */
 perPctText?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Usage = { 
 /**
  * 画的是哪个语义位（卡着的那个；回包没说 ⇒ `5h`）；按量号 ⇒ 缺。
@@ -3015,7 +3019,7 @@ type RotationViewReq = { target: RotTarget,
  * 设置页那一形往后推几小时（1–48，缺 ⇒ 12）；会话那一形不画推演，不看它。
  */
 hours?: number, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WinFact = { open: boolean, used: number, resets?: number, 
 /**
  * `resets` 写给人看的样子（按看的那一台的时区）。
@@ -3418,6 +3422,7 @@ type Words = string;
 入参 `MachineInterruptsReq` · 回包 `MachineInterruptsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type Machine = string;
 type MachineInterruptsReply = { relayedSessions: number | null, relayedMaybe: number, liveStreams: number, forwards: number, };
 type MachineInterruptsReq = { 
 /**
@@ -3431,8 +3436,7 @@ appExit?: boolean | null,
 /**
  * 带 `appExit` 时一并问的那几台（各照它自己的退出行为答，答到的加起来；问不到的不算）。问到那几台时不带它（不往下扇）。
  */
-machines?: Array<Origin> | null, };
-type Origin = string;
+machines?: Array<Machine> | null, };
 ```
 
 码：`bad_args`
@@ -4406,7 +4410,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -4567,7 +4571,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -4740,7 +4744,7 @@ sid: string,
  * 我在的那几组（组员整组）。
  */
 groups: Array<GroupRead>, looked: Looked, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -4956,7 +4960,7 @@ type SyncHead<H> = { total: number, info: H, };
 type SyncHeld = string;
 type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
 type SyncRange = { from: number, limit: number, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -5204,7 +5208,7 @@ type SyncHead<H> = { total: number, info: H, };
 type SyncHeld = string;
 type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
 type SyncRange = { from: number, limit: number, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -5518,7 +5522,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -5561,7 +5565,7 @@ type CanTerm = { "can": "yes", host: Launch, } | { "can": "no", why: Words, };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
-type HistorySearchMergeReq = { machines: Array<Origin>, search: HistorySearchReq, };
+type HistorySearchMergeReq = { machines: Array<Machine>, search: HistorySearchReq, };
 type HistorySearchReq = { 
 /**
  * 搜索词（不分大小写，子串）。
@@ -5589,6 +5593,7 @@ limit?: number,
 titles?: boolean, };
 type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
+type Machine = string;
 type Merged = { 
 /**
  * 各会话命中数（`hits` 条数 ＋ `moreHits`）之和。
@@ -5676,8 +5681,7 @@ forkedFrom?: ForkedFrom,
  * 那台此刻对这个会话的说法（同历史清单那一行的 `face`）。
  */
 face: SessionFace, };
-type Origin = string;
-type SearchDown = { origin: Origin, said: string, };
+type SearchDown = { origin: Machine, said: string, };
 type SearchHit = { 
 /**
  * 消息 uuid：打开查看器后据此滚动定位、高亮。
@@ -5770,7 +5774,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -7653,7 +7657,7 @@ to?: number | null,
  * 可选：一页最多几轮（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
  */
 limit?: number | null, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type TurnPart = { text: string, tone: Tone, };
 type TurnPhase = "idle" | "running" | "awaiting";
 type TurnRow = { 
@@ -7989,7 +7993,7 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type SessionsNeedsReq = Record<symbol, never>;
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -8016,6 +8020,7 @@ type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Launch = "managed" | "tmux" | "direct";
 type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type LoginStartReq = { "kind": "account", agent: AgentKind, account: string, } | { "kind": "mcp", agent: AgentKind, account: string | null, server: string, projectDir: string | null, };
+type Machine = string;
 type ManualFix = { command: string, args: LoginStartReq, };
 type ManualItem = { "kind": "accountLogin", agent: AgentKind, account: string, said: string, fix: ManualFix, } | { "kind": "mcpLogin", 
 /**
@@ -8127,7 +8132,7 @@ id: string,
  * 谁要批，写好的那一句：名（派出时的标签）· 类别（那一家原样，如 `general-purpose`），缺哪样少哪样；出口照抄。
  */
 text: Words, };
-type NeedsAt = { origin: Origin, item: NeedsItem, };
+type NeedsAt = { origin: Machine, item: NeedsItem, };
 type NeedsCell = { id: string, label: string, };
 type NeedsChoice = { 
 /**
@@ -8152,14 +8157,14 @@ text: Words,
  * 钉条第一行（「等批准 · Bash · {dur}」，种类那一格是 `needs.head`）。
  */
 head: Words, };
-type NeedsDown = { origin: Origin, said: string, };
+type NeedsDown = { origin: Machine, said: string, };
 type NeedsItem = { "kind": "session", rank: number, 
 /**
  * 那一行会走的那一句（[`NeedsClock`]）；不知道等了多久（`needs.waitedMs` 为 `null`）⇒ 缺，出口照抄 `needs.text`。
  */
 clock?: NeedsClock, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, cell?: NeedsCell, } | { "kind": "manual", rank: number, manual: ManualItem, };
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
-type NeedsMergeReq = { machines: Array<Origin>, };
+type NeedsMergeReq = { machines: Array<Machine>, };
 type NeedsMerged = { items: Array<NeedsAt>, total: number, unreadable: Array<NeedsUnreadable>, down: Array<NeedsDown>, };
 type NeedsNote = "none" | "optional" | "required";
 type NeedsQuestion = { 
@@ -8189,8 +8194,7 @@ face: SessionFace, needs: Needs,
  * 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ `null`（格恒在）。
  */
 hidden: Hidden | null, };
-type NeedsUnreadable = { origin: Origin, said: Words, };
-type Origin = string;
+type NeedsUnreadable = { origin: Machine, said: Words, };
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -8261,7 +8265,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -8346,6 +8350,7 @@ type Words = string;
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
+type AutoChoice = { min: number, text: Words, };
 type BgTask = { 
 /**
  * 起它的那次工具调用 id。
@@ -8500,6 +8505,11 @@ answerOff: Words | null,
  * **没人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
  */
 autoAnswer: number | null, 
+/**
+ * 那一格可选的几档（档位与字一起，`control::asks::auto_choices` 写；此刻那一格不在几档里 ⇒ 多列一项）。菜单照列，勾在 `min == autoAnswer` 那一项。
+ * 不累加，每次现给。
+ */
+autoAnswerChoices: Array<AutoChoice>, 
 /**
  * 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟没人答，已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
  */
@@ -8851,7 +8861,7 @@ requests: number,
  * 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
  */
 text: Words, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type UnclearWhy = "noWriter" | "untracked";
 type UsageFact = { 
 /**
@@ -10132,7 +10142,7 @@ type LastSeenReadReq = {
 /**
  * 哪台（机器名）。
  */
-origin: Origin, };
+origin: Machine, };
 type LineDiff = { rows: Array<LineDiffRow>, 
 /**
  * 收着时先画前几行；`rows` 比它多 ⇒ 其余等展开。
@@ -10193,7 +10203,7 @@ nextDefault: string | null,
  * 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）。
  */
 effectiveDefault: string | null, };
-type Origin = string;
+type Machine = string;
 type OwnClass = "truth" | "cache";
 type OwnItem = { 
 /**
@@ -10238,7 +10248,7 @@ type Words = string;
 入参 `LastSeenWriteReq` · 回包 `LastSeenWritten`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type LastSeenWriteReq = { origin: Origin, kind?: SeenKind, 
+type LastSeenWriteReq = { origin: Machine, kind?: SeenKind, 
 /**
  * 那一份应答（对象，序列化后 ≤ 256 KiB）。
  */
@@ -10252,7 +10262,7 @@ type LastSeenWritten = {
  * 记下的时刻（毫秒）。
  */
 atMs: number, };
-type Origin = string;
+type Machine = string;
 type SeenKind = "accounts" | "data";
 ```
 
@@ -10344,8 +10354,8 @@ optional: number,
 done: number, };
 type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
 type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
-type ChoresAt = { origin: Origin, report?: DataReport, said?: string, };
-type ChoresMergeReq = { machines: Array<Origin>, client?: FootprintClient | null, };
+type ChoresAt = { origin: Machine, report?: DataReport, said?: string, };
+type ChoresMergeReq = { machines: Array<Machine>, client?: FootprintClient | null, };
 type ChoresMerged = { total: ChoreCounts, machines: Array<ChoresAt>, };
 type DataReport = { 
 /**
@@ -10396,7 +10406,7 @@ text: string,
  * 改之前 · 改之后的行号（1 起）：加的行没有改前，删的行没有改后；段头 · 从入参算的那一份（不知道在文件第几行）⇒ 缺。
  */
 oldNo?: number, newNo?: number, };
-type Origin = string;
+type Machine = string;
 type OwnClass = "truth" | "cache";
 type OwnItem = { 
 /**
@@ -10582,7 +10592,7 @@ type AssetsSyncRow = {
 /**
  * 那台的名字。
  */
-origin: Origin, 
+origin: Machine, 
 /**
  * 那台目录的 `self`（没拉成 ⇒ `null`）。
  */
@@ -10608,12 +10618,12 @@ self: string, synced: Array<AssetsSyncRow>,
  * 「连这台」的那几台 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）。
  */
 reach: Array<ReachRow>, };
-type Origin = string;
+type Machine = string;
 type ReachRow = { 
 /**
  * 那台的名字。
  */
-origin: Origin, 
+origin: Machine, 
 /**
  * 对面的资产目录 id。
  */
@@ -12197,7 +12207,7 @@ to: string,
 /**
  * 收件会话在哪台（机器表里的名字）。缺 ⇒ 本机；别台 ⇒ 经跨台那一跳交给那台收（`dial::remote_ask::hop`）。
  */
-machine?: Origin, 
+machine?: Machine, 
 /**
  * 1 ⇒ 敲门（对方闲着才送）；2 ⇒ 只进收件箱。缺 ⇒ 2。
  */
@@ -12223,7 +12233,7 @@ refs?: Array<string> | null,
  */
 text?: string | null, };
 type BusSent = { envelope: BusEnvelope, knock: boolean, };
-type Origin = string;
+type Machine = string;
 ```
 
 码：`bad_args` · `bad_from` · `bad_to` · `bad_tier` · `bad_title` · `need_re` · `bad_re` · `bad_ref` · `too_long` · `not_same_group` · `no_roster` · `duplicate` · `throttled` · `io_failed` · `offline`
@@ -12381,7 +12391,7 @@ type BusUnreadReq = { id: string, };
 入参 `TerminalSshReq` · 回包 `SshCommand`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Origin = string;
+type Machine = string;
 type Sid = string;
 type SshCommand = { 
 /**
@@ -12397,7 +12407,7 @@ type TerminalSshReq = {
 /**
  * 那台的名字。
  */
-machine: Origin, 
+machine: Machine, 
 /**
  * 要在那台跑的命令。
  */
@@ -12438,7 +12448,7 @@ name: string,
  * 启动时刻（系统原值；拿不到 ⇒ 0）。
  */
 start: number, };
-type Origin = string;
+type Machine = string;
 type SessionWindow = { 
 /**
  * 显示它的终端带的窗口标签（`<shell 进程号>-<起始时刻>`），最近动静在前；没带 ⇒ 空。
@@ -12460,13 +12470,13 @@ type SessionWindowReq = {
 /**
  * 会话所在那台（本机 ⇒ `<local>`）。
  */
-machine: Origin, 
+machine: Machine, 
 /**
  * 会话 id。
  */
 sid: Sid, };
 type Sid = string;
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
 
@@ -12768,7 +12778,7 @@ type Words = string;
 ```ts
 type BoardDown = { said: Words, };
 type BoardFilter = { tag: BoardTag, label: Words, count: number, };
-type BoardGroup = { machine: Origin, name: Words, 
+type BoardGroup = { machine: Machine, name: Words, 
 /**
  * 组头那一句（n 个终端 · m 个后台）。
  */
@@ -12781,7 +12791,7 @@ down?: BoardDown,
  * `false` ＝ 那台名单里有读不懂的行。
  */
 complete: boolean, rows: Array<BoardRow>, };
-type BoardReq = { machines: Array<Origin>, client?: string, };
+type BoardReq = { machines: Array<Machine>, client?: string, };
 type BoardRow = { 
 /**
  * 这一行在整张名单里的键（不透明、跨几次问稳定）：出口按它认行。
@@ -12840,7 +12850,7 @@ find: string,
  */
 can_end: true | { no: "not_yours" | "not_managed" | "other_windows", said: string }, };
 type BoardTag = "all" | "session" | "bare" | "background";
-type Origin = string;
+type Machine = string;
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type TerminalsBoard = { filters: Array<BoardFilter>, groups: Array<BoardGroup>, };
 type Words = string;
@@ -12857,13 +12867,13 @@ type Words = string;
 入参 `TerminalsEndReq` · 回包 `TerminalsEndReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Origin = string;
+type Machine = string;
 type SessionState = "done" | "skipped" | "failed";
 type TerminalOutcome = { 
 /**
  * 哪台（每台那一跳答的是它自己 ⇒ 本机那一个；本机合好时换成那一项的那台）。
  */
-machine: Origin, terminal: string, outcome: SessionState, 
+machine: Machine, terminal: string, outcome: SessionState, 
 /**
  * 没成的原因码；做成了 ⇒ `null`。
  */
@@ -12880,7 +12890,7 @@ copyDetail: string,
  * 那台名单那一行的标题（远端的套机器名）。
  */
 title: string, };
-type TerminalsEndItem = { machine: Origin, 
+type TerminalsEndItem = { machine: Machine, 
 /**
  * 名单里的那个句柄（`terminals-list` · 名单那一行的 `terminal`）。
  */
@@ -12936,14 +12946,15 @@ running: number, };
 入参 `MonitorBoardReq` · 回包 `MonitorBoard`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type MonitorAsk = { machine: Origin, sid: string, };
+type Machine = string;
+type MonitorAsk = { machine: Machine, sid: string, };
 type MonitorBoard = { 
 /**
  * 几台 · 几条活会话 · 几个 agent 在跑；一组都没有 ⇒ 空。
  */
 summary: Words, groups: Array<MonitorGroup>, };
 type MonitorBoardReq = { sessions: Array<MonitorAsk>, };
-type MonitorGroup = { machine: Origin, 
+type MonitorGroup = { machine: Machine, 
 /**
  * 组头那一句（那台的名字 ＋ 几条）。
  */
@@ -12956,7 +12967,6 @@ sids: Array<string>,
  * 这台没答 ⇒ 那台离线那一句（`sids` 照请求先后）。
  */
 down?: Words, };
-type Origin = string;
 type Words = string;
 ```
 
@@ -13575,12 +13585,12 @@ ticket: string, };
 
 ```ts
 type Batched = { results: Array<SessionOutcome>, };
-type Origin = string;
+type Machine = string;
 type SessionOutcome = { 
 /**
  * 哪台（每台那一跳答的是它自己 ⇒ 本机那一个；本机合好时换成那一项的那台）。
  */
-machine: Origin, sid: Sid, outcome: SessionState, 
+machine: Machine, sid: Sid, outcome: SessionState, 
 /**
  * 跳过 / 失败的原因码（挑按钮用）；做成了 ⇒ `null`。
  */
@@ -13626,7 +13636,8 @@ client?: string, };
 
 ```ts
 type Launch = "managed" | "tmux" | "direct";
-type OpenWindow = { machine: Origin, sid: Sid, 
+type Machine = string;
+type OpenWindow = { machine: Machine, sid: Sid, 
 /**
  * 开终端跑的那一行。
  */
@@ -13635,13 +13646,12 @@ line: string,
  * 起在哪个目录（那台展开过的；没有 ⇒ `null`）。
  */
 cwd: string | null, };
-type Origin = string;
-type SessionItem = { machine: Origin, sid: Sid, };
+type SessionItem = { machine: Machine, sid: Sid, };
 type SessionOutcome = { 
 /**
  * 哪台（每台那一跳答的是它自己 ⇒ 本机那一个；本机合好时换成那一项的那台）。
  */
-machine: Origin, sid: Sid, outcome: SessionState, 
+machine: Machine, sid: Sid, outcome: SessionState, 
 /**
  * 跳过 / 失败的原因码（挑按钮用）；做成了 ⇒ `null`。
  */
@@ -14279,7 +14289,7 @@ type Sid = string;
 入参 `SessionQueuePutReq` · 回包 `QueuePut`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Origin = string;
+type Machine = string;
 type QueuePut = { outcome: "queued" | "held" | "seen", 
 /**
  * 那一条的序号（收着的还没有）。
@@ -14302,7 +14312,7 @@ type SessionQueuePutReq = {
 /**
  * 会话所在那台（本机 ⇒ `<local>`）。
  */
-machine: Origin, sid: Sid, 
+machine: Machine, sid: Sid, 
 /**
  * 发件端给的唯一 id（这一端待发箱里那一句的编号）：同 id 再投只入队一次。
  */
@@ -14341,7 +14351,7 @@ type Sid = string;
 入参 `SessionQueueCancelReq` · 回包 `QueueCancelled`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Origin = string;
+type Machine = string;
 type QueueCancelled = { 
 /**
  * `false` ⇒ 那一条已不在队里（送过 · 撤过 · 没有这一条），什么都没动。
@@ -14390,7 +14400,7 @@ type Rewind = {
  * 被编辑的那一句在记录里的 id（`history-user-inputs` 那一行的 `uuid`）：退到它之前，改好的那句接在它原来的位置上。
  */
 to: string, how: "conversation" | "code_and_conversation", when: "after_turn" | "now", };
-type SessionQueueCancelReq = { machine: Origin, sid: Sid, id: string, };
+type SessionQueueCancelReq = { machine: Machine, sid: Sid, id: string, };
 type Sid = string;
 ```
 
@@ -14405,7 +14415,7 @@ type Sid = string;
 入参 `SessionQueueReadReq` · 回包 `QueueList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Origin = string;
+type Machine = string;
 type QueueItem = { 
 /**
  * 主人发的序号（收着的那几条还没有）。先后只看它。
@@ -14449,7 +14459,7 @@ type Rewind = {
  * 被编辑的那一句在记录里的 id（`history-user-inputs` 那一行的 `uuid`）：退到它之前，改好的那句接在它原来的位置上。
  */
 to: string, how: "conversation" | "code_and_conversation", when: "after_turn" | "now", };
-type SessionQueueReadReq = { machine: Origin, sid: Sid, };
+type SessionQueueReadReq = { machine: Machine, sid: Sid, };
 type Sid = string;
 ```
 
@@ -14464,7 +14474,7 @@ type Sid = string;
 入参 `SessionRewindOptionsReq` · 回包 `RewindOptions`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Origin = string;
+type Machine = string;
 type RewindChoiceRow = { how: "conversation" | "code_and_conversation", 
 /**
  * 那一项的字（会话那台写好）。
@@ -14496,7 +14506,7 @@ when: Array<RewindWhenRow>,
  */
 said?: string, };
 type RewindWhenRow = { when: "after_turn" | "now", text: string, default: boolean, };
-type SessionRewindOptionsReq = { machine: Origin, sid: Sid, 
+type SessionRewindOptionsReq = { machine: Machine, sid: Sid, 
 /**
  * 被编辑的那一句在记录里的 id（同 [`Rewind::to`]）：哪一项能选按那一句之后的事判。
  */
@@ -14737,8 +14747,8 @@ route?: string,
  */
 strip?: MachineStripLine, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
-type MachineStripLine = { tone: StripTone, progress: boolean, };
-type StripTone = "busy" | "offline" | "warn" | "fault";
+type MachineStripLine = { tone: Tone, progress: boolean, };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
@@ -14753,6 +14763,7 @@ type VersionRelation = "same" | "older" | "newer" | "incomparable";
 入参 `MachineFindReq` · 回包 `MachineFind`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type Machine = string;
 type MachineFind = { hit: MachineHit | null, };
 type MachineFindReq = { query: string, };
 type MachineFrom = "local" | "table" | "ssh_config";
@@ -14760,12 +14771,11 @@ type MachineHit = {
 /**
  * 那台的名字（本机 ⇒ `<local>`；机器表里的写法）。
  */
-machine: Origin, from: MachineFrom, 
+machine: Machine, from: MachineFrom, 
 /**
  * 名字后跟的数字：那台的第几条会话（从 1 起）；没跟 ⇒ 空。
  */
 nth: number | null, };
-type Origin = string;
 ```
 
 码：`bad_args`
@@ -14780,6 +14790,7 @@ type Origin = string;
 
 ```ts
 type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
+type Machine = string;
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
 type MachineFrom = "local" | "table" | "ssh_config";
@@ -14788,7 +14799,7 @@ type MachineMenu = { from: MachineFrom,
  * 那台的机器状态成品（同设置 › 机器卡那一份）；只在 ssh 配置里的那一种没有。
  */
 head: MachineState | null, actions: Array<MenuAction>, };
-type MachineMenuReq = { machine: Origin, };
+type MachineMenuReq = { machine: Machine, };
 type MachineStage = "deploy" | "attach";
 type MachineState = { 
 /**
@@ -14853,11 +14864,10 @@ route?: string,
  */
 strip?: MachineStripLine, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
-type MachineStripLine = { tone: StripTone, progress: boolean, };
+type MachineStripLine = { tone: Tone, progress: boolean, };
 type MenuAct = "open_terminal" | "new_session" | "files" | "machine_status" | "add_machine";
 type MenuAction = { act: MenuAct, sub: string | null, blocked: string | null, note: string | null, };
-type Origin = string;
-type StripTone = "busy" | "offline" | "warn" | "fault";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
@@ -14939,9 +14949,9 @@ route?: string,
  */
 strip?: MachineStripLine, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
-type MachineStripLine = { tone: StripTone, progress: boolean, };
+type MachineStripLine = { tone: Tone, progress: boolean, };
 type MachineWakeReq = { machine: string, };
-type StripTone = "busy" | "offline" | "warn" | "fault";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
@@ -15595,7 +15605,8 @@ jump: string,
  * 连不连这台。
  */
 connect: boolean, };
-type HostKeysForgetReq = { machine: Origin, };
+type HostKeysForgetReq = { machine: Machine, };
+type Machine = string;
 type MachineRow = { 
 /**
  * 那台的名字（寻址用的那一个：`label`，空 ⇒ `host`，都去掉首尾空白）。
@@ -15630,7 +15641,6 @@ hosts: Array<MachineRow>,
  * 每台记下的主机指纹（名字 → 指纹，库里没有的那台不出现；拨号核心那份库现读）。
  */
 hostKeys: { [key in string]: Array<string> }, };
-type Origin = string;
 ```
 
 码：`bad_args` · `unreadable` · `element_gone` · `io_failed`
@@ -15744,7 +15754,7 @@ type ForwardStartReq = {
 /**
  * 那台的名字。
  */
-origin: Origin, 
+origin: Machine, 
 /**
  * 绑本机 `127.0.0.1:localPort`：用户敲进去的原文，这里解（界面不判是不是端口）。
  */
@@ -15762,7 +15772,7 @@ type ForwardStarted = {
  * `fwd-<n>`，本进程内单调。
  */
 id: string, };
-type Origin = string;
+type Machine = string;
 ```
 
 码：`bad_args` · `bad_spec` · `unreachable` · `bad_jump` · `full` · `failed`
@@ -15849,7 +15859,7 @@ type ForwardRow = { id: string,
 /**
  * 那台的名字。
  */
-origin: Origin, localPort: number, remoteHost: string, remotePort: number, 
+origin: Machine, localPort: number, remoteHost: string, remotePort: number, 
 /**
  * `running`（链路还在）· `error`（链路自己收工了，留在账上等人停）。
  */
@@ -15859,8 +15869,8 @@ state: "running" | "error",
  */
 connCount: number, };
 type Forwards = { forwards: Array<ForwardRow>, };
+type Machine = string;
 type NoArgs = Record<symbol, never>;
-type Origin = string;
 ```
 
 码：`bad_args`
@@ -16514,7 +16524,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -16980,7 +16990,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```

@@ -16,10 +16,7 @@ src/common/cmd-wire/src/frame.rs	1
 src/common/guard-core/src/lib.rs	41
 src/doc/INVARIANTS.md	2
 src/doc/IPC-PROTOCOL.md	1
-src/frontend/filewin/src/source.rs	2
 src/frontend/shell/src/local_backend.rs	1
-src/shared/copy/rules.json	1
-src/shared/copy/terms.json	5
 tests/backend/agent_boundary_guard.rs	4
 tests/backend/agent_locality_guard.rs	2
 tests/backend/agents/codex/record_tests.rs	1

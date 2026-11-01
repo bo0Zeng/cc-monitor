@@ -290,7 +290,7 @@ private fun cellInk(
     when (tone) {
         Tone.FAIL -> LocalAppTokens.current.errorText
         Tone.WARN, Tone.NEED -> LocalAppTokens.current.warn
-        Tone.PLAIN, Tone.NOW, Tone.BUSY -> plain
+        Tone.PLAIN, Tone.NOW, Tone.BUSY, Tone.OFFLINE -> plain
     }
 
 /** 给冒烟与 UI 测试认的 tag（与字解耦）。 */

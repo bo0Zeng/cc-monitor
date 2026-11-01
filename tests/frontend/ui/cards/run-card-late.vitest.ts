@@ -7,6 +7,9 @@ import { describe, expect, it, vi } from "vitest";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
+import type { RunInfo } from "../../../../src/frontend/ui/generated/RunInfo";
+import { buildAgentCard, markRunCard } from "../../../../src/frontend/ui/cards/subagent";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 describe("派出卡建出来就交给上下文标运行状态", () => {
   it("卡型是 agent 的那次调用 ⇒ 建卡时报一声（调用 id ＋ 那张卡）", () => {
@@ -26,5 +29,24 @@ describe("派出卡建出来就交给上下文标运行状态", () => {
     expect(onRunCard).toHaveBeenCalledTimes(1);
     expect(onRunCard.mock.calls[0][0]).toBe("t1");
     expect(onRunCard.mock.calls[0][1]).toBe(ctx.runCards.get("t1"));
+  });
+});
+
+describe("卡上用了多久照抄运行表写好的那一句", () => {
+  const info = (o: Partial<RunInfo>): RunInfo => ({ run: "r", state: "done", status_text: "核心·完成", label_text: "x", ...o }) as RunInfo;
+  const stateOf = (card: HTMLElement): string | null | undefined => card.querySelector('[data-role="run-state"]')?.textContent;
+
+  it("收场了 ⇒ 状态 · 写好的用时（不拿起止时刻现算）", () => {
+    const card = buildAgentCard("t1", "Task", undefined);
+    const i = info({ took_text: "核心·用时", started_ms: 0, ended_ms: 90_000 });
+    markRunCard(card, i, i);
+    expect(stateOf(card)).toBe(["核心·完成", "核心·用时"].join(copyText("kit.text.sep")));
+  });
+
+  it("没有写好的用时 ⇒ 只写状态", () => {
+    const card = buildAgentCard("t1", "Task", undefined);
+    const i = info({ started_ms: 0, ended_ms: 90_000 });
+    markRunCard(card, i, i);
+    expect(stateOf(card)).toBe("核心·完成");
   });
 });

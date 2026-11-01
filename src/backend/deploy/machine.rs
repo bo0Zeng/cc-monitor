@@ -3,9 +3,10 @@
 //! 桌面由本机后端跑（`control/machine_state.rs`），手机由 mobcore 跑同一份；两端照画。
 
 use cmd_wire::attach::Relation;
+use cmd_wire::cells::Tone;
 use cmd_wire::machine::{
     Blocker, EmptyFace, FixButton, MachineFix, MachineState, MachineStateKind as K,
-    MachineStripLine, Round, RoundProblem, Stage, StripTone, Why,
+    MachineStripLine, Round, RoundProblem, Stage, Why,
 };
 use copy_core::copy_text;
 use copy_core::detail::{Detail, Label, Target};
@@ -246,16 +247,16 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
 }
 
 /// 机器条上那一行：进不进条 · 语气 · 带不带进度。连着的 · 比这一版新的（也连着）· 用户停用的 · 还不知道的不进条；
-/// 缺后端又得这一端去装 ⇒ 故障（修法是［安装］）。
+/// 缺后端：这一端不装（手机）⇒ 故障（修法是［安装］）；这一端自己会装（桌面，下一轮装上）⇒ 同没连上。
 pub fn strip(state: K, blocker: Option<Blocker>, installs: bool) -> Option<MachineStripLine> {
     let (tone, progress) = match state {
         K::Up | K::Newer | K::Disabled | K::Unknown => return None,
-        K::Connecting => (StripTone::Busy, false),
-        K::Installing | K::Updating => (StripTone::Busy, true),
-        K::NeedsUpdate => (StripTone::Warn, false),
-        K::Down if blocker == Some(Blocker::NoBackend) && !installs => (StripTone::Fault, false),
-        K::Down => (StripTone::Offline, false),
-        K::HostKeyChanged | K::Unsupported => (StripTone::Fault, false),
+        K::Connecting => (Tone::Busy, false),
+        K::Installing | K::Updating => (Tone::Busy, true),
+        K::NeedsUpdate => (Tone::Warn, false),
+        K::Down if blocker == Some(Blocker::NoBackend) && !installs => (Tone::Fail, false),
+        K::Down => (Tone::Offline, false),
+        K::HostKeyChanged | K::Unsupported => (Tone::Fail, false),
     };
     Some(MachineStripLine { tone, progress })
 }

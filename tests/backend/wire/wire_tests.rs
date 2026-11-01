@@ -516,6 +516,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     parent: Some(s("a9")),
                     state: RunState::Failed,
                     status_text: crate::common::cells::Words(s("核心·失败")),
+                    took_text: Some(crate::common::cells::Words(s("核心·用时 2s"))),
                     label_text: crate::common::cells::Words(s("scan")),
                     last: Some(RunDid::Tool { name: s("Bash") }),
                     last_text: Some(crate::common::cells::Words(s("调用 Bash"))),
@@ -571,6 +572,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     recent: vec![s("a1")],
                     older: vec![s("a2")],
                     older_text: None,
+                    ..Default::default()
                 },
                 summary: Some(w("核心·agent 1")),
             }),
@@ -953,6 +955,7 @@ fn session_runs_frames_have_exactly_these_bytes() {
             recent: vec!["a2".into()],
             older: vec!["a3".into()],
             older_text: None,
+            ..Default::default()
         },
         summary: Some(crate::common::cells::Words("核心·agent 3".into())),
     });
@@ -1619,7 +1622,7 @@ fn a_changed_body_over_its_cap_is_left_off() {
 /// `changed` 丢了能不能恢复照主题表答。
 #[test]
 fn changed_loss_follows_the_topic_table() {
-    for t in Topic::ALL {
+    for t in super::topic::tests::ALL {
         let f = Frame::changed(
             crate::wire::Changed::bare(t, Some("k".into())).expect("每个主题都有那一臂"),
         );

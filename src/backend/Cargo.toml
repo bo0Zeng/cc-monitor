@@ -141,6 +141,8 @@ pidwatch-core = { path = "../common/pidwatch-core" }
 copy-core = { path = "../common/copy-core" }
 # 一组一条命令的结局那一句（`said_of`）：与文件窗口 · 手机嵌的核心同一份。
 batch-core = { path = "../common/batch-core" }
+# 助手正文的 Markdown 解析成块树（`md_core::parse`，出 `cmd_wire::md` 的 `Doc`）：两家适配层翻译助手正文时调它，两端只照树排版。
+md-core = { path = "../common/md-core" }
 # 轮换的策略文件（`accounts/quota/strategy/`）跑在它的沙箱里：纯 Rust、零 C 依赖、按操作数掐、表有序。
 # `sync` ⇒ 编好的策略能放进进程里的缓存跨线程用；`serde` ⇒ 上下文与回值经 serde 进出；`no_time` ⇒ 脚本里没有取时间的函数。
 rhai.workspace = true

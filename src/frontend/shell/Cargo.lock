@@ -2639,6 +2639,7 @@ name = "host-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "copy-core",
  "iana-time-zone",
  "serde",
  "serde_json",

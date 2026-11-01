@@ -24,6 +24,7 @@
 //! 握手表里每一条（monitor 起来时从盘上读回来的、之后认上的）都挂一个退出看守（`pidwatch_core`：内核在那个 shell 退出的那一刻叫醒，
 //! 不扫、不轮询）：一醒就从内存与盘上删那一条（[`forget`]）。挂的那一刻那个 shell 已经不在、或进程号已被别人复用（起始时刻对不上）⇒ 当场删。
 
+use copy_core::{Discard, Why};
 use notify::RecursiveMode;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -150,7 +151,7 @@ fn forget(this: &BindRegistry, pid: u32, recorded: &str) {
         w.remove(&pid);
     }
     let p = this.registry_dir().join(format!("{pid}.json"));
-    let _ = std::fs::remove_file(&p);
+    std::fs::remove_file(&p).discard(Why::CleanupAfterFailure); // 死进程留下的登记：删不掉下次重扫再撤
     tracing::info!("bind: shell {pid} 退了，删掉它的窗口登记");
 }
 
@@ -322,7 +323,8 @@ fn process_tty_file(this: &Arc<BindRegistry>, file: &Path) {
         .and_then(|raw| serde_json::from_str::<TtyRecord>(raw.trim()).ok());
     let Some(rec) = rec else {
         tracing::warn!("bind: 认不出 {}，扔掉", file.display());
-        let _ = std::fs::remove_file(file);
+        // 用完 / 认不出 / 作废就删；删不掉下一个 monitor 起来按身份再核、再删（下同）。
+        std::fs::remove_file(file).discard(Why::CleanupAfterFailure);
         return;
     };
     let claim = claim_tty(
@@ -351,13 +353,13 @@ fn process_tty_file(this: &Arc<BindRegistry>, file: &Path) {
                 rec.tty
             );
             keep(this, entry);
-            let _ = std::fs::remove_file(file);
+            std::fs::remove_file(file).discard(Why::CleanupAfterFailure);
         }
         TtyClaim::Keep => {
             this.tty_tried.lock().insert(file.to_path_buf());
         }
         TtyClaim::Drop => {
-            let _ = std::fs::remove_file(file);
+            std::fs::remove_file(file).discard(Why::CleanupAfterFailure);
         }
     }
 }

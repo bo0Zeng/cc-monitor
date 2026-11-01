@@ -13,13 +13,9 @@ use copy_core::copy_text;
 pub static CROSS_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinCrossCopy.label.cross", &[]));
 
-/// 本机后端的地址（⚠ 与 app 侧 `inbound_client::LOCAL_ORIGIN` 是同一个值的两份 —— 窗口够不到 app 侧，
-/// 判据 `cross_copy_tests::the_local_origin_is_the_app_one` 读两侧源码钉相等）。
-pub const LOCAL_ORIGIN: &str = "<local>";
-
-/// 机器下拉里给人看的名字：本机写「本机」，别的照名字。
+/// 机器下拉里给人看的名字：本机（地址只一个家 `cmd_wire::LOCAL`）写「本机」，别的照名字。
 pub fn shown_machine(origin: &str) -> String {
-    if origin == LOCAL_ORIGIN {
+    if origin == cmd_wire::LOCAL {
         copy_text("rsFilewinCrossCopy.prompt.localMachine", &[])
     } else {
         origin.to_string()
@@ -30,7 +26,7 @@ pub fn shown_machine(origin: &str) -> String {
 pub fn origin_of(shown: &str) -> String {
     let t = shown.trim();
     if t == copy_text("rsFilewinCrossCopy.prompt.localMachine", &[]) {
-        LOCAL_ORIGIN.to_string()
+        cmd_wire::LOCAL.to_string()
     } else {
         t.to_string()
     }

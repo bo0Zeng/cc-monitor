@@ -131,3 +131,125 @@ fn older_group_head_is_written_here() {
     };
     assert_eq!(r.groups.older_text, None, "更早那一组空 ⇒ 不上线");
 }
+
+/// 收场的子运行：用了多久那一句由出帧这一处写好（起止都定了，是静态的），卡上照抄；在跑的不上线。
+#[test]
+fn ended_run_carries_written_took() {
+    let book = RunBook::default();
+    let t0 = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+    let t1 = t0 + Duration::from_secs(90);
+    book.with(|m| {
+        let s = m.entry(SID.to_string()).or_default();
+        s.mark(mark("r-done", None), Some("q-done".into()), t0, ms(t0));
+        s.mark(mark("r-done", Some(RunEnd::Done)), None, t1, ms(t1));
+        s.mark(mark("r-live", None), Some("q-live".into()), t0, ms(t0));
+    });
+    let now = t0 + Duration::from_secs(100);
+    let Frame::SessionRuns(r) = book.frame_at(SID, now) else {
+        panic!("frame_at 该出运行表帧");
+    };
+    let took = |run: &str| {
+        r.runs
+            .iter()
+            .find(|i| i.run == run)
+            .map(|i| i.took_text.clone().map(|w| w.0))
+    };
+    let want = copy_text(
+        "agentWindow.facts.took",
+        &[("dur", &copy_core::short_duration(90_000))],
+    );
+    assert_eq!(
+        took("r-done"),
+        Some(Some(want)),
+        "收场了 ⇒ 写好的用时那一句"
+    );
+    assert_eq!(took("r-live"), Some(None), "在跑 ⇒ 不上线");
+}
+
+/// 出一帧（同 [`frame`] 的时刻）：整份运行表那一帧。
+fn frame_whole(book: &RunBook) -> crate::wire::SessionRuns {
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000 + 100);
+    let Frame::SessionRuns(r) = book.frame_at(SID, now) else {
+        panic!("frame_at 该出运行表帧");
+    };
+    r
+}
+
+/// 格子上 agent 那一枚：有在跑的 ⇒ 照在跑的个数写好那一句；全收场 ⇒ 不上线。
+#[test]
+fn running_badge_is_written_here() {
+    let book = RunBook::default();
+    spawn(&book, 3, None);
+    let r = frame_whole(&book);
+    let text = r.groups.running_text.map(|w| w.0);
+    assert_eq!(
+        text,
+        Some(copy_text("runs.badge.running", &[("running", "3")])),
+        "三个在跑 ⇒ 写好的那一句"
+    );
+    assert!(
+        !text.unwrap_or_default().contains('〔'),
+        "那一句的文案条目缺了（照出来的是占位）"
+    );
+
+    let done = RunBook::default();
+    spawn(&done, 2, Some(RunEnd::Done));
+    assert_eq!(
+        frame_whole(&done).groups.running_text,
+        None,
+        "没有在跑的 ⇒ 不上线"
+    );
+}
+
+/// 监控板 peek：照三组序（在跑 ++ 最近 ++ 更早）只交前 [`PEEK_SHOWN`] 个，余下的个数写成「+N」。
+#[test]
+fn peek_takes_first_few_in_group_order_and_writes_the_rest() {
+    let book = RunBook::default();
+    spawn(&book, 7, Some(RunEnd::Done));
+    spawn_more(&book, 7, 3);
+    let r = frame_whole(&book);
+    let order: Vec<String> = r
+        .groups
+        .running
+        .iter()
+        .chain(&r.groups.recent)
+        .chain(&r.groups.older)
+        .cloned()
+        .collect();
+    assert_eq!(order.len(), 10, "前提：表里 10 个");
+    assert_eq!(
+        r.groups.peek,
+        Some(order[..PEEK_SHOWN].to_vec()),
+        "照三组序取前几个"
+    );
+    let more = r.groups.peek_more_text.map(|w| w.0);
+    assert_eq!(
+        more,
+        Some(copy_text("runs.peek.more", &[("more", "2")])),
+        "10 个只交 8 个 ⇒ 另 2 个"
+    );
+    assert!(!more.unwrap_or_default().contains('〔'), "文案条目缺了");
+
+    let few = RunBook::default();
+    spawn(&few, 3, None);
+    let r = frame_whole(&few);
+    assert_eq!(r.groups.peek.map(|p| p.len()), Some(3));
+    assert_eq!(r.groups.peek_more_text, None, "没超 ⇒ 不上线");
+}
+
+/// 接着 [`spawn`] 再派 `n` 个在跑的（编号从 `from` 起，更晚动）。
+fn spawn_more(book: &RunBook, from: usize, n: usize) {
+    let t0 = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+    book.with(|m| {
+        let s = m.entry(SID.to_string()).or_default();
+        for i in from..from + n {
+            let seen = t0 + Duration::from_secs(i as u64);
+            s.mark(
+                mark(&format!("r{i:05}"), None),
+                Some(format!("q{i}")),
+                seen,
+                ms(seen),
+            );
+        }
+    });
+}

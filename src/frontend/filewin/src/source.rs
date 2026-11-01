@@ -1,4 +1,4 @@
-//! `24e` 数据面：**列一个目录**。只有一侧 —— 远端；经通道问那台机器上的后端。
+//! 数据面：**列一个目录**。只有一侧 —— 远端；经通道问那台机器上的后端。
 //!
 //! # 只有远端一侧
 //!
@@ -9,9 +9,6 @@
 //!
 //! # 🔴列目录**只经通道问后端**（逐条理由住下面「窗口进程只说 `call`」那一节）
 //!
-//! 上一版这里写的是「远端这一侧直接 `await` 池子那条列目录命令（同进程、同一个连接池）」。
-//! 窗口改成独立进程之后那句话早就只对一半（换进程就换一份池），F2 把那条路整条摘了。
-//!
 //! # 排序在后端
 //!
 //! 一屏的先后（四列 · 目录在前 · 反过来只反那一列）由 `files-ls` 的 `sort` 排好送来，窗口照摆、不重排。
@@ -20,9 +17,7 @@ use copy_core::copy_text;
 
 /// 文件列表里的一行。**故意比 `SftpEntry` 窄** —— 列表只画得下这些。
 ///
-/// 🔴**它现在要过一次进程边界**，所以多了 serde 那一对。
-/// 开窗改成起一个独立进程之后，入口那条命令先列好的那一屏得**交给另一个进程**
-/// （逐条理由住 [`super::proc`]）。⚠ 这一对 derive **不是** rust↔TS 那条边界上的
+/// 🔴**它要过一次进程边界**，所以带 serde 那一对（逐条理由住 [`super::proc`]）。⚠ 这一对 derive **不是** rust↔TS 那条边界上的
 /// （没有 `#[ts(export)]`，前端一个字段都不消费它）—— 它只走
 /// 「monitor → 窗口进程」这一跳，两头是**同一份代码**编出来的。
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -38,30 +33,20 @@ pub struct Row {
 
 /// 一行 ＋ **后端在送、而 [`Row`] 那五格装不下的那两格**（是不是链接 · 什么时候改的）。
 ///
-/// # 🔴 为什么不是「往 [`Row`] 上再加两个字段」—— 理由不是设计，是并行开发，如实记
+/// # 🔴 窄的那个不动，外面套一层
 ///
-/// 直觉写法是给 `Row` 加两格。**那一改今天落不下去**：`Row` 的结构体字面量盘上约 30 处，
-/// 其中 `tests/frontend/shell/filewin/{writeops,editor,proc}_tests.rs` 三份在这里的红线里
-/// （另两路正在改它们对应的生产文件）。给 `Row` 加一格 ⇒ 那三份当场编不过；
-/// 而且**另两路新写的每一处 `Row { … }` 会在合并那天一起编不过** ——
-/// 那不是一次可能的冲突，是一次**必然**的冲突。
-///
-/// ⇒ 形状换成「窄的那个一个字节不动，外面套一层」：
-/// [`Row`] 仍然是那五格，`Listed` 是**窗口里的一行**。⚠ 刻意**只给 `Deref`、不给 `DerefMut`**：
+/// [`Row`] 只是那五格（它的结构体字面量盘上约 30 处），`Listed` 是**窗口里的一行**。⚠ 刻意**只给 `Deref`、不给 `DerefMut`**：
 /// 经这一层改不了里面那一行 ⇒ 「两格与那一行漂开」这件事**写都写不出来**。
 ///
-/// # 过进程边界的是它，不是 [`Row`]
+/// # 第一屏
 ///
-/// 上一版这里登记着一条代价：交给窗口进程的**第一屏**走 `Vec<Row>`，于是那一屏
-/// 没有链接与时间两格。那份文件（`proc.rs`）后来也改了 ⇒ 种子里那一屏
-/// 换成了 `Vec<Listed>`，那条代价没了。〔09-28 裁 3〕那一屏今天不过进程边界了（窗口进程自己列，`proc::first_screen`），
-/// 链接与时间两格直接从 [`row_from_ls_entry`] 来。
+/// 第一屏由窗口进程自己列（`proc::first_screen`），链接与时间两格直接从 [`row_from_ls_entry`] 来。
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Listed {
     /// 那五格。
     pub row: Row,
     /// 🔴 这一项**是不是符号链接**。后端 `files.ls` 的 `kind` 与 SFTP 的 `is_symlink`
-    /// 两条路都送得出它 —— 此前窗口这一侧把它**压掉了**（见 [`row_from_ls_entry`] 那张表）。
+    /// 两条路都送得出它，窗口照它画链接（见 [`row_from_ls_entry`] 那张表）。
     pub link: bool,
     /// 链接指向的是目录（后端 `files-ls` 的 `link_dir`）：点得进去，但删 / 复制仍按链接本身算（不递归）。
     pub link_dir: bool,
@@ -80,8 +65,8 @@ pub struct Listed {
     /// **有损名的原始字节**（名字那一段，不是整条路径）；名字是合法 UTF-8 ⇒ `None`。
     ///
     /// 窗口的路径是字符串，非 UTF-8 的名字经有损解码之后**寻址不到**（U+FFFD 不是那个字节）。
-    /// 后端 `files-ls` 送的本来就是字节（`{"b16": …}`），此前在 [`row_from_ls_entry`] 里被丢掉了 ——
-    /// 留住它，写操作（改名 · 删除 · 改权限）就能对乱码名动手（`writeops::rel_json` 发 b16）。
+    /// 后端 `files-ls` 送的本来就是字节（`{"b16": …}`），[`row_from_ls_entry`] 把它留住 ——
+    /// 写操作（改名 · 删除 · 改权限）就能对乱码名动手（`writeops::rel_json` 发 b16）。
     /// ⚠ `serde(default)`：开窗那一跳（`proc::OpenRequest`）两头版本不齐时缺这一格 ⇒ `None`
     /// ⇒ 那一行退回「有损名不许写」，不会拿显示串去寻址。
     #[serde(default)]
@@ -175,8 +160,8 @@ impl std::ops::Deref for Listed {
 /// 「『backend 写不了这份文件』是**编译器**兜的，不是一条判据兜的」。
 ///
 /// 它装的是那台机器**寻址用的名字**（本机后端机器表里算好的那个名字，monitor 开窗时随种子交来）。
-/// 从前装的是整份远端配置：窗口只拿它取名字、再给「在此打开终端」算机器事实 —— 开终端改由 monitor 接之后只剩名字，
-/// 窗口进程从此不认识 monitor 的配置类型（`filewin` 边界判据那一格「开窗配置的类型」清零）。
+/// 窗口只拿它取名字；「在此打开终端」由 monitor 接，所以窗口进程不认识 monitor 的配置类型
+/// （`filewin` 边界判据那一格「开窗配置的类型」是零）。
 #[derive(Clone, Debug)]
 pub struct Source(String);
 
@@ -196,7 +181,7 @@ impl Source {
     /// 🔴 它与 [`Source::label`] **刻意分开两个函数**：`label` 是给人看的，
     /// 而这一个是**寻址用的**。两者今天由同一个 `origin_label()` 喂
     /// （本机那一侧退役之前不是这样：那时 `label` 回的是「本机」两个中文字，
-    /// 而寻址要的是 `origin::LOCAL` 那个 `"<local>"`）。
+    /// 而寻址要的是 `cmd_wire::LOCAL`）。
     /// ⇒ **仍然不合并**：它们回的是同一个串是**今天的实况**，不是契约。
     ///
     /// ⚠ **刻意不回 `String`**：`origin_tests::no_new_raw_string_origin_parameters`
@@ -204,7 +189,7 @@ impl Source {
     /// 新代码一律用这个类型，不许再给这个概念造一种表达。
     /// ⚠ 那个名字由 monitor 开窗时用 `origin_label()` 算（`filewin/entry.rs`），与 `stream_source` 的 `on_attached` 登记时
     /// 用的是**同一个函数** —— 两处漂开的症状是「命令发给了一个谁都没登记过的
-    /// origin，而且不报错」（`inbound_client::LOCAL_ORIGIN` 的头注记过同一形）。
+    /// origin，而且不报错」。
     pub fn origin(&self) -> Origin {
         Origin::named(self.0.clone())
     }
@@ -259,7 +244,7 @@ pub fn breadcrumbs(path: &str) -> Vec<(String, String)> {
 // ═══════════════════════════════════════════════════════════════════════
 //
 // 窗口里显示用的一律是有损串；**发出去的**（列目录 · 读 / 存文本 · 复制 · 算大小 · 写面的根）经 [`RemotePath::wire`]：
-// 路径是合法 UTF-8 ⇒ 字符串（与此前逐字相同）；不是 ⇒ `{"b16": …}`（后端 `files-*` 那一族早就收这一形）。
+// 路径是合法 UTF-8 ⇒ 字符串；不是 ⇒ `{"b16": …}`（后端 `files-*` 那一族早就收这一形）。
 // 按字节切的三个函数与 [`parent_dir`] / [`remote_basename`] / [`breadcrumbs`] 同住这里、同一个口径（恒用 `/`，尾斜杠不算一段）。
 
 /// 一条远端路径：显示串 ＋（路径不是合法 UTF-8 时）原始字节。`raw == None` ⇒ `shown` 就是真字节。
@@ -432,11 +417,8 @@ pub fn mtime_text(secs: u64) -> MtimeText {
 ///
 /// # 🔴 抽成纯函数的理由
 ///
-/// 问 home 那一趟（〔09-28 裁 3〕窗口进程的 `proc::first_screen`）要一个起着的后端才跑得起来
+/// 问 home 那一趟（窗口进程的 `proc::first_screen`，问后端 `files-home`）要一个起着的后端才跑得起来
 /// ⇒ 那条路上**有逻辑的一段**就是这里（连同 [`home_from_reply`] 的解字节），抽出来它就有判据了。
-///
-/// 改过名（旧名带着 SFTP 那一问的字眼）：第七刀那一版问的是
-/// SFTP 的 `realpath(".")`；现在问的是后端 `files-home`，判的这一道一个字没变。
 ///
 /// # 为什么要判一道，而不是把回值直接拿去开窗
 ///
@@ -483,10 +465,7 @@ pub async fn home_of(
 
 /// 一趟 `files-home` 的回包 → 开窗的起点。
 ///
-/// 🔴**这一问从 SFTP 换到了后端。** 上一版这里是一个
-/// async 函数（monitor 为「`.` 是哪儿」单拨一条 SFTP，走池子那条 `realpath` 命令），
-/// 它是 monitor 那一侧**最后一处**碰 SFTP 的地方；
-/// 现在问的是后端 `files-home`（〔09-28 裁 3〕窗口进程经通道问，`proc::first_screen`）。
+/// 🔴 起点问的是后端 `files-home`（窗口进程经通道问，`proc::first_screen`），monitor 那一侧不碰 SFTP。
 ///
 /// 两道：① `path` 解成字节 —— **不是合法 UTF-8 就拒**（窗口的路径是字符串，有损解码之后
 /// 寻址不到那个目录，开出来的是别处）；② 能不能当起点，交 [`start_dir_from_home`]。
@@ -497,11 +476,10 @@ pub fn home_from_reply(r: cmd_wire::files::FilesPathReply) -> Result<String, Str
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 🔴**窗口进程只说 `call`** —— 经 F3 那条通道
+// 🔴**窗口进程只说 `call`** —— 经通道
 // ═══════════════════════════════════════════════════════════════════════
 //
-// 用户逐字：「甲, 窗口变成独立前端. 我说了后端要模块化, 即原生后端+文件管理后端.
-// 现在先解耦清楚. 然后 monitor 可以打开文件管理器的前端」；「D11：后端是给定的，不要退路」。
+// 窗口是独立前端；后端分原生后端与文件管理后端，monitor 打开文件管理器的前端。后端是给定的，没有退路。
 //
 // # 形状
 //
@@ -510,27 +488,20 @@ pub fn home_from_reply(r: cmd_wire::files::FilesPathReply) -> Result<String, Str
 // `call(origin, op, payload, budget)`，由 monitor 那一侧的路由器转给 `inbound_client`
 // ——本机与远端同一条路。
 //
-// # 🔴 没有退路（`D11`）
+// # 🔴 没有退路
 //
-// 上一版这里是「先问后端，问不到就退回 SFTP 并出声」（那一格的裁决类型叫 `ListVerdict`，
-// 退路走池子那条列目录命令）。**整条拿掉了**：问不到就是错，原话画在窗口上。
-// 窗口进程里列目录这件事从此只有一条路（排序在后端）。
-// 那条退路的判据（「退路在、排在问后端之后、只有一支」）随它一起换成了反面：
+// 问不到就是错，原话画在窗口上；窗口进程里列目录只有一条路（排序在后端）。守它的是
 // `source_tests::listing_has_no_second_road_when_the_backend_refuses`（行为）＋
 // `boundary_tests` 的窗口侧登记表（池子那条列目录命令不在表里 ⇒ 写上就红）。
 //
-// # ⚠ 这一步**没有**做到什么（别读宽）
+// # ⚠ 各条路走哪
 //
-// - ✅〔审计 F 🔴-3 订正〕**跨机传输**：这里原先写「仍走 SFTP（上传 · 往外拖 · 取消），未拍」。
-//   今天上传 / 下载是窗口说 `transfer-upload` / `transfer-download` ＋ 订阅 `transfer/<id>`（取消 = 停订），
+// - **跨机传输**：上传 / 下载是窗口说 `transfer-upload` / `transfer-download` ＋ 订阅 `transfer/<id>`（取消 = 停订），
 //   monitor 只中继，SFTP 住本机常驻后端；往 OS 拖出去不做。窗口进程零 SFTP。
-//   ✅「读一份文本进编辑器」那一条已换成后端 `files-read-text`。
-// - ✅**同机复制**此前仍走 SFTP（后端没有 `files-copy`，
-//   登记在 `boundary_tests` 那一类「后端缺命令」里）—— 现在问后端 `files-copy`，那一类清零删了。
-// - ✅**开窗时解 home** 此前仍走 SFTP（住 monitor 那一侧，
-//   后端没有这一问）—— 现在问后端 `files-home`（[`home_from_reply`]），monitor 那一侧
-//   开窗一个 SFTP 都不拨了。
-// - **`Row` 仍然持字符串不持字节** —— 那「单独一刀」没去改 `Row`，改的是**发出去的那一跳**：
+//   「读一份文本进编辑器」问后端 `files-read-text`。
+// - **同机复制**问后端 `files-copy`。
+// - **开窗时解 home** 问后端 `files-home`（[`home_from_reply`]），monitor 那一侧开窗不拨 SFTP。
+// - **`Row` 持字符串不持字节**，字节走**发出去的那一跳**：
 //   窗口记住当前目录的字节（`FileWindow::cwd_raw`）与行上名字的字节（`Listed::raw_name`），发路径一律经 [`RemotePath`]
 //   （进目录 · 列目录 · 上一级 · 读 / 存文本 · 复制 · 算大小 · 新建 · 写面的根）；显示照旧用有损串。
 //   仍然做不了、会出声的：有损目录里上传 / 搜索 / 开终端 / 书签；有损名下载（SFTP 库寻址不到）。
@@ -544,7 +515,7 @@ pub const CMD_LS: &str = <cmd_wire::files::LsReq as cmd_wire::Call>::NAME;
 /// 🔴 **抽成具名函数是为了让它可判**：[`list_via_backend`] 整条路要一条通道才跑得起来，
 /// 而那条路上**唯一有逻辑的一段**就是这里。
 ///
-/// # 🔴 逐格说明 —— **这张表现在是一条判据，不是散文**
+/// # 🔴 逐格说明 —— **这张表是一条判据，不是散文**
 ///
 /// | 后端送的 | 窗口这一行的哪一格 | 怎么来的 |
 /// |---|---|---|
@@ -564,14 +535,7 @@ pub const CMD_LS: &str = <cmd_wire::files::LsReq as cmd_wire::Call>::NAME;
 /// | `truncated` | 界面上那句「只拿到了前 N 条」 | 同上 |
 /// | `unreadable` | 界面上那句「有 n 项读不出来」 | 同上；缺 ⇒ 0 |
 ///
-/// 🔴〔补齐五项 2026-09-23〕**这张表此前是散文，而它自陈的两格正是两条真缺口。**
-/// 上一版逐字写着「`kind`（四值）⇒ `is_dir`：只有 `dir` 算目录」与
-/// 「`mtime_secs` ⇒ ——：窗口今天不画它」。前者把一个四值**压成一个布尔**
-/// （于是屏幕上分不出符号链接），后者整格丢掉（于是看不到修改时间）；
-/// 而**没有任何一条判据在守这张表** —— 谁把 `size` 那一行也悄悄丢掉，
-/// 这张表照旧写着「原样带上来」，一个数都不会动。
-///
-/// ⇒ 这一刀把它变成 `source_tests::the_field_by_field_table_between_backend_and_window_is_a_judge`：
+/// 🔴 守这张表的是 `source_tests::the_field_by_field_table_between_backend_and_window_is_a_judge`：
 /// 左栏的人群**现读** `src/backend/files/mod.rs` 里 `files.ls` 那条能力声明的 `fields`
 /// （两侧不同源），与表里声明的那一摞**逐格相等**；右栏那句「怎么来的」
 /// 每一行各挂一条**行为**断言。加一格 / 丢一格 / 说法漂了，三种都红。
@@ -704,7 +668,7 @@ impl OpenFail {
 /// （`ScrollArea::show_rows`），一次拿多少不影响帧时，只影响一次往返的大小。
 pub const LS_LIMIT: usize = 50_000;
 
-/// 列一个目录 —— **只问后端**（`D11`：没有退路）。
+/// 列一个目录 —— **只问后端**（没有退路）。
 ///
 /// 回手上那一份（整份，带着记号：开窗之后头一次重问就只拿变了的那几行）。问不到 ⇒ 那句原话（[`comms_inward::chan::said::said`] 翻过的）原样交出去。
 pub async fn list_dir(

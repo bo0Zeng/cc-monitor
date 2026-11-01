@@ -558,7 +558,7 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 ///
 /// | 面 | 今天 | 谁在管 |
 /// |---|---|---|
-/// | `src/frontend/shell/build.rs` | 起 `sh`/`git`、往 `OUT_DIR` 写 | **08-08 刚并进** `write_site_registry`（第 82 件） |
+/// | `src/frontend/shell/build.rs` | 往 `OUT_DIR` 写 | `src/frontend/clippy.toml` 写盘那一组（clippy 也查构建脚本，那一处就地放行） |
 /// | `tauri.conf.json` 的 `before*Command` | `npm run dev` / `npm run build` | 本条 |
 /// | `package.json` 的 npm **生命周期钩子** | 一个都没有 | 本条 |
 /// | cargo 配置里的 `runner`/`linker`/`rustflags` | 六格里一份都没设过 | 本条（08-28 起判**内容**） |

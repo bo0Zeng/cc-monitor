@@ -314,6 +314,9 @@ fun <T> tuple(lazyAds: List<() -> JsonAdapter<*>>, build: (Array<Any?>) -> T, ge
         w.endArray()
     }, "tuple")
 
+/** 本机那台的机器键（`cmd_wire::machine::LOCAL`）。 */
+const val LOCAL: String = "<local>"
+
 @Suppress("UNCHECKED_CAST")
 data class AccountAddArgs(
     val name: String,
@@ -1952,6 +1955,25 @@ data class AutoAnswer(
             ),
             { a -> AutoAnswer(a[0] as Int, a[1] as String?) },
             { v -> arrayOf(v.afterMin, v.say) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AutoChoice(
+    val min: Int,
+    val text: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AutoChoice> = obj(
+            listOf(
+            Field("min", { Int32 }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            ),
+            { a -> AutoChoice(a[0] as Int, a[1] as String) },
+            { v -> arrayOf(v.min, v.text) },
         )
     }
 }
@@ -4559,11 +4581,32 @@ data class ChunkBytesObjValue(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class ClashChoice(
+    val decide: Decide,
+    val label: String,
+    val pick: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ClashChoice> = obj(
+            listOf(
+            Field("decide", { Decide.ADAPTER }, optional = false, nullable = false),
+            Field("label", { Str }, optional = false, nullable = false),
+            Field("pick", { Str }, optional = false, nullable = false),
+            ),
+            { a -> ClashChoice(a[0] as Decide, a[1] as String, a[2] as String) },
+            { v -> arrayOf(v.decide, v.label, v.pick) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class ClashRow(
     val key: String,
     val name: String,
     val meta: String,
-    val answers: List<Decide>,
+    val choices: List<ClashChoice>,
     val there: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -4574,11 +4617,11 @@ data class ClashRow(
             Field("key", { Str }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
             Field("meta", { Str }, optional = false, nullable = false),
-            Field("answers", { arr(Decide.ADAPTER) }, optional = false, nullable = false),
+            Field("choices", { arr(ClashChoice.ADAPTER) }, optional = false, nullable = false),
             Field("there", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> ClashRow(a[0] as String, a[1] as String, a[2] as String, a[3] as List<Decide>, a[4] as String?) },
-            { v -> arrayOf(v.key, v.name, v.meta, v.answers, v.there) },
+            { a -> ClashRow(a[0] as String, a[1] as String, a[2] as String, a[3] as List<ClashChoice>, a[4] as String?) },
+            { v -> arrayOf(v.key, v.name, v.meta, v.choices, v.there) },
         )
     }
 }
@@ -6500,6 +6543,7 @@ data class FactsReply(
     val background: FactsBackground?,
     val answerOff: String?,
     val autoAnswer: Long?,
+    val autoAnswerChoices: List<AutoChoice>,
     val autoAnswered: String?,
     val mcp: List<McpTrouble>,
     val startedBy: Kin?,
@@ -6535,6 +6579,7 @@ data class FactsReply(
             Field("background", { opt(FactsBackground.ADAPTER) }, optional = false, nullable = true),
             Field("answerOff", { opt(Str) }, optional = false, nullable = true),
             Field("autoAnswer", { opt(Lng) }, optional = false, nullable = true),
+            Field("autoAnswerChoices", { arr(AutoChoice.ADAPTER) }, optional = false, nullable = false),
             Field("autoAnswered", { opt(Str) }, optional = false, nullable = true),
             Field("mcp", { arr(McpTrouble.ADAPTER) }, optional = false, nullable = false),
             Field("startedBy", { opt(Kin.ADAPTER) }, optional = false, nullable = true),
@@ -6542,8 +6587,8 @@ data class FactsReply(
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Long>, a[9] as List<PendingCall>, a[10] as LastSay?, a[11] as Needs?, a[12] as List<String>, a[13] as List<RetryRun>, a[14] as List<NoticeRun>, a[15] as String?, a[16] as String?, a[17] as TokenUse?, a[18] as FactsCost?, a[19] as List<BgTask>, a[20] as FactsBackground?, a[21] as String?, a[22] as Long?, a[23] as String?, a[24] as List<McpTrouble>, a[25] as Kin?, a[26] as List<Kin>, a[27] as FactsLine?, a[28] as QuietUnread?) },
-            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
+            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Long>, a[9] as List<PendingCall>, a[10] as LastSay?, a[11] as Needs?, a[12] as List<String>, a[13] as List<RetryRun>, a[14] as List<NoticeRun>, a[15] as String?, a[16] as String?, a[17] as TokenUse?, a[18] as FactsCost?, a[19] as List<BgTask>, a[20] as FactsBackground?, a[21] as String?, a[22] as Long?, a[23] as List<AutoChoice>, a[24] as String?, a[25] as List<McpTrouble>, a[26] as Kin?, a[27] as List<Kin>, a[28] as FactsLine?, a[29] as QuietUnread?) },
+            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
         )
     }
 }
@@ -12758,6 +12803,8 @@ enum class LsSortBy(val wire: String) {
     }
 }
 
+typealias Machine = String
+
 enum class MachineBlocker(val wire: String) {
     NOT_UNIX("not_unix"),
     NO_BACKEND("no_backend"),
@@ -13314,7 +13361,7 @@ data class MachineStopped(
 
 @Suppress("UNCHECKED_CAST")
 data class MachineStripLine(
-    val tone: StripTone,
+    val tone: Tone,
     val progress: Boolean,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -13322,10 +13369,10 @@ data class MachineStripLine(
     companion object {
         val ADAPTER: JsonAdapter<MachineStripLine> = obj(
             listOf(
-            Field("tone", { StripTone.ADAPTER }, optional = false, nullable = false),
+            Field("tone", { Tone.ADAPTER }, optional = false, nullable = false),
             Field("progress", { Bool }, optional = false, nullable = false),
             ),
-            { a -> MachineStripLine(a[0] as StripTone, a[1] as Boolean) },
+            { a -> MachineStripLine(a[0] as Tone, a[1] as Boolean) },
             { v -> arrayOf(v.tone, v.progress) },
         )
     }
@@ -15392,8 +15439,6 @@ data class OpenedItem(
         )
     }
 }
-
-typealias Origin = String
 
 @Suppress("UNCHECKED_CAST")
 data class OriginSessionsListedPayload(
@@ -21869,6 +21914,9 @@ data class RunGroups(
     val recent: List<String>,
     val older: List<String>,
     val olderText: String? = null,
+    val runningText: String? = null,
+    val peek: List<String>? = null,
+    val peekMoreText: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -21879,9 +21927,12 @@ data class RunGroups(
             Field("recent", { arr(Str) }, optional = false, nullable = false),
             Field("older", { arr(Str) }, optional = false, nullable = false),
             Field("older_text", { opt(Str) }, optional = true, nullable = true),
+            Field("running_text", { opt(Str) }, optional = true, nullable = true),
+            Field("peek", { opt(arr(Str)) }, optional = true, nullable = true),
+            Field("peek_more_text", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> RunGroups(a[0] as List<String>, a[1] as List<String>, a[2] as List<String>, a[3] as String?) },
-            { v -> arrayOf(v.running, v.recent, v.older, v.olderText) },
+            { a -> RunGroups(a[0] as List<String>, a[1] as List<String>, a[2] as List<String>, a[3] as String?, a[4] as String?, a[5] as List<String>?, a[6] as String?) },
+            { v -> arrayOf(v.running, v.recent, v.older, v.olderText, v.runningText, v.peek, v.peekMoreText) },
         )
     }
 }
@@ -21895,6 +21946,7 @@ data class RunInfo(
     val parent: String? = null,
     val state: RunState,
     val statusText: String,
+    val tookText: String? = null,
     val labelText: String,
     val last: RunDid? = null,
     val lastText: String? = null,
@@ -21924,6 +21976,7 @@ data class RunInfo(
             Field("parent", { opt(Str) }, optional = true, nullable = true),
             Field("state", { RunState.ADAPTER }, optional = false, nullable = false),
             Field("status_text", { Str }, optional = false, nullable = false),
+            Field("took_text", { opt(Str) }, optional = true, nullable = true),
             Field("label_text", { Str }, optional = false, nullable = false),
             Field("last", { opt(RunDid.ADAPTER) }, optional = true, nullable = true),
             Field("last_text", { opt(Str) }, optional = true, nullable = true),
@@ -21941,8 +21994,8 @@ data class RunInfo(
             Field("end", { opt(RunEndLine.ADAPTER) }, optional = true, nullable = true),
             Field("needs", { opt(Needs.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> RunInfo(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as RunState, a[6] as String, a[7] as String, a[8] as RunDid?, a[9] as String?, a[10] as String?, a[11] as Long?, a[12] as String?, a[13] as Long?, a[14] as Long?, a[15] as RunWhy?, a[16] as String?, a[17] as Int?, a[18] as Boolean?, a[19] as List<RunLine>?, a[20] as RunExplain?, a[21] as RunEndLine?, a[22] as Needs?) },
-            { v -> arrayOf(v.run, v.label, v.kind, v.tool, v.parent, v.state, v.statusText, v.labelText, v.last, v.lastText, v.waiting, v.startedMs, v.startedText, v.activeMs, v.endedMs, v.why, v.error, v.calls, v.background, v.facts, v.explain, v.end, v.needs) },
+            { a -> RunInfo(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as RunState, a[6] as String, a[7] as String?, a[8] as String, a[9] as RunDid?, a[10] as String?, a[11] as String?, a[12] as Long?, a[13] as String?, a[14] as Long?, a[15] as Long?, a[16] as RunWhy?, a[17] as String?, a[18] as Int?, a[19] as Boolean?, a[20] as List<RunLine>?, a[21] as RunExplain?, a[22] as RunEndLine?, a[23] as Needs?) },
+            { v -> arrayOf(v.run, v.label, v.kind, v.tool, v.parent, v.state, v.statusText, v.tookText, v.labelText, v.last, v.lastText, v.waiting, v.startedMs, v.startedText, v.activeMs, v.endedMs, v.why, v.error, v.calls, v.background, v.facts, v.explain, v.end, v.needs) },
         )
     }
 }
@@ -22869,6 +22922,7 @@ data class SessionFacts(
     val background: FactsBackground?,
     val answerOff: String?,
     val autoAnswer: Long?,
+    val autoAnswerChoices: List<AutoChoice>,
     val autoAnswered: String?,
     val mcp: List<McpTrouble>,
     val startedBy: Kin?,
@@ -22903,6 +22957,7 @@ data class SessionFacts(
             Field("background", { opt(FactsBackground.ADAPTER) }, optional = false, nullable = true),
             Field("answerOff", { opt(Str) }, optional = false, nullable = true),
             Field("autoAnswer", { opt(Lng) }, optional = false, nullable = true),
+            Field("autoAnswerChoices", { arr(AutoChoice.ADAPTER) }, optional = false, nullable = false),
             Field("autoAnswered", { opt(Str) }, optional = false, nullable = true),
             Field("mcp", { arr(McpTrouble.ADAPTER) }, optional = false, nullable = false),
             Field("startedBy", { opt(Kin.ADAPTER) }, optional = false, nullable = true),
@@ -22910,8 +22965,8 @@ data class SessionFacts(
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Long>, a[8] as List<PendingCall>, a[9] as LastSay?, a[10] as Needs?, a[11] as List<String>, a[12] as List<RetryRun>, a[13] as List<NoticeRun>, a[14] as String?, a[15] as String?, a[16] as TokenUse?, a[17] as FactsCost?, a[18] as List<BgTask>, a[19] as FactsBackground?, a[20] as String?, a[21] as Long?, a[22] as String?, a[23] as List<McpTrouble>, a[24] as Kin?, a[25] as List<Kin>, a[26] as FactsLine?, a[27] as QuietUnread?) },
-            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
+            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Long>, a[8] as List<PendingCall>, a[9] as LastSay?, a[10] as Needs?, a[11] as List<String>, a[12] as List<RetryRun>, a[13] as List<NoticeRun>, a[14] as String?, a[15] as String?, a[16] as TokenUse?, a[17] as FactsCost?, a[18] as List<BgTask>, a[19] as FactsBackground?, a[20] as String?, a[21] as Long?, a[22] as List<AutoChoice>, a[23] as String?, a[24] as List<McpTrouble>, a[25] as Kin?, a[26] as List<Kin>, a[27] as FactsLine?, a[28] as QuietUnread?) },
+            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
         )
     }
 }
@@ -25141,18 +25196,6 @@ sealed interface StreamEv {
     }
 }
 
-enum class StripTone(val wire: String) {
-    BUSY("busy"),
-    OFFLINE("offline"),
-    WARN("warn"),
-    FAULT("fault"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<StripTone> = enumOf(entries) { it.wire }
-    }
-}
-
 @Suppress("UNCHECKED_CAST")
 data class SurfaceRow(
     val toolId: String,
@@ -26156,6 +26199,7 @@ enum class Tone(val wire: String) {
     NEED("need"),
     WARN("warn"),
     BUSY("busy"),
+    OFFLINE("offline"),
     ;
 
     companion object {

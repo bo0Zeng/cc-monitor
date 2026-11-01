@@ -754,6 +754,18 @@ pub struct RunGroups {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub older_text: Option<Words>,
+    /// 监控板格子上 agent 那一枚（「在跑 · agent n」，n 是在跑那一组的个数），两端照抄；没有在跑的 ⇒ 不上线。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub running_text: Option<Words>,
+    /// 监控板 peek 列的那几个（三组序：在跑 ++ 最近 ++ 更早，取前几个，几个由后端定）；表是空的 ⇒ 不上线。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub peek: Option<Vec<String>>,
+    /// peek 没列的余下几个那一截（「+n」）；都列下了 ⇒ 不上线。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub peek_more_text: Option<Words>,
 }
 
 /// 写好的一截字。随时钟变的那一截是会走的钟：`text` 里的 `{dur}` 是空位，出口照（此刻 − `from`）用共用的时长格式填；
@@ -1281,6 +1293,10 @@ pub struct RunInfo {
     /// 状态写好的字（在跑 · 完成 · 失败 · 已中止 · 状态不明）：出口照抄，不按 `state` 挑字。出帧那一下写（`observe::runs`）。
     #[serde(default)]
     pub status_text: Words,
+    /// 收场了用了多久那一句（「用时 6m」：`ended_ms` − `started_ms`，两头都定了）；在跑 · 状态不明 · 缺一头 ⇒ 不上线。出帧那一下写，出口照抄。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub took_text: Option<Words>,
     /// 名字写好的字：`label`，没有 ⇒ 通称（「agent」）。
     #[serde(default)]
     pub label_text: Words,

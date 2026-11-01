@@ -97,7 +97,6 @@ src/mobile/gradle/libs.versions.toml	1
 src/shared/cc-bus/SKILL.md	1
 src/shared/copy/rules.json	4
 src/shared/copy/table.json	1
-src/shared/copy/terms.json	4
 src/shared/quota-warm/scripts/quota-warm	1
 tests/__fixtures__/cc-bus-read.golden.json	2
 tests/__fixtures__/plan-files.golden.json	6

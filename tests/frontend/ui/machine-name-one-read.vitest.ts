@@ -1,7 +1,7 @@
 /**
  * 界面里「这台叫什么」只有一个读口：`machineName(origin)`，照那台机器成品的 `name`（本机远端同一条路）。
  *
- * 喂两台成品（远端 devbox 叫「工作站 B」、本机叫「box-b」）之后，会话头 · 标签悬停卡 · 终端页头 · 终端输入「发给 …」
+ * 喂两台成品（远端 devbox 叫「工作站 B」、本机叫「laptop」）之后，会话头 · 标签悬停卡 · 终端页头 · 终端输入「发给 …」
  * 四处写的都是成品里的名字，不写键（devbox）、不按本机 / 远端另挑字。设置窗去处那一个改叫 `machinePageOf`，
  * `settings-dest` 不再有 `machineOf` 这个名字。
  *
@@ -43,6 +43,7 @@ function tab(sid: string, origin: string, over: Partial<Tab> = {}): Tab {
     unread: 0,
     needs: null,
     autoAnswer: null,
+    autoAnswerChoices: [],
     autoAnswered: null,
     backgroundWork: null,
     pending: [],
@@ -54,7 +55,7 @@ function tab(sid: string, origin: string, over: Partial<Tab> = {}): Tab {
 /** `key`：成品没到时会上屏的那个键（远端）；本机的键是哨兵、不上屏，只判写成品名字。sid 不含名字（免得名字从标题 · 目录混进来）。 */
 const CASES = [
   { sid: "s1", origin: "devbox", name: "工作站 B", key: "devbox" },
-  { sid: "s2", origin: LOCAL_ORIGIN, name: "box-b", key: null },
+  { sid: "s2", origin: LOCAL_ORIGIN, name: "laptop", key: null },
 ] as const;
 
 beforeAll(() => {
