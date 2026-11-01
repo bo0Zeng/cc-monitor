@@ -276,7 +276,7 @@ fn the_search_kou_jing_has_exactly_one_home() {
         .collect();
     assert!(
         redefined.is_empty(),
-        "`search_query.rs` 的生产段里又长出了这些助手的定义：{redefined:?}（`K-R100` 收口前的形状：两份实现、零判据对拍）"
+        "`search_query.rs` 的生产段里又长出了这些助手的定义：{redefined:?}（两份实现、零判据对拍）"
     );
     let reconst: Vec<&str> = CONSTS
         .iter()

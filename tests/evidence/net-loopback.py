@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # ruff: noqa: E501
-"""NT1：**SSH 压缩** —— 对着真 sshd 的现打（本机回环，零 root）。
+"""**SSH 压缩** —— 对着真 sshd 的现打（本机回环，零 root）。
 
 跑法（仓根下）：
-    python3 tests/evidence/NT1-net-loopback.py --compress
+    python3 tests/evidence/net-loopback.py --compress
 
 `--compress`：对着一台回环 sshd 跑 `dial_compress_tests::zr_…`（`#[ignore]`，强制压 / 强制不压各一趟），再读 sshd 日志核协商结果。
 
@@ -69,7 +69,7 @@ class Sshd:
 
 def main():
     if "--compress" not in sys.argv[1:]:
-        print("用法：python3 tests/evidence/NT1-net-loopback.py --compress")
+        print("用法：python3 tests/evidence/net-loopback.py --compress")
         return 2
     sshd = shutil.which("sshd") or "/usr/sbin/sshd"
     if not os.path.isfile(sshd):

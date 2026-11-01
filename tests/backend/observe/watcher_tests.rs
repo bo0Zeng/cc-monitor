@@ -743,8 +743,8 @@ fn poke_shares_the_probe_arm_with_the_ticker() {
 /// ★ S0：pidfile **绑的 sid 变了**才重探 tmux —— 不是「有 .json 事件就探」。
 ///
 /// 为什么这条区分是必须的：CC 在**每次状态转换**时都会重写 `sessions/<PID>.json`
-/// （远端红绿灯就靠它，见 `process_session_added` 里 F27 那段）。拿「有事件」当触发器，
-/// 等于让 tmux 探测跟着对话节奏跑 —— 那是**变相轮询**，把 P5 好不容易拆掉的定时器
+/// （远端红绿灯就靠它，见 `process_session_added` 里 status 透传那段）。拿「有事件」当触发器，
+/// 等于让 tmux 探测跟着对话节奏跑 —— 那是**变相轮询**，把不该有的定时器
 /// 用另一种形式装回来。
 ///
 /// 同 `poke_shares_the_probe_arm_with_the_ticker`：扫**生产段**源码（`watch_loop` 要真
@@ -1065,7 +1065,7 @@ fn truncation_resets_offset_but_seq_keeps_climbing() {
     assert_eq!(out2[0].seq, 3, "seq must never reset on truncation");
 }
 
-/// F14 audit fix: a rewrite whose new length lands inside the pending
+/// A rewrite whose new length lands inside the pending
 /// torn-tail window [consumed, seen_len) must still be detected as
 /// truncation — no garbage line from a stale offset.
 #[test]
@@ -1256,7 +1256,7 @@ fn fully_unterminated_single_line_is_deferred() {
     assert_eq!(seqs.next(KEY), 0, "deferral must not consume a seq");
 }
 
-// === Batch5-F20 add-time imposter check ===
+// === add-time imposter check ===
 
 #[test]
 fn imposter_when_proc_started_after_pidfile() {
@@ -1315,7 +1315,7 @@ fn imposter_by_cmdline() {
 
 #[test]
 fn imposter_by_bg_spare_before_exact_identity() {
-    // F74b(#43)：bg-spare 优先于 exact-identity——即便 procStart 自洽（recorded==current）
+    // bg-spare 优先于 exact-identity——即便 procStart 自洽（recorded==current）
     // 也判 Imposter（否则守护池停泊备用进程恒绿）。
     assert_eq!(
         add_time_verdict(true, None, None, Some("claude bg-spare")),
@@ -1340,7 +1340,7 @@ fn claude_like_cmdlines_pass() {
         "/usr/bin/node /home/u/.local/bin/claude",
         "NODE_OPTIONS=x node cli.js",
         // 只看得见解释器那一形（`liveness.rs` 头注：词表里有 `node` 就是为它）——
-        // 解释器不在行首；从前这一格没人量（「`node` 只认行首」那一刀两族都放过）。
+        // 解释器不在行首（「`node` 只认行首」的写法两族都会放过这一格）。
         "/usr/bin/node cli.js",
         "node index.js",
         "Claude", // case-insensitive
@@ -1378,9 +1378,9 @@ fn missing_data_degrades_to_allow() {
     );
 }
 
-// === Batch6-F22：远端会话生命周期 ===
+// === 远端会话生命周期 ===
 
-/// ★★ `P0b-Y2`：**「盯着的目录被换掉」这条路必须有人重挂 + 重扫。**
+/// ★★ **「盯着的目录被换掉」这条路必须有人重挂 + 重扫。**
 ///
 /// # 这条判据够得到什么、够不到什么（先说清）
 ///
@@ -1781,7 +1781,7 @@ fn same_sid_two_pidfiles_refcount() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// 常规 added/removed 回归：单 pidfile 生命周期行为与 F22 前一致。
+/// 常规 added/removed 回归：单 pidfile 的生命周期。
 #[cfg(target_os = "linux")]
 #[test]
 fn plain_lifecycle_regression() {
@@ -1882,7 +1882,7 @@ fn the_announcement_says_which_account_the_session_runs_under() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-// === Batch9-F27：status 透传 ===
+// === status 透传 ===
 
 /// 宣告帧带初始 status；同 pidfile modify：status 变 → session_status 帧、
 /// 不变 → 静默（幂等早退保留）。
@@ -2043,10 +2043,10 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-// === Batch8-F25：tail-only 模式 ===
+// === tail-only 模式 ===
 
 /// tail-only 初扫：宣告帧带 path、零行帧；随后追加的新行 seq == 初扫时完整
-/// 行数 L（行号语义）；末尾残行不计数（F14 torn-line 语义）。
+/// 行数 L（行号语义）；末尾残行不计数（torn-line 语义）。
 #[cfg(target_os = "linux")]
 #[test]
 fn tail_only_primes_cursor_and_new_line_seq_is_line_number() {
@@ -2154,7 +2154,7 @@ fn with_bg_and_tail_only_combined() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-// === Batch7-F24：--with-bg 放行 + 帧元信息 ===
+// === --with-bg 放行 + 帧元信息 ===
 
 #[cfg(target_os = "linux")]
 #[test]
@@ -2326,7 +2326,7 @@ fn the_record_path_reaches_the_client_once_the_record_appears_after_the_announce
     std::fs::remove_dir_all(&dir).ok();
 }
 
-// === Batch6-F21：kind 交互性门 ===
+// === kind 交互性门 ===
 
 #[test]
 fn background_reads_through_the_adapter() {
@@ -2441,7 +2441,7 @@ fn parse_btime_from_realistic_proc_stat() {
     assert_eq!(parse_btime("btime notanumber\n"), None);
 }
 
-// === #34 procStart double-check (F04) ===
+// === procStart double-check ===
 
 /// A normal `/proc/<pid>/stat` line: starttime is field 22. Sample is a real
 /// kernel layout with a simple comm `(bash)`.
@@ -2540,8 +2540,7 @@ fn is_same_live_process_truth_table() {
     assert!(is_same_live_process(true, None, None));
 }
 
-/// ★★ **「只数不建」必须与「建了再数」得出同一个数、同一个游标、同一批 seq**
-/// 〔audit-0805 F04 第 3 步〕。
+/// ★★ **「只数不建」必须与「建了再数」得出同一个数、同一个游标、同一批 seq**。
 ///
 /// 最容易错的是 **seq**：不收集时很容易顺手把 `seqs.next(key)` 一起省掉，
 /// 而它是 per-path 单调且**永不重置**的 —— 少推一次，后续所有行的 seq 就与整读那条路
@@ -2675,7 +2674,7 @@ fn priming_a_big_record_reads_it_in_blocks() {
     );
 }
 
-/// ★★ **两条 tail 读路不许再整读会话 jsonl**〔audit-0805 F04 第 2 步〕。
+/// ★★ **两条 tail 读路不许整读会话 jsonl**。
 ///
 /// # 为什么不能笼统禁 `fs::read`
 ///
@@ -2719,7 +2718,7 @@ fn the_two_tail_readers_do_not_slurp_the_whole_session_file() {
     }
 }
 
-/// ★★ **分块入口与整读入口必须逐字节同解**〔audit-0805 F04 第 1 步〕。
+/// ★★ **分块入口与整读入口必须逐字节同解**。
 ///
 /// 这条判据存在的全部理由：`read_new_lines` 把 `bytes.len()` 当文件长度用，
 /// 而「改成 seek 只读新字节」的**第一步**就是把长度摘出来。摘的过程里最容易错的

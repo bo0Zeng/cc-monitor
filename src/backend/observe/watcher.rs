@@ -36,7 +36,7 @@
 //! The incremental read: a per-file [`ReadCursor`],
 //! read from `cursor.consumed` up to the **last `\n`** in the new region — a
 //! torn tail without a trailing `\n` is deferred to the next event, never
-//! emitted half-way (Batch4-F14). BOM strip via
+//! emitted half-way. BOM strip via
 //! `trim_start_matches('\u{feff}')`, skip blank lines; only active sessions' own record
 //! files stream as `line` frames (sub-run records feed the run book instead, see
 //! [`crate::observe::runs`]). Truncation is detected
@@ -50,15 +50,10 @@
 //! 读到一半出错 ⇒ 这一趟停在已经交出去的最后一块之后（交出去的行不再发一遍），其余的下一趟接着读；
 //! 读的那一下文件缩了 ⇒ 游标留旧高水位，下一趟按截短从 0 重读并出声。
 //!
-//! ⚠ 这段话此前写的是 "reads via one `fs::read` snapshot" —— 那**曾经是真的**，
-//! 而它只评了**错误语义**那一面，对**内存与 IO 后果一个字没记**（audit-0805 B-4）：
-//! 每个 debounce 事件把整份 jsonl 读进内存，257 MB 的活跃会话 ⇒ 每次读 257 MB，
-//! 只为提取约 500 字节的新行；而本地 monitor 同一件事一直是 `seek` + `read_until`
-//! ⇒ **强机器流式、弱机器整读，正好反了**（backend 住树莓派那类小机器）。
-//! F04 已改成只读新字节（`read_tail_from` + `read_new_lines_at`；d 之后按块读，见上），
-//! 由 `the_two_tail_readers_do_not_slurp_the_whole_session_file` 钉住不许改回去。
-//! ★ 留这段话是因为**「未登记的缺陷」比「登记过的取舍」更难发现** ——
-//! 当时那条头注读起来完全像一条深思熟虑的取舍。
+//! ⚠ tail 只读新字节（`read_tail_from` + `read_new_lines_at`，按块读，见上），
+//! 由 `the_two_tail_readers_do_not_slurp_the_whole_session_file` 钉住：
+//! 每个 debounce 事件把整份 jsonl 读进内存的话，257 MB 的活跃会话 ⇒ 每次读 257 MB，
+//! 只为提取约 500 字节的新行 —— 而 backend 常跑在树莓派那类小机器上。
 
 use crate::platform::fs::{Ro, RoFile};
 use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
@@ -346,12 +341,8 @@ fn arm_pid_watcher(key: &Path, pid: u32, expected_start: Option<u64>, state: &mu
     {
         return; // 这个 (pidfile, pid, starttime) 已经挂过了
     }
-    // ★★ `P0b-Y2` 第十五拍：**这一步原先一行日志都不打。**
-    //
-    // 第十四拍在可信台架上复现了 `#60`：全链里杀掉 claude **一帧 removed 都没有**，
-    // 而**同一个二进制离线三种旗标组合全都发得出来** ⇒ 差别在全链那条路上。
-    // 但「pidfd 看守到底有没有挂上」从外面**看不见** —— 只能推断，不能读数。
-    // ⇒ 与第十一拍「removal 那跳不可观测」同一族：先让它可观测，再谈根因。
+    // ★★ **这一步打一行日志**：「pidfd 看守到底有没有挂上」从外面**看不见**，
+    // 不打就只能推断、不能读数（全链里杀掉 claude 一帧 removed 都没有时，要靠它分清是不是这一跳）。
     // ⚠ 量级：每个会话一次（`pid_watched` 挡住重复），不会淹日志。
     tracing::info!(
         "pidfd 看守已挂: pid={pid} start={expected_start:?} key={}",
@@ -810,7 +801,7 @@ impl HomeEars {
 
     /// 起步挂一次：`agent_home`（不在 ⇒ 它的上一层）· `projects/`（可重入挂法）· `sessions/`。
     fn arm(&mut self, fs_watch: &mut impl notify::Watcher) {
-        // ★★ `P0b-Y2`：**监视 `agent_home` 本身** —— 这是「子目录出现/被换掉」的唯一耳朵。
+        // ★★ **监视 `agent_home` 本身** —— 这是「子目录出现/被换掉」的唯一耳朵。
         //
         // inotify 的 watch 绑在 **inode** 上，不是路径上。`sessions/` 被 `rm -rf` 再 `mkdir`
         // 之后是**另一个 inode**，旧 watch 还挂在那个已删的 inode 上 ⇒ 新目录里发生什么都听不见，
@@ -912,7 +903,7 @@ impl HomeEars {
                 RecursiveMode::Recursive,
             );
         }
-        // ★★ `P0b-Y2`：**`sessions/` 换了 inode 或刚出现 ⇒ 重挂 + 重扫。**
+        // ★★ **`sessions/` 换了 inode 或刚出现 ⇒ 重挂 + 重扫。**
         if p == self.sessions.as_path() {
             rewatch_sessions(
                 fs_watch,
@@ -925,7 +916,7 @@ impl HomeEars {
     }
 }
 
-/// ★★ `P0b-Y2` 第十六拍：**tmux socket 目录的推算规则**（零 server 时唯一的耳朵）。
+/// ★★ **tmux socket 目录的推算规则**（零 server 时唯一的耳朵）。
 ///
 /// # 病（`#60` 的根因）
 ///
@@ -1188,7 +1179,7 @@ pub fn spawn(
 
 /// 此刻在跑的 watcher（一个进程一份，见 [`spawn`]；判据在同一进程里会起好几份）—— **唯一的名单**：
 /// SIGUSR1（[`poke_all`]）与 `resync` 都按它找人。`spawn` 登记、`watch_loop` 返回即摘
-/// ⇒ 不会去 poke 一个已经退掉的 watcher（`K-P1`：那不报错，它只是再也不响应 tmux hook）。
+/// ⇒ 不会去 poke 一个已经退掉的 watcher（那不报错，它只是再也不响应 tmux hook）。
 static LIVE: std::sync::Mutex<Vec<(u64, std::sync::mpsc::Sender<WatchEvent>)>> =
     std::sync::Mutex::new(Vec::new());
 
@@ -1288,7 +1279,7 @@ fn arm_ears(
     accounts_ear: Option<&mut AccountsEar>,
 ) {
     ears.arm(fs_watch);
-    // ★★ `P0b-Y2` 第十六拍：**零 server 时也要有耳朵** —— 监视 tmux socket 目录本身。
+    // ★★ **零 server 时也要有耳朵** —— 监视 tmux socket 目录本身。
     // 目录不在（本机从没起过 tmux）⇒ 退一层监视它的父，等目录被创建出来。
     // 两种情况都只当「该重新探一次」的触发器，绝不拿文件存在性判活（沿用 P3 的既定纪律）。
     if let Some(parent) = sock_dir.parent() {
@@ -1599,7 +1590,7 @@ fn watch_loop(
                 let mut runs_touched = std::collections::BTreeSet::new();
                 for ev in events {
                     let p = ev.as_path();
-                    // ★★ `P0b-Y2`：**`sessions/` 换了 inode 或刚出现 ⇒ 重挂 + 重扫**；`projects/` 同族；
+                    // ★★ **`sessions/` 换了 inode 或刚出现 ⇒ 重挂 + 重扫**；`projects/` 同族；
                     // `agent_home` 自己刚出现 ⇒ 挂上它、再挂它下面那两个。
                     // 触发面刻意宽：这三个路径上任何动静都来这儿判一次（判的是盘上此刻的样子）。
                     ears.on_path(&mut fs_watch, p, &mut state, &mut sink);
@@ -1697,7 +1688,7 @@ fn watch_loop(
             // P2：pidfd 醒了 = 该 pidfile 当时追踪的**那个进程实例**已退出。取代原先
             // 每 2s 遍历 `state.sessions` 调 `session_alive` 的判活扫描。
             // **pid 比对挡陈旧唤醒**（同路径已换 pid / 已被移除）⇒ 幂等。
-            // Batch6-F22-② 的引用计数语义原样保留：经 `retire_sid_if_unreferenced`，
+            // 引用计数语义：经 `retire_sid_if_unreferenced`，
             // 同 sid 多 pidfile（resume 时原进程未死）任一 PID 死亡不误杀整个 sid。
             WatchEvent::PidDied { key, pid } => {
                 // ★ 同上：醒没醒、醒了之后那道 `sessions` 对账过没过，都要看得见。
@@ -2266,7 +2257,7 @@ struct SessionEntry {
     // （每轮拿它跟 /proc 现值比对判 PID 复用）。pidfd 取代轮询后基线只在**挂看守那一刻**
     // 用一次（`arm_pid_watcher` 的实参），之后身份由内核保证 ⇒ 不必再存在 entry 里。
     // 删它是"轮询消失 ⇒ 它的状态也消失"，不是丢信息。
-    /// Batch9-F27：pidfile 的官方 status（busy/idle/shell/waiting）与 waitingFor
+    /// pidfile 的官方 status（busy/idle/shell/waiting）与 waitingFor
     /// ——modify 事件 diff，变了发 session_status 帧（远端红绿灯）。
     status: Option<String>,
     waiting_for: Option<String>,
@@ -2294,8 +2285,7 @@ pub struct ReadLine {
     pub start: u64,
 }
 
-/// Per-file read cursor, mirroring the monitor watcher's `FileCursor`
-/// (Batch4-F14 audit fix).
+/// Per-file read cursor, mirroring the monitor watcher's `FileCursor`.
 ///
 /// - `consumed`: bytes of **complete lines** already emitted — the next
 ///   incremental read starts here. A deferred torn tail is not included.
@@ -2324,9 +2314,9 @@ pub struct ReadCursor {
 ///   up to and including the last `\n` in the new region. A torn tail without
 ///   a trailing `\n` (the CLI caught mid-write) stays in the file: it is
 ///   neither emitted nor skipped over, and `consumed` stops right before it,
-///   so the next event re-reads it once completed (Batch4-F14; the old
-///   behaviour emitted the half line — the record was then lost for good after
-///   the JSON parse failure — and a torn multibyte tail decayed into U+FFFD).
+///   so the next event re-reads it once completed (emitting the half line would
+///   lose the record for good after the JSON parse failure, and a torn multibyte
+///   tail would decay into U+FFFD).
 ///   A final line that is complete JSON but never gets its `\n` (writer killed
 ///   between the two writes) is handed out once the session retires
 ///   ([`catch_up_session`]), never while the writer is alive;
@@ -2340,7 +2330,7 @@ pub struct ReadCursor {
 /// - the returned `raw` is the original (untrimmed) line, exactly as
 ///   `watcher.rs` pushes `line` (not `trimmed`) into the batch.
 ///
-/// F04 之后这是 **test-only** 的：两个生产调用点都改走 [`read_new_lines_at`] 了。
+/// 这是 **test-only** 的：两个生产调用点都走 [`read_new_lines_at`]。
 ///
 /// 留着它不是为了兼容，而是因为它是那条等价性判据
 /// (`the_chunked_entry_agrees_with_the_whole_file_entry_byte_for_byte`) 的一半：
@@ -2358,7 +2348,6 @@ pub fn read_new_lines(
 }
 
 /// 同上，但**文件长度是显式入参**，`chunk` 只需覆盖 `[chunk_start, file_len)`
-/// 〔audit-0805 F04 第 1 步〕。
 ///
 /// # 为什么必须先有这个入口
 ///
@@ -2387,7 +2376,7 @@ pub fn read_new_lines_at(
     (lines, cursor)
 }
 
-/// 同上，但**只数不建**〔audit-0805 F04 第 3 步〕。
+/// 同上，但**只数不建**。
 ///
 /// `prime_file_cursor` 要的只有「有多少行」——它把每行单独 `to_string` 建成 `Vec<ReadLine>`，
 /// 然后**只用了 `.len()`**（一条 `tracing::debug!`）。首次 prime 时「新增那一段」就是整份文件，
@@ -2521,7 +2510,7 @@ enum Look {
     Read(NewLines),
 }
 
-/// 只读新字节〔audit-0805 F04〕＋先认出「不在了 / 被截短 / 被原地改写」三形，**读之前**就判定，交回停在起读处的块读者
+/// 只读新字节＋先认出「不在了 / 被截短 / 被原地改写」三形，**读之前**就判定，交回停在起读处的块读者
 /// （[`NewLines`]，按块读到尾，不把那一截一次读进内存）。
 ///
 /// - 截短：`metadata` 的长度 < 高水位 ⇒ 从 0 读、`reread = Truncated`、行号从 0 数。
@@ -2742,7 +2731,7 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
     let key_str = key.to_string_lossy().into_owned();
     let prev_cursor = state.offsets.get(&key).copied().unwrap_or_default();
     let path_str = path.to_string_lossy().into_owned();
-    // F04：只读新字节（截断 / 改写时 `read_tail_from` 判成从 0 读）；d：按块读、一块一块地出行，不把那一截一次读进内存。
+    // 只读新字节（截断 / 改写时 `read_tail_from` 判成从 0 读）；按块读、一块一块地出行，不把那一截一次读进内存。
     // 活会话的 jsonl 是「看的，不是管的」（之后文件管理器改得动它）：
     //   不在了 ⇒ 出声一次、丢游标（同名再出现从 0 读）；截短 / 原地改写 ⇒ 从 0 重读并出声。都不碰判活。
     let mut new = match read_tail_from(path, prev_cursor, state.tails.get(&key).map(Vec::as_slice))
@@ -2769,7 +2758,7 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
     if reread.is_some() {
         state.seqs.restart(&key_str);
     }
-    // 从 0 重读 ⇒ 链从头记；先前说过有主线外的 ⇒ 重读完这一趟一定再说一次（哪怕变成空）。
+    // 从 0 重读 ⇒ 链从头记；上一次说过有主线外的 ⇒ 重读完这一趟一定再说一次（哪怕变成空）。
     let mut branch_changed = reread.is_some()
         && state
             .branches
@@ -2822,7 +2811,7 @@ fn adopt_runs(state: &mut ReaderState, sid: &str, path: &Path) -> bool {
 
 /// **流只发要看的会话**：这条流报了它此刻在看 `ask.sids`（整份换）、要其中哪几个的主线外清单（`ask.branch`，带上它手上各有什么）。
 ///
-/// 刚进名单的会话（先前报过、又不在里面的；没报过 ＝ 全在流上，谁都不算刚进）：补一帧运行表，并回它的每份记录从第几行起上流 ——
+/// 刚进名单的会话（上一份名单里没有、这一份里有的；没报过 ＝ 全在流上，谁都不算刚进）：补一帧运行表，并回它的每份记录从第几行起上流 ——
 /// 号取游标此刻的值：之前读过的那些没上流，之后读到的（含已落盘、还没读到的）都上流 ⇒ 客户端按骨架补 `[0, seq)`、接实时 `[seq, …)`，不重复也不漏。
 /// 刚要起主线外清单的会话（这一次的 `branch` 里有、在看，上一次没有 —— 换了一条连接的头一次报都算）：照它手上那份只补缺的那一截
 /// （[`FrameSink::branch_to`]）。不要清单的会话（`branch` 里没有）一帧清单都不收。
@@ -2854,7 +2843,7 @@ fn watch_sessions(
     from
 }
 
-/// 这条连接的名单换成 `ask`：回刚进名单的（先前报过、又不在里面的）与刚要起主线外清单的（排好序；预读没交回的不算刚进）。没这条连接 ⇒ `None`。
+/// 这条连接的名单换成 `ask`：回刚进名单的（上一份名单里没有、这一份里有的）与刚要起主线外清单的（排好序；预读没交回的不算刚进）。没这条连接 ⇒ `None`。
 fn take_ask(
     sub: u64,
     ask: crate::wire::WatchAsk,
@@ -3283,7 +3272,7 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
     }
 }
 
-/// ★★ `P0b-Y2`：`<claude_dir>/sessions/` **换了 inode 或刚出现**，重新挂上并重扫。
+/// ★★ `<claude_dir>/sessions/` **换了 inode 或刚出现**，重新挂上并重扫。
 ///
 /// # 为什么必须有这一步（九拍排除链的终点）
 ///
@@ -3372,7 +3361,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     let Some(bytes) = Ro::read(path).ok() else {
         return false;
     };
-    // Batch9-F27：一次解析（适配层翻成一行 `ProcFact`；status diff 与后面的宣告帧共用）
+    // 一次解析（适配层翻成一行 `ProcFact`；status diff 与后面的宣告帧共用）
     let Some(fact) = crate::agents::proc_fact(&bytes) else {
         return false;
     };
@@ -3395,7 +3384,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // 后台会话（适配层判，`ProcFact::background`）照宣告，帧带 `background: true`；成不成 tab 由客户端按这一格定。
     let background = fact.background;
     // Idempotent: a modify of an already-tracked session re-announces
-    // nothing —— Batch9-F27：但「在干什么 / 在等什么」变了要发 session_status 帧
+    // nothing —— 但「在干什么 / 在等什么」变了要发 session_status 帧
     // （远端红绿灯的唯一数据源；CC 仅在状态转换时重写 pidfile，天然稀疏）。
     if state.sessions.get(&key).map(|e| e.sid.as_str()) == Some(sid.as_str()) {
         let new_status = fact.status_word.clone();
@@ -3436,17 +3425,16 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         adopt_launch_note(state, pid, &sid);
         return tag_identity(state, pid, &sid).1;
     }
-    // Batch6-F22-①：同 pidfile 原地换 sid（/clear 等重写 sessionId）——旧 sid
-    // 必须走 removed 路径：旧实现 insert 直接覆盖 entry，旧 sid 既不清
-    // active_sids 也永不发离开那一帧、还被挤出活性 poll 遍历 → 假 live
-    // 到断连（跨机审计实锤，本地 diff_sessions 按 sid 集合 diff 无此病）。
+    // 同 pidfile 原地换 sid（/clear 等重写 sessionId）——旧 sid
+    // 必须走 removed 路径：直接 insert 覆盖 entry 的话，旧 sid 既不清
+    // active_sids 也永不发离开那一帧、还被挤出活性 poll 遍历 → 假 live 到断连。
     // 引用计数感知：其它 pidfile 仍持旧 sid 时只解绑本 entry、不发帧。
     if let Some(old) = state.sessions.remove(&key) {
         // ★ S0：**同 pidfile 原地换 sid** —— 旧 sid 不是死了，是被顶替了。
         // monitor 若不知道这点，就会去查自己那份会陈旧的 tmux 快照、把它判成灰点。
         retire_sid_if_unreferenced(&old.sid, Some(sid.as_str()), state, sink);
     }
-    // Batch5-F20: add-time imposter check. `/proc/<pid>` existing is NOT enough:
+    // Add-time imposter check. `/proc/<pid>` existing is NOT enough:
     // a stale pidfile (CC force-killed, tmux server killed, power loss — nothing
     // ever cleans sessions/ up) plus PID reuse by any long-lived process (tmux
     // server, pane shell, sshd …) used to sail through and stream the whole dead
@@ -3521,7 +3509,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     } = a;
     // P2：`key` 下面被 insert 消耗掉，先留一份给 pidfd 看守用。
     let key_for_watch = key.clone();
-    // 先定位该 sid 的记录（Batch8-F25：帧要带 path 供 monitor 旁路快照；mtime 降序，first=当前活跃文件。
+    // 先定位该 sid 的记录（帧要带 path 供 monitor 旁路快照；mtime 降序，first=当前活跃文件。
     // 会话刚起还没写首行时为空 → path=None，此时无历史可拉，后续行天然从 tail 全量到达）。项目目录也从它来，没有记录 ⇒ cwd。
     let jsonls = sid_jsonls(state, &sid);
     let project_dir = jsonls
@@ -4201,7 +4189,7 @@ fn process_session_removed(path: &Path, state: &mut ReaderState, sink: &mut Fram
     }
 }
 
-/// Batch6-F22：sid 退休的**唯一**出口——`sessions` 表中已无任何存活 entry 持有
+/// sid 退休的**唯一**出口——`sessions` 表中已无任何存活 entry 持有
 /// 该 sid 时才清 active_sids + 发离开那一帧 [`Frame::SessionLeft`]（会话账本拦下它、裁好去向再发）。同 sid 多 pidfile
 /// （resume 时原进程未死）场景下，先死的那个只解绑、不误杀整个 tab。
 /// 调用方约定：先从 `state.sessions` remove 掉当事 entry 再调本函数。
@@ -4392,8 +4380,8 @@ fn run_prime(job: PrimeJob) -> PrimeDone {
     }
 }
 
-/// Batch8-F25：宣告之后的预读——把 cursor 与 seq 计数器推进到当前
-/// **最后一个完整行**（F14 torn-line 语义：残行不计数、留给 tail 阶段），
+/// 宣告之后的预读——把 cursor 与 seq 计数器推进到当前
+/// **最后一个完整行**（torn-line 语义：残行不计数、留给 tail 阶段），
 /// 不发任何行帧。之后 notify 到来的新行 seq == 此刻完整行数 L（行号语义），
 /// 与 monitor 快照侧的 0..L'-1 编号同处一个行号空间，重叠区被 (sid,seq)
 /// 去重精确吸收（-batch8 §2）。read8a 起它跑在线程池里：入参是从账上取下来的那一份，交回新的一份。
@@ -4805,7 +4793,7 @@ impl PrimeReader {
 }
 
 /// Add-time verdict on whether the current occupant of a PID is plausibly the
-/// claude process that wrote the `sessions/<PID>.json` pidfile (Batch5-F20).
+/// claude process that wrote the `sessions/<PID>.json` pidfile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AddTimeVerdict {
     Alive,
@@ -4845,7 +4833,7 @@ fn add_time_verdict(
     file_mtime_epoch: Option<u64>,
     cmdline: Option<&str>,
 ) -> AddTimeVerdict {
-    // F74b(#43「父会话恒绿」总闸)：bg-spare = 守护池停泊的备用进程（cmdline 含 "bg-spare"）。
+    // 「父会话恒绿」总闸：bg-spare = 守护池停泊的备用进程（cmdline 含 "bg-spare"）。
     // 它是真 claude 进程、会写合规 pidfile、procStart 自洽——**必须在 exact-identity 之前拦**，
     // 否则下面的启动时刻对拍（`start_checked`）会把它判 Alive 而恒绿。语义上它不是一个运行中的会话。
     if let Some(cmd) = cmdline {

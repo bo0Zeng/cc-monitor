@@ -12,7 +12,7 @@
 # 产物落 `<repo>/.build/s7/`（`.gitignore` 第 52 行 `/.build/` 已忽略）。15 MB 不该进仓。
 #
 # 用法：
-#   tests/evidence/S7-make-corpus.sh [OUT_DIR] [TARGET_BYTES]
+#   tests/evidence/make-corpus.sh [OUT_DIR] [TARGET_BYTES]
 # 默认：OUT_DIR=<repo>/.build/s7   TARGET_BYTES=15833498（= 15.1 MiB）
 #
 # 产出（daemon 的路径围栏 `fence_under_projects` 要求落在 `<agent_home>/projects/` 下，
@@ -40,13 +40,13 @@ target="${2:-15833498}"
 
 # ── 反空真：源语料必须在、必须非空 ─────────────────────────────────────────
 if [ ! -f "$src" ]; then
-  echo "S7-make-corpus: 源语料不在：$src" >&2
+  echo "make-corpus: 源语料不在：$src" >&2
   exit 1
 fi
 src_bytes=$(LC_ALL=C wc -c <"$src")
 src_lines=$(LC_ALL=C wc -l <"$src")
 if [ "$src_bytes" -lt 100000 ] || [ "$src_lines" -lt 10 ]; then
-  echo "S7-make-corpus: 源语料太小（${src_bytes} B / ${src_lines} 行），多半不是那份合成语料" >&2
+  echo "make-corpus: 源语料太小（${src_bytes} B / ${src_lines} 行），多半不是那份合成语料" >&2
   exit 1
 fi
 
@@ -104,7 +104,7 @@ gen() { # gen <out> <target-bytes> <giant-every-n-records:0=off>
   ' "$src" >"$1"
 }
 
-echo "S7-make-corpus: 源 = $src（${src_bytes} B / ${src_lines} 行）"
+echo "make-corpus: 源 = $src（${src_bytes} B / ${src_lines} 行）"
 echo "--- s7-p50.jsonl";      gen "$p50" "$target_p50" 0
 echo "--- s7-p90.jsonl";      gen "$p90" "$target_p90" 0
 echo "--- s7-main.jsonl";     gen "$main" "$target" 0
@@ -117,11 +117,11 @@ for spec in "$p50:$target_p50" "$p90:$target_p90" "$main:$target" "$longtail:$ta
   b=$(LC_ALL=C wc -c <"$f")
   l=$(LC_ALL=C wc -l <"$f")
   if [ "$b" -lt "$want" ]; then
-    echo "S7-make-corpus: $f 只有 $b B < 目标 $want B" >&2
+    echo "make-corpus: $f 只有 $b B < 目标 $want B" >&2
     exit 1
   fi
   if [ "$(tail -c 1 "$f" | xxd -p)" != "0a" ]; then
-    echo "S7-make-corpus: $f 不是以换行收尾" >&2
+    echo "make-corpus: $f 不是以换行收尾" >&2
     exit 1
   fi
   printf '%s: %s B / %s 行  p50/p90/max 行长: ' "$(basename "$f")" "$b" "$l"

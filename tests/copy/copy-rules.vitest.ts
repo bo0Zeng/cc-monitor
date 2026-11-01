@@ -16,7 +16,7 @@
  *    —— 否则规范写的是一回事、检查查的是另一回事（第一版就栽在这里：
  *    「规矩禁的东西检法看不见」）。
  *
- * 另有一条异源对拍：C-Y3（R5）的口语词表与祈使动词表 == 普查 K-T68 的 `R5_COLLOQUIAL` / `R5_IMPERATIVE`。
+ * 另有一条异源对拍：C-Y3（R5）的口语词表与祈使动词表 == 普查量具的 `R5_COLLOQUIAL` / `R5_IMPERATIVE`。
  *
  * # 不判什么（诚实段）
  *
@@ -36,7 +36,7 @@ import { nonEmpty } from "../test-support/non-empty.ts";
 const RULES_PATH = resolve(REPO_ROOT, "src", "shared", "copy", "rules.json");
 const TABLE_TESTS = resolve(REPO_ROOT, "tests", "copy", "copy-table.vitest.ts");
 const DEBT_PATH = resolve(REPO_ROOT, "tests", "copy", "copy-rules-debt.json");
-const CENSUS = resolve(REPO_ROOT, "tests", "evidence", "K-T68-A1-outward-copy-census.py");
+const CENSUS = resolve(REPO_ROOT, "tests", "evidence", "outward-copy-census.py");
 
 interface Rule extends WRule {
   id: string;
@@ -140,8 +140,8 @@ export function tableViolations(table: Record<string, Entry>, rules: Rule[], ctx
 /** `copy-table.vitest.ts` 里以 `[C-xx]` 开头的测试标题带的规矩号。 */
 export function titledIds(src: string): string[] {
   const out: string[] = [];
-  for (const m of src.matchAll(/\bit\(\s*"((?:\[C-[A-Z0-9]+\])+)/g))
-    for (const id of m[1].matchAll(/\[(C-[A-Z0-9]+)\]/g)) out.push(id[1]);
+  for (const m of src.matchAll(/\bit\(\s*"((?:\[C-[0-9A-Z]+\])+)/g))
+    for (const id of m[1].matchAll(/\[(C-[0-9A-Z]+)\]/g)) out.push(id[1]);
   return out;
 }
 

@@ -1602,7 +1602,7 @@ fn sessions_needs_lists_the_waiting_sessions_each_with_its_history_facts_needs()
 }
 
 /// ★ 「分身会话」关掉（这台偏好 `bgTab = hide`）时，分身会话的需手动**照样在**清单里（隐藏只是不占标签页），那一行带隐藏那一格说为什么；
-/// 交互会话不带。从前壳在帧进门处整条丢分身会话，连批准框一起丢：隐藏只管占不占标签页，在等人的会话照样要人答。
+/// 交互会话不带。壳不在帧进门处整条丢分身会话（那会连批准框一起丢）：隐藏只管占不占标签页，在等人的会话照样要人答。
 #[cfg(target_os = "linux")]
 #[test]
 fn a_hidden_background_session_still_lists_its_needs() {
@@ -1883,7 +1883,7 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
     std::fs::create_dir_all(&pids).unwrap();
     let facts_with = |off: Option<&str>| {
         // 持着会话的那个进程活到这里亲手停它为止（`cat` 等着读它的标准输入，那一头在这里攥着）：
-        //   不按墙钟给它定寿命 —— 从前是 `sleep 30`，机器忙到这一问拖过 30 秒时它先走了，留下的僵尸读不出环境，那一格成了 `null`。
+        //   不按墙钟给它定寿命 —— 换成 `sleep 30`，机器忙到这一问拖过 30 秒时它先走了，留下的僵尸读不出环境，那一格成了 `null`。
         let mut cmd = std::process::Command::new("cat");
         if let Some(v) = off {
             cmd.env(crate::agents::asks::ANSWER_HOOK_OFF_ENV, v);
@@ -2140,7 +2140,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     );
 }
 
-/// 读一份会话记录的那几条：入参类型里没有的键 · 类型不对的格 ⇒ `bad_args`（从前悄悄当没给）。
+/// 读一份会话记录的那几条：入参类型里没有的键 · 类型不对的格 ⇒ `bad_args`（不悄悄当没给）。
 #[test]
 fn the_record_reads_refuse_fields_their_request_types_do_not_have() {
     let home = scratch("refuse-stray");

@@ -6,8 +6,8 @@
 //! `tasks-list` 本体的判据。
 //!
 //! 夹具只造**结构**（目录名、文件名、占位字段），不采任何真会话正文。
-//! 口径逐条对着搬家前 monitor 那份直读实现的判据（跳旁文件 · 按数字排 · 半截 JSON 跳过 ·
-//! 目录不在 = 空），外加新加的三条（sid 围栏 · 超限跳过 · 目录读不了 ≠ 空）。
+//! 口径逐条（跳旁文件 · 按数字排 · 半截 JSON 跳过 · 目录不在 = 空 ·
+//! sid 围栏 · 超限跳过 · 目录读不了 ≠ 空）。
 
 use super::*;
 use std::path::PathBuf;
@@ -58,7 +58,7 @@ fn only_numbered_json_files_are_tasks_and_they_come_back_in_numeric_order() {
     for id in ["10", "2", "1"] {
         put(&h, "s", &format!("{id}.json"), &task(id));
     }
-    // 扩展名大小写不敏感（与搬家前同口径）。
+    // 扩展名大小写不敏感。
     put(&h, "s", "3.JSON", &task("3"));
     let got = session_task_lines(&h, "s").unwrap();
     assert_eq!(ids(&got), vec!["1", "2", "3", "10"]);

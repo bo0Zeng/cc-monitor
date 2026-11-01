@@ -26,7 +26,7 @@ mod agent_locality_guard; // S2：agent 的格式知识只许住 agents/<名>/ +
 pub mod agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode）
 #[cfg(test)]
 #[path = "../../tests/backend/alloc_probe.rs"]
-mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
+mod alloc_probe; // 线程级内存量具（`VmHWM` 是进程级的，会把邻居测试算进来）
 #[cfg(test)]
 #[path = "../../tests/backend/allocator_guard.rs"]
 mod allocator_guard; // 远端 musl 版的全局分配器是 mimalloc，本机 glibc 版与 Windows 版不换（整体 #[cfg(test)]）
@@ -40,7 +40,7 @@ mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 
 pub mod ccm_line; // ccm 这一行的词与解析（旗标 · 解析 · 自己叫什么 · 配置的记号）：起会话 · 账号域 · 别名那一族都往下引它
 pub mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
 pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
-pub mod dial; // K-P6b / C2 /：SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）
+pub mod dial; // SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）
 pub mod faces; // 帧面宿主：read_face · feature_face · fork_face · resync_face（薄壳，本体在 observe/ · control/）
 pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻文件名索引 ＋ 四条只读能力
 #[path = "../../tests/backend/flow_scripts_guard.rs"]
@@ -61,10 +61,10 @@ mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生
 pub mod observe; // U3：观测面 —— 读，不改变世界
 pub mod plan; // 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `changed {plan}`（只读，一个字节都不写）
 pub mod platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线）
-pub mod plugin; // K-W1A：插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（方向由 layering_guard 钉）
+pub mod plugin; // 插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（方向由 layering_guard 钉）
 #[cfg(test)]
 #[path = "../../tests/backend/plugin_walk_fixture.rs"]
-mod plugin_walk_fixture; // K-W2E：最小假插件走通全流程（夹具 + 判据，整个文件级 cfg(test)，生产构建为空）
+mod plugin_walk_fixture; // 最小假插件走通全流程（夹具 + 判据，整个文件级 cfg(test)，生产构建为空）
 #[cfg(test)]
 #[path = "../../tests/backend/protocol_doc_gen.rs"]
 mod protocol_doc_gen; // 协议参考 IPC-COMMANDS.md 由它从代码生成；判据 = 重新生成 == 仓里那份
@@ -73,7 +73,7 @@ mod protocol_doc_gen; // 协议参考 IPC-COMMANDS.md 由它从代码生成；�
 mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
 #[cfg(test)]
 #[path = "../../tests/backend/ratchet_guard.rs"]
-mod ratchet_guard; // K-P1 KPY7：动过的那几张登记表，**断言那几行**逐字没动（整体 #[cfg(test)]）
+mod ratchet_guard; // 动过的那几张登记表，**断言那几行**逐字没动（整体 #[cfg(test)]）
 #[cfg(test)]
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard;
@@ -82,7 +82,7 @@ mod readonly_guard;
 mod tmux_sandbox; // 判据用的私有 tmux server（`-L` ＋ 私有 TMUX_TMPDIR，碰不到用户的默认 server；仅测试构建）
 #[cfg(test)]
 #[path = "../../tests/backend/ts_export_guard.rs"]
-mod ts_export_guard; // 第 8 刀：ts-rs 生成物只落在登记的目录、同名只许一个出处 // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
+mod ts_export_guard; // ts-rs 生成物只落在登记的目录、同名只许一个出处（内部整体 #[cfg(test)]，生产构建为空）
 #[cfg(test)]
 pub(crate) use ssh_dial::refusing_port; // 拨了必被拒、又不会被别人捡走的本机口（测试用；住拨号核心，经它的 `test-support`）
 pub mod relay; // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身是通信层 crate `comms_outward`）
@@ -91,7 +91,7 @@ pub mod relay; // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身
 mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适配层与 Claude Code 两套形状跑同一批判据）
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
-mod single_stream_guard; // K-P1 KPY8：多客户按连接各一份 —— 「源码里恰好一份、按连接实例化」那几处的触发器（整体 #[cfg(test)]）
+mod single_stream_guard; // 多客户按连接各一份 —— 「源码里恰好一份、按连接实例化」那几处的触发器（整体 #[cfg(test)]）
 pub mod stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；后端自有状态，经 `Own`，写口只从 main.rs 进）
 pub mod stream; // 进后端的口（最上层）：命令表 · 帧面与 CLI 面的分派 · 门 · 期限 · 出口声明 · tap（谁都不引它，只 main / lib 接）
 #[cfg(test)]
@@ -145,7 +145,7 @@ pub const fn build_stamp() -> [u8; BUILD_STAMP_LEN] {
     out
 }
 
-/// 🔴 `K-R70`：**这一份后端二进制自己带着的身份**。
+/// 🔴 **这一份后端二进制自己带着的身份**。
 ///
 /// 拿到一份字节（内嵌的 / 装出来的 / 推到远端的那份都算），**不看它旁边任何文件**，
 /// 搜 `deploy_contract::STAMP_OPEN` 就问得出它是谁（扫法 `deploy_contract::identity_of_bytes`）。消费者：
@@ -200,7 +200,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 不在表里 ⇒ 当成未知 flag ⇒ 打一行 warn 之后**照常进流模式**，
     // CLI 面看上去"存在"却永远调不到（08-13 实测到了这个形状）。
     // ⇒ 现由 `stream::cli::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
-    // `cc-bus <动词>` 每一条只是把一句交给这几条（收件箱住后端，A13-8）：发信 · 两阶段读两跳 · 未读数 · 名单 · 收件箱尾巴。
+    // `cc-bus <动词>` 每一条只是把一句交给这几条（收件箱住后端）：发信 · 两阶段读两跳 · 未读数 · 名单 · 收件箱尾巴。
     //   ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--bus-commit",
     "--bus-inbox",
@@ -355,9 +355,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 文件住家里，一次性进程与常驻那一个按家推出同一份。「上次用哪个号起的」那一条删了（并进 `session-account`）⇒ `BUILD_ID` 打版本号时统一 bump。
     "--history-annotate",
     "--history-forget",
-    // `--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
-    // 不再每趟起一个进程。
-    //  ⚠ 摘这一行会让 `build_id_guard` 红 —— 这里**不 bump**，打版本号时统一做。
+    // `--dial`（拨号代理）**不在本表**：拨号在本机那一个常驻后端里，不每趟起一个进程。
     // `files-read` 这一族的 CLI 面。登记在这里的理由与上面
     // 那几条逐字相同 —— `is_query_mode` 那道**闸门**读的就是本表；不在表里 ⇒ 当未知 flag
     // ⇒ 打一行 warn 之后照常进流模式，调用方拿到的是一堆 jsonl 行而不是它要的应答。
@@ -602,7 +600,7 @@ mod stream_flag_tests;
 
 // ── 第四面：本机到底缺什么（tmux 可用性） ───────────
 // 它们不是「分派」，是 hello 帧的**内容**。`main_fourth_face_tests` 用 `super::` 引它们。
-/// `K-P4`（09-04）：命令级 code —— **「这台机器上没有 tmux」**。
+/// 命令级 code —— **「这台机器上没有 tmux」**。
 ///
 /// ⚠ 这是这个字面量在仓里的第 N 份，但它**不是第 N 个源头**：真相是
 /// `inbound::REGISTRY` 里各条命令自己登记的 `codes`，本常量只拿它去**查那张表**。
@@ -633,7 +631,7 @@ pub fn unix_mode_unavailable(unix_mode_bits: bool) -> Vec<wire::Unavailable> {
         .collect()
 }
 
-/// `K-P4`：这台机器上**做不到**的命令 —— **纯判定那一半**（不碰世界 ⇒ 可拿合成读数驱动）。
+/// 这台机器上**做不到**的命令 —— **纯判定那一半**（不碰世界 ⇒ 可拿合成读数驱动）。
 ///
 /// # 这里为什么没有一张手写的「命令 → 它依赖什么」表
 ///
@@ -668,7 +666,7 @@ pub fn unavailable_from(tmux: Option<bool>) -> Vec<wire::Unavailable> {
     out
 }
 
-/// `K-P4`：生产入口 —— hello 那一帧填的就是它（真填：`main.rs::build_hello`）。
+/// 生产入口 —— hello 那一帧填的就是它（真填：`main.rs::build_hello`）。
 /// 两维：tmux（[`unavailable_from`]）· unix 权限位（[`unix_mode_unavailable`]，这份二进制是不是 unix）。
 ///
 /// 🔴 **这一趟探测的结果会被用很久。**

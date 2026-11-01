@@ -17,7 +17,7 @@ fn env_tiers_are_exhaustive(t: EnvTier) {
     }
 }
 
-/// 受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判，与搬家前同一个人群。
+/// 受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判。
 static TOOLS: std::sync::LazyLock<Vec<crate::agents::footprint_decl::ToolSpec>> =
     std::sync::LazyLock::new(|| {
         crate::footprint::registry::tools()
@@ -34,17 +34,13 @@ static UNMANAGED_ENV: std::sync::LazyLock<Vec<crate::agents::footprint_decl::Unm
             .collect()
     });
 
-/// `KR60D1` ③ 用的抽取器 —— **直接用盘上已有那一把**，不自己再写一个。
-///
-/// 〔`K-R60` 09-11 自抓〕本条第一版手写了一个同形的抠取器（找 `.rs::`、向前吃路径、
-/// 向后吃符号），写完才发现 `structural_scan::symbol_addresses` 逐字就是这件事，
-/// 而且它那一侧**更强**：还会去全仓解析那个符号今天在不在、有没有搬家。
-/// 抄一份被测逻辑正是本仓反复判过的那族病 ⇒ 删掉自己那份，改调它。
+/// 下面 ③ 用的抽取器 —— **直接用盘上已有那一把**（`structural_scan::symbol_addresses`），不自己再写一个：
+/// 它还会去全仓解析那个符号今天在不在、在不在原处；抄一份被测逻辑就是两份实现。
 fn addresses_in(why: &str) -> Vec<(usize, String, String, bool)> {
     guard_core::symbol_addresses(why)
 }
 
-/// `KR60D1` ①：**清单是一个闭集，而且只有一份。**
+/// ①：**清单是一个闭集，而且只有一份。**
 ///
 /// 两半（`TOOLS` 派生的 + [`UNMANAGED_ENV`] 手写的）**不许重叠**，id 不许重名 ——
 /// 重了就等于同一个环境项有两个住址，而那正是这里要治的病。
@@ -72,15 +68,10 @@ fn the_environment_is_one_closed_list() {
     }
 }
 
-/// 🔴 `KR60D1` ②：**每一档都必须有人 —— 一档不许靠「没列出来」表示。**
+/// 🔴 ②：**每一档都必须有人 —— 一档不许靠「没列出来」表示。**
 ///
-/// 这一条就是 `K-R60` 那件正题的门禁：把手写那一半从 [`UNMANAGED_ENV`]
-/// 里删光（回到那件之前「不写进去就算另一档」的盘面）⇒ 本条红。
-///
-/// 🔴 **本条自己的报错逐字兑现过一次**：`K38` 把 10 项从
-/// 「app 假设它在」搬空之后那一档空了，而报错逐字写着「要么给它一个成员，
-/// **要么把这一档从 EnvTier 里删掉**」⇒ 删掉了那一档，档数从三变四（新增两档）。
-/// 一条判据把自己的两条出路都写出来，走的是哪一条**有记录**，这就是那次记录。
+/// 把手写那一半从 [`UNMANAGED_ENV`] 里删光（「不写进去就算另一档」的盘面）⇒ 本条红。
+/// 一档空了，出路两条：给它一个成员，或者把这一档从 `EnvTier` 里删掉。
 ///
 /// 分母现算（`ENV_TIERS`），不写死一个基数〔报一个基数也是复述〕。
 #[test]
@@ -118,7 +109,7 @@ fn every_tier_has_members_so_absence_never_encodes_a_judgement() {
     }
 }
 
-/// `KR60D1` ③：**「标了档」与「随手填的档」要分得开。**
+/// ③：**「标了档」与「随手填的档」要分得开。**
 ///
 /// 手写那一半的每一条，`why` 里**必须有**一个 `<路径>.rs::<符号>` 形态的代码住址 ——
 /// 「这东西该由谁装」是一个**设计判断**，判断得指得出它长在哪段代码上；
@@ -166,9 +157,9 @@ fn every_unmanaged_entry_names_a_code_address() {
     );
 }
 
-/// ★★ `KR62D1` 的第二条死值验：**`posix-rc-aliases` 升到了第一档，而且是真升。**
+/// ★★ 死值验：**`posix-rc-aliases` 在第一档，而且是真在。**
 ///
-/// 「档没升 = 活没做完」这句话本身可验 —— 这一条就是它。三格一起断，缺一格都能装样子：
+/// 三格一起断，缺一格都能装样子：
 ///   ① 它**不在** [`UNMANAGED_ENV`] 里了（留在那儿就没有 `ToolSpec`，也就永远升不到第一档）；
 ///   ② 它在 [`TOOLS`] 里且 `installable` / `uninstallable` **都为真**（装得了也卸得掉）；
 ///   ③ [`environment`] 把它算成 [`EnvTier::AppInstalls`]（档是**派生**出来的，不是手填的）。
@@ -180,7 +171,7 @@ fn posix_rc_aliases_sits_in_the_first_tier_now() {
     const ID: &str = "posix-rc-aliases";
     assert!(
         !UNMANAGED_ENV.iter().any(|u| u.id == ID),
-        "`{ID}` 还留在 UNMANAGED_ENV 里 —— `K-R62` 之后它有装口也有卸口了，\
+        "`{ID}` 在 UNMANAGED_ENV 里 —— 它有装口也有卸口，\
              留在手写那一半（没有 ToolSpec ⇒ 永远算作「今天没有装口」）就是盘上写着一句假话"
     );
     let t = TOOLS
@@ -201,26 +192,17 @@ fn posix_rc_aliases_sits_in_the_first_tier_now() {
     assert_eq!(
         tier,
         EnvTier::AppInstalls,
-        "`{ID}` 在闭集里的档不是「{}」—— `K-R62` 那一格没做完",
+        "`{ID}` 在闭集里的档不是「{}」",
         format!("{:?}", EnvTier::AppInstalls)
     );
 }
 
-//
-// 它逐字断言 `UNMANAGED_ENV` 每一条的 `tier != EnvTier::AppInstalls`，
-// 理由是「装得了就该有一条 `ToolSpec`」。那时 `tier` 是**手填**的 ⇒ 它真有牙。
-//
-// 今天 `tier` 由 [`EnvTier::of`] 派生，而手写那一半的第二格在 [`environment`] 里
-// **恒 `false`** ⇒ `EnvTier::of(_, false)` 一辈子返回不了 `AppInstalls`
-// ⇒ 本条**在算术上不可能红**。留着就是一颗「永远不会红的钉子」——
-// `K-R60` 09-11 刚以同一条理由删过一颗（那条断言「档 == `if installable {…}`」，
-// 是拿实现自己核自己），本仓更早还删过一颗按 `destination` 推 locality 的。
-// ⇒ 同一把尺子，删。
-//
-// ⚠ **它守的那件事没有丢，只是换了守法**：从「断言一个手填格不许是某个值」
-// 变成「那个格子根本不存在」——`UnmanagedEnv` 上今天**没有** `tier` 字段可填。
+// 「手写那一半的档不许是 `AppInstalls`」不另设判据：`tier` 由 [`EnvTier::of`] 派生，
+// 手写那一半的第二格在 [`environment`] 里**恒 `false`** ⇒ `EnvTier::of(_, false)` 返回不了 `AppInstalls`，
+// 那条断言**在算术上不可能红**，不留永远不会红的钉子。它守的那件事由形状守着：
+// `UnmanagedEnv` 上**没有** `tier` 字段可填。
 
-/// 🔴 `KR65D2` ①：**「谁该装」与「今天装得了吗」不是同一个字段** —— 两格都有区分力，
+/// 🔴 **「谁该装」与「今天装得了吗」不是同一个字段** —— 两格都有区分力，
 /// 而且**互不函数**（知道一格答不出另一格）。
 ///
 /// 形抄本仓已有的 `config_surface::host_is_not_a_function_of_destination`：
@@ -265,7 +247,7 @@ fn who_should_install_is_not_a_function_of_whether_we_can_install_today() {
     }
 }
 
-/// 🔴 `KR65D2` ②：**「app 该自带、而今天还没有装口」那一格派得出来、说得清。**
+/// 🔴 **「app 该自带、而今天还没有装口」那一格派得出来、说得清。**
 ///
 /// 今天这一格没有成员（账号库那一件由后端自己建了）；本条判派生表与档名，落进去的每一项 `who` 都是「app 自带」。
 #[test]
@@ -290,7 +272,7 @@ fn the_tier_for_owed_installers_is_countable_and_not_empty() {
     }
 }
 
-/// 🔴 `KR65D3`：**「app 自带的是哪几样」是一个数出来的人群，不是写死的一张单子。**
+/// 🔴 **「app 自带的是哪几样」是一个数出来的人群，不是写死的一张单子。**
 ///
 /// # 人群住哪儿
 ///
@@ -304,29 +286,19 @@ fn the_tier_for_owed_installers_is_countable_and_not_empty() {
 /// 下面第 ④ 条自检就是钉这件事的：**人群必须严格大于这张表**，
 /// 否则「派生」这句话是假的。
 ///
-/// ⚠ 〔来历，别删 —— 这张表自己就是「点名清单不等于人群」的证据〕
-/// - `pb skill` 曾经在这张表上（`K38` 初版逐字点了它的名）——**用户当拍改口撤掉了**：
-///   它不自带，它在 app 的 skill 仓库那条线上（那张声明表 09-30 随收件箱编辑面删了）。
-///   ⇒ 那条线这里不碰，两张表**本来就是不同人群**，不许拿相等去守。
-/// - `code-picture-sidecar` **不在 `K38` 的举例里**，是用户当拍凭记忆追问出来的
-///   （PM 拟这条 dod 时只数出两样）⇒ **点名清单本身就会漏**，
-///   这正是「人群必须是数出来的」那句话的来历。
-/// ⚠ 那一项**已随 `sidecars/` 整棵删除而摘掉** —— 留这段话是因为
-///   「点名清单本身就会漏」这条教训与它在不在表上无关。
+/// ⚠ 点名清单不等于人群：`pb skill` 不自带（它在 app 的 skill 仓库那条线上，两张表**本来就是不同人群**，
+///   不许拿相等去守）；点名清单本身也会漏 —— 所以人群必须是数出来的。
 ///
 /// **死值验**：把 `cc-bus` 从「自带」里摘掉（例如在 [`environment`] 里给它硬写
-/// `Provisioning::NotAnInstall`）⇒ 本条红。
-/// ⚠ **第二条死值验没有了** —— 它钉的是 `sidecars/` 那一层，
-/// 而那一层整棵删了。⇒ 今天这条判据**只剩一条死值验**（`cc-bus` 那条）。
-/// 如实记：射程比 09-11 那次窄了一格，不是"一样强"。
+/// `Provisioning::NotAnInstall`）⇒ 本条红。这条判据只有这一条死值验。
 #[test]
 fn everything_the_charter_named_as_ours_is_in_the_shipped_population() {
     /// `(闭集里的 id, 谁在什么时候点的名)`。**只收逐字点过名的**，不收推断出来的。
     const NAMED_AS_OURS: &[(&str, &str)] = &[
-        ("cc-bus", "K38 逐字：「cc-bus」"),
+        ("cc-bus", "用户逐字：「cc-bus」"),
         (
             "accounts",
-            "K38 逐字：「account」—— 账号库今天由后端自己建（本机远端同一条路）",
+            "用户逐字：「account」—— 账号库由后端自己建（本机远端同一条路）",
         ),
     ];
     let env = environment();
@@ -347,7 +319,7 @@ fn everything_the_charter_named_as_ours_is_in_the_shipped_population() {
         assert!(
             all.contains(id),
             "`{id}` 在闭集里已经找不到了（它当初的来历：{src}）—— \
-                 要么它改名了（这张表跟着改），要么它真没了（那 `K38` 那一格要重裁）"
+                 要么它改名了（这张表跟着改），要么它真没了（那「谁该装」那一格要重裁）"
         );
     }
 
@@ -359,9 +331,9 @@ fn everything_the_charter_named_as_ours_is_in_the_shipped_population() {
         .collect();
     assert!(
         missing.is_empty(),
-        "`K38` 逐字点名要自带的东西，在「app 自带」这个人群里**找不到**：{missing:?}\n\
+        "用户逐字点名要自带的东西，在「app 自带」这个人群里**找不到**：{missing:?}\n\
              人群现算于 `environment()` 的 `who == AppShips`，今天是 {shipped:?}。\n\
-             ⇒ 要么那几项的申报错了（改申报），要么 `K38` 那一格要重裁（改定框，不是改这里）。"
+             ⇒ 要么那几项的申报错了（改申报），要么「谁该装」那一格要重裁（改定框，不是改这里）。"
     );
 
     // ④ **人群不许退化成这张表** —— 严格大于，才说明它是派生出来的。
@@ -416,7 +388,7 @@ fn nobody_declares_an_installer_for_something_we_should_not_install() {
     }
 }
 
-/// `KR65D1` 的申报侧：**「你自己装」那一档的每一项都要说得出「怎么查」** ——
+/// 申报侧：**「你自己装」那一档的每一项都要说得出「怎么查」** ——
 /// 而且**不许整档都是「查不动」**（那就等于把「不查」换了个名字，正是失效方向）。
 ///
 /// ⚠ 行为那一半（真去查、缺了显示成 `Absent` 而不是 `Undetermined`）**不在这里** ——
@@ -461,19 +433,16 @@ fn the_prompt_tier_declares_how_it_will_look() {
         probeable > blind,
         "「{}」这一档里查得动的 {probeable} 项、查不动的 {blind} 项 —— \
              查不动的过半就等于这一档只是「app 假设它在」换了个名字，\
-             而那正是 `KR65D1` 写死的失效方向",
+             而那正是写死的失效方向",
         format!("{:?}", EnvTier::UserInstallsWePrompt)
     );
 }
 
 /// 派生那一半：**`TOOLS` 的每一条都必须进闭集**，一条都不许漏。
 ///
-/// 🔴 **本条上一版还断言了「档 == `if installable {…} else {…}`」，那是同义反复，已删。**
-/// 〔`K-R60` 09-11 自抓，是 `7u` 那一刀逼出来的：把实现整个退掉之后它**仍然绿**——
-/// 因为 `environment()` 的档就是那个表达式算的，判据再算一遍等于拿它自己核它自己。〕
-/// 本仓删过一颗同形的钉子（`config_surface` 那条按 `destination` 推 locality 的），
-/// 理由逐字：「不留永远不会红的钉子」。
-/// ⇒ 留下的是**够得着的那一半**：覆盖。漏掉一条 `TOOLS` ⇒ 本条红。
+/// 🔴 **本条不断言「档 == `if installable {…} else {…}`」**：`environment()` 的档就是那个表达式算的，
+/// 判据再算一遍等于拿它自己核它自己（把实现整个退掉它仍然绿）—— 不留永远不会红的钉子。
+/// ⇒ 本条守**够得着的那一半**：覆盖。漏掉一条 `TOOLS` ⇒ 本条红。
 /// 而「字段填错了」那一格**不由本条守**，由读字段的那条（它右边钉的是实现，不是同一个表达式）。
 #[test]
 fn every_managed_tool_reaches_the_closed_set() {
@@ -489,15 +458,8 @@ fn every_managed_tool_reaches_the_closed_set() {
     }
 }
 
-// 🔴 **`KR60D3` 那条判据从这里搬走了，而不是删掉。**
-//
-// 它做的事（左边读 `cc-bus` 的 `installable` 字段、右边用 `pin_definition` 钉
-// `cc_bus_deploy.rs` 里那个部署函数的签名、两边 `assert_eq!`）今天由
-// `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
-// 做，而那一条**对全表每一条的两格都做**。
-//
-// 为什么非搬不可（`KR63D2` 的正题）：那一条的**名字里带工具名** ——
-// 读的人会以为「申报与实现对不对得上」这一格有人守，而它只守 `cc-bus` 一个工具。
-// `K-R60` 收窗口时 PM 的刀 γ 就现打过同一件事的另一半；`K-R63` 的刀 C 更直接：
-// 〔PM 09-11 现打，量于 `cd26954`〕翻当时某一个工具的 `uninstallable` ⇒ 全表 1379 条一条没红。
-// ⇒ **别再在这里加第二颗专名钉子**；要加就加进那张对拍表。
+// 🔴 「申报与实现对不对得上」由
+// `every_tool_declares_install_and_uninstall_as_the_implementations_really_are` 守，**对全表每一条的两格都做**
+// （左边读字段、右边用 `pin_definition` 钉那个装 / 卸函数的签名）。
+// 名字里带工具名的专名判据会让人以为这一格有人守，而它只守一个工具
+// ⇒ **别在这里加专名钉子**；要加就加进那张对拍表。

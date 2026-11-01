@@ -1,4 +1,4 @@
-//! 手机导入一段 `~/.ssh/config` 文本（手机上没有 `ssh -G`，桌面那一份照旧调它）：判据逐条搬自从前 Kotlin 那一份解析器的单测。
+//! 手机导入一段 `~/.ssh/config` 文本（手机上没有 `ssh -G`，桌面那一份调它）。
 
 use super::{parse, ConfigHost};
 

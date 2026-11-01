@@ -1,11 +1,10 @@
 //! 别名：**名字 ＋ 一组 ccm 参数**。一类，没有「账号别名」这一种。
 //!
-//! # 住进**那台机器的后端**
+//! # 住**那台机器的后端**
 //!
-//! 从前是 monitor 的 `account_aliases.rs`：规则与方言在 monitor 一份、事实经那台后端问。今天整族（本文件 ·
-//! [`dialect`] · [`block`] · [`fence`] · [`form`]）在那台后端里：读、算、经它自己的文件管理面写，界面经通道直问（`aliases-*` 八条帧命令，
-//! 下面 `answer_*`）。「本机」与「远端」对后端没有区别（本机＝不走 ssh 的远端），`origin` 这一维随之退役：
-//! 方言那道闸改问这台自己（[`dialect_here`]）、`PATH` 撞名查这台自己的 `PATH`、围栏的符号链接那一步量这台自己的盘。
+//! 整族（本文件 · [`dialect`] · [`block`] · [`fence`] · [`form`]）在那台后端里：读、算、经它自己的文件管理面写，
+//! 界面经通道直问（`aliases-*` 八条帧命令，下面 `answer_*`）。「本机」与「远端」对后端没有区别（本机＝不走 ssh 的远端），
+//! 没有 `origin` 这一维：方言那道闸问这台自己（[`dialect_here`]）、`PATH` 撞名查这台自己的 `PATH`、围栏的符号链接那一步量这台自己的盘。
 //!
 //! 〔用 2026-09-17〕逐字：「**不要有 account alias 这种东西。alias 应该独立吗？应该就是 ccm
 //! 参数附加器。即生成别名，都是调用 ccm，ccm 本身就可以指定账号。**」
@@ -27,9 +26,9 @@
 //! # 🔴 接上这份文件的那一行 source **只住别名块里**（「source 那一行只许一处装」）
 //!
 //! 两种方言的别名块都自带那一行（POSIX：`src/shared/ccm-aliases.sh` 最后一行；PowerShell：`src/shared/cc.ps1.tpl`
-//! 结尾那一行，补上 —— 从前那一侧不带，两边不对称），文件不在就什么都不做 ⇒ 装了别名块的人什么都不用做。
-//! 本模块**不再往 rc 里写那一行**：从前 [`install_in`] 会把它装进人指定的那份 rc（另一对围栏），
-//! 与别名块那一行是同一件事的第二个写处。今天那一步**降级成检查**：选了 rc 就看它接没接上，
+//! 结尾那一行，两边对称），文件不在就什么都不做 ⇒ 装了别名块的人什么都不用做。
+//! 本模块**不往 rc 里另写那一行**：另写一处（另一对围栏）就是同一件事的第二个写处。
+//! 选了 rc 那一步**只是检查**：看它接没接上，
 //! 没接上就说「装上别名块就接上了」并给出那一行、由人自己决定（提供检测，不代装）。
 //! 盘上已有的旧围栏那一块不读、不删、不写清理代码（两处 source 同一份文件是幂等的，只多点一次）。
 //! 别名文件的写**不在本进程落盘**：经本机后端的文件管理那一面（`user_files::edit` → `Door::peek` / `Door::put`），
@@ -58,7 +57,7 @@ pub(crate) mod profile;
 use crate::ccm_line::argv::flag;
 use crate::common::door::{self, Door};
 use crate::common::said::Said;
-// 方言住后端 OS 适配层（原住本目录）。
+// 方言住后端 OS 适配层。
 use crate::platform::child::Deadline;
 use crate::platform::shell::dialect::{self, Listed, RestTo, Shell};
 
@@ -81,9 +80,8 @@ const FILE_END: &str = "# === cc-monitor aliases END ===";
 
 /// 一份候选启动文件（rc / `$PROFILE`）的状态。
 ///
-/// 从前叫 `AccountAliasRc`，只答「接没接上别名文件」；别名块（`cc` / `cct` ·
-/// `__ccm_bind`）装进的是**同一批**文件，却另有一条命令、另一份候选。
-/// 今天一份候选、一次扫描，两件事都在这一格上（`block`）。
+/// 「接没接上别名文件」与别名块（`cc` / `cct` · `__ccm_bind`）装进的是**同一批**文件
+/// ⇒ 一份候选、一次扫描，两件事都在这一格上（`block`）。
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(
     test,
@@ -107,7 +105,7 @@ pub(crate) struct StartupFile {
     /// 这份文件里别名块的现状（不在盘上 ⇒ 全空）。
     pub block: block::BlockState,
     /// 在盘上、可那台后端读不了它（非 UTF-8 · 太大 · 解到 home 外 · I/O）—— 后端原话；`None` = 读得了或不在。
-    /// 从前本机直读时这一形被吞成「没有别名块」。
+    /// 读不了不等于「没有别名块」，两形分开说。
     pub unreadable: Option<String>,
     /// 加载它的那一代 PowerShell 的执行策略（现问；块装在这里它会不会跑）。POSIX 与人另指的那一份 ⇒ `None`。
     pub policy: Option<crate::platform::shell::powershell::ExecPolicy>,
@@ -122,7 +120,7 @@ pub(crate) struct StartupFile {
 /// 而这里拼的是**给人看、也写进 `$PROFILE` 那一行**的那台机器上的绝对路径。整串一次拼在 Windows 上
 /// 会得到 `C:\Users\user\.cc-monitor/aliases.ps1`（真机读数）—— 两种分隔符混着。
 /// `home` 是**那台机器**的后端答的字符串，拼法跟它自己的分隔符走（`user_files::join_under`）：
-/// 从前 `Path::join` 用的是 monitor 这台的分隔符 —— Windows 上的 monitor 拼远端 `/home/user` 会得到 `/home/user\.cc-monitor\aliases.sh`。
+/// 用 `Path::join` 的话分隔符是本进程这台的 —— Windows 上拼 `/home/user` 会得到 `/home/user\.cc-monitor\aliases.sh`。
 pub(crate) fn alias_file_in(home: &str, shell: Shell) -> String {
     door::join_under(home, shell.dialect().our_alias_file_rel())
 }
@@ -281,9 +279,8 @@ impl Caps {
 /// **这台后端说不说这种方言**（「显式拒绝，不许静默推一份跑不起来的东西」）。
 ///
 /// 事实只有一个：**PowerShell ⇔ Windows**（与 [`Caps::of`] 同一条）；POSIX 在三种 OS 上都有人说（Windows 上是 Git Bash）。
-/// ⇒ 这台后端不在 Windows 上 ⇒ PowerShell 形拒。从前（住 monitor）按 `origin` 判「远端 × PowerShell 拒」；
-/// 规则进了那台后端之后它不知道自己是不是「远端」，按这台自己的平台判
-/// （本机＝不走 ssh 的远端，原意即远端只承诺 Linux）⇒ **本机 Linux 选 `.ps1` 那一形由收变拒**。
+/// ⇒ 这台后端不在 Windows 上 ⇒ PowerShell 形拒。后端不知道自己是不是「远端」，按这台自己的平台判
+/// （本机＝不走 ssh 的远端）⇒ **本机 Linux 选 `.ps1` 那一形也拒**。
 /// 平台那一格住 `platform::shell::speaks_powershell`。
 pub(crate) fn dialect_here(shell: Shell) -> Result<(), String> {
     if shell == Shell::Posix || crate::platform::shell::speaks_powershell() {
@@ -530,7 +527,7 @@ pub(crate) fn sync_outputs(
 
 /// **读回口**：盘上那份别名文件 → 清单 ＋ 启动文件候选（各带别名块的现状）。只读。
 ///
-/// `extra_rc`：人在界面上指的「其它文件」（从前是终端集成那一块的「自定义路径」）。给了就过
+/// `extra_rc`：人在界面上指的「其它文件」。给了就过
 /// `profile_installer::fence_on`（只许落在 home 之内）、并进候选一起扫；过不了围栏 ⇒ `Err`。
 ///
 /// **事实全问这台的文件管理面**（「怎么读到这个事实 → 下沉」）：

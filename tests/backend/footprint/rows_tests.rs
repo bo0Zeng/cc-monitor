@@ -10,7 +10,7 @@
 use super::*;
 use guard_core::ScanReport;
 
-/// 受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判，与搬家前同一个人群。
+/// 受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判。
 static TOOLS: std::sync::LazyLock<Vec<crate::agents::footprint_decl::ToolSpec>> =
     std::sync::LazyLock::new(|| {
         crate::footprint::registry::tools()
@@ -652,8 +652,8 @@ fn every_host_declaration_is_pinned() {
         // 远端入口 `~/.local/bin/ccm` → `~/.cc-monitor/bin/ccm`（远端写只许两处）。
         ("ccm", "~/.cc-monitor/bin/ccm", Remote),
         // 🔴 **本机那条** —— `Client` 是刻意的、也是这里的正题：
-        //    在它之前，闭集里落点是 `…/ccm` 的只有上面那一条（远端）⇒ 本机 0 条，
-        //    而用户 `K34` 逐字要的「旧的干净退役」就此没有承接方。
+        //    没有它，闭集里落点是 `…/ccm` 的只有上面那一条（远端）⇒ 本机 0 条，
+        //    用户逐字要的「旧的干净退役」就没有承接方。
         //    ⚠ 标 `Either` 会**说假话**：这一份是 monitor 自己在**它跑着的那台**上
         //    放下去的（`local_backend::install_local_ccm_entry`），远端那台上没有它。
         ("ccm", "~/.cc-monitor/bin/ccm*", Client),
@@ -666,7 +666,7 @@ fn every_host_declaration_is_pinned() {
         // 钩子诊断真有本机+远端两条路径（`diagnose_local_/remote_cc_bus_hooks`）
         ("cc-bus", "~/.claude/settings.json", Either),
         ("cc-bus", "~/.local/bin/cc-*", Either),
-        // `~/.cc-bus/` 那一行随收件箱进后端删了（A13-8：收件箱住后端自己的数据目录 `~/.cc-monitor/cc-bus/`）。
+        // 收件箱在后端自己的数据目录 `~/.cc-monitor/cc-bus/`，不另记一行。
         // 账号库：哪台机器的后端建它就在哪台（本机远端同一条路）→ 两端皆可。
         ("accounts", "~/.cc-monitor/accounts/", Either),
         // 各号共用的用户级 MCP 与改写前的备份：那台后端自己的状态，账号库在哪台就写哪台 ⇒ `Either`。
@@ -680,10 +680,10 @@ fn every_host_declaration_is_pinned() {
         ("accounts", "~/.cc-monitor/launch-pending", Either),
         // 换了启动器起会话时交给那一家的答题插件：起会话的那台后端写（本机远端同形）。
         ("accounts", "~/.cc-monitor/answer-plugin", Either),
-        // 🔴 `remote-daemon` → `backend`：同一份后端今天只剩推给远端那台的那一行（`Remote`）——
-        //    「远端」说的是「相对这台 monitor」，**不是它的身份**：在那台机器上它就是那台机器的本地后端（`K36`）。
+        // 🔴 `backend`：同一份后端在这里只有推给远端那台的那一行（`Remote`）——
+        //    「远端」说的是「相对这台 monitor」，**不是它的身份**：在那台机器上它就是那台机器的本地后端。
         //    本机那份是 exe 内嵌、放到 `~/.cc-monitor/bin/ccm*` 的那一个，记在 `ccm` 那一条底下；
-        //    安装包旁边那份（`$APP_DIR`）size2 10-11 撤了：安装包不再旁放它。
+        //    安装包旁边不放它。
         // 自释放那一份的本机落点并进 `ccm` 那一条（`~/.cc-monitor/bin/ccm*`）；旧释放名挂成那一条的 `RetiredLegacy`。
         // `$BACKEND_PATH` → 固定落点（它就是远端的 `ccm`，与下面 `ccm` 那一行是同一个文件的两种说法）。
         ("backend", "~/.cc-monitor/bin/ccm", Remote),
@@ -740,9 +740,8 @@ fn host_is_not_a_function_of_destination() {
     use std::collections::HashMap;
     let mut by_dest: HashMap<String, std::collections::HashSet<HostScope>> = HashMap::new();
     for t in TOOLS.iter() {
-        // 🔴 `destination` 现在住在**载体**上 ⇒ 这条性质也按载体走。
-        //    那不是顺手改写：它买到的东西比先前**多一格** —— 先前一个工具只有一个
-        //    destination，`ccm` 那两条落点被同一个 key 盖住；今天两个载体各自入表。
+        // 🔴 `destination` 在**载体**上 ⇒ 这条性质也按载体走：
+        //    按工具走的话 `ccm` 那两条落点会被同一个 key 盖住；按载体走两个载体各自入表。
         for c in t.carriers {
             let key = match &c.destination {
                 ToolDestination::RemoteHomeRelative(_) => "RemoteHomeRelative",
@@ -825,7 +824,7 @@ fn host_labels_are_distinct_and_truthful() {
 /// 为什么**不**统一到 ≥2：同文件的 `ToolSource` 5 个变体里 4 个是单用户（T01 保留了它），
 /// `TouchEffect` 的门禁也只要求 `>= 3` 种被用到。**描述数据的 enum 允许变体各自单用户**
 /// ——这一点 T01 论证过（变体差异是数据的本性，不是过度设计）。
-/// 而 `UserShellProfile` 那条（从前是 `UserConfiguredPath` 那条）≥2 守的是**别的东西**：那是"这个变体值不值得存在"的判据，
+/// 而 `UserShellProfile` 那条 ≥2 守的是**别的东西**：那是"这个变体值不值得存在"的判据，
 /// 因为它是我为了不写死一个假常量而**新造**的。两把尺子各有其位，但**同一文件里并存
 /// 就该写明**，不能让人以为是疏忽。
 #[test]
@@ -912,7 +911,7 @@ fn destination_checks_still_run_under_every_host() {
 /// 前两条已改成 `ToolDestination::UserConfiguredPath`（承认"这是配置项"），
 /// 剩下**真有常量**的两条在这里用 `pin_definition` 钉死。
 ///
-/// 🔴 **〔`K-R63` 09-11 登记，没治它〕本条与那一族是同一个病，而它今天仍是专名的。**
+/// 🔴 **登记着、没治：本条与那一族是同一个病，而它仍是专名的。**
 ///
 /// 「申报 ↔ 现实」这条性质在 `tool_registry` 的两个 `bool`（`installable` / `uninstallable`）
 /// 上已经收成**一条覆盖全表**的判据了
@@ -920,12 +919,9 @@ fn destination_checks_still_run_under_every_host() {
 /// ：对拍表与 `TOOLS` 的 id 集合逐字相等，多一条少一条都红）。
 /// **本条守的是同一族的第三格 `destination`，而它逐个工具手写、只钉了 `TOOLS` 里的两条**
 /// （`ccm` 与 `project-mcp`；这个「两条」是下面那段代码自己数得出来的，不写死在这里）。
-/// ⇒ 别的工具的 `destination` 申报错了，**这一格今天不会红** ——
-/// 与 `K-R63` 之前 `uninstallable` 的处境逐字同形。
-///
-/// 为什么 `K-R63` 没顺手收它：那一件的两条 dod 逐字只说 `installable` / `uninstallable`
-/// 两格，多做一格是「比该做的宽了一格」。⇒ **登记在这里，等 PM 裁**，
-/// 不靠人记得。
+/// ⇒ 别的工具的 `destination` 申报错了，**这一格不会红** ——
+/// 与没有那条覆盖全表的判据时 `uninstallable` 的处境同形。
+/// ⇒ **登记在这里，等裁**，不靠人记得。
 #[test]
 fn declared_destinations_are_pinned_to_the_real_writers() {
     use guard_core::pin_definition;
@@ -988,8 +984,8 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
 /// （`$PROFILE` / `$POSIX_RC`，[`ShellProfile::token`]），否则就是又一次"凭印象写个常量"；
 /// 用户自己选的那一种（POSIX rc）解析成「去哪儿看」那一句（[`PathResolution::NeedsUserConfig`]），不是一条假路径。
 ///
-/// 〔size2 10-11〕「路径由用户配置决定」从前是单独一个变体 `UserConfiguredPath`；安装包旁那份后端（`$APP_DIR`）撤掉之后它只剩
-/// POSIX rc 一个使用者，按 ≥2 规矩并进了 `UserShellProfile`（它说的本来就是同一件事：用户选的 shell profile）。
+/// 「路径由用户配置决定」不单设一个变体：它只有 POSIX rc 一个使用者，按 ≥2 规矩归在 `UserShellProfile`
+/// （它说的本来就是同一件事：用户选的 shell profile）。
 #[test]
 fn shell_profile_destinations_declare_their_own_placeholder() {
     let mut n = 0;
@@ -1032,12 +1028,10 @@ fn shell_profile_destinations_declare_their_own_placeholder() {
     }
 }
 
-/// 🔴 `KR60D2`：**这个视图的人群 = 环境清单的闭集**，一项不多、一项不少。
+/// 🔴 **这个视图的人群 = 环境清单的闭集**，一项不多、一项不少。
 ///
-/// 〔`K-R57` 摸底：它今天只看 `TOOLS` 的 `touches` —— **10 条路径 / 6 个工具**，
-/// 而 app 真正要的环境项现打 **17** 项。于是「齐了没有」这个问题它答不了，
-/// 而用户读到的是一张看起来很干净的表（模块头注自己写的是
-/// 「cc-monitor 到底动过你哪些文件」—— 拿它当「环境齐了没有」用是**分母对不上**）。〕
+/// 只看 `TOOLS` 的 `touches` 的话，app 真正要的环境项有一大半不在里面，「齐了没有」这个问题答不了，
+/// 用户读到的却是一张看起来很干净的表 —— 拿「cc-monitor 到底动过哪些文件」当「环境齐了没有」用是**分母对不上**。
 ///
 /// **死值验**：往闭集里加一项而不动这个视图（或把建表退回 `TOOLS.iter()`）⇒ 本条红。
 #[test]
@@ -1061,7 +1055,7 @@ fn the_view_population_is_exactly_the_closed_set() {
     );
 }
 
-// ===== `K-R65`：「提示用户装」那一档**真的会出声** =====
+// ===== 「提示用户装」那一档**真的会出声** =====
 
 /// 一台**假机器**：`PATH` 上只有 `/usr/bin`，那里只放着 `present` 里列的那几个名字，
 /// 家目录下只放着 `home_files` 里那几条绝对路径。
@@ -1083,10 +1077,10 @@ fn machine_with<'a>(
     }
 }
 
-/// 🔴 `KR65D1` 的正题：**这一档真去查，而且「缺了」与「查不动」是两回事。**
+/// 🔴 正题：**这一档真去查，而且「缺了」与「查不动」是两回事。**
 ///
-/// 上一版这一档的行为逐字是「`state` 一律 `Undetermined`、`path_resolved` **故意不解析**」
-/// ⇒ 一台缺了 `tmux` 的机器和一台查不动的机器，在这一页上**长得一模一样**。
+/// 一律 `Undetermined`、`path_resolved` 不解析的话，一台缺了 `tmux` 的机器和一台查不动的机器，
+/// 在这一页上**长得一模一样**。
 ///
 /// 本条三格一起断（缺一格都能装样子）：
 ///   ① 装着的 ⇒ `Present`，而且 `path_resolved` **真解析出来了**（不再是 `None`）；
@@ -1145,7 +1139,7 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
         gone.state,
         SurfaceState::Absent,
         "PATH 上查过、确认没有，这一行却没说「缺」——\n\
-             那正是 `K-R60` 那一版的行为（一片 Undetermined），用户读不出自己缺了什么。"
+             一片 Undetermined，用户读不出自己缺了什么。"
     );
 
     // ③ 读不到 PATH：查不动 —— 与 ② **必须是两回事**
@@ -1161,11 +1155,11 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
     assert_ne!(
         gone.state, blind.state,
         "「查了、确认没有」与「查不动」显示成了同一格 —— \
-             件计划 `KR65D1` 的死值验逐字要求它们是两回事"
+             死值验要求它们是两回事"
     );
 }
 
-/// `KR65D1` 的死值验落点：**同一个名字，换一种查法，出来的是不同的一格。**
+/// 死值验落点：**同一个名字，换一种查法，出来的是不同的一格。**
 ///
 /// 「把某一项的探测掐掉、让它变成『查不动』」这个动作在这里可以直接做出来 ——
 /// 三种 [`EnvProbe`] 各喂一次，三格互不相同。
@@ -1203,7 +1197,7 @@ fn the_same_name_under_three_probes_gives_three_different_cells() {
     );
 }
 
-/// 🔴 `KR65D2` 的上屏那一半：**「档」进了线上形状，而且欠装口那一档不许被读成
+/// 🔴 上屏那一半：**「档」进了线上形状，而且欠装口那一档不许被读成
 /// 「不该我们装」。**
 ///
 /// **死值验**：把 `SurfaceRow::tier` 摘掉 ⇒ 编译不过；
@@ -1236,9 +1230,9 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
         seen.len(),
     );
 
-    // ③ 欠装口那一档：「所有文案…不能把开发过程混进去」⇒ 说现状（这里装不了、要你自己装），
-    //   不再留「应随 cc-monitor 一起安装，暂未提供」「安装入口还没写」那层「还欠着」的意思；按文案键断言。
-    //   仍**不许**说成「不由 cc-monitor 提供」（`KR65D2`：不会被读成「不该我们装」）。
+    // ③ 欠装口那一档：「所有文案…不能把开发过程混进去」⇒ 说现状（这里装不了、需手动装），
+    //   不带「暂未提供」「安装入口还没写」那层「还欠着」的意思；按文案键断言。
+    //   也**不许**说成「不由 cc-monitor 提供」（不会被读成「不该我们装」）。
     //   闭集里今天没有这一档的成员 ⇒ 造一项喂同一个出行函数（`unmanaged_row`），判它的措辞。
     let synthetic = crate::footprint::registry::EnvEntry {
         id: "owed-sample",
@@ -1278,7 +1272,7 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
                 "rsConfigSurface.unmanaged.checkOnlySource"
             )),
             "`{}` 的措辞把「欠的实现」说成了「不是我们提供的」—— \
-                 那与 `K38` 矛盾（`KR65D2` 逐字：不会被读成「不该我们装」）",
+                 那与用户的裁定矛盾（不会被读成「不该我们装」）",
             r.tool_id
         );
         assert_eq!(
@@ -1320,9 +1314,7 @@ fn rows_cover_every_touched_file_and_use_all_spec_fields() {
         .unwrap();
     assert!(backend.path_resolved.is_none());
     // installable / uninstallable：三种组合都真出现在表里 —— 两个字段都得有区分力
-    // 〔`K-R60` 订正：cc-bus 原先在这里被当成「两者都 false」的样本，
-    //  而那个 false 是一处**假申报**（部署 08-13 就实现了）。样本换成 `claude-code`
-    //  —— 它是真的装不了（Claude Code 不该由 cc-monitor 装）。〕
+    // 「两者都 false」的样本是 `claude-code` —— 它是真的装不了（Claude Code 不该由 cc-monitor 装）。
     let ccbus = rows.iter().find(|r| r.tool_id == "cc-bus").unwrap();
     assert!(ccbus.installable && !ccbus.uninstallable, "装得了、卸不了");
     let ccm = rows.iter().find(|r| r.tool_id == "ccm").unwrap();
@@ -1480,10 +1472,9 @@ fn the_path_resolution_dispatch_has_no_catch_all_arm() {
         .unwrap_or(src)
         .to_string();
     let prod = prod.as_str();
-    // ⚠ **第一版锚在 `PathResolution::Local(p) =>` 上，而那个字符串在本文件里
-    //   出现两次** —— 它命中的是更早的另一处 match，于是判据一直在看错对象：
-    //   给我真正要守的那处加回兜底臂，本条**照样绿**（变异实测）。
-    //   ⇒ 与 F19 同族（断言指的不是它自称的那个东西）。
+    // ⚠ **不锚在 `PathResolution::Local(p) =>` 上**：那个字符串在本文件里
+    //   出现两次，锚它会命中更早的另一处 match，判据看错对象：
+    //   给真正要守的那处加回兜底臂，本条**照样绿**（变异实测）。
     //   改成扫**所有** `PathResolution` 分派，不再挑一个锚点。
     let lines: Vec<&str> = prod.lines().collect();
     let ind = |l: &str| l.len() - l.trim_start().len();

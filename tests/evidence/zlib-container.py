@@ -6,7 +6,7 @@
 回环上判准答「不压」⇒ 两条都在测试里用 `config(_, true)` 强制本端压。再读 sshd 日志核（异源）：协商出过 `zlib@openssh.com`、
 没有一行 `incomplete message`。钥匙现铸在工作树 `.scratch/wf2-zsshd/`（不碰 `~/.ssh`），容器与镜像用完即删。
 
-跑法（仓根，ASCII 路径的工作树里）：python3 tests/evidence/WF2-zlib-container.py
+跑法（仓根，ASCII 路径的工作树里）：python3 tests/evidence/zlib-container.py
 退出码：0 = 全过 · 1 = 有一条不对 · 3 = 没有 docker / 起不来（环境不满足）
 """
 import json

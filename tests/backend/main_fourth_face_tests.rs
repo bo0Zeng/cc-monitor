@@ -1,7 +1,7 @@
 use super::{unavailable_from, unavailable_here, NO_TMUX};
 use crate::platform::tmux::{tmux_exe_in, tmux_in, tmux_present, TmuxPlatform};
 
-/// ★ `K-P4` 红线之一〔NET2 真填〕：**生产 hello 填的就是这台机器的答案**（「`hello.unavailable` 真填」）。
+/// ★ 红线之一：**生产 hello 填的就是这台机器的答案**（「`hello.unavailable` 真填」）。
 ///
 /// 两形的字节由会话流金样钉；本条钉「生产那一格恰好一处、给的是 `unavailable_here()`」—— 换回 `Vec::new()` 就红。
 #[test]
@@ -42,7 +42,7 @@ fn the_unix_mode_axis_lists_exactly_the_commands_that_declare_it() {
     );
 }
 
-/// ★★ `K-P4` 红线之二，也是这里的核心交付：**这个字段不是编译期常量。**
+/// ★★ 红线之二，也是这里的核心交付：**这个字段不是编译期常量。**
 ///
 /// # 少了本条会怎样
 ///
@@ -71,21 +71,11 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
     );
     let missing = unavailable_from(Some(false));
     let names: Vec<&str> = missing.iter().map(|u| u.command.as_str()).collect();
-    // 🔴 `K-R104`（09-13）：2 → **4**。`capture-pane` / `oneshot-session` 上帧面时
-    //    各自登记了 `no_tmux`（它们都要起 tmux），**这张表是从 `codes` 派生的**
-    //    ⇒ 它们自动进表。这正是本条报错文案里逐字预言的那一形：
-    //    「本条红未必是错……那就把这里的期望值补上」。
-    //    🔴 〔删用量〕**4 → 3**：`oneshot-session` 随用量 ③ 轴整轴退役
-    //    （`control/oneshot_session.rs` 整删、`inbound::REGISTRY` 11 → 10）。
-    //    🔴 **4 → 3 → 4**：终端管理 L1 两条（`terminal-preview` / `terminal-input`）进表；`capture-pane` 随抓屏改走
-    //    `terminal-preview` 删了。
-    //    🔴 **4 → 5**：终端实时预览 `terminal-follow` 进表（起 tmux 控制模式客户端，声明了 `no_tmux`）。
-    //    🔴 **5 → 6**：计划退回 `plan-return` 进表（送字走 `terminal-input` 的本体、要起 tmux，声明了 `no_tmux`）。
-    //    🔴 **−1**：没人调的 `launch` 撤了。
-    //    🔴 **+2**：起一组那两条（`set-plan` · `set-launch`，一组只起在 tmux 里，声明了 `no_tmux`）进表。
-    //    🔴 **−2**：`session-say` 撤了、`plan-return` 改成投进会话输入队（不碰 tmux，送字归投递）。
-    //    🔴 **+1**：问图 `plan-ask` 进表（开口那句只跟 tmux，声明了 `no_tmux`）。
-    //    🔴 **+1**：中断 `session-interrupt` 进表（同 `terminal-input` 按宿主送 Esc，声明了 `no_tmux`）。
+    // 🔴 期望值 = `REGISTRY` 里登记了 `no_tmux` 的那几条（**这张表是从 `codes` 派生的**）：
+    //    起一组那两条（`set-plan` · `set-launch`，一组只起在 tmux 里）· 终端管理两条（`terminal-preview` / `terminal-input`）·
+    //    中断 `session-interrupt`（同 `terminal-input` 按宿主送 Esc）· `session-model` · `session-permission` ·
+    //    终端实时预览 `terminal-follow`（起 tmux 控制模式客户端）· 问图 `plan-ask`（开口那句只跟 tmux）。
+    //    新加一条会回 `no_tmux` 的命令 ⇒ 它自动进表，本条红「未必是错」，把这里的期望值补上。
     //    ⚠ 顺序按 `REGISTRY` 的排列，不是字典序。
     assert_eq!(
         names,
@@ -149,9 +139,7 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
 
         // ★ 合起来：**同一份代码，两台不同的机器，两个不同的答案。**
         //   这一步才是「不是编译期常量」的正面证据 —— 上面两组各自都只证了一半。
-        // 🔴 `K-R104`：`2` → **4**（`capture-pane` / `oneshot-session` 也登记了
-        //    `no_tmux`，这张表从 `codes` 派生 ⇒ 自动进表）。
-        // 🔴 **4 → 3**：`oneshot-session` 随用量 ③ 轴退役；`capture-pane` 删了、终端管理 L1 两条进表。
+        // 🔴 条数取自上面那张从 `codes` 派生的表。
         //    ⚠ 这个数**不许写成地板** —— 「有 tmux 的机器上一条都不报」那一半是
         //    `is_empty()`，而这一半要的是「恰好是登记了 `no_tmux` 的那几条」。
         let today = unavailable_from(Some(false)).len();
@@ -163,7 +151,7 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
     }
     #[cfg(not(unix))]
     {
-        // 🔴 这一格断的是**探针**，不是**答案**（下一拍把两者拆开了）：
+        // 🔴 这一格断的是**探针**，不是**答案**（两者是分开的）：
         //    「扫 `PATH` 找无后缀 `tmux`」这个判准在非 unix 上不等价于 `execvp`
         //    ⇒ 这个**函数**必须不开口。而那台机器上的**答案**由 `TmuxPlatform` 给，
         //    走 `tmux_exe_in`，见 `the_windows_answer_is_confirmed_absent_not_unknown`。
@@ -188,11 +176,11 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
     }
 }
 
-/// ★★ `K-P4` 下一拍的正题：**Windows 上那张表不许是空的。**
+/// ★★ 正题：**Windows 上那张表不许是空的。**
 ///
-/// # 上一拍在这一格上明确没买到，而它恰好是动机平台
+/// # Windows 恰好是动机平台
 ///
-/// 上一版 `tmux_in` 首行 `if !cfg!(unix) { return None; }` ⇒ Windows 上恒「判不出来」
+/// 若 `tmux_in` 在非 unix 上直接回 `None` ⇒ Windows 上恒「判不出来」
 /// ⇒ `unavailable_from(None)` 不列 ⇒ **表恒空** ⇒「没有 tmux 却宣称我认 `kill`」
 /// 在 Windows 上一格没治。病灶是**一个值装了两件事**：探针不工作（真）＋答案未知（假）。
 ///
@@ -219,7 +207,7 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
     assert_eq!(
         tmux_present(TmuxPlatform::AbsentUnlessExeOnPath, Some(bare.as_os_str())),
         Some(false),
-        "Windows 那一档又变回「不知道」了 —— 那正是上一拍的病：\n\
+        "Windows 那一档变成「不知道」了 —— 一个值装了两件事：\n\
              tmux 结构上不存在于 Windows，「没有」这句话在编译期就成立，不需要探针去证。"
     );
     let names: Vec<String> = unavailable_from(tmux_present(
@@ -229,15 +217,7 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
     .iter()
     .map(|u| u.command.clone())
     .collect();
-    // 🔴 `K-R104`：同上一条，2 → **4**（`capture-pane` / `oneshot-session` 自动进表）。
-    // 🔴 **4 → 3**：`oneshot-session` 随用量 ③ 轴退役；`capture-pane` 删了、终端管理 L1 两条进表。
-    // 🔴 **4 → 5**：终端实时预览 `terminal-follow` 进表。
-    // 🔴 **5 → 6**：计划退回 `plan-return` 进表。
-    // 🔴 **−1**：没人调的 `launch` 撤了。
-    // 🔴 **+2**：起一组那两条进表。
-    // 🔴 **−2**：`session-say` 撤了、`plan-return` 改成投进会话输入队。
-    // 🔴 **+1**：问图 `plan-ask` 进表。
-    // 🔴 **+1**：中断 `session-interrupt` 进表。
+    // 🔴 期望值同上一条：`REGISTRY` 里登记了 `no_tmux` 的那几条（从 `codes` 派生）。
     assert_eq!(
         names,
         vec![
@@ -339,7 +319,7 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// ★ `K-P4` 下一拍第二条：**windows 那一支真的写在生产源码里，且只写了一处。**
+/// ★ Windows 那一档第二条：**windows 那一支真的写在生产源码里，且只写了一处。**
 ///
 /// # 为什么单有上面那条不够
 ///
@@ -407,7 +387,7 @@ fn the_windows_arm_is_wired_into_the_source() {
     });
 }
 
-/// ★ `K-P4` 红线之三：**声明用的 code，必须是那条命令自己登记过的 code。**
+/// ★ 红线之三：**声明用的 code，必须是那条命令自己登记过的 code。**
 ///
 /// 事前那句话与事后那句话要是各说各的词，客户端就得维护**两张**「这句话怎么翻成人话」
 /// 的表，而 monitor 侧那张已经写好了（`backend_launch.rs` 等三处逐字「远端未安装 tmux」）。

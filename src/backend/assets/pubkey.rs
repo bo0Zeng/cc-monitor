@@ -10,11 +10,11 @@
 //! - **`authorized-keys-add {key}`**（被写那台答）：[`plan_authorized_keys`] 算 → 经这台自己的文件管理面写（[`door::edit`]，CAS ＋ 建父目录）
 //!   → `.ssh` 700 · `authorized_keys` 600（与 shell 那一串逐条同义）。
 //!
-//! 原住 monitor `pubkey.rs`（校验 · 规划 · 解记号三个纯函数与那一串 shell 逐字搬来）；那条 Tauri 命令与它的两条路删了。
+//! 校验 · 规划 · 解记号三个纯函数与那一串 shell 都在这里；界面那一侧没有 Tauri 命令做这件事。
 //!
 //! # 买不到的
 //!
-//! - 纯密码冷 onboarding：拨号只做 publickey / agent 鉴权（F61 已取消）⇒ 已有 key / agent 访问权时追加 / 轮换新公钥。
+//! - 纯密码冷 onboarding：拨号只做 publickey / agent 鉴权（不做密码鉴权）⇒ 已有 key / agent 访问权时追加 / 轮换新公钥。
 //! - `pubKeyPath` 是本机那台的路径（界面 · 本机后端同一台）；读它不经文件管理面（那是「这台自己的用户文件」的写面，读本机一份公钥不写）。
 
 use crate::platform::fs::Ro;

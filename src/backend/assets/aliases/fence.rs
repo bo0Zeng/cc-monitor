@@ -22,7 +22,7 @@
 //!
 //! 两侧对「有 BEGIN 但找不到配对的 END」（上次安装中断 / 用户手改坏）处置**不一致**：
 //!
-//! - 远端（`block::merge_profile_block`，从前住 `sftp.rs`，从 monitor 搬进后端）：**Err 中止**。这是 F10 审计 B1 专门加的——
+//! - 远端（`block::merge_profile_block`）：**Err 中止**。理由——
 //!   原话「绝不用独立 `find` 误配前面的 END 而吞掉用户内容；宁可报错让用户手修，
 //!   也不破坏文件」。
 //!
@@ -229,8 +229,8 @@ pub(crate) fn splice_out(
     })
 }
 
-// `KR62D3` 那张「同一件事今天有几套形状」的账（`FenceShape` / `FENCE_SHAPES`）只有判据读它 ⇒ 随搬家住进判据文件
-//   （`fence_tests.rs`；从前在 monitor 生产段里是一条死代码，占 `deadcode` 棘轮一格）。
+// 「同一件事有几套形状」那张账（`FenceShape` / `FENCE_SHAPES`）只有判据读它 ⇒ 住判据文件
+//   （`fence_tests.rs`；放在生产段就是一条死代码）。
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/assets/aliases/fence_tests.rs"]

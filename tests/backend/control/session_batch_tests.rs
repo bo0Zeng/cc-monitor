@@ -610,7 +610,7 @@ fn a_listing_that_ran_out_of_time_answers_child_timed_out_not_unobservable() {
     }
 }
 
-/// A3-3-34：给了托管的家 ⇒ 这台能托管（每个平台都是；Windows 上从前恒否）；没给 ⇒ 不能。
+/// 给了托管的家 ⇒ 这台能托管（每个平台都是，Windows 也是）；没给 ⇒ 不能。
 #[test]
 fn a_given_hosting_home_hosts_on_every_platform() {
     let (own, _data) = crate::host::managed::run::tests::sandbox_own("batch-hosts");

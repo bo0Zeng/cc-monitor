@@ -10,12 +10,12 @@
 //! # 本文件不许出现 ccm 旗标的字面量
 //!
 //! 旗标名的唯一住址是 [`crate::ccm_line::argv::flag`]。由
-//! `argv::tests::ccm_flag_literals_live_only_in_argv_rs` 机检（`KR48D2`）。
+//! `argv::tests::ccm_flag_literals_live_only_in_argv_rs` 机检。
 
 use crate::ccm_line::argv::{flag, parse_size, CwdSpec, Die, Opts};
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
-// `K-R96`：铸名避让那张 hash 表的**唯一**来源（字段模块私有 ⇒ 这里造不出第二份）。
+// 铸名避让那张 hash 表的**唯一**来源（字段模块私有 ⇒ 这里造不出第二份）。
 use crate::accounts::upstream_select::endpoint::LaunchAccount;
 use crate::common::session_snapshot::TakenNames;
 use crate::platform::shell::posix;
@@ -262,7 +262,7 @@ pub(crate) const INHERIT: &[Inherit] = &[
 ];
 
 /// 这一趟能看见的**外界**。做成结构体的唯一理由：让整条计划面可以在单测里跑，
-/// **一个字节都不碰这台机器**（`K31`「只能做产品，不能动机器」）。
+/// **一个字节都不碰这台机器**（「只能做产品，不能动机器」）。
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Env {
     pub(crate) home: String,
@@ -284,10 +284,8 @@ pub(crate) struct Env {
     pub(crate) inherited_base_url: Option<String>,
     /// 起 agent 前要 eval 的机器级 env 串。
     pub(crate) ccm_env: String,
-    // 🔴 `K-R58`：这里原来有一个 `workspace: String`（`$CCM_WORKSPACE`，`$HOME` 下裸敲时
-    //    的落点）。它**唯一的消费者**就是 [`resolve_cwd`] 里那一档「站在 $HOME 就跳工作区」，
-    //    那一档按 `K37` 删了 ⇒ 这个字段跟着删，`CCM_WORKSPACE` 这个环境变量**不再被读**。
-    //    留着它会变成「猜」的一个待命开关，而 `KR58D3` 的失效方向逐字就是「把猜挪进别处」。
+    // 🔴 没有「工作区」那一格（`$CCM_WORKSPACE` 不读）：[`resolve_cwd`] 不替用户挑目录，
+    //    留一个这样的字段就是「猜」的一个待命开关 —— 失效方向正是「把猜挪进别处」。
     /// 账号库 manifest 的**完整路径**：`<家目录>/.cc-monitor/accounts/accounts.json`，只跟着家走
     /// （没有另指位置的环境变量；判据夹具直接填这一格）。
     pub(crate) accts_manifest: String,
@@ -371,7 +369,7 @@ impl Env {
     /// 优先级：**环境变量 > 内置默认**（默认值住 [`crate::ccm_line::argv::Defaults`]，这里一个字面量都不许再写）。
     pub(crate) fn from_process(process_argv: &[String]) -> Self {
         // 家目录：`HOME`，没有再退 `USERPROFILE` —— 与本 crate 其余各处同一个口径
-        //   （`exit_policy::policy_path` · `asset_catalog`）。从前只认 `HOME`：Windows 上
+        //   （`exit_policy::policy_path` · `asset_catalog`）。只认 `HOME` 的话，Windows 上
         //   默认没有它 ⇒ 账号库落到当前盘的根上，找不到号还说「不在那个文件里」。
         let home = home_of(|k| std::env::var(k).ok());
         let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
@@ -391,13 +389,10 @@ impl Env {
             inherited_config_dir: None,
             account_env: String::new(),
             // 🔴 内层载荷要用**「我是被当作什么叫的」**那一段：这个进程**自己被怎么叫的**
-            //   （`[argv0]`，CC1 的 `self_invocation`；入口②删了，分流不看名字）。
-            // 这里从前先看环境变量 `CCM_SELF`、没设才落到 argv。
-            //   它存在的唯一理由是远端 shim：shim `exec <后端> ccm "$@"` 之后 `argv[0]` 是真身路径，
-            //   而当时这一段只取 `argv[0]`、丢了 `ccm` 那个词 ⇒ 要 shim 把 `$0` 塞进环境变量补回来。
-            //   CC1 之后不再丢词 ⇒ **shim 制造的那个问题没了，补丁也就不需要了**
-            //   （「`CCM_SELF` 这个环境变量随之删掉」）。
-            // argv 由调用方交（`main.rs` 取的那一次），本模块不再自己读。
+            //   （`[argv0]`，`self_invocation`；分流不看名字）。
+            //   远端 shim `exec <后端> ccm "$@"` 之后 `argv[0]` 是真身路径，`self_invocation` 连 `ccm` 那个词一起取
+            //   ⇒ 不需要环境变量补词。
+            // argv 由调用方交（`main.rs` 取的那一次），本模块不自己读。
             self_argv: super::self_invocation(process_argv),
             running_sessions: None,
             relay: Some(crate::accounts::upstream_select::endpoint::relay_for_exec),
@@ -494,8 +489,8 @@ use crate::control::launch_account::{pick, AccountAsk, Settled};
 pub(crate) use cmd_wire::accounts::AccountsList;
 
 /// 报「不可用」必须同时告诉用户有哪些可用（成品里的号名）。⚠ 无尾空格。
-/// 🔴 清单**在却读不懂**（读不动 · 坏 JSON · 版本不认）⇒ 照实说，不谎称「没有账号库」（来历：2026-09-21 Win11 虚拟机上那份带
-/// UTF-8 BOM 的清单被从前那句 `unwrap_or_default()` 整张吃掉、还被报成「(无账号库)」—— BOM 现由账号库那一个读口剥掉）。
+/// 🔴 清单**在却读不懂**（读不动 · 坏 JSON · 版本不认）⇒ 照实说，不谎称「没有账号库」（Win11 上一份带
+/// UTF-8 BOM 的清单，用 `unwrap_or_default()` 读会被整张吃掉、报成「(无账号库)」—— BOM 由账号库那一个读口剥掉）。
 fn names(list: &AccountsList, manifest_path: &str) -> String {
     if !list.meta.enabled {
         return if std::path::Path::new(manifest_path).exists() {
@@ -560,12 +555,12 @@ pub(crate) struct Container {
     /// 送进容器那条内层命令到 `--` 之前的词（入口 ＋ 交给 agent 的那几个；不带 `env` / `export` 前缀）：只给短形（[`render_short`]）用，
     /// 载荷由同一串接上 `--` 与 ccm 自己的参数渲出。
     pub(crate) inner_head: Vec<String>,
-    // ★★ **撞名退让在 [`build`] 里做**（`R52` 裁定二：「**不就是先校验冲突然后取名吗? 搞个 hash 表**不就好了」）：
+    // ★★ **撞名退让在 [`build`] 里做**（用户定：「**不就是先校验冲突然后取名吗? 搞个 hash 表**不就好了」）：
     //   它拿一份 [`TakenNames`]（那张 hash 表，来源只有会话快照一处），
     //   **算完就把最终名钉进 `Container::name`**。于是：
-    //   ① 「产名」与「避让」不再是两个人干的两件事（前端 `mintTmuxName` 那条纪律的对侧）；
-    //   ② `--ccm-print` 与真跑吐的是**同一个名字** —— 平价预言机从此在名字这一维上也是平的；
-    //   ③ `--ccm-print` 的「纯」口径改成**相对于快照**：同一份快照 ＋ 同一份输入 ⇒ 同一份输出。
+    //   ① 「产名」与「避让」不是两个人干的两件事（前端 `mintTmuxName` 那条纪律的对侧）；
+    //   ② `--ccm-print` 与真跑吐的是**同一个名字** —— 平价预言机在名字这一维上也是平的；
+    //   ③ `--ccm-print` 的「纯」口径是**相对于快照**：同一份快照 ＋ 同一份输入 ⇒ 同一份输出。
     //
     // 三条取名路的态度**仍然不一样，别合并**（判据见
     // `only_two_of_the_three_naming_paths_step_aside_on_a_collision`）：
@@ -757,27 +752,22 @@ pub(crate) fn validate_tmux_name(n: &str) -> Result<(), Die> {
     }
 }
 
-/// 不给 `--cwd` 时的落点。**今天它是恒等**：调用方站在哪儿，会话就起在哪儿。
+/// 不给 `--cwd` 时的落点。**它是恒等**：调用方站在哪儿，会话就起在哪儿。
 ///
-/// 🔴 **`K-R58` / `KR58D3`（`K37` 第三条）：不替用户挑目录** —— 新会话起在调用者的 `cwd`：
+/// 🔴 **不替用户挑目录** —— 新会话起在调用者的 `cwd`：
 /// 不跳某个「工作区」目录，也不跳所在仓的父目录。
 ///
-/// 〔用@09-11 逐字〕「`cc` 默认就起会话就行，**跳目录是我自己的设置，不要搞进 app**。」
-/// `K37` 的判据：**把这个行为去掉，用户还做不做得到同一件事**？——写 `--cwd <目录>` 照样
-/// 起得了会话 ⇒ 它是**偏好**，不是机制，该出去。而 `K37` 第三条给了新默认的形状：
+/// 〔用户定，逐字〕「`cc` 默认就起会话就行，**跳目录是我自己的设置，不要搞进 app**。」
+/// 判据：**把这个行为去掉，用户还做不做得到同一件事**？——写 `--cwd <目录>` 照样
+/// 起得了会话 ⇒ 它是**偏好**，不是机制，不进 app。默认的形状：
 /// **诚实的默认 = 恒等 / 不作为 / 沿用调用者已有状态** —— `cwd` 本来就是进程的属性，
 /// 不是从一张表里编出来的。★ **省的是书写，不是语义。**
 ///
-/// ⚠ **`resume`/`attach` 那一支一个字都没动，而它今天与 `new` 同值**：
+/// ⚠ **`resume`/`attach` 那一支与 `new` 同值**：
 /// 那两个动作的目标目录由 sid / 会话决定、调用方已经定位好了，再解析一次会把工作目录
 /// 换掉 ⇒ claude 按 `projects/<enc(cwd)>/<sid>.jsonl` **找不到会话**（实测踩过）。
-/// 🔴 **谁要是哪天再往这里加一档非恒等的分支，它必须只对「新起会话」生效**（透传里没有 `--resume` / `--continue`）——
-/// 今天不留那个 `if`，是因为恒等之下它是死代码，而不是因为那条约束过期了。
-///
-/// 〔一并作废的旧注：从前这里逐字复刻旧 bash `_cc_resolve_target`，并登记着
-/// 「自己往上走找 `.git`」与 `git rev-parse --show-toplevel` 在 `GIT_DIR` /
-/// `GIT_WORK_TREE` / `GIT_CEILING_DIRECTORIES` 上的那一格不等价 —— 那整条路没了，
-/// 那格不等价也跟着没了。〕
+/// 🔴 **谁要是往这里加一档非恒等的分支，它必须只对「新起会话」生效**（透传里没有 `--resume` / `--continue`）——
+/// 不留那个 `if`，是因为恒等之下它是死代码，而不是因为那条约束不在了。
 ///
 /// 相对的 `--cwd`（`.` / `../x`）按调用方当前目录补成绝对、按字面折掉 `.` / `..`，之后再过 §47 形式判定；
 /// 已是绝对的原样交给判定（带 `..` 照旧拒）。
@@ -893,7 +883,7 @@ fn launcher_words(launcher: &str, home: &str) -> Vec<String> {
 ///
 /// ✅ 裁定逐字：「把调用方选中的号静默换掉 / **不要这么做** / 不是有选默认账号吗? **就用那个**」⇒ 两支都是裁定的一部分：
 ///   · **继承那一支**（`CLAUDE_CONFIG_DIR` 非空 ⇒ 保留，不覆盖）= 「不要静默换掉」。
-///     🔴 **来历不许删**：这道闸是 `R08` 加的（`-z "$CLAUDE_CONFIG_DIR"`），由一次**真机复现过的静默换号**逼出来。
+///     🔴 **理由不许删**：这道闸（`-z "$CLAUDE_CONFIG_DIR"`）挡的是一次**真机复现过的静默换号**。
 ///   · **裸终端那一支**（都没给 ⇒ 跟随默认号）= 「就用那个」。
 ///
 /// `accounts` 只在真要判的时候读（这台的账号清单成品，由入口交：control 不读观测层）。〔继承表〕账号那一格。
@@ -919,7 +909,7 @@ pub(crate) fn account_for(
             .as_deref()
             .is_some_and(|v| !v.is_empty())
     {
-        // 调用方已经选好号 ⇒ **尊重它**，不覆盖（`R08`：真机复现过的静默换号）。
+        // 调用方已经选好号 ⇒ **尊重它**，不覆盖（真机复现过的静默换号）。
         return none();
     } else {
         AccountAsk::Follow
@@ -950,7 +940,7 @@ pub(crate) fn account_for(
 ///
 /// 〔`INVARIANTS §47` ③〕**启动器不在上表**：它是命令片段（带参数 · alias · 路径），不是自由文本 ——
 /// 过全仓那一张白名单 `shell_quote_core::launcher_refused_char`（与 monitor 本机 `history.rs` · 远端载荷 `payload.rs` 同一条；
-/// 先前这一格只拒 NUL / CR / LF）。空 = 没给（下面用这个 agent 的默认启动器）。
+/// 不只是拒 NUL / CR / LF）。空 = 没给（下面用这个 agent 的默认启动器）。
 ///
 /// **不拒 shell 元字符**（`Bob's` · `(2019)` 照放，交给唯一的 quote）。拒绝集住 `shell_quote_core::free_text_ok` / `arg_text_ok`。
 /// ⚠ 模型名与 `--ccm-sid` **不在这里**：它们的规则在判定的唯一住址里统一定。
@@ -1063,7 +1053,7 @@ fn refuse(what: &str, v: &str) -> Die {
 
 /// 从 [`Opts`] ＋ 外界 ⇒ [`Plan`]。**这是计划面的唯一入口。**
 ///
-/// `taken` = 那一刻**已被占用的会话名**（`R52` 裁定二那张 hash 表），
+/// `taken` = 那一刻**已被占用的会话名**（铸名避让那张 hash 表），
 /// 来源只有 `common::session_snapshot` 一处；`None` = **问不到**
 /// （tmux 起不来 / 没装）⇒ **不退让**，与那份已删的 bash `ccm` 那句
 /// `tmux has-session … 2>/dev/null`（问不出来当没占）同义。真撞上了还有
@@ -1121,7 +1111,7 @@ pub(crate) fn build_among(
     let face = crate::agents::launch_face_among(registry, &o.agent);
     // ── attach：不起 agent，早于容器逻辑就定了 ──────────────────────────
     if !o.attach_name.is_empty() {
-        // `ccm --attach foo --tmux --detach` 从前会**静默吞掉** `--detach` 照样 attach。
+        // `ccm --attach foo --tmux --detach` 不许**静默吞掉** `--detach` 照样 attach：
         // 静默忽略正是本工作区反复消灭的病。
         if o.detach {
             return Err(Die(copy_text("bePlan.build.attachDetach", &[]).into()));
@@ -1250,7 +1240,7 @@ pub(crate) fn build_among(
         } else {
             (derive_tmux_name(&cwd), tmux_steps_aside(TmuxNaming::Auto))
         };
-        // ★★ `K-R96`：**退让就在这里发生**，`--ccm-print` 与真跑因此拿到同一个名字。
+        // ★★ **退让就在这里发生**，`--ccm-print` 与真跑因此拿到同一个名字。
         let name = match (step_aside, taken) {
             (true, Some(t)) => mint_tmux_name(&base, t),
             // 不退让 / 问不到快照 ⇒ 原样（后者是诚实降级，见本函数头注）。
@@ -2021,9 +2011,9 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     let mut seq = String::new();
     // ★★ **先自检，再谈接进去** —— 排在收尾的最前面，而且只能在这里。
     //
-    // 从前 ccm 的 rc=0 只说明「会话建了、载荷键入了、收尾跑了」，pane 里那一跳一个字都没看：
-    // BS1b 现打入口② 那一跳当场「unknown argument: --cwd」退回空 bash，而调用方照报成功、
-    // 还登记上了总线（**假成功**）。登记就发生在本段下面 ⇒ 确认必须排在它前面、住在 ccm 里；
+    // 不自检的话，ccm 的 rc=0 只说明「会话建了、载荷键入了、收尾跑了」，pane 里那一跳一个字都没看：
+    // 那一跳当场「unknown argument: --cwd」退回空 bash，调用方照报成功、
+    // 还登记上了总线（**假成功**，现打过）。登记就发生在本段下面 ⇒ 确认必须排在它前面、住在 ccm 里；
     // 放进调用方只能「先登记、再撤回」。
     //
     // 确认的形状：**用 pane 里那一跳的同一个入口、同一串参数、同一段 export 前缀，加 `--ccm-print` 真跑一次**
