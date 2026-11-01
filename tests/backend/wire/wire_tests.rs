@@ -516,6 +516,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     parent: Some(s("a9")),
                     state: RunState::Failed,
                     status_text: crate::common::cells::Words(s("核心·失败")),
+                    took_text: Some(crate::common::cells::Words(s("核心·用时 2s"))),
                     label_text: crate::common::cells::Words(s("scan")),
                     last: Some(RunDid::Tool { name: s("Bash") }),
                     last_text: Some(crate::common::cells::Words(s("调用 Bash"))),

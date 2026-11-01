@@ -1190,6 +1190,11 @@ object Commands {
         const val NAME: String = "terminals-board-here"
     }
 
+    /** `terminals-end`。 */
+    object TerminalsEnd : Command<com.ccmonitor.mobile.core.wire.gen.TerminalsEndReq, com.ccmonitor.mobile.core.wire.gen.TerminalsEndReply>("terminals-end", { com.ccmonitor.mobile.core.wire.gen.TerminalsEndReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.TerminalsEndReply.ADAPTER }) {
+        const val NAME: String = "terminals-end"
+    }
+
     /** `terminals-list`。 */
     object TerminalsList : Command<com.ccmonitor.mobile.core.wire.gen.TerminalsListReq, com.ccmonitor.mobile.core.wire.gen.TerminalsList>("terminals-list", { com.ccmonitor.mobile.core.wire.gen.TerminalsListReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.TerminalsList.ADAPTER }) {
         const val NAME: String = "terminals-list"
@@ -1442,6 +1447,7 @@ object Commands {
             TerminalUnfollow,
             TerminalsBoard,
             TerminalsBoardHere,
+            TerminalsEnd,
             TerminalsList,
             TransferCopy,
             TransferDownload,

@@ -35,6 +35,7 @@ use cmd_wire::attach::Relation;
 use cmd_wire::dial::OLD_BACKEND_MARKER;
 use cmd_wire::machine::{Blocker, Why};
 use copy_core::copy_text;
+use copy_core::discard::{self, Discard};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -109,6 +110,10 @@ impl Progress {
 /// **开链路的期限，全仓只这一处**：等 `dial` 的同时看 `progress`，每来一步重新计 [`DIAL_WITHIN`]；一步都没来的 [`DIAL_WITHIN`] ⇒ `None`
 /// （`dial` 随之被丢下）。共用循环开常驻流那一拨（[`Feed`]）与手机 SSH 那层开的每一条链路（终端 · 文件 · 握着的那条，嵌的核心在 ack 之前套它）同一个。
 pub async fn dial_within<F: Future>(progress: &Progress, dial: F) -> Option<F::Output> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "开链路的拨号期限，全仓只这一处：拨号核心每报一步进展就往后挪 `DIAL_WITHIN`，一步都没来才醒、丢下这一拨；链路开出来即止。等的是这一拨还在不在动，不是节拍"
+    )]
     let quiet = tokio::time::sleep(DIAL_WITHIN);
     tokio::pin!(dial, quiet);
     loop {
@@ -573,10 +578,10 @@ impl<T: Transport> Feed<T> {
             let wait = backoff.before_wait(healthy);
             let kicked = {
                 let ssh_changed = async {
-                    let _ = ssh.changed().await;
+                    ssh.changed().await.discard(discard::Why::Signal);
                 };
                 let kicked = async {
-                    let _ = kicks.changed().await;
+                    kicks.changed().await.discard(discard::Why::Signal);
                 };
                 if needs_hand {
                     tokio::select! {
@@ -584,8 +589,13 @@ impl<T: Transport> Feed<T> {
                         () = ssh_changed => true,
                     }
                 } else {
+                    #[expect(
+                        clippy::disallowed_methods,
+                        reason = "重连循环睡退避（2→30 s 上限，活过 30 s 才清零）：只在一轮断开之后睡，叫醒（重新连接 · 回前台 · 换了 SSH · 机器页「起」）即止；连上之后由读流阻塞驱动，不是节拍"
+                    )]
+                    let backoff_over = tokio::time::sleep(wait);
                     tokio::select! {
-                        () = tokio::time::sleep(wait) => false,
+                        () = backoff_over => false,
                         () = kicked => true,
                         () = ssh_changed => true,
                     }
@@ -749,6 +759,10 @@ impl<T: Transport> Feed<T> {
                 Err(AttachOr::Shake(AttachFail::Refused(r))) if r == RELAY_ABSENT => {}
                 Err(e) => return Err(self.attach_problem(e)),
             }
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "ensure 之后那台小中继回 `absent`：后端零定时器、起了常驻不等它绑上口，等的是那台套接字上有人在听这一个一次性条件；至多 `RELAY_TRIES` 次，接上即止，不是节拍"
+            )]
             tokio::time::sleep(RELAY_WAIT).await;
         }
         Err(Fail::new(
@@ -872,10 +886,15 @@ impl<T: Transport> Feed<T> {
                         Some(a) => a.last + window.window(),
                         None => seen.1 + HEARTBEAT_IDLE,
                     };
+                    #[expect(
+                        clippy::disallowed_methods,
+                        reason = "心跳到期：流上 `HEARTBEAT_IDLE` 没来字节才问一次 `ping`，问着时等一个往返窗口；每来一行就重算到期，那台不认 `ping` 就不起（`beats`）。流断了随读一起收，不是节拍"
+                    )]
+                    let beat = tokio::time::sleep_until(due);
                     tokio::select! {
                         r = &mut read => break r,
                         () = cut.notified() => return,
-                        () = tokio::time::sleep_until(due), if beats => {
+                        () = beat, if beats => {
                             let n = heard.load(std::sync::atomic::Ordering::Relaxed);
                             let now = tokio::time::Instant::now();
                             if n != seen.0 {

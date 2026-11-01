@@ -18,6 +18,7 @@
 
 use crate::platform::fs::{DiagFile, DiagLog};
 use copy_core::copy_text;
+use copy_core::discard::{Discard, Why};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -109,7 +110,8 @@ impl<T: Target> Roller<T> {
             .logged()
         })?;
         if moved {
-            let _ = f.write_all(roll_note(self.log.old()).as_bytes());
+            f.write_all(roll_note(self.log.old()).as_bytes())
+                .discard(Why::Diag); // 写不进去不拖垮后端
         }
         self.target.point_at(&f)
     }
@@ -117,7 +119,7 @@ impl<T: Target> Roller<T> {
     /// 看一眼：过了上限就滚。滚不成 ⇒ 输出留在原来那份上（下一次再试）。
     pub(crate) fn check(&mut self) {
         if self.target.len().is_some_and(|n| n > self.cap) {
-            let _ = self.fresh();
+            self.fresh().discard(Why::Diag); // 写不进去不拖垮后端
         }
     }
 }
@@ -227,7 +229,7 @@ impl Drop for OneShotLine {
             return;
         }
         if let Some(log) = ONESHOT.get() {
-            let _ = append_line(log, &self.0);
+            append_line(log, &self.0).discard(Why::Diag); // 一次性模式的诊断行：写不进诊断文件也不许回落 stderr（stderr 是协议通道），丢这一行、命令照常
         }
     }
 }
