@@ -5119,12 +5119,10 @@ sealed interface DeployEnd {
     /** 判别格（`end`）那个词。 */
     val end: String
 
-    val text: String
-
     @Suppress("UNCHECKED_CAST")
     data class Done(
         val act: DeployAct,
-        override val text: String,
+        val text: String,
     ) : DeployEnd, Ordered {
         override val end: String get() = "done"
         override var wireOrder: IntArray? = null
@@ -5132,8 +5130,9 @@ sealed interface DeployEnd {
     @Suppress("UNCHECKED_CAST")
     data class Failed(
         val code: String,
-        override val text: String,
+        val said: String,
         val detail: String,
+        val data: Raw? = null,
     ) : DeployEnd, Ordered {
         override val end: String get() = "failed"
         override var wireOrder: IntArray? = null
@@ -5157,11 +5156,12 @@ sealed interface DeployEnd {
                         listOf(
                         Field("end", { tag("failed") }, optional = false, nullable = false),
                         Field("code", { Str }, optional = false, nullable = false),
-                        Field("text", { Str }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
                         Field("detail", { Str }, optional = false, nullable = false),
+                        Field("data", { opt(RawJson) }, optional = true, nullable = true),
                         ),
-                        { a -> DeployEnd.Failed(a[1] as String, a[2] as String, a[3] as String) },
-                        { v -> arrayOf("failed", v.code, v.text, v.detail) },
+                        { a -> DeployEnd.Failed(a[1] as String, a[2] as String, a[3] as String, a[4] as Raw?) },
+                        { v -> arrayOf("failed", v.code, v.said, v.detail, v.data) },
                     )),
                 ),
             )
@@ -5253,7 +5253,7 @@ data class DiagnosticsReport(
 @Suppress("UNCHECKED_CAST")
 data class DialAck(
     val ok: Boolean,
-    val error: String?,
+    val said: String?,
     val detail: String? = null,
     val fingerprint: String?,
     val endpoint: String?,
@@ -5271,7 +5271,7 @@ data class DialAck(
         val ADAPTER: JsonAdapter<DialAck> = obj(
             listOf(
             Field("ok", { Bool }, optional = false, nullable = false),
-            Field("error", { opt(Str) }, optional = false, nullable = true),
+            Field("said", { opt(Str) }, optional = false, nullable = true),
             Field("detail", { opt(Str) }, optional = true, nullable = true),
             Field("fingerprint", { opt(Str) }, optional = false, nullable = true),
             Field("endpoint", { opt(Str) }, optional = false, nullable = true),
@@ -5284,7 +5284,7 @@ data class DialAck(
             Field("unreached", { Bool }, optional = false, nullable = false),
             ),
             { a -> DialAck(a[0] as Boolean, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as Endpoint?, a[6] as DialWhy?, a[7] as String?, a[8] as String?, a[9] as Int, a[10] as List<String>, a[11] as Boolean) },
-            { v -> arrayOf(v.ok, v.error, v.detail, v.fingerprint, v.endpoint, v.winner, v.reason, v.keyType, v.expectedFingerprint, v.v, v.uses, v.unreached) },
+            { v -> arrayOf(v.ok, v.said, v.detail, v.fingerprint, v.endpoint, v.winner, v.reason, v.keyType, v.expectedFingerprint, v.v, v.uses, v.unreached) },
         )
     }
 }
@@ -13154,7 +13154,7 @@ sealed interface MachineRound {
 
 @Suppress("UNCHECKED_CAST")
 data class MachineRoundProblem(
-    val text: String,
+    val said: String,
     val detail: String,
     val why: DialWhy?,
     val seenKey: String?,
@@ -13165,14 +13165,14 @@ data class MachineRoundProblem(
     companion object {
         val ADAPTER: JsonAdapter<MachineRoundProblem> = obj(
             listOf(
-            Field("text", { Str }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
             Field("detail", { Str }, optional = false, nullable = false),
             Field("why", { opt(DialWhy.ADAPTER) }, optional = false, nullable = true),
             Field("seen_key", { opt(Str) }, optional = false, nullable = true),
             Field("expected_key", { opt(Str) }, optional = false, nullable = true),
             ),
             { a -> MachineRoundProblem(a[0] as String, a[1] as String, a[2] as DialWhy?, a[3] as String?, a[4] as String?) },
-            { v -> arrayOf(v.text, v.detail, v.why, v.seenKey, v.expectedKey) },
+            { v -> arrayOf(v.said, v.detail, v.why, v.seenKey, v.expectedKey) },
         )
     }
 }

@@ -23,5 +23,5 @@ pub const FRAMES: &[(&str, &str)] = &[
     ("sessions_replayed", "039f74b7"),
     ("terminal_follow_end", "59702041"),
     ("terminal_screen", "8dc76c06"),
-    ("transfer", "c408c696"),
+    ("transfer", "25dfe029"),
 ];
