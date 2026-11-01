@@ -41,7 +41,7 @@ describe("机器状态成品", () => {
     // 同是 down，后端说条上那一行正在做、带进度 ⇒ 照它。
     expect(machineFace({ ...down, strip: { tone: "busy", progress: true } })).toMatchObject({ tone: "busy", bar: true });
     expect(machineFace({ ...down, strip: { tone: "warn", progress: false } })).toMatchObject({ tone: "warn", bar: false });
-    expect(machineFace({ ...down, strip: { tone: "fault", progress: false } })).toMatchObject({ tone: "error", bar: false });
+    expect(machineFace({ ...down, strip: { tone: "fail", progress: false } })).toMatchObject({ tone: "error", bar: false });
     // 同是正在装，后端说不带进度 ⇒ 不出进度条。
     expect(machineFace({ ...decoded("正在装"), strip: { tone: "busy", progress: false } })).toMatchObject({ tone: "busy", bar: false });
     // 不进条（较新 · 停用）而有那一句 ⇒ 待办，不是出错。

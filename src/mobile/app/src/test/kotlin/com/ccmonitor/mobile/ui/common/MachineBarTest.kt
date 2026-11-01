@@ -7,7 +7,7 @@ import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
 import com.ccmonitor.mobile.core.wire.gen.MachineStripLine
-import com.ccmonitor.mobile.core.wire.gen.StripTone
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import com.ccmonitor.mobile.ui.chat.linkDown
 import com.ccmonitor.mobile.ui.chat.linkUp
@@ -28,7 +28,7 @@ class MachineBarTest {
 
     /** 核心给那一行带上条上那一格。 */
     private fun LinkLine.striped(
-        tone: StripTone,
+        tone: Tone,
         progress: Boolean = false,
     ): LinkLine {
         val m = machine.copy(strip = MachineStripLine(tone, progress))
@@ -41,14 +41,14 @@ class MachineBarTest {
 
     @Test
     fun `那台离线 ⇒ 条上是核心那一句，按钮是核心点名的那一颗`() {
-        val bar = barOf(linkDown("s-down", "d", listOf(retry)).striped(StripTone.OFFLINE))
-        assertEquals(BarLook("s-down", StripTone.OFFLINE, retry, detail = "d"), bar)
+        val bar = barOf(linkDown("s-down", "d", listOf(retry)).striped(Tone.OFFLINE))
+        assertEquals(BarLook("s-down", Tone.OFFLINE, retry, detail = "d"), bar)
     }
 
     @Test
     fun `正在连 ⇒ 核心那一句、不带按钮；正在装 ⇒ 那一句带进度；通着无事 ⇒ 不画`() {
-        assertEquals(BarLook("s-conn", StripTone.BUSY), barOf(LinkLine.Connecting(machineOf(MachineStateKind.CONNECTING, "s-conn")).striped(StripTone.BUSY)))
-        assertEquals(BarLook("s-inst", StripTone.BUSY, progress = true), barOf(linkDown("s-inst", state = MachineStateKind.INSTALLING).striped(StripTone.BUSY, progress = true)))
+        assertEquals(BarLook("s-conn", Tone.BUSY), barOf(LinkLine.Connecting(machineOf(MachineStateKind.CONNECTING, "s-conn")).striped(Tone.BUSY)))
+        assertEquals(BarLook("s-inst", Tone.BUSY, progress = true), barOf(linkDown("s-inst", state = MachineStateKind.INSTALLING).striped(Tone.BUSY, progress = true)))
         assertNull(barOf(linkUp()))
         assertNull("核心还没交那一行 ⇒ 不猜", barOf(null))
     }
@@ -58,14 +58,14 @@ class MachineBarTest {
         assertNull(barOf(linkUp("s-newer", state = MachineStateKind.NEWER)))
         assertNull(barOf(linkDown("s-off", state = MachineStateKind.DISABLED)))
         assertNull(barOf(linkDown("s-down", fixes = listOf(retry))))
-        assertEquals(StripTone.FAULT, barOf(linkDown("s-key", state = MachineStateKind.HOST_KEY_CHANGED).striped(StripTone.FAULT))?.tone)
+        assertEquals(Tone.FAIL, barOf(linkDown("s-key", state = MachineStateKind.HOST_KEY_CHANGED).striped(Tone.FAIL))?.tone)
     }
 
     @Test
     fun `那台旧了 ⇒ 琥珀条、核心那一句与［更新］；装没装上 ⇒ 失败那一句与详情、按钮照留`() {
-        val old = linkUp("s-old", fixes = listOf(update), state = MachineStateKind.NEEDS_UPDATE).striped(StripTone.WARN)
-        assertEquals(BarLook("s-old", StripTone.WARN, update), barOf(old))
-        assertEquals(BarLook("s-fail", StripTone.FAULT, update, detail = "d-fail"), barOf(old, Deploying.Failed(Failed("io_failed", "s-fail", "d-fail"))))
+        val old = linkUp("s-old", fixes = listOf(update), state = MachineStateKind.NEEDS_UPDATE).striped(Tone.WARN)
+        assertEquals(BarLook("s-old", Tone.WARN, update), barOf(old))
+        assertEquals(BarLook("s-fail", Tone.FAIL, update, detail = "d-fail"), barOf(old, Deploying.Failed(Failed("io_failed", "s-fail", "d-fail"))))
     }
 
     @Test
