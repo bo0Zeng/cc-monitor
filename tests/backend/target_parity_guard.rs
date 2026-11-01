@@ -217,7 +217,7 @@ fn every_target_has_the_same_commands_except_the_registered_gaps() {
         "本机 {host:?}：Target 轴与 `cfg(unix)` 分叉了"
     );
     assert_eq!(
-        crate::control::files_write::WriteRefusal::Unsupported(String::new()).code(),
+        crate::files::write::WriteRefusal::Unsupported(String::new()).code(),
         crate::NO_UNIX_MODE,
         "写面回的那个码与现推读的那个码不是同一个串"
     );

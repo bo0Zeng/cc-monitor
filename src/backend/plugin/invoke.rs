@@ -20,7 +20,7 @@ use std::path::Path;
 ///
 /// ⚠ 引用它的文案里**别把它写成命令名紧跟左括号**的形状 —— 零定时器护栏按调用形态扫，
 /// 它剥注释但**不剥字符串**，写在错误消息里会被当成一处定时器调用。
-pub(crate) const TIMED_OUT_CODE: i32 = 124;
+pub const TIMED_OUT_CODE: i32 = 124;
 
 /// 起插件时从宿主环境继承过去的键 —— 白名单，一个具名常量、一个家。
 ///
@@ -47,7 +47,7 @@ pub(crate) const TIMED_OUT_CODE: i32 = 124;
 ///   不加进本表（加进来就等于让这一层认识一个具体插件，`plugin::layer_guard` 拦的正是这个）。
 /// - 本表不是安全边界的全部：子进程仍然有 `PATH`、有 `HOME`，能读的与用户自己在终端里敲同一条命令一样多。
 ///   它关掉的是「宿主进程内部的秘密顺着环境漏出去」这一条。
-pub(crate) const INHERITED_ENV_KEYS: &[(&str, &str)] = &[
+pub const INHERITED_ENV_KEYS: &[(&str, &str)] = &[
     (
         "PATH",
         "被起的那个东西还要去找别的命令；本层找插件本体也走它",
@@ -64,7 +64,7 @@ pub(crate) const INHERITED_ENV_KEYS: &[(&str, &str)] = &[
 ];
 
 /// **根本没跑起来**的那一类 —— 与「跑了、退了、码是几」完全不同层。
-pub(crate) enum NotRun {
+pub enum NotRun {
     /// 参数塞不进一次命令调用（内核的单参数上限）。
     ///
     /// ★ 它必须与兜底桶分开：调用方要分得出「我给的东西太大」（自己能修）
@@ -75,17 +75,17 @@ pub(crate) enum NotRun {
 }
 
 /// 跑完了：拿到码与两条流。**语义不在这里**。
-pub(crate) struct Done {
+pub struct Done {
     /// 退出码；`None` = **被信号打断**（两件不同的事，别合并）。
-    pub(crate) code: Option<i32>,
-    pub(crate) stdout: Vec<u8>,
-    pub(crate) stderr: Vec<u8>,
+    pub code: Option<i32>,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
     /// 过了期限被收掉的那一次：原语交回的实际等了多久（整秒，向上取整；被命令总期限截短时是截短后的那个数）。没超时 ⇒ `None`。
-    pub(crate) waited_secs: Option<u64>,
+    pub waited_secs: Option<u64>,
 }
 
 /// 取第一行非空内容（拿来当诊断）。
-pub(crate) fn first_line(bytes: &[u8]) -> String {
+pub fn first_line(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes)
         .lines()
         .find(|l| !l.trim().is_empty())
@@ -99,7 +99,7 @@ pub(crate) fn first_line(bytes: &[u8]) -> String {
 /// `env` 是额外的环境变量（有些插件的契约走 env 而不是参数）。stdin 是空设备。
 /// 环境是白名单：清空后只按 [`INHERITED_ENV_KEYS`] 从宿主继承，再轮到调用方显式交办的 `env`（显式压过继承）。
 /// 宿主没有的键子进程也没有（空的 `PATH` 会让子进程在当前目录里找命令，比没有更糟）。
-pub(crate) fn child_for(bin: &Path, args: &[&str], env: &[(&str, &str)]) -> Child {
+pub fn child_for(bin: &Path, args: &[&str], env: &[(&str, &str)]) -> Child {
     let keys: Vec<&'static str> = INHERITED_ENV_KEYS.iter().map(|(k, _)| *k).collect();
     let mut c = Child::new(bin).args(args).inherit_only(&keys);
     for (k, v) in env {
@@ -134,7 +134,7 @@ fn not_run(bin: &Path, e: ChildFail) -> NotRun {
 /// `deadline_secs` 是给它的期限；过了 ⇒ 整组被杀、交成 [`TIMED_OUT_CODE`]（`waited_secs` 是原语说的实际等了多久）。
 /// `dir` 是它的当前目录（有的程序按当前目录认自己在哪，如 pb 往上找工作区）；不给 ⇒ 照宿主的。
 /// `stdin` 那几个字节喂进它的标准输入（`None` ⇒ 空设备）：读一段话的程序用（pb 的 `dump --refs`）。
-pub(crate) fn run_fed(
+pub fn run_fed(
     bin: &Path,
     args: &[&str],
     deadline_secs: u64,

@@ -140,8 +140,8 @@ pub fn kill_on_exit_now(origin: &Origin) -> bool {
 //    而**唯一观测得到后端之死的位置是它的父进程 = 宿主**（`§0-4` 的结论）。
 //
 // ⇒ 账住宿主侧，**而它零新增写盘口**：真正碰盘的是 `logging.rs::build_rolling_appender`
-//   （`write_site_registry::WRITE_SITES` 里已登记的那条「monitor 自己的滚动日志」），
-//   本段一个 `fs::` 调用都没有 ⇒ 不进那张表的人群，也不用改它。
+//   （monitor 自己的滚动日志，日志目录那一组落点归 `platform::own_fs`），
+//   本段一个 `fs::` 调用都没有 ⇒ 写盘那一组禁用名单在这里零命中。
 //
 // # ⚠ 今天**还没接线**的那一格，如实登记（不写在注释里就等于埋掉）
 //
@@ -414,7 +414,7 @@ pub fn last_brief(d: &Death) -> String {
 /// （现打逐字 `[21:14:36.212230477] exit rc=0 argv=[--with-bg --tail-only]`）
 /// ⇒ 「它上一次崩在哪一天」这句话在那本账上问不出来。**别把落点换成一个不打时刻的。**
 pub fn ledger_line(d: &Death) -> String {
-    let origin = inbound_client::LOCAL_ORIGIN;
+    let origin = cmd_wire::LOCAL;
     let code = exit_code(d).map(|c| format!(" 码={c}")).unwrap_or_default();
     format!(
         "[死亡账] origin={origin} 判定={} 退出状态={}{code} —— {}",
@@ -433,8 +433,8 @@ pub trait DeathSink {
 /// 生产落点：**monitor 自己的滚动日志**（只进日志；告诉用户的那一句由调用方经 `ui_error::tell` 说）。
 ///
 /// ★ 这是「真的会被写下来」那一半的全部内容，而它**零新增写盘口**：
-/// 真正碰盘的是 `logging.rs::build_rolling_appender` —— 一个已经登记在
-/// `write_site_registry::WRITE_SITES` 里的落点。本模块一个 `fs::` 调用都没有。
+/// 真正碰盘的是 `logging.rs::build_rolling_appender` —— 日志目录那一组落点归 `platform::own_fs`。
+/// 本模块一个 `fs::` 调用都没有。
 ///
 /// ⚠ **诚实边界**：`tracing` 的语义是「没有 subscriber 就丢掉」。
 /// `logging.rs` 在 setup 时才装 subscriber ⇒ **在那之前记的一笔会被静默丢掉**，
@@ -521,7 +521,7 @@ pub fn record_death(
     let line = ledger_line(&d);
     let sink_error = sink.write_line(&line).err();
     if let Some(why) = &sink_error {
-        let origin = inbound_client::LOCAL_ORIGIN;
+        let origin = cmd_wire::LOCAL;
         tracing::error!(
             "这台机（{origin}）的死亡账写不进去（{why}）—— 那一行没有落点，只能就地喊一声：{line}"
         );
@@ -625,7 +625,7 @@ pub fn health_face(h: &Health) -> HealthFace {
 
 /// 一句话里怎么称呼这台机器：本机与远端的每一句都由同一个 `format!` 渲染，唯一不同的就是这里回的称呼。
 fn machine_label(origin: &str) -> String {
-    if origin == inbound_client::LOCAL_ORIGIN {
+    if origin == cmd_wire::LOCAL {
         copy_text("rsCcBus.machine.local", &[])
     } else {
         origin.to_string()

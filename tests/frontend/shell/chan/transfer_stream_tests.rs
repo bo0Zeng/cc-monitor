@@ -30,10 +30,10 @@ use std::time::{Duration, Instant};
 const FRAME: usize = 1 << 20;
 
 fn budget(ms: u64) -> Budget {
-    Budget {
-        until: Instant::now() + Duration::from_millis(ms),
-        cancel: CancelToken::new(),
-    }
+    Budget::new(
+        Instant::now() + Duration::from_millis(ms),
+        CancelToken::new(),
+    )
 }
 
 /// 起一条挂着**生产句柄**的真通道（一对内存管子，生产里是窗口进程的 stdout / stdin），回窗口那一侧的客户端。
@@ -342,10 +342,7 @@ async fn a_coded_failure_reaches_the_window_with_its_code() {
 async fn the_terminal_ask_is_taken_by_the_monitor_and_refused_out_loud_when_it_cannot_be_done() {
     let client = rig().await;
     for (origin, code) in [
-        (
-            crate::inbound_client::LOCAL_ORIGIN,
-            "local_has_no_file_window",
-        ),
+        (cmd_wire::LOCAL, "local_has_no_file_window"),
         ("判据里不存在的机器·terminal", "no_such_origin"),
     ] {
         let r = client

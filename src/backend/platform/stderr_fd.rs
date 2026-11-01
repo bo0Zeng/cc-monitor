@@ -1,6 +1,6 @@
 //! **本进程 fd 2 的两件事**：换成指向某份文件 · 问它现在多长 —— 平台那一半（`dup2` / `fstat` 住这里，`platform/` 是唯一许平台原语的层）。
 //!
-//! 谁要它：`crate::stderr_log`（脱离常驻那条载体的后端把自己的 stderr 落进一份有上限、滚动的文件）。
+//! 谁要它：上层的 stderr 落盘那一块（脱离常驻那条载体的后端把自己的 stderr 落进一份有上限、滚动的文件）。
 //! 换 fd 而不是换 `tracing` 的写者：本进程写 stderr 的不止 `tracing` —— `eprintln!`（`[relay]` 那几句）· panic 信息 ·
 //! 继承了 stderr 的子进程，fd 这一层一次全接住；而且写是**同步**落盘的，进程 `exit` 那一刻前面的话一个字都不丢
 //! （「管子 ＋ 读线程」那一形会让 `exit` 之前的最后一句来不及被搬走）。
@@ -12,7 +12,7 @@ use copy_core::copy_text;
 
 /// 让 fd 2 指向 `f` 那份文件（原来的 fd 2 被原子地替掉）。`f` 之后可以丢：fd 2 持着同一个打开的文件。
 #[cfg(unix)]
-pub(crate) fn point_stderr_at(f: &impl std::os::fd::AsFd) -> Result<(), String> {
+pub fn point_stderr_at(f: &impl std::os::fd::AsFd) -> Result<(), String> {
     use std::os::fd::AsRawFd as _;
     // SAFETY: `f` 在本函数里活着，它的 fd 有效；`dup2` 只把它复制到 2，不动 `f` 本身。
     if unsafe { libc::dup2(f.as_fd().as_raw_fd(), libc::STDERR_FILENO) } < 0 {
@@ -32,7 +32,7 @@ pub(crate) fn point_stderr_at(f: &impl std::os::fd::AsFd) -> Result<(), String> 
 
 /// fd 2 此刻指着的那份东西有多长（普通文件才有意义；问不到 ⇒ `None`）。
 #[cfg(unix)]
-pub(crate) fn stderr_len() -> Option<u64> {
+pub fn stderr_len() -> Option<u64> {
     // SAFETY: `st` 是一块给 `fstat` 填的栈上内存；fd 2 不管指着什么，`fstat` 只读它的元数据。
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
     if unsafe { libc::fstat(libc::STDERR_FILENO, &mut st) } != 0 {

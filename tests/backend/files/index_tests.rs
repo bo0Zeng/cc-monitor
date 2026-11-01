@@ -19,29 +19,8 @@
 //! 不许锚在活体上）。本族一个字节都不读用户的真目录。
 
 use super::*;
-
-/// ★ 常驻那一份是**进程级的一个 static** ⇒ 同一进程里并行跑的判据会互相踩。
-///
-/// 🔴 不加这把锁会怎样（这不是假想，是这一族的结构性事实）：`cargo test` 默认多线程，
-/// 两条判据各自 [`rebuild_once`] 一棵不同的树 ⇒ 后一条把前一条的索引整份换掉，
-/// 前一条的条目数断言拿到的是**别人那棵树**的数。而那种红是**间歇性**的，
-/// 一次绿一次红，最省事的消法是把断言调松 —— 正是本仓反复治的那条路。
-///
-/// ⇒ 凡是碰常驻那一份的判据，**第一行就拿这把锁**。
-///
-/// ⚠ 它顺手把**两份**常驻状态都清空（索引 ＋ 浏览目录的 overlay）：
-/// 那两份一起构成「后端此刻手上的那份真相」，只清一半会让上一条判据挂的 watch
-/// 在下一条判据的查询里冒出来 —— 那种红同样是间歇性的。
-pub(crate) fn resident_lock() -> std::sync::MutexGuard<'static, ()> {
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    // 中毒了也要能接着跑：一条判据 panic 不该让其余的全部变成「毒锁」红。
-    let g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    forget_resident();
-    if let Ok(mut w) = super::super::browse_watch::WATCHED.write() {
-        w.clear();
-    }
-    g
-}
+// 碰常驻那一份的判据第一行拿的那把锁（[`super::test_support::resident_lock`]，上层的判据也拿它）。
+use super::test_support::resident_lock;
 
 /// 把常驻那一份清掉（判据之间复位用）。
 fn forget_resident() {
@@ -247,7 +226,7 @@ fn the_declared_rewalk_interval_is_what_status_reports() {
     let _lock = resident_lock();
     let fx = make_tree("status", 2, 3, 0);
     // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
     let s = status();
@@ -316,7 +295,7 @@ fn a_query_hands_back_the_hits_and_nothing_else() {
     let one = fx.root.join("d0002").join("needle-here-and-nowhere-else");
     std::fs::File::create(&one).expect("造那一条命中");
     // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
 
@@ -349,7 +328,7 @@ fn the_limit_truncates_the_payload_but_never_the_count() {
     let _lock = resident_lock();
     let fx = make_tree("limit", 3, 10, 0);
     // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
     let all = query("f000", 10_000);
@@ -400,7 +379,7 @@ fn a_non_utf8_filename_is_indexed_searchable_and_returned_byte_for_byte() {
         std::fs::File::create(&target).expect("造非 UTF-8 名字的文件");
 
         // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
-        let _serial = crate::files::index::testing::serial();
+        let _serial = crate::files::index::test_support::serial();
         rebuild_once(&fx.root)
             .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
         let r = query("weird-*-name", 10);
@@ -460,7 +439,7 @@ fn a_second_rebuild_is_refused_while_one_is_running_and_says_so() {
     // ── 阴性对照：**没人在跑的时候它必须能跑** ──────────────────
     //    没有这一条，下面那条「第二趟被拒」可以靠「它永远拒」全绿。
     // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     let first = rebuild_once(&fx.root);
     assert!(
         first.is_some(),
@@ -472,11 +451,11 @@ fn a_second_rebuild_is_refused_while_one_is_running_and_says_so() {
     //    ⚠ 这里**刻意不起线程**：起线程会让这条判据的读数依赖调度。
     //      按住那个位是同一件事的**可判形态** —— 被测的性质是
     //      「那个位是 true 的时候第二趟进不来」，而不是「两条线程谁先」。
-    crate::files::index::testing::hold_rebuilding(true);
+    crate::files::index::test_support::hold_rebuilding(true);
     let before = crate::files::index::rebuild_skipped();
     let second = rebuild_once(&fx.root);
     let after = crate::files::index::rebuild_skipped();
-    crate::files::index::testing::hold_rebuilding(false);
+    crate::files::index::test_support::hold_rebuilding(false);
 
     assert!(
         second.is_none(),
@@ -506,7 +485,7 @@ fn a_second_rebuild_is_refused_while_one_is_running_and_says_so() {
 fn a_page_is_exactly_that_slice_of_the_full_answer_and_the_count_stays_whole() {
     let _lock = resident_lock();
     let fx = make_tree("page", 3, 10, 0);
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     rebuild_once(&fx.root).expect("本格独占跑");
     let m = super::super::query::parse("f000").unwrap();
     let page = |offset: usize, limit: usize| {
@@ -541,7 +520,7 @@ fn a_page_is_exactly_that_slice_of_the_full_answer_and_the_count_stays_whole() {
 fn under_keeps_only_that_subtree_and_says_which_root_would_cover_it() {
     let _lock = resident_lock();
     let fx = make_tree("under", 3, 4, 0);
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     rebuild_once(&fx.root).expect("本格独占跑");
     let root = super::super::raw::path_bytes(&fx.root).to_vec();
     let d1 = super::super::raw::path_bytes(&fx.root.join("d0001")).to_vec();
@@ -599,7 +578,7 @@ fn under_keeps_only_that_subtree_and_says_which_root_would_cover_it() {
 fn a_newer_seq_supersedes_only_its_own_stream() {
     let _lock = resident_lock();
     let fx = make_tree("seq", 1, 3, 0);
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     rebuild_once(&fx.root).expect("本格独占跑");
     let m = super::super::query::parse("f").unwrap();
     let with = |t: &Ticket| {
@@ -633,7 +612,7 @@ fn a_newer_seq_supersedes_only_its_own_stream() {
 fn the_index_keeps_each_entry_kind() {
     let _lock = resident_lock();
     let fx = make_tree("kinds", 4, 5, 0);
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     rebuild_once(&fx.root).expect("本格独占跑");
     let dirs = query("folder:", 1000);
     assert_eq!(dirs.total_hits, 4);
@@ -665,7 +644,7 @@ fn name_hits_come_back_most_relevant_first_and_pages_keep_that_order() {
         std::fs::create_dir_all(at.parent().unwrap()).unwrap();
         std::fs::write(&at, b"").unwrap();
     }
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     rebuild_once(&root).expect("本格独占跑");
     let m = super::super::query::parse("REPORT").unwrap();
     let page = |offset: usize, limit: usize| {
@@ -736,7 +715,7 @@ fn hits_sort_by_each_column_both_ways_and_pages_keep_that_order() {
         f.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(t))
             .unwrap();
     }
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     rebuild_once(&root).expect("本格独占跑");
     let m = super::super::query::parse("ext:log").unwrap();
     let rootb = super::super::raw::path_bytes(&root).to_vec();
@@ -879,7 +858,7 @@ fn location_is_the_parent_relative_to_the_search_start() {
 /// 写它们的口：`rebuild_once` · `set_browsing` 直调；或经这一族的入口（`files::answer` / `answer_wire`）
 /// 调 `files.index.rebuild` / `files.browse` —— 能力名写成字面量以外的东西（循环变量、拼出来的）
 /// 就当它可能是那两条（「每条能力真调一次」那一形）。
-/// `files/` 底下的判据 `use super::*`，入口是裸名 `answer(` / `answer_wire(`；别处要带 `files::tests::`。
+/// `files/` 底下的判据 `use super::*`，入口是裸名 `answer(` / `answer_wire(`；别处要带 `files::test_support::`。
 fn touches_resident_state(chunk: &str, bare_entry: bool) -> bool {
     // 针拼出来：本文件自己的源码不该被当成一处调用。
     let writers = [concat!("rebuild", "_once("), concat!("set_", "browsing(")];
@@ -892,10 +871,10 @@ fn touches_resident_state(chunk: &str, bare_entry: bool) -> bool {
         "files.browse",
         "files-browse",
     ];
-    // 判据的问法住 `files/` 的测试模块（`files::tests::answer`）：别处带这一段前缀。
+    // 判据的问法住 `files::test_support`（`files::test_support::answer`）：别处带这一段前缀。
     let mut entries = vec![
-        concat!("tests::", "answer("),
-        concat!("tests::", "answer_wire("),
+        concat!("test_support::", "answer("),
+        concat!("test_support::", "answer_wire("),
     ];
     if bare_entry {
         entries.push(concat!(" ", "answer("));
@@ -935,12 +914,26 @@ fn every_test_that_can_touch_the_resident_state_takes_the_one_lock() {
     let root = guard_core::addr::backend_tests_root();
     let mut touching = 0usize;
     let mut unlocked: Vec<String> = Vec::new();
+    // 同住 `files/` 的写面判据：它们的裸名 `answer(` 是写面那一个入口（`write::answer`），不碰常驻那两份。
+    const WRITE_FACE_TESTS: &[&str] = &[
+        "files/batch_tests.rs",
+        "files/commit_tests.rs",
+        "files/extract_tests.rs",
+        "files/overwrite_atomic_tests.rs",
+        "files/session_attachment_tests.rs",
+        "files/toctou_tests.rs",
+        "files/upload_chunks_tests.rs",
+        "files/write_tests.rs",
+    ];
+    let mut write_face_seen = 0usize;
     for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
         let inner = path.strip_prefix(&root).unwrap_or(&path);
         let rel = inner.to_string_lossy().replace('\\', "/");
-        // 第一段目录是 `files` ⇒ 这一族自己的判据（按路径段比，不按串前缀）。
-        let bare =
-            inner.components().next() == Some(std::path::Component::Normal("files".as_ref()));
+        let write_face = WRITE_FACE_TESTS.contains(&rel.as_str());
+        write_face_seen += usize::from(write_face);
+        // 第一段目录是 `files`、又不是写面那几份 ⇒ 读族自己的判据（按路径段比，不按串前缀）。
+        let bare = !write_face
+            && inner.components().next() == Some(std::path::Component::Normal("files".as_ref()));
         let stripped = guard_core::strip_comment_lines(&src);
         // 第一块是第一条 `#[test]` 之前的那段（工具函数），不是判据。
         for chunk in guard_core::test_attr_chunks(&stripped).into_iter().skip(1) {
@@ -960,6 +953,11 @@ fn every_test_that_can_touch_the_resident_state_takes_the_one_lock() {
             }
         }
     }
+    assert_eq!(
+        write_face_seen,
+        WRITE_FACE_TESTS.len(),
+        "写面判据那张表里有几份不在了 —— 表没跟上改名"
+    );
     assert!(
         touching >= 10,
         "只认出 {touching} 条会写常驻状态的判据 —— 切块或认法坏了，本条在空转"
@@ -971,7 +969,7 @@ fn every_test_that_can_touch_the_resident_state_takes_the_one_lock() {
     );
     // 反向自检：这把尺子认得出那一形，也认得出拿了锁的、只碰别的能力的。
     let loop_call =
-        "fn x() {\n    for n in names { let _ = crate::files::tests::answer_wire(&n, &a, &t); }\n}";
+        "fn x() {\n    for n in names { let _ = crate::files::test_support::answer_wire(&n, &a, &t); }\n}";
     assert!(
         touches_resident_state(loop_call, false),
         "能力名是变量的那一形没认出来"

@@ -119,7 +119,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("machine-find", "664b43ae"),
     ("machine-interrupts", "91238f03"),
     ("machine-menu", "ba353e4f"),
-    ("machine-read", "ebdd1428"),
+    ("machine-read", "c6ceb116"),
     ("machine-stop", "1a48df65"),
     ("machine-wake", "96316001"),
     ("machines-read", "6ca468b5"),

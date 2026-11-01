@@ -242,15 +242,16 @@ fn start(
         tracing::error!("shots_shell：{} 没给命令", m.origin);
         return;
     };
-    let mut cmd = std::process::Command::new(prog);
-    cmd.args(args)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped());
-    let mut child = match crate::spawn_managed::spawn_managed_cmd(
-        &mut cmd,
+    let mut child = match crate::spawn_managed::spawn_managed_with(
+        prog,
         crate::spawn_managed::ConsolePolicy::Hidden,
         crate::spawn_managed::Lifetime::JobKillOnClose,
         crate::spawn_managed::StderrSink::Inherit,
+        |cmd| {
+            cmd.args(args)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped());
+        },
     ) {
         Ok(c) => c,
         Err(e) => {

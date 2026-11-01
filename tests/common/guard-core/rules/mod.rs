@@ -38,6 +38,8 @@ mod search_kou_jing_guard;
 mod strip_clean;
 #[path = "structural_scan.rs"]
 mod structural_scan;
+#[path = "test_home_linked.rs"]
+mod test_home_linked;
 
 #[path = "mod_tests.rs"]
 mod tests;

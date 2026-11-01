@@ -12,40 +12,6 @@
 use super::*;
 use std::path::{Path, PathBuf};
 
-/// 判据用的几种造法（只在测试构建里有：住测试模块里，生产段一个都看不见）。
-impl Own {
-    /// 判据用：家目录指到一个临时目录（数据目录随之是它底下的 `.cc-monitor`，同没设 `CCM_DATA_DIR` 那一形）。
-    pub(crate) fn issue_at(home: &Path) -> Own {
-        Own {
-            home: Some(home.to_path_buf()),
-            data: Some(home.join(HOME_DIR_NAME)),
-        }
-    }
-
-    /// 判据用：只给数据目录（指到一个临时目录；家目录那一根没有）。
-    pub(crate) fn issue_data_at(data: &Path) -> Own {
-        Own {
-            home: None,
-            data: Some(data.to_path_buf()),
-        }
-    }
-
-    /// 判据用：两个根各指一处（家目录 · 数据目录，同设了 `CCM_DATA_DIR` 那一形）。
-    pub(crate) fn issue_roots(home: &Path, data: &Path) -> Own {
-        Own {
-            home: Some(home.to_path_buf()),
-            data: Some(data.to_path_buf()),
-        }
-    }
-
-    /// 判据用：根指到这个测试进程自己的一个临时目录（不碰真家目录；只是要递一份句柄、并不关心写到哪的那些判据用它）。
-    pub(crate) fn for_tests() -> Own {
-        Own::issue_at(
-            &std::env::temp_dir().join(format!("ccm-own-for-tests-{}", std::process::id())),
-        )
-    }
-}
-
 fn sandbox(tag: &str) -> PathBuf {
     let base = std::env::temp_dir().join(format!(
         "ccm-own-{tag}-{}-{:?}",
@@ -267,11 +233,8 @@ fn side_files(dir: &std::path::Path) -> Vec<String> {
 fn a2_round_trip_newline_and_private() {
     let base = sandbox("a2");
     let p = base.join("x.json");
-    atomic_write(
-        &p,
-        &crate::common::own_state::json_body(&p, &serde_json::json!({"a": 1})).expect("编码"),
-    )
-    .expect("write");
+    // 编码那一半（一行 JSON ＋ 结尾换行）住上层，它的判据在后端库根的 `platform/cross_tests.rs`。
+    atomic_write(&p, b"{\"a\":1}\n").expect("write");
     assert_eq!(std::fs::read(&p).expect("read"), b"{\"a\":1}\n");
     atomic_write(&p, b"raw").expect("overwrite");
     assert_eq!(std::fs::read(&p).expect("read"), b"raw");

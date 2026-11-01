@@ -9,10 +9,10 @@
 use std::path::{Path, PathBuf};
 
 /// 盯一个目录：要不要连子目录一起。
-pub(crate) type Dir = (PathBuf, bool);
+pub type Dir = (PathBuf, bool);
 
 /// 一份活着的监听：名单换得动（[`Watching::rearm`]）、踢得醒（[`Watching::kick`]）。一丢 ⇒ 监听卸掉、收的线程跟着退出。
-pub(crate) struct Watching {
+pub struct Watching {
     inner: notify::RecommendedWatcher,
     /// 此刻真挂着的那几个目录。
     armed: Vec<Dir>,
@@ -22,7 +22,7 @@ pub(crate) struct Watching {
 
 impl Watching {
     /// 名单跟上 `dirs`：新来的挂上、离开的卸掉（留下的不重挂）。回这一趟挂不上的逐条原因（「目录：原话」）。
-    pub(crate) fn rearm(&mut self, dirs: &[Dir]) -> Vec<String> {
+    pub fn rearm(&mut self, dirs: &[Dir]) -> Vec<String> {
         use notify::Watcher;
         for gone in self.armed.iter().filter(|d| !dirs.contains(d)) {
             // 卸不掉多半是那个目录已经没了（watch 跟着 inode 一起走了）：名单照样摘。
@@ -43,12 +43,12 @@ impl Watching {
     }
 
     /// 此刻真挂着的目录数。
-    pub(crate) fn armed(&self) -> usize {
+    pub fn armed(&self) -> usize {
         self.armed.len()
     }
 
     /// 踢一下：没有文件动静也回调一次（路径为空）—— 调用方自己做完了一件事、要同步一趟时用。
-    pub(crate) fn kick(&self) {
+    pub fn kick(&self) {
         let _ = self.tx.send(None);
     }
 }
@@ -63,7 +63,7 @@ fn mode(deep: bool) -> notify::RecursiveMode {
 
 /// 挂监听、起那条收的线程（名字 `thread`）。`concerns` 认一条路径算不算数；`on_change` 每阵动静调一次，
 /// 交出这一阵里过了过滤的路径（去重；踢一下那一次为空）。`dirs` 里任何一个挂不上 ⇒ `Err`（要容忍的调用方传空名单、再 [`Watching::rearm`]）。
-pub(crate) fn watch(
+pub fn watch(
     dirs: &[Dir],
     concerns: impl Fn(&Path) -> bool + Send + 'static,
     thread: &str,

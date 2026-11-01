@@ -77,7 +77,7 @@ pub fn resolve_window_bin() -> Result<PathBuf, ProcFail> {
 /// 自带那份放到哪：本机后端落点所在的那个目录（`~/.cc-monitor/bin`）。家目录问不到 ⇒ `None`（不发明一个目录）。
 fn landing_dir() -> Option<PathBuf> {
     let (rel, _) = relay_route_core::BACKEND_LANDING_REL.rsplit_once('/')?;
-    creds_core::store::home_dir().map(|h| rel.split('/').fold(h, |p, seg| p.join(seg)))
+    crate::data_paths::home().map(|h| rel.split('/').fold(h, |p, seg| p.join(seg)))
 }
 
 /// [`resolve_window_bin`] 的注入形：环境变量的值 · 自带的字节 · 落点目录 · 两样宿主知识都由调用方给
@@ -164,14 +164,15 @@ pub fn spawn_window(
     let bin = resolve_window_bin()?;
     let seed = encode_request(req).map_err(|s| crashed(s.logged()))?;
     // argv 上一个字都没有（理由住头注）；接 stdin（种子 ＋ 通道写）与 stdout（通道读）两根，stderr 上有就绪那一行。
-    let mut cmd = std::process::Command::new(&bin);
-    cmd.stdin(std::process::Stdio::piped());
-    cmd.stdout(std::process::Stdio::piped());
-    let mut child = crate::spawn_managed::spawn_managed_cmd(
-        &mut cmd,
+    let mut child = crate::spawn_managed::spawn_managed_with(
+        &bin,
         ConsolePolicy::Hidden,
         Lifetime::Detached,
         StderrSink::Captured,
+        |cmd| {
+            cmd.stdin(std::process::Stdio::piped());
+            cmd.stdout(std::process::Stdio::piped());
+        },
     )
     .map_err(|e| ProcFail {
         said: copy_core::reason::io_reason(e.kind()),

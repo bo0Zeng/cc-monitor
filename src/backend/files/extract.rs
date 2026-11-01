@@ -4,7 +4,7 @@
 //! - 「解压到这里」：用 Rust 库（`tar` · `flate2` · `zip`，不调外部命令）解到同目录下以包名命名的新目录；每一条先过路径解析
 //!   （挡 zip-slip：`..` / 绝对路径 / 链接出根），撞名就问；支持 zip · tar · tar.gz · tgz，其余格式说「不认这种包」。
 //!
-//! # 两趟，照复制目录（`files_write::copy_tree`）
+//! # 两趟，照复制目录（`write::copy_tree`）
 //!
 //! 1. 计划（只读，[`plan`]）：逐条目判路径 —— 只许普通段（`..` / 绝对 / 盘符 ⇒ 整趟拒；`.` 与空段剥掉）；链接的目标必须相对、
 //!    且从它所在的目录起算词法上不出落点；硬链接只许指向包里前面出现过的普通文件（落成一份拷贝）；
@@ -19,11 +19,11 @@
 //!
 //! 认下的：修改时间 / 扩展属性 / 属主 / 特殊权限位都不还原。库自带的「一步解到盘上」不用（不经我们的路径解析）。
 
-use super::files_write::{walk_in_root, wire_of, Act, Last, WriteRefusal, TREE_ENTRY_CAP};
+use super::write::{walk_in_root, wire_of, Act, Last, WriteRefusal, TREE_ENTRY_CAP};
 use crate::common::said::Said;
 use crate::platform::fs::{Face, Ro, RoFile};
 use cmd_wire::files as wire;
-use copy_core::{copy_text, io_reason};
+use copy_core::{copy_text, io_reason, Discard, Why};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -524,11 +524,11 @@ fn land_file(
             Ok(n)
         }
         Ok(_) => {
-            face.delete_file(&at).ok();
+            face.delete_file(&at).discard(Why::CleanupAfterFailure); // 删自己 `O_EXCL` 刚建的那一份，随后整趟回滚
             Err(over_bytes(cap))
         }
         Err(e) => {
-            face.delete_file(&at).ok();
+            face.delete_file(&at).discard(Why::CleanupAfterFailure); // 同上
             Err(fail(e))
         }
     }
@@ -811,7 +811,7 @@ fn non_empty(p: &wire::WirePath, key: &str) -> Result<PathBuf, Said> {
     Ok(crate::files::raw::to_path_buf(&p.0))
 }
 
-super::files_write::acts! {
+super::write::acts! {
     FilesExtractReq => FilesTreeReply, |r, f| extract_of(f, r);
     FilesLinkReq => FilesPathReply, |r, f| link_of(f, r);
 }
@@ -840,5 +840,5 @@ fn link_of(face: &Face, req: wire::FilesLinkReq) -> Result<wire::FilesPathReply,
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/control/files_extract_tests.rs"]
+#[path = "../../../tests/backend/files/extract_tests.rs"]
 mod tests;

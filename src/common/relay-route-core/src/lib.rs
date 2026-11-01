@@ -33,7 +33,7 @@
 //!   中转在不在听（[`PORT`]，`faces/read_face.rs` · `faces/launch_account_face.rs`）。
 //! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻后端的套接字（[`listen_socket_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）。
 //!   家那一族由后端列（[`OWN_HOME_ENTRIES`]），monitor 不另列。
-//! - 后端按家那一族落盘：`control/exit_policy` · `control/files_commit` · `control/resident` ·
+//! - 后端按家那一族落盘：`control/exit_policy` · `files/commit` · `control/resident` ·
 //!   `assets/skill_ledger` · `assets/asset_catalog` · `platform/shell/dialect`（两份别名文件）·
 //!   `accounts/manage`（账号库）；读账号库清单的还有 `observe/accounts_query` · `control/ccm`。
 
@@ -86,7 +86,7 @@ pub const PORT: u16 = 8788;
 pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
 
 /// 〔「一台机器一个家」〕后端的**上传暂存区**（相对家目录）：SFTP 传输台只往这里写 `<key>.part`，
-/// 传完由那台后端提交、挪进目标。后端按它落盘（`control/files_commit.rs::STAGING_DIR`），monitor 的数据位置页按它列出。
+/// 传完由那台后端提交、挪进目标。后端按它落盘（`files/commit.rs::STAGING_DIR`），monitor 的数据位置页按它列出。
 pub const STAGING_DIR_REL: &str = ".cc-monitor/staging";
 
 /// monitor 的设置（monitor `config.rs::patch_config_at` 是唯一写者）。

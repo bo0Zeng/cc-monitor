@@ -161,7 +161,7 @@ impl ManagedChild {
 /// **唯一出口**（那个签名）。三个策略都是必填参数，一个都不给 `Default`。
 ///
 /// 只起「一个二进制 ＋ 一串 argv」那种最简形态。要另设 env / cwd / stdin / stdout 的，
-/// 走 [`spawn_managed_cmd`] —— 那是**同一条路的内层**，不是旁路（本函数自己就调它）。
+/// 走 [`spawn_managed_with`]（同一条路，多一个装配闭包）。
 pub fn spawn_managed(
     bin: &Path,
     args: &[String],
@@ -169,8 +169,27 @@ pub fn spawn_managed(
     lifetime: Lifetime,
     stderr: StderrSink,
 ) -> std::io::Result<ManagedChild> {
-    let mut cmd = std::process::Command::new(bin);
-    cmd.args(args);
+    spawn_managed_with(bin, console, lifetime, stderr, |cmd| {
+        cmd.args(args);
+    })
+}
+
+/// 壳里 `Command` 只在这里造（`clippy.toml` 起进程那一组只在这一处放行）：`setup` 装「跑什么」
+/// （argv / env / cwd / stdin / stdout），装完当场按三条策略起。拿不到一个没起的 `Command`，
+/// 所以落点没法绕开三条策略自己 `spawn` / `output`。
+pub fn spawn_managed_with(
+    program: impl AsRef<std::ffi::OsStr>,
+    console: ConsolePolicy,
+    lifetime: Lifetime,
+    stderr: StderrSink,
+    setup: impl FnOnce(&mut std::process::Command),
+) -> std::io::Result<ManagedChild> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "壳起进程的唯一住址：造好就交给 `spawn_managed_cmd` 按三条策略起"
+    )]
+    let mut cmd = std::process::Command::new(program);
+    setup(&mut cmd);
     spawn_managed_cmd(&mut cmd, console, lifetime, stderr)
 }
 

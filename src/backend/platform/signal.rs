@@ -9,7 +9,7 @@ use copy_core::said::Said;
 /// ★ **监听在调用的这一刻就登记好**，返回的 future 只负责等 —— 写成 `async fn` 的话，登记要等第一次被 poll，
 /// 建好之后、poll 之前到的那一次信号就漏了。
 /// 装不上某一个处理器 ⇒ 说出来，退到只等另一个（原 `main.rs` 那两支的行为逐字保留）。
-pub(crate) fn shutdown_listener() -> impl std::future::Future<Output = ()> + Send + 'static {
+pub fn shutdown_listener() -> impl std::future::Future<Output = ()> + Send + 'static {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{signal, SignalKind};
@@ -54,7 +54,7 @@ pub(crate) fn shutdown_listener() -> impl std::future::Future<Output = ()> + Sen
 /// `kill` 是 async-signal-safe 的 libc 调用。**调用方必须已经校验过 pid 的身份**
 /// —— pid 会被复用，给一个无关进程发 SIGUSR1 轻则无效、重则终止它
 /// （很多程序把 SIGUSR1 当自定义控制信号，默认处置就是终止）。
-pub(crate) fn send_sigusr1(pid: u32) -> bool {
+pub fn send_sigusr1(pid: u32) -> bool {
     #[cfg(unix)]
     {
         // SAFETY: 见头注 —— 身份校验是调用方的责任，这里只做系统调用。
@@ -70,7 +70,7 @@ pub(crate) fn send_sigusr1(pid: u32) -> bool {
 /// **一个要被停的进程的把手** —— 「请它收尾 → 宽限期内等 → 强杀」三步都经它（`control/resident.rs::stop_pid`）。
 /// Linux 是 pidfd：信号经它发、退出经它等，拿到把手之后 pid 被复用也打不到别人；Windows 是进程句柄（没有「请它收尾」那一格）。
 /// 只给一次性子命令用：带期限的等待登记在 `clippy.toml` 的 `disallowed-methods`，调用处就地放行。
-pub(crate) struct Stoppable {
+pub struct Stoppable {
     #[cfg(target_os = "linux")]
     fd: std::os::fd::OwnedFd,
     #[cfg(windows)]
@@ -88,7 +88,7 @@ fn said_with(
 }
 
 /// 拿 `pid` 的把手。`Ok(None)` = 它已经不在了。
-pub(crate) fn stoppable(pid: u32) -> Result<Option<Stoppable>, Said> {
+pub fn stoppable(pid: u32) -> Result<Option<Stoppable>, Said> {
     let pid_s = pid.to_string();
     let failed = |kind: std::io::ErrorKind, raw: &dyn std::fmt::Display| {
         said_with(kind, raw, |why| {
@@ -153,7 +153,7 @@ impl Stoppable {
     }
 
     /// 请它收尾（SIGTERM）。Windows 没有这一格 ⇒ `Err`，调用方直接走强杀并如实报「强杀」。
-    pub(crate) fn ask_to_finish(&self) -> Result<(), Said> {
+    pub fn ask_to_finish(&self) -> Result<(), Said> {
         #[cfg(target_os = "linux")]
         {
             self.send(libc::SIGTERM)
@@ -165,7 +165,7 @@ impl Stoppable {
     }
 
     /// 强杀（SIGKILL / `TerminateProcess`）。
-    pub(crate) fn kill(&self) -> Result<(), Said> {
+    pub fn kill(&self) -> Result<(), Said> {
         #[cfg(target_os = "linux")]
         {
             self.send(libc::SIGKILL)
@@ -189,7 +189,7 @@ impl Stoppable {
 
     /// **至多等 `ms` 毫秒**看它退没退：阻塞在内核事件上（pidfd 可读 / 句柄被触发），不轮询、不醒来看。
     /// `Ok(true)` = 退了（Linux 上退了还没被收尸的也算）；`Ok(false)` = 期限到了还在。
-    pub(crate) fn exited_within(&self, ms: u32) -> Result<bool, Said> {
+    pub fn exited_within(&self, ms: u32) -> Result<bool, Said> {
         let failed = |e: std::io::Error| {
             said_with(e.kind(), &e, |why| {
                 copy_core::copy_text("beStop.wait.failed", &[("why", why)])

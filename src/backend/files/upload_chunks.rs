@@ -1,16 +1,16 @@
 //! 上传的块形：把 `files-stage-chunk` 送进暂存区的块拼成一份暂存件 `<key>.part`，交给原来那条提交。
 //!
 //! 给非标准 SFTP 起始目录（chroot / `internal-sftp -d`）的机器用：连上时 SFTP `realpath(".")` 与那台后端的 `$HOME` 不一致 ⇒
-//! 这台的上传改走后端链路分块写。块的形状与存盘分块同一个（`files_commit::chunk_name`，`O_EXCL` 一块一份）；拼出来之后与 SFTP 那条路
+//! 这台的上传改走后端链路分块写。块的形状与存盘分块同一个（`commit::chunk_name`，`O_EXCL` 一块一份）；拼出来之后与 SFTP 那条路
 //! 同一条提交（整份摘要核 · 改名上位 · 不覆盖时先占位）⇒ 落进用户目录的那一下只有一份。
 //!
 //! 流式拼（一块一块读、写进暂存件），不整份读进内存：上传件没有存盘那条 8 MiB 读上限。
 //! 失败 ⇒ 删掉自己刚建的暂存件；不论成败都删掉这一键的全部块（与 `commit_text` 同一条）。
 
-use super::files_commit::{chunk_name, drop_chunks, is_key, STAGING_DIR};
-use super::files_write::{walk_in_root, Last, WriteRefusal};
+use super::commit::{chunk_name, drop_chunks, is_key, STAGING_DIR};
+use super::write::{walk_in_root, Last, WriteRefusal};
 use crate::platform::fs::{Face, Ro};
-use copy_core::{copy_text, io_reason};
+use copy_core::{copy_text, io_reason, Discard, Why};
 use std::path::Path;
 
 /// 把 `<key>.0.chunk` … `<key>.<chunks-1>.chunk` 依次拼成 `<key>.part`（`O_EXCL` 新建），总长必须恰好 `bytes`、不多一块。
@@ -111,7 +111,7 @@ fn assemble(
         Some(e) => {
             // 只删**我们自己刚建的那一份**（`O_EXCL` 保证它此前不存在）。
             if let Ok(p) = walk_in_root(Last::Link, &dir, format!("{key}.part")) {
-                face.delete_file(&p).ok();
+                face.delete_file(&p).discard(Why::CleanupAfterFailure); // 块由 `drop_chunks` 收
             }
             Err(e)
         }
@@ -119,5 +119,5 @@ fn assemble(
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/control/files_upload_chunks_tests.rs"]
+#[path = "../../../tests/backend/files/upload_chunks_tests.rs"]
 mod tests;

@@ -277,19 +277,34 @@ fn an_offer_takes_the_hello_as_typed_and_names_the_frame_kinds_that_differ() {
 /// 期限：剩余只减不增、过了就是零；换钟面不改时刻。撤单手柄拨一下，等它的都醒。
 #[tokio::test]
 async fn budget_and_cancel_token_basics() {
-    let b = Budget {
-        until: std::time::Instant::now() - Duration::from_millis(1),
-        cancel: CancelToken::new(),
-    };
+    let until = std::time::Instant::now() - Duration::from_millis(1);
+    let b = Budget::new(until, CancelToken::new());
     assert_eq!(b.remaining(), Duration::ZERO);
-    assert_eq!(b.deadline().into_std(), b.until);
-    let t = b.cancel.clone();
+    assert_eq!(b.deadline().into_std(), until);
+    let t = b.cancel().clone();
     let waiter = tokio::spawn(async move { t.cancelled().await });
-    assert!(!b.cancel.is_cancelled());
-    b.cancel.cancel();
+    assert!(!b.cancel().is_cancelled());
+    b.cancel().cancel();
     tokio::time::timeout(guard_core::wall::CEILING, waiter)
         .await
         .unwrap()
         .unwrap();
-    assert!(b.cancel.is_cancelled());
+    assert!(b.cancel().is_cancelled());
+}
+
+/// 收紧期限只取小：给晚的不放宽、给早的收紧；撤单手柄跟着走，还是同一个开关。
+#[test]
+fn narrow_only_tightens_and_keeps_the_cancel_handle() {
+    let now = std::time::Instant::now();
+    let (early, late) = (now + Duration::from_secs(1), now + Duration::from_secs(9));
+    let b = Budget::new(early, CancelToken::new());
+    let outside = b.cancel().clone();
+
+    let b = b.narrow(late);
+    assert_eq!(b.deadline().into_std(), early, "给晚的期限把预算放宽了");
+    let b = b.narrow(now);
+    assert_eq!(b.deadline().into_std(), now, "给早的期限没收紧");
+
+    outside.cancel();
+    assert!(b.cancel().is_cancelled(), "收紧后换了一个撤单开关");
 }

@@ -16,8 +16,8 @@
 //!
 //! # 归原生那一块（两台之间搬字节是拨号那一半的活）
 //!
-//! 它引 `dial::sftp` 拿会话、搬字节；文件管理那一块（`files/` · `control/files_*.rs`）只管本机的读和写，它一处都不引
-//! （`files/module_boundary_guard.rs` 两个方向都钉）。两块共用的路径解析 · 暂存件命名 · 流式摘要 · 路径字节还原都住 `common/`。
+//! 它引 `dial::sftp` 拿会话、搬字节；文件管理那一块（`files/`，独立的包）只管本机的读和写，它不引这里
+//! （引不到上层由 Cargo 管）。两块共用的路径解析 · 暂存件命名 · 流式摘要 · 路径字节还原都住 `common/`。
 //! 下载要写本机用户选的落点（`.part` ＋ 改名上位）：写经票表手里那一份 `Face`（帧面分派那一层造台时交来），
 //! 用到的只有 `O_EXCL` 新建 · 接着写 · 改名 · 删文件；每一处改动的路径都是 `common::root_path::walk_in_root` 交回的 `Resolved`。
 //! 远端那一半（暂存区的写）全经 `ssh-dial/sftp.rs` 的写原语（只许两处、先过 `fenced_remote`）。
@@ -146,7 +146,7 @@ pub const MAX_TICKETS_PER_CONNECTION: usize = 64;
 // ═══ 暂存件的键 ════════════════════════════════════════════════════════════════════════
 
 /// 由（本机路径 · 大小 · 修改时间）派生暂存件的键：同一份文件重拖一次落到同一个暂存件上 ⇒ 续传的尾块对拍照旧生效。
-/// 暂存区、键长、键派生与提交那一侧（`files_commit`）同在本 crate。标准库默认散列跨 Rust 版本不保证稳定 ——
+/// 暂存区、键长、键派生与提交那一侧（`files::commit`）一致，提交那一侧住文件管理那一块。标准库默认散列跨 Rust 版本不保证稳定 ——
 /// 只意味着升级之后第一次重拖从 0 来；尾块对拍另有一道兜底，不会接错。
 pub fn staging_key(local_path: &str, size: u64, mtime_ns: u128) -> String {
     use std::hash::{DefaultHasher, Hash, Hasher};
@@ -434,7 +434,7 @@ async fn drain_sent_writes(rf: &mut sftp::RemoteFile) {
 /// 远端后端改名上位之前对暂存件算一遍，不等 ⇒ 拒并删掉那份暂存件。尾块对拍看不见「前缀 ＋ 洞 ＋ 尾巴」，整份摘要看得见。
 ///
 /// 暂存区不在就建最后那一段（上一级 `~/.cc-monitor` 不在 ⇒ 报错，不顺手建：后端是给定的，提交也要它在）。
-/// 孤儿不在这里扫（远端后端 `files_commit::sweep_stale`，每次提交成功时顺手扫）。
+/// 孤儿不在这里扫（远端后端 `files::commit::sweep_stale`，每次提交成功时顺手扫）。
 pub(crate) async fn upload_to_staging(
     s: &Session,
     local_path: &str,
