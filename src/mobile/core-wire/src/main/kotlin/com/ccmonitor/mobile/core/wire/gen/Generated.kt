@@ -10439,7 +10439,7 @@ sealed interface Inl {
         val value: String,
     ) : Inl
     data class InlNode(
-        val value: InlNode,
+        val value: com.ccmonitor.mobile.core.wire.gen.InlNode,
     ) : Inl
 
     companion object {
@@ -10447,7 +10447,7 @@ sealed interface Inl {
             byToken<Inl>(
                 listOf(
                 Tok(JsonReader.Token.STRING, Inl.Text::class.java, { Str }, { Inl.Text(it as String) }, { (it as Inl.Text).value }),
-                Tok(JsonReader.Token.BEGIN_OBJECT, Inl.InlNode::class.java, { InlNode.ADAPTER }, { Inl.InlNode(it as InlNode) }, { (it as Inl.InlNode).value }),
+                Tok(JsonReader.Token.BEGIN_OBJECT, Inl.InlNode::class.java, { com.ccmonitor.mobile.core.wire.gen.InlNode.ADAPTER }, { Inl.InlNode(it as com.ccmonitor.mobile.core.wire.gen.InlNode) }, { (it as Inl.InlNode).value }),
                 ),
             )
     }
@@ -13927,7 +13927,7 @@ sealed interface MdBlock {
 
     @Suppress("UNCHECKED_CAST")
     data class P(
-        val k: List<Inl>,
+        val k: kotlin.collections.List<Inl>,
     ) : MdBlock, Ordered {
         override val t: String get() = "p"
         override var wireOrder: IntArray? = null
@@ -13935,7 +13935,7 @@ sealed interface MdBlock {
     @Suppress("UNCHECKED_CAST")
     data class H(
         val level: Int,
-        val k: List<Inl>,
+        val k: kotlin.collections.List<Inl>,
     ) : MdBlock, Ordered {
         override val t: String get() = "h"
         override var wireOrder: IntArray? = null
@@ -13960,14 +13960,14 @@ sealed interface MdBlock {
     data class List(
         val start: Int?,
         val tight: Boolean,
-        val items: List<MdItem>,
+        val items: kotlin.collections.List<MdItem>,
     ) : MdBlock, Ordered {
         override val t: String get() = "list"
         override var wireOrder: IntArray? = null
     }
     @Suppress("UNCHECKED_CAST")
     data class Quote(
-        val blocks: List<MdBlock>,
+        val blocks: kotlin.collections.List<MdBlock>,
     ) : MdBlock, Ordered {
         override val t: String get() = "quote"
         override var wireOrder: IntArray? = null
@@ -13975,16 +13975,16 @@ sealed interface MdBlock {
     @Suppress("UNCHECKED_CAST")
     data class Alert(
         val kind: AlertKind,
-        val blocks: List<MdBlock>,
+        val blocks: kotlin.collections.List<MdBlock>,
     ) : MdBlock, Ordered {
         override val t: String get() = "alert"
         override var wireOrder: IntArray? = null
     }
     @Suppress("UNCHECKED_CAST")
     data class Table(
-        val align: List<MdAlign>,
-        val head: List<List<Inl>>,
-        val rows: List<List<List<Inl>>>,
+        val align: kotlin.collections.List<MdAlign>,
+        val head: kotlin.collections.List<kotlin.collections.List<Inl>>,
+        val rows: kotlin.collections.List<kotlin.collections.List<kotlin.collections.List<Inl>>>,
     ) : MdBlock, Ordered {
         override val t: String get() = "table"
         override var wireOrder: IntArray? = null
@@ -13994,7 +13994,7 @@ sealed interface MdBlock {
     }
     @Suppress("UNCHECKED_CAST")
     data class Notes(
-        val items: List<MdNote>,
+        val items: kotlin.collections.List<MdNote>,
     ) : MdBlock, Ordered {
         override val t: String get() = "notes"
         override var wireOrder: IntArray? = null
@@ -14010,7 +14010,7 @@ sealed interface MdBlock {
                         Field("t", { tag("p") }, optional = false, nullable = false),
                         Field("k", { arr(Inl.ADAPTER) }, optional = false, nullable = false),
                         ),
-                        { a -> MdBlock.P(a[1] as List<Inl>) },
+                        { a -> MdBlock.P(a[1] as kotlin.collections.List<Inl>) },
                         { v -> arrayOf("p", v.k) },
                     )),
                 Variant("h", MdBlock.H::class.java, obj(
@@ -14019,7 +14019,7 @@ sealed interface MdBlock {
                         Field("level", { Int32 }, optional = false, nullable = false),
                         Field("k", { arr(Inl.ADAPTER) }, optional = false, nullable = false),
                         ),
-                        { a -> MdBlock.H(a[1] as Int, a[2] as List<Inl>) },
+                        { a -> MdBlock.H(a[1] as Int, a[2] as kotlin.collections.List<Inl>) },
                         { v -> arrayOf("h", v.level, v.k) },
                     )),
                 Variant("code", MdBlock.Code::class.java, obj(
@@ -14047,7 +14047,7 @@ sealed interface MdBlock {
                         Field("tight", { Bool }, optional = false, nullable = false),
                         Field("items", { arr(MdItem.ADAPTER) }, optional = false, nullable = false),
                         ),
-                        { a -> MdBlock.List(a[1] as Int?, a[2] as Boolean, a[3] as List<MdItem>) },
+                        { a -> MdBlock.List(a[1] as Int?, a[2] as Boolean, a[3] as kotlin.collections.List<MdItem>) },
                         { v -> arrayOf("list", v.start, v.tight, v.items) },
                     )),
                 Variant("quote", MdBlock.Quote::class.java, obj(
@@ -14055,7 +14055,7 @@ sealed interface MdBlock {
                         Field("t", { tag("quote") }, optional = false, nullable = false),
                         Field("blocks", { arr(MdBlock.ADAPTER) }, optional = false, nullable = false),
                         ),
-                        { a -> MdBlock.Quote(a[1] as List<MdBlock>) },
+                        { a -> MdBlock.Quote(a[1] as kotlin.collections.List<MdBlock>) },
                         { v -> arrayOf("quote", v.blocks) },
                     )),
                 Variant("alert", MdBlock.Alert::class.java, obj(
@@ -14064,7 +14064,7 @@ sealed interface MdBlock {
                         Field("kind", { AlertKind.ADAPTER }, optional = false, nullable = false),
                         Field("blocks", { arr(MdBlock.ADAPTER) }, optional = false, nullable = false),
                         ),
-                        { a -> MdBlock.Alert(a[1] as AlertKind, a[2] as List<MdBlock>) },
+                        { a -> MdBlock.Alert(a[1] as AlertKind, a[2] as kotlin.collections.List<MdBlock>) },
                         { v -> arrayOf("alert", v.kind, v.blocks) },
                     )),
                 Variant("table", MdBlock.Table::class.java, obj(
@@ -14074,7 +14074,7 @@ sealed interface MdBlock {
                         Field("head", { arr(arr(Inl.ADAPTER)) }, optional = false, nullable = false),
                         Field("rows", { arr(arr(arr(Inl.ADAPTER))) }, optional = false, nullable = false),
                         ),
-                        { a -> MdBlock.Table(a[1] as List<MdAlign>, a[2] as List<List<Inl>>, a[3] as List<List<List<Inl>>>) },
+                        { a -> MdBlock.Table(a[1] as kotlin.collections.List<MdAlign>, a[2] as kotlin.collections.List<kotlin.collections.List<Inl>>, a[3] as kotlin.collections.List<kotlin.collections.List<kotlin.collections.List<Inl>>>) },
                         { v -> arrayOf("table", v.align, v.head, v.rows) },
                     )),
                 Variant("rule", MdBlock.Rule::class.java, obj(
@@ -14089,7 +14089,7 @@ sealed interface MdBlock {
                         Field("t", { tag("notes") }, optional = false, nullable = false),
                         Field("items", { arr(MdNote.ADAPTER) }, optional = false, nullable = false),
                         ),
-                        { a -> MdBlock.Notes(a[1] as List<MdNote>) },
+                        { a -> MdBlock.Notes(a[1] as kotlin.collections.List<MdNote>) },
                         { v -> arrayOf("notes", v.items) },
                     )),
                 ),
