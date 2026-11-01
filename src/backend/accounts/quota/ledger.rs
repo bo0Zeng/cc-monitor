@@ -46,6 +46,109 @@ pub(crate) struct Observed {
     /// 各窗口量出来的「1% ≈ 多少用量」（窗口名 → …）：读只经 [`Observed::tokens_per_pct`]。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) per_pct: BTreeMap<String, PerPct>,
+    /// 各窗口换窗的历史（窗口名 → …）：周剩几点 · 开窗取整往哪边只按它（[`Observed::weekly_left_at_reset`] ·
+    /// [`Observed::window_grid`]）。只在账上，不上 `quota-read`。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) history: BTreeMap<String, History>,
+}
+
+/// 一个窗口换窗的历史：旧窗最后读到的用量（[`ENDS_KEPT`] 次）· 新窗头一次看到的时刻（[`OPENS_KEPT`] 次）；都照重置时刻排、旧的在前。
+/// 只在单发读数推一步、看到重置时刻往后换了的那一下记（[`turnover`]）。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub(crate) struct History {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) ends: Vec<End>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) opens: Vec<Open>,
+}
+
+/// 一窗走完：它的重置时刻 · 最后读到的用量（比例）· 那次读数几点看到的。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub(crate) struct End {
+    pub(crate) resets: u64,
+    pub(crate) used: f64,
+    pub(crate) at: u64,
+}
+
+/// 一窗开了：它的重置时刻 · 头一次看到它的时刻。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Open {
+    pub(crate) resets: u64,
+    pub(crate) seen: u64,
+}
+
+/// 周剩几点留最近这么多次（估周重置时剩多少用）。
+const ENDS_KEPT: usize = 4;
+/// 开窗时刻留最近这么多次（判取整往哪边）。
+const OPENS_KEPT: usize = 8;
+
+/// 开窗时刻取整的格（秒）：重置时刻落在这个格上，开窗时刻照它往下或往上取。
+pub(crate) const GRID_STEP: u64 = 600;
+/// 头一次看到比格早这么多秒以上 ⇒ 开窗是往上取的（看到时刻前后差几秒不算）。
+const GRID_EARLY: i64 = 60;
+/// 往下取至少要这么多次作数的开窗。
+const GRID_DOWN_MIN: usize = 3;
+
+/// ★ 历史合并的唯一判法：按重置时刻并集（[`same_reset`] 算同一窗）；同一窗走完的取看到得晚的那次、开窗的取看到得早的那次；
+/// 照重置时刻排、各留最近那几次。
+fn absorb(into: &mut History, add: &History) {
+    for e in &add.ends {
+        match into
+            .ends
+            .iter_mut()
+            .find(|x| same_reset(Some(x.resets), Some(e.resets)))
+        {
+            Some(x) if x.at < e.at => *x = *e,
+            Some(_) => {}
+            None => into.ends.push(*e),
+        }
+    }
+    for o in &add.opens {
+        match into
+            .opens
+            .iter_mut()
+            .find(|x| same_reset(Some(x.resets), Some(o.resets)))
+        {
+            Some(x) if o.seen < x.seen => *x = *o,
+            Some(_) => {}
+            None => into.opens.push(*o),
+        }
+    }
+    into.ends.sort_by_key(|e| e.resets);
+    into.opens.sort_by_key(|o| o.resets);
+    let n = into.ends.len().saturating_sub(ENDS_KEPT);
+    into.ends.drain(..n);
+    let n = into.opens.len().saturating_sub(OPENS_KEPT);
+    into.opens.drain(..n);
+}
+
+/// 单发读数 `new`（`at` 看到的）接在旧读数 `old`（`old_at` 最后看到的）后面：重置时刻往后换了 ⇒ 旧窗走完、新窗开了各一笔；
+/// 没换 · 说不出重置时刻 ⇒ 没有。
+fn turnover(
+    old: &crate::agents::QuotaWindow,
+    old_at: u64,
+    new: &crate::agents::QuotaWindow,
+    at: u64,
+) -> Option<History> {
+    let (r0, r1) = (old.resets_at?, new.resets_at?);
+    if same_window(old, new) || r1 <= r0 {
+        return None;
+    }
+    Some(History {
+        ends: old
+            .used
+            .map(|used| End {
+                resets: r0,
+                used,
+                at: old_at,
+            })
+            .into_iter()
+            .collect(),
+        opens: vec![Open {
+            resets: r1,
+            seen: at,
+        }],
+    })
 }
 
 /// 量出来的「1% ≈ 多少用量」：折合输入 token（[`crate::agents::Spent`]）与量出来的时刻。
@@ -175,6 +278,37 @@ impl Observed {
             .map(|p| p.tokens)
     }
 
+    /// ★ 这个窗口前几次走完时剩几点（0–100，旧的在前）：100 − 最后读到的用量；没记到 ⇒ 空。
+    pub(crate) fn weekly_left_at_reset(&self, name: &str) -> Vec<f64> {
+        self.history.get(name).map_or_else(Vec::new, |h| {
+            h.ends
+                .iter()
+                .map(|e| ((1.0 - e.used) * 10_000.0).round().max(0.0) / 100.0)
+                .collect()
+        })
+    }
+
+    /// ★ 这一窗（窗长 `len` 秒）开窗时刻取到 [`GRID_STEP`] 格是往上（`Some(true)`）还是往下（`Some(false)`）：
+    /// 格 ＝ 重置时刻取到最近的格 − 窗长；差 ＝ 头一次看到 − 格，差一个格以上的不作数（隔了好久才看到）；
+    /// 有一次早于格 [`GRID_EARLY`] 秒以上 ⇒ 往上；作数的至少 [`GRID_DOWN_MIN`] 次、都不早 ⇒ 往下；其余说不出。
+    pub(crate) fn window_grid(&self, name: &str, len: u64) -> Option<bool> {
+        let opens = &self.history.get(name)?.opens;
+        let step = GRID_STEP as i64;
+        let near: Vec<i64> = opens
+            .iter()
+            .map(|o| {
+                let grid = (o.resets as i64 + step / 2).div_euclid(step) * step - len as i64;
+                o.seen as i64 - grid
+            })
+            .filter(|d| d.abs() < step)
+            .collect();
+        if near.iter().any(|d| *d < -GRID_EARLY) {
+            Some(true)
+        } else {
+            (near.len() >= GRID_DOWN_MIN).then_some(false)
+        }
+    }
+
     /// 一个窗口几点、从哪看到的（没列 ⇒ 这一条的时刻、回包头）。
     pub(crate) fn window_seen(&self, name: &str) -> WindowSeen {
         self.windows_seen.get(name).copied().unwrap_or(WindowSeen {
@@ -208,6 +342,13 @@ pub(crate) fn merge(into: &mut Observed, add: &Observed, headers: bool) {
                 let old_at = meta.get(&w.name).map_or(into.seen_at, |o| o.at);
                 let t = trend(Some((x, into.trend.get(&w.name).cloned(), old_at)));
                 into.trend.insert(w.name.clone(), t);
+                // 换窗只从单发读数看（带着历史来的已在上面并过）。
+                if let Some(h) = (!add.trend.contains_key(&w.name))
+                    .then(|| turnover(x, old_at, w, m.at))
+                    .flatten()
+                {
+                    absorb(into.history.entry(w.name.clone()).or_default(), &h);
+                }
                 *x = w.clone();
                 meta.insert(w.name.clone(), m);
             }
@@ -217,6 +358,9 @@ pub(crate) fn merge(into: &mut Observed, add: &Observed, headers: bool) {
                 meta.insert(w.name.clone(), m);
             }
         }
+    }
+    for (k, h) in &add.history {
+        absorb(into.history.entry(k.clone()).or_default(), h);
     }
     for (k, p) in &add.per_pct {
         if into.per_pct.get(k).is_none_or(|q| q.at <= p.at) {
@@ -436,6 +580,7 @@ pub(crate) fn record_seen(
         windows_seen: BTreeMap::new(),
         trend: BTreeMap::new(),
         per_pct,
+        history: BTreeMap::new(),
     };
     let (changed, persist, entry) = {
         let mut g = ledger.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -516,6 +661,7 @@ pub(crate) fn record_probe(
         windows_seen,
         trend: BTreeMap::new(),
         per_pct: BTreeMap::new(),
+        history: BTreeMap::new(),
     };
     let before = ledger.entry(agent, account);
     let (written, at) = write_merged(own, &probed, false)?;
@@ -630,11 +776,12 @@ pub(crate) fn answer_of(path: Option<&Path>, now: u64) -> LedgerRead {
         detail,
         path: path.map(|p| p.display().to_string()),
         now,
-        // 走势只在账上（估「几点到」用），不上线。
+        // 走势 · 历史只在账上（估「几点到」· 周剩几点 · 开窗取整用），不上线。
         accounts: accounts
             .into_iter()
             .map(|mut o| {
                 o.trend.clear();
+                o.history.clear();
                 o
             })
             .collect(),

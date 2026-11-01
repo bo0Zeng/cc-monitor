@@ -49,6 +49,7 @@ fn acct(id: &str, used5h: f64) -> Acct {
         per_pct: [None, None],
         weekly: false,
         others: None,
+        past: Default::default(),
     }
 }
 
@@ -295,6 +296,7 @@ fn decide_case_in(e: &rhai::Engine, c: &Value, settings: &Value) -> Verdict {
             weekly: a["weekly"] == true,
             off: false,
             others: a["others"]["w5h"].as_f64(),
+            past: Default::default(),
         })
         .collect();
     let s = &c["session"];
