@@ -20,19 +20,15 @@
 /// · `wire::write_and_flush_hello`（`wire/mod.rs`）—— 握手前那一帧，写完才产出 `HelloFlushed`；
 ///   它按定义发生在 writer_task 起来**之前**，不存在并发。
 /// · `main.rs::write_frame` —— writer_task 的出口本体。
-/// · `listen.rs::write_line` —— attach 握手的应答行（`K-P1` 补进人群的那一员，见下）。
+/// · `listen.rs::write_line` —— attach 握手的应答行（常驻那条路的那一员，见下）。
 ///
 /// ⚠ `observe/*_query.rs` 那些 `stdout()` **不在人群里**：它们是一次性 CLI 子命令
 /// （打完就退，没有 writer_task），与流式路不共享那个 stdout 的生命周期。
 ///
-/// # ★★ `K-P1` 08-26：把 `listen.rs` 补进人群，**因为常驻正好落进一条自陈的缝里**
+/// # `listen.rs` 在人群里：常驻让同一个进程既听口又跑流
 ///
-/// `relay/mod.rs` 头注逐字记着：「**谁在同一个进程里既跑流式又跑中转，今天没有任何判据挡着**
-/// （那条「只有一个写者」的判据人群只有三个文件，**不含 `relay/`**）」。
-/// 常驻之后「同一个进程既听口又跑流」正好是那一形 —— 而这一次那个新文件是**流式路自己的**。
-/// ⇒ 补人群是**收紧**：`listen.rs` 一旦多长出第二处 `write_all(`，本条当场红。
-/// ⚠ 如实说清它**没有**顺手治的那一格：`relay/` 仍然不在人群里
-/// （那是另立的一件，这里不碰 `relay/`）。补的是「常驻自己那条路」，不是那条自陈的全部。
+/// 监听口那份文件是**流式路自己的** ⇒ 它在人群里：`listen.rs` 一旦多长出第二处 `write_all(`，本条当场红。
+/// ⚠ `relay/` 不在人群里：同一个进程既跑流式又跑中转，本条不管（那是另立的一件）。
 #[test]
 fn the_outbound_stream_has_exactly_one_writer() {
     const STREAMING: &[(&str, &str)] = &[
@@ -123,17 +119,15 @@ fn the_outbound_stream_has_exactly_one_writer() {
     }
 }
 
-/// ★★ **`HelloFlushed` 的构造面必须只有一个出口**〔audit-0805 08-08，Phase G 第 58 件〕。
+/// ★★ **`HelloFlushed` 的构造面必须只有一个出口**。
 ///
-/// 本文件头注逐字写着：见证「**只能由真的写出并 flush 了 Hello 的那条路才能产出**
-/// （构造函数私有，唯一出口是 `write_and_flush_hello`）」，并据此**把一条旧机检整条删掉**
-/// （原来那条按「两个字符串的字节位置」判 reader 顺序，被 D 审计用一次搬函数绕过了）。
+/// `wire/mod.rs` 那份类型的文档写着：见证「**只能由真的写完并 flush 了一帧才能产出**
+/// （构造函数私有，唯一出口是 `write_and_flush_hello`）」；按字节位置判 reader 先后的机检对函数边界是瞎的，所以不用它。
 ///
-/// ⇒ 于是整条「Hello 之前不许起 inbound」的保证，**全压在这个类型的构造面上**。
-/// 08-08 实测：给它加一个 `pub fn assume() -> Self`，**两侧 291 + 989 条判据一条不红**。
-/// 与 F45（monitor 侧 `BackendHello` / `ParkedWriter`）**同一形态在另一半**。
+/// ⇒ 于是整条「Hello 之前不许起 inbound」的保证，**全压在这个类型的构造面上**：
+/// 给它加一个 `pub fn assume() -> Self`，别的判据一条都不会红。
 ///
-/// 钉三件（第三件是 F45 的变异逼出来的：编译器替你挡住的，正是没人写下来的）：
+/// 钉三件（第三件是编译器挡不住、要写下来的那一格）：
 /// ① 生产段里 `HelloFlushed(` 的构造恰好一处；② `impl` 里除 `for_tests` 外没有别的
 /// 关联函数，且 `for_tests` 必须带 `#[cfg(test)]`；③ 元组字段必须私有。
 #[test]
@@ -147,7 +141,7 @@ fn the_hello_witness_has_exactly_one_way_to_exist() {
     //   它写下的每一个例子都会变成语料 —— 这一族本仓已记过多次。
     let ctor_form = format!("HelloFlushed{}", "(()");
     // ⚠ 再收窄一层：`pub struct HelloFlushed(());` 这行**声明**也含同一个串。
-    //   要数的是「构造表达式」，不是「这串字符」——匹配单位比事实大的第二次（F24 族）。
+    //   要数的是「构造表达式」，不是「这串字符」——匹配单位比事实大。
     let ctors = prod
         .lines()
         .filter(|l| l.contains(ctor_form.as_str()) && !l.contains("struct "))
@@ -203,7 +197,7 @@ fn the_hello_witness_has_exactly_one_way_to_exist() {
              「生产路径拿不到见证」这句话当场不成立"
     );
 
-    // ③ 字段必须私有（F45 那轮的教训：编译器替你挡住的，正是没人写下来的）。
+    // ③ 字段必须私有（公开的元组字段让外面能直接构造见证）。
     let decl = prod
         .lines()
         .find(|l| l.contains("struct HelloFlushed"))
@@ -986,7 +980,7 @@ fn b64_matches_the_rfc_4648_test_vectors() {
         assert_eq!(b64_decode(enc).unwrap(), plain.as_bytes(), "解 {enc:?}");
     }
     // 字母表最后两位（`+` `/`，RFC 4648 §4 表 1 的 62 / 63）：§10 那七条向量一个都用不到它们 ——
-    // 死值验 K20 首跑实测：把字母表尾巴换成 URL 安全版（`-_`）七条照样绿。0xfb 0xff ⇒ 62 · 63 · 60。
+    // 把字母表尾巴换成 URL 安全版（`-_`），七条照样绿 ⇒ 另钉这一条：0xfb 0xff ⇒ 62 · 63 · 60。
     assert_eq!(b64_encode(&[0xfb, 0xff]), "+/8=");
     assert_eq!(b64_decode("+/8=").unwrap(), [0xfb, 0xff]);
     // 全 256 个字节值来回一趟。
