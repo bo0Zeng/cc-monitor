@@ -657,16 +657,11 @@ fn repair_does_not_lift_when_a_live_session_has_an_unknown_account() {
 /// 死的 · 裸起的（账号 0，没有号目录）不算。
 #[test]
 fn busy_accounts_come_from_live_sessions_only() {
-    use crate::observe::accounts_query::SessionAccount;
-    let row = |config_dir: Option<&str>, alive: bool, bare: bool| SessionAccount {
-        pid: 1,
-        sid: None,
-        cwd: None,
+    use crate::accounts::manage::wire::LiveSession;
+    let row = |config_dir: Option<&str>, alive: bool, bare: bool| LiveSession {
         config_dir: config_dir.map(str::to_string),
-        account: None,
         alive,
         bare,
-        via_relay: None,
     };
     let (busy, unknown) = crate::accounts::manage::wire::busy_of(&[
         row(Some("/h/.cc-monitor/accounts/z"), true, false),

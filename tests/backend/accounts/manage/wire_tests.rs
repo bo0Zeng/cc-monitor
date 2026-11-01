@@ -64,6 +64,7 @@ fn the_checkup_links_a_new_shared_item_instead_of_reporting_it_missing() {
             dry_run: None,
         }),
         None,
+        &Vec::new,
     )
     .unwrap();
     run_change(
@@ -78,6 +79,7 @@ fn the_checkup_links_a_new_shared_item_instead_of_reporting_it_missing() {
             dry_run: None,
         }),
         None,
+        &Vec::new,
     )
     .unwrap();
     h.write(".claude/plugins/one", "共享库里那一份（夹具句）");
