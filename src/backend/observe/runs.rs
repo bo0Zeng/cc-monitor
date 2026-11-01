@@ -1141,6 +1141,19 @@ fn ticking(text: String, from: Option<u64>) -> RunLine {
     }
 }
 
+/// 收场了用了多久那一句（起止两头都定了，静态的）：派出卡与智能体窗口事实那一行同一句。在跑 · 状态不明 · 缺一头 ⇒ `None`。
+fn took_of(i: &RunInfo) -> Option<Words> {
+    if matches!(i.state, RunState::Running | RunState::Unknown) {
+        return None;
+    }
+    let (a, b) = (i.started_ms?, i.ended_ms?);
+    let took = copy_core::short_duration(b.saturating_sub(a));
+    Some(Words(copy_text(
+        "agentWindow.facts.took",
+        &[("dur", &took)],
+    )))
+}
+
 /// 事实那一行（「几点起」在 `started_text`，推出去那一下按流的时区写）：已跑 / 用时 · 最近 · 工具 ×n · agent ×n · 后台派出。
 fn facts_of(i: &RunInfo, kids: usize) -> Vec<RunLine> {
     let mut out = Vec::new();
@@ -1152,11 +1165,8 @@ fn facts_of(i: &RunInfo, kids: usize) -> Vec<RunLine> {
             i.started_ms,
         ));
     }
-    if !live {
-        if let (Some(a), Some(b)) = (i.started_ms, i.ended_ms) {
-            let took = copy_core::short_duration(b.saturating_sub(a));
-            out.push(said(copy_text("agentWindow.facts.took", &[("dur", &took)])));
-        }
+    if let Some(took) = &i.took_text {
+        out.push(said(took.0.clone()));
     }
     if live && i.active_ms.is_some() {
         let dur = dur_of(i.active_ms);
@@ -1296,6 +1306,7 @@ fn summary_of(runs: &[RunInfo], total: Total) -> Option<Words> {
 /// 出帧那一下给一项写好字：状态 · 名字（没有 ⇒ 通称）· 最近一件事 · 事实 · 说明 · 结束线（`kids`：它派出的、还在表里的几个）。
 /// 簿里记的是事实，字只在这里写。
 fn dressed(mut i: RunInfo, kids: usize) -> RunInfo {
+    i.took_text = took_of(&i);
     i.facts = facts_of(&i, kids);
     i.explain = explain_of(&i);
     i.end = end_of(&i);
