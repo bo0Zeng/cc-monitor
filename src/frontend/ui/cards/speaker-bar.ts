@@ -1,13 +1,14 @@
 /**
  * 消息流里不是人说的那几类（事件条）：agent 交回 / 来话 · 另一个会话的来话 · 主会话后来的话 ·
- * 后台任务通知（相邻的并成一条）· 中断标记。来源只看后端给的 `userText.speaker`，正文是后端补的 `speaker.body`；界面不看正文。
+ * 后台任务通知 · 中断标记。来源只看后端给的 `userText.speaker`，正文是后端补的 `speaker.body`；界面不看正文。
  *
  * - 交回默认展开（是要读的）；途中来话默认收起；另一个会话的来话左条琥珀。
  * - 「打开窗口 ›」：点了把那个 agent 交给宿主（`ccm:reveal-run` 事件，带运行 id）。
- * - 后台通知：一条一行；相邻的由管线并成一条 `后台任务 ×3 · 14:02–14:07 · 失败 ×1`，展开看逐条（[`mergeNotice`]）。
- *   同一个子运行已经交回了（会话事实 `handedBack`，那台配的对）⇒ 它那条收场通知不画（[`applyHandedBack`]），只报交回那一次。
+ * - 后台通知：一条一张，那一行是后端写好的 `row`；相邻的哪几条并一组、哪几条交回过不露、组头那一句，全照会话事实
+ *   `notices` 那一格摆（[`applyNotices`]），界面不数、不判。
  */
 import type { Speaker } from "../generated/Speaker";
+import type { NoticeRun } from "../generated/NoticeRun";
 import { copyText } from "../copy-table";
 import { renderMarkdown } from "../render";
 
@@ -101,92 +102,69 @@ export function buildInterruptLine(time: string): HTMLElement {
   return el;
 }
 
-/** 后台任务通知：一条（相邻的由管线并进前一条）。`at` ＝ 记录的时刻（只用来排先后），`time` ＝ 它的钟面（后端写好的 `timeText`）。 */
-export function buildNoticeLine(sp: Of<"taskNotification">, at: string, time: string): HTMLElement {
-  const d = document.createElement("details");
-  d.className = "card card-notice";
-  d.dataset.from = at;
-  d.dataset.to = at;
+/** 后台任务通知：一条一张，那一行就是后端写好的 `row`。跟谁并成一组、哪几条不露，等会话事实那一格（[`applyNotices`]）。 */
+export function buildNoticeLine(sp: Of<"taskNotification">): HTMLElement {
+  const card = document.createElement("details");
+  card.className = "card card-notice";
   const s = document.createElement("summary");
   s.className = "notice-head";
-  d.appendChild(s);
   const list = document.createElement("div");
   list.className = "notice-list";
-  d.appendChild(list);
-  list.appendChild(noticeRow(sp, at, time));
-  paintNotice(d);
-  return d;
+  const row = document.createElement("div");
+  row.className = "notice-row";
+  row.dataset.failed = String(sp.end === "failed");
+  row.textContent = sp.row ?? "";
+  list.appendChild(row);
+  s.textContent = row.textContent;
+  card.append(s, list);
+  card.dataset.single = "true";
+  card.dataset.failed = row.dataset.failed;
+  return card;
 }
 
-export function isNoticeLine(el: Element | null | undefined): el is HTMLDetailsElement {
-  return el instanceof HTMLDetailsElement && el.classList.contains("card-notice");
-}
-
-/** 又一条通知紧挨着来了：并进前一条（时段取两头，逐条留在展开里）。 */
-export function mergeNotice(into: HTMLDetailsElement, from: HTMLDetailsElement): void {
-  const rows = from.querySelectorAll(".notice-row");
-  const list = into.querySelector(".notice-list");
-  rows.forEach((r) => list?.appendChild(r));
-  if ((from.dataset.from ?? "") < (into.dataset.from ?? "")) into.dataset.from = from.dataset.from;
-  if ((from.dataset.to ?? "") > (into.dataset.to ?? "")) into.dataset.to = from.dataset.to;
-  paintNotice(into);
-}
-
-function noticeRow(sp: Of<"taskNotification">, at: string, time: string): HTMLElement {
-  const r = document.createElement("div");
-  r.className = "notice-row";
-  const failed = sp.status === "failed" || sp.status === "killed";
-  r.dataset.failed = String(failed);
-  if (sp.taskId) r.dataset.task = sp.taskId;
-  r.dataset.at = at;
-  r.dataset.time = time;
-  r.textContent = copyText("speaker.notice.row", {
-    what: sp.summary ?? sp.taskId ?? "?",
-    state: failed ? copyText("runs.state.failed") : copyText("runs.state.done"),
-    time,
-  });
-  return r;
+/** 一张通知卡收起（它那一行并进了组里首条那一张）。 */
+function fold(card: HTMLElement): void {
+  card.hidden = true;
 }
 
 /**
- * 会话事实说这几个子运行已经交回了 ⇒ 它们的收场通知行收起（整条都是 ⇒ 整条收起），计数与时段只算还露着的。幂等：
- * 每到一份事实就按那一份重摆一遍（交回在通知之后才到也照样收）。
+ * 照会话事实的通知组摆（幂等，每到一份事实重摆一遍）：每组首条那一张当这一组 —— 别的成员那几行收进它的展开里（它们自己那一张收起）；
+ * `hidden` 里的那几行收起，整组都不露 ⇒ 整张收起；组头就是后端写好的 `head`，没有 ⇒ 露着的那一行；`failed` 照挂。
  */
-export function applyHandedBack(root: HTMLElement, handedBack: ReadonlySet<string>): void {
+export function applyNotices(root: HTMLElement, runs: readonly NoticeRun[]): void {
+  const cards = new Map<string, HTMLDetailsElement>();
+  const rows = new Map<string, HTMLElement>();
   for (const d of root.querySelectorAll<HTMLDetailsElement>("details.card-notice")) {
-    let changed = false;
-    for (const r of d.querySelectorAll<HTMLElement>(".notice-row")) {
-      const gone = r.dataset.task !== undefined && handedBack.has(r.dataset.task);
-      if (r.hidden !== gone) {
-        r.hidden = gone;
-        changed = true;
+    if (d.dataset.id !== undefined) cards.set(d.dataset.id, d);
+  }
+  for (const r of root.querySelectorAll<HTMLElement>(".notice-row[data-member]")) rows.set(r.dataset.member ?? "", r);
+  const rowOf = (id: string): HTMLElement | undefined => {
+    const tagged = rows.get(id);
+    if (tagged) return tagged;
+    const own = cards.get(id)?.querySelector<HTMLElement>(".notice-row");
+    if (own) own.dataset.member = id;
+    return own ?? undefined;
+  };
+  for (const run of runs) {
+    const card = cards.get(run.id);
+    const list = card?.querySelector(".notice-list");
+    const head = card?.querySelector<HTMLElement>(".notice-head");
+    if (!card || !list || !head) continue;
+    for (const id of run.members) {
+      const row = rowOf(id);
+      if (!row) continue;
+      const home = row.closest<HTMLElement>("details.card-notice");
+      if (home !== card) {
+        list.appendChild(row);
+        if (home) fold(home);
       }
+      row.hidden = run.hidden.includes(id);
     }
-    if (changed) paintNotice(d);
+    const shown = [...list.querySelectorAll<HTMLElement>(".notice-row")].filter((r) => !r.hidden);
+    card.hidden = shown.length === 0;
+    head.textContent = run.head ?? shown[0]?.textContent ?? "";
+    if (run.head === null) card.dataset.single = "true";
+    else delete card.dataset.single;
+    card.dataset.failed = String(run.failed);
   }
-}
-
-function paintNotice(d: HTMLDetailsElement): void {
-  const rows = [...d.querySelectorAll<HTMLElement>(".notice-row")].filter((r) => !r.hidden);
-  const head = d.querySelector<HTMLElement>(".notice-head");
-  if (!head) return;
-  d.hidden = rows.length === 0;
-  if (rows.length === 0) return;
-  const fails = rows.filter((r) => r.dataset.failed === "true").length;
-  d.dataset.failed = String(fails > 0);
-  if (rows.length === 1) {
-    head.textContent = rows[0].textContent;
-    d.dataset.single = "true";
-    return;
-  }
-  delete d.dataset.single;
-  // 时段取露着的那几行的两头（按时刻排先后，写的是各自的钟面）。
-  const byAt = [...rows].sort((a, b) => ((a.dataset.at ?? "") < (b.dataset.at ?? "") ? -1 : (a.dataset.at ?? "") > (b.dataset.at ?? "") ? 1 : 0));
-  const from = byAt[0].dataset.time ?? "";
-  const to = byAt[byAt.length - 1].dataset.time ?? "";
-  head.textContent = copyText("speaker.notice.many", {
-    n: rows.length,
-    span: from === to ? from : `${from}–${to}`,
-    fail: fails > 0 ? copyText("speaker.notice.fails", { n: fails }) : "",
-  });
 }

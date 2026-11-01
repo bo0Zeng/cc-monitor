@@ -108,16 +108,6 @@ impl Pending {
         }
     }
 
-    /// 探「在不在」的那条整路径（按字节）。
-    pub fn path_wire(&self) -> cmd_wire::files::WirePath {
-        match &self.remote_dir_raw {
-            Some(b) => {
-                cmd_wire::files::WirePath(super::source::child_bytes(b, self.name.as_bytes()))
-            }
-            None => cmd_wire::files::WirePath::from(self.remote_path.as_str()),
-        }
-    }
-
     /// 开单回包那一项说了怎么落：保留两份 ⇒ 换成那台另起的名字；答了覆盖 ⇒ 提交时盖。
     pub fn landed(self, it: &cmd_wire::transfer::OpenedItem) -> Pending {
         let mut p = self;
@@ -303,14 +293,6 @@ where
 pub static CANCELLED: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("reason.op.cancelled", &[]));
 
-/// 界面上那颗取消按钮的字面。**唯一住址**（判据按同一个常量去找它画出来的字）。
-///
-/// ⚠ 刻意不叫「取消」两个字：那三个字在「复制为」那个框上已经有一颗
-/// （`super::shell::FileWindow::copy_ui` 里那颗，意思是「别复制了」），
-/// 而按内容找控件的判据分不开同名的两颗。
-pub static CANCEL_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinTransfer.label.cancel", &[]));
-
 /// **取消台**：一摞传输的 `transfer_id` 登记 ＋ 那面「用户按过取消了」的旗。
 ///
 /// 🔴 为什么键要在这儿造、不在适配器里造：理由逐字住本模块头注那一节
@@ -446,10 +428,6 @@ pub const PROBE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10)
 
 /// 开单那一条（窗口说给 monitor，monitor 补拨号请求转给本机后端的传输台）。
 pub const CMD_UPLOAD: &str = <cmd_wire::transfer::TransferUploadAsk as cmd_wire::Call>::NAME;
-/// 进度流的 `kind` 前缀（传输台那一侧 `transfer_relay::TRANSFER_KIND_PREFIX`，判据钉两份相等）。
-pub const KIND_PREFIX: &str = "transfer/";
-/// 提交：后端文件管理那一条（后端 `control/files_commit.rs`）。
-pub const CMD_COMMIT: &str = <cmd_wire::files::FilesCommitUploadReq as cmd_wire::Call>::NAME;
 /// 开单那一趟往返的上限（调用方给的期限）：开单不搬字节，但整组的同名要在远端落点那台逐项探一遍。
 pub const OPEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(60);
 /// 提交那一趟往返的上限：后端那一侧是围栏的几次 `canonicalize` ＋ 一次同盘改名。
@@ -569,7 +547,7 @@ async fn upload_once(
     let watched = super::source::watch_coded(
         line,
         origin,
-        &format!("{KIND_PREFIX}{id}"),
+        &format!("{}{id}", filewin_contract::TRANSFER_KIND_PREFIX),
         &stop,
         |got, total| sink.progress(&name, got, total),
     )

@@ -266,7 +266,7 @@ pub async fn watch_opened(
     super::source::watch(
         line,
         origin,
-        &format!("{}{id}", super::transfer::KIND_PREFIX),
+        &format!("{}{id}", filewin_contract::TRANSFER_KIND_PREFIX),
         &stop,
         |got, total| sink.progress(got, total),
     )

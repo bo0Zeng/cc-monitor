@@ -3447,7 +3447,6 @@ version = "5.0.3"
 dependencies = [
  "acct-core",
  "arboard",
- "cc-monitor-filewin",
  "cmd-wire",
  "comms-inward",
  "copy-core",

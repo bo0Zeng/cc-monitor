@@ -174,10 +174,7 @@ impl Backends for InboundBackends {
         from: Option<Cursor>,
     ) -> BoxStream<'static, Item> {
         // 🔴**生产上的第一条流**：`transfer/<id>` ⇒ 传输台那一趟的进度。
-        if let Some(id) = kind
-            .0
-            .strip_prefix(crate::transfer_relay::TRANSFER_KIND_PREFIX)
-        {
+        if let Some(id) = kind.0.strip_prefix(filewin_contract::TRANSFER_KIND_PREFIX) {
             return transfer_stream(&origin, id, from);
         }
         // 一组做到哪了：按票（窗口铸的）转后端推来的 `files_batch` 帧，那一组在哪台做都一样。`from` 没有意义（只留最新那一格）。

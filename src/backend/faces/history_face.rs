@@ -1349,22 +1349,24 @@ impl crate::wire::typed::Handle for HistoryFactsCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: HistoryFactsReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<FactsReply, HistoryFactsErr>> + Send + 'static
     {
+        let tz = cx.tz;
         async move {
             // 上下文上限表住这台的偏好（`prefs.json`），要用的那一刻现读。
             let limits = crate::common::machine_prefs::read_now().prefs().limits();
-            facts_at(&home(), req, &limits)
+            facts_at(&home(), req, &limits, &tz)
         }
     }
 }
 
-/// [`HistoryFactsCmd`] 的本体，家目录是参数。
+/// [`HistoryFactsCmd`] 的本体，家目录是参数；`tz` ＝ 看的那一台的时区（通知组头的钟面照它写）。
 pub(crate) fn facts_at(
     home: &Path,
     req: HistoryFactsReq,
     limits: &crate::observe::recognize::facts::ContextLimits,
+    tz: &crate::common::time::Tz,
 ) -> Result<FactsReply, HistoryFactsErr> {
     use crate::observe::recognize::facts;
     let (path, found) = match req {
@@ -1461,6 +1463,8 @@ pub(crate) fn facts_at(
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX)),
     );
+    // 通知组：照此刻的交回定哪几条不露、写组头（钟面照看的那一台）。
+    facts::settle_notices(&mut facts, tz);
     // 会话血缘：由谁启动 · 起了哪几个（不累加，每次现查；子会话隐不隐藏照同一处判）。
     let (parent, children) = kin_of(home, sid, &crate::history::session_hidden::Here::read_now());
     facts.started_by = parent;

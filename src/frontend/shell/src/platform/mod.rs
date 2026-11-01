@@ -13,6 +13,12 @@ pub mod ewmh;
 // Win32 FILETIME（Windows 起始时刻戳那一件）。
 pub mod filetime;
 pub mod fs;
+// 壳自己的东西往盘上写的唯一一层（自己的状态 · 自己的部署物 · 终端设备 · 日志目录，各一组函数）。
+#[expect(
+    dead_code,
+    reason = "写盘落点逐份改经这一层；全部改完这条期望不再满足，随之删掉"
+)]
+pub mod own_fs;
 // 界面要按系统分的那几件事（↗ · shell 方言 · ccm 缓存），起页时注入给界面。
 pub mod host_facts;
 pub mod hwnd;

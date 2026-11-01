@@ -709,6 +709,7 @@ fn acct(id: &str, used: f64, rate: Option<f64>, t: u64) -> crate::accounts::quot
         per_pct: [None, None],
         weekly: false,
         others: None,
+        past: Default::default(),
     }
 }
 
@@ -846,6 +847,7 @@ fn idle_ledger(home: &Home, t: u64, b_weekly: bool) {
         .into_iter()
         .filter(|_| !(b_weekly && acct == "b"))
         .collect(),
+        history: Default::default(),
     };
     std::fs::write(
         home.root.join(ledger::FILE_NAME),
@@ -978,6 +980,75 @@ fn weekly_and_others_are_facts_of_the_reading_and_the_sessions() {
         others("s-nobody"),
         [("a".to_string(), Some(2.0)), ("b".to_string(), None)],
         "不是这两个会话 ⇒ 两个都算别人"
+    );
+}
+
+/// ★ 号的历史交给策略：照此刻挑的周窗 · 5 小时窗的原名问额度账 ⇒ 周重置时剩几点 · 开窗取整往哪边；账上没记 ⇒ 空着。
+#[test]
+fn the_past_of_an_account_comes_from_its_ledger_windows() {
+    use crate::accounts::quota::rules::{Acct, Past};
+    let home = Home::new("past", [None, None]);
+    let t = now();
+    idle_ledger(&home, t, true);
+    let path = home.root.join(ledger::FILE_NAME);
+    let mut book = match ledger::read_at(&path) {
+        ledger::Read::Present(b) => b,
+        other => panic!("{other:?}"),
+    };
+    let b = book
+        .accounts
+        .iter_mut()
+        .find(|o| o.account == "b")
+        .expect("b");
+    let r5 = (t + 3_600) / 600 * 600;
+    b.history = [
+        (
+            "seven_day".to_string(),
+            ledger::History {
+                ends: vec![ledger::End {
+                    resets: t - 86_400,
+                    used: 0.62,
+                    at: t - 90_000,
+                }],
+                opens: Vec::new(),
+            },
+        ),
+        (
+            "five_hour".to_string(),
+            ledger::History {
+                ends: Vec::new(),
+                opens: vec![ledger::Open {
+                    resets: r5,
+                    seen: r5 - 18_000 - 180,
+                }],
+            },
+        ),
+    ]
+    .into();
+    std::fs::write(&path, serde_json::to_vec(&book).expect("json")).expect("ledger");
+    let hop = home.hop();
+    let lib = hop.library();
+    let mut all: Vec<Acct> = ["a", "b"]
+        .iter()
+        .map(|id| {
+            Acct::of_fact(&hop.fact_one(
+                "claude-code",
+                &lib,
+                id,
+                &|_| None,
+                t,
+                &crate::Tz::default(),
+            ))
+        })
+        .collect();
+    hop.with_past("claude-code", &mut all, t);
+    assert_eq!(all[0].past, Past::default(), "a 账上没记");
+    assert_eq!(
+        all[1].past,
+        Past {
+            weekly_left_at_reset: vec![38.0],
+            grid_up: Some(true),
+        }
     );
 }
 

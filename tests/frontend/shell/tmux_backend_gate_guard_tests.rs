@@ -207,7 +207,7 @@ fn the_monitor_has_no_second_path_that_kills_a_session() {
     assert!(
         !guard_core::contains_word(&corpus, &verb),
         "monitor 生产段里又出现了 `{verb}` —— 杀会话在 monitor 里长回了一条自己拼 shell 串的路。\n\
-         杀会话只许走后端的 `terminal-end`（先过身份门 ＋ 窗口门、对句柄下手）；界面经 `src/frontend/ui/terminal-reads.ts::endTerminal` 说它。"
+         杀会话只许走后端的 `terminal-end`（先过身份门 ＋ 窗口门、对句柄下手）；界面经 `src/frontend/ui/terminal-reads.ts::endTerminals` 交本机后端 `terminals-end`，各台照 `terminal-end` 的本体做。"
     );
     let kill_rs = guard_core::production_code(
         &fs::read_to_string(guard_core::addr::backend_src_root().join("control/kill.rs"))
@@ -219,19 +219,24 @@ fn the_monitor_has_no_second_path_that_kills_a_session() {
     );
 }
 
-/// ★★**界面说结束只经一处**：`terminal-end` 的 `callTyped` 只住 `src/frontend/ui/terminal-reads.ts`；
-/// `launch` 与 `kill` 两条界面不发 ⇒ 全界面零处。
+/// ★★**界面说结束只经一处**：`terminals-end` 的 `callTyped` 只住 `src/frontend/ui/terminal-reads.ts`（交本机后端，它按台分组、合那一句）；
+/// 界面直接问某台的 `terminal-end`、以及 `launch` · `kill` 两条 ⇒ 全界面零处。
 ///
-/// 守的要求：「业务解释只有一个家」—— 结束被拒怎么说、按句柄还是按会话认，只写在那一份里；
-/// 别处直接 `callTyped(…, "terminal-end", …)` 就是第二条路。
+/// 守的要求：「业务解释只有一个家」—— 结束被拒怎么说、几台的结局怎么合，只在后端那一份里；
+/// 别处直接 `callTyped(…, "terminals-end", …)` 就是第二条路，界面逐台问 `terminal-end` 就是界面自己当信差、自己合句。
 /// 两向相等：出现这个字面量的文件集合 == `{terminal-reads.ts}`；正控：那一份里恰好一处。
 #[test]
 fn the_front_end_ends_terminals_only_through_one_module() {
     let root = guard_core::addr::repo_root();
     let mut homes: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     let mut scanned = 0usize;
-    let needles = ["callTyped(origin, \"terminal-end\""];
-    let gone = ["chan.call(origin, \"launch\"", "callTyped(origin, \"kill\""];
+    let needles = ["callTyped(LOCAL_ORIGIN, \"terminals-end\""];
+    let gone = [
+        "chan.call(origin, \"launch\"",
+        "callTyped(origin, \"kill\"",
+        "callTyped(origin, \"terminal-end\"",
+        "callTyped(LOCAL_ORIGIN, \"terminal-end\"",
+    ];
     let mut gone_hits: Vec<String> = Vec::new();
     let mut counts: std::collections::BTreeMap<&str, usize> = Default::default();
     for (p, text) in guard_core::scan_tree_excluding(&root.join("src"), &["ts"], &[]) {
@@ -265,12 +270,12 @@ fn the_front_end_ends_terminals_only_through_one_module() {
     }
     assert!(
         gone_hits.is_empty(),
-        "界面又发起了 `launch` / `kill`：{gone_hits:?}"
+        "界面又发起了 `launch` / `kill`，或逐台问 `terminal-end`：{gone_hits:?}"
     );
     // 正控 ＋ 恒等：结束 1。
     assert_eq!(
         counts.into_iter().collect::<Vec<_>>(),
-        vec![("callTyped(origin, \"terminal-end\"", 1)],
+        vec![("callTyped(LOCAL_ORIGIN, \"terminals-end\"", 1)],
         "`src/frontend/ui/terminal-reads.ts` 里这一条的处数变了 —— 多一处是长出了第二个调用点，少一处是那条路没了"
     );
 }

@@ -254,8 +254,8 @@ pub const DEFLATE_LEVEL: u32 = 6;
 const DEFLATE_CHUNK: usize = 64 * 1024;
 
 /// 接成流之后这台写过去的那一半：原样，或客户端要了 deflate（回话认了）⇒ 回话那一行之后整条是一个 raw deflate 流。
-/// `poll_write` 只往压缩器里喂、攒出来的往下写；`poll_flush` 先做一次 sync flush 再 flush 下面 ⇒ `writer_task` 每帧一 flush，
-/// 每一帧到了对端就解得出来。整条一个压缩上下文：与 SSH 层 zlib 压这条流时同一形。
+/// `poll_write` 只往压缩器里喂、攒出来的往下写；`poll_flush` 先做一次 sync flush 再 flush 下面 ⇒ `writer_task` 三路排空才 flush（一直排着时每 64 KB 一次），
+/// flush 过的帧到了对端就解得出来。整条一个压缩上下文：与 SSH 层 zlib 压这条流时同一形。
 pub struct Down<W> {
     inner: W,
     z: Option<Deflating>,

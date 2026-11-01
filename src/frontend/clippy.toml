@@ -17,4 +17,26 @@ disallowed-methods = [
   { path = "tokio::time::sleep_until", reason = "壳的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
   { path = "tokio::time::interval", reason = "壳的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
   { path = "tokio::time::interval_at", reason = "壳的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+  # 写盘那一组：壳往盘上写只经 `shell/src/platform/own_fs.rs`（自己的状态 · 自己的部署物 · 终端设备 · 日志目录各一组函数），
+  #   放行只在那一份里、各组那几个只做这一件事的小函数上。用户文件不在壳里写：经那台的后端，或 `host_core` 保留目标 ACL 的那一个替换。
+  #   文件窗口包够不着 `own_fs`：它那一两处写就地放行，reason 写落点。
+  { path = "std::fs::write", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
+  { path = "std::fs::create_dir", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
+  { path = "std::fs::create_dir_all", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
+  { path = "std::fs::copy", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
+  { path = "std::fs::remove_file", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
+  { path = "std::fs::remove_dir", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
+  { path = "std::fs::remove_dir_all", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
+  { path = "std::fs::rename", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
+  { path = "std::fs::set_permissions", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
+  { path = "std::fs::File::create", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
+  { path = "std::fs::OpenOptions::new", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
+  { path = "std::fs::DirBuilder::new", reason = "壳的写盘只经 `platform::own_fs`（按落点选函数）；用户文件经后端" },
+  # 起进程那一组：壳起外部进程只经 `shell/src/spawn_managed.rs`（那一处定环境 · 句柄 · 窗口三条策略）。
+  { path = "std::process::Command::new", reason = "壳起进程只经 `spawn_managed`（环境 · 句柄 · 窗口三条策略只定一处）" },
+  { path = "tokio::process::Command::new", reason = "壳起进程只经 `spawn_managed`（环境 · 句柄 · 窗口三条策略只定一处）" },
+  # 取家目录那一组：壳里家目录只在 `shell/src/data_paths.rs` 取，别处拿它给的路径。
+  { path = "creds_core::store::home_dir", reason = "壳取家目录只在 `data_paths`；别处用它给的路径" },
+  { path = "std::env::home_dir", reason = "壳取家目录只在 `data_paths`；别处用它给的路径" },
+  { path = "dirs::home_dir", reason = "壳取家目录只在 `data_paths`；别处用它给的路径", allow-invalid = true },
 ]

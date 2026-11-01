@@ -126,6 +126,12 @@ const WRITE_SITES: &[(&str, &str, Lands, &str)] = &[
      "建 `<monitor 数据目录>/logs/backend/`（`create_dir_all`，只建目录）—— 脱离常驻的本机后端把自己的 stderr 落在\
           这一层里（后端只 `O_EXCL` 新建文件、不建目录，`src/backend/stderr_log.rs`）。写的是 monitor 自己的日志目录"),
     // 删历史会话是后端一条只收 sid 的命令（`files-delete-session`），本进程一个字节不删 ⇒ 不在本表。
+    // 壳的写盘模块（`platform/own_fs.rs`）：自己的状态 · 自己的部署物 · 终端设备，写只经这里。
+    ("own_fs.rs", "create_new_private", Lands::OwnState, "原子写的旁名：只给本人地新建（O_EXCL），写满换名上位"),
+    ("own_fs.rs", "create_private", Lands::OwnDeployment, "部署物暂存件 .<名>.<pid>.partial 与自己状态里的锁旁件：只给本人地建或截断"),
+    ("own_fs.rs", "rename", Lands::OwnState, "原子写与部署物上位的换名（数据目录底下的状态 · bin/ 底下的部署物）"),
+    ("own_fs.rs", "remove_file", Lands::OwnState, "删自己的一份（状态文件 · 旁名 · bin/ 底下的暂存件与旧版）"),
+    ("own_fs.rs", "tty_write", Lands::TerminalDevice, "往终端设备写改标题的控制序列，只写不建"),
 ];
 
 /// 一行 `use ... fs ...` 该放行还是该拦。`Ok(())` = 放行。

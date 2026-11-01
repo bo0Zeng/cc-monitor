@@ -8,6 +8,7 @@ import type { Kin } from "./Kin";
 import type { LastSay } from "./LastSay";
 import type { McpTrouble } from "./McpTrouble";
 import type { Needs } from "./Needs";
+import type { NoticeRun } from "./NoticeRun";
 import type { PendingCall } from "./PendingCall";
 import type { QuietUnread } from "./QuietUnread";
 import type { RetryRun } from "./RetryRun";
@@ -79,6 +80,10 @@ handedBack: Array<string>,
  * 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。
  */
 retries: Array<RetryRun>, 
+/**
+ * 一组一组相邻的收场通知（按首条的记录 id，文件序）：哪几条并一组 · 哪几条交回过、不露 · 写好的组头。出口那一下算（[`settle_notices`]）。
+ */
+notices: Array<NoticeRun>, 
 /**
  * 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null`。
  */

@@ -6491,6 +6491,7 @@ data class FactsReply(
     val needs: Needs?,
     val handedBack: List<String>,
     val retries: List<RetryRun>,
+    val notices: List<NoticeRun>,
     val permissionMode: String?,
     val permissionModeText: String?,
     val tokens: TokenUse?,
@@ -6525,6 +6526,7 @@ data class FactsReply(
             Field("needs", { opt(Needs.ADAPTER) }, optional = false, nullable = true),
             Field("handedBack", { arr(Str) }, optional = false, nullable = false),
             Field("retries", { arr(RetryRun.ADAPTER) }, optional = false, nullable = false),
+            Field("notices", { arr(NoticeRun.ADAPTER) }, optional = false, nullable = false),
             Field("permissionMode", { opt(Str) }, optional = false, nullable = true),
             Field("permissionModeText", { opt(Str) }, optional = false, nullable = true),
             Field("tokens", { opt(TokenUse.ADAPTER) }, optional = false, nullable = true),
@@ -6540,8 +6542,8 @@ data class FactsReply(
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Long>, a[9] as List<PendingCall>, a[10] as LastSay?, a[11] as Needs?, a[12] as List<String>, a[13] as List<RetryRun>, a[14] as String?, a[15] as String?, a[16] as TokenUse?, a[17] as FactsCost?, a[18] as List<BgTask>, a[19] as FactsBackground?, a[20] as String?, a[21] as Long?, a[22] as String?, a[23] as List<McpTrouble>, a[24] as Kin?, a[25] as List<Kin>, a[26] as FactsLine?, a[27] as QuietUnread?) },
-            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
+            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Long>, a[9] as List<PendingCall>, a[10] as LastSay?, a[11] as Needs?, a[12] as List<String>, a[13] as List<RetryRun>, a[14] as List<NoticeRun>, a[15] as String?, a[16] as String?, a[17] as TokenUse?, a[18] as FactsCost?, a[19] as List<BgTask>, a[20] as FactsBackground?, a[21] as String?, a[22] as Long?, a[23] as String?, a[24] as List<McpTrouble>, a[25] as Kin?, a[26] as List<Kin>, a[27] as FactsLine?, a[28] as QuietUnread?) },
+            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
         )
     }
 }
@@ -15026,6 +15028,31 @@ data object NoReq {
     val ADAPTER: JsonAdapter<NoReq> = obj(emptyList(), { NoReq }, { emptyArray() })
 }
 
+@Suppress("UNCHECKED_CAST")
+data class NoticeRun(
+    val id: String,
+    val members: List<String>,
+    val hidden: List<String>,
+    val head: String?,
+    val failed: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<NoticeRun> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("members", { arr(Str) }, optional = false, nullable = false),
+            Field("hidden", { arr(Str) }, optional = false, nullable = false),
+            Field("head", { opt(Str) }, optional = false, nullable = true),
+            Field("failed", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> NoticeRun(a[0] as String, a[1] as List<String>, a[2] as List<String>, a[3] as String?, a[4] as Boolean) },
+            { v -> arrayOf(v.id, v.members, v.hidden, v.head, v.failed) },
+        )
+    }
+}
+
 enum class OnExists(val wire: String) {
     ASK("ask"),
     OVERWRITE("overwrite"),
@@ -22833,6 +22860,7 @@ data class SessionFacts(
     val needs: Needs?,
     val handedBack: List<String>,
     val retries: List<RetryRun>,
+    val notices: List<NoticeRun>,
     val permissionMode: String?,
     val permissionModeText: String?,
     val tokens: TokenUse?,
@@ -22866,6 +22894,7 @@ data class SessionFacts(
             Field("needs", { opt(Needs.ADAPTER) }, optional = false, nullable = true),
             Field("handedBack", { arr(Str) }, optional = false, nullable = false),
             Field("retries", { arr(RetryRun.ADAPTER) }, optional = false, nullable = false),
+            Field("notices", { arr(NoticeRun.ADAPTER) }, optional = false, nullable = false),
             Field("permissionMode", { opt(Str) }, optional = false, nullable = true),
             Field("permissionModeText", { opt(Str) }, optional = false, nullable = true),
             Field("tokens", { opt(TokenUse.ADAPTER) }, optional = false, nullable = true),
@@ -22881,8 +22910,8 @@ data class SessionFacts(
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Long>, a[8] as List<PendingCall>, a[9] as LastSay?, a[10] as Needs?, a[11] as List<String>, a[12] as List<RetryRun>, a[13] as String?, a[14] as String?, a[15] as TokenUse?, a[16] as FactsCost?, a[17] as List<BgTask>, a[18] as FactsBackground?, a[19] as String?, a[20] as Long?, a[21] as String?, a[22] as List<McpTrouble>, a[23] as Kin?, a[24] as List<Kin>, a[25] as FactsLine?, a[26] as QuietUnread?) },
-            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
+            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Long>, a[8] as List<PendingCall>, a[9] as LastSay?, a[10] as Needs?, a[11] as List<String>, a[12] as List<RetryRun>, a[13] as List<NoticeRun>, a[14] as String?, a[15] as String?, a[16] as TokenUse?, a[17] as FactsCost?, a[18] as List<BgTask>, a[19] as FactsBackground?, a[20] as String?, a[21] as Long?, a[22] as String?, a[23] as List<McpTrouble>, a[24] as Kin?, a[25] as List<Kin>, a[26] as FactsLine?, a[27] as QuietUnread?) },
+            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
         )
     }
 }
@@ -24275,6 +24304,8 @@ sealed interface Speaker {
         val status: String? = null,
         val summary: String? = null,
         val toolUseId: String? = null,
+        val end: TaskEnd? = null,
+        val row: String? = null,
     ) : Speaker, Ordered {
         override val kind: String get() = "taskNotification"
         override var wireOrder: IntArray? = null
@@ -24380,9 +24411,11 @@ sealed interface Speaker {
                         Field("status", { opt(Str) }, optional = true, nullable = true),
                         Field("summary", { opt(Str) }, optional = true, nullable = true),
                         Field("toolUseId", { opt(Str) }, optional = true, nullable = true),
+                        Field("end", { opt(TaskEnd.ADAPTER) }, optional = true, nullable = true),
+                        Field("row", { opt(Str) }, optional = true, nullable = true),
                         ),
-                        { a -> Speaker.TaskNotification(a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?) },
-                        { v -> arrayOf("taskNotification", v.taskId, v.status, v.summary, v.toolUseId) },
+                        { a -> Speaker.TaskNotification(a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as TaskEnd?, a[6] as String?) },
+                        { v -> arrayOf("taskNotification", v.taskId, v.status, v.summary, v.toolUseId, v.end, v.row) },
                     )),
                 Variant("agentMessage", Speaker.AgentMessage::class.java, obj(
                         listOf(
@@ -25372,6 +25405,17 @@ data class Task(
             { a -> Task(a[0] as String, a[1] as String, a[2] as String, a[3] as List<String>, a[4] as List<String>, a[5] as String?, a[6] as String?) },
             { v -> arrayOf(v.id, v.subject, v.status, v.blocks, v.blockedBy, v.description, v.activeForm) },
         )
+    }
+}
+
+enum class TaskEnd(val wire: String) {
+    DONE("done"),
+    FAILED("failed"),
+    STOPPED("stopped"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<TaskEnd> = enumOf(entries) { it.wire }
     }
 }
 

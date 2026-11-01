@@ -80,28 +80,16 @@ class NavRoutesTest {
     }
 
     /**
-     * 用户可见的路由名要过禁用词表。
-     *
-     * 与 agent 的一次运行两端都叫「会话」（术语表正名），新开写「新建会话」。
-     * 路由名虽然不直接上屏，但它是给后来者看的命名基准，跑偏了屏上文案迟早跟着跑偏。
+     * 抽屉「新建会话」那一项与桌面同一个名（与 agent 的一次运行两端都叫「会话」，术语表正名）。
+     * 上屏禁词按面判，见 `UiWordlistTest`。
      */
     @Test
-    fun theNewRouteNamesFollowTheProductVocabulary() {
-        val banned = listOf("ssh", "tmux", "bridge", "daemon", "offset", "exec")
-        for (r in listOf(Screen.Conversations.route, Screen.Chat.route)) {
-            for (w in banned) {
-                assertFalse("路由名不许出现禁用词「$w」：$r", r.lowercase().contains(w))
-            }
-        }
-        // 抽屉「新建会话」那一项的字是真上屏的，比路由名更该守这份词表。
+    fun theNewSessionEntryUsesTheProductName() {
         val newLabel =
             com.ccmonitor.mobile.ui.drawer
                 .drawerEntries()
                 .first()
                 .label
-        for (w in listOf("对话", "连接", "SSH", "tmux", "bridge", "daemon")) {
-            assertFalse("「新建会话」的字不许出现禁用词「$w」：$newLabel", newLabel.contains(w))
-        }
         assertEquals("它得真说「新建会话」：与桌面同一个名", "新建会话", newLabel)
     }
 

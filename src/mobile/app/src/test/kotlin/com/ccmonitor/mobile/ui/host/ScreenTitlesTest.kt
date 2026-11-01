@@ -7,7 +7,7 @@ import org.junit.Test
  * 「设置 · 服务器」那一组屏的标题判据。
  *
  * 英文路由名（`Hosts`、`Identities`）不许直接上屏当标题；`Hosts` 那一屏还是没有机器时冷启动的落点。
- * `ChatMenuTest` 的词表只管聊天屏，这一组六个屏的标题由本文件管。
+ * 上屏禁词按面判（`UiWordlistTest` 读 `terms.json` 的 `mobileFaces`）；本文件只管这一组六个屏的标题不是路由名。
  */
 class ScreenTitlesTest {
     /** 一个串是不是「看起来像路由名」＝ 全是 ASCII 可见字符且含字母。 */

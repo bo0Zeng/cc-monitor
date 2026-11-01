@@ -110,7 +110,7 @@ struct SkelView<'a> {
 type Translate = fn(&crate::agents::Line<'_>) -> Result<Option<crate::agents::Translated>, String>;
 
 /// 一行的骨架索引行（扫描图 · 从中间起的那一截同一处）：类 · 画法 · 人说的取自整条翻译出的那条通用记录（吃同一份解析）。
-/// 不算一行（[`super::lines::counts`] 口径）⇒ `None`。
+/// 不算一行（[`super::lines::counts`] 口径）⇒ `None`。那条通用记录一并交回（通知组吃它）。
 fn index_row(
     kind: &str,
     translate: Option<Translate>,
@@ -118,21 +118,22 @@ fn index_row(
     beat: Option<&crate::agents::beat::Beat<'_>>,
     body: &[u8],
     read: u64,
-) -> Option<IndexRow> {
+) -> Option<(IndexRow, Option<crate::agents::record::Record>)> {
     if !super::lines::counts(body) {
         return None;
     }
     let rec = translate
         .and_then(|parse| parse(line).ok().flatten())
         .and_then(|t| t.record);
-    Some(super::recognize::index_row::index_row_of(
+    let row = super::recognize::index_row::index_row_of(
         kind,
         line.value(),
         beat,
         rec.as_ref(),
         line.start(),
         read,
-    ))
+    );
+    Some((row, rec))
 }
 
 impl Scan {
@@ -178,7 +179,10 @@ impl Scan {
             let row = index_row(kind, translate, &line, beat.as_ref(), body, read as u64);
             // 这一行的行号（不算一行的那几行与下一行同号，它们解析不出记录、用不上）。
             let line = self.starts.len() as u64;
-            if let Some(row) = row {
+            if let Some((row, rec)) = row {
+                if let (Some(rec), true) = (rec.as_ref(), v.is_some()) {
+                    super::recognize::facts::note_notice(&mut self.facts, rec, row.sc);
+                }
                 self.starts.push(start);
                 self.index.push(row);
             }
@@ -213,6 +217,7 @@ impl Scan {
             let gone: std::collections::HashSet<&str> = off.iter().map(String::as_str).collect();
             inputs.retain(|r| !gone.contains(r.uuid.as_str()));
             turns.retain(|t| !gone.contains(t.uuid.as_str()));
+            super::recognize::facts::drop_off_notices(&mut self.facts, &gone);
         }
         let mut map = ScanMap {
             end: self.end,
@@ -557,7 +562,7 @@ impl RecordScans {
             let text = String::from_utf8_lossy(body);
             let line = crate::agents::Line::of(kind, &text, start);
             let beat = line.value().and_then(|v| crate::agents::beat_of(kind, v));
-            if let Some(r) = index_row(kind, translate, &line, beat.as_ref(), body, read) {
+            if let Some((r, _)) = index_row(kind, translate, &line, beat.as_ref(), body, read) {
                 if !take(&r) {
                     return Ok(start);
                 }
@@ -852,7 +857,7 @@ impl RecordScans {
         let mut lines = super::lines::Lines::new(std::io::BufReader::new(file), t.end).upto(len);
         while let Some(row) = lines.next()? {
             slide(&mut t.witness, row.whole);
-            super::recognize::facts::note_line(&mut t.facts, kind, row.body());
+            super::recognize::facts::note_line(&mut t.facts, kind, row.body(), row.at);
         }
         t.end = lines.end();
         let facts = t.facts.clone();
