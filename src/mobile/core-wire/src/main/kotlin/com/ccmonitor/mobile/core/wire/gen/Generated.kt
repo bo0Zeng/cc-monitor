@@ -314,6 +314,9 @@ fun <T> tuple(lazyAds: List<() -> JsonAdapter<*>>, build: (Array<Any?>) -> T, ge
         w.endArray()
     }, "tuple")
 
+/** 本机那台的机器键（`cmd_wire::machine::LOCAL`）。 */
+const val LOCAL: String = "<local>"
+
 @Suppress("UNCHECKED_CAST")
 data class AccountAddArgs(
     val name: String,
