@@ -25,7 +25,7 @@
 //! 先剥注释、再把字符串字面量的**内容**抹成空格（针表里的 `"Command::new("` 是数据不是调用），再认信号：
 //! 没有测试 ⇒ 支撑 · 有「碰 OS」信号 ⇒ 集成 · 否则有「读仓内文本」信号 ⇒ 源码扫描 · 否则 ⇒ 单元。
 //! 一份文件里几种都有 ⇒ 取环境要求最高的那个（单元 < 扫描 < 集成）。`#[ignore]` 那几条**另进真机层逐条登记**，
-//! 不改文件的层。判别器判错了就改判别器（从前的例外表数到 0 删了）。
+//! 不改文件的层。判别器判错了就改判别器，不设例外表。
 //!
 //! # 已经有人守的，不重做（本文件只在它们没盖到的地方长东西）
 //!
@@ -318,7 +318,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/frontend/shell/local_lines_tests.rs",
         "a_real_backend_feeds_local_lines_through_the_production_read_loop",
-        Trigger::Filter { by: "tests/evidence/CF1-local-lines.py", needle: "a_real_backend_feeds_local_lines_through_the_production_read_loop" },
+        Trigger::Filter { by: "tests/evidence/local-lines.py", needle: "a_real_backend_feeds_local_lines_through_the_production_read_loop" },
     ),
     (
         "tests/frontend/filewin/bigfile_tests.rs",
@@ -412,11 +412,10 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "the_local_backend_host_can_be_stopped_and_started_again",
         Trigger::Filter { by: "tests/e2e/local-backend-supervise.sh", needle: "local_backend_host" },
     ),
-    // 住址随记录解析搬进后端（原 `tests/frontend/shell/parser_tests.rs`）。
     (
         "tests/backend/agents/claudecode/parse_tests.rs",
         "f63_real_data_ledger",
-        Trigger::Manual("要本机真实历史数据（只读），改 F63 解析时人工重算的台账；跑法住它自己的头注"),
+        Trigger::Manual("要本机真实历史数据（只读），改记录解析时人工重算的台账；跑法住它自己的头注"),
     ),
     (
         "tests/frontend/ui/render.vitest.ts",
@@ -456,13 +455,13 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/dial_compress_tests.rs",
         "zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced",
-        Trigger::Filter { by: "tests/evidence/NT1-net-loopback.py", needle: "zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced" },
+        Trigger::Filter { by: "tests/evidence/net-loopback.py", needle: "zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced" },
     ),
     // 一次性容器 sshd 上强制压、放不可压的大块（那份驱动一趟跑 ZR 与 ZR2 两条）。
     (
         "tests/backend/dial_compress_tests.rs",
         "zr_real_sshd_takes_incompressible_puts_when_forced",
-        Trigger::Filter { by: "tests/evidence/WF2-zlib-container.py", needle: "zr_real_sshd" },
+        Trigger::Filter { by: "tests/evidence/zlib-container.py", needle: "zr_real_sshd" },
     ),
     (
         "tests/backend/observe/search_query_reading.rs",
