@@ -9330,12 +9330,6 @@
       "zh": "改名",
       "args": []
     },
-    "rsFilewinWriteops.label.mkdir": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "新建目录",
-      "args": []
-    },
     "rsFilewinFind.firstBuild.line": {
       "kind": "body",
       "role": "说明",
