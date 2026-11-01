@@ -580,7 +580,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     defs: [],
     needles: [],
     rustNeedles: [
-      { file: "src/backend/accounts/manage/model.rs", text: 'ACCOUNT_ZERO: &str = "0"', count: 0 },
+      // `model.rs` 那一份旧名进了 retired-names，全仓那张网看着它，这里不再另钉一根针。
       { file: "src/backend/accounts/upstream_select/endpoint.rs", text: 'BASE_ACCOUNT_SEGMENT: &str = "0"', count: 0 },
       { file: "src/backend/accounts/quota/name_words.rs", text: '&str = "0"', count: 0 },
     ],

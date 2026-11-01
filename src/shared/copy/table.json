@@ -447,6 +447,12 @@
       "zh": "{name} 的 {item} 是独立文件非共享链接 · 未动\n要共享先把内容合进共享库再删它",
       "args": ["name", "item"]
     },
+    "beAcctPlan.repair.liftBusy": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{name} 有会话在跑 · {item} 本轮不挪，会话停止后再修",
+      "args": ["name", "item"]
+    },
     "beAcctPlan.repair.skipMissing": {
       "kind": "body",
       "role": "说明",
