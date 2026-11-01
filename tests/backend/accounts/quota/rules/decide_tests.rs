@@ -82,6 +82,7 @@ fn acct(id: &str, used5h: f64) -> Acct {
         per_pct: [None, None],
         weekly: false,
         others: None,
+        past: Default::default(),
     }
 }
 
@@ -874,6 +875,7 @@ fn s32_the_simulation_charges_this_session_to_the_account_it_is_on() {
         resets: [Some(T + 4 * 3600), None],
         per_pct: [Some(100_000), None],
         others: Some(0.0),
+        past: Default::default(),
         ..acct(id, used)
     };
     let f = [open("A", 50.0), open("B", 0.0)];
@@ -920,12 +922,14 @@ fn s33_an_account_left_behind_keeps_only_the_others_load() {
         rate: [Some(3.0), None],
         per_pct: [Some(100_000), None],
         others: Some(1.0),
+        past: Default::default(),
         ..acct("A", 50.0)
     };
     let b = Acct {
         resets: [Some(T + 4 * 3600), None],
         per_pct: [Some(1_000_000), None],
         others: Some(0.0),
+        past: Default::default(),
         ..acct("B", 0.0)
     };
     let tl = simulate(
@@ -1018,6 +1022,7 @@ fn group(seed: u64) -> (Value, Vec<Acct>, Sigma) {
             per_pct: [None, None],
             weekly: false,
             others: None,
+            past: Default::default(),
         })
         .collect();
     let temp: Vec<String> = ids.iter().filter(|_| g.upto(4) == 0).cloned().collect();

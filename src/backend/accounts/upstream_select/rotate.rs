@@ -445,6 +445,33 @@ impl Hop {
             &when,
         )
     }
+
+    /// ★ 号换窗的历史交给策略的那两样（判 · 试跑拼完 `Acct` 同问这一处）：周窗重置时剩几点 · 开窗取整往哪边；
+    /// 照 [`crate::accounts::quota::facts::pick`] 此刻挑的周窗 · 5 小时窗的原名问额度账，账上没这个号 ⇒ 照旧空着。
+    pub(crate) fn with_past(
+        &self,
+        agent: &str,
+        all: &mut [crate::accounts::quota::rules::Acct],
+        now: u64,
+    ) {
+        let slot = slot_fn(agent);
+        for x in all {
+            let Some(o) = self.quota.entry(agent, &x.id) else {
+                continue;
+            };
+            let name = |s: &str| {
+                crate::accounts::quota::facts::pick(&o.reading, s, now, &slot).map(|w| w.name.clone())
+            };
+            x.past = crate::accounts::quota::rules::Past {
+                weekly_left_at_reset: name("7d")
+                    .map(|n| o.weekly_left_at_reset(&n))
+                    .unwrap_or_default(),
+                grid_up: name("5h").and_then(|n| {
+                    o.window_grid(&n, crate::accounts::quota::rules::WINDOW_SECS[0])
+                }),
+            };
+        }
+    }
 }
 
 /// 号的种类：key 表里有行、或账号库说它是按量号 ⇒ 按量号；其余是订阅号。

@@ -100,6 +100,7 @@ fn a_reading_lands_under_its_account_on_disk_and_on_the_wire_field_for_field() {
         )]
         .into(),
         per_pct: Default::default(),
+        history: Default::default(),
     };
     assert_eq!(on_disk(&path).accounts, vec![want.clone()]);
     assert_eq!(l.entry("claude-code", "q"), Some(want.clone()));
@@ -727,4 +728,102 @@ fn the_rate_spans_the_last_half_hour_not_the_last_two_readings() {
     let r = o.rate("five_hour", t + 1_510).expect("有用速");
     // 0.80（t）→ 0.90（t + 1503）：10 点 / 25.05 分。
     assert!((r - 10.0 / (1_503.0 / 60.0)).abs() < 1e-6, "{r}");
+}
+
+fn wins(windows: Vec<QuotaWindow>) -> QuotaReading {
+    QuotaReading {
+        status: Some(QuotaStatus::Allowed),
+        refused: false,
+        limiting: None,
+        resets_at: None,
+        windows,
+        overage: None,
+    }
+}
+
+/// ★ 号的历史：周窗换窗那一下记下旧窗最后读到的用量 ⇒ 周重置时剩几点；5 小时新窗头一次看到的时刻对着重置时刻的
+/// 10 分钟格 ⇒ 开窗往哪边取整。盘上那份带着、重开读得回来；同一次换窗内存与落盘两处各并一次也只记一笔；quota-read 不往外给。
+#[test]
+fn a_turnover_keeps_what_the_week_left_and_which_way_the_5h_grid_rounds() {
+    let d = temp_dir("history");
+    let path = d.join(FILE_NAME);
+    let own = crate::platform::fs::Own::issue_data_at(&d);
+    let l = Ledger::at(Some(path.clone()));
+    let wk = 1_792_792_800; // 10-23 22:00 周窗重置
+    let old5 = wk - 600;
+    let open = 1_792_843_620; // 10-24 12:07 头一次看到新的 5 小时窗
+    let r5 = 1_792_861_800; // 那一窗 17:10 重置
+    let see = |w7: QuotaWindow, w5: QuotaWindow, at: u64| {
+        record_seen(&l, &own, None, "claude-code", "q", wins(vec![w7, w5]), at);
+    };
+    see(
+        win("seven_day", 0.62, Some(wk)),
+        win("five_hour", 0.30, Some(old5)),
+        wk - 3600,
+    );
+    see(
+        win("seven_day", 0.01, Some(wk + 7 * 86_400)),
+        win("five_hour", 0.30, Some(old5)),
+        wk + 300,
+    );
+    see(
+        win("seven_day", 0.02, Some(wk + 7 * 86_400)),
+        win("five_hour", 0.01, Some(r5)),
+        open,
+    );
+    let o = l.entry("claude-code", "q").expect("entry");
+    assert_eq!(o.weekly_left_at_reset("seven_day"), vec![38.0]);
+    assert_eq!(o.window_grid("five_hour", 18_000), Some(true), "12:07 看到 · 17:10 重置 ⇒ 往上取");
+    assert_eq!(o.history["seven_day"].ends.len(), 1, "{:?}", o.history);
+    assert_eq!(o.history["five_hour"].opens.len(), 1, "{:?}", o.history);
+    let again = Ledger::at(Some(path.clone()))
+        .entry("claude-code", "q")
+        .expect("restart");
+    assert_eq!(again.history, o.history, "盘上那份没带上");
+    assert!(
+        answered(Some(&path), open)["accounts"][0].get("history").is_none(),
+        "quota-read 不该带历史"
+    );
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// ★ 开窗取整往哪边：差（头一次看到 − 格）有一次比 −60 秒还早 ⇒ 往上取；作数的至少 3 次、都不早于格 ⇒ 往下取；
+/// 不到 3 次说不出；差 10 分钟以上的那次（隔了好久才看到）不作数。周剩几点留最近 4 次、开窗留最近 8 次。
+#[test]
+fn the_grid_says_down_only_after_three_close_opens_and_up_on_one_early_one() {
+    let l = Ledger::at(None);
+    let own = crate::platform::fs::Own::issue_data_at(&temp_dir("grid"));
+    let base = 1_792_861_800;
+    let at = |k: u64| base + k * 36_000;
+    let see = |k: u64, late: i64| {
+        let r = at(k);
+        let seen = (r as i64 - 18_000 + late) as u64;
+        record_seen(
+            &l,
+            &own,
+            None,
+            "claude-code",
+            "q",
+            wins(vec![win("five_hour", 0.01, Some(r))]),
+            seen,
+        );
+        l.entry("claude-code", "q").expect("entry")
+    };
+    see(0, 120);
+    see(1, 120);
+    assert_eq!(see(2, 120).window_grid("five_hour", 18_000), None, "两次说不出");
+    assert_eq!(see(3, 900).window_grid("five_hour", 18_000), None, "隔了 15 分钟才看到的不作数");
+    assert_eq!(see(4, 120).window_grid("five_hour", 18_000), Some(false));
+    assert_eq!(see(5, -180).window_grid("five_hour", 18_000), Some(true));
+    let mut o = see(6, 120);
+    for k in 7..14 {
+        o = see(k, 120);
+    }
+    assert_eq!(o.history["five_hour"].opens.len(), 8);
+    assert_eq!(o.history["five_hour"].ends.len(), 4);
+    assert_eq!(
+        o.history["five_hour"].opens.last().map(|x| x.resets),
+        Some(at(13)),
+        "留的是最近的"
+    );
 }
