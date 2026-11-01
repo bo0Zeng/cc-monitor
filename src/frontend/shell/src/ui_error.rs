@@ -107,8 +107,7 @@ impl UiError {
                     // 起不来：被拒那一句下一步在本机后端那一格（`LocalBackend`）里，手动起回的是失败 toast ⇒ 这里不再说一遍。
                     (Death::NeverStarted { .. }, _) => return None,
                 };
-                let reconnect =
-                    (*then == Then::Down).then(|| crate::inbound_client::LOCAL_ORIGIN.to_string());
+                let reconnect = (*then == Then::Down).then(|| cmd_wire::LOCAL.to_string());
                 let detail = detail_head()
                     .maybe(
                         Label::Code,

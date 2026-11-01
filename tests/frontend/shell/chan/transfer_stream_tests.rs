@@ -342,10 +342,7 @@ async fn a_coded_failure_reaches_the_window_with_its_code() {
 async fn the_terminal_ask_is_taken_by_the_monitor_and_refused_out_loud_when_it_cannot_be_done() {
     let client = rig().await;
     for (origin, code) in [
-        (
-            crate::inbound_client::LOCAL_ORIGIN,
-            "local_has_no_file_window",
-        ),
+        (cmd_wire::LOCAL, "local_has_no_file_window"),
         ("判据里不存在的机器·terminal", "no_such_origin"),
     ] {
         let r = client

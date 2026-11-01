@@ -3,7 +3,7 @@
 /// —— 各存一份迟早分叉：新增入口时只想得起改一处。
 const ENTRIES: &[&str] = &["start_or_extract"];
 
-// ── `K-R28`：起后端那一跳的两件事，各自一条判据 ────────────────────────
+// ── 起后端那一跳的两件事，各自一条判据 ────────────────────────
 // 下面四条按「哪一半」分：①判别 ②重试 ③上限 ④两句话。
 // 名字里说得出它断的是哪一半，坏了一条就知道坏在哪儿。
 // ⚠ 一条都**不起真进程**：`spawn_retrying_etxtbsy` 把 spawn 与 sleep 都做成了注入点，
@@ -161,11 +161,11 @@ fn the_retry_budget_is_big_enough_to_retry_and_small_enough_to_wait_on() {
     );
 }
 
-/// ★ `K-R30`（`KR30D3`，acceptor: 机检）：**那个数的出处钉**。
+/// ★ **那个数的出处钉**。
 ///
 /// 上面那条判据核的是这个数**买到的两条性质**（够不够重试 · 会不会退化成慢慢等），
-/// 而 `SPAWN_ETXTBSY_TRIES` **这个值本身**在 `K-R28` 交出来时没有任何读数撑着 ——
-/// 那一节写的是**理由**。`K-R30` 在沙箱里真造出那个竞态量了一趟，把读数写进了它的头注。
+/// 而 `SPAWN_ETXTBSY_TRIES` **这个值本身**要有读数撑着：头注里「理由」那几节不是读数，
+/// 「出处」那一节才是（沙箱里真造出那个竞态量出来的）。
 /// 本条钉的是那段出处与那个数**同生共死**：出处删了 ⇒ 红；数改了而出处没改 ⇒ 也红。
 ///
 /// 🔴 它**不**核「那个数等于 8」—— 那样又是把常量抄第二遍（上面那条的头注逐字写过
@@ -174,8 +174,8 @@ fn the_retry_budget_is_big_enough_to_retry_and_small_enough_to_wait_on() {
 fn the_retry_budget_number_has_a_measured_origin_pinned_to_it() {
     let whole = include_str!("../../../src/frontend/shell/src/local_backend.rs");
     // ⚠ 定位串**运行时拼**，而且名字取自 `stringify!` 而不是又抄一个字面量：
-    //   ① 直接写全串会命中**本条自己**（初版实测「命中 2 处」当场红 —— F23 那一族，
-    //      本文件的 `C12` 源码钉早就是这么写的）；② `stringify!` 让这里零字面量复述。
+    //   ① 直接写全串会命中**本条自己**（「判据在自己身上找到自己」那一族；
+    //      本文件的 `C12` 源码钉也是这么写的）；② `stringify!` 让这里零字面量复述。
     let decl_needle = format!("pub const {}: u32 =", stringify!(SPAWN_ETXTBSY_TRIES));
     // ① 反向自检：先断言真取到了那段头注 —— 取不到就会在空串上恒真地全绿。
     let decl = guard_core::find_pinned(whole, &decl_needle)
@@ -184,8 +184,8 @@ fn the_retry_budget_number_has_a_measured_origin_pinned_to_it() {
     let at = guard_core::find_pinned(head, "〔出处〕").unwrap_or_else(|e| {
         panic!(
             "这个数的**出处段**不在它头注里了（{e}）。\n\
-                 `K-R30` 之前它只有理由、没有读数；出处一删，它当场退回「一个判断」。\n\
-                 要换出处就连读数一起换（量具 tests/evidence/K-R30-etxtbsy-window.py）。"
+                 出处一删，它只剩理由、没有读数，当场退回「一个判断」。\n\
+                 要换出处就连读数一起换（量具 tests/evidence/etxtbsy-window.py）。"
         )
     });
     let origin = &head[at..];
@@ -204,12 +204,12 @@ fn the_retry_budget_number_has_a_measured_origin_pinned_to_it() {
         )
     });
     // ③ 出处要给得出**住址**，否则它只是一句好听的话：读数得能重跑。
-    guard_core::find_pinned(origin, "K-R30-etxtbsy-window.py").unwrap_or_else(|e| {
+    guard_core::find_pinned(origin, "etxtbsy-window.py").unwrap_or_else(|e| {
         panic!("出处段没给量具的住址（{e}）—— 给不出住址的读数，下一轮没人复得出来")
     });
 }
 
-/// ★★ `K-R31`（`KR31D2`，acceptor: 机检）：**撑着那个数的那条外部前提的判据**。
+/// ★★ **撑着那个数的那条外部前提的判据**。
 ///
 /// # 上面那条钉「有出处」，本条钉「那个出处**还成立**」
 ///
@@ -226,9 +226,9 @@ fn the_retry_budget_number_has_a_measured_origin_pinned_to_it() {
 ///
 /// # 🔴 单位：**行**。不是「处」，也不是「块」
 ///
-/// 立本条时那句话在盘上是 **3 行**（同一段 `///` 里连着的三行）；按相邻块算是 **2**；
-/// 按「一段文档注释」算是 **1** —— `K-R30` 头注写的「1 处」是第三种读法，
-/// 而它**没写死是哪一种**。本条按**行**判，并把三个数一起印进失败文案，歧义到此为止。
+/// 那句话在盘上是 **3 行**（同一段 `///` 里连着的三行）；按相邻块算是 **2**；
+/// 按「一段文档注释」算是 **1** —— 说「1 处」是第三种读法，
+/// 而「处」**没写死是哪一种**。本条按**行**判，并把三个数一起印进失败文案，歧义到此为止。
 ///
 /// # 它扫的是什么、扫不到什么
 ///
@@ -237,14 +237,13 @@ fn the_retry_budget_number_has_a_measured_origin_pinned_to_it() {
 /// ⇒ 本条那张形态表住 `#[cfg(test)]` 里、那几段前提住 `///` 里，**按构造都进不了扫描面**
 /// —— `scanning_guard_registry` 头注四类里的第二类（「剥生产段（构造性摘除）」）。
 /// ⚠ 那份登记治的正是「**判据在自己的注释 / 登记表 / 常量里找到了自己 ⇒ 恒绿**」，
-/// 而本条是那一族的第 N 个：不剥注释的话，**本文件上面那段头注自己就是第一处命中**
-/// （`K-R30` 自查逮到过一次，提交 `494ad4c`）。
+/// 而本条是那一族的第 N 个：不剥注释的话，**本文件上面那段头注自己就是第一处命中**。
 ///
 /// 🔴 最可能长出这种写法的恰恰是 `local_backend.rs`
 /// （生产段起进程那一跳就在那儿）⇒ 它另走 `include_str!` **单独喂一遍**。
 ///
-/// ⚠ 先前这一段的理由是「`scan_tree!` 按构造**摘除调用者自己那一份**」——
-/// 那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的折返路径
+/// ⚠ 别把这一遍读成「`scan_tree!` 按构造**摘除调用者自己那一份**」的补救 ——
+/// 那条摘除**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的折返路径
 /// ⇒ 后缀比不命中），而且今天的调用者是本判据文件、**不是** `local_backend.rs`：
 /// 后者走普通遍历本来就在人群里，那句 `include_str!` 喂的是**第二份**。
 /// 重复在这里无害（`hit_lines` 必须为空，份数/字节数只有下限），
@@ -370,8 +369,8 @@ fn nothing_in_the_production_path_runs_code_between_fork_and_exec() {
         hit_lines.is_empty(),
         "生产段出现了「在 fork 与 exec 之间插一段代码」的写法 —— \
              **{} 行** · **{} 块**（剥后文本里相邻的命中行合成一块）· **{} 份文件**：\n  {}\n\n\
-             🔴 **本条判的单位是「行」**：有一行就红。三个数一起印，是因为 `K-R30` 写的\n\
-             「1 处」在盘上按行是 3、按相邻块是 2 —— 那个歧义在这里终结，别再用「处」。\n\n\
+             🔴 **本条判的单位是「行」**：有一行就红。三个数一起印，是因为说\n\
+             「1 处」的那句在盘上按行是 3、按相邻块是 2 —— 那个歧义在这里终结，别再用「处」。\n\n\
              ★ 后果不是风格问题，是**一个读数的出处当场不再成立**：\n\
                `{}` 那个上限的出处段量的是「孩子在 fork 与 execve 之间**不干活**」那一档；\n\
                孩子中间还要干活时那个上限**盖不住**（对照臂的分子分母逐字写在那节出处里）。\n\
@@ -462,16 +461,12 @@ fn the_two_verdicts_hand_the_user_two_different_sentences() {
 /// 一个写到一半、另一个 `rename` 走 —— 出来的正是这道防线要防的东西。
 /// ⚠ 不是理论：Linux 上单实例靠会话总线，没有会话总线（或两个登录会话）时两个 monitor 照样并存。
 ///
-/// # 🔴 `K-R69` 09-12：**人群从「恰好一处」改成「每一处」**，理由写清楚
+/// # 🔴 人群是「**每一处**」临时名落点，不是「恰好一处」
 ///
-/// 原来这一条是 `find_pinned(&prod, "std::process::id()")`（要求**恰好一处**）＋
-/// 「那一处在 `.partial` 附近」。又新增了第二个走 `.partial` + `rename` 的落点
-/// （[`install_local_ccm_entry`]）⇒ 它当场红了，报文逐字「命中 2 处，断言指不明是哪一处」。
-///
-/// **那不是「判据过严」，是它的人群一直写小了**：这条性质从头就该覆盖**所有**临时名落点，
-/// 只是当时只有一处，于是「恰好一处」与「每一处」在读数上分不开。
-/// ⇒ 改成覆盖式（人群现算），**不是**把 needle 撑大到只认第一处 ——
-/// 后者正是本仓那条「匹配单位比事实小」的老病。
+/// 走 `.partial` + `rename` 的落点不止一个（另有 [`install_local_ccm_entry`]）。
+/// 这条性质要覆盖**所有**临时名落点 ⇒ 人群现算、逐处判；
+/// **不是**写成「`std::process::id()` 恰好一处」再把 needle 撑大到只认第一处 ——
+/// 那正是「匹配单位比事实小」那一病。
 #[test]
 fn two_processes_do_not_share_one_partial_file() {
     let prod = guard_core::production_code(include_str!(
@@ -558,10 +553,7 @@ fn the_sweep_only_takes_the_old_ones() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// `P3-Y1` 那两条（本机 tmux 帧进 monitor 的 tmux 原文账 · 那条 #[ignore] 的真 tmux 实测）删了：monitor 不再存 tmux 原文，
-//   本机 tmux 帧由本机后端的会话账本自己消费（`tests/backend/observe/session_ledger_tests.rs`）。
-
-/// `P3-Y1` 的**第二半**：读行循环**真的调**那个吸收点。
+/// 读行循环**真的调**那个吸收点。
 ///
 /// ★ 吸收点本身管用不等于它被调了。把循环里那一行删掉，吸收点的判据**照样绿**，
 /// 而那时本机 tmux 会话又对 monitor 不可见了 —— 与 `P2` 当初「把非 hello 帧全丢了」
@@ -642,9 +634,6 @@ async fn a_local_reply_reaches_the_caller_through_the_dispatch() {
     assert_eq!(got, Some(serde_json::json!({"pong": 1})));
 }
 
-// `P3-Y1` 那两条（本机 tmux 帧进 monitor 的 tmux 原文账 · 那条 #[ignore] 的真 tmux 实测）删了：monitor 不再存 tmux 原文，
-//   本机 tmux 帧由本机后端的会话账本自己消费（`tests/backend/observe/session_ledger_tests.rs`）。
-
 /// ★★ **本机读帧不许被一个坏字节杀死，也不许无界**〔D 阶段补审 08-11 新增〕。
 ///
 /// 补审在同一个读循环上逮到两条：
@@ -691,7 +680,7 @@ fn the_local_frame_reader_is_bounded_and_lossy() {
     });
 }
 
-/// P2-Y1b（acceptor: 机检）：**生产入口真的把消费者传下去了**。
+/// **生产入口真的把消费者传下去了**。
 ///
 /// 上面那条实测直接调 `supervise_with_stdio` 并自己传 `Some(local_stdio_consumer)`。
 /// 而生产走的是 `start_or_extract`。两者之间那根线**没有任何东西守着** ——
@@ -746,7 +735,7 @@ fn the_production_entry_hands_the_stdio_consumer_down() {
     }
 }
 
-/// P2-Y1 + P2-Y3（acceptor: **实测**）：起**真的** backend 二进制，
+/// **实测**：起**真的** backend 二进制，
 /// 看入方向通道是不是真的登记上了；再关写端，看后端是不是**还活着**。
 ///
 /// # 为什么不起 GUI
@@ -768,11 +757,10 @@ fn the_production_entry_hands_the_stdio_consumer_down() {
 /// 不做成「缺了就 red」是因为那会让干净 clone 无法跑测试；缺失不是静默的 ——
 /// `build.rs` 那处 `cargo:warning=缺少内嵌 backend` 会喊（U-1 那次事故之后加的）。
 ///
-/// # ★★ `K-R7`（08-31）：**这一条此前没有人点过名，而它与那条正题完全同形**
+/// # ★★ **它与那条起真后端的正题完全同形**
 ///
-/// `K-R7` 的件文件 `§0` / `§2` 与风险 `6p` 讲的都只是
-/// `local_backend_host::tests::the_local_backend_host_can_be_stopped_and_started_again`。
-/// 而 `D3` 的全表现打之后，**本条是同一族的第二条**：普通 `#[test]`、同一个 `cfg`、
+/// 那条正题是 `local_backend_host::tests::the_local_backend_host_can_be_stopped_and_started_again`；
+/// **本条是同一族的第二条**：普通 `#[test]`、同一个 `cfg`、
 /// 起同一个真后端二进制（还起了两次：探针一次 + `supervise_with_stdio` 一次），
 /// 而后端一上来就**无条件**往它连得到的 tmux server 装三条**全局** hook（槽位 `[50]`）。
 ///
@@ -797,7 +785,7 @@ fn the_production_entry_hands_the_stdio_consumer_down() {
 /// ⚠ ㈢ 是 `D2` 复审 09-01 逼出来的〔阻塞 1 形 ②〕：本条的 `envs` 里**再追加一条**
 /// `("PATH", …)` 就能把上面那条带 shim 的整个盖掉（`supervise_with_stdio` 是
 /// `for (k, v) in &envs { cmd.env(k, v); }`，**后写的赢**，见 `:336`-`:337`），
-/// 而在 ㈢ 落地之前那一刀**全量门禁新红 0**。两格的代价不是一种，判据也刻意分开（`K13`）。
+/// 而没有 ㈢ 时那样改**全量门禁新红 0**。两格的代价不是一种，判据也刻意分开。
 ///
 /// # 🔴 复跑纪律：**换了 `embedded-backends/` 的有无之后，必须 `touch src/frontend/shell/build.rs`**
 ///
@@ -816,7 +804,7 @@ const STDIN_EOF_KEPT: &str = "stdin-eof-kept";
 
 #[cfg(all(embedded_backends, target_os = "linux", target_arch = "x86_64"))]
 #[test]
-#[ignore = "K-R7：起真 backend ⇒ 会装全局 tmux hook。走 tests/e2e/local-backend-supervise.sh 那条带 shim 的路"]
+#[ignore = "起真 backend ⇒ 会装全局 tmux hook。走 tests/e2e/local-backend-supervise.sh 那条带 shim 的路"]
 fn the_local_backend_host_really_registers_an_inbound_client() {
     // ★★ **fail closed，而且排在一切之前** —— 见上面头注第三段。
     let shim = crate::local_backend_host::tests::demand_tmux_shim(
@@ -869,7 +857,7 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
             "CLAUDE_CONFIG_DIR".to_string(),
             cfg_dir.display().to_string(),
         ),
-        // ★ `K-R7`：隔离**真的用上**。探针那一跳走 `.envs(envs…)`，被监护那一跳走
+        // ★ 隔离**真的用上**。探针那一跳走 `.envs(envs…)`，被监护那一跳走
         //   `supervise_with_stdio(.., envs, ..)` ⇒ 写在这里两跳都盖得到。
         (
             "PATH".to_string(),
@@ -919,14 +907,14 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
         );
     };
 
-    // P2-Y1：登记了还得是**能用的** —— backend 声明的入方向命令要在。
+    // 登记了还得是**能用的** —— backend 声明的入方向命令要在。
     assert!(
         client.accepts("terminal-end") && client.accepts("terminal-input"),
         "通道登记了，但后端没声明接受 terminal-end/terminal-input ⇒ P3 接过来也发不出去"
     );
     println!("E2E-OK P2 本机入方向通道登记上了，而且声明接受 terminal-end/terminal-input");
 
-    // P2-Y3：关写端**不许**把后端带走（C8 裁定「默认不 kill、backend 继续跑」）。
+    // 关写端**不许**把后端带走（默认不 kill、backend 继续跑）。
     // 单独观测，不顺带看一眼 —— 件里 §0d 把这条从「推断」改成了实测，就是这个意思。
     let pid = h.current_pid().expect("已经收到 hello 了，进程必然在");
     // stdio 这条载体上后端读到 EOF 不收流（读端不会见底）⇒ 不等 `close_write` 交的那一点，等后端说「读到 EOF、照开」那一行。
@@ -1112,7 +1100,7 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 🔴 `K-R69` / `KR69D1`：**本机那条 `ccm` 入口，与远端那条同源**
+// 🔴 **本机那条 `ccm` 入口，与远端那条同源**
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 要求：「不要的三样：③ 与后端重复的第二份字节」·「旧文件清」。
@@ -1149,7 +1137,7 @@ fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// `KR69D1` 的**同源那一半（拼写侧）**：两条落点里那个 `ccm`，取自**同一处**。
+/// 同源的**拼写那一半**：两条落点里那个 `ccm`，取自**同一处**。
 ///
 /// # 它买的是什么
 ///
@@ -1180,8 +1168,8 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
     );
 }
 
-/// P2z-Y3：**本机那条路不许自己写版本比较** —— 版本比对只有一个家（当年是 `sftp.rs` 的比标记函数，
-/// 那一族退役后是共享判定 `identity_decision`；今天住后端 `control/deploy_plan.rs`，本机那一份经 `place-verdict` 问手上那份字节自己）。
+/// **本机那条路不许自己写版本比较** —— 版本比对只有一个家：共享判定 `identity_decision`，
+/// 住后端 `control/deploy_plan.rs`，本机那一份经 `place-verdict` 问手上那份字节自己。
 ///
 /// 它会失效的地方（如实写）：那个判定只回答「要不要装」，
 /// **不回答「装完对不对」**。本条只挡「另写一套比较逻辑」，不是完整校验。
@@ -1200,7 +1188,7 @@ fn the_local_path_does_not_hand_roll_version_comparison() {
     );
 }
 
-/// 「像内部件号」的形状：一个 ASCII 大写字母紧跟两位数字（`F05b` · `K-R30` 的 `R30` 都算）。
+/// 「像内部件号」的形状：一个 ASCII 大写字母紧跟两位数字（如 `X12`）。
 /// 三个字节**全是 ASCII** 才算命中 ⇒ 切片必落在字符边界上，中文正文不会误伤。
 fn internal_item_id_in(s: &str) -> Option<String> {
     let b = s.as_bytes();
@@ -1218,7 +1206,7 @@ fn internal_item_id_in(s: &str) -> Option<String> {
 /// 那就又成了一条替假话背书的判据。表里这几个都是**用户点得动 / 做得出的东西**。
 const A_STEP_THE_USER_CAN_TAKE: &[&str] = &["-setup.exe", ".msi", "装一次安装包", "装上安装包"];
 
-/// 🔴 **`K-R42` 硬要求①的判据**：「带了但放不下来」与「压根没带」必须是**两句分得开的话**。
+/// 🔴 **「带了但放不下来」与「压根没带」分得开的判据**：「带了但放不下来」与「压根没带」必须是**两句分得开的话**。
 ///
 /// # 它为什么值一条判据
 ///
@@ -1305,7 +1293,7 @@ fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all(
     );
 }
 
-/// 🔴 `K-R42` 硬要求①的**真文件系统那一半**：目标目录建不出来时，
+/// 🔴 上一条的**真文件系统那一半**：目标目录建不出来时，
 /// [`extract_embedded_to`] **真的**走 `Err`，而那条 `Err` 被
 /// [`extraction_failure_reason`] 变成一句与「没带后端」分得开的话。
 ///
@@ -1354,37 +1342,36 @@ fn a_directory_it_cannot_create_really_takes_the_loud_path() {
         reason.raw()
     );
     let _ = std::fs::remove_dir_all(&base);
-    println!("KR42-OK 真写不进去时走的是 Err，逐字：{err}");
+    println!("LOUD-PATH-OK 真写不进去时走的是 Err，逐字：{err}");
 }
 
-/// 🔴 **`K-R42` 防空转**：自释放那条路**真的问了**「这份产物自己带没带」。
+/// 🔴 **防空转**：自释放那条路**真的问了**「这份产物自己带没带」。
 ///
 /// # 没有这一条会怎样
 ///
-/// 「产物带没带」那一问（`K-R42` 时住本层，今天是宿主的 `byte_table::choose`）是纯的、[`extraction_failure_reason`] 是纯的 ——
+/// 「产物带没带」那一问（宿主的 `byte_table::choose`）是纯的、[`extraction_failure_reason`] 是纯的 ——
 /// 两条都测得漂漂亮亮，而**只要没人在生产段里接上它们，整件事就是死代码**，
-/// 上面那几格照样全绿。本仓这一形有名字（`K-R28` 那条「防空转」逐字记着同一件事）。
+/// 上面那几格照样全绿。本文件开头那组「起后端那一跳」的判据防的是同一形。
 ///
-/// # 🔴 `K-R43`：**靶搬了家，它守的是什么、还守不守得住**
+/// # 🔴 靶是共用的 [`resolve_or_extract`]
 ///
-/// 〔`K-R42` 立本条时，那三问住 [`start_or_extract`] 体内，本条切的就是那个体。
-///  `K-R43` 把那三问整段抽进 [`resolve_or_extract`] ⇒ 靶跟着搬到共用那份上。〕
+/// 那三问住 [`resolve_or_extract`] 体内，本条切的就是那个体。
 ///
-/// **它守的东西逐字未变**：自释放那条路上，「问产物自己带没带」与「释放失败说那句分得开的话」
+/// **它守的**：自释放那条路上，「问产物自己带没带」与「释放失败说那句分得开的话」
 /// 必须**真的有生产调用点**，而且「问产物」必须排在「找 exe 旁边」之后。
 ///
-/// **还守得住，而且盖的面变大了**：`K-R43` 之后**只有一条自释放路**，
+/// **盖的面**：**只有一条自释放路**，
 /// 两个生产入口（[`start_or_extract`] · `local_backend_host.rs::resolve_backend_bin`）都走它
-/// ⇒ 同一条断言从盖 1 处变成盖 **2** 处。
-/// ⚠ **但「都走了它」这一半不在本条射程里** —— 靶搬家之后，谁把 `start_or_extract`
+/// ⇒ 同一条断言盖 **2** 处。
+/// ⚠ **但「都走了它」这一半不在本条射程里** —— 谁把 `start_or_extract`
 /// 里那行调用删掉、自己再写一遍，本条**照样绿**（它只看共用那份的体）。
 /// 那一半由 `local_backend_host::the_two_resolution_paths_still_agree_on_the_order` 钉
-/// （`K-R43` 同拍换了它的机制，理由住那条的头注）。**两条合起来才是原来那一格，单条都不够。**
+/// （机制与理由住那条的头注）。**两条合起来才盖全，单条都不够。**
 ///
 /// # 顺序那一半
 ///
 /// 「先找 exe 旁边、再动内嵌那份」是本模块头注花一整段论证过的取舍
-/// （dev 构建里旁边那个更新）。`K-R42` 新加的那个来源**同属「内嵌那一档」**
+/// （dev 构建里旁边那个更新）。内嵌那份的来源**同属「内嵌那一档」**
 /// ⇒ 它也必须排在「找旁边」之后。
 ///
 /// ⚠ **诚实边界**：这是**约定型守卫**（查源码形态，同 `the_backend_layer_stays_host_agnostic`
@@ -1432,7 +1419,7 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
     );
 }
 
-/// `K-R42`：释放出来那个文件名带**目标平台**的可执行后缀。
+/// 释放出来那个文件名带**目标平台**的可执行后缀。
 ///
 /// # 两个断言各自在哪个平台上非空
 ///
@@ -1444,7 +1431,7 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
 /// ⇒ 两条**各有一个平台上是空真**，而本仓 CI 的 `rust` job 跑在 **windows-latest**、
 /// 门禁跑在 Linux ⇒ **两侧合起来才有牙，单侧都不够**。这一格如实写在这里，别读成「验过了」。
 /// 「编得过」那一半由门禁的 `winchk`（`cargo check --target x86_64-pc-windows-gnu`）买。
-/// `K-R42`：内嵌那份的**落点路径**，两侧拼法必须一致。
+/// 内嵌那份的**落点路径**，两侧拼法必须一致。
 ///
 /// # 为什么会有两处
 ///
@@ -1501,7 +1488,7 @@ fn the_native_backend_path_is_spelled_the_same_on_both_sides() {
 #[test]
 fn the_extracted_name_carries_the_target_exe_suffix() {
     let suffix = env!("CCM_TARGET_EXE_SUFFIX");
-    // 落点名就是 `ccm` ＋ 目标平台后缀（从前带 build_id 的那一形删了）。
+    // 落点名就是 `ccm` ＋ 目标平台后缀（不带 build_id）。
     let name = local_ccm_entry_name();
     assert_eq!(
         name,
@@ -1614,7 +1601,7 @@ fn nothing_in_the_production_path_wakes_itself_up() {
 /// 摸底量到后端一启动就无条件往 tmux server 装全局 hook 且没有开关 ⇒
 /// 扫到 dev 产物就起它会去改用户真实 tmux 的状态。这条钉住那个前提：
 /// 候选路径里**只能有 exe 同目录**，出现任何 `target`/`debug`/仓库相对路径就红。
-/// ★★ **F06b-1d：给窗口的那份 env —— 名字从唯一的家来，local_backend 不在就不设。**
+/// ★★ **给窗口的那份 env —— 名字从唯一的家来，local_backend 不在就不设。**
 ///
 /// 判据形态：**纯函数**（跑法：单测 · 钉的性质：wire/边界映射 —— 两维分开写，
 /// 登记的计量缺陷）。它钉两件：
@@ -1642,20 +1629,16 @@ fn the_window_env_uses_the_one_home_and_stays_silent_without_a_local_backend() {
     );
 }
 
-/// ★★ **那个 env 名只有一个家**〔F06b-1 立，F06b-1c 起转为实断言〕。
+/// ★★ **那个 env 名只有一个家**。
 ///
-/// # 🔴 `K-R48` 第二拍（09-11）：**射程砍掉一半，写清楚砍的是哪一半**
+/// # 🔴 射程：只判本文件这一侧
 ///
-/// 原来它有两条腿：① 本文件生产段里那个字面量只许出现 1 次；
-/// ② `shared/ccm` 里出现的每一处「像那个名字」的拼写都必须与 Rust 侧**逐字相同**
-///（名字打错的后果是「ccm 永远读不到 ⇒ 永远走本地那条」，而那看起来完全正常）。
+/// 本条判的是：本文件生产段里那个字面量只许出现 1 次。
+/// 没有「另一个进程按名字去读这个 env」的对侧（用户定「不要有什么 bash 脚本」：
+/// 敲的那个命令就是后端），所以不判「两处拼写一致」。
 ///
-/// 〔用@09-11 `K33`〕「**不要有什么 bash 脚本**」⇒ `shared/ccm` 删了，
-/// **第②条腿没有被测对象了**：今天不存在「另一个进程按名字去读这个 env」这回事，
-/// 敲的那个命令就是后端。⇒ 只留①。
-///
-/// ⚠ **如实边界**：①**买不到**②买的那件事（「两处拼写一致」）。今天那个风险不存在，
-/// 是因为**对侧没了**，不是因为有判据盯着 —— 哪天再出现一个按名字读它的消费者，
+/// ⚠ **如实边界**：本条**买不到**「两处拼写一致」。今天那个风险不存在，
+/// 是因为**没有对侧**，不是因为有判据盯着 —— 哪天再出现一个按名字读它的消费者，
 /// 这条判据**不会**替你盯着它。
 #[test]
 fn the_backend_bin_env_name_has_exactly_one_home() {
@@ -1674,10 +1657,10 @@ fn the_backend_bin_env_name_has_exactly_one_home() {
 
 /// ★★ **安装包旁边不再放第二份本机后端**（size2 10-11）。
 ///
-/// 从前每个打包 job 原生编一份后端、按 triple 命名放进 `binaries/`、`tauri build --config` 注入 `externalBin`，
-/// 装完落在 exe 旁边 —— 而它与内嵌进 exe 的那份逐字节相同，本机后端无论如何都先放到 `~/.cc-monitor/bin/ccm` 再跑，
-/// 旁边那份只是字节来源（setup 多 5.9 MB · msi 多 8 MB · deb 多 27 MB）。
-/// 本条钉住撤干净：发版流水线不再往 `binaries/` 铺 · 补丁配置里没有 `externalBin` · 解析那一侧不再去 exe 旁边找
+/// exe 旁边那份（打包 job 按 triple 放进 `binaries/`、经 `externalBin` 注入）与内嵌进 exe 的那份逐字节相同，
+/// 而本机后端无论如何都先放到 `~/.cc-monitor/bin/ccm` 再跑 ⇒ 旁边那份只会多占安装包
+/// （setup 5.9 MB · msi 8 MB · deb 27 MB）。
+/// 本条钉住没有它：发版流水线不再往 `binaries/` 铺 · 补丁配置里没有 `externalBin` · 解析那一侧不再去 exe 旁边找
 /// （旧安装包可能在旁边留着一份旧版本，认它就会把旧后端放到落点上）。
 #[test]
 fn no_bundle_job_puts_a_second_local_backend_beside_the_exe() {
@@ -1735,7 +1718,7 @@ fn no_bundle_job_puts_a_second_local_backend_beside_the_exe() {
 
 /// ★ **生产接线钉**：`lib.rs` 的启动路径**真的**调了本模块的生产入口。
 ///
-/// 这条是 F03 教训的直接产物：「模块存在 ≠ 模块被调用」。
+/// 「模块存在 ≠ 模块被调用」。
 /// 本模块写得再全，只要 `lib.rs` 里没那一行，本机后端就永远不会被起 ——
 /// 而上面那些单测**全都照样绿**。
 ///
@@ -1846,10 +1829,9 @@ fn the_startup_path_really_calls_this_module() {
 
 /// ★ **接线钉之二：退出路径真的收尸。**
 ///
-/// ⚠ 这条是 **F+02 回看抓出来的洞**，而不是 F05a 自己想到的：
-/// F05a 当时把退出钩子整段删掉做变异，**815 条测试全绿**，CI 也不会红
-/// （本仓 clippy 只报警告、不带 `-D warnings`）。
-/// 也就是说「不 `stop()` 就成游魂进程」这条性质当时**只被 clippy 的 `dead_code` 偶然覆盖**
+/// ⚠ 没有这一条时，把退出钩子整段删掉做变异，**其余测试全绿**，CI 也不会红
+/// （clippy 只报警告）。
+/// 也就是说「不 `stop()` 就成游魂进程」这条性质**只被 clippy 的 `dead_code` 偶然覆盖**
 /// —— 一旦别处也用到 `stop()`，那条告警就消失，这条性质彻底失守。
 ///
 /// **「靠一条告警守着」等于没守。** 上一条接线钉只钉了「入口被调用」，
@@ -1997,13 +1979,13 @@ fn the_exit_path_really_stops_the_local_backend() {
 /// 人群**从源码派生**：本文件里 `#[ignore]` 且体内出现 `CCM_E2E_BACKEND`
 /// （= 真的要一个后端二进制）的测试。用假二进制的那条不在其中。
 ///
-/// # ⚠⚠ 射程订正〔`K-R7-D2`，08-31〕：**人群画在两个属性上，都够不着最危险的那一形**
+/// # ⚠⚠ 射程：**人群画在两个属性上，都够不着最危险的那一形**
 ///
 /// 本条的人群有两个条件，**两个都是「怎么标记的」**：`#[ignore]` · 提到 `CCM_E2E_BACKEND`。
 /// 而本文件里 `the_local_backend_host_really_registers_an_inbound_client` 是**普通 `#[test]`**、
 /// 用的是**内嵌**那份二进制（不经 `CCM_E2E_BACKEND`）⇒ **两个条件各差一个**，
 /// 于是它起着真后端而本条一声不吭。`local_backend_host.rs` 那条姊妹判据同理够不着。
-/// ⇒ 正题已经搬到 `local_backend_host.rs` 的
+/// ⇒ 正题是 `local_backend_host.rs` 的
 /// `every_test_that_starts_the_real_backend_demands_a_private_tmux`：
 /// 人群按「**那个二进制哪来的**」派生（内嵌目录 / `CCM_E2E_BACKEND` / `E2eSandbox::demand`），
 /// **两个文件一起扫**，不看任何属性。
@@ -2051,7 +2033,7 @@ fn every_real_backend_e2e_demands_a_private_tmux_dir() {
     // ⚠ 认属性要**整行相等**，不能 `contains` —— 本条的**文档注释里**就写着
     //   `#[ignore]` 与 `CCM_E2E_BACKEND`，第一版因此把自己也算进了人群，
     //   然后拿自己的 `const` 行去判 fail-closed，当场自红。
-    //   （F24 那一族：匹配单位比事实大；这次事实是「一条属性」，而我匹配了「提到过」。）
+    //   （匹配单位比事实大：事实是「一条属性」，匹配的却是「提到过」。）
     let is_ignored = |c: &String| c.lines().any(|l| l.trim() == concat!("#[ig", "nore]"));
     let real_e2e: Vec<&String> = chunks
         .iter()
@@ -2063,37 +2045,19 @@ fn every_real_backend_e2e_demands_a_private_tmux_dir() {
         "本文件里找不到「`#[ignore]` 且要 {REAL}」的测试（08-08 实测 1 条）—— \
              抽取器坏了或那条 e2e 被删了，本条此刻无效"
     );
-    // ⚠⚠ **剥注释这一步是 09-01（`C` 第六拍）补的**〔`D5` 阻塞 2；PM `§0s` 五 ①〕。
+    // ⚠⚠ **先剥注释再判**，与下游主守卫**同一把尺子**。
     //
-    //   下面那两格原来判在 `c.lines()`（**没剥注释的原始行**）上，而下游
-    //   —— `local_backend_host.rs` 那条正题的 ㈡（`shim_first_on_path` 取绑定名）——
-    //   **当时**读的是它自己那份 `code_only`（**剥掉 `//` 打头的行**）。**两条判在不同的文本上。**
-    //   `D5-M4` 实证：在合法落点上方加**一行纯注释**提到那个口
-    //   ⇒ **本条当场红（新红 1）、主守卫一声不吭**，而本条的报文却说
-    //   「因为下游要从这一行上取绑定名」——**那句归因在唯一分岔的场合恰好是假的**。
-    //
-    //   🔴 **这个坑本仓在这条守卫上已经栽过一次**：主守卫 `code_only` 上方那段注释逐字
-    //   写着「判人群要看**代码**，不能看文档注释 —— `local_backend.rs` 那条同族守卫在
-    //   这上面**自红过一次**」，主守卫为此加了 `code_only`，
-    //   **而 `C` 第五拍给本条新加的那一格没有跟着剥**
-    //   ⇒ 那正是「**只修一半 / 同族当场复发**」，只换了个动词（从「量词」换成
-    //   「判在剥没剥注释的哪一份文本上」）。
-    //
-    //   ⇒ 现在**先剥再判**，与主守卫**同一把尺子**。
+    //   下游 —— `local_backend_host.rs` 那条正题的 ㈡（`shim_first_on_path` 取绑定名）——
+    //   判在剥过注释的文本上。本条要是判在**没剥注释的原始行**上，两条就判在不同的文本上：
+    //   在合法落点上方加**一行纯注释**提到那个口 ⇒ 本条红、主守卫一声不吭，
+    //   而本条的报文说「因为下游要从这一行上取绑定名」—— 那句归因恰好是假的。
     //   ⚠ 只让本条**更松**（少几行可看），不放水：被判的那一行本来就得是代码。
     //
-    //   ⚠⚠ **09-01（`C` 第七拍）两处一起收口成共享原语**：
-    //   本条与主守卫原来各写了一份**私有副本**（只剥 `//` 打头的整行），现在都直接调
-    //   `guard_core::strip_comment_lines`。仓规逐字「剥注释只许有一个权威实现」
-    //   （`structural_scan.rs::every_comment_stripping_transformer_is_registered`）；**先量再选**的读数（`*` 打头的解引用行会被多剥掉，
-    //   而今天判决不同 0 处）写在 `local_backend_host.rs` 那条正题守卫的同名那一段里，不在这里抄一遍。
-    //   🔴 **它剥不掉块注释里那些自己不以 `//` / `*` / `/*` 打头的内层行** ——
-    //   `/*` 与 `*/` 各独占一行、内层行以 `let ` 打头时，那几行原样留着。
-    //   ⚠ **别把上一句读成全称**〔`C8` 09-01 收窄，`D7` `B1`〕：内层行写成 ` * let …`
-    //   （块注释的 `*` 对齐续行写法）今天**剥得掉** ⇒ 两条守卫一起红（实打，新红 2）。
-    //   多行式 / 一行式**两个方向**今天都实打过：**多行式是一次静默的假绿**（`D6` `M-D6-3`，全量门禁 `GATE: OK`）、
-    //   **一行式在旧剥法下是一次假阳**（`D6-M1`，换共享原语之后不再假阳）。
-    //   逐条登记在 `local_backend_host.rs` 头注「诚实边界 9」，并归跟进件 `K-R8`。
+    //   剥法两处都调共享原语 `guard_core::strip_comment_lines`（「剥注释只许有一个权威实现」，
+    //   `structural_scan.rs::every_comment_stripping_transformer_is_registered`）；
+    //   `*` 打头的解引用行会被多剥掉那一处读数写在 `local_backend_host.rs` 那条正题守卫的同名那一段里，不在这里抄一遍。
+    //   块注释先经 `try_strip_block_comments` 真词法剥掉；词法对不上的那份文件走兜底、一个字都不剥，
+    //   边界登记在 `local_backend_host.rs` 头注「诚实边界 9」。
     for c in real_e2e {
         let code = guard_core::strip_comment_lines(c);
         let name = code
@@ -2102,17 +2066,12 @@ fn every_real_backend_e2e_demands_a_private_tmux_dir() {
             .and_then(|r| r.split_once('('))
             .map(|(n, _)| n)
             .unwrap_or("<未知>");
-        // ⚠⚠ **这一格 09-01 换过一次判法**〔`K-R7` `§0q` 裁一 · 出路乙，`D4` 阻塞 1〕。
-        //   原来是两句：先找「含 `CCM_E2E_TMUX_SHIM_BIN` 的那一行」，再判那行含 `.expect(`。
-        //   `D4` 那一刀（`var(SHIM).unwrap_or_else(|_| var(<真 PATH>).expect(..))`）
-        //   **同一行上三样东西都还在** ⇒ 旧判据说合规，而 fail-closed 没了。
-        //   🔴 **本条是那一族的第 4 处，而 `§0q` 只点了 `local_backend_host.rs` 的 3 处** ——
-        //     09-01 实测：只改本条人群里那条 e2e（`e2e_the_supervisor_restarts_…`）的取值，
-        //     **全量门禁新红 0**，本条一声不吭。⇒ 一起换。
-        //   现在判的是「**走没走取 shim 的那个唯一入口**」；
+        // ⚠⚠ 判的是「**走没走取 shim 的那个唯一入口**」，不是「那一行含 `.expect(`」：
+        //   `var(SHIM).unwrap_or_else(|_| var(<真 PATH>).expect(..))` 这种写法
+        //   **同一行上该有的字样都在** ⇒ 只看字样会说合规，而 fail-closed 没了。
         //   「**那个口关不关得上**」由 `local_backend_host.rs` 的
         //   `the_one_shim_gate_really_fails_closed` 在**默认门禁里真跑一遍**（不是文本钉）。
-        //   ⚠ **判在剥过注释的 `code` 上**（见上面那段）—— 09-01 之前判的是原始行。
+        //   ⚠ **判在剥过注释的 `code` 上**（见上面那段）。
         let line = code
             .lines()
             .find(|l| l.contains(GATE))
@@ -2127,16 +2086,12 @@ fn every_real_backend_e2e_demands_a_private_tmux_dir() {
                          ⚠ 判的是**剥掉整行注释之后**的本体 —— 剥法是 \
                          `guard_core::strip_comment_lines`：`trim_start()` 之后以 `//` 或 `*` \
                          或 `/*` 打头的**整行**换成空行。写在**整行注释**里提一句不算数，\
-                         也不再让本条假红（`D5-M4`）。\n\
-                         ★ **09-04（`K-R9`）：块注释那个洞已经关上，下面这段原文是病历不是现状。**\
-                         原文逐字：「多行块注释的内层行**只要自己不以 `//` / `*` / `/*` 打头就剥不掉** \
-                         —— `/*` 与 `*/` 各独占一行、内层行以 `let ` 打头时……照旧算数，\
-                         而且**一声不吭**（**静默的假绿**），归跟进件 `K-R8`。」\n\
-                         今天 `guard_core::strip_comment_lines` 先过 \
+                         也不会让本条假红。\n\
+                         `guard_core::strip_comment_lines` 先过 \
                          `guard-core/src/lib.rs::try_strip_block_comments`：带**开合状态与深度**的\
                          真词法（不再是按行前缀），块注释内容抹成**等长空格** ⇒ 行数与字节数都不变，\
                          而内层行三种写法**一律**剥掉。\n\
-                         ⚠ 边界**换了地方、没有消失**：那份剥法词法与某文件对不上时\
+                         ⚠ 边界：那份剥法词法与某文件对不上时\
                          （`depth` 不收口 / 停在字符串里）**一个字都不剥**（兜底，宁可留洞不许造假红），\
                          那份文件上这个洞会重开 ⇒ 由 `local_backend_host.rs` 的 \
                          `no_monitor_file_falls_back_to_leaving_block_comments_in` 看着\
@@ -2154,31 +2109,21 @@ fn every_real_backend_e2e_demands_a_private_tmux_dir() {
                  写在这里免得下一个人以为自己写错了**：\n\
                  ① **假阳**：把这条调用按 rustfmt 在 `=` 后断行（`let shim =` 换行再写调用）\
                  ⇒ 含口的那一行不再以 `let ` 打头，本条与下游 ㈡ **一起红**，\
-                 而那是一条语义逐字不变的合法写法（`D5-M5` 实证）。**今天要的是单行写法。**\n\
-                 ② 本条 09-01 起判在**剥掉「`//` / `*` / `/*` 打头的整行」之后**的文本上\
+                 而那是一条语义逐字不变的合法写法。**要的是单行写法。**\n\
+                 ② 本条判在**剥掉「`//` / `*` / `/*` 打头的整行」之后**的文本上\
                  （剥法 `guard_core::strip_comment_lines`，与下游 ㈡ 同一把）——\
-                 `D5-M4`：一行纯注释曾让本条假红而下游一声不吭，**两条判在不同文本上的日子结束了**。\n\
-                 ③ ★ **09-04（`K-R9`）关上了 —— 原文「今天开着的」那句已经不是现状**。\
-                 原文逐字：「**块注释的内层行，只要自己不以 `//` / `*` / `/*` 打头就剥不掉**\
-                 ……本条与下游 ㈡ 都会把它当真代码读」，并按内层行的写法分了三形：\
-                 ㋐ 以 `let ` 打头 ⇒ **一次静默的假绿**（`D6` `M-D6-3`：一条起真后端的 e2e，\
-                 `PATH` 里一点 shim 都没有，全量门禁 `GATE: OK`、新红 0）；\
-                 ㋑ 既不以 `let ` 也不以那三种前缀打头 ⇒ 落到 `MISS_NO_BINDING`；\
-                 ㋒ 以 `*` 打头 ⇒ 那时就剥得掉、两条守卫一起红（`C8` 09-01 实打）。\n\
-                 今天剥法换成了**带开合状态与深度的真词法**\
+                 一行纯注释不会让本条与下游判在不同的文本上。\n\
+                 ③ 块注释：剥法是**带开合状态与深度的真词法**\
                  （`guard-core/src/lib.rs::try_strip_block_comments`，等长抹空格 ⇒ 行位不变）\
-                 ⇒ **㋐㋑㋒ 三形归一**：块注释内容一律剥掉，都落回上面那句 `panic!`\
-                 （「没走那个唯一入口」）与下游 `MISS_LOCK2`。\
-                 ㋐ 那个「静默假绿」`K-R9` `D3` 在本工作树上重打过两个读数：\
-                 旧剥法 monitor `1275 passed / 0 failed`，新剥法当场红。\n\
-                 ⚠ **今天真正的边界是那条静默兜底**：词法与某份文件对不上时一个字都不剥，\
+                 ⇒ 块注释内层行不论以 `let `、`*` 还是别的打头，一律剥掉，都落回上面那句 `panic!`\
+                 （「没走那个唯一入口」）与下游 `MISS_LOCK2`。\n\
+                 ⚠ **真正的边界是那条静默兜底**：词法与某份文件对不上时一个字都不剥，\
                  那份文件上这个洞会重开 ⇒ 由 `local_backend_host.rs` 的 \
                  `no_monitor_file_falls_back_to_leaving_block_comments_in` 看着\
                  （现打：105 份 `.rs`，走兜底 0 份）。\
-                 **「块注释这一族还能怎么走」这个分母仍然给不出** —— 变的是\
-                 「已知走法逐个实打过」，不是「证明了没有别的走法」。\n\
-                 ⚠ **人群分母**：本条今天 **1** 条、下游 **6** 条（两个文件切出 **58** 块；\
-                 量于 09-01，量具 `scratchpad/kr7-c7-starline.py`，被测对象 = 工作树尖 `aee8b9f`）。",
+                 **「块注释这一族还能怎么走」这个分母给不出** —— \
+                 已知走法逐个实打过，不是证明了没有别的走法。\n\
+                 ⚠ **人群分母**：本条 **1** 条、下游 **6** 条（两个文件切出 **58** 块）。",
             line.trim()
         );
     }
@@ -2329,15 +2274,13 @@ fn kill_for_test(pid: u32) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// F16：三处失败模式（都是 F05a 我自己写的代码，F12 的 `/full-audit` 逐行核出来的）
+// 监护循环的三处失败模式
 // ═══════════════════════════════════════════════════════════════════════
 
 /// [`resolve_or_extract`] 的**生产段函数体** —— 那份**共用的**「找那个二进制」。
 ///
-/// 〔`K-R43` 改：原来切的是 [`start_or_extract`]（当时那三问就住在它体内）。
-///  今天三问住共用那份，`start_or_extract` 体内只剩「调它 + 监护」⇒ 靶跟着搬。
-///  **切法一个字没动**，动的只是切哪个函数。
-///  搬完之后这把尺子买到的比原来多一格：`local_backend_host.rs` 那条路今天也走这一份，
+/// 〔三问住这份共用的体内，[`start_or_extract`] 体内只有「调它 + 监护」。
+///  `local_backend_host.rs` 那条路也走这一份，
 ///  ⇒ 同一条断言同时盖住**两个**生产落点（「都走了它」那半由
 ///  `local_backend_host::the_two_resolution_paths_still_agree_on_the_order` 钉）。〕
 ///
@@ -2524,10 +2467,10 @@ fn the_window_between_spawn_and_registration_is_closed() {
     );
 }
 
-/// ★ **反向断言（「让它发生」那一半）**：改成 `io::copy` 之后，
+/// ★ **反向断言（「让它发生」那一半）**：等它死走 `io::copy`，
 /// 「子进程写了远超任何缓冲区的量再退出」这条路**仍然**能被检测到死亡。
 ///
-/// ⚠ 只断言「没攒内存」是不够的 —— 那与「机制根本没跑」区分不开（F14 的 e2e 差点空绿）。
+/// ⚠ 只断言「没攒内存」是不够的 —— 那与「机制根本没跑」区分不开（空绿）。
 /// 本条让它**真的发生一次**：8 MiB stdout + 正常退出 ⇒ `Exited` 必须来。
 #[test]
 fn a_child_that_floods_stdout_and_exits_is_still_detected_as_dead() {
@@ -2553,7 +2496,7 @@ fn a_child_that_floods_stdout_and_exits_is_still_detected_as_dead() {
     let mut saw_exit = None;
     for _ in 0..6 {
         match rx.recv_timeout(guard_core::wall::CEILING) {
-            // ⚠ `K-P3b`：新字段**逐个点名**，不用 `..` 把它们静默掉 ——
+            // ⚠ 字段**逐个点名**，不用 `..` 把它们静默掉 ——
             //   那正是「加了一维而没人回来看一眼」的入口。
             //   这一跑的形状：缺省那支（没有消费者）⇒ `witness` 必是 `NoConsumer`；
             //   `sh -c '…; exit 3'` 正常退出 ⇒ `status` 有值且退出码是 3。
@@ -2634,7 +2577,7 @@ fn stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on() {
         );
 }
 
-/// ★★ `K-P3b KP3W2`：**消费者交上去的那两维是观测出来的，不是默认值。**
+/// ★★ **消费者交上去的那两维是观测出来的，不是默认值。**
 ///
 /// 两处观测点各钉一行：
 /// - 「读端怎么结束的」：读错误那一支把**那句错原样**装进 `ReaderEnd::Broken`；

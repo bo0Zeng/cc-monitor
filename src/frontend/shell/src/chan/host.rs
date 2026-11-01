@@ -351,7 +351,7 @@ async fn transfer_copy(origin: Origin, payload: Body, left: Duration) -> Result<
         .unwrap_or_default()
         .to_string();
     for machine in [origin.to_string(), to] {
-        if machine == inbound_client::LOCAL_ORIGIN {
+        if machine == cmd_wire::LOCAL {
             return Err(refused(
                 "local_has_no_transfer",
                 copy_text("rsChanHost.transfer.localNone", &[]),

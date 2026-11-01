@@ -6353,7 +6353,7 @@ data class Fact(
             Field("w7d", { WinFact.ADAPTER }, optional = false, nullable = false),
             Field("weekly", { opt(Bool) }, optional = true, nullable = true),
             Field("login", { LoginState.ADAPTER }, optional = false, nullable = false),
-            Field("seenAt", { opt(Lng) }, optional = true, nullable = true),
+            Field("seenAt", { opt(U64) }, optional = true, nullable = true),
             Field("blocked", { opt(FactBlocked.ADAPTER) }, optional = true, nullable = true),
             ),
             { a -> Fact(a[0] as String, a[1] as QuotaKind, a[2] as WinFact, a[3] as WinFact, a[4] as Boolean?, a[5] as LoginState, a[6] as Long?, a[7] as FactBlocked?) },
@@ -8719,8 +8719,8 @@ data class Held(
         val ADAPTER: JsonAdapter<Held> = obj(
             listOf(
             Field("path", { Str }, optional = false, nullable = false),
-            Field("next", { Lng }, optional = false, nullable = false),
-            Field("next_byte", { Lng }, optional = false, nullable = false),
+            Field("next", { U64 }, optional = false, nullable = false),
+            Field("next_byte", { U64 }, optional = false, nullable = false),
             Field("mark", { Str }, optional = false, nullable = false),
             ),
             { a -> Held(a[0] as String, a[1] as Long, a[2] as Long, a[3] as String) },
@@ -20080,7 +20080,7 @@ data class RotAccount(
             Field("w7d", { WinFact.ADAPTER }, optional = false, nullable = false),
             Field("weekly", { opt(Bool) }, optional = true, nullable = true),
             Field("login", { LoginState.ADAPTER }, optional = false, nullable = false),
-            Field("seenAt", { opt(Lng) }, optional = true, nullable = true),
+            Field("seenAt", { opt(U64) }, optional = true, nullable = true),
             Field("blocked", { opt(FactBlocked.ADAPTER) }, optional = true, nullable = true),
             ),
             { a -> RotAccount(a[0] as RotPlate, a[1] as List<String>, a[2] as String, a[3] as QuotaKind, a[4] as WinFact, a[5] as WinFact, a[6] as Boolean?, a[7] as LoginState, a[8] as Long?, a[9] as FactBlocked?) },
@@ -24564,9 +24564,9 @@ data class SshCommand(
 @Suppress("UNCHECKED_CAST")
 data class SshConnection(
     val clientAddr: String,
-    val clientPort: Long,
+    val clientPort: Int,
     val serverAddr: String,
-    val serverPort: Long,
+    val serverPort: Int,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -24574,11 +24574,11 @@ data class SshConnection(
         val ADAPTER: JsonAdapter<SshConnection> = obj(
             listOf(
             Field("clientAddr", { Str }, optional = false, nullable = false),
-            Field("clientPort", { Lng }, optional = false, nullable = false),
+            Field("clientPort", { Int32 }, optional = false, nullable = false),
             Field("serverAddr", { Str }, optional = false, nullable = false),
-            Field("serverPort", { Lng }, optional = false, nullable = false),
+            Field("serverPort", { Int32 }, optional = false, nullable = false),
             ),
-            { a -> SshConnection(a[0] as String, a[1] as Long, a[2] as String, a[3] as Long) },
+            { a -> SshConnection(a[0] as String, a[1] as Int, a[2] as String, a[3] as Int) },
             { v -> arrayOf(v.clientAddr, v.clientPort, v.serverAddr, v.serverPort) },
         )
     }
@@ -25578,7 +25578,7 @@ data class Terminal(
         val ADAPTER: JsonAdapter<Terminal> = obj(
             listOf(
             Field("ssh", { opt(SshConnection.ADAPTER) }, optional = false, nullable = true),
-            Field("activity", { opt(Lng) }, optional = false, nullable = true),
+            Field("activity", { opt(U64) }, optional = false, nullable = true),
             Field("window", { opt(Str) }, optional = true, nullable = true),
             ),
             { a -> Terminal(a[0] as SshConnection?, a[1] as Long?, a[2] as String?) },
