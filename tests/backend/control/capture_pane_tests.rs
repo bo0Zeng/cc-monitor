@@ -29,7 +29,7 @@ fn tmux_on(sock: &std::path::Path, args: &[&str]) -> std::process::Output {
         .expect("tmux 不可执行 —— 本测试要求环境有 tmux（刻意不静默跳过）")
 }
 
-/// ★★ `KR86D1` 的正题：**这条原语真能被调到，而且真的把内容拿回来了。**
+/// ★★ 正题：**这条原语真能被调到，而且真的把内容拿回来了。**
 ///
 /// # 为什么是真 tmux，而不是一份脚本化的假探测器
 ///
@@ -69,7 +69,7 @@ fn capturing_a_real_pane_brings_the_screen_back() {
     //   写进 pty 的，tmux 什么时候把它读进屏幕缓冲不归本原语管。
     //   等不到就**失败**（不静默跳过），上限给足；真被测的那一下是循环体里那次
     //   `capture_with_on` —— 它每一轮都是一次完整的「抓一次」。
-    //   🔴 这段循环住在**测试段**：`KR86D3` 禁的是**生产段**里的轮询，
+    //   🔴 这段循环在**测试段**：禁的是**生产段**里的轮询，
     //   由 `readonly_guard::capture_is_read_only::the_capture_site_is_one_shot` 钉着。
     let mut screen = String::new();
     for _ in guard_core::wall::rounds() {
@@ -100,7 +100,7 @@ fn capturing_a_real_pane_brings_the_screen_back() {
     let _ = tmux_on(&sock, &["kill-session", "-t", "=kr86live:"]);
 }
 
-/// ★★ `KR86D2` 的正题之一：**「一个 server 都没有」是自己一档，真 tmux 打出来的。**
+/// ★★ 正题之一：**「一个 server 都没有」是自己一档，真 tmux 打出来的。**
 #[test]
 fn a_socket_with_no_server_says_so_in_its_own_words() {
     let sock = iso_socket("dead");
@@ -114,7 +114,7 @@ fn a_socket_with_no_server_says_so_in_its_own_words() {
     );
 }
 
-/// ★★ `KR86D2` 的刀口：**「没 tmux」与「会话不存在」两态分得开** —— 码与话都不许压成一句。
+/// ★★ 要害：**「没 tmux」与「会话不存在」两态分得开** —— 码与话都不许压成一句。
 ///
 /// ⚠ 诚实边界：`no_tmux` 那一档打的是 [`tmux_unavailable`]（那一档的唯一造句处），
 /// **没有**在一台真的没装 tmux 的机器上实测过 —— 沙箱自己要用 tmux。
@@ -253,7 +253,7 @@ fn the_argv_is_the_read_only_capture_form_in_this_exact_order() {
     assert_eq!(
         capture_argv_with("=x:", false, 0),
         ["-u", "capture-pane", "-p", "-t", "=x:"],
-        "这一处发出去的 argv 变了 —— `-u` 必须排在子命令之前（K-R12），\
+        "这一处发出去的 argv 变了 —— `-u` 必须排在子命令之前（客户端不是 UTF-8 时 TAB 会被改写），\
              `-p` 必须是「打到 stdout」（换成落 buffer 就不再只读）"
     );
 }

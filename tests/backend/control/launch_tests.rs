@@ -215,7 +215,7 @@ fn the_create_arm_actually_uses_the_three_new_fields() {
             "生产段里找不到 {what}（needle {needle:?}）—— 字段**收得下却不起作用**：\n\
                  ccm 照发、backend 照收，而 `@ccm_agent` 与窗口尺寸静默消失。\n\
                  `launch_fields_match_its_parser_and_output` 那面镜子只看解析器与输出构造器，\n\
-                 **它看不见这一格**（`K-P2` `D3` 立本条的全部理由）。"
+                 **它看不见这一格**（这就是本条存在的全部理由）。"
         );
     }
 }
@@ -238,7 +238,7 @@ fn a_double_quote_in_the_payload_is_perfectly_fine_here() {
 /// 切出 `run()` 里某一个 `Mode::X =>` 分支的源码。
 ///
 /// ⚠ **收尾锚点必须是「下一个 `Mode::` 分支头」，不能写死某一个分支名。**
-/// F04c 实测踩到：新分支 `Mode::SendKeysRaw` 插在 `SendInto` 与 `CreateOrAttach` 之间，
+/// 实测踩到过：新分支 `Mode::SendKeysRaw` 插在 `SendInto` 与 `CreateOrAttach` 之间，
 /// 而那两条判据的收尾锚点写死了 `Mode::CreateOrAttach =>` ⇒ 它们把**两个分支当成一个**
 /// 扫，断言照样全绿（249 条一条没红）。**扫到了东西，但扫的不是那件事** —— 本仓这一族
 /// 的又一次（`tmux_backend_gate_guard` 的硬编码文件表是同一个病）。
@@ -272,8 +272,7 @@ fn arm_of<'a>(src: &'a str, head: &str) -> &'a str {
     arm
 }
 
-/// `=name:` 就是 tmux 的精确匹配形（F01：裸 `-t` 会打到兄弟会话上）。
-/// 从前还跨轨对拍 monitor `tmux.rs` 里那一份；那一份（只剩对拍锚点在用）随 monitor 侧的 Gate 残留删了 ⇒ 只剩这一个家。
+/// `=name:` 就是 tmux 的精确匹配形（裸 `-t` 会打到兄弟会话上）。只有这一个家。
 #[test]
 fn exact_target_is_the_exact_match_shape() {
     assert_eq!(exact_target("cc-abc"), "=cc-abc:");
@@ -300,7 +299,7 @@ fn exact_target_is_the_exact_match_shape() {
 /// `backend_kill` 的创建路径人群探测器（它的发现口径恰好含 `-d`），
 /// 诊断说的是「那条路没了 ⇒ 删登记」，照做反而会把这条路移出人群。
 ///
-/// ⚠ **订正上面 B 那一格**〔`K-P2` C 第五拍，09-03〕：本文件的创建臂**今天不再写
+/// ⚠ **订正上面 B 那一格**：本文件的创建臂**今天不再写
 /// `@ccm_sid`** 了（写的是意图键 `@ccm_sid_expect`，见 [`run`] 里那段头注）
 /// ⇒ 「`@ccm_sid` 改名」那个变异**在本文件里已经没有靶子**。
 /// 而这一族今天真有人盯着，只是**不在本文件**：`readonly_guard` 只许 `control/identity_tag.rs` 写 tmux 变量，
@@ -342,8 +341,8 @@ fn send_into_never_creates_a_session() {
              用户以为在复用那个 idle 会话，实际被丢进一个新建的空 shell。\n\
              会话不存在时**报错**（`no_such_session`），别顺手建。"
     );
-    // F03：存在性检查从 `has-session` 换成了 `gate::admit`（同一次探测顺带取回
-    // `@ccm_sid` 与句柄）。**保证没变**：不存在仍回 `no_such_session`，
+    // 存在性检查走 `gate::admit`（同一次探测顺带取回
+    // `@ccm_sid` 与句柄）。**保证**：不存在回 `no_such_session`，
     // 由 `admit` 里那条 `let Some(p) = probe(target)? else` 兜着。
     assert!(
         arm.contains("gate::admit"),
@@ -454,10 +453,9 @@ fn the_payload_is_still_only_shape_checked() {
 #[test]
 fn create_or_attach_never_types_into_a_session_it_did_not_just_create() {
     let src = guard_core::production_code(include_str!("../../../src/backend/control/launch.rs"));
-    // ⚠ F04c 改用 `arm_of`：原来是 `&src[at..]`（一直切到文件末尾）——
-    // 那不是「这个分支」，是「这个分支之后的全部生产代码」。
-    // 新加的 `every_mode_variant_…` 当场点名了它（**它是最后一个分支，所以一直没出事**，
-    // 但只要有人在它后面再加一个 mode，断言面就会静默串到别人身上）。
+    // ⚠ 用 `arm_of`，不用 `&src[at..]`（一直切到文件末尾）——
+    // 那不是「这个分支」，是「这个分支之后的全部生产代码」：它是最后一个分支时看不出差别，
+    // 有人在它后面再加一个 mode，断言面就会静默串到别人身上。
     let arm = arm_of(&src, "Mode::CreateOrAttach =>");
     let early = arm
         .find("created: false,")
@@ -466,7 +464,7 @@ fn create_or_attach_never_types_into_a_session_it_did_not_just_create() {
     assert!(
         early < types,
         "「会话已存在 ⇒ 早返回」不再排在键入之前 —— 那就会往一个**不是自己刚建的**\n\
-             会话里键入，而这个分支没有 Gate 2（F03 刻意只给 send-into 装门，理由就是这条）。\n\
+             会话里键入，而这个分支没有 Gate 2（刻意只给 send-into 装门，理由就是这条）。\n\
              要么把早返回放回去，要么这里也得过 `gate::admit`。"
     );
 }
@@ -530,7 +528,7 @@ fn the_mode_set_is_exactly_the_two_and_the_raw_one_is_gone() {
 
 /// ★★ **覆盖地板（通用防线）：每个 `Mode` 变体都必须有分支、有解析、被判据扫过。**
 ///
-/// F04c 实测：新增一个变体时，既有那几条「扫某个分支源码」的判据**一条都不会红** ——
+/// 实测：新增一个变体时，既有那几条「扫某个分支源码」的判据**一条都不会红** ——
 /// 它们只认自己写死的那个分支名。⇒ 加一条**枚举驱动**的判据：变体表变了就红，
 /// 逼人回来给新变体配判据。（同族：`tmux_backend_gate_guard` 的硬编码文件表。）
 #[test]
@@ -606,9 +604,8 @@ fn every_mode_variant_has_an_arm_and_a_parse_and_is_named_in_some_judge() {
 /// `type_payload` 的全部依据就是 `tmux(&["send-keys", …])?` ——
 /// **退 0 就 `Ok`**。而 tmux 在 pane 处于 **copy-mode** 时照样退 0：键被键表吃掉，
 /// 载荷根本没进应用（`pane_in_mode` / `copy-mode` / `-X cancel` 在**生产函数体**里零命中 ——
-/// ⚠ 措辞 08-06 改准：原写「全仓零命中」，而这几个词今天在**本注释与下面那条判据的
-/// needle 表**里都出现着，字面上早已不成立。下面那条判据扫的是抽出来的函数体，
-/// 所以它自己不会自匹配 —— 但**说法要跟着判据的真实扫描面走**，否则就是 F23 那一族。）
+/// 不是「全仓零命中」：这几个词在本注释与下面那条判据的 needle 表里都出现着；
+/// 那条判据扫的是抽出来的函数体，所以它自己不会自匹配，说法跟着它的真实扫描面走。）
 ///
 /// 后果是链式的，且**每一环都在放大上一环的乐观**：
 /// `send-keys` 退 0 → backend 回 `typed:true` → `backend_launch.rs` 逐字转发 →
@@ -686,7 +683,7 @@ fn the_contract_says_how_strong_typed_actually_is() {
 /// ★ 契约与两处注释**不许再声称载荷「真的键入了」**。
 ///
 /// 依据只有退出码时，那句话是假的（见上一条）。要改回去，得先有第二种确认。
-/// ⚠ needle **运行时拼**，否则本条会在自己的注释里找到它而恒红（F23 那一族的镜像）。
+/// ⚠ needle **运行时拼**，否则本条会在自己的注释里找到它而恒红。
 #[test]
 fn no_doc_claims_the_payload_really_landed() {
     let root = guard_core::addr::repo_root();
@@ -970,9 +967,9 @@ fn w5vis_s4_s5_no_tmux_result_or_stderr_is_thrown_away_any_more() {
     assert_eq!(offences(&old).len(), 3, "旧形没被全认出 —— 量具瞎了");
 }
 
-/// ★ 〔（逐字「后端 `launch` 新建会话那一支没接 J6 新建规则」）〕`create-or-attach` 要新建的名字过 J6 新建那一条：
-/// 过不了、会话也不在 ⇒ `bad_args` 带与 `ccm` 铸名同一句、**一次 `new-session` 都不起**；过不了但会话已在 ⇒ 照旧幂等接回；
-/// 过得了 ⇒ 与先前逐字同（先 `new-session`）。
+/// ★ `create-or-attach` 要新建的名字过 J6 新建那一条：
+/// 过不了、会话也不在 ⇒ `bad_args` 带与 `ccm` 铸名同一句、**一次 `new-session` 都不起**；过不了但会话已在 ⇒ 幂等接回；
+/// 过得了 ⇒ 先 `new-session`。
 #[test]
 fn the_create_arm_refuses_a_name_the_new_session_rule_refuses_unless_it_already_exists() {
     let with_name = |n: &str| {
