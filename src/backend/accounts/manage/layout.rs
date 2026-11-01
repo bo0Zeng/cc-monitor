@@ -5,11 +5,12 @@
 //! 已知共享的那几项（[`share_items`]：适配层申报的共享表，共享库里有才链 ∪ 按需才建的 [`shared_on_demand`]，共享库里还没有
 //! 也照样链、先在共享库里建出来）各是一条链回共享库的符号链接（改一处，各号同时看见）。两边都不在的名字不链，各号各用各的。
 
-use super::model::{Account, Manifest, ACCOUNT_ZERO};
+use super::model::{Account, Manifest};
 use super::scan::{is_under, join, DirState, Snapshot};
 use crate::agents::{AccountsFace, IdentityClass, IdentityRoot};
 use crate::common::said::Said;
 use crate::platform::acct_view::Item;
+use acct_core::BARE_ACCOUNT;
 use copy_core::copy_text;
 
 /// 这台机器上账号库的布局（注册表里那一家的；没有 ⇒ 这台做不了多账号，`wire` 那一层先拒）。
@@ -201,7 +202,7 @@ fn check_name(name: &str) -> Result<(), Said> {
             ],
         )));
     }
-    if name == ACCOUNT_ZERO {
+    if name == BARE_ACCOUNT {
         return Err(refused(copy_text("beAcctPlan.name.zero", &[])));
     }
     Ok(())
@@ -378,7 +379,7 @@ pub(crate) fn plan_add(s: &Snapshot, want: &AddIntent) -> Result<Plan, Said> {
 pub(crate) fn plan_remove(s: &Snapshot, name: &str, force: bool) -> Result<Plan, Said> {
     let m = need_manifest(s)?;
     let r = s.roots();
-    if name == ACCOUNT_ZERO {
+    if name == BARE_ACCOUNT {
         return Err(refused(copy_text("beAcctPlan.remove.zero", &[])));
     }
     let a = m
