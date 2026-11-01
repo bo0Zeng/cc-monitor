@@ -1,12 +1,12 @@
-//! `main.rs::claim_then_log`：先抢门牌（`<家>/run/` 的独占锁 ＋ 套接字），抢到了才接 stderr 落盘。
+//! `stream/claim.rs::claim_then_log`：先抢门牌（`<家>/run/` 的独占锁 ＋ 套接字），抢到了才接 stderr 落盘。
 //! 要求：已有常驻后端时，抢不到锁的后起者不碰那两份日志（原先它一起来就把在跑那一个的日志滚走，再来一个就删掉），
 //! 也不碰在跑那一个的套接字；沙箱跑却要占本账号真家目录里的门牌 ⇒ 不起（10-08 一路台架漏清环境，改写过真家里的门牌）。
 
 use super::*;
 
 /// 写句柄：两个根照这份注入的环境推（同 `Own::issue` 照进程环境推的那两步）。
-fn own_of(env: &dyn Fn(&str) -> Option<String>) -> cc_monitor_backend::platform::Own {
-    cc_monitor_backend::platform::Own::issue_with(env)
+fn own_of(env: &dyn Fn(&str) -> Option<String>) -> crate::platform::Own {
+    crate::platform::Own::issue_with(env)
 }
 
 fn scratch(tag: &str) -> std::path::PathBuf {
