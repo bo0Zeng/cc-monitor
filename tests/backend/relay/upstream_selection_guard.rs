@@ -113,6 +113,7 @@ pub(super) mod tests {
         "quota/rules/code.rs",
         "quota/rules/decide.rs",
         "quota/rules/mod.rs",
+        "quota/rules/rollout.rs",
         "quota/rules/simulate.rs",
         "quota/rules/standing.rs",
         // 两份账本共用的存取（rotation.json 与配置编辑层那一份）。

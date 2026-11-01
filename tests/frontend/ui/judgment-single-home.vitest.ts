@@ -700,14 +700,15 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J41: {
     what: "一批会话做完 ⇒ 那一句 · 逐条明细 · 复制详情",
-    // 唯一的家是 `batch-core::sessions`（`sessions-batch` 的回包由本机后端合好，界面照摆）；结束那一批已经走它，
-    //   起 · 隐藏 · 固定那几批还在界面里用 `sayRows` 自己合，搬到 `sessions-batch` 之后删。
+    // 唯一的家是 `batch-core::sessions`（`sessions-batch` 的回包由本机后端合好，界面照摆）：停 · 起 · 隐藏 · 固定 · 单个结束都走它，
+    //   `sayRows` · `batchHead` · `sayBatch` 删了；剩终端名单「结束所选」与起会话占位［结束］（手里是终端句柄）在 `sayEnded` 里自己合。
     homes: ["batch-core::sessions_reply", "batch-core::summary_of"],
     status: "open",
-    defs: ["sayRows"],
+    defs: ["sayEnded"],
+    gone: ["sayRows", "batchHead", "sayBatch"],
     needles: [],
-    owner: "起 · 隐藏 · 固定几批搬到 sessions-batch 那一刀",
-    why: "起 · 隐藏 · 固定那几批还没走 sessions-batch，界面今天只能自己合那一句；都搬过去之后删 sayRows",
+    owner: "终端名单 · 起会话占位那一批走本机合各台的 terminals-end 那一刀",
+    why: "那两处手里是终端句柄、不是会话，界面今天只能自己合那一句；terminals-end 接上、照回包摆之后删 sayEnded",
   },
 };
 
