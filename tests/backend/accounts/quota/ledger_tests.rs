@@ -773,7 +773,11 @@ fn a_turnover_keeps_what_the_week_left_and_which_way_the_5h_grid_rounds() {
     );
     let o = l.entry("claude-code", "q").expect("entry");
     assert_eq!(o.weekly_left_at_reset("seven_day"), vec![38.0]);
-    assert_eq!(o.window_grid("five_hour", 18_000), Some(true), "12:07 看到 · 17:10 重置 ⇒ 往上取");
+    assert_eq!(
+        o.window_grid("five_hour", 18_000),
+        Some(true),
+        "12:07 看到 · 17:10 重置 ⇒ 往上取"
+    );
     assert_eq!(o.history["seven_day"].ends.len(), 1, "{:?}", o.history);
     assert_eq!(o.history["five_hour"].opens.len(), 1, "{:?}", o.history);
     let again = Ledger::at(Some(path.clone()))
@@ -781,7 +785,9 @@ fn a_turnover_keeps_what_the_week_left_and_which_way_the_5h_grid_rounds() {
         .expect("restart");
     assert_eq!(again.history, o.history, "盘上那份没带上");
     assert!(
-        answered(Some(&path), open)["accounts"][0].get("history").is_none(),
+        answered(Some(&path), open)["accounts"][0]
+            .get("history")
+            .is_none(),
         "quota-read 不该带历史"
     );
     std::fs::remove_dir_all(&d).ok();
@@ -811,8 +817,16 @@ fn the_grid_says_down_only_after_three_close_opens_and_up_on_one_early_one() {
     };
     see(0, 120);
     see(1, 120);
-    assert_eq!(see(2, 120).window_grid("five_hour", 18_000), None, "两次说不出");
-    assert_eq!(see(3, 900).window_grid("five_hour", 18_000), None, "隔了 15 分钟才看到的不作数");
+    assert_eq!(
+        see(2, 120).window_grid("five_hour", 18_000),
+        None,
+        "两次说不出"
+    );
+    assert_eq!(
+        see(3, 900).window_grid("five_hour", 18_000),
+        None,
+        "隔了 15 分钟才看到的不作数"
+    );
     assert_eq!(see(4, 120).window_grid("five_hour", 18_000), Some(false));
     assert_eq!(see(5, -180).window_grid("five_hour", 18_000), Some(true));
     let mut o = see(6, 120);

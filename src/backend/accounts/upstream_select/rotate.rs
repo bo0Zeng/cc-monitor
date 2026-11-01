@@ -460,15 +460,15 @@ impl Hop {
                 continue;
             };
             let name = |s: &str| {
-                crate::accounts::quota::facts::pick(&o.reading, s, now, &slot).map(|w| w.name.clone())
+                crate::accounts::quota::facts::pick(&o.reading, s, now, &slot)
+                    .map(|w| w.name.clone())
             };
             x.past = crate::accounts::quota::rules::Past {
                 weekly_left_at_reset: name("7d")
                     .map(|n| o.weekly_left_at_reset(&n))
                     .unwrap_or_default(),
-                grid_up: name("5h").and_then(|n| {
-                    o.window_grid(&n, crate::accounts::quota::rules::WINDOW_SECS[0])
-                }),
+                grid_up: name("5h")
+                    .and_then(|n| o.window_grid(&n, crate::accounts::quota::rules::WINDOW_SECS[0])),
             };
         }
     }
