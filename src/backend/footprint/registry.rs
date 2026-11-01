@@ -1,13 +1,12 @@
-//! T01 第 5 步：**受管工具的声明**（`ToolSpec`）。
+//! **受管工具的声明**（`ToolSpec`）。
 //!
-//! # ⚠ 它守什么、**不守什么**〔audit-0805 08-06 抽样补记〕
+//! # ⚠ 它守什么、**不守什么**
 //!
 //! 本模块的判据**多数是声明表内部的自洽检查**：字段有没有区分力 · 落点在不在
 //! `touches` 里 · 拥有就必须装得了 · 有围栏就必须卸得掉 · 解析器有没有真看见源码。
-//! 〔`K-R63` 09-11 订正两处：① 原文写死了一个基数（「15 条」），而判据条数只有一份
-//!  住址 —— 本文件判据档里的测试函数，要数就现数；② 「**全部**是表内部自洽」
-//!  今天不成立 —— `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
-//!  一边读字段值、一边去别的文件里钉那个装 / 卸实现的签名，它跨出了这张表。〕
+//! 判据条数不写在这里（本文件判据档里的测试函数，要数就现数）；也不全是表内部自洽 ——
+//! `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
+//! 一边读字段值、一边去别的文件里钉那个装 / 卸实现的签名，它跨出了这张表。
 //! 两条探针实测它**确实有牙**（把 `ccm` 的落点改成 `.local/bin/ccm-x` ⇒
 //! `installable_tools_declare_where_they_land` 点名；把 `installable` 全改成 `true` ⇒
 //! 三条同时红，含「在全部 6 个 ToolSpec 上都为真，没有区分力」）。
@@ -17,11 +16,11 @@
 //! 表里那几条看着是全的，而那是**人现在记得**，不是有东西钉着。
 //! （**基数不写在散文里**：要数就 `TOOLS.len()`，那是唯一一份。）
 //!
-//! ## **这张表的语义扩了一格：从「装到别处的受管工具」到「app 会碰的环境项」**
+//! ## **这张表收的是「app 会碰的环境项」，不只是「装到别处的受管工具」**
 //!
-//! 原先只收「我们装到别处的东西」，于是 app **装不了、却离不开**的那些
-//! （最吃重的一项是 Claude Code 自己写的会话记录）只能靠**不进表**来表示。
-//! 用缺席表达一个判断 —— 那正是 `K-R60` 在治的病。⇒ 现在 `installable: false`
+//! 只收「我们装到别处的东西」的话，app **装不了、却离不开**的那些
+//! （最吃重的一项是 Claude Code 自己写的会话记录）只能靠**不进表**来表示 ——
+//! 用缺席表达一个判断。⇒ `installable: false`
 //! 的条目是这张表的一等公民，它们与 [`UNMANAGED_ENV`] 一起被 [`environment`]
 //! 汇成**唯一一份**环境清单。
 //!
@@ -101,14 +100,10 @@ pub const TOOLS: &[ToolSpec] = &[
     ToolSpec {
         id: "ccm",
         display_name: Text(|| copy_text("rsToolRegistry.tools.ccmName", &[])),
-        // 🔴 `repo_path` 原来指 `shared/ccm`（那份 1592 行 bash）。
-        //    〔用@09-11 `K33`〕「不要有什么 bash 脚本，不要有什么单独的 ccm」⇒ 那个文件删了。
-        //    ⇒ 指到那个**入口**的来源：`local_backend::ccm_entry_shim` 现造的三行 `exec` 串
-        //    （零实现，把 argv 转给已经部署好的后端）。
-        //    〔`K-R69` 09-12 订正住址：这句话原先写 `sftp::ccm_entry_shim`，而那个生成器
-        //     已**搬进后端层** —— 本机也要一条 `ccm` 入口，两条落点要取自同一处。
-        //     逮到它的是 `structural_scan` 那条「源码里点名的符号今天还对不对」的判据
-        //     （报文逐字「符号还在，但**搬家了**」），不是人。〕
+        // 🔴 `repo_path` 指那个**入口**的来源：`local_backend::ccm_entry_shim` 现造的三行 `exec` 串
+        //    （零实现，把 argv 转给已经部署好的后端）—— 用户原话「不要有什么 bash 脚本，不要有什么单独的 ccm」。
+        //    生成器在后端层：本机也要一条 `ccm` 入口，两条落点取自同一处。
+        //    `structural_scan` 那条「源码里点名的符号今天还对不对」的判据守着这个住址。
         //    ⚠ **它今天不是一份「仓里的文件」** —— `EmbeddedText { repo_path }` 这个形状
         //    在这一条上已经不合身了（值是**算出来的**，路径取自用户填的 `backend_path`）。
         //    本模块头注自己写着「零生产消费者、T02 接不上就该删掉本模块」⇒ **不为它改类型**，
@@ -142,12 +137,10 @@ pub const TOOLS: &[ToolSpec] = &[
                     },
                 ],
             },
-            // 🔴 本机那条落点是这一件建出来的。
-            //    立件时现打：闭集里落点是 `…/ccm` 的只有远端那一条 ⇒ **本机 0 条**，
-            //    于是用户 `K34` 逐字「装了新版后 `~/.local/bin/ccm` 可以干净退役」
-            //    **没有承接方** —— 不是没验过，是本机压根没有新的那一份。
-            //    落点刻意**不是** `~/.local/bin`：那是用户那份旧的住的地方，
-            //    `K34` 逐字「原本的配置**要手动删除**」。
+            // 🔴 本机那条落点：没有它，闭集里落点是 `…/ccm` 的只有远端那一条，
+            //    用户原话「装了新版后 `~/.local/bin/ccm` 可以干净退役」就**没有承接方**。
+            //    落点刻意**不是** `~/.local/bin`：那是用户那份旧的所在，
+            //    用户原话「原本的配置**要手动删除**」。
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.ccmLocalWhat", &[])),
                 // 本机 `ccm` 就是后端本身（逐字节副本删了）：放它的是 `extract_embedded_to`。
@@ -170,25 +163,23 @@ pub const TOOLS: &[ToolSpec] = &[
             },
         ],
     },
-    // ═══ 🔴 **这一条改名了，而改名不是清洁工作** ═══
+    // ═══ 🔴 **这一条叫 `backend`，名字不是清洁工作** ═══
     //
     // 「**一个后端要两处使用 / 即远程后端就是远程本地机器的后端**」。
-    // 这一条先前叫 `remote-daemon` / 「远端后端」，而它说的是**假的**：
-    // 那一份不是「远端的后端」，是**那台机器的本地后端**（`K36` 逐字
-    // 「两份后端应该要一样的」·`K33` 逐字「后端只有一个」）。
+    // 叫它「远端后端」是**假的**：那一份不是「远端的后端」，是**那台机器的本地后端**
+    // （用户原话「两份后端应该要一样的」·「后端只有一个」）。
     //
-    // 🔴 **这个名字已经花过一次真钱**：当时 `build-linux` 没有铺本机后端那一步而 `build-windows` 有
-    // ⇒ **Linux 裸 exe 装出来没有本机后端**
-    // （用户已裁「那肯定带」）。★ 那正是「把它当成『远端』产物」的直接后果 ——
-    // **名字塑造了发版流水线的形状**。⚠ 发版那一步归 `K-R42`，这里只把名字与闭集说对。
+    // 🔴 **名字塑造发版流水线的形状**：把它当成「远端」产物，`build-linux` 就会漏铺本机后端那一步
+    // ⇒ **Linux 裸 exe 装出来没有本机后端**（用户已裁「那肯定带」）。
+    // ⚠ 发版那一步不归这里，这里只把名字与闭集说对。
     ToolSpec {
         id: "backend",
         display_name: Text(|| copy_text("rsToolRegistry.tools.backendName", &[])),
         installable: true,
         uninstallable: true,
-        // 🔴 **同一份后端，几种载体、几个落点** —— `K-R68` 摸底现打三种（安装包旁边 · 自释放 · 推给远端）。
-        // ⚠ 它们是**同一份代码**的几种载体，不是几个工具（`R24` 裁定一 / `K25` / `K33` / `K36`）。
-        //   size2（10-11）撤了安装包旁边那份（与内嵌那份逐字节相同、只是字节来源）；自释放那份记在 `ccm` 的本机载体底下 ⇒ 这里只剩推给远端那一条。
+        // 🔴 **同一份后端，几种载体、几个落点**（自释放 · 推给远端）。
+        // ⚠ 它们是**同一份代码**的几种载体，不是几个工具。
+        //   自释放那份记在 `ccm` 的本机载体底下 ⇒ 这里只有推给远端那一条。
         carriers: &[
             // 内嵌那份的本机载体并进了 `ccm` 那一条的本机载体：它放下去的就是 `~/.cc-monitor/bin/ccm`（后端本身），
             //   同一个文件不在两个工具底下各记一遍（那张「本机 `ccm` 落点恰一条」的对拍要这一格）。
@@ -272,7 +263,7 @@ pub const TOOLS: &[ToolSpec] = &[
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
-// `K-R60`：**环境清单的闭集** —— 「app 要的东西齐了没有」这个问题的人群
+// **环境清单的闭集** —— 「app 要的东西齐了没有」这个问题的人群
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// app 与一个环境项的关系。**四档穷举，而且是从两格派生出来的，不是手填的。**
@@ -284,15 +275,12 @@ pub const TOOLS: &[ToolSpec] = &[
 /// | [`Provisioning::NotAnInstall`] | —— | [`EnvTier::AppOnlyChecks`] |
 ///
 /// 🔴 **每一档都必须在清单里有一格，不许靠「没列出来」表示。**
-/// 〔`K-R57` 摸底现打：`TOOLS` 只有 6 条，而 app 用的时候直接假设在的至少 9 项
-/// （`claude` · `tmux` · 终端出口 · `git` · `ssh` · `pgrep` · `xdg-open` · `bash` ·
-/// MCP server 本体）—— 它们一条都没进任何一张表。于是「app 依赖本机环境」这个判断
-/// **在代码里没有住址**，只能从「表里没有」倒推 —— 用缺席表达一个判断，
-/// 正是本工作区一整天在治的那族病。〕
+/// app 用的时候直接假设在的那些（`claude` · `tmux` · 终端出口 · `git` · `ssh` · `pgrep` · `xdg-open` · `bash` ·
+/// MCP server 本体）不进表，「app 依赖本机环境」这个判断就**在代码里没有家**，只能从「表里没有」倒推。
 ///
 /// # 没有「app 假设它在、既不装也不查」那一档
 ///
-/// 通用工具**不是**「我不看」，是「**你自己装，而我会看、缺了我要说**」（`K38`）⇒ 它们在
+/// 通用工具**不是**「我不看」，是「**用户自己装，而我们会看、缺了要说**」⇒ 它们在
 /// [`EnvTier::UserInstallsWePrompt`]。每一档都要有成员（`every_tier_has_members_so_absence_never_encodes_a_judgement`）：
 /// 没有成员的档不留。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
@@ -301,12 +289,12 @@ pub const TOOLS: &[ToolSpec] = &[
 pub enum EnvTier {
     /// **app 装的** —— 该我们装，而且今天真有装口。
     AppInstalls,
-    /// **app 该自带，而今天还没有装口** —— `KR65D2` 要的那一格。
+    /// **app 该自带，而今天还没有装口**。
     ///
     /// ⚠ 它**不许被读成「不该我们装」**：那是 `UserProvides` / `NotAnInstall` 的意思。
     /// 这一格是**欠的实现**，看得见、数得出来。
     AppShipsNoInstallerYet,
-    /// **你自己装，缺了我们提示你** —— app 不装，但**真去查**（`KR65D1`）。
+    /// **你自己装，缺了我们提示你** —— app 不装，但**真去查**。
     UserInstallsWePrompt,
     /// **app 只查** —— 谁都不「装」它，我们查得到它在不在。
     AppOnlyChecks,
@@ -319,7 +307,7 @@ impl EnvTier {
         match (who, has_installer_today) {
             (Provisioning::AppShips, true) => EnvTier::AppInstalls,
             (Provisioning::AppShips, false) => EnvTier::AppShipsNoInstallerYet,
-            // 这两支的 `_` 是**有意的**：`K38` 裁了「不该我们装」，那么有没有装口都不改变档。
+            // 这两支的 `_` 是**有意的**：用户裁了「不该我们装」，那么有没有装口都不改变档。
             // 而「不该我们装却真有装口」是自相矛盾，由
             // `nobody_declares_an_installer_for_something_we_should_not_install` 单独判红 ——
             // 不在这里悄悄吸收掉。
@@ -331,9 +319,8 @@ impl EnvTier {
 
 /// 闭集里手写的那一半。
 ///
-/// 🔴 **这张表原来「全是第三档」，今天一条都不是** ——
-/// `K38` 之后它分成了两群：9 项通用工具是 [`Provisioning::UserProvides`]，
-/// [`Provisioning::AppShips`] 那一群今天是空的（原先那一项是外部账号工具的本机那份；账号库改由后端自己建，它出了表）。
+/// 🔴 它分两群：9 项通用工具是 [`Provisioning::UserProvides`]，
+/// [`Provisioning::AppShips`] 那一群今天是空的（账号库由后端自己建，不在表里）。
 pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     // `claude-cli` 那一条住适配层（`agents/claudecode/footprint.rs::UNMANAGED_ENV`）。
     UnmanagedEnv {
@@ -436,7 +423,7 @@ pub enum EnvBacking {
 pub struct EnvEntry {
     pub id: &'static str,
     pub display_name: String,
-    /// **谁该装**（`K38`）。「app 自带」这个人群就是 `who == AppShips` 的那几项。上界面的是由它派生的 [`Self::tier`] ⇒ 生产段零读者。
+    /// **谁该装**。「app 自带」这个人群就是 `who == AppShips` 的那几项。上界面的是由它派生的 [`Self::tier`] ⇒ 生产段零读者。
     #[cfg_attr(not(test), allow(dead_code))]
     pub who: Provisioning,
     /// **档** —— 由 `who` ×「今天有没有装口」两格**派生**（[`EnvTier::of`]），不是手填的。
@@ -475,7 +462,7 @@ pub fn unmanaged() -> Vec<&'static UnmanagedEnv> {
 ///
 /// - `TOOLS` 里每一条自动进来一项，**两格都派生**：
 ///   「谁该装」读 `destination`（[`Provisioning::of_tool`]）、「今天有没有装口」读
-///   `installable`（`K-R63` 那条对拍表把它钉在真实现上）⇒ 档由 [`EnvTier::of`] 算出来。
+///   `installable`（那条申报 ↔ 实现的对拍表把它钉在真实现上）⇒ 档由 [`EnvTier::of`] 算出来。
 /// - `TOOLS` 里没有的那一半住 [`UNMANAGED_ENV`]：**「谁该装」只能显式声明**
 ///   （盘上没有任何字段能把它算出来，那是设计判断不是读数），
 ///   而「今天有没有装口」**不用声明** —— 没有 `ToolSpec` 就是没有装口，恒 `false`。

@@ -2,7 +2,7 @@ use super::*;
 use guard_core::{production_code, ScanReport};
 use std::collections::HashSet;
 
-/// 受管工具**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 下面的判据按全集判，与搬家前同一个人群。
+/// 受管工具**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 下面的判据按全集判。
 static TOOLS: std::sync::LazyLock<Vec<ToolSpec>> =
     std::sync::LazyLock::new(|| tools().into_iter().cloned().collect());
 
@@ -281,9 +281,7 @@ fn a_double_slash_inside_a_string_does_not_cut_the_line() {
     );
 }
 
-/// **防上帝结构的门禁**（计划 §5 P2）。不是形式主义：本会话四次拒绝提前抽象
-/// （R12 registry / R15 passThrough / B02 `--bus-id` / B03 收件箱 id 取法），
-/// 靠的都是"数真实消费者"。
+/// **防上帝结构的门禁**。不是形式主义：拒绝提前抽象，靠的是"数真实消费者"。
 #[test]
 fn every_declared_field_has_at_least_two_instantiations() {
     let code = tools_code();
@@ -357,12 +355,11 @@ fn the_scan_catches_the_audits_own_single_use_field() {
             "    pub carriers: &'static [Carrier],",
             "    pub carriers: &'static [Carrier],\n    pub needs_elevation: bool,",
         )
-        // 🔴 **锚点必须只认 `ToolSpec` 那一族的 `id:`**〔`K-R60` 09-11 现打〕：
-        // 上一版的锚点是裸的 `"        id: \""` —— 它认的是「本文件里任何 8 空格缩进的
-        // `id:` 行」，而那时**本文件只有 `TOOLS` 一张表**，所以它看起来是对的。
-        // `K-R60` 往本文件加了第二张表（`UNMANAGED_ENV`，同样的缩进）之后，
-        // 这一刀当场打到 17 处、计数自检红在「变异没落到位」。
-        // ⇒ 收窄成 `ToolSpec {` + 下一行的 `id:`，只认该打的那一族。
+        // 🔴 **锚点必须只认 `ToolSpec` 那一族的 `id:`**：
+        // 裸的 `"        id: \""` 认的是「本文件里任何 8 空格缩进的 `id:` 行」，
+        // 而本文件还有第二张表（`UNMANAGED_ENV`，同样的缩进），变异会打到它身上、
+        // 计数自检红在「变异没落到位」。
+        // ⇒ 锚点是 `ToolSpec {` + 下一行的 `id:`，只认该打的那一族。
         // ⚠ 这不是放水：命中数**仍然**由下面那条 `1 + TOOLS.len()` 的等号自检守着。
         .replace(
             "    ToolSpec {\n        id: \"",
@@ -487,42 +484,12 @@ fn touch_effects_are_all_really_used() {
 #[test]
 fn declarations_match_reality_not_intent() {
     let ccbus = TOOLS.iter().find(|t| t.id == "cc-bus").unwrap();
-    // ⚠⚠ **这条断言今天落后于代码一格，理由如实写在这里**：
-    // `U10b`〔用@08-13〕裁「开」之后，cc-bus 的部署**真的实现了**
-    // （`cc_bus_deploy.rs`，6 条行为判据：围栏拒软链 / 幂等不重写 / 覆盖留备份 /
-    //  装完可执行 / 内嵌清单与仓对拍）。按本条的名字（「声明要配现实」），
-    // `installable` 该翻成 `true`。
-    //
-    // **而翻了它当场撞上另一条判据** —— `every_declared_field_has_at_least_two_instantiations`：
-    // cc-bus 是最后一个 `false`，翻掉之后 `installable` 在**全部 6 个** `ToolSpec` 上都为真
-    // ⇒ 「没有区分力」。那条报得**对**：字段退化成常量，按本仓的既定准则就该**删字段**
-    // （同 `P4c` 撞 `host_is_not_a_function_of_destination` 那次的处置）。
-    // 而删它要动 `config_surface` 的行、UI 文案（`config-surface-section.ts:50`）与
-    // `skill_host` 里那条钉着 `"installable: false"` 字面量的判据 —— **是一次跨文件重构**。
-    //
-    // ⇒ 这里**不顺手做那次重构**（`PS1` 的正题是部署，不是字段治理），
-    // 声明位暂留 `false`，代价如实登记在这里：**声明表比代码晚一格**。
-    // ★ 解锁条件：删掉 `installable` 字段（或给它找回区分力）之后，把这条断言反过来。
-    //
-    // 🔴 **09-11 `K-R60`：上面那个解锁条件兑现了，本条按它自己写的话反过来。**
-    // 走的是「**给它找回区分力**」那一支，不是删字段 —— 删了就再没有任何字段能申报
-    // 「cc-bus 装不装得了」，而这一格恰恰是这里在治的。
-    // 区分力从哪儿回来的：`claude-code` 那条（装不了、只读）进表，
-    // 理由写在它自己那个字面量上头。
-    // ⚠ 那一整段「暂留 false」的理由**留着不删**：它是这处假申报活了一个月的来路，
-    //   而本条的名字（「声明要配现实」）说的正是那件事。
-    //
-    // 🔴 **09-11 `K-R63`：本条原先在这里有两条专名断言，已经收走了。**
-    // 原文逐字是 `assert!(ccbus.installable, …)` 与 `assert!(!ccbus.uninstallable, "卸载没做，不得声明可卸")`。
-    // 它们判的正是「申报 ↔ 现实」，而那件事今天由一条**覆盖全表**的性质判
-    // （`every_tool_declares_install_and_uninstall_as_the_implementations_really_are`）。
-    // 留着它们不是双保险，是两个坏处：
-    //   ① 专名钉子只把静默从一个工具挪走，下一个工具照样静默（件文件 `§0c` 的正题）；
-    //   ② 第二条会**在事情变好的那天错红** —— 真给 cc-bus 补上卸载实现并如实把字段翻成
-    //      `true`，它会拦一次，而那时它拦的是一句真话。
-    // ⇒ 本条今天只剩下**不属于那条性质**的那一格：`settings.json` 的 effect。
-    // ⚠ 如实登记：本条的**名字**因此比它现在做的事宽了一格（改名要连带跑生成命令，
-    //   PM 的窗口开着时不许跑）⇒ 改名的事另走一次，不在这里自批。
+    // 「申报 ↔ 现实」由一条**覆盖全表**的性质判
+    // （`every_tool_declares_install_and_uninstall_as_the_implementations_really_are`），
+    // 这里不另写 `cc-bus` 的专名断言：专名钉子只把静默从一个工具挪走，下一个工具照样静默；
+    // 而且会**在事情变好的那天错红**（真补上卸载实现、如实把字段翻成 `true`，它拦的是一句真话）。
+    // ⇒ 本条判**不属于那条性质**的那一格：`settings.json` 的 effect。
+    // ⚠ 本条的**名字**比它做的事宽一格（改名要连带跑生成命令）。
     // settings.json 只生成待贴文本，绝不写
     let hooks = ccbus
         .touches()
@@ -630,7 +597,7 @@ fn landing_path_of(d: &ToolDestination) -> Option<String> {
 
 /// **这个工具说得出几个落点** —— 就是那条验收判的那个「关系」。
 ///
-/// 🔴 **为什么数的是载体而不是枚举值**（`KR81D1` 逐字写死的失效方向）：
+/// 🔴 **为什么数的是载体而不是枚举值**（写死的失效方向）：
 /// `destination` 是单值的时候这个数**恒等于 1**，往 `ToolDestination` 里
 /// **加多少个枚举值它都还是 1** —— 那只是「值多了一个」，不是
 /// 「一个东西对多个落点」。这个数 >1 当且仅当**载体这一维真的存在**。
@@ -647,11 +614,9 @@ fn installable_tools_declare_where_they_land() {
         if !t.installable {
             continue;
         }
-        // 🔴 **逐载体判，而这一步比先前严**。
-        //    `K-R69` 那一版是「一个工具一个 `destination`、一串期望落点、去这个工具的
-        //    **全部** touches 里找」—— 那时 M 个落点 × N 条 touch **没有 key**，
+        // 🔴 **逐载体判**：去这个工具的**全部** touches 里找的话，M 个落点 × N 条 touch **没有 key**，
         //    一个落点被另一个载体的 touch「凑巧接住」也照样绿。
-        //    今天落点与 touch 都挂在同一个载体下 ⇒ 接住它的必须是**它自己那一份**。
+        //    落点与 touch 都挂在同一个载体下 ⇒ 接住它的必须是**它自己那一份**。
         for c in t.carriers {
             // 跨字段：「这不是我们的落点」与「装得了」不许同时成立。
             let Some(want) = landing_path_of(&c.destination) else {
@@ -673,7 +638,7 @@ fn installable_tools_declare_where_they_land() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 🔴 `K-R81` / `KR81D1` ＋ `KR81D3`：**一个后端，几处使用**
+// 🔴 **一个后端，几处使用**
 //
 // 「一个后端要两处使用 / 即远程后端就是远程本地机器的后端」。
 // 下面四条判的是**这句话在闭集里说得出来**，不是「表好看一点」。
@@ -690,13 +655,13 @@ fn backend() -> &'static ToolSpec {
         .unwrap_or_else(|| panic!("闭集里找不到 id 为 `{BACKEND_ID}` 的那一条"))
 }
 
-/// ★ `KR81D1` **正面**：闭集说得出「**同一个后端**落在哪几处」。
+/// ★ **正面**：闭集说得出「**同一个后端**落在哪几处」。
 ///
-/// # 死值验（`KR81D1` 逐字要的那一向）
+/// # 死值验
 ///
 /// 把三个落点里**任意一个**从闭集里摘掉 ⇒ 本条红，**并点名是哪一个没了**。
 ///
-/// # 🔴 失效方向写死在这里（`KR81D1` 逐字）
+/// # 🔴 失效方向写死在这里
 ///
 /// 「给 `destination` 加第二个枚举值就算多落点」——**不算**。
 /// [`landing_sites_of`] 数的是**载体**：`destination` 单值时它恒等于 1，
@@ -765,7 +730,7 @@ fn the_backend_is_one_thing_landing_in_several_places() {
             let src = match &c.source {
                 ToolSource::EmbeddedBinary { repo_path } => (*repo_path).to_string(),
                 other => panic!(
-                    "后端的载体来源不该是 {other:?} —— 三份都是**二进制**（`K25`：\
+                    "后端的载体来源不该是 {other:?} —— 三份都是**二进制**（\
                          一份代码、每个平台一份原生产物）"
                 ),
             };
@@ -799,23 +764,19 @@ fn the_backend_is_one_thing_landing_in_several_places() {
     assert_eq!(
         got, want,
         "\n后端的载体清单与钉死的表对不上 —— 少一份就是「闭集说不出它」，\n\
-             而那正是 `K-R68` 立件时的读数（3 种载体 4 个落点，闭集表达 1 个半）。\n\
+             一份后端有几种载体、几个落点，闭集都要说得出。\n\
              改 `TOOLS` 就要来改这张表，并说清为什么。"
     );
 }
 
-/// ★ `KR81D3`：**`ccm` 那两份的来源不是同一个，而闭集今天说得出来。**
+/// ★ **`ccm` 那两份的来源不是同一个，而闭集说得出来。**
 ///
-/// # 立件时这一条是红的（那正是这半格要修的）
+/// `ToolSource` 与 `destination` 是**同一个形状问题的两半**：没有载体这一维，`ccm` 只能有一个 `source`，
+/// 本机那一半的来源（后端二进制本身）就只能写在散文里 —— **用散文顶替一个字段**。
 ///
-/// `R26` 裁定二逐字：`ToolSource` 与 `destination` 是**同一个形状问题的两半**。
-/// 在载体这一维立起来之前，`ccm` 只有一个 `source`，而它的注释**自己承认是假的**
-/// （逐字：「本机那一半的来源不是这个 shim —— 是后端二进制自己的改名副本……
-/// `ToolSource` 一个字段同样装不下两个来源」）—— **用散文顶替一个字段**。
+/// # 死值验
 ///
-/// # 死值验（`KR81D3` 逐字要的那一向）
-///
-/// 把本机那份的 `source` 改回今天那个假值（＝ 与远端那份同一个 `ccm_entry_shim`）
+/// 把本机那份的 `source` 改成与远端那份同一个 `ccm_entry_shim`
 /// ⇒ 本条红。
 #[test]
 fn the_two_ccm_carriers_do_not_share_one_false_source() {
@@ -841,7 +802,7 @@ fn the_two_ccm_carriers_do_not_share_one_false_source() {
         .carriers
         .iter()
         .find(|c| matches!(c.destination, ToolDestination::LocalHomeRelative(_)))
-        .expect("`ccm` 本机那个载体不见了（`K-R69` 建的那条）");
+        .expect("`ccm` 本机那个载体不见了");
     match &local.source {
         ToolSource::EmbeddedBinary { repo_path } => assert!(
             repo_path.ends_with("::extract_embedded_to"),
@@ -941,7 +902,7 @@ fn every_carrier_says_which_one_it_is() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 🔴 `K-R81` / `KR81D2`：**那个名字改到哪儿了 —— 一张可核的账**
+// 🔴 **那个名字改到哪儿了 —— 一张可核的账**
 //
 // dod 逐字：「**不要求一次全改**，但**要求给出「改了哪些、没改哪些、为什么」的
 // 可核读数**」，失效方向逐字：「**只改闭集那个 id，而 70 份 `.rs` 照旧** ——
@@ -965,7 +926,7 @@ enum Why {
     SymbolName,
     /// **措辞**（注释 / 文档 / 印给用户的串里那句「远端的那个后台进程」）。
     /// 🔴 **这些句子今天多数不假** —— 那确实是远端那台上的那一份；
-    /// 要求的是它的**身份**（那是**那台机器的本地后端**，`K36`）。
+    /// 要求的是它的**身份**（那是**那台机器的本地后端**）。
     /// 订正措辞要连**前端那一面**一起过（`src/**/*.ts` 现打 30 余处），
     /// 只改 Rust 半边会让两边说两种话。**解锁条件**：另立一件「文案面」，两侧同拍。
     /// ✅ **那一件做了，这一档清零** —— Rust 报文、TS 界面串与散文
@@ -1070,7 +1031,7 @@ fn count_of(text: &str, w: Why) -> usize {
 /// 🔴 剥法**借共享原语** [`guard_core::strip_comment_lines`]，不自己写第二份 ——
 /// `structural_scan.rs` 那张 `TRANSFORMERS` 登记表背后的判据逐字
 /// 「换个名字的同一份剥法仍然是第二份剥法」，**本函数第一版就是那样，当场被它逮到**。
-/// 顺序也照它的纪律：**先剥整份，再切块**（`strip_comment_lines` 头注的 `K-R25` 那一段）。
+/// 顺序也照它的纪律：**先剥整份，再切块**（`strip_comment_lines` 头注那一段）。
 fn tools_literal_data() -> String {
     // 两份 `TOOLS`（本表 ＋ 这一家的那一半）各取体，接起来。
     let mut bodies = String::new();
@@ -1120,9 +1081,9 @@ fn tools_literal_data() -> String {
     out
 }
 
-/// ★ `KR81D2` **正面（零命中守卫）**：闭集那张表的**数据里**，旧名字一处都没有。
+/// ★ **正面（零命中守卫）**：闭集那张表的**数据里**，旧名字一处都没有。
 ///
-/// # 死值验（`KR81D2` 逐字要的那一向）
+/// # 死值验
 ///
 /// 把改过的任意一处改回旧名（`id:` 那一格、或 `display_name:` 那一格）⇒ 本条红。
 ///
@@ -1167,7 +1128,7 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
     );
 }
 
-/// ★ `KR81D2` **另一半（登记 ＋ 递减棘轮）**：还没改的每一处都登记着，而且只许变少。
+/// ★ **另一半（登记 ＋ 递减棘轮）**：还没改的每一处都登记着，而且只许变少。
 ///
 /// # 它买的是「改了哪些 / 没改哪些 / 为什么」这句话**有分母**
 ///
@@ -1183,19 +1144,18 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
 ///   而且它们**根本不进这把尺子**（`old_name_counts` 第一步就把那个拼写剥掉了）。
 ///   理由不是嫌麻烦：改那两样要**同拍**改发版流水线的产物名、`embedded-backends/`
 ///   的文件名约定、`tauri.sidecar.conf.json` 的 `externalBin`、`build.rs` 的清单
-///   与 CI —— 而件文件 `§0d` 逐字「**不改发版流水线**（`KU26` 那一步归 `K-R42`）」。
+///   与 CI —— 这里**不改发版流水线**。
 ///   ⇒ 它是**住址**，不是名字；名字改对了，住址跟着搬是另一件事。
 /// - **`src/backend/` 那棵树**（另一个 workspace）与**前端 `src/**.ts`**
 ///   不在本尺子的面里。⚠ 这是**判不了**，不是「那边干净」——
 ///   现打：前端 30 余处、backend 树 26 处。
 ///
-/// # ⚠ 本文件自己在面里（`K-R31` 那一形，`scanning_guard_registry` 登记为「第五形」）
+/// # ⚠ 本文件自己在面里（`scanning_guard_registry` 登记为「第五形」）
 ///
-/// ⚠ 先前这里写着「`scan_tree!` 按构造摘掉调用者那一份 —— 而调用者
-/// 恰恰是**闭集的家**，摘掉等于在最该看的那一份上瞎掉」。那一刀**在这一处不生效**
+/// `scan_tree!` 按构造摘掉调用者那一份，而这一处摘不掉
 /// （判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的折返路径 ⇒ 后缀比不命中），
-/// 而且今天的调用者是本判据文件、**不是**闭集的家 `tool_registry.rs`。
-/// ⇒ 下面那句 `include_str!` 的 `push` 今天是**冗余**的第二份（`src/` 那棵已经收过它，
+/// 而且调用者是本判据文件、**不是**闭集的家 `tool_registry.rs`。
+/// ⇒ 下面那句 `include_str!` 的 `push` 是**冗余**的第二份（`src/` 那棵已经收过它，
 /// 而 `got` 是按 `(住址, Why)` 入 `BTreeMap`，同键覆盖 ⇒ 不会数两遍）；**刻意不删**：
 /// 它把「闭集的家一定在面里」钉成一件不依赖根清单的事。
 /// ⇒ 而「本文件自己在面里」这句**今天是真的**：第三棵根逐字是 `tests/frontend/shell`，
@@ -1336,7 +1296,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
         })
         .collect();
     println!(
-        "【KR81D2 存量读数】面 = `src/frontend/shell/src` ＋ `src/common` 共 {} 份 `.rs`（现算）· \
+        "【旧名存量读数】面 = `src/frontend/shell/src` ＋ `src/common` 共 {} 份 `.rs`（现算）· \
              还带旧名的 {} 份 / {total} 处（{}）· 登记 {} 行 · \
              ⚠ 面外判不了：`remote{}daemon{}proto/` 那棵树与前端 `src/**/*.ts`",
         files.len(),
@@ -1362,7 +1322,7 @@ fn carrier_fields_follow_the_same_discipline() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 🔴 `K-R69` / `KR69D1`：**本机有一条 `ccm` 落点，而且它与远端那条同源**
+// 🔴 **本机有一条 `ccm` 落点，而且它与远端那条同源**
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 闭集里所有**末段是 `ccm` 那个词**的落点，按「在哪台机器上」分。
@@ -1400,7 +1360,7 @@ fn monitor_ccm_entry_name() -> String {
     format!("{}{}", monitor_ccm_word(), std::env::consts::EXE_SUFFIX)
 }
 
-/// `KR69D1` 正面：**本机侧有落点，远端侧也有，而且它们不是同一条。**
+/// 正面：**本机侧有落点，远端侧也有，而且它们不是同一条。**
 ///
 /// # 立件时这一条是红的（那正是要修的）
 ///
@@ -1408,10 +1368,10 @@ fn monitor_ccm_entry_name() -> String {
 /// `TOOLS` 里 id 为 `ccm` 那条声明的 `~/.local/bin/ccm`，`host: Remote` ⇒ **本机侧 0 条**。
 /// 而别名生成器（`launcher-diagnostics.ts::buildAliasLine`）吐的是**裸 `ccm`**，
 /// 靠 PATH 解析 ⇒ 用户贴上去之后解析到的仍是他自己那份旧的。
-/// ⇒ 用户 `K34` 逐字「装了新版后 `~/.local/bin/ccm` 可以干净退役」
+/// ⇒ 用户原话「装了新版后 `~/.local/bin/ccm` 可以干净退役」
 /// **在结构上做不到**：退役没有承接方。
 ///
-/// # 死值验（`KR69D1` 逐字要的第一向）
+/// # 死值验（第一向）
 ///
 /// 把本机那条 `TouchedFile` 摘掉 ⇒ 本条**必须红**。
 ///
@@ -1446,8 +1406,8 @@ fn the_closed_set_declares_a_ccm_landing_site_on_this_machine_too() {
     assert!(
         !local.is_empty(),
         "闭集里**本机侧一条 `ccm` 落点都没有**（远端侧 {remote:?}）。\n\
-             这正是 `K-R69` 立件时的读数：app 从来没有在本机装过 `ccm`，\n\
-             于是用户 `K34` 逐字「装了新版后 `~/.local/bin/ccm` 可以干净退役」\n\
+             app 没有在本机装 `ccm`，\n\
+             用户原话「装了新版后 `~/.local/bin/ccm` 可以干净退役」\n\
              **没有承接方** —— 缺的不是一次真机读数，是这个入口本身。"
     );
     assert!(
@@ -1462,12 +1422,12 @@ fn the_closed_set_declares_a_ccm_landing_site_on_this_machine_too() {
             !remote.contains(l),
             "本机那条与远端那条是同一个路径 {l:?} —— 落点撞在一起，\n\
                  而本机那份**不许**写进 `~/.local/bin`：那是用户旧 `ccm` 住的地方，\n\
-                 `K34` 逐字「原本的配置**要手动删除**」，产品一个字节都不动它。"
+                 用户原话「原本的配置**要手动删除**」，产品一个字节都不动它。"
         );
     }
 }
 
-/// `KR69D1` 的**同源那一半（申报侧）**：申报的那条本机路径，
+/// **同源那一半（申报侧）**：申报的那条本机路径，
 /// 真的能盖住我们生产上放下去的那个文件名。
 ///
 /// # 没有这一条会怎样
@@ -1488,7 +1448,7 @@ fn the_declared_local_ccm_path_really_matches_the_name_we_install() {
         declared.len(),
         1,
         "本机侧的 `ccm` 落点不是恰好一条（实得 {declared:?}）——\
-             多一条就是多一份要跟着改的东西（`K33`：所有命令只许有一处）"
+             多一条就是多一份要跟着改的东西（所有命令只许有一处）"
     );
     let last = declared[0].rsplit('/').next().unwrap_or(declared[0]);
     let ok = match last.strip_suffix('*') {
@@ -1518,23 +1478,20 @@ fn fenced_block_implies_uninstallable() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// `K-R63`：**申报 ↔ 现实** —— 覆盖全表的一条性质，不是逐工具一条 `assert`
+// **申报 ↔ 现实** —— 覆盖全表的一条性质，不是逐工具一条 `assert`
 //
-// # 病理（件文件 `§0b`）
+// # 病理
 //
-// 这张表上两个 `bool`，先前**各只有半边被守**：
-//   · `installable` —— 一条**专名**判据（只服务 `cc-bus` 一个工具）；
-//   · `uninstallable` —— 上面那条 `fenced_block_implies_uninstallable` 只守
+// 这张表上两个 `bool`，只靠专名判据和 `fenced_block_implies_uninstallable` 的话**各只有半边被守**：
+//   · `installable` —— 专名判据只服务一个工具；
+//   · `uninstallable` —— `fenced_block_implies_uninstallable` 只守
 //     「有围栏 ⇒ 必须声明可卸」（**少报**那一向），**多报**（声明可卸而盘上
-//     根本没有卸载实现）一条判据都没有。
-// PM 09-11 的刀 C 实打（量于 `cd26954`）：把 `cc-acct-iso` 的 `uninstallable`
-// 由 `false` 翻成 `true` ⇒ 全表 **1379 条一条没红**。
-// 〔`K-R63` 实现方 09-11 复打同一刀：**红 1 条，就是下面这一条**
-//  （`-p monitor` 基线 1384 → 1383 passed / 1 failed）。〕
+//     根本没有卸载实现）没有判据。把某个工具的 `uninstallable` 由 `false` 翻成 `true`，
+//     红的只有下面这一条。
 //
 // # 为什么处方不是「再补一条专名 `assert`」
 //
-// 那只是把静默从 1 个工具挪到下一个工具（`§0c` 逐字写死的失效方向）。
+// 那只是把静默从 1 个工具挪到下一个工具（写死的失效方向）。
 // ⇒ 做成**一条性质**：左边现读字段值，右边现钉盘上那个符号，两边 `assert_eq!`。
 // ⚠ 失效方向也写死在判据的**名字**上：名字里出现任何一个工具 id ⇒ 不算兑现。
 //    这一条自己也有判据（见下面那条自守）。
@@ -1719,7 +1676,7 @@ fn claims() -> Vec<Claim> {
 
 /// 从逐字签名里抠出 `pin_definition` 要的**赋值前缀**（签名到 `fn <名>` 之后第一个 `(` 为止）。
 /// **算出来的，不再写第二份字面量**。
-/// 从前是「到第一个 `(` 为止」—— 可见性带括号（`pub(crate)`）时会抠成 `pub`。
+/// 不是「到第一个 `(` 为止」—— 可见性带括号（`pub(crate)`）时那样会抠成 `pub`。
 fn assign_prefix_of(definition: &str) -> &str {
     let from = definition.find("fn ").unwrap_or(0);
     let end = definition[from..]
@@ -1736,7 +1693,7 @@ fn fn_name_of(definition: &str) -> &str {
         .unwrap_or_default()
 }
 
-/// ★★ `KR63D1` ＋ `KR63D2`：**`TOOLS` 每一条的两格申报，都必须与盘上真有没有那个实现一致。**
+/// ★★ **`TOOLS` 每一条的两格申报，都必须与盘上真有没有那个实现一致。**
 ///
 /// 左边现读字段值（`installable` / `uninstallable`），右边用
 /// guard-core 的 `lib.rs::pin_definition` 去钉那个装 / 卸实现的**逐字签名**
@@ -1894,11 +1851,11 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
     );
 }
 
-/// ★★ `KR63D1` / `KR63D2` 把**失效方向**写死在名字上：
+/// ★★ 把**失效方向**写死在名字上：
 /// **判据的名字里出现任何一个工具 id ⇒ 不算兑现。**
 ///
 /// 一条名字里带工具名的判据，读的人会以为「那一格有人守」，而它守的只有那一个工具 ——
-/// `K-R60` 留下的就是这样一颗钉子，`K-R63` 把它收掉了。这一条让那件事**别再回来**。
+/// 这一条不让这样的钉子出现。
 #[test]
 fn the_property_that_pins_both_declarations_is_not_named_after_any_tool() {
     const NAME: &str =
@@ -1928,7 +1885,7 @@ fn the_property_that_pins_both_declarations_is_not_named_after_any_tool() {
 // 从 `footprint/registry.rs` 搬来的两个现算口（生产上已无调用方）＋ 它们今天对拍的那一个
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 🔴 `K-R132`：本机那条 `ccm` 入口**所在的目录**（home 相对，`/` 分隔，不带末尾斜杠）。
+/// 🔴 本机那条 `ccm` 入口**所在的目录**（home 相对，`/` 分隔，不带末尾斜杠）。
 ///
 /// # 它**不是**一个新的字面量〔闭集只许有一个住址〕
 ///
@@ -1938,7 +1895,7 @@ fn the_property_that_pins_both_declarations_is_not_named_after_any_tool() {
 ///
 /// # 为什么要有它：**PATH 上要写的那个目录，必须与我们真放下去的那个是同一个**
 ///
-/// `K-R129` 在真机上证实的缺陷是「装上了、能跑、用户敲不到」——
+/// 在真机上证实过的缺陷是「装上了、能跑、用户敲不到」——
 /// `ccm.exe` 真在 `%USERPROFILE%\.cc-monitor\bin\`，而那个目录不在 PATH 上。
 /// 补 PATH 的那一步（`profile_installer::render_cc_code`）**不许自己写一个目录字面量**：
 /// 写了，它与真落点就是两个住址，哪天落点搬家，PATH 会指着一个空目录，
@@ -1978,7 +1935,7 @@ fn local_ccm_bin_dir_rel() -> Option<&'static str> {
     found
 }
 
-/// 🔴 `KR135D3`：**远端那条 `ccm` 落点的目录**（`$HOME` 相对，末段文件名已砍掉）。
+/// 🔴 **远端那条 `ccm` 落点的目录**（`$HOME` 相对，末段文件名已砍掉）。
 ///
 /// 与 [`local_ccm_bin_dir_rel`] 是**同一个问题的另一边**，所以形状逐字照它：
 /// 从这张表现算，不写死目录字面量（`13b`：闭集只许有一个住址）。
