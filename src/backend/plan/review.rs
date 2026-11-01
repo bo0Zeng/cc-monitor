@@ -3,7 +3,7 @@
 //!
 //! - 认可：`工作区 ⇒ 片 ⇒ [键]`。键带条目的版本（[`super::needs`]），版本换了就对不上、那一条再出；
 //!   每次写只留那一片此刻还在的键（过了版本的顺手清掉）。
-//! - 退回：`工作区 ⇒ 片 ⇒ 格 ⇒ 那一次`（送给谁 · 送没送到 · 当时的子格与正文摘要），同一格后退回的盖掉先前的。
+//! - 退回：`工作区 ⇒ 片 ⇒ 格 ⇒ 那一次`（送给谁 · 送没送到 · 当时的子格与正文摘要），同一格后退回的盖掉早的那一次。
 //! - 问图用的别名：这台一条（问图框里最近选的那条，下次预选）。
 //!
 //! 读三态（不在 ＝ 什么都没记 · 读不懂 ＝ 不覆盖、照没记算，写的那一刻回错）；读—改—写在跨进程锁里、原子写。
@@ -191,7 +191,7 @@ pub(crate) fn unack_at(own: &Own, ws: &str, slice: &str, key: &str) -> Result<()
     })
 }
 
-/// 记一次退回（盖掉那一格先前那一次）。
+/// 记一次退回（盖掉那一格上一次）。
 pub(crate) fn returned_at(
     own: &Own,
     ws: &str,
@@ -236,7 +236,7 @@ pub(crate) fn answer_returned(
     returned_at(own, ws, slice, cell, rec)
 }
 
-/// 记这台问图用的那条别名（盖掉先前那条；**只从 `faces/plan_ask_face.rs` 进**）。
+/// 记这台问图用的那条别名（盖掉上一条；**只从 `faces/plan_ask_face.rs` 进**）。
 pub(crate) fn ask_at(own: &Own, alias: &str) -> Result<(), Said> {
     edit_at(own, |r| r.ask = Some(alias.to_string()))
 }

@@ -1,0 +1,20 @@
+# 前端两个包（`monitor` 壳 · `cc-monitor-filewin` 文件窗口）共用这一份：clippy 从包目录往上找，两个包都落到这一层。
+# 几组名单共用 `disallowed_methods` 一个 lint 名：放行只放在最小的作用域上（一条语句，或只做这一件事的小函数），
+#   写 `#[expect(clippy::disallowed_methods, reason = "…")]`，不写 `allow`；放大了，同名的别的组也一起放过。
+# 测试段放开（各库根头上那一行 `cfg_attr(test, …)`）。
+#
+# 定时器那一组：会让线程 / 任务自己醒来的构件。壳不是零定时器（UI 刷新 · 重连退避这类周期行为正当），
+#   但每一处都要说得出自己是什么：用一处就在那一处放行，reason 写事件源 · 归谁 · 什么时候能去。
+#   不收 `Duration::from_*` · `tokio::time::timeout` · `Instant::now`：壳里这几样都是给一次等待定上界
+#   （等子进程答话 · 等连接建好），等的东西一到就醒，不是自己醒来；收进来只添噪音。
+disallowed-methods = [
+  { path = "std::thread::sleep", reason = "壳的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+  { path = "std::thread::park_timeout", reason = "壳的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+  { path = "std::sync::mpsc::Receiver::recv_timeout", reason = "壳的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+  { path = "std::sync::Condvar::wait_timeout", reason = "壳的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+  { path = "std::sync::Condvar::wait_timeout_while", reason = "壳的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+  { path = "tokio::time::sleep", reason = "壳的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+  { path = "tokio::time::sleep_until", reason = "壳的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+  { path = "tokio::time::interval", reason = "壳的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+  { path = "tokio::time::interval_at", reason = "壳的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+]

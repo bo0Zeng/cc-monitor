@@ -44,7 +44,7 @@ const WATCH_REACTIONS: observe::watcher::Reactions = observe::watcher::Reactions
 // 本测块紧邻被测的第四条面（就近可读）、不挪文件尾；显式 allow 让 clippy --all-targets 净
 //（同上面 `stream_flag_tests` 那一块的理由）。
 
-// `K-P4`：拉窗构件的**落点判据**（PM 09-04 裁的那一条）。
+// 拉窗构件的**落点判据**。
 //
 // # 它管的是哪一维 —— 与已有三道护栏**不重叠**
 //
@@ -62,7 +62,7 @@ const WATCH_REACTIONS: observe::watcher::Reactions = observe::watcher::Reactions
 // 本模块是**在搬家之前**先把闸门立起来：等 `control/focus.rs` 那一段真落进来的那天，
 // 它是第一个开口的人。
 
-// U6b-2 **argv 三分表**：backend 认识的每个 `--token` 恰好属于其中一类。
+// **argv 三分表**：backend 认识的每个 `--token` 恰好属于其中一类。
 //
 // # 为什么要有这张表
 //
@@ -107,9 +107,9 @@ async fn main() {
     }
     // 拨号层要的「这一端的机器表怎么读」：起来那一下装一次（之后各台的常驻流 · 问那台 · 传输 · 部署都按名字查它）。
     faces::install_machines();
-    // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
+    // ★★ **当 `ccm` 用的那一趟，在这里就整条分出去。**
     //
-    // 〔用@09-11 `K33`〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。」
+    // 〔用户定〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。」
     // ⇒ 终端里敲的 `ccm` 就是本二进制；被叫成一段配置的名字（`~/.cc-monitor/bin/<名>` 那条链接）⇒ 等同 `ccm @<名>`。
     //
     // 🔴 **三个「必须排在前面」，一个都不是排版**：
@@ -157,7 +157,7 @@ async fn main() {
     // 旧后端不认参数会照常发 hello 进流模式——monitor 以"首行是 hello 帧"
     // 识别旧版并提示升级（优雅降级，无协议版本协商负担）。
     let args: Vec<String> = backend_args;
-    // Batch7-F24/Batch8-F25：流模式 flag 集合，先剥离再判一次性查询模式
+    // 流模式 flag 集合，先剥离再判一次性查询模式
     // （否则误入 query 分支——INVARIANT §26）。纯函数化供单测（审计 D）。
     // 流的声明写坏了（`--stream --view <认不出的>`）：不起流 —— 当一次性那一形回失败信封、退出 2（下面那个 `match` 的头一臂）。
     let (args, wants, bad_view) = match cli::split_stream_flags(args) {
@@ -266,7 +266,7 @@ async fn main() {
         control::feeds::start(std::sync::Arc::new(observe::watcher::relay));
     }
 
-    // ★★ `K-P1`：**同一个流模式，两种载体**。
+    // ★★ **同一个流模式，两种载体**。
     //
     // 「脱离宿主」本身不难（`launch.rs` 里三份现成的范例）；难的是**脱离之后还怎么跟它对话**
     // —— 今天讲协议走的就是那对 stdio 管道，一脱离管道就没了。
@@ -318,7 +318,7 @@ async fn main() {
     // task，**阻塞中的 `read(0)` 不受影响**；而 `#[tokio::main]` 展开出来的 runtime 在 drop
     // 时会等所有 blocking 任务结束 ⇒ 只要对端还开着 stdin，进程就永远停在这一行。
     //
-    // D 审计实测（U6b-1 引入入方向之后，相对父提交的**回归**）：
+    // 实测（有了入方向 reader 就会出的**回归**）：
     // stdin 接一条开着但没数据的 FIFO，发 SIGTERM ⇒ 3/3 复现「5s 后仍未退出」，
     // stderr 末行已经打了 "shutdown signal received; exiting" —— 清理跑完了，就是不退。
     // 父提交同一脚本 100ms 内退出。
@@ -368,8 +368,7 @@ fn build_hello() -> Frame {
 
 /// 今天那条路：**stdin/stdout 一对管道**。宿主一退读端就断，backend 153ms 内自己走。
 ///
-/// ⚠ 本函数体是 `K-P1` 之前 `main()` 的那一段**原样搬过来的**，一行行为都没改 ——
-/// 常驻是**加一条载体**，不是把这条改掉。改这一段之前先问：另一条载体要不要跟着改？
+/// ⚠ 常驻是**另一条载体**，与这条并列、行为一致。改这一段之前先问：另一条载体要不要跟着改？
 async fn run_over_stdio(
     hello: Frame,
     agent_home: PathBuf,
@@ -377,9 +376,9 @@ async fn run_over_stdio(
     own: cc_monitor_backend::platform::Own,
 ) -> ! {
     let mut stdout = BufWriter::new(tokio::io::stdout());
-    // U6b-3：写 + flush 一步到位，**并拿到 `HelloFlushed` 见证**。
+    // 写 + flush 一步到位，**并拿到 `HelloFlushed` 见证**。
     // 那个见证是 `inbound::spawn` 的必填参数 ⇒「reader 抢在 Hello 之前起来」
-    // 变成编译期不可表示（此前靠一条比较字节位置的机检，被普通函数抽取绕过）。
+    // 编译期不可表示（比较字节位置的机检挡不住普通的函数抽取，类型挡得住）。
     let hello_flushed = match wire::write_and_flush_hello(&mut stdout, &hello).await {
         Ok(w) => w,
         Err(e) => {
@@ -389,18 +388,16 @@ async fn run_over_stdio(
         }
     };
 
-    // (b2) U6b-1：**入方向 reader。位置不可上移。**
+    // (b2) **入方向 reader。位置不可上移。**
     //
     // ★ 必须在上面那个 Hello 已经 flush **之后**才起 —— 客户端要先读到 Hello 才知道
     // 对面是什么版本、有什么能力；在那之前就收命令，等于在能力协商之前执行它。
-    // 这是**时序约束**，两边单看都合理、合起来才错（同 U6a 抓到的 PS 握手顺序那一族）。
-    // U6b-3 起它**编译期不可表示**：`inbound::spawn` 要一个 `wire::HelloFlushed` 见证，
+    // 这是**时序约束**，两边单看都合理、合起来才错（同 PS 握手顺序那一族）。
+    // 它**编译期不可表示**：`inbound::spawn` 要一个 `wire::HelloFlushed` 见证，
     // 而那个见证只能由 `write_and_flush_hello` 产出 —— 上一行拿到的就是它。
-    // （此前是一条比较 `main.rs` 里两个字符串字节位置的机检，被一次普通的函数抽取绕过，已删。
-    //  U8a-2a 顺带订正了本注释与 `src/doc/IPC-PROTOCOL.md` 里对那条已删机检的指名。）
     //
     // 应答走**独立通道**：出方向丢一条**内容帧**可恢复（行还在远端 jsonl 里），
-    // ⚠ 而**状态增量帧**丢了别处没有 —— 那半靠 `Overflow.lost` 带身份让客户端重同步（audit-0805 F03），
+    // ⚠ 而**状态增量帧**丢了别处没有 —— 那半靠 `Overflow.lost` 带身份让客户端重同步，
     // 丢一条应答会让客户端永远等下去。混在一个通道里，实时行的洪峰会把应答挤掉。
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
     // (c) Start the watcher reader（这台一份）并接上这一条流：回这条连接的有界出方向通道。
@@ -432,7 +429,7 @@ async fn run_over_stdio(
     // 代价是信号无载荷且会合并 —— 靠「重探 + 与上一份快照差分」天然免疫。
     // P5：留一份给停机用（下面 select 结束后要显式通知 reader）。
     let poke_for_shutdown = poke.clone();
-    // `K-P1`：处理器认的不是句柄，是 watcher 的名单（`observe::watcher::poke_all`；另一条载体上 watcher 会换人）。
+    // 处理器认的不是句柄，是 watcher 的名单（`observe::watcher::poke_all`；另一条载体上 watcher 会换人）。
     let poke_task = spawn_sigusr1_task();
 
     // (d) Run the stdout writer until the channel closes or a signal fires.
@@ -508,16 +505,9 @@ fn spawn_sigusr1_task() -> tokio::task::JoinHandle<()> {
         let mut sigusr1 = match signal(SignalKind::user_defined1()) {
             Ok(s) => s,
             Err(e) => {
-                // ★★ 说出来，而且**说真话**〔用@08-27 现打逮到，`K-P1` 回修第 7 处〕。
-                //
-                // 这句话原先逐字是「⇒ tmux hook 通路不可用，退回定时探测」——
-                // 而**那条退路今天不存在**：`P5` 删掉 8s ticker 之后本进程零定时器
-                //（`observe/watcher.rs` 那条 `P0b-Y2` 头注逐字：「`P5` 删掉 8s ticker 之后
-                // backend **零定时器**，之后每一拍都靠事件」；`no_timer_guard` 钉着它）。
-                //
-                // ★ 病根不是打错字：**`P5` 删掉了一个构件，而替那个构件说话的散文散在别处，
-                //   没人回去改。**然后它继续以权威口吻骗下一个读者 ——
-                //   「不可用但有兜底」与「不可用而且没兜底」是两件完全不同的事。
+                // ★★ 说出来，而且**说真话**：这里**没有定时探测的退路** —— 本进程零定时器，
+                // 每一拍都靠事件（`no_timer_guard` 钉着它）。
+                // 「不可用但有兜底」与「不可用而且没兜底」是两件完全不同的事。
                 // ⇒ 说清**什么事会变得发现不了**（`control/tmux_hook.rs` 头注逐字：
                 //   「多个 tmux 会话里杀掉其中一个」是**唯一**没有内核事件源的场景）
                 //   与**下一步能做什么**。
@@ -686,7 +676,7 @@ async fn claim_then_log(
     }
 }
 
-/// `K-P1`：**常驻形态的接受循环** —— 一条流 + 不限次的「只读 hello 就走」。
+/// **常驻形态的接受循环** —— 一条流 + 不限次的「只读 hello 就走」。
 ///
 /// # 空转期为什么还留着一个 watcher
 ///
@@ -694,21 +684,20 @@ async fn claim_then_log(
 /// ① `ccm` 那一问有答案了（连一次 + 读一行 hello）；
 /// ② **`@ccm_sid` 打标那段时间窗关掉了** —— 写 `@ccm_sid` 的是**正在跑的** backend
 ///   （`observe/watcher.rs` inotify `sessions/` → `identity_tag::tag`），
-///   而 `shared/ccm` 那条每会话每秒的身份 poller 已经被 `U-NP④` **整条删掉、不留轮询退路**。
+///   而身份打标**没有轮询退路**。
 ///   monitor 没开着的时候若这里不看 `sessions/`，②就一格都没买到。
 /// ⇒ 没人连着时 watcher 照样跑（帧算出来、发不出去），打标那一半照常发生。
 ///
-/// # 接上客户端时：整台一份 watcher，各连接一份投影（10-12 read8a）
+/// # 接上客户端时：整台一份 watcher，各连接一份投影
 ///
-/// 从前每接一条就换一份新的 watcher（半路接进来的拿不到那次初扫，换一份新的 = 一次完整快照），
-/// 代价是每条连接都把全部活会话的记录整份预读一遍（桌面 ＋ 手机 ＋ 重连 ⇒ 同一份读 N 遍），换人那一瞬还有一个 inotify 重装窗口。
-/// 今天这台只起一份（`observe::watcher::spawn`），接上来的连接经 `attach` 先收一份**此刻的样子**（每个活会话的宣告 · 读完那一帧 ·
+/// 这台只起一份（`observe::watcher::spawn`）：每接一条换一份新的 watcher 会让每条连接都把全部活会话的记录
+/// 整份预读一遍（桌面 ＋ 手机 ＋ 重连 ⇒ 同一份读 N 遍），换人那一瞬还有一个 inotify 重装窗口。接上来的连接经 `attach` 先收一份**此刻的样子**（每个活会话的宣告 · 读完那一帧 ·
 /// 运行表 · 主线外清单 · 会话账本那一份，`watcher::join`），之后与别的连接一样收每一帧；记录整台只预读一次，也没有重装窗口。
 ///
 /// # 它**不做**什么
 ///
-/// **不重起自己**（`K14` 裁定：第一档，自愈单独立成 `K-P3`）。宿主不在时**没有监护**，
-/// 这是**如实登记的降级**，而且那句话要在 UI 上说出来（`KPY4` 钉它），不许只写在这条注释里。
+/// **不重起自己**（自愈不在这一层）。宿主不在时**没有监护**，
+/// 这是**如实登记的降级**，而且那句话要在 UI 上说出来（有判据钉它），不许只写在这条注释里。
 async fn serve_listening(
     listener: own_chan::Listener,
     // 目录独占锁：随这个函数（＝ 常驻载体）活着。
@@ -778,7 +767,7 @@ async fn serve_listening(
                 tokio::spawn(async move {
                     // ★★ **两个事件都算「客户端走了」，缺一个就会把那一档永久占住。**
                     //
-                    // ⚠ 这一格是 `K-P1` 的 e2e **实测**逼出来的：只等 `writer_task`（它靠**写**拿到错误才结束）时，
+                    // ⚠ 这一格是 e2e **实测**逼出来的：只等 `writer_task`（它靠**写**拿到错误才结束）时，
                     // 一个**空闲**的后端根本没有东西可写 ⇒ 客户走了也不知道 ⇒ 连接计数永远不归零。
                     // ⇒ 再认一个事件：**入方向读到 EOF**（客户端关了它的写半边 / 进程没了）。
                     tokio::select! {

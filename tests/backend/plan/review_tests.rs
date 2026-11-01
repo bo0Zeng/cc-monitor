@@ -27,7 +27,7 @@ fn an_ack_is_written_and_read_back_and_only_live_keys_stay() {
     let f = file("review-ack");
     let live = vec!["red:悬空@B".to_string(), "top:r1".to_string()];
     ack_at(&own_of(&f), "/w", "alpha", "top:r1", &live).unwrap();
-    // 先前认可过的一个键此刻已经不在（版本换了）⇒ 下一次写时清掉。
+    // 早些时候认可过的一个键此刻已经不在（版本换了）⇒ 下一次写时清掉。
     let r = current(Some(&f));
     assert!(r.acked("/w", "alpha", "top:r1"));
     assert!(!r.acked("/w", "alpha", "red:悬空@B"));

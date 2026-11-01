@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # ruff: noqa: E501
-"""A1：**对外文案全集普查** —— 把「连有哪些文案都列不出来」变成「列得出来」。
+"""**对外文案全集普查** —— 把「连有哪些文案都列不出来」变成「列得出来」。
 
-住址：`<仓根>/tests/evidence/K-T68-A1-outward-copy-census.py`
+住址：`<仓根>/tests/evidence/outward-copy-census.py`
 要求：对外文案的全集对账（「比例没量过」的那笔债）。
 
 跑法（仓根下）：
-    python3 tests/evidence/K-T68-A1-outward-copy-census.py
-    python3 tests/evidence/K-T68-A1-outward-copy-census.py --addresses   # 逐处住址
-    python3 tests/evidence/K-T68-A1-outward-copy-census.py --json        # 机读
-    python3 tests/evidence/K-T68-A1-outward-copy-census.py --selftest    # 反空真死值验
+    python3 tests/evidence/outward-copy-census.py
+    python3 tests/evidence/outward-copy-census.py --addresses   # 逐处住址
+    python3 tests/evidence/outward-copy-census.py --json        # 机读
+    python3 tests/evidence/outward-copy-census.py --selftest    # 反空真死值验
 
 退出码：
     0 = 每一格都切到了东西（地板全过）
@@ -947,7 +947,7 @@ def build_tag_map(masked: str):
         return tags
     pat = re.compile(
         r"(?:const|let|var)?\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*="
-        r"\s*document\.createElement\s*\(\s*[\"'`]([a-zA-Z0-9]+)[\"'`]"
+        r"\s*document\.createElement\s*\(\s*[\"'`]([0-9a-zA-Z]+)[\"'`]"
     )
     for m in pat.finditer(masked):
         tags[m.group(1)].append((m.start(), m.group(2).lower()))
@@ -1314,7 +1314,7 @@ def main_report(args) -> int:
 
     P = print
     P("═" * 78)
-    P("A1  对外文案全集普查   仓根：" + str(REPO))
+    P("对外文案全集普查   仓根：" + str(REPO))
     P("═" * 78)
 
     # ── 面0：语料与定义自检 ─────────────────────────────────────────────
@@ -1647,7 +1647,7 @@ def selftest() -> int:
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="A1 对外文案全集普查")
+    ap = argparse.ArgumentParser(description="对外文案全集普查")
     ap.add_argument("--addresses", action="store_true", help="打印逐处住址")
     ap.add_argument("--json", action="store_true", help="末尾追加机读摘要")
     ap.add_argument("--selftest", action="store_true", help="反空真死值验")

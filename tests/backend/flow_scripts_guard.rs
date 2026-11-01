@@ -1,7 +1,7 @@
 //! 流程工具住在仓里：门禁入口 `gate-affected.sh`（按改动挑格，`--full` 全量；＋ `gate-affected/plan.py` · `gate-affected/map`）·
 //! 重活隔离 `heavy.sh` · 推候选分支 `push-candidate.sh`，连同早先进仓的 `quick-check.sh` · `bump-build-id.sh`。
 //!
-//! 从前它们在仓外、只认一台机器、没有版本：门禁入口的 tmux 隔离改坏了几天没人发现，挑格的表与仓里的格对不上也只有跑起来才知道。
+//! 它们在仓里、有版本、不只认一台机器：门禁入口的 tmux 隔离改坏了、挑格的表与仓里的格对不上，不用等跑起来才知道。
 //! 这里钉四件事：
 //! - 每一份都在，且不写家目录的绝对路径（锁 · 槽位 · 日志走 `GATE_STATE_DIR`，仓根走 `git rev-parse`）；
 //! - 带 `--help` 的几份能跑、退 0、印用法；
@@ -1673,7 +1673,7 @@ mod tests {
         );
     }
 
-    /// 设备测（androidTest）进全量门禁（10-11 起）：从前它们不在任何一格里，`SmokeTest` 红了很久没人看见。
+    /// 设备测（androidTest）进全量门禁：不在任何一格里的话，`SmokeTest` 红了也没人看见。
     /// 门禁的 `android-device` 那一格经 `tests/mobile-smoke/emu.sh` 起模拟器（它自己一个封了内存的 scope），
     /// 跑设备测唯一的入口 `src/mobile/scripts/android-test.sh`，收场关模拟器。
     #[test]

@@ -101,7 +101,7 @@ pub(crate) use crate::host::tmux::NO_SERVER_NEEDLES;
 pub(crate) const NO_TARGET_NEEDLES: &[(&str, &str)] = &[
     (
         "can't find pane",
-        "tmux 对 target-pane 解析失败时的原话。`=名:` 收的正是 target-pane（`F01`）",
+        "tmux 对 target-pane 解析失败时的原话。`=名:` 收的正是 target-pane",
     ),
     (
         "can't find session",

@@ -30,6 +30,11 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "读者是本机合各台的 `sessions-batch` 那条命令（接上之前只有判据读；接上那一刀删这一行）",
     ),
     (
+        "src/common/cmd-wire/src/md.rs",
+        "SegHl",
+        "一段的高亮回包：读者是后端拉一段高亮的那条命令（接上之前只有生成的 TS · Kotlin 读；接上那一刀删这一行）",
+    ),
+    (
         "src/common/cmd-wire/src/attach.rs",
         "AttachWant",
         "附件那一排的进口形：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/attach.rs`，后端那棵 workspace，不在扫描面里）",

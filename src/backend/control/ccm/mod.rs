@@ -1,8 +1,8 @@
-//! `ccm` —— **后端的原生终端命令**（`K26` / `K33`）。
+//! `ccm` —— **后端的原生终端命令**。
 //!
-//! 〔用@08-28 `K26` 逐字〕「**ccm 应当就是后端的原生命令，跟起会话那些东西一样，
+//! 〔用户定，逐字〕「**ccm 应当就是后端的原生命令，跟起会话那些东西一样，
 //! 后端不是有原生命令吗？后端的原生命令就是 ccm，然后加各种参数实现其他功能**」。
-//! 〔用@09-11 `K33` 逐字〕「后端**只有一个**……**不要有什么 bash 脚本**，
+//! 〔用户定，逐字〕「后端**只有一个**……**不要有什么 bash 脚本**，
 //! **不要有什么单独的 ccm**。**所有命令只许有一处**，其他都是**根据传参来调用**。」
 //!
 //! # 同一份实现两种模式
@@ -51,7 +51,7 @@ use plan::{AccountsList, Env, Plan};
 pub(crate) const CCM_VERSION: &str = "7";
 
 /// 认得的 agent。**闭集只有一处住址**：注册表里带起会话事实的那几家
-/// （`agents::launchable_kinds`）。从前这里是一份手写的闭集常量，与注册表那一格是同一件事的两处。
+/// （`agents::launchable_kinds`）。这里另写一份闭集常量，就是同一件事的两处。
 pub(crate) fn agents() -> Vec<&'static str> {
     crate::agents::launchable_kinds()
 }
@@ -394,12 +394,12 @@ fn plan_of(
         &mut env,
         inherit_account.then_some(&get as &dyn Fn(&str) -> Option<String>),
     );
-    // ★★ `K-R96`（09-12）：**铸名避让在这里就问那张唯一的会话快照**。
+    // ★★ **铸名避让在这里就问那张唯一的会话快照**。
     //
-    // 用户 `R52` 裁定二逐字：「不就是先校验冲突然后取名吗? **搞个 hash 表**不就好了」。
+    // 用户定，逐字：「不就是先校验冲突然后取名吗? **搞个 hash 表**不就好了」。
     // 那张表就是 `common::session_snapshot`（`TakenNames` 的字段模块私有 ⇒
-    // 本文件造不出第二份）。⇒ `--ccm-print` 与真跑从此**吐同一个名字**，
-    // 而「纯」的口径改成**相对于快照**（`§0c`）。
+    // 本文件造不出第二份）。⇒ `--ccm-print` 与真跑**吐同一个名字**，
+    // 而「纯」的口径是**相对于快照**（`§0c`）。
     //
     // 问不到就 `None` ⇒ **不退让**（诚实降级，见 `plan::build` 头注）。
     // ⚠ 探测点仍然只有一个（快照那处），`readonly_guard::spawn_registry` 的数不变。
@@ -649,12 +649,12 @@ pub(crate) fn terminal_name_mint_with(
 
 /// `--ccm-probe` 那几行。**首行逐字 `name=ccm`**（认得出这是 ccm 的名片；调用方的能力协商读 `capabilities=` 那一行）。
 ///
-/// # 🔴 `K-R70`：`build=` 那一行答的是「**你是哪一份**」，与 `version=` 不是同一个问题
+/// # 🔴 `build=` 那一行答的是「**你是哪一份**」，与 `version=` 不是同一个问题
 ///
 /// `version=` 是**这套 CLI 的契约版本**（[`CCM_VERSION`]：`4` 是最后一版 bash，`5` 起是
 /// 后端本体）—— 它答「你认得哪些参数」，**答不出**「你是哪一次构建」。
-/// 在此之前，「这份后端是谁」只能去读它**旁边**那个 `.build_id` 文本文件；
-/// 而 `K-R68` 现打：三个载体的 `.build_id` 全从同一处源码常量抠出来 ⇒ 恒等 ⇒ 零证据。
+/// 读它**旁边**那个 `.build_id` 文本文件也答不出：三个载体的 `.build_id` 全从同一处源码常量抠出来
+/// ⇒ 恒等 ⇒ 零证据（现打）。
 /// ⇒ 本行把身份接到**这个进程自己**身上：能跑它的人直接问它，不看它旁边任何文件。
 /// 〔另一半给「跑不了它的人」——交叉编译出来的 musl 二进制在 Windows 上没法执行 ——
 ///  那一半是 `crate::CC_MONITOR_BUILD_STAMP`（扫字节）。两半同源于 `crate::BUILD_ID`。〕
@@ -734,18 +734,15 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
             exec_shell(&plan::render(&plan), &WHY_SHELL_ATTACH, Note::NONE, own)
         }
         Plan::Container(c) => {
-            // 🔴 **这里从前有一段退让** —— 它只发生在真跑这条路上，
-            //    于是 `--ccm-print` 吐的名字与真跑起出来的名字**可以不一样**。
-            //    用户 `R52` 裁定二之后退让搬进了 `plan::build`（问同一张快照），
-            //    计划里的 `name` 就是最终名 ⇒ **这里一个字都不许再改它**。
-            //    往回加 = 「产名」与「避让」又变回两个人干的两件事，
-            //    而那正是前端 `mintTmuxName` 那条纪律（F13）在后端这一侧的对侧。
+            // 🔴 **这里不许再退让**：退让在 `plan::build`（问同一张快照），
+            //    计划里的 `name` 就是最终名 ⇒ **这里一个字都不许改它**。
+            //    在这里加一段只发生在真跑这条路上的退让，`--ccm-print` 吐的名字与真跑起出来的名字就**可以不一样**：
+            //    「产名」与「避让」变成两个人干的两件事 —— 那正是前端 `mintTmuxName` 那条纪律在后端这一侧的对侧。
             // 🔴 **走 `parse_request` 这道门，不许自己直接造 `LaunchRequest`。**
             //
             // 那道门上挂着字段校验（`check_field` 拒控制字符 · `check_size` 收窄宽高），
             // 而**校验只长在它身上** —— 直接构造结构体等于绕过去。
-            // 那份已删的 bash `ccm` 从前也是把这一坨编成 JSON 发给后端的，走的就是同一道门；
-            // 搬进同一个进程之后**别把门丢了**（迁移是强度悄悄下降的经典时机）。
+            // 跨进程那一形（编成 JSON 发给后端）走的也是这同一道门；同一个进程里**别把门丢了**。
             let req = match crate::control::launch::parse_request(launch_args(c)) {
                 Ok(r) => r,
                 Err(f) => return die(&format!("{}: {}", f.code_or_fallback(), f.said)),
@@ -1043,8 +1040,8 @@ fn launch_args(c: &plan::Container) -> crate::control::launch::LaunchReq {
 /// 机检，人群从本文件生产段现打）。
 ///
 /// 🔴 它们的用处不是好看：`sh` 不在这台机器上时，这句话就是用户唯一看得到的**原因**
-///（`D7`：失败要显式、归因要准确）。从前那条路只吐 `ccm: 起不来 —— program not found`，
-/// 于是真机读数**只能靠对比 `claude` 那趟 `EXIT=0` 反推**
+///（`D7`：失败要显式、归因要准确）。只吐 `ccm: 起不来 —— program not found` 的话，
+/// 真机读数**只能靠对比 `claude` 那趟 `EXIT=0` 反推**
 /// 「找不到的不是 `hostname`，是 `sh`」—— 错的归因比失败本身更贵。
 pub(crate) static WHY_SHELL_CCM_ENV: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.whyShell.ccmEnv", &[]));
@@ -1367,8 +1364,8 @@ pub(crate) fn final_program(
 
 /// 最终那一跳（`Child::exec_replace`：POSIX 就地 `exec`，Windows 起它、等它、交回退出码）。
 ///
-/// `subject` = **起不来的是什么**。🔴 它不是装饰（`D7`）：从前这里只吐
-/// `ccm: 起不来 —— {e}`，而 `{e}` 在 Windows 上逐字是 `program not found`
+/// `subject` = **起不来的是什么**。🔴 它不是装饰（`D7`）：只吐
+/// `ccm: 起不来 —— {e}` 的话，`{e}` 在 Windows 上逐字是 `program not found`
 /// ⇒ 那句话**指不出是哪个 program**。⇒ 两处调用点各自把主语带进来（`sh -c` 那条还带上「为什么非得经它」）。
 ///
 /// `account` ＝ 这一趟用的号（账号库里说得出名字的那一形）：起好那一刻给那个 pid 留便条；写不成只出声、照常起。

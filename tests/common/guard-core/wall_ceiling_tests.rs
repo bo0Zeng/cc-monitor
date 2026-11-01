@@ -1485,7 +1485,7 @@ fn w4_the_population_is_what_the_gate_runs() {
             "不跑表里的 {p} 还在"
         );
     }
-    assert_eq!(lang_of("tests/evidence/RT1-relay-bench.rs"), None);
+    assert_eq!(lang_of("tests/evidence/relay-bench.rs"), None);
     assert_eq!(lang_of("tests/benches/s7_history_read.rs"), None);
     // 要台架的设备测（没给台架参数就整份跳过）照样在人群里：设备测入口不再按类过滤。
     const RIG_DEVICE_TEST: &str =

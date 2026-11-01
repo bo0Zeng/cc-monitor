@@ -11,7 +11,7 @@
 //! 2. **写一条不丢别的**：夹具拷进临时目录 → 改一条 → 再读：其余每条逐格 == 金样；被改那条只变了 patch 那几格 ＋ `updatedAt`；
 //!    条目里 / 顶层认不出的键原样还在；被改那条身上的蛇形别名摘了（否则下次严格读读不懂）。
 //! 3. **读不懂就不写**：坏 JSON · 字段类型不对 · 同一格驼峰与蛇形都在 · 顶层不是对象 ⇒ 拒，文件逐字节不变。
-//! 4. patch 语义逐格照搬 monitor 从前那份（缺格 / `null` 不改；空白串清空）；忘掉一条；路径只认绝对路径。
+//! 4. patch 语义逐格（缺格 / `null` 不改；空白串清空）；忘掉一条；路径只认绝对路径。
 //!
 //! # 买不到
 //!
@@ -184,7 +184,7 @@ fn an_unreadable_file_is_never_overwritten() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// patch 语义逐格照搬 monitor 从前那份：缺格 / `null` 不改；空白串清空；多一格拒。
+/// patch 语义逐格：缺格 / `null` 不改；空白串清空；多一格拒。
 #[test]
 fn patch_semantics_match_what_the_monitor_did() {
     let p = temp_copy("patch");
@@ -490,7 +490,7 @@ fn a_missing_file_reads_empty_and_the_first_write_creates_it() {
 }
 
 /// 位置只跟着家走（期望手写）：默认 `<HOME>/.cc-monitor/history-metadata.json`；`CCM_DATA_DIR`（绝对）⇒ 它根上那一份；
-/// 相对 / 没有家目录 ⇒ 没有（不猜）。从前另指它的 `CCM_HISTORY_METADATA` 删了，给了也不认。
+/// 相对 / 没有家目录 ⇒ 没有（不猜）。`CCM_HISTORY_METADATA` 给了也不认。
 #[test]
 fn the_location_only_follows_the_home() {
     let env = |pairs: &'static [(&'static str, &'static str)]| {

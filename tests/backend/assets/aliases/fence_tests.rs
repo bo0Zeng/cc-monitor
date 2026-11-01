@@ -1,20 +1,17 @@
 use super::*;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// `KR62D3`：**同一件事今天有几套形状 —— 一条有住址的账**
+// **同一件事有几套形状 —— 一条有住址的账**
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 「把 cc-monitor 的一块东西装进一份 shell 配置」这件事的**一个形状**。
 ///
 /// # 为什么要有这张表（而不是把它写进某段注释里）
 ///
-/// 现打到的那条：同一件事按宿主分了三套形状，判定那一半 `fenced_block`
-/// 已经收了（三套全走 [`find_pair`]），**装与卸那一半没收**。
-/// 那段话本来只活在件文件的正文里 —— 而 `K-R60` / `K-R61` 两件已经连着证明：
-/// **写在注释里而字段 / 判据看不见，等于没写**（一句真话摆错了格，和假话一样是假举证，`K29`）。
+/// 同一件事按宿主有几套形状，判定那一半全走 [`find_pair`]。
+/// **写在注释里而字段 / 判据看不见，等于没写**（一句真话摆错了格，和假话一样是假举证）。
 ///
-/// ⇒ `K-R62` **不收敛它们**（那是另一个量级，见件文件 `§0e`），只把它**登记成一条有住址的账**，
-/// 然后由 PM 裁收不收、什么时候收。这张表买到三件下面各有判据看着的东西：
+/// ⇒ 这里不收敛它们，只把它**登记成一条有住址的账**。这张表买到三件下面各有判据看着的东西：
 ///   ① 每一行都指得出**代码住址**（`<文件>.rs::<符号>`），`structural_scan` 会去验它解析得到；
 ///   ② 围栏标记**指**各自那个常量，不在这里抄字面量（抄一份就是第二个住址）；
 ///   ③ 「判定已收 / 装卸未收」这句话是**数出来的**，不是形容出来的。
@@ -37,10 +34,10 @@ pub(crate) struct FenceShape {
     pub differs_in: &'static str,
 }
 
-/// 🔴 **那三套形状 + `K-R62` 新加的那一条，唯一一份账。**
+/// 🔴 **这几套形状的唯一一份账。**
 
 ///
-/// ⚠ 它**不判对错**，只记「今天是什么样」。要不要收敛由 PM 裁。
+/// ⚠ 它**不判对错**，只记「现在是什么样」。
 pub(crate) const FENCE_SHAPES: &[FenceShape] = &[
     FenceShape {
         id: "remote-posix-block",
@@ -70,7 +67,7 @@ pub(crate) const FENCE_SHAPES: &[FenceShape] = &[
         id: "local-posix-block",
         host: "本机 POSIX 的 ~/<用户选的那份 rc>",
         what_goes_in: "整块别名 snippet —— **与 `remote-posix-block` 同一个常量**（block.rs::CCM_WRAPPER_SNIPPET）",
-        // 与远端那一套**同一个常量**：本机与远端装进 rc 的是同一个东西（`K15` / `K36`）。
+        // 与远端那一套**同一个常量**：本机与远端装进 rc 的是同一个东西。
         begin_marker: super::super::block::CCM_PROFILE_BEGIN,
         // 🔴 **落盘那一跳与 `local-windows-ps` 是同一处** —— 这一行的 `install_site`
         //    与它逐字相同，不是笔误：补这一格没有多出第四台安装器，多出来的只是
@@ -87,8 +84,7 @@ pub(crate) const FENCE_SHAPES: &[FenceShape] = &[
     },
 ];
 
-/// 从 monitor 搬来时，住址抽取器（`structural_scan::symbol_addresses` / `fn_names_starting_with`）留在 monitor ——
-/// 这里是本族够用的两把小尺（`<文件>.rs::<符号>` 形态 · 生产段里 `fn <前缀>…` 的名字）。
+/// 本族够用的两把小尺（`<文件>.rs::<符号>` 形态 · 生产段里 `fn <前缀>…` 的名字）。
 fn symbol_addresses(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     for w in text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == ':'))
@@ -186,7 +182,7 @@ fn first_begin_wins() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// `KR62D3`：那张账得**判得动**，不然它就只是一段更长的注释
+// 那张账得**判得动**，不然它就只是一段更长的注释
 // ═══════════════════════════════════════════════════════════════════════
 
 /// ★★ 每一行都指得出**代码住址**。
@@ -237,8 +233,7 @@ fn every_fence_shape_names_code_addresses() {
 
 /// ★★ **围栏标记指常量，不抄字面量** —— 而且「哪两套该共用、哪两套不许共用」判得出来。
 ///
-/// 共用错了的后果不是难看，是**装一个把另一个整块替换掉**
-/// （从前 `account_aliases` 那对标记刻意不同前缀；那一对随代装 rc 那一行退役了）。
+/// 共用错了的后果不是难看，是**装一个把另一个整块替换掉**。
 #[test]
 fn the_markers_are_shared_exactly_where_they_should_be() {
     let by = |id: &str| {
@@ -249,13 +244,12 @@ fn the_markers_are_shared_exactly_where_they_should_be() {
     };
     let remote = by("remote-posix-block");
     let local_block = by("local-posix-block");
-    // 从前还有 `local-posix-source-line` 那一家（rc 里包一行 source 的第三对围栏），那一步退役、账降一行。
     let windows = by("local-windows-ps");
 
-    // ① 两套「整块进 POSIX rc」必须是同一对围栏 —— 那是 `KR62D1`「不是第四套」的一半。
+    // ① 两套「整块进 POSIX rc」必须是同一对围栏 —— 本机与远端装进 rc 的是同一个东西。
     assert_eq!(
         local_block.begin_marker, remote.begin_marker,
-        "本机 POSIX 那一套换了自己的围栏 —— 那就真的成了第四套：\
+        "本机 POSIX 那一套换了自己的围栏 —— 那就又多了一套：\
              同一台机器既当本机又当远端时，装两次会在 rc 里留下两个块"
     );
     assert_eq!(
@@ -296,19 +290,16 @@ fn the_pairing_half_is_converged_and_the_install_half_is_not() {
     let mut installs: Vec<&str> = FENCE_SHAPES.iter().map(|s| s.install_site).collect();
     installs.sort_unstable();
     installs.dedup();
-    // 3 → 2：「本机 POSIX 那一行 source」那一套退役（接上别名文件的那一行只住别名块里）。
-    // 2 → 1：远端那一套并进同一个装口（`install_to_profile`，门按 `origin` 取）—— 收敛了。
+    // 一个装口：本机与远端都走 `install_to_profile`（门按 `origin` 取），接上别名文件的那一行只住别名块里。
     assert_eq!(
         installs.len(),
         1,
-        "「装」那一半今天有 {} 处独立实现（远端 SFTP · 本机 PowerShell；`K-R62` 新加的那条路**借的是本机 \
-             PowerShell 那一台安装器**，所以不是另一处；原先的第三处「本机 POSIX 那一行 source」退役了）。\
-             这个数变了就来改它 —— 变小 = 有人收敛了（好事，顺手降账）；变大 = 又长出一套（`KR62D1` 的失效方向）。实得：{installs:?}",
+        "「装」那一半有 {} 处独立实现（应只有 `install_to_profile` 一处：本机 POSIX 与 PowerShell 是同一台安装器的两种方言，\
+             远端经门写）。这个数变了就来改它 —— 变小 = 有人收敛了（好事，顺手降账）；变大 = 又长出一套。实得：{installs:?}",
         installs.len()
     );
 
-    // 「有装口没卸口」的那几套，逐条点得出名字 —— 这一格今天**零条**（原先唯一那条
-    //   `local-posix-source-line` 随那一步退役了）。再长出一条 ⇒ 红。
+    // 「有装口没卸口」的那几套，逐条点得出名字 —— 这一格**零条**。再长出一条 ⇒ 红。
     let no_uninstall: Vec<&str> = FENCE_SHAPES
         .iter()
         .filter(|s| s.uninstall_site.is_none())
@@ -337,27 +328,21 @@ const SHAPE_FILES: &[(&str, &str)] = &[
 ///
 /// # 它补的是哪半边
 ///
-/// `uninstall_site` 先前只有 `Some` 那半边被守：形状（`every_fence_shape_names_code_addresses`）
-/// ＋ 全仓那条符号地址判据（改名 / 删了会红）。
-/// **`None` 那半边一条判据都没有** —— 「今天没有卸口」这句话，盘上真长出一个卸口
+/// `uninstall_site` 的 `Some` 那半边有形状（`every_fence_shape_names_code_addresses`）
+/// ＋ 全仓那条符号地址判据（改名 / 删了会红）守着。
+/// **`None` 那半边要本条守** —— 不然「没有卸口」这句话，盘上真长出一个卸口
 /// 也不会有人回来改它。那正是 `registry.rs::TOOLS` 上 `remote-daemon` 栽的坑
 /// （`deploy.rs::uninstall_remote_backend` 是设置面板上的按钮，而字段写着卸不掉）。
 ///
-/// # 🔴 本条同时是要的那个**射程读数**
+/// # 🔴 本条同时是**射程读数**
 ///
-/// 件文件写着：`K-R63` 落地之后要回头看 `local-posix-source-line`
-/// （唯一 `uninstall_site: None` 的一套）红没红，**没红先查射程是不是漏了它**。
-/// ⇒ 本条就是那道射程：它**逐行**走 [`FENCE_SHAPES`]，那一行进了分母
-/// （下面的计数自检钉死「一行都不许跳过」）。
+/// 它**逐行**走 [`FENCE_SHAPES`]，每一行都进分母（下面的计数自检钉死「一行都不许跳过」）。
 ///
-/// 它今天**绿**，而绿的理由写清楚：本条判的是「**申报 ↔ 现实一致**」，
-/// 那一行后来整行退役了，今天账上没有 `None` 那一格 —— 下面 `None` 那一臂是给下一条长出来的留的。
-/// 而那一行的申报（`None`）与现实（`account_aliases.rs` 生产段里
-/// 一个 `fn uninstall… / remove… / strip… / purge…` 都没有）**是一致的** ——
+/// 本条判的是「**申报 ↔ 现实一致**」：账上没有 `None` 那一格 —— 下面 `None` 那一臂是给下一条长出来的留的。
+/// 申报 `None` 而现实里一个 `fn uninstall… / remove… / strip… / purge…` 都没有，那**是一致的** ——
 /// 它是**缺实现**，不是**假申报**。要它红需要的是另一条性质
 /// （「装得进去就必须卸得掉」，即 `registry_tests.rs::fenced_block_implies_uninstallable`
-/// 在这张账上的对应物），而那一条今天立起来就是一道**永远红**的闸
-/// （补卸口是 `§0d` 明写不做的事）—— 本条不替它裁。
+/// 在这张账上的对应物）—— 本条不替它裁。
 #[test]
 fn a_shape_that_declares_no_uninstall_really_has_none() {
     // ① 语料覆盖：账里点到的每一份文件都在 SHAPE_FILES 里（少一份 ⇒ 那一行悄悄出局）。

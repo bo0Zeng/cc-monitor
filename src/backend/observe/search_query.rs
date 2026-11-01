@@ -8,16 +8,13 @@
 //! 🔴 语义与本地 `../../bridge/src/search.rs` **不是「对齐」，是同一份**：
 //! 抽取 / 匹配 / snippet 的 12 个助手、4 个口径常量、snippet 预算与预算顺序只有一个家 ——通用那一半住
 //! [`super::search_rules`]，Claude 记录文本那一半（正文 / 工具内容怎么抽 · 注入怎么剥）住适配层 `agents/claudecode/text.rs`（经注册表够）。
-//! 收口前本文件各写了一遍那 12 个（`K-R85` 实测逐字相同），而 monitor 的
-//! `cross_half_edge_registry::CROSS_EDGES` 17 条跨轨边里 **search 零命中** ⇒
-//! **没有任何判据在拦着它们漂开**。判据现在有了，住
-//! `tests/backend/history/search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home`（随家从 monitor 那份守卫搬来）。
-//! 后端**有**记录解析（`agents/claudecode/parse.rs::parse_line`，2026-09-28 进后端，`line` 帧的成品与 `history-read` 的逐行成品都出自它）；
+//! 本文件不再写一遍那 12 个：两份逐字相同的实现没有判据拦着就会漂开。守它的判据是
+//! `tests/backend/history/search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home`。
+//! 后端**有**记录解析（`agents/claudecode/parse.rs::parse_line`，`line` 帧的成品与 `history-read` 的逐行成品都出自它）；
 //! 本模块仍直接在 `serde_json::Value` 上抽取，是因为搜索只要正文 / 工具内容那几段文本，不要整条记录的成品 ——
 //! 那是**取数**的差别，不是**口径**的差别（口径只有上面那一个家）。
 //!
-//! 安全：路径严格限 `<claude_dir>/projects/`（〔审计 F 🔴-6〕经 observe 唯一那道围栏 `common/fence.rs::Fence`；
-//! 先前这里内联复刻了一份 history_query 的，点名的第二个家）；
+//! 安全：路径严格限 `<claude_dir>/projects/`（经 observe 唯一那道围栏 `common/fence.rs::Fence`，不在这里内联第二份）；
 //! 只读铁律（cc-monitor 不写远端）成立——本模块只 read_dir / read。
 
 use crate::common::append_read::{Blocks, Step, Tailed};
@@ -31,7 +28,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-// 🔴 口径常量**一个都不在这里**（`K-R100`）——它们就是口径本身，本文件再写一个同样的
+// 🔴 口径常量**一个都不在这里**——它们就是口径本身，本文件再写一个同样的
 // 字面量 = 又开了第二份。`MAIN_CAP` / `TOOL_CAP` / `SNIPPET_CTX` / `PER_SESSION_CAP` /
 // `DEFAULT_LIMIT` 住 `history/search_rules.rs`。
 
@@ -224,7 +221,7 @@ fn session_files(fence: &Fence) -> Vec<(PathBuf, i64)> {
             (p, m)
         })
         .collect();
-    // 🔴 `K-R100`：**snippet 预算按最近优先花**（`search_rules::sort_by_recency`，理由在它的文档注释里）。
+    // 🔴 **snippet 预算按最近优先花**（`search_rules::sort_by_recency`，理由在它的文档注释里）。
     search_rules::sort_by_recency(&mut files, |(_, m)| *m);
     files
 }
@@ -285,7 +282,7 @@ enum BadAt {
 struct Facts {
     session: SessionScan,
     records: Vec<Rec>,
-    /// 这一段里算一行的行数（[`super::lines::counts`]；后一段的行号从前一段的这个数接着数）。
+    /// 这一段里算一行的行数（[`super::lines::counts`]；后一段的行号接着上一段的这个数往下数）。
     lines: u64,
 }
 
@@ -632,7 +629,7 @@ impl SearchIndex {
         let mut unreadable = 0usize;
         // 按最近优先留到上界（`files` 已是这个序；正文层优先，见 [`SearchIndex::retain`]）；留不下的这一问照样搜，只是不留。
         let mut kept = Retained::default();
-        // 防 symlink 逃逸：解开之后仍须在 projects/ 下；解不开 / 越界 ⇒ 跳过这一份（与先前同）。
+        // 防 symlink 逃逸：解开之后仍须在 projects/ 下；解不开 / 越界 ⇒ 跳过这一份。
         let files: Vec<(PathBuf, i64)> = files
             .into_iter()
             .filter(|(path, _)| fence.admit(path).is_ok())
@@ -1219,7 +1216,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
     Ok(pager.finish())
 }
 
-// === 文本抽取 / snippet / 截断：**一份都不在这里**（`K-R100`） ===
+// === 文本抽取 / snippet / 截断：**一份都不在这里** ===
 //
 // 🔴 那 12 个助手（`extract_text_blocks` · `extract_tool_text` · `stringify_json` ·
 // `user_text` · `make_snippet` · `find_ci` · `tail_chars` · `head_chars` ·
