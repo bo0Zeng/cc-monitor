@@ -227,7 +227,7 @@ pub fn parse_btime(proc_stat: &str) -> Option<u64> {
 /// constant 100 on every mainstream Linux arch (independent of the kernel's
 /// internal HZ) — hardcoding avoids a libc dependency for sysconf(_SC_CLK_TCK).
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-pub(crate) const USER_HZ: u64 = 100;
+pub const USER_HZ: u64 = 100;
 
 /// Starttime ticks → wall-clock epoch seconds: `/proc/stat` btime + ticks/USER_HZ.
 ///
