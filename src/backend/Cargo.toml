@@ -1,15 +1,15 @@
 [package]
 name = "cc-monitor-backend"
-# 🔴 K-R70（09-12）：本 crate 刻意不用 Cargo.toml 的版本 —— 真身份住 lib.rs 的 BUILD_ID
+# 🔴 本 crate 刻意不用 Cargo.toml 的版本 —— 真身份住 lib.rs 的 BUILD_ID
 #
 # 这一行**不是忘了填**，也**不许**顺手换成一个「像样」的数字。
 #
 # · 它不参加 `release.yml` 那道「四处版本号与 tag 一致」的检查（那四处是
 #   `package.json` / `src/frontend/shell/tauri.conf.json` / `src/frontend/shell/Cargo.toml` /
 #   `src/frontend/shell/Cargo.lock` 的 `monitor` 包）—— 后端**不随 app 的 tag 走**：
-#   `K25`/`K36` 裁的是「一份代码、每平台一份原生二进制」，而它换不换由**行为变没变**决定
+#   后端是「一份代码、每平台一份原生二进制」，它换不换由**行为变没变**决定
 #   （`BUILD_ID` 的 bump 纪律），不由发版节奏决定。给它一个跟 tag 走的版本号 = 给后端
-#   造**第二个身份**，那正是 `K33`「后端只有一个」在身份这一维要避开的事。
+#   造**第二个身份**，那正是「后端只有一个」在身份这一维要避开的事。
 # · 那条「不参加」不是靠这段散文守着：`build_id_guard` 的
 #   `the_crate_version_is_deliberately_zero_and_the_real_identity_has_a_home`
 #   **在数它** —— 这一行一动、或真身份那一处住址坏掉，当场红。
@@ -28,7 +28,7 @@ edition = "2021"
 # dial core `ssh-dial/` (shared with the phone) is a member, so both share this
 # lock and the same russh, and `cargo test --workspace` runs its tests too.
 #
-# F20（2026-08-04）：「standalone」到底 standalone 到什么程度 —— 实测答案，别再猜：
+# 「standalone」到底 standalone 到什么程度 —— 实测答案，别再猜：
 #   · `cargo build`  **真的独立**。把两条 backend→monitor 的 `include_str!` 路径打断，
 #     `cargo build` 仍然 exit=0 / 0 error ⇒ 目标机原生构建**不需要**旁边那棵 `src/frontend/shell/`。
 #   · `cargo test`   **不独立**。它需要 `../src/frontend/shell/` 在 —— 两条判据要跨轨对拍
@@ -114,21 +114,21 @@ acct-core = { path = "../common/acct-core" }
 cmd-wire = { path = "../common/cmd-wire" }
 # 照契约类型写成品字的那一侧（↗ 浮层那一张）：壳链同一份。
 face-core = { path = "../common/face-core" }
-# K-H2a：第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。
-# 🔴 **开了 `harden`** —— `K-H2a` 裁四「backend 只许读」收窄成
+# 第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。
+# 🔴 **开了 `harden`** —— 「backend 只许读」收窄成
 # 「backend 里只有账号域那一份（`accounts/upstream_select/file_face.rs`）写这份文件，只从帧面 `apikey-key-set` 进来」。
 # 理由：远端那台机器上的 key 只能由那台的后端写（那份文件是上游选择
 # 自己的状态，不是用户文件，走 `readonly_guard` 第四层）。「出生即只给本人」只有一份实现
 # （`creds_core::perm::create_private`），不在本 crate 另写一个 ⇒ 要它就得开这个 feature。
-# ⚠ 买掉的那一格如实记：「backend 写不了这份文件」先前是**编译器**兜的，今天换成判据兜 ——
+# ⚠ 买掉的那一格如实记：「backend 写不了这份文件」不由**编译器**兜，由判据兜 ——
 #   写半边（`perm::create_private`）在本 crate 生产段的引用处 == 第四层登记的那一份
 #   （`readonly_guard::g6_dependency_signoff` 那条边界判据 ＋ `relay::creds_guard` 那条 feature 判据）。
 # 顺带：开了之后读凭据文件与中转钥匙时按句柄量权限（`perm::open_checked`，Windows 上读属主与 DACL）。
 creds-core = { path = "../common/creds-core", features = ["harden"] }
 # 交给 Win32 的路径（长路径前缀）只从它来：不覆盖改名那一处用；仓内 crate、零依赖。
 win-path-core = { path = "../common/win-path-core" }
-# U8c-2b-0：POSIX 单引号 quote 的唯一实现（账本 S5 收口）。
-# 本 crate 只用它一处（`control/tmux_hook::sq`）；U8c-2c 起载荷渲染也走它。
+# POSIX 单引号 quote 的唯一实现。
+# 本 crate 只用它一处（`control/tmux_hook::sq`）；载荷渲染也走它。
 shell-quote-core = { path = "../common/shell-quote-core" }
 # 后端的门牌与家的契约（端口 · 钥匙 · 路由语法 · `~/.cc-monitor/` 下每一样的相对路径），与 monitor 同一份（目标）。
 relay-route-core = { path = "../common/relay-route-core" }
@@ -164,20 +164,13 @@ tokio = { version = "1", features = [
     "io-util",
     # io-std gates tokio::io::stdout(); io-util alone is not enough.
     "io-std",
-    # K-P1：常驻监听口（回环 TCP）。**只加 feature，不加依赖条目** ——
+    # 常驻监听口（回环 TCP）。**只加 feature，不加依赖条目** ——
     # `net` 带进来的 `socket2` **是纯 Rust**（本 crate 的 lock 现打 `socket2 0.6.3`，
     # 它的 `dependencies` 只有 `libc` 与 `windows-sys` ⇒ 纯 FFI 绑定，没有 `cc` 构建脚本，
     # **不新增一棵 C 构建树**），`mio` 本 crate 的 lock 里早就有（`signal`/`io-std` 都在用它）。
-    # ⚠ **这句话先前撑在一条已经作废的框架上，别再照抄**〔`K-R34` 09-06 换掉〕：
-    #   原文逐字「`net` 带进来的 `socket2` 是纯 Rust（`C18`「依赖树零 C」**不受影响**）」——
-    #   **事实那一半是真的、留着**；换掉的是括号里那条框架：
-    #   盘上逐字「~~**C18** backend 不引 C 生态链~~ **已被推翻（08-29）**」
-    #   （住址 backend-consolidation 的；现行版本是 `K30`
-    #    ——「装到任意 agent 机器就能跑」＝静态 musl · 两个架构都出得来 · 体积在预算内，
-    #    **不是**「零 C」）。
-    #   ⇒ 今天这一格要说的是「**多这一个 feature 不新增 C 构建树**」，
-    #     **不是**「零 C 没被破坏」—— 本 crate 的「零 C」本来就早不成立，
-    #     逐字同结论写在本表末尾 `russh` 那段的 `①`，两处说的是同一件事。
+    # ⚠ 这一格说的是「**多这一个 feature 不新增 C 构建树**」，**不是**「依赖树零 C」：
+    #   后端要的是「装到任意 agent 机器就能跑」＝静态 musl · 两个架构都出得来 · 体积在预算内，
+    #   本 crate 的依赖树本来就有 C（`ring`），同结论写在本表末尾 `russh` 那段的 `①`。
     # ⚠ 为什么不沿用 `relay/` 那份 `std::net::TcpListener`（blocking）：
     # 常驻这条路要把 socket 的读写两半**原样喂给今天 stdin/stdout 的位置**
     # （`inbound::spawn<R: AsyncRead>` · `writer_task<W: AsyncWrite>` 本来就是泛型），
@@ -196,11 +189,9 @@ libc = "0.2"
 portable-pty = "0.9"
 # 托管终端的屏（`host/managed/screen.rs`）：伪终端输出照它算成一屏 ＋ 回滚，整屏字节 · 抓屏 · 瘦客户端本地画都从它出。MIT。
 vt100 = "=0.16.2"
-# K-H1〔裁-1，08-25〕：**backend 侧第一条加密依赖**，也是**本仓第一条 TLS（X.509 + 根证书链）依赖**。
+# **backend 侧第一条加密依赖**，也是**本仓第一条 TLS（X.509 + 根证书链）依赖**。
 #
-# ⚠ 口径订正〔回修轮 08-25，承接 D1 `重要-4`〕：先前这里逐字写的是「**本仓**第一条加密依赖」，
-# 而下面两行同时写着「`ring` 已经在」—— **同一段注释自相矛盾**，且前半句是假的。
-# 根子是两个词混着用了，分清楚：
+# ⚠ 「backend 侧」不是「本仓」：`ring` 在 monitor 的依赖图里也有。两个词分清楚：
 #   · **依赖图**（谁的 Cargo.lock / cargo tree 里有它）：`ring 0.17.14` 在这条依赖加进来**之前**就已在
 #     monitor 的依赖图里 —— `git show c3cf193:src/frontend/shell/Cargo.lock | grep -c '^name = "ring"$'` ⇒ **1**，
 #     `cargo tree -i ring --manifest-path ../frontend/shell/Cargo.toml` ⇒ `ring └── russh └── monitor`。
@@ -209,7 +200,7 @@ vt100 = "=0.16.2"
 #     与依赖图是两件事。缓存里有不等于依赖图里有，反过来也一样。
 #   ⇒ 下面「少下一棵 C 构建树」这条好处**两个口径都成立**，但它买到的是**构建时间**，不是「本仓第一条」。
 #
-# **只准 TLS**，`K8` 那条「不引 HTTP 框架」的白名单一个字没松 —— HTTP/1.1 的请求解析与
+# **只准 TLS**，「不引 HTTP 框架」的白名单一个字没松 —— HTTP/1.1 的请求解析与
 # chunked 写出仍是手写的（见 src/relay/）。
 # 选 `rustls` 而不是 `ureq`/`hyper`：后两者是 HTTP 客户端/框架，会把「一个块」变成一层框架。
 # crypto provider 钉 `ring`（不是默认的 aws-lc-rs）：`ring` 是 monitor 侧 `russh` 已经在用的那一棵，
@@ -219,7 +210,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 # **零新包**：`ring 0.17.14` 本来就在本 crate 的 lock 里、发出去的二进制已经链接它（上面 `rustls` 的 provider · `russh`），
 # 这一行只是把它从间接依赖提成直接依赖（版本跟 lock 里那一份）。
 ring = "0.17"
-# ── `K-P6b`（候选 E）：`--dial` 那条代理臂的 SSH 客户端 ──────────────────────
+# ── `--dial` 那条代理臂的 SSH 客户端 ──────────────────────
 #
 # 🔴 **它只服务 `src/dial/`那一份**（`dial_locality` 那条判据把「谁许 `use russh`」钉在文件维上）。
 # 版本与 feature 集（`0.65` · `default-features = false` · `["ring", "flate2", "rsa"]`）与 `ssh-dial/Cargo.toml` ·
@@ -231,15 +222,11 @@ ring = "0.17"
 # 0.62 → 0.65 跟着改的 API：`check_server_key` 收 `PublicKeyOrCertificate`（`ssh-dial/connect.rs`：证书不认）。
 #
 # ⚠ **如实登记**：
-#   ① **`C18`「依赖树零 C」这条本 crate 早就不成立**（`rustls`/`ring` 08-25 就进来了，
-#      `KG1` 成功标准② 已因此重写成「静态 musl 二进制」）。russh 走的是**同一棵 `ring`**
-#      ⇒ 它**不新增**一棵 C 构建树；但这句话是「不新增」，**不是**「零 C」。
-#      ⚠ 补一句：**那条框架本身后来也没了** —— 盘上逐字
-#      「~~**C18** backend 不引 C 生态链~~ **已被推翻（08-29）**」（现行版本是 `K30`）⇒ 今天**不是**「本 crate 破了一条还活着的规矩」，
-#      是**那条规矩已经不在了**。上面 tokio 那条 `net` feature 的注释同源同结论，
-#      **这份文件里关于 `C18` 的两处话从此不再打架**。
+#   ① **本 crate 的依赖树不是零 C**（`rustls`/`ring` 带进来的），后端要的是「静态 musl 二进制」。
+#      russh 走的是**同一棵 `ring`** ⇒ 它**不新增**一棵 C 构建树；但这句话是「不新增」，**不是**「零 C」。
+#      上面 tokio 那条 `net` feature 的注释同结论。
 #   ② musl 交叉编译：沙箱门禁只做本机 gnu 构建、不做交叉编译（门禁全绿证不出 musl 编得过）；
-#      升 0.65 那一趟本机 `cargo zigbuild --target x86_64-unknown-linux-musl` 现打编过（A17-45-2-5）。
+#      0.65 这一版本机 `cargo zigbuild --target x86_64-unknown-linux-musl` 现打编过。
 # ─────────────────────────────────────────────────────────────────────────
 russh = { version = "0.65", default-features = false, features = ["ring", "flate2", "rsa"] }
 # ── SFTP 客户端：**SFTP 进本机常驻后端**（用户「进本机常驻后端，只写暂存区」）──
@@ -294,7 +281,7 @@ ssh-dial = { path = "ssh-dial", features = ["test-support"] }
 egress = { path = "egress", features = ["test-support"] }
 # 组合判据（真中转 ＋ 上游选择 / tap / 内存探针）要够到中转的内部件：只在测试档开，不进发布二进制。
 comms-outward = { path = "../comms/outward", features = ["test-support"] }
-# U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
+# 源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
 # 故是 dev-dependency —— 不进发布二进制）。
 guard-core = { path = "../common/guard-core" }
 # `acct-core` 的跨生产者对拍夹具只在测试构建里（`accounts_query_tests.rs` 用）：同一个依赖，测试构建多开 `fixtures`。
