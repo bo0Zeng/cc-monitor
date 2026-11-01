@@ -1,4 +1,4 @@
-//! 「Tauri 命令只剩 monitor 自己的事（逐行理由）；命令实现经 `inbound_client` / `BackendDoor` 碰到后端的不许留在 monitor」。
+//! 「Tauri 命令只剩 monitor 自己的事（逐行理由）；命令实现经 `inbound_client` 碰到后端的不许留在 monitor」。
 //!
 //! 分母只数「前端对后端」的 IPC（产物来自某台后端的）；窗口 · 本机 monitor 配置 · 日志 · 拉前 · 本机后端的起停与引导
 //! 是 monitor 自己的事，外加通信层面 A 客户端本身与「放字节」。
@@ -6,9 +6,9 @@
 //! 命令表只有一张：`parity_ledger` 的 `LEDGER`（命令 → 能力 · 侧 · 哪一类 · 理由），它与 `generate_handler!` 两向相等由那边判。
 //! 这里两条判据：
 //! 1. 「monitor 自己的事」里不许碰后端的那几类（窗口 / 开终端 / 拉前 / 配置 / 日志 / 重放缓冲），
-//!    实现传递可达 `local_client` / `BackendDoor` ⇒ 红（判定该进后端）。通道 · 起停 · 放字节三类碰后端就是它们的本分。
+//!    实现传递可达 `local_client` ⇒ 红（判定该进后端）。通道 · 起停 · 放字节三类碰后端就是它们的本分。
 //! 2. 可达性量得出：真树上 `chan_call`（经 `chan::host` 跨文件到 `local_client`）必须被量到、`load_config` 必须量不到；
-//!    合成夹具上「`use` 进来的函数 → 别的文件 → 类型的方法 → `BackendDoor`」必须量到。
+//!    合成夹具上「`use` 进来的函数 → 别的文件 → 类型的方法 → `local_client`」必须量到。
 //!
 //! 可达性是**静态近似**：函数级，边按「同文件自由函数 · `use` 进来的名字 · `模块::函数` · `类型::方法` · 提到同文件 /
 //! `use` 进来的类型 ⇒ 它的全部方法」解析；`.方法(` 不解析（量少不量多）。量少 ⇒ 判据 2 可能漏一条，不会冤枉一条。
@@ -505,12 +505,12 @@ impl Graph {
         out
     }
 
-    /// 每个函数：可达 `local_client` / `BackendDoor` 的那条链（函数名，由近及远）。
+    /// 每个函数：可达 `local_client` 的那条链（函数名，由近及远）。
     fn reach(&self) -> BTreeMap<usize, Vec<String>> {
         let sink = |f: &Func| {
             f.toks
                 .iter()
-                .any(|t| matches!(t, Tok::Id(s) if s == "local_client" || s == "BackendDoor"))
+                .any(|t| matches!(t, Tok::Id(s) if s == "local_client"))
         };
         let edges: Vec<BTreeSet<usize>> = self.funcs.iter().map(|f| self.edges(f)).collect();
         let mut chain: BTreeMap<usize, Vec<String>> = BTreeMap::new();
@@ -588,7 +588,7 @@ fn a_monitor_own_command_of_a_local_kind_does_not_reach_a_backend() {
         .collect();
     assert!(
         wrong.is_empty(),
-        "这几条记成 monitor 自己的事，实现却经 `local_client` / `BackendDoor` 碰到后端 ⇒ 判定该进后端：\n{}",
+        "这几条记成 monitor 自己的事，实现却经 `local_client` 碰到后端 ⇒ 判定该进后端：\n{}",
         wrong.join("\n")
     );
 }
@@ -625,7 +625,7 @@ fn the_reach_meter_follows_uses_modules_and_type_methods() {
     );
     files.insert(
         "b.rs".to_string(),
-        "pub struct Worker;\npub fn go(w: &dyn Ask) { w.ask(); }\nimpl Ask for Worker { fn ask(&self) { let _ = user_files::BackendDoor::new(); } }\n"
+        "pub struct Worker;\npub fn go(w: &dyn Ask) { w.ask(); }\nimpl Ask for Worker { fn ask(&self) { let _ = inbound_client::local_client(); } }\n"
             .to_string(),
     );
     // `Worker` 在 a.rs 里没 `use` ⇒ 按类型量不到；go 里只有 `.ask(` ⇒ 也量不到。补一行 use 才通。
@@ -645,7 +645,7 @@ fn the_reach_meter_follows_uses_modules_and_type_methods() {
     assert_eq!(
         t.keys().cloned().collect::<Vec<_>>(),
         vec!["cmd_hit".to_string()],
-        "use → 模块::函数 → 类型的方法 → BackendDoor 那条链没量到：{t:?}"
+        "use → 模块::函数 → 类型的方法 → local_client 那条链没量到：{t:?}"
     );
     assert_eq!(t["cmd_hit"], vec!["crate::cmd_hit", "a::helper", "b::ask"]);
 }

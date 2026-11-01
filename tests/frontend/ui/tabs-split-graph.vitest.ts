@@ -241,7 +241,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/agent-profile.ts", // 恢复 ▸ 的账号组：这一家有没有账号这一维 · 叫什么（会话是哪一家由会话事实给）
     "src/frontend/ui/control-said.ts", // 那台握手时说过做不到的几项置灰：`unavailableSaid`（事实住 monitor 那份 Offer）
     "src/frontend/ui/copy-table.ts", // 固定那一项的两句提示（说到会话状态）住文案表
-    "src/frontend/ui/duration-format.ts", // 「没人答时自动答 ▸」那几档的时长照短时长写（`fmtDur`）
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端各给哪几项（原先是 backend-policy 的 LOCAL_ORIGIN ＋ 各处 `=== null`）
     "src/frontend/ui/resume-menu.ts",
     "src/frontend/ui/session-open.ts", // 在终端里打开 · 就地恢复 · 恢复 ▸ 交那台（`session-open`） // 「恢复 ▸」那一组选项怎么摆（历史页「恢复 ▾」同一个组件）

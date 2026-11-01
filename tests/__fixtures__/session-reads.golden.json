@@ -3,6 +3,24 @@
     "agent": "claude",
     "answerOff": null,
     "autoAnswer": null,
+    "autoAnswerChoices": [
+      {
+        "min": 0,
+        "text": "关"
+      },
+      {
+        "min": 5,
+        "text": "5m"
+      },
+      {
+        "min": 15,
+        "text": "15m"
+      },
+      {
+        "min": 30,
+        "text": "30m"
+      }
+    ],
     "autoAnswered": null,
     "background": null,
     "bgTasks": [

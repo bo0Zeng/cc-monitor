@@ -2,118 +2,9 @@
 //!
 //! 规则（合不合格）不在这里判 —— 那一份住 `account_aliases`，判据在 `account_aliases_tests.rs`。
 //! 🔴 PowerShell 那一臂**一次都没被 PowerShell 解析过**（本机无 `pwsh`，Win11 虚拟机不许碰）：
-//! 这里只能钉黄金串。
+//! 这里只能钉黄金串（引上层别名那一族的那几条住后端库根的 `platform/cross_tests.rs`）。
 
 use super::*;
-
-/// 通用层交给方言的那条调用形状（`ccm` · `--`）。
-const C: Call = crate::assets::aliases::CALL;
-
-/// 通用层交给方言的「我们自己那块别名块」正文。
-fn own(sh: Shell) -> String {
-    crate::assets::aliases::block::own_block(sh)
-}
-
-fn sv(xs: &[&str]) -> Vec<String> {
-    xs.iter().map(|s| s.to_string()).collect()
-}
-
-/// 同一份清单（带空格、单引号、弯引号、中文、`--ccm-tmux=`、`--` 透传、调用时的词交给 ccm 的那一形），两个方言各钉逐字一份。
-fn sample() -> Vec<(&'static str, Vec<String>, RestTo)> {
-    let c = RestTo::Agent;
-    vec![
-        ("workcc", sv(&["--account", "work"]), c),
-        (
-            "convz",
-            sv(&[
-                "--ccm-tmux=w.1",
-                "--account",
-                "work",
-                "--cwd",
-                "/home/u/文档/c c",
-            ]),
-            c,
-        ),
-        ("mo", sv(&["--model", "it's", "--", "--verbose"]), c),
-        ("curly", sv(&["--model", "a\u{2019}b"]), c),
-        ("bare", vec![], c),
-        ("cca", sv(&["--", "--attach"]), RestTo::Ccm),
-    ]
-}
-
-/// 黄金串 · POSIX：与 AL1 那一版逐字一样（只搬了住址，一个字节都没改）。
-#[test]
-fn posix_golden() {
-    let got: Vec<String> = sample()
-        .iter()
-        .map(|(n, a, r)| Posix.render_alias(C, n, a, *r))
-        .collect();
-    assert_eq!(
-        got,
-        vec![
-            r#"workcc() { ccm --account work "$@"; }"#.to_string(),
-            r#"convz() { ccm --ccm-tmux=w.1 --account work --cwd '/home/u/文档/c c' "$@"; }"#
-                .to_string(),
-            r#"mo() { ccm --model 'it'\''s' "$@" -- --verbose; }"#.to_string(),
-            "curly() { ccm --model 'a\u{2019}b' \"$@\"; }".to_string(),
-            r#"bare() { ccm "$@"; }"#.to_string(),
-            r#"cca() { ccm -- --attach "$@"; }"#.to_string(),
-        ]
-    );
-}
-
-/// 黄金串 · PowerShell：函数体是从前别名块里那个 `function cc` 的形状（那一形在 `K-R132` 真机上
-/// `parse-errors=0`；`cc` 今天就是清单里的一条），预置参数**每个都单引号**、四种引号字符都双写。
-#[test]
-fn powershell_golden() {
-    let got: Vec<String> = sample()
-        .iter()
-        .map(|(n, a, r)| PowerShell.render_alias(C, n, a, *r))
-        .collect();
-    let body = |call: &str, name: &str| {
-        format!(
-            "function {name} {{\n    [CmdletBinding()] param(\n        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs\n    )\n    if (Get-Command __ccm_bind -CommandType Function -ErrorAction SilentlyContinue) {{ __ccm_bind }}\n    & \"$HOME\\.cc-monitor\\bin\\ccm.exe\"{call} $RemainingArgs\n}}"
-        )
-    };
-    assert!(
-        got[2].ends_with(concat!(r#"    & "$HOME\.cc-monitor\bin\ccm.exe" '--model' 'it''s' $RemainingArgs '--' '--verbose'"#, "\n}")),
-        "{}",
-        got[2]
-    );
-    assert_eq!(
-        got,
-        vec![
-            body(" '--account' 'work'", "workcc"),
-            body(
-                " '--ccm-tmux=w.1' '--account' 'work' '--cwd' '/home/u/文档/c c'",
-                "convz"
-            ),
-            // `$RemainingArgs`（敲别名时跟的）交 claude，别名的 ccm 选项在单引号的 `'--'` 右边。
-            got[2].clone(),
-            body(" '--model' 'a\u{2019}\u{2019}b'", "curly"),
-            body("", "bare"),
-            // 交给 ccm：`$RemainingArgs` 接在 `'--'` 右边的最后。
-            body(" '--' '--attach'", "cca"),
-        ]
-    );
-}
-
-/// PowerShell 的别名按**落点的显式路径**叫 ccm（`$HOME` 那一台上展开）：别名块不往会话 `PATH` 里加东西，
-/// 新机器上 `PATH` 里没有 ccm ⇒ 裸写 `& ccm` 的别名敲下去就是「无法将 ccm 项识别」。
-#[test]
-fn the_powershell_alias_names_ccm_by_its_landing() {
-    let a = sv(&["--account", "work"]);
-    let now = PowerShell.render_alias(C, "workcc", &a, RestTo::Agent);
-    let calls: Vec<&str> = now
-        .lines()
-        .filter(|l| l.trim_start().starts_with('&'))
-        .collect();
-    assert_eq!(
-        calls,
-        [r#"    & "$HOME\.cc-monitor\bin\ccm.exe" '--account' 'work' $RemainingArgs"#],
-        "{now}"
-    );
-}
 
 /// 方言只看目标文件的扩展名（`.ps1` 大小写都认），不看宿主平台。
 #[test]
@@ -220,31 +111,6 @@ fn startup_files_follow_each_shells_own_convention() {
         .all(|c| !c.path.contains('\\')));
 }
 
-/// 撞名（只出声）：PowerShell 认别名块模板里的函数（从模板现算，大小写不敏感）—— 今天只有握手 `__ccm_bind`
-/// （`cc` 住清单，块不再占它）。
-#[test]
-fn powershell_knows_the_names_its_own_block_defines() {
-    assert!(PowerShell
-        .name_taken("CC", &own(Shell::PowerShell))
-        .is_none_or(|n| !copy_core::copy_matches("rsShellDialect.ps.nameTakenIntegration", &n)));
-    for n in ["__ccm_bind", "__CCM_BIND"] {
-        let note = PowerShell
-            .name_taken(n, &own(Shell::PowerShell))
-            .unwrap_or_else(|| panic!("`{n}` 在终端集成模板里就有，却一声不吭"));
-        assert!(
-            copy_core::copy_matches("rsShellDialect.ps.nameTakenIntegration", &note),
-            "{note}"
-        );
-    }
-    assert!(PowerShell
-        .name_taken("zzz_no_such_command_anywhere", &own(Shell::PowerShell))
-        .is_none());
-    // 不查 `PATH`（远端）时，模板里的名字照样认得出 —— 那一格不是本机才答得了的事实。
-    assert!(PowerShell
-        .name_taken("__ccm_bind", &own(Shell::PowerShell))
-        .is_some());
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // P1：`$PROFILE` 在哪，全仓只有一个住址
 // ═══════════════════════════════════════════════════════════════════════════
@@ -307,7 +173,7 @@ fn the_profile_location_has_exactly_one_home() {
         ("src/backend/platform/shell/dialect.rs", 2, 1),
         // monitor「数据」区探 `$PROFILE` 备份那第二个读者删了：界面经通道问本机后端。
     ];
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let root = guard_core::addr::repo_root();
     let root = root.canonicalize().expect("仓根");
     let files: Vec<(String, String)> =
         guard_core::scan_tree_excluding(&root.join("src"), &["rs", "ts"], &[])
@@ -503,7 +369,7 @@ fn our_own_alias_links_on_path_are_not_a_name_clash() {
     std::fs::write(bin.join("realtool"), "#!/bin/sh\n").unwrap();
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .args([
-            "platform::shell::dialect::tests::on_path_child_reports_what_it_sees",
+            "shell::dialect::tests::on_path_child_reports_what_it_sees",
             "--exact",
             "--ignored",
             "--nocapture",

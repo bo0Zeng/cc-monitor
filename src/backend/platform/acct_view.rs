@@ -8,7 +8,7 @@ use std::path::Path;
 
 /// 一项（**不跟链接**地看）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Item {
+pub enum Item {
     Absent,
     File {
         mode: Option<u32>,
@@ -27,10 +27,10 @@ pub(crate) enum Item {
 }
 
 impl Item {
-    pub(crate) fn exists(&self) -> bool {
+    pub fn exists(&self) -> bool {
         !matches!(self, Item::Absent)
     }
-    pub(crate) fn is_link(&self) -> bool {
+    pub fn is_link(&self) -> bool {
         matches!(self, Item::Link { .. })
     }
 }
@@ -38,7 +38,7 @@ impl Item {
 /// 这台做不做得了多账号（每个号一个配置目录、共享项靠符号链接；凭据只给本人：unix 靠 `0600`，Windows 靠家目录本来的权限）。
 /// 做不了 ⇒ `Err(那一句)`：账号库那几条命令当场拒，不在业务代码里分平台。
 /// unix 恒做得了；Windows 看此刻建不建得了符号链接（开发者模式或建链接的特权，`platform::fs::links_creatable`）；别的平台做不了。
-pub(crate) fn multi_account_supported() -> Result<(), String> {
+pub fn multi_account_supported() -> Result<(), String> {
     if cfg!(unix) {
         Ok(())
     } else if cfg!(windows) {
@@ -56,18 +56,18 @@ pub(crate) fn multi_account_supported() -> Result<(), String> {
 }
 
 /// 这台系统做不了多账号时那一句（做得了 ⇒ `None`）。账号清单的 `meta.unsupported` 与账号库改动那一道闸都按它说。
-pub(crate) fn unsupported_said() -> Option<String> {
+pub fn unsupported_said() -> Option<String> {
     multi_account_supported().err()
 }
 
 /// 这台有没有 unix 权限位那一格（没有 ⇒ 账号库执行那一步不改权限、核对那一步不核：Windows 的家目录本来只给本人）。
-pub(crate) fn has_mode_bits() -> bool {
+pub fn has_mode_bits() -> bool {
     cfg!(unix)
 }
 
 /// 账号库这一族认的路径写法：一律 `/` 分隔（Windows 上把 `\` 换成 `/`，盘符照留：`C:/Users/…`；系统两种都认）。
 /// 家目录进账号库之前、链接目标读出来之后各过一次，这一族的拼接与比较（`scan::join` · `is_under`）就只有一种写法。
-pub(crate) fn slash_form(p: &str) -> String {
+pub fn slash_form(p: &str) -> String {
     if cfg!(windows) {
         p.replace('\\', "/")
     } else {
@@ -76,7 +76,7 @@ pub(crate) fn slash_form(p: &str) -> String {
 }
 
 /// 是不是这一族认的绝对路径（[`slash_form`] 那一形）：`/…`；Windows 上还有盘符那一形 `C:/…`。
-pub(crate) fn is_absolute(p: &str) -> bool {
+pub fn is_absolute(p: &str) -> bool {
     p.starts_with('/') || (cfg!(windows) && drive_of(p).is_some())
 }
 
@@ -90,7 +90,7 @@ fn drive_of(p: &str) -> Option<char> {
 }
 
 /// 一个绝对路径在备份目录的 `root` 底下照原样摆时的那一截（以 `/` 开头）：`/x` 原样；Windows 的 `C:/x` ⇒ `/C/x`（名字里不许有 `:`）。
-pub(crate) fn under_root(p: &str) -> String {
+pub fn under_root(p: &str) -> String {
     match drive_of(p) {
         Some(d) if cfg!(windows) => format!("/{d}{}", &p[2..]),
         _ => p.to_string(),
@@ -99,7 +99,7 @@ pub(crate) fn under_root(p: &str) -> String {
 
 /// 这台账号库里一个号的配置目录写得对不对（绝对 · 无 `..` 段 · 无危险字符）：unix 是 POSIX 那一形；
 /// Windows 是盘符 / UNC 那一形、且照 [`slash_form`] 只用 `/`。
-pub(crate) fn config_dir_ok(dir: &str) -> bool {
+pub fn config_dir_ok(dir: &str) -> bool {
     if cfg!(windows) {
         acct_core::config_dir_ok(dir) && !dir.contains('\\')
     } else {
@@ -109,7 +109,7 @@ pub(crate) fn config_dir_ok(dir: &str) -> bool {
 
 /// `p` 这一项是什么（不跟链接）。读链接成功 ⇒ 它就是一条链接；否则按跟过去的元数据认。
 /// 链接目标照 [`slash_form`] 交出（Windows 上系统存的是 `\` 那一形）。
-pub(crate) fn item(p: &Path) -> Item {
+pub fn item(p: &Path) -> Item {
     if let Ok(t) = Ro::read_link(p) {
         return Item::Link {
             target: slash_form(&t.to_string_lossy()),
@@ -134,7 +134,7 @@ pub(crate) fn item(p: &Path) -> Item {
 
 /// 一个目录的直接子项名（排好序）。名字不是 UTF-8 或带控制符 ⇒ 不列（这种名字拼不进链接目标，也显不出来）。
 /// 目录不在 / 读不了 ⇒ `None`。
-pub(crate) fn names(dir: &Path) -> Option<Vec<String>> {
+pub fn names(dir: &Path) -> Option<Vec<String>> {
     let rd = Ro::read_dir(dir).ok()?;
     let mut out: Vec<String> = rd
         .flatten()

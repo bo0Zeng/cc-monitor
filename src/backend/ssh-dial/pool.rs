@@ -31,6 +31,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
+use copy_core::Discard;
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
 
 use crate::connect::Linked;
@@ -802,7 +803,7 @@ impl Budget {
 
     /// 挂上族的铃（只挂一次）。
     pub fn attach(&self, freed: Arc<Notify>) {
-        let _ = self.freed.set(freed);
+        self.freed.set(freed).discard(copy_core::Why::SetOnce);
     }
 
     /// 借一格，**不等**：借不到 ⇒ `None`。传输先过车道、再过通道闸（通道闸借不到就把车道那一格还掉 —— 排队等车道的不占通道格）。

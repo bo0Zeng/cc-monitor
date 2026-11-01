@@ -1,4 +1,4 @@
-//! `control/files_commit.rs` 的行为判据 —— **上传的提交**。
+//! `files/commit.rs` 的行为判据（挂在命令那一层 `stream/inbound/files_write_face.rs`） —— **上传的提交**。
 //!
 //! 全部在本机临时目录上真跑（一个假的 `home` ＋ 一个目标根），不是源码扫描。
 //!
@@ -14,9 +14,13 @@
 //!
 //! - 真远端（同写面那一族：全在本机文件系统上）；跨盘（`EXDEV`）那一支本机造不出来 —— 没判。
 
-use super::*;
-use crate::control::files_write::overwrite_text;
+use crate::files::commit::*;
+use crate::files::content_sha256;
+use crate::files::write::overwrite_text;
+use crate::files::write::WriteRefusal;
 use crate::platform::fs::Face;
+use cmd_wire::files as wire;
+use std::path::{Path, PathBuf};
 
 /// 此刻暂存区里这个键那份暂存件的整份摘要（提交时的 `expect`）。没有 / 键不合法 ⇒ 全零串（那几条判的是别的拒）。
 fn staged_sha(home: &Path, key: &str) -> String {
@@ -317,12 +321,12 @@ fn a_bad_key_is_refused_before_anything_lands() {
     );
 }
 
-type Answer = crate::control::files_write::tests::Answer;
-use crate::control::files_write::tests::via;
+type Answer = crate::stream::inbound::files_write_face::write_tests::Answer;
+use crate::stream::inbound::files_write_face::write_tests::via;
 
-/// 照登记那一行的问法问一条（见 `files_write::tests::answer`）。
+/// 照登记那一行的问法问一条（见 `write_tests::ask`）。
 fn answer_wire(_face: &Face, name: &str, args: &serde_json::Value) -> Answer {
-    crate::control::files_write::tests::ask(name, args)
+    crate::stream::inbound::files_write_face::write_tests::ask(name, args)
 }
 /// 家由判据给的那三形（不改进程的 `HOME`）。
 fn answer_commit_at(face: &Face, home: &Path, args: &serde_json::Value) -> Answer {
@@ -1127,7 +1131,7 @@ fn a_clash_after_assembling_is_asked_too_and_the_resend_reuses_the_staged_file()
     let key = "f".repeat(32);
     stage_chunk(&Face::issue(), &h, &key, 0, b"abc").expect("块 0");
     // 上一次那一趟已经拼好（块收了、暂存件在），目标随后冒出来。
-    crate::control::files_upload_chunks::assemble_part(&Face::issue(), &h, &key, 1, 3).expect("拼");
+    crate::files::upload_chunks::assemble_part(&Face::issue(), &h, &key, 1, 3).expect("拼");
     std::fs::write(h.join("dst/r.bin"), b"zz").unwrap();
     let v = |on: &str| {
         crate::wire::typed::take::<wire::FilesCommitUploadReq>(&serde_json::json!({
@@ -1157,11 +1161,7 @@ fn an_upload_name_goes_through_the_same_name_rules_as_create() {
     std::fs::create_dir_all(root.join("sub")).expect("建子目录");
     let e = answer_commit_at(&Face::issue(), &home, &args("sub/a.bin"))
         .expect_err("带 / 的名字落进了子目录");
-    assert_eq!(
-        e.code_or_fallback(),
-        super::super::files_write::BAD_NAME,
-        "{e:?}"
-    );
+    assert_eq!(e.code_or_fallback(), crate::files::write::BAD_NAME, "{e:?}");
     assert!(!root.join("sub/a.bin").exists());
     answer_commit_at(&Face::issue(), &home, &args("a.bin")).expect("一段名字该照落");
     assert_eq!(std::fs::read(root.join("a.bin")).expect("读落点"), b"x");

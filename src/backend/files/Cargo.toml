@@ -1,0 +1,51 @@
+# 文件管理那一块：只读族（列 · 读 · 找 · 索引 · grep）＋ 写面（写 · 上传提交 · 解压 · 一组一条）。只引纯工具与平台两层。
+[package]
+name = "backend-files"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "mod.rs"
+
+[lints]
+workspace = true
+
+[features]
+# 只给上层测试用的那几样（读族按能力名问的夹具 · 常驻索引的串行锁）：上层的 `[dev-dependencies]` 开它。
+test-support = []
+
+[dependencies]
+backend-common = { path = "../common" }
+backend-platform = { path = "../platform" }
+batch-core = { path = "../../common/batch-core" }
+cmd-wire = { path = "../../common/cmd-wire" }
+copy-core = { path = "../../common/copy-core" }
+relay-route-core = { path = "../../common/relay-route-core" }
+win-path-core = { path = "../../common/win-path-core" }
+# 解压条目的相对路径拆段（同远端写围栏那一份）。
+ssh-dial = { path = "../ssh-dial" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+# ── 解压（`extract.rs`）──
+# 由那台后端用 Rust 库（`tar` · `flate2` · `zip`，不调外部命令）解。三条都纯 Rust、MIT / Apache-2.0：
+# `flate2` 锁里早就有（russh 那棵，`miniz_oxide` 后端）；`tar` 关掉缺省的 `xattr`（不还原扩展属性）；
+# `zip` 关掉全部缺省（aes / bzip2 / lzma / xz / zstd / zopfli 那几支会拖 C 或大依赖），只开读 deflate 那一支（`deflate-flate2` ＋ 它要的 `flate2`）。
+# 签字行住 `readonly_guard::g6_dependency_signoff`。只读包、写盘一个字节都不经它们（逐条目自己过路径解析再落）。
+flate2.workspace = true
+tar.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../../common/test-home" }
+# 源码扫描型守卫的「只留生产段」剥法（只在测试档）。
+guard-core = { path = "../../common/guard-core" }
+# 摘要判据拿另一份实现对拍。
+sha2.workspace = true
+# 覆盖写写到一半被收掉那一条认 `SIGXFSZ`。
+libc.workspace = true
+backend-platform = { path = "../platform", features = ["test-support"] }
+backend-common = { path = "../common", features = ["test-support"] }

@@ -724,9 +724,10 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 # ── `fmt-backend`：`src/backend` 那棵树的排版 ──
 # 不并进 `src/frontend/shell` 的 workspace：那个 Linux-only 的后端会被拖进 Windows CI 的 `cargo test --all`。
 # 刻意不加 `--all`：那棵树的 path 依赖指进 `src/frontend/shell`，加了会把别的树（各有自己那一格）拉进来；
-#   逐个点那棵 workspace 的两个成员（后端 ＋ 拨号核心）。与 `ci.yml` 的 `backend` job 同一条命令。
-run_gate fmt-backend '不是数出来的数：`cargo fmt --check -p …` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/backend` 那个 workspace 的三个成员 `cc-monitor-backend` · `ssh-dial` · `deploy`；`src/frontend/shell` 由上面 fmt 那一格管，本行盖不到（刻意不加 --all，理由见上方注释）' \
-         bash -c 'cd src/backend && cargo fmt --check -p cc-monitor-backend -p ssh-dial -p deploy 2>&1 && echo "fmt-backend: 1 passed"'
+#   逐个点那棵 workspace 的成员：包名单从 `cargo metadata --no-deps` 现取（加 / 拆一个包不用改这里），
+#   手机嵌的那一个（`mobcore`）除外。快检（`quick-check.sh`）的 fmt-backend 同一条取法。
+run_gate fmt-backend '不是数出来的数：`cargo fmt --check -p …` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/backend` 那个 workspace 的成员（`cargo metadata --no-deps` 现取，`mobcore` 除外）；`src/frontend/shell` 由上面 fmt 那一格管，本行盖不到（刻意不加 --all，理由见上方注释）' \
+         bash -c 'cd src/backend && pkgs=$(cargo metadata --no-deps --offline --format-version 1 | python3 -c "import json, sys; print(\" \".join(\"-p \" + p[\"name\"] for p in json.load(sys.stdin)[\"packages\"] if p[\"name\"] != \"mobcore\"))") && [ -n "$pkgs" ] || { echo "fmt-backend: cargo metadata 一个包都没取到"; exit 1; }; cargo fmt --check $pkgs 2>&1 && echo "fmt-backend: 1 passed"'
 
 # ── `audit`：`ci.yml` 的 `frontend` job 里那一步 `npm audit` ──
 # ⚠ 要联网：它问的是 npm registry **当下**的漏洞库 —— 断网时退出码非零、本格红（不静默跳过）；

@@ -352,13 +352,13 @@ impl RigBackend {
                 take::<cwf::HomeReq>(args)?;
                 serde_json::json!({ "path": rig::HOME })
             }
-            "files-mkdir" => serde_json::to_value(crate::control::files_write::answer(
+            "files-mkdir" => serde_json::to_value(crate::files::write::answer(
                 take::<cwf::FilesMkdirReq>(args)?,
                 &face,
             )?)
             .unwrap(),
             "files-commit-upload" => serde_json::to_value(
-                crate::control::files_commit::commit_upload_at(
+                crate::files::commit::commit_upload_at(
                     &face,
                     &self.disk,
                     take::<cwf::FilesCommitUploadReq>(args)?,

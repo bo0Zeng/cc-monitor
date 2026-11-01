@@ -241,15 +241,16 @@ fn the_empty_line_is_over_the_table_and_the_local_row() {
     fold(t.entry("ms-empty".to_string()).or_default(), up());
     let local = copy_core::local_machine();
     assert_eq!(
-        empty_over(&t, &hosts, &Links::new()),
-        cmd_wire::machine::EmptyFace {
+        fleet_over(&t, &hosts, &Links::new()),
+        cmd_wire::machine::FleetLines {
             line: copy_core::copy_text("beEmpty.line.some", &[("names", &local)]),
             hint: copy_core::copy_text("beEmpty.hint.pending", &[("names", "ms-empty")]),
+            count: copy_core::copy_text("machineList.count.all", &[("n", "2")]),
         }
     );
     fold(t.entry("ms-empty".to_string()).or_default(), Fact::Listed);
     assert_eq!(
-        empty_over(&t, &hosts, &Links::new()).line,
+        fleet_over(&t, &hosts, &Links::new()).line,
         copy_core::copy_text("beEmpty.line.none", &[])
     );
 }

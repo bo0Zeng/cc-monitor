@@ -1,7 +1,7 @@
 .stylelintrc.json	1
 src/backend/accounts/upstream_select/file_face.rs	1
 src/backend/agents/footprint_decl.rs	24
-src/backend/common/session_snapshot.rs	2
+src/backend/common/session_snapshot.rs	1
 src/backend/common/tmux_utf8.rs	2
 src/backend/control/cc_bus_scope.rs	1
 src/backend/control/fork_write.rs	3
@@ -32,7 +32,6 @@ src/backend/stream/inbound/registry/history.rs	1
 src/backend/stream/inbound/registry/machine.rs	1
 src/backend/stream/mod.rs	1
 src/backend/wire/cli_words.rs	1
-src/backend/wire/mod.rs	4
 src/common/cmd-wire/src/frame.rs	5
 src/common/creds-core/Cargo.toml	1
 src/common/creds-core/src/lib.rs	10
@@ -51,7 +50,7 @@ src/frontend/shell/src/event_replay.rs	5
 src/frontend/shell/src/filewin/entry.rs	2
 src/frontend/shell/src/launch.rs	1
 src/frontend/shell/src/lib.rs	24
-src/frontend/shell/src/local_backend.rs	12
+src/frontend/shell/src/local_backend.rs	11
 src/frontend/shell/src/local_backend_host.rs	3
 src/frontend/shell/src/platform/terminal.rs	2
 src/frontend/shell/src/stream_source/snapshot.rs	2
@@ -97,7 +96,6 @@ src/mobile/gradle/libs.versions.toml	1
 src/shared/cc-bus/SKILL.md	1
 src/shared/copy/rules.json	4
 src/shared/copy/table.json	1
-src/shared/copy/terms.json	4
 src/shared/quota-warm/scripts/quota-warm	1
 tests/__fixtures__/cc-bus-read.golden.json	2
 tests/__fixtures__/plan-files.golden.json	6
@@ -123,7 +121,6 @@ tests/backend/control/cc_bus_envelope_tests.rs	1
 tests/backend/control/cc_bus_hop_tests.rs	1
 tests/backend/control/exit_policy_tests.rs	2
 tests/backend/control/feeds_tests.rs	1
-tests/backend/control/files_write_tests.rs	1
 tests/backend/control/fork_write_tests.rs	1
 tests/backend/control/gate_rules_tests.rs	1
 tests/backend/control/launch_render/ccm_invocation_tests.rs	1
@@ -136,6 +133,7 @@ tests/backend/dial_ssh_config_tests.rs	2
 tests/backend/faces/accounts_face_tests.rs	1
 tests/backend/faces/plan_ask_face_tests.rs	15
 tests/backend/faces/plan_return_face_tests.rs	12
+tests/backend/files/write_tests.rs	1
 tests/backend/footprint/chores_tests.rs	4
 tests/backend/history/session_queue_deliver_tests.rs	1
 tests/backend/host/attach_tests.rs	4
@@ -157,15 +155,11 @@ tests/backend/plan/refs_tests.rs	11
 tests/backend/platform/cfgless_guard.rs	21
 tests/backend/platform/fallback_guard.rs	4
 tests/backend/platform/fs/ro_tests.rs	1
-tests/backend/platform/shell/dialect_tests.rs	1
-tests/backend/protocol_doc_guard.rs	1
 tests/backend/relay/creds_guard.rs	16
 tests/backend/relay/server_tests.rs	25
 tests/backend/relay/table_guard.rs	9
 tests/backend/stream/drain_tests.rs	1
 tests/backend/stream/inbound_structure_guards.rs	3
-tests/backend/wire/listen_tests.rs	1
-tests/backend/wire/wire_tests.rs	5
 tests/common/acct-core/lib_tests.rs	1
 tests/common/creds-core/lib_tests.rs	8
 tests/common/creds-core/perm_tests.rs	4
@@ -181,7 +175,6 @@ tests/e2e/exec-bit-guard.sh	1
 tests/e2e/f40-suite.sh	2
 tests/e2e/gen-fork-session.py	1
 tests/e2e/inbound-backend-frames.sh	7
-tests/evidence/K-R30-etxtbsy-window.py	5
 tests/evidence/SR1b-sftp-loopback.py	1
 tests/frontend/filewin/find_tests.rs	1
 tests/frontend/filewin/kit_tests.rs	1
@@ -211,7 +204,6 @@ tests/frontend/shell/inbound_client_tests.rs	1
 tests/frontend/shell/launch_tests.rs	4
 tests/frontend/shell/lib_mod_decl_hygiene_tests.rs	1
 tests/frontend/shell/local_backend_host_tests.rs	85
-tests/frontend/shell/local_backend_tests.rs	67
 tests/frontend/shell/lockfile_conflict_guard.rs	1
 tests/frontend/shell/lockfile_conflict_guard_tests.rs	1
 tests/frontend/shell/needle_anchor_registry.rs	7

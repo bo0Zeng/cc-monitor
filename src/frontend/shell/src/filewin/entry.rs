@@ -127,7 +127,7 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
 /// 「复制到另一台」下拉里的机器：本机（`<local>`）＋ 已配的远端（本机后端机器表里算好的名字，与通道寻址同一个名字）。
 /// 来自已有的配置读口，不新建数据源。
 fn machine_names() -> Vec<String> {
-    std::iter::once(crate::inbound_client::LOCAL_ORIGIN.to_string())
+    std::iter::once(cmd_wire::LOCAL.to_string())
         .chain(
             crate::machine_table::rows_now()
                 .into_iter()
@@ -226,7 +226,7 @@ pub(crate) async fn open_from_window(
     args: &serde_json::Value,
 ) -> Result<(), (&'static str, String)> {
     // 本机没有文件窗口（窗口只开在远端上）⇒ 说真实原因，不让下面那句「没有叫 <local> 的远端配置」出声。
-    if machine == crate::inbound_client::LOCAL_ORIGIN {
+    if machine == cmd_wire::LOCAL {
         return Err((
             "local_has_no_file_window",
             copy_text("rsFilewinEntry.other.localNone", &[]),

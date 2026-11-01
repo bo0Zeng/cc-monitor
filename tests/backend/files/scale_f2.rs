@@ -87,7 +87,7 @@
 //! 本文件的语料是按那个量纲**等比缩小**的合成树，读数里一起报缩放比。
 //! 别人机器的条目数 / 盘型 / 文件系统**一格都没量**（边界 3）。
 
-use super::tests::resident_lock;
+use super::test_support::resident_lock;
 
 /// 语料规模。
 ///
@@ -270,7 +270,7 @@ fn f2_the_three_costs_of_the_search_family() {
     //   代价却白付一次 —— 门禁上那一次是几千个 inode 的重读。
     let t_build = std::time::Instant::now();
     // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
-    let _serial = crate::files::index::testing::serial();
+    let _serial = crate::files::index::test_support::serial();
     let stats = crate::files::index::rebuild_once(&corpus.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
     let build_ms = t_build.elapsed().as_millis().max(1);

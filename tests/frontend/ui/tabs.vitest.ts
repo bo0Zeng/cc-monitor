@@ -1943,7 +1943,7 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
         { run: "4", label: "run2", label_text: "run2", state: "running", status_text: "核心·在跑" },
       ],
       ended: [],
-      groups: { running: ["4", "2"], recent: ["3"], older: ["1"] },
+      groups: { running: ["4", "2"], recent: ["3"], older: ["1"], peek: ["4", "2", "3", "1"] },
       summary: "核心·agent 9 · 2 在跑",
     });
 
@@ -1954,13 +1954,39 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
     expect(p!.agents.map((a) => a.label)).toEqual(["run2", "run1", "stop1", "done1"]);
     expect(p!.agents.map((a) => a.status)).toEqual(["running", "running", "stopped", "done"]);
     expect(p!.summary).toBe("核心·agent 9 · 2 在跑");
+    expect(p!.more).toBeNull();
+  });
+
+  it("peek 只装那台挑好的那几个、「+N」照抄那台写的；格子徽标照抄那台写的「在跑」那一句（界面不数）", () => {
+    const tm = makeTM();
+    tm.ensureTab("s3", "/proj", "/p/s3.jsonl", LOCAL_ORIGIN);
+    tm.onFace("s3", liveFace("working"));
+    const ids = Array.from({ length: 10 }, (_, i) => String(i));
+    tm.onSessionRuns({
+      sid: "s3",
+      runs: ids.map((id) => ({ run: id, label: `r${id}`, label_text: `r${id}`, state: Number(id) < 3 ? "running" : "done", status_text: "核心·态" })),
+      ended: [],
+      groups: {
+        running: ["0", "1", "2"],
+        recent: ["3", "4", "5", "6", "7"],
+        older: ["8", "9"],
+        running_text: "核心·在跑 · agent 5",
+        peek: ["0", "1", "2", "3", "4", "5"],
+        peek_more_text: "核心·另 4 个",
+      },
+      summary: "核心·agent 10 · 3 在跑",
+    } as never);
+    const p = tm.peekSession("s3")!;
+    expect(p.agents.map((a) => a.label)).toEqual(["r0", "r1", "r2", "r3", "r4", "r5"]);
+    expect(p.more).toBe("核心·另 4 个");
+    expect(tm.snapshotSessions().find((x) => x.sessionId === "s3")?.running).toBe("核心·在跑 · agent 5");
   });
 
   it("无 usage / 无 agent / 无改文件 → 字段空但不报错", () => {
     const tm = makeTM();
     tm.ensureTab("s2", "/x", "/p/s2.jsonl", LOCAL_ORIGIN);
     const p = tm.peekSession("s2");
-    expect(p).toEqual({ model: null, recentFiles: [], agents: [], summary: null });
+    expect(p).toEqual({ model: null, recentFiles: [], agents: [], summary: null, more: null });
   });
 
   // F91b-fix(batch18)：touchedFiles 近因序（peek `recentFiles` 尾部 = 最近改的）。近因序今天由后端排
@@ -4944,6 +4970,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     mcp: [],
     answerOff: null,
     autoAnswer: null,
+    autoAnswerChoices: [],
     autoAnswered: null,
     quietUnread: null,
     ...p,
@@ -6544,6 +6571,7 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     mcp: [],
     answerOff: null,
     autoAnswer: null,
+    autoAnswerChoices: [],
     autoAnswered: null,
     quietUnread: null,
   });

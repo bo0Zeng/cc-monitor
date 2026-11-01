@@ -6,7 +6,7 @@
 //!   尺寸事件另是一种）—— 按字节读 stdin 会把尺寸事件丢掉，所以 Windows 上一条线读事件、两样各交各的。
 
 /// 原始模式的守卫：落地即还原进来之前的那一份设置。
-pub(crate) struct Raw {
+pub struct Raw {
     #[cfg(unix)]
     saved: libc::termios,
     /// 输入 · 输出两个句柄进来之前的控制台模式。
@@ -15,13 +15,13 @@ pub(crate) struct Raw {
 }
 
 /// 外层终端送进来的：键（原样字节）· 尺寸变了（一次一条）。
-pub(crate) struct Input {
-    pub(crate) keys: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
-    pub(crate) resized: tokio::sync::mpsc::UnboundedReceiver<()>,
+pub struct Input {
+    pub keys: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
+    pub resized: tokio::sync::mpsc::UnboundedReceiver<()>,
 }
 
 /// stdin 是不是一个终端。
-pub(crate) fn stdin_is_terminal() -> bool {
+pub fn stdin_is_terminal() -> bool {
     use std::io::IsTerminal as _;
     std::io::stdin().is_terminal()
 }
@@ -175,7 +175,7 @@ pub(crate) mod console_keys {
 mod os;
 
 /// 外层终端进原始模式（不回显、不按行、Ctrl+C 不变信号）；交回落地即还原的守卫。
-pub(crate) fn enter_raw() -> std::io::Result<Raw> {
+pub fn enter_raw() -> std::io::Result<Raw> {
     os::enter_raw()
 }
 
@@ -186,12 +186,12 @@ impl Drop for Raw {
 }
 
 /// 外层终端此刻的尺寸（行 · 列）；问不出 ⇒ `None`。
-pub(crate) fn size() -> Option<(u16, u16)> {
+pub fn size() -> Option<(u16, u16)> {
     os::size()
 }
 
 /// 外层终端送进来的键与尺寸变了（要在 tokio 运行时里调；读的那条线一直等到有东西，不是定时器）。
-pub(crate) fn input() -> std::io::Result<Input> {
+pub fn input() -> std::io::Result<Input> {
     os::input()
 }
 

@@ -32,9 +32,6 @@ pub struct TopicSpec {
 
 /// 主题表（扩展特征：孤儿规则不许在 `cmd-wire` 的类型上加固有方法）。
 pub trait TopicExt {
-    /// 全部主题（表的行序；判据逐行核表用）。
-    #[cfg(test)]
-    const ALL: [Topic; 17];
     /// 这个主题那一行。穷尽 `match`：加主题时编译期就被逼着填完这一行。
     fn spec(self) -> TopicSpec;
     /// 线上名。
@@ -42,27 +39,6 @@ pub trait TopicExt {
 }
 
 impl TopicExt for Topic {
-    #[cfg(test)]
-    const ALL: [Topic; 17] = [
-        Topic::Accounts,
-        Topic::Profiles,
-        Topic::Quota,
-        Topic::Rotation,
-        Topic::RotationStrategies,
-        Topic::Plan,
-        Topic::Tasks,
-        Topic::Needs,
-        Topic::Login,
-        Topic::Machines,
-        Topic::Machine,
-        Topic::Empty,
-        Topic::SessionHidden,
-        Topic::FilesDir,
-        Topic::HistoryList,
-        Topic::Groups,
-        Topic::SessionQueue,
-    ];
-
     fn spec(self) -> TopicSpec {
         match self {
             Topic::Accounts => TopicSpec {
@@ -168,7 +144,7 @@ impl TopicExt for Topic {
                 body_cap: 8192,
                 reask: "machine-read",
             },
-            // 走 tap 那条（可丢：一句整份，丢了下一次变化或重问就补上）；哪一台的成品一变、它变了才推（判定在 `deploy::machine::empty`）。
+            // 走 tap 那条（可丢：一句整份，丢了下一次变化或重问就补上）；哪一台的成品一变、它变了才推（判定在 `deploy::machine::fleet`）。
             Topic::Empty => TopicSpec {
                 name: "empty",
                 lossy: true,
@@ -238,4 +214,4 @@ impl TopicExt for Topic {
 
 #[cfg(test)]
 #[path = "../../../tests/backend/wire/topic_tests.rs"]
-mod tests;
+pub(super) mod tests;

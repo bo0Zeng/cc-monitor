@@ -236,7 +236,7 @@ private fun EmptyView(
         when (ui.empty) {
             // 核心合好的那一句（各台报完才是「无会话」；还在连 · 未计入的那几台在下一行）。
             Empty.NO_SESSIONS ->
-                ui.emptyFace?.let { face ->
+                ui.fleet?.let { face ->
                     Text(face.line, style = MaterialTheme.typography.bodyMedium)
                     if (face.hint.isNotEmpty()) Text(face.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

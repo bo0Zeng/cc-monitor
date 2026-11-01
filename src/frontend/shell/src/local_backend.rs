@@ -403,7 +403,7 @@ pub enum SpawnFailure {
 /// # 这个数的**出处**（沙箱实测）
 ///
 /// 〔出处〕上面几节是**理由**，不是读数。读数是这样打出来的：
-/// 量具 `tests/evidence/K-R30-etxtbsy-window.py`（读数落在同名 `.out`）。
+/// 量具 `tests/evidence/etxtbsy-window.py`（读数落在同名 `.out`）。
 /// 台架 = 真造那个竞态：一个进程攥着目标文件的写 fd（`fork` 继承来的 —— `CLOEXEC` 要到它
 /// `execve` 那一刻才生效），我们自己那把立刻关掉，然后**立即重试**到 `execve` 成功，
 /// 量「从关掉写 fd 到 exec 成功」。容器内 · Linux 7.0.0-30 · glibc 2.39 · nproc 16 ·

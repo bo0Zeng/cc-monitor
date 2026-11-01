@@ -42,6 +42,7 @@
 //! - （拖入多文件先一次问完再并行）做了：整组一条开单（同名由后端在落点那台探、冲突框问一次），
 //!   开了单的并行传，住 [`super::transfer::run_drop`]；判据钉的是开单一次与并行度。
 
+use comms_inward::chan::wire::Budget;
 use copy_core::copy_text;
 use copy_core::said::Said;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -370,10 +371,8 @@ impl FileWindow {
         if let Some(h) = &self.rt {
             let (l, origin, slot) = (line.clone(), self.source.origin(), self.offer.clone());
             h.spawn(async move {
-                let budget = comms_inward::chan::wire::Budget {
-                    until: std::time::Instant::now() + OFFER_WITHIN,
-                    cancel: Default::default(),
-                };
+                let budget =
+                    Budget::new(std::time::Instant::now() + OFFER_WITHIN, Default::default());
                 if let Ok(o) = l.offer(&origin, budget).await {
                     *slot.lock().unwrap() = o;
                 }

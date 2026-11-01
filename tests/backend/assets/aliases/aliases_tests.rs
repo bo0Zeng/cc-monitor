@@ -20,7 +20,7 @@ fn answer_block_render(d: &dyn Door, args: &Value) -> Result<Value, crate::commo
 const P: Shell = Shell::Posix;
 
 /// 判据用的门：其余各问原样交本进程那扇门（[`crate::stream::inbound::LocalFiles`]），只有 `home` 答临时目录 ——
-/// 写的规则不在这里判（那一份住后端 `files_write_tests.rs`），也**绝不碰真实家目录**。
+/// 写的规则不在这里判（那一份住后端 `tests/backend/files/write_tests.rs`），也**绝不碰真实家目录**。
 pub(crate) struct HomeDoor(pub PathBuf);
 impl Door for HomeDoor {
     fn home(&self, _req: wire::HomeReq) -> Result<wire::FilesPathReply, Said> {
@@ -144,7 +144,7 @@ impl Drop for TmpHome {
     }
 }
 /// 落盘经「门」（生产 = 本机后端的文件管理那一面）；判据用落在临时目录上的替身门。
-/// 写的规则（备份 · 原子替换 · 回读 · 回滚）不在这里判 —— 那一份住后端（`files_write_tests.rs`）。
+/// 写的规则（备份 · 原子替换 · 回读 · 回滚）不在这里判 —— 那一份住后端（`tests/backend/files/write_tests.rs`）。
 fn door(h: &TmpHome) -> HomeDoor {
     HomeDoor(h.0.clone())
 }
