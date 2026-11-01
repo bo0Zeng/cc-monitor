@@ -52,6 +52,7 @@ pub(crate) mod session_set_face; // 帧面 `set-plan` · `set-launch`：补足�
 pub(crate) mod session_window_face; // 帧面 `session-window`（typed）：↗ 那一问，会话在这台电脑上的哪儿（本机 · 远端同一个形）
 pub(crate) mod sessions_batch_face; // 帧面 `sessions-batch`（typed）：一批会话跨几台，本机同进程做、别的台经常驻问它自己那一组，合好那一句
 pub(crate) mod terminals_board_face; // 「终端」视图那两条（typed）：terminals-board-here（这台那几行）· terminals-board（问到各台、合成一份）
+pub(crate) mod terminals_end_face; // 帧面 `terminals-end`（typed）：终端名单「结束所选」那一批跨几台，本机同进程结束、别的台经常驻问它自己那一组，合好那一句
 
 /// 拨号层要的「这一端的机器表怎么读」由这里装（拨号层不认控制面）：进程起来那一下调一次。
 /// 之后 `link-open` · 问那台 · 传输 · 部署都只按名字查它组请求，线上不交拨号。
