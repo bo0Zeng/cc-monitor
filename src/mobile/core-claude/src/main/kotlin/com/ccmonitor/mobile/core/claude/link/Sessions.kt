@@ -15,6 +15,7 @@ import com.ccmonitor.mobile.core.wire.gen.HistoryReadReq
 import com.ccmonitor.mobile.core.wire.gen.HistoryRunReq
 import com.ccmonitor.mobile.core.wire.gen.HistoryTailReq
 import com.ccmonitor.mobile.core.wire.gen.JsonValue
+import com.ccmonitor.mobile.core.wire.gen.LOCAL
 import com.ccmonitor.mobile.core.wire.gen.Landed
 import com.ccmonitor.mobile.core.wire.gen.Launch
 import com.ccmonitor.mobile.core.wire.gen.Line
@@ -297,9 +298,6 @@ object SessionQueueRead {
 
     fun of(data: Any?): QueueList? = Commands.SessionQueueRead.reply(data)
 }
-
-/** 问的就是连着的那台自己（线上逐字 `<local>`）。 */
-private const val LOCAL = "<local>"
 
 /** `session-interrupt`：中断一条会话这一轮（■）。不进输入队、不靠持有输入；回包同 `terminal-input`（[TerminalInput.of] 解）。 */
 object SessionInterrupt {
