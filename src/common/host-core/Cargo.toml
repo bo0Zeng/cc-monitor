@@ -14,6 +14,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 iana-time-zone = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# 丢一个结果只经它的 `Discard`（理由 `Why` 住在调用处）；仓内 crate，只带 serde_json（两份 lock 里本来就有）。
+copy-core = { path = "../copy-core" }
 # 交给 Win32 的路径（长路径前缀）只从它来；仓内 crate、零依赖。
 win-path-core = { path = "../win-path-core" }
 
