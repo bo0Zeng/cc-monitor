@@ -931,6 +931,19 @@ data class AgentPick(
     }
 }
 
+enum class AlertKind(val wire: String) {
+    NOTE("note"),
+    TIP("tip"),
+    IMPORTANT("important"),
+    WARNING("warning"),
+    CAUTION("caution"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<AlertKind> = enumOf(entries) { it.wire }
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class AliasBlockState(
     val present: Boolean,
@@ -5446,6 +5459,25 @@ data class DirChecked(
             ),
             { a -> DirChecked(a[0] as Boolean, a[1] as String, a[2] as String?) },
             { v -> arrayOf(v.exists, v.shown, v.tmuxName) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class Doc(
+    val blocks: List<MdBlock>,
+    val segs: List<Int>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<Doc> = obj(
+            listOf(
+            Field("blocks", { arr(MdBlock.ADAPTER) }, optional = false, nullable = false),
+            Field("segs", { arr(Int32) }, optional = false, nullable = false),
+            ),
+            { a -> Doc(a[0] as List<MdBlock>, a[1] as List<Int>) },
+            { v -> arrayOf(v.blocks, v.segs) },
         )
     }
 }
@@ -10434,6 +10466,174 @@ data object IndexStatusReq {
     val ADAPTER: JsonAdapter<IndexStatusReq> = obj(emptyList(), { IndexStatusReq }, { emptyArray() })
 }
 
+sealed interface Inl {
+    data class Text(
+        val value: String,
+    ) : Inl
+    data class InlNode(
+        val value: InlNode,
+    ) : Inl
+
+    companion object {
+        val ADAPTER: JsonAdapter<Inl> =
+            byToken<Inl>(
+                listOf(
+                Tok(JsonReader.Token.STRING, Inl.Text::class.java, { Str }, { Inl.Text(it as String) }, { (it as Inl.Text).value }),
+                Tok(JsonReader.Token.BEGIN_OBJECT, Inl.InlNode::class.java, { InlNode.ADAPTER }, { Inl.InlNode(it as InlNode) }, { (it as Inl.InlNode).value }),
+                ),
+            )
+    }
+}
+
+sealed interface InlNode {
+    /** 判别格（`t`）那个词。 */
+    val t: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class B(
+        val k: List<Inl>,
+    ) : InlNode, Ordered {
+        override val t: String get() = "b"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class I(
+        val k: List<Inl>,
+    ) : InlNode, Ordered {
+        override val t: String get() = "i"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Del(
+        val k: List<Inl>,
+    ) : InlNode, Ordered {
+        override val t: String get() = "del"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class C(
+        val x: String,
+    ) : InlNode, Ordered {
+        override val t: String get() = "c"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class M(
+        val tex: String,
+    ) : InlNode, Ordered {
+        override val t: String get() = "m"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class A(
+        val href: String,
+        val k: List<Inl>,
+    ) : InlNode, Ordered {
+        override val t: String get() = "a"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Img(
+        val src: String,
+        val alt: String,
+    ) : InlNode, Ordered {
+        override val t: String get() = "img"
+        override var wireOrder: IntArray? = null
+    }
+    data object Br : InlNode {
+        override val t: String get() = "br"
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Fn(
+        val n: Int,
+    ) : InlNode, Ordered {
+        override val t: String get() = "fn"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<InlNode> =
+            tagged<InlNode>(
+                "t",
+                listOf(
+                Variant("b", InlNode.B::class.java, obj(
+                        listOf(
+                        Field("t", { tag("b") }, optional = false, nullable = false),
+                        Field("k", { arr(Inl.ADAPTER) }, optional = false, nullable = false),
+                        ),
+                        { a -> InlNode.B(a[1] as List<Inl>) },
+                        { v -> arrayOf("b", v.k) },
+                    )),
+                Variant("i", InlNode.I::class.java, obj(
+                        listOf(
+                        Field("t", { tag("i") }, optional = false, nullable = false),
+                        Field("k", { arr(Inl.ADAPTER) }, optional = false, nullable = false),
+                        ),
+                        { a -> InlNode.I(a[1] as List<Inl>) },
+                        { v -> arrayOf("i", v.k) },
+                    )),
+                Variant("del", InlNode.Del::class.java, obj(
+                        listOf(
+                        Field("t", { tag("del") }, optional = false, nullable = false),
+                        Field("k", { arr(Inl.ADAPTER) }, optional = false, nullable = false),
+                        ),
+                        { a -> InlNode.Del(a[1] as List<Inl>) },
+                        { v -> arrayOf("del", v.k) },
+                    )),
+                Variant("c", InlNode.C::class.java, obj(
+                        listOf(
+                        Field("t", { tag("c") }, optional = false, nullable = false),
+                        Field("x", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> InlNode.C(a[1] as String) },
+                        { v -> arrayOf("c", v.x) },
+                    )),
+                Variant("m", InlNode.M::class.java, obj(
+                        listOf(
+                        Field("t", { tag("m") }, optional = false, nullable = false),
+                        Field("tex", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> InlNode.M(a[1] as String) },
+                        { v -> arrayOf("m", v.tex) },
+                    )),
+                Variant("a", InlNode.A::class.java, obj(
+                        listOf(
+                        Field("t", { tag("a") }, optional = false, nullable = false),
+                        Field("href", { Str }, optional = false, nullable = false),
+                        Field("k", { arr(Inl.ADAPTER) }, optional = false, nullable = false),
+                        ),
+                        { a -> InlNode.A(a[1] as String, a[2] as List<Inl>) },
+                        { v -> arrayOf("a", v.href, v.k) },
+                    )),
+                Variant("img", InlNode.Img::class.java, obj(
+                        listOf(
+                        Field("t", { tag("img") }, optional = false, nullable = false),
+                        Field("src", { Str }, optional = false, nullable = false),
+                        Field("alt", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> InlNode.Img(a[1] as String, a[2] as String) },
+                        { v -> arrayOf("img", v.src, v.alt) },
+                    )),
+                Variant("br", InlNode.Br::class.java, obj(
+                        listOf(
+                        Field("t", { tag("br") }, optional = false, nullable = false),
+                        ),
+                        { InlNode.Br },
+                        { arrayOf("br") },
+                    )),
+                Variant("fn", InlNode.Fn::class.java, obj(
+                        listOf(
+                        Field("t", { tag("fn") }, optional = false, nullable = false),
+                        Field("n", { Int32 }, optional = false, nullable = false),
+                        ),
+                        { a -> InlNode.Fn(a[1] as Int) },
+                        { v -> arrayOf("fn", v.n) },
+                    )),
+                ),
+            )
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class InputHolder(
     val who: HolderWho,
@@ -13737,6 +13937,232 @@ data class McpTrouble(
             ),
             { a -> McpTrouble(a[0] as String, a[1] as McpStatus, a[2] as String?, a[3] as String?) },
             { v -> arrayOf(v.name, v.status, v.detail, v.at) },
+        )
+    }
+}
+
+enum class MdAlign(val wire: String) {
+    NONE("none"),
+    LEFT("left"),
+    CENTER("center"),
+    RIGHT("right"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<MdAlign> = enumOf(entries) { it.wire }
+    }
+}
+
+sealed interface MdBlock {
+    /** 判别格（`t`）那个词。 */
+    val t: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class P(
+        val k: List<Inl>,
+    ) : MdBlock, Ordered {
+        override val t: String get() = "p"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class H(
+        val level: Int,
+        val k: List<Inl>,
+    ) : MdBlock, Ordered {
+        override val t: String get() = "h"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Code(
+        val lang: String?,
+        val x: String,
+        val cont: Boolean,
+    ) : MdBlock, Ordered {
+        override val t: String get() = "code"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Math(
+        val tex: String,
+    ) : MdBlock, Ordered {
+        override val t: String get() = "math"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class List(
+        val start: Int?,
+        val tight: Boolean,
+        val items: List<MdItem>,
+    ) : MdBlock, Ordered {
+        override val t: String get() = "list"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Quote(
+        val blocks: List<MdBlock>,
+    ) : MdBlock, Ordered {
+        override val t: String get() = "quote"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Alert(
+        val kind: AlertKind,
+        val blocks: List<MdBlock>,
+    ) : MdBlock, Ordered {
+        override val t: String get() = "alert"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Table(
+        val align: List<MdAlign>,
+        val head: List<List<Inl>>,
+        val rows: List<List<List<Inl>>>,
+    ) : MdBlock, Ordered {
+        override val t: String get() = "table"
+        override var wireOrder: IntArray? = null
+    }
+    data object Rule : MdBlock {
+        override val t: String get() = "rule"
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Notes(
+        val items: List<MdNote>,
+    ) : MdBlock, Ordered {
+        override val t: String get() = "notes"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<MdBlock> =
+            tagged<MdBlock>(
+                "t",
+                listOf(
+                Variant("p", MdBlock.P::class.java, obj(
+                        listOf(
+                        Field("t", { tag("p") }, optional = false, nullable = false),
+                        Field("k", { arr(Inl.ADAPTER) }, optional = false, nullable = false),
+                        ),
+                        { a -> MdBlock.P(a[1] as List<Inl>) },
+                        { v -> arrayOf("p", v.k) },
+                    )),
+                Variant("h", MdBlock.H::class.java, obj(
+                        listOf(
+                        Field("t", { tag("h") }, optional = false, nullable = false),
+                        Field("level", { Int32 }, optional = false, nullable = false),
+                        Field("k", { arr(Inl.ADAPTER) }, optional = false, nullable = false),
+                        ),
+                        { a -> MdBlock.H(a[1] as Int, a[2] as List<Inl>) },
+                        { v -> arrayOf("h", v.level, v.k) },
+                    )),
+                Variant("code", MdBlock.Code::class.java, obj(
+                        listOf(
+                        Field("t", { tag("code") }, optional = false, nullable = false),
+                        Field("lang", { opt(Str) }, optional = false, nullable = true),
+                        Field("x", { Str }, optional = false, nullable = false),
+                        Field("cont", { Bool }, optional = false, nullable = false),
+                        ),
+                        { a -> MdBlock.Code(a[1] as String?, a[2] as String, a[3] as Boolean) },
+                        { v -> arrayOf("code", v.lang, v.x, v.cont) },
+                    )),
+                Variant("math", MdBlock.Math::class.java, obj(
+                        listOf(
+                        Field("t", { tag("math") }, optional = false, nullable = false),
+                        Field("tex", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> MdBlock.Math(a[1] as String) },
+                        { v -> arrayOf("math", v.tex) },
+                    )),
+                Variant("list", MdBlock.List::class.java, obj(
+                        listOf(
+                        Field("t", { tag("list") }, optional = false, nullable = false),
+                        Field("start", { opt(Int32) }, optional = false, nullable = true),
+                        Field("tight", { Bool }, optional = false, nullable = false),
+                        Field("items", { arr(MdItem.ADAPTER) }, optional = false, nullable = false),
+                        ),
+                        { a -> MdBlock.List(a[1] as Int?, a[2] as Boolean, a[3] as List<MdItem>) },
+                        { v -> arrayOf("list", v.start, v.tight, v.items) },
+                    )),
+                Variant("quote", MdBlock.Quote::class.java, obj(
+                        listOf(
+                        Field("t", { tag("quote") }, optional = false, nullable = false),
+                        Field("blocks", { arr(MdBlock.ADAPTER) }, optional = false, nullable = false),
+                        ),
+                        { a -> MdBlock.Quote(a[1] as List<MdBlock>) },
+                        { v -> arrayOf("quote", v.blocks) },
+                    )),
+                Variant("alert", MdBlock.Alert::class.java, obj(
+                        listOf(
+                        Field("t", { tag("alert") }, optional = false, nullable = false),
+                        Field("kind", { AlertKind.ADAPTER }, optional = false, nullable = false),
+                        Field("blocks", { arr(MdBlock.ADAPTER) }, optional = false, nullable = false),
+                        ),
+                        { a -> MdBlock.Alert(a[1] as AlertKind, a[2] as List<MdBlock>) },
+                        { v -> arrayOf("alert", v.kind, v.blocks) },
+                    )),
+                Variant("table", MdBlock.Table::class.java, obj(
+                        listOf(
+                        Field("t", { tag("table") }, optional = false, nullable = false),
+                        Field("align", { arr(MdAlign.ADAPTER) }, optional = false, nullable = false),
+                        Field("head", { arr(arr(Inl.ADAPTER)) }, optional = false, nullable = false),
+                        Field("rows", { arr(arr(arr(Inl.ADAPTER))) }, optional = false, nullable = false),
+                        ),
+                        { a -> MdBlock.Table(a[1] as List<MdAlign>, a[2] as List<List<Inl>>, a[3] as List<List<List<Inl>>>) },
+                        { v -> arrayOf("table", v.align, v.head, v.rows) },
+                    )),
+                Variant("rule", MdBlock.Rule::class.java, obj(
+                        listOf(
+                        Field("t", { tag("rule") }, optional = false, nullable = false),
+                        ),
+                        { MdBlock.Rule },
+                        { arrayOf("rule") },
+                    )),
+                Variant("notes", MdBlock.Notes::class.java, obj(
+                        listOf(
+                        Field("t", { tag("notes") }, optional = false, nullable = false),
+                        Field("items", { arr(MdNote.ADAPTER) }, optional = false, nullable = false),
+                        ),
+                        { a -> MdBlock.Notes(a[1] as List<MdNote>) },
+                        { v -> arrayOf("notes", v.items) },
+                    )),
+                ),
+            )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MdItem(
+    val task: Boolean?,
+    val blocks: List<MdBlock>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MdItem> = obj(
+            listOf(
+            Field("task", { opt(Bool) }, optional = false, nullable = true),
+            Field("blocks", { arr(MdBlock.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> MdItem(a[0] as Boolean?, a[1] as List<MdBlock>) },
+            { v -> arrayOf(v.task, v.blocks) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MdNote(
+    val n: Int,
+    val blocks: List<MdBlock>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MdNote> = obj(
+            listOf(
+            Field("n", { Int32 }, optional = false, nullable = false),
+            Field("blocks", { arr(MdBlock.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> MdNote(a[0] as Int, a[1] as List<MdBlock>) },
+            { v -> arrayOf(v.n, v.blocks) },
         )
     }
 }
@@ -21815,6 +22241,23 @@ enum class SeenKind(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<SeenKind> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class SegHl(
+    val hl: List<List<Long>>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SegHl> = obj(
+            listOf(
+            Field("hl", { arr(arr(Lng)) }, optional = false, nullable = false),
+            ),
+            { a -> SegHl(a[0] as List<List<Long>>) },
+            { v -> arrayOf(v.hl) },
+        )
     }
 }
 
