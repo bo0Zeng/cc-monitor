@@ -9,6 +9,7 @@
 //! 单独住一个文件：读入参的口只这一处（`stream::cli` 经它读）。
 
 use crate::common::contract;
+use copy_core::{Discard, Why};
 use std::io::Read;
 use std::time::Duration;
 
@@ -127,9 +128,11 @@ fn read_stdin_within<R: Read + Send + 'static>(
     std::thread::spawn(move || {
         let mut br = std::io::BufReader::new(r);
         // `fill_buf` 返回 ＝ 第一个字节到了，或 EOF（空）。读错交给下面那一趟再报。
-        let _ = std::io::BufRead::fill_buf(&mut br);
+        std::io::BufRead::fill_buf(&mut br).discard(Why::Signal);
         if tx.send(Ev::Arrived).is_ok() {
-            let _ = tx.send(Ev::Done(read_input(br, one_line)));
+            // 静默窗到点之后等的那一方已经回了 `no_input`、进程正要退：读线程这时才读完，没人要这个结果
+            tx.send(Ev::Done(read_input(br, one_line)))
+                .discard(Why::PeerGone);
         }
     });
     let gone = || {

@@ -23,7 +23,7 @@ use super::write::{walk_in_root, wire_of, Act, Last, WriteRefusal, TREE_ENTRY_CA
 use crate::common::said::Said;
 use crate::platform::fs::{Face, Ro, RoFile};
 use cmd_wire::files as wire;
-use copy_core::{copy_text, io_reason};
+use copy_core::{copy_text, io_reason, Discard, Why};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -524,11 +524,11 @@ fn land_file(
             Ok(n)
         }
         Ok(_) => {
-            face.delete_file(&at).ok();
+            face.delete_file(&at).discard(Why::CleanupAfterFailure); // 删自己 `O_EXCL` 刚建的那一份，随后整趟回滚
             Err(over_bytes(cap))
         }
         Err(e) => {
-            face.delete_file(&at).ok();
+            face.delete_file(&at).discard(Why::CleanupAfterFailure); // 同上
             Err(fail(e))
         }
     }

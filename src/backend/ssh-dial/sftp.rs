@@ -33,7 +33,7 @@
 //!   与远端后端的 `$HOME` 不是同一个 ⇒ 暂存件提交会答「不在」（`files::commit` 头注那一格照旧）。
 
 use crate::Said;
-use copy_core::copy_text;
+use copy_core::{copy_text, Discard, Why};
 use std::sync::Arc;
 
 use russh_sftp::client::SftpSession;
@@ -673,9 +673,15 @@ pub async fn put_atomic(s: &Session, path: &str, bytes: &[u8], mode: u32) -> Res
         //   落点已经被另一个部署者放上了新的 ⇒ 那份旧的没人要了，删掉（不留一个没人认领的备份件）。
         if let Some(b) = bak {
             if s.sftp().try_exists(rel.clone()).await.unwrap_or(true) {
-                let _ = s.sftp().remove_file(b).await;
+                s.sftp()
+                    .remove_file(b)
+                    .await
+                    .discard(Why::CleanupAfterFailure); // 删不掉只剩一份 `.bak`
             } else {
-                let _ = s.sftp().rename(b, rel.clone()).await;
+                s.sftp()
+                    .rename(b, rel.clone())
+                    .await
+                    .discard(Why::CleanupAfterFailure);
             }
         }
         return Err(io_raw(
@@ -687,7 +693,11 @@ pub async fn put_atomic(s: &Session, path: &str, bytes: &[u8], mode: u32) -> Res
         ));
     }
     if let Some(b) = bak {
-        let _ = s.sftp().remove_file(b).await;
+        // 换名已成，删自己挪走的旧备份件；删不掉只剩一份 `.bak`
+        s.sftp()
+            .remove_file(b)
+            .await
+            .discard(Why::CleanupAfterFailure);
     }
     Ok(())
 }

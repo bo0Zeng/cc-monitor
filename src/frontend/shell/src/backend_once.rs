@@ -119,22 +119,23 @@ pub(crate) fn ask_once(
     args: &serde_json::Value,
     timeout: std::time::Duration,
 ) -> Result<serde_json::Value, OnceErr> {
-    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
+    use crate::spawn_managed::{spawn_managed_with, ConsolePolicy, Lifetime, StderrSink};
     let flag = format!("--{cmd}");
     let got = capture_full(
         timeout,
         &|| {
-            let mut c = std::process::Command::new(bin);
-            // 后端认的 argv 写在 `--` 右边（`control::ccm::route`）。
-            c.args(["--", flag.as_str()])
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped());
             // 三条策略：不闪窗口（Windows 上问的是控制台子系统的 `ccm.exe`）· 超时收整棵 · stderr 是答话的一半（错信封）⇒ 接出来。
-            spawn_managed_cmd(
-                &mut c,
+            spawn_managed_with(
+                bin,
                 ConsolePolicy::Hidden,
                 Lifetime::JobKillOnClose,
                 StderrSink::Captured,
+                |c| {
+                    // 后端认的 argv 写在 `--` 右边（`control::ccm::route`）。
+                    c.args(["--", flag.as_str()])
+                        .stdin(std::process::Stdio::piped())
+                        .stdout(std::process::Stdio::piped());
+                },
             )
         },
         Some(args.to_string().into_bytes()),
