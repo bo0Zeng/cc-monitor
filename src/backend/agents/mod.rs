@@ -981,7 +981,6 @@ pub(crate) trait StepResultExt {
     fn written(self, read: bool) -> Self;
     /// ★ 配上调用时刻之后那一句（唯一一处）：有带耗时那一形、`ms` 有 ⇒ `{dur}` 填好成 `text`、`timed` 清掉；
     /// 配不上（`None`）· 没有带耗时那一形 ⇒ 不动（读不到就不写，不猜）。
-    #[cfg_attr(not(test), allow(dead_code))]
     fn timed_by(self, ms: Option<u64>) -> Self;
 }
 

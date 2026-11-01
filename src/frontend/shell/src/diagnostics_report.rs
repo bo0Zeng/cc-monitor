@@ -180,7 +180,7 @@ pub async fn diagnostics_report(
 ) -> Result<DiagnosticsReport, cmd_wire::failed::Failed> {
     let r: Result<DiagnosticsReport, Said> = async move {
         let log_file = state.log_file_info().current_file;
-        let local = crate::inbound_client::LOCAL_ORIGIN;
+        let local = cmd_wire::LOCAL;
         let mut origins: Vec<(String, String)> =
             vec![(local.to_string(), copy_text("rsDiagReport.text.local", &[]))];
         for row in crate::machine_table::rows_now() {
