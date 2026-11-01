@@ -1318,6 +1318,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     arg_text_ok: NONE,
     posix_free_path_ok: NONE,
     posix_quote: "J4",
+    // shell 赋值词（`NAME=值`）：TS 侧零处认它 ⇒ NONE。
+    is_assignment: NONE,
     // 唯一 quote 的字节形（`$'…'`，非 UTF-8 目录开终端）与它的判定：TS 侧零处拼 shell、零处判它 ⇒ NONE。
     posix_quote_bytes: NONE,
     posix_free_path_bytes_ok: NONE,
