@@ -66,90 +66,72 @@ fn a_channel_failure_detail_names_the_machine_command_hop_and_code() {
 
 #[test]
 fn a_shell_command_failure_is_one_shape_with_a_nonempty_detail() {
-    let s = Said::new("读取配置失败", "load_config", Some("os error 2"));
-    assert_eq!(s.said, "读取配置失败");
-    assert!(s
-        .detail
-        .contains(&format!("{}：load_config", label("detail.label.command"))));
-    assert!(s
-        .detail
-        .contains(&format!("{}：os error 2", label("detail.label.raw"))));
+    let s = Said::with_raw("读取配置失败".into(), "os error 2");
     // 投出去那一形（`named`）：码 · 那一句 · 复制详情三格，没有按码定形的 `data` 就不出那一格。
-    let v = serde_json::to_value(s.named("load_config")).unwrap();
+    let f = s.named("load_config");
+    assert_eq!(f.said, "读取配置失败");
+    assert_eq!(f.code, copy_core::said::FALLBACK_CODE);
+    let lines: Vec<&str> = f.detail.lines().collect();
+    assert_eq!(lines.len(), 4, "{}", f.detail);
+    assert!(lines[0].starts_with(&format!("{}：", label("detail.label.at"))), "{}", f.detail);
+    assert_eq!(lines[1], format!("{}：{}", label("detail.label.local"), local_line()));
+    assert_eq!(lines[2], format!("{}：load_config", label("detail.label.command")));
+    assert_eq!(lines[3], format!("{}：os error 2", label("detail.label.raw")));
+    let v = serde_json::to_value(&f).unwrap();
     let keys: std::collections::BTreeSet<&str> =
         v.as_object().unwrap().keys().map(String::as_str).collect();
     assert_eq!(keys, ["code", "detail", "said"].into(), "{v}");
+    // 带码的那一形：码进 `code` 与详情「码」那一项（命令之后、原话之前）。
+    let coded = Said::with_raw("x".into(), "boom").coded("2").named("open_log_dir");
+    assert_eq!(coded.code, "2");
+    let at = |k: &str| coded.detail.find(&format!("{}：", label(k))).unwrap();
+    assert!(at("detail.label.command") < at("detail.label.code"), "{}", coded.detail);
+    assert!(at("detail.label.code") < at("detail.label.raw"), "{}", coded.detail);
 }
 
-/// 问后端一条命令没成：那台写了详情 ⇒ 原样带上（远端补「本机」）；没写（老后端 / 没走到那台）⇒ 壳写时刻 · 本机 · 命令。
+/// 问后端一条命令没成：后端答了失败 ⇒ 它交来的那一份原样（码 · 详情 · `data`，壳不拆、不补）；
+/// 没走到那台 ⇒ 壳自己的错：时刻 · 本机 · 命令（问的那一条）· 码。
 #[test]
-fn a_backend_call_failure_keeps_the_detail_the_backend_wrote() {
+fn a_backend_call_failure_is_handed_on_as_the_backend_wrote_it() {
     use crate::inbound_client::CallError;
     let wrote = format!(
         "{}：refused\n{}：uname: not found",
         label("detail.label.code"),
         label("detail.label.raw")
     );
-    let refused = CallError::Remote(cmd_wire::failed::Failed {
+    let theirs = cmd_wire::failed::Failed {
         code: "refused".into(),
         said: "box 系统未知".into(),
         detail: wrote.clone(),
-        data: None,
-    });
-    let s = Said::of_call(
-        "box 系统未知".into(),
-        "deploy-plan",
-        &Origin::local(),
-        &refused,
-    );
-    assert_eq!(s.said, "box 系统未知");
-    assert_eq!(s.detail, wrote, "本机那台写的那份原样");
-    let far = Said::of_call(
-        "x".into(),
-        "deploy-plan",
-        &Origin::named("devbox"),
-        &refused,
-    );
-    assert!(far.detail.starts_with(&wrote), "{}", far.detail);
+        data: Some(serde_json::json!({"k": 1})),
+    };
+    let f = of_call("box 系统未知".into(), "deploy-plan", &CallError::Remote(theirs.clone()));
+    assert_eq!(f, theirs, "后端那一份原样");
+    let f = of_call("y".into(), "deploy-plan", &CallError::Disconnected);
+    assert_eq!(f.said, "y");
+    assert_eq!(f.code, "disconnected");
     assert!(
-        far.detail
-            .contains(&format!("\n{}：cc-monitor ", label("detail.label.local"))),
-        "{}",
-        far.detail
-    );
-    let s = Said::of_call(
-        "y".into(),
-        "deploy-plan",
-        &Origin::local(),
-        &CallError::Disconnected,
-    );
-    assert!(
-        s.detail
+        f.detail
             .contains(&format!("{}：deploy-plan", label("detail.label.command"))),
         "{}",
-        s.detail
+        f.detail
+    );
+    assert!(
+        f.detail
+            .ends_with(&format!("{}：disconnected", label("detail.label.code"))),
+        "{}",
+        f.detail
     );
 }
 
-/// 已有「命令」那一项（自己写的 · 那台后端写的）⇒ 不补第二项；只有时刻 · 本机那两项 ⇒ 补上命令名。
+/// 换一句给人看的话：码 · 原话照旧。
 #[test]
-fn naming_a_shell_command_failure_adds_the_command_once() {
-    let cmd = |d: &str| {
-        d.lines()
-            .filter(|l| l.starts_with(&format!("{}：", label("detail.label.command"))))
-            .count()
-    };
-    let bare = Said::written("读取失败".to_string()).named("load_config");
-    assert_eq!(cmd(&bare.detail), 1, "{}", bare.detail);
-    assert!(
-        bare.detail
-            .ends_with(&format!("{}：load_config", label("detail.label.command"))),
-        "{}",
-        bare.detail
-    );
-    let own = Said::new("x", "deploy-plan", Some("raw")).named("deploy_remote_backend");
-    assert_eq!(cmd(&own.detail), 1, "{}", own.detail);
-    assert!(own.detail.contains("deploy-plan"), "{}", own.detail);
+fn restating_keeps_the_code_and_the_raw_words() {
+    let s = Said::restate("外层".into(), Said::with_raw("里层".into(), "boom").coded("c"));
+    assert_eq!(s.said, "外层");
+    assert_eq!(s.raw(), "boom");
+    assert_eq!(s.code.as_deref(), Some("c"));
+    assert_eq!(Said::from("x".to_string()).raw(), "");
 }
 
 /// 壳命令签名上的错型（交出去那一形）。
@@ -308,11 +290,10 @@ fn a_failed_open_says_the_reason_and_keeps_the_raw_words_in_the_detail() {
         )
     );
     assert!(!e.said.contains(bin), "{}", e.said);
+    let detail = e.named("open_log_dir").detail;
     assert!(
-        e.detail
-            .contains(&format!("{}：{bin}", label("detail.label.raw"))),
-        "{}",
-        e.detail
+        detail.contains(&format!("{}：{bin}", label("detail.label.raw"))),
+        "{detail}"
     );
 }
 

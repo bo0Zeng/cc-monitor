@@ -3,7 +3,8 @@
 //! 它只认识 origin（本机是 [`crate::inbound_client::LOCAL_ORIGIN`]，远端是用户配的 label），不认识 ssh、不认识进程监护
 //! （本机那一份住 `local_backend_host`；各台的常驻流归本机后端，起停经它的 `machine-wake` · `machine-stop`）。
 
-use crate::detail::Said;
+use crate::detail::Shell as _;
+use copy_core::said::Said;
 use cmd_wire::failed::Failed;
 use copy_core::copy_text;
 
@@ -114,45 +115,44 @@ pub(crate) fn backend_status_now(
 /// 远端那一支只是换一个流任务的把手，不等任何东西，就地做。判据 `sync_command_registry_tests`。
 #[tauri::command]
 pub async fn backend_start(origin: String) -> Result<(), Failed> {
-    let r: Result<(), Said> = async move {
-        check_origin(&origin)?;
-        if is_local(&origin) {
-            // 失败要回 `Err`：「没内嵌后端」「释放失败」是真失败，要弹出来。
-            return Ok(tauri::async_runtime::spawn_blocking(|| {
-                use crate::local_backend_host::StartOutcome;
-                match crate::local_backend_host::start_local_backend() {
-                    StartOutcome::Started(_) | StartOutcome::AlreadyRunning => Ok(()),
-                    StartOutcome::Failed { reason, looked_at } => Err(Said::restate(
-                        copy_text(
-                            "rsBackendControl.start.notFound",
-                            &[
-                                ("reason", &reason.said),
-                                ("looked", &format!("{:?}", looked_at)),
-                            ],
-                        ),
-                        reason,
-                    )),
-                }
-            })
-            .await
-            .map_err(Said::crashed)??);
-        }
-        if !crate::machine_table::has(&origin) {
-            return Err(Said::of(
-                "rsBackendControl.handle.missing",
-                &[("origin", &origin.to_string())],
-            ));
-        }
-        // 那台的常驻流（装 · 版本门 · 状态成品）住本机后端：叫醒它（停过的不再停着、断着的不等退避马上再接）。
-        //   各处的［重新连接］走的就是这里；那台拒了（停用着 · 正在连 · 机器表里没有）· 本机后端不在 ⇒ 那一句原样回给界面。
-        wake_backend_feed(&origin).await
+    let own = |s: Said| s.named("backend_start");
+    check_origin(&origin).map_err(own)?;
+    if is_local(&origin) {
+        // 失败要回 `Err`：「没内嵌后端」「释放失败」是真失败，要弹出来。
+        return tauri::async_runtime::spawn_blocking(|| {
+            use crate::local_backend_host::StartOutcome;
+            match crate::local_backend_host::start_local_backend() {
+                StartOutcome::Started(_) | StartOutcome::AlreadyRunning => Ok(()),
+                StartOutcome::Failed { reason, looked_at } => Err(Said::restate(
+                    copy_text(
+                        "rsBackendControl.start.notFound",
+                        &[
+                            ("reason", &reason.said),
+                            ("looked", &format!("{:?}", looked_at)),
+                        ],
+                    ),
+                    reason,
+                )),
+            }
+        })
+        .await
+        .map_err(Said::crashed)
+        .and_then(|r| r)
+        .map_err(own);
     }
-    .await;
-    r.map_err(|s| s.named("backend_start"))
+    if !crate::machine_table::has(&origin) {
+        return Err(own(Said::of(
+            "rsBackendControl.handle.missing",
+            &[("origin", &origin.to_string())],
+        )));
+    }
+    // 那台的常驻流（装 · 版本门 · 状态成品）住本机后端：叫醒它（停过的不再停着、断着的不等退避马上再接）。
+    //   各处的［重新连接］走的就是这里；那台拒了（停用着 · 正在连 · 机器表里没有）· 本机后端不在 ⇒ 那一份失败原样回给界面。
+    wake_backend_feed(&origin).await
 }
 
-/// 叫醒本机后端手上那台的常驻流（`machine-wake`）。拒了 / 没交上 ⇒ 那一句（本机后端写的，或本机没有通道那一句）。
-async fn wake_backend_feed(origin: &str) -> Result<(), Said> {
+/// 叫醒本机后端手上那台的常驻流（`machine-wake`）。拒了 / 没交上 ⇒ 本机后端交来的那一份原样，或本机没有通道那一句。
+async fn wake_backend_feed(origin: &str) -> Result<(), Failed> {
     const WAKE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
     let req = cmd_wire::machine::MachineWakeReq {
         machine: origin.to_string(),
@@ -168,40 +168,24 @@ async fn wake_backend_feed(origin: &str) -> Result<(), Said> {
 /// 远端那一条由本机后端先停它手上那台的常驻流再发（`machine-stop`）。本机那一支会等到结局 ⇒ 等的那一段进阻塞线程池。
 #[tauri::command]
 pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::StopAnswer, Failed> {
-    let r: Result<crate::remote_resident::StopAnswer, Said> = async move {
-        check_origin(&origin)?;
-        if is_local(&origin) {
-            use tauri::async_runtime::spawn_blocking;
-            return spawn_blocking(crate::local_backend_host::stop_local_backend)
-                .await
-                .map_err(Said::crashed)?;
-        }
-        Ok(stop_remote_resident(&origin).await?)
+    let own = |s: Said| s.named("backend_stop");
+    check_origin(&origin).map_err(own)?;
+    if is_local(&origin) {
+        use tauri::async_runtime::spawn_blocking;
+        return spawn_blocking(crate::local_backend_host::stop_local_backend)
+            .await
+            .map_err(Said::crashed)
+            .and_then(|r| r)
+            .map_err(own);
     }
-    .await;
-    r.map_err(|s| s.named("backend_stop"))
-}
-
-/// 停那台的常驻后端（本机后端 `machine-stop`：先停它那一条常驻流，再在那台跑 `--resident-stop`）。只由 [`backend_stop`] 在分过本机之后调。
-async fn stop_remote_resident(origin: &str) -> Result<crate::remote_resident::StopAnswer, Said> {
-    if !crate::machine_table::has(origin) {
-        return Err(Said::of(
+    if !crate::machine_table::has(&origin) {
+        return Err(own(Said::of(
             "rsBackendControl.handle.missing",
             &[("origin", &origin.to_string())],
-        ));
+        )));
     }
-    // 那一句只说哪台没停成；没停成的那一步（那台答的 · 链路断在哪）进「断在」，原话照它的详情。
-    crate::remote_resident::stop(origin).await.map_err(|e| {
-        let step = e.said.clone();
-        Said::restate(
-            copy_text(
-                "rsBackendControl.remote.stopFailed",
-                &[("origin", &origin.to_string())],
-            ),
-            e,
-        )
-        .with_item(copy_core::detail::Label::Hop, &step)
-    })
+    // 本机后端 `machine-stop`：先停它那一条常驻流，再在那台跑 `--resident-stop`；没停成 ⇒ 它交来的那一份原样。
+    crate::remote_resident::stop(&origin).await
 }
 
 #[cfg(test)]

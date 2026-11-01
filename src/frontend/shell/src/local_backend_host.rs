@@ -23,7 +23,8 @@
 //! （完全不同的事）。一次补审就是因为只读了后者的定框，把这里的引用判成了「引错 charter」。
 //! ⇒ 代码里引 charter **一律带工作区名**，裸编号在几个月后没人分得清指哪一条。
 
-use crate::detail::Said;
+use crate::detail::Shell as _;
+use copy_core::said::Said;
 use crate::local_backend::{self, Resolved, SuperviseHandle};
 use copy_core::copy_text;
 
@@ -344,7 +345,7 @@ fn probe_listen_socket(sock_path: &std::path::Path, want_env: &[(String, String)
                     note_local_foreign(Some(&build_id));
                 }
             }
-            Probe::Stranger(Said::written(why))
+            Probe::Stranger(Said::from(why))
         }
     }
 }

@@ -226,23 +226,6 @@ impl Detail {
             .any(|i| matches!(i, Item::Line(l, _) if *l == label))
     }
 
-    /// 自己写的那一行里这一项的值（原话截过的那一形）；没有 ⇒ `None`。
-    pub fn value(&self, label: Label) -> Option<&str> {
-        let prefix = format!("{}：", label.said());
-        self.items.iter().find_map(|i| match i {
-            Item::Line(l, s) if *l == label => s.strip_prefix(prefix.as_str()),
-            _ => None,
-        })
-    }
-
-    /// 对端写好的那一整份（有几块接起来）；没有 ⇒ `None`。
-    pub fn written(&self) -> Option<&str> {
-        self.items.iter().find_map(|i| match i {
-            Item::Block(s) => Some(s.as_str()),
-            _ => None,
-        })
-    }
-
     /// 有没有对端写好的一整份（那一份里有什么由写它的那一端负责）。
     pub fn has_block(&self) -> bool {
         self.items.iter().any(|i| matches!(i, Item::Block(_)))
@@ -258,6 +241,35 @@ impl Detail {
             .collect::<Vec<_>>()
             .join("\n")
     }
+}
+
+/// 出错的是哪一端：后端写「机器」那一项，monitor 壳写「本机」那一项。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Host<'a> {
+    Machine(&'a str),
+    Local(&'a str),
+}
+
+/// **一次失败的复制详情**（全仓只这一处排）：时刻 · 机器或本机 · 命令（不带参数值）· 码 · 原话，缺的项不出。
+/// 后端排它自己的错（失败应答的 `detail`），壳排壳自己的错（壳命令投出去那一下）；后端交来的那一份壳原样转交、不重排。
+pub fn failure(
+    at: &str,
+    host: Host<'_>,
+    command: Option<&str>,
+    code: Option<&str>,
+    raw: Option<&str>,
+) -> String {
+    let (label, value) = match host {
+        Host::Machine(m) => (Label::Machine, m),
+        Host::Local(l) => (Label::Local, l),
+    };
+    Detail::new()
+        .item(Label::At, at)
+        .item(label, value)
+        .maybe(Label::Command, command)
+        .maybe(Label::Code, code)
+        .maybe(Label::Raw, raw)
+        .render()
 }
 
 /// 通道这一跳断了的那一份（monitor 壳与文件窗口进程同一份）：时刻 · 机器（`not_sent` ⇒ 名 ＋「（未连上）」）·

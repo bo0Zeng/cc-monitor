@@ -6,7 +6,8 @@
 //! - Linux：Wayland 合成器支持 data-control 那一档 ⇒ 经它写；不支持 ⇒ 经 X11（含 XWayland）写，X 服务器确认拿到了所有权才算成；
 //!   两样都没有 ⇒ 回错（界面走「就地展开全选」）。X11 上内容由持有者那一侧供给，所以那份句柄常驻进程，不随一次写丢掉。
 
-use crate::detail::Said;
+use crate::detail::Shell as _;
+use copy_core::said::Said;
 use copy_core::copy_text;
 use std::sync::Mutex;
 

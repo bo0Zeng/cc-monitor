@@ -4,7 +4,8 @@
 //! monitor 只交它自己进程的那几条（家目录 · `PATH`，「足迹里 monitor 自己那几行」；agent 家由本机后端自己解析），
 //! 界面原样带给本机后端 `footprint-report {client}`，一问出整份报告。
 
-use crate::detail::Said;
+use crate::detail::Shell as _;
+use copy_core::said::Said;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 

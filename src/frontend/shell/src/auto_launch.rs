@@ -16,7 +16,7 @@
 //! - `auto_launch_enabled`：UI 上的 toggle 控制；cc function 检查此 flag 决定是否
 //!   `Start-Process` 启动 monitor
 
-use crate::detail::Said;
+use copy_core::said::Said;
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
