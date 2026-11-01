@@ -64,41 +64,41 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
         "文件管理面建一层目录的本体（`Face::make_dir`；下面几处用户的目录都经它）",
     ),
     (
-        "control/files_write.rs",
+        "files/write.rs",
         "make_dir",
         "用户的目录（`files-mkdir`，文件管理写面）",
     ),
     (
-        "control/files_write.rs",
+        "files/write.rs",
         "make_parents",
         "用户的目录（`Door::put` 显式要了父目录）",
     ),
     // 〔W5-FILES 与 HX1 合并〕复制目录的执行趟逐条建目录（`files-copy` 的 `recursive: true`）。
     //   HX1 立本表时它还在另一棵树上 ⇒ 两边各自绿、合起来才红，按实数 +1。
     (
-        "control/files_write.rs",
+        "files/write.rs",
         "copy_planned",
         "用户的目录（`files-copy` 复制目录，逐条建）",
     ),
     // 聊天附件两处 +2：会话工作目录下的 `.ccm-attach/` 与它里面一份一个的编号目录（用户工作目录里，不是 `~/.cc-monitor` 一族）。
     (
-        "control/files_commit/session_attachment.rs",
+        "files/commit/session_attachment.rs",
         "ensure_root",
         "会话工作目录下的附件目录 `.ccm-attach/`（`session-attachment-commit`，不在才建）",
     ),
     (
-        "control/files_commit/session_attachment.rs",
+        "files/commit/session_attachment.rs",
         "mint",
         "附件目录里一份一个的编号目录（`session-attachment-commit`）",
     ),
     // 解压两处，按实数 +2：都是用户的目录，不是 `~/.cc-monitor` 一族。
     (
-        "control/files_extract.rs",
+        "files/extract.rs",
         "extract_with",
         "用户的目录（`files-extract` 的落点目录：解到的那个新目录，不在才建）",
     ),
     (
-        "control/files_extract.rs",
+        "files/extract.rs",
         "land_dir",
         "用户的目录（`files-extract` 包里的目录，逐条建）",
     ),
@@ -172,7 +172,7 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
     };
     // 暂存区那两层：经文件管理面句柄那一个自家目录方法（`Face::own_dir`，本体同 `Own::own_dir` 那一个函数），恰好一处。
     assert_eq!(
-        src("control/files_commit.rs")
+        src("files/commit.rs")
             .matches("face.own_dir(")
             .count(),
         1,

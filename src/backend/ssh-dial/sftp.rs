@@ -27,10 +27,10 @@
 //!
 //! # 买不到什么（逐条）
 //!
-//! - **TOCTOU**：判定与动手之间有窗（同 `files_write` 自陈的那一格）。
+//! - **TOCTOU**：判定与动手之间有窗（同 `files::write` 自陈的那一格）。
 //! - **Windows 远端**：home 是 `C:\…` 形时归一化不认它 ⇒ 一律拒（出声，不猜）。一格读数都没有。
 //! - **`ChrootDirectory` / `internal-sftp -d`**：起始目录不是 `$HOME` 的机器上，这里的「home」是 SFTP 的起始目录，
-//!   与远端后端的 `$HOME` 不是同一个 ⇒ 暂存件提交会答「不在」（`files_commit` 头注那一格照旧）。
+//!   与远端后端的 `$HOME` 不是同一个 ⇒ 暂存件提交会答「不在」（`files::commit` 头注那一格照旧）。
 
 use crate::Said;
 use copy_core::copy_text;
@@ -47,7 +47,7 @@ use crate::{pool, DialRequest, StageSink};
 /// 🔴 **远端写根：恰好暂存区这一处**（home 相对）。`readonly_guard::remote_write_layer` 现读本行源码逐字比。
 ///
 /// 上传只写这里，落进用户目录由远端后端 `files-commit-upload` 做；自部署也只把后端字节放进这里，换进 `~/.cc-monitor/bin/` · 卸载都由
-/// 传上去的那一份自己在那台上做（`--place-self` · `--unplace-self`）。与 `control/files_commit.rs::STAGING_DIR` 相等（同一个 crate，判据直接比）。
+/// 传上去的那一份自己在那台上做（`--place-self` · `--unplace-self`）。与 `files/commit.rs::STAGING_DIR` 相等（主 crate 的判据直接比）。
 pub const STAGING_ROOT: &str = ".cc-monitor/staging";
 
 /// 写根的祖先：后端的家。只在「建目录」那一形里放行（首次部署要建它）。
@@ -197,7 +197,7 @@ async fn take_parked(req: &DialRequest) -> Option<Session> {
 }
 
 /// 一份拨号请求（传输台开单时读进来、起跑时拿它开会话）。包一层是为了让传输台**只经本文件**够到拨号：
-/// 它手里不必有 `DialRequest` 这个类型（文件管理那一面的外向边钉在 `module_boundary_guard::OUTWARD`）。
+/// 它手里不必有 `DialRequest` 这个类型（文件管理那一块只依赖纯工具与平台两层，由它的 `Cargo.toml` 管）。
 #[derive(Clone)]
 pub struct Dial(DialRequest);
 

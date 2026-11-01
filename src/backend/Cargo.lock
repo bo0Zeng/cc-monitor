@@ -143,6 +143,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-files"
+version = "0.0.0"
+dependencies = [
+ "backend-common",
+ "backend-platform",
+ "batch-core",
+ "cmd-wire",
+ "copy-core",
+ "flate2",
+ "guard-core",
+ "libc",
+ "relay-route-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "ssh-dial",
+ "tar",
+ "test-home",
+ "tokio",
+ "tracing",
+ "win-path-core",
+ "zip",
+]
+
+[[package]]
 name = "backend-platform"
 version = "0.0.0"
 dependencies = [
@@ -320,6 +345,7 @@ version = "0.0.0"
 dependencies = [
  "acct-core",
  "backend-common",
+ "backend-files",
  "backend-platform",
  "backend-plugin",
  "batch-core",
@@ -365,7 +391,6 @@ dependencies = [
  "vt100",
  "walkdir",
  "win-path-core",
- "zip",
 ]
 
 [[package]]

@@ -222,18 +222,17 @@ static REBUILDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool
 /// 被抢占过几趟 —— **只报不禁**（同上，占空比这一类是读数不是闸）。
 static REBUILD_SKIPPED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// 判据专用的那个口 —— **只在 `cfg(test)` 下存在**。
+/// 判据专用的那几个口（串行锁 · 按住「正在重走」那个位 · 碰常驻那一份的锁）—— 只在测试档与上层测试开的 `test-support` 下存在。
 ///
-/// 🔴 为什么要它：被测的性质是「**那个位是 true 的时候第二趟进不来**」，
+/// 🔴 为什么要按住那个位：被测的性质是「**那个位是 true 的时候第二趟进不来**」，
 /// 而不是「两条线程谁先」。起线程去撞它会让判据的读数依赖调度 ⇒ 变飘。
 /// ⇒ 把那个位直接按住，是同一件事的**可判形态**。
 /// ⚠ 代价如实记：这样就**买不到**「两条真线程同时打进来」那一格。
 ///
-/// ⚠ **体住 `tests/`，这里只留桩**（形状）——
-/// 我第一版把它内联写在这儿，`structural_scan` 那条「剖分不许回来」当场红了，**红对了**。
-#[cfg(test)]
-#[path = "../../../tests/backend/files/index_testing.rs"]
-pub mod testing;
+/// ⚠ **体住 `tests/`，这里只留桩**（形状）——`structural_scan` 那条「剖分不许回来」守着。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../tests/backend/files/index_support.rs"]
+pub mod test_support;
 
 /// 被抢占过几趟。判据与 `status` 用它。
 pub fn rebuild_skipped() -> u64 {

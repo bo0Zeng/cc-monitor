@@ -204,14 +204,14 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Manual("读数不是判据：真 tmux 私有 socket（`-L`）上装一趟 hook 看段内格位；跑法住它自己的头注"),
     ),
     (
-        "tests/backend/control/overwrite_atomic_tests.rs",
+        "tests/backend/files/overwrite_atomic_tests.rs",
         "w1_child",
-        Trigger::Filter { by: "tests/backend/control/overwrite_atomic_tests.rs", needle: "control::files_write::overwrite_atomic_tests::w1_child" },
+        Trigger::Filter { by: "tests/backend/files/overwrite_atomic_tests.rs", needle: "write::overwrite_atomic_tests::w1_child" },
     ),
     (
-        "tests/backend/control/files_write_tests.rs",
+        "tests/backend/files/write_tests.rs",
         "own_home_child_entry_point",
-        Trigger::Filter { by: "tests/backend/control/files_write_tests.rs", needle: "control::files_write::tests::own_home_child_entry_point" },
+        Trigger::Filter { by: "tests/backend/files/write_tests.rs", needle: "files_write_face::write_tests::own_home_child_entry_point" },
     ),
     (
         "tests/backend/platform/cross_tests.rs",

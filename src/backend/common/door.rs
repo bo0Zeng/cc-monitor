@@ -1,7 +1,7 @@
 //! 后端够用户文件的那一扇门（资产 · 账号库 · 足迹 · 控制面都走它）：这台后端自己的文件管理面。算的与写的是同一台后端 ⇒ 门直接问文件管理那一族的本体，
 //! 每一问一个方法、收发那几条 `files-*` 帧命令同一份线上类型（实现住 `stream/inbound/doors.rs::LocalFiles`：
 //! 文件管理面的写句柄 `Face` 只有分派那一层造，这扇门就是进程内的那一次分派）。
-//! 写的规则（CAS · 相同不写 · 备份 · 暂存旁名换名上位 · 回读比对 · 回滚）只有 `files_write::put_text` 那一份。
+//! 写的规则（CAS · 相同不写 · 备份 · 暂存旁名换名上位 · 回读比对 · 回滚）只有 `files::write::put_text` 那一份。
 
 use crate::common::said::Said;
 use cmd_wire::batch::{BatchReply, ItemState, OnExists};
@@ -43,7 +43,7 @@ impl Refused {
 }
 
 /// 这台后端的文件管理面：每一问一个方法，入参 · 回包是文件管理那一族的线上类型（`cmd_wire::files`，同那几条帧命令）。
-/// 生产 = `stream/inbound/doors.rs::LocalFiles`（读的直接问 `files::answer`，写的问 `files_write::answer`，写句柄由分派那一层递）；
+/// 生产 = `stream/inbound/doors.rs::LocalFiles`（读的直接问 `files::answer`，写的问 `files::write::answer`，写句柄由分派那一层递）；
 /// 判据用临时目录上的同一份。
 pub trait Door {
     fn home(&self, req: wire::HomeReq) -> Result<wire::FilesPathReply, Said>;

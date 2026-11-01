@@ -1,7 +1,7 @@
-//! `control/files_upload_chunks.rs` 的行为判据。
+//! `files/upload_chunks.rs` 的行为判据。
 //! 要求：「不一致 ⇒ 这台的上传改走后端链路分块写（`files-stage-chunk` 那一族）」。
 //! 块形拼成暂存件之后走的是与 SFTP 那条路**同一条**提交（整份摘要核 · 改名上位）；线上那一臂（`chunks` 参数）的接线判据住
-//! `files_commit_tests::the_commit_face_assembles_chunks_when_asked`。
+//! `commit_tests::the_commit_face_assembles_chunks_when_asked`。
 
 use super::*;
 use crate::platform::fs::Face;
@@ -20,8 +20,7 @@ fn sha(b: &[u8]) -> String {
 
 fn stage(h: &Path, key: &str, parts: &[&[u8]]) {
     for (i, b) in parts.iter().enumerate() {
-        crate::control::files_commit::stage_chunk(&Face::issue(), h, key, i as u64, b)
-            .expect("送块");
+        crate::files::commit::stage_chunk(&Face::issue(), h, key, i as u64, b).expect("送块");
     }
 }
 
@@ -33,7 +32,7 @@ fn chunks_assemble_into_one_commit_and_a_bad_set_lands_nothing() {
     let body: Vec<u8> = (0u8..=255).cycle().take(3000).collect();
     stage(&h, &key, &[&body[..1000], &body[1000..2500], &body[2500..]]);
     assemble_part(&Face::issue(), &h, &key, 3, 3000).expect("拼块被拒");
-    crate::control::files_commit::commit_upload(
+    crate::files::commit::commit_upload(
         &Face::issue(),
         &h,
         &key,
@@ -44,7 +43,7 @@ fn chunks_assemble_into_one_commit_and_a_bad_set_lands_nothing() {
     )
     .expect("拼好之后的提交被拒");
     assert_eq!(std::fs::read(h.join("dst/f.bin")).expect("目标"), body);
-    let staging = h.join(crate::control::files_commit::STAGING_DIR);
+    let staging = h.join(crate::files::commit::STAGING_DIR);
     for n in [
         format!("{key}.part"),
         format!("{key}.0.chunk"),

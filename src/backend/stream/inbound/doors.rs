@@ -10,7 +10,7 @@ use cmd_wire::files as wire;
 /// 资产域（`assets/`）够用户文件的那一扇门：这台文件管理那一族的本体，每一问按入参类型直接问它那一条
 /// （读的经 `files_face::in_process`，写的经 `files_write_face::in_process`：同那几条帧命令的本体、同一份线上类型）。
 /// 住入方向是因为文件管理面的写句柄（`Face`）只有分派这一层造：写的那几问经 `spec::with_face` 领一份、只活这一问；
-/// 资产模块只拿这个门，拿不到句柄，也不直呼 `files_write`。
+/// 资产模块只拿这个门，拿不到句柄，也不直呼 `files::write`。
 #[derive(Clone, Copy)]
 pub(crate) struct LocalFiles;
 
