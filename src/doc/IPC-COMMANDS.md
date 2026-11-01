@@ -6067,7 +6067,15 @@ record: LineRecord,
  * 它的对账键（界面拿它撤那个子运行的活卡）；没有 ⇒ 这一格不出现。
  */
 rid?: string, };
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+/**
+ * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
+ */
+end?: TaskEnd, 
+/**
+ * 写好的那一行（「后台任务 {做的事} {怎么收场} · {钟面}」）：出口那一下照看的那一台的时区写，界面照抄。
+ */
+row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
  * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
  */
@@ -6149,6 +6157,7 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
+type TaskEnd = "done" | "failed" | "stopped";
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -6524,7 +6533,15 @@ type ReplyError = { reason: ApiReason,
  */
 status?: number, };
 type ResultKind = "launched" | "handback";
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+/**
+ * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
+ */
+end?: TaskEnd, 
+/**
+ * 写好的那一行（「后台任务 {做的事} {怎么收场} · {钟面}」）：出口那一下照看的那一台的时区写，界面照抄。
+ */
+row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
  * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
  */
@@ -6606,6 +6623,7 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
+type TaskEnd = "done" | "failed" | "stopped";
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -6973,7 +6991,15 @@ type ReplyError = { reason: ApiReason,
  */
 status?: number, };
 type ResultKind = "launched" | "handback";
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+/**
+ * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
+ */
+end?: TaskEnd, 
+/**
+ * 写好的那一行（「后台任务 {做的事} {怎么收场} · {钟面}」）：出口那一下照看的那一台的时区写，界面照抄。
+ */
+row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
  * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
  */
@@ -7055,6 +7081,7 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
+type TaskEnd = "done" | "failed" | "stopped";
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -7399,7 +7426,15 @@ type ReplyError = { reason: ApiReason,
  */
 status?: number, };
 type ResultKind = "launched" | "handback";
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+/**
+ * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
+ */
+end?: TaskEnd, 
+/**
+ * 写好的那一行（「后台任务 {做的事} {怎么收场} · {钟面}」）：出口那一下照看的那一台的时区写，界面照抄。
+ */
+row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
  * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
  */
@@ -7481,6 +7516,7 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
+type TaskEnd = "done" | "failed" | "stopped";
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -8427,6 +8463,10 @@ handedBack: Array<string>,
  */
 retries: Array<RetryRun>, 
 /**
+ * 一组一组相邻的收场通知（按首条的记录 id，文件序）：哪几条并一组 · 哪几条交回过、不露 · 写好的组头。出口那一下算（[`settle_notices`]）。
+ */
+notices: Array<NoticeRun>, 
+/**
  * 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null`。
  */
 permissionMode: string | null, 
@@ -8654,6 +8694,27 @@ type NeedsQuestionOption = {
  * `q0o0` …
  */
 id: string, text: string, detail: string | null, };
+type NoticeRun = { 
+/**
+ * 这一组首条那条记录的 id（界面那一张就挂在它上面）。
+ */
+id: string, 
+/**
+ * 这一组的几条（记录 id，文件序，含首条）。
+ */
+members: Array<string>, 
+/**
+ * 其中不露的那几条：同一个子运行已经交回了（以交回为准）。
+ */
+hidden: Array<string>, 
+/**
+ * 露着不止一条 ⇒ 写好的组头（几条 · 时段 · 失败几条）；只露一条 · 一条都不露 ⇒ `null`（露着的那一条照它自己那一行）。
+ */
+head: Words | null, 
+/**
+ * 露着的那几条里有失败的。
+ */
+failed: boolean, };
 type PendingCall = { 
 /**
  * 工具调用 id（等它的 `tool_result` 来摘）。
@@ -9405,7 +9466,15 @@ type ReplyError = { reason: ApiReason,
  */
 status?: number, };
 type ResultKind = "launched" | "handback";
-type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, 
+/**
+ * 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
+ */
+end?: TaskEnd, 
+/**
+ * 写好的那一行（「后台任务 {做的事} {怎么收场} · {钟面}」）：出口那一下照看的那一台的时区写，界面照抄。
+ */
+row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
  * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
  */
@@ -9488,6 +9557,7 @@ chars?: number,
  */
 kind?: ResultKind, };
 type TailHow = "tail" | "resume" | "handoff" | "truncated" | "rewritten";
+type TaskEnd = "done" | "failed" | "stopped";
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
