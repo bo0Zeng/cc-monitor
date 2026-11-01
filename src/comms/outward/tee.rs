@@ -189,7 +189,9 @@ impl TeeSink {
             Vec::new()
         };
         let stream = id.stream.to_string();
-        let _ = self.port.offer(TapEvent {
+        // 答 `false` 也照走（控制面让位）：投不进就丢，号照占，缺口在接收侧按号算得出（「SSE 保快、jsonl 保对」）；
+        // 事件那一件与收尾那一件都经 `put` 这一处。答的是 `bool` 不是 `Result`，没有可丢的错。
+        self.port.offer(TapEvent {
             stream,
             heads,
             resp,

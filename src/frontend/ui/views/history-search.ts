@@ -9,8 +9,8 @@
  */
 import { remoteNames } from "../remote-config";
 import { budgetWithin, callTyped } from "../ipc/chan-caller";
-import { LOCAL_ORIGIN } from "../ipc/origin";
-import type { Origin } from "../generated/Origin";
+import { LOCAL } from "../ipc/origin";
+import type { Machine } from "../generated/Machine";
 import type { HistorySearchReq } from "../generated/HistorySearchReq";
 import type { Merged } from "../generated/Merged";
 import type { MergedRow } from "../generated/MergedRow";
@@ -49,8 +49,8 @@ export async function searchAllMachines(q: FullTextQuery): Promise<SearchResult>
   } catch (e) {
     console.warn("远端全文搜索：拿不到远端清单（只搜本机）:", e);
   }
-  const machines: Origin[] = [LOCAL_ORIGIN, ...remotes];
-  return callTyped(LOCAL_ORIGIN, "history-search-merge", { machines, search: searchArgs(q) }, budgetWithin(SEARCH_BUDGET_MS));
+  const machines: Machine[] = [LOCAL, ...remotes];
+  return callTyped(LOCAL, "history-search-merge", { machines, search: searchArgs(q) }, budgetWithin(SEARCH_BUDGET_MS));
 }
 
 /** 那一问的请求体（只下发后端认的那几格）。各台同一份。 */

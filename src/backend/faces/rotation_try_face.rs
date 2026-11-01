@@ -47,12 +47,13 @@ impl crate::wire::typed::Handle for RotationTry {
             };
             let row = ctx.row(agent);
             let now = crate::accounts::quota::now_unix();
-            let facts: Vec<Acct> = ctx
+            let mut facts: Vec<Acct> = ctx
                 .hop
                 .facts(agent, &row, now, &cx.tz)
                 .iter()
                 .map(Acct::of_fact)
                 .collect();
+            ctx.hop.with_past(agent, &mut facts, now);
             try_with(&req, &facts, now, &cx.tz)
         }
     }

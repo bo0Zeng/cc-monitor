@@ -96,7 +96,19 @@ fn an_unknown_shape_is_refused_not_guessed() {
     );
 }
 
-// ── B：三处哨兵住址两向相等 ────────────────────────────────────────────────
+// ── B：类型照本名导出 · 哨兵的既有住址与 `LOCAL` 相等 ─────────────────────
+#[test]
+fn the_machine_type_exports_under_its_own_name() {
+    // 界面那一侧的类型名就是 Rust 本名：生成物是 `Machine.ts`，不另起一个 `Origin`。
+    let cfg = ts_rs::Config::default();
+    assert_eq!(
+        <cmd_wire::Machine as ts_rs::TS>::name(&cfg),
+        "Machine",
+        "`Machine` 的 TS 名不是本名 —— `machine.rs` 的 `ts(...)` 里又写了 `rename`"
+    );
+}
+
+// `inbound_client::LOCAL_ORIGIN` 与 `backend-policy.ts::LOCAL_ORIGIN` 是待删的两份抄写；删掉之前与 `LOCAL` 逐字节相等。
 #[test]
 fn the_sentinel_agrees_with_the_two_existing_homes() {
     // Rust 那一处（本文件之外的既有住址）

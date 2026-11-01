@@ -10,6 +10,7 @@
 
 use crate::client::InboundClient;
 use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom, WatchReply};
+use copy_core::discard::{Discard, Why};
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
@@ -162,14 +163,14 @@ impl Desk {
                 let mut n = lock(&self.now);
                 let Some(client) = n.link.upgrade() else {
                     for w in n.waiting.drain(..) {
-                        let _ = w.send(Vec::new());
+                        w.send(Vec::new()).discard(Why::PeerGone);
                     }
                     return;
                 };
                 let now = (n.sids.clone(), n.kept.clone());
                 if n.told.as_ref() == Some(&now) {
                     for w in n.waiting.drain(..) {
-                        let _ = w.send(Vec::new());
+                        w.send(Vec::new()).discard(Why::PeerGone);
                     }
                     return;
                 }
@@ -199,7 +200,7 @@ impl Desk {
                 }
             };
             for w in waiting {
-                let _ = w.send(from.clone());
+                w.send(from.clone()).discard(Why::PeerGone);
             }
             if !from.is_empty() {
                 (self.from)(from);

@@ -29,16 +29,8 @@ export async function askEnd(titles: readonly string[], ask: ConfirmFn = confirm
   return ask(endConfirm(titles, note));
 }
 
-/** 一条的结局：做成了 · 没成（那台那一句）· 跳过（那一格的 why）；`detail` ＝ 那台写的详情（复制详情用）。 */
-export interface EndRow {
-  title: string;
-  outcome: "done" | "failed" | "skipped";
-  why: string;
-  detail?: string;
-}
-
 /**
- * 一批会话的回包（`sessions-batch`）：那一句 · 逐条 · 复制详情由本机后端合好，这里只照摆（逐条进「消息」那一条，［查看］展开它）。
+ * 一批会话 · 一批终端的回包（`sessions-batch` · `terminals-end`）：那一句 · 逐条 · 复制详情由本机后端合好，这里只照摆（逐条进「消息」那一条，［查看］展开它）。
  * `undo` 给了（撤得回的批量：隐藏）⇒ 同一条上先［撤销］（`Ctrl Z` 同样），再［查看］。
  */
 export function sayReply(reply: Pick<SessionsBatchReply, "said" | "failed" | "lines" | "copyDetail">, undo?: { run: () => void; settle: () => void }): void {
@@ -48,38 +40,4 @@ export function sayReply(reply: Pick<SessionsBatchReply, "said" | "failed" | "li
   if (undo) undoToast(reply.said, undo.run, undo.settle, { level, more: reply.lines, detail: reply.copyDetail, ...(view ? { action: view } : {}) });
   else toast(reply.said, "", { level, more: reply.lines, action: view, detail: reply.copyDetail });
   made.rec = recentToasts()[0];
-}
-
-/**
- * 终端名单「结束所选」· 起会话占位［结束］的结局（手里是终端句柄，不是会话）：只有一条 ⇒ 点名那一条（已结束「…」/ 结束失败 · …，那台那一句）；
- * 几条 ⇒ 一句汇总（「已结束 k · 失败 ×m」），没成的 · 跳过的逐条（各自那一句）进「消息」那一条，［查看］展开它。
- */
-export function sayEnded(rows: readonly EndRow[]): void {
-  const only = rows.length === 1 ? rows[0] : undefined;
-  if (only?.outcome === "done") {
-    toast(copyText("sessionState.kill.done", { title: only.title }), "", { level: "success" });
-    return;
-  }
-  if (only?.outcome === "failed") {
-    toast(copyText("tabSessionActions.kill.failed", { title: only.title }), only.why, { detail: only.detail });
-    return;
-  }
-  const n = (k: EndRow["outcome"]): number => rows.filter((r) => r.outcome === k).length;
-  const done = n("done");
-  const failed = n("failed");
-  const lines = [
-    ...rows.filter((r) => r.outcome === "failed").map((r) => copyText("tabBatch.result.failedLine", { title: r.title, why: r.why })),
-    ...rows.filter((r) => r.outcome === "skipped").map((r) => copyText("tabBatch.result.skippedLine", { title: r.title, why: r.why })),
-  ];
-  // 复制详情：没成的那几条各一段（那一句 ＋ 那台写的详情），段间空一行；成了的不进。
-  const detail = rows
-    .filter((r) => r.outcome === "failed" && r.detail)
-    .map((r) => `${r.why}\n${r.detail}`)
-    .join("\n\n");
-  sayReply({
-    said: failed > 0 ? copyText("sessionState.batch.someFailed", { done, failed }) : copyText("sessionState.batch.done", { done }),
-    failed: failed > 0,
-    lines,
-    copyDetail: detail,
-  });
 }

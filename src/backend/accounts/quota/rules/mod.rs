@@ -5,7 +5,7 @@
 //! - [`decide`]：一判 —— 叫策略、照它交的先后做动作（纯函数：不读钟、不写盘）；
 //! - [`simulate`]：离散事件推演，节点 ＝ 判的那一串，用的是同一个 [`decide::turn`]；
 //! - [`code`]：策略的代码在沙箱里的 `decide(ctx)`（挂着积木库 `lib`）；
-//! - [`rollout`]：推演的原生内核（积木库里的 `lib::project_raw`）与号的动态；
+//! - [`rollout`]：推演的原生内核（积木库里的 `lib::project_raw` · `lib::rollout`）与号的动态；
 //! - [`book`]：`rotation.json`（会话载入的策略副本 · 临时动作 · memo · 叫醒 · 换号记录）。
 
 pub(crate) mod book;
@@ -39,6 +39,18 @@ pub(crate) struct Acct {
     pub(crate) weekly: bool,
     /// 别的会话压在 5 小时窗上的用速（点 / 分）：照会话算（[`crate::accounts::upstream_select::rotate::Hop::accts`]）；说不出 ⇒ 空。
     pub(crate) others: Option<f64>,
+    /// 这个号换窗时额度账记下的：周窗重置时剩几点 · 开窗取整往哪边（[`crate::accounts::upstream_select::rotate::Hop::with_past`]
+    /// 填）；没记到 ⇒ 空。只交给策略，判与推演不看它。
+    pub(crate) past: Past,
+}
+
+/// 一个号换窗的历史交给策略的那两样。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct Past {
+    /// 最近几次周窗重置时还剩几点（0–100，旧的在前）。
+    pub(crate) weekly_left_at_reset: Vec<f64>,
+    /// 5 小时窗开窗时刻取到格（[`super::ledger::GRID_STEP`] 秒）是往上（`true`）还是往下；说不出 ⇒ 空。
+    pub(crate) grid_up: Option<bool>,
 }
 
 /// 跟窗口无关的「用不了」。
@@ -76,6 +88,7 @@ impl Acct {
             per_pct: [f.w5h.tokens_per_pct, f.w7d.tokens_per_pct],
             weekly: f.weekly,
             others: None,
+            past: Past::default(),
         }
     }
 }

@@ -176,6 +176,7 @@ pub(crate) fn fact_of(
         per_pct: [w5h.tokens_per_pct, w7d.tokens_per_pct],
         weekly: r.is_some_and(|r| r.windows.iter().any(|x| slot_of(&x.name) == Some("7d"))),
         others: None,
+        past: Default::default(),
     };
     let blocked = (!standing::sendable(&a, now)).then(|| {
         let why = if a.refused_until.is_some() {

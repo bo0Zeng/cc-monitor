@@ -7,10 +7,8 @@
 //! 读的那几处（换号 · 起会话 · 账号清单）要的是盘上原样那一面：号表 [`Manifest::book`]（含账号 0 那一条，照清单顺序）。
 //! 这份文件全后端只经 `scan::manifest_at` 读（剥 BOM · 上限 · 版本闸在那里与这里），不另写解析器。
 
+use acct_core::BARE_ACCOUNT;
 use serde_json::{Map, Value};
-
-/// 账号 0 的名字（保留名：不许注册同名的号）。
-pub(crate) const ACCOUNT_ZERO: &str = acct_core::BARE_ACCOUNT;
 
 /// 一个具名的号。
 #[derive(Debug, Clone, PartialEq)]
@@ -225,7 +223,7 @@ impl Manifest {
             })
             .collect();
         let mut zero: Vec<(String, Value)> = vec![
-            ("name".into(), Value::from(ACCOUNT_ZERO)),
+            ("name".into(), Value::from(BARE_ACCOUNT)),
             ("email".into(), Value::from(zero_email)),
             ("isDefault".into(), Value::from(false)),
             ("mode".into(), Value::from("bare")),
@@ -309,7 +307,7 @@ impl Manifest {
             }
         }
         if m.zero_color.is_none() {
-            m.zero_color = Some(pick(ACCOUNT_ZERO));
+            m.zero_color = Some(pick(BARE_ACCOUNT));
         }
         m
     }
@@ -356,7 +354,7 @@ impl Manifest {
 
 /// 账号 0 那一条：名字是 `0`、没有 `configDir` 键（写时合成的，读回时丢掉）。
 fn is_zero_entry(v: &Value) -> bool {
-    v.get("name").and_then(Value::as_str) == Some(ACCOUNT_ZERO) && v.get("configDir").is_none()
+    v.get("name").and_then(Value::as_str) == Some(BARE_ACCOUNT) && v.get("configDir").is_none()
 }
 
 /// 一条认得出来的号；名字 / 配置目录过不了规矩 ⇒ `None`（整条原样留着）。

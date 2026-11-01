@@ -142,7 +142,39 @@ impl RecordExt for Record {
             .as_deref()
             .and_then(|a| crate::common::time::iso_hm(a, tz))
             .map(crate::common::cells::Words);
+        let time = self.time_text.as_ref().map_or("", |w| w.0.as_str());
+        if let Body::Said { who, .. } = &mut self.body {
+            if let cmd_wire::record::Speaker::TaskNotification {
+                task_id,
+                summary,
+                end,
+                row,
+                ..
+            } = &mut who.speaker
+            {
+                *row = Some(crate::common::cells::Words(notice_row(
+                    summary.as_deref().or(task_id.as_deref()).unwrap_or("?"),
+                    *end,
+                    time,
+                )));
+            }
+        }
     }
+}
+
+/// 收场通知那一行（「后台任务 {做的事} {怎么收场} · {钟面}」）：只在出口写这一处。
+fn notice_row(what: &str, end: Option<cmd_wire::record::TaskEnd>, time: &str) -> String {
+    use cmd_wire::record::TaskEnd;
+    let state = match end {
+        Some(TaskEnd::Done) => copy_core::copy_text("runs.state.done", &[]),
+        Some(TaskEnd::Failed) => copy_core::copy_text("runs.state.failed", &[]),
+        Some(TaskEnd::Stopped) => copy_core::copy_text("runs.state.stopped", &[]),
+        None => copy_core::copy_text("runs.state.unknown", &[]),
+    };
+    copy_core::copy_text(
+        "speaker.notice.row",
+        &[("what", what), ("state", &state), ("time", time)],
+    )
 }
 
 /// 后端造 / 认记录类别那一侧（形状在 `cmd-wire`）。

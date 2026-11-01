@@ -3,6 +3,7 @@
 //! 等的一方交「认它的那一格 ＋ 只认哪个序号之后报到的」，见到了当场交回 sid。不起线程、不定时。
 
 use cmd_wire::session::ArriveBy;
+use copy_core::discard::{Discard, Why};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -38,7 +39,7 @@ pub(crate) fn hit(by: &ArriveBy, since: u64, sid: &str, n: u64, cwd: Option<&str
 fn tell(t: &Tell, sid: &str) {
     if let Some(tx) = t.lock().unwrap_or_else(|e| e.into_inner()).take() {
         // 等的那一头可能已经到期限撤了：没人要这一声。
-        let _ = tx.send(sid.to_string());
+        tx.send(sid.to_string()).discard(Why::PeerGone); // 报到了：等的那一侧可能已经到期限撤了，没人要这一声
     }
 }
 
