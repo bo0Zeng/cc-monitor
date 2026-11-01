@@ -365,7 +365,7 @@ const UI_ONLY_WHY: &[(&str, &str)] = &[
     ),
 ];
 
-/// ★ P4d-Y1：帧面的每一条命令，**要么有 CLI 入口，要么在 [`NOT_ON_CLI`] 里写明为什么没有**。
+/// ★ 帧面的每一条命令，**要么有 CLI 入口，要么在 [`NOT_ON_CLI`] 里写明为什么没有**。
 ///
 /// 钉的是**集合**，不是「加了 `--launch`」—— 后者选哪几条是我的主观，前者是数据对数据的镜子：
 /// 以后帧面加一条命令，CLI 面不跟、又不写理由，这里就红。
@@ -423,7 +423,7 @@ fn every_wire_command_is_either_on_the_cli_or_has_a_written_reason() {
     );
 }
 
-/// ★ P4d-Y1 的另一半：**CLI 入口不许自己实现命令**。
+/// ★ 上一条的另一半：**CLI 入口不许自己实现命令**。
 ///
 /// 上一条钉的是「集合对上了」，钉不住「它跑的是同一个函数」—— CLI 分支里自己拼一套
 /// tmux 调用，集合照样对得上。所以这里钉**数据流**：本模块的生产段
@@ -450,7 +450,7 @@ fn the_cli_entry_never_names_a_concrete_handler() {
     );
 }
 
-/// ★ P4d-Y2：探测口报的命令集合 **== 它真能派发的集合**。
+/// ★ 探测口报的命令集合 **== 它真能派发的集合**。
 ///
 /// 失效方式很具体：有人在 `probe()` 里手抄一份清单。那样加命令时它不报错，
 /// 只是**开始说谎** —— 而 skill 按它的话决定走不走新路 ⇒ 静默降级，没有任何报错。
@@ -569,7 +569,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     );
 }
 
-/// ★ P4d-Y4：帧入口那条安全边界的**理由**不许被搬到这里。
+/// ★ 帧入口那条安全边界的**理由**不许被搬到这里。
 ///
 /// 钉的不是「有没有写边界」（写段散文最容易过），而是**那句借来的依据不许出现** ——
 /// 逼下一个人写他自己的理由。
@@ -589,7 +589,7 @@ fn the_cli_entry_does_not_borrow_the_frame_entrys_boundary_reason() {
     }
     assert!(
         raw.contains("§安全边界"),
-        "本模块没有 `§安全边界` 那一节 —— P4d-Y4 要求 CLI 入口写下它自己的理由"
+        "本模块没有 `§安全边界` 那一节 —— CLI 入口要写下它自己的理由"
     );
 }
 
@@ -1364,7 +1364,7 @@ fn the_cli_deadline_option_refuses_like_the_other_options_and_reads_like_the_fra
 }
 
 /// ★ 一次性调一条要入参的命令却什么都没给（例：`--history-page` 不带 stdin）：失败信封的那一句照旧是「请求格式不对」，
-/// 复制详情里说出缺的是什么（哪一格 · 什么形状）—— 从前只记一行日志，信封里只有时刻 · 机器 · 命令 · 码，看的人不知道缺了什么。
+/// 复制详情里说出缺的是什么（哪一格 · 什么形状）—— 只记一行日志的话，信封里只有时刻 · 机器 · 命令 · 码，看的人不知道缺了什么。
 #[test]
 fn a_one_shot_without_its_args_says_what_is_missing_in_the_detail() {
     let (rc, _, err) = run_cli(&strs(&["--history-page"]), std::io::empty());

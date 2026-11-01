@@ -23,12 +23,11 @@
 /// 调换两行，客户端**按应答办事**地复用 id 会被后端拒掉 —— 一个只在时序上出现、
 /// 客户端侧无从解释的失败。
 ///
-/// # 这条透镜（08-08「顺序」类声称）的结果一并记在这里
+/// # 「顺序」类声称这条透镜的结果一并记在这里
 ///
-/// 全仓生产段扫出 31 处「顺序」声称，逐个查过：`launch.rs` 三条（`SendInto` /
-/// 裸键那一支〔RST 续：已删〕/ `CreateOrAttach`）· `kill.rs` 的门在 kill 之前 · `payload.rs` 的
-/// `cd` 位次（逐字节 golden 对拍抓过一次）· `sanitize` 先于 `wrap`（F54 已钉接线）·
-/// `fs.rs` 先看长度再读（F06）——**都已经有判据**。
+/// 全仓生产段的「顺序」声称逐个查过：`launch.rs`（`SendInto` / `CreateOrAttach`）·
+/// `kill.rs` 的门在 kill 之前 · `payload.rs` 的 `cd` 位次（逐字节 golden 对拍）·
+/// `sanitize` 先于 `wrap` · `fs.rs` 先看长度再读 ——**都已经有判据**。
 /// **只有这一条没有**：实测把两行对调，backend 294 条一条不红。
 #[test]
 fn the_handle_is_deregistered_before_the_reply_goes_out() {
@@ -59,12 +58,12 @@ fn the_handle_is_deregistered_before_the_reply_goes_out() {
     // （新 task 什么时候跑没人保证）。**锚错了边**：要找的是它们之间有没有**块边界**。
     // ⚠ **不写含大括号的字面量**：本文件被 `readonly_guard` 的括号配平扫描读，
     // 一个不配对的右大括号会把配平提前收尾、让它误报「测试段泄漏进生产段」——
-    // F27 就是这个形状（警告文本自己触发了它警告的那件事），08-08 我又踩了一次。
+    // 警告文本自己触发它警告的那件事。
     // 改判「摘登记那句的分号之后、回应答之前，除空白外什么都不许有」：
     // 同一段顺序代码里这两句是紧挨着的，一旦中间插进块结尾或别的语句，它就非空。
     let between = &src[remove_at..send_at];
     // 判「紧挨着」用**行数**：两个锚点必须落在相邻两行上。
-    // （08-08 先写成「分号之后除空白外什么都不许有」，红在 `let _ =` 那半个绑定上 ——
+    // （「分号之后除空白外什么都不许有」会红在 `let _ =` 那半个绑定上 ——
     //  那是把「同一段代码」这个事实说窄了。）
     let gap = between.matches('\n').count();
     assert!(
@@ -80,21 +79,21 @@ fn the_handle_is_deregistered_before_the_reply_goes_out() {
 fn the_backend_runtime_keeps_more_than_one_worker() {
     let src = include_str!("../../../src/backend/main.rs");
     let prod = guard_core::production_code(src);
-    // 运行时拼：写成字面量会命中本条自己的诊断文案（F58/F62 记过）。
-    // ⚠ **两种单 worker 写法都要认**。第一版只认 `current_thread`，
-    //   而 `#[tokio::main(worker_threads = 1)]` 是等价的另一种 —— 变异当场证伪
-    //   （本会话反复的那个病：判据锚在**一种写法**上）。
-    //   这次能枚举是因为 tokio 的 runtime 属性是**封闭上游 API**：
-    //   限成单 worker 只有这两条路，版本升级才会变、变了编译期就报（同 F43 的理由）。
+    // 运行时拼：写成字面量会命中本条自己的诊断文案。
+    // ⚠ **两种单 worker 写法都要认**：只认 `current_thread` 的话，
+    //   `#[tokio::main(worker_threads = 1)]` 是等价的另一种 —— 变异当场证伪
+    //   （判据锚在**一种写法**上）。
+    //   能枚举是因为 tokio 的 runtime 属性是**封闭上游 API**：
+    //   限成单 worker 只有这两条路，版本升级才会变、变了编译期就报。
     let single_forms = [
         format!("current{}thread", "_"),
         format!("worker_threads{}= 1", " "),
     ];
     // ⚠ 自检只问「有没有起 runtime 这件事」，**不问它是不是裸的** ——
-    //   后者是主断言的活。第一版自检写成 `contains("#[tokio::main]")`，
-    //   于是「改成单 worker」这一刀先撞上它，红出来的话是
+    //   后者是主断言的活。自检写成 `contains("#[tokio::main]")` 的话，
+    //   「改成单 worker」这个变异先撞上它，红出来的话是
     //   「找不到裸 attr，抽取器可能坏了」 —— **红对了位置、讲错了成因**
-    //   （F42/F53 记过两次的同一形态：两条判据抢同一个变异，先响的讲错话）。
+    //   （两条判据抢同一个变异，先响的讲错话）。
     assert!(
         prod.contains("tokio::main"),
         "`main.rs` 生产段里找不到 `tokio::main` —— runtime 的起法整个变了，\
@@ -106,7 +105,7 @@ fn the_backend_runtime_keeps_more_than_one_worker() {
             l.contains("tokio::main") && single_forms.iter().any(|f| l.contains(f.as_str()))
         })
         .collect();
-    // 匹配器自检：**独立手写**的样本，不用 needle 自己拼（F43 的纪律）。
+    // 匹配器自检：**独立手写**的样本，不用 needle 自己拼。
     for sample in [
         "#[tokio::main(flavor = \"current_thread\")]",
         "#[tokio::main(worker_threads = 1)]",
@@ -403,9 +402,9 @@ async fn an_oversized_line_does_not_grow_memory() {
 
     // 量具：**本线程**「已分配未释放」字节数的高水位，见 `crate::alloc_probe`。
     //
-    // ⚠ 这里曾经读 `/proc/self/status` 的 `VmHWM`，那是**进程级**的，
-    //   而 `cargo test` 在同一进程内并行跑测试 ⇒ 邻居的一次性大分配被算进来
-    //   ⇒ 本条在 F07/F09/F11/F18 四件里各制造过一次假红。换线程级量具后成因消失。
+    // ⚠ 不读 `/proc/self/status` 的 `VmHWM`：那是**进程级**的，
+    //   而 `cargo test` 在同一进程内并行跑测试 ⇒ 邻居的一次性大分配被算进来 ⇒ 假红。
+    //   线程级量具没有这个成因。
     //   走过的弯路（「跑两遍只判第二遍」为什么是哑的）记在 `alloc_probe` 头注里。
     //
     // ⚠ 必须量**峰值**不是终值：那块 buffer 在 reader 返回前就 drop 了，
@@ -449,17 +448,17 @@ fn req(id: &str, cmd: &str) -> Request {
     }
 }
 
-/// ★★ `KR104D1` ③ 的**总伞**：注册表里每一条命令，走**真的 `dispatch`**
+/// ★★ **总伞**：注册表里每一条命令，走**真的 `dispatch`**
 /// 都必须落到它自己的处理器上 —— 一条都不许落进 `unknown_command`。
 ///
 /// # 它买到什么，而上面那条买不到
 ///
 /// 上面那条按**手写清单**（`covered`）逐条表态，清单漏一条它就漏一条；
 /// 本条的发现机制是**遍历 `REGISTRY`** ⇒ 加一条命令，本条**自动**盖到它，
-/// 不需要任何人来这里写名字。这正是 `K-R102` 问的那句「要不要有一把总的」——
+/// 不需要任何人来这里写名字。「要不要有一把总的」——
 /// 在帧面上答案是**要，而且很便宜**：注册表是数据，遍历一遍就是全集。
 ///
-/// # 它逮的那一形（`K-R102` 记的那个盲区）
+/// # 它逮的那一形（手写清单的盲区）
 ///
 /// 「表里有、分派到不了」。CLI 那面之所以逮不住，是因为它的判据**数字面量**，
 /// 而表自己就住在生产段里 ⇒ 同一次扫描里「表里有」与「源码里有」同时成立。
@@ -1246,7 +1245,7 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
         )),
         r#"{"acts":["retry","recapture"],"result":"refused","said":"画面已变","screen":"0000000000000000","why":"screen_changed"}"#
     );
-    // 输入在别的一端手里（画了之后才被抢走那一刻）：没有下一步 —— 按键照名单 / 实时流的 `mine` 灰着，接管走［接管输入］（A3-3-32-6）。
+    // 输入在别的一端手里（画了之后才被抢走那一刻）：没有下一步 —— 按键照名单 / 实时流的 `mine` 灰着，接管走［接管输入］。
     assert_eq!(
         wire(&t::input_reply(
             SentResult::Refused,
@@ -1293,7 +1292,7 @@ mod erased_wire {
     }
 }
 
-/// ★ 终端那三条只收它们真用得上的那几格（`terminal-input` 不再收 `take`：「接管再送」那一支删了，A3-3-32-6）。
+/// ★ 终端那三条只收它们真用得上的那几格（`terminal-input` 不收 `take`：没有「接管再送」那一支）。
 /// 多送一格 · 类型不对 ⇒ `bad_args`，在解入参那一步就回（碰 tmux 之前），
 /// 多出来的那一格诊断里点名（类型不对的那一种，解码器那一句不带格名，只比码）。
 #[test]
