@@ -12,8 +12,13 @@
 /// 诊断进复制详情的「原话」那一行 —— 看的人知道缺的是哪一格、要什么形状，不必去翻那台的日志。
 /// 失败信封（`wire::detail::Failed` · `wire::spec::fail`）只经 `parts` 拆；没有诊断 ⇒ 原样。
 /// 反方向（那一句 ＋ 原话 ⇒ 一串，`joined`）与分隔字符同住那一处。
-pub(crate) use ssh_dial::{joined, malformed, parts};
+pub use ssh_dial::{joined, malformed, parts};
+
+// 判据读「契约错记进日志的那条诊断」的 `tests::diag`：本包与上层各族的测试档共用。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../tests/backend/common/contract_support.rs"]
+pub mod tests;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/common/contract_tests.rs"]
-pub(crate) mod tests; // `pub(crate)`：判据读「契约错记进日志的那条诊断」的 `tests::diag` 给各族单测共用
+mod judges;

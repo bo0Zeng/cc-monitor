@@ -87,8 +87,9 @@ workspace = true
 
 [features]
 # 截图台架那一档（`tests/shots/real/pool.mjs` 编）：「现在」从台架交的时刻接着走（`common::time::shots_clock`）。
+# 拨钟那一段住 `backend-common`，这里只转给它。
 # 发版 / CI / 门禁里不许开（判据 `one_clock_guard` · 壳那一侧 `shots_feature_guard_tests::s3`）。
-shots = []
+shots = ["backend-common/shots"]
 
 [dependencies]
 # 第三方 crate 一律 `<名>.workspace = true`：版本与缺省 feature 只住本文件末尾的 `[workspace.dependencies]`
@@ -97,6 +98,10 @@ serde.workspace = true
 serde_json.workspace = true
 # 本 crate 里平台原语那一层（唯一许平台原语与平台 cfg 的地方）。
 backend-platform = { path = "platform" }
+# 两边都要、又不含平台原语的纯工具那一层（只引平台层）。
+backend-common = { path = "common" }
+# 插件通用调用口（只引平台层）。
+backend-plugin = { path = "plugin" }
 # 中转（通信层面 B，搬字节那一层）：本 crate 是它的宿主 —— 绑口、钥匙、期限、上游选择都由这里交进去。
 comms-outward = { path = "../comms/outward" }
 # 上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）；非业务 crate ⇒ 通信层成员可以用它（C2）。
@@ -268,6 +273,8 @@ ts-rs.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 # 平台层只给测试用的那几样（判据看要起的命令 · 私有 tmux server · 起子进程前那一道落到空 socket 目录）＋ 它那几个线上类型的 TS 派生。
 backend-platform = { path = "platform", features = ["test-support", "ts"] }
+# 纯工具那一层只给测试用的那几样（契约错的诊断 · 整份读按块的夹具 · 脚本化的会话快照）＋ 它那几个线上类型的 TS 派生。
+backend-common = { path = "common", features = ["test-support", "ts"] }
 # 量具（线程级内存 · 金样 · 听 `tracing` 说了什么）：只在 dev 侧的包。
 test-meters = { path = "test-meters" }
 
@@ -287,7 +294,7 @@ strip = true
 # 同一份 lock、同一个 russh（crates.io 上游那一份，各成员的版本声明对齐 ⇒ lock 里只一块）；两份的判据由 `cargo test --workspace` 跑。
 # 缺省成员只有本包（`cargo build` / `cargo test` 不带 `-p` 时照旧只管后端）。
 [workspace]
-members = [".", "platform", "test-meters", "ssh-dial", "deploy", "egress", "../mobile/core-rs/rust"]
+members = [".", "platform", "common", "plugin", "test-meters", "ssh-dial", "deploy", "egress", "../mobile/core-rs/rust"]
 default-members = ["."]
 
 # 两条 lint 全工作区一样（主 crate 与 `backend-*` 都写 `lints.workspace = true`）。

@@ -14,7 +14,7 @@ const DIFF_LINE_MAX: usize = 2000;
 const DIFF_CELLS_MAX: usize = 4_000_000;
 
 /// 一行正文进行差的样子：去掉行尾的 `\r`，过长截到 [`DIFF_LINE_MAX`] 字。
-pub(crate) fn cell(text: &str) -> String {
+pub fn cell(text: &str) -> String {
     let t = text.strip_suffix('\r').unwrap_or(text);
     match t.char_indices().nth(DIFF_LINE_MAX) {
         Some((i, _)) => format!("{}…", &t[..i]),
@@ -24,7 +24,7 @@ pub(crate) fn cell(text: &str) -> String {
 
 /// 攒好的行 ＋ 整份的增删数 ⇒ 行差：收着画几行。`stat` ＝「+N −M」那一句（调用方照过程那一行右侧那一句的写法给）；
 /// `notice` ＝ 降级了的那一句（[`ops`] 超了格数上界时写的），照带。
-pub(crate) fn assemble(
+pub fn assemble(
     rows: Vec<LineDiffRow>,
     added: u32,
     removed: u32,
@@ -47,7 +47,7 @@ pub(crate) fn assemble(
 /// 一样 ⇒ 全是没变；改前空 ⇒ 全是加的；改后空 ⇒ 全是删的；行数之积超了 [`DIFF_CELLS_MAX`] ⇒ 整删 ＋ 整增，连降级那一句；
 /// 余下按最长公共子序列（迭代的表 ＋ 迭代回溯，上千行不靠调用栈），同长时删的排在加的前面。
 /// 第二格 ＝ 降级那一句（没降级 ⇒ `None`）。
-pub(crate) fn ops(old: &str, new: &str) -> (Vec<(LineDiffKind, String)>, Option<Words>) {
+pub fn ops(old: &str, new: &str) -> (Vec<(LineDiffKind, String)>, Option<Words>) {
     let norm = |s: &str| {
         let t = s.replace("\r\n", "\n").replace('\r', "\n");
         match t.strip_suffix('\n') {

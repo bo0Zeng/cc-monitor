@@ -1084,6 +1084,8 @@ fn module_path(
         "src/frontend/shell/src/",
         "src/frontend/filewin/src/",
         "src/backend/platform/",
+        "src/backend/common/",
+        "src/backend/plugin/",
         "src/backend/test-meters/",
         "src/backend/",
     ];

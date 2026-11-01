@@ -42,9 +42,11 @@ esac
 # 后端那棵 workspace 的包 → 编进它的路径（git 路径规格，空格分隔）
 #   每个后端成员一行（路径照它的目录）；主 crate 那一行排除拆出去的那几个包的目录。
 # shellcheck disable=SC2034  # 两张包表都经 clippy_step 的 nameref 读
-clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/ssh-dial/ :(exclude)src/backend/deploy/ :(exclude)src/backend/egress/ :(exclude)src/backend/platform/ :(exclude)src/backend/test-meters/"
+clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/ssh-dial/ :(exclude)src/backend/deploy/ :(exclude)src/backend/egress/ :(exclude)src/backend/platform/ :(exclude)src/backend/common/ :(exclude)src/backend/plugin/ :(exclude)src/backend/test-meters/"
   "backend-platform:src/backend/platform/ tests/backend/platform/ tests/backend/tmux_sandbox.rs"
-  "test-meters:src/backend/test-meters/ tests/backend/alloc_probe.rs tests/backend/alloc_probe_tests.rs tests/backend/golden.rs"
+  "backend-common:src/backend/common/ tests/backend/common/ tests/backend/heard.rs"
+  "backend-plugin:src/backend/plugin/ tests/backend/plugin/ tests/backend/plugin_layer_guard.rs"
+  "test-meters:src/backend/test-meters/ tests/backend/alloc_probe.rs tests/backend/alloc_probe_tests.rs tests/backend/golden.rs tests/backend/heard.rs"
   "ssh-dial:src/backend/ssh-dial/" "deploy:src/backend/deploy/" "egress:src/backend/egress/" "mobcore:src/mobile/core-rs/rust/")
 # 壳那棵 workspace 里带禁用名单的包 → 编进它的路径（连它读的那份 clippy.toml）
 # shellcheck disable=SC2034
