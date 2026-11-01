@@ -15,7 +15,7 @@ pub fn offset_secs(t: u64) -> Option<i64> {
 
 /// Windows 那一臂住 [`super::win_tz`]（整份文件按平台选进来）。
 #[cfg(windows)]
-pub(crate) use super::win_tz::offset_secs;
+pub use super::win_tz::offset_secs;
 
 /// 这台机器的时区叫什么（IANA 名，例：`America/Los_Angeles`）：`TZ` 是 IANA 名 ⇒ 它；不然看 `/etc/localtime` 指向 zoneinfo 里的哪一份。
 /// 说不出（`TZ` 是 POSIX 串 · 没有那条链 · Windows）⇒ `None`：调用方说「时区不明」，不猜成 UTC。全后端只这一处取。
