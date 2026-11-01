@@ -12,10 +12,10 @@
 //! - **F50**：追加公钥到远端 `~/.ssh/authorized_keys`：本机常驻后端的帧命令 `pubkey-push`（不在本模块，登记于此备查）。
 
 use crate::detail::Shell as _;
-use cmd_wire::failed::Failed;
-use copy_core::said::Said;
 use cmd_wire::deploy::{ActionTag, DeployInstallReq, DeployUninstallReq, Installed, SlotRow};
+use cmd_wire::failed::Failed;
 use copy_core::copy_text;
+use copy_core::said::Said;
 
 /// 等那一趟的上限：问几次那台 ＋ 推一份 MB 级的字节 ＋ 读回。
 const INSTALL_BUDGET: std::time::Duration = std::time::Duration::from_secs(600);

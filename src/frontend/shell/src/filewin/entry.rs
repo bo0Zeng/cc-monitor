@@ -39,8 +39,8 @@
 //! 逐条理由住 [`open_file_window`] 的 `# 🔴` 那一节。
 
 use crate::detail::Shell as _;
-use copy_core::said::Said;
 use copy_core::copy_text;
+use copy_core::said::Said;
 
 use super::proc::{open_in_new_process, OpenRequest, ProcFail, Unopened};
 
@@ -212,9 +212,7 @@ pub(crate) async fn open_with(
     //      各自带着自己的原因），**不许**退回同进程开一个。
     let opened = tokio::task::spawn_blocking(move || open_in_new_process(&req, late))
         .await
-        .map_err(|e| {
-            Said::with_raw(copy_text("rsFilewinEntry.open.crashed", &[]), e)
-        })?;
+        .map_err(|e| Said::with_raw(copy_text("rsFilewinEntry.open.crashed", &[]), e))?;
     let (pid, n) = opened.map_err(unopened_said)?;
     tracing::info!("文件窗口起在进程 {pid} 上（第一屏 {n} 行，它自己列的）");
     Ok(n)

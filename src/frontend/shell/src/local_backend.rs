@@ -67,8 +67,8 @@
 //! 被强插 `-L` —— **显式选择器压得过 `$TMUX`**。
 
 use crate::detail::Shell as _;
-use copy_core::said::Said;
 use copy_core::copy_text;
+use copy_core::said::Said;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};

@@ -7,8 +7,8 @@
 //! 日志页那一行「未识别数据 · …」读同一份答复里的数（不另起一个数）。
 
 use crate::detail::Shell as _;
-use copy_core::said::Said;
 use copy_core::copy_text;
+use copy_core::said::Said;
 use serde::{Deserialize, Serialize};
 
 /// 界面交来的一台的记录账（`drift-merge` 回包里那一行原样：那台 `drift-report` 的应答；读不到 ⇒ `null`）。

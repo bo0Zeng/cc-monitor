@@ -13,8 +13,8 @@
 //! ⚠ **不是「工具函数堆」** —— 只放「同一件事在两个平台上做法不同」的那种原语。
 //! 纯逻辑（路径拼接、命名规则）不许进来：那些在 backend 里就能测，搬进来反而丢了可测性。
 
-use copy_core::said::Said;
 use copy_core::copy_text;
+use copy_core::said::Said;
 use std::path::Path;
 
 /// 置可执行位。

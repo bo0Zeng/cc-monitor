@@ -238,21 +238,47 @@ fn one_failure_detail_is_laid_out_the_same_for_the_backend_and_the_shell() {
     );
     // 后端一趟跑起来之后才停下：没有码。
     assert_eq!(
-        failure(at, Host::Machine("m"), Some("remote-probe"), None, Some("boom")),
+        failure(
+            at,
+            Host::Machine("m"),
+            Some("remote-probe"),
+            None,
+            Some("boom")
+        ),
         format!("时刻：{at}\n机器：m\n命令：remote-probe\n原话：boom")
     );
     // 壳自己的错：本机那一行代替机器；命令在码与原话之前。
     assert_eq!(
-        failure(at, Host::Local("cc-monitor 4 (b1) · Linux x86_64"), Some("open_log_dir"), None, Some(raw)),
-        format!("时刻：{at}\n本机：cc-monitor 4 (b1) · Linux x86_64\n命令：open_log_dir\n原话：{raw}")
+        failure(
+            at,
+            Host::Local("cc-monitor 4 (b1) · Linux x86_64"),
+            Some("open_log_dir"),
+            None,
+            Some(raw)
+        ),
+        format!(
+            "时刻：{at}\n本机：cc-monitor 4 (b1) · Linux x86_64\n命令：open_log_dir\n原话：{raw}"
+        )
     );
     assert_eq!(
-        failure(at, Host::Local("l"), Some("load_config"), Some("2"), Some("os error 2")),
+        failure(
+            at,
+            Host::Local("l"),
+            Some("load_config"),
+            Some("2"),
+            Some("os error 2")
+        ),
         format!("时刻：{at}\n本机：l\n命令：load_config\n码：2\n原话：os error 2")
     );
     // 壳只有一句话：时刻 · 本机 · 命令；空白的值不出。
     assert_eq!(
-        failure(at, Host::Local("l"), Some("load_config"), Some("  "), Some("")),
+        failure(
+            at,
+            Host::Local("l"),
+            Some("load_config"),
+            Some("  "),
+            Some("")
+        ),
         format!("时刻：{at}\n本机：l\n命令：load_config")
     );
 }

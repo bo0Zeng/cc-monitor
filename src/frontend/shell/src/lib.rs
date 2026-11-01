@@ -30,8 +30,8 @@ mod backend_policy;
 // 通信层面 A 是 crate `comms_inward`（住 `src/comms/inward/`）：`origin` · 分流这里再导出、路径不变；
 //   `origin` 那份判据（含 monitor 这一侧的「origin 归一」棘轮）照旧挂在 monitor 里（`origin_tests` 见下）。
 use crate::detail::Shell as _;
-use copy_core::said::Said;
 use comms_inward::{backend_route, origin};
+use copy_core::said::Said;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/backend_route_senders_tests.rs"]
 mod backend_route_senders_tests; // 每个走后端的发送端都经那一份分流规则（遍历 monitor 源码树）

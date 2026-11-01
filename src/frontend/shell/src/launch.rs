@@ -14,8 +14,8 @@
 //! - **PowerShell 层**（本模块）：全命令体经 `-EncodedCommand`（base64）穿 wt.exe（`;` 分 tab 不会切碎）。
 
 use crate::detail::Shell as _;
-use copy_core::said::Said;
 use copy_core::copy_text;
+use copy_core::said::Said;
 
 /// 远端命令长度上限（防 IPC 侧异常输入；正常 resume 命令 <300 字节）。
 const MAX_REMOTE_CMD: usize = 4096;

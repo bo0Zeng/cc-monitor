@@ -73,20 +73,43 @@ fn a_shell_command_failure_is_one_shape_with_a_nonempty_detail() {
     assert_eq!(f.code, copy_core::said::FALLBACK_CODE);
     let lines: Vec<&str> = f.detail.lines().collect();
     assert_eq!(lines.len(), 4, "{}", f.detail);
-    assert!(lines[0].starts_with(&format!("{}：", label("detail.label.at"))), "{}", f.detail);
-    assert_eq!(lines[1], format!("{}：{}", label("detail.label.local"), local_line()));
-    assert_eq!(lines[2], format!("{}：load_config", label("detail.label.command")));
-    assert_eq!(lines[3], format!("{}：os error 2", label("detail.label.raw")));
+    assert!(
+        lines[0].starts_with(&format!("{}：", label("detail.label.at"))),
+        "{}",
+        f.detail
+    );
+    assert_eq!(
+        lines[1],
+        format!("{}：{}", label("detail.label.local"), local_line())
+    );
+    assert_eq!(
+        lines[2],
+        format!("{}：load_config", label("detail.label.command"))
+    );
+    assert_eq!(
+        lines[3],
+        format!("{}：os error 2", label("detail.label.raw"))
+    );
     let v = serde_json::to_value(&f).unwrap();
     let keys: std::collections::BTreeSet<&str> =
         v.as_object().unwrap().keys().map(String::as_str).collect();
     assert_eq!(keys, ["code", "detail", "said"].into(), "{v}");
     // 带码的那一形：码进 `code` 与详情「码」那一项（命令之后、原话之前）。
-    let coded = Said::with_raw("x".into(), "boom").coded("2").named("open_log_dir");
+    let coded = Said::with_raw("x".into(), "boom")
+        .coded("2")
+        .named("open_log_dir");
     assert_eq!(coded.code, "2");
     let at = |k: &str| coded.detail.find(&format!("{}：", label(k))).unwrap();
-    assert!(at("detail.label.command") < at("detail.label.code"), "{}", coded.detail);
-    assert!(at("detail.label.code") < at("detail.label.raw"), "{}", coded.detail);
+    assert!(
+        at("detail.label.command") < at("detail.label.code"),
+        "{}",
+        coded.detail
+    );
+    assert!(
+        at("detail.label.code") < at("detail.label.raw"),
+        "{}",
+        coded.detail
+    );
 }
 
 /// 问后端一条命令没成：后端答了失败 ⇒ 它交来的那一份原样（码 · 详情 · `data`，壳不拆、不补）；
@@ -105,7 +128,11 @@ fn a_backend_call_failure_is_handed_on_as_the_backend_wrote_it() {
         detail: wrote.clone(),
         data: Some(serde_json::json!({"k": 1})),
     };
-    let f = of_call("box 系统未知".into(), "deploy-plan", &CallError::Remote(theirs.clone()));
+    let f = of_call(
+        "box 系统未知".into(),
+        "deploy-plan",
+        &CallError::Remote(theirs.clone()),
+    );
     assert_eq!(f, theirs, "后端那一份原样");
     let f = of_call("y".into(), "deploy-plan", &CallError::Disconnected);
     assert_eq!(f.said, "y");
@@ -127,7 +154,10 @@ fn a_backend_call_failure_is_handed_on_as_the_backend_wrote_it() {
 /// 换一句给人看的话：码 · 原话照旧。
 #[test]
 fn restating_keeps_the_code_and_the_raw_words() {
-    let s = Said::restate("外层".into(), Said::with_raw("里层".into(), "boom").coded("c"));
+    let s = Said::restate(
+        "外层".into(),
+        Said::with_raw("里层".into(), "boom").coded("c"),
+    );
     assert_eq!(s.said, "外层");
     assert_eq!(s.raw(), "boom");
     assert_eq!(s.code.as_deref(), Some("c"));

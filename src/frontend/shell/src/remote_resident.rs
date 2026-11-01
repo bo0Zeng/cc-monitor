@@ -4,10 +4,10 @@
 //!   拿回 `graceful | killed | not_running`。本机那一趟（`local_backend_host::run_resident_stop`）读 `--resident-stop` 那一行，读法同循环那一份。
 
 use crate::detail::Shell as _;
-use copy_core::said::Said;
 use cmd_wire::machine::{MachineStopReq, MachineStopped};
 use cmd_wire::Call;
 use copy_core::copy_text;
+use copy_core::said::Said;
 
 /// 等它的上限：那台自己的宽限期 ＋ 强杀后再等的那一段 ＋ 拨号都得在这里头
 /// （`remote_resident_tests::the_stop_budget_outlasts_the_remote_stop` 现抠后端两个毫秒字面量比）。

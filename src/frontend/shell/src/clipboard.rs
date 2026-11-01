@@ -7,8 +7,8 @@
 //!   两样都没有 ⇒ 回错（界面走「就地展开全选」）。X11 上内容由持有者那一侧供给，所以那份句柄常驻进程，不随一次写丢掉。
 
 use crate::detail::Shell as _;
-use copy_core::said::Said;
 use copy_core::copy_text;
+use copy_core::said::Said;
 use std::sync::Mutex;
 
 /// 常驻的那份句柄（第一次写时建；写失败就丢掉，下一次重建 —— 合成器 / X 服务器换了也接得上）。

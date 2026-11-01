@@ -24,9 +24,9 @@
 //! ⇒ 代码里引 charter **一律带工作区名**，裸编号在几个月后没人分得清指哪一条。
 
 use crate::detail::Shell as _;
-use copy_core::said::Said;
 use crate::local_backend::{self, Resolved, SuperviseHandle};
 use copy_core::copy_text;
+use copy_core::said::Said;
 
 /// F05a：本机后端监护句柄。存起来是为了退出前按策略 `stop()`（`C8`）。
 ///

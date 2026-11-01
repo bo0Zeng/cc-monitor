@@ -16,8 +16,8 @@
 //! - WebView2 UserDataFolder 推断路径（基于 Tauri 默认约定）
 
 use crate::detail::Shell as _;
-use copy_core::said::Said;
 use copy_core::copy_text;
+use copy_core::said::Said;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};

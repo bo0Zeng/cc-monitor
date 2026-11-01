@@ -50,8 +50,8 @@
 //! - WorkerGuard drop 才会 flush 缓冲 → 必须挂在 state 上（与 app 同生命周期）
 
 use crate::detail::Shell as _;
-use copy_core::said::Said;
 use copy_core::copy_text;
+use copy_core::said::Said;
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

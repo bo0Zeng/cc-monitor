@@ -37,8 +37,8 @@
 //! 逐条理由住 [`resolve_monitor_data_dir`]。
 
 use crate::detail::Shell as _;
-use copy_core::said::Said;
 use copy_core::copy_text;
+use copy_core::said::Said;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};

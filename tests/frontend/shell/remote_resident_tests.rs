@@ -54,7 +54,10 @@ fn the_stop_failures_are_read_the_same_as_the_ensure_answer() {
     .unwrap_err();
     assert_eq!(s.said, "x");
     assert!(
-        s.raw.as_deref().unwrap_or_default().contains("Permission denied (os error 13)"),
+        s.raw
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Permission denied (os error 13)"),
         "{:?}",
         s.raw
     );
