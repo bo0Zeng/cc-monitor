@@ -136,7 +136,7 @@ vi.mock("../../../src/frontend/ui/cards", () => ({
 }));
 vi.mock("../../../src/frontend/ui/cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn(), failToast: vi.fn(), silentUndo: vi.fn(), noteMessage: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn(), failToast: vi.fn(), silentUndo: vi.fn(), noteMessage: vi.fn(), recentToasts: vi.fn(() => []) }));
 // 恢复交那台（`session-open`）：这里换成 spy，判的是交了什么；那台怎么判住后端判据，发 · 说 · 开窗住 `session-open.vitest.ts`。
 vi.mock("../../../src/frontend/ui/session-open", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/session-open")>()),
