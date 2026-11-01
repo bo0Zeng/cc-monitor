@@ -168,17 +168,6 @@ interface SessionWatch {
     fun hold(sid: String): AutoCloseable
 }
 
-/**
- * 核心写好的失败：`code` 给程序认，`message` 原样上屏，`detail` 进复制详情（时刻 · 机器 · 命令 · 码 · 原话都在里面）。
- * 帧面 `reply` 与一次性 CLI 的 stderr 信封是同一份（`IPC-PROTOCOL.md` §4 · §8）。
- */
-data class CoreFailure(
-    val code: String,
-    val message: String,
-    val detail: String,
-    val data: Any? = null,
-)
-
 /** 一条入方向命令的结局（核心交回来的那一行，`IPC-PROTOCOL.md` §4）。 */
 sealed interface Reply {
     /** `ok: true`；`data` 是命令的返回值（无返回值 ⇒ `null`）。 */
@@ -186,9 +175,12 @@ sealed interface Reply {
         val data: Any?,
     ) : Reply
 
-    /** `ok: false`：核心写好的失败（`message` 上屏，`detail` 进复制详情）。 */
+    /**
+     * `ok: false`：核心写好的失败（线上那一形 [com.ccmonitor.mobile.core.wire.gen.Failed]）：`code` 给程序认，`said` 原样上屏，
+     * `detail` 进复制详情（时刻 · 机器 · 命令 · 码 · 原话都在里面）。帧面 `reply` 与一次性 CLI 的 stderr 信封是同一份（`IPC-PROTOCOL.md` §4 · §8）。
+     */
     data class Failed(
-        val failure: CoreFailure,
+        val failure: com.ccmonitor.mobile.core.wire.gen.Failed,
     ) : Reply
 
     /** 到了期限（核心已补发撤单）。 */

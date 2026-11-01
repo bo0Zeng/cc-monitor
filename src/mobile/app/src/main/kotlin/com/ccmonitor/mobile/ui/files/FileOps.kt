@@ -169,8 +169,8 @@ class FileOps(
     ): Result<Upload> {
         val r = feed.call(FilesCommitUpload.COMMAND, FilesCommitUpload.args(dir, name, staged, onExists), CHUNK_MS)
         val clash = (r as? Reply.Failed)?.failure?.takeIf { it.code == EXISTS }
-        val rows = clash?.let { feed.clashes(it.data) }.orEmpty()
-        if (clash != null && rows.isNotEmpty()) return Result.success(Upload.Clash(name, staged, clash.message, rows))
+        val rows = clash?.let { feed.clashes(it.data?.value) }.orEmpty()
+        if (clash != null && rows.isNotEmpty()) return Result.success(Upload.Clash(name, staged, clash.said, rows))
         return when (r) {
             is Reply.Ok -> Result.success(Upload.Done)
             else -> Result.failure(Failed(r.problem(machine(), FilesCommitUpload.COMMAND, feed.offline.value) ?: Problem("", "")))

@@ -88,7 +88,7 @@ class BookmarkShelf(
                 _said.value = null
             } else if (r is Reply.Failed) {
                 // 那台写好的那一句；断着 · 超时不在这里说（文件屏顶上那条离线带说）。
-                _said.value = r.failure.message
+                _said.value = r.failure.said
             }
         }
         return got != null
