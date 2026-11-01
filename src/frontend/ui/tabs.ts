@@ -447,7 +447,7 @@ export class TabManager {
     collectionsLoaded: () => this.prefs.collectionsLoaded,
     collections: () => this.prefs.collections,
     pinnedLoaded: () => this.prefs.pinnedLoaded,
-    setPinnedMany: (sids, on) => void this.prefs.setPinnedMany(sids, on),
+    landPinned: (sids, on) => this.prefs.landPinned(sids, on),
     joinGroup: (sids, gid) => this.dragger.joinNow(sids, gid),
     foundGroup: (sids) => this.dragger.foundNow(sids),
     leaveGroup: (sids) => this.dragger.leaveNow(sids),

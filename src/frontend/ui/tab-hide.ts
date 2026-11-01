@@ -32,6 +32,13 @@ export interface TabHideHost {
 
 const itemOf = (t: Tab): SessionItem => ({ machine: t.origin, sid: t.sessionId });
 
+/** 本机后端问不到时那一条的标题：一个 ⇒ 点名那一个；几个 ⇒ 那一项。`on` ＝ 交的是不是「隐藏」。 */
+function missedTitle(on: boolean, tabs: readonly Tab[]): string {
+  if (tabs.length > 1) return on ? copyText("tabBatch.menu.hide", { n: tabs.length }) : copyText("tabBatch.menu.unhide", { n: tabs.length });
+  const title = fullTitle(tabs[0]);
+  return on ? copyText("tabBar.hide.failed", { title }) : copyText("tabBar.unhide.failed", { title });
+}
+
 /** 隐藏之前那一刻（撤销时放回）：顺序里那一格 · 分组 · 固定。 */
 interface Before {
   index: number;
@@ -100,14 +107,14 @@ export class TabHide {
         }
         const undo = {
           // 撤销回到隐藏之前那一份单独设置：后端照各自改之前那一格分好的那几问，原样交回。
-          run: () => void Promise.all(reply.undo.map((q) => this.host.send(q.op, q.items))).then((rs) => rs.filter((r) => r.failed).forEach((r) => this.host.say(r)), (e: unknown) => this.host.failed(copyText("tabBar.unhide.failed", { title: fullTitle(tabs[0]) }), e)),
+          run: () => void Promise.all(reply.undo.map((q) => this.host.send(q.op, q.items))).then((rs) => rs.filter((r) => r.failed).forEach((r) => this.host.say(r)), (e: unknown) => this.host.failed(missedTitle(false, tabs), e)),
           settle: () => forget(done),
         };
         this.host.say(reply, undo);
       },
       (e: unknown) => {
         forget(tabs.map((t) => t.sessionId));
-        this.host.failed(tabs.length === 1 ? copyText("tabBar.hide.failed", { title: fullTitle(tabs[0]) }) : copyText("tabBatch.menu.hide", { n: tabs.length }), e);
+        this.host.failed(missedTitle(true, tabs), e);
       },
     );
   }
@@ -123,7 +130,7 @@ export class TabHide {
       (reply) => {
         if (reply.failed) this.host.say(reply);
       },
-      (e: unknown) => this.host.failed(tabs.length === 1 ? copyText("tabBar.unhide.failed", { title: fullTitle(tabs[0]) }) : copyText("tabBatch.menu.unhide", { n: tabs.length }), e),
+      (e: unknown) => this.host.failed(missedTitle(false, tabs), e),
     );
   }
 

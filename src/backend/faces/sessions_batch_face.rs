@@ -1,5 +1,5 @@
 //! 帧面 `sessions-batch`（typed，只在本机后端答全）：一批会话跨几台的那一条 —— 收全部 id、按台分组、
-//! 本机那一组同进程做（停 ＝ `sessions-stop` 的本体；起 ＝ 逐项 `session-open` 的恢复那一形；隐藏那三样 ＝ 逐项 `history-annotate {hide}` 的本体），别的台各拿自己那一组问它常驻的
+//! 本机那一组同进程做（停 ＝ `sessions-stop` 的本体；起 ＝ 逐项 `session-open` 的恢复那一形；隐藏 · 固定那几样 ＝ 逐项 `history-annotate` 的本体），别的台各拿自己那一组问它常驻的
 //! `sessions-batch`（那一份只含它自己的会话），逐条结局照入参原序摆好，合那一句交 `batch_core::sessions::sessions_reply`（手机核心同一份）。
 //!
 //! 那台够不着 · 常驻不在 · 太旧 · 答了失败 ⇒ 那一组每一项都是 `failed`，那一句与复制详情照那一台的失败（`cmd_wire::Failed`）写。
@@ -68,14 +68,11 @@ pub(crate) fn verb_of(op: &SessionsOp) -> Verb {
             one_failed: |t| copy_text("tabSessionActions.kill.failed", &[("title", t)]),
         },
         SessionsOp::Start { run, .. } => Verb {
-            action: copy_text(
-                match run {
-                    Launch::Tmux => "tabBatch.verb.startTmux",
-                    Launch::Direct => "tabBatch.verb.startWindow",
-                    Launch::Managed => "tabBatch.verb.start",
-                },
-                &[],
-            ),
+            action: match run {
+                Launch::Tmux => copy_text("tabBatch.verb.startTmux", &[]),
+                Launch::Direct => copy_text("tabBatch.verb.startWindow", &[]),
+                Launch::Managed => copy_text("tabBatch.verb.start", &[]),
+            },
             one_done: |t| copy_text("tabBatch.one.resumed", &[("title", t)]),
             one_failed: |t| copy_text("tabBatch.one.resumeFailed", &[("title", t)]),
         },
@@ -94,10 +91,20 @@ pub(crate) fn verb_of(op: &SessionsOp) -> Verb {
             one_done: |t| copy_text("tabBatch.one.hideUndone", &[("title", t)]),
             one_failed: |t| copy_text("tabBatch.one.hideUndoFailed", &[("title", t)]),
         },
+        SessionsOp::Pin => Verb {
+            action: copy_text("tabBatch.verb.pin", &[]),
+            one_done: |t| copy_text("tabBatch.one.pinned", &[("title", t)]),
+            one_failed: |t| copy_text("tabBatch.one.pinFailed", &[("title", t)]),
+        },
+        SessionsOp::Unpin => Verb {
+            action: copy_text("tabBatch.verb.unpin", &[]),
+            one_done: |t| copy_text("tabBar.unpinned.toast", &[("title", t)]),
+            one_failed: |t| copy_text("tabBatch.one.unpinFailed", &[("title", t)]),
+        },
     }
 }
 
-/// 本机那一组：照那一样分到停 · 起 · 隐藏那三样。
+/// 本机那一组：照那一样分到停 · 起 · 写注解（隐藏那三样 · 固定那两样）。
 async fn here(
     req: SessionsBatchReq,
     tz: crate::Tz,
@@ -106,15 +113,20 @@ async fn here(
 ) -> Result<SessionsBatchReply, Said> {
     match req.op {
         SessionsOp::Stop => stop_here(req, tz, until).await,
-        SessionsOp::Start { run, relayed } => start_here(req, run, !relayed, tz, until, hands).await,
-        SessionsOp::Hide | SessionsOp::Unhide | SessionsOp::ClearHide => {
-            hide_here(req, tz, until, hands.1).await
+        SessionsOp::Start { run, relayed } => {
+            start_here(req, run, !relayed, tz, until, hands).await
         }
+        SessionsOp::Hide
+        | SessionsOp::Unhide
+        | SessionsOp::ClearHide
+        | SessionsOp::Pin
+        | SessionsOp::Unpin => note_here(req, tz, until, hands.1).await,
     }
 }
 
-/// 隐藏那三样：逐项写这台的注解（`history-annotate {hide}` 的本体，同进程）；做成了的那几项照改之前那一格分好撤销那几问。
-async fn hide_here(
+/// 写注解那几样：逐项写这台的注解（`history-annotate {hide | pinned}` 的本体，同进程）。固定那两样先照注解里那一格判跳过；
+/// 隐藏做成了的那几项照改之前那一格分好撤销那几问。
+async fn note_here(
     req: SessionsBatchReq,
     tz: crate::Tz,
     until: Option<crate::platform::child::Until>,
@@ -126,31 +138,46 @@ async fn hide_here(
     let (results, undo) = tokio::task::spawn_blocking(move || {
         let home = crate::history::listing::agent_home();
         let notes = notes();
-        let word = match op {
-            SessionsOp::Hide => "on",
-            SessionsOp::Unhide => "off",
-            _ => "rule",
+        let patch = match op {
+            SessionsOp::Hide => serde_json::json!({"hide": "on"}),
+            SessionsOp::Unhide => serde_json::json!({"hide": "off"}),
+            SessionsOp::Pin => serde_json::json!({"pinned": true}),
+            SessionsOp::Unpin => serde_json::json!({"pinned": false}),
+            _ => serde_json::json!({"hide": "rule"}),
+        };
+        let pin = match op {
+            SessionsOp::Pin => Some(true),
+            SessionsOp::Unpin => Some(false),
+            _ => None,
         };
         let mut results = Vec::with_capacity(req.items.len());
         let mut undo = Vec::new();
         for it in &req.items {
             let sid = it.sid.as_str();
-            let (o, u) = hide_one(&it.sid, title_here(&home, &notes, sid), op, || {
-                let ask: crate::history::history_annotations::AnnotateReq = serde_json::from_value(
-                    serde_json::json!({"sid": sid, "patch": {"hide": word}}),
-                )
-                .map_err(|e| Said::from(e.to_string()))?;
+            let write = || {
+                let ask: crate::history::history_annotations::AnnotateReq =
+                    serde_json::from_value(serde_json::json!({"sid": sid, "patch": patch}))
+                        .map_err(|e| Said::from(e.to_string()))?;
                 let cx = crate::wire::typed::Cx {
                     tz: tz.clone(),
                     until,
                     needs: own.clone(),
                 };
-                rt.block_on(crate::history::history_annotations::HistoryAnnotateCmd::run(
-                    ask, cx,
-                ))
-                .map(|a| a.prev)
-                .map_err(|e| e.into_said())
-            });
+                rt.block_on(crate::history::history_annotations::HistoryAnnotateCmd::run(ask, cx))
+                    .map(|a| a.prev)
+                    .map_err(|e| e.into_said())
+            };
+            let title = title_here(&home, &notes, sid);
+            let (o, u) = match pin {
+                Some(on) => {
+                    let pinned = notes.get(sid).is_some_and(|e| e.pinned);
+                    (
+                        pin_one(&it.sid, title, on, pinned, || write().map(|_| ())),
+                        None,
+                    )
+                }
+                None => hide_one(&it.sid, title, op, write),
+            };
             results.push(o);
             if let Some(u) = u {
                 undo_push(&mut undo, u, it.clone());
@@ -195,7 +222,8 @@ pub(crate) fn hide_one(
             (o, undo)
         }
         Err(s) => {
-            let f = crate::wire::detail::failed_of("history-annotate", s.code_or_fallback(), s.clone());
+            let f =
+                crate::wire::detail::failed_of("history-annotate", s.code_or_fallback(), s.clone());
             o.outcome = SessionState::Failed;
             o.why = Some(f.code);
             o.said = Some(f.said);
@@ -203,6 +231,45 @@ pub(crate) fn hide_one(
             (o, None)
         }
     }
+}
+
+/// 固定那两样的一项：注解里已经是那一格 ⇒ 跳过（已固定 · 未固定那一句，不写）；不然写那一格：成了 · 写不下去 ⇒ 没成（那一句 ＋ 复制详情）。
+pub(crate) fn pin_one(
+    sid: &cmd_wire::Sid,
+    title: String,
+    on: bool,
+    pinned: bool,
+    write: impl FnOnce() -> Result<(), Said>,
+) -> SessionOutcome {
+    let mut o = SessionOutcome {
+        machine: Machine::local(),
+        sid: sid.clone(),
+        outcome: SessionState::Done,
+        why: None,
+        said: None,
+        copy_detail: String::new(),
+        title,
+        session: None,
+    };
+    if pinned == on {
+        let (why, said) = if on {
+            ("pinned", copy_text("tabBatch.why.pinned", &[]))
+        } else {
+            ("not_pinned", copy_text("tabBatch.why.notPinned", &[]))
+        };
+        o.outcome = SessionState::Skipped;
+        o.why = Some(why.to_string());
+        o.said = Some(said);
+        return o;
+    }
+    if let Err(s) = write() {
+        let f = crate::wire::detail::failed_of("history-annotate", s.code_or_fallback(), s.clone());
+        o.outcome = SessionState::Failed;
+        o.why = Some(f.code);
+        o.said = Some(f.said);
+        o.copy_detail = f.detail;
+    }
+    o
 }
 
 /// 撤销那几问里添一项：同一样的并进同一问（照第一次出现的先后）。
@@ -282,7 +349,9 @@ async fn start_here(
                     until,
                 );
                 let ask = cmd_wire::open::SessionOpenReq {
-                    what: cmd_wire::open::OpenWhat::Resume { sid: it.sid.clone() },
+                    what: cmd_wire::open::OpenWhat::Resume {
+                        sid: it.sid.clone(),
+                    },
                     account: None,
                     run: Some(run),
                     local: window_here,
@@ -332,7 +401,12 @@ pub(crate) fn start_one(
     };
     if let crate::wire::Allow::No { why } = can {
         return (
-            one(SessionState::Skipped, Some(NOT_RESUMABLE), Some(why.0), None),
+            one(
+                SessionState::Skipped,
+                Some(NOT_RESUMABLE),
+                Some(why.0),
+                None,
+            ),
             None,
         );
     }
@@ -342,7 +416,12 @@ pub(crate) fn start_one(
             (
                 SessionOutcome {
                     copy_detail: f.detail,
-                    ..one(SessionState::Failed, Some(f.code.as_str()), Some(f.said), None)
+                    ..one(
+                        SessionState::Failed,
+                        Some(f.code.as_str()),
+                        Some(f.said),
+                        None,
+                    )
                 },
                 None,
             )
@@ -351,7 +430,12 @@ pub(crate) fn start_one(
             let name = o.session.clone().unwrap_or_default();
             let said = copy_text("tabBatch.why.running", &[("name", &name)]);
             (
-                one(SessionState::Skipped, Some("running"), Some(said), o.session),
+                one(
+                    SessionState::Skipped,
+                    Some("running"),
+                    Some(said),
+                    o.session,
+                ),
                 None,
             )
         }
@@ -374,15 +458,19 @@ pub(crate) fn start_one(
 const NOT_RESUMABLE: &str = "not_resumable";
 
 /// 这台的注解表（读不到 ⇒ 空表：称呼退回记录里的那一份）。
-fn notes() -> cmd_wire::listing::Table {
+pub(crate) fn notes() -> cmd_wire::listing::Table {
     match crate::history::history_annotations::load() {
         crate::history::history_annotations::Loaded::Read(t) => t,
         _ => Default::default(),
     }
 }
 
-/// 这台写的称呼：这条会话叫什么那两格（`search_rules::name_face`）拼成一行（项目在前）。
-fn title_here(home: &std::path::Path, notes: &cmd_wire::listing::Table, sid: &str) -> String {
+/// 这台写的称呼：这条会话叫什么那两格（`search_rules::name_face`）拼成一行（项目在前）。一批会话各样都照它。
+pub(crate) fn title_here(
+    home: &std::path::Path,
+    notes: &cmd_wire::listing::Table,
+    sid: &str,
+) -> String {
     use crate::history::search_rules::LabelFacts;
     let custom = notes.get(sid).and_then(|e| e.custom_title.clone());
     let facts = match crate::agents::find_session(home, sid) {
@@ -480,7 +568,11 @@ where
         let Some(Ok(r)) = answered(it) else {
             continue;
         };
-        if let Some(q) = r.undo.iter().find(|q| q.items.iter().any(|i| i.sid == it.sid)) {
+        if let Some(q) = r
+            .undo
+            .iter()
+            .find(|q| q.items.iter().any(|i| i.sid == it.sid))
+        {
             undo_push(&mut undo, q.op, it.clone());
         }
     }

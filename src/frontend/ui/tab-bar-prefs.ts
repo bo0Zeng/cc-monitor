@@ -498,7 +498,7 @@ export class TabBarPrefs {
     return this.setPinnedMany([sid], !tab.pinned);
   }
 
-  /** 批量「固定 / 取消固定」：每一个翻到 `on`，各交会话那台一条注解。回「交了的都收下了」（一个都没交 ⇒ `false`）。 */
+  /** 右键「固定 / 取消固定」· 隐藏时摘固定 · 撤销时放回：每一个翻到 `on`，各交会话那台一条注解。回「交了的都收下了」（一个都没交 ⇒ `false`）。 */
   setPinnedMany(sids: readonly string[], on: boolean): Promise<boolean> {
     if (!this.pinnedLoaded) return Promise.resolve(false);
     const work: Array<Promise<boolean>> = [];
@@ -510,6 +510,20 @@ export class TabBarPrefs {
     }
     if (work.length > 0) this.host.refreshTabBar();
     return Promise.all(work).then((oks) => oks.length > 0 && oks.every(Boolean));
+  }
+
+  /** 批量固定 · 取消固定交回来之后（本机后端合各台，`sessions-batch`）：那台收下了的那几个翻到 `on`（照回包挑格、不先翻），那几台的账各重读一次。 */
+  landPinned(sids: readonly string[], on: boolean): void {
+    let moved = false;
+    for (const sid of sids) {
+      const tab = this.store.tabs.get(sid);
+      if (!tab) continue;
+      this.book?.poke(tab.origin);
+      if (tab.pinned === on) continue;
+      tab.pinned = on;
+      moved = true;
+    }
+    if (moved) this.host.refreshTabBar();
   }
 
   /**

@@ -336,7 +336,7 @@ fn one_start_maps_the_open_answer() {
     };
     let sid: cmd_wire::Sid = "s-1".parse().unwrap();
     let no = crate::wire::Allow::No {
-        why: crate::common::cells::Words("运行中".into()),
+        why: crate::common::cells::Words("那台说·恢复不了".into()),
     };
     let asked = std::cell::Cell::new(false);
     let (o, w) = start_one(&sid, "proj 起头".into(), no, || {
@@ -345,13 +345,17 @@ fn one_start_maps_the_open_answer() {
     });
     assert!(!asked.get(), "脸上恢复不了 ⇒ 不问");
     assert_eq!(o.outcome, SessionState::Skipped);
-    assert_eq!(o.said.as_deref(), Some("运行中"));
+    assert_eq!(o.said.as_deref(), Some("那台说·恢复不了"));
     assert_eq!(o.title, "proj 起头");
     assert!(w.is_none());
 
     let yes = || crate::wire::Allow::Yes;
     let (o, _) = start_one(&sid, "t".into(), yes(), || {
-        Ok(opened(Landed::Running, Some("proj-cc"), Some("tmux attach")))
+        Ok(opened(
+            Landed::Running,
+            Some("proj-cc"),
+            Some("tmux attach"),
+        ))
     });
     assert_eq!(o.outcome, SessionState::Skipped);
     assert_eq!(o.why.as_deref(), Some("running"));
@@ -371,7 +375,11 @@ fn one_start_maps_the_open_answer() {
     );
 
     let (o, w) = start_one(&sid, "t".into(), yes(), || {
-        Ok(opened(Landed::Started, Some("proj-cc"), Some("tmux attach")))
+        Ok(opened(
+            Landed::Started,
+            Some("proj-cc"),
+            Some("tmux attach"),
+        ))
     });
     assert_eq!(o.outcome, SessionState::Done);
     assert_eq!(o.session.as_deref(), Some("proj-cc"));
@@ -502,4 +510,82 @@ fn one_hide_maps_the_write() {
     assert_eq!(o.title, "proj 起头");
     assert!(!o.copy_detail.is_empty());
     assert_eq!(u, None);
+}
+
+/// ★ 固定：三项一项那台写注解失败 ⇒ 那一项没成、那一句照「固定」那个词合（完成 2 · 失败 ×1）；撤不回 ⇒ 没有撤销那几问。
+#[tokio::test]
+async fn pin_across_two_machines_merges_the_said() {
+    let box2 = sessions_reply(
+        &verb_of(&SessionsOp::Pin),
+        vec![outcome("s-2", SessionState::Failed, Some("写不下去"), "io")],
+    );
+    let peers = Peers::new(&[("box2", serde_json::to_string(&box2).unwrap())]);
+    let table = Peers::table(&["box2"]);
+    let here = |r: SessionsBatchReq| {
+        let results = r
+            .items
+            .iter()
+            .map(|i| outcome(i.sid.as_str(), SessionState::Done, None, ""))
+            .collect();
+        std::future::ready(Ok(sessions_reply(&verb_of(&r.op), results)))
+    };
+    let r = across(
+        ask(
+            SessionsOp::Pin,
+            vec![
+                item("here", "s-1"),
+                item("box2", "s-2"),
+                item("here", "s-3"),
+            ],
+        ),
+        here,
+        &crate::Tz::default(),
+        until(5_000),
+        &table,
+        &peers,
+    )
+    .await
+    .expect("答得出");
+    let action = copy_text("tabBatch.verb.pin", &[]);
+    assert_eq!(
+        r.said,
+        said_line(
+            &action,
+            "3",
+            &[
+                ("beFiles.batch.segOk", "ok", "2"),
+                ("beFiles.batch.segBad", "bad", "1")
+            ]
+        )
+    );
+    assert_eq!(r.results[1].outcome, SessionState::Failed);
+    assert!(r.undo.is_empty());
+}
+
+/// 固定一项：注解里已经是那一格 ⇒ 跳过（已固定 · 未固定那一句，不写）；不然写那一格。
+#[test]
+fn one_pin_skips_what_is_already_there() {
+    let sid: cmd_wire::Sid = "s-1".parse().unwrap();
+    let wrote = std::cell::Cell::new(false);
+    let o = pin_one(&sid, "t".into(), true, true, || {
+        wrote.set(true);
+        Ok(())
+    });
+    assert!(!wrote.get(), "已固定 ⇒ 不写");
+    assert_eq!(o.outcome, SessionState::Skipped);
+    assert_eq!(o.said, Some(copy_text("tabBatch.why.pinned", &[])));
+    let o = pin_one(&sid, "t".into(), false, false, || Ok(()));
+    assert_eq!(o.outcome, SessionState::Skipped);
+    assert_eq!(o.said, Some(copy_text("tabBatch.why.notPinned", &[])));
+    let o = pin_one(&sid, "t".into(), true, false, || {
+        wrote.set(true);
+        Ok(())
+    });
+    assert!(wrote.get());
+    assert_eq!(o.outcome, SessionState::Done);
+    let o = pin_one(&sid, "t".into(), true, false, || {
+        Err(Said::new("io_failed", "写不下去".into()))
+    });
+    assert_eq!(o.outcome, SessionState::Failed);
+    assert_eq!(o.said.as_deref(), Some("写不下去"));
 }

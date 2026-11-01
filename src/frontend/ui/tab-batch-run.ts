@@ -1,13 +1,11 @@
 /**
  * **tab 栏停 / 起：交给后端**。
  *
- * - 批量停 · 起（`sessions-batch`）：选中的全部交本机后端一条，按台扇出 · 跳不跳过 · 合那一句都在后端，回包照摆；
- *   单个结束经 [`callStop`]（`sessions-stop`，那台逐个答）。
+ * - 停 · 起 · 隐藏 · 固定（`sessions-batch`）：交本机后端一条（单个结束是一项的那一批），按台扇出 · 跳不跳过 · 合那一句都在后端，回包照摆。
  * - 起那一批回包里落在窗口里的那几行（`windows`）由这里逐个开窗：开窗是这台电脑上的事；开不出来那一项另出一条，不改汇总。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { settleTyped } from "./control-said";
-import { batchRefused } from "./sessions-where";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import type { SessionsBatchReply } from "./generated/SessionsBatchReply";
 import type { SessionsOp } from "./generated/SessionsOp";
@@ -15,32 +13,12 @@ import type { SessionItem } from "./generated/SessionItem";
 import { copyText } from "./copy-table";
 import type { Tab } from "./tab-model";
 import type { Launch } from "./generated/Launch";
-import type { SessionOutcome as Outcome } from "./generated/SessionOutcome";
 import { openLocalTerminal, openTerminal } from "./terminal-open";
 import { failToast } from "./kit/toast";
 
-/** 一个 tab 的结局（`why` 是给人看的那一句；做成了 ⇒ 空串）。 */
-export interface BatchOutcome {
-  sid: string;
-  outcome: "done" | "skipped" | "failed";
-  why: string;
-  /** 失败那一个的复制详情（那台写好）；没有 ⇒ 缺。 */
-  detail?: string;
-}
-
-/** 后端答的一个（`sessions-*` 的 `results[i]`，类型从 Rust 生成）。`why` 是那台的原因码。 */
-export type Reply = Outcome;
-
-/** 停的期限：单个那条 10 秒；一批按个数放宽（那台逐个做），每个多给 6 秒。 */
+/** 一批的期限：底 10 秒；按个数放宽（那台逐个做），停那一样每个多给 6 秒。 */
 const BATCH_BASE_MS = 10_000;
 const BATCH_EACH_MS = 6_000;
-
-/** 停：问那台一次（`sids` 那几个），逐个答。问不到 / 形状不对 ⇒ 抛 `ControlError`。 */
-export async function callStop(origin: Origin, sids: readonly string[]): Promise<Reply[]> {
-  const budget = budgetWithin(BATCH_BASE_MS + BATCH_EACH_MS * sids.length);
-  const v = await settleTyped(origin, "sessions-stop", callTyped(origin, "sessions-stop", { sids: [...sids] }, budget), batchRefused(origin));
-  return v.results;
-}
 
 /**
  * 一批会话的那一样（停 · 起 · …）交本机后端一条 `sessions-batch`（`items` 照交进来的先后）；回包是合好的那一份。

@@ -18,6 +18,8 @@ import { endTerminal } from "../../../src/frontend/ui/terminal-reads";
 import { toast, undoToast } from "../../../src/frontend/ui/kit/toast";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { BoardRow } from "../../../src/frontend/ui/generated/BoardRow";
+import { productionTsFiles } from "../../test-support/production-sources";
+import { stripComments } from "../../test-support/strip-comments";
 
 const row = (key: string, title: string): BoardRow => ({ key, terminal: `h-${key}`, title }) as unknown as BoardRow;
 
@@ -110,5 +112,16 @@ describe("一批会话的回包照摆（`sessions-batch`：那一句 · 逐条 �
     const [, , opts] = vi.mocked(toast).mock.calls[0];
     expect(opts?.level).toBe("success");
     expect(opts?.action).toBeUndefined();
+  });
+});
+
+describe("界面不再自己数一批会话的结局（停 · 起 · 隐藏 · 固定都照 `sessions-batch` 的回包）", () => {
+  it("★ src/frontend/ui 底下没有 sayRows · batchHead · sayBatch · callStop 的定义与调用", () => {
+    const gone = ["sayRows", "batchHead", "sayBatch", "callStop"];
+    const hits = productionTsFiles("src/frontend/ui").flatMap(({ file, text }) => {
+      const code = stripComments(text, "ts");
+      return gone.filter((name) => new RegExp(`\\b${name}\\b`).test(code)).map((name) => `${file}: ${name}`);
+    });
+    expect(hits).toEqual([]);
   });
 });

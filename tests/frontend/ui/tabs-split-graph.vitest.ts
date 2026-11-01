@@ -95,7 +95,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/cards/subagent.ts", // 运行表到了：派出子运行的那张卡标上是哪个、什么状态
     "src/frontend/ui/config.ts", // 旧分组三格迁一次：读整份 `config.json`、迁完删那三格（5.0.3 之后第一版带它，再下一版连同迁移一起删）
     "src/frontend/ui/control-said.ts", // ↗ 结局浮层里的机器名（`machineName`）
-    "src/frontend/ui/end-confirm.ts", // 批量隐藏 · 取消隐藏有没成的：结束那一种结局一条（`sayRows`，经 `tab-hide` 的宿主）
+    "src/frontend/ui/end-confirm.ts", // 隐藏 · 取消隐藏：照本机后端合好的回包出那一条（`sayReply`，经 `tab-hide` 的宿主）
     "src/frontend/ui/copy-table.ts", // W 关掉之后那条「已关闭 · 撤销」
     "src/frontend/ui/kit/detail.ts", // ↗ 浮层更新没成：［复制详情］复制壳带回的那份详情（`detailOf`）
     "src/frontend/ui/kit/toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
@@ -114,6 +114,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-bar-prefs.ts",
     "src/frontend/ui/tab-bar-view.ts",
     "src/frontend/ui/tab-batch-menu.ts", // 多选之后右键：批量菜单
+    "src/frontend/ui/tab-batch-run.ts", // 隐藏那几件交本机后端那一批（`askSessions`，经 `tab-hide` 的宿主）
     "src/frontend/ui/tab-menu.ts",
     "src/frontend/ui/tab-model.ts", // computeTitleFor
     "src/frontend/ui/tab-router.ts",
@@ -123,7 +124,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-groups-migrate.ts", // 旧分组三格迁进各台（同上，随迁移一起删）
     "src/frontend/ui/tab-hide.ts", // 隐藏那几件（帧上那一格落到 tab 上 · 隐藏 / 取消隐藏 · 撤销 · 隐藏了又结束的收走）
     "src/frontend/ui/session-hidden.ts", // 新建的 tab 血缘那一格的空值（`NO_LINEAGE`）
-    "src/frontend/ui/session-hidden-cmds.ts", // 隐藏那几件交的命令（`history-annotate {hide}`）由组装根接给 `tab-hide`；「没人答时自动答」那一格同一条命令
+    "src/frontend/ui/session-hidden-cmds.ts", // 「没人答时自动答」那一格（`history-annotate`）
     "src/frontend/ui/session-face.ts", // 撤销提示与关掉提示里的整题（`fullTitle`）· 会话事实投影里在等什么（`needsOf`）
     "src/frontend/ui/face-can.ts", // 那台的脸上能做什么（关 / 拉前 · 说不清那一张）
     "src/frontend/ui/tab-store.ts",
@@ -150,10 +151,9 @@ const DEPS: Record<string, readonly string[]> = {
   //   原先的两条（agent 工具名判定 `cards/subagent.ts` · 写类工具表 `panorama/session-files.ts`）随抽取器一起搬进了后端。
   // 血缘那两格（`startedBy` · `children`）的解码与比较住 `session-hidden.ts`（纯函数，零 IPC）。
   "src/frontend/ui/tab-session-facts.ts": ["src/frontend/ui/session-hidden.ts"],
-  // ② 隐藏那几件：帧上那一格落到 tab 上、摘 / 放回固定与分组、撤销 toast；命令与 toast 经宿主。
-  //   一格比一格（`sameHidden`）· toast 的字（文案表）· 标题（`fullTitle`）· 已结束的收走（`isEnded`）·
-  //   一批里没成的那几个逐条的那一句与详情（`kit/detail.ts::saidOf` · `detailOf`，A2-17-7-3-1）。
-  "src/frontend/ui/tab-hide.ts": ["src/frontend/ui/copy-table.ts", "src/frontend/ui/session-face.ts", "src/frontend/ui/session-hidden.ts", "src/frontend/ui/face-can.ts", "src/frontend/ui/kit/detail.ts"],
+  // ② 隐藏那几件：帧上那一格落到 tab 上、摘 / 放回固定与分组；命令与 toast 经宿主（交本机后端一批、照回包说）。
+  //   一格比一格（`sameHidden`）· 问不到时那一条的字（文案表）· 标题（`fullTitle`）· 已结束的收走（`isEnded`）。
+  "src/frontend/ui/tab-hide.ts": ["src/frontend/ui/copy-table.ts", "src/frontend/ui/session-face.ts", "src/frontend/ui/session-hidden.ts", "src/frontend/ui/face-can.ts"],
   // ③ 实时流视图：渲染栈 ＋ 骨架 ＋ 大纲 ＋ 分叉按钮，骨架索引与正文都经通道问那台后端。
   // 大纲的界面从直接建 `UserInputPanel` 换成建查找面板（它里面挂着大纲）⇒ `user-input-panel` 只剩类型依赖。
   "src/frontend/ui/tab-stream-view.ts": [

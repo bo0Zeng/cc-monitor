@@ -55,7 +55,15 @@ fn sessions_batch_reply_wire_shape_keeps_null_keys_and_reads_back() {
         serde_json::json!([{"machine": "<local>", "sid": "s-1", "line": "claude --resume s-1", "cwd": null}]),
         "开窗那一行：可缺的目录出 null"
     );
-    for k in ["results", "said", "failed", "lines", "copyDetail", "windows", "undo"] {
+    for k in [
+        "results",
+        "said",
+        "failed",
+        "lines",
+        "copyDetail",
+        "windows",
+        "undo",
+    ] {
         assert!(v.get(k).is_some(), "缺 {k}：{v}");
     }
     let done = &v["results"][0];
@@ -115,8 +123,13 @@ fn sessions_batch_req_ops_on_the_wire() {
     let v = serde_json::to_value(&start).unwrap();
     assert_eq!(
         v["op"],
-        serde_json::json!({"start": {"run": "tmux"}}),
-        "界面交的那一形不带 relayed"
+        serde_json::json!({"start": {"run": "tmux", "relayed": false}})
+    );
+    // 界面交的那一形不带 relayed（缺 ⇒ 开窗的就是这台）。
+    assert_eq!(
+        serde_json::from_value::<SessionsOp>(serde_json::json!({"start": {"run": "tmux"}}))
+            .unwrap(),
+        start.op
     );
     assert_eq!(
         serde_json::from_value::<SessionsBatchReq>(v).unwrap(),
@@ -128,7 +141,10 @@ fn sessions_batch_req_ops_on_the_wire() {
         relayed: true,
     };
     let v = serde_json::to_value(relayed).unwrap();
-    assert_eq!(v, serde_json::json!({"start": {"run": "direct", "relayed": true}}));
+    assert_eq!(
+        v,
+        serde_json::json!({"start": {"run": "direct", "relayed": true}})
+    );
     assert_eq!(serde_json::from_value::<SessionsOp>(v).unwrap(), relayed);
 
     // 坏 sid 在解入参时就拒；多出的键拒。
@@ -181,5 +197,19 @@ fn hide_ops_on_the_wire_and_the_undo_asks_ride_the_reply() {
         v["undo"],
         serde_json::json!([{"op": "clear_hide", "items": [{"machine": "box2", "sid": "s-3"}], "client": null}])
     );
-    assert_eq!(serde_json::from_value::<SessionsBatchReply>(v).unwrap(), reply);
+    assert_eq!(
+        serde_json::from_value::<SessionsBatchReply>(v).unwrap(),
+        reply
+    );
+}
+
+#[test]
+fn pin_ops_on_the_wire() {
+    for (op, word) in [(SessionsOp::Pin, "pin"), (SessionsOp::Unpin, "unpin")] {
+        assert_eq!(serde_json::to_value(op).unwrap(), serde_json::json!(word));
+        assert_eq!(
+            serde_json::from_value::<SessionsOp>(serde_json::json!(word)).unwrap(),
+            op
+        );
+    }
 }

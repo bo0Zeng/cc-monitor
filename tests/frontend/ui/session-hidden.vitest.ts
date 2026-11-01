@@ -409,7 +409,7 @@ describe("菜单：右键两项 · 批量两项", () => {
 
   it("批量：「隐藏（n）」「取消隐藏（n）」各数各的，交宿主", async () => {
     const tabs = [tab("a"), tab("b"), tab("c", { hidden: SELF })];
-    const host = { tab: (s: string) => tabs.find((t) => t.sessionId === s), collectionsLoaded: () => false, collections: () => [], pinnedLoaded: () => false, setPinnedMany: vi.fn(), joinGroup: vi.fn(), foundGroup: vi.fn(), leaveGroup: vi.fn(), closeTabs: vi.fn(), hide: vi.fn(), unhide: vi.fn() } satisfies TabBatchHost;
+    const host = { tab: (s: string) => tabs.find((t) => t.sessionId === s), collectionsLoaded: () => false, collections: () => [], pinnedLoaded: () => false, landPinned: vi.fn(), joinGroup: vi.fn(), foundGroup: vi.fn(), leaveGroup: vi.fn(), closeTabs: vi.fn(), hide: vi.fn(), unhide: vi.fn() } satisfies TabBatchHost;
     openBatchMenu(new MouseEvent("contextmenu"), ["a", "b", "c"], host, { stop: vi.fn(), start: vi.fn(), confirm: vi.fn() } as never);
     expect(labels()).toEqual(expect.arrayContaining([copyText("tabBatch.menu.hide", { n: 2 }), copyText("tabBatch.menu.unhide", { n: 1 })]));
     press(copyText("tabBatch.menu.hide", { n: 2 }));

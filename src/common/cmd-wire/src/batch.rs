@@ -227,7 +227,7 @@ pub struct FilesBatchStopReply {
     pub stopping: bool,
 }
 
-/// 一批会话要做的那一样（`stop`；`start` 带放在哪；隐藏那三样写会话那一台的注解）。
+/// 一批会话要做的那一样（`stop`；`start` 带放在哪；隐藏那三样 · 固定那两样写会话那一台的注解）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -242,7 +242,7 @@ pub enum SessionsOp {
     Start {
         run: crate::session::Launch,
         /// 别的台转来的这一组（本机合各台转出去时写，界面不写）：开窗的那台不是这台。缺 ⇒ `false`（开窗的就是这台）。
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[serde(default)]
         #[cfg_attr(any(test, feature = "ts"), ts(skip))]
         relayed: bool,
     },
@@ -252,6 +252,10 @@ pub enum SessionsOp {
     Unhide,
     /// 摘掉单个那一格、回到规则（撤销「隐藏」时原本没有那一格的那几项）。
     ClearHide,
+    /// 固定（会话那一台的注解；已固定的那台判跳过）。
+    Pin,
+    /// 取消固定（没固定的那台判跳过）。
+    Unpin,
 }
 
 /// 一批里的一项：哪台的哪条会话。
