@@ -4,7 +4,7 @@
  *
  * 每一项在一个 tab 上的语义就是单个菜单里那一项：杀死会话 · Resume（tmux 后台 / 各开一个终端）· 固定 / 取消固定 ·
  * 加入集合 / 新建集合 / 移出集合 · 关闭（同 ×）。「能做的个数」按单个菜单亮那一项用的同一个谓词数
- * （结束 ＝ `can.end`，确认框 · 结局同单个那一个，`end-confirm.ts`；Resume ＝ `can.resume`；关闭 ＝ `can.close` 为 quiet；跳过的理由照抄那一格的 `why`）；
+ * （结束 ＝ `can.end`，确认框 · 结局同单个那一个，`end-confirm.ts`；Resume ＝ `can.resume`，结局照本机后端合好的回包；关闭 ＝ `can.close` 为 quiet；跳过的理由照抄那一格的 `why`）；
  * 那台能不能做、怎么做由那台后端判（`tab-batch-run.ts`）。固定 · 集合 · 关闭是 monitor 自己的界面状态，不经后端。
  */
 import type { Tab } from "./tab-model";
@@ -43,7 +43,7 @@ export interface TabBatchHost {
 /** 后端那两件（判据换替身）。 */
 export interface TabBatchRun {
   stop(tabs: readonly Tab[]): Promise<SessionsBatchReply>;
-  start(tabs: readonly Tab[], run: Launch): Promise<BatchOutcome[]>;
+  start(tabs: readonly Tab[], run: Launch): Promise<SessionsBatchReply>;
   confirm: ConfirmFn;
 }
 
@@ -117,6 +117,13 @@ export function openBatchMenu(
   });
   const [stoppable, notStoppable] = split(tabs, (t) => canEnd(t.face), (t) => whyOf(t.face?.can.end));
   const [startable, notStartable] = split(tabs, (t) => canResume(t.face), (t) => whyOf(t.face?.can.resume));
+  const start = async (how: Launch, title: string): Promise<void> => {
+    try {
+      sayReply(await run.start(tabs, how));
+    } catch (e) {
+      failToast(title, e);
+    }
+  };
   const items: MenuItem[] = [
     { label: copyText("tabBatch.menu.head", { n: tabs.length }), heading: true },
     // 结束：确认框只列结束得了的（同后端判跳过的那一格）；交出去的是选中的全部，跳过的由回包逐条列。
@@ -128,12 +135,9 @@ export function openBatchMenu(
         failToast(copyText("tabBatch.stop.title", { n: tabs.length }), e);
       }
     }, true, notStoppable[0]?.why),
-    item(copyText("tabBatch.menu.startTmux", { n: startable.length }), startable.length, async () => {
-      sayBatch(copyText("tabBatch.action.startTmux"), tabs, [...(await run.start(startable, "tmux")), ...notStartable]);
-    }, false, notStartable[0]?.why),
-    item(copyText("tabBatch.menu.startWindow", { n: startable.length }), startable.length, async () => {
-      sayBatch(copyText("tabBatch.action.startWindow"), tabs, [...(await run.start(startable, "direct")), ...notStartable]);
-    }, false, notStartable[0]?.why),
+    // 恢复：交出去的是选中的全部，跳过的（恢复不了 · 本来就在跑）由回包逐条列。
+    item(copyText("tabBatch.menu.startTmux", { n: startable.length }), startable.length, () => start("tmux", copyText("tabBatch.menu.startTmux", { n: tabs.length })), false, notStartable[0]?.why),
+    item(copyText("tabBatch.menu.startWindow", { n: startable.length }), startable.length, () => start("direct", copyText("tabBatch.menu.startWindow", { n: tabs.length })), false, notStartable[0]?.why),
   ];
   if (host.pinnedLoaded()) {
     const [pinnable, pinnedAlready] = split(tabs, (t) => !t.pinned, copyText("tabBatch.why.pinned"));

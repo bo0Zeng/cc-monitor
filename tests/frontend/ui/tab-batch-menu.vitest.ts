@@ -91,17 +91,30 @@ describe("批量菜单", () => {
     expect(close?.querySelector("[data-part=why]")?.textContent, "灰着的第二行说为什么").toBe(copyText("tabBatch.why.live"));
   });
 
-  it("说不清（那台暂时看不见）的不算可起、也不说「已经结束了」：理由说看不见", async () => {
+  const reply = (over: Record<string, unknown> = {}) => ({ results: [], said: "S-合好", failed: true, lines: ["L-一"], copyDetail: "D-详", windows: [], ...over });
+
+  it("★ 恢复：说不清（那台暂时看不见）的不算可起、灰着的理由说看不见；交出去的是选中的全部，结局照回包摆", async () => {
     tabs = [tab("a", false), tab("u", false, { face: goldenFace("unseen") })];
-    run.start.mockResolvedValue([{ sid: "a", outcome: "done", why: "" }]);
+    run.start.mockResolvedValue(reply());
     open();
     await press(copyText("tabBatch.menu.startTmux", { n: 1 }));
-    expect(run.start.mock.calls[0][0].map((t: Tab) => t.sessionId)).toEqual(["a"]);
-    const unseen = copyText("tabBatch.result.skippedLine", { title: "T-u", why: copyText("sessionState.unseen.noResume") });
-    expect(toastBody().split("\n")).toContain(unseen);
+    expect(run.start.mock.calls[0][0].map((t: Tab) => t.sessionId), "跳不跳过由后端判：选中的全交").toEqual(["a", "u"]);
+    expect(run.start.mock.calls[0][1]).toBe("tmux");
+    expect(toastHead()).toBe("S-合好");
+    expect(toastBody()).toBe("L-一");
+    tabs = [tab("u", false, { face: goldenFace("unseen") }), tab("v", false, { face: goldenFace("unseen") })];
+    open();
+    const b = buttons().find((x) => labelOf(x) === copyText("tabBatch.menu.startWindow", { n: 0 }));
+    expect(b?.querySelector("[data-part=why]")?.textContent).toBe(copyText("sessionState.unseen.noResume"));
   });
 
-  const reply = (over: Record<string, unknown> = {}) => ({ results: [], said: "S-合好", failed: true, lines: ["L-一"], copyDetail: "D-详", ...over });
+  it("恢复：本机后端问不到 ⇒ 一条失败提示（标题是那一项）", async () => {
+    tabs = [tab("a", false), tab("b2", false)];
+    run.start.mockRejectedValue(new Error("gone"));
+    open();
+    await press(copyText("tabBatch.menu.startWindow", { n: 2 }));
+    expect(vi.mocked(failToast).mock.calls[0][0]).toBe(copyText("tabBatch.menu.startWindow", { n: 2 }));
+  });
 
   it("★ 杀：能做的照脸上 can.end 数；确认框只列结束得了的（结束会话那一个）；交出去的是选中的全部，结局照回包摆", async () => {
     const ended = { ...goldenFace("ended"), can: { ...goldenFace("ended").can, end: { can: "no" as const, why: "核心·e" } } };

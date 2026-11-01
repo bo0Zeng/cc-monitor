@@ -48,7 +48,7 @@ fn all_done(
                 outcome(i.sid.as_str(), SessionState::Done, None, "")
             })
             .collect();
-        std::future::ready(Ok(sessions_reply(&stop_verb(), results)))
+        std::future::ready(Ok(sessions_reply(&verb_of(&SessionsOp::Stop), results)))
     }
 }
 
@@ -67,7 +67,7 @@ fn head(n: &str, ok: &str, bad: &str) -> String {
 #[tokio::test]
 async fn two_machines_merge_in_item_order() {
     let box2 = sessions_reply(
-        &stop_verb(),
+        &verb_of(&SessionsOp::Stop),
         vec![outcome(
             "s-2",
             SessionState::Failed,
@@ -199,4 +199,189 @@ async fn bad_batches_are_refused() {
         assert!(e.is_err());
     }
     assert!(seen.lock().unwrap().is_empty(), "拒了还做了");
+}
+
+fn start(items: Vec<SessionItem>, run: cmd_wire::session::Launch) -> SessionsBatchReq {
+    SessionsBatchReq {
+        op: SessionsOp::Start {
+            run,
+            relayed: false,
+        },
+        items,
+        client: None,
+    }
+}
+
+fn window(machine: Machine, sid: &str, line: &str) -> OpenWindow {
+    OpenWindow {
+        machine,
+        sid: sid.parse().expect("sid"),
+        line: line.to_string(),
+        cwd: Some("/w".to_string()),
+    }
+}
+
+/// 那一句的头 ＋ 几段（照给的先后）。
+fn said_line(action: &str, n: &str, segs: &[(&str, &str, &str)]) -> String {
+    let mut parts = vec![copy_text(
+        "beFiles.batch.head",
+        &[("action", action), ("n", n)],
+    )];
+    parts.extend(segs.iter().map(|(k, arg, v)| copy_text(k, &[(arg, v)])));
+    parts.join(&copy_text("kit.text.sep", &[]))
+}
+
+/// ★ 起：两台各两项、本机一项本来在跑 ⇒ 那一句照「恢复」那个词合（完成 3 · 跳过 1）；
+/// 本机那一组照界面交的（不是转来的），box2 那一组带 `relayed`；开窗那几行照原序、远端那一行写那台。
+#[tokio::test]
+async fn start_across_two_machines_merges_and_relays() {
+    use cmd_wire::session::Launch;
+    let op = SessionsOp::Start {
+        run: Launch::Direct,
+        relayed: false,
+    };
+    let box2 = SessionsBatchReply {
+        windows: vec![window(Machine::local(), "s-2", "line-2")],
+        ..sessions_reply(
+            &verb_of(&op),
+            vec![
+                outcome("s-2", SessionState::Done, None, ""),
+                outcome("s-4", SessionState::Done, None, ""),
+            ],
+        )
+    };
+    let peers = Peers::new(&[("box2", serde_json::to_string(&box2).unwrap())]);
+    let table = Peers::table(&["box2"]);
+    let got_op = std::sync::Mutex::new(None);
+    let running = copy_text("tabBatch.why.running", &[("name", "proj-cc")]);
+    let here = |r: SessionsBatchReq| {
+        *got_op.lock().unwrap() = Some(r.op);
+        let results = vec![
+            SessionOutcome {
+                why: Some("running".into()),
+                ..outcome("s-1", SessionState::Skipped, Some(&running), "")
+            },
+            outcome("s-3", SessionState::Done, None, ""),
+        ];
+        std::future::ready(Ok(SessionsBatchReply {
+            windows: vec![window(Machine::local(), "s-3", "line-3")],
+            ..sessions_reply(&verb_of(&r.op), results)
+        }))
+    };
+    let r = across(
+        start(
+            vec![
+                item("here", "s-1"),
+                item("box2", "s-2"),
+                item("here", "s-3"),
+                item("box2", "s-4"),
+            ],
+            Launch::Direct,
+        ),
+        here,
+        &crate::Tz::default(),
+        until(5_000),
+        &table,
+        &peers,
+    )
+    .await
+    .expect("答得出");
+    let action = copy_text("tabBatch.verb.startWindow", &[]);
+    assert_eq!(
+        r.said,
+        said_line(
+            &action,
+            "4",
+            &[
+                ("beFiles.batch.segOk", "ok", "3"),
+                ("beFiles.batch.segSkip", "skip", "1")
+            ]
+        )
+    );
+    assert!(!r.failed);
+    assert_eq!(r.results[0].said.as_deref(), Some(running.as_str()));
+    assert_eq!(*got_op.lock().unwrap(), Some(op), "本机那一组照界面交的");
+    let asked = peers.asked();
+    assert_eq!(
+        asked[0].1["args"]["op"],
+        serde_json::json!({"start": {"run": "direct", "relayed": true}}),
+        "转给别的台那一组：开窗的不是它"
+    );
+    assert_eq!(
+        r.windows,
+        vec![
+            window(Machine::named("box2"), "s-2", "line-2"),
+            window(Machine::local(), "s-3", "line-3"),
+        ],
+        "开窗那几行照原序，远端那一行写那台"
+    );
+}
+
+/// 起一项：会话脸说恢复不了 ⇒ 跳过（那一格那一句，不问 `session-open`）；本来就在跑 ⇒ 跳过（在哪个 tmux 会话里跑）；
+/// 落在窗口里 ⇒ 成了、带开窗那一行；那台拒了 ⇒ 没成，那台那一句 ＋ 复制详情。
+#[test]
+fn one_start_maps_the_open_answer() {
+    use cmd_wire::session::{Landed, Opened};
+    let opened = |landed, session: Option<&str>, line: Option<&str>| Opened {
+        landed,
+        session: session.map(str::to_string),
+        line: line.map(str::to_string),
+        sid: Some("s-1".into()),
+        agent: None,
+        cwd: Some("/w".into()),
+        account: None,
+        note: None,
+        prompt: None,
+        arrival: None,
+    };
+    let sid: cmd_wire::Sid = "s-1".parse().unwrap();
+    let no = crate::wire::Allow::No {
+        why: crate::common::cells::Words("运行中".into()),
+    };
+    let asked = std::cell::Cell::new(false);
+    let (o, w) = start_one(&sid, "proj 起头".into(), no, || {
+        asked.set(true);
+        Ok(opened(Landed::Started, None, None))
+    });
+    assert!(!asked.get(), "脸上恢复不了 ⇒ 不问");
+    assert_eq!(o.outcome, SessionState::Skipped);
+    assert_eq!(o.said.as_deref(), Some("运行中"));
+    assert_eq!(o.title, "proj 起头");
+    assert!(w.is_none());
+
+    let yes = || crate::wire::Allow::Yes;
+    let (o, _) = start_one(&sid, "t".into(), yes(), || {
+        Ok(opened(Landed::Running, Some("proj-cc"), Some("tmux attach")))
+    });
+    assert_eq!(o.outcome, SessionState::Skipped);
+    assert_eq!(o.why.as_deref(), Some("running"));
+    assert_eq!(
+        o.said,
+        Some(copy_text("tabBatch.why.running", &[("name", "proj-cc")]))
+    );
+
+    let (o, w) = start_one(&sid, "t".into(), yes(), || {
+        Ok(opened(Landed::Window, None, Some("claude --resume s-1")))
+    });
+    assert_eq!(o.outcome, SessionState::Done);
+    assert_eq!(o.said, None);
+    assert_eq!(
+        w,
+        Some(window(Machine::local(), "s-1", "claude --resume s-1"))
+    );
+
+    let (o, w) = start_one(&sid, "t".into(), yes(), || {
+        Ok(opened(Landed::Started, Some("proj-cc"), Some("tmux attach")))
+    });
+    assert_eq!(o.outcome, SessionState::Done);
+    assert_eq!(o.session.as_deref(), Some("proj-cc"));
+    assert!(w.is_none(), "落在 tmux 里不开窗");
+
+    let (o, _) = start_one(&sid, "t".into(), yes(), || {
+        Err(Said::new("launch_pending", "那一趟还在起".into()))
+    });
+    assert_eq!(o.outcome, SessionState::Failed);
+    assert_eq!(o.why.as_deref(), Some("launch_pending"));
+    assert_eq!(o.said.as_deref(), Some("那一趟还在起"));
+    assert!(!o.copy_detail.is_empty(), "没成的带复制详情");
 }

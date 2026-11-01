@@ -1,23 +1,23 @@
 /**
  * **tab 栏停 / 起：交给后端**。
  *
- * - 批量停（`sessions-batch`）：选中的全部交本机后端一条，按台扇出 · 跳不跳过 · 合那一句都在后端，回包照摆；
+ * - 批量停 · 起（`sessions-batch`）：选中的全部交本机后端一条，按台扇出 · 跳不跳过 · 合那一句都在后端，回包照摆；
  *   单个结束经 [`callStop`]（`sessions-stop`，那台逐个答）。
- * - 起（`session-open`，与单个恢复同一问）：不同机器并发、一台失败不挡别台；同一台逐项挨个问，每项只交 sid 与放在哪（号 · 目录 · 哪一家那台从记录里读）；
- *   每项的结局取那台那一句；落在窗口里的那几项逐个开窗（[`BACKGROUND_OPENS`]）。
+ * - 起那一批回包里落在窗口里的那几行（`windows`）由这里逐个开窗：开窗是这台电脑上的事；开不出来那一项另出一条，不改汇总。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { settleTyped, unavailableSaid } from "./control-said";
+import { settleTyped } from "./control-said";
 import { batchRefused } from "./sessions-where";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import type { SessionsBatchReply } from "./generated/SessionsBatchReply";
+import type { SessionsOp } from "./generated/SessionsOp";
+import type { SessionItem } from "./generated/SessionItem";
 import { copyText } from "./copy-table";
 import type { Tab } from "./tab-model";
 import type { Launch } from "./generated/Launch";
-import { askOpen, BACKGROUND_OPENS } from "./session-open";
 import type { SessionOutcome as Outcome } from "./generated/SessionOutcome";
 import { openLocalTerminal, openTerminal } from "./terminal-open";
-import { failSaid } from "./kit/detail";
+import { failToast } from "./kit/toast";
 
 /** 一个 tab 的结局（`why` 是给人看的那一句；做成了 ⇒ 空串）。 */
 export interface BatchOutcome {
@@ -31,22 +31,6 @@ export interface BatchOutcome {
 /** 后端答的一个（`sessions-*` 的 `results[i]`，类型从 Rust 生成）。`why` 是那台的原因码。 */
 export type Reply = Outcome;
 
-function groupByOrigin(tabs: readonly Tab[]): Map<Origin, Tab[]> {
-  const m = new Map<Origin, Tab[]>();
-  for (const t of tabs) {
-    const list = m.get(t.origin) ?? [];
-    list.push(t);
-    m.set(t.origin, list);
-  }
-  return m;
-}
-
-/** 那台握手时说过做不到 `op` ⇒ 那一台的每一个跳过（同单个菜单置灰的那一句）。 */
-function offered(origin: Origin, op: string, sids: readonly string[]): BatchOutcome[] | null {
-  const why = unavailableSaid(origin, op);
-  return why === null ? null : sids.map((sid) => ({ sid, outcome: "skipped", why }));
-}
-
 /** 停的期限：单个那条 10 秒；一批按个数放宽（那台逐个做），每个多给 6 秒。 */
 const BATCH_BASE_MS = 10_000;
 const BATCH_EACH_MS = 6_000;
@@ -58,49 +42,42 @@ export async function callStop(origin: Origin, sids: readonly string[]): Promise
   return v.results;
 }
 
-/** 批量停：选中的全部（照选中的先后）交本机后端一条 `sessions-batch`；回包是合好的那一份。问不到本机后端 ⇒ 抛。 */
-export async function stopMany(tabs: readonly Tab[]): Promise<SessionsBatchReply> {
-  const budget = budgetWithin(BATCH_BASE_MS + BATCH_EACH_MS * tabs.length);
-  const req = { op: "stop" as const, items: tabs.map((t) => ({ machine: t.origin, sid: t.sessionId })) };
-  return settleTyped(LOCAL_ORIGIN, "sessions-batch", callTyped(LOCAL_ORIGIN, "sessions-batch", req, budget));
+/**
+ * 一批会话的那一样（停 · 起 · …）交本机后端一条 `sessions-batch`（`items` 照交进来的先后）；回包是合好的那一份。
+ * 期限按个数放宽：那台逐项挨个做，每项多给 `each`。问不到本机后端 ⇒ 抛。
+ */
+export async function askSessions(op: SessionsOp, items: readonly SessionItem[], each: number = BATCH_EACH_MS): Promise<SessionsBatchReply> {
+  const budget = budgetWithin(BATCH_BASE_MS + each * items.length);
+  return settleTyped(LOCAL_ORIGIN, "sessions-batch", callTyped(LOCAL_ORIGIN, "sessions-batch", { op, items: [...items] }, budget));
 }
 
-/** 开终端那一形：后端渲好的那一行，monitor 开窗（本机带起始目录，远端经 `openTerminal`，带上那条会话）。开不了 ⇒ 那一句。 */
-async function openWindow(origin: Origin, cmd: string, cwd: string | null, sid: string): Promise<string | null> {
+/** 一个 tab ⇒ 一批里的那一项。 */
+export const itemOf = (t: Pick<Tab, "origin" | "sessionId">): SessionItem => ({ machine: t.origin, sid: t.sessionId });
+
+/** 批量停：选中的全部（照选中的先后）。 */
+export function stopMany(tabs: readonly Tab[]): Promise<SessionsBatchReply> {
+  return askSessions("stop", tabs.map(itemOf));
+}
+
+/** 起的那一项至多等那台起一次（铸名 ＋ 起 ccm ＋ 回程）。 */
+const START_EACH_MS = 25_000;
+
+/**
+ * 批量起：`run` = `tmux`（在那台 tmux 里后台起，不开窗）· `direct`（各开一个终端）。选中的全部（照选中的先后）；
+ * 回包里落在窗口里的那几行逐个开窗，再把回包交回（那一句照它说）。
+ */
+export async function startMany(tabs: readonly Tab[], run: Launch): Promise<SessionsBatchReply> {
+  const reply = await askSessions({ start: { run } }, tabs.map(itemOf), START_EACH_MS);
+  for (const w of reply.windows) await openWindow(w.machine, w.line, w.cwd, w.sid);
+  return reply;
+}
+
+/** 开终端那一形：后端渲好的那一行，monitor 开窗（本机带起始目录，远端经 `openTerminal`，带上那条会话）。开不了 ⇒ 另出那一句。 */
+async function openWindow(origin: Origin, cmd: string, cwd: string | null, sid: string): Promise<void> {
   try {
     if (isLocalOrigin(origin)) await openLocalTerminal(cmd, cwd);
     else await openTerminal(origin, cmd, sid);
-    return null;
   } catch (e) {
-    return failSaid(copyText("tabBatch.why.windowFailed"), e);
+    failToast(copyText("tabBatch.why.windowFailed"), e);
   }
-}
-
-/** 起这一项：问那台；落在窗口里的开那一行（批量只开这一种）；本来就在跑的记跳过。 */
-async function startOne(origin: Origin, sid: string, run: Launch): Promise<BatchOutcome> {
-  const end = await askOpen(origin, { what: { kind: "resume", sid }, run, local: isLocalOrigin(origin) });
-  if (end.kind !== "opened") {
-    return { sid, outcome: "failed", why: end.said, ...(end.detail !== "" ? { detail: end.detail } : {}) };
-  }
-  const o = end.opened;
-  if (o.landed === "running") return { sid, outcome: "skipped", why: copyText("tabBatch.why.running", { name: o.session ?? "" }) };
-  if (BACKGROUND_OPENS.has(o.landed) && o.line !== null) {
-    const failed = await openWindow(origin, o.line, o.cwd, o.sid ?? sid);
-    if (failed !== null) return { sid, outcome: "failed", why: failed };
-  }
-  return { sid, outcome: "done", why: "" };
-}
-
-/** 起：`run` = `tmux`（在那台 tmux 里后台起，不开窗）· `direct`（各开一个终端）。同一台逐项挨个，各台并发。 */
-export async function startMany(tabs: readonly Tab[], run: Launch): Promise<BatchOutcome[]> {
-  const parts = await Promise.all(
-    Array.from(groupByOrigin(tabs), async ([origin, list]): Promise<BatchOutcome[]> => {
-      const no = offered(origin, "session-open", list.map((t) => t.sessionId));
-      if (no) return no;
-      const out: BatchOutcome[] = [];
-      for (const t of list) out.push(await startOne(origin, t.sessionId, run));
-      return out;
-    }),
-  );
-  return parts.flat();
 }

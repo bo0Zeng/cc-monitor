@@ -1,6 +1,6 @@
 //! 帧面 `sessions-batch`（typed，只在本机后端答全）：一批会话跨几台的那一条 —— 收全部 id、按台分组、
-//! 本机那一组同进程停（`sessions-stop` 的本体），别的台各拿自己那一组问它常驻的 `sessions-batch`（那一份只含它自己的会话），
-//! 逐条结局照入参原序摆好，合那一句交 `batch_core::sessions::sessions_reply`（手机核心同一份）。
+//! 本机那一组同进程做（停 ＝ `sessions-stop` 的本体；起 ＝ 逐项 `session-open` 的恢复那一形），别的台各拿自己那一组问它常驻的
+//! `sessions-batch`（那一份只含它自己的会话），逐条结局照入参原序摆好，合那一句交 `batch_core::sessions::sessions_reply`（手机核心同一份）。
 //!
 //! 那台够不着 · 常驻不在 · 太旧 · 答了失败 ⇒ 那一组每一项都是 `failed`，那一句与复制详情照那一台的失败（`cmd_wire::Failed`）写。
 
@@ -10,8 +10,10 @@ use crate::dial::remote_ask::{Remote, Table};
 use crate::wire::typed::{codes, Command};
 use batch_core::sessions::{sessions_reply, Verb};
 use cmd_wire::batch::{
-    SessionItem, SessionOutcome, SessionState, SessionsBatchReply, SessionsBatchReq, SessionsOp,
+    OpenWindow, SessionItem, SessionOutcome, SessionState, SessionsBatchReply, SessionsBatchReq,
+    SessionsOp,
 };
+use cmd_wire::session::{Landed, Launch, Opened};
 use cmd_wire::Machine;
 use copy_core::copy_text;
 use std::future::Future;
@@ -31,18 +33,22 @@ impl Command for SessionsBatchCmd {
     type Err = SessionsBatchErr;
 }
 
+/// 起会话那一问要的那两样（文件管理面 ＋ 写自家状态的句柄），同 `session-open`。
+type OpenHands = <crate::wire::typed::needs::FilesOwn as crate::wire::spec::Needs>::Given;
+
 impl crate::wire::typed::Handle for SessionsBatchCmd {
-    type Needs = crate::wire::typed::needs::Nothing;
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: SessionsBatchReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl Future<Output = Result<SessionsBatchReply, SessionsBatchErr>> + Send + 'static {
+        let (envelope, hands) = cx.split();
         async move {
-            let (tz, until) = (cx.tz.clone(), cx.until);
+            let (tz, until) = (envelope.tz.clone(), envelope.until);
             across(
                 req,
-                |r| stop_here(r, tz.clone(), until),
-                &cx.tz,
+                |r| here(r, tz, until, hands),
+                &envelope.tz,
                 until,
                 &crate::dial::remote_ask::REACH,
                 &crate::dial::remote_ask::DialRemote,
@@ -53,22 +59,50 @@ impl crate::wire::typed::Handle for SessionsBatchCmd {
     }
 }
 
-/// 停那一样的字：动作那个词 ＋ 只有一项时点名的两句。
-fn stop_verb() -> Verb {
-    Verb {
-        action: copy_text("tabBatch.verb.stop", &[]),
-        one_done: |t| copy_text("sessionState.kill.done", &[("title", t)]),
-        one_failed: |t| copy_text("tabSessionActions.kill.failed", &[("title", t)]),
+/// 这一样的字：动作那个词（原形）＋ 只有一项时点名的两句。
+pub(crate) fn verb_of(op: &SessionsOp) -> Verb {
+    match op {
+        SessionsOp::Stop => Verb {
+            action: copy_text("tabBatch.verb.stop", &[]),
+            one_done: |t| copy_text("sessionState.kill.done", &[("title", t)]),
+            one_failed: |t| copy_text("tabSessionActions.kill.failed", &[("title", t)]),
+        },
+        SessionsOp::Start { run, .. } => Verb {
+            action: copy_text(
+                match run {
+                    Launch::Tmux => "tabBatch.verb.startTmux",
+                    Launch::Direct => "tabBatch.verb.startWindow",
+                    Launch::Managed => "tabBatch.verb.start",
+                },
+                &[],
+            ),
+            one_done: |t| copy_text("tabBatch.one.resumed", &[("title", t)]),
+            one_failed: |t| copy_text("tabBatch.one.resumeFailed", &[("title", t)]),
+        },
     }
 }
 
-/// 本机那一组：同进程跑 `sessions-stop` 的本体（阻塞档 ⇒ 放进阻塞池、带停那一档的期限）。
+/// 本机那一组：照那一样分到停 · 起。
+async fn here(
+    req: SessionsBatchReq,
+    tz: crate::Tz,
+    until: Option<crate::platform::child::Until>,
+    hands: OpenHands,
+) -> Result<SessionsBatchReply, Said> {
+    match req.op {
+        SessionsOp::Stop => stop_here(req, tz, until).await,
+        SessionsOp::Start { run, relayed } => start_here(req, run, !relayed, tz, until, hands).await,
+    }
+}
+
+/// 停：同进程跑 `sessions-stop` 的本体（阻塞档 ⇒ 放进阻塞池、带停那一档的期限）。
 async fn stop_here(
     req: SessionsBatchReq,
     tz: crate::Tz,
     until: Option<crate::platform::child::Until>,
 ) -> Result<SessionsBatchReply, Said> {
     use crate::wire::typed::{Codes as _, Handle as _};
+    let verb = verb_of(&req.op);
     let sids = batch::SidsReq {
         sids: req.items.into_iter().map(|i| i.sid).collect(),
         client: req.client,
@@ -88,11 +122,169 @@ async fn stop_here(
     .await
     .map_err(|e| Said::from(e.to_string()))?
     .map_err(|e| e.into_said())?;
-    Ok(sessions_reply(&stop_verb(), done.results))
+    Ok(sessions_reply(&verb, done.results))
 }
 
-/// 合各台：校验 → 按台分组（照第一次出现的先后）→ 每台各问自己那一组 → 逐条照入参原序摆好、远端的称呼套机器名 → 合那一句。
-/// `local` ＝ 本机那一组怎么做（生产 [`stop_here`]，判据给替身）；入参不对 ⇒ `Err`（`bad_args` 那一句）。
+/// 起：逐项挨个问这台的 `session-open`（恢复那一形，只交 sid 与放在哪；号 · 目录 · 哪一家这台从记录里读），
+/// 之前先照这台的会话脸判恢复得了没有。`window_here` ＝ 开窗的就是这台（界面直接交来的那一组）。
+async fn start_here(
+    req: SessionsBatchReq,
+    run: Launch,
+    window_here: bool,
+    tz: crate::Tz,
+    until: Option<crate::platform::child::Until>,
+    hands: OpenHands,
+) -> Result<SessionsBatchReply, Said> {
+    use crate::wire::typed::Handle as _;
+    let verb = verb_of(&req.op);
+    let rt = tokio::runtime::Handle::current();
+    let (results, windows) = tokio::task::spawn_blocking(move || {
+        let home = crate::history::listing::agent_home();
+        let live = crate::history::live_table::now(&home);
+        let notes = notes();
+        let mut results = Vec::with_capacity(req.items.len());
+        let mut windows = Vec::new();
+        for it in &req.items {
+            let sid = it.sid.as_str();
+            let can = {
+                use crate::wire::{Life, SessionFace, SessionFaceExt as _, WireLife};
+                let life = match live.life_of(sid) {
+                    WireLife::Live { activity } => Life::live(activity, None),
+                    other => Life::of_wire(&other),
+                };
+                SessionFace::of(life).can.resume
+            };
+            let (o, w) = start_one(&it.sid, title_here(&home, &notes, sid), can, || {
+                let _budget = crate::platform::child::Budget::capped(
+                    crate::control::session_open::OPEN_CAP,
+                    until,
+                );
+                let ask = cmd_wire::open::SessionOpenReq {
+                    what: cmd_wire::open::OpenWhat::Resume { sid: it.sid.clone() },
+                    account: None,
+                    run: Some(run),
+                    local: window_here,
+                    ticket: None,
+                    client: req.client.clone(),
+                };
+                let cx = crate::wire::typed::Cx {
+                    tz: tz.clone(),
+                    until,
+                    needs: hands.clone(),
+                };
+                rt.block_on(crate::faces::session_open_face::SessionOpen::run(ask, cx))
+                    .map_err(|e| e.0)
+            });
+            results.push(o);
+            windows.extend(w);
+        }
+        (results, windows)
+    })
+    .await
+    .map_err(|e| Said::from(e.to_string()))?;
+    Ok(SessionsBatchReply {
+        windows,
+        ..sessions_reply(&verb, results)
+    })
+}
+
+/// 起一项：会话脸说恢复不了 ⇒ 跳过（那一格那一句，不问）；问了 ⇒ 本来就在跑 ⇒ 跳过（在哪个 tmux 会话里）· 落在窗口里 ⇒ 成了、带开窗那一行 ·
+/// 别的落处 ⇒ 成了 · 那台拒了 ⇒ 没成（那一句 ＋ 复制详情）。每台那一跳答的是它自己 ⇒ `machine` 是本机那一个。
+pub(crate) fn start_one(
+    sid: &cmd_wire::Sid,
+    title: String,
+    can: crate::wire::Allow,
+    open: impl FnOnce() -> Result<Opened, Said>,
+) -> (SessionOutcome, Option<OpenWindow>) {
+    let one = |outcome, why: Option<&str>, said: Option<String>, session: Option<String>| {
+        SessionOutcome {
+            machine: Machine::local(),
+            sid: sid.clone(),
+            outcome,
+            why: why.map(str::to_string),
+            said,
+            copy_detail: String::new(),
+            title: title.clone(),
+            session,
+        }
+    };
+    if let crate::wire::Allow::No { why } = can {
+        return (
+            one(SessionState::Skipped, Some(NOT_RESUMABLE), Some(why.0), None),
+            None,
+        );
+    }
+    match open() {
+        Err(s) => {
+            let f = crate::wire::detail::failed_of("session-open", s.code_or_fallback(), s.clone());
+            (
+                SessionOutcome {
+                    copy_detail: f.detail,
+                    ..one(SessionState::Failed, Some(f.code.as_str()), Some(f.said), None)
+                },
+                None,
+            )
+        }
+        Ok(o) if o.landed == Landed::Running => {
+            let name = o.session.clone().unwrap_or_default();
+            let said = copy_text("tabBatch.why.running", &[("name", &name)]);
+            (
+                one(SessionState::Skipped, Some("running"), Some(said), o.session),
+                None,
+            )
+        }
+        Ok(o) => {
+            let window = match (o.landed, o.line) {
+                (Landed::Window, Some(line)) => Some(OpenWindow {
+                    machine: Machine::local(),
+                    sid: sid.clone(),
+                    line,
+                    cwd: o.cwd,
+                }),
+                _ => None,
+            };
+            (one(SessionState::Done, None, None, o.session), window)
+        }
+    }
+}
+
+/// 会话脸说恢复不了（运行中 · 记录已不在 …）：那一项跳过的原因码。
+const NOT_RESUMABLE: &str = "not_resumable";
+
+/// 这台的注解表（读不到 ⇒ 空表：称呼退回记录里的那一份）。
+fn notes() -> cmd_wire::listing::Table {
+    match crate::history::history_annotations::load() {
+        crate::history::history_annotations::Loaded::Read(t) => t,
+        _ => Default::default(),
+    }
+}
+
+/// 这台写的称呼：这条会话叫什么那两格（`search_rules::name_face`）拼成一行（项目在前）。
+fn title_here(home: &std::path::Path, notes: &cmd_wire::listing::Table, sid: &str) -> String {
+    use crate::history::search_rules::LabelFacts;
+    let custom = notes.get(sid).and_then(|e| e.custom_title.clone());
+    let facts = match crate::agents::find_session(home, sid) {
+        Ok(at) => LabelFacts {
+            custom,
+            ..crate::history::listing::label_facts_of(&at.file)
+        },
+        // 记录找不到、也没改过名 ⇒ 会话号的头八位（同标签页还没报过名字时那一形）。
+        Err(_) if custom.is_none() => return sid.chars().take(8).collect(),
+        Err(_) => LabelFacts {
+            custom,
+            ..Default::default()
+        },
+    };
+    let name = crate::history::search_rules::name_face(&facts);
+    match name.label_project {
+        Some(p) => format!("{} {}", p.0, name.label.0),
+        None => name.label.0,
+    }
+}
+
+/// 合各台：校验 → 按台分组（照第一次出现的先后）→ 每台各问自己那一组（转给别的台的起那一组标 `relayed`）→
+/// 逐条照入参原序摆好、远端的称呼套机器名 → 合那一句；开窗那几行照原序、换成那一项的那台。
+/// `local` ＝ 本机那一组怎么做（生产 [`here`]，判据给替身）；入参不对 ⇒ `Err`（`bad_args` 那一句）。
 pub(crate) async fn across<'a, L, F>(
     req: SessionsBatchReq,
     local: L,
@@ -105,11 +297,6 @@ where
     L: FnOnce(SessionsBatchReq) -> F,
     F: Future<Output = Result<SessionsBatchReply, Said>> + Send + 'a,
 {
-    if !matches!(req.op, SessionsOp::Stop) {
-        return Err(crate::common::contract::malformed(
-            "`op` must be `stop` (starting a batch is not taken here)",
-        ));
-    }
     if req.items.is_empty() || req.items.len() > batch::MAX_BATCH {
         return Err(crate::common::contract::malformed(&format!(
             "`items` must hold 1..={} entries",
@@ -135,7 +322,7 @@ where
             None => groups.push((
                 it.machine.clone(),
                 SessionsBatchReq {
-                    op: req.op.clone(),
+                    op: relayed_to(req.op, &it.machine),
                     items: vec![one],
                     client: req.client.clone(),
                 },
@@ -146,15 +333,41 @@ where
         groups, local, tz, until, table, remote,
     )
     .await?;
+    let answered = |it: &SessionItem| got.iter().find(|(m, _)| *m == it.machine).map(|(_, r)| r);
     let results = req
         .items
         .iter()
-        .map(|it| {
-            let answered = got.iter().find(|(m, _)| *m == it.machine).map(|(_, r)| r);
-            outcome_of(it, answered)
+        .map(|it| outcome_of(it, answered(it)))
+        .collect();
+    let windows = req
+        .items
+        .iter()
+        .filter_map(|it| {
+            let Some(Ok(r)) = answered(it) else {
+                return None;
+            };
+            let w = r.windows.iter().find(|w| w.sid == it.sid)?;
+            Some(OpenWindow {
+                machine: it.machine.clone(),
+                ..w.clone()
+            })
         })
         .collect();
-    Ok(sessions_reply(&stop_verb(), results))
+    Ok(SessionsBatchReply {
+        windows,
+        ..sessions_reply(&verb_of(&req.op), results)
+    })
+}
+
+/// 那一组交给哪台：起那一组转给别的台 ⇒ 标 `relayed`（开窗的不是那台）；别的照原样。
+fn relayed_to(op: SessionsOp, machine: &Machine) -> SessionsOp {
+    match op {
+        SessionsOp::Start { run, relayed } => SessionsOp::Start {
+            run,
+            relayed: relayed || !machine.is_local(),
+        },
+        other => other,
+    }
 }
 
 /// 一项的结局：那台答回来的那一条（换成这一项的那台、远端的称呼套机器名）；那台没成 ⇒ 那台那一份失败。

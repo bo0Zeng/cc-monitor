@@ -239,7 +239,13 @@ pub enum SessionsOp {
     /// 停：结束带着它的那个终端。
     Stop,
     /// 起：恢复到 `run` 那一种宿主里。
-    Start { run: crate::session::Launch },
+    Start {
+        run: crate::session::Launch,
+        /// 别的台转来的这一组（本机合各台转出去时写，界面不写）：开窗的那台不是这台。缺 ⇒ `false`（开窗的就是这台）。
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
+        relayed: bool,
+    },
 }
 
 /// 一批里的一项：哪台的哪条会话。
@@ -330,6 +336,25 @@ pub struct SessionsBatchReply {
     pub lines: Vec<String>,
     /// 没成的那几段（都成了 ⇒ 空串）。
     pub copy_detail: String,
+    /// 起那一批里落在窗口里的那几项（照原序；别的批 ⇒ 空）：开窗是这台电脑上的事，界面照这几行开。
+    pub windows: Vec<OpenWindow>,
+}
+
+/// 起那一批里落在窗口里的一项：哪台的哪条 ＋ 那台渲好的那一行与起始目录。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OpenWindow {
+    pub machine: crate::Machine,
+    pub sid: crate::Sid,
+    /// 开终端跑的那一行。
+    pub line: String,
+    /// 起在哪个目录（那台展开过的；没有 ⇒ `null`）。
+    pub cwd: Option<String>,
 }
 
 #[cfg(test)]
