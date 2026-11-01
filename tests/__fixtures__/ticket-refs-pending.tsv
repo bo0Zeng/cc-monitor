@@ -326,7 +326,6 @@ tests/frontend/ui/settings/panel-block-isolation.vitest.ts	3
 tests/frontend/ui/settings/panel-groups.vitest.ts	5
 tests/frontend/ui/settings/remote-section.vitest.ts	2
 tests/frontend/ui/skeleton-ledger-huge.vitest.ts	1
-tests/frontend/ui/skeleton-view.vitest.ts	3
 tests/frontend/ui/tab-bar-perf.vitest.ts	1
 tests/frontend/ui/tab-batch-copy.vitest.ts	1
 tests/frontend/ui/tabs-split-graph.vitest.ts	3

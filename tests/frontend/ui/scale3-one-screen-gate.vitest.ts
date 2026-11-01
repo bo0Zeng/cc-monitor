@@ -599,7 +599,7 @@ describe("秤 3 · 戊：切进钉过水位、没满一屏的 tab 按真实布�
       ),
       sid,
     );
-  // 「批结束后空闲物化补到哪些后台 tab」那一格随后台空闲物化一起删了（A17-45-3-4：后台 tab 只进账本，判据在 skeleton-view.vitest.ts）。
+  // 「批结束后空闲物化补到哪些后台 tab」那一格随后台空闲物化一起删了（A17-45-3-4：后台 tab 只进账本，判据在 skeleton-view-cold-open.vitest.ts）。
 
   it("切进钉过水位、没满一屏、scrollHeight 被估值撑高的 tab ⇒ 按真实布局补满", () => {
     const rig = installViewerRig();
