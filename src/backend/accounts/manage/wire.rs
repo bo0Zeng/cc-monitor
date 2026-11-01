@@ -96,6 +96,19 @@ fn alias_events(before: &[String], after: &[String]) -> Vec<AliasEvent> {
         .collect()
 }
 
+/// 此刻有活会话的号（目录，这一族的 `/` 写法）· 有没有认不出号的活会话。判活与「会话归哪个号」只住 `accounts_query`，这里只折一下。
+pub(crate) fn busy_of(
+    rows: &[crate::observe::accounts_query::SessionAccount],
+) -> (std::collections::BTreeSet<String>, bool) {
+    let live = || rows.iter().filter(|r| r.alive);
+    let busy = live()
+        .filter_map(|r| r.config_dir.as_deref())
+        .map(crate::platform::acct_view::slash_form)
+        .collect();
+    let unknown = live().any(|r| !r.bare && r.config_dir.is_none());
+    (busy, unknown)
+}
+
 /// 导入凭据的那个路径：`~/…` 按家目录展开；只收家目录底下的绝对路径（无 `..` 段 · 无控制符）。
 fn cred_path(home: &str, raw: &str) -> Result<String, Said> {
     let t = raw.trim();
@@ -188,6 +201,12 @@ pub(crate) fn run_change(
         path: k.path.clone(),
         ids: k.ids.clone(),
     });
+    if matches!(req, Request::Repair(_)) {
+        let agent_home = crate::history::listing::agent_home();
+        (snap.busy, snap.busy_unknown) = busy_of(
+            &crate::observe::accounts_query::session_accounts_here(&agent_home),
+        );
+    }
     let (plan, dry, extra): (Plan, bool, AccountChange) = match req {
         Request::Rollback(a) => return rollback(d, &snap, a, keys),
         Request::Init(a) => (

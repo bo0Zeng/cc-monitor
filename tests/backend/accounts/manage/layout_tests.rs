@@ -569,3 +569,115 @@ fn repair_lifts_the_one_entity_over_the_empty_dir_align_seeded() {
     );
     assert!(p.notes.iter().any(|n| n.contains("plans")), "{:?}", p.notes);
 }
+
+/// 两个号（z 有 `plans` 实体、b 没有）的修复快照；`seeded` ⇒ 共享库里那份是对齐种的空目录，否则共享库里没有 `plans`。
+fn lift_case(seeded: bool) -> Snapshot {
+    let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[{"name":"z","email":"","configDir":"/h/.cc-monitor/accounts/z","isDefault":true},{"name":"b","email":"","configDir":"/h/.cc-monitor/accounts/b","isDefault":false}]}"#;
+    let mut z = healthy();
+    z.entries
+        .insert("plans".into(), Item::Dir { mode: Some(0o700) });
+    let mut s = snap(z);
+    s.manifest_text = Some(text.into());
+    s.manifest = Some(Manifest::parse(text));
+    let mut b = healthy();
+    b.entries.remove("plans");
+    s.dirs.insert("/h/.cc-monitor/accounts/b".into(), b);
+    if seeded {
+        s.empty_shared.insert("plans".into());
+    } else {
+        s.shared.entries.remove("plans");
+    }
+    s
+}
+
+/// 唯一持有者此刻有活会话 ⇒ 修复这一轮不挪它那一份（挪走到链回之间会话会重建一份，计划半路撞「已在」停下）、出一条提示；
+/// 共享库里没有那一份 ⇒ 照「两个号以上各有一份」那一支建出来，别的号照常链上；对齐种的空目录不摘。
+#[test]
+fn repair_does_not_lift_out_of_an_account_with_a_live_session() {
+    let z = "/h/.cc-monitor/accounts/z";
+    let busy_note = copy_text(
+        "beAcctPlan.repair.liftBusy",
+        &[("name", "z"), ("item", "plans")],
+    );
+    for seeded in [true, false] {
+        let mut s = lift_case(seeded);
+        s.busy.insert(z.into());
+        let p = plan_repair(&s).unwrap();
+        assert!(
+            !p.ops
+                .iter()
+                .any(|o| matches!(o, Op::Move { .. } | Op::DropEmpty(_))),
+            "有活会话还挪（seeded={seeded}）：{:?}",
+            p.ops
+        );
+        assert!(p.notes.contains(&busy_note), "没出提示：{:?}", p.notes);
+        let mk = Op::MkDir("/h/.claude/plans".into());
+        assert_eq!(p.ops.contains(&mk), !seeded, "{:?}", p.ops);
+        let b_linked = Op::Link {
+            target: "/h/.claude/plans".into(),
+            at: "/h/.cc-monitor/accounts/b/plans".into(),
+        };
+        assert!(p.ops.contains(&b_linked), "别的号没链上：{:?}", p.ops);
+    }
+    // 忙的是另一个号 ⇒ 照挪。
+    let mut s = lift_case(true);
+    s.busy.insert("/h/.cc-monitor/accounts/b".into());
+    let p = plan_repair(&s).unwrap();
+    assert!(
+        p.ops.iter().any(|o| matches!(o, Op::Move { .. })),
+        "{:?}",
+        p.ops
+    );
+}
+
+/// 有活会话却认不出是哪个号 ⇒ 当所有号都忙（判不了的不当通过）：不挪。
+#[test]
+fn repair_does_not_lift_when_a_live_session_has_an_unknown_account() {
+    let mut s = lift_case(true);
+    s.busy_unknown = true;
+    let p = plan_repair(&s).unwrap();
+    assert!(
+        !p.ops
+            .iter()
+            .any(|o| matches!(o, Op::Move { .. } | Op::DropEmpty(_))),
+        "{:?}",
+        p.ops
+    );
+    assert!(
+        p.notes.contains(&copy_text(
+            "beAcctPlan.repair.liftBusy",
+            &[("name", "z"), ("item", "plans")]
+        )),
+        "{:?}",
+        p.notes
+    );
+}
+
+/// 活会话 ⇒ 忙的号：活着且有配置目录 ⇒ 进 `busy`（照这一族的 `/` 写法）；活着 · 不是裸起 · 认不出配置目录 ⇒ `busy_unknown`；
+/// 死的 · 裸起的（账号 0，没有号目录）不算。
+#[test]
+fn busy_accounts_come_from_live_sessions_only() {
+    use crate::observe::accounts_query::SessionAccount;
+    let row = |config_dir: Option<&str>, alive: bool, bare: bool| SessionAccount {
+        pid: 1,
+        sid: None,
+        cwd: None,
+        config_dir: config_dir.map(str::to_string),
+        account: None,
+        alive,
+        bare,
+        via_relay: None,
+    };
+    let (busy, unknown) = crate::accounts::manage::wire::busy_of(&[
+        row(Some("/h/.cc-monitor/accounts/z"), true, false),
+        row(Some("/h/.cc-monitor/accounts/b"), false, false),
+        row(None, true, true),
+    ]);
+    assert_eq!(
+        busy.into_iter().collect::<Vec<_>>(),
+        vec!["/h/.cc-monitor/accounts/z".to_string()]
+    );
+    assert!(!unknown);
+    let (busy, unknown) = crate::accounts::manage::wire::busy_of(&[row(None, true, false)]);
+    assert!(busy.is_empty() && unknown);
+}

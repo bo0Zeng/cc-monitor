@@ -454,10 +454,13 @@ pub(crate) fn plan_colors(s: &Snapshot) -> Result<Plan, Said> {
 
 /// 按需才建的那几个共享库里还没有（或只有对齐种下的一份空目录，[`Snapshot::empty_shared`]）⇒ 恰好一个号里有一份实体目录：
 /// 挪进共享库当共用的那一份（空目录先摘掉）；否则共享库里没有就建一份空的（两个号以上各有一份 ⇒ 不替人合并，核对照「各有一份」提示）。
+/// 那个号此刻有活会话（[`Snapshot::busy`]；有认不出号的活会话 ⇒ 当所有号都忙）⇒ 这一轮不挪它那一份、出一条提示，
+/// 照「各有一份」那一支走（挪走到链回之间会话会重建一份，计划半路撞「已在」停下）。
 /// 回挪过来的那几个 `(号的目录, 项)`（那个号随后照样链回去）。只有「修复」调它。
 fn lift_on_demand<'a>(plan: &mut Plan, s: &Snapshot, m: &Manifest) -> Vec<(String, &'a str)> {
     let r = s.roots();
     let mut lifted = Vec::new();
+    let busy = |a: &Account| s.busy_unknown || s.busy.contains(&a.config_dir);
     for n in shared_on_demand() {
         let seeded = s.empty_shared.contains(*n);
         if s.shared.get(n).exists() && !seeded {
@@ -467,6 +470,15 @@ fn lift_on_demand<'a>(plan: &mut Plan, s: &Snapshot, m: &Manifest) -> Vec<(Strin
             .filter(|a| matches!(s.dir(&a.config_dir).get(n), Item::Dir { .. }))
             .collect();
         match holders.as_slice() {
+            [one] if busy(one) => {
+                plan.notes.push(copy_text(
+                    "beAcctPlan.repair.liftBusy",
+                    &[("name", &one.name), ("item", n)],
+                ));
+                if !seeded {
+                    plan.ops.push(Op::MkDir(join(&r.shared, n)));
+                }
+            }
             [one] => {
                 if seeded {
                     plan.ops.push(Op::DropEmpty(join(&r.shared, n)));
