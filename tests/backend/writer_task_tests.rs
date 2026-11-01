@@ -180,3 +180,159 @@ async fn a_live_line_goes_out_before_the_next_page_of_a_paged_reply() {
         "实时行排在了第 2 页之后：{seen:?}"
     );
 }
+
+/// 判据那一侧的写端：写进来的先攒着，**flush 那一下才算发出去**（像 `BufWriter` · deflate 那一层）；数 flush 几次、每次带出去多少字节。
+#[derive(Clone, Default)]
+struct Flushed(std::sync::Arc<std::sync::Mutex<FlushLog>>);
+
+#[derive(Default)]
+struct FlushLog {
+    pending: Vec<u8>,
+    sent: Vec<u8>,
+    flushes: Vec<usize>,
+}
+
+impl Flushed {
+    fn sent_lines(&self) -> Vec<String> {
+        String::from_utf8(self.0.lock().unwrap().sent.clone())
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+    fn flushes(&self) -> Vec<usize> {
+        self.0.lock().unwrap().flushes.clone()
+    }
+}
+
+impl tokio::io::AsyncWrite for Flushed {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        self.0.lock().unwrap().pending.extend_from_slice(buf);
+        std::task::Poll::Ready(Ok(buf.len()))
+    }
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let mut g = self.0.lock().unwrap();
+        let chunk = std::mem::take(&mut g.pending);
+        g.flushes.push(chunk.len());
+        g.sent.extend_from_slice(&chunk);
+        std::task::Poll::Ready(Ok(()))
+    }
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        self.poll_flush(cx)
+    }
+}
+
+fn seqs(lines: &[String]) -> Vec<u64> {
+    lines
+        .iter()
+        .map(|l| {
+            let v: serde_json::Value = serde_json::from_str(l).expect("一行一帧");
+            v["seq"].as_u64().expect("seq")
+        })
+        .collect()
+}
+
+/// 出方向一次排着 40 帧、随后关掉：40 帧**全部发出去**（最后几帧不许攒在写端里没 flush 就寿终），
+/// 而且只 flush **一次**（排着的时候不 flush，排空了才 flush）。
+#[tokio::test]
+async fn a_queued_burst_goes_out_whole_in_one_flush() {
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(4);
+    let (_tap_tx, tap_rx) = tokio::sync::mpsc::channel::<Frame>(1);
+    for i in 0..40 {
+        tx.try_send(line(i)).expect("line 灌");
+    }
+    drop(tx);
+    let out = Flushed::default();
+    let mut w = out.clone();
+    writer_task(&mut w, rx, reply_rx, Fed(tap_rx), Default::default(), None).await;
+    drop(reply_tx);
+    assert_eq!(
+        seqs(&out.sent_lines()),
+        (0..40).collect::<Vec<_>>(),
+        "排空之前寿终，尾巴没 flush 出去"
+    );
+    assert_eq!(
+        out.flushes().len(),
+        1,
+        "排着的帧一帧一 flush：{:?}",
+        out.flushes()
+    );
+}
+
+/// 只来一帧、通道还开着：这一帧写完**立刻**发出去（不等下一帧、不等计时器）。
+#[tokio::test]
+async fn a_lone_frame_goes_out_at_once() {
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(4);
+    let (_tap_tx, tap_rx) = tokio::sync::mpsc::channel::<Frame>(1);
+    let out = Flushed::default();
+    let w = out.clone();
+    let task = tokio::spawn(async move {
+        writer_task(w, rx, reply_rx, Fed(tap_rx), Default::default(), None).await;
+        drop(reply_tx);
+    });
+    tx.try_send(line(1)).expect("line 灌");
+    let mut sent = Vec::new();
+    for _ in 0..1000 {
+        sent = out.sent_lines();
+        if !sent.is_empty() {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(seqs(&sent), vec![1], "通道还开着时这一帧没发出去");
+    drop(tx);
+    task.await.unwrap();
+}
+
+/// 洪峰：一直排着的时候也不能无限攒 —— 自上次 flush 起写满 64 KB（`WRITE_FLUSH_BYTES`）就照 flush 一次（首帧延迟有界）。
+#[tokio::test]
+async fn a_long_flood_is_flushed_every_64k() {
+    let fat = |seq: u64| {
+        Frame::Line(crate::wire::Line {
+            session_id: "sid-w".into(),
+            path: format!("/{}", "p".repeat(8 * 1024)),
+            seq,
+            record: None,
+            cwd: None,
+            byte_offset: 0,
+            rid: None,
+        })
+    };
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(4);
+    let (_tap_tx, tap_rx) = tokio::sync::mpsc::channel::<Frame>(1);
+    for i in 0..40 {
+        tx.try_send(fat(i)).expect("line 灌");
+    }
+    drop(tx);
+    let out = Flushed::default();
+    let mut w = out.clone();
+    writer_task(&mut w, rx, reply_rx, Fed(tap_rx), Default::default(), None).await;
+    drop(reply_tx);
+    assert_eq!(
+        seqs(&out.sent_lines()),
+        (0..40).collect::<Vec<_>>(),
+        "洪峰里少了帧"
+    );
+    // 上限照设计定的 64 KB 写死在这里：写者那一边的常量改了，这一条跟着改。
+    const CAP: usize = 64 * 1024;
+    let one = crate::wire::to_line(&fat(0)).unwrap().len();
+    let flushes = out.flushes();
+    assert!(
+        flushes.iter().all(|&n| n < CAP + one),
+        "一次 flush 攒过了 64 KB 上限：{flushes:?}"
+    );
+    assert!(flushes.len() < 40, "洪峰里仍是一帧一 flush：{flushes:?}");
+}
