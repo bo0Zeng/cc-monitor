@@ -42,9 +42,9 @@ pub(crate) fn host_label(origin: &crate::origin::Origin) -> String {
 /// 「这台」那几句的读法：给人看的那一句 ＋ 复制详情。
 pub(crate) fn said_of(p: &resident_client::feed::Problem) -> crate::detail::Said {
     if p.detail.trim().is_empty() {
-        crate::detail::Said::written(p.text.clone())
+        crate::detail::Said::written(p.said.clone())
     } else {
-        crate::detail::Said::with_raw(p.text.clone(), &p.detail)
+        crate::detail::Said::with_raw(p.said.clone(), &p.detail)
     }
 }
 
