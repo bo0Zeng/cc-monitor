@@ -586,7 +586,7 @@ export class TabManager {
         cwd: tab.projectDir,
         face, // 与 tab 栏同一张脸
         needs: needsOf(tab)?.text ?? null,
-        runningAgents: runs.groups.running.length,
+        running: runs.groups.running_text ?? null,
         agents: runs.summary ?? null,
         context: tab.usage === null ? null : { text: tab.usage.contextText, tone: tab.usage.contextTone, percent: tab.usage.percent },
         unread: tab.unread,
@@ -613,14 +613,13 @@ export class TabManager {
     return JSON.stringify(sessions);
   }
 
-  /** 监控板选中格的细节（model · 改过的文件 · 子运行名单照那台写好的三组排 · 那一句）；未知 sid ⇒ `null`。纯读。 */
+  /** 监控板选中格的细节（model · 改过的文件 · 那台挑好的那几个子运行与余下那一截 · 那一句）；未知 sid ⇒ `null`。纯读。 */
   peekSession(sessionId: string): SessionPeek | null {
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return null;
     const table = this.live.board.table(sessionId);
     const byRun = new Map(table.runs.map((r) => [r.run, r]));
-    const { running, recent, older } = table.groups;
-    const agents = [...running, ...recent, ...older].flatMap((id) => {
+    const agents = (table.groups.peek ?? []).flatMap((id) => {
       const r = byRun.get(id);
       return r === undefined ? [] : [{ label: runLabel(r), status: r.state }];
     });
@@ -629,6 +628,7 @@ export class TabManager {
       recentFiles: [...tab.touchedFiles],
       agents,
       summary: table.summary ?? null,
+      more: table.groups.peek_more_text ?? null,
     };
   }
 
@@ -770,6 +770,7 @@ export class TabManager {
       permissionModeText: null,
       needs: null,
       autoAnswer: null,
+      autoAnswerChoices: [],
       autoAnswered: null,
       line: null,
       backgroundWork: null,

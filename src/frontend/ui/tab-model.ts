@@ -21,6 +21,7 @@ import type { Origin } from "./ipc/origin";
 import type { SessionFace } from "./generated/SessionFace";
 import type { FactsLine } from "./generated/FactsLine";
 import type { LineRecord } from "./generated/LineRecord";
+import type { AutoChoice } from "./generated/AutoChoice";
 import type { BackgroundWork, Needs, PendingCall, RetryOutcome, UsageFact } from "./session-reads";
 import type { SessionHidden, SessionLineage } from "./session-hidden";
 
@@ -104,6 +105,8 @@ export interface Tab {
   needs: Needs | null;
   /** 没人答的提问等几分钟替人答（后端 `history-facts` 的 `autoAnswer`，会话注解里那一格）；关 ⇒ `null`。 */
   autoAnswer: number | null;
+  /** 那一格可选的几档（后端 `history-facts` 的 `autoAnswerChoices`：几分钟 ＋ 写好的字，`0` 是关）；菜单照列。 */
+  autoAnswerChoices: AutoChoice[];
   /** 上一条提问没人答、已替人答过 ⇒ 后端写好的那一句（`history-facts` 的 `autoAnswered`）；没有 ⇒ `null`。 */
   autoAnswered: string | null;
   /** 状态一句（后端 `history-facts` 的 `line`）：只在它的 `for` 与 `face` 上那一态相同时用；没有 ⇒ `null`。 */

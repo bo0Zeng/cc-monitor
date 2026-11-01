@@ -789,6 +789,18 @@
         },
         {
           "frozen": false,
+          "kind": "value",
+          "path": "autoAnswerChoices[].min",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "autoAnswerChoices[].text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "text",
           "path": "autoAnswered",
           "type": "string"

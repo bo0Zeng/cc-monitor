@@ -2685,12 +2685,6 @@
       "zh": "上下文 {ctx}",
       "args": ["ctx"]
     },
-    "gridMonitor.renderBadges.agentsLabel": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "在跑 · agent {runningAgents}",
-      "args": ["runningAgents"]
-    },
     "sessionFind.box.closeHint": {
       "kind": "action",
       "role": "按钮",
@@ -4334,12 +4328,6 @@
       "kind": "body",
       "role": "悬停",
       "zh": "只答提问 · 等满没人答就替人答一句；批准与计划照常等人",
-      "args": []
-    },
-    "tabMenu.autoAnswer.off": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "关",
       "args": []
     },
     "tabMenu.autoAnswer.failed": {
@@ -16776,6 +16764,12 @@
       "zh": "{dur}没人答，已自动答：{say}",
       "args": ["dur", "say"]
     },
+    "beAsk.auto.off": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "关",
+      "args": []
+    },
     "beAsk.auto.say": {
       "kind": "body",
       "role": "片段",
@@ -19084,6 +19078,18 @@
       "role": "片段",
       "zh": "agent",
       "args": []
+    },
+    "runs.badge.running": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "在跑 · agent {running}",
+      "args": ["running"]
+    },
+    "runs.peek.more": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "+{more}",
+      "args": ["more"]
     },
     "runs.last.say": {
       "kind": "body",

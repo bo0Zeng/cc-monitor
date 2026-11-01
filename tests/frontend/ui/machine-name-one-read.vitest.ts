@@ -43,6 +43,7 @@ function tab(sid: string, origin: string, over: Partial<Tab> = {}): Tab {
     unread: 0,
     needs: null,
     autoAnswer: null,
+    autoAnswerChoices: [],
     autoAnswered: null,
     backgroundWork: null,
     pending: [],

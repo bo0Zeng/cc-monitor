@@ -1535,6 +1535,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.AttachedKind::class.java to com.ccmonitor.mobile.core.wire.gen.AttachedKind.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.Attachment::class.java to com.ccmonitor.mobile.core.wire.gen.Attachment.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.AutoAnswer::class.java to com.ccmonitor.mobile.core.wire.gen.AutoAnswer.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.AutoChoice::class.java to com.ccmonitor.mobile.core.wire.gen.AutoChoice.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.AutoLaunchConfig::class.java to com.ccmonitor.mobile.core.wire.gen.AutoLaunchConfig.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.BackendLogReq::class.java to com.ccmonitor.mobile.core.wire.gen.BackendLogReq.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.BackendStatus::class.java to com.ccmonitor.mobile.core.wire.gen.BackendStatus.ADAPTER,

@@ -7,6 +7,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, DuplexStream};
 
+/// 那一台此刻有没有在跑的一条（读常驻流那张表）。
+fn running(machine: &str) -> bool {
+    lock(table()).contains_key(machine)
+}
+
 /// 那台认的几条命令（转过去问的那一条在里面）。
 const COMMANDS: &[&str] = &["ping", "history-tail", "machine-interrupts"];
 

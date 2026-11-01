@@ -52,6 +52,7 @@
 use crate::detail::Shell as _;
 use copy_core::copy_text;
 use copy_core::said::Said;
+use copy_core::{Discard, Why};
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -189,7 +190,8 @@ impl LoggingState {
     pub fn install_error_emitter<R: Runtime>(&self, handle: AppHandle<R>) {
         let h = handle;
         crate::ui_error::install(Box::new(move |p: &crate::ui_error::UiErrorPayload| {
-            let _ = h.emit(crate::ui_error::EVENT, p);
+            // 推不上界面它照样进了日志文件。
+            h.emit(crate::ui_error::EVENT, p).discard(Why::Diag);
         }));
     }
 

@@ -5,6 +5,8 @@
 //! **作用范围限于** monitor 数据目录（`~/.cc-monitor/`）下前端自己的产物（详 IPC-PROTOCOL.md § 通用约束）；
 //! 用户文件一律经后端文件管理面写（INVARIANTS § 4）。今天的调用方：monitor 的 `bind.rs` · `auto_launch.rs`、文件窗口的书签。
 
+use copy_core::{Discard, Why};
+
 /// 一个进程里第几次写（临时件名字里带它：同一毫秒两个线程各写各的）。
 static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -55,7 +57,7 @@ pub fn atomic_write_json<T: serde::Serialize>(
         .and_then(|mut f| f.write_all(body.as_bytes()));
     let r = written.and_then(|()| atomic_replace_path(&tmp, path));
     if r.is_err() {
-        let _ = std::fs::remove_file(&tmp);
+        std::fs::remove_file(&tmp).discard(Why::CleanupAfterFailure); // 删不掉只剩一份临时件
     }
     r
 }

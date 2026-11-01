@@ -25,12 +25,13 @@ pub(crate) fn capture_full(
     spawn: &dyn Fn() -> std::io::Result<crate::spawn_managed::ManagedChild>,
     input: Option<Vec<u8>>,
 ) -> Result<Captured, CaptureFail> {
+    use copy_core::{Discard, Why};
     use std::io::{Read, Write};
     let mut child = spawn().map_err(|e| CaptureFail::Spawn(e.to_string()))?;
     // 入参另起一条线程写：对面不读 stdin 就先退出时，写端会断，这里不许因此挂住（写错不采信，等它的退出码说话）。
     let writer = match (child.stdin.take(), input) {
         (Some(mut w), Some(bytes)) => Some(std::thread::spawn(move || {
-            let _ = w.write_all(&bytes);
+            w.write_all(&bytes).discard(Why::DeadLink);
         })),
         _ => None,
     };
@@ -73,11 +74,11 @@ pub(crate) fn capture_full(
     };
     if timed_out {
         // 杀掉它，读线程随管道关闭而结束 —— 否则那条线程会跟着挂死的子进程一起留下。
-        let _ = child.kill();
-        let _ = child.wait();
+        child.kill().discard(Why::Reap);
+        child.wait().discard(Why::Reap);
     }
     if let Some(w) = writer {
-        let _ = w.join();
+        w.join().discard(Why::Signal);
     }
     let (stdout, out_err) = out.join().unwrap_or_default();
     let (stderr, err_err) = err.join().unwrap_or_default();
