@@ -551,9 +551,9 @@ async fn run(req: &ProbeReq, dial: Arc<dyn Dial>, cells: &Cells<'_>) -> Result<P
             Ev::Feed(Event::State(State::Down { problem, .. })) => {
                 // SSH 都没够着 ⇒ 那一句说握手没成（原因是真连接那一句）；够着了 ⇒ 就是真连接那一句。原话在复制详情。
                 let said = if ssh {
-                    problem.text
+                    problem.said
                 } else {
-                    copy_text("beProbe.test.sshFailed", &[("why", &problem.text)])
+                    copy_text("beProbe.test.sshFailed", &[("why", &problem.said)])
                 };
                 let detail = Some(problem.detail).filter(|d| !d.is_empty());
                 return Ok(stopped(cells, said, detail.or_else(|| failed_detail(None))));

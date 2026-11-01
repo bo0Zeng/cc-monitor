@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.ui.session
 
-import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Profiles
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.data.repo.MovedLaunch
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.test.runTest
@@ -125,7 +125,7 @@ class LaunchFromAliasesTest {
     @Test
     fun aLineThatMachineCannotFoldSaysWhatItSaidAndWritesNothing() =
         runTest {
-            val l = link(fromLine = Reply.Failed(CoreFailure("refused", "这条命令建不了别名", "")))
+            val l = link(fromLine = Reply.Failed(Failed("refused", "这条命令建不了别名", "")))
             val r = TerminalOps(l, { "box" }).makeAlias(MovedLaunch("h", "top", "/srv", null, "htop -d 5"))
             assertTrue(
                 r
@@ -140,7 +140,7 @@ class LaunchFromAliasesTest {
     @Test
     fun aRefusedWriteSaysWhatThatMachineSaid() =
         runTest {
-            val l = link(write = Reply.Failed(CoreFailure("refused", "名字已被占用", "细节")))
+            val l = link(write = Reply.Failed(Failed("refused", "名字已被占用", "细节")))
             val r = TerminalOps(l, { "box" }).makeAlias(MovedLaunch("h", "cc", null, null, "claude"))
             assertTrue(r.isFailure)
             assertTrue(

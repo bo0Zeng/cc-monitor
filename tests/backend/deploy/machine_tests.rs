@@ -24,7 +24,7 @@ fn up(relation: Relation, differs: &[&str]) -> Fact {
 fn down_(why: Option<Why>) -> Fact {
     round(Round::Down {
         problem: RoundProblem {
-            text: "拨号没成".into(),
+            said: "拨号没成".into(),
             detail: "命令：dial\n原话：raw words".into(),
             why,
             seen_key: Some("SHA256:new".into()),
@@ -38,7 +38,7 @@ fn down_(why: Option<Why>) -> Fact {
 fn blocked(b: Blocker) -> Fact {
     round(Round::Down {
         problem: RoundProblem {
-            text: if b == Blocker::NoBackend {
+            said: if b == Blocker::NoBackend {
                 NO_BACKEND.into()
             } else {
                 "起不了".into()

@@ -1340,7 +1340,7 @@ async fn an_expired_deadline_sends_nothing() {
     inbound_client::unregister(&client);
 }
 
-/// 那台拒了：句子就是它那一句（不在前面接「谁查询失败 ·」），复制详情是它写的那份（远端补「本机」那一行）。
+/// 那台拒了：句子就是它那一句（不在前面接「谁查询失败 ·」），码 · 复制详情是它交来的那一份原样（壳不拆、不补）。
 #[tokio::test]
 async fn a_refusal_says_the_peer_sentence_and_carries_its_detail() {
     let origin = Origin::named("said3-refused");
@@ -1378,16 +1378,8 @@ async fn a_refusal_says_the_peer_sentence_and_carries_its_detail() {
     );
     let e = asking.await.expect("task").expect_err("拒了却成了");
     assert_eq!(e.said, "机器表写不进去");
-    assert!(
-        e.detail.contains(&wrote),
-        "那台写的详情没带上：{}",
-        e.detail
-    );
-    assert!(
-        e.detail.contains(&crate::detail::local_line()),
-        "远端没补「本机」：{}",
-        e.detail
-    );
+    assert_eq!(e.code, "write_failed");
+    assert_eq!(e.detail, wrote, "那台写的详情没原样带上");
     inbound_client::unregister(&client);
 }
 

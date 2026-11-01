@@ -1,12 +1,12 @@
 package com.ccmonitor.mobile.link
 
-import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 
 /**
- * 屏上那一句 ＋ 复制详情。核心写好的失败（[CoreFailure]）原样：`message` 上屏、`detail` 进详情；
+ * 屏上那一句 ＋ 复制详情。核心写好的失败（[Failed]）原样：`said` 上屏、`detail` 进详情；
  * 常驻流走不通 · 通着但那台后端旧了，那一句也是核心写好的（那台状态成品的 `said`，桌面同一套字），手机不另判、不另写。
  */
 data class Problem(
@@ -14,7 +14,7 @@ data class Problem(
     val detail: String,
 )
 
-private fun core(f: CoreFailure) = Problem(f.message, f.detail)
+private fun core(f: Failed) = Problem(f.said, f.detail)
 
 /** 那台状态成品的那一句 ＋ 复制详情（接一台走不通 ⇒ 核心说的那一句）。 */
 fun LinkLine.problem(): Problem = Problem(machine.said, machine.detail.orEmpty())

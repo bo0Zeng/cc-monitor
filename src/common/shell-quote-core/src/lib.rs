@@ -136,6 +136,17 @@ pub fn launcher_refused_char(s: &str) -> Option<char> {
         .find(|c| !(c.is_ascii_alphanumeric() || LAUNCHER_EXTRA.contains(*c)))
 }
 
+/// 一个词是不是 shell 变量赋值 `NAME=…`：名字首字是字母或 `_`，其余是字母数字下划线（首字是数字 · 没有名字 ⇒ 不是，shell 把它当要执行的词）。
+/// 后端认「命令里被执行的是哪个程序」「用意从哪个词起」都按它跳过段首的赋值词。
+pub fn is_assignment(word: &str) -> bool {
+    word.split_once('=').is_some_and(|(name, _)| {
+        let mut cs = name.chars();
+        cs.next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    })
+}
+
 /// POSIX 单引号 quote：整体 `'…'` 包裹，内部 `'` 断开为 `'\''`。
 ///
 /// 与 TS `shell-quote.ts::posixQuote` 逐字节同义（对拍夹具里有带引号的样本）。

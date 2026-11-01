@@ -1236,18 +1236,12 @@ pub async fn watch_coded(
                 use cmd_wire::frame::TransferEnd;
                 return match serde_json::from_slice::<TransferEnd>(&body.0) {
                     Ok(TransferEnd::Done { bytes, sha256 }) => Ok(Watched { bytes, sha256 }),
-                    Ok(TransferEnd::Failed { why, code, detail }) => {
-                        let detail = detail.filter(|d| !d.trim().is_empty());
-                        let mut f = match detail {
-                            None => failed_here(why, origin, kind, None),
-                            Some(detail) => Failed {
-                                detail,
-                                ..Failed::local(why)
-                            },
-                        };
-                        f.code = Failed::code_or_fallback(code);
-                        Err(f)
-                    }
+                    // 传输台写了详情 ⇒ 原样；没写 ⇒ 这一侧补上（码照传输台的）。
+                    Ok(TransferEnd::Failed(f)) if f.detail.trim().is_empty() => Err(Failed {
+                        code: f.code,
+                        ..failed_here(f.said, origin, kind, None)
+                    }),
+                    Ok(TransferEnd::Failed(f)) => Err(f),
                     Ok(TransferEnd::Cancelled) => {
                         Err(plain(super::transfer::CANCELLED.to_string()))
                     }

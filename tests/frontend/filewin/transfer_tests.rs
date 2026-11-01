@@ -623,7 +623,7 @@ impl comms_inward::chan::router::Backends for XferHost {
                 .boxed(),
             Ends::Failed => head
                 .chain(futures::stream::iter([end(
-                    serde_json::json!({ "state": "failed", "why": "断网（合成）", "detail": "原话：夹具原话" }),
+                    serde_json::json!({ "state": "failed", "code": "failed", "said": "断网（合成）", "detail": "原话：夹具原话" }),
                 )]))
                 .map(move |i| {
                     let _keep = &mark;
@@ -632,7 +632,7 @@ impl comms_inward::chan::router::Backends for XferHost {
                 .boxed(),
             Ends::Mismatch => head
                 .chain(futures::stream::iter([end(serde_json::json!({
-                    "state": "failed", "why": "起始目录不是 home（合成）", "code": "sftp_home_mismatch",
+                    "state": "failed", "code": "sftp_home_mismatch", "said": "起始目录不是 home（合成）", "detail": "",
                 }))]))
                 .map(move |i| {
                     let _keep = &mark;

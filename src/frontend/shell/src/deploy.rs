@@ -11,9 +11,11 @@
 //! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`：那台后端自己算、自己写（帧命令 `mcp-sync-apply` / `ext-uninstall-apply`）。
 //! - **F50**：追加公钥到远端 `~/.ssh/authorized_keys`：本机常驻后端的帧命令 `pubkey-push`（不在本模块，登记于此备查）。
 
-use crate::detail::Said;
+use crate::detail::Shell as _;
 use cmd_wire::deploy::{ActionTag, DeployInstallReq, DeployUninstallReq, Installed, SlotRow};
+use cmd_wire::failed::Failed;
 use copy_core::copy_text;
+use copy_core::said::Said;
 
 /// 等那一趟的上限：问几次那台 ＋ 推一份 MB 级的字节 ＋ 读回。
 const INSTALL_BUDGET: std::time::Duration = std::time::Duration::from_secs(600);
@@ -74,39 +76,36 @@ fn slots_dir() -> Option<std::path::PathBuf> {
 }
 
 /// 请本机常驻后端给那台装一趟：入参只有事实；每走一步记进那台的状态成品（后端推 `changed {machine}`）。
-async fn install(machine: &str) -> Result<Installed, Said> {
-    install_for(machine, slot_rows()?).await
+/// 只由 [`deploy_remote_backend`] 调：这一版的字节没落成是壳自己的错，投出去时带那条命令的名字。
+async fn install(machine: &str) -> Result<Installed, Failed> {
+    let slots = slot_rows().map_err(|s| s.named("deploy_remote_backend"))?;
+    install_for(machine, slots).await
 }
 
 /// 问本机常驻后端一条装 / 卸的命令：入参只有事实（带着哪几格 · 那台叫什么；怎么够到它照本机后端的机器表），回包照那条命令的类型。
-async fn ask_backend<C: cmd_wire::Call>(req: &C) -> Result<C::Reply, Said> {
+/// 后端答了失败 ⇒ 它那一份原样；壳这一侧问不成 · 回包读不懂 ⇒ 壳自己的错，命令就是问的那一条。
+async fn ask_backend<C: cmd_wire::Call>(req: &C) -> Result<C::Reply, Failed> {
     use crate::backend_route::{route_call_error, Routed};
     let cmd = C::NAME;
     let client = crate::inbound_client::local_backend_accepting(cmd)
         .await
-        .map_err(|said| Said::new(said, cmd, None))?;
+        .map_err(|said| Said::from(said).named(cmd))?;
     let deadline = tokio::time::Instant::now() + INSTALL_BUDGET;
-    // 那一趟在本机常驻后端里 ⇒ 它写的那份详情（那台答 `uname` 的原话也在里面）原样带上。
+    // 那一趟在本机常驻后端里 ⇒ 它交来的那一份失败（那台答 `uname` 的原话也在详情里）原样往外交。
     let got = client.ask(None, req, None, deadline).await.map_err(|e| {
         let said = match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
             message.to_string()
         }) {
             Routed::NoChannel(s) | Routed::Refused(s) => s,
         };
-        Said::of_call(said, cmd, &crate::origin::Origin::local(), &e)
+        crate::detail::of_call(said, cmd, &e)
     })?;
     // 回包对不上类型：那一句不接原话，解码器那一句进复制详情。
-    got.map_err(|e| {
-        Said::new(
-            copy_text("rsSftp.plan.badProduct", &[]),
-            cmd,
-            Some(&e.to_string()),
-        )
-    })
+    got.map_err(|e| Said::with_raw(copy_text("rsSftp.plan.badProduct", &[]), e).named(cmd))
 }
 
 /// [`install`] 的本体，「带着哪几格」由调用方交（生产 = 这一版的槽落成的文件；回环台架交它送去的那一份）。
-async fn install_for(machine: &str, slots: Vec<SlotRow>) -> Result<Installed, Said> {
+async fn install_for(machine: &str, slots: Vec<SlotRow>) -> Result<Installed, Failed> {
     ask_backend(&DeployInstallReq {
         slots,
         machine: machine.to_string(),
@@ -123,16 +122,12 @@ async fn install_for(machine: &str, slots: Vec<SlotRow>) -> Result<Installed, Sa
 /// 那台不比这一版旧 ⇒ 手动点也不降级：那一句后面接出路（先卸载再部署 = 明确授权覆盖）。
 #[tauri::command]
 pub async fn deploy_remote_backend(origin: String) -> Result<String, cmd_wire::failed::Failed> {
-    let r = async {
-        remote_in_table(&origin)?;
-        install(&origin).await
-    }
-    .await;
-    r.map(|got| match got.action {
+    remote_in_table(&origin).map_err(|s| s.named("deploy_remote_backend"))?;
+    let got = install(&origin).await?;
+    Ok(match got.action {
         ActionTag::Keep => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &got.said)]),
         ActionTag::Skip | ActionTag::Deploy => got.said,
     })
-    .map_err(|s| s.named("deploy_remote_backend"))
 }
 
 /// 装 · 卸只对机器表里的一台远端：本机不经这两条命令（本机那一份由宿主起来时自己放），表里没有那台 ⇒ 说是哪台、不去问后端。
@@ -153,17 +148,14 @@ fn remote_in_table(origin: &str) -> Result<(), Said> {
 /// 只读铁律豁免（SS-G）：用户显式触发的删。注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
 #[tauri::command]
 pub async fn uninstall_remote_backend(origin: String) -> Result<String, cmd_wire::failed::Failed> {
-    let r = async {
-        remote_in_table(&origin)?;
-        let slots = slot_rows()?;
-        uninstall_for(&origin, slots).await
-    }
-    .await;
-    r.map_err(|s| s.named("uninstall_remote_backend"))
+    let own = |s: Said| s.named("uninstall_remote_backend");
+    remote_in_table(&origin).map_err(own)?;
+    let slots = slot_rows().map_err(own)?;
+    uninstall_for(&origin, slots).await
 }
 
 /// [`uninstall_remote_backend`] 的本体，「带着哪几格」由调用方交（同 [`install_for`]）。
-async fn uninstall_for(machine: &str, slots: Vec<SlotRow>) -> Result<String, Said> {
+async fn uninstall_for(machine: &str, slots: Vec<SlotRow>) -> Result<String, Failed> {
     let said = ask_backend(&DeployUninstallReq {
         slots,
         machine: machine.to_string(),

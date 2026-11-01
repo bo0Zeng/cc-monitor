@@ -219,7 +219,7 @@ fn setup_head(cmd: &str) -> Option<String> {
     }
     let word = &cmd[from..end];
     Some(match word.split_once('=') {
-        Some((name, _)) if is_assignment(word) => format!("{name}=…"),
+        Some((name, _)) if shell_quote_core::is_assignment(word) => format!("{name}=…"),
         _ => format!("{word} …"),
     })
 }
@@ -292,21 +292,11 @@ fn intent_in(seg: &str) -> Option<usize> {
             }
         }
         let word = &seg[from..i.min(b.len())];
-        if is_assignment(word) {
+        if shell_quote_core::is_assignment(word) {
             continue;
         }
         return (!SETUP_WORDS.contains(&word)).then_some(from);
     }
-}
-
-/// `NAME=…`（shell 变量赋值的那个形）。
-fn is_assignment(word: &str) -> bool {
-    word.split_once('=').is_some_and(|(name, _)| {
-        let mut cs = name.chars();
-        cs.next()
-            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-            && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
-    })
 }
 
 /// 头一个非空行，压成一行、至多 [`SAY_CHARS`] 字（超 ⇒ 截断加 `…`）。空 ⇒ `None`。

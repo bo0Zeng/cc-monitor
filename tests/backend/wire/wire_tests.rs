@@ -799,18 +799,18 @@ fn transfer_frames_have_exactly_these_bytes() {
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"done\",\"bytes\":1000000,\"sha256\":\"abababababababababababababababababababababababababababababababab\"}}\n",
         ),
         (
-            f(Some(crate::wire::TransferEnd::Failed { why: "写暂存件失败".into(), code: None, detail: None })),
-            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"why\":\"写暂存件失败\"}}\n",
+            f(Some(crate::wire::TransferEnd::Failed(crate::wire::detail::Failed::local("写暂存件失败".into())))),
+            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"code\":\"failed\",\"said\":\"写暂存件失败\",\"detail\":\"\"}}\n",
         ),
-        // 带码的那一形（今天只有 SFTP 起始目录不是后端 home 那一码）。
+        // 带码 · 复制详情的那一形（今天按码换路的只有 SFTP 起始目录不是后端 home 那一码；句子只带原因词，原话在 `detail` 里）。
         (
-            f(Some(crate::wire::TransferEnd::Failed { why: "w".into(), code: Some("sftp_home_mismatch".into()), detail: None })),
-            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"why\":\"w\",\"code\":\"sftp_home_mismatch\"}}\n",
-        ),
-        // 带复制详情的那一形（句子只带原因词，原话在 `detail` 里）。
-        (
-            f(Some(crate::wire::TransferEnd::Failed { why: "w".into(), code: None, detail: Some("d".into()) })),
-            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"why\":\"w\",\"detail\":\"d\"}}\n",
+            f(Some(crate::wire::TransferEnd::Failed(crate::wire::detail::Failed {
+                code: "sftp_home_mismatch".into(),
+                said: "w".into(),
+                detail: "d".into(),
+                data: None,
+            }))),
+            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"code\":\"sftp_home_mismatch\",\"said\":\"w\",\"detail\":\"d\"}}\n",
         ),
         (
             f(Some(crate::wire::TransferEnd::Cancelled)),

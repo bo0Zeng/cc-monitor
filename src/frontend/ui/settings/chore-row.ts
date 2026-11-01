@@ -92,7 +92,7 @@ export function choreRow(c: Chore, host: ChoreRowHost): HTMLElement {
   const main = mainButton(c, host);
   if (main) top.appendChild(main);
   if (c.state === "declined") top.appendChild(button({ label: copyText("dataPage.chore.undecline"), size: "compact", onClick: () => host.onDecline(c, false) }));
-  const hasDetail = c.why !== "" || c.steps.length > 0 || c.diff.length > 0;
+  const hasDetail = c.why !== "" || c.steps.length > 0 || (c.diff?.rows.length ?? 0) > 0;
   if (hasDetail && c.state !== "declined") {
     const caret = button({ label: host.open ? copyText("dataPage.chore.collapse") : copyText("dataPage.chore.expand"), kind: "icon", size: "compact", onClick: () => host.onToggle(!host.open) });
     caret.prepend(foldCaret());
@@ -112,14 +112,16 @@ function detail(c: Chore, host: ChoreRowHost): HTMLElement {
     for (const s of c.steps) ol.appendChild(el("li", "", s));
     box.appendChild(ol);
   }
-  if (c.diff.length) {
+  if (c.diff?.rows.length) {
     const pre = el("div", "chore-diff");
     pre.setAttribute("role", "group");
     pre.setAttribute("aria-label", copyText("dataPage.chore.diff"));
-    for (const d of c.diff) {
+    if (c.diff.notice) pre.appendChild(el("div", "chore-diff-line", c.diff.notice));
+    // 行号照改前那一份（要去第几行找）；加的那几行改前没有 ⇒ 「+」。
+    for (const d of c.diff.rows) {
       const line = el("div", "chore-diff-line");
-      line.dataset.op = d.op;
-      line.append(el("span", "chore-diff-n", d.n === null ? "+" : String(d.n)), el("span", "chore-diff-text", d.text));
+      line.dataset.op = d.kind;
+      line.append(el("span", "chore-diff-n", d.oldNo === undefined ? "+" : String(d.oldNo)), el("span", "chore-diff-text", d.text));
       pre.appendChild(line);
     }
     box.appendChild(pre);

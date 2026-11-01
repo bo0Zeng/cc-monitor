@@ -705,12 +705,12 @@ mod tests {
         let p = PhoneLink::new(serde_json::json!({}))
             .request(serde_json::json!({}))
             .unwrap_err();
-        assert_ne!(p.text, copy_core::copy_text("reason.link.lost", &[]));
+        assert_ne!(p.said, copy_core::copy_text("reason.link.lost", &[]));
         assert!(
-            p.text
+            p.said
                 .starts_with(&copy_core::copy_text("beContract.malformed.say", &[])),
             "{}",
-            p.text
+            p.said
         );
     }
 
@@ -1121,7 +1121,7 @@ mod tests {
             key_type: Some("ssh-ed25519".into()),
             expected_fingerprint: Some("SHA256:kept".into()),
         });
-        assert_eq!((p.text.as_str(), p.detail.as_str()), ("指纹变了", "d"));
+        assert_eq!((p.said.as_str(), p.detail.as_str()), ("指纹变了", "d"));
         assert_eq!(
             (p.why, p.seen_key.as_deref(), p.expected_key.as_deref()),
             (
@@ -1147,7 +1147,7 @@ mod tests {
             .block_on(link.capture("true".into()));
         let p = got.err().expect("没人听的口居然开成了");
         assert_eq!(p.why, Some(cmd_wire::machine::Why::Unreachable), "{p:?}");
-        assert!(!p.text.is_empty());
+        assert!(!p.said.is_empty());
     }
 
     /// ★ 手机自己那个池：这台交过拨号请求（[`ssh`]）⇒ 成品带上怎么连过去的（`route`：跳板照请求里的跳板链，经代理照池里那几条）
@@ -1169,7 +1169,7 @@ mod tests {
         });
         let req = PhoneLink::new(base.clone())
             .request(serde_json::json!({}))
-            .unwrap_or_else(|p| panic!("组不成请求：{}", p.text));
+            .unwrap_or_else(|p| panic!("组不成请求：{}", p.said));
         let facts = LinkFacts {
             link: wire("box.test:22", false),
             jumps: vec![wire("edge.test:22", true)],

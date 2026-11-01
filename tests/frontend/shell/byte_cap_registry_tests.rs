@@ -1091,14 +1091,14 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // 行差里一行正文至多留多少字；截了以「…」收尾。
     (
-        "src/backend/agents/claudecode/steps.rs",
+        "src/backend/common/line_diff.rs",
         "DIFF_LINE_MAX",
         "行差里一行正文至多留多少字（按字符）",
         "截断+说清",
     ),
     // 改前改后逐行比的格数上界；超了不比、出整删 ＋ 整增，数照这一形。
     (
-        "src/backend/agents/claudecode/steps.rs",
+        "src/backend/common/line_diff.rs",
         "DIFF_CELLS_MAX",
         "从改前改后逐行比的格数（改前行数 × 改后行数）",
         "降级+说清",

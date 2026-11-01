@@ -174,7 +174,7 @@ class RustTransport(
         val ack = link.awaitAck {}
         if (!ack.ok) {
             link.close()
-            throw IOException(ack.error.orEmpty())
+            throw IOException(ack.said.orEmpty())
         }
         return link
     }
@@ -222,7 +222,7 @@ class RustTransport(
         ack: DialAck,
         cfg: ConnectionConfig,
     ): Exception {
-        val said = ack.error?.ifEmpty { null } ?: copyText("mobSsh.log.connectFailed")
+        val said = ack.said?.ifEmpty { null } ?: copyText("mobSsh.log.connectFailed")
         val expected = ack.expectedFingerprint
         return when {
             expected != null ->

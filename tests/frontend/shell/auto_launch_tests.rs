@@ -41,7 +41,6 @@ fn a_failed_save_says_the_reason_and_keeps_the_raw_words_in_the_detail() {
     fs::write(&not_a_dir, b"x").unwrap();
     let e = set_enabled(&not_a_dir, true).expect_err("文件下面建不了文件");
     let _ = fs::remove_file(&not_a_dir);
-    let raw = copy_core::copy_text("detail.label.raw", &[]);
     assert!(
         e.said.starts_with(&copy_core::copy_text(
             "rsShellCmd.autoLaunch.saveFailed",
@@ -51,8 +50,8 @@ fn a_failed_save_says_the_reason_and_keeps_the_raw_words_in_the_detail() {
         e.said
     );
     assert!(!e.said.contains("auto-launch.json"), "{}", e.said);
-    assert!(e.detail.contains(&format!("{raw}：")), "{}", e.detail);
-    assert!(e.detail.contains("auto-launch.json"), "{}", e.detail);
+    let raw = e.raw.clone().unwrap_or_default();
+    assert!(raw.contains("auto-launch.json"), "原话没进复制详情：{raw}");
 }
 
 /// ★**`auto-launch.json` 的线上名，两种语言两向相等。**

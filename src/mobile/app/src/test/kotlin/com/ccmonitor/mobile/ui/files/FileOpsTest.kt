@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.files
 
-import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.Reply
@@ -8,6 +7,8 @@ import com.ccmonitor.mobile.core.claude.link.Transfer
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.ClashRow
 import com.ccmonitor.mobile.core.wire.gen.Decide
+import com.ccmonitor.mobile.core.wire.gen.Failed
+import com.ccmonitor.mobile.core.wire.gen.Raw
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -46,13 +47,13 @@ class FileOpsTest {
     @Test
     fun aClashComesBackAsTheBackendsListAndAnsweringResendsTheSameStagedCopy() =
         runTest {
-            val conflict = mapOf("key" to "0", "name" to "up.bin", "kind" to "file", "size" to 9.0, "there" to "file", "there_size" to 3.0, "there_size_text" to "3 字节", "there_mtime_text" to "14:02", "answers" to listOf("overwrite", "keep_both"))
+            val conflict = """{"key":"0","name":"up.bin","kind":"file","size":9,"there":"file","there_size":3,"there_size_text":"3 字节","there_mtime_text":"14:02","answers":["overwrite","keep_both"]}"""
             val link =
                 FakeCoreLink().apply {
                     transferred = { Reply.Ok(staged) }
                     answer = { _, a ->
                         if (a!!["on_exists"] == null) {
-                            Reply.Failed(CoreFailure("exists", "同名 1 项", "d", mapOf("conflicts" to listOf(conflict))))
+                            Reply.Failed(Failed("exists", "同名 1 项", "d", Raw("""{"conflicts":[$conflict]}""")))
                         } else {
                             Reply.Ok(mapOf("path" to "/w/up (2).bin", "bytes" to 9.0))
                         }
@@ -74,11 +75,11 @@ class FileOpsTest {
             val link =
                 FakeCoreLink().apply {
                     transferred = { Reply.Ok(staged) }
-                    answer = { _, _ -> Reply.Failed(CoreFailure("io_failed", "那台写的那一句", "详情")) }
+                    answer = { _, _ -> Reply.Failed(Failed("io_failed", "那台写的那一句", "详情")) }
                 }
             val e = FileOps(link) { "box" }.upload(dir, "up.bin", { 17 }) { _, _ -> }.exceptionOrNull() as FileOps.Failed
             assertEquals(listOf("那台写的那一句", "详情"), listOf(e.problem.text, e.problem.detail))
-            val no = FakeCoreLink().apply { transferred = { Reply.Failed(CoreFailure("refused", "暂存区满了", "")) } }
+            val no = FakeCoreLink().apply { transferred = { Reply.Failed(Failed("refused", "暂存区满了", "")) } }
             assertEquals("暂存区满了", (FileOps(no) { "box" }.upload(dir, "up.bin", { 17 }) { _, _ -> }.exceptionOrNull() as FileOps.Failed).problem.text)
             assertEquals("送不成就不提交", emptyList<Any>(), no.calls)
             val gone = FileOps(FakeCoreLink()) { "box" }.upload(dir, "up.bin", { throw java.io.IOException("ENOENT") }) { _, _ -> }.exceptionOrNull() as FileOps.Failed
@@ -116,7 +117,7 @@ class FileOpsTest {
             val kinds = mapOf("/w/src" to ("dir" to "/w"), "/w/src/a.kt" to ("file" to "/w/src"), "C:\\w\\b.kt" to ("file" to "C:\\w"))
             val link =
                 FakeCoreLink().apply {
-                    answer = { _, a -> kinds[a!!["path"]]?.let { (kind, up) -> Reply.Ok(mapOf("path" to a["path"], "up" to up, "kind" to kind, "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)) } ?: Reply.Failed(CoreFailure("not_found", "不在", "")) }
+                    answer = { _, a -> kinds[a!!["path"]]?.let { (kind, up) -> Reply.Ok(mapOf("path" to a["path"], "up" to up, "kind" to kind, "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)) } ?: Reply.Failed(Failed("not_found", "不在", "")) }
                 }
             val ops = FileOps(link) { "box" }
             assertEquals(FileOps.Opening.Dir(RemotePath.of("/w/src")), ops.open("/w/src").getOrThrow())

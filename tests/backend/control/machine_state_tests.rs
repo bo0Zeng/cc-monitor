@@ -29,7 +29,7 @@ fn a_round_noted_is_pushed_as_the_product() {
         Fact::Round {
             round: Round::Down {
                 problem: RoundProblem {
-                    text: "拨号没成".into(),
+                    said: "拨号没成".into(),
                     detail: String::new(),
                     why: Some(Why::Auth),
                     seen_key: None,
@@ -46,7 +46,7 @@ fn a_round_noted_is_pushed_as_the_product() {
         Fact::Round {
             round: Round::Down {
                 problem: RoundProblem {
-                    text: "拨号没成".into(),
+                    said: "拨号没成".into(),
                     detail: String::new(),
                     why: Some(Why::Auth),
                     seen_key: None,
@@ -110,7 +110,7 @@ fn a_machine_dropped_from_the_table_is_forgotten() {
 #[test]
 fn the_product_matches_the_cross_language_golden() {
     let problem = |why| RoundProblem {
-        text: "拨号没成".into(),
+        said: "拨号没成".into(),
         detail: "命令：dial\n原话：raw words".into(),
         why,
         seen_key: Some("SHA256:new".into()),
