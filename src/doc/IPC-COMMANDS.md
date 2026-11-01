@@ -507,6 +507,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `parent` | string? | 派出它的那个子运行；主运行派的（或还没对上派出它的那次调用）⇒ 不上线 |
 | `state` | RunState |  |
 | `status_text` | Words? | 状态写好的字（在跑 · 完成 · 失败 · 已中止 · 状态不明）：出口照抄，不按 `state` 挑字 |
+| `took_text` | Words? | 收场了用了多久那一句（「用时 6m」：`ended_ms` − `started_ms`，两头都定了）；在跑 · 状态不明 · 缺一头 ⇒ 不上线 |
 | `label_text` | Words? | 名字写好的字：`label`，没有 ⇒ 通称（「agent」） |
 | `last` | RunDid? |  |
 | `last_text` | Words? | `last` 写好的字（写回复中 · 思考中 · 调用 X）；没有 `last` ⇒ 不上线 |

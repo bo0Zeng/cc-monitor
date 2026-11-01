@@ -25,6 +25,10 @@ parent?: string, state: RunState,
  */
 status_text: Words, 
 /**
+ * 收场了用了多久那一句（「用时 6m」：`ended_ms` − `started_ms`，两头都定了）；在跑 · 状态不明 · 缺一头 ⇒ 不上线。出帧那一下写，出口照抄。
+ */
+took_text?: Words, 
+/**
  * 名字写好的字：`label`，没有 ⇒ 通称（「agent」）。
  */
 label_text: Words, last?: RunDid, 
