@@ -18,6 +18,8 @@ use cmd_wire::files::{CopyItem, FilesCopyReq, WirePath};
 use cmd_wire::Call;
 use copy_core::copy_text;
 
+pub mod sessions;
+
 /// 一个文件名拆成「名」与「扩展名」（扩展名带点、取最后一个点起；点打头的名字 · 没有点 ⇒ 扩展名空）。
 /// 起新名字那几处（保留两份的 `名 (2).ext` · 「复制为」的缺省名）都照它拆，规矩只有这一份。
 pub fn split_ext(name: &str) -> (&str, &str) {
