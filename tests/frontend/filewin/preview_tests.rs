@@ -124,6 +124,10 @@ async fn the_latest_pick_wins_and_the_middle_ones_are_never_read() {
             .holding_read_text("/srv/a.txt", a_lands.clone()),
     )
     .await;
+    // 窗口的往返挪到单独一台运行时上：它的活任务数就是「此刻有几趟在路上」。
+    let side = crate::find::testing::SideRt::new();
+    w.rt = Some(side.handle());
+    side.idle().await;
     let mut p = Preview::default();
     let step = |w: &mut FileWindow| {
         w.apply_intent(
@@ -143,8 +147,8 @@ async fn the_latest_pick_wins_and_the_middle_ones_are_never_read() {
     p.follow(&w, None);
     step(&mut w);
     p.follow(&w, None);
-    // 真发了第二趟，它几毫秒内就上账；给它这段时间再看。
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    // `follow` 是同步的：它起了第二趟，那个任务此刻要么还活着，要么已经上了账 —— 两样都看。
+    assert_eq!(side.in_flight(), 1, "a 还在飞时就又发了");
     assert_eq!(
         reads(&wired),
         vec!["/srv/a.txt".to_string()],
