@@ -686,14 +686,9 @@ pub(crate) async fn forward(
             .await
     };
     got.map_err(|e| match e {
-        CallError::Remote {
-            code,
-            message,
-            detail,
-            data,
-        } => {
-            let f = crate::wire::spec::fail(&code, message).and_raw(Some(&detail));
-            match data.and_then(|d| serde_json::from_str(&d).ok()) {
+        CallError::Remote(r) => {
+            let f = crate::wire::spec::fail(&r.code, r.said).and_raw(Some(&r.detail));
+            match r.data {
                 Some(d) => f.with_data(d),
                 None => f,
             }

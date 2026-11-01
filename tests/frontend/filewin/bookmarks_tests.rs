@@ -67,7 +67,7 @@ impl comms_inward::chan::router::Backends for Books {
             .unwrap()
             .push((origin.to_string(), op.0.clone(), args.clone()));
         if let Some(said) = self.refuse.lock().unwrap().clone() {
-            let body = serde_json::json!({ "code": "io_failed", "message": said });
+            let body = serde_json::json!({ "code": "io_failed", "said": said });
             return Box::pin(async move {
                 Err(CallError::Peer {
                     why: PeerFault::Refused {

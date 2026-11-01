@@ -32,7 +32,7 @@ pub fn over(h: i64, id: i64, within: Duration) -> Over {
 }
 
 impl Ask for Over {
-    type Fail = String;
+    type Err = String;
     async fn ask<C: Call + Sync>(&self, req: &C) -> Result<C::Reply, String> {
         let Some(f) = resident::feed(self.h) else {
             return Err(cancelled(self.id));
@@ -101,8 +101,8 @@ pub struct Halting<A> {
     pub id: i64,
 }
 
-impl<A: Ask<Fail = String>> Ask for Halting<A> {
-    type Fail = String;
+impl<A: Ask<Err = String>> Ask for Halting<A> {
+    type Err = String;
     async fn ask<C: Call + Sync>(&self, req: &C) -> Result<C::Reply, String> {
         let now = self.halt.now.notified();
         tokio::pin!(now);
@@ -152,7 +152,7 @@ fn local(id: i64, said: String, e: &std::io::Error) -> String {
     line(&CallEnd::Failed {
         call: id,
         code: "io_failed".into(),
-        message: said,
+        said,
         detail: e.to_string(),
         data: None,
     })
@@ -192,7 +192,7 @@ fn size_of(file: &File) -> Option<u64> {
 }
 
 /// 上传那一半：`src`（总数不知道 ⇒ `None`）逐块送进那台的暂存区（新键）⇒ `{call, ok, data: {key, chunks, bytes, sha256}}` 或没成那一行。
-pub async fn stage_with<A: Ask<Fail = String>>(
+pub async fn stage_with<A: Ask<Err = String>>(
     ask: &A,
     id: i64,
     key: String,
@@ -234,7 +234,7 @@ struct ToFile<'a, W> {
 }
 
 impl<W: std::io::Write> Sink for ToFile<'_, W> {
-    type Fail = String;
+    type Err = String;
     async fn put(&mut self, bytes: Vec<u8>) -> Result<(), String> {
         self.file.write_all(&bytes).map_err(|e| {
             local(
@@ -247,7 +247,7 @@ impl<W: std::io::Write> Sink for ToFile<'_, W> {
 }
 
 /// 下载那一半：`path` 逐块读回写进 `file` ⇒ `{call, ok, data: {bytes}}` 或没成那一行（`shown` 是本机落点，句子里用）。
-pub async fn pull_with<A: Ask<Fail = String>>(
+pub async fn pull_with<A: Ask<Err = String>>(
     ask: &A,
     id: i64,
     path: WirePath,
@@ -339,18 +339,18 @@ mod tests {
     }
 
     impl Ask for Box {
-        type Fail = String;
+        type Err = String;
         async fn ask<C: Call + Sync>(&self, req: &C) -> Result<C::Reply, String> {
             if self.refuse {
                 return typed::<C>(
                     7,
                     "box",
-                    Err(CallError::Remote {
+                    Err(CallError::Remote(cmd_wire::failed::Failed {
                         code: "refused".into(),
-                        message: "那台拒了".into(),
+                        said: "那台拒了".into(),
                         detail: "d".into(),
                         data: None,
-                    }),
+                    })),
                 );
             }
             let v = serde_json::to_value(req).unwrap();
@@ -484,7 +484,7 @@ mod tests {
             &mut Seen::default(),
         )));
         assert_eq!(
-            (v["end"].as_str(), v["code"].as_str(), v["message"].as_str()),
+            (v["end"].as_str(), v["code"].as_str(), v["said"].as_str()),
             (Some("failed"), Some("refused"), Some("那台拒了"))
         );
 
@@ -498,7 +498,7 @@ mod tests {
         )));
         assert_eq!(v["call"], 5);
         assert_eq!(
-            v["message"],
+            v["said"],
             copy_core::copy_text("mobFiles.local.readFailed", &[("name", "up.bin")])
         );
         assert!(!v["detail"].as_str().unwrap().is_empty());
@@ -516,7 +516,7 @@ mod tests {
             &mut Seen::default(),
         )));
         assert_eq!(
-            v["message"],
+            v["said"],
             copy_core::copy_text("mobFiles.local.writeFailed", &[("path", "/sdcard/f")])
         );
     }
@@ -567,7 +567,7 @@ mod tests {
     }
 
     impl Ask for Slow {
-        type Fail = String;
+        type Err = String;
         async fn ask<C: Call + Sync>(&self, req: &C) -> Result<C::Reply, String> {
             let off = serde_json::to_value(req).unwrap()["offset"]
                 .as_u64()

@@ -404,3 +404,4 @@ into_fail
 WriteFail
 LockFail
 FootprintFail
+noAck

@@ -51,7 +51,7 @@ fun barOf(
 ): BarLook? {
     val m = line?.machine ?: return null
     val fix = m.fixes.firstOrNull()
-    (deploying as? Deploying.Failed)?.let { return BarLook(it.said.text, StripTone.FAULT, fix, detail = it.said.detail) }
+    (deploying as? Deploying.Failed)?.let { return BarLook(it.failed.said, StripTone.FAULT, fix, detail = it.failed.detail) }
     val strip = m.strip ?: return null
     return BarLook(m.said, strip.tone, fix, strip.progress, m.detail.orEmpty())
 }

@@ -5,10 +5,12 @@
 
 use crate::control::session_open as open;
 use crate::control::session_set::{
-    self as set, answer, GroupRef, Hands, LaunchFail, Live, SetLaunchReq, SetLaunched, SetPlan,
-    SetPlanErr, SetPlanReq,
+    self as set, answer, GroupRef, Hands, Live, SetLaunchReq, SetLaunched, SetPlan, SetPlanErr,
+    SetPlanReq,
 };
+use crate::wire::spec::Settle as _;
 use crate::wire::typed::{of_fail_with, Command};
+use cmd_wire::failed::Failed;
 use std::sync::Mutex;
 
 /// 刚起、还没报到的那几条算「正在启动」多久（同单个起等报到的期限）。
@@ -107,20 +109,21 @@ impl crate::wire::typed::Handle for SetPlanCmd {
     }
 }
 
+/// 起一组那一下就地拒的一条（`refused`）：那一句进交出去那一形，详情里的命令是 `set-launch`。
+fn refused_launch(said: String) -> Failed {
+    crate::wire::spec::fail("refused", said).settle(SetLaunchCmd::NAME)
+}
+
 /// 这一行合下来的那几格 ⇒ 起一条的 `session-open` 入参：哪一家 · 号 · 启动命令照别名（这里给的会盖过别名，所以照它给）；
 /// 一律起在 tmux 里（`--detach`，这台自己当 ccm 跑）；那一行 ccm 以 `@别名` 打头，台账记下别名。
 fn open_req(
     r: &crate::assets::aliases::profile::RowEdit,
     book: &crate::assets::aliases::profile::Book,
-) -> Result<open::SessionOpenReq, LaunchFail> {
-    let refused = |m: String| LaunchFail {
-        code: "refused".into(),
-        message: m,
-    };
+) -> Result<open::SessionOpenReq, Failed> {
     let resolved =
-        crate::assets::aliases::profile::resolve(book, &r.alias, &[]).map_err(refused)?;
+        crate::assets::aliases::profile::resolve(book, &r.alias, &[]).map_err(refused_launch)?;
     let crate::ccm_line::argv::Parsed::Opts(o) = resolved.parsed else {
-        return Err(refused(copy_core::copy_text(
+        return Err(refused_launch(copy_core::copy_text(
             "beSessionSet.alias.missing",
             &[("alias", &r.alias)],
         )));
@@ -305,10 +308,7 @@ fn launch(
                 open::answer(req, facts, d, fork, &pre, user_home)
             })
         });
-        let o = got.map_err(|s| LaunchFail {
-            code: s.code_or_fallback().to_string(),
-            message: s.said,
-        })?;
+        let o = got.map_err(|s| s.settle(SetLaunchCmd::NAME))?;
         // 那一家不认先定 sid（没用上先定的那一个）⇒ 先写的那一笔摘掉，起好的那一条（说得出 sid 才）照归。
         if let Some(f) = fixed.as_deref().filter(|f| o.sid.as_deref() != Some(*f)) {
             if let Some(g) = marked
@@ -338,7 +338,7 @@ fn launch(
         &rows,
         &plan,
         &mut Hands {
-            group_for: &mut group_for,
+            group_for: &mut |name: &str| group_for(name).map_err(refused_launch),
             mark: &mut mark,
             start: &mut start,
             unmark: &mut unmark,

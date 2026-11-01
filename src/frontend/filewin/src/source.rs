@@ -685,8 +685,8 @@ pub enum OpenFail {
 
 impl OpenFail {
     /// 后端拒绝时给的码 → 哪一种（不是这几个码 ⇒ `None`：那不是「打不开」，是别的失败）。
-    pub fn of_code(code: Option<&str>) -> Option<Self> {
-        Some(match code? {
+    pub fn of_code(code: &str) -> Option<Self> {
+        Some(match code {
             "not_found" => Self::NotFound,
             "denied" => Self::Denied,
             "not_dir" => Self::NotDir,
@@ -759,14 +759,12 @@ pub async fn ask(
         .map_err(|f| f.said)
 }
 
-pub(crate) use batch_core::Failed;
+pub(crate) use cmd_wire::failed::Failed;
 
 /// 这一侧的错（问之前拼不出参数 · 回来的读不懂）：窗口进程写详情（时刻 · 机器 · 本机 · 命令 · 原话）。
 pub(crate) fn failed_here(said: String, origin: &Origin, cmd: &str, raw: Option<&str>) -> Failed {
     use copy_core::detail::{Detail, Label};
     Failed {
-        code: None,
-        said,
         detail: Detail::new()
             .item(Label::At, now_stamp())
             .item(Label::Machine, origin.to_string())
@@ -774,6 +772,7 @@ pub(crate) fn failed_here(said: String, origin: &Origin, cmd: &str, raw: Option<
             .item(Label::Command, cmd)
             .maybe(Label::Raw, raw)
             .render(),
+        ..Failed::local(said)
     }
 }
 
@@ -913,9 +912,10 @@ pub fn opened_one(
                 None => (detail, String::new()),
             };
             Err(Failed {
-                code: o.code,
+                code: Failed::code_or_fallback(o.code),
                 said,
                 detail: rest,
+                data: None,
             })
         }
     }
@@ -937,13 +937,14 @@ pub fn one_of(r: cmd_wire::batch::BatchReply) -> Result<cmd_wire::batch::BatchOu
         None => (detail, String::new()),
     };
     Err(Failed {
-        code: o.code.or_else(|| {
+        code: Failed::code_or_fallback(o.code.or_else(|| {
             serde_json::to_value(o.state)
                 .ok()
                 .and_then(|v| v.as_str().map(str::to_string))
-        }),
+        })),
         said,
         detail: rest,
+        data: None,
     })
 }
 
@@ -998,11 +999,7 @@ async fn ask_raw(
     cancel: comms_inward::chan::wire::CancelToken,
 ) -> Result<serde_json::Value, batch_core::Rebuff> {
     use comms_inward::chan::wire::{Body, Budget, CallError, Comms, Op};
-    let plain = |failed: Failed| batch_core::Rebuff {
-        failed,
-        data: None,
-        cut: false,
-    };
+    let plain = |failed: Failed| batch_core::Rebuff { failed, cut: false };
     let budget = Budget {
         until: std::time::Instant::now() + t,
         cancel,
@@ -1021,11 +1018,11 @@ async fn ask_raw(
         .await
         .map_err(|e| batch_core::Rebuff {
             failed: Failed {
-                code: refused_code(&e),
+                code: Failed::code_or_fallback(refused_code(&e)),
                 said: said_here(&e, origin),
                 detail: detail_of(origin, cmd, &e),
+                data: refused_data(&e),
             },
-            data: refused_data(&e),
             cut: matches!(e, CallError::Hop { .. }),
         })?;
     let v: serde_json::Value = serde_json::from_slice(&body.0).map_err(|e| {
@@ -1234,7 +1231,7 @@ pub async fn watch_coded(
                     &[("why", &format!("{:?}", why))],
                 )))
             }
-            // 收场那一格按 `cmd_wire::frame::TransferEnd` 解；解不出的是宿主原位说的拒绝（`{"code","message"}`）。
+            // 收场那一格按 `cmd_wire::frame::TransferEnd` 解；解不出的是宿主原位说的拒绝（`{"code","said"}`）。
             Item::Closed { by: By::Peer(body) } => {
                 use cmd_wire::frame::TransferEnd;
                 return match serde_json::from_slice::<TransferEnd>(&body.0) {
@@ -1244,12 +1241,11 @@ pub async fn watch_coded(
                         let mut f = match detail {
                             None => failed_here(why, origin, kind, None),
                             Some(detail) => Failed {
-                                code: None,
-                                said: why,
                                 detail,
+                                ..Failed::local(why)
                             },
                         };
-                        f.code = code;
+                        f.code = Failed::code_or_fallback(code);
                         Err(f)
                     }
                     Ok(TransferEnd::Cancelled) => {
@@ -1259,7 +1255,7 @@ pub async fn watch_coded(
                         let v = serde_json::from_slice::<serde_json::Value>(&body.0)
                             .unwrap_or_default();
                         Err(plain(comms_inward::chan::said::refused(
-                            v.get("message")
+                            v.get("said")
                                 .and_then(serde_json::Value::as_str)
                                 .unwrap_or(""),
                             origin,

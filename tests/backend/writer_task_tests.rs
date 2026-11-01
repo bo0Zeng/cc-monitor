@@ -132,7 +132,7 @@ fn page(id: &str) -> Frame {
         id: id.into(),
         ok: true,
         code: None,
-        message: None,
+        said: None,
         detail: None,
         data: Some(serde_json::json!({ "pad": pad })),
     })

@@ -750,7 +750,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     CUTS_MAX: NONE,
     // 文件名拆「名 ＋ 扩展名」（保留两份的另起名 · 「复制为」的缺省名）；界面（TS）不给文件起名，没有孪生。
     split_ext: NONE,
-    local: NONE,
     copy_many: NONE,
     copy_body: NONE,
     ticketed: NONE,
@@ -800,6 +799,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "cmd-wire": {
     LOCAL: "J36",
     KEYS_NOT_NAMES: "J39",
+    // 失败信封的唯一一份（`failed.rs`）：`Failed` 的造法 · 取码兜底 · 拒绝那一形；后端 · 壳 · 文件窗口 · 手机核心都用它，界面读生成的 `Failed` 照摆，TS 侧没有孪生。
+    failed: NONE,
+    code_or_fallback: NONE,
+    refused: NONE,
     // 推送 `changed` 那一臂的主题名与体上限（`Changed::topic` · `Changed::cap_body`）：后端发前判、壳按主题分订阅；界面不判主题、不判上限，TS 侧没有孪生。
     topic: NONE,
     cap_body: NONE,

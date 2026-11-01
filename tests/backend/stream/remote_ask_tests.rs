@@ -329,7 +329,7 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
 async fn a_capture_that_never_opened_says_unreachable_with_the_dial_words() {
     let e = pull_over_coded(async {
         Err(ssh_dial::DialFail {
-            error: "拨号那一句".into(),
+            said: "拨号那一句".into(),
             detail: None,
             fingerprint: None,
             reason: None,

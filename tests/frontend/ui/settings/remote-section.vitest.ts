@@ -496,7 +496,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     if (!("refused" in got)) throw new Error("同名两台删一台，写口没拒");
     expect(got.refused.code).toBe("element_gone");
     const banner = sec.element.querySelector(".settings-banner-show")?.textContent ?? "";
-    expect(banner).toContain(got.refused.message);
+    expect(banner).toContain(got.refused.said);
     expect(banner).not.toContain("通道");
   });
 
@@ -1030,7 +1030,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       for (const i of [name, host, user]) i!.dispatchEvent(new Event("input"));
       for (let i = 0; i < 5; i++) await tick(); // 等机器表那一道答回来
       // 写口没写成（盘满）：这一问照这份拒绝体拒，不查金样。
-      fakeMachines.sent.mockImplementation((cmd) => (cmd === "machines-set" ? { code: "io_failed", message: "disk full" } : undefined));
+      fakeMachines.sent.mockImplementation((cmd) => (cmd === "machines-set" ? { code: "io_failed", said: "disk full" } : undefined));
       okBtn(dlg).click();
       for (let i = 0; i < 5; i++) await tick();
       expect(document.querySelector('[role="dialog"]'), "没存上框却关了").not.toBeNull();

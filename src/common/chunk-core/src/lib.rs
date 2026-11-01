@@ -16,14 +16,14 @@ pub const CHUNK: usize = 256 * 1024;
 
 /// 问那台一条文件命令：成了 ⇒ 那条命令的回包；没成 ⇒ 调用方那一形的失败。
 pub trait Ask {
-    type Fail;
-    fn ask<C: Call + Sync>(&self, req: &C) -> impl Future<Output = Result<C::Reply, Self::Fail>>;
+    type Err;
+    fn ask<C: Call + Sync>(&self, req: &C) -> impl Future<Output = Result<C::Reply, Self::Err>>;
 }
 
 /// 读回来的一块交给谁（写本机文件 · 再进本机的暂存区 …）。
 pub trait Sink {
-    type Fail;
-    fn put(&mut self, bytes: Vec<u8>) -> impl Future<Output = Result<(), Self::Fail>>;
+    type Err;
+    fn put(&mut self, bytes: Vec<u8>) -> impl Future<Output = Result<(), Self::Err>>;
 }
 
 /// 撤与进度那两口（每一块之前问一次撤；每送 / 收完一块报一次进度）。
@@ -53,7 +53,7 @@ impl Stager {
     }
 
     /// 送一块（空块不送）。
-    pub async fn put<A: Ask>(&mut self, ask: &A, bytes: Vec<u8>) -> Result<(), A::Fail> {
+    pub async fn put<A: Ask>(&mut self, ask: &A, bytes: Vec<u8>) -> Result<(), A::Err> {
         if bytes.is_empty() {
             return Ok(());
         }
@@ -97,9 +97,9 @@ pub async fn stage<A: Ask, R: std::io::Read>(
     mut src: R,
     total: Option<u64>,
     watch: &mut impl Watch,
-    stop: impl Fn() -> A::Fail,
-    local: impl Fn(std::io::Error) -> A::Fail,
-) -> Result<Staged, A::Fail> {
+    stop: impl Fn() -> A::Err,
+    local: impl Fn(std::io::Error) -> A::Err,
+) -> Result<Staged, A::Err> {
     let mut stager = Stager::new(key);
     watch.moved(0, total);
     loop {
@@ -121,13 +121,13 @@ pub async fn stage<A: Ask, R: std::io::Read>(
 }
 
 /// 下载那一半：`path` 从 0 起逐块读回、每块交 `sink`，读到头为止；回总字节。撤了 ⇒ `stop()`。
-pub async fn pull<A: Ask, S: Sink<Fail = A::Fail>>(
+pub async fn pull<A: Ask, S: Sink<Err = A::Err>>(
     ask: &A,
     path: WirePath,
     sink: &mut S,
     watch: &mut impl Watch,
-    stop: impl Fn() -> A::Fail,
-) -> Result<u64, A::Fail> {
+    stop: impl Fn() -> A::Err,
+) -> Result<u64, A::Err> {
     let mut off = 0u64;
     loop {
         if watch.stopped() {

@@ -50,7 +50,7 @@ pub enum CallEnd {
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         call: i64,
         code: String,
-        message: String,
+        said: String,
         detail: String,
         #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
         data: Option<serde_json::Value>,

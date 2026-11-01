@@ -19,7 +19,7 @@ use crate::Endpoint;
 use copy_core::copy_text;
 use serde_json::{json, Value};
 
-type Err = (&'static str, String);
+use crate::Said;
 
 /// 一台（盘上那一形，也是线上那一形）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -256,12 +256,12 @@ pub fn parse_address_line(line: &str, default_port: u16) -> Option<Endpoint> {
 
 /// 线上那一形（一台原样的配置：键可缺、可为 `null`，多带的键不读）⇒ 一台。键的类型不对 ⇒ `bad_args`。
 /// 不判成不成立：那是组请求时 [`Host::fault`] 的事。
-pub fn loose(v: &Value) -> Result<Host, Err> {
-    let bad = |d: &str| ("bad_args", crate::malformed(d));
+pub fn loose(v: &Value) -> Result<Host, Said> {
+    let bad = |d: &str| Said::new("bad_args", crate::malformed(d));
     let obj = v
         .as_object()
         .ok_or_else(|| bad("machine is not an object"))?;
-    let text = |k: &str| -> Result<String, Err> {
+    let text = |k: &str| -> Result<String, Said> {
         match obj.get(k) {
             None | Some(Value::Null) => Ok(String::new()),
             Some(Value::String(s)) => Ok(s.clone()),
@@ -298,15 +298,15 @@ pub fn loose(v: &Value) -> Result<Host, Err> {
 /// 按类型收的入参里那一格经 [`loose`] 读（`#[serde(deserialize_with = "ssh_dial::machine::loose_field")]`）。
 pub fn loose_field<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Host, D::Error> {
     let v = <Value as serde::Deserialize>::deserialize(d)?;
-    loose(&v).map_err(|(_, m)| serde::de::Error::custom(m))
+    loose(&v).map_err(|s| serde::de::Error::custom(s.said))
 }
 
 /// 拨不了这一台（没地址 · 没用户 · 端口不在 1–65535）⇒ `bad_args`（调用方是我们自己：契约错）。
 /// 以 `-` 打头那一条不在这里拒：russh 拨号不经命令行；写表那一处照 [`Host::fault`] 拒，开终端那一行另按它的裸词白名单拒、说清是哪一格。
-fn usable(h: &Host) -> Result<&Host, Err> {
+fn usable(h: &Host) -> Result<&Host, Said> {
     match h.fault() {
         None | Some(MachineFaultCode::LeadingDash) => Ok(h),
-        Some(code) => Err((
+        Some(code) => Err(Said::new(
             "bad_args",
             crate::malformed(&format!("machine `{}`: {code:?}", h.name())),
         )),
@@ -337,10 +337,10 @@ pub fn request(
     prefer: Option<&Endpoint>,
     use_: &str,
     extra: Value,
-) -> Result<Value, Err> {
+) -> Result<Value, Said> {
     let find = |n: &str| table.iter().find(|h| h.name() == n);
     let machine = find(name).ok_or_else(|| {
-        (
+        Said::new(
             "bad_args",
             crate::malformed(&format!("no machine named `{name}`")),
         )
@@ -352,10 +352,10 @@ pub fn request(
     let mut at = machine;
     while let Some(j) = at.jump_name() {
         if seen.contains(&j) {
-            return Err(("bad_jump", copy_text("beMachine.jump.loop", &[])));
+            return Err(Said::new("bad_jump", copy_text("beMachine.jump.loop", &[])));
         }
         let next = find(j).ok_or_else(|| {
-            (
+            Said::new(
                 "bad_jump",
                 copy_text("beMachine.jump.notFound", &[("jumpLabel", j)]),
             )

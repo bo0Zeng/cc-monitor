@@ -3238,7 +3238,7 @@ sealed interface CallEnd {
     data class Failed(
         override val call: Long,
         val code: String,
-        val message: String,
+        val said: String,
         val detail: String,
         val data: Raw,
     ) : CallEnd, Ordered {
@@ -3294,12 +3294,12 @@ sealed interface CallEnd {
                         Field("end", { tag("failed") }, optional = false, nullable = false),
                         Field("call", { Lng }, optional = false, nullable = false),
                         Field("code", { Str }, optional = false, nullable = false),
-                        Field("message", { Str }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
                         Field("detail", { Str }, optional = false, nullable = false),
                         Field("data", { RawJson }, optional = false, nullable = false),
                         ),
                         { a -> CallEnd.Failed(a[1] as Long, a[2] as String, a[3] as String, a[4] as String, a[5] as Raw) },
-                        { v -> arrayOf("failed", v.call, v.code, v.message, v.detail, v.data) },
+                        { v -> arrayOf("failed", v.call, v.code, v.said, v.detail, v.data) },
                     )),
                 Variant("timeout", CallEnd.Timeout::class.java, obj(
                         listOf(
@@ -6542,6 +6542,29 @@ data class FactsReply(
             ),
             { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Long>, a[9] as List<PendingCall>, a[10] as LastSay?, a[11] as Needs?, a[12] as List<String>, a[13] as List<RetryRun>, a[14] as String?, a[15] as String?, a[16] as TokenUse?, a[17] as FactsCost?, a[18] as List<BgTask>, a[19] as FactsBackground?, a[20] as String?, a[21] as Long?, a[22] as String?, a[23] as List<McpTrouble>, a[24] as Kin?, a[25] as List<Kin>, a[26] as FactsLine?, a[27] as QuietUnread?) },
             { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class Failed(
+    val code: String,
+    val said: String,
+    val detail: String,
+    val data: Raw? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<Failed> = obj(
+            listOf(
+            Field("code", { Str }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
+            Field("detail", { Str }, optional = false, nullable = false),
+            Field("data", { opt(RawJson) }, optional = true, nullable = true),
+            ),
+            { a -> Failed(a[0] as String, a[1] as String, a[2] as String, a[3] as Raw?) },
+            { v -> arrayOf(v.code, v.said, v.detail, v.data) },
         )
     }
 }
@@ -10794,25 +10817,6 @@ enum class Launch(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<Launch> = enumOf(entries) { it.wire }
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class LaunchFail(
-    val code: String,
-    val message: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<LaunchFail> = obj(
-            listOf(
-            Field("code", { Str }, optional = false, nullable = false),
-            Field("message", { Str }, optional = false, nullable = false),
-            ),
-            { a -> LaunchFail(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.code, v.message) },
-        )
     }
 }
 
@@ -21221,7 +21225,7 @@ data class RowLaunched(
     val alias: String,
     val group: GroupRef?,
     val opened: List<Opened>,
-    val failed: List<LaunchFail>,
+    val failed: List<Failed>,
     val blocked: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -21233,10 +21237,10 @@ data class RowLaunched(
             Field("alias", { Str }, optional = false, nullable = false),
             Field("group", { opt(GroupRef.ADAPTER) }, optional = false, nullable = true),
             Field("opened", { arr(Opened.ADAPTER) }, optional = false, nullable = false),
-            Field("failed", { arr(LaunchFail.ADAPTER) }, optional = false, nullable = false),
+            Field("failed", { arr(Failed.ADAPTER) }, optional = false, nullable = false),
             Field("blocked", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> RowLaunched(a[0] as String, a[1] as String, a[2] as GroupRef?, a[3] as List<Opened>, a[4] as List<LaunchFail>, a[5] as String?) },
+            { a -> RowLaunched(a[0] as String, a[1] as String, a[2] as GroupRef?, a[3] as List<Opened>, a[4] as List<Failed>, a[5] as String?) },
             { v -> arrayOf(v.cwd, v.alias, v.group, v.opened, v.failed, v.blocked) },
         )
     }
@@ -21559,25 +21563,6 @@ enum class RunWhy(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<RunWhy> = enumOf(entries) { it.wire }
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class Said(
-    val said: String,
-    val detail: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<Said> = obj(
-            listOf(
-            Field("said", { Str }, optional = false, nullable = false),
-            Field("detail", { Str }, optional = false, nullable = false),
-            ),
-            { a -> Said(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.said, v.detail) },
-        )
     }
 }
 

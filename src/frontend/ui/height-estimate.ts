@@ -398,7 +398,7 @@ export interface SkeletonFacts {
 
 /**
  * 卡片外框（padding ＋ border ＋ 卡间 margin）的常数。
- * 金标准 `tests/evidence/RENDER2-skel-golden.json`（真 Chromium 里每张卡占的位置 − 头 − 体），
+ * 金标准 `tests/evidence/skel-golden.json`（真 Chromium 里每张卡占的位置 − 头 − 体），
  * 门禁在 `scale2-height-truth.vitest.ts`「骨架外框」那一组：每一格 == 中位数向上取整（粗估宁可偏高）。
  */
 const SKEL_USER_CHROME = 50;

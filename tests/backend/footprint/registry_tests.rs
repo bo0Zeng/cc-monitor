@@ -1652,11 +1652,11 @@ fn claims() -> Vec<Claim> {
             home: Some(deploy()),
             install: Some(ImplSite {
                 addr: "deploy.rs::deploy_remote_backend",
-                definition: "pub async fn deploy_remote_backend(origin: String) -> Result<String, Said> {",
+                definition: "pub async fn deploy_remote_backend(origin: String) -> Result<String, cmd_wire::failed::Failed> {",
             }),
             uninstall: Some(ImplSite {
                 addr: "deploy.rs::uninstall_remote_backend",
-                definition: "pub async fn uninstall_remote_backend(origin: String) -> Result<String, Said> {",
+                definition: "pub async fn uninstall_remote_backend(origin: String) -> Result<String, cmd_wire::failed::Failed> {",
             }),
         },
         Claim {

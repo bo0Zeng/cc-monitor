@@ -21,8 +21,8 @@ pub struct Over<'a> {
 }
 
 impl chunk_core::Ask for Over<'_> {
-    type Fail = super::source::Failed;
-    async fn ask<C: cmd_wire::Call + Sync>(&self, req: &C) -> Result<C::Reply, Self::Fail> {
+    type Err = super::source::Failed;
+    async fn ask<C: cmd_wire::Call + Sync>(&self, req: &C) -> Result<C::Reply, Self::Err> {
         super::source::ask_typed(self.line, self.origin, req, CHUNK_BUDGET).await
     }
 }

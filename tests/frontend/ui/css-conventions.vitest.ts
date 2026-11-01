@@ -1,9 +1,9 @@
 /**
- * `S30` —— **CSS 三条约定接进判据**（件 7 · 件 9）。
+ * **CSS 三条约定接进判据**。
  *
- * 量具住 `tests/evidence/S30-css-conventions.ts`，**本文件只登记与判**（分家的理由写在那边）。
+ * 量具住 `tests/evidence/css-conventions.ts`，**本文件只登记与判**（分家的理由写在那边）。
  *
- * ## 与 `tests/frontend/ui/css-ledger.vitest.ts`（`S25`）的分工 —— 不是第二本账
+ * ## 与 `tests/frontend/ui/css-ledger.vitest.ts`的分工 —— 不是第二本账
  *
  * | 文件 | 管哪几件**事实** |
  * |---|---|
@@ -68,8 +68,8 @@ import {
   type CssFacts,
   type HiddenSite,
   type StateCarriers,
-} from "../../evidence/S30-css-conventions.ts";
-import { stripCodeComments } from "../../evidence/S25-class-ledger.ts";
+} from "../../evidence/css-conventions.ts";
+import { stripCodeComments } from "../../evidence/class-ledger.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { nonEmpty } from "../../test-support/non-empty.ts";
 
@@ -486,7 +486,7 @@ describe("S30 ⑦ 会被 hidden 切的元素，CSS 不许在它身上裸写 disp
 //
 // 要求：「状态只用**一种**载体承载，不许同一个状态在类名、`data-*`、内联 `style` 三处各写一遍」，
 // 以及同节「**没判的**：一般形式『同一个状态名不得同时出现在两种载体里』今天没有判据」—— 本格补的就是这一句。
-// 量具 `tests/evidence/S30-css-conventions.ts::stateCarriers`（两种形的定义与取法写在那边的头注）。
+// 量具 `tests/evidence/css-conventions.ts::stateCarriers`（两种形的定义与取法写在那边的头注）。
 //
 // 🔴 立格时现打逮到三处，**当拍改掉，没有登记**（外观不变：选择器特异度逐条同档或无竞争者）：
 //   · 名字形 `conf`：`views/panorama.ts` 把置信档拼成 `conf-<值>` 类名族，而全景图里同一个状态名走 `data-conf` ⇒ 改走 `data-conf`；
@@ -600,7 +600,7 @@ describe("S30 ⑧ 同一个状态名不许同现于类名与 data-* 两种载体
 // ───────────────── ⑨ 活规则里的死声明─────────────────
 //
 // 把它列在「没查的」里，逐字「**活规则里的死声明** —— 规则在用，但某条声明被后面的规则覆盖了」。
-// 本格收的是**机械上判得死**的那一形（量具 `S30-css-conventions.ts::deadDeclarations`，判定写在那边的头注）：
+// 本格收的是**机械上判得死**的那一形（量具 `css-conventions.ts::deadDeclarations`，判定写在那边的头注）：
 // 同一个选择器（逐字 ⇒ 特异度相同、命中同一批元素）· 同一条件链（`@media` / `@supports` / `@container`）·
 // 另一条声明整条盖住它的属性（同名，或后写的简写盖先写的长写）· 按级联那一条赢（重要性 → 层 → 窗口清单里的文件先后 →
 // 同文件里的规则先后 → 同规则里的声明先后）· 而且在**每一扇**载入它那份文件的窗口里都这样。

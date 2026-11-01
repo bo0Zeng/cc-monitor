@@ -631,8 +631,8 @@ private fun BackendRow(hostId: String) {
         is Deploying.Done -> Text(d.text, style = monoSmall, color = LocalAppTokens.current.textFaint)
         is Deploying.Failed ->
             Column {
-                Text(d.said.text, color = MaterialTheme.colorScheme.error)
-                CopyDetailButton(d.said.text, d.said.detail)
+                Text(d.failed.said, color = MaterialTheme.colorScheme.error)
+                CopyDetailButton(d.failed.said, d.failed.detail)
             }
         null -> Unit
     }

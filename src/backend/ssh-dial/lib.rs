@@ -111,10 +111,10 @@ pub use cmd_wire::dial::{
 };
 
 /// 没开成：那一句 ＋ 下层原话（进 `detail`，按宿主的 [`env::Facts`] 写成复制详情）＋ 看到的指纹。
-pub fn fail(error: Said, fingerprint: Option<String>) -> DialFail {
+pub fn fail(why: Said, fingerprint: Option<String>) -> DialFail {
     DialFail {
-        detail: Some(env::get().facts.detail("dial", None, error.raw.as_deref())),
-        error: error.said,
+        detail: Some(env::get().facts.detail("dial", None, why.raw.as_deref())),
+        said: why.said,
         fingerprint,
         reason: None,
         key_type: None,

@@ -145,7 +145,7 @@ impl comms_inward::chan::router::Backends for ScreenHost {
                 return Err(comms_inward::chan::wire::CallError::Peer {
                     why: comms_inward::chan::wire::PeerFault::Refused {
                         body: comms_inward::chan::wire::Body(
-                            r#"{"code":"io_failed","message":"那台说：没有这个目录"}"#
+                            r#"{"code":"io_failed","said":"那台说：没有这个目录"}"#
                                 .as_bytes()
                                 .to_vec(),
                         ),

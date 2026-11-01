@@ -1072,7 +1072,7 @@ async fn route(client: &InboundClient, kind: &str, line: &str, events: &Sink) {
 const ABSENT_CODES: [u32; 2] = [126, 127];
 
 /// 一次性 CLI 的回话（`--resident-ensure [--replace]` · `--resident-stop`，桌面停那一趟也读它）：退出 0 ＋ stdout 一行 JSON 对象 ⇒ 成；
-/// stdout 里有 hello（[`OLD_BACKEND_MARKER`]）⇒ 老后端、要更新；127 / 126 ⇒ 没装；非 0 ＋ stderr 一行 `{code, message, detail}` ⇒ 那一句
+/// stdout 里有 hello（[`OLD_BACKEND_MARKER`]）⇒ 老后端、要更新；127 / 126 ⇒ 没装；非 0 ＋ stderr 一行失败信封（`cmd_wire::failed::Failed`）⇒ 那一句
 /// （`code == "unsupported"` ⇒ 那台不是 Unix）；对不上协议 ⇒ 原样进详情。
 pub fn read_one_shot(exec: &Exec, machine: &str) -> Result<serde_json::Value, Fail> {
     let out = exec.stdout.trim();
@@ -1101,23 +1101,21 @@ pub fn read_one_shot(exec: &Exec, machine: &str) -> Result<serde_json::Value, Fa
             raw(),
         )),
         _ => {
-            let env: serde_json::Value = serde_json::from_str(err).unwrap_or_default();
-            let detail = env["detail"].as_str().unwrap_or_default();
-            match (env["code"].as_str(), env["message"].as_str()) {
-                // 那台的 `message` 这一格就是它的原话（脱离不了的系统报错）：句子由这边说，原话进详情。
-                (Some("unsupported"), Some(m)) => Err(Fail::new(
+            match serde_json::from_str::<cmd_wire::failed::Failed>(err).ok() {
+                // 那台的 `said` 这一格就是它的原话（脱离不了的系统报错）：句子由这边说，原话进详情。
+                Some(f) if f.code == "unsupported" => Err(Fail::new(
                     Problem::new(
                         copy_text("rsRemoteResident.ensure.unsupported", &[]),
-                        if detail.is_empty() {
-                            m.to_string()
+                        if f.detail.is_empty() {
+                            f.said
                         } else {
-                            format!("{m}\n{detail}")
+                            format!("{}\n{}", f.said, f.detail)
                         },
                     ),
                     FailKind::Blocked(Blocker::NotUnix),
                 )),
-                (Some(_), Some(m)) => install(Problem::new(m, detail)),
-                _ => install(Problem::new(
+                Some(f) => install(Problem::new(f.said, f.detail)),
+                None => install(Problem::new(
                     copy_text("rsRemoteResident.ensure.noReason", &[]),
                     raw(),
                 )),

@@ -57,13 +57,13 @@ pub enum Stage {
 
 /// 没开成：哪一步 ＋ 下层的错。
 #[derive(Debug)]
-pub struct Failed {
+pub struct StageErr {
     pub stage: Stage,
     pub io: io::Error,
 }
 
-impl From<Failed> for io::Error {
-    fn from(f: Failed) -> io::Error {
+impl From<StageErr> for io::Error {
+    fn from(f: StageErr) -> io::Error {
         f.io
     }
 }
@@ -74,19 +74,19 @@ pub fn open(
     host: &str,
     port: u16,
     deadline: Option<Duration>,
-) -> Result<Opened, Failed> {
+) -> Result<Opened, StageErr> {
     match e.hop_for(host) {
         Hop::Direct => Ok(Opened {
             tcp: tcp_to(host, port, deadline)?,
             via_proxy: false,
         }),
-        Hop::Refuse { from, why } => Err(Failed {
+        Hop::Refuse { from, why } => Err(StageErr {
             stage: Stage::Proxy,
             io: io::Error::new(io::ErrorKind::InvalidInput, format!("{from}: {why}")),
         }),
         Hop::Via(p) => {
             let mut tcp = tcp_to(&p.host, p.port, deadline)?;
-            tunnel::handshake(&mut tcp, p, host, port).map_err(|io| Failed {
+            tunnel::handshake(&mut tcp, p, host, port).map_err(|io| StageErr {
                 stage: if io.kind() == io::ErrorKind::NotFound {
                     Stage::Resolve
                 } else {
@@ -103,7 +103,7 @@ pub fn open(
 }
 
 /// 真开 TCP 的那一处：先解析、再按解析出来的地址逐个连。
-fn tcp_to(host: &str, port: u16, deadline: Option<Duration>) -> Result<TcpStream, Failed> {
+fn tcp_to(host: &str, port: u16, deadline: Option<Duration>) -> Result<TcpStream, StageErr> {
     // 测试档不许出网：真开 TCP 的那个目的地（代理或目标）不是本机回环 ⇒ 当场 panic，不连、不解析名字。
     #[cfg(any(test, feature = "test-support"))]
     assert!(
@@ -113,13 +113,13 @@ fn tcp_to(host: &str, port: u16, deadline: Option<Duration>) -> Result<TcpStream
     let h = host.trim_start_matches('[').trim_end_matches(']');
     let addrs: Vec<std::net::SocketAddr> = (h, port)
         .to_socket_addrs()
-        .map_err(|io| Failed {
+        .map_err(|io| StageErr {
             stage: Stage::Resolve,
             io,
         })?
         .collect();
     if addrs.is_empty() {
-        return Err(Failed {
+        return Err(StageErr {
             stage: Stage::Resolve,
             io: io::Error::new(io::ErrorKind::NotFound, format!("{h}: no address")),
         });
@@ -128,7 +128,7 @@ fn tcp_to(host: &str, port: u16, deadline: Option<Duration>) -> Result<TcpStream
         clippy::disallowed_methods,
         reason = "出网口：这台出站 TCP 只在这一处开，中转 · 拨号 · 探活都经 `open` 到这里"
     )]
-    let tcp = TcpStream::connect(&addrs[..]).map_err(|io| Failed {
+    let tcp = TcpStream::connect(&addrs[..]).map_err(|io| StageErr {
         stage: Stage::Connect,
         io,
     })?;
@@ -136,7 +136,7 @@ fn tcp_to(host: &str, port: u16, deadline: Option<Duration>) -> Result<TcpStream
         tcp.set_read_timeout(deadline)?;
         tcp.set_write_timeout(deadline)
     };
-    set(&tcp).map_err(|io| Failed {
+    set(&tcp).map_err(|io| StageErr {
         stage: Stage::Connect,
         io,
     })?;

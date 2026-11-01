@@ -32,7 +32,7 @@ impl crate::wire::typed::Handle for FootprintCmd {
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<ConfigSurfaceReport, FootprintErr>> + Send + 'static
     {
-        async move { crate::footprint::answer(&req).map_err(typed::of_pair(FootprintErr::Failed)) }
+        async move { crate::footprint::answer(&req).map_err(typed::of_fail_with(FootprintErr::Failed)) }
     }
 }
 
@@ -56,7 +56,8 @@ impl crate::wire::typed::Handle for DataReportCmd {
         async move {
             let files = needs;
 
-            crate::footprint::data_answer(files, &req).map_err(typed::of_pair(FootprintErr::Failed))
+            crate::footprint::data_answer(files, &req)
+                .map_err(typed::of_fail_with(FootprintErr::Failed))
         }
     }
 }

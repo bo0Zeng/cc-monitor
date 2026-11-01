@@ -202,7 +202,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("sessions-needs-merge", "ba269f03"),
     ("sessions-stop", "6c60d8f4"),
     ("sessions-where", "df18d571"),
-    ("set-launch", "1b818141"),
+    ("set-launch", "dff3ae15"),
     ("set-plan", "cb401cc9"),
     ("skill-install-apply", "bd42387a"),
     ("skill-install-plan", "5b6796bc"),

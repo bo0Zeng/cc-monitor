@@ -113,7 +113,7 @@ describe("buildProfilesList", () => {
             staleOnce = false;
             // 那台拒了、码 stale（与线上同形：通道里的拒绝体）。
             const { ChanError } = await import("../../../../src/comms/inward/chan");
-            const body = new TextEncoder().encode(JSON.stringify({ code: "stale", message: "被别处改过" }));
+            const body = new TextEncoder().encode(JSON.stringify({ code: "stale", said: "被别处改过" }));
             throw new ChanError({ layer: "peer", why: "refused", body }, "被别处改过");
           }
           return Promise.resolve({ wrote: true, rev: "fp-2", reload: null });

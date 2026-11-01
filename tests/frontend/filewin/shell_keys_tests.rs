@@ -1478,9 +1478,10 @@ fn failed_rename(d: &mut Drive, typed: &str) -> FileWindow {
     d.frame(&mut w, Vec::new());
     w.write_prompt.as_mut().expect("F2 没摆出改名那一格").text = typed.to_string();
     w.land_inline_failure(crate::source::Failed {
-        code: Some("denied".into()),
+        code: "denied".into(),
         said: DENIED.into(),
         detail: "code: denied".into(),
+        data: None,
     });
     d.frame(&mut w, Vec::new());
     d.frame(&mut w, Vec::new());

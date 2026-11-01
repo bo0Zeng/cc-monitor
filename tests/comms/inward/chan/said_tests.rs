@@ -179,14 +179,14 @@ fn a_refusal_says_the_peer_sentence_or_that_it_is_unreadable() {
     let devbox = Origin::named("devbox");
     assert_eq!(
         said(
-            &refused(r#"{"code":"no_tmux","message":"devbox 无 tmux"}"#.as_bytes()),
+            &refused(r#"{"code":"no_tmux","said":"devbox 无 tmux"}"#.as_bytes()),
             &devbox
         ),
         "devbox 无 tmux"
     );
     let unreadable =
         copy_core::copy_text("rsChanSaid.peer.refusedNoReason", &[("machine", "devbox")]);
-    for body in [&b"not json"[..], br#"{"code":"x","message":"  "}"#, b""] {
+    for body in [&b"not json"[..], br#"{"code":"x","said":"  "}"#, b""] {
         assert_eq!(said(&refused(body), &devbox), unreadable, "{body:?}");
     }
 }

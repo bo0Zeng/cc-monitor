@@ -35,7 +35,7 @@ ccbus_ask() {
   out=$(printf '%s' "$req" | "$ccm" -- "--bus-$verb" --within-ms 10000 2>"$errf"); rc=$?
   if [ "$rc" -ne 0 ]; then
     CCBUS_CODE=$(jq -r '.code // ""' <"$errf" 2>/dev/null || true)
-    jq -r '.message + (if (.detail // "") != "" then "\n" + .detail else "" end)' <"$errf" >&2 2>/dev/null || cat "$errf" >&2
+    jq -r '.said + (if (.detail // "") != "" then "\n" + .detail else "" end)' <"$errf" >&2 2>/dev/null || cat "$errf" >&2
     rm -f "$errf"
     return "$rc"
   fi

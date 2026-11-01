@@ -253,7 +253,7 @@ async fn a_link_that_cannot_ask_uname_is_unreachable_not_a_refusal() {
 
 #[tokio::test]
 async fn an_unstamped_landing_is_undecidable_whatever_it_holds() {
-    // 落点上不说自己是谁的文件：一律显式失败、不动 —— 不认「从前那份三行入口」（不留旧兼容）。
+    // 落点上不说自己是谁的文件：一律显式失败、不动 —— 不认「旧版那份三行入口」（不留旧兼容）。
     let mut f = Fake::linux(Some("x"));
     f.exec.insert(landing_scan(), said(1, ""));
     let e = plan(&f, &carried("p9a-mine"), "box", NOW)
@@ -261,7 +261,7 @@ async fn an_unstamped_landing_is_undecidable_whatever_it_holds() {
         .unwrap_err();
     assert_eq!(e.code.as_deref(), Some("undecidable"));
 
-    // 计划这一路只 stat 与扫戳：对面那一口（`Facing`）连「读回落点那一份」都没有，落点上是什么字节都认不成「我们从前那份」。
+    // 计划这一路只 stat 与扫戳：对面那一口（`Facing`）连「读回落点那一份」都没有，落点上是什么字节都认不成「我们旧版那份」。
 }
 
 /// 要求：「部署中途断了留下的件，之后连上也不清」⇒「下次连上清旧的」。
@@ -369,7 +369,7 @@ fn slot_rows_outside_table_a_without_an_id_or_without_an_absolute_path_are_bad_a
     }
 }
 
-/// 原住 `tests/frontend/shell/sftp_tests.rs`（序键那时住 monitor）；序键搬进 `deploy-core` 之后放在后端这一侧：读的历史表与 `BUILD_ID` 都在这一半。
+/// 序键住 `deploy-core`，判据放在后端这一侧：读的历史表与 `BUILD_ID` 都在这一半。
 /// 🔴 B1b：**历史表里的两个 `BUILD_ID`（上一版 ＋ 当前版）都有序、按表序严格爬升、现在这个不低于最后一行**（读后端源码，异源；更早的各版在 git 历史里，出过时已在这里验过）。
 /// 下一次 bump 写出一个解不出序的形状（或比历史低）⇒ 当场红 —— 那一版部署出去就永远不会被判「更新」而换上。
 #[test]
@@ -464,7 +464,7 @@ fn identity_decision_answers_each_state_without_merging_them() {
     );
 }
 
-// ── K-W4b：取样层那四个状态的**映射规则**逐格各一条 ─────────────────────
+// ── 取样层那四个状态的**映射规则**逐格各一条 ─────────────────────
 // 上面那几格买的是「判定那一半」与「两条路真的去问了」；取样这一半（`metadata` /
 // `try_exists` 的答案怎么变成 `TargetBinary`）09-06 之前一条判据都没有：
 // 把那个取样壳的体换成恒答 `Present`，全量 cargo **0 红**（沙箱实测）。
@@ -758,7 +758,7 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
 
 // ═══ 承诺面：账本 == 代码（两向；随 `promised` 从 monitor `byte_table_tests` 搬来）══════
 
-/// 承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py`（`PROMISE_FACE` · `NOT_PROMISED`），代码那一份是 [`promised`]。
+/// 承诺面的唯一住址是 `tests/evidence/platform-ledger.py`（`PROMISE_FACE` · `NOT_PROMISED`），代码那一份是 [`promised`]。
 ///
 /// 要求：「不承诺. 适配部分, 即os适配部分后面单独写单独做.」；承诺是 (键 × origin) 的属性。
 /// 人群 = 表 A 里有后端产线的每个键（`LINES`）× 两个 origin；每一格恰好落在账本两表之一，且落在 `PROMISE_FACE` ⇔ `promised(route, key)`。
@@ -766,7 +766,7 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
 #[test]
 fn the_promise_face_in_the_ledger_equals_the_code() {
     use std::collections::BTreeSet;
-    let p = guard_core::addr::repo_root().join("tests/evidence/K-G4-platform-ledger.py");
+    let p = guard_core::addr::repo_root().join("tests/evidence/platform-ledger.py");
     let ledger = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
     let table = |name: &str| -> BTreeSet<(String, String, String)> {
         let at = ledger

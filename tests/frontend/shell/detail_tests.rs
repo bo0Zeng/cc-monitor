@@ -22,10 +22,10 @@ fn a_remote_refusal_gets_a_local_line_and_a_local_one_does_not() {
 #[test]
 fn the_refusal_body_detail_is_read_and_missing_reads_empty() {
     assert_eq!(
-        of_refusal_body(br#"{"code":"x","message":"m","detail":"d"}"#),
+        of_refusal_body(br#"{"code":"x","said":"m","detail":"d"}"#),
         "d"
     );
-    assert_eq!(of_refusal_body(br#"{"code":"x","message":"m"}"#), "");
+    assert_eq!(of_refusal_body(br#"{"code":"x","said":"m"}"#), "");
     assert_eq!(of_refusal_body(b"not json"), "");
 }
 
@@ -74,8 +74,11 @@ fn a_shell_command_failure_is_one_shape_with_a_nonempty_detail() {
     assert!(s
         .detail
         .contains(&format!("{}：os error 2", label("detail.label.raw"))));
-    let v = serde_json::to_value(&s).unwrap();
-    assert_eq!(v.as_object().unwrap().len(), 2, "{v}");
+    // 投出去那一形（`named`）：码 · 那一句 · 复制详情三格，没有按码定形的 `data` 就不出那一格。
+    let v = serde_json::to_value(s.named("load_config")).unwrap();
+    let keys: std::collections::BTreeSet<&str> =
+        v.as_object().unwrap().keys().map(String::as_str).collect();
+    assert_eq!(keys, ["code", "detail", "said"].into(), "{v}");
 }
 
 /// 问后端一条命令没成：那台写了详情 ⇒ 原样带上（远端补「本机」）；没写（老后端 / 没走到那台）⇒ 壳写时刻 · 本机 · 命令。
@@ -87,12 +90,12 @@ fn a_backend_call_failure_keeps_the_detail_the_backend_wrote() {
         label("detail.label.code"),
         label("detail.label.raw")
     );
-    let refused = CallError::Remote {
+    let refused = CallError::Remote(cmd_wire::failed::Failed {
         code: "refused".into(),
-        message: "box 系统未知".into(),
+        said: "box 系统未知".into(),
         detail: wrote.clone(),
         data: None,
-    };
+    });
     let s = Said::of_call(
         "box 系统未知".into(),
         "deploy-plan",
@@ -149,6 +152,9 @@ fn naming_a_shell_command_failure_adds_the_command_once() {
     assert!(own.detail.contains("deploy-plan"), "{}", own.detail);
 }
 
+/// 壳命令签名上的错型（交出去那一形）。
+const FAILED: &str = "cmd_wire::failed::Failed";
+
 /// 一份源码里全部 `#[tauri::command]`：(名字, 签名到 `{` 为止, 整块)。
 fn shell_commands(prod: &str) -> Vec<(String, String, String)> {
     let starts: Vec<usize> = prod
@@ -191,20 +197,20 @@ fn error_type(sig: &str) -> Option<String> {
     None
 }
 
-/// 壳命令的失败只一形：签名回 `Result` 的，错型只许 [`Said`]（`chan_call` 一条回通道那一形 `Fail`）。不合的那几条。
+/// 壳命令的失败只一形：签名回 `Result` 的，错型只许交出去那一形 `cmd_wire::failed::Failed`（`chan_call` 一条回通道那一形 `Fail`）。不合的那几条。
 fn commands_failing_otherwise(prod: &str) -> Vec<String> {
     shell_commands(prod)
         .into_iter()
         .filter_map(|(name, sig, _)| {
             let e = error_type(&sig)?;
-            let allowed = if name == "chan_call" { "Fail" } else { "Said" };
+            let allowed = if name == "chan_call" { "Fail" } else { FAILED };
             (e != allowed).then(|| format!("{name} → {e}"))
         })
         .collect()
 }
 
-/// 每条返回 `Said` 的壳命令，最外层都经 `.named("<它自己的名字>")` 一次（复制详情里有「命令」那一项）；
-/// 回 `Result` 的壳命令错型只许 `Said`（`chan_call` 许 `Fail`）。人群：生产源码里全部 `#[tauri::command]`。
+/// 每条回失败的壳命令，最外层都经 `.named("<它自己的名字>")` 一次（复制详情里有「命令」那一项）；
+/// 回 `Result` 的壳命令错型只许 `cmd_wire::failed::Failed`（`chan_call` 许 `Fail`）。人群：生产源码里全部 `#[tauri::command]`。
 #[test]
 fn every_shell_command_fails_as_said_and_names_itself() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -218,7 +224,7 @@ fn every_shell_command_fails_as_said_and_names_itself() {
                 .map(|c| format!("{file}::{c}")),
         );
         for (name, sig, chunk) in shell_commands(&prod) {
-            if !sig.contains("Said>") {
+            if !sig.contains(&format!("{FAILED}>")) {
                 continue;
             }
             seen += 1;
@@ -234,12 +240,12 @@ fn every_shell_command_fails_as_said_and_names_itself() {
     );
     assert!(
         other.is_empty(),
-        "这几条壳命令的错不是 `Said`（句子 ＋ 复制详情）：{other:?}"
+        "这几条壳命令的错不是交出去那一形（码 · 句子 · 复制详情）：{other:?}"
     );
     // 正控：一条回 `Result<(), String>` 的命令要被认出来；`chan_call` 回 `Fail` 不算。
     let fixture = "#[tauri::command]\nfn bare() -> Result<(), String> {\n}\n\
                    #[tauri::command]\npub async fn chan_call(a: u8) -> Result<tauri::ipc::Response, Fail> {\n}\n\
-                   #[tauri::command]\nfn fine() -> Result<Vec<(u8, String)>, Said> {\n}\n";
+                   #[tauri::command]\nfn fine() -> Result<Vec<(u8, String)>, cmd_wire::failed::Failed> {\n}\n";
     assert_eq!(commands_failing_otherwise(fixture), vec!["bare → String"]);
 }
 
@@ -344,10 +350,9 @@ fn naming_does_not_split_raw_words_that_look_like_items() {
 #[test]
 fn a_relayed_refusal_gets_the_local_line_once_at_the_host() {
     let wrote = format!("{}：io_failed", label("detail.label.code"));
-    let body = serde_json::to_vec(
-        &serde_json::json!({"code": "io_failed", "message": "m", "detail": wrote}),
-    )
-    .unwrap();
+    let body =
+        serde_json::to_vec(&serde_json::json!({"code": "io_failed", "said": "m", "detail": wrote}))
+            .unwrap();
     let refused = || w::err_from_wire(w::WireErr::Refused, body.clone());
     let detail_of = |e: &w::CallError| match e {
         w::CallError::Peer {

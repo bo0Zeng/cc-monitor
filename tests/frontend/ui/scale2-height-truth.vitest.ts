@@ -783,12 +783,12 @@ describe("秤 2 · 悬案③：一屏门控的三段边界，换上实测值之�
 
 // ===== 骨架外框：第一级的 `SKEL_*` 有秤对拍 =====
 // 要求：「第一级的外框常数（`height-estimate.ts` 的 `SKEL_*`）是估的、没有秤对拍」。
-// 金样由真 Chromium 打（`tests/evidence/RENDER2-skel-run.ts`；读的是卡在流里占的位置 − 头 − 体），与本文件的秤 2 同一份语料。
+// 金样由真 Chromium 打（`tests/evidence/skel-run.ts`；读的是卡在流里占的位置 − 头 − 体），与本文件的秤 2 同一份语料。
 // ⚠ 买不到：WebKitGTK 那一个引擎没打（秤 2 两个都打了）；卡间距按语料里的邻居折叠，真会话里邻居不同会差几 px。
 describe("秤 2 · 骨架外框（RENDER2）", () => {
   it("★ 四格 `SKEL_*` == 真浏览器里「位置 − 体」的中位数向上取整（user · assistant 含头 · 几步卡的外距 · 系统细条）", async () => {
     const { SKEL_OUTER } = await import("../../../src/frontend/ui/height-estimate");
-    const g = JSON.parse(readFileSync(resolve(__dirname, "../../evidence/RENDER2-skel-golden.json"), "utf8")) as {
+    const g = JSON.parse(readFileSync(resolve(__dirname, "../../evidence/skel-golden.json"), "utf8")) as {
       rows: Array<{ cls: string; slot: number; body: number }>;
     };
     const median = (xs: number[]): number => {

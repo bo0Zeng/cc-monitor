@@ -27,7 +27,7 @@ fn write_text(text: &str) -> Result<(), String> {
 
 /// IPC：把 `text` 写进系统剪贴板；写不进 ⇒「写不进剪贴板」＋ 原话（界面据此走就地展开全选，不说「已复制」）。
 #[tauri::command]
-pub async fn clipboard_write(text: String) -> Result<(), Said> {
+pub async fn clipboard_write(text: String) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = async move {
         tokio::task::spawn_blocking(move || write_text(&text))
             .await
@@ -52,7 +52,7 @@ fn read_text() -> Result<String, String> {
 
 /// IPC：读系统剪贴板里的文字（登录抽屉［粘贴］：原样填进那一格，不判像不像）；读不出 ⇒「读不出剪贴板」＋ 原话。
 #[tauri::command]
-pub async fn clipboard_read() -> Result<String, Said> {
+pub async fn clipboard_read() -> Result<String, cmd_wire::failed::Failed> {
     let r: Result<String, Said> = async move {
         tokio::task::spawn_blocking(read_text)
             .await
