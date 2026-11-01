@@ -12,4 +12,4 @@
  * 日志与拼路径 · URL 要线上那串经 `Display`。造一台走 [`Machine::named`]（不判名字，
  * 「名字不许是空白」由 [`Machine::route`] 那个漏斗执行 —— 装在构造器上会拆成两处、会漂）。
  */
-export type Origin = string;
+export type Machine = string;

@@ -697,3 +697,69 @@ fn project_costs_the_same_as_the_rhai_version_on_every_recorded_call() {
     assert!(seen >= 20, "录下的推演够多：{seen}");
     assert!(off.is_empty(), "代价不一样：\n{}", off.join("\n"));
 }
+
+// ───────────── 定价积木 `lib::price`：照 `lib::rollout` 交的原始量算代价 ─────────────
+
+/// ★ 周上限兜底的号到周重置也用不完 ⇒ 它的周额度不贵：在用的 q 剩 40 点、4 小时后作废；y 剩 5 点、30 分钟后作废，之后这一天不再给
+/// （分段上限到 15:00 为止）；q 也到 18:30 为止；池子最后靠 b（没开窗，周剩 62 点、18.6 小时后周重置，1% ≈ 150 万）。
+/// 「换去 y」只省下 b 那 30 分钟的周额度：周额度按全价算（卡住 ＋ 重写 ＋ 周额度）差几十万、看着该换；
+/// 照 `lib::price` 定价，b 的周额度影子价是 0，换过去只多一次换号代价，差 ＜ ε·K。
+#[test]
+fn price_does_not_pay_to_switch_when_the_weekly_backstop_cannot_be_used_up() {
+    let src = format!(
+        r#"
+        let now = {T};
+        let none = #{{ w5h: (), w7d: () }};
+        let ctx = #{{ now: now, clock: 870, current: "q", start: "q",
+          accounts: [
+            #{{ id: "q", kind: "sub", sendable: true, used: #{{ w5h: 60.0, w7d: 0.0 }}, resets: #{{ w5h: now + 14400, w7d: () }},
+               refusedUntil: (), tokensPerPct: #{{ w5h: 100000, w7d: () }}, weekly: false, others: (), windowGrid: #{{ up: () }} }},
+            #{{ id: "y", kind: "sub", sendable: true, used: #{{ w5h: 95.0, w7d: 0.0 }}, resets: #{{ w5h: now + 1800, w7d: () }},
+               refusedUntil: (), tokensPerPct: #{{ w5h: 1500000, w7d: () }}, weekly: false, others: (), windowGrid: #{{ up: () }} }},
+            #{{ id: "b", kind: "sub", sendable: true, used: #{{ w5h: 0.0, w7d: 38.0 }}, resets: #{{ w5h: (), w7d: now + 66960 }},
+               refusedUntil: (), tokensPerPct: #{{ w5h: 100000, w7d: 1500000 }}, weekly: true, others: (), windowGrid: #{{ up: () }} }} ],
+          session: #{{ pace: 25000.0, paceShort: 25000.0, inflight: 1.0, bins: [], spread: (), context: 150000,
+                      writeExtra: 1.9, ttl: 3600, grow: 0.0, cached: #{{}} }} }};
+        for i in 0..36 {{ ctx.session.bins.push(250000.0); }}
+        let plan = #{{ caps: #{{ q: #{{ "5h": [#{{ from: 0, to: 1110, v: 100 }}], "7d": 100 }},
+                                y: #{{ "5h": [#{{ from: 0, to: 900, v: 100 }}], "7d": 100 }},
+                                b: #{{ "5h": 100, "7d": 100 }} }},
+                      dflt: 0, walks: ["q", "y"], paths: 8 }};
+        let parts = lib::rollout(ctx, plan);
+        let flat = [];
+        for runs in parts.runs {{
+          let r = runs[0];
+          let c = r.stuck + r.rewrite;
+          for x in r.weekly.values() {{ c += x; }}
+          flat.push(c);
+        }}
+        let p = lib::price(parts, ctx);
+        [flat[0], flat[1], p[0].j, p[1].j, p[1].diff, parts.paths]
+    "#
+    );
+    let v: rhai::Array = test_engine().eval(&src).expect("跑得通");
+    let f = |i: usize| v[i].as_float().unwrap_or(f64::NAN);
+    let k = 1.9 * 150_000.0;
+    let eps_k = 0.1 * k;
+    assert_eq!(
+        v[5].as_int().ok(),
+        Some(1),
+        "没有起伏、没有别的会话 ⇒ 一条路径就够"
+    );
+    assert!(
+        f(0) - f(1) > eps_k,
+        "周额度按全价算时看着该换：留着 {} · 换去 y {}",
+        f(0),
+        f(1)
+    );
+    assert!(
+        f(2) - f(3) < eps_k,
+        "照 lib::price 换过去省下的不到 ε·K：留着 {} · 换去 y {}",
+        f(2),
+        f(3)
+    );
+    assert!(
+        (f(4) - (f(3) - f(2))).abs() < 1e-6 * k,
+        "diff ＝ 这一走法 − 留着"
+    );
+}

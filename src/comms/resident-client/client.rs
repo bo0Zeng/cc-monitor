@@ -150,7 +150,8 @@ where
                     // 只有明确要求时才关写半边 —— 见 `InboundClient::close_write`（只在测试档）。
                     #[cfg(any(test, feature = "test-support"))]
                     WriteJob::CloseWrite => {
-                        let _ = w.shutdown().await;
+                        use copy_core::discard::{Discard, Why};
+                        w.shutdown().await.discard(Why::DeadLink);
                         break;
                     }
                 };

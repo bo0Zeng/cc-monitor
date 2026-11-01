@@ -38,7 +38,24 @@ fn render_judgment_rules() -> String {
     s.push_str(&format!(
         "export const KEYS_NOT_NAMES: readonly string[] = {keys};\n"
     ));
+    // 本机那台的机器键（界面经 `ipc/origin.ts` 转出，不另抄字面量）。
+    let local = serde_json::to_string(cmd_wire::machine::LOCAL).expect("字符串序列化不会失败");
+    s.push_str("\n/** 本机那台的机器键 —— 契约常量住 `cmd_wire::machine::LOCAL`。 */\n");
+    s.push_str(&format!("export const LOCAL = {local};\n"));
     s
+}
+
+/// 生成物里恰有一行 `LOCAL`，值与 `cmd_wire::machine::LOCAL` 逐字节相同（线上字面量写死，不从代码里取）。
+#[test]
+fn the_rules_carry_the_local_sentinel() {
+    let out = render_judgment_rules();
+    let line = "export const LOCAL = \"<local>\";\n";
+    assert_eq!(
+        out.matches(line).count(),
+        1,
+        "生成的 judgment-rules.ts 里 `{}` 不是恰一行：\n{out}",
+        line.trim_end()
+    );
 }
 /// 生成 `src/frontend/ui/generated/judgment-rules.ts`。
 #[test]

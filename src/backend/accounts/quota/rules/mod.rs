@@ -5,7 +5,7 @@
 //! - [`decide`]：一判 —— 叫策略、照它交的先后做动作（纯函数：不读钟、不写盘）；
 //! - [`simulate`]：离散事件推演，节点 ＝ 判的那一串，用的是同一个 [`decide::turn`]；
 //! - [`code`]：策略的代码在沙箱里的 `decide(ctx)`（挂着积木库 `lib`）；
-//! - [`rollout`]：推演的原生内核（积木库里的 `lib::project_raw`）与号的动态；
+//! - [`rollout`]：推演的原生内核（积木库里的 `lib::project_raw` · `lib::rollout`）与号的动态；
 //! - [`book`]：`rotation.json`（会话载入的策略副本 · 临时动作 · memo · 叫醒 · 换号记录）。
 
 pub(crate) mod book;

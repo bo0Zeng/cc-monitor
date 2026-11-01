@@ -9,8 +9,8 @@
  * 认不认得出 · 那一句 · 那一屏都是那台的；这里只照回包排版。
  */
 import { copyText } from "./copy-table";
-import { ControlError, machineName } from "./control-said";
-import { askEnd, sayEnded } from "./end-confirm";
+import { machineName } from "./control-said";
+import { askEnd, sayReply } from "./end-confirm";
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
 import { button } from "./kit/button";
 import { tag } from "./kit/badge";
@@ -20,7 +20,9 @@ import { statusDot } from "./kit/status-dot";
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { askArrive, openSession, type ArriveSaid, type SlotSpec } from "./session-open";
 import type { ArriveAsk } from "./generated/ArriveAsk";
-import { endTerminal } from "./terminal-reads";
+import { endTerminals } from "./terminal-reads";
+import { failToast } from "./kit/toast";
+import type { TerminalsEndReply } from "./generated/TerminalsEndReply";
 import s from "./launch-slot.module.css";
 
 /** 等多久没报到算「未报到」（那台照它等，到了答那一句）。 */
@@ -32,8 +34,8 @@ export type { SlotSpec };
 export interface SlotActs {
   arrive(origin: Origin, ask: ArriveAsk, within: number): Promise<ArriveSaid>;
   attach(origin: Origin, tmuxName: string): void;
-  /** 结束名单里的那个终端（句柄；`name` 是确认框里说的那个名字）。 */
-  end(origin: Origin, terminal: string, name: string): Promise<void>;
+  /** 结束名单里的那个终端（句柄）：交本机后端一项的那一批，回合好的回包。 */
+  end(origin: Origin, terminal: string): Promise<TerminalsEndReply>;
   confirm: ConfirmFn;
 }
 
@@ -305,14 +307,15 @@ export class LaunchSlots {
     const terminal = sl?.missed?.terminal;
     if (!sl || name === null || name === undefined || terminal === null || terminal === undefined) return;
     if (!(await askEnd([name], this.acts.confirm))) return;
+    let reply: TerminalsEndReply;
     try {
-      await this.acts.end(sl.spec.origin, terminal, name);
+      reply = await this.acts.end(sl.spec.origin, terminal);
     } catch (e) {
-      sayEnded([{ title: name, outcome: "failed", why: e instanceof Error ? e.message : String(e), ...(e instanceof ControlError && e.detail !== "" ? { detail: e.detail } : {}) }]);
+      failToast(copyText("tabMenu.kill.label"), e);
       return;
     }
-    sayEnded([{ title: name, outcome: "done", why: "" }]);
-    this.close(id);
+    sayReply(reply);
+    if (reply.results[0]?.outcome === "done") this.close(id);
   }
 }
 
@@ -320,6 +323,6 @@ export class LaunchSlots {
 export const CHANNEL_ACTS: SlotActs = {
   arrive: askArrive,
   attach: (origin, tmuxName) => void openSession(origin, { what: { kind: "look", session: tmuxName }, local: isLocalOrigin(origin) }),
-  end: (origin, terminal, name) => endTerminal(origin, { terminal }, name),
+  end: (origin, terminal) => endTerminals([{ machine: origin, terminal }]),
   confirm: confirmDialog,
 };

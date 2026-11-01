@@ -29,6 +29,7 @@ use cc_monitor_backend::stream::{cli, oneshot};
 use cc_monitor_backend::stream::{inbound, tap, topic_body};
 use cc_monitor_backend::wire::{self, drain, listen, topic_hook};
 use cc_monitor_backend::*;
+use copy_core::discard::{Discard, Why};
 
 use std::path::PathBuf;
 use tokio::io::{AsyncWriteExt, BufWriter};
@@ -596,7 +597,9 @@ async fn handshake_one(
         listen::Admit::Refuse(reason) => {
             // **出声地拒**（照 `relay::serve` 那条 503 的形状：宁可拒绝，也不静默 FIN）。
             // 静默 FIN 会让对端只能靠「等了很久没动静」去猜，而那是猜不出原因的。
-            let _ = listen::write_line(&mut w, &listen::refusal_line(reason)).await;
+            listen::write_line(&mut w, &listen::refusal_line(reason))
+                .await
+                .discard(Why::DeadLink);
             tracing::warn!("拒绝一条 attach 请求：{reason}");
         }
         listen::Admit::Stream { tz, reply, watch } => {
@@ -612,7 +615,7 @@ async fn handshake_one(
                 .as_deref()
                 .and_then(cc_monitor_backend::Tz::named)
                 .unwrap_or_default();
-            let _ = attached
+            attached
                 .send(Attached {
                     reader: r,
                     writer: w,
@@ -620,7 +623,8 @@ async fn handshake_one(
                     tz,
                     watch,
                 })
-                .await;
+                .await
+                .discard(Why::PeerGone);
         }
     }
 }
@@ -782,7 +786,7 @@ async fn serve_listening(
                     drop(poke);
                     inbound_task.abort();
                     drop(reply_tx);
-                    let _ = done.send(id).await;
+                    done.send(id).await.discard(Why::Signal);
                 });
             }
             // ③ 一条流结束 ⇒ 计数减一；归零才回到空转（或按退出行为退）。

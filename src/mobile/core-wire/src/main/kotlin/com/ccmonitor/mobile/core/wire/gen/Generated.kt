@@ -6491,6 +6491,7 @@ data class FactsReply(
     val needs: Needs?,
     val handedBack: List<String>,
     val retries: List<RetryRun>,
+    val notices: List<NoticeRun>,
     val permissionMode: String?,
     val permissionModeText: String?,
     val tokens: TokenUse?,
@@ -6525,6 +6526,7 @@ data class FactsReply(
             Field("needs", { opt(Needs.ADAPTER) }, optional = false, nullable = true),
             Field("handedBack", { arr(Str) }, optional = false, nullable = false),
             Field("retries", { arr(RetryRun.ADAPTER) }, optional = false, nullable = false),
+            Field("notices", { arr(NoticeRun.ADAPTER) }, optional = false, nullable = false),
             Field("permissionMode", { opt(Str) }, optional = false, nullable = true),
             Field("permissionModeText", { opt(Str) }, optional = false, nullable = true),
             Field("tokens", { opt(TokenUse.ADAPTER) }, optional = false, nullable = true),
@@ -6540,8 +6542,8 @@ data class FactsReply(
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Long>, a[9] as List<PendingCall>, a[10] as LastSay?, a[11] as Needs?, a[12] as List<String>, a[13] as List<RetryRun>, a[14] as String?, a[15] as String?, a[16] as TokenUse?, a[17] as FactsCost?, a[18] as List<BgTask>, a[19] as FactsBackground?, a[20] as String?, a[21] as Long?, a[22] as String?, a[23] as List<McpTrouble>, a[24] as Kin?, a[25] as List<Kin>, a[26] as FactsLine?, a[27] as QuietUnread?) },
-            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
+            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Long>, a[9] as List<PendingCall>, a[10] as LastSay?, a[11] as Needs?, a[12] as List<String>, a[13] as List<RetryRun>, a[14] as List<NoticeRun>, a[15] as String?, a[16] as String?, a[17] as TokenUse?, a[18] as FactsCost?, a[19] as List<BgTask>, a[20] as FactsBackground?, a[21] as String?, a[22] as Long?, a[23] as String?, a[24] as List<McpTrouble>, a[25] as Kin?, a[26] as List<Kin>, a[27] as FactsLine?, a[28] as QuietUnread?) },
+            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
         )
     }
 }
@@ -12756,6 +12758,8 @@ enum class LsSortBy(val wire: String) {
     }
 }
 
+typealias Machine = String
+
 enum class MachineBlocker(val wire: String) {
     NOT_UNIX("not_unix"),
     NO_BACKEND("no_backend"),
@@ -15026,6 +15030,31 @@ data object NoReq {
     val ADAPTER: JsonAdapter<NoReq> = obj(emptyList(), { NoReq }, { emptyArray() })
 }
 
+@Suppress("UNCHECKED_CAST")
+data class NoticeRun(
+    val id: String,
+    val members: List<String>,
+    val hidden: List<String>,
+    val head: String?,
+    val failed: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<NoticeRun> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("members", { arr(Str) }, optional = false, nullable = false),
+            Field("hidden", { arr(Str) }, optional = false, nullable = false),
+            Field("head", { opt(Str) }, optional = false, nullable = true),
+            Field("failed", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> NoticeRun(a[0] as String, a[1] as List<String>, a[2] as List<String>, a[3] as String?, a[4] as Boolean) },
+            { v -> arrayOf(v.id, v.members, v.hidden, v.head, v.failed) },
+        )
+    }
+}
+
 enum class OnExists(val wire: String) {
     ASK("ask"),
     OVERWRITE("overwrite"),
@@ -15365,8 +15394,6 @@ data class OpenedItem(
         )
     }
 }
-
-typealias Origin = String
 
 @Suppress("UNCHECKED_CAST")
 data class OriginSessionsListedPayload(
@@ -21868,6 +21895,7 @@ data class RunInfo(
     val parent: String? = null,
     val state: RunState,
     val statusText: String,
+    val tookText: String? = null,
     val labelText: String,
     val last: RunDid? = null,
     val lastText: String? = null,
@@ -21897,6 +21925,7 @@ data class RunInfo(
             Field("parent", { opt(Str) }, optional = true, nullable = true),
             Field("state", { RunState.ADAPTER }, optional = false, nullable = false),
             Field("status_text", { Str }, optional = false, nullable = false),
+            Field("took_text", { opt(Str) }, optional = true, nullable = true),
             Field("label_text", { Str }, optional = false, nullable = false),
             Field("last", { opt(RunDid.ADAPTER) }, optional = true, nullable = true),
             Field("last_text", { opt(Str) }, optional = true, nullable = true),
@@ -21914,8 +21943,8 @@ data class RunInfo(
             Field("end", { opt(RunEndLine.ADAPTER) }, optional = true, nullable = true),
             Field("needs", { opt(Needs.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> RunInfo(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as RunState, a[6] as String, a[7] as String, a[8] as RunDid?, a[9] as String?, a[10] as String?, a[11] as Long?, a[12] as String?, a[13] as Long?, a[14] as Long?, a[15] as RunWhy?, a[16] as String?, a[17] as Int?, a[18] as Boolean?, a[19] as List<RunLine>?, a[20] as RunExplain?, a[21] as RunEndLine?, a[22] as Needs?) },
-            { v -> arrayOf(v.run, v.label, v.kind, v.tool, v.parent, v.state, v.statusText, v.labelText, v.last, v.lastText, v.waiting, v.startedMs, v.startedText, v.activeMs, v.endedMs, v.why, v.error, v.calls, v.background, v.facts, v.explain, v.end, v.needs) },
+            { a -> RunInfo(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as RunState, a[6] as String, a[7] as String?, a[8] as String, a[9] as RunDid?, a[10] as String?, a[11] as String?, a[12] as Long?, a[13] as String?, a[14] as Long?, a[15] as Long?, a[16] as RunWhy?, a[17] as String?, a[18] as Int?, a[19] as Boolean?, a[20] as List<RunLine>?, a[21] as RunExplain?, a[22] as RunEndLine?, a[23] as Needs?) },
+            { v -> arrayOf(v.run, v.label, v.kind, v.tool, v.parent, v.state, v.statusText, v.tookText, v.labelText, v.last, v.lastText, v.waiting, v.startedMs, v.startedText, v.activeMs, v.endedMs, v.why, v.error, v.calls, v.background, v.facts, v.explain, v.end, v.needs) },
         )
     }
 }
@@ -22833,6 +22862,7 @@ data class SessionFacts(
     val needs: Needs?,
     val handedBack: List<String>,
     val retries: List<RetryRun>,
+    val notices: List<NoticeRun>,
     val permissionMode: String?,
     val permissionModeText: String?,
     val tokens: TokenUse?,
@@ -22866,6 +22896,7 @@ data class SessionFacts(
             Field("needs", { opt(Needs.ADAPTER) }, optional = false, nullable = true),
             Field("handedBack", { arr(Str) }, optional = false, nullable = false),
             Field("retries", { arr(RetryRun.ADAPTER) }, optional = false, nullable = false),
+            Field("notices", { arr(NoticeRun.ADAPTER) }, optional = false, nullable = false),
             Field("permissionMode", { opt(Str) }, optional = false, nullable = true),
             Field("permissionModeText", { opt(Str) }, optional = false, nullable = true),
             Field("tokens", { opt(TokenUse.ADAPTER) }, optional = false, nullable = true),
@@ -22881,8 +22912,8 @@ data class SessionFacts(
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Long>, a[8] as List<PendingCall>, a[9] as LastSay?, a[10] as Needs?, a[11] as List<String>, a[12] as List<RetryRun>, a[13] as String?, a[14] as String?, a[15] as TokenUse?, a[16] as FactsCost?, a[17] as List<BgTask>, a[18] as FactsBackground?, a[19] as String?, a[20] as Long?, a[21] as String?, a[22] as List<McpTrouble>, a[23] as Kin?, a[24] as List<Kin>, a[25] as FactsLine?, a[26] as QuietUnread?) },
-            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
+            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Long>, a[8] as List<PendingCall>, a[9] as LastSay?, a[10] as Needs?, a[11] as List<String>, a[12] as List<RetryRun>, a[13] as List<NoticeRun>, a[14] as String?, a[15] as String?, a[16] as TokenUse?, a[17] as FactsCost?, a[18] as List<BgTask>, a[19] as FactsBackground?, a[20] as String?, a[21] as Long?, a[22] as String?, a[23] as List<McpTrouble>, a[24] as Kin?, a[25] as List<Kin>, a[26] as FactsLine?, a[27] as QuietUnread?) },
+            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
         )
     }
 }
@@ -24275,6 +24306,8 @@ sealed interface Speaker {
         val status: String? = null,
         val summary: String? = null,
         val toolUseId: String? = null,
+        val end: TaskEnd? = null,
+        val row: String? = null,
     ) : Speaker, Ordered {
         override val kind: String get() = "taskNotification"
         override var wireOrder: IntArray? = null
@@ -24380,9 +24413,11 @@ sealed interface Speaker {
                         Field("status", { opt(Str) }, optional = true, nullable = true),
                         Field("summary", { opt(Str) }, optional = true, nullable = true),
                         Field("toolUseId", { opt(Str) }, optional = true, nullable = true),
+                        Field("end", { opt(TaskEnd.ADAPTER) }, optional = true, nullable = true),
+                        Field("row", { opt(Str) }, optional = true, nullable = true),
                         ),
-                        { a -> Speaker.TaskNotification(a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?) },
-                        { v -> arrayOf("taskNotification", v.taskId, v.status, v.summary, v.toolUseId) },
+                        { a -> Speaker.TaskNotification(a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as TaskEnd?, a[6] as String?) },
+                        { v -> arrayOf("taskNotification", v.taskId, v.status, v.summary, v.toolUseId, v.end, v.row) },
                     )),
                 Variant("agentMessage", Speaker.AgentMessage::class.java, obj(
                         listOf(
@@ -25375,6 +25410,17 @@ data class Task(
     }
 }
 
+enum class TaskEnd(val wire: String) {
+    DONE("done"),
+    FAILED("failed"),
+    STOPPED("stopped"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<TaskEnd> = enumOf(entries) { it.wire }
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class TasksList(
     val tasks: List<Task>,
@@ -25796,6 +25842,35 @@ data class TerminalItem(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class TerminalOutcome(
+    val machine: String,
+    val terminal: String,
+    val outcome: SessionState,
+    val why: String?,
+    val said: String?,
+    val copyDetail: String,
+    val title: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<TerminalOutcome> = obj(
+            listOf(
+            Field("machine", { Str }, optional = false, nullable = false),
+            Field("terminal", { Str }, optional = false, nullable = false),
+            Field("outcome", { SessionState.ADAPTER }, optional = false, nullable = false),
+            Field("why", { opt(Str) }, optional = false, nullable = true),
+            Field("said", { opt(Str) }, optional = false, nullable = true),
+            Field("copyDetail", { Str }, optional = false, nullable = false),
+            Field("title", { Str }, optional = false, nullable = false),
+            ),
+            { a -> TerminalOutcome(a[0] as String, a[1] as String, a[2] as SessionState, a[3] as String?, a[4] as String?, a[5] as String, a[6] as String) },
+            { v -> arrayOf(v.machine, v.terminal, v.outcome, v.why, v.said, v.copyDetail, v.title) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class TerminalPreviewReq(
     val terminal: String? = null,
     val sid: String? = null,
@@ -25915,6 +25990,69 @@ data class TerminalsBoard(
             ),
             { a -> TerminalsBoard(a[0] as List<BoardFilter>, a[1] as List<BoardGroup>) },
             { v -> arrayOf(v.filters, v.groups) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class TerminalsEndItem(
+    val machine: String,
+    val terminal: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<TerminalsEndItem> = obj(
+            listOf(
+            Field("machine", { Str }, optional = false, nullable = false),
+            Field("terminal", { Str }, optional = false, nullable = false),
+            ),
+            { a -> TerminalsEndItem(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.machine, v.terminal) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class TerminalsEndReply(
+    val results: List<TerminalOutcome>,
+    val said: String,
+    val failed: Boolean,
+    val lines: List<String>,
+    val copyDetail: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<TerminalsEndReply> = obj(
+            listOf(
+            Field("results", { arr(TerminalOutcome.ADAPTER) }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
+            Field("failed", { Bool }, optional = false, nullable = false),
+            Field("lines", { arr(Str) }, optional = false, nullable = false),
+            Field("copyDetail", { Str }, optional = false, nullable = false),
+            ),
+            { a -> TerminalsEndReply(a[0] as List<TerminalOutcome>, a[1] as String, a[2] as Boolean, a[3] as List<String>, a[4] as String) },
+            { v -> arrayOf(v.results, v.said, v.failed, v.lines, v.copyDetail) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class TerminalsEndReq(
+    val items: List<TerminalsEndItem>,
+    val client: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<TerminalsEndReq> = obj(
+            listOf(
+            Field("items", { arr(TerminalsEndItem.ADAPTER) }, optional = false, nullable = false),
+            Field("client", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> TerminalsEndReq(a[0] as List<TerminalsEndItem>, a[1] as String?) },
+            { v -> arrayOf(v.items, v.client) },
         )
     }
 }
