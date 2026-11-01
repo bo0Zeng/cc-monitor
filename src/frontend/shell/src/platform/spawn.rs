@@ -5,6 +5,8 @@
 //! 两个平台说法一样的那一格（stderr 往哪去）也留在那边。
 
 use crate::spawn_managed::{ConsolePolicy, Lifetime};
+#[cfg(windows)]
+use copy_core::{Discard, Why};
 
 /// `CreateProcess` 的 `CREATE_NO_WINDOW`。**不是字节上限**（登记在
 /// `byte_cap_registry` 的排除表里）。
@@ -46,7 +48,7 @@ impl Drop for LifetimeGuard {
             // 关掉 Job 的最后一个句柄 = 连同 Job 里**所有**进程一起收掉
             // （`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`）。这就是这里要买的那一下。
             unsafe {
-                let _ = windows::Win32::Foundation::CloseHandle(h);
+                windows::Win32::Foundation::CloseHandle(h).discard(Why::Reap);
             }
         }
     }
@@ -92,7 +94,7 @@ fn assign_to_job(raw: std::os::windows::io::RawHandle, what: &str) -> LifetimeGu
         let size = std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
         let ptr = std::ptr::addr_of!(info) as *const core::ffi::c_void;
         if let Err(e) = SetInformationJobObject(job, JobObjectExtendedLimitInformation, ptr, size) {
-            let _ = CloseHandle(job);
+            CloseHandle(job).discard(Why::Reap);
             tracing::error!(
                 "起 {what}：Job Object 设不上 KILL_ON_JOB_CLOSE（{e:?}），\
                  收尾这一格**在这台机器上没人守**。"
@@ -100,7 +102,7 @@ fn assign_to_job(raw: std::os::windows::io::RawHandle, what: &str) -> LifetimeGu
             return LifetimeGuard(None);
         }
         if let Err(e) = AssignProcessToJobObject(job, HANDLE(raw as isize)) {
-            let _ = CloseHandle(job);
+            CloseHandle(job).discard(Why::Reap);
             tracing::error!(
                 "起 {what}：子进程认领不进 Job Object（{e:?}），\
                  收尾这一格**在这台机器上没人守**。"
