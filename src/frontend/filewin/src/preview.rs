@@ -102,8 +102,6 @@ pub struct Preview {
     view: View,
     /// 有一趟在飞吗（UI 线程记的）。
     inflight: bool,
-    /// 发出去过几趟（判据数它，也与线上那本账对拍）。
-    fired: u64,
     slot: Arc<Mutex<Option<Arrival>>>,
     /// 头上那一行：选中的那一份（名字 · 大小 · 修改时间 · 能不能编辑 · 能不能下载）。没选中 / 多选 ⇒ `None`。
     head: Option<Head>,
@@ -159,7 +157,6 @@ impl Default for Preview {
             wrapped: Default::default(),
             view: View::Idle(PICK_ONE.to_string()),
             inflight: false,
-            fired: 0,
             slot: Arc::new(Mutex::new(None)),
             head: None,
         }
@@ -425,7 +422,7 @@ impl Preview {
         };
         let origin = pane.source.origin();
         if self.how == Want::Image {
-            // 图：交给共用那一份（已有 ⇒ 不再读，`fired` 不加）。
+            // 图：交给共用那一份（已有 ⇒ 不再读）。
             let Some(key) = self.pic.clone() else {
                 return;
             };
@@ -433,7 +430,7 @@ impl Preview {
                 .as_ref()
                 .map_or(2048, |c| c.input(|i| i.max_texture_side))
                 .min(super::picture::MAX_SIDE as usize) as u32;
-            if pane.pictures.load(
+            pane.pictures.load(
                 &key,
                 super::picture::Load {
                     rt: h,
@@ -444,15 +441,12 @@ impl Preview {
                     side,
                     ctx,
                 },
-            ) {
-                self.fired += 1;
-            }
+            );
             self.pic_wait = Some(key);
             return;
         }
         let slot = self.slot.clone();
         self.inflight = true;
-        self.fired += 1;
         let wire = self.wire.clone();
         let max_bytes = self.cap;
         h.spawn(async move {

@@ -19,17 +19,36 @@ use crate::find::testing::{window_on, wire_up, Declared, FakeBackend, Wired};
 use crate::select::Intent;
 use crate::source::Row;
 
-/// 判据读预览面板用的两件（生产那一份里没有它们；界面直接读字段）。
+/// 判据读预览面板用的那一件（生产那一份里没有它；界面直接读字段）。
 impl Preview {
     /// 面板上摆着什么。
     pub(crate) fn view(&self) -> &View {
         &self.view
     }
+}
 
-    /// 发出去过几趟。
-    fn fired(&self) -> u64 {
-        self.fired
+/// 读得了图的那台合成后端（图走 `files-read-chunk`；没声明的命令不上账，数不到）。
+fn reads_images() -> FakeBackend {
+    FakeBackend::new(
+        &["files-read-text", "files-read-chunk"],
+        Declared::default(),
+    )
+}
+
+/// 预览往线上发过几趟读（文本 `files-read-text` ＋ 图 `files-read-chunk`），照合成后端收到的那本账数。
+fn sent(wired: &Wired) -> usize {
+    wired.count("files-read-text") + wired.count("files-read-chunk")
+}
+
+/// 等账上至少有 `n` 趟读（带上限，绝不挂死）；回账上那时的趟数。
+async fn sent_at_least(wired: &Wired, n: usize) -> usize {
+    for _ in guard_core::wall::rounds() {
+        if sent(wired) >= n {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
+    sent(wired)
 }
 use crate::workspace::Workspace;
 
@@ -116,14 +135,21 @@ async fn the_latest_pick_wins_and_the_middle_ones_are_never_read() {
             None,
         );
     };
-    // 第一下 ⇒ 发 a；a 还在飞时连挪两下（b、c）⇒ 只记下「要 c」。
+    // 第一下 ⇒ 发 a；等 a 上了账（后端扣着它的应答），再连挪两下（b、c）⇒ 只记下「要 c」。
+    step(&mut w);
+    p.follow(&w, None);
+    assert_eq!(sent_at_least(&wired, 1).await, 1, "第一下没发 a");
     step(&mut w);
     p.follow(&w, None);
     step(&mut w);
     p.follow(&w, None);
-    step(&mut w);
-    p.follow(&w, None);
-    assert_eq!(p.fired(), 1, "a 还在飞时就又发了");
+    // 真发了第二趟，它几毫秒内就上账；给它这段时间再看。
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(
+        reads(&wired),
+        vec!["/srv/a.txt".to_string()],
+        "a 还在飞时就又发了"
+    );
     a_lands.notify_one();
     follow_until_settled(&mut p, &w).await;
     assert_eq!(
@@ -131,7 +157,7 @@ async fn the_latest_pick_wins_and_the_middle_ones_are_never_read() {
         vec!["/srv/a.txt".to_string(), "/srv/c.txt".to_string()],
         "线上那几趟不等于「第一项 ＋ 最后一项」"
     );
-    assert_eq!(p.fired(), 2);
+    assert_eq!(sent(&wired), 2);
     // 每一趟送的上限都是预览自己那个数（不是编辑上限）。
     let caps: Vec<u64> = wired
         .log
@@ -221,7 +247,7 @@ async fn what_is_not_read_says_why_and_sends_nothing() {
     );
     // 每一形都在 `follow` 那一下（同步）里答完：没起往返、没记一趟发，线上也没有。
     assert_eq!(side.in_flight(), 0, "说了不读却起了一趟往返");
-    assert_eq!(p.fired(), 0, "说了不读却发了");
+    assert_eq!(sent(&wired), 0, "说了不读却发了");
     assert!(
         reads(&wired).is_empty(),
         "不该读的那几形上了线：{:?}",
@@ -418,12 +444,13 @@ fn same_size_new_text_with_more_lines_does_not_reuse_the_old_wrap() {
 /// 面板上那一句说它多大、上限多少、指向头上的「查看」（查看页放得下）；头上「查看」「下载」都在。正控：恰好在上限上的那张照读。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_image_over_the_cap_says_why_it_is_not_shown() {
-    let (wired, mut w) = rig(
+    let (wired, mut w) = rig_on(
         "fw-pv-bigimg",
         vec![
             row("huge.png", IMAGE_MAX_BYTES + 1, false),
             row("fits.png", IMAGE_MAX_BYTES, false),
         ],
+        reads_images(),
     )
     .await;
     let mut p = Preview::default();
@@ -490,7 +517,7 @@ async fn an_image_over_the_cap_says_why_it_is_not_shown() {
             .any(|t| t == crate::imgview::VIEW_LABEL.as_str()),
         "超预览上限的图头上没给「查看」：{painted:?}"
     );
-    assert_eq!(p.fired(), 0, "说了不读却发了");
+    assert_eq!(sent(&wired), 0, "说了不读却发了");
     // 正控：恰好在上限上的那张要读（摆成「正在读」）。
     w.apply_intent(
         Intent::Step {
@@ -506,7 +533,7 @@ async fn an_image_over_the_cap_says_why_it_is_not_shown() {
         "{:?}",
         p.view()
     );
-    assert!(p.fired() >= 1, "上限上的那张没去读");
+    assert!(sent_at_least(&wired, 1).await >= 1, "上限上的那张没去读");
     drop(wired);
 }
 
@@ -514,7 +541,12 @@ async fn an_image_over_the_cap_says_why_it_is_not_shown() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_image_over_the_viewer_cap_points_to_download() {
     let cap = 32 * 1024 * 1024;
-    let (_wired, mut w) = rig("fw-pv-hugeimg", vec![row("pano.png", cap + 1, false)]).await;
+    let (wired, mut w) = rig_on(
+        "fw-pv-hugeimg",
+        vec![row("pano.png", cap + 1, false)],
+        reads_images(),
+    )
+    .await;
     let mut p = Preview::default();
     w.apply_intent(
         Intent::Edge {
@@ -533,5 +565,5 @@ async fn an_image_over_the_viewer_cap_points_to_download() {
         ],
     );
     assert_eq!(p.view(), &View::Idle(want));
-    assert_eq!(p.fired(), 0, "说了不读却发了");
+    assert_eq!(sent(&wired), 0, "说了不读却发了");
 }
