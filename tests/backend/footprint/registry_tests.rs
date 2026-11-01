@@ -979,9 +979,7 @@ const SITES: &[(&str, Why, usize)] = &[
     // `src/skill_host.rs` / `tests/frontend/shell/skill_host_tests.rs` 两行随文件删了（收件箱那一面进了后端）。
     // `src/structural_scan.rs` 那一行随 `fn_names_starting_with` 的头注搬进共享的 guard-core（处数不变）。
     ("src/common/guard-core/src/lib.rs", Why::OldId, 1),
-    // 下面四行随申报表与它的判据搬进后端（`src/backend/footprint/` · `tests/backend/footprint/`），处数不变。
-    ("src/backend/footprint/registry.rs", Why::OldId, 1),
-    ("tests/backend/footprint/rows_tests.rs", Why::OldId, 3), // 4 → 3：远端投影那条判据不再点后端（`$BACKEND_PATH` 删了），讲后端旧名的那句随之删
+    ("tests/backend/footprint/rows_tests.rs", Why::OldId, 2),
     // `tests/frontend/shell/fenced_block_tests.rs` 那一行随判据搬进后端（`tests/backend/assets/aliases/fence_tests.rs`）。
     (
         "tests/backend/footprint/registry_environment_tests.rs",
@@ -1152,7 +1150,7 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
 ///
 /// # ⚠ 本文件自己在面里（`scanning_guard_registry` 登记为「第五形」）
 ///
-/// `scan_tree!` 按构造摘掉调用者那一份，而这一处摘不掉
+/// `scan_tree!` 的按构造自摘在这一处**不生效**
 /// （判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的折返路径 ⇒ 后缀比不命中），
 /// 而且调用者是本判据文件、**不是**闭集的家 `tool_registry.rs`。
 /// ⇒ 下面那句 `include_str!` 的 `push` 是**冗余**的第二份（`src/` 那棵已经收过它，
@@ -1368,7 +1366,7 @@ fn monitor_ccm_entry_name() -> String {
 /// `TOOLS` 里 id 为 `ccm` 那条声明的 `~/.local/bin/ccm`，`host: Remote` ⇒ **本机侧 0 条**。
 /// 而别名生成器（`launcher-diagnostics.ts::buildAliasLine`）吐的是**裸 `ccm`**，
 /// 靠 PATH 解析 ⇒ 用户贴上去之后解析到的仍是他自己那份旧的。
-/// ⇒ 用户原话「装了新版后 `~/.local/bin/ccm` 可以干净退役」
+/// ⇒ 用户逐字「装了新版后 `~/.local/bin/ccm` 可以干净退役」
 /// **在结构上做不到**：退役没有承接方。
 ///
 /// # 死值验（第一向）
@@ -1407,7 +1405,7 @@ fn the_closed_set_declares_a_ccm_landing_site_on_this_machine_too() {
         !local.is_empty(),
         "闭集里**本机侧一条 `ccm` 落点都没有**（远端侧 {remote:?}）。\n\
              app 没有在本机装 `ccm`，\n\
-             用户原话「装了新版后 `~/.local/bin/ccm` 可以干净退役」\n\
+             用户逐字「装了新版后 `~/.local/bin/ccm` 可以干净退役」\n\
              **没有承接方** —— 缺的不是一次真机读数，是这个入口本身。"
     );
     assert!(
@@ -1422,7 +1420,7 @@ fn the_closed_set_declares_a_ccm_landing_site_on_this_machine_too() {
             !remote.contains(l),
             "本机那条与远端那条是同一个路径 {l:?} —— 落点撞在一起，\n\
                  而本机那份**不许**写进 `~/.local/bin`：那是用户旧 `ccm` 住的地方，\n\
-                 用户原话「原本的配置**要手动删除**」，产品一个字节都不动它。"
+                 用户逐字「原本的配置**要手动删除**」，产品一个字节都不动它。"
         );
     }
 }

@@ -101,7 +101,7 @@ pub const TOOLS: &[ToolSpec] = &[
         id: "ccm",
         display_name: Text(|| copy_text("rsToolRegistry.tools.ccmName", &[])),
         // 🔴 `repo_path` 指那个**入口**的来源：`local_backend::ccm_entry_shim` 现造的三行 `exec` 串
-        //    （零实现，把 argv 转给已经部署好的后端）—— 用户原话「不要有什么 bash 脚本，不要有什么单独的 ccm」。
+        //    （零实现，把 argv 转给已经部署好的后端）—— 用户逐字「不要有什么 bash 脚本，不要有什么单独的 ccm」。
         //    生成器在后端层：本机也要一条 `ccm` 入口，两条落点取自同一处。
         //    `structural_scan` 那条「源码里点名的符号今天还对不对」的判据守着这个住址。
         //    ⚠ **它今天不是一份「仓里的文件」** —— `EmbeddedText { repo_path }` 这个形状
@@ -138,9 +138,9 @@ pub const TOOLS: &[ToolSpec] = &[
                 ],
             },
             // 🔴 本机那条落点：没有它，闭集里落点是 `…/ccm` 的只有远端那一条，
-            //    用户原话「装了新版后 `~/.local/bin/ccm` 可以干净退役」就**没有承接方**。
+            //    用户逐字「装了新版后 `~/.local/bin/ccm` 可以干净退役」就**没有承接方**。
             //    落点刻意**不是** `~/.local/bin`：那是用户那份旧的所在，
-            //    用户原话「原本的配置**要手动删除**」。
+            //    用户逐字「原本的配置**要手动删除**」。
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.ccmLocalWhat", &[])),
                 // 本机 `ccm` 就是后端本身（逐字节副本删了）：放它的是 `extract_embedded_to`。
@@ -167,7 +167,7 @@ pub const TOOLS: &[ToolSpec] = &[
     //
     // 「**一个后端要两处使用 / 即远程后端就是远程本地机器的后端**」。
     // 叫它「远端后端」是**假的**：那一份不是「远端的后端」，是**那台机器的本地后端**
-    // （用户原话「两份后端应该要一样的」·「后端只有一个」）。
+    // （用户逐字「两份后端应该要一样的」·「后端只有一个」）。
     //
     // 🔴 **名字塑造发版流水线的形状**：把它当成「远端」产物，`build-linux` 就会漏铺本机后端那一步
     // ⇒ **Linux 裸 exe 装出来没有本机后端**（用户已裁「那肯定带」）。
