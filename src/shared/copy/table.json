@@ -4164,12 +4164,6 @@
       "zh": "结束（{n}）",
       "args": ["n"]
     },
-    "tabBatch.action.close": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已关闭",
-      "args": []
-    },
     "tabBatch.result.skippedLine": {
       "kind": "body",
       "role": "片段",
