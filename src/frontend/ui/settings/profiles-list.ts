@@ -20,7 +20,7 @@ import { write } from "../ipc/write";
 import { toast, undoToast, failToast } from "../kit/toast";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { sayWithDetail } from "../kit/detail";
-import type { Origin } from "../generated/Origin";
+import type { Machine } from "../generated/Machine";
 import type { ClashWins } from "../alias-reads";
 import { subscribeTopics } from "../events";
 import {
@@ -50,7 +50,7 @@ export interface ProfileClash {
 }
 
 export interface ProfilesListSpec {
-  origin: () => Origin;
+  origin: () => Machine;
   /** 本机才有「打开配置文件」（系统默认编辑器）。 */
   local: boolean;
   /** 清单读回之后，头部那一行（`N 条 · 规则住 … · 改了下次起会话就生效`）。 */

@@ -3,7 +3,7 @@
  * 零运行期 import（只有会被擦除的 `import type`），node 可测。
  */
 
-import type { Origin } from "./generated/Origin";
+import type { Machine } from "./generated/Machine";
 import type { SessionFace } from "./generated/SessionFace";
 import type { RunState } from "./generated/RunState";
 import type { DotState } from "./kit/status-dot";
@@ -25,8 +25,8 @@ export interface GridSessionSnapshot {
   sessionId: string;
   /** Tab 标题（[项目] aiTitle > 项目名 > sid 前 8）。 */
   title: string;
-  /** 哪台机器：本机 = `LOCAL_ORIGIN`；其余 = 远端主机 label。不再用 `null` 表示本机。 */
-  origin: Origin;
+  /** 哪台机器：本机 = `LOCAL`；其余 = 远端主机 label。不再用 `null` 表示本机。 */
+  origin: Machine;
   /** 会话的项目目录（`Tab.projectDir`，后端给的那一格）；null = 后端没给。 */
   cwd: string | null;
   /** 此刻画的那张脸（`Tab.face`，与 tab 栏同一份；还没收到 ⇒ `null`）：点 · 字 · 序 · 能做什么都照它。 */
