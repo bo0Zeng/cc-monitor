@@ -11,7 +11,7 @@ use crate::dial::remote_ask::{Remote, Table};
 use crate::wire::typed::{codes, Command};
 use batch_core::sessions::{summary_of, Row, Summary};
 use cmd_wire::batch::{SessionState, SessionsOp};
-use cmd_wire::board::{TerminalItem, TerminalOutcome, TerminalsEndReply, TerminalsEndReq};
+use cmd_wire::board::{TerminalsEndItem, TerminalOutcome, TerminalsEndReply, TerminalsEndReq};
 use cmd_wire::Machine;
 use copy_core::copy_text;
 use std::future::Future;
@@ -179,7 +179,7 @@ where
     }
     let mut groups: Vec<(Machine, TerminalsEndReq)> = Vec::new();
     for it in &req.items {
-        let mine = TerminalItem {
+        let mine = TerminalsEndItem {
             machine: Machine::local(),
             terminal: it.terminal.clone(),
         };
@@ -198,7 +198,7 @@ where
         groups, local, tz, until, table, remote,
     )
     .await?;
-    let answered = |it: &TerminalItem| got.iter().find(|(m, _)| *m == it.machine).map(|(_, r)| r);
+    let answered = |it: &TerminalsEndItem| got.iter().find(|(m, _)| *m == it.machine).map(|(_, r)| r);
     let results = req
         .items
         .iter()
@@ -209,7 +209,7 @@ where
 
 /// 一项的结局：那台答回来的那一条（换成这一项的那台、远端的标题套机器名）；那台没成 ⇒ 那台那一份失败。
 fn outcome_of(
-    it: &TerminalItem,
+    it: &TerminalsEndItem,
     answered: Option<&Result<TerminalsEndReply, Said>>,
 ) -> TerminalOutcome {
     let found = match answered {

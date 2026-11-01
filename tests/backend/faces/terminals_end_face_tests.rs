@@ -4,8 +4,8 @@
 use super::*;
 use crate::dial::remote_ask::test_peers::{until, Peers};
 
-fn item(machine: &str, terminal: &str) -> TerminalItem {
-    TerminalItem {
+fn item(machine: &str, terminal: &str) -> TerminalsEndItem {
+    TerminalsEndItem {
         machine: if machine == "here" {
             Machine::local()
         } else {
@@ -15,7 +15,7 @@ fn item(machine: &str, terminal: &str) -> TerminalItem {
     }
 }
 
-fn end(items: Vec<TerminalItem>) -> TerminalsEndReq {
+fn end(items: Vec<TerminalsEndItem>) -> TerminalsEndReq {
     TerminalsEndReq {
         items,
         client: None,

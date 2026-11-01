@@ -213,7 +213,7 @@ pub struct MonitorBoard {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
-pub struct TerminalItem {
+pub struct TerminalsEndItem {
     pub machine: Machine,
     /// 名单里的那个句柄（`terminals-list` · 名单那一行的 `terminal`）。
     pub terminal: String,
@@ -229,7 +229,7 @@ pub struct TerminalItem {
 #[serde(deny_unknown_fields)]
 pub struct TerminalsEndReq {
     /// 那几项（1–64 个，照选中的先后）。
-    pub items: Vec<TerminalItem>,
+    pub items: Vec<TerminalsEndItem>,
     /// 自报的前端（「哪个前端的会话」那一维，同 `terminal-end`）。
     #[serde(default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]

@@ -21,7 +21,7 @@ import type { Sent } from "./generated/Sent";
 import type { SentAct } from "./generated/SentAct";
 import type { TerminalsList } from "./generated/TerminalsList";
 import type { TermInput } from "./generated/TermInput";
-import type { TerminalItem } from "./generated/TerminalItem";
+import type { TerminalsEndItem } from "./generated/TerminalsEndItem";
 import type { TerminalsEndReply } from "./generated/TerminalsEndReply";
 
 /** 抓一屏的期限。 */
@@ -144,7 +144,7 @@ const END_EACH_MS = 6_000;
  * 结束一批终端（**破坏性**：调用方先确认）：交本机后端一条 `terminals-end`（`items` 照交进来的先后，跨几台也只这一发）；
  * 按台分组 · 每台结束（两种宿主同一条，身份门 · 窗口门在那台先过、对句柄下手）· 合那一句都在后端，回包照摆。问不到本机后端 ⇒ 抛。
  */
-export async function endTerminals(items: readonly TerminalItem[]): Promise<TerminalsEndReply> {
+export async function endTerminals(items: readonly TerminalsEndItem[]): Promise<TerminalsEndReply> {
   const budget = budgetWithin(HOLD_BUDGET_MS + END_EACH_MS * items.length);
   return settleTyped(LOCAL_ORIGIN, "terminals-end", callTyped(LOCAL_ORIGIN, "terminals-end", { items: [...items] }, budget));
 }

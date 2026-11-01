@@ -14,13 +14,14 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), failToast: vi.fn(), undoToast: vi.fn(), recentToasts: vi.fn(() => []) }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ChanError } from "../../../src/comms/inward/chan";
 import { previewShot, releaseInput, rowsOf, sendToTerminal, sentOf, shotOf, takeInput } from "../../../src/frontend/ui/terminal-reads";
 import { endRows } from "../../../src/frontend/ui/terminals-board-reads";
-import { recentToasts } from "../../../src/frontend/ui/kit/toast";
+import { failToast, toast } from "../../../src/frontend/ui/kit/toast";
 import type { BoardRow } from "../../../src/frontend/ui/generated/BoardRow";
 import type { Preview } from "../../../src/frontend/ui/generated/Preview";
 import type { Sent } from "../../../src/frontend/ui/generated/Sent";
@@ -42,6 +43,8 @@ const LIST = golden["terminals-list"];
 
 beforeEach(() => {
   invokeMock.mockReset();
+  vi.mocked(toast).mockClear();
+  vi.mocked(failToast).mockClear();
 });
 
 function sentCalls(): [string, string, unknown][] {
@@ -184,7 +187,9 @@ describe("结束 · 接管 · 交还：都按名单里的句柄说那台", () =>
     expect(sentCalls()).toEqual([
       [LOCAL_ORIGIN, "terminals-end", { items: [{ machine: "devbox", terminal: "m-7f3a" }, { machine: LOCAL_ORIGIN, terminal: "tmux-1" }] }],
     ]);
-    expect(recentToasts()[0]).toMatchObject({ title: "S-合好的那一句", level: "error" });
+    expect(vi.mocked(failToast)).not.toHaveBeenCalled();
+    expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toBe("S-合好的那一句");
+    expect(vi.mocked(toast).mock.calls.at(-1)?.[2]).toMatchObject({ level: "error", more: ["S-行"], detail: "S-详情" });
   });
 
   it("★ 不确认 ⇒ 一发都不发；问不到本机后端 ⇒ 说一句、不抛", async () => {
@@ -194,7 +199,9 @@ describe("结束 · 接管 · 交还：都按名单里的句柄说那台", () =>
     answer({ "terminals-end": { fail: refusedReply("bad_args", "S-bad_args") } });
     await endRows([pick], async () => true);
     expect(sentCalls()).toHaveLength(1);
-    expect(recentToasts()[0].title).toContain("S-bad_args");
+    const [title, e] = vi.mocked(failToast).mock.calls.at(-1) ?? [];
+    expect(title).toBe(copyText("tabBatch.stop.title", { n: 1 }));
+    expect((e as Error).message).toBe("S-bad_args");
   });
 
   it("★ 接管 · 交还交句柄，回那一行此刻的输入那一格；送字不再带 `take`（「接管再送」那一支删了）", async () => {
