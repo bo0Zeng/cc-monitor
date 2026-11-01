@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * import 图的两条规矩由 eslint 守（`eslint.config.js` 里 `import-x/no-cycle` · `import-x/no-restricted-paths`），
  * `eslint .` 基线 0 ⇒ 长一条就红（`eslint-baseline.vitest.ts` 与 CI 那一步接）。本文件只证这两条规则真的会抓人：

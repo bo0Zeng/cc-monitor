@@ -44,7 +44,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 #[tauri::command]
-pub fn load_config() -> Result<Value, Said> {
+pub fn load_config() -> Result<Value, cmd_wire::failed::Failed> {
     let r: Result<Value, Said> = (move || -> Result<Value, Said> {
         let path =
             resolve_config_path().ok_or_else(|| Said::of("rsShellCmd.config.noHome", &[]))?;
@@ -168,7 +168,7 @@ static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 /// 前端写配置的唯一口：交一串 [`ConfigEdit`]，这里合并进盘上那份。
 #[tauri::command]
-pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<(), Said> {
+pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
         let path = resolve_config_path().ok_or_else(|| Said::of("rsConfig.write.noHome", &[]))?;
         patch_config_at(&path, &edits).map_err(ConfigWriteError::into_said)?;
@@ -317,7 +317,7 @@ fn default_config() -> Value {
 /// **已配置且启用**的远端 origin（本机后端机器表里算好的名字，`machine_table`）：通用的「列远端配置标签」（历史清单 · 搜索 ·
 /// cc-bus 两块 · MCP 推 / 拉面板都用它）。MCP 读写在那台后端。
 #[tauri::command]
-pub async fn list_remote_mcp_origins() -> Result<Vec<String>, Said> {
+pub async fn list_remote_mcp_origins() -> Result<Vec<String>, cmd_wire::failed::Failed> {
     let r: Result<Vec<String>, Said> = async move {
         Ok(crate::machine_table::rows_now()
             .into_iter()

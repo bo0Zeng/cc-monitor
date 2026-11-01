@@ -6,10 +6,11 @@
 use crate::assets::hub_wire::{SkillApplied, SkillApplyReq, SkillPlanReq, SkillSourceFile};
 use crate::assets::mcp_sync::Facts;
 use crate::common::door::{self, Door, Refused};
+use crate::common::said::IntoNote as _;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
-type Answer = Result<Value, crate::wire::spec::Fail>;
+type Answer = Result<Value, crate::common::said::Said>;
 
 pub(crate) use super::skill_ledger::Record;
 use super::skill_ledger::{RecordReq, Recorded};
@@ -17,9 +18,9 @@ use super::skill_ledger::{RecordReq, Recorded};
 fn texts_by_path(
     v: Option<&Value>,
     key: &str,
-) -> Result<Map<String, Value>, crate::wire::spec::Fail> {
+) -> Result<Map<String, Value>, crate::common::said::Said> {
     let arr = v.and_then(Value::as_array).ok_or_else(|| {
-        (
+        crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "missing `{key}` (an array of {{path, text}})"
@@ -29,7 +30,7 @@ fn texts_by_path(
     let mut out = Map::new();
     for f in arr {
         let p = f.get("path").and_then(Value::as_str).ok_or_else(|| {
-            (
+            crate::common::said::Said::new(
                 "bad_args",
                 crate::common::contract::malformed(&format!("`{key}[].path` must be a string")),
             )
@@ -86,7 +87,7 @@ pub(crate) fn answer_install(
     root: Option<&std::path::Path>,
     record: Record,
     req: &SkillApplyReq,
-) -> Result<SkillApplied, crate::wire::spec::Fail> {
+) -> Result<SkillApplied, crate::common::said::Said> {
     let plan = crate::assets::skill_install::answer_plan_with(
         facts,
         root,
@@ -171,7 +172,7 @@ pub(crate) fn answer_install(
             None => why,
             Some(r) => format!("{why}{r}"),
         };
-        return Err(crate::wire::spec::Fail::from(("stale", why)));
+        return Err(crate::wire::spec::fail("stale", why));
     }
     Ok(SkillApplied {
         dir: plan.dir,
@@ -190,7 +191,7 @@ pub(crate) fn answer_uninstall(
     args: &Value,
 ) -> Answer {
     let dir = args.get("dir").and_then(Value::as_str).ok_or_else(|| {
-        (
+        crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed("missing `dir`"),
         )
@@ -245,7 +246,7 @@ pub(crate) fn answer_uninstall(
             None => why,
             Some(r) => format!("{why}{r}"),
         };
-        return Err(crate::wire::spec::Fail::from(("stale", why)));
+        return Err(crate::wire::spec::fail("stale", why));
     }
     let (dir_removed, dir_failed) = remove_emptied_dirs(d, dir, &recorded);
     Ok(

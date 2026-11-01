@@ -35,7 +35,7 @@
 //!   **必须有 `Some(...)` 那几格垫着** —— 由 [`GOLDEN_CASES_REACHING_UPSTREAM`]
 //!   再做一次相等断言：真到上游的格数少了，同样红。
 
-use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
+use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, UPSTREAM_DEADLINE};
 use crate::accounts::upstream_select::table::RoutingTable;
 use crate::accounts::upstream_select::Accounts;
 use comms_outward::{Base, Relay, TapEvent, TapPort, TeeSink};
@@ -380,6 +380,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
         super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
+        INFLIGHT_BODY_CAP,
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("中转地址");

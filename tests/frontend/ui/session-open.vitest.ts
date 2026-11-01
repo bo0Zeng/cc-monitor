@@ -11,7 +11,7 @@ const sent: { origin: string; op: string; body: Record<string, unknown> }[] = []
 let reply: unknown = null;
 /** `session-arrive` 的回话。 */
 let arriveReply: unknown = { kind: "arrived", sid: "s-1" };
-let refusal: { code: string; message: string; data: unknown } | null = null;
+let refusal: { code: string; said: string; data: unknown } | null = null;
 /** 有值 ⇒ 那一问挂着、直到判据放行。 */
 let gate: Promise<void> | null = null;
 
@@ -25,7 +25,7 @@ vi.mock("../../../src/comms/inward/chan", async (importOriginal) => {
         if (gate) await gate;
         if (refusal) {
           const r = refusal;
-          throw new real.ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify(r)) }, r.message, "detail-x");
+          throw new real.ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify(r)) }, r.said, "detail-x");
         }
         return new TextEncoder().encode(JSON.stringify(op === "session-arrive" ? arriveReply : reply));
       },
@@ -202,7 +202,7 @@ describe("失败按码挑按钮，那一句是那台的原话", () => {
     const withButton = new Set<string>();
     for (const code of openCodes()) {
       vi.clearAllMocks();
-      refusal = { code, message: `第一行 ${code}\n第二行`, data: { field: null, unavailable: code === "account_unavailable" ? { requested: "z", pinned: false, listKnown: true, alternative: "b" } : null } };
+      refusal = { code, said: `第一行 ${code}\n第二行`, data: { field: null, unavailable: code === "account_unavailable" ? { requested: "z", pinned: false, listKnown: true, alternative: "b" } : null } };
       expect(await openSession("devbox", RESUME)).toBe(false);
       expect(term.openTerminal).not.toHaveBeenCalled();
       const t = toasts.toast.mock.calls[0] ?? resync.offerResyncRetry.mock.calls[0]?.slice(2);
@@ -226,7 +226,7 @@ describe("失败按码挑按钮，那一句是那台的原话", () => {
     ] as const) {
       vi.clearAllMocks();
       sent.length = 0;
-      refusal = { code: "account_unavailable", message: "选不了", data: { field: null, unavailable: u } };
+      refusal = { code: "account_unavailable", said: "选不了", data: { field: null, unavailable: u } };
       await openSession("devbox", RESUME);
       reply = opened("started");
       toasts.toast.mock.calls[0][2].action[0].run();
@@ -236,7 +236,7 @@ describe("失败按码挑按钮，那一句是那台的原话", () => {
   });
 
   it("★ 选不了号 ⇒ 那一条上另有［登录…］：开那台那个号的登录抽屉（同新建会话框那一颗，A2-17-11-1）", async () => {
-    refusal = { code: "account_unavailable", message: "z 需登录", data: { field: null, unavailable: { requested: "z", pinned: true, listKnown: true, alternative: "b" } } };
+    refusal = { code: "account_unavailable", said: "z 需登录", data: { field: null, unavailable: { requested: "z", pinned: true, listKnown: true, alternative: "b" } } };
     await openSession("devbox", RESUME);
     const acts = toasts.toast.mock.calls[0][2].action as { label: string; run: () => void }[];
     expect(acts.map((a) => a.label)).toEqual([copyText("sessionOpen.account.useAlt", { alt: "b" }), copyText("newSession.account.login")]);
@@ -245,7 +245,7 @@ describe("失败按码挑按钮，那一句是那台的原话", () => {
   });
 
   it("记录已不在 ⇒ 零次开窗（标签页的「记录已不在」由那台账本重发一帧脸）", async () => {
-    refusal = { code: "record_gone", message: "不在", data: { field: null, unavailable: null } };
+    refusal = { code: "record_gone", said: "不在", data: { field: null, unavailable: null } };
     await openSession("devbox", RESUME);
     expect(term.openTerminal).not.toHaveBeenCalled();
   });

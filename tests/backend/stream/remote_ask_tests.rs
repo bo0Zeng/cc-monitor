@@ -129,12 +129,8 @@ async fn an_unregistered_origin_is_said_and_never_dialed() {
         .await
         .expect_err("机器表里没有的那台不许问出东西来");
     assert_eq!(e.code.as_deref(), Some("unreachable"));
-    assert_eq!(e.message, unreachable_message("nowhere"));
-    assert!(
-        e.message.contains("nowhere"),
-        "那句话要点名是哪台：{}",
-        e.message
-    );
+    assert_eq!(e.said, unreachable_message("nowhere"));
+    assert!(e.said.contains("nowhere"), "那句话要点名是哪台：{}", e.said);
     assert_eq!(far.n.load(Ordering::SeqCst), 0, "表里没有也去拨了");
 }
 
@@ -320,7 +316,7 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
         Ok(captured("答", "", 0))
     })
     .await
-    .map_err(|s| s.message);
+    .map_err(|s| s.said);
     assert_eq!(got, Ok("答".to_string()));
     tokio::time::timeout(guard_core::wall::CEILING, rx2)
         .await
@@ -333,7 +329,7 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
 async fn a_capture_that_never_opened_says_unreachable_with_the_dial_words() {
     let e = pull_over_coded(async {
         Err(ssh_dial::DialFail {
-            error: "拨号那一句".into(),
+            said: "拨号那一句".into(),
             detail: None,
             fingerprint: None,
             reason: None,
@@ -344,7 +340,7 @@ async fn a_capture_that_never_opened_says_unreachable_with_the_dial_words() {
     .await
     .unwrap_err();
     assert_eq!(
-        e.message,
+        e.said,
         copy_text("beRemoteAsk.run.unreachable", &[("why", "拨号那一句")])
     );
 }
@@ -397,11 +393,11 @@ async fn a_failed_remote_command_keeps_its_envelope_code() {
         .await
         .unwrap_err();
     assert_eq!(e.code.as_deref(), Some("stale"));
-    assert!(e.message.contains("盘上那份变了"), "{e:?}");
+    assert!(e.said.contains("盘上那份变了"), "{e:?}");
     // 不是信封的原样 stderr：句子只说「后端报错」，那台的原话记日志、不上句子。
     let e = run("bash: boom").await.unwrap_err();
     assert_eq!(e.code, None);
-    assert_eq!(e.message, copy_text("beRemoteAsk.run.failed", &[]), "{e:?}");
+    assert_eq!(e.said, copy_text("beRemoteAsk.run.failed", &[]), "{e:?}");
 }
 
 /// ★ 问别台常驻那一跳（[`ask_resident`]）在那台起的 `--resident-call` 是一次性的：发起方一走（ssh 断开 ⇒ 它 stdout 那根管子的读端没人了），

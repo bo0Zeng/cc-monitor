@@ -9,8 +9,8 @@ license = "MIT"
 # 〔文件窗口成独立包 `src/frontend/filewin/`〕
 #   库面 ＋ 一个 `[[bin]] cc-monitor-filewin`（一行转调 [`run`]）。二进制只经 monitor 内嵌那一份出货：发版先单编它、
 #   铺进 `src/frontend/shell/native-backend/`，monitor 的 `build.rs` 嵌进去，开窗时放到 `~/.cc-monitor/bin/` 再起。
-#   ⚠ size2（10-11）以前它是 monitor 包的第二个 `[[bin]]`，而 tauri-cli 按「monitor 包里每个 [[bin]]」都装进安装包
-#   ⇒ 安装包里多一份与内嵌逐字节相同的 10 MB。住本包名下就不进安装包（`tests/evidence/K-R124-ruler.py` ⑭a 钉 monitor 包只剩主二进制）。
+#   ⚠ tauri-cli 按「monitor 包里每个 [[bin]]」都装进安装包：它若是 monitor 包的第二个 `[[bin]]`，
+#   安装包里就多一份与内嵌逐字节相同的 10 MB。住本包名下就不进安装包（`tests/evidence/release-ruler.py` ⑭a 钉 monitor 包只剩主二进制）。
 #   依赖只许契约类 ＋ 前端宿主原语 ＋ 自己的界面库；不链 monitor、不链判定类 crate（`contract_crate_guard_tests.rs` 钉）。
 
 [lib]

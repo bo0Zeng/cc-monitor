@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * 〔「一个 store，一个 router」〕**拆 `tabs.ts` 的判据：拆出来的每一份职责单一。**
  *

@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * 依赖漏洞判据（`tests/scripts/dep-advisories.mjs`）的离线单测：不连真 OSV。
  * 锁与公告都是测试里现拼的最小样子（包名 `demo-*`），照 Cargo.lock · package-lock.json v3 · OSV 公告的字段形状。

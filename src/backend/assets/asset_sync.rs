@@ -30,7 +30,7 @@ use crate::assets::asset_catalog::{
     AssetsCatalogMergeReq, CatalogIn, CatalogMachine, CatalogReply,
 };
 use crate::common::said::IntoNote as _;
-use crate::wire::spec::Fail;
+use crate::common::said::Said;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 
@@ -50,7 +50,7 @@ pub const PUSH_FLAG: &str = "--assets-catalog-merge";
 
 /// 本机写口（`asset_catalog::answer_merge`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（`Own` 由分派那一层递）。
 pub type Fold =
-    std::sync::Arc<dyn Fn(AssetsCatalogMergeReq) -> Result<CatalogReply, Fail> + Send + Sync>;
+    std::sync::Arc<dyn Fn(AssetsCatalogMergeReq) -> Result<CatalogReply, Said> + Send + Sync>;
 
 /// `assets-sync` 的入参与回包住 cmd-wire（壳连上一台时照同一份交、照同一份收）。
 pub(crate) use cmd_wire::assets::{AssetsSyncReq, AssetsSyncRow, AssetsSynced};
@@ -138,8 +138,8 @@ pub fn push_plan(
 }
 
 /// 写口回的失败（或对面那一份解不成并的入参）⇒ 那一趟的那一句。
-fn fold_failed(f: Fail) -> String {
-    let c = f.code.clone();
+fn fold_failed(f: Said) -> String {
+    let c = f.code_or_fallback().to_string();
     copy_text(
         "beAssetSync.foldBlocking.failed",
         &[("c", &c), ("m", &f.into_note())],
@@ -152,11 +152,7 @@ async fn fold_blocking(fold: &Fold, req: AssetsCatalogMergeReq) -> Result<Catalo
     tokio::task::spawn_blocking(move || f(req))
         .await
         .map_err(|e| {
-            crate::common::said::Said::with_raw(
-                copy_text("beAssetSync.foldBlocking.unfinished", &[]),
-                &e,
-            )
-            .into_note()
+            Said::with_raw(copy_text("beAssetSync.foldBlocking.unfinished", &[]), &e).into_note()
         })?
         .map_err(fold_failed)
 }
@@ -183,11 +179,10 @@ async fn sync_one(
                         None,
                         false,
                         0,
-                        &[crate::common::said::Said::with_raw(
-                            copy_text("beAssetSync.syncOne.unparsable", &[]),
-                            &e,
-                        )
-                        .into_note()],
+                        &[
+                            Said::with_raw(copy_text("beAssetSync.syncOne.unparsable", &[]), &e)
+                                .into_note(),
+                        ],
                     ),
                 )
             }
@@ -247,7 +242,7 @@ async fn sync_named(
 ) -> (bool, AssetsSyncRow) {
     match table.dial(key) {
         Ok(dial) => sync_one(key, &dial, fold, remote, table).await,
-        Err(e) => (false, outcome(key, None, false, 0, &[e.message])),
+        Err(e) => (false, outcome(key, None, false, 0, &[e.said])),
     }
 }
 
@@ -258,7 +253,7 @@ pub(crate) async fn answer(
     req: &AssetsSyncReq,
     fold: Fold,
     remote: &dyn Remote,
-) -> Result<AssetsSynced, (&'static str, String)> {
+) -> Result<AssetsSynced, Said> {
     answer_with(req, fold, remote, &REACH).await
 }
 
@@ -268,11 +263,11 @@ pub(crate) async fn answer_with(
     fold: Fold,
     remote: &dyn Remote,
     table: &Table,
-) -> Result<AssetsSynced, (&'static str, String)> {
+) -> Result<AssetsSynced, Said> {
     let origin = req.origin.as_ref().map(ToString::to_string);
     let origin = origin.as_deref();
     if origin == Some("") {
-        return Err((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed("`origin` is empty (the machine name)"),
         ));
@@ -280,7 +275,7 @@ pub(crate) async fn answer_with(
     // 点名的那一台：机器表里要有（怎么够到它只看这一端的机器表）—— 没有就明说，不猜。
     if let Some(o) = origin {
         if !table.has(o) {
-            return Err((
+            return Err(Said::new(
                 "unreachable",
                 crate::dial::remote_ask::unreachable_message(o),
             ));
@@ -295,7 +290,7 @@ pub(crate) async fn answer_with(
     };
     let own = fold_blocking(&fold, nothing)
         .await
-        .map_err(|e| ("io_failed", e))?;
+        .map_err(|e| Said::new("io_failed", e))?;
     let own_changed = own.changed;
     let mut synced = Vec::new();
     match &first {

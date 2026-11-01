@@ -35,6 +35,7 @@
 //! - [`queue`]：会话输入队那三条（`session-queue-*`）的入参与回执 · 一条会话的名单（也是 `changed {session_queue}` 的体）；
 //! - [`tasks`]：`tasks-list` 的回包（一个会话的任务列表，也是 `changed {tasks}` 的体）；
 //! - [`sync`]：带键集合的同步形（记号 · 一次答 · 客户端照答换的那一步）；
+//! - [`failed`]：交出去的那一形失败（码 · 那一句 · 复制详情 · 按码定形的 `data`），全仓只此一份定义；
 //! - [`fnv`]：FNV-1a（只求稳定、不防篡改）的唯一一份：形状指纹 · 记录摘要 · 骨架文件名 · 目录锁名等都调它。
 
 pub mod accounts;
@@ -51,6 +52,7 @@ pub mod cells;
 pub mod deploy;
 pub mod dial;
 pub mod exit_policy;
+pub mod failed;
 pub mod files;
 #[cfg(any(test, feature = "ts"))]
 pub mod fingerprint;

@@ -39,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
@@ -115,7 +116,7 @@ internal fun ChatInputArea(
     Surface(color = tokens.bg2) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs)) {
             chipLine(state)?.let { (text, warn) -> NoteLine(text, warn) }
-            QueueRows(queueRows(state.queue, state.outbox), actions)
+            QueueRows(queueRows(state.queue, state.outbox, state.offline), actions)
             if (attach != null && actions.attach != null) {
                 AttachArea(attach, actions.attach) {
                     actions.loadCommands()
@@ -161,17 +162,34 @@ internal fun ChatInputArea(
     }
 }
 
-/** 输入框上方那一排（名单 ＋ 待发，[queueRows]）：一条一行，限高 [QUEUE_ROWS_MAX] 行、多了框里滚，不往上顶流。没有一条 ⇒ 不画。 */
+/**
+ * 输入框上方那一排（名单 ＋ 待发，[queueRows]）：一条一行，限高 [QUEUE_ROWS_MAX] 行、多了框里滚，不往上顶流。没有一条 ⇒ 不画。
+ * 那台离线（[QueueRows.stale]）⇒ 头上那一行说名单是上次所知、整排淡着（同桌面）。
+ */
 @Composable
 private fun QueueRows(
-    rows: List<QueueRowFace>,
+    q: QueueRows,
     actions: ChatInputActions,
 ) {
-    if (rows.isEmpty()) return
-    Column(Modifier.fillMaxWidth().heightIn(max = Touch.rowSingle * QUEUE_ROWS_MAX).verticalScroll(rememberScrollState())) {
-        rows.forEach { QueueRow(it, actions) }
+    if (q.rows.isEmpty()) return
+    val stale = q.stale
+    if (stale != null) {
+        Text(stale, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+    val fade = if (stale != null) STALE_ALPHA else 1f
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .alpha(fade)
+            .heightIn(max = Touch.rowSingle * QUEUE_ROWS_MAX)
+            .verticalScroll(rememberScrollState()),
+    ) {
+        q.rows.forEach { QueueRow(it, actions) }
     }
 }
+
+/** 名单为上次所知时那一排淡到几成（同桌面 `queue-row.module.css`）。 */
+private const val STALE_ALPHA = 0.62f
 
 /** 一行：状态（错误色 ⇐ 没送进会话 · 那台拒了）· 发自哪一端 · 开头 ·［重试］（拒了的待发）·［撤回］字按钮。 */
 @Composable

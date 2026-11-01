@@ -327,14 +327,14 @@ class HostConnectorGatewayTest {
          * | `core-ssh/…/SshConnectionManager.kt` | 它自己 |
          * | `core-ssh/…/di/SshModule.kt` | 它的 Koin 定义处（`single { SshConnectionManager(get()) }`） |
          * | `app/…/ssh/HostConnector.kt` | 网关 |
-         * | `app/…/service/SshKeepAliveService.kt` | `sessions` / `activeCount` |
+         * | `app/…/service/KeepAliveWork.kt` | `sessions` / `activeCount`（保活的存活判据） |
          * | `app/…/ui/session/SessionViewModel.kt` | `sessions` / `reachedOf` |
          *
          * 没有一条在拿「连接的生死与句柄」。
          */
         private val MANAGER_REACHABLE =
             setOf(
-                KEEP_ALIVE,
+                "app/src/main/kotlin/com/ccmonitor/mobile/service/KeepAliveWork.kt",
                 GATEWAY,
                 SESSION_VM,
                 "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionManager.kt",

@@ -29,6 +29,7 @@ use tokio::sync::mpsc;
 
 pub mod attach;
 pub mod batch;
+mod busy;
 mod copy;
 mod host_keys;
 pub mod install;
@@ -332,7 +333,7 @@ pub fn dial_plan_json(table: &str, name: &str) -> String {
     let plan = machine_table(table)
         .and_then(|hosts| {
             ssh_dial::machine::request(&hosts, name, None, "stream", serde_json::json!({}))
-                .map_err(|(_, said)| said)
+                .map_err(|s| s.said)
         })
         .and_then(|v| serde_json::from_value(v).map_err(|e| ssh_dial::malformed(&e.to_string())))
         .map_or_else(
@@ -342,20 +343,24 @@ pub fn dial_plan_json(table: &str, name: &str) -> String {
     serde_json::to_string(&plan).unwrap_or_default()
 }
 
-/// 手机那张机器表 ⇒ 一台一行（名字是拨号核心算的，[`ssh_dial::machine::MachineRow`]）；读不懂 ⇒ `[]`。
+/// 手机那张机器表 ⇒ 一台一行（名字是拨号核心算的，[`ssh_dial::machine::MachineRow`]）；读不懂 ⇒ 空串（两端契约对不上，不当一台都没有）。
 pub fn machines_json(table: &str) -> String {
-    let rows: Vec<_> = machine_table(table)
-        .unwrap_or_default()
+    let Ok(hosts) = machine_table(table) else {
+        return String::new();
+    };
+    let rows: Vec<_> = hosts
         .into_iter()
         .map(ssh_dial::machine::MachineRow::of)
         .collect();
-    serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string())
+    serde_json::to_string(&rows).unwrap_or_default()
 }
 
 /// 编辑页那张表（连正在编的那一台，第 [`at`] 行）⇒ 判得怎样 ＋ 那一台展开的拨号地址（[`cmd_wire::phone::MachineCheck`]）。
-/// 判法 · 说法与桌面 `machines-try` 同一处（`ssh_dial::machine::table_fault`）；表读不懂 ⇒ 没毛病 · 没地址。
+/// 判法 · 说法与桌面 `machines-try` 同一处（`ssh_dial::machine::table_fault`）；表读不懂 ⇒ 空串（不当没毛病）。
 pub fn machine_check_json(table: &str, at: usize) -> String {
-    let hosts = machine_table(table).unwrap_or_default();
+    let Ok(hosts) = machine_table(table) else {
+        return String::new();
+    };
     let check = cmd_wire::phone::MachineCheck {
         fault: ssh_dial::machine::table_fault(&hosts),
         endpoints: hosts.get(at).map(|h| h.endpoints()).unwrap_or_default(),
@@ -364,20 +369,21 @@ pub fn machine_check_json(table: &str, at: usize) -> String {
 }
 
 /// 文件页选中这几项（`files-ls` 回包 `up` 里的原行）· 此刻那一台（[`resident::here`]）⇒ 顶栏 · ⋯ · 点一下做什么
-/// （`pick_core::PhoneMenu`）；读不动 ⇒ 什么都不给。
+/// （`pick_core::PhoneMenu`）；选中那几行读不动 ⇒ 空串（不按「什么都没选」出菜单）。
 pub fn pick_menu_json(rows: &str, here: &pick_core::Here) -> String {
-    let picks: Vec<pick_core::PickIn> = serde_json::from_str::<Vec<cmd_wire::files::LsEntry>>(rows)
-        .map(|v| v.iter().map(pick_core::PickIn::of_ls).collect())
-        .unwrap_or_default();
+    let Ok(rows) = serde_json::from_str::<Vec<cmd_wire::files::LsEntry>>(rows) else {
+        return String::new();
+    };
+    let picks: Vec<pick_core::PickIn> = rows.iter().map(pick_core::PickIn::of_ls).collect();
     let picks: Vec<pick_core::Pick> = picks.iter().map(pick_core::PickIn::pick).collect();
     serde_json::to_string(&pick_core::phone_menu(&picks, here)).unwrap_or_default()
 }
 
-/// 一问一答撞了同名（码 `exists` 的 `data`：同名清单）⇒ 抽屉那几行（[`batch::clash_rows`]，一组那一问同一份）；读不动 ⇒ `[]`。
+/// 一问一答撞了同名（码 `exists` 的 `data`：同名清单）⇒ 抽屉那几行（[`batch::clash_rows`]，一组那一问同一份）；读不动 ⇒ 空串（不当一项都不撞）。
 pub fn clash_rows_json(data: &str) -> String {
     serde_json::from_str::<cmd_wire::batch::Conflicts>(data)
         .map(|c| serde_json::to_string(&batch::clash_rows(&c.conflicts)).unwrap_or_default())
-        .unwrap_or_else(|_| "[]".to_string())
+        .unwrap_or_default()
 }
 
 /// 几台的搜内容结果合成一份：`{q, answered: [{origin, reply}]}`（`q` 搜的词；`reply` ＝ 那台 `history-search` 回包原样）⇒ `Merged`。
@@ -414,15 +420,6 @@ pub fn search_merge_json(data: &str) -> String {
 pub fn chats_column_json(ask: &str) -> String {
     serde_json::from_str::<resident_client::column::ChatsColumnAsk>(ask)
         .map(|a| serde_json::to_string(&resident_client::column::column(&a)).unwrap_or_default())
-        .unwrap_or_default()
-}
-
-/// 下载一组那几格（[`batch::download_event`]）；读不动 ⇒ 空串。
-pub fn download_event_json(want: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(want)
-        .ok()
-        .and_then(|w| batch::download_event(&w))
-        .map(|v| serde_json::to_string(&v).unwrap_or_default())
         .unwrap_or_default()
 }
 
@@ -520,7 +517,7 @@ async fn opened_within<T>(
         .await
         .unwrap_or_else(|| {
             Err(ssh_dial::DialFail {
-                error: copy_core::copy_text("reason.link.noAnswer", &[]),
+                said: copy_core::copy_text("reason.link.noAnswer", &[]),
                 detail: Some(format!(
                     "{}s",
                     resident_client::backoff::DIAL_WITHIN.as_secs()
@@ -890,21 +887,6 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_answerOf<'l>(
     })
 }
 
-/// `Core.downloadEvent(want)`：下载一组那几格（[`download_event_json`]）。
-#[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_downloadEvent<'l>(
-    mut env: JNIEnv<'l>,
-    _class: JClass<'l>,
-    want: JString<'l>,
-) -> jstring {
-    guarded(std::ptr::null_mut(), || {
-        let text = string(&mut env, &want).unwrap_or_default();
-        env.new_string(download_event_json(&text))
-            .map(|s| s.into_raw())
-            .unwrap_or(std::ptr::null_mut())
-    })
-}
-
 /// `Core.attachFace(want)`：聊天输入框上方那一排附件的字（[`attach::face_json`]）。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_attachFace<'l>(
@@ -1130,7 +1112,7 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_deploy<'l>(
 }
 
 /// Kotlin 交来的文件描述符（`ParcelFileDescriptor.detachFd()`）⇒ 归核心的一份文件，用完就关。不是 unix ⇒ 没有这一说。
-fn file_of(fd: jint) -> Option<std::fs::File> {
+pub(crate) fn file_of(fd: jint) -> Option<std::fs::File> {
     #[cfg(unix)]
     {
         use std::os::fd::FromRawFd as _;
@@ -1163,38 +1145,6 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferStage<'l>(
             handle,
             file,
             name,
-            u64::try_from(within_ms).unwrap_or(0),
-            on_resident(),
-        )
-    })
-}
-
-/// `Core.transferPull(handle, fd, args, shown, withinMs)`：那台上的 `args.path` 逐块读回、写进本机那一份（`fd`，写；`shown` 是它在句子里的名字）。
-/// 回问答编号（同 [`Java_com_ccmonitor_mobile_core_rs_Core_transferStage`]）；这台不在 · 入参读不动 ⇒ 0。
-#[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferPull<'l>(
-    mut env: JNIEnv<'l>,
-    _class: JClass<'l>,
-    handle: jlong,
-    fd: jint,
-    args: JString<'l>,
-    shown: JString<'l>,
-    within_ms: jlong,
-) -> jlong {
-    guarded(0, || {
-        let Some(file) = file_of(fd) else { return 0 };
-        let (Some(args), shown) = (
-            string(&mut env, &args),
-            string(&mut env, &shown).unwrap_or_default(),
-        ) else {
-            return 0;
-        };
-        let _rt = runtime().enter();
-        transfer::pull(
-            handle,
-            file,
-            &args,
-            shown,
             u64::try_from(within_ms).unwrap_or(0),
             on_resident(),
         )
@@ -1393,15 +1343,33 @@ mod tests {
             v["more"][0]["why"],
             copy_core::copy_text("rsFilewinChrome.link.readOnly", &[])
         );
-        let none: serde_json::Value =
-            serde_json::from_str(&super::pick_menu_json("{", &up)).unwrap();
         assert_eq!(
-            (none["bar"].clone(), none["tap"].clone()),
-            (serde_json::json!([]), serde_json::Value::Null)
+            super::pick_menu_json("{", &up),
+            "",
+            "选中那几行读不动 ⇒ 空串（契约错），不按「什么都没选」出菜单"
         );
     }
 
-    /// 一问一答撞了同名：清单 ⇒ 抽屉那几行（说明由核心写、答法照那台给的）；读不动 ⇒ `[]`。
+    /// 🔴 几个 JSON 口读不动一律回空串（Kotlin 那一侧照它报两端契约对不上），不交一份合法的空值冒充正常：
+    /// 机器表读不懂 ≠ 一台都没有 · ≠ 没毛病；同名清单读不懂 ≠ 一项都不撞。
+    #[test]
+    fn an_unreadable_input_comes_back_empty_not_as_a_valid_nothing() {
+        for (what, got) in [
+            ("machines", super::machines_json("nope")),
+            ("machine_check", super::machine_check_json("nope", 0)),
+            ("clash_rows", super::clash_rows_json("{")),
+            (
+                "pick_menu",
+                super::pick_menu_json("[1]", &pick_core::Here::default()),
+            ),
+        ] {
+            assert_eq!(got, "", "{what}：读不动该回空串");
+        }
+        // 正控：读得懂的空表照回空表。
+        assert_eq!(super::machines_json("[]"), "[]");
+    }
+
+    /// 一问一答撞了同名：清单 ⇒ 抽屉那几行（说明由核心写、答法照那台给的）。
     #[test]
     fn a_clash_list_becomes_the_rows_of_the_sheet() {
         let data = r#"{"conflicts":[{"key":"0","name":"up.bin","kind":"file","size_text":"9 字节","there":"file","there_size_text":"3 字节","answers":["overwrite","keep_both"]}]}"#;
@@ -1412,7 +1380,6 @@ mod tests {
             serde_json::json!([{ "key": "0", "name": "up.bin",
                 "meta": batch_core::conflict_meta(&c.conflicts[0]), "answers": ["overwrite", "keep_both"], "there": null }])
         );
-        assert_eq!(super::clash_rows_json("{"), "[]");
     }
 
     use std::time::Duration;
@@ -1454,7 +1421,7 @@ mod tests {
         assert_eq!(took, Duration::from_secs(3) + DIAL_WITHIN);
         let f = got.expect_err("不动的那一拨居然开成了");
         assert_eq!(f.reason, Some(cmd_wire::machine::Why::Timeout));
-        assert_eq!(f.error, copy_core::copy_text("reason.link.noAnswer", &[]));
+        assert_eq!(f.said, copy_core::copy_text("reason.link.noAnswer", &[]));
     }
 
     /// 表里与 `key` 同样的那一把有几格、共被握着几份。

@@ -160,11 +160,6 @@ impl Progress {
         }
     }
 
-    /// 是不是同一张表（两个目录视图拿的是不是同一份）。
-    pub fn same(&self, other: &Progress) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-
     /// 开一行。回它的号。
     pub fn add(&self, trip: Trip, dir: Option<String>, no_stop: Option<String>) -> u64 {
         let mut g = self.lock();
@@ -336,6 +331,7 @@ impl Progress {
                         ),
                         batch_core::Verb::Chmod
                         | batch_core::Verb::Download
+                        | batch_core::Verb::Pull
                         | batch_core::Verb::Upload => put(transfers, (*icon, name, String::new())),
                     }
                 }
@@ -688,7 +684,7 @@ impl Job {
                             detail: fails_of(&o.failed, &sep),
                             frac: None,
                             nums: ended,
-                            copy: super::source::Failed::copy_many(
+                            copy: batch_core::copy_many(
                                 &copy_text(
                                     "rsFilewinProgress.upload.failed",
                                     &[("n", &o.failed.len().to_string())],
@@ -794,7 +790,7 @@ impl Job {
                         nums: ended,
                         copy: match &o {
                             Some(super::download::Outcome::Failed { why, .. }) => {
-                                super::source::Failed::copy_body(
+                                batch_core::copy_body(
                                     &format!(
                                         "{}\n{}",
                                         copy_text(
@@ -862,7 +858,7 @@ impl Job {
                         detail: f.said.clone(),
                         frac: None,
                         nums: ended,
-                        copy: super::source::Failed::copy_body(
+                        copy: batch_core::copy_body(
                             &format!("{}\n{}", board.title(), f.said),
                             &f.detail,
                         ),

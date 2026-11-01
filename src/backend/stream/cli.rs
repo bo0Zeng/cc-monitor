@@ -24,14 +24,15 @@
 //!   同一份回包里核心写好的那几格（顶上的 `text` · 每一处 `rows`）拼成给人看的字（`control/ship_text.rs`，不按业务写）。
 //! · 期限：[`crate::wire::cli_words::WITHIN_MS_FLAG`] `<毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义，到点回的是同一个码。
 //! · 时区：[`crate::wire::cli_words::TZ_FLAG`] `<IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里「几点」按看的那一台的钟写；没带 ⇒ 这一台的钟（[`crate::Tz::here`]）；缺值 · 认不得 ⇒ UTC。
-//! · 错：exit 2 + stderr 一行 `{code, message, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::wire::cli_words::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
+//! · 错：exit 2 + stderr 一行 `{code, said, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::wire::cli_words::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
 //! · exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id。
 
 use crate::common::contract;
+use crate::common::said::Said;
 use crate::stream::inbound::REGISTRY;
 use crate::wire::detail::Failed;
 use crate::wire::spec::CommandSpec;
-use crate::wire::spec::Fail;
+use crate::wire::spec::Settle as _;
 use crate::wire::Request;
 use std::io::{Read, Write};
 use std::time::Duration;
@@ -60,14 +61,9 @@ fn runs_once(spec: &CommandSpec) -> bool {
     !spec.run.on_frame_arm() && !STREAM_ONLY.contains(&spec.name) && !UI_ONLY.contains(&spec.name)
 }
 
-/// 手写的那几条一次性子命令（不从 `REGISTRY` 派生的）：名字照 `inbound::CLI_ONLY_DOCS`，实现在 `stream::oneshot::ONESHOTS`
-/// （两向相等由测试钉）。本模块只认名字、不引用实现那一份：帧面命令经本模块不连到那几条实现的依赖上。
+/// 手写的那几条一次性子命令（不从 `REGISTRY` 派生的）：`stream::oneshot::ONESHOTS` 那张表。
 fn cli_only(word: &str) -> bool {
-    word.strip_prefix("--").is_some_and(|n| {
-        crate::stream::inbound::CLI_ONLY_DOCS
-            .iter()
-            .any(|(c, ..)| *c == n)
-    })
+    crate::stream::oneshot::oneshot(word).is_some()
 }
 
 /// 这个词是不是一条子命令（手写的那几条 ∪ 派生的 CLI 面）。闸门 [`is_query_mode`] 与分派认的都是它。
@@ -138,9 +134,9 @@ pub fn handles(flag: &str) -> bool {
     spec_for(flag).is_some()
 }
 
-/// 失败那一份投到 CLI 面（[`Failed::emit_to`]：与别的 CLI 出口同一处）。
+/// 失败那一份投到 CLI 面（[`crate::wire::detail::emit_to`]：与别的 CLI 出口同一处）。
 fn emit_failed(err: &mut dyn Write, f: &Failed, text: bool, tz: &crate::Tz) -> i32 {
-    f.emit_to(err, text, tz)
+    crate::wire::detail::emit_to(f, err, text, tz)
 }
 
 /// 一次性那一形里不认识的子命令（打头那一词不是任何一条子命令，或带着裸参数敲了一条删掉的）：
@@ -156,7 +152,7 @@ pub(crate) fn refuse_unknown_to(args: &[String], err: &mut dyn Write, tz: &crate
         .iter()
         .skip(1)
         .any(|a| a == crate::wire::cli_words::TEXT_FLAG);
-    let f = Failed::new(
+    let f = crate::wire::detail::failed(
         None,
         "unknown_command",
         contract::malformed(&format!("unknown CLI flag {flag}")),
@@ -169,11 +165,11 @@ pub(crate) fn refuse_unknown_to(args: &[String], err: &mut dyn Write, tz: &crate
 /// 流模式起参的声明（`--stream --view <声明>`）认不出：不起流，stderr 一行失败信封（与别的 CLI 出口同一处出）、退出 2。
 pub fn refuse_stream_view(why: Option<&str>, tz: &crate::Tz) -> i32 {
     let detail = why.unwrap_or_default().to_string();
-    let f = crate::wire::spec::Fail::new(
+    let f = crate::wire::spec::fail(
         "bad_args",
         crate::common::contract::malformed(&format!("stream: {detail}")),
     )
-    .with_raw(Some(&detail));
+    .and_raw(Some(&detail));
     emit_failed(&mut std::io::stderr(), &f.settle("stream"), false, tz)
 }
 
@@ -214,31 +210,23 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         // 走不到（`main` 只把已知 flag 派到这里），但**不许 panic**：与 `main` 那条 `_` 臂同一形。
         return refuse_unknown_to(args, err, tz);
     };
-    let refuse = |err: &mut dyn Write, code: &str, message: String| {
-        emit_failed(
-            err,
-            &Failed::new(Some(spec.name), code, message, None, None),
-            text,
-            tz,
-        )
-    };
+    let refuse = |err: &mut dyn Write, f: Said| emit_failed(err, &f.settle(spec.name), text, tz);
     let within_ms = match within_of(opts) {
         Ok(ms) => ms,
-        Err((code, message)) => return refuse(err, code, message),
+        Err(f) => return refuse(err, f),
     };
     // 出口的声明：与帧面同一处解、同一处拒（开跑之前）、同一处裁（成功的应答）。
     let (view, plan) = match view_of(opts)
-        .map_err(crate::wire::spec::Fail::from)
         .and_then(|v| crate::stream::inbound::views::plan_for(spec.name, &v).map(|p| (v, p)))
     {
         Ok(vp) => vp,
-        Err(f) => return emit_failed(err, &f.settle(spec.name), text, tz),
+        Err(f) => return refuse(err, f),
     };
     let mut input = String::new();
     if reads_stdin(spec) {
         match read_args(opts, stdin, quiet) {
             Ok(s) => input = s,
-            Err((code, message)) => return refuse(err, code, message),
+            Err(f) => return refuse(err, f),
         }
     } else if opts
         .iter()
@@ -247,8 +235,10 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         // 不收入参的命令带 argv 载荷：用法错，不悄悄忽略（同 `--text`）。
         return refuse(
             err,
-            "bad_args",
-            contract::malformed(&format!("{flag} takes no args")),
+            Said::new(
+                "bad_args",
+                contract::malformed(&format!("{flag} takes no args")),
+            ),
         );
     }
     let trimmed = input.trim();
@@ -257,7 +247,12 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     } else {
         match serde_json::from_str(trimmed) {
             Ok(v) => v,
-            Err(e) => return refuse(err, "bad_request", format!("args JSON parse failed: {e}")),
+            Err(e) => {
+                return refuse(
+                    err,
+                    Said::new("bad_request", format!("args JSON parse failed: {e}")),
+                )
+            }
         }
     };
     let req = Request {
@@ -274,15 +269,17 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     // 总期限与帧面同一处装：登记了上限的（都在阻塞档）按上限与发起方期限里早的那个装；别的命令不装（`None`）。
     let total = crate::stream::inbound::install_total(&req);
     // 这几行是本模块的全部：派发落到 `REGISTRY` 自己的 `run`。
-    let outcome: Result<Option<serde_json::Value>, Fail> =
+    let outcome: Result<Option<serde_json::Value>, Said> =
         match crate::wire::spec::invoke(spec.run, &crate::stream::inbound::hands(Some(own))) {
             Some(crate::wire::spec::Prepared::Blocking(f)) => f(req),
             Some(crate::wire::spec::Prepared::Async(f)) => f(req).await,
             None => {
                 return refuse(
                     err,
-                    "not_available_in_cli",
-                    contract::malformed("this command is only served on the frame channel"),
+                    Said::new(
+                        "not_available_in_cli",
+                        contract::malformed("this command is only served on the frame channel"),
+                    ),
                 )
             }
         };
@@ -302,15 +299,17 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         // 失败那一份与帧面同一处出（复制详情 · 按码定形的 `data`）。
         // 一个入参都没给就缺了格 ⇒ 原话里再说一句入参从哪给（一次性模式的入参只从这两处来）。
         Err(f) => {
-            let f = if f.code == "bad_args" && trimmed.is_empty() && reads_stdin(spec) {
-                let hint = format!(
-                    "no args were given: pass a JSON object on stdin, or base64 of it after {}",
-                    crate::wire::cli_words::ARGS_B64_FLAG
-                );
-                f.with_raw(Some(&hint))
-            } else {
-                f
-            };
+            let f =
+                if f.code.as_deref() == Some("bad_args") && trimmed.is_empty() && reads_stdin(spec)
+                {
+                    let hint = format!(
+                        "no args were given: pass a JSON object on stdin, or base64 of it after {}",
+                        crate::wire::cli_words::ARGS_B64_FLAG
+                    );
+                    f.and_raw(Some(&hint))
+                } else {
+                    f
+                };
             emit_failed(err, &f.settle(spec.name), text, tz)
         }
     }
@@ -318,7 +317,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
 
 /// 声明口 [`crate::wire::cli_words::VIEW_FLAG`]（位置不限）⇒ 声明那一团（缺 ＝ `null` ＝ 全量）。值以 `{` 打头 ＝ JSON 原样，否则当 base64 解。
 /// 缺值 · 给两次 · 解不出 ⇒ `bad_args`；声明本身认不认得由登记处那一处判（`stream/inbound/views.rs`，同帧面）。
-pub(crate) fn view_of(opts: &[String]) -> Result<serde_json::Value, (&'static str, String)> {
+pub(crate) fn view_of(opts: &[String]) -> Result<serde_json::Value, Said> {
     let flag = crate::wire::cli_words::VIEW_FLAG;
     let mut seen: Option<&str> = None;
     let mut i = 0;
@@ -369,7 +368,7 @@ pub fn split_stream_flags(mut args: Vec<String>) -> Result<(Vec<String>, StreamW
     }
     let subcommand = args.first().is_some_and(|a| is_subcommand(a));
     if !subcommand && args.iter().any(|a| a == crate::wire::cli_words::VIEW_FLAG) {
-        let decl = view_of(&args).map_err(|(_, why)| why)?;
+        let decl = view_of(&args).map_err(|f| f.said)?;
         wants.view = StreamView::parse(&decl)?;
         let i = args
             .iter()

@@ -613,14 +613,13 @@ export class HistoryView {
     return strips;
   }
 
-  /** 内容搜索那几条：哪台没搜到 · 跳过的那一家 · 读不了的份数；整次失败 ⇒ 红条［重试］。 */
+  /** 内容搜索那几条：哪台没搜到 · 合好的那一份写好的那几句（读不动几份 · 只按标题的那几家）；整次失败 ⇒ 红条［重试］。 */
   private contentStrips(): HTMLElement[] {
     const strips: HTMLElement[] = [];
     const c = this.content;
     if (c?.state === "done") {
       for (const d of c.r.down) strips.push(strip("warn", copyText("history.search.machineDown", { machine: d.origin }), { label: copyText("history.list.reconnect"), run: () => void this.runContentSearch() }));
-      for (const a of c.r.skipped) strips.push(strip("info", copyText("history.search.skipped", { agent: a })));
-      if (c.r.unreadable > 0) strips.push(strip("info", copyText("history.search.unreadable", { n: c.r.unreadable })));
+      for (const note of c.r.notes) strips.push(strip("info", note));
     } else if (c?.state === "failed") {
       strips.push(strip("error", copyText("history.search.failed", { why: c.why }), { label: copyText("history.list.retry"), run: () => void this.runContentSearch() }));
     }

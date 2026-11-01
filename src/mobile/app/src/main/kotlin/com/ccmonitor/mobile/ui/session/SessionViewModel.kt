@@ -104,6 +104,7 @@ class SessionViewModel(
     cdArg: String?,
     tmuxArg: String?, // 进终端 tab 首连即接回的会话名（敲那台渲出的那一行）；普通 tab 为 null
     resumeArg: String?, // 终端没了的那条会话（sid）：首连先让那台恢复、再接回它落在的那个会话；普通 tab 为 null
+    runArg: String?, // 首连就在新 shell 里敲的那一行（登录抽屉的［在终端里登录］）：不问进哪儿、不接回；普通 tab 为 null
     private val manager: SshConnectionManager,
     private val hostRepo: HostRepository,
     private val identityRepo: IdentityRepository,
@@ -183,6 +184,13 @@ class SessionViewModel(
     /** 先恢复再接回的那条会话（sid）。重连时照样先问那台：已经在跑 ⇒ 那台回它所在的那个，不另起。 */
     private val resumeSid: String? = resumeArg?.ifBlank { null }
 
+    /** 首连就敲的那一行；敲过一回就清掉（重连回到普通 shell，不再敲第二回）。这种 tab 不问进哪儿、不出「用哪个启动」。 */
+    private val runTab: Boolean = !runArg.isNullOrBlank()
+    private var run: String? = runArg?.ifBlank { null }
+
+    /** 这个 tab 的 shell 自己起会话（不接回 · 不恢复 · 不敲给定的那一行）⇒ 才出「用哪个启动」那一排。 */
+    private val picksLaunch: Boolean = attachTo == null && resumeSid == null && !runTab
+
     // 当前所在的 tmux 会话名，每个 tab 各记各的（同主机多 tab 不互相覆盖），跨重连保留。
     // 切模型 · 抓屏按它找那台名单里的终端。进终端 tab 以 [attachTo] 初始化。
     private val _tmuxSession = MutableStateFlow(attachTo)
@@ -223,7 +231,7 @@ class SessionViewModel(
     val moved: StateFlow<List<MovedLaunch>> = _moved.asStateFlow()
 
     private fun loadAliases() {
-        if (attachTo != null || resumeSid != null || _aliasPicked.value) return
+        if (!picksLaunch || _aliasPicked.value) return
         viewModelScope.launch { terminals.aliases().onSuccess { _aliases.value = it } }
     }
 
@@ -370,6 +378,12 @@ class SessionViewModel(
      * 回 `true` ＝ 问了。
      */
     private suspend fun enter(ts: TerminalSession): Boolean {
+        // 只开个 shell 敲这一行：不问进哪儿、不接回（接回的 tmux 前台若是 Claude Code，那一行会打进它的输入框）。
+        if (runTab) {
+            run?.let { ts.send("$it\n".toByteArray()) }
+            run = null
+            return true
+        }
         val host = hostRepo.get(hostId)
         val tmux = _tmuxSession.value ?: CONNECT_SESSION.takeIf { host?.sessionManager == "tmux" }
         val cwd = (cd ?: host?.defaultWorkingDir)?.trim()?.ifEmpty { null }

@@ -277,20 +277,20 @@ fn a_list_that_disagrees_with_the_record_backs_out() {
 struct Lying<'a>(&'a mut FakeTerm);
 
 impl RewindIo for Lying<'_> {
-    fn screen(&mut self) -> Result<Vec<String>, CmdErr> {
+    fn screen(&mut self) -> Result<Vec<String>, Said> {
         self.0.screen()
     }
-    fn press(&mut self, key: &str) -> Result<Sent, CmdErr> {
+    fn press(&mut self, key: &str) -> Result<Sent, Said> {
         self.0.press(key)
     }
     fn redrawn(&mut self) -> bool {
         false
     }
     fn pause(&mut self, _ms: u64) {}
-    fn say(&mut self, text: &str) -> Result<Sent, CmdErr> {
+    fn say(&mut self, text: &str) -> Result<Sent, Said> {
         self.0.say(text)
     }
-    fn lines(&mut self) -> Result<Vec<UserLine>, CmdErr> {
+    fn lines(&mut self) -> Result<Vec<UserLine>, Said> {
         let mut v = self.0.lines()?;
         if let Some(l) = v.last_mut() {
             l.text = "别的话".to_string();

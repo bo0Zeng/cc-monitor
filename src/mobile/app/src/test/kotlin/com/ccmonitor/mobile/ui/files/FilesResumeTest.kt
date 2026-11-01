@@ -1,6 +1,8 @@
 package com.ccmonitor.mobile.ui.files
 
 import com.ccmonitor.mobile.core.claude.link.KeptBatches
+import com.ccmonitor.mobile.core.claude.link.LocalFile
+import com.ccmonitor.mobile.core.claude.link.LocalSaves
 import com.ccmonitor.mobile.core.claude.link.ResidentCore
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.HostDao
@@ -44,7 +46,7 @@ class FilesResumeTest {
     fun `带着一组落盘的票开文件页：不崩，浮卡是接回来的那一组`() {
         val core = KeptCore()
         val connector = HostConnector(SshConnectionManager(transportFactory = { error("本判据不建连") }), hosts(), identities())
-        val backends = HostBackends(connector, { it }, { Disk(mapOf("t-1" to PLAN)) }, core = core)
+        val backends = HostBackends(connector, { it }, { Disk(mapOf("t-1" to PLAN)) }, saves = NoSaves, core = core)
         val feed = backends.of(HOST).also { it.ensure() }
         // 常驻流在自己的 IO 线程上落核心交回来的事：等那一格落进接回来的那几组。
         while (feed.resumed().isEmpty()) Thread.sleep(POLL_MS)
@@ -87,7 +89,7 @@ class FilesResumeTest {
             want: String,
         ): Long {
             kept += want
-            events!!.invoke("batch", """{"id":$ID,"phase":"cut","title":"删除 1 项","kept":true,"line":"box 连接已断开","resume":false}""")
+            events!!.invoke("batch", """{"id":$ID,"phase":"cut","title":"删除 1 项","kept":true,"line":"box 连接已断开"}""")
             return ID
         }
 
@@ -121,14 +123,6 @@ class FilesResumeTest {
             withinMs: Long,
         ) = 0L
 
-        override fun pull(
-            handle: Long,
-            fd: Int,
-            args: String,
-            shown: String,
-            withinMs: Long,
-        ) = 0L
-
         override fun transferStop(id: Long) = Unit
 
         override fun batchAnswer(
@@ -146,8 +140,6 @@ class FilesResumeTest {
         override fun clashRows(data: String) = "[]"
 
         override fun searchMerge(data: String) = ""
-
-        override fun downloadEvent(want: String) = ""
 
         override fun answerOf(
             keys: String,
@@ -215,4 +207,15 @@ class FilesResumeTest {
         const val WALL_CEILING_MS = 300_000L
         const val POLL_MS = 10L
     }
+}
+
+/** 本判据不下到本机：每一份都开不了。 */
+private object NoSaves : LocalSaves {
+    override fun names(folder: String): List<String> = emptyList()
+
+    override fun create(
+        folder: String,
+        name: String,
+        over: String?,
+    ): LocalFile = throw java.io.IOException(folder)
 }

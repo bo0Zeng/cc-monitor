@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * 三入口拆分的判据：**对构建产物的模块图做零命中断言。**
  *
@@ -43,7 +42,7 @@ import { resolve } from "node:path";
 import { build, type Rollup } from "vite";
 import ts from "typescript";
 import { describe, it, expect, beforeAll } from "vitest";
-import { stripCodeComments } from "../../evidence/S25-class-ledger.ts";
+import { stripCodeComments } from "../../evidence/class-ledger.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { productionTsFiles } from "../../test-support/production-sources.ts";
 import { nonEmpty } from "../../test-support/non-empty.ts";

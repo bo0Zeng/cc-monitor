@@ -2,13 +2,13 @@
 import type { ClashRow } from "./ClashRow";
 
 /**
- * `batch` 那一件（下载一组那几格同形）：一组一条命令走到哪。字全由核心写好；`kept` ＝ 落过盘、进程没了再开时接回来的那一组。
+ * `batch` 那一件：一组走到哪（删 · 改权限 · 复制 · 下到本机同一形）。字全由核心写好；`kept` ＝ 落过盘、进程没了再开时接回来的那一组。
  */
 export type BatchLine = { "phase": "running", id: number, title: string, kept: boolean, current: string | null, 
 /**
  * 几成（一项都还没数 ⇒ `null`）。
  */
-frac: number | null, } | { "phase": "asking", id: number, title: string, kept: boolean, conflicts: Array<ClashRow>, go: string, } | { "phase": "cut", id: number, title: string, kept: boolean, line: string, resume: boolean, } | { "phase": "ended", id: number, title: string, kept: boolean, said: string, failed_title: string, failed: Array<string>, 
+frac: number | null, } | { "phase": "asking", id: number, title: string, kept: boolean, conflicts: Array<ClashRow>, go: string, } | { "phase": "cut", id: number, title: string, kept: boolean, line: string, } | { "phase": "ended", id: number, title: string, kept: boolean, said: string, failed_title: string, failed: Array<string>, 
 /**
  * 复制详情（没什么可说 ⇒ `null`）。
  */

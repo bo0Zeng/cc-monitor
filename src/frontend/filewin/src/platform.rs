@@ -1,6 +1,6 @@
 //! 文件窗口包的平台层〔窗口包链不到壳的 `platform/`，自开这一份〕：本包平台 cfg 的唯一住址。
 //! 住这里的：[`any_thread_hook`]（`shell.rs`）· [`local_dest_kept`] · [`path_from_bytes`]（`lossy_pull.rs`）·
-//! [`SYSTEM_CJK_FONTS`]（`fonts.rs`）· [`rss_kib`]（`scale.rs`）· [`BACKSLASH_IS_SEP`]（`download.rs::split_dest` 用）。
+//! [`SYSTEM_CJK_FONTS`]（`fonts.rs`）· [`BACKSLASH_IS_SEP`]（`download.rs::split_dest` 用）。
 //! 另有本包自己的一处：[`renderer_options`]（开窗参数里渲染器那几格，Windows 走 wgpu）；挑哪块显卡的纯规则住子模块 `render`
 //! （只 Windows 的生产路径用它，判据各平台都照跑 ⇒ 声明带 `any(windows, test)`）。
 
@@ -106,29 +106,6 @@ pub const SYSTEM_CJK_FONTS: &[&str] = &[
     "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", // 文泉驿，小
     "/usr/share/fonts/truetype/arphic/uming.ttc",
 ];
-
-/// 读进程 RSS。Linux 走 `/proc/self/statm`；别的平台返回 0（**不是假装 0 字节**，
-/// 是「这台机器上量不到」—— 判据那边按 0 跳过，并且把「跳过了」印出来）。
-#[cfg(test)]
-pub fn rss_kib() -> u64 {
-    #[cfg(target_os = "linux")]
-    {
-        let s = match std::fs::read_to_string("/proc/self/statm") {
-            Ok(s) => s,
-            Err(_) => return 0,
-        };
-        let pages: u64 = s
-            .split_whitespace()
-            .nth(1)
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
-        pages.saturating_mul(4) // 4 KiB/page
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        0
-    }
-}
 
 /// 开窗参数里渲染器那几格。Windows 走 wgpu（DX12 ＋ OpenGL 两支），挑哪块显卡交给 `render::choose`；
 /// 别处走 glow，缺省就是对的（Linux 不换的理由住 `Cargo.toml` 那段头注）。生产开窗（`shell.rs`）与真窗口台架都调这一处。

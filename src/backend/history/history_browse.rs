@@ -19,12 +19,13 @@ use cmd_wire::cells::Words;
 use cmd_wire::listing::{HistoryGroup, HistoryHead, HistoryRow};
 use cmd_wire::sync::{Patch, Range};
 use cmd_wire::Machine;
-// 几台并一列：手机会话屏同一份（端核心）。
-use resident_client::column::merge_by;
+// 几台并一列 · 分叉挂父：手机会话屏同一份（端核心）。
+use resident_client::column::{merge_by, nest, Nest};
 use serde::{Deserialize, Serialize};
 
 use super::history_list::{answer_from, blocking, filters, listing_annotations, Sort};
 use super::remote_listing::Kept;
+use crate::common::said::Said;
 use crate::common::views::{ViewSource, Views};
 
 /// 一窗至多几项（界面只问看得见的那几十项）。
@@ -275,15 +276,15 @@ impl crate::wire::typed::Handle for HistoryBrowseCmd {
         async move {
             answer(req, cx.tz, cx.until)
                 .await
-                .map_err(crate::wire::typed::of_pair(HistoryBrowseErr::Failed))
+                .map_err(crate::wire::typed::of_fail_with(HistoryBrowseErr::Failed))
         }
     }
 }
 
 // ───────────────────────── 问各台 ─────────────────────────
 
-fn bad(what: &str) -> (&'static str, String) {
-    ("bad_args", crate::common::contract::malformed(what))
+fn bad(what: &str) -> Said {
+    Said::new("bad_args", crate::common::contract::malformed(what))
 }
 
 /// 一台读到的那一份，或读不到 / 没读过。
@@ -304,7 +305,7 @@ pub(crate) async fn answer(
     req: HistoryBrowseReq,
     tz: crate::Tz,
     until: Option<crate::platform::child::Until>,
-) -> Result<Patch<HistoryBrowseHead, HistoryLine>, (&'static str, String)> {
+) -> Result<Patch<HistoryBrowseHead, HistoryLine>, Said> {
     let ask = filters(req.query.as_deref(), req.sort, req.within_days, req.hidden)?;
     if !(1..=WINDOW_MAX).contains(&req.range.limit) {
         return Err(bad("`range.limit` must be 1..=2000"));
@@ -360,7 +361,7 @@ pub(crate) async fn answer(
     let here = if req.here {
         Some(match blocking(super::history_list::machine_listing).await {
             Ok(l) => Got::Listing(l),
-            Err((_, why)) => Got::Failed(why),
+            Err(s) => Got::Failed(s.said),
         })
     } else {
         None
@@ -368,9 +369,9 @@ pub(crate) async fn answer(
     let mut got: Vec<(Option<String>, Got)> = here.map(|g| (None, g)).into_iter().collect();
     for s in syncs {
         let (m, g) = s.await.map_err(|e| {
-            (
+            Said::new(
                 "failed",
-                crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
+                crate::common::said::IntoNote::into_note(Said::with_raw(
                     copy_core::copy_text("beHistoryJoin.blocking.unfinished", &[]),
                     e,
                 )),
@@ -540,37 +541,34 @@ pub(crate) struct Laid {
 pub(crate) fn lay(answered: &[Answered], shape: &Shape) -> Laid {
     let row_lists: Vec<&[HistoryRow]> = answered.iter().map(|a| a.rows.as_slice()).collect();
     let rows = merge_by(&row_lists, |r| r.at);
-    let present: BTreeSet<Id> = rows.iter().map(|r| id_of(r)).collect();
-    // 每个父会话下挂着的分叉（同一台；只认这一列里有的父会话），照并好的先后。
-    let mut kids: BTreeMap<Id, Vec<&HistoryRow>> = BTreeMap::new();
-    for r in &rows {
-        if let Some(p) = parent_of(r).filter(|p| present.contains(p)) {
-            kids.entry(p).or_default().push(r);
-        }
-    }
-    let nested = |r: &HistoryRow| parent_of(r).is_some_and(|p| present.contains(&p));
+    // 分叉挂父（同一台；只认这一列里有的父会话）：挂在父下的跟在展开了的父后面。
+    let nested = nest(&rows, id_of, parent_of, &shape.forks);
+    let line = |r: &HistoryRow, n: Nest| HistoryLine::Row {
+        row: r.clone(),
+        child: n.child,
+        forks: n.forks,
+        forks_open: n.forks_open,
+        orphan: n.orphan,
+    };
     let mut laid = Laid {
         lines: Vec::new(),
         sections: Vec::new(),
         projects: 0,
         grouped: 0,
     };
-    let push = |laid: &mut Laid, r: &HistoryRow| {
-        push_row(&mut laid.lines, r, false, &kids, &present, shape);
-    };
     match shape.by {
         By::Time => {
             let mut sec = String::new();
-            for r in rows.iter().copied().filter(|r| !nested(r)) {
-                // 分段头是那台写好的字：换了字就起新的一段。
-                if r.section_text.0 != sec {
+            for &(r, n) in &nested {
+                // 分段头是那台写好的字：换了字就起新的一段（挂在父下的跟着父）。
+                if !n.child && r.section_text.0 != sec {
                     sec = r.section_text.0.clone();
                     laid.sections.push(Section {
                         at: u32::try_from(laid.lines.len()).unwrap_or(u32::MAX),
                         text: r.section_text.clone(),
                     });
                 }
-                push(&mut laid, r);
+                laid.lines.push(line(r, n));
             }
         }
         By::Project => {
@@ -579,12 +577,17 @@ pub(crate) fn lay(answered: &[Answered], shape: &Shape) -> Laid {
             let groups = merge_by(&group_lists, |g| g.order);
             laid.projects = u32::try_from(groups.len()).unwrap_or(u32::MAX);
             laid.grouped = groups.iter().map(|g| g.count).sum();
-            let mut by_group: BTreeMap<(Option<Machine>, &str), Vec<&HistoryRow>> = BTreeMap::new();
-            for r in &rows {
-                by_group
-                    .entry((r.origin.clone(), r.group.as_str()))
-                    .or_default()
-                    .push(r);
+            // 每组那几行：顶层的行进它自己那一组，挂在父下的跟着父。
+            let mut by_group: BTreeMap<(Option<Machine>, &str), Vec<(&HistoryRow, Nest)>> =
+                BTreeMap::new();
+            let mut at: Option<(Option<Machine>, &str)> = None;
+            for &(r, n) in &nested {
+                if !n.child {
+                    at = Some((r.origin.clone(), r.group.as_str()));
+                }
+                if let Some(k) = &at {
+                    by_group.entry(k.clone()).or_default().push((r, n));
+                }
             }
             for g in groups {
                 let open = shape.open(g);
@@ -596,42 +599,13 @@ pub(crate) fn lay(answered: &[Answered], shape: &Shape) -> Laid {
                     continue;
                 }
                 let gk = (g.origin.clone(), g.key.as_str());
-                for r in by_group.get(&gk).into_iter().flatten().copied() {
-                    if !nested(r) {
-                        push(&mut laid, r);
-                    }
+                for &(r, n) in by_group.get(&gk).into_iter().flatten() {
+                    laid.lines.push(line(r, n));
                 }
             }
         }
     }
     laid
-}
-
-/// 一行 ＋ 展开了的话它下面的分叉（递归；分叉的分叉同样）。
-fn push_row(
-    out: &mut Vec<HistoryLine>,
-    r: &HistoryRow,
-    child: bool,
-    kids: &BTreeMap<Id, Vec<&HistoryRow>>,
-    present: &BTreeSet<Id>,
-    shape: &Shape,
-) {
-    let id = id_of(r);
-    let mine = kids.get(&id).map_or(&[][..], Vec::as_slice);
-    let open = shape.forks.contains(&id);
-    let orphan = !child && parent_of(r).is_some_and(|p| !present.contains(&p));
-    out.push(HistoryLine::Row {
-        row: r.clone(),
-        child,
-        forks: u32::try_from(mine.len()).unwrap_or(u32::MAX),
-        forks_open: open,
-        orphan,
-    });
-    if open {
-        for c in mine {
-            push_row(out, c, true, kids, present, shape);
-        }
-    }
 }
 
 /// 一问在数据层眼里的样子：问法的键 ＝ 决定这一列的那几格（不含窗口）；此刻的全部项 ＝ 摊好的那一列。

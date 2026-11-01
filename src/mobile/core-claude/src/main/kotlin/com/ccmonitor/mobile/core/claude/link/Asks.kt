@@ -1,10 +1,9 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.AnswerReq
 import com.ccmonitor.mobile.core.wire.gen.AnswerResult
-import com.ccmonitor.mobile.core.wire.gen.Answered
 import com.ccmonitor.mobile.core.wire.gen.AskPick
+import com.ccmonitor.mobile.core.wire.gen.Commands
 
 /*
  * 答题口（`needs.ask` · `needs-answer`）：挂着的请求是 `sessions-needs` 那一份里的 `NeedsAsk`（线上类型，生成的 `wire/Generated.kt`）；
@@ -22,7 +21,7 @@ data class NeedsPick(
 
 /** `needs-answer`：答一条挂着的请求，第一个答案落下。 */
 object NeedsAnswer {
-    const val COMMAND: String = "needs-answer"
+    const val COMMAND: String = Commands.NeedsAnswer.NAME
 
     /** 入参：[note] · [picks] 只在给了时才交（提问那一种选 `answer` 时每题都交）。 */
     fun args(
@@ -32,7 +31,7 @@ object NeedsAnswer {
         note: String? = null,
         picks: Map<String, NeedsPick>? = null,
     ): Map<String, Any?> =
-        Wire.args(
+        Commands.NeedsAnswer.args(
             AnswerReq(
                 sid = sid,
                 ask = ask,
@@ -43,5 +42,9 @@ object NeedsAnswer {
         )
 
     /** 回包是「别处已答」那一种结局（别处先答了 / 那一头撤了）⇒ 那台写好的那一句；答上了 ⇒ `null`。 */
-    fun gone(data: Any?): String? = Wire.bind<Answered>(data)?.takeIf { it.result == AnswerResult.GONE }?.let { it.said.orEmpty() }
+    fun gone(data: Any?): String? =
+        Commands.NeedsAnswer
+            .reply(data)
+            ?.takeIf { it.result == AnswerResult.GONE }
+            ?.let { it.said.orEmpty() }
 }

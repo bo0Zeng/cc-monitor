@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.session
 
-import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -42,7 +41,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.ccmonitor.mobile.core.copy.copyText
@@ -68,7 +66,6 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.service.AppForeground
-import com.ccmonitor.mobile.service.SshKeepAliveService
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.EditHostButton
 import com.ccmonitor.mobile.ui.copyPlainText
@@ -92,6 +89,7 @@ fun SessionScreen(
     cd: String? = null,
     tmuxSession: String? = null, // 进终端 tab 首连即接回的会话名；普通 tab 为 null
     resume: String? = null, // 终端没了的那条会话：首连先让那台恢复再接回；普通 tab 为 null
+    run: String? = null, // 首连就在新 shell 里敲的那一行：不问进哪儿、不接回；普通 tab 为 null
     onAttachInNewTab: (name: String) -> Unit = {}, // tmux「附着」：开新终端 tab
     onShowTabs: () -> Unit = {}, // 唤出 tab 面板
     onEditKeys: () -> Unit, // 进编辑按键页（⋯「编辑按键」· 绑了「编辑按键」的触发 · 空组那一行）
@@ -100,7 +98,7 @@ fun SessionScreen(
     val hostRepo = koinInject<HostRepository>()
     val hostLabel by produceState(hostId, hostId) { value = hostRepo.get(hostId)?.label ?: hostId }
     CompositionLocalProvider(LocalKeysEnv provides KeysEnv(onEditKeys, hostLabel)) {
-        SessionContent(hostId, cd, tmuxSession, resume, onAttachInNewTab, onShowTabs, onEditHost)
+        SessionContent(hostId, cd, tmuxSession, resume, run, onAttachInNewTab, onShowTabs, onEditHost)
     }
 }
 
@@ -118,6 +116,7 @@ private fun SessionContent(
     cd: String?,
     tmuxSession: String?,
     resume: String?,
+    run: String?,
     onAttachInNewTab: (name: String) -> Unit,
     onShowTabs: () -> Unit,
     onEditHost: (hostId: String) -> Unit,
@@ -125,18 +124,10 @@ private fun SessionContent(
     // Koin 参数不能传 null，可空参数一律用空串表示 null。
     val vm =
         koinViewModel<SessionViewModel> {
-            parametersOf(hostId, cd ?: "", tmuxSession ?: "", resume ?: "")
+            parametersOf(hostId, cd ?: "", tmuxSession ?: "", resume ?: "", run ?: "")
         }
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
-
-    // 连上后起前台保活服务（要 Context，所以在这里起）；会话归零时服务自停。
-    LaunchedEffect(state is SessionUiState.Connected) {
-        if (state is SessionUiState.Connected) {
-            val app = context.applicationContext
-            ContextCompat.startForegroundService(app, Intent(app, SshKeepAliveService::class.java))
-        }
-    }
 
     // 一次性提示弹 Toast。
     LaunchedEffect(vm) {

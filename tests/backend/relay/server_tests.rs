@@ -1,7 +1,9 @@
 //! 中转的组合判据：真中转（`comms_outward`）＋ 后端这一侧的接受循环 · 生产段的上游选择 · tap · 内存探针。
 //! 不需要后端的那几格住中转 crate 自己的 `server_tests.rs`。
 
-use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_CONNECTIONS, UPSTREAM_DEADLINE};
+use super::listen::{
+    listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, INFLIGHT_CONNECTIONS, UPSTREAM_DEADLINE,
+};
 use crate::accounts::upstream_select::{self as accounts, table::RoutingTable, Accounts};
 use crate::common::net::LOOPBACK;
 use comms_outward::test_support::http1::RequestHead;
@@ -711,6 +713,7 @@ fn spawn_relay_counted(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap, Arc<A
         super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
+        INFLIGHT_BODY_CAP,
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
@@ -1895,6 +1898,7 @@ fn spawn_relay_with_table(table: RoutingTable) -> SocketAddr {
         super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
+        INFLIGHT_BODY_CAP,
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
@@ -2705,6 +2709,7 @@ fn forwarding_keeps_nothing_per_request_on_the_relay() {
         super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
+        INFLIGHT_BODY_CAP,
     );
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
@@ -2856,6 +2861,7 @@ fn both_directions_really_disable_nagle_on_the_socket() {
         super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
+        INFLIGHT_BODY_CAP,
     );
     serve_one(down, &relay).expect("handle 必须走完一条转发");
     assert!(
@@ -2955,6 +2961,7 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
         super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
+        INFLIGHT_BODY_CAP,
     );
     serve_one(down, &relay).expect("handle 必须走完一条转发");
     assert_eq!(
@@ -3660,6 +3667,7 @@ fn spawn_relay_with_upstream_deadline(
         super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         upstream_deadline,
+        INFLIGHT_BODY_CAP,
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");

@@ -105,7 +105,7 @@ A new session file appeared。
 | `id` | string | 回显请求的 `id` |
 | `ok` | bool | 成功与否 |
 | `code` | string? | 失败时的码（协议级或命令级） |
-| `message` | string? | 失败时给人看的那一句（不含下层原话与码：那些进 `detail`） |
+| `said` | string? | 失败时给人看的那一句（不含下层原话与码：那些进 `detail`） |
 | `detail` | string? | 失败时「复制详情」那几行（时刻 · 机器 · 命令 · 码 · 原话），后端写好、界面原样复制 |
 | `data` | JSON? | 命令的返回值（如 `resolve` 的 CommandPlan） |
 
@@ -5603,13 +5603,10 @@ truncated: boolean,
  */
 sessions: Array<MergedRow>, 
 /**
- * 答了的那几台读不动、没搜到的会话记录份数之和。
+ * 结果头底下那几句，写好的（两端照摆）：答了的那几台读不动的会话记录份数之和（0 份不写）；
+ * 再是内容搜索不覆盖、只按标题的那几家各一句（各台说的，去重、照先说的那台的先后）。
  */
-unreadable: number, 
-/**
- * 内容搜索不覆盖的那几家（各台说的，去重、照先说的那台的先后）。
- */
-skipped: Array<string>, 
+notes: Array<string>, 
 /**
  * 没答上的那几台（它们的会话没搜到）：哪台 · 那一句。
  */
@@ -5933,7 +5930,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**
@@ -6370,7 +6371,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**
@@ -6823,7 +6828,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**
@@ -7237,7 +7246,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**
@@ -7813,7 +7826,20 @@ note: NeedsNote,
  */
 row: NeedsChoiceRow, };
 type NeedsChoiceRow = "main" | "hold" | "release";
-type NeedsItem = { "kind": "session", rank: number, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, cell?: NeedsCell, } | { "kind": "manual", rank: number, manual: ManualItem, };
+type NeedsClock = { 
+/**
+ * 状态那一句（「等批准 · {dur}」，种类那一格是 `needs.text`）：桌面需手动浮层 · 手机需手动屏那一行。
+ */
+text: Words, 
+/**
+ * 钉条第一行（「等批准 · Bash · {dur}」，种类那一格是 `needs.head`）。
+ */
+head: Words, };
+type NeedsItem = { "kind": "session", rank: number, 
+/**
+ * 那一行会走的那一句（[`NeedsClock`]）；不知道等了多久（`needs.waitedMs` 为 `null`）⇒ 缺，出口照抄 `needs.text`。
+ */
+clock?: NeedsClock, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, cell?: NeedsCell, } | { "kind": "manual", rank: number, manual: ManualItem, };
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsList = { 
 /**
@@ -8081,8 +8107,21 @@ note: NeedsNote,
  */
 row: NeedsChoiceRow, };
 type NeedsChoiceRow = "main" | "hold" | "release";
+type NeedsClock = { 
+/**
+ * 状态那一句（「等批准 · {dur}」，种类那一格是 `needs.text`）：桌面需手动浮层 · 手机需手动屏那一行。
+ */
+text: Words, 
+/**
+ * 钉条第一行（「等批准 · Bash · {dur}」，种类那一格是 `needs.head`）。
+ */
+head: Words, };
 type NeedsDown = { origin: Origin, said: string, };
-type NeedsItem = { "kind": "session", rank: number, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, cell?: NeedsCell, } | { "kind": "manual", rank: number, manual: ManualItem, };
+type NeedsItem = { "kind": "session", rank: number, 
+/**
+ * 那一行会走的那一句（[`NeedsClock`]）；不知道等了多久（`needs.waitedMs` 为 `null`）⇒ 缺，出口照抄 `needs.text`。
+ */
+clock?: NeedsClock, session: NeedsRow, } | { "kind": "plan", rank: number, workspace: string, slice: string, cell?: NeedsCell, } | { "kind": "manual", rank: number, manual: ManualItem, };
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsMergeReq = { machines: Array<Origin>, };
 type NeedsMerged = { items: Array<NeedsAt>, total: number, unreadable: Array<NeedsUnreadable>, down: Array<NeedsDown>, };
@@ -9221,7 +9260,11 @@ added: number, removed: number,
 /**
  * 「+N −M」那一句（与过程那一行右侧那一句同一处写）；没有增删 ⇒ 空串。
  */
-stat: string, };
+stat: string, 
+/**
+ * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
+ */
+notice?: string, };
 type LineDiffKind = "add" | "del" | "ctx" | "head";
 type LineDiffRow = { kind: LineDiffKind, 
 /**
@@ -11750,9 +11793,9 @@ since: number,
  */
 session: string | null, };
 type ArriveBy = { "kind": "sid", sid: Sid, } | { "kind": "cwd", cwd: string, };
+type Failed = { code: string, said: string, detail: string, data?: unknown, };
 type GroupRef = { id: string, name: string, };
 type Landed = "started" | "in_place" | "running" | "idle" | "window";
-type LaunchFail = { code: string, message: string, };
 type LaunchedAccount = { name: string, configDir: string, 
 /**
  * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
@@ -11800,7 +11843,11 @@ prompt: Sent | null,
  */
 arrival: ArriveAsk | null, };
 type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere" | "host_outdated";
-type RowLaunched = { cwd: string, alias: string, group: GroupRef | null, opened: Array<Opened>, failed: Array<LaunchFail>, blocked: string | null, };
+type RowLaunched = { cwd: string, alias: string, group: GroupRef | null, opened: Array<Opened>, 
+/**
+ * 没起成的那几条：各是交出去那一形失败（`session-open` 回的码 · 那一句 · 复制详情）。
+ */
+failed: Array<Failed>, blocked: string | null, };
 type Sent = { 
 /**
  * 结局。
@@ -14028,7 +14075,7 @@ said: string,
 from: string, };
 type QueueList = { items: Array<QueueItem>, 
 /**
- * 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）：发件端据它把那一句标「已送进」；不在名单也不在这里 ⇒ 撤了。
+ * 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）。两端都不据它判那一句的去向：回执到了就离开待发，之后只照名单与记录画。
  */
 sent: Array<string>, };
 type Rewind = { 
@@ -14087,7 +14134,7 @@ said: string,
 from: string, };
 type QueueList = { items: Array<QueueItem>, 
 /**
- * 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）：发件端据它把那一句标「已送进」；不在名单也不在这里 ⇒ 撤了。
+ * 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）。两端都不据它判那一句的去向：回执到了就离开待发，之后只照名单与记录画。
  */
 sent: Array<string>, };
 type Rewind = { 

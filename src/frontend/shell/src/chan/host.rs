@@ -293,28 +293,24 @@ impl InboundBackends {
 // 这里只做宿主那几件事：按 `origin` 找那台机器的配置、把载荷当 JSON 读、把传输台那一格（`transfer_relay::Step`）原样装进通道的格子（帧照 `cmd_wire::frame::Transfer` · 收场照 `TransferEnd` 序列化，不手写）。
 // 传输本身（借通道 · 写暂存区 · 续传 · 撤）不在这里。
 
-/// 拒绝的信封：与后端命令的拒绝**同一个形状**（`{"code","message"}`，`backend_route::layer_call_error`
+/// 拒绝的信封：与后端命令的拒绝**同一个形状**（交出去那一形 `cmd_wire::failed::Failed`，`backend_route::layer_call_error`
 /// 逐字），窗口那一侧用同一个翻译（`filewin::source::said`）说人话。
 ///
 /// ⚠ 经线上那一层的构造器（`wire::err_from_wire`）造，**不在本文件手写那个枚举的变体**：
 /// 本文件登记在 `backend_route_tests::SENDERS` 里（走分流器的那一档），那一档的牙是
 /// 「生产段不许自己拼 / 匹配那个错误枚举」—— 分层判定只许有一个家。这里不做任何分层判定：
 /// 传输台说了「不行」，就是对端说了「不行」，原样装进那个信封。
-fn refused(code: &str, message: String) -> CallError {
-    refused_with(crate::transfer_relay::Refusal {
+fn refused(code: &str, said: String) -> CallError {
+    refused_with(cmd_wire::failed::Failed {
         code: code.to_string(),
-        message,
-        data: None,
+        said,
+        ..Default::default()
     })
 }
 
 /// 同 [`refused`]，后端带了 `data` 的（`exists` 的同名清单）一并装进信封，窗口照它画冲突框。
-fn refused_with(r: crate::transfer_relay::Refusal) -> CallError {
-    let mut v = serde_json::json!({ "code": r.code, "message": r.message });
-    if let Some(d) = r.data {
-        v["data"] = d;
-    }
-    let body = serde_json::to_vec(&v).unwrap_or_default();
+fn refused_with(r: cmd_wire::failed::Failed) -> CallError {
+    let body = serde_json::to_vec(&r).unwrap_or_default();
     super::wire::err_from_wire(super::wire::WireErr::Refused, body)
 }
 
@@ -515,9 +511,13 @@ fn step_item(seq: u64, step: crate::transfer_relay::Step) -> Item {
 /// 给了就原位说用法错，不装作续上了。
 fn transfer_stream(origin: &Origin, id: &str, from: Option<Cursor>) -> BoxStream<'static, Item> {
     use futures::stream::StreamExt;
-    let closed = |code: &str, message: String| -> BoxStream<'static, Item> {
-        let body = serde_json::to_vec(&serde_json::json!({ "code": code, "message": message }))
-            .unwrap_or_default();
+    let closed = |code: &str, said: String| -> BoxStream<'static, Item> {
+        let body = serde_json::to_vec(&cmd_wire::failed::Failed {
+            code: code.to_string(),
+            said,
+            ..Default::default()
+        })
+        .unwrap_or_default();
         Box::pin(futures::stream::iter([Item::Closed {
             by: By::Peer(Body(body)),
         }]))

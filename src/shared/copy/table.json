@@ -2583,12 +2583,6 @@
       "zh": "改过的文件 {recentFilesCount}",
       "args": ["recentFilesCount"]
     },
-    "gridMonitor.renderPeek.agentsHead": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "agent {agentsCount} · {running} 在跑",
-      "args": ["running", "agentsCount"]
-    },
     "gridMonitor.fact.model": {
       "kind": "title",
       "role": "标题",
@@ -2636,12 +2630,6 @@
       "role": "空态",
       "zh": "无会话",
       "args": []
-    },
-    "gridMonitor.render.summary": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "机器 {machines} · 会话 {liveSessions} · agent 在跑 {runningAgents}",
-      "args": ["machines", "liveSessions", "runningAgents"]
     },
     "gridMonitor.build.intro": {
       "kind": "body",
@@ -2696,12 +2684,6 @@
       "role": "状态",
       "zh": "在跑 · agent {runningAgents}",
       "args": ["runningAgents"]
-    },
-    "gridMonitor.groups.local": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "本机",
-      "args": []
     },
     "sessionFind.box.closeHint": {
       "kind": "action",
@@ -3149,6 +3131,12 @@
       "role": "标题",
       "zh": "Edit {n}",
       "args": ["n"]
+    },
+    "cards.diff.coarse": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "改前 {old} 行 · 改后 {new} 行 · 超出逐行比对上限，按整段删增显示",
+      "args": ["old", "new"]
     },
     "cards.command.note": {
       "kind": "body",
@@ -10473,12 +10461,6 @@
       "zh": "登记的路径与安装位置不一致 · {why}",
       "args": ["why"]
     },
-    "rsConfigSurface.effect.indirectWrite": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "cc-monitor 不直接写它；但在 cc-monitor 里的操作会让它被写（由被调用的命令追加内容）",
-      "args": []
-    },
     "rsConfigSurface.effect.generateOnly": {
       "kind": "body",
       "role": "说明",
@@ -13945,7 +13927,7 @@
     "beArgv.parse.unknownRight": {
       "kind": "error",
       "role": "命令行",
-      "zh": "-- 右边只放 ccm 选项 · {w} 不是 · claude 的参数放 -- 左边（ccm -- --ccm-help 看选项）",
+      "zh": "{w} 不是 -- 右边的 ccm 选项 · claude 参数放左边 · 子命令紧跟开头的 --（ccm -- --commands 看全部）",
       "args": ["w"],
       "limited": ["ccm"]
     },
@@ -13954,13 +13936,6 @@
       "role": "命令行",
       "zh": "new 须是 -- 右边第一个词（ccm [claude 参数…] -- new [ccm 选项…]）",
       "args": [],
-      "limited": ["ccm"]
-    },
-    "beArgv.parse.backendWordAfterClaudeArgs": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "{w} 是 ccm 子命令 · 只能紧跟开头的 --（ccm -- {w} …） · 前面不许有 claude 参数",
-      "args": ["w"],
       "limited": ["ccm"]
     },
     "beAgents.pick.unknown": {
@@ -15040,7 +15015,7 @@
       "zh": "到 {machine} 的转发未开起 · {why}",
       "args": ["machine", "why"]
     },
-    "beForwards.start.noAck": {
+    "beForwards.start.unconfirmed": {
       "kind": "error",
       "role": "原因格",
       "zh": "连接未确认即断开",
@@ -28953,6 +28928,12 @@
       "zh": "发送",
       "args": []
     },
+    "composer.input.stop": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "停止",
+      "args": []
+    },
     "composer.input.ended": {
       "kind": "control",
       "role": "占位",
@@ -29245,12 +29226,6 @@
       "role": "菜单项",
       "zh": "搜内容「{q}」",
       "args": ["q"]
-    },
-    "mobChats.fork.from": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "分叉自「{label}」",
-      "args": ["label"]
     },
     "mobAccounts.list.section": {
       "kind": "title",

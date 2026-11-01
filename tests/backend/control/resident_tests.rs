@@ -575,7 +575,7 @@ async fn a_resident_call_says_what_the_resident_said_or_that_nobody_listens() {
         assert_eq!(req["args"], serde_json::json!({"held": "h1"}));
         assert_eq!(req["within_ms"], 9_000);
         vec![format!(
-            r#"{{"kind":"reply","id":{},"ok":false,"code":"bad_args","message":"那一句","detail":"detail-1"}}"#,
+            r#"{{"kind":"reply","id":{},"ok":false,"code":"bad_args","said":"那一句","detail":"detail-1"}}"#,
             req["id"]
         )]
     })
@@ -590,7 +590,7 @@ async fn a_resident_call_says_what_the_resident_said_or_that_nobody_listens() {
     .await
     .unwrap_err();
     assert_eq!(
-        (f.code.as_str(), f.message.as_str(), f.detail.as_str()),
+        (f.code.as_str(), f.said.as_str(), f.detail.as_str()),
         ("bad_args", "那一句", "detail-1")
     );
     let (attach, _) = peer.await.expect("扮常驻的那一侧");
@@ -612,7 +612,7 @@ async fn a_resident_call_says_what_the_resident_said_or_that_nobody_listens() {
     )
     .await
     .unwrap_err();
-    assert_eq!(f.code, crate::wire::listen::CALL_ABSENT, "{}", f.message);
+    assert_eq!(f.code, crate::wire::listen::CALL_ABSENT, "{}", f.said);
     assert!(
         !relay_route_core::listen_socket_for(&nobody).exists(),
         "没人在听却起了一个"
@@ -630,7 +630,7 @@ async fn a_resident_call_says_what_the_resident_said_or_that_nobody_listens() {
     )
     .await
     .unwrap_err();
-    assert_eq!(f.code, crate::wire::listen::CALL_TIMED_OUT, "{}", f.message);
+    assert_eq!(f.code, crate::wire::listen::CALL_TIMED_OUT, "{}", f.said);
     peer.abort();
     let _ = std::fs::remove_dir_all(&mute);
 }
@@ -645,8 +645,8 @@ fn a_resident_call_waits_only_as_long_as_the_asker_said() {
         args(&["--within-ms", "x"]),
     ] {
         let e = deadline_of(&bad).unwrap_err();
-        assert_eq!(e.0, "bad_args", "{bad:?}");
-        assert!(e.1.contains("--within-ms"), "没说缺的是哪一格：{e:?}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad:?}");
+        assert!(e.said.contains("--within-ms"), "没说缺的是哪一格：{e:?}");
     }
     let (ms, total) = deadline_of(&args(&["--stdin-line", "--within-ms", "45000"])).unwrap();
     assert_eq!(ms, 45_000);

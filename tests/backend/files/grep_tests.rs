@@ -214,6 +214,7 @@ fn the_command_face_answers_exactly_the_declared_fields() {
         crate::files::tests::answer("files.grep", &a, &Default::default())
             .unwrap_err()
             .code
+            .unwrap_or_default()
     };
     assert_eq!(
         code(serde_json::json!({ "path": p, "needle": "" })),

@@ -107,12 +107,10 @@ fn housed(c: Option<&SessionContainer>) -> Option<Housed> {
     })
 }
 
-/// **一条会话整份脸的唯一构造口**（[`SessionFace`]）：点 · 字 · 语气 · 序 · 能做什么都只在这里判。
+/// **一条会话整份脸的构造口**（[`SessionFace`]）：点 · 字 · 语气 · 序 · 能做什么都只在这里判；那台看不见时那一张住会话簿那一层
+/// （`resident_client::book::unseen`，桌面与手机核心同一处）。
 pub(crate) trait SessionFaceExt: Sized {
     fn of(life: Life) -> Self;
-    /// 那台看不见（到它的连接断了）时那一张：本机后端在断的那一刻给那台活的 · 可重连的每一条发 `session_left` 带它（`control/feeds.rs`）；
-    /// `offline` 是那台的离线那一句（与机器成品的 `offline_said` 同一处取字），悬停 · 状态一句照它。
-    fn unseen(offline: Words) -> Self;
     /// 带上这条会话跑在哪个号下（`account`，宣告时判的那一个）。
     fn under(self, account: Option<String>) -> Self;
 }
@@ -127,36 +125,6 @@ fn say_yes(hint: String) -> CanSay {
 }
 
 impl SessionFaceExt for SessionFace {
-    fn unseen(offline: Words) -> Self {
-        let tip = offline;
-        SessionFace {
-            dot: SessionDot::Unknown,
-            life: WireLife::Unclear,
-            settled: false,
-            name: Words(copy_core::copy_text("sessionState.unseen.name", &[])),
-            line: tip.clone(),
-            tone: Tone::Plain,
-            order: 3,
-            account: None,
-            can: SessionCan {
-                close: CanClose::Menu,
-                resume: no(Words(copy_core::copy_text(
-                    "sessionState.unseen.noResume",
-                    &[],
-                ))),
-                term: CanTerm::No { why: tip.clone() },
-                reattach: no(tip.clone()),
-                model: no(tip.clone()),
-                permission: no(tip.clone()),
-                stop: no(tip.clone()),
-                end: no(tip.clone()),
-                // 离线照常可写可发：成待发，那台接上照原编号重交。
-                say: say_yes(copy_core::copy_text("composer.input.offline", &[])),
-            },
-            tip,
-        }
-    }
-
     fn under(mut self, account: Option<String>) -> Self {
         self.account = account;
         self
@@ -502,10 +470,10 @@ pub(crate) trait FrameMake {
     fn failed(id: String, f: crate::wire::detail::Failed) -> Frame;
 
     /// 硬臂那几条命令（`Run::Builtin`：链路 · 传输 · 终端订阅）就地被拒：详情里带命令名（同处理器回的失败）。
-    fn refused(id: &str, cmd: &str, code: &str, message: &str) -> Frame;
+    fn refused(id: &str, cmd: &str, code: &str, said: &str) -> Frame;
 
     /// 协议级失败（还没落到哪条命令上：认不出 · 读不懂 · 收场中）：详情里没有命令那一项。
-    fn err(id: &str, code: &str, message: &str) -> Frame;
+    fn err(id: &str, code: &str, said: &str) -> Frame;
 }
 
 impl FrameMake for Frame {
@@ -514,7 +482,7 @@ impl FrameMake for Frame {
             id: id.to_string(),
             ok: true,
             code: None,
-            message: None,
+            said: None,
             detail: None,
             data: None,
         })
@@ -544,23 +512,16 @@ impl FrameMake for Frame {
     }
 
     fn failed(id: String, f: crate::wire::detail::Failed) -> Frame {
-        Frame::Reply(Reply {
-            id,
-            ok: false,
-            code: Some(f.code),
-            message: Some(f.message),
-            detail: Some(f.detail),
-            data: f.data,
-        })
+        Frame::Reply(Reply::refused(id, f))
     }
 
-    fn refused(id: &str, cmd: &str, code: &str, message: &str) -> Frame {
-        let f = crate::wire::detail::Failed::new(Some(cmd), code, message.to_string(), None, None);
+    fn refused(id: &str, cmd: &str, code: &str, said: &str) -> Frame {
+        let f = crate::wire::detail::failed(Some(cmd), code, said.to_string(), None, None);
         Frame::failed(id.to_string(), f)
     }
 
-    fn err(id: &str, code: &str, message: &str) -> Frame {
-        let f = crate::wire::detail::Failed::new(None, code, message.to_string(), None, None);
+    fn err(id: &str, code: &str, said: &str) -> Frame {
+        let f = crate::wire::detail::failed(None, code, said.to_string(), None, None);
         Frame::failed(id.to_string(), f)
     }
 }

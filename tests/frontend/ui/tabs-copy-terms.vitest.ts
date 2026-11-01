@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * tab 层的界面文字**按术语表改词**之后，不许再长回来。
  *

@@ -13,7 +13,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::net::IpAddr;
 
-type CmdErr = (&'static str, String);
+use crate::common::said::Said;
 
 /// 一次最多看几个终端（与那台一次最多报几个同值）。
 const MAX_TERMINALS: usize = 16;
@@ -95,7 +95,7 @@ pub(crate) struct TerminalProcessesReq {
 pub(crate) fn answer_with(
     req: &TerminalProcessesReq,
     query: impl FnOnce() -> Result<String, String>,
-) -> Result<Processes, CmdErr> {
+) -> Result<Processes, Said> {
     let wanted = read_args(req)?;
     let found = match query().and_then(|raw| parse_tables(&raw)) {
         Ok(t) => decide(&wanted, &t),
@@ -143,12 +143,12 @@ pub(crate) fn product(found: &Found) -> Processes {
     }
 }
 
-fn bad(msg: &str) -> CmdErr {
-    ("bad_args", crate::common::contract::malformed(msg))
+fn bad(msg: &str) -> Said {
+    Said::new("bad_args", crate::common::contract::malformed(msg))
 }
 
 /// 入参 ⇒ 每格要找的连接（`None` = 不是经 ssh）。个数 1–16；地址认不出 ⇒ `bad_args`。
-pub(crate) fn read_args(req: &TerminalProcessesReq) -> Result<Vec<Option<Wanted>>, CmdErr> {
+pub(crate) fn read_args(req: &TerminalProcessesReq) -> Result<Vec<Option<Wanted>>, Said> {
     let ts = &req.terminals;
     if ts.is_empty() || ts.len() > MAX_TERMINALS {
         return Err(bad("`terminals` must be a non-empty array of at most 16"));
@@ -276,15 +276,16 @@ pub(crate) enum OpenedHere {
     Chain(Vec<Link>),
     /// 那个 shell 还在，底下没有 ssh（ssh 退了、窗口还开着）。
     NoSsh,
-    /// 那个进程号不在、或起始时刻对不上（shell 退了、进程号被复用了）· 标签认不出。
+    /// 那个进程号不在、或起始时刻对不上（shell 退了、进程号被复用了）。
     Gone,
 }
 
 /// 标签那个 shell 在这台进程表里的样子（[`OpenedHere`]）。底下几个 ssh ⇒ 最早起的那个（前奏之后起的那一个）。
-pub(crate) fn opened_chain(label: &str, procs: &HashMap<u32, Proc>) -> OpenedHere {
-    let Some((pid, start)) = crate::dial::opened_windows::label_parts(label) else {
-        return OpenedHere::Gone;
-    };
+pub(crate) fn opened_chain(
+    label: &crate::common::seen_terminal::WindowLabel,
+    procs: &HashMap<u32, Proc>,
+) -> OpenedHere {
+    let (pid, start) = (label.pid, label.start);
     let Some(shell) = procs.get(&pid).filter(|p| p.start != 0 && p.start == start) else {
         return OpenedHere::Gone;
     };

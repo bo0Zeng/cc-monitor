@@ -147,6 +147,8 @@ fun FilesScreen(
     openPath: String? = null,
 ) {
     val vm = koinViewModel<FilesViewModel> { parametersOf(hostId) }
+    // 目录与排序跟着进程重建回来（[KeepFilesLook]，住 FilesLook.kt）。
+    KeepFilesLook(vm)
     val snackbar = LocalAppSnackbar.current
     val ui by vm.ui.collectAsState()
     var dialog by remember { mutableStateOf<FilesDialog?>(null) }
@@ -269,7 +271,7 @@ private fun rememberDownloadLauncher(vm: FilesViewModel): (List<FilesLs.Entry>) 
             if (tree == null || es.isEmpty()) return@rememberLauncherForActivityResult
             val r = context.contentResolver
             runCatching { r.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
-            vm.download(es, TreeFolder(r, tree))
+            vm.download(es, tree.toString())
         }
     return remember(launcher) {
         { es ->
@@ -321,7 +323,8 @@ private fun ReadyContent(
     val bookmarkSaid by shelf.said.collectAsState()
     val oldBookmarks = koinInject<BookmarkRepository>()
     LaunchedEffect(shelf) { adoptOldBookmarks(shelf, oldBookmarks, hostId) }
-    LaunchedEffect(shelf, dir) { shelf.refresh() }
+    LaunchedEffect(shelf, dir) { shelf.refresh(dir.text) }
+    val bookmarkHere by shelf.here.collectAsState()
     val tokens = LocalAppTokens.current
     Column(Modifier.fillMaxSize()) {
         if (selection.active) {
@@ -329,7 +332,7 @@ private fun ReadyContent(
             PickBar(selection.size, menu, onClose = vm::unpick) { picked(it, vm, actions, onDialog) }
         } else {
             // 书签存那一串：名字不是合法 UTF-8 的目录不给星标。
-            val bookmarked = dir.text?.let { t -> t in bookmarks } ?: false
+            val bookmarked = dir.text?.let { t -> t in bookmarkHere } ?: false
             PathHeader(
                 dir = dir,
                 listing = listing,
@@ -547,7 +550,7 @@ private fun PathHeader(
 }
 
 /**
- * 〔一次性迁移 · 下一版删〕这台 Room 里旧的书签（书签从前只存在手机上）一次加到那台后端，答 ok 才删那几行；
+ * 〔一次性迁移 · 下一版删〕这台 Room 表里存着的书签（只在手机上的那几行）一次加到那台后端，答 ok 才删那几行；
  * 没答 ok ⇒ 留着，下次进这台的文件屏再迁。Room 那张表随下一次 Room 换形删。
  */
 private suspend fun adoptOldBookmarks(

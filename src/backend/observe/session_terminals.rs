@@ -9,6 +9,7 @@
 //! - 零定时器：只在被问时答。读不了别人的进程 ⇒ 照实说 `unreadable`。
 //! - 问它的是别台的本机后端（`--resident-call`，`faces/session_window_face.rs`）；本机会话那一问在同一进程里走 [`here_by`]（连进程号一起交）。
 
+use crate::common::said::Said;
 use crate::platform::child::Deadline;
 use serde::{Deserialize, Serialize};
 
@@ -51,17 +52,14 @@ pub(crate) struct SidReq {
 
 /// 帧面入口（宿主 `faces/feature_face.rs` 交家目录）：此刻显示它的终端，或一条原因。
 /// 码：`bad_args`（sid 形状不对）· `no_such_session` · `failed` / `child_timed_out`（问 tmux 那一发）。
-pub(crate) fn answer_at(
-    home: &std::path::Path,
-    req: &SidReq,
-) -> Result<Showing, (&'static str, String)> {
+pub(crate) fn answer_at(home: &std::path::Path, req: &SidReq) -> Result<Showing, Said> {
     let sid = req.sid.as_str();
     let pid = crate::observe::watcher::running_sessions(home)
         .into_iter()
         .find(|(s, _)| s == sid)
         .map(|(_, pid)| pid)
         .ok_or_else(|| {
-            (
+            Said::new(
                 "no_such_session",
                 crate::common::contract::malformed(
                     "no running session with that `sid` on this machine",
@@ -134,7 +132,7 @@ fn env(pid: u32, key: &str) -> Result<Option<String>, ()> {
 }
 
 /// `pid`（那个 claude 进程）此刻由谁在显示。tmux 起不来 / 报错 ⇒ `failed`（带它的原话）。
-pub(crate) fn shown_by(pid: u32) -> Result<Shown, (&'static str, String)> {
+pub(crate) fn shown_by(pid: u32) -> Result<Shown, Said> {
     let Ok(tmux) = env(pid, TMUX_ENV) else {
         return Ok(Shown::Unreadable);
     };
@@ -175,7 +173,7 @@ pub(crate) enum Here {
 
 /// `pid`（本机那个 claude 进程）此刻由哪个终端进程显示：在 tmux 里 ⇒ 连着它的 tmux 客户端（一个都没有 ⇒ `Detached`）；
 /// 不在 tmux 里、或读不出 tmux 那几格（Windows 读不到别的进程的环境）⇒ 它自己（它挂在那个终端上）。
-pub(crate) fn here_by(pid: u32) -> Result<Here, (&'static str, String)> {
+pub(crate) fn here_by(pid: u32) -> Result<Here, Said> {
     let in_tmux = env(pid, TMUX_ENV);
     if let Ok(Some(tmux)) = &in_tmux {
         match tmux_clients(pid, tmux)? {
@@ -203,7 +201,7 @@ enum Clients {
 }
 
 /// `pid` 的 `TMUX`（`tmux`）⇒ 那个 socket 上连着它所在会话的客户端。tmux 起不来 / 报错 ⇒ `failed`。
-fn tmux_clients(pid: u32, tmux: &str) -> Result<Clients, (&'static str, String)> {
+fn tmux_clients(pid: u32, tmux: &str) -> Result<Clients, Said> {
     let socket = tmux.split(',').next().unwrap_or_default();
     let Ok(Some(pane)) = env(pid, TMUX_PANE_ENV) else {
         return Ok(Clients::Unreadable);
@@ -235,18 +233,8 @@ fn terminal_of(pid: u32, activity: Option<u64>) -> Option<Terminal> {
     Some(Terminal {
         ssh: ssh.as_deref().and_then(parse_ssh_connection),
         activity,
-        window: window.as_deref().and_then(window_label),
+        window: window.and_then(|w| w.parse().ok()),
     })
-}
-
-/// 窗口标签：`<十进制>-<十进制>`（进程号 · 起始时刻），总长有界；别的形状不回显。
-pub(crate) fn window_label(raw: &str) -> Option<String> {
-    let t = raw.trim();
-    let (a, b) = t.split_once('-')?;
-    let digits = |x: &str, max: usize| {
-        !x.is_empty() && x.len() <= max && x.bytes().all(|c| c.is_ascii_digit())
-    };
-    (digits(a, 10) && digits(b, 20)).then(|| t.to_string())
 }
 
 /// `SSH_CONNECTION` 的四段：两个地址必须是 IP、两个口必须是端口号；不合 ⇒ `None`（当成不是经 ssh 连的）。
@@ -285,10 +273,7 @@ fn pane_ok(p: &str) -> bool {
 const LIST_CLIENTS_WITHIN: Deadline = Deadline::secs(5);
 
 /// 问那个 socket：连着 `pane` 所在会话的客户端（pid, 最近动静）。tmux 起不来 / 报错 ⇒ `failed`。
-pub(crate) fn list_clients(
-    socket: &str,
-    pane: &str,
-) -> Result<Vec<(u32, u64)>, (&'static str, String)> {
+pub(crate) fn list_clients(socket: &str, pane: &str) -> Result<Vec<(u32, u64)>, Said> {
     let out = crate::host::tmux::child(None)
         .arg(crate::common::tmux_utf8::UTF8_CLIENT_FLAG)
         .args(["-S", socket, "list-clients", "-t", pane, "-F"])
@@ -297,7 +282,7 @@ pub(crate) fn list_clients(
         .run(LIST_CLIENTS_WITHIN)
         .map_err(|e| e.into_cmd_err("failed", |e| format!("tmux: {e}")))?;
     if !out.status.success() {
-        return Err((
+        return Err(Said::new(
             "failed",
             format!(
                 "tmux list-clients: {}",

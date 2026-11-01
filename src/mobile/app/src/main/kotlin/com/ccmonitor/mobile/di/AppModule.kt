@@ -10,6 +10,7 @@ import com.ccmonitor.mobile.link.CoreResident
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.link.PendingResend
 import com.ccmonitor.mobile.link.hostOutbox
+import com.ccmonitor.mobile.service.KeepAliveWork
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ssh.OldHostKeys
 import com.ccmonitor.mobile.ui.chat.ChatController
@@ -23,6 +24,7 @@ import com.ccmonitor.mobile.ui.chats.HostName
 import com.ccmonitor.mobile.ui.chats.RecentChats
 import com.ccmonitor.mobile.ui.chats.hostChats
 import com.ccmonitor.mobile.ui.files.FilesViewModel
+import com.ccmonitor.mobile.ui.files.TreeFolder
 import com.ccmonitor.mobile.ui.host.HostViewModel
 import com.ccmonitor.mobile.ui.identity.IdentityViewModel
 import com.ccmonitor.mobile.ui.needs.NeedsBoard
@@ -95,7 +97,13 @@ val appModule =
             val hosts = get<HostRepository>()
             val files = BackendFiles(androidContext())
             val cache = get<LocalCache>()
-            HostBackends(get(), labelOf = { id -> hosts.get(id)?.label ?: id }, keptOf = cache::batches, backendSlots = files::slots)
+            HostBackends(
+                get(),
+                labelOf = { id -> hosts.get(id)?.label ?: id },
+                keptOf = cache::batches,
+                saves = TreeFolder(androidContext().contentResolver),
+                backendSlots = files::slots,
+            )
         }
         // 待发重交（进程级、开 app 就起）：那台一接上就把它名下各会话的待发照原编号重交，不等打开那条会话。
         single(createdAtStart = true) {
@@ -136,7 +144,7 @@ val appModule =
         viewModel { IdentityViewModel(get()) }
         viewModel { KeysEditorViewModel(get(), get()) }
         viewModel { HostViewModel(get(), get(), get(), get()) }
-        // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, tmuxSession, resume)`
+        // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, tmuxSession, resume, run)`
         // 一一对应，空串是 null 的哨兵；按位取值是因为多参解构超过 detekt 上限。
         viewModel { params ->
             SessionViewModel(
@@ -144,6 +152,7 @@ val appModule =
                 cdArg = params.get(1),
                 tmuxArg = params.get(2),
                 resumeArg = params.get(3),
+                runArg = params.get(4),
                 manager = get(),
                 hostRepo = get(),
                 identityRepo = get(),
@@ -155,6 +164,8 @@ val appModule =
         // 文件屏的浏览状态 VM：读写问那台后端（这台的常驻流）；SSH 连接与终端共用，按持有者计数保活。
         viewModel { (hostId: String) -> FilesViewModel(hostId, get(), get(), get()) }
         single { HostConnector(get(), get(), get()) }
+        // 保活服务的存活判据（会话 · 在飞轮次 · 核心里在传的）：服务照它自停，应用照它在「有活」那一下起服务。
+        single { KeepAliveWork(get(), get(), get()) }
         single { OldHostKeys(get()) } // 主机钥匙旧表迁进核心（只活这一版）：迁移对不上那一句与它的出路
         single { SessionTabManager() } // 多 tab 的应用级状态：打开的会话和按 key 保活的 ViewModelStore
         single { DevSeeder(androidContext(), get(), get()) }

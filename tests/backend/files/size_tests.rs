@@ -118,7 +118,7 @@ fn the_command_face_answers_exactly_the_declared_fields() {
         &Default::default(),
     )
     .expect_err("不存在的路径算出了大小");
-    assert_eq!(e.code, "unreadable");
+    assert_eq!(e.code_or_fallback(), "unreadable");
     // 原因说成原因词（全仓那一张表），系统原话不上句子、跟着进复制详情。
     let not_found = copy_core::io_reason(std::io::ErrorKind::NotFound);
     assert_eq!(
@@ -132,14 +132,14 @@ fn the_command_face_answers_exactly_the_declared_fields() {
     let e =
         crate::files::tests::answer_wire("files-size", &serde_json::json!({}), &Default::default())
             .expect_err("没给 path 竟然收了");
-    assert_eq!(e.code, "bad_args");
+    assert_eq!(e.code_or_fallback(), "bad_args");
     let e = crate::files::tests::answer_wire(
         "files-size",
         &serde_json::json!({ "path": "" }),
         &Default::default(),
     )
     .expect_err("空路径竟然收了");
-    assert_eq!(e.code, "bad_path");
+    assert_eq!(e.code_or_fallback(), "bad_path");
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -154,7 +154,7 @@ fn the_index_does_not_walk_into_another_filesystem() {
     let mounted = t.join("m");
     let has = |snap: &crate::files::index::Snapshot, p: &std::path::Path| {
         let want = crate::files::raw::path_bytes(p).to_vec();
-        snap.iter().any(|e| e == want.as_slice())
+        (0..snap.entries()).any(|i| snap.get(i) == Some(want.as_slice()))
     };
     let snap = crate::files::index::build_with(&t, |p| Some(if p == mounted { 2 } else { 1 }));
     assert_eq!(snap.stats().skipped_mounts, 1);

@@ -18,20 +18,10 @@ const REGISTERED: &[(&str, &str, &str)] = &[
         "1s 重绘一次网格。**不取数** —— 只把已有状态（相对时间等）重画；\
              取数走事件（`events.ts` 的帧）。这一类是后端那条护栏头注说的「正当周期行为」。",
     ),
-    // `tab-session-actions.ts` 那条 data-poll（`awaitExitFor`：等 claude 退出的 1s 轮询）退役：
-    //   换号重启不再键入 `/exit` 等它自己退，直接 kill ⇒ 没有要等的事，行删。
-    // `control/ccm/plan.rs` 那一行（容器路收尾「等信任框、替用户按 Enter」的六轮 `sleep 0.5`）退役：
-    //   信任由用户在会话里自己答，那段等待整条删了 ⇒ 行删（那份文件照旧在扫描面里，见 `scan()`）。
-    // ★★ **08-10（devbench F07）扩面后逮到的一族**：`src/shared/cc-bus/scripts/`。
-    // 本表原来的人群是「`src/**/*.ts` + 写死的 `shared/ccm` 一个文件名」⇒ 这棵树整个在账外。
-    // ⚠ 第四类 `one-shot` 是这次新加的：shell 那条针是宽的（`contains("sleep ")`），
-    // 一次性 sleep 也会命中。**刻意不收窄针**（宁可宽松让人判断，也不要用严格的错误引入噪声）
+    // ⚠ 第四类 `one-shot`：shell 那条针是宽的（`contains("sleep ")`），一次性 sleep 也会命中。
+    // **刻意不收窄针**（宁可宽松让人判断，也不要用严格的错误引入噪声）
     // —— 收窄会漏掉「新加一个 `sleep 1` 在循环里」那种真轮询。代价是一次性的也要登记一行，
     // 而那正是「默认拒绝」想要的：新加一处就得回答它是哪一类。
-    // `src/shared/cc-bus/scripts/` 里那条长驻 broker（本表扩面当天逮到的唯一真轮询：每 0.5s 扫一次队列目录）
-    //   随「投递只一条路」整份删了 ⇒ 行删；同批删的两条一次性 `sleep`（收会话的宽限 · 起会话的让路）跟着删。
-    // `src/shared/cc-bus/scripts/cc-bus-lib.sh` 那一行（敲门时两发 send-keys 之间的 `sleep 0.3`）退役：
-    //   敲门是投进对方会话的输入队（后端 `session-queue-put`，投递那一下补回车），往窗格里打字那一档整条删了 ⇒ 行删。
 ];
 
 /// ★ **前提触发器**：本模块头注说「Rust 那半的家是 `rust_timer_registry`」——
@@ -39,21 +29,19 @@ const REGISTERED: &[(&str, &str, &str)] = &[
 ///
 /// # 为什么这条值得单独存在
 ///
-/// 这段指针的**上一版**是「Rust 侧刻意不在范围内，如实登记为未做，不假装覆盖了」。
-/// 那句话在写下时是真的，F09 把那半做掉之后它就烂了 —— 而**没有任何东西会因此变红**，
-/// 直到 audit-0805 F14 §4 复核时才发现。
+/// 「Rust 侧刻意不在范围内，如实登记为未做」这类指针在写下时是真的，
+/// 那半做掉之后它就烂了 —— 而**没有任何东西会因此变红**。
 ///
 /// ★ **一句自称诚实的话烂掉，比一个错数字更贵**：错数字会被人核对，
 /// 而「我如实记了未做」读起来像「这里有人想过了」，下一个人就不会去查。
-/// ⇒ 指针必须有判据看着，跟散文数字一样（定框 E12）。
+/// ⇒ 指针必须有判据看着，跟散文数字一样。
 #[test]
 fn the_other_half_of_the_sweep_still_has_a_home() {
     let root = repo_root();
     let other = root.join("tests/frontend/shell/rust_timer_registry.rs");
     let body = fs::read_to_string(&other).unwrap_or_default();
     // ⚠ `contains_word` 不是 `contains`：变异实测把 `REGISTERED` 改名成 `REGISTERED_X`，
-    // 裸 `contains` **照样绿**（前缀）。那正是 F24 那一族 —— 而它在这条**新写的**判据里
-    // 又复发了一次，说明「知道有这个坑」不等于不踩。原语在手就别手写匹配。
+    // 裸 `contains` **照样绿**（前缀）。「知道有这个坑」不等于不踩：原语在手就别手写匹配。
     assert!(
         guard_core::contains_word(&body, "REGISTERED"),
         "`rust_timer_registry` 不见了（或不再是登记表）。\n\
@@ -66,7 +54,7 @@ fn the_other_half_of_the_sweep_still_has_a_home() {
     // ⚠ **只看头注那半**（`production_source` 把 `#[cfg(test)]` 段剥掉）。
     // 变异实测：拿整份文件 `contains` 时，**本条自己的代码里就写着这个名字**
     // （上面那个路径 join、下面那个 `mod` 断言）⇒ 散文里的指针被删光了它照样绿。
-    // 那是 F23 那一族「判据匹配到自己」—— 在这条**新写的**判据里又复发了一次。
+    // 那是「判据匹配到自己」那一族。
     let head_note = guard_core::production_source(&me);
     // 反向：头注真的指过去了才算。只留判据不改散文，读的人还是被那句旧话骗。
     assert!(
@@ -141,16 +129,10 @@ fn is_periodic(line: &str, is_shell: bool) -> bool {
 
 /// 扫描面：`src/**/*.ts`（排除测试）+ **`shared/` 下所有 shell 脚本**。
 ///
-/// ⚠ **08-10（devbench F07）扩面**：原来这里是 `files.push(root.join("shared/ccm"))`
-/// —— **一个写死的文件名**。头注当时写的范围「TS 与 `shared/ccm`」在写下时是对的，
-/// 而 `src/shared/cc-bus/` 进仓之后就成了一个没人管的角落：那里当年有个**长驻 broker 进程**（后来删了），
-/// 每 0.5s 醒一次扫队列目录，它自己的注释逐字承认
-/// 「队列空时轮询间隔秒(**本实现恒轮询,未用 inotify**)」—— 而本表看不见它。
-///
-/// ★ 这不是「另一个仓不该管」：同仓的 `shell_lint_registry`（扫描面含
-/// `src/shared/cc-bus/scripts/*`）与 `session_name_registry` **都**已经
-/// 把那棵树算进人群了，**只有轮询这张表没跟上**。⇒ 人群改成**遍历**，
-/// 加一个脚本自动进人群，不用谁记得回来 push 一行。
+/// ⚠ shell 脚本那一半是**遍历**，不是写死的文件名：写死的名单看不见新进仓的那棵树
+/// （一个每 0.5s 醒一次扫队列目录的长驻进程，就能在名单外面轮询而本表不红）。
+/// 同仓的 `shell_lint_registry`（扫描面含 `src/shared/cc-bus/scripts/*`）与
+/// `session_name_registry` 也是同一个人群 ⇒ 加一个脚本自动进人群，不用谁记得回来 push 一行。
 fn scan() -> Vec<(String, usize)> {
     let root = repo_root();
     let mut files: Vec<PathBuf> = Vec::new();
@@ -481,22 +463,15 @@ fn every_scheduling_call_site_carries_a_classification_mark() {
     }
 }
 
-/// ★ **身份 poller 不许回来** —— `U-NP④`（2026-08-14）之后 `shared/ccm` 里
+/// ★ **身份 poller 不许回来** —— ccm 渲出去的 shell 里
 /// **一条与会话同寿的循环都不许有**。
 ///
-/// # 这条判据取代了谁
+/// # 钉的是什么
 ///
-/// 它的**上一版**
-/// 钉的是「那条每秒循环每次醒来不许起外部进程」（audit-0805 F14 第六刀：管道形态
-/// 每 tick 7 次 clone/execve，纯 builtin 0 次）。那一版的头注**自己写着**：
-/// 「本条钉的是**每次醒来的代价**，不是醒不醒；『别每秒醒』要 inotify，
-/// 得动 ccm 的进程模型 —— 如实登记为未做」。
-///
-/// 要求「**可以动ccm. 不要轮询**」＋「**ccm做到必须走backend**」
-/// ⇒ 那件「未做」被做掉了，做法不是给 ccm 上 inotify（破「纯 POSIX shell、零第三方」，
-/// 而 ccm 要经 `include_str!` 部署到任意远端），而是**把通道 B 整条搬去 backend**
-///（`src/backend/control/identity_tag.rs`，由它已有的 pidfile inotify 驱动）。
-/// ⇒ 「醒来的代价」这个量**不再存在**，钉它的判据必须换成钉「它真的没了」。
+/// 要求「**可以动ccm. 不要轮询**」＋「**ccm做到必须走backend**」。
+/// 身份通道 B 住后端（`src/backend/control/identity_tag.rs`，由它已有的 pidfile inotify 驱动），
+/// 不在 ccm 里上 inotify（破「纯 POSIX shell、零第三方」，而 ccm 要部署到任意远端）。
+/// ⇒ 没有「每次醒来的代价」可量，本条钉的是「那条与会话同寿的循环真的没了」。
 ///
 /// # 为什么不是零命中的空守卫
 ///
@@ -505,10 +480,9 @@ fn every_scheduling_call_site_carries_a_classification_mark() {
 /// 下面第二段断言正是靠它证明抽取器没有空转。
 #[test]
 fn the_identity_poller_is_gone_for_good() {
-    // 🔴 **语料换了：`shared/ccm` → `control/ccm/{mod,plan}.rs`。**
-    //    〔用@09-11 `K33`〕那个 bash 脚本删了，而它渲出来的那段 shell（容器路的 send-keys
-    //    载荷与收尾）今天由这两份 Rust 产出 ⇒ 「与会话同寿的循环不许回来」
-    //    这件事要盯的是**产出方**。剥注释也跟着换成 Rust 那套（`strip_comment_lines`）。
+    // 🔴 **语料是 `control/ccm/{mod,plan}.rs`**：容器路的那段 shell（send-keys
+    //    载荷与收尾）由这两份 Rust 渲出来 ⇒ 「与会话同寿的循环不许回来」
+    //    这件事要盯的是**产出方**。剥注释用 Rust 那套。
     let root = repo_root();
     let raw: String = ["mod.rs", "plan.rs"]
         .iter()
@@ -545,7 +519,7 @@ fn the_identity_poller_is_gone_for_good() {
         assert!(
             !prod.contains(shape),
             "`control/ccm/` 渲出去的 shell 里又出现了 `{shape}` —— 那是一条**与会话同寿**的循环。\n\
-                 `U-NP④` 把身份通道 B 整条搬去了后端（`control/identity_tag.rs`），\n\
+                 身份通道 B 住后端（`control/identity_tag.rs`），\n\
                  要求：「不要轮询」「ccm 做到必须走后端」。\n\
                  ⚠ 别把它当成「加个 sleep 兜一下更稳」——那正是这里要根除的东西：\n\
                  每会话一条、跑在**远端**机器上、与会话同寿。\n\
@@ -564,17 +538,7 @@ fn the_identity_poller_is_gone_for_good() {
     );
 }
 
-//
-//   它钉的是 `U-NP④`（08-14）那条：**在 tmux 里找不到 backend ⇒ 响亮失败（rc=2）**，
-//   形状面四格（身份分支真去查 backend · 找不到就 `die` · 逃生口会说话 · 前置检查排在
-//   任何 `tmux` 调用之前）。〔用@09-11 `K33`〕「后端只有一个」之后，
-//   **「找不到后端」这个概念不存在了**：敲的那个命令就是后端。
-//   当时删掉的那 15 条 e2e 判的是同一件事，判词同为 `N`。
-//
-// ⚠ **如实边界，别读成「这条风险没了」**：`K-R48` 第一拍逐字登记着一格**没裁**的 ——
-//   「一次性模式在 tmux 内由谁去打 `@ccm_sid`」。今天一次性模式**一个字都不说**
-//   （那 356 条里唯一两条判 `K` 的就是它，见 verdicts 第 77–78 行）。
-//   ⇒ 「没人打身份」这件事今天**没有任何判据盯着**，归 `K-R48` 下一拍。
+// ⚠ **如实边界**：一次性模式在 tmux 内由谁去打 `@ccm_sid`，今天**没有判据盯着**。
 
 /// ★ 把两处**散文纪律**变成机检：这两个文件里一处周期唤醒都不许有。
 #[test]

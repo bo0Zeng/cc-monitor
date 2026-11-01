@@ -15,7 +15,8 @@
 //! - 不改 agent 的记录文件（R18），只替人按那一家自己的那几下。
 
 pub(crate) use crate::agents::{RewindFace, RewindRow, RewindScreen};
-use crate::control::terminals::{no_said, CmdErr};
+use crate::common::said::Said;
+use crate::control::terminals::no_said;
 use crate::control::terminals_wire::{Sent, SentResult};
 pub(crate) use cmd_wire::rewind::{
     Rewind, RewindChoiceRow, RewindHow, RewindOptions, RewindWhen, RewindWhenRow,
@@ -39,17 +40,17 @@ pub(crate) struct UserLine {
 /// 回退那一串要的副作用（判据拿假 agent 的终端喂）。
 pub(crate) trait RewindIo {
     /// 此刻那一屏（纯文本行）。
-    fn screen(&mut self) -> Result<Vec<String>, CmdErr>;
+    fn screen(&mut self) -> Result<Vec<String>, Said>;
     /// 按一个键（`terminal-input` 键表里的名字）。
-    fn press(&mut self, key: &str) -> Result<Sent, CmdErr>;
+    fn press(&mut self, key: &str) -> Result<Sent, Said>;
     /// 等下一次重画（到期没变 ⇒ `false`）。
     fn redrawn(&mut self) -> bool;
     /// 隔一下（毫秒；调出菜单那几下之间）。
     fn pause(&mut self, ms: u64);
     /// 送进一句（字面字 ＋ 回车）。
-    fn say(&mut self, text: &str) -> Result<Sent, CmdErr>;
+    fn say(&mut self, text: &str) -> Result<Sent, Said>;
     /// 记录主线上人说过的那几句（先说的在前）。
-    fn lines(&mut self) -> Result<Vec<UserLine>, CmdErr>;
+    fn lines(&mut self) -> Result<Vec<UserLine>, Said>;
 }
 
 /// 这一趟要做的：退到哪一句之前 · 怎么退 · 什么时候退 · 改好的那一句。
@@ -258,7 +259,7 @@ pub(crate) fn walk(
     face: &RewindFace,
     plan: Plan<'_>,
     io: &mut dyn RewindIo,
-) -> Result<Walked, CmdErr> {
+) -> Result<Walked, Said> {
     let Some(choice) = face.choices.iter().find(|c| c.how == plan.rewind.how) else {
         return Ok(Walked::No(Why::Unsupported));
     };
@@ -432,12 +433,12 @@ struct Walker<'a> {
 }
 
 impl Walker<'_> {
-    fn read(&mut self) -> Result<RewindScreen, CmdErr> {
+    fn read(&mut self) -> Result<RewindScreen, Said> {
         Ok((self.face.read)(&self.io.screen()?))
     }
 
     /// 按一下；被拒 ⇒ 原因（不再按别的）。
-    fn press(&mut self, key: &str) -> Result<Option<Why>, CmdErr> {
+    fn press(&mut self, key: &str) -> Result<Option<Why>, Said> {
         let sent = self.io.press(key)?;
         Ok(match sent.result {
             SentResult::Delivered => None,
@@ -446,7 +447,7 @@ impl Walker<'_> {
     }
 
     /// 等屏变到 `moved` 认的样子（至多 [`REDRAWS_PER_PRESS`] 次重画）；回最后读到的那一屏。
-    fn settle(&mut self, moved: impl Fn(&RewindScreen) -> bool) -> Result<RewindScreen, CmdErr> {
+    fn settle(&mut self, moved: impl Fn(&RewindScreen) -> bool) -> Result<RewindScreen, Said> {
         let mut now = self.read()?;
         for _ in 0..REDRAWS_PER_PRESS {
             if moved(&now) {
@@ -461,7 +462,7 @@ impl Walker<'_> {
     }
 
     /// 输入行里有字 ⇒ 照申报的删字键删掉，读屏确认空了；删不掉 ⇒ 原因。
-    fn clear(&mut self) -> Result<Option<Why>, CmdErr> {
+    fn clear(&mut self) -> Result<Option<Why>, Said> {
         let RewindScreen::Prompt { typed } = self.read()? else {
             return Ok(Some(Why::MenuUnlike));
         };
@@ -486,7 +487,7 @@ impl Walker<'_> {
 
     /// 中途对不上：确认页 · 列表上一层层按「退一层」退回输入行（每一下之前读屏认得出才按），回「没退成」。
     /// 退不回去（认不出那一屏 · 按了没回到输入行）⇒ 结局说不准。
-    fn back_out(&mut self, why: Why) -> Result<Walked, CmdErr> {
+    fn back_out(&mut self, why: Why) -> Result<Walked, Said> {
         for _ in 0..3 {
             match self.read()? {
                 RewindScreen::Prompt { .. } => return Ok(Walked::No(why)),

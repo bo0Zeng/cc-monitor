@@ -45,7 +45,7 @@ enum Outcome {
     Reply {
         ok: bool,
         code: Option<String>,
-        message: Option<String>,
+        said: Option<String>,
         detail: Option<String>,
         data: Option<Value>,
     },
@@ -478,16 +478,16 @@ impl InboundClient {
             }
             Ok(Ok(Outcome::Reply {
                 code,
-                message,
+                said,
                 detail,
                 data,
                 ..
-            })) => Err(CallError::Remote {
-                code: code.unwrap_or_else(|| "unspecified".to_string()),
-                message: message.unwrap_or_default(),
+            })) => Err(CallError::Remote(cmd_wire::failed::Failed {
+                code: cmd_wire::failed::Failed::code_or_fallback(code),
+                said: said.unwrap_or_default(),
                 detail: detail.unwrap_or_default(),
-                data: data.map(|d| d.to_string()),
-            }),
+                data,
+            })),
             Ok(Ok(Outcome::Cancelled)) => Err(CallError::Cancelled),
             // 登记条目被摘掉/连接没了 ⇒ 发送端 drop。
             Ok(Err(_)) => Err(CallError::Disconnected),
@@ -505,7 +505,7 @@ impl InboundClient {
         id: &str,
         ok: bool,
         code: Option<String>,
-        message: Option<String>,
+        said: Option<String>,
         detail: Option<String>,
         data: Option<Value>,
     ) -> bool {
@@ -514,7 +514,7 @@ impl InboundClient {
             Outcome::Reply {
                 ok,
                 code,
-                message,
+                said,
                 detail,
                 data,
             },
@@ -568,7 +568,7 @@ impl InboundClient {
 
     fn deliver(&self, id: &str, outcome: Outcome) -> bool {
         let Some(Waiter { tx, withdraws }) = self.take_pending(id) else {
-            // ★ 归不到任何命令头上的应答。**最要紧的是别把 code/message 丢了** ——
+            // ★ 归不到任何命令头上的应答。**最要紧的是别把 code/said 丢了** ——
             // 它们往往是唯一能说清「为什么那条命令没反应」的东西。
             //
             // backend 对**协议级**错误（坏 JSON / 超长单行）回的 `id` 是**空串**
@@ -577,12 +577,12 @@ impl InboundClient {
                 Outcome::Reply {
                     ok: false,
                     code,
-                    message,
+                    said,
                     ..
                 } => format!(
                     "（错误应答 code={} message={}）",
                     code.as_deref().unwrap_or("-"),
-                    message.as_deref().unwrap_or("-")
+                    said.as_deref().unwrap_or("-")
                 ),
                 _ => String::new(),
             };
@@ -859,7 +859,7 @@ pub fn deliver_answer<R>(
     use cmd_wire::frame::Frame;
     match frame {
         Frame::Reply(r) => {
-            client.route_reply(&r.id, r.ok, r.code, r.message, r.detail, r.data);
+            client.route_reply(&r.id, r.ok, r.code, r.said, r.detail, r.data);
             None
         }
         Frame::Cancelled(c) => {

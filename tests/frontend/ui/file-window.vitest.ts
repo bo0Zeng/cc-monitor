@@ -66,9 +66,9 @@ describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
   });
 
   it("开不起来 ⇒ 交给失败 toast（壳那一句作标题、复制详情、灰字是那台），回 false", async () => {
-    // 壳命令失败那一形（`detail::Said`）。
+    // 壳命令失败那一形（交出去那一形 `Failed`：码 · 那一句 · 复制详情）。
     const detail = `${copyText("detail.label.command")}：open_file_window`;
-    invokeMock.mockRejectedValue({ said: "窗口没起来：没有图形会话", detail });
+    invokeMock.mockRejectedValue({ code: "failed", said: "窗口没起来：没有图形会话", detail });
     expect(await openFileWindow(CFG, { dir: "/srv" })).toBe(false);
     expect(toastMock).toHaveBeenCalledTimes(1);
     const [title, e, opts] = toastMock.mock.calls[0] as [string, Error & { detail: string }, { fact: string }];

@@ -356,7 +356,7 @@ export class FakeBackend {
   async settled(): Promise<void> {
     await this.ready;
     // 主界面订了会话流的那几台都报完清单（收场 · 断了那几样是收到清单才排上的）：按「又一台报完了」醒，不按钟点问；
-    // 到兜底上限还有没报完的 ⇒ 抛、说是哪几台（从前至多等 15 秒就往下走：机器忙时清单晚到，截到的是收场之前那一刻）。
+    // 到兜底上限还有没报完的 ⇒ 抛、说是哪几台（不到点就往下走的话，机器忙时清单晚到，截到的是收场之前那一刻）。
     const unlisted = (): string[] => [...this.shellSubs.values()].filter((s) => s.kind === "session-lines" && !this.listedOrigins.has(s.origin)).map((s) => s.origin);
     const t0 = Date.now();
     while (unlisted().length > 0) {

@@ -527,7 +527,10 @@ fn user_scope_hits_are_what_the_stream_draws_as_said_by_the_person() {
         assert_eq!(got, want, "帧面 · include_tools={tools}");
         assert_eq!(v["total"].as_u64(), Some(want.len() as u64));
     }
-    assert_eq!(ask("bogus", false).unwrap_err().0, "bad_args");
+    assert_eq!(
+        ask("bogus", false).unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -537,15 +540,12 @@ fn find_wire(
     cmd: &str,
     args: &serde_json::Value,
     tz: &crate::Tz,
-) -> Result<serde_json::Value, (String, String)> {
+) -> Result<serde_json::Value, crate::common::said::Said> {
     assert_eq!(cmd, "history-find");
-    let req = crate::wire::typed::take(args).map_err(|e| (e.code, e.message))?;
+    let req = crate::wire::typed::take(args)?;
     crate::faces::history_face::find_at(home, req, tz)
         .map(|r| serde_json::to_value(r).unwrap())
-        .map_err(|e| {
-            let f = crate::wire::typed::Codes::into_fail(e);
-            (f.code, f.message)
-        })
+        .map_err(crate::wire::typed::Codes::into_said)
 }
 
 /// ★ 命中带行号：会话内查找（现扫与常驻索引两臂）与全局搜索的每条命中，行号 ＝ 那一条在扫描图骨架索引里的下标

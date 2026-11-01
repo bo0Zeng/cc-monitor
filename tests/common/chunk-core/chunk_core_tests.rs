@@ -25,7 +25,7 @@ struct Box {
 }
 
 impl Ask for Box {
-    type Fail = String;
+    type Err = String;
     async fn ask<C: Call + Sync>(&self, req: &C) -> Result<C::Reply, String> {
         let n = {
             let mut a = self.asks.borrow_mut();
@@ -201,7 +201,7 @@ fn a_failed_block_a_stop_and_a_local_read_error_each_end_it_their_own_way() {
 fn a_download_reads_block_by_block_until_the_end_and_hands_each_block_over() {
     struct Keep(Vec<u8>);
     impl Sink for Keep {
-        type Fail = String;
+        type Err = String;
         async fn put(&mut self, bytes: Vec<u8>) -> Result<(), String> {
             self.0.extend(bytes);
             Ok(())

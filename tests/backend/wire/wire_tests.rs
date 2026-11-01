@@ -215,7 +215,6 @@ fn the_hello_witness_has_exactly_one_way_to_exist() {
     );
 }
 use super::*;
-use crate::wire::SessionFaceExt as _;
 use serde_json::Value;
 
 /// Helper: assert a line is a single JSON object ending in exactly one
@@ -402,7 +401,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 id: s("q1"),
                 ok: false,
                 code: Some(s("bad_args")),
-                message: Some(s("m")),
+                said: Some(s("m")),
                 detail: Some(s("码：bad_args")),
                 data: Some(serde_json::json!({"k": 1})),
             }),
@@ -410,7 +409,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 id: s("q1"),
                 ok: true,
                 code: None,
-                message: None,
+                said: None,
                 detail: None,
                 data: None,
             }),
@@ -1311,12 +1310,12 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("live_card", "phase", "string"),
     ("live_card", "clipped", "bool"),
     ("live_card", "blocks", "array"),
-    // 〔第二个前端 2026-10-08〕**一切帧命令的应答与撤销**。失败那三格（`code` / `message` / `detail`）是
+    // 〔第二个前端 2026-10-08〕**一切帧命令的应答与撤销**。失败那三格（`code` / `said` / `detail`）是
     // 失败卡与「复制详情」的全部原料：`detail` 跟着帧回，而最常见的那条错正好是「联系不上」—— 那时再去取就取不到。
     ("reply", "id", "string"),
     ("reply", "ok", "bool"),
     ("reply", "code", "string"),
-    ("reply", "message", "string"),
+    ("reply", "said", "string"),
     ("reply", "detail", "string"),
     ("reply", "data", "object"),
     ("cancelled", "id", "string"),
@@ -1370,7 +1369,7 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             id: "1".into(),
             ok: false,
             code: s.clone(),
-            message: s.clone(),
+            said: s.clone(),
             detail: s.clone(),
             data: Some(serde_json::json!({})),
         }),
@@ -1785,7 +1784,7 @@ fn session_frames_say_whether_the_session_can_be_ended() {
         no(copy_core::copy_text("beSession.activity.unclear", &[]))
     );
     assert_eq!(
-        end(SessionFace::unseen(crate::common::cells::Words(
+        end(resident_client::book::unseen(crate::common::cells::Words(
             "gpu-01 离线".into()
         ))),
         no("gpu-01 离线".into())
@@ -1858,7 +1857,7 @@ fn every_life_has_one_whole_face_and_it_matches_the_golden() {
         .collect();
     produced.insert(
         "unseen".into(),
-        serde_json::to_value(SessionFace::unseen(crate::common::cells::Words(
+        serde_json::to_value(resident_client::book::unseen(crate::common::cells::Words(
             comms_inward::chan::said::offline("gpu-01"),
         )))
         .unwrap(),
@@ -1927,17 +1926,18 @@ fn the_written_faces_are_built_in_one_place_only() {
         }
     }
     let want: std::collections::BTreeSet<String> = [
-        "of · SessionFace",
-        "unseen · SessionFace",
-        "live_face · SessionFace",
-        "of_parts · NameFace",
+        "src/backend/wire/mod.rs · of · SessionFace",
+        "src/backend/wire/mod.rs · live_face · SessionFace",
+        "src/backend/wire/mod.rs · of_parts · NameFace",
+        // 那台看不见时那一张住会话簿那一层（桌面后端与手机核心同一处）。
+        "src/comms/resident-client/book.rs · unseen · SessionFace",
     ]
     .iter()
-    .map(|s| format!("src/backend/wire/mod.rs · {s}"))
+    .map(|s| s.to_string())
     .collect();
     assert_eq!(
         seen, want,
-        "会话那几格写好的字只许经后端 `wire` 的构造口造（`SessionFace::of` · `NameFace::of_parts`）"
+        "会话那几格写好的字只许经构造口造（`SessionFace::of` · `NameFace::of_parts` · `resident_client::book::unseen`）"
     );
 }
 
@@ -2039,7 +2039,7 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
 fn the_unseen_face_is_unknown_closes_from_the_menu_and_says_that_machines_offline_line() {
     use cmd_wire::frame::{Allow, CanClose, CanTerm, SessionDot};
     let said = comms_inward::chan::said::offline("gpu-01");
-    let f = crate::wire::SessionFace::unseen(crate::common::cells::Words(said.clone()));
+    let f = resident_client::book::unseen(crate::common::cells::Words(said.clone()));
     assert_eq!(f.dot, SessionDot::Unknown);
     assert_eq!(f.life, crate::wire::WireLife::Unclear);
     assert!(!f.settled, "看不见不是定局：重连后那台的帧把脸带回来");

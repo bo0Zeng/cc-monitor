@@ -9,16 +9,16 @@ use std::collections::BTreeSet;
 /// 线上那一份入参 ⇒ 本体 ⇒ 线上那一份回包（解入参同 typed 分派那一步：形状不对 ⇒ `bad_args`）。
 fn wired<R: serde::de::DeserializeOwned, T: serde::Serialize>(
     args: &Value,
-    f: impl FnOnce(&R) -> Result<T, CmdErr>,
-) -> Result<Value, CmdErr> {
+    f: impl FnOnce(&R) -> Result<T, Said>,
+) -> Result<Value, Said> {
     let req: R = serde_json::from_value(args.clone()).map_err(|e| bad(&e.to_string()))?;
     f(&req).map(|t| serde_json::to_value(t).unwrap())
 }
-fn where_(args: &Value, d: &Deps) -> Result<Value, CmdErr> {
+fn where_(args: &Value, d: &Deps) -> Result<Value, Said> {
     wired(args, |r| super::where_(r, d))
 }
 /// 停（会话脸都说结束得了，称呼是 sid 的头八位）。
-fn stop(args: &Value, d: &Deps) -> Result<Value, CmdErr> {
+fn stop(args: &Value, d: &Deps) -> Result<Value, Said> {
     let title = |sid: &str| sid.chars().take(8).collect::<String>();
     stop_with(args, d, &|_, _| crate::wire::Allow::Yes, &title)
 }
@@ -27,7 +27,7 @@ fn stop_with(
     d: &Deps,
     can_end: &dyn Fn(&str, &crate::wire::SessionContainer) -> crate::wire::Allow,
     title: &dyn Fn(&str) -> String,
-) -> Result<Value, CmdErr> {
+) -> Result<Value, Said> {
     wired(args, |r| super::stop(r, d, &StopFaces { can_end, title }))
 }
 /// 判号要的事实：这台只有一个号 `work`（能用）、没有谁的上次记录。
@@ -89,16 +89,16 @@ impl Rig {
         }
     }
     fn run<T>(&self, f: impl FnOnce(&Deps) -> T) -> T {
-        let list = || -> Result<Listed, CmdErr> {
+        let list = || -> Result<Listed, Said> {
             match self.list_err {
-                Some(c) => Err((c, "said".to_string())),
+                Some(c) => Err(Said::new(c, "said".to_string())),
                 None => Ok(Listed::of(self.rows.clone(), self.hosted.clone())),
             }
         };
-        let end = |terminal: &str| -> Result<(), crate::wire::spec::Fail> {
+        let end = |terminal: &str| -> Result<(), crate::common::said::Said> {
             self.calls.borrow_mut().push(format!("end {terminal}"));
             match self.end_err {
-                Some(c) => Err(crate::wire::spec::Fail::new(c, "said".to_string())),
+                Some(c) => Err(crate::wire::spec::fail(c, "said".to_string())),
                 None => Ok(()),
             }
         };
@@ -109,8 +109,8 @@ impl Rig {
 
 /// 停与问样子要的那一套：名单与结束由调用方给，别的几样都用不着。
 fn deps_with<T>(
-    list: &dyn Fn() -> Result<Listed, CmdErr>,
-    end: &dyn Fn(&str) -> Result<(), crate::wire::spec::Fail>,
+    list: &dyn Fn() -> Result<Listed, Said>,
+    end: &dyn Fn(&str) -> Result<(), crate::common::said::Said>,
     prefs: &crate::common::machine_prefs::Prefs,
     started: &dyn Fn(&str) -> Option<crate::wire::TerminalHost>,
     f: impl FnOnce(&Deps) -> T,
@@ -496,9 +496,19 @@ fn a_malformed_batch_is_refused_whole() {
         json!({ "sids": (0..=MAX_BATCH).map(|i| format!("s{i}")).collect::<Vec<_>>() }),
     ] {
         let e = rig.run(|d| stop(&bad, d)).unwrap_err();
-        assert_eq!(e.0, "bad_args", "{bad}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad}");
     }
     assert!(rig.calls.borrow().is_empty());
+}
+
+/// 名单 ⇒ 这个 sid 的样子，带着的那几行换成 tmux 会话名（生产那条是 [`carriers`]）。
+fn standing(rows: &[TermEntry], sid: &str) -> Standing {
+    match carriers(rows, sid) {
+        Standing::Running(e) => Standing::Running(e.name.clone()),
+        Standing::Ambiguous(es) => Standing::Ambiguous(es.iter().map(|e| e.name.clone()).collect()),
+        Standing::Idle(e) => Standing::Idle(e.name.clone()),
+        Standing::None => Standing::None,
+    }
 }
 
 #[test]
@@ -585,7 +595,8 @@ fn a_listing_that_ran_out_of_time_answers_child_timed_out_not_unobservable() {
     ] {
         let mut rig = Rig::new(Some(vec![row("a-cc", Some(A), true)]));
         rig.list_err = Some(err);
-        let code = |r: Result<Value, CmdErr>| r.expect_err("该整条失败").0;
+        let code =
+            |r: Result<Value, Said>| r.expect_err("该整条失败").code_or_fallback().to_string();
         assert_eq!(
             code(rig.run(|d| where_(&json!({ "sids": [A] }), d))),
             want,

@@ -180,10 +180,28 @@ fn set_plan_reads_a_saved_set_or_unsaved_rows_and_refuses_both_or_neither() {
     assert_eq!((saved.rows[0].have, saved.more), (1, 1));
     let unsaved = ask(None, Some(vec![row("/srv/a", "dev", 3)])).expect("框里的几行");
     assert_eq!(unsaved.more, 2);
-    assert_eq!(ask(Some("没有"), None).unwrap_err().0, "no_such_set");
-    assert_eq!(ask(Some("坏"), None).unwrap_err().0, "refused");
-    assert_eq!(ask(None, None).unwrap_err().0, "bad_args");
-    assert_eq!(ask(Some("g"), Some(vec![])).unwrap_err().0, "bad_args");
+    assert_eq!(
+        ask(Some("没有"), None).unwrap_err().code.as_deref(),
+        Some("no_such_set")
+    );
+    assert_eq!(
+        ask(Some("坏"), None).unwrap_err().code.as_deref(),
+        Some("refused")
+    );
+    assert_eq!(
+        ask(None, None).unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
+    assert_eq!(
+        ask(Some("g"), Some(vec![])).unwrap_err().code.as_deref(),
+        Some("bad_args")
+    );
+}
+
+/// 起一条没成（交出去那一形：码 · 那一句）。
+fn fail(code: &str, said: &str) -> Failed {
+    use crate::wire::spec::Settle as _;
+    crate::wire::spec::fail(code, said.to_string()).settle("set-launch")
 }
 
 fn opened(sid: Option<&str>) -> cmd_wire::session::Opened {
@@ -244,10 +262,7 @@ fn launching_marks_each_new_session_with_its_group_before_starting_it() {
                 log.borrow_mut()
                     .push(format!("start {} {}", r.cwd, sid.unwrap_or("-")));
                 if r.cwd == "/srv/pb" {
-                    Err(LaunchFail {
-                        code: "start_failed".into(),
-                        message: "坏了".into(),
-                    })
+                    Err(fail("start_failed", "坏了"))
                 } else {
                     Ok(opened(sid))
                 }
@@ -421,10 +436,7 @@ fn the_launch_result_carries_its_sentence_and_one_line_per_failure() {
                 mark: &mut |_| None,
                 start: &mut |r: &RowEdit, _| {
                     if fail_b && r.cwd == "/srv/b" {
-                        Err(LaunchFail {
-                            code: "start_failed".into(),
-                            message: "b 需登录".into(),
-                        })
+                        Err(fail("start_failed", "b 需登录"))
                     } else {
                         Ok(opened(None))
                     }

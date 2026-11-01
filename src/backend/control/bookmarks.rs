@@ -10,7 +10,6 @@
 use crate::common::own_state::{Doc, Read};
 use crate::common::said::Said;
 use crate::platform::fs::Own;
-use crate::wire::spec::Fail;
 use cmd_wire::bookmarks::{
     normalize_dir, BookmarkOp, Bookmarks, BookmarksEditReq, BookmarksReadReq,
 };
@@ -19,16 +18,16 @@ use copy_core::copy_text;
 /// 那一份：状态（读不懂 · 比这一版新 ⇒ 不覆盖；落点 · 上限 · 版本照声明表）。
 const DOC: Doc<Bookmarks> = Doc::of(&relay_route_core::BOOKMARKS_FILE);
 
-fn no_home(_: Said) -> Fail {
-    Fail::new("io_failed", copy_text("beBookmarks.store.noHome", &[]))
+fn no_home(_: Said) -> Said {
+    crate::wire::spec::fail("io_failed", copy_text("beBookmarks.store.noHome", &[]))
 }
 
-fn read_in(own: &Own) -> Result<Bookmarks, Fail> {
+fn read_in(own: &Own) -> Result<Bookmarks, Said> {
     let file = own.at_home(DOC.rel).map_err(no_home)?;
     match DOC.read(file.as_path()) {
         Read::Absent => Ok(Bookmarks::default()),
         Read::Present(b) => Ok(b),
-        Read::Unreadable(why) => Err(Fail::from(("bookmarks_unreadable", why))),
+        Read::Unreadable(why) => Err(crate::wire::spec::fail("bookmarks_unreadable", why)),
     }
 }
 
@@ -70,15 +69,15 @@ fn apply(dirs: &mut Vec<String>, op: BookmarkOp, dir: &str) {
 }
 
 /// `bookmarks-read`：这台此刻的书签，带了 `at` ⇒ 连那几个各是第几条。
-pub(crate) fn answer_read(own: &Own, req: &BookmarksReadReq) -> Result<Bookmarks, Fail> {
+pub(crate) fn answer_read(own: &Own, req: &BookmarksReadReq) -> Result<Bookmarks, Said> {
     Ok(answered(read_in(own)?, &req.at))
 }
 
 /// `bookmarks-edit`：上锁 → 现读 → 改 → 原子换，回改完的整份（带了 `at` ⇒ 连那几个在改完那一份里各是第几条）。
-pub(crate) fn answer_edit(own: &Own, req: &BookmarksEditReq) -> Result<Bookmarks, Fail> {
+pub(crate) fn answer_edit(own: &Own, req: &BookmarksEditReq) -> Result<Bookmarks, Said> {
     let dir = own.home_dir().map_err(no_home)?;
     own.ensure_dir(&dir).map_err(|e| {
-        Fail::from((
+        crate::wire::spec::fail(
             "io_failed",
             Said::with_raw(
                 copy_text(
@@ -87,18 +86,18 @@ pub(crate) fn answer_edit(own: &Own, req: &BookmarksEditReq) -> Result<Bookmarks
                 ),
                 e,
             ),
-        ))
+        )
     })?;
     let held = own
         .lock(&dir)
-        .map_err(|e| Fail::from(("io_failed", Said::from(e))))?;
+        .map_err(|e| crate::wire::spec::fail("io_failed", Said::from(e)))?;
     let mut book = read_in(own)?;
     book.here.clear();
     for d in &req.dirs {
         apply(&mut book.dirs, req.op, d);
     }
     DOC.write(own, &dir, &held, &book)
-        .map_err(|e| Fail::from(("io_failed", e)))?;
+        .map_err(|e| crate::wire::spec::fail("io_failed", e))?;
     Ok(answered(book, &req.at))
 }
 

@@ -211,19 +211,19 @@ fn ci_actually_runs_the_three_converged_commands() {
     }
 }
 
-/// ★★★ **Windows 信号的锚是 `runs-on:` 那一行，它自己也得有人守**〔audit-0805 F01 的 Phase D〕。
+/// ★★★ **Windows 信号的锚是 `runs-on:` 那一行，它自己也得有人守**。
 ///
-/// # 这条是审计打脸打出来的
+/// # 为什么要单独守这一行
 ///
-/// 上面那条刚给后端四步补完守卫，Phase D 立刻指出：**更中心的那一行仍然零守卫** ——
+/// 上面那条守的是后端那几步；**更中心的是这一行** ——
 /// 把 `rust` job 的 `runs-on` 从 `windows-latest` 改成 `ubuntu-latest`，
-/// **全仓一条判据都不红**（审计变异实测：改完 `cargo test --lib` 仍 888 passed / 0 failed）。
+/// 没有本条时**全仓一条判据都不红**（变异实测：改完 `cargo test --lib` 照样全过）。
 /// 而那个 job 是**生产平台唯一的编译与测试信号** —— 换掉 runner 等于把它整个交出去，
 /// 且交出去之后所有门禁**依旧全绿**，比删掉一步隐蔽得多。
 ///
-/// 全仓读 `.github/workflows` 的只有两处（本文件 +
-/// `local_backend_tests.rs::no_bundle_job_puts_a_second_local_backend_beside_the_exe` 读 `release.yml`），（08-08 起三处，见上一条的订正）
-/// **两处都不看 `runs-on`**；`windows-latest` 这个字面量在仓里其余命中全是散文注释。
+/// 别的读 `.github/workflows` 的判据（如
+/// `local_backend_tests.rs::no_bundle_job_puts_a_second_local_backend_beside_the_exe` 读 `release.yml`）
+/// **都不看 `runs-on`**；`windows-latest` 这个字面量在仓里其余命中全是散文注释。
 ///
 /// ⚠ 本条**不管** backend job 在哪跑（它在 ubuntu 上跨 target check，那是刻意的、
 /// `ci.yml:159-161` 有论证）—— 只钉「那个真跑 Windows 的 job 还在 Windows 上跑」。
@@ -429,38 +429,33 @@ fn the_windows_cross_target_signal_covers_only_the_backend() {
     );
 }
 
-/// 〔audit-0805 08-06 立 · `K-R114` / `R73` 09-14 重判后改措辞〕
-/// **三条诚实边界压在同一个前提上：「CI 今天不会跑」——把这个前提钉住。**
+/// **几条诚实边界压在同一个前提上：「CI 不会自己跑」——把这个前提钉住。**
 ///
-/// （住 `audit-0805` 那个工作区）的 3w（release.yml 的版本 guard 不触发）·
-/// 3x（七条 `#[ignore]` 执行次数为零）· 3y（monitor 的 Windows 面没有编译信号），
-/// 三条当初的成立**都只因为一件事**：两个 workflow 都只在 `push` / `pull_request` 上触发，
-/// 而〔用 08-05〕裁定不再 push。
+/// 3w（release.yml 的版本 guard 不触发）· 3x（七条 `#[ignore]` 执行次数为零）·
+/// 3y（monitor 的 Windows 面没有编译信号），三条的成立**都只因为一件事**：
+/// workflow 只在 `push` / `pull_request` 上触发，而用户定了不再 push。
 ///
-/// 这个前提**没人盯**。谁加一个 `workflow_dispatch`（手点就能跑）或 `schedule`（定时跑），
-/// 三条边界当天就该重判 —— 而在本条之前，它们会**继续以「已登记的诚实边界」的样子留在表里**，
-/// 那正是本会话反复量到的**停滞式腐坏**：世界变了、文本一个字没动。
+/// 谁加一个 `workflow_dispatch`（手点就能跑）或 `schedule`（定时跑），
+/// 压在那个文件上的边界当天就该重判 —— 没有本条，它们会**继续以「已登记的诚实边界」的样子留着**：
+/// 世界变了、文本一个字没动。
 ///
-/// # 🔴 09-14：它红过一次，而那一次它红得对 —— 于是本条从「一律禁」变成「禁 ＋ 登记」
+/// # 禁 ＋ 登记
 ///
-/// `K-R114` 给 `release.yml` 加了 `workflow_dispatch`（`KU27`：在那之前，想验一次发版流水线
-/// 改得对不对，唯一的办法是真推一个 `v*` tag）⇒ **本条当场红**。
-/// 那一件**判不了这条**（三条边界住**另一个工作区**，且翻正属重新裁定）⇒ 交 PM。
-/// 重判的**依据是那一趟真跑的 CI（run `34861383050`），不是读配置推的**：
-/// - **`3w` 翻正** —— 那趟**真跑了**版本 guard（逐字 `Version self-consistent: 3.7.0`）；
-/// - **`3y` 翻正** —— 那趟**真编了** Windows 面；
-/// - **`3x` 不翻正** —— 它压在 **`ci.yml`** 上，而那一件**一个字没动 `ci.yml`**。
+/// `release.yml` 有 `workflow_dispatch`（验一次发版流水线不必真推 `v*` tag），裁过：
+/// 依据是真跑的那一趟 CI（run `34861383050`），不是读配置推的 ——
+/// **`3w` · `3y` 翻正**（那趟真跑了版本 guard、真编了 Windows 面）；
+/// **`3x` 不翻正**（它压在 **`ci.yml`** 上，而 `ci.yml` 没有自启触发器）。
 ///
-/// ⇒ 本条因此**不许整条删掉**：删了会把 `3x` 那一半的守卫一起砍掉（**刀不许连量具一起砍**）。
-/// 今天的形状是：**`ci.yml` 照旧一个自启触发器都不许有**；`release.yml` 上那一个是**裁过的**，
-/// 进 `ADJUDICATED` 登记并带住址回指裁决口。**谁再往 `ci.yml` 加，照样当场红。**
+/// ⇒ 本条**不许整条删掉**：删了会把 `3x` 那一半的守卫一起砍掉。
+/// 形状是：**`ci.yml` 一个自启触发器都不许有**；`release.yml` 上那一个是**裁过的**，
+/// 进 `ADJUDICATED` 登记并带住址回指裁决记在哪。**谁再往 `ci.yml` 加，当场红。**
 ///
-/// ⚠ 本条**不断言 CI 应该怎么触发**（那是〔用〕/ PM 的裁决）。它断言的是
+/// ⚠ 本条**不断言 CI 应该怎么触发**（那是用户的裁决）。它断言的是
 /// **「自启触发器要么没有，要么有人裁过并留了住址」** —— 两者都不成立就红，逼人回来重判。
 ///
 /// ⚠ **诚实边界，三条，别读宽**：
 /// ① 登记表里那个住址本条**只验形状**（非空 ＋ 形如 `<文件>#<锚点>`），
-///    **不去那棵树上核它真的指得到** —— 裁决口住计划仓，本 crate 结构上够不着；
+///    **不去核它真的指得到**；
 /// ② 它认的是 `on:` 段里**有没有那个词**，不解释 GitHub 的触发语义
 ///    （`schedule` 配一个永不命中的 cron，本条照样算它「有」）；
 /// ③ 登记一行买到的是「**有人回来过**」，**不是**「那三条边界今天写得对」——
@@ -473,19 +468,22 @@ fn the_premise_behind_three_honesty_boundaries_still_holds() {
     ///
     /// 🔴 **一行 = 一次「有人回来把那几条边界重新过了一遍」。没有这一行 = 没人裁过。**
     /// 加一行之前先问：那几条边界你重判了吗？裁决口在哪？——答不出就别加行，让它红着。
-    const ADJUDICATED: &[(&str, &str, &str)] =
-        &[("release.yml", "workflow_dispatch", "DECISIONS.md#R73")];
+    const ADJUDICATED: &[(&str, &str, &str)] = &[(
+        "release.yml",
+        "workflow_dispatch",
+        "tests/frontend/shell/shared_crate_registry_tests.rs#STILL_RESTING_ON",
+    )];
     /// 扫描面 ＋ **每个文件今天还压着哪几条边界**（红了要人去重判的就是这些）。
     /// 🔴 这一栏不是装饰：诊断里要说得出「你这一下动的是**谁**的前提」。
     const STILL_RESTING_ON: &[(&str, &str)] = &[
         (
             "ci.yml",
-            "3x —— 七条 `#[ignore]` 的 e2e 触发路今天**只有 ci.yml 这一条**，\
-                 09-14 那次重判**刻意没翻它**（`R73` 逐字：K-R114 只动 release.yml）",
+            "3x —— 七条 `#[ignore]` 的 e2e 触发路**只有 ci.yml 这一条**，\
+                 `release.yml` 的自启触发器**不翻它**",
         ),
         (
             "release.yml",
-            "3w / 3y —— 09-14 已由 `R73` 依据 run 34861383050 翻正；\
+            "3w / 3y —— 依据 run 34861383050 翻正；\
                  再加**新的**自启触发器，仍要重判一次再登记",
         ),
     ];
@@ -506,7 +504,7 @@ fn the_premise_behind_three_honesty_boundaries_still_holds() {
         assert!(
             at.contains('#') && !at.starts_with('#') && !at.ends_with('#'),
             "`{wf}` / `{trig}` 那一行的裁决口住址 `{at}` 不成形（要 `<文件>#<锚点>`）—— \n\
-                 ⚠ 本条只验形状，不去那棵树上核它真指得到（裁决口住计划仓，本 crate 够不着）。"
+                 ⚠ 本条只验形状，不去核它真指得到。"
         );
     }
 
@@ -530,13 +528,11 @@ fn the_premise_behind_three_honesty_boundaries_still_holds() {
             .join("\n");
         // ★ 抽取器自检：这一段里至少要提到 `push`，否则说明切错了地方。
         //
-        // ⚠ **两种 YAML 写法都要认**〔08-08 变异证伪〕：原来只认**块写法**
-        //（行首是 `push:` / `workflow_dispatch:`）。把触发面改成**序列写法**
-        // `on: [push, pull_request, workflow_dispatch]` —— 一种 GitHub 完全支持、
-        // 也很可能被真人写出来的形态 —— 本条确实红了，**但红在抽取器自检上**，
-        // 诊断说「段界切错了」。照它去查的人会去修切块逻辑，
-        // 而真实事件是 **CI 从此可以手点运行**、三条诚实边界的前提当场消失。
-        // 「讲错成因的红灯比不红更坏」，本会话第 N 次。⇒ 改按**词**匹配。
+        // ⚠ **两种 YAML 写法都要认**：**块写法**（行首是 `push:` / `workflow_dispatch:`）
+        // 与**序列写法** `on: [push, pull_request, workflow_dispatch]`。只认块写法的话，
+        // 序列写法会红在抽取器自检上、诊断说「段界切错了」—— 照它去查的人会去修切块逻辑，
+        // 而真实事件是 **CI 从此可以手点运行**、诚实边界的前提当场消失。
+        // 「讲错成因的红灯比不红更坏」⇒ 按**词**匹配。
         assert!(
             guard_core::contains_word(&seg, "push"),
             "{wf} 的 `on:` 段里连 `push` 都没提 —— 段界切错了（切到 {} 字节）",

@@ -1,7 +1,8 @@
 //! 终端管理 L1 三条（`terminals-list` · `terminal-preview` · `terminal-input`）的线上形：入参 · 回包 · 码各一个类型（第 8 批 typed）。
 //! 本体在 [`super::terminals`]；这里只有形状与「怎么跑」那一层。两个前端共用（手机也在读）⇒ 回包的键与「有才出」那几格照换形前原样。
 
-use super::terminals::{self as t, CmdErr, On};
+use super::terminals::{self as t, On};
+use crate::common::said::Said;
 use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
 use serde::Deserialize;
@@ -186,10 +187,12 @@ fn hold(req: &TerminalHoldReq, take: bool) -> Result<cmd_wire::session::InputNow
 }
 
 /// 接管 · 交还没做成 ⇒ 这一条的码与那一句：认得出为什么的照送字那一套说（终端没了就说没了），别的照下层那句；下层那句进原话。
-pub(crate) fn hold_refused(f: CmdErr) -> TerminalHoldErr {
-    match f.code.as_str() {
+pub(crate) fn hold_refused(f: Said) -> TerminalHoldErr {
+    match f.code.as_deref() {
         // 同 `terminals-list`：tmux 装了却起不来说成「列不出」。
-        "no_tmux" => TerminalHoldErr::Unobservable(f.into_said()),
+        Some("no_tmux") => {
+            TerminalHoldErr::Unobservable(crate::common::contract::joined(f.said, f.raw))
+        }
         _ => typed::of_fail_said(f, TerminalHoldErr::Unobservable, |c| match c {
             "not_known" | "no_such_session" => Some(t::no_said(t::Refused::Ended)),
             "not_yours" => Some(t::no_said(t::Refused::NotYours)),
@@ -217,8 +220,10 @@ impl crate::wire::typed::Handle for TerminalsListCmd {
         async move {
             // 名单这一条登记成「tmux 可选」（没装 ⇒ 空名单，不是错）：装了却起不来那一种（下层回 `no_tmux`）说成「列不出」，
             //   不在这一条的码表里另立一个 `no_tmux`（`target_parity_guard` 钉着两句不许自相矛盾）。
-            t::list_on(On::default(), &req).map_err(|f| match f.code.as_str() {
-                "no_tmux" => TerminalsListErr::Unobservable(f.into_said()),
+            t::list_on(On::default(), &req).map_err(|f| match f.code.as_deref() {
+                Some("no_tmux") => {
+                    TerminalsListErr::Unobservable(crate::common::contract::joined(f.said, f.raw))
+                }
                 _ => typed::of_fail(f, TerminalsListErr::Unobservable),
             })
         }
@@ -294,7 +299,7 @@ pub(crate) fn preview_said(code: &str) -> String {
 }
 
 /// 送字 / 送键（生产：默认 socket）。计划退回那一条也经它送（`faces/plan_return_face.rs`）。
-pub(crate) fn input(req: &TerminalInputReq) -> Result<Sent, CmdErr> {
+pub(crate) fn input(req: &TerminalInputReq) -> Result<Sent, Said> {
     t::input_on(On::default(), req)
 }
 
@@ -326,6 +331,6 @@ impl crate::wire::typed::Handle for SessionInterruptCmd {
 }
 
 /// 往一条会话说一句（生产：默认 socket）：同 [`input`]，窗格前台只剩 shell ⇒ 不送、回 `ended`（[`t::say_on`]）。输入队投递经它送（`faces/session_send.rs`）。
-pub(crate) fn say(req: &TerminalInputReq) -> Result<Sent, CmdErr> {
+pub(crate) fn say(req: &TerminalInputReq) -> Result<Sent, Said> {
     t::say_on(On::default(), req)
 }

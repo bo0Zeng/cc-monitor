@@ -139,7 +139,7 @@ async fn run(
     };
     let load = |p: &std::path::Path| std::fs::read(p);
     let ended = match deploy::install(&facing, &slots, &load, machine, now, &step).await {
-        Err(f) => failed_json(f.code, &f.said, f.raw.as_deref()),
+        Err(f) => failed_json(f.code_or_fallback(), &f.said, f.raw.as_deref()),
         Ok(plan) => {
             // 换不换常驻由那台判（`--resident-ensure --replace`：在听的比落点旧才换）。
             step(deploy::Step::Restart);

@@ -13,7 +13,7 @@ use crate::observe::query::locate::{self, RecordProbe};
 use crate::observe::query::tail::TailPlan;
 use crate::observe::query::turns::{HistoryTurns, HistoryTurnsReq};
 use crate::observe::query::{body, jlen, tail, ENVELOPE_BYTES};
-use crate::wire::typed::{self, codes, of_pair, Command};
+use crate::wire::typed::{self, codes, of_fail_with, Command};
 use crate::wire::SessionFaceExt as _;
 pub(crate) use cmd_wire::needs::{AnsweredRow, NeedsList, SessionsNeedsReq};
 /// 这两条的回包住 `cmd-wire`（手机按同一份解，记录那一格按完整记录）；后端写的那一份记录是原样的一团（缺省 `Value`）。
@@ -30,7 +30,7 @@ use crate::wire::REPLY_PAGE_BYTES;
 /// 整份回包过 [`LINES_CAP_BYTES`] ⇒ `too_large` 那一句（不截断：截断的清单会被当成完整的用）。
 fn over_cap<T: serde::Serialize>(reply: &T) -> Option<String> {
     let size = serde_json::to_vec(reply).map_or(0, |b| b.len());
-    (size > LINES_CAP_BYTES).then(|| too_large(size).1)
+    (size > LINES_CAP_BYTES).then(|| too_large(size).said)
 }
 
 /// 这台的记录树根（生产只这一个值）。
@@ -92,7 +92,7 @@ pub(crate) fn read_at(
     req: HistoryReadReq,
     tz: &crate::Tz,
 ) -> Result<HistoryRead, HistoryReadErr> {
-    let lower = of_pair(HistoryReadErr::Failed);
+    let lower = of_fail_with(HistoryReadErr::Failed);
     let fixed = jlen(&HistoryRead::<serde_json::Value> {
         rows: Vec::new(),
         next: u64::MAX,
@@ -123,7 +123,7 @@ fn read_rows(
     until: Option<u64>,
     tz: &crate::Tz,
     fixed: usize,
-) -> Result<(Vec<ReadRow>, u64, bool), (&'static str, String)> {
+) -> Result<(Vec<ReadRow>, u64, bool), crate::common::said::Said> {
     let (_, face) = record_face(home, path)?;
     let mut reader = reader(&face, tz);
     let room = READ_PAGE_BYTES.saturating_sub(fixed + ENVELOPE_BYTES);
@@ -249,7 +249,7 @@ pub(crate) fn page_at(
     req: HistoryPageReq,
     tz: &crate::Tz,
 ) -> Result<HistoryPage, HistoryPageErr> {
-    let lower = of_pair(HistoryPageErr::Failed);
+    let lower = of_fail_with(HistoryPageErr::Failed);
     let offset = req.offset.unwrap_or(0);
     let (target, face) = record_face(home, &req.path).map_err(&lower)?;
     let page = body::read_page(
@@ -316,7 +316,7 @@ pub(crate) fn lines_at(
     req: HistoryLinesReq,
     tz: &crate::Tz,
 ) -> Result<HistoryLines, HistoryLinesErr> {
-    let lower = of_pair(HistoryLinesErr::Failed);
+    let lower = of_fail_with(HistoryLinesErr::Failed);
     let (target, face) = record_face(home, &req.path).map_err(&lower)?;
     let page = body::read_lines(
         home,
@@ -404,7 +404,7 @@ impl crate::wire::typed::Handle for HistoryImageCmd {
 /// 认身份，按块的先后深度优先找第 `n` 张。
 pub(crate) fn image_at(home: &Path, req: HistoryImageReq) -> Result<HistoryImage, HistoryImageErr> {
     use cmd_wire::record::{Block, Body};
-    let lower = of_pair(HistoryImageErr::Failed);
+    let lower = of_fail_with(HistoryImageErr::Failed);
     let missing = || {
         HistoryImageErr::NotFound(format!(
             "no image {} in record {} at byte {}",
@@ -541,7 +541,7 @@ pub(crate) fn run_at(
     req: HistoryRunReq,
     tz: &crate::Tz,
 ) -> Result<HistoryRun, HistoryRunErr> {
-    let lower = of_pair(HistoryRunErr::Failed);
+    let lower = of_fail_with(HistoryRunErr::Failed);
     let from = req.from.unwrap_or(0);
     let (source, run) =
         locate::run_source(home, &req.parent, req.run.as_deref(), req.tool.as_deref())
@@ -708,7 +708,7 @@ pub(crate) fn tail_at(
     };
     (reply.rows, reply.next, reply.eof) =
         read_rows(home, &reply.held.path, at, Some(end), tz, jlen(&reply))
-            .map_err(|(_, said)| failed(said))?;
+            .map_err(|s| failed(s.said))?;
     Ok(reply)
 }
 
@@ -900,10 +900,7 @@ impl crate::wire::typed::Handle for NeedsMergeCmd {
                     )
                 })
                 .await
-                .map_err(|e| crate::dial::remote_ask::Said {
-                    code: None,
-                    message: e.to_string(),
-                })
+                .map_err(|e| crate::common::said::Said::from(e.to_string()))
             };
             needs_merge_with(
                 &req.machines,
@@ -921,7 +918,7 @@ impl crate::wire::typed::Handle for NeedsMergeCmd {
 /// [`NeedsMergeCmd`] 的本体（本机那一台怎么答 · 可达表 · 对面由调用方给）。
 pub(crate) async fn needs_merge_with(
     machines: &[cmd_wire::Machine],
-    local: impl std::future::Future<Output = Result<NeedsList, crate::dial::remote_ask::Said>> + Send,
+    local: impl std::future::Future<Output = Result<NeedsList, crate::common::said::Said>> + Send,
     tz: &crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
     table: &crate::dial::remote_ask::Table,
@@ -945,7 +942,7 @@ pub(crate) async fn needs_merge_with(
             Ok(list) => answered.push((origin, list)),
             Err(s) => down.push(crate::observe::recognize::facts::NeedsDown {
                 origin,
-                said: s.message,
+                said: s.said,
             }),
         }
     }
@@ -988,7 +985,7 @@ impl<T: serde::Serialize + Clone> Capped<T> {
     /// 扫描的结局：超了上限的那一次停下，原因是「超了」（`Err(Ok(那一句))`），不是扫描函数报的那句 I/O 错（`Err(Err(那一句))`）。
     pub(crate) fn finish<R>(&self, res: std::io::Result<R>) -> Result<R, Result<String, String>> {
         if self.over {
-            return Err(Ok(too_large(self.seen).1));
+            return Err(Ok(too_large(self.seen).said));
         }
         res.map_err(|e| Err(format!("stream failed: {e}")))
     }

@@ -5,11 +5,12 @@
 //! 四个 target 同一份源码、同一组能力；保鲜是定期重走 ＋ 浏览目录挂监听（[`browse_watch`]，各平台语义不对等）。
 //! 「定期重走」的周期住 [`index::REWALK_INTERVAL_SECS`]，由 `files.index.status` 交出去，界面显示那个延迟。
 //!
-//! 线上名与能力名的翻译只有一处：每条 [`Ask`] 自己的 `CAPABILITY`（`files.ls` ↔ `files-ls`）。
+//! 线上名只有一处：每条入参类型的 `cmd_wire::Call::NAME`（`files-ls`）；入参的类型经 [`Ask`] 选中那条能力。
 //! 索引怎么建、什么时候变新是机制的线上面：`files-index-rebuild`（[`index::rebuild_once`]）· `files-browse`（[`browse_watch::set_browsing`]）；
 //! 节拍归调用方（后端零定时器）—— 没人发 rebuild，`files.find` 就回 `index_missing: true`。
 //! 常驻那一份索引是进程级的 ⇒ 这几条要在同一条连接上才配得起来；CLI 面一次 exec 一个进程，建好的索引随进程没了。
 
+use crate::common::said::Said;
 use crate::platform::fs::Ro;
 use cmd_wire::files::{self as wire, FileKind, WirePath};
 use std::path::{Path, PathBuf};
@@ -27,38 +28,12 @@ pub mod size;
 
 // ══════════════════════ 命令面（形状照 `inbound::CommandSpec` 的处理器）══════════════════════
 
-/// 一条能力的答案：成功交 JSON，失败交 [`Refused`]（码 ＋ 那一句 ＋ 下层原话）。
-pub type Answer<T> = Result<T, Refused>;
+/// 一条能力的答案：成功交 JSON，失败交 [`Said`]（码 ＋ 给人看的那一句 ＋ 下层原话；系统报错原文不进句子，由命令表交进复制详情）。
+pub type Answer<T> = Result<T, Said>;
 
-/// 一条能力的失败：码 ＋ 给人看的那一句 ＋ 下层原话（可缺：系统报错原文不进句子，由命令表交进复制详情）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Refused {
-    pub code: &'static str,
-    pub said: String,
-    pub raw: Option<String>,
-}
-
-impl From<(&'static str, String)> for Refused {
-    /// 没有下层原话的那几形（参数 · 路径 · 上限）。
-    fn from((code, said): (&'static str, String)) -> Refused {
-        Refused {
-            code,
-            said,
-            raw: None,
-        }
-    }
-}
-
-impl Refused {
-    /// 码 ＋ 那一句 ＋ 下层原话（空 ⇒ 不带）。
-    fn with_raw(code: &'static str, said: String, raw: impl std::fmt::Display) -> Refused {
-        let raw = raw.to_string();
-        Refused {
-            code,
-            said,
-            raw: (!raw.trim().is_empty()).then_some(raw),
-        }
-    }
+/// 码 ＋ 那一句 ＋ 下层原话（空 ⇒ 不带）。
+fn refused(code: &str, said: String, raw: impl std::fmt::Display) -> Said {
+    Said::with_raw(said, raw).coded(code)
 }
 
 /// 每次回送的条数上限的默认值（调用方给 `limit` 就用它的；给 0 或不给 ⇒ 用这个）。
@@ -73,9 +48,9 @@ fn limit_of(limit: Option<u64>) -> usize {
 }
 
 /// 入参里的一个路径 ⇒ `PathBuf`。形状在解入参那一步就判过了（字符串或 `{"b16": …}`）；这里只拒空的。
-fn path_of(p: &WirePath, which: &str) -> Result<std::path::PathBuf, (&'static str, String)> {
+fn path_of(p: &WirePath, which: &str) -> Result<std::path::PathBuf, Said> {
     if p.0.is_empty() {
-        return Err((
+        return Err(Said::new(
             "bad_path",
             crate::common::contract::malformed(&format!("`{which}` is empty")),
         ));
@@ -88,7 +63,7 @@ fn path_of(p: &WirePath, which: &str) -> Result<std::path::PathBuf, (&'static st
 /// ⚠ **空数组是合法的**，语义是「用户现在什么都没在看」⇒ 名单清空。
 /// 「少了 `dirs`」（解入参那一步回 `bad_args`）与「`dirs` 是空的」**是两件事**：前者是调用方漏了参数，
 /// 后者是它真的要卸掉全部 —— 静默地把前者当后者办，就是悄悄把 watch 全拆了。
-fn dirs_of(dirs: &[WirePath]) -> Result<Vec<std::path::PathBuf>, (&'static str, String)> {
+fn dirs_of(dirs: &[WirePath]) -> Result<Vec<std::path::PathBuf>, Said> {
     dirs.iter()
         .enumerate()
         .map(|(i, d)| path_of(d, &format!("dirs[{i}]")))
@@ -200,7 +175,7 @@ fn ls_now(
             std::io::ErrorKind::NotADirectory => "not_dir",
             _ => "unreadable",
         };
-        Refused::with_raw(
+        refused(
             code,
             copy_core::copy_text(
                 "beFilesRead.ls.unreadable",
@@ -424,7 +399,7 @@ where
 fn stat(req: wire::StatReq, tz: &crate::common::time::Tz) -> Answer<wire::StatReply> {
     let path = path_of(&req.path, "path")?;
     let md = Ro::metadata(&path).map_err(|e| {
-        Refused::with_raw(
+        refused(
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.size.unreadable",
@@ -461,7 +436,7 @@ fn stat(req: wire::StatReq, tz: &crate::common::time::Tz) -> Answer<wire::StatRe
 /// `query` 是窗口原样发来的搜索词（解析只在 [`query::parse`]）；`seq` ＋ `stream` 让同一个搜索框的旧那一趟收手；
 /// `under` 给了 ⇒ 只搜那个目录底下，不给 ⇒ 家目录；`offset` / `limit` 只回这一屏。
 fn find(req: wire::FindReq, tz: &crate::common::time::Tz) -> Answer<wire::FindReply> {
-    let matcher = query::parse(&req.query).map_err(|e| ("bad_query", e.said()))?;
+    let matcher = query::parse(&req.query).map_err(|e| Said::new("bad_query", e.said()))?;
     let under = match &req.under {
         None => None,
         Some(p) => {
@@ -471,7 +446,7 @@ fn find(req: wire::FindReq, tz: &crate::common::time::Tz) -> Answer<wire::FindRe
     };
     let offset = req.offset.unwrap_or(0) as usize;
     let superseded = || {
-        (
+        Said::new(
             "superseded",
             copy_core::copy_text("beFilesRead.find.superseded", &[]),
         )
@@ -622,14 +597,16 @@ fn index_rebuild(req: wire::RebuildReq) -> Answer<wire::RebuildReply> {
         None => home_var()
             .map(std::path::PathBuf::from)
             .filter(|p| p.is_absolute())
-            .ok_or((
-                "no_home",
-                copy_core::copy_text("beFilesRead.rebuild.noHome", &[]),
-            ))?,
+            .ok_or_else(|| {
+                Said::new(
+                    "no_home",
+                    copy_core::copy_text("beFilesRead.rebuild.noHome", &[]),
+                )
+            })?,
         Some(p) => path_of(p, "path")?,
     };
     Ro::read_dir(&root).map_err(|e| {
-        Refused::with_raw(
+        refused(
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.rebuild.rootUnreadable",
@@ -639,7 +616,7 @@ fn index_rebuild(req: wire::RebuildReq) -> Answer<wire::RebuildReply> {
         )
     })?;
     let stats = index::rebuild_once(&root).ok_or_else(|| {
-        (
+        Said::new(
             "already_rebuilding",
             copy_core::copy_text(
                 "beFilesRead.rebuild.busy",
@@ -732,15 +709,15 @@ fn read_chunk(req: wire::ReadChunkReq) -> Answer<wire::ReadChunkReply> {
     let path = path_of(&req.path, "path")?;
     let (offset, len) = (req.offset, req.len);
     if len == 0 || len > READ_CHUNK_MAX_BYTES {
-        return Err(Refused::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`len` is {len}; accepted range 1..={READ_CHUNK_MAX_BYTES}, not clamped"
             )),
-        )));
+        ));
     }
     let md = Ro::metadata(&path).map_err(|e| {
-        Refused::with_raw(
+        refused(
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.size.unreadable",
@@ -750,13 +727,13 @@ fn read_chunk(req: wire::ReadChunkReq) -> Answer<wire::ReadChunkReply> {
         )
     })?;
     if !md.is_file() {
-        return Err(Refused::from((
+        return Err(Said::new(
             "not_text",
             copy_core::copy_text("reason.fs.notRegular", &[]),
-        )));
+        ));
     }
     let broke = |e: std::io::Error| {
-        Refused::with_raw(
+        refused(
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.text.readBroke",
@@ -766,7 +743,7 @@ fn read_chunk(req: wire::ReadChunkReq) -> Answer<wire::ReadChunkReply> {
         )
     };
     let mut f = Ro::open(&path).map_err(|e| {
-        Refused::with_raw(
+        refused(
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.text.openFailed",
@@ -801,15 +778,15 @@ fn read_text(req: wire::ReadTextReq) -> Answer<wire::ReadTextReply> {
     let path = path_of(&req.path, "path")?;
     let max = req.max_bytes;
     if max == 0 || max > READ_TEXT_MAX_BYTES as u64 {
-        return Err(Refused::from((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`max_bytes` is {max}; accepted range 1..={READ_TEXT_MAX_BYTES}, not clamped"
             )),
-        )));
+        ));
     }
     let md = Ro::metadata(&path).map_err(|e| {
-        Refused::with_raw(
+        refused(
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.size.unreadable",
@@ -819,13 +796,13 @@ fn read_text(req: wire::ReadTextReq) -> Answer<wire::ReadTextReply> {
         )
     })?;
     if !md.is_file() {
-        return Err(Refused::from((
+        return Err(Said::new(
             "not_text",
             copy_core::copy_text("reason.fs.notRegular", &[]),
-        )));
+        ));
     }
     if md.len() > max {
-        return Err(Refused::from((
+        return Err(Said::new(
             "too_large",
             copy_core::copy_text(
                 "beFilesRead.text.tooLarge",
@@ -835,10 +812,10 @@ fn read_text(req: wire::ReadTextReq) -> Answer<wire::ReadTextReply> {
                     ("over", &(md.len() - max).to_string()),
                 ],
             ),
-        )));
+        ));
     }
     let f = Ro::open(&path).map_err(|e| {
-        Refused::with_raw(
+        refused(
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.text.openFailed",
@@ -849,7 +826,7 @@ fn read_text(req: wire::ReadTextReq) -> Answer<wire::ReadTextReply> {
     })?;
     let mut buf: Vec<u8> = Vec::new();
     std::io::Read::read_to_end(&mut std::io::Read::take(f, max + 1), &mut buf).map_err(|e| {
-        Refused::with_raw(
+        refused(
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.text.readBroke",
@@ -859,22 +836,22 @@ fn read_text(req: wire::ReadTextReq) -> Answer<wire::ReadTextReply> {
         )
     })?;
     if buf.len() as u64 > max {
-        return Err(Refused::from((
+        return Err(Said::new(
             "too_large",
             copy_core::copy_text("beFilesRead.text.grew", &[("max", &max.to_string())]),
-        )));
+        ));
     }
     if buf.contains(&0) {
-        return Err(Refused::from((
+        return Err(Said::new(
             "not_text",
             copy_core::copy_text("beFilesRead.text.hasNul", &[]),
-        )));
+        ));
     }
     let n = buf.len();
     // 交出去的那份字节的摘要：编辑器存回去时原样交回当 CAS 的 `expect`（算法住写面那一处）。
     let sha256 = content_sha256(&buf);
     let text = String::from_utf8(buf).map_err(|e| {
-        (
+        Said::new(
             "not_text",
             copy_core::copy_text(
                 "beFilesRead.text.notUtf8",
@@ -894,7 +871,7 @@ fn read_text(req: wire::ReadTextReq) -> Answer<wire::ReadTextReply> {
 fn size_of(req: wire::SizeReq) -> Answer<wire::SizeReply> {
     let path = path_of(&req.path, "path")?;
     let m = size::measure(&path).map_err(|e| {
-        Refused::with_raw(
+        refused(
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.size.unreadable",
@@ -923,13 +900,11 @@ fn home_var() -> Option<std::ffi::OsString> {
 
 /// `files.grep` 的入参：`needle` 与 `path` 同两种形（字符串 / `{"b16"}`），
 /// 非空、至多 [`grep::NEEDLE_MAX_BYTES`] 字节；`limit` 缺省 [`grep::DEFAULT_LIMIT`]、至多 [`grep::MAX_LIMIT`]。
-fn grep_args(
-    req: &wire::GrepReq,
-) -> Result<(std::path::PathBuf, grep::GrepArgs), (&'static str, String)> {
+fn grep_args(req: &wire::GrepReq) -> Result<(std::path::PathBuf, grep::GrepArgs), Said> {
     let path = path_of(&req.path, "path")?;
     let needle = req.needle.0.clone();
     if needle.is_empty() || needle.len() > grep::NEEDLE_MAX_BYTES {
-        return Err((
+        return Err(Said::new(
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`needle` must be 1..={} bytes",
@@ -993,8 +968,8 @@ fn grep_reply(top: &std::path::Path, limit: usize, g: &grep::Grepped) -> wire::G
     }
 }
 
-fn grep_unreadable(e: &std::io::Error) -> Refused {
-    Refused::with_raw(
+fn grep_unreadable(e: &std::io::Error) -> Said {
+    refused(
         "unreadable",
         copy_core::copy_text(
             "beFilesRead.grep.unreadable",
@@ -1027,7 +1002,7 @@ pub async fn answer_grep_cancellable(req: wire::GrepReq) -> Answer<wire::GrepRep
     tokio::task::spawn_blocking(move || grep_with(&req, &flag))
         .await
         .unwrap_or_else(|e| {
-            Err(Refused::with_raw(
+            Err(refused(
                 "unreadable",
                 copy_core::copy_text(
                     "beFilesRead.grep.unreadable",
@@ -1045,16 +1020,18 @@ fn home() -> Answer<wire::FilesPathReply> {
 
 /// 那个起点必须是一个绝对路径（空 / 相对 ⇒ `no_home`，不开一个空窗口）。
 fn home_from(h: Option<std::ffi::OsString>) -> Answer<wire::FilesPathReply> {
-    let h = h.filter(|v| !v.is_empty()).ok_or((
-        "no_home",
-        copy_core::copy_text("beFilesRead.home.missing", &[]),
-    ))?;
+    let h = h.filter(|v| !v.is_empty()).ok_or_else(|| {
+        Said::new(
+            "no_home",
+            copy_core::copy_text("beFilesRead.home.missing", &[]),
+        )
+    })?;
     let p = std::path::PathBuf::from(h);
     if !p.is_absolute() {
-        return Err(Refused::from((
+        return Err(Said::new(
             "no_home",
             copy_core::copy_text("beFilesRead.home.relative", &[]),
-        )));
+        ));
     }
     Ok(wire::FilesPathReply {
         path: wire_path(raw::path_bytes(&p)),
@@ -1063,14 +1040,11 @@ fn home_from(h: Option<std::ffi::OsString>) -> Answer<wire::FilesPathReply> {
 
 /// 本族一条读命令的入参 ⇒ 它的回包与本体。命令表那一扇门只认 [`answer`]：入参的类型就选中了那条能力，抄错能力名这件事不可表示。
 pub trait Ask {
-    /// [`CAPABILITIES`] 里那一行的名字。
-    const CAPABILITY: &'static str;
     type Reply;
     fn answer(self, tz: &crate::common::time::Tz) -> Answer<Self::Reply>;
 }
 
 impl Ask for wire::LsReq {
-    const CAPABILITY: &'static str = "files.ls";
     type Reply = wire::LsReply;
     fn answer(self, tz: &crate::common::time::Tz) -> Answer<wire::LsReply> {
         ls(self, tz)
@@ -1078,7 +1052,6 @@ impl Ask for wire::LsReq {
 }
 
 impl Ask for wire::StatReq {
-    const CAPABILITY: &'static str = "files.stat";
     type Reply = wire::StatReply;
     fn answer(self, tz: &crate::common::time::Tz) -> Answer<wire::StatReply> {
         stat(self, tz)
@@ -1086,7 +1059,6 @@ impl Ask for wire::StatReq {
 }
 
 impl Ask for wire::FindReq {
-    const CAPABILITY: &'static str = "files.find";
     type Reply = wire::FindReply;
     fn answer(self, tz: &crate::common::time::Tz) -> Answer<wire::FindReply> {
         find(self, tz)
@@ -1094,7 +1066,6 @@ impl Ask for wire::FindReq {
 }
 
 impl Ask for wire::IndexStatusReq {
-    const CAPABILITY: &'static str = "files.index.status";
     type Reply = wire::IndexStatusReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::IndexStatusReply> {
         Ok(index_status())
@@ -1102,7 +1073,6 @@ impl Ask for wire::IndexStatusReq {
 }
 
 impl Ask for wire::RebuildReq {
-    const CAPABILITY: &'static str = "files.index.rebuild";
     type Reply = wire::RebuildReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::RebuildReply> {
         index_rebuild(self)
@@ -1110,7 +1080,6 @@ impl Ask for wire::RebuildReq {
 }
 
 impl Ask for wire::ReadTextReq {
-    const CAPABILITY: &'static str = "files.read.text";
     type Reply = wire::ReadTextReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::ReadTextReply> {
         read_text(self)
@@ -1118,7 +1087,6 @@ impl Ask for wire::ReadTextReq {
 }
 
 impl Ask for wire::HomeReq {
-    const CAPABILITY: &'static str = "files.home";
     type Reply = wire::FilesPathReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::FilesPathReply> {
         home()
@@ -1126,7 +1094,6 @@ impl Ask for wire::HomeReq {
 }
 
 impl Ask for wire::SizeReq {
-    const CAPABILITY: &'static str = "files.size";
     type Reply = wire::SizeReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::SizeReply> {
         size_of(self)
@@ -1134,7 +1101,6 @@ impl Ask for wire::SizeReq {
 }
 
 impl Ask for wire::ReadChunkReq {
-    const CAPABILITY: &'static str = "files.read.chunk";
     type Reply = wire::ReadChunkReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::ReadChunkReply> {
         read_chunk(self)
@@ -1143,7 +1109,6 @@ impl Ask for wire::ReadChunkReq {
 
 /// `files.grep` 的同步那一臂（取消不掉；命令面走 [`answer_grep_cancellable`]）。
 impl Ask for wire::GrepReq {
-    const CAPABILITY: &'static str = "files.grep";
     type Reply = wire::GrepReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::GrepReply> {
         grep_with(&self, &std::sync::atomic::AtomicBool::new(false))

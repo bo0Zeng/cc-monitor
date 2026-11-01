@@ -98,9 +98,10 @@ async fn each_item_lands_the_way_the_group_opener_said() {
         vec![(
             "d.txt".to_string(),
             super::super::source::Failed {
-                code: Some("busy".into()),
+                code: "busy".into(),
                 said: copy_core::copy_text("reason.io.busy", &[]),
                 detail: "同一文件正在上传".into(),
+                data: None,
             }
         )]
     );
@@ -460,26 +461,6 @@ fn one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection() {
     );
 }
 
-/// 🔴 窗口这一侧写死的那几个**线上名字**与对面（传输台 / 后端）那一份逐字相等。
-///
-/// 两侧异源：窗口的常量 · 传输台的常量 · 后端提交命令表的源码（运行期读，不是编译期边）。
-/// 漂开的症状是具体的：开单答「不认」、订阅答「没有这条流」、提交答 `unknown_command`。
-#[test]
-fn the_wire_names_the_window_says_are_the_ones_the_other_side_answers() {
-    // 窗口 ⇄ monitor 传输中继那三个名字的相等挪到了 monitor 那一侧（`tests/frontend/shell/filewin/cross_half_tests.rs`）。
-    let backend = std::fs::read_to_string(
-        guard_core::addr::repo_root().join("src/backend/control/files_commit.rs"),
-    )
-    .expect("读后端提交那一份");
-    assert_eq!(
-        backend
-            .matches(&format!("name: {CMD_COMMIT:?},")[..])
-            .count(),
-        1,
-        "后端提交命令表里找不到逐字相同的 `{CMD_COMMIT}`"
-    );
-}
-
 // ════════════════════════════════════════════════════════════════════════
 // 经通道的那三步：开单 → 起跑并看 → 提交（真回环 ＋ 真钥匙 ＋ 合成对端）
 // ════════════════════════════════════════════════════════════════════════
@@ -552,7 +533,7 @@ impl comms_inward::chan::router::Backends for XferHost {
             if matches!(self.ends, Ends::DoneStaleCommits(k) if n < k) {
                 let body = serde_json::to_vec(&serde_json::json!({
                     "code": "stale",
-                    "message": "传上来的那份和本机那份对不上（合成）",
+                    "said": "传上来的那份和本机那份对不上（合成）",
                 }))
                 .unwrap_or_default();
                 return Box::pin(async move {
@@ -569,7 +550,7 @@ impl comms_inward::chan::router::Backends for XferHost {
         {
             let body = serde_json::to_vec(&serde_json::json!({
                 "code": "exists",
-                "message": "同名 1 项",
+                "said": "同名 1 项",
                 "data": {"conflicts": [{"key": "0", "name": "a.bin", "kind": "file", "size": 3,
                     "mtime_text": "10-12 14:02", "there": "file", "there_size": 1,
                     "there_mtime_text": "10-01 09:10", "answers": ["overwrite", "skip", "keep_both"]}]},

@@ -1,4 +1,4 @@
-// F08b：ESLint flat config。**基线/顾问式**（同 CI 里 clippy 不强制）——先建门禁基础设施，
+// ESLint flat config。**基线/顾问式**（同 CI 里 clippy 不强制）——
 // 不追一次清零；既有告警作基线、`npm run lint` 本地看，CI 步骤 advisory 不阻断（见 ci.yml）。
 // 非 type-checked 预设（不需 parserOptions.project）：快、且不因文件不在 tsconfig 里而报错。
 import js from "@eslint/js";
@@ -82,6 +82,31 @@ function singleDoors() {
   // 会话此刻是什么样、能做什么只由那台后端判（整份脸 `SessionFace`）：界面没有转移表 · 落值口 · 两轴的格。
   door("会话状态只由那台后端判（SessionFace）：界面不写状态转移（转移表 · 落值口 · 判活 · 可恢复两轴）。", {},
     ...words("nextState|applyState|StateEvent|liveness|recoverability"));
+  // 「在跑」只读一格：会话在不在跑只看后端写好的会话脸那一格 `life`，读它的只有 `face-can.ts` 那三个短名。
+  door("「在跑」只读一格：会话一生（life）只在 face-can.ts 读，别处调 isLive · isUnclear · activityOf。",
+    { homes: [`${UI}/face-can.ts`] },
+    "MemberExpression[property.name='is'][object.name='life']", "MemberExpression[property.name='is'][object.property.name='life']",
+    "MemberExpression[property.value='is'][object.property.name='life']");
+  door("「在跑」只读一格：不拿状态点（dot === \"unknown\"）推在不在跑 / 说不清，调 face-can.ts 的 isUnclear。", {},
+    "ConditionalExpression > BinaryExpression.test[operator=/^[=!]==?$/][left.name='dot'][right.value='unknown']",
+    "ConditionalExpression > BinaryExpression.test[operator=/^[=!]==?$/][left.property.name='dot'][right.value='unknown']");
+
+  // 一个组件一个家：对话框 · 弹出菜单 · 悬停提示 · toast 栈 · 点外面关 · 按钮 · 建元素的小函数只在 `kit/` 里建。
+  const kit = [`${UI}/kit/**`];
+  const kitRole = "/^(?:(?:alert)?dialog|menu(?:item\\w*)?|tooltip)$/";
+  door("对话框 · 弹出菜单 · 悬停提示 · toast 栈 · 点外面关只在 kit/ 里建（kit/dialog · menu · tooltip · toast · popover）。", { homes: kit },
+    `CallExpression[callee.property.name='setAttribute'][arguments.0.value='role'][arguments.1.value=${kitRole}]`,
+    `AssignmentExpression[left.property.name='role'][right.value=${kitRole}]`,
+    "Literal[value='aria-modal']", ...strings("toast-stack"),
+    "CallExpression[callee.property.name='addEventListener'][callee.object.name=/^(?:document|window)$/][arguments.0.value='pointerdown']");
+  // 设置页那套按钮类拼出来写：免得本文件自己成了全仓 grep 的一处命中。
+  door("按钮只经 kit/button.ts：设置页那套按钮类已删。", { homes: kit }, ...strings(["settings", "btn"].join("-")));
+  door("建元素只经 kit/el.ts 的 el()：kit 外不另写本地 el。", { homes: kit },
+    "FunctionDeclaration[id.name='el']", "VariableDeclarator[id.name='el'][init.type=/^(?:Arrow)?FunctionExpression$/]");
+
+  // 账号可用性只读那台后端写好的 `selectable`（规则住 `acct_core::account_selectable`）：鉴权那几格只在 `accounts.ts` 出现。
+  door("账号可用性只读那台写好的 selectable（规则住 acct_core::account_selectable）：loggedIn · authReady · authKind 只在 accounts.ts 出现。",
+    { homes: [`${UI}/accounts.ts`] }, ...words("loggedIn|authReady|authKind"));
   // INVARIANTS §12：关键失败要有 toast / banner。`confirm` · `prompt` 问的是要不要干，不在这一条里。
   door("错误反馈不用 alert（可能没看清就关掉）：用 toast / banner（INVARIANTS §12）。", {},
     "CallExpression[callee.name='alert']", "CallExpression[callee.object.name='window'][callee.property.name='alert']");
@@ -280,9 +305,8 @@ export default tseslint.config(
     },
   },
   {
-    // `tests/evidence/RT1-cdp.mjs`（经 WebView2 远程调试口在真页里求值的台架）
-    // 是 `tests/evidence/` 下第一份 `.mjs` —— 上面那个洞的第三次复发形态（新目录、没有 globals 块，
-    // 11 条 `no-undef: process/console/fetch/WebSocket` 一次性把基线 3 顶成 14）。照上一块止血。
+    // `tests/evidence/` 下的 `.mjs`（如 `cdp.mjs`：经 WebView2 远程调试口在真页里求值的台架）
+    // 同上面那个洞：新目录没有 globals 块，`no-undef: process/console/fetch/WebSocket` 一齐顶高基线。照上一块止血。
     files: ["tests/evidence/**/*.mjs"],
     languageOptions: {
       globals: { ...globals.node },

@@ -8,28 +8,33 @@
 use super::*;
 use serde_json::json;
 
+/// 线上那一形的一台（经拨号核心那一处读，[`crate::dial::machine::loose`]）；读不动 ⇒ 它的码与那一句。
+fn host_of(m: &Value) -> Result<crate::dial::Host, Said> {
+    crate::dial::machine::loose(m)
+}
+
 // 下面除末尾 POSIX 那一节外都量 PowerShell 那一形（Windows 上开终端的那一行）：按方言显式取，不随跑测试的这台机器变。
-fn answer(args: &Value) -> Result<Value, CmdErr> {
+fn answer(args: &Value) -> Result<Value, Said> {
     answer_at(args, true, &found())
 }
 
 /// 判据照旧按「一台 ＋ 它的跳板」写：两样进这一端的机器表，线上只交那台的名字 ——
 /// 再经 typed 那一处收（同分派），按给定方言渲；回包写成线上那一份。
-fn answer_at(args: &Value, powershell: bool, ssh: &SshClient) -> Result<Value, CmdErr> {
+fn answer_at(args: &Value, powershell: bool, ssh: &SshClient) -> Result<Value, Said> {
     let mut wire = args.clone();
     let mut hosts = Vec::new();
     if let Some(m) = args.get("machine").filter(|m| m.is_object()) {
-        let h = crate::dial::machine::loose(m)?;
+        let h = host_of(m)?;
         wire["machine"] = json!(h.name());
         hosts.push(h);
     }
     let obj = wire.as_object_mut().expect("入参是对象");
     if let Some(j) = obj.remove("jump").filter(|j| !j.is_null()) {
-        hosts.push(crate::dial::machine::loose(&j)?);
+        hosts.push(host_of(&j)?);
     }
     let req: TerminalSshReq =
-        crate::wire::typed::take(&wire).map_err(|f| ("bad_args", f.message))?;
-    answer_in(&req, &hosts, powershell, ssh).map(|r| serde_json::to_value(r).unwrap())
+        crate::wire::typed::take(&wire).map_err(|f| Said::new("bad_args", f.said))?;
+    answer_with(&req, &hosts, &[], powershell, ssh, None).map(|r| serde_json::to_value(r).unwrap())
 }
 
 /// 这台找到的 ssh 客户端（Windows 系统可选功能装的那一处）。
@@ -57,7 +62,7 @@ fn kh() -> String {
     config_arg(crate::dial::known_hosts::terminal_config().as_deref())
 }
 
-fn run(m: Value, cmd: &str) -> Result<String, CmdErr> {
+fn run(m: Value, cmd: &str) -> Result<String, Said> {
     answer(&json!({ "machine": m, "command": cmd }))
         .map(|v| v["line"].as_str().unwrap().to_string())
 }
@@ -159,31 +164,35 @@ fn the_jump_hop_renders_as_dash_j_and_a_missing_or_looping_jump_is_refused() {
     assert_eq!(
         answer(&json!({ "machine": m, "command": "x" }))
             .unwrap_err()
-            .0,
-        "bad_jump"
+            .code
+            .as_deref(),
+        Some("bad_jump")
     );
     let looped =
         json!({ "host": "t", "user": "u", "port": 22, "label": "target", "jump": "target" });
     assert_eq!(
         answer(&json!({ "machine": looped, "command": "x" }))
             .unwrap_err()
-            .0,
-        "bad_jump"
+            .code
+            .as_deref(),
+        Some("bad_jump")
     );
     let bad_user =
         json!({ "host": "jump.local", "user": "bad user", "port": 22, "label": "bastion" });
     assert_eq!(
         answer(&json!({ "machine": m, "jump": bad_user, "command": "x" }))
             .unwrap_err()
-            .0,
-        "refused"
+            .code
+            .as_deref(),
+        Some("refused")
     );
     let bad_host = json!({ "host": "h;rm -rf", "user": "u", "port": 22, "label": "bastion" });
     assert_eq!(
         answer(&json!({ "machine": m, "jump": bad_host, "command": "x" }))
             .unwrap_err()
-            .0,
-        "refused"
+            .code
+            .as_deref(),
+        Some("refused")
     );
 }
 
@@ -195,33 +204,50 @@ fn bad_inputs_are_refused_and_say_which_cell() {
         ("a\nb", "控制字符"),
         ("cc --x \"y\"", "双引号（PS native 畸变面）"),
     ] {
-        assert_eq!(run(c(), cmd).unwrap_err().0, "refused", "{why}");
+        assert_eq!(
+            run(c(), cmd).unwrap_err().code.as_deref(),
+            Some("refused"),
+            "{why}"
+        );
     }
     assert_eq!(
-        run(c(), &"a".repeat(MAX_COMMAND + 1)).unwrap_err().0,
-        "refused",
+        run(c(), &"a".repeat(MAX_COMMAND + 1))
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("refused"),
         "超长"
     );
     assert_eq!(
-        run(machine("h", "u ser", 22, None), "x").unwrap_err().0,
-        "refused",
+        run(machine("h", "u ser", 22, None), "x")
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("refused"),
         "user 空格"
     );
     assert_eq!(
-        run(machine("h; rm", "u", 22, None), "x").unwrap_err().0,
-        "refused",
+        run(machine("h; rm", "u", 22, None), "x")
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("refused"),
         "host 注入"
     );
     // 契约错：缺机器 / 机器缺 user（缺命令是登录 shell 那一形，见末尾那一节）。
     assert_eq!(
-        answer(&json!({ "command": "x" })).unwrap_err().0,
-        "bad_args"
+        answer(&json!({ "command": "x" }))
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
     assert_eq!(
         answer(&json!({ "machine": { "host": "h" }, "command": "x" }))
             .unwrap_err()
-            .0,
-        "bad_args"
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
 }
 
@@ -232,15 +258,17 @@ fn a_leading_dash_in_any_bare_word_is_refused() {
     assert_eq!(
         run(machine("h", "-oProxyCommand", 22, None), "x")
             .unwrap_err()
-            .0,
-        "refused",
+            .code
+            .as_deref(),
+        Some("refused"),
         "用户名打头是 -"
     );
     assert_eq!(
         run(machine("-oProxyCommand", "u", 22, None), "x")
             .unwrap_err()
-            .0,
-        "refused",
+            .code
+            .as_deref(),
+        Some("refused"),
         "地址打头是 -"
     );
     let m = json!({ "host": "t", "user": "u", "port": 22, "label": "target", "jump": "bastion" });
@@ -255,8 +283,9 @@ fn a_leading_dash_in_any_bare_word_is_refused() {
         assert_eq!(
             answer(&json!({ "machine": m, "jump": j, "command": "x" }))
                 .unwrap_err()
-                .0,
-            "refused",
+                .code
+                .as_deref(),
+            Some("refused"),
             "{why}"
         );
     }
@@ -319,8 +348,11 @@ fn every_remote_command_the_backend_renders_passes_the_terminal_guard() {
     assert!(!with_dq.is_empty(), "正控没造出带双引号的命令");
     for c in with_dq {
         assert_eq!(
-            run(machine("h", "u", 22, None), c).unwrap_err().0,
-            "refused",
+            run(machine("h", "u", 22, None), c)
+                .unwrap_err()
+                .code
+                .as_deref(),
+            Some("refused"),
             "守卫被放宽了：{c}"
         );
     }
@@ -341,7 +373,9 @@ fn the_open_terminal_command_keeps_its_three_shapes() {
     ];
     for (input, want) in GOLDEN {
         assert_eq!(
-            command_for_cwd(&json!(input)).map_err(|e| e.1).as_deref(),
+            command_for_cwd(&json!(input))
+                .map_err(|e| e.said)
+                .as_deref(),
             Ok(*want),
             "入参 {input:?}"
         );
@@ -368,16 +402,16 @@ fn the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() 
         "/home/u/x\0",
     ] {
         let e = command_for_cwd(&json!(bad)).expect_err(&format!("坏值放行了：{bad:?}"));
-        assert_eq!(e.0, "refused");
+        assert_eq!(e.code.as_deref(), Some("refused"));
         assert!(
-            e.1.contains(&format!("{:?}", bad.trim())),
+            e.said.contains(&format!("{:?}", bad.trim())),
             "那句话没说清是哪个目录：{e:?}"
         );
     }
     // 〔非 UTF-8 目录〕有损目录：`cd` 走唯一的 quote 的字节形（原住 `shell_tests` 有损目录那一条里的「开终端」一格）。
     assert_eq!(
         command_for_cwd(&json!({ "b16": "2f7372762f64ff" }))
-            .map_err(|e| e.1)
+            .map_err(|e| e.said)
             .as_deref(),
         Ok("cd $'/srv/d\\xff' && exec ${SHELL:-bash} -l")
     );
@@ -401,7 +435,11 @@ fn a_cwd_intent_renders_exactly_like_the_command_it_stands_for() {
         answer(&json!({ "machine": m, "cwd": "/srv/c" })).unwrap()
     );
     for bad in [json!({ "machine": m, "cwd": "/srv", "command": "ls" })] {
-        assert_eq!(answer(&bad).unwrap_err().0, "bad_args", "{bad}");
+        assert_eq!(
+            answer(&bad).unwrap_err().code.as_deref(),
+            Some("bad_args"),
+            "{bad}"
+        );
     }
 }
 
@@ -508,7 +546,13 @@ fn the_posix_line_hands_ssh_the_same_arguments_a_real_shell_would() {
 #[test]
 fn only_the_powershell_line_refuses_double_quotes() {
     let args = json!({ "machine": machine("h", "u", 22, None), "command": r#"echo "a b""# });
-    assert_eq!(answer_at(&args, true, &found()).unwrap_err().0, "refused");
+    assert_eq!(
+        answer_at(&args, true, &found())
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("refused")
+    );
     assert!(answer_at(&args, false, &SshClient::At("/usr/bin/ssh".into())).is_ok());
 }
 
@@ -516,12 +560,12 @@ fn only_the_powershell_line_refuses_double_quotes() {
 #[test]
 fn no_ssh_client_here_says_so_instead_of_rendering_a_line_that_cannot_run() {
     let args = json!({ "machine": machine("h", "u", 22, None), "command": "x" });
-    let (code, said) = answer_at(&args, true, &SshClient::Missing).unwrap_err();
-    assert_eq!(code, "no_ssh_client");
-    assert_eq!(said, copy_text("beTerminal.ssh.missingWindows", &[]));
-    let (code, said) = answer_at(&args, false, &SshClient::Missing).unwrap_err();
-    assert_eq!(code, "no_ssh_client");
-    assert_eq!(said, copy_text("beTerminal.ssh.missingPosix", &[]));
+    let e = answer_at(&args, true, &SshClient::Missing).unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("no_ssh_client"));
+    assert_eq!(e.said, copy_text("beTerminal.ssh.missingWindows", &[]));
+    let e = answer_at(&args, false, &SshClient::Missing).unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("no_ssh_client"));
+    assert_eq!(e.said, copy_text("beTerminal.ssh.missingPosix", &[]));
 }
 
 /// 查的时候出了错 ⇒ 说判不了（带原话），不说没装、不叫人去装。
@@ -529,8 +573,9 @@ fn no_ssh_client_here_says_so_instead_of_rendering_a_line_that_cannot_run() {
 fn a_failed_check_says_it_cannot_tell_and_never_claims_missing() {
     let args = json!({ "machine": machine("h", "u", 22, None), "command": "x" });
     let why = "PATH not set or empty";
-    let (code, said) = answer_at(&args, true, &SshClient::Unknown(why.into())).unwrap_err();
-    assert_eq!(code, "unobservable");
+    let e = answer_at(&args, true, &SshClient::Unknown(why.into())).unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("unobservable"));
+    let said = e.said;
     assert_eq!(said, copy_text("beTerminal.ssh.unknown", &[("why", why)]));
     for missing in [
         "beTerminal.ssh.missingWindows",
@@ -547,16 +592,16 @@ fn login(
     aliases: &[&str],
     powershell: bool,
     ssh: &SshClient,
-) -> Result<String, CmdErr> {
+) -> Result<String, Said> {
     let mut wire = args.clone();
     let mut hosts = Vec::new();
     if let Some(m) = args.get("machine").filter(|m| m.is_object()) {
-        let h = crate::dial::machine::loose(m)?;
+        let h = host_of(m)?;
         wire["machine"] = json!(h.name());
         hosts.push(h);
     }
     let req: TerminalSshReq =
-        crate::wire::typed::take(&wire).map_err(|f| ("bad_args", f.message))?;
+        crate::wire::typed::take(&wire).map_err(|f| Said::new("bad_args", f.said))?;
     let aliases: Vec<String> = aliases.iter().map(|a| a.to_string()).collect();
     answer_with(&req, &hosts, &aliases, powershell, ssh, None).map(|r| {
         assert_eq!(r.prelude, "", "不给 sid ⇒ 没有前奏");
@@ -656,7 +701,7 @@ fn a_login_shell_still_needs_an_ssh_client_and_both_forms_together_are_refused()
         &SshClient::Missing,
     )
     .unwrap_err();
-    assert_eq!(e.0, "no_ssh_client");
+    assert_eq!(e.code.as_deref(), Some("no_ssh_client"));
     let e = login(
         &json!({ "machine": m, "command": "ls", "cwd": "/tmp" }),
         &[],
@@ -664,7 +709,7 @@ fn a_login_shell_still_needs_an_ssh_client_and_both_forms_together_are_refused()
         &found(),
     )
     .unwrap_err();
-    assert_eq!(e.0, "bad_args");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
 }
 
 // ───── 带了 sid：那一行前面接前奏，开的那个 shell 记下自己的窗口标签（`opened_windows.rs`） ─────
@@ -677,7 +722,7 @@ fn with_sid(
     powershell: bool,
     ssh: &SshClient,
     dir: Option<&std::path::Path>,
-) -> Result<String, CmdErr> {
+) -> Result<String, Said> {
     parts_with_sid(m, cmd, sid, powershell, ssh, dir).map(|r| format!("{}{}", r.prelude, r.line))
 }
 
@@ -688,14 +733,14 @@ fn parts_with_sid(
     powershell: bool,
     ssh: &SshClient,
     dir: Option<&std::path::Path>,
-) -> Result<SshCommand, CmdErr> {
+) -> Result<SshCommand, Said> {
     let mut wire = json!({ "machine": m["label"], "command": cmd });
     if let Some(s) = sid {
         wire["sid"] = json!(s);
     }
-    let hosts = vec![crate::dial::machine::loose(&m)?];
+    let hosts = vec![host_of(&m)?];
     let req: TerminalSshReq =
-        crate::wire::typed::take(&wire).map_err(|f| ("bad_args", f.message))?;
+        crate::wire::typed::take(&wire).map_err(|f| Said::new("bad_args", f.said))?;
     answer_with(&req, &hosts, &[], powershell, ssh, dir)
 }
 
@@ -791,7 +836,7 @@ fn a_sid_without_a_command_is_refused() {
     let req: TerminalSshReq =
         crate::wire::typed::take(&json!({ "machine": "192.0.2.2", "sid": "s1" })).unwrap();
     let e = answer_with(&req, &hosts, &[], true, &found(), None).unwrap_err();
-    assert_eq!(e.0, "bad_args");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
 }
 
 /// POSIX 那一形交给真 `bash -c` 跑：假 `ssh` 记下自己与父进程的进程号 ⇒ 记录里的标签是跑那一行的 shell（或 exec 成的 ssh）、
@@ -843,7 +888,7 @@ fn the_posix_record_step_writes_the_label_of_the_shell_that_runs_the_line() {
         format!("{}-{}", seen[1], seen[3]),
     ];
     assert!(
-        ours.contains(&got.label),
+        ours.contains(&got.label.to_string()),
         "标签 {} 不是跑那一行的 shell（{ours:?}）",
         got.label
     );

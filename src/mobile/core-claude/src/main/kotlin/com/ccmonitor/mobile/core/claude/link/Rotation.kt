@@ -1,8 +1,18 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.wire.Wire
-import com.ccmonitor.mobile.core.wire.gen.RotStrategyId
+import com.ccmonitor.mobile.core.wire.gen.Commands
+import com.ccmonitor.mobile.core.wire.gen.RotTarget
+import com.ccmonitor.mobile.core.wire.gen.RotationForNewReq
+import com.ccmonitor.mobile.core.wire.gen.RotationReloadReq
+import com.ccmonitor.mobile.core.wire.gen.RotationStrategyAddReq
+import com.ccmonitor.mobile.core.wire.gen.RotationStrategyCopyReq
+import com.ccmonitor.mobile.core.wire.gen.RotationStrategyDeleteReq
+import com.ccmonitor.mobile.core.wire.gen.RotationStrategyRenameReq
+import com.ccmonitor.mobile.core.wire.gen.RotationStrategyTzReq
+import com.ccmonitor.mobile.core.wire.gen.RotationUseNowReq
+import com.ccmonitor.mobile.core.wire.gen.RotationUseReq
 import com.ccmonitor.mobile.core.wire.gen.RotationViewReply
+import com.ccmonitor.mobile.core.wire.gen.RotationViewReq
 
 /*
  * 轮换（第五版）那几条命令（`IPC-COMMANDS.md` 各节，桌面 `rot-mount.ts` 同一套）：手机只拼入参、解成品。
@@ -20,39 +30,35 @@ sealed interface RotWhere {
     ) : RotWhere
 
     /** 线上 `RotTarget`（`rotation-view` 的 `target`）。 */
-    fun wire(): Map<String, Any?> =
+    fun wire(): RotTarget =
         when (this) {
-            is Session -> mapOf("sid" to sid)
-            is Strategy -> mapOf("strategy" to id)
+            is Session -> RotTarget.Sid(sid)
+            is Strategy -> RotTarget.Strategy(id)
         }
 }
 
 object Rotation {
-    const val VIEW = "rotation-view"
-    const val STRATEGIES = "rotation-strategies"
-    const val SETTINGS = "rotation-settings"
-    const val USE = "rotation-use"
-    const val RELOAD = "rotation-reload"
-    const val FOR_NEW = "rotation-for-new"
-    const val TEMP = "rotation-temp"
-    const val USE_NOW = "rotation-use-now"
-    const val ADD = "rotation-strategy-add"
-    const val COPY = "rotation-strategy-copy"
-    const val RENAME = "rotation-strategy-rename"
-    const val DELETE = "rotation-strategy-delete"
-    const val TZ = "rotation-strategy-tz"
+    const val VIEW = Commands.RotationView.NAME
+    const val STRATEGIES = Commands.RotationStrategies.NAME
+    const val SETTINGS = Commands.RotationSettings.NAME
+    const val USE = Commands.RotationUse.NAME
+    const val RELOAD = Commands.RotationReload.NAME
+    const val FOR_NEW = Commands.RotationForNew.NAME
+    const val TEMP = Commands.RotationTemp.NAME
+    const val USE_NOW = Commands.RotationUseNow.NAME
+    const val ADD = Commands.RotationStrategyAdd.NAME
+    const val COPY = Commands.RotationStrategyCopy.NAME
+    const val RENAME = Commands.RotationStrategyRename.NAME
+    const val DELETE = Commands.RotationStrategyDelete.NAME
+    const val TZ = Commands.RotationStrategyTz.NAME
 
     /** 会话那一形不画推演 ⇒ 不带 [hours]；设置页那一形推 [hours] 小时。 */
     fun view(
         where: RotWhere,
         hours: Int,
-    ): Map<String, Any?> =
-        when (where) {
-            is RotWhere.Session -> mapOf("target" to where.wire())
-            is RotWhere.Strategy -> mapOf("target" to where.wire(), "hours" to hours)
-        }
+    ): Map<String, Any?> = Commands.RotationView.args(RotationViewReq(target = where.wire(), hours = hours.takeIf { where is RotWhere.Strategy }))
 
-    fun ofView(data: Any?): RotationViewReply? = Wire.bind<RotationViewReply>(data)
+    fun ofView(data: Any?): RotationViewReply? = Commands.RotationView.reply(data)
 
     /** 设置页改一格：一个意图（[RotEdit]）＋ 读到的那一版；那台当场存成新版。 */
     fun settings(
@@ -65,12 +71,12 @@ object Rotation {
     fun use(
         sid: String,
         strategy: String?,
-    ): Map<String, Any?> = mapOf("sid" to sid, "strategy" to strategy)
+    ): Map<String, Any?> = Commands.RotationUse.args(RotationUseReq(sid = sid, strategy = strategy))
 
     /** 在用这份旧版的活会话都载入新版。 */
-    fun reload(strategy: String): Map<String, Any?> = mapOf("strategy" to strategy)
+    fun reload(strategy: String): Map<String, Any?> = Commands.RotationReload.args(RotationReloadReq(strategy))
 
-    fun forNew(strategy: String?): Map<String, Any?> = mapOf("strategy" to strategy)
+    fun forNew(strategy: String?): Map<String, Any?> = Commands.RotationForNew.args(RotationForNewReq(strategy))
 
     /** 会话顺序里把 [account] 那一行拖到第 [to] 格（第一格 ⇒ 现在用它；拖完那一串由那台认）。 */
     fun move(
@@ -91,35 +97,35 @@ object Rotation {
     fun useNow(
         sid: String,
         account: String,
-    ): Map<String, Any?> = mapOf("sid" to sid, "account" to account)
+    ): Map<String, Any?> = Commands.RotationUseNow.args(RotationUseNowReq(sid = sid, account = account))
 
     /** 从文件添加（[source] ＝ 那份原文）；[source] 缺 ⇒ 新建（照编辑器那一份）。 */
     fun add(
         source: String?,
         name: String,
-    ): Map<String, Any?> = if (source == null) mapOf("name" to name) else mapOf("source" to source, "name" to name)
+    ): Map<String, Any?> = Commands.RotationStrategyAdd.args(RotationStrategyAddReq(source = source, name = name))
 
-    /** 加 · 复制 · 改名回的那一份的名字。 */
-    fun ofId(data: Any?): String? = Wire.bind<RotStrategyId>(data)?.id
+    /** 加 · 复制 · 改名回的那一份的名字（三条回包同一形）。 */
+    fun ofId(data: Any?): String? = Commands.RotationStrategyAdd.reply(data)?.id
 
     fun copy(
         id: String,
         name: String,
-    ): Map<String, Any?> = mapOf("id" to id, "name" to name)
+    ): Map<String, Any?> = Commands.RotationStrategyCopy.args(RotationStrategyCopyReq(id = id, name = name))
 
     fun rename(
         id: String,
         name: String,
         ifRev: String,
-    ): Map<String, Any?> = mapOf("id" to id, "name" to name, "ifRev" to ifRev)
+    ): Map<String, Any?> = Commands.RotationStrategyRename.args(RotationStrategyRenameReq(id = id, name = name, ifRev = ifRev))
 
-    fun delete(id: String): Map<String, Any?> = mapOf("id" to id)
+    fun delete(id: String): Map<String, Any?> = Commands.RotationStrategyDelete.args(RotationStrategyDeleteReq(id))
 
     fun tz(
         id: String,
         tz: String,
         ifRev: String,
-    ): Map<String, Any?> = mapOf("id" to id, "tz" to tz, "ifRev" to ifRev)
+    ): Map<String, Any?> = Commands.RotationStrategyTz.args(RotationStrategyTzReq(id = id, tz = tz, ifRev = ifRev))
 }
 
 /** 改设置的一个意图（线上 `RotEdit`）：那台照声明改完、校验；`row` ＝ 号列表第几行（缺 ⇒ 总体那一格）。 */

@@ -90,6 +90,7 @@ fn as_child_over_the_cap() {
         crate::relay::open_for(std::sync::Arc::new(|_| None)),
         super::DOWNSTREAM_DEADLINE,
         super::UPSTREAM_DEADLINE,
+        super::INFLIGHT_BODY_CAP,
     ));
     let listener = super::listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");

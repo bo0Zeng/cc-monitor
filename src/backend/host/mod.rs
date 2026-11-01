@@ -66,7 +66,7 @@ impl TermRow {
 }
 
 /// 两种宿主合起来的名单：tmux 那几行在前、托管的在后；连着的客户端两种宿主合一份（`(行的 id, 接上, 最近动静)`），「报全了没有」照 tmux 那一份。
-pub(crate) fn list(on: tmux::On<'_>) -> Result<tmux::Listed, tmux::CmdErr> {
+pub(crate) fn list(on: tmux::On<'_>) -> Result<tmux::Listed, crate::common::said::Said> {
     list_with(on, &managed::listed)
 }
 
@@ -74,7 +74,7 @@ pub(crate) fn list(on: tmux::On<'_>) -> Result<tmux::Listed, tmux::CmdErr> {
 pub(crate) fn list_with(
     on: tmux::On<'_>,
     managed: &dyn Fn() -> (Vec<TermRow>, Vec<(String, u64, u64)>),
-) -> Result<tmux::Listed, tmux::CmdErr> {
+) -> Result<tmux::Listed, crate::common::said::Said> {
     let (mut rows, mut clients, complete) = tmux::rows_on(on)?;
     let (m_rows, m_clients) = managed();
     rows.extend(m_rows);

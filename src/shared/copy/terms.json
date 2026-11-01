@@ -437,6 +437,15 @@
       "note": "对外一律说「结束」（文案表 tmuxControl.* · tabSessionActions.kill.* 那几句）；本条的扫描拦新的。"
     },
     {
+      "word": "收下",
+      "tier": "禁",
+      "say": "计划节点记了收的值说「签收」；需手动那一条人看过了说「认可」。",
+      "scan": { "re": "收下", "flags": "" },
+      "examples": ["已收下这一条"],
+      "counterExamples": ["已签收", "已认可"],
+      "source": "词义替换表（签收 · 认可 两个正名）"
+    },
+    {
       "word": "英文实现词",
       "tier": "禁",
       "say": "不说实现，说结果：watcher →「自动刷新」· invoke / spawn / dispatch →「启动」「执行」· panic →「程序出错」· rollback →「还原」· flock →「锁」· uuid →「ID」· vendored / 编译期内嵌 →「随 cc-monitor 一起安装」· sftp-server →「远端的 SFTP 服务」· 其余（pidfd · tokio 运行时 · Win32 · SessionMap · ToolSpec · CLI 渲染器 · copy-data）→ 不说。",

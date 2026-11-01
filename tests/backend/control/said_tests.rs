@@ -2,6 +2,7 @@
 //! 后端知道的对象（会话名 · 收件人）在句子里。
 
 use super::{cc_bus_wire, kill, terminal_follow, terminals_wire};
+use crate::wire::spec::Settle as _;
 
 fn golden(file: &str) -> serde_json::Value {
     let p = guard_core::addr::repo_root()
@@ -104,7 +105,7 @@ fn every_golden_code_has_its_own_sentence_without_raw_words() {
     }
 }
 
-/// 没有表的命令照处理器那句：投出去那一层（`Fail::settle`）不按命令名换句子。
+/// 没有表的命令照处理器那句：投出去那一层（`Settle::settle`）不按命令名换句子。
 #[test]
 fn the_wire_layer_keeps_the_handlers_sentence() {
     for (cmd, code) in [
@@ -112,9 +113,9 @@ fn the_wire_layer_keeps_the_handlers_sentence() {
         ("bus-list", "failed"),
         ("accounts-add", "bad_args"),
     ] {
-        let f = crate::wire::spec::Fail::new(code, "处理器那句".to_string());
+        let f = crate::wire::spec::fail(code, "处理器那句".to_string());
         let out = f.settle(cmd);
-        assert_eq!(out.message, "处理器那句", "{cmd}/{code}");
+        assert_eq!(out.said, "处理器那句", "{cmd}/{code}");
     }
 }
 

@@ -44,7 +44,7 @@ fn ssh_terminal(window: Option<&str>) -> Terminal {
             server_port: 22,
         }),
         activity: Some(9),
-        window: window.map(str::to_string),
+        window: window.map(|w| w.parse().unwrap()),
     }
 }
 
@@ -178,9 +178,9 @@ async fn that_machine_not_reached_is_that_face_with_the_sentence_as_said() {
 
 #[test]
 fn what_that_machine_said_when_it_was_not_asked() {
-    let said = |code: Option<&str>| Said {
-        code: code.map(str::to_string),
-        message: "那一句".into(),
+    let said = |code: Option<&str>| match code {
+        Some(c) => Said::new(c, "那一句".to_string()),
+        None => Said::from("那一句"),
     };
     assert_eq!(
         not_asked(said(Some("unknown_command"))).unwrap(),
@@ -221,7 +221,7 @@ async fn a_local_session_starts_the_chain_at_the_terminal_showing_it_and_asks_no
     let local = Terminal {
         ssh: None,
         activity: Some(9),
-        window: Some("600-20".into()),
+        window: "600-20".parse().ok(),
     };
     let got = answer_with(
         &req(cmd_wire::LOCAL),
@@ -313,7 +313,7 @@ impl Shelf {
     fn holding(label: &str, machine: &str) -> Shelf {
         let s = Shelf::default();
         *s.held.lock().unwrap() = Some(Opened {
-            label: label.into(),
+            label: label.parse().unwrap(),
             machine: machine.into(),
         });
         s

@@ -597,7 +597,7 @@ gate_selftest
 # 排在所有格之前：一族判据的人群是「走文件系统」，仓内多一份副本（并发的 worktree、变异副本）人群就静默膨胀 ——
 # 恒等断言红一片和改动无关的，地板断言则一声不吭地过去。本格红时先清副本再重跑。
 run_gate worktree-clean '判过的条数（抽样 4 个扩展名 `.sh`/`.mjs`/`.rs`/`.ts`，每个一条恒等断言：`git ls-files` 认的份数 == 走文件系统走出的份数）。⚠ 抽样不是全集：挑的是走文件系统的判据在数的东西。买的是「仓里没有第二份工作副本」，不买「所有判据的人群都对」—— 被 `.gitignore` 掉的源码同样会让走文件系统的判据多看一份，本格按 gitignore 的口径算、看不见它' \
-         python3 tests/evidence/K-W25-worktree-clean.py
+         python3 tests/evidence/worktree-clean.py
 
 # ── 按步骤名照 `ci.yml` 原样跑某几步 —— 只给**留在 Windows job 里**的那几步用（`coverage` · `audit`）。
 # 那几步的命令住 `ci.yml` 的 Windows job（门禁跑不了真 Windows，那个 job 保留），本文件不抄第二份。
@@ -698,22 +698,22 @@ run_gate e2e-smoke '步数：`tests/e2e/*.py` 的 `py_compile` · `tests/e2e/exe
          gate_e2e_smoke
 
 # ── `release-gate`：发版那条流水线的盘上文本 ──
-# 判据本体 `tests/evidence/K-R124-ruler.py`（CI 那一步跑同一份；不依赖 PyYAML，自带 YAML 子集切块器）：
+# 判据本体 `tests/evidence/release-ruler.py`（CI 那一步跑同一份；不依赖 PyYAML，自带 YAML 子集切块器）：
 #   `release.yml` 的触发与发布闸 · 产字节那条路（承诺的平台 ↔ 产线 ↔ 登记）· `BUILD_ID` 的抠法实打得到 ·
 #   发版产 musl 字节那一步只调 `tests/scripts/re-embed.sh --build-only`。
 # 射程与买不到的东西住那份文件头注。它不编字节：re-embed 真跑 `--check`（只读）与 `--build-only`（cargo 是只记账的替身）。
 run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PASS：触发与发布闸 · 两处发布步骤的正文来源与生成器 · 产字节那条路（承诺的平台 ↔ 产线 ↔ 登记、target triple，两向集合相等；runner 标签逐字）· 每一处抠 `const BUILD_ID`／身份戳界标的住址实打读得到恰好一行 · 发版产 musl 字节那一步只调 `tests/scripts/re-embed.sh --build-only`（真跑一趟、cargo 是替身：只编不铺）· 本机那一份的原生编译与 `--native` 逐字 · 落点 ↔ `.gitignore` 两向 · 真跑 `--check` · Release 资产 ↔ `src/doc/RELEASING.md` §2.2 登记表）。⚠ 不执行 GitHub 的表达式求值器、不跑流水线 ⇒ 「盘上文本满足这几条」不等于「云端那一趟会绿」，更不等于字节在目标机器上跑得起来；往 Release 上写只认 `softprops/action-gh-release` 与 `gh release`/`gh api …/releases` 两种形状；正文写得对不对不判；`--check` 只读，在没铺字节的树上只答得出「没有对不上的字节」' \
-         python3 tests/evidence/K-R124-ruler.py
+         python3 tests/evidence/release-ruler.py
 
-# ── `platform`：承诺的平台 ↔ 门禁真跑的格（判据本体 `tests/evidence/K-G4-platform-ledger.py`）──
+# ── `platform`：承诺的平台 ↔ 门禁真跑的格（判据本体 `tests/evidence/platform-ledger.py`）──
 # 各格只说「我编得过」，这一格说「该编的都编了」：少一格、或多一个没登记的 target 都红。只判登记，不编东西。
 run_gate platform '判过的条数（判据本体每趟现算并印在它自己那行上：P1 承诺表 ↔ 门禁格两向集合相等 ＋ P2 每格一条逐字锚点 count()==1 ＋ P3 显式拒绝的那格全仓零脚印）。⚠ 反空真锚是 P1 那两向相等。⚠ 它不编任何东西：判的是门禁盖到了哪些平台，不判那些平台上真跑得起来' \
-         python3 tests/evidence/K-G4-platform-ledger.py
+         python3 tests/evidence/platform-ledger.py
 
 # ── `ccbus-twophase`：cc-bus 入口那一侧 —— 每个动词只把一句交给后端 ──
-# 收件箱 · 已读位置 · 发信的规矩都住后端（两阶段读的行为由后端单测钉）；判据本体与射程住 `tests/evidence/W24C-ccbus-twophase-ruler.py`。
+# 收件箱 · 已读位置 · 发信的规矩都住后端（两阶段读的行为由后端单测钉）；判据本体与射程住 `tests/evidence/ccbus-twophase-ruler.py`。
 run_gate ccbus-twophase '判过的条数（判据本体每趟现算并印在它自己那几行上：脚本零数据面 · 零锁零规矩（各带正控）· 各动词只问后端它自己那一条（与登记两向相等）· 脚本问的动词 == 后端的 bus-* · recv 是 peek 接 commit · 手册页那几句 —— 共 6）。⚠ **反空真锚不是这个数，是末尾那条「标签集合与登记两向相等」**。⚠ 它不判后端那一侧（Rust 单测与 e2e 的事）' \
-         python3 tests/evidence/W24C-ccbus-twophase-ruler.py
+         python3 tests/evidence/ccbus-twophase-ruler.py
 
 # ── `fmt`：`src/frontend/shell` workspace 的排版 ──
 # 云端 Windows job 的第一步就是 `cargo fmt --check`，它红了后面全 `skipped`；本机先拦住。只判排版，不判代码对。
@@ -832,8 +832,8 @@ run_gate clippy '不是数出来的数：`cargo clippy --workspace --all-targets
 run_gate appbuild '不是数出来的数：`cargo build`（dev）只有绿/红两态，射程 = `src/frontend/shell` 根包 `monitor` 的 lib 与主二进制 `cc-monitor` 在 Linux 上真编真链一趟（文件窗口程序住文件窗口包，本格不编它），与 `ci.yml` 的 `linux-app-build` 那一步同一条命令。⚠ 只链不跑；release 档不编；前端产物（`dist/`）由 `npm` 那格里的真 vite 构建与 `tsc` 那格盖' \
          bash -c 'cd src/frontend/shell && out=$(cargo build 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "appbuild: 1 passed"'
 # ── `shotsshell`：截图台架的无头壳（例子 `ccm-shots-shell`，只在台架特性下编）编不编得过 ──
-# 台架那一处（`tests/shots/real/pool.mjs`）照同一条编、起它；从前没有一格编它，壳里它调的签名一改（如 `call_via` 多一参），
-# 要到跑截图台架才发现（撞上过两回）。只编 dev 档的例子、不进任何发出去的二进制（`shots_feature_guard_tests.rs` S3 · S5 钉着）。
+# 台架那一处（`tests/shots/real/pool.mjs`）照同一条编、起它；没有一格编它的话，壳里它调的签名一改（如 `call_via` 多一参），
+# 要到跑截图台架才发现。只编 dev 档的例子、不进任何发出去的二进制（`shots_feature_guard_tests.rs` S3 · S5 钉着）。
 # 与 `cargo` · `appbuild` 同一个 target 目录，增量编一次。
 run_gate shotsshell '不是数出来的数：截图台架那个无头壳（例子 `ccm-shots-shell`）在 Linux 上 dev 档真编真链一趟，只有绿/红两态，与台架 `pool.mjs` 同一条编法。⚠ 只编不跑：台架里它跑得对不对由截图台架自己判' \
          bash -c 'cd src/frontend/shell && out=$(cargo build --features shots --example ccm-shots-shell 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "shotsshell: 1 passed"'
@@ -1298,8 +1298,8 @@ gate_mobile() {
 run_gate mobile '这一趟 Gradle test-results 里的单测条数（各模块合计）；同一格还跑 ktlint · detekt · Android Lint · release 构建（R8），那几步只有绿/红。不起模拟器：要设备的 androidTest 在 android-device 那一格' \
          gate_mobile
 
-# ── `android-device`：手机端要设备的 instrumentation 测（androidTest，10-11 起进全量门禁）────────────────────
-# 起因：从前它们不在任何一格里（上一格「不起模拟器」），`SmokeTest` 红了很久没人看见（10-11 才撞见）。
+# ── `android-device`：手机端要设备的 instrumentation 测（androidTest，进全量门禁）──────────────────────────────
+# 上一格不起模拟器；要设备的测不在任何一格里，就红了也没人看见。
 # 起停：`tests/mobile-smoke/emu.sh up|down` —— 无头 KVM 模拟器，自己一个 `systemd-run --user --scope`（MemoryMax 10G，不设 MemoryHigh），
 #   不占 heavy 的槽位；adb 用私有端口（默认 5139 / 模拟器 5592，与冒烟台架的 5137 / 5590 错开），不碰本机正在跑的 adb 与真手机。
 #   AVD 默认建在这棵树的 `.build/android-device/avd`，`GATE_ANDROID_AVD_HOME` 可指别处（`gate-affected.sh` 经 `heavy.sh` 只清 `CCM_*` 等会话变量，不清它）。

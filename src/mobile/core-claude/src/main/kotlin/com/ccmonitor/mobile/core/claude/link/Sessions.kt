@@ -1,36 +1,53 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.AccountAsk
 import com.ccmonitor.mobile.core.wire.gen.AgentFacts
 import com.ccmonitor.mobile.core.wire.gen.ArriveAsk
 import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
+import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.FactsReply
 import com.ccmonitor.mobile.core.wire.gen.Held
+import com.ccmonitor.mobile.core.wire.gen.HistoryFactsReq
+import com.ccmonitor.mobile.core.wire.gen.HistoryImageReq
+import com.ccmonitor.mobile.core.wire.gen.HistoryLinesReq
+import com.ccmonitor.mobile.core.wire.gen.HistoryReadReq
+import com.ccmonitor.mobile.core.wire.gen.HistoryRunReq
+import com.ccmonitor.mobile.core.wire.gen.HistoryTailReq
 import com.ccmonitor.mobile.core.wire.gen.JsonValue
 import com.ccmonitor.mobile.core.wire.gen.Landed
+import com.ccmonitor.mobile.core.wire.gen.Launch
 import com.ccmonitor.mobile.core.wire.gen.Line
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.ModeSwitched
 import com.ccmonitor.mobile.core.wire.gen.ModelSwitched
 import com.ccmonitor.mobile.core.wire.gen.OpenFacts
-import com.ccmonitor.mobile.core.wire.gen.Opened
+import com.ccmonitor.mobile.core.wire.gen.OpenWhat
 import com.ccmonitor.mobile.core.wire.gen.QueueCancelled
 import com.ccmonitor.mobile.core.wire.gen.QueueList
 import com.ccmonitor.mobile.core.wire.gen.QueuePut
 import com.ccmonitor.mobile.core.wire.gen.Rewind
 import com.ccmonitor.mobile.core.wire.gen.RewindOptions
+import com.ccmonitor.mobile.core.wire.gen.RotationPick
 import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SentResult
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
-import com.ccmonitor.mobile.core.wire.gen.HistoryImage as HistoryImageReply
-import com.ccmonitor.mobile.core.wire.gen.HistoryLines as HistoryLinesPage
-import com.ccmonitor.mobile.core.wire.gen.HistoryRead as HistoryReadPage
+import com.ccmonitor.mobile.core.wire.gen.SessionCommandsReq
+import com.ccmonitor.mobile.core.wire.gen.SessionInterruptReq
+import com.ccmonitor.mobile.core.wire.gen.SessionModelReq
+import com.ccmonitor.mobile.core.wire.gen.SessionOpenReq
+import com.ccmonitor.mobile.core.wire.gen.SessionPermissionReq
+import com.ccmonitor.mobile.core.wire.gen.SessionQueueCancelReq
+import com.ccmonitor.mobile.core.wire.gen.SessionQueuePutReq
+import com.ccmonitor.mobile.core.wire.gen.SessionQueueReadReq
+import com.ccmonitor.mobile.core.wire.gen.SessionRewindOptionsReq
 import com.ccmonitor.mobile.core.wire.gen.HistoryRun as HistoryRunPage
 import com.ccmonitor.mobile.core.wire.gen.HistoryTail as HistoryTailReply
 import com.ccmonitor.mobile.core.wire.gen.Sent as SentWire
 
 /*
  * 起会话 · 往会话里送字 · 读一条会话的正文：都是那台核心的帧命令，手机只拼入参、解成品（`IPC-COMMANDS.md` 各节）。
+ * 命令名 · 入参 · 回包都取生成的那一份（`Commands.<命令>`，照 TypedCommands）：这里只填格。
  * 正文是核心的通用记录（`IPC-PROTOCOL.md`「通用记录」）。
  */
 
@@ -39,7 +56,7 @@ import com.ccmonitor.mobile.core.wire.gen.Sent as SentWire
  * 手机的终端只是 ssh 那一屏：永远 `local: false`；新起 · 恢复永远起在那台 tmux 里，桌面那一侧看得到、接得上。
  */
 object SessionOpen {
-    const val COMMAND: String = "session-open"
+    const val COMMAND: String = Commands.SessionOpen.NAME
 
     /**
      * 新起一条会话（[agent] 是哪一家的线上名，照那台 `session-open-facts` 的 `agents[].kind`）。账号 · 模型 · 权限都不带 ⇒ 跟随那台的默认。
@@ -57,10 +74,7 @@ object SessionOpen {
         rotation: Rotation? = null,
     ): Map<String, Any?> =
         ask(
-            buildMap {
-                putAll(mapOf("kind" to "new", "agent" to agent, "cwd" to cwd, "prompt" to prompt))
-                rotation?.let { put("rotation", mapOf("strategy" to it.strategy)) }
-            },
+            OpenWhat.New(agent = agent, cwd = cwd, prompt = prompt, rotation = rotation?.let { RotationPick(it.strategy) }),
             run = true,
             ticket = ticket,
             account = account,
@@ -76,13 +90,13 @@ object SessionOpen {
         agent: String,
         name: String,
         ticket: String,
-    ): Map<String, Any?> = ask(mapOf("kind" to "new", "agent" to agent, "cwd" to "~", "tmuxName" to name), run = true, ticket = ticket)
+    ): Map<String, Any?> = ask(OpenWhat.New(agent = agent, cwd = "~", tmuxName = name), run = true, ticket = ticket)
 
     /** 恢复 [sid] 那条（终端没了 ⇒ 那台照记录起回来；已在跑 ⇒ 回它所在的那个）。 */
-    fun resume(sid: String): Map<String, Any?> = ask(mapOf("kind" to "resume", "sid" to sid), run = true)
+    fun resume(sid: String): Map<String, Any?> = ask(OpenWhat.Resume(sid), run = true)
 
     /** 接回名叫 [session] 的那个 tmux 会话（不在 ⇒ 那台拒，不建）。 */
-    fun look(session: String): Map<String, Any?> = ask(mapOf("kind" to "look", "session" to session))
+    fun look(session: String): Map<String, Any?> = ask(OpenWhat.Look(session = session))
 
     /**
      * 开一个 shell：给了 [session] ⇒ 那台 tmux 里那个会话（不在就在 [cwd] 里建一个空的）；只给 [cwd] ⇒ 进那个目录那一行（那台的 shell 方言）。
@@ -91,29 +105,24 @@ object SessionOpen {
     fun shell(
         session: String?,
         cwd: String?,
-    ): Map<String, Any?> =
-        ask(
-            buildMap {
-                put("kind", "shell")
-                session?.let { put("session", it) }
-                cwd?.let { put("cwd", it) }
-            },
-        )
+    ): Map<String, Any?> = ask(OpenWhat.Shell(session = session, cwd = cwd))
 
     private fun ask(
-        what: Map<String, Any?>,
+        what: OpenWhat,
         run: Boolean = false,
         ticket: String? = null,
         account: String? = null,
     ): Map<String, Any?> =
-        buildMap {
-            put("what", what)
-            account?.let { put("account", mapOf("kind" to "named", "name" to it)) }
-            if (run) put("run", "tmux")
-            put("local", false)
-            ticket?.let { put("ticket", it) }
-            put("client", CLIENT)
-        }
+        Commands.SessionOpen.args(
+            SessionOpenReq(
+                what = what,
+                account = account?.let { AccountAsk.Named(it) },
+                run = Launch.TMUX.takeIf { run },
+                local = false,
+                ticket = ticket,
+                client = CLIENT,
+            ),
+        )
 
     data class Answer(
         val landed: Landed,
@@ -135,7 +144,7 @@ object SessionOpen {
 
     /** 核心按 `cmd-wire` 那一份解过的回包 ⇒ 这一份（第一句的结局折成 [TerminalInput.Result]）。 */
     fun of(data: Any?): Answer? {
-        val r = Wire.bind<Opened>(data) ?: return null
+        val r = Commands.SessionOpen.reply(data) ?: return null
         val prompt = r.prompt?.let { TerminalInput.of(it) ?: return null }
         return Answer(r.landed, r.session, r.line, r.sid, r.cwd, r.note, prompt, r.arrival)
     }
@@ -146,22 +155,22 @@ object SessionOpen {
  * 认法 · 没见到那一句 · 那一屏原话都是那台的，手机只照回包说。
  */
 object SessionArrive {
-    const val COMMAND: String = "session-arrive"
+    const val COMMAND: String = Commands.SessionArrive.NAME
 
-    fun args(ask: ArriveAsk): Map<String, Any?> = Wire.args(ask)
+    fun args(ask: ArriveAsk): Map<String, Any?> = Commands.SessionArrive.args(ask)
 
     /** 报到了 ⇒ `sid`；没见到 ⇒ `said`（那台写好的那一句）。 */
-    fun of(data: Any?): ArriveEnd? = Wire.bind<ArriveEnd>(data)
+    fun of(data: Any?): ArriveEnd? = Commands.SessionArrive.reply(data)
 }
 
 /**
  * `session-open-facts`：这台能起哪几家（注册表序；各带写给人看的名字与可选的模型）。哪几家 · 叫什么 · 有哪些模型都问那台，手机一家都不认识。
  */
 object SessionOpenFacts {
-    const val COMMAND: String = "session-open-facts"
+    const val COMMAND: String = Commands.SessionOpenFacts.NAME
 
     /** 整份：几家（[OpenFacts.agents]）＋ 最近的目录。 */
-    fun of(data: Any?): OpenFacts? = Wire.bind<OpenFacts>(data)
+    fun of(data: Any?): OpenFacts? = Commands.SessionOpenFacts.reply(data)
 
     /** 这台存的那一家（线上 kind）；没存 · 那台不认 ⇒ 那台列的第一家；一家都没有 ⇒ `null`。 */
     fun pick(
@@ -175,49 +184,49 @@ object SessionOpenFacts {
  * 手上有记录路径 ⇒ 按路径问；只有会话 id（会话表里没有、续点里也没有）⇒ 按 sid 问，那台找那份记录、回包的 `path` 就是它。
  */
 object HistoryFacts {
-    const val COMMAND: String = "history-facts"
+    const val COMMAND: String = Commands.HistoryFacts.NAME
 
-    fun args(path: String): Map<String, Any?> = mapOf("path" to path)
+    fun args(path: String): Map<String, Any?> = Commands.HistoryFacts.args(HistoryFactsReq.Path(path))
 
-    fun bySid(sid: String): Map<String, Any?> = mapOf("sid" to sid)
+    fun bySid(sid: String): Map<String, Any?> = Commands.HistoryFacts.args(HistoryFactsReq.Sid(sid))
 
-    fun of(data: Any?): FactsReply? = Wire.bind<FactsReply>(data)
+    fun of(data: Any?): FactsReply? = Commands.HistoryFacts.reply(data)
 }
 
 /** `session-model`：中途给一条会话换模型（那台送命令、读回来认；在等人不送）。结局照那台写好的那一句说。 */
 object SessionModel {
-    const val COMMAND: String = "session-model"
+    const val COMMAND: String = Commands.SessionModel.NAME
 
     fun args(
         sid: String,
         model: String,
-    ): Map<String, Any?> = mapOf("sid" to sid, "model" to model, "client" to CLIENT)
+    ): Map<String, Any?> = Commands.SessionModel.args(SessionModelReq(sid = sid, model = model, client = CLIENT))
 
     /** 结局（`done` · `unsure` · `refused`）＋ 读回的显示名 ＋ 那台写好的那一句。 */
-    fun of(data: Any?): ModelSwitched? = Wire.bind<ModelSwitched>(data)
+    fun of(data: Any?): ModelSwitched? = Commands.SessionModel.reply(data)
 }
 
 /** `session-permission`：中途给一条会话切权限档（那台按那一家的循环键、读回到了为止；在等人不按）。 */
 object SessionPermission {
-    const val COMMAND: String = "session-permission"
+    const val COMMAND: String = Commands.SessionPermission.NAME
 
     /** [mode] 是那台 `session-open-facts` 那一家 `permissionModes` 里的原值。 */
     fun args(
         sid: String,
         mode: String,
-    ): Map<String, Any?> = mapOf("sid" to sid, "mode" to mode, "client" to CLIENT)
+    ): Map<String, Any?> = Commands.SessionPermission.args(SessionPermissionReq(sid = sid, mode = mode, client = CLIENT))
 
     /** 结局 ＋ 读回那一档写给人看的字 ＋ 那台写好的那一句。 */
-    fun of(data: Any?): ModeSwitched? = Wire.bind<ModeSwitched>(data)
+    fun of(data: Any?): ModeSwitched? = Commands.SessionPermission.reply(data)
 }
 
 /** `session-commands`：一条会话能用的斜杠命令与 Skill（那台按那条会话的目录与号现扫，字也是它写的）。 */
 object SessionCommandList {
-    const val COMMAND: String = "session-commands"
+    const val COMMAND: String = Commands.SessionCommands.NAME
 
-    fun args(sid: String): Map<String, Any?> = mapOf("sid" to sid)
+    fun args(sid: String): Map<String, Any?> = Commands.SessionCommands.args(SessionCommandsReq(sid))
 
-    fun of(data: Any?): SessionCommands? = Wire.bind<SessionCommands>(data)
+    fun of(data: Any?): SessionCommands? = Commands.SessionCommands.reply(data)
 }
 
 /**
@@ -225,7 +234,7 @@ object SessionCommandList {
  * [id] 是这一端待发箱里那一句的编号：没回执就连上重发同一个，那台按它去重、只进一条。
  */
 object SessionQueuePut {
-    const val COMMAND: String = "session-queue-put"
+    const val COMMAND: String = Commands.SessionQueuePut.NAME
 
     /**
      * [attachments]：随这一句发的附件编号（[SessionAttachmentCommit] 回的，按草稿里的先后）；没有 ⇒ 不带这一格。
@@ -239,47 +248,54 @@ object SessionQueuePut {
         attachments: List<String> = emptyList(),
         rewind: Rewind? = null,
     ): Map<String, Any?> =
-        mapOf("machine" to LOCAL, "sid" to sid, "id" to id, "end" to CLIENT, "atMs" to atMs, "text" to text) +
-            listOfNotNull(
-                attachments.takeIf { it.isNotEmpty() }?.let { "attachments" to it },
-                rewind?.let { "rewind" to mapOf("to" to it.to, "how" to it.how.wire, "when" to it.`when`.wire) },
-            )
+        Commands.SessionQueuePut.args(
+            SessionQueuePutReq(
+                machine = LOCAL,
+                sid = sid,
+                id = id,
+                end = CLIENT,
+                atMs = atMs,
+                text = text,
+                attachments = attachments.takeIf { it.isNotEmpty() },
+                rewind = rewind,
+            ),
+        )
 
-    fun of(data: Any?): QueuePut? = Wire.bind<QueuePut>(data)
+    fun of(data: Any?): QueuePut? = Commands.SessionQueuePut.reply(data)
 }
 
 /** `session-rewind-options`：编辑已发的一句、发送那一下给哪几项（会话那台照那一家申报的交出，界面照摆）。 */
 object SessionRewindOptions {
-    const val COMMAND: String = "session-rewind-options"
+    const val COMMAND: String = Commands.SessionRewindOptions.NAME
 
     /** `to`：被编辑那一句的 uuid（哪一项能选按那一句之后的事判）。 */
     fun args(
         sid: String,
         to: String,
-    ): Map<String, Any?> = mapOf("machine" to LOCAL, "sid" to sid, "to" to to)
+    ): Map<String, Any?> = Commands.SessionRewindOptions.args(SessionRewindOptionsReq(machine = LOCAL, sid = sid, to = to))
 
-    fun of(data: Any?): RewindOptions? = Wire.bind<RewindOptions>(data)
+    fun of(data: Any?): RewindOptions? = Commands.SessionRewindOptions.reply(data)
 }
 
 /** `session-queue-cancel`：撤队里一条还没送的（回撤完的整份名单）。 */
 object SessionQueueCancel {
-    const val COMMAND: String = "session-queue-cancel"
+    const val COMMAND: String = Commands.SessionQueueCancel.NAME
 
     fun args(
         sid: String,
         id: String,
-    ): Map<String, Any?> = mapOf("machine" to LOCAL, "sid" to sid, "id" to id)
+    ): Map<String, Any?> = Commands.SessionQueueCancel.args(SessionQueueCancelReq(machine = LOCAL, sid = sid, id = id))
 
-    fun of(data: Any?): QueueCancelled? = Wire.bind<QueueCancelled>(data)
+    fun of(data: Any?): QueueCancelled? = Commands.SessionQueueCancel.reply(data)
 }
 
 /** `session-queue-read`：一条会话此刻的名单（会话那台那一份；推送 `changed {session_queue}` 没带体时重问它）。 */
 object SessionQueueRead {
-    const val COMMAND: String = "session-queue-read"
+    const val COMMAND: String = Commands.SessionQueueRead.NAME
 
-    fun args(sid: String): Map<String, Any?> = mapOf("machine" to LOCAL, "sid" to sid)
+    fun args(sid: String): Map<String, Any?> = Commands.SessionQueueRead.args(SessionQueueReadReq(machine = LOCAL, sid = sid))
 
-    fun of(data: Any?): QueueList? = Wire.bind<QueueList>(data)
+    fun of(data: Any?): QueueList? = Commands.SessionQueueRead.reply(data)
 }
 
 /** 问的就是连着的那台自己（线上逐字 `<local>`）。 */
@@ -287,27 +303,13 @@ private const val LOCAL = "<local>"
 
 /** `session-interrupt`：中断一条会话这一轮（■）。不进输入队、不靠持有输入；回包同 `terminal-input`（[TerminalInput.of] 解）。 */
 object SessionInterrupt {
-    const val COMMAND: String = "session-interrupt"
+    const val COMMAND: String = Commands.SessionInterrupt.NAME
 
-    fun args(sid: String): Map<String, Any?> = mapOf("sid" to sid, "client" to CLIENT)
+    fun args(sid: String): Map<String, Any?> = Commands.SessionInterrupt.args(SessionInterruptReq(sid = sid, client = CLIENT))
 }
 
-/** `terminal-input`：往一条会话所在的终端送字或送键（那台过身份门、判送没送到）。 */
+/** 那台判的送没送到（`terminal-input` 回话那一形；`session-open` 第一句 · `session-interrupt` 的回包同形）。手机不发 `terminal-input`。 */
 object TerminalInput {
-    const val COMMAND: String = "terminal-input"
-
-    /** 送字（原样送、末尾补回车）。 */
-    fun text(
-        sid: String,
-        text: String,
-    ): Map<String, Any?> = mapOf("sid" to sid, "text" to text)
-
-    /** 送键（`esc` 停这一轮 …）。 */
-    fun key(
-        sid: String,
-        key: String,
-    ): Map<String, Any?> = mapOf("sid" to sid, "key" to key)
-
     sealed interface Result {
         data object Delivered : Result
 
@@ -322,7 +324,7 @@ object TerminalInput {
     }
 
     /** 核心按 `cmd-wire` 那一份解过的回包 ⇒ 结局。被拒却没带那一句 ⇒ `null`（没有可上屏的话）。 */
-    fun of(data: Any?): Result? = Wire.bind<SentWire>(data)?.let { of(it) }
+    fun of(data: Any?): Result? = Commands.TerminalInput.reply(data)?.let { of(it) }
 
     /** 解过的回包（`terminal-input` · `session-open` 里第一句那一格同一形）⇒ 结局。 */
     fun of(sent: SentWire): Result? =
@@ -338,20 +340,15 @@ object TerminalInput {
  * 怎么接那台判（续得上 · 变短 · 被改写 · 缺得比 [n] 多）；第一页与 `history-read` 同一形（`rows` · `next` · `eof`，[HistoryRead.of] 解）。
  */
 object HistoryTail {
-    const val COMMAND: String = "history-tail"
+    const val COMMAND: String = Commands.HistoryTail.NAME
 
     fun args(
         path: String,
         n: Int,
         held: Held? = null,
-    ): Map<String, Any?> =
-        buildMap {
-            put("path", path)
-            put("n", n.toLong())
-            held?.let { put("held", mapOf("path" to it.path, "next" to it.next, "next_byte" to it.nextByte, "mark" to it.mark)) }
-        }
+    ): Map<String, Any?> = Commands.HistoryTail.args(HistoryTailReq(path = path, n = n.toLong(), held = held))
 
-    fun of(data: Any?): HistoryTailReply? = Wire.bind<HistoryTailReply>(data)
+    fun of(data: Any?): HistoryTailReply? = Commands.HistoryTail.reply(data)
 }
 
 /**
@@ -359,37 +356,37 @@ object HistoryTail {
  * 收场的从头读（[after] 0）、在跑的从尾巴读（[tail]），往前一页拿上一页的 `from` 当 [before]，往后一页拿 `end` 当 [after] 的起点。
  */
 object HistoryRun {
-    const val COMMAND: String = "history-run"
+    const val COMMAND: String = Commands.HistoryRun.NAME
 
     fun after(
         parent: String,
         run: String,
         from: Long,
-    ): Map<String, Any?> = mapOf("parent" to parent, "run" to run, "from" to from)
+    ): Map<String, Any?> = Commands.HistoryRun.args(HistoryRunReq(parent = parent, run = run, from = from))
 
     fun tail(
         parent: String,
         run: String,
-    ): Map<String, Any?> = mapOf("parent" to parent, "run" to run, "tail" to true)
+    ): Map<String, Any?> = Commands.HistoryRun.args(HistoryRunReq(parent = parent, run = run, tail = true))
 
     fun before(
         parent: String,
         run: String,
         before: Long,
-    ): Map<String, Any?> = mapOf("parent" to parent, "run" to run, "before" to before)
+    ): Map<String, Any?> = Commands.HistoryRun.args(HistoryRunReq(parent = parent, run = run, before = before))
 
-    fun of(data: Any?): HistoryRunPage? = Wire.bind<HistoryRunPage>(data)
+    fun of(data: Any?): HistoryRunPage? = Commands.HistoryRun.reply(data)
 }
 
 /** `history-read`：按字节读 `[offset, until)` 那一段，每行一条通用记录（不进界面的行没有记录、不出）。 */
 object HistoryRead {
-    const val COMMAND: String = "history-read"
+    const val COMMAND: String = Commands.HistoryRead.NAME
 
     fun args(
         path: String,
         offset: Long,
         until: Long,
-    ): Map<String, Any?> = mapOf("path" to path, "offset" to offset, "until" to until)
+    ): Map<String, Any?> = Commands.HistoryRead.args(HistoryReadReq(path = path, offset = offset, until = until))
 
     data class Page(
         val records: List<LineRecord>,
@@ -400,7 +397,7 @@ object HistoryRead {
     )
 
     fun of(data: Any?): Page? {
-        val p = Wire.bind<HistoryReadPage>(data) ?: return null
+        val p = Commands.HistoryRead.reply(data) ?: return null
         val rows = p.rows.mapNotNull { r -> r.record?.let { it to (r.end ?: -1L) } }
         return Page(rows.map { it.first }, rows.map { it.second }, p.next, p.eof)
     }
@@ -427,28 +424,28 @@ object HistoryRead {
 
 /** `history-image`：按引用取回一张图（记录里的图片块只带引用：哪一行 `at` · 第几张 `n` ＋ 那一条的 `id`）。 */
 object HistoryImage {
-    const val COMMAND: String = "history-image"
+    const val COMMAND: String = Commands.HistoryImage.NAME
 
     fun args(
         path: String,
         at: Long,
         n: Int,
         id: String,
-    ): Map<String, Any?> = mapOf("path" to path, "at" to at, "n" to n, "id" to id)
+    ): Map<String, Any?> = Commands.HistoryImage.args(HistoryImageReq(path = path, at = at, n = n.toLong(), id = id))
 
     /** 回包里那张图的 base64；解不开 ⇒ `null`。 */
-    fun of(data: Any?): String? = Wire.bind<HistoryImageReply>(data)?.data
+    fun of(data: Any?): String? = Commands.HistoryImage.reply(data)?.data
 }
 
 /** `history-lines`：按行号取 `[from, until)` 那一段（不进界面的行照占号、不出）。 */
 object HistoryLines {
-    const val COMMAND: String = "history-lines"
+    const val COMMAND: String = Commands.HistoryLines.NAME
 
     fun args(
         path: String,
         from: Long,
         until: Long,
-    ): Map<String, Any?> = mapOf("path" to path, "from" to from, "until" to until)
+    ): Map<String, Any?> = Commands.HistoryLines.args(HistoryLinesReq(path = path, from = from, until = until))
 
     data class Page(
         val records: List<LineRecord>,
@@ -466,7 +463,7 @@ object HistoryLines {
     )
 
     fun of(data: Any?): Page? {
-        val p = Wire.bind<HistoryLinesPage>(data) ?: return null
+        val p = Commands.HistoryLines.reply(data) ?: return null
         val raw = ((data as? Map<*, *>)?.get("lines") as? List<*>)?.map { (it as? Map<*, *>)?.get("record") }.orEmpty()
         return Page(p.lines.map { it.record }, p.lines.map { it.seq }, p.next, p.eof, p.end, p.lines.map { it.end }, raw)
     }

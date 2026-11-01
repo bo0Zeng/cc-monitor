@@ -1,6 +1,17 @@
-/** Batch13-F40c:抖动探针的反转计数器单测(纯函数) */
-import { afterEach, describe, expect, it } from "vitest";
+// DEV 探针（`e2e-probe.ts`）：冷开抖动探针跨在冷起补读上 · 反转计数 · 快照里的 tab 行。
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { countReversals, withTabRows } from "../../../src/frontend/ui/e2e-probe";
+
+const sent = vi.hoisted(() => [] as string[]);
+vi.mock("@tauri-apps/api/webviewWindow", () => ({ getCurrentWebviewWindow: () => ({ label: "main" }) }));
+vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
+  commands: {
+    frontend_perf_log: (a: { lines: string }) => {
+      sent.push(a.lines);
+      return Promise.resolve();
+    },
+  },
+}));
 
 type Box = { left: number; top: number; width: number; height: number };
 function boxed<T extends HTMLElement>(el: T, b: Box): T {
@@ -70,5 +81,76 @@ describe("countReversals", () => {
 
   it("单向大位移后回摆一次 = 1", () => {
     expect(countReversals([100, 50, 20, 24])).toBe(1);
+  });
+});
+
+// 冷开那一段不走批（壳冷起不整份重放）：探针起停挂在冷起补读上 —— 首段补读的行要喂进 tab 时起，冷起补读落地时停。
+describe("冷开抖动：探针跨在冷起补读上", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  async function rig(): Promise<{
+    probe: typeof import("../../../src/frontend/ui/e2e-probe");
+    perf: typeof import("../../../src/frontend/ui/startup-perf");
+    frame: (n: number) => void;
+  }> {
+    vi.resetModules();
+    sent.length = 0;
+    window.__ccmPerf = { domContentLoaded: 10, themeLoaded: 20, frontendReadyEmit: 30 };
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    let queued: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      queued.push(cb);
+      return queued.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", () => {
+      queued = [];
+    });
+    const stream = document.createElement("div");
+    stream.className = "stream active";
+    const content = document.createElement("div");
+    content.className = "stream-content";
+    content.append(boxed(document.createElement("div"), { left: 0, top: 100, width: 600, height: 40 }));
+    stream.append(content);
+    document.body.append(stream);
+    const frame = (n: number): void => {
+      for (let i = 0; i < n; i++) {
+        const now = queued;
+        queued = [];
+        for (const cb of now) cb(0);
+      }
+    };
+    return {
+      probe: await import("../../../src/frontend/ui/e2e-probe"),
+      perf: await import("../../../src/frontend/ui/startup-perf"),
+      frame,
+    };
+  }
+
+  it("登记之后：首段补读到 ⇒ 起（再到不重起）；冷起补读落地 ⇒ 停，日志里恰好一行抖动读数，帧数是整个窗口的", async () => {
+    const { probe, perf, frame } = await rig();
+    perf.registerColdProbe({ start: probe.startColdJitterProbe, stop: probe.stopColdJitterProbe });
+    perf.noteHistoryArrived();
+    frame(2);
+    perf.noteHistoryArrived();
+    frame(1);
+    perf.noteColdFilled();
+    frame(2);
+    perf.noteColdFilled();
+    expect(sent.filter((l) => l.startsWith("[e2e] jitter"))).toEqual([
+      "[e2e] jitter frames=3 reversals=0 density=0.000 retargets=0",
+    ]);
+  });
+
+  it("没登记（生产构建不加载探针）⇒ 补读照常、timeline 照落，没有抖动行", async () => {
+    const { perf, frame } = await rig();
+    perf.noteHistoryArrived();
+    frame(2);
+    perf.noteColdFilled();
+    expect(sent.some((l) => l.includes("[perf] === 启动管线 timeline"))).toBe(true);
+    expect(sent.filter((l) => l.startsWith("[e2e] jitter"))).toEqual([]);
   });
 });

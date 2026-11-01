@@ -1,5 +1,18 @@
 use super::*;
 
+/// 判据读编辑看板用的两个数（生产那一份里没有它们；本模块挂在 `editor` 底下，读得到私有字段）。
+impl EditBoard {
+    /// 打开到货过几趟。
+    pub(crate) fn opens(&self) -> u64 {
+        self.opens.load(Ordering::SeqCst)
+    }
+
+    /// 存盘那一趟落过几次结局（成没成都算）。
+    pub(crate) fn saves(&self) -> u64 {
+        self.saves.load(Ordering::SeqCst)
+    }
+}
+
 /// 一份 `files-read-text` 回包（JSON）先按回包类型解（`ask_typed` 那一步；解不出 ⇒ 这一侧的那一句），再交下面那一步。
 fn typed(
     r: Result<serde_json::Value, crate::source::Failed>,
@@ -145,9 +158,10 @@ fn the_not_text_notice_covers_what_is_left_after_the_size_check() {
 fn the_reply_maps_to_text_not_text_or_failure_by_the_peers_code() {
     use crate::source::Failed;
     let failed = |code: Option<&str>, said: &str| Failed {
-        code: code.map(str::to_string),
+        code: Failed::code_or_fallback(code.map(str::to_string)),
         said: said.to_string(),
         detail: String::new(),
+        data: None,
     };
     assert_eq!(
         text_from_reply(Ok(
@@ -617,9 +631,10 @@ fn a_save_reply_splits_into_saved_stale_and_failed_by_the_peers_code() {
         sha256: cmd_wire::files::Sha256Hex(sha.to_string()),
     };
     let failed = |code: Option<&str>| Failed {
-        code: code.map(str::to_string),
+        code: Failed::code_or_fallback(code.map(str::to_string)),
         said: "原话".to_string(),
         detail: String::new(),
+        data: None,
     };
     let sha = crate::find::testing::fake_sha256("x");
     assert_eq!(

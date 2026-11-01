@@ -279,8 +279,9 @@ fn in_list_is_judged_by_host_user_and_port() {
         crate::wire::typed::take::<SshImportReq>(&serde_json::json!({}))
             .map(|_| ())
             .unwrap_err()
-            .code,
-        "bad_args"
+            .code
+            .as_deref(),
+        Some("bad_args")
     );
 }
 
@@ -288,9 +289,9 @@ fn in_list_is_judged_by_host_user_and_port() {
 #[test]
 fn a_failed_ssh_g_keeps_what_ssh_said_out_of_the_sentence() {
     let e = ssh_g_exited("web", b"ssh: Could not resolve hostname web\n");
-    assert_eq!(e.code, "failed");
+    assert_eq!(e.code.as_deref(), Some("failed"));
     assert_eq!(
-        e.message,
+        e.said,
         copy_text("beSshConfig.host.sshGExit", &[("alias", "web")])
     );
     assert_eq!(
@@ -304,9 +305,9 @@ fn a_failed_ssh_g_keeps_what_ssh_said_out_of_the_sentence() {
 #[test]
 fn an_alias_that_ran_out_of_time_marks_the_import_partial() {
     let timed_out = || {
-        Err(CmdErr::new(
+        Err(crate::wire::spec::fail(
             crate::platform::child::TIMED_OUT,
-            "过了期限".into(),
+            "过了期限".to_string(),
         ))
     };
     let (groups, partial) = import_from(vec!["pi".into(), "slow".into()], |a| match a {

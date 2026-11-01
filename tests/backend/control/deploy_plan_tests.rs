@@ -5,7 +5,9 @@
 //! 戳格式那几格（扫描命令 · 扫描回话 · 字节自报 · 序键）住契约 crate 的 `tests/common/deploy-contract/lib_tests.rs`。
 
 use super::*;
-// 判定随 `deploy` crate 搬走以后，表 A 那几样不再经被测模块的 `use` 带进来。
+use crate::wire::spec::Settle as _;
+// 判定的本体住 `deploy` crate：被测模块只引它要用的几样，其余判据直接从那里引。
+use deploy::{interpret_target_probe, promised, Facing, Fut, TargetBinary, LEFTOVER_STALE_SECS};
 use deploy_contract::{Arch, Os, LINES};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -16,7 +18,7 @@ fn installed_json(p: &Plan) -> Value {
     serde_json::to_value(super::installed_of(p)).unwrap()
 }
 
-fn slots_of(args: &Value) -> Result<Vec<deploy::Slot>, Fail> {
+fn slots_of(args: &Value) -> Result<Vec<deploy::Slot>, Said> {
     #[derive(serde::Deserialize)]
     struct Only {
         slots: Vec<SlotRow>,
@@ -25,7 +27,7 @@ fn slots_of(args: &Value) -> Result<Vec<deploy::Slot>, Fail> {
     super::slots_of(&only.slots)
 }
 
-fn answer_place(args: &Value) -> Result<Value, Fail> {
+fn answer_place(args: &Value) -> Result<Value, Said> {
     let req: PlaceReq = crate::wire::typed::take(args)?;
     super::answer_place(&req).map(|r| serde_json::to_value(r).unwrap())
 }
@@ -186,12 +188,8 @@ async fn a_machine_this_build_does_not_carry_is_refused_before_the_landing_is_as
         "p9a-mine".to_string(),
     )];
     let e = plan(&f, &aarch, "box", NOW).await.unwrap_err();
-    assert_eq!(e.code, "refused");
-    assert!(
-        e.message.contains("box"),
-        "拒绝那句要点名那台：{}",
-        e.message
-    );
+    assert_eq!(e.code.as_deref(), Some("refused"));
+    assert!(e.said.contains("box"), "拒绝那句要点名那台：{}", e.said);
     assert_eq!(f.asked.lock().unwrap().len(), 1, "拒绝点在问落点之前");
 }
 
@@ -205,7 +203,7 @@ async fn a_windows_remote_is_refused_as_not_promised() {
     let e = plan(&f, &carried("p9a-mine"), "box", NOW)
         .await
         .unwrap_err();
-    assert_eq!(e.code, "refused");
+    assert_eq!(e.code.as_deref(), Some("refused"));
 }
 
 /// 那台答 `uname` 答了一句报错（Windows 默认 shell 没有它）⇒ `refused`；句子只说原因词，那句原话随失败交出去（进复制详情）。
@@ -223,9 +221,9 @@ async fn what_the_machine_said_to_uname_goes_to_the_detail_not_the_sentence() {
     let e = plan(&f, &carried("p9a-mine"), "box", NOW)
         .await
         .unwrap_err();
-    assert_eq!(e.code, "refused");
-    assert!(!e.message.contains("not recognized"), "{}", e.message);
-    assert!(e.message.contains("box"), "{}", e.message);
+    assert_eq!(e.code.as_deref(), Some("refused"));
+    assert!(!e.said.contains("not recognized"), "{}", e.said);
+    assert!(e.said.contains("box"), "{}", e.said);
     assert_eq!(
         e.raw.as_deref(),
         Some("uname : The term 'uname' is not recognized")
@@ -250,20 +248,20 @@ async fn a_link_that_cannot_ask_uname_is_unreachable_not_a_refusal() {
     let e = plan(&f, &carried("p9a-mine"), "box", NOW)
         .await
         .unwrap_err();
-    assert_eq!(e.code, "unreachable");
+    assert_eq!(e.code.as_deref(), Some("unreachable"));
 }
 
 #[tokio::test]
 async fn an_unstamped_landing_is_undecidable_whatever_it_holds() {
-    // 落点上不说自己是谁的文件：一律显式失败、不动 —— 不认「从前那份三行入口」（不留旧兼容）。
+    // 落点上不说自己是谁的文件：一律显式失败、不动 —— 不认「旧版那份三行入口」（不留旧兼容）。
     let mut f = Fake::linux(Some("x"));
     f.exec.insert(landing_scan(), said(1, ""));
     let e = plan(&f, &carried("p9a-mine"), "box", NOW)
         .await
         .unwrap_err();
-    assert_eq!(e.code, "undecidable");
+    assert_eq!(e.code.as_deref(), Some("undecidable"));
 
-    // 计划这一路只 stat 与扫戳：对面那一口（`Facing`）连「读回落点那一份」都没有，落点上是什么字节都认不成「我们从前那份」。
+    // 计划这一路只 stat 与扫戳：对面那一口（`Facing`）连「读回落点那一份」都没有，落点上是什么字节都认不成「我们旧版那份」。
 }
 
 /// 要求：「部署中途断了留下的件，之后连上也不清」⇒「下次连上清旧的」。
@@ -363,11 +361,15 @@ fn slot_rows_outside_table_a_without_an_id_or_without_an_absolute_path_are_bad_a
         serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "p9a-x", "path": "s/x"}]}),
         serde_json::json!({"slots": [{"os": "Linux", "arch": "x86_64", "id": "p9a-x"}]}),
     ] {
-        assert_eq!(slots_of(&bad).unwrap_err().code, "bad_args", "{bad}");
+        assert_eq!(
+            slots_of(&bad).unwrap_err().code.as_deref(),
+            Some("bad_args"),
+            "{bad}"
+        );
     }
 }
 
-/// 原住 `tests/frontend/shell/sftp_tests.rs`（序键那时住 monitor）；序键搬进 `deploy-core` 之后放在后端这一侧：读的历史表与 `BUILD_ID` 都在这一半。
+/// 序键住 `deploy-core`，判据放在后端这一侧：读的历史表与 `BUILD_ID` 都在这一半。
 /// 🔴 B1b：**历史表里的两个 `BUILD_ID`（上一版 ＋ 当前版）都有序、按表序严格爬升、现在这个不低于最后一行**（读后端源码，异源；更早的各版在 git 历史里，出过时已在这里验过）。
 /// 下一次 bump 写出一个解不出序的形状（或比历史低）⇒ 当场红 —— 那一版部署出去就永远不会被判「更新」而换上。
 #[test]
@@ -462,7 +464,7 @@ fn identity_decision_answers_each_state_without_merging_them() {
     );
 }
 
-// ── K-W4b：取样层那四个状态的**映射规则**逐格各一条 ─────────────────────
+// ── 取样层那四个状态的**映射规则**逐格各一条 ─────────────────────
 // 上面那几格买的是「判定那一半」与「两条路真的去问了」；取样这一半（`metadata` /
 // `try_exists` 的答案怎么变成 `TargetBinary`）09-06 之前一条判据都没有：
 // 把那个取样壳的体换成恒答 `Present`，全量 cargo **0 红**（沙箱实测）。
@@ -667,7 +669,7 @@ fn landed(id: &str) -> Result<Option<Vec<u8>>, String> {
 fn place_verdict_places_only_upward_and_refuses_what_it_cannot_judge() {
     let me = || deploy_contract::key_of("Linux", "x86_64");
     let v = |disk| place_verdict(me(), disk, "p5v-mine", "本机", "/h/.cc-monitor/bin/ccm");
-    let place = |r: Result<Placed, Fail>| matches!(r, Ok(Placed::Place(_)));
+    let place = |r: Result<Placed, Said>| matches!(r, Ok(Placed::Place(_)));
     assert!(place(v(Ok(None))), "没装 ⇒ 放");
     assert!(place(v(Ok(Some(Vec::new())))), "0 字节 ⇒ 放");
     assert!(place(v(landed("p5v-mine"))), "同一版、字节不同 ⇒ 放");
@@ -687,13 +689,13 @@ fn place_verdict_places_only_upward_and_refuses_what_it_cannot_judge() {
         ("读不了", Err("Permission denied".to_string())),
     ] {
         let e = v(disk).expect_err(what);
-        assert_eq!(e.code, "undecidable", "{what}");
+        assert_eq!(e.code.as_deref(), Some("undecidable"), "{what}");
     }
     let local_arm = deploy_contract::key_of("Linux", "aarch64");
     let e = place_verdict(local_arm, Ok(None), "p5v-mine", "本机", "/d").unwrap_err();
-    assert_eq!(e.code, "refused");
+    assert_eq!(e.code.as_deref(), Some("refused"));
     assert_eq!(
-        e.message,
+        e.said,
         Refusal::NotPromisedHere {
             os: "Linux".into(),
             arch: "arm64".into(),
@@ -710,7 +712,7 @@ fn place_verdict_places_only_upward_and_refuses_what_it_cannot_judge() {
         "/d",
     )
     .unwrap_err();
-    assert_eq!(e.code, "refused", "表 A 没有产线的机器");
+    assert_eq!(e.code.as_deref(), Some("refused"), "表 A 没有产线的机器");
 }
 
 /// 帧面：入参缺 / 相对路径 ⇒ `bad_args`；读真盘（不在 ⇒ 放；是自己这一版的戳 ⇒ 放）；答话恰两格。
@@ -726,7 +728,11 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
         serde_json::json!({ "dest": "rel/ccm", "machine": "本机" }),
         serde_json::json!({ "dest": dest.to_string_lossy() }),
     ] {
-        assert_eq!(answer_place(&bad).unwrap_err().code, "bad_args", "{bad}");
+        assert_eq!(
+            answer_place(&bad).unwrap_err().code.as_deref(),
+            Some("bad_args"),
+            "{bad}"
+        );
     }
     if Key::this_machine()
         .and_then(|k| judge(Route::Local, Ok(k)))
@@ -742,8 +748,8 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
         assert_eq!(answer_place(&args).unwrap()["action"], "keep", "盘上更新");
     } else {
         assert_eq!(
-            answer_place(&args).unwrap_err().code,
-            "refused",
+            answer_place(&args).unwrap_err().code.as_deref(),
+            Some("refused"),
             "这台不承诺"
         );
     }
@@ -752,7 +758,7 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
 
 // ═══ 承诺面：账本 == 代码（两向；随 `promised` 从 monitor `byte_table_tests` 搬来）══════
 
-/// 承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py`（`PROMISE_FACE` · `NOT_PROMISED`），代码那一份是 [`promised`]。
+/// 承诺面的唯一住址是 `tests/evidence/platform-ledger.py`（`PROMISE_FACE` · `NOT_PROMISED`），代码那一份是 [`promised`]。
 ///
 /// 要求：「不承诺. 适配部分, 即os适配部分后面单独写单独做.」；承诺是 (键 × origin) 的属性。
 /// 人群 = 表 A 里有后端产线的每个键（`LINES`）× 两个 origin；每一格恰好落在账本两表之一，且落在 `PROMISE_FACE` ⇔ `promised(route, key)`。
@@ -760,7 +766,7 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
 #[test]
 fn the_promise_face_in_the_ledger_equals_the_code() {
     use std::collections::BTreeSet;
-    let p = guard_core::addr::repo_root().join("tests/evidence/K-G4-platform-ledger.py");
+    let p = guard_core::addr::repo_root().join("tests/evidence/platform-ledger.py");
     let ledger = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
     let table = |name: &str| -> BTreeSet<(String, String, String)> {
         let at = ledger

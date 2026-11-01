@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 use std::future::Future;
 
 use cmd_wire::batch::{BatchOutcome, BatchReply, Conflict, Conflicts, Decide, ItemState};
+use cmd_wire::failed::Failed;
 use cmd_wire::files::{CopyItem, FilesCopyReq, WirePath};
 use cmd_wire::Call;
 use copy_core::copy_text;
@@ -38,74 +39,34 @@ pub const EXISTS: &str = "exists";
 /// 断了再问最多几次（每次都先等那台连回来）。
 pub const CUTS_MAX: usize = 8;
 
-/// 没成的一下：码（对端拒的才有）· 给人看的那一句 · 「复制详情」那几行（空 ⇒ 不出按钮）。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Failed {
-    /// 对端拒绝时它给的那个码（`None` = 不是对端拒的：没走通 / 这一侧拼错 / 对端不认这条命令）。
-    pub code: Option<String>,
-    pub said: String,
-    pub detail: String,
+/// 一行汇总底下几件各自的失败 ⇒ 复制出去的整段：首行是那一行，每件一段（「名字：那一句」＋ 它的详情），
+/// 段间空一行；没有一件带详情 ⇒ `None`（不出按钮）。排法住 `copy_core::detail::many`。
+pub fn copy_many(head: &str, items: &[(String, Failed)]) -> Option<String> {
+    let segs: Vec<(String, String)> = items
+        .iter()
+        .map(|(name, f)| {
+            (
+                copy_text(
+                    "rsFilewinProgress.detail.failedOne",
+                    &[("name", name), ("why", &f.said)],
+                ),
+                f.detail.clone(),
+            )
+        })
+        .collect();
+    copy_core::detail::many(head, &segs)
 }
 
-impl Failed {
-    /// 只有一句话（这一侧说的，没有详情）。
-    pub fn local(said: String) -> Self {
-        Self {
-            code: None,
-            said,
-            detail: String::new(),
-        }
-    }
-
-    /// 一行汇总底下几件各自的失败 ⇒ 复制出去的整段：首行是那一行，每件一段（「名字：那一句」＋ 它的详情），
-    /// 段间空一行；没有一件带详情 ⇒ `None`（不出按钮）。排法住 `copy_core::detail::many`。
-    pub fn copy_many(head: &str, items: &[(String, Failed)]) -> Option<String> {
-        let segs: Vec<(String, String)> = items
-            .iter()
-            .map(|(name, f)| {
-                (
-                    copy_text(
-                        "rsFilewinProgress.detail.failedOne",
-                        &[("name", name), ("why", &f.said)],
-                    ),
-                    f.detail.clone(),
-                )
-            })
-            .collect();
-        copy_core::detail::many(head, &segs)
-    }
-
-    /// 屏上那一句 `shown`（可能套了别的字）＋ 详情 ⇒ 复制出去的整段；没详情 ⇒ `None`（不出按钮）。
-    pub fn copy_body(shown: &str, detail: &str) -> Option<String> {
-        (!detail.trim().is_empty()).then(|| format!("{shown}\n{detail}"))
-    }
-}
-
-impl From<String> for Failed {
-    fn from(said: String) -> Self {
-        Failed::local(said)
-    }
-}
-
-impl From<&str> for Failed {
-    fn from(said: &str) -> Self {
-        Failed::local(said.to_string())
-    }
-}
-
-/// 写出来就是给人看的那一句（详情另取）。
-impl std::fmt::Display for Failed {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.said)
-    }
+/// 屏上那一句 `shown`（可能套了别的字）＋ 详情 ⇒ 复制出去的整段；没详情 ⇒ `None`（不出按钮）。
+pub fn copy_body(shown: &str, detail: &str) -> Option<String> {
+    (!detail.trim().is_empty()).then(|| format!("{shown}\n{detail}"))
 }
 
 /// 一组那一问没成的样子。
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Rebuff {
+    /// 那一份失败（对端拒时带的 `data` 也在里面：`exists` ⇒ 同名清单）。
     pub failed: Failed,
-    /// 对端拒时带的 `data`（`exists` ⇒ 同名清单）。
-    pub data: Option<serde_json::Value>,
     /// 通道那一跳没走通（断了 · 到点）：那台可能已经在做 ⇒ 同一张票再问。
     pub cut: bool,
 }
@@ -118,6 +79,8 @@ pub enum Verb {
     Chmod,
     Download,
     Upload,
+    /// 下到手机本机：逐项拉在手机那一侧（每项一个本机描述符），回的是一组的结局，不是开了哪几单；字同下载。
+    Pull,
 }
 
 impl Verb {
@@ -136,7 +99,7 @@ impl Verb {
             Verb::Copy => copy_text("beFiles.batch.verbCopy", &[]),
             Verb::Delete => copy_text("beFiles.batch.verbDelete", &[]),
             Verb::Chmod => copy_text("beFiles.batch.verbChmod", &[]),
-            Verb::Download => copy_text("beFiles.batch.verbDownload", &[]),
+            Verb::Download | Verb::Pull => copy_text("beFiles.batch.verbDownload", &[]),
             Verb::Upload => copy_text("rsFilewinBatch.verb.upload", &[]),
         }
     }
@@ -265,17 +228,18 @@ where
                 let phase = match serde_json::from_value::<BatchReply>(v) {
                     Ok(r) => Phase::Ended(r),
                     Err(e) => Phase::Failed(Failed {
-                        code: None,
-                        said: copy_text("reason.content.unparsable", &[]),
                         detail: e.to_string(),
+                        ..Failed::local(copy_text("reason.content.unparsable", &[]))
                     }),
                 };
                 board.set(phase);
                 return None;
             }
-            Err(r) if r.failed.code.as_deref() == Some(EXISTS) && r.data.is_some() => {
+            Err(r) if r.failed.code == EXISTS && r.failed.data.is_some() => {
                 let conflicts = r
+                    .failed
                     .data
+                    .clone()
                     .and_then(|d| serde_json::from_value::<Conflicts>(d).ok())
                     .map(|c| c.conflicts)
                     .unwrap_or_default();

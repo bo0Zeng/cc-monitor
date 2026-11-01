@@ -175,10 +175,29 @@ const CASES: &[(&str, &str)] = &[
     ),
 ];
 
+/// 改前改后行数之积刚过逐行比的格数上界的一次改动（改前 2001 行空行 · 改后 2000 行 `x`）：行差出整删 ＋ 整增、带降级那一句。
+/// 原文在这里现拼（太长，不进 [`CASES`]）。
+fn coarse_edit() -> String {
+    let input = serde_json::json!({
+        "file_path": "/w/big.txt",
+        "old_string": "\n".repeat(2001),
+        "new_string": "x\n".repeat(2000),
+    });
+    serde_json::json!({
+        "type": "assistant", "uuid": "a-coarse", "timestamp": "2026-10-09T01:30:03.000Z",
+        "message": {"role": "assistant", "model": "model-x",
+                    "content": [{"type": "tool_use", "id": "call-coarse", "name": "Edit", "input": input}]}
+    })
+    .to_string()
+}
+
 #[test]
 fn every_kind_matches_the_golden_full_and_minimal() {
+    let coarse = coarse_edit();
     let got: String = CASES
         .iter()
+        .copied()
+        .chain([("reply-coarse-diff", coarse.as_str())])
         .map(|(name, raw)| {
             // 金样是线上那一形：出口那一下按看的那一台的时区写好钟面（这里按 UTC）。
             let mut r = one(raw).unwrap_or_else(|| panic!("{name} 没出记录"));

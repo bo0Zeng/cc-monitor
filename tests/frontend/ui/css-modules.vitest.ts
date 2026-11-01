@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * **渐进式 CSS Modules 的判据**（选项 D · `§12` 件 10：「新组件一律 Modules；旧的动到哪个迁哪个」）。
  *
@@ -38,7 +37,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
 import ts from "typescript";
 import { describe, it, expect } from "vitest";
-import { buildLedger, type Ledger } from "../../evidence/S25-class-ledger.ts";
+import { buildLedger, type Ledger } from "../../evidence/class-ledger.ts";
 import { toPosix } from "../../test-support/posix-path.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { nonEmpty } from "../../test-support/non-empty.ts";

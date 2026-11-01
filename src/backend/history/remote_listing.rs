@@ -70,7 +70,7 @@ impl crate::wire::typed::Handle for HistoryListingCmd {
         async move {
             let listing = super::history_list::blocking(super::history_list::machine_listing)
                 .await
-                .map_err(crate::wire::typed::of_pair(HistoryListingErr::Failed))?;
+                .map_err(crate::wire::typed::of_fail_with(HistoryListingErr::Failed))?;
             Ok(answer_with(&VIEWS, listing, req.held.as_ref()))
         }
     }
@@ -154,23 +154,6 @@ impl Shelf for Installed {
 const COPY_DOC: crate::common::own_state::Doc<Vec<u8>> =
     crate::common::own_state::Doc::of(&relay_route_core::REMOTE_LISTING_FILE);
 
-/// 落在 `own` 那个数据目录底下的副本表（[`relay_route_core::REMOTE_LISTING_DIR_REL`]，一台一份）。
-pub(crate) fn disk_copies(own: Own) -> Copies {
-    Copies::on(DiskShelf(own))
-}
-
-/// 落在给定数据目录底下的那一个落盘处（判据用：换一张空副本表读同一个目录 ＝ 重启过）。
-struct DiskShelf(Own);
-
-impl Shelf for DiskShelf {
-    fn load(&self, machine: &str) -> Option<Vec<u8>> {
-        load_at(&self.0, machine)
-    }
-    fn store(&self, machine: &str, body: &[u8]) {
-        store_at(&self.0, machine, body);
-    }
-}
-
 /// 从数据目录往下的那几层目录，与那台的文件。
 fn copy_at(own: &Own, machine: &str) -> Option<(Vec<OwnPath>, OwnPath)> {
     let rel = relay_route_core::REMOTE_LISTING_DIR_REL.strip_prefix(".cc-monitor/")?;
@@ -215,9 +198,9 @@ pub(crate) async fn listing(
     fresh: bool,
     tz: &crate::Tz,
     until: Option<Until>,
-) -> Result<Listing, (&'static str, String)> {
+) -> Result<Listing, crate::common::said::Said> {
     let Some(until) = until else {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "bad_args",
             crate::common::contract::malformed(
                 "`within_ms` is required when asking another machine: how long to wait belongs to the asker",
@@ -246,7 +229,7 @@ pub(crate) async fn listing_with(
     table: &Table,
     remote: &dyn Remote,
     copies: &Copies,
-) -> Result<Listing, (&'static str, String)> {
+) -> Result<Listing, crate::common::said::Said> {
     let held = match copies.to_ask(machine, fresh) {
         Ask::Held(listing) => return Ok(listing),
         Ask::With(held) => held,
@@ -260,7 +243,7 @@ pub(crate) async fn listing_with(
         remote,
     )
     .await
-    .map_err(|s| (code_of(s.code.as_deref()), s.message));
+    .map_err(|s| crate::common::said::Said::new(code_of(s.code.as_deref()), s.said));
     match got {
         Ok(patch) => {
             let at_ms = crate::common::time::now()
@@ -269,7 +252,7 @@ pub(crate) async fn listing_with(
             Ok(copies.took(machine, patch, at_ms))
         }
         Err(e) => {
-            copies.missed(machine, e.1.clone());
+            copies.missed(machine, e.said.clone());
             Err(e)
         }
     }

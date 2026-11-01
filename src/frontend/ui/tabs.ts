@@ -613,18 +613,22 @@ export class TabManager {
     return JSON.stringify(sessions);
   }
 
-  /** 监控板选中格的细节（model · 改过的文件 · 子运行名单，运行中的在前）；未知 sid ⇒ `null`。纯读。 */
+  /** 监控板选中格的细节（model · 改过的文件 · 子运行名单照那台写好的三组排 · 那一句）；未知 sid ⇒ `null`。纯读。 */
   peekSession(sessionId: string): SessionPeek | null {
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return null;
-    const agents = this.live.board
-      .of(sessionId)
-      .map((r) => ({ label: runLabel(r), status: r.state }))
-      .sort((x, y) => (x.status === "running" ? 0 : 1) - (y.status === "running" ? 0 : 1));
+    const table = this.live.board.table(sessionId);
+    const byRun = new Map(table.runs.map((r) => [r.run, r]));
+    const { running, recent, older } = table.groups;
+    const agents = [...running, ...recent, ...older].flatMap((id) => {
+      const r = byRun.get(id);
+      return r === undefined ? [] : [{ label: runLabel(r), status: r.state }];
+    });
     return {
       model: tab.modelText ?? tab.usage?.model ?? null,
       recentFiles: [...tab.touchedFiles],
       agents,
+      summary: table.summary ?? null,
     };
   }
 

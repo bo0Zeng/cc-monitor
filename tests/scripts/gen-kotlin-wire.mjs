@@ -666,6 +666,27 @@ value class Raw(val json: String) {
 }
 
 /**
+ * 一条命令（[Commands] 里每条一个，照 TypedCommands 生成）：线上名 · 入参类怎么写 · 回包类怎么解。
+ * 手机发命令只经它取名字、出入参、解回包，不手写名字与键。
+ */
+abstract class Command<Q, R>(val name: String, req: () -> JsonAdapter<Q>, reply: () -> JsonAdapter<R>) {
+    private val reqAd: JsonAdapter<Q> by lazy(req)
+    private val replyAd: JsonAdapter<R> by lazy(reply)
+
+    /** 入参出成交 CoreLink.call 的那一份：可缺的格（Rust 那头 skip_serializing_if）缺着就不交，可空的照写 null。 */
+    @Suppress("UNCHECKED_CAST")
+    fun args(req: Q): Map<String, Any?> = reqAd.serializeNulls().toJsonValue(req) as Map<String, Any?>
+
+    /** 回包（核心交来的 data）照回包类解；缺格 · 型不对 · 认不出的词 ⇒ null（两端契约对不上，不补默认值）。 */
+    fun reply(data: Any?): R? =
+        try {
+            replyAd.fromJsonValue(data)
+        } catch (_: JsonDataException) {
+            null
+        }
+}
+
+/**
  * 对象的一格：线上键 · 它的编解码（头一回用到才取：各类的编解码互相引用，不按初始化先后）·
  * 可缺（写回时值为 null 就不写，Rust 那头 skip_serializing_if）· 可空（缺席照 null 读）。
  */
@@ -963,13 +984,25 @@ function main() {
     const x = g.ty(cmds.get(c).reply, { owner: pascal(c) + "Reply" });
     table.push(`        "${c}" to ${x.ad},`);
   }
+  // 每条命令一个对象（桌面 TypedCommands 那一份，全数）。对象名与类型名可能同名（`history-read` ⇒ 命令 HistoryRead · 回包 HistoryRead），
+  // Commands 里的类型（对象体 · REPLIES · BY_CLASS）一律写全名，不被同名的命令对象遮住。
+  const KT_BUILTIN = new Set(["String", "Boolean", "Long", "Int", "Double", "Float", "List", "Map", "Any", "Unit", "ADAPTER"]);
+  const fq = (s) => s.replace(/(?<![\w.])([A-Z]\w*)/g, (m) => (KT_BUILTIN.has(m) ? m : `${PKG}.${m}`));
+  const commands = [];
+  for (const [c, { req, reply }] of [...cmds.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const q = g.ty(req, { owner: pascal(c) + "Req" });
+    const r = g.ty(reply, { owner: pascal(c) + "Reply" });
+    commands.push(
+      `    /** \`${c}\`。 */\n    object ${pascal(c)} : Command<${fq(q.kt)}, ${fq(r.kt)}>("${c}", { ${fq(q.ad)} }, { ${fq(r.ad)} }) {\n        const val NAME: String = "${c}"\n    }\n`,
+    );
+  }
   const byClass = [...g.out.keys()].filter((k) => /\n {4}(?:val ADAPTER|companion object \{\n {8}val ADAPTER)/.test(g.out.get(k)) || /^data object /m.test(g.out.get(k))).sort();
   const header = `// 生成的文件（tests/scripts/gen-kotlin-wire.mjs 读 ts-rs 导出的声明出的）。不要手改：改 Rust 那一份类型，再跑 \`npm run gen:types\`。\n@file:Suppress("ktlint", "detekt:all")\n\npackage ${PKG}\n\nimport com.squareup.moshi.JsonAdapter\n`;
   const types = [...g.out.keys()].sort().map((k) => g.out.get(k)).join("\n");
   writeFileSync(join(OUT_DIR, "Generated.kt"), `${header}\n${PREAMBLE}\n${types}`);
   writeFileSync(
     join(OUT_DIR, "Commands.kt"),
-    `${header}\n/** 手机按类型读回包的那几条命令 ⇒ 回包怎么解（\`cmd-wire/src/call.rs\` 那张 \`calls!\` 表 · 类型照 TypedCommands）。 */\nobject Commands {\n    val REPLIES: Map<String, JsonAdapter<*>> = mapOf(\n${table.join("\n")}\n    )\n\n    /** 每个不带类型参数的类型 ⇒ 它的编解码（按类取，不经反射）。 */\n    val BY_CLASS: Map<Class<*>, JsonAdapter<*>> by lazy {\n        mapOf(\n${byClass.map((k) => `            ${k}::class.java to ${k}.ADAPTER,`).join("\n")}\n        )\n    }\n}\n`,
+    `${header}\n/** 每条命令（桌面 TypedCommands 那一份）：名字 · 入参类 · 回包类，按命令名取的 [ALL]；按类取编解码的 [BY_CLASS]。 */\nobject Commands {\n    /** 金样逐字节对过的那几条（\`cmd-wire/src/call.rs\` 那张 \`calls!\` 表）⇒ 回包怎么解。 */\n    val REPLIES: Map<String, JsonAdapter<*>> = mapOf(\n${table.map(fq).join("\n")}\n    )\n\n${commands.join("\n")}\n    /** 命令名 ⇒ 那一条。 */\n    val ALL: Map<String, Command<*, *>> by lazy {\n        listOf<Command<*, *>>(\n${[...cmds.keys()].sort().map((c) => `            ${pascal(c)},`).join("\n")}\n        ).associateBy { it.name }\n    }\n\n    /** 每个不带类型参数的类型 ⇒ 它的编解码（按类取，不经反射）。 */\n    val BY_CLASS: Map<Class<*>, JsonAdapter<*>> by lazy {\n        mapOf(\n${byClass.map((k) => `            ${fq(k)}::class.java to ${fq(k)}.ADAPTER,`).join("\n")}\n        )\n    }\n}\n`,
   );
   if (g.raw.length) process.stderr.write("原样（认不出的形）：\n  " + g.raw.join("\n  ") + "\n");
 }

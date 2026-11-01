@@ -11,15 +11,15 @@
 # 两个落点 `embedded-backends/` / `native-backend/` 都在这里忽略：re-embed 往这两个目录里铺二十多 MB 字节，
 # 落点改名而这里没跟上 ⇒ 那些字节就以 `??` 挂在 `git status` 里。
 #
-# 🔴 **每一行落点上面那句 `⇐ 内嵌落点` 是机检锚**（`tests/evidence/K-R124-ruler.py` ⑬d）：
+# 🔴 **每一行落点上面那句 `⇐ 内嵌落点` 是机检锚**（`tests/evidence/release-ruler.py` ⑬d）：
 #   带这个锚的行的集合，与 `src/frontend/shell/build.rs` 里登记的落点常量集合 **两向相等**。
 #   改目录名只改一边 ⇒ 当场红。
 
 # ⇐ 内嵌落点
-# F08b：交叉编译的 musl 后端二进制（`build.rs::embed_backends` 用 `include_bytes!` 内嵌）。
+# 交叉编译的 musl 后端二进制（`build.rs::embed_backends` 用 `include_bytes!` 内嵌）。
 # 构建产物，不进 git。产它的只有两条路，而且是**同一条配方**：发版那趟 `release.yml` 的
 # `Cross-compile backend for both musl targets`，本机那趟 `tests/scripts/re-embed.sh`
-# （步 `19c`：`BUILD_ID` bump 的同拍步骤）。build.rs 缺席时优雅降级（不内嵌 → 自动部署 no-op），
+# （`BUILD_ID` bump 的同拍步骤）。build.rs 缺席时优雅降级（不内嵌 → 自动部署 no-op），
 # 故 dev/CI 无此二进制也能编译。
 /embedded-backends/
 # ⇐ 内嵌落点
@@ -39,5 +39,5 @@
 # 少了这一行，后果是卫生不是功能：CI 从不 git add，但谁在本机铺过一次，那十几 MB 的二进制就以未跟踪状态挂在 git status 里。
 /native-backend/
 
-# 本机个人构建配置（dev 瘦身），不进 git —— 08-27 从 Cargo.toml 搬来
+# 本机个人构建配置（dev 瘦身），不进 git
 .cargo/

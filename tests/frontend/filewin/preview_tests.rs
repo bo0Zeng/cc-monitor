@@ -18,6 +18,19 @@ use crate::copy::testing::text_in_frame;
 use crate::find::testing::{window_on, wire_up, Declared, FakeBackend, Wired};
 use crate::select::Intent;
 use crate::source::Row;
+
+/// 判据读预览面板用的两件（生产那一份里没有它们；界面直接读字段）。
+impl Preview {
+    /// 面板上摆着什么。
+    pub(crate) fn view(&self) -> &View {
+        &self.view
+    }
+
+    /// 发出去过几趟。
+    fn fired(&self) -> u64 {
+        self.fired
+    }
+}
 use crate::workspace::Workspace;
 
 /// 合成后端给的预览上限（窗口不认这几个数，照门上给的用）。

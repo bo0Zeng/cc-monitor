@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # G2（branch-anywhere）：分叉的**跨进程**验收 —— 真跑后端二进制，走帧命令 `session-fork` 派生的 CLI 面
-#（`--session-fork`，入参 `{sid, uuid}` 从 stdin）。从前走的是手写的 `--fork-session <sid> <uuid>`，第 7 批第二题删了。
+#（`--session-fork`，入参 `{sid, uuid}` 从 stdin）。
 #
 # **为什么单测不够**：`accounts_query` 的单测当年直接调 `run()`、**绕过了 main 的 dispatch**，
 # 于是 `--account-trust-zero` 在模块里实现完整、却在 dispatch 里漏了一臂 —— 随 v3.4.0
@@ -87,8 +87,8 @@ if run_fork "99999999-0000-0000-0000-000000000000" u1 >/dev/null; then
 else
   rc=$?
   [ "$rc" = 2 ] && ok "exit 2" || bad "exit code" "got $rc"
-  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["code"] and d["message"] and "detail" in d' "$WORK/err" 2>/dev/null \
-    && ok "stderr 是 {code,message,detail} JSON" || bad "stderr 信封" "$(cat "$WORK/err")"
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["code"] and d["said"] and "detail" in d and "message" not in d' "$WORK/err" 2>/dev/null \
+    && ok "stderr 是 {code,said,detail} JSON" || bad "stderr 信封" "$(cat "$WORK/err")"
 fi
 
 echo "== 5. 路径穿越的 sid 必须被拒 =="

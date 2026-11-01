@@ -12,12 +12,6 @@ impl FileWindow {
         self.key_notice.as_deref()
     }
 
-    /// 摆着的那个右键菜单（判据用）。
-    #[cfg(test)]
-    pub fn menu(&self) -> Option<&MenuAt> {
-        self.menu.as_ref()
-    }
-
     /// 键盘这一帧该不该归列表。**五道闸**，任一成立就不接：
     ///
     /// 0. 这个目录视图不是焦点那一个（双栏时另一栏、后台标签页）—— 不闸的话按一下 Delete 两栏各删一次；

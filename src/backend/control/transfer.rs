@@ -62,8 +62,6 @@ use cmd_wire::transfer::{
     TransferUploadReq,
 };
 
-/// 开单：上传。
-pub const TRANSFER_UPLOAD: &str = <TransferUpload as typed::Command>::NAME;
 /// 开单：下载。
 pub const TRANSFER_DOWNLOAD: &str = <TransferDownload as typed::Command>::NAME;
 /// 起跑。
@@ -972,7 +970,10 @@ impl Desk {
                         }),
                         ..opened(key, OpenState::Opened)
                     },
-                    Err((c, m)) => not_opened(key, c, m, None),
+                    Err(s) => {
+                        let code = s.code_or_fallback().to_string();
+                        not_opened(key, &code, s.said, s.raw)
+                    }
                 }
             })
             .collect();
@@ -1048,10 +1049,10 @@ impl Desk {
 }
 
 /// 登记一张票。满册 ⇒ `too_many_transfers`；同一个暂存件键已有一张 ⇒ `busy`（下层那一形：码 ＋ 那一句，各条照自己的码表收）。
-fn register(tickets: &Tickets, t: Ticket) -> Result<String, (&'static str, String)> {
+fn register(tickets: &Tickets, t: Ticket) -> Result<String, crate::common::said::Said> {
     let mut g = lock(tickets);
     if g.len() >= MAX_TICKETS_PER_CONNECTION {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "too_many_transfers",
             copy_text(
                 "beTransfer.register.tooMany",
@@ -1061,7 +1062,10 @@ fn register(tickets: &Tickets, t: Ticket) -> Result<String, (&'static str, Strin
     }
     if let Some(k) = &t.key {
         if g.values().any(|o| o.key.as_ref() == Some(k)) {
-            return Err(("busy", copy_text("beTransfer.register.sameFile", &[])));
+            return Err(crate::common::said::Said::new(
+                "busy",
+                copy_text("beTransfer.register.sameFile", &[]),
+            ));
         }
     }
     let tid = next_id();
@@ -1236,19 +1240,18 @@ fn open_upload(
     dial: &Dial,
     local: &str,
     home: Option<String>,
-) -> Result<(String, String), (&'static str, String, Option<String>)> {
+) -> Result<(String, String), crate::common::said::Said> {
     let meta = Ro::metadata(local).map_err(|e| {
         let said = copy_text(
             "beTransfer.local.readFailed",
             &[("path", local), ("why", &io_reason(e.kind()))],
         );
-        ("io_failed", said, Some(e.to_string()))
+        crate::common::said::Said::with_raw(said, &e).coded("io_failed")
     })?;
     if !meta.is_file() {
-        return Err((
+        return Err(crate::common::said::Said::new(
             "refused",
             copy_text("beTransfer.local.notRegular", &[("path", local)]),
-            None,
         ));
     }
     let mtime_ns = meta
@@ -1268,7 +1271,7 @@ fn open_upload(
         key: Some(key.clone()),
         cancel: Arc::new(Cancel::default()),
     };
-    let id = register(tickets, t).map_err(|(c, m)| (c, m, None))?;
+    let id = register(tickets, t)?;
     Ok((id, key))
 }
 
@@ -1308,7 +1311,10 @@ pub(crate) async fn upload_with(
                         overwrite,
                         ..opened(key, OpenState::Opened)
                     },
-                    Err((code, said, raw)) => not_opened(key, code, said, raw),
+                    Err(s) => {
+                        let code = s.code_or_fallback().to_string();
+                        not_opened(key, &code, s.said, s.raw)
+                    }
                 },
             }
         })

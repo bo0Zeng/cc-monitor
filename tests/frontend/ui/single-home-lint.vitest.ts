@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * 产品 TS 里「某件事只一个口」那几条由 eslint 守（`eslint.config.js` 的 `singleDoors` 表：`no-restricted-syntax` ·
  * `no-restricted-imports`，每项带它的家），`eslint .` 基线 0 ⇒ 别处写一处就红（`eslint-baseline.vitest.ts` 与 CI 那一步接）。
@@ -72,6 +71,28 @@ const CASES: ReadonlyArray<readonly [string, string, string, string | null]> = [
   ["alert 当错误反馈", LEAF, fn('alert("失败了"); return 0;'), "alert"],
   ["window.alert 同样", LEAF, fn('window.alert("失败了"); return 0;'), "alert"],
   ["confirm 问要不要干，不算", LEAF, fn('return confirm("删掉？");'), null],
+  ["在跑只读一格", LEAF, fn("return r.life.is;"), "只在 face-can.ts 读"],
+  ["在跑只读一格（可缺链 · 下标）", LEAF, fn('return r?.life?.is ?? r.life["is"];'), "只在 face-can.ts 读"],
+  ["在跑那一格在它的家里读", join(UI, "face-can.ts"), fn("return r.life.is;"), null],
+  ["拿状态点推说不清", LEAF, fn('return r.dot === "unknown" ? 1 : 0;'), "状态点"],
+  ["状态点当一格比、不推三元不算", LEAF, fn('return r.dot === "unknown";'), null],
+  ["别处挂对话框角色", LEAF, fn('r.setAttribute("role", "alertdialog"); return 0;'), "kit/"],
+  ["别处挂菜单项角色", LEAF, fn('r.setAttribute("role", "menuitemradio"); return 0;'), "kit/"],
+  ["别处挂悬停提示角色（属性赋值）", LEAF, fn('r.role = "tooltip"; return 0;'), "kit/"],
+  ["别处挂模态标记", LEAF, fn('r.setAttribute("aria-modal", "true"); return 0;'), "kit/"],
+  ["别处建 toast 栈", LEAF, fn('r.className = "toast-stack"; return 0;'), "kit/"],
+  ["别处在 document 上挂点外面关", LEAF, fn('document.addEventListener("pointerdown", r); return 0;'), "kit/"],
+  ["界面以外的产品 TS 同样不建对话框", COMMS, fn('r.setAttribute("role", "dialog"); return 0;'), "kit/"],
+  ["挂别的角色不算", LEAF, fn('r.setAttribute("role", "status"); return 0;'), null],
+  ["对话框在 kit 里建", join(UI, "kit", "menu.ts"), fn('r.setAttribute("role", "menu"); document.addEventListener("pointerdown", r); return 0;'), null],
+  ["设置页那套按钮类", LEAF, fn(`r.className = "${["settings", "btn"].join("-")} x"; return 0;`), "kit/button.ts"],
+  ["本地 el() 函数声明", LEAF, fn("function el(t: string) { return t; } return el(o);"), "kit/el.ts"],
+  ["本地 el() 箭头函数", LEAF, fn("const el = (t: string) => t; return el(o);"), "kit/el.ts"],
+  ["叫 el 的变量不是建元素的函数，不算", LEAF, fn("const el = document.activeElement; return el;"), null],
+  ["别处读 loggedIn", LEAF, fn("return r.loggedIn;"), "selectable"],
+  ["别处按串读 authReady", LEAF, fn('return r["authReady"];'), "selectable"],
+  ["别处解构 authKind", LEAF, fn("const { authKind: k } = r; return k;"), "selectable"],
+  ["鉴权格在 accounts.ts 里", join(UI, "accounts.ts"), fn("return r.authKind;"), null],
 ];
 
 describe("「只一个口」那几条由 eslint 守", () => {

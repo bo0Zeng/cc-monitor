@@ -22,8 +22,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -36,7 +38,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
@@ -48,11 +49,13 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.link.HostBackends
+import com.ccmonitor.mobile.ui.chat.needs.monoMs
 import com.ccmonitor.mobile.ui.chats.HostName
 import com.ccmonitor.mobile.ui.common.StatusDot
 import com.ccmonitor.mobile.ui.common.dashedFrame
 import com.ccmonitor.mobile.ui.login.LoginFlow
 import com.ccmonitor.mobile.ui.login.LoginSheet
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import org.koin.compose.koinInject
 
@@ -128,6 +131,14 @@ fun OverviewScreen(
     val hosts by names.collectAsState(initial = emptyList())
     val all by board.state.collectAsState()
     val ov = overviewOf(all, hosts, current)
+    // 本机单调钟按秒走（「已等」那一截每秒重画，不重问那台）。
+    var tick by remember { mutableLongStateOf(monoMs()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(TICK_MS)
+            tick = monoMs()
+        }
+    }
     val scope = rememberCoroutineScope()
     var login by remember { mutableStateOf<Pair<HostName, LoginFlow>?>(null) }
     Column(Modifier.fillMaxSize().navigationBarsPadding()) {
@@ -139,11 +150,11 @@ fun OverviewScreen(
             item { Head(if (ov.uncertain || ov.loading.isNotEmpty()) copyText("tabBar.needs.label") else copyText("tabBar.needs.aria", "n" to ov.total)) }
             items(ov.needs) { line ->
                 when (line) {
-                    is NeedsLine.Session -> SessionLine(line) { onOpen(line.host.id, line.row.sid) }
+                    is NeedsLine.Session -> SessionLine(line, tick) { onOpen(line.host.id, line.row.sid) }
                     is NeedsLine.Plan -> PlanLine(line) { onPlan(line.host.id, line.workspace, line.slice, line.cell?.id) }
                     is NeedsLine.Manual ->
                         ManualLine(line, ov.manyHosts) { item ->
-                            item.fix?.let { fix -> login = line.host to LoginFlow(backends.of(line.host.id), line.host.label, fix.args, scope).also { it.start() } }
+                            item.fix?.let { fix -> login = line.host to LoginFlow(backends.of(line.host.id), line.host.id, line.host.label, fix.args, scope).also { it.start() } }
                         }
                 }
             }
@@ -202,6 +213,7 @@ private fun Head(text: String) {
 @Composable
 private fun SessionLine(
     line: NeedsLine.Session,
+    now: Long,
     onClick: () -> Unit,
 ) {
     val n = line.row.needs
@@ -209,16 +221,18 @@ private fun SessionLine(
         StatusDot(SessionDot.NEEDS_YOU, n.text)
         Column(Modifier.weight(1f)) {
             Text(line.row.label, style = MaterialTheme.typography.bodyMedium)
-            Text(n.text, style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.warn)
+            // 那台写好的那一句，已等接着走（同桌面需手动浮层那一行）。
+            Text(line.state(now), style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.warn)
             // 批什么（核心挑好的那一段）· 谁要批（agent 发的那一条，核心写好的那一句），与桌面同序。
             n.what?.let { Text(it, style = monoSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             n.ask?.run?.let {
                 Text(it.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        DurationFormat.waited(n.waitedMs, 0L, 0L)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
+
+private const val TICK_MS = 1_000L
 
 @Composable
 private fun PlanLine(

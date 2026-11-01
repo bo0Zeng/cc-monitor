@@ -299,22 +299,30 @@ impl Hub {
             c.size = if terminal { size } else { None };
             c.who = who;
         }
-        // 先发 welcome（整屏 ＋ 此刻的持有者），再按需换持有者：换了会接着推 `holder` · `size`。
-        let holder = self.holder_for(id);
-        let welcome = Ctl::Welcome {
+        // 先按需换持有者，welcome 说换过之后的持有者与尺寸，排在这一端队列最前：客户端一收到 welcome 就画出整屏、
+        // 也知道是不是自己持有，紧跟着敲的键照这个身份走（持有 ⇒ 送进去，不当成「回车接管」）。
+        // 换持有者推给它的 `holder` · `size` 排在 welcome 后面，与它说的一致。
+        let effects = if terminal && want == Want::Input && !self.ended {
+            self.hand_over(Some(id))
+        } else {
+            Vec::new()
+        };
+        let welcome = super::wire::encode(&Frame::Ctl(Ctl::Welcome {
             proto: PROTO,
             id: self.id.clone(),
             size: self.size(),
             you: id,
-            holder,
+            holder: self.holder_for(id),
             screen: String::from_utf8_lossy(&self.screen.full()).into_owned(),
-        };
-        self.push(id, Frame::Ctl(welcome));
-        if terminal && want == Want::Input && !self.ended {
-            self.hand_over(Some(id))
-        } else {
-            Vec::new()
+        }));
+        if let Some(c) = self.clients.get(&id) {
+            let mut q = c.out.lock();
+            q.bytes += welcome.len();
+            q.frames.push_front(welcome);
+            drop(q);
+            c.out.bell.notify_one();
         }
+        effects
     }
 
     /// 换持有者到 `to`（`None` ⇒ 照「最近连上的另一个要输入的真终端」挑）。

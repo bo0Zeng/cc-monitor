@@ -1525,6 +1525,45 @@ fn one_machines_needs_are_sessions_then_plan_cells_then_the_rest() {
     assert_eq!(serde_json::to_value(&back).unwrap(), wire);
 }
 
+/// ★ 会话那一项带写好的会走的钟（[`needs_list`] 一处写）：状态那一句的种类是 `needs.text`、钉条那一句的种类是 `needs.head`，
+/// 已等多久那一截留空位（各出口照 `waitedMs` ＋ 收到以后走过的填）；不知道等了多久 ⇒ 不带。
+#[test]
+fn a_waiting_session_item_carries_the_written_clock() {
+    let mut a = waiting_row("a", 0, Some(5_000));
+    a.needs.text = crate::common::cells::Words("核心·t".into());
+    a.needs.head = crate::common::cells::Words("核心·h".into());
+    let got = needs_list(vec![a, waiting_row("b", 0, None)], &[], Ok(vec![]), vec![]);
+    let clock = |sid: &str| {
+        got.items
+            .iter()
+            .find_map(|i| match i {
+                cmd_wire::needs::NeedsItem::Session { session, clock, .. }
+                    if session.sid == sid =>
+                {
+                    Some(clock.clone())
+                }
+                _ => None,
+            })
+            .unwrap()
+    };
+    let line = |kind: &str| {
+        crate::common::cells::Words(copy_core::copy_text(
+            "sessionFace.state.waiting",
+            &[("kind", kind), ("waited", DUR_SLOT)],
+        ))
+    };
+    assert_eq!(
+        clock("a"),
+        Some(cmd_wire::needs::NeedsClock {
+            text: line("核心·t"),
+            head: line("核心·h"),
+        })
+    );
+    assert_eq!(clock("b"), None, "不知道等了多久 ⇒ 不带");
+    let v = serde_json::to_value(&got.items[1]).unwrap();
+    assert!(v.get("clock").is_none(), "没有 ⇒ 不带那一键：{v}");
+}
+
 /// ★ 各台合成一份只经 [`merge_needs`]（`sessions-needs-merge`）：跨台照 `rank` 比；并列 ⇒ 本机在前、再照给的台序与台内原来的先后；
 /// 每项带回它那台；`total` 是各台加起来几项；会外读不出的那几台各带那一句。每一例的几条拆在几台上交进来（期望手写）。
 #[test]
@@ -1577,6 +1616,7 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
         for (m, sid, tier, waited) in *rows {
             let item = cmd_wire::needs::NeedsItem::Session {
                 rank: ranked(*tier, *waited).rank,
+                clock: None,
                 session: waiting_row(sid, *tier, *waited),
             };
             match machines.iter_mut().find(|x| x.0.to_string() == *m) {

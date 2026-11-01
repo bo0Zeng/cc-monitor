@@ -3,7 +3,7 @@
 use super::*;
 use serde_json::json;
 
-/// 搬上帧面的 CLI 子命令 → 帧命令。左列那几条已从后端删掉（下面钉着「它们不再是子命令」），右列是今天的帧命令。
+/// 搬上帧面的 CLI 子命令 → 帧命令。左列那几条已从后端删掉（后端 `stream/cli_tests.rs` 的 `RETIRED_ONESHOTS` 逐条问 `is_subcommand` 钉着），右列是今天的帧命令。
 const MOVED: &[(&str, &str)] = &[
     ("--read-session", "history-read"),
     ("--read-session-tail", "history-tail"),
@@ -143,33 +143,6 @@ fn the_moved_table_is_what_the_backend_registers() {
         backend_read_face_commands(),
         "monitor 这边以为搬上去的帧命令，与后端真登记的对不上"
     );
-}
-
-/// ★ [`MOVED`] 左列那几条**不再是后端的子命令**（第 7 批第二题删了：帧面早有右列那条，生产里没人再调）。
-/// 另一侧从后端 `lib.rs` 的 `SUBCOMMANDS` 那张表的源码数（正控：同一块里认得出今天真在的 `--history-read`）。
-#[test]
-fn the_moved_subcommands_are_gone_from_the_backend() {
-    let lib = std::fs::read_to_string(guard_core::addr::repo_root().join("src/backend/lib.rs"))
-        .expect("读不到后端 lib.rs");
-    let at = lib
-        .find("pub const SUBCOMMANDS: &[&str] = &[")
-        .expect("后端 lib.rs 里找不到 SUBCOMMANDS —— 锚点变了");
-    // 表里每一项各占一行（`"--x",`）：按整行比，不按子串。
-    let rows: Vec<&str> = lib[at..at + lib[at..].find("\n];").expect("SUBCOMMANDS 没收尾")]
-        .lines()
-        .map(str::trim)
-        .collect();
-    assert!(
-        rows.contains(&"\"--history-read\","),
-        "正控失败：同一块里认不出 `--history-read` —— 下面的零命中不可信"
-    );
-    for (flag, _) in MOVED {
-        let row = format!("\"{flag}\",");
-        assert!(
-            !rows.contains(&row.as_str()),
-            "`{flag}` 又回到了后端的 SUBCOMMANDS —— 它早上了帧面，CLI 那一臂不该再有"
-        );
-    }
 }
 
 /// ★**逐次拨号那条路不存在了**（零命中 ＋ 正控）。
@@ -359,6 +332,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "terminals-board",
         "「终端」视图那张名单：本机后端 `faces/terminals_board_face.rs` 问到各台的 `terminals-board-here`、合成一份（成品住 `control/terminals_board.rs`）；前端 `src/frontend/ui/terminals-board-reads.ts` 原样交给视图",
     ),
+    // 监控板版面：本机后端问到各台、合成一份（组序 · 组头 · 组内先后 · 顶上那一句都写好）。
+    (
+        "monitor-board",
+        "监控板版面：本机后端 `faces/monitor_board_face.rs` 问到各台的 `monitor-board-here`、合成一份（成品住 `control/monitor_board.rs`）；前端 `src/frontend/ui/monitor-board-reads.ts` 原样交给视图",
+    ),
     // 终端名单：那台后端出成品（与宿主无关的句柄）；只有 tmux 名在手的那一方先按名字认出那一行。
     (
         "terminals-list",
@@ -488,6 +466,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "session-permission",
         "typed：后端出成品 `ModeSwitched`（`faces/session_mode_face.rs`：按那一家的循环键、读回到了为止）；前端 `src/frontend/ui/session-writes.ts::switchPermission` 按类型问，monitor 这一侧零发送点",
+    ),
+    // 中断这一轮：输入框在跑时的 ■，会话那台判能不能停、回送到没送到。
+    (
+        "session-interrupt",
+        "typed：会话那台按那一家的中断键停这一轮、回结局（拒了带那台那一句）；前端 `src/frontend/ui/composer.ts` 的 ■ 按类型问，monitor 这一侧零发送点",
     ),
     // 钩子诊断：本机远端两条 Tauri 命令合成一条帧命令，界面直接问那台。
     (
@@ -797,7 +780,7 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     (
         "files-stage-chunk",
         1,
-        "文件窗口存盘与非标准起始目录上传那两条分块路（`filewin/src/editor.rs::CMD_STAGE_CHUNK`，经 `chunk_core::stage` 逐块送）：\
+        "文件窗口存盘与非标准起始目录上传那两条分块路（`cmd_wire::files::FilesStageChunkReq`，经 `chunk_core::stage` 逐块送）：\
          与界面聊天附件那一路各问各的，块形同一份",
     ),
     (
@@ -828,7 +811,7 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     // `tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`changed {tasks}` 帧 ⇒ 通道 `changed/tasks`），
     //   monitor 零处再问它。
     // `files-ls` · `files-stat` 不在这里：界面不再问它们（见上表），文件窗口列目录 · 看属性
-    //   （`filewin/source.rs::CMD_LS` · `filewin/props.rs::CMD_STAT` …）是另一个前端自己的事。
+    //   （`filewin/source.rs::CMD_LS` · `cmd_wire::files::StatReq` …）是另一个前端自己的事。
     // 文件窗口「在此打开终端」。窗口只交意图（经通道 `terminal-open`），
     //   monitor 接下来补机器事实、问本机后端渲那一行、开窗（`chan/host.rs::terminal_open`，照类型问 `TerminalSshReq`）—— 与主界面开终端同一条路。
     (

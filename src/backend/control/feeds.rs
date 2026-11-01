@@ -15,11 +15,10 @@
 //!   （`stream-watch` 信封带 `machine`，[`watch_at`]），并起来交那张台；那条流走了它那一份摘掉（[`Watching`]）。
 
 use crate::wire::Frame;
-use crate::wire::{SessionFace, SessionFaceExt as _, SessionLeft};
 use cmd_wire::frame::Relayed;
 use cmd_wire::machine::{MachineState, MachineStopReq, MachineStopped, MachineWakeReq};
 use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom};
-use resident_client::book::{Seat, SessionBook};
+use resident_client::book::SessionBook;
 use resident_client::feed::{self, Boxed, Config, Event, Exec, Feed, Problem, Progress, Transport};
 use resident_client::watch::Desk;
 use std::collections::{BTreeSet, HashMap};
@@ -225,29 +224,14 @@ fn fold_line(book: &mut SessionBook, line: &str) -> bool {
     false
 }
 
-/// 那台这一条连接断的那一刻：簿里活的 · 可重连的每一条落成说不清（看不见那一张脸，`face.life = unclear`），
-/// 自己先折进簿，交回要转出去的那几行（按 sid 排）。已结束 · 记录已不在的不说。
+/// 那台这一条连接断的那一刻：簿里活的 · 可重连的每一条落成说不清（[`SessionBook::unseen_now`]，簿里先折好），
+/// 交回要转出去的那几行（按 sid 排）。
 fn unclear_now(book: &mut SessionBook, machine: &str) -> Vec<String> {
-    let open: Vec<String> = book
-        .seats()
-        .filter(|(_, p)| match p {
-            Seat::Live(_) => true,
-            Seat::Left(s) => s.face.life == cmd_wire::frame::Life::Reconnectable,
-        })
-        .map(|(sid, _)| sid.clone())
-        .collect();
-    let face = SessionFace::unseen(cmd_wire::cells::Words(comms_inward::chan::said::offline(
-        machine,
-    )));
-    open.into_iter()
-        .filter_map(|sid| {
-            let f: cmd_wire::frame::Frame<serde_json::Value> =
-                cmd_wire::frame::Frame::SessionLeft(SessionLeft {
-                    sid,
-                    face: face.clone(),
-                });
-            book.fold(&f);
-            serde_json::to_string(&f).ok()
+    let offline = cmd_wire::cells::Words(comms_inward::chan::said::offline(machine));
+    book.unseen_now(offline)
+        .into_iter()
+        .filter_map(|l| {
+            serde_json::to_string(&cmd_wire::frame::Frame::<serde_json::Value>::SessionLeft(l)).ok()
         })
         .collect()
 }
@@ -458,7 +442,7 @@ impl Pool {
     ) -> Result<crate::dial::DialRequest, Problem> {
         crate::dial::host();
         crate::dial::dial_named(&crate::dial::machines_now(), machine, use_, extra)
-            .map_err(|(_, said)| Problem::new(said, ""))
+            .map_err(|f| Problem::new(f.said, ""))
     }
 }
 
@@ -491,7 +475,7 @@ impl Ssh for Pool {
             "capture",
             serde_json::json!({}),
         )
-        .map_err(|(_, said)| Problem::new(said, ""));
+        .map_err(|f| Problem::new(f.said, ""));
         Box::pin(async move {
             let got = crate::dial::remote_ask::capture_full(&dial?, command)
                 .await
@@ -644,9 +628,9 @@ impl crate::wire::typed::Handle for MachineStop {
 pub(crate) async fn stop_with(
     ssh: &dyn Ssh,
     machine: &str,
-) -> Result<MachineStopped, crate::wire::spec::Fail> {
+) -> Result<MachineStopped, crate::common::said::Said> {
     let fail = |p: Problem| {
-        crate::wire::spec::Fail::new("stop_failed", p.text).with_raw(Some(p.detail.as_str()))
+        crate::wire::spec::fail("stop_failed", p.text).and_raw(Some(p.detail.as_str()))
     };
     let exec = ssh
         .capture(machine, feed::backend_command(feed::STOP))
@@ -680,14 +664,14 @@ pub(crate) async fn forward(
     machine: String,
     req: crate::wire::Request,
 ) -> crate::wire::spec::Outcome {
-    use crate::wire::spec::Fail;
     use resident_client::client::CallError;
     let left = req.until.map_or(FORWARD_WITHOUT_DEADLINE, |u| {
         Duration::from_millis(u.left_ms())
     });
     let deadline = tokio::time::Instant::now() + left;
     let feed = lock(table()).get(&machine).cloned();
-    let unreachable = || Fail::new(UNREACHABLE, comms_inward::chan::said::offline(&machine));
+    let unreachable =
+        || crate::wire::spec::fail(UNREACHABLE, comms_inward::chan::said::offline(&machine));
     let Some(feed) = feed else {
         return Err(unreachable());
     };
@@ -702,17 +686,13 @@ pub(crate) async fn forward(
             .await
     };
     got.map_err(|e| match e {
-        CallError::Remote {
-            code,
-            message,
-            detail,
-            data,
-        } => Fail {
-            code,
-            message,
-            data: data.and_then(|d| serde_json::from_str(&d).ok()),
-            raw: (!detail.is_empty()).then_some(detail),
-        },
+        CallError::Remote(r) => {
+            let f = crate::wire::spec::fail(&r.code, r.said).and_raw(Some(&r.detail));
+            match r.data {
+                Some(d) => f.with_data(d),
+                None => f,
+            }
+        }
         CallError::Disconnected => unreachable(),
         // 连那台的客户端事前就拒的那几种：那一句是它自己的（`CallError` 的 `Display` 照文案表写），码照它是哪一种。
         other => {
@@ -725,7 +705,7 @@ pub(crate) async fn forward(
                 _ => "cancelled".to_string(),
             };
             let said = other.to_string();
-            Fail::new(&code, said)
+            crate::wire::spec::fail(&code, said)
         }
     })
 }
@@ -736,7 +716,7 @@ pub(crate) async fn call<C>(
     machine: &str,
     req: &C::Req,
     until: Option<crate::platform::child::Until>,
-) -> Result<C::Reply, crate::wire::spec::Fail>
+) -> Result<C::Reply, crate::common::said::Said>
 where
     C: crate::wire::typed::Command,
     C::Req: serde::Serialize,
@@ -751,7 +731,7 @@ pub(crate) async fn call_passing<C>(
     machine: &str,
     req: &C::Req,
     until: Option<crate::platform::child::Until>,
-) -> Result<serde_json::Value, crate::wire::spec::Fail>
+) -> Result<serde_json::Value, crate::common::said::Said>
 where
     C: crate::wire::typed::Command,
     C::Req: serde::Serialize,
@@ -770,8 +750,8 @@ where
 }
 
 /// 读不懂那台的回包那一句。
-fn unreadable(machine: &str) -> crate::wire::spec::Fail {
-    crate::wire::spec::Fail::new("failed", copy_core::reply_unreadable(machine))
+fn unreadable(machine: &str) -> crate::common::said::Said {
+    crate::wire::spec::fail("failed", copy_core::reply_unreadable(machine))
 }
 
 #[cfg(test)]

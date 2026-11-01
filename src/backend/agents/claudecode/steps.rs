@@ -13,7 +13,9 @@ use crate::agents::{
     Answer, ApiReason, AskOption, AskQuestion, LineDiff, LineDiffKind, LineDiffRow, StepAsk,
     StepBody, StepResult, ToolStep,
 };
+use crate::common::cells::Words;
 use serde_json::Value;
+use std::borrow::Cow;
 
 /// 一次改动的行差至多带多少字（各段行正文的字数之和；调用那一份 · 结果那一份同一个上界）：超了就只给前几段、立 `truncated`，
 /// **整段不劈**；放不下的段一律不给（连第一段也不例外 —— 不然它就不是上界）。本机 1,139 份记录实测：32 KiB 让 98.99% 的改动整份给全。
@@ -22,7 +24,7 @@ const PATCH_MAX: usize = 32 * 1024;
 const DIFF_SHOWN: usize = 400;
 /// 行差里一行至多留多少字（按字符），截了以「…」收尾：压缩过的单行几十万字不进界面。
 const DIFF_LINE_MAX: usize = 2000;
-/// 从改前改后逐行比的格数上界（改前行数 × 改后行数）：超了不比，出整删 ＋ 整增（数照这一形）。
+/// 从改前改后逐行比的格数上界（改前行数 × 改后行数）：超了不比，出整删 ＋ 整增（数照这一形），行差带降级那一句（[`LineDiff::notice`]）。
 const DIFF_CELLS_MAX: usize = 4_000_000;
 
 /// 一行正文进行差的样子：去掉行尾的 `\r`，过长截到 [`DIFF_LINE_MAX`] 字。
@@ -49,7 +51,14 @@ fn diff_row(
 }
 
 /// 攒好的行 ＋ 整份的增删数 ⇒ 行差：收着画几行、「+N −M」那一句（与过程那一行右侧那一句同一处写，[`StepResult::written`]）。
-fn line_diff(rows: Vec<LineDiffRow>, added: u32, removed: u32, truncated: bool) -> LineDiff {
+/// `notice` ＝ 降级了的那一句（[`line_ops`] 超了格数上界时写的），照带。
+fn line_diff(
+    rows: Vec<LineDiffRow>,
+    added: u32,
+    removed: u32,
+    truncated: bool,
+    notice: Option<Words>,
+) -> LineDiff {
     let stat = StepResult {
         ok: true,
         added: Some(added),
@@ -65,6 +74,7 @@ fn line_diff(rows: Vec<LineDiffRow>, added: u32, removed: u32, truncated: bool) 
         added,
         removed,
         stat,
+        notice,
     }
 }
 
@@ -154,14 +164,15 @@ fn patch_of(hunks: &[Value]) -> (u32, u32, Option<LineDiff>) {
             }
         }
     }
-    let diff = (!rows.is_empty()).then(|| line_diff(rows, added, removed, truncated));
+    let diff = (!rows.is_empty()).then(|| line_diff(rows, added, removed, truncated, None));
     (added, removed, diff)
 }
 
 /// 改前改后的原文 ⇒ 逐行的种类（行尾风格不算差别：`\r\n` · `\r` 当 `\n`，末尾恰好一个换行不成行）。
-/// 一样 ⇒ 全是没变；改前空 ⇒ 全是加的；改后空 ⇒ 全是删的；行数之积超了 [`DIFF_CELLS_MAX`] ⇒ 整删 ＋ 整增；
+/// 一样 ⇒ 全是没变；改前空 ⇒ 全是加的；改后空 ⇒ 全是删的；行数之积超了 [`DIFF_CELLS_MAX`] ⇒ 整删 ＋ 整增，连降级那一句；
 /// 余下按最长公共子序列（迭代的表 ＋ 迭代回溯，上千行不靠调用栈），同长时删的排在加的前面。
-fn line_ops(old: &str, new: &str) -> Vec<(LineDiffKind, String)> {
+/// 第二格 ＝ 降级那一句（没降级 ⇒ `None`）。
+fn line_ops(old: &str, new: &str) -> (Vec<(LineDiffKind, String)>, Option<Words>) {
     let norm = |s: &str| {
         let t = s.replace("\r\n", "\n").replace('\r', "\n");
         match t.strip_suffix('\n') {
@@ -180,13 +191,22 @@ fn line_ops(old: &str, new: &str) -> Vec<(LineDiffKind, String)> {
     let (a, b) = (split(&o), split(&n));
     let all = |v: Vec<String>, k: LineDiffKind| v.into_iter().map(move |l| (k, l));
     if o == n {
-        return all(a, LineDiffKind::Ctx).collect();
+        return (all(a, LineDiffKind::Ctx).collect(), None);
     }
     let (m, w) = (a.len(), b.len());
-    if m == 0 || w == 0 || m.saturating_mul(w) > DIFF_CELLS_MAX {
-        return all(a, LineDiffKind::Del)
+    let past_cap = m.saturating_mul(w) > DIFF_CELLS_MAX;
+    if m == 0 || w == 0 || past_cap {
+        let notice = past_cap.then(|| {
+            let (m, w) = (m.to_string(), w.to_string());
+            Words(copy_core::copy_text(
+                "cards.diff.coarse",
+                &[("old", &m), ("new", &w)],
+            ))
+        });
+        let ops = all(a, LineDiffKind::Del)
             .chain(all(b, LineDiffKind::Add))
             .collect();
+        return (ops, notice);
     }
     let width = w + 1;
     let mut c = vec![0u32; (m + 1) * width];
@@ -217,18 +237,20 @@ fn line_ops(old: &str, new: &str) -> Vec<(LineDiffKind, String)> {
     ops.extend(a[..i].iter().rev().map(|l| (LineDiffKind::Del, l.clone())));
     ops.extend(b[..j].iter().rev().map(|l| (LineDiffKind::Add, l.clone())));
     ops.reverse();
-    ops
+    (ops, None)
 }
 
 /// 入参里的几处改前改后 ⇒ 行差（不知道在文件第几行 ⇒ 行号缺）。几处时每处前一行段头；数照整份，行到 [`PATCH_MAX`] 在段的边界停下。
+/// 画出来的几处里有一处降级了 ⇒ 行差带那一句。
 fn changes_of(changes: &[(String, String)]) -> LineDiff {
     let multi = changes.len() > 1;
     let (mut added, mut removed) = (0u32, 0u32);
     let mut rows = Vec::new();
     let mut used = 0usize;
     let mut truncated = false;
+    let mut notice = None;
     for (i, (old, new)) in changes.iter().enumerate() {
-        let ops = line_ops(old, new);
+        let (ops, coarse) = line_ops(old, new);
         added += ops.iter().filter(|(k, _)| *k == LineDiffKind::Add).count() as u32;
         removed += ops.iter().filter(|(k, _)| *k == LineDiffKind::Del).count() as u32;
         let cost = ops.iter().map(|(_, l)| l.len()).sum::<usize>();
@@ -237,6 +259,7 @@ fn changes_of(changes: &[(String, String)]) -> LineDiff {
             continue;
         }
         used += cost;
+        notice = notice.or(coarse);
         if multi {
             let n = (i + 1).to_string();
             rows.push(diff_row(
@@ -251,7 +274,7 @@ fn changes_of(changes: &[(String, String)]) -> LineDiff {
                 .map(|(k, l)| diff_row(k, diff_cell(&l), None, None)),
         );
     }
-    line_diff(rows, added, removed, truncated)
+    line_diff(rows, added, removed, truncated, notice)
 }
 
 /// 工具 ⇒ 主参数取哪个入参 · 它是不是路径。**「工具 → 主参数」只此一张**：消息流那一行（[`step_of`]）·
@@ -285,13 +308,13 @@ pub(crate) fn main_arg(name: &str) -> Option<(&'static str, bool)> {
 }
 /// 跑 shell 命令的那个工具（主参数是一整条命令）。
 const SHELL_TOOL: &str = "Bash";
-/// 主参数原文里摆得出的那一段：跑命令的工具 ⇒ 说得出用意的那一段起（[`crate::agents::beat::command_intent`]）；别的工具原样。
-/// 待答请求的钉条（`asks`）· 没结果的调用那一行（`beat::what_of`）都经它，各按自己的长度截。
-pub(crate) fn main_text<'a>(tool: &str, text: &'a str) -> &'a str {
+/// 主参数原文里摆得出的那一段：跑命令的工具 ⇒ 说得出用意的那一段起（[`crate::agents::beat::command_intent`]，全是准备段 ⇒ 第一个词加「…」）；
+/// 别的工具原样。待答请求的钉条（`asks`）· 没结果的调用那一行（`beat::what_of`）都经它，各按自己的长度截。
+pub(crate) fn main_text<'a>(tool: &str, text: &'a str) -> Cow<'a, str> {
     if tool == SHELL_TOOL {
         crate::agents::beat::command_intent(text)
     } else {
-        text
+        Cow::Borrowed(text)
     }
 }
 /// 认得、但没有主参数的工具（只写工具名；提问 / 计划查 [`INTERACTIVE_TOOLS`]）。

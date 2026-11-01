@@ -8,6 +8,7 @@
 //!   shell 没了 ⇒ 删这一份。
 //! - 一份两行：标签 · 那台的名字。换行 LF / CRLF 都认。认不出 ⇒ 当没有。
 
+use crate::common::seen_terminal::WindowLabel;
 use crate::platform::fs::Ro;
 use crate::platform::shell::dialect::ps_literal;
 use crate::platform::Own;
@@ -19,28 +20,22 @@ pub(crate) const DIR: &str = "opened-windows";
 /// 一份记录的读上限（两行：标签 · 机器名）。
 const MAX_BYTES: u64 = 4096;
 
-/// 一份记录：开那一行的那个 shell 的窗口标签（`<进程号>-<起始时刻>`）· 会话在哪台。
+/// 一份记录：开那一行的那个 shell 的窗口标签 · 会话在哪台。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Opened {
-    pub(crate) label: String,
+    pub(crate) label: WindowLabel,
     pub(crate) machine: String,
 }
 
-/// 一份记录的内容 ⇒ 记录（两行都要有、都不空）。
+/// 一份记录的内容 ⇒ 记录（第一行是标签、第二行不空）。
 pub(crate) fn parse(body: &str) -> Option<Opened> {
     let mut lines = body.lines().map(str::trim);
-    let label = lines.next().filter(|l| !l.is_empty())?;
+    let label = lines.next()?.parse().ok()?;
     let machine = lines.next().filter(|m| !m.is_empty())?;
     Some(Opened {
-        label: label.to_string(),
+        label,
         machine: machine.to_string(),
     })
-}
-
-/// 标签 ⇒ (进程号, 起始时刻)。
-pub(crate) fn label_parts(label: &str) -> Option<(u32, u64)> {
-    let (pid, start) = label.split_once('-')?;
-    Some((pid.parse().ok()?, start.parse().ok()?))
 }
 
 /// 前奏：跑这一行的那个 shell 把自己的标签与 `machine` 写进 `file`（先写旁名 `.part` 再挪过去），再接后面那一行。

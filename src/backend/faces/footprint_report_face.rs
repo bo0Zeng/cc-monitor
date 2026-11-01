@@ -32,7 +32,7 @@ impl crate::wire::typed::Handle for FootprintCmd {
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<ConfigSurfaceReport, FootprintErr>> + Send + 'static
     {
-        async move { crate::footprint::answer(&req).map_err(typed::of_pair(FootprintErr::Failed)) }
+        async move { crate::footprint::answer(&req).map_err(typed::of_fail_with(FootprintErr::Failed)) }
     }
 }
 
@@ -56,7 +56,8 @@ impl crate::wire::typed::Handle for DataReportCmd {
         async move {
             let files = needs;
 
-            crate::footprint::data_answer(files, &req).map_err(typed::of_pair(FootprintErr::Failed))
+            crate::footprint::data_answer(files, &req)
+                .map_err(typed::of_fail_with(FootprintErr::Failed))
         }
     }
 }
@@ -128,11 +129,8 @@ impl crate::wire::typed::Handle for ChoresMergeCmd {
                 tokio::task::spawn_blocking(move || crate::footprint::data_answer(files, &here))
                     .await
                     .map_err(|e| e.to_string())
-                    .and_then(|r| r.map_err(|(_, said)| said))
-                    .map_err(|message| crate::dial::remote_ask::Said {
-                        code: None,
-                        message,
-                    })
+                    .and_then(|r| r.map_err(|s| s.said))
+                    .map_err(crate::common::said::Said::from)
             };
             chores_merge_with(
                 &req.machines,
@@ -150,7 +148,7 @@ impl crate::wire::typed::Handle for ChoresMergeCmd {
 /// [`ChoresMergeCmd`] 的本体（本机那一台怎么答 · 可达表 · 对面由调用方给）。
 pub(crate) async fn chores_merge_with(
     machines: &[cmd_wire::Machine],
-    local: impl std::future::Future<Output = Result<DataReport, crate::dial::remote_ask::Said>> + Send,
+    local: impl std::future::Future<Output = Result<DataReport, crate::common::said::Said>> + Send,
     tz: &crate::common::time::Tz,
     until: Option<crate::platform::child::Until>,
     table: &crate::dial::remote_ask::Table,
@@ -183,7 +181,7 @@ pub(crate) async fn chores_merge_with(
             Err(s) => ChoresAt {
                 origin,
                 report: None,
-                said: Some(s.message),
+                said: Some(s.said),
             },
         })
         .collect();

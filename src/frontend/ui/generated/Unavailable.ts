@@ -24,10 +24,10 @@
  * 这一条由 `main_fourth_face_tests.rs::the_declared_code_is_one_the_registry_already_declares` 钉住：
  * 本表只许说 `inbound::REGISTRY` 里那条命令**自己登记过**的 code。
  *
- * # 为什么不带一句 `message`
+ * # 为什么不带一句 `said`
  *
  * 那句人话今天归 monitor（见上）。再发一份等于给同一句话开第二个源头，
- * 而后端这一侧连用户的语言都不知道。**要诊断细节的场合走真调用**，那条路的 message
+ * 而后端这一侧连用户的语言都不知道。**要诊断细节的场合走真调用**，那条路的 `said`
  * 本来就说得更细（`not_installed_message` 会列出查过哪几个目录）。
  */
 export type Unavailable = { 

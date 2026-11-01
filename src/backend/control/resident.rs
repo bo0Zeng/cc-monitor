@@ -78,15 +78,15 @@ pub fn account_home() -> Option<PathBuf> {
     crate::platform::paths::account_home()
 }
 
-/// 一次性子命令的错误出口：stderr 一行 `{code,message}`、退出 2（协议 v1 §3）—— 与 CLI 控制面同一份信封。
+/// 一次性子命令的错误出口：stderr 一行失败信封（`{code, said, detail, data?}`）、退出 2（协议 v1 §3）—— 与 CLI 控制面同一份信封。
 /// 两条子命令在复制详情「命令」那一项里的名字。
 const ENSURE: &str = "resident-ensure";
 const STOP: &str = "resident-stop";
 const ATTACH: &str = "resident-attach";
 const CALL: &str = "resident-call";
 
-fn fail(cmd: &str, code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
-    crate::wire::detail::emit_err(cmd, code, message)
+fn fail(cmd: &str, code: &str, said: impl Into<copy_core::said::Said>) -> i32 {
+    crate::wire::detail::emit_err(cmd, code, said)
 }
 
 /// `--resident-ensure [--replace]`。`hosted`：宿主层（`main.rs`）交的额外环境 —— 中转口那一格
@@ -177,8 +177,9 @@ const FRAME_LINE_CAP: usize = 16 * 1024 * 1024;
 
 /// `--resident-call`：问这台的常驻一条帧命令（头注）。
 pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
-    let refuse = |code: &str, message: String| {
-        crate::wire::detail::Failed::new(Some(CALL), code, message, None, None).emit_to(
+    let refuse = |code: &str, said: String| {
+        crate::wire::detail::emit_to(
+            &crate::wire::detail::failed(Some(CALL), code, said, None, None),
             &mut std::io::stderr(),
             false,
             tz,
@@ -186,7 +187,10 @@ pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
     };
     let (within_ms, total) = match deadline_of(args) {
         Ok(x) => x,
-        Err((code, message)) => return refuse(code, message),
+        Err(s) => {
+            let code = s.code_or_fallback().to_string();
+            return refuse(&code, s.said);
+        }
     };
     let line = match crate::control::cli_args::read_args(
         args,
@@ -194,7 +198,10 @@ pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
         crate::control::cli_args::STDIN_QUIET,
     ) {
         Ok(l) => l,
-        Err((code, message)) => return refuse(code, message),
+        Err(s) => {
+            let code = s.code_or_fallback().to_string();
+            return refuse(&code, s.said);
+        }
     };
     let asked: crate::wire::listen::ResidentCall = match serde_json::from_str(line.trim()) {
         Ok(a) => a,
@@ -213,7 +220,7 @@ pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
             println!("{data}");
             0
         }
-        Some(Err(f)) => f.emit_to(&mut std::io::stderr(), false, tz),
+        Some(Err(f)) => crate::wire::detail::emit_to(&f, &mut std::io::stderr(), false, tz),
         None => ASKER_GONE_EXIT,
     }
 }
@@ -268,7 +275,7 @@ const ASKER_GONE_EXIT: i32 = 2;
 
 /// 期限口（`--within-ms`）⇒ 原样往常驻那一跳带的毫秒数 ＋ 本进程等多久（就是那么久）。等多久只归发起方：
 /// 不给 · 给的不是正整数 ⇒ `bad_args`，这里不自己定一个。
-pub(crate) fn deadline_of(args: &[String]) -> Result<(u64, Deadline), (&'static str, String)> {
+pub(crate) fn deadline_of(args: &[String]) -> Result<(u64, Deadline), crate::common::said::Said> {
     let flag = crate::wire::cli_words::WITHIN_MS_FLAG;
     let ms = crate::control::cli_args::within_of(args)?.ok_or_else(|| {
         crate::control::cli_args::bad_args(&format!(
@@ -288,9 +295,8 @@ pub(crate) async fn call_at(
     total: Deadline,
 ) -> Result<serde_json::Value, crate::wire::detail::Failed> {
     let peer = copy_core::peer_machine();
-    let fail = |code: &str, message: String| {
-        crate::wire::detail::Failed::new(Some(CALL), code, message, None, None)
-    };
+    let fail =
+        |code: &str, said: String| crate::wire::detail::failed(Some(CALL), code, said, None, None);
     let req = serde_json::json!({
         "id": CALL_ID,
         "cmd": asked.cmd,
@@ -334,16 +340,11 @@ pub(crate) async fn call_at(
             )),
         )
     })?;
-    if reply.ok {
-        return Ok(reply.data.unwrap_or_else(|| serde_json::json!({})));
-    }
     // 常驻答的那一份失败原样交回（码 · 那一句 · 复制详情 · 按码定形的 `data`），不压成一个码。
-    Err(crate::wire::detail::Failed {
-        code: reply.code.unwrap_or_else(|| "failed".to_string()),
-        message: reply.message.unwrap_or_default(),
-        detail: reply.detail.unwrap_or_default(),
-        data: reply.data,
-    })
+    match reply.failed() {
+        Some(f) => Err(f),
+        None => Ok(reply.data.unwrap_or_else(|| serde_json::json!({}))),
+    }
 }
 
 /// 这台常驻的一条只问不看的连接：hello 之后交 attach 行（在看名单交空的），回话「接上了」才算接上。
@@ -610,7 +611,7 @@ fn spawn_detached(
         };
     }
     cmd.detach().map_err(|e| match e {
-        // 不支持：那一句由读的那一方说（「远端只支持 Unix」），`message` 这一格交的就是原话（读的那一方放进复制详情）。
+        // 不支持：那一句由读的那一方说（「远端只支持 Unix」），`said` 这一格交的就是原话（读的那一方放进复制详情）。
         ChildFail::Io(io) if io.kind() == std::io::ErrorKind::Unsupported => {
             ("unsupported", io.to_string().into())
         }

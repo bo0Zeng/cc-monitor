@@ -6,10 +6,10 @@
 
 use crate::agents::ModelSaid;
 use crate::common::contract::malformed;
+use crate::common::said::Said;
 use crate::control::terminals::{no_said, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq};
 use crate::faces::session_mode_face::SwitchResult;
-use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
 
@@ -61,8 +61,8 @@ pub(crate) fn waiting_reply() -> ModelSwitched {
 /// 别的没送到 · 不知道送没送到 ⇒ 就是结局。
 pub(crate) fn after_send(
     sent: Sent,
-    keep: &dyn Fn() -> Result<String, Fail>,
-) -> Result<Option<ModelSwitched>, Fail> {
+    keep: &dyn Fn() -> Result<String, Said>,
+) -> Result<Option<ModelSwitched>, Said> {
     if crate::control::terminals::terminal_gone(sent.why) {
         return Ok(Some(ModelSwitched {
             model: Some(keep()?),
@@ -111,9 +111,9 @@ pub(crate) trait ConfirmIo {
     /// 等下一次重画（到期没变 ⇒ `false`）。
     fn redrawn(&mut self) -> bool;
     /// 此刻那一屏（纯文本行）。
-    fn screen(&mut self) -> Result<Vec<String>, Fail>;
+    fn screen(&mut self) -> Result<Vec<String>, Said>;
     /// 按一下键。
-    fn press(&mut self, key: &'static str) -> Result<Sent, Fail>;
+    fn press(&mut self, key: &'static str) -> Result<Sent, Said>;
 }
 
 /// 找确认框的结局。
@@ -132,7 +132,7 @@ pub(crate) enum Confirmed {
 pub(crate) fn confirm_with(
     bx: &crate::agents::ScreenBox,
     io: &mut dyn ConfirmIo,
-) -> Result<Confirmed, Fail> {
+) -> Result<Confirmed, Said> {
     for _ in 0..CONFIRM_REDRAWS {
         if let Some(s) = io.arrived() {
             return Ok(Confirmed::Arrived(s));
@@ -171,7 +171,7 @@ impl ConfirmIo for LiveBox<'_> {
     fn redrawn(&mut self) -> bool {
         self.watch.changed()
     }
-    fn screen(&mut self) -> Result<Vec<String>, Fail> {
+    fn screen(&mut self) -> Result<Vec<String>, Said> {
         let shot = crate::control::terminals::preview_on(
             crate::control::terminals::On::default(),
             &crate::control::terminals_wire::TerminalPreviewReq {
@@ -183,7 +183,7 @@ impl ConfirmIo for LiveBox<'_> {
         )?;
         Ok(shot.lines.into_iter().map(|l| l.text).collect())
     }
-    fn press(&mut self, key: &'static str) -> Result<Sent, Fail> {
+    fn press(&mut self, key: &'static str) -> Result<Sent, Said> {
         self.watch.forget();
         crate::control::terminals_wire::say(&TerminalInputReq {
             sid: Some(self.sid.to_string()),
@@ -236,10 +236,12 @@ enum Sent2 {
     Wait(crate::observe::one_wait::Armed<ModelSaid>, bool),
 }
 
-async fn answer(req: SessionModelReq, own: crate::platform::Own) -> Result<ModelSwitched, Fail> {
+async fn answer(req: SessionModelReq, own: crate::platform::Own) -> Result<ModelSwitched, Said> {
     let pre = tokio::task::spawn_blocking(move || send(&req, &own))
         .await
-        .map_err(|_| Fail::new("unobservable", malformed("model task did not finish")))??;
+        .map_err(|_| {
+            crate::wire::spec::fail("unobservable", malformed("model task did not finish"))
+        })??;
     Ok(match pre {
         Sent2::Done(r) => r,
         Sent2::Wait(ears, shared) => settled(ears.fetch(READBACK_MS).await, shared),
@@ -248,10 +250,10 @@ async fn answer(req: SessionModelReq, own: crate::platform::Own) -> Result<Model
 
 /// 认会话 · 核模型 · 判在不在等人 · 先装读回的耳朵 · 再送那一行（同 `session-say` 那一道：窗格里只剩 shell 不送）·
 /// 那一家声明了确认框 ⇒ 送出之后看屏，认出来就替人确认。
-fn send(req: &SessionModelReq, own: &crate::platform::Own) -> Result<Sent2, Fail> {
+fn send(req: &SessionModelReq, own: &crate::platform::Own) -> Result<Sent2, Said> {
     let home = crate::history::listing::agent_home();
     let record = crate::observe::query::locate::session_record(&home, &req.sid).map_err(|_| {
-        Fail::new(
+        crate::wire::spec::fail(
             "no_such_session",
             copy_text("beSessionCommands.session.noRecord", &[]),
         )
@@ -260,13 +262,13 @@ fn send(req: &SessionModelReq, own: &crate::platform::Own) -> Result<Sent2, Fail
         .ok()
         .map(|(_, f)| f);
     let Some(sw) = face.and_then(|f| f.models.and(f.model_switch)) else {
-        return Err(Fail::new(
+        return Err(crate::wire::spec::fail(
             "unsupported",
             copy_text("beSessionModel.switch.unsupported", &[]),
         ));
     };
     let Some(choice) = face.and_then(|f| f.model_choice(&req.model)) else {
-        return Err(Fail::new(
+        return Err(crate::wire::spec::fail(
             "bad_args",
             malformed("`model` is not one this agent offers"),
         ));
@@ -277,7 +279,7 @@ fn send(req: &SessionModelReq, own: &crate::platform::Own) -> Result<Sent2, Fail
     }
     // 先装耳朵再送：送出之后才长出的那一条才算读回。看屏的客户端也先起：送出之后的重画才都看得见。
     let mut ears = crate::observe::one_wait::record_pick(&record, sw.read)
-        .map_err(|e| Fail::new("unobservable", malformed(&e)))?;
+        .map_err(|e| crate::wire::spec::fail("unobservable", malformed(&e)))?;
     let watch = sw
         .confirm
         .and_then(|bx| box_watch(&req.sid, req.client.as_deref()).map(|w| (bx, w)));

@@ -259,6 +259,7 @@ fn spawn_pool_relay(stub_port: u16) -> SocketAddr {
         open,
         guard_core::wall::CEILING,
         guard_core::wall::CEILING,
+        BODIES_WIDE,
     ));
     let l = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 中转");
     let addr = l.local_addr().expect("中转地址");
@@ -370,4 +371,232 @@ fn a_pooled_connection_the_upstream_closed_is_dropped_before_any_byte_is_sent() 
         "每份请求体该恰好到上游一次"
     );
     assert_eq!(accepted(&stub), 3);
+}
+
+// ══ 在途请求体合计的账 ═══════════════════════════════════════════════════
+//
+// 上游选择（判据自己的一张）进门就先报一声、再压着不答，放一次答一发：在途的那几发一直攥着自己那一笔账。
+
+/// 不量体量的那几条判据给的账：比判据里任何一发都宽得多。
+const BODIES_WIDE: usize = 1 << 30;
+
+/// 判据的账与每一发的体：3 发记不下、2 发记得下。
+const BODIES_NARROW: usize = 8 * 1024 * 1024;
+const ONE_BODY: usize = 3 * 1024 * 1024;
+
+/// 进 `resolve` 先报一声（`entered`），再等放行（`release` 来一次答一发：现成回包 200）。
+struct Held {
+    entered: std::sync::Mutex<mpsc::Sender<()>>,
+    release: std::sync::Mutex<mpsc::Receiver<()>>,
+}
+impl Destinations for Held {
+    fn resolve(
+        &self,
+        _mode: super::super::Mode,
+        _key: &super::super::RouteKey,
+        _ask: &Ask<'_>,
+        act: &mut dyn FnMut(Destination<'_>),
+    ) {
+        let _ = self.entered.lock().expect("lock").send(());
+        let _ = self
+            .release
+            .lock()
+            .expect("lock")
+            .recv_timeout(guard_core::wall::CEILING);
+        act(Destination::Reply {
+            status: "200 OK",
+            reason: "held",
+            headers: &[],
+            body: b"ok",
+        });
+    }
+    fn stream_label_headers(&self) -> Vec<&'static str> {
+        Vec::new()
+    }
+    fn upstream_idle_reuse(&self) -> std::time::Duration {
+        guard_core::wall::CEILING
+    }
+}
+
+/// 起一个账为 `bodies` 的中转，上游选择是 [`Held`]；回中转地址 ＋ 「进来了」的收端 ＋ 放行的发端。
+fn spawn_held_relay(bodies: usize) -> (SocketAddr, mpsc::Receiver<()>, mpsc::Sender<()>) {
+    let (entered_tx, entered) = mpsc::channel();
+    let (release, release_rx) = mpsc::channel();
+    let open: Arc<OpenFor> =
+        Arc::new(|_from, _h, _p, _d| Err(std::io::Error::other("判据的上游选择不发上游")));
+    let relay = Arc::new(Relay::new(
+        Arc::new(Held {
+            entered: std::sync::Mutex::new(entered_tx),
+            release: std::sync::Mutex::new(release_rx),
+        }),
+        door::Keys {
+            full: door::Key::from_text(POOL_FULL_KEY).expect("全权钥匙"),
+            pass: door::Key::from_text(POOL_PASS_KEY).expect("直通钥匙"),
+        },
+        TeeSink::to_port(Arc::new(NoTap)),
+        open,
+        guard_core::wall::CEILING,
+        guard_core::wall::CEILING,
+        bodies,
+    ));
+    let l = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 中转");
+    let addr = l.local_addr().expect("中转地址");
+    std::thread::spawn(move || {
+        for s in l.incoming() {
+            let Ok(s) = s else { continue };
+            let r = Arc::clone(&relay);
+            std::thread::spawn(move || {
+                let _ = serve_one(s, &r);
+            });
+        }
+    });
+    (addr, entered, release)
+}
+
+/// 发一条体长 `n` 的请求头；`with_body` ⇒ 接着把体写全。回那条连接（读应答由调用方做）。
+fn held_send(relay: SocketAddr, n: usize, with_body: bool) -> TcpStream {
+    let mut c = TcpStream::connect(relay).expect("连中转");
+    c.set_read_timeout(Some(guard_core::wall::CEILING))
+        .expect("读期限");
+    let head = format!(
+        "POST /{POOL_FULL_KEY}/t/agentA/acctA/~tok1/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {n}\r\n\r\n"
+    );
+    c.write_all(head.as_bytes()).expect("写请求头");
+    if with_body {
+        c.write_all(&vec![b'x'; n]).expect("写请求体");
+    }
+    c
+}
+
+fn read_all(mut c: TcpStream) -> String {
+    let mut got = Vec::new();
+    c.read_to_end(&mut got).expect("读下游应答");
+    String::from_utf8_lossy(&got).into_owned()
+}
+
+/// ★ 在途请求体合计记不下 ⇒ 读体之前就回 503、原因头说是体量满了，一个体字节都不读（这一发只发了头）；
+/// 在途的一发收场把账退回来，下一发同样大的照常转。
+#[test]
+fn bodies_past_the_in_flight_budget_get_busy_before_a_body_byte_is_read() {
+    let (relay, entered, release) = spawn_held_relay(BODIES_NARROW);
+    let (done_tx, done) = mpsc::channel();
+    for _ in 0..2 {
+        let done_tx = done_tx.clone();
+        std::thread::spawn(move || {
+            let _ = done_tx.send(read_all(held_send(relay, ONE_BODY, true)));
+        });
+    }
+    for i in 0..2 {
+        entered
+            .recv_timeout(guard_core::wall::CEILING)
+            .unwrap_or_else(|_| panic!("第 {i} 发没走到上游选择"));
+    }
+
+    let third = read_all(held_send(relay, ONE_BODY, false));
+    assert!(
+        third.starts_with("HTTP/1.1 503 "),
+        "账上已记着 2 × 3 MiB（上限 8 MiB），第 3 发该回 503：{third}"
+    );
+    assert!(
+        third.contains(&format!("{REASON_HEADER}: body-budget\r\n")),
+        "503 的原因头该说是体量满了：{third}"
+    );
+
+    release.send(()).expect("放行一发");
+    let first = done
+        .recv_timeout(guard_core::wall::CEILING)
+        .expect("放行的那一发该收场");
+    assert!(first.starts_with("HTTP/1.1 200 "), "放行的那一发：{first}");
+
+    let (late_tx, late) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = late_tx.send(read_all(held_send(relay, ONE_BODY, true)));
+    });
+    entered
+        .recv_timeout(guard_core::wall::CEILING)
+        .expect("账退回来之后，同样大的一发该照常走到上游选择");
+    release.send(()).expect("放行");
+    release.send(()).expect("放行");
+    let fourth = late
+        .recv_timeout(guard_core::wall::CEILING)
+        .expect("第 4 发该收场");
+    assert!(fourth.starts_with("HTTP/1.1 200 "), "第 4 发：{fourth}");
+}
+
+/// 请求体按声明的长度一次分配：读出来那一份的容量恰好就是长度（不按读到的字节翻倍增长）。
+#[test]
+fn a_body_is_allocated_once_at_its_declared_length() {
+    let n = ONE_BODY + 7;
+    let src = vec![b'x'; n];
+    let mut r = std::io::Cursor::new(&src[..]);
+    let got = http1::read_exact_body(&mut r, n, BODY_CAP)
+        .expect("io")
+        .expect("没超上限");
+    assert_eq!(got.len(), n);
+    assert_eq!(got.capacity(), n, "读出来那一份的容量该恰好是声明的长度");
+}
+
+/// 子进程里那一半的记号：父进程起同一个测试二进制、只跑本条，带上它。
+const FD_CHILD: &str = "CCM_SERVE_ONE_FD_CHILD";
+
+/// ★ 连接线程一上来要 `dup` 下游那条（读写各拿一份）；那一刻 fd 用尽 ⇒ 下游照样拿到 503（原因头 `busy`），
+/// 不是一个没有任何 HTTP 回应的 FIN。fd 用尽只在子进程里造（占满本进程的 fd 会连累同一进程里别的判据）。
+#[test]
+fn a_downstream_gets_busy_when_the_connection_thread_cannot_dup_it() {
+    if std::env::var_os(FD_CHILD).is_none() {
+        let out = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
+            .args([
+                "--exact",
+                "server::tests::a_downstream_gets_busy_when_the_connection_thread_cannot_dup_it",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(FD_CHILD, "1")
+            .output()
+            .expect("起子进程");
+        let said = String::from_utf8_lossy(&out.stdout).into_owned()
+            + &String::from_utf8_lossy(&out.stderr);
+        assert!(
+            out.status.success() && said.contains("fd-child: answered"),
+            "子进程那一半没过：{said}"
+        );
+        return;
+    }
+    let r = Relay::new(
+        Arc::new(Held {
+            entered: std::sync::Mutex::new(mpsc::channel().0),
+            release: std::sync::Mutex::new(mpsc::channel().1),
+        }),
+        door::Keys {
+            full: door::Key::from_text(POOL_FULL_KEY).expect("全权钥匙"),
+            pass: door::Key::from_text(POOL_PASS_KEY).expect("直通钥匙"),
+        },
+        TeeSink::to_port(Arc::new(NoTap)),
+        Arc::new(|_from, _h, _p, _d| Err(std::io::Error::other("不发上游"))),
+        guard_core::wall::CEILING,
+        guard_core::wall::CEILING,
+        BODIES_WIDE,
+    );
+    let l = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind");
+    let mut client = TcpStream::connect(l.local_addr().expect("addr")).expect("connect");
+    client
+        .set_read_timeout(Some(guard_core::wall::CEILING))
+        .expect("读期限");
+    let (srv, _) = l.accept().expect("accept");
+    // 把本进程的 fd 占满（占到打开报错为止）：之后连接线程那一下 `dup` 拿不到号。
+    let mut hog = Vec::new();
+    while let Ok(f) = std::fs::File::open("/dev/null") {
+        hog.push(f);
+    }
+    assert!(srv.try_clone().is_err(), "fd 该已占满");
+    let _ = serve_one(srv, &r);
+    let mut got = Vec::new();
+    let _ = client.read_to_end(&mut got);
+    drop(hog);
+    let got = String::from_utf8_lossy(&got);
+    assert!(
+        got.starts_with("HTTP/1.1 503 ") && got.contains(&format!("{REASON_HEADER}: busy\r\n")),
+        "dup 不成时下游该拿到 503 busy：{got:?}"
+    );
+    println!("fd-child: answered");
 }

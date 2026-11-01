@@ -111,7 +111,7 @@ fn a_sid_that_would_walk_out_of_the_task_root_is_refused() {
     assert!(session_task_lines(&h, "abc-123").is_ok());
     for bad in ["", ".", "..", "../x", "a/b", "a\\b", "a\0b"] {
         let err = session_task_lines(&h, bad).expect_err(bad);
-        assert_eq!(err.0, "bad_args", "{bad:?}");
+        assert_eq!(err.code.as_deref(), Some("bad_args"), "{bad:?}");
     }
 }
 
@@ -130,5 +130,8 @@ fn a_dir_that_is_there_but_unreadable_is_not_an_empty_list() {
     if !perms_bite {
         return;
     }
-    assert_eq!(got.expect_err("读不了的目录回了 Ok").0, "failed");
+    assert_eq!(
+        got.expect_err("读不了的目录回了 Ok").code.as_deref(),
+        Some("failed")
+    );
 }

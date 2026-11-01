@@ -179,11 +179,6 @@ impl DownloadBoard {
         self.lane.finish(o);
     }
 
-    #[cfg(test)]
-    pub fn in_flight(&self) -> Option<String> {
-        self.lane.running()
-    }
-
     /// 这一趟结局旁边要说的那一句（`None` ＝ 不说）。每一趟开头都要设一次（上一趟的不留）。
     pub fn set_note(&self, note: Option<String>) {
         self.lock().note = note;
@@ -350,9 +345,10 @@ pub async fn pull_many(
             (_, _) => row.finish(Outcome::Failed {
                 dest,
                 why: super::source::Failed {
-                    code: it.code,
+                    code: super::source::Failed::code_or_fallback(it.code),
                     said: it.reason.unwrap_or_default(),
                     detail: it.detail.unwrap_or_default(),
+                    data: None,
                 },
             }),
         }

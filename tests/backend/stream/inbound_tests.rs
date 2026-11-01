@@ -173,7 +173,7 @@ async fn one_line(input: &str) -> Vec<String> {
 #[tokio::test]
 async fn ping_replies_ok() {
     let out = one_line("{\"id\":\"x\",\"cmd\":\"ping\"}\n").await;
-    // 逐字节钉死：顺带把「`code`/`message` 为 None 时不上线」也钉住了。
+    // 逐字节钉死：顺带把「`code`/`said` 为 None 时不上线」也钉住了。
     assert_eq!(out, vec![r#"{"kind":"reply","id":"x","ok":true}"#]);
 }
 
@@ -777,7 +777,7 @@ async fn a_failed_reply_carries_a_detail_with_the_facts_below_the_sentence() {
             "{detail}"
         );
         assert!(
-            !r["message"].as_str().unwrap().contains(code),
+            !r["said"].as_str().unwrap().contains(code),
             "码进了句子：{r}"
         );
     }
@@ -843,10 +843,10 @@ async fn a_files_read_failure_puts_the_system_words_into_the_detail() {
     )
     .unwrap();
     assert_eq!(r["code"], "not_dir", "{r}");
-    let message = r["message"].as_str().unwrap();
+    let said = r["said"].as_str().unwrap();
     let detail = r["detail"].as_str().unwrap();
     assert_eq!(
-        message,
+        said,
         copy_core::copy_text(
             "beFilesRead.ls.unreadable",
             &[(
@@ -860,10 +860,7 @@ async fn a_files_read_failure_puts_the_system_words_into_the_detail() {
         .lines()
         .find_map(|l| l.strip_prefix(raw_label.as_str()))
         .unwrap_or_else(|| panic!("详情里没有原话那一行：{detail}"));
-    assert!(
-        !raw.trim().is_empty() && !message.contains(raw.trim()),
-        "{r}"
-    );
+    assert!(!raw.trim().is_empty() && !said.contains(raw.trim()), "{r}");
 }
 
 /// `stream-watch`：名单（连同要哪几个的主线外清单、手上各有什么）原样交给这条连接的 watcher（整份），它答的「从第几行起」原样回；
@@ -1048,9 +1045,9 @@ fn the_hub_local_hop_reaches_every_inner_command() {
     let mut missed = Vec::new();
     for cmd in super::doors::HUB_INNER {
         // 空入参：多数条按自己的码拒；`cc-bus-install` 不看入参，会装进测试档的沙箱家（`src/common/test-home`）。只看它到没到。
-        if let Err((code, said)) = here.ask(cmd, serde_json::json!({})) {
-            if code == "unknown_command" {
-                missed.push(format!("{cmd}（{said}）"));
+        if let Err(f) = here.ask(cmd, serde_json::json!({})) {
+            if f.code.as_deref() == Some("unknown_command") {
+                missed.push(format!("{cmd}（{}）", f.said));
             }
         }
     }
@@ -1118,7 +1115,7 @@ fn history_search_refuses_what_its_request_type_does_not_have() {
     ] {
         let got = run_registered("history-search", args.clone());
         assert_eq!(
-            got.as_ref().err().map(|f| f.code.as_str()),
+            got.as_ref().err().and_then(|f| f.code.as_deref()),
             Some("bad_args"),
             "入参 {args} 该回 bad_args：{got:?}"
         );
@@ -1175,8 +1172,9 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             serde_json::json!({ "terminal": "tmux-1", "color": false })
         )
         .unwrap_err()
-        .code,
-        "not_known"
+        .code
+        .as_deref(),
+        Some("not_known")
     );
     assert_eq!(
         serde_json::to_string(
@@ -1264,8 +1262,9 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             serde_json::json!({ "terminal": "t-none", "client": "mobile" })
         )
         .unwrap_err()
-        .code,
-        "not_known"
+        .code
+        .as_deref(),
+        Some("not_known")
     );
     // session-open 新起那一形：手机那一份入参（`core-claude/.../link/Sessions.kt`）经登记表跑；目录不在 ⇒ 失败信封的 `data`（哪一格 ＋ 选不了号那一形）。
     let e = run_registered(
@@ -1274,9 +1273,9 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
     )
     .unwrap_err();
     assert_eq!(
-        (e.code.as_str(), serde_json::to_string(&e.data).unwrap()),
+        (e.code.as_deref(), serde_json::to_string(&e.data).unwrap()),
         (
-            "no_dir",
+            Some("no_dir"),
             r##"{"field":"cwd","unavailable":null}"##.to_string()
         )
     );
@@ -1340,7 +1339,7 @@ fn the_terminal_trio_refuses_fields_it_does_not_use() {
         let (e, diag) = crate::common::contract::tests::diag(|| {
             run_registered(cmd, args.clone()).expect_err("多送 / 类型不对的那一格该被拒")
         });
-        assert_eq!(e.code, "bad_args", "{cmd} {args}：{e:?}");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{cmd} {args}：{e:?}");
         assert!(
             diag.contains(named),
             "{cmd} {args}：诊断没点名那一格：{diag}"
@@ -1430,7 +1429,7 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
     ] {
         let got = run_any(cmd, args.clone());
         assert_eq!(
-            got.as_ref().err().map(|f| f.code.as_str()),
+            got.as_ref().err().and_then(|f| f.code.as_deref()),
             Some("bad_args"),
             "{cmd} 入参 {args} 该回 bad_args：{got:?}"
         );
@@ -1479,7 +1478,11 @@ fn the_account_library_refuses_what_its_request_types_do_not_have() {
         ("sessions-needs", serde_json::json!({ "x": 1 })),
     ] {
         let got = run_registered(cmd, args.clone()).expect_err(&format!("{cmd} {args} 本该被拒"));
-        assert_eq!(got.code, "bad_args", "{cmd} {args}：{got:?}");
+        assert_eq!(
+            got.code.as_deref(),
+            Some("bad_args"),
+            "{cmd} {args}：{got:?}"
+        );
     }
 }
 

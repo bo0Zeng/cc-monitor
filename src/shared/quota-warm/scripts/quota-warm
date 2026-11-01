@@ -91,7 +91,7 @@ def send(name):
     if p.returncode != 0:
         try:
             e = json.loads(p.stderr.strip().splitlines()[-1])
-            return None, f"{e.get('code')}：{e.get('message')}"
+            return None, f"{e.get('code')}：{e.get('said')}"
         except (ValueError, IndexError, AttributeError):
             return None, f"退出码 {p.returncode}，回包读不懂"
     try:

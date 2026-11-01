@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.ui.needs
 
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
@@ -112,6 +113,25 @@ class NeedsBoardTest {
                 assertEquals("会外那几项在整份里，不另问", 0, m.asked("manual-list"))
             }
             assertTrue("列表里不止一台 ⇒ 会外那一行写机器名", ov.manyHosts)
+        }
+
+    @Test
+    fun `需手动屏那一行：那台写好的那一句，已等照收到以后走过的接着走（过 60 s 多 1m）；不知道等了多久 ⇒ 照抄 needs 的字`() =
+        runTest {
+            var clock = 5_000L
+            val waiting =
+                session("w").let { item ->
+                    val row = item.getValue("session") as Map<*, *>
+                    val needs = (row["needs"] as Map<*, *>) + ("waitedMs" to 12_000.0)
+                    item + ("session" to (row + ("needs" to needs))) + ("clock" to mapOf("text" to "核心·t {dur}", "head" to "核心·h {dur}"))
+                }
+            val a = Machine(listOf(waiting, session("plain")))
+            val board = NeedsBoard(MutableStateFlow(mapOf("a" to NeedsSource(a.link, a.pushes))), backgroundScope, now = { clock })
+            settle()
+            val (w, plain) = overviewOf(board.state.value, hosts, current = "a").needs.filterIsInstance<NeedsLine.Session>()
+            assertEquals("核心·t ${DurationFormat.short(12_000L)}", w.state(5_000L))
+            assertEquals("核心·t ${DurationFormat.short(72_000L)}", w.state(65_000L))
+            assertEquals("等批准", plain.state(65_000L))
         }
 
     @Test

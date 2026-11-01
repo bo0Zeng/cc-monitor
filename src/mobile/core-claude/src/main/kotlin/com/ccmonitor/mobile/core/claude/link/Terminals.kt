@@ -1,11 +1,11 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.wire.Wire
-import com.ccmonitor.mobile.core.wire.gen.Preview
+import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.TermInput
-import com.ccmonitor.mobile.core.wire.gen.TerminalEnded
+import com.ccmonitor.mobile.core.wire.gen.TerminalEndReq
+import com.ccmonitor.mobile.core.wire.gen.TerminalPreviewReq
+import com.ccmonitor.mobile.core.wire.gen.TerminalsListReq
 import com.ccmonitor.mobile.core.wire.gen.WireTerminalHost
-import com.ccmonitor.mobile.core.wire.gen.TerminalsList as TerminalsListReply
 
 /*
  * 那台的终端：列 · 抓屏 · 结束。都是那台核心的帧命令（`IPC-COMMANDS.md` 各节），
@@ -18,9 +18,9 @@ internal const val CLIENT: String = "mobile"
 
 /** `terminals-list`：这台的终端名单。 */
 object TerminalsList {
-    const val COMMAND: String = "terminals-list"
+    const val COMMAND: String = Commands.TerminalsList.NAME
 
-    fun args(): Map<String, Any?> = mapOf("client" to CLIENT)
+    fun args(): Map<String, Any?> = Commands.TerminalsList.args(TerminalsListReq(client = CLIENT))
 
     data class Row(
         /** 名单里那一行的句柄（送字 · 抓屏时交回）。 */
@@ -37,12 +37,15 @@ object TerminalsList {
         val sid: String?,
         /** 住在 tmux 里（副标题带「tmux」）；托管那一形 ⇒ `false`。 */
         val tmux: Boolean = true,
-        /** 托管那一形：此刻谁在输入，那台写好的那一句（同桌面 · 你的终端那一句）；tmux 那一形 ⇒ `null`。手机不接管、不交还。 */
+        /** 托管那一形：此刻谁在输入，那台写好的那一句（同桌面 · 你的终端那一句）；tmux 那一形 ⇒ `null`。
+         * 谁在输入照接入协议（`host/managed/attach.rs`）：终端 tab 接上即持有，只看时回车接管，别的端接上即交出；
+         * 手机不另调 `terminal-take-input` · `terminal-release-input`。
+         */
         val holder: String? = null,
     )
 
     fun of(data: Any?): List<Row>? =
-        Wire.bind<TerminalsListReply>(data)?.terminals?.map { t ->
+        Commands.TerminalsList.reply(data)?.terminals?.map { t ->
             Row(
                 t.terminal,
                 t.name,
@@ -70,20 +73,24 @@ object TerminalsList {
 
 /** `terminal-preview`：抓一个终端的一屏（纯文字）。 */
 object TerminalPreview {
-    const val COMMAND: String = "terminal-preview"
+    const val COMMAND: String = Commands.TerminalPreview.NAME
 
-    fun args(terminal: String): Map<String, Any?> = mapOf("terminal" to terminal, "color" to false)
+    fun args(terminal: String): Map<String, Any?> = Commands.TerminalPreview.args(TerminalPreviewReq(terminal = terminal, color = false))
 
     /** 自上而下的行拼成一段。 */
-    fun of(data: Any?): String? = Wire.bind<Preview>(data)?.lines?.joinToString("\n") { it.text }
+    fun of(data: Any?): String? =
+        Commands.TerminalPreview
+            .reply(data)
+            ?.lines
+            ?.joinToString("\n") { it.text }
 }
 
 /** `terminal-end`：按名单里的句柄结束一个终端（两种宿主同一条；那台过身份门；被拒 ⇒ 失败信封里是那台写好的那一句）。 */
 object TerminalEnd {
-    const val COMMAND: String = "terminal-end"
+    const val COMMAND: String = Commands.TerminalEnd.NAME
 
-    fun args(terminal: String): Map<String, Any?> = mapOf("terminal" to terminal, "client" to CLIENT)
+    fun args(terminal: String): Map<String, Any?> = Commands.TerminalEnd.args(TerminalEndReq(terminal = terminal, client = CLIENT))
 
     /** 结束了的那个终端（回的句柄）。 */
-    fun of(data: Any?): String? = Wire.bind<TerminalEnded>(data)?.terminal
+    fun of(data: Any?): String? = Commands.TerminalEnd.reply(data)?.terminal
 }

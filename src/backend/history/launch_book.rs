@@ -13,9 +13,6 @@ use std::path::Path;
 pub(crate) const FILE_NAME: &str =
     relay_route_core::file_name_of(relay_route_core::LAUNCH_ACCOUNTS_REL);
 
-/// 读盘的上限（一条会话一行）：照表。
-pub(crate) const MAX_BYTES: u64 = relay_route_core::LAUNCH_ACCOUNTS_FILE.row.cap;
-
 /// 启动台账：状态（读不懂不覆盖；落点 · 版本 · 读上限照表）。
 const BOOK: crate::common::own_state::Doc<Book> =
     crate::common::own_state::Doc::of(&relay_route_core::LAUNCH_ACCOUNTS_FILE);
@@ -78,7 +75,7 @@ pub(crate) fn last_accounts_at(home: Option<&Path>) -> Result<LastAccounts, Last
     let book = match home {
         Some(h) => read_book(h).map_err(|e| {
             crate::wire::typed::of_fail(
-                crate::wire::spec::Fail::from(("unreadable", e)),
+                crate::wire::spec::fail("unreadable", e),
                 LastAccountsErr::Unreadable,
             )
         })?,

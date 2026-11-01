@@ -9,6 +9,7 @@
 //!   不止一个目录 ⇒「分组名 · 目录末一段」。
 
 use crate::assets::aliases::profile::{self, Book, RowEdit};
+use cmd_wire::failed::Failed;
 use copy_core::copy_text;
 use serde::Serialize;
 
@@ -294,17 +295,17 @@ pub(crate) fn answer(
     live: &[Live],
     home: Option<&std::path::Path>,
     is_dir: &dyn Fn(&str) -> bool,
-) -> Result<SetPlan, (&'static str, String)> {
+) -> Result<SetPlan, crate::common::said::Said> {
     let rows = match (&req.name, &req.rows) {
         (Some(name), None) => {
             let s = book.find_set(name).ok_or_else(|| {
-                (
+                crate::common::said::Said::new(
                     "no_such_set",
                     copy_text("beSessionSet.set.unknown", &[("name", name)]),
                 )
             })?;
             if let Some(p) = s.problems.first() {
-                return Err((
+                return Err(crate::common::said::Said::new(
                     "refused",
                     copy_text(
                         "beSessionSet.set.broken",
@@ -316,7 +317,7 @@ pub(crate) fn answer(
         }
         (None, Some(rows)) => rows.clone(),
         _ => {
-            return Err((
+            return Err(crate::common::said::Said::new(
                 "bad_args",
                 crate::common::contract::malformed(
                     "`set-plan` takes exactly one of `name` and `rows`",
@@ -338,15 +339,6 @@ pub(crate) struct GroupRef {
     pub(crate) name: String,
 }
 
-/// 一条没起成：`session-open` 回的码 ＋ 那一句。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct LaunchFail {
-    pub(crate) code: String,
-    pub(crate) message: String,
-}
-
 /// 一行起的结果：进的组 · 起成的那几条（`session-open` 的回包，带等它报到那一问）· 没起成的那几条 · 起不了的原因。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -357,7 +349,8 @@ pub(crate) struct RowLaunched {
     pub(crate) alias: String,
     pub(crate) group: Option<GroupRef>,
     pub(crate) opened: Vec<cmd_wire::session::Opened>,
-    pub(crate) failed: Vec<LaunchFail>,
+    /// 没起成的那几条：各是交出去那一形失败（`session-open` 回的码 · 那一句 · 复制详情）。
+    pub(crate) failed: Vec<Failed>,
     pub(crate) blocked: Option<String>,
 }
 
@@ -378,12 +371,12 @@ pub(crate) struct SetLaunched {
 /// 起一组要动的那几下（入口交：找 / 建组 · 先定 sid 并写好组注解 · 走 `session-open` 起一条 · 起不成摘掉注解）。
 pub(crate) struct Hands<'a> {
     /// 组名 ⇒ 那一组（为这个组名建过、还在 ⇒ 它；否则新建）。
-    pub(crate) group_for: &'a mut dyn FnMut(&str) -> Result<GroupRef, String>,
+    pub(crate) group_for: &'a mut dyn FnMut(&str) -> Result<GroupRef, Failed>,
     /// 先定这一条的 sid、写好它进这一组的注解；那一家不认先定 sid ⇒ `None`（起好之后再归）。
     pub(crate) mark: &'a mut dyn FnMut(&GroupRef) -> Option<String>,
     /// 起这一行的一条（先定的 sid 交进去）。
     pub(crate) start:
-        &'a mut dyn FnMut(&RowEdit, Option<&str>) -> Result<cmd_wire::session::Opened, LaunchFail>,
+        &'a mut dyn FnMut(&RowEdit, Option<&str>) -> Result<cmd_wire::session::Opened, Failed>,
     /// 起不成：摘掉先写的那一笔注解。
     pub(crate) unmark: &'a mut dyn FnMut(&str, &GroupRef),
 }
@@ -414,11 +407,8 @@ pub(crate) fn launch_rows(rows: &[RowEdit], plan: &SetPlan, h: &mut Hands) -> Se
                 None => (h.group_for)(&p.group).inspect(|g| groups.push(g.clone())),
             };
             match group {
-                Err(why) => {
-                    done.failed.push(LaunchFail {
-                        code: "refused".into(),
-                        message: why,
-                    });
+                Err(f) => {
+                    done.failed.push(f);
                     out.failed += p.more;
                 }
                 Ok(g) => {
@@ -465,7 +455,7 @@ pub(crate) fn launch_rows(rows: &[RowEdit], plan: &SetPlan, h: &mut Hands) -> Se
             r.failed.iter().map(|f| {
                 copy_text(
                     "beSessionSet.launched.fail",
-                    &[("alias", &r.alias), ("why", &f.message)],
+                    &[("alias", &r.alias), ("why", &f.said)],
                 )
             })
         })

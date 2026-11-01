@@ -81,7 +81,7 @@ describe("〔C4b〕会话读面三问：按形状收", () => {
   });
 
   it("★★ 失败种类只看通道的层：不认 ⇒ oldBackend · 装不下 ⇒ truncated · 其余 ⇒ transport", () => {
-    const body = (code: string) => new TextEncoder().encode(JSON.stringify({ code, message: "m" }));
+    const body = (code: string) => new TextEncoder().encode(JSON.stringify({ code, said: "m" }));
     expect(failureOf({ layer: "peer", why: "unsupported" })).toBe("oldBackend");
     expect(failureOf({ layer: "peer", why: "refused", body: body("too_large") })).toBe("truncated");
     expect(failureOf({ layer: "peer", why: "refused", body: body("failed") })).toBe("transport");

@@ -6,7 +6,7 @@ import { ChanError } from "../../../../src/comms/inward/chan";
 import { write } from "../../../../src/frontend/ui/ipc/write";
 
 const enc = (o: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(o));
-const refused = (code: string): ChanError => new ChanError({ layer: "peer", why: "refused", body: enc({ code, message: `said ${code}` }) }, `said ${code}`);
+const refused = (code: string): ChanError => new ChanError({ layer: "peer", why: "refused", body: enc({ code, said: `said ${code}` }) }, `said ${code}`);
 
 describe("write：三种结局", () => {
   it("成了 ⇒ ok · 带回包 · 重读一次", async () => {

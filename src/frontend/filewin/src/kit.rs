@@ -95,7 +95,7 @@ pub fn failure_banner(
     detail: &str,
     id: egui::Id,
 ) -> Option<usize> {
-    let body = super::source::Failed::copy_body(shown, detail);
+    let body = batch_core::copy_body(shown, detail);
     banner_with_detail(ui, tone, shown, actions, body.as_deref().map(|b| (id, b)))
 }
 
@@ -104,7 +104,7 @@ pub fn failure_line(ui: &mut Ui, shown: &str, detail: &str, id: egui::Id) {
     let p = palette(ui.ctx());
     ui.horizontal_wrapped(|ui| {
         ui.label(egui::RichText::new(shown).size(12.0).color(p.error_text));
-        if let Some(body) = super::source::Failed::copy_body(shown, detail) {
+        if let Some(body) = batch_core::copy_body(shown, detail) {
             copy_detail_button(ui, id, &body);
         }
     });
@@ -1346,7 +1346,7 @@ pub fn inline_error(
                             egui::RichText::new(egui_phosphor::regular::X_CIRCLE).color(p.error),
                         );
                         ui.label(egui::RichText::new(text).size(12.0).color(p.text));
-                        if let Some(body) = super::source::Failed::copy_body(text, detail) {
+                        if let Some(body) = batch_core::copy_body(text, detail) {
                             copy_detail_button(ui, id.with("copy"), &body);
                         }
                     });

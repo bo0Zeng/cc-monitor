@@ -87,21 +87,14 @@ class SessionsTest {
     }
 
     @Test
-    fun `session-arrive：回包里那一问原样交回（可空那一格不交）；回话解出报到的 sid · 没见到那一句`() {
+    fun `session-arrive：回包里那一问原样交回（可空那一格照交 null）；回话解出报到的 sid · 没见到那一句`() {
         val ask = SessionOpen.of(opened + ("arrival" to mapOf("by" to mapOf("kind" to "cwd", "cwd" to "/h/proj"), "since" to 3, "session" to "proj-cc")))!!.arrival!!
         assertEquals(mapOf("by" to mapOf("kind" to "cwd", "cwd" to "/h/proj"), "since" to 3L, "session" to "proj-cc"), SessionArrive.args(ask))
         val bySid = SessionOpen.of(opened + ("arrival" to mapOf("by" to mapOf("kind" to "sid", "sid" to "s1"), "since" to 0, "session" to null)))!!.arrival!!
-        assertEquals(mapOf("by" to mapOf("kind" to "sid", "sid" to "s1"), "since" to 0L), SessionArrive.args(bySid))
+        assertEquals(mapOf("by" to mapOf("kind" to "sid", "sid" to "s1"), "since" to 0L, "session" to null), SessionArrive.args(bySid))
         assertEquals(ArriveEnd.Arrived("s9"), SessionArrive.of(mapOf("kind" to "arrived", "sid" to "s9")))
         val missed = SessionArrive.of(mapOf("kind" to "missed", "said" to "未报到\n末几行", "terminal" to null))
         assertEquals("未报到\n末几行", (missed as ArriveEnd.Missed).said)
-    }
-
-    @Test
-    fun `terminal-input：请求与金样同形（字 · 键），只带 sid`() {
-        val golden = terminals.obj("terminal-input")!!.objs("requests")!!
-        assertEquals(golden[1], TerminalInput.key("sid-a", "esc"))
-        assertEquals(mapOf("sid" to "s", "text" to "/model opus"), TerminalInput.text("s", "/model opus"))
     }
 
     @Test

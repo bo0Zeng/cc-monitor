@@ -2,7 +2,7 @@
  * 侧栏顶上「需手动 n」点开的那个浮层（400 宽）：在等的会话 · 计划项 · 一条分隔线 · 会话外的每一项（各台 `sessions-needs` 本机合好的那一份，照它的序）；
  * 底部断开 / 清单无法读取的那几台各一条虚线。没有小标题：会话行是琥珀点 ＋ 标题，会话外那几行是号 / MCP 图标，靠形就分得开。
  *
- * 这里只排版：会话行的字照会话事实那一份（`session-face.ts`），agent 发的多一行谁要批（`needs.ask.run.text`）；会话外那一行第一行是后端写好的 `said`、第二行是问来那台的机器名
+ * 这里只排版：会话行第二行是那台写好的会走的那一句（[`waitingNow`]），agent 发的多一行谁要批（`needs.ask.run.text`）；会话外那一行第一行是后端写好的 `said`、第二行是问来那台的机器名
  * （`fix` 为空 ⇒ 后端给的 `why`：为什么没有解法 / 怎么手动修，不画按钮）。点会话行 ⇒ 切过去；点会话外那一行或它的［登录…］⇒ 开登录抽屉。↑↓ 选行 · Enter ＝ 点 · Esc 收起（浮层那一套）。
  */
 import { copyText } from "./copy-table";
@@ -13,9 +13,19 @@ import { statusDot } from "./kit/status-dot";
 import { machineName } from "./ipc/chan-caller";
 import { isRemoteOrigin, type Origin } from "./ipc/origin";
 import type { ManualItem } from "./login-reads";
-import type { PlanNeedItem } from "./needs-book";
+import type { BookSession, PlanNeedItem } from "./needs-book";
 import type { NeedsCell } from "./generated/NeedsCell";
+import { clockNow } from "./duration-format";
 import s from "./needs-panel.module.css";
+
+/**
+ * 会话那一行第二行此刻的字：那台写好的会走的那一句（`clock.text`），已等 ＝ `waitedMs`（那台答出那一刻）＋ 本机从收到这一份起走过的
+ * （当成起点在 `receivedAt − waitedMs` 的会走的钟交 `clockNow` 填，不跨机器减）；没有 ⇒ 那台写的种类那一句（`needs.text`）。
+ */
+export function waitingNow(b: Pick<BookSession, "session" | "clock" | "receivedAt">, now: number): string {
+  const n = b.session.needs;
+  return b.clock && n.waitedMs !== null ? clockNow({ text: b.clock.text, from: b.receivedAt - n.waitedMs }, now) : n.text;
+}
 
 /** 会话外那一行的图标：号 · MCP · 权限太宽的秘密文件。 */
 const MANUAL_ICON: Record<ManualItem["kind"], IconName> = { accountLogin: "account", mcpLogin: "plug", secretFile: "warning" };
@@ -28,7 +38,7 @@ export interface PanelSession {
   sid: string;
   origin: Origin;
   title: string;
-  /** `等批准 · 已等 4 分钟` 那一句。 */
+  /** `等批准 · 已等 4 分钟` 那一句（[`waitingNow`]）。 */
   state: string;
   /** 在等的那一件（命令里说得出用意的那一段 · 问题）；没有 ⇒ `null`。 */
   what: string | null;

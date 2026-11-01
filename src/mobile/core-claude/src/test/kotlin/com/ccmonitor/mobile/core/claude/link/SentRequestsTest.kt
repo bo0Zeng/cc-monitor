@@ -2,12 +2,17 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.wire.gen.ArriveAsk
 import com.ccmonitor.mobile.core.wire.gen.ArriveBy
+import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.Held
 import com.ccmonitor.mobile.core.wire.gen.Hide
 import com.ccmonitor.mobile.core.wire.gen.LoginStartReq
+import com.ccmonitor.mobile.core.wire.gen.ProfileForm
+import com.ccmonitor.mobile.core.wire.gen.ProfileTmuxMode
+import com.ccmonitor.mobile.core.wire.gen.ProfileTmuxPick
 import com.ccmonitor.mobile.core.wire.gen.Rewind
 import com.ccmonitor.mobile.core.wire.gen.RewindHow
 import com.ccmonitor.mobile.core.wire.gen.RewindWhen
+import com.ccmonitor.mobile.core.wire.gen.Staged
 import com.ccmonitor.mobile.core.wire.gen.Tab
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -32,9 +37,9 @@ class SentRequestsTest {
             Bookmarks.EDIT to listOf(Bookmarks.edit("toggle", listOf("/w")), Bookmarks.edit("remove", listOf("/w")), Bookmarks.edit("add", listOf("/w", "/v"))),
             FilesCommitUpload.COMMAND to
                 listOf(
-                    FilesCommitUpload.args(dir, "up.bin", FilesCommitUpload.Staged("k", 3L, 9L, SHA)),
-                    FilesCommitUpload.args(dir, "up.bin", FilesCommitUpload.Staged("k", 3L, 9L, SHA), "overwrite"),
-                    FilesCommitUpload.args(dir, "up.bin", FilesCommitUpload.Staged("k", 3L, 9L, SHA), "keep_both"),
+                    FilesCommitUpload.args(dir, "up.bin", Staged("k", 3L, 9L, SHA)),
+                    FilesCommitUpload.args(dir, "up.bin", Staged("k", 3L, 9L, SHA), "overwrite"),
+                    FilesCommitUpload.args(dir, "up.bin", Staged("k", 3L, 9L, SHA), "keep_both"),
                 ),
             FilesCreate.COMMAND to listOf(FilesCreate.args(dir, "a.txt")),
             FilesDeleteSession.COMMAND to listOf(FilesDeleteSession.args("s")),
@@ -67,6 +72,7 @@ class SentRequestsTest {
             TerminalEnd.COMMAND to listOf(TerminalEnd.args("t1")),
             SessionInterrupt.COMMAND to listOf(SessionInterrupt.args("s")),
             KeyAdd.COMMAND to listOf(KeyAdd.args("ssh-ed25519 AAAA k")),
+            Login.CMD to listOf(Login.cmd("a")),
             Login.CANCEL to listOf(Login.cancel("j")),
             Login.FINISH to listOf(Login.finish("j", "code")),
             Login.START to
@@ -129,7 +135,7 @@ class SentRequestsTest {
                     SessionArrive.args(ArriveAsk(ArriveBy.Sid("s"), 3L, null)),
                 ),
             SessionAttachmentCheck.COMMAND to listOf(SessionAttachmentCheck.args("s", listOf(AttachAsk("a.png", 5L)))),
-            SessionAttachmentCommit.COMMAND to listOf(SessionAttachmentCommit.args("s", "a.png", FilesCommitUpload.Staged("k", 3L, 9L, SHA))),
+            SessionAttachmentCommit.COMMAND to listOf(SessionAttachmentCommit.args("s", "a.png", Staged("k", 3L, 9L, SHA))),
             SessionAttachmentDrop.COMMAND to listOf(SessionAttachmentDrop.args("s", "i")),
             SessionCommandList.COMMAND to listOf(SessionCommandList.args("s")),
             SessionModel.COMMAND to listOf(SessionModel.args("s", "opus")),
@@ -157,7 +163,6 @@ class SentRequestsTest {
             SessionQueueRead.COMMAND to listOf(SessionQueueRead.args("s")),
             SessionRewindOptions.COMMAND to listOf(SessionRewindOptions.args("s", "u")),
             SessionsNeeds.COMMAND to listOf(null),
-            TerminalInput.COMMAND to listOf(TerminalInput.text("s", "hi"), TerminalInput.key("s", "esc")),
             TerminalPreview.COMMAND to listOf(TerminalPreview.args("t1")),
             TerminalsList.COMMAND to listOf(TerminalsList.args()),
         )
@@ -176,7 +181,7 @@ class SentRequestsTest {
         }
     }
 
-    /** 表与 `link/` 里写着的命令名两向相等；写着 `COMMAND` 的那几处必是后端命令表里有的命令。 */
+    /** 表与 `link/` 里的命令名（取生成的 `Commands.<命令>.NAME` · 写着的）两向相等；写着 `COMMAND` 的那几处必是后端命令表里有的命令。 */
     @Test
     fun theTableCoversEveryCommandTheLinkNames() {
         val typed =
@@ -184,12 +189,15 @@ class SentRequestsTest {
                 .findAll(File(Fixtures.repoRoot, "src/frontend/ui/generated/TypedCommands.ts").readText())
                 .map { it.groupValues[1] }
                 .toSet()
+        val sources = LINK.listFiles { f -> f.extension == "kt" }!!.map { it.readText() }
         val decl = Regex("""const val (\w+)(?:: String)? = "([a-z0-9-]+)"""")
-        val named =
-            LINK.listFiles { f -> f.extension == "kt" }!!.flatMap { f -> decl.findAll(f.readText()).map { it.groupValues[1] to it.groupValues[2] } }
+        val named = sources.flatMap { s -> decl.findAll(s).map { it.groupValues[1] to it.groupValues[2] } }
         val unknown = named.filter { (k, v) -> k == "COMMAND" && v !in typed }.map { it.second }
         assertEquals("这几个 COMMAND 不在后端命令表里", emptyList<String>(), unknown)
-        val commands = named.map { it.second }.filter { it in typed }.toSortedSet()
+        val byObject = Commands.ALL.values.associateBy { it::class.java.simpleName }
+        val taken = Regex("""Commands\.(\w+)\.NAME""")
+        val generated = sources.flatMap { s -> taken.findAll(s).map { byObject.getValue(it.groupValues[1]).name } }
+        val commands = (named.map { it.second }.filter { it in typed } + generated).toSortedSet()
         assertTrue("link/ 里一条命令名都没认出来 —— 本条在空转", commands.size > 20)
         assertEquals(commands, sent.keys.toSortedSet())
     }
@@ -201,6 +209,22 @@ class SentRequestsTest {
         val LINK = File(Fixtures.repoRoot, "src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link")
 
         /** 别名页表单那一形（「建这条」交的那几格；没交的那台按缺省）。 */
-        val FORM: Map<String, Any?> = mapOf("name" to "cct", "cwd" to "~/w", "tmux" to mapOf("mode" to "fixed", "name" to "cc"), "args" to "--resume")
+        val FORM =
+            ProfileForm(
+                name = "cct",
+                from = null,
+                account = null,
+                tmux = ProfileTmuxPick(ProfileTmuxMode.FIXED, "cc"),
+                cwdIf = null,
+                cwd = "~/w",
+                agent = null,
+                args = "--resume",
+                launcher = null,
+                tmuxSize = null,
+                detach = false,
+                tab = null,
+                tabGroup = null,
+                say = null,
+            )
     }
 }

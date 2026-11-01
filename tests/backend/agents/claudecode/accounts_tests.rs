@@ -83,3 +83,50 @@ fn the_identity_comes_from_that_accounts_own_config() {
     assert_eq!(of(&root, None), None);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// 几 MB 的请求体（一条长对话：几千条消息）：账号身份那一格照样在 `metadata.user_id` 里。
+fn big_body_with(uuid: &str) -> String {
+    let user_id = format!(
+        "{{\"device_id\":\"{}\",\"account_uuid\":\"{uuid}\",\"session_id\":\"s-1\"}}",
+        "d".repeat(64)
+    );
+    let messages: Vec<serde_json::Value> = (0..4000)
+        .map(|i| serde_json::json!({"role": "user", "content": [{"type": "text", "text": format!("{i} {}", "y".repeat(1000))}]}))
+        .collect();
+    let v = serde_json::json!({
+        "model": "m",
+        "messages": messages,
+        "metadata": {"user_id": user_id},
+        "stream": true,
+    });
+    serde_json::to_string(&v).expect("json")
+}
+
+/// ★ 读身份只取 `metadata.user_id` 那一格：本线程分配峰值只是体长的一小部分（别的格跳过、不建树）；
+/// 换身份只多出一份新体（读回比对同样只取那一格）。
+#[test]
+fn reading_and_rewriting_the_identity_does_not_build_the_whole_body() {
+    let body = big_body_with(A);
+    let len = body.len();
+    assert!(len > 4 << 20, "夹具该有几 MB：{len}");
+
+    let base = crate::alloc_probe::reset_peak();
+    let who = super::identity_of_body(body.as_bytes());
+    let peak = crate::alloc_probe::peak_since(base);
+    assert_eq!(who.as_deref(), Some(A));
+    assert!(
+        peak < len / 16,
+        "读身份时本线程分配峰值 {peak} 字节（体长 {len}）—— 该只取那一格，不整份建树"
+    );
+
+    let base = crate::alloc_probe::reset_peak();
+    let IdentityCell::Rewritten(out) = rewrite_identity(body.as_bytes(), B) else {
+        panic!("应换成");
+    };
+    let peak = crate::alloc_probe::peak_since(base);
+    assert_eq!(out, big_body_with(B).into_bytes());
+    assert!(
+        peak < len + len / 16,
+        "换身份时本线程分配峰值 {peak} 字节（体长 {len}）—— 该只多出一份新体"
+    );
+}

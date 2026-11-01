@@ -134,7 +134,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = fs_watch.unwatch(sock_dir);", Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
     ("src/backend/observe/watcher.rs", "let _ = self.tx.send(WatchEvent::Notify);", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.tx.send(WatchEvent::NotifyFailed(e));", Why::PeerGone, ""),
-    ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Poke);", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Shutdown);", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.tx.send(WatchEvent::Watch { sub: self.id, ask, done, });", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = done.send(watch_sessions(sub, ask, &mut state, &mut sink));", Why::PeerGone, ""),
@@ -184,6 +183,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/relay/listen.rs", "let _ = comms_outward::refuse_busy(&mut stream);", Why::DeadLink, "回一句「忙」给被拒的那条连接"),
     ("src/comms/outward/server.rs", "let _ = down.set_nonblocking(false);", Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),
     ("src/comms/outward/server.rs", "let _ = down.set_nonblocking(true);", Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),
+    ("src/comms/outward/server.rs", "let _ = refuse_busy(&mut down);", Why::DeadLink, "dup 不成（fd 用尽）时回一句「忙」给这条连接，随后照样交回那个错"),
     // 两处（事件那一件 · 收尾那一件）归一化截到同一个键。
     ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream, heads, resp, n, body, });", Why::Backpressure, "投不进就丢：号照占，缺口在接收侧按号算得出（「SSE 保快、jsonl 保对」）；事件那一件与收尾那一件都经 `put` 这一处"),
     // NDJSON 那一形的四行（写线程 · 两处 `write_all` · `flush`）随独立 `--relay` 删了。

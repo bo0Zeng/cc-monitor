@@ -1,6 +1,6 @@
 use super::testing::{
-    click_at, render_headless_nonvirtual, render_headless_with_events,
-    render_headless_with_events_and_text,
+    click_at, render_headless, render_headless_nonvirtual, render_headless_with_events,
+    render_headless_with_events_and_text, show_file_rows,
 };
 use super::*;
 use crate::copy::testing::rects_of;

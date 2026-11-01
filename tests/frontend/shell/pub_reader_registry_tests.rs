@@ -71,6 +71,16 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     ),
     (
         "src/common/cmd-wire/src/phone.rs",
+        "LocalAsk",
+        "手机核心与 Kotlin 之间那一层的`batch_local` 那一件：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
+        "LocalOpened",
+        "手机核心与 Kotlin 之间那一层的本机那一份开好了的答：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
         "KeyPair",
         "手机核心与 Kotlin 之间那一层的现生成的一把钥匙：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
     ),
@@ -113,21 +123,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "src/common/batch-core/src/lib.rs",
         "copy_plan",
         "手机「复制到…」那一组的入参（桌面经同一个 `copy_req` 算公共根）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，不在扫描面里）与本 crate 的判据",
-    ),
-    (
-        "src/backend/control/files_commit.rs",
-        "COMMIT_COMMANDS",
-        "文件管理写面的命令声明表：读者是 `readonly_guard`「拿得到 `Face` 的命令」与 inbound 结构判据的对拍（另一侧是命令表里的档位，两侧异源）",
-    ),
-    (
-        "src/backend/control/files_extract.rs",
-        "EXTRACT_COMMANDS",
-        "文件管理写面的命令声明表：读者是 `readonly_guard`「拿得到 `Face` 的命令」与 inbound 结构判据的对拍（另一侧是命令表里的档位，两侧异源）",
-    ),
-    (
-        "src/backend/control/files_write.rs",
-        "MANAGE_COMMANDS",
-        "文件管理写面的命令声明表：读者是 `readonly_guard`「拿得到 `Face` 的命令」与 inbound 结构判据的对拍（另一侧是命令表里的档位，两侧异源）",
     ),
     (
         "src/backend/lib.rs",

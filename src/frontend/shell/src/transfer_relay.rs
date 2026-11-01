@@ -111,36 +111,29 @@ fn relays() -> std::sync::MutexGuard<'static, HashMap<String, Relay>> {
         .unwrap_or_else(|p| p.into_inner())
 }
 
-/// 本机后端答「不行」：码 · 那一句 · 它带的 `data`（`exists` 时是同名清单，窗口照它画冲突框）。
-#[derive(Debug, Clone, PartialEq)]
-pub struct Refusal {
-    pub code: String,
-    pub message: String,
-    pub data: Option<serde_json::Value>,
+/// 本机后端答「不行」：交出去那一形（码 · 那一句 · 它带的 `data`：`exists` 时是同名清单，窗口照它画冲突框）。
+pub use cmd_wire::failed::Failed;
+
+/// 这一侧就地拒的那一下：码 ＋ 那一句。
+fn refused(code: &str, said: String) -> Failed {
+    Failed {
+        code: code.to_string(),
+        said,
+        ..Default::default()
+    }
 }
 
-impl Refusal {
-    fn of(code: &str, message: String) -> Refusal {
-        Refusal {
-            code: code.to_string(),
-            message,
-            data: None,
-        }
-    }
-
-    /// 一次调用没成：码与那一句照 [`said`]；`data` 从分层那一份拒绝体里取（不在这里匹配错误枚举）。
-    fn from_call(e: &crate::inbound_client::CallError) -> Refusal {
-        let (code, message) = said(e);
-        let (_, body) =
-            crate::chan::wire::err_to_wire(crate::backend_route::layer_call_error(e, 0).error);
-        let data = serde_json::from_slice::<serde_json::Value>(&body)
-            .ok()
-            .and_then(|v| v.get("data").cloned());
-        Refusal {
-            code,
-            message,
-            data,
-        }
+/// 一次调用没成：码与那一句照 [`said`]；`data` 从分层那一份拒绝体里取（不在这里匹配错误枚举）。
+fn refused_by(e: &crate::inbound_client::CallError) -> Failed {
+    let (code, said) = said(e);
+    let (_, body) =
+        crate::chan::wire::err_to_wire(crate::backend_route::layer_call_error(e, 0).error);
+    let data = serde_json::from_slice::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|v| v.get("data").cloned());
+    Failed {
+        data,
+        ..refused(&code, said)
     }
 }
 
@@ -160,12 +153,12 @@ fn said(e: &crate::inbound_client::CallError) -> (String, String) {
 /// **开单**那一面（宿主 `call` 调）：窗口那一份按类型解（`cmd_wire::transfer::*Ask`，多一个键就拒）、补上那台远端的名字（怎么拨照本机后端的机器表），
 /// 按后端那一份类型（`*Req`）转给本机后端，回包按类型解、登记一个中继。回应答的 JSON。
 ///
-/// 失败回 [`Refusal`]（码 · 话 · 后端带的 `data`），宿主原样翻成「对端答不行」（与后端命令的拒绝同一个信封）。
+/// 失败回 [`Failed`]（码 · 话 · 后端带的 `data`），宿主原样翻成「对端答不行」（与后端命令的拒绝同一个信封）。
 pub async fn transfer_call(
     machine: String,
     op: &str,
     payload: &serde_json::Value,
-) -> Result<serde_json::Value, Refusal> {
+) -> Result<serde_json::Value, Failed> {
     use cmd_wire::transfer::{TransferDownloadAsk, TransferUploadAsk};
     match op {
         // `home`（可缺席）：窗口问那台后端拿到的 `$HOME`，传输台连上之后与 SFTP 起始目录比。
@@ -180,7 +173,7 @@ pub async fn transfer_call(
             let ask: TransferDownloadAsk = ask_of(op, payload)?;
             relay(&machine, ask.on(cmd_wire::Machine::named(machine.clone()))).await
         }
-        other => Err(Refusal::of(
+        other => Err(refused(
             "bad_args",
             copy_text(
                 "rsSftpPool.call.notTransfer",
@@ -196,37 +189,37 @@ pub async fn copy_call(
     machine: String,
     payload: &serde_json::Value,
     left: Duration,
-) -> Result<serde_json::Value, Refusal> {
+) -> Result<serde_json::Value, Failed> {
     let ask: cmd_wire::transfer::TransferCopyAsk = ask_of(TRANSFER_COPY, payload)?;
     let req = ask.from(cmd_wire::Machine::named(machine));
-    let args = serde_json::to_value(&req).map_err(|e| Refusal::of("bad_args", e.to_string()))?;
+    let args = serde_json::to_value(&req).map_err(|e| refused("bad_args", e.to_string()))?;
     let client = crate::inbound_client::local_backend_accepting(TRANSFER_COPY)
         .await
-        .map_err(|e| Refusal::of("backend_unavailable", e))?;
+        .map_err(|e| refused("backend_unavailable", e))?;
     let v = client
         .call(TRANSFER_COPY, args, left)
         .await
-        .map_err(|e| Refusal::from_call(&e))?
+        .map_err(|e| refused_by(&e))?
         .unwrap_or(serde_json::Value::Null);
     let reply: cmd_wire::batch::BatchReply = serde_json::from_value(v.clone()).map_err(|_| {
-        Refusal::of(
+        refused(
             "backend",
             copy_text("rsSftpPool.call.noTicket", &[("v", &v.to_string())]),
         )
     })?;
-    serde_json::to_value(&reply).map_err(|e| Refusal::of("backend", e.to_string()))
+    serde_json::to_value(&reply).map_err(|e| refused("backend", e.to_string()))
 }
 
 /// 窗口那一份载荷按类型解（缺一格 · 多一格 · 型不对 ⇒ `bad_args`）。解码器那一句不上句子（原话不进话里），记一行日志。
 fn ask_of<A: serde::de::DeserializeOwned>(
     op: &str,
     payload: &serde_json::Value,
-) -> Result<A, Refusal> {
+) -> Result<A, Failed> {
     match serde_json::from_value(payload.clone()) {
         Ok(a) => Ok(a),
         Err(e) => {
             tracing::warn!("传输：窗口说的 {op} 载荷解不出来（{e}）");
-            Err(Refusal::of(
+            Err(refused(
                 "bad_args",
                 copy_text("rsSftpPool.call.badArgs", &[("op", &op.to_string())]),
             ))
@@ -238,18 +231,18 @@ fn ask_of<A: serde::de::DeserializeOwned>(
 async fn relay<R: cmd_wire::Call<Reply = cmd_wire::transfer::TransferOpened>>(
     machine: &str,
     req: R,
-) -> Result<serde_json::Value, Refusal> {
-    let args = serde_json::to_value(&req).map_err(|e| Refusal::of("bad_args", e.to_string()))?;
+) -> Result<serde_json::Value, Failed> {
+    let args = serde_json::to_value(&req).map_err(|e| refused("bad_args", e.to_string()))?;
     let client = crate::inbound_client::local_backend_accepting(R::NAME)
         .await
-        .map_err(|e| Refusal::of("backend_unavailable", e))?;
+        .map_err(|e| refused("backend_unavailable", e))?;
     let v = client
         .call(R::NAME, args, CALL_BUDGET)
         .await
-        .map_err(|e| Refusal::from_call(&e))?
+        .map_err(|e| refused_by(&e))?
         .unwrap_or(serde_json::Value::Null);
     let opened: R::Reply = serde_json::from_value(v.clone()).map_err(|_| {
-        Refusal::of(
+        refused(
             "backend",
             copy_text("rsSftpPool.call.noTicket", &[("v", &v.to_string())]),
         )
@@ -267,7 +260,7 @@ async fn relay<R: cmd_wire::Call<Reply = cmd_wire::transfer::TransferOpened>>(
             },
         );
     }
-    serde_json::to_value(&opened).map_err(|e| Refusal::of("backend", e.to_string()))
+    serde_json::to_value(&opened).map_err(|e| refused("backend", e.to_string()))
 }
 
 /// 订阅那一格的守卫：**流被丢掉 = 停订**。没收场就经开它的那条流发 `transfer-stop`；无论如何把中继摘掉 ——

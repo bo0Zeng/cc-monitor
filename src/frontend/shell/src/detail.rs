@@ -1,12 +1,11 @@
 //! monitor 壳这一端写的「复制详情」那几行（排法只住 `copy_core::detail` 一份）：
 //! - 通道这一跳断了（够不着 · 没答 · 本侧撤了 / 坏了）⇒ 壳写全份：时刻 · 机器 · 本机 · 命令 · 断在 · 码；
 //! - 对端说「不行」⇒ 那台后端写好的那份原样转交，远端时由壳补一行「本机」（出错的就是本机时不补）；
-//! - 壳自己那几条命令失败（[`Said`]）⇒ 时刻 · 本机 · 命令 · 原话。
+//! - 壳自己那几条命令失败（进程里是 [`Said`]，投出去那一下 [`Said::named`] 成交出去那一形 `cmd_wire::failed::Failed`）⇒ 时刻 · 本机 · 命令 · 原话。
 
 use crate::chan::wire as w;
 use copy_core::copy_text;
 use copy_core::detail::{os_word, stamp, Detail, Label};
-use serde::Serialize;
 
 /// 此刻（本机本地时间 ＋ 偏移）。
 pub(crate) fn now() -> String {
@@ -39,7 +38,7 @@ pub(crate) fn relayed(origin: &crate::origin::Origin, remote: &str) -> String {
     }
 }
 
-/// 通道上对端说「不行」的那一格（拒绝体 `{code, message, detail?, …}`）交出去之前：远端 ⇒ 体里那份详情补「本机」一行
+/// 通道上对端说「不行」的那一格（拒绝体 `{code, said, detail, data?}`）交出去之前：远端 ⇒ 体里那份详情补「本机」一行
 /// （主界面与文件窗口都经通道宿主这一口，补一次、只在这里）；别的层原样。
 pub(crate) fn relay_refusal(origin: &crate::origin::Origin, e: w::CallError) -> w::CallError {
     let w::CallError::Peer {
@@ -67,7 +66,7 @@ pub(crate) fn relay_refusal(origin: &crate::origin::Origin, e: w::CallError) -> 
     )
 }
 
-/// 拒绝体（`{code, message, data?, detail?}`）里那份详情；没有 ⇒ 空串。
+/// 拒绝体（`{code, said, detail, data?}`）里那份详情；没有 ⇒ 空串。
 pub(crate) fn of_refusal_body(body: &[u8]) -> String {
     serde_json::from_slice::<serde_json::Value>(body)
         .ok()
@@ -97,17 +96,14 @@ pub(crate) fn of_channel(origin: &crate::origin::Origin, op: &str, e: &w::CallEr
     .render()
 }
 
-/// 壳自己那几条命令的失败：给人看的那一句 ＋ 复制详情那几行。全仓壳命令的失败只这一形（ts-rs 导出）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+/// 壳自己那几条命令在进程里的失败：给人看的那一句 ＋ 复制详情那几行（结构化，补「命令」按项名次序插）。
+/// 不上线：每条壳命令的最外层经 [`Said::named`] 成交出去那一形（`cmd_wire::failed::Failed`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Said {
     pub said: String,
-    /// 复制详情那几行（[`Said::parts`] 排出来的；线上只有这一格）。
+    /// 复制详情那几行（[`Said::parts`] 排出来的）。
     pub detail: String,
     /// 那几行本身（结构化：补「命令」按项名次序插，不拆渲染好的字）。
-    #[serde(skip)]
-    #[cfg_attr(test, ts(skip))]
     parts: Detail,
 }
 
@@ -127,7 +123,7 @@ impl Said {
         Said::written(copy_text(key, args))
     }
 
-    /// 别处已经写好的那一句（共享 crate 从同一张表取的 · 后端答复里的 `message`）原样交出去；壳自己出句走 [`Said::of`]。
+    /// 别处已经写好的那一句（共享 crate 从同一张表取的 · 后端答复里的 `said`）原样交出去；壳自己出句走 [`Said::of`]。
     pub(crate) fn written(said: String) -> Said {
         Said::of_parts(
             said,
@@ -172,8 +168,8 @@ impl Said {
     ) -> Said {
         use crate::inbound_client::CallError;
         let parts = match e {
-            CallError::Remote { detail, .. } if !detail.trim().is_empty() => {
-                let wrote = Detail::parse(detail);
+            CallError::Remote(r) if !r.detail.trim().is_empty() => {
+                let wrote = Detail::parse(&r.detail);
                 if origin.is_local() {
                     wrote
                 } else {
@@ -182,9 +178,8 @@ impl Said {
             }
             other => {
                 let code = match other {
-                    CallError::Remote { code, .. } | CallError::Unavailable { code, .. } => {
-                        code.as_str()
-                    }
+                    CallError::Remote(cmd_wire::failed::Failed { code, .. })
+                    | CallError::Unavailable { code, .. } => code.as_str(),
                     CallError::Differs { .. } => "backend_differs",
                     CallError::Unsupported { .. } => "unsupported",
                     CallError::TooManyPending => "too_many_pending",
@@ -244,10 +239,19 @@ impl Said {
         }
     }
 
-    /// 壳命令的失败补上命令名（复制详情的「命令」那一项）：已经有一项「命令」⇒ 原样。
-    /// 「命令」按项名次序插（[`Label::ALL`]：本机之后、其余几项之前）。每条壳命令的最外层经这里一次（`#[tauri::command]` 那几十条，判据扫着）。
-    pub(crate) fn named(self, command: &str) -> Said {
-        self.with_item(Label::Command, command)
+    /// 壳命令的失败投出去（交出去那一形）：补上命令名（复制详情的「命令」那一项；已经有一项「命令」⇒ 不补），
+    /// 码取详情里「码」那一项（没有 ⇒ 兜底码）。「命令」按项名次序插（[`Label::ALL`]：本机之后、其余几项之前）。
+    /// 每条壳命令的最外层经这里一次（`#[tauri::command]` 那几十条，判据扫着）。
+    pub(crate) fn named(self, command: &str) -> cmd_wire::failed::Failed {
+        let s = self.with_item(Label::Command, command);
+        cmd_wire::failed::Failed {
+            code: cmd_wire::failed::Failed::code_or_fallback(
+                s.parts.value(Label::Code).map(str::to_string),
+            ),
+            said: s.said,
+            detail: s.detail,
+            data: None,
+        }
     }
 
     /// 详情里补一项，按 [`Label::ALL`] 的次序插（结构化）。已有这一项 · 值空 · 那份里有读不出项名的一块（不知道它写了什么）⇒ 原样。

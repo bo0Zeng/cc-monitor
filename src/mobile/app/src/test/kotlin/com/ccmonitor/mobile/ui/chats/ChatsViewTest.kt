@@ -11,7 +11,6 @@ import com.ccmonitor.mobile.core.wire.gen.Can
 import com.ccmonitor.mobile.core.wire.gen.CanDelete
 import com.ccmonitor.mobile.core.wire.gen.CanResume
 import com.ccmonitor.mobile.core.wire.gen.EmptyFace
-import com.ccmonitor.mobile.core.wire.gen.ForkedFrom
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.HistoryRow
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
@@ -21,6 +20,7 @@ import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
+import com.ccmonitor.mobile.core.wire.gen.SessionLeft
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.Problem
@@ -44,6 +44,7 @@ class ChatsViewTest {
         at: Long = 0,
         face: SessionFace = Faces.of("live-idle"),
         group: String = "/w",
+        parent: String? = null,
     ) = HistoryRow(
         agent = "claude",
         sessionId = sid,
@@ -71,6 +72,7 @@ class ChatsViewTest {
         atText = "09:0$sid",
         sectionText = section,
         spanText = "09:0$sid",
+        forkedFromSessionId = parent,
     )
 
     private fun group(
@@ -93,9 +95,6 @@ class ChatsViewTest {
 
     private fun page(vararg rows: HistoryRow) = HistoryListPage(rows.toList(), emptyList(), null, false)
 
-    /** 那台成品写的离线那一句（照它比，不取字）。 */
-    private val offLine = "成品写的 m 离线那一句"
-
     private val list = Fetched.Got(page(row("1", "今天"), row("2", "今天"), row("3", "昨天"), row("4", "今天")).copy(truncated = true))
 
     private fun snap(
@@ -107,8 +106,7 @@ class ChatsViewTest {
         ask: ListAsk = ListAsk(),
         id: String = "h1",
         machine: String = "m",
-        offline: String? = offLine,
-    ) = HostSnap(id, machine, link, table, got, cached, deploying, ask, offline)
+    ) = HostSnap(id, machine, link, table, got, cached, deploying, ask)
 
     private fun live(
         sid: String,
@@ -121,7 +119,8 @@ class ChatsViewTest {
         filters: Filters = Filters(),
         query: String? = null,
         face: EmptyFace? = allListed,
-    ) = chatsView(parts.toList(), current, parts.map { HostName(it.hostId, it.machine) }, filters, query, face)
+        open: Set<Pair<String, String>> = emptySet(),
+    ) = chatsView(parts.toList(), current, parts.map { HostName(it.hostId, it.machine) }, filters, query, face, open)
 
     /** 核心交的首屏那一句：各台都报完了的那一形。 */
     private val allListed = EmptyFace(copyText("beEmpty.line.none"), copyText("beEmpty.hint.none"))
@@ -232,17 +231,19 @@ class ChatsViewTest {
     }
 
     @Test
-    fun `断着：那台说看不见时照旧作数的（已结束 · 记录已不在）照画，其余点画说不清、字写那台离线，不照断前那张会话表`() {
-        val cached = page(row("1", "昨天"), row("2", "昨天", face = Faces.of("ended")), row("3", "昨天", face = Faces.of("gone")))
-        val stale = live("1", "live-working-plain")
-        val by = hostPart(snap(linkDown("m 离线", "boom"), stale, Fetched.Loading, cached)).rows.associateBy { it.sessionId }
-        assertEquals(SessionDot.UNKNOWN, by.getValue("1").dot)
-        assertEquals("字照那台成品写的离线那一句", Toned(offLine, Tone.PLAIN), by.getValue("1").status)
-        val unknown = hostPart(snap(linkDown("m 离线", "boom"), stale, Fetched.Loading, cached, offline = null)).rows.first { it.sessionId == "1" }
-        assertEquals("成品还没到 ⇒ 不说离线，说状态不明", Toned(copyText("sessionState.unseen.name"), Tone.PLAIN), unknown.status)
+    fun `★ 断着：只照会话簿那一张看不见的脸（名状态不明 · 点说不清，同桌面）；看不见时照旧作数的（已结束 · 记录已不在）照画`() {
+        val cached = page(row("1", "昨天"), row("2", "昨天", face = Faces.of("ended")), row("3", "昨天", face = Faces.of("gone")), row("4", "昨天"))
+        val unseen = Faces.of("unseen")
+        // 核心折好的：断的那一刻活的那一条落成看不见那一张、簿上记着它（`resident_client::book::unseen_now`）。
+        val down = EMPTY_BOOK.copy(left = mapOf("1" to SessionLeft("1", unseen)), unseen = unseen)
+        val by = hostPart(snap(linkDown("m 离线", "boom"), down, Fetched.Loading, cached)).rows.associateBy { it.sessionId }
+        assertEquals(Toned(unseen.name, unseen.tone) to SessionDot.UNKNOWN, by.getValue("1").status to by.getValue("1").dot)
+        assertEquals("名是状态不明，不是离线那一句", copyText("sessionState.unseen.name"), by.getValue("1").status.text)
+        assertEquals("簿里没有、清单那一行又不作数 ⇒ 也照簿那一张", Toned(unseen.name, unseen.tone), by.getValue("4").status)
         assertEquals(SessionDot.ENDED, by.getValue("2").dot)
         assertEquals("已结束", by.getValue("2").status.text)
         assertEquals(SessionDot.GONE, by.getValue("3").dot)
+        val stale = live("1", "live-working-plain")
         assertEquals("通着 ⇒ 照会话帧", SessionDot.RUNNING, hostPart(snap(table = stale, got = Fetched.Loading, cached = cached)).rows.first().dot)
     }
 
@@ -285,10 +286,18 @@ class ChatsViewTest {
     }
 
     @Test
-    fun `分叉那一句：父会话在 ⇒ 带标题；只有 id ⇒ 其他会话；都没有 ⇒ 不写`() {
-        assertEquals("分叉自「修登录」", forkLine(ForkedFrom("修登录"), "p1"))
-        assertEquals("分叉自其他会话", forkLine(null, "p1"))
-        assertNull(forkLine(null, null))
+    fun `分叉照核心挂：收着 ⇒ 父行带几条分叉、子行不出；展开 ⇒ 子行紧跟父、标成子；父不在这一列 ⇒ 其他会话`() {
+        val p = hostPart(snap(got = Fetched.Got(page(row("P", "今天", 90), row("F", "昨天", 50, parent = "P"), row("G", "昨天", 40, parent = "X")))))
+        val shut = view(p)
+        assertEquals(listOf("P", "G"), shut.rows.map { it.sessionId })
+        assertEquals(Nest(forks = 1), shut.rows[0].nest)
+        assertEquals(Nest(orphan = true), shut.rows[1].nest)
+        val open = view(p, open = setOf("h1" to "P"))
+        assertEquals(listOf("P", "F", "G"), open.rows.map { it.sessionId })
+        assertEquals(Nest(forks = 1, forksOpen = true), open.rows[0].nest)
+        assertEquals(Nest(child = true), open.rows[1].nest)
+        assertEquals("子行跟着父，不另起「昨天」那一段", listOf(listOf("P", "F"), listOf("G")), open.sections.map { s -> s.rows.map { it.sessionId } })
+        assertEquals("别的台的同名会话不算展开", listOf("P", "G"), view(p, open = setOf("h2" to "P")).rows.map { it.sessionId })
     }
 
     @Test

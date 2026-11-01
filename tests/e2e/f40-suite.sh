@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Batch13-F40c:消息流虚拟化(F38-F40)E2E 套件。
+# 消息流虚拟化 E2E 套件。
 #
 # 前置(见 tests/e2e/README.md):
 #   - Xvfb 显示器上跑着 `npx tauri dev`(debug 构建,DEV 探针已内建);
 #   - 本机 monitor 日志可读(fe_perf/[e2e] 行是断言数据源——无 devtools 环境的唯一出口)。
-# 断言:启动建卡≪收纳、drain 阈值、重放零抖动反转、贴底、上翻补批账本下降、
-#       切 tab 贴底、合成 fork 会话折叠成段。失败非零退出。
+# 断言:drain 阈值、冷开抖动密度、贴底、上翻补批账本下降、切 tab 贴底、合成 fork 会话折叠成段。
+# 尾部优先(冷开只建视口那一截)由冷起补读的单测管(skeleton-view-cold-open.vitest.ts),这里不判。
+# 退出码:全过 0 · 有败 1 · 台架不成立(这一趟没走冷起补读)2 —— 2 不算 PASS 也不记 FAIL,门禁照「非 0 即不绿」。
 set -euo pipefail
 
 DISPLAY="${E2E_DISPLAY:-:80}"
@@ -49,45 +50,42 @@ sleep 1
 python3 "$REPO/tests/e2e/gen-fork-session.py" "$PROJ_DIR" "$SID" >/dev/null
 echo "fork fixture: $SID8 → $PROJ_DIR(宿主 pid=$HOST_PID)"
 
-# ── 1. 触发整页 reload(HMR 全刷新→重新 replay),等新一轮 fe_perf 汇总 ──
+# ── 1. 触发整页 reload(HMR 全刷新→冷开),等冷起补读落盘 ──────────────────
+# 冷起补读落地那一下探针停、落 `[e2e] jitter` 一行(只这一条路落它),同一刻落 fe_perf 汇总。
 MARK=$(wc -l <"$LOG")
 touch "$REPO/src/frontend/ui/main.ts"
-echo "等待重放完成(fe_perf 汇总)…"
+echo "等待冷起补读落地([e2e] jitter + fe_perf 汇总)…"
+COLD=0
 for _ in $(seq 1 60); do
   # 先落变量再 grep(herestring 无 SIGPIPE;pipefail 下 grep -q 提前退出会误伤管道)
-  PROBE_BLK=$(tail -n "+$((MARK+1))" "$LOG" | sed -n '/window=main/,/总耗时/p')
-  if grep -q "总耗时" <<<"$PROBE_BLK"; then break; fi
+  PROBE_NEW=$(tail -n "+$((MARK+1))" "$LOG")
+  PROBE_BLK=$(sed -n '/window=main/,/总耗时/p' <<<"$PROBE_NEW")
+  if grep -q "\[e2e\] jitter" <<<"$PROBE_NEW" && grep -q "总耗时" <<<"$PROBE_BLK"; then COLD=1; break; fi
   sleep 2
 done
+if [ "$COLD" -ne 1 ]; then
+  echo "台架不成立：这一趟没走冷起补读(120s 内没等到 [e2e] jitter 与主窗口汇总;DEV 构建?dev 实例在跑吗?)"
+  exit 2
+fi
 NEW=$(tail -n "+$((MARK+1))" "$LOG")
 # 主窗口块单独切片:tear-off/viewer 窗口 reload 会各自落一个 fe_perf 块(window=viewer-*),
-# 建卡/drained 行必须取 window=main 的那块;jitter 行只有主窗口产出,可全局 grep
+# drained 行必须取 window=main 的那块
 MAINBLK=$(sed -n '/window=main/,/总耗时/p' <<<"$NEW")
-grep -q "总耗时" <<<"$MAINBLK" || { bad "主窗口重放汇总未出现(dev 实例在跑吗?)"; echo "FAIL"; exit 1; }
 
-# ── 2. 启动断言:建卡≪收纳 / drain 阈值 / 重放零反转 ────────────────────
-CARD_LINE=$(grep "建卡 rendered=" <<<"$MAINBLK" | tail -1)
-RENDERED=$(sed -E 's/.*rendered=([0-9]+).*/\1/' <<<"$CARD_LINE")
-DEFERRED=$(sed -E 's/.*deferred=([0-9]+).*/\1/' <<<"$CARD_LINE")
+# ── 2. 启动断言:drain 阈值 / 冷开抖动密度 ───────────────────────────────
 DRAIN=$(grep "batch payloads drained" <<<"$MAINBLK" | tail -1 | sed -E 's/.*\(\+([0-9]+)\).*/\1/')
-[ "$DEFERRED" -gt "$RENDERED" ] && ok "尾部优先门控:rendered=$RENDERED < deferred=$DEFERRED" \
-                                || bad "门控失效:rendered=$RENDERED deferred=$DEFERRED"
 [ "$DRAIN" -lt "$DRAIN_MAX_MS" ] && ok "drain ${DRAIN}ms < ${DRAIN_MAX_MS}ms" \
                                  || bad "drain ${DRAIN}ms 超阈值"
-# 抖动 = 密度绊线(标定见 src/frontend/ui/e2e-probe.ts 头注释):健康 ≈0.12-0.16 反转/帧,
-# §21 病态 ≈1.0;断 ≤0.4——亚像素舍入摆动放行,逐帧震荡回归必绊
-JIT=$(grep "\[e2e\] jitter" <<<"$NEW" | tail -1 || true)
-if [ -n "$JIT" ]; then
-  FRAMES=$(sed -E 's/.*frames=([0-9]+).*/\1/' <<<"$JIT")
-  if [ "$FRAMES" -eq 0 ]; then
-    ok "抖动无样本(active tab 整批无内容——last-active 指向已消亡会话,环境态非回归)"
-  else
-    DEN=$(sed -E 's/.*density=([0-9.]+).*/\1/' <<<"$JIT")
-    python3 -c "exit(0 if float('$DEN') <= 0.4 else 1)" \
-      && ok "重放抖动密度=$DEN(≤0.4,frames=$FRAMES)" || bad "重放抖动密度=$DEN 超绊线:$JIT"
-  fi
+# 冷开抖动密度 = 密度绊线(标定见 src/frontend/ui/e2e-probe.ts 头注释):健康 ≈0.12-0.16 反转/帧,
+# §21 病态 ≈1.0;断 ≤0.4——亚像素舍入摆动放行,逐帧震荡回归必绊。第 1 步已等到这一行。
+JIT=$(grep "\[e2e\] jitter" <<<"$NEW" | tail -1)
+FRAMES=$(sed -E 's/.*frames=([0-9]+).*/\1/' <<<"$JIT")
+if [ "$FRAMES" -eq 0 ]; then
+  ok "抖动无样本(冷开那一段 active tab 无内容——last-active 指向已消亡会话,环境态非回归)"
 else
-  bad "抖动探针无输出(DEV 构建?探针加载失败?)"
+  DEN=$(sed -E 's/.*density=([0-9.]+).*/\1/' <<<"$JIT")
+  python3 -c "exit(0 if float('$DEN') <= 0.4 else 1)" \
+    && ok "冷开抖动密度=$DEN(≤0.4,frames=$FRAMES)" || bad "冷开抖动密度=$DEN 超绊线:$JIT"
 fi
 
 # ── 3. 贴底快照 ─────────────────────────────────────────────────────────

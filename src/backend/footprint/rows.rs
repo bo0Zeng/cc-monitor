@@ -507,8 +507,6 @@ pub fn effect_label(e: TouchEffect) -> String {
         TouchEffect::FencedBlock => copy_text("rsConfigSurface.effect.fencedBlock", &[]),
         TouchEffect::OwnedFile => copy_text("rsConfigSurface.effect.ownedFile", &[]),
         TouchEffect::GenerateOnly => copy_text("rsConfigSurface.effect.generateOnly", &[]),
-        // 措辞必须把「谁动的手」说清：不是 cc-monitor 直接写，但**是你在 cc-monitor 里点的**
-        TouchEffect::IndirectWrite => copy_text("rsConfigSurface.effect.indirectWrite", &[]),
     }
 }
 

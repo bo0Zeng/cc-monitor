@@ -1,11 +1,23 @@
 //! 判据用的「那几台」（替身）：跨台合并那几条（`remote_ask::ask_each`）照它问别的台的常驻。
 //! 机器名 ⇒ 那台常驻答回来的那一行（缺 ⇒ 常驻不在）；记下每一问的命令行与 stdin 那一行。
 
-use super::{Remote, Said, Table};
+use super::{Remote, Table};
+use crate::common::said::Said;
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Mutex;
+
+impl Table {
+    /// 一张固定的（机器表由调用方给）：各处判据经它造，生产只有 `REACH` 那一张。
+    pub(crate) fn of(hosts: Vec<crate::dial::Host>) -> Self {
+        Table {
+            fixed: Mutex::new(Some(hosts)),
+            peers: Mutex::new(BTreeMap::new()),
+        }
+    }
+}
 
 pub(crate) struct Peers {
     answers: Vec<(String, String)>,
@@ -69,10 +81,7 @@ impl Remote for Peers {
                 .iter()
                 .find(|(h, _)| h == host)
                 .map(|(_, a)| a.clone())
-                .ok_or(Said {
-                    code: Some(crate::wire::listen::CALL_ABSENT.into()),
-                    message: "absent".into(),
-                })
+                .ok_or_else(|| Said::new(crate::wire::listen::CALL_ABSENT, "absent".to_string()))
         })
     }
 }

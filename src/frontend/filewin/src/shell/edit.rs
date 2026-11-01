@@ -12,24 +12,6 @@ impl FileWindow {
         self.editing.as_ref()
     }
 
-    /// 打开着的那一份（可改：截图与判据摆「盘上被改过」那一形用）。
-    #[cfg(test)]
-    pub fn editing_mut(&mut self) -> Option<&mut crate::editor::Pane> {
-        self.editing.as_mut()
-    }
-
-    /// 编辑框里那些字（判据替敲键改它；编辑面那个 `TextEdit` 直接拿 `Pane::text`，是同一个 `String`）。
-    #[cfg(test)]
-    pub fn editing_text_mut(&mut self) -> Option<&mut String> {
-        self.editing.as_mut().map(|p| &mut p.text)
-    }
-
-    /// 关窗那一问摆着吗。
-    #[cfg(test)]
-    pub fn asking_discard(&self) -> bool {
-        self.asking_discard
-    }
-
     /// 起一趟「打开第 `i` 行」。回值 = **真的发出去了**。
     ///
     /// 🔴 改不了的那几档在这儿就答完了（[`crate::editor::why_not_editable`]），
@@ -166,6 +148,7 @@ impl FileWindow {
                         code: why.code,
                         said,
                         detail: why.detail,
+                        data: why.data,
                     });
                 }
             }
@@ -392,12 +375,6 @@ impl FileWindow {
                 false
             }
         }
-    }
-
-    /// 编辑面查找栏那一格（判据用；界面直接拿 `Pane::find`，是同一格）。没开编辑面 ⇒ `None`。
-    #[cfg(test)]
-    pub fn find_bar_mut(&mut self) -> Option<&mut crate::editor::FindBar> {
-        self.editing.as_mut().map(|p| &mut p.find)
     }
 
     /// 替换：`all` ⇒ 全文替换，说换了几处；否则 ⇒ 选区恰好是查找串就换掉它，再找下一个（不是 ⇒ 只找下一个）。

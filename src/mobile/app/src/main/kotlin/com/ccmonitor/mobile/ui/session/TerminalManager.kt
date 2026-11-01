@@ -191,7 +191,9 @@ private fun KillConfirmDialog(
 
 /**
  * 会话列表段（加载 / 读不出 / 空态 / 各行）。读不出 ⇒ 那台那一句（［刷新］在弹窗底下），不画成「无终端」。
- * 行上点「结束」只经 [onKillRequested] 交给父级，由父级做二次确认与结果反馈。手机不接管 · 不交还托管终端的输入（聊天走队；终端 tab 接上就持有）。
+ * 行上点「结束」只经 [onKillRequested] 交给父级，由父级做二次确认与结果反馈。
+ * 托管终端谁在输入照接入协议（`host/managed/attach.rs`）：终端 tab 接上即持有，只看时回车接管，别的端接上即交出；
+ * 手机不另调 `terminal-take-input` · `terminal-release-input`（聊天走队，不靠持有输入）。
  */
 @Composable
 private fun TerminalList(

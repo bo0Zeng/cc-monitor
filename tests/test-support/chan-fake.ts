@@ -45,7 +45,7 @@ export function chanArgsJson(args: ChanCallArgs): unknown {
 // 会话读面三条（骨架索引 · 大纲清单 · 会话内查找）改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 这三问从前是三条 Tauri 命令，判据按命令名答话、按旧形参断言。今天它们是一发 `chan_call`（op = 帧命令名）⇒ 本节把一发 `chan_call`
+// 判据按三条命令名答话、按命令形参断言；这三问在线上是一发 `chan_call`（op = 帧命令名）⇒ 本节把一发 `chan_call`
 // 译回「哪一问 ＋ 那一问的参数」，把判据手里那份回包译成**后端的成品字节**（或通道的失败）。
 // ⚠ 译法逐格照生产：请求体的键名是 `src/frontend/ui/session-reads.ts` 发的那几个，成品的键名是后端 `read_face.rs` 出的那几个
 //   （跨语言金样 `tests/__fixtures__/session-reads.golden.json` 钉着两侧）。
@@ -93,13 +93,13 @@ export function sessionReadCalls(calls: ReadonlyArray<readonly unknown[]>, which
 /** 通道那一跳「对端说不认」（`Peer{Unsupported}`）—— 那台后端比这条查询老；那一句 monitor 写（替身照「需更新」那一形填）。 */
 export const UNSUPPORTED = { err: "Unsupported", body: [] as number[], said: copyText("peerVersion.said.old", { machine: "devbox" }) };
 
-/** 通道那一跳「对端说不行」（`Peer{Refused}`，体是后端的 `{code, message}`）。 */
-export function refusedReply(code: string, message: string, data?: unknown): { err: string; body: number[]; said: string; detail: string } {
-  const body = data === undefined ? { code, message } : { code, message, data };
+/** 通道那一跳「对端说不行」（`Peer{Refused}`，体是交出去那一形失败 `{code, said, detail, data?}`）。 */
+export function refusedReply(code: string, said: string, data?: unknown): { err: string; body: number[]; said: string; detail: string } {
   // monitor 交回来的那份复制详情（那台后端写好、经 monitor 转交）：替身只写「码」那一项。
   const detail = `${copyText("detail.label.code")}：${code}`;
+  const body = data === undefined ? { code, said, detail } : { code, said, detail, data };
   // 那一句 monitor 照对端那一句原样交（`chan/said.rs::refused`）。
-  return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify(body))), said: message, detail };
+  return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify(body))), said, detail };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -217,7 +217,7 @@ export function withSessionReads(
 // 会话正文那四问改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 这四问从前是四条 Tauri 命令，判据按命令名答话、回旧回包的形状（载荷数组 · `{from, next, eof, payloads}` · `{path, agent_id, records}`）。今天它们是一发
+// 判据按四条命令名答话、回命令回包的形状（载荷数组 · `{from, next, eof, payloads}` · `{path, agent_id, records}`）；这四问在线上是一发
 // `chan_call`（op = `history-page` / `history-lines` / `history-subagent`，`src/frontend/ui/record-reads.ts` 发）⇒ 本节译回「哪一问 ＋ 旧形参」，
 // 把判据手里那份旧回包译成**后端的成品字节**（键名照后端 `observe/query/body.rs` 出的那几个）。
 
@@ -301,8 +301,8 @@ export async function recordReadReply(
 // 账号清单那一问改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 它从前是两条 Tauri 命令，判据按命令名答话、回旧回包的形状（`{available, error, meta, accounts, notice}`）。
-// 今天它是一发 `chan_call`（op = `accounts-list`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」，
+// 判据按两条命令名答话、回命令回包的形状（`{available, error, meta, accounts, notice}`）。
+// 这一问在线上是一发 `chan_call`（op = `accounts-list`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」，
 // 把判据手里那份旧回包译成**后端的成品字节**（或通道的失败）。
 // ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/accounts.ts` 发的那几个，成品键名是后端 `observe/accounts_query.rs::list_product`
 //   出的那几个（生成类型 `AccountsList`）。
