@@ -20,7 +20,7 @@ use crate::common::said::Said;
 /// 挂上 · 撤掉 · 答掉都报这一声（`history::needs_changed`）。
 use crate::history::needs_changed::moved;
 pub(crate) use cmd_wire::needs::{
-    AnswerPick as Pick, AnswerReq, AnswerResult, Answered, AutoAnswer,
+    AnswerPick as Pick, AnswerReq, AnswerResult, Answered, AutoAnswer, AutoChoice,
 };
 use copy_core::copy_text;
 use serde::Serialize;
@@ -234,16 +234,6 @@ pub(crate) fn auto_say() -> String {
 
 /// 「没人答时自动答」可选的几档（分钟；`0` ＝ 关）。上限同注解那一侧的值域（`history::history_annotations::AUTO_MAX_MIN`）。
 const AUTO_CHOICES: [u32; 4] = [0, 5, 15, 30];
-
-/// 自动答可选的一档（会话事实 `autoAnswerChoices` 的一项）：几分钟 ＋ 写好的字（`0` ⇒「关」）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct AutoChoice {
-    pub(crate) min: u32,
-    pub(crate) text: Words,
-}
 
 /// 自动答可选的那几档 —— **唯一一处**：几档 ＋ 此刻那一格（`now`；关 ⇒ `None`）不在几档里 ⇒ 多列一项，按分钟排好；字都写好。
 pub(crate) fn auto_choices(now: Option<u32>) -> Vec<AutoChoice> {

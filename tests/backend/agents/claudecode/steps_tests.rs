@@ -348,6 +348,34 @@ fn the_right_hand_sentence_is_written_by_the_core() {
     );
 }
 
+/// ★★ 配上了调用的时刻 ⇒ 带耗时那一形填好用时、成了 `text`，`timed` 清掉（`timed_by`，唯一一处）；
+/// 配不上 · 本来就没有带耗时那一形 ⇒ 不动。
+#[test]
+fn a_matched_duration_is_written_into_the_sentence_once() {
+    use crate::agents::StepResultExt;
+    let ok = |c: &str| json!({"type": "tool_result", "tool_use_id": "t", "content": c});
+    let t = |r: &StepResult| (r.text.0.clone(), r.timed.as_ref().map(|w| w.0.clone()));
+    let dur = copy_core::short_duration(90_000);
+    // 都说不上的那一步：只剩用时。
+    let r = result_of(&ok("…"), Some(&json!({"stdout": "1\n2", "stderr": ""})));
+    assert_eq!(t(&r.clone().timed_by(Some(90_000))), (dur.clone(), None));
+    // 配不上：照没有用时的那一形，不猜。
+    assert_eq!(t(&r.clone().timed_by(None)), t(&r));
+    // 失败：「失败」那一句带上用时。
+    let err = json!({"type": "tool_result", "tool_use_id": "t", "content": "Exit code 1", "is_error": true});
+    let r = result_of(&err, None);
+    assert_eq!(
+        t(&r.timed_by(Some(90_000))),
+        (
+            copy_core::copy_text("stream.step.failedFor", &[("dur", &dur)]),
+            None
+        )
+    );
+    // 没有带耗时那一形（读了几行）：配上了也不动。
+    let r = result_of(&ok("…"), Some(&json!({"file": {"numLines": 12}})));
+    assert_eq!(t(&r.clone().timed_by(Some(90_000))), t(&r));
+}
+
 /// ★ 提问 / 计划那几张卡要画的东西是核心出的一格（`ask`），界面不再从入参里自己解析：
 /// 出口省掉 `blocks[type=tool_use].input` 之后交互卡照样建得出来。
 #[test]

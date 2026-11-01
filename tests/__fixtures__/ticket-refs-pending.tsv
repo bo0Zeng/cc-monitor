@@ -32,7 +32,6 @@ src/backend/stream/inbound/registry/history.rs	1
 src/backend/stream/inbound/registry/machine.rs	1
 src/backend/stream/mod.rs	1
 src/backend/wire/cli_words.rs	1
-src/backend/wire/mod.rs	4
 src/common/cmd-wire/src/frame.rs	5
 src/common/creds-core/Cargo.toml	1
 src/common/creds-core/src/lib.rs	10
@@ -97,7 +96,6 @@ src/mobile/gradle/libs.versions.toml	1
 src/shared/cc-bus/SKILL.md	1
 src/shared/copy/rules.json	4
 src/shared/copy/table.json	1
-src/shared/copy/terms.json	4
 src/shared/quota-warm/scripts/quota-warm	1
 tests/__fixtures__/cc-bus-read.golden.json	2
 tests/__fixtures__/plan-files.golden.json	6
@@ -158,14 +156,11 @@ tests/backend/platform/cfgless_guard.rs	21
 tests/backend/platform/fallback_guard.rs	4
 tests/backend/platform/fs/ro_tests.rs	1
 tests/backend/platform/shell/dialect_tests.rs	1
-tests/backend/protocol_doc_guard.rs	1
 tests/backend/relay/creds_guard.rs	16
 tests/backend/relay/server_tests.rs	25
 tests/backend/relay/table_guard.rs	9
 tests/backend/stream/drain_tests.rs	1
 tests/backend/stream/inbound_structure_guards.rs	3
-tests/backend/wire/listen_tests.rs	1
-tests/backend/wire/wire_tests.rs	5
 tests/common/acct-core/lib_tests.rs	1
 tests/common/creds-core/lib_tests.rs	8
 tests/common/creds-core/perm_tests.rs	4

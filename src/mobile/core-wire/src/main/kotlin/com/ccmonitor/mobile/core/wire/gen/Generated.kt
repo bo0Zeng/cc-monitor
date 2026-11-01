@@ -1961,7 +1961,7 @@ data class AutoAnswer(
 
 @Suppress("UNCHECKED_CAST")
 data class AutoChoice(
-    val min: Long,
+    val min: Int,
     val text: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -1969,10 +1969,10 @@ data class AutoChoice(
     companion object {
         val ADAPTER: JsonAdapter<AutoChoice> = obj(
             listOf(
-            Field("min", { Lng }, optional = false, nullable = false),
+            Field("min", { Int32 }, optional = false, nullable = false),
             Field("text", { Str }, optional = false, nullable = false),
             ),
-            { a -> AutoChoice(a[0] as Long, a[1] as String) },
+            { a -> AutoChoice(a[0] as Int, a[1] as String) },
             { v -> arrayOf(v.min, v.text) },
         )
     }
