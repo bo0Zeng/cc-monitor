@@ -24,7 +24,7 @@
  * 查看器：加载完要一次。
  */
 import type { HistoryIndex } from "../generated/HistoryIndex";
-import type { Origin } from "../generated/Origin";
+import type { Machine } from "../generated/Machine";
 import {
   listUserInputs,
   type OutlineFailure,
@@ -35,7 +35,7 @@ import type { UserInputPanel } from "./user-input-panel";
 import { copyText } from "../copy-table";
 
 /** 这份清单问的是哪台机器上的哪份会话。拿不到（tab 还没收到路径）⇒ `null`，这一趟不要。 */
-export type OutlineWhere = () => { origin: Origin; jsonlPath: string } | null;
+export type OutlineWhere = () => { origin: Machine; jsonlPath: string } | null;
 
 /** 从骨架索引里带回来的一份清单（`[0, end)` 的全量）。 */
 export interface OutlineSeed {

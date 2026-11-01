@@ -6,6 +6,7 @@
 //! 先装耳朵、再看一眼：装好之前已经到了的也认得出。
 
 use crate::observe::watcher::Follow;
+use copy_core::discard::{Discard, Why};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -64,7 +65,7 @@ impl<T, F: FnMut() -> Option<T>> Pending<T, F> {
         }
         if let Some(got) = (self.seen)() {
             if let Some(t) = self.tell.take() {
-                let _ = t.send(got);
+                t.send(got).discard(Why::PeerGone); // 一次性等待到了：等的那一侧可能已经撤了（撤单 / 期限到），没人要这一声
             }
         }
     }

@@ -36,6 +36,7 @@ use crate::wire::spec::Settle as _;
 use crate::wire::FrameMake as _;
 use crate::wire::{Frame, Request};
 use copy_core::copy_text;
+use copy_core::discard::{Discard, Why};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -450,12 +451,11 @@ fn dispatch(
                         let on_end: crate::accounts::sign_in::OnEnd =
                             Box::new(move |job, ended| {
                                 use crate::faces::login_face::{SignInState, SignInStateExt as _};
-                                let _ = push.blocking_send(Frame::changed(
-                                    crate::wire::Changed::Login {
-                                        key: job.to_string(),
-                                        body: Some(SignInState::of(ended)),
-                                    },
-                                ));
+                                push.blocking_send(Frame::changed(crate::wire::Changed::Login {
+                                    key: job.to_string(),
+                                    body: Some(SignInState::of(ended)),
+                                }))
+                                .discard(Why::PeerGone); // 发起登录的那条连接已断 ⇒ 「登录作业收了」那一帧没人收（作业本来就跟着它收）
                                 crate::history::needs_changed::ring();
                             });
                         crate::faces::login_face::start(&r, asks, on_end)
@@ -589,11 +589,13 @@ fn dispatch(
                 }
             };
             if handle.is_none() && lock(running).contains_key(&target) {
-                let _ = replies.try_send(Frame::err(
-                    &req.id,
-                    "not_cancellable",
-                    &copy_text("beInbound.dispatch.cannotCancel", &[]),
-                ));
+                replies
+                    .try_send(Frame::err(
+                        &req.id,
+                        "not_cancellable",
+                        &copy_text("beInbound.dispatch.cannotCancel", &[]),
+                    ))
+                    .discard(Why::Backpressure);
                 return Disposition::Done;
             }
             if let Some(h) = handle {
@@ -606,10 +608,14 @@ fn dispatch(
                 //
                 // 那是**控制面被数据面背压堵死**的优先级反转，恰好是"给应答开独立通道"
                 // 想解决的那件事。丢一条 cancel 应答，远比堵死读循环便宜。
-                let _ = replies.try_send(Frame::Cancelled(crate::wire::Cancelled { id: target }));
+                replies
+                    .try_send(Frame::Cancelled(crate::wire::Cancelled { id: target }))
+                    .discard(Why::Backpressure);
             }
             // 取消一个不存在的 id 是幂等的、不是错误。
-            let _ = replies.try_send(Frame::ok(&req.id));
+            replies
+                .try_send(Frame::ok(&req.id))
+                .discard(Why::Backpressure);
             Disposition::Done
         }
         // U8a-2d：其余命令**一律查注册表**，不再是一串手写臂。
@@ -828,7 +834,7 @@ async fn spawn_handler<F, Fut>(
     let running_sup = running.clone();
     let replies_sup = replies.clone();
     let task = tokio::spawn(async move {
-        let _ = gate_rx.await;
+        gate_rx.await.discard(Why::Signal);
         let frame = match f(req).await {
             Ok(data) => Frame::Reply(crate::wire::Reply {
                 id: id_for_task.clone(),
@@ -843,7 +849,7 @@ async fn spawn_handler<F, Fut>(
         // 先摘登记再回应答：反过来的话，客户端收到应答后立刻发 cancel，
         // 可能命中一个已经跑完但还没摘掉的句柄，白 abort 一个空壳。
         lock(&running_for_task).remove(&id_for_task);
-        let _ = replies.send(frame).await;
+        replies.send(frame).await.discard(Why::PeerGone);
     });
     let abort = task.abort_handle();
 
@@ -860,19 +866,20 @@ async fn spawn_handler<F, Fut>(
         let outcome = task.await;
         lock(&running_sup).remove(&id_sup);
         if outcome.as_ref().is_err_and(|e| e.is_panic()) {
-            let _ = replies_sup
+            replies_sup
                 .send(Frame::err(
                     &id_sup,
                     "handler_panicked",
                     &copy_text("reason.code.bug", &[]),
                 ))
-                .await;
+                .await
+                .discard(Why::PeerGone);
         }
         // 被 abort（= cancel 生效）时什么都不补：`Cancelled` 已经发过了。
     });
 
     lock(&running).insert(id, InFlight { abort, cancellable });
-    let _ = gate_tx.send(()); // 登记落地之后才放行
+    gate_tx.send(()).discard(Why::Signal); // 登记落地之后才放行
 }
 
 /// 拿 `running` 的锁。**毒化了也继续用。**
