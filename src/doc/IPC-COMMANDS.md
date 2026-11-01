@@ -2269,7 +2269,7 @@ tone: "plain" | "fail" | "warn",
  * 这一格那个窗口「1% ≈ 多少用量」写好的字（`1% ≈ 2.1M`，同 [`WindowShow::per_pct_text`]）；量不到 ⇒ 缺。
  */
 perPctText?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Usage = { 
 /**
  * 画的是哪个语义位（卡着的那个；回包没说 ⇒ `5h`）；按量号 ⇒ 缺。
@@ -3016,7 +3016,7 @@ type RotationViewReq = { target: RotTarget,
  * 设置页那一形往后推几小时（1–48，缺 ⇒ 12）；会话那一形不画推演，不看它。
  */
 hours?: number, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WinFact = { open: boolean, used: number, resets?: number, 
 /**
  * `resets` 写给人看的样子（按看的那一台的时区）。
@@ -4407,7 +4407,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -4568,7 +4568,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -4741,7 +4741,7 @@ sid: string,
  * 我在的那几组（组员整组）。
  */
 groups: Array<GroupRead>, looked: Looked, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -4957,7 +4957,7 @@ type SyncHead<H> = { total: number, info: H, };
 type SyncHeld = string;
 type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
 type SyncRange = { from: number, limit: number, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -5205,7 +5205,7 @@ type SyncHead<H> = { total: number, info: H, };
 type SyncHeld = string;
 type SyncPatch<H, T> = { held: SyncHeld, whole: boolean, same: boolean, order: Array<string> | null, up: { [key in string]: T }, head: SyncHead<H> | null, };
 type SyncRange = { from: number, limit: number, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -5519,7 +5519,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -5771,7 +5771,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -7654,7 +7654,7 @@ to?: number | null,
  * 可选：一页最多几轮（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
  */
 limit?: number | null, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type TurnPart = { text: string, tone: Tone, };
 type TurnPhase = "idle" | "running" | "awaiting";
 type TurnRow = { 
@@ -7990,7 +7990,7 @@ order: number, can: SessionCan,
  */
 account?: string, };
 type SessionsNeedsReq = Record<symbol, never>;
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -8262,7 +8262,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -8852,7 +8852,7 @@ requests: number,
  * 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
  */
 text: Words, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type UnclearWhy = "noWriter" | "untracked";
 type UsageFact = { 
 /**
@@ -12467,7 +12467,7 @@ machine: Machine,
  */
 sid: Sid, };
 type Sid = string;
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type Words = string;
 ```
 
@@ -14738,8 +14738,8 @@ route?: string,
  */
 strip?: MachineStripLine, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
-type MachineStripLine = { tone: StripTone, progress: boolean, };
-type StripTone = "busy" | "offline" | "warn" | "fault";
+type MachineStripLine = { tone: Tone, progress: boolean, };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
@@ -14855,10 +14855,10 @@ route?: string,
  */
 strip?: MachineStripLine, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
-type MachineStripLine = { tone: StripTone, progress: boolean, };
+type MachineStripLine = { tone: Tone, progress: boolean, };
 type MenuAct = "open_terminal" | "new_session" | "files" | "machine_status" | "add_machine";
 type MenuAction = { act: MenuAct, sub: string | null, blocked: string | null, note: string | null, };
-type StripTone = "busy" | "offline" | "warn" | "fault";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
@@ -14940,9 +14940,9 @@ route?: string,
  */
 strip?: MachineStripLine, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
-type MachineStripLine = { tone: StripTone, progress: boolean, };
+type MachineStripLine = { tone: Tone, progress: boolean, };
 type MachineWakeReq = { machine: string, };
-type StripTone = "busy" | "offline" | "warn" | "fault";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
@@ -16515,7 +16515,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
@@ -16981,7 +16981,7 @@ order: number, can: SessionCan,
  * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
  */
 account?: string, };
-type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy" | "offline";
 type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```

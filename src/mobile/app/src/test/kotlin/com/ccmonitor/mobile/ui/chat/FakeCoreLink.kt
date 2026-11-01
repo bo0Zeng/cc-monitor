@@ -10,6 +10,7 @@ import com.ccmonitor.mobile.core.claude.link.WatchFrom
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.wire.gen.ClashChoice
 import com.ccmonitor.mobile.core.wire.gen.ClashRow
 import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.Failed
@@ -171,12 +172,15 @@ internal class FakeCoreLink :
     val picked = mutableListOf<List<Any?>>()
     var menu: (List<Any?>) -> PhoneMenu? = { null }
 
-    /** 同名清单 ⇒ 抽屉那几行（核心那一份的替身：名字照抄、说明写成那台给的大小）。 */
+    /** 同名清单 ⇒ 抽屉那几行（核心那一份的替身：名字照抄、说明写成那台给的大小、每种答的字写成它的线上名，先后照那台给的）。 */
     override fun clashes(data: Any?): List<ClashRow> =
         ((data as? Map<*, *>)?.get("conflicts") as? List<*>).orEmpty().map { c ->
             val m = c as Map<*, *>
-            val answers = (m["answers"] as List<*>).map { a -> Decide.entries.first { it.wire == a } }
-            ClashRow(m["key"] as String, m["name"] as String, m["there_size_text"] as String, answers, null)
+            val choices =
+                (m["answers"] as List<*>).map { a ->
+                    ClashChoice(Decide.entries.first { it.wire == a }, a as String, a)
+                }
+            ClashRow(m["key"] as String, m["name"] as String, m["there_size_text"] as String, choices, null)
         }
 
     /** 交核心认的同名那几答（键 · 答）；回 [decide] 给的（核心那一份的替身，规矩在核心里判）。 */

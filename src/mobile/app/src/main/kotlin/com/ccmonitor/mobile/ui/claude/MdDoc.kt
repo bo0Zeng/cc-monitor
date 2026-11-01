@@ -1,0 +1,620 @@
+package com.ccmonitor.mobile.ui.claude
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.BaselineShift
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.theme.AppTokens
+import com.ccmonitor.mobile.core.ui.theme.JetBrainsMono
+import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.ThemeTokens
+import com.ccmonitor.mobile.core.ui.theme.monoBody
+import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.core.wire.gen.AlertKind
+import com.ccmonitor.mobile.core.wire.gen.Doc
+import com.ccmonitor.mobile.core.wire.gen.Inl
+import com.ccmonitor.mobile.core.wire.gen.InlNode
+import com.ccmonitor.mobile.core.wire.gen.MdAlign
+import com.ccmonitor.mobile.core.wire.gen.MdBlock
+import com.ccmonitor.mobile.core.wire.gen.MdItem
+import com.ccmonitor.mobile.core.wire.gen.SegHl
+import ru.noties.jlatexmath.JLatexMathDrawable
+
+// 正文排版器：后端解析好的块树（`cmd_wire::md::Doc`）→ Compose。只照树排，不解析 Markdown、不判高亮类别。
+//
+// - 两层：[layoutSeg] 把一段的块排成 [MdPiece]（字是 `AnnotatedString`：`SpanStyle` ＋ `LinkAnnotation`），纯函数、JVM 上就测得了；
+//   [MdDocView] 照 [MdPiece] 画（段落 · 标题 · 列表 · 引用 · 提示块 · 代码块 · 表格网格 · 公式 · 脚注）。
+// - 高亮照那一段的 `SegHl`：段里的代码块按先序第 n 块取 `hl[n]`，三元组 `[起点差, 长, 类]`，偏移按 UTF-16 码元（Kotlin 串直接切）；
+//   类的颜色是主题的终端色票（[rememberMdStyle]），不上线。
+// - 公式经 JLaTeXMath 画成图；行内的占一个行内槽（[MATH_TAG] 标着 TeX 原文）。
+// - 长正文按 `segs` 分段：[MdDocState] 只建第 0 段，[MdDocState.buildNext] 一段段往下接。
+
+/** 排版要的几样样式（主题给，测试里另给一份好认的）。`hl` 的下标就是 `HlClass` 的序号（`src/common/cmd-wire/src/md.rs`）。 */
+@Stable
+data class MdStyle(
+    val code: SpanStyle,
+    val link: TextLinkStyles,
+    /** 图的替代字。 */
+    val faint: SpanStyle,
+    /** 正文里的脚注号。 */
+    val fnRef: SpanStyle,
+    val hl: List<SpanStyle>,
+)
+
+/** 排好的一块：怎么画只看这一层。 */
+sealed interface MdPiece {
+    /** 段落（`level` 0）或标题 1–6。 */
+    data class Text(
+        val level: Int,
+        val text: AnnotatedString,
+    ) : MdPiece
+
+    /** 代码块：字已照高亮着色；`cont` ⇒ 接着上一块（不再出语言那一行）。 */
+    data class Code(
+        val lang: String?,
+        val text: AnnotatedString,
+        val cont: Boolean,
+    ) : MdPiece
+
+    data class Math(
+        val tex: String,
+    ) : MdPiece
+
+    /** 列表：有序的每项带号（`number`），任务项带勾（`task`）。 */
+    data class Bullets(
+        val tight: Boolean,
+        val items: List<Item>,
+    ) : MdPiece
+
+    data class Item(
+        val number: Int?,
+        val task: Boolean?,
+        val pieces: List<MdPiece>,
+    )
+
+    data class Quote(
+        val pieces: List<MdPiece>,
+    ) : MdPiece
+
+    data class Alert(
+        val kind: AlertKind,
+        val pieces: List<MdPiece>,
+    ) : MdPiece
+
+    /** 表格：每行补齐到同样几格。 */
+    data class Table(
+        val align: List<MdAlign>,
+        val head: List<AnnotatedString>,
+        val rows: List<List<AnnotatedString>>,
+    ) : MdPiece
+
+    data object Rule : MdPiece
+
+    data class Notes(
+        val items: List<Note>,
+    ) : MdPiece
+
+    data class Note(
+        val n: Int,
+        val pieces: List<MdPiece>,
+    )
+}
+
+/** 行内公式那个槽上的注记：值是 TeX 原文（同时是行内槽的 id 后半）。 */
+const val MATH_TAG = "md-math"
+
+/** 第 i 段占 `blocks` 的哪一截。 */
+fun segRange(
+    doc: Doc,
+    i: Int,
+): IntRange {
+    val n = doc.blocks.size
+    val from = if (i == 0) 0 else doc.segs.getOrNull(i - 1)?.coerceIn(0, n) ?: n
+    val to = doc.segs.getOrNull(i)?.coerceIn(from, n) ?: n
+    return from until to
+}
+
+/** 把第 i 段排成几块；`hl` 是那一段的高亮回包（没拉到 ⇒ 代码照纯字排）。 */
+fun layoutSeg(
+    doc: Doc,
+    i: Int,
+    hl: SegHl?,
+    style: MdStyle,
+): List<MdPiece> {
+    val ctx = Ctx(hl?.hl.orEmpty(), style)
+    return segRange(doc, i).map { ctx.block(doc.blocks[it]) }
+}
+
+/** 一段里每个行内公式的 TeX，照出现的先后。 */
+fun mathTexOf(text: AnnotatedString): List<String> = text.getStringAnnotations(MATH_TAG, 0, text.length).map { it.item }
+
+/** 照三元组切：越过串尾的截在串尾，认不出的类当没着色，不成三的尾巴不看。 */
+fun highlighted(
+    x: String,
+    hl: List<Long>,
+    style: MdStyle,
+): AnnotatedString =
+    buildAnnotatedString {
+        append(x)
+        var at = 0L
+        var i = 0
+        while (i + 2 < hl.size) {
+            val from = minOf(at + hl[i], x.length.toLong())
+            val to = minOf(from + hl[i + 1], x.length.toLong())
+            val cls = style.hl.getOrNull(hl[i + 2].coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+            if (cls != null && to > from) addStyle(cls, from.toInt(), to.toInt())
+            at = to
+            i += 3
+        }
+    }
+
+/** 一份正文的排版状态：建好了哪几段。建出来就有第 0 段；往下接一段调 [buildNext]。 */
+@Stable
+class MdDocState(
+    val doc: Doc,
+    hl0: SegHl?,
+    private val style: MdStyle,
+) {
+    val segCount: Int = doc.segs.size + 1
+    private val built0 = mutableStateListOf<List<MdPiece>>()
+
+    /** 已建的那几段，每段一串块。 */
+    val pieces: List<List<MdPiece>> get() = built0
+
+    val built: Int get() = built0.size
+
+    init {
+        buildNext(hl0)
+    }
+
+    /** 建下一段（`hl` 是那一段的高亮）；都建完了 ⇒ false。 */
+    fun buildNext(hl: SegHl?): Boolean {
+        if (built0.size >= segCount) return false
+        built0 += layoutSeg(doc, built0.size, hl, style)
+        return true
+    }
+}
+
+private class Ctx(
+    private val hl: List<List<Long>>,
+    private val style: MdStyle,
+) {
+    /** 下一个代码块在先序里是第几个。 */
+    private var code = 0
+
+    fun blocks(bs: List<MdBlock>): List<MdPiece> = bs.map(::block)
+
+    fun block(b: MdBlock): MdPiece =
+        when (b) {
+            is MdBlock.P -> MdPiece.Text(0, inlines(b.k))
+            is MdBlock.H -> MdPiece.Text(b.level.coerceIn(1, 6), inlines(b.k))
+            is MdBlock.Code -> MdPiece.Code(b.lang, highlighted(b.x, hl.getOrNull(code++).orEmpty(), style), b.cont)
+            is MdBlock.Math -> MdPiece.Math(b.tex)
+            is MdBlock.List -> MdPiece.Bullets(b.tight, b.items.mapIndexed { n, one -> item(b.start?.plus(n), one) })
+            is MdBlock.Quote -> MdPiece.Quote(blocks(b.blocks))
+            is MdBlock.Alert -> MdPiece.Alert(b.kind, blocks(b.blocks))
+            is MdBlock.Table -> table(b)
+            MdBlock.Rule -> MdPiece.Rule
+            is MdBlock.Notes -> MdPiece.Notes(b.items.map { MdPiece.Note(it.n, blocks(it.blocks)) })
+        }
+
+    private fun item(
+        number: Int?,
+        it: MdItem,
+    ) = MdPiece.Item(number, it.task, blocks(it.blocks))
+
+    private fun table(b: MdBlock.Table): MdPiece.Table {
+        val cols = maxOf(b.head.size, b.rows.maxOfOrNull { it.size } ?: 0)
+
+        fun row(cells: List<List<Inl>>) = List(cols) { inlines(cells.getOrNull(it).orEmpty()) }
+        return MdPiece.Table(List(cols) { b.align.getOrNull(it) ?: MdAlign.NONE }, row(b.head), b.rows.map(::row))
+    }
+
+    fun inlines(ks: List<Inl>): AnnotatedString = buildAnnotatedString { ks.forEach { inline(it) } }
+
+    private fun AnnotatedString.Builder.inline(k: Inl) {
+        when (k) {
+            is Inl.Text -> append(k.value)
+            is Inl.InlNode -> node(k.value)
+        }
+    }
+
+    private fun AnnotatedString.Builder.node(n: InlNode) {
+        when (n) {
+            is InlNode.B -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { n.k.forEach { inline(it) } }
+            is InlNode.I -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { n.k.forEach { inline(it) } }
+            is InlNode.Del -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { n.k.forEach { inline(it) } }
+            is InlNode.C -> withStyle(style.code) { append(n.x) }
+            is InlNode.M -> {
+                pushStringAnnotation(MATH_TAG, n.tex)
+                appendInlineContent(MATH_TAG + n.tex, n.tex)
+                pop()
+            }
+            // 树里只有放行的 scheme（http · https · mailto）才成链接；点了交系统去开。
+            is InlNode.A -> withLink(LinkAnnotation.Url(n.href, style.link)) { n.k.forEach { inline(it) } }
+            is InlNode.Img -> withStyle(style.faint) { append(n.alt) }
+            InlNode.Br -> append('\n')
+            is InlNode.Fn -> withStyle(style.fnRef) { append(n.n.toString()) }
+        }
+    }
+}
+
+// ───────────────────────────── 画 ─────────────────────────────
+
+/** 主题给的那一份样式：高亮十三类取终端色票（类的先后跟着 `HlClass`），链接 · 行内代码 · 脚注号照令牌。 */
+@Composable
+fun rememberMdStyle(): MdStyle {
+    val tokens = LocalAppTokens.current
+    return remember(tokens) {
+        MdStyle(
+            code = SpanStyle(fontFamily = JetBrainsMono, fontSize = 0.9.em, background = tokens.bg2),
+            link = TextLinkStyles(SpanStyle(color = tokens.link)),
+            faint = SpanStyle(color = tokens.textFaint, fontStyle = FontStyle.Italic),
+            fnRef = SpanStyle(color = tokens.link, fontSize = 0.75.em, baselineShift = BaselineShift.Superscript),
+            hl =
+                listOf(
+                    SpanStyle(color = ThemeTokens.TermMagenta),
+                    SpanStyle(color = ThemeTokens.TermGreen),
+                    SpanStyle(color = ThemeTokens.TermBrightBlack, fontStyle = FontStyle.Italic),
+                    SpanStyle(color = ThemeTokens.TermYellow),
+                    SpanStyle(color = ThemeTokens.TermBlue),
+                    SpanStyle(color = ThemeTokens.TermCyan),
+                    SpanStyle(color = ThemeTokens.TermBrightYellow),
+                    SpanStyle(color = ThemeTokens.TermRed),
+                    SpanStyle(color = ThemeTokens.TermBrightCyan),
+                    SpanStyle(color = ThemeTokens.TermBrightBlue),
+                    SpanStyle(color = ThemeTokens.TermBrightGreen, background = tokens.diffAddBg),
+                    SpanStyle(color = ThemeTokens.TermBrightRed, background = tokens.diffDelBg),
+                    SpanStyle(color = ThemeTokens.TermBrightMagenta),
+                ),
+        )
+    }
+}
+
+/** 一份正文的排版状态（树或主题变了重建，只建第 0 段）。 */
+@Composable
+fun rememberMdDocState(
+    doc: Doc,
+    hl0: SegHl? = null,
+): MdDocState {
+    val style = rememberMdStyle()
+    return remember(doc, hl0, style) { MdDocState(doc, hl0, style) }
+}
+
+/** 照 [MdDocState] 里已建的那几段画；字可选、链接可点。 */
+@Composable
+fun MdDocView(
+    state: MdDocState,
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.onSurface,
+) {
+    val tokens = LocalAppTokens.current
+    SelectionContainer(modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.s)) {
+            state.pieces.forEach { seg -> seg.forEach { Piece(it, color, tokens) } }
+        }
+    }
+}
+
+@Composable
+private fun Pieces(
+    pieces: List<MdPiece>,
+    color: Color,
+    tokens: AppTokens,
+    gap: Dp = tokens.spacing.s,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(gap)) { pieces.forEach { Piece(it, color, tokens) } }
+}
+
+@Composable
+private fun Piece(
+    p: MdPiece,
+    color: Color,
+    tokens: AppTokens,
+) {
+    when (p) {
+        is MdPiece.Text -> Prose(p.text, textStyleOf(p.level), color)
+        is MdPiece.Code -> CodeView(p, color, tokens)
+        is MdPiece.Math ->
+            Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                TexImage(p.tex, color, MaterialTheme.typography.bodyLarge.fontSize.value * 1.1f)
+            }
+        is MdPiece.Bullets ->
+            Column(verticalArrangement = Arrangement.spacedBy(if (p.tight) tokens.spacing.xxs else tokens.spacing.s)) {
+                p.items.forEach { ItemView(it, color, tokens) }
+            }
+        is MdPiece.Quote -> Barred(tokens.borderStrong, tokens) { Pieces(p.pieces, MaterialTheme.colorScheme.onSurfaceVariant, tokens) }
+        is MdPiece.Alert -> Barred(alertColor(p.kind, tokens), tokens) { Pieces(p.pieces, color, tokens) }
+        is MdPiece.Table -> TableView(p, color, tokens)
+        MdPiece.Rule ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(tokens.borderFaint),
+            )
+        is MdPiece.Notes ->
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .drawBehind { drawRect(tokens.borderFaint, size = size.copy(height = 1.dp.toPx())) }
+                    .padding(top = tokens.spacing.s),
+                verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+            ) {
+                p.items.forEach { n ->
+                    Row {
+                        Text(n.n.toString(), style = MaterialTheme.typography.bodySmall, color = tokens.link, modifier = Modifier.width(tokens.spacing.lg))
+                        Pieces(n.pieces, MaterialTheme.colorScheme.onSurfaceVariant, tokens, tokens.spacing.xxs)
+                    }
+                }
+            }
+    }
+}
+
+@Composable
+private fun textStyleOf(level: Int): TextStyle =
+    when (level) {
+        0 -> MaterialTheme.typography.bodyLarge
+        1, 2 -> MaterialTheme.typography.titleMedium
+        else -> MaterialTheme.typography.bodyLarge.copy(fontWeight = MaterialTheme.typography.titleMedium.fontWeight)
+    }
+
+/** 一段字：带行内公式的给每条 TeX 备一个行内槽（量好图的大小再排）。 */
+@Composable
+private fun Prose(
+    text: AnnotatedString,
+    style: TextStyle,
+    color: Color,
+) {
+    val texs = remember(text) { mathTexOf(text) }
+    if (texs.isEmpty()) {
+        Text(text, style = style, color = color)
+        return
+    }
+    val density = LocalDensity.current
+    val sizePx = with(density) { style.fontSize.toPx() }
+    val argb = color.toArgb()
+    val inline =
+        remember(texs, sizePx, argb) {
+            texs
+                .distinct()
+                .mapNotNull { tex ->
+                    val d = texDrawable(tex, sizePx, argb) ?: return@mapNotNull null
+                    val w = with(density) { d.intrinsicWidth.toSp() }
+                    val h = with(density) { d.intrinsicHeight.toSp() }
+                    (MATH_TAG + tex) to InlineTextContent(Placeholder(w, h, PlaceholderVerticalAlign.TextCenter)) { DrawTex(d) }
+                }.toMap()
+        }
+    Text(text, style = style, color = color, inlineContent = inline)
+}
+
+private fun texDrawable(
+    tex: String,
+    sizePx: Float,
+    argb: Int,
+): JLatexMathDrawable? =
+    runCatching {
+        JLatexMathDrawable
+            .builder(tex)
+            .textSize(sizePx)
+            .color(argb)
+            .build()
+            .also { it.setBounds(0, 0, it.intrinsicWidth, it.intrinsicHeight) }
+    }.getOrNull()
+
+@Composable
+private fun DrawTex(d: JLatexMathDrawable) {
+    Box(Modifier.fillMaxWidth().fillMaxHeight().drawBehind { drawIntoCanvas { d.draw(it.nativeCanvas) } })
+}
+
+/** 块级公式：画成图；TeX 认不出 ⇒ 照原文等宽排。 */
+@Composable
+private fun TexImage(
+    tex: String,
+    color: Color,
+    sizeSp: Float,
+) {
+    val density = LocalDensity.current
+    val sizePx = with(density) { sizeSp * fontScale * this.density }
+    val argb = color.toArgb()
+    val d = remember(tex, sizePx, argb) { texDrawable(tex, sizePx, argb) }
+    if (d == null) {
+        Text(tex, style = monoBody, color = color)
+        return
+    }
+    with(density) {
+        Box(Modifier.size(d.intrinsicWidth.toDp(), d.intrinsicHeight.toDp()).drawBehind { drawIntoCanvas { d.draw(it.nativeCanvas) } })
+    }
+}
+
+@Composable
+private fun CodeView(
+    p: MdPiece.Code,
+    color: Color,
+    tokens: AppTokens,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(tokens.radius.l))
+            .background(tokens.bg2),
+    ) {
+        if (!p.cont && p.lang != null) {
+            Text(
+                p.lang,
+                style = monoSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = tokens.spacing.sm, end = tokens.spacing.sm, top = tokens.spacing.xs),
+            )
+        }
+        Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            Text(p.text, style = monoBody, color = color, softWrap = false, modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs))
+        }
+    }
+}
+
+@Composable
+private fun ItemView(
+    it: MdPiece.Item,
+    color: Color,
+    tokens: AppTokens,
+) {
+    Row {
+        Box(Modifier.width(tokens.spacing.lg), contentAlignment = Alignment.TopStart) {
+            when {
+                it.task != null ->
+                    PhIcon(
+                        if (it.task) Ph.CheckSquare else Ph.Square,
+                        contentDescription = null,
+                        size = 16.dp,
+                        tint = if (it.task) tokens.accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 3.dp),
+                    )
+                it.number != null -> Text("${it.number}.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> Text("•", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Pieces(it.pieces, color, tokens, tokens.spacing.xxs)
+    }
+}
+
+/** 引用与提示块：左边一道竖条。 */
+@Composable
+private fun Barred(
+    bar: Color,
+    tokens: AppTokens,
+    content: @Composable () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        Box(
+            Modifier
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(bar),
+        )
+        Box(Modifier.padding(start = tokens.spacing.sm)) { content() }
+    }
+}
+
+@Composable
+private fun alertColor(
+    kind: AlertKind,
+    tokens: AppTokens,
+): Color =
+    when (kind) {
+        AlertKind.NOTE -> tokens.link
+        AlertKind.TIP -> tokens.success
+        AlertKind.IMPORTANT -> tokens.bgwork
+        AlertKind.WARNING -> tokens.warn
+        AlertKind.CAUTION -> MaterialTheme.colorScheme.error
+    }
+
+/** 表格：网格，列宽取那一列最宽的格（一格最宽 240 dp，再宽折行），整张表横着滑。 */
+@Composable
+private fun TableView(
+    p: MdPiece.Table,
+    color: Color,
+    tokens: AppTokens,
+) {
+    val cols = p.head.size
+    if (cols == 0) return
+    val line = tokens.borderFaint
+    val cellPad = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs)
+    val bodyStyle = MaterialTheme.typography.bodyMedium
+    val headStyle = bodyStyle.copy(fontWeight = MaterialTheme.typography.titleMedium.fontWeight)
+    Box(Modifier.horizontalScroll(rememberScrollState())) {
+        Layout(
+            content = {
+                (listOf(p.head) + p.rows).forEachIndexed { r, row ->
+                    row.forEachIndexed { c, cell ->
+                        Box(
+                            Modifier
+                                .border(0.5.dp, line)
+                                .then(if (r == 0) Modifier.background(tokens.bg2) else Modifier)
+                                .widthIn(max = 240.dp)
+                                .then(cellPad),
+                        ) {
+                            Text(cell, style = if (r == 0) headStyle else bodyStyle, color = color, textAlign = alignOf(p.align[c]), modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+            },
+        ) { ms, _ ->
+            val rows = ms.size / cols
+            val widths = IntArray(cols) { c -> (0 until rows).maxOf { r -> ms[r * cols + c].maxIntrinsicWidth(Constraints.Infinity) } }
+            val heights = IntArray(rows) { r -> (0 until cols).maxOf { c -> ms[r * cols + c].minIntrinsicHeight(widths[c]) } }
+            val placed = ms.mapIndexed { i, m -> m.measure(Constraints.fixed(widths[i % cols], heights[i / cols])) }
+            layout(widths.sum(), heights.sum()) {
+                var y = 0
+                for (r in 0 until rows) {
+                    var x = 0
+                    for (c in 0 until cols) {
+                        placed[r * cols + c].place(x, y)
+                        x += widths[c]
+                    }
+                    y += heights[r]
+                }
+            }
+        }
+    }
+}
+
+private fun alignOf(a: MdAlign): TextAlign =
+    when (a) {
+        MdAlign.NONE, MdAlign.LEFT -> TextAlign.Start
+        MdAlign.CENTER -> TextAlign.Center
+        MdAlign.RIGHT -> TextAlign.End
+    }

@@ -5,7 +5,7 @@
  */
 import type { MachineState } from "./generated/MachineState";
 import type { MachineStripLine } from "./generated/MachineStripLine";
-import type { StripTone } from "./generated/StripTone";
+import type { Tone } from "./generated/Tone";
 import type { MachineFix } from "./generated/MachineFix";
 import type { MachineFixButton } from "./generated/MachineFixButton";
 import type { LocalBackend } from "./generated/LocalBackend";
@@ -22,11 +22,14 @@ export interface StripHost {
 }
 
 /** 条上那一行的语气画哪种点（进不进条 · 语气由后端 `deploy::machine::strip` 定，这里只挑样子）。 */
-const DOT: Record<StripTone, MachineDotState> = {
+const DOT: Record<Tone, MachineDotState> = {
+  plain: "up",
+  now: "unknown",
   busy: "unknown",
   offline: "failed",
+  need: "needs-you",
   warn: "needs-you",
-  fault: "failed",
+  fail: "failed",
 };
 
 /** 多于这几台收成一行。 */

@@ -326,11 +326,9 @@ pub fn ask_ui(ui: &mut egui::Ui, board: &BatchBoard) {
                     ui.label(String::from_utf8_lossy(c.name.bytes()).into_owned());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let now = picks.get(&c.key).copied().unwrap_or(Decide::Skip);
-                        let opts: Vec<(Decide, String)> =
-                            c.answers.iter().map(|d| (*d, pick_text(*d))).collect();
-                        for (d, text) in opts.into_iter().rev() {
-                            if ui.selectable_label(now == d, text).clicked() {
-                                board.pick(&c.key, d);
+                        for o in batch_core::choices(&c.answers).into_iter().rev() {
+                            if ui.selectable_label(now == o.decide, o.pick).clicked() {
+                                board.pick(&c.key, o.decide);
                             }
                         }
                     });
@@ -371,29 +369,15 @@ pub fn ask_ui(ui: &mut egui::Ui, board: &BatchBoard) {
         }
         return;
     }
-    // 整组答：清单里有一项给了的答才画那一颗（覆盖只对给了它的那几项；别的照「目录不合并」跳过）。
-    let given = |d: Decide| conflicts.iter().any(|c| c.answers.contains(&d));
+    // 整组答：清单里有一项给了的答才画那一颗（覆盖只对给了它的那几项；别的照「目录不合并」跳过）。字与先后照核心。
     let mut answers: Vec<(Option<Decide>, String, Btn)> = vec![(None, cancel, Btn::Plain)];
-    for (d, text, btn) in [
-        (
-            Decide::Skip,
-            copy_text("rsFilewinBatch.btn.skip", &[]),
-            Btn::Primary,
-        ),
-        (
-            Decide::KeepBoth,
-            copy_text("rsFilewinBatch.btn.keepBoth", &[]),
-            Btn::Plain,
-        ),
-        (
-            Decide::Overwrite,
-            copy_text("rsFilewinBatch.btn.overwrite", &[]),
-            Btn::Danger,
-        ),
-    ] {
-        if given(d) {
-            answers.push((Some(d), text, btn));
-        }
+    for o in batch_core::whole(&conflicts) {
+        let btn = match o.decide {
+            Decide::Skip => Btn::Primary,
+            Decide::KeepBoth => Btn::Plain,
+            Decide::Overwrite => Btn::Danger,
+        };
+        answers.push((Some(o.decide), o.label, btn));
     }
     let buttons: Vec<(String, Btn)> = answers.iter().map(|(_, t, b)| (t.clone(), *b)).collect();
     let hit = super::kit::dialog(
@@ -411,15 +395,6 @@ pub fn ask_ui(ui: &mut egui::Ui, board: &BatchBoard) {
     }
     if let Some(k) = hit {
         board.answer(answers.get(k).and_then(|(d, ..)| *d), false);
-    }
-}
-
-/// 逐项答那一格的字。
-fn pick_text(d: Decide) -> String {
-    match d {
-        Decide::Skip => copy_text("rsFilewinBatch.pick.skip", &[]),
-        Decide::KeepBoth => copy_text("rsFilewinBatch.pick.keepBoth", &[]),
-        Decide::Overwrite => copy_text("rsFilewinBatch.pick.overwrite", &[]),
     }
 }
 

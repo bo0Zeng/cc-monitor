@@ -3,34 +3,58 @@
 //!
 //! | 判据 | 钉的那一形 | 两侧异源在哪 |
 //! |---|---|---|
-//! | [`the_local_origin_is_the_app_one`] | 窗口那份 `<local>` == app 侧 `inbound_client::LOCAL_ORIGIN` | 读两侧源码 |
+//! | [`the_window_spells_the_local_address_only_as_cmd_wire_local`] | 窗口包的生产码里本机地址只经 `cmd_wire::LOCAL` | 扫整个包 |
 //! | [`the_local_machine_is_shown_as_a_word_and_sent_as_its_address`] | 本机在下拉里写成字、发出去是地址 | 期望手写 |
 
 use super::*;
 
 #[test]
-fn the_local_origin_is_the_app_one() {
-    // app 侧那一份住 `resident-client`（monitor `inbound_client.rs` 转用）。
-    let app =
-        guard_core::production_code(include_str!("../../../src/comms/resident-client/client.rs"));
-    let needle = format!("pub const LOCAL_ORIGIN: &str = \"{LOCAL_ORIGIN}\";");
-    assert_eq!(
-        app.matches(needle.as_str()).count(),
-        1,
-        "窗口那份 <local> 与 app 侧不是同一个值"
+fn the_window_spells_the_local_address_only_as_cmd_wire_local() {
+    // 本机后端的地址只有一个家：`cmd_wire::LOCAL`。文件窗口包里不许另起一份常量、不许手写那个串。
+    let files =
+        guard_core::scan_tree_excluding(&guard_core::addr::filewin_src_root(), &["rs"], &[]);
+    assert!(!files.is_empty(), "文件窗口包一份 .rs 都没扫到 —— 住址坏了");
+    let prod: Vec<(String, String)> = files
+        .iter()
+        .map(|(p, raw)| {
+            (
+                guard_core::addr::rel_of(p),
+                guard_core::production_code(raw),
+            )
+        })
+        .collect();
+    let quoted = format!("\"{}\"", cmd_wire::LOCAL);
+    let own: Vec<&str> = prod
+        .iter()
+        .filter(|(_, code)| {
+            // 删掉的那份旧常量名拼开写：全仓 grep 旧名要零命中。
+            guard_core::contains_word(code, concat!("LOCAL", "_ORIGIN"))
+                || guard_core::contains_word(code, &quoted)
+        })
+        .map(|(rel, _)| rel.as_str())
+        .collect();
+    assert!(
+        own.is_empty(),
+        "这几份自己写了本机地址（改读 `cmd_wire::LOCAL`）：{own:?}"
+    );
+    // 反空真：读的那一侧真在（不然上面零命中只是没人提本机）。
+    assert!(
+        prod.iter()
+            .any(|(_, code)| guard_core::contains_word(code, "cmd_wire::LOCAL")),
+        "文件窗口包里一处 `cmd_wire::LOCAL` 都没有 —— 本机那几个判断去哪了"
     );
 }
 
 #[test]
 fn the_local_machine_is_shown_as_a_word_and_sent_as_its_address() {
-    let shown = shown_machine(LOCAL_ORIGIN);
+    let shown = shown_machine(cmd_wire::LOCAL);
     assert_eq!(
         shown,
         copy_text("rsFilewinCrossCopy.prompt.localMachine", &[])
     );
     assert!(!shown.contains('<'), "下拉里出现了字面的本机地址");
-    assert_eq!(origin_of(&shown), LOCAL_ORIGIN);
-    assert_eq!(origin_of(&format!(" {shown} ")), LOCAL_ORIGIN);
+    assert_eq!(origin_of(&shown), cmd_wire::LOCAL);
+    assert_eq!(origin_of(&format!(" {shown} ")), cmd_wire::LOCAL);
     assert_eq!(
         (shown_machine("gpu-01"), origin_of(" gpu-01 ")),
         ("gpu-01".to_string(), "gpu-01".to_string())
