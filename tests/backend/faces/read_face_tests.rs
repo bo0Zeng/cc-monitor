@@ -56,7 +56,7 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
                 crate::common::machine_prefs::read_at(&crate::common::machine_prefs::path_in(home))
                     .prefs()
                     .limits();
-            h::facts_at(home, r, &limits)
+            h::facts_at(home, r, &limits, tz)
         }),
         "backend-log" => via::<super::BackendLog>(args, |r| {
             crate::wire::spec::finish(<super::BackendLog as crate::wire::typed::Handle>::run(

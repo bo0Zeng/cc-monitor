@@ -1342,6 +1342,36 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "notices[].failed",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "notices[].head",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "notices[].hidden[]",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "notices[].id",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "notices[].members[]",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "pending[].at",
           "type": "string"
         },

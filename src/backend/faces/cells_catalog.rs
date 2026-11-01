@@ -1002,6 +1002,14 @@ mod specimens {
                         id: s("r"),
                         outcome: RetryOutcome::Recovered,
                     }],
+                    notices: vec![crate::observe::recognize::facts::NoticeRun {
+                        id: s("n"),
+                        members: vec![s("n")],
+                        hidden: vec![s("n")],
+                        head: Some(Words(s("h"))),
+                        failed: true,
+                    }],
+                    notice_log: Default::default(),
                     permission_mode: some("default"),
                     permission_mode_text: Some(Words(s("p"))),
                     tokens: Some(TokenUse {
