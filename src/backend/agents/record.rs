@@ -165,15 +165,12 @@ impl RecordExt for Record {
 /// 收场通知那一行（「后台任务 {做的事} {怎么收场} · {钟面}」）：只在出口写这一处。
 fn notice_row(what: &str, end: Option<cmd_wire::record::TaskEnd>, time: &str) -> String {
     use cmd_wire::record::TaskEnd;
-    let state = copy_core::copy_text(
-        match end {
-            Some(TaskEnd::Done) => "runs.state.done",
-            Some(TaskEnd::Failed) => "runs.state.failed",
-            Some(TaskEnd::Stopped) => "runs.state.stopped",
-            None => "runs.state.unknown",
-        },
-        &[],
-    );
+    let state = match end {
+        Some(TaskEnd::Done) => copy_core::copy_text("runs.state.done", &[]),
+        Some(TaskEnd::Failed) => copy_core::copy_text("runs.state.failed", &[]),
+        Some(TaskEnd::Stopped) => copy_core::copy_text("runs.state.stopped", &[]),
+        None => copy_core::copy_text("runs.state.unknown", &[]),
+    };
     copy_core::copy_text(
         "speaker.notice.row",
         &[("what", what), ("state", &state), ("time", time)],
