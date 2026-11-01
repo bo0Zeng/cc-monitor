@@ -150,7 +150,10 @@ fn count(rows: &[(&MachineState, bool)]) -> String {
         &[("n", &rows.len().to_string())],
     )];
     if off > 0 {
-        parts.push(copy_text("machineList.count.off", &[("a", &off.to_string())]));
+        parts.push(copy_text(
+            "machineList.count.off",
+            &[("a", &off.to_string())],
+        ));
     }
     if upd > 0 {
         parts.push(copy_text(
