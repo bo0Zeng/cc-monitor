@@ -977,6 +977,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     block: NONE,
     // 通道断了那一份（壳与文件窗口两个 Rust 端共用；界面不写通道详情，壳写好交它）。
     channel: NONE,
+    // 一次失败的复制详情（时刻 · 机器或本机 · 命令 · 码 · 原话）：后端排它自己的错、壳排壳自己的错都经这一份；界面只收写好的详情，TS 侧没有孪生。
+    failure: NONE,
     has: NONE,
     has_block: NONE,
     insert: NONE,
@@ -995,10 +997,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     wrap: NONE,
     many: "J26",
     one: "J27",
-    // 自己写的那一行里某一项的值 · 对端写好的那一整份（壳的日志与「放程序」那一口要原话；界面不取）。
+    // 读回别处写好的一份详情（后端读装后端那一步的详情）；界面不取。
     parse: NONE,
-    value: NONE,
-    written: NONE,
     maybe: NONE,
     new: NONE,
     os_word: NONE,
