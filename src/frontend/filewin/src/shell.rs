@@ -89,7 +89,7 @@ type InlineDone = Arc<Mutex<Option<(u64, Result<String, super::source::Failed>)>
 /// 拿不到 home 就退到 `.`（当前工作目录），**不猜一个路径出来**。
 #[expect(
     clippy::disallowed_methods,
-    reason = "文件窗口包取家目录的唯一一处（够不着壳的 `data_paths`）；只当存盘框的缺省路径"
+    reason = "本包取主目录只在这一处（用不了 `data_paths`），只当存盘框起始的目录"
 )]
 pub fn local_home() -> String {
     creds_core::store::home_dir()
