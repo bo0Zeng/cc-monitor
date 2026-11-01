@@ -72,7 +72,7 @@ fn an_install_is_recorded_in_the_skill_install_ledger() {
 }
 
 /// 记录里是旧摘要、盘上已经与内嵌那一份全一致（别处换成了这一版）⇒ 再装一趟之后，卸判定全是「原样」；
-/// 什么都不写、不备份，记录换成这一份的摘要（A9-2）。
+/// 什么都不写、不备份，记录换成这一份的摘要。
 #[test]
 fn an_install_over_identical_files_refreshes_a_stale_record() {
     let t = tmpdir("stale-record");
@@ -345,9 +345,9 @@ fn a_regular_file_at_the_destination_is_not_installed_and_gets_backed_up() {
 /// ⚠ 必须是 `Err` 而不是「装了 0 个文件的 Ok」：后者会让 UI 报「已装到 …（写了 0 个）」，
 /// 又一次「假成功比失败更坏」。
 ///
-/// ⚠⚠ **补门的代价：本条从此在 Windows 上 0 次执行**。
-/// 它靠 `std::os::unix::fs::PermissionsExt` 造「只读目录」这个可控替身，而先前
-/// **漏了门** ⇒ 云端（windows-latest，本仓**唯一**跑 `cargo test` 的平台）上
+/// ⚠⚠ **门的代价：本条在 Windows 上 0 次执行**。
+/// 它靠 `std::os::unix::fs::PermissionsExt` 造「只读目录」这个可控替身，不加
+/// **门** ⇒ 云端（windows-latest，本仓**唯一**跑 `cargo test` 的平台）上
 /// 编译失败（E0433 ×1 + E0599 ×2）。门照本文件既有口径写成 `#[cfg(unix)]`
 /// （同 `a_symlinked_skills_dir_is_refused` / `deployed_scripts_are_executable`
 /// 那两条 —— 它们用的是同一个平台原语）。

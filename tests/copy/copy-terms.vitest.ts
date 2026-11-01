@@ -6,7 +6,7 @@
  * R1 禁词表说**不许出现什么**，术语表说**该说什么**；「今天只有前者 ⇒
  * 判据红了之后人只能自己编一个词」。这张表要是只靠人记着维护，会和散文一起腐 ——
  * 所以它的人群**不是本文件自己定的**：表里 `census` 的集合 == 普查量具
- * `tests/evidence/K-T68-A1-outward-copy-census.py` 的 `R1_WORDS ∪ R1_CANDIDATES`（两向）——
+ * `tests/evidence/outward-copy-census.py` 的 `R1_WORDS ∪ R1_CANDIDATES`（两向）——
  * 普查加了一个禁词 / 候选词，术语表没给换法就红。新的内部词一律先进普查那两张表。
  * 普查那张表不是从本表生成的 ⇒ 相等不是恒真。
  *
@@ -24,7 +24,7 @@ import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { censusList, limitedHits, limitedMismatches, loadTable, loadTerms, r1Hits, scannerOf, type Term } from "./copy-support.ts";
 import { nonEmpty } from "../test-support/non-empty.ts";
 
-const CENSUS = resolve(REPO_ROOT, "tests", "evidence", "K-T68-A1-outward-copy-census.py");
+const CENSUS = resolve(REPO_ROOT, "tests", "evidence", "outward-copy-census.py");
 
 function diff(a: Iterable<string>, b: Set<string>): string[] {
   return [...new Set(a)].filter((x) => !b.has(x)).sort();

@@ -37,7 +37,7 @@ fn plan_of(args: &[&str], env: &Env, t: &dyn Fn() -> AccountsList) -> Plan {
 /// 造一份**固定快照**的 `TakenNames`。
 ///
 /// 🔴 只能这么造 —— `TakenNames` 的字段是 `common::session_snapshot` 私有的，
-/// 本模块（含测试段）**写不出第二种构造法**。那正是 `KR96D2` 第一刀要的形状：
+/// 本模块（含测试段）**写不出第二种构造法**。这正是要的形状：
 /// 「铸名另起一份名字集合」在这里是**编译不过**，不是靠注释劝阻。
 fn snapshot_of(names: &[&str]) -> TakenNames {
     let rows: Vec<crate::common::session_snapshot::SessionRow> = names
@@ -74,7 +74,7 @@ fn printed(args: &[&str]) -> String {
 ///
 /// 这一条钉的是**一条起会话命令长什么样**：段的顺序就是契约
 /// （CCM_ENV → 账号目录 → 清嵌套 → cd → exec）。
-/// `--resume` / `--model` 不再是 ccm 的：原样接在启动器后面（从前 resume 由 ccm 拼、`--model` 变成 export `ANTHROPIC_MODEL`）。
+/// `--resume` / `--model` 不再是 ccm 的：原样接在启动器后面（resume 不由 ccm 拼、`--model` 不变成 export `ANTHROPIC_MODEL`）。
 #[test]
 fn the_shape_of_one_launch_command_line() {
     let nested =
@@ -143,7 +143,7 @@ fn the_four_ways_an_account_gets_picked() {
     // ② 裸终端（无继承）⇒ 落 manifest 默认号 z
     assert!(render(&plan_of(&["--cwd", "/p"], &e, &t))
         .contains(&format!("export CLAUDE_CONFIG_DIR='{dz}'")));
-    // ③ 外层已继承 ⇒ **保留继承的**，不被默认号静默覆盖（`R08` 的原病）
+    // ③ 外层已继承 ⇒ **保留继承的**，不被默认号静默覆盖（真机复现过的静默换号）
     e.inherited_config_dir = Some(db.clone());
     let line = render(&plan_of(&["--cwd", "/p"], &e, &t));
     assert!(
@@ -246,9 +246,9 @@ fn the_fork_base_differs_from_its_source_and_is_always_a_legal_new_name() {
 fn only_two_of_the_three_naming_paths_step_aside_on_a_collision() {
     let e = env();
     let t = no_library;
-    // 🔴 `K-R96`：量的是**最终名**，不是那个「要不要退让」的布尔。
-    //    原版量布尔 ⇒ 「布尔为 true 而退让根本没被执行」照样绿 ——
-    //    那正好是这条判据当初逮到的那个病（退让被静默吃掉）换个位置复发。
+    // 🔴 量的是**最终名**，不是那个「要不要退让」的布尔。
+    //    量布尔的话「布尔为 true 而退让根本没被执行」照样绿 ——
+    //    那就是「退让被静默吃掉」那个病换个位置。
     let taken = snapshot_of(&["n1", "proj-cc"]);
     let path = |args: &[&str]| match plan_of_with(args, &e, &t, Some(&taken)) {
         Plan::Container(c) => c.name,
@@ -297,7 +297,7 @@ fn only_two_of_the_three_naming_paths_step_aside_on_a_collision() {
     assert_eq!(next_free_name("n1", &["n1".into(), "n1-3".into()]), "n1-2");
 }
 
-/// ★★ **`KR96D2` 死值验第二刀：`--print` 相对于快照是**纯**的。**
+/// ★★ **死值验：`--print` 相对于快照是**纯**的。**
 ///
 /// 口径由 `§0c` 定死：**同一份快照 ＋ 同一份输入 ⇒ 同一份输出**（不是「不查实时状态」）。
 /// 判据喂的就是一个**固定夹具快照**。
@@ -325,7 +325,7 @@ fn printing_twice_against_the_same_snapshot_gives_the_same_line() {
     );
 }
 
-/// ★★ **`KR96D2` 死值验第三刀：快照变了，名字必须跟着变。**
+/// ★★ **死值验：快照变了，名字必须跟着变。**
 ///
 /// 这一条是上一条的**反面**，缺了它「纯」就退化成「恒定」——
 /// 一个把名字写死的实现能同时通过「喂两次一样」和「不查实时状态」。
@@ -347,9 +347,9 @@ fn a_different_snapshot_moves_the_name() {
     assert_eq!(name(&snapshot_of(&["proj-cc", "proj-cc-2"])), "proj-cc-3");
 }
 
-/// ★★ **`KR96D3`：名字是 `<项目名>-cc`，sid 一个片段都不许进去；而 `@ccm_sid` 必须还在。**
+/// ★★ **名字是 `<项目名>-cc`，sid 一个片段都不许进去；而 `@ccm_sid` 必须还在。**
 ///
-/// 第四刀（把 `@ccm_sid` 也一起去掉 ⇒ 必须红）就在下半段：
+/// 死值验（把 `@ccm_sid` 也一起去掉 ⇒ 必须红）就在下半段：
 /// sid **必须还在**，只是**不在名字里** —— 它的载体是 tmux 的 `@ccm_sid` 选项。
 #[test]
 fn the_session_name_reads_like_a_project_and_the_sid_rides_the_tmux_option() {
@@ -381,7 +381,7 @@ fn the_session_name_reads_like_a_project_and_the_sid_rides_the_tmux_option() {
         checked += 1;
         assert!(
             !c.name.contains(frag),
-            "会话名 {:?} 里带着 sid 片段 {frag:?} —— 用户 `R55` 裁定一逐字：\n                 「**要是可读的名字 / 不要id**」",
+            "会话名 {:?} 里带着 sid 片段 {frag:?} —— 用户定，逐字：\n                 「**要是可读的名字 / 不要id**」",
             c.name
         );
     }
@@ -420,10 +420,8 @@ fn a_session_name_that_would_confuse_tmux_is_refused() {
     assert!(long.0.contains("128"), "{}", long.0);
 }
 
-/// 〔搬自 `ccm-print-parity` 全 5 个场景 ＋ `ccm-cli` R08 那 5 条〕
-///
 /// 容器路：外层 tmux 编排必须带上会话名 / cwd / 意图标 / 内层载荷，
-/// 而**内层载荷必须显式带上账号**（不能靠继承穿 tmux 边界 —— `R08` 的原病）。
+/// 而**内层载荷必须显式带上账号**（不能靠继承穿 tmux 边界 —— 否则就是静默换号）。
 #[test]
 fn the_container_path_carries_every_intent_inward() {
     let db = tempdir();
@@ -537,11 +535,6 @@ fn the_container_path_carries_every_intent_inward() {
 
 /// 🔴 **继承来的两个变量必须被显式化到载荷内侧** —— tmux 的进程边界会吃掉外层那句 `export`。
 ///
-/// # 这一条是 `K-R48` 第二拍补的，补的是**别人家的判据搬过来时空出来的那一格**
-///
-/// 从前盯这件事的是 monitor 侧载荷那一层的两条（中转地址 · 身份 token 各一条）。它们的做法是**把 `shared/ccm` 里那段 bash
-/// 窗口原样交给 `bash` 跑一遍**再读载荷 —— 脚本删了，那两条连被测对象都没有了。
-///
 /// ⚠ **[`the_container_path_carries_every_intent_inward`] 顶不了这一格**：
 /// 它只钉了 `CLAUDE_CONFIG_DIR`（账号那条），中转地址**一个字都没提**。
 ///
@@ -565,7 +558,7 @@ fn the_container_path_forwards_every_inherited_variable_inward() {
         !clean.contains("export "),
         "两个变量都没设，载荷却带了 export —— 那会把内层的值清空：{clean}"
     );
-    // ① 继承来的账号目录（`R08` 07-28，真机复现过的静默换号）。
+    // ① 继承来的账号目录（真机复现过的静默换号）。
     let mut e1 = env();
     e1.inherited_config_dir = Some(db.clone());
     assert!(
@@ -573,7 +566,7 @@ fn the_container_path_forwards_every_inherited_variable_inward() {
         "继承来的账号没被显式化：{}",
         base(&e1)
     );
-    // ② 中转地址（`K-H2b` 08-28）。
+    // ② 中转地址。
     let mut e2 = env();
     e2.inherited_base_url = Some("https://relay.example/v1".into());
     assert!(
@@ -698,23 +691,21 @@ fn naming_a_session_from_inside_tmux_switches_the_client() {
     );
 }
 
-/// 🔴 `KR58D3` —— 不给 `--cwd` 的默认是**恒等**：就是调用方自己的 cwd，一层都不跳。
+/// 🔴 不给 `--cwd` 的默认是**恒等**：就是调用方自己的 cwd，一层都不跳。
 ///
-/// 〔用@09-11 逐字〕「`cc` 默认就起会话就行，**跳目录是我自己的设置，不要搞进 app**。」
-/// `K37` 第三条：**诚实的默认 = 恒等 / 不作为 / 沿用调用者已有状态**；
+/// 〔用户定，逐字〕「`cc` 默认就起会话就行，**跳目录是我自己的设置，不要搞进 app**。」
+/// **诚实的默认 = 恒等 / 不作为 / 沿用调用者已有状态**；
 /// 从一张表里替他挑一个具体值（工作区 / 仓的父目录）**不诚实**。
 ///
-/// 〔本条是上一版那条「auto 有几条分支」的**翻面**，不是它的替补：那一版搬自
-/// `ccm-cli`「布局 1–5」，断的正是今天被裁掉的那两档。同样那几种布局留在这里，
-/// 从「证明会跳」变成「证明不跳」—— **射程一格没少**。〕
+/// 几种布局（$HOME · 仓根 · 仓的子目录 …）逐一走，每一种都「证明不跳」。
 #[test]
 fn the_default_cwd_is_the_identity_in_every_layout() {
     let mut e = env();
     let d = tempdir();
-    // 布局1：站在 $HOME —— 从前跳 `$CCM_WORKSPACE`，今天就是 $HOME。
+    // 布局1：站在 $HOME —— 就是 $HOME，不跳 `$CCM_WORKSPACE`。
     e.pwd = e.home.clone();
     assert_eq!(cwd_of(&[], &e), e.home, "在 $HOME 裸敲不许再跳工作区");
-    // 布局2/3：git 仓根 / 仓的子目录 —— 从前跳**仓的父目录**，今天就是站着的那个目录。
+    // 布局2/3：git 仓根 / 仓的子目录 —— 就是站着的那个目录，不跳**仓的父目录**。
     std::fs::create_dir_all(format!("{d}/repo/sub")).expect("造夹具");
     std::fs::write(format!("{d}/repo/.git"), "gitdir: /elsewhere").expect("造夹具");
     for p in [format!("{d}/repo"), format!("{d}/repo/sub")] {
@@ -763,8 +754,7 @@ fn the_machine_level_env_comes_first_and_the_session_level_one_wins() {
 
 /// 〔搬自 `ccm-contract-parity` A / A′ 两组「print↔exec 一致」〕
 ///
-/// 从前那两组要**真跑一趟**再与 `--print` 差分，因为两条路是两份代码。
-/// 今天它们读的是**同一个 [`Plan`]** ⇒ 这条判据钉的是那个结构事实：
+/// 两条路读的是**同一个 [`Plan`]**（不用真跑一趟再与 `--print` 差分）⇒ 这条判据钉的是那个结构事实：
 /// 渲染函数的全部输入只有 `Plan`，没有第二个来源（删了进程内 `resolve` 那一问）。
 #[test]
 fn print_and_exec_cannot_drift_because_they_read_the_same_plan() {
@@ -910,7 +900,7 @@ fn the_account_is_judged_from_the_listing_product() {
 // ════════════════════════════════════════════════════════════════════════
 //
 // 在本机那台 Win11 虚拟机上跑 `ccm.exe --account …`：报「账号不可用」，而那份文件里明明写着那个号。根因是它带
-// **UTF-8 BOM**（`EF BB BF` —— PowerShell 5.1 `-Encoding UTF8` 的默认值），从前那句 `unwrap_or_default()` 把失手吞成空表。
+// **UTF-8 BOM**（`EF BB BF` —— PowerShell 5.1 `-Encoding UTF8` 的默认值），用 `unwrap_or_default()` 读会把失手吞成空表。
 // 判据这一侧**不需要真 Windows** —— BOM 是三个字节，造得出来。
 
 /// 🔴 带 BOM 的清单照样读得出来，号照样选得了；不许被报成「读不懂」。
@@ -937,7 +927,7 @@ fn a_manifest_with_a_utf8_bom_is_read_not_silently_eaten() {
 /// 🔴 读不懂的那一份（坏 JSON · 空文件 · 未来版本）⇒ 点名的号选不了，**用户看到的那句话说「读不懂」、不谎称「没有账号库」**；
 /// 阴性对照：真的没有账号库时那句话仍是「无账号库」。
 ///
-/// 从前起会话自己解析那份文件、不看 `version`：写成未来版本的清单照样交出号目录，而账号页那边早就说它读不懂。
+/// 起会话不自己解析那份文件：不看 `version` 的话，写成未来版本的清单照样交出号目录，而账号页那边说它读不懂。
 #[test]
 fn a_manifest_we_cannot_read_says_so_and_the_named_account_is_refused() {
     let unreadable = copy_core::copy_static!("bePlan.names.unreadable");
@@ -969,7 +959,7 @@ fn a_manifest_we_cannot_read_says_so_and_the_named_account_is_refused() {
 
 /// 🔴 `ccm --account <没登录的号>` ⇒ **拒**，与界面起会话同一条判（`launch_account::pick`）：号目录在、却没登录 ⇒ 选不了。
 ///
-/// 从前命令行这一路只看号目录在不在，界面那一侧说「需登录」的号它照起。
+/// 命令行这一路不只看号目录在不在：界面那一侧说「需登录」的号，这里也不起。
 #[test]
 fn a_named_account_that_is_not_logged_in_is_refused_like_the_ui_refuses_it() {
     let (accts, m, dir) = library_on_disk(ONE, false);
@@ -1071,7 +1061,7 @@ fn the_home_is_home_then_userprofile_and_paths_under_it_are_joined_per_segment()
     );
     assert_eq!(home_of(env_of(&[])), "", "两个都没有 ⇒ 空串（照旧）");
 
-    // 本机（Linux）上逐段 join 与从前的 `format!("{home}/{rel}")` 逐字相等 —— 这一格不许变。
+    // 本机（Linux）上逐段 join 与 `format!("{home}/{rel}")` 逐字相等 —— 这一格不许变。
     for rel in [
         ".cc-monitor/accounts/accounts.json",
         ".cc-monitor/backend.json",
@@ -1312,7 +1302,7 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
         "多行任务没原样进载荷：{}",
         c.payload
     );
-    // 相对 `--cwd` 按当前目录补成绝对、折掉 `.` / `..`（从前这里是「反」那一格）。
+    // 相对 `--cwd` 按当前目录补成绝对、折掉 `.` / `..`（这是「正」那一格）。
     let e0 = env();
     for (rel, want) in [
         ("rel/dir", format!("{}/rel/dir", e0.pwd)),
@@ -1397,7 +1387,7 @@ fn a_config_dir_from_the_manifest_goes_through_the_full_table() {
 }
 
 /// 〔`INVARIANTS §47` ③〕`--launcher` 是**命令片段**，过全仓那一张白名单
-/// （`shell_quote_core::launcher_refused_char`，与 monitor 本机 · 远端载荷同一条）—— 先前这一格只拒 NUL / CR / LF。
+/// （`shell_quote_core::launcher_refused_char`，与 monitor 本机 · 远端载荷同一条）—— 不只是拒 NUL / CR / LF。
 /// 正反各一格：真实启动器（带参数 · 路径 · 家目录下）建得出计划；白名单外的字符拒，那一句点出是哪一格、哪一个字符。
 #[test]
 fn a_launcher_is_one_command_fragment_from_the_shared_whitelist() {
@@ -2218,7 +2208,7 @@ fn the_direct_path_clears_the_session_id_variables_even_without_nested_markers()
 }
 
 /// ★★ 命令行不带 `--account`（裸终端、没继承号）落的号 == 金样的默认号（`tests/__fixtures__/account-default.golden.json`，
-/// 与清单成品 `meta.effectiveDefault` · 界面同读）：一个都没标 ⇒ 第一个（从前这一路不回落、起成了不指定号）；
+/// 与清单成品 `meta.effectiveDefault` · 界面同读）：一个都没标 ⇒ 第一个（不回落成不指定号）；
 /// 默认号是账号 0 ⇒ 不指定号；清单空 ⇒ 不指定号。
 #[test]
 fn a_bare_launch_lands_on_the_same_default_as_the_listing() {
@@ -2761,7 +2751,7 @@ fn snapshot_with_hosted(tmux: &[&str], hosted: &[&str]) -> TakenNames {
     snapshot_of(tmux).with_hosted(rows(hosted))
 }
 
-/// A3-3-8 第一条：这台能托管、不在 tmux 里敲 `cc`（不带 `--ccm-tmux`）⇒ 托管容器；名字照 tmux 那一形铸，
+/// 这台能托管、不在 tmux 里敲 `cc`（不带 `--ccm-tmux`）⇒ 托管容器；名字照 tmux 那一形铸，
 /// `--ccm-print` 那一行里就是那个名字（真跑读同一份计划）。
 #[test]
 fn outside_tmux_a_plain_cc_goes_into_a_managed_container_named_like_tmux_would() {
@@ -2865,7 +2855,7 @@ fn resuming_a_session_running_in_a_managed_terminal_rejoins_it() {
     }
 }
 
-/// A3-3-34：托管进程里那一跳不经 `sh`：`--host-run` 那一串第二个 `--` 之后就是里面那一跳的 argv（同 tmux 那一形键进窗格的
+/// 托管进程里那一跳不经 `sh`：`--host-run` 那一串第二个 `--` 之后就是里面那一跳的 argv（同 tmux 那一形键进窗格的
 /// 那一串命令的词，不是一段 POSIX 载荷）；外层没有父 ⇒ 会话血缘变量在脱离起托管进程那一下摘掉（`unset`）。
 #[test]
 fn a_managed_container_runs_the_inner_hop_as_argv_without_a_shell() {
@@ -2933,13 +2923,13 @@ fn a_managed_container_runs_the_inner_hop_as_argv_without_a_shell() {
     );
 }
 
-/// A3-3-34：每个平台都能托管（托管进程 · 托管口 · 瘦客户端在 Unix 与 Windows 上都做实了）⇒ 新终端里敲 `cc` 那一份环境能托管。
+/// 每个平台都能托管（托管进程 · 托管口 · 瘦客户端在 Unix 与 Windows 上都做实了）⇒ 新终端里敲 `cc` 那一份环境能托管。
 #[test]
 fn every_platform_hosts_a_plain_cc_typed_in_a_new_terminal() {
     assert!(Env::for_preview_in("/home/pi".into()).can_host);
 }
 
-/// A3-3-34：Windows 的目录用反斜杠分段 ⇒ 名字取最后一段（同 `/` 那一形），不把整条路径揉成名字。
+/// Windows 的目录用反斜杠分段 ⇒ 名字取最后一段（同 `/` 那一形），不把整条路径揉成名字。
 #[test]
 fn a_windows_directory_names_the_terminal_after_its_last_segment() {
     assert_eq!(derive_tmux_name(r"C:\Users\pi\proj"), "proj-cc");

@@ -74,17 +74,12 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         // ⚠ 这堵墙今天已经在收账：`P4b` 改的是仓内那份脚本，而 `~/.local/bin/cc-*`
         // 指向的是 `~/.claude/skills/cc-bus/`（实测两份差 167 行）—— **改动到不了本机**。
         //
-        // 🔴 **09-11 `K-R60`：上面那句「翻成 true」到今天才真的落到字段上。**
-        // `K-R57` 摸底逮到：字段一直是 `false`，而同一个注释块逐字写着要翻成 `true`，
-        // 实现（今天是 `cc_bus_install·rs::install_at`）**一直在**。⇒ 那张表对「cc-bus 装不装得了」的申报
-        // 假了一个月，而 `config_surface` 的「能否装/撤」列**正是读这个字段的**。
-        // 🔴 **为什么一个月没红**：守这一格的 `cc_bus_says_why_it_is_not_installable_at_the_real_depth`
-        // 是**必需词守卫** —— 它数注释里两个词的出现次数，**看不见字段的值**。
-        // ⇒ `K-R60` 那一轮补了一条真读字段值的判据：左边读这个字段、右边钉
-        // `cc_bus_deploy.rs` 的函数签名，两边必须相等。
-        // 🔴 **09-11 `K-R63`：那一条是专名的（名字里带工具名），后来把它收成了覆盖全表的
-        // 一条性质** —— `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`。
-        // 理由：专名判据只把静默从 1 个工具挪走，下一个工具照样静默（件文件 `§0c`）。
+        // 🔴 实现是 `cc_bus_install·rs::install_at`；`config_surface` 的「能否装/撤」列**正是读这个字段的**。
+        // 守这一格的 `cc_bus_says_why_it_is_not_installable_at_the_real_depth` 是**必需词守卫** ——
+        // 它数注释里两个词的出现次数，**看不见字段的值**。
+        // ⇒ 字段的值由覆盖全表的一条性质判：
+        // `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
+        // （专名判据只把静默从 1 个工具挪走，下一个工具照样静默）。
         installable: true,
         uninstallable: false,
         // 一个载体（仓内目录整份铺过去）—— `cc-bus` 不是「同一份字节两处使用」那一族，
@@ -97,12 +92,10 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
             destination: ToolDestination::LocalHomeRelative(CC_BUS_SKILL_DIR_REL),
             touches: &[
                 TouchedFile {
-                    // 🔴 **这一条是 `K-R60` 补的，而它是被上面那次翻字段逼出来的。**
-                    // `installable_tools_declare_where_they_land` 要求「装得了就必须申报装到哪」；
-                    // 字段一直是 `false` ⇒ 这条判据一直**跳过** cc-bus ⇒ 部署真正写的那个目录
-                    // （`cc_bus_install·rs::install_at` 往 `<claude_dir>/skills/cc-bus/` 铺内嵌那几个文件）
-                    // **在这一页上一行都没有**。翻成 `true` 的当场它就红了。
-                    // ⇒ 一处假申报盖住的不止它自己那一格。
+                    // 🔴 `installable_tools_declare_where_they_land` 要求「装得了就必须申报装到哪」：
+                    // 部署真正写的那个目录（`cc_bus_install·rs::install_at` 往 `<claude_dir>/skills/cc-bus/`
+                    // 铺内嵌那几个文件）就是这一条。字段写成 `false` 的话这条判据**跳过** cc-bus，
+                    // 这个目录在这一页上一行都没有 ⇒ 一处假申报盖住的不止它自己那一格。
                     path: CC_BUS_SKILL_DIR,
                     host: HostScope::Either,
                     note: Some(Text(|| copy_text("rsToolRegistry.tools.ccBusDirNote", &[]))),
@@ -266,22 +259,17 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
             },
         ],
     },
-    // ═══ 〔`K-R60` 09-11 加〕**这一条我们装不了，而它是这张表最吃重的一项。** ═══
+    // ═══ **这一条我们装不了，而它是这张表最吃重的一项。** ═══
     //
-    // 来历：`K-R57` 摸底现打 —— 这一页「根本看不见」的 9 项里，`<claude_dir>/projects/*.jsonl`
-    // 是**历史面与搜索索引的全部输入**。app 是 Claude Code 的监视器，
+    // `<claude_dir>/projects/*.jsonl` 是**历史面与搜索索引的全部输入**。app 是 Claude Code 的监视器，
     // 被监视对象自己写的那份记录不在表里，这一页就答不了「你要的东西齐了没有」。
     //
-    // 🔴 **这一条同时把 `installable` 的区分力带了回来，理由如实写在这里，别让它看起来很巧**：
-    // cc-bus 翻成 `true` 之后，`installable` 在**全部 6 条**上都为真 ⇒
-    // `every_declared_field_has_at_least_two_instantiations` **对地**报「没有区分力」
-    // （`K-R60` 实打过那一趟红）。按本仓准则那时该**删字段**，
-    // 而删掉它，「cc-bus 装不装得了」就再没有任何字段可以申报、也没有任何判据读得到 ——
-    // 那恰好是这里要治的病的反面。
-    // ⇒ 处置不是删字段，是**让这张表收进本来就该收的那一档**：
-    //   app 会去碰 / 去读、但**装不了**的东西。`installable` 于是重新分得开两类人。
-    // ⚠ 代价如实记：这张表的语义从「装到别处的受管工具」扩到了「app 会碰的环境项」，
-    //   模块头注那句话已改。`NOT_MANAGED`（刻意不收的）语义不变。
+    // 🔴 **这一条也让 `installable` 有区分力**：没有它，`installable` 在别的几条上全为真 ⇒
+    // `every_declared_field_has_at_least_two_instantiations` **对地**报「没有区分力」。
+    // 删掉字段的话，「cc-bus 装不装得了」就再没有任何字段可以申报、也没有任何判据读得到。
+    // ⇒ 这张表收**app 会去碰 / 去读、但装不了**的东西，`installable` 分得开两类。
+    // ⚠ 代价如实记：这张表的语义是「app 会碰的环境项」，不只是「装到别处的受管工具」。
+    //   `NOT_MANAGED`（刻意不收的）语义不变。
     ToolSpec {
         id: "claude-code",
         display_name: Text(|| copy_text("rsToolRegistry.tools.sessionRecordsName", &[])),

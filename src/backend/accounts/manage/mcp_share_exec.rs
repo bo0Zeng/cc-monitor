@@ -475,7 +475,7 @@ pub(crate) fn put(d: &dyn Door, name: &str, def: &Value) -> Result<AccountMcpVie
 }
 
 /// 判 MCP 状态要看的那几个家：那一家没设账号时的家 ＋ 账号库里各号的家（同一个目录只算一次，带名字的那一条留下）。
-/// 账号库读不出 ⇒ 只看没设账号的那一份（状态少说，不说错）。足迹 · 帧面（MCP 读面 · 登录）都问它（原住 `faces/feature_face.rs`）。
+/// 账号库读不出 ⇒ 只看没设账号的那一份（状态少说，不说错）。足迹 · 帧面（MCP 读面 · 登录）都问它。
 pub(crate) fn mcp_look(kind: &str) -> crate::agents::McpLook {
     let mut homes: Vec<(Option<String>, std::path::PathBuf)> = crate::platform::paths::home_dir()
         .and_then(|h| manifest_in(&h.display().to_string()).ok().flatten())

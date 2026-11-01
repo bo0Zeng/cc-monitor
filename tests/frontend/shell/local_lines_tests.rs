@@ -13,7 +13,7 @@
 //! | F6 | 快照被撤时的补偿归档：本机不补、远端补 | — |
 //! | F7 | monitor 生产段里那套 watcher 的名字零命中（带正控） | — |
 //! | Q1 | 本机后端推来的 `changed` 走生产那一串（分派第一层 → 本机通道 → `consume` → 第二层）⇒ `<local>` 上各主题的 `changed/<主题>` 订阅逐格收到；交这一格的生产调用方只有分派第二层 | 期望手写；全仓生产段扫描，两向集合相等 |
-//! | F8 | 真后端 × 生产 stdio 读循环 ⇒ 宣告带 `path`/`lines`、新行的 `seq` == 行号（`#[ignore]`，由 `tests/evidence/CF1-local-lines.py` 带二进制跑） | 两侧各是真实现 |
+//! | F8 | 真后端 × 生产 stdio 读循环 ⇒ 宣告带 `path`/`lines`、新行的 `seq` == 行号（`#[ignore]`，由 `tests/evidence/local-lines.py` 带二进制跑） | 两侧各是真实现 |
 
 use super::*;
 use crate::stream_source::{LocalItem, Ordered};
@@ -346,13 +346,13 @@ fn the_second_watcher_leaves_no_trace_in_monitor_production() {
 
 /// **真后端（stdio 载体、隔离 HOME）× 生产读循环（`local_stdio_consumer`）× 本机内容通道。**
 ///
-/// 由 `tests/evidence/CF1-local-lines.py` 带 `CF1_BACKEND`（后端二进制）来跑；没有那个变量就不该跑（`#[ignore]`）。
+/// 由 `tests/evidence/local-lines.py` 带 `CF1_BACKEND`（后端二进制）来跑；没有那个变量就不该跑（`#[ignore]`）。
 /// 夹具：一个活的 `sleep` 进程冒充会话（pidfile 的 `procStart` 取它自己的 `/proc` 启动时刻 —— 后端的冒名检查认这个），
 /// 会话文件先写 3 行（其中一行是空白，不计行号）。起参就是生产那一份 `LOCAL_STREAM_ARGS`。
 /// 期望：宣告帧带 `path` 与 `lines == 2`（prime 到的完整行数）；再追加一行 ⇒ `line` 帧 `seq == 2`、原文不变，
 /// 且历史那两行**不**作为 `line` 帧重放（tail-only）；后端被杀 ⇒ 读循环收尾送「流结束」。
 #[test]
-#[ignore = "要真后端二进制：由 tests/evidence/CF1-local-lines.py 带 CF1_BACKEND 来跑"]
+#[ignore = "要真后端二进制：由 tests/evidence/local-lines.py 带 CF1_BACKEND 来跑"]
 fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
     use std::io::Write;
     let _local = crate::inbound_client::local_origin_test_lock();

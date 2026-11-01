@@ -290,8 +290,7 @@ fn an_rc_that_sources_it_via_home_var_is_recognized() {
     assert!(me.sourced, "候选表没认出 `$HOME` 那一形：{me:?}");
 }
 
-/// ★★**两种方言对称：别名块里恰好一行接上别名文件**（「source 那一行只许一处装」；
-/// 从前 PowerShell 的别名块不接，那一侧只剩代装那一处）。
+/// ★★**两种方言对称：别名块里恰好一行接上别名文件**（「source 那一行只许一处装」）。
 ///
 /// 人群：POSIX 别名块 = `block::CCM_WRAPPER_SNIPPET`（就是 `src/shared/ccm-aliases.sh`）；PowerShell 别名块 =
 /// `block::render_block`。每一份里「那种方言认得出的接上行」恰好一行（零 = 不接，二 = 两处）。
@@ -684,7 +683,7 @@ fn the_block_state_rides_on_the_candidates_it_was_installed_into() {
         "启动文件的显示形不是 `~/…`：{shown:?}"
     );
 
-    // PowerShell：PS 7 的目录在 ⇒ 四份候选；装进 PS 7 的 AllHosts 那一份（它从前被当成「装错了的遗留」）。
+    // PowerShell：PS 7 的目录在 ⇒ 四份候选；装进 PS 7 的 AllHosts 那一份（它是正当的候选，不是「装错了的遗留」）。
     let ps7 = h.0.join("Documents/PowerShell");
     std::fs::create_dir_all(&ps7).unwrap();
     let cands = rc_candidates_in(&h.0, Shell::PowerShell, None);
@@ -700,8 +699,7 @@ fn the_block_state_rides_on_the_candidates_it_was_installed_into() {
     assert_eq!(present, vec![target.display().to_string().as_str()]);
     let hit = after.iter().find(|c| c.block.present).unwrap();
     assert!(hit.exists, "{hit:?}");
-    // 同一次读：装了别名块就接上了别名文件（块结尾那一行）—— 与 POSIX 对称；
-    //   从前这里断言「仍是假」（PowerShell 的别名块不接，那一侧只有代装那一处）。
+    // 同一次读：装了别名块就接上了别名文件（块结尾那一行）—— 与 POSIX 对称。
     assert!(hit.sourced, "{hit:?}");
 }
 
@@ -734,8 +732,8 @@ fn another_startup_file_goes_through_the_fence_before_it_is_read() {
 /// 要求：「「怎么读到这个事实」   → platform      （各平台读法不同）」——
 /// `our_alias_file_rel` 是 `/` 分隔的**通用层结构**（交给后端的 `rel`），翻成那台机器上的路径是平台那一步；
 /// 读数要求：「`aliases_read` 回的路径分隔符混用：`C:\Users\user\.cc-monitor/aliases.ps1`」。
-/// 拼法从 `Path::join`（monitor 这台的分隔符）换成 `user_files::join_under`（**那台 home 自己的分隔符**）：
-/// 从前「行为这一半只能在真 Windows 上看」，今天是纯字符串 ⇒ 在这台 Linux 上就能把 Windows 那一形判完 ——
+/// 拼法是 `user_files::join_under`（**那台 home 自己的分隔符**），不是 `Path::join`（本进程这台的分隔符）：
+/// 它是纯字符串 ⇒ 在这台 Linux 上就能把 Windows 那一形判完 ——
 /// ① Windows 的 home 全用 `\`（F8 不回来）② 远端 POSIX 的 home 全用 `/`（Windows 上的 monitor 拼远端不再混出 `\`）
 /// ③ 生产那一口就是交给 `join_under`（不在这里另拼一份）。
 #[test]
@@ -774,11 +772,10 @@ fn the_alias_file_path_is_joined_segment_by_segment() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 远端别名清单 → 规则进了那台后端，`origin` 退役
+// 远端别名清单 → 规则住那台后端，没有 `origin` 这一维
 // 要求：「`origin` 是本机还是远端，对这些命令没有区别」。
-// 从前这里三条判「本机 / 远端同一个函数只差 origin」「远端撞名不拿 monitor 的 PATH 说事」「远端围栏不量 monitor 的盘」——
-// 规则住那台后端之后三件事都是**这台自己的事实**（同一个函数、查这台的 PATH、量这台的盘），那一维没了 ⇒ 三条退役，
-// 换成下面两条：撞名查这台的 `PATH`（正反两向）· 围栏量这台的盘（符号链接那一步本机远端都做）。
+// 规则住那台后端 ⇒ 都是**这台自己的事实**（同一个函数、查这台的 PATH、量这台的盘），
+// 判下面两条：撞名查这台的 `PATH`（正反两向）· 围栏量这台的盘（符号链接那一步本机远端都做）。
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 🔴 **B3′**：撞名查的是**这台后端进程**的 `PATH`（规则住在那台上）：`sh` 在这台的 `PATH` 上 ⇒ 报（正控）；

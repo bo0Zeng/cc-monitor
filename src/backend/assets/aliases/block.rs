@@ -30,7 +30,7 @@ use std::path::Path;
 use crate::common::door::{self, Door};
 use crate::platform::shell::dialect::{self, Shell};
 
-/// ⚠ `K-R62` 起是 `pub(crate)`：`fenced_block::FENCE_SHAPES` 那张账要**指**这一对，
+/// ⚠ 是 `pub(crate)`：`fenced_block::FENCE_SHAPES` 那张账要**指**这一对，
 /// 而不是抄一份字面量过去（抄一份就是第二个住址）。
 pub(crate) const BEGIN_MARKER: &str = "# === cc-monitor BEGIN";
 pub(crate) const END_MARKER: &str = "# === cc-monitor END";
@@ -86,8 +86,8 @@ pub(crate) enum Wins {
 
 /// 一份启动文件（rc / `$PROFILE`）里**别名块**的现状。
 ///
-/// 别名块与别名文件那一行 source 装进的是**同一批**启动文件，候选从前却有两份来历
-/// ⇒ 今天只有一份：`account_aliases::StartupFile` 每份候选都带着这一格，
+/// 别名块与别名文件那一行 source 装进的是**同一批**启动文件 ⇒ 候选只有一份来历：
+/// `account_aliases::StartupFile` 每份候选都带着这一格，
 /// 由 [`block_state`] 在读回口那一次扫描里一起算出来。
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(
@@ -126,8 +126,7 @@ pub(crate) fn block_state(path: &Path, raw: &str, names: &[String]) -> BlockStat
 
 /// **纯**：别名块渲染成代码 —— 「往一份空文件里装一次，那份文件会变成什么」（BOM 那一层除外）。
 ///
-/// 从前的预览只会 PowerShell 那一块（`render_cc_code`），POSIX 那一块没有预览。
-/// 今天两种方言都答，而且答的是**装那一跳调的同一个** [`plan_install`] —— 「预览的就是写的那一份」
+/// 两种方言都答，而且答的是**装那一跳调的同一个** [`plan_install`] —— 「预览的就是写的那一份」
 /// 由同一个函数保证，不是两份拼法对拍。
 pub(crate) fn render_block(shell: Shell, home: &str) -> Result<String, String> {
     let what = copy_text("rsProfileInstaller.preview.what", &[]);
@@ -138,14 +137,13 @@ pub(crate) fn render_block(shell: Shell, home: &str) -> Result<String, String> {
 // （`shell_dialect::ShellDialect::startup_files`），不给候选贴「哪一份是 PS 5.1 的」这类标签（没有消费者）。
 
 // ═══════════════════════════════════════════════════════════════════════════
-// `K-R62`：本机 POSIX 那一半 —— **装**（借远端那一份）与**查**（够得着裸行）
+// 本机 POSIX 那一半 —— **装**（借远端那一份）与**查**（够得着裸行）
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 一份 profile 的**方言**：这份文件里该放哪种语言的内容、认哪一对围栏。
 ///
-/// 它从前是本模块自己的一个两值枚举 ＋ 一个按扩展名判的函数（旧名见 `git log`）；
-/// 今天是 `shell_dialect::Shell` —— 别名文件、别名块、source 那一行问的是**同一个问题**，
-/// 不许有两个枚举各答一半。认法没变：`Shell::of_target` 按**文件扩展名**判，不按 `cfg!(windows)`。
+/// 它就是 `shell_dialect::Shell` —— 别名文件、别名块、source 那一行问的是**同一个问题**，
+/// 不许有两个枚举各答一半。`Shell::of_target` 按**文件扩展名**判，不按 `cfg!(windows)`。
 ///
 /// 🔴 **它不猜路径。** 路径始终由界面上的人选（`account_aliases` 的 `§0e` 那条理由
 /// 原样适用：`.bashrc` / `.zshrc` / fish 的 `config.fish` 写法不同，替人选一份是最坏的
@@ -153,11 +151,10 @@ pub(crate) fn render_block(shell: Shell, home: &str) -> Result<String, String> {
 
 /// 纯函数：**装**完之后这份文件该长什么样。落盘那一跳在 [`install_to_profile`]。
 ///
-/// 🔴 **`Posix` 那一臂是 `KR62D1` 的正题**：它一个字节的 snippet 都不生成、
+/// 🔴 **`Posix` 那一臂是正题**：它一个字节的 snippet 都不生成、
 /// 也没有第二套 merge —— 内容是 [`CCM_WRAPPER_SNIPPET`]（= `src/shared/ccm-aliases.sh`
 /// 本身），合块是 [`merge_profile_block`]，围栏是 [`CCM_PROFILE_BEGIN`] / `_END`。
-/// ⇒ 本机与远端装进 rc 的**是同一份东西**（`K15` / `K36`），
-/// 而不是「同一件事的第四个形状」（那三套）。
+/// ⇒ 本机与远端装进 rc 的**是同一份东西**，而不是同一件事的又一个形状。
 ///
 /// 两种方言的块都只管接入：POSIX 让 `ccm` 进 PATH ＋ 接上别名文件；PowerShell 是 `__ccm_bind` ＋ 窗口标签 ＋ 接上别名文件
 /// （`cc` / `cct` / `cca` 都在清单里，块里不再带别名函数）。
@@ -236,7 +233,7 @@ fn fence_marker(line: &str) -> Option<bool> {
 /// 那三条命令（`aliases_block_install` / `aliases_block_remove` ＋ `aliases_read` 的「其它文件」）收的是
 /// **webview 给的字符串**（前端那一格是用户可输入的文本框）。不过围栏就**原样** `PathBuf::from` 交给安装器的话：装往那里写、
 /// 文件不存在还会创建；卸会重写它；扫是任意路径的存在性探针。
-/// 而**远端**那条同名功能一直有围栏（从前 `sftp.rs`：「profile 只能是 home 下的文件名」）。
+/// 本机远端同一道围栏。
 ///
 /// # 为什么是「home 之内」而不是「home 下的裸文件名」
 ///
@@ -292,8 +289,8 @@ pub(crate) fn fence_lexical(home: &str, raw: &str) -> Result<String, String> {
 /// 同一道围栏：词法（[`fence_lexical`]）＋ **符号链接逃逸**那一步。
 ///
 /// 符号链接那一步：父目录已存在时用它的真身再查一次前缀 —— 挡掉 `~/link -> /etc` 这种逃逸（`install` 会跟着链接写过去）。
-/// 围栏住进了那台机器的后端 ⇒ `canonicalize` 量的就是**那台自己的盘**，本机远端同一道（从前住 monitor 时
-/// 只对本机做，远端靠写口 `files_write::walk_in_root` 兜）。写口那一道照旧在。
+/// 围栏住那台机器的后端 ⇒ `canonicalize` 量的就是**那台自己的盘**，本机远端同一道。
+/// 写口 `files_write::walk_in_root` 那一道另外也在。
 pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
     let expanded = fence_lexical(home, raw)?;
     let (at, home_p) = (Path::new(&expanded), Path::new(home));
@@ -314,7 +311,7 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 🔴 `K-R132` 真机现打逮到的**第二条缺陷**：BOM-less UTF-8 ＋ PS 5.1 ＝ 吞掉一行
+// 🔴 真机现打逮到的**第二条缺陷**：BOM-less UTF-8 ＋ PS 5.1 ＝ 吞掉一行
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // ## 它是怎么被逮到的（不是推理出来的，是先修不动才回头查的）
@@ -533,12 +530,12 @@ fn strip_block(existing: &str, what: &str) -> Result<String, String> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// **别名块的真相**：从 `sftp.rs` 搬来（那份文件已经不做 SFTP，B §2 第 12 条）
+// **别名块的真相**
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// 搬的是：POSIX rc 里那一对围栏 · 块的内容（`src/shared/ccm-aliases.sh`）· 自带的名字 · 合 / 剥 ·
-// 远端装 / 卸那两条命令。一个字节的行为没变，只换住址 —— 本模块本来就是「别名块」那一族
-// （[`plan_install`] / [`block_state`] / [`render_block`] / [`install_to_profile`]），从前反过来借 `sftp::` 的东西。
+// 这一段是：POSIX rc 里那一对围栏 · 块的内容（`src/shared/ccm-aliases.sh`）· 自带的名字 · 合 / 剥 ·
+// 远端装 / 卸那两条命令。它们与本模块的「别名块」那一族
+// （[`plan_install`] / [`block_state`] / [`render_block`] / [`install_to_profile`]）同住一处。
 
 // F10：远端 cc/bash 集成——一键把 ccm wrapper 装进远端 ~/.bashrc（SS-H）。
 // 写 ~/.bashrc 不是 Claude 数据（不触 INVARIANT §1），与本地 PowerShell profile 安装同性质。
@@ -546,11 +543,10 @@ fn strip_block(existing: &str, what: &str) -> Result<String, String> {
 /// 远端 ccm 块的 BEGIN/END 标记（镜像本地 profile_installer 的 `# === cc-monitor BEGIN/END`）。
 /// 重装时整块替换、卸载时整块删；用户在块外的内容绝不动。
 ///
-/// ⚠ `K-R62` 起是 `pub(crate)`：**本机 POSIX 那条路装的是同一个块**
+/// ⚠ 是 `pub(crate)`：**本机 POSIX 那条路装的是同一个块**
 /// （`profile_installer::plan_install` 的 `PosixRc` 臂走 [`merge_profile_block`]）。
-/// 在那边抄一对同样的字符串就是第二个住址 —— 而「同一件事有两个住址」正是
-/// `KR62D1` 那条「不许变成第四套」要挡的东西。名字里的 `remote` 是历史，
-/// 今天它的意思是「**POSIX rc 里那一对围栏**」，本机远端共用。
+/// 在那边抄一对同样的字符串就是第二个住址。字串里的 `remote` 只是写进盘上的那个记号，
+/// 它的意思是「**POSIX rc 里那一对围栏**」，本机远端共用。
 /// 它是**前缀**（认块用 `starts_with`）：写下去的那一行是 `{BEGIN} {版本} ===`（与 PowerShell 那一对同一形）。
 pub(crate) const CCM_PROFILE_BEGIN: &str = "# === cc-monitor remote ccm BEGIN";
 /// POSIX 别名块的版本串（写进块头那一行，唯一住址）：块让 `ccm` 进 PATH ＋ 接上别名文件；本机桌面上开的 shell 多留一份终端记录
@@ -565,15 +561,14 @@ pub(crate) const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 /// **单一来源**：`src/shared/ccm-aliases.sh`——前端 `remote-section.ts` 经 `?raw` import
 /// 同一文件（修复历史漂移：Batch7 重构时只改了前端展示版，装进远端的还是老版）。
 ///
-/// **F02 起本块只剩「别名层」**；`K-R48` 第二拍起它指向的那个 `ccm` 是 `local_backend::ccm_entry_shim`
-/// （三行入口，转给后端本体），不再是一份 bash 实现。
+/// **本块只有「别名层」**；它指向的那个 `ccm` 是 `local_backend::ccm_entry_shim`
+/// （三行入口，转给后端本体），不是一份 bash 实现。
 /// 理由：shell 函数**优先于 PATH**，装成函数则与用户已有同名函数硬冲突且必然被遮蔽（实测）；
 /// 且远端是 zsh/fish 时 `.bashrc` 根本不被 source，函数形态拿不到（审计 D2）。
-/// ⚠ `K-R49` 起它是 `pub(crate)`：`account_aliases::collision_note` 要问
+/// ⚠ 它是 `pub(crate)`：`account_aliases::collision_note` 要问
 /// 「`cc` / `cct` 这几个名字是不是已经被自带的别名块占了」，
 /// 而那个答案**只有这份文件说了算** —— 在那边抄一份名字清单就是第二个住址。
-/// 〔`K-R58` 09-11：`cch` 从这份文件里删了 ⇒ 它**不再**被当作「已被占用」，
-/// 用户可以自己定义一个 `cch`。**多一格自由，不是回归。**〕
+/// 这份文件里没有 `cch` ⇒ 它**不**被当作「已被占用」，用户可以自己定义一个 `cch`。
 pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../../shared/ccm-aliases.sh");
 
 /// 我们自己那块别名块的正文 —— 撞名那一问交给方言认函数用（`ShellDialect::name_taken`）：
