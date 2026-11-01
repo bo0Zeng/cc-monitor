@@ -160,11 +160,6 @@ fn wanted_now() -> Vec<String> {
         .collect()
 }
 
-/// 那一台此刻有没有在跑的一条。
-pub(crate) fn running(machine: &str) -> bool {
-    lock(table()).contains_key(machine)
-}
-
 /// 「停」：那一条收掉、记成停着（对齐机器表时不再起）。
 pub(crate) fn hold(machine: &str) {
     lock(stopped()).insert(machine.to_string());

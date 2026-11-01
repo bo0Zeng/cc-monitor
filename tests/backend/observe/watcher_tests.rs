@@ -211,7 +211,7 @@ fn frames_fanned_out_fold_into_the_book_read_by_faces_here() {
     let needs = face(Some(crate::agents::SessionActivity::NeedsYou));
     assert_ne!(idle.order, needs.order, "两张脸的序要不同才看得出换没换");
     let mut sink = FrameSink::hub();
-    let frame = |v: serde_json::Value| crate::wire::decode(&v.to_string()).expect("一帧");
+    let frame = |v: serde_json::Value| cmd_wire::frame::decode(&v.to_string()).expect("一帧");
     sink.send(frame(serde_json::json!({
         "kind": "session_added", "sid": SID, "agent_kind": "claude",
         "face": idle, "label": SID, "pid": 1,
@@ -234,7 +234,7 @@ fn added_frame(sid: &str) -> Frame {
         activity: None,
         host: None,
     });
-    crate::wire::decode(
+    cmd_wire::frame::decode(
         &serde_json::json!({
             "kind": "session_added", "sid": sid, "agent_kind": "claude",
             "face": face, "label": sid, "pid": 1,
