@@ -12758,6 +12758,8 @@ enum class LsSortBy(val wire: String) {
     }
 }
 
+typealias Machine = String
+
 enum class MachineBlocker(val wire: String) {
     NOT_UNIX("not_unix"),
     NO_BACKEND("no_backend"),
@@ -15392,8 +15394,6 @@ data class OpenedItem(
         )
     }
 }
-
-typealias Origin = String
 
 @Suppress("UNCHECKED_CAST")
 data class OriginSessionsListedPayload(
