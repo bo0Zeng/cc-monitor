@@ -720,6 +720,8 @@ mod specimens {
                 status: some("s"),
                 summary: some("m"),
                 tool_use_id: some("u"),
+                end: Some(cmd_wire::record::TaskEnd::Done),
+                row: Some(Words(s("r"))),
             },
             Speaker::AgentMessage {
                 from: some("f"),

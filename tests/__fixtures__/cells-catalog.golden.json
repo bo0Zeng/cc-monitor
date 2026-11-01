@@ -677,6 +677,18 @@
         {
           "frozen": true,
           "kind": "value",
+          "path": "{t=said}.who.speaker{kind=taskNotification}.end",
+          "type": "enum"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.who.speaker{kind=taskNotification}.row",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
           "path": "{t=said}.who.speaker{kind=taskNotification}.status",
           "type": "string"
         },
