@@ -189,16 +189,8 @@ fn two_to_three(mut v: serde_json::Value) -> Result<serde_json::Value, Said> {
 const UP: Doc<Shape> = upgrade!(V_UP, [one_to_two, two_to_three]);
 
 fn own_in(base: &Path) -> (crate::platform::fs::Own, crate::platform::fs::OwnPath) {
-    let (data, home) = (
-        base.join("data").to_string_lossy().into_owned(),
-        base.to_string_lossy().into_owned(),
-    );
     std::fs::create_dir_all(base.join("data")).expect("data");
-    let own = crate::platform::fs::Own::issue_with(&|k| match k {
-        creds_core::store::DATA_DIR_ENV => Some(data.clone()),
-        "HOME" => Some(home.clone()),
-        _ => None,
-    });
+    let own = crate::platform::fs::Own::issue_roots(base, &base.join("data"));
     let dir = own.path("v").expect("dir");
     own.ensure_dir(&dir).expect("mkdir");
     (own, dir)

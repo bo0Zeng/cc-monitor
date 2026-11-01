@@ -23,27 +23,27 @@ mod linux;
 #[cfg(not(target_os = "linux"))]
 pub(crate) use fallback::{absolute, watch_opens, writers_of, OpenEar};
 #[cfg(target_os = "linux")]
-pub(crate) use linux::{absolute, watch_opens, writers_of, OpenEar};
+pub use linux::{absolute, watch_opens, writers_of, OpenEar};
 
 /// 开着某份文件写的一个进程：pid ＋ 它的启动时刻（挂 pidfd 看守时挡 PID 复用用；读不到 ⇒ `None`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Writer {
-    pub(crate) pid: u32,
-    pub(crate) start: Option<u64>,
+pub struct Writer {
+    pub pid: u32,
+    pub start: Option<u64>,
 }
 
 /// 一趟扫出来的：每份被开着写的文件 ⇒ 开着它写的那几个进程（pid 升序）。没人写的文件不在里面。
-pub(crate) type Writers = HashMap<PathBuf, Vec<Writer>>;
+pub type Writers = HashMap<PathBuf, Vec<Writer>>;
 
 /// [`watch_opens`] 交的一批动静（同一批里同一份文件只记一次）。路径是绝对路径（根先规范化过）。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct OpenBatch {
+pub struct OpenBatch {
     /// 新建了或被打开了的文件（谁打开的、读还是写，这一层不知道 —— 要的话扫一趟 [`writers_of`]）。
-    pub(crate) opened: Vec<PathBuf>,
+    pub opened: Vec<PathBuf>,
     /// 被一个开着它写的进程关掉了的文件。
-    pub(crate) closed: Vec<PathBuf>,
+    pub closed: Vec<PathBuf>,
     /// 内核那一侧的事件队列溢出过：这一批之前的动静可能丢了 ⇒ 调用方整树重扫一趟。
-    pub(crate) overflowed: bool,
+    pub overflowed: bool,
 }
 
 impl OpenBatch {

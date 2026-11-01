@@ -77,8 +77,8 @@ pub const BAD_NAME: &str = "bad_name";
 ///
 /// ⚠ 这是这个字面量在后端的**第二份**（另一份是 `lib.rs::NO_UNIX_MODE`，填 `hello.unavailable` 用），
 /// 但它**不是第二个源头** —— 真相是 `inbound::REGISTRY` 里 `files-chmod` 自己登记的 `codes`。
-/// 刻意不去借 `lib.rs` 那一份：文件管理后端往外够的边是登记过的闭集（`files/module_boundary_guard`，
-/// 「只许依赖 platform / common / 围栏」），为一个码多长一条边不值。
+/// 不去借 `lib.rs` 那一份：文件管理那一块是独立的包，只依赖纯工具与平台两层，
+/// 够不到主 crate 的根。
 /// 两份逐字相等由 `target_parity_guard::every_target_has_the_same_commands_except_the_registered_gaps` 钉着。
 pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
@@ -423,7 +423,7 @@ fn copy_then_remove(
     plan_tree(root, from).map_err(wrap)?;
     if is_link {
         let target = Ro::read_link(src).map_err(|e| wrap(unread(src, e)))?;
-        super::files_extract::land_link(face, root, to, &target).map_err(wrap)?;
+        super::extract::land_link(face, root, to, &target).map_err(wrap)?;
     } else {
         copy_tree(face, root, from, to).map_err(wrap)?;
     }
@@ -1289,7 +1289,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
             })?;
             // 链接 ⇒ 记下它的目标文本（原样，不跟进去）；平台建不了链接时照旧整趟拒。
             let link_to = match kind {
-                Err("link") if super::files_extract::links_supported() => {
+                Err("link") if super::extract::links_supported() => {
                     Some(Ro::read_link(&at).map_err(|e| {
                         WriteRefusal::io(
                             copy_text(
@@ -1361,7 +1361,7 @@ pub fn copy_planned(
         )
     };
     let (kind, _) = copy_kind(&src).map_err(unreadable)?;
-    // 链接：当场再核「仍是链接、目标文本没变」，再建一条同文本的链接（住 `files_extract::land_link`）。
+    // 链接：当场再核「仍是链接、目标文本没变」，再建一条同文本的链接（住 `extract::land_link`）。
     if let Some(to) = &p.link_to {
         let now = Ro::read_link(&src).map_err(unreadable)?;
         if kind != Err("link") || &now != to {
@@ -1370,7 +1370,7 @@ pub fn copy_planned(
                 &[("path", &shown(&src))],
             )));
         }
-        super::files_extract::land_link(face, &plan.root, dst_rel, to)?;
+        super::extract::land_link(face, &plan.root, dst_rel, to)?;
         return Ok(0);
     }
     if kind != Ok(p.is_dir) {
@@ -2675,16 +2675,17 @@ pub fn delete_session_of(
     })
 }
 
-#[cfg(test)]
-#[path = "../../../tests/backend/control/files_write_tests.rs"]
-pub(crate) mod tests;
+// 写面判据（挂在上层的命令那一层）够到的那几样内部项。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../tests/backend/files/write_support.rs"]
+pub mod test_support;
 
 // 覆盖写原子化的判据（写到一半被收掉 · 权限位 / 链接 / 旁名 · 生产段 `fs::write(` 只剩 Windows 臂）。
 #[cfg(test)]
-#[path = "../../../tests/backend/control/overwrite_atomic_tests.rs"]
+#[path = "../../../tests/backend/files/overwrite_atomic_tests.rs"]
 mod overwrite_atomic_tests;
 
 // TOCTOU 那几条闭合的竞争判据。
 #[cfg(test)]
-#[path = "../../../tests/backend/control/files_toctou_tests.rs"]
+#[path = "../../../tests/backend/files/toctou_tests.rs"]
 mod toctou_tests;

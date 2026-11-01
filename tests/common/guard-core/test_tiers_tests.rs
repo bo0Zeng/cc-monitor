@@ -65,12 +65,18 @@ const SUPPORT: &[&str] = &[
     "tests/backend/observe/search_query_support.rs", // 全文搜索几份判据共用：照选项词造选项 · 逐行写进缓冲
     "tests/backend/stream/remote_ask_peers.rs", // 跨台合并那几条判据共用的「那几台」替身（问常驻 · 记命令行与 stdin）
     "tests/backend/observe/accounts_list_support.rs", // 账号清单成品几份判据共用：照类型造号行与清单
+    "tests/backend/platform/fs/own_support.rs", // 判据用的几种 `Own` 造法 · `DiagFile` 的两样（平台层的包与上层测试档经 `test-support` 共用）
     "tests/backend/common/streamed_read_support.rs", // 整份读按块几份判据共用：合成大记录 · 手里最多多少的上界
-    "tests/backend/files/index_testing.rs",
-    "tests/backend/alloc_probe.rs", // 线程级内存量具（只在测试档编，挂在后端库根）
-    "tests/backend/agents/fake/mod.rs", // 最小假 agent：每一种能力都与真 agent 不同形
-    "tests/backend/agents/fake/runs.rs", // 假 agent 的子运行形状
-    "tests/backend/plan/fixture.rs", // 计划读面的夹具：合成 dump · 假 pb 插件
+    "tests/backend/common/contract_support.rs", // 契约错记进日志的那条诊断怎么读（纯工具那一层的包与上层测试档经 `test-support` 共用）
+    "tests/backend/common/session_snapshot_support.rs", // 会话快照的脚本化探测器 · 陈值（纯工具那一层的包与上层测试档经 `test-support` 共用）
+    "tests/backend/heard.rs", // 本线程上一段代码期间 `tracing` 说了什么（量具包与纯工具那一层的 `test-support` 各挂这一份）
+    "tests/backend/files/index_support.rs", // 常驻索引的串行锁 · 按住重走那个位 · 碰常驻那一份的锁（文件管理那一块的包与上层测试档经 `test-support` 共用）
+    "tests/backend/files/answer_support.rs", // 读族按能力名问的那一口（文件管理那一块的包与上层测试档经 `test-support` 共用）
+    "tests/backend/files/write_support.rs", // 写面判据够到的那几样内部项（上层挂的写面判据经 `test-support` 读）
+    "tests/backend/alloc_probe.rs",         // 线程级内存量具（只在测试档编，挂在后端库根）
+    "tests/backend/agents/fake/mod.rs",     // 最小假 agent：每一种能力都与真 agent 不同形
+    "tests/backend/agents/fake/runs.rs",    // 假 agent 的子运行形状
+    "tests/backend/plan/fixture.rs",        // 计划读面的夹具：合成 dump · 假 pb 插件
     "tests/backend/control/identity_tag_door.rs", // `identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
     "tests/backend/platform/child_tmux_fence.rs", // 子进程起前那一道的测试构建那一份（裸名 tmux 落到本进程的空 socket 目录）
     "tests/backend/tmux_sandbox.rs", // 判据用的私有 tmux server（`-L` ＋ 私有 TMUX_TMPDIR，碰不到默认 server）
@@ -200,24 +206,24 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Manual("读数不是判据：真 tmux 私有 socket（`-L`）上装一趟 hook 看段内格位；跑法住它自己的头注"),
     ),
     (
-        "tests/backend/control/overwrite_atomic_tests.rs",
+        "tests/backend/files/overwrite_atomic_tests.rs",
         "w1_child",
-        Trigger::Filter { by: "tests/backend/control/overwrite_atomic_tests.rs", needle: "control::files_write::overwrite_atomic_tests::w1_child" },
+        Trigger::Filter { by: "tests/backend/files/overwrite_atomic_tests.rs", needle: "write::overwrite_atomic_tests::w1_child" },
     ),
     (
-        "tests/backend/control/files_write_tests.rs",
+        "tests/backend/files/write_tests.rs",
         "own_home_child_entry_point",
-        Trigger::Filter { by: "tests/backend/control/files_write_tests.rs", needle: "control::files_write::tests::own_home_child_entry_point" },
+        Trigger::Filter { by: "tests/backend/files/write_tests.rs", needle: "stream::inbound::files_write_face::write_tests::own_home_child_entry_point" },
     ),
     (
-        "tests/backend/platform/child_tests.rs",
+        "tests/backend/platform/cross_tests.rs",
         "internal_families_inner",
-        Trigger::Filter { by: "tests/backend/platform/child_tests.rs", needle: "platform::child::tests::internal_families_inner" },
+        Trigger::Filter { by: "tests/backend/platform/cross_tests.rs", needle: "platform_cross_tests::child::internal_families_inner" },
     ),
     (
         "tests/backend/platform/child_tests.rs",
         "detach_helper_inner",
-        Trigger::Filter { by: "tests/backend/platform/child_tests.rs", needle: "platform::child::tests::detach_helper_inner" },
+        Trigger::Filter { by: "tests/backend/platform/child_tests.rs", needle: "child::tests::detach_helper_inner" },
     ),
     (
         "tests/backend/control/exit_policy_tests.rs",
@@ -247,7 +253,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/platform/freed_memory_tests.rs",
         "child_gives_freed_pages_back",
-        Trigger::Filter { by: "tests/backend/platform/freed_memory_tests.rs", needle: "platform::proc::freed_memory_tests::child_gives_freed_pages_back" },
+        Trigger::Filter { by: "tests/backend/platform/freed_memory_tests.rs", needle: "proc::freed_memory_tests::child_gives_freed_pages_back" },
     ),
     (
         "tests/backend/plugin_walk_fixture.rs",
@@ -282,7 +288,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         "tests/backend/platform/shell/dialect_tests.rs",
         "on_path_child_reports_what_it_sees",
-        Trigger::Filter { by: "tests/backend/platform/shell/dialect_tests.rs", needle: "platform::shell::dialect::tests::on_path_child_reports_what_it_sees" },
+        Trigger::Filter { by: "tests/backend/platform/shell/dialect_tests.rs", needle: "shell::dialect::tests::on_path_child_reports_what_it_sees" },
     ),
     (
         "tests/backend/stderr_log_tests.rs",
@@ -1078,10 +1084,15 @@ fn module_path(
     if depth > 8 {
         return None;
     }
-    // 文件窗口独立成包：它那棵 `src/` 也按目录推模块路径。
+    // 文件窗口独立成包：它那棵 `src/` 也按目录推模块路径；后端拆出去的包各是一棵（先认更深的那一层）。
     const ROOTS: &[&str] = &[
         "src/frontend/shell/src/",
         "src/frontend/filewin/src/",
+        "src/backend/platform/",
+        "src/backend/common/",
+        "src/backend/plugin/",
+        "src/backend/files/",
+        "src/backend/test-meters/",
         "src/backend/",
     ];
     for r in ROOTS {

@@ -13,77 +13,77 @@ use std::time::UNIX_EPOCH;
 
 // 读出来的那两种值（元数据 · 目录遍历）只装读到的东西，没有一样能写回盘；调用方不用点名它们的类型。
 /// 文件的元数据（读者按这个名字收，不点名 `std::fs`）。
-pub(crate) type Metadata = std::fs::Metadata;
+pub type Metadata = std::fs::Metadata;
 type ReadDir = std::fs::ReadDir;
 
 /// 权限位那一格的值（从元数据读出来，或由 [`Ro::perms_from_mode`] 照一个 unix 模式造）；只是值，交给写面的改权限才落盘。
-pub(crate) type Perms = std::fs::Permissions;
+pub type Perms = std::fs::Permissions;
 
 /// 盘上一份文件的戳：改动时刻 · 长度 · inode（[`Ro::stamp`]）。
-pub(crate) type Stamp = (std::time::SystemTime, u64, u64);
+pub type Stamp = (std::time::SystemTime, u64, u64);
 
 /// 读盘的命名空间（零大小，不用递）。方法与标准库同名同形，换法就是把 `std::fs::` 换成 `Ro::`。
-pub(crate) struct Ro;
+pub struct Ro;
 
 impl Ro {
-    pub(crate) fn read(p: impl AsRef<Path>) -> io::Result<Vec<u8>> {
+    pub fn read(p: impl AsRef<Path>) -> io::Result<Vec<u8>> {
         std::fs::read(p)
     }
 
-    pub(crate) fn read_to_string(p: impl AsRef<Path>) -> io::Result<String> {
+    pub fn read_to_string(p: impl AsRef<Path>) -> io::Result<String> {
         std::fs::read_to_string(p)
     }
 
-    pub(crate) fn read_dir(p: impl AsRef<Path>) -> io::Result<ReadDir> {
+    pub fn read_dir(p: impl AsRef<Path>) -> io::Result<ReadDir> {
         std::fs::read_dir(p)
     }
 
-    pub(crate) fn metadata(p: impl AsRef<Path>) -> io::Result<Metadata> {
+    pub fn metadata(p: impl AsRef<Path>) -> io::Result<Metadata> {
         std::fs::metadata(p)
     }
 
     /// 问元数据、不跟链接（最后一段是链接 ⇒ 答的是链接本身）。
-    pub(crate) fn symlink_metadata(p: impl AsRef<Path>) -> io::Result<Metadata> {
+    pub fn symlink_metadata(p: impl AsRef<Path>) -> io::Result<Metadata> {
         std::fs::symlink_metadata(p)
     }
 
-    pub(crate) fn canonicalize(p: impl AsRef<Path>) -> io::Result<PathBuf> {
+    pub fn canonicalize(p: impl AsRef<Path>) -> io::Result<PathBuf> {
         std::fs::canonicalize(p)
     }
 
-    pub(crate) fn read_link(p: impl AsRef<Path>) -> io::Result<PathBuf> {
+    pub fn read_link(p: impl AsRef<Path>) -> io::Result<PathBuf> {
         std::fs::read_link(p)
     }
 
     /// 只读打开（跟链接，同 `File::open`）。交回的只能读、挪读写位置、问元数据。
-    pub(crate) fn open(p: impl AsRef<Path>) -> io::Result<RoFile> {
+    pub fn open(p: impl AsRef<Path>) -> io::Result<RoFile> {
         std::fs::File::open(p).map(RoFile)
     }
 
     /// 只读打开、最后一段是链接就失败（`O_NOFOLLOW`；别的平台同 [`Ro::open`]）。
-    pub(crate) fn open_nofollow(p: impl AsRef<Path>) -> io::Result<RoFile> {
+    pub fn open_nofollow(p: impl AsRef<Path>) -> io::Result<RoFile> {
         nofollow_read().open(p).map(RoFile)
     }
 
     /// 不跟链接地整份读（[`Ro::open_nofollow`] 再读满）。
-    pub(crate) fn read_nofollow(p: impl AsRef<Path>) -> io::Result<Vec<u8>> {
+    pub fn read_nofollow(p: impl AsRef<Path>) -> io::Result<Vec<u8>> {
         let mut buf = Vec::new();
         Self::open_nofollow(p)?.read_to_end(&mut buf)?;
         Ok(buf)
     }
 
     /// 异步问元数据（跟链接）。
-    pub(crate) async fn metadata_async(p: impl AsRef<Path>) -> io::Result<Metadata> {
+    pub async fn metadata_async(p: impl AsRef<Path>) -> io::Result<Metadata> {
         tokio::fs::metadata(p).await
     }
 
     /// 异步只读打开（跟链接）：交回的只能读、挪读写位置。
-    pub(crate) async fn open_async(p: impl AsRef<Path>) -> io::Result<RoAsyncFile> {
+    pub async fn open_async(p: impl AsRef<Path>) -> io::Result<RoAsyncFile> {
         tokio::fs::File::open(p).await.map(RoAsyncFile)
     }
 
     /// 异步只读打开、不跟链接。
-    pub(crate) async fn open_nofollow_async(p: impl AsRef<Path>) -> io::Result<RoAsyncFile> {
+    pub async fn open_nofollow_async(p: impl AsRef<Path>) -> io::Result<RoAsyncFile> {
         tokio::fs::OpenOptions::from(nofollow_read())
             .open(p)
             .await
@@ -91,7 +91,7 @@ impl Ro {
     }
 
     /// 照一个 unix 模式（低 12 位）造权限位那一格的值。别的平台没有这一维 ⇒ `None`。
-    pub(crate) fn perms_from_mode(mode: u32) -> Option<Perms> {
+    pub fn perms_from_mode(mode: u32) -> Option<Perms> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt as _;
@@ -106,7 +106,7 @@ impl Ro {
 
     /// 安全读取：先确认是常规文件（挡掉 FIFO / 字符设备 / socket —— 它们的 `metadata().len()` 报 0 会骗过大小检查，而无上限的读能把内存吃爆，
     /// symlink→/dev/zero 几秒涨十几 GB），再 `take(cap)` 限量读。symlink 会被 `metadata()`（跟随）解析到目标类型：目标是常规文件才放行、是设备就拒。
-    pub(crate) fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, Said> {
+    pub fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, Said> {
         // 读不了的那一句只是原因（原因词 · 不是普通文件 · 超出上限）；系统原话进 `raw`（复制详情）。
         let io = |e: std::io::Error| Said::with_raw(copy_core::io_reason(e.kind()), e);
         let meta = std::fs::metadata(path).map_err(io)?;
@@ -140,14 +140,14 @@ impl Ro {
     }
 
     /// 安全读一份 JSON（同 [`Ro::read_regular_capped`]，剥掉 UTF-8 BOM 再解）：读不了 ⇒ 那一句是原因；解不开 ⇒「内容无法解析」，解析器原话进 `raw`。
-    pub(crate) fn read_json_capped(path: &Path, cap: u64) -> Result<serde_json::Value, Said> {
+    pub fn read_json_capped(path: &Path, cap: u64) -> Result<serde_json::Value, Said> {
         let b = Self::read_regular_capped(path, cap)?;
         serde_json::from_slice(b.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(&b))
             .map_err(|e| Said::with_raw(copy_text("reason.content.unparsable", &[]), e))
     }
 
     /// 文件 mtime 的毫秒时间戳；任何读取失败都退化成 `0`（排序时沉到最旧：读失败与「1970 年的文件」混成同一个值，要改得连同调用点的排序语义一起想）。
-    pub(crate) fn mtime_ms(p: &Path) -> i64 {
+    pub fn mtime_ms(p: &Path) -> i64 {
         std::fs::metadata(p)
             .and_then(|m| m.modified())
             .ok()
@@ -157,7 +157,7 @@ impl Ro {
     }
 
     /// unix 权限位（`st_mode` 全字，含文件类型位；调用方按需 `& 0o777`）。别的平台没有这一维 ⇒ `None`。
-    pub(crate) fn mode(m: &Metadata) -> Option<u32> {
+    pub fn mode(m: &Metadata) -> Option<u32> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt as _;
@@ -171,7 +171,7 @@ impl Ro {
     }
 
     /// unix 的属主 uid。别的平台 ⇒ `None`。
-    pub(crate) fn uid(m: &Metadata) -> Option<u32> {
+    pub fn uid(m: &Metadata) -> Option<u32> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt as _;
@@ -186,7 +186,7 @@ impl Ro {
 
     /// 盘上那一份的戳（[`Stamp`]）：改动时刻 · 长度 · inode（别的平台记 0）。不在 / 读不出元数据 ⇒ `None`。
     /// 原子替换每次换一个新节点，同一纳秒里写两次也分得出 —— 缓存判「别人写过没有」用它。
-    pub(crate) fn stamp(p: &Path) -> Option<Stamp> {
+    pub fn stamp(p: &Path) -> Option<Stamp> {
         let m = std::fs::metadata(p).ok()?;
         #[cfg(unix)]
         let node = std::os::unix::fs::MetadataExt::ino(&m);
@@ -196,7 +196,7 @@ impl Ro {
     }
 
     /// unix 的硬链接数。别的平台 ⇒ `None`。
-    pub(crate) fn nlink(m: &Metadata) -> Option<u64> {
+    pub fn nlink(m: &Metadata) -> Option<u64> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt as _;
@@ -210,7 +210,7 @@ impl Ro {
     }
 
     /// unix 的设备号（同一个文件系统内才相等）。别的平台 ⇒ `None`。
-    pub(crate) fn dev(m: &Metadata) -> Option<u64> {
+    pub fn dev(m: &Metadata) -> Option<u64> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt as _;
@@ -238,7 +238,7 @@ fn nofollow_read() -> std::fs::OpenOptions {
 
 /// 异步只读打开的文件：只实现 `AsyncRead` 与 `AsyncSeek`。
 #[derive(Debug)]
-pub(crate) struct RoAsyncFile(tokio::fs::File);
+pub struct RoAsyncFile(tokio::fs::File);
 
 impl tokio::io::AsyncRead for RoAsyncFile {
     fn poll_read(
@@ -264,10 +264,10 @@ impl tokio::io::AsyncSeek for RoAsyncFile {
 
 /// 只读打开的文件：只实现 `Read` 与 `Seek`，不实现 `Write`（`readonly_guard` 有一条现打的自检）。
 #[derive(Debug)]
-pub(crate) struct RoFile(std::fs::File);
+pub struct RoFile(std::fs::File);
 
 impl RoFile {
-    pub(crate) fn metadata(&self) -> io::Result<Metadata> {
+    pub fn metadata(&self) -> io::Result<Metadata> {
         self.0.metadata()
     }
 }

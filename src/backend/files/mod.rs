@@ -1,7 +1,11 @@
-//! `files-read` 这一族：后端侧只读的文件面 —— 搜索（SFTP 只能递归 `READDIR`、N 次往返，协议里也没有常驻索引）及其同族的纯读
-//! （列目录 · 元数据 · 读文本 / 按块读 · 问 home · 算大小 · grep）。写面住 `control/files_write.rs`，SFTP 只做传输。
+//! 文件管理那一块（独立的包 `backend-files`：只引纯工具与平台两层，引了上层就编不过）。
 //!
-//! 整族一个字节都不写：读盘只经 [`crate::platform::fs::Ro`]，拿不到写句柄（`readonly_guard` 另把整个后端的写盘形状钉成登记表）。
+//! 读的那一族（`files-read`）：后端侧只读的文件面 —— 搜索（SFTP 只能递归 `READDIR`、N 次往返，协议里也没有常驻索引）及其同族的纯读
+//! （列目录 · 元数据 · 读文本 / 按块读 · 问 home · 算大小 · grep）。写面住 [`write`]（连 [`commit`] · [`extract`] · [`batch`] ·
+//! [`upload_chunks`]），SFTP 只做传输。上层只够得到这个包的 `pub` 项，门住命令那一层（`stream/inbound/files_*_face.rs`）。
+//!
+//! 读的那一族一个字节都不写：读盘只经 [`crate::platform::fs::Ro`]，拿不到写句柄（`readonly_guard` 另把整个后端的写盘形状钉成登记表）；
+//! 写面只经分派递进来的 `Face` 写。
 //! 四个 target 同一份源码、同一组能力；保鲜是定期重走 ＋ 浏览目录挂监听（[`browse_watch`]，各平台语义不对等）。
 //! 「定期重走」的周期住 [`index::REWALK_INTERVAL_SECS`]，由 `files.index.status` 交出去，界面显示那个延迟。
 //!
@@ -10,14 +14,28 @@
 //! 节拍归调用方（后端零定时器）—— 没人发 rebuild，`files.find` 就回 `index_missing: true`。
 //! 常驻那一份索引是进程级的 ⇒ 这几条要在同一条连接上才配得起来；CLI 面一次 exec 一个进程，建好的索引随进程没了。
 
+// 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许纯工具那一层的 `time::now`（`clippy.toml`）。
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
+// 包里照旧写 `crate::files::…` · `crate::common::…` · `crate::platform::…`。
+extern crate self as files;
+use backend_common as common;
+use backend_platform as platform;
+
 use crate::common::said::Said;
 use crate::platform::fs::Ro;
 use cmd_wire::files::{self as wire, FileKind, WirePath};
 use std::path::{Path, PathBuf};
 
+// 一组一条（复制 · 删除 · 改权限）：探 · 问 · 做 · 逐项结局 · 票 · 进度 · 撤。
+pub mod batch;
 pub mod browse_watch;
 // 一项是哪一种 · 读得起来的那几道门（`files.ls` · `files.find` 每行带上）。
 pub mod class;
+// 上传的暂存件与提交（连聊天附件那一处落点）。
+pub mod commit;
+// 解压到一个新目录。
+pub mod extract;
 pub mod grep;
 pub mod index;
 // Everything 式搜索词：解析 ＋ 逐条匹配（`files.find` 的 `query` 只在这里被读懂）。
@@ -25,6 +43,10 @@ pub mod query;
 pub mod raw;
 // `files.size`（算目录大小）。
 pub mod size;
+// 分块上传那几块的拼装。
+pub mod upload_chunks;
+// 写面：经 `Face` 写，只收过了路径解析的路径。
+pub mod write;
 
 // ══════════════════════ 命令面（形状照 `inbound::CommandSpec` 的处理器）══════════════════════
 
@@ -419,7 +441,7 @@ fn stat(req: wire::StatReq, tz: &crate::common::time::Tz) -> Answer<wire::StatRe
         readonly: md.permissions().readonly(),
         // unix 权限位（低 12 位：rwx×3 ＋ setuid / setgid / sticky）—— 同一次 `metadata`、同样跟链接，
         //   与本条其余几格同源。非 unix 平台**缺席**（不是 0：0 是一个真能设的权限值，报 0 等于说假话）；
-        //   那边改权限本来就回 `no_unix_mode`（`control/files_write.rs::change_mode_reporting`）。
+        //   那边改权限本来就回 `no_unix_mode`（`write.rs::change_mode_reporting`）。
         mode: crate::platform::fs::Ro::mode(&md).map(|m| m & 0o7777),
         mtime_secs: mtime,
         mtime_text: texts.as_ref().map(|t| t.0.clone()),
@@ -678,7 +700,7 @@ pub use crate::common::digest::{ContentDigest, SHA256_HEX_LEN};
 
 /// 一份字节的 SHA-256，64 位小写十六进制 —— CAS 摘要形 `expect: {"sha256": …}` 整份那一形（算法本身住 `common/digest.rs`）。
 ///
-/// 读的那一趟（[`read_text`]）对交出去的字节算它；写面（`control/files_write.rs::overwrite_text_expecting`）
+/// 读的那一趟（[`read_text`]）对交出去的字节算它；写面（`write.rs::overwrite_text_expecting`）
 /// 拿它比「盘上此刻那一份」、写成之后对新内容再算一次交回去。住读族这一侧，是因为读族不许伸手进写面
 /// （写面只有 `stream/inbound/` 一扇门），反过来写面借读族一个纯函数不开新门。
 pub fn content_sha256(bytes: &[u8]) -> String {
@@ -1120,13 +1142,16 @@ pub fn answer<A: Ask>(req: A, tz: &crate::common::time::Tz) -> Answer<A::Reply> 
     req.answer(tz)
 }
 
+/// 判据按能力名问读族的那一口（本包与上层的测试共用）。
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../../../tests/backend/files/answer_support.rs"]
+pub mod test_support;
+
 #[cfg(test)]
 #[path = "../../../tests/backend/files/answer_tests.rs"]
-pub(crate) mod tests;
+mod tests;
 
-// **文件管理后端模块**与原生后端那条边界的判据
-// （用户逐字「后端要模块化, 即原生后端＋文件管理后端. 现在先解耦清楚」）。
-// 挂在这里而不是 `lib.rs`：那份文件的模块声明那几行归另一路（A1）。
+// 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本包的测试二进制。
 #[cfg(test)]
-#[path = "../../../tests/backend/files/module_boundary_guard.rs"]
-mod module_boundary_guard;
+#[used]
+static TEST_HOME: fn() = test_home::linked;

@@ -6,7 +6,7 @@ use serde::de::{Deserializer, Error as DeError, MapAccess, Visitor};
 use serde::ser::{SerializeMap, Serializer};
 use serde::{Deserialize, Serialize};
 
-/// `{"b16": …}` 那一形的键。全仓 Rust 只此一处声明（`tests/backend/files/module_boundary_guard.rs` 钉）。
+/// `{"b16": …}` 那一形的键。全仓 Rust 只此一处声明。
 pub const HEX_KEY: &str = "b16";
 
 /// 字节 → 小写十六进制（`{"b16"}` 那一形 · 暂存件的键与摘要都用它）。

@@ -31,9 +31,18 @@
 //! # 边界
 //!
 //! - 本层管不到被起的那个进程自己在干什么：它 `while true` 每秒跑一圈，本 crate 的零定时器护栏看不见（主语是 backend 自己的源码）。
+//!
+//! 独立的包 `backend-plugin`：只引平台层（引了 control · observe 或别的上层就编不过）。
+
+// 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许上层的 `common::time::now`（`clippy.toml`）。
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
+// 包里照旧写 `crate::plugin::…` · `crate::platform::…`。
+extern crate self as plugin;
+use backend_platform as platform;
 
 pub mod discover;
-pub(crate) mod invoke;
+pub mod invoke;
 
 /// 本层自己的边界判据：通用调用口不许认识任何一个具体插件。
 ///
@@ -48,3 +57,8 @@ pub(crate) mod invoke;
 #[cfg(test)]
 #[path = "../../../tests/backend/plugin_layer_guard.rs"]
 mod layer_guard;
+
+// 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本包的测试二进制。
+#[cfg(test)]
+#[used]
+static TEST_HOME: fn() = test_home::linked;

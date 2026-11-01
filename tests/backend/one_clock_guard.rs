@@ -38,9 +38,8 @@ fn production_files() -> Vec<(String, String)> {
         .collect()
 }
 
-#[test]
-fn c2_the_clock_dial_only_compiles_under_the_feature() {
-    let manifest = read(&guard_core::addr::backend_src_root().join("Cargo.toml"));
+/// 一份清单 `[features]` 里那个特性的值与 `default` 的值（没写 ⇒ `None`）。
+fn feature_lines(manifest: &str) -> (Option<String>, Option<String>) {
     let mut in_features = false;
     let mut feat = None;
     let mut default = None;
@@ -61,15 +60,29 @@ fn c2_the_clock_dial_only_compiles_under_the_feature() {
             }
         }
     }
+    (feat, default)
+}
+
+#[test]
+fn c2_the_clock_dial_only_compiles_under_the_feature() {
+    // 拨钟那一段住 `backend-common`：特性在那个包里定（`shots = []`，不开任何依赖的特性）；主 crate 只把同名特性转给它。
+    let root = guard_core::addr::backend_src_root();
+    let (feat, home_default) = feature_lines(&read(&root.join("common/Cargo.toml")));
     assert_eq!(
         feat.as_deref(),
         Some("[]"),
-        "Cargo.toml 的 [features] 里有 `{FEATURE} = []`（它不开任何依赖的特性）"
+        "common/Cargo.toml 的 [features] 里有 `{FEATURE} = []`（它不开任何依赖的特性）"
     );
-    if let Some(d) = default {
+    let (forward, main_default) = feature_lines(&read(&root.join("Cargo.toml")));
+    assert_eq!(
+        forward,
+        Some(format!("[\"backend-common/{FEATURE}\"]")),
+        "主 crate 的 [features] 里 `{FEATURE}` 只转给 backend-common 那一个"
+    );
+    for d in [home_default, main_default].into_iter().flatten() {
         assert!(
-            !d.contains(&format!("\"{FEATURE}\"")),
-            "`default` 里不许有 `{FEATURE}`：{d}"
+            !d.contains(FEATURE),
+            "`default` 里不许有 `{FEATURE}`（连转给下层的那一形）：{d}"
         );
     }
 

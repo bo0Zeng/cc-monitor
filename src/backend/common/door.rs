@@ -1,7 +1,7 @@
 //! 后端够用户文件的那一扇门（资产 · 账号库 · 足迹 · 控制面都走它）：这台后端自己的文件管理面。算的与写的是同一台后端 ⇒ 门直接问文件管理那一族的本体，
 //! 每一问一个方法、收发那几条 `files-*` 帧命令同一份线上类型（实现住 `stream/inbound/doors.rs::LocalFiles`：
 //! 文件管理面的写句柄 `Face` 只有分派那一层造，这扇门就是进程内的那一次分派）。
-//! 写的规则（CAS · 相同不写 · 备份 · 暂存旁名换名上位 · 回读比对 · 回滚）只有 `files_write::put_text` 那一份。
+//! 写的规则（CAS · 相同不写 · 备份 · 暂存旁名换名上位 · 回读比对 · 回滚）只有 `files::write::put_text` 那一份。
 
 use crate::common::said::Said;
 use cmd_wire::batch::{BatchReply, ItemState, OnExists};
@@ -10,7 +10,7 @@ use copy_core::copy_text;
 
 /// 一次 `Door::peek` 读回来的。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Peeked {
+pub struct Peeked {
     /// 读的是哪一份（解过链接的那一个，给人看）。
     pub path: String,
     /// `None` = 确定不存在（「读不出来」是 `Err`）。
@@ -19,7 +19,7 @@ pub(crate) struct Peeked {
 
 /// 一次 `Door::put` 真写了之后的回执。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Landed {
+pub struct Landed {
     pub path: String,
     pub changed: bool,
     pub created: bool,
@@ -28,13 +28,13 @@ pub(crate) struct Landed {
 
 /// 一次写没成：`stale` 与别的分得开（前者该重读重算，后者原话交给用户）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Refused {
+pub enum Refused {
     Stale(String),
     Peer(Said),
 }
 
 impl Refused {
-    pub(crate) fn said(self) -> String {
+    pub fn said(self) -> String {
         match self {
             Refused::Stale(s) => s,
             Refused::Peer(f) => f.said,
@@ -43,9 +43,9 @@ impl Refused {
 }
 
 /// 这台后端的文件管理面：每一问一个方法，入参 · 回包是文件管理那一族的线上类型（`cmd_wire::files`，同那几条帧命令）。
-/// 生产 = `stream/inbound/doors.rs::LocalFiles`（读的直接问 `files::answer`，写的问 `files_write::answer`，写句柄由分派那一层递）；
+/// 生产 = `stream/inbound/doors.rs::LocalFiles`（读的直接问 `files::answer`，写的问 `files::write::answer`，写句柄由分派那一层递）；
 /// 判据用临时目录上的同一份。
-pub(crate) trait Door {
+pub trait Door {
     fn home(&self, req: wire::HomeReq) -> Result<wire::FilesPathReply, Said>;
     fn stat(&self, req: wire::StatReq) -> Result<wire::StatReply, Said>;
     fn ls(&self, req: wire::LsReq) -> Result<wire::LsReply, Said>;
@@ -60,7 +60,7 @@ pub(crate) trait Door {
 }
 
 /// 门那一侧的失败 → [`Said`]：门这一侧总带码；契约诊断那一截不带，原话也不带（原话在命令自己的应答里才进复制详情）。
-pub(crate) fn said_of(code: &str, said: &str) -> Said {
+pub fn said_of(code: &str, said: &str) -> Said {
     Said::new(code, crate::common::contract::parts(said, None).0)
 }
 
@@ -81,7 +81,7 @@ fn wp(s: &str) -> wire::WirePath {
     wire::WirePath::from(s)
 }
 
-pub(crate) fn home(d: &dyn Door) -> Result<String, String> {
+pub fn home(d: &dyn Door) -> Result<String, String> {
     let v = d.home(wire::HomeReq {}).map_err(|e| refused(e).said())?;
     let p = text_of(&v.path);
     if p.is_empty() {
@@ -90,7 +90,7 @@ pub(crate) fn home(d: &dyn Door) -> Result<String, String> {
     Ok(p)
 }
 
-pub(crate) fn peek(d: &dyn Door, root: &str, rel: &str) -> Result<Peeked, String> {
+pub fn peek(d: &dyn Door, root: &str, rel: &str) -> Result<Peeked, String> {
     let v = d
         .peek(wire::FilesPeekReq {
             root: wp(root),
@@ -103,7 +103,7 @@ pub(crate) fn peek(d: &dyn Door, root: &str, rel: &str) -> Result<Peeked, String
     })
 }
 
-pub(crate) fn put(
+pub fn put(
     d: &dyn Door,
     root: &str,
     rel: &str,
@@ -154,7 +154,7 @@ fn delete_one(d: &dyn Door, root: &str, item: wire::DeleteItem) -> Result<(), Sa
 }
 
 /// 删一个文件，带 CAS（`expect` = 读到的那一份）；不等 / 已经不在 ⇒ `Stale`。
-pub(crate) fn delete(d: &dyn Door, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
+pub fn delete(d: &dyn Door, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
     delete_one(
         d,
         root,
@@ -168,7 +168,7 @@ pub(crate) fn delete(d: &dyn Door, root: &str, rel: &str, expect: &str) -> Resul
 }
 
 /// 只删一个空目录（`expect: {"empty_dir": true}`）；不空 / 已经不在 ⇒ `Stale`。
-pub(crate) fn delete_empty_dir(d: &dyn Door, root: &str, rel: &str) -> Result<(), Refused> {
+pub fn delete_empty_dir(d: &dyn Door, root: &str, rel: &str) -> Result<(), Refused> {
     delete_one(
         d,
         root,
@@ -182,7 +182,7 @@ pub(crate) fn delete_empty_dir(d: &dyn Door, root: &str, rel: &str) -> Result<()
 }
 
 /// 删一项（链接删链接本身；`recursive` ⇒ 整棵目录，逐条目过路径解析）。
-pub(crate) fn remove(d: &dyn Door, root: &str, rel: &str, recursive: bool) -> Result<(), String> {
+pub fn remove(d: &dyn Door, root: &str, rel: &str, recursive: bool) -> Result<(), String> {
     delete_one(
         d,
         root,
@@ -196,7 +196,7 @@ pub(crate) fn remove(d: &dyn Door, root: &str, rel: &str, recursive: bool) -> Re
 }
 
 /// 同根内复制一份（`files-copy` 一组一项：目标已在 ⇒ 拒；目录整棵，链接照原样复制成链接；权限位从源抄）。
-pub(crate) fn copy(d: &dyn Door, root: &str, from: &str, to: &str) -> Result<(), String> {
+pub fn copy(d: &dyn Door, root: &str, from: &str, to: &str) -> Result<(), String> {
     only(d.copy(wire::FilesCopyReq {
         root: wp(root),
         items: vec![wire::CopyItem {
@@ -212,7 +212,7 @@ pub(crate) fn copy(d: &dyn Door, root: &str, from: &str, to: &str) -> Result<(),
 }
 
 /// 建一层目录（`files-mkdir`，父目录要在）。
-pub(crate) fn mkdir(d: &dyn Door, root: &str, rel: &str) -> Result<(), String> {
+pub fn mkdir(d: &dyn Door, root: &str, rel: &str) -> Result<(), String> {
     d.mkdir(wire::FilesMkdirReq {
         root: wp(root),
         rel: wp(rel),
@@ -223,7 +223,7 @@ pub(crate) fn mkdir(d: &dyn Door, root: &str, rel: &str) -> Result<(), String> {
 }
 
 /// 建一条链接（`Door::link`：目标文本原样，链接那条路径过根底下的解析；已在 ⇒ 拒）。
-pub(crate) fn link(d: &dyn Door, root: &str, rel: &str, target: &str) -> Result<(), String> {
+pub fn link(d: &dyn Door, root: &str, rel: &str, target: &str) -> Result<(), String> {
     d.link(wire::FilesLinkReq {
         root: wp(root),
         rel: wp(rel),
@@ -234,7 +234,7 @@ pub(crate) fn link(d: &dyn Door, root: &str, rel: &str, target: &str) -> Result<
 }
 
 /// 改名（同一个根底下，`files-rename`）。
-pub(crate) fn rename(d: &dyn Door, root: &str, from: &str, to: &str) -> Result<(), String> {
+pub fn rename(d: &dyn Door, root: &str, from: &str, to: &str) -> Result<(), String> {
     d.rename_to(wire::FilesRenameReq {
         root: wp(root),
         from: wp(from),
@@ -245,7 +245,7 @@ pub(crate) fn rename(d: &dyn Door, root: &str, from: &str, to: &str) -> Result<(
     .map_err(|e| refused(e).said())
 }
 
-pub(crate) fn chmod(d: &dyn Door, root: &str, rel: &str, mode: u32) -> Result<(), String> {
+pub fn chmod(d: &dyn Door, root: &str, rel: &str, mode: u32) -> Result<(), String> {
     only(d.chmod(wire::FilesChmodReq {
         root: wp(root),
         items: vec![wire::ChmodItem { rel: wp(rel) }],
@@ -256,7 +256,7 @@ pub(crate) fn chmod(d: &dyn Door, root: &str, rel: &str, mode: u32) -> Result<()
 }
 
 /// 问一个路径（`files-stat`）：在 ⇒ `Some(那一份)`；答「读不到」⇒ `None`（权限不够也是 `None`，只给「在不在场」那种展示用）。
-pub(crate) fn stat(d: &dyn Door, path: &str) -> Result<Option<wire::StatReply>, String> {
+pub fn stat(d: &dyn Door, path: &str) -> Result<Option<wire::StatReply>, String> {
     match d.stat(wire::StatReq { path: wp(path) }) {
         Ok(v) => Ok(Some(v)),
         Err(f) if f.code.as_deref() == Some("unreadable") => Ok(None),
@@ -265,7 +265,7 @@ pub(crate) fn stat(d: &dyn Door, path: &str) -> Result<Option<wire::StatReply>, 
 }
 
 /// 一个路径在不在：在 ⇒ `Some(kind)`（`dir` · `file` · `symlink` · `other`）；其余同 [`stat`]。
-pub(crate) fn stat_kind(d: &dyn Door, path: &str) -> Result<Option<String>, String> {
+pub fn stat_kind(d: &dyn Door, path: &str) -> Result<Option<String>, String> {
     Ok(stat(d, path)?.map(|v| {
         match v.kind {
             wire::FileKind::Dir => "dir",
@@ -278,11 +278,11 @@ pub(crate) fn stat_kind(d: &dyn Door, path: &str) -> Result<Option<String>, Stri
 }
 
 /// 读改写一次最多重来几趟（`stale` 才重来：读与写之间盘上那份被别人改了）。
-pub(crate) const EDIT_ATTEMPTS: usize = 3;
+pub const EDIT_ATTEMPTS: usize = 3;
 
 /// 一次 [`edit`] 的结局。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Edited {
+pub enum Edited {
     /// 规划说「没事可做」，或算出来与盘上逐字相同 ⇒ 一个字节没写。
     Unchanged,
     Written(Landed),
@@ -290,7 +290,7 @@ pub(crate) enum Edited {
 
 /// 读 → 算 → 交。`plan` 拿到读到的全文（`None` = 不存在），回 `Some(新全文)` 或 `None`（没事可做）；
 /// `stale` ⇒ 重读重算，最多 [`EDIT_ATTEMPTS`] 趟。
-pub(crate) fn edit(
+pub fn edit(
     d: &dyn Door,
     root: &str,
     rel: &str,
@@ -345,7 +345,7 @@ fn parent_absent(d: &dyn Door, root: &str, rel: &str) -> Result<bool, String> {
 }
 
 /// `abs` 在 `home` 底下的那一段（字符串算法，分隔符两种都认）。不在 home 底下 ⇒ 拒。
-pub(crate) fn rel_under(home: &str, abs: &str) -> Result<String, String> {
+pub fn rel_under(home: &str, abs: &str) -> Result<String, String> {
     let norm = |s: &str| s.replace('\\', "/");
     let (h, a) = (norm(home), norm(abs));
     let h = h.trim_end_matches('/');
@@ -357,8 +357,4 @@ pub(crate) fn rel_under(home: &str, abs: &str) -> Result<String, String> {
 }
 
 /// [`rel_under`] 的反方向。本体住 `platform::paths`（别名方言列 rc 候选也要它，适配层不往上依赖）。
-pub(crate) use crate::platform::paths::join_under;
-
-#[cfg(test)]
-#[path = "../../../tests/backend/common/door_wire_tests.rs"]
-mod wire_tests;
+pub use crate::platform::paths::join_under;

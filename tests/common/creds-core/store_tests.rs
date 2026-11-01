@@ -745,9 +745,10 @@ fn both_halves_read_the_home_through_this_one_function() {
         "monitor 的数据目录不经 `creds_core::store::home_dir` 取家 —— 两侧会认两个家"
     );
     let paths = read("src/backend/platform/paths.rs");
-    assert!(body_of(&paths, "pub(crate) fn home_dir()").contains("creds_core::store::home_dir()"));
-    assert!(body_of(&paths, "pub(crate) fn home_dir_from(")
-        .contains("creds_core::store::home_dir_from(get)"));
+    assert!(body_of(&paths, "pub fn home_dir()").contains("creds_core::store::home_dir()"));
+    assert!(
+        body_of(&paths, "pub fn home_dir_from(").contains("creds_core::store::home_dir_from(get)")
+    );
     let mut got: Vec<String> = Vec::new();
     for tree in ["src/frontend", "src/backend"] {
         let mut files = guard_core::scan_tree_excluding(&root.join(tree), &["rs"], &[]);

@@ -188,7 +188,7 @@ fn the_command_face_answers_exactly_the_declared_fields() {
     let base = temp_root("face");
     let t = plant(&base);
     let p = t.to_str().unwrap();
-    let v = crate::files::tests::answer(
+    let v = crate::files::test_support::answer(
         "files.grep",
         &serde_json::json!({ "path": p, "needle": "needle" }),
         &Default::default(),
@@ -211,7 +211,7 @@ fn the_command_face_answers_exactly_the_declared_fields() {
         (serde_json::json!(false), serde_json::Value::Null)
     );
     let code = |a: serde_json::Value| {
-        crate::files::tests::answer("files.grep", &a, &Default::default())
+        crate::files::test_support::answer("files.grep", &a, &Default::default())
             .unwrap_err()
             .code
             .unwrap_or_default()
@@ -244,7 +244,7 @@ fn the_product_matches_the_cross_half_golden() {
     let base = temp_root("golden");
     let t = plant(&base);
     let root = t.to_str().unwrap().to_string();
-    let v = crate::files::tests::answer(
+    let v = crate::files::test_support::answer(
         "files.grep",
         &serde_json::json!({ "path": root, "needle": "needle", "ignore_ascii_case": true }),
         &Default::default(),

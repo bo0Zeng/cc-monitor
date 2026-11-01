@@ -387,9 +387,7 @@ fn the_golden_is_what_the_views_really_answer() {
     w.held = Some(Held("stale".into()));
     step("held not ours: whole", &s, &mut w, win(1, 3), &mut names);
     let produced = lines.join("\n") + "\n";
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(GOLDEN);
+    let path = guard_core::addr::repo_root().join(GOLDEN);
     if std::env::var_os("REGOLD_SYNC_PATCH").is_some() {
         std::fs::write(&path, &produced).expect("写金样");
     }

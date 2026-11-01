@@ -455,7 +455,7 @@ fn splicing_is_idempotent_and_keeps_every_user_line() {
 
 /// 🔴 **规则只有一个住址**：两家（别名文件 `account_aliases.rs` · 别名块 `profile_installer.rs`，远端 rc 那一份
 /// 也搬进了后者）的生产段里，「配对 ＋ 读回比对」的原语**零命中**。
-/// 正控：「备份 · 原子替换 · 回读 · 回滚」只住后端 `control/files_write.rs::put_text` —— 正控钉它在、且恰好一处定义；
+/// 正控：「备份 · 原子替换 · 回读 · 回滚」只住后端 `files/write.rs::put_text` —— 正控钉它在、且恰好一处定义；
 /// 本模块生产段里**没有**任何异步落盘序列（`async fn` 零处）。别名块「写口只有一个」那条住
 /// `block_tests.rs::the_alias_block_is_written_through_exactly_one_door`。
 ///
@@ -494,11 +494,9 @@ fn the_write_rule_has_exactly_one_home() {
     );
     // 正控：序列的那一个住址真的在（后端），而且恰好一处定义。
     let backend = guard_core::production_code(
-        &std::fs::read_to_string(
-            guard_core::addr::repo_root().join("src/backend/control/files_write.rs"),
-        )
-        .unwrap(),
+        &std::fs::read_to_string(guard_core::addr::repo_root().join("src/backend/files/write.rs"))
+            .unwrap(),
     );
     guard_core::find_pinned(&backend, "pub fn put_text(")
-        .expect("后端那一个写序列 `files_write.rs::put_text` 不见了（或长成了两处）");
+        .expect("后端那一个写序列 `files/write.rs::put_text` 不见了（或长成了两处）");
 }

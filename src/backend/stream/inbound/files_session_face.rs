@@ -6,13 +6,12 @@ use crate::wire::typed::{self, codes, Command};
 use cmd_wire::files as wire;
 
 /// 删历史会话那一条要问的两件事，从原生那一侧（适配层注册表）的窄口取来，
-/// 由这一条递给文件管理写面 —— 写面自己一家 agent 的布局都不认（`files/module_boundary_guard.rs` 围栏那一类为零）。
-const SESSION_PORT: crate::control::files_write::SessionPort =
-    crate::control::files_write::SessionPort {
-        locate: crate::agents::locate_session_for_delete,
-        is_record: crate::agents::is_session_record,
-        file_name: crate::agents::session_file_name_of,
-    };
+/// 由这一条递给文件管理写面 —— 写面自己一家 agent 的布局都不认（文件管理那一块是独立的包，引不到适配层）。
+const SESSION_PORT: crate::files::write::SessionPort = crate::files::write::SessionPort {
+    locate: crate::agents::locate_session_for_delete,
+    is_record: crate::agents::is_session_record,
+    file_name: crate::agents::session_file_name_of,
+};
 
 codes! {
     /// `files-delete-session` 的码。
@@ -44,7 +43,7 @@ impl crate::wire::typed::Handle for FilesDeleteSession {
         async move {
             let face = &needs;
 
-            crate::control::files_write::delete_session_of(face, req, &SESSION_PORT).map_err(|f| {
+            crate::files::write::delete_session_of(face, req, &SESSION_PORT).map_err(|f| {
                 typed::of_fail(
                     {
                         let code = f.code_or_fallback().to_string();
