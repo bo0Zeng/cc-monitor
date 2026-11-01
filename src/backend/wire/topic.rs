@@ -144,7 +144,7 @@ impl TopicExt for Topic {
                 body_cap: 8192,
                 reask: "machine-read",
             },
-            // 走 tap 那条（可丢：一句整份，丢了下一次变化或重问就补上）；哪一台的成品一变、它变了才推（判定在 `deploy::machine::empty`）。
+            // 走 tap 那条（可丢：一句整份，丢了下一次变化或重问就补上）；哪一台的成品一变、它变了才推（判定在 `deploy::machine::fleet`）。
             Topic::Empty => TopicSpec {
                 name: "empty",
                 lossy: true,
