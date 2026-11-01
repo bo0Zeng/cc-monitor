@@ -184,6 +184,17 @@ pub struct AutoAnswer {
     pub say: Option<String>,
 }
 
+/// 「没人答时自动答」可选的一档（会话事实 `autoAnswerChoices` 的一项）：几分钟 ＋ 写好的字（`0` ⇒「关」）。
+/// 几档与字只由后端 `control::asks::auto_choices` 一处写；会话事实那一层只装它。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct AutoChoice {
+    pub min: u32,
+    pub text: Words,
+}
+
 /// 一条在等人的会话（`sessions-needs` 会话那一项）：会话 id ＋ 它在等什么（同 `history-facts.needs` 那一份成品）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
