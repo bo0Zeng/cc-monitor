@@ -80,21 +80,6 @@
 
 use super::*;
 
-/// 开过几个窗口 —— **egui 那条线程真的跑起来了**几次。
-///
-/// ⚠ 它在**次线程里**加，所以从调用方看它是**异步**的：
-/// `open_detached_seeded` 返回的那一刻这个数可能还没动。要「请求过几次」看 [`OPEN_REQUESTED`]。
-pub(super) static WINDOWS_OPENED: AtomicU64 = AtomicU64::new(0);
-
-/// 请求过几次开窗 —— **同步**加，在 `thread::spawn` 之前。
-///
-/// 🔴 **两个数刻意分开，不合成一个。** 本机没有图形会话（`super` 头注）⇒
-/// `run_native` 在这台机器上必然失败，`WINDOWS_OPENED` 也就量不到「窗口真的在」。
-/// 合成一个数就只能二选一：要么判据没法确定地判（次线程还没跑），
-/// 要么这个数的语义被悄悄改成「请求过」而名字还叫「开过」。
-/// ⇒ 一个值装一件事：请求面用这个，线程面用上面那个。
-pub(super) static OPEN_REQUESTED: AtomicU64 = AtomicU64::new(0);
-
 /// 最近一个窗口在**第一帧**上复核字体的结果。`None` = 还没有任何窗口复核过。
 ///
 /// 🔴 判据拿它买的是「装字体这一步**真的接在开窗那条路上**」——
@@ -156,7 +141,6 @@ pub fn open_detached_seeded(
     // 窗口的样子（开窗种子带来的那一套；`None` ＝ 判据那一形，照 egui 当下的样子画）。
     theme: Option<filewin_contract::Theme>,
 ) -> std::thread::JoinHandle<Result<(), Said>> {
-    OPEN_REQUESTED.fetch_add(1, Ordering::SeqCst);
     std::thread::spawn(move || {
         let title = window_title(crate::source::remote_basename(&cwd), &source.label());
         let mut opts = eframe::NativeOptions {
@@ -168,7 +152,6 @@ pub fn open_detached_seeded(
         };
         // 渲染器挑哪块显卡（Windows：真显卡在前、WARP 垫底；别处缺省）。
         crate::platform::renderer_options(&mut opts);
-        WINDOWS_OPENED.fetch_add(1, Ordering::SeqCst);
         eframe::run_native(
             &title,
             opts,
