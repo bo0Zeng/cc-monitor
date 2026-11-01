@@ -24,6 +24,24 @@ use std::sync::atomic::{AtomicUsize, Ordering as O};
 
 use super::*;
 
+// 只给判据读的口子：住判据这一侧，生产段够不着。
+impl WriteBoard {
+    /// 正摆着的那几件。
+    pub(crate) fn asking(&self) -> Vec<WriteOp> {
+        self.inner.lock().unwrap().asking.clone()
+    }
+
+    /// 一趟落地（不带做成的 · 撤销的那几件，不出回执）。
+    pub(crate) fn finish(&self, outcome: WriteOutcome) {
+        self.finish_with(outcome, Vec::new(), Vec::new(), true);
+    }
+
+    /// 上一趟的结果。
+    pub(crate) fn last(&self) -> Option<WriteOutcome> {
+        self.inner.lock().unwrap().last.clone()
+    }
+}
+
 /// 一条会话记录形状的路径（`projects/` 下恰两段、以 `.jsonl` 收尾）。
 fn session_path() -> String {
     "/home/u/.claude/projects/dash-proj/abc-123.jsonl".to_string()
@@ -178,33 +196,37 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
     )
     .await;
     let origin = comms_inward::origin::Origin::named(wired.origin.clone());
-    let e = super::apply_remote(
+    let e = super::apply_remote_coded(
         &wired.line,
         &origin,
         &WriteOp::Mkdir {
             dir: "/srv/refuse".into(),
             name: "newdir".into(),
         },
+        None,
     )
     .await
+    .map_err(|f| f.said)
     .expect_err("后端拒了，窗口这一侧却成了");
     assert!(
         e.contains("refuse write") && !e.contains("refused"),
         "那句话里没有后端的原话，或错误码上了屏：`{e}`"
     );
     // 阴性对照：同一条命令在普通路径上成（否则上面可以靠「什么都失败」蒙过去）。
-    super::apply_remote(
+    super::apply_remote_coded(
         &wired.line,
         &origin,
         &WriteOp::Mkdir {
             dir: "/srv/data".into(),
             name: "newdir".into(),
         },
+        None,
     )
     .await
+    .map_err(|f| f.said)
     .expect("普通路径上也失败了 —— 上面那一条在空转");
     // 后端没声明的命令 ⇒ 一个字节都没发，而且**说出来**。
-    let e = super::apply_remote(
+    let e = super::apply_remote_coded(
         &wired.line,
         &origin,
         &WriteOp::Chmod {
@@ -212,8 +234,10 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
             mode: "644".into(),
             raw: None,
         },
+        None,
     )
     .await
+    .map_err(|f| f.said)
     .expect_err("后端没声明 `files-chmod`，却成了");
     // 按文案键断言，不按原文：「是哪条命令」由下面线上那张单子认（没上线），不靠句子点名。
     assert_eq!(
@@ -573,7 +597,7 @@ fn the_box_turns_what_you_typed_into_an_op_in_this_very_directory() {
         }
     );
 
-    let mut p = WritePrompt::for_chmod("/srv/data", &r);
+    let mut p = WritePrompt::for_chmod_many("/srv/data", &[&r]);
     assert_eq!(
         p.text, "",
         "改权限那个框预填了东西 —— 列表里读不到 mode，预填的必然是猜的，\
@@ -612,7 +636,7 @@ fn typed_names_and_modes_go_to_the_far_side_as_typed() {
     assert!(p.to_op().is_err(), "改名成原名竟然过了");
 
     for typed in ["", "abc", "899", "10000", "0x644", "0755"] {
-        let mut p = WritePrompt::for_chmod("/srv/data", &r);
+        let mut p = WritePrompt::for_chmod_many("/srv/data", &[&r]);
         p.text = format!(" {typed} ");
         assert_eq!(
             p.to_op().expect("权限位交给那台判，窗口不拒"),
@@ -633,7 +657,7 @@ fn every_box_says_what_it_is_asking() {
     assert_eq!(WritePrompt::for_mkdir("/srv").heading(), "");
     assert_eq!(WritePrompt::for_rename("/srv", &r).heading(), "");
     assert_eq!(
-        WritePrompt::for_chmod("/srv", &r).heading(),
+        WritePrompt::for_chmod_many("/srv", &[&r]).heading(),
         copy_core::copy_text("rsFilewinWriteops.heading.chmodOne", &[("name", "a.bin")])
     );
 }
@@ -734,7 +758,7 @@ fn a_board_with_no_window_still_records_and_does_not_panic() {
 // 🔴 委派：这一层**一行自己的写代码都没有**
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴[`super::apply_remote`] 发的是**后端写面那四条**，参数切成 `(root, rel)`。
+/// 🔴[`super::apply_remote_coded`] 发的是**后端写面那四条**，参数切成 `(root, rel)`。
 ///
 /// **行为判据**（不扫源码）：挂一台合成后端，四件各发一次，读它收到了什么。
 /// 两侧不同源：期望是按「当前目录 ＋ 名字」手写的，实得是线上真到了后端的那几行。
@@ -772,9 +796,9 @@ async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
         },
     ];
     for op in &ops {
-        super::apply_remote(&wired.line, &origin, op)
+        super::apply_remote_coded(&wired.line, &origin, op, None)
             .await
-            .unwrap_or_else(|e| panic!("{} 没成：{e}", op.label()));
+            .unwrap_or_else(|f| panic!("{} 没成：{}", op.label(), f.said));
     }
     let got: Vec<serde_json::Value> = wired.log.lock().unwrap().clone();
     let want = vec![
@@ -830,9 +854,9 @@ async fn a_directory_delete_recurses_and_a_lossy_name_is_addressed_by_its_bytes(
         },
     ];
     for op in &ops {
-        super::apply_remote(&wired.line, &origin, op)
+        super::apply_remote_coded(&wired.line, &origin, op, None)
             .await
-            .unwrap_or_else(|e| panic!("{} 没成：{e}", op.label()));
+            .unwrap_or_else(|f| panic!("{} 没成：{}", op.label(), f.said));
     }
     let got: Vec<serde_json::Value> = wired.log.lock().unwrap().clone();
     let b16 = serde_json::json!({ "b16": "636166e92e747874" });
@@ -921,7 +945,7 @@ fn one_chmod_box_for_many_rows_yields_one_op_per_row() {
     assert!(empty.to_ops().is_err());
     // 一项的框与单改那个框是同一个（框上点名字）。
     assert_eq!(
-        WritePrompt::for_chmod("/srv/data", &a),
+        WritePrompt::for_chmod_many("/srv/data", &[&a]),
         WritePrompt::for_chmod_many("/srv/data", &[&a])
     );
 }
@@ -1017,7 +1041,7 @@ fn gp1_the_mode_is_read_from_the_stat_reply_or_not_at_all() {
 fn gp1_the_current_mode_is_prefilled_at_most_once_and_never_over_what_you_typed() {
     let a = row("a.bin", false, false);
     let got = mode_readout(&[Some(0o640)]);
-    let mut p = WritePrompt::for_chmod("/srv/data", &a);
+    let mut p = WritePrompt::for_chmod_many("/srv/data", &[&a]);
     assert_eq!(p.text, "", "框摆出来时空着（现值还没答回来）");
     apply_prefill(&mut p, &got);
     assert_eq!(p.text, "640");
@@ -1025,7 +1049,7 @@ fn gp1_the_current_mode_is_prefilled_at_most_once_and_never_over_what_you_typed(
     apply_prefill(&mut p, &got);
     assert_eq!(p.text, "", "用户清空之后又被塞回去了");
     // 用户先动了手 ⇒ 不盖。
-    let mut q = WritePrompt::for_chmod("/srv/data", &a);
+    let mut q = WritePrompt::for_chmod_many("/srv/data", &[&a]);
     q.text = "7".into();
     apply_prefill(&mut q, &got);
     assert_eq!(q.text, "7");
@@ -1126,7 +1150,7 @@ fn the_chmod_grid_and_the_octal_field_follow_each_other() {
     let a = row("a.sh", false, false);
     let b = row("b.sh", false, false);
     // 一项：读回 644 ⇒ 九格照它摆、那一栏预填 644。
-    let mut p = WritePrompt::for_chmod("/srv", &a);
+    let mut p = WritePrompt::for_chmod_many("/srv", &[&a]);
     apply_prefill(&mut p, &mode_readout(&[Some(0o644)]));
     assert_eq!(p.text, "644");
     assert_eq!(grid_text(&p.grid).as_deref(), Some("644"));
