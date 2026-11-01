@@ -1148,7 +1148,10 @@ fn took_of(i: &RunInfo) -> Option<Words> {
     }
     let (a, b) = (i.started_ms?, i.ended_ms?);
     let took = copy_core::short_duration(b.saturating_sub(a));
-    Some(Words(copy_text("agentWindow.facts.took", &[("dur", &took)])))
+    Some(Words(copy_text(
+        "agentWindow.facts.took",
+        &[("dur", &took)],
+    )))
 }
 
 /// 事实那一行（「几点起」在 `started_text`，推出去那一下按流的时区写）：已跑 / 用时 · 最近 · 工具 ×n · agent ×n · 后台派出。

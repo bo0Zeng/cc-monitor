@@ -158,6 +158,10 @@ fn ended_run_carries_written_took() {
         "agentWindow.facts.took",
         &[("dur", &copy_core::short_duration(90_000))],
     );
-    assert_eq!(took("r-done"), Some(Some(want)), "收场了 ⇒ 写好的用时那一句");
+    assert_eq!(
+        took("r-done"),
+        Some(Some(want)),
+        "收场了 ⇒ 写好的用时那一句"
+    );
     assert_eq!(took("r-live"), Some(None), "在跑 ⇒ 不上线");
 }
