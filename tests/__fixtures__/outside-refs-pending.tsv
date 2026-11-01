@@ -10,8 +10,6 @@ src/backend/platform/shell/dialect.rs	8
 src/backend/platform/tmux.rs	5
 src/backend/relay/listen.rs	1
 src/backend/relay/mod.rs	2
-src/backend/wire/listen.rs	1
-src/backend/wire/mod.rs	2
 src/common/cmd-wire/src/frame.rs	1
 src/common/guard-core/src/lib.rs	41
 src/doc/INVARIANTS.md	2
@@ -35,14 +33,11 @@ tests/backend/layering_guard.rs	9
 tests/backend/platform/cfgless_guard.rs	20
 tests/backend/platform/fallback_guard.rs	4
 tests/backend/platform/shell/dialect_tests.rs	2
-tests/backend/protocol_doc_guard.rs	3
 tests/backend/relay/creds_guard.rs	17
 tests/backend/relay/server_tests.rs	83
 tests/backend/relay/table_guard.rs	17
 tests/backend/relay/upstream_selection_guard.rs	1
 tests/backend/relay/wire_golden.rs	1
-tests/backend/wire/listen_tests.rs	2
-tests/backend/wire/wire_tests.rs	2
 tests/common/relay-route-core/lib_tests.rs	1
 tests/evidence/K-R30-etxtbsy-window.py	6
 tests/evidence/SR1b-sftp-loopback.py	1
