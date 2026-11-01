@@ -27,7 +27,8 @@ fn the_window_spells_the_local_address_only_as_cmd_wire_local() {
     let own: Vec<&str> = prod
         .iter()
         .filter(|(_, code)| {
-            guard_core::contains_word(code, "LOCAL_ORIGIN")
+            // 删掉的那份旧常量名拼开写：全仓 grep 旧名要零命中。
+            guard_core::contains_word(code, concat!("LOCAL", "_ORIGIN"))
                 || guard_core::contains_word(code, &quoted)
         })
         .map(|(rel, _)| rel.as_str())
