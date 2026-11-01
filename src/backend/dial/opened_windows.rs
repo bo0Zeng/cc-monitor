@@ -42,7 +42,7 @@ pub(crate) fn parse(body: &str) -> Option<Opened> {
 
 /// 前奏：跑这一行的那个 shell 把自己的标签与 `machine` 写进 `file`（先写旁名 `.part` 再挪过去），再接后面那一行。
 /// 写法按本机终端方言，住 `platform/shell/{posix, powershell}.rs::note_own_window`；三个词经本方言的单引号字面量。
-pub(crate) fn prelude(powershell: bool, file: &Path, machine: &str) -> String {
+fn prelude(powershell: bool, file: &Path, machine: &str) -> String {
     let file = file.to_string_lossy();
     let part = format!("{file}.part");
     if powershell {
