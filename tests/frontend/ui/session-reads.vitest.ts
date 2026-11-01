@@ -233,7 +233,12 @@ describe("〔STC〕第五问：会话事实", () => {
       ],
       answerOff: null,
       autoAnswer: null,
-      autoAnswerChoices: [],
+      autoAnswerChoices: [
+        { min: 0, text: copyText("beAsk.auto.off") },
+        { min: 5, text: "5m" },
+        { min: 15, text: "15m" },
+        { min: 30, text: "30m" },
+      ],
       autoAnswered: null,
       startedBy: null,
       children: [],
