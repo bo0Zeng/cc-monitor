@@ -1,4 +1,4 @@
-//! `control/files_write.rs` 的行为判据 —— **钉住那两道围栏**。
+//! `files/write.rs` 的行为判据（挂在命令那一层 `stream/inbound/files_write_face.rs`：问法走 `wire::typed::take` 与门） —— **钉住那两道围栏**。
 //!
 //! # 🔴 守的要求
 //!
@@ -37,9 +37,12 @@
 //!    写句柄只递给命令表文件管理那一族（typed 的 `Facing` 那一档，`readonly_guard` 钉着）。
 //!    本族只判「围栏在不在、拦不拦得住」。
 
-use super::*;
+use crate::common::said::Said;
+use crate::files::write::test_support::{keep_mode, rename_entry_as, swap_seq};
+use crate::files::write::*;
 use crate::files::SHA256_HEX_LEN;
 use crate::platform::fs::Face;
+use std::path::{Path, PathBuf};
 
 /// 删会话那两问今天由门递进来（[`SessionPort`]）；下面各条照旧按两参写，
 /// 递的就是生产那一个窄口（适配层注册表那一格）。
@@ -96,7 +99,7 @@ pub(crate) fn ask(wire_name: &str, args: &serde_json::Value) -> Answer {
         "session-attachment-commit" => via(
             args,
             |r: cmd_wire::attachment::SessionAttachmentCommitReq| {
-                crate::control::files_commit::session_attachment::commit_here(
+                crate::files::commit::session_attachment::commit_here(
                     &Face::issue(),
                     std::path::Path::new(""),
                     r,
@@ -105,7 +108,7 @@ pub(crate) fn ask(wire_name: &str, args: &serde_json::Value) -> Answer {
         ),
         "session-attachment-drop" => {
             via(args, |r: cmd_wire::attachment::SessionAttachmentDropReq| {
-                crate::control::files_commit::session_attachment::drop_one(
+                crate::files::commit::session_attachment::drop_one(
                     &Face::issue(),
                     std::path::Path::new(""),
                     &r.id,
@@ -183,7 +186,13 @@ fn delete_session_with(
     sid: &str,
     locate: impl FnOnce(&str) -> Result<std::path::PathBuf, String>,
 ) -> Result<std::path::PathBuf, WriteRefusal> {
-    super::delete_session_with(&Face::issue(), sid, locate, PORT.is_record, PORT.file_name)
+    crate::files::write::delete_session_with(
+        &Face::issue(),
+        sid,
+        locate,
+        PORT.is_record,
+        PORT.file_name,
+    )
 }
 
 /// 一个这次运行独占的临时目标根。`tag` 区分用例，`pid` 区分并发跑的进程。
@@ -668,7 +677,7 @@ fn a_symlink_that_stays_inside_the_target_root_still_writes() {
 #[test]
 fn the_write_primitive_is_no_longer_a_zero_consumer_symbol() {
     let root = guard_core::addr::backend_src_root();
-    let needle = format!("files_{}::", "write");
+    let needle = format!("files::{}::", "write");
     let mut consumers: Vec<String> = Vec::new();
     let mut scanned = 0usize;
     for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
@@ -678,7 +687,7 @@ fn the_write_primitive_is_no_longer_a_zero_consumer_symbol() {
             .to_string_lossy()
             .replace('\\', "/");
         scanned += 1;
-        if rel == "control/files_write.rs" {
+        if rel == "files/write.rs" {
             continue; // 它自己不是自己的消费者
         }
         if guard_core::production_code(&src).contains(needle.as_str()) {
@@ -693,7 +702,7 @@ fn the_write_primitive_is_no_longer_a_zero_consumer_symbol() {
     consumers.sort();
     assert!(
         !consumers.is_empty(),
-        "`control/files_write.rs` 在生产段里**一个跨文件消费者都没有** —— \
+        "`files/write.rs` 在生产段里**一个跨文件消费者都没有** —— \
          那它还是 09-19 落地时那个「能力在、没人接」的状态，第 2 步没落成。\n\
          ⚠ 本模块自己那几条判据不算消费者（它们永远在调它，拿它当证据是恒真的）。"
     );
@@ -1398,7 +1407,7 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
 /// ⚠ **不列目录**（`scanning_guard_registry` 不许测试段裸遍历目录）：旁名的形状是确定的，
 /// 本进程造过的序号是 `0..SWAP_SEQ` ⇒ 逐个按名字问「在不在」。
 fn copy_leftovers(dir: &Path, name: &str) -> Vec<String> {
-    let upto = SWAP_SEQ.load(std::sync::atomic::Ordering::Relaxed);
+    let upto = swap_seq();
     (0..upto)
         .map(|seq| format!(".{name}.ccm-swap-{}-{seq}.part", std::process::id()))
         .filter(|n| std::fs::symlink_metadata(dir.join(n)).is_ok())
@@ -2004,7 +2013,7 @@ fn a_recursive_delete_walks_through_non_utf8_children() {
 /// ⚠ **不列目录**（同 [`copy_leftovers`]：`scanning_guard_registry` 不许测试段裸遍历目录）：
 /// 旁名形状确定、本进程造过的序号是 `0..SWAP_SEQ` ⇒ 逐个按名字问「在不在」。
 fn side_files(dir: &Path, name: &str) -> Vec<String> {
-    let upto = SWAP_SEQ.load(std::sync::atomic::Ordering::Relaxed);
+    let upto = swap_seq();
     (0..upto)
         .map(|seq| format!(".{name}.ccm-swap-{}-{seq}.part", std::process::id()))
         .filter(|n| std::fs::symlink_metadata(dir.join(n)).is_ok())
@@ -2583,7 +2592,7 @@ fn the_command_face_takes_expect_only_as_bytes_of_one_file() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 〔E 吞错普查点名 `files_write` 那一处 `.ok();`〕**备份沿用不上原文件的权限位 ⇒ 删掉那份备份、整趟拒**（两向）：
+/// 〔E 吞错普查点名写面那一处 `.ok();`〕**备份沿用不上原文件的权限位 ⇒ 删掉那份备份、整趟拒**（两向）：
 /// 注入一个会失败的 chmod ⇒ `Io` 拒绝、话里带原因、备份那份不在了；成功的 chmod ⇒ `Ok`、备份还在。
 /// 接线：`land_backup` 经 `keep_mode`，生产段零处 `set_permissions(…).ok()`。
 ///
@@ -2630,8 +2639,7 @@ fn w5vis_a_backup_that_cannot_keep_the_original_mode_is_removed_and_refused() {
         0o600
     );
     // 接线。
-    let prod =
-        guard_core::production_code(include_str!("../../../src/backend/control/files_write.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/files/write.rs"));
     assert_eq!(
         prod.matches("set_permissions(&bak, p).ok()").count(),
         0,
@@ -2881,7 +2889,7 @@ fn read_then_save_then_save_again_chains_on_the_digests_the_backend_hands_out() 
     let root = temp_root("cas-chain");
     std::fs::write(root.join("a.md"), b"one\n").expect("铺");
     let path = root.join("a.md");
-    let read = crate::files::tests::answer_wire(
+    let read = crate::files::test_support::answer_wire(
         "files-read-text",
         &serde_json::json!({"path": path.to_str().unwrap(), "max_bytes": 1024}),
         &Default::default(),
@@ -3116,7 +3124,7 @@ fn what_the_file_face_creates_inside_the_own_home_is_only_for_the_owner() {
     let exe = std::env::current_exe().expect("测试二进制自己的路径");
     let st = std::process::Command::new(exe)
         .args([
-            "control::files_write::tests::own_home_child_entry_point",
+            "stream::inbound::files_write_face::write_tests::own_home_child_entry_point",
             "--exact",
             "--ignored",
             "--test-threads=1",

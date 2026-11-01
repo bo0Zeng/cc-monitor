@@ -137,7 +137,7 @@ subscribe(origin, kind)    → 流
 
 模块地图（`src/backend/`，逐文件清单见它的 README，每个目录的 `mod.rs` 头注是那一块的说明）：
 
-- `platform/`：平台原语与平台 cfg 的唯一住处（路径 · 进程 · 判活的读法 · 信号 · 文件原语 · 脱离）；`platform/shell/` 是 shell 方言知识的唯一住处（引号 · 定义函数 · 导出环境 · rc / `$PROFILE` 在哪）。
+- `platform/`：平台原语与平台 cfg 的唯一住处（独立 crate `backend-platform`，不引后端里任何别的层；路径 · 进程 · 判活的读法 · 信号 · 文件原语 · 脱离）；`platform/shell/` 是 shell 方言知识的唯一住处（引号 · 定义函数 · 导出环境 · rc / `$PROFILE` 在哪）。
 - `host/`：宿主口（终端住在哪种宿主里：tmux · 托管）。`host/tmux.rs` 是起 `tmux` 进程的唯一一处（`child`：别处对 tmux 下命令经它拿命令、argv 自给）与终端名单 · 会话快照探测器 · 观测那两跳 `sh -c`；`host/managed.rs` 是托管那一臂；`host::list` 把两种宿主的行合成一份。`control/` 与 `observe/` 都引它，它不引那两层（`layering_guard` 判）；「真起 tmux 的生产文件恰好是 `host/tmux.rs`」由 `target_parity_guard` 判。
 - `observe/`：产出观测帧的读（会话文件 watcher · 会话账本 · 划段 · tmux 观测 · 历史 / 搜索 / 任务 / 账号查询）。
 - `control/`：改状态的动作，以及只喂控制决策的只读查询（起会话与命令渲染 · kill · 送键 · 抓屏 · 分叉落盘 · 常驻与退出行为 · 部署计划 · 写用户文件的那一族 · 传输台）。
@@ -150,6 +150,7 @@ subscribe(origin, kind)    → 流
 - `ssh-dial/`：拨号核心（独立 crate，后端与手机同一份）：竞速 · 跳板 · 主机钥匙判定 · 鉴权 · 保活 · 按身份复用 · 开 channel 之后的几种用法 · SFTP 客户端；`dial/` 在它上面。
 - `deploy/`：装 / 升级远端后端的判定与编排（独立 crate，桌面后端答 `deploy-plan` 与手机 `mobcore` 同一份）：那台要哪一格 · 落点那一份是谁 · 只升不降 · 残件 · 常驻那一份旧不旧。
 - `egress/`：出网口（独立 crate）：这台所有出站 TCP 只在这里开，按一份出网描述直连或经代理（HTTP CONNECT · SOCKS5）；中转与拨号核心链同一份。
+- `test-meters/`：测试档的量具（独立 crate，只在各包的 dev 侧）：线程级内存量具 · 金样比对 · 听 `tracing` 说了什么；体住 `tests/backend/`。
 - `ccm_line/`：`ccm` 这一行的词与解析（旗标 · 默认值 · 自己叫什么 · 配置那一段的记号）；起会话 · 账号域 · 别名那一族都引它，做事那一半住 `control/ccm/`。
 - `assets/`：skill / MCP / 别名的计算、判定与写，资产目录与同步，两台之间的装由本机后端当枢纽。
 - `history/`：历史跨机 join 与注解（星标 / 改名 / 隐藏 / 在哪几组 / 固定）与组（§3.10）。
@@ -159,7 +160,7 @@ subscribe(origin, kind)    → 流
 - `stream/`：进后端的口，最上面那一层（命令表 · 帧面的信封与分派 · CLI 面的分派 · 对后端其余部分开的门 · 总期限 · 出口声明 · tee 消费侧与活卡），引所有功能，除 `main.rs` / `lib.rs` 谁都不引它（判据 `layering_guard`）。本机后端问别台：转界面带 `machine` 的那一问与本机后端自己的有类型那一问走那台的常驻流（`control/feeds.rs` 的 `forward` · `call`），其余经 `dial/remote_ask.rs` 的 `--resident-call`。
 - `footprint/`：足迹（这台机器上 cc-monitor 写过什么、能不能撤）；`common/`：共用判定与成品的格类型；`lineage.rs`：会话血缘（谁起的谁）；`stderr_log.rs`：脱离起的常驻后端把 stderr 落进一份有上限、滚动的文件（设置页「日志」里看得到）。
 
-后端分两块、零互相依赖：**原生后端**（会话 · tmux · 账号 · SSH 与两台之间的传输 · 资产 · 历史 · 中转宿主）与**文件管理后端**（只管本机的读和写：列 · 读 · 搜 · 写用户的文件 · 上传块 · 解压 · 提交，即 `files/` 与 `control/files_write.rs` · `files_upload_chunks.rs` · `files_extract.rs` · `files_commit.rs`），两块只共用 `platform/` · `common/` 与 `lib.rs` 的能力声明轴；原生那一块够到文件管理那一块只经帧面分派（命令表文件管理那一族）。传输台 `control/transfer.rs` 归原生那一块（拨号拿会话、搬字节），它要的路径解析 · 暂存件命名 · 摘要住 `common/`。判据 `tests/backend/files/module_boundary_guard.rs`。
+后端分两块、零互相依赖：**原生后端**（会话 · tmux · 账号 · SSH 与两台之间的传输 · 资产 · 历史 · 中转宿主）与**文件管理后端**（只管本机的读和写：列 · 读 · 搜 · 写用户的文件 · 上传块 · 解压 · 提交，即 `files/`：读族 ＋ `write.rs` · `upload_chunks.rs` · `extract.rs` · `commit.rs` · `batch.rs`），两块只共用 `platform/` · `common/`；原生那一块够到文件管理那一块只经命令那一层（`stream/inbound/files_*_face.rs`）。传输台 `control/transfer.rs` 归原生那一块（拨号拿会话、搬字节），它要的路径解析 · 暂存件命名 · 摘要住 `common/`。文件管理那一块是独立的包 `backend-files`：只依赖纯工具与平台两层由它的 `Cargo.toml` 管，上层够得到的只有它的 `pub` 项（谁读哪一项由 `pub_reader_registry` 数着）。
 
 ### 2.3 `observe/` 与 `control/`：按用途分，不按读写分
 
@@ -320,7 +321,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 - **窗口**：`cc-monitor-filewin`（独立包 `src/frontend/filewin/`，egui，一窗一进程）经父子管道只说 `call` / `subscribe`；开窗那一侧在壳 `filewin/`，契约在共享 crate `src/common/filewin-contract/`。配色读同一份界面令牌。
 - **读**：后端 `files/`（常驻文件名索引 · 列目录 · 元数据 · 按块读 · 按内容搜）。
-- **写**：只经那台后端的文件管理面 `control/files_write.rs`（`Door::peek` · `Door::put` 带期望值 · `files-delete` …，规矩见 INVARIANTS §4），本机远端同一条路；上传块 · 解压 · 提交在 `control/files_upload_chunks.rs` · `control/files_extract.rs` · `control/files_commit.rs`。monitor 碰用户文件只有这一个开口，只差 `origin`。
+- **写**：只经那台后端的文件管理面 `files/write.rs`（`Door::peek` · `Door::put` 带期望值 · `files-delete` …，规矩见 INVARIANTS §4），本机远端同一条路；上传块 · 解压 · 提交在 `files/upload_chunks.rs` · `files/extract.rs` · `files/commit.rs`。monitor 碰用户文件只有这一个开口，只差 `origin`。
 - **传输**：两台之间搬字节归原生那一块的传输台 `control/transfer.rs`（经 `dial/` 的 SFTP 写暂存区，远端那台的 `files-commit-upload` 提交）；下载的本机落点也由它写（过同一套路径解析，经帧面分派交来的写句柄）。
 - **手机**：文件屏（`app` 的 `ui/files/`）读写都问那台后端的 `files-*`（经这台的常驻流，入参与桌面窗口同一套切法：`root` ＝ 当前目录、`rel` ＝ 一段名字）；手机进程里没有后端，`transfer-*` 用不上：上传走块形（`files-stage-chunk` → `files-commit-upload`，同名那台问、答了同一份暂存件再交），下载走 `files-read-chunk`；分块那一圈在嵌的核心里（`chunk-core`，桌面同一份），本机那一份交文件描述符。手机经 SFTP 只剩部署那两处（写规矩 `Deploy`，与后端同一种）。
 

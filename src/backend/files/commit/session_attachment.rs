@@ -236,7 +236,7 @@ fn mint(
     }
     let at = last.map(|d| d.display().to_string()).unwrap_or_default();
     Err(Said::new(
-        crate::control::files_write::EXISTS,
+        crate::files::write::EXISTS,
         copy_text("beFilesWrite.swap.exists", &[("path", &at)]),
     ))
 }
@@ -391,5 +391,5 @@ pub fn sweep(face: &Face, cwd: &Path, now_secs: u64, keep: &str) -> Vec<String> 
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/control/session_attachment_tests.rs"]
+#[path = "../../../../tests/backend/files/session_attachment_tests.rs"]
 mod tests;

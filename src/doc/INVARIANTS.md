@@ -81,12 +81,12 @@
 
 ## 4. profile 等用户文件写入 = 后端 `Door::put`：CAS ＋ backup ＋ 原子替换 ＋ 写后校验 ＋ 回滚
 
-用户文件（rc / `$PROFILE` / `.mcp.json` / skills 目录）只由后端写，规则只有一份：`src/backend/control/files_write.rs::put_text`（经 `Door::put`）——
+用户文件（rc / `$PROFILE` / `.mcp.json` / skills 目录）只由后端写，规则只有一份：`src/backend/files/write.rs::put_text`（经 `Door::put`）——
 ① `expect` 必给（读改写之间盘上那份被改过 ⇒ `stale`、不写）· ② 与盘上逐字节相同 ⇒ 不写 · ③ 要备份 ⇒ `O_EXCL` 另存 `<名>.ccm-backup-<毫秒>-<序号>`（沿用原权限位）· ④ 替换：unix 同目录暂存旁名写满后换名上位（原子）；Windows 已在的目标**就地覆盖写**，保住 dst 的 ACL / ADS / 创建时间 · ⑤ 回读逐字节比对，不符回滚 · 盘上有字节却读到空 ⇒ 停。最后一段是链接 ⇒ 改真文件、链接留着。
 
 **为什么不能松动**：用 `MoveFileExW` / rename 拿暂存文件覆盖，会用暂存文件继承来的 ACL 盖掉用户文件上的显式 ACE（Documents 重定向到别的盘的用户会读不了自己的 profile）——这正是从前用 `ReplaceFileW` 的理由，今天由「Windows 就地覆盖」承担；OneDrive 占位 / 杀软会让读回成空，纯写就是清空用户内容 ⇒ 备份加回读双保险。
 
-**谁在守**：`files_write_tests.rs` 的 `put_*` 一族（含只在 Windows 上跑的 `put_keeps_explicit_acl_entries_on_windows`）· `atomic_replace_registry_tests.rs`（monitor 自己的文件与用户文件两类语义分开登记）。
+**谁在守**：`tests/backend/files/write_tests.rs` 的 `put_*` 一族（含只在 Windows 上跑的 `put_keeps_explicit_acl_entries_on_windows`）· `atomic_replace_registry_tests.rs`（monitor 自己的文件与用户文件两类语义分开登记）。
 
 ---
 
@@ -439,7 +439,7 @@ PID 死亡判定用 `pidfd` 绑进程实例本身 ⇒ PID 复用在机制上无�
 |---|---|---|
 | 默认层 | 下面几层之外的全部后端生产源码 | 写模式一条都不许出现 |
 | 新建层 | `control/fork_write.rs` | 必须含 `.create_new(true)`（带前导点：只许由调用满足，不许被注释喂饱）；不得有删除 / 改名 / 复制 / 链接 / 截断 / 追加 / 覆盖写 / 建目录 / `set_len` / `.create(true)` |
-| 文件管理写面 | `control/files_write.rs` · `control/files_commit.rs` | 改动动词是闭集；每一处改动之前先过路径解析（`files_write::walk_in_root`：逐段只许普通段、解成真路径仍在根下、从根句柄逐段不跟链接地开到那一层，写只经那个目录句柄；跟链接的动词解到底），`Face` 的写方法只收它交回的 `Resolved`；这一面不问数据是谁的（文件管理器可以改会话文件） |
+| 文件管理写面 | `files/write.rs` · `files/commit.rs` | 改动动词是闭集；每一处改动之前先过路径解析（`files::write::walk_in_root`：逐段只许普通段、解成真路径仍在根下、从根句柄逐段不跟链接地开到那一层，写只经那个目录句柄；跟链接的动词解到底），`Face` 的写方法只收它交回的 `Resolved`；这一面不问数据是谁的（文件管理器可以改会话文件） |
 | 后端自有状态文件 | 按文件登记（第四层表，相等断言） | 每份只写它自己那一个文件 |
 | 远端（SFTP） | `ssh-dial/sftp.rs` | 只往远端 `~/.cc-monitor/staging/` 写，每处改动先过 `ssh-dial/sftp.rs::fenced_remote`；落进用户目录只经远端后端 `files-commit-upload`；换进 `~/.cc-monitor/bin/` · 卸载由传上去的那一份在那台上自己做（`--place-self` · `--unplace-self`） |
 
@@ -534,7 +534,7 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 
 **为什么不能松动**：从前的回环 TCP 口没有权限位，只能靠一把钥匙补，钥匙文件又被别的实例改写过（远端从此一直被拒）⇒ 已删，换成内核给的本人门。能连上套接字的只有本账号自己的进程。
 
-**谁在守**：`listen_tests.rs::the_resident_switch_is_empty_one_or_refused` · `listen_tests.rs::the_attach_reply_says_how_this_build_stands_against_the_clients` · `listen_tests.rs::refusal_reasons_are_a_closed_set` · `lib_tests.rs::the_dir_lock_is_exclusive_and_released_on_drop` · `lib_tests.rs::a_peer_with_my_uid_is_ours_and_nobody_means_nobody` · `main_claim_tests.rs::a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket` · `main_claim_tests.rs::a_sandboxed_start_refuses_the_real_home` · `resident_tests.rs::the_sandbox_refusal_truth_table` · `child_tests.rs::a_child_never_inherits_the_backend_internal_families` · `local_backend_host_tests.rs::the_host_never_writes_the_resident_dir_and_carries_no_key` · `local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused` · `feed_tests.rs::a_relay_that_stays_absent_is_tried_a_capped_number_of_times` · e2e `local-backend-supervise.sh`。
+**谁在守**：`listen_tests.rs::the_resident_switch_is_empty_one_or_refused` · `listen_tests.rs::the_attach_reply_says_how_this_build_stands_against_the_clients` · `listen_tests.rs::refusal_reasons_are_a_closed_set` · `lib_tests.rs::the_dir_lock_is_exclusive_and_released_on_drop` · `lib_tests.rs::a_peer_with_my_uid_is_ours_and_nobody_means_nobody` · `main_claim_tests.rs::a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket` · `main_claim_tests.rs::a_sandboxed_start_refuses_the_real_home` · `resident_tests.rs::the_sandbox_refusal_truth_table` · `cross_tests.rs::a_child_never_inherits_the_backend_internal_families` · `local_backend_host_tests.rs::the_host_never_writes_the_resident_dir_and_carries_no_key` · `local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused` · `feed_tests.rs::a_relay_that_stays_absent_is_tried_a_capped_number_of_times` · e2e `local-backend-supervise.sh`。
 
 #### 48.1a 中转口的钥匙
 

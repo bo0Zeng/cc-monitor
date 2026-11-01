@@ -22,7 +22,7 @@ const OWN_TMP_SUFFIX: &str = ".tmp";
 const SWAP_SUFFIX: &str = ".part";
 
 /// 文件管理面写入 `name` 时的换名件名（隐藏件，名字可以不是 UTF-8）。
-pub(crate) fn swap(name: &OsStr, pid: u32, seq: u64) -> OsString {
+pub fn swap(name: &OsStr, pid: u32, seq: u64) -> OsString {
     let mut s = OsString::from(".");
     s.push(name);
     s.push(format!("{SWAP_MARK}{pid}-{seq}{SWAP_SUFFIX}"));
@@ -30,19 +30,19 @@ pub(crate) fn swap(name: &OsStr, pid: u32, seq: u64) -> OsString {
 }
 
 /// 文件管理面覆盖 `name` 之前另存原文的备份件名。
-pub(crate) fn backup(name: &OsStr, ms: u128, seq: u64) -> OsString {
+pub fn backup(name: &OsStr, ms: u128, seq: u64) -> OsString {
     let mut s = name.to_os_string();
     s.push(format!("{BACKUP_MARK}{ms}-{seq}"));
     s
 }
 
 /// 账号库执行落到 `at` 之前的换名件（`at` 是整条路径）。
-pub(crate) fn exec_tmp(at: &str, pid: u32) -> String {
+pub fn exec_tmp(at: &str, pid: u32) -> String {
     format!("{at}{TMP_MARK}{pid}")
 }
 
 /// 自家状态原子写 `name` 时的临时件名。
-pub(crate) fn own_tmp(name: &OsStr, pid: u32, thread: std::thread::ThreadId, seq: u64) -> OsString {
+pub fn own_tmp(name: &OsStr, pid: u32, thread: std::thread::ThreadId, seq: u64) -> OsString {
     let mut s = name.to_os_string();
     s.push(format!(".{pid}.{thread:?}.{seq}{OWN_TMP_SUFFIX}"));
     s

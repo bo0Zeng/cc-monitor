@@ -1,5 +1,5 @@
 //! `batch.rs` 的判据：一组带票 · 同名照 `data.conflicts` 问一次（默认跳过）· 断了等连回来、同一张票再问 · 撤带票 · 结局照后端画。
-//! 后端那一半是替身（按剧本回），真后端那一半的判据住 `tests/backend/control/files_batch_tests.rs`。
+//! 后端那一半是替身（按剧本回），真后端那一半的判据住 `tests/backend/files/batch_tests.rs`。
 
 use super::*;
 use batch_core::{copy_details, run, Rebuff, Verb, EXISTS};

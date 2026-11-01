@@ -1,4 +1,4 @@
-//! `control/files_link.rs` 的行为判据。
+//! `files/extract.rs` 的行为判据（连建链接那一下 `land_link`）。
 //! 要求：「复制**链接本身**（目标文本原样）」——
 //! 建链接那一下只住这里，链接自己那条路径先过路径解析、目标文本不解不判。
 
@@ -361,26 +361,6 @@ fn an_extract_that_fails_midway_undoes_everything_it_built() {
         std::fs::symlink_metadata(base.join("bad")).is_err(),
         "🔴 半截解压留在了盘上"
     );
-    std::fs::remove_dir_all(&base).ok();
-}
-
-/// 命令面：回的键 == 声明的 `fields`；路径参数收 b16。
-#[test]
-fn the_command_face_answers_with_the_declared_fields() {
-    let base = temp_root("face");
-    plant(
-        &base,
-        "p.tar",
-        &tar_bytes(&[TarItem::File(b"f", b"1", 0o644)]),
-    );
-    let v = crate::control::files_write::tests::ask(
-        "files-extract",
-        &serde_json::json!({"root": base.to_string_lossy(), "rel": {"b16": "702e746172"}}),
-    )
-    .expect("解压被拒");
-    // 回包就是那一份线上类型（多一格 · 少一格都解不回来）。
-    serde_json::from_value::<cmd_wire::files::FilesTreeReply>(v).expect("回包照类型解得回来");
-    assert_eq!(std::fs::read(base.join("p/f")).expect("f"), b"1");
     std::fs::remove_dir_all(&base).ok();
 }
 

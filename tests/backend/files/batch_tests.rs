@@ -1,4 +1,4 @@
-//! `control/files_batch.rs` 的判据：同一台上一组一条（复制 · 删除 · 改权限）。全在本机临时目录上真跑。
+//! `files/batch.rs` 的判据：同一台上一组一条（复制 · 删除 · 改权限）。全在本机临时目录上真跑。
 
 use super::*;
 use crate::common::batch_book::{listen, stop};
@@ -46,7 +46,7 @@ fn copy_req(
 
 /// 本文件那几条不问时刻 ⇒ 看的那一台的时区照缺（按 UTC 写）。
 fn copy(face: &Face, req: FilesCopyReq) -> Result<BatchReply, CopyRefused> {
-    super::copy(face, req, &crate::Tz::default())
+    super::copy(face, req, &crate::common::time::Tz::default())
 }
 
 fn states(r: &BatchReply) -> Vec<ItemState> {
@@ -86,7 +86,7 @@ fn the_clash_list_carries_moments_written_on_the_viewers_clock() {
         .unwrap()
         .set_modified(old)
         .unwrap();
-    let tz = crate::Tz::named("Asia/Tokyo").unwrap();
+    let tz = crate::common::time::Tz::named("Asia/Tokyo").unwrap();
     let got = super::copy(
         &Face::issue(),
         copy_req(&root, &[("a", "a2")], OnExists::Ask, None),
@@ -313,7 +313,7 @@ fn a_single_copy_takes_one_plain_name_and_refuses_the_rest_as_bad_name() {
         };
         assert_eq!(
             f.code.as_deref(),
-            Some(super::super::files_write::BAD_NAME),
+            Some(super::super::write::BAD_NAME),
             "`{to}`：{}",
             f.said
         );

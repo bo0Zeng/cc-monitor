@@ -4,18 +4,18 @@
 use std::path::Path;
 
 /// 现打的金样落在仓根下的这个目录（`bless-golden.sh` 从这里拷回）。
-pub(crate) const FRESH_DIR: &str = ".build/golden";
+pub const FRESH_DIR: &str = ".build/golden";
 
 /// `rel`：金样的仓相对路径；`what`：红时说的那句（哪个读者在读这份、改了要连带改什么）。
 #[track_caller]
-pub(crate) fn assert_golden(rel: &str, got: &str, what: &str) {
+pub fn assert_golden(rel: &str, got: &str, what: &str) {
     if let Some(e) = mismatch(rel, got) {
         panic!("{what}\n{e}");
     }
 }
 
 /// 一次比好几份时用：每份都比、都落现打的那份，再一起红。
-pub(crate) fn mismatch(rel: &str, got: &str) -> Option<String> {
+pub fn mismatch(rel: &str, got: &str) -> Option<String> {
     check(&guard_core::addr::repo_root(), rel, got).err()
 }
 

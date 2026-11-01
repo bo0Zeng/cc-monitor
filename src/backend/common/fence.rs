@@ -13,7 +13,7 @@
 use std::path::{Path, PathBuf};
 
 /// 一道以 `root` 为界的围栏：`root` 已经规范化（symlink 解开）。
-pub(crate) struct Fence {
+pub struct Fence {
     root: PathBuf,
     /// 报错里怎么称呼这个根（取根目录自己的名字）。
     what: String,
@@ -21,7 +21,7 @@ pub(crate) struct Fence {
 
 impl Fence {
     /// 以 `root` 为界。根自己解不开（不存在 / 读不了）⇒ `Err`。
-    pub(crate) fn at(root: &Path) -> Result<Self, String> {
+    pub fn at(root: &Path) -> Result<Self, String> {
         let what = root
             .file_name()
             .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
@@ -32,13 +32,13 @@ impl Fence {
     }
 
     /// 规范化之后的根（遍历从这里起，走到的每一条都在界内的前提才成立）。
-    pub(crate) fn root(&self) -> &Path {
+    pub fn root(&self) -> &Path {
         &self.root
     }
 
     /// 放行一个候选路径：相对路径按根拼、绝对路径直接用；规范化（symlink 解开）之后必须仍在根下。
     /// 放行 ⇒ 回规范化之后的那条路径。
-    pub(crate) fn admit(&self, candidate: &Path) -> Result<PathBuf, String> {
+    pub fn admit(&self, candidate: &Path) -> Result<PathBuf, String> {
         let joined = if candidate.is_absolute() {
             candidate.to_path_buf()
         } else {
@@ -60,7 +60,7 @@ impl Fence {
 
 /// 一条路径规范化之后的样子（symlink 解开）；解不开 ⇒ `None`。**不是放行**（不比根）：缓存拿它当键，
 /// 同一份文件经符号链接走出来的写法与围栏放行之后的写法落到同一个键上（`observe/skeleton.rs`）。
-pub(crate) fn real_path(p: &Path) -> Option<PathBuf> {
+pub fn real_path(p: &Path) -> Option<PathBuf> {
     p.canonicalize().ok()
 }
 

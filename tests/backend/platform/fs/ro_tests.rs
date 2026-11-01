@@ -65,9 +65,9 @@ fn the_early_return_happens_before_any_read_not_just_somewhere() {
     const CAP: u64 = 1024 * 1024;
     std::fs::write(&path, vec![b'x'; FILE]).expect("写夹具");
 
-    let base = crate::alloc_probe::reset_peak();
+    let base = test_meters::alloc_probe::reset_peak();
     let err = Ro::read_regular_capped(&path, CAP).expect_err("8 MiB > cap 1 MiB，必须拒");
-    let grew = crate::alloc_probe::peak_since(base);
+    let grew = test_meters::alloc_probe::peak_since(base);
 
     // 抽取器自检：拒的是**这条路**（早退那条带实际大小），不是别的错。
     assert!(

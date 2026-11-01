@@ -560,11 +560,11 @@ pub fn delete_op(r: &Listed) -> WriteOp {
 /// ⚠ 与后端那一侧无关：后端那几条都在阻塞档、开跑之后打不断；这个数只管「窗口等多久」。
 pub const WRITE_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 
-/// 后端写面「落点名被占了」那个码（后端 `control/files_write.rs::EXISTS`，判据读两侧源码钉相等）：
+/// 后端写面「落点名被占了」那个码（后端 `files/write.rs::EXISTS`，判据读两侧源码钉相等）：
 /// 就地改名 / 新建据它在那一格下面说「x 已存在」，不把系统那句长话搬上来。
 pub const EXISTS: &str = "exists";
 
-/// 后端写面「这个名字在那台不能用」那个码（后端 `control/files_write.rs::BAD_NAME`，判据读两侧源码钉相等）：
+/// 后端写面「这个名字在那台不能用」那个码（后端 `files/write.rs::BAD_NAME`，判据读两侧源码钉相等）：
 /// 那一格下面照登后端那一句（哪条规则、哪个字），界面不另写一份名字规则。
 pub const BAD_NAME: &str = "bad_name";
 

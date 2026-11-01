@@ -30,10 +30,10 @@ use std::time::{Duration, Instant};
 const FRAME: usize = 1 << 20;
 
 fn budget(ms: u64) -> Budget {
-    Budget {
-        until: Instant::now() + Duration::from_millis(ms),
-        cancel: CancelToken::new(),
-    }
+    Budget::new(
+        Instant::now() + Duration::from_millis(ms),
+        CancelToken::new(),
+    )
 }
 
 /// 起一条挂着**生产句柄**的真通道（一对内存管子，生产里是窗口进程的 stdout / stdin），回窗口那一侧的客户端。

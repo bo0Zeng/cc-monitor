@@ -3,7 +3,7 @@
 //! 守的要求（住址）：
 //! - 要求：「退出时在飞的写：覆盖写一律『临时件 ＋ rename』原子化」；
 //! - 审计 E §E2：「`overwrite_text` 是先截断再写 …… 远端那份文件被截成半份或 0 字节」；
-//! - 审计 E §3.3 吞错：「`files_commit.rs` 上传提交失败后删 0 字节占位也失败了 ⇒ 用户目录里留一个 0 字节文件，报错里没提」。
+//! - 审计 E §3.3 吞错：「`files/commit.rs` 上传提交失败后删 0 字节占位也失败了 ⇒ 用户目录里留一个 0 字节文件，报错里没提」。
 //! 设计与读数住 §2。⚠ 与「存盘不是原子的 …… 刻意不换语义」冲突，按 D-a 做、已报备。
 //!
 //! | # | 判据 | 形状 |
@@ -18,7 +18,7 @@ use crate::platform::fs::Face;
 
 const CHILD_MARK: &str = "CCM_HX1_OW_CHILD";
 const CHILD_ROOT: &str = "CCM_HX1_OW_ROOT";
-const CHILD_TEST_NAME: &str = "control::files_write::overwrite_atomic_tests::w1_child";
+const CHILD_TEST_NAME: &str = "write::overwrite_atomic_tests::w1_child";
 /// 新内容：远大于 `ulimit -f` 放行的那几 KiB。
 const NEW_LEN: usize = 1 << 20;
 
@@ -206,12 +206,11 @@ fn w4_the_only_in_place_write_is_the_in_place_arm_of_replace_contents() {
     );
     assert_eq!(
         files,
-        vec!["control/files_write.rs".to_string()],
+        vec!["files/write.rs".to_string()],
         "后端生产段就地写的集合变了"
     );
     // 那一处在 `replace_contents` 里、在「该不该原子换」那一问的答案那一支之内。
-    let prod =
-        guard_core::production_code(include_str!("../../../src/backend/control/files_write.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/files/write.rs"));
     assert_eq!(prod.matches("fn replace_contents(").count(), 1);
     let seg = &prod[prod.find("fn replace_contents(").expect("replace_contents")..];
     let seg = &seg[..seg.find("\n}\n").expect("replace_contents 的尾")];
@@ -284,8 +283,7 @@ fn h2_the_in_place_reasons_are_exactly_links_and_owner() {
         both.contains("3 个硬链接") && both.contains("属主"),
         "{both}"
     );
-    let prod =
-        guard_core::production_code(include_str!("../../../src/backend/control/files_write.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/files/write.rs"));
     assert_eq!(
         prod.matches("in_place_reason(links, owner, crate::platform::paths::current_uid())")
             .count(),

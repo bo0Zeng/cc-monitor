@@ -9,18 +9,18 @@ const WINDOWS_RULES: bool = cfg!(windows);
 
 /// 认路径用的键：Windows 上折大小写（notify 在 NTFS 上大小写会变，不折就重复报）、扩展长度那一形（`canonicalize` 交回的
 /// `\\?\C:\…` · `\\?\UNC\…`）换成平常那一形；别的平台原样。只当键用，不拿去显示。
-pub(crate) fn path_key(p: &Path) -> PathBuf {
+pub fn path_key(p: &Path) -> PathBuf {
     key_as(p, WINDOWS_RULES)
 }
 
 /// `p` 落不落在 `root` 底下（按段比）。两边先照同一种规范化（[`path_key`]）再比：原样的、折过的键、解开链接的扩展长度那一形都对得上 ——
 /// 认路径归属只许经这里，别拿一边规范化过的去 `starts_with` 另一边原样的（Windows 上对不上）。
-pub(crate) fn is_under(p: &Path, root: &Path) -> bool {
+pub fn is_under(p: &Path, root: &Path) -> bool {
     under_as(p, root, WINDOWS_RULES)
 }
 
 /// [`path_key`] 两臂都能喂的那一形（`windows` ＝ 照 Windows 的规矩）；判据直接喂 `true` 测 Windows 那一臂。
-pub(crate) fn key_as(p: &Path, windows: bool) -> PathBuf {
+pub fn key_as(p: &Path, windows: bool) -> PathBuf {
     if !windows {
         return p.to_path_buf();
     }
@@ -48,7 +48,7 @@ fn under_as(p: &Path, root: &Path, windows: bool) -> bool {
 /// `observe/tmux_observe.rs::tmux_socket_dir`（读 `TMUX_TMPDIR`、拼 `tmux-<uid>`）是 tmux 的约定，留在 `observe/`。
 /// 非 unix 那一臂给 `std::env::temp_dir()`：那里没有 tmux、这条路走不到，给一个真实的根目录只为别撒谎。
 #[cfg(unix)]
-pub(crate) fn temp_root() -> PathBuf {
+pub fn temp_root() -> PathBuf {
     PathBuf::from("/tmp")
 }
 
@@ -64,7 +64,7 @@ pub(crate) fn temp_root() -> PathBuf {
 /// Windows 侧编不过」）。搬过来不是因为它坏，是因为**它和它的另一半被拆在两处**：
 /// 一半有门、一半没门，而两半合起来才是一条路径。
 #[cfg(unix)]
-pub(crate) fn current_uid() -> u32 {
+pub fn current_uid() -> u32 {
     // SAFETY: `getuid` 无副作用、不会失败。
     unsafe { libc::getuid() }
 }
@@ -77,7 +77,7 @@ pub(crate) fn current_uid() -> u32 {
 /// 本账号在账号数据库里登记的家目录（`getpwuid_r`），**不看 `$HOME`**：测试与台架会改 `$HOME`，这一格要的正是「改之前那一个」。
 /// 查不到 ⇒ `None`；非 unix ⇒ `None`（那里没有常驻这一形，问它的只有常驻后端起来那一刻）。
 #[cfg(unix)]
-pub(crate) fn account_home() -> Option<PathBuf> {
+pub fn account_home() -> Option<PathBuf> {
     use std::os::unix::ffi::OsStrExt as _;
     let mut buf = vec![0 as libc::c_char; 16 * 1024];
     // SAFETY: `pwd` 由 `getpwuid_r` 填；`buf` 活到读完 `pw_dir`；返回的 `out` 只在非空时解引用。
@@ -108,14 +108,14 @@ pub(crate) fn account_home() -> Option<PathBuf> {
 /// 一个路径（跟链接）所在文件系统的设备号 —— 走一棵树时「这一层是不是挂着另一个文件系统」那一判用它
 /// （`files::index::build` · `files::size`）。调用方只把它用在「不跟链接地看过、确是目录」的条目上，跟不跟链接在那里没有差别。
 /// 非 unix ⇒ `None`：那一判在那个平台上不开口（全当同一个文件系统），不编一个数。
-pub(crate) fn device_of(p: &Path) -> Option<u64> {
+pub fn device_of(p: &Path) -> Option<u64> {
     Ro::dev(&Ro::metadata(p).ok()?)
 }
 
 /// 一个路径（**跟链接**，与 `files-stat` 其余几格同源）的属主：用户名；查不到名字 ⇒ uid 的数字串。
 /// 非 unix ⇒ `None`（那边的属主是另一套东西，不编一个）。
 #[cfg(unix)]
-pub(crate) fn owner_of(p: &Path) -> Option<String> {
+pub fn owner_of(p: &Path) -> Option<String> {
     let uid = Ro::uid(&Ro::metadata(p).ok()?)?;
     Some(user_name(uid).unwrap_or_else(|| uid.to_string()))
 }
@@ -142,7 +142,7 @@ fn user_name(uid: u32) -> Option<String> {
 }
 
 /// 路径**本身**是符号链接 ⇒ 它的目标原文（`readlink`，不解、不跟）；不是链接 / 读不到 ⇒ `None`。
-pub(crate) fn link_target_of(p: &Path) -> Option<std::path::PathBuf> {
+pub fn link_target_of(p: &Path) -> Option<std::path::PathBuf> {
     Ro::read_link(p).ok()
 }
 
@@ -202,13 +202,13 @@ pub(crate) fn documents_dir() -> Option<PathBuf> {
 }
 
 /// 这台的文件系统**有没有可执行位**（unix 有；Windows 没有 —— 那边写口的改权限如实回失败，调用方据此不发）。
-pub(crate) fn has_exec_bits() -> bool {
+pub fn has_exec_bits() -> bool {
     cfg!(unix)
 }
 
 /// 〔原 `assets/door.rs`，今住 `common/door.rs`〕`rel`（`/` 或 `\` 分隔）接在 `home` 底下：分隔符跟 `home` 自己的写法走
 /// （`home` 里只有 `\` ⇒ `\`，否则 `/`）—— 那台机器的 home 是什么写法由它自己的后端答，这里只照着拼。
-pub(crate) fn join_under(home: &str, rel: &str) -> String {
+pub fn join_under(home: &str, rel: &str) -> String {
     let sep = if home.contains('\\') && !home.contains('/') {
         '\\'
     } else {
@@ -224,13 +224,13 @@ pub(crate) fn join_under(home: &str, rel: &str) -> String {
 
 /// 家目录底下一段 `/` 写的相对路径（契约 crate 里那些 `.cc-monitor/…`）⇒ 完整路径，分隔符照家目录自己的写法（[`join_under`]）：
 /// `Path::join` 不拆 `rel` 里的 `/`，Windows 上会拼成 `…\.cc-monitor/accounts`。
-pub(crate) fn home_join(home: &Path, rel: &str) -> PathBuf {
+pub fn home_join(home: &Path, rel: &str) -> PathBuf {
     PathBuf::from(join_under(&home.to_string_lossy(), rel))
 }
 
 /// 🔴 **打头的 `~` 展开（唯一一处）**：`~` · `~/…` · `~\…`（Windows）⇒ `home` 底下（[`join_under`]，分隔符照家目录）；
 /// 别的形（`~别人/…` · 绝对 · 相对）或家目录说不出 ⇒ 原样。给人看的那一形由调用方留着原样，这里只管读盘用的那一份。
-pub(crate) fn expand_tilde_from(p: &str, home: Option<&Path>) -> String {
+pub fn expand_tilde_from(p: &str, home: Option<&Path>) -> String {
     let Some(home) = home else {
         return p.to_string();
     };
@@ -243,22 +243,22 @@ pub(crate) fn expand_tilde_from(p: &str, home: Option<&Path>) -> String {
 }
 
 /// 路径的显示形（`home` 那一截写成 `~`）：实现住 `copy_core::path`（后端与壳同一份），这里转出给后端各处调。
-pub(crate) use copy_core::{home_short, home_short_bytes};
+pub use copy_core::{home_short, home_short_bytes};
 
 /// 同 [`expand_tilde_from`]，家目录取这台的（[`home_dir`]）。
-pub(crate) fn expand_tilde(p: &str) -> String {
+pub fn expand_tilde(p: &str) -> String {
     expand_tilde_from(p, home_dir().as_deref())
 }
 
 /// **这台后端的家目录只在这里答** ——规矩（哪个环境变量算家、按平台的先后）是两侧的契约，
 /// 住 `creds_core::store::home_dir_from`（monitor 同调它）；都没有 ⇒ `None`（调用方明说）。判据 `shell_home_guard.rs::the_home_directory_is_read_in_one_place`。
-pub(crate) fn home_dir() -> Option<PathBuf> {
+pub fn home_dir() -> Option<PathBuf> {
     creds_core::store::home_dir()
 }
 
 /// 这台后端自己在盘上的入口 `<家>/.cc-monitor/bin/ccm[.exe]`（后端落点，本机远端同一处）。起会话那一行直接叫它：
 /// 终端里交互 shell 的 `PATH` 上未必有 `ccm`（没装接入块的远端就没有）。家目录说不出 ⇒ `None`。
-pub(crate) fn installed_ccm_entry() -> Option<String> {
+pub fn installed_ccm_entry() -> Option<String> {
     let rel = format!(
         "{}{}",
         relay_route_core::BACKEND_LANDING_REL,
@@ -272,7 +272,7 @@ pub(crate) fn installed_ccm_entry() -> Option<String> {
 }
 
 /// 这台后端的数据目录（`CCM_DATA_DIR` 优先，否则 `<家>/.cc-monitor`；规矩住 `creds_core::store::monitor_data_dir`）。
-pub(crate) fn data_home() -> Option<PathBuf> {
+pub fn data_home() -> Option<PathBuf> {
     creds_core::store::monitor_data_dir(
         std::env::var(creds_core::store::DATA_DIR_ENV)
             .ok()
@@ -282,13 +282,13 @@ pub(crate) fn data_home() -> Option<PathBuf> {
 }
 
 /// 同上，环境由 `get` 答（判据喂夹具、不改进程环境的那几个调用方用）。
-pub(crate) fn home_dir_from(get: &dyn Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
+pub fn home_dir_from(get: &dyn Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
     creds_core::store::home_dir_from(get)
 }
 
 /// 一段名字（不是路径）为什么不能在这台当名字用。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NameProblem {
+pub enum NameProblem {
     /// Windows 的保留设备名（`CON` · `NUL` · `COM1` …，不分大小写，带扩展名也算）。
     Reserved,
     /// 含这台不许的字符（Windows `< > : " / \ | ? *` 与控制字符；别处 `/` 与 NUL）。
@@ -298,7 +298,7 @@ pub(crate) enum NameProblem {
 }
 
 /// 这一段名字在**这台**的文件系统上能不能用；不能 ⇒ 为什么。两套规则都在这里，按这台选一套。
-pub(crate) fn name_problem(name: &std::ffi::OsStr) -> Option<NameProblem> {
+pub fn name_problem(name: &std::ffi::OsStr) -> Option<NameProblem> {
     if cfg!(windows) {
         windows_name_problem(&name.to_string_lossy())
     } else {
@@ -307,7 +307,7 @@ pub(crate) fn name_problem(name: &std::ffi::OsStr) -> Option<NameProblem> {
 }
 
 /// Windows 那一套。
-pub(crate) fn windows_name_problem(name: &str) -> Option<NameProblem> {
+pub fn windows_name_problem(name: &str) -> Option<NameProblem> {
     if let Some(c) = name
         .chars()
         .find(|c| (*c as u32) < 0x20 || r#"<>:"/\|?*"#.contains(*c))
@@ -332,7 +332,7 @@ pub(crate) fn windows_name_problem(name: &str) -> Option<NameProblem> {
 }
 
 /// unix 那一套：只有 `/` 与 NUL 不行。
-pub(crate) fn unix_name_problem(name: &[u8]) -> Option<NameProblem> {
+pub fn unix_name_problem(name: &[u8]) -> Option<NameProblem> {
     name.iter()
         .find(|b| **b == b'/' || **b == 0)
         .map(|b| NameProblem::BadChar(char::from(*b)))
