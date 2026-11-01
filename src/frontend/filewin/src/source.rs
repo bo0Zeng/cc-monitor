@@ -181,7 +181,7 @@ impl Source {
     /// 🔴 它与 [`Source::label`] **刻意分开两个函数**：`label` 是给人看的，
     /// 而这一个是**寻址用的**。两者今天由同一个 `origin_label()` 喂
     /// （本机那一侧退役之前不是这样：那时 `label` 回的是「本机」两个中文字，
-    /// 而寻址要的是 `origin::LOCAL` 那个 `"<local>"`）。
+    /// 而寻址要的是 `cmd_wire::LOCAL`）。
     /// ⇒ **仍然不合并**：它们回的是同一个串是**今天的实况**，不是契约。
     ///
     /// ⚠ **刻意不回 `String`**：`origin_tests::no_new_raw_string_origin_parameters`
@@ -189,7 +189,7 @@ impl Source {
     /// 新代码一律用这个类型，不许再给这个概念造一种表达。
     /// ⚠ 那个名字由 monitor 开窗时用 `origin_label()` 算（`filewin/entry.rs`），与 `stream_source` 的 `on_attached` 登记时
     /// 用的是**同一个函数** —— 两处漂开的症状是「命令发给了一个谁都没登记过的
-    /// origin，而且不报错」（`inbound_client::LOCAL_ORIGIN` 的头注记过同一形）。
+    /// origin，而且不报错」。
     pub fn origin(&self) -> Origin {
         Origin::named(self.0.clone())
     }

@@ -1331,7 +1331,7 @@ impl Workspace {
         let me = pane.source.label();
         pane.machines
             .iter()
-            .filter(|m| **m != me && m.as_str() != super::cross_copy::LOCAL_ORIGIN)
+            .filter(|m| **m != me && m.as_str() != cmd_wire::LOCAL)
             .cloned()
             .collect()
     }
