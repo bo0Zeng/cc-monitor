@@ -54,7 +54,11 @@ async fn two_machines_merge_in_item_order() {
     let table = Peers::table(&["box2"]);
     let seen = std::sync::Mutex::new(Vec::new());
     let r = across(
-        end(vec![item("here", "t1"), item("box2", "t3"), item("here", "t2")]),
+        end(vec![
+            item("here", "t1"),
+            item("box2", "t3"),
+            item("here", "t2"),
+        ]),
         all_done(&seen),
         &crate::Tz::default(),
         until(5_000),
@@ -73,7 +77,11 @@ async fn two_machines_merge_in_item_order() {
     assert_eq!(r.lines.len(), 1);
     assert!(r.lines[0].contains("（box2）"), "{:?}", r.lines);
     assert!(r.lines[0].contains("还开着别的窗口"), "{:?}", r.lines);
-    assert!(r.copy_detail.starts_with("还开着别的窗口\n"), "{}", r.copy_detail);
+    assert!(
+        r.copy_detail.starts_with("还开着别的窗口\n"),
+        "{}",
+        r.copy_detail
+    );
     assert!(r.copy_detail.contains("2 clients"), "{}", r.copy_detail);
     let asked = peers.asked();
     assert_eq!(asked.len(), 1);
@@ -91,7 +99,11 @@ async fn a_machine_that_cannot_answer_fails_only_its_own_items() {
     let table = Peers::table(&["box2"]);
     let seen = std::sync::Mutex::new(Vec::new());
     let r = across(
-        end(vec![item("here", "t1"), item("here", "t2"), item("box2", "t3")]),
+        end(vec![
+            item("here", "t1"),
+            item("here", "t2"),
+            item("box2", "t3"),
+        ]),
         all_done(&seen),
         &crate::Tz::default(),
         until(5_000),

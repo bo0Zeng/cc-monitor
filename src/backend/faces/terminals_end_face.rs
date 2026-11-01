@@ -11,7 +11,7 @@ use crate::dial::remote_ask::{Remote, Table};
 use crate::wire::typed::{codes, Command};
 use batch_core::sessions::{summary_of, Row, Summary};
 use cmd_wire::batch::{SessionState, SessionsOp};
-use cmd_wire::board::{TerminalsEndItem, TerminalOutcome, TerminalsEndReply, TerminalsEndReq};
+use cmd_wire::board::{TerminalOutcome, TerminalsEndItem, TerminalsEndReply, TerminalsEndReq};
 use cmd_wire::Machine;
 use copy_core::copy_text;
 use std::future::Future;
@@ -198,7 +198,8 @@ where
         groups, local, tz, until, table, remote,
     )
     .await?;
-    let answered = |it: &TerminalsEndItem| got.iter().find(|(m, _)| *m == it.machine).map(|(_, r)| r);
+    let answered =
+        |it: &TerminalsEndItem| got.iter().find(|(m, _)| *m == it.machine).map(|(_, r)| r);
     let results = req
         .items
         .iter()
