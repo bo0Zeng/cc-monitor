@@ -8350,6 +8350,7 @@ type Words = string;
 type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
+type AutoChoice = { min: number, text: Words, };
 type BgTask = { 
 /**
  * 起它的那次工具调用 id。
@@ -8504,6 +8505,11 @@ answerOff: Words | null,
  * **没人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
  */
 autoAnswer: number | null, 
+/**
+ * 那一格可选的几档（档位与字一起，`control::asks::auto_choices` 写；此刻那一格不在几档里 ⇒ 多列一项）。菜单照列，勾在 `min == autoAnswer` 那一项。
+ * 不累加，每次现给。
+ */
+autoAnswerChoices: Array<AutoChoice>, 
 /**
  * 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟没人答，已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
  */

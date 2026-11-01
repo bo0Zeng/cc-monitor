@@ -5,7 +5,7 @@
     "禁档的 points（可选）必须指向本表里一条正名或限用；say 是给写文案的人的一句换法，不是定稿。",
     "scan：给文案表（src/shared/copy/table.json）跑 R1 扫描用的正则（JS 语法）；null 表示判不了（单字、普通词的内部义），noScanWhy 写为什么，该词只靠人工 review。",
     "examples / counterExamples：scan 必须命中 / 必须不命中的样例 —— 判据逐条跑，扫描正则写死了会当场红。",
-    "census：这条对应普查量具 K-T68-A1 的 R1_WORDS / R1_CANDIDATES 里哪个名字（两向相等，见 tests/copy/copy-terms.vitest.ts）。",
+    "census：这条对应对外文案普查量具（tests/evidence/outward-copy-census.py）的 R1_WORDS / R1_CANDIDATES 里哪个名字（两向相等，见 tests/copy/copy-terms.vitest.ts）。",
     "ask：术语本身定了、但具体一句话还要用户拍板的，写成要问用户的一句话。",
     "tally（只限用档）：限用词的认法正则（不是 scan —— 非禁词带 scan 会被 R1 扫红）。文案表里每一条用到限用词的，自己在 limited 里写明用了哪几个（写的人当场对着 context 看一眼语境）；判据要求每一条的 tally 命中集合 == 它的 limited（两向：漏写红、多写也红）。"
   ],
@@ -134,7 +134,7 @@
       "tally": { "re": "\\bhook\\b|钩子", "flags": "i" },
       "meaning": "Claude Code 自己的 hooks 配置（settings.json 里的 hooks 段）。",
       "context": "只在讲 Claude Code 的 hooks 配置时许说（中文「钩子」同义）。讲我们内部的回调、tmux-hook 之类不许说。",
-      "source": "普查 R1 候选（K-T68 面④附）",
+      "source": "普查 R1 候选（面④附）",
       "census": "hook"
     },
     {
@@ -474,9 +474,9 @@
     {
       "word": "内部编号",
       "tier": "禁",
-      "say": "不说。设计条目号、工单号（C8① · C14 · K-R49 · U4b …）任何形如「字母＋数字」的内部编号不许出现在对外串里。",
+      "say": "不说。设计条目号、工单号（C8① · C14 · B-T49 · U4b …）任何形如「字母＋数字」的内部编号不许出现在对外串里。",
       "scan": { "re": "\\b[A-Z](?:-[A-Z])?\\d{1,3}[a-z]?(?![\\w.-])|\\b[A-Z]\\d+[①-⑩]", "flags": "" },
-      "examples": ["C14", "K-R49", "U4b", "C8①"],
+      "examples": ["C14", "B-T49", "U4b", "C8①"],
       "counterExamples": ["SHA256", "UTF-8", "Win32"],
       "source": "内部行话"
     },
@@ -586,7 +586,7 @@
       "say": "「较慢的方式」。",
       "scan": { "re": "慢路", "flags": "" },
       "source": "CP1 台账",
-      "note": "词照旧禁 ——老面板那一处还在，归 F7b 删面板。"
+      "note": "词照旧禁：代码注释里还叫它，对外串里不许出现。"
     },
     {
       "word": "零流量复制",
@@ -1087,7 +1087,7 @@
       "word": "附件",
       "tier": "正名",
       "meaning": "随一句消息一起发给会话的文件（图片或别的文件），落在会话工作目录下 `.ccm-attach/<编号>/<原名>`。",
-      "source": "A3-1 聊天发附件 · A17-41 改名（R2：与常驻流握手的 attach 撞名）",
+      "source": "聊天发附件 · 与常驻流握手的 attach 撞名，改叫附件",
       "note": "内部名一律 attachment（命令 `session-attachment-check / -commit / -drop`）；attach 只指常驻流的握手（`{\"attach\":true}` · `--resident-attach`）与接回 tmux 会话，不拿来叫附件。"
     },
     {

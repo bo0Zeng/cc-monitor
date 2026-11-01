@@ -32,6 +32,7 @@ fn walk(mine: &str, at: Option<usize>, rho: f64, end: i64) -> Walk {
         steps: Vec::new(),
         warm: Vec::new(),
         hold: false,
+        rejoin: false,
     }
 }
 
@@ -297,4 +298,28 @@ fn many_accounts_cut_paths_not_the_sandbox_limits() {
     assert!((1..32).contains(&n), "路径 {n}");
     assert_eq!(v[1].as_int().ok(), Some(6));
     assert_eq!(v[2].as_int().ok(), Some(n));
+}
+
+/// ★ 换去别的会话也守着的号：一起守的那份用完，别的会话照它们的用速并进池子，不是从此不用了。同上一条的号与用速，本会话换去 C：
+/// 0–300 s 两条一起守 C（120/分）把 600 用完；之后两条都在池子里（120/分）用 A 的 1200，10 分钟；余下 15 分钟全卡住 ⇒ 跟留着一样卡 1800。
+/// 不并进池子（`lib::project` 的口径）⇒ 别的会话 300 s 后的用量不算，看着只卡 300，像是换过去少卡 1500。
+#[test]
+fn others_sharing_the_target_rejoin_the_pool_when_it_runs_out() {
+    let pieces = [
+        piece("A", 1200.0, 3600, false),
+        piece("C", 600.0, 3600, true),
+    ];
+    let others = [Guard {
+        acct: "C".into(),
+        at: Some(1),
+        rate: 30.0,
+    }];
+    let mut w = walk("C", Some(1), 60.0, 1800);
+    w.m = 2.0;
+    w.share = Some(60.0);
+    w.kfull = 0.0;
+    w.rejoin = true;
+    assert_eq!(rollout(&pieces, &others, &w).stuck, 120.0 * 15.0);
+    w.rejoin = false;
+    assert_eq!(rollout(&pieces, &others, &w).stuck, 60.0 * 5.0);
 }

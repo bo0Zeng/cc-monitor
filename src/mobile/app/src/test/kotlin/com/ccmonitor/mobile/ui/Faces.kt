@@ -68,7 +68,7 @@ internal object Wires {
 
     /** `history-facts` 的回包。 */
     fun facts(vararg set: Pair<String, Any?>): Map<String, Any?> =
-        listOf("touchedFiles", "writers", "pending", "handedBack", "retries", "notices", "bgTasks", "mcp", "children").associateWith { emptyList<Any>() } +
+        listOf("touchedFiles", "writers", "pending", "handedBack", "retries", "notices", "bgTasks", "mcp", "children", "autoAnswerChoices").associateWith { emptyList<Any>() } +
             listOf(
                 "forkedFrom",
                 "usage",

@@ -1960,6 +1960,25 @@ data class AutoAnswer(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class AutoChoice(
+    val min: Int,
+    val text: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AutoChoice> = obj(
+            listOf(
+            Field("min", { Int32 }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            ),
+            { a -> AutoChoice(a[0] as Int, a[1] as String) },
+            { v -> arrayOf(v.min, v.text) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class AutoLaunchConfig(
     val autoLaunchEnabled: Boolean,
     val monitorExePath: String?,
@@ -6524,6 +6543,7 @@ data class FactsReply(
     val background: FactsBackground?,
     val answerOff: String?,
     val autoAnswer: Long?,
+    val autoAnswerChoices: List<AutoChoice>,
     val autoAnswered: String?,
     val mcp: List<McpTrouble>,
     val startedBy: Kin?,
@@ -6559,6 +6579,7 @@ data class FactsReply(
             Field("background", { opt(FactsBackground.ADAPTER) }, optional = false, nullable = true),
             Field("answerOff", { opt(Str) }, optional = false, nullable = true),
             Field("autoAnswer", { opt(Lng) }, optional = false, nullable = true),
+            Field("autoAnswerChoices", { arr(AutoChoice.ADAPTER) }, optional = false, nullable = false),
             Field("autoAnswered", { opt(Str) }, optional = false, nullable = true),
             Field("mcp", { arr(McpTrouble.ADAPTER) }, optional = false, nullable = false),
             Field("startedBy", { opt(Kin.ADAPTER) }, optional = false, nullable = true),
@@ -6566,8 +6587,8 @@ data class FactsReply(
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Long>, a[9] as List<PendingCall>, a[10] as LastSay?, a[11] as Needs?, a[12] as List<String>, a[13] as List<RetryRun>, a[14] as List<NoticeRun>, a[15] as String?, a[16] as String?, a[17] as TokenUse?, a[18] as FactsCost?, a[19] as List<BgTask>, a[20] as FactsBackground?, a[21] as String?, a[22] as Long?, a[23] as String?, a[24] as List<McpTrouble>, a[25] as Kin?, a[26] as List<Kin>, a[27] as FactsLine?, a[28] as QuietUnread?) },
-            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
+            { a -> FactsReply(a[0] as String?, a[1] as String?, a[2] as List<String>, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Long>, a[9] as List<PendingCall>, a[10] as LastSay?, a[11] as Needs?, a[12] as List<String>, a[13] as List<RetryRun>, a[14] as List<NoticeRun>, a[15] as String?, a[16] as String?, a[17] as TokenUse?, a[18] as FactsCost?, a[19] as List<BgTask>, a[20] as FactsBackground?, a[21] as String?, a[22] as Long?, a[23] as List<AutoChoice>, a[24] as String?, a[25] as List<McpTrouble>, a[26] as Kin?, a[27] as List<Kin>, a[28] as FactsLine?, a[29] as QuietUnread?) },
+            { v -> arrayOf(v.path, v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
         )
     }
 }
@@ -22901,6 +22922,7 @@ data class SessionFacts(
     val background: FactsBackground?,
     val answerOff: String?,
     val autoAnswer: Long?,
+    val autoAnswerChoices: List<AutoChoice>,
     val autoAnswered: String?,
     val mcp: List<McpTrouble>,
     val startedBy: Kin?,
@@ -22935,6 +22957,7 @@ data class SessionFacts(
             Field("background", { opt(FactsBackground.ADAPTER) }, optional = false, nullable = true),
             Field("answerOff", { opt(Str) }, optional = false, nullable = true),
             Field("autoAnswer", { opt(Lng) }, optional = false, nullable = true),
+            Field("autoAnswerChoices", { arr(AutoChoice.ADAPTER) }, optional = false, nullable = false),
             Field("autoAnswered", { opt(Str) }, optional = false, nullable = true),
             Field("mcp", { arr(McpTrouble.ADAPTER) }, optional = false, nullable = false),
             Field("startedBy", { opt(Kin.ADAPTER) }, optional = false, nullable = true),
@@ -22942,8 +22965,8 @@ data class SessionFacts(
             Field("line", { opt(FactsLine.ADAPTER) }, optional = false, nullable = true),
             Field("quietUnread", { opt(QuietUnread.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Long>, a[8] as List<PendingCall>, a[9] as LastSay?, a[10] as Needs?, a[11] as List<String>, a[12] as List<RetryRun>, a[13] as List<NoticeRun>, a[14] as String?, a[15] as String?, a[16] as TokenUse?, a[17] as FactsCost?, a[18] as List<BgTask>, a[19] as FactsBackground?, a[20] as String?, a[21] as Long?, a[22] as String?, a[23] as List<McpTrouble>, a[24] as Kin?, a[25] as List<Kin>, a[26] as FactsLine?, a[27] as QuietUnread?) },
-            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
+            { a -> SessionFacts(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as List<Long>, a[8] as List<PendingCall>, a[9] as LastSay?, a[10] as Needs?, a[11] as List<String>, a[12] as List<RetryRun>, a[13] as List<NoticeRun>, a[14] as String?, a[15] as String?, a[16] as TokenUse?, a[17] as FactsCost?, a[18] as List<BgTask>, a[19] as FactsBackground?, a[20] as String?, a[21] as Long?, a[22] as List<AutoChoice>, a[23] as String?, a[24] as List<McpTrouble>, a[25] as Kin?, a[26] as List<Kin>, a[27] as FactsLine?, a[28] as QuietUnread?) },
+            { v -> arrayOf(v.forkedFrom, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.agent, v.writers, v.pending, v.lastSay, v.needs, v.handedBack, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.cost, v.bgTasks, v.background, v.answerOff, v.autoAnswer, v.autoAnswerChoices, v.autoAnswered, v.mcp, v.startedBy, v.children, v.line, v.quietUnread) },
         )
     }
 }

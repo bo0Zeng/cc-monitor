@@ -597,3 +597,36 @@ fn the_default_auto_answer_holds_with_or_without_a_recommended_option() {
     assert!(say.contains("没有就"), "{say}");
     assert!(!say.contains("你"), "缺省那一句用了第二人称：{say}");
 }
+
+/// ★ 自动答可选的几档随会话事实交（档位与字一起）：关 · 5m · 15m · 30m；此刻那一格不在几档里（命令行写的 7 分钟）⇒ 多列一项、按分钟排好。
+#[test]
+fn auto_answer_choices_carry_the_current_minute_in_order_with_text() {
+    let mins = |c: &[AutoChoice]| c.iter().map(|c| c.min).collect::<Vec<_>>();
+    let texts = |c: &[AutoChoice]| c.iter().map(|c| c.text.0.clone()).collect::<Vec<_>>();
+    let short = |m: u64| copy_core::short_duration(m * 60_000);
+
+    let seven = auto_choices(Some(7));
+    assert_eq!(mins(&seven), [0, 5, 7, 15, 30]);
+    assert_eq!(
+        texts(&seven),
+        [
+            copy_text("beAsk.auto.off", &[]),
+            short(5),
+            short(7),
+            short(15),
+            short(30)
+        ]
+    );
+
+    for now in [None, Some(0), Some(5), Some(30)] {
+        assert_eq!(
+            mins(&auto_choices(now)),
+            [0, 5, 15, 30],
+            "此刻 {now:?} 在几档里，不多列"
+        );
+    }
+    assert!(
+        auto_choices(None).iter().all(|c| !c.text.0.is_empty()),
+        "每一档都带写好的字"
+    );
+}

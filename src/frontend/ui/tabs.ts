@@ -770,6 +770,7 @@ export class TabManager {
       permissionModeText: null,
       needs: null,
       autoAnswer: null,
+      autoAnswerChoices: [],
       autoAnswered: null,
       line: null,
       backgroundWork: null,

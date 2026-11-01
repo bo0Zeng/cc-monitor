@@ -20,7 +20,7 @@ use crate::common::said::Said;
 /// 挂上 · 撤掉 · 答掉都报这一声（`history::needs_changed`）。
 use crate::history::needs_changed::moved;
 pub(crate) use cmd_wire::needs::{
-    AnswerPick as Pick, AnswerReq, AnswerResult, Answered, AutoAnswer,
+    AnswerPick as Pick, AnswerReq, AnswerResult, Answered, AutoAnswer, AutoChoice,
 };
 use copy_core::copy_text;
 use serde::Serialize;
@@ -230,6 +230,28 @@ fn open_id(
 /// 替人答的那一句的缺省（交给那一家的话）。
 pub(crate) fn auto_say() -> String {
     copy_text("beAsk.auto.say", &[])
+}
+
+/// 「没人答时自动答」可选的几档（分钟；`0` ＝ 关）。上限同注解那一侧的值域（`history::history_annotations::AUTO_MAX_MIN`）。
+const AUTO_CHOICES: [u32; 4] = [0, 5, 15, 30];
+
+/// 自动答可选的那几档 —— **唯一一处**：几档 ＋ 此刻那一格（`now`；关 ⇒ `None`）不在几档里 ⇒ 多列一项，按分钟排好；字都写好。
+pub(crate) fn auto_choices(now: Option<u32>) -> Vec<AutoChoice> {
+    let mut mins = AUTO_CHOICES.to_vec();
+    if let Some(m) = now.filter(|m| !mins.contains(m)) {
+        mins.push(m);
+        mins.sort_unstable();
+    }
+    mins.into_iter()
+        .map(|min| AutoChoice {
+            min,
+            text: Words(if min == 0 {
+                copy_text("beAsk.auto.off", &[])
+            } else {
+                copy_core::short_duration(u64::from(min) * 60_000)
+            }),
+        })
+        .collect()
 }
 
 /// 这台挂上的这一条要不要、多久后替人答 —— **唯一的判定**：只有提问那一种；批准工具 · 批计划永远不（安全闸）。
