@@ -28,7 +28,12 @@ fn program_name() -> String {
 /// 托管进程（与它里面那一跳）要跑的那个程序：跑着的程序文件不能被覆盖的平台上是按版本的副本（[`versioned_copy`]，从 `me`
 /// —— 本程序自己 —— 复制），别处就是这一趟被叫成的那个词（`called`）。
 pub(crate) fn host_program(own: &Own, called: &str, me: &Path) -> Result<String, Said> {
-    program_where(own, called, me, crate::platform::child::RUNNING_PROGRAM_IS_LOCKED)
+    program_where(
+        own,
+        called,
+        me,
+        crate::platform::child::RUNNING_PROGRAM_IS_LOCKED,
+    )
 }
 
 /// [`host_program`] 的本体：`locked` 是「跑着的程序文件盖不掉」那一格，平台常量由 [`host_program`] 递进来，判据在哪个平台上都走得到两条路。

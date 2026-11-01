@@ -106,5 +106,8 @@ fn the_copy_is_named_by_the_build_id_not_the_package_version() {
         .join(crate::BUILD_ID)
         .join(program_name());
     assert_eq!(std::path::PathBuf::from(&got), want);
-    assert_eq!(program_where(&own, "ccm", &me, false).expect("定得了"), "ccm");
+    assert_eq!(
+        program_where(&own, "ccm", &me, false).expect("定得了"),
+        "ccm"
+    );
 }
