@@ -317,6 +317,7 @@ pub(crate) fn launch_local_posix_via(
     term: &[String],
 ) -> Result<(), LaunchErr> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
+    use copy_core::{Discard, Why};
     use std::process::{Command, Stdio};
 
     let (program, args) = local_posix_spawn_plan(cmd, term).map_err(LaunchErr::Plan)?;
@@ -344,7 +345,7 @@ pub(crate) fn launch_local_posix_via(
     .map_err(LaunchErr::Spawn)?;
     // `process_group` 不改父子关系 ⇒ 收尸线程（终端程序多半很快把窗口交给自己的服务进程就退）。
     std::thread::spawn(move || {
-        let _ = child.wait();
+        child.wait().discard(Why::Reap);
     });
     tracing::info!("launch: 已开终端窗口（{program}）");
     Ok(())

@@ -1432,6 +1432,7 @@ pub(crate) fn facts_at(
     // 没人答时自动答：注解里那一格 · 上一条替人答过的那一句（判定与记录都住 `control::asks`）。
     facts.auto_answer =
         crate::history::history_annotations::auto_answer_of(sid).map(|a| a.after_min);
+    facts.auto_answer_choices = crate::control::asks::auto_choices(facts.auto_answer);
     facts.auto_answered = crate::control::asks::answered(sid);
     facts.needs = dress_ask(
         facts::needs_of(

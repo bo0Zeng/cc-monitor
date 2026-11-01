@@ -8,4 +8,16 @@ export type RunGroups = { running: Array<string>, recent: Array<string>, older: 
 /**
  * 更早那一组的组头字（「更早 ×n」），两端照抄；那一组空 ⇒ 不上线。开合归界面。
  */
-older_text?: Words, };
+older_text?: Words, 
+/**
+ * 监控板格子上 agent 那一枚（「在跑 · agent n」，n 是在跑那一组的个数），两端照抄；没有在跑的 ⇒ 不上线。
+ */
+running_text?: Words, 
+/**
+ * 监控板 peek 列的那几个（三组序：在跑 ++ 最近 ++ 更早，取前几个，几个由后端定）；表是空的 ⇒ 不上线。
+ */
+peek?: Array<string>, 
+/**
+ * peek 没列的余下几个那一截（「+n」）；都列下了 ⇒ 不上线。
+ */
+peek_more_text?: Words, };

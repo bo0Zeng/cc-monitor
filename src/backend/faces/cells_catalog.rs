@@ -1045,6 +1045,10 @@ mod specimens {
                     }),
                     answer_off: Some(Words(s("o"))),
                     auto_answer: Some(1),
+                    auto_answer_choices: vec![crate::control::asks::AutoChoice {
+                        min: 1,
+                        text: Words(s("m")),
+                    }],
                     auto_answered: Some(Words(s("a"))),
                     mcp: [McpStatus::NeedsLogin, McpStatus::Failed, McpStatus::Pending]
                         .into_iter()
