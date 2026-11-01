@@ -9444,12 +9444,6 @@
       "zh": "传输未交回校验值 · 无法比对 · 未写入目标 · 重开 app 再传",
       "args": []
     },
-    "rsFilewinTransfer.label.cancel": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "取消传输",
-      "args": []
-    },
     "beFilesWrite.name.empty": {
       "kind": "error",
       "role": "原因格",

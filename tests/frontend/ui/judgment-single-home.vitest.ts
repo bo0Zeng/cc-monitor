@@ -1100,6 +1100,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     FILEWIN_OPEN_OP: NONE,
     // 文件窗口订一组的进度（`files-batch/<票>`，monitor 按票转），TS 侧零孪生。
     FILES_BATCH_KIND_PREFIX: NONE,
+    // 传输台那一趟的进度流（`transfer/<id>`，monitor 自己接），TS 侧零孪生。
+    TRANSFER_KIND_PREFIX: NONE,
     filewin_open_args: NONE,
     filewin_open_theme: NONE,
     // 「在计划里看」那一问（窗口 → monitor → 主窗口），参数形状只在这里；TS 侧收的是壳发的事件（`window-events.ts`），零孪生。

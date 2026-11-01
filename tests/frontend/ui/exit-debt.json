@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1706,
+  "ceiling": 1703,
   "groups": [
     {
       "kind": "首登",
@@ -104,7 +104,7 @@
         ["src/frontend/ui/cards/index.ts", "key", 10],
         ["src/frontend/ui/cards/interactive.ts", "branch", 1],
         ["src/frontend/ui/cards/interactive.ts", "key", 1],
-        ["src/frontend/ui/cards/speaker-bar.ts", "key", 7],
+        ["src/frontend/ui/cards/speaker-bar.ts", "key", 4],
         ["src/frontend/ui/cards/step-line.ts", "branch", 1],
         ["src/frontend/ui/cards/subagent.ts", "branch", 1],
         ["src/frontend/ui/cards/subagent.ts", "key", 3],
