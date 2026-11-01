@@ -134,6 +134,10 @@ pub const FILEWIN_OPEN_OP: &str = "filewin-open";
 /// 格子：`{done, total, current?, bytes_done?, bytes_total?}`（一整份快照，只留最新的）；流不自己关，那一问回来窗口就停订。
 pub const FILES_BATCH_KIND_PREFIX: &str = "files-batch/";
 
+/// 传输台那一趟进度流的 `kind` 前缀：`transfer/<id>`（`id` 是开单时传输台回的那一份）。窗口订它，**monitor 自己接**：
+/// 照前缀认出来、转给本机后端传输台那一趟的流（`transfer_relay`）；格子是 `cmd_wire::frame::Transfer`，收场是 `TransferEnd`。
+pub const TRANSFER_KIND_PREFIX: &str = "transfer/";
+
 /// 「这扇窗手上有什么会被打断」：窗口在通道上 `call` 这一条（寻址 ＝ 它那台，参数 [`Busy`]），**monitor 自己接**、按窗口记下
 /// （管子断了那一份就删）；退出 / 重启 cc-monitor 那一问现读加起来的数。窗口只在数变了时说（与它关窗那一问同一份 `close_ask`）。回 `{}`。
 pub const FILEWIN_BUSY_OP: &str = "filewin-busy";

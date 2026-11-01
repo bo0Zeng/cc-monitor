@@ -204,3 +204,73 @@ pub struct MonitorBoard {
     pub summary: Words,
     pub groups: Vec<MonitorGroup>,
 }
+
+/// 「结束所选」那一批里的一项：哪台名单里的哪个终端（句柄）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct TerminalsEndItem {
+    pub machine: Machine,
+    /// 名单里的那个句柄（`terminals-list` · 名单那一行的 `terminal`）。
+    pub terminal: String,
+}
+
+/// `terminals-end`：结束跨几台的一批终端（按名单句柄；有没有会话都一样）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct TerminalsEndReq {
+    /// 那几项（1–64 个，照选中的先后）。
+    pub items: Vec<TerminalsEndItem>,
+    /// 自报的前端（「哪个前端的会话」那一维，同 `terminal-end`）。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub client: Option<String>,
+}
+
+/// 一个终端的结局上线那一形：每台那一跳与本机合好的回包同一形。可缺的格一律出 `null`，不省键。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalOutcome {
+    /// 哪台（每台那一跳答的是它自己 ⇒ 本机那一个；本机合好时换成那一项的那台）。
+    pub machine: Machine,
+    pub terminal: String,
+    pub outcome: crate::batch::SessionState,
+    /// 没成的原因码；做成了 ⇒ `null`。
+    pub why: Option<String>,
+    /// 那台写好的那一句；做成了 ⇒ `null`。
+    pub said: Option<String>,
+    /// 没成那一项的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
+    pub copy_detail: String,
+    /// 那台名单那一行的标题（远端的套机器名）。
+    pub title: String,
+}
+
+/// `terminals-end` 的回包：逐条结局与入参同序，汇总句 · 逐条行 · 复制详情都写好（同 `SessionsBatchReply` 那四格）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalsEndReply {
+    pub results: Vec<TerminalOutcome>,
+    pub said: String,
+    pub failed: bool,
+    pub lines: Vec<String>,
+    pub copy_detail: String,
+}

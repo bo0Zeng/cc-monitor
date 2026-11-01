@@ -400,7 +400,7 @@ export function toast(title: string, detail: string, opts: ToastOptions = {}): (
 /**
  * 撤销提示条：做完一件撤得回的事之后出 `已删除 X ［撤销］`，8 秒。
  * 撤销 ⇒ 调 `undo`；没撤（到点 · 点 ×）⇒ 调 `commit`（推荐做法：界面延后 8 秒再真提交，撤销 ＝ 不提交）。
- * `also`：一批里有没成的（`end-confirm.ts::sayReply` · `sayEnded`）⇒ 同一条带出错的样子 · 逐条明细 · 复制详情 · 排在［撤销］后面的一颗（［查看］）。
+ * `also`：一批里有没成的（`end-confirm.ts::sayReply`）⇒ 同一条带出错的样子 · 逐条明细 · 复制详情 · 排在［撤销］后面的一颗（［查看］）。
  */
 export function undoToast(
   title: string,
