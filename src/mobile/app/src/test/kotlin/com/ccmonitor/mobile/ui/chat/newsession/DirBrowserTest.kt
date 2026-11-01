@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.chat.newsession
 
-import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
@@ -44,7 +44,7 @@ class DirBrowserTest {
                             "/h/work" -> Reply.Ok(dirs("/h/work", "/h", "/h/work/orders", "/h/work/billing"))
                             "/h/work/billing" -> Reply.Ok(dirs("/h/work/billing", "/h/work"))
                             "/h" -> Reply.Ok(dirs("/h", "/", "/h/work"))
-                            else -> Reply.Failed(CoreFailure("not_found", "路径不存在", "d"))
+                            else -> Reply.Failed(Failed("not_found", "路径不存在", "d"))
                         }
                     else -> Reply.LinkDown
                 }

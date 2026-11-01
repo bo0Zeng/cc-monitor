@@ -1,11 +1,11 @@
 package com.ccmonitor.mobile.ui.chat.needs
 
-import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.NeedsAsk
 import com.ccmonitor.mobile.core.wire.gen.NeedsChoiceRow
 import com.ccmonitor.mobile.core.wire.gen.Tone
@@ -300,7 +300,7 @@ class NeedsDeskTest {
     @Test
     fun `没答成（别的原因）：那一句 ＋ 详情，按钮照旧可点`() =
         runTest {
-            val r = rig(needs("approve")) { Reply.Failed(CoreFailure("not_found", "未找到该请求", "detail-x")) }
+            val r = rig(needs("approve")) { Reply.Failed(Failed("not_found", "未找到该请求", "detail-x")) }
             r.desk.open()
             r.desk.pick("allow")
             runCurrent()

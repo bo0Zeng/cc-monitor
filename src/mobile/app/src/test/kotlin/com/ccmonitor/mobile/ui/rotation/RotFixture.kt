@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.rotation
 
-import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.wire.gen.Failed
 
 /** 合成的轮换回包（号 · 策略名 · 时刻都是编的），形状照 `RotationViewReply` · `RotationStrategiesReply`。 */
 internal object RotFixture {
@@ -192,5 +192,5 @@ internal object RotFixture {
     fun failed(
         code: String,
         message: String,
-    ) = Reply.Failed(CoreFailure(code, message, "细节"))
+    ) = Reply.Failed(Failed(code, message, "细节"))
 }

@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.chat
 
-import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.EMPTY_BOOK
 import com.ccmonitor.mobile.core.claude.link.RecordLine
@@ -13,6 +12,7 @@ import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.BatchLine
 import com.ccmonitor.mobile.core.wire.gen.ClashRow
 import com.ccmonitor.mobile.core.wire.gen.Decide
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCards
@@ -260,7 +260,7 @@ internal class FakeCoreLink :
         ): Map<String, Any?> =
             mapOf("agent" to "claude", "id" to id, "t" to "reply", "autoReply" to false, "draw" to "card", "human" to false, "blocks" to listOf(mapOf("type" to "text", "text" to text, "bytes" to text.toByteArray().size.toLong())))
 
-        fun failed(message: String) = Reply.Failed(CoreFailure("start_failed", message, "detail"))
+        fun failed(message: String) = Reply.Failed(Failed("start_failed", message, "detail"))
 
         /** `history-tail` 的一份回包：尾段 `[splitAt, end)` 一页读完（[rows] 是 `rows[]` 原样）、手上那一份停在 [end]。 */
         fun tail(

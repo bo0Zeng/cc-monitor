@@ -107,7 +107,7 @@ class LoginFlow(
     /** 失败回包里那台说的终端那条路在不在；没说 ⇒ 不在。 */
     private fun terminal(r: Reply): Boolean = how(r)?.terminal ?: false
 
-    private fun how(r: Reply): LoginAgain? = (r as? Reply.Failed)?.failure?.data?.let { Wire.bind<LoginAgain>(it) }
+    private fun how(r: Reply): LoginAgain? = (r as? Reply.Failed)?.failure?.data?.let { Wire.bind<LoginAgain>(it.value) }
 
     private fun said(
         r: Reply,

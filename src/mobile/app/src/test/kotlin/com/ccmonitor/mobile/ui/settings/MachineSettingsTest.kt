@@ -1,10 +1,10 @@
 package com.ccmonitor.mobile.ui.settings
 
-import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.QuotaRead
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.TabKind
 import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.Tab
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Fetched
@@ -169,7 +169,7 @@ class MachineSettingsTest {
     @Test
     fun `没存上：退回读到的值，那一行下面写「子会话未保存 · 那台那一句」`() =
         runTest {
-            val l = link(set = { Reply.Failed(CoreFailure("io_failed", "写入失败 · 磁盘满", "d", null)) })
+            val l = link(set = { Reply.Failed(Failed("io_failed", "写入失败 · 磁盘满", "d", null)) })
             val (m, _) = open(l)
             m.setTab(TabKind.CHILD, Tab.SHOW)
             runCurrent()

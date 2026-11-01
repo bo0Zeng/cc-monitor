@@ -1,10 +1,10 @@
 package com.ccmonitor.mobile.ui.needs
 
-import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
@@ -267,7 +267,7 @@ class NeedsBoardTest {
             val a = Machine(emptyList())
             val ok = a.link.answer
             var fail = true
-            a.link.answer = { cmd, args -> if (cmd == "sessions-needs" && fail) Reply.Failed(CoreFailure("x", "账号库无法解析", "")) else ok(cmd, args) }
+            a.link.answer = { cmd, args -> if (cmd == "sessions-needs" && fail) Reply.Failed(Failed("x", "账号库无法解析", "")) else ok(cmd, args) }
             val board = boardOf("a" to a)
             val ov = overviewOf(board.state.value, hosts, current = "a")
             assertEquals(listOf("devbox" to "账号库无法解析"), ov.failed.map { (h, p) -> h.label to p.text })
