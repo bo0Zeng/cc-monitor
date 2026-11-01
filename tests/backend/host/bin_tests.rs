@@ -86,10 +86,25 @@ fn the_host_program_is_the_versioned_copy_only_where_running_programs_are_locked
         let want = data
             .join("hosts")
             .join(".bin")
-            .join(env!("CARGO_PKG_VERSION"))
+            .join(crate::BUILD_ID)
             .join(program_name());
         assert_eq!(std::path::PathBuf::from(&got), want);
     } else {
         assert_eq!(got, "ccm");
     }
+}
+
+/// 副本目录照这份后端的身份（`BUILD_ID`，远端判该不该换后端也是它）起名：包版本恒 0.0.0，照它起名换了构建也落进同一个目录。
+#[test]
+fn the_copy_is_named_by_the_build_id_not_the_package_version() {
+    let (own, data) = sandbox_own("bin-build-id");
+    let me = fake_me(&data.join("fixture"), b"me");
+    let got = program_where(&own, "ccm", &me, true).expect("定得了");
+    let want = data
+        .join("hosts")
+        .join(".bin")
+        .join(crate::BUILD_ID)
+        .join(program_name());
+    assert_eq!(std::path::PathBuf::from(&got), want);
+    assert_eq!(program_where(&own, "ccm", &me, false).expect("定得了"), "ccm");
 }
