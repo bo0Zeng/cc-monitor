@@ -104,22 +104,27 @@ export function buildInterruptLine(time: string): HTMLElement {
 
 /** 后台任务通知：一条一张，那一行就是后端写好的 `row`。跟谁并成一组、哪几条不露，等会话事实那一格（[`applyNotices`]）。 */
 export function buildNoticeLine(sp: Of<"taskNotification">): HTMLElement {
-  const d = document.createElement("details");
-  d.className = "card card-notice";
+  const card = document.createElement("details");
+  card.className = "card card-notice";
   const s = document.createElement("summary");
   s.className = "notice-head";
   const list = document.createElement("div");
   list.className = "notice-list";
-  const r = document.createElement("div");
-  r.className = "notice-row";
-  r.dataset.failed = String(sp.end === "failed");
-  r.textContent = sp.row ?? "";
-  list.appendChild(r);
-  s.textContent = r.textContent;
-  d.append(s, list);
-  d.dataset.single = "true";
-  d.dataset.failed = r.dataset.failed;
-  return d;
+  const row = document.createElement("div");
+  row.className = "notice-row";
+  row.dataset.failed = String(sp.end === "failed");
+  row.textContent = sp.row ?? "";
+  list.appendChild(row);
+  s.textContent = row.textContent;
+  card.append(s, list);
+  card.dataset.single = "true";
+  card.dataset.failed = row.dataset.failed;
+  return card;
+}
+
+/** 一张通知卡收起（它那一行并进了组里首条那一张）。 */
+function fold(card: HTMLElement): void {
+  card.hidden = true;
 }
 
 /**
@@ -141,25 +146,25 @@ export function applyNotices(root: HTMLElement, runs: readonly NoticeRun[]): voi
     return own ?? undefined;
   };
   for (const run of runs) {
-    const lead = cards.get(run.id);
-    const list = lead?.querySelector(".notice-list");
-    const head = lead?.querySelector<HTMLElement>(".notice-head");
-    if (!lead || !list || !head) continue;
+    const card = cards.get(run.id);
+    const list = card?.querySelector(".notice-list");
+    const head = card?.querySelector<HTMLElement>(".notice-head");
+    if (!card || !list || !head) continue;
     for (const id of run.members) {
       const row = rowOf(id);
       if (!row) continue;
       const home = row.closest<HTMLElement>("details.card-notice");
-      if (home !== lead) {
+      if (home !== card) {
         list.appendChild(row);
-        if (home) home.hidden = true;
+        if (home) fold(home);
       }
       row.hidden = run.hidden.includes(id);
     }
     const shown = [...list.querySelectorAll<HTMLElement>(".notice-row")].filter((r) => !r.hidden);
-    lead.hidden = shown.length === 0;
+    card.hidden = shown.length === 0;
     head.textContent = run.head ?? shown[0]?.textContent ?? "";
-    if (run.head === null) lead.dataset.single = "true";
-    else delete lead.dataset.single;
-    lead.dataset.failed = String(run.failed);
+    if (run.head === null) card.dataset.single = "true";
+    else delete card.dataset.single;
+    card.dataset.failed = String(run.failed);
   }
 }
