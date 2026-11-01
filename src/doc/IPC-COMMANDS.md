@@ -105,7 +105,7 @@ A new session file appeared。
 | `id` | string | 回显请求的 `id` |
 | `ok` | bool | 成功与否 |
 | `code` | string? | 失败时的码（协议级或命令级） |
-| `message` | string? | 失败时给人看的那一句（不含下层原话与码：那些进 `detail`） |
+| `said` | string? | 失败时给人看的那一句（不含下层原话与码：那些进 `detail`） |
 | `detail` | string? | 失败时「复制详情」那几行（时刻 · 机器 · 命令 · 码 · 原话），后端写好、界面原样复制 |
 | `data` | JSON? | 命令的返回值（如 `resolve` 的 CommandPlan） |
 
@@ -11793,9 +11793,9 @@ since: number,
  */
 session: string | null, };
 type ArriveBy = { "kind": "sid", sid: Sid, } | { "kind": "cwd", cwd: string, };
+type Failed = { code: string, said: string, detail: string, data?: unknown, };
 type GroupRef = { id: string, name: string, };
 type Landed = "started" | "in_place" | "running" | "idle" | "window";
-type LaunchFail = { code: string, message: string, };
 type LaunchedAccount = { name: string, configDir: string, 
 /**
  * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
@@ -11843,7 +11843,11 @@ prompt: Sent | null,
  */
 arrival: ArriveAsk | null, };
 type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere" | "host_outdated";
-type RowLaunched = { cwd: string, alias: string, group: GroupRef | null, opened: Array<Opened>, failed: Array<LaunchFail>, blocked: string | null, };
+type RowLaunched = { cwd: string, alias: string, group: GroupRef | null, opened: Array<Opened>, 
+/**
+ * 没起成的那几条：各是交出去那一形失败（`session-open` 回的码 · 那一句 · 复制详情）。
+ */
+failed: Array<Failed>, blocked: string | null, };
 type Sent = { 
 /**
  * 结局。
