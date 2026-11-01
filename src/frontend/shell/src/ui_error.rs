@@ -108,7 +108,7 @@ impl UiError {
                     (Death::NeverStarted { .. }, _) => return None,
                 };
                 let reconnect =
-                    (*then == Then::Down).then(|| crate::inbound_client::LOCAL_ORIGIN.to_string());
+                    (*then == Then::Down).then(|| cmd_wire::LOCAL.to_string());
                 let detail = detail_head()
                     .maybe(
                         Label::Code,

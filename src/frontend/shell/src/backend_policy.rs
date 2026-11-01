@@ -414,7 +414,7 @@ pub fn last_brief(d: &Death) -> String {
 /// （现打逐字 `[21:14:36.212230477] exit rc=0 argv=[--with-bg --tail-only]`）
 /// ⇒ 「它上一次崩在哪一天」这句话在那本账上问不出来。**别把落点换成一个不打时刻的。**
 pub fn ledger_line(d: &Death) -> String {
-    let origin = inbound_client::LOCAL_ORIGIN;
+    let origin = cmd_wire::LOCAL;
     let code = exit_code(d).map(|c| format!(" 码={c}")).unwrap_or_default();
     format!(
         "[死亡账] origin={origin} 判定={} 退出状态={}{code} —— {}",
@@ -521,7 +521,7 @@ pub fn record_death(
     let line = ledger_line(&d);
     let sink_error = sink.write_line(&line).err();
     if let Some(why) = &sink_error {
-        let origin = inbound_client::LOCAL_ORIGIN;
+        let origin = cmd_wire::LOCAL;
         tracing::error!(
             "这台机（{origin}）的死亡账写不进去（{why}）—— 那一行没有落点，只能就地喊一声：{line}"
         );
@@ -625,7 +625,7 @@ pub fn health_face(h: &Health) -> HealthFace {
 
 /// 一句话里怎么称呼这台机器：本机与远端的每一句都由同一个 `format!` 渲染，唯一不同的就是这里回的称呼。
 fn machine_label(origin: &str) -> String {
-    if origin == inbound_client::LOCAL_ORIGIN {
+    if origin == cmd_wire::LOCAL {
         copy_text("rsCcBus.machine.local", &[])
     } else {
         origin.to_string()

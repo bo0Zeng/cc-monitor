@@ -132,7 +132,7 @@ pub async fn deploy_remote_backend(origin: String) -> Result<String, cmd_wire::f
 
 /// 装 · 卸只对机器表里的一台远端：本机不经这两条命令（本机那一份由宿主起来时自己放），表里没有那台 ⇒ 说是哪台、不去问后端。
 fn remote_in_table(origin: &str) -> Result<(), Said> {
-    if origin == crate::inbound_client::LOCAL_ORIGIN {
+    if origin == cmd_wire::LOCAL {
         return Err(Said::of("reason.code.bug", &[]));
     }
     if !crate::machine_table::has(origin) {
