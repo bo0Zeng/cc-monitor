@@ -85,7 +85,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::session_batch_face::SessionsStop>(
         "停一批会话（逐个答，一个不成不挡下一个）",
     ),
-    // 一批会话跨几台（`faces/sessions_batch_face.rs`）：本机那一组同进程停，别的台经常驻问它自己那一组；逐条照原序、合好那一句。异步档。
+    // 一批会话跨几台（`faces/sessions_batch_face.rs`）：停 · 起 · 隐藏 · 固定，本机那一组同进程做，别的台经常驻问它自己那一组；逐条照原序、合好那一句。异步档。
     crate::wire::typed::asynchronous::<crate::faces::sessions_batch_face::SessionsBatchCmd>(
         "一批会话跨几台（按台分组做、照原序合好那一句）",
     ),
