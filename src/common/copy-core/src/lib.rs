@@ -16,6 +16,9 @@
 //! - 占位符只许具名 `{name}`。
 //!
 //! 表是**编译期内嵌**的：改一句话要重编才生效；远端那台后端说的是它自己那一版的话（与它的行为同版）。
+//!
+//! 另住失败时不说话的那一类理由（[`Why`]，经 [`Discard`] 丢掉一个 `Result`），与 [`said::Said`] 是一对：
+//! 失败了说什么 / 为什么不说。
 
 use std::sync::OnceLock;
 
@@ -30,6 +33,7 @@ mod peer;
 mod size;
 pub use civil::civil_from_days;
 pub use count::{count_short, count_text};
+pub use discard::{Discard, Why};
 pub use duration::{format_duration, format_elapsed, rel_duration, short_duration};
 pub use path::{home_short, home_short_bytes};
 pub use peer::{
@@ -38,6 +42,7 @@ pub use peer::{
 pub use reason::{code_reason, io_reason, sftp_status_reason, spawn_reason};
 pub use size::size_text;
 pub mod detail;
+pub mod discard;
 pub mod reason;
 pub mod said;
 
