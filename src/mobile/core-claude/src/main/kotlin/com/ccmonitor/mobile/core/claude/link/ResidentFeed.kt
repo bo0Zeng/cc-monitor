@@ -9,7 +9,7 @@ import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.ClashRow
 import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.DeployEnd
-import com.ccmonitor.mobile.core.wire.gen.EmptyFace
+import com.ccmonitor.mobile.core.wire.gen.FleetLines
 import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCards
@@ -150,7 +150,7 @@ class ResidentFeed(
     private val saves: LocalSaves,
     private val onBreak: (String) -> Unit = {},
     /** 核心跟着 `state` 交的首屏那一句（手上看着的每台合的一份，不只这一台；最新那一行算数）。 */
-    private val onEmpty: (EmptyFace) -> Unit = {},
+    private val onFleet: (FleetLines) -> Unit = {},
 ) : CoreLink,
     SessionWatch {
     private val stateFlow = MutableStateFlow<LinkLine?>(null)
@@ -358,7 +358,7 @@ class ResidentFeed(
     ) {
         when (kind) {
             "state" -> Wire.read<LinkLine>(body)?.let(::onState) ?: broke(kind, body)
-            "empty" -> Wire.read<EmptyFace>(body)?.let(onEmpty) ?: broke(kind, body)
+            "empty" -> Wire.read<FleetLines>(body)?.let(onFleet) ?: broke(kind, body)
             "frame", "unread", "book", "live" -> onStream(kind, body)
             "watch_from" -> onWatchFrom(body)
             "ssh" -> sshFlow.value = body == "true"

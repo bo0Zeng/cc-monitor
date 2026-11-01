@@ -4,7 +4,7 @@ import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.Decide
-import com.ccmonitor.mobile.core.wire.gen.EmptyFace
+import com.ccmonitor.mobile.core.wire.gen.FleetLines
 import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.HiddenNow
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
@@ -324,12 +324,12 @@ class ResidentFeedTest {
             }
         }
 
-    /** 核心跟着 `state` 交的首屏那一句（手上每台合的）原样交出去；装不进 ⇒ 报契约对不上、不交。 */
+    /** 核心跟着 `state` 交的那几句（手上每台合的 `FleetLines`）原样交出去；装不进 ⇒ 报契约对不上、不交。 */
     @Test
-    fun `核心交的首屏那一句原样交给 onEmpty`() =
+    fun `核心交的那几句原样交给 onFleet`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
-            val got = mutableListOf<EmptyFace>()
+            val got = mutableListOf<FleetLines>()
             val breaks = mutableListOf<String>()
             ResidentFeed(
                 scope = backgroundScope,
@@ -341,11 +341,11 @@ class ResidentFeedTest {
                 kept = Disk(),
                 saves = Saves(),
                 onBreak = { breaks += it },
-                onEmpty = { got += it },
+                onFleet = { got += it },
             ).ensure()
-            core.emit("empty", """{"line":"会话清单未报完","hint":"box 连接中"}""")
+            core.emit("empty", """{"line":"会话清单未报完","hint":"box 连接中","count":"核心·计数"}""")
             core.emit("empty", """{"line":"x"}""")
-            assertEquals(listOf(EmptyFace("会话清单未报完", "box 连接中")), got)
+            assertEquals(listOf(FleetLines("会话清单未报完", "box 连接中", "核心·计数")), got)
             assertEquals(1, breaks.size)
         }
 
