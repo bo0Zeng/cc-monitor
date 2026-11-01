@@ -460,14 +460,48 @@ pub enum Format {
     Foreign,
 }
 
-/// 声明表的一行：落点（家目录底下 `.cc-monitor/` 那一层起）· 种类 · 格式 · 读上限（字节，超了当读不出来）·
+/// 一道读上限：多少字节，超了怎么办。数和处置写在一处，声明的地方就说清越界那一刻发生什么。
+///
+/// 没有「静默截断」那一档：截了不说，拿半份当整份用，正是上限要挡的。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cap {
+    pub bytes: u64,
+    pub over: Over,
+}
+
+/// 超了上限怎么办。每一档都让人知道越界了；分界写在各档上。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Over {
+    /// 硬报错：这一趟整个失败，错误照实往上交。
+    HardError,
+    /// 截断＋说清：只留上限以内的那一段，结果里带着「截了」那一格，读的人看得见。
+    TruncateAndSay,
+    /// 拒收＋回错：一个字节不收、不落、不覆盖，回一句说清超了。自有状态读不出来也是这一档：读面照实回错，写面不覆盖。
+    Reject,
+    /// 索引截断（不丢数据）：截掉的是可搜性，不是数据 —— 原文一个字节没动，只是超过封顶的那段搜不到。
+    /// 与「静默截断」的分界：有没有丢掉用户的东西。
+    IndexTrim,
+    /// 跳过＋说清：超了的那一份跳过（缓存当没有、照别的东西重建），`warn!` 带上是哪一份。
+    /// 跳过本身不是问题，跳过而不说是谁才是：没有 `warn!` 的跳过不许落在这一档。
+    SkipAndSay,
+    /// 降级＋说清：整份结果降级返回，错误带在结果里出去（不是跳过一条，降的是整份），看得见。
+    DegradeAndSay,
+    /// 丢弃＋带身份报告：丢掉越界的那一条，往用户那一侧发一个带身份的类型化事件（原位 `Gap`）。
+    /// 与「跳过＋说清」的分界是谁被告知：那一档告日志，这一档告用户。跑在没有调用方可回错的后台流里用它。
+    DropAndReport,
+    /// 分块（不丢数据）：装不进一份的不拒、不截、不丢，改走分块逐块送、读回拼起来 —— 用户的字节一个不少。
+    /// 与「拒收＋回错」的分界：越界的那一份照样存成了。
+    Chunk,
+}
+
+/// 声明表的一行：落点（家目录底下 `.cc-monitor/` 那一层起）· 种类 · 格式 · 读上限（字节与超了怎么办，见 [`Cap`]）·
 /// 下限抬于哪一版（`X.Y.Z`；下限低于版本的行必写：`package.json` 的 version 到了那一版，删升级步、下限抬成版本）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Row {
     pub rel: &'static str,
     pub kind: Kind,
     pub format: Format,
-    pub cap: u64,
+    pub cap: Cap,
     pub floor_raised_in: Option<&'static str>,
 }
 
@@ -491,27 +525,36 @@ impl Class for Cache {
 /// 挂得了升级步的种类：只有状态（缓存读到旧版就当没有、照别的东西重建）。
 ///
 /// ```compile_fail,E0277
-/// use relay_route_core::{upgradable, Cache, Decl};
-/// const C: Decl<Cache> = Decl::<Cache>::json(".cc-monitor/c.json", 2, 1024);
+/// use relay_route_core::{upgradable, Cache, Cap, Decl, Over};
+/// const C: Decl<Cache> =
+///     Decl::<Cache>::json(".cc-monitor/c.json", 2, Cap { bytes: 1024, over: Over::SkipAndSay });
 /// let _ = upgradable(&C);
 /// ```
 ///
 /// ```
-/// use relay_route_core::{upgradable, Decl, State};
-/// const S: Decl<State> = Decl::<State>::json(".cc-monitor/s.json", 2, 1, 1024);
+/// use relay_route_core::{upgradable, Cap, Decl, Over, State};
+/// const S: Decl<State> =
+///     Decl::<State>::json(".cc-monitor/s.json", 2, 1, Cap { bytes: 1024, over: Over::Reject });
 /// let _ = upgradable(&S);
 /// ```
 pub trait Upgradable: Class {}
 impl Upgradable for State {}
 
 /// 一份落盘文件的声明（种类写在类型上：升级步只挂得上 `Decl<State>`，见 [`upgradable`]）。
+///
+/// 读上限只收 [`Cap`]：裸字节数编不过（超了怎么办跟着数一起写）。
+///
+/// ```compile_fail,E0308
+/// use relay_route_core::{Decl, State};
+/// const S: Decl<State> = Decl::<State>::json(".cc-monitor/s.json", 1, 1, 1024);
+/// ```
 pub struct Decl<K: Class> {
     pub row: Row,
     of: core::marker::PhantomData<K>,
 }
 
 impl<K: Class> Decl<K> {
-    const fn new(rel: &'static str, format: Format, cap: u64) -> Self {
+    const fn new(rel: &'static str, format: Format, cap: Cap) -> Self {
         Decl {
             row: Row {
                 rel,
@@ -525,7 +568,7 @@ impl<K: Class> Decl<K> {
     }
 
     /// 不带版本（不是我们的格式，或定了不加版本的）。
-    pub const fn foreign(rel: &'static str, cap: u64) -> Self {
+    pub const fn foreign(rel: &'static str, cap: Cap) -> Self {
         Self::new(rel, Format::Foreign, cap)
     }
 
@@ -537,7 +580,7 @@ impl<K: Class> Decl<K> {
 
 impl Decl<State> {
     /// 我们的 JSON：此刻写 `version`，读得懂 `floor..=version`（低于 `version` 的经升级步）。
-    pub const fn json(rel: &'static str, version: u32, floor: u32, cap: u64) -> Self {
+    pub const fn json(rel: &'static str, version: u32, floor: u32, cap: Cap) -> Self {
         assert!(
             floor >= 1 && floor <= version,
             "版本从 1 起，下限不高于版本"
@@ -558,7 +601,7 @@ impl Decl<State> {
 
 impl Decl<Cache> {
     /// 我们的 JSON：缓存不升级，只读得懂这一版。
-    pub const fn json(rel: &'static str, version: u32, cap: u64) -> Self {
+    pub const fn json(rel: &'static str, version: u32, cap: Cap) -> Self {
         assert!(version >= 1, "版本从 1 起");
         Self::new(
             rel,
@@ -577,55 +620,100 @@ pub const fn upgradable<K: Upgradable>(d: &Decl<K>) -> &Decl<K> {
 }
 
 /// 退出行为那一份的读上限（只有一格布尔）。
-const BACKEND_POLICY_MAX_BYTES: u64 = 4096;
+const BACKEND_POLICY_MAX_BYTES: Cap = Cap {
+    bytes: 4096,
+    over: Over::Reject,
+};
 /// 退出行为设置。
 pub const BACKEND_POLICY_FILE: Decl<State> =
     Decl::<State>::json(BACKEND_POLICY_REL, 1, 1, BACKEND_POLICY_MAX_BYTES);
 /// 这台偏好那一份的读上限（几张小表）。
-const PREFS_MAX_BYTES: u64 = 256 * 1024;
+const PREFS_MAX_BYTES: Cap = Cap {
+    bytes: 256 * 1024,
+    over: Over::Reject,
+};
 /// 这台的偏好（第 2 版：恢复那一格从开关 `resumeInTmux` 换成三选 `resumeWhere`；第 1 版经一步升级读，5.0.4 起不读）。
 pub const PREFS_FILE: Decl<State> =
     Decl::<State>::json(PREFS_REL, 2, 1, PREFS_MAX_BYTES).floor_raised_in("5.0.4");
 /// 机器表那一份的读上限（至多 256 台）。
-const MACHINES_MAX_BYTES: u64 = 1024 * 1024;
+const MACHINES_MAX_BYTES: Cap = Cap {
+    bytes: 1024 * 1024,
+    over: Over::Reject,
+};
 /// 机器表。
 pub const MACHINES_FILE: Decl<State> = Decl::<State>::json(MACHINES_REL, 1, 1, MACHINES_MAX_BYTES);
 /// monitor 设置那一份的读上限（超了当读不懂：读那一口报错、写口一个字节不写）。
-const CONFIG_MAX_BYTES: u64 = 4 * 1024 * 1024;
+const CONFIG_MAX_BYTES: Cap = Cap {
+    bytes: 4 * 1024 * 1024,
+    over: Over::Reject,
+};
 /// monitor 的设置（不带版本，定了的；monitor 在自己的数据目录里按 [`file_name_of`] 取名）。
 pub const CONFIG_FILE: Decl<State> = Decl::<State>::foreign(CONFIG_REL, CONFIG_MAX_BYTES);
 /// 「待办」选择那一份的读上限（超了当读不懂：不覆盖、`marks_unreadable`）。
-const CHORES_MAX_BYTES: u64 = 64 * 1024;
+const CHORES_MAX_BYTES: Cap = Cap {
+    bytes: 64 * 1024,
+    over: Over::Reject,
+};
 /// 「待办」里记下的选择。
 pub const CHORES_FILE: Decl<State> = Decl::<State>::json(CHORES_REL, 1, 1, CHORES_MAX_BYTES);
 /// 计划认可与退回那一份的读上限（超了当读不懂：不覆盖）。
-const PLAN_REVIEW_MAX_BYTES: u64 = 1024 * 1024;
+const PLAN_REVIEW_MAX_BYTES: Cap = Cap {
+    bytes: 1024 * 1024,
+    over: Over::Reject,
+};
 /// 计划的认可与退回。
 pub const PLAN_REVIEW_FILE: Decl<State> =
     Decl::<State>::json(PLAN_REVIEW_REL, 1, 1, PLAN_REVIEW_MAX_BYTES);
 /// 上次值整份的读上限：每份封顶 × 两样 × 台数封顶 ＝ 256 KiB × 2 × 64。
-const LAST_SEEN_MAX_BYTES: u64 = 32 * 1024 * 1024;
+const LAST_SEEN_MAX_BYTES: Cap = Cap {
+    bytes: 32 * 1024 * 1024,
+    over: Over::SkipAndSay,
+};
 /// 离线那台的上次值（第 2 版：各台住 `origins` 底下，不和顶层 `version` 同一层）。
 pub const LAST_SEEN_FILE: Decl<Cache> = Decl::<Cache>::json(LAST_SEEN_REL, 2, LAST_SEEN_MAX_BYTES);
 /// 书签那一份的读上限。
-const BOOKMARKS_MAX_BYTES: u64 = 256 * 1024;
+const BOOKMARKS_MAX_BYTES: Cap = Cap {
+    bytes: 256 * 1024,
+    over: Over::Reject,
+};
 /// 书签。
 pub const BOOKMARKS_FILE: Decl<State> =
     Decl::<State>::json(BOOKMARKS_REL, 1, 1, BOOKMARKS_MAX_BYTES);
 /// skill 装记录（第 1 版写在 `"v"` 里，第 2 版换成顶层 `version`；第 1 版经一步升级读，5.0.4 起不读）。
 pub const SKILL_LEDGER_FILE: Decl<State> =
-    Decl::<State>::json(SKILL_LEDGER_REL, 2, 1, 4 * 1024 * 1024).floor_raised_in("5.0.4");
+    Decl::<State>::json(SKILL_LEDGER_REL, 2, 1, SKILL_LEDGER_MAX_BYTES).floor_raised_in("5.0.4");
+/// skill 装记录那一份的读上限（超了当读不懂：不覆盖、`ledger_unreadable`）。
+const SKILL_LEDGER_MAX_BYTES: Cap = Cap {
+    bytes: 4 * 1024 * 1024,
+    over: Over::Reject,
+};
 /// 资产目录。
 pub const ASSET_CATALOG_FILE: Decl<State> =
-    Decl::<State>::json(ASSET_CATALOG_REL, 1, 1, 16 * 1024 * 1024);
+    Decl::<State>::json(ASSET_CATALOG_REL, 1, 1, ASSET_CATALOG_MAX_BYTES);
+/// 资产目录那一份的读上限（读不出来就不覆盖）。
+const ASSET_CATALOG_MAX_BYTES: Cap = Cap {
+    bytes: 16 * 1024 * 1024,
+    over: Over::Reject,
+};
 /// 额度账。
-pub const QUOTA_FILE: Decl<State> = Decl::<State>::json(QUOTA_LEDGER_REL, 1, 1, 16 << 20);
+pub const QUOTA_FILE: Decl<State> = Decl::<State>::json(QUOTA_LEDGER_REL, 1, 1, QUOTA_MAX_BYTES);
+/// 额度账那一份的读上限（读不出来就不覆盖）。
+const QUOTA_MAX_BYTES: Cap = Cap {
+    bytes: 16 << 20,
+    over: Over::Reject,
+};
 /// 轮换账本那一份的读上限。
-const ROTATION_MAX_BYTES: u64 = 16 << 20;
+const ROTATION_MAX_BYTES: Cap = Cap {
+    bytes: 16 << 20,
+    over: Over::Reject,
+};
 /// 账号轮换（第 1 版 · 第 2 版不升级）。
 pub const ROTATION_FILE: Decl<State> = Decl::<State>::json(ROTATION_REL, 3, 3, ROTATION_MAX_BYTES);
 /// 历史注解那一份的读上限：一条约 150 字节 ⇒ 四十万条；真撞上说明那份文件不对劲，不拿截断的当完整的用。
-const HISTORY_ANNOTATIONS_MAX_BYTES: u64 = 64 * 1024 * 1024;
+const HISTORY_ANNOTATIONS_MAX_BYTES: Cap = Cap {
+    bytes: 64 * 1024 * 1024,
+    over: Over::Reject,
+};
 /// 历史注解（星标 · 改名 · 隐藏 · 组 …；住这台的数据目录，名字同 `creds_core::store::HISTORY_METADATA_FILE`）。
 pub const HISTORY_ANNOTATIONS_FILE: Decl<State> = Decl::<State>::json(
     ".cc-monitor/history-metadata.json",
@@ -634,20 +722,48 @@ pub const HISTORY_ANNOTATIONS_FILE: Decl<State> = Decl::<State>::json(
     HISTORY_ANNOTATIONS_MAX_BYTES,
 );
 /// 血缘那一份的读上限（90 天清一次，远到不了）。
-const LINEAGE_MAX_BYTES: u64 = 16 << 20;
+const LINEAGE_MAX_BYTES: Cap = Cap {
+    bytes: 16 << 20,
+    over: Over::Reject,
+};
 /// 会话血缘。
 pub const LINEAGE_FILE: Decl<State> = Decl::<State>::json(LINEAGE_REL, 1, 1, LINEAGE_MAX_BYTES);
 /// 起会话用的号。
 pub const LAUNCH_ACCOUNTS_FILE: Decl<State> =
-    Decl::<State>::json(LAUNCH_ACCOUNTS_REL, 1, 1, 16 << 20);
+    Decl::<State>::json(LAUNCH_ACCOUNTS_REL, 1, 1, LAUNCH_ACCOUNTS_MAX_BYTES);
+/// 起会话用的号那一份的读上限（读不出来就不覆盖）。
+const LAUNCH_ACCOUNTS_MAX_BYTES: Cap = Cap {
+    bytes: 16 << 20,
+    over: Over::Reject,
+};
 /// 主机钥匙（OpenSSH 格式）。
-pub const KNOWN_HOSTS_FILE: Decl<State> = Decl::<State>::foreign(KNOWN_HOSTS_REL, 4 << 20);
+pub const KNOWN_HOSTS_FILE: Decl<State> =
+    Decl::<State>::foreign(KNOWN_HOSTS_REL, KNOWN_HOSTS_MAX_BYTES);
+/// 主机钥匙那一份的读上限（一台一行，远到不了；读不出来 ⇒ 不覆盖、回错）。
+const KNOWN_HOSTS_MAX_BYTES: Cap = Cap {
+    bytes: 4 << 20,
+    over: Over::Reject,
+};
 /// 开终端那一行的 ssh 配置（`ssh -F` 的格式；照机器表重写）。
-pub const SSH_CONFIG_FILE: Decl<Cache> = Decl::<Cache>::foreign(SSH_CONFIG_REL, 4 << 20);
+pub const SSH_CONFIG_FILE: Decl<Cache> =
+    Decl::<Cache>::foreign(SSH_CONFIG_REL, SSH_CONFIG_MAX_BYTES);
+/// ssh 配置那一份的读上限（缓存：超了 ⇒ `warn!` 带路径，当没有、照机器表重写）。
+const SSH_CONFIG_MAX_BYTES: Cap = Cap {
+    bytes: 4 << 20,
+    over: Over::SkipAndSay,
+};
 /// 中转钥匙（一行十六进制；丢了重铸）。
-pub const KEY_FILE: Decl<Cache> = Decl::<Cache>::foreign(KEY_FILE_REL, 4096);
+pub const KEY_FILE: Decl<Cache> = Decl::<Cache>::foreign(KEY_FILE_REL, KEY_FILE_MAX_BYTES);
+/// 中转钥匙那一份的读上限（一行；超了 ⇒ `warn!` 带路径说读不懂，当没有、重铸一把）。
+const KEY_FILE_MAX_BYTES: Cap = Cap {
+    bytes: 4096,
+    over: Over::SkipAndSay,
+};
 /// 历史清单缓存的读上限。
-const LISTING_CACHE_MAX_BYTES: u64 = 256 << 20;
+const LISTING_CACHE_MAX_BYTES: Cap = Cap {
+    bytes: 256 << 20,
+    over: Over::SkipAndSay,
+};
 /// 历史清单缓存。
 pub const LISTING_CACHE_FILE: Decl<Cache> =
     Decl::<Cache>::json(LISTING_CACHE_REL, 3, LISTING_CACHE_MAX_BYTES);
@@ -659,7 +775,10 @@ pub const SESSION_QUEUE_FILE: Decl<State> = Decl::<State>::json(
     SESSION_QUEUE_MAX_BYTES,
 );
 /// 一条会话那一份消息队的读上限（满队 × 最长一句，留余量）。
-const SESSION_QUEUE_MAX_BYTES: u64 = 24 << 20;
+const SESSION_QUEUE_MAX_BYTES: Cap = Cap {
+    bytes: 24 << 20,
+    over: Over::Reject,
+};
 /// 起会话便条（[`LAUNCH_NOTES_DIR_REL`] 底下一个进程一张；丢了只是那一次没记上号）。
 pub const LAUNCH_NOTE_FILE: Decl<Cache> = Decl::<Cache>::json(
     ".cc-monitor/launch-pending/<pid>.json",
@@ -667,7 +786,10 @@ pub const LAUNCH_NOTE_FILE: Decl<Cache> = Decl::<Cache>::json(
     LAUNCH_NOTE_MAX_BYTES,
 );
 /// 一张起会话便条的读上限。
-const LAUNCH_NOTE_MAX_BYTES: u64 = 16 << 20;
+const LAUNCH_NOTE_MAX_BYTES: Cap = Cap {
+    bytes: 16 << 20,
+    over: Over::SkipAndSay,
+};
 /// 一份记录的骨架（[`SKELETON_DIR_REL`] 底下一份记录一份；能照记录重扫）。
 pub const SKELETON_FILE: Decl<Cache> = Decl::<Cache>::json(
     ".cc-monitor/cache/skeleton/<digest>.json",
@@ -675,14 +797,20 @@ pub const SKELETON_FILE: Decl<Cache> = Decl::<Cache>::json(
     SKELETON_MAX_BYTES,
 );
 /// 一份骨架的读上限。
-const SKELETON_MAX_BYTES: u64 = 1 << 30;
+const SKELETON_MAX_BYTES: Cap = Cap {
+    bytes: 1 << 30,
+    over: Over::SkipAndSay,
+};
 /// 远端那台的清单副本（[`REMOTE_LISTING_DIR_REL`] 底下一台一份；原样是那台交来的字节）。
 pub const REMOTE_LISTING_FILE: Decl<Cache> = Decl::<Cache>::foreign(
     ".cc-monitor/cache/remote-listing/<machine>.json",
     REMOTE_LISTING_MAX_BYTES,
 );
 /// 一台远端清单副本的读上限。
-const REMOTE_LISTING_MAX_BYTES: u64 = 64 << 20;
+const REMOTE_LISTING_MAX_BYTES: Cap = Cap {
+    bytes: 64 << 20,
+    over: Over::SkipAndSay,
+};
 /// API key 表（住数据目录根上；人手改的那一份，未知键原样留）。
 pub const APIKEY_CREDENTIALS_FILE: Decl<State> = Decl::<State>::json(
     ".cc-monitor/apikey-credentials.json",
@@ -691,14 +819,20 @@ pub const APIKEY_CREDENTIALS_FILE: Decl<State> = Decl::<State>::json(
     APIKEY_CREDENTIALS_MAX_BYTES,
 );
 /// API key 表的读上限（一个号一格 key）。
-const APIKEY_CREDENTIALS_MAX_BYTES: u64 = 4 << 20;
+const APIKEY_CREDENTIALS_MAX_BYTES: Cap = Cap {
+    bytes: 4 << 20,
+    over: Over::Reject,
+};
 /// 订阅号的凭据文件（一个号一份，住那个号的配置目录、文件名由那一家登记；那一家的格式）。
 pub const ACCOUNT_CREDS_FILE: Decl<State> = Decl::<State>::foreign(
     "<account-config-dir>/<credentials-file>",
     ACCOUNT_CREDS_MAX_BYTES,
 );
 /// 订阅号凭据文件的读上限。
-const ACCOUNT_CREDS_MAX_BYTES: u64 = 1 << 20;
+const ACCOUNT_CREDS_MAX_BYTES: Cap = Cap {
+    bytes: 1 << 20,
+    over: Over::Reject,
+};
 /// 一条会话一份的上游描述（起会话便条那个目录底下，按来处存）。
 pub const SESSION_UPSTREAM_FILE: Decl<State> = Decl::<State>::json(
     ".cc-monitor/launch-pending/upstream/<origin>.json",
@@ -707,7 +841,10 @@ pub const SESSION_UPSTREAM_FILE: Decl<State> = Decl::<State>::json(
     SESSION_UPSTREAM_MAX_BYTES,
 );
 /// 一份上游描述的读上限。
-const SESSION_UPSTREAM_MAX_BYTES: u64 = 16 << 20;
+const SESSION_UPSTREAM_MAX_BYTES: Cap = Cap {
+    bytes: 16 << 20,
+    over: Over::Reject,
+};
 /// 一个托管终端一份的事实。
 pub const HOST_FACTS_FILE: Decl<State> = Decl::<State>::json(
     ".cc-monitor/hosts/<id>/facts.json",
@@ -716,10 +853,18 @@ pub const HOST_FACTS_FILE: Decl<State> = Decl::<State>::json(
     HOST_FACTS_MAX_BYTES,
 );
 /// 事实文件的读上限（几百字节的东西，大了就不是我们写的）。
-const HOST_FACTS_MAX_BYTES: u64 = 64 * 1024;
+const HOST_FACTS_MAX_BYTES: Cap = Cap {
+    bytes: 64 * 1024,
+    over: Over::Reject,
+};
 /// 托管进程跑的那份按版本的程序副本（后端不读它，只交给系统去跑；没有 · 坏了照自己再复制一份）。
 pub const HOST_PROGRAM_FILE: Decl<Cache> =
-    Decl::<Cache>::foreign(".cc-monitor/hosts/.bin/<version>/ccm.exe", 0);
+    Decl::<Cache>::foreign(".cc-monitor/hosts/.bin/<version>/ccm.exe", HOST_PROGRAM_NOT_READ);
+/// 程序副本不读：上限是 0，真有一处去读，读口就照缓存那一档当没有、`warn!` 带路径。
+const HOST_PROGRAM_NOT_READ: Cap = Cap {
+    bytes: 0,
+    over: Over::SkipAndSay,
+};
 /// cc-bus 的状态（[`CC_BUS_DIR_REL`] 底下：各会话已读位置 ＋ 发信规矩的账）。
 pub const CC_BUS_STATE_FILE: Decl<State> = Decl::<State>::json(
     ".cc-monitor/cc-bus/state.json",
@@ -728,29 +873,44 @@ pub const CC_BUS_STATE_FILE: Decl<State> = Decl::<State>::json(
     CC_BUS_STATE_MAX_BYTES,
 );
 /// cc-bus 状态那一份的读上限。
-const CC_BUS_STATE_MAX_BYTES: u64 = 4 << 20;
+const CC_BUS_STATE_MAX_BYTES: Cap = Cap {
+    bytes: 4 << 20,
+    over: Over::Reject,
+};
 /// 一条会话的 cc-bus 收件箱（[`CC_BUS_DIR_REL`] 底下一条会话一份；一封一行，只往后加）。
 pub const CC_BUS_INBOX_FILE: Decl<State> =
     Decl::<State>::foreign(".cc-monitor/cc-bus/<sid>.jsonl", CC_BUS_INBOX_MAX_BYTES);
 /// 一份 cc-bus 收件箱的读上限：一封最多千来字节，64 MiB 装得下几万封。
-const CC_BUS_INBOX_MAX_BYTES: u64 = 64 << 20;
+const CC_BUS_INBOX_MAX_BYTES: Cap = Cap {
+    bytes: 64 << 20,
+    over: Over::Reject,
+};
 /// 答题插件的一份文件（[`ANSWER_PLUGIN_DIR_REL`] 底下；照这一版现写，读回只为比内容一样不一样）。
 pub const ANSWER_PLUGIN_FILE: Decl<Cache> =
     Decl::<Cache>::foreign(".cc-monitor/answer-plugin/<file>", ANSWER_PLUGIN_MAX_BYTES);
 /// 答题插件一份文件的读上限（几份小脚本与清单）。
-const ANSWER_PLUGIN_MAX_BYTES: u64 = 1 << 20;
+const ANSWER_PLUGIN_MAX_BYTES: Cap = Cap {
+    bytes: 1 << 20,
+    over: Over::SkipAndSay,
+};
 /// 套组名 ⇒ 为它建的那一组的 id（顶层键是组名，带 `version` 会撞名 ⇒ 不带版本）。
 pub const SET_GROUPS_FILE: Decl<State> =
     Decl::<State>::foreign(".cc-monitor/set-groups.json", SET_GROUPS_MAX_BYTES);
 /// 套组绑定那一份的读上限。
-const SET_GROUPS_MAX_BYTES: u64 = 1 << 20;
+const SET_GROUPS_MAX_BYTES: Cap = Cap {
+    bytes: 1 << 20,
+    over: Over::Reject,
+};
 /// 一份轮换策略（`strategies/` 底下一份一个 `.rhai`，用户自己的源码）。
 pub const STRATEGY_SOURCE_FILE: Decl<State> = Decl::<State>::foreign(
     ".cc-monitor/strategies/<id>.rhai",
     STRATEGY_SOURCE_MAX_BYTES,
 );
 /// 一份轮换策略的读上限（超了不加载，列表里照实写读不懂）。
-const STRATEGY_SOURCE_MAX_BYTES: u64 = 64 * 1024;
+const STRATEGY_SOURCE_MAX_BYTES: Cap = Cap {
+    bytes: 64 * 1024,
+    over: Over::Reject,
+};
 
 /// 〔「一份落盘文件一行」〕上面那几份排成一张（判据逐行查自洽、查家里那几样与声明对得上）。
 #[cfg(test)]
