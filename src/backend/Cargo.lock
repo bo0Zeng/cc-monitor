@@ -120,6 +120,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
+name = "backend-common"
+version = "0.0.0"
+dependencies = [
+ "backend-platform",
+ "batch-core",
+ "cmd-wire",
+ "copy-core",
+ "guard-core",
+ "jiff",
+ "relay-route-core",
+ "ring",
+ "serde",
+ "serde_json",
+ "shell-quote-core",
+ "ssh-dial",
+ "test-home",
+ "tracing",
+ "tracing-subscriber",
+ "ts-rs",
+ "win-path-core",
+]
+
+[[package]]
 name = "backend-platform"
 version = "0.0.0"
 dependencies = [
@@ -147,6 +170,17 @@ dependencies = [
  "ts-rs",
  "walkdir",
  "win-path-core",
+]
+
+[[package]]
+name = "backend-plugin"
+version = "0.0.0"
+dependencies = [
+ "backend-platform",
+ "copy-core",
+ "guard-core",
+ "libc",
+ "test-home",
 ]
 
 [[package]]
@@ -285,7 +319,9 @@ name = "cc-monitor-backend"
 version = "0.0.0"
 dependencies = [
  "acct-core",
+ "backend-common",
  "backend-platform",
+ "backend-plugin",
  "batch-core",
  "cmd-wire",
  "comms-inward",

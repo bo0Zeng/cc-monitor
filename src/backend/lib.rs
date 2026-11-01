@@ -37,7 +37,10 @@ mod build_features; // 判据构建与发布构建的 serde_json 特性集相同
 #[path = "../../tests/backend/build_id_guard.rs"]
 mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 #[cfg(test)]，生产构建为空）
 pub mod ccm_line; // ccm 这一行的词与解析（旗标 · 解析 · 自己叫什么 · 配置的记号）：起会话 · 账号域 · 别名那一族都往下引它
-pub mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
+pub use backend_common as common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断；独立的包 `backend-common`）
+#[cfg(test)]
+#[path = "../../tests/backend/common/cross_tests.rs"]
+mod common_cross_tests; // 纯工具那一层判据里引到上层的那几条（那一层是独立的包、够不到上层）
 pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
 pub mod dial; // SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）
 pub mod faces; // 帧面宿主：read_face · feature_face · fork_face · resync_face（薄壳，本体在 observe/ · control/）
@@ -65,7 +68,7 @@ mod platform_cross_tests; // 平台层判据里引到上层的那几条（平台
 #[cfg(test)]
 #[path = "../../tests/backend/platform/fs/own_bytes_golden.rs"]
 mod platform_own_bytes_golden; // 经上层各写口写几份自有文件、盘上字节与金样逐字比（平台层的 `Own` 那一套）
-pub mod plugin; // 插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（方向由 layering_guard 钉）
+pub use backend_plugin as plugin; // 插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（独立的包 `backend-plugin`：只引平台层）
 #[cfg(test)]
 #[path = "../../tests/backend/plugin_walk_fixture.rs"]
 mod plugin_walk_fixture; // 最小假插件走通全流程（夹具 + 判据，整个文件级 cfg(test)，生产构建为空）

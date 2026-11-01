@@ -62,7 +62,7 @@
 /// **UTF-8 客户端旗（argv 形）** —— 一个口径两种表示里的那个**旗**。
 ///
 /// 用法与位置纪律见模块头注：**必须排在子命令之前**。
-pub(crate) const UTF8_CLIENT_FLAG: &str = "-u";
+pub const UTF8_CLIENT_FLAG: &str = "-u";
 
 /// **渲给客户端的「接进一个 tmux 会话」—— 全仓唯一一处**：`ccm --attach` · resume 接上在跑的 · 建完容器接进去（`control/ccm/plan.rs`）调它。
 ///
@@ -74,7 +74,7 @@ pub(crate) const UTF8_CLIENT_FLAG: &str = "-u";
 ///   `case` 的那个词不分词、不展开通配，不用引号也对；空的那一支写成 `x${TMUX:-}` 对 `x)`，连空串字面量 `''` 都不用
 ///   （单引号字面量只许经 `dialect::ps_literal` 进 PowerShell 那一形，`shell_home_guard` 钉着）。
 /// 渲给客户端的每一条 tmux 子命令都带旗：判据 `every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client`。
-pub(crate) fn join_session(name: &str) -> String {
+pub fn join_session(name: &str) -> String {
     let t = shell_quote_core::posix_quote(&format!("={name}:"));
     format!(
         "case x${{TMUX:-}} in x) tmux -u attach -t {t};; *) tmux -u switch-client -t {t};; esac"
@@ -88,7 +88,7 @@ pub(crate) fn join_session(name: &str) -> String {
 /// ⚠ 值里那个 `UTF-8` 是**给 tmux 的子串匹配看的**，不是给 `setlocale` 看的：
 /// 实测 `zz_ZZ.UTF-8`（这个 locale 根本不存在）照样干净，而 `C` / `LC_ALL=''` 脏。
 /// ⇒ 「`C.UTF-8` 万一没装」不是本条的失效面；「挂成空串」「忘了挂」才是，而那两种都是静默的。
-pub(crate) const UTF8_CLIENT_ENV: (&str, &str) = ("LC_ALL", "C.UTF-8");
+pub const UTF8_CLIENT_ENV: (&str, &str) = ("LC_ALL", "C.UTF-8");
 
 /// ★★ **`K-R12` 的 `J1`：段数下溢 —— 「拆不出段」不许长得像「字段是空的」。**
 ///
@@ -110,7 +110,7 @@ pub(crate) const UTF8_CLIENT_ENV: (&str, &str) = ("LC_ALL", "C.UTF-8");
 ///
 /// 装在**raw 的入口**，不是每个 splitter 上：只取第 1 段的那些消费者永远取得到，
 /// 下溢判据装在它们身上恒真，而它们在通道脏时拿到的「会话名」就是整行。
-pub(crate) fn tab_underflow(line: &str, expected: usize) -> bool {
+pub fn tab_underflow(line: &str, expected: usize) -> bool {
     line.split('\t').count() < expected
 }
 

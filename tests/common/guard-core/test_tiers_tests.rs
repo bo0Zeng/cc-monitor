@@ -67,6 +67,9 @@ const SUPPORT: &[&str] = &[
     "tests/backend/observe/accounts_list_support.rs", // 账号清单成品几份判据共用：照类型造号行与清单
     "tests/backend/platform/fs/own_support.rs", // 判据用的几种 `Own` 造法 · `DiagFile` 的两样（平台层的包与上层测试档经 `test-support` 共用）
     "tests/backend/common/streamed_read_support.rs", // 整份读按块几份判据共用：合成大记录 · 手里最多多少的上界
+    "tests/backend/common/contract_support.rs", // 契约错记进日志的那条诊断怎么读（纯工具那一层的包与上层测试档经 `test-support` 共用）
+    "tests/backend/common/session_snapshot_support.rs", // 会话快照的脚本化探测器 · 陈值（纯工具那一层的包与上层测试档经 `test-support` 共用）
+    "tests/backend/heard.rs", // 本线程上一段代码期间 `tracing` 说了什么（量具包与纯工具那一层的 `test-support` 各挂这一份）
     "tests/backend/files/index_testing.rs",
     "tests/backend/alloc_probe.rs", // 线程级内存量具（只在测试档编，挂在后端库根）
     "tests/backend/agents/fake/mod.rs", // 最小假 agent：每一种能力都与真 agent 不同形
@@ -1084,6 +1087,8 @@ fn module_path(
         "src/frontend/shell/src/",
         "src/frontend/filewin/src/",
         "src/backend/platform/",
+        "src/backend/common/",
+        "src/backend/plugin/",
         "src/backend/test-meters/",
         "src/backend/",
     ];
