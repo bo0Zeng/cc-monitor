@@ -256,7 +256,7 @@ async fn without_the_backend_home_nothing_is_written_and_it_says_so() {
     assert!(fs.lock().unwrap().mutated.is_empty());
 }
 
-/// 键：同一份文件同一个键；长度与字母表 == 提交那一侧认的（`files_commit::is_key`，异源：提交一侧的判定）。
+/// 键：同一份文件同一个键；长度与字母表 == 提交那一侧认的（`files::commit::is_key`，异源：提交一侧的判定）。
 #[test]
 fn the_staging_key_is_deterministic_and_shaped_like_the_commit_side_wants() {
     let a = staging_key("/tmp/x", 10, 7);
@@ -264,12 +264,12 @@ fn the_staging_key_is_deterministic_and_shaped_like_the_commit_side_wants() {
     assert_ne!(a, staging_key("/tmp/x", 11, 7));
     assert_ne!(a, staging_key("/tmp/y", 10, 7));
     assert!(
-        crate::control::files_commit::is_key(&a),
+        crate::files::commit::is_key(&a),
         "键形状提交那一侧不认：{a}"
     );
     // 提交那一侧从同一个键拼出来的暂存件，与这里写的是同一份。
     let home = std::path::Path::new("/home/rig");
-    let theirs = crate::control::files_commit::staged_path(home, &a).expect("键被拒");
+    let theirs = crate::files::commit::staged_path(home, &a).expect("键被拒");
     assert_eq!(theirs, home.join(staging_part(&a)));
 }
 
@@ -728,7 +728,7 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     assert!(ok);
     let data = data.unwrap();
     let key = data["key"].as_str().unwrap().to_string();
-    assert!(crate::control::files_commit::is_key(&key));
+    assert!(crate::files::commit::is_key(&key));
     let tid = data["id"].as_str().unwrap().to_string();
     assert!(tid.starts_with("xfer-"));
     // 同一份文件第二张票 ⇒ busy。
@@ -1017,13 +1017,13 @@ async fn a_hole_the_tail_probe_cannot_see_is_caught_by_the_commit() {
             "尾块对拍该照样放行续传（它看不见中间那一截 —— 本条要证的正是这一格）"
         );
         let home = tmp.path("home");
-        let staging = home.join(crate::control::files_commit::STAGING_DIR);
+        let staging = home.join(crate::files::commit::STAGING_DIR);
         std::fs::create_dir_all(&staging).unwrap();
         let staged_bytes = fs.lock().unwrap().bytes(&part).unwrap();
         std::fs::write(staging.join(format!("{KEY}.part")), &staged_bytes).unwrap();
         let root = tmp.path("dest");
         std::fs::create_dir_all(&root).unwrap();
-        let r = crate::control::files_commit::commit_upload(
+        let r = crate::files::commit::commit_upload(
             &Face::issue(),
             &home,
             KEY,
@@ -1140,7 +1140,7 @@ fn pinned(f: &Frame, tmp: &Tmp) -> String {
         // 一组一项：那一项的票号与暂存件的键。
         let d = d.get("items").and_then(|i| i.get(0)).unwrap_or(d);
         if let Some(v) = d.get("staged").and_then(serde_json::Value::as_str) {
-            if crate::control::files_commit::is_key(v) {
+            if crate::files::commit::is_key(v) {
                 s = s.replace(v, "<key>");
             }
         }
@@ -1152,7 +1152,7 @@ fn pinned(f: &Frame, tmp: &Tmp) -> String {
             }
         }
         if let Some(v) = d.get("key").and_then(serde_json::Value::as_str) {
-            if crate::control::files_commit::is_key(v) {
+            if crate::files::commit::is_key(v) {
                 s = s.replace(v, "<key>");
             }
         }

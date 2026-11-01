@@ -5477,7 +5477,7 @@ data class DirChecked(
 @Suppress("UNCHECKED_CAST")
 data class Doc(
     val blocks: List<MdBlock>,
-    val segs: List<Int>,
+    val segs: List<Long>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -5485,9 +5485,9 @@ data class Doc(
         val ADAPTER: JsonAdapter<Doc> = obj(
             listOf(
             Field("blocks", { arr(MdBlock.ADAPTER) }, optional = false, nullable = false),
-            Field("segs", { arr(Int32) }, optional = false, nullable = false),
+            Field("segs", { arr(Lng) }, optional = false, nullable = false),
             ),
-            { a -> Doc(a[0] as List<MdBlock>, a[1] as List<Int>) },
+            { a -> Doc(a[0] as List<MdBlock>, a[1] as List<Long>) },
             { v -> arrayOf(v.blocks, v.segs) },
         )
     }
@@ -24564,9 +24564,9 @@ data class SshCommand(
 @Suppress("UNCHECKED_CAST")
 data class SshConnection(
     val clientAddr: String,
-    val clientPort: Long,
+    val clientPort: Int,
     val serverAddr: String,
-    val serverPort: Long,
+    val serverPort: Int,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -24574,11 +24574,11 @@ data class SshConnection(
         val ADAPTER: JsonAdapter<SshConnection> = obj(
             listOf(
             Field("clientAddr", { Str }, optional = false, nullable = false),
-            Field("clientPort", { Lng }, optional = false, nullable = false),
+            Field("clientPort", { Int32 }, optional = false, nullable = false),
             Field("serverAddr", { Str }, optional = false, nullable = false),
-            Field("serverPort", { Lng }, optional = false, nullable = false),
+            Field("serverPort", { Int32 }, optional = false, nullable = false),
             ),
-            { a -> SshConnection(a[0] as String, a[1] as Long, a[2] as String, a[3] as Long) },
+            { a -> SshConnection(a[0] as String, a[1] as Int, a[2] as String, a[3] as Int) },
             { v -> arrayOf(v.clientAddr, v.clientPort, v.serverAddr, v.serverPort) },
         )
     }

@@ -17,7 +17,7 @@ use cmd_wire::batch::{BatchOutcome, BatchReply, Conflict, Conflicts, Decide, Ite
 use cmd_wire::files as wire;
 use copy_core::copy_text;
 
-use super::files_write::{
+use super::write::{
     change_mode_reporting, copy_entry, copy_tree, delete_empty_dir, delete_entry,
     delete_file_expecting, delete_tree_upto, lexical_in_root, rel_of, root_of, wire_of,
     WriteRefusal,
@@ -111,7 +111,7 @@ fn copy_one(
 
 /// `files-copy`。
 /// 同名清单里的时刻按 `tz`（看的那一台的时区）写好。
-pub(crate) fn copy(
+pub fn copy(
     face: &Face,
     req: wire::FilesCopyReq,
     tz: &crate::common::time::Tz,
@@ -125,10 +125,10 @@ pub(crate) fn copy(
         .collect();
     if req.single == Some(true) {
         for (from, to) in &items {
-            super::files_write::names_ok(true, to).map_err(CopyRefused::Fail)?;
+            super::write::names_ok(true, to).map_err(CopyRefused::Fail)?;
             if from == to {
                 return Err(CopyRefused::Fail(Said::new(
-                    super::files_write::BAD_NAME,
+                    super::write::BAD_NAME,
                     copy_text("beFilesWrite.copy.same", &[("path", &to.to_string_lossy())]),
                 )));
             }
@@ -205,7 +205,7 @@ pub(crate) fn copy(
 
 /// 复制开做之前没过的那一问：同名要问（那一句 ＋ 同名清单）· 别的（码 ＋ 那一句）。
 #[derive(Debug)]
-pub(crate) enum CopyRefused {
+pub enum CopyRefused {
     Clash(String, Conflicts),
     Fail(Said),
 }
@@ -265,8 +265,8 @@ fn copy_item(
             .is_some()
         {
             BatchOutcome {
-                code: Some(super::files_write::EXISTS.to_string()),
-                reason: Some(copy_core::code_reason(super::files_write::EXISTS, None)),
+                code: Some(super::write::EXISTS.to_string()),
+                reason: Some(copy_core::code_reason(super::write::EXISTS, None)),
                 detail: Some(e.message().to_string()),
                 ..BatchOutcome::bare(key, ItemState::Exists)
             }
@@ -424,7 +424,7 @@ fn delete_item(
 pub(crate) fn chmod(face: &Face, req: wire::FilesChmodReq) -> Result<BatchReply, Said> {
     let root = root_of(&req.root, "root")?;
     let total = req.items.len();
-    let mode = super::files_write::mode_of_text(&req.mode)?;
+    let mode = super::write::mode_of_text(&req.mode)?;
     let items = req.items;
     ticketed(
         req.ticket.as_deref(),
@@ -461,25 +461,25 @@ pub(crate) fn chmod(face: &Face, req: wire::FilesChmodReq) -> Result<BatchReply,
 }
 
 // 资产域那扇门（`doors::LocalFiles`）问这三条也经这一处（同那几条帧命令）：同名要问那一形门上不会出现（门不问人），照码交回。
-impl super::files_write::Act for wire::FilesCopyReq {
+impl super::write::Act for wire::FilesCopyReq {
     type Reply = BatchReply;
     fn act(self, face: &Face) -> Result<BatchReply, Said> {
         // 门不问人 ⇒ 同名清单（连同它的时刻字）不出门，时区照缺。
         copy(face, self, &Default::default()).map_err(|e| match e {
-            CopyRefused::Clash(said, _) => Said::new(super::files_write::EXISTS, said),
+            CopyRefused::Clash(said, _) => Said::new(super::write::EXISTS, said),
             CopyRefused::Fail(f) => f,
         })
     }
 }
 
-impl super::files_write::Act for wire::FilesDeleteReq {
+impl super::write::Act for wire::FilesDeleteReq {
     type Reply = BatchReply;
     fn act(self, face: &Face) -> Result<BatchReply, Said> {
         delete(face, self)
     }
 }
 
-impl super::files_write::Act for wire::FilesChmodReq {
+impl super::write::Act for wire::FilesChmodReq {
     type Reply = BatchReply;
     fn act(self, face: &Face) -> Result<BatchReply, Said> {
         chmod(face, self)
@@ -487,5 +487,5 @@ impl super::files_write::Act for wire::FilesChmodReq {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/control/files_batch_tests.rs"]
+#[path = "../../../tests/backend/files/batch_tests.rs"]
 mod tests;

@@ -1268,7 +1268,7 @@ impl FakeBackend {
                     Some(serde_json::json!({ "path": format!("{root}/{rel}"), "bytes": 0 })),
                 )
             }
-            // 存盘的两步：按后端 `control/files_commit.rs` 的契约演 —— 同一块只收一次；
+            // 存盘的两步：按后端 `files/commit.rs` 的契约演 —— 同一块只收一次；
             //   提交按块号 `0..chunks` 读回拼起来、总长必须恰好等于 `bytes`，否则拒；不论成败删掉这一键的块。
             "files-stage-chunk" => {
                 let key = args["key"].as_str().unwrap_or("").to_string();

@@ -1053,11 +1053,8 @@ fn the_backend_installs_its_own_host_into_the_dial_core() {
         d.contains(crate::BUILD_ID),
         "详情里没有本后端的机器那一行：{d}"
     );
-    // 暂存区那一根与提交那一侧（`files_commit`）是同一个串。
-    assert_eq!(
-        sftp::STAGING_ROOT,
-        crate::control::files_commit::STAGING_DIR
-    );
+    // 暂存区那一根与提交那一侧（`files::commit`）是同一个串。
+    assert_eq!(sftp::STAGING_ROOT, crate::files::commit::STAGING_DIR);
 }
 
 /// 私钥框里写的 `~/.ssh/…`：拨号那一层按这台家目录展开再读（不原样交给读文件那一下）；读不出来那一句里的路径照用户写的。
