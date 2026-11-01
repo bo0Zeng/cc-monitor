@@ -53,6 +53,12 @@ impl FrameLog {
 
     /// 往这份文件追加（没有就建）。
     pub fn to_file(path: &std::path::Path) -> std::io::Result<Self> {
+        // 落点是设环境变量的人自己点的那份帧日志（窗口自己的诊断输出，不是用户文件），只追加。
+        // reason 只用窗口标签里已有的字：本包字面量里的非 ASCII 字都算进字体探针。
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "窗口自己的输出：只在开了时往指定的那份文件里加行，不是别人的文件"
+        )]
         let f = std::fs::OpenOptions::new()
             .create(true)
             .append(true)

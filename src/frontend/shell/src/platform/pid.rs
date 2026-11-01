@@ -3,6 +3,9 @@
 //! Windows 那一臂走 `OpenProcess` 一族 · ToolHelp；Linux 那一臂读 `/proc/<pid>/stat`；别处答「读不到」（`None` / `false`）。
 //! 拿这几个事实去判「绑定还作不作数 / 这条登记该不该撤」的规则在 `bind.rs`。
 
+#[cfg(windows)]
+use copy_core::{Discard, Why};
+
 /// 那个进程的权限是不是在本进程之上（Windows：提权的终端，本进程没提权）：本进程打不开它的令牌（非提权进程打不开提权进程的，
 /// 这本身就说明了）⇒ 是；打得开 ⇒ 它提权、本进程没提权才算。进程打不开 / 别处 ⇒ 否。
 #[cfg(windows)]
@@ -30,7 +33,7 @@ pub fn above_us(pid: u32) -> bool {
                 &mut len,
             )
             .is_ok();
-            let _ = CloseHandle(token);
+            CloseHandle(token).discard(Why::Reap);
             ok.then_some(e.TokenIsElevated != 0)
         }
     }
@@ -43,7 +46,7 @@ pub fn above_us(pid: u32) -> bool {
             return false;
         };
         let e = elevated(h);
-        let _ = CloseHandle(h);
+        CloseHandle(h).discard(Why::Reap);
         e
     };
     match theirs {
@@ -78,7 +81,7 @@ pub fn creation_filetime(pid: u32) -> Option<super::filetime::FileTime> {
         let mut user = FILETIME::default();
         let ok =
             GetProcessTimes(handle, &mut creation, &mut exit_t, &mut kernel, &mut user).is_ok();
-        let _ = CloseHandle(handle);
+        CloseHandle(handle).discard(Why::Reap);
         if !ok {
             return None;
         }
@@ -165,7 +168,7 @@ pub fn processes() -> Vec<(u32, u32, String)> {
                 }
             }
         }
-        let _ = CloseHandle(snap);
+        CloseHandle(snap).discard(Why::Reap);
     }
     out
 }

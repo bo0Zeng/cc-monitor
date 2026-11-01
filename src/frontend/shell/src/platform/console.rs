@@ -215,6 +215,7 @@ pub fn helper_main() -> Option<i32> {
 /// 小助手的 windows 那一件：逐个借、各印一行。
 #[cfg(windows)]
 fn helper_windows(pids: &[u32]) {
+    use copy_core::{Discard, Why};
     use std::io::Write;
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{GetWindow, IsWindowVisible, GW_OWNER};
@@ -233,13 +234,17 @@ fn helper_windows(pids: &[u32]) {
         out.push_str(&look_line(pid, look));
         out.push('\n');
     }
-    let _ = std::io::stdout().write_all(out.as_bytes());
+    // 往 monitor 给的管子答话：写不出去 = 起它的 monitor 已经不在了（或已等过期限掐断），没人收。
+    std::io::stdout()
+        .write_all(out.as_bytes())
+        .discard(Why::DeadLink);
 }
 
 /// 小助手的 tab 那一件：打开窗口的标签页，借 `pid` 的控制台挂记号、切过去、写回（规则在 `bind.rs::pick_tab`），印一行。
 #[cfg(windows)]
 fn helper_tab(pid: u32, hwnd: isize) {
     use crate::bind::TabPick;
+    use copy_core::{Discard, Why};
     use face_core::front::TabMiss;
     use std::io::Write;
     let marker = crate::bind::front_marker();
@@ -248,8 +253,10 @@ fn helper_tab(pid: u32, hwnd: isize) {
     // 标题此时已经写回、进程一退控制台跟着摘下）。到点（主线程卡在 UI Automation 里）由看门那一支先写回标题再答。
     let answer: std::sync::Arc<dyn Fn(TabPick) + Send + Sync> = std::sync::Arc::new(|pick| {
         let mut out = std::io::stdout();
-        let _ = out.write_all(format!("{}\n", tab_line(pick)).as_bytes());
-        let _ = out.flush();
+        // 同上（标题此时已经写回）。
+        out.write_all(format!("{}\n", tab_line(pick)).as_bytes())
+            .discard(Why::DeadLink);
+        out.flush().discard(Why::DeadLink);
         std::process::exit(0);
     });
     let Some(mut tabs) = super::wt_tabs::WtTabs::open(hwnd) else {
@@ -429,6 +436,7 @@ pub(crate) fn pick_tab_in_budget(
     answer: std::sync::Arc<dyn Fn(crate::bind::TabPick) + Send + Sync>,
 ) {
     use crate::bind::{pick_tab, TabPick, TabReader};
+    use copy_core::{Discard, Why};
     use face_core::front::TabMiss;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
@@ -491,8 +499,10 @@ pub(crate) fn pick_tab_in_budget(
         })
     };
     let pick = pick_tab(&mut Leased { r, lease: &lease }, marker, tries);
-    let _ = done.send(());
-    let _ = watch.join();
+    // 看门那一支到点已经自己收场、不再收，就没人要这一声。
+    done.send(()).discard(Why::PeerGone);
+    // 它只写回标题、答话，自己出错（panic）也没有更好的补救，答话那一格由下面的 `answered` 兜住。
+    watch.join().discard(Why::Reap);
     if !lease.answered.swap(true, Ordering::SeqCst) {
         answer(pick);
     }
@@ -531,6 +541,7 @@ pub(crate) fn ask_helper(
     wait: std::time::Duration,
     spawn: &dyn Fn() -> std::io::Result<crate::spawn_managed::ManagedChild>,
 ) -> Option<String> {
+    use copy_core::{Discard, Why};
     use std::io::Read;
     let mut child = spawn().ok()?;
     let mut out = child.stdout.take()?;
@@ -538,8 +549,10 @@ pub(crate) fn ask_helper(
     std::thread::spawn(move || {
         let mut buf = Vec::new();
         let read = out.read_to_end(&mut buf);
-        let _ = child.wait();
-        let _ = tx.send(read.map(|_| buf));
+        // 替到点没等完的小助手收尸（它自己有预算、到点退出）。
+        child.wait().discard(Why::Reap);
+        // monitor 到点已经不等了，就没人要它。
+        tx.send(read.map(|_| buf)).discard(Why::PeerGone);
     });
     match rx.recv_timeout(wait) {
         Ok(Ok(buf)) => Some(String::from_utf8_lossy(&buf).into_owned()),

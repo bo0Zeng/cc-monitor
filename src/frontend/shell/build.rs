@@ -139,6 +139,10 @@ fn embed_backends(carried: &mut Vec<(String, String)>) {
             );
         };
         let dst = Path::new(&out).join(format!("backend-{arch}"));
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "构建脚本往 cargo 给的 `OUT_DIR` 铺内嵌字节：构建产物，不落到用户机器"
+        )]
         std::fs::copy(&src, &dst).expect("copy embedded backend binary");
         found.push((
             format!("embedded-backends/cc-monitor-backend-{arch}"),
@@ -306,9 +310,7 @@ fn embed_native_backend(carried: &mut Vec<(String, String)>) {
         embedded_id,
     ));
     // ⚠ **不往 `OUT_DIR` 拷一份**（`embed_backends` 那条是拷的）——消费侧那个 `include_bytes!`
-    // 直接按**字面量相对路径**读得到，而拷贝会让本函数变成一个**写盘落点**，
-    // 那要在 `write_site_registry::WRITE_SITES` 里申报（`fs::copy(` 是它的 needle 之一），
-    // 而那张表**这里不改**。少一次拷贝同时也少一条要申报的写点 —— 两头都更干净。
+    // 直接按**字面量相对路径**读得到；不拷就少一处写盘（`clippy.toml` 写盘那一组要就地放行的一处）。
     println!("cargo:rustc-cfg=embedded_native_backend");
 }
 

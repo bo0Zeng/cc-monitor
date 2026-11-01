@@ -247,7 +247,7 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
 }
 
 /// 机器条上那一行：进不进条 · 语气 · 带不带进度。连着的 · 比这一版新的（也连着）· 用户停用的 · 还不知道的不进条；
-/// 缺后端又得这一端去装 ⇒ 故障（修法是［安装］）。
+/// 缺后端：这一端不装（手机）⇒ 故障（修法是［安装］）；这一端自己会装（桌面，下一轮装上）⇒ 同没连上。
 pub fn strip(state: K, blocker: Option<Blocker>, installs: bool) -> Option<MachineStripLine> {
     let (tone, progress) = match state {
         K::Up | K::Newer | K::Disabled | K::Unknown => return None,

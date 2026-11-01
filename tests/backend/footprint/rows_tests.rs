@@ -1516,7 +1516,7 @@ fn the_path_resolution_dispatch_has_no_catch_all_arm() {
 }
 
 /// 搬进后端之后：判定（`rows.rs`）**零** `fs::`；这台自己 stat 的那几下住 face（`footprint/mod.rs`），恰好是只读那几样。
-/// 「把写交给别人」那一半（原先问 monitor 的 `write_site_registry`）由后端全树的 `readonly_guard` 接住（人群是本 crate 全部 `.rs`）。
+/// 「把写交给别人」那一半由后端全树的 `readonly_guard` 接住（人群是本 crate 全部 `.rs`）。
 #[test]
 fn this_module_only_reads() {
     // 剥掉注释与测试段：注释里出现 `fs::write` 这个词不该判红。

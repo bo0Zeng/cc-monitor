@@ -238,3 +238,40 @@ fn an_answer_has_one_cell_per_key_and_unpicked_rows_skip() {
         None
     );
 }
+
+/// 🔴 同名那一问的按钮字只住这里：一项给了几种答 ⇒ 几颗，先后恒为跳过 · 保留两份 · 覆盖（不照那台给的先后）；
+/// 每颗带整组按钮那一句与逐项那一格的字。整组那几颗是各项给了的答并起来，同样的先后。
+#[test]
+fn the_clash_choices_carry_their_own_words_in_one_order() {
+    let three = choices(&[Decide::Overwrite, Decide::Skip, Decide::KeepBoth]);
+    assert_eq!(
+        three.iter().map(|c| c.decide).collect::<Vec<_>>(),
+        vec![Decide::Skip, Decide::KeepBoth, Decide::Overwrite]
+    );
+    assert_eq!(three[0].label, copy_text("rsFilewinBatch.btn.skip", &[]));
+    assert_eq!(three[0].pick, copy_text("rsFilewinBatch.pick.skip", &[]));
+    assert_eq!(
+        three[2].label,
+        copy_text("rsFilewinBatch.btn.overwrite", &[])
+    );
+    assert_eq!(
+        three[1].pick,
+        copy_text("rsFilewinBatch.pick.keepBoth", &[])
+    );
+    assert_ne!(
+        three[0].label, three[0].pick,
+        "整组那一句与逐项那一格是两句"
+    );
+
+    let c: Vec<Conflict> = serde_json::from_value(serde_json::json!([
+        {"key": "0", "name": "d", "kind": "dir", "there": "dir", "answers": ["keep_both"]},
+        {"key": "1", "name": "b", "kind": "file", "there": "file", "answers": ["overwrite", "skip", "keep_both"]},
+    ]))
+    .unwrap();
+    assert_eq!(
+        whole(&c).iter().map(|c| c.decide).collect::<Vec<_>>(),
+        vec![Decide::Skip, Decide::KeepBoth, Decide::Overwrite],
+        "并起来照同一个先后，不照哪一项先出现"
+    );
+    assert!(choices(&[]).is_empty());
+}

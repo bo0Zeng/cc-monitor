@@ -2,11 +2,10 @@
 ///
 /// # 「谁能读」这一侧此前只有半张表
 ///
-/// 本会话把「谁能**写**」（`write_site_registry`）、「谁能**执行**」
-/// （界面进程零拨号 `dial_move_judge` / 本机起进程 / 构建期执行面）都钉成了默认拒绝，
-/// 而**读**那一侧只有两块：backend 的 `readonly_guard`（整个 crate 不许写），
-/// 与 monitor 的 `local_read_surface_registry` —— 而后者的人群是**五个手写针**，
-/// 全部对着 **claude 目录**（`claude_dir` / `CLAUDE_CONFIG_DIR` / `.claude` …）。
+/// 「谁能**写**」（壳的写盘只经 `platform::own_fs`）、「谁能**执行**」
+/// （界面进程零拨号 `dial_move_judge` / 本机起进程只经 `spawn_managed` / 构建期执行面）都是默认拒绝，
+/// 名单住 `src/frontend/clippy.toml`，家目录只在 `data_paths` 取；
+/// 而**读**那一侧只有 backend 的 `readonly_guard`（整个 crate 不许写）。
 ///
 /// ⇒ 用户机器上**别的**敏感目录不在任何人群里。08-08 实测：monitor 生产段里
 /// 碰本机 `.ssh` 的只有**一处**（本文件读 `~/.ssh/config` 列别名给前端），
