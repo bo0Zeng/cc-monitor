@@ -27,6 +27,7 @@ use crate::detail::Shell as _;
 use crate::local_backend::{self, Resolved, SuperviseHandle};
 use copy_core::copy_text;
 use copy_core::said::Said;
+use copy_core::{Discard, Why};
 
 /// F05a：本机后端监护句柄。存起来是为了退出前按策略 `stop()`（`C8`）。
 ///
@@ -1508,7 +1509,12 @@ fn start_supervised<R>(
         };
         events(e);
         if let Some(how) = how {
-            let _ = ended_tx.lock().unwrap_or_else(|e| e.into_inner()).send(how);
+            // 告诉起它的那一趟别再等：那一趟已经等到握手回去了，就没人要这一声。
+            ended_tx
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .send(how)
+                .discard(Why::PeerGone);
         }
     }));
     let spoke = wait_listening(
