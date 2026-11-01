@@ -64,7 +64,9 @@ fn deploy_end_failed_carries_failed() {
     let v = serde_json::to_value(&end).expect("序列化");
     assert_eq!(
         keys(&v),
-        ["end", "code", "said", "detail", "data"].map(String::from).into()
+        ["end", "code", "said", "detail", "data"]
+            .map(String::from)
+            .into()
     );
     assert_eq!(v["end"], "failed");
     let back: crate::phone::DeployEnd = serde_json::from_value(v).expect("读回");

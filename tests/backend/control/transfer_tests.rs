@@ -1124,7 +1124,10 @@ fn a_failed_transfer_end_carries_the_detail_beside_the_sentence() {
     // 没给码 ⇒ 兜底码；那一句叫 `said`。
     assert_eq!(
         (v["code"].as_str(), v["said"].as_str()),
-        (Some(copy_core::said::FALLBACK_CODE), Some("写入远端失败 · 原因不明"))
+        (
+            Some(copy_core::said::FALLBACK_CODE),
+            Some("写入远端失败 · 原因不明")
+        )
     );
 }
 
