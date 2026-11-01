@@ -5,6 +5,7 @@ import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Transfer
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.ClashChoice
 import com.ccmonitor.mobile.core.wire.gen.ClashRow
 import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.Failed
@@ -62,7 +63,8 @@ class FileOpsTest {
             val ops = FileOps(link) { "box" }
             val c = ops.upload(dir, "up.bin", { 17 }) { _, _ -> }.getOrThrow() as FileOps.Upload.Clash
             assertEquals("同名 1 项", c.said)
-            assertEquals(listOf(ClashRow("0", "up.bin", "3 字节", listOf(Decide.OVERWRITE, Decide.KEEP_BOTH), null)), c.rows)
+            val choices = listOf(ClashChoice(Decide.OVERWRITE, "overwrite", "overwrite"), ClashChoice(Decide.KEEP_BOTH, "keep_both", "keep_both"))
+            assertEquals(listOf(ClashRow("0", "up.bin", "3 字节", choices, null)), c.rows)
             assertEquals(FileOps.Upload.Done, ops.commit(dir, c.name, c.staged, "keep_both").getOrThrow())
             assertEquals("块不重送", 1, link.transfers.size)
             val again = link.calls("files-commit-upload").last()!!
