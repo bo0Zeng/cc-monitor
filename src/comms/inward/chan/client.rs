@@ -4,7 +4,8 @@
 //!
 //! - **不拨号、不找地址**（`C4` / `C5`）：[`Client::over`] 收的是一对**已经连好**的读写半边
 //!   （今天是外部前端进程自己的 stdin / stdout：起它的 monitor 在管子那一头）。没有钥匙：谁连得上由系统给。
-//! - **不造期限**（`X2`）：每一次 `call` 都要调用者显式给 [`Budget`]（`X6`），本文件一个期限常量都没有。
+//! - **不造期限**：每一次 `call` 都要调用者显式给 [`Budget`]，它只经 `Budget::new` 造、只经
+//!   `Budget::narrow` 收紧（字段私有，类型守着）；本文件一个期限常量都没有（通信包的禁用名单守着期限字面量）。
 //! - **不重试、不排队**。
 //!
 //! # 一次 `call` 的三段，以及每一段超时各答什么 `reach`
@@ -244,7 +245,7 @@ impl Client {
         budget: Budget,
         runs_on: bool,
     ) -> Result<Body, CallError> {
-        if budget.cancel.is_cancelled() {
+        if budget.cancel().is_cancelled() {
             return Err(cancelled());
         }
         let left = budget.remaining();
@@ -270,7 +271,7 @@ impl Client {
         // ① 入写队列。
         let queued = tokio::select! {
             r = tokio::time::timeout_at(wake, self.shared.tx.send(job)) => r,
-            () = budget.cancel.cancelled() => {
+            () = budget.cancel().cancelled() => {
                 self.forget(id);
                 return Err(cancelled());
             }
@@ -290,7 +291,7 @@ impl Client {
         // ② 写上连接。
         let written = tokio::select! {
             r = tokio::time::timeout_at(wake, written_rx) => r,
-            () = budget.cancel.cancelled() => {
+            () = budget.cancel().cancelled() => {
                 self.forget(id);
                 self.post(Head::Cancel { id });
                 return Err(withdrawn(runs_on));
@@ -312,7 +313,7 @@ impl Client {
         // ③ 等答。
         let answer = tokio::select! {
             r = tokio::time::timeout_at(wake, answer_rx) => r,
-            () = budget.cancel.cancelled() => {
+            () = budget.cancel().cancelled() => {
                 self.forget(id);
                 self.post(Head::Cancel { id });
                 return Err(withdrawn(runs_on));

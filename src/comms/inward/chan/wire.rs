@@ -108,15 +108,49 @@ impl CancelToken {
 ///
 /// 🔴 `until` 是**绝对时刻**，不是 `Duration`（`§3.3.2`：`Duration` 跨跳传递时每一跳都会
 /// 重新开始计时 —— 那正是「无总时限」那条病的机制）。**调用者给，通信层不造**。
+///
+/// 两样都收在类型里：造只经 [`Budget::new`]，改期限只经 [`Budget::narrow`]（只许收紧），
+/// 读走 [`Budget::remaining`] · [`Budget::deadline`] · [`Budget::cancel`]。外面直接写字段编不过：
+///
+/// ```compile_fail
+/// use comms_inward::chan::wire::{Budget, CancelToken};
+/// let t = std::time::Instant::now();
+/// let mut b = Budget::new(t, CancelToken::new());
+/// b.until = t;
+/// ```
+///
+/// ```compile_fail
+/// use comms_inward::chan::wire::{Budget, CancelToken};
+/// let b = Budget { until: std::time::Instant::now(), cancel: CancelToken::new() };
+/// ```
 #[derive(Clone, Debug)]
 pub struct Budget {
     /// 过了这一刻，这次调用一定已经回来了（成功或 `Overrun`）。
-    pub until: Instant,
+    until: Instant,
     /// 本地撤单。
-    pub cancel: CancelToken,
+    cancel: CancelToken,
 }
 
 impl Budget {
+    /// 到 `until` 这一刻为止、由 `cancel` 撤单的一份预算。
+    pub fn new(until: Instant, cancel: CancelToken) -> Self {
+        Self { until, cancel }
+    }
+
+    /// 期限取小：新期限只在比原来早时生效，**只收紧、不放宽**；撤单手柄照旧。
+    #[must_use]
+    pub fn narrow(self, until: Instant) -> Self {
+        Self {
+            until: self.until.max(until),
+            cancel: self.cancel,
+        }
+    }
+
+    /// 这次调用的撤单手柄。
+    pub fn cancel(&self) -> &CancelToken {
+        &self.cancel
+    }
+
     /// 离期限还剩多少（已过则为零）。**只在过线那一下用**：线上传的是「还剩多少」。
     pub fn remaining(&self) -> Duration {
         self.until.saturating_duration_since(Instant::now())

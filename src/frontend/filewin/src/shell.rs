@@ -370,10 +370,10 @@ impl FileWindow {
         if let Some(h) = &self.rt {
             let (l, origin, slot) = (line.clone(), self.source.origin(), self.offer.clone());
             h.spawn(async move {
-                let budget = comms_inward::chan::wire::Budget {
-                    until: std::time::Instant::now() + OFFER_WITHIN,
-                    cancel: Default::default(),
-                };
+                let budget = comms_inward::chan::wire::Budget::new(
+                    std::time::Instant::now() + OFFER_WITHIN,
+                    Default::default(),
+                );
                 if let Ok(o) = l.offer(&origin, budget).await {
                     *slot.lock().unwrap() = o;
                 }

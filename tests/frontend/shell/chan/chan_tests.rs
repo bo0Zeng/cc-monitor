@@ -36,10 +36,7 @@ use std::time::{Duration, Instant};
 const FRAME: usize = 1 << 20;
 
 fn budget(ms: u64) -> Budget {
-    Budget {
-        until: Instant::now() + Duration::from_millis(ms),
-        cancel: CancelToken::new(),
-    }
+    Budget::new(Instant::now() + Duration::from_millis(ms), CancelToken::new())
 }
 
 /// 句柄看见的一次 `call`：`(origin, op, payload, left, cancel)`。
@@ -425,10 +422,7 @@ async fn a_passed_deadline_answers_hop_overrun_in_the_05_shape() {
         .expect("期限到了之后补发的撤单没有到句柄那一侧");
 
     // 已经过了期限的 Budget：一个字节都不发，`NotSent`。
-    let dead = Budget {
-        until: Instant::now(),
-        cancel: CancelToken::new(),
-    };
+    let dead = Budget::new(Instant::now(), CancelToken::new());
     let r = c
         .call(
             &Origin::named("<local>"),
@@ -457,7 +451,7 @@ async fn a_local_cancel_is_immediate_and_says_cancelled() {
     let (fake, c) = rig();
     // 期限放到兜底上限的两倍：撤单不立即的话要等满它，撞下面那道（兜底的数）。
     let b = budget(2_000 * guard_core::wall::CEILING_SECS);
-    let cancel = b.cancel.clone();
+    let cancel = b.cancel().clone();
     let task = tokio::spawn({
         let c = c.clone();
         async move {
@@ -757,7 +751,7 @@ async fn a_local_cancel_says_the_peer_may_run_on_when_the_offer_says_so() {
     for (op, runs_on) in [(STUCK, true), ("stall", false)] {
         let before = fake.calls.lock().unwrap().len();
         let b = budget(10_000);
-        let cancel = b.cancel.clone();
+        let cancel = b.cancel().clone();
         let task = tokio::spawn({
             let (c, o) = (c.clone(), origin.clone());
             async move { c.call(&o, &Op(op.into()), Body::default(), b).await }
