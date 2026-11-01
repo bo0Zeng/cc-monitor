@@ -16,7 +16,12 @@ fn the_window_spells_the_local_address_only_as_cmd_wire_local() {
     assert!(!files.is_empty(), "文件窗口包一份 .rs 都没扫到 —— 住址坏了");
     let prod: Vec<(String, String)> = files
         .iter()
-        .map(|(p, raw)| (guard_core::addr::rel_of(p), guard_core::production_code(raw)))
+        .map(|(p, raw)| {
+            (
+                guard_core::addr::rel_of(p),
+                guard_core::production_code(raw),
+            )
+        })
         .collect();
     let quoted = format!("\"{}\"", cmd_wire::LOCAL);
     let own: Vec<&str> = prod
