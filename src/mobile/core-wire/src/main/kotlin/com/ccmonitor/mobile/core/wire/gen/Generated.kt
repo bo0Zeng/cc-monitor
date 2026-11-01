@@ -21893,6 +21893,9 @@ data class RunGroups(
     val recent: List<String>,
     val older: List<String>,
     val olderText: String? = null,
+    val runningText: String? = null,
+    val peek: List<String>? = null,
+    val peekMoreText: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -21903,9 +21906,12 @@ data class RunGroups(
             Field("recent", { arr(Str) }, optional = false, nullable = false),
             Field("older", { arr(Str) }, optional = false, nullable = false),
             Field("older_text", { opt(Str) }, optional = true, nullable = true),
+            Field("running_text", { opt(Str) }, optional = true, nullable = true),
+            Field("peek", { opt(arr(Str)) }, optional = true, nullable = true),
+            Field("peek_more_text", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> RunGroups(a[0] as List<String>, a[1] as List<String>, a[2] as List<String>, a[3] as String?) },
-            { v -> arrayOf(v.running, v.recent, v.older, v.olderText) },
+            { a -> RunGroups(a[0] as List<String>, a[1] as List<String>, a[2] as List<String>, a[3] as String?, a[4] as String?, a[5] as List<String>?, a[6] as String?) },
+            { v -> arrayOf(v.running, v.recent, v.older, v.olderText, v.runningText, v.peek, v.peekMoreText) },
         )
     }
 }
