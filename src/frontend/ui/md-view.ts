@@ -17,6 +17,9 @@ import { copyText } from "./copy-table";
 import { el } from "./kit/el";
 import s from "./md-view.module.css";
 
+/** 代码块复制钮上的字：每块都一样，不随树里的值变。 */
+const COPY_LABEL = copyText("render.codeBlock.copy");
+
 /** 高亮类：下标就是 `HlClass` 的序号（`src/common/cmd-wire/src/md.rs`），名单的先后只许跟着那边改。 */
 const HL_CLASSES: readonly string[] = [
   s.hlKeyword,
@@ -172,7 +175,7 @@ function table(align: readonly MdAlign[], head: readonly (readonly Inl[])[], row
 
 function codeBlock(lang: string | null, x: string, hl: readonly number[]): HTMLElement {
   const label = el("span", "code-lang", lang ?? "text");
-  const copy = el("button", "code-copy", copyText("render.codeBlock.copy"));
+  const copy = el("button", "code-copy", COPY_LABEL);
   copy.type = "button";
   copy.dataset.copy = "";
   const bar = box("div", [label, copy], "code-bar");
