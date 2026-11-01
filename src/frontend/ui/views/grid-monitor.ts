@@ -37,7 +37,7 @@ const POKE_MS = 300;
 /**
  * peek 内容签名：相等 = 不重建 DOM（保住选区 / 滚动）。纯函数；selected = null → 空串（收起态）。
  * - 不含 contextPct / unread：高频字段（每来一条消息就涨），纳入会让活跃会话每秒重建 peek、清掉正在复制的路径；
- * - 只签可见的那 8 条 ＋ 计数：渲染只画 slice(8)，签全量会比它保护的 DOM 还重。
+ * - 子运行只签那台挑好的那几个 ＋ 余下那一截（列几个由那台定）；改过的文件只签可见的那 8 条 ＋ 计数：签全量会比它保护的 DOM 还重。
  */
 function peekSignature(selected: GridSessionSnapshot | null, peek: SessionPeek | null): string {
   if (!selected) return "";
@@ -50,8 +50,8 @@ function peekSignature(selected: GridSessionSnapshot | null, peek: SessionPeek |
     selected.needs,
     peek?.model ?? null,
     peek?.summary ?? null,
-    peek?.agents.length ?? 0,
-    peek?.agents.slice(0, 8).map((a) => `${a.label}:${a.status}`) ?? null,
+    peek?.agents.map((a) => `${a.label}:${a.status}`) ?? null,
+    peek?.more ?? null,
     peek?.recentFiles.length ?? 0,
     peek?.recentFiles.slice(-8) ?? null,
   ]);
@@ -85,7 +85,7 @@ interface GroupRefs {
  */
 function badgesInputs(s: GridSessionSnapshot, now: number): string {
   return [
-    s.runningAgents,
+    s.running ?? "",
     s.agents ?? "",
     s.context?.text ?? "",
     s.context?.tone ?? "",
@@ -95,12 +95,12 @@ function badgesInputs(s: GridSessionSnapshot, now: number): string {
   ].join("\u0000");
 }
 
-/** 徽标行的内容（运行中 agent 数 / context% / unread / 等待 / 后台任务）。 */
+/** 徽标行的内容（在跑的 agent / context% / unread / 等待 / 后台任务）。 */
 function renderBadges(s: GridSessionSnapshot, badges: HTMLElement, now: number): void {
-  if (s.runningAgents > 0) {
+  if (s.running !== null) {
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-agents";
-    b.textContent = copyText("gridMonitor.renderBadges.agentsLabel", { runningAgents: s.runningAgents });
+    b.textContent = s.running; // 后端写好的那一句，照抄
     if (s.agents !== null) b.title = s.agents; // 后端写好的那一句，照抄
     badges.appendChild(b);
   }
@@ -454,16 +454,16 @@ export class GridMonitorView {
       k.className = "grid-monitor-peek-k";
       k.textContent = peek.summary ?? "";
       agentsWrap.appendChild(k);
-      for (const a of peek.agents.slice(0, 8)) {
+      for (const a of peek.agents) {
         const chip = document.createElement("span");
         chip.className = `grid-monitor-peek-agent status-${a.status}`;
         chip.textContent = a.label;
         agentsWrap.appendChild(chip);
       }
-      if (peek.agents.length > 8) {
+      if (peek.more !== null) {
         const more = document.createElement("span");
         more.className = "grid-monitor-peek-more";
-        more.textContent = `+${peek.agents.length - 8}`;
+        more.textContent = peek.more; // 那台写好的余下那一截，照抄
         agentsWrap.appendChild(more);
       }
       this.peekEl.appendChild(agentsWrap);

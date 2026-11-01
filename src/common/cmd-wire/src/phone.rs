@@ -126,7 +126,7 @@ pub enum DeployEnd {
     Failed(crate::failed::Failed),
 }
 
-/// 同名那一问的一行（抽屉照画）：键 · 名字 · 那一行的说明（核心写好）· 这一项能怎么答 · 撞的那一份叫什么（本机同名才有）。
+/// 同名那一问的一行（抽屉照画）：键 · 名字 · 那一行的说明（核心写好）· 这一项能怎么答（带字）· 撞的那一份叫什么（本机同名才有）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -137,8 +137,22 @@ pub struct ClashRow {
     pub key: String,
     pub name: String,
     pub meta: String,
-    pub answers: Vec<Decide>,
+    /// 这一项能怎么答，先后由核心排好（`batch_core::choices`）。
+    pub choices: Vec<ClashChoice>,
     pub there: Option<String>,
+}
+
+/// 同名那一问的一种答：答法 · 整组按钮那一句（`跳过同名`）· 逐项那一格的字（`跳过`）。字由核心写好，两端照摆。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct ClashChoice {
+    pub decide: Decide,
+    pub label: String,
+    pub pick: String,
 }
 
 /// `batch` 那一件：一组走到哪（删 · 改权限 · 复制 · 下到本机同一形）。字全由核心写好；`kept` ＝ 落过盘、进程没了再开时接回来的那一组。

@@ -35,6 +35,7 @@
 //!   （打包器会把 monitor 包的每个 bin 都装进安装包，那一份与内嵌的逐字节相同；size2 10-11 撤了）。
 
 use copy_core::copy_text;
+use copy_core::{Discard, Why};
 use std::path::{Path, PathBuf};
 
 // 种子 · 就绪那一行 · 指到窗口二进制的环境变量：monitor 与窗口进程两边对上的形状住 `filewin-contract`。
@@ -218,7 +219,8 @@ impl StderrTail {
                     if is_ready_line(&line) {
                         if let Some(tx) = tx.take() {
                             // 开窗那一趟已经不等了也无妨（它当场回过错）。
-                            drop(tx.send(decode_ready(&line).map_err(|s| s.logged())));
+                            tx.send(decode_ready(&line).map_err(|s| s.logged()))
+                                .discard(Why::PeerGone);
                             continue;
                         }
                     }

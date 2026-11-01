@@ -111,7 +111,7 @@ class ResidentFeedTest {
 
         val picks = mutableListOf<Pair<Long, String>>()
 
-        override fun clashRows(data: String): String = """[{"key":"0","name":"a","meta":"m","answers":["skip"],"there":null}]"""
+        override fun clashRows(data: String): String = """[{"key":"0","name":"a","meta":"m","choices":[{"decide":"skip","label":"l","pick":"p"}],"there":null}]"""
 
         override fun searchMerge(data: String): String = ""
 

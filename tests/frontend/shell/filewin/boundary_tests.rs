@@ -271,7 +271,7 @@ enum Kind {
     Geometry,
     /// monitor 那一侧：通道宿主（交接件 · 生产句柄）。
     Host,
-    /// monitor 那一侧：起进程那个全仓唯一出口（`write_site_registry::spawn_sites` 管着）。
+    /// monitor 那一侧：起进程那个全仓唯一出口（`spawn_managed`；`src/frontend/clippy.toml` 起进程那一组只许经它起）。
     Spawn,
     /// monitor 那一侧：monitor 自己的数据目录 —— 书签文件住那儿，
     /// 开窗时在这一侧算好全路径、放进种子交给窗口进程（窗口进程自己不找数据目录）。
@@ -360,6 +360,9 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("copy_core::detail::stamp", Kind::Copy),
     // 走块上传本机那份读不到：IO 错 → 原因词（全仓那一张表住 copy-core）。
     ("copy_core::io_reason", Kind::Copy),
+    // 丢一个结果带上为什么可以丢（`Discard` · 理由闭集 `Why`）：与 `Said` 同住 copy-core 的一对，丢的那一下什么也不做。
+    ("copy_core::Discard", Kind::Copy),
+    ("copy_core::Why", Kind::Copy),
     // 那台不认这条命令 ⇒ 全产品那一句（按名字取，与 monitor · 后端同一份）。
     ("copy_core::backend_old", Kind::Copy),
     // 大小那一格（列表 · 属性 · 进度 · 预览上限）：写法只住核心一处（与后端 · 界面同一份金样 size-text.golden.json）。

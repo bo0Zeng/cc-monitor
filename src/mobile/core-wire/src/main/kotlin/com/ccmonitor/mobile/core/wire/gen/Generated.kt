@@ -4562,11 +4562,32 @@ data class ChunkBytesObjValue(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class ClashChoice(
+    val decide: Decide,
+    val label: String,
+    val pick: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ClashChoice> = obj(
+            listOf(
+            Field("decide", { Decide.ADAPTER }, optional = false, nullable = false),
+            Field("label", { Str }, optional = false, nullable = false),
+            Field("pick", { Str }, optional = false, nullable = false),
+            ),
+            { a -> ClashChoice(a[0] as Decide, a[1] as String, a[2] as String) },
+            { v -> arrayOf(v.decide, v.label, v.pick) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class ClashRow(
     val key: String,
     val name: String,
     val meta: String,
-    val answers: List<Decide>,
+    val choices: List<ClashChoice>,
     val there: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -4577,11 +4598,11 @@ data class ClashRow(
             Field("key", { Str }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
             Field("meta", { Str }, optional = false, nullable = false),
-            Field("answers", { arr(Decide.ADAPTER) }, optional = false, nullable = false),
+            Field("choices", { arr(ClashChoice.ADAPTER) }, optional = false, nullable = false),
             Field("there", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> ClashRow(a[0] as String, a[1] as String, a[2] as String, a[3] as List<Decide>, a[4] as String?) },
-            { v -> arrayOf(v.key, v.name, v.meta, v.answers, v.there) },
+            { a -> ClashRow(a[0] as String, a[1] as String, a[2] as String, a[3] as List<ClashChoice>, a[4] as String?) },
+            { v -> arrayOf(v.key, v.name, v.meta, v.choices, v.there) },
         )
     }
 }
@@ -21872,6 +21893,9 @@ data class RunGroups(
     val recent: List<String>,
     val older: List<String>,
     val olderText: String? = null,
+    val runningText: String? = null,
+    val peek: List<String>? = null,
+    val peekMoreText: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -21882,9 +21906,12 @@ data class RunGroups(
             Field("recent", { arr(Str) }, optional = false, nullable = false),
             Field("older", { arr(Str) }, optional = false, nullable = false),
             Field("older_text", { opt(Str) }, optional = true, nullable = true),
+            Field("running_text", { opt(Str) }, optional = true, nullable = true),
+            Field("peek", { opt(arr(Str)) }, optional = true, nullable = true),
+            Field("peek_more_text", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> RunGroups(a[0] as List<String>, a[1] as List<String>, a[2] as List<String>, a[3] as String?) },
-            { v -> arrayOf(v.running, v.recent, v.older, v.olderText) },
+            { a -> RunGroups(a[0] as List<String>, a[1] as List<String>, a[2] as List<String>, a[3] as String?, a[4] as String?, a[5] as List<String>?, a[6] as String?) },
+            { v -> arrayOf(v.running, v.recent, v.older, v.olderText, v.runningText, v.peek, v.peekMoreText) },
         )
     }
 }
