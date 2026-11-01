@@ -8,7 +8,7 @@ use crate::common::said::Said;
 use crate::plan::needs;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use cmd_wire::plan as wire;
-use copy_core::copy_text;
+use copy_core::{copy_text, Discard, Why};
 
 type Answer = Result<wire::PlanAckReply, Said>;
 
@@ -39,7 +39,10 @@ fn after_ack(ws: &str, key: &str, acked: bool) -> Answer {
     let doc = crate::faces::plan_face::marked(last(ws)?);
     let (rev, n) = crate::faces::plan_face::seen_of(&doc);
     // 此刻没有流连接订它 ⇒ 发不出是正常的，客户端重问 `plan-read` 就有。
-    let _ = crate::plan::watch::changes().send((ws.to_string(), rev, n));
+    // 此刻没有流连接订它 ⇒ 发不出是正常的，客户端重问 `plan-read` 就有
+    crate::plan::watch::changes()
+        .send((ws.to_string(), rev, n))
+        .discard(Why::NotAnError);
     Ok(wire::PlanAckReply {
         acked,
         key: key.to_string(),

@@ -754,7 +754,7 @@ fn attach_stream(
     crate::stream_watch::desk(&crate::origin::Origin::local()).up(&client, Some(carried));
     tracing::info!(
         "本机入方向通道已登记（常驻载体）：origin={}",
-        crate::inbound_client::LOCAL_ORIGIN
+        cmd_wire::LOCAL
     );
     crate::bookmarks_migration::after_ready(crate::origin::Origin::local());
     crate::machine_table::refresh();
@@ -769,7 +769,7 @@ fn attach_stream(
         let mut tally = crate::frame_tally::FrameTally::new("本机常驻后端（脱离载体）");
         // 解不出来的帧每种说一次（日志 ＋ 告诉用户）。
         let mut unread = crate::stream_source::UnreadNotes::new(
-            crate::inbound_client::LOCAL_ORIGIN,
+            cmd_wire::LOCAL,
             copy_text("rsLocalBackendHost.local.machine", &[]),
         );
         loop {
@@ -1518,7 +1518,7 @@ fn start_supervised<R>(
         }
     }));
     let spoke = wait_listening(
-        std::path::Path::new(crate::inbound_client::LOCAL_ORIGIN),
+        std::path::Path::new(cmd_wire::LOCAL),
         || Ok(crate::inbound_client::local_client().map(|_| ())),
         || match ended.try_recv() {
             Ok(how) => Some(how),

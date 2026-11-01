@@ -19,6 +19,7 @@
 //!   Windows · macOS 两格没实测。
 
 use crate::platform::fs::Ro;
+use copy_core::{Discard, Why};
 use std::path::{Path, PathBuf};
 
 /// 同时挂着的 watch 上限。64 相对每用户上限（默认 262 144）是 1/4096；判据用绝对量比（`64 * 4096 <= 262144`），
@@ -204,7 +205,10 @@ pub fn on_change(dir_bytes: &[u8]) -> bool {
     };
     g[i].children = list_dir(&super::raw::to_path_buf(dir_bytes)).unwrap_or_default();
     drop(g);
-    let _ = dir_changes().send(cmd_wire::files::WirePath(dir_bytes.to_vec()).key());
+    // 此刻没有流连接订它 ⇒ 发不出是正常的，目录在盘上，窗口重问就有
+    dir_changes()
+        .send(cmd_wire::files::WirePath(dir_bytes.to_vec()).key())
+        .discard(Why::NotAnError);
     true
 }
 

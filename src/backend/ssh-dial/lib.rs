@@ -30,6 +30,7 @@
 #![cfg_attr(test, allow(clippy::disallowed_methods))]
 use std::sync::{Arc, Mutex};
 
+use copy_core::Discard;
 use serde::Serialize;
 use tokio::io::AsyncWriteExt;
 
@@ -297,7 +298,8 @@ impl StageSink {
     /// 过了一步（[`step`]）。
     pub fn step(&self, s: &'static str) {
         if let Some(tx) = &self.steps {
-            let _ = tx.send(s);
+            // 写进展行的那一头在 ack 写出去之后就收了，后到的那一步没人要
+            tx.send(s).discard(copy_core::Why::PeerGone);
         }
     }
 

@@ -13,6 +13,8 @@
 //!
 //! 文件事件各用自己的盯，不经会话文件那一圈（那一圈卡住时节点照到）。
 
+use copy_core::{Discard, Why};
+
 /// 这台账号库里每个号的配置目录（给家目录 → 那几个目录）：宿主读好交进来（`faces::rotation_face::account_dirs`），
 /// 换号这一侧不认识账号库管理（与上游选择收账号库读法同一形）。
 pub(crate) type AccountDirs =
@@ -66,10 +68,12 @@ pub(crate) fn bus() -> &'static Nodes {
 
 /// 发一件（没人订 ⇒ 丢掉，不是错）。
 pub(crate) fn emit(tx: &Nodes, source: Source, sid: Option<&str>) {
-    let _ = tx.send(Node {
+    // 此刻没有流连接、没有判的缓存订它 ⇒ 发不出是正常的，盘上那份照旧在，客户端重问就有
+    tx.send(Node {
         source,
         sid: sid.map(str::to_string),
-    });
+    })
+    .discard(Why::NotAnError);
 }
 
 /// 账号库那一处的盯：清单所在的目录（只认清单那个文件名）＋ 每个号的配置目录（只认登录文件）。

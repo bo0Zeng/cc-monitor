@@ -45,7 +45,7 @@ use crate::files::write::{
 };
 use crate::platform::fs::{Face, Ro};
 use cmd_wire::files as wire;
-use copy_core::{copy_text, io_reason};
+use copy_core::{copy_text, io_reason, Discard, Why};
 use std::path::{Path, PathBuf};
 
 /// 暂存区相对 `$HOME` 的那一段。值只住契约 crate（`relay_route_core::STAGING_DIR_REL`，monitor 的数据位置页按它列出）；
@@ -228,7 +228,7 @@ pub fn stage_chunk(
     })?;
     if let Err(e) = f.write_all(bytes) {
         drop(f);
-        let _ = face.delete_file(&at);
+        face.delete_file(&at).discard(Why::CleanupAfterFailure); // 删不掉等孤儿扫（7 天）
         return Err(WriteRefusal::io(
             copy_text(
                 "beFilesCommit.chunk.writeBroke",
@@ -338,7 +338,7 @@ pub fn drop_chunks(face: &Face, home: &Path, key: &str) {
             continue;
         };
         if Ro::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_file()) {
-            let _ = face.delete_file(&at);
+            face.delete_file(&at).discard(Why::CleanupAfterFailure); // 收拾旧块：删不掉等孤儿扫（7 天）
         }
     }
 }

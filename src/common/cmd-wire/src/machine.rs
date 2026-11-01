@@ -88,8 +88,8 @@ use crate::cells::Tone;
 ///
 /// 这个字面量的家。界面经生成物 `src/frontend/ui/generated/judgment-rules.ts` 的 `LOCAL` 拿它
 /// （生成器 `payload_judgment_rules.rs`，`ipc/origin.ts` 转出）。
-/// 还有两份待删的抄写：`inbound_client::LOCAL_ORIGIN`（Rust）与 `src/frontend/ui/backend-policy.ts`（TS）；
-/// 删之前由 `the_sentinel_agrees_with_the_two_existing_homes` 钉着与本常量逐字节相同。
+/// 还有一份待删的抄写：`src/frontend/ui/backend-policy.ts`（TS）；
+/// 删之前由 `origin_tests.rs` 的 `the_sentinel_agrees_with_the_ts_copy` 钉着与本常量逐字节相同。
 pub const LOCAL: &str = "<local>";
 
 /// 机器键里不能当名字给人看的那几个（哨兵）。别的键就是那台在机器表里的名字。
@@ -399,8 +399,8 @@ pub struct MachineState {
     pub strip: Option<MachineStripLine>,
 }
 
-/// **首屏那一句**（一条会话都没有时正文区中央那一块）：拨号那一端照各台的成品与报完了没有合一次写好（`deploy::machine::empty`），
-/// 随机器状态一起推；桌面主窗口与手机会话列表的空态照摆，不数台。各台都报完了才说「无会话」。
+/// **各台合一次写好的那几句**：拨号那一端照各台的成品与报完了没有合一次写好（`deploy::machine::fleet`），随机器状态一起推；
+/// 桌面主窗口与手机会话列表的空态照摆首屏那一句，设置里机器列表的页头照摆计数那一句，都不数台。各台都报完了才说「无会话」。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -408,11 +408,13 @@ pub struct MachineState {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
-pub struct EmptyFace {
-    /// 大字那一句（「无会话」· 「本机无会话」· 一台都没报完那一句）。
+pub struct FleetLines {
+    /// 首屏大字那一句（「无会话」· 「本机无会话」· 一台都没报完那一句）。
     pub line: String,
-    /// 下面那一行（怎么让它有 · 哪几台还在连 · 哪几台未计入）。
+    /// 首屏下面那一行（怎么让它有 · 哪几台还在连 · 哪几台未计入）。
     pub hint: String,
+    /// 机器列表页头那一句（机器 N · 离线 a · 要更新 b；没有离线 · 要更新的那一段不出）。
+    pub count: String,
 }
 
 /// 接常驻那一段的一轮结论（宿主把通信层交出的那一态原样转给后端，只有事实）。
@@ -515,7 +517,7 @@ pub struct MachineFault {
 #[serde(deny_unknown_fields)]
 pub struct MachineReadReq {}
 
-/// `machine-read` 的回包：机器表里每台 → 成品；连同此刻的首屏那一句（主题 `machine` 的重问）。
+/// `machine-read` 的回包：机器表里每台 → 成品；连同此刻各台合一次写好的那几句（主题 `machine` 的重问）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -524,7 +526,7 @@ pub struct MachineReadReq {}
 )]
 pub struct MachineRead {
     pub machines: std::collections::BTreeMap<String, MachineState>,
-    pub empty: EmptyFace,
+    pub empty: FleetLines,
 }
 
 /// `machine-wake` 的入参：那台的名字（空白名由后端拒）。

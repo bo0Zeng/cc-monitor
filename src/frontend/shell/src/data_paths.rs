@@ -88,6 +88,16 @@ pub struct DataPathsResponse {
 /// 界面读生成物 `generated/shell-names.ts` 里同名那一格（`shell_names_export.rs` 生成）。
 pub const LOGS_DIR_LABEL: &str = "logs/";
 
+/// 本用户的家目录：壳里只在这里取（`clippy.toml` 取家目录那一组只在这一处放行），别处拿它给的路径。
+/// 取法同全仓（`creds_core::store::home_dir`，monitor 与后端同一家）；问不到 ⇒ `None`，不猜一个出来。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "壳取家目录的唯一住址：别处都调本函数"
+)]
+pub(crate) fn home() -> Option<PathBuf> {
+    creds_core::store::home_dir()
+}
+
 /// 收集所有 monitor 写到磁盘的数据路径。需要 AppHandle 才能拿 LocalAppData 推断 WebView2 路径。
 pub fn collect(handle: &AppHandle) -> DataPathsResponse {
     let monitor_data_dir =

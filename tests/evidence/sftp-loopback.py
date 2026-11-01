@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # ruff: noqa: E501
-"""SR1b：**SFTP 住本机常驻后端**（传输四条 ＋ 部署 `deploy-*`）—— 对着一台真 sshd 的现打。
+"""**SFTP 住本机常驻后端**（传输四条 ＋ 部署 `deploy-*`）—— 对着一台真 sshd 的现打。
 
 跑法（仓根下，先 `cd src/backend && cargo build --release`）：
-    python3 tests/evidence/SR1b-sftp-loopback.py [--monitor] [后端二进制路径]
+    python3 tests/evidence/sftp-loopback.py [--monitor] [后端二进制路径]
 后端二进制缺省用 release 构建：`--monitor` 那一半要把这份字节真部署到回环那一头（还要传一份暂存件去卸），
 debug 构建约 500 MB，传暂存件那一步实测撞上期限（`deploy-uninstall` 回 `io_failed` · `Timeout`）。
 
-`--monitor`：后端那几项之后再跑一趟**界面那一侧**（`sftp_tests::sr1b_loopback_deploy_and_transfer_through_the_resident_backend`，
+`--monitor`：后端那几项之后再跑一趟**界面那一侧**（`deploy_tests::sr1b_loopback_deploy_and_transfer_through_the_resident_backend`，
 平时 `#[ignore]`）—— 起一个真后端、用生产那个本机吸收点接上它，装 · 卸经 `deploy-install` · `deploy-uninstall`、传输经中继。
 
 它起一台**临时的回环 sshd**（本用户身份、随机端口、临时 host key 与客户端钥匙、`UsePAM no`、`LogLevel VERBOSE`），
@@ -17,7 +17,6 @@ exec 那一侧的 `HOME` 也设成它（`SetEnv HOME=<rhome>`；上传开单探�
 **不进门禁**（门禁的沙箱里没有 sshd 可起）—— 它是一份读数，不是判据；交付报告里贴的是它的输出。
 
 覆盖（每条都是「真 TCP ＋ 真 SSH 握手 ＋ 真鉴权 ＋ 真 sftp 子系统」）：
-  （① 链路上没有文件那一种用法 · ⑧ 长流一条 ＋ 传输分道一条 · ⑨ 子系统留口不开：三格经 `link-open` 量，随链路那一族删了）
   ② 落点上摆一份无身份戳的字节（给 ⑩ 用：部署要显式失败、不覆盖它）
   ③ 远端写围栏只在合成服务端上判（`dial_sftp_tests`）：这里的上传键由后端起，够不着暂存区外
   ④ 上传：只写 `~/.cc-monitor/staging/<key>.part`，逐字节等于本机那份；帧序 got 单调、最后一帧 done
@@ -195,7 +194,7 @@ def main():
                     n = int(ln.rsplit(" written ", 1)[1].split()[0])
             return n
 
-        # 〔WIN3 §2〕拨号只收那台的名字（A10-2-2 之后照本机后端的机器表组，`dial/mod.rs::request_named`）；平铺 host/port 那一形会被回 `invalid_args`。
+        # 拨号只收那台的名字（照本机后端的机器表组，`dial/mod.rs::request_named`）；平铺 host/port 那一形会被回 `invalid_args`。
         # 那一台写进后端自己的机器表（它按名字现读）；传输只交名字。
         os.makedirs(os.path.join(home, ".cc-monitor"), exist_ok=True)
         with open(os.path.join(home, ".cc-monitor", "machines.json"), "w") as fh:

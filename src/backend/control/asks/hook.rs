@@ -10,6 +10,7 @@
 //! 零定时器：只等套接字与文件事件。
 
 use crate::agents::SessionActivity;
+use copy_core::{Discard, Why};
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -66,8 +67,12 @@ pub async fn run(args: &[String], states: StatesOf) -> i32 {
         .flatten();
     if let Some(out) = ask_resident(agent, &hook, closed).await {
         let mut stdout = tokio::io::stdout();
-        let _ = stdout.write_all(out.to_string().as_bytes()).await;
-        let _ = stdout.flush().await;
+        // hook 的 stdout 是那一家读决定的管子：写不进去 ＝ 那一家已经不读了（框已关 / 进程走了），晚到的答案它本来也丢
+        stdout
+            .write_all(out.to_string().as_bytes())
+            .await
+            .discard(Why::DeadLink);
+        stdout.flush().await.discard(Why::DeadLink);
     }
     0
 }
@@ -104,7 +109,7 @@ async fn ask_resident(
                 None => std::future::pending().await,
             }
         } => {
-            let _ = r;
+            r.discard(Why::Signal); // 关了或发端被丢都算「框已关」
             None
         }
     }
@@ -138,7 +143,7 @@ fn watch_terminal(
             let now = states(&read_dir, &sid);
             if closed_now(&now, started, &mut seen_waiting) {
                 if let Some(tx) = tx.take() {
-                    let _ = tx.send(());
+                    tx.send(()).discard(Why::PeerGone); // 等它的那一头已经拿到答案走了
                 }
             }
         },

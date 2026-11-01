@@ -16,7 +16,7 @@
 //!
 //! # 买不到什么
 //!
-//! - 真 sshd 上的一趟（`tests/evidence/SR1b-sftp-loopback.py`）；真窗口进程（窗口那一侧由 `filewin` 的判据另判）。
+//! - 真 sshd 上的一趟（`tests/evidence/sftp-loopback.py`）；真窗口进程（窗口那一侧由 `filewin` 的判据另判）。
 
 use super::super::wire::{
     Body, Budget, By, CallError, CancelToken, Comms, Item, Op, PeerFault, Sub,
@@ -342,10 +342,7 @@ async fn a_coded_failure_reaches_the_window_with_its_code() {
 async fn the_terminal_ask_is_taken_by_the_monitor_and_refused_out_loud_when_it_cannot_be_done() {
     let client = rig().await;
     for (origin, code) in [
-        (
-            crate::inbound_client::LOCAL_ORIGIN,
-            "local_has_no_file_window",
-        ),
+        (cmd_wire::LOCAL, "local_has_no_file_window"),
         ("判据里不存在的机器·terminal", "no_such_origin"),
     ] {
         let r = client

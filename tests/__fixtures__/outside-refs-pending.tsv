@@ -14,7 +14,6 @@ src/common/cmd-wire/src/frame.rs	1
 src/common/guard-core/src/lib.rs	41
 src/doc/INVARIANTS.md	2
 src/doc/IPC-PROTOCOL.md	1
-src/frontend/shell/src/local_backend.rs	1
 tests/backend/agent_boundary_guard.rs	4
 tests/backend/agent_locality_guard.rs	2
 tests/backend/agents/codex/record_tests.rs	1
@@ -22,7 +21,6 @@ tests/backend/agents/fake_tests.rs	1
 tests/backend/agents_tests.rs	5
 tests/backend/common/session_snapshot_tests.rs	3
 tests/backend/control/fork_write_tests.rs	1
-tests/backend/control/transfer_tests.rs	2
 tests/backend/dial_terminal_tests.rs	2
 tests/backend/dial_tests.rs	5
 tests/backend/files/answer_tests.rs	1
@@ -39,9 +37,5 @@ tests/backend/relay/table_guard.rs	17
 tests/backend/relay/upstream_selection_guard.rs	1
 tests/backend/relay/wire_golden.rs	1
 tests/common/relay-route-core/lib_tests.rs	1
-tests/evidence/K-R30-etxtbsy-window.py	6
-tests/evidence/SR1b-sftp-loopback.py	1
 tests/frontend/shell/capability_registry_tests.rs	46
-tests/frontend/shell/local_backend_host_tests.rs	84
-tests/frontend/shell/local_backend_tests.rs	47
 tests/frontend/shell/write_site_registry_tests.rs	3
