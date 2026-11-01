@@ -39,11 +39,31 @@ fn sessions_batch_reply_wire_shape_keeps_null_keys_and_reads_back() {
         failed: true,
         lines: vec!["失败 · proj 改测试（box2） · 不是这一端起的".into()],
         copy_detail: "sessions-stop · wrong_owner".into(),
+        windows: vec![OpenWindow {
+            machine: Machine::local(),
+            sid: sid("s-1"),
+            line: "claude --resume s-1".into(),
+            cwd: None,
+        }],
+        undo: vec![],
     };
     let v = serde_json::to_value(&reply).unwrap();
     let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
-    assert_eq!(keys.len(), 5, "{v}");
-    for k in ["results", "said", "failed", "lines", "copyDetail"] {
+    assert_eq!(keys.len(), 7, "{v}");
+    assert_eq!(
+        v["windows"],
+        serde_json::json!([{"machine": "<local>", "sid": "s-1", "line": "claude --resume s-1", "cwd": null}]),
+        "开窗那一行：可缺的目录出 null"
+    );
+    for k in [
+        "results",
+        "said",
+        "failed",
+        "lines",
+        "copyDetail",
+        "windows",
+        "undo",
+    ] {
         assert!(v.get(k).is_some(), "缺 {k}：{v}");
     }
     let done = &v["results"][0];
@@ -90,7 +110,10 @@ fn sessions_batch_req_ops_on_the_wire() {
     assert_eq!(stop.client, None);
 
     let start = SessionsBatchReq {
-        op: SessionsOp::Start { run: Launch::Tmux },
+        op: SessionsOp::Start {
+            run: Launch::Tmux,
+            relayed: false,
+        },
         items: vec![SessionItem {
             machine: Machine::local(),
             sid: sid("s-1"),
@@ -98,11 +121,31 @@ fn sessions_batch_req_ops_on_the_wire() {
         client: Some("desktop".into()),
     };
     let v = serde_json::to_value(&start).unwrap();
-    assert_eq!(v["op"], serde_json::json!({"start": {"run": "tmux"}}));
+    assert_eq!(
+        v["op"],
+        serde_json::json!({"start": {"run": "tmux", "relayed": false}})
+    );
+    // 界面交的那一形不带 relayed（缺 ⇒ 开窗的就是这台）。
+    assert_eq!(
+        serde_json::from_value::<SessionsOp>(serde_json::json!({"start": {"run": "tmux"}}))
+            .unwrap(),
+        start.op
+    );
     assert_eq!(
         serde_json::from_value::<SessionsBatchReq>(v).unwrap(),
         start
     );
+    // 本机合各台转给别的台那一组：带 `relayed: true`，那台照它定开窗的不是它自己。
+    let relayed = SessionsOp::Start {
+        run: Launch::Direct,
+        relayed: true,
+    };
+    let v = serde_json::to_value(relayed).unwrap();
+    assert_eq!(
+        v,
+        serde_json::json!({"start": {"run": "direct", "relayed": true}})
+    );
+    assert_eq!(serde_json::from_value::<SessionsOp>(v).unwrap(), relayed);
 
     // 坏 sid 在解入参时就拒；多出的键拒。
     assert!(
@@ -117,4 +160,56 @@ fn sessions_batch_req_ops_on_the_wire() {
         }))
         .is_err()
     );
+}
+
+#[test]
+fn hide_ops_on_the_wire_and_the_undo_asks_ride_the_reply() {
+    for (op, word) in [
+        (SessionsOp::Hide, "hide"),
+        (SessionsOp::Unhide, "unhide"),
+        (SessionsOp::ClearHide, "clear_hide"),
+    ] {
+        assert_eq!(serde_json::to_value(op).unwrap(), serde_json::json!(word));
+        assert_eq!(
+            serde_json::from_value::<SessionsOp>(serde_json::json!(word)).unwrap(),
+            op
+        );
+    }
+    let undo = SessionsBatchReq {
+        op: SessionsOp::ClearHide,
+        items: vec![SessionItem {
+            machine: Machine::named("box2"),
+            sid: sid("s-3"),
+        }],
+        client: None,
+    };
+    let reply = SessionsBatchReply {
+        results: vec![failed_one()],
+        said: "S".into(),
+        failed: true,
+        lines: vec![],
+        copy_detail: String::new(),
+        windows: vec![],
+        undo: vec![undo.clone()],
+    };
+    let v = serde_json::to_value(&reply).unwrap();
+    assert_eq!(
+        v["undo"],
+        serde_json::json!([{"op": "clear_hide", "items": [{"machine": "box2", "sid": "s-3"}], "client": null}])
+    );
+    assert_eq!(
+        serde_json::from_value::<SessionsBatchReply>(v).unwrap(),
+        reply
+    );
+}
+
+#[test]
+fn pin_ops_on_the_wire() {
+    for (op, word) in [(SessionsOp::Pin, "pin"), (SessionsOp::Unpin, "unpin")] {
+        assert_eq!(serde_json::to_value(op).unwrap(), serde_json::json!(word));
+        assert_eq!(
+            serde_json::from_value::<SessionsOp>(serde_json::json!(word)).unwrap(),
+            op
+        );
+    }
 }

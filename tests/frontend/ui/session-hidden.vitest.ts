@@ -28,10 +28,12 @@ import type { Needs, SessionFacts } from "../../../src/frontend/ui/session-reads
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { goldenFace, liveFace } from "../../test-support/session-faces";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { hiddenPushed, undoHide, lineageOf, NO_LINEAGE, type HideSet, type SessionHidden } from "../../../src/frontend/ui/session-hidden";
+import { hiddenPushed, undoHide, lineageOf, NO_LINEAGE, type SessionHidden } from "../../../src/frontend/ui/session-hidden";
 import { setHide } from "../../../src/frontend/ui/session-hidden-cmds";
 import { TabHide, type TabHideHost } from "../../../src/frontend/ui/tab-hide";
-import type { EndRow } from "../../../src/frontend/ui/end-confirm";
+import type { SessionsBatchReply } from "../../../src/frontend/ui/generated/SessionsBatchReply";
+import type { SessionsOp } from "../../../src/frontend/ui/generated/SessionsOp";
+import type { SessionItem } from "../../../src/frontend/ui/generated/SessionItem";
 import { applyFacts } from "../../../src/frontend/ui/tab-session-facts";
 import { SessionHead } from "../../../src/frontend/ui/session-head";
 import { readFileSync } from "node:fs";
@@ -146,7 +148,7 @@ describe("推帧主题「会话隐藏」：那一格到了就挪", () => {
   it("★ 收到那一帧 ⇒ 当场挪出标签栏、进「已隐藏」；再来一帧 `null` ⇒ 挪回", () => {
     const r = bar([tab("a"), tab("b")]);
     const prefs = { ...r.prefs, setPinnedMany: vi.fn(), adoptGroup: vi.fn(), persistOrder: vi.fn(async () => {}) };
-    const hider = new TabHide(r.store, prefs as unknown as TabBarPrefs, { setHide: vi.fn(), undoToast: vi.fn(), failed: vi.fn(), batch: vi.fn(), refreshTabBar: () => r.view.refresh(), close: vi.fn() });
+    const hider = new TabHide(r.store, prefs as unknown as TabBarPrefs, { send: vi.fn(), say: vi.fn(), failed: vi.fn(), refreshTabBar: () => r.view.refresh(), close: vi.fn() });
     const push = (hidden: SessionHidden | null): void => {
       for (const [sid, h] of hiddenPushed({ cells: [{ key: "b", rev: null, body: { hidden } }], all: false })) hider.land(sid, h);
       r.view.refresh();
@@ -233,113 +235,115 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
       adoptGroup: vi.fn(),
       persistOrder: vi.fn(async () => {}),
     };
-    const toasts: { title: string; undo: () => void; settle: () => void }[] = [];
+    /** 本机后端那一批的替身：默认每项都成了；隐藏那一批的撤销 ＝ 照规则那一问（`clear_hide`）。 */
+    const answer = (op: SessionsOp, items: readonly SessionItem[]): SessionsBatchReply => ({
+      results: items.map((i) => ({ machine: i.machine, sid: i.sid, outcome: "done", why: null, said: null, copyDetail: "", title: `名-${i.sid}`, session: null })),
+      said: `S-${typeof op === "string" ? op : "start"}`,
+      failed: false,
+      lines: [],
+      copyDetail: "",
+      windows: [],
+      undo: op === "hide" ? [{ op: "clear_hide", items: [...items] }] : [],
+    });
+    const said: { reply: SessionsBatchReply; undo?: { run: () => void; settle: () => void } }[] = [];
     const host = {
-      setHide: vi.fn(async (_t: Tab, _to: HideSet): Promise<"on" | "off" | null> => null),
-      undoToast: vi.fn((title: string, undo: () => void, settle: () => void) => void toasts.push({ title, undo, settle })),
+      send: vi.fn(async (op: SessionsOp, items: readonly SessionItem[]): Promise<SessionsBatchReply> => answer(op, items)),
+      say: vi.fn((reply: SessionsBatchReply, undo?: { run: () => void; settle: () => void }) => void said.push({ reply, undo })),
       failed: vi.fn(),
-      batch: vi.fn((_action: string, _rows: readonly EndRow[], _undo?: { run: () => void; settle: () => void }) => {}),
       refreshTabBar: vi.fn(),
       close: vi.fn(),
     } satisfies TabHideHost;
     const h = new TabHide(store, prefs as unknown as TabBarPrefs, host);
-    return { h, host, store, prefs, toasts };
+    return { h, host, store, prefs, said, answer };
   }
+  const item = (sid: string): SessionItem => ({ machine: LOCAL_ORIGIN, sid });
+  const flushAll = (): Promise<void> => new Promise((x) => setTimeout(x, 0));
 
-  it("★ 隐藏一个：交 `on`、toast「已隐藏「名」」、栏上先不挪；撤销照后端回的改之前那一格交回去（没有 ⇒ `rule`，不钉成单独显示）", async () => {
+  it("★ 隐藏一个：交本机后端一条 `hide`、照回包出那一条（带［撤销］）、栏上先不挪；撤销把回包里那几问原样交回", async () => {
     const r = rig([tab("a"), tab("b")]);
     r.h.hide(["b"]);
-    await new Promise((x) => setTimeout(x, 0));
-    expect(r.host.setHide.mock.calls.map((c) => [(c[0]).sessionId, c[1]])).toEqual([["b", "on"]]);
-    expect(r.toasts.map((t) => t.title)).toEqual([copyText("tabBar.hide.done", { title: "名-b" })]);
+    await flushAll();
+    expect(r.host.send.mock.calls).toEqual([["hide", [item("b")]]]);
+    expect(r.said.map((s) => s.reply.said)).toEqual(["S-hide"]);
     expect(r.store.tabs.get("b")!.hidden, "界面不先挪：等推帧").toBeNull();
-    r.toasts[0].undo();
-    await new Promise((x) => setTimeout(x, 0));
-    expect(r.host.setHide.mock.calls.at(-1)?.[1], "撤销等隐藏那一问回来、照它回的那一格交").toBe("rule");
+    r.said[0].undo!.run();
+    await flushAll();
+    expect(r.host.send.mock.calls.at(-1), "撤销交的是回包写好的那一问").toEqual(["clear_hide", [item("b")]]);
   });
 
-  it("★ 批量隐藏的撤销逐个照各自改之前那一格：原本单独显示的交 `off`、原本照规则的交 `rule`", async () => {
+  it("★ 撤销照回包里的那几问逐个交（后端照各自改之前那一格分好）；撤销没成 ⇒ 照那一份回包说", async () => {
     const r = rig([tab("a"), tab("b")]);
-    r.host.setHide.mockImplementation(async (t: Tab) => (t.sessionId === "a" ? "off" : null));
+    const undo = [{ op: "unhide" as const, items: [item("a")] }, { op: "clear_hide" as const, items: [item("b")] }];
+    r.host.send.mockResolvedValueOnce({ ...r.answer("hide", [item("a"), item("b")]), undo });
     r.h.hide(["a", "b"]);
-    await new Promise((x) => setTimeout(x, 0));
-    r.toasts[0].undo();
-    await new Promise((x) => setTimeout(x, 0));
-    expect(r.host.setHide.mock.calls.slice(2).map((c) => [(c[0]).sessionId, c[1]])).toEqual([["a", "off"], ["b", "rule"]]);
+    await flushAll();
+    r.host.send.mockImplementation(async (op, items) => (op === "unhide" ? { ...r.answer(op, items), said: "S-撤销没成", failed: true } : r.answer(op, items)));
+    r.said[0].undo!.run();
+    await flushAll();
+    expect(r.host.send.mock.calls.slice(1)).toEqual([["unhide", [item("a")]], ["clear_hide", [item("b")]]]);
+    expect(r.said.map((s) => s.reply.said)).toEqual(["S-hide", "S-撤销没成"]);
   });
 
-  it("批量隐藏：一条「已隐藏 N 个」；已经隐藏的跳过", async () => {
+  it("批量隐藏：已经隐藏的不交；一批一条", async () => {
     const r = rig([tab("a"), tab("b"), tab("c", { hidden: SELF })]);
     r.h.hide(["a", "b", "c"]);
-    expect(r.host.setHide).toHaveBeenCalledTimes(2);
-    await new Promise((x) => setTimeout(x, 0));
-    expect(r.toasts[0].title).toBe(copyText("tabBar.hide.doneMany", { n: 2 }));
+    await flushAll();
+    expect(r.host.send.mock.calls).toEqual([["hide", [item("a"), item("b")]]]);
+    expect(r.said).toHaveLength(1);
   });
 
-  it("★ 回包成了才出［撤销］：那台拒了隐藏 ⇒ 全程没有「已隐藏」那条，只有没成那一句（A2-17-7-3）", async () => {
+  it("★ 一项都没成（回包没有撤销那几问）⇒ 照回包说、不带［撤销］（A2-17-7-3）", async () => {
     const r = rig([tab("a"), tab("b")]);
-    r.host.setHide.mockRejectedValue(new Error("那台拒了-甲"));
+    r.host.send.mockResolvedValueOnce({ ...r.answer("stop", [item("b")]), said: "S-没成", failed: true });
     r.h.hide(["b"]);
-    expect(r.toasts, "回包之前不出").toEqual([]);
-    await new Promise((x) => setTimeout(x, 0));
-    expect(r.toasts).toEqual([]);
-    expect(r.host.failed).toHaveBeenCalledTimes(1);
-    expect(r.host.failed.mock.calls[0][0]).toBe(copyText("tabBar.hide.failed", { title: "名-b" }));
+    await flushAll();
+    expect(r.said.map((s) => [s.reply.said, s.undo])).toEqual([["S-没成", undefined]]);
   });
 
-  it("★ 批量里有没成的 ⇒ 只一条结局（结束那一种：「已隐藏 k · 失败 ×m」·［撤销］［查看］）：没成的逐条、不各弹一条；撤销只撤成了的那几个（A2-17-7-3-1）", async () => {
-    const r = rig([tab("a"), tab("b"), tab("c")]);
-    r.host.setHide.mockImplementation(async (t: Tab, to: HideSet) => {
-      if (t.sessionId === "b" && to === "on") throw new Error("拒-乙");
-      return null;
-    });
-    r.h.hide(["a", "b", "c"]);
-    await new Promise((x) => setTimeout(x, 0));
-    expect(r.toasts, "不另出撤销那一条").toEqual([]);
-    expect(r.host.failed, "没成的不各弹一条").not.toHaveBeenCalled();
-    expect(r.host.batch).toHaveBeenCalledTimes(1);
-    const [action, rows, undo] = r.host.batch.mock.calls[0];
-    expect(action).toBe(copyText("tabBatch.action.hide"));
-    expect(rows.map((x) => [x.title, x.outcome, x.why])).toEqual([["名-a", "done", ""], ["名-b", "failed", "拒-乙"], ["名-c", "done", ""]]);
-    undo!.run();
-    await new Promise((x) => setTimeout(x, 0));
-    expect(r.host.setHide.mock.calls.slice(3).map((c) => (c[0]).sessionId)).toEqual(["a", "c"]);
-  });
-
-  it("★ 批量取消隐藏有没成的 ⇒ 同一种结局一条（「已取消隐藏 k · 失败 ×m」·［查看］，没有撤销）", async () => {
+  it("★ 批量取消隐藏：交 `unhide`；都成了不另出声，有没成的 ⇒ 照回包那一条（没有撤销）", async () => {
     const r = rig([tab("a", { hidden: SELF }), tab("b", { hidden: SELF })]);
-    r.host.setHide.mockImplementation(async (t: Tab) => {
-      if (t.sessionId === "b") throw new Error("拒-乙");
-      return null;
-    });
     r.h.unhide(["a", "b"]);
-    await new Promise((x) => setTimeout(x, 0));
-    expect(r.host.failed).not.toHaveBeenCalled();
-    expect(r.host.batch).toHaveBeenCalledTimes(1);
-    const [action, rows, undo] = r.host.batch.mock.calls[0];
-    expect(action).toBe(copyText("tabBatch.action.unhide"));
-    expect(rows.map((x) => x.outcome)).toEqual(["done", "failed"]);
-    expect(undo).toBeUndefined();
+    await flushAll();
+    expect(r.host.send.mock.calls).toEqual([["unhide", [item("a"), item("b")]]]);
+    expect(r.said).toEqual([]);
+    r.host.send.mockResolvedValueOnce({ ...r.answer("unhide", [item("a")]), said: "S-没成", failed: true });
+    r.h.unhide(["a"]);
+    await flushAll();
+    expect(r.said.map((s) => [s.reply.said, s.undo])).toEqual([["S-没成", undefined]]);
+  });
+
+  it("本机后端问不到 ⇒ 一条没交成（点名那一条）", async () => {
+    const r = rig([tab("a"), tab("b")]);
+    r.host.send.mockRejectedValueOnce(new Error("gone"));
+    r.h.hide(["b"]);
+    await flushAll();
+    expect(r.host.failed.mock.calls.map((c) => c[0])).toEqual([copyText("tabBar.hide.failed", { title: "名-b" })]);
+  });
+
+  it("★ 宿主只收回包：界面不数结局（tab-hide.ts 里没有 EndRow · batchHead）", () => {
+    const code = stripComments(readFileSync(resolve(REPO_ROOT, "src/frontend/ui/tab-hide.ts"), "utf8"), "ts");
+    expect(code).not.toContain("EndRow");
+    expect(code).not.toContain("batchHead");
   });
 
   it("★ 推帧说隐藏了 ⇒ 摘固定、不画在组里（组员关系不动）；撤销期里推帧说不隐藏了 ⇒ 原位 · 原分组 · 原固定放回", async () => {
     const r = rig([tab("a"), tab("b", { pinned: true, group: "g" }), tab("c")]);
     r.h.hide(["b"]);
-    await new Promise((x) => setTimeout(x, 0));
+    await flushAll();
     expect(r.h.land("b", SELF)).toBe(true);
     const b = r.store.tabs.get("b")!;
     expect([b.hidden, b.pinned, b.group]).toEqual([SELF, false, null]);
     expect(r.h.land("b", SELF), "同一格再来一次 ⇒ 不动").toBe(false);
-    r.toasts[0].undo();
+    r.said[0].undo!.run();
     expect(r.h.land("b", null)).toBe(true);
     expect([b.hidden, b.pinned, b.group]).toEqual([null, true, "g"]);
     expect(r.store.orderedIds).toEqual(["a", "b", "c"]);
   });
 
-  it("别处取消隐藏（不是撤销）⇒ 回到散的标签页末尾；取消隐藏规则隐藏的也交 `off`", () => {
+  it("别处取消隐藏（不是撤销）⇒ 回到散的标签页末尾；取消隐藏规则隐藏的也交 `unhide`", () => {
     const r = rig([tab("a", { hidden: BG }), tab("b"), tab("c")]);
     r.h.unhide(["a", "b"]);
-    expect(r.host.setHide.mock.calls.map((c) => [(c[0]).sessionId, c[1]])).toEqual([["a", "off"]]);
+    expect(r.host.send.mock.calls).toEqual([["unhide", [item("a")]]]);
     r.h.land("a", null);
     expect(r.store.orderedIds).toEqual(["b", "c", "a"]);
   });
@@ -405,7 +409,7 @@ describe("菜单：右键两项 · 批量两项", () => {
 
   it("批量：「隐藏（n）」「取消隐藏（n）」各数各的，交宿主", async () => {
     const tabs = [tab("a"), tab("b"), tab("c", { hidden: SELF })];
-    const host = { tab: (s: string) => tabs.find((t) => t.sessionId === s), collectionsLoaded: () => false, collections: () => [], pinnedLoaded: () => false, setPinnedMany: vi.fn(), joinGroup: vi.fn(), foundGroup: vi.fn(), leaveGroup: vi.fn(), closeTabs: vi.fn(), hide: vi.fn(), unhide: vi.fn() } satisfies TabBatchHost;
+    const host = { tab: (s: string) => tabs.find((t) => t.sessionId === s), collectionsLoaded: () => false, collections: () => [], pinnedLoaded: () => false, landPinned: vi.fn(), joinGroup: vi.fn(), foundGroup: vi.fn(), leaveGroup: vi.fn(), closeTabs: vi.fn(), hide: vi.fn(), unhide: vi.fn() } satisfies TabBatchHost;
     openBatchMenu(new MouseEvent("contextmenu"), ["a", "b", "c"], host, { stop: vi.fn(), start: vi.fn(), confirm: vi.fn() } as never);
     expect(labels()).toEqual(expect.arrayContaining([copyText("tabBatch.menu.hide", { n: 2 }), copyText("tabBatch.menu.unhide", { n: 1 })]));
     press(copyText("tabBatch.menu.hide", { n: 2 }));
