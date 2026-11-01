@@ -609,11 +609,21 @@ fn auto_answer_choices_carry_the_current_minute_in_order_with_text() {
     assert_eq!(mins(&seven), [0, 5, 7, 15, 30]);
     assert_eq!(
         texts(&seven),
-        [copy_text("beAsk.auto.off", &[]), short(5), short(7), short(15), short(30)]
+        [
+            copy_text("beAsk.auto.off", &[]),
+            short(5),
+            short(7),
+            short(15),
+            short(30)
+        ]
     );
 
     for now in [None, Some(0), Some(5), Some(30)] {
-        assert_eq!(mins(&auto_choices(now)), [0, 5, 15, 30], "此刻 {now:?} 在几档里，不多列");
+        assert_eq!(
+            mins(&auto_choices(now)),
+            [0, 5, 15, 30],
+            "此刻 {now:?} 在几档里，不多列"
+        );
     }
     assert!(
         auto_choices(None).iter().all(|c| !c.text.0.is_empty()),
