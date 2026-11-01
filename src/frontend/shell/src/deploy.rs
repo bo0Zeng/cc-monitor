@@ -121,7 +121,7 @@ async fn install_for(machine: &str, slots: Vec<SlotRow>) -> Result<Installed, Fa
 /// 手动安装 / 更新远端后端（机器页 ①「部署后端」按钮）：与自动部署同一趟（[`install`]），回那一句。
 /// 那台不比这一版旧 ⇒ 手动点也不降级：那一句后面接出路（先卸载再部署 = 明确授权覆盖）。
 #[tauri::command]
-pub async fn deploy_remote_backend(origin: String) -> Result<String, Failed> {
+pub async fn deploy_remote_backend(origin: String) -> Result<String, cmd_wire::failed::Failed> {
     remote_in_table(&origin).map_err(|s| s.named("deploy_remote_backend"))?;
     let got = install(&origin).await?;
     Ok(match got.action {
@@ -147,7 +147,7 @@ fn remote_in_table(origin: &str) -> Result<(), Said> {
 /// 卸载远端后端（设置面板「卸载后端」按钮）：请本机常驻后端删那台落点那一份（它就是 `ccm`，卸后端就是卸 `ccm`），回后端写的那一句。
 /// 只读铁律豁免（SS-G）：用户显式触发的删。注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
 #[tauri::command]
-pub async fn uninstall_remote_backend(origin: String) -> Result<String, Failed> {
+pub async fn uninstall_remote_backend(origin: String) -> Result<String, cmd_wire::failed::Failed> {
     let own = |s: Said| s.named("uninstall_remote_backend");
     remote_in_table(&origin).map_err(own)?;
     let slots = slot_rows().map_err(own)?;
