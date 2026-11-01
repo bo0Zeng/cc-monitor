@@ -3,6 +3,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Host } from "../../../../src/frontend/ui/generated/Host";
 import type { MachineState } from "../../../../src/frontend/ui/generated/MachineState";
+import type { FleetLines } from "../../../../src/frontend/ui/generated/FleetLines";
 // config 写只交补丁（`fakeCfg.patches`）；机器表住本机后端，替身照金样回（`machines-fake.ts`：盘是 `fakeMachines.disk`，写完读回的那张交 `fakeMachines.written`）。
 vi.mock("../../../../src/frontend/ui/config", async (orig) => (await import("../config-patch-fake")).mockedConfigModule(orig));
 // S3：把整个 IPC 面 mock 成一个**会记账的 Proxy** —— 用来钉「渲染机器列表时零次
@@ -688,10 +689,11 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(p.renamed.some((r) => r.id === "machine:a")).toBe(false);
   });
 
-  it("★ 页头那一句照各台成品数：离线读成品的 offline、要更新读成品那一态；本机后端没起来读壳那一格", async () => {
+  it("★ 页头那一句照摆本机后端合好的计数那一句，界面不数；本机后端没起来 ⇒ 不出，等下一份", async () => {
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2"), mkH("c", "3.3.3.3")], p.host);
     const count = () => sec.element.querySelector<HTMLElement>(".remote-machine-count")!.textContent;
+    const fleet = (count: string): FleetLines => ({ line: "核心·首屏", hint: "核心·下一行", count });
     const ms = (over: Partial<MachineState>): MachineState => ({
       name: "m",
       state: "up",
@@ -710,21 +712,23 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       detail: null,
       ...over,
     });
-    const sep = copyText("kit.text.sep");
-    const line = (off: number, upd: number) =>
-      [copyText("machineList.count.all", { n: 4 }), copyText("machineList.count.off", { a: off }), copyText("machineList.count.update", { b: upd })].join(sep);
+    // 各台成品到了、计数那一句还没到 ⇒ 页头不自己数。
     sec.setMachine("machine:a", ms({ state: "needs_update", word: "w", said: "s" }));
-    // 登录过了、拒开会话：点是红的，但成品说不算离线 ⇒ 不数。
-    sec.setMachine("machine:b", ms({ state: "down", offline: false, said: "s" }));
     sec.setMachine("machine:c", ms({ state: "down", offline: true, said: "s" }));
-    expect(count()).toBe(line(1, 1));
-    sec.setLocalBackend({ state: "older", look: "needs_update", tone: "warn", word: "w", said: "s", fixes: [], next: null });
-    expect(count()).toBe(line(1, 2));
+    expect(count()).toBe("");
+    sec.setFleet(fleet("核心·机器 4 那一句"));
+    expect(count()).toBe("核心·机器 4 那一句");
+    // 再来一台的成品、连接变了 ⇒ 页头不动，等后端那一份。
+    sec.setMachine("machine:b", ms({ state: "down", offline: true, said: "s" }));
+    expect(count()).toBe("核心·机器 4 那一句");
+    // 本机后端没起来（壳那一格）⇒ 计数那一句不出。
     sec.setLocalBackend({ state: "down", look: "down", tone: "fail", word: "w", said: "s", fixes: [], next: null });
-    expect(count()).toBe(line(2, 1));
-    // 本机后端起来了、本机那一台的成品到了 ⇒ 读成品，壳那一格作废。
+    expect(count()).toBe("");
+    // 本机那一台的成品又到了 ⇒ 仍等下一份计数那一句。
     sec.setMachine(LOCAL_MACHINE_PAGE_ID, ms({}));
-    expect(count()).toBe(line(1, 1));
+    expect(count()).toBe("");
+    sec.setFleet(fleet("核心·又一句"));
+    expect(count()).toBe("核心·又一句");
   });
 
   it("★ 点机器名 → 跳到它那一页", async () => {

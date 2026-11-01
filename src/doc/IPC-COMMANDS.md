@@ -456,7 +456,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
 - `machine` —— 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）
-- `empty` —— 这一端的首屏那一句（一条会话都没有时正文区中央那一块；`body` ＝ `EmptyFace`，各台的成品与报完了没有合的；丢了重问 `machine-read`）
+- `empty` —— 这一端各台合一次写好的那几句（首屏那一句 ＋ 机器列表计数那一句；`body` ＝ `FleetLines`，各台的成品与报完了没有合的；丢了重问 `machine-read`）
 - `session_hidden` —— 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：注解 · 这台偏好 · 会话血缘动了之后判出来的
 - `files_dir` —— 这台某个正被浏览的目录里有了动静（`key` ＝ 那个目录的 `WirePath::key`；名单由 `files-browse` 交）：正开着那个目录的那一屏带着手上的记号重问 `files-ls`，只拿变了的那几行
 - `history_list` —— 这台的会话清单可能动了（会话来去 · 名字 / 状态变 · 记录长了 · 注解 · 隐藏规则；同一个会话在这台答下一份清单之前只说一次）：正看着清单的那一屏带着手上的记号重问 `history-list`（远端那台由本机后端带 `fresh` 去同步），只拿变了的那几行
@@ -14670,18 +14670,22 @@ removed: boolean, said: string, };
 
 ```ts
 type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
-type EmptyFace = { 
+type FleetLines = { 
 /**
- * 大字那一句（「无会话」· 「本机无会话」· 一台都没报完那一句）。
+ * 首屏大字那一句（「无会话」· 「本机无会话」· 一台都没报完那一句）。
  */
 line: string, 
 /**
- * 下面那一行（怎么让它有 · 哪几台还在连 · 哪几台未计入）。
+ * 首屏下面那一行（怎么让它有 · 哪几台还在连 · 哪几台未计入）。
  */
-hint: string, };
+hint: string, 
+/**
+ * 机器列表页头那一句（机器 N · 离线 a · 要更新 b；没有离线 · 要更新的那一段不出）。
+ */
+count: string, };
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
-type MachineRead = { machines: { [key in string]: MachineState }, empty: EmptyFace, };
+type MachineRead = { machines: { [key in string]: MachineState }, empty: FleetLines, };
 type MachineReadReq = Record<symbol, never>;
 type MachineStage = "deploy" | "attach";
 type MachineState = { 
