@@ -120,7 +120,7 @@ async fn run(
         let link = Arc::clone(&link);
         Box::pin(async move {
             use resident_client::feed::Transport as _;
-            let got = link.capture(command).await.map_err(|p| p.text)?;
+            let got = link.capture(command).await.map_err(|p| p.said)?;
             Ok(ssh_dial::Captured {
                 stdout: got.stdout,
                 stderr: got.stderr,
@@ -148,7 +148,7 @@ async fn run(
                 Ok(_) => done_json(&plan),
                 Err(p) => {
                     let raw = (!p.detail.is_empty()).then_some(p.detail.as_str());
-                    failed_json("restart_failed", &p.text, raw)
+                    failed_json("restart_failed", &p.said, raw)
                 }
             }
         }
