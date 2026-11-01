@@ -311,7 +311,7 @@ export class LaunchSlots {
     try {
       reply = await this.acts.end(sl.spec.origin, terminal);
     } catch (e) {
-      failToast(copyText("tabSessionActions.kill.failed", { title: name }), e);
+      failToast(copyText("tabMenu.kill.label"), e);
       return;
     }
     sayReply(reply);

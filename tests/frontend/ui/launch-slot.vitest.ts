@@ -246,7 +246,7 @@ describe("报错卡上的几颗", () => {
     acts.end.mockRejectedValueOnce(down);
     click("end");
     await tick();
-    expect(vi.mocked(failToast).mock.calls.at(-1)).toEqual([copyText("tabSessionActions.kill.failed", { title: "billing-2" }), down]);
+    expect(vi.mocked(failToast).mock.calls.at(-1)).toEqual([copyText("tabMenu.kill.label"), down]);
     expect(rows()).toHaveLength(1);
   });
 

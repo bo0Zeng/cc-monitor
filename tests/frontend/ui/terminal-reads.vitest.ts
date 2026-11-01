@@ -200,7 +200,7 @@ describe("结束 · 接管 · 交还：都按名单里的句柄说那台", () =>
     await endRows([pick], async () => true);
     expect(sentCalls()).toHaveLength(1);
     const [title, e] = vi.mocked(failToast).mock.calls.at(-1) ?? [];
-    expect(title).toBe(copyText("tabBatch.stop.title", { n: 1 }));
+    expect(title).toBe(copyText("terminalsView.select.end"));
     expect((e as Error).message).toBe("S-bad_args");
   });
 

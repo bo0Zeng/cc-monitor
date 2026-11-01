@@ -258,6 +258,6 @@ describe("结束几行", () => {
     const down = new Error("refused");
     end.mockRejectedValueOnce(down);
     await endRows(items.slice(0, 1), async () => true);
-    expect(vi.mocked(failToast).mock.calls.at(-1)).toEqual([copyText("tabBatch.stop.title", { n: 1 }), down]);
+    expect(vi.mocked(failToast).mock.calls.at(-1)).toEqual([copyText("terminalsView.select.end"), down]);
   });
 });

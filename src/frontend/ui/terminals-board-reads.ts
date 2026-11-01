@@ -34,6 +34,6 @@ export async function endRows(items: readonly BoardPick[], ask: ConfirmFn = conf
   try {
     sayReply(await endTerminals(items.map((i) => ({ machine: i.origin, terminal: i.row.terminal }))));
   } catch (e) {
-    failToast(copyText("tabBatch.stop.title", { n: items.length }), e);
+    failToast(copyText("terminalsView.select.end"), e);
   }
 }
