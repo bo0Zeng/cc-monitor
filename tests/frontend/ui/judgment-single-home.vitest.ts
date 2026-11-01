@@ -695,8 +695,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     status: "open",
     defs: ["renderMarkdown"],
     needles: [],
-    owner: "A17-75-10（桌面照 Doc 排版）",
-    why: "线上还没交 Doc（A17-75-9 才交），界面今天只能自己解析；两端照树排版那一刀删 renderMarkdown",
+    owner: "桌面照 Doc 排版那一刀",
+    why: "线上还没交 Doc（拉块树那条命令接上之前），界面今天只能自己解析；两端照树排版那一刀删 renderMarkdown",
   },
 };
 
