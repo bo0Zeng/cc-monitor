@@ -215,7 +215,7 @@ impl LiveTable {
     /// 那台 pidfile 说这条会话此刻在等人的那一格（几个进程都在等 ⇒ 等得最早的那个）；不在等 · 不活 ⇒ `None`。
     /// 只挂着请求、pidfile 没说在等 ⇒ 也是 `None`（等的是什么由请求那一格说）。
     pub(crate) fn wait_of(&self, sid: &str) -> Option<PidWait> {
-        let read_at_ms = now_ms();
+        let read_at_ms = crate::common::time::now_ms();
         self.live_rows(sid)
             .filter(|r| !r.fact.background)
             .filter(|r| r.fact.activity == Some(SessionActivity::NeedsYou))
@@ -309,12 +309,6 @@ impl LiveTable {
             .find(|r| r.fact.sid.as_deref() == Some(sid) && r.start_checked)
             .map(|r| r.pid)
     }
-}
-
-fn now_ms() -> u64 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {

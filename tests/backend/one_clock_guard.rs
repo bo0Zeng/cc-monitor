@@ -250,11 +250,6 @@ const STILL: &[&str] = &[
     "files/commit.rs",
     "files/write.rs",
     "footprint/last_seen.rs",
-    "history/history_annotations.rs",
-    "history/history_browse.rs",
-    "history/history_list.rs",
-    "history/live_table.rs",
-    "history/remote_listing.rs",
 ];
 
 /// 一份生产源码里 C6 认得出的命中：另定的读口（[`READER_NAMES`]）· 就地换算（`now()` 之后 3 行内接 `UNIX_EPOCH` 再接 `.as_millis()` / `.as_secs()`）。
