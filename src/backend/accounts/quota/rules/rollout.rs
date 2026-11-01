@@ -123,7 +123,8 @@ pub(crate) struct Guard {
 /// 一种走法：别的会话用速的倍数 · 本会话要守的那份在第几格 · 本会话用速 · 别的会话也守在这个号上的用速 · 本会话守的号 ·
 /// 现在换过去当场重写的量 · 整段重写的量 · 每分钟多出的重写量 · 本会话在各号上的缓存到几点 · 缓存留几秒 · 此刻 · 视野末尾 ·
 /// 本会话每一步（[`STEP`] 秒）的用速（空 ⇒ 一直是 `rho`；排完了照最后一步）· 此刻要开窗的那几份 · 停发（不守哪一份，
-/// 等到不是延迟切入的哪一份能用才并进池子，之前要的都算卡住）。
+/// 等到不是延迟切入的哪一份能用才并进池子，之前要的都算卡住）· 一起守的别的会话（`share`）在那份用完或作废时照它们的用速
+/// 并进池子（`rejoin`；不并 ⇒ 它们的用量从那一刻起不算，`lib::project` 那一版的口径）。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Walk {
     pub(crate) m: f64,
@@ -141,6 +142,7 @@ pub(crate) struct Walk {
     pub(crate) steps: Vec<f64>,
     pub(crate) warm: Vec<usize>,
     pub(crate) hold: bool,
+    pub(crate) rejoin: bool,
 }
 
 impl Walk {
@@ -487,6 +489,8 @@ pub(crate) fn run(pieces: &[Piece], chains: &[Chain], others: &[Guard], w: &Walk
     }
     let share = w.share.unwrap_or(0.0);
     let rho = w.peak() + share;
+    // 一起守的别的会话几点离开那份、并进池子（守不住 ⇒ 此刻）。
+    let mut part = now;
     match w.at {
         _ if w.hold => {
             let back = (0..s.pieces.len())
@@ -520,6 +524,7 @@ pub(crate) fn run(pieces: &[Piece], chains: &[Chain], others: &[Guard], w: &Walk
                         held.push((k, need - w.demand(now, t_end) - share * span / 60.0));
                     }
                     let t = now + dt as i64;
+                    part = t;
                     if t < t_end {
                         ev.push(t, w.rate_at(t), 0.0, true);
                     }
@@ -527,6 +532,9 @@ pub(crate) fn run(pieces: &[Piece], chains: &[Chain], others: &[Guard], w: &Walk
             }
         }
         _ => ev.push(now, w.rate_at(now), w.lump, true),
+    }
+    if w.rejoin && !w.hold && share > 0.0 && part < t_end {
+        ev.push(part, share, 0.0, false);
     }
     let mut evt = ev.at.clone();
     evt.sort_unstable();
@@ -816,6 +824,7 @@ pub(crate) fn inputs(
         steps: Vec::new(),
         warm: Vec::new(),
         hold: false,
+        rejoin: false,
     };
     Ok((pieces, others, walk))
 }
@@ -1283,6 +1292,7 @@ pub(crate) fn rollout_entry(ctx: &Map, plan: &Map) -> Result<Dynamic, Bad> {
                 steps: steps.clone(),
                 warm,
                 hold,
+                rejoin: true,
             };
             per.push(run(&pieces, &chains, &guards, &walk));
         }

@@ -2,7 +2,7 @@
 // 切入：默认 ＝ 轮到它才用；强制切入 ＝ 有额度就切到它，几个强制切入的照号牌顺序、靠前的有额度就切回；延迟切入 ＝ 其余账号都用完才切到它，延迟时长内有账号恢复就先停发、到点用那个账号。
 // 切出：默认 ＝ 到上限或被拒才换走；强制切出 ＝ 用着它时，其余账号余量合计达到切出条件（或一有额度）即换走，换走后排在其余账号后面。
 // 智能切换：往后推演几种走法（留着 · 换到每一个能用的账号 · 给空着的账号此刻开窗），照几条用速路径各推一遍，比期望代价：卡住发不出的量 ＋ 换号重写提示缓存的一成 ＋ 用掉的周额度（周重置前用不完的不算）− 视野末还用得上的余量。
-// 要换号时挑期望代价最小的，一样小的先用最先作废的、再照号牌；在用的账号还能用时，换过去少的超过换号代价的一成与两倍估计误差才换；空着的账号此刻开窗比不开少的超过一句话的代价，就发一句开窗。
+// 要换号时用最先作废的那个，别的账号比它少的超过换号代价的一成与两倍估计误差才用期望代价最小的；在用的账号还能用时，只换去等不到它用完就会作废或被别的会话用完的那份，换过去少的超过同一道门槛才换；空着的账号此刻开窗比不开少的超过一句话的代价，就发一句开窗。
 // 量不到这个会话的用速时不推演：要换号时先用最先作废的那份额度（没开窗的、周上限卡着的放后面），在用的账号还能用就不提前换。
 // 「现在用」选的账号与手动排的先后压过上面这些：在用的账号只在用不了时换。
 
@@ -108,8 +108,10 @@ fn decide(ctx) {
     tier[id] = if r["in"] != () { r["in"] } else { "default" };
   }
 
-  // 最先作废的先后键（越小越先）：开着窗的看离作废几秒，没开窗的第二档，周上限卡着的最后。
-  let due = |id| { let q = p[id]; if q.exp == () { 1000000000 } else if q.wk { 3000000000 } else { q.exp - now } };
+  // 最先作废的先后键（越小越先）：开着窗的看离作废几秒（别的会话到作废前会用完的放最后），没开窗的第二档，周上限卡着的最后。
+  let oth = #{};
+  for id in ids { let a = have[id]; oth[id] = if a.others != () && a.others.w5h != () { a.others.w5h.to_float() } else { () }; }
+  let due = |id| lib::due_rank(p[id], oth[id], now);
   // 挑号的先后：智能切换开 ⇒ 最先作废的在前，同一档照号牌（量得到用速时下面照推演重排）；关 ⇒ 照号牌。
   let rank = |list| {
     if !smart { return list; }
@@ -188,14 +190,22 @@ fn decide(ctx) {
   };
   let jv = #{};            // 号 ⇒ 换到它的期望代价（推演过的）
   if can_roll && !keep && norm.len() > 1 {
-    // 要换号：能用的都推（推不起的照最先作废排在后面），挑期望代价最小的；一样小（差不到 1 tok）的先用最先作废的、再照号牌。
+    // 要换号：能用的都推（推不起的照最先作废排在后面），挑期望代价最小的；跟最先作废的差不过门槛的算一样小，一样小的先用最先作废的、再照号牌。
     let cands = [];
     let rest = [];
     for id in norm { if cands.len() < room { cands.push(id); } else { rest.push(id); } }
     let pr = roll.call(ctx, cands);
     if pr != () {
+      // 跟最先作废的那个（cands[0]，推演的基准）比：少的不过提前换那道门槛（换号代价的一成 · 两倍标准误）就当一样，用最先作废的。
       let keys = [];
-      for i in 0..cands.len() { keys.push([pr[i].j, due.call(cands[i]), pos[cands[i]], cands[i]]); jv[cands[i]] = pr[i].j; }
+      for i in 0..cands.len() {
+        let id = cands[i];
+        let gate = eps * lib::switch_cost(sess, id, now);
+        if 2.0 * pr[i].se > gate { gate = 2.0 * pr[i].se; }
+        let j = if i == 0 || -pr[i].diff > gate { pr[i].j } else { pr[0].j };
+        keys.push([j, due.call(id), pos[id], id]);
+        jv[id] = pr[i].j;
+      }
       keys.sort(|x, y| before(x, y));
       norm = [];
       for k in keys { norm.push(k[3]); }
@@ -234,11 +244,25 @@ fn decide(ctx) {
   }
 
   // 智能切换：在用的号还能用、用户没定住它 ⇒ 比「留着」与「换到每一个能用的号」（推得起几种比几种，照最先作废取）。
-  //   换的条件：留着的期望代价 − 换过去的 ＞ 换号代价的一成与两倍标准误里大的那个（估不准的差不换，免得来回换）。
+  //   换的条件：留着的期望代价 − 换过去的 ＞ 换号代价的一成与两倍标准误里大的那个（估不准的差不换，免得来回换）；
+  //   候选只取「等不到在用的号用完」的：照本会话用速在用的号还能撑多久，那份在这之前作废、或被别的会话用完的才值得现在换；
+  //   等得到的不抢，用完再换过去一样用得上（推演里「留着」用完以后跟着池子走、不照推演挑号，会把这种差算出来）。
+  //   换过去以后，原来那个比它晚作废，不会再提前换回来。
   let cands_seen = false;
   if can_roll && keep && !pinned {
+    let tp = have[cur].tokensPerPct;
+    let tpp = if tp == () { () } else if p[cur].wk { tp.w7d } else { tp.w5h };
+    let lasts = if tpp == () || pace <= 0.0 { () } else { now + (amt[cur] * tpp.to_float() / pace * 60.0).to_int() };
+    let lost = |id| {
+      let q = p[id];
+      if lasts == () { return true; }
+      if q.exp == () || q.wk { return false; }
+      if q.exp <= lasts { return true; }
+      let o = if oth[id] != () { oth[id] } else { 0.0 };
+      q.amt - o * (lasts - now).to_float() / 60.0 <= 0.0
+    };
     let cands = [];
-    for id in norm { if id != cur && cands.len() < room - 1 { cands.push(id); } }
+    for id in norm { if id != cur && lost.call(id) && cands.len() < room - 1 { cands.push(id); } }
     if cands.len() > 0 {
       cands_seen = true;
       let pr = roll.call(ctx, [cur] + cands);
@@ -272,7 +296,6 @@ fn decide(ctx) {
   // 记下延迟切入的号是不是其余都用完才切进来的（会话从它开、其余有额度 ⇒ 换走）。
   let first = if order.len() > 0 { order[0] } else { () };
   memo.late = if first != () && tier[first] == "delay" { first } else { () };
-
   // 开窗：号列表里此刻能用、5 小时窗关着的号，推演说「此刻给它开窗」比不开期望代价少的超过一句话的代价与两倍标准误 ⇒ 交回 warm，
   //   后端用它发一句、让它的 5 小时从此刻起算（饱和时空着的号每 5 小时少一份）。比的是接着用 first 的两种走法。
   let warm = [];

@@ -381,22 +381,23 @@ fn smart_off_keeps_the_current_and_goes_by_the_list() {
 }
 
 /// 夹具里改了期望的几判：照推演 ＋ 定价排出来的先后与「最先作废先用 ＋ 差 1 tok 就换」那一版不同，逐条写为什么。
+/// 夹具是算法定稿时 rotsim 导出的一判一份（没有重打的路子），一份一行、十万字，期望照这张表改，不改夹具。
 const CHANGED: &[(&str, &[&str], &str)] = &[
     (
         "h · 场景 42 · 智能切换",
-        &["B", "W", "C"],
-        "额度宽裕、哪种走法都不卡；B 上有本会话的缓存，换过去当场不用重写，视野里只再换一次；留着 W 或换去 C（20 分钟后作废）都要换两次。\
-         少一次重写的一成 ≈ 2.85 万，换号代价 0 ⇒ 换去 B。C 那 40 点作废不卡，不算代价",
+        &["W", "C", "B"],
+        "额度宽裕、哪种走法都不卡；C（20 分钟后作废）等不到 W 用完，是提前换的候选，但换过去不少卡（C 那 40 点作废不卡，不算代价）；\
+         B 那份等得到 W 用完，用完再换过去一样用得上，不提前换 ⇒ 留着 W。旧的照最先作废提前换去 C，白换一次",
     ),
     (
         "h · 场景 43 · 智能切换",
-        &["B", "W", "C"],
-        "同场景 42（C 60 分钟后作废）：去 B 少一次重写，作废的不卡不算代价",
+        &["W", "C", "B"],
+        "同场景 42（C 60 分钟后作废）：换去 C 不少卡，B 等得到，留着 W",
     ),
     (
         "h · 场景 48 · 智能切换",
-        &["B", "W", "C"],
-        "同场景 42：去 B 少一次重写，作废的不卡不算代价",
+        &["W", "C", "B"],
+        "同场景 42：换去 C 不少卡，B 等得到，留着 W",
     ),
     (
         "h · 场景 54 · 智能切换",
@@ -408,15 +409,6 @@ const CHANGED: &[(&str, &[&str], &str)] = &[
         "h · 场景 55 · 智能切换",
         &["W", "B"],
         "同场景 54：留着与换去 B 期望代价一样，不换",
-    ),
-    (
-        "b · 场景 65 · 智能切换",
-        &[
-            "a00", "a03", "a05", "a23", "a08", "a16", "a01", "a24", "a09", "a17", "a02", "a25", "a10",
-            "a18", "a26", "a11", "a19", "a04", "a27", "a12", "a20", "a28", "a13", "a21", "a06", "a29",
-            "a14", "a22", "a07", "a15",
-        ],
-        "提前换去 a00 与旧的一样；排在后面的照最先作废、不再扣别的会话的用速（due_rank 那一刀切不再调），后面几号的先后跟着变",
     ),
 ];
 
@@ -930,16 +922,48 @@ fn night_a(j_used: f64) -> Value {
     )
 }
 
-/// ★ 反例 A：j 到上限要换号。「最先作废」那一键拿 y 上别的会话的用速 × 到作废的分钟跟余量比、一刀切排到最后，挑 r；
-/// 编辑器改照 `lib::rollout` ＋ `lib::price` 的期望代价挑，挑 y。
-/// 注意：此刻 y 便宜约 4200 万，几乎全是推演里一起守 y 的别的会话在 y 那份用完后不再并进池子、它们的用量不算了（0.5 点 / 分 ×
-/// 15 万 × 约 600 分钟）；那一处照实并回池子，两种走法卡住的一样，r 少一次重写、挑 r。推演改了这一条要跟着重看。
+/// ★ 反例 A：j 到上限要换号。y 剩的 9 点 05:20 作废、r 剩的 49 点 07:10 作废；本会话 24 分钟用完 r 再用 y，y 也赶得上，
+/// 两种走法推出来只差一两成重写（一起守 y 的别的会话在 y 用完后照它们的用速并进池子，用量照算）⇒ 差不过门槛，用最先作废的。
+/// 量到 y 上别的会话 0.5 点 / 分：到 05:20 会把 y 用完，最先作废的是 r ⇒ r；量到 0（真值）：最先作废的是 y ⇒ y。
+/// 量歪了挑 r 也不亏：y 照样在作废前用上。why 写推演的数。
 #[test]
-fn a_used_up_account_hands_over_to_the_cheapest_by_rollout_not_the_due_rank_cliff() {
+fn a_used_up_account_hands_over_to_the_first_to_expire_when_the_rollout_cannot_tell_them_apart() {
     let c = night_a(90.0);
     let v = decide_case(&c, &c["settings"]);
-    assert_eq!(v.order.first().map(String::as_str), Some("y"), "{v:?}");
+    assert_eq!(v.order.first().map(String::as_str), Some("r"), "{v:?}");
     assert!(why_of(&v, "y").contains("万"), "why 写数：{v:?}");
+    let mut c = night_a(90.0);
+    c["accounts"][1]["others"]["w5h"] = json!(0.0);
+    let v = decide_case(&c, &c["settings"]);
+    assert_eq!(v.order.first().map(String::as_str), Some("y"), "{v:?}");
+}
+
+/// ★ 要换号时跟最先作废的那个比，同提前换一道门槛：反例 A 那组号、y 上别的会话量成 0（y 最先作废，是推演的基准），
+/// 换号代价 K ＝ 1.9 × 15 万，ε·K ＝ 2.85 万。r 比 y 少 2 万、没有误差 ⇒ 不过门槛，用 y；少 10 万、标准误 0.1 万 ⇒ 用 r。
+#[test]
+fn a_forced_switch_takes_the_first_to_expire_unless_another_beats_it_past_the_gate() {
+    let mut c = night_a(90.0);
+    c["accounts"][1]["others"]["w5h"] = json!(0.0);
+    let v = decide_priced(&c, 20_000.0, 0.0);
+    assert_eq!(v.order.first().map(String::as_str), Some("y"), "{v:?}");
+    let v = decide_priced(&c, 100_000.0, 1_000.0);
+    assert_eq!(v.order.first().map(String::as_str), Some("r"), "{v:?}");
+}
+
+/// ★ 提前换只换去「等不到在用的号用完」的那份：j 用了 50，剩 40 点 × 15 万 ÷ 每分钟 30 万 ＝ 20 分钟用完。
+/// 假定价说换去哪个都少 10 万、标准误 0.1 万（过了门槛）：
+/// y 上别的会话 0.5 点 / 分，20 分钟用掉 10 点，y 剩的 9 点等不到 ⇒ 换去 y；
+/// 量成 0 ⇒ y（190 分钟后作废）· r（300 分钟后）都等得到 j 用完，用完再换过去一样用得上 ⇒ 留着 j，不比。
+#[test]
+fn an_early_switch_only_goes_to_a_share_that_would_be_lost_before_the_current_runs_out() {
+    let c = night_a(50.0);
+    let v = decide_priced(&c, 100_000.0, 1_000.0);
+    assert_eq!(v.order.first().map(String::as_str), Some("y"), "{v:?}");
+    let mut c = night_a(50.0);
+    c["accounts"][1]["others"]["w5h"] = json!(0.0);
+    let v = decide_priced(&c, 100_000.0, 1_000.0);
+    assert_eq!(v.order.first().map(String::as_str), Some("j"), "{v:?}");
+    assert_eq!(why_of(&v, "j"), "未达用量上限，继续使用", "{v:?}");
 }
 
 /// 同 [`decide_case`]，`lib::price` 换成一份假定价：留着那一种期望代价 1 亿、差 0；别的每一种都比留着少 `gain`、标准误 `se`。
@@ -958,7 +982,7 @@ fn decide_priced(c: &Value, gain: f64, se: f64) -> Verdict {
 }
 
 /// ★ 换的条件是 E[J_留] − E[J_换] ＞ max(ε·K, 2 × 标准误)：反例 A 那组号、j 还能用（用了 50），换号代价 K ＝ 1.9 × 15 万 ＝ 28.5 万，
-/// ε·K ＝ 2.85 万。少 10 万、标准误 20 万（差在误差里）⇒ 留着；少 10 万、标准误 0.1 万 ⇒ 换（几个候选一样少 ⇒ 先用最先作废的 y）；
+/// ε·K ＝ 2.85 万。少 10 万、标准误 20 万（差在误差里）⇒ 留着；少 10 万、标准误 0.1 万 ⇒ 换去 y（等不到 j 用完的只有它）；
 /// 少 2 万（不到 ε·K）、没有误差 ⇒ 留着。
 #[test]
 fn a_gain_inside_the_noise_or_under_a_tenth_of_the_switch_cost_keeps_the_current() {
@@ -975,7 +999,7 @@ fn a_gain_inside_the_noise_or_under_a_tenth_of_the_switch_cost_keeps_the_current
     assert_eq!(who, "j", "差在两倍标准误以内不换：{v:?}");
     assert!(why.contains("误差"), "{v:?}");
     let (who, _, v) = first(100_000.0, 1_000.0);
-    assert_eq!(who, "y", "差过了门槛就换，同分先用最先作废的：{v:?}");
+    assert_eq!(who, "y", "差过了门槛就换：{v:?}");
     assert!(why_of(&v, "y").starts_with("智能切换"), "{v:?}");
     let (who, why, v) = first(20_000.0, 0.0);
     assert_eq!(who, "j", "不到换号代价的一成不换：{v:?}");
