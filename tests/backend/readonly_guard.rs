@@ -2402,16 +2402,16 @@ mod g6_dependency_signoff {
     fn package_name(manifest_text: &str) -> Option<String> {
         let mut in_package = false;
         for line in guard_core::strip_hash_comment_lines(manifest_text).lines() {
-            let t = line.trim();
-            if t.starts_with('[') {
-                in_package = t == "[package]";
+            let entry = line.trim();
+            if entry.starts_with('[') {
+                in_package = entry == "[package]";
                 continue;
             }
-            if in_package {
-                if let Some(v) = t.strip_prefix("name") {
-                    let v = v.trim_start().strip_prefix('=')?.trim();
-                    return Some(v.trim_matches('"').to_string());
+            match entry.split_once('=') {
+                Some((key, value)) if in_package && key.trim() == "name" => {
+                    return Some(value.trim().trim_matches('"').to_string());
                 }
+                _ => {}
             }
         }
         None

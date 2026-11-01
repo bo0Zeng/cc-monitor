@@ -23,8 +23,8 @@ const POLICY_ALLOW_LOCAL: &str =
     any(test, feature = "ts"),
     ts(
         export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "PsExecPolicy"
+        rename = "PsExecPolicy",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

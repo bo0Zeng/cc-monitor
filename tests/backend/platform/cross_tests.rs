@@ -217,8 +217,8 @@ mod dialect {
         );
     }
 
-    /// 黄金串 · PowerShell：函数体是从前别名块里那个 `function cc` 的形状（那一形在 `K-R132` 真机上
-    /// `parse-errors=0`；`cc` 今天就是清单里的一条），预置参数**每个都单引号**、四种引号字符都双写。
+    /// 黄金串 · PowerShell：函数体同别名块里 `function cc` 的形状（真机上 PowerShell 解析过、
+    /// 零解析错误；`cc` 今天就是清单里的一条），预置参数**每个都单引号**、四种引号字符都双写。
     #[test]
     fn powershell_golden() {
         let got: Vec<String> = sample()

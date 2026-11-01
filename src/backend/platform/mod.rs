@@ -104,6 +104,10 @@ mod win_proc_contract_tests;
 /// 判据用的私有 tmux server（`-L` ＋ 私有 `TMUX_TMPDIR`，碰不到用户的缺省 server）：本包与上层的测试档（经 `test-support`）共用。
 #[cfg(any(test, feature = "test-support"))]
 #[path = "../../../tests/backend/tmux_sandbox.rs"]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "测试档的台架：只在测试档与上层测试档（`test-support`）编；直接起 tmux、等它的 socket 出现，同各包测试段放开的那几样"
+)]
 pub mod tmux_sandbox;
 
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本包的测试二进制。

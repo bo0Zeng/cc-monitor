@@ -48,8 +48,8 @@ use std::path::{Path, PathBuf};
     any(test, feature = "ts"),
     ts(
         export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "ShellKind"
+        rename = "ShellKind",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]

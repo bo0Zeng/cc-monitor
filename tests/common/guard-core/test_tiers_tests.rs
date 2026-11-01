@@ -1079,10 +1079,12 @@ fn module_path(
     if depth > 8 {
         return None;
     }
-    // 文件窗口独立成包：它那棵 `src/` 也按目录推模块路径。
+    // 文件窗口独立成包：它那棵 `src/` 也按目录推模块路径；后端拆出去的包各是一棵（先认更深的那一层）。
     const ROOTS: &[&str] = &[
         "src/frontend/shell/src/",
         "src/frontend/filewin/src/",
+        "src/backend/platform/",
+        "src/backend/test-meters/",
         "src/backend/",
     ];
     for r in ROOTS {
