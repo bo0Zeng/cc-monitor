@@ -42,6 +42,7 @@
 
 use crate::wire::FrameMake as _;
 use copy_core::copy_text;
+use copy_core::{Discard, Why};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -585,7 +586,7 @@ impl Desk {
         let mut g = lock(&self.0.tickets);
         match g.slots.remove(&ticket) {
             Some(Slot::On(f)) => {
-                let _ = f.tx.send(Ev::Stop);
+                f.tx.send(Ev::Stop).discard(Why::PeerGone); // 订阅线程已自己停了（终端没了、推了收尾帧）
             }
             Some(Slot::Starting(_)) => {}
             None => {
@@ -605,7 +606,7 @@ impl Drop for Inner {
     fn drop(&mut self) {
         for (_, s) in lock(&self.tickets).slots.drain() {
             if let Slot::On(f) = s {
-                let _ = f.tx.send(Ev::Stop);
+                f.tx.send(Ev::Stop).discard(Why::PeerGone); // 订阅线程已自己停了
             }
         }
     }
@@ -783,7 +784,7 @@ fn spawn_reader(
                 break;
             }
         }
-        let _ = tx.send(Ev::Closed);
+        tx.send(Ev::Closed).discard(Why::PeerGone); // 订阅线程已停（退订 / 推了收尾帧）⇒ 没人收
     });
 }
 
@@ -900,7 +901,7 @@ fn spawn_hosted_reader(
                 break;
             }
         }
-        let _ = tx.send(Ev::Closed);
+        tx.send(Ev::Closed).discard(Why::PeerGone); // 订阅线程已停（退订 / 推了收尾帧）⇒ 没人收
     });
 }
 
@@ -1029,13 +1030,14 @@ impl Worker {
         let_go(conn, &rx, closed);
         if let Step::End(why) = step {
             lock(&self.tickets).slots.remove(&self.ticket);
-            let _ = self.replies.blocking_send(Frame::TerminalFollowEnd(
-                crate::wire::TerminalFollowEnd {
+            // 订它的那条流连接已经走了 ⇒ 收尾帧没人收（票表随连接一起丢）
+            self.replies
+                .blocking_send(Frame::TerminalFollowEnd(crate::wire::TerminalFollowEnd {
                     ticket: self.ticket.clone(),
                     why,
                     said: end_said(why),
-                },
-            ));
+                }))
+                .discard(Why::PeerGone);
         }
     }
 
