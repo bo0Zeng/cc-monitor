@@ -94,8 +94,8 @@ describe("toast 排版 ＋「消息」记录", () => {
   it("🔴 Ctrl+Z（undoLatest）撤最新那一条还开着的撤销提示；没有 ⇒ false", () => {
     const a = vi.fn();
     const b = vi.fn();
-    kit.undoToast(`${copyText("tabBatch.action.close")} A`, a, vi.fn());
-    kit.undoToast(`${copyText("tabBatch.action.close")} B`, b, vi.fn());
+    kit.undoToast(copyText("tabBar.hide.done", { title: "A" }), a, vi.fn());
+    kit.undoToast(copyText("tabBar.hide.done", { title: "B" }), b, vi.fn());
     expect(kit.undoLatest()).toBe(true);
     expect([a.mock.calls.length, b.mock.calls.length]).toEqual([0, 1]);
     expect(kit.undoLatest()).toBe(true);

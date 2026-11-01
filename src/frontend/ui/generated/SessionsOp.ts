@@ -2,6 +2,6 @@
 import type { Launch } from "./Launch";
 
 /**
- * 一批会话要做的那一样（`stop`；`start` 带放在哪）。
+ * 一批会话要做的那一样（`stop`；`start` 带放在哪；隐藏那三样 · 固定那两样写会话那一台的注解）。
  */
-export type SessionsOp = "stop" | { "start": { run: Launch, } };
+export type SessionsOp = "stop" | { "start": { run: Launch, } } | "hide" | "unhide" | "clear_hide" | "pin" | "unpin";
