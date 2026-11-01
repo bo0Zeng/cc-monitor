@@ -1627,6 +1627,7 @@ object Commands {
             com.ccmonitor.mobile.core.wire.gen.ChoresMerged::class.java to com.ccmonitor.mobile.core.wire.gen.ChoresMerged.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ChunkBytes::class.java to com.ccmonitor.mobile.core.wire.gen.ChunkBytes.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ChunkBytesObjValue::class.java to com.ccmonitor.mobile.core.wire.gen.ChunkBytesObjValue.ADAPTER,
+            com.ccmonitor.mobile.core.wire.gen.ClashChoice::class.java to com.ccmonitor.mobile.core.wire.gen.ClashChoice.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ClashRow::class.java to com.ccmonitor.mobile.core.wire.gen.ClashRow.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ColumnAt::class.java to com.ccmonitor.mobile.core.wire.gen.ColumnAt.ADAPTER,
             com.ccmonitor.mobile.core.wire.gen.ColumnFork::class.java to com.ccmonitor.mobile.core.wire.gen.ColumnFork.ADAPTER,
