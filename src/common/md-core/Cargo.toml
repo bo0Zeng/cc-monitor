@@ -2,12 +2,13 @@
 name = "md-core"
 version = "0.1.0"
 edition = "2021"
+workspace = "../../frontend/shell"
 description = "助手正文的 Markdown 解析 ＋ 代码高亮 ＋ 长正文分段：纯函数、不碰盘，出 cmd-wire 的 `Doc`。两端只照树排版。"
 
-# 暂时自成一棵 workspace，经 `cargo test --manifest-path src/common/md-core/Cargo.toml` 编；生出来的锁文件不进仓。
-[workspace]
-
+# 判定类（正文怎么解析、高亮成哪一类是裁决）：只后端链。同 cmd-wire 的约束：后端是静态 musl ⇒ 这里不许长出平台相关的东西。
 [dependencies]
+# 块树的线上形（`cmd_wire::md`）：形状只住那一份，这里只出值。
+cmd-wire = { path = "../cmd-wire" }
 # 解析：GFM 表格 · 删除线 · 自动链接 · 任务列表 · 脚注 · 提示块 · `$` 与 `\(` `\[` 公式 · 中文旁的强调都现成（BSD-2-Clause）。
 #   不开缺省特性：命令行那一套与 onig 正则（C 库）都不要。
 comrak = { version = "=0.59.0", default-features = false }
@@ -15,17 +16,9 @@ comrak = { version = "=0.59.0", default-features = false }
 syntect = { version = "=5.3.0", default-features = false, features = ["parsing", "regex-fancy"] }
 # bat 那一套语法表（补上 TypeScript · TOML · Kotlin 等；MIT OR Apache-2.0）。
 two-face = { version = "=0.5.2", default-features = false, features = ["syntect-fancy"] }
-serde = { version = "1", features = ["derive"] }
-# 线上类型的 TS 派生：只在测试档或别的 crate 开 `ts` 时进来，不进产物。
-ts-rs = { version = "12.0.1", optional = true }
 
 [dev-dependencies]
 serde_json = "1"
-ts-rs = "12.0.1"
-
-[features]
-default = []
-ts = ["dep:ts-rs"]
 
 # 量具：`cargo bench --bench md_core_parse` 出读数；`cargo test` 只跑一遍小样证明量具能跑。
 [[bench]]

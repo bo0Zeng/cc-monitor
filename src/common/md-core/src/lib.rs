@@ -12,8 +12,7 @@
 //! 分段见 [`segment`]：按顶层块累计字数，到 [`SEG_BYTES`] 就在下一个顶层块前记一个段起点；[`seg_blocks`] 取一段。
 //! 超长代码切开的几块各自高亮（语法状态从每块的头一行起）。
 
-#[path = "../../cmd-wire/src/md.rs"]
-pub mod md;
+pub use cmd_wire::md;
 
 mod highlight;
 mod parse;

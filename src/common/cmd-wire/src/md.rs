@@ -15,6 +15,16 @@ pub struct Doc {
     pub segs: Vec<u32>,
 }
 
+/// 一段的代码高亮（拉一段那一下的回包；高亮只走这一条路，树里的代码块不带）：
+/// 那一段里每个代码块（顶层与嵌在列表 · 引用 · 提示块 · 脚注里的，先序）各一份 `hl`，
+/// 平铺的三元组 `[起点差, 长, 类]…`；没写语言、语言认不出 ⇒ 空。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SegHl {
+    pub hl: Vec<Vec<u32>>,
+}
+
 /// 一个块。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "t", rename_all = "snake_case")]
