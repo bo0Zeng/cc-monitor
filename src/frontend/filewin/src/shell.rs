@@ -78,14 +78,19 @@ type InlineDone = Arc<Mutex<Option<(u64, Result<String, super::source::Failed>)>
 
 /// **「存到哪儿」那一问的缺省落点** —— 用户的 home。
 ///
-/// 🔴 它只有一个消费者 —— [`super::download::default_dest`]（往外拖时「存到哪儿」那一格的缺省值；
+/// 🔴 它只有一个消费者 —— [`super::picker::downloads_dir`]（系统存盘框缺省落在哪个文件夹；
 /// 窗口只有远端一侧，见 `source.rs` 头注「只有远端一侧」那一节）。
 /// ⇒ 它**不是文件管理器的一部分**，是**往外传**那条路上的一格。
 ///
-/// 〔P5 收家目录〕家目录取法走全仓那一条规矩（`creds_core::store::home_dir`，monitor 与后端同一家），不再自己调 `dirs`。
+/// 家目录取法同全仓（`creds_core::store::home_dir`，monitor 与后端同一家）。本包够不着壳的 `data_paths`，
+/// 家目录只在这一处取，本包别处要家目录都经它（`clippy.toml` 取家目录那一组在这里就地放行）。
 ///
 /// ⚠ 它**只把 home 当一条缺省路径**，不去读 home 里的任何东西 —— 零次 `read_dir`。
 /// 拿不到 home 就退到 `.`（当前工作目录），**不猜一个路径出来**。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "文件窗口包取家目录的唯一一处（够不着壳的 `data_paths`）；只当存盘框的缺省路径"
+)]
 pub fn local_home() -> String {
     creds_core::store::home_dir()
         .map(|p| p.to_string_lossy().to_string())
