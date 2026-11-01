@@ -84,7 +84,7 @@ fn err(a: &[&str]) -> String {
     }
 }
 
-/// ccm 只看不吃 `--resume` / `--continue`：几种写法都原样进透传、顺序不变（从前三种写法落成 ccm 的 resume 动作）。
+/// ccm 只看不吃 `--resume` / `--continue`：几种写法都原样进透传、顺序不变（一种都不落成 ccm 自己的 resume 动作）。
 #[test]
 fn the_ways_to_say_resume_all_reach_claude_untouched() {
     for a in [
@@ -141,7 +141,7 @@ fn the_resumed_session_is_read_the_way_that_agent_resumes() {
     assert_eq!(codex(&["exec", "resume", "s1"]).resumes, None);
 }
 
-/// 没有账号这一维的那一家（Codex）：`--account` / `--account-dir` 明说不行（从前静默导出一个它不读的变量）；`--base` 照收。
+/// 没有账号这一维的那一家（Codex）：`--account` / `--account-dir` 明说不行（不静默导出一个它不读的变量）；`--base` 照收。
 #[test]
 fn an_agent_without_accounts_refuses_to_pick_one() {
     let want = copy_core::copy_text("beArgv.validate.agentNoAccounts", &[("agent", "codex")]);
@@ -167,7 +167,7 @@ fn an_agent_without_accounts_refuses_to_pick_one() {
     assert_eq!(ok(&["--account", "b"]).account, "b");
 }
 
-/// `--attach <名>` 取值时不许把下一个旗标吞成名字（从前位置动作 `attach <名>` 那一条的同形）。
+/// `--attach <名>` 取值时不许把下一个旗标吞成名字。
 #[test]
 fn the_attach_option_never_swallows_the_next_flag_as_its_value() {
     assert!(err(&["--attach", "--ccm-tmux"]).contains("--attach"));
@@ -249,7 +249,7 @@ fn everything_after_the_terminator_goes_to_the_agent_untouched() {
     );
 }
 
-/// 🔴 `KR48D4` 的机检：**每个默认值只许有一处住址。**
+/// 🔴 机检：**每个默认值只许有一处住址。**
 ///
 /// 判法不是「数一数」，是**真去比**：`parse(&[])` 的结果必须逐个字段等于
 /// [`Defaults`] 声明的那些值。任何人在别处再写一份默认（比如在 `plan.rs` 里
@@ -272,9 +272,9 @@ fn every_default_lives_only_in_the_defaults_block() {
     );
 }
 
-/// 🔴 `KR48D2` 的机检：**ccm 的旗标字面量只住 `argv.rs`。**
+/// 🔴 机检：**ccm 的旗标字面量只住 `argv.rs`。**
 ///
-/// 失效方向（`KR48D2` 逐字）：「有人再起第二个 argv 解析口、或把某条子命令的行为
+/// 失效方向：「有人再起第二个 argv 解析口、或把某条子命令的行为
 /// 在第二处重写一遍」。判法 = 扫 `ccm_line/` 与 `control/ccm/` 两棵目录下**除 `argv.rs` 外**
 /// 全部 `.rs` 的生产段，不许出现 `"--` 打头的字面量（正控：`argv.rs` 自己有）。
 /// 买不到：不经字面量拼出来的旗标名；这两棵目录以外的文件。
@@ -315,8 +315,8 @@ fn ccm_flag_literals_live_only_in_argv_rs() {
     assert!(
         hits.is_empty(),
         "这些文件里出现了 ccm 旗标的字面量：{hits:?}\n\
-             `KR48D2` 要的是「一条命令一处实现」——旗标名的住址是 `argv.rs::flag`，\n\
-             别处只许 `use` 它。在第二处敲一遍字面量，两份迟早分叉（`K-R50` 的成因）。"
+             要的是「一条命令一处实现」——旗标名的住址是 `argv.rs::flag`，\n\
+             别处只许 `use` 它。在第二处敲一遍字面量，两份迟早分叉。"
     );
 }
 

@@ -298,7 +298,7 @@ pub(crate) fn via_shell(
     let cmd = crate::platform::shell::posix_shell(script)?;
     Some(
         cmd
-            // K-R12：挂 env 不改脚本串。家在 `common::tmux_utf8`。
+            // 挂 env 不改脚本串。家在 `common::tmux_utf8`。
             .env(UTF8_CLIENT_ENV.0, UTF8_CLIENT_ENV.1)
             .run(within),
     )
