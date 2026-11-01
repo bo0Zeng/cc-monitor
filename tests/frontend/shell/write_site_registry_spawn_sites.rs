@@ -19,15 +19,6 @@ use std::path::{Path, PathBuf};
 /// - `"—— …"` 开头 —— 出口自己，没有「它选了哪三条」这回事。
 const SPAWNS: &[(&str, &str, &str, &str, &str, &str)] = &[
     (
-        "shots_shell.rs",
-        "start",
-        "spawn_managed_cmd",
-        "截图台架给的整条命令（沙箱里的真后端）",
-        "截图台架的无头壳：只在特性 `shots` 下编（例子 `ccm-shots-shell`，不进安装包），不在用户机器上跑。\
-         每台机器起一个真后端，stdin / stdout 两根管子交产品那条本机读循环（`local_backend::local_stdio_consumer`）。",
-        "Hidden · JobKillOnClose · Inherit",
-    ),
-    (
         "platform/console.rs",
         "run_helper",
         "spawn_managed_cmd",
@@ -36,42 +27,6 @@ const SPAWNS: &[(&str, &str, &str, &str, &str, &str)] = &[
          用完即退的小助手借（本二进制的隐藏子命令）。参数只有子命令名与进程号 / 窗口句柄，答话在 stdout 上。\
          `Detached`：到点不掐，小助手自己有 2 秒预算、写回标题再退。",
         "Hidden · Detached · Null",
-    ),
-    (
-        "backend_once.rs",
-        "ask_once",
-        "spawn_managed_cmd",
-        "`<我们那份 ccm / 要放的那份暂存件> -- --<帧命令>`（不经 shell；入参 JSON 走 stdin）",
-        "本机后端放下去之前要它自己判放不放（`place-verdict`，那一刻还没有常驻后端可连）⇒ 直接跑那份字节问一次。\
-         stderr 是答话的一半（错信封 `{code, message}`）⇒ `Captured`。",
-        "Hidden · JobKillOnClose · Captured",
-    ),
-    (
-        "platform/terminal.rs",
-        "launch_local_posix_via",
-        "spawn_managed_cmd",
-        "用户配置的终端 argv[0]",
-        "在用户的终端里起会话，这是本产品的主用途。argv 来自 `local_posix_spawn_plan`，cwd 只在真是目录时设，\
-         env 带上 `backend_bin_env_for_window` 那一对。`Hidden` 在 POSIX 上是空的：窗口是终端出口自己开的。",
-        "Hidden · Detached · Null",
-    ),
-    (
-        "platform/terminal.rs",
-        "launch_powershell_window",
-        "spawn_managed_cmd",
-        "`wt.exe`（常量名）",
-        "Windows 上开会话窗口的第一跳：把请求转交给 Windows Terminal。argv 是「`-d <目录>` ＋ `powershell.exe` ＋ 那三个参数」，\
-         一个 creation flag 都不带（`Inherit`）。用户的终端不随 monitor 一起死（`Detached`）。",
-        "Inherit · Detached · Inherit",
-    ),
-    (
-        "platform/terminal.rs",
-        "launch_powershell_window",
-        "spawn_managed_cmd",
-        "`powershell.exe`（常量名）",
-        "`wt.exe` 起不来时的第二跳：直接起 `powershell.exe`，全仓唯一一处 `NewVisible`，刻意要一个用户看得见的新控制台。\
-         argv 是那三个参数本身，env 一定继承。",
-        "NewVisible · Detached · Inherit",
     ),
     (
         "lib.rs",
@@ -112,18 +67,8 @@ const SPAWNS: &[(&str, &str, &str, &str, &str, &str)] = &[
         "Hidden · JobKillOnClose · Captured",
     ),
     (
-        "filewin/proc.rs",
-        "spawn_window",
-        "spawn_managed_cmd",
-        "`cc-monitor-filewin`（文件窗口包的 `[[bin]]`；一个窗口一个进程）",
-        "winit 一个进程只许一个事件循环，「关掉就销毁」与「关掉之后还能再打开」在同进程形态下不可同时成立 ⇒ 一个窗口一个进程。\
-         种子走 stdin：环境变量装不下（一屏上限 5 万条），argv 世界可读而种子里带主机名 / 用户名 / 私钥路径。\
-         `Detached`：Tauri 命令一返回句柄就丢；`Captured`：「窗口为什么没立起来」那几句在 stderr 上。",
-        "Hidden · Detached · Captured",
-    ),
-    (
         "spawn_managed.rs",
-        "spawn_managed",
+        "spawn_managed_with",
         "——",
         "调用方给的那个二进制 ＋ argv",
         "唯一出口：三条策略（要不要窗口 · 要不要随我死 · 错误往哪去）在这里落成平台原语，全仓只此一份；\
