@@ -1382,8 +1382,13 @@ mod tests {
                 "choices": batch_core::choices(&c.conflicts[0].answers), "there": null }])
         );
         assert_eq!(
-            v[0]["choices"].as_array().map(|a| a.iter().map(|o| o["decide"].clone()).collect::<Vec<_>>()),
-            Some(vec![serde_json::json!("keep_both"), serde_json::json!("overwrite")]),
+            v[0]["choices"]
+                .as_array()
+                .map(|a| a.iter().map(|o| o["decide"].clone()).collect::<Vec<_>>()),
+            Some(vec![
+                serde_json::json!("keep_both"),
+                serde_json::json!("overwrite")
+            ]),
             "只出那台给了的答，先后照核心"
         );
     }

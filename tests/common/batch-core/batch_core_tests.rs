@@ -258,7 +258,10 @@ fn the_clash_choices_carry_their_own_words_in_one_order() {
         three[1].pick,
         copy_text("rsFilewinBatch.pick.keepBoth", &[])
     );
-    assert_ne!(three[0].label, three[0].pick, "整组那一句与逐项那一格是两句");
+    assert_ne!(
+        three[0].label, three[0].pick,
+        "整组那一句与逐项那一格是两句"
+    );
 
     let c: Vec<Conflict> = serde_json::from_value(serde_json::json!([
         {"key": "0", "name": "d", "kind": "dir", "there": "dir", "answers": ["keep_both"]},

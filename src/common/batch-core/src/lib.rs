@@ -14,8 +14,8 @@ use std::future::Future;
 
 use cmd_wire::batch::{BatchOutcome, BatchReply, Conflict, Conflicts, Decide, ItemState};
 use cmd_wire::failed::Failed;
-use cmd_wire::phone::ClashChoice;
 use cmd_wire::files::{CopyItem, FilesCopyReq, WirePath};
+use cmd_wire::phone::ClashChoice;
 use cmd_wire::Call;
 use copy_core::copy_text;
 
@@ -203,31 +203,31 @@ pub fn answer_of<'a>(
 /// 同名那一问的几种答 ⇒ 带字的几颗（`answers` 里有的才出），先后恒为跳过 · 保留两份 · 覆盖：
 /// 不毁东西的在前、覆盖在最后，不照那台给的先后。手机抽屉与文件窗口冲突框都照它摆，字只住这里。
 pub fn choices(answers: &[Decide]) -> Vec<ClashChoice> {
-    [
-        (
-            Decide::Skip,
-            "rsFilewinBatch.btn.skip",
-            "rsFilewinBatch.pick.skip",
-        ),
-        (
-            Decide::KeepBoth,
-            "rsFilewinBatch.btn.keepBoth",
-            "rsFilewinBatch.pick.keepBoth",
-        ),
-        (
-            Decide::Overwrite,
-            "rsFilewinBatch.btn.overwrite",
-            "rsFilewinBatch.pick.overwrite",
-        ),
-    ]
-    .into_iter()
-    .filter(|(d, ..)| answers.contains(d))
-    .map(|(decide, label, pick)| ClashChoice {
-        decide,
-        label: copy_text(label, &[]),
-        pick: copy_text(pick, &[]),
-    })
-    .collect()
+    [Decide::Skip, Decide::KeepBoth, Decide::Overwrite]
+        .into_iter()
+        .filter(|d| answers.contains(d))
+        .map(|decide| {
+            let (label, pick) = match decide {
+                Decide::Skip => (
+                    copy_text("rsFilewinBatch.btn.skip", &[]),
+                    copy_text("rsFilewinBatch.pick.skip", &[]),
+                ),
+                Decide::KeepBoth => (
+                    copy_text("rsFilewinBatch.btn.keepBoth", &[]),
+                    copy_text("rsFilewinBatch.pick.keepBoth", &[]),
+                ),
+                Decide::Overwrite => (
+                    copy_text("rsFilewinBatch.btn.overwrite", &[]),
+                    copy_text("rsFilewinBatch.pick.overwrite", &[]),
+                ),
+            };
+            ClashChoice {
+                decide,
+                label,
+                pick,
+            }
+        })
+        .collect()
 }
 
 /// 整组那几颗：清单里有一项给了的答并起来（[`choices`] 的先后）。
