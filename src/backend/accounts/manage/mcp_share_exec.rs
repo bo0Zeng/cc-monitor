@@ -269,10 +269,10 @@ pub(crate) fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>,
     }
 }
 
-/// 这一趟是谁要的：文件事件 / 加号之后的那一趟（[`Why::Auto`]），还是用户在 cc-monitor 里点的（[`Why::Asked`]）。
+/// 这一趟是谁要的：文件事件 / 加号之后的那一趟（[`Asker::Auto`]），还是用户在 cc-monitor 里点的（[`Asker::Asked`]）。
 /// 停着同步时：前一种什么都不写、照实答此刻的样子；后一种拒（要先开回来，否则「从所有号删」就成了同步）。
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Why {
+enum Asker {
     Auto,
     Asked,
 }
@@ -287,7 +287,7 @@ fn paused_view(h: &Here) -> AccountMcpView {
 /// 一趟：锁 → 读 → `decide`（cc-monitor 里定的那一下；同步那一趟原样交回）→ 对照 → 落盘 → 写回共享集合。
 fn run(
     d: &dyn Door,
-    why: Why,
+    asker: Asker,
     decide: &dyn Fn(&Store, &[Seen]) -> Result<Store, Said>,
 ) -> Result<AccountMcpView, Said> {
     let home = super::scan::home(d).map_err(|e| Said::new("io_failed", e))?;
@@ -297,9 +297,9 @@ fn run(
     };
     let h = load(&home, &m)?;
     if h.store.paused {
-        return match why {
-            Why::Auto => Ok(paused_view(&h)),
-            Why::Asked => Err(crate::wire::spec::fail(
+        return match asker {
+            Asker::Auto => Ok(paused_view(&h)),
+            Asker::Asked => Err(crate::wire::spec::fail(
                 "refused",
                 copy_text("beAcctMcpShare.sync.paused", &[]),
             )),
@@ -358,7 +358,7 @@ fn run(
 
 /// 同步一趟（文件事件 · 加号 · 建库之后）。
 pub(crate) fn sync(d: &dyn Door) -> Result<AccountMcpView, Said> {
-    run(d, Why::Auto, &|s, _| Ok(s.clone()))
+    run(d, Asker::Auto, &|s, _| Ok(s.clone()))
 }
 
 /// `accounts-mcp-sync {on}`：停 / 开各号之间的同步。只改共享集合那份文件里那一格。
@@ -446,7 +446,7 @@ fn known(store: &Store, seen: &[Seen], name: &str) -> Result<(), Said> {
 
 /// `accounts-mcp-remove`：从共享集合里删一条，所有号一起撤（删除只有这一条路）。
 pub(crate) fn remove(d: &dyn Door, name: &str) -> Result<AccountMcpView, Said> {
-    run(d, Why::Asked, &|s, seen| {
+    run(d, Asker::Asked, &|s, seen| {
         known(s, seen, name)?;
         Ok(mcp_share::decide(s, seen, name, None))
     })
@@ -454,7 +454,7 @@ pub(crate) fn remove(d: &dyn Door, name: &str) -> Result<AccountMcpView, Said> {
 
 /// `accounts-mcp-pick`：两边都改了的那一条用哪一版（`from` = 那个号里的；`None` = 共享的那一版）。
 pub(crate) fn pick(d: &dyn Door, name: &str, from: Option<&str>) -> Result<AccountMcpView, Said> {
-    run(d, Why::Asked, &|s, seen| {
+    run(d, Asker::Asked, &|s, seen| {
         known(s, seen, name)?;
         let to = mcp_share::pick(s, seen, name, from).map_err(|e| Said::new("refused", e))?;
         Ok(mcp_share::decide(s, seen, name, to))
@@ -469,7 +469,7 @@ pub(crate) fn put(d: &dyn Door, name: &str, def: &Value) -> Result<AccountMcpVie
             crate::common::contract::malformed("a server needs a name and an object definition"),
         ));
     }
-    run(d, Why::Asked, &|s, seen| {
+    run(d, Asker::Asked, &|s, seen| {
         Ok(mcp_share::decide(s, seen, name, Some(def.clone())))
     })
 }

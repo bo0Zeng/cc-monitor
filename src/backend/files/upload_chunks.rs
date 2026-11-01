@@ -10,7 +10,7 @@
 use super::commit::{chunk_name, drop_chunks, is_key, STAGING_DIR};
 use super::write::{walk_in_root, Last, WriteRefusal};
 use crate::platform::fs::{Face, Ro};
-use copy_core::{copy_text, io_reason};
+use copy_core::{copy_text, io_reason, Discard, Why};
 use std::path::Path;
 
 /// 把 `<key>.0.chunk` … `<key>.<chunks-1>.chunk` 依次拼成 `<key>.part`（`O_EXCL` 新建），总长必须恰好 `bytes`、不多一块。
@@ -111,7 +111,7 @@ fn assemble(
         Some(e) => {
             // 只删**我们自己刚建的那一份**（`O_EXCL` 保证它此前不存在）。
             if let Ok(p) = walk_in_root(Last::Link, &dir, format!("{key}.part")) {
-                face.delete_file(&p).ok();
+                face.delete_file(&p).discard(Why::CleanupAfterFailure); // 块由 `drop_chunks` 收
             }
             Err(e)
         }

@@ -30,7 +30,7 @@
 //! 不拨号、不起进程、不写盘 —— 全是既有读函数的换壳。`readonly_guard` 那条写盘禁令照旧管它。
 
 use crate::platform::fs::Ro;
-use copy_core::copy_text;
+use copy_core::{copy_text, Discard, Why};
 
 /// `history-read` · `history-tail` 一页（一条应答）交出去的字节数；源字节照这个数一块一块读。
 ///
@@ -57,7 +57,7 @@ static BACKEND_LOG: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLoc
 
 /// `main.rs` 装上 stderr 诊断文件之后调一次（诊断文件的门在那里，本模块只读它）。
 pub fn note_backend_log(path: std::path::PathBuf) {
-    let _ = BACKEND_LOG.set(path);
+    BACKEND_LOG.set(path).discard(Why::SetOnce);
 }
 
 /// 那份文件的尾部 ⇒ `{path, size_text, text, truncated}`；没装 ⇒ `path: null`。截断时从截点后第一个换行起（不给半行）。
