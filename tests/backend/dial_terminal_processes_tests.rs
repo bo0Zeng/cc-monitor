@@ -204,3 +204,143 @@ fn a_terminal_opened_here_is_read_from_the_shell_its_label_names() {
     assert_eq!(at(601, 3000), OpenedHere::Gone, "那个进程不在");
     assert_eq!(at(500, 2000), OpenedHere::NoSsh, "底下只有 shell、没有 ssh");
 }
+
+/// 开窗时起的那条 ssh 退了、人在同一个 shell 里又 ssh 去了别台：shell 还是它，底下那条 ssh 却不是开窗那一刻起的。
+/// 起得比 shell 晚过 [`OPENED_SSH_WITHIN_SECS`] 的不当开的那一条（不认它连的是哪台）⇒ 当底下没开着 ssh，照问那台；窗口里刚起的那一条照认。
+fn reconnected(ssh_after_shell: u64) -> Tables {
+    parse_tables(
+        &json!({
+            "tcp": [{ "la": "192.0.2.5", "lp": 62414, "ra": "203.0.113.7", "rp": 22, "pid": 700 }],
+            "proc": [
+                { "pid": 300, "ppid": 4, "name": "explorer.exe", "start": 1000 },
+                { "pid": 500, "ppid": 300, "name": "WindowsTerminal.exe", "start": 2000 },
+                { "pid": 600, "ppid": 500, "name": "powershell.exe", "start": 3000 },
+                { "pid": 700, "ppid": 600, "name": "ssh.exe", "start": 3000 + ssh_after_shell }
+            ]
+        })
+        .to_string(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn an_ssh_started_long_after_the_window_opened_is_not_the_one_it_opened() {
+    let label = crate::common::seen_terminal::WindowLabel {
+        pid: 600,
+        start: 3000,
+    };
+    let window = OPENED_SSH_WITHIN_SECS * STARTS_PER_SEC;
+    assert_eq!(
+        opened_chain(&label, &reconnected(window + 1).procs),
+        OpenedHere::NoSsh,
+        "开窗之后过了这么久才起的 ssh 是人后来敲的"
+    );
+    assert!(
+        matches!(
+            opened_chain(&label, &reconnected(window).procs),
+            OpenedHere::Chain(_)
+        ),
+        "开窗那一刻起的照认"
+    );
+}
+
+/// 同一件事走一遍 `session-window`：记下的那台是 devbox、窗口里此刻的 ssh 是后来起的 ⇒ 不拉这个窗口，照问 devbox（它说会话没终端连着）。
+#[tokio::test]
+async fn a_window_whose_ssh_was_restarted_elsewhere_is_not_brought_forward() {
+    use crate::dial::opened_windows::{Opened, Records};
+    use crate::dial::remote_ask::test_peers::{until, Peers};
+    struct One;
+    impl Records for One {
+        fn get(&self, _sid: &str) -> Option<Opened> {
+            Some(Opened {
+                label: "600-3000".parse().unwrap(),
+                machine: "devbox".into(),
+            })
+        }
+        fn forget(&self, _sid: &str) {
+            panic!("shell 还在 ⇒ 不删");
+        }
+    }
+    let late = reconnected(OPENED_SSH_WITHIN_SECS * STARTS_PER_SEC + 1);
+    let raw = json!({
+        "tcp": late.conns.iter().map(|c| json!({
+            "la": c.local.to_string(), "lp": c.local_port,
+            "ra": c.remote.to_string(), "rp": c.remote_port, "pid": c.pid
+        })).collect::<Vec<_>>(),
+        "proc": late.procs.iter().map(|(pid, p)| json!({
+            "pid": pid, "ppid": p.ppid, "name": p.name, "start": p.start
+        })).collect::<Vec<_>>(),
+    })
+    .to_string();
+    let peers = Peers::new(&[(
+        "devbox",
+        json!({ "terminals": [], "why": "detached", "tmux": true }).to_string(),
+    )]);
+    let req: crate::faces::session_window_face::SessionWindowReq = serde_json::from_value(
+        json!({ "machine": "devbox", "sid": "0b9c3f2e-1111-4222-8333-944455556666" }),
+    )
+    .unwrap();
+    let got = crate::faces::session_window_face::answer_with(
+        &req,
+        |_| unreachable!("远端会话不读本机的会话"),
+        move || Ok(raw),
+        &Default::default(),
+        until(9_000),
+        &Peers::table(&["devbox"]),
+        &peers,
+        One,
+    )
+    .await
+    .expect("答得出");
+    assert!(got.chain.is_empty(), "不拉那个窗口：{got:?}");
+    assert!(got.labels.is_empty(), "{got:?}");
+    assert!(got.face.is_some(), "devbox 的原因照摆：{got:?}");
+    assert_eq!(peers.asked().len(), 1, "照问 devbox");
+}
+
+/// 记录随用随长：开新终端那一下（建那一层目录时）顺手删掉 shell 已经不在的那几份；shell 还在的 · 正写到一半的旁名 · 不是会话 id 的不动。
+#[test]
+fn records_whose_shell_is_gone_are_swept_when_the_directory_is_made() {
+    let data = std::env::temp_dir().join(format!("ccm-opened-sweep-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    std::fs::create_dir_all(&data).unwrap();
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    let dir = data.join(crate::dial::opened_windows::DIR);
+    std::fs::create_dir_all(&dir).unwrap();
+    let alive = "0b9c3f2e-1111-4222-8333-944455556666";
+    let gone = "0b9c3f2e-2222-4222-8333-944455556666";
+    let reused = "0b9c3f2e-3333-4222-8333-944455556666";
+    let unreadable = "0b9c3f2e-4444-4222-8333-944455556666";
+    let part = format!("{alive}.part");
+    std::fs::write(dir.join(alive), "600-3000\ndevbox\n").unwrap();
+    std::fs::write(dir.join(gone), "601-3000\ndevbox\n").unwrap();
+    std::fs::write(dir.join(reused), "600-2999\ndevbox\n").unwrap();
+    std::fs::write(dir.join(unreadable), "not a record").unwrap();
+    std::fs::write(dir.join(&part), "600-30").unwrap();
+    std::fs::write(dir.join("notes.txt"), "x").unwrap();
+    crate::dial::opened_windows::sweep(&own, &reconnected(1000).procs);
+    let mut left: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    left.sort();
+    let _ = std::fs::remove_dir_all(&data);
+    let mut want = vec![alive.to_string(), part, "notes.txt".to_string()];
+    want.sort();
+    assert_eq!(left, want);
+}
+
+#[test]
+fn an_empty_process_table_sweeps_nothing() {
+    let data = std::env::temp_dir().join(format!("ccm-opened-sweep-empty-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let dir = data.join(crate::dial::opened_windows::DIR);
+    std::fs::create_dir_all(&dir).unwrap();
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    let sid = "0b9c3f2e-1111-4222-8333-944455556666";
+    std::fs::write(dir.join(sid), "600-3000\ndevbox\n").unwrap();
+    crate::dial::opened_windows::sweep(&own, &HashMap::new());
+    let kept = dir.join(sid).exists();
+    let _ = std::fs::remove_dir_all(&data);
+    assert!(kept, "进程表读成空的是没读成，不当「全没了」");
+}

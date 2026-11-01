@@ -4,8 +4,9 @@
 //!   那个 shell 把 `<自己的进程号>-<起始时刻>`（与接入块设的 `LC_CCM_WINDOW` 同一个键）和那台的名字写进 `<数据目录>/opened-windows/<sid>`。
 //!   目录由后端渲那一行时建好（[`dir`]）；写不成不挡开终端（前奏吞掉错误）。
 //! - 读：`session-window`（`faces/session_window_face.rs`）问远端会话时先读这一份（[`Records`]），
-//!   标签那个 shell 在这台还活着、底下开着 ssh ⇒ 从那个 ssh 往上数链（`dial/terminal_processes.rs::opened_chain`），不问那台；
+//!   标签那个 shell 在这台还活着、底下开着开窗那一刻起的 ssh ⇒ 从那个 ssh 往上数链（`dial/terminal_processes.rs::opened_chain`），不问那台；
 //!   shell 没了 ⇒ 删这一份。
+//! - 扫：每回建那一层目录（开新终端）时删掉 shell 已经不在的那几份（[`sweep`]），从没被 ↗ 问过的也不留。
 //! - 一份两行：标签 · 那台的名字。换行 LF / CRLF 都认。认不出 ⇒ 当没有。
 
 use crate::common::seen_terminal::WindowLabel;
@@ -59,6 +60,7 @@ pub(crate) fn prelude(powershell: bool, file: &Path, machine: &str) -> String {
 }
 
 /// 那一层目录（渲开终端那一行时建好，0700）；建不成 ⇒ `None`（那一行不带前奏）。
+/// 建好顺手读一趟这台的进程表、[`sweep`] 掉 shell 已经不在的那几份；读不成就不扫。
 pub(crate) fn dir(own: &Own) -> Option<PathBuf> {
     let made = (|| {
         let d = own.root()?.join(DIR).ok()?;
@@ -67,8 +69,51 @@ pub(crate) fn dir(own: &Own) -> Option<PathBuf> {
     })();
     if made.is_none() {
         tracing::warn!("opened-windows：那一层目录没建成，开终端那一行不带前奏");
+        return None;
+    }
+    match crate::platform::connection_and_process_tables()
+        .and_then(|raw| crate::dial::terminal_processes::parse_tables(&raw))
+    {
+        Ok(t) => sweep(own, &t.procs),
+        Err(e) => tracing::debug!("opened-windows：进程表没读成，这一回不扫：{e}"),
     }
     made
+}
+
+/// 删掉标签那个 shell 已经不在的那几份（窗口关了、从没被 ↗ 问过的也一样）：记录不随用随长。
+/// 只看名字是会话 id 的那几份（旁名 `.part` 是正写到一半的，不动）；内容认不出的当坏的删。
+/// 进程表是空的 ⇒ 是没读成，一份都不删。
+pub(crate) fn sweep(
+    own: &Own,
+    procs: &std::collections::HashMap<u32, crate::dial::terminal_processes::Proc>,
+) {
+    if procs.is_empty() {
+        return;
+    }
+    let Some(d) = own.root().and_then(|r| r.join(DIR).ok()) else {
+        return;
+    };
+    let Ok(entries) = Ro::read_dir(d.as_path()) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let name = e.file_name();
+        let Some(sid) = name.to_str().filter(|s| shell_quote_core::session_id_ok(s)) else {
+            continue;
+        };
+        let Ok(f) = d.join(sid) else {
+            continue;
+        };
+        let alive = Ro::metadata(f.as_path())
+            .ok()
+            .filter(|m| m.len() <= MAX_BYTES)
+            .and_then(|_| Ro::read_to_string(f.as_path()).ok())
+            .and_then(|b| parse(&b))
+            .is_some_and(|r| crate::dial::terminal_processes::shell_still_there(&r.label, procs));
+        if !alive {
+            let _ = own.delete_file(&f);
+        }
+    }
 }
 
 /// 读 · 删记录（判据喂替身）。
