@@ -533,10 +533,7 @@ fn a_conversation_is_released_with_its_whole_tree_on_windows_too() {
         !src.contains("clone_killer"),
         "终端那一种放手时还在用伪终端库那一把（只杀直接子进程）"
     );
-    let piped = between(
-        "pub fn converse(self)",
-        "pub fn converse_in_terminal",
-    );
+    let piped = between("pub fn converse(self)", "pub fn converse_in_terminal");
     assert!(
         piped.contains("os::Group::adopt_tree(&child)"),
         "管道那一种没交给整棵那一种 Group"
