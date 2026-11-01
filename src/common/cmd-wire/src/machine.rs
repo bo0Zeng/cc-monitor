@@ -40,7 +40,7 @@
 //!    `#[tauri::command]` 那一族 —— `call` 不会是其中之一）。
 //! 2. **「留着当拒收的类型位」在这一层是个空位。** 变体只能从线上来；
 //!    把它排除出线上形状（`serde(skip)`）之后它永远构造不出来 ⇒ 纯死重。
-//!    而不排除出线上形状，`Origin.ts` 就还是 `null | string`，
+//!    而不排除出线上形状，`Machine.ts` 就还是 `null | string`，
 //!    `§8` 承诺的「**`tsc` 就能验**」当场落空。两条路只能选一条。
 //! 3. 本仓纪律逐字「**不为旧配置留兼容** —— 旧形直接退役」。`null` 是旧形。
 //!
@@ -84,12 +84,10 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 /// 本机那台机器的哨兵值。
 ///
-/// 🔴 **这是全仓第三处写这个字面量，而且是刻意的** —— 另两处是
-/// `inbound_client::LOCAL_ORIGIN`（Rust）与 `src/frontend/ui/backend-policy.ts`（TS）。
-/// 三处由判据两向钉住（`the_sentinel_agrees_with_the_two_existing_homes`）：
-/// 它们必须逐字节相同，而**不是**由本文件去替换那两处 —— 替换要动 46+33 处签名，
-/// 那是分批的活（见头注射程）。本常量在这里的作用是让 `Machine` 自己
-/// **不必再手抄一次**，并让「三处都相等」成为一条会红的事。
+/// 这个字面量的家。界面经生成物 `src/frontend/ui/generated/judgment-rules.ts` 的 `LOCAL` 拿它
+/// （生成器 `payload_judgment_rules.rs`，`ipc/origin.ts` 转出）。
+/// 还有两份待删的抄写：`inbound_client::LOCAL_ORIGIN`（Rust）与 `src/frontend/ui/backend-policy.ts`（TS）；
+/// 删之前由 `the_sentinel_agrees_with_the_two_existing_homes` 钉着与本常量逐字节相同。
 pub const LOCAL: &str = "<local>";
 
 /// 机器键里不能当名字给人看的那几个（哨兵）。别的键就是那台在机器表里的名字。
@@ -108,7 +106,7 @@ pub const KEYS_NOT_NAMES: &[&str] = &[LOCAL];
 /// 日志与拼路径 · URL 要线上那串经 `Display`。造一台走 [`Machine::named`]（不判名字，
 /// 「名字不许是空白」由 [`Machine::route`] 那个漏斗执行 —— 装在构造器上会拆成两处、会漂）。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
-// TS 那一侧照旧叫 `Origin`（界面几十处引它）。
+// TS 那一侧照本名导出（`Machine.ts`）。
 //   别的 crate 的测试档里有生成类型嵌着它 ⇒ 那边经 `ts` feature 拿到同一个派生，也会把它当依赖导出一份；
 //   落点因此写成本包根起算的绝对路径（相对的会跟着那边的目录走，曾经落到仓根 `frontend/`；判据 `ts_export_guard`）。
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -116,7 +114,6 @@ pub const KEYS_NOT_NAMES: &[&str] = &[LOCAL];
     any(test, feature = "ts"),
     ts(
         export,
-        rename = "Origin",
         export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
