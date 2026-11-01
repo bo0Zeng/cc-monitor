@@ -103,12 +103,6 @@ pub struct Hit {
 }
 
 impl Hit {
-    /// 整条路径的显示形（判据用）。**有损** —— 见本类型头注。
-    #[cfg(test)]
-    pub fn display(&self) -> String {
-        String::from_utf8_lossy(&self.path).to_string()
-    }
-
     /// 名字那一段（最后一级）的原始字节。
     pub fn name_bytes(&self) -> &[u8] {
         let p = &self.path;
@@ -137,12 +131,6 @@ impl Hit {
             dir: self.dir,
             class: self.class,
         }
-    }
-
-    /// 这条命中的字节不是有效 UTF-8 ⇒ 显示形是有损的（判据用）。
-    #[cfg(test)]
-    pub fn lossy(&self) -> bool {
-        std::str::from_utf8(&self.path).is_err()
     }
 }
 
@@ -701,13 +689,6 @@ impl SearchBoard {
 
     pub fn rounds(&self) -> u64 {
         self.rounds.load(Ordering::SeqCst)
-    }
-
-    /// 整份 [`Shown`]（判据用）。生产段画命中那一摞只按格取（[`Self::asked_under`] · [`Self::hit`] …），
-    /// 不整份克隆 —— 这一条由可见性守：生产段够不着这个口子。
-    #[cfg(test)]
-    pub fn shown(&self) -> Shown {
-        self.inner.lock().unwrap().clone()
     }
 
     /// 眼下这一问的范围（只克隆这一格）。

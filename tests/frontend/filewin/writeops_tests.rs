@@ -24,6 +24,24 @@ use std::sync::atomic::{AtomicUsize, Ordering as O};
 
 use super::*;
 
+// 只给判据读的口子：住判据这一侧，生产段够不着。
+impl WriteBoard {
+    /// 正摆着的那几件。
+    pub(crate) fn asking(&self) -> Vec<WriteOp> {
+        self.inner.lock().unwrap().asking.clone()
+    }
+
+    /// 一趟落地（不带做成的 · 撤销的那几件，不出回执）。
+    pub(crate) fn finish(&self, outcome: WriteOutcome) {
+        self.finish_with(outcome, Vec::new(), Vec::new(), true);
+    }
+
+    /// 上一趟的结果。
+    pub(crate) fn last(&self) -> Option<WriteOutcome> {
+        self.inner.lock().unwrap().last.clone()
+    }
+}
+
 /// 一条会话记录形状的路径（`projects/` 下恰两段、以 `.jsonl` 收尾）。
 fn session_path() -> String {
     "/home/u/.claude/projects/dash-proj/abc-123.jsonl".to_string()

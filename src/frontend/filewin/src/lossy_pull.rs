@@ -29,13 +29,6 @@ pub fn local_dest(dest: &str, shown: &str, raw: &[u8]) -> (serde_json::Value, Op
 
 // `local_dest_kept` 的两个平台臂（unix 按字节拼 · 别处用有损形并说一句）住 `platform.rs`。
 
-/// 线上那一形 → 本机路径（判据用：落点字节照本机规矩换回路径）。
-#[cfg(test)]
-pub fn local_path_of(v: &serde_json::Value) -> Option<std::path::PathBuf> {
-    let b = super::find::decode_path(v)?;
-    Some(crate::platform::path_from_bytes(&b))
-}
-
 /// 本机落点（线上那一形）→ `(父目录那一形, 名字那一形)`：解出字节、照本机的路径规矩拆（[`super::download::split_dest`]）。
 pub fn split_local(
     local: &serde_json::Value,

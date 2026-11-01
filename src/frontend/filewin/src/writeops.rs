@@ -532,11 +532,6 @@ pub const WRITE_BUDGET: std::time::Duration = std::time::Duration::from_secs(20)
 /// 就地改名 / 新建据它在那一格下面说「x 已存在」，不把系统那句长话搬上来。
 pub const EXISTS: &str = "exists";
 
-/// 后端写面「这个名字在那台不能用」那个码（后端 `files/write.rs::BAD_NAME`，判据读两侧源码钉相等）：
-/// 那一格下面照登后端那一句（哪条规则、哪个字），界面不另写一份名字规则 ⇒ 生产不按它分支，只有判据对拍它。
-#[cfg(test)]
-pub const BAD_NAME: &str = "bad_name";
-
 /// 删除那一问最多列几项（其余写「另外 n 项」）。
 pub const DELETE_LIST_MAX: usize = 8;
 
@@ -879,7 +874,7 @@ pub fn grid_text(g: &[Option<bool>; 9]) -> Option<String> {
     (mask == 0o777).then(|| format!("{want:03o}"))
 }
 
-/// 框里敲的名字：去掉两头空白。合不合法由那台判（写面带 `single`，不合 ⇒ [`BAD_NAME`]），这里不另写规则。
+/// 框里敲的名字：去掉两头空白。合不合法由那台判（写面带 `single`，不合 ⇒ 码 `bad_name`，那一格下面照登那台那一句），这里不另写规则。
 ///
 /// 「新建空文件」（[`super::create`]）问的也是这一个函数。
 pub(super) fn clean_name(t: &str) -> String {
@@ -1178,12 +1173,6 @@ impl WriteBoard {
         !self.inner.lock().unwrap().asking.is_empty()
     }
 
-    /// 正摆着的那几件（判据用）。
-    #[cfg(test)]
-    pub fn asking(&self) -> Vec<WriteOp> {
-        self.inner.lock().unwrap().asking.clone()
-    }
-
     /// 把窗口交给它，好让它在有事发生时敲一下。
     pub fn attach(&self, ctx: Option<egui::Context>) {
         *self.ctx.lock().unwrap() = ctx;
@@ -1196,12 +1185,7 @@ impl WriteBoard {
         }
     }
 
-    #[cfg(test)]
-    pub fn finish(&self, outcome: WriteOutcome) {
-        self.finish_with(outcome, Vec::new(), Vec::new(), true);
-    }
-
-    /// 同 [`Self::finish`]，另交做成了的那几件与撤销它们的那几件；`quiet` ⇒ 这一趟是撤销本身，不再出回执。
+    /// 一趟落地：结果 ＋ 做成了的那几件与撤销它们的那几件；`quiet` ⇒ 这一趟是撤销本身，不再出回执。
     pub fn finish_with(
         &self,
         outcome: WriteOutcome,
@@ -1225,9 +1209,7 @@ impl WriteBoard {
             b.undo = undo;
             b.quiet = quiet;
             #[cfg(test)]
-            {
-                b.last = Some(outcome);
-            }
+            let _ = b.last.replace(outcome);
         }
         self.rounds.fetch_add(1, Ordering::SeqCst);
         self.poke();
@@ -1249,12 +1231,6 @@ impl WriteBoard {
 
     pub fn rounds(&self) -> u64 {
         self.rounds.load(Ordering::SeqCst)
-    }
-
-    /// 上一趟的结果（判据用）。
-    #[cfg(test)]
-    pub fn last(&self) -> Option<WriteOutcome> {
-        self.inner.lock().unwrap().last.clone()
     }
 
     /// 人点了「做勾上的」/「都别做」—— 把答复送出去，问题收掉。

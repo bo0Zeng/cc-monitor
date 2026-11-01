@@ -31,6 +31,26 @@ const CMD_INDEX_STATUS: &str = <cmd_wire::files::IndexStatusReq as cmd_wire::Cal
 const CMD_INDEX_REBUILD: &str = <cmd_wire::files::RebuildReq as cmd_wire::Call>::NAME;
 const CMD_BROWSE: &str = <cmd_wire::files::BrowseReq as cmd_wire::Call>::NAME;
 
+// 只给判据读的口子：住判据这一侧，生产段够不着（整份克隆 `Shown` 那一下生产不许做，由可见性守）。
+impl Hit {
+    /// 整条路径的显示形。**有损** —— 见 [`Hit`] 头注。
+    pub(crate) fn display(&self) -> String {
+        String::from_utf8_lossy(&self.path).to_string()
+    }
+
+    /// 这条命中的字节不是有效 UTF-8 ⇒ 显示形是有损的。
+    pub(crate) fn lossy(&self) -> bool {
+        std::str::from_utf8(&self.path).is_err()
+    }
+}
+
+impl SearchBoard {
+    /// 整份 [`Shown`]。
+    pub(crate) fn shown(&self) -> Shown {
+        self.inner.lock().unwrap().clone()
+    }
+}
+
 // 入参按线上类型造、回包按回包类型解；下面几条判的是「发出去的那一份 JSON」与「一份 JSON 回包解成什么」，
 // 经这几层薄壳把两步接起来（解不出 ⇒ 报错，同 `ask_typed` 那一步）。
 fn find_args(asked: &Asked, seq: u64, stream: &str, offset: usize) -> Value {
