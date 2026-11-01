@@ -2,12 +2,12 @@
 # ruff: noqa: E501
 """两条文案判据**一个进程、一趟普查**跑完，吐一行 JSON 给 vitest（`tests/copy/copy-ledgers.vitest.ts`）。
 
-- **CP1**：存疑带逐条裁决台账 == 普查今天的存疑带（两向集合相等；判法住 `CP1-copy-verdicts.py`）。
+- **CP1**：存疑带逐条裁决台账 == 普查今天的存疑带（两向集合相等；判法住 `copy-verdicts.py`）。
 - **CP2**：全仓**对外字面量零条**（全量抽表的终态），带正控。
 
 # 为什么一趟
 
-人群都借普查 `K-T68-A1-outward-copy-census.py`：整仓扫一遍（遮注释、找出口、回源码取全文）本机 8–12 秒。
+人群都借普查 `outward-copy-census.py`：整仓扫一遍（遮注释、找出口、回源码取全文）本机 8–12 秒。
 云端 windows runner（4 核）上几趟整仓扫挤在一起会撞期限 ⇒ 这里载**一份**普查、真树只扫**一次**。
 
 # CP2 的人群（本文件不写一条正则，全部借普查与 CP1）
@@ -129,7 +129,7 @@ def static_probe(census) -> list:
 
 def literal_probe() -> list:
     """异源正控：临时树里现造一份 `src/backend/probe.rs`；另载一份 CP1 与普查（不碰真树那一份），同一套人群定义去数。"""
-    cp1 = _load("cp1_copy_verdicts_probe", "CP1-copy-verdicts.py")
+    cp1 = _load("cp1_copy_verdicts_probe", "copy-verdicts.py")
     census = cp1.load_census()
     with tempfile.TemporaryDirectory() as td:
         root = Path(td) / "src"
@@ -159,7 +159,7 @@ def cp2_report(cp1, census, band) -> tuple[int, dict]:
 
 
 def main() -> int:
-    cp1 = _load("cp1_copy_verdicts", "CP1-copy-verdicts.py")
+    cp1 = _load("cp1_copy_verdicts", "copy-verdicts.py")
     census = cp1.load_census()
     share_real_tree(census)
 
@@ -179,6 +179,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     if "--json" not in sys.argv and "--list" not in sys.argv:
-        print("用法：python3 tests/evidence/CP-copy-judges.py --json | --list（CP1 人读请跑 CP1-copy-verdicts.py）", file=sys.stderr)
+        print("用法：python3 tests/evidence/CP-copy-judges.py --json | --list（CP1 人读请跑 copy-verdicts.py）", file=sys.stderr)
         sys.exit(2)
     sys.exit(main())

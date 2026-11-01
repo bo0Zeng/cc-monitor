@@ -1,6 +1,6 @@
 //! 秤（读数不是判据）：真规模本机历史上帧面 `history-search` 的冷首趟与热态，同一进程连问（与常驻后端同形）。
 //! 只出耗时 · 条数 · 输出行 sha256 前 16 位（前后两棵树逐问比摘要 ⇒ 逐条相等），不打印正文。跑法（`src/backend` 下）：
-//! `SX1_EVICT=<仓根>/tests/evidence/SX1-evict-page-cache.py cargo test --release --lib sx1_real_history_search_reading -- --ignored --nocapture`
+//! `SX1_EVICT=<仓根>/tests/evidence/evict-page-cache.py cargo test --release --lib sx1_real_history_search_reading -- --ignored --nocapture`
 
 use serde_json::{json, Value};
 
@@ -62,7 +62,7 @@ fn ask(phase: &str, round: usize, q: &str) {
 #[test]
 #[ignore = "SX1 读数：真规模本机历史（只读）只量耗时与条数；跑法住本文件头注"]
 fn sx1_real_history_search_reading() {
-    let script = std::env::var("SX1_EVICT").expect("要 `SX1_EVICT` 指向 SX1-evict-page-cache.py");
+    let script = std::env::var("SX1_EVICT").expect("要 `SX1_EVICT` 指向 evict-page-cache.py");
     let root =
         crate::agents::claudecode::paths::projects_root(&crate::history::listing::agent_home());
     let load = std::fs::read_to_string("/proc/loadavg").unwrap_or_default();

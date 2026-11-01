@@ -65,7 +65,7 @@ fn the_profile_fence_keeps_writes_inside_home() {
 ///
 /// 而**远端**那条同名功能有围栏：`sftp.rs` 逐字「profile 只能是 home 下的文件名
 ///（如 `.bashrc` / `.zshrc`）」。⇒ **同一形态在另一半有围栏、这一半没有**
-///（F52/F44 同族；后果那一侧与 F47「任意本机文件删除」同族）。
+///（后果那一侧与「任意本机文件删除」同族）。
 ///
 /// ⚠ 写进去的内容也不是全常量：`command_name` 来自调用方，会被渲进那段 shell 代码。
 ///
@@ -605,7 +605,7 @@ fn install_to_nonexistent_path_creates_file() {
     assert!(!p.exists());
     run(install_to_profile(&door_at(&p), &p)).unwrap();
     let content = std::fs::read_to_string(&p).unwrap();
-    // ★ **带边界**〔audit-0805 F24 存量清账〕：`contains("function cc")` 是**正向事实钉**，
+    // ★ **带边界**：`contains("function cc")` 是**正向事实钉**，
     // 而 `function ccm` 也含有它 —— 安装器若改成生成 `function ccm`（同文件 `:727` 就有
     // 那个形态），本条**照样绿**。这是「匹配单位比事实小」里最贵的那种：假绿。
     // `cc` 住清单：块里只有 `__ccm_bind` 与窗口标签。按词判，不按子串（`function ccm` 也含 `function cc`）。
@@ -674,7 +674,7 @@ fn uninstall_strips_block_keeps_user_content() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// `K-R62`：本机 POSIX 那一格
+// 本机 POSIX 那一格
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 「这份文本里**有整整一行**逐字等于它」。
@@ -701,7 +701,7 @@ alias  ccx='ccm --base'
 gs() { git status; }
 ";
 
-/// ★★ `KR62D1` 的正题：**本机 POSIX 那条路与远端那个口，产物逐字节相同。**
+/// ★★ 正题：**本机 POSIX 那条路与远端那个口，产物逐字节相同。**
 ///
 /// **死值验**：让本机这一臂改用一份**自己的**副本（或自己写一套 merge）⇒ 这一条当场红，
 /// 因为它比的不是「像不像」，是**恒等于远端那份实现在同一份输入上的产物**。
@@ -715,8 +715,8 @@ fn the_local_posix_port_is_byte_for_byte_the_remote_one() {
         assert_eq!(
             got, want,
             "本机 POSIX 装进 rc 的东西与远端那个口不再是同一份 —— \
-                 `KR62D1` 要买的一半正是「补这一格的时候没有变成第四套」。\
-                 若这里改成了一份自己的 snippet / 一套自己的 merge，就把那三套变成了四套。"
+                 本机与远端装进 rc 的必须是同一个东西。\
+                 若这里改成了一份自己的 snippet / 一套自己的 merge，同一件事就又多了一套形状。"
         );
         // 卸那一半同样恒等（装了又卸回得去，是同一对围栏才可能成立）。
         let back = plan_uninstall(Shell::Posix, &got, what).expect("本机 POSIX 卸口");
@@ -728,13 +728,13 @@ fn the_local_posix_port_is_byte_for_byte_the_remote_one() {
     }
 }
 
-/// ★★ `KR62D1`：**全树只有一份 snippet**，而且它不住在本模块。
+/// ★★ **全树只有一份 snippet**，而且它不住在本模块。
 ///
 /// 上一条比的是「产物一样」，一份**逐字节相同的副本**能骗过它；这一条按源码数**住址**。
 /// 两条一起才关得住「不许出现第二份 snippet」。
 #[test]
 fn the_alias_snippet_has_exactly_one_home_in_the_rust_tree() {
-    // 人群 = 两棵 Rust 树（monitor `src/frontend/shell/src` ＋ 后端 `src/backend`）：住址从 monitor 搬进了后端。
+    // 人群 = 两棵 Rust 树（monitor `src/frontend/shell/src` ＋ 后端 `src/backend`）：住址在后端。
     let root = guard_core::addr::repo_root();
     let mut files =
         guard_core::scan_tree_excluding(&root.join("src/frontend/shell/src"), &["rs"], &[]);
@@ -756,7 +756,7 @@ fn the_alias_snippet_has_exactly_one_home_in_the_rust_tree() {
     }
     assert_eq!(
         homes,
-        // 住址从 `sftp.rs` 搬进了本模块（别名块的真相归别名域，B §2 第 12 条）。
+        // 住址是本模块（别名块的真相归别名域）。
         vec!["block.rs".to_string()],
         "`src/shared/ccm-aliases.sh` 在 Rust 侧的住址应当**恰好一处**（`assets/aliases/block.rs` 的 \
              `CCM_WRAPPER_SNIPPET`），实得 {homes:?}。多一处就是第二份 snippet —— \
@@ -764,10 +764,9 @@ fn the_alias_snippet_has_exactly_one_home_in_the_rust_tree() {
     );
 }
 
-/// ★★ `KR62D1`：**没有第二套 merge/strip，也没有第二对 POSIX 围栏。**
+/// ★★ **没有第二套 merge/strip，也没有第二对 POSIX 围栏。**
 ///
-/// 从前这条钉「本模块借 `sftp.rs` 那一份（跨文件调用恰好一次）」；
-/// 那一份今天搬进了本模块（`sftp.rs` 已经不做 SFTP，B §2 第 12 条），性质不变、量法换成：
+/// 量法：
 /// ① 合 / 剥两个函数在本模块的生产段里**各定义恰好一次**（多一个 `fn merge_…` 就是第二套）；
 /// ② 本机 POSIX 那一臂（[`plan_install`] / [`plan_uninstall`] 的函数体）**调的就是它们**；
 /// ③ POSIX 那一对围栏的字面量全模块**恰好一处**（那一行 `const`）。
@@ -807,12 +806,12 @@ fn the_posix_arm_borrows_the_remote_implementation_instead_of_growing_a_second_o
     guard_core::find_pinned(&src, "remote ccm BEGIN").unwrap_or_else(|e| {
         panic!(
             "POSIX 那一对围栏的字面量不是恰好一处（{e}）—— 它只许有一个住址\
-             （`CCM_PROFILE_BEGIN`），抄一份就是 `K13` 那族「一个性质两把尺子」"
+             （`CCM_PROFILE_BEGIN`），抄一份就是「一个性质两把尺子」"
         )
     });
 }
 
-/// ★ `KR62D1` 的落盘那一跳：**装完之后用户原有的每一行都还在，而且块是真的块。**
+/// ★ 落盘那一跳：**装完之后用户原有的每一行都还在，而且块是真的块。**
 #[test]
 fn installing_into_a_posix_rc_keeps_every_user_line() {
     let td = tmpdir("posix-install");
@@ -823,7 +822,7 @@ fn installing_into_a_posix_rc_keeps_every_user_line() {
     for line in BARE_RC.lines() {
         assert!(
             pinned(&after, line),
-            "用户原来那一行没了：{line:?} —— `K31`：一个字节都不许删用户的行"
+            "用户原来那一行没了：{line:?} —— 一个字节都不许删用户的行"
         );
     }
     // 装进去的确实是那份 snippet（按整行比，不按子串）。
@@ -878,7 +877,7 @@ fn the_flavour_follows_the_file_not_the_machine() {
     }
 }
 
-/// ★★ `K31`：**「查」这一路一个字节都不写。**
+/// ★★ **「查」这一路一个字节都不写。**
 ///
 /// 不是读注释读出来的：真落一份夹具、扫一遍、逐字节比 + 比 mtime，
 /// 并且断言目录里没多出任何文件（备份文件也算「动了机器」）。
@@ -928,13 +927,13 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 🔴 `K-R132`：**装上了、能跑、用户敲不到** —— 这四条判据盘的是哪一半
+// 🔴 **装上了、能跑、用户敲不到** —— 这四条判据盘的是哪一半
 // ═══════════════════════════════════════════════════════════════════════
 //
 // ## 🔴 诚实边界，先写在这里，别读大
 //
-// `K-R129` 那一形（**真装完、真开一个终端、真敲一次**）**这四条一条都盘不住**，
-// 而且不是「今天还没写」，是**在构造上盘不住**：它要一台 Windows、要真跑一遍
+// 「**真装完、真开一个终端、真敲一次**」那一形**这四条一条都盘不住**，
+// 而且不是「还没写」，是**在构造上盘不住**：它要一台 Windows、要真跑一遍
 // NSIS `/S` / MSI `/qn`、要开一个新会话。本门禁的 npm / tsc / e2e / cargo
 // 全跑在 Linux 沙箱里 —— `tests/scripts/gate.sh` 的 `GATE_BLIND` 里
 // `windows-runner` 那一条早就逐字写着这件事。
@@ -943,37 +942,35 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
 // 长不长得对、指不指得到真落点、有没有踩 Windows 改 PATH 的那两个经典地雷。
 // **「写进去之后终端里敲得到吗」仍然只有真机答得了**。
 //
-// ⚠ 别把这段话读成「所以这几条没用」：`K-R129` 那条缺陷的**直接死因**就是
+// ⚠ 别把这段话读成「所以这几条没用」：「敲不到」最直接的死因就是
 // 「这几行里根本没有 PATH 这回事」，而那一半恰好是这里盘得住的。
 
-/// ★★ 〔`KR135D1b` / `R86` 09-15〕**这一条是上一轮那条判据翻过来的那一面。**
+/// ★★ **会话级 `$env:PATH` 那一段不许出现在块里**（一条棘轮）。
 ///
-/// 上一轮那条判据（`K-R132` 立的）钉的是**反过来**的事：
-/// 「块里**必须有**一段把我们那个 bin 目录放上 `$env:PATH` 的代码」。
-/// `R86` 把那一段删了 ⇒ **那条判据失去了对象**。件文件逐字要求
-/// **别留一条永远绿的空判据** ⇒ 这里不是删掉了事，是**翻正成棘轮**：那一段不许再回来。
+/// 块里**不放**把我们那个 bin 目录放上 `$env:PATH` 的代码；要让 `ccm` 在所有终端里都找得到，
+/// 走用户级 PATH 那一条。
 ///
 /// # 它守的不是风格，是那个「半通」状态
 ///
 /// 会话级 `$env:PATH` 只对 PowerShell 有效（`cmd` 不读任何 profile、
-/// Git Bash 读 `~/.bashrc`）⇒ 一旦有人把它加回来，`K-R129`/`K-R132` 两轮真机
-/// 3×3 表里那个「**PowerShell 里能、`cmd` 里不能**」的格子当场复活，
+/// Git Bash 读 `~/.bashrc`）⇒ 一旦有人把它加进块里，真机
+/// 3×3 表里那个「**PowerShell 里能、`cmd` 里不能**」的格子当场出现，
 /// 而**「看起来装好了、换个终端就没了」比「哪儿都没有」更难查**。
 ///
 /// # 地板先证（先证够得到，否则「零违例」是空真）
 ///
 /// 两道地板，缺一不可：① 渲染出来不是空的、围栏在、placeholder 填掉了；
 /// ② **正向**那一道 —— 块里真有 `__ccm_bind`。少了 ②，
-/// 「把整个模板掏空」这一刀照样让下面每一条「不含」成立。
+/// 「把整个模板掏空」照样让下面每一条「不含」成立。
 ///
 /// # 诚实边界
 ///
 /// 它只看**我们生成的那一块**。用户自己在围栏外写的任何 `$env:PATH` 一概不管
-/// （那是用户的文件，`K31`）；`v3.8.0` 已经写进某人 profile 里的那段**旧块**
+/// （那是用户的文件）；`v3.8.0` 已经写进某人 profile 里的那段**旧块**
 /// 也不在射程内 —— 那一格靠「用户再走一次装或卸就整块重写」接住，
 /// 逐字住本文件上面那段横幅，**不是自动消失**。
 ///
-/// # 死值验（`KR135D1b` 刀①）
+/// # 死值验
 ///
 /// 往 `render_cc_code` 的拼装处加回一段 `$env:PATH = "<我们的 bin 目录>;$env:PATH"` ⇒ 本条红。
 #[test]
@@ -1001,7 +998,7 @@ fn the_powershell_block_never_touches_the_session_path_again() {
         assert!(
             touches.is_empty(),
             "这一块又在动会话级 `$env:PATH` 了。\n\
-                 `R86` 逐字把这一段删了，理由是它造出「PowerShell 里能、`cmd` 里不能」\
+                 这一段不许在块里，理由是它造出「PowerShell 里能、`cmd` 里不能」\
                  那个半通状态 —— 要让 `{word}` 在**所有**终端里都找得到，\
                  走的是**用户级** PATH 那一条（`ccm-user-path`，\
                  由用户点一下）。\n实得 {} 行：\n{:#?}",
@@ -1009,7 +1006,7 @@ fn the_powershell_block_never_touches_the_session_path_again() {
             touches
         );
         // 持久化那一族更不许出现在 profile 里：这一块每开一个会话跑一次，
-        // 把写注册表放在这里 = 每开一个终端就改一次用户的环境（`K33` 明禁）。
+        // 把写注册表放在这里 = 每开一个终端就改一次用户的环境（明禁）。
         assert!(
             !out.contains("SetEnvironmentVariable"),
             "profile 块里出现了 `SetEnvironmentVariable` —— 这一块每开一个会话跑一次，\
@@ -1020,8 +1017,8 @@ fn the_powershell_block_never_touches_the_session_path_again() {
 
 /// ★★ **两臂的 `cc` 走同一条路**：`cc` 今天是清单里首建就带的一条（[`super::super::first_aliases`]），
 /// 两种方言都由同一个渲染器写出 —— POSIX `cc() { ccm @cc "$@"; }`、PowerShell `& "$HOME\.cc-monitor\bin\ccm.exe" '@cc' $RemainingArgs`
-/// （`K33`「所有命令只许有一处」＋ `K28`「一切对外都经后端」）。PowerShell 的别名块里**一条调用行都没有**
-/// （`cc` 不再住块里）；没有 tmux 的那一臂首建不带 `cct`（「名字在、行为不在」的壳比没有更坏，`K-R129`）。
+/// （「所有命令只许有一处」＋「一切对外都经后端」）。PowerShell 的别名块里**一条调用行都没有**
+/// （`cc` 不住块里）；没有 tmux 的那一臂首建不带 `cct`（「名字在、行为不在」的壳比没有更坏）。
 ///
 /// 🔴 诚实边界：证的是「生成的文本指向 `ccm` 的落点」，不是「敲下去真起得来」（要一台 Windows）。
 #[test]
@@ -1069,7 +1066,7 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
     assert_eq!(names(Shell::PowerShell), ["cc"]);
 }
 
-/// ★★ `KR132D2` 的第三半，**真机逮到的那一条**：
+/// ★★ **真机逮到的那一条**：
 /// **PowerShell profile 落盘要带 BOM，POSIX rc 一个字节都不许带。**
 ///
 /// # 这不是风格，是真机上一条「静默吞掉一行代码」的路
@@ -1089,7 +1086,7 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
 ///   **我们落盘的字节形状对**，而「形状对 ⇒ PS 解得对」那一步是真机量出来的。
 /// - **分母是一台机器**（系统代码页 GBK）。英文代码页上那条机制不成立。
 ///
-/// # 死值验（`KR132D2` 刀②）
+/// # 死值验
 ///
 /// 把 `shell_dialect.rs` 里 PowerShell 那一臂的 `encode_for_disk` 改成原样返回 ⇒ 本条红。
 #[test]
@@ -1148,7 +1145,7 @@ fn the_powershell_profile_lands_with_a_bom_and_the_posix_rc_never_does() {
 /// 盘上那份（BOM 剥掉）逐字相等。两种方言 × 要不要连 `cc` 函数，四格都走。
 ///
 /// 这不是两份拼法对拍：两边调的是同一个 `plan_install`。它钉的是「预览没有另起一条拼法」这件事 ——
-/// 从前的预览（`render_cc_code`）只会 PowerShell 那一块、而且不带装那一跳会加的排版，POSIX 那一块根本没有预览。
+/// 另起一条拼法的话，预览会少掉装那一跳加的排版，而且只有一种方言答得出。
 #[test]
 fn the_block_preview_is_byte_for_byte_what_an_install_writes() {
     for (shell, name) in [(Shell::Posix, ".bashrc"), (Shell::PowerShell, "p.ps1")] {

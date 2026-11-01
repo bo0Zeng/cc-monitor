@@ -1,7 +1,7 @@
 住址	原文	裁词	依据
-src/backend/host/tmux.rs:214	🔴 **真 tmux 打回来的那一句**（沙箱 tmux，显式 `-S <不存在的路径>`）：\n         逐字 `error connecting to /tmp/…/sock (No such file or directory)`。\n         ⚠ 它与下面那条**不是同一句话**，而我先前只登记了下面那条 ⇒ \n         第一趟门禁当场红（落进兜底档 `capture_failed`）。**留着这行来历**：\n         「tmux 断开时会说 no server running」是个想当然，实测把它证伪了一半。	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
+src/backend/host/tmux.rs:214	🔴 **真 tmux 打回来的那一句**（沙箱 tmux，显式 `-S <不存在的路径>`）：\n         逐字 `error connecting to /tmp/…/sock (No such file or directory)`。\n         ⚠ 它与下面那条**不是同一句话**：只登记下面那条的话，它落进兜底档 `capture_failed`。\n         「tmux 断开时会说 no server running」是个想当然，实测把它证伪了一半。	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
 src/backend/host/tmux.rs:222	tmux 在**默认 socket**（生产走的那条）上找不到 server 时的原话\n         （`no server running on /tmp/tmux-<uid>/default`）。\n         ⚠ **这一句没有在真 tmux 上打过**：本模块的判据只造得出显式 `-S` 那条路，\n         而默认 socket 在沙箱里没法造出「无 server」态（那台沙箱自己在用 tmux）。\n         ⇒ 它今天只由 `every_registered_needle_lands_in_its_own_bucket` \n         用合成样本证明「落对了档」，**不是**「见过它」。	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
-src/backend/control/capture_pane.rs:104	tmux 对 target-pane 解析失败时的原话。`=名:` 收的正是 target-pane（`F01`）	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
+src/backend/control/capture_pane.rs:104	tmux 对 target-pane 解析失败时的原话。`=名:` 收的正是 target-pane	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
 src/backend/control/capture_pane.rs:108	同上，只是解析走到了 target-session 那一支（旧版 tmux / 别的目标形）	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
 src/backend/control/capture_pane.rs:112	另一种措辞，一并收 —— 多认一种不会把别的失败误判成它（默认档是 `capture_failed`）	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
 src/backend/control/identity_tag.rs:420	起不来 tmux：{e}	保留	[不对外] Outcome::Failed 的载荷；经 Outcome::failure_note 只进后端 tracing 日志
@@ -129,7 +129,7 @@ src/frontend/filewin/src/fonts.rs:424	力围范	保留	[不对外] 字体子集�
 src/frontend/filewin/src/fonts.rs:393	像寸尺张素	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（图片查看页那几句新进的字）
 src/frontend/filewin/src/fonts.rs:410	运	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（通道那一句「本机后端未运行 · 未执行」进来的字）
 src/frontend/filewin/src/fonts.rs:419	副	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（「复制为」缺省名「n1 副本.txt」进来的字）
-src/backend/control/cc_bus.rs:23	🔔 cc-bus: 你有来自 {from} 的新消息,运行 cc-bus recv 读取并按内容处理	保留	[不对外] cc-bus 敲门那一句：后端投进另一条 agent 会话输入队的那一句（对方那一轮的输入，不是给人看的话；从前住 src/shared/cc-bus 的注入文本）
+src/backend/control/cc_bus.rs:23	🔔 cc-bus: 你有来自 {from} 的新消息,运行 cc-bus recv 读取并按内容处理	保留	[不对外] cc-bus 敲门那一句：后端投进另一条 agent 会话输入队的那一句（对方那一轮的输入，不是给人看的话）
 src/backend/platform/win_term.rs:112	输入	保留	[不对外] restore() 的 which 参数，只拼进「外层控制台的…模式没还原回去」那一行 tracing::warn!，只进后端日志
 src/backend/platform/win_term.rs:119	输入	保留	[不对外] 同上：leave_raw 还原输入那一下的 which 参数，只进后端日志
 src/backend/platform/win_term.rs:120	输出	保留	[不对外] 同上：leave_raw 还原输出那一下的 which 参数，只进后端日志

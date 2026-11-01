@@ -599,7 +599,7 @@ impl InboundClient {
             }
             return false;
         };
-        // 补发的撤单被回「停不下来」⇒ 说出来（先前落 debug，等于静默）。
+        // 补发的撤单被回「停不下来」⇒ 说出来（落 debug 等于静默）。
         if let (
             Some(cmd),
             Outcome::Reply {
@@ -688,7 +688,7 @@ impl InboundClient {
         let w = self.offer_now().withdraw(cmd);
         match w {
             Withdraw::Asked => {}
-            // 对端不认撤单：本地照撤、一帧不补，但要说出来（先前静默 return）。
+            // 对端不认撤单：本地照撤、一帧不补，但要说出来（不静默 return）。
             Withdraw::NotOffered => {
                 tracing::warn!("对端不认撤单：`{cmd}` 没法叫它停，可能照跑完（本地已不再等它）");
                 return;

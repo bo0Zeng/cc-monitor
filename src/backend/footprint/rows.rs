@@ -126,7 +126,7 @@ pub enum Vantage {
 /// `~/.claude/...` 以 `agent_home` 为基准（Claude 布局那一条：`agents/claudecode/footprint.rs::under_agent_home`）——
 /// 那条 `CLAUDE_CONFIG_DIR` 规则只准解释一次，在调用方算 `agent_home` 的那一处。
 ///
-/// 第一个参数是视角（[`Vantage`]）：本机视角与先前逐字同一个行为，判据一律显式写 `Vantage::Monitor`。
+/// 第一个参数是视角（[`Vantage`]）：判据一律显式写 `Vantage::Monitor`。
 pub fn resolve_touched_path(
     vantage: Vantage,
     declared: &str,
@@ -456,7 +456,7 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
         // 所以那边该指路而不是耸肩。
         PathResolution::WindowsProfile => SurfaceState::Undetermined {
             why: if cfg!(target_os = "windows") {
-                // 从前这句指「终端集成」页 —— AL1c 起那一页就没有了，今天在「本机 → 工具 → 别名」。
+                // 这句指「本机 → 工具 → 别名」。
                 copy_text("rsConfigSurface.observe.profileWindows", &[]).into()
             } else {
                 copy_text("rsConfigSurface.observe.profileNotWindows", &[])
@@ -538,10 +538,10 @@ pub struct SurfaceRow {
 
 /// 🔴 **多收一个 `c`（载体），而那正是这一格买到的东西。**
 ///
-/// 先前这里拿的是 `t.destination` 与 `t.source` —— 一个工具一份。
-/// 于是「同一个后端的三个落点」这件事**在这一行里根本表达不出来**：
-/// 每条 touch 都被配上同一个 `destination`（1:N，不需要 key），
-/// 而真相是 M 个落点 × N 条 touch。今天 touch 挂在载体下 ⇒ **配对是天然的**，
+/// 只拿 `t.destination` 与 `t.source`（一个工具一份）的话，
+/// 「同一个后端的几个落点」这件事**在这一行里根本表达不出来**：
+/// 每条 touch 都被配上同一个 `destination`，而真相是 M 个落点 × N 条 touch。
+/// touch 挂在载体下 ⇒ **配对是天然的**，
 /// 这个函数拿到的 `(c, f)` 一定是同一份产物的落点与它碰的文件。
 fn row(
     e: &EnvEntry,
@@ -593,7 +593,7 @@ fn row(
         tool_name: t.display_name.get(),
         tier: e.tier,
         // 🔴 读的是**这一份载体**的来源，不是「这个工具的来源」——
-        //    `ccm` 那一行先前只能填一个，而它的注释自己承认「本机那一半的来源不是这个」。
+        //    `ccm` 本机那一份与远端那一份来源不同，按工具填只能填对一个。
         source_label: source_label(&c.source),
         path_declared: f.path,
         path_resolved,
@@ -609,9 +609,8 @@ fn row(
 /// 建一次表要用的那一套基准与探针。**全部注入** —— 本模块不自己去摸环境，
 /// 那是它从第一天起就可纯测的原因。
 ///
-/// 〔`K-R65` 09-11 抽出来〕在此之前这四样是 `build_rows` 的四个位置参数，
-/// 而这里要再加一个（`path_env`）⇒ 五个位置参数往下传两层，谁也读不出哪个是哪个。
-/// 收成一个具名结构之后，加第六样不会再让每个调用点都改一遍。
+/// 它是具名结构而不是 `build_rows` 的一串位置参数：五六个位置参数往下传两层，谁也读不出哪个是哪个；
+/// 具名结构加一样不会让每个调用点都改一遍。
 pub struct SurfaceEnv<'a> {
     pub home: &'a Path,
     /// agent 家（`~/.claude/…` 的基准），调用方按 `agents/claudecode/paths.rs` 那一条规则算好交进来。
@@ -634,15 +633,9 @@ pub struct SurfaceEnv<'a> {
 
 /// 清单里**没有 `ToolSpec`** 的那一项，在这一页上长什么样。
 ///
-/// # 🔴 这个函数的正题变了：从「不查」变成「查」
+/// # 🔴 这个函数的正题是「查」，不是「不查」
 ///
-/// 上一版这里逐字写着：
-///
-/// > `state` 一律 `Undetermined` **并说明为什么没查** …… 而「我们压根没去查」
-/// > 比「查不动」还要更早一步
-///
-/// 以及 `path_resolved: None` 旁边那句「**不解析** —— 解析了就等于查了」。
-/// `K38` 把那一档判掉了：通用工具是「**你自己装，而我会看、缺了我要说**」
+/// 通用工具是「**用户自己装，而我们会看、缺了要说**」
 /// ⇒ 这里**真去查**，而查出来的三种答案在这一页上是三回事：
 ///
 /// | 探针答什么 | 这一行显示成 | 前端 `readiness.ts` 里的同一条分法 |
@@ -666,13 +659,13 @@ fn unmanaged_row(
             copy_text("rsConfigSurface.unmanaged.appInstallsSource", &[]),
             copy_text("rsConfigSurface.unmanaged.appInstallsEffect", &[]),
         ),
-        // 🔴 `K38` 裁的那一档：**我们不装，但我们看；缺了我们说。**
+        // 🔴 用户裁的那一档：**我们不装，但我们看；缺了我们说。**
         EnvTier::UserInstallsWePrompt => (
             copy_text("rsConfigSurface.unmanaged.promptSource", &[]),
             copy_text("rsConfigSurface.unmanaged.promptEffect", &[]),
         ),
-        // 🔴 `KR65D2` 的那一格：**该我们装，而装口还欠着。** 措辞必须两半都说 ——
-        // 只说「装不了」会被读成「不该我们装」，那正是 `K38` 反对的那句话。
+        // 🔴 **该我们装，而装口还欠着。** 措辞必须两半都说 ——
+        // 只说「装不了」会被读成「不该我们装」，那正是用户反对的那句话。
         EnvTier::AppShipsNoInstallerYet => (
             copy_text("rsConfigSurface.unmanaged.owedSource", &[]),
             copy_text("rsConfigSurface.unmanaged.owedEffect", &[]),
@@ -699,7 +692,7 @@ fn unmanaged_row(
     }
 }
 
-/// 手写那一半**真去查**的那一步。抽出来是因为它是 `KR65D1` 的死值验落点：
+/// 手写那一半**真去查**的那一步。抽出来是因为它是死值验的落点：
 /// 同一个名字换一种 [`EnvProbe`]，出来的必须是不同的一格。
 ///
 /// 返回 `(解析出来的东西, 现状)`。

@@ -1,6 +1,6 @@
 use super::*;
 
-/// ★★ **`KR96D1` 死值验第一刀：Gate 判活不许自己起 `tmux list-sessions`。**
+/// ★★ **死值验：Gate 判活不许自己起 `tmux list-sessions`。**
 ///
 /// 「列全部会话」这件事**只剩快照那一处**（探测器 `host/tmux.rs::list_sessions`）。
 /// 本模块回潮（把那条 argv 抄回来）时这一条要红。
@@ -13,7 +13,7 @@ fn listing_every_session_is_no_longer_this_modules_job() {
     assert!(
         !prod.contains("list-sessions"),
         "本模块生产段里又出现了 `list-sessions` —— 判活回去自己起 tmux 了。\n\
-             ★ `R52` 裁定一：Gate 判活**读那份快照**（`common/session_snapshot`），\n\
+             ★ Gate 判活**读那份快照**（`common/session_snapshot`），\n\
                而且「向快照发一次询问，快照更新一次」。"
     );
     // 反向自检：这一条不是靠「本文件恰好不含那个词」空转的 —— 快照那边必须有。
@@ -25,7 +25,7 @@ fn listing_every_session_is_no_longer_this_modules_job() {
     );
 }
 
-/// ★★ **K-R12：本模块起 tmux 的地方，`-u` 必须在子命令之前 —— 一处都不许漏。**
+/// ★★ **本模块起 tmux 的地方，`-u` 必须在子命令之前 —— 一处都不许漏。**
 ///
 /// # 为什么这一条只能是「扫源码」，以及它守不住什么
 ///
@@ -110,7 +110,7 @@ fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
     }
 }
 
-/// ★★ **K-R12 `J1` 死值验（本模块这一侧）：段数下溢必须红。**
+/// ★★ **死值验（本模块这一侧）：段数下溢必须红。**
 ///
 /// 死值取自真 tmux 3.4 + POSIX 客户端下现打：
 /// `list-sessions` 那三列打出来是 `kr12_$0_cc-deadval1`、
@@ -224,7 +224,7 @@ fn a_probe_line_parses_into_a_handle_and_a_sid() {
     let p = Probed {
         session_id: it.next().unwrap().to_string(),
         ccm_sid: it.next().unwrap().to_string(),
-        // F04a：第三段是 `#{session_windows}`。**解析不出来 ⇒ 0**，而 Gate 3 要求恰好 1
+        // 第三段是 `#{session_windows}`。**解析不出来 ⇒ 0**，而 Gate 3 要求恰好 1
         // ⇒ fail closed（拿不到窗口数就不许杀）。
         windows: it.next().unwrap_or_default().parse().unwrap_or(0),
         // 第四段是 `@ccm_client`（没设 ⇒ 空串）。
@@ -282,7 +282,7 @@ fn the_pane_that_carries_a_sid_is_found_whichever_pane_is_active() {
     assert_eq!(at(""), None, "没挂 sid 的窗格不是「挂着空 sid」");
 }
 
-/// ★ F04a：**Gate 3 拿不到窗口数时 fail closed**（解析失败 ⇒ 0 ⇒ 拒绝）。
+/// ★ **Gate 3 拿不到窗口数时 fail closed**（解析失败 ⇒ 0 ⇒ 拒绝）。
 ///
 /// 反向的错法（解析失败当 1）会把「探测被截断」变成「放行一次 kill」——
 /// 那是本仓最不能接受的一类默认值。
@@ -326,20 +326,16 @@ fn the_probe_format_asks_for_both_fields() {
     );
 }
 
-// ── audit-0805 F20 下半：把「skip 不是通过」那个刻意决定钉住 ──────────────
+// ── 把「skip 不是通过」那个刻意决定钉住 ──────────────
 //
-// F20 的处境：`meta_dollar`（会话名 `cc-a$x`）在 CI 上报 `no_such_session`，
-// 当时**根因未知** —— 复现要那台机器的 tmux，红线禁真 tmux、且已裁定不再推 CI。
-// 上半做的是「把一条误导性的失败改成一条**会自证**的失败」：建完用 `=name:` 复核，
-// 找不到就 **skip 并打出 tmux 实况**。
+// 处境：`meta_dollar`（会话名 `cc-a$x`）在 CI 上报 `no_such_session`。e2e 脚本建完用 `=name:` 复核，
+// 找不到就 **skip 并打出 tmux 实况** —— 一条**会自证**的失败，不是误导性的那种。
 //
-// ★★ **2026-09-09：根因查出来了。这段话原来写着「根因至今未知」，那句今天不成立了。**
-//
-// **tmux ≤3.4 会在会话名里给 `$` 前面插一个反斜杠**，只要 `$` 后面跟的是字母 / `_` / `{`：
+// ★★ **根因**：**tmux ≤3.4 会在会话名里给 `$` 前面插一个反斜杠**，只要 `$` 后面跟的是字母 / `_` / `{`：
 // tmux 的 session_check_name() 把新名字过 utf8_stravis()（`:`→`_` 也是这儿来的，那正是
 // `meta_colon`），而 3.4 的 `utf8.c` 里那条 `$` 规则**不看任何 flag**。
 // ⇒ `cc-a$x` 存进 server 的真名是 `cc-a` + 反斜杠 + `$x`，`=cc-a$x:` 当然找不到
-// ⇒ 正是 F20 那条复核 skip。上游 `692ce59bcef5`（2024-05-24）给它加了 `VIS_DQ` 门，
+// ⇒ 正是那条复核 skip。上游 `692ce59bcef5`（2024-05-24）给它加了 `VIS_DQ` 门，
 // **首次随 3.5 出货**；runner 的 ubuntu-24.04 装的是 **3.4**（日志逐字 `tmux 3.4-1ubuntu0.1`），
 // 而开发机是 **3.6** ⇒ **这个病在本地物理上看不见**，这就是它挂了一个月的原因。
 //
@@ -405,7 +401,7 @@ fn an_unregistered_skip_still_fails_the_gate2_suite() {
 /// ★ 那个决定的**前提**：脚本里那条「建完复核、找不到就 skip 并打实况」还在。
 ///
 /// 它一没，失败就退回**误导性**的那种（看起来像 Gate 2 判错，实际是夹具没准备好）——
-/// 那正是 F20 上半修掉的东西。
+/// 那条复核就是为它设的。
 #[test]
 fn the_selfevidencing_skip_branch_is_still_there() {
     let sh = std::fs::read_to_string(repo_root().join("tests/e2e/backend-gate2-acceptance.sh"))
@@ -415,7 +411,7 @@ fn the_selfevidencing_skip_branch_is_still_there() {
             sh.contains(needle),
             "e2e 脚本里找不到 `{needle}` —— 「建完复核 + skip 时打出 tmux 实况」那段没了。\n\
                  ★ 它一没，`meta_dollar` 的失败就退回**误导性**的那种：\n\
-                 看起来像「Gate 2 判错了」，实际是「夹具没准备好」。那是 F20 上半修掉的东西。\n\
+                 看起来像「Gate 2 判错了」，实际是「夹具没准备好」。\n\
                  ⚠ 同时上面那条地板判据也失去意义 —— 它保护的正是这条 skip 的可见性。"
         );
     }

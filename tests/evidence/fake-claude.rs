@@ -1,7 +1,7 @@
-//! RT1 · 真机测试用的 **claude 替身**（Win11 虚拟机上没有真 claude，也没有账号）。
+//! 真机测试用的 **claude 替身**（Win11 虚拟机上没有真 claude，也没有账号）。
 //! 不是 cargo target，独立交叉编译：
 //!
-//!     rustc -O --edition 2021 --target x86_64-pc-windows-gnu -o claude.exe tests/evidence/RT1-fake-claude.rs
+//!     rustc -O --edition 2021 --target x86_64-pc-windows-gnu -o claude.exe tests/evidence/fake-claude.rs
 //!
 //! 依据：虚拟机当真机测试资源；中转全量注入先在真机上量一次并发再默认开。
 //!
@@ -11,7 +11,7 @@
 //!   · `<配置目录>/projects/<cwd 的 slug>/<sid>.jsonl`：两行合成的 user / assistant 记录；
 //!   · 若进程环境里有 `ANTHROPIC_BASE_URL`（中转注入），按 `RT1_STREAMS`（缺省 3）条流
 //!     往 `<base>/v1/messages` 发 POST，逐字节比对应答体与假上游按种子算出的期望（同一个
-//!     生成器住 `RT1-relay-bench.rs`，两边各抄一份 —— 这里是**被测的消费方**那一份）。
+//!     生成器住 `relay-bench.rs`，两边各抄一份 —— 这里是**被测的消费方**那一份）。
 //!   · 然后像一个 TUI 那样挂着读 stdin：敲 `/exit` 干净退出（删 pidfile）；窗口被关 ⇒
 //!     控制台事件默认处理 ⇒ 退出码 `0xC000013A`，pidfile 留在盘上（与真 claude 被关窗时同形）。
 //!
@@ -75,7 +75,7 @@ impl Log {
     }
 }
 
-// ── 与 RT1-relay-bench.rs 逐字同一个生成器（xorshift64*，种子 → 事件字节） ──
+// ── 与 relay-bench.rs 逐字同一个生成器（xorshift64*，种子 → 事件字节） ──
 fn gen_body(seed: u64, events: usize) -> Vec<u8> {
     let mut x = seed ^ 0x2545_f491_4f6c_dd1d;
     if x == 0 {
