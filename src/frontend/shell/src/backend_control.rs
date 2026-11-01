@@ -1,6 +1,6 @@
 //! 每台机一个后端开关 —— 状态 / 起 / 停，本机与远端同一个契约（三个口各只有一条命令，差别塞进各自的实现里）。
 //!
-//! 它只认识 origin（本机是 [`crate::inbound_client::LOCAL_ORIGIN`]，远端是用户配的 label），不认识 ssh、不认识进程监护
+//! 它只认识 origin（本机是 [`cmd_wire::LOCAL`]，远端是用户配的 label），不认识 ssh、不认识进程监护
 //! （本机那一份住 `local_backend_host`；各台的常驻流归本机后端，起停经它的 `machine-wake` · `machine-stop`）。
 
 use crate::detail::Shell as _;
@@ -8,10 +8,10 @@ use cmd_wire::failed::Failed;
 use copy_core::copy_text;
 use copy_core::said::Said;
 
-use crate::inbound_client::LOCAL_ORIGIN;
+use cmd_wire::LOCAL;
 
 fn is_local(origin: &str) -> bool {
-    origin == LOCAL_ORIGIN
+    origin == LOCAL
 }
 
 fn check_origin(origin: &str) -> Result<(), Said> {
@@ -25,7 +25,7 @@ fn check_origin(origin: &str) -> Result<(), Said> {
 /// 本机（`<local>`）永远在第一行 —— 它只是不走 ssh 的那一台。
 #[tauri::command]
 pub fn backend_machines() -> Vec<String> {
-    let mut out = vec![LOCAL_ORIGIN.to_string()];
+    let mut out = vec![LOCAL.to_string()];
     out.extend(crate::machine_table::connected_names());
     out
 }

@@ -439,7 +439,7 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
     // 通道先登记、pid 后落盘：等状态里出现 pid（同一个 5s 上限），不在登记的那一刻就问死。
     let status_pid = || {
         tauri::async_runtime::block_on(crate::backend_control::backend_status(
-            crate::inbound_client::LOCAL_ORIGIN.into(),
+            cmd_wire::LOCAL.into(),
         ))
         .expect("查状态")
         .pid
@@ -489,7 +489,7 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
         "停了之后起不回来 —— 那就只有「停」没有「起」"
     );
     let pid2 = tauri::async_runtime::block_on(crate::backend_control::backend_status(
-        crate::inbound_client::LOCAL_ORIGIN.into(),
+        cmd_wire::LOCAL.into(),
     ))
     .expect("查状态")
     .pid
@@ -1010,7 +1010,7 @@ fn detached_reads_the_path_that_was_taken_not_a_guess() {
         "测试开始时 `DETACHED` 就不是空的 —— 前一条判据留了状态，本条读数不可信"
     );
     let st = tauri::async_runtime::block_on(crate::backend_control::backend_status(
-        crate::inbound_client::LOCAL_ORIGIN.into(),
+        cmd_wire::LOCAL.into(),
     ))
     .expect("查状态");
     assert_eq!(
@@ -1093,7 +1093,7 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
 ///
 /// 漂了**不会报错**：起出来的后端会把它当成「没设」而走 stdio 那条路，
 /// 于是宿主等在一个永远不会有人 bind 的口上，日志里只有一句「断开」。
-/// 形状抄 `the_local_origin_is_the_same_string_on_both_sides`。
+/// 形状：`include_str!` 读对侧那份、抠出字面量、逐字比。
 ///
 /// ⚠ 这条 `include_str!` 是一条**跨半边**（monitor→backend）的语料边，
 /// 已登记在 `cross_half_edge_registry`（它自己那条判据管着「不许长到生产段」）。

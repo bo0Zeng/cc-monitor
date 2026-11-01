@@ -9,8 +9,7 @@
 /**
  * 本机在 origin 这套命名里的名字。
  *
- * ⚠ **跨语言常量**：Rust 侧是 `inbound_client::LOCAL_ORIGIN`。两边漂了**不会报错** ——
+ * ⚠ **跨语言常量**：Rust 侧是 `cmd_wire::LOCAL`。两边漂了**不会报错** ——
  * 本机开关会去操作一个谁都没登记过的 origin，设了没反应且不报错。
- * 由 Rust 侧一条判据逐字对拍（`the_local_origin_is_the_same_string_on_both_sides`）。
  */
 export const LOCAL_ORIGIN = "<local>";
