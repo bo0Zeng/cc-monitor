@@ -1070,6 +1070,11 @@ object Commands {
         const val NAME: String = "session-window"
     }
 
+    /** `sessions-batch`。 */
+    object SessionsBatch : Command<com.ccmonitor.mobile.core.wire.gen.SessionsBatchReq, com.ccmonitor.mobile.core.wire.gen.SessionsBatchReply>("sessions-batch", { com.ccmonitor.mobile.core.wire.gen.SessionsBatchReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.SessionsBatchReply.ADAPTER }) {
+        const val NAME: String = "sessions-batch"
+    }
+
     /** `sessions-needs`。 */
     object SessionsNeeds : Command<com.ccmonitor.mobile.core.wire.gen.SessionsNeedsReq, com.ccmonitor.mobile.core.wire.gen.NeedsList>("sessions-needs", { com.ccmonitor.mobile.core.wire.gen.SessionsNeedsReq.ADAPTER }, { com.ccmonitor.mobile.core.wire.gen.NeedsList.ADAPTER }) {
         const val NAME: String = "sessions-needs"
@@ -1413,6 +1418,7 @@ object Commands {
             SessionSelf,
             SessionTerminals,
             SessionWindow,
+            SessionsBatch,
             SessionsNeeds,
             SessionsNeedsMerge,
             SessionsStop,

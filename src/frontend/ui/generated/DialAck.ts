@@ -9,7 +9,7 @@ export type DialAck = { ok: boolean,
 /**
  * `ok=false` 时的那一句（只带原因词，不带下层原话）。
  */
-error: string | null, 
+said: string | null, 
 /**
  * `ok=false` 时的复制详情（时刻 · 机器 · 命令 · 下层原话）。成功 ⇒ 不出这一格。
  */

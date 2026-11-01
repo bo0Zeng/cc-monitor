@@ -472,7 +472,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 一趟传输怎么收场的（`Frame::Transfer` 的 `end`）。
 
 - `state: "done"`，带 `bytes` number · `sha256` string? —— 传完了
-- `state: "failed"`，带 `why` string · `code` string? · `detail` string? —— 失败（那一句 ＋ 复制详情）
+- `state: "failed"` —— 失败：交出去的那一形（码 · 那一句 · 复制详情）
 - `state: "cancelled"` —— 撤了（`transfer-stop` / 本机流断了）
 
 #### `FollowEnd`
