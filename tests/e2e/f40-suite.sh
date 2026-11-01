@@ -5,7 +5,7 @@
 #   - Xvfb 显示器上跑着 `npx tauri dev`(debug 构建,DEV 探针已内建);
 #   - 本机 monitor 日志可读(fe_perf/[e2e] 行是断言数据源——无 devtools 环境的唯一出口)。
 # 断言:drain 阈值、冷开抖动密度、贴底、上翻补批账本下降、切 tab 贴底、合成 fork 会话折叠成段。
-# 尾部优先(冷开只建视口那一截)由冷起补读的单测管(skeleton-view.vitest.ts),这里不判。
+# 尾部优先(冷开只建视口那一截)由冷起补读的单测管(skeleton-view-cold-open.vitest.ts),这里不判。
 # 退出码:全过 0 · 有败 1 · 台架不成立(这一趟没走冷起补读)2 —— 2 不算 PASS 也不记 FAIL,门禁照「非 0 即不绿」。
 set -euo pipefail
 

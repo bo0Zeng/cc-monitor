@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * 门禁里「机器忙时谁让路」那两手的判据（`tests/scripts/gate.sh` 头上「机器忙时谁让路」一段）。
  *

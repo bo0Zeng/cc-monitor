@@ -15015,7 +15015,7 @@
       "zh": "到 {machine} 的转发未开起 · {why}",
       "args": ["machine", "why"]
     },
-    "beForwards.start.noAck": {
+    "beForwards.start.unconfirmed": {
       "kind": "error",
       "role": "原因格",
       "zh": "连接未确认即断开",

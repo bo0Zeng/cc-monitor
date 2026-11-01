@@ -1,4 +1,3 @@
-// @vitest-environment node
 /**
  * 〔「一个 store，一个 router」〕overlay 视图（历史 / 网格 / 收件箱 / 驾驶舱）的路由。
  * 守的要求：「overlay 视图的路由（历史 / 全景 / 网格 / 收件箱）还在 `main.ts`」⇒ 收进 router。
