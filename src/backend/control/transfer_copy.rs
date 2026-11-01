@@ -18,6 +18,7 @@ use cmd_wire::batch::{BatchOutcome, BatchReply, Conflict, Conflicts, Decide, Ite
 use cmd_wire::files as cwf;
 use cmd_wire::transfer::TransferCopyReq;
 use copy_core::copy_text;
+use copy_core::{Discard, Why};
 
 use crate::common::batch_book::{choice_of, key_of, minted, ticketed, Run};
 use crate::common::said::Said;
@@ -439,7 +440,7 @@ impl Wired {
                 home,
                 relay_route_core::STAGING_DIR_REL,
             ) {
-                let _ = face.own_dir(&at);
+                face.own_dir(&at).discard(Why::CleanupAfterFailure); // 建不成时下一步落暂存件那一下照实报错，不在这里先报
             }
         }
         let w = Wired {
@@ -600,10 +601,12 @@ impl Ends for Wired {
                 &self.staging,
                 format!("{key}.copy"),
             ) {
-                let _ = self.face.delete_file(&at);
+                self.face.delete_file(&at).discard(Why::CleanupAfterFailure); // 删不掉只是暂存区里多一份，孤儿扫会收
             }
             if r.is_err() {
-                let _ = crate::dial::sftp::remove(&self.to, &staging_part(&key)).await;
+                crate::dial::sftp::remove(&self.to, &staging_part(&key))
+                    .await
+                    .discard(Why::CleanupAfterFailure); // 同上
             }
             r
         })

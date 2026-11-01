@@ -8,6 +8,7 @@
 
 use crate::dial::links::Links;
 use cmd_wire::machine::{FleetLines, MachineRead, MachineReadReq, MachineState, Round};
+use copy_core::{Discard, Why};
 use deploy::machine::{fold, product, Entry, Fact};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -96,7 +97,10 @@ pub(crate) fn note_in(
         fold(e, fact);
         product_in(e, machine, enabled, links)
     };
-    let _ = changes().send((machine.to_string(), p.clone()));
+    // 此刻没有流连接订它 ⇒ 发不出是正常的：表在进程里，客户端重问 `machine-read` 就有
+    changes()
+        .send((machine.to_string(), p.clone()))
+        .discard(Why::NotAnError);
     p
 }
 
@@ -123,7 +127,7 @@ pub(crate) fn table_moved_in(hosts: &[(String, bool)], links: &Links) {
             .collect()
     };
     for p in products {
-        let _ = changes().send(p);
+        changes().send(p).discard(Why::NotAnError); // 没人订就发不出，同上
     }
 }
 

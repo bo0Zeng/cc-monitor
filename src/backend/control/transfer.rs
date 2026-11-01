@@ -38,7 +38,7 @@
 //! 撤 = 一面旗 ＋ 一个 `Notify`（等拨号那一段可以被当场打断）；进度 = `watch`（转发任务按变更合并，堵住时只合并不堆积）。
 
 use crate::wire::{FrameMake as _, TransferEndExt as _};
-use copy_core::{copy_text, io_reason};
+use copy_core::{copy_text, io_reason, Discard, Why};
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -343,7 +343,7 @@ fn land_commit(face: &Face, root: &Path, part: &OsStr, name: &OsStr) -> Result<(
 /// 失败（不是撤）：删掉半成品。
 fn land_discard(face: &Face, root: &Path, part: &OsStr) {
     if let Ok(at) = walk_in_root(Last::Link, root, part) {
-        let _ = face.delete_file(&at);
+        face.delete_file(&at).discard(Why::CleanupAfterFailure); // 只清空的 `.part`；清不掉只剩一个 0 字节文件，主错误已在回
     }
 }
 
@@ -595,7 +595,7 @@ pub(crate) async fn upload_to_staging(
     if core.is_err() {
         drain_sent_writes(&mut rf).await;
     }
-    let _ = rf.shutdown().await;
+    rf.shutdown().await.discard(Why::DeadLink); // 传输的结局已经定了
     drop(rf);
     match core {
         Ok(done) => {
@@ -605,7 +605,9 @@ pub(crate) async fn upload_to_staging(
         Err(e) => {
             // 撤 ⇒ 删（用户说了不要）；失败 ⇒ 留（续传的本钱，在我们自己的目录里）。
             if cancel.is_set() {
-                let _ = sftp::remove(s, &part).await;
+                sftp::remove(s, &part)
+                    .await
+                    .discard(Why::CleanupAfterFailure); // 删不掉只是暂存区里多一份，孤儿扫会收
             }
             Err(e)
         }
@@ -1041,7 +1043,7 @@ impl Desk {
             };
             tx.send_modify(|p| p.end = Some(end));
             // 等转发把终局那一帧送出去再摘票（摘早了，一条同键的新上传可能抢在撤删之前开单）。
-            let _ = forward.await;
+            forward.await.discard(Why::Reap); // 转发任务只往已结束的票上报数
             lock(&tickets).remove(&tid);
         });
         Ok(())
