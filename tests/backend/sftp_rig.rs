@@ -9,7 +9,7 @@
 //! 🔴 **判据自己看改动表（`mutated`），不信被测那一侧的自述** —— 同原台架那条纪律。
 //! 路径一律按**起始目录相对**记（客户端发绝对路径时，服务端把 `HOME/` 前缀剥掉再记）。
 //!
-//! 买不到：真 sshd 的 sftp-server 行为（那一格在 `tests/evidence/SR1b-sftp-loopback.py`）。
+//! 买不到：真 sshd 的 sftp-server 行为（那一格在 `tests/evidence/sftp-loopback.py`）。
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
