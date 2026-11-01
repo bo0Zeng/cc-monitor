@@ -102,7 +102,7 @@ pub(crate) fn refresh() {
         }
         *LATEST.lock().unwrap_or_else(|p| p.into_inner()) = hosts;
         // 机器表换了 ⇒ 会话成品账按新表重算「各台都报完」（同 `backend_machines` 那一份：本机恒第一，远端按名字排）。
-        let mut table = vec![crate::inbound_client::LOCAL_ORIGIN.to_string()];
+        let mut table = vec![cmd_wire::LOCAL.to_string()];
         table.extend(connected_names());
         crate::session_book::machines_changed(table);
         if let Some(replay) = crate::main_replay() {
