@@ -964,10 +964,7 @@ async fn ask_raw(
 ) -> Result<serde_json::Value, batch_core::Rebuff> {
     use comms_inward::chan::wire::{Body, Budget, CallError, Comms, Op};
     let plain = |failed: Failed| batch_core::Rebuff { failed, cut: false };
-    let budget = Budget {
-        until: std::time::Instant::now() + t,
-        cancel,
-    };
+    let budget = Budget::new(std::time::Instant::now() + t, cancel);
     let payload = Body(serde_json::to_vec(args).map_err(|e| {
         plain(failed_here(
             copy_text("reason.code.bug", &[]),
