@@ -11,8 +11,13 @@
 // 映射：对象 ⇒ data class（格按线上顺序，键名原样）· 字符串并集 ⇒ enum · 带同一个字面量判别格的对象并集 ⇒ sealed 一族 ·
 // `T | null` ⇒ 可空（写回照样写出 null）· `k?:` ⇒ 可缺（写回时缺）· Array ⇒ List · 键集合 ⇒ Map · 认不出的形 ⇒ Raw（原样那一段 JSON）。
 // 编解码是生成的（Moshi 的 JsonReader / JsonWriter，不经反射、不经 codegen）：写回与 Rust 逐字节同。
+//
+// 撞名：一族的各形是 `sealed interface` 里的嵌套类，形名照线上那个词（`list` ⇒ `List`）或照它装的那个类型名（`string | InlNode` ⇒ `InlNode`），
+// 不为生成器改名。嵌套名在一族体内遮住同名的顶层名 ⇒ 一族体内的类型引用撞上某个形名的，写全名：Kotlin 标准名写 `kotlin.…` /
+// `kotlin.collections.…`，生成类型与编解码那几个 val 写 `com.ccmonitor.mobile.core.wire.gen.…`；不撞的照写短名。
+// 形名撞上一族骨架自己要写的名（判别格的 `String` · `Ordered` · `Variant` … 见 [FAMILY_FRAME]）或跟一族同名 ⇒ 生成时报错，不悄悄出编不过的 Kotlin。
 
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -137,10 +142,15 @@ class Parser {
   }
 }
 
-function loadDecls() {
+export function loadDecls() {
+  return declsFrom(readdirSync(GEN).filter((f) => f.endsWith(".ts")).map((f) => readFileSync(join(GEN, f), "utf8")));
+}
+
+/** 几份 TS 声明的原文（每份一个 `export type`）⇒ 名 ⇒ 声明。 */
+export function declsFrom(texts) {
   const decls = new Map();
-  for (const f of readdirSync(GEN).filter((f) => f.endsWith(".ts"))) {
-    const text = stripComments(readFileSync(join(GEN, f), "utf8"));
+  for (const raw of texts) {
+    const text = stripComments(raw);
     const m = text.match(/export type (\w+)(?:<([^>]*)>)?\s*=\s*([\s\S]*?);\s*$/);
     if (!m) continue;
     const [, name, params, body] = m;
@@ -180,7 +190,7 @@ function phoneCommands() {
 
 // ───────────────────── Rust 里哪些格是小数 ─────────────────────
 
-function rustFloatFields() {
+export function rustFloatFields() {
   const own = new Map(); // Rust 类型名 ⇒ { ts: 导出名, floats: Set, flat: [被 flatten 进来的类型名] }
   const walk = (d) => {
     for (const e of readdirSync(d, { withFileTypes: true })) {
@@ -233,6 +243,21 @@ function rustFloatFields() {
 
 // ───────────────────────────── 出 Kotlin ─────────────────────────────
 
+/** Kotlin 标准名住哪个包（一族体内被同名的形遮住时写全名用）；别的（生成类型 · 编解码那几个 val）都住 [PKG]。 */
+const FULL = { String: "kotlin", Boolean: "kotlin", Long: "kotlin", Int: "kotlin", Double: "kotlin", List: "kotlin.collections", Map: "kotlin.collections" };
+/** 一族体内（`ctx.shadow` 是那一族各形的名）撞上形名的那个名 ⇒ 全名；不撞照写短名。 */
+const qual = (ctx, short) => (ctx.shadow?.has(short) ? `${FULL[short] ?? PKG}.${short}` : short);
+/** 一族体内骨架自己要写的名（判别格的 `String` · `Ordered` · 编解码那几个构件 …）：形名撞上它们就生成不了。 */
+const FAMILY_FRAME = new Set(["String", "Any", "Int", "Boolean", "IntArray", "Ordered", "JsonAdapter", "JsonReader", "Variant", "Ext", "Tok", "Field", "Class", "Suppress"]);
+
+/** 一族各形的名 ⇒ 体内要写全名的那一组；撞了骨架名或跟一族同名 ⇒ 报出哪一族哪一形。 */
+function familyShadow(name, vnames) {
+  for (const v of vnames) {
+    if (FAMILY_FRAME.has(v) || v === name) throw new Error(`${name}.${v}：形名撞了一族体内骨架要写的名，生成不了 —— 改生成器给这一形另起 Kotlin 名的规则`);
+  }
+  return new Set(vnames);
+}
+
 const pascal = (s) => s.replace(/(^|[_\-\s.])([a-zA-Z0-9])/g, (_, __, c) => c.toUpperCase()).replace(/[^A-Za-z0-9]/g, "");
 /** 枚举常量名：线上那个词照大写下划线（`not_yours` · `hostKey` ⇒ `NOT_YOURS` · `HOST_KEY`）。 */
 const upper = (s) => (s.replace(/([a-z0-9])([A-Z])/g, "$1_$2").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "").toUpperCase() || "EMPTY").replace(/^([0-9])/, "N$1");
@@ -250,21 +275,22 @@ class Gen {
     this.rawNames = new Set();
   }
 
-  /** 类型表达式 ⇒ { kt: Kotlin 型, ad: 编解码表达式, nullable } */
+  /** 类型表达式 ⇒ { kt: Kotlin 型, ad: 编解码表达式, nullable }。`ctx.shadow`：此刻在一族体内，那一族各形的名（撞上的写全名，见头注）。 */
   ty(t, ctx) {
+    const q = (short) => qual(ctx, short);
     switch (t.k) {
       case "prim":
-        if (t.v === "string") return { kt: "String", ad: "Str" };
-        if (t.v === "boolean") return { kt: "Boolean", ad: "Bool" };
-        if (t.v === "number" || t.v === "bigint") return ctx.float ? { kt: "Double", ad: "Dbl" } : ctx.int ? { kt: "Int", ad: "Int32" } : ctx.u64 ? { kt: "Long", ad: "U64" } : { kt: "Long", ad: "Lng" };
-        return { kt: "Raw", ad: "RawJson" };
+        if (t.v === "string") return { kt: q("String"), ad: q("Str") };
+        if (t.v === "boolean") return { kt: q("Boolean"), ad: q("Bool") };
+        if (t.v === "number" || t.v === "bigint") return ctx.float ? { kt: q("Double"), ad: q("Dbl") } : ctx.int ? { kt: q("Int"), ad: q("Int32") } : ctx.u64 ? { kt: q("Long"), ad: q("U64") } : { kt: q("Long"), ad: q("Lng") };
+        return { kt: q("Raw"), ad: q("RawJson") };
       case "array": {
         const e = this.ty(t.of, ctx);
-        return { kt: `List<${e.kt}>`, ad: `arr(${e.ad})` };
+        return { kt: `${q("List")}<${e.kt}>`, ad: `arr(${e.ad})` };
       }
       case "map": {
         const e = this.ty(t.of, ctx);
-        return { kt: `Map<String, ${e.kt}>`, ad: `dict(${e.ad})` };
+        return { kt: `${q("Map")}<${q("String")}, ${e.kt}>`, ad: `dict(${e.ad})` };
       }
       case "union": {
         const alts = t.alts.filter((a) => !(a.k === "prim" && a.v === "null"));
@@ -280,14 +306,15 @@ class Gen {
       case "ref": {
         if (ctx.params && ctx.params.includes(t.name)) return { kt: t.name, ad: `ad${t.name}` };
         const d = this.decls.get(t.name);
-        if (!d) { this.raw.push(`${ctx.owner}: 没有 ${t.name} 的声明`); return { kt: "Raw", ad: "RawJson" }; }
+        if (!d) { this.raw.push(`${ctx.owner}: 没有 ${t.name} 的声明`); return { kt: q("Raw"), ad: q("RawJson") }; }
         // 别名（`type X = Y<…>` · 数组 · 键集合 · 原始型）不另出一个类，照它指的那一个。
         if (!d.params.length && ["ref", "array", "map", "prim"].includes(d.ty.k)) return this.ty(d.ty, { ...ctx, owner: d.name });
         this.emit(d);
-        if (this.rawNames.has(d.name)) return { kt: "Raw", ad: "RawJson" };
+        if (this.rawNames.has(d.name)) return { kt: q("Raw"), ad: q("RawJson") };
         const args = t.args.map((a) => this.ty(a, ctx));
-        if (!args.length) return { kt: t.name, ad: `${t.name}.ADAPTER` };
-        return { kt: `${t.name}<${args.map((a) => a.kt).join(", ")}>`, ad: `${t.name}.adapter(${args.map((a) => a.ad).join(", ")})` };
+        const n = q(t.name);
+        if (!args.length) return { kt: n, ad: `${n}.ADAPTER` };
+        return { kt: `${n}<${args.map((a) => a.kt).join(", ")}>`, ad: `${n}.adapter(${args.map((a) => a.ad).join(", ")})` };
       }
       default:
         return { kt: "Raw", ad: "RawJson" };
@@ -357,9 +384,10 @@ class Gen {
       throw new Error(`${ctx.owner}.${ctx.field}：几格共用的一组词 ${sorted.join(" | ")} 没有名字 —— 在 cmd-wire 里给它起一个`);
     }
     const name = ctx.owner + pascal(ctx.field ?? "Item");
-    this.emitDecl(name, [], t, { ...ctx, owner: name });
-    if (this.rawNames.has(name)) return { kt: "Raw", ad: "RawJson" };
-    return { kt: name, ad: `${name}.ADAPTER` };
+    // 内联的形另出一个顶层类：它的体不在这一族里 ⇒ 不带 shadow。
+    this.emitDecl(name, [], t, { ...ctx, owner: name, shadow: undefined });
+    if (this.rawNames.has(name)) return { kt: qual(ctx, "Raw"), ad: qual(ctx, "RawJson") };
+    return { kt: qual(ctx, name), ad: `${qual(ctx, name)}.ADAPTER` };
   }
 
   emit(d) {
@@ -523,7 +551,7 @@ class Gen {
     const tagLine = tag ? `        override val ${tag[0]}: String get() = "${esc(tag[1])}"\n` : "";
     if (!specs.length) {
       return tp
-        ? `    class ${vname}${tp} : ${name}${tp} {\n${tagLine}\n        override fun equals(other: Any?): Boolean = other is ${vname}<*>\n\n        override fun hashCode(): Int = ${JSON.stringify(vname)}.hashCode()\n    }`
+        ? `    class ${vname}${tp} : ${name}${tp} {\n${tagLine}\n        override fun equals(other: Any?): Boolean = other is ${name}.${vname}<*>\n\n        override fun hashCode(): Int = ${JSON.stringify(vname)}.hashCode()\n    }`
         : tag ? `    data object ${vname} : ${name} {\n${tagLine}    }` : `    data object ${vname} : ${name}`;
     }
     const ctor = specs.map((s) => `        ${common.has(s.prop) ? "override " : ""}val ${s.prop}: ${s.kt}${s.opt ? " = null" : ""},`).join("\n");
@@ -532,10 +560,12 @@ class Gen {
 
   sealedCode(name, params, disc, objs, ctx) {
     const { tp, open } = this.familyHead(name, params);
+    const vn = (fs) => pascal(fs.find((f) => f.key === disc).ty.v) || "Empty";
+    const shadow = familyShadow(name, objs.map(vn));
     const variants = objs.map((fs) => {
       const tag = fs.find((f) => f.key === disc).ty.v;
-      const vname = pascal(tag) || "Empty";
-      const specs = this.fieldSpecs(fs.filter((f) => f.key !== disc), { ...ctx, owner: name + vname });
+      const vname = vn(fs);
+      const specs = this.fieldSpecs(fs.filter((f) => f.key !== disc), { ...ctx, owner: name + vname, shadow });
       const at = fs.findIndex((f) => f.key === disc);
       const all = [...specs.slice(0, at), { key: disc, tag }, ...specs.slice(at)];
       return { tag, vname, specs, all };
@@ -567,9 +597,10 @@ class Gen {
     const { tp, open } = this.familyHead(name, params);
     const code = [`sealed interface ${name}${tp} {`];
     const rows = [];
+    const shadow = familyShadow(name, fields.map((f) => pascal(f.key) || "Empty"));
     for (const f of fields) {
       const vname = pascal(f.key) || "Empty";
-      const x = this.ty(f.ty, { ...ctx, owner: name + vname, field: "value", float: ctx.floats?.has(f.key), int: ctx.floats?.has("i:" + f.key), u64: ctx.floats?.has("u:" + f.key) });
+      const x = this.ty(f.ty, { ...ctx, owner: name + vname, shadow, field: "value", float: ctx.floats?.has(f.key), int: ctx.floats?.has("i:" + f.key), u64: ctx.floats?.has("u:" + f.key) });
       code.push(`    data class ${vname}${tp}(\n        val value: ${x.kt},\n    ) : ${name}${tp}`);
       rows.push(`                Ext("${esc(f.key)}", ${cast(`${name}.${vname}::class.java`, name, tp)}, { ${x.ad} }, { ${name}.${vname}${tp}(it as ${x.kt}) }, { (it as ${name}.${vname}${tp}).value }),`);
     }
@@ -582,9 +613,11 @@ class Gen {
     const VN = { STRING: "Text", NUMBER: "Num", BOOLEAN: "Flag", BEGIN_OBJECT: "Obj", BEGIN_ARRAY: "Items" };
     const code = [`sealed interface ${name}${tp} {`];
     const rows = [];
+    const vn = (a, i) => (a.k === "ref" ? a.name : VN[toks[i]]);
+    const shadow = familyShadow(name, alts.map(vn));
     alts.forEach((a, i) => {
-      const vname = a.k === "ref" ? a.name : VN[toks[i]];
-      const x = this.ty(a.k === "boollit" ? { k: "prim", v: "boolean" } : a, { ...ctx, owner: name + vname, field: "value" });
+      const vname = vn(a, i);
+      const x = this.ty(a.k === "boollit" ? { k: "prim", v: "boolean" } : a, { ...ctx, owner: name + vname, shadow, field: "value" });
       code.push(`    data class ${vname}${tp}(\n        val value: ${x.kt},\n    ) : ${name}${tp}`);
       rows.push(`                Tok(JsonReader.Token.${toks[i]}, ${cast(`${name}.${vname}::class.java`, name, tp)}, { ${x.ad} }, { ${name}.${vname}${tp}(it as ${x.kt}) }, { (it as ${name}.${vname}${tp}).value }),`);
     });
@@ -965,6 +998,20 @@ fun <T> tuple(lazyAds: List<() -> JsonAdapter<*>>, build: (Array<Any?>) -> T, ge
 `;
 
 
+/** 每个导出的线上类型都出一份（回包 · 帧 · 入参 · 手机核心交的事件，读哪一个都照同一份）；值表那两份不是类型。 */
+function emitAll(decls, floats) {
+  const g = new Gen(decls, floats);
+  for (const d of [...decls.values()].sort((a, b) => a.name.localeCompare(b.name))) if (d.name !== "TypedCommands") g.emit(d);
+  return g;
+}
+
+const typesOf = (g) => [...g.out.keys()].sort().map((k) => g.out.get(k)).join("\n");
+
+/** 全部类型的 Kotlin（Generated.kt 里前言之后那一段）。 */
+export function kotlinTypes(decls, floats) {
+  return typesOf(emitAll(decls, floats));
+}
+
 function main() {
   const decls = loadDecls();
   const cmds = loadCommands();
@@ -976,9 +1023,7 @@ function main() {
     process.stdout.write(JSON.stringify(out, null, 2) + "\n");
     return;
   }
-  const g = new Gen(decls, floats);
-  // 每个导出的线上类型都出一份（回包 · 帧 · 入参 · 手机核心交的事件，读哪一个都照同一份）；值表那两份不是类型。
-  for (const d of [...decls.values()].sort((a, b) => a.name.localeCompare(b.name))) if (d.name !== "TypedCommands") g.emit(d);
+  const g = emitAll(decls, floats);
   const table = [];
   for (const c of phone) {
     const x = g.ty(cmds.get(c).reply, { owner: pascal(c) + "Reply" });
@@ -998,7 +1043,7 @@ function main() {
   }
   const byClass = [...g.out.keys()].filter((k) => /\n {4}(?:val ADAPTER|companion object \{\n {8}val ADAPTER)/.test(g.out.get(k)) || /^data object /m.test(g.out.get(k))).sort();
   const header = `// 生成的文件（tests/scripts/gen-kotlin-wire.mjs 读 ts-rs 导出的声明出的）。不要手改：改 Rust 那一份类型，再跑 \`npm run gen:types\`。\n@file:Suppress("ktlint", "detekt:all")\n\npackage ${PKG}\n\nimport com.squareup.moshi.JsonAdapter\n`;
-  const types = [...g.out.keys()].sort().map((k) => g.out.get(k)).join("\n");
+  const types = typesOf(g);
   writeFileSync(join(OUT_DIR, "Generated.kt"), `${header}\n${PREAMBLE}\n${types}`);
   writeFileSync(
     join(OUT_DIR, "Commands.kt"),
@@ -1007,4 +1052,5 @@ function main() {
   if (g.raw.length) process.stderr.write("原样（认不出的形）：\n  " + g.raw.join("\n  ") + "\n");
 }
 
-main();
+// 直接跑才生成（判据 import 它只取上面那几个函数）；经软链跑也认得出。
+if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) main();
