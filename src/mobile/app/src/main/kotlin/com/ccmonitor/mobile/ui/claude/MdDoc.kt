@@ -243,7 +243,7 @@ private class Ctx(
             is MdBlock.H -> MdPiece.Text(b.level.coerceIn(1, 6), inlines(b.k))
             is MdBlock.Code -> MdPiece.Code(b.lang, highlighted(b.x, hl.getOrNull(code++).orEmpty(), style), b.cont)
             is MdBlock.Math -> MdPiece.Math(b.tex)
-            is MdBlock.List -> MdPiece.Bullets(b.tight, b.items.mapIndexed { n, it -> item(b.start?.plus(n), it) })
+            is MdBlock.List -> MdPiece.Bullets(b.tight, b.items.mapIndexed { n, one -> item(b.start?.plus(n), one) })
             is MdBlock.Quote -> MdPiece.Quote(blocks(b.blocks))
             is MdBlock.Alert -> MdPiece.Alert(b.kind, blocks(b.blocks))
             is MdBlock.Table -> table(b)
@@ -258,6 +258,7 @@ private class Ctx(
 
     private fun table(b: MdBlock.Table): MdPiece.Table {
         val cols = maxOf(b.head.size, b.rows.maxOfOrNull { it.size } ?: 0)
+
         fun row(cells: List<List<Inl>>) = List(cols) { inlines(cells.getOrNull(it).orEmpty()) }
         return MdPiece.Table(List(cols) { b.align.getOrNull(it) ?: MdAlign.NONE }, row(b.head), b.rows.map(::row))
     }
@@ -428,12 +429,14 @@ private fun Prose(
     val argb = color.toArgb()
     val inline =
         remember(texs, sizePx, argb) {
-            texs.distinct().mapNotNull { tex ->
-                val d = texDrawable(tex, sizePx, argb) ?: return@mapNotNull null
-                val w = with(density) { d.intrinsicWidth.toSp() }
-                val h = with(density) { d.intrinsicHeight.toSp() }
-                (MATH_TAG + tex) to InlineTextContent(Placeholder(w, h, PlaceholderVerticalAlign.TextCenter)) { DrawTex(d) }
-            }.toMap()
+            texs
+                .distinct()
+                .mapNotNull { tex ->
+                    val d = texDrawable(tex, sizePx, argb) ?: return@mapNotNull null
+                    val w = with(density) { d.intrinsicWidth.toSp() }
+                    val h = with(density) { d.intrinsicHeight.toSp() }
+                    (MATH_TAG + tex) to InlineTextContent(Placeholder(w, h, PlaceholderVerticalAlign.TextCenter)) { DrawTex(d) }
+                }.toMap()
         }
     Text(text, style = style, color = color, inlineContent = inline)
 }

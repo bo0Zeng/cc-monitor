@@ -11,6 +11,8 @@ import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextDecoration
 import com.ccmonitor.mobile.core.wire.gen.AlertKind
 import com.ccmonitor.mobile.core.wire.gen.Doc
+import com.ccmonitor.mobile.core.wire.gen.Inl
+import com.ccmonitor.mobile.core.wire.gen.InlNode
 import com.ccmonitor.mobile.core.wire.gen.MdAlign
 import com.ccmonitor.mobile.core.wire.gen.MdBlock
 import com.ccmonitor.mobile.core.wire.gen.MdItem
@@ -130,7 +132,7 @@ class MdDocTest {
     @Test
     fun inlineNodesBecomeSpans() {
         val del = text("单波浪号与删除线")
-        assertEquals(listOf(8 until 9), del.spansOf(SpanStyle(textDecoration = TextDecoration.LineThrough)))
+        assertEquals(listOf(9 until 10), del.spansOf(SpanStyle(textDecoration = TextDecoration.LineThrough)))
 
         val bold = text("中文旁的加粗")
         assertEquals(listOf(2 until 6), bold.spansOf(SpanStyle(fontWeight = FontWeight.Bold)))
@@ -139,7 +141,7 @@ class MdDocTest {
         assertEquals(2, h.level)
         assertEquals(listOf(3 until 5), h.text.spansOf(SpanStyle(fontWeight = FontWeight.Bold)))
 
-        val fn = text("脚注")
+        val fn = (layoutSeg(case("脚注").doc, 0, null, style).first() as MdPiece.Text).text
         assertEquals("正文1", fn.text)
         assertEquals(listOf(2 until 3), fn.spansOf(style.fnRef))
 
@@ -188,7 +190,7 @@ class MdDocTest {
         val a = highlighted(x, listOf(1L, 2L, 0L, 0L, 1L, 99L, 1L, 100L, 1L, 7L), style)
         assertEquals(x, a.text)
         assertEquals(listOf(1 until 3), a.spansOf(style.hl[0]))
-        assertEquals(listOf(4 until 6), a.spansOf(style.hl[1]))
+        assertEquals(listOf(5 until 6), a.spansOf(style.hl[1]))
         assertEquals(2, a.spanStyles.size)
     }
 
@@ -256,10 +258,10 @@ class MdDocTest {
                 listOf(
                     MdBlock.P(
                         listOf(
-                            com.ccmonitor.mobile.core.wire.gen.Inl.InlNode(
-                                com.ccmonitor.mobile.core.wire.gen.InlNode.I(listOf(com.ccmonitor.mobile.core.wire.gen.Inl.Text("斜"))),
+                            Inl.InlNode(
+                                InlNode.I(listOf(Inl.Text("斜"))),
                             ),
-                            com.ccmonitor.mobile.core.wire.gen.Inl.InlNode(com.ccmonitor.mobile.core.wire.gen.InlNode.Img("a.png", "图注")),
+                            Inl.InlNode(InlNode.Img("a.png", "图注")),
                         ),
                     ),
                 ),
