@@ -167,7 +167,7 @@ pub fn parse_rows(text: &str) -> Vec<SessionRow> {
             if !line.trim().is_empty() && tab_underflow(line, LIST_FMT_FIELDS) {
                 tracing::warn!(
                     "CCM_TMUX_UNPARSABLE list-sessions 切出 {} 段 < {LIST_FMT_FIELDS} —— \
-                     tmux 打印通道被改写（K-R12：客户端不是 UTF-8 ⇒ TAB 变 `_`），\
+                     tmux 打印通道被改写（客户端不是 UTF-8 ⇒ TAB 变 `_`），\
                      整行不当好数据。原样回包：{line:?}",
                     line.split('\t').count()
                 );

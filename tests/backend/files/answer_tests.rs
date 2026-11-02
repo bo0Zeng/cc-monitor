@@ -46,9 +46,8 @@ const WRITE_FACE: &[&str] = &[
 ///
 /// 走 `guard_core::scan_tree!`。
 ///
-/// ⚠ 先前这里写着「两重保险」，而**第一重今天不生效**：
-/// 宏自称按 `file!()` 摘除调用者自己那一份，判据由 `#[path]` 挂载之后 `file!()`
-/// 是折返路径 ⇒ 后缀比不命中。承重的只剩第二重：本文件住 `tests/backend/files/`、
+/// ⚠ 宏自称按 `file!()` 摘除调用者自己那一份，**在这里不生效**：判据由 `#[path]` 挂载之后 `file!()`
+/// 是折返路径 ⇒ 后缀比不命中。承重的是住址：本文件住 `tests/backend/files/`、
 /// **根本不在被扫的那棵树里**。
 fn family_sources() -> Vec<(String, String)> {
     let dir = guard_core::addr::backend_src_root().join("files");

@@ -416,6 +416,9 @@ function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
     );
   });
   wrap.appendChild(add);
+  // 号列表里留着这台账号库没有的号（后端标的 `missing`）⇒ 一下清掉它们。
+  if (view.board.rows.some((r) => r.missing === true))
+    wrap.appendChild(button({ label: copyText("rot.acct.prune"), kind: "ghost", size: "compact", onClick: () => spec.acts.edit({ prune: {} }) }));
   return wrap;
 }
 
@@ -495,7 +498,7 @@ function numberBox(
 }
 
 /** 数格（百分数 · 分钟）：前面那半句（声明给的）· 数 · 可空的再带「或 ［空值说法］」；空着时数画虚线。 */
-function numberCell(cell: RotCell, unit: string, set: (next: unknown) => void): HTMLElement[] {
+function numberCell(cell: RotCell, unit: string, set: (next: unknown) => void): [HTMLElement, HTMLElement] {
   const ctl = el("span", s.rotCtl);
   const num = cell.num ?? 0;
   const isNull = cell.nullable !== undefined && cell.v === null;
@@ -515,8 +518,26 @@ function numberCell(cell: RotCell, unit: string, set: (next: unknown) => void): 
   return [label(cell), ctl];
 }
 
-/** 一格 ⇒ `[标签, 控件]`（排进格子）；`row` ＝ 号列表第几行（总体那几格 ⇒ `null`，说明写在控件旁边）。 */
+/**
+ * 一格 ⇒ `[标签, 控件]`（排进格子）；`row` ＝ 号列表第几行（总体那几格 ⇒ `null`，说明写在控件旁边）。
+ * 后端标了 `reset` 的那一格 ⇒ 控件后面跟［恢复默认］（交 `reset`，回到跟总体 · 声明默认）。
+ */
 function cellRows(spec: BoardSpec, cell: RotCell, row: number | null): HTMLElement[] {
+  const [k, ctl] = cellParts(spec, cell, row);
+  if (cell.reset !== true) return [k, ctl];
+  const reset = button({
+    label: copyText("rot.cell.reset"),
+    kind: "ghost",
+    size: "compact",
+    onClick: () => spec.acts.edit({ reset: { key: cell.key, ...(row === null ? {} : { row }) } }),
+  });
+  reset.dataset.reset = cell.key;
+  const box = el("div", s.rotCtl);
+  box.append(ctl, reset);
+  return [k, box];
+}
+
+function cellParts(spec: BoardSpec, cell: RotCell, row: number | null): [HTMLElement, HTMLElement] {
   const inRow = row === null ? {} : { row };
   const set = (v: unknown): void => spec.acts.edit({ set: { key: cell.key, v, ...inRow } });
   switch (cell.kind) {

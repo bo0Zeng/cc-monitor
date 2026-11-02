@@ -10,7 +10,7 @@
 //! |---|---|---|
 //! | D1 | 闸本体：有票时 `drained()` 不完成、最后一张票落下即完成；关闸之后 `enter()` 取不到；`close()` 回的数 == 在飞票数 | 两向，逐拍 poll（不靠睡） |
 //! | D2 | 真子进程 ＋ 真信号：SIGTERM 之后在飞的阻塞命令没做完，进程就**不退**、新来的阻塞命令回 `shutting_down`；放开它 ⇒ 退 0。另一趟：再补一次 SIGTERM ⇒ 不等了 | re-exec 测试二进制当子进程；PATH 上一个假 `tmux` 卡在一根 FIFO 上 |
-//! | D3 | 接线：取票恰好一处、在 `SpawnBlocking` 那一支、在 `spawn_blocking(` 之前；`main.rs` 生产段 `exit(` 零处（流模式的 exit 只住 `exit_after_drain`），`exit_after_drain(` 调用点 == 登记的五处 | 文本，两向 ＋ 正控 |
+//! | D3 | 接线：取票恰好一处、在 `SpawnBlocking` 那一支、在 `spawn_blocking(` 之前；`stream/entry.rs` 流模式那几段 `exit(` 零处（流模式的 exit 只住 `exit_after_drain`），`exit_after_drain(` 调用点 == 登记的五处 | 文本，两向 ＋ 正控 |
 
 use super::*;
 use crate::wire::drain::{shutdown_listener, DRAIN_DEADLINE, SHUTTING_DOWN};
@@ -84,7 +84,7 @@ const READY_LINE: &str = "HX1-HARNESS-READY";
 /// D4：交给子进程的短期限（毫秒）。
 const CHILD_DEADLINE_MS: &str = "CCM_HX1_DRAIN_DEADLINE_MS";
 
-/// 子进程那一半：与 `main.rs::run_over_stdio` 收信号那一支同形 —— stdin 进 `inbound::spawn`、应答写 stdout，
+/// 子进程那一半：与 `stream/entry.rs::run_over_stdio` 收信号那一支同形 —— stdin 进 `inbound::spawn`、应答写 stdout，
 /// 收到停机信号 ⇒ `exit_after_drain`（写者照常跑）。**跑的全是生产那几样**：取票的门 · 闸 · 收场函数 · 信号监听 ·
 /// 一条真的阻塞命令（`terminal-preview` 起 `tmux`，PATH 上那个是假的）。只有「把它们拼起来」这一层是台架（接线由 D3 钉）。
 #[test]
@@ -481,8 +481,8 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
         "取票不在 SpawnBlocking 那一支里"
     );
 
-    // `process::exit(` 的所在函数那一格挪进 [`x15_the_process_exits_only_in_main_and_exit_after_drain`]（全树，不只 `main.rs`）。
-    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
+    // `process::exit(` 的所在函数那一格挪进 [`x15_the_process_exits_only_in_main_and_exit_after_drain`]（全树，不只进程入口）。
+    let main = guard_core::production_code(include_str!("../../../src/backend/stream/entry.rs"));
     let mut drains: Vec<String> = call_sites(&main, "exit_after_drain")
         .into_iter()
         .map(|i| enclosing_fn(&main, i))
@@ -491,7 +491,7 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
     assert_eq!(
         drains,
         vec![
-            "main",            // 常驻载体收到停机信号
+            "run",             // 常驻载体收到停机信号
             "run_over_stdio",  // hello 写不出去
             "run_over_stdio",  // 收到停机信号（写者照常跑）
             "run_over_stdio",  // 对端走了（写不出去）
@@ -515,10 +515,10 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
     );
 }
 
-/// **退出口只有 `main` 与 `exit_after_drain`**：后端生产树里 `process::exit(` 的所在函数，全树逐处现打。
+/// **退出口只有进程入口 `run` 与 `exit_after_drain`**：后端生产树里 `process::exit(` 的所在函数，全树逐处现打。
 ///
-/// 期望（异源：取自 ⑮ 那句裁决与 `main.rs` 的分派形状，不从被扫的源码现推）：
-/// `main.rs::main` 三处（ccm 那一趟 · 一次性查询 · 监听口配置不成立或绑不上口，`claim_then_log` 交回的码）——
+/// 期望（异源：取自 ⑮ 那句裁决与进程入口的分派形状，不从被扫的源码现推）：
+/// `stream/entry.rs::run` 三处（ccm 那一趟 · 一次性查询 · 监听口配置不成立或绑不上口，`claim_then_log` 交回的码）——
 /// 都发生在**一条命令都还没收**之前、没有可排空的；`wire/drain.rs::exit_after_drain_within` 一处
 /// （`exit_after_drain` 的本体：生产入口只经它，期限由 d3 钉）。别处一处都不许有 —— 模块里想退就把退出码交回调用方。
 #[test]
@@ -544,9 +544,9 @@ fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
     );
     found.sort();
     let want: Vec<(String, String)> = [
-        ("main.rs", "main"),
-        ("main.rs", "main"),
-        ("main.rs", "main"),
+        ("stream/entry.rs", "run"),
+        ("stream/entry.rs", "run"),
+        ("stream/entry.rs", "run"),
         ("wire/drain.rs", "exit_after_drain_within"),
     ]
     .iter()
@@ -554,8 +554,8 @@ fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
     .collect();
     assert_eq!(
         found, want,
-        "后端生产树里 `process::exit(` 的所在函数变了 —— 退出口只许是 `main` 与 `exit_after_drain`（⑮）；\
-         模块里想退，把退出码交回 `main`"
+        "后端生产树里 `process::exit(` 的所在函数变了 —— 退出口只许是 `run` 与 `exit_after_drain`（⑮）；\
+         模块里想退，把退出码交回 `run`"
     );
     // 正控：数法认得出多出来的一处 `exit(`，也认得出它住哪个函数。
     let planted = "fn planted() { std::process::exit(0); }\n";
@@ -564,14 +564,14 @@ fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
     assert_eq!(enclosing_fn(planted, at[0]), "planted");
 }
 
-// ── A1（同住本文件：都是 `main.rs` 流模式那几行的接线）────────────────────
+// ── A1（同住本文件：都是进程入口 `stream/entry.rs` 流模式那几行的接线）────────────────────
 
 /// 〔NT2 问 3 ＋ RT1 F3〕后端 `tracing` 只在 stderr 是终端时上色。
 /// 守的要求：「写进文件 / monitor 日志的 stderr 关 ANSI 颜色」。
-/// 形状：`main.rs` 生产段里 `.with_ansi(` 恰好一处，参数恰是「stderr 是不是终端」（一次性模式另与上「不是一次性」：它写诊断文件）；`fmt()` 恰好一处（没有第二个不设它的初始化）。
+/// 形状：`stream/entry.rs` 生产段里 `.with_ansi(` 恰好一处，参数恰是「stderr 是不是终端」（一次性模式另与上「不是一次性」：它写诊断文件）；`fmt()` 恰好一处（没有第二个不设它的初始化）。
 #[test]
 fn a1_the_backend_log_is_colored_only_on_a_terminal() {
-    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/stream/entry.rs"));
     let at: Vec<usize> = main.match_indices(".with_ansi(").map(|(i, _)| i).collect();
     assert_eq!(at.len(), 1, "`.with_ansi(` 不是恰好一处：{at:?}");
     let arg = &main[at[0] + ".with_ansi(".len()..];

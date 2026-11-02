@@ -167,7 +167,7 @@ fn a_bare_call_without_any_terminal_does_not_start_an_agent() {
             "{with_end:?}"
         );
     }
-    let o = match argv::parse(&v(&[
+    let o = match argv::tests::parse(&v(&[
         "--resume",
         "x",
         "--",
@@ -324,7 +324,8 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let Parsed::Opts(o) = argv::parse(&argv::tests::mixed_to_split(&args)).expect("该解析得动")
+        let Parsed::Opts(o) =
+            argv::tests::parse(&argv::tests::mixed_to_split(&args)).expect("该解析得动")
         else {
             panic!("`--tmux=n1` 不该被解析成 Early")
         };
@@ -464,7 +465,7 @@ fn the_name_taken_message_says_which_name() {
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 造一份**直路计划**，`tmux` 那一格由调用方给 —— 走的是生产那条链
-/// （`argv::parse` → `plan::build`），不是手搓一个 `Direct`。
+/// （`argv::parse_layered` → `plan::build`），不是手搓一个 `Direct`。
 /// 便条那一格「起在哪种宿主里」：托管进程设的 `CCM_HOST` ⇒ 托管（压过 `TMUX`）；`TMUX` ⇒ tmux；都没有 · 空值 ⇒ 直路。
 #[test]
 fn the_last_hop_names_the_host_it_runs_in() {
@@ -498,7 +499,7 @@ fn direct_of(args: &[&str], tmux: Option<&str>) -> plan::Direct {
         ..Default::default()
     };
     let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-    let o = match argv::parse(&argv::tests::mixed_to_split(&a)).expect("该解析得动") {
+    let o = match argv::tests::parse(&argv::tests::mixed_to_split(&a)).expect("该解析得动") {
         Parsed::Opts(o) => o,
         other => panic!("{other:?}"),
     };
@@ -603,7 +604,7 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
 /// 源码那一半：`run` 与 [`answer_print`] 都经 [`plan_of`]（`plan::build(` 全文件恰好一处由
 /// `the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it` 钉着），预览那一处交的是预览环境、不继承账号。
 /// 行为那一半（异源）：同一组参数，`answer_print` 的 `line` == 手搭一份「家目录里的新终端」环境、
-/// 直接走 `argv::parse` → `plan::build` → `plan::render` 的产物（直路 · 容器路 · 显式不带账号三形）。
+/// 直接走 `argv::parse_layered` → `plan::build` → `plan::render` 的产物（直路 · 容器路 · 显式不带账号三形）。
 #[test]
 fn the_alias_preview_is_the_same_plan_as_ccm_print() {
     let prod = guard_core::production_code(include_str!("../../../src/backend/control/ccm/mod.rs"));
@@ -625,7 +626,7 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
         let got = answer_print(&serde_json::json!({ "args": args }))
             .unwrap_or_else(|e| panic!("{args:?} 预览被拒：{e:?}"));
         let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        let o = match argv::parse(&a).expect("该解析得动") {
+        let o = match argv::tests::parse(&a).expect("该解析得动") {
             Parsed::Opts(o) => o,
             other => panic!("{other:?}"),
         };
@@ -716,7 +717,7 @@ fn the_alias_preview_refuses_in_the_words_of_ccm() {
         .expect_err("--detach 不带 --tmux 该被拒");
     assert_eq!(e.code.as_deref(), Some("refused"));
     let said = e.said;
-    let want = match argv::parse(&["--".to_string(), "--detach".to_string()]) {
+    let want = match argv::tests::parse(&["--".to_string(), "--detach".to_string()]) {
         Err(argv::Die(m)) => m,
         other => panic!("{other:?}"),
     };
@@ -1106,7 +1107,8 @@ fn the_upstream_variable_comes_from_the_agents_own_upstream_cell() {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let Parsed::Opts(o) = argv::parse(&argv::tests::mixed_to_split(&a)).expect("该解析得动")
+        let Parsed::Opts(o) =
+            argv::tests::parse(&argv::tests::mixed_to_split(&a)).expect("该解析得动")
         else {
             panic!("不该是 Early")
         };

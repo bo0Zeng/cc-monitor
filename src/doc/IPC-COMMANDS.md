@@ -2855,7 +2855,11 @@ under?: string,
 /**
  * 分段后面那几窗：能「同第一窗」，那颗按钮的字（「同 5h」）。
  */
-same?: string, };
+same?: string, 
+/**
+ * 这一格能［恢复默认］（自己设的；分段后面那几窗另设的不算，它们照［同第一窗］回去）：两端照它出那颗按钮。
+ */
+reset?: boolean, };
 type RotChoice = { v: string, label: string, };
 type RotDaySeg = { from: number, to: number, fromText: string, toText: string, v: number, text: string, tip: string, };
 type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments";
@@ -2885,7 +2889,11 @@ type RotRow = { account: string,
 /**
  * 这一行在 `settings.accounts` 里的下标：改设置 · 移出 · 拖动一律交它（不拿显示的先后当行号）。
  */
-row: number, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, marks: Array<RotMark>, };
+row: number, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, marks: Array<RotMark>, 
+/**
+ * 这台账号库里没有这个号（号列表里留着的）：号列表那一节照它出「清掉库里没有的号」。
+ */
+missing?: boolean, };
 type RotSaw = { accounts: Array<RotSawAcct>, 
 /**
  * 本会话用速：折合输入 token / 分。

@@ -128,13 +128,13 @@ fn refusal_reasons_are_a_closed_set() {
     // ★★ 反向锚点：**喂给 `refusal_line` 的实参只许来自那个闭集。**
     //
     // ⚠⚠ 〔08-26 收工前自查逮到的〕本条第一版扫的是 **`listen.rs` 自己**，
-    //    而 `refusal_line` 的**唯一调用点在 `main.rs`** —— 本模块生产段里
+    //    而 `refusal_line` 的**唯一调用点在进程入口 `stream/entry.rs`** —— 本模块生产段里
     //    带 `refusal_line(` 的行只有那条 `pub fn` 声明（而它被 filter 掉了）
     //    ⇒ 那个循环**跑零圈**，是个**空转**的判据。
     //    它读起来完全正常，而它一个字节都没在守。⇒ 人群搬到真正的调用点。
     //    ★ 这是「守卫范围 ≠ 性质范围」那一族的第四形：**人群画在了错的文件上**。
     // 小中继（`control/resident.rs`）那一处由下面另一段钉。
-    let caller = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
+    let caller = guard_core::production_code(include_str!("../../../src/backend/stream/entry.rs"));
     let calls: Vec<&str> = caller
         .lines()
         .map(str::trim)
@@ -144,7 +144,7 @@ fn refusal_reasons_are_a_closed_set() {
     assert_eq!(
         calls.len(),
         1,
-        "`main.rs` 生产段里 `refusal_line(` 有 {} 处（应恰好 1 处）：{calls:?}\n\
+        "`stream/entry.rs` 生产段里 `refusal_line(` 有 {} 处（应恰好 1 处）：{calls:?}\n\
              0 处 = 抽取坏了或调用点搬家了，本条在空转；≥2 处 = 拒绝理由有第二个产出点。",
         calls.len()
     );
@@ -156,7 +156,7 @@ fn refusal_reasons_are_a_closed_set() {
     );
     assert!(
         caller.contains("listen::Admit::Refuse(reason)"),
-        "`main.rs` 里那个 `reason` 不再是从 `Admit::Refuse` 解出来的 —— \
+        "`stream/entry.rs` 里那个 `reason` 不再是从 `Admit::Refuse` 解出来的 —— \
              那它是从哪来的？闭集这件事就断在这里。"
     );
     // 小中继那一处：实参是 `relay_refusal` 的答（只回两个常量）。
@@ -275,43 +275,7 @@ fn every_file_this_head_note_points_at_really_exists() {
     );
 }
 
-/// ★★ **超限之后内存不涨** —— 这条性质只有把 `cap` 做成参数才测得动。
-///
-/// 拿真常量（8 KiB）来测的话，要喂进去的字节量大到只能靠量 RSS 去证，
-/// 而那种证法进不了单测（backend 侧当年正是那么发现问题的）。
-#[tokio::test]
-async fn an_over_cap_attach_line_is_dropped_whole_and_says_so() {
-    let long = format!("{}\n", "x".repeat(100));
-    let mut rd = tokio::io::BufReader::new(long.as_bytes());
-    assert_eq!(
-        read_capped_line(&mut rd, 8).await.expect("读"),
-        HandshakeLine::TooLong(100),
-        "超限的行必须**整行丢弃并报出字节数**，不许截断成一行「看起来对」的 JSON"
-    );
-}
-
-/// 三种结局各一格。⚠ `Eof` 那一格**不是错误** —— 它正是「只读 hello 就走」那一档。
-#[tokio::test]
-async fn the_three_handshake_line_outcomes_are_each_reachable() {
-    let mut eof = tokio::io::BufReader::new(&b""[..]);
-    assert_eq!(
-        read_capped_line(&mut eof, 64).await.expect("读"),
-        HandshakeLine::Eof
-    );
-
-    let mut one = tokio::io::BufReader::new(&b"{\"attach\":true}\n"[..]);
-    assert_eq!(
-        read_capped_line(&mut one, 64).await.expect("读"),
-        HandshakeLine::Line("{\"attach\":true}".into())
-    );
-
-    // 没有换行就 EOF：仍当一行交出去（`read_line` 的旧行为逐字如此）。
-    let mut half = tokio::io::BufReader::new(&b"abc"[..]);
-    assert_eq!(
-        read_capped_line(&mut half, 64).await.expect("读"),
-        HandshakeLine::Line("abc".into())
-    );
-}
+// 读 attach 那一行的有界读（超限整行丢弃并报字节数 · 读到头 · 没换行的残行）对拍住 `tests/comms/inward/line_tests.rs`。
 
 /// 两个退出码不许撞：宿主按它们分「已有人在听」与「配置写错了」两条不同的路。
 #[test]

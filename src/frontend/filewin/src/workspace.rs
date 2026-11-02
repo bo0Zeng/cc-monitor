@@ -146,6 +146,12 @@ pub const ZOOM_MAX: f32 = 2.0;
 /// 缩放的档位。
 pub const ZOOM_STOPS: [f32; 8] = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
 
+/// 视图文件的读上限：两格（缩放 · 预览开关），几十字节。超了按缺省起、日志说是哪一份（下一次改了就写一份新的盖过它）。
+const VIEW_MEMO_CAP: host_core::Cap = host_core::Cap {
+    bytes: 16 * 1024,
+    over: host_core::Over::SkipAndSay,
+};
+
 /// 视图文件（monitor 交来的那一份，`{"zoom": 1.2, "preview": true}`）：记**整窗缩放**与**预览开没开**，下次开窗照它摆。
 /// 没有那份文件 ⇒ 照样能缩放、开预览，只是不记。
 ///
@@ -162,11 +168,22 @@ pub struct ViewMemo {
 }
 
 impl ViewMemo {
-    /// 读那份文件（读不到 / 读不懂 ⇒ 按缺省起，下一次改了就写一份新的）。
+    /// 读那份文件（读不到 / 超了上限 / 读不懂 ⇒ 按缺省起，下一次改了就写一份新的）。
     pub fn open(file: Option<std::path::PathBuf>) -> Self {
         let v = file
             .as_deref()
-            .and_then(|f| std::fs::read(f).ok())
+            .and_then(|f| match host_core::read_capped_bytes(f, VIEW_MEMO_CAP) {
+                Ok(host_core::Capped::Whole(b)) => Some(b),
+                Ok(host_core::Capped::TooBig) => {
+                    tracing::warn!(
+                        cap = VIEW_MEMO_CAP.bytes,
+                        "view memo {} over its read cap, starting from defaults",
+                        f.display()
+                    );
+                    None
+                }
+                Ok(host_core::Capped::Absent) | Err(_) => None,
+            })
             .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
         let zoom = v
             .as_ref()

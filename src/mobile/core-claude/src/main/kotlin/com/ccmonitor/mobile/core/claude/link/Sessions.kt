@@ -14,6 +14,7 @@ import com.ccmonitor.mobile.core.wire.gen.HistoryLinesReq
 import com.ccmonitor.mobile.core.wire.gen.HistoryReadReq
 import com.ccmonitor.mobile.core.wire.gen.HistoryRunReq
 import com.ccmonitor.mobile.core.wire.gen.HistoryTailReq
+import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.JsonValue
 import com.ccmonitor.mobile.core.wire.gen.LOCAL
 import com.ccmonitor.mobile.core.wire.gen.Landed
@@ -24,12 +25,14 @@ import com.ccmonitor.mobile.core.wire.gen.ModeSwitched
 import com.ccmonitor.mobile.core.wire.gen.ModelSwitched
 import com.ccmonitor.mobile.core.wire.gen.OpenFacts
 import com.ccmonitor.mobile.core.wire.gen.OpenWhat
+import com.ccmonitor.mobile.core.wire.gen.ProseHlReq
 import com.ccmonitor.mobile.core.wire.gen.QueueCancelled
 import com.ccmonitor.mobile.core.wire.gen.QueueList
 import com.ccmonitor.mobile.core.wire.gen.QueuePut
 import com.ccmonitor.mobile.core.wire.gen.Rewind
 import com.ccmonitor.mobile.core.wire.gen.RewindOptions
 import com.ccmonitor.mobile.core.wire.gen.RotationPick
+import com.ccmonitor.mobile.core.wire.gen.SegHl
 import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SentResult
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
@@ -433,6 +436,16 @@ object HistoryImage {
 
     /** 回包里那张图的 base64；解不开 ⇒ `null`。 */
     fun of(data: Any?): String? = Commands.HistoryImage.reply(data)?.data
+}
+
+/** `prose-hl`：拉一段正文的代码高亮（交那一段的代码块，先序；回包的 `hl[n]` 对第 n 块）。 */
+object ProseHl {
+    const val COMMAND: String = Commands.ProseHl.NAME
+
+    fun args(codes: List<HlCode>): Map<String, Any?> = Commands.ProseHl.args(ProseHlReq(codes = codes))
+
+    /** 解不开 ⇒ `null`。 */
+    fun of(data: Any?): SegHl? = Commands.ProseHl.reply(data)
 }
 
 /** `history-lines`：按行号取 `[from, until)` 那一段（不进界面的行照占号、不出）。 */

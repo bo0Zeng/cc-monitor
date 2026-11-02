@@ -31297,6 +31297,12 @@
       "zh": "移出这份策略",
       "args": []
     },
+    "rot.acct.prune": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "移出缺失的号",
+      "args": []
+    },
     "rot.acct.refused": {
       "kind": "body",
       "role": "说明",
@@ -31744,6 +31750,12 @@
       "kind": "action",
       "role": "按钮",
       "zh": "另设",
+      "args": []
+    },
+    "rot.cell.reset": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "恢复默认",
       "args": []
     },
     "rot.cell.same": {

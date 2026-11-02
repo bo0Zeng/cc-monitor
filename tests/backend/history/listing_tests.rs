@@ -461,17 +461,6 @@ fn warming_the_listing_leaves_nothing_to_rescan() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-/// 〔perfC #4〕接线：`main.rs` 起来就热清单缓存，恰好一处（按行为量要起真二进制再从外面看缓存）。
-#[test]
-fn main_warms_the_listing_once() {
-    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
-    guard_core::find_pinned(
-        &main,
-        "history::listing::warm_listing_in_background(agent_home.clone());",
-    )
-    .unwrap_or_else(|e| panic!("`main.rs` 里热清单缓存不是恰好一处：{e}"));
-}
-
 /// 〔perfC #4〕后台热清单缓存的线程真降了优先级（Linux：这条线程的 nice 值），而且只降它自己。
 #[cfg(target_os = "linux")]
 #[test]

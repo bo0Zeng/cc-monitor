@@ -5,6 +5,7 @@ import com.ccmonitor.mobile.core.wire.gen.ArriveBy
 import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.Held
 import com.ccmonitor.mobile.core.wire.gen.Hide
+import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.LoginStartReq
 import com.ccmonitor.mobile.core.wire.gen.ProfileForm
 import com.ccmonitor.mobile.core.wire.gen.ProfileTmuxMode
@@ -92,6 +93,7 @@ class SentRequestsTest {
             Profiles.READ to listOf(emptyMap()),
             Profiles.FROM_LINE to listOf(Profiles.fromLineArgs("cct", "claude --resume", "~/w", "cc"), Profiles.fromLineArgs("cct", "claude", null, null)),
             Profiles.WRITE to listOf(Profiles.createArgs("f", FORM), Profiles.createArgs(null, FORM)),
+            ProseHl.COMMAND to listOf(ProseHl.args(listOf(HlCode(lang = "rust", x = "fn f() {}"), HlCode(lang = null, x = "a")))),
             QuotaRead.COMMAND to listOf(null),
             MachinePrefs.READ to listOf(null),
             MachinePrefs.SET to
@@ -114,6 +116,9 @@ class SentRequestsTest {
                     Rotation.settings("x", RotEdit.move(0, 2), "r"),
                     Rotation.settings("x", RotEdit.add("a"), "r"),
                     Rotation.settings("x", RotEdit.remove(1), "r"),
+                    Rotation.settings("x", RotEdit.reset("close", null), "r"),
+                    Rotation.settings("x", RotEdit.reset("delay", 2), "r"),
+                    Rotation.settings("x", RotEdit.prune(), "r"),
                 ),
             Rotation.STRATEGIES to listOf(emptyMap()),
             Rotation.ADD to listOf(Rotation.add("x", "n"), Rotation.add(null, "n")),

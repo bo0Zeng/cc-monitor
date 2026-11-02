@@ -32,7 +32,7 @@ tracing.workspace = true
 # ── 解压（`extract.rs`）──
 # 由那台后端用 Rust 库（`tar` · `flate2` · `zip`，不调外部命令）解。三条都纯 Rust、MIT / Apache-2.0：
 # `flate2` 锁里早就有（russh 那棵，`miniz_oxide` 后端）；`tar` 关掉缺省的 `xattr`（不还原扩展属性）；
-# `zip` 关掉全部缺省（aes / bzip2 / lzma / xz / zstd / zopfli 那几支会拖 C 或大依赖），只开读 deflate 那一支（`deflate-flate2` ＋ 它要的 `flate2`）。
+# `zip` 关掉全部缺省（aes / bzip2 / lzma / xz / zstd / zopfli 那几支会拖 C 或大依赖），只开读 deflate 那一支（`deflate-flate2`）。
 # 签字行住 `readonly_guard::g6_dependency_signoff`。只读包、写盘一个字节都不经它们（逐条目自己过路径解析再落）。
 flate2.workspace = true
 tar.workspace = true

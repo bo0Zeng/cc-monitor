@@ -1521,13 +1521,22 @@ fn map_entries_in(section: &str) -> std::collections::BTreeSet<String> {
     out
 }
 
-/// `src/backend/` 底下的每一块：`lib.rs` 的每个 `pub mod X`（目录 ⇒ `X/`，文件 ⇒ `X.rs`）＋ 住在这一层的 workspace 成员 crate（`X/`）。
+/// `src/backend/` 底下的每一块：`lib.rs` 生产段的每个 `mod X`（`#[path]` 挂进来的判据不算；目录 ⇒ `X/`，文件 ⇒ `X.rs`）＋ 住在这一层的 workspace 成员 crate（`X/`）。
 fn backend_blocks() -> std::collections::BTreeSet<String> {
     let root = repo_root().join("src/backend");
     let mut out = std::collections::BTreeSet::new();
-    for line in read_repo_file("src/backend/lib.rs").lines() {
-        if let Some(rest) = line.trim_start().strip_prefix("pub mod ") {
-            let name = rest.split(';').next().unwrap_or("").trim();
+    let prod = guard_core::production_code(&read_repo_file("src/backend/lib.rs"));
+    // 每行按词切：头一个词整词相等才算（`mod` · `#[path`），不按前缀认。
+    let words: Vec<Vec<&str>> = prod
+        .lines()
+        .map(|l| l.split_whitespace().collect())
+        .collect();
+    for (i, w) in words.iter().enumerate() {
+        if i > 0 && words[i - 1].first() == Some(&"#[path") {
+            continue;
+        }
+        if let ["mod", rest, ..] = w.as_slice() {
+            let name = rest.trim_end_matches(';');
             if root.join(name).is_dir() {
                 out.insert(format!("{name}/"));
             } else {
@@ -1548,7 +1557,7 @@ fn backend_blocks() -> std::collections::BTreeSet<String> {
     out
 }
 
-/// **ARCHITECTURE §2.2 的后端模块地图与 `src/backend/` 两向相等**：`lib.rs` 的每个 `pub mod` 与住在
+/// **ARCHITECTURE §2.2 的后端模块地图与 `src/backend/` 两向相等**：`lib.rs` 的每个顶层 `mod` 与住在
 /// `src/backend/` 这一层的每个 workspace 成员都有一条，地图里每一条也都真在。`src/backend/README.md` 不另抄地图，
 /// 漏在这里的块哪份文档都找不到。删的时机：模块地图改由代码生成。
 #[test]
