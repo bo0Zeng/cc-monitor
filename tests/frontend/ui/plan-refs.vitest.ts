@@ -19,7 +19,7 @@ import { renderMessage, type LineRecord, type RenderContext } from "../../../src
 const fetchMock = fetchMsgRefs as unknown as ReturnType<typeof vi.fn>;
 const emitMock = emit as unknown as ReturnType<typeof vi.fn>;
 
-/** 一张卡：里面几块回复正文（像 `buildTextBlock` 那样先照原文渲好，再记下原文）。 */
+/** 一张卡：里面几块回复正文（像 `buildProseBlock` 那样先照原文渲好，再记下原文）。 */
 function card(...texts: string[]): HTMLElement {
   const c = document.createElement("div");
   for (const t of texts) {

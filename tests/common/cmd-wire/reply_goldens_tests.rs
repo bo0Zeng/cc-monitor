@@ -88,5 +88,8 @@ fn a_reply_carrying_a_prose_tree_reads_back_as_itself() {
         .expect("表里的命令")
         .unwrap_or_else(|e| panic!("history-tail 解不开：{e}"));
     let back: serde_json::Value = serde_json::from_str(&rust).unwrap();
-    assert_eq!(back["rows"][0]["record"], reply, "助手正文那一块的树没照原样读回来");
+    assert_eq!(
+        back["rows"][0]["record"], reply,
+        "助手正文那一块的树没照原样读回来"
+    );
 }

@@ -786,6 +786,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/session-head.module.css": { stacked: false, why: "会话头（`session-head.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/views/terminals-view.module.css": { stacked: true, why: "顶层「终端」视图（`views/terminals-view.ts`）：行标题叠全局 `one-line`（单行省略只住全局那一处）" },
   "src/frontend/ui/terminal-page.module.css": { stacked: false, why: "底部抽屉终端页（`terminal-page.ts`）：只挂自己的哈希类" },
+  "src/frontend/ui/md-view.module.css": { stacked: true, why: "正文排版器（md-view.ts）：类名经小工具函数挂，量具认不出挂到哪，按「叠」算；代码块外壳挂全局 `.code-block` 那一套，里面的 code 挂本文件的哈希类" },
   "src/frontend/ui/terminal-screen.module.css": { stacked: false, why: "终端画面那块 `pre`（`terminal-screen.ts::screenPre`）：只挂自己的哈希类；版位与滚动归外面那一格（终端页的类 / 浮层的全局类，在另一个元素上）" },
   "src/frontend/ui/kit/dock.module.css": { stacked: false, why: "底部抽屉件：只挂自己的哈希类（网格那一格的 id 由主窗口挂，不是类）" },
   "src/frontend/ui/record-file-notice.module.css": { stacked: false, why: "tab 顶上「记录文件不见了 / 已从头重读」那一句：只挂自己的哈希类 `.notice`（不叠全局类）" },

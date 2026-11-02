@@ -243,7 +243,12 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
             Draw::Card,
             false,
         ),
-        ("回复空正文", reply(vec![prose(" ")], &[]), Draw::None, false),
+        (
+            "回复空正文",
+            reply(vec![prose(" ")], &[]),
+            Draw::None,
+            false,
+        ),
         (
             "思考没写进记录（空串）照画",
             reply(
