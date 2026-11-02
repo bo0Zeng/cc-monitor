@@ -151,3 +151,24 @@ fn a_call_without_a_time_is_not_noted_and_a_repeat_takes_the_later_time() {
     clock.time(&mut r);
     assert_eq!(cell(&r, "c2"), (copy_core::short_duration(60_000), None));
 }
+
+/// ★ codex 那一家走同一张表：`function_call` 在 t、`function_call_output` 隔 90 秒 ⇒ 结果那一条的 `results.<call_id>` 在，
+/// 配完 `text` 是写好的用时（经 `record_of` 端到端，时刻取信封上的 `timestamp`）。
+#[test]
+fn a_codex_call_output_ninety_seconds_later_gets_its_duration_written() {
+    use crate::agents::codex::record::record_of;
+    let call = serde_json::json!({"timestamp": "2026-10-07T20:30:00.000Z", "type": "response_item",
+        "payload": {"type": "function_call", "call_id": "c1", "name": "shell", "arguments": "{}"}});
+    let out = serde_json::json!({"timestamp": "2026-10-07T20:31:30.000Z", "type": "response_item",
+        "payload": {"type": "function_call_output", "call_id": "c1", "output": "x"}});
+    let mut clock = StepClock::default();
+    clock.note(&record_of(&call, 0).unwrap());
+    let mut r = record_of(&out, 100).unwrap();
+    clock.time(&mut r);
+    let Body::Said { results, .. } = &r.body else {
+        panic!("不是带结果的那一条")
+    };
+    let c = results.get("c1").expect("codex 的结果也进 results");
+    assert!(c.ok);
+    assert_eq!(c.text.0, copy_core::short_duration(90_000));
+}

@@ -13,8 +13,8 @@
 
 use super::parse::{normalize_event, payload_type, unwrap_envelope};
 use crate::agents::record::{Block, Body, Record};
-use crate::agents::SpeakerExt as _;
-use crate::agents::{Speaker, Translated, UserText};
+use crate::agents::{SpeakerExt as _, StepResultExt as _};
+use crate::agents::{Speaker, StepResult, Translated, UserText};
 use serde_json::Value;
 
 /// Codex 记录的**语义种类**（防御分类；未知/未来 → `Other*`，不崩）。
@@ -538,15 +538,27 @@ pub fn record_of(v: &Value, start: u64) -> Option<Record> {
                 .to_string(),
             input: tool_input(v),
         }]),
-        // output 真机恒数组 ⇒ 拍平（守丢文本坑）。
-        K::ToolResult => said(
-            UserText::of(Speaker::ToolResult),
-            vec![Block::tool_result(
-                call_id(v).unwrap_or("").to_string(),
-                text_blocks(flatten_text(payload.get("output").unwrap_or(&Value::Null))),
-                false,
-            )],
-        ),
+        // output 真机恒数组 ⇒ 拍平（守丢文本坑）。这一家的输出不标失败 ⇒ 结果块不标错、结果那一句照成功写
+        // （与别家同一处写，[`StepResultExt::written`]）；用时由通用层配（`StepClock`）。
+        K::ToolResult => {
+            let of = call_id(v).unwrap_or("").to_string();
+            let result = StepResult {
+                ok: true,
+                ..StepResult::default()
+            }
+            .written(false);
+            Body::Said {
+                who: UserText::of(Speaker::ToolResult),
+                blocks: vec![Block::tool_result(
+                    of.clone(),
+                    text_blocks(flatten_text(payload.get("output").unwrap_or(&Value::Null))),
+                    false,
+                )],
+                results: std::iter::once((of, result)).collect(),
+                cwd: None,
+                attachments: Vec::new(),
+            }
+        }
         // 认不出的顶层类型 · 认不出的 response_item 子型：每行一条 `unread`（相邻同类由出记录页那一遍并）。
         K::Other => {
             let top = v.get("type").and_then(Value::as_str);
