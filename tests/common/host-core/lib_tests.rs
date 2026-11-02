@@ -218,19 +218,58 @@ fn capped_dir(tag: &str) -> std::path::PathBuf {
     d
 }
 
+/// 判据用的一道读上限（超了怎么办这几条判据不看，只看字节数）。
+fn cap(bytes: u64) -> Cap {
+    Cap {
+        bytes,
+        over: Over::Reject,
+    }
+}
+
 #[test]
 fn a_capped_read_says_absent_whole_or_too_big_at_the_exact_boundary() {
     let d = capped_dir("edge");
     let f = d.join("s.json");
-    assert_eq!(read_capped(&f, 8).unwrap(), Capped::Absent);
+    assert_eq!(read_capped(&f, cap(8)).unwrap(), Capped::Absent);
     std::fs::write(&f, "12345678").unwrap();
-    assert_eq!(read_capped(&f, 8).unwrap(), Capped::Text("12345678".into()));
-    std::fs::write(&f, "123456789").unwrap();
-    assert_eq!(read_capped(&f, 8).unwrap(), Capped::TooBig);
     assert_eq!(
-        read_capped(&f, 9).unwrap(),
-        Capped::Text("123456789".into())
+        read_capped(&f, cap(8)).unwrap(),
+        Capped::Whole("12345678".into())
     );
+    std::fs::write(&f, "123456789").unwrap();
+    assert_eq!(read_capped(&f, cap(8)).unwrap(), Capped::TooBig);
+    assert_eq!(
+        read_capped(&f, cap(9)).unwrap(),
+        Capped::Whole("123456789".into())
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn a_cap_of_four_bytes_turns_a_five_byte_file_away() {
+    let d = capped_dir("four");
+    let f = d.join("s.json");
+    std::fs::write(&f, "12345").unwrap();
+    let four = Cap {
+        bytes: 4,
+        over: Over::Reject,
+    };
+    assert_eq!(read_capped(&f, four).unwrap(), Capped::TooBig);
+    assert_eq!(read_capped_bytes(&f, four).unwrap(), Capped::TooBig);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn a_capped_byte_read_hands_back_bytes_that_are_not_utf8() {
+    let d = capped_dir("bytes");
+    let f = d.join("s.bin");
+    assert_eq!(read_capped_bytes(&f, cap(2)).unwrap(), Capped::Absent);
+    std::fs::write(&f, [0xffu8, 0xfe]).unwrap();
+    assert_eq!(
+        read_capped_bytes(&f, cap(2)).unwrap(),
+        Capped::Whole(vec![0xff, 0xfe])
+    );
+    assert_eq!(read_capped_bytes(&f, cap(1)).unwrap(), Capped::TooBig);
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -239,7 +278,7 @@ fn a_capped_read_of_bytes_that_are_not_utf8_is_a_read_error() {
     let d = capped_dir("utf8");
     let f = d.join("s.json");
     std::fs::write(&f, [0xffu8, 0xfe]).unwrap();
-    let e = read_capped(&f, 64).unwrap_err();
+    let e = read_capped(&f, cap(64)).unwrap_err();
     assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
     let _ = std::fs::remove_dir_all(&d);
 }

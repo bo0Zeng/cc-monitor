@@ -123,15 +123,9 @@ impl StartOutcome {
 // **别把 `Hidden` 铺到 `platform/terminal.rs::launch_powershell_window` 头上** —— 它是 `NewVisible`。
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// 握手那一行（hello / attach 应答）的字节上限。
-///
-/// hello 帧本机实测 8.6 KB（10-13：命令名 · 撤不动名单 · 每条 typed 命令的形状指纹三张表，typed 命令越多越长；
-/// 8 KiB 那一版在文件管理写的那几条换成 typed 时被撑破）。64 KiB 给了 7 倍余量，
-/// 同时把「对端一直发字节不发换行」这条路堵死 —— 这条连接的对端是**同机任何进程**，
-/// 不是我们自己的子进程，不能假设它讲道理。
-/// 超限语义：**拒收 + 出声**（不静默截断成一行「看起来对」的 JSON）。
-/// **登记住址** `tests/frontend/shell/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
-pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 64 * 1024;
+/// 握手那一行（hello / attach 应答）的字节上限：与连远端常驻后端那一侧是同两行，同一个 `Cap`（`resident_client::attach`，
+/// 拒收＋回错：不静默截断成一行「看起来对」的 JSON）。这条连接的对端是**同机任何进程**，不是我们自己的子进程，不能假设它讲道理。
+use resident_client::attach::HANDSHAKE_LINE_CAP;
 
 /// backend 那侧收「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算（`relay_route_core::listen_socket_for`），
 /// 两边同一个函数。
@@ -371,11 +365,11 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
                     });
                 }
                 out.push(one[0]);
-                if out.len() > LISTEN_HANDSHAKE_LINE_CAP {
+                if out.len() as u64 > HANDSHAKE_LINE_CAP.bytes {
                     // **拒收 + 出声**，不静默截断成一行「看起来对」的 JSON。
                     return Err(Said::of(
                         "rsLocalBackendHost.handshake.tooLong",
-                        &[("cap", &LISTEN_HANDSHAKE_LINE_CAP.to_string())],
+                        &[("cap", &HANDSHAKE_LINE_CAP.bytes.to_string())],
                     )
                     .into());
                 }

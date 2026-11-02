@@ -659,13 +659,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "文件窗口通道上一帧的帧头 / 帧体（一屏目录的 JSON 在兆字节级）",
         "拒收+回错",
     ),
-    // ── 常驻监听口的握手（**两侧各一条，方向不同**）───────────
-    (
-        "src/frontend/shell/src/local_backend_host.rs",
-        "LISTEN_HANDSHAKE_LINE_CAP",
-        "宿主读常驻口那一行（hello / attach 应答）—— hello 帧本机实测 8.6 KB（随 typed 命令变多）",
-        "拒收+回错",
-    ),
     // 一台的平铺清单（`history_list.rs`，手机 · 按会话 ID 那一问）：一台一次最多回多少行；窗外的不回、头里的总数比这一窗多 ⇒ 手机列表底「更早的用搜索找」。
     (
         "src/backend/history/history_list.rs",
