@@ -12,6 +12,7 @@
 use super::Ro;
 use copy_core::copy_text;
 use copy_core::said::Said;
+use copy_core::{Discard, Why};
 use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -656,7 +657,7 @@ fn atomic_write_with(
             })
         });
     if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
+        std::fs::remove_file(&tmp).discard(Why::CleanupAfterFailure); // 主错误已在回；删不掉只剩一份 0600 的旁名
     }
     result
 }

@@ -2,6 +2,7 @@
 //! 身份校验留在调用方（`control/tmux_hook.rs`）：「这个 pid 是不是我那个后端」是域判断，不是平台能力。本层只负责把信号发出去。
 
 use copy_core::said::Said;
+use copy_core::{Discard, Why};
 
 /// **等一次停机信号**（unix：SIGTERM 或 SIGINT；别处：Ctrl-C）。从 `main.rs` 下沉（那里原有一个同形的等信号函数，已删）——
 /// 那一段带平台 cfg，而流模式的收场（`drain::exit_after_drain`）也要它（排空时再来一次 ⇒ 不等了）。
@@ -25,12 +26,12 @@ pub fn shutdown_listener() -> impl std::future::Future<Output = ()> + Send + 'st
                 }
                 (Ok(mut t), Err(e)) => {
                     tracing::error!("failed to install SIGINT handler: {e}");
-                    let _ = t.recv().await;
+                    t.recv().await; // 回的是「流还在不在」：等到了就是停机
                 }
                 (Err(e), _) => {
                     tracing::error!("failed to install SIGTERM handler: {e}");
                     // Fall back to Ctrl-C only so we still shut down on SIGINT.
-                    let _ = tokio::signal::ctrl_c().await;
+                    tokio::signal::ctrl_c().await.discard(Why::Signal); // 只要等到了这一下
                 }
             }
         }
@@ -38,7 +39,7 @@ pub fn shutdown_listener() -> impl std::future::Future<Output = ()> + Send + 'st
     #[cfg(not(unix))]
     {
         async {
-            let _ = tokio::signal::ctrl_c().await;
+            tokio::signal::ctrl_c().await.discard(Why::Signal); // 只要等到了这一下
         }
     }
 }

@@ -25,6 +25,7 @@ use super::wire::{self, ClientRow, Ctl, Frame, Holder, Size, Want, Who, WhoKind,
 use cmd_wire::session::HolderWho;
 use copy_core::copy_text;
 use copy_core::said::Said;
+use copy_core::{Discard, Why};
 use std::io::Write;
 use tokio::sync::mpsc::UnboundedReceiver;
 use vt100::{MouseProtocolEncoding, MouseProtocolMode};
@@ -1080,7 +1081,7 @@ pub(crate) async fn attach(own: &crate::platform::fs::Own, first: &str, ears: Qu
             own,
             &id,
             Box::new(move |l| {
-                let _ = qtx.send(l);
+                qtx.send(l).discard(Why::PeerGone); // 接着的那一趟已经断开 ⇒ 没人要这一句
             }),
         );
         if let Err(e) = &heard {

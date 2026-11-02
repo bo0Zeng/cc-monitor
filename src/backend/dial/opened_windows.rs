@@ -13,6 +13,7 @@ use crate::common::seen_terminal::WindowLabel;
 use crate::platform::fs::Ro;
 use crate::platform::shell::dialect::ps_literal;
 use crate::platform::Own;
+use copy_core::{Discard, Why};
 use std::path::{Path, PathBuf};
 
 /// 数据目录底下的那一层。
@@ -147,7 +148,7 @@ impl Records for OnDisk {
 
     fn forget(&self, sid: &str) {
         if let Some(f) = self.file(sid) {
-            let _ = self.0.delete_file(&f);
+            self.0.delete_file(&f).discard(Why::CleanupAfterFailure); // 删不掉下一次 ↗ 再清；它对不上进程，不会被认
         }
     }
 }
