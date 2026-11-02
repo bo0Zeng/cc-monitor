@@ -463,21 +463,23 @@ fn the_two_verdicts_hand_the_user_two_different_sentences() {
 ///
 /// # 🔴 人群是「**每一处**」临时名落点，不是「恰好一处」
 ///
-/// 走 `.partial` + `rename` 的落点不止一个（另有 [`install_local_ccm_entry`]）。
-/// 这条性质要覆盖**所有**临时名落点 ⇒ 人群现算、逐处判；
+/// 暂存件的名字在 `own_fs::OwnBin::stage` 里造（放程序的几条路都经它），本模块说释放失败时也照同一个名字拼一次。
+/// 这条性质要覆盖**所有**临时名落点 ⇒ 两份源码合起来人群现算、逐处判；
 /// **不是**写成「`std::process::id()` 恰好一处」再把 needle 撑大到只认第一处 ——
 /// 那正是「匹配单位比事实小」那一病。
 #[test]
 fn two_processes_do_not_share_one_partial_file() {
     let prod = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend.rs"
+    )) + &guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/platform/own_fs.rs"
     ));
     // 人群**现算**：每一处「`.partial` 结尾的格式串 + 后面跟着实参」。
     // ⚠ 针带逗号是刻意的：`name.ends_with(".partial")`（清扫那一处**读**它）
     //   长得像但不是构造点，带上逗号就分开了。
     assert!(
         prod.split(".partial\",").skip(1).count() >= 2,
-        "生产段里构造 `.partial` 临时名的地方少于 2 处 —— 抽取器坏了、或落点改了写法，\n\
+        "两份生产段里构造 `.partial` 临时名的地方少于 2 处（`OwnBin::stage` 一处 · 释放失败那一句一处）—— 抽取器坏了、或落点改了写法，\n\
              本条此刻**无效**（零命中会让下面那个 for 循环空转变绿）"
     );
     for args in prod.split(".partial\",").skip(1) {

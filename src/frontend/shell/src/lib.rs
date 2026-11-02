@@ -562,8 +562,9 @@ pub fn run() {
             // 这里原来还算 `tasks_dir`（喂 monitor 自己那条任务 notify）—— 监视进了后端，monitor 不再需要知道任务住哪。
 
             // monitor 自己的数据目录：~/.cc-monitor
-            let monitor_data_dir = config::resolve_monitor_data_dir().ok_or("no data dir")?;
-            tracing::info!("monitor_data_dir: {}", monitor_data_dir.display());
+            //   写它的句柄在这里造一次、往下传（`platform::own_fs`）。
+            let own = platform::own_fs::OwnState::issue().ok_or("no data dir")?;
+            tracing::info!("monitor_data_dir: {}", own.root().display());
 
             // v2.0.0：把 AppHandle 注入给 ErrorEmitterLayer（之前一直是 None，
             // setup 期间的 ERROR 只写 log；从这里开始 ERROR 才会弹前端 toast）
@@ -571,11 +572,11 @@ pub fn run() {
 
             // v1.7.1：把当前 exe 路径记到 auto-launch.json，让 cc function 能在用户启用
             // auto-launch 时主动启动 monitor（不硬编码安装路径）
-            auto_launch::update_monitor_path_on_startup(&monitor_data_dir);
+            auto_launch::update_monitor_path_on_startup(&own);
 
             // 握手表（Linux bash / zsh 接入块那一份）：监听 ps-await/*.tty → 按标题找窗口 → 写 ps-registry/。
             //   ↗ 点那一刻现读进程链（`bind.rs`），不缓存会话 ↔ 窗口。
-            let bind_registry = bind::BindRegistry::spawn(monitor_data_dir.clone());
+            let bind_registry = bind::BindRegistry::spawn(own);
 
             // 重放缓冲那几个出口（会话成品 · tap · 测试连接进度 · 终端画面）：与截图台架的无头壳（`shots_shell`）同一份接线。
             wire_replay_outlets(&replay);
@@ -700,7 +701,7 @@ pub fn run() {
             // issue #10: 独立只读窗口（多窗口 / 双屏）
             open_session_in_new_window,
             open_terminal_in_new_window,
-            // F82a(#56+#47): 设置独立窗口
+            // 设置独立窗口
             open_settings_window,
             // ↗ 拉前会话的终端窗口（本机后端答过它在这台电脑上的哪儿，界面原样交来）
             bring_terminal_to_front,
@@ -1318,9 +1319,9 @@ fn frontend_perf_log(lines: String) {
 fn cc_get_auto_launch() -> Result<auto_launch::AutoLaunchConfig, cmd_wire::failed::Failed> {
     let r: Result<auto_launch::AutoLaunchConfig, Said> =
         (move || -> Result<auto_launch::AutoLaunchConfig, Said> {
-            let dir = auto_launch::data_dir()
+            let own = auto_launch::own_state()
                 .ok_or_else(|| Said::of("rsShellCmd.autoLaunch.readNoDir", &[]))?;
-            Ok(auto_launch::get_config(&dir))
+            Ok(auto_launch::get_config(&own))
         })();
     r.map_err(|s| s.named("cc_get_auto_launch"))
 }
@@ -1329,9 +1330,9 @@ fn cc_get_auto_launch() -> Result<auto_launch::AutoLaunchConfig, cmd_wire::faile
 #[tauri::command]
 fn cc_set_auto_launch(enabled: bool) -> Result<(), cmd_wire::failed::Failed> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
-        let dir = auto_launch::data_dir()
+        let own = auto_launch::own_state()
             .ok_or_else(|| Said::of("rsShellCmd.autoLaunch.writeNoDir", &[]))?;
-        Ok(auto_launch::set_enabled(&dir, enabled)?)
+        Ok(auto_launch::set_enabled(&own, enabled)?)
     })();
     r.map_err(|s| s.named("cc_set_auto_launch"))
 }
@@ -1399,7 +1400,7 @@ async fn open_log_dir(
         let dir = state.log_dir();
         // 目录可能还不存在（log_enabled=false 时不创建）
         if !dir.exists() {
-            std::fs::create_dir_all(&dir).map_err(|e| {
+            platform::own_fs::log_dir(&dir).map_err(|e| {
                 Said::with_raw(
                     copy_text(
                         "rsShellCmd.logDir.createFailed",
