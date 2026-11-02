@@ -375,12 +375,14 @@ fn mail_said(text: &str, author: Option<&str>, recipient: Option<&str>) -> UserT
         },
         (true, _) => UserText::of(Speaker::Coordinator {
             body: Some(m.payload.trim().to_string()).filter(|b| !b.is_empty()),
+            doc: None,
         }),
         (false, kind) => UserText::of(Speaker::AgentMessage {
             from: from.map(str::to_string),
             name: None,
             handback: kind == Some("FINAL_ANSWER"),
             body: Some(m.payload.trim().to_string()).filter(|b| !b.is_empty()),
+            doc: None,
         }),
     }
 }

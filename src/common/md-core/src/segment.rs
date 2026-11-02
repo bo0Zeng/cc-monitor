@@ -46,6 +46,7 @@ fn weight_inl(k: &[Inl]) -> usize {
             Inl::N(InlNode::M { tex }) => tex.len(),
             Inl::N(InlNode::Img { src, alt }) => src.len() + alt.len(),
             Inl::N(InlNode::Br | InlNode::Fn { .. }) => 1,
+            Inl::N(InlNode::Ref { x, label, .. }) => x.len() + label.len(),
         })
         .sum()
 }

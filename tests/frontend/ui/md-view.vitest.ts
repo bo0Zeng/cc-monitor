@@ -6,8 +6,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
-import { buildBlocks, mountDoc, paint, segRange, type DocView } from "../../../src/frontend/ui/md-view";
-import { enhanceCard } from "../../../src/frontend/ui/render";
+import { buildBlocks, mountDoc, paint, refSlots, segRange, type DocView } from "../../../src/frontend/ui/md-view";
+import { enhanceCard, __mathSettledForTests } from "../../../src/frontend/ui/render";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import s from "../../../src/frontend/ui/md-view.module.css";
 import type { Doc } from "../../../src/frontend/ui/generated/Doc";
@@ -164,7 +164,7 @@ describe("md-view：金样逐例", () => {
     ]);
   });
 
-  it("公式：行内与块级各出占位，交 enhanceCard 排成 KaTeX", () => {
+  it("公式：行内与块级各出占位，交 enhanceCard 排成 KaTeX", async () => {
     const r = view("行内公式两种写法");
     expect([...r.querySelectorAll("[data-math-pending]")].map((e) => [e.getAttribute("data-math-pending"), e.textContent])).toEqual([
       ["inline", "E=mc^2"],
@@ -173,8 +173,23 @@ describe("md-view：金样逐例", () => {
     const b = view("\\[ 块公式");
     expect(b.querySelector("[data-math-pending=display]")?.textContent).toBe("\\sum_i x_i");
     enhanceCard(b);
+    await __mathSettledForTests();
     expect(b.querySelector("[data-math-pending]")).toBeNull();
     expect(b.querySelector(".katex-display")).not.toBeNull();
+  });
+
+  it("计划格引用：编号原样是字，那几格 · 标题挂在属性上交宿主（refSlots 照先后读回）", () => {
+    const doc: Doc = {
+      blocks: [{ t: "p", k: ["看 ", { t: "b", k: [{ t: "ref", x: "A1-1", ids: ["A1-1"], label: "甲的读入" }] }, "，", { t: "ref", x: "A1-2/1", ids: ["A1-2", "A1-1"], label: "" }] }],
+      segs: [],
+    };
+    const r = mountDoc(doc).root;
+    expect(r.textContent).toBe("看 A1-1，A1-2/1");
+    expect(r.querySelector("strong [data-ref-ids]")?.textContent).toBe("A1-1");
+    expect(refSlots(r).map((x) => [x.el.textContent, x.ids, x.label])).toEqual([
+      ["A1-1", ["A1-1"], "甲的读入"],
+      ["A1-2/1", ["A1-2", "A1-1"], ""],
+    ]);
   });
 
   it("钱数不是公式：没有占位", () => {

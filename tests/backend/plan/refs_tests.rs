@@ -226,6 +226,51 @@ fn slice_is_the_claimed_blocks_then_the_cwds_then_none() {
     assert_eq!(at_for(&docs, "no-such-session", None), None);
 }
 
+/// 回复正文是树：投成一段字跟人说的话同一批交 pb（代码里的编号换成占位字，pb 认不到）；认出的那几处插回树上成引用节点，
+/// 标题照 pb 的写；一处都没有的那棵 ⇒ `null`。
+#[test]
+fn reply_trees_get_ref_nodes_where_pb_found_numbers() {
+    let tree = md_core::parse("😀 先看 **A1-1**，`A1` 在代码里");
+    let plain = md_core::parse("没有编号");
+    let fake = Fake::new(|one: &str| {
+        let cps: Vec<char> = one.chars().collect();
+        let pat: Vec<char> = "A1-1".chars().collect();
+        let s = (0..cps.len())
+            .find(|&s| cps[s..].starts_with(&pat))
+            .unwrap();
+        pb_reply(json!([{"start": s, "end": s + 4, "ids": ["A1-1"]}]))
+    });
+    let out = answer(
+        &[doc()],
+        "no-such-session",
+        Some(&format!("{WS}/repos/alpha/src")),
+        &strs(&["人说的"]),
+        &[tree.clone(), plain],
+        &Memo::new(16),
+        &|_, one| fake.ask(one),
+    );
+    assert_eq!(
+        fake.asked.borrow().as_slice(),
+        [format!(
+            "人说的{SEAM}😀 先看 A1-1，\u{FFFC} 在代码里{SEAM}没有编号"
+        )],
+        "一批只问一次；树投成字，代码换成占位"
+    );
+    assert_eq!(out.refs, vec![Vec::new()]);
+    let start = "😀 先看 ".encode_utf16().count();
+    let want = md_core::with_refs(
+        &tree,
+        &[md_core::RefAt {
+            start,
+            end: start + 4,
+            ids: vec!["A1-1".into()],
+            label: "甲的读入".into(),
+        }],
+    );
+    assert_ne!(want, tree, "夹具：那一处真插得进去");
+    assert_eq!(out.docs, vec![Some(want), None]);
+}
+
 #[test]
 fn answer_without_a_slice_never_asks_pb() {
     let asked = RefCell::new(0);
@@ -234,6 +279,7 @@ fn answer_without_a_slice_never_asks_pb() {
         "no-such-session",
         Some("/elsewhere"),
         &strs(&["A1", "A1-1"]),
+        &[md_core::parse("A1")],
         &Memo::new(4),
         &|_, _| {
             *asked.borrow_mut() += 1;
@@ -243,6 +289,7 @@ fn answer_without_a_slice_never_asks_pb() {
     assert_eq!(*asked.borrow(), 0);
     assert_eq!((out.workspace, out.slice), (None, None));
     assert_eq!(out.refs, vec![Vec::new(), Vec::new()], "一段对一段");
+    assert_eq!(out.docs, vec![None], "一棵对一棵");
 }
 
 /// 真起一次（假 pb 插件）：`dump --refs <片> <工作区>`、正文从标准输入进去，回的那一份原样交回。

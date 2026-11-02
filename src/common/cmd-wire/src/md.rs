@@ -186,6 +186,13 @@ pub enum InlNode {
     Fn {
         n: u32,
     },
+    /// 计划格引用：正文里写着的那串编号（`x`，原样）指着 `ids` 那几格；`label` 是那几格的标题照先后接好的一串（后端照 pb 写好；
+    /// 空 ⇒ 由界面照 `ids` 写，计划页里那一种）。只由后端认出引用之后插进树（`md_core::with_refs` · `md_core::parse_marked`），解析本身不出它。
+    Ref {
+        x: String,
+        ids: Vec<String>,
+        label: String,
+    },
 }
 
 /// 代码高亮的类：高亮三元组里第三格是这里的序号（`as u32`）。

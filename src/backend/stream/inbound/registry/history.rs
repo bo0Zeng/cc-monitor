@@ -29,6 +29,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::asynchronous::<crate::history::session_self::SessionSelfCmd>(
         "我是哪条会话 · 在哪几组 · 组员有谁",
     ),
+    // 一段 Markdown 原文解析成块树（纯函数、不碰盘；长正文解析几毫秒 ⇒ 阻塞档，不占反应堆）。
+    crate::wire::typed::blocking::<crate::faces::md_doc_face::MdDocCmd>(
+        "一段 Markdown 原文解析成块树，两端照树排版（`as`：`prose` 照原文、`refs` 那几段解成计划格引用 · `tool_result` 先剥 Read / Grep 的行号前缀）",
+    ),
     // ── 只读查询面上线 —— 层 1 ＋ ──────────
     //
     // 🔴 **这八条此前全是一次性子命令**：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），
@@ -38,7 +42,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 🔴 **处理器住顶层 `read_face`，与 `files/` 同一个理由**：入方向不许出现 `observe::`
     //   （`inbound_never_reaches_into_the_observe_layer`），而查询本体住 `observe/`。
     //   `read_face` 只做换壳 —— 查询本体住 `observe/`，`out` 是内存。
-    //   每条有一个派生的 CLI 面（`--history-read` …），已进 `lib.rs::SUBCOMMANDS`（不进就静默进流模式）。
+    //   每条有一个派生的 CLI 面（`--history-read` …），子命令闸门（`stream::cli::is_subcommand`）从本表派生认它。
     //
     // ⚠ 全在 `Run::Blocking`：它们都做文件 I/O（`history-search` 扫全库）。代价同 `files-*`：
     //   `cancel` 命中时回 `not_cancellable`（不撒谎）。

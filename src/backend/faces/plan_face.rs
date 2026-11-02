@@ -738,6 +738,7 @@ fn refs(req: &PlanRefsReq) -> wire::PlanMsgRefs {
         &req.sid,
         cwd.as_deref(),
         &req.texts,
+        &req.docs,
         crate::plan::refs::memo(),
         &|at, one| {
             let entry = entry().ok()?;
@@ -746,7 +747,7 @@ fn refs(req: &PlanRefsReq) -> wire::PlanMsgRefs {
     )
 }
 
-/// `plan-refs` 的入参：哪个会话的几段正文（照先后，回包一段对一段）。
+/// `plan-refs` 的入参：哪个会话的几段人说的话（原文）与几块回复正文（后端交过的树），照先后，回包一段对一段。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -754,6 +755,7 @@ fn refs(req: &PlanRefsReq) -> wire::PlanMsgRefs {
 pub(crate) struct PlanRefsReq {
     pub(crate) sid: String,
     pub(crate) texts: Vec<String>,
+    pub(crate) docs: Vec<cmd_wire::md::Doc>,
 }
 
 /// `plan-refs`：会话消息里提到的格（可能起一次 pb ⇒ 阻塞档；pb 不在 · 读不成都回空，不报错）。

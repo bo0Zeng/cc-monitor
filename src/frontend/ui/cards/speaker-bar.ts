@@ -1,6 +1,6 @@
 /**
  * 消息流里不是人说的那几类（事件条）：agent 交回 / 来话 · 另一个会话的来话 · 主会话后来的话 ·
- * 后台任务通知 · 中断标记。来源只看后端给的 `userText.speaker`，正文是后端补的 `speaker.body`；界面不看正文。
+ * 后台任务通知 · 中断标记。来源只看后端给的 `userText.speaker`，正文是后端解析好的树 `speaker.doc`（照 `md-view` 排）；界面不看原文。
  *
  * - 交回默认展开（是要读的）；途中来话默认收起；另一个会话的来话左条琥珀。
  * - 「打开窗口 ›」：点了把那个 agent 交给宿主（`ccm:reveal-run` 事件，带运行 id）。
@@ -10,14 +10,25 @@
 import type { Speaker } from "../generated/Speaker";
 import type { NoticeRun } from "../generated/NoticeRun";
 import { copyText } from "../copy-table";
-import { renderMarkdown } from "../render";
+import type { Doc } from "../generated/Doc";
+import { mountWhole } from "../render";
+import type { HlPull } from "../md-view";
 
 type Of<K extends Speaker["kind"]> = Extract<Speaker, { kind: K }>;
 
 /** 点「打开窗口 ›」时发的事件名（宿主接住：把那个 agent 摆到眼前）。 */
 export const REVEAL_RUN_EVENT = "ccm:reveal-run";
 
-function bar(kind: string, title: string, tag: string, time: string, body: string | undefined, open: boolean, link?: { text: string; run: string }): HTMLElement {
+function bar(
+  kind: string,
+  title: string,
+  tag: string,
+  time: string,
+  body: Doc | undefined,
+  open: boolean,
+  link: { text: string; run: string } | undefined,
+  pull: HlPull | undefined,
+): HTMLElement {
   const d = document.createElement("details");
   d.className = "card card-speaker";
   d.dataset.kind = kind;
@@ -50,34 +61,35 @@ function bar(kind: string, title: string, tag: string, time: string, body: strin
   if (body) {
     const b = document.createElement("div");
     b.className = "speaker-body block-body-md";
-    b.innerHTML = renderMarkdown(body);
+    b.append(mountWhole(body, false, pull));
     d.appendChild(b);
   }
   return d;
 }
 
-/** agent 交回 / 途中来话。`label` ＝ 运行表给的标签（查不到 ⇒ 来话自带的名字 ⇒「agent」）。 */
-export function buildAgentBar(sp: Of<"agentMessage">, time: string, label: string | undefined): HTMLElement {
+/** agent 交回 / 途中来话。`label` ＝ 运行表给的标签（查不到 ⇒ 来话自带的名字 ⇒「agent」）。`pull` ＝ 正文里代码块的高亮问谁。 */
+export function buildAgentBar(sp: Of<"agentMessage">, time: string, label: string | undefined, pull?: HlPull): HTMLElement {
   const name = label || sp.name || copyText("speaker.agent.unnamed");
   return bar(
     "agent",
     copyText("speaker.agent.title", { label: name }),
     sp.handback ? copyText("speaker.tag.handback") : copyText("speaker.tag.message"),
     time,
-    sp.body,
+    sp.doc,
     sp.handback,
     sp.from ? { text: copyText("speaker.link.openRun"), run: sp.from } : undefined,
+    pull,
   );
 }
 
 /** 另一个会话发来的话（左条琥珀）。 */
-export function buildPeerBar(sp: Of<"peerSession">, time: string): HTMLElement {
-  return bar("peer", copyText("speaker.peer.title", { from: sp.from ?? "?" }), copyText("speaker.tag.message"), time, sp.body, true);
+export function buildPeerBar(sp: Of<"peerSession">, time: string, pull?: HlPull): HTMLElement {
+  return bar("peer", copyText("speaker.peer.title", { from: sp.from ?? "?" }), copyText("speaker.tag.message"), time, sp.doc, true, undefined, pull);
 }
 
 /** （agent 那一侧）主会话后来发给它的话：默认收起。 */
-export function buildCoordinatorBar(sp: Of<"coordinator">, time: string): HTMLElement {
-  return bar("coordinator", copyText("speaker.coordinator.title"), copyText("speaker.tag.message"), time, sp.body, false);
+export function buildCoordinatorBar(sp: Of<"coordinator">, time: string, pull?: HlPull): HTMLElement {
+  return bar("coordinator", copyText("speaker.coordinator.title"), copyText("speaker.tag.message"), time, sp.doc, false, undefined, pull);
 }
 
 export function buildInjectedLine(body: string, time: string): HTMLDetailsElement {

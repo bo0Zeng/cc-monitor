@@ -163,6 +163,16 @@ class MdDocTest {
     }
 
     @Test
+    fun planRefsKeepTheNumberAndTrailTheLabelFaintly() {
+        val ref = Inl.InlNode(InlNode.Ref(x = "A1-1", ids = listOf("A1-1"), label = "甲的读入"))
+        val bare = Inl.InlNode(InlNode.Ref(x = "A2", ids = listOf("A2"), label = ""))
+        val doc = Doc(blocks = listOf(MdBlock.P(k = listOf(Inl.Text("看 "), ref, Inl.Text("，"), bare))), segs = emptyList())
+        val t = (layoutSeg(doc, 0, null, style).single() as MdPiece.Text).text
+        assertEquals("看 A1-1 甲的读入，A2", t.text)
+        assertEquals(listOf(6 until 11), t.spansOf(style.faint))
+    }
+
+    @Test
     fun inlineMathIsAnInlineSlotNamingItsTex() {
         val t = text("行内公式两种写法")
         assertEquals(listOf("E=mc^2", "a+b"), mathTexOf(t))
