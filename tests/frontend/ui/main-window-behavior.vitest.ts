@@ -10,6 +10,7 @@ import { applyNotices } from "../../../src/frontend/ui/cards/speaker-bar";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../test-support/repo-root";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
@@ -686,7 +687,7 @@ describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并�
     expect([el.open, el.querySelector(".speaker-title")?.textContent, el.querySelector(".speaker-tag")?.textContent]).toEqual([true, "agent「审面板交互」", copyText("speaker.tag.handback")]);
     expect(el.querySelector(".speaker-body")?.textContent).toContain("甲乙丙已查完");
     expect(el.querySelector(".speaker-body strong")?.textContent, "照树排：加粗是树上的节点").toBe("已查完");
-    await vi.waitFor(() => expect(el.querySelector(".speaker-body .katex"), "公式当场排").not.toBeNull());
+    await vi.waitFor(() => expect(el.querySelector(".speaker-body .katex"), "公式当场排").not.toBeNull(), UNTIL_CEILING);
     document.body.appendChild(el);
     const got: unknown[] = [];
     document.addEventListener("ccm:reveal-run", (e) => got.push((e as CustomEvent).detail), { once: true });

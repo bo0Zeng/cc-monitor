@@ -180,15 +180,15 @@ describe("md-view：金样逐例", () => {
 
   it("计划格引用：编号原样是字，那几格 · 标题挂在属性上交宿主（refSlots 照先后读回）", () => {
     const doc: Doc = {
-      blocks: [{ t: "p", k: ["看 ", { t: "b", k: [{ t: "ref", x: "A1-1", ids: ["A1-1"], label: "甲的读入" }] }, "，", { t: "ref", x: "A1-2/1", ids: ["A1-2", "A1-1"], label: "" }] }],
+      blocks: [{ t: "p", k: ["看 ", { t: "b", k: [{ t: "ref", x: "a1-1", ids: ["a1-1"], label: "甲的读入" }] }, "，", { t: "ref", x: "a1-2/1", ids: ["a1-2", "a1-1"], label: "" }] }],
       segs: [],
     };
     const r = mountDoc(doc).root;
-    expect(r.textContent).toBe("看 A1-1，A1-2/1");
-    expect(r.querySelector("strong [data-ref-ids]")?.textContent).toBe("A1-1");
+    expect(r.textContent).toBe("看 a1-1，a1-2/1");
+    expect(r.querySelector("strong [data-ref-ids]")?.textContent).toBe("a1-1");
     expect(refSlots(r).map((x) => [x.el.textContent, x.ids, x.label])).toEqual([
-      ["A1-1", ["A1-1"], "甲的读入"],
-      ["A1-2/1", ["A1-2", "A1-1"], ""],
+      ["a1-1", ["a1-1"], "甲的读入"],
+      ["a1-2/1", ["a1-2", "a1-1"], ""],
     ]);
   });
 
