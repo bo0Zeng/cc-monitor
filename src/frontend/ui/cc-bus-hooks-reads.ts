@@ -31,7 +31,7 @@ export async function fetchHooksReport(origin: Machine): Promise<HooksReport> {
 export function describeState(st: HookState): { text: string; tone: "ok" | "bad" | "unknown" } {
   switch (st.kind) {
     case "not-installed":
-      return { text: copyText("ccBusHooks.state.missing"), tone: "bad" };
+      return { text: copyText("reason.spawn.notInstalled"), tone: "bad" };
     case "installed-via-path":
       return { text: copyText("ccBusHooks.state.onPath"), tone: "ok" };
     case "installed-at-path":

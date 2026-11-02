@@ -254,7 +254,7 @@ function statusText(status: string): string {
     case "in_progress":
       return copyText("tasksPanel.status.inProgress");
     case "completed":
-      return copyText("tasksPanel.status.done");
+      return copyText("runs.state.done");
     case "deleted":
       return copyText("tasksPanel.status.failed");
     default:

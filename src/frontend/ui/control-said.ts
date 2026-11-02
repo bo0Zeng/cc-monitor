@@ -57,7 +57,7 @@ export async function settleTyped<T>(origin: Machine, op: string, sent: Promise<
 /** 结果未知 ⇒［刷新］：让那台对齐一次，列表照它补齐，看得出那一下做成了没有。 */
 function refreshAction(origin: Machine): ToastAction {
   return {
-    label: copyText("control.channel.refresh"),
+    label: copyText("accountChip.menu.refresh"),
     run: () => void resync(origin).catch((e: unknown) => failToast(copyText("resync.retry.failed"), e)),
   };
 }

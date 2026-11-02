@@ -27,11 +27,11 @@ export class CcBusView {
     const back = document.createElement("button");
     back.type = "button";
     back.className = "cc-bus-view-back";
-    back.textContent = copyText("ccBusView.build.back");
+    back.textContent = copyText("mobKit.act.back");
     back.addEventListener("click", () => this.close());
     const title = document.createElement("span");
     title.className = "cc-bus-view-title";
-    title.textContent = copyText("ccBusView.build.title");
+    title.textContent = copyText("main.cmd.openCcBus");
     bar.append(back, title);
     view.appendChild(bar);
 

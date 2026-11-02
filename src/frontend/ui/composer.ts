@@ -103,7 +103,7 @@ export class Composer {
   readonly el: HTMLElement;
   private readonly box: HTMLTextAreaElement;
   private readonly sendBtn: HTMLButtonElement;
-  private readonly sendLabel = copyText("composer.input.send");
+  private readonly sendLabel = copyText("mobChat.input.send");
   /** ■（一轮在跑、框里没字没附件时顶替 ➤）。 */
   private readonly stopBtn: HTMLButtonElement;
   private readonly stopLabel = copyText("composer.input.stop");

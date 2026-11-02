@@ -72,7 +72,7 @@ export function openNewPlan(host: NewPlanHost, at: { origin: Machine; dir: strin
   const body = document.createElement("div");
   body.className = s.pnForm;
   const machineSel = select({
-    label: copyText("plan.new.machine"),
+    label: copyText("newSession.label.machine"),
     options: host.machines().map((m) => ({ value: m, label: machineName(m) })),
     value: origin,
     onChange: (v) => {
@@ -94,9 +94,9 @@ export function openNewPlan(host: NewPlanHost, at: { origin: Machine; dir: strin
   });
   const pair = document.createElement("div");
   pair.className = s.pnPair;
-  pair.append(row(copyText("plan.new.machine"), machineSel.el), row(copyText("plan.new.workspace"), dirSel.el, note(copyText("plan.new.workspaceHint"))));
+  pair.append(row(copyText("newSession.label.machine"), machineSel.el), row(copyText("plan.new.workspace"), dirSel.el, note(copyText("plan.new.workspaceHint"))));
 
-  const path = field({ label: copyText("plan.new.path"), help: copyText("plan.new.pathHint") });
+  const path = field({ label: copyText("rsFilewinProps.label.path"), help: copyText("plan.new.pathHint") });
   const where = note();
   path.root.appendChild(where);
   path.input.addEventListener("input", () => {
@@ -141,7 +141,7 @@ export function openNewPlan(host: NewPlanHost, at: { origin: Machine; dir: strin
     const bad = g?.pb.said ?? g?.failed ?? null;
     warn.replaceChildren(...(bad ? [banner("error", bad)] : []));
     line.textContent = g?.line ?? "";
-    handle.setAction(ex ? copyText("plan.new.switch") : copyText("plan.new.create"));
+    handle.setAction(ex ? copyText("plan.new.switch") : copyText("mobTerms.new.detached"));
     handle.refresh();
   };
 
@@ -155,7 +155,7 @@ export function openNewPlan(host: NewPlanHost, at: { origin: Machine; dir: strin
 
   const handle = formDialog({
     title: copyText("plan.new.title"),
-    action: copyText("plan.new.create"),
+    action: copyText("mobTerms.new.detached"),
     body,
     first: () => path.input,
     blocked: () => {

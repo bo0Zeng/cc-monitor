@@ -481,7 +481,7 @@ export class SessionViewer {
       if (this.loadGeneration !== gen) return;
       this.setLoading(false);
       // 读不出 ⇒ 头下面一条错误条 ＋［重试］；状态行不报。
-      const retry = button({ label: copyText("sessionViewer.load.retry"), size: "compact", onClick: () => void this.load(opts) });
+      const retry = button({ label: copyText("front.act.retry"), size: "compact", onClick: () => void this.load(opts) });
       this.showBanner(banner("error", copyText("sessionViewer.load.failed", { why: String(e) }), [retry], detailOf(e)));
     }
   }
@@ -726,12 +726,12 @@ export class SessionViewer {
   /** 工具行那颗按钮跟着清单走：`你说过的话 · {n}`；0 条 / 要不到 ⇒ 灰着（原因挂在悬停上，同 `UserInputPanel` 的口径）。 */
   private syncSaid(): void {
     const n = this.said.panel.children.length;
-    if (this.sideHead) this.sideHead.textContent = n > 0 ? copyText("sessionViewer.tools.said", { n }) : copyText("sessionViewer.tools.saidNone");
+    if (this.sideHead) this.sideHead.textContent = n > 0 ? copyText("sessionViewer.tools.said", { n }) : copyText("sessionViewer.tools.saidLabel");
     // 宽档写全（`你说过的话 · 12`）；中档、窄档只剩数字（图标在前面，乙4-⑧）。
     const full = document.createElement("span");
     full.className = sv.svSaidFull;
     full.dataset.part = "full";
-    full.textContent = n > 0 ? copyText("sessionViewer.tools.said", { n }) : copyText("sessionViewer.tools.saidNone");
+    full.textContent = n > 0 ? copyText("sessionViewer.tools.said", { n }) : copyText("sessionViewer.tools.saidLabel");
     const short = document.createElement("span");
     short.className = sv.svSaidShort;
     short.textContent = String(n);

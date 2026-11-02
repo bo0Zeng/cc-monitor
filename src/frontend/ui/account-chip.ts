@@ -82,7 +82,7 @@ export class AccountChip {
     btn.className = `status-account ${s.acctChip}`;
     this.prefixEl = document.createElement("span");
     this.prefixEl.className = s.acctChipPrefix;
-    this.prefixEl.textContent = copyText("acct.chip.default");
+    this.prefixEl.textContent = copyText("resumeSelect.option.defaultBare");
     btn.appendChild(this.prefixEl);
     const iconSpan = document.createElement("span");
     iconSpan.className = "status-account-icon";
@@ -175,7 +175,7 @@ export class AccountChip {
     }
     this.element.dataset.shade = u?.tone ?? "plain";
     this.element.dataset.stale = String(m.stale);
-    this.element.setAttribute("aria-label", copyText("acct.chip.aria", { name: m.name }));
+    this.element.setAttribute("aria-label", copyText("tabBar.hover.account", { name: m.name }));
   }
 
   /** 问本机、刷新 chip（初始 / 推来变了 / 手动）。 */
@@ -275,7 +275,7 @@ export class AccountChip {
         },
       );
     }
-    openMenu({ el: anchor, align: "end" }, items, { label: copyText("accountChip.menu.label") });
+    openMenu({ el: anchor, align: "end" }, items, { label: copyText("newSession.label.account") });
   }
 
   /**

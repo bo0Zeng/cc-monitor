@@ -58,7 +58,7 @@ export function sayNoTerminal(err: NoTerminalWindow): void {
       : [copyText("terminalOpen.noTerminal.title"), copyText("terminalOpen.noTerminal.detail")];
   toast(title, detail, {
     level: "error",
-    action: [{ label: copyText("terminalOpen.noTerminal.settings"), run: () => void openSettingsWindow(null, TERMINAL_SETTING) }, copyCommand(err.command)],
+    action: [{ label: copyText("mobDrawer.settings.aria"), run: () => void openSettingsWindow(null, TERMINAL_SETTING) }, copyCommand(err.command)],
   });
 }
 

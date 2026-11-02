@@ -26,17 +26,17 @@ export interface HeadEditHost {
 
 /** 每一颗在清单里的名字 · 图标 · 右侧灰字（只在哪种会话才有）。 */
 export const HEAD_BUTTON_FACE: Readonly<Record<HeadButtonId, { icon: IconName; name: () => string; note?: () => string }>> = {
-  cwd: { icon: "folder", name: () => copyText("tabMenu.open.cwd") },
-  front: { icon: "front", name: () => copyText("tabMenu.open.front"), note: () => copyText("sessionHead.edit.onlyWindows") },
+  cwd: { icon: "folder", name: () => copyText("tabBarView.tab.cwdHint") },
+  front: { icon: "front", name: () => copyText("terminal.head.front"), note: () => copyText("sessionHead.edit.onlyWindows") },
   terminal: { icon: "terminal", name: () => copyText("sessionHead.act.terminal") },
-  popOut: { icon: "popOut", name: () => copyText("sessionHead.act.popOut") },
+  popOut: { icon: "popOut", name: () => copyText("history.menu.openWindow") },
   find: { icon: "search", name: () => copyText("sessionHead.act.find") },
-  account: { icon: "account", name: () => copyText("sessionHead.act.account") },
+  account: { icon: "account", name: () => copyText("newSession.label.account") },
   display: { icon: "list", name: () => copyText("sessionHead.act.display"), note: () => copyText("sessionHead.edit.displayNote") },
   pin: { icon: "pin", name: () => copyText("tabMenu.pin.pin") },
   group: { icon: "list", name: () => copyText("tabMenu.collection.add") },
-  resume: { icon: "history", name: () => copyText("tabMenu.item.resume"), note: () => copyText("sessionState.headEdit.onlyEnded") },
-  close: { icon: "close", name: () => copyText("tabMenu.item.close") },
+  resume: { icon: "history", name: () => copyText("history.row.resume"), note: () => copyText("sessionState.headEdit.onlyEnded") },
+  close: { icon: "close", name: () => copyText("launch.slot.close") },
 };
 
 export class HeadEditor {
@@ -65,7 +65,7 @@ export class HeadEditor {
     const note = document.createElement("span");
     note.className = s.shEditHint;
     note.textContent = copyText("sessionHead.edit.overflow");
-    foot.append(note, button({ label: copyText("sessionHead.edit.reset"), size: "compact", onClick: () => this.host.reset() }));
+    foot.append(note, button({ label: copyText("rot.cell.reset"), size: "compact", onClick: () => this.host.reset() }));
     this.el.append(title, hint, this.list, foot);
     this.update();
   }
@@ -148,10 +148,10 @@ export class HeadEditor {
     box.tabIndex = -1;
     box.checked = true;
     box.disabled = true;
-    box.setAttribute("aria-label", copyText("tabBarView.tab.moreHint"));
+    box.setAttribute("aria-label", copyText("history.row.more"));
     const name = document.createElement("span");
     name.className = s.shEditName;
-    name.textContent = copyText("tabBarView.tab.moreHint");
+    name.textContent = copyText("history.row.more");
     const n = document.createElement("span");
     n.className = s.shEditNote;
     n.textContent = copyText("sessionHead.edit.fixedMore");

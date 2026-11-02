@@ -59,7 +59,7 @@ function mainButton(c: Chore, host: ChoreRowHost): HTMLButtonElement | null {
     c.copy === null ? null : button({ label, size: "compact", kind: primary ? "primary" : "secondary", onClick: () => host.onCopied(c.copy ?? "", [c.id]) });
   switch (c.action) {
     case "copyCommand":
-      return copy(copyText("dataPage.chore.copyCommand"), true);
+      return copy(copyText("terminalOpen.noTerminal.copy"), true);
     case "copySnippet":
       return c.state === "blocked" ? null : copy(copyText("dataPage.chore.copySnippet"), c.kind === "must");
     case "locate":
@@ -69,7 +69,7 @@ function mainButton(c: Chore, host: ChoreRowHost): HTMLButtonElement | null {
     case "how":
       return c.howUrl ? button({ label: copyText("dataPage.install.how"), size: "compact", onClick: () => host.onGo(c) }) : null;
     case "installFirst":
-      return button({ label: copyText("dataPage.chore.installFirst"), size: "compact", onClick: () => host.onGo(c) });
+      return button({ label: copyText("beChore.hooks.saidBlocked"), size: "compact", onClick: () => host.onGo(c) });
   }
 }
 
@@ -94,7 +94,7 @@ export function choreRow(c: Chore, host: ChoreRowHost): HTMLElement {
   if (c.state === "declined") top.appendChild(button({ label: copyText("dataPage.chore.undecline"), size: "compact", onClick: () => host.onDecline(c, false) }));
   const hasDetail = c.why !== "" || c.steps.length > 0 || (c.diff?.rows.length ?? 0) > 0;
   if (hasDetail && c.state !== "declined") {
-    const caret = button({ label: host.open ? copyText("dataPage.chore.collapse") : copyText("dataPage.chore.expand"), kind: "icon", size: "compact", onClick: () => host.onToggle(!host.open) });
+    const caret = button({ label: host.open ? copyText("kit.dock.close") : copyText("askBlock.fold.expand"), kind: "icon", size: "compact", onClick: () => host.onToggle(!host.open) });
     caret.prepend(foldCaret());
     caret.setAttribute("aria-expanded", String(host.open));
     top.appendChild(caret);
@@ -137,7 +137,7 @@ function detail(c: Chore, host: ChoreRowHost): HTMLElement {
   if (c.file && host.onOpenFile) {
     const file = c.file;
     const open = host.onOpenFile;
-    acts.appendChild(button({ label: copyText("dataPage.chore.openFile"), size: "compact", kind: "ghost", onClick: () => open(file) }));
+    acts.appendChild(button({ label: copyText("machineAliases.rc.open"), size: "compact", kind: "ghost", onClick: () => open(file) }));
   }
   if (c.kind === "optional" && c.state === "todo") acts.appendChild(button({ label: copyText("dataPage.chore.decline"), size: "compact", kind: "ghost", onClick: () => host.onDecline(c, true) }));
   if (acts.childElementCount) box.appendChild(acts);

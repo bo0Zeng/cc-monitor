@@ -315,7 +315,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     } else {
       const tab = el("table", "prof-mtab");
       const hr = el("tr", "");
-      hr.append(el("th", "", copyText("profilesPage.merge.colItem")), el("th", "", copyText("profilesPage.merge.colValue")), el("th", "", copyText("profilesPage.merge.colFrom")));
+      hr.append(el("th", "", copyText("profilesPage.merge.colItem")), el("th", "", copyText("profilesPage.merge.colValue")), el("th", "", copyText("beCcm.print.from")));
       tab.appendChild(hr);
       for (const r of resolved.rows) {
         const tr = el("tr", r.overriddenBy ? "over" : "");
@@ -346,7 +346,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     if (p.kind === "function") {
       const fn = el("div", "prof-fn");
       fn.dataset.role = "function-note";
-      fn.append(el("div", "prof-fn-title", copyText("profilesPage.function.title", { name: p.name })), el("div", "cfg-hint", [p.functionWhy, p.functionLine].filter(Boolean).join(copyText("profilesPage.list.sep"))));
+      fn.append(el("div", "prof-fn-title", copyText("profilesPage.function.title", { name: p.name })), el("div", "cfg-hint", [p.functionWhy, p.functionLine].filter(Boolean).join(copyText("kit.text.sep"))));
       box.appendChild(fn);
     }
     return box;
@@ -385,8 +385,8 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     const ts = el("span", p.usable ? "prof-ts" : "prof-ts prof-ts-bad", p.usable ? p.said : (p.problem?.message ?? ""));
     const ta = el("span", "prof-ta");
     ta.append(
-      link(copyText("profilesPage.row.edit"), () => void openForm(p.name)),
-      link(copyText("profilesPage.row.delete"), () => void startRemove(p.name), true),
+      link(copyText("history.rename.action"), () => void openForm(p.name)),
+      link(copyText("cfgPage.mcp.remove"), () => void startRemove(p.name), true),
     );
     r.append(tn, ts, ta);
     r.addEventListener("click", () => select(p.name));
@@ -434,7 +434,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       const card = el("div", "prof-card prof-card-bad");
       card.dataset.role = "file-problem";
       const fp = book.fileProblem;
-      const said = fp.line !== null ? copyText("profilesPage.file.at", { line: String(fp.line), why: fp.message }) : fp.message;
+      const said = fp.line !== null ? copyText("beProfile.at.line", { line: String(fp.line), why: fp.message }) : fp.message;
       const err = el("div", "prof-err", said);
       if (fp.detail !== null) sayWithDetail(err, said, fp.detail);
       card.append(el("div", "prof-card-title", copyText("profilesPage.file.broken")), err);
@@ -508,7 +508,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     const tab = el("table", "prof-mtab");
     tab.dataset.role = "impact";
     const hr = el("tr", "");
-    hr.append(el("th", "", copyText("profilesPage.impact.colName")), el("th", "", copyText("profilesPage.impact.colBefore")), el("th", "", copyText("profilesPage.impact.colAfter")));
+    hr.append(el("th", "", copyText("newSession.label.alias")), el("th", "", copyText("profilesPage.impact.colBefore")), el("th", "", copyText("profilesPage.impact.colAfter")));
     tab.appendChild(hr);
     for (const a of rows) {
       if (a.problem) {
@@ -521,7 +521,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       }
       for (const c of a.changes) {
         const tr = el("tr", "");
-        tr.append(el("td", "k", a.name), el("td", "v", c.before || copyText("profilesPage.impact.none")), el("td", "v", c.after || copyText("profilesPage.impact.none")));
+        tr.append(el("td", "k", a.name), el("td", "v", c.before || copyText("hostKey.compare.none")), el("td", "v", c.after || copyText("hostKey.compare.none")));
         tab.appendChild(tr);
       }
     }
@@ -533,7 +533,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     const n = el("div", "cfg-note cfg-note-warn");
     n.dataset.role = "impact-note";
     n.append(
-      el("span", "", copyText("profilesPage.impact.line", { name, n: String(i.names.length), names: i.names.join(copyText("profilesPage.list.sep")) })),
+      el("span", "", copyText("profilesPage.impact.line", { name, n: String(i.names.length), names: i.names.join(copyText("kit.text.sep")) })),
       link((i.open ? copyText("profilesPage.impact.hide") : copyText("profilesPage.impact.show")), () => {
         i.open = !i.open;
         renderNotes();
@@ -551,7 +551,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     card.dataset.anchor = "clash";
     const names = [...new Set(clashes.map((c) => c.name))];
     const paths = [...new Map(clashes.map((c) => [c.path, c.shown])).values()];
-    const lines = clashes.map((c) => String(c.line)).join(copyText("profilesPage.list.sep"));
+    const lines = clashes.map((c) => String(c.line)).join(copyText("kit.text.sep"));
     const wins = new Set(clashes.map((c) => c.wins));
     const now =
       wins.size > 1
@@ -562,7 +562,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
             ? copyText("machineAliases.clash.nowList")
             : copyText("machineAliases.clash.nowUnclear");
     card.appendChild(
-      el("div", "prof-card-title", copyText("profilesPage.clash.title", { names: names.join(copyText("profilesPage.list.sep")), path: paths.length === 1 ? paths[0] : copyText("machineAliases.clash.manyFiles"), lines, now })),
+      el("div", "prof-card-title", copyText("profilesPage.clash.title", { names: names.join(copyText("kit.text.sep")), path: paths.length === 1 ? paths[0] : copyText("machineAliases.clash.manyFiles"), lines, now })),
     );
     const opt = (title: string, hint: string, rec: boolean, tail?: HTMLElement): HTMLElement => {
       const o = el("div", rec ? "prof-opt rec" : "prof-opt");
@@ -579,9 +579,9 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     });
     const opts3 = el("div", "prof-opts");
     opts3.append(
-      opt(copyText("profilesPage.clash.useList"), copyText("profilesPage.clash.useListHint", { names: names.join(copyText("profilesPage.list.sep")) }), true, copyLines),
+      opt(copyText("profilesPage.clash.useList"), copyText("profilesPage.clash.useListHint", { names: names.join(copyText("kit.text.sep")) }), true, copyLines),
       opt(copyText("profilesPage.clash.keepBoth"), copyText("profilesPage.clash.keepBothHint"), false),
-      opt(copyText("profilesPage.clash.rename"), copyText("profilesPage.clash.renameHint", { name: names[0] }), false, link(copyText("profilesPage.row.edit"), () => void openForm(names[0]))),
+      opt(copyText("profilesPage.clash.rename"), copyText("profilesPage.clash.renameHint", { name: names[0] }), false, link(copyText("history.rename.action"), () => void openForm(names[0]))),
     );
     card.appendChild(opts3);
     return card;
@@ -623,7 +623,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     const parent = find(r.name)?.from ?? null;
     const box = el("div", "prof-remove");
     box.dataset.role = "remove";
-    box.appendChild(el("div", "cfg-note", copyText("profilesPage.remove.ask", { name: r.name, n: String(r.kids.length), kids: r.kids.join(copyText("profilesPage.list.sep")) })));
+    box.appendChild(el("div", "cfg-note", copyText("profilesPage.remove.ask", { name: r.name, n: String(r.kids.length), kids: r.kids.join(copyText("kit.text.sep")) })));
     const choice = (pick: "reparent" | "cascade" | "cancel", title: string, hint: string): HTMLElement => {
       const o = el("div", pick !== "cancel" && r.pick === pick ? "prof-opt rec picked" : "prof-opt");
       o.tabIndex = 0;
@@ -636,9 +636,9 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       });
       return o;
     };
-    const lost = (find(r.name)?.own ?? []).map((o) => slotName(o.slot)).join(copyText("profilesPage.list.sep"));
+    const lost = (find(r.name)?.own ?? []).map((o) => slotName(o.slot)).join(copyText("kit.text.sep"));
     const reparentTitle = parent ? copyText("profilesPage.remove.reparent", { parent }) : copyText("profilesPage.remove.reparentRoot");
-    const reparentHint = copyText("profilesPage.remove.reparentHint", { name: r.name, items: lost || copyText("profilesPage.impact.none") });
+    const reparentHint = copyText("profilesPage.remove.reparentHint", { name: r.name, items: lost || copyText("hostKey.compare.none") });
     const showImpact = link((r.open ? copyText("profilesPage.impact.hide") : copyText("profilesPage.impact.show")), () => {
       r.open = !r.open;
       renderNotes();
@@ -648,8 +648,8 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     const opts3 = el("div", "prof-opts");
     opts3.append(
       rp,
-      choice("cascade", copyText("profilesPage.remove.cascade"), copyText("profilesPage.remove.cascadeHint", { kids: r.kids.join(copyText("profilesPage.list.sep")), n: String(r.kids.length + 1) })),
-      choice("cancel", copyText("profilesPage.remove.cancel"), copyText("profilesPage.remove.cancelHint")),
+      choice("cascade", copyText("profilesPage.remove.cascade"), copyText("profilesPage.remove.cascadeHint", { kids: r.kids.join(copyText("kit.text.sep")), n: String(r.kids.length + 1) })),
+      choice("cancel", copyText("kit.dialog.cancel"), copyText("profilesPage.remove.cancelHint")),
     );
     box.appendChild(opts3);
     if (r.open && r.impact) box.appendChild(impactTable(r.impact));
@@ -664,7 +664,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       kind: "primary",
       onClick: quiet(() => void send([{ op: "remove", name: r.name, children: r.pick }]).then((said) => said === null && cancelRemove())),
     });
-    acts.append(go, button({ label: copyText("profilesPage.remove.cancel"), onClick: quiet(() => cancelRemove()) }));
+    acts.append(go, button({ label: copyText("kit.dialog.cancel"), onClick: quiet(() => cancelRemove()) }));
     box.appendChild(acts);
     box.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape") cancelRemove();
@@ -792,7 +792,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     const rows = (formResolved?.rows ?? []).filter((r) => r.slot === s && r.from !== me && (r.overriddenBy === null || r.overriddenBy === me));
     if (!rows.length) return copyText("profilesPage.form.inheritNone");
     const from = rows[rows.length - 1].from;
-    return copyText("profilesPage.form.inherit", { value: rows.map((r) => r.said).join(copyText("profilesPage.list.sep")), from });
+    return copyText("profilesPage.form.inherit", { value: rows.map((r) => r.said).join(copyText("kit.text.sep")), from });
   };
 
   const text = (value: string, placeholder: string, onChange: (v: string) => void, role?: string, key = role): HTMLInputElement => {
@@ -818,7 +818,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
         b.setAttribute("aria-pressed", String(on));
         return b;
       };
-      seg.appendChild(chip(copyText("profilesPage.form.inheritChip"), f.account === null, () => ({ ...f, account: null })));
+      seg.appendChild(chip(copyText("beCcm.from.inherit"), f.account === null, () => ({ ...f, account: null })));
       const named = f.account?.kind === "account" ? f.account.name : null;
       const names = named && !accounts.includes(named) ? [...accounts, named] : accounts;
       for (const a of names) seg.appendChild(chip(a, named === a, () => ({ ...f, account: { kind: "account", name: a } })));
@@ -831,7 +831,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       const row = el("div", "prof-inhrow");
       row.append(
         el("span", "prof-inh", inherited(s)),
-        link(s === "cwdIf" ? copyText("profilesPage.form.addCase") : copyText("profilesPage.form.change"), () => changed(startSlot(f, s, accounts))),
+        link(s === "cwdIf" ? copyText("profilesPage.form.addCase") : copyText("history.rename.action"), () => changed(startSlot(f, s, accounts))),
       );
       cell.appendChild(row);
       return cell;
@@ -857,7 +857,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       sel.addEventListener("change", () => changed({ ...f, tmux: { ...t, mode: sel.value as typeof t.mode } }));
       const row = el("div", "prof-inhrow");
       row.append(sel);
-      if (t.mode !== "auto") row.append(text(t.name, copyText("profilesPage.form.tmuxName"), (v) => changed({ ...f, tmux: { ...t, name: v } })));
+      if (t.mode !== "auto") row.append(text(t.name, copyText("newSession.label.tmuxName"), (v) => changed({ ...f, tmux: { ...t, name: v } })));
       row.append(back);
       const said = el("div", "cfg-hint", naming(t.mode));
       said.dataset.role = "tmux-naming";
@@ -876,11 +876,11 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
         const row = el("div", "prof-inhrow");
         const put = (patch: Partial<typeof c>): ProfileForm => ({ ...f, cwdIf: cases.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
         row.append(
-          el("span", "", copyText("profilesPage.form.caseIn")),
+          el("span", "", copyText("plan.fileState.ok")),
           text(c.at, copyText("profilesPage.form.caseAt"), (v) => changed(put({ at: v })), undefined, `cwdIf.${i}.at`),
           el("span", "", copyText("profilesPage.form.caseArrow")),
           text(c.to, copyText("profilesPage.form.caseTo"), (v) => changed(put({ to: v })), undefined, `cwdIf.${i}.to`),
-          link(copyText("profilesPage.form.caseDrop"), () => changed(cases.length > 1 ? { ...f, cwdIf: cases.filter((_, j) => j !== i) } : clearSlot(f, s))),
+          link(copyText("acct.val.full"), () => changed(cases.length > 1 ? { ...f, cwdIf: cases.filter((_, j) => j !== i) } : clearSlot(f, s))),
         );
         cell.appendChild(row);
       });
@@ -917,14 +917,14 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     const f = st.form;
     const box = el("div", "cfg-form prof-form");
     box.dataset.role = "profile-form";
-    box.appendChild(el("div", "cfg-form-title", st.was ? copyText("profilesPage.form.titleEdit", { name: st.was }) : copyText("profilesPage.form.titleNew")));
+    box.appendChild(el("div", "cfg-form-title", st.was ? copyText("profilesPage.form.titleEdit", { name: st.was }) : copyText("profilesPage.list.add")));
     if (st.top || st.stale) {
       const top = el("div", "prof-form-top");
       top.dataset.role = "form-top";
       top.appendChild(el("span", "", st.stale ? copyText("profilesPage.form.stale") : (st.top ?? "")));
       if (st.stale)
         top.appendChild(
-          link(copyText("profilesPage.form.reread"), () => {
+          link(copyText("accountChip.menu.refresh"), () => {
             st.stale = false;
             void reread().then(() => {
               paintForm();
@@ -941,7 +941,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       grid.append(el("div", "cfg-fl", label), c);
     };
     const nameIn = text(f.name, copyText("profilesPage.form.nameHint"), (v) => changed({ ...f, name: v }), "name");
-    field(copyText("profilesPage.form.name"), nameIn, el("div", "cfg-hint", copyText("profilesPage.form.nameHelp")));
+    field(copyText("acctNew.name.label"), nameIn, el("div", "cfg-hint", copyText("profilesPage.form.nameHelp")));
     // 「基于」下拉：名字 ＋ 小字摘要（后端给的那一句）；自己那一条灰着说为什么。
     const fromSel = kitSelect({
       label: copyText("profilesPage.form.from"),
@@ -966,7 +966,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     for (const s of MAIN_SLOTS) field(slotName(s), slotEditor(s, f, accounts));
     const more = el("details", "prof-more");
     if (MORE_SLOTS.some((s) => own(f, s))) more.open = true;
-    more.appendChild(el("summary", "", copyText("profilesPage.form.more")));
+    more.appendChild(el("summary", "", copyText("history.row.more")));
     const moreGrid = el("div", "cfg-fg prof-fg");
     for (const s of MORE_SLOTS) moreGrid.append(el("div", "cfg-fl", slotName(s)), slotEditor(s, f, accounts));
     more.appendChild(moreGrid);
@@ -978,7 +978,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     box.append(...equalsBlock(name || copyText("profilesPage.form.unnamed"), formResolved, "form-equals"));
     if (formResolved?.chain.length) box.appendChild(el("div", "cfg-hint", copyText("profilesPage.form.chain", { name, chain: formResolved.chain.join(copyText("beProfile.chain.arrow")) })));
     const acts = el("div", "cfg-acts");
-    const save = button({ label: copyText("profilesPage.form.save"), kind: "primary", onClick: quiet(() => void onSave()) });
+    const save = button({ label: copyText("rsFilewinShell.editor.save"), kind: "primary", onClick: quiet(() => void onSave()) });
     save.dataset.role = "save";
     save.dataset.key = "save";
     const kids = st.was ? kidsOf(st.was) : [];
@@ -990,7 +990,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
         : st.was
           ? copyText("profilesPage.form.saveHintEdit", { name: st.was })
           : copyText("profilesPage.form.saveHintNew", { name: name || copyText("profilesPage.form.unnamed") });
-    acts.append(save, button({ label: copyText("profilesPage.form.cancel"), onClick: quiet(() => void leaveForm()) }), el("span", "cfg-hint", hint));
+    acts.append(save, button({ label: copyText("kit.dialog.cancel"), onClick: quiet(() => void leaveForm()) }), el("span", "cfg-hint", hint));
     box.appendChild(acts);
     box.addEventListener("keydown", (ev) => {
       if (ev.isComposing) return;

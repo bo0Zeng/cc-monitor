@@ -33,5 +33,5 @@ export async function startSet(origin: Machine, name: string): Promise<void> {
   }
   // 标题是组名（数据原样），正文是那台写好的那一句；没成的逐条原因进明细（「消息」里展开看）。
   if (out.failed === 0) toast(name, out.said, { level: "info" });
-  else toast(name, out.said, { more: [out.detail], action: { label: copyText("setMenu.launched.retry"), run: () => void startSet(origin, name) } });
+  else toast(name, out.said, { more: [out.detail], action: { label: copyText("front.act.retry"), run: () => void startSet(origin, name) } });
 }

@@ -442,7 +442,7 @@ export class PlanView {
     toast(copyText("plan.review.acked", { what }), "", {
       level: "success",
       action: {
-        label: copyText("plan.review.undo"),
+        label: copyText("kit.toast.undo"),
         run: () =>
           void ackNeed(cur.origin, cur.workspace, slice.name, need.key, false).then(
             () => this.read(cur.origin, cur.workspace),
@@ -543,7 +543,7 @@ export class PlanView {
       if (slice?.docsOnly) parts.push(this.adoptButton(slice));
       parts.push(this.wholeButton());
     }
-    parts.push(button({ label: copyText("plan.page.back"), kind: "ghost", onClick: () => this.close() }));
+    parts.push(button({ label: copyText("mobKit.act.back"), kind: "ghost", onClick: () => this.close() }));
     this.headEl.replaceChildren(...parts);
   }
 
@@ -727,7 +727,7 @@ export class PlanView {
     parts.push(sep());
     const top = topBlock(slice);
     if (top) {
-      parts.push(document.createTextNode(copyText("plan.sub.top")));
+      parts.push(document.createTextNode(copyText("plan.head.top")));
       if (top.owner) parts.push(this.whoChip(top.owner));
       if (top.phase) parts.push(phaseBadge(top.phase));
       const at = top.at ? cellIndex(slice).get(top.at) : null;
@@ -784,10 +784,10 @@ export class PlanView {
     box.className = s.pvChips;
     const total = slice.cells.length;
     const items: { key: PlanFilter; label: string; n: number | null; tone?: string }[] = [
-      { key: "all", label: copyText("plan.filter.all"), n: total },
+      { key: "all", label: copyText("extPage.filter.all"), n: total },
       { key: "open", label: copyText("plan.filter.open"), n: slice.openCells },
     ];
-    items.push({ key: "needs", label: copyText("plan.filter.needs"), n: slice.needCount, tone: "needs" });
+    items.push({ key: "needs", label: copyText("tabBar.needs.label"), n: slice.needCount, tone: "needs" });
     for (const it of items) {
       const b = document.createElement("button");
       b.type = "button";
@@ -816,8 +816,8 @@ export class PlanView {
     const cur = this.current;
     const m = cur ? this.per.get(cur.origin) : undefined;
     if (cur && m?.state === "failed" && m.offline && m.prev) {
-      const re = button({ label: copyText("plan.strip.reconnect"), size: "compact", onClick: () => this.reconnect(cur.origin) });
-      out.push(banner("warn", copyText("plan.strip.offline", { machine: cur.origin, seen: this.currentDoc()?.seen?.said ?? copyText("plan.page.none") }), [re]));
+      const re = button({ label: copyText("history.list.reconnect"), size: "compact", onClick: () => this.reconnect(cur.origin) });
+      out.push(banner("warn", copyText("plan.strip.offline", { machine: cur.origin, seen: this.currentDoc()?.seen?.said ?? copyText("acct.val.none") }), [re]));
     }
     const slice = this.currentSlice();
     // 读不成 ＋ 过期那一句：后端写好（整份读不成在先，这一片读不成在后）。
@@ -894,7 +894,7 @@ export class PlanView {
   }
 
   private async addWorkspace(): Promise<void> {
-    const dir = await askText({ title: copyText("plan.addWs.title"), action: copyText("plan.addWs.ok"), label: copyText("plan.addWs.label") });
+    const dir = await askText({ title: copyText("plan.addWs.title"), action: copyText("mobPlus.sheet.title"), label: copyText("gridMonitor.fact.dir") });
     const d = dir?.trim();
     if (!d) return;
     const list = (this.prefs.dirs[""] ??= []);
@@ -1046,7 +1046,7 @@ export class PlanView {
     if (rules.length > 0) {
       const rs = document.createElement("span");
       rs.dataset.legend = "rings";
-      rs.appendChild(document.createTextNode(copyText("plan.outline.rings")));
+      rs.appendChild(document.createTextNode(copyText("plan.cell.rings")));
       box.appendChild(rs);
       for (const g of rules) {
         const it = document.createElement("span");
@@ -1088,9 +1088,9 @@ export class PlanView {
     const blocks = g ? blocksOfGroup(all, g.id) : all;
     const unbuilt = g ? [] : slice.unbuiltBlocks;
     if (g || blocks.length + unbuilt.length > 0) {
-      const sec = section(copyText("plan.overview.blocks"), String(blocks.length + unbuilt.length));
+      const sec = section(copyText("plan.blocks.block"), String(blocks.length + unbuilt.length));
       const tbl = table([copyText("plan.blocks.block"), copyText("plan.blocks.owner"), copyText("plan.blocks.groups"), copyText("plan.blocks.phase"), copyText("plan.blocks.at"), copyText("plan.blocks.inside"), ""], [5, 6]);
-      const none = (): HTMLElement => text(copyText("plan.page.none"));
+      const none = (): HTMLElement => text(copyText("acct.val.none"));
       for (const b of blocks) {
         const root = byId.get(b.cells[0] ?? "");
         const at = b.at ? byId.get(b.at) : null;
@@ -1099,8 +1099,8 @@ export class PlanView {
           b.owner ? this.whoChip(b.owner) : none(),
           groupsCell(b),
           b.phase ? phaseBadge(b.phase) : none(),
-          text(at ? labelOf(slice, at.id) : copyText("plan.page.none")),
-          text(b.said.inside ?? copyText("plan.page.none")),
+          text(at ? labelOf(slice, at.id) : copyText("acct.val.none")),
+          text(b.said.inside ?? copyText("acct.val.none")),
           stop(takeoverCell(b, () => this.takeover(b))),
         ]);
         if (root) clickRow(tr, () => this.select(root.id));
@@ -1117,7 +1117,7 @@ export class PlanView {
 
     // 顶层进度
     const sec2 = section(copyText("plan.overview.progress"));
-    const tbl2 = table([copyText("plan.progress.cell"), copyText("plan.progress.status"), copyText("plan.progress.block")], []);
+    const tbl2 = table([copyText("plan.progress.cell"), copyText("backend.column.status"), copyText("plan.blocks.block")], []);
     const roots = blockRoots(slice);
     for (const id of slice.top) {
       const c = byId.get(id);

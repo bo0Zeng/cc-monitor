@@ -54,7 +54,7 @@ export class MainDrawer {
       pages: [
         { key: "tasks", icon: "tasks", label: tasks.label, body: tasks.pageElement },
         { key: "agents", icon: "agent", label: agents.label, body: agents.pageElement },
-        { key: "terminal", icon: "terminal", label: copyText("terminal.page.title"), body: terminal.el },
+        { key: "terminal", icon: "terminal", label: copyText("mobDrawer.item.terminal"), body: terminal.el },
       ],
       current: this.saved.page,
       height: this.saved.height,

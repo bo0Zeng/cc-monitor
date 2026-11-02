@@ -76,13 +76,13 @@ export function setPage(refresh: () => void): SetPage {
   nameInput.type = "text";
   nameInput.spellcheck = false;
   nameInput.dataset.role = "set-name";
-  nameInput.setAttribute("aria-label", copyText("newSessionSet.label.name"));
+  nameInput.setAttribute("aria-label", copyText("plan.blocks.groups"));
   const switchBtn = button({ label: copyText("newSessionSet.set.switch"), kind: "ghost", size: "compact", icon: "caretDown", iconAfter: true });
   switchBtn.dataset.role = "set-switch";
   const nameBox = el("div", s.nsBox);
   nameBox.append(nameInput, switchBtn);
   // 打开的是存好的那一组才有：直接删 ＋ toast［撤销］（撤得回不确认）。
-  const deleteBtn = button({ label: copyText("newSessionSet.set.delete"), kind: "icon", size: "compact", icon: "close" });
+  const deleteBtn = button({ label: copyText("beFiles.batch.verbDelete"), kind: "icon", size: "compact", icon: "close" });
   deleteBtn.dataset.role = "set-delete";
   const nameCell = el("div", s.nsSetName);
   nameCell.append(nameBox, deleteBtn);
@@ -101,13 +101,13 @@ export function setPage(refresh: () => void): SetPage {
     return r;
   };
   root.append(
-    labeled(copyText("newSessionSet.label.name"), nameCell),
+    labeled(copyText("plan.blocks.groups"), nameCell),
     labeled(copyText("newSessionSet.label.rows"), (() => {
       const c = el("div", s.nsCell);
       c.append(rowsBox, addBtn);
       return c;
     })()),
-    labeled(copyText("newSessionSet.label.preview"), preview),
+    labeled(copyText("rsFilewinWorkspace.label.preview"), preview),
     note,
     saveBtn,
   );
@@ -341,7 +341,7 @@ export function setPage(refresh: () => void): SetPage {
   saveBtn.addEventListener("click", () => {
     if (page.blocked() !== null) return;
     void save().then((bad) => {
-      if (bad === null) toast(copyText("newSessionSet.save.done"), nameInput.value.trim(), { level: "info" });
+      if (bad === null) toast(copyText("remote.save.done"), nameInput.value.trim(), { level: "info" });
       else say(bad.said);
     });
   });
@@ -398,7 +398,7 @@ export function pageTabs(onPick: (onSet: boolean) => void): { el: HTMLElement; s
     return b;
   };
   const single = mk(false, "single", copyText("newSession.page.single"));
-  const group = mk(true, "set", copyText("newSession.page.set"));
+  const group = mk(true, "set", copyText("setMenu.list.heading"));
   bar.append(single, group);
   return {
     el: bar,

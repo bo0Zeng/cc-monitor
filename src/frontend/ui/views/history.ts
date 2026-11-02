@@ -380,7 +380,7 @@ export class HistoryView {
   private buildTop(): HTMLElement {
     const top = document.createElement("div");
     top.className = s.hvTop;
-    const back = button({ label: copyText("history.page.back"), kind: "ghost", icon: "back", onClick: () => this.close() });
+    const back = button({ label: copyText("mobKit.act.back"), kind: "ghost", icon: "back", onClick: () => this.close() });
     const views = tabs<ViewMode>({
       items: [
         { key: "time", label: copyText("history.page.byTime") },
@@ -420,10 +420,10 @@ export class HistoryView {
     this.filterBtn.classList.add(s.hvFilterBtn);
     this.filterBtn.setAttribute("aria-haspopup", "dialog");
     this.refreshBtn = button({
-      label: copyText("history.page.refresh"),
+      label: copyText("accountChip.menu.refresh"),
       kind: "icon",
       icon: "refresh",
-      hint: copyText("history.page.refresh"),
+      hint: copyText("accountChip.menu.refresh"),
       onClick: () => this.refresh(this.remotes()),
     });
     top.append(back, views, search, this.filterBtn, this.refreshBtn);
@@ -548,7 +548,7 @@ export class HistoryView {
     if (read === "failed" || read === "stale") {
       const w = document.createElement("span");
       w.className = s.hvFilterWarn;
-      w.textContent = copyText("history.filter.offline");
+      w.textContent = copyText("machinePage.state.down");
       c.appendChild(w);
     }
     return c;
@@ -590,7 +590,7 @@ export class HistoryView {
   private machineStrips(): HTMLElement[] {
     const strips: HTMLElement[] = [];
     if (this.failed !== null) {
-      strips.push(strip("error", copyText("history.list.localFailed"), { label: copyText("history.list.retry"), run: () => this.refresh(this.remotes()) }));
+      strips.push(strip("error", copyText("history.list.localFailed"), { label: copyText("front.act.retry"), run: () => this.refresh(this.remotes()) }));
     }
     for (const m of this.wanted()) {
       if (this.syncing.has(m)) continue;
@@ -600,13 +600,13 @@ export class HistoryView {
         strips.push(
           isRemoteOrigin(m)
             ? strip("warn", copyText("history.list.machineDown", { machine: m }), { label: copyText("history.list.reconnect"), run: again })
-            : strip("error", copyText("history.list.localFailed"), { label: copyText("history.list.retry"), run: again }),
+            : strip("error", copyText("history.list.localFailed"), { label: copyText("front.act.retry"), run: again }),
         );
       } else if (st?.is === "stale") {
         // 读不到、行照那台上一次的副本出：说清是几时读到的，不冒充读到。
         strips.push(strip("warn", copyText("history.list.machineStale", { machine: machineWord(m), at: st.at }), { label: copyText("history.list.reconnect"), run: again }));
       } else if (st?.is === "ok" && st.notice) {
-        strips.push(strip("warn", copyText("history.list.notice"), { label: copyText("history.list.retry"), run: again }));
+        strips.push(strip("warn", copyText("history.list.notice"), { label: copyText("front.act.retry"), run: again }));
       }
     }
     return strips;
@@ -620,7 +620,7 @@ export class HistoryView {
       for (const d of c.r.down) strips.push(strip("warn", copyText("history.search.machineDown", { machine: d.origin }), { label: copyText("history.list.reconnect"), run: () => void this.runContentSearch() }));
       for (const note of c.r.notes) strips.push(strip("info", note));
     } else if (c?.state === "failed") {
-      strips.push(strip("error", copyText("history.search.failed", { why: c.why }), { label: copyText("history.list.retry"), run: () => void this.runContentSearch() }));
+      strips.push(strip("error", copyText("history.search.failed", { why: c.why }), { label: copyText("front.act.retry"), run: () => void this.runContentSearch() }));
     }
     return strips;
   }
@@ -671,7 +671,7 @@ export class HistoryView {
   /** 列表头：按时间 ⇒ 几个会话（各台几行之和）；按项目 ⇒ 几个项目 · 几个会话 ＋ 全部展开 / 全部收起。 */
   private renderHead(w: BrowseWindow): void {
     if (this.prefs.view === "time") {
-      this.listHead.replaceChildren(copyText("history.list.count", { n: w.head.machines.reduce((n, m) => n + m.total, 0) }));
+      this.listHead.replaceChildren(copyText("history.group.count", { n: w.head.machines.reduce((n, m) => n + m.total, 0) }));
       return;
     }
     const head = document.createElement("span");
@@ -684,7 +684,7 @@ export class HistoryView {
     };
     end.append(
       button({ label: copyText("history.list.expandAll"), kind: "ghost", size: "compact", onClick: () => all(true) }),
-      button({ label: copyText("history.list.collapseAll"), kind: "ghost", size: "compact", onClick: () => all(false) }),
+      button({ label: copyText("tabMenu.group.collapseAll"), kind: "ghost", size: "compact", onClick: () => all(false) }),
     );
     this.listHead.replaceChildren(head, end);
   }
@@ -789,7 +789,7 @@ export class HistoryView {
 
   /** 搜着时：列表头转圈 ＋［停止］（停了回到清单，晚到的结果不画）；列表里给骨架。 */
   private searchingHead(): HTMLElement {
-    const stop = button({ label: copyText("history.search.stop"), kind: "ghost", size: "compact", onClick: () => {
+    const stop = button({ label: copyText("rsFilewinProgress.action.stop"), kind: "ghost", size: "compact", onClick: () => {
       this.contentSeq++;
       this.content = null;
       this.renderNow();
@@ -802,7 +802,7 @@ export class HistoryView {
   private noHits(q: string): HTMLElement {
     return emptyState({
       icon: "search",
-      text: copyText("history.search.noMatch", { q }),
+      text: copyText("kit.menu.noMatch", { q }),
       action: this.prefs.tools
         ? undefined
         : button({
@@ -963,7 +963,7 @@ export class HistoryView {
     acts.appendChild(more);
     const project = document.createElement("span");
     project.textContent = r.projectName || copyText("history.row.noDir");
-    const machine = machineTag(r.origin) ?? Object.assign(document.createElement("span"), { textContent: copyText("history.filter.local") });
+    const machine = machineTag(r.origin) ?? Object.assign(document.createElement("span"), { textContent: copyText("detail.label.local") });
     const span = document.createElement("span");
     span.textContent = r.spanText;
     const toList = button({ label: copyText("history.content.toList"), kind: "ghost", icon: "back", size: "compact", onClick: () => this.toList() });
@@ -1153,7 +1153,7 @@ export class HistoryView {
     }
     const label = labelOf(r);
     // 正文那一段（哪台的记录 · 说不清在不在跑多一句）由核心按行写好（`deleteAsk`）。
-    const ok = await confirmDialog({ title: copyText("history.delete.title", { label }), action: copyText("history.delete.action"), danger: true, body: r.deleteAsk });
+    const ok = await confirmDialog({ title: copyText("history.delete.title", { label }), action: copyText("beFiles.batch.verbDelete"), danger: true, body: r.deleteAsk });
     if (!ok) return;
     try {
       await deleteSession(r.origin, r.sessionId);
@@ -1258,11 +1258,11 @@ function filterPanel(
   const panel = document.createElement("div");
   panel.className = s.hvFilter;
   panel.append(
-    filterGroup(copyText("history.filter.machines"), ...machines),
+    filterGroup(copyText("newSession.label.machine"), ...machines),
     filterGroup(
       copyText("history.filter.time"),
       ...radioSet<0 | 7 | 30>("hv-time", p.withinDays, [
-        [0, copyText("history.filter.timeAll")],
+        [0, copyText("extPage.filter.all")],
         [7, copyText("history.filter.time7d")],
         [30, copyText("history.filter.time30d")],
       ], on.time),
@@ -1278,7 +1278,7 @@ function filterPanel(
     filterGroup(
       copyText("history.filter.scope"),
       ...radioSet<Scope>("hv-scope", p.scope, [
-        ["all", copyText("history.filter.scopeAll")],
+        ["all", copyText("extPage.filter.all")],
         ["user", copyText("history.filter.scopeYou")],
         ["assistant", copyText("history.filter.scopeAgent")],
         ["report", copyText("history.filter.scopeReport")],
@@ -1332,7 +1332,7 @@ function listSizer(root: HTMLElement, initial: number, leftEdge: () => number, s
 
 /** 筛选 · 提示条里称呼一台：本机叫「本机」，远端照名字。 */
 function machineWord(m: Machine): string {
-  return isLocalOrigin(m) ? copyText("history.filter.local") : m;
+  return isLocalOrigin(m) ? copyText("detail.label.local") : m;
 }
 
 function groupKey(g: HistoryGroup): string {

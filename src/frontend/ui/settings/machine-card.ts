@@ -108,7 +108,7 @@ type ConnSeg = "resolve" | "connect" | "auth" | "ready";
 const CONN_SEGS: readonly ConnSeg[] = ["resolve", "connect", "auth", "ready"];
 const SEG_LABEL: Record<ConnSeg, () => string> = {
   resolve: () => copyText("machineCard.seg.resolve"),
-  connect: () => copyText("machineCard.seg.connect"),
+  connect: () => copyText("machinePage.problem.connect"),
   auth: () => copyText("machineCard.seg.auth"),
   ready: () => copyText("machineCard.seg.ready"),
 };
@@ -266,10 +266,10 @@ export class MachineCard {
 
     // 删除按钮（legend 右侧）
     const removeBtn = button({
-      label: copyText("machineCard.build.delete"),
+      label: copyText("beFiles.batch.verbDelete"),
       kind: "danger-text",
       size: "compact",
-      hint: copyText("machineCard.build.deleteHint"),
+      hint: copyText("machineList.menu.remove"),
       onClick: (ev) => {
         ev.stopPropagation(); // 别让删除点击冒泡到 legend 触发折叠
         this.hooks.onRemove(this);
@@ -364,7 +364,7 @@ export class MachineCard {
     });
     this.portInput = connField(body, copyText("machineForm.field.port"), { type: "number", placeholder: "22", onChange: () => void onPortChange() });
     this.portInput.closest(".machine-conn-field")?.classList.add("machine-conn-port");
-    this.keyPathInput = connField(body, copyText("machineForm.field.key"), {
+    this.keyPathInput = connField(body, copyText("mobIdentity.import.pem"), {
       hint: copyText("addMachine.field.keyHelp"),
       onChange,
     });
@@ -446,7 +446,7 @@ export class MachineCard {
     connRow.appendChild(this.testButton);
     // 一键把本地公钥推到远端 authorized_keys（免密）。
     const pushKeyBtn: HTMLButtonElement = button({
-      label: copyText("machineCard.build.pushKey"),
+      label: copyText("mobPalette.item.key"),
       hint: copyText("machineCard.build.pushKeyHint"),
       onClick: () => void this.onPushPubkey(pushKeyBtn),
     });
@@ -526,9 +526,9 @@ export class MachineCard {
   private paintMoreSummary(): void {
     if (!this.moreFold) return;
     const jump = this.jumpInput.value.trim();
-    const parts = [copyText("machineCard.conn.moreJump", { jump: jump || copyText("machineCard.conn.none") })];
+    const parts = [copyText("machineCard.conn.moreJump", { jump: jump || copyText("acct.val.none") })];
     const n = parseAddressLines(this.addressesInput.value).length;
-    if (n > 0) parts.push(copyText("machineCard.conn.moreAddrs", { n }));
+    if (n > 0) parts.push(copyText("addMachine.ssh.addresses", { n }));
     setFoldSummary(this.moreFold, parts.join(copyText("kit.text.sep")));
   }
 
@@ -578,7 +578,7 @@ export class MachineCard {
     if (
       !(await confirmDialog({
         title: copyText("machineCard.resetFingerprint.title", { host }),
-        action: copyText("machineCard.resetFingerprint.action"),
+        action: copyText("mobSsh.forgetAll.ok"),
         danger: true,
         body: copyText("machineCard.resetFingerprint.confirm"),
       }))
@@ -677,7 +677,7 @@ export class MachineCard {
   openFiles(): void {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
-      this.renderTestResult(null, copyText("machineCard.build.filesNeedHost"));
+      this.renderTestResult(null, copyText("machineCard.launch.needHost"));
       return;
     }
     void openFileWindow(this.savedName());
@@ -687,7 +687,7 @@ export class MachineCard {
   private async onTestConnection(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
-      this.renderTestResult(null, copyText("machineCard.test.needFields"));
+      this.renderTestResult(null, copyText("machineCard.launch.needHost"));
       return;
     }
     this.testButton.disabled = true;
@@ -741,7 +741,7 @@ export class MachineCard {
   private async onPushPubkey(btn: HTMLButtonElement): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
-      this.showResultText(copyText("machineCard.pushKey.needHost"));
+      this.showResultText(copyText("machineCard.launch.needHost"));
       return;
     }
     let pubKeyPath: string | null = null;
@@ -759,7 +759,7 @@ export class MachineCard {
         multiple: false,
         directory: false,
         defaultPath,
-        filters: [{ name: copyText("machineCard.pushKey.filterName"), extensions: ["pub"] }],
+        filters: [{ name: copyText("mobPalette.group.key"), extensions: ["pub"] }],
       });
       if (typeof picked !== "string") return; // 取消 / 多选保护
       pubKeyPath = picked;
@@ -811,14 +811,14 @@ export class MachineCard {
   private async onUninstallBackend(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
-      this.showResultText(copyText("machineCard.uninstall.needFields"), "comp");
+      this.showResultText(copyText("machineCard.launch.needHost"), "comp");
       return;
     }
     const rows = interruptRows(await askInterrupts(this.savedName()), this.displayName(), "uninstall");
     if (
       !(await confirmDialog({
         title: copyText("machineCard.uninstall.title", { host: cfg.host }),
-        action: copyText("machineCard.uninstall.action"),
+        action: copyText("extPage.button.uninstall"),
         danger: true,
         body: copyText("machineCard.uninstall.confirm"),
         rows,
@@ -826,7 +826,7 @@ export class MachineCard {
     ) {
       return;
     }
-    await this.runRemoteAction(this.backendUninstallButton, copyText("machineCard.uninstall.running"), () => uninstallBackend(this.savedName()), "comp");
+    await this.runRemoteAction(this.backendUninstallButton, copyText("machineAliases.runRc.removing"), () => uninstallBackend(this.savedName()), "comp");
   }
 
   /**
@@ -866,7 +866,7 @@ export class MachineCard {
       const gaps = document.createElement("details");
       gaps.className = "remote-test-line";
       const summary = document.createElement("summary");
-      summary.textContent = copyText("machineCard.test.gapsSummary");
+      summary.textContent = copyText("tabBatch.result.view");
       gaps.appendChild(summary);
       for (const g of gapList) {
         const row = document.createElement("div");

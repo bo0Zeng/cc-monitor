@@ -49,7 +49,7 @@ export class QueueRow {
     // 回执还没到、名单里已经有了的那一句只画一遍（照名单）。
     for (const o of pending) {
       if (items.some((it) => it.id === o.id)) continue;
-      lines.push(this.line(copyText("terminal.queue.sending"), "", o.text, "sending", () => this.host.cancelPending(o.id)));
+      lines.push(this.line(copyText("mobChat.delivery.sending"), "", o.text, "sending", () => this.host.cancelPending(o.id)));
     }
     this.lines.replaceChildren(...lines);
     const stale = offline !== null && lines.length > 0;
@@ -82,7 +82,7 @@ export class QueueRow {
       f.className = s.queueFrom;
       line.append(f);
     }
-    line.append(head, button({ label: copyText("terminal.queue.cancel"), kind: "ghost", size: "compact", onClick: cancel }));
+    line.append(head, button({ label: copyText("mobChat.outbox.cancel"), kind: "ghost", size: "compact", onClick: cancel }));
     return line;
   }
 }

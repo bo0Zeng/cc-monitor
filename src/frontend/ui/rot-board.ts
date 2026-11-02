@@ -185,11 +185,11 @@ export function firstRow(spec: TopSpec): HTMLElement {
       if (item) {
         const busy = item.inUse.length;
         items.push(
-          { label: copyText("rot.more.copy"), onClick: () => ops.copy(item.id) },
+          { label: copyText("beFiles.batch.verbCopy"), onClick: () => ops.copy(item.id) },
           { label: copyText("rot.more.rename"), onClick: () => ops.rename(item.id, item.rev) },
           { label: copyText("rot.more.forNew"), enabled: !item.forNew, onClick: () => ops.forNew(item.id) },
           {
-            label: copyText("rot.more.delete"),
+            label: copyText("beFiles.batch.verbDelete"),
             danger: true,
             enabled: busy === 0,
             why: busy > 0 ? copyText("rot.more.inUse", { n: busy }) : undefined,
@@ -306,7 +306,7 @@ export function meters(f: RotAccount, row: RotRow | undefined): HTMLElement {
       el(
         "em",
         s.rotMeterWin,
-        w === "5h" ? copyText("rot.card.w5h") : copyText("rot.card.w7d"),
+        w === "5h" ? copyText("acct.slot.fiveHour") : copyText("acct.slot.sevenDay"),
       ),
       bar,
     );
@@ -439,7 +439,7 @@ function accountPane(
     el("b", s.rotPaneName, nameIn(view, account)),
     el("span", s.rotPaneLine, row.line),
     el("span", s.rotSpacer),
-    button({ label: copyText("rot.pane.close"), kind: "icon", size: "compact", icon: "close", hint: copyText("rot.pane.close"), onClick: () => spec.acts.open(null) }),
+    button({ label: copyText("kit.drawer.close"), kind: "icon", size: "compact", icon: "close", hint: copyText("kit.drawer.close"), onClick: () => spec.acts.open(null) }),
   );
   pane.appendChild(top);
   const grid = el("div", s.rotCells);

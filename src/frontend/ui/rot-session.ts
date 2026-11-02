@@ -30,9 +30,9 @@ import s from "./rot-order.module.css";
 
 /** 骨架字与那几句失败标题（不随数据变）。 */
 const W = {
-  retry: copyText("rot.read.retry"),
+  retry: copyText("front.act.retry"),
   about: copyText("rot.top.about"),
-  aboutClose: copyText("rot.top.aboutClose"),
+  aboutClose: copyText("kit.dock.close"),
   none: copyText("rot.none.desc"),
   failTemp: copyText("rot.fail.temp"),
   failUse: copyText("rot.fail.use"),

@@ -148,7 +148,7 @@ export function accountsSummary(state: AccountsState, os: string | null): string
   const meta = got.meta;
   if (meta === null) return "";
   if (meta.unsupported) return os ? copyText("machineList.summary.single", { os }) : copyText("machineList.summary.singleBare");
-  if (!meta.enabled) return copyText("machineList.summary.notEnabled");
+  if (!meta.enabled) return copyText("accountChip.label.disabled");
   const n = got.accounts.length;
   const def = meta.effectiveDefault;
   return def !== null ? copyText("machineList.summary.accounts", { n, name: def }) : copyText("machineList.summary.count", { n });
@@ -265,7 +265,7 @@ export class RemoteSection {
     } catch (e) {
       // 异步失败就地说在这一块上：两个调用点都是 `void this.refresh()`，不说的话只会变成状态栏上一行 `REJ: …`，
       //   用户看不出机器列表为什么是空的。说完照样往外抛（调用方要判成不成功）。
-      this.showFailure(copyText("remote.refresh.failed"), e);
+      this.showFailure(copyText("settingsPanel.machines.buildFailed"), e);
       throw e;
     } finally {
       this.pages?.machinePagesSettled?.();
@@ -317,7 +317,7 @@ export class RemoteSection {
     side.className = "remote-machine-side";
     const summary = document.createElement("span");
     summary.className = "remote-machine-summary";
-    const more = button({ label: copyText("machinePage.head.more"), kind: "icon", icon: "more", size: "compact", hint: copyText("machinePage.head.more") });
+    const more = button({ label: copyText("history.row.more"), kind: "icon", icon: "more", size: "compact", hint: copyText("history.row.more") });
     more.addEventListener("click", (ev) => {
       ev.stopPropagation();
       openMenu({ el: more, align: "end" }, this.menuFor(pageId));
@@ -512,8 +512,8 @@ export class RemoteSection {
 
   /** 页头右侧：添加机器 ＋ ⋯（端口转发 · 全部刷新）。 */
   headActions(): HTMLElement[] {
-    const add = button({ label: copyText("machineList.head.add"), icon: "plus", onClick: () => void this.openAdd() });
-    const more = button({ label: copyText("machinePage.head.more"), kind: "icon", icon: "more", hint: copyText("machinePage.head.more") });
+    const add = button({ label: copyText("mobHosts.fab.aria"), icon: "plus", onClick: () => void this.openAdd() });
+    const more = button({ label: copyText("history.row.more"), kind: "icon", icon: "more", hint: copyText("history.row.more") });
     more.addEventListener("click", () =>
       openMenu({ el: more, align: "end" }, [
         { label: copyText("machineList.menu.portForward"), onClick: () => openPortForwardPanel() },
@@ -532,7 +532,7 @@ export class RemoteSection {
   menuFor(pageId: string): MenuItem[] {
     if (pageId === LOCAL_MACHINE_PAGE_ID) {
       return [
-        { label: copyText("machineList.menu.refresh"), onClick: () => this.pages?.refreshMachine?.(LOCAL) },
+        { label: copyText("accountChip.menu.refresh"), onClick: () => this.pages?.refreshMachine?.(LOCAL) },
         { divider: true, label: "" },
         { label: copyText("machineList.menu.cc"), onClick: () => this.pages?.openMachineSection?.(pageId, "cc") },
       ];
@@ -541,12 +541,12 @@ export class RemoteSection {
     if (!card) return [];
     const origin = card.savedName();
     return [
-      { label: copyText("machineList.menu.launch"), onClick: () => card.openLauncher() },
-      { label: copyText("machineList.menu.files"), onClick: () => card.openFiles() },
+      { label: copyText("main.cmd.newSession"), onClick: () => card.openLauncher() },
+      { label: copyText("machineAliases.rc.open"), onClick: () => card.openFiles() },
       { label: copyText("machineList.menu.portForward"), onClick: () => openPortForwardPanel() },
-      { label: copyText("machineList.menu.refresh"), enabled: origin !== "", onClick: () => this.pages?.refreshMachine?.(origin) },
+      { label: copyText("accountChip.menu.refresh"), enabled: origin !== "", onClick: () => this.pages?.refreshMachine?.(origin) },
       { divider: true, label: "" },
-      { label: copyText("machineList.menu.conn"), onClick: () => this.pages?.openMachineSection?.(pageId, "conn") },
+      { label: copyText("machinePage.conn.toggle"), onClick: () => this.pages?.openMachineSection?.(pageId, "conn") },
       { label: copyText("machineList.menu.cc"), onClick: () => this.pages?.openMachineSection?.(pageId, "cc") },
       { divider: true, label: "" },
       { label: copyText("machineList.menu.remove"), danger: true, onClick: () => void this.removeCard(card) },

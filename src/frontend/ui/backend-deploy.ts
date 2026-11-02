@@ -17,7 +17,7 @@ export async function updateBackend(origin: string, machine: string, onStart?: (
   const rows = interruptRows(await askInterrupts(origin), machine, "update");
   if (
     rows.length > 0 &&
-    !(await confirmDialog({ title: copyText("interrupts.update.title", { machine }), action: copyText("interrupts.update.action"), rows }))
+    !(await confirmDialog({ title: copyText("interrupts.update.title", { machine }), action: copyText("front.act.update"), rows }))
   ) {
     return null;
   }

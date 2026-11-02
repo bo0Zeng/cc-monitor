@@ -125,8 +125,8 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     (async (title: string, initial: string, note?: string): Promise<string | null> =>
       await askText({
         title,
-        action: note === undefined ? copyText("rot.ask.go") : copyText("rot.ask.createGo"),
-        label: note === undefined ? copyText("rot.ask.name") : copyText("rot.ask.createName"),
+        action: note === undefined ? copyText("rot.ask.go") : copyText("mobTerms.new.detached"),
+        label: note === undefined ? copyText("rot.ask.name") : copyText("acctNew.name.label"),
         initial,
         note,
       }));
@@ -138,7 +138,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       top.push(
         banner("error", readErr, [
           button({
-            label: copyText("rot.read.retry"),
+            label: copyText("front.act.retry"),
             kind: "ghost",
             size: "compact",
             onClick: () => void refresh(),
@@ -199,7 +199,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       void (async () => {
         const name = await ask(copyText("rot.ask.copyTitle", { name: id }), "");
         if (name)
-          await send(copyText("rot.fail.copy"), () =>
+          await send(copyText("detail.act.failed"), () =>
             callTyped(origin, "rotation-strategy-copy", { id, name }, rotBudget()),
           );
       })(),
@@ -222,7 +222,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       void (async () => {
         const ok = await confirmFn({
           title: copyText("rot.ask.deleteTitle", { name: id }),
-          action: copyText("rot.ask.deleteGo"),
+          action: copyText("beFiles.batch.verbDelete"),
           danger: true,
           body: copyText("rot.ask.deleteBody"),
         });

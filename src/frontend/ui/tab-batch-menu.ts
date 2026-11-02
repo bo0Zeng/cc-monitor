@@ -132,7 +132,7 @@ export function openBatchMenu(
       try {
         sayReply(await run.stop(tabs));
       } catch (e) {
-        failToast(copyText("tabBatch.stop.title", { n: tabs.length }), e);
+        failToast(copyText("tabBatch.menu.stop", { n: tabs.length }), e);
       }
     }, true, notStoppable[0]?.why),
     // 恢复：交出去的是选中的全部，跳过的（恢复不了 · 本来就在跑）由回包逐条列。
@@ -173,7 +173,7 @@ export function openBatchMenu(
   const [hideable] = split(tabs, (t) => (t.hidden ?? null) === null, "");
   const [unhideable] = split(tabs, (t) => (t.hidden ?? null) !== null, "");
   items.push(
-    item(copyText("tabBatch.menu.hide", { n: hideable.length }), hideable.length, () => host.hide(hideable.map((t) => t.sessionId)), false, copyText("tabBatch.why.hidden")),
+    item(copyText("tabBatch.menu.hide", { n: hideable.length }), hideable.length, () => host.hide(hideable.map((t) => t.sessionId)), false, copyText("history.row.hidden")),
     item(copyText("tabBatch.menu.unhide", { n: unhideable.length }), unhideable.length, () => host.unhide(unhideable.map((t) => t.sessionId)), false, copyText("tabBatch.why.notHidden")),
   );
   const [closable, notClosable] = split(tabs, (t) => closesQuietly(t.face), (t) => {

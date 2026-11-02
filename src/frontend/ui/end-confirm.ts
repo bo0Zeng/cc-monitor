@@ -12,7 +12,7 @@ import type { SessionsBatchReply } from "./generated/SessionsBatchReply";
 /** 那个确认框：标题与按钮写个数；`note` ＝ 清单下那一行（多选里跳过了几个已结束的）。 */
 export function endConfirm(titles: readonly string[], note?: string): ConfirmSpec {
   return {
-    title: copyText("tabBatch.stop.title", { n: titles.length }),
+    title: copyText("tabBatch.menu.stop", { n: titles.length }),
     action: copyText("tabBatch.stop.action", { n: titles.length }),
     danger: true,
     rows: [

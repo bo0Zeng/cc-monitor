@@ -241,10 +241,10 @@ function actionsOf(r: HistoryRow, live: boolean): HTMLElement[] {
   if (live && terminalFrontAvailable()) {
     out.push(
       button({
-        label: copyText("tabBarView.tab.terminalHint"),
+        label: copyText("terminal.head.front"),
         kind: "icon",
         icon: "front",
-        hint: copyText("tabBarView.tab.terminalHint"),
+        hint: copyText("terminal.head.front"),
         onClick: (ev) => void viewerFront(ev.currentTarget as HTMLElement, r, r.origin),
       }),
     );

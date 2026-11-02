@@ -205,7 +205,7 @@ export class AnswerBlock {
     if (on) this.el.dataset.folded = "true";
     else delete this.el.dataset.folded;
     if (this.foldBtn) {
-      setButtonLabel(this.foldBtn, on ? copyText("askBlock.fold.expand") : copyText("askBlock.fold.collapse"));
+      setButtonLabel(this.foldBtn, on ? copyText("askBlock.fold.expand") : copyText("kit.dock.close"));
       this.foldBtn.dataset.fold = on ? "expand" : "collapse";
       this.foldBtn.setAttribute("aria-expanded", String(!on));
     }
@@ -256,7 +256,7 @@ export class AnswerBlock {
     this.foldKey = ask ? { sid, id: ask.id } : null;
     this.foldBtn = null;
     if (ask) {
-      const fold = button({ label: copyText("askBlock.fold.collapse"), kind: "ghost", size: "compact", onClick: () => this.setFolded(this.el.dataset.folded !== "true") });
+      const fold = button({ label: copyText("kit.dock.close"), kind: "ghost", size: "compact", onClick: () => this.setFolded(this.el.dataset.folded !== "true") });
       fold.addEventListener("click", (e) => e.stopPropagation());
       this.foldBtn = fold;
       head.append(fold);
@@ -486,7 +486,7 @@ export class AnswerBlock {
     const wrap = document.createElement("div");
     wrap.className = s.abQFull;
     const full = button({
-      label: copyText("askBlock.question.full"),
+      label: copyText("agentWindow.brief.more"),
       kind: "ghost",
       size: "compact",
       onClick: () => {
@@ -552,7 +552,7 @@ export class AnswerBlock {
     });
     const go = button({ label: c.text, kind: "primary", onClick: submit });
     go.dataset.choice = c.id;
-    const cancel = button({ label: copyText("askBlock.note.cancel"), kind: "ghost", onClick: back });
+    const cancel = button({ label: copyText("kit.dialog.cancel"), kind: "ghost", onClick: back });
     box.append(input, go, cancel);
     this.body!.replaceChildren(box);
     input.focus();

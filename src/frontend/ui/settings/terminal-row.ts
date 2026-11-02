@@ -26,7 +26,7 @@ export function optionsOf(c: TerminalChoices): SelectOption[] {
     { value: "", label: copyText("settingsPanel.terminal.auto"), note: c.auto ?? copyText("settingsPanel.terminal.autoNone") },
   ];
   for (const name of c.found) items.push({ value: name, label: name });
-  items.push({ value: CUSTOM, label: copyText("settingsPanel.terminal.custom") });
+  items.push({ value: CUSTOM, label: copyText("resumeSelect.option.custom") });
   return items;
 }
 
@@ -41,7 +41,7 @@ export async function buildTerminalRow(): Promise<HTMLElement | null> {
   row.className = "settings-row";
   const text = document.createElement("span");
   text.className = "settings-label";
-  text.textContent = copyText("settingsPanel.terminal.label");
+  text.textContent = copyText("mobDrawer.item.terminal");
   const help = document.createElement("span");
   help.className = "settings-hint";
   help.textContent = copyText("settingsPanel.terminal.help");
@@ -73,7 +73,7 @@ export async function buildTerminalRow(): Promise<HTMLElement | null> {
     });
   };
   const pick = select({
-    label: copyText("settingsPanel.terminal.label"),
+    label: copyText("mobDrawer.item.terminal"),
     options: optionsOf(c),
     value: start.value,
     onChange: (v) => {
