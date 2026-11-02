@@ -70,7 +70,7 @@ pub(crate) fn lands_of(v: &Value) -> crate::agents::Lands {
 ///
 /// 判只这一处：[`record_of`] 对 `Unrecognized` 用同一个 [`no_identity`]、同一个「类型 serde 认不出」（`unknown-type` 那一支就是 serde 落到 `Unknown`），
 /// 判据逐行对拍两处一致。这一问给的是那个类型名；不是这种行 ⇒ `None`。
-pub(crate) fn quiet_unread_of(v: &Value) -> Option<String> {
+pub fn quiet_unread_of(v: &Value) -> Option<String> {
     let s = |k: &str| v.get(k).and_then(Value::as_str);
     if !no_identity(s("uuid"), s("parentUuid")) {
         return None;
@@ -91,7 +91,7 @@ fn no_identity(uuid: Option<&str>, parent_uuid: Option<&str>) -> bool {
 
 /// 一条解析好的盘上记录 ⇒ 通用记录；不进界面 ⇒ `None`。`start` ＝ 这一行在记录里的起点字节：没有身份的那几类（标题 · 排队）`id` 按它合成
 /// （[`crate::agents::line_id`]，会话内唯一），图那一块的引用也记它（[`Block::Image`] 的 `at`）。
-pub(crate) fn record_of(rec: JsonlRecord, start: u64) -> Option<Record> {
+pub fn record_of(rec: JsonlRecord, start: u64) -> Option<Record> {
     let mut images = Images { at: start, n: 0 };
     let rec_of = |id: String, at: Option<String>, body: Body| {
         let id = if id.is_empty() {
@@ -403,6 +403,4 @@ fn image_of(source: &Value, images: &mut Images) -> Option<Block> {
     })
 }
 
-#[cfg(test)]
-#[path = "../../../../tests/backend/agents/claudecode/record_of_tests.rs"]
-mod tests;
+// 判据（`record_of_tests.rs`）拿骨架行比整条翻译、经观测面 ⇒ 挂在 `observe` 底下。

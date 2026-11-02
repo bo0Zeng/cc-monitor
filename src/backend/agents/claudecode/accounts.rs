@@ -117,7 +117,7 @@ pub(crate) const FACE: AccountsFace = AccountsFace {
 };
 
 /// `.claude.json` 里信任记在 `projects[<目录>].hasTrustDialogAccepted`。
-pub(crate) const TRUST_CELLS: TrustCells = TrustCells {
+pub const TRUST_CELLS: TrustCells = TrustCells {
     table: "projects",
     flag: Some("hasTrustDialogAccepted"),
     dir_keys: trust_dir_keys,
@@ -334,7 +334,7 @@ pub(crate) fn rewrite_identity(body: &[u8], uuid: &str) -> IdentityCell {
 /// 读这份配置的上限。这份文件会被 MCP 配置撑大，给 32MB。
 /// 安全：`Ro::read_capped` 的 `is_file` 挡 FIFO/设备（审计实测 symlink→`/dev/zero`
 /// 6 秒涨 11GB），`take` 限量。超了那一份跳过（读的那一口 `warn!` 带路径）：身份 · 邮箱当读不出，资产目录记进 `problems`。
-pub(crate) const CONFIG_CAP: Cap = Cap {
+pub const CONFIG_CAP: Cap = Cap {
     bytes: 32 * 1024 * 1024,
     over: Over::SkipAndSay,
 };

@@ -4,7 +4,6 @@
 //! 本族钉的是 rollout 文件名取 sid 的行为（turn-end 识别那一半零读者，连同它的判据一起删了）。
 
 use super::*;
-use serde_json::json;
 
 /// Phase D 审计修：sid 提取校验对齐 monitor（rollout- 前缀 + 末36 UUID 形），畸形名 → None（跳过、
 /// 不吐幽灵行），合法名 → 末36 UUID。补后端侧此前缺的畸形名覆盖。

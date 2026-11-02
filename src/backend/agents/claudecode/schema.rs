@@ -539,7 +539,7 @@ pub struct Usage {
 }
 
 impl JsonlRecord {
-    pub fn cwd(&self) -> Option<&str> {
+    pub(crate) fn cwd(&self) -> Option<&str> {
         match self {
             Self::User { cwd, .. } => cwd.as_deref(),
             _ => None,

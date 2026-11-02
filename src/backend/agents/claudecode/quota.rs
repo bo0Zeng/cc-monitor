@@ -36,7 +36,7 @@ const REFUSED: u16 = 429;
 pub(crate) const REFUSED_BRIEFLY: u64 = 60;
 
 /// 窗口名 → 语义位：5 小时那一个是 `5h`；7 天那几个（含分模型的）是 `7d`；超额那一档没有语义位。
-pub(crate) fn slot_of(name: &str) -> Option<&'static str> {
+pub fn slot_of(name: &str) -> Option<&'static str> {
     match name {
         "five_hour" => Some("5h"),
         n if n.starts_with("seven_day") => Some("7d"),
@@ -49,7 +49,7 @@ const SEVEN_DAY_OF: &str = "seven_day_";
 
 /// 窗口名 → 窗口键（通用层当不透明的键用：上限 · 单段预算按它配）：`five_hour` ⇒ `5h` · `seven_day` ⇒ `7d` ·
 /// `seven_day_<档>` ⇒ `7d:<档>`（如 `seven_day_opus` ⇒ `7d:opus`）；超额那一档没有键（不算用量窗口）。
-pub(crate) fn key_of(name: &str) -> Option<String> {
+pub fn key_of(name: &str) -> Option<String> {
     match name {
         "five_hour" => Some("5h".into()),
         "seven_day" => Some("7d".into()),
@@ -103,7 +103,7 @@ fn status_of(v: Option<&str>) -> Option<QuotaStatus> {
 }
 
 /// 注册表 `DefaultUpstream.quota` 那一格。
-pub(crate) fn read(status: u16, headers: &[(String, String)], now: u64) -> Option<QuotaReading> {
+pub fn read(status: u16, headers: &[(String, String)], now: u64) -> Option<QuotaReading> {
     // 限流器没说话（短时限流的 429 也是这样）⇒ 什么都不记：不是用满，上游那一发原样交下去、claude 自己退避。
     let said = status_of(Some(unified(headers, "status")?));
     let refused = status == REFUSED && said == Some(QuotaStatus::Rejected);

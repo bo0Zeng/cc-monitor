@@ -9,7 +9,7 @@ use serde_json::Value;
 
 /// 这个协议的流面（走这个协议的那几家在 `DefaultUpstream::stream` 里登记它）。
 /// 这个协议的事件都在上限之内；截断的那一件不认。
-pub(crate) const FACE: super::StreamFace = super::StreamFace {
+pub const FACE: super::StreamFace = super::StreamFace {
     fold,
     fold_clipped: |_| Vec::new(),
     spent: Some(spent),

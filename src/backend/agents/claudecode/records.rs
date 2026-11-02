@@ -9,12 +9,12 @@ use std::path::Path;
 const SESSION_EXT: &str = "jsonl";
 
 /// 这个路径是不是一份会话记录。
-pub(crate) fn is_session_file(p: &Path) -> bool {
+pub fn is_session_file(p: &Path) -> bool {
     p.extension().is_some_and(|e| e == SESSION_EXT)
 }
 
 /// 会话 id → 记录文件名（`<sid>.jsonl`）。
-pub(crate) fn session_file_name(sid: &str) -> String {
+pub fn session_file_name(sid: &str) -> String {
     format!("{sid}.{SESSION_EXT}")
 }
 

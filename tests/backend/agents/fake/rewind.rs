@@ -11,11 +11,9 @@
 //!
 //! 终端按收到的键改自己的状态，像那一家那样：两下 Esc 被并成一下时列表不出来、输入行上按 ↑ 调出输入历史、
 //! 有字时按 Enter 就把它说出去 —— 通用层哪一步没核对就按，判据当场看得见。
+//! 终端接上控制面那个口子（`RewindIo`）的那一半住 `rewind_io.rs`，挂在 `control/rewind.rs` 底下。
 
 use crate::agents::{RewindChoice, RewindFace, RewindItem, RewindRow, RewindScreen};
-use crate::common::said::Said;
-use crate::control::rewind::{RewindIo, UserLine};
-use crate::control::terminals_wire::{Sent, SentResult};
 use cmd_wire::rewind::RewindHow;
 
 const PROMPT: &str = "fake> ";
@@ -31,7 +29,7 @@ const NEVER: &str = "forget it";
 const ROW_CHARS: usize = 12;
 
 /// 本假 agent 的回退菜单。
-pub(crate) const FACE: RewindFace = RewindFace {
+pub const FACE: RewindFace = RewindFace {
     open: &["esc", "esc"],
     open_gap_ms: 40,
     up: "up",
@@ -132,34 +130,34 @@ enum Mode {
 
 /// 主线上的一句：id · 字 · 这一句之后改没改过文件。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Line {
-    pub(crate) uuid: String,
-    pub(crate) text: String,
-    pub(crate) files: bool,
+pub struct Line {
+    pub uuid: String,
+    pub text: String,
+    pub files: bool,
 }
 
 /// 假 agent 的一个终端：收键改状态、收字记进主线。
 #[derive(Debug, Clone)]
-pub(crate) struct FakeTerm {
+pub struct FakeTerm {
     /// 主线上人说过的那几句。
-    pub(crate) said: Vec<Line>,
+    pub said: Vec<Line>,
     /// 输入行里的字。
-    pub(crate) typed: String,
+    pub typed: String,
     /// 主 agent 在出字；打断时 `interrupted` 那一句放回输入行。
-    pub(crate) busy: bool,
-    pub(crate) interrupted: Option<String>,
+    pub busy: bool,
+    pub interrupted: Option<String>,
     /// 回退列表的标题换了样子（那一家升级了）。
-    pub(crate) new_look: bool,
+    pub new_look: bool,
     /// 调出菜单那两下被并成一下（tmux escape-time）。
-    pub(crate) merge_open: bool,
+    pub merge_open: bool,
     /// 退完之后把原句填回输入行。
-    pub(crate) refill: bool,
+    pub refill: bool,
     /// 收到的每一个键（照先后）。
-    pub(crate) keys: Vec<String>,
+    pub keys: Vec<String>,
     /// 送进来的每一句。
-    pub(crate) typed_in: Vec<String>,
+    pub typed_in: Vec<String>,
     /// 退过几回、每回退的是哪一种。
-    pub(crate) restored: Vec<&'static str>,
+    pub restored: Vec<&'static str>,
     mode: Mode,
     esc_once: bool,
     next: usize,
@@ -167,7 +165,7 @@ pub(crate) struct FakeTerm {
 
 impl FakeTerm {
     /// 主线上已说过 `lines` 那几句（id 依次为 `u1`、`u2` …）。
-    pub(crate) fn with(lines: &[&str]) -> Self {
+    pub fn with(lines: &[&str]) -> Self {
         let said = lines
             .iter()
             .enumerate()
@@ -222,8 +220,17 @@ impl FakeTerm {
         });
     }
 
+    /// 送进来一句：记下；停在输入行上、没在出字 ⇒ 连同输入行里原有的字一起说出去。
+    pub fn type_in(&mut self, text: &str) {
+        self.typed_in.push(text.to_string());
+        if self.mode == Mode::Prompt && !self.busy {
+            let t = format!("{}{text}", std::mem::take(&mut self.typed));
+            self.submit(t);
+        }
+    }
+
     /// 此刻那一屏。
-    pub(crate) fn drawn(&self) -> Vec<String> {
+    pub fn drawn(&self) -> Vec<String> {
         let mut out = vec!["fake agent v0".to_string()];
         match self.mode {
             Mode::Prompt => {
@@ -260,7 +267,7 @@ impl FakeTerm {
         out
     }
 
-    fn key(&mut self, key: &str) {
+    pub fn key(&mut self, key: &str) {
         self.keys.push(key.to_string());
         match self.mode {
             Mode::Prompt if self.busy => {
@@ -345,48 +352,6 @@ impl FakeTerm {
         if key != "esc" {
             self.esc_once = false;
         }
-    }
-}
-
-fn delivered() -> Sent {
-    Sent {
-        result: SentResult::Delivered,
-        why: None,
-        said: None,
-        screen: None,
-        acts: vec![],
-    }
-}
-
-impl RewindIo for FakeTerm {
-    fn screen(&mut self) -> Result<Vec<String>, Said> {
-        Ok(self.drawn())
-    }
-    fn press(&mut self, key: &str) -> Result<Sent, Said> {
-        self.key(key);
-        Ok(delivered())
-    }
-    fn redrawn(&mut self) -> bool {
-        false
-    }
-    fn pause(&mut self, _ms: u64) {}
-    fn say(&mut self, text: &str) -> Result<Sent, Said> {
-        self.typed_in.push(text.to_string());
-        if self.mode == Mode::Prompt && !self.busy {
-            let t = format!("{}{text}", std::mem::take(&mut self.typed));
-            self.submit(t);
-        }
-        Ok(delivered())
-    }
-    fn lines(&mut self) -> Result<Vec<UserLine>, Said> {
-        Ok(self
-            .said
-            .iter()
-            .map(|l| UserLine {
-                uuid: l.uuid.clone(),
-                text: l.text.clone(),
-            })
-            .collect())
     }
 }
 

@@ -15,3 +15,8 @@ pub(crate) mod search_rules; // 搜索与叫会话什么的通用口径（与哪
 pub(crate) mod session_hidden; // 隐藏的判定在历史这一层的口（注解里单个那一格 · 叫主会话什么）
 pub(crate) mod session_queue; // 会话输入队：往一条会话说的每一句排这一条（住会话那一台，主人发序号；帧面 `session-queue-*`，自家状态经 `Own`）
 pub(crate) mod session_self; // agent 自问：帧面 `session-self`（调用进程往上找这台的哪一条会话 · 它在哪几组；组转给常驻问到各台）
+
+// agent 适配层判据里经历史清单的那几条（适配层是独立的包、够不到这一层；本层拆成包时跟着走）。
+#[cfg(test)]
+#[path = "../../../tests/backend/agents/on_history_tests.rs"]
+mod agents_tests;

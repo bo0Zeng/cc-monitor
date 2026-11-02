@@ -11,7 +11,7 @@
 
 /// cmdline（已转小写）明显不像 Claude ⇒ `false`；空串或像 ⇒ `true`（放行）。
 /// 词表与 tmux 那一格（批量停 / 起认窗格的 `agent`，精确比）同一张 [`super::cards::PROCESS_NAMES`]；两处判法各自不变（这里子串 ＋ 空串放行，那里精确），词只有一份。
-pub(crate) fn cmdline_may_be_agent(lower: &str) -> bool {
+pub fn cmdline_may_be_agent(lower: &str) -> bool {
     lower.trim().is_empty()
         || super::cards::PROCESS_NAMES
             .iter()

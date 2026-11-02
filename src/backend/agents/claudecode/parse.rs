@@ -17,7 +17,7 @@ use super::schema::JsonlRecord;
 ///
 /// 吃通用层那一份 [`crate::agents::Line`]：整行别人解过就从那一份里反序列化（不再解文本），没解过才解文本；
 /// 抢救那两支要整行 ⇒ 用同一份（解过就不再解）。
-pub(crate) fn parse_line(
+pub fn parse_line(
     line: &crate::agents::Line<'_>,
 ) -> Result<Option<JsonlRecord>, serde_json::Error> {
     if line.is_blank() {
@@ -66,7 +66,7 @@ pub(crate) fn parse_line(
 
 /// [`parse_line`] 交给通用层的那一形（注册表 `RecordFace.parse`）：通用记录（[`super::record_of`]）＋ 它自己的 `cwd`。
 /// 没有自己身份的记录（标题 · 排队）`id` 按起点偏移合成（[`crate::agents::line_id`]）。
-pub(crate) fn translated(
+pub fn translated(
     line: &crate::agents::Line<'_>,
 ) -> Result<Option<crate::agents::Translated>, String> {
     let start = line.start();

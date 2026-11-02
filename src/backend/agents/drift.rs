@@ -6,13 +6,13 @@
 
 /// 一个键的记账。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct DriftEntry {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct DriftEntry {
     /// 看不懂的那个值（记录 type / kind / status / token）。
     pub(crate) key: String,
     /// 见过多少次（本进程内的计数，不落盘）。
-    #[cfg_attr(test, ts(type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) count: u64,
     /// **首见**的一条样例（截断）。后来的不再覆盖 —— 第一条最接近「它刚出现时长什么样」。
     pub(crate) first_sample: Option<String>,
@@ -20,23 +20,23 @@ pub(crate) struct DriftEntry {
 
 /// 一个面的快照。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct DriftFaceReport {
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct DriftFaceReport {
     /// 那一家的面的名字（那一家自己的词）。
-    pub(crate) face: String,
+    pub face: String,
     /// 这个面「看不懂时会发生什么」（那一家写好的那一句）。
-    pub(crate) consequence: String,
+    pub consequence: String,
     /// 按 `count` 降序、同数按键名升序。
-    pub(crate) entries: Vec<DriftEntry>,
+    pub entries: Vec<DriftEntry>,
     /// 该面是否已经溢出（键数触顶）。溢出后新键并进那一家的溢出键。
-    pub(crate) overflowed: bool,
+    pub overflowed: bool,
 }
 
 /// `drift-report` 的应答：注册表里各家的面并在一起（注册序；不记的那一家没有面）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct DriftReport {
-    pub(crate) faces: Vec<DriftFaceReport>,
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct DriftReport {
+    pub faces: Vec<DriftFaceReport>,
 }

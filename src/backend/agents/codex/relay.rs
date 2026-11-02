@@ -63,7 +63,7 @@ pub(crate) fn launch_args(url: &str) -> Vec<String> {
 }
 
 /// 直接敲的 Codex 也走中转：`~/.codex/config.toml` 顶层的 `openai_base_url`（只读）。
-pub(crate) const SETTINGS_ENV: SettingsEnvFace = SettingsEnvFace {
+pub const SETTINGS_ENV: SettingsEnvFace = SettingsEnvFace {
     read: read_config_base_url,
     merge: config_merge,
     slot: KEY,

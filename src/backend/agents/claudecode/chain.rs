@@ -34,7 +34,7 @@ enum Loose {
 }
 
 /// 一行 ⇒ 链事实；不在链上 / 解不出 ⇒ `None`。
-pub(crate) fn chain_fact(line: &crate::agents::Line<'_>) -> Option<ChainFact> {
+pub fn chain_fact(line: &crate::agents::Line<'_>) -> Option<ChainFact> {
     // user 行要整行（判打断、取原文）⇒ 按文本认得出是 user 行就要整行（别人解过就是那一份），那几格短串从这一份里取；
     // 别的行只要那几格短串（整行解过就从那一份里取，没解过只解短串；认错了也对：不是 user 行照样取得到短串，只是白解了整行）。
     let raw = line.text();
@@ -93,7 +93,7 @@ pub(crate) fn chain_fact(line: &crate::agents::Line<'_>) -> Option<ChainFact> {
             .get("message")
             .and_then(|m| m.get("content"))
             .unwrap_or(&serde_json::Value::Null);
-        let interrupt = super::text::user_text_of_record(&v)
+        let interrupt = super::text::user_text_of_record(v)
             .is_some_and(|t| matches!(t.speaker, crate::agents::Speaker::Interrupt));
         (interrupt, Some(Words::of(first_text(content))))
     } else {

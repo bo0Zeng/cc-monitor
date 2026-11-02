@@ -216,8 +216,6 @@ fn the_switch_model_box_is_recognized_and_nothing_else_is() {
     assert!(!seen("● 好\n\n> \n  ⏸ plan mode on"));
     let face = crate::agents::claudecode::LAUNCH.model_switch.unwrap();
     let bx = face.confirm.expect("Claude 换模型声明了确认框");
+    // 终端认不认得这个键，挂在主 crate 那一条（`cross/agents.rs`）。
     assert_eq!(bx.key, "enter");
-    assert!(crate::control::terminals::KEYS
-        .iter()
-        .any(|(k, _)| *k == bx.key));
 }

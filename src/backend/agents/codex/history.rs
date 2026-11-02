@@ -83,7 +83,7 @@ pub(crate) fn sessions_under(codex_home: &Path) -> Vec<crate::agents::SynthSessi
         .filter_map(Result::ok)
     {
         let p = ent.path();
-        if !p.is_file() || !is_session_file(&p) {
+        if !p.is_file() || !is_session_file(p) {
             continue;
         }
         let Some(sid) = parse::codex_sid_from_path(p) else {

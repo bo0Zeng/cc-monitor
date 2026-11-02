@@ -34,7 +34,7 @@ const PLUGIN: crate::agents::PluginFace = crate::agents::PluginFace {
 };
 
 /// 插件目录清单那个变量。
-pub(crate) const PLUGIN_ENV: &str = "CLAUDE_CODE_PLUGIN_DIRS";
+pub const PLUGIN_ENV: &str = "CLAUDE_CODE_PLUGIN_DIRS";
 /// 认 [`PLUGIN_ENV`] 的最低版本。
 pub(crate) const PLUGIN_MIN_VERSION: [u64; 3] = [2, 1, 280];
 /// 插件名（清单里那一格；用户在 `enabledPlugins` 里写 `"<名>@inline": false` 就不加载，那一家自己照办）。
@@ -151,7 +151,7 @@ use super::resume::SETTINGS_FLAG;
 /// 唯一挂的那一种 hook。
 const EVENT: &str = "PermissionRequest";
 /// hook 的期限（秒）：到点它被杀、不给决定 ⇒ 框照常在终端里（挡着终端的那种到点才出框）。
-pub(crate) const HOOK_TIMEOUT_SECS: u64 = 3600;
+pub const HOOK_TIMEOUT_SECS: u64 = 3600;
 /// hook 那一趟叫 ccm 的哪几个词（后端子命令 ＋ 这一家的 kind）。
 pub(crate) fn hook_words() -> [&'static str; 3] {
     let [end, flag] = crate::agents::asks::ANSWER_HOOK_WORDS;
@@ -169,7 +169,7 @@ fn hook_group(entry: &str) -> Value {
 }
 
 /// 起会话时垫的那两个词：`--settings` ＋ 只含这一个 hook 的 JSON 串。
-pub(crate) fn launch_args(entry: &str) -> Vec<String> {
+pub fn launch_args(entry: &str) -> Vec<String> {
     vec![SETTINGS_FLAG.to_string(), hooks_doc(entry).to_string()]
 }
 
@@ -194,7 +194,7 @@ pub(crate) const PLAN_TOOL: &str = "ExitPlanMode";
 pub(crate) const INTERACTIVE_TOOLS: &[&str] = &[ASK_TOOL, PLAN_TOOL];
 
 /// hook 的 stdin ⇒ 通用待答请求。不是 `PermissionRequest` · 缺会话 id / 工具名 ⇒ `None`。
-pub(crate) fn read(v: &Value) -> Option<AskIn> {
+pub fn read(v: &Value) -> Option<AskIn> {
     if v.get("hook_event_name").and_then(Value::as_str) != Some(EVENT) {
         return None;
     }

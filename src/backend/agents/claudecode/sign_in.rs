@@ -10,7 +10,7 @@ use crate::agents::SignInFace;
 const HOSTS: &[&str] = &["claude.com", "claude.ai", "platform.claude.com"];
 const AUTHORIZE: &str = "/oauth/authorize";
 
-pub(crate) const FACE: SignInFace = SignInFace {
+pub const FACE: SignInFace = SignInFace {
     program: "claude",
     args: &["auth", "login", "--claudeai"],
     dir_env: super::paths::CONFIG_DIR_ENV,
@@ -36,7 +36,7 @@ pub(crate) const FACE: SignInFace = SignInFace {
 /// `That doesn't look like a redirect URL for this sign-in — …`、接着等；成 ⇒ `Authenticated with "<名>". …`、退 0、
 /// 自己删掉需登录缓存里那一条；不成 ⇒ `Couldn't complete authentication for "<名>": …`、退非 0。本机回调口照开
 /// （浏览器在同一台 ⇒ 不用粘就完成）。claude.ai 连接器只打印 claude.ai 的链接、退 0（不用粘）。
-pub(crate) const MCP_FACE: SignInFace = SignInFace {
+pub const MCP_FACE: SignInFace = SignInFace {
     program: "claude",
     args: &["mcp", "login", "--no-browser"],
     dir_env: super::paths::CONFIG_DIR_ENV,
