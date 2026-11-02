@@ -1211,6 +1211,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     read_capped_from: NONE,
     read_window: NONE,
     read_capped_regular: NONE,
+    // 上限的字节数折成 `usize`（给拿 `len()` 比的调用处）：只在 `Cap` 上算这一处；TS 侧没有孪生。
+    as_len: NONE,
     // 落盘文件的声明表：每份一行（落点 · 状态还是缓存 · 格式与版本 · 读上限），后端读写口按它读写；TS 侧没有孪生。
     ACCOUNT_CREDS_FILE: NONE,
     ANSWER_PLUGIN_FILE: NONE,

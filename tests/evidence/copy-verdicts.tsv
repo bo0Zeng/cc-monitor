@@ -56,10 +56,10 @@ src/backend/relay/listen.rs:372	起不来接受线程：{e}	保留	[不对外] �
 src/frontend/shell/src/event_replay.rs:512	没有叫 `{kind}` 的流	保留	[不对外] 会话流句柄对认不出的流标签原位回的 Closed{Peer} 体（`{code,message}` 信封）；前端只记进控制台（events.ts 的 closed 那一支），不上界面
 src/frontend/shell/src/event_replay.rs:520	会话内容流不支持从某一格续看（页面重载就是一条新的订阅）	保留	[不对外] 同上：给了 from 游标时原位回的 Closed{Peer(bad_args)} 体；生产调用方恒给 null，只进控制台
 src/backend/assets/skill_install.rs:363	来源那台读不出原文	保留	[不对外] skill-install-plan 内部比较用的占位值（进 JSON 值相等比较，不上线也不给人看）
-src/backend/stderr_log/mod.rs:58	[stderr-log] 上一份挪成 {}（每份上限 {CAP_BYTES} 字节）；再早的那一份丢了\n	保留	[不对外] 后端 stderr 诊断文件滚动时写进新那份第一行的日志行（丢了哪一份要带身份）；只进日志文件
-src/backend/stderr_log/mod.rs:162	[stderr] 没被交日志路径 ⇒ stderr 原样	保留	[不对外] 后端流模式起来时的一行 tracing 日志（没被交路径 ⇒ stderr 不动）
-src/backend/stderr_log/mod.rs:164	[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）	保留	[不对外] 后端流模式起来时的一行 tracing 日志：诊断落在哪份文件
-src/backend/stderr_log/mod.rs:168	[stderr] 被交了日志路径但接不上：{why}	保留	[不对外] 后端流模式起来时的一行 tracing 日志：接不上的原因
+src/backend/stderr_log/mod.rs:61	[stderr-log] 上一份挪成 {}（每份上限 {} 字节）；再早的那一份丢了\n	保留	[不对外] 后端 stderr 诊断文件滚动时写进新那份第一行的日志行（丢了哪一份要带身份）；只进日志文件
+src/backend/stderr_log/mod.rs:166	[stderr] 没被交日志路径 ⇒ stderr 原样	保留	[不对外] 后端流模式起来时的一行 tracing 日志（没被交路径 ⇒ stderr 不动）
+src/backend/stderr_log/mod.rs:168	[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）	保留	[不对外] 后端流模式起来时的一行 tracing 日志：诊断落在哪份文件
+src/backend/stderr_log/mod.rs:172	[stderr] 被交了日志路径但接不上：{why}	保留	[不对外] 后端流模式起来时的一行 tracing 日志：接不上的原因
 src/frontend/filewin/src/fonts.rs:305	启格码	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表时 ＋9 −3 之后的现文）〔通道那一句并成一份：探针 −`之 方 求 词 请`〕
 src/frontend/filewin/src/fonts.rs:154	·…→、「」一上下不与丢两个中为主了交亮代以件份会传位作侧保做先全关内再写出列刚删别到制刷前动原发取口只可台合同名后含命器回在坏型复外多	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔窗口换骨架：探针 −⬆📁📄🔗（图标换成图标字）〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕〔测试件挪出 src/：−`化 帧 物`，只在秤里印过〕
 src/frontend/filewin/src/fonts.rs:155	大失字存它完容对小就屏已并序建开当录往径成或截打扫把拒拖按换排接搜撤操改数整文断新时是更最有本机权样根框次此段比法消点	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕〔测试件挪出 src/：−`化 帧 物`，只在秤里印过〕〔书签归那台后端：−`据`，「找不到数据目录」那句删了〕
