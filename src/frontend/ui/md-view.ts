@@ -2,12 +2,15 @@
  * 正文排版器：后端解析好的块树（`cmd_wire::md::Doc`）→ DOM。界面只照树排，不解析 Markdown、不判高亮类别。
  *
  * - 字一律经 `textContent` / 文本节点落，不拼 HTML 串 ⇒ 正文里的尖括号永远是字，不要清洗。
- * - 代码块沿用全局 `.code-block` 那一套结构（复制按钮走 main.ts 的全局委托）；高亮照那一段的 `SegHl`：
- *   段里的代码块按先序第 n 块取 `hl[n]`，三元组 `[起点差, 长, 类]`，偏移按 UTF-16 码元（JS 串直接切）。
+ * - 代码块沿用全局 `.code-block` 那一套结构（复制按钮走 main.ts 的全局委托）。
+ * - 高亮先出字、后上色：一段建出来代码照纯字排，同时把这一段的代码块（先序）交给 `pull`（后端 `prose-hl`），
+ *   拉到了 `paint` 把那几块的字换成着色的 span：第 n 块取 `hl[n]`，三元组 `[起点差, 长, 类]`，偏移按 UTF-16 码元（JS 串直接切）。
+ *   拉不到 ⇒ 照纯字。
  * - 公式只出占位 `data-math-pending`，进视口由 `render.ts::enhanceCard` 排（KaTeX 只住那一处）。
  * - 长正文按 `segs` 分段：`mountDoc` 只建第 0 段，`buildNext` 一段段往下接。
  */
 import type { Doc } from "./generated/Doc";
+import type { HlCode } from "./generated/HlCode";
 import type { Inl } from "./generated/Inl";
 import type { MdAlign } from "./generated/MdAlign";
 import type { MdBlock } from "./generated/MdBlock";
@@ -20,6 +23,20 @@ import s from "./md-view.module.css";
 /** 代码块复制钮上的字：每块都一样，不随树里的值变。 */
 const COPY_LABEL = copyText("render.codeBlock.copy");
 
+/** 拉一段的高亮：交这一段的代码块（先序），回 `hl[n]` 对第 n 块。 */
+export type HlPull = (codes: readonly HlCode[]) => Promise<SegHl>;
+
+/** 建出来的一个代码块：它的语言 · 原文 ＋ 上色时要换字的那个 `<code>`。 */
+export interface CodeSlot extends HlCode {
+  readonly el: HTMLElement;
+}
+
+/** 一串块建出来的：片段 ＋ 里面的代码块（先序）。 */
+export interface Built {
+  readonly frag: DocumentFragment;
+  readonly codes: readonly CodeSlot[];
+}
+
 /** 一份排好的正文：`root` 挂进卡里；`buildNext` 接着建下一段，建完了（或本来只有一段）回 false。 */
 export interface DocView {
   readonly root: HTMLElement;
@@ -27,8 +44,8 @@ export interface DocView {
   readonly segCount: number;
   /** 已建几段。 */
   built(): number;
-  /** 建下一段（`hl` 是那一段的高亮回包，没拉到就不给、代码照纯字排）。 */
-  buildNext(hl?: SegHl): boolean;
+  /** 建下一段（代码先照纯字，给了 `pull` 就去拉这一段的高亮、拉到再上色）。 */
+  buildNext(): boolean;
 }
 
 /** 第 i 段占 `blocks` 的哪一截：`[起, 止)`。 */
@@ -38,8 +55,8 @@ export function segRange(doc: Doc, i: number): [number, number] {
   return [from, to];
 }
 
-/** 建根、排第 0 段。 */
-export function mountDoc(doc: Doc, hl0?: SegHl): DocView {
+/** 建根、排第 0 段；`pull` 不给 ⇒ 代码一直是纯字。 */
+export function mountDoc(doc: Doc, pull?: HlPull): DocView {
   const root = document.createElement("div");
   root.className = s.mdDoc;
   const segCount = doc.segs.length + 1;
@@ -48,30 +65,45 @@ export function mountDoc(doc: Doc, hl0?: SegHl): DocView {
     root,
     segCount,
     built: () => built,
-    buildNext(hl?: SegHl): boolean {
+    buildNext(): boolean {
       if (built >= segCount) return false;
       const [from, to] = segRange(doc, built);
-      root.append(buildBlocks(doc.blocks.slice(from, to), hl));
+      const { frag, codes } = buildBlocks(doc.blocks.slice(from, to));
+      root.append(frag);
       built += 1;
+      if (pull && codes.length > 0) {
+        // 拉不到（断线 · 那台没这条命令 · 超了上限）就停在纯字：字早已排好，少的只是颜色。
+        pull(codes.map(({ lang, x }) => ({ lang, x }))).then(
+          (hl) => paint(codes, hl),
+          () => undefined,
+        );
+      }
       return true;
     },
   };
-  view.buildNext(hl0);
+  view.buildNext();
   return view;
 }
 
-/** 一串块 → 片段；`hl` 按这一串里代码块的先序取。 */
-export function buildBlocks(blocks: readonly MdBlock[], hl?: SegHl): DocumentFragment {
-  const ctx: Ctx = { hl: hl?.hl ?? [], code: 0 };
+/** 一串块 → 片段 ＋ 里面的代码块（先序）；代码照纯字排。 */
+export function buildBlocks(blocks: readonly MdBlock[]): Built {
+  const ctx: Ctx = { codes: [] };
   const frag = document.createDocumentFragment();
   for (const b of blocks) frag.append(block(b, ctx));
-  return frag;
+  return { frag, codes: ctx.codes };
+}
+
+/** 上色：第 n 块代码的字照 `hl[n]` 换成着色的 span（没有那一份 ⇒ 不动）。 */
+export function paint(codes: readonly CodeSlot[], hl: SegHl): void {
+  codes.forEach((c, n) => {
+    const one = hl.hl[n];
+    if (one && one.length > 0) c.el.replaceChildren(...highlighted(c.x, one));
+  });
 }
 
 interface Ctx {
-  readonly hl: readonly (readonly number[])[];
-  /** 下一个代码块在先序里是第几个。 */
-  code: number;
+  /** 已建的代码块，先序。 */
+  readonly codes: CodeSlot[];
 }
 
 /** 一个元素连它的孩子。 */
@@ -92,7 +124,7 @@ function block(b: MdBlock, ctx: Ctx): Node {
     case "h":
       return box(HEADINGS[Math.min(Math.max(b.level, 1), 6) - 1], inlines(b.k));
     case "code":
-      return codeBlock(b.lang, b.x, ctx.hl[ctx.code++] ?? []);
+      return codeBlock(b.lang, b.x, ctx);
     case "math":
       return mathSlot(b.tex, true);
     case "list":
@@ -159,14 +191,14 @@ function table(align: readonly MdAlign[], head: readonly (readonly Inl[])[], row
   return box("table", rows.length > 0 ? [thead, tbody] : [thead]);
 }
 
-function codeBlock(lang: string | null, x: string, hl: readonly number[]): HTMLElement {
+function codeBlock(lang: string | null, x: string, ctx: Ctx): HTMLElement {
   const label = el("span", "code-lang", lang ?? "text");
   const copy = el("button", "code-copy", COPY_LABEL);
   copy.type = "button";
   copy.dataset.copy = "";
   const bar = box("div", [label, copy], "code-bar");
-  const code = box("code", highlighted(x, hl));
-  code.className = s.mdCode;
+  const code = el("code", s.mdCode, x);
+  ctx.codes.push({ lang, x, el: code });
   const wrap = box("div", [bar, box("pre", [code])], "code-block");
   if (lang !== null) wrap.dataset.lang = lang;
   return wrap;
