@@ -373,7 +373,7 @@ pub const DATA_DIR_ENV: &str = creds_core::store::DATA_DIR_ENV;
 pub fn resolve_monitor_data_dir() -> Option<PathBuf> {
     monitor_data_dir_from(
         std::env::var(DATA_DIR_ENV).ok().as_deref(),
-        creds_core::store::home_dir(),
+        crate::data_paths::home(),
     )
 }
 

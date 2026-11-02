@@ -75,8 +75,8 @@ impl BindRegistry {
         let registry_dir = monitor_data_dir.join("ps-registry");
 
         for d in [&await_dir, &registry_dir] {
-            if let Err(e) = std::fs::create_dir_all(d) {
-                tracing::warn!("create {} failed: {e}", d.display());
+            if let Err(e) = crate::platform::fs::ensure_private_dir(d) {
+                tracing::warn!("{}", e.logged());
             }
         }
 

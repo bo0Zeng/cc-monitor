@@ -306,7 +306,7 @@ fn build_rolling_appender(
     log_dir: &Path,
     max_files: usize,
 ) -> Option<tracing_appender::rolling::RollingFileAppender> {
-    if let Err(e) = std::fs::create_dir_all(log_dir) {
+    if let Err(e) = crate::platform::own_fs::log_dir(log_dir) {
         eprintln!("create log dir {} failed: {e}", log_dir.display());
         return None;
     }
@@ -479,9 +479,9 @@ pub(crate) fn list_log_entries(
 }
 
 impl LoggingState {
-    /// 日志文件信息，显示形按这台的家目录写（`creds_core::store::home_dir`）。
+    /// 日志文件信息，显示形按这台的家目录写（`data_paths::home`）。
     pub fn log_file_info(&self) -> LogFileInfo {
-        self.file_info(creds_core::store::home_dir().as_deref())
+        self.file_info(crate::data_paths::home().as_deref())
     }
 
     /// 同 [`Self::log_file_info`]，家目录由调用方给（说不出 ⇒ `None`，显示形原样）。

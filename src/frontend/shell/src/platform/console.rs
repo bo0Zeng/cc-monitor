@@ -521,19 +521,20 @@ pub(crate) fn pick_tab_in_budget(
 /// 回它的标准输出；起不来 / 没答完 ⇒ `None`。不随 monitor 死（`Detached`）：它自己有预算、到点收尾。
 #[cfg(windows)]
 fn run_helper(req: &HelperRequest) -> Option<String> {
-    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
+    use crate::spawn_managed::{spawn_managed_with, ConsolePolicy, Lifetime, StderrSink};
     let me = std::env::current_exe().ok()?;
     let argv = helper_argv(req);
     let got = ask_helper(HELPER_TIMEOUT, &|| {
-        let mut c = std::process::Command::new(&me);
-        c.args(&argv)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped());
-        spawn_managed_cmd(
-            &mut c,
+        spawn_managed_with(
+            &me,
             ConsolePolicy::Hidden,
             Lifetime::Detached,
             StderrSink::Null,
+            |c| {
+                c.args(&argv)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::piped());
+            },
         )
     });
     if got.is_none() {
@@ -607,15 +608,7 @@ pub fn tty_title_bytes(op: TtyTitle) -> Vec<u8> {
 /// 往终端设备 `tty`（`/dev/pts/N` 一类）写那一下；打不开 / 写不进 ⇒ `false`。不把它认作本进程的控制终端（`O_NOCTTY`）。
 #[cfg(target_os = "linux")]
 pub fn tty_title(tty: &str, op: TtyTitle) -> bool {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
-    const O_NOCTTY: i32 = 0o400;
-    std::fs::OpenOptions::new()
-        .write(true)
-        .custom_flags(O_NOCTTY)
-        .open(tty)
-        .and_then(|mut f| f.write_all(&tty_title_bytes(op)))
-        .is_ok()
+    super::own_fs::tty_write(std::path::Path::new(tty), &tty_title_bytes(op)).is_ok()
 }
 
 #[cfg(not(target_os = "linux"))]

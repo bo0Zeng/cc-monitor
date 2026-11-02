@@ -479,7 +479,7 @@ fn spawn_detached(
         .map(|d| crate::logging::backend_stderr_log_path(&d))
         .filter(|p| {
             p.parent()
-                .is_some_and(|d| std::fs::create_dir_all(d).is_ok())
+                .is_some_and(|d| crate::platform::own_fs::log_dir(d).is_ok())
         })
     {
         cmd.env(crate::logging::BACKEND_STDERR_LOG_ENV, p);
@@ -1184,7 +1184,7 @@ fn run_resident_stop_within(
     bin: &std::path::Path,
     deadline: std::time::Duration,
 ) -> Result<crate::remote_resident::StopAnswer, Said> {
-    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
+    use crate::spawn_managed::{spawn_managed_with, ConsolePolicy, Lifetime, StderrSink};
     if bin.as_os_str().is_empty() {
         return Err(Said::of("rsLocalBackendHost.stop.noBin", &[]));
     }
@@ -1195,18 +1195,19 @@ fn run_resident_stop_within(
     let got = crate::backend_once::capture_full(
         deadline,
         &|| {
-            let mut cmd = std::process::Command::new(bin);
-            // 本机落点就是 `ccm`：打头的 `--` 让它当后端用（没有它整行交给 claude）。
-            cmd.args([local_backend::BACKEND_SEP, "--resident-stop"])
-                .env_remove("TMUX")
-                .envs(handed.iter().cloned())
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::piped());
-            spawn_managed_cmd(
-                &mut cmd,
+            spawn_managed_with(
+                bin,
                 ConsolePolicy::Hidden,
                 Lifetime::JobKillOnClose,
                 StderrSink::Captured,
+                |cmd| {
+                    // 本机落点就是 `ccm`：打头的 `--` 让它当后端用（没有它整行交给 claude）。
+                    cmd.args([local_backend::BACKEND_SEP, "--resident-stop"])
+                        .env_remove("TMUX")
+                        .envs(handed.iter().cloned())
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::piped());
+                },
             )
         },
         None,
@@ -1422,7 +1423,7 @@ pub fn start_local_backend() -> StartOutcome {
     //   · 落点 `~/.cc-monitor/bin`：与远端自部署同一个目录，但**文件名带 build_id**
     //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
     //   · 这台机器的 (OS, arch)：`byte_table::choose` 按它挑内嵌字节（下面那一段）；取不到时交进去的是那句拒绝的话，原样交出、不伪造理由。
-    let extract_dir = creds_core::store::home_dir()
+    let extract_dir = crate::data_paths::home()
         .map(|h| h.join(".cc-monitor").join("bin"))
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp/.cc-monitor/bin"));
     // 〔RK1 小尾巴〕本机上第一个建 `~/.cc-monitor` 的就是这里（释放后端二进制之前）⇒ 先把这一层按「只给本人」建好；
