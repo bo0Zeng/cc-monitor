@@ -12,21 +12,6 @@ import type { RotRow } from "../../../src/frontend/ui/generated/RotRow";
 import type { RotationStrategiesReply } from "../../../src/frontend/ui/generated/RotationStrategiesReply";
 import type { RotationViewReply } from "../../../src/frontend/ui/generated/RotationViewReply";
 
-// 文案表还没有这两条时取夹具里的字；表里有了就照表（这一块随之可删）。
-vi.mock("../../../src/frontend/ui/copy-table", async (orig) => {
-  const real = await orig<typeof import("../../../src/frontend/ui/copy-table")>();
-  const extra: Record<string, string> = { "rot.cell.reset": "夹具·恢复默认", "rot.acct.prune": "夹具·清掉库里没有的号" };
-  const copyText = (k: Parameters<typeof real.copyText>[0], a?: Parameters<typeof real.copyText>[1]): string => {
-    try {
-      return real.copyText(k, a);
-    } catch (e) {
-      if (k in extra) return extra[k];
-      throw e;
-    }
-  };
-  return { ...real, copyText };
-});
-
 const NOW = 1_800_000_000;
 const fact = (account: string, u5: number, u7: number, blocked = false): RotAccount => ({
   account,

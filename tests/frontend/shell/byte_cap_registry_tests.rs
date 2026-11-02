@@ -687,13 +687,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "终端实时预览一帧里那一屏（`terminal_screen.view` 序列化之后的字节）—— 200 × 60 满屏着色约 150 KiB",
         "拒收+回错",
     ),
-    (
-        "src/backend/wire/listen.rs",
-        "ATTACH_LINE_CAP",
-        "backend 读一行 attach 请求 —— `{\"attach\":\"<32 位十六进制>\"}` 本机实测 51 字节。\
-             ⚠ 对端是**同机任何进程**，不是我们自己的子进程",
-        "拒收+回错",
-    ),
     // ──：**本机后端的 stderr 接进滚动日志**那一格 ───────
     //
     // 那一行不是 `Stdio::null()`（那样后端整层诊断的唯一出口被无条件丢弃）。
