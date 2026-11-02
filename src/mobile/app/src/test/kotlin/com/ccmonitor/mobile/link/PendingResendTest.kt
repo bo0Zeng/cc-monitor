@@ -71,7 +71,7 @@ class PendingResendTest {
     fun `那台拒了 ⇒ 记成没送到、不再交；没回执（断着 · 期限到）⇒ 留着等下一回接上`() =
         runTest {
             val link = FakeCoreLink().apply { state.value = linkConnecting() }
-            val replies = ArrayDeque(listOf<Reply>(Reply.Failed(Failed("too_long", "s-refused", "")), Reply.TimedOut))
+            val replies = ArrayDeque(listOf<Reply>(Reply.Failed(Failed("too_long", "s-refused", "")), Reply.TimedOut("t-said", "")))
             link.answer = { cmd, _ -> if (cmd == "session-queue-put") replies.removeFirst() else Reply.LinkDown }
             val box = Box(listOf(Pending("p1", "s1", "t-1", PendingOutcome.PENDING, 1), Pending("p2", "s2", "t-2", PendingOutcome.PENDING, 1)))
             PendingResend(MutableStateFlow(mapOf<String, CoreLink>("h" to link)), { box }, backgroundScope)

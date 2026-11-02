@@ -55,15 +55,19 @@ pub enum CallEnd {
         #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
         data: Option<serde_json::Value>,
     },
-    /// 到期限没回。
+    /// 到期限没回：那一句 · 复制详情是核心照通道那一份写好的（桌面同一句）。
     Timeout {
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         call: i64,
+        said: String,
+        detail: String,
     },
-    /// 这边撤了。
+    /// 这边撤了：那一句 · 复制详情同上。
     Cancelled {
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         call: i64,
+        said: String,
+        detail: String,
     },
     /// 流断了。
     Down {

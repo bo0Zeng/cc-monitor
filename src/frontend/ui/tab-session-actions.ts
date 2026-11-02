@@ -12,8 +12,8 @@ import { detailOf, saidOf } from "./kit/detail";
 import { openSession } from "./session-open";
 import { isLocalOrigin, isRemoteOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { ChanError } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, isOldBackend } from "./ipc/chan-caller";
-import type { FrontResult } from "./front-result";
+import { budgetWithin, callTyped, isOldBackend, machineName } from "./ipc/chan-caller";
+import type { FrontMiss } from "./generated/FrontMiss";
 import type { FrontTold } from "./generated/FrontTold";
 import type { SessionWindow } from "./generated/SessionWindow";
 import { commands } from "./ipc/commands";
@@ -210,23 +210,23 @@ export async function frontOnce<T>(sid: string, run: () => Promise<T>, pending: 
   }
 }
 
-/** 壳那一跳的期限（极端情况下 Win32 调用卡住）：到了 ⇒ 「无应答」。 */
+/** 壳那一跳的期限（极端情况下 Win32 调用卡住）：到了 ⇒ 期限到那一张。 */
 const FRONT_SHELL_MS = 5000;
 
-/** 壳那一跳：期限内回切过去了或那一张（`null` ＝ 标签没对上、链又空）；到期 ⇒ `timeout`；出错 ⇒ `unknown`（细节可复制）。 */
-async function shellFront(ask: () => Promise<FrontTold | null>): Promise<FrontResult | null> {
+/** 壳那一跳：期限内回切过去了或那一张（`null` ＝ 标签没对上、链又空）；到期 ⇒ 期限到；出错 ⇒ 出错（原话可复制）。 */
+async function shellFront(ask: () => Promise<FrontTold | null>): Promise<FrontTold | FrontMiss | null> {
   let timer = 0;
   try {
     return await Promise.race([
       ask(),
-      new Promise<FrontResult>((r) => {
-        // 调度：一次性 —— ↗ 壳那一跳的期限，到点落成「无应答」
-        timer = window.setTimeout(() => r({ kind: "timeout" }), FRONT_SHELL_MS);
+      new Promise<FrontMiss>((r) => {
+        // 调度：一次性 —— ↗ 壳那一跳的期限，到点落成「期限到」
+        timer = window.setTimeout(() => r({ kind: "timed-out" }), FRONT_SHELL_MS);
       }),
     ]);
   } catch (e) {
     console.warn("terminal front failed:", e);
-    return { kind: "unknown", detail: String((e as Error)?.message ?? e) };
+    return { kind: "broken", detail: String((e as Error)?.message ?? e) };
   } finally {
     window.clearTimeout(timer);
   }
@@ -236,34 +236,41 @@ async function shellFront(ask: () => Promise<FrontTold | null>): Promise<FrontRe
 const WINDOW_ASK_MS = 15_000;
 
 /** 本机后端写好的那一张（链为什么是空的）；链空却没带 ⇒ 认不出。 */
-function placedResult(p: SessionWindow): FrontResult {
+function placedResult(p: SessionWindow): FrontTold | FrontMiss {
   return p.face ? { kind: "said", ...p.face } : { kind: "bad-shape", detail: "session-window: empty chain without face" };
 }
 
 /**
- * 那一问失败了 ⇒ 出口自己那一跳的结局：本机后端不认这一问 · 通道那一跳的归因（断开那一句是连接层交出的，照摆）· 别的（这台没查成的码也在这里，细节可复制）。
+ * 那一问失败了 ⇒ 出口这一跳是哪一种没成：本机后端不认这一问 · 通道那一跳的归因（断开那一句是连接层交出的，照摆）· 别的（这台没查成的码也在这里，原话可复制）。
  * 会话不在 · 那台旧 · 那台到期 · 没问到那台是后端写好的那一张，不走这里。
  */
-function failedAsk(e: unknown): FrontResult {
-  if (isOldBackend(e)) return { kind: "too-old" };
-  if (e instanceof ChanError && e.error.layer === "hop") return e.error.why === "Overrun" ? { kind: "timeout" } : { kind: "offline", said: e.message };
-  return { kind: "unknown", detail: e instanceof Error ? e.message : String(e) };
+function failedAsk(e: unknown): FrontMiss {
+  if (isOldBackend(e)) return { kind: "old" };
+  if (e instanceof ChanError && e.error.layer === "hop") return e.error.why === "Overrun" ? { kind: "timed-out" } : { kind: "unreached", said: e.message };
+  return { kind: "broken", detail: e instanceof Error ? e.message : String(e) };
+}
+
+/** 结局 · 或出口这一跳没成的那一种 ⇒ 结局：没成的那一张交壳照 `face_core::front` 写（界面不取字）。 */
+async function told(r: FrontTold | FrontMiss, origin: Machine): Promise<FrontTold> {
+  if (r.kind === "switched" || r.kind === "said") return r;
+  return { kind: "said", ...(await commands.front_missed({ machine: machineName(origin), miss: r })) };
 }
 
 /**
  * ↗ 拉会话的终端到前台（本机会话与远端会话同一条）：问本机后端一次这条会话在这台电脑上的哪儿（`session-window`：窗口标签 · 进程链 · tmux，或写好的那一张），
  * 答话原样交壳一次（先按标签、再沿链找窗口、三重指纹校验、拉前）。后端说了原因、又没有标签可找 ⇒ 不找窗口；壳没对上 ⇒ 摆后端那一张。
- * 回切过去了 · 那一张 · 出口自己那一跳的失败（`front-result.ts` 照摆）。
+ * 回切过去了 · 那一张（出口这一跳没成的也是壳写好的那一张；`front-result.ts` 照摆）。
  */
-export async function bringTerminalToFront(origin: Machine, sessionId: string): Promise<FrontResult> {
+export async function bringTerminalToFront(origin: Machine, sessionId: string): Promise<FrontTold> {
   let placed: SessionWindow;
   try {
     placed = await callTyped(LOCAL, "session-window", { machine: origin, sid: sessionId }, budgetWithin(WINDOW_ASK_MS));
   } catch (e) {
-    return failedAsk(e);
+    return told(failedAsk(e), origin);
   }
-  if (placed.labels.length === 0 && placed.chain.length === 0) return placedResult(placed);
-  return (await shellFront(() => commands.bring_terminal_to_front({ labels: placed.labels, chain: placed.chain, tmux: placed.tmux }))) ?? placedResult(placed);
+  if (placed.labels.length === 0 && placed.chain.length === 0) return told(placedResult(placed), origin);
+  const got = await shellFront(() => commands.bring_terminal_to_front({ labels: placed.labels, chain: placed.chain, tmux: placed.tmux }));
+  return told(got ?? placedResult(placed), origin);
 }
 
 /** 关 tab 时让后端把这个会话的重放历史丢掉（失败只记日志）。 */

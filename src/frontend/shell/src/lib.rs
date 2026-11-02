@@ -640,6 +640,8 @@ pub fn run() {
             open_settings_window,
             // ↗ 拉前会话的终端窗口（本机后端答过它在这台电脑上的哪儿，界面原样交来）
             bring_terminal_to_front,
+            // ↗ 出口那一跳没成（本机后端那一问没答成 · 壳那一跳没回 · 回的认不出）的那一张
+            front_missed,
             // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 activity 格 事件）
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
@@ -1242,6 +1244,13 @@ async fn bring_terminal_to_front(
     }
     .await;
     r.map_err(|s| s.named("bring_terminal_to_front"))
+}
+
+/// ↗ 出口那一跳没成（界面照它看得见的事实挑一种：本机后端不认 · 期限到 · 没问到 · 出错 · 认不出）⇒ 浮层那一张，
+/// 照 `face_core::front` 写（与本机后端问那台没问成的那几张同一张表）。`machine` 是会话那台给人看的名字。只写字，不碰后端、不阻塞。
+#[tauri::command]
+fn front_missed(machine: String, miss: cmd_wire::front::FrontMiss) -> cmd_wire::front::FrontFace {
+    face_core::front::Unplaced::from(miss).face(&machine)
 }
 
 /// Batch13-F40:前端 perf 仪表落盘。webview 无 devtools(生产/CCM_NO_DEVTOOLS)时

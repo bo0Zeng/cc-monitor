@@ -26,6 +26,12 @@ class ProblemTest {
     }
 
     @Test
+    fun `期限到 · 撤了：核心写好的那一句与详情原样，手机不另取字`() {
+        assertEquals(Problem("t-said", "t-detail"), Reply.TimedOut("t-said", "t-detail").problem("box", "history-list", null))
+        assertEquals(Problem("c-said", "c-detail"), Reply.Cancelled("c-said", "c-detail").problem("box", "history-list", null))
+    }
+
+    @Test
     fun `成品解不出（应答在、形状不对）与应答缺格同一个说法`() {
         val p = unreadableReply("box", "session-open", "{outcome=started}")
         assertEquals(copyText("peerVersion.said.unreadable", "machine" to "box"), p.text)

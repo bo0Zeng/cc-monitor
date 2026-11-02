@@ -4,7 +4,7 @@
 
 use crate::front::*;
 use cmd_wire::cells::{Tone, Words};
-use cmd_wire::front::{FrontAct, FrontFace, FrontTold};
+use cmd_wire::front::{FrontAct, FrontFace, FrontMiss, FrontTold};
 use copy_core::copy_text;
 
 fn face(title: &str, body: &str, hint: Option<&str>, tone: Tone, acts: Vec<FrontAct>) -> FrontFace {
@@ -334,6 +334,47 @@ fn why_there_is_no_chain_with_that_machines_name() {
             vec![FrontAct::Reconnect]
         ),
         "没问到那台：连接层那一句照摆"
+    );
+}
+
+/// 出口那一跳没成（`FrontMiss`，界面挑种类、壳照这一份写）：与本机后端问那台没问成的那几张同一张表，另两种带可复制的原话。
+#[test]
+fn the_exit_hops_own_misses_are_this_same_table() {
+    let m = "gpu-01";
+    let f = |miss: FrontMiss| Unplaced::from(miss).face(m);
+    assert_eq!(f(FrontMiss::Old), Unplaced::PeerOld.face(m));
+    assert_eq!(f(FrontMiss::TimedOut), Unplaced::PeerTimedOut.face(m));
+    assert_eq!(
+        f(FrontMiss::Unreached { said: "s".into() }),
+        Unplaced::Unreached { said: "s".into() }.face(m)
+    );
+    assert_eq!(
+        f(FrontMiss::Broken {
+            detail: "原话".into()
+        }),
+        face(
+            &t("front.title.failed"),
+            &t("reason.io.unknown"),
+            None,
+            Tone::Fail,
+            vec![FrontAct::Copy {
+                detail: "原话".into()
+            }]
+        )
+    );
+    assert_eq!(
+        f(FrontMiss::BadShape {
+            detail: "session-window: empty chain without face".into()
+        }),
+        face(
+            &t("front.title.badShape"),
+            "",
+            None,
+            Tone::Fail,
+            vec![FrontAct::Copy {
+                detail: "session-window: empty chain without face".into()
+            }]
+        )
     );
 }
 

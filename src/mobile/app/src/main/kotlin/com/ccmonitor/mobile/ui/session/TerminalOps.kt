@@ -67,7 +67,7 @@ class TerminalOps(
 
     /** 这台起会话用哪一家：那台列的第一家（线上 kind；缺省照那台）。问不到 ⇒ 失败（那一句）。 */
     private suspend fun agent(): Result<String> =
-        agents().mapCatching { SessionOpenFacts.pick(it, null)?.kind ?: throw Problem(copyText("peerVersion.said.unreadable", "machine" to machine())) }
+        agents().mapCatching { SessionOpenFacts.pick(it, null)?.kind ?: throw Problem(unreadableReply(machine(), SessionOpenFacts.COMMAND, it.toString()).text) }
 
     /** 在名叫 [name] 的会话里后台起这台那一家（不进入）。失败 ⇒ 那一句。 */
     suspend fun startAgent(name: String): String? =

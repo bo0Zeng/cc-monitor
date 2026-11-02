@@ -115,7 +115,7 @@ class LoginFlowTest {
         runTest {
             for ((reply, can) in listOf(
                 Reply.Failed(Failed("unsupported", "不支持", "d", Raw("""{"again":"none","terminal":false}"""))) to false,
-                Reply.TimedOut to true,
+                Reply.TimedOut("t-said", "") to true,
             )) {
                 val l = FakeCoreLink().also { it.answer = { _, _ -> reply } }
                 val f = LoginFlow(l, "h1", "smokebox", Login.account("codex", "cx"), backgroundScope)
@@ -158,7 +158,7 @@ class LoginFlowTest {
             for ((reply, want) in listOf(
                 Reply.Failed(Failed("spawn", "起不来", "d", Raw("""{"again":"restart","terminal":true}"""))) to true,
                 Reply.Failed(Failed("spawn", "起不来", "d", Raw("""{"again":"restart","terminal":false}"""))) to false,
-                Reply.TimedOut to false,
+                Reply.TimedOut("t-said", "") to false,
             )) {
                 val l = FakeCoreLink().also { it.answer = { _, _ -> reply } }
                 val f = LoginFlow(l, "h1", "smokebox", Login.account("claude", "team"), backgroundScope)

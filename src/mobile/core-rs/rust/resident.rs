@@ -663,8 +663,22 @@ pub fn reply_json(
             detail: f.detail,
             data: f.data,
         },
-        Err(CallError::Timeout { .. }) => CallEnd::Timeout { call },
-        Err(CallError::Cancelled) => CallEnd::Cancelled { call },
+        Err(e @ CallError::Timeout { .. }) => {
+            let (said, detail) = cut(machine, &e);
+            CallEnd::Timeout {
+                call,
+                said,
+                detail,
+            }
+        }
+        Err(e @ CallError::Cancelled) => {
+            let (said, detail) = cut(machine, &e);
+            CallEnd::Cancelled {
+                call,
+                said,
+                detail,
+            }
+        }
         Err(CallError::Disconnected) => CallEnd::Down { call },
         Err(e) => {
             let code = match &e {
@@ -685,6 +699,17 @@ pub fn reply_json(
         }
     };
     serde_json::to_string(&end).unwrap_or_default()
+}
+
+/// 一问没答成（期限到 · 撤了）的那一句与复制详情：那一句照通道那一份说（`layer_call_error` 分层 ⇒ `chan::said::said`，
+/// 桌面那一问没答成也是这一句），详情是 `CallError` 那一句。`machine` 是给人看的那台的称呼。
+pub(crate) fn cut(machine: &str, e: &CallError) -> (String, String) {
+    let layered = comms_inward::backend_route::layer_call_error(e, 0);
+    let said = comms_inward::chan::said::said(
+        &layered.error,
+        &comms_inward::origin::Origin::named(machine),
+    );
+    (said, e.to_string())
 }
 
 #[cfg(test)]
@@ -735,8 +760,25 @@ mod tests {
         assert_eq!(failed["end"], "failed");
         assert_eq!(failed["code"], "no_tmux");
         assert_eq!(failed["data"], serde_json::json!({"x": 1}));
-        assert_eq!(j(Err(CallError::Cancelled))["end"], "cancelled");
         assert_eq!(j(Err(CallError::Disconnected))["end"], "down");
+        // 期限到 · 撤了：那一句是桌面通道同一份说的（不是手机另取的字），复制详情带上 `CallError` 那一句。
+        let timed = j(Err(CallError::Timeout {
+            after: Duration::from_secs(15),
+            withdraw: comms_inward::chan::wire::Withdraw::Asked,
+        }));
+        assert_eq!(timed["end"], "timeout");
+        assert_eq!(
+            timed["said"],
+            copy_core::copy_text("rsChanSaid.hop.overrun", &[("machine", "box")])
+        );
+        assert_ne!(timed["detail"].as_str().unwrap_or_default(), "");
+        let cancelled = j(Err(CallError::Cancelled));
+        assert_eq!(cancelled["end"], "cancelled");
+        assert_eq!(
+            cancelled["said"],
+            copy_core::copy_text("reason.op.cancelled", &[])
+        );
+        assert_ne!(cancelled["detail"].as_str().unwrap_or_default(), "");
         let differs = j(Err(CallError::Differs {
             cmd: "history-search".into(),
             said: copy_core::backend_differs("box"),

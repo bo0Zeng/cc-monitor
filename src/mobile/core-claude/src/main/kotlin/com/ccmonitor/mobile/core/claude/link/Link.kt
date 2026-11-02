@@ -183,11 +183,17 @@ sealed interface Reply {
         val failure: com.ccmonitor.mobile.core.wire.gen.Failed,
     ) : Reply
 
-    /** 到了期限（核心已补发撤单）。 */
-    data object TimedOut : Reply
+    /** 到了期限（核心已补发撤单）：[said] 原样上屏、[detail] 进复制详情，都是核心照通道那一份写好的（桌面同一句）。 */
+    data class TimedOut(
+        val said: String,
+        val detail: String,
+    ) : Reply
 
-    /** 后端回 `cancelled`。 */
-    data object Cancelled : Reply
+    /** 撤了（后端回 `cancelled` · 这边不等了）：[said] · [detail] 同 [TimedOut]。 */
+    data class Cancelled(
+        val said: String,
+        val detail: String,
+    ) : Reply
 
     /** 流断了 · 没接上。 */
     data object LinkDown : Reply
