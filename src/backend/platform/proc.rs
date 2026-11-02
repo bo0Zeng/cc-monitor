@@ -86,6 +86,7 @@ pub fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
 /// - `Unreadable` = 环境这一刻取不到 = 支一 ∪ 支四；
 /// - `Unset` = 读得到、但这个键不作数 = 支二 ∪ 支三（两个调用方的下游谓词 `pane_is_safe` / `is_safe_config_dir` 都对空串恒 `false`；
 ///   哪天有调用方把空串当有意义的值，这两支就得再拆）。
+///
 /// exec 窗口还有一形不走支四：vfork 父进程被放回来、子进程还没换 mm 的那一刻，读到的是父进程的环境。生产调用方读的都是
 /// 自己写了 pidfile 的进程（早 exec 完）碰不到；起子进程的夹具要自己等（`identity_tag_tests::spawn_settled_sleep`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
