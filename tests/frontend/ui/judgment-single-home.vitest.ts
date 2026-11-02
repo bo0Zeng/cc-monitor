@@ -932,6 +932,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // ↗ 浮层那一张（`face-core/src/front.rs`：壳的窗口结局 `FrontOutcome::told` · 会话为什么没有链 `Unplaced::face`）：壳与本机后端写、界面照摆；TS 侧没有孪生（A16-1-8）。
     told: NONE,
     face: NONE,
+    // 历史那几行按哪台换说法的两格（`face-core/src/history_asks.rs`）：本机后端写行时算、界面照摆；TS 侧没有孪生。
+    reveal_of: NONE,
+    delete_ask: NONE,
   },
   "md-core": {
     // 解析 · 分段 · 高亮（`md-core/src/{parse,segment,highlight}.rs`）：后端算、两端照 `Doc` 排；TS 侧的孪生见 J40。
@@ -1188,6 +1191,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     strays: NONE,
   },
   "relay-route-core": {
+    // 带上限的同步读只经这三样（读到流尽 · 读一个窗口 · 读本机文件前的预检）：后端 · 壳 · 手机核心同一份；TS 侧没有孪生。
+    read_capped_from: NONE,
+    read_window: NONE,
+    read_capped_regular: NONE,
     // 落盘文件的声明表：每份一行（落点 · 状态还是缓存 · 格式与版本 · 读上限），后端读写口按它读写；TS 侧没有孪生。
     ACCOUNT_CREDS_FILE: NONE,
     ANSWER_PLUGIN_FILE: NONE,
