@@ -22,12 +22,12 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     (
         "src/backend/platform/fs/ro.rs",
         "read_capped_nofollow",
-        "不跟链接的带上限整读：读者是文件管理那五处（A17-77-5-12 换上之后删这一行）",
+        "不跟链接的带上限整读：读者是文件管理那五处 `read_nofollow` 的调用方（它们换上之后删这一行）",
     ),
     (
         "src/backend/platform/fs/ro.rs",
         "read_string_capped",
-        "带上限读成字符串：读者是 A17-77-5-3 / -4 / -5 换上的那几处（换上之后删这一行）",
+        "带上限读成字符串：读者是后端各处今天的 `read_to_string` 整读（它们换上之后删这一行）",
     ),
     (
         "src/common/cmd-wire/src/md.rs",
