@@ -338,7 +338,7 @@ class ChatSessionTest {
     @Test
     fun `来一行只排那一行：已有的单元原样留着，工具结果到了只换它配上的那一张调用卡`() =
         runTest {
-            val call = mapOf("agent" to "claude", "id" to "a1", "t" to "reply", "autoReply" to false, "draw" to "card", "human" to false, "blocks" to listOf(mapOf("type" to "text", "text" to "看看", "bytes" to 6L), mapOf("type" to "tool_use", "id" to "c1", "name" to "Read", "input" to emptyMap<String, Any>())))
+            val call = mapOf("agent" to "claude", "id" to "a1", "t" to "reply", "autoReply" to false, "draw" to "card", "human" to false, "blocks" to listOf(FakeCoreLink.prose("看看"), mapOf("type" to "tool_use", "id" to "c1", "name" to "Read", "input" to emptyMap<String, Any>())))
             val result = mapOf("agent" to "claude", "id" to "u2", "t" to "said", "draw" to "steps", "human" to false, "who" to mapOf("speaker" to mapOf("kind" to "toolResult"), "text" to ""), "blocks" to listOf(mapOf("type" to "tool_result", "for" to "c1", "content" to listOf(mapOf("type" to "text", "text" to "ok", "bytes" to 2L)), "isError" to false, "bytes" to 2L)))
             val link = FakeCoreLink()
             val file = FakeCoreLink.File(mutableListOf(human("u0", "问"), call))

@@ -65,14 +65,14 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=reply}.blocks[type=text].bytes",
+          "path": "{t=reply}.blocks[type=prose].bytes",
           "type": "number"
         },
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=reply}.blocks[type=text].text",
-          "type": "string"
+          "path": "{t=reply}.blocks[type=prose].doc",
+          "type": "object"
         },
         {
           "frozen": true,

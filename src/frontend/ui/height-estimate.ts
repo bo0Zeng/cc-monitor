@@ -11,6 +11,9 @@
  */
 import type { LineRecord } from "./generated/LineRecord";
 import type { Draw } from "./generated/Draw";
+import type { Doc } from "./generated/Doc";
+import type { Inl } from "./generated/Inl";
+import type { MdBlock } from "./generated/MdBlock";
 
 // 镜像 styles.css 的字体 token(canvas font 接受完整 fallback 栈——必须逐字同栈,
 // 否则"装了 Source Serif Pro 没装 4"的机器上 DOM 与 canvas 各走各的字体,度量漂移)
@@ -481,20 +484,119 @@ export function estimateFromFacts(f: SkeletonFacts, colW: number = COL_W): numbe
 
 /**
  * 〔「字节不是成本轴，卡型才是 …… 同一种卡正文越长越贵」〕**这条记录建卡时要当场物化的正文字符数**：
- * said / reply 的正文块。thinking / 工具调用 / 工具结果
- * 是折叠卡（展开才物化）、别的不建卡 ⇒ 0。O(块数)：只取 `.length`，不序列化。批闸（`TabStreamView.BATCH_BODY_CHARS`）按它算。
+ * said / reply 的正文块（助手正文是树：建卡只排第 0 段，只数那一段的字）。thinking / 工具调用 / 工具结果
+ * 是折叠卡（展开才物化）、别的不建卡 ⇒ 0。不序列化。批闸（`TabStreamView.BATCH_BODY_CHARS`）按它算。
  */
 export function eagerBodyChars(record: LineRecord): number {
   switch (record.t) {
     case "said":
     case "reply": {
       let n = 0;
-      for (const b of record.blocks ?? []) if (b.type === "text") n += b.text.length; // 残缺记录（夹具）不抛
+      for (const b of record.blocks ?? []) {
+        // 残缺记录（夹具）不抛
+        if (b.type === "text") n += b.text.length;
+        else if (b.type === "prose") for (const p of docPieces(b.doc.blocks.slice(0, b.doc.segs[0] ?? b.doc.blocks.length))) n += p.text.length;
+      }
       return n;
     }
     default:
       return 0;
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// **助手正文的树摊成字**：估高量它，报错卡的「原文」也照它取（树上的字只在这里摊一处）。
+// ═══════════════════════════════════════════════════════════════════════
+
+/** 摊开的一项：一行字（段落 · 标题 · 表格一行 · 公式），或整个代码块（`code`）；`gap` ⇒ 它是一个顶层块的头一项（前面有段距）。 */
+export interface DocPiece {
+  text: string;
+  code: boolean;
+  gap: boolean;
+}
+
+/** 行内的字连起来：强调 · 链接取里面的字，行内代码 · 公式取原文，图取替代字，硬换行成 `\n`，脚注引用写号。 */
+function inlineText(ks: readonly Inl[]): string {
+  let out = "";
+  for (const k of ks) {
+    if (typeof k === "string") {
+      out += k;
+      continue;
+    }
+    switch (k.t) {
+      case "b":
+      case "i":
+      case "del":
+      case "a":
+        out += inlineText(k.k);
+        break;
+      case "c":
+        out += k.x;
+        break;
+      case "m":
+        out += k.tex;
+        break;
+      case "img":
+        out += k.alt;
+        break;
+      case "br":
+        out += "\n";
+        break;
+      case "fn":
+        out += String(k.n);
+        break;
+    }
+  }
+  return out;
+}
+
+/** 一串块摊成一项项（先序；列表 · 引用 · 提示块 · 脚注往里走，分隔线按一行算）。 */
+export function docPieces(blocks: readonly MdBlock[]): DocPiece[] {
+  const out: DocPiece[] = [];
+  const walk = (bs: readonly MdBlock[], top: boolean): void => {
+    for (const b of bs) {
+      const at = out.length;
+      switch (b.t) {
+        case "p":
+        case "h":
+          out.push({ text: inlineText(b.k), code: false, gap: false });
+          break;
+        case "code":
+          out.push({ text: b.x, code: true, gap: false });
+          break;
+        case "math":
+          out.push({ text: b.tex, code: false, gap: false });
+          break;
+        case "list":
+          for (const it of b.items) walk(it.blocks, false);
+          break;
+        case "quote":
+        case "alert":
+          walk(b.blocks, false);
+          break;
+        case "notes":
+          for (const n of b.items) walk(n.blocks, false);
+          break;
+        case "table":
+          out.push({ text: b.head.map(inlineText).join(" | "), code: false, gap: false });
+          for (const r of b.rows) out.push({ text: r.map(inlineText).join(" | "), code: false, gap: false });
+          break;
+        case "rule":
+          out.push({ text: "---", code: false, gap: false });
+          break;
+      }
+      if (top && out.length > at) out[at].gap = true;
+    }
+  };
+  walk(blocks, true);
+  return out;
+}
+
+/** 整棵树的字：一项一行（报错卡的「原文」照它）。 */
+export function docText(doc: Doc): string {
+  return docPieces(doc.blocks)
+    .map((p) => p.text)
+    .join("\n");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -533,6 +635,24 @@ function splitFences(md: string): { prose: string; codeLines: number; codeBlocks
   return { prose: text, codeLines, codeBlocks, paras };
 }
 
+/** 助手正文的树：同 `splitFences` 那四样（顶层块之间按一个空行算，与原文里块之间的空行同口径）。 */
+function shapeOfDoc(doc: Doc): { prose: string; codeLines: number; codeBlocks: number; paras: number } {
+  const prose: string[] = [];
+  let codeLines = 0;
+  let codeBlocks = 0;
+  for (const p of docPieces(doc.blocks)) {
+    if (p.code) {
+      codeBlocks++;
+      codeLines += p.text.split("\n").length;
+      continue;
+    }
+    if (p.gap && prose.length > 0) prose.push("");
+    prose.push(...p.text.split("\n"));
+  }
+  const paras = prose.filter((l) => l.trim().length > 0).length;
+  return { prose: prose.join("\n"), codeLines, codeBlocks, paras };
+}
+
 /**
  * 一条记录 ⇒ 第二级那一件；不值得精算的（不建卡 · 几步卡 · 细条卡 · 没有正文）⇒ `null`（第一级就是它的高）。
  * 与 `estimateFromFacts` 逐项同形：只把 `factLines(…) × 行高` 换成 pretext 排出来的高。`colW` 同第一级。
@@ -540,13 +660,16 @@ function splitFences(md: string): { prose: string; codeLines: number; codeBlocks
 export function refineItemOf(rec: LineRecord, colW: number = COL_W): RefineItem | null {
   if (rec.draw !== "card" || (rec.t !== "said" && rec.t !== "reply")) return null;
   let folded = 0;
-  const texts: string[] = [];
+  const shapes: ReturnType<typeof splitFences>[] = [];
   for (const b of rec.blocks ?? []) {
-    if (b.type === "text") texts.push(b.text);
+    if (b.type === "text") shapes.push(splitFences(b.text));
+    else if (b.type === "prose") shapes.push(shapeOfDoc(b.doc));
     else folded++;
   }
-  const md = texts.join("\n");
-  const { prose, codeLines, codeBlocks, paras } = splitFences(md);
+  const prose = shapes.map((x) => x.prose).join("\n");
+  const codeLines = shapes.reduce((a, x) => a + x.codeLines, 0);
+  const codeBlocks = shapes.reduce((a, x) => a + x.codeBlocks, 0);
+  const paras = shapes.reduce((a, x) => a + x.paras, 0);
   if (!prose.trim()) return null; // 纯工具 / 纯代码：第一级那份算术已经是它
   const code = codeLines * LH_MONO + codeBlocks * (CODE_BAR_H + CODE_PAD_V + CODE_MARGIN);
   const over = prose.length > MEASURE_PREFIX_CHARS;

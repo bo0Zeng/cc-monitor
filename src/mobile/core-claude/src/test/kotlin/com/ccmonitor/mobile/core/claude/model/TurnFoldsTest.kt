@@ -1,7 +1,10 @@
 package com.ccmonitor.mobile.core.claude.model
 
+import com.ccmonitor.mobile.core.wire.gen.Doc
 import com.ccmonitor.mobile.core.wire.gen.FoldFail
 import com.ccmonitor.mobile.core.wire.gen.FoldSegment
+import com.ccmonitor.mobile.core.wire.gen.Inl
+import com.ccmonitor.mobile.core.wire.gen.MdBlock
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.core.wire.gen.TurnPart
 import com.ccmonitor.mobile.core.wire.gen.TurnPhase
@@ -18,7 +21,7 @@ import org.junit.Test
 class TurnFoldsTest {
     private fun said(u: String) = RenderUnit.UserText("$u#0", "q", u)
 
-    private fun text(u: String) = RenderUnit.AssistantMarkdown("$u#0", "t", u)
+    private fun text(u: String) = RenderUnit.AssistantMarkdown("$u#0", Doc(listOf(MdBlock.P(listOf(Inl.Text("t")))), emptyList()), u)
 
     private fun tool(u: String) = RenderUnit.ToolCall("$u#0", "c-$u", "Read", "r", false, false, u)
 

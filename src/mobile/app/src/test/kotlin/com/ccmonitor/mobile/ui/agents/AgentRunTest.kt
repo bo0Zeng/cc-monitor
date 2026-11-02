@@ -40,7 +40,7 @@ class AgentRunTest {
         stream.mapNotNull { (it as? StreamItem.Card)?.unit }.map {
             when (it) {
                 is RenderUnit.UserText -> it.text
-                is RenderUnit.AssistantMarkdown -> it.markdown
+                is RenderUnit.AssistantMarkdown -> it.text
                 else -> it.key
             }
         }

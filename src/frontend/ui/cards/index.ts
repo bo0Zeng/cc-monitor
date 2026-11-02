@@ -15,7 +15,10 @@
  *   `reconcilePendingToolResults` 重新匹配注入。
  */
 import { makeYieldToMain } from "../yield-to-main";
-import { forgetEnhance, renderMarkdown, renderPlainText } from "../render";
+import { enhancePending, forgetEnhance, renderMarkdown, renderPlainText } from "../render";
+import { mountDoc } from "../md-view";
+import { docText } from "../height-estimate";
+import type { Doc } from "../generated/Doc";
 import { buildSlashCommandCard } from "./slash";
 import { buildBashInputCard, buildBashOutputCard } from "./bash";
 import { buildCompactSummaryCard } from "./compact";
@@ -296,7 +299,7 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number)
       }
       // 空的正文块不摆（思考的空串是「没写进记录」，照摆一行）。卡还是几步是后端那一格：
       // 带正文的、含交互等待工具（issue #21，要默认可见）的画成卡；全是思考 · 工具调用 · 工具结果的画成过程里的几步。
-      const meaningful = rec.blocks.filter((b) => b.type !== "text" || b.text.trim().length > 0);
+      const meaningful = rec.blocks.filter((b) => (b.type === "text" ? b.text.trim().length > 0 : b.type !== "prose" || b.doc.blocks.length > 0));
       const cards = toolCardsOf(rec);
       if (rec.draw === "card") {
         return {
@@ -466,8 +469,10 @@ function renderBlock(
   facts: StepFacts = NO_FACTS,
 ): HTMLElement | null {
   switch (block.type) {
+    case "prose":
+      return buildProseBlock(block.doc, sizeText(block.bytes), ctx.lazy);
     case "text":
-      return buildTextBlock(block.text, sizeText(block.bytes), ctx.lazy);
+      return buildPlainTextBlock(block.text);
     case "thinking": {
       // 空串 ＝ 没写进记录 ⇒ 一行不可展开的步骤行（点开是空的，不给点）。
       if (block.text === "") return buildUnrecordedThinking();
@@ -976,91 +981,17 @@ function buildResultBody(
 const LARGE_TEXT_BYTES = 200_000;
 
 /**
- * 〔文本布局补审查出的性能缺陷〕回复正文超过它 ⇒ 建卡时只渲染前一截、下面一颗「显示全部」。
- * marked 同步排整段正文，617 KB 一条 ≈ 8 s 卡住主线程（读数）；
- * 20 000 字 ≈ 真机正文窗口 p99 的十几倍（p99 1 594 字），常态回复碰不到它。点了之后余下的按同样大小分片、一片一跳地渲染。
+ * 一个回复正文块：照后端交的树排（`md-view.ts`），只排第 0 段；树分了段 ⇒ 下面一颗「展开 {全文大小}」，
+ * 点了余下的一段一跳地补（不卡输入）。分在哪几块是后端定的（`Doc.segs`）。`size` 是后端交的整块字节数写成的那一格。
+ * 急路（实时）当场排公式；惰路（批量重放）留占位，卡进视口由 `enhanceCard` 补。点开补的那几段就在眼前，当场排。
  */
-export const LONG_REPLY_HEAD_CHARS = 20_000;
-
-/**
- * 把 markdown 切成若干片，每片不超过 `max` 字（单个块超长就单独一片）：只在**围栏代码块之外的空行**上切，
- * 代码块不会被劈开。跨空行的列表 / 表格被切开时，后一片的编号从头起 —— 截断显示的代价，认。
- */
-export function markdownPieces(md: string, max: number): string[] {
-  const out: string[] = [];
-  let cur: string[] = [];
-  let curLen = 0;
-  let inCode = false;
-  let block: string[] = [];
-  const add = (text: string): void => {
-    if (curLen > 0 && curLen + text.length + 1 > max) {
-      out.push(cur.join("\n"));
-      cur = [];
-      curLen = 0;
-    }
-    cur.push(text);
-    curLen += text.length + 1;
-  };
-  const flushBlock = (): void => {
-    if (block.length === 0) return;
-    const text = block.join("\n");
-    if (text.length <= max) add(text);
-    else for (const part of splitOversizeBlock(block, max)) add(part);
-    block = [];
-  };
-  for (const line of md.split("\n")) {
-    if (/^\s*(\x60{3}|~{3})/.test(line)) inCode = !inCode;
-    block.push(line);
-    if (!inCode && line.trim() === "") flushBlock();
-  }
-  flushBlock();
-  if (cur.length > 0) out.push(cur.join("\n"));
-  return out;
-}
-
-/**
- * 一个比 `max` 还长的块按行切（一行比 `max` 还长就按字硬切）；是围栏代码块的，每一截各自补上开 / 合围栏，渲染出来仍是代码块。
- */
-function splitOversizeBlock(lines: string[], max: number): string[] {
-  const fence = /^\s*(\x60{3,}|~{3,})/.exec(lines[0] ?? "")?.[1] ?? null;
-  const body = fence ? lines.slice(1, lines.length - (/^\s*(\x60{3}|~{3})/.test(lines[lines.length - 1] ?? "") ? 1 : 0)) : lines;
-  const open = fence ? `${lines[0]}\n` : "";
-  const close = fence ? `\n${fence}` : "";
-  const room = Math.max(1, max - open.length - close.length);
-  const parts: string[] = [];
-  let cur = "";
-  const push = (): void => {
-    if (cur) parts.push(open + cur + close);
-    cur = "";
-  };
-  for (const line of body) {
-    for (let at = 0; at < Math.max(1, line.length); at += room) {
-      const seg = line.slice(at, at + room);
-      if (cur && cur.length + 1 + seg.length > room) push();
-      cur = cur ? `${cur}\n${seg}` : seg;
-    }
-  }
-  push();
-  return parts;
-}
-
-/**
- * 一个回复正文块：不长就整段渲染；长了只渲染第一片 ＋「展开 {全文大小}」（点了余下的一片一跳地补，不卡输入）。
- * `size` 是后端交的整块字节数写成的那一格。
- */
-function buildTextBlock(text: string, size: string, lazy: boolean | undefined): HTMLElement {
+function buildProseBlock(doc: Doc, size: string, lazy: boolean | undefined): HTMLElement {
   const div = document.createElement("div");
   div.className = "block-text";
-  // 记下原文：进了可视区问一次后端里面提到哪几格（`plan-refs.ts`）；长回复只记已渲的第一片。
-  if (text.length <= LONG_REPLY_HEAD_CHARS) {
-    div.innerHTML = renderMarkdown(text, { lazy });
-    noteProse(div, text);
-    return div;
-  }
-  const pieces = markdownPieces(text, LONG_REPLY_HEAD_CHARS);
-  const head = document.createElement("div");
-  head.innerHTML = renderMarkdown(pieces[0], { lazy });
-  noteProse(head, pieces[0]);
+  const view = mountDoc(doc);
+  div.append(view.root);
+  if (!lazy) enhancePending(view.root);
+  if (view.built() >= view.segCount) return div;
   const more = document.createElement("button");
   more.type = "button";
   more.className = "block-body-show-full";
@@ -1069,20 +1000,25 @@ function buildTextBlock(text: string, size: string, lazy: boolean | undefined): 
     "click",
     () => {
       more.disabled = true;
-      let i = 1;
       const step = makeYieldToMain(() => {
-        const piece = document.createElement("div");
-        piece.innerHTML = renderMarkdown(pieces[i]);
-        more.before(piece);
-        i++;
-        if (i < pieces.length) step();
+        view.buildNext();
+        enhancePending(view.root);
+        if (view.built() < view.segCount) step();
         else more.remove();
       });
       step();
     },
     { once: true },
   );
-  div.append(head, more);
+  div.append(more);
+  return div;
+}
+
+/** 一段纯文本正文（线上 `text` 那一形：照字排，不当 Markdown）。 */
+function buildPlainTextBlock(text: string): HTMLElement {
+  const div = document.createElement("div");
+  div.className = "block-text";
+  div.innerHTML = renderPlainText(text);
   return div;
 }
 const LARGE_TEXT_HEAD_LINES = 800;
@@ -1297,10 +1233,10 @@ function cardHeader(
   return h;
 }
 
-/** 正文块连成一段（报错卡的正文）。 */
+/** 正文块连成一段（报错卡的正文；助手正文是树，照树取字）。 */
 function textOf(blocks: readonly Block[]): string {
   return blocks
-    .map((b) => (b.type === "text" ? b.text : ""))
+    .map((b) => (b.type === "text" ? b.text : b.type === "prose" ? docText(b.doc) : ""))
     .filter(Boolean)
     .join("\n");
 }
