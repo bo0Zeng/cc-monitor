@@ -2,6 +2,6 @@
 import type { RotSeg } from "./RotSeg";
 
 /**
- * 改设置的一个意图（`rotation-settings` 的 `edit`）：设一格 · 分段里改 / 加 / 删一段 · 同第一窗与否 · 拖号牌 · 加号 · 移出。
+ * 改设置的一个意图（`rotation-settings` 的 `edit`）：设一格 · 恢复默认 · 分段里改 / 加 / 删一段 · 同第一窗与否 · 拖号牌 · 加号 · 移出 · 清掉账号库里没有的号。
  */
-export type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "seg": { key: string, row?: number, window: string, at?: number, seg?: RotSeg, } } | { "same": { key: string, row?: number, window: string, same: boolean, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } };
+export type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "reset": { key: string, row?: number, } } | { "seg": { key: string, row?: number, window: string, at?: number, seg?: RotSeg, } } | { "same": { key: string, row?: number, window: string, same: boolean, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } } | { "prune": Record<symbol, never> };

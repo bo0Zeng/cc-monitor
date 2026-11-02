@@ -781,6 +781,10 @@ impl EventReplay {
                 sink.deliver(&label, id, items);
                 sent += 1;
                 if sent < total {
+                    #[expect(
+                        clippy::disallowed_methods,
+                        reason = "分块交回放之间让界面喘一口：每块之间停 `CHUNK_PAUSE_MS`，至多块数减一次、最后一块不停。界面那一侧能回「这一块画完了」就改成等它、去掉这一停"
+                    )]
                     tokio::time::sleep(std::time::Duration::from_millis(CHUNK_PAUSE_MS)).await;
                 }
             }
@@ -932,6 +936,10 @@ impl EventReplay {
                 rest = &rest[took..];
             }
             if ci + 1 < total {
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "分块交回放之间让界面喘一口：每块之间停 `CHUNK_PAUSE_MS`，至多块数减一次、最后一块不停。界面那一侧能回「这一块画完了」就改成等它、去掉这一停"
+                )]
                 tokio::time::sleep(std::time::Duration::from_millis(CHUNK_PAUSE_MS)).await;
             }
         }

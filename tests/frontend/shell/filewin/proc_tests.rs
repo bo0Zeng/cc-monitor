@@ -893,7 +893,7 @@ fn the_spawn_result_is_never_thrown_away() {
         ),
         (1, 1),
         "`proc.rs` 生产段里 `early_failure` 不是「定义一处 ＋ 调用一处」—— \
-         这一族轮询全仓只许一处（`rust_timer_registry` 登记的就是它）"
+         这一族轮询全仓只许一处（`src/frontend/clippy.toml` 的定时器那一组 ＋ 那一处的放行理由说的就是它）"
     );
     let spawn_needle = format!("{}_window(", "spawn");
     assert!(

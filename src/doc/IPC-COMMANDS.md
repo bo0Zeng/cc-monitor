@@ -3062,7 +3062,7 @@ type Words = string;
 
 ```ts
 type RotBadCell = { cell: string, code: string, };
-type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "seg": { key: string, row?: number, window: string, at?: number, seg?: RotSeg, } } | { "same": { key: string, row?: number, window: string, same: boolean, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } };
+type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "reset": { key: string, row?: number, } } | { "seg": { key: string, row?: number, window: string, at?: number, seg?: RotSeg, } } | { "same": { key: string, row?: number, window: string, same: boolean, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } } | { "prune": Record<symbol, never> };
 type RotRefused = { cells: Array<RotBadCell>, };
 type RotSeg = { from: string, to: string, v: number, };
 type RotStale = { rev: string, };

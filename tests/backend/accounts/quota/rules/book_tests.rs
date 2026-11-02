@@ -76,6 +76,42 @@ fn a_missing_copy_is_unreadable() {
     assert!(serde_json::from_value::<Book>(raw).is_err());
 }
 
+/// ★ 账本只装近来的会话：换过号 · 拖过顺序 · 去掉过号的会话，超过 [`DROP_AFTER`] 没被看见也清（下一次记新会话时）；
+/// 近来还被看见的（换过号的也算）照留。
+#[test]
+fn long_gone_sessions_go_even_after_they_switched() {
+    let mut b = Book::fresh();
+    let log = |at| Log {
+        at,
+        from: "a".into(),
+        to: "b".into(),
+        cause: Cause::Order,
+        why: None,
+        saw: None,
+    };
+    for n in 0..20 {
+        let sid = format!("old{n}");
+        b.saw(&sid, "claude-code", "a", 100, || None);
+        let s = b.sessions.get_mut(&sid).expect("记下了");
+        match n % 3 {
+            0 => s.push_log(log(150)),
+            1 => s.temp = vec!["b".into()],
+            _ => s.off = vec!["b".into()],
+        }
+    }
+    let now = 100 + DROP_AFTER + 10;
+    b.saw("recent", "claude-code", "a", now - 60, || None);
+    b.sessions
+        .get_mut("recent")
+        .expect("记下了")
+        .push_log(log(now - 30));
+    b.saw("new", "claude-code", "a", now, || None);
+    assert_eq!(
+        b.sessions.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["new", "recent"]
+    );
+}
+
 /// ★ 换号记录至多留 50 条：第 51 条把最早那条挤掉。
 #[test]
 fn the_log_keeps_the_latest_fifty() {

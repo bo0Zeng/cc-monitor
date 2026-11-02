@@ -7,12 +7,17 @@
 
 use crate::agents::{ProcFact, SessionActivity};
 use crate::platform::fs::Ro;
+use relay_route_core::{Cap, Over};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-/// 单份进程状态文件读取上限（正常几百字节）。
-const MAX_SESSION_FILE_BYTES: u64 = 1024 * 1024;
+/// 单份进程状态文件（`sessions/<PID>.json`）读取上限（正常几百字节）：超了跳过那一份、读那一层 `warn!` 点名。
+/// 盯这些文件的那一路（`observe::watcher`）读它们也用这一个。
+pub(crate) const SESSION_FILE_CAP: Cap = Cap {
+    bytes: 1024 * 1024,
+    over: Over::SkipAndSay,
+};
 /// pidfile 目录扫描上限，防病态目录拖垮一次性查询。
 const MAX_SESSION_FILES: usize = 500;
 
@@ -422,7 +427,7 @@ fn pidfiles(dir: &Path) -> Vec<(u32, ProcFact)> {
             continue;
         };
         seen += 1;
-        let bytes = match Ro::read_regular_capped(&path, MAX_SESSION_FILE_BYTES) {
+        let bytes = match Ro::read_capped(&path, SESSION_FILE_CAP) {
             Ok(b) => b,
             Err(e) => {
                 // 跳过要说清是谁：一个超过上限的 pidfile 被静默丢掉，那个会话就永远不归属到任何账号、也没人说得出是哪一个。

@@ -93,7 +93,7 @@ fn every_field_goes_through_untouched() {
 fn an_oversized_file_is_skipped_not_the_whole_list() {
     let h = home("cap");
     put(&h, "s", "1.json", &task("1"));
-    let pad = "x".repeat(TASK_FILE_CAP_BYTES as usize);
+    let pad = "x".repeat(TASK_FILE_CAP.bytes as usize);
     put(
         &h,
         "s",
