@@ -12,9 +12,6 @@ path = "lib.rs"
 [dependencies]
 copy-core = { path = "../../common/copy-core" }
 relay-route-core = { path = "../../common/relay-route-core" }
-# 装门上那两把钥匙的类型（`SecretKey`：遮蔽的 `Debug` · 定长比对 · 具名的取明文口）。默认档，不开 `harden`：
-# 只要那个类型，不碰凭据文件的读写与权限。
-creds-core = { path = "../../common/creds-core" }
 upstream-url-core = { path = "../../common/upstream-url-core" }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 webpki-roots = "1"

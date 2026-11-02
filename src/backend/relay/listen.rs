@@ -256,8 +256,8 @@ fn prepare(
         .map(|(full, verdict)| {
             announce_key_perm(&verdict, &mut std::io::stderr());
             comms_outward::Keys {
-                pass: key::pass_of(&full),
-                full,
+                pass: key::door_check(key::pass_of(&full)),
+                full: key::door_check(full),
             }
         }) {
         Ok(k) => k,

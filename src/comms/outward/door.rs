@@ -12,7 +12,7 @@
 //!
 //! 1. 带 `Origin` ⇒ [`Verdict::Browser`]（**403**）—— 浏览器发的请求一律带它；claude CLI 现打不带；
 //! 2. `Host` 不是回环字面量（或没有、或不止一个）⇒ [`Verdict::NotLoopbackHost`]（**421**，防 DNS rebinding）；
-//! 3. 钥匙不对 ⇒ [`Verdict::BadKey`]（**403**）；比对定长时间（`SecretKey::matches`，定长比对住 `creds-core`）。
+//! 3. 钥匙不对 ⇒ [`Verdict::BadKey`]（**403**）；段的形状先过 `relay_route_core::key_shape_ok`，再交宿主递进来的比对口（[`KeyCheck`]；宿主用 `creds_core::SecretKey::matches` 造，定长时间）。
 //!    钥匙只在路径第一段。门上有两把（[`Keys`]）：全权那一把（[`Scope::All`]）与只许直通那一把（[`Scope::Passthrough`]）。
 //!
 //! 过了才剥掉 `/<钥匙>`，余下的交给 `route::parse`（一字不改）⇒ 表里没这一行仍是 **404**，与 403 可分。
@@ -30,26 +30,21 @@
 //! - 文件在中转跑着的时候被人删掉 / 改掉 ⇒ 中转手里那一把与盘上对不上，新会话每一发 403（出声，不静默）；重起中转就好。
 
 use super::http1::RequestHead;
-use creds_core::SecretKey;
 
 /// 门拒绝时回的两个状态行。
 pub const FORBIDDEN: &str = "403 Forbidden";
 pub const MISDIRECTED: &str = "421 Misdirected Request";
 
-/// 从一个串认一把钥匙：形状不对就不认（空 / 短 / 非小写十六进制都算不对）。
-/// 装它的是 `creds_core::SecretKey`（遮蔽的 `Debug` · 门上比对只回布尔 · 取明文只经具名的口）；形状闸在门这一侧。
-pub fn key_from_text(s: &str) -> Option<SecretKey> {
-    let t = s.trim();
-    relay_route_core::key_shape_ok(t).then(|| SecretKey::new(t))
-}
+/// 宿主递进来的一把钥匙的比对口：递来的一串是不是这一把（只回布尔；定长时间由宿主那一侧的钥匙类型保证）。
+/// 门只调它 —— 不碰明文、不认装钥匙的类型（通信层不依赖业务 crate，`C2`）。
+pub type KeyCheck = Box<dyn Fn(&str) -> bool + Send + Sync>;
 
-/// 门上的两把钥匙。
-#[derive(Clone, Debug)]
+/// 门上的两把钥匙（各是一个比对口）。
 pub struct Keys {
     /// 全权：`/s/` 与 `/t/` 都过。
-    pub full: SecretKey,
+    pub full: KeyCheck,
     /// 只许直通：只过 `/t/`（[`scope_refusal`]）。
-    pub pass: SecretKey,
+    pub pass: KeyCheck,
 }
 
 /// 过门的是哪一把。
@@ -132,12 +127,13 @@ pub fn admit(head: &RequestHead, keys: &Keys) -> Verdict {
         Some(i) => (&after[..i], &after[i..]),
         None => (after, ""),
     };
-    if rest.is_empty() {
+    // 形状闸：这一段长得不像钥匙（空 / 短 / 非小写十六进制）就不交给比对口。
+    if rest.is_empty() || !relay_route_core::key_shape_ok(seg) {
         return Verdict::BadKey;
     }
     // 两把都比（各自定长时间），不按先比中哪把提前收工。
-    let full = keys.full.matches(seg);
-    let pass = keys.pass.matches(seg);
+    let full = (keys.full)(seg);
+    let pass = (keys.pass)(seg);
     match (full, pass) {
         (true, _) => Verdict::Pass(rest.to_string(), Scope::All),
         (false, true) => Verdict::Pass(rest.to_string(), Scope::Passthrough),

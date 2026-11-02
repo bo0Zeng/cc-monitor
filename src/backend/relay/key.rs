@@ -28,16 +28,26 @@
 //! 两半的相对路径是同一个 const（共享 crate `relay_route_core::KEY_FILE_REL`）。
 
 use crate::platform::fs::Own;
-use comms_outward::key_from_text;
 use copy_core::copy_text;
 use creds_core::perm::Verdict;
 use creds_core::SecretKey;
 use std::path::{Path, PathBuf};
 
 /// 钥匙明文在宿主这一侧唯一取出来的地方（`SecretKey` 的具名出口，`creds_store_exits` 数着恰好这一处）：
-/// 派生只许直通那一把 · 落盘 · 插进地址 · 交只许直通那一把的串，都经它。门上比对不取明文（`SecretKey::matches`）。
+/// 派生只许直通那一把 · 落盘 · 插进地址 · 交只许直通那一把的串，都经它。门上比对不取明文（[`door_check`]）。
 fn plain(k: &SecretKey) -> &str {
     k.expose_for_relay_key()
+}
+
+/// 从一个串认一把钥匙：形状不对就不认（空 / 短 / 非小写十六进制都算不对；首尾空白剥掉）。
+pub(crate) fn key_from_text(s: &str) -> Option<SecretKey> {
+    let t = s.trim();
+    relay_route_core::key_shape_ok(t).then(|| SecretKey::new(t))
+}
+
+/// 把一把钥匙做成门上要的比对口（`comms_outward::KeyCheck`）：门只问「是不是这一把」，比对定长时间（`SecretKey::matches`）。
+pub(crate) fn door_check(k: SecretKey) -> comms_outward::KeyCheck {
+    Box::new(move |seg| k.matches(seg))
 }
 
 /// 哪一个范围的钥匙。盘上只有全权那一把（根钥匙）；只许直通那一把从它派生（[`pass_of`]）。

@@ -9,7 +9,7 @@ use super::{equal, none, rule};
 /// 定义面那张表（`creds-core` 判据 `INNER_FIELD_USERS`）住在哪。
 const DEFINITION_TABLE: &str = "tests/common/creds-core/lib_tests.rs";
 
-/// 扫哪几棵树：这就是「每个出口恰好一处调用」的分母（通信层也在里面：门上比对只经只回布尔的那一口）。
+/// 扫哪几棵树：这就是「每个出口恰好一处调用」的分母（通信层也在里面：门上只拿宿主递进去的比对口，不取明文）。
 const PLAINTEXT_SCAN_TREES: &[&str] = &[
     "src/frontend/shell/src",
     "src/common",
@@ -59,59 +59,6 @@ fn string_wrappers_without_derived_debug(prod: &str) -> Vec<String> {
         }
     }
     out
-}
-
-/// 通信层从 `creds-core` 叫得出的：`(文件, 跟在 `creds_core::` 后面的那一段)`。只有装钥匙的类型（门上那两把）。
-const COMMS_NAMES_FROM_CREDS_CORE: &[(&str, &str)] = &[("src/comms/outward/door.rs", "SecretKey")];
-
-/// 通信层依赖 `creds-core` 只为装钥匙的那个类型：鉴权头的形状（`store::AuthStyle`）· 凭据文件的读写与权限都是上游选择与宿主的事。
-/// 依赖边开着，编译器不再挡「通信层叫出 `creds_core::store::…`」⇒ 这里数：通信层生产段里每一处 `creds_core::<名字>`
-/// 与登记的两向相等；`comms-outward` 引它不开 `harden`（权限那一半连编都编不进来）。
-#[test]
-fn the_comms_layer_names_nothing_from_creds_core_but_the_key_type() {
-    let named = |prod: &str| -> Vec<String> {
-        prod.match_indices("creds_core::")
-            .map(|(i, m)| {
-                prod[i + m.len()..]
-                    .chars()
-                    .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '{')
-                    .collect()
-            })
-            .collect()
-    };
-    assert_eq!(
-        named("use creds_core::store::AuthStyle;\nuse creds_core::{perm, SecretKey};\n"),
-        vec!["store".to_string(), "{perm".to_string()],
-        "合成样本上认法不对"
-    );
-    rule(|repo| {
-        let found = repo
-            .under(&["src/comms"], &["rs"])
-            .into_iter()
-            .flat_map(|f| named(f.prod()).into_iter().map(|n| (f.rel.clone(), n)));
-        equal(
-            "通信层从 `creds-core` 只许叫出装钥匙的 `SecretKey`",
-            found,
-            COMMS_NAMES_FROM_CREDS_CORE
-                .iter()
-                .map(|(f, n)| (f.to_string(), n.to_string())),
-        );
-        let manifest = repo.file("src/comms/outward/Cargo.toml").text();
-        let dep: Vec<&str> = manifest
-            .lines()
-            .filter(|l| l.trim_start().starts_with("creds-core"))
-            .collect();
-        assert_eq!(
-            dep.len(),
-            1,
-            "`comms-outward` 的清单里 `creds-core` 那一行：{dep:?}"
-        );
-        assert!(
-            !dep[0].contains("features"),
-            "`comms-outward` 引 `creds-core` 开了 feature：{} —— 通信层只要那个类型，不碰凭据文件",
-            dep[0]
-        );
-    });
 }
 
 /// 装一串秘密、不让它进日志、只经具名的口取明文 —— 这件事只许 `creds_core::SecretKey` 一个类型做。

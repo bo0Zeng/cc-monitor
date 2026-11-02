@@ -126,7 +126,7 @@ mod sealed {
     ///
     /// 能 `clone()`：复制出来的还是一把 `SecretKey`（照样遮蔽、照样只经那一道门取明文）。
     /// 用它的：续成了而写回在等那一家放写锁时，新令牌留在内存里、每一发各交一份（`accounts/oauth/writeback.rs`）；
-    /// 中转口门上那两把钥匙（`comms_outward::Keys`，形状闸在门那一侧）。
+    /// 中转口的钥匙在后端宿主那一侧（`relay/key.rs`；门上只拿它做成的比对口）。
     #[derive(Clone)]
     pub struct SecretKey(String);
 

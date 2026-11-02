@@ -129,9 +129,9 @@ mod server; // 一条下游连接的一来一回（解析 → 问上游选择 �
 mod tee;
 mod upstream;
 
-/// 后端起中转那一侧用的：钥匙由后端读好、过门这一侧的形状闸（[`key_from_text`]）交进来（[`Keys`]）· 一条连接交给 [`serve_one`] ·
+/// 后端起中转那一侧用的：钥匙由后端读好，门上只拿两个比对口（[`Keys`] · [`KeyCheck`]）· 一条连接交给 [`serve_one`] ·
 /// 在途满了由后端回一声 [`refuse_busy`] · 接下连接先装下游期限（[`apply_downstream_deadline`]，值由后端给）。
-pub use door::{key_from_text, Keys};
+pub use door::{KeyCheck, Keys};
 pub use server::{apply_downstream_deadline, refuse_busy, serve_one, Relay};
 
 /// tee 的第二个落点的口与它交出去的那件事（宿主 `stream::tap` 实现口、把事件拼成活卡）；
@@ -203,10 +203,9 @@ pub(crate) struct StreamId<'a> {
 ///
 /// # 🔴 它为什么存在（2026-09-22）
 ///
-/// 这一格要是 `(Option<&SecretKey>, AuthStyle)`，中转就得认「这一家上游要什么形状的鉴权头」（`creds_core::store::AuthStyle`），
-/// 那是上游选择的知识。通信层从 `creds-core` 只许叫出装钥匙的 `SecretKey`（门上那两把；
-/// guard-core `creds_store_exits::the_comms_layer_names_nothing_from_creds_core_but_the_key_type` 钉着）。
-/// ⇒ 中转手里只有一个 `Arc<dyn Destinations>`，表里元素也不从 `creds-core` 来：
+/// 这一格要是 `(Option<&SecretKey>, AuthStyle)` —— **两个都是 `creds-core` 的类型**，
+/// 而 `creds-core` 在 `C2` 名单里被特意加粗（通信层不依赖它；门上的钥匙也只以宿主递进来的比对口出现）。
+/// ⇒ 中转手里只有一个 `Arc<dyn Destinations>`，表里元素也不从业务 crate 来：
 /// 换头这一格的类型面上只有 `&'static str` 与 `&str`。
 ///
 /// # 两个字段各买什么
