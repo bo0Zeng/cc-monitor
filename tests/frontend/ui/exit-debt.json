@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1685,
+  "ceiling": 1671,
   "groups": [
     {
       "kind": "首登",
