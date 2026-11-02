@@ -338,7 +338,7 @@ impl crate::wire::typed::Handle for AccountsListCmd {
             );
             let quota = crate::faces::rotation_face::quota_read_with(
                 &crate::faces::rotation_face::Ctx::here(),
-                crate::accounts::quota::now_unix(),
+                crate::common::time::now_secs(),
                 &cx.tz,
             );
             with_quota(&mut v, &quota, kind);
@@ -627,9 +627,7 @@ pub(crate) fn dress_ask(
     sid: &str,
     off: Option<&crate::common::cells::Words>,
 ) -> Option<crate::observe::recognize::facts::Needs> {
-    let now = crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+    let now = crate::common::time::now_ms();
     let mut needs = crate::observe::recognize::facts::dress_ask_with(
         needs,
         crate::control::asks::pending(sid).into_iter().next(),

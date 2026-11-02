@@ -356,7 +356,7 @@ impl Accounts {
             quota: std::sync::Arc::new(Ledger::at(None)),
             hop: None,
             lineage: None,
-            clock: std::sync::Arc::new(crate::accounts::quota::now_unix),
+            clock: std::sync::Arc::new(crate::common::time::now_secs),
             own,
         }
     }

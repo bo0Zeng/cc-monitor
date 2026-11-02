@@ -123,7 +123,7 @@ impl crate::wire::typed::Handle for QuotaReadCmd {
         async move {
             Ok(quota_read_with(
                 &Ctx::here(),
-                crate::accounts::quota::now_unix(),
+                crate::common::time::now_secs(),
                 &cx.tz,
             ))
         }

@@ -308,7 +308,7 @@ impl crate::wire::typed::Handle for RotationView {
             view_with(
                 &ctx,
                 &req,
-                crate::accounts::quota::now_unix(),
+                crate::common::time::now_secs(),
                 &cx.tz,
                 &|sid| live.contains(sid),
             )

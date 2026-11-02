@@ -502,9 +502,7 @@ pub(crate) fn mcp_look(kind: &str) -> crate::agents::McpLook {
             homes.push((None, bare));
         }
     }
-    let now_ms = crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+    let now_ms = crate::common::time::now_ms();
     crate::agents::McpLook { homes, now_ms }
 }
 
