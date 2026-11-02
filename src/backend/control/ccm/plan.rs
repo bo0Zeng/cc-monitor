@@ -15,6 +15,7 @@
 use crate::ccm_line::argv::{flag, parse_size, CwdSpec, Die, Opts};
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
+use relay_route_core::{Cap, Over};
 // 铸名避让那张 hash 表的**唯一**来源（字段模块私有 ⇒ 这里造不出第二份）。
 use crate::accounts::upstream_select::endpoint::LaunchAccount;
 use crate::common::session_snapshot::TakenNames;
@@ -402,7 +403,7 @@ impl Env {
                 std::path::Path::new(&home),
             ),
             answer_hook_entry: crate::platform::paths::installed_ccm_entry(),
-            read_text: Some(|p| crate::platform::fs::Ro::read_to_string(p).ok()),
+            read_text: Some(|p| Ro::read_string_capped(p, SETTINGS_FILE_CAP).ok()),
             sideload: Some(sideload_here),
             home,
         }
@@ -1606,12 +1607,23 @@ fn sideload_of(
     ))
 }
 
+/// 用户给的会话级设置文件（[`Env::read_text`]）读多大；超了 ⇒ 读不出，答题 hook 照「设置读不出」标挂不上（降级，理由带在结果里）。
+const SETTINGS_FILE_CAP: Cap = Cap {
+    bytes: 4 << 20,
+    over: Over::DegradeAndSay,
+};
+
+/// 本机 managed 策略文件读多大；超了 ⇒ 日志里说是哪一份，这一份当没拦。
+const POLICY_FILE_CAP: Cap = Cap {
+    bytes: 4 << 20,
+    over: Over::SkipAndSay,
+};
+
 /// 真跑那一份 [`Env::sideload`]：只读环境与这台的几份文件，不写。
 fn sideload_here(face: &crate::agents::PluginFace) -> Sideload {
     let policy_blocked = (face.policy_files)().iter().any(|p| {
-        crate::platform::fs::Ro::read_to_string(p)
+        Ro::read_json(p, POLICY_FILE_CAP)
             .ok()
-            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
             .is_some_and(|v| (face.policy_blocks)(&v))
     });
     Sideload {

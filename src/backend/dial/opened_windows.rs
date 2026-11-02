@@ -15,13 +15,17 @@ use crate::platform::fs::Ro;
 use crate::platform::shell::dialect::ps_literal;
 use crate::platform::Own;
 use copy_core::{Discard, Why};
+use relay_route_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 
 /// 数据目录底下的那一层。
 pub(crate) const DIR: &str = "opened-windows";
 
-/// 一份记录的读上限（两行：标签 · 机器名）。
-const MAX_BYTES: u64 = 4096;
+/// 一份记录的读上限（两行：标签 · 机器名）；超了 ⇒ 日志里说是哪一份，当没有（照问那台）。
+const MAX_BYTES: Cap = Cap {
+    bytes: 4096,
+    over: Over::SkipAndSay,
+};
 
 /// 一份记录：开那一行的那个 shell 的窗口标签 · 会话在哪台。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,15 +156,8 @@ impl OnDisk {
 impl Records for OnDisk {
     fn get(&self, sid: &str) -> Option<Opened> {
         let f = self.file(sid)?;
-        let len = Ro::metadata(f.as_path()).ok()?.len();
-        if len > MAX_BYTES {
-            tracing::warn!(
-                "opened-windows：{} 有 {len} 字节、超过上限，当没有（照问那台）",
-                f.as_path().display()
-            );
-            return None;
-        }
-        parse(&Ro::read_to_string(f.as_path()).ok()?)
+        // 不在 ⇒ 没记过；超上限那一档在读里 `warn!` 是哪一份。
+        parse(&Ro::read_string_capped(f.as_path(), MAX_BYTES).ok()?)
     }
 
     fn forget(&self, sid: &str) {

@@ -29,8 +29,11 @@ use rows::{build_rows, build_settings_scopes, ConfigSurfaceReport, FsProbe, Surf
 
 /// 一个目录最多交几个名字。
 pub(crate) const MAX_ENTRIES: usize = 4096;
-/// 查字样的文件最大多少字节（`settings.json` 那一类，远小于它）。
-pub(crate) const MAX_HOOK_FILE_BYTES: u64 = 1 << 20;
+/// 查字样的文件最大多少字节（`settings.json` 那一类，远小于它）；超了不读、日志里说是哪一份，钩子字样按「不知道」报。
+pub(crate) const MAX_HOOK_FILE_BYTES: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 1 << 20,
+    over: relay_route_core::Over::SkipAndSay,
+};
 
 /// `footprint-report` / `data-report` 的入参：远端那一栏 `{}`；本机那一栏带 `client`（monitor 自己进程的那几条，原样）。
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -169,16 +172,18 @@ fn list_of(p: &Path) -> Option<Vec<String>> {
 
 /// 一份文件里有没有 cc-bus 钩子那两个字样。读不动 / 太大 / 不是文件 ⇒ `None`（**不猜**）。
 fn hooks_in(p: &Path) -> Option<bool> {
-    let md = Ro::metadata(p).ok()?;
-    if !md.is_file() || md.len() > MAX_HOOK_FILE_BYTES {
-        let size = md.len();
-        tracing::warn!(
-            "足迹：{} 不是普通文件或太大（{size} 字节），没读（钩子字样按「不知道」报）",
-            p.display()
-        );
-        return None;
-    }
-    let s = Ro::read_to_string(p).ok()?;
+    Ro::metadata(p).ok()?;
+    let s = match Ro::read_string_capped(p, MAX_HOOK_FILE_BYTES) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(
+                "足迹：{} 没读（{}），钩子字样按「不知道」报",
+                p.display(),
+                e.logged()
+            );
+            return None;
+        }
+    };
     Some(rows::HOOK_PROGRAMS.iter().any(|n| s.contains(n)))
 }
 
