@@ -282,7 +282,7 @@
     "beAcctExec.manifest.stale": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号清单期间被别处改过 · 未写入 · 再做一次",
+      "zh": "账号清单 · 已在别处改过 · 未写入 · 再做一次",
       "args": []
     },
     "beAcctExec.mkdir.notDir": {
@@ -6006,13 +6006,13 @@
     "profilesPage.edited.line": {
       "kind": "body",
       "role": "说明",
-      "zh": "配置文件 {time} 在别处改过 · 清单已按新内容列出 · 注释保留",
+      "zh": "配置文件 · 已在别处改过 · {time} · 清单已按新内容列出 · 注释保留",
       "args": ["time"]
     },
     "profilesPage.edited.lineOpen": {
       "kind": "body",
       "role": "说明",
-      "zh": "配置文件 {time} 在别处改过 · 关闭表单后按新内容列出",
+      "zh": "配置文件 · 已在别处改过 · {time} · 关闭表单后按新内容列出",
       "args": ["time"]
     },
     "profilesPage.file.at": {
@@ -6211,7 +6211,7 @@
     "profilesPage.form.stale": {
       "kind": "error",
       "role": "报错",
-      "zh": "保存失败 · 已在别处改过 · 填写内容保留",
+      "zh": "配置文件 · 已在别处改过 · 未保存 · 填写内容保留",
       "args": []
     },
     "profilesPage.form.titleEdit": {
@@ -10124,7 +10124,7 @@
     "rsFilewinEditor.stale.notice": {
       "kind": "error",
       "role": "报错",
-      "zh": "盘上文件在打开后被改过 · 本次未保存 · {why}",
+      "zh": "盘上文件 · 已在别处改过 · 未保存 · {why}",
       "args": ["why"]
     },
     "rsFilewinEditor.stale.overwrite": {
@@ -10944,7 +10944,7 @@
     "rsAccountAliases.install.changedElsewhere": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 在本页读取后被别处改过 · 本次未写入",
+      "zh": "{path} · 已在别处改过 · 别名未写入",
       "args": ["path"]
     },
     "rsAccountAliases.install.reload": {
@@ -16095,7 +16095,7 @@
     "beFilesWrite.delete.changed": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 读过后被改过 · 未删除 · 刷新后再试",
+      "zh": "{path} · 已在别处改过 · 未删除 · 刷新后再试",
       "args": ["path"]
     },
     "beFilesWrite.rmdir.gone": {
@@ -16143,7 +16143,7 @@
     "beFilesWrite.overwrite.changed": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 打开后被改过 · 未写入",
+      "zh": "{path} · 已在别处改过 · 未写入",
       "args": ["path"]
     },
     "beFilesWrite.deleteTree.entryRefused": {
@@ -16209,7 +16209,7 @@
     "beFilesWrite.put.changed": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 读过后被改过 · 未写入 · 刷新后再试",
+      "zh": "{path} · 已在别处改过 · 未写入 · 刷新后再试",
       "args": ["path"]
     },
     "beFilesWrite.put.verifyMismatch": {
@@ -18065,7 +18065,7 @@
     "beMcpSyncFlow.apply.stale": {
       "kind": "error",
       "role": "报错",
-      "zh": "目标配置在看差异后被改过 · 未改动 · 重看差异再定",
+      "zh": "目标配置 · 已在别处改过 · 未改动 · 重看差异再定",
       "args": []
     },
     "beMcpSyncFlow.source.missing": {
@@ -18083,7 +18083,7 @@
     "beSkillFlow.install.stale": {
       "kind": "error",
       "role": "报错",
-      "zh": "该文件看差异后被改过 · 重看差异再定",
+      "zh": "该文件 · 已在别处改过 · 未写入 · 重看差异再定",
       "args": []
     },
     "beSkillFlow.install.noneWritten": {
@@ -18107,7 +18107,7 @@
     "beSkillFlow.uninstall.stale": {
       "kind": "error",
       "role": "报错",
-      "zh": "该文件看过后被改过或已不在 · 重看再定",
+      "zh": "该文件 · 已在别处改过或已不在 · 未删除 · 重看再定",
       "args": []
     },
     "beSkillFlow.uninstall.dropFailed": {
@@ -30951,7 +30951,7 @@
     "beRotation.edit.stale": {
       "kind": "error",
       "role": "报错",
-      "zh": "这份策略在别处已改过",
+      "zh": "策略 · 已在别处改过 · 未保存",
       "args": []
     },
     "beRotation.edit.forNew": {
