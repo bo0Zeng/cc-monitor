@@ -600,8 +600,9 @@ def masked_source(path: Path, lang: str) -> str:
     return got
 
 
-# 放行 lint 时写的理由（`#[allow(…, reason = "…")]`）是给读代码的人的，不是对外文案 ⇒ 与注释同样遮掉（行号与长度不变）。
-LINT_REASON_RE = re.compile(r'(#!?\[(?:allow|expect|warn|deny)\([^"\]]*?reason\s*=\s*")([^"\n]*)("\s*,?\s*\)\])')
+# 放行 lint 时写的理由（`#[allow(…, reason = "…")]`，连同 `cfg_attr(<条件>, …)` 包着的那一形）是给读代码的人的，
+# 不是对外文案 ⇒ 与注释同样遮掉（行号与长度不变）。
+LINT_REASON_RE = re.compile(r'(#!?\[(?:cfg_attr\([^,"\]]*,\s*)?(?:allow|expect|warn|deny)\([^"\]]*?reason\s*=\s*")([^"\n]*)("\s*,?\s*\)(?:\s*,?\s*\))?\s*\])')
 
 
 CFG_TEST_RE = re.compile(r"#\[cfg\((?:test|all\([^)]*test[^)]*\))\)\]")

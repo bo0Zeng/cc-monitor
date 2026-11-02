@@ -1,6 +1,5 @@
 .stylelintrc.json	1
 src/backend/accounts/upstream_select/file_face.rs	1
-src/backend/agents/footprint_decl.rs	24
 src/backend/control/cc_bus_scope.rs	1
 src/backend/control/rewind.rs	1
 src/backend/control/session_open/mod.rs	1
@@ -22,7 +21,6 @@ src/backend/observe/runs.rs	1
 src/backend/platform/child.rs	1
 src/backend/platform/proc.rs	1
 src/backend/plugin/mod.rs	1
-src/backend/relay/mod.rs	1
 src/backend/stream/inbound/mod.rs	6
 src/backend/stream/inbound/registry/history.rs	1
 src/backend/stream/inbound/registry/machine.rs	1
@@ -97,12 +95,7 @@ tests/__fixtures__/scale2-height-line-records.jsonl	10
 tests/__fixtures__/scale2-height-records.jsonl	11
 tests/backend/accounts/upstream_select/file_face_tests.rs	7
 tests/backend/accounts/upstream_select/table_tests.rs	15
-tests/backend/agent_boundary_guard.rs	4
-tests/backend/agent_locality_guard.rs	1
 tests/backend/agents/claudecode/schema_tests.rs	2
-tests/backend/agents/codex/record_tests.rs	1
-tests/backend/agents/fake_tests.rs	5
-tests/backend/agents_tests.rs	6
 tests/backend/alloc_probe.rs	1
 tests/backend/alloc_probe_tests.rs	3
 tests/backend/assets/aliases/profile_tests.rs	1
@@ -140,9 +133,6 @@ tests/backend/plan/owners_tests.rs	9
 tests/backend/plan/product_tests.rs	55
 tests/backend/plan/refs_tests.rs	11
 tests/backend/platform/fs/ro_tests.rs	1
-tests/backend/relay/creds_guard.rs	16
-tests/backend/relay/server_tests.rs	25
-tests/backend/relay/table_guard.rs	9
 tests/backend/stream/drain_tests.rs	1
 tests/common/acct-core/lib_tests.rs	1
 tests/common/creds-core/lib_tests.rs	8

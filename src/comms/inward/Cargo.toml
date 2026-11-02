@@ -31,3 +31,12 @@ guard-core = { path = "../../common/guard-core" }
 default = []
 # monitor 的测试档里别的 `ts_rs::TS` 类型嵌着 `Origin` ⇒ 它在 `[dev-dependencies]` 开这一格（发布二进制不开）。
 ts = ["cmd-wire/ts"]
+
+[lints.clippy]
+# 读盘 · 读环境 · 起进程 · 绑端口 · 期限字面量 · 静默丢 · 定时器那几组住 `src/comms/clippy.toml`；真要用的那一处就地 `expect` 写理由。
+disallowed_methods = "deny"
+# 放行一律 `expect` 带理由（测试段在 `lib.rs` 根上一行放开）。
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+# 线上类型的 `match` 列全变体：加一个变体时编译器点名每一处。
+wildcard_enum_match_arm = "deny"
