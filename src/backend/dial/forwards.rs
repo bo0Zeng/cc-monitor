@@ -25,7 +25,9 @@ use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use comms_inward::line::{read_capped_line, CappedLine};
 use copy_core::copy_text;
+use relay_route_core::{Cap, Over};
 use serde_json::{json, Value};
 use tokio::io::{BufReader, DuplexStream};
 
@@ -36,11 +38,38 @@ use crate::dial::DialRequest;
 /// 账上最多几条（有界资源；每条占一个本机口，一个人开不出这么多）。
 pub const MAX_FORWARDS: usize = 64;
 
-/// ack 那一行的上限（与 `remote_ask` 读 ack 同一个数）。
-const ACK_CAP: u64 = 64 * 1024;
+/// ack 那一行的上限。超了：拒收＋回错（这条转发起不来，原因带上限）。
+const ACK_CAP: Cap = Cap {
+    bytes: 64 * 1024,
+    over: Over::Reject,
+};
 
-/// 计数那一行（`{"accepted":n}`）的上限。
-const COUNT_CAP: u64 = 4 * 1024;
+/// 计数那一行（`{"accepted":n}`）的上限。超了：降级＋说清（这条转发收工，列表里读成 `error`）。
+const COUNT_CAP: Cap = Cap {
+    bytes: 4 * 1024,
+    over: Over::DegradeAndSay,
+};
+
+/// 读链路那一侧的一行（带上限；超了是错，不截断）：`Ok(None)` ＝ 管子关了。
+async fn line<R: tokio::io::AsyncBufRead + Unpin>(
+    r: &mut R,
+    cap: Cap,
+) -> Result<Option<String>, String> {
+    let mut buf = Vec::new();
+    match read_capped_line(r, &mut buf, cap).await {
+        Ok(CappedLine::Eof) => Ok(None),
+        Ok(CappedLine::Line) => Ok(Some(String::from_utf8_lossy(&buf).trim_end().to_string())),
+        Ok(CappedLine::TooLong(_)) => Err(copy_text(
+            "beRemoteAsk.cappedLine.tooLong",
+            &[("cap", &cap.bytes.to_string())],
+        )),
+        // 这一形的失败只有一句话的位：系统原话记一行日志。
+        Err(e) => Err(crate::common::said::IntoNote::into_note(Said::with_raw(
+            copy_text("beRemoteAsk.cappedLine.readFailed", &[]),
+            e,
+        ))),
+    }
+}
 
 /// 一条转发的规格（界面交来的那四格）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -197,7 +226,7 @@ where
             ),
         )
     };
-    let ack = remote_ask::capped_line(&mut rd, ACK_CAP)
+    let ack = line(&mut rd, ACK_CAP)
         .await
         .map_err(failed)?
         .ok_or_else(|| failed(copy_text("beForwards.start.unconfirmed", &[])))?;
@@ -218,7 +247,7 @@ where
         let _link = link;
         let _up = up_w;
         loop {
-            match remote_ask::capped_line(&mut rd, COUNT_CAP).await {
+            match line(&mut rd, COUNT_CAP).await {
                 // 超长 / 读不动 ⇒ 这条转发收工，列表里读成 `error`（降级，说清是哪一条）。
                 Err(e) => {
                     tracing::warn!("端口转发 [{origin}] 的计数读不下去了，列表里这一条的 state 读成 error：{e}");

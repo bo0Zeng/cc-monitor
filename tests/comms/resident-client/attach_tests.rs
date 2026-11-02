@@ -191,11 +191,13 @@ async fn read_frames<R: tokio::io::AsyncBufRead + Unpin>(r: &mut R, n: usize) ->
     let mut out = Vec::new();
     let mut buf = Vec::new();
     for _ in 0..n {
-        match crate::line::read_capped_line(r, &mut buf, crate::line::BACKEND_FRAME_LINE_CAP)
+        match comms_inward::line::read_capped_line(r, &mut buf, crate::line::BACKEND_FRAME_LINE_CAP)
             .await
             .unwrap()
         {
-            crate::line::CappedLine::Line => out.push(String::from_utf8(buf.clone()).unwrap()),
+            comms_inward::line::CappedLine::Line => {
+                out.push(String::from_utf8(buf.clone()).unwrap())
+            }
             other => panic!("第 {} 帧：{other:?}", out.len()),
         }
     }

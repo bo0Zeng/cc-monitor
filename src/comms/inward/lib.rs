@@ -3,12 +3,14 @@
 //! monitor（宿主那一侧）与文件窗口进程（外部前端）链同一份：
 //! - [`origin`]：「这一趟问的是哪台机器」的唯一类型；
 //! - [`chan`]：通道的线上词汇与帧（`wire`）· 客户端（`client`）· 路由器（`router`）· 没成时那一句（`said`）；
-//! - [`backend_route`]：问后端失败了怎么分流（`CallError` 那一套词）。
+//! - [`backend_route`]：问后端失败了怎么分流（`CallError` 那一套词）；
+//! - [`line`]：带上限的异步读一行 · 读整份（后端 · 常驻客户端 · 壳同用这一份）。
 //!
 //! 起进程、接管子、读盘、读环境都不在这里：那是宿主的事（壳里 `chan/host.rs` · `filewin/proc.rs`）。
 //! `chan.ts`（主界面那一侧的通道入口）与这几份同住这个目录，同归通信层管。
 
 pub mod backend_route;
+pub mod line;
 pub mod origin;
 
 /// 通道：线上词汇 · 帧 · 客户端 · 路由器。逐份的分工住壳里 `chan/mod.rs` 那张表。
