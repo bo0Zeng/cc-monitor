@@ -615,7 +615,7 @@ fn raw_walkers() -> Vec<String> {
             // 它是**整份文件级的豁免**：只要测试段里出现过一次 `scan_tree!`，
             // 这个文件里**再多裸遍历也不会被标记**。豁免的粒度是「文件」，
             // 而事实的粒度是「那一处遍历」—— **匹配单位比事实大**。
-            // 变异实测：带着那半时，给 `byte_cap_registry`（它用 `scan_tree!`）的测试段加一处裸
+            // 变异实测：带着那半时，给 `needle_anchor_registry`（它用 `scan_tree!`）的测试段加一处裸
             // `read_dir`，**本条照样绿**。`scan_tree!` 的调用文本里本来就不含 `RAW_WALKS` 的
             // 四个字面量，所以只用 `scan_tree!` 的文件本来也不会被标记 —— 那半只会挡真命中。
             if walks_raw(&regs) {
