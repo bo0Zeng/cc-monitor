@@ -281,7 +281,7 @@ impl Face {
     /// Windows：目标此刻是目录 ⇒ 建目录那一种链接
     /// （相对的目标按链接所在那一层解）。建不了（没开开发者模式、又没有建链接的特权）⇒ 系统那一句原样回。
     #[cfg(windows)]
-    pub(crate) fn make_link(&self, target: &Path, at: &Resolved) -> io::Result<()> {
+    pub fn make_link(&self, target: &Path, at: &Resolved) -> io::Result<()> {
         let seen = match at.path.parent() {
             Some(base) if target.is_relative() => base.join(target),
             _ => target.to_path_buf(),
@@ -292,7 +292,7 @@ impl Face {
 
     /// 别的平台：没有这件原语。
     #[cfg(not(any(unix, windows)))]
-    pub(crate) fn make_link(&self, _target: &Path, _at: &Resolved) -> io::Result<()> {
+    pub fn make_link(&self, _target: &Path, _at: &Resolved) -> io::Result<()> {
         Err(io::Error::from(io::ErrorKind::Unsupported))
     }
 

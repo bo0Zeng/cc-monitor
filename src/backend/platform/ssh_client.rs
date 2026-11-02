@@ -38,7 +38,7 @@ pub fn locate() -> SshClient {
 
 /// 这台电脑上系统那份 ssh 配置（Windows：`%ProgramData%\\ssh\\ssh_config`）。
 #[cfg(windows)]
-pub(crate) fn system_config() -> String {
+pub fn system_config() -> String {
     let data = std::env::var("ProgramData").unwrap_or_else(|_| "C:\\ProgramData".to_string());
     format!("{data}\\ssh\\ssh_config")
 }
