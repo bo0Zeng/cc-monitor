@@ -15,12 +15,12 @@
 //! **只经 [`route`] 这一处**，分流看两样：
 //! - **被叫成什么**（`argv[0]` 的名字）：是 ccm 自己（`ccm` / 后端本名，[`is_own_name`]）⇒ 往下看参数；
 //!   是别的名字（`~/.cc-monitor/bin/<名>` 那条指向 ccm 的链接）⇒ 等同 `ccm @<名> …`，参数一律归 ccm 这一趟。
-//! - **参数**：打头是 `--` 且紧跟一个后端词 ⇒ 后端（流 / 子命令）；其余一律是 ccm 这一趟
+//! - **参数**：打头是 `--` 且紧跟一个后端词（认不认由入口交下来的那一问答）⇒ 后端（流 / 子命令）；其余一律是 ccm 这一趟
 //!   （没有 `--` ⇒ 整行交给 claude；打头是 `@<名>` ⇒ 用配置文件里那一段，见 `assets/aliases/profile.rs`）。
 //!
 //! 实现只有这一处：链接、`@<名>`、直接敲的 `ccm …` 都落到同一个 [`run`]。
 //!
-//! ⚠ **它不是一条 wire 子命令**，所以**不进 `main::SUBCOMMANDS`**、也不进
+//! ⚠ **它不是一条 wire 子命令**，所以**不进子命令闸门**（`stream::cli::is_subcommand`）、也不进
 //! `src/doc/IPC-PROTOCOL.md` §10：那份文档是 monitor↔backend 的**冻结线上契约**，
 //! 而这里是**用户终端**的命令面，两者的读者与兼容性义务都不同。
 //! 这个决定不是靠「没人查」成立的 —— `protocol_doc_guard::TERMINAL_SURFACE_FILES`
@@ -38,7 +38,7 @@ pub(crate) mod on_path;
 pub(crate) mod plan;
 pub(crate) mod user_path;
 
-use crate::ccm_line::{argv, is_backend_word, is_own_name, PROFILE_SIGIL, SUBCOMMAND_WORD};
+use crate::ccm_line::{argv, is_own_name, PROFILE_SIGIL, SUBCOMMAND_WORD};
 use crate::platform::child::Child;
 use argv::{Die, Early, Parsed};
 use copy_core::copy_text;
@@ -208,13 +208,14 @@ fn block_on(f: impl std::future::Future<Output = i32>) -> i32 {
 
 /// 分流：`argv0` 是这个进程被叫成的名字，`args` 是其后那一串。
 /// - 被叫成一段配置的名字（[`profile_called`]）⇒ ccm，前面补上 `@<名>`（参数一个都不进后端）；
-/// - 打头的 `--` 紧跟后端词（一次性子命令 / 流模式旗标）⇒ 后端（argv = `--` 之后那一串；
-///   第一个 `--` 就是分隔，后端子命令自己的参数里再出现 `--` 也不会被误切）；
-/// - 其余一律当 ccm（`argv::parse` 切两半，没有 `--` 整行交 claude）。零参数是「起一个 claude」。
+/// - 打头的 `--` 紧跟一个 `is_backend_word` 认的词 ⇒ 后端（argv = `--` 之后那一串；
+///   第一个 `--` 就是分隔，后端子命令自己的参数里再出现 `--` 也不会被误切）。
+///   后端认哪些词由入口交下来（`stream::entry::is_backend_word`）：本层不知道后端有哪些子命令；
+/// - 其余一律当 ccm（[`parse_entry`] 切两半，没有 `--` 整行交 claude）。零参数是「起一个 claude」。
 ///
 /// 🔴 **它必须排在 `split_stream_flags` 之前**：那一步会把 `--stream` / `--tz` 从 argv 里**任意位置**剥掉，
 /// 而 `ccm --tz x` 里那个是要原样交给 agent 的。
-pub fn route(argv0: &str, args: &[String]) -> Entry {
+pub fn route(argv0: &str, args: &[String], is_backend_word: impl Fn(&str) -> bool) -> Entry {
     if let Some(name) = profile_called(argv0) {
         let mut v = vec![format!("{PROFILE_SIGIL}{name}")];
         v.extend(args.iter().cloned());

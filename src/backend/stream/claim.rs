@@ -1,4 +1,4 @@
-//! 起进程那一下：选载体、抢门牌，抢到了（或这条载体不用抢）才接 stderr 落盘。`main.rs` 调它一次。
+//! 起进程那一下：选载体、抢门牌，抢到了（或这条载体不用抢）才接 stderr 落盘。`stream/entry.rs` 的 `run` 调它一次。
 
 use crate::control::resident;
 use crate::platform::{Own, OwnLock};
@@ -8,7 +8,7 @@ use crate::wire::listen;
 /// 选载体、抢门牌；抢到了（或这条载体不用抢）才接 stderr 落盘（`install`）。
 ///
 /// 那两份日志属于在听的那一个：已有常驻后端时，后起的这一个若先接，就把在跑那一个的日志滚走（再来一个就删掉）。
-/// ⇒ 配置不成立 / 沙箱跑却要占真家 / 抢不到锁都不接，话只落自己原来的 stderr，退出码交回 `main` 退（一条命令都还没收，没有可排空的）。
+/// ⇒ 配置不成立 / 沙箱跑却要占真家 / 抢不到锁都不接，话只落自己原来的 stderr，退出码交回 `run` 退（一条命令都还没收，没有可排空的）。
 pub async fn claim_then_log(
     own: &Own,
     env: &dyn Fn(&str) -> Option<String>,

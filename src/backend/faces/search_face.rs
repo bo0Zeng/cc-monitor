@@ -242,7 +242,13 @@ pub(crate) async fn merge_with(
             }),
         }
     }
-    Ok(cmd_wire::search::merge(&req.search.query, answered, down))
+    let mut merged = cmd_wire::search::merge(&req.search.query, answered, down);
+    // 合只放缺省：「打开目录」出不出 · 删除确认的正文照哪台答的在这里逐行补（与历史清单的行同一对函数）。
+    for s in &mut merged.sessions {
+        s.reveal = face_core::history_asks::reveal_of(&s.origin, &s.row.row.project_path);
+        s.delete_ask = face_core::history_asks::delete_ask(&s.origin, s.row.row.can.delete);
+    }
+    Ok(merged)
 }
 
 #[cfg(test)]

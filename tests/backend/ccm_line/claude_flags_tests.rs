@@ -82,8 +82,10 @@ fn only_the_right_of_the_last_end_is_ccm_and_nothing_is_intercepted_without_it()
     .iter()
     .map(|s| s.to_string())
     .collect();
+    let route =
+        |l: &[String]| crate::control::ccm::route("ccm", l, crate::stream::entry::is_backend_word);
     let passes = |line: &[String]| {
-        crate::control::ccm::route("ccm", line) == crate::control::ccm::Entry::Ccm(line.to_vec())
+        route(line) == crate::control::ccm::Entry::Ccm(line.to_vec())
             && matches!(parse(line), Ok(Parsed::Opts(o)) if o.passthru == line)
     };
     // ①
@@ -123,15 +125,27 @@ fn only_the_right_of_the_last_end_is_ccm_and_nothing_is_intercepted_without_it()
     for b in &backend {
         assert!(!is_ccm_word(b), "后端词 {b} 也是 ccm 的词");
         assert_eq!(
-            crate::control::ccm::route("ccm", &[end(), b.clone(), "x".into()]),
+            route(&[end(), b.clone(), "x".into()]),
             crate::control::ccm::Entry::Backend(vec![b.clone(), "x".into()]),
             "`ccm -- {b}` 没进后端"
         );
         let mixed = vec!["-p".to_string(), end(), b.clone()];
         assert_eq!(
-            crate::control::ccm::route("ccm", &mixed),
+            route(&mixed),
             crate::control::ccm::Entry::Ccm(mixed.clone())
         );
         assert!(parse(&mixed).is_err(), "`ccm -p -- {b}` 没报错");
     }
+}
+
+/// 「`ccm -- <词>` 交不交后端」只听入口交下来的那一问：同一行，判定说不认 ⇒ ccm 这一趟；说认 ⇒ 后端、`--` 之后那一串原样交过去。
+#[test]
+fn route_asks_the_entry_whether_a_word_belongs_to_the_backend() {
+    use crate::control::ccm::{route, Entry};
+    let line: Vec<String> = ["--", "--commands"].iter().map(|s| s.to_string()).collect();
+    assert_eq!(route("ccm", &line, |_| false), Entry::Ccm(line.clone()));
+    assert_eq!(
+        route("ccm", &line, |w| w == "--commands"),
+        Entry::Backend(vec!["--commands".to_string()])
+    );
 }

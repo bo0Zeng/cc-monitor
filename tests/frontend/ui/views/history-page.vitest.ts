@@ -75,7 +75,7 @@ import { toast } from "../../../../src/frontend/ui/kit/toast";
 import { openSession } from "../../../../src/frontend/ui/session-open";
 import { resumeAccounts } from "../../../../src/frontend/ui/resume-menu";
 import { chanArgsJson, chanReply, type ChanCallArgs } from "../../../test-support/chan-fake";
-import { answerAskDialog, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
+import { answerAskDialog, askDialogText, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { closeMenu } from "../../../../src/frontend/ui/kit/menu";
 import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
@@ -113,6 +113,9 @@ function row(over: Record<string, unknown>): Record<string, unknown> {
     hidden: null,
     face: goldenFace("ended"),
     can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
+    // 核心按行写好的两格（界面照摆）：目录在这一端打得开 · 删除确认那一段字。
+    reveal: true,
+    deleteAsk: "核心·删除正文",
     ...over,
   };
 }
@@ -250,7 +253,9 @@ beforeEach(() => {
       if (world.search === "fail") return Promise.reject(new Error("搜不动"));
       const per = (args.machines as string[]).map((o) => [o, world.searchAt(o)] as const);
       const got = per.filter((p): p is readonly [string, Exclude<Searched, "down">] => p[1] !== "down");
-      const ss: Record<string, unknown>[] = got.flatMap(([o, r]) => r.sessions.map((x) => ({ ...x, origin: o, atText: "12:00", spanText: "12:00–12:00" })));
+      const ss: Record<string, unknown>[] = got.flatMap(([o, r]) =>
+        r.sessions.map((x) => ({ ...x, origin: o, atText: "12:00", spanText: "12:00–12:00", reveal: o === LOCAL, deleteAsk: `核心·删除正文 ${o}` })),
+      );
       return chanReply({
         totalHits: ss.reduce((n, x) => n + (x.hits as unknown[]).length + (x.moreHits as number), 0),
         sessionCount: ss.length,
@@ -520,6 +525,25 @@ describe("删除", () => {
     await answerAskDialog(true);
     await flush();
     expect(noAskDialog()).toBe(true);
+    v.close();
+  });
+
+  it("★ 确认框正文照行上核心写好的那一段；「打开目录」只在行上说打得开时出（界面不另判本机 / 远端）", async () => {
+    world.local = [row({ sessionId: "a", deleteAsk: "核心·a 的正文" }), row({ sessionId: "n", reveal: false })];
+    const v = await opened();
+    const key = (sid: string) => rows().find((r) => r.dataset.key?.endsWith(sid))!;
+    const items = (): string[] => [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].map((e) => e.textContent ?? "");
+    key("a").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 3, clientY: 3 }));
+    expect(items().some((t) => t.startsWith(copyText("history.menu.openDir")))).toBe(true);
+    closeMenu();
+    key("n").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 3, clientY: 3 }));
+    expect(items().some((t) => t.startsWith(copyText("history.menu.openDir"))), "行上说打不开 ⇒ 不出").toBe(false);
+    closeMenu();
+    key("a").click();
+    key("a").dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true }));
+    await flush();
+    expect(askDialogText()).toContain("核心·a 的正文");
+    await answerAskDialog(false);
     v.close();
   });
 });

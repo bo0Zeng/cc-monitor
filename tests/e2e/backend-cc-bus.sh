@@ -5,8 +5,7 @@
 # ## 为什么必须有真跑这一层
 #
 # 单测把规矩（`cc_bus::rules`）· 收件箱（`cc_bus::store`）· 信封校验那些纯函数钉住了，但它们**证明不了命令调得动**：
-# 08-13 实测撞到过一次 —— 命令进了 `inbound::REGISTRY`、分派臂也认，而 `main::is_query_mode` 这道**闸门**
-# 读的是手写的 `SUBCOMMANDS`。漏加的后果是**静默的**：backend 打一行 warn 之后照常进流模式。⇒ 这套件跑的是**真二进制的真 argv**，
+# 闸门（`stream::cli::is_query_mode`）不认一条命令的后果是**静默的**：backend 打一行 warn 之后照常进流模式。⇒ 这套件跑的是**真二进制的真 argv**，
 # 再经仓内这一版 cc-bus 脚本走一遍。
 #
 # ## 本机安全
@@ -202,7 +201,7 @@ SNDHOME="$GH" snd "$SD" --act inform --title "读不到名单" "x" >/dev/null; _
 ck "★ 名单读不到 ⇒ 退 3（不退回成全放行）· 一个字节不写" "3|2|1" "$_rc|$(lines_of "$SD" "$GH")|$(grep -c 'group roster not read' "$SANDBOX/snd.err")"
 
 echo "[7] ★ 两个入口都有：CLI 面上调得动"
-# ★ 这一格钉的是那条**静默失效**：闸门（`main::SUBCOMMANDS`）漏加时，这条 flag 不进一次性模式、掉进流模式吐一堆 jsonl 行。
+# ★ 这一格钉的是那条**静默失效**：闸门（`stream::cli::is_subcommand`）不认时，这条 flag 不进一次性模式、掉进流模式吐一堆 jsonl 行。
 for _c in --bus-list --bus-send --bus-peek --bus-commit --bus-unread --bus-inbox; do
   _o="$(printf '{}' | d "$_c")"
   _all="$( { printf '%s\n' "$_o"; cat "$SANDBOX/err.txt"; } | grep . )"

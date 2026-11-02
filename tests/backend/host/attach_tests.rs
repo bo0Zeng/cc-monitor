@@ -441,9 +441,9 @@ fn the_host_run_word_routes_to_the_hosted_terminal_not_the_query_face() {
         .iter()
         .map(|s| s.to_string())
         .collect();
-    // 不进后端的一次性查询面（那一面只认 `SUBCOMMANDS`），落在 ccm 那一侧、由它在起会话那一套之前接走。
+    // 不进后端的一次性查询面（那一面只认子命令闸门 `stream::cli::is_subcommand`），落在 ccm 那一侧、由它在起会话那一套之前接走。
     assert_eq!(
-        crate::control::ccm::route("ccm", &a),
+        crate::control::ccm::route("ccm", &a, crate::stream::entry::is_backend_word),
         crate::control::ccm::Entry::Ccm(a.clone())
     );
     assert_eq!(crate::control::ccm::host_run_args(&a), Some(&a[2..]));

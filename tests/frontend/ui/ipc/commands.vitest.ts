@@ -330,7 +330,7 @@ describe("本机恢复的主路：人没动过 ⇒ 不带号 · 不带放在哪�
       agent: "claude", agentTag: null, sessionId: "s1", origin: "<local>", projectDir: "pd", projectPath: "/p", projectName: "P", group: "claude:/p",
       aiTitle: "T", firstUserExcerpt: "x", title: "T", label: "T", untitled: false, startedAt: 1, updatedAt: 1, at: 1,
       jsonlPath: "/p/s1.jsonl", messageCountApprox: 1, isBg: false, starred: false, customTitle: null, hidden: null,
-      can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
+      can: { resume: "yes", accounts: true, fork: true, delete: "yes" }, reveal: true, deleteAsk: "核心·删除正文",
     };
   }
 

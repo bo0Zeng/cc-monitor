@@ -7,13 +7,13 @@
 //!   没交 ⇒ 什么都不做（stdio 载体的 stderr 已经进 monitor 滚动日志；远端经 SSH exec 起的流模式没人交）。
 //! - 接：`O_EXCL` 新建那份文件，fd 2 直接指过去（`platform::stderr_fd`）⇒ 本进程此后一切写 stderr 的（`tracing` · `eprintln!` · panic ·
 //!   继承 stderr 的子进程）都同步落盘，进程 `exit` 那一刻前面的话一个字都不丢（没有线程、没有搬运）。
-//! - 上限 ＋ 滚动：`tracing` 每写一行之前看一眼 fd 2 那份多长（[`stderr_writer`]，`main.rs` 装给 `tracing` 的写者）；过了 [`CAP_BYTES`] ⇒
+//! - 上限 ＋ 滚动：`tracing` 每写一行之前看一眼 fd 2 那份多长（[`stderr_writer`]，`stream/entry.rs` 装给 `tracing` 的写者）；过了 [`CAP_BYTES`] ⇒
 //!   当前那份原子挪成旧的（盖掉上一份旧的）、`O_EXCL` 新建一份、fd 2 换过去，新那份第一行说清「上一份挪去了哪、再早的那一份丢了」。
 //!   盘上恒 ≤ 两份。起来那一刻已有当前那份 ⇒ 先挪成旧的。两行 `tracing` 之间别人写的字节不触发检查 ⇒ 一份可以略超上限，不会无界。
 //! - 换不过去不拖垮后端：建不了文件 / 换不了 fd ⇒ stderr 原样，照常服务。
 //!
 //! 写经诊断文件的窄句柄（`platform::fs::DiagLog`，只许启动入口造）：动词只有 `O_EXCL` 新建 · 原子挪（不建目录、不截断）·
-//! 一次性模式只追加整行（[`oneshot_writer`]）。对外口只从 `main.rs` 进。
+//! 一次性模式只追加整行（[`oneshot_writer`]）。对外口只从 `stream/entry.rs` 进。
 //! 买不到：远端后端的 stderr · 真 Windows（非 unix 臂回 `Failed`）。
 
 use crate::platform::fs::{DiagFile, DiagLog};
@@ -152,7 +152,7 @@ impl Installed {
     }
 }
 
-/// 宿主交了 [`ENV`] ⇒ 把 fd 2 指到那份文件上。只从 `main.rs` 流模式那一处进：`issue` 是它递进来的造窄句柄那一手
+/// 宿主交了 [`ENV`] ⇒ 把 fd 2 指到那份文件上。只从 `stream/entry.rs` 流模式那一处进：`issue` 是它递进来的造窄句柄那一手
 /// （`DiagLog::issue`，只许启动入口点名）。
 pub fn install_from_env(
     issue: fn(PathBuf) -> DiagLog,
@@ -171,7 +171,7 @@ pub fn install_from_env(
     }
 }
 
-/// `tracing` 的写者（`main.rs` 装给它）：每写一行之前看一眼要不要滚，然后照旧写 stderr。
+/// `tracing` 的写者（`stream/entry.rs` 装给它）：每写一行之前看一眼要不要滚，然后照旧写 stderr。
 /// 没装 ⇒ 就是 `std::io::stderr()`。别的线程正在滚 ⇒ 这一行不等它（`try_lock`），下一行再看。
 pub fn stderr_writer() -> std::io::Stderr {
     if let Ok(mut g) = ACTIVE.try_lock() {
@@ -195,14 +195,14 @@ pub(crate) fn oneshot_log_path(get: &dyn Fn(&str) -> Option<String>) -> Option<P
 /// 一次性模式里本进程那几行诊断的落点（[`keep_oneshot`] 装一次；没装 ⇒ 不写）。
 static ONESHOT: std::sync::OnceLock<DiagLog> = std::sync::OnceLock::new();
 
-/// 一次性模式起来那一刻（`main.rs`）装那一份的窄句柄：`issue` 同 [`install_from_env`]。家推不出来 ⇒ 不装（不写）。
+/// 一次性模式起来那一刻（`stream/entry.rs`）装那一份的窄句柄：`issue` 同 [`install_from_env`]。家推不出来 ⇒ 不装（不写）。
 pub fn keep_oneshot(issue: fn(PathBuf) -> DiagLog) {
     if let Some(p) = oneshot_log_path(&|k| std::env::var(k).ok()) {
         ONESHOT.get_or_init(|| issue(p));
     }
 }
 
-/// 一次性模式的 `tracing` 写者（`main.rs` 在一次性模式里装给它，代替 [`stderr_writer`]）。
+/// 一次性模式的 `tracing` 写者（`stream/entry.rs` 在一次性模式里装给它，代替 [`stderr_writer`]）。
 /// 一次性模式的 stderr 是协议通道：成功一个字节都没有，失败正好一行信封 ⇒ 诊断一行都不进 stderr，
 /// 改追加进诊断文件：`O_APPEND` 打开、一条一次整行写下去（几个一次性进程 ＋ 常驻后端同写一份不会写到彼此中间去）。
 /// 只建文件、不建目录：那一层目录不在 ⇒ 这一行丢掉（不拖垮命令、不回落 stderr）。滚动归常驻那一份的 [`Roller`]。

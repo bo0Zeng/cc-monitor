@@ -10,6 +10,8 @@
 //!   后端各写者引它们落盘；后端「文件与数据」那一份成品（`footprint/data.rs::own_rows`，经 [`OWN_HOME_ENTRIES`]）按它们列出，界面照抄；判据两向对着这一族。
 //! - **声明表**：每份落盘文件一个 [`Decl`] 常量（`*_FILE`：落点 · 状态 / 缓存 · 格式与版本 · 读上限），后端读写口
 //!   `common/own_state.rs` 的 `Doc::of` 与 monitor 读写 `config.json`（[`CONFIG_FILE`]）从它取；家里那几样有声明的，「删了会丢」照声明。排成一张的 `OWN_FILES` 今天只有判据读（测试档）。
+//! - **读上限**（[`Cap`] · [`Over`]）与**同步整读**：读到流尽 [`read_capped_from`] · 读一个窗口 [`read_window`] ·
+//!   读一份本机文件 [`read_capped_regular`]。后端 · 壳 · 文件窗口 · 手机核心同步地整读字节只经这一族（异步那一形住 `comms_inward::line`）。
 //! - crate 名还是「relay-route」—— 它最早只装中转门牌。
 //!
 //! # 它为什么是一个共享 crate
@@ -492,6 +494,86 @@ pub enum Over {
     /// 分块（不丢数据）：装不进一份的不拒、不截、不丢，改走分块逐块送、读回拼起来 —— 用户的字节一个不少。
     /// 与「拒收＋回错」的分界：越界的那一份照样存成了。
     Chunk,
+}
+
+/// 一次带上限整读的结果（同步 [`read_capped_from`] 与 `comms_inward::line` 的异步那一形同一个类型）。
+#[derive(Debug, PartialEq, Eq)]
+pub enum CappedAll {
+    /// 流尽，一共不超过 `cap.bytes` 字节。
+    All(Vec<u8>),
+    /// 超过 `cap.bytes`：读到第 `cap.bytes + 1` 个字节就停，读进来的整份丢掉。
+    OverCap,
+}
+
+/// 同步地读到流尽，至多 `cap.bytes` 字节；多读一个字节分得出「正好到上限」与「超了」。超了回 [`CappedAll::OverCap`]、不截断，
+/// 超了之后怎么办是调用方照 `cap.over` 办的事。上限在读的时候生效：超了就停，不按流（或文件）的长度分配。
+/// 要接着把流读空（管子另一头不读完会卡在写上）⇒ 交 `&mut r`，之后自己读进 `std::io::sink()`。
+pub fn read_capped_from<R: std::io::Read>(rd: R, cap: Cap) -> std::io::Result<CappedAll> {
+    let out = fill(rd, cap.bytes.saturating_add(1))?;
+    Ok(if out.len() as u64 > cap.bytes {
+        CappedAll::OverCap
+    } else {
+        CappedAll::All(out)
+    })
+}
+
+/// 读一个窗口：至多 `n` 字节，读到 `n` 就停（后面的留在流里），流尽得早就交到流尽为止。不判超：窗口的宽就是调用方要的那一段
+/// （读一块 · 读一页 · 读尾巴），后面还有字节是常态，不是越界。
+pub fn read_window<R: std::io::Read>(rd: R, n: u64) -> std::io::Result<Vec<u8>> {
+    fill(rd, n)
+}
+
+/// 同步整读的读循环（只这一份）：读到流尽或满 `limit` 字节为止。只用一次次的 `read`，被信号打断就再读。
+fn fill<R: std::io::Read>(mut rd: R, limit: u64) -> std::io::Result<Vec<u8>> {
+    let mut out = Vec::new();
+    let mut chunk = [0u8; 8 * 1024];
+    loop {
+        let room = limit.saturating_sub(out.len() as u64);
+        if room == 0 {
+            return Ok(out);
+        }
+        let want = chunk.len().min(usize::try_from(room).unwrap_or(usize::MAX));
+        let n = match rd.read(&mut chunk[..want]) {
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        if n == 0 {
+            return Ok(out);
+        }
+        out.extend_from_slice(&chunk[..n]);
+    }
+}
+
+/// 带上限整读一份本机文件的结局（[`read_capped_regular`]）。
+#[derive(Debug, PartialEq, Eq)]
+pub enum Regular {
+    /// 整份（不超过上限）。
+    Whole(Vec<u8>),
+    /// 不是普通文件（目录 · FIFO · 设备 · socket；不跟链接那一形下还有链接本身）：没打开。
+    NotRegular,
+    /// 超过上限：打开之前看长度就超了 ⇒ 带上实际大小（没打开）；读的途中长过上限 ⇒ 不带。
+    OverCap(Option<u64>),
+}
+
+/// 带上限整读一份本机文件：先看是不是普通文件（打开一个 FIFO 会卡住等写端，设备的长度报 0 会骗过大小检查）· 再看长度
+/// （拒一份巨型文件之前不先读 `cap.bytes + 1` 进内存）· 再打开、经 [`read_capped_from`] 读（看长度与读之间文件还会长，两道一起才完整）。
+/// 跟不跟链接由调用方定：`meta` 是它取的元数据（跟 ⇒ `metadata` · 不跟 ⇒ `symlink_metadata`），`open` 是对应的打开法。
+pub fn read_capped_regular<F: std::io::Read>(
+    meta: &std::fs::Metadata,
+    open: impl FnOnce() -> std::io::Result<F>,
+    cap: Cap,
+) -> std::io::Result<Regular> {
+    if !meta.is_file() {
+        return Ok(Regular::NotRegular);
+    }
+    if meta.len() > cap.bytes {
+        return Ok(Regular::OverCap(Some(meta.len())));
+    }
+    Ok(match read_capped_from(open()?, cap)? {
+        CappedAll::All(b) => Regular::Whole(b),
+        CappedAll::OverCap => Regular::OverCap(None),
+    })
 }
 
 /// 声明表的一行：落点（家目录底下 `.cc-monitor/` 那一层起）· 种类 · 格式 · 读上限（字节与超了怎么办，见 [`Cap`]）·

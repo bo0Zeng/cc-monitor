@@ -22,10 +22,8 @@
 /// 「抽取面画小了」是比「少写一条」更隐蔽的失效：护栏照常报绿，而它压根没看那片地方。
 /// 所以下面 `dispatch_registry_is_complete` 会**反向核对**这份名单没漏文件。
 const DISPATCH_FILES: &[(&str, &str)] = &[
-    // 🔴 `lib.rs`：`SUBCOMMANDS` 那张表按前置 1
-    //    搬进了库面 ⇒ 按本名单的口径（「生产段里出现 `"--`」）它现在就是一份。
-    //    ⚠ **不是我判断它该进来，是下面 `dispatch_registry_is_complete` 自己算出来的** ——
-    //      搬家当天它逐字报「左边多了 `lib.rs`」。本条登记的就是它算出的那个答案。
+    // 🔴 `lib.rs`：子命令选项词那张表（`SUBCOMMAND_OPTIONS`）住库面 ⇒ 按本名单的口径（「生产段里出现 `"--`」）它就是一份。
+    //    ⚠ **不是我判断它该进来，是下面 `dispatch_registry_is_complete` 自己算出来的**。
     //    ⚠ 漏登它的后果逐字写在本名单头注里：那份文件里的 `--子命令` **全部不受
     //      IPC-PROTOCOL.md 对拍约束**，而对拍判据照常报绿。
     ("lib.rs", include_str!("../../src/backend/lib.rs")),
