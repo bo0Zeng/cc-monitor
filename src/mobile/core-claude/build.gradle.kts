@@ -12,7 +12,7 @@ java {
 // Kotlin jvmTarget 在根 subprojects{} 里统一配置。
 
 // 与 `:app` 接同一个共享测试源目录 `testing/src/test/kotlin`（源码词法扫描器）；目录里的自检在本模块也跑一遍。
-// 手机自己的身份（版本门的对照物）只有一处：本仓后端 `src/backend/lib.rs` 的 `pub const BUILD_ID`；构建时抄进生成的
+// 手机自己的身份（版本门的对照物）只有一处：本仓后端 `src/backend/common/id.rs` 的 `pub const BUILD_ID`；构建时抄进生成的
 // `EmbeddedBuild.ID`，不在手机里另写一份。认不出那一行 ⇒ 构建失败，不猜。
 //
 // 包里带着给远端装的两份后端（`src/frontend/shell/embedded-backends/`，桌面同一个目录：开发树由 `re-embed.sh` 铺、发版由
@@ -22,7 +22,7 @@ java {
 val genEmbeddedBuild =
     tasks.register("genEmbeddedBuild") {
         // 输入输出只在任务里定：doLast 里引脚本顶层的 val 会把整个脚本对象带进配置缓存（存不下）。
-        val backendLib = rootProject.file("../backend/lib.rs")
+        val backendLib = rootProject.file("../backend/common/id.rs")
         val stampMarks = rootProject.file("../common/deploy-contract/src/lib.rs")
         val embeddedBackends = rootProject.file("../frontend/shell/embedded-backends")
         val backendArches = listOf("x86_64", "aarch64")
@@ -60,7 +60,7 @@ val genEmbeddedBuild =
             val out = embeddedBuildDir.get().file("com/ccmonitor/mobile/core/claude/link/EmbeddedBuild.kt").asFile
             out.parentFile.mkdirs()
             out.writeText(
-                "// 生成物：core-claude/build.gradle.kts 的 genEmbeddedBuild 从 src/backend/lib.rs 与包里带的后端字节扫来，勿手改。\n" +
+                "// 生成物：core-claude/build.gradle.kts 的 genEmbeddedBuild 从 src/backend/common/id.rs 与包里带的后端字节扫来，勿手改。\n" +
                     "package com.ccmonitor.mobile.core.claude.link\n\n" +
                     "/** 这一版手机的身份（与本仓后端同一个 `BUILD_ID`；带了后端字节时也是它们自报的那一个）· 包里带了哪几格后端（arch）。 */\n" +
                     "object EmbeddedBuild {\n    const val ID: String = \"$id\"\n\n" +

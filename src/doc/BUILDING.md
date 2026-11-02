@@ -22,7 +22,7 @@
 
 ### 内嵌字节与 `BUILD_ID`
 
-后端的身份是 `src/backend/lib.rs` 里的 `BUILD_ID`，编进字节里的身份戳。monitor 编译时（`src/frontend/shell/build.rs`）不读后端源码，只逐份读内嵌字节的戳：问不出身份、几份内嵌字节不是同一版，就让编译失败；几份字节自报的那个共同 id 就是 monitor 的「我这一版」。「字节自报 == 源码 `BUILD_ID`」那条核对在发版那一侧（`release.yml` 的内嵌校验 · `re-embed.sh --check`）——开发中源码 bump 了、字节还没重铺，monitor 照样编得过，按手上那份旧字节说话；可这样的包装出去，连上就会判远端过期、反复重装。
+后端的身份是 `src/backend/common/id.rs` 里的 `BUILD_ID`，编进字节里的身份戳。monitor 编译时（`src/frontend/shell/build.rs`）不读后端源码，只逐份读内嵌字节的戳：问不出身份、几份内嵌字节不是同一版，就让编译失败；几份字节自报的那个共同 id 就是 monitor 的「我这一版」。「字节自报 == 源码 `BUILD_ID`」那条核对在发版那一侧（`release.yml` 的内嵌校验 · `re-embed.sh --check`）——开发中源码 bump 了、字节还没重铺，monitor 照样编得过，按手上那份旧字节说话；可这样的包装出去，连上就会判远端过期、反复重装。
 
 所以 bump 了 `BUILD_ID` 就同拍重铺内嵌字节：
 

@@ -205,7 +205,7 @@ async fn the_backend_attaches_a_machine_itself_and_its_product_is_up() {
     fake.opens
         .lock()
         .unwrap()
-        .push_back(Peer::Serve(crate::BUILD_ID.to_string()));
+        .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
     let mut changes = machine_state::changes().subscribe();
     let ssh: Arc<dyn Ssh> = fake.clone();
     align_in(&[machine.to_string()], &ssh, &quiet());
@@ -232,7 +232,7 @@ async fn a_machine_without_a_resident_is_installed_then_ensured_then_attached() 
     {
         let mut o = fake.opens.lock().unwrap();
         o.push_back(Peer::Absent);
-        o.push_back(Peer::Serve(crate::BUILD_ID.to_string()));
+        o.push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
     }
     let ssh: Arc<dyn Ssh> = fake.clone();
     align_in(&[machine.to_string()], &ssh, &quiet());
@@ -256,7 +256,7 @@ async fn a_stopped_machine_stays_stopped_until_it_is_woken() {
     fake.opens
         .lock()
         .unwrap()
-        .push_back(Peer::Serve(crate::BUILD_ID.to_string()));
+        .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
     let ssh: Arc<dyn Ssh> = fake.clone();
     align_in(&[machine.to_string()], &ssh, &quiet());
     until("先接上", || state_of(machine) == "up").await;
@@ -267,7 +267,7 @@ async fn a_stopped_machine_stays_stopped_until_it_is_woken() {
     fake.opens
         .lock()
         .unwrap()
-        .push_back(Peer::Serve(crate::BUILD_ID.to_string()));
+        .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
     resume_in(machine, &[machine.to_string()], &ssh, &quiet());
     assert!(running(machine), "起 ⇒ 又有那一条");
     align_in(&[], &ssh, &quiet());
@@ -292,7 +292,7 @@ async fn a_call_for_a_machine_goes_through_its_resident_stream() {
     fake.opens
         .lock()
         .unwrap()
-        .push_back(Peer::Serve(crate::BUILD_ID.to_string()));
+        .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
     let ssh: Arc<dyn Ssh> = fake.clone();
     align_in(&[machine.to_string()], &ssh, &quiet());
     until("那台的成品是 up", || state_of(machine) == "up").await;
@@ -357,7 +357,7 @@ async fn a_typed_call_from_this_backend_goes_through_the_same_stream() {
     fake.opens
         .lock()
         .unwrap()
-        .push_back(Peer::Serve(crate::BUILD_ID.to_string()));
+        .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
     let ssh: Arc<dyn Ssh> = fake.clone();
     align_in(&[machine.to_string()], &ssh, &quiet());
     until("那台的成品是 up", || state_of(machine) == "up").await;
@@ -392,10 +392,10 @@ async fn a_machines_stream_is_relayed_as_is_and_its_version_comes_from_its_hello
     let _one = one_at_a_time().await;
     let fake = Arc::new(Fake::default());
     let said = r#"{"kind":"sessions_replayed"}"#.to_string();
-    fake.opens
-        .lock()
-        .unwrap()
-        .push_back(Peer::Talk(crate::BUILD_ID.to_string(), vec![said.clone()]));
+    fake.opens.lock().unwrap().push_back(Peer::Talk(
+        crate::common::id::BUILD_ID.to_string(),
+        vec![said.clone()],
+    ));
     let mut changes = machine_state::changes().subscribe();
     let ssh: Arc<dyn Ssh> = fake.clone();
     let (relay, got) = caught();
@@ -427,7 +427,7 @@ async fn a_machines_stream_is_relayed_as_is_and_its_version_comes_from_its_hello
         [
             Relayed::Line {
                 machine: machine.into(),
-                line: hello(crate::BUILD_ID),
+                line: hello(crate::common::id::BUILD_ID),
             },
             Relayed::Line {
                 machine: machine.into(),
@@ -462,12 +462,12 @@ async fn a_new_stream_first_gets_the_hello_of_each_machine_attached_now() {
     fake.opens
         .lock()
         .unwrap()
-        .push_back(Peer::Serve(crate::BUILD_ID.to_string()));
+        .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
     let ssh: Arc<dyn Ssh> = fake.clone();
     let (relay, got) = caught();
     let hello_now = || {
         attached_hellos().into_iter().any(|f| {
-            matches!(&f, Frame::Relayed(Relayed::Line { machine: m, line }) if m == machine && *line == hello(crate::BUILD_ID))
+            matches!(&f, Frame::Relayed(Relayed::Line { machine: m, line }) if m == machine && *line == hello(crate::common::id::BUILD_ID))
         })
     };
     align_in(&[machine.to_string()], &ssh, &relay);
@@ -546,10 +546,10 @@ async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backe
         told("session_added", "s-done", Life::live(None, None)),
         told("session_left", "s-done", Life::Ended),
     ];
-    fake.opens
-        .lock()
-        .unwrap()
-        .push_back(Peer::Talk(crate::BUILD_ID.to_string(), talk.clone()));
+    fake.opens.lock().unwrap().push_back(Peer::Talk(
+        crate::common::id::BUILD_ID.to_string(),
+        talk.clone(),
+    ));
     let ssh: Arc<dyn Ssh> = fake.clone();
     let (relay, got) = caught();
     align_in(&[machine.to_string()], &ssh, &relay);

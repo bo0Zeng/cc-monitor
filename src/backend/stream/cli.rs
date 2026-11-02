@@ -357,7 +357,7 @@ use crate::stream::inbound::views::{StreamView, StreamWants};
 /// [`crate::wire::cli_words::VIEW_FLAG`] 只在流模式那一形里剥（打头不是子命令；子命令的 `--view` 归它自己的 CLI 臂解）。
 /// 声明解不出 · 认不出 ⇒ `Err(那几处)`（不起流）。
 pub fn split_stream_flags(mut args: Vec<String>) -> Result<(Vec<String>, StreamWants), String> {
-    args.retain(|a| !crate::STREAM_FLAGS.contains(&a.as_str()));
+    args.retain(|a| !crate::wire::cli_words::STREAM_FLAGS.contains(&a.as_str()));
     let mut wants = StreamWants::default();
     if let Some(i) = args
         .iter()
@@ -406,7 +406,7 @@ pub fn is_query_mode(args: &[String]) -> bool {
             // - `args[0]` 是个**子命令选项**（如 `--scope`）：选项脱离了它的子命令，
             //   静默当成起流会让调用方拿到一堆 jsonl 行还以为查询成功了。
             if args.iter().any(|a| !a.starts_with("--"))
-                || crate::SUBCOMMAND_OPTIONS.contains(&first.as_str())
+                || crate::wire::cli_words::SUBCOMMAND_OPTIONS.contains(&first.as_str())
             {
                 return true;
             }

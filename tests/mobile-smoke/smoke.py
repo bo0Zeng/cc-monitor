@@ -842,8 +842,8 @@ MACHINE = "smokebox"
 
 
 def build_id():
-    """源码里这一版的身份（`src/backend/lib.rs` 的 `BUILD_ID`）。"""
-    src = open(os.path.join(ROOT, "src", "backend", "lib.rs"), encoding="utf-8").read()
+    """源码里这一版的身份（`src/backend/common/id.rs` 的 `BUILD_ID`）。"""
+    src = open(os.path.join(ROOT, "src", "backend", "common", "id.rs"), encoding="utf-8").read()
     return src.split('pub const BUILD_ID: &str = "', 1)[1].split('"', 1)[0]
 
 

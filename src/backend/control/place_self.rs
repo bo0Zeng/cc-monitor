@@ -43,11 +43,11 @@ fn this_exe() -> Result<std::path::PathBuf, Said> {
 
 /// `--place-self` 的入口。
 pub fn run(own: &Own) -> i32 {
-    match this_exe().and_then(|exe| place(own, &exe, crate::BUILD_ID)) {
+    match this_exe().and_then(|exe| place(own, &exe, crate::common::id::BUILD_ID)) {
         Ok(()) => {
             println!(
                 "{}",
-                serde_json::json!({ "placed": true, "build_id": crate::BUILD_ID })
+                serde_json::json!({ "placed": true, "build_id": crate::common::id::BUILD_ID })
             );
             0
         }

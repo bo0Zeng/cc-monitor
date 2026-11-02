@@ -306,12 +306,10 @@ ck "agents= 行列出 claude 与 codex" "1" \
 #
 # ⚠ **左值取自源码那一处唯一住址，不手抄** —— 手抄一个 `p2f-…` 进来，
 #   下次 bump 时这一格会以「假红」的形式提醒错人（而且它测的会变成「我抄对了没有」）。
-# 🔴 住址从 `main.rs` 改成 `lib.rs`，认的那一行也从 `const` 变成
-#    `pub const` —— `BUILD_ID` 按前置 2 搬进后端库面（in-process
-#    那条路没有那个 `main.rs`）。⚠ 两样都要改：只改文件名会抠出空串，而上面那条
-#    抽取器自检正是为此而立（它当场红了，没让下面两格零命中地绿）。
+# 🔴 住址是后端纯工具那一层的 `common/id.rs`（in-process 那条路没有 `main.rs`），认的是 `pub const` 那一行。
+#    ⚠ 住址或写法一变，抠出来就是空串，下面那条抽取器自检当场红，不让后两格零命中地绿。
 SRC_BUILD_ID="$(sed -n 's/^pub const BUILD_ID: &str = "\([^"]*\)";$/\1/p' \
-                 "$REPO/src/backend/lib.rs")"
+                 "$REPO/src/backend/common/id.rs")"
 ck "抽取器自检：从后端源码抠得到 BUILD_ID（空 ⇒ 下面两格会零命中地绿）" "yes" \
    "$([ -n "$SRC_BUILD_ID" ] && echo yes || echo no)"
 ck "build= 行报的就是这一份二进制自己的 BUILD_ID（不看它旁边任何文件）" "$SRC_BUILD_ID" \

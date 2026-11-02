@@ -159,7 +159,11 @@ async fn serve(peer: Peer, up: DuplexStream, mut down: DuplexStream) {
     };
     let attach: Value = serde_json::from_str(&attach).unwrap();
     assert_eq!(attach["attach"], true, "第一行是 attach 行：{attach}");
-    assert_eq!(attach["mine"], crate::BUILD_ID, "attach 行带手上这一版");
+    assert_eq!(
+        attach["mine"],
+        crate::common::id::BUILD_ID,
+        "attach 行带手上这一版"
+    );
     match peer {
         Peer::Silent => {
             let _held = (lines, down);

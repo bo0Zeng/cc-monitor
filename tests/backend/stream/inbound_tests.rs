@@ -1126,7 +1126,7 @@ fn history_search_refuses_what_its_request_type_does_not_have() {
 fn history_search_options_are_not_subcommand_words() {
     for gone in ["--include-tools", "--scope", "--after-ms", "--limit"] {
         assert!(
-            !crate::SUBCOMMAND_OPTIONS.contains(&gone),
+            !crate::wire::cli_words::SUBCOMMAND_OPTIONS.contains(&gone),
             "`{gone}` 还在 SUBCOMMAND_OPTIONS 里（帧面入参该直接从类型解）"
         );
     }

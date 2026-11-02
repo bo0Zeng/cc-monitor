@@ -1,6 +1,6 @@
 [package]
 name = "cc-monitor-backend"
-# 🔴 本 crate 刻意不用 Cargo.toml 的版本 —— 真身份住 lib.rs 的 BUILD_ID
+# 🔴 本 crate 刻意不用 Cargo.toml 的版本 —— 真身份住 common/id.rs 的 BUILD_ID
 #
 # 这一行**不是忘了填**，也**不许**顺手换成一个「像样」的数字。
 #
@@ -13,8 +13,8 @@ name = "cc-monitor-backend"
 # · 那条「不参加」不是靠这段散文守着：`build_id_guard` 的
 #   `the_crate_version_is_deliberately_zero_and_the_real_identity_has_a_home`
 #   **在数它** —— 这一行一动、或真身份那一处住址坏掉，当场红。
-# · 真身份的住址（判据逐条核）：`lib.rs` 的 `pub const BUILD_ID`（从 `main.rs` 搬进库面）
-#   ＋ 由它编译期拼出来、扫得进二进制字节的 `CC_MONITOR_BUILD_STAMP`
+# · 真身份的住址（判据逐条核）：`common/id.rs` 的 `pub const BUILD_ID`
+#   ＋ 由它编译期拼出来、扫得进二进制字节的 `CC_MONITOR_BUILD_STAMP`（住 `lib.rs`）
 #   ＋ `--ccm-probe` 吐的 `build=` 那一行。
 version = "0.0.0"
 edition = "2021"

@@ -239,7 +239,7 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
     Feed::start(
         Config {
             machine: name.clone(),
-            mine: Some(crate::BUILD_ID.to_string()),
+            mine: Some(crate::common::id::BUILD_ID.to_string()),
             tz: None,
             handshake: HANDSHAKE,
         },

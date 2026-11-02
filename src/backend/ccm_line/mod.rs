@@ -28,5 +28,5 @@ pub(crate) const PROFILE_SIGIL: char = '@';
 /// 这个名字是不是 ccm 自己（`ccm` · 后端本名 `cc-monitor-backend` 及旧版释放的 `cc-monitor-backend-<build>`）。
 /// 不是 ⇒ 被叫成这个名字等同 `@<名>`（`control::ccm::route`）；配置文件也不收这几个名字当段名。
 pub(crate) fn is_own_name(name: &str) -> bool {
-    name == SUBCOMMAND_WORD || name.starts_with(env!("CARGO_PKG_NAME"))
+    name == SUBCOMMAND_WORD || name.starts_with(crate::common::id::BIN_NAME)
 }

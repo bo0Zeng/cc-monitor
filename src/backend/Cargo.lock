@@ -118,6 +118,7 @@ dependencies = [
  "batch-core",
  "cmd-wire",
  "copy-core",
+ "deploy-contract",
  "guard-core",
  "jiff",
  "relay-route-core",

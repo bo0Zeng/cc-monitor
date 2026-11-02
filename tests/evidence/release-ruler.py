@@ -223,7 +223,7 @@ TRIPLES = {"x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"}
 #: 的文件，真发版时死在「抠不到后端的 const BUILD_ID」上，而红的原因与它要守的事无关。
 #: ⇒ 本条不只比登记，还**实打去读那份文件**，抠不出恰好一行就红（⑩b）。
 IDENTITY_READS = {
-    ("src/backend/lib.rs", "BUILD_ID"): 2,
+    ("src/backend/common/id.rs", "BUILD_ID"): 2,
     ("src/common/deploy-contract/src/lib.rs", "STAMP_OPEN"): 1,
     ("src/common/deploy-contract/src/lib.rs", "STAMP_CLOSE"): 1,
 }
@@ -1244,7 +1244,7 @@ def run_checks(emit):
     #   ⚠ 买不到：「这棵树上那份真字节起得来」—— 那是 `--check-dev` 在真树上跑的事（B1 交付里
     #     现打过一趟），本格在门禁里**不要求**真树铺了字节（字节不进仓，要求它会把每一棵
     #     新 clone 的树都判红；接不接进门禁是 `gate.sh` 的事，这里不管）。
-    lib = read_rel("src/backend/lib.rs")
+    lib = read_rel("src/backend/common/id.rs")
     contract = read_rel(MARKS_SRC)
     sid = rust_str_const(lib, "BUILD_ID") if lib else None
     sop = rust_str_const(contract, "STAMP_OPEN") if contract else None
@@ -1262,9 +1262,9 @@ def run_checks(emit):
         def fixture(body):
             d = Path(tempfile.mkdtemp(prefix="k-r124-dev-"))
             (d / "tests" / "scripts").mkdir(parents=True)
-            (d / "src" / "backend").mkdir(parents=True)
+            (d / "src" / "backend" / "common").mkdir(parents=True)
             (d / "tests" / "scripts" / "re-embed.sh").write_text(reembed, encoding="utf-8")
-            (d / "src" / "backend" / "lib.rs").write_text(lib, encoding="utf-8")
+            (d / "src" / "backend" / "common" / "id.rs").write_text(lib, encoding="utf-8")
             (d / MARKS_SRC).parent.mkdir(parents=True)
             (d / MARKS_SRC).write_text(contract, encoding="utf-8")
             if body is not None:

@@ -5,16 +5,10 @@
 //! 远端仍走那个薄 `main` 壳。今天 link 它的只有那个壳（`main.rs`，`Cargo.toml` 的 `[lib]`）；
 //! 本机 GUI 进程内 link 它那一步还没做（monitor 经子进程 / 监听口说话）。
 //!
-//! 模块声明、身份那一块（`BUILD_ID` ＋ 戳）、argv 的选项词与流旗标住这里；进程入口住 `stream/entry.rs`。
-//! 库面对外只有 [`run`]（`main.rs` 调）· [`b64_encode`]（bench 读）· `BUILD_ID` · 身份戳；模块一律私有，
+//! 模块声明与烤进字节的身份戳（[`CC_MONITOR_BUILD_STAMP`]）住这里；进程入口住 `stream/entry.rs`；
+//! 身份本身（`BUILD_ID` · 名字 · 版本）住 `common/id.rs`。
+//! 库面对外只有 [`run`]（`main.rs` 调）· [`b64_encode`]（bench 读）· 身份戳；模块一律私有，
 //! 零读者的项 rustc 当场报 `dead_code`（门禁 `deadcode-backend` 那一格数的就是它）。
-//!
-//! 🔴 **`BUILD_ID` 必须住这里，不能留在 `main.rs`** —— in-process 那条路**没有
-//! 那个 `main.rs`**，身份会跟着消失。读它源码的只有发版核对那一侧（字节自报 == 这里的 `BUILD_ID`）：
-//!   · `.github/workflows/release.yml`（内嵌校验 · 版本对账）
-//!   · `tests/scripts/re-embed.sh`（`--check`）
-//!   · `tests/backend/build_id_guard.rs`（真身份住址的逐条核对）
-//! monitor 不读它：monitor 的「我这一版」是手上那份内嵌字节自报的 id。**别在第四处写它的住址。**
 
 // 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许 `common::time::now`（`clippy.toml`）。
 #![cfg_attr(test, allow(clippy::disallowed_methods))]
@@ -115,64 +109,19 @@ pub use wire::b64_encode; // bench `s7_history_read` 读它（crate 外读者）
 mod test_home_tests; // `src/common/test-home` 自己的行为（换家 · 摘会话变量 · 临时目录照旧）：子进程那几条要真测试二进制
 mod wire; // 帧面的协议零件（最底下那一层，只引 platform · common · agents · relay）：帧 · typed 命令 · 登记形状 · 复制详情 · 主题表 · 监听判定 · 收场闸
 
-/// 后端身份（`Hello` 帧的 `build_id`，也烤进二进制的身份戳）：monitor 拿它比内嵌那份的，不同 ⇒ 那台该换后端。
-/// 后端发出去的东西变了（子命令集 · 冻结格 · 形状指纹 · 行为）就打一个新的：`tests/scripts/bump-build-id.sh`，再 re-embed。
-pub const BUILD_ID: &str = "p11g-terminals-end";
-
-// 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
-
-pub(crate) const BUILD_STAMP_LEN: usize =
-    deploy_contract::STAMP_OPEN.len() + BUILD_ID.len() + deploy_contract::STAMP_CLOSE.len();
-
-/// 编译期把 `<开>` ＋ `BUILD_ID` ＋ `<关>` 拼成一段**定长字节**。
-///
-/// 🔴 **为什么必须是 `static [u8; N]` 而不是一个 `&str` 常量** —— 这一条是这里的支点，
-/// 它治的是 `build.rs` 里逐字记着的那次失败（`embed_backends` 头注）：
-/// 「编译器可把 BUILD_ID 优化成立即数指令（字符串在字节里**不连续**），
-///  运行时 `bytes_contain` 启发式会误拒正品二进制」⇒ 当时的出路是**旁挂一份清单**，
-/// 也就是「把标签抄到旁边」。
-/// 一个带地址、被 `#[used]` 钉住的 `static` 数组**不可能**被拆成立即数：它有地址、要进
-/// `.rodata`、字节按定义连续。⇒ 「扫字节问身份」从一条启发式变成一条**结构性成立**的事。
-/// 〔实测：release + `lto` + `strip` 与 debug 测试壳两侧都扫得出，且**恰好一处**。〕
-pub(crate) const fn build_stamp() -> [u8; BUILD_STAMP_LEN] {
-    let mut out = [0u8; BUILD_STAMP_LEN];
-    let mut i = 0usize;
-    let open = deploy_contract::STAMP_OPEN.as_bytes();
-    let mut j = 0usize;
-    while j < open.len() {
-        out[i] = open[j];
-        i += 1;
-        j += 1;
-    }
-    let id = BUILD_ID.as_bytes();
-    let mut j = 0usize;
-    while j < id.len() {
-        out[i] = id[j];
-        i += 1;
-        j += 1;
-    }
-    let close = deploy_contract::STAMP_CLOSE.as_bytes();
-    let mut j = 0usize;
-    while j < close.len() {
-        out[i] = close[j];
-        i += 1;
-        j += 1;
-    }
-    out
-}
-
-/// 🔴 **这一份后端二进制自己带着的身份**。
+/// 🔴 **这一份后端二进制自己带着的身份**（`<开>` ＋ `common::id::BUILD_ID` ＋ `<关>`，拼法 [`common::id::build_stamp`]）。
 ///
 /// 拿到一份字节（内嵌的 / 装出来的 / 推到远端的那份都算），**不看它旁边任何文件**，
 /// 搜 `deploy_contract::STAMP_OPEN` 就问得出它是谁（扫法 `deploy_contract::identity_of_bytes`）。消费者：
 /// monitor 构建期（内嵌字节自报的 id 就是 monitor 的「我这一版」）· monitor 运行期（推远端之前的见证）·
 /// 本 crate 的部署计划（落点那一份是谁）与 `build_id_guard` 的自扫判据。
 ///
+/// 住主 crate 而不进纯工具那一层：它是这份二进制的属性，不靠「库里的 `#[used]` 一定被链进来」。
 /// `#[used]` ＋ `#[no_mangle]`：前者挡「没人读它就优化掉」，后者让它在符号表里也留个名
 /// （`strip` 之后符号没了，**数据还在** —— 判据扫的是数据不是符号）。
 #[used]
 #[no_mangle]
-pub static CC_MONITOR_BUILD_STAMP: [u8; BUILD_STAMP_LEN] = build_stamp();
+pub static CC_MONITOR_BUILD_STAMP: [u8; common::id::BUILD_STAMP_LEN] = common::id::build_stamp();
 
 /// `ccm --ccm-probe` 自报的能力：没有 tmux 的平台档上摘掉载体是 tmux 的那几条（`control::ccm::CCM_TMUX_CARRIED`）。
 /// 平台档是入参，本机是 Linux 也能算出「Windows 那一份会吐什么」。
@@ -190,9 +139,6 @@ pub(crate) fn ccm_launcher_with(p: crate::platform::tmux::TmuxPlatform) -> Vec<&
 #[path = "../../tests/backend/target_parity_guard.rs"]
 mod target_parity_guard;
 
-/// ① 流模式 flag：出现即剥离，**不影响模式判定**。只剩「我是流模式」那一个词；这条流要什么由声明说（`StreamWants::view`）。
-pub(crate) const STREAM_FLAGS: &[&str] = &[wire::cli_words::STREAM_FLAG_EXPLICIT];
-
 /// 看的那一台的时区（[`TZ_FLAG`] · 请求信封 `tz` 读出来的那一格）。
 pub(crate) use common::time::Tz;
 /// 一条分页应答 / 一帧 `session_branch` 至多多少字节（写出方向写完这么多应答就先让实时帧走：`stream/writer.rs::writer_task`）。
@@ -202,28 +148,6 @@ pub(crate) use wire::REPLY_PAGE_BYTES;
 pub(crate) fn stamp_detail_slots<'a>(line: &'a str, tz: &Tz) -> std::borrow::Cow<'a, str> {
     common::time::fill_at(line, tz)
 }
-
-/// ② 子命令自己的选项：只在某条子命令（[`stream::cli::is_subcommand`]）之后才有意义，backend 顶层不解释它们。
-pub(crate) const SUBCOMMAND_OPTIONS: &[&str] = &[
-    // `--after-ms` · `--include-tools` · `--limit` · `--scope`（全文搜索的选项词）第 8 批删了：帧面 `history-search` 的入参直接从类型收（`faces/search_face.rs`）。
-    // `--from` · `--until` · `--query`（`--list-user-inputs` · `--read-session-from-offset` · `--find-in-session` 的选项）随那几条子命令删了。
-    // CLI 控制面那一族（`--<帧命令>`）的 argv 形载荷口（与 `--stdin-line` 二选一）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    wire::cli_words::ARGS_B64_FLAG,
-    // `--resident-stop` 的宽限期（秒；必须大于退出排空上限）。
-    "--grace",
-    // `--resident-ensure` 的「先停口上那一位再起」（只升不降由 monitor 按 hello 判）。
-    "--replace",
-    // CLI 控制面那一族（`--<帧命令>`）的「只读一行 stdin」修饰词。
-    wire::cli_words::STDIN_LINE_FLAG,
-    // CLI 控制面那一族的「给人看」那一形（所有命令通用）。
-    wire::cli_words::TEXT_FLAG,
-    // 看的那一台的时区（同帧面请求信封的 `tz`；流模式起参也认它，剥在 `stream::cli::split_stream_flags`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    wire::cli_words::TZ_FLAG,
-    // CLI 控制面那一族（`--<帧命令>`）的声明口（同帧面请求信封的 `view`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    wire::cli_words::VIEW_FLAG,
-    // CLI 控制面那一族（`--<帧命令>`）的期限口（同帧面请求信封的 `within_ms`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    wire::cli_words::WITHIN_MS_FLAG,
-];
 
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]

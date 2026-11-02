@@ -207,7 +207,7 @@ fn the_probe_output_is_the_shape_its_parser_expects() {
     // 🔴 **身份那一行，取自这个进程自己编进来的常量**。
     //   它与 `version=` 分开问是刻意的（前者「你是哪一份」、后者「你认得哪些参数」），
     //   理由全文住 `probe_output` 的头注。
-    assert_eq!(lines[5], format!("build={}", crate::BUILD_ID));
+    assert_eq!(lines[5], format!("build={}", crate::common::id::BUILD_ID));
     assert_eq!(lines.len(), 6, "多一行少一行都是契约变更，实得 {lines:?}");
     assert!(out.ends_with('\n'), "最后一行也要有换行");
     // 消费者今天要的那 8 个（`ccm_invocation.rs::CLI_REQUIRED_CAPS` ＋ account 维度）
@@ -851,8 +851,8 @@ fn the_probe_frame_answers_the_same_card_as_the_cli_flag() {
             .join(",")
     };
     assert_eq!(v["version"].as_str(), Some(line("version").as_str()));
-    assert_eq!(v["build"].as_str(), Some(crate::BUILD_ID));
-    assert_eq!(line("build"), crate::BUILD_ID);
+    assert_eq!(v["build"].as_str(), Some(crate::common::id::BUILD_ID));
+    assert_eq!(line("build"), crate::common::id::BUILD_ID);
     assert_eq!(
         list("capabilities"),
         line("capabilities"),

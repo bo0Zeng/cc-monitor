@@ -105,9 +105,9 @@ impl vt100::Callbacks for Hooks {
                 self.replies
                     .extend_from_slice(format!("\x1b[{};{}R", r + 1, col + 1).as_bytes());
             }
-            (Some(b'>'), 'q', 0) => self
-                .replies
-                .extend_from_slice(format!("\x1bP>|ccm {}\x1b\\", crate::BUILD_ID).as_bytes()),
+            (Some(b'>'), 'q', 0) => self.replies.extend_from_slice(
+                format!("\x1bP>|ccm {}\x1b\\", crate::common::id::BUILD_ID).as_bytes(),
+            ),
             (None, 'J', 3) => self.clear_scrollback = true,
             _ => self.extra.csi(i1, params, c),
         }

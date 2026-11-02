@@ -4,7 +4,7 @@
 //! 副本跑：`<数据目录>/hosts/.bin/<版本>/ccm.exe`，起托管的那一方没有就把自己复制一份过去；别的版本目录由它顺手删，删不掉（有托管进程
 //! 正从那里跑，系统不许删）就留着，等下一次。别的平台上就是自己。
 //!
-//! 「版本」是这份后端的身份 [`crate::BUILD_ID`]（远端判该不该换后端也是它）；包版本恒 0.0.0，分不出构建。
+//! 「版本」是这份后端的身份 [`crate::common::id::BUILD_ID`]（远端判该不该换后端也是它）；包版本恒 0.0.0，分不出构建。
 //!
 //! 目录名以 `.` 打头：托管 id 不许以 `.` 打头（[`super::home::id_ok`]），名单与陈旧清扫都不会把它当成一个托管终端。
 //! 起托管那一下（`control::ccm` 的 `execute_hosted`）调 [`host_program`]。
@@ -39,7 +39,8 @@ pub(crate) fn host_program(own: &Own, called: &str, me: &Path) -> Result<String,
 /// [`host_program`] 的本体：`locked` 是「跑着的程序文件盖不掉」那一格，平台常量由 [`host_program`] 递进来，判据在哪个平台上都走得到两条路。
 fn program_where(own: &Own, called: &str, me: &Path, locked: bool) -> Result<String, Said> {
     if locked {
-        versioned_copy(own, crate::BUILD_ID, me).map(|p| p.to_string_lossy().into_owned())
+        versioned_copy(own, crate::common::id::BUILD_ID, me)
+            .map(|p| p.to_string_lossy().into_owned())
     } else {
         Ok(called.to_string())
     }

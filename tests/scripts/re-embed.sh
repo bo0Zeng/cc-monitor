@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # `BUILD_ID` bump 的同拍步骤：把内嵌的那几份后端字节重编并铺回落点。全仓唯一的本机产字节入口。
-# bump `src/backend/lib.rs` 的 `const BUILD_ID` 那一刻，`src/frontend/shell/embedded-backends/` 里那两份 musl 字节就变旧了：
+# bump `src/backend/common/id.rs` 的 `const BUILD_ID` 那一刻，`src/frontend/shell/embedded-backends/` 里那两份 musl 字节就变旧了：
 #   发版那趟的内嵌校验会红；本机手工打包则装出去一份自报旧 id 的字节，已部署的远端不判 stale、不重装。
 # `--check` 当场用相等断言回答「盘上这几份字节与源码的 `BUILD_ID` 对不对得上」；发版那一侧是 `release.yml` 的内嵌校验。
 #
@@ -47,7 +47,7 @@ REEMBED_TARGETS=(x86_64-unknown-linux-musl aarch64-unknown-linux-musl)
 
 #: 身份的唯一住址 —— 与 `release.yml` 的
 #: `env.CCM_BACKEND_IDENTITY_SRC` 是同一份文件。
-IDENTITY_SRC="$ROOT/src/backend/lib.rs"
+IDENTITY_SRC="$ROOT/src/backend/common/id.rs"
 #: 身份戳两个界标的住址 —— 契约 crate（后端拼戳 · monitor 扫字节同一份；`release.yml` 的 `env.CCM_STAMP_MARKS_SRC` 同一份文件）。
 MARKS_SRC="$ROOT/src/common/deploy-contract/src/lib.rs"
 #: 内嵌落点 —— 名字定死在 `build.rs` 的 `EMBEDDED_BACKENDS_DIR` / `NATIVE_BACKEND_DIR`
@@ -211,10 +211,10 @@ do_check() {
   close="$(src_const STAMP_CLOSE "$MARKS_SRC")"
 
   if [ -n "$id" ]; then
-    ok "源码身份抠得出（恰好一行）" "src/backend/lib.rs 的 const BUILD_ID = $id"
+    ok "源码身份抠得出（恰好一行）" "src/backend/common/id.rs 的 const BUILD_ID = $id"
   else
     bad "源码身份抠得出（恰好一行）" \
-        "在 src/backend/lib.rs 里抠不出**恰好一行** \`const BUILD_ID\` —— 身份又搬家了？住址是本文件顶上的 IDENTITY_SRC，与 release.yml 的 env.CCM_BACKEND_IDENTITY_SRC 同一份"
+        "在 src/backend/common/id.rs 里抠不出**恰好一行** \`const BUILD_ID\` —— 身份又搬家了？住址是本文件顶上的 IDENTITY_SRC，与 release.yml 的 env.CCM_BACKEND_IDENTITY_SRC 同一份"
   fi
   if [ -n "$open" ] && [ -n "$close" ]; then
     ok "身份戳界标抠得出（各恰好一行）" "open=$open close=$close"

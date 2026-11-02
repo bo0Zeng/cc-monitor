@@ -66,7 +66,7 @@ on:
 # 身份戳的两个界标住契约 crate（后端拼戳 · monitor 扫字节两侧 `use` 同一份）⇒ 那一步抠界标读 `CCM_STAMP_MARKS_SRC`。
 env:
   PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
-  CCM_BACKEND_IDENTITY_SRC: src/backend/lib.rs
+  CCM_BACKEND_IDENTITY_SRC: src/backend/common/id.rs
   CCM_STAMP_MARKS_SRC: src/common/deploy-contract/src/lib.rs
 
 jobs:
@@ -223,7 +223,7 @@ jobs:
       # 命名成 src/frontend/shell/build.rs embed_backends 期望的 cc-monitor-backend-<arch>。
       #
       # 🔴 **不旁挂 `.build_id` 清单 —— 身份跟着字节走。**
-      # 后端自己带着一段 `#[used] static` 的身份戳（lib.rs::CC_MONITOR_BUILD_STAMP），
+      # 后端自己带着一段 `#[used] static` 的身份戳（主 crate `lib.rs::CC_MONITOR_BUILD_STAMP`，拼法 `common/id.rs::build_stamp`），
       # 连续、拆不成立即数 ⇒ 下游（src/frontend/shell/build.rs）直接从字节里扫，不需要任何旁文件。
       - name: Stage binaries
         run: |
@@ -294,7 +294,7 @@ jobs:
             Copy-Item $f.FullName "src/frontend/shell/embedded-backends/cc-monitor-backend-$a" -Force
             Write-Host ("embedded {0} ({1} bytes)" -f $a, $f.Length)
           }
-          # 🔴 BUILD_ID 与身份戳界标住后端库面（`lib.rs`；in-process 那条路没有 main.rs）。
+          # 🔴 BUILD_ID 住后端纯工具那一层（`common/id.rs`；in-process 那条路没有 main.rs），界标住契约 crate。
           #    `tests/scripts/re-embed.sh` 的 IDENTITY_SRC 与本处是同一条住址，改一处就要改另一处；
           #    `tests/backend/build_id_guard.rs` 那条判据钉着它指得到真东西。
           # 🔴 住址收进文件头那个 `env:` —— 本文件另有一步也要抠同一个 const。读同一个量，不各写一份。

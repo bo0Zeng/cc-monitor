@@ -1,6 +1,6 @@
 //! CLI 面的**词**：流模式的显式词 · 子命令后面的选项词（与帧面请求信封里同名的那几格同义）· 帧命令名到子命令的拼法。
 //! 收发两头（本进程的 CLI 面 · 问远端那台的一跳 · 起常驻 · 资产同步）都只认这里的字面量；
-//! 哪几个词算选项、哪几个算流旗标那两张表（`crate::SUBCOMMAND_OPTIONS` · `crate::STREAM_FLAGS`）是进程身份，住根上；哪几个词算子命令由闸门 `stream::cli::is_subcommand` 答。
+//! 哪几个词算选项、哪几个算流旗标那两张表（[`SUBCOMMAND_OPTIONS`] · [`STREAM_FLAGS`]）也住这里；哪几个词算子命令由闸门 `stream::cli::is_subcommand` 答。
 
 /// `--stream`：「我是流模式后端」的**显式词**。二进制叫 `ccm` 时零参数是「起会话」，
 /// 起流那几发（monitor 远端流 / 测试连接探针 / 本机宿主 / 远端常驻子进程）一律带它打头，由 `control::ccm::intercept` 按本表分流。
@@ -20,7 +20,7 @@ pub const TZ_FLAG: &str = "--tz";
 /// 有了它，命令行里只剩后端路径与两个旗标（不含载荷），载荷经 capture 写进远端进程的 stdin，本入口读到换行就动手。
 /// 上限同默认那一形（`control/cli_args.rs::MAX_CLI_STDIN`，超了拒、不截断）。
 ///
-/// 住这里（argv 三分表旁边）而不住 `stream::cli`：它是 [`crate::SUBCOMMAND_OPTIONS`] 的一员；发它的一方（`asset_sync`）
+/// 住这里（argv 三分表旁边）而不住 `stream::cli`：它是 [`SUBCOMMAND_OPTIONS`] 的一员；发它的一方（`asset_sync`）
 /// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
 pub const STDIN_LINE_FLAG: &str = "--stdin-line";
 
@@ -34,22 +34,45 @@ pub const RESIDENT_CALL_FLAG: &str = "--resident-call";
 /// 为什么要它：第二个前端的执行通道**只有 stdout、写不了 stdin**，而 CLI 面上收入参的命令占了绝大多数。base64 而不是裸 JSON：
 /// 一个参数里只剩 `[A-Za-z0-9+/=]`，过哪一家登录 shell 的引号都不变形（fish 吃反斜杠那一类，见 [`STDIN_LINE_FLAG`] 的头注）。
 /// 与 [`STDIN_LINE_FLAG`] 二选一；上限与系统单个参数的上限见 `control/cli_args.rs::MAX_ARGS_B64_LEN`。
-/// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`crate::SUBCOMMAND_OPTIONS`] 的一员。
+/// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const ARGS_B64_FLAG: &str = "--args-b64";
 
 /// **「给人看」那一形**：跟在 CLI 控制面那一族（`--<帧命令>`）后面 ⇒ 回包里核心写好的格（顶上 `text` · 每一处 `rows`）拼成字
-/// （`control/ship_text.rs`，所有命令通用、不按业务写）。缺省仍是 JSON 进 JSON 出。住这里同 [`STDIN_LINE_FLAG`]：它是 [`crate::SUBCOMMAND_OPTIONS`] 的一员。
+/// （`control/ship_text.rs`，所有命令通用、不按业务写）。缺省仍是 JSON 进 JSON 出。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const TEXT_FLAG: &str = "--text";
 
 /// **期限口**：跟在 CLI 控制面那一族（`--<帧命令>`）后面、位置不限（`--terminals-list --within-ms 10000`）⇒ 与帧面请求信封的 `within_ms`
 /// 同名同义：发起方这一发愿意等多久（毫秒），减余量换成截止时刻，装总期限的命令都收紧到它；值不是正整数 ⇒ 当没带（同帧面那一格的宽读）。
-/// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`crate::SUBCOMMAND_OPTIONS`] 的一员。
+/// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const WITHIN_MS_FLAG: &str = "--within-ms";
 
 /// **出口的声明口**：跟在 CLI 控制面那一族（`--<帧命令>`）后面、位置不限（`--history-read --args-b64 <…> --view <…>`）⇒ 与帧面请求信封的
 /// `view` 同名同义（要哪几格 · 哪几格不要，`faces/project.rs`）。值是声明的 JSON 原样（`{` 打头），或它的 base64（过哪一家登录 shell 都不变形，
-/// 同 [`ARGS_B64_FLAG`]）。住这里同 [`STDIN_LINE_FLAG`]：它是 [`crate::SUBCOMMAND_OPTIONS`] 的一员。
+/// 同 [`ARGS_B64_FLAG`]）。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const VIEW_FLAG: &str = "--view";
+
+/// ① 流模式 flag：出现即剥离，**不影响模式判定**。只剩「我是流模式」那一个词；这条流要什么由声明说（`StreamWants::view`）。
+pub const STREAM_FLAGS: &[&str] = &[STREAM_FLAG_EXPLICIT];
+
+/// ② 子命令自己的选项：只在某条子命令（`stream::cli::is_subcommand`）之后才有意义，backend 顶层不解释它们。
+pub const SUBCOMMAND_OPTIONS: &[&str] = &[
+    // CLI 控制面那一族（`--<帧命令>`）的 argv 形载荷口（与 `--stdin-line` 二选一）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    ARGS_B64_FLAG,
+    // `--resident-stop` 的宽限期（秒；必须大于退出排空上限）。
+    "--grace",
+    // `--resident-ensure` 的「先停口上那一位再起」（只升不降由 monitor 按 hello 判）。
+    "--replace",
+    // CLI 控制面那一族（`--<帧命令>`）的「只读一行 stdin」修饰词。
+    STDIN_LINE_FLAG,
+    // CLI 控制面那一族的「给人看」那一形（所有命令通用）。
+    TEXT_FLAG,
+    // 看的那一台的时区（同帧面请求信封的 `tz`；流模式起参也认它，剥在 `stream::cli::split_stream_flags`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    TZ_FLAG,
+    // CLI 控制面那一族（`--<帧命令>`）的声明口（同帧面请求信封的 `view`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    VIEW_FLAG,
+    // CLI 控制面那一族（`--<帧命令>`）的期限口（同帧面请求信封的 `within_ms`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    WITHIN_MS_FLAG,
+];
 
 /// 帧命令名 → 它的 CLI 子命令（`launch` → `--launch`）。**唯一一处拼法**：本进程的 CLI 面（`stream/cli.rs::flag_of`）
 /// 与问远端那台 CLI 面的那一跳（`remote_ask::ask_json`）都经它 —— 住这里而不住 `stream::cli`，是为了让

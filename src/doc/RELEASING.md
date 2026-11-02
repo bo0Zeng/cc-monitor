@@ -3,7 +3,7 @@
 ## 1. 发版前 checklist
 
 - [ ] 改**版本号**，手改的只有这四处，`release.yml` 的 `Verify version consistency with tag` 卡的也正是这四处：`package.json` · `src/frontend/shell/Cargo.toml` · `src/frontend/shell/tauri.conf.json` · `src/frontend/shell/Cargo.lock` 里 `name = "monitor"` 紧跟的那一行 version（改完 `Cargo.toml` 跑一次 `cargo check` 就跟上，记得提交）。漏一处，那一步就失败，而那时 tag 已经推出去了。
-      > 别处都从这几处读：后端编译时读 `package.json`（`src/backend/build.rs`），手机的 versionName 也读它（`src/mobile/app/build.gradle.kts`）。
+      > 别处都从这几处读：后端编译时读 `package.json`（`src/backend/common/build.rs`），手机的 versionName 也读它（`src/mobile/app/build.gradle.kts`）。
 - [ ] `package-lock.json` 不手改：改完 `package.json` 跑一次 `npm install`，顶上那两处 `"version"` 由它跟上，一起提交。
 - [ ] [CHANGELOG.md](../../CHANGELOG.md) 加本版那一段（写法见 § 3）。流水线从这一段生成 Release 正文，没有就红在渲染那一步；最上面那一节与 `Cargo.toml` 的版本号对不上由 `the_changelog_top_section_is_the_version_we_ship` 拦。
 - [ ] README 不写版本号：两份 README 的抬头与「项目当前状态」只写「见 Releases / CHANGELOG」，不用跟（`the_entry_readmes_write_no_version_number` 守着两份 README 里没有 `X.Y.Z` 形的号）。
@@ -11,8 +11,8 @@
 - [ ] 本地全量门禁：`bash tests/scripts/gate-affected.sh --full`，`GATE: OK` 才往下走。
 - [ ] **若本版动过滚动 / 渲染管线**（stream · tabs · 会话查看器 · 分支折叠 · render-*）：在 Windows 真机按 `tests/e2e/README.md` 的「人工场景」复核 WebView2（WebKitGTK 没有 `overflow-anchor`，两端补批语义不同）。
 - [ ] **若本版加删过依赖**（任一份 `Cargo.lock` 或 `package-lock.json` 变了）：`python3 tests/scripts/third-party-notices.py` 重新生成第三方许可声明并提交（门禁 `release-gate` ⑰ 不一致就红，发版那一趟 `--check` 也拦）。
-- [ ] **若本版改过后端源码**：`src/backend/lib.rs` 的 `BUILD_ID` 已随改动 bump。走 tag 发版时 `release.yml` 的 `build-backends` job 从源码重编内嵌字节，官方渠道恒一致；**本地手工打包分发**则必须先重编并换掉 `src/frontend/shell/embedded-backends/` 里的字节（`bash tests/scripts/re-embed.sh`），否则装出去的是旧后端，连上后无限重装。
-      > 身份住在字节自己里（`lib.rs::CC_MONITOR_BUILD_STAMP`，一段 `#[used] static`），`src/frontend/shell/build.rs` 编译时直接扫，几份内嵌字节自报的那个共同 id 就是 monitor 的「我这一版」（`byte_table.rs::my_backend_id`）。两种情况直接让编译失败：内嵌字节里问不出身份戳、几份内嵌字节不是同一版。「字节自报 == 源码 `BUILD_ID`」那条核对住 `release.yml` 的内嵌校验与 `bash tests/scripts/re-embed.sh --check`，本地手工打包前跑一次后者。出路二选一：① `bash tests/scripts/re-embed.sh` 重编重铺；② `bash tests/scripts/re-embed.sh --clean` 删掉落点，自动部署诚实关闭（目录本就在 `.gitignore` 里）。干净 clone 与 CI 里没有那个目录 ⇒ 「我这一版」是 `None`：不判远端旧、不发起换装，健康信息里说版本不可比。
+- [ ] **若本版改过后端源码**：`src/backend/common/id.rs` 的 `BUILD_ID` 已随改动 bump。走 tag 发版时 `release.yml` 的 `build-backends` job 从源码重编内嵌字节，官方渠道恒一致；**本地手工打包分发**则必须先重编并换掉 `src/frontend/shell/embedded-backends/` 里的字节（`bash tests/scripts/re-embed.sh`），否则装出去的是旧后端，连上后无限重装。
+      > 身份住在字节自己里（后端 `lib.rs::CC_MONITOR_BUILD_STAMP`，一段 `#[used] static`），`src/frontend/shell/build.rs` 编译时直接扫，几份内嵌字节自报的那个共同 id 就是 monitor 的「我这一版」（`byte_table.rs::my_backend_id`）。两种情况直接让编译失败：内嵌字节里问不出身份戳、几份内嵌字节不是同一版。「字节自报 == 源码 `BUILD_ID`」那条核对住 `release.yml` 的内嵌校验与 `bash tests/scripts/re-embed.sh --check`，本地手工打包前跑一次后者。出路二选一：① `bash tests/scripts/re-embed.sh` 重编重铺；② `bash tests/scripts/re-embed.sh --clean` 删掉落点，自动部署诚实关闭（目录本就在 `.gitignore` 里）。干净 clone 与 CI 里没有那个目录 ⇒ 「我这一版」是 `None`：不判远端旧、不发起换装，健康信息里说版本不可比。
 - [ ] **需要人手跑的 e2e 套件**：权威清单是 `shared_crate_registry_tests.rs::every_test_script_is_either_run_by_ci_or_registered_as_manual` 的 `MANUAL` 表，这里不抄第二份。表里的 `test:f40` 例外：它会往真的 `~/.claude/` 写 fixture，发版前不跑。
 - [ ] **关键入口手测**：
   - [ ] 启动 monitor，本机正在跑的会话自动出现 tab
@@ -88,7 +88,7 @@ git push origin vX.Y.Z                                # tag push 触发 release.
 发版清单只住这一份。Release 页出齐之后，把资产全下到一个空目录里核三件：
 
 - [ ] **校验和**：`sha256sum -c SHA256SUMS.txt` · `sha256sum -c SHA256SUMS-linux.txt` · `sha256sum -c SHA256SUMS-mobile.txt`，每行 `OK`；资产名与 § 2.2 那张表逐个对得上。
-- [ ] **各处 `ccm-build-id` 同值**：两份远端后端、`cc-monitor` 与 `cc-monitor.exe`（内嵌的那几份）、APK 里带的那两份（`unzip -p` 出来再 `grep -a`），扫出来的 `<<ccm-build-id:…:ccm-build-id>>` 全是同一个，且等于 `src/backend/lib.rs` 的 `BUILD_ID`。
+- [ ] **各处 `ccm-build-id` 同值**：两份远端后端、`cc-monitor` 与 `cc-monitor.exe`（内嵌的那几份）、APK 里带的那两份（`unzip -p` 出来再 `grep -a`），扫出来的 `<<ccm-build-id:…:ccm-build-id>>` 全是同一个，且等于 `src/backend/common/id.rs` 的 `BUILD_ID`。
 - [ ] **安装包覆盖装**：装着上一版的机器上直接装新的 NSIS / MSI / `.deb` / APK（不先卸载），装完起得来、版本是新号、原来的设置与会话还在。
 
 ---

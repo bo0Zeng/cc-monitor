@@ -66,7 +66,11 @@ fn sx1_real_history_search_reading() {
     let root =
         crate::agents::claudecode::paths::projects_root(&crate::history::listing::agent_home());
     let load = std::fs::read_to_string("/proc/loadavg").unwrap_or_default();
-    println!("SX1 build={} load={}", crate::BUILD_ID, load.trim());
+    println!(
+        "SX1 build={} load={}",
+        crate::common::id::BUILD_ID,
+        load.trim()
+    );
     // 冷首趟：先把人群文件丢出页缓存（只读，posix_fadvise）。
     let out = std::process::Command::new("python3")
         .arg(&script)
