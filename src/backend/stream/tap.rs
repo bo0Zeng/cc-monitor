@@ -2,7 +2,7 @@
 //! 活卡按每条流连接的名单把 `live` 帧排进它的发件箱；这条连接的写者最低优先取。
 //!
 //! ```text
-//! 中转转发线程 ── TeeSink(tap 口) ── TapHub::offer ──▶ Live（锁里折、记账、分发件箱）──Notify──▶ TapRx ──▶ main.rs::writer_task（出方向 ＞ 应答 ＞ 这一路）──▶ wire
+//! 中转转发线程 ── TeeSink(tap 口) ── TapHub::offer ──▶ Live（锁里折、记账、分发件箱）──Notify──▶ TapRx ──▶ stream/writer.rs::writer_task（出方向 ＞ 应答 ＞ 这一路）──▶ wire
 //! ```
 //!
 //! - **一个进程一个 hub**（[`hub`]）。没人连着时照收：卡照样长，后来接上的连接先拿到每张卡的整张。
@@ -94,7 +94,7 @@ pub fn adopt(book: &Arc<crate::observe::runs::RunBook>) {
     book.watch_with(h);
 }
 
-/// 写者那一侧要的东西：「最低优先那一路的下一帧」。写者（`main.rs::writer_task`）只认这个口，不认帧从哪来 ——
+/// 写者那一侧要的东西：「最低优先那一路的下一帧」。写者（`stream/writer.rs::writer_task`）只认这个口，不认帧从哪来 ——
 /// 生产里是 [`TapRx`]（活卡的发件箱）；判据拿一条手喂的帧通道当它，量「这一路灌满时内容帧一条不少」。
 pub trait TapSource {
     /// 下一帧；`None` = 这条来源不会再有东西了（发送端已被换掉）。

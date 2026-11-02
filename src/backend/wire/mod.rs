@@ -400,7 +400,7 @@ impl NameFaceExt for NameFace {
 
 /// 分页的那几条帧命令（`history-index` · `-user-inputs` · `-turns` · `-branch`）一条应答至多多少字节，`session_branch` 一帧同此。
 ///
-/// 一条应答就是那台流上的一整行，写它的时候那台别的会话的实时帧都在后面等（写出方向写完一页就先让实时帧走，`main.rs::writer_task`）
+/// 一条应答就是那台流上的一整行，写它的时候那台别的会话的实时帧都在后面等（写出方向写完一页就先让实时帧走，`stream/writer.rs::writer_task`）
 /// ⇒ 页越大，实时行被挡得越久；页越小，往返越多。取 1 MiB：同 `history-read` 一页、同远端链路的窗口；
 /// 一份 394 MB 的合成记录冷开一趟分页那四条共 19 页（256 KiB 要 71 页，远端每页一个往返）。
 pub const REPLY_PAGE_BYTES: usize = 1 << 20;
@@ -544,7 +544,7 @@ pub trait FrameRules {
     /// 后面没有了（`at` 就是全长）也发一帧空的：它说「清单到第 `at` 条为止」。
     fn branch_pages(sid: &str, path: &str, off: &[String], at: usize) -> Vec<Frame>;
 
-    /// **推出去那一下**按这条流看的那一台的时区写钟面（`main.rs::writer_task` 对出方向每一帧调它；应答在答的那一下已按请求的 `tz` 写好）：
+    /// **推出去那一下**按这条流看的那一台的时区写钟面（`stream/writer.rs::writer_task` 对出方向每一帧调它；应答在答的那一下已按请求的 `tz` 写好）：
     /// `line.record.timeText` · `session_runs.runs[].startedText`。产这些帧的那几层不写钟面（同一份状态可能推给几个时区不同的看的人）。
     fn stamp(&mut self, tz: &crate::common::time::Tz);
 }

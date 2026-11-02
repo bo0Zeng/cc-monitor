@@ -1559,22 +1559,12 @@ mod tests {
             .and_then(|(_, rest)| rest.split_once("\n}\n"))
             .map(|(b, _)| b)
             .expect("找不到 backend_step —— 本条要跟着改");
-        let runs: Vec<&str> = body
-            .lines()
-            .filter(|l| !l.trim_start().starts_with('#') && l.contains("cargo test"))
-            .collect();
-        assert_eq!(runs.len(), 1, "后端那一段该恰好一条 cargo test：{runs:?}");
-        let run = runs[0];
-        assert!(
-            run.contains("cargo test --workspace --lib "),
-            "后端那一段要 `cargo test --workspace --lib`：{run}"
-        );
-        for flag in ["--bins", "--benches", "--all-targets", "--tests"] {
-            assert!(
-                !run.contains(flag),
-                "后端那一段带了 `{flag}`（只编测试库）：{run}"
-            );
-        }
+        // 整行钉住：目标只 `--workspace --lib`，不带 `--bins` · `--benches` · `--all-targets` · `--tests`。
+        guard_core::pin_line(
+            body,
+            r#"out=$(buildcargo "${timed[@]}" bash -c 'cd src/backend && cargo test --workspace --lib --no-fail-fast -- -Z unstable-options --report-time' 2>&1); rc=$?"#,
+        )
+        .unwrap_or_else(|e| panic!("快检后端那一段不是只编测试库的那一行：{e}"));
     }
 
     /// 手机读的仓内路径挑格表漏没漏：`src/mobile` 的 Kotlin / Gradle 源里字面写到的仓内（手机树外）路径，改了每一条都得挑上 `mobile`

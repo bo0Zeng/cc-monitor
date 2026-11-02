@@ -65,7 +65,7 @@ pub fn here() -> Option<PathBuf> {
     data_home()
 }
 
-/// 按交进来的环境算这台的家（`CCM_DATA_DIR`，否则 `$HOME/.cc-monitor`）：常驻载体认门牌用（`main.rs::claim_then_log`，环境是注入的）。
+/// 按交进来的环境算这台的家（`CCM_DATA_DIR`，否则 `$HOME/.cc-monitor`）：常驻载体认门牌用（`stream/claim.rs::claim_then_log`，环境是注入的）。
 pub fn data_home_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
     creds_core::store::monitor_data_dir(
         get(creds_core::store::DATA_DIR_ENV).as_deref(),

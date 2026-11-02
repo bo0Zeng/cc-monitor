@@ -15,11 +15,11 @@
 ///
 /// # 人群与豁免
 ///
-/// 人群 = **流式那条路**（`main.rs` / `stream/inbound/` 整个目录 / `wire/mod.rs`（帧）/ `wire/listen.rs`）生产段里所有
+/// 人群 = **流式那条路**（`main.rs` / `stream/writer.rs` / `stream/inbound/` 整个目录 / `wire/mod.rs`（帧）/ `wire/listen.rs`）生产段里所有
 /// `write_all(`。今天恰好三处，各自登记：
 /// · `wire::write_and_flush_hello`（`wire/mod.rs`）—— 握手前那一帧，写完才产出 `HelloFlushed`；
 ///   它按定义发生在 writer_task 起来**之前**，不存在并发。
-/// · `main.rs::write_frame` —— writer_task 的出口本体。
+/// · `stream/writer.rs::write_frame` —— writer_task 的出口本体。
 /// · `listen.rs::write_line` —— attach 握手的应答行（常驻那条路的那一员，见下）。
 ///
 /// ⚠ `observe/*_query.rs` 那些 `stdout()` **不在人群里**：它们是一次性 CLI 子命令
@@ -36,7 +36,7 @@ fn the_outbound_stream_has_exactly_one_writer() {
             "wire.rs",
             "write_and_flush_hello：握手帧，发生在 writer_task 起来之前",
         ),
-        ("main.rs", "write_frame：writer_task 的出口本体"),
+        ("stream/writer.rs", "write_frame：writer_task 的出口本体"),
         (
             "listen.rs",
             "write_line：attach 握手的应答行（ok / refused）。\
@@ -73,12 +73,12 @@ fn the_outbound_stream_has_exactly_one_writer() {
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
-        let in_inbound = rel.starts_with("stream/inbound/");
-        // 只看流式那条路（`wire.rs` · `main.rs` · `listen.rs` ＋ 入方向那个目录）；`observe/*_query.rs` 是一次性子命令，理由见头注。
-        if !in_inbound && !matches!(name.as_str(), "wire.rs" | "main.rs" | "listen.rs") {
+        let by_rel = rel.starts_with("stream/inbound/") || rel == "stream/writer.rs";
+        // 只看流式那条路（`wire.rs` · `main.rs` · `listen.rs` ＋ 写者 ＋ 入方向那个目录）；`observe/*_query.rs` 是一次性子命令，理由见头注。
+        if !by_rel && !matches!(name.as_str(), "wire.rs" | "main.rs" | "listen.rs") {
             continue;
         }
-        let name = if in_inbound { rel } else { name };
+        let name = if by_rel { rel } else { name };
         let n = guard_core::production_code(&src)
             .lines()
             .filter(|l| l.contains(verb.as_str()))
