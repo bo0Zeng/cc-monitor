@@ -100,29 +100,30 @@ const SUPPORT: &[&str] = &[
     "tests/frontend/filewin/chrome_testing.rs", // 一个目录视图连同它的框跑一帧（同 `Workspace::chrome_ui` 那一套面板）
     "tests/frontend/filewin/corpus.rs",         // 合成路径语料（采结构不采内容）
     "tests/frontend/filewin/scale.rs",          // 秤：首屏 · 滚动帧 · 内存
-    "tests/frontend/shell/shared_crate_registry_ci_yaml.rs",
-    // 壳的判据模块头（头注 ＋ 挂测试段那一行）：10-10 从 `src/frontend/shell/src/` 搬来，测试在各自的 `*_tests.rs` 里。
-    "tests/frontend/shell/bus_identity_registry.rs",
-    "tests/frontend/shell/capability_registry.rs",
-    "tests/frontend/shell/comm_boundary_registry.rs",
+    // 壳的判据模块头（头注 ＋ 挂测试段那一行），测试在各自的 `*_tests.rs` 里。
     "tests/frontend/shell/command_home_registry.rs",
-    "tests/frontend/shell/cross_half_edge_registry.rs",
-    "tests/frontend/shell/doc_claim_registry.rs",
-    "tests/frontend/shell/e2e_gate_registry.rs",
     "tests/frontend/shell/fixture_guard.rs",
     "tests/frontend/shell/lockfile_conflict_guard.rs",
-    "tests/frontend/shell/needle_anchor_registry.rs",
     "tests/frontend/shell/parity_ledger.rs",
-    "tests/frontend/shell/plugin_class_registry.rs",
-    "tests/frontend/shell/polling_registry.rs",
-    "tests/frontend/shell/pub_reader_registry.rs",
     "tests/frontend/shell/quote_singleton_guard.rs",
-    "tests/frontend/shell/scanning_guard_registry.rs",
-    "tests/frontend/shell/session_name_registry.rs",
-    "tests/frontend/shell/shared_crate_registry.rs",
-    "tests/frontend/shell/shell_lint_registry.rs",
-    "tests/frontend/shell/sync_command_registry.rs",
     "tests/frontend/shell/tmux_backend_gate_guard.rs",
+    // 登记表的表头（头注 ＋ 挂测试段那一行），测试在各自的 `*_tests.rs` 里。
+    "tests/common/guard-core/rules/shared_crate_registry_ci_yaml.rs",
+    "tests/common/guard-core/rules/bus_identity_registry.rs",
+    "tests/common/guard-core/rules/capability_registry.rs",
+    "tests/common/guard-core/rules/comm_boundary_registry.rs",
+    "tests/common/guard-core/rules/cross_half_edge_registry.rs",
+    "tests/common/guard-core/rules/doc_claim_registry.rs",
+    "tests/common/guard-core/rules/e2e_gate_registry.rs",
+    "tests/common/guard-core/rules/needle_anchor_registry.rs",
+    "tests/common/guard-core/rules/plugin_class_registry.rs",
+    "tests/common/guard-core/rules/polling_registry.rs",
+    "tests/common/guard-core/rules/pub_reader_registry.rs",
+    "tests/common/guard-core/rules/scanning_guard_registry.rs",
+    "tests/common/guard-core/rules/session_name_registry.rs",
+    "tests/common/guard-core/rules/shared_crate_registry.rs",
+    "tests/common/guard-core/rules/shell_lint_registry.rs",
+    "tests/common/guard-core/rules/sync_command_registry.rs",
 ];
 
 /// e2e 层：`package.json` 的脚本真的去跑的那批 `tests/e2e/` 下的 shell。
@@ -1690,7 +1691,7 @@ fn e2e_tier_is_what_package_json_runs_and_no_helper_is_orphaned() {
     }
     // 另一半的守门人还在（恰好一处定义）。
     let gate_reg =
-        std::fs::read_to_string(root.join("tests/frontend/shell/e2e_gate_registry_tests.rs"))
+        std::fs::read_to_string(root.join("tests/common/guard-core/rules/e2e_gate_registry_tests.rs"))
             .expect("读 e2e_gate_registry_tests.rs");
     if let Err(e) = crate::find_pinned(
         &code_only(&gate_reg, Lang::Rust),
