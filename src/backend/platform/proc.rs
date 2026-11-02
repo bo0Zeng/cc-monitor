@@ -6,6 +6,7 @@
 //! Windows 臂只买到编得过（`winchk-backend`）＋ 纯换算那一半在 Linux 上的对拍；真机零读数。
 //! `platform/fallback_guard.rs` 钉住这一族：fallback 分支不许凭空返回「成功」值。
 
+#[cfg(target_os = "linux")]
 use crate::platform::fs::Ro;
 
 /// 读 `/proc` 底下一份小文件（`stat` · `environ` · `cmdline` · `fdinfo` · 整机那份 `stat`）的上限：它们正常几 KB，

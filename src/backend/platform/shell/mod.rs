@@ -256,7 +256,8 @@ pub fn path_dirs(path_env: &str) -> Vec<std::path::PathBuf> {
         .collect()
 }
 
-/// `<shell> -l -i -c <打出 PATH>`，`TERM=dumb`（不起）。
+/// `<shell> -l -i -c <打出 PATH>`，`TERM=dumb`（不起）。只 unix 那一臂问登录 shell（Windows 读注册表，见 [`fresh_terminal_path`]）。
+#[cfg(unix)]
 pub(crate) fn login_shell_asking_path(shell: &str) -> Child {
     Child::new(shell)
         .args([
