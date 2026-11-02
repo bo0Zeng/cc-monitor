@@ -2,10 +2,15 @@
 # 几组名单共用 `disallowed_methods` 一个 lint 名：放行只放在最小的作用域上（一条语句，或只做这一件事的小函数），
 #   写 `#[expect(clippy::disallowed_methods, reason = "…")]`，不写 `allow`；放大了，同名的别的组也一起放过。
 # 测试段放开（各库根头上那一行 `cfg_attr(test, …)`）。
+# tokio 那几条带 `allow-invalid`：`resident-client` 没开 tokio 的 fs · process · net 特性，路径在它那里解析不到。
 #
 # 定时器那一组（与 `src/frontend/clippy.toml` 同一组）：会让线程 / 任务自己醒来的构件，用一处就在那一处放行，
-#   reason 写事件源 · 归谁 · 什么时候能去。不收 `Duration::from_*` · `tokio::time::timeout` · `Instant::now`：
-#   这几样给一次等待定上界，等的东西一到就醒，不是自己醒来。
+#   reason 写事件源 · 归谁 · 什么时候能去。`tokio::time::timeout` · `Instant::now` 不收：
+#   它们给一次等待定上界，等的东西一到就醒，不是自己醒来。
+# 读盘 · 读环境：通信层只搬字节，读盘、读环境是宿主的事（壳里 `chan/host.rs` · `filewin/proc.rs`）。
+# 起进程 · 绑端口：起子进程、接管子、开监听口都归宿主，交进来的是已经连好的那一端。
+# 期限字面量（`Duration::from_*`）：期限由宿主按调用给；通信层自己定的那几个数逐处放行，reason 写这个数管哪一次等待。
+# 静默丢（`try_send`）：满了就丢且没人知道。丢只许经 `Gap`（接收方看得见缺了哪一段），发 `Gap` 那一处放行。
 disallowed-methods = [
   { path = "std::thread::sleep", reason = "客户端侧的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
   { path = "std::thread::park_timeout", reason = "客户端侧的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
@@ -16,4 +21,44 @@ disallowed-methods = [
   { path = "tokio::time::sleep_until", reason = "客户端侧的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
   { path = "tokio::time::interval", reason = "客户端侧的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
   { path = "tokio::time::interval_at", reason = "客户端侧的周期唤醒：用一处就在那一处放行（`expect`，一条语句或只做这件事的小函数），写清事件源 · 归谁 · 什么时候能去" },
+
+  { path = "std::fs::read", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节" },
+  { path = "std::fs::read_to_string", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节" },
+  { path = "std::fs::read_dir", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节" },
+  { path = "std::fs::read_link", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节" },
+  { path = "std::fs::metadata", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节" },
+  { path = "std::fs::symlink_metadata", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节" },
+  { path = "std::fs::canonicalize", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节" },
+  { path = "std::fs::File::open", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节" },
+  { path = "std::fs::OpenOptions::open", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节" },
+  { path = "tokio::fs::read", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节", allow-invalid = true },
+  { path = "tokio::fs::read_to_string", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节", allow-invalid = true },
+  { path = "tokio::fs::read_dir", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节", allow-invalid = true },
+  { path = "tokio::fs::metadata", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节", allow-invalid = true },
+  { path = "tokio::fs::File::open", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节", allow-invalid = true },
+  { path = "tokio::fs::OpenOptions::open", reason = "通信层不读盘：读盘是宿主的事，交进来的是读好的字节", allow-invalid = true },
+
+  { path = "std::env::var", reason = "通信层不读环境：要的值由宿主交进来" },
+  { path = "std::env::var_os", reason = "通信层不读环境：要的值由宿主交进来" },
+  { path = "std::env::vars", reason = "通信层不读环境：要的值由宿主交进来" },
+  { path = "std::env::vars_os", reason = "通信层不读环境：要的值由宿主交进来" },
+
+  { path = "std::process::Command::new", reason = "通信层不起进程：起子进程 · 接管子归宿主，交进来的是连好的那一端" },
+  { path = "tokio::process::Command::new", reason = "通信层不起进程：起子进程 · 接管子归宿主，交进来的是连好的那一端", allow-invalid = true },
+  { path = "std::net::TcpListener::bind", reason = "通信层不绑端口：监听口归宿主，交进来的是接好的那条连接" },
+  { path = "std::net::UdpSocket::bind", reason = "通信层不绑端口：监听口归宿主，交进来的是接好的那条连接" },
+  { path = "std::os::unix::net::UnixListener::bind", reason = "通信层不绑端口：监听口归宿主，交进来的是接好的那条连接" },
+  { path = "tokio::net::TcpListener::bind", reason = "通信层不绑端口：监听口归宿主，交进来的是接好的那条连接", allow-invalid = true },
+  { path = "tokio::net::UdpSocket::bind", reason = "通信层不绑端口：监听口归宿主，交进来的是接好的那条连接", allow-invalid = true },
+  { path = "tokio::net::UnixListener::bind", reason = "通信层不绑端口：监听口归宿主，交进来的是接好的那条连接", allow-invalid = true },
+
+  { path = "std::time::Duration::from_secs", reason = "期限由宿主按调用给；通信层自己定的数逐处放行（`expect`），写清它管哪一次等待" },
+  { path = "std::time::Duration::from_millis", reason = "期限由宿主按调用给；通信层自己定的数逐处放行（`expect`），写清它管哪一次等待" },
+  { path = "std::time::Duration::from_micros", reason = "期限由宿主按调用给；通信层自己定的数逐处放行（`expect`），写清它管哪一次等待" },
+  { path = "std::time::Duration::from_nanos", reason = "期限由宿主按调用给；通信层自己定的数逐处放行（`expect`），写清它管哪一次等待" },
+  { path = "std::time::Duration::from_secs_f32", reason = "期限由宿主按调用给；通信层自己定的数逐处放行（`expect`），写清它管哪一次等待" },
+  { path = "std::time::Duration::from_secs_f64", reason = "期限由宿主按调用给；通信层自己定的数逐处放行（`expect`），写清它管哪一次等待" },
+
+  { path = "tokio::sync::mpsc::Sender::try_send", reason = "满了就丢、没人知道：丢只许经 `Gap`（接收方看得见缺了哪一段），发 `Gap` 那一处放行" },
+  { path = "std::sync::mpsc::SyncSender::try_send", reason = "满了就丢、没人知道：丢只许经 `Gap`（接收方看得见缺了哪一段），发 `Gap` 那一处放行" },
 ]
