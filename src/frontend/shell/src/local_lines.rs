@@ -86,7 +86,10 @@ async fn send(item: LocalItem) {
 /// 送法都是 `blocking_send`（裸线程，见头注「两种送法」）；背压照旧（满了就等）。
 pub(crate) enum StdioOut {
     Local,
-    #[cfg_attr(not(feature = "shots"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "shots"),
+        expect(dead_code, reason = "只有截图台架的无头壳（`shots` 特性）造它")
+    )]
     Own(tokio::sync::mpsc::Sender<LocalItem>),
 }
 

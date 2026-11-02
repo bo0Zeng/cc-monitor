@@ -1026,7 +1026,7 @@ fn adopt_with(
 /// [`wait_listening`] 两次探问之间停的那一下（常驻那条等它听上口 · 被监护那条等它说上话，停法同一个）。
 #[expect(
     clippy::disallowed_methods,
-    reason = "等刚起的那个后端听上口（接管刚起的那一个 · 监护刚起的那一个说上话）：20ms 一步，期限 `AFTER_SPAWN_LISTEN_WITHIN`（60s），那一命先退了当场停、听上了就走。没人在听的口 `connect` 当场回拒、不替我们等，登记上那一刻也没有可等的事件；有了就去掉"
+    reason = "等刚起的那个后端听上口（`adopt_with` 接管刚起的那一个 · `start_supervised` 监护刚起的那一个说上话）：20ms 一步，期限 `AFTER_SPAWN_LISTEN_WITHIN`（60s），那一命先退了当场停、听上了就走。没人在听的口 `connect` 当场回拒、不替我们等，登记上那一刻也没有可等的事件；有了就去掉"
 )]
 fn listen_pause() {
     std::thread::sleep(std::time::Duration::from_millis(LISTEN_WAIT_INTERVAL_MS));

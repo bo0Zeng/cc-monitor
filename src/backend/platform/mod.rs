@@ -27,7 +27,15 @@
 //! 独立的包 `backend-platform`：不引后端里任何别的层（引了就编不过）。
 
 // 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许上层的 `common::time::now`（`clippy.toml`）。
-#![cfg_attr(test, allow(clippy::disallowed_methods))]
+// 测试段收尾时丢结果不写理由；生产段丢一个 `Result` 写 `.discard(Why::…)`。
+#![cfg_attr(
+    test,
+    allow(
+        clippy::disallowed_methods,
+        clippy::let_underscore_must_use,
+        clippy::unused_result_ok
+    )
+)]
 
 // 包里照旧写 `crate::platform::…`。
 extern crate self as platform;
@@ -106,7 +114,8 @@ mod win_proc_contract_tests;
 #[path = "../../../tests/backend/tmux_sandbox.rs"]
 #[allow(
     clippy::disallowed_methods,
-    reason = "测试档的台架：只在测试档与上层测试档（`test-support`）编；直接起 tmux、等它的 socket 出现，同各包测试段放开的那几样"
+    clippy::let_underscore_must_use,
+    reason = "测试档的台架：只在测试档与上层测试档（`test-support`）编；直接起 tmux、等它的 socket 出现、收尾时丢结果，同各包测试段放开的那几样"
 )]
 pub mod tmux_sandbox;
 

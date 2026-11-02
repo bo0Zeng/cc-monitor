@@ -107,7 +107,10 @@ pub(crate) mod linux {
     }
 
     /// 占住的那条连接（名字跟着它活）。
-    struct Held(#[allow(dead_code)] zbus::blocking::Connection);
+    struct Held(
+        #[expect(dead_code, reason = "不读它：占着这条连接，总线上的名字就跟着它活")]
+        zbus::blocking::Connection,
+    );
 
     pub(crate) fn plugin(
         on_second: fn(&tauri::AppHandle, Second),

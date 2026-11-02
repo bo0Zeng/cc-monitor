@@ -40,3 +40,13 @@ cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
 default = []
 # 只给判据用的几样（停一个本来就分开的写端 · 关写半边 · 数登记）：monitor 的测试档开它；发布构建不开。
 test-support = []
+
+[lints.clippy]
+# 禁的路径与理由住 `src/comms/clippy.toml`（与 `comms-inward` 共用）；真要用的那一处就地 `expect` 写理由。
+disallowed_methods = "deny"
+# 放行一律 `expect` 带理由（测试段在 `lib.rs` 根上一行放开）。
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+# 丢一个 `Result` 写 `.discard(Why::…)`：理由住调用处，类型挡住拼错。
+let_underscore_must_use = "deny"
+unused_result_ok = "deny"

@@ -258,6 +258,13 @@ pub const TIMED_OUT: &str = "child_timed_out";
     any(test, feature = "test-support"),
     path = "../../../tests/backend/platform/child_tmux_fence.rs"
 )]
+#[cfg_attr(
+    any(test, feature = "test-support"),
+    allow(
+        clippy::let_underscore_must_use,
+        reason = "测试档那一份先建 socket 目录、建不成也照起（同各包测试段放开的那几样）"
+    )
+)]
 mod tmux_fence;
 
 /// 要起的那个子进程（程序 · argv · 显式环境）。stdin 默认是空设备；[`Child::stdin_bytes`] 给了 ⇒ [`Child::run`] 把那几个字节喂进去、写完就关。

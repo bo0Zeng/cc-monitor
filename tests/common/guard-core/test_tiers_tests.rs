@@ -95,7 +95,6 @@ const SUPPORT: &[&str] = &[
     "tests/frontend/filewin/scale.rs",          // 秤：首屏 · 滚动帧 · 内存
     "tests/frontend/shell/shared_crate_registry_ci_yaml.rs",
     // 壳的判据模块头（头注 ＋ 挂测试段那一行）：10-10 从 `src/frontend/shell/src/` 搬来，测试在各自的 `*_tests.rs` 里。
-    "tests/frontend/shell/atomic_replace_registry.rs",
     "tests/frontend/shell/bus_identity_registry.rs",
     "tests/frontend/shell/byte_cap_registry.rs",
     "tests/frontend/shell/capability_registry.rs",
@@ -105,7 +104,6 @@ const SUPPORT: &[&str] = &[
     "tests/frontend/shell/doc_claim_registry.rs",
     "tests/frontend/shell/e2e_gate_registry.rs",
     "tests/frontend/shell/fixture_guard.rs",
-    "tests/frontend/shell/local_read_surface_registry.rs",
     "tests/frontend/shell/lockfile_conflict_guard.rs",
     "tests/frontend/shell/needle_anchor_registry.rs",
     "tests/frontend/shell/parity_ledger.rs",
@@ -113,15 +111,12 @@ const SUPPORT: &[&str] = &[
     "tests/frontend/shell/polling_registry.rs",
     "tests/frontend/shell/pub_reader_registry.rs",
     "tests/frontend/shell/quote_singleton_guard.rs",
-    "tests/frontend/shell/rust_timer_registry.rs",
     "tests/frontend/shell/scanning_guard_registry.rs",
     "tests/frontend/shell/session_name_registry.rs",
     "tests/frontend/shell/shared_crate_registry.rs",
     "tests/frontend/shell/shell_lint_registry.rs",
-    "tests/frontend/shell/swallow_registry.rs",
     "tests/frontend/shell/sync_command_registry.rs",
     "tests/frontend/shell/tmux_backend_gate_guard.rs",
-    "tests/frontend/shell/write_site_registry.rs",
 ];
 
 /// e2e 层：`package.json` 的脚本真的去跑的那批 `tests/e2e/` 下的 shell。
