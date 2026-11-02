@@ -3,7 +3,7 @@
 ## 1. 发版前 checklist
 
 - [ ] 改**版本号**，手改的只有这四处，`release.yml` 的 `Verify version consistency with tag` 卡的也正是这四处：`package.json` · `src/frontend/shell/Cargo.toml` · `src/frontend/shell/tauri.conf.json` · `src/frontend/shell/Cargo.lock` 里 `name = "monitor"` 紧跟的那一行 version（改完 `Cargo.toml` 跑一次 `cargo check` 就跟上，记得提交）。漏一处，那一步就失败，而那时 tag 已经推出去了。
-      > 别处都从这几处读：后端编译时读 `package.json`（`src/backend/build.rs`），手机的 versionName 也读它（`src/mobile/app/build.gradle.kts`）。
+      > 别处都从这几处读：后端编译时读 `package.json`（`src/backend/common/build.rs`），手机的 versionName 也读它（`src/mobile/app/build.gradle.kts`）。
 - [ ] `package-lock.json` 不手改：改完 `package.json` 跑一次 `npm install`，顶上那两处 `"version"` 由它跟上，一起提交。
 - [ ] [CHANGELOG.md](../../CHANGELOG.md) 加本版那一段（写法见 § 3）。流水线从这一段生成 Release 正文，没有就红在渲染那一步；最上面那一节与 `Cargo.toml` 的版本号对不上由 `the_changelog_top_section_is_the_version_we_ship` 拦。
 - [ ] README 不写版本号：两份 README 的抬头与「项目当前状态」只写「见 Releases / CHANGELOG」，不用跟（`the_entry_readmes_write_no_version_number` 守着两份 README 里没有 `X.Y.Z` 形的号）。
