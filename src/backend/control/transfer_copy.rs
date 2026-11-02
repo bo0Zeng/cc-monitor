@@ -239,7 +239,7 @@ pub(crate) fn copy_with(
             }
             out.extend(it.map(|s| BatchOutcome::bare(s.key(), ItemState::Cancelled)));
             run.step(out.len(), None);
-            let verb = copy_text("beFiles.batch.verbCopy", &[]);
+            let verb = copy_text("render.codeBlock.copy", &[]);
             let said = said_of(&verb, &out, Some(&to_dir));
             BatchReply {
                 outcomes: out,

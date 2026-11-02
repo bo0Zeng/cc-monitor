@@ -930,7 +930,7 @@ async fn copy_across_takes_the_whole_selection_and_a_directory_goes_recursive() 
     let batch_core::Phase::Ended(r) = b.phase() else {
         panic!("{:?}", b.phase())
     };
-    let verb = copy_core::copy_text("beFiles.batch.verbCopy", &[]);
+    let verb = copy_core::copy_text("render.codeBlock.copy", &[]);
     assert_eq!(
         r.said,
         copy_core::copy_text("beFiles.batch.done", &[("action", &verb), ("n", "2")]),

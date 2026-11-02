@@ -193,7 +193,7 @@ pub fn copy(
                 out.push(copy_item(face, &root, &key_of(i), from, to, clash));
             }
             run.step(out.len(), None);
-            let verb = copy_text("beFiles.batch.verbCopy", &[]);
+            let verb = copy_text("render.codeBlock.copy", &[]);
             let said = said_of(&verb, &out, into.as_deref());
             BatchReply {
                 outcomes: out,
@@ -365,7 +365,7 @@ pub(crate) fn delete(face: &Face, req: wire::FilesDeleteReq) -> Result<BatchRepl
                 out.push(delete_item(face, &root, &key_of(i), &rel, item, run));
             }
             run.step(out.len(), None);
-            let verb = copy_text("beFiles.batch.verbDelete", &[]);
+            let verb = copy_text("rsFilewinWriteops.label.delete", &[]);
             let said = said_of(&verb, &out, None);
             BatchReply {
                 outcomes: out,

@@ -1172,7 +1172,7 @@ def terminal_steps():
         while time.time() < end and ui.find(t("mobCapture.dialog.title")) is not None:
             time.sleep(0.5)
         if ui.find(t("mobCapture.dialog.title")) is not None:
-            raise Step.Fail(f"点了［{t('beFiles.batch.verbCopy')}］框没关")
+            raise Step.Fail(f"点了［{t('render.codeBlock.copy')}］框没关")
 
         def marks():
             return rig("tmux", "capture-pane", "-p", "-S", "-300", "-t", pane).stdout.count(mark)

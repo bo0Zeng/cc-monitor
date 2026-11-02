@@ -1155,7 +1155,7 @@ impl FakeBackend {
                     None,
                     None,
                     Some(
-                        serde_json::json!({ "outcomes": outcomes, "said": said_done("beFiles.batch.verbCopy", n) }),
+                        serde_json::json!({ "outcomes": outcomes, "said": said_done("render.codeBlock.copy", n) }),
                     ),
                 )
             }
@@ -1224,7 +1224,7 @@ impl FakeBackend {
                     }),
                     "files-delete" => serde_json::json!({
                         "outcomes": (0..n).map(|k| serde_json::json!({ "key": k.to_string(), "state": "done", "path": root, "removed": 1 })).collect::<Vec<_>>(),
-                        "said": said_done("beFiles.batch.verbDelete", n),
+                        "said": said_done("rsFilewinWriteops.label.delete", n),
                     }),
                     _ => serde_json::json!({ "path": root }),
                 };

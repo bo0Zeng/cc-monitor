@@ -99,8 +99,8 @@ impl Verb {
 
     pub fn text(self) -> String {
         match self {
-            Verb::Copy => copy_text("beFiles.batch.verbCopy", &[]),
-            Verb::Delete => copy_text("beFiles.batch.verbDelete", &[]),
+            Verb::Copy => copy_text("render.codeBlock.copy", &[]),
+            Verb::Delete => copy_text("rsFilewinWriteops.label.delete", &[]),
             Verb::Chmod => copy_text("beFiles.batch.verbChmod", &[]),
             Verb::Download | Verb::Pull => copy_text("rsFilewinDownload.label.download", &[]),
             Verb::Upload => copy_text("rsFilewinUpload.label.upload", &[]),

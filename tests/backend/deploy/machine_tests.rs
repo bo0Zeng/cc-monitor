@@ -226,7 +226,7 @@ fn every_fact_lands_on_its_state_word_sentence_and_fixes() {
                 K::NeedsUpdate,
                 None,
                 "machineState.word.needsUpdate",
-                S::Key("machineState.problem.needsUpdate"),
+                S::Key("front.title.update"),
                 vec![F::Update],
             ),
         ),
@@ -238,7 +238,7 @@ fn every_fact_lands_on_its_state_word_sentence_and_fixes() {
                 K::NeedsUpdate,
                 None,
                 "machineState.word.needsUpdate",
-                S::Key("machineState.problem.needsUpdate"),
+                S::Key("front.title.update"),
                 vec![F::Update],
             ),
         ),
@@ -388,7 +388,7 @@ fn every_fact_lands_on_its_state_word_sentence_and_fixes() {
                 K::NeedsUpdate,
                 None,
                 "machineState.word.needsUpdate",
-                S::Key("machineState.problem.needsUpdate"),
+                S::Key("front.title.update"),
                 vec![F::Update],
             ),
         ),
@@ -440,7 +440,7 @@ fn a_host_that_does_not_install_is_offered_install_only_when_the_backend_is_miss
                 K::NeedsUpdate,
                 None,
                 "machineState.word.needsUpdate",
-                S::Key("machineState.problem.needsUpdate"),
+                S::Key("front.title.update"),
                 vec![F::Update],
             ),
         ),
@@ -451,7 +451,7 @@ fn a_host_that_does_not_install_is_offered_install_only_when_the_backend_is_miss
                 K::NeedsUpdate,
                 None,
                 "machineState.word.needsUpdate",
-                S::Key("machineState.problem.needsUpdate"),
+                S::Key("front.title.update"),
                 vec![F::Update],
             ),
         ),
@@ -555,7 +555,7 @@ fn a_failed_update_stays_on_the_machines_line_until_the_next_attempt() {
     );
     assert_eq!(
         p.said,
-        copy_text("machineState.problem.needsUpdate", &[("machine", M)])
+        copy_text("front.title.update", &[("machine", M)])
     );
     // 换上了：同一版连上 ⇒ 没有问题行。
     let p = of(
@@ -564,7 +564,7 @@ fn a_failed_update_stays_on_the_machines_line_until_the_next_attempt() {
     );
     assert_eq!(
         p.said,
-        copy_text("machineState.problem.needsUpdate", &[("machine", M)])
+        copy_text("front.title.update", &[("machine", M)])
     );
 }
 

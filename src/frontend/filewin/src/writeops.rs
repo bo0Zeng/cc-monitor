@@ -108,7 +108,7 @@ pub static RENAME_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.rename", &[]));
 /// 行上那颗「删除」。
 pub static DELETE_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("beFiles.batch.verbDelete", &[]));
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.delete", &[]));
 /// 行上那颗「权限」。
 pub static CHMOD_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.chmod", &[]));
@@ -1284,7 +1284,7 @@ impl WriteBoard {
             copy_text("rsFilewinSelect.label.deleteMany", &[("n", &n.to_string())])
         };
         let go_label = if n == 1 {
-            copy_text("beFiles.batch.verbDelete", &[])
+            copy_text("rsFilewinWriteops.label.delete", &[])
         } else {
             copy_text("rsFilewinSelect.label.deleteMany", &[("n", &n.to_string())])
         };

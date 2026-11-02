@@ -540,7 +540,7 @@ fn phone_text(i: Item, n: usize) -> String {
         Item::Act(A::View) => copy_text("rsFilewinWorkspace.label.preview", &[]),
         Item::Act(A::Edit) => copy_text("rsFilewinEditor.label.edit", &[]),
         Item::Act(A::Download) => copy_text("rsFilewinDownload.label.download", &[]),
-        Item::Act(A::Delete) => copy_text("beFiles.batch.verbDelete", &[]),
+        Item::Act(A::Delete) => copy_text("rsFilewinWriteops.label.delete", &[]),
         Item::Act(A::Rename) => copy_text("rsFilewinWriteops.label.rename", &[]),
         Item::Act(A::CopyTo) => copy_text("mobFiles.menu.copyTo", &[]),
         Item::Act(A::Chmod) if n > 1 => {

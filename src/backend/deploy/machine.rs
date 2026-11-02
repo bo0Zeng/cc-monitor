@@ -377,7 +377,7 @@ pub fn said(state: K, stage: Option<Stage>, why: Option<Why>, machine: &str) -> 
             Why::HostKey | Why::Other => comms_inward::chan::said::offline(machine),
         },
         K::HostKeyChanged => copy_text("machineState.problem.hostKey", &[]),
-        K::NeedsUpdate => copy_text("machineState.problem.needsUpdate", &[("machine", machine)]),
+        K::NeedsUpdate => copy_text("front.title.update", &[("machine", machine)]),
         K::Newer => copy_text("machineState.problem.newer", &[("machine", machine)]),
         K::Disabled => copy_text("machinePage.problem.disabled", &[]),
         K::Unsupported => copy_text("machineState.problem.notUnix", &[("machine", machine)]),

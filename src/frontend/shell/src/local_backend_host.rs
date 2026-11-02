@@ -1753,7 +1753,7 @@ pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
             look: MachineStateKind::NeedsUpdate,
             tone: Tone::Warn,
             word: copy_text("machineState.word.needsUpdate", &[]),
-            said: copy_text("machineState.problem.needsUpdate", &[("machine", &machine)]),
+            said: copy_text("front.title.update", &[("machine", &machine)]),
             fixes,
             next,
         },
