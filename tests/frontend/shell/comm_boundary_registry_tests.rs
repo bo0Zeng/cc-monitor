@@ -28,6 +28,8 @@ const ALLOWED_DEPS: &[(&str, &[&str])] = &[
             "cmd-wire",
             // 契约 crate、零依赖：经 `cmd-wire` 的 `Sid` 进来（会话 id 解码按它那一份 `session_id_ok` 判）。
             "shell-quote-core",
+            // 契约 crate、零依赖：读上限的类型 `Cap`（`line` 那一份带上限读收它）。
+            "relay-route-core",
             "serde",
             "serde_json",
             "tokio",

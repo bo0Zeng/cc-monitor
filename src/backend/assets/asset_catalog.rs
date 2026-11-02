@@ -45,8 +45,11 @@ pub const HERE_SAME: &str = "same";
 
 /// 一个 skill 最多走这么多个文件（超了 `summary.truncated`，摘要按已走到的算）。
 pub const SKILL_MAX_FILES: usize = 512;
-/// 一个文件最多读这么多字节进摘要（超了只记长度 ＋ `truncated`）。
-pub const SKILL_MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
+/// 一个文件最多读这么多字节进摘要（超了只记长度 ＋ `truncated`；装的那一侧那一个 `text = null` ＋ `why`）。
+pub const SKILL_FILE_CAP: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 4 * 1024 * 1024,
+    over: relay_route_core::Over::DegradeAndSay,
+};
 /// 读自己那份目录文件的上限（远超正常量级；超了当读不出来，不截断）。读的那一口照声明表的那一格；
 /// 这里的名字给字节上限登记表认、远端拉回那一侧取同一个数，两处须相等（下一行编译期查）。
 pub const CATALOG_MAX_BYTES: u64 = 16 * 1024 * 1024;
@@ -262,7 +265,7 @@ pub fn skill_asset(
             }
         };
         bytes += len;
-        match crate::platform::fs::Ro::read_regular_capped(ent.path(), SKILL_MAX_FILE_BYTES) {
+        match crate::platform::fs::Ro::read_capped(ent.path(), SKILL_FILE_CAP) {
             Ok(body) => {
                 if body.contains(&0) || std::str::from_utf8(&body).is_err() {
                     binary = true;

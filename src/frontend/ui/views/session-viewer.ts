@@ -16,6 +16,7 @@ import { BranchFolder } from "../branch-fold";
 import { RecordTimeline } from "../record-timeline";
 import { releaseEnhanceRoot } from "../render";
 import { renderStreamRecord, type StreamSink } from "../render-stream-record";
+import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 // 查看器 ＝ 骨架 ＋ 按视口取：与实时 tab **同一个** `SkeletonView`（占位 ＋ 只物化可见区）、同一条取法（`rowRuns` → `readRange`）。
 import { SkeletonView, ledgerFromIndex, rowRuns } from "../skeleton-view";
 import type { SkeletonLedger } from "../live-window";
@@ -95,14 +96,6 @@ function sidFromJsonlPath(p: string): string {
   return name.endsWith(".jsonl") ? name.slice(0, -".jsonl".length) : "";
 }
 
-interface JsonlLinePayload {
-  session_id: string;
-  cwd: string | null;
-  path: string;
-  /** 文件内单调的 seq；按它排进时间线。 */
-  seq: number;
-  record: LineRecord;
-}
 
 /** 内容头：内容由宿主按那一行的事实拼好，查看器只摆位置。 */
 export interface ViewerHead {

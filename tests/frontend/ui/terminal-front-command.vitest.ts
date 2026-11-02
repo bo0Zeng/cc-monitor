@@ -77,7 +77,7 @@ describe("〔S4〕viewer 顶栏的 ↗：与 tab 上那颗同一道门", () => {
     // 「切到终端」只在一处建，且就在门后面（在跑 ＆ 这台系统上 ↗ 的最后一跳不是桩）。
     expect((code.match(/copyText\("tabBarView\.tab\.terminalHint"\)/g) ?? []).length, "「切到终端」那颗的字出现的份数（读屏名 ＋ 悬停）").toBe(2);
     expect(
-      (code.match(/if \(live && terminalFrontAvailable\(\)\) \{\s*const origin = r\.origin \?\? LOCAL_ORIGIN;\s*out\.push\(\s*button\(\{\s*label: copyText\("tabBarView\.tab\.terminalHint"\)/g) ?? []).length,
+      (code.match(/if \(live && terminalFrontAvailable\(\)\) \{\s*out\.push\(\s*button\(\{\s*label: copyText\("tabBarView\.tab\.terminalHint"\)/g) ?? []).length,
       "「切到终端」没有挂在 terminalFrontAvailable 门后面 —— 非 Windows 上它又会渲出来",
     ).toBe(1);
   });

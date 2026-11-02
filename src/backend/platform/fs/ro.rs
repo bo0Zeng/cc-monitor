@@ -23,18 +23,11 @@ pub type Perms = std::fs::Permissions;
 /// 盘上一份文件的戳：改动时刻 · 长度 · inode（[`Ro::stamp`]）。
 pub type Stamp = (std::time::SystemTime, u64, u64);
 
-/// 读盘的命名空间（零大小，不用递）。方法与标准库同名同形，换法就是把 `std::fs::` 换成 `Ro::`。
+/// 读盘的命名空间（零大小，不用递）。元数据 · 目录 · 打开与标准库同名同形，换法就是把 `std::fs::` 换成 `Ro::`；
+/// 整份读只有带上限的那几样（[`Ro::read_capped`] 起，必带 [`Cap`]），没有不带上限的。
 pub struct Ro;
 
 impl Ro {
-    pub fn read(p: impl AsRef<Path>) -> io::Result<Vec<u8>> {
-        std::fs::read(p)
-    }
-
-    pub fn read_to_string(p: impl AsRef<Path>) -> io::Result<String> {
-        std::fs::read_to_string(p)
-    }
-
     pub fn read_dir(p: impl AsRef<Path>) -> io::Result<ReadDir> {
         std::fs::read_dir(p)
     }
@@ -64,13 +57,6 @@ impl Ro {
     /// 只读打开、最后一段是链接就失败（`O_NOFOLLOW`；别的平台同 [`Ro::open`]）。
     pub fn open_nofollow(p: impl AsRef<Path>) -> io::Result<RoFile> {
         nofollow_read().open(p).map(RoFile)
-    }
-
-    /// 不跟链接地整份读（[`Ro::open_nofollow`] 再读满）。
-    pub fn read_nofollow(p: impl AsRef<Path>) -> io::Result<Vec<u8>> {
-        let mut buf = Vec::new();
-        Self::open_nofollow(p)?.read_to_end(&mut buf)?;
-        Ok(buf)
     }
 
     /// 异步问元数据（跟链接）。
@@ -130,23 +116,6 @@ impl Ro {
     /// 带上限地读一份 JSON（同 [`Ro::read_capped`]，剥掉 UTF-8 BOM 再解）：读不了 ⇒ 那一句是原因；解不开 ⇒「内容无法解析」，解析器原话进 `raw`。
     pub fn read_json(p: impl AsRef<Path>, cap: Cap) -> Result<serde_json::Value, Said> {
         parse_json(&Self::read_capped(p, cap)?)
-    }
-
-    /// 同 [`Ro::read_capped`]，上限是裸字节数（超了即拒收）。
-    pub fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, Said> {
-        read_whole(
-            path,
-            Cap {
-                bytes: cap,
-                over: Over::Reject,
-            },
-            Link::Follow,
-        )
-    }
-
-    /// 同 [`Ro::read_json`]，上限是裸字节数（超了即拒收）。
-    pub fn read_json_capped(path: &Path, cap: u64) -> Result<serde_json::Value, Said> {
-        parse_json(&Self::read_regular_capped(path, cap)?)
     }
 
     /// 文件 mtime 的毫秒时间戳；任何读取失败都退化成 `0`（排序时沉到最旧：读失败与「1970 年的文件」混成同一个值，要改得连同调用点的排序语义一起想）。

@@ -16,10 +16,31 @@ pub struct RemoteExec {
     pub exit_status: Option<u32>,
 }
 
-// 出方向单行的上限（`BACKEND_FRAME_LINE_CAP`）与有界读行（`read_capped_line` · `CappedLine`）住 `resident-client`（手机同一份），这里转用。
-pub(crate) use resident_client::line::{read_capped_line, CappedLine, BACKEND_FRAME_LINE_CAP};
+// 有界读行（`read_capped_line` · `CappedLine`）住 `comms_inward::line`，出方向单行的上限住 `resident-client`（手机同一份）。
+pub(crate) use comms_inward::line::CappedLine;
 
-/// 有界读行的行为对拍：`byte_cap_registry` 那几条钉的是形态（常量进表了没、处置臂说话了没），判不出上限到底生不生效 ⇒ 本组用小 cap 直接喂 reader。
+/// 出方向单行的上限，按字节数：壳里本机两条载体（`local_backend` 的 stdio 读行 · `local_backend_host` 的常驻读行）还按字节数传。
+/// 那两处收成 `Cap` 之后，这里改成直接转用 `resident_client::line::BACKEND_FRAME_LINE_CAP`。
+pub(crate) const BACKEND_FRAME_LINE_CAP: usize =
+    resident_client::line::BACKEND_FRAME_LINE_CAP.bytes as usize;
+
+/// 带上限读后端一行：上限取字节数、处置照出方向单行那一道（丢弃＋带身份报告），读本身是 `comms_inward::line::read_capped_line`。
+pub(crate) async fn read_capped_line<R>(
+    rd: &mut R,
+    buf: &mut Vec<u8>,
+    cap: usize,
+) -> std::io::Result<CappedLine>
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+{
+    let cap = relay_route_core::Cap {
+        bytes: cap as u64,
+        ..resident_client::line::BACKEND_FRAME_LINE_CAP
+    };
+    comms_inward::line::read_capped_line(rd, buf, cap).await
+}
+
+/// 收帧那几臂的源码判据（P8c）；有界读行的行为对拍住 `tests/comms/inward/line_tests.rs`。
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/capped_line_tests.rs"]
 mod capped_line_tests;

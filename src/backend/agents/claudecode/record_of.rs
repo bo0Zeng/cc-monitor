@@ -146,7 +146,10 @@ pub(crate) fn record_of(rec: JsonlRecord, start: u64) -> Option<Record> {
                 uuid,
                 Some(timestamp),
                 Body::Reply {
-                    blocks: blocks_of(&message.content, &mut images),
+                    blocks: crate::agents::record::reply_blocks(blocks_of(
+                        &message.content,
+                        &mut images,
+                    )),
                     model: message.model.filter(|m| m != AUTO_REPLY_MODEL),
                     auto_reply,
                     cards: tool_cards,

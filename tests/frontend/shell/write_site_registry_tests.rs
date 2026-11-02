@@ -247,7 +247,7 @@ fn src_root() -> PathBuf {
 /// （它起 `sh` 与 `git`、往 `OUT_DIR` 复制内嵌后端）。
 /// 08-08 实测：全仓所有登记表/守卫的扫描根都是 `src/frontend/shell/src` · `src/backend`
 /// · `src/common` · `src` · `doc` —— **`src/frontend/shell/build.rs` 一张表都没扫到**，
-/// 它是这些扫描面共同的盲点（与 F65「三张表共享同一个没写下来的前提」同族）。
+/// 它是这些扫描面共同的盲点：几张表共享同一个没写下来的前提（扫描根），漏的就一起漏。
 fn corpus() -> Vec<(PathBuf, String)> {
     // 人群含本包 manifest 明写的兄弟源码树（`host-core` · 文件窗口 …，`guard_core::population_trees`）：它们也跑在这台机器的前端进程里。
     let mut files = guard_core::scan_tree!(&src_root(), &["rs"]);

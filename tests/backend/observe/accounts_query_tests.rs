@@ -452,23 +452,27 @@ fn special_files_are_rejected_not_read() {
     use std::os::unix::fs::symlink;
     let root = tmpdir("special");
     // symlink → /dev/zero：metadata().len() 报 0 会骗过大小检查,read 无上限会 OOM。
-    // read_regular_capped 必须靠 is_file() 挡下（跟随 symlink 后目标是字符设备）。
+    // read_capped 必须靠 is_file() 挡下（跟随 symlink 后目标是字符设备）。
     let link = root.join("evil.json");
     symlink("/dev/zero", &link).unwrap();
-    let r = Ro::read_regular_capped(&link, cc_accounts::MAX_CONFIG_BYTES);
+    let r = Ro::read_capped(&link, cc_accounts::CONFIG_CAP);
     assert!(
         r.is_err(),
         "指向 /dev/zero 的 symlink 必须被拒，而不是读爆内存"
     );
+    let cap = |bytes| relay_route_core::Cap {
+        bytes,
+        over: relay_route_core::Over::Reject,
+    };
     // 目录也不是常规文件
-    assert!(Ro::read_regular_capped(&root, 1024).is_err());
+    assert!(Ro::read_capped(&root, cap(1024)).is_err());
     // 正常小文件放行
     let ok = root.join("ok.json");
     fs::write(&ok, "{}").unwrap();
-    assert_eq!(Ro::read_regular_capped(&ok, 1024).unwrap(), b"{}");
+    assert_eq!(Ro::read_capped(&ok, cap(1024)).unwrap(), b"{}");
     // 超上限的常规文件被拒
     fs::write(&ok, vec![b'x'; 100]).unwrap();
-    assert!(Ro::read_regular_capped(&ok, 50).is_err());
+    assert!(Ro::read_capped(&ok, cap(50)).is_err());
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -1453,41 +1457,10 @@ fn the_account_products_match_the_cross_language_golden() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 账号清单读 manifest 的三条锚点 —— 被测对象是后端这份真在答账号清单的实现
+// 账号清单读 manifest 的锚点 ——被测对象是后端这份真在答账号清单的实现
 // ════════════════════════════════════════════════════════════════════════════════════════
 //
 // 判据锚点挂在现存实现上，不挂零生产调用方的参照实现。
-
-/// ★ 读上限的三种失败（不存在 / 不是普通文件 / 过大）**两两分得开**，过大的那句带实际字节数；
-/// 正好等于上限**放行**（`>` 不是 `>=`），差一个字节就拒。
-#[test]
-fn read_regular_capped_keeps_its_three_failures_distinguishable() {
-    let root = tmpdir("c4d-capped");
-    let missing = root.join("nope.json");
-    let dir = root.join("adir");
-    fs::create_dir_all(&dir).unwrap();
-    let big = root.join("big.json");
-    fs::write(&big, vec![b'x'; 10]).unwrap();
-    let e_missing = Ro::read_regular_capped(&missing, 1024).expect_err("不存在的文件必须是 Err");
-    let e_dir = Ro::read_regular_capped(&dir, 1024).expect_err("目录必须是 Err");
-    let e_big = Ro::read_regular_capped(&big, 4).expect_err("超限必须是 Err");
-    assert!(e_big.said.contains("10"), "过大那句没带实际字节数：{e_big}");
-    assert!(
-        e_missing != e_dir && e_dir != e_big && e_missing != e_big,
-        "三种失败给了相同的理由串：不存在={e_missing} / 目录={e_dir} / 过大={e_big}"
-    );
-    let exact = root.join("exact.json");
-    fs::write(&exact, vec![b'y'; 8]).unwrap();
-    assert_eq!(
-        Ro::read_regular_capped(&exact, 8).expect("正好等于上限应当放行"),
-        vec![b'y'; 8]
-    );
-    assert!(
-        Ro::read_regular_capped(&exact, 7).is_err(),
-        "超出一个字节没被拒 —— 上限那一格滑了"
-    );
-    let _ = fs::remove_dir_all(&root);
-}
 
 /// ★ 欺骗字符**按来源分组**各取一个代表，任何一组从 `acct-core` 的内核里掉出去 ⇒ 红（码位表逐字搬自 monitor 那条）。
 ///

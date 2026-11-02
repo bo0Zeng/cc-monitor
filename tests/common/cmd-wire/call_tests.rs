@@ -236,16 +236,20 @@ fn terminal_search_listing_and_accounts_requests_are_the_ones_the_backend_takes(
         "history-search",
         json!({"query": "q", "scope": "report", "after_ms": 5, "titles": true}),
     );
-    sent(HistoryListReq::default(), "history-list", json!({}));
+    sent(
+        HistoryListReq::on(crate::Machine::local()),
+        "history-list",
+        json!({"origin": crate::LOCAL}),
+    );
     sent(
         HistoryListReq {
             sid: Some("s".into()),
             sort: Some(HistorySort::Created),
             within_days: Some(7),
-            ..Default::default()
+            ..HistoryListReq::on(crate::Machine::named("devbox"))
         },
         "history-list",
-        json!({"sid": "s", "sort": "created", "within_days": 7}),
+        json!({"origin": "devbox", "sid": "s", "sort": "created", "within_days": 7}),
     );
     sent(
         AccountsListReq {

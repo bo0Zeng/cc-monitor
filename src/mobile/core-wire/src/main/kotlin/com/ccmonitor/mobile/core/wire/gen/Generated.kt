@@ -2376,6 +2376,14 @@ sealed interface Block {
     val `type`: String
 
     @Suppress("UNCHECKED_CAST")
+    data class Prose(
+        val doc: Doc,
+        val bytes: Long,
+    ) : Block, Ordered {
+        override val `type`: String get() = "prose"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
     data class Text(
         val text: String,
         val bytes: Long,
@@ -2425,6 +2433,15 @@ sealed interface Block {
             tagged<Block>(
                 "type",
                 listOf(
+                Variant("prose", Block.Prose::class.java, obj(
+                        listOf(
+                        Field("type", { tag("prose") }, optional = false, nullable = false),
+                        Field("doc", { Doc.ADAPTER }, optional = false, nullable = false),
+                        Field("bytes", { U64 }, optional = false, nullable = false),
+                        ),
+                        { a -> Block.Prose(a[1] as Doc, a[2] as Long) },
+                        { v -> arrayOf("prose", v.doc, v.bytes) },
+                    )),
                 Variant("text", Block.Text::class.java, obj(
                         listOf(
                         Field("type", { tag("text") }, optional = false, nullable = false),
@@ -9053,7 +9070,7 @@ data class HistoryGroup(
     val atText: String?,
     val order: Long,
     val failed: String?,
-    val origin: String? = null,
+    val origin: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -9072,9 +9089,9 @@ data class HistoryGroup(
             Field("atText", { opt(Str) }, optional = false, nullable = true),
             Field("order", { Lng }, optional = false, nullable = false),
             Field("failed", { opt(Str) }, optional = false, nullable = true),
-            Field("origin", { opt(Str) }, optional = true, nullable = true),
+            Field("origin", { Str }, optional = false, nullable = false),
             ),
-            { a -> HistoryGroup(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String, a[5] as Long, a[6] as Boolean?, a[7] as Boolean, a[8] as Long, a[9] as String?, a[10] as Long, a[11] as String?, a[12] as String?) },
+            { a -> HistoryGroup(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String, a[5] as Long, a[6] as Boolean?, a[7] as Boolean, a[8] as Long, a[9] as String?, a[10] as Long, a[11] as String?, a[12] as String) },
             { v -> arrayOf(v.key, v.agent, v.projectName, v.projectPath, v.projectDir, v.count, v.hasLive, v.starred, v.lastActivity, v.atText, v.order, v.failed, v.origin) },
         )
     }
@@ -9082,7 +9099,7 @@ data class HistoryGroup(
 
 @Suppress("UNCHECKED_CAST")
 data class HistoryGroupId(
-    val origin: String? = null,
+    val origin: String,
     val key: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -9090,10 +9107,10 @@ data class HistoryGroupId(
     companion object {
         val ADAPTER: JsonAdapter<HistoryGroupId> = obj(
             listOf(
-            Field("origin", { opt(Str) }, optional = true, nullable = true),
+            Field("origin", { Str }, optional = false, nullable = false),
             Field("key", { Str }, optional = false, nullable = false),
             ),
-            { a -> HistoryGroupId(a[0] as String?, a[1] as String) },
+            { a -> HistoryGroupId(a[0] as String, a[1] as String) },
             { v -> arrayOf(v.origin, v.key) },
         )
     }
@@ -9329,7 +9346,7 @@ data class HistoryLinesReq(
 
 @Suppress("UNCHECKED_CAST")
 data class HistoryListReq(
-    val origin: String? = null,
+    val origin: String,
     val sid: String? = null,
     val query: String? = null,
     val sort: HistorySort? = null,
@@ -9343,7 +9360,7 @@ data class HistoryListReq(
     companion object {
         val ADAPTER: JsonAdapter<HistoryListReq> = obj(
             listOf(
-            Field("origin", { opt(Str) }, optional = true, nullable = true),
+            Field("origin", { Str }, optional = false, nullable = false),
             Field("sid", { opt(Str) }, optional = true, nullable = true),
             Field("query", { opt(Str) }, optional = true, nullable = true),
             Field("sort", { opt(HistorySort.ADAPTER) }, optional = true, nullable = true),
@@ -9352,7 +9369,7 @@ data class HistoryListReq(
             Field("held", { opt(Str) }, optional = true, nullable = true),
             Field("range", { opt(SyncRange.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> HistoryListReq(a[0] as String?, a[1] as String?, a[2] as String?, a[3] as HistorySort?, a[4] as Long?, a[5] as Boolean?, a[6] as String?, a[7] as SyncRange?) },
+            { a -> HistoryListReq(a[0] as String, a[1] as String?, a[2] as String?, a[3] as HistorySort?, a[4] as Long?, a[5] as Boolean?, a[6] as String?, a[7] as SyncRange?) },
             { v -> arrayOf(v.origin, v.sid, v.query, v.sort, v.withinDays, v.hidden, v.held, v.range) },
         )
     }
@@ -9400,7 +9417,7 @@ data class HistoryListingReq(
 
 @Suppress("UNCHECKED_CAST")
 data class HistoryMachine(
-    val origin: String? = null,
+    val origin: String,
     val total: Long,
     val read: HistoryMachineRead,
 ) : Ordered {
@@ -9409,11 +9426,11 @@ data class HistoryMachine(
     companion object {
         val ADAPTER: JsonAdapter<HistoryMachine> = obj(
             listOf(
-            Field("origin", { opt(Str) }, optional = true, nullable = true),
+            Field("origin", { Str }, optional = false, nullable = false),
             Field("total", { Lng }, optional = false, nullable = false),
             Field("read", { HistoryMachineRead.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> HistoryMachine(a[0] as String?, a[1] as Long, a[2] as HistoryMachineRead) },
+            { a -> HistoryMachine(a[0] as String, a[1] as Long, a[2] as HistoryMachineRead) },
             { v -> arrayOf(v.origin, v.total, v.read) },
         )
     }
@@ -9690,7 +9707,7 @@ data class HistoryRow(
     val atText: String,
     val sectionText: String,
     val spanText: String,
-    val origin: String? = null,
+    val origin: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -9728,9 +9745,9 @@ data class HistoryRow(
             Field("atText", { Str }, optional = false, nullable = false),
             Field("sectionText", { Str }, optional = false, nullable = false),
             Field("spanText", { Str }, optional = false, nullable = false),
-            Field("origin", { opt(Str) }, optional = true, nullable = true),
+            Field("origin", { Str }, optional = false, nullable = false),
             ),
-            { a -> HistoryRow(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String?, a[5] as String, a[6] as String, a[7] as Long, a[8] as Long, a[9] as String, a[10] as Int, a[11] as Boolean, a[12] as Boolean, a[13] as String?, a[14] as Hidden?, a[15] as String?, a[16] as String?, a[17] as ForkedFrom?, a[18] as String, a[19] as String, a[20] as String?, a[21] as String, a[22] as Boolean, a[23] as SessionFace, a[24] as Can, a[25] as String?, a[26] as Boolean?, a[27] as Long, a[28] as String, a[29] as String, a[30] as String, a[31] as String?) },
+            { a -> HistoryRow(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String?, a[5] as String, a[6] as String, a[7] as Long, a[8] as Long, a[9] as String, a[10] as Int, a[11] as Boolean, a[12] as Boolean, a[13] as String?, a[14] as Hidden?, a[15] as String?, a[16] as String?, a[17] as ForkedFrom?, a[18] as String, a[19] as String, a[20] as String?, a[21] as String, a[22] as Boolean, a[23] as SessionFace, a[24] as Can, a[25] as String?, a[26] as Boolean?, a[27] as Long, a[28] as String, a[29] as String, a[30] as String, a[31] as String) },
             { v -> arrayOf(v.agent, v.sessionId, v.projectPath, v.projectName, v.aiTitle, v.firstUserExcerpt, v.title, v.startedAt, v.updatedAt, v.jsonlPath, v.messageCountApprox, v.isBg, v.starred, v.customTitle, v.hidden, v.forkedFromSessionId, v.forkedFromMessageUuid, v.forkedFrom, v.projectDir, v.group, v.lastAccount, v.label, v.untitled, v.face, v.can, v.agentTag, v.context, v.at, v.atText, v.sectionText, v.spanText, v.origin) },
         )
     }
@@ -9738,7 +9755,7 @@ data class HistoryRow(
 
 @Suppress("UNCHECKED_CAST")
 data class HistoryRowId(
-    val origin: String? = null,
+    val origin: String,
     val sid: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -9746,10 +9763,10 @@ data class HistoryRowId(
     companion object {
         val ADAPTER: JsonAdapter<HistoryRowId> = obj(
             listOf(
-            Field("origin", { opt(Str) }, optional = true, nullable = true),
+            Field("origin", { Str }, optional = false, nullable = false),
             Field("sid", { Str }, optional = false, nullable = false),
             ),
-            { a -> HistoryRowId(a[0] as String?, a[1] as String) },
+            { a -> HistoryRowId(a[0] as String, a[1] as String) },
             { v -> arrayOf(v.origin, v.sid) },
         )
     }
@@ -14303,7 +14320,7 @@ data class Merged(
 
 @Suppress("UNCHECKED_CAST")
 data class MergedRow(
-    val origin: String? = null,
+    val origin: String,
     val atText: String,
     val spanText: String,
     val label: String,
@@ -14329,7 +14346,7 @@ data class MergedRow(
     companion object {
         val ADAPTER: JsonAdapter<MergedRow> = obj(
             listOf(
-            Field("origin", { opt(Str) }, optional = true, nullable = true),
+            Field("origin", { Str }, optional = false, nullable = false),
             Field("atText", { Str }, optional = false, nullable = false),
             Field("spanText", { Str }, optional = false, nullable = false),
             Field("label", { Str }, optional = false, nullable = false),
@@ -14350,7 +14367,7 @@ data class MergedRow(
             Field("forkedFrom", { opt(ForkedFrom.ADAPTER) }, optional = true, nullable = true),
             Field("face", { SessionFace.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> MergedRow(a[0] as String?, a[1] as String, a[2] as String, a[3] as String, a[4] as Boolean, a[5] as Hidden?, a[6] as String, a[7] as String, a[8] as String, a[9] as String, a[10] as String, a[11] as String, a[12] as Long, a[13] as List<SearchHit>, a[14] as Int, a[15] as Boolean, a[16] as Boolean, a[17] as Can, a[18] as ForkedFrom?, a[19] as SessionFace) },
+            { a -> MergedRow(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as Boolean, a[5] as Hidden?, a[6] as String, a[7] as String, a[8] as String, a[9] as String, a[10] as String, a[11] as String, a[12] as Long, a[13] as List<SearchHit>, a[14] as Int, a[15] as Boolean, a[16] as Boolean, a[17] as Can, a[18] as ForkedFrom?, a[19] as SessionFace) },
             { v -> arrayOf(v.origin, v.atText, v.spanText, v.label, v.starred, v.hidden, v.agent, v.sessionId, v.projectPath, v.projectName, v.jsonlPath, v.title, v.updatedAt, v.hits, v.moreHits, v.hitsTruncated, v.isBg, v.can, v.forkedFrom, v.face) },
         )
     }

@@ -1,5 +1,6 @@
 //! 常驻流 deflate 的读半边：一帧的压缩字节整段到了、之后那台不再来字节 ⇒ 这一帧当场整行读得出，不等下一批。
 use super::*;
+use comms_inward::line::{read_capped_line, CappedLine};
 use std::future::Future;
 
 /// 只给这几段字节、之后永远 `Pending`（不唤醒）的读者：那台静下来时的 socket。

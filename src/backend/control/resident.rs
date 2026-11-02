@@ -25,6 +25,7 @@
 use crate::platform::child::{Child, ChildFail, Deadline};
 use crate::platform::child_env::OWN_ENVS;
 use crate::platform::fs::{Own, OwnLock, OwnPath};
+use relay_route_core::{Cap, Over};
 use std::path::{Path, PathBuf};
 
 use copy_core::copy_text;
@@ -178,8 +179,11 @@ pub async fn attach() -> i32 {
 /// `--resident-call` 那一条请求的 id（一条连接只问这一次）。
 const CALL_ID: &str = "resident-call";
 
-/// 常驻那条连接上一行帧的上限（应答里一整份清单也在这之内；同问远端那一跳收 stdout 的上限）。
-const FRAME_LINE_CAP: usize = 16 * 1024 * 1024;
+/// 常驻那条连接上一行帧的上限（应答里一整份清单也在这之内；同问远端那一跳收 stdout 的上限）。超了：拒收＋回错（这一问读成断开）。
+const FRAME_LINE_CAP: Cap = Cap {
+    bytes: 16 * 1024 * 1024,
+    over: Over::Reject,
+};
 
 /// `--resident-call`：问这台的常驻一条帧命令（头注）。
 pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
@@ -386,7 +390,7 @@ impl Here {
             rd: tokio::io::BufReader::new(rd),
             wr,
         };
-        let hello = here.line(HELLO_CAP as usize).await?;
+        let hello = here.line(HELLO_CAP).await?;
         if hello.get("kind").and_then(serde_json::Value::as_str) != Some("hello") {
             return Err(Unreached::Broken);
         }
@@ -395,7 +399,7 @@ impl Here {
             ..AttachLine::default()
         };
         here.write(&attach.line()).await?;
-        let ack = here.line(crate::wire::listen::ATTACH_LINE_CAP).await?;
+        let ack = here.line(crate::wire::listen::ATTACH_LINE).await?;
         match AttachReply::of(&ack.to_string()) {
             Some(AttachReply::Ok { .. }) => Ok(here),
             _ => Err(Unreached::Broken),
@@ -420,16 +424,17 @@ impl Here {
     }
 
     /// 读一行 JSON（有上限；不是 JSON 的那一行当没看见、读下一行）。断了 · 超长 ⇒ `Broken`。
-    async fn line(&mut self, cap: usize) -> Result<serde_json::Value, Unreached> {
-        use crate::wire::listen::HandshakeLine;
+    async fn line(&mut self, cap: Cap) -> Result<serde_json::Value, Unreached> {
+        use comms_inward::line::{read_capped_line, CappedLine};
+        let mut buf = Vec::new();
         loop {
-            match crate::wire::listen::read_capped_line(&mut self.rd, cap).await {
-                Ok(HandshakeLine::Line(l)) => {
-                    if let Ok(v) = serde_json::from_str(l.trim()) {
+            match read_capped_line(&mut self.rd, &mut buf, cap).await {
+                Ok(CappedLine::Line) => {
+                    if let Ok(v) = serde_json::from_str(String::from_utf8_lossy(&buf).trim()) {
                         return Ok(v);
                     }
                 }
-                Ok(HandshakeLine::Eof | HandshakeLine::TooLong(_)) | Err(_) => {
+                Ok(CappedLine::Eof | CappedLine::TooLong(_)) | Err(_) => {
                     return Err(Unreached::Broken)
                 }
             }
@@ -651,8 +656,11 @@ pub(crate) struct Listener {
     pub(crate) build: Option<String>,
 }
 
-/// hello 那一行的字节上限：一行 hello 几 KiB，再长就不是它。
-const HELLO_CAP: u64 = 256 * 1024;
+/// hello 那一行的字节上限：一行 hello 几 KiB，再长就不是它。超了：拒收＋回错。
+const HELLO_CAP: Cap = Cap {
+    bytes: 256 * 1024,
+    over: Over::Reject,
+};
 
 /// 连这台的套接字问在听的是谁。没人在听（不在 / 拒连）⇒ `None`。
 fn who_listens(data_home: &Path) -> Result<Option<Listener>, Said> {
@@ -693,10 +701,10 @@ fn who_listens(data_home: &Path) -> Result<Option<Listener>, Said> {
     let wait = std::time::Duration::from_secs(HELLO_READ_SECS);
     s.set_read_timeout(Some(wait)).map_err(|e| cannot(&e))?;
     let mut line = String::new();
-    let n = std::io::BufReader::new((&s).take(HELLO_CAP))
+    let n = std::io::BufReader::new((&s).take(HELLO_CAP.bytes))
         .read_line(&mut line)
         .map_err(|e| cannot(&e))?;
-    if u64::try_from(n).unwrap_or(u64::MAX) >= HELLO_CAP && !line.ends_with('\n') {
+    if u64::try_from(n).unwrap_or(u64::MAX) >= HELLO_CAP.bytes && !line.ends_with('\n') {
         return Err(cannot(&std::io::ErrorKind::InvalidData.into()));
     }
     let build = serde_json::from_str::<serde_json::Value>(&line)

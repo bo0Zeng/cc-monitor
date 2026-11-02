@@ -327,7 +327,7 @@ describe("本机恢复的主路：人没动过 ⇒ 不带号 · 不带放在哪�
   /** 历史页的一行（`history-list` 成品那一形，本机、已结束、能恢复）。 */
   function row(): Record<string, unknown> {
     return {
-      agent: "claude", agentTag: null, sessionId: "s1", projectDir: "pd", projectPath: "/p", projectName: "P", group: "claude:/p",
+      agent: "claude", agentTag: null, sessionId: "s1", origin: "<local>", projectDir: "pd", projectPath: "/p", projectName: "P", group: "claude:/p",
       aiTitle: "T", firstUserExcerpt: "x", title: "T", label: "T", untitled: false, startedAt: 1, updatedAt: 1, at: 1,
       jsonlPath: "/p/s1.jsonl", messageCountApprox: 1, isBg: false, starred: false, customTitle: null, hidden: null,
       can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
@@ -559,9 +559,9 @@ describe("：origin 去 null 化（入方向）", () => {
  *
  * # 买不到（写死，别读宽）
  *
- * - `origin?: string`（可选 = 缺省）**不在违例里**：出方向生成物（`HistoryProject` / `JsonlLinePayload` /
- *   `SessionHits` 一族，Rust 侧 `skip_serializing_if`）用「缺省 = 本机」，那是 Rust 出方向的事，
- *   在 TS 这边只在消费处经 `ipc/origin.ts::originFromWire` 收成一个表示。
+ * - `origin?: string`（可选 = 缺省）**不在违例里**：线上那几形（`HistoryRow` / `JsonlLinePayload` / `MergedRow` …）
+ *   今天 origin 一律必填（本机逐字 `<local>`），可选那一形由生成物与 tsc 管，
+ *   不归本条。
  * - 换个名字装同一件事（`host: string | null`）—— 词是 `origin`，改名就出人群。
  * - 上一版这里记着「`accounts.ts` 自己那个 `LOCAL_ORIGIN = "__local__"`（账号面的缓存键）**仍在**」——
  *   C4b 按裁「合」：它已退役，判据住本文件下一节（「本机只有一个表示」）。
@@ -711,7 +711,6 @@ describe("〔C4a〕TS 侧 origin 去 null（全 TS ＋ 生成物）", () => {
       "这几处 origin 在类型上装得下 `null`：\n" +
         "本机是一个**具名**的 origin（`LOCAL_ORIGIN` = `\"<local>\"`，住 `backend-policy.ts`，与 Rust 跨语言对拍）；\n" +
         "「是不是本机」只经 `src/frontend/ui/ipc/origin.ts` 判（`isLocalOrigin` / `isRemoteOrigin`），\n" +
-        "Rust 出方向的「缺省 = 本机」只在 `originFromWire` 那一处收成一个表示。\n" +
         "⇒ 出路是把那一处改成 `Origin`，**不是**把它登记进 PENDING。",
     ).toEqual(Object.keys(PENDING).sort());
   });

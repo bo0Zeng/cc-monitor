@@ -71,8 +71,8 @@ object SessionsNeeds {
 }
 
 /**
- * `history-list` 的一行与整份。手机只连一台、直接问那台的常驻：不带 `origin` 也不带 `listing` ⇒
- * 那台自己的清单、并上那台的注解、筛、排（`history/history_list.rs` 头注「origin 缺席 ⇒ 这台」）。
+ * `history-list` 的一行与整份。手机只连一台、直接问那台的常驻：`origin` 交 [LOCAL]（那台眼里的这台）⇒
+ * 那台自己的清单、并上那台的注解、筛、排（`history/history_list.rs` 头注；`origin` 必填，缺了那台答 `bad_args`）。
  * 回包是带键集合那一形（[SyncPatch]）：带着上次的记号问 ⇒ 没变 / 只给变了的那几行，手上那一份照它换（[SyncHand.apply]）。
  */
 object HistoryList {
@@ -91,18 +91,19 @@ object HistoryList {
         return HistoryListPage(rows, info?.groups.orEmpty(), info?.notice, (hand.head?.total ?: 0) > rows.size)
     }
 
-    /** 入参：设了的筛选各带一格（与桌面历史同几个参数），没设的不带（那台照缺省）；带着上次的记号 [held] ⇒ 交回；全没有 ⇒ `null`。 */
+    /** 入参：`origin` ＝ [LOCAL]；设了的筛选各带一格（与桌面历史同几个参数），没设的不带（那台照缺省）；带着上次的记号 [held] ⇒ 交回。 */
     fun args(
         ask: ListAsk,
         held: String? = null,
-    ): Map<String, Any?>? =
+    ): Map<String, Any?> =
         buildMap {
+            put("origin", LOCAL)
             ask.query?.let { put("query", it) }
             ask.withinDays?.let { put("within_days", it) }
             ask.sort?.let { put("sort", it.wire) }
             if (ask.hidden) put("hidden", true)
             held?.let { put("held", it) }
-        }.ifEmpty { null }
+        }
 }
 
 /** 一台的清单：那一窗的行（照那台的先后）· 组 · 注解没并上那一句 · 窗外还有没有。 */

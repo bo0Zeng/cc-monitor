@@ -42,8 +42,11 @@ const ALREADY: &str = "ALREADY";
 const SSH_DIR: &str = ".ssh";
 const AUTH_FILE: &str = "authorized_keys";
 
-/// 本机那份 `.pub` 一次最多读多少（公钥一行几百字节；超了就不是公钥）。
-const PUB_READ_MAX: u64 = 64 * 1024;
+/// 本机那份 `.pub` 一次最多读多少（公钥一行几百字节；超了就不是公钥）：超了拒、回那一句，一个字节不推。
+const PUB_READ_MAX: relay_route_core::Cap = relay_route_core::Cap {
+    bytes: 64 * 1024,
+    over: relay_route_core::Over::Reject,
+};
 
 /// 已知公钥类型前缀（粗校验形态，拒明显非公钥内容如误选私钥 / 任意文本）。
 fn is_known_key_type(t: &str) -> bool {
@@ -465,10 +468,10 @@ pub(crate) fn read_pub_file(
     let io =
         |e: std::io::Error| said(&copy_core::io_reason(e.kind())).and_raw(Some(&e.to_string()));
     let meta = Ro::metadata(&at).map_err(io)?;
-    if meta.len() > PUB_READ_MAX {
+    if meta.len() > PUB_READ_MAX.bytes {
         return Err(said(&copy_text("bePubkey.read.tooBig", &[])));
     }
-    Ro::read_to_string(&at).map_err(io)
+    Ro::read_string_capped(&at, PUB_READ_MAX).map_err(|e| said(&e.said).and_raw(e.raw.as_deref()))
 }
 
 #[cfg(test)]

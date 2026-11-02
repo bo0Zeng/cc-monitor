@@ -51,8 +51,18 @@
           "blocks": [
             {
               "bytes": 1,
-              "text": "a",
-              "type": "text"
+              "doc": {
+                "blocks": [
+                  {
+                    "k": [
+                      "a"
+                    ],
+                    "t": "p"
+                  }
+                ],
+                "segs": []
+              },
+              "type": "prose"
             }
           ],
           "draw": "card",
@@ -109,8 +119,18 @@
           "blocks": [
             {
               "bytes": 1,
-              "text": "a",
-              "type": "text"
+              "doc": {
+                "blocks": [
+                  {
+                    "k": [
+                      "a"
+                    ],
+                    "t": "p"
+                  }
+                ],
+                "segs": []
+              },
+              "type": "prose"
             }
           ],
           "draw": "card",
@@ -170,8 +190,18 @@
           "blocks": [
             {
               "bytes": 1,
-              "text": "a",
-              "type": "text"
+              "doc": {
+                "blocks": [
+                  {
+                    "k": [
+                      "a"
+                    ],
+                    "t": "p"
+                  }
+                ],
+                "segs": []
+              },
+              "type": "prose"
             }
           ],
           "draw": "card",
@@ -219,8 +249,18 @@
           "blocks": [
             {
               "bytes": 2,
-              "text": "ok",
-              "type": "text"
+              "doc": {
+                "blocks": [
+                  {
+                    "k": [
+                      "ok"
+                    ],
+                    "t": "p"
+                  }
+                ],
+                "segs": []
+              },
+              "type": "prose"
             }
           ],
           "draw": "card",

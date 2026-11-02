@@ -501,7 +501,7 @@ describe("TabManager 生命周期", () => {
     expect(home(tm).store.tabs.get("sk-late")!.face?.dot).toBe("ended");
   });
 
-  // === Batch7-F24：bg 会话 ⚙ 标题（〔「删掉树」〕不再挂宿主排成树：落位 / 拖拽 / 集合
+  // === `INVARIANTS §26`：bg 会话 ⚙ 标题（〔「删掉树」〕不再挂宿主排成树：落位 / 拖拽 / 集合
   //     与普通 tab 相同那一组在本文件末尾「〔BG1〕」describe.each 里，两种 tab 各跑一遍） ===
 
   it("bg tab 平铺：顺序 == 到达序（不挂到同 cwd 交互 tab 之后），标题 ⚙ ＋ 核心给的名字（后台的 pidfile 名在核心那条顺序里）", () => {
@@ -1313,7 +1313,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   // ① 通道不在（`null`）⇒ 不许留一个能点的破坏性菜单项 —— `null` 是「不知道」，
   //    留着它等于让用户点一个必失败的 kill。
   // ② 命中恰好一个 ⇒ 按 `@ccm_sid` 认，**不按名字前缀猜**（下面那条埋了名字诱饵）。
-  // ③ 命中 ≥2 个 ⇒ 拒绝，不折叠成第一个（F04 R10 同款分级：破坏性动作代价不可逆）。
+  // ③ 命中 ≥2 个 ⇒ 拒绝，不折叠成第一个（`INVARIANTS §30` 同款分级：破坏性动作代价不可逆）。
   // 〔「改. 重新读取对所有tab生效」·「右键菜单那一项删（一个入口）」〕右键菜单里零处「重新读取」；
   // 正控：同一张菜单开出来了（有「在新窗口打开」），栏顶那颗在。
   it("〔REREAD〕tab 右键菜单里没有「重新读取」，它在栏顶", () => {
@@ -1522,7 +1522,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(attachTarget()).toEqual({ what: { kind: "look", sid: "A" }, local: false });
   });
 
-  // F04（R10）：命中 ≥2 个精确同 sid 的活会话——attach 仍就绪（非破坏性，警告即可）；结束交了由那台拒（`sessions-stop` 的 ambiguous）。
+  // `INVARIANTS §30`：命中 ≥2 个精确同 sid 的活会话——attach 仍就绪（非破坏性，警告即可）；结束交了由那台拒（`sessions-stop` 的 ambiguous）。
   it("目标 sid 同时活在 2 个 tmux（命中 ≥2 个）→ attach 仍就绪、第二行写命中几个", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux"

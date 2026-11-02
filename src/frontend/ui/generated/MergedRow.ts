@@ -3,17 +3,18 @@ import type { AgentKind } from "./AgentKind";
 import type { Can } from "./Can";
 import type { ForkedFrom } from "./ForkedFrom";
 import type { Hidden } from "./Hidden";
+import type { Machine } from "./Machine";
 import type { SearchHit } from "./SearchHit";
 import type { SessionFace } from "./SessionFace";
 
 /**
- * 合好的一行：那台答的那一行 ＋ 哪台（本机缺）。
+ * 合好的一行：那台答的那一行 ＋ 哪台。
  */
 export type MergedRow = { 
 /**
- * 那台远端的名字；本机 ⇒ 缺。
+ * 哪一台答的这一行（这台逐字 `"<local>"`）。
  */
-origin?: string, 
+origin: Machine, 
 /**
  * 行尾那一格。
  */

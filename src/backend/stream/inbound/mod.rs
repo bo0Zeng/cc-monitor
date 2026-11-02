@@ -142,7 +142,7 @@ pub(crate) struct Given {
 /// 在跑的命令登记表：`id` → 取消句柄。
 ///
 /// `id` 是客户端给的**不透明串**——backend 不解析、不校验格式、只当 map 的键和回显值。
-/// 谁生成谁负责唯一。backend 自己发号的话重连后号段会撞（同 F90「不许拿会变的东西当持久键」）。
+/// 谁生成谁负责唯一。backend 自己发号的话重连后号段会撞（同 `INVARIANTS §28`：不许拿会变的东西当持久键）。
 type Running = Arc<Mutex<HashMap<String, InFlight>>>;
 
 /// 一条在跑的命令。**`cancellable` 不是装饰** —— 见 [`Disposition::SpawnBlocking`]。

@@ -13,7 +13,7 @@
 //!
 //! - `kind`：`value`（机器要的值）· `text`（核心写好的字，类型是 [`Words`](crate::common::cells::Words)）· `tone`（语气，[`Tone`](crate::common::cells::Tone)）。
 //!   由这一格的 Rust 类型说，不按格名猜（`blocks[].text` 是原文、`cost.text` 是写好的字）。
-//! - `type`：`string` · `number` · `bool` · `enum`（闭集的一个词：Rust 枚举的单元变体）· `object`（原样透传的一团，不再往里分格）。
+//! - `type`：`string` · `number` · `bool` · `enum`（闭集的一个词：Rust 枚举的单元变体）· `object`（原样透传的一团 · 登记成一团的结构体 [`WHOLE`]，不再往里分格）。
 //! - 路径写法（声明里点格用同一种写法）：`a.b` 嵌套 · `a[]` 列表的每一项 · `a.*` 以 id 为键的表的每一项 ·
 //!   `a[type=x]` 按判别格挑的那一种（只在成品登记了判别格时出现，见 [`Product::tags`]）。
 
@@ -84,8 +84,14 @@ fn leaf(ty: &'static str) -> Node {
 /// 走查序列化器：每种 serde 数据形变成 [`Node`] 的一种。
 pub(crate) struct NodeSer;
 
+/// 按一团记的结构体（类型名）：整块是一格 `object`，不往里分格。助手正文的块树（`cmd_wire::md::Doc`）是递归的一棵，
+/// 两端整块交给排版器，形状由它自己的跨语言金样（`md-core.golden.json`）钉。
+const WHOLE: &[&str] = &["Doc"];
+
 pub(crate) struct SeqSer(Vec<Node>);
 pub(crate) struct MapSer {
+    /// 按一团记（[`WHOLE`]）：底下的格不走。
+    whole: bool,
     data: bool,
     entries: Vec<(String, Node)>,
     key: Option<String>,
@@ -232,13 +238,15 @@ impl ser::Serializer for NodeSer {
     /// 长度给了 ⇒ 是一张按 id 的表（`BTreeMap` / 透传的 JSON 对象）；没给 ⇒ 拍平的结构体（serde 的 `flatten` 走这里）或自写的形。
     fn serialize_map(self, len: Option<usize>) -> Result<MapSer, Fault> {
         Ok(MapSer {
+            whole: false,
             data: len.is_some(),
             entries: Vec::new(),
             key: None,
         })
     }
-    fn serialize_struct(self, _: &'static str, _: usize) -> Result<MapSer, Fault> {
+    fn serialize_struct(self, name: &'static str, _: usize) -> Result<MapSer, Fault> {
         Ok(MapSer {
+            whole: WHOLE.contains(&name),
             data: false,
             entries: Vec::new(),
             key: None,
@@ -254,6 +262,7 @@ impl ser::Serializer for NodeSer {
         Ok(VariantSer {
             variant,
             inner: MapSer {
+                whole: false,
                 data: false,
                 entries: Vec::new(),
                 key: None,
@@ -341,15 +350,22 @@ impl ser::SerializeStruct for MapSer {
         key: &'static str,
         v: &T,
     ) -> Result<(), Fault> {
-        self.entries.push((key.to_string(), v.serialize(NodeSer)?));
+        if !self.whole {
+            self.entries.push((key.to_string(), v.serialize(NodeSer)?));
+        }
         Ok(())
     }
     /// `skip_serializing_if` 跳过的格：样本里它是缺的（判据要它为空 —— 跳过的格在目录里就漏了）。
     fn skip_field(&mut self, key: &'static str) -> Result<(), Fault> {
-        self.entries.push((key.to_string(), Node::Absent));
+        if !self.whole {
+            self.entries.push((key.to_string(), Node::Absent));
+        }
         Ok(())
     }
     fn end(self) -> Result<Node, Fault> {
+        if self.whole {
+            return Ok(leaf("object"));
+        }
         ser::SerializeMap::end(self)
     }
 }
@@ -842,7 +858,7 @@ mod specimens {
             }),
             rec(Body::Reply {
                 blocks: vec![
-                    Block::text(s("t")),
+                    Block::prose("t", md_core::parse("t")),
                     Block::Thinking { text: s("t") },
                     Block::ToolUse {
                         id: s("c"),
