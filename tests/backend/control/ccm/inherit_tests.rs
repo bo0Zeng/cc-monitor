@@ -455,7 +455,7 @@ fn the_tab_slot_goes_with_the_launch_and_names_its_alias() {
 #[test]
 fn the_tab_flag_takes_only_show_or_hide() {
     let parse = |a: &[&str]| {
-        crate::ccm_line::argv::tests::parse(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        crate::ccm_line::argv::test_support::parse(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>())
     };
     assert!(parse(&["--", "--tab", "hide"]).is_ok());
     assert!(parse(&["--", "--tab=show"]).is_ok());
@@ -479,7 +479,7 @@ fn the_tab_flag_takes_only_show_or_hide() {
 fn no_rotation_presets_the_session_id_it_hands_the_agent() {
     let plan_of = |args: &[&str]| -> Result<Plan, String> {
         let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        let o = match crate::ccm_line::argv::tests::parse(&a).map_err(|e| e.0)? {
+        let o = match crate::ccm_line::argv::test_support::parse(&a).map_err(|e| e.0)? {
             crate::ccm_line::argv::Parsed::Opts(o) => o,
             _ => panic!("该是起会话"),
         };
@@ -658,7 +658,7 @@ fn the_alias_name_goes_with_the_launch() {
     };
     assert!(c.payload.contains("'--ccm-alias' 'dev'"), "{}", c.payload);
     let parse = |a: &[&str]| {
-        crate::ccm_line::argv::tests::parse(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        crate::ccm_line::argv::test_support::parse(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>())
     };
     assert!(parse(&["--", "--ccm-alias", "a b"]).is_err());
 }

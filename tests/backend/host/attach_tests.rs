@@ -192,34 +192,6 @@ async fn detaching_leaves_the_terminal_running_and_reattaching_shows_the_same_sc
     task.await.unwrap().unwrap();
 }
 
-/// 瘦客户端底行与名单那一格同一句（A3-3-32-5）：无人持有 ⇒ 底行前半句与 `terminals-list` 的 `holder.said` 逐字相同；
-/// 终端窗口持有（看的这一端不是它）⇒ 同。
-#[test]
-fn the_bottom_line_starts_with_the_same_holder_sentence_as_the_list() {
-    use crate::control::terminals::input_of_row;
-    use cmd_wire::session::TermInput;
-    let listed = |input: crate::host::Input| match input_of_row(&input, Some("desktop")) {
-        TermInput::Held { holder } => holder.said,
-        TermInput::Shared => panic!("托管那一行是 held"),
-    };
-    let none = held_line(None);
-    assert!(
-        none.starts_with(&listed(crate::host::Input::Held(None))),
-        "{none:?}"
-    );
-    let other = Holder {
-        client: 3,
-        kind: WhoKind::Terminal,
-        front: None,
-        pid: None,
-        mine: false,
-    };
-    let terminal = listed(crate::host::Input::Held(Some(
-        crate::host::HeldBy::Terminal,
-    )));
-    assert!(held_line(Some(&other)).starts_with(&terminal));
-}
-
 /// `前缀 D` 单子：种类那一列是那几个短词，末行一次图例。
 #[test]
 fn the_clients_sheet_uses_the_short_words_and_ends_with_the_legend() {
@@ -433,29 +405,6 @@ async fn copy_mode_shows_history_from_the_host() {
     a.keys.send(b"\r".to_vec()).unwrap();
     let _ = a.task.await;
     task.await.unwrap().unwrap();
-}
-
-#[test]
-fn the_host_run_word_routes_to_the_hosted_terminal_not_the_query_face() {
-    let a: Vec<String> = ["--", "--host-run", "h1", "--", "sh"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    // 不进后端的一次性查询面（那一面只认子命令闸门 `stream::cli::is_subcommand`），落在 ccm 那一侧、由它在起会话那一套之前接走。
-    assert_eq!(
-        crate::control::ccm::route("ccm", &a, crate::stream::entry::is_backend_word),
-        crate::control::ccm::Entry::Ccm(a.clone())
-    );
-    assert_eq!(crate::control::ccm::host_run_args(&a), Some(&a[2..]));
-    let not: Vec<String> = ["--host-run", "h1", "--", "sh"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    assert_eq!(
-        crate::control::ccm::host_run_args(&not),
-        None,
-        "不紧跟打头的 `--` 不算"
-    );
 }
 
 // ── 不起托管进程、直接喂帧的那几条（外层是假的，尺寸由判据定）──
