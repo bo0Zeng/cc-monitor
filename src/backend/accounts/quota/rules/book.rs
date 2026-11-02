@@ -226,7 +226,7 @@ pub(crate) struct WakeWhen {
 
 /// 「看见」的时刻隔多久才刷新一次（秒）。
 pub(crate) const SEEN_REFRESH: u64 = 86_400;
-/// 没拖过顺序 · 没去掉过号 · 没换过号的会话，多久没被看见就从账本里清掉（秒）。
+/// 会话多久没被看见就从账本里清掉（秒）。
 pub(crate) const DROP_AFTER: u64 = 7 * 86_400;
 
 impl Session {
@@ -308,15 +308,12 @@ impl Book {
         }
     }
 
-    /// 清旧会话：没拖过顺序 · 没去掉过号 · 没换过号 · 超过 [`DROP_AFTER`] 没被看见 ⇒ 删（再来一发照新会话记回来）。
+    /// 清旧会话：超过 [`DROP_AFTER`] 没被看见 ⇒ 删，换过号 · 拖过顺序 · 去掉过号的也一样（再来一发照新会话记回来）。
+    /// 账本因此只装近来的会话：换号记录每会话至多 [`LOG_KEPT`] 条，整份不随用的日子越积越大。
     pub(crate) fn drop_stale(&mut self, now: u64) -> usize {
         let before = self.sessions.len();
-        self.sessions.retain(|_, s| {
-            !(s.temp.is_empty()
-                && s.off.is_empty()
-                && s.log.is_empty()
-                && now.saturating_sub(s.last_seen()) > DROP_AFTER)
-        });
+        self.sessions
+            .retain(|_, s| now.saturating_sub(s.last_seen()) <= DROP_AFTER);
         before - self.sessions.len()
     }
 }

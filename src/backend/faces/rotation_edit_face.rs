@@ -108,7 +108,9 @@ pub(crate) fn settings_with(
     let Some(head) = head_of(&sh) else {
         return Err(RotationSettingsErr::NoStrategy(gone(id)));
     };
-    let settings = form::apply(&head.form, &head.settings, &req.edit)
+    let roster = ctx.hop.roster();
+    let here = |a: &str| roster.iter().any(|x| x == a);
+    let settings = form::apply(&head.form, &head.settings, &req.edit, &here)
         .map_err(|e| RotationSettingsErr::BadArgs(crate::common::contract::malformed(&e)))?;
     checked(sh.file.as_ref().ok(), &settings)
         .map_err(|r| RotationSettingsErr::Refused(refused_said(), r))?;
@@ -348,16 +350,7 @@ pub(crate) fn add_with(
     };
     let source = match &req.source {
         Some(s) => s.clone(),
-        None => {
-            let ids: Vec<String> = ctx
-                .hop
-                .library()
-                .accounts
-                .iter()
-                .filter_map(acct_core::ManifestAccount::route_id)
-                .collect();
-            setup::editor::fresh(&ids, crate::platform::local_tz::iana_name())
-        }
+        None => setup::editor::fresh(&ctx.hop.roster(), crate::platform::local_tz::iana_name()),
     };
     script::parse(&source).map_err(bad)?;
     let id = fresh_name(ctx, &req.name).map_err(RotationStrategyAddErr::BadArgs)?;

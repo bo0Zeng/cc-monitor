@@ -130,6 +130,59 @@ fn settings_edits_are_saved_into_the_file_as_a_new_version() {
     }
 }
 
+/// ★ 一格设过 ⇒ 恢复默认：头里那一行没有那个键了、看板那一格从默认来；清掉库里没有的号：号列表里只剩开会话的号与库里有的，代码逐字节不变。
+#[test]
+fn a_cell_goes_back_to_default_and_missing_accounts_are_cleared() {
+    let home = Home::new("edit-reset");
+    let ctx = home.ctx();
+    home.settings_of(
+        "by-list",
+        json!({"accounts": [{"start": true}, {"id": "gone"}, {"id": "b", "delay": 30}]}),
+    );
+    let before = file(&home, "by-list");
+    let edit = |edit: RotEdit| {
+        settings_with(
+            &ctx,
+            &home.own(),
+            &RotationSettingsReq {
+                strategy: "by-list".into(),
+                edit,
+                if_rev: rev(&home, "by-list"),
+            },
+        )
+        .expect("ok")
+    };
+    let accounts = || {
+        script::parse(&file(&home, "by-list"))
+            .expect("读得懂")
+            .head
+            .settings["accounts"]
+            .clone()
+    };
+    edit(RotEdit::Reset {
+        key: "delay".into(),
+        row: Some(2),
+    });
+    assert_eq!(
+        accounts(),
+        json!([{"start": true}, {"id": "gone"}, {"id": "b"}])
+    );
+    let v = crate::faces::rotation_view_face::tests::strategy_view(&ctx, &home, "by-list");
+    let delay = v.board.rows[2]
+        .cells
+        .iter()
+        .find(|c| c.key == "delay")
+        .expect("delay");
+    assert_eq!(delay.from, form::RotFrom::Default);
+    edit(RotEdit::Prune {});
+    assert_eq!(accounts(), json!([{"start": true}, {"id": "b"}]));
+    assert_eq!(
+        code_of(&file(&home, "by-list")),
+        code_of(&before),
+        "代码动了"
+    );
+}
+
 /// 下拉选一份 ＝ 载入它此刻的版本（memo · 叫醒清掉）· 不再轮换（`null`）· 读不懂的载入不了 · 新会话用哪份（那一份要在；`null` ⇒ 新会话不轮换）。
 #[test]
 fn use_and_for_new() {
