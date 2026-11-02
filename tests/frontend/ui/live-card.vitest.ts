@@ -1,9 +1,9 @@
 /**
- * 活卡的判据（界面那一半：照壳交来的整份画；同一张卡逐帧复用节点、正文只追加新的那一截）。
+ * 活卡的判据（界面那一半：照壳交来的整份或尾巴画；同一张卡逐帧复用节点、正文前面没变的块不动、只重建尾巴）。
  *
  * 对账 · 缺口 · 记录到了整轮覆盖 · 子运行归位 · 截头 · 挤谁都在后端（`src/backend/stream/live.rs`，判据 `tests/backend/stream/live_tests.rs`）；
- * 一帧一帧折成整份在端核心（`src/comms/resident-client/live.rs`，判据 `tests/comms/resident-client/live_tests.rs`）。
- * 这里只钉：整份照画；空的一格 ⇒ 那一处撤；没这个 tab ⇒ 不留；主 tab 只画主运行；那台看不见了 ⇒ 全撤。
+ * 一帧一帧折好在端核心（`src/comms/resident-client/live.rs`，判据 `tests/comms/resident-client/live_tests.rs`）。
+ * 这里只钉：整份照画；尾巴接在那张卡前 `keep` 块后面；空的一格 ⇒ 那一处撤；没这个 tab ⇒ 不留；主 tab 只画主运行；那台看不见了 ⇒ 全撤。
  * T8：活卡那一路怎么来、怎么断，都不碰记录那条对的路（真 TabManager，记录建出的 DOM 逐字相等）。
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
@@ -33,23 +33,26 @@ import { installViewerRig, line, userLine, type RigPayload } from "../../test-su
 import { TabManager } from "../../../src/frontend/ui/tabs";
 import { livePainter } from "../../../src/frontend/ui/live-card-view";
 import type { LiveCardNow } from "../../../src/frontend/ui/generated/LiveCardNow";
+import type { MdBlock } from "../../../src/frontend/ui/generated/MdBlock";
 import type { SessionLiveCardsPayload } from "../../../src/frontend/ui/generated/SessionLiveCardsPayload";
 import { nonEmpty } from "../../test-support/non-empty.ts";
 
-// ─── 手写的整份（期望只从这里来） ─────────────────────────────────────────
+// ─── 手写的整份与尾巴（期望只从这里来） ─────────────────────────────────────────
 
 const O = "<local>";
 
-/** 一张卡此刻的样子：思考块 ＋ 正文块（＋ 工具块）；头一行 · 正文 · 「最近」那一截是核心写好的（这里是结构占位）。 */
-function now(card: number, rid: string, text: string, phase: "streaming" | "awaiting" = "streaming", tool?: string): LiveCardNow {
+/** 一段字的块。 */
+const p = (s: string): MdBlock => ({ t: "p", k: [s] });
+
+/** 一张卡此刻的样子：头一行 · 正文 · 「最近」那一截是核心写好的（这里是结构占位）。 */
+function now(card: number, rid: string, text: string, phase: "streaming" | "awaiting" = "streaming"): LiveCardNow {
   return {
     card,
     rid,
     phase,
     clipped: false,
-    blocks: [{ kind: "thinking" }, { kind: "text", text }, ...(tool ? [{ kind: "tool" as const, tool }] : [])],
     head: `核心·头·${phase}`,
-    body: `核心·正文·${text}`,
+    body: [p(`核心·正文·${text}`)],
     ...(phase === "streaming" ? { last: `核心·最近·${rid}` } : {}),
   };
 }
@@ -57,18 +60,27 @@ function now(card: number, rid: string, text: string, phase: "streaming" | "awai
 /** 壳交来的一格：那台那一处此刻整份的卡。 */
 const pay = (sid: string, cards: LiveCardNow[], origin = O, run?: string): SessionLiveCardsPayload => ({
   origin,
-  live: { sid, ...(run ? { run } : {}), cards },
+  live: { t: "whole", whole: { sid, ...(run ? { run } : {}), cards } },
 });
+
+/** 壳交来的一格：某张卡前 `keep` 块不变，后面换成 `blocks`。 */
+const tail = (sid: string, card: number, keep: number, blocks: MdBlock[], last?: string): SessionLiveCardsPayload => ({
+  origin: O,
+  live: { t: "tail", tail: { sid, card, keep, blocks, ...(last === undefined ? {} : { last }) } },
+});
+
+const textOf = (b: readonly MdBlock[]): string[] => b.map((x) => (x.t === "p" ? x.k.map((k) => (typeof k === "string" ? k : "")).join("") : x.t));
 
 const board = (route: (origin: string, sid: string) => boolean = () => true): LiveCards => new LiveCards(route, () => null);
 
 describe("活卡照画（期望手写）", () => {
   it("★ 一张卡：头一行 · 正文照核心写好的摆（不按块的种类取字）", () => {
     const b = board();
-    b.onCards(pay("s1", [now(7, "m1", "你好", "awaiting", "Read")]));
+    b.onCards(pay("s1", [now(7, "m1", "你好", "awaiting")]));
     const host = document.createElement("div");
     livePainter.cards(host, b.cardsOf("s1"));
     expect(host.textContent).toBe("核心·头·awaiting核心·正文·你好");
+    expect(host.querySelector("p")?.textContent, "正文照树排成段落").toBe("核心·正文·你好");
     expect(b.cardsOf("s1")[0]!.messageId).toBe("m1");
   });
 
@@ -76,9 +88,25 @@ describe("活卡照画（期望手写）", () => {
     const b = board();
     b.onCards(pay("s1", [now(7, "m1", "a")]));
     b.onCards(pay("s1", [now(7, "m1", "尾巴")]));
-    expect(b.cardsOf("s1").map((c) => c.body)).toEqual(["核心·正文·尾巴"]);
+    expect(b.cardsOf("s1").map((c) => textOf(c.body))).toEqual([["核心·正文·尾巴"]]);
     b.onCards(pay("s1", []));
     expect(b.size).toBe(0);
+  });
+
+  it("尾巴一格：那张卡前 keep 块还是同一批对象，后面换成交来的；手上没有那张卡 · 那一处 ⇒ 不收", () => {
+    const b = board();
+    const two: LiveCardNow = { ...now(7, "m1", "一"), body: [p("一"), p("二")] };
+    b.onCards(pay("s1", [now(3, "m0", "另一张"), two]));
+    const first = b.cardsOf("s1")[1]!.body[0];
+    b.onCards(tail("s1", 7, 1, [p("二三"), p("四")], "核心·最近·新"));
+    const c = b.cardsOf("s1")[1]!;
+    expect(textOf(c.body)).toEqual(["一", "二三", "四"]);
+    expect(c.body[0]).toBe(first);
+    expect(textOf(b.cardsOf("s1")[0]!.body), "别的卡不动").toEqual(["核心·正文·另一张"]);
+    b.onCards(tail("s1", 99, 0, [p("没开过")]));
+    expect(b.cardsOf("s1").flatMap((x) => textOf(x.body))).not.toContain("没开过");
+    b.onCards(tail("s9", 7, 0, [p("别的会话")]));
+    expect(b.cardsOf("s9")).toEqual([]);
   });
 
   it("这台上没有这个 tab ⇒ 不留；子运行的卡不上主 tab，给 agent 面板那一行「最近」", () => {
@@ -105,93 +133,84 @@ describe("活卡照画（期望手写）", () => {
   });
 });
 
-describe("活卡增量画（同一张卡的节点复用，正文只追加新的那一截）", () => {
-  const st = (key: string, body: string, phase: "streaming" | "awaiting" = "streaming", head = "头"): LiveCardState => ({
+describe("活卡增量画（同一张卡的节点复用，正文前面没变的块不动、只重建尾巴）", () => {
+  const st = (key: string, body: readonly MdBlock[], phase: "streaming" | "awaiting" = "streaming", head = "头"): LiveCardState => ({
     key,
     messageId: "m",
     phase,
     head,
     body,
   });
-  const bodyText = (host: HTMLElement, key: string): Text => {
-    const t = host.querySelector(`[data-live-key="${key}"]`)?.lastElementChild?.firstChild;
-    expect(t, `卡 ${key} 的正文文本节点`).toBeInstanceOf(Text);
-    return t as Text;
+  /** 那张卡正文那一格里的块节点。 */
+  const blocksOf = (host: HTMLElement, key: string): Element[] => {
+    const card = [...host.children].find((c) => (c as HTMLElement).dataset.liveKey === key);
+    return [...(card?.lastElementChild?.children ?? [])];
   };
 
-  it("★ 连来两帧、第二帧正文接着第一帧往下说 ⇒ 卡 · 正文文本节点都是同一个，只多了新的那一截", () => {
+  it("★ 一张卡连喂 500 段（每段 40 字，每 10 段一个自然段）⇒ 卡节点只建一次，尾巴之外的块节点一次都不换", () => {
+    const b = new LiveCards(
+      () => true,
+      () => host,
+    );
     const host = document.createElement("div");
-    livePainter.cards(host, [st("k1", "一二三")]);
+    b.setPainter(livePainter);
+    b.onCards(pay("s1", [{ ...now(1, "m", ""), body: [] }]));
     const card = host.firstElementChild;
-    const text = bodyText(host, "k1");
-    const appended: string[] = [];
-    const orig = Text.prototype.appendData;
-    const spy = vi.spyOn(Text.prototype, "appendData").mockImplementation(function (this: Text, d: string) {
-      appended.push(d);
-      orig.call(this, d);
-    });
-    try {
-      livePainter.cards(host, [st("k1", "一二三四五")]);
-    } finally {
-      spy.mockRestore();
-    }
-    expect(host.firstElementChild).toBe(card);
-    expect(bodyText(host, "k1")).toBe(text);
-    expect(text.data).toBe("一二三四五");
-    expect(appended).toEqual(["四五"]);
-    expect(host.textContent).toBe("头一二三四五");
-  });
-
-  it("一张卡连喂 500 段（每段 40 字）⇒ 头一帧之后不再新建节点、正文一直是同一个文本节点", () => {
-    const host = document.createElement("div");
+    expect(card).not.toBeNull();
     const seg = "字".repeat(40);
-    let body = seg;
-    livePainter.cards(host, [st("k1", body)]);
-    const text = bodyText(host, "k1");
     const create = vi.spyOn(document, "createElement");
-    const createText = vi.spyOn(document, "createTextNode");
+    let para = "";
+    let built = 0;
     try {
-      for (let i = 1; i < 500; i++) {
-        body += seg;
-        livePainter.cards(host, [st("k1", body)]);
+      for (let k = 0; k < 500; k++) {
+        if (k % 10 === 0) para = "";
+        para += seg;
+        const keep = Math.floor(k / 10);
+        const before = blocksOf(host, "<local>\u00001").slice(0, keep);
+        const calls = create.mock.calls.length;
+        b.onCards(tail("s1", 1, keep, [p(para)]));
+        built += create.mock.calls.length - calls;
+        expect(host.firstElementChild, `第 ${k} 段换了卡节点`).toBe(card);
+        const after = blocksOf(host, "<local>\u00001");
+        expect(after.length).toBe(keep + 1);
+        after.slice(0, keep).forEach((n, i) => expect(n, `第 ${k} 段换了尾巴之外的第 ${i} 块`).toBe(before[i]));
       }
-      expect(create).not.toHaveBeenCalled();
-      expect(createText).not.toHaveBeenCalled();
     } finally {
       create.mockRestore();
-      createText.mockRestore();
     }
-    expect(bodyText(host, "k1")).toBe(text);
-    expect(text.data).toBe(body);
+    expect(built, "每段只重建尾巴那一块").toBe(500);
+    expect(blocksOf(host, "<local>\u00001").map((n) => n.textContent)).toEqual(Array.from({ length: 50 }, () => seg.repeat(10)));
   });
 
-  it("正文不以旧值开头（核心截了头）⇒ 整段换成新值；样子 · 头一行跟着这一帧", () => {
+  it("这一帧的块与上一帧不是同一批对象（整份换了）⇒ 从第一处不同起重建；样子 · 头一行跟着这一帧", () => {
     const host = document.createElement("div");
-    livePainter.cards(host, [st("k1", "abcdef")]);
+    const a = [p("一"), p("二")];
+    livePainter.cards(host, [st("k1", a)]);
     const card = host.firstElementChild as HTMLElement;
+    const [n0, n1] = blocksOf(host, "k1");
     const streamingClass = card.className;
-    livePainter.cards(host, [st("k1", "cdefgh", "awaiting", "头2")]);
+    livePainter.cards(host, [st("k1", [a[0]!, p("二改")], "awaiting", "头2")]);
     expect(host.firstElementChild).toBe(card);
-    expect(bodyText(host, "k1").data).toBe("cdefgh");
+    expect(blocksOf(host, "k1")[0]).toBe(n0);
+    expect(blocksOf(host, "k1")[1]).not.toBe(n1);
     expect(card.firstElementChild?.textContent).toBe("头2");
     expect(card.className).not.toBe(streamingClass);
-    livePainter.cards(host, [st("k1", "cdefgh", "streaming", "头2")]);
+    livePainter.cards(host, [st("k1", [], "streaming", "头2")]);
     expect(card.className).toBe(streamingClass);
-    livePainter.cards(host, [st("k1", "", "streaming", "头2")]);
     expect(host.textContent).toBe("头2");
-    livePainter.cards(host, [st("k1", "再来", "streaming", "头2")]);
+    livePainter.cards(host, [st("k1", [p("再来")], "streaming", "头2")]);
     expect(host.textContent).toBe("头2再来");
   });
 
   it("卡的增减与先后照这一帧：留下的那张节点复用，撤掉的不留，新来的排在后面", () => {
     const host = document.createElement("div");
-    livePainter.cards(host, [st("k1", "a"), st("k2", "b")]);
+    livePainter.cards(host, [st("k1", [p("a")]), st("k2", [p("b")])]);
     const k2 = host.querySelector('[data-live-key="k2"]');
-    livePainter.cards(host, [st("k2", "bc"), st("k3", "x")]);
+    livePainter.cards(host, [st("k2", [p("bc")]), st("k3", [p("x")])]);
     expect([...host.children].map((c) => (c as HTMLElement).dataset.liveKey)).toEqual(["k2", "k3"]);
     expect(host.firstElementChild).toBe(k2);
     expect(host.textContent).toBe("头bc头x");
-    livePainter.cards(host, [st("k3", "xy"), st("k2", "bc")]);
+    livePainter.cards(host, [st("k3", [p("xy")]), st("k2", [p("bc")])]);
     expect([...host.children].map((c) => (c as HTMLElement).dataset.liveKey)).toEqual(["k3", "k2"]);
     expect(host.lastElementChild).toBe(k2);
     livePainter.cards(host, []);
@@ -223,11 +242,11 @@ describe("T8 活卡断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口
     const tm = owned(announced(new TabManager(barEl, streamRootEl)));
     tm.setLivePainter(livePainter);
     tm.onLine(jsonl[0] as never);
-    for (const p of seq) tm.onLiveCard(p);
+    for (const x of seq) tm.onLiveCard(x);
     const trailer = (): string =>
       [...streamRootEl.querySelectorAll(".stream")].map((s) => [...s.children].slice(1).map((c) => c.textContent).join("|")).join("#");
     const liveMidway = trailer();
-    for (const p of jsonl.slice(1)) tm.onLine((p === jsonl[1] ? { ...p, rid: "msg_T8" } : p) as never);
+    for (const x of jsonl.slice(1)) tm.onLine((x === jsonl[1] ? { ...x, rid: "msg_T8" } : x) as never);
     if (closeAfter && seq.length > 0) tm.onLiveCard(pay("s1", []));
     const content = [...streamRootEl.querySelectorAll(".stream-content")].map((e) => e.innerHTML).join("\n");
     return { content, liveMidway, liveAfter: trailer() };

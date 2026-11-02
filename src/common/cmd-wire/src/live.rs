@@ -1,7 +1,9 @@
 //! 活卡（`live_card` 帧）的线上形 —— 两侧同一份：后端按这里的类型发（`stream::live` 出的成品，`wire::Frame::LiveCard`），
 //! 手机嵌的 Rust 核心与界面按这里的类型认（界面用从这里导出的类型，`src/frontend/ui/generated/`）。
 //! 归一流里一块是什么（[`BlockKind`]）也住这里：卡里每一块的种类就是它。
+//! 文字块交的是解析好的顶层块（[`MdBlock`]，后端解析一次）；每来一截字只交「前几块不变 ＋ 尾巴」（[`LiveOp::Text`]）。
 
+use crate::md::MdBlock;
 use serde::{Deserialize, Serialize};
 
 /// 归一流里一块是什么。
@@ -72,11 +74,14 @@ pub enum LiveOp {
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         tool: Option<String>,
     },
-    /// 第 `i` 块（文字块）接着一段字。
+    /// 第 `i` 块（文字块）接着一段字：它的顶层块前 `keep` 块不变，从第 `keep` 块起换成 `tail`
+    /// （后端只重解析最后一个顶层块往后的那一截，`tail` 多半是一两块）。
     Text {
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         i: u64,
-        s: String,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        keep: u64,
+        tail: Vec<MdBlock>,
     },
     /// 上游说完了，等写入记录。
     Awaiting,
@@ -108,10 +113,10 @@ pub enum LivePhase {
 )]
 pub struct LiveBlock {
     pub kind: BlockKind,
-    /// 文字块已到的正文（只有文字块有；思考不展开、工具入参不显示）。
+    /// 文字块已到的正文解析成的顶层块（只有文字块有；思考不展开、工具入参不显示）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub text: Option<String>,
+    pub md: Option<Vec<MdBlock>>,
     /// 工具块的工具名。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]

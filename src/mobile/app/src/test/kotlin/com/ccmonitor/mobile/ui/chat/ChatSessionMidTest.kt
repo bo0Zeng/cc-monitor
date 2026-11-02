@@ -5,6 +5,8 @@ import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.Allow
+import com.ccmonitor.mobile.core.wire.gen.Inl
+import com.ccmonitor.mobile.core.wire.gen.MdBlock
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.Wires
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -244,7 +246,7 @@ class ChatSessionMidTest {
         "sid" to sid,
         "cards" to
             texts.mapIndexed { i, t ->
-                mapOf("card" to i.toDouble(), "rid" to "r$i", "phase" to "streaming", "clipped" to false, "blocks" to listOf(mapOf("kind" to "text", "text" to t)), "head" to "核心·头", "body" to t)
+                mapOf("card" to i.toDouble(), "rid" to "r$i", "phase" to "streaming", "clipped" to false, "head" to "核心·头", "body" to listOf(mapOf("t" to "p", "k" to listOf(t))))
             },
     ) + (run?.let { mapOf("run" to it) } ?: emptyMap())
 
@@ -261,8 +263,8 @@ class ChatSessionMidTest {
             runCurrent()
             val texts =
                 s.state.value.live
-                    .map { it.blocks.single().text }
-            assertEquals(listOf("改好了"), texts)
+                    .map { it.body.single() }
+            assertEquals(listOf(MdBlock.P(listOf(Inl.Text("改好了")))), texts)
             link.live(cards())
             runCurrent()
             assertEquals(emptyList<Any>(), s.state.value.live)
