@@ -757,6 +757,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "新帧命令：拉一段正文的代码高亮（`faces/prose_hl_face.rs`，md-core 的高亮器常驻一份、按内容缓存）；\
          前端 `src/frontend/ui/cards/index.ts::hlFrom` 建一段正文时问，monitor 这一侧零发送点",
     ),
+    (
+        "md-doc",
+        "新帧命令：一段 Markdown 原文由后端解析成块树（`faces/md_doc_face.rs`，md-core 解析）；\
+         前端 `src/frontend/ui/render.ts` 思考展开 · 工具结果 MD 模式 · 计划格正文时问，monitor 这一侧零发送点",
+    ),
     // `skill-read` / `skill-install-plan` / `skill-install-apply` 界面不再直问：只经本机那两条枢纽命令。
     // `files-ls` 那一行退役：数据位置页 `$PROFILE` 备份那一格随它的读口一起删了（文件窗口自己列目录不经界面）。
     // `files-stat` 那一行退役：Claude 目录像不像改由后端 `agent-home-check` 一条命令判（见上），界面不再自己问。
