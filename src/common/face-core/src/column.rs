@@ -1,5 +1,5 @@
-//! **最近优先 · 几台并成一列**：一列怎么排只有 [`sort_by_recency`] 一条（倒序、稳定）；几台并一列（[`merge_by`]）是照台的先后拼起来再照它排 ——
-//! 同一刻照台的先后，不另判。本机后端每台花片段预算的先后（`search_rules`）· 几台的全文搜索结果合一份（[`crate::search::merge`]）·
+//! **最近优先 · 几台并成一列**：一列怎么排只有 [`sort_by_recency`] 一条（倒序、稳定）；几台并一列只有 [`merge_by`] 一条
+//! （各台的先后不打散，每一步取排头里最近的，同一刻照台的先后），不另判。本机后端每台花片段预算的先后（`search_rules`）· 几台的全文搜索结果合一份（[`crate::search::merge`]）·
 //! 本机后端并历史页那一列（`history_browse::lay`）· 手机会话屏（`mobcore::chats_column_json`）都调这两个；
 //! 分叉挂在父会话下那一步（[`nest`]）也只住这里：历史页那一列与手机会话屏都照它摊。
 //! 手机那一屏的段也在这里切（[`column`]）：段头是那台写好的字，换了字就起新的一段；挂在父下的分叉跟着父，不另起段。
@@ -13,11 +13,23 @@ pub fn sort_by_recency<T>(items: &mut [T], key: impl Fn(&T) -> i64) {
     items.sort_by(|a, b| key(b).cmp(&key(a)));
 }
 
-/// 几台各一列 ⇒ 并成一列：照台的先后拼起来、照 [`sort_by_recency`] 排 —— 同值照台的先后，台里照原先后。只并、不另判。
+/// 几台各一列（各台自己排好的先后，不重排）⇒ 并成一列：每一步取各台排头里 `key` 最大的那一个，同值照台的先后。只并、不另判。
+/// 各台的一列都照 [`sort_by_recency`] 排好时，出来的就是整列照它排的样子；台里另有先后（历史页那几种排法）时照那台的先后，不打散。
 pub fn merge_by<'a, T>(lists: &[&'a [T]], key: impl Fn(&T) -> i64) -> Vec<&'a T> {
-    let mut out: Vec<&'a T> = lists.iter().flat_map(|l| l.iter()).collect();
-    sort_by_recency(&mut out, |x| key(x));
-    out
+    let mut at = vec![0usize; lists.len()];
+    let mut out = Vec::with_capacity(lists.iter().map(|l| l.len()).sum());
+    loop {
+        let mut best: Option<usize> = None;
+        for (i, l) in lists.iter().enumerate() {
+            let Some(x) = l.get(at[i]) else { continue };
+            if best.is_none_or(|b| key(x) > key(&lists[b][at[b]])) {
+                best = Some(i);
+            }
+        }
+        let Some(b) = best else { return out };
+        out.push(&lists[b][at[b]]);
+        at[b] += 1;
+    }
 }
 
 /// 一行在分叉树里的样子：`child` ＝ 挂在展开了的父会话下；`forks` ＝ 它下面挂着几个分叉（`forks_open` 展没展开）；
