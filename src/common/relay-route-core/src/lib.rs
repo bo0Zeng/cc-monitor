@@ -707,8 +707,8 @@ const ROTATION_MAX_BYTES: Cap = Cap {
     bytes: 16 << 20,
     over: Over::Reject,
 };
-/// 账号轮换（第 1 版 · 第 2 版不升级）。
-pub const ROTATION_FILE: Decl<State> = Decl::<State>::json(ROTATION_REL, 3, 3, ROTATION_MAX_BYTES);
+/// 账号轮换（第 4 版；第 3 版及更早当没有）。
+pub const ROTATION_FILE: Decl<State> = Decl::<State>::json(ROTATION_REL, 4, 4, ROTATION_MAX_BYTES);
 /// 历史注解那一份的读上限：一条约 150 字节 ⇒ 四十万条；真撞上说明那份文件不对劲，不拿截断的当完整的用。
 const HISTORY_ANNOTATIONS_MAX_BYTES: Cap = Cap {
     bytes: 64 * 1024 * 1024,
