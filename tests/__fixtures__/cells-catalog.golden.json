@@ -3757,6 +3757,12 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "up.*.deleteAsk",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "up.*.face.can.close.can",
           "type": "string"
@@ -4024,6 +4030,12 @@
           "kind": "value",
           "path": "up.*.projectPath",
           "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "up.*.reveal",
+          "type": "bool"
         },
         {
           "frozen": true,
