@@ -3,7 +3,7 @@ import type { SessionFace } from "./SessionFace";
 import type { Words } from "./Words";
 
 /**
- * Batch9-F27：会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，天然稀疏）。
+ * 会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，天然稀疏）。
  */
 export type SessionStatus = { 
 /**

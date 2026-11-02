@@ -39,7 +39,7 @@ project_dir?: string,
  */
 name?: string, 
 /**
- * Batch8-F25（additive）：该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）；宣告时还没写首行 ⇒ 缺。
+ * 可选字段（additive）：该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）；宣告时还没写首行 ⇒ 缺。
  */
 path?: string, 
 /**
