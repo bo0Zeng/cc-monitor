@@ -350,7 +350,7 @@ fn the_exit_hops_own_misses_are_this_same_table() {
     );
     assert_eq!(
         f(FrontMiss::Broken {
-            detail: "原话".into()
+            detail: "raw-said".into()
         }),
         face(
             &t("front.title.failed"),
@@ -358,7 +358,7 @@ fn the_exit_hops_own_misses_are_this_same_table() {
             None,
             Tone::Fail,
             vec![FrontAct::Copy {
-                detail: "原话".into()
+                detail: "raw-said".into()
             }]
         )
     );

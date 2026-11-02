@@ -1,5 +1,5 @@
 /**
- * **核心写的失败那几句，两端出口零取**（A17-88-6 · A17-88-7）。
+ * **核心写的失败那几句，两端出口零取**。
  *
  * 一问没答成（通道那一跳 · 对方版本 · ↗ 浮层那一张）给人看的那一句只住核心：通道那一份（`comms/inward/chan/said.rs`）·
  * 因对方版本说不成的那几句（`common/copy-core/src/peer.rs`）· ↗ 浮层那一张（`common/face-core/src/front.rs`）。
@@ -27,11 +27,11 @@ const HOMES = ["src/comms/inward/chan/said.rs", "src/common/copy-core/src/peer.r
 const NOT_FAILURES: Record<string, string> = {
   "detail.label.local": "本机的称呼（名字，不是失败那一句）",
   "control.machine.peer": "不知道名字时称呼那台的词",
-  "terminalFront.unavailable.short": "↗ 此刻点不点得了那一句（A17-88-8：能不能点归那一条）",
+  "terminalFront.unavailable.short": "↗ 此刻点不点得了那一句（能不能点是另一件事，不在这张表里）",
   "reason.io.unknown": "「原因不明」这一格是通用的原因词，↗ 出错那一张借来当正文；别处照常用",
 };
 
-/** 界面自己知道的事、两端各一个取句口（J22 镜像：取的是表里同一把键）：键 ⇒ 允许的那几个文件。 */
+/** 界面自己知道的事、两端各一个取句口（判定登记表里登成镜像：取的是表里同一把键）：键 ⇒ 允许的那几个文件。 */
 const ONE_MOUTH: Record<string, readonly string[]> = {
   "peerVersion.said.unreadable": ["src/frontend/ui/ipc/chan-caller.ts", "src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/link/Problem.kt"],
 };
